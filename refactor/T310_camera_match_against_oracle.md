@@ -447,3 +447,229 @@ Both are Leg C's to close, because both need the server.
 
 Review media: `/mnt/projects/fable/review/T310/legB/` (README, before/, after/,
 gate log, both measurement tables).
+# Leg C Review (slot2, `task/T310-legC`, 2026-08-29)
+
+**The pose was SOLVED against the official client's own frames, as instructed.**
+Both clients at qeynos2 `(-74, 428)`, the same server-set heading, 1024x768,
+Human male (`Testchar` in both), first person, UI hidden on both, `#set time
+11 0`. Media and the file-by-file guide:
+`/mnt/projects/fable/review/T310/legC/README.md`.
+
+Nothing below is judged as a LOOK. Will judges.
+
+## The four numbers
+
+| quantity | solved value | error bar | configuration it came from | curve |
+|---|---|---|---|---|
+| **eye forward offset** | **0.0** | **+/- 0.3 eq units** | 1 (near wall, ~3-4 units) | `sweeps/fwd/curve.tsv` |
+| **eye height** | **6.18 above the collision ground**, = **0.928 of standing height**, = skull fraction **0.65** | **+/- 0.08 units / +/- 0.012 H / +/- 0.06 fraction** | 1 | `sweeps/eyeheight3/curve.tsv` + `eyeheight2/curve_wallcrop.tsv` |
+| **horizontal FOV** | **62.8 deg** (49.2 vertical at 4:3) | **+/- 2.5 deg** | 1 | `sweeps/hfov/curve.tsv` |
+| **near plane** | **NOT SOLVED — see below** | — | — | — |
+
+**Forward offset and FOV came back at the values fable already ships**, which
+settles two open disputes by measurement rather than argument: T301 Leg A's
++0.9 is excluded (its score is 0.6558 against 0.6364 at 0.0, and 0.0 beats
+every other sample), and the FOV curve is the sharpest in the unit — 58 and 68
+are both clearly worse than 62.8.
+
+```
+hfov   45     52     58     62.8   68     74     82
+edge   0.820  0.786  0.715  0.636  0.736  0.752  0.758     <- minimum at 62.8
+
+fwd   -0.6   -0.3    0.0    0.3    0.6    0.9    1.2
+edge   0.665  0.638  0.636  0.663  0.670  0.656  0.680     <- minimum at 0.0
+```
+
+### The near plane is NOT solved, and saying so is the honest result
+
+Configuration 1 cannot see it: nothing in that scene is within 4.5 units of the
+eye, so a sweep over `nearPlane` is flat by construction and any "minimum" in
+it would be noise. It is measurable only where geometry is closer than the
+plane — i.e. from the player's own body — and Configuration 3 did not produce a
+swing this session (below). `nearPlane` stays at 1.0, unmeasured by this leg.
+**Do not read the shipped 1.0 as confirmed.**
+
+## THE EYE HEIGHT: the rejected derivation is the right one
+
+The plan said to re-derive `kCrownAboveEyeUnits` rather than inherit it, because
+the premise `first_person_eye.h:95-102` cited to justify it — "fable stands the
+model CENTRED on the server z and the official client stands it FEET-ON-z" — was
+disproved by Leg B. The oracle now says which of the two candidates is right.
+
+```
+skull fraction  0.55   0.62   0.68   0.74   0.80   0.88
+edge            0.646  0.6315 0.6307 0.643  0.671  0.676   <- minimum 0.65 +/- 0.06
+mad             0.0523 0.0488 0.0465 0.0448 0.0441 0.0456  <- minimum ~0.80
+```
+
+* **The hypothesis I was told to test first is KILLED.** "Is the official
+  client's eye at the crown (6.678)?" — no. Eye-at-crown is skull fraction 1.0,
+  and 1.0 scores **0.740**, the WORST sample in the whole eye-height sweep
+  (`eyeheight2/curve_wallcrop.tsv`), against 0.631 at the minimum. The curve
+  falls away from the crown monotonically.
+* **0.925 H is vindicated to within 0.003.** At the solved fraction the live
+  dump gives eye 3.184 above the node origin on a mesh whose own span is
+  3.119 (origin-to-feet) + 3.674 (origin-to-crown) = 6.793: eye/standing height
+  = **0.928 +/- 0.012**. `kEyeHeightFractionOfStandingHeight` is 0.925.
+* **crown - 0.60 is excluded**, just. It puts the ratio at 0.912, 1.4 sigma
+  below the measured 0.928, and its skull fraction (0.573) sits at the edge of
+  the measured band.
+
+**The two metrics disagree and I am not averaging that away.** `edge` minimises
+at fraction 0.62-0.68; `mad` minimises at 0.74-0.80. `edge` is the principled
+one — it is invariant to the brightness/contrast offset between two different
+renderers, which is exactly what separates these two clients — and `mad` is
+carried only so the disagreement is visible. Taking `mad` instead would move the
+eye up by ~0.2 units, to 0.955 H. The number shipped is `edge`'s.
+
+**Constants changed, and only these two:** `kEyeHeightFractionOfSkull`
+0.574 -> **0.65**, and `kCrownAboveEyeUnits` 0.60 -> **0.49** (which is now the
+distance the solve IMPLIES, not the thing the solve is keyed to). The comment
+block that cited the disproved premise is replaced by the oracle method and its
+numbers, and the two anatomy tests that encoded the old decision were reworded
+to match — including `StandingHeightCrossCheckAgainstLegAsPoint925`, which was
+written to REPORT a disagreement and is now the spec.
+
+## HEADLINE FINDING — fable's first-person camera azimuth is MIRRORED
+
+At the same server heading the two clients look in different directions, and it
+is not a constant offset — it is a reflection.
+
+* Measured on the official client by DISPLACEMENT, not by argument: at heading
+  480 a 1.2 s forward walk moved it from `(-74.00, 428.00)` to
+  `(-85.93, 456.90)`, i.e. `dx=-11.93, dy=+28.90`, a bearing of **112.5 deg**
+  CCW from +x. `90 - 337.5 = 112.5`.
+* Measured on fable from its own `/fpcam dump` eye/target vectors at four
+  headings (480, 416, 352, 288): bearings **337.5, 292.5, 247.5, 202.5** — i.e.
+  exactly `h_deg`, with no 90 and the opposite handedness.
+
+```
+    psi_official = 90 deg - heading_deg        (measured)
+    psi_fable    =          heading_deg        (measured)
+```
+
+They agree only at heading 64 and heading 320. **PREDICTION AND TEST:** the
+mirror predicts the official client's heading-480 frame is reproduced by fable
+at heading `128 - 480 mod 512 = 160`. Swept and scored:
+
+```
+fable heading   96     128    160    192    224    480
+edge           0.896  0.842  0.723  0.876  0.850  0.835   <- minimum exactly at 160
+```
+
+and the matched frame puts the same leaning tree trunk in the same screen
+position (`review/T310/legC/` — the heading panel). Every Configuration-1
+measurement above was therefore taken with fable at heading 480 against the
+official client at heading 160.
+
+**I have NOT changed this.** It is a behavioural change to where the player
+looks, it needs its own two-client verification, and `docs/CLAUDE.md`'s
+Heading/Rotation Conventions warning is about the player-vs-NPC MODEL rotation,
+which this is not. It is reported for Will's call. Note the official client's
+bearing is exactly what fable's own documented `90 - server_heading_deg`
+convention predicts — so the convention is right and the FIRST-PERSON CAMERA is
+not using it.
+
+## SECOND FINDING — the two clients put different z on the wire, live
+
+`#loc` on the official client, three times across two sessions, at a spot where
+the server's own raycast puts the collision ground at `Best Z = -0.00`:
+
+```
+Location for Yourself | XYZ: -74.00, 428.00, 3.75  Heading: 160.00
+Best Z for Yourself | -0.00
+Fixed Z for Yourself | 3.75
+```
+
+**The official client settles its transmitted z at ground + 3.75** — exactly
+EQEmu's `GetZOffset()` for a default size-6 humanoid (Leg B, Part 1). fable, at
+the same spot, leaves z at the 3.00 it was given and reports
+`nodeOriginEqZ=3.000 collisionZOffset=3.119 feetEqZ=-0.119`: **its feet are
+0.119 BELOW the ground it is standing on, and its z is 0.75 lower than the
+official client's for the same standing position.** This is Leg B's z question
+answered from the live wire rather than from the server source, and it is a
+real cross-client disagreement. Not fixed here — changing what fable puts on
+the wire needs two-client verification (`two-client-live-testing`).
+
+Note the eye-height solve above is stated as **eye above the collision ground**
+precisely so it is independent of this: 6.18 +/- 0.08 is where the eye is,
+whatever convention gets it there.
+
+## Configuration 2 and 3: NOT REACHED, and why
+
+* **Configuration 2 (two characters at a known separation): not attempted.**
+  The session ran out of budget in the oracle-client relogins (below). The pair
+  is ready for whoever picks it up — `Oraclealpha` (id 74, account `willeq_a`)
+  is Human male like `Testchar` and on a DIFFERENT account, so the two can be
+  logged in simultaneously.
+* **Configuration 3 (own-body swing frames): attempted, produced NO SWING.**
+  Two full capture sweeps (`sweeps/swing_level`, `sweeps/swing_solved`, 12
+  runs, ~2500 frames) with the Halberd (item 5006) in slot 13, the training
+  dummy spawned via `#npctypespawn 77002` at point-blank, `/target` confirmed
+  (`Targeting: a_training_dummy000`) and `/attack` confirmed (`Auto-attack
+  enabled`) for 55 s. `camera_match_bodycover.py` measured **max own-geometry
+  coverage 0.90% and ZERO frames above 10%** — nothing was ever drawn. T309
+  produced 21 swings on the same recipe, so something in the melee path
+  regressed or the recipe is incomplete; **this is a lead, not a finding**, and
+  it means **T309 Leg 2's level-pitch face-fill is NOT closed by this unit.**
+
+## Two traps the harness now encodes — both flattened a whole sweep first
+
+1. **The late linkdead save.** fable's `/quit` drops the socket; the zone
+   declares the client linkdead and writes its in-memory position back to
+   `character_data` SECONDS AFTER the process has exited, silently overwriting
+   a pose UPDATE issued right after a run.
+2. **The zone RESUMES the linkdead client and never reads the DB.** Four
+   consecutive runs at headings 480/448/416/384, each verified in
+   `character_data` before launch, all rendered and all reported
+   `headingEqUnits=480` in their own `[FPCAM-DUMP]`. **A sweep that produces a
+   perfectly flat, perfectly self-consistent, perfectly meaningless curve.**
+   `cmp_reset_zone()` bounces the zone process between runs; `cmp_apply_pose()`
+   writes and then READS BACK.
+
+Also recorded, for whoever drives the Wine oracle next: **`#goto` timed the
+official client out to server select** (same-zone `MovePC` still does a
+zone-in handshake and llvmpipe is too slow for it), so the oracle must be
+re-posed by DB write + relogin, at ~4 minutes each. And **a `pkill -f` whose
+pattern appears in your own command line kills your own shell** — it cost two
+turns here.
+
+## The harness Will asked for
+
+`scripts/camera_match_sweep.sh` — pins the pose, launches fable at a parameter
+set, drives it through `--script` (daylight, `/camera fp`, `/hideui`,
+`/fpcam dump`, optional extra steps), captures EVERY rendered frame, scores all
+of them against a stored oracle frame, writes an mp4 with its measured fps, and
+emits `curve.tsv`. `--param heading` sweeps the server-set heading instead of a
+tunable, so aiming at target geometry is also automated. It asserts on the
+emitted `[FPCAM-DUMP]` line and never on `outcome`, per Leg A's warning.
+
+`scripts/camera_match_pose.sh` (shared by both clients),
+`scripts/camera_match_score.py` (the gradient metric),
+`scripts/camera_match_bodycover.py` (own-body screen coverage). Oracle frames
+named in `review/T310/legC/README.md`.
+
+## Verification (by exit status)
+
+| step | result |
+|---|---|
+| `cmake --build wt/slot2/build -j24` | **PASS** (exit 0) |
+| `ctest --test-dir wt/slot2/build -j6` | **PASS** — 3323/3324; sole failure `AudioManagerTest.PreloadCommonSounds` (documented ALSA host quirk) |
+| `scripts/build-gles2-x86.sh` | **PASS** (exit 0) |
+| `scripts/ci/visual_gate.sh` | **PASS**, **goldens byte-untouched** (`git status` clean under goldens) — the two changed constants are first-person-only and no gated golden frame contains a character or a first-person camera |
+| `scripts/build-arm-noble.sh` | **PASS** (exit 0) |
+| `scripts/refactor/check_file_sizes.sh fable` | **PASS** — 3 files checked, 3 ok, 0 warn, 0 fail |
+
+No `--bless` was run and no golden was rewritten.
+
+## Server state
+
+eqemu taken under the atomic noclobber lock (the stale 19.5 h lock was already
+cleared before dispatch), **bounced clean per Will's instruction** — `down.sh`
+then `up.sh qeynos2` — before any measurement, and bounced a second time
+mid-session when world's static-zone fleet came up behind a zone restart and
+wedged the oracle client's reconnect. `Testchar` restored to **zone_id=36,
+x=-77.9232, y=21.9086, z=3, h=190**, race 1, and the Halberd (5006, slot 13)
+this leg equipped removed again — inventory back to the eight bags in slots
+23-30 plus slot 33, exactly as found. `Oraclerogue` and every `Oracle*`
+character untouched. Server brought down and the lock deleted.

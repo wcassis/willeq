@@ -81,31 +81,38 @@ namespace Graphics {
 // because it does not depend on the frame "height" is measured in.
 constexpr float kEyeHeightFractionOfStandingHeight = 0.925f;
 
-// MEASURED: the crown sits 0.60 above the eye -- and 0.75 BEHIND it. The
-// bbox-crown placement T300 shipped was therefore wrong in BOTH axes, not
-// just in height.
+// The crown above the eye. *** T310 LEG C RE-DERIVED THIS AGAINST THE
+// OFFICIAL CLIENT AND IT IS NO LONGER THE DRIVER. ***
 //
-// *** THE SKULL FRACTION IS KEYED TO THIS, NOT TO 0.925 H. *** The two
-// disagree: 0.925 H puts a Human male's eye at model Z 3.17, crown - 0.60
-// puts it at 3.07. The difference is the FRAME. fable stands the model
-// CENTRED on the server z and the official client stands it FEET-ON-z -- a
-// ~3-unit disagreement about the model's placement (T300; see
-// getPlayerFirstPersonEyeOffset()) -- so "standing height" does not name the
-// same span in the two clients. Leg A's own figures show the seam: the sit
-// drop is 0.925 - 0.47 = 0.455 of H, reported as 3.6 units, which implies
-// H = 7.9 where this mesh's own crown-to-feet span is 6.67.
+// It was 0.60, and the fraction below was solved to reproduce it, on the
+// reasoning quoted in the block this replaces: that 0.925 H could not be
+// trusted because "fable stands the model CENTRED on the server z and the
+// official client stands it FEET-ON-z -- a ~3-unit disagreement". T310 Leg B
+// disproved that premise from the EQEmu source (both clients take z from the
+// same server through the same packets; the server never writes a player's z
+// -- zone/client_packet.cpp:4831 with zone/waypoints.cpp:831), and T310 Leg C
+// then measured the eye directly against the official client's own frames:
+// two clients at the same server-set position, heading and resolution in
+// qeynos2, first person, UI hidden on both, fable's eye height swept and
+// scored against the official client's frame.
 //
-// crown-minus-eye is measured INSIDE the head and is immune to that question,
-// so it is what the fraction is solved against. 0.925 H is asserted as a
-// per-race CROSS-CHECK instead, with the disagreement reported rather than
-// averaged away (tests/test_first_person_eye_anatomy.cpp).
-constexpr float kCrownAboveEyeUnits = 0.60f;
+// THE CURVE'S MINIMUM PUT THE EYE AT 0.925 OF STANDING HEIGHT, to within
+// 0.01 units -- i.e. at the value this constant was chosen AGAINST. Eye
+// 6.18 +/- 0.08 above ground on a 6.68-6.79 standing height; crown - 0.60
+// would have been 6.08, outside that band. So the fraction below is now
+// solved against 0.925 H and this number is the cross-check that follows
+// from it, not the other way round.
+constexpr float kCrownAboveEyeUnits = 0.49f;
 
 // Where the eye sits up the skull: a fraction from the underside of the skull
-// (chin/jaw line) to the crown. Solved so a Human male's eye lands at
-// crown - kCrownAboveEyeUnits. Every other race's value then follows from ITS
-// OWN head cluster, so this stays ONE global constant and never a table.
-constexpr float kEyeHeightFractionOfSkull = 0.574f;
+// (chin/jaw line) to the crown. SOLVED AGAINST THE OFFICIAL CLIENT'S OWN
+// FRAMES (T310 Leg C): the gradient-correlation curve over this parameter
+// minimises at 0.65, +/- 0.06 at the width of the minimum. Every other race's
+// value then follows from ITS OWN head cluster, so this stays ONE global
+// constant and never a table.
+//
+// It was 0.574, keyed to kCrownAboveEyeUnits = 0.60 above.
+constexpr float kEyeHeightFractionOfSkull = 0.65f;
 
 // The EXTRA forward nudge applied to the eye along the look ray, ON TOP of
 // the head cluster's own anatomical forward position. It is a per-mesh-axis-

@@ -486,12 +486,13 @@ TEST_F(ShippedMeshEyeTest, EyeIsDerivedPerRaceFromTheMeshNotFromATable) {
                                "that would mean it is not coming from the mesh";
 }
 
-TEST_F(ShippedMeshEyeTest, EyeMatchesLegAsMeasuredCrownMinusSixTenths) {
-    // T301 Leg A MEASURED the crown 0.60 above the eye on the official client
-    // (Human male, two-client protocol, feet-ladder fit rms 0.19 px).
-    // kEyeHeightFractionOfSkull is solved against exactly this, so this test
-    // is the one that would catch the solve going stale if the head-cluster
-    // derivation or the symmetrised skull bound ever changes.
+TEST_F(ShippedMeshEyeTest, EyeMatchesTheCrownOffsetTheOracleSolveImplies) {
+    // NO LONGER THE DRIVER (T310 Leg C). kEyeHeightFractionOfSkull is now
+    // solved against the OFFICIAL CLIENT'S OWN FRAMES -- see the header --
+    // and kCrownAboveEyeUnits is the crown-to-eye distance that solve
+    // implies. This test still earns its place: it is what catches the solve
+    // going stale if the head-cluster derivation or the symmetrised skull
+    // bound ever changes, because the two numbers must keep agreeing.
     bool covered = false;
     for (const auto& rc : kPlayableRaces) {
         if (rc.raceId != 1 || rc.gender != 0) continue;   // the reference race
@@ -499,7 +500,7 @@ TEST_F(ShippedMeshEyeTest, EyeMatchesLegAsMeasuredCrownMinusSixTenths) {
         if (!d.ok) continue;
         covered = true;
         EXPECT_NEAR(d.crownZ - d.eyeModelZ, EQT::Graphics::kCrownAboveEyeUnits, 0.05f)
-            << "the Human male eye must land at crown - 0.60; got crown - "
+            << "the Human male eye must land at crown - kCrownAboveEyeUnits; got crown - "
             << (d.crownZ - d.eyeModelZ)
             << ". kEyeHeightFractionOfSkull is solved for this and needs "
                "re-solving.";
@@ -510,18 +511,15 @@ TEST_F(ShippedMeshEyeTest, EyeMatchesLegAsMeasuredCrownMinusSixTenths) {
 TEST_F(ShippedMeshEyeTest, StandingHeightCrossCheckAgainstLegAsPoint925) {
     // Leg A's OTHER number: the eye at 0.925 +/- 0.004 of standing height.
     //
-    // *** THE TWO MEASUREMENTS DISAGREE, AND THIS TEST REPORTS THE
-    // DISAGREEMENT RATHER THAN AVERAGING IT AWAY. *** They are taken in
-    // different frames: fable stands the model CENTRED on the server z, the
-    // official client stands it FEET-ON-z, so "standing height" does not name
-    // the same span in the two clients. Leg A's own figures show the seam --
-    // the sit drop is 0.455 H and is reported as 3.6 units, implying H = 7.9
-    // where this mesh's crown-to-feet span is 6.67.
-    //
-    // The eye is keyed to crown-minus-0.60, which is measured INSIDE the head
-    // and is immune to the frame question. This is a sanity band, not the
-    // spec: it catches an eye that has drifted somewhere absurd, and it makes
-    // the residual visible instead of silent.
+    // *** T310 LEG C MADE THIS THE SPEC RATHER THAN THE CROSS-CHECK. *** The
+    // reason it was demoted -- "fable stands the model CENTRED on the server
+    // z, the official client stands it FEET-ON-z" -- was disproved by T310
+    // Leg B from the EQEmu source, and Leg C then measured fable's eye
+    // against the official client's frames at a shared server-set pose: the
+    // pixel-difference curve minimised at 0.925 H to within 0.01 units.
+    // kEyeHeightFractionOfSkull is solved for that. The band below stays a
+    // band and not an equality because it is asserted PER RACE off each
+    // mesh's own head cluster, and only Human male was measured live.
     std::printf("\n%-20s %8s %8s %8s   %s\n", "race", "H", "eye/H",
                 "LegA", "delta");
     int covered = 0;
