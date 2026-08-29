@@ -193,3 +193,131 @@ the fixed pose through the server, capture, diff against the stored oracle frame
 emit the score; sweep. Keep it in `scripts/` with the oracle frames it compares
 against named in a README. **The point is that the next camera question is
 answered in an afternoon by running this, not in three units by argument.**
+
+---
+
+# Leg B Review (slot1, `task/T310-legB`, 2026-08-29)
+
+## Part 1 — what z means, from the EQEmu server source
+
+**The citation that settles it: `zone/client_packet.cpp:4831`
+(`Client::Handle_OP_ClientUpdate`) together with `zone/waypoints.cpp:831-834`
+(`Mob::FixZ`).** The handler assigns the packet's `z_pos` into the client's
+`m_Position` verbatim — no transform, no offset — and `Mob::FixZ()` opens with
+`if (IsClient() && !fix_client_z) return;`, where **no caller anywhere in the
+EQEmu tree ever passes `fix_client_z = true`** (grep: the only two hits are the
+declaration `zone/mob.h:1264` and the definition). The server never writes a
+player's z.
+
+Outbound it is the same quantity for everyone and for every client patch:
+`Mob::FillSpawnStruct` (`zone/mob.cpp:1292`) and `Mob::MakeSpawnUpdate`
+(`zone/mob.cpp:1721`) both just `FloatToEQ19(m_Position.z)`, and no
+`common/patches/*` encoder adjusts z (checked titanium.cpp: `OUT(z_pos)` /
+`eq->z = emu->z`).
+
+**So E2 is confirmed: both clients take z from the same server the same way,
+and there is no cross-client frame disagreement to reconcile.**
+
+**It is NOT the feet, and the server says so explicitly for NPCs.**
+`Mob::GetFixedZ()` (`zone/waypoints.cpp:796-810`) raycasts to the collision
+ground and then does `new_z += GetZOffset()`; `Mob::GetZOffset()`
+(`zone/waypoints.cpp:881-1006`) returns `0.2 * size * race_constant`, = **3.75
+for a default size-6 humanoid**. `Mob::Summon()` (`zone/mob.cpp:4866-4868`)
+converts one entity's z into another's by subtracting the difference of their
+two `GetZOffset()` values — and it does that when the target is a **Client** as
+well as an NPC, so the server models players and NPCs identically.
+
+**Honest limit on that authority.** 3.75 is a heuristic, not a definition, and
+EQEmu is not self-consistent about it: `aggro.cpp:1283` puts a mob's eye at
+`GetZ() + size/2 * 0.9` (which only makes sense if `GetZ()` is mid-body) while
+`client.cpp:12171` puts it at `GetZ() + size * 0.9` (which only makes sense if
+`GetZ()` is the feet). Since the server never sets a client's z, the server
+source can prove that the two clients share one convention — it cannot prove
+where the official client draws the model within it. That last step is Leg C's.
+
+**What the code should say, and now does.** "Model CENTER" is wrong and has
+been removed from the subsystem. The operative fact for rendering is narrower
+and is a property of the shipped assets: fable puts the scene node's **ORIGIN**
+at the server z (`modelYOffset` is 0 at every site), and the EQ meshes are
+authored with their origin inside the body. The Z-convention note now lives once,
+at the top of `include/client/graphics/entity_renderer.h`, with these citations.
+
+## Part 2 — collisionZOffset (class-A item 9): FIXED
+
+Five fill sites — `entity_renderer.cpp` at the placeholder cube, both
+`createEntity` paths, and both deferred-build paths — replaced by one helper,
+`collisionZOffsetFromBounds(bbox, scale)` = `-bbox.MinEdge.Y * scale`.
+
+Measured on the shipped meshes (`tests/test_entity_collision_z_offset.cpp`,
+7 tests): **Human male origin-to-feet 3.004 vs half-height 3.339 — a 0.335
+lift, not the 0.30 the board estimated.** Per-race the lift ranges 0.021
+(Ogre m) to **0.606 (Dwarf m)**. The placeholder cube was worse than any real
+mesh: it is authored on its base (`createPlaceholderMesh()` spans Y = [0,size]),
+so `cubeSize/2` floated every placeholder by a full **3.0**; it is now 0.
+
+**Golden diff: ZERO, and that is a finding, not an absence of one.** The gate
+was rerun on the rebuilt GLES2 tree and PASSED with all nine golden frames
+byte-identical (`cmp` clean, `review/T310/legB/{before,after}/`). No gated
+golden frame contains a character entity — every `[budget]` line of the three
+frame-captured runs reads `character models 0%` — and `gles2_zone_benchmark`'s
+`--entities` path places its own scene nodes without going through
+`EntityRenderer`, so it never reads this value either. **Nothing outside a live
+session exercises `collisionZOffset`.** No re-bless was needed and none was
+taken. It also means **no before/after picture of the effect exists**; making
+one needs a live entity on real ground, i.e. Leg C's server.
+
+## The eye number, and it goes the WRONG way
+
+Human male, eye 3.077 above the node origin, mesh spans Y = [-3.004, +3.674]:
+
+| | eye above ground |
+|---|---|
+| before | 3.339 + 3.077 = **6.42** |
+| after | 3.004 + 3.077 = **6.08** |
+| official client (measured) | **6.65 – 6.75** |
+
+**The correction moves fable's eye 0.34 FURTHER from the official client.**
+Reported, not averaged away. The likely reason is in the same measurement:
+**6.65–6.75 is within 0.01 of this mesh's own crown above its own feet,
+3.674 + 3.004 = 6.678.** `kCrownAboveEyeUnits = 0.60` — the constant that
+`first_person_eye.h:95-102` justifies by citing exactly the fable-centres /
+official-feet-on-z premise this leg has now disproved — is the same size as the
+whole remaining shortfall. **Leg C should re-derive it against the oracle
+rather than inherit it**, as the plan already instructs. Leg B did not touch
+`first_person_eye.h` (Leg A's territory).
+
+## Two further defects found in the same belief, NOT fixed here
+
+1. **An unmatched size/2 on the player's own z.** `eq_entities.cpp:416` and
+   `:1184` both do `SetPosLocal(..., entity.z - entity.size / 2.0f)` on the
+   strength of a comment reading "SendPositionUpdate will add
+   `m_game_state.player().size()/2` to convert back to model center."
+   **It does not.** `SendPositionUpdate()` (`eq_movement.cpp:1100`) says "Send
+   Z position directly without offset" and sends `PosZ()` verbatim, and the
+   server adds nothing either (Part 1). The round trip is asymmetric by ~3.0
+   units for a default humanoid until the renderer's ground snap overwrites it
+   on the first movement frame. `spell_cast_checks.cpp` then adds the size/2
+   back for its LOS ray, which double-counts once the snap has run.
+   **Left as-is: removing it changes what fable puts on the wire, and that
+   needs live two-client verification.** All three comments are corrected in
+   place to describe what the code actually does, with the asymmetry flagged
+   loudly at each site.
+2. **`eq_movement.cpp:1741-1742`** computes `headZ = PosZ() + 6.0` for water
+   detection, i.e. treats `PosZ()` as the feet — a third frame in the same
+   subsystem. Noted only.
+
+Both are Leg C's to close, because both need the server.
+
+## Verification (by exit status)
+
+| step | result |
+|---|---|
+| `cmake --build wt/slot1/build -j24` | **PASS** (exit 0) |
+| `ctest --test-dir wt/slot1/build -j6` | **PASS** — 3294/3295; sole failure `AudioManagerTest.PreloadCommonSounds` (documented ALSA host quirk) |
+| `scripts/build-gles2-x86.sh` | **PASS** (exit 0) |
+| `scripts/ci/visual_gate.sh` | **PASS**, goldens untouched, nine frames byte-identical |
+| `scripts/build-arm-noble.sh` | **PASS** (exit 0) |
+| `scripts/refactor/check_file_sizes.sh fable` | exit 1 — **no NEW fail**: `entity_renderer.cpp` was already over the 3000-line limit at the base rev and is at 3255 lines on both, byte-for-byte the same count |
+
+Review media: `/mnt/projects/fable/review/T310/legB/` (README, before/, after/,
+gate log, both measurement tables).

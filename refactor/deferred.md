@@ -161,15 +161,28 @@ turned out already closed are struck at the end of this section with their commi
    site and was not on the board** — only shrink/grow was. **EXECUTOR-READY**, one
    unit for all three. Historical entry: the T300 Leg B section below.
 
-9. **`collisionZOffset` uses `bboxHeight/2`, not the origin-to-feet distance** —
-   `src/client/graphics/entity_renderer.cpp:602`,
-   `visual.collisionZOffset = (bboxHeight / 2.0f) * scale;`. For a Human male that is
-   3.35 against the mesh's real 3.05.
-   *Impact:* every entity in the world stands **0.30 units above its own collision
-   ground**, and the first-person eye sits ~7.00 above ground where the official
-   client measures 6.65-6.75. **EXECUTOR-READY** but it moves every entity, so it
-   needs its own unit and a golden re-bless conversation. Historical entry: the T300
-   Leg B section below.
+9. ~~**`collisionZOffset` uses `bboxHeight/2`, not the origin-to-feet distance**~~
+   **CLOSED — T310 Leg B, 2026-08-29.** All five fill sites (four entity paths plus
+   the placeholder cube) now call `collisionZOffsetFromBounds()`
+   (`include/client/graphics/entity_renderer.h`), = `-bbox.MinEdge.Y * scale`.
+   Pinned by `tests/test_entity_collision_z_offset.cpp` (7 tests, incl. a
+   shipped-mesh table for 10 races). **Measured on the shipped meshes, not
+   assumed: Human male origin-to-feet is 3.004, half-height 3.339 — a 0.335 lift,
+   and the per-race lift ranges 0.021 (Ogre m) to 0.606 (Dwarf m).** The
+   placeholder cube was worse: it is authored on its base, so `cubeSize/2` floated
+   every placeholder by a full 3.0.
+   **The golden diff is ZERO** — verified by rerunning the gate on the rebuilt
+   GLES2 tree. No gated golden frame contains a character entity (`character
+   models 0%` in every `[budget]` line of the three frame-captured runs), and the
+   benchmark tool places its own nodes without going through `EntityRenderer`.
+   Nothing outside a live session exercises this value, so no re-bless is needed
+   and none was taken.
+   **⚠ IT DOES NOT MOVE THE EYE TOWARD THE OFFICIAL CLIENT — it moves it away.**
+   Human male eye-above-ground was 3.339 + 3.077 = **6.42**, is now 3.004 + 3.077 =
+   **6.08**, against the official client's measured **6.65-6.75**. See the T310 Leg
+   B finding in `refactor/T310_camera_match_against_oracle.md`: 6.65-6.75 is within
+   0.01 of this mesh's own CROWN above its feet (3.674 + 3.004 = 6.678), which is
+   T310 Leg C's problem, not this item's.
 
 10. **The autorun key is a live no-op** — `EqActionHandler::toggleAutorun()`
     (`src/client/eq_action_handler.cpp:139-142`) is a `LOG_DEBUG`. The path is fully
@@ -415,7 +428,7 @@ pass). T287 Part 2 (the Pi composite run) is scoped and awaits Will's go.
 
 **⚠ CLASS-A DEFECT FOUND ON THE WAY: shrink/grow (SPA 89, `SpellEffect::ModelSize`) IS DECODED, DISPATCHED, AND THEN DROPPED.** `SpellEffects::handleShrink()` / `handleGrow()` (`src/client/spell/spell_effects.cpp:883-891`) are one `LOG_DEBUG` each and write nothing; `serverSize` is consumed only at entity creation and there is no size-update path anywhere in `src/`. A shrink or grow has **no visible effect in fable**, on the player or on any NPC. (The pitch clamp is immune either way — it has no size term — but the defect stands on its own.) **[T302 2026-08-28: ranked in "THE ONE CLASS-A LIST" at the top of this file, tier 2 item 8 -- and `handleIllusion()` (SPA 58) at `spell_effects.cpp:877` is the SAME defect at the same site, added there.]**
 
-**⚠ OPEN, found while settling the frames: `collisionZOffset` uses `bboxHeight/2`, not the origin-to-feet distance.** For a Human male that is 3.35 vs the mesh's real 3.05, so fable stands the player **0.30 units above** his own collision ground and the eye sits ~7.00 above ground where the official client measured 6.65-6.75. Not fixed here — it moves every entity in the world and belongs in its own unit. **[T302 2026-08-28: ranked in "THE ONE CLASS-A LIST" at the top of this file, tier 2 item 9.]**
+**~~⚠ OPEN, found while settling the frames: `collisionZOffset` uses `bboxHeight/2`, not the origin-to-feet distance.~~ CLOSED by T310 Leg B, 2026-08-29** — see tier 2 item 9 in "THE ONE CLASS-A LIST" at the top of this file for the measured numbers, the zero golden diff, and the warning that the correction moves the eye AWAY from the official 6.65-6.75.
 
 **Headless tests cannot close this feature.** Nothing in the suite rasterizes; they pin the camera's numbers and the body's geometry, and cannot show that the body is clipped or that a swing is visible. T296 shipped a depth clear that was silently compiled out and every headless test still passed. **T300 Leg C (live video) WAS the gate and it FAILED — see the Leg C section at the top of this file. Will judges the look.**
 

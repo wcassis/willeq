@@ -22,6 +22,46 @@
 namespace EQT {
 namespace Graphics {
 
+// THE Z CONVENTION (T310 Leg B, established from the EQEmu server source at
+// /mnt/projects/akk-stack/code, not from this file's former comments).
+//
+// The server applies NO transform to the z in a position packet: a client's z
+// is relayed exactly as the official client sent it (Client::Handle_OP_ClientUpdate,
+// zone/client_packet.cpp:4831 -- m_Position is assigned the packet's z_pos verbatim,
+// and Mob::FixZ, zone/waypoints.cpp:831-834, returns immediately for a Client
+// unless fix_client_z is passed, which NO caller in the tree ever does). Players
+// and NPCs therefore carry the SAME quantity on the wire, and it is encoded
+// identically for every client patch (Mob::FillSpawnStruct, zone/mob.cpp:1292;
+// Mob::MakeSpawnUpdate, zone/mob.cpp:1721 -- both just FloatToEQ19(z)).
+//
+// What that quantity is: NOT the feet. The server's own model of it is
+// "the collision ground plus a per-mob, size-proportional offset" --
+// Mob::GetFixedZ (zone/waypoints.cpp:796-810) computes ground z by raycast and
+// then adds Mob::GetZOffset() (zone/waypoints.cpp:881-1006, = 0.2 * size * 3.125,
+// i.e. 3.75 for a default size-6 humanoid), and Mob::Summon (zone/mob.cpp:4866-4868)
+// converts one entity's z into ANOTHER's by subtracting the difference of their
+// two GetZOffset() values -- applied to Clients as well as NPCs.
+//
+// For RENDERING, the operative fact is narrower and is a property of the shipped
+// meshes: fable places the scene node's ORIGIN at the server z (modelYOffset is 0
+// everywhere), and the EQ player meshes are authored with their origin inside the
+// body. A Human male base mesh spans Y = [-3.05, +3.65] about its origin. So the
+// origin-to-feet distance is |bbox.MinEdge.Y| * scale -- 3.05 -- and it is NOT
+// half the bbox height (3.35). Using half-height was the class-A defect T310 Leg B
+// fixed: it stood every entity ~0.30 above its own collision ground.
+//
+// "Model CENTER" was never true and the phrase has been removed from this
+// subsystem. The node origin is simply the mesh's own origin.
+
+// Distance from a mesh's node ORIGIN down to its lowest point (its feet), in
+// world units, for a node scaled uniformly by `scale`. Positive when the origin
+// sits inside the body above the feet (every EQ player/NPC mesh); zero for a
+// mesh authored with its origin on its base (the placeholder cube). Placing the
+// node at groundZ + this value puts the mesh's lowest point exactly on groundZ.
+inline float collisionZOffsetFromBounds(const irr::core::aabbox3df& bbox, float scale) {
+    return -bbox.MinEdge.Y * scale;
+}
+
 // Forward declarations
 class RaceModelLoader;
 class EntityPrepWorker;
@@ -116,7 +156,7 @@ struct EntityVisual {
     EntityAppearance appearance;   // Appearance data for model/texture selection
     std::string currentAnimation;  // Current animation being played
     float modelYOffset = 0;        // Height offset to adjust for model origin (center vs base)
-    float collisionZOffset = 0;    // Offset from server Z (model center) to feet for collision detection
+    float collisionZOffset = 0;    // Distance from the node origin (== server Z) down to the mesh's feet; see collisionZOffsetFromBounds()
 
     // Boat/object collision - allows entities to act as physical obstructions
     bool hasCollision = false;     // True if this entity has collision (boats, etc.)
@@ -433,13 +473,13 @@ public:
     // Set the player's spawn ID (marks that entity as the player)
     void setPlayerSpawnId(uint16_t spawnId);
 
-    // Get the player's model Y offset (height offset from server Z to feet)
-    // Server Z represents the CENTER of the model, so feet are at serverZ + modelYOffset
+    // Get the player's model Y offset (rendering nudge applied on top of server Z;
+    // 0 everywhere today, because the node origin IS the server Z)
     // Returns 0.0f if player entity not found
     float getPlayerModelYOffset() const;
 
-    // Get the player's collision Z offset (distance from server Z to feet for collision)
-    // Server Z is model center, feet are at serverZ - collisionZOffset
+    // Get the player's collision Z offset: the distance from the node origin
+    // (== server Z) down to the mesh's feet, so feet are at serverZ - collisionZOffset
     // Returns 0.0f if player entity not found
     float getPlayerCollisionZOffset() const;
 
@@ -447,7 +487,8 @@ public:
     // world axes.
     //
     // The node origin is the server's Z and sits INSIDE the body
-    // (createEntity(): "Server Z is the geometric MODEL CENTER"); the Human
+    // (the mesh's own origin -- NOT its centre; see the Z-convention note at the
+    // top of this header); the Human
     // male base mesh spans Y = [-3.05, +3.65] about it.
     //
     // T300 returned a single number here, bbox.MaxEdge.Y == 3.65, the CROWN

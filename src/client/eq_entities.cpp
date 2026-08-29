@@ -409,8 +409,18 @@ void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 #endif
 				// Update our position to match server spawn position
 				m_game_state.player().setSize(entity.size);
-				// Server Z is model center. Convert to feet position for internal use.
-				// SendPositionUpdate will add m_game_state.player().size()/2 to convert back to model center.
+				// *** T310 Leg B: THIS SUBTRACTION IS UNMATCHED AND THE COMMENT
+				// THAT JUSTIFIED IT WAS FALSE. SendPositionUpdate()
+				// (eq_movement.cpp:1100, "Send Z position directly without
+				// offset") sends PosZ() VERBATIM -- it has never added size/2
+				// back. The server applies no z transform of its own either
+				// (Client::Handle_OP_ClientUpdate, eqemu zone/client_packet.cpp:4831;
+				// Mob::FixZ returns immediately for a Client, zone/waypoints.cpp:832),
+				// so the round trip is asymmetric by size/2 (3.0 units for a
+				// default humanoid) until the renderer's ground snap overwrites
+				// it on the first movement frame. Left in place ONLY because
+				// removing it changes what fable puts on the wire and that needs
+				// live two-client verification (T310 Leg C owns the server). ***
 				// T288: one store; heading deliberately NOT written from spawn
 				// data (see the note below), so this is a position-only write.
 				SetPosLocal(entity.x, entity.y, entity.z - (entity.size / 2.0f));
@@ -1179,8 +1189,9 @@ void EverQuest::ZoneProcessNewSpawn(const EQ::Net::Packet &p)
 			}
 			// Update our position to match server spawn position
 			m_game_state.player().setSize(entity.size);
-			// Server Z is model center. Convert to feet position for internal use.
-			// SendPositionUpdate will add m_game_state.player().size()/2 to convert back to model center.
+			// T310 Leg B: same unmatched size/2 subtraction as the ZoneSpawns
+			// path above -- see the note there. SendPositionUpdate() does NOT
+			// add it back, and neither does the server.
 			SetPosLocal(entity.x, entity.y, entity.z - (entity.size / 2.0f));  // T288: one store
 
 			if (s_debug_level >= 1) {

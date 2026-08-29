@@ -1988,7 +1988,7 @@ private:
     // Irrlicht collision methods (full meta selector — cold path: LOS, detail)
     bool checkCollisionIrrlicht(const irr::core::vector3df& start, const irr::core::vector3df& end,
                                  irr::core::vector3df& hitPoint, irr::core::triangle3df& hitTriangle);
-    // Find ground Z at position. currentZ is model center (server Z), modelYOffset is offset from center to feet.
+    // Find ground Z at position. currentZ is the node origin (server Z); modelYOffset is the origin-to-feet distance.
     float findGroundZIrrlicht(float x, float y, float currentZ, float modelYOffset);
 
     // BSP-filtered collision methods (hot path: movement) — tests only source+dest region + doors/objects
