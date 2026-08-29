@@ -325,23 +325,29 @@ float signedTotalPitchDegrees(const EQT::Graphics::FirstPersonCameraPlacement& p
 }
 }  // namespace
 
-TEST(FirstPersonCameraFormula, ForwardOffsetIsLegAsMeasuredValueAndIsPurelyForward) {
-    // SUPERSEDES T300's "NoStandoffInAnyDirection", whose premise came from
-    // T298's forward offset of 0.00 +/- 0.4.
+TEST(FirstPersonCameraFormula, ForwardOffsetIsInRangeAndHasNoLateralComponent) {
+    // SUPERSEDES T300's "NoStandoffInAnyDirection".
     //
     // T301 Leg A measured +0.9 +/- 0.25 units FORWARD of the model's vertical
-    // axis. *** THE TWO MEASUREMENTS DISAGREE AT ABOUT 1.9 SIGMA and the
-    // rotation-parallax test that would settle it could not be run. *** Leg A's
-    // instruction was to treat it as the range 0 to 1.0 and pick the value
-    // that keeps the face out of frame; kEyeForwardOffsetUnits is 1.0, the far
-    // end, because an eye that is too far BACK is what produced
-    // review/T300/T300_C_12 -- a screenshot of the player's own face.
+    // axis; T298 measured 0.00 +/- 0.4. *** THE TWO MEASUREMENTS DISAGREE AT
+    // ABOUT 1.9 SIGMA and the rotation-parallax test that would settle it was
+    // never run. *** Leg A's instruction was to treat it as the range 0 to
+    // 1.0 and pick the value that keeps the player's face out of frame, and
+    // T301 Leg B therefore took 1.0, the far end.
     //
-    // T76's 0.3 BACKWARD standoff is still wrong, and is now wrong by sign
-    // against a measurement rather than against an inference. That is what
-    // this test guards: the offset must be FORWARD along the look ray and
-    // must have no lateral component (T298's 0.00 +/- 0.05 lateral stands --
-    // Leg A did not contradict it).
+    // T309 set it to 0.0. That rationale is obsolete: the face is kept out of
+    // frame by the measured DRAW RULE (first_person_body_draw.h), not by
+    // geometry, and a large offset now actively contradicts T307's filmed
+    // frames -- the body fills the view during a swing at the clamp, and the
+    // held weapon's grip sits only +0.678 forward of the axis, so an eye at
+    // +0.83 puts the weapon BEHIND the camera during the swing the official
+    // client draws it in. The full argument is on the constant itself.
+    //
+    // What this test guards is the two things neither measurement disputes:
+    // the offset must stay inside Leg A's 0..1.0 range, and it must be purely
+    // along the look ray with NO lateral component (T298's lateral
+    // 0.00 +/- 0.05; Leg A did not contradict it). T76's 0.3 BACKWARD standoff
+    // is wrong by sign and stays excluded by the range floor.
     using EQT::Graphics::kEyeForwardOffsetUnits;
     constexpr float kPiLocal = 3.14159265358979323846f;
 

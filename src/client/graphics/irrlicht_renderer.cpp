@@ -2490,17 +2490,19 @@ uint32_t IrrlichtRenderer::getNearestWorldObject(float playerX, float playerY, f
 // T76's kFirstPersonCameraStandoffUnits (0.3 BACKWARD) is gone: it existed to
 // pull the eye off in-world arm geometry that is no longer drawn as a
 // separate pass, it pointed the wrong way for a real eye, and T298 measured
-// the official client's forward offset at 0.00 +/- 0.4.
+// the official client's forward offset at 0.00 +/- 0.4 -- which is, since
+// T309, the value the eye uses (see kEyeForwardOffsetUnits).
 void IrrlichtRenderer::applyCameraProjectionForMode() {
     if (!camera_) return;
     const bool firstPerson = (cameraMode_ == CameraMode::FirstPerson);
     // T300 (post-Leg-A): the NEAR PLANE IS THE SAME IN EVERY MODE. Leg A
     // measured the official client clipping nothing -- geometry draws at
     // point-blank range -- so first person must clip exactly as third person
-    // does. The near-plane hiding that briefly lived here is refuted and gone;
-    // the down-pitch clamp (applyFirstPersonPitchClamp()) is what hides the
-    // body. Only the FOV is mode-specific, so third person stays byte-for-byte
-    // what it was and the visual gate's goldens hold.
+    // does. The near-plane hiding that briefly lived here is refuted and gone.
+    // T309: neither is the clamp the hiding mechanism -- the measured DRAW
+    // RULE is (EntityRenderer::updateFirstPersonBodyDrawRule()). Only the FOV
+    // is mode-specific here, so third person stays byte-for-byte what it was
+    // and the visual gate's goldens hold.
     camera_->setNearValue(kWorldNearPlaneUnits);
     camera_->setFOV(firstPerson ? firstPersonVerticalFovRadians(camera_->getAspectRatio())
                                 : kWorldVerticalFovRadians);
@@ -2518,9 +2520,19 @@ void IrrlichtRenderer::applyCameraProjectionForMode() {
               camera_->getAspectRatio());
 }
 
-// T300: THE HIDING SEAM -- see the declaration. The body hangs directly below
-// the eye, so clamping the down-pitch so the frustum's lower edge never passes
-// the nadir is sufficient to hide it, at any model scale.
+// T309: THIS IS NOT THE HIDING SEAM. T300 introduced it as one -- "the body
+// hangs directly below the eye, so a down-pitch clamp hides it" -- and that
+// is refuted twice over: T301 Leg B showed no clamp value can empty the
+// down-frustum band (hiding a Human male's shoulders needs C > 49.1 and
+// hiding his feet needs C < 48.4), and the MEASURED clamp is 94.9 degrees,
+// about 5 degrees PAST THE NADIR, where the frustum plainly contains the
+// body. The body is hidden by the draw rule
+// (EntityRenderer::updateFirstPersonBodyDrawRule()).
+//
+// What survives here is a CONTROL-FEEL LIMIT: how far down the official
+// client lets you look. Do not re-derive it from the FOV (90 - vFOV/2 is by
+// construction the angle that ADMITS the body's cone, not one that excludes
+// it) and do not pull it back under 90 in the belief that it hides anything.
 void IrrlichtRenderer::applyFirstPersonPitchClamp() {
     if (!camera_ || cameraMode_ != CameraMode::FirstPerson) return;
 

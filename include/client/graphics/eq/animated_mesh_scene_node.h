@@ -230,11 +230,29 @@ public:
     // T300: setFirstPersonMode()/isFirstPersonMode()/
     // hasValidFirstPersonGeometry()/getArmBoneCount()/getArmBoneIndices()
     // were DELETED, along with T74's arm-bone index filter. First person
-    // draws this node normally, unfiltered -- the camera sits at the eyes
-    // and a clamped down-pitch hides the body (irrlicht_renderer.cpp,
-    // applyFirstPersonPitchClamp()). See
-    // refactor/T300_leg_b_implementation.md; do not reintroduce a
-    // first-person geometry filter.
+    // draws this node normally and UNFILTERED -- there is no geometry to
+    // select. See refactor/T300_leg_b_implementation.md; do not reintroduce
+    // a first-person geometry filter.
+    //
+    // T309 CORRECTION: what HIDES the body in first person is neither a
+    // filter nor the down-pitch clamp (the measured clamp reaches past the
+    // nadir and cannot hide anything). It is the measured DRAW RULE --
+    // include/client/graphics/first_person_body_draw.h -- driven per frame by
+    // EntityRenderer, and it hides the body through the withhold below.
+
+    // T309: withhold this node -- and its children, i.e. the equipped
+    // weapon -- from the render list, WITHOUT making it invisible.
+    //
+    // *** THIS IS NOT setVisible(false), AND MUST NOT BE REPLACED BY IT. ***
+    // Irrlicht's ISceneNode::OnAnimate() is wrapped in `if (IsVisible)`, so an
+    // invisible node ships a FROZEN skeleton. The first-person draw rule hides
+    // the body for the ~77.5% of the time that is not a swing and reveals it
+    // mid-animation, so the skeleton has to keep running the whole time or the
+    // attack appears at the wrong phase the instant it is drawn. Withholding
+    // registration skips only the draw; OnAnimate() still runs every frame.
+    // (T296 hit this and it is why that unit withheld rather than hid.)
+    void setWithheldFromRenderList(bool withheld) { withheldFromRenderList_ = withheld; }
+    bool isWithheldFromRenderList() const { return withheldFromRenderList_; }
 
     // Total index count summed across the per-instance mesh's buffers
     // (i.e. 3x the currently-drawn triangle count). Diagnostics/tests.
@@ -269,6 +287,8 @@ private:
 
     // Debug: mark this node as the player for targeted logging
     bool isPlayerNode_ = false;
+    // T309: see setWithheldFromRenderList(). Never mirrors IsVisible.
+    bool withheldFromRenderList_ = false;
 
     // T301 first-person eye cache. Both are properties of the MESH, not of
     // this instance's pose, so they are resolved once. -2 = not yet

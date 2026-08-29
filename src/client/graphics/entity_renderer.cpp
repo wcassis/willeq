@@ -1516,6 +1516,10 @@ void EntityRenderer::updateMainThreadEntityState(float deltaTime) {
         LOG_DEBUG(MOD_ENTITY, "Removing fully faded corpse {}", spawnId);
         removeEntity(spawnId);
     }
+
+    // T309: the first-person draw rule. Must run every frame and BEFORE
+    // smgr_->drawAll(), which is where OnRegisterSceneNode() reads the flag.
+    updateFirstPersonBodyDrawRule();
 }
 
 void EntityRenderer::processUpdate(const PendingUpdate& update) {
@@ -2704,33 +2708,29 @@ void EntityRenderer::setPlayerFirstPersonMode(bool enabled) {
         if (visual.isPlayer) {
             visual.isFirstPersonMode = enabled;
 
-            // T300: the player model is drawn NORMALLY in first person --
-            // full body, unfiltered, in the world render list, with its
-            // equipment attached to its hand bones. It is hidden by the
-            // first-person DOWN-PITCH CLAMP and by nothing else
-            // (IrrlichtRenderer::applyFirstPersonPitchClamp()); first person
-            // clips exactly as third person does.
-            //
-            // Everything this function used to do is gone on purpose:
+            // T300/T309: the player model is the ORDINARY model -- full
+            // body, unfiltered, with its equipment attached to its hand
+            // bones. Nothing here filters geometry and nothing defers it to
+            // a second pass:
             //   * T74's arm-bone index filter (setFirstPersonMode() on the
             //     node) drew arms only, and fell back to hiding the player
             //     when a skeleton yielded no arm bones;
             //   * T296 additionally withheld the node from the render list
             //     (setDeferredToViewmodelPass()) and hid the equipment, so a
             //     separate viewmodel pass could draw them in its own view
-            //     space.
-            // T299 settled the mechanism against two client versions: the
-            // official client draws the ordinary world model from an eye-point
-            // camera, and geometry REAPPEARS when an animation extends it
-            // (a kick's boot, a swing's blade). Geometry that reappears was
-            // clipped or out of frame, not omitted -- so there is nothing to
-            // filter and nothing to defer.
+            //     space. T299 refuted the pass.
             //
-            // Note for anyone tempted to "just hide the node" again: Irrlicht
-            // skips OnAnimate() on invisible nodes, so a hidden player node
-            // ships a FROZEN skeleton. That is why T296 withheld rather than
-            // hid. Under this mechanism the node is simply visible and
-            // registered, which has neither problem.
+            // T300 then claimed the DOWN-PITCH CLAMP was what hid the body.
+            // *** THAT WAS WRONG AND IS SUPERSEDED HERE. *** T301 Leg B
+            // showed no clamp value can empty the down-frustum band and that
+            // the measured clamp reaches PAST the nadir; T307 then measured
+            // the real rule against the official client. The clamp survives
+            // as a control-feel limit only.
+            //
+            // The model stays VISIBLE in the Irrlicht sense at all times --
+            // IsVisible gates OnAnimate(), so clearing it freezes the
+            // skeleton. Hiding is done by withholding it from the render
+            // list, per frame, in updateFirstPersonBodyDrawRule().
             if (visual.animatedNode) {
                 visual.animatedNode->setVisible(true);
             } else if (visual.meshNode) {
@@ -2752,12 +2752,17 @@ void EntityRenderer::setPlayerFirstPersonMode(bool enabled) {
                 visual.secondaryEquipNode->setVisible(true);
             }
 
-            LOG_DEBUG(MOD_GRAPHICS, "setPlayerFirstPersonMode: enabled={} (player model drawn normally; the down-pitch clamp keeps it out of frame)",
+            LOG_DEBUG(MOD_GRAPHICS, "setPlayerFirstPersonMode: enabled={} (draw rule: the model is drawn only while an attack animation plays)",
                       enabled);
             break;
         }
     }
+
+    // Apply the rule at once, so entering first person mid-swing does not
+    // draw a frame it should not (or drop one it should).
+    updateFirstPersonBodyDrawRule();
 }
+
 
 bool EntityRenderer::isPlayerInFirstPersonMode() const {
     for (const auto& [spawnId, visual] : entities_) {
