@@ -2,6 +2,10 @@
 #include <json/json.h>  // Must be before eq.h → logging.h so JSONCPP_VERSION_STRING is defined
 #include "client/eq.h"
 #include "client/help/merged_help.h"
+// T310 Leg A: --fpcam. No renderer dependency -- the tunable store is a plain
+// process-global of floats (see the header), so this include is safe in an
+// EQT_GRAPHICS=OFF build too.
+#include "client/graphics/first_person_tunables.h"
 #include "client/help/renderer_command_catalog.h"
 #include "client/eq_action_handler.h"
 #include "client/combat.h"
@@ -102,6 +106,20 @@ bool Application::initialize(const ApplicationConfig& config) {
     m_config = config;
 
     LOG_INFO(MOD_MAIN, "Initializing application...");
+
+    // T310 Leg A: apply --fpcam overrides BEFORE anything reads a camera
+    // number. A bad name or value is reported and the run continues with that
+    // parameter at its default -- a sweep that silently rendered the default
+    // would produce a flat, meaningless difference curve, so this is loud.
+    for (const std::string& spec : config.fpCamOverrides) {
+        std::string err;
+        if (EQT::Graphics::fpTunableApplyAssignmentList(spec, err)) {
+            LOG_INFO(MOD_MAIN, "[FPCAM] --fpcam applied: {}", spec);
+        } else {
+            LOG_ERROR(MOD_MAIN, "[FPCAM] --fpcam '{}' REJECTED: {} (that parameter keeps its default)",
+                      spec, err);
+        }
+    }
 
     // S01: Mandatory config validation — fail fast on missing settings
     {
@@ -2082,6 +2100,16 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             if (i + 1 < argc) {
                 config.recordSessionPath = argv[++i];
             }
+        } else if (arg == "--fpcam") {
+            // T310 Leg A: the startup form of /fpcam set. Repeatable, and one
+            // occurrence may carry a comma-separated list. Deliberately NOT
+            // validated here -- parseArguments() is documented side-effect-
+            // free (tests/test_video_capture_flags.cpp) and the tunable store
+            // is a process global, so the strings are carried on the config
+            // and applied by initialize().
+            if (i + 1 < argc) {
+                config.fpCamOverrides.push_back(argv[++i]);
+            }
         } else if (arg == "--script") {
             if (i + 1 < argc) {
                 config.scriptPath = argv[++i];
@@ -2107,6 +2135,7 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             std::cout << "  -np, --no-pathfinding    Disable navmesh pathfinding\n";
             std::cout << "  --record-session <file>  Record decoded session packets to <file> for later replay\n";
             std::cout << "  --script <file>          Run a scripted command tour ('wait N' + slash-command lines)\n";
+            std::cout << "  --fpcam <name=value,...>  Override first-person camera tunables at startup (repeatable; same names as /fpcam)\n";
             std::cout << "  --dump-frames-dir <dir>  Video-capture evidence tool: write numbered PNG frames to <dir> (needs --dump-every)\n";
             std::cout << "  --dump-every <N>         Video-capture: dump every Nth rendered frame\n";
             std::cout << "  --dump-max-frames <N>    Video-capture: stop after N frames written (default 600)\n";

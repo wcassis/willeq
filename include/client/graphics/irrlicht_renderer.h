@@ -2195,6 +2195,13 @@ private:
     // One answer, so the clamp derivation and the projection cannot disagree.
     float getFirstPersonVerticalFov() const;
 
+    // T310 Leg A: `/fpcam dump` -- the RESOLVED first-person pose as parseable
+    // [FPCAM-DUMP] key=value lines, each stating its units and frame. This is
+    // what Leg C's sweep driver reads back; it must never be asserted on via
+    // the dispatcher's `outcome=`, which registry 3 always reports as
+    // "queued".
+    std::vector<std::string> buildFirstPersonCameraDumpLines() const;
+
     // World objects for click detection (tradeskill containers, etc.)
     struct WorldObjectVisual {
         uint32_t dropId;

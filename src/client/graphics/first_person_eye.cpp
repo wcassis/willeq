@@ -3,6 +3,7 @@
 // rule in this file; it is all measured off the shipped client tree.
 
 #include "client/graphics/first_person_eye.h"
+#include "client/graphics/first_person_tunables.h"
 
 #include <algorithm>
 #include <cctype>
@@ -109,7 +110,12 @@ EyeLocalPoint computeEyeInHeadBoneSpace(const HeadVertexCluster& cluster) {
     const float high = cluster.maxZ;
     eye.x = cluster.centroidX;
     eye.y = cluster.centroidY;
-    eye.z = low + kEyeHeightFractionOfSkull * (high - low);
+    // T310 Leg A: the RUNTIME value, which is kEyeHeightFractionOfSkull until
+    // /fpcam or --fpcam overrides it. The per-mesh head CLUSTER is still
+    // computed once (it is a property of the mesh); this line is re-evaluated
+    // on every getFirstPersonEyeOffset() call so a sweep does not have to
+    // reload a model to move the eye.
+    eye.z = low + fpTunable(FpTunable::EyeHeightFractionOfSkull) * (high - low);
     return eye;
 }
 

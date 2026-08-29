@@ -1106,6 +1106,41 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
                     "'cycle' advances Free->Follow->First Person->Free.", args));
             }
         }
+    } else if (cmd == "/fpcam") {
+        // T310 Leg A -- the first-person camera's numbers, settable at
+        // runtime so solving the pose against the official client does not
+        // cost a rebuild per candidate value (Will, 2026-08-29: "This should
+        // not require recompiling"). Registry 3, because the camera lives on
+        // this object and must be driven from the RENDER thread
+        // (application.cpp:1204 -- never call renderer methods from the game
+        // thread). The catalog row is in
+        // src/client/help/renderer_command_catalog.cpp; without it
+        // FindRendererCommand() reports registry=none and nothing is queued.
+        //
+        // *** A SWEEP MUST NOT ASSERT ON `outcome`. *** Registry 3 is
+        // fire-and-forget with no ack path, so printCommandResult() always
+        // says outcome=queued whatever happened here. The result is the
+        // [FPCAM] / [FPCAM-DUMP] line chat() emits below, which is also
+        // LOG_INFO(MOD_MAIN) so a --script run or a log grep sees it.
+        std::string sub = args;
+        {
+            const size_t sp = sub.find(' ');
+            if (sp != std::string::npos) sub = sub.substr(0, sp);
+        }
+        for (char& c : sub) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if (sub == "dump") {
+            for (const auto& line : buildFirstPersonCameraDumpLines()) chat(line);
+        } else {
+            for (const auto& line : EQT::Graphics::FirstPersonTunablesCommandLines(args)) {
+                chat(line);
+            }
+            // A set/reset must take effect on the CURRENT frame, not on the
+            // next time something else happens to move the player.
+            if (sub == "set" || sub == "reset") {
+                applyCameraProjectionForMode();
+                repositionFirstPersonCamera();
+            }
+        }
     } else if (cmd == "/upload") {
         toggleGPUUploadThread();
         chat(fmt::format("GPU upload thread: {}", isGPUUploadThreadEnabled() ? "ENABLED" : "DISABLED"));
@@ -2503,7 +2538,9 @@ void IrrlichtRenderer::applyCameraProjectionForMode() {
     // RULE is (EntityRenderer::updateFirstPersonBodyDrawRule()). Only the FOV
     // is mode-specific here, so third person stays byte-for-byte what it was
     // and the visual gate's goldens hold.
-    camera_->setNearValue(kWorldNearPlaneUnits);
+    // T310 Leg A: the RUNTIME near plane, == kWorldNearPlaneUnits unless
+    // /fpcam or --fpcam overrode it. Still applied in EVERY mode.
+    camera_->setNearValue(fpTunable(FpTunable::NearPlaneUnits));
     camera_->setFOV(firstPerson ? firstPersonVerticalFovRadians(camera_->getAspectRatio())
                                 : kWorldVerticalFovRadians);
     if (firstPerson) {
@@ -2537,10 +2574,13 @@ void IrrlichtRenderer::applyFirstPersonPitchClamp() {
     if (!camera_ || cameraMode_ != CameraMode::FirstPerson) return;
 
     const float minLook = firstPersonMinLookPitchDegrees();
-    if (playerPitch_ >= minLook && playerPitch_ <= kFirstPersonMaxUpPitchDegrees) return;
+    // T310 Leg A: both limits read the runtime tunables (== the constants
+    // unless overridden).
+    const float maxUp = fpTunable(FpTunable::MaxUpPitchDegrees);
+    if (playerPitch_ >= minLook && playerPitch_ <= maxUp) return;
 
     const float before = playerPitch_;
-    playerPitch_ = std::min(std::max(playerPitch_, minLook), kFirstPersonMaxUpPitchDegrees);
+    playerPitch_ = std::min(std::max(playerPitch_, minLook), maxUp);
     LOG_DEBUG(MOD_GRAPHICS,
               "[FP-CLAMP] mouse-look pitch {:.2f} -> {:.2f} deg (floor {:.2f}, measured total down-pitch limit {:.2f})",
               before, playerPitch_, minLook,
@@ -2552,6 +2592,55 @@ void IrrlichtRenderer::applyFirstPersonPitchClamp() {
 // so the clamp derivation and the projection cannot disagree.
 float IrrlichtRenderer::getFirstPersonVerticalFov() const {
     return firstPersonVerticalFovRadians(camera_ ? camera_->getAspectRatio() : 4.0f / 3.0f);
+}
+
+// T310 Leg A -- `/fpcam dump`: gather the RESOLVED first-person pose. Only the
+// GATHER lives here, because irrlicht_renderer.cpp is the ONE translation unit
+// allowed to read the camera formula
+// (tests/test_first_person_camera_single_formula.cpp); the FORMATTING is
+// FormatFirstPersonPoseDump() in first_person_tunables.cpp, which is what
+// Leg C's sweep driver parses and which is therefore testable on its own.
+std::vector<std::string> IrrlichtRenderer::buildFirstPersonCameraDumpLines() const {
+    FirstPersonPoseSample sample;
+
+    EntityRenderer::FirstPersonEyeOffset eye;
+    if (entityRenderer_) {
+        eye = entityRenderer_->getPlayerFirstPersonEyeOffset();
+        sample.collisionZOffset = entityRenderer_->getPlayerCollisionZOffset();
+    }
+    if (eye.irrY <= 0.0f) eye.irrY = 3.65f;
+
+    sample.modeName = getCameraModeString();
+    sample.cameraNodePresent = (camera_ != nullptr);
+    sample.eyeFromHeadBone = eye.derivedFromHead;
+    sample.aspect = camera_ ? camera_->getAspectRatio() : 4.0f / 3.0f;
+
+    const FirstPersonCameraPlacement p = computeFirstPersonCamera(
+        playerX_, playerY_, playerZ_, eye.irrY, playerConfig_.eyeHeight,
+        playerHeading_, playerPitch_, 100.0f, eye.irrX, eye.irrZ);
+    sample.eyeIrrX = p.posX;  sample.eyeIrrY = p.posY;  sample.eyeIrrZ = p.posZ;
+    sample.targetIrrX = p.targetX; sample.targetIrrY = p.targetY; sample.targetIrrZ = p.targetZ;
+    sample.upX = p.upX; sample.upY = p.upY; sample.upZ = p.upZ;
+
+    sample.nodeOriginEqZ = playerZ_;
+    sample.eyeOffsetIrrX = eye.irrX;
+    sample.eyeOffsetIrrY = eye.irrY;
+    sample.eyeOffsetIrrZ = eye.irrZ;
+
+    sample.headingEqUnits = playerHeading_;
+    sample.lookPitchDeg = playerPitch_;
+    sample.fixedPitchDownDeg = fpTunable(FpTunable::PitchDownDegrees);
+    sample.maxDownPitchDeg = firstPersonMaxDownPitchDegrees();
+    sample.maxUpPitchDeg = fpTunable(FpTunable::MaxUpPitchDegrees);
+    sample.totalPitchDeg = sample.lookPitchDeg - sample.fixedPitchDownDeg;
+    if (sample.totalPitchDeg < -sample.maxDownPitchDeg) sample.totalPitchDeg = -sample.maxDownPitchDeg;
+    if (sample.totalPitchDeg > sample.maxUpPitchDeg) sample.totalPitchDeg = sample.maxUpPitchDeg;
+
+    sample.hfovDeg = fpTunable(FpTunable::HorizontalFovDegrees);
+    sample.vfovDeg = firstPersonVerticalFovRadians(sample.aspect) * 180.0f / kFirstPersonPi;
+    sample.nearPlane = camera_ ? camera_->getNearValue() : fpTunable(FpTunable::NearPlaneUnits);
+
+    return FormatFirstPersonPoseDump(sample);
 }
 
 void IrrlichtRenderer::repositionFirstPersonCamera() {

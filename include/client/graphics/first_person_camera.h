@@ -54,6 +54,7 @@
 #include <cmath>
 
 #include "client/graphics/first_person_eye.h"
+#include "client/graphics/first_person_tunables.h"
 
 namespace EQT {
 namespace Graphics {
@@ -68,16 +69,14 @@ namespace Graphics {
 //   horizontal FOV  62.8 +/- 0.3 degrees  (vertical 49.3 at 4:3)
 // -------------------------------------------------------------------------
 
-// Fixed downward bias applied to the look ray, on top of the user's
-// mouse-look pitch. T75 shipped 12 degrees; that number was chosen to tip
-// the frustum onto in-world arm geometry, which is not what first person is
-// for. 3.65 is the official client's measured value.
-constexpr float kFirstPersonPitchDownDegrees = 3.65f;
-
-// Horizontal field of view. fable never called setFOV(), so the world camera
-// ran at Irrlicht's default 72 degrees VERTICAL (PI/2.5), which at 4:3 is
-// ~88 degrees horizontal -- far wider than the official client's 62.8.
-constexpr float kFirstPersonHorizontalFovDegrees = 62.8f;
+// T310 Leg A: kFirstPersonPitchDownDegrees (3.65) and
+// kFirstPersonHorizontalFovDegrees (62.8) MOVED, values and comments
+// unchanged, to include/client/graphics/first_person_tunables.h -- which this
+// header includes, so every existing spelling still resolves. They moved only
+// so the runtime tunable table can name them as its defaults without a
+// circular include. The formula below now reads the RUNTIME value
+// (fpTunable(...)), which equals the constant unless /fpcam or --fpcam has
+// overridden it. CHANGE THE CONSTANT, NOT THE READ.
 
 // THE DOWN-PITCH CLAMP IS THE ONE LEVER THAT HIDES THE PLAYER'S BODY, and it
 // is a SEPARATE, NAMED, MEASURED CONSTANT living in first_person_eye.h:
@@ -104,7 +103,9 @@ constexpr float kFirstPersonHorizontalFovDegrees = 62.8f;
 // computeFirstPersonCamera() so the coupling cannot be reintroduced by
 // accident.
 inline float firstPersonMaxDownPitchDegrees() {
-    return kFirstPersonMaxDownPitchDegrees;
+    // T310 Leg A: the RUNTIME value, which is kFirstPersonMaxDownPitchDegrees
+    // until /fpcam or --fpcam overrides it.
+    return fpTunable(FpTunable::MaxDownPitchDegrees);
 }
 
 // The clamp applies to the camera's TOTAL down-pitch -- the mouse-look angle
@@ -113,19 +114,11 @@ inline float firstPersonMaxDownPitchDegrees() {
 // the STORED mouse-look value (playerPitch_, + = up), so the accumulator and
 // the camera formula clamp the same thing in the same place in the chain.
 inline float firstPersonMinLookPitchDegrees() {
-    return -(firstPersonMaxDownPitchDegrees() - kFirstPersonPitchDownDegrees);
+    return -(firstPersonMaxDownPitchDegrees() - fpTunable(FpTunable::PitchDownDegrees));
 }
 
-// The gimbal clamp on the UP side is NOT part of the hiding mechanism and is
-// unchanged at +89: the body hangs BELOW the eye, so looking up moves it
-// further out of frame, and Leg A measured only the down side. 89 exists to
-// keep the look-at camera from degenerating when the target sits exactly
-// above the eye. Named here so the two clamps are not confused for each other.
-constexpr float kFirstPersonMaxUpPitchDegrees = 89.0f;
-
-// The world (non-first-person) near plane, restored when leaving first
-// person. Matches setupCamera()'s original setNearValue(1.0f).
-constexpr float kWorldNearPlaneUnits = 1.0f;
+// T310 Leg A: kFirstPersonMaxUpPitchDegrees (89) and kWorldNearPlaneUnits
+// (1.0) also moved to first_person_tunables.h, same reason, same values.
 
 // Irrlicht's ICameraSceneNode default vertical FOV (PI/2.5), restored when
 // leaving first person so third person renders exactly as it did before
@@ -138,7 +131,8 @@ constexpr float kFirstPersonPi = 3.14159265358979323846f;
 // horizontal, so convert through the camera's aspect ratio.
 inline float firstPersonVerticalFovRadians(float aspect) {
     if (!(aspect > 0.0f)) aspect = 4.0f / 3.0f;
-    const float halfH = kFirstPersonHorizontalFovDegrees * 0.5f * kFirstPersonPi / 180.0f;
+    const float halfH = fpTunable(FpTunable::HorizontalFovDegrees) * 0.5f *
+                        kFirstPersonPi / 180.0f;
     return 2.0f * std::atan(std::tan(halfH) / aspect);
 }
 
@@ -219,9 +213,10 @@ inline FirstPersonCameraPlacement computeFirstPersonCamera(
     // value too -- that is what keeps the control from feeling dead against
     // an invisible wall -- but this is the guarantee.
     const float maxDownDeg = firstPersonMaxDownPitchDegrees();
-    float totalPitchDeg = lookPitchDegrees - kFirstPersonPitchDownDegrees;
+    const float maxUpDeg = fpTunable(FpTunable::MaxUpPitchDegrees);
+    float totalPitchDeg = lookPitchDegrees - fpTunable(FpTunable::PitchDownDegrees);
     if (totalPitchDeg < -maxDownDeg) totalPitchDeg = -maxDownDeg;
-    if (totalPitchDeg > kFirstPersonMaxUpPitchDegrees) totalPitchDeg = kFirstPersonMaxUpPitchDegrees;
+    if (totalPitchDeg > maxUpDeg) totalPitchDeg = maxUpDeg;
     const float pitchRad = totalPitchDeg * kFirstPersonPi / 180.0f;
     const float cosPitch = std::cos(pitchRad);
     const float sinPitch = std::sin(pitchRad);
@@ -235,9 +230,10 @@ inline FirstPersonCameraPlacement computeFirstPersonCamera(
     const float fwdX = std::sin(headingRad);
     const float fwdZ = std::cos(headingRad);
 
-    out.posX = playerX + eyeOffsetIrrX + fwdX * kEyeForwardOffsetUnits;
+    const float fwdOffset = fpTunable(FpTunable::EyeForwardOffsetUnits);
+    out.posX = playerX + eyeOffsetIrrX + fwdX * fwdOffset;
     out.posY = camZ;
-    out.posZ = playerY + eyeOffsetIrrZ + fwdZ * kEyeForwardOffsetUnits;
+    out.posZ = playerY + eyeOffsetIrrZ + fwdZ * fwdOffset;
 
     out.targetX = out.posX + fwdX * cosPitch * targetDistance;
     out.targetY = camZ + sinPitch * targetDistance;

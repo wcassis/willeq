@@ -59,7 +59,7 @@ bool EQAnimatedMeshSceneNode::getFirstPersonEyeOffset(
                 &originalVertices[0].Pos.X, originalVertices.size(),
                 sizeof(irr::video::S3DVertex) / sizeof(float));
             if (cluster.valid()) {
-                eyeLocalPoint_ = computeEyeInHeadBoneSpace(cluster);
+                eyeHeadCluster_ = cluster;
             } else {
                 // A head bone with no geometry of its own is not an anchor.
                 eyeHeadBoneIndex_ = -1;
@@ -101,9 +101,14 @@ bool EQAnimatedMeshSceneNode::getFirstPersonEyeOffset(
         headTransform = eyeRestHeadTransform_;
     }
 
-    float ex = eyeLocalPoint_.x;
-    float ey = eyeLocalPoint_.y;
-    float ez = eyeLocalPoint_.z;
+    // T310 Leg A: derived HERE, not at load, because
+    // computeEyeInHeadBoneSpace() reads the runtime eyeHeightFractionOfSkull
+    // tunable and a /fpcam sweep must not require a model reload. The cluster
+    // scan (the expensive part) is still done once.
+    const EyeLocalPoint eyeLocalPoint = computeEyeInHeadBoneSpace(eyeHeadCluster_);
+    float ex = eyeLocalPoint.x;
+    float ey = eyeLocalPoint.y;
+    float ez = eyeLocalPoint.z;
     headTransform.transformPoint(ex, ey, ez);
 
     // POSTURE. Applied in MODEL space, on the up axis, as a fraction of this

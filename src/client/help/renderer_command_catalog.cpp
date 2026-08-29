@@ -24,6 +24,11 @@ const std::vector<RendererCommandInfo> kCatalog = {
     {"mergedraws", {}, "Toggle merged zone draw calls"},
     {"screenshot", {}, "Save a screenshot"},
     {"camera", {}, "Show or set the camera mode"},
+    // T310 Leg A: the first-person camera's numbers, settable at runtime so
+    // the pose can be SOLVED against the official client without a rebuild
+    // per candidate value. No aliases -- every alias here must also exist as
+    // a `cmd == "/alias"` literal in the if-chain (test_merged_help.cpp).
+    {"fpcam", {}, "First-person camera tunables: list / set / reset / dump"},
     {"upload", {}, "Toggle the GPU upload thread"},
     {"portal", {}, "Toggle portal occlusion / debug overlay"},
     {"stencil", {}, "Toggle the stencil debug overlay"},

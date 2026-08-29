@@ -295,7 +295,11 @@ private:
     // attempted, -1 = attempted and this model has no usable head anchor
     // (must not be retried per frame).
     mutable int eyeHeadBoneIndex_ = -2;
-    mutable EyeLocalPoint eyeLocalPoint_;
+    // T310 Leg A: the CLUSTER is cached (a property of the mesh), the eye
+    // POINT is not -- computeEyeInHeadBoneSpace() reads the runtime
+    // eyeHeightFractionOfSkull tunable, so caching the point would freeze a
+    // sweep at whatever value happened to be set when the model loaded.
+    mutable HeadVertexCluster eyeHeadCluster_;
     mutable BoneMat4 eyeRestHeadTransform_;
 
     // Performance: track last applied animation frame to skip redundant transforms

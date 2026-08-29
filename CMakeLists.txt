@@ -320,6 +320,11 @@ SET(CLIENT_CORE_SOURCES
     src/client/hotbar/hotbar_model.cpp
     src/client/chat/chat_message_buffer.cpp
     src/client/graphics/ui/command_registry.cpp
+    # T310 Leg A: the /fpcam tunable store's name lookup, parsing and
+    # formatting. No renderer dependency at all (it drives constants, not a
+    # camera), and Application::initialize() applies --fpcam in every build,
+    # graphics or not -- so it belongs here rather than in GRAPHICS_SOURCES.
+    src/client/graphics/first_person_tunables.cpp
     # State management sources
     src/client/state/event_bus.cpp
     src/client/state/player_state.cpp
