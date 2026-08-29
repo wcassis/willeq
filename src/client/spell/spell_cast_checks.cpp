@@ -27,8 +27,14 @@ namespace EQ {
 // Permissive when no map is loaded or the target is unknown -- those are
 // the server's calls, not a local refusal. Eye height follows eqemu's
 // CheckLosFN: server z (model centre) + size/2 * 0.9, size 6 when the
-// entity reports none. Entity z IS the server's model-centre z; the
-// player's client z is ground level (eq_bridge.cpp), so it gets +size/2 first.
+// entity reports none.
+//
+// T310 Leg B: the +size/2 applied to the PLAYER below exists only to undo the
+// unmatched size/2 that eq_entities.cpp subtracts on zone-in. That subtraction
+// is a defect (the send path and the server both leave z alone), and once the
+// renderer's ground snap has run, PosZ() is already in the server frame and
+// this compensation double-counts. Both are left as they are until Leg C can
+// verify the round trip against a live server; they are noted, not fixed here.
 bool SpellManager::checkLineOfSight(uint16_t target_id) const
 {
     std::shared_ptr<const HCMap> map = m_eq->GetZoneMap();

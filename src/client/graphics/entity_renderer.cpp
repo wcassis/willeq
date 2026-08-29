@@ -341,7 +341,12 @@ bool EntityRenderer::registerEntity(uint16_t spawnId, uint16_t raceId, const std
                 visual.usesPlaceholder = true;
                 visual.inSceneGraph = true;  // Placeholder is in scene graph — enables SimWorker PVS management and entity prep queueing
                 visual.modelYOffset = 0;
-                visual.collisionZOffset = (cubeSize / 2.0f);
+                // The placeholder cube is authored with its origin ON ITS BASE
+                // (createPlaceholderMesh() spans Y = [0, size]), so its
+                // origin-to-feet distance is zero. Derived from the bounds like
+                // every other entity rather than assumed from the shape.
+                visual.collisionZOffset =
+                    collisionZOffsetFromBounds(visual.meshNode->getBoundingBox(), 1.0f);
 
                 // Set material: unlit, no backface cull
                 for (irr::u32 i = 0; i < visual.meshNode->getMaterialCount(); ++i) {
@@ -517,23 +522,22 @@ bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
         // The initial bounding box is from bind/T-pose, but we need the animated pose
         animNode->forceAnimationUpdate();
 
-        // Calculate model offset for collision calculations
-        // Server Z is the geometric MODEL CENTER, not the feet/ground position
-        // modelYOffset is for rendering adjustment (set to 0 since server Z works directly)
-        // collisionZOffset is the distance from model center to feet for collision detection
+        // The node origin IS the server Z (modelYOffset is 0); see the
+        // Z-convention note in entity_renderer.h. collisionZOffset is the
+        // ORIGIN-TO-FEET distance -- NOT half the bbox height. For a Human male
+        // those are 3.00 and 3.34, so the half-height form stood every entity
+        // 0.33 above its own collision ground (T310 Leg B).
         irr::core::aabbox3df bbox = animNode->getBoundingBox();
         float bboxHeight = bbox.MaxEdge.Y - bbox.MinEdge.Y;
-        // modelYOffset = 0 for rendering (server Z position works as-is)
         visual.modelYOffset = 0;
-        // collisionZOffset = half model height for collision (server Z is center, feet are below)
-        visual.collisionZOffset = (bboxHeight / 2.0f) * scale;
+        visual.collisionZOffset = collisionZOffsetFromBounds(bbox, scale);
 
         // Debug: log bounding box info for entity creation
         LOG_DEBUG(MOD_GRAPHICS, "createEntity[{}]: race={} bbox Y=[{:.2f},{:.2f}] height={:.2f} scale={:.3f} collisionZOffset={:.2f}",
 			name, raceId, bbox.MinEdge.Y, bbox.MaxEdge.Y, bboxHeight, scale, visual.collisionZOffset);
 
 	// Set position (convert EQ Z-up to Irrlicht Y-up)
-	// Server Z is the model center, add modelYOffset to position model correctly
+	// The node origin goes at the server Z; modelYOffset is a rendering nudge (0)
 	animNode->setPosition(irr::core::vector3df(x, z + visual.modelYOffset, y));
 
 	// Set rotation (EQ heading to Irrlicht Y rotation)
@@ -684,17 +688,14 @@ bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
     visual.sceneNode->grab();  // Keep alive when removed from scene graph
     visual.inSceneGraph = true;  // Node was created with ROOT parent — mark as in-graph so PVS can manage it
 
-    // Calculate model offset for collision calculations
-    // Server Z is the geometric MODEL CENTER, not the feet/ground position
+    // The node origin IS the server Z; collisionZOffset is the origin-to-feet
+    // distance. See the Z-convention note in entity_renderer.h.
     irr::core::aabbox3df bbox = mesh->getBoundingBox();
-    float bboxHeight = bbox.MaxEdge.Y - bbox.MinEdge.Y;
-    // modelYOffset = 0 for rendering (server Z position works as-is)
     visual.modelYOffset = 0;
-    // collisionZOffset = half model height for collision (server Z is center, feet are below)
-    visual.collisionZOffset = (bboxHeight / 2.0f) * scale;
+    visual.collisionZOffset = collisionZOffsetFromBounds(bbox, scale);
 
     // Set position (convert EQ Z-up to Irrlicht Y-up)
-    // Server Z is model center, add modelYOffset for correct positioning
+    // The node origin goes at the server Z; modelYOffset is a rendering nudge (0)
     visual.meshNode->setPosition(irr::core::vector3df(x, z + visual.modelYOffset, y));
 
     // Set rotation (EQ heading to Irrlicht Y rotation)
@@ -1092,11 +1093,10 @@ bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion) {
                 }
                 animNode->forceAnimationUpdate();
 
-                // Collision offset
-                irr::core::aabbox3df bbox = animNode->getBoundingBox();
-                float bboxHeight = bbox.MaxEdge.Y - bbox.MinEdge.Y;
+                // Collision offset: origin-to-feet, not half the bbox height
                 vis.modelYOffset = 0;
-                vis.collisionZOffset = (bboxHeight / 2.0f) * scale;
+                vis.collisionZOffset =
+                    collisionZOffsetFromBounds(animNode->getBoundingBox(), scale);
 
                 // Position, rotation, scale
                 animNode->setPosition(irr::core::vector3df(vis.lastX, vis.lastZ + vis.modelYOffset, vis.lastY));
@@ -1125,11 +1125,10 @@ bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion) {
                 vis.sceneNode->grab();
                 vis.inSceneGraph = true;
 
-                // Collision offset
-                irr::core::aabbox3df bbox = mesh->getBoundingBox();
-                float bboxHeight = bbox.MaxEdge.Y - bbox.MinEdge.Y;
+                // Collision offset: origin-to-feet, not half the bbox height
                 vis.modelYOffset = 0;
-                vis.collisionZOffset = (bboxHeight / 2.0f) * scale;
+                vis.collisionZOffset =
+                    collisionZOffsetFromBounds(mesh->getBoundingBox(), scale);
 
                 // Position, rotation, scale
                 vis.meshNode->setPosition(irr::core::vector3df(vis.lastX, vis.lastZ + vis.modelYOffset, vis.lastY));
@@ -2222,8 +2221,9 @@ void EntityRenderer::updateInterpolation(float deltaTime) {
         if (visual.isNPC && groundFinderCallback_ &&
             (std::abs(visual.velocityX) > 0.01f || std::abs(visual.velocityY) > 0.01f)) {
             float groundZ = groundFinderCallback_(visual.lastX, visual.lastY, visual.lastZ);
-            // Server Z is the model CENTER, not feet. groundZ is the floor level.
-            // We need to place the model center at groundZ + collisionZOffset (half model height).
+            // The node origin IS the server Z and sits inside the body; groundZ is
+            // the floor level. Placing the origin at groundZ + collisionZOffset
+            // (the origin-to-feet distance) puts the mesh's feet ON the floor.
             float targetZ = groundZ + visual.collisionZOffset;
             // Only snap if ground is within reasonable range (avoid teleporting through floors/ceilings)
             float heightDiff = targetZ - visual.lastZ;
@@ -2904,9 +2904,9 @@ EntityRenderer::getPlayerFirstPersonEyeOffset() const {
     //
     // The offset is measured from the player NODE ORIGIN, which is where
     // createEntity() puts the node and which equals the server's Z for this
-    // entity ("Server Z is the geometric MODEL CENTER", :594). The origin is
-    // INSIDE the body: the Human male base mesh spans Y = [-3.05, +3.65]
-    // about it.
+    // entity. The origin is INSIDE the body -- the Human male base mesh spans
+    // Y = [-3.05, +3.65] about it -- but it is the MESH'S OWN ORIGIN, not the
+    // model's centre: 3.05 below it and 3.65 above (see entity_renderer.h).
     //
     // T300 returned bbox.MaxEdge.Y (3.65 for a Human male) -- the crown of
     // the skull, ~6.70 above the mesh's own feet -- on the reasoning that

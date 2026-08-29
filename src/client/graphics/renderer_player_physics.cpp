@@ -239,9 +239,11 @@ void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {
         bool useHCMap = collisionMap_ != nullptr;
         bool hasCollision = playerConfig_.collisionEnabled && (useIrrlicht || useHCMap);
 
-        // Get the player's collision Z offset for ground snapping
-        // Server Z represents the CENTER of the model, so when snapping to ground,
-        // we need to offset by -collisionZOffset to place feet at ground level
+        // Get the player's collision Z offset for ground snapping.
+        // playerZ_ is the server Z, which is where the model's node ORIGIN sits;
+        // that origin is inside the body, collisionZOffset above the mesh's feet
+        // (see the Z-convention note in entity_renderer.h). Snapping to ground
+        // therefore means playerZ_ = groundZ + collisionZOffset.
         float modelYOffset = 0.0f;
         if (entityRenderer_) {
             modelYOffset = entityRenderer_->getPlayerCollisionZOffset();

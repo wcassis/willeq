@@ -746,12 +746,14 @@ void EverQuest::OnGraphicsMovement(const eqt::events::PlayerPositionChanged& upd
 	}
 
 	// Update position from graphics input
-	// The renderer provides ground-level Z (where player's feet are)
-	// SendMovementUpdate adds m_game_state.player().size()/2 to convert to model-center Z for the server
+	// T310 Leg B: the renderer provides playerZ_, which is the model node's
+	// ORIGIN (== the server's Z), not the feet -- renderer_player_physics.cpp
+	// snaps it to groundZ + collisionZOffset. SendPositionUpdate() sends it
+	// verbatim; nothing adds size/2 anywhere on the send path.
 	// T288: one store, and no PlayerMoved on the state bus -- this is the
 	// renderer's own movement arriving, echoing it back as a state event
 	// would be a new per-frame event stream (see setPositionNoEvent).
-	SetPosLocal(update.x, update.y, update.z);  // Ground-level Z from renderer
+	SetPosLocal(update.x, update.y, update.z);  // Node-origin (server-frame) Z from renderer
 	// Convert heading from EQ format (0-512) to degrees (0-360) for internal use
 	SetHeadingLocal(update.heading * 360.0f / 512.0f);
 
