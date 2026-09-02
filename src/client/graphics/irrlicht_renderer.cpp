@@ -280,13 +280,13 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                 event.KeyInput.Control,
                 event.KeyInput.Shift,
                 alt,
-                currentMode_);
+                eqt::input::HotkeyMode::Player);  // T319: see the note on the deleted currentMode_
 
             // Debug: log key press and action lookup
             LOG_DEBUG(MOD_INPUT, "Key pressed: {} (ctrl={}, shift={}, alt={}), mode={}, action={}",
                 hotkeyMgr.keyCodeToName(event.KeyInput.Key),
                 event.KeyInput.Control, event.KeyInput.Shift, alt,
-                hotkeyMgr.modeEnumToName(currentMode_),
+                hotkeyMgr.modeEnumToName(eqt::input::HotkeyMode::Player),
                 action.has_value() ? hotkeyMgr.actionEnumToName(*action) : "none");
 
             if (action.has_value()) {
@@ -337,6 +337,10 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                     case HA::InteractDoor: actionQueue_.push_back({RA::DoorInteract}); break;
                     case HA::InteractWorldObject: actionQueue_.push_back({RA::WorldObjectInteract}); break;
                     case HA::Hail: pushBridgeAction({RA::Hail}); break;
+                    // T319: R -> the game thread resolves the last tell
+                    // sender and the prefill comes back via
+                    // IrrlichtRenderer::handleActionResult().
+                    case HA::ReplyToTell: pushBridgeAction({RA::ReplyToTell}); break;
                     case HA::Consider: pushBridgeAction({RA::Consider}); break;
                     case HA::ClearTarget:
                         // Both queues: bridge clears combat target, renderer clears display
@@ -2917,6 +2921,24 @@ void IrrlichtRenderer::setSwimmingState(bool swimming, float swimSpeed, bool lev
     playerMovement_.isSwimming = swimming;
     playerMovement_.swimSpeed = swimSpeed;
     playerMovement_.isLevitating = levitating;
+}
+
+// T319: the body of the InputActionBridge action callback that
+// Application installs (application.cpp). Runs on the GAME thread, right
+// after ActionDispatcher has produced the result, so it must not touch
+// chatPanelState_ (render-thread state) directly -- it parks the text and
+// processChatInput() picks it up next frame.
+//
+// ActionDispatcher::openReplyToTell() returns Success("/tell <Name> ") --
+// literally the text the chat input is meant to open with (T316) -- or a
+// Failure carrying the refusal wording. A failure prefills nothing; the
+// user simply gets no chat box, which is what the official client does
+// when there is nobody to reply to.
+void IrrlichtRenderer::handleActionResult(const std::string& actionName, bool success,
+                                          const std::string& message) {
+    if (actionName != "ReplyToTell") return;
+    if (!success || message.empty()) return;
+    requestChatPrefill(message);
 }
 
 void IrrlichtRenderer::setCameraMode(CameraMode mode) {

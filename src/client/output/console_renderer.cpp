@@ -102,6 +102,18 @@ void ConsoleRenderer::connectToGameState(state::GameState& state) {
         m_eventBus->subscribe(state::GameEventType::TargetChanged,
             [this](const state::GameEvent& event) { handleEvent(event); }));
 
+    // T319: the target's HP moving. IOutputRenderer::updateCurrentTargetHP()
+    // -- interface, ConsoleRenderer body, NullRenderer body, test fixture --
+    // had no production caller at all, so once a target was acquired its HP
+    // was frozen at the value TargetChanged happened to carry. The status
+    // line printStatusLine() prints every m_statusUpdateInterval is where a
+    // headless user reads it, so this was a live staleness bug, not just an
+    // unused method. EntityStatsChanged is the event that carries the new
+    // percentage; only the CURRENT target's is ours to take.
+    m_listenerHandles.push_back(
+        m_eventBus->subscribe(state::GameEventType::EntityStatsChanged,
+            [this](const state::GameEvent& event) { handleEvent(event); }));
+
     // Subscribe to pet events
     m_listenerHandles.push_back(
         m_eventBus->subscribe(state::GameEventType::PetCreated,
@@ -175,6 +187,16 @@ void ConsoleRenderer::handleEvent(const state::GameEvent& event) {
                 setCurrentTarget(data.spawnId, data.name, data.hpPercent, data.level);
             } else {
                 clearCurrentTarget();
+            }
+            break;
+        }
+
+        case state::GameEventType::EntityStatsChanged: {
+            // T319: see the subscribe() above. Filtered to the current
+            // target -- every entity in the zone publishes this.
+            const auto& data = std::get<state::EntityStatsChangedData>(event.data);
+            if (m_targetSpawnId != 0 && data.spawnId == m_targetSpawnId) {
+                updateCurrentTargetHP(data.hpPercent);
             }
             break;
         }
@@ -309,6 +331,11 @@ void ConsoleRenderer::setCurrentTarget(uint16_t spawnId, const std::string& name
 }
 
 void ConsoleRenderer::updateCurrentTargetHP(uint8_t hpPercent) {
+    // T319: printStatusLine() reads m_targetHpPercent under m_outputMutex;
+    // this is now a real writer, so it takes the same lock. It prints
+    // nothing itself on purpose -- an HP tick per swing would drown the
+    // console; the periodic status line is where it shows up.
+    std::lock_guard<std::recursive_mutex> lock(m_outputMutex);
     m_targetHpPercent = hpPercent;
 }
 

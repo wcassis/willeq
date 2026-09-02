@@ -115,6 +115,14 @@ void GraphicsInputHandler::updateFromEventReceiver() {
                     LOG_DEBUG(MOD_INPUT, "[INPUT-TRACE] GraphicsInputHandler: Consider -> pendingAction set");
                 } else { LOG_DEBUG(MOD_INPUT, "[INPUT-TRACE] GraphicsInputHandler: Consider BLOCKED by chatFocused"); }
                 break;
+            // T319: R key. Gated by chat focus like the other non-targeting
+            // actions -- with the chat box open R is a typed character, and
+            // OnEvent never decodes it as a hotkey anyway.
+            case RA::ReplyToTell:
+                if (!chatFocused) { m_pendingActions[static_cast<size_t>(InputAction::ReplyToTell)] = true;
+                    LOG_DEBUG(MOD_INPUT, "[INPUT-TRACE] GraphicsInputHandler: ReplyToTell -> pendingAction set");
+                } else { LOG_DEBUG(MOD_INPUT, "[INPUT-TRACE] GraphicsInputHandler: ReplyToTell BLOCKED by chatFocused"); }
+                break;
             case RA::ClearTarget:
                 if (!chatFocused) { m_pendingActions[static_cast<size_t>(InputAction::ClearTarget)] = true;
                     LOG_DEBUG(MOD_INPUT, "[INPUT-TRACE] GraphicsInputHandler: ClearTarget -> pendingAction set");
