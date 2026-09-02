@@ -716,7 +716,8 @@ Review, `review/T312/`.
 ### TIER 2/3 addendum — found by T314 (2026-09-02): AN ENTIRE SUBSYSTEM IS UNREACHED
 
 33. **CLOSED (T324, 2026-09-02) — DELETED. Will ruled directly: "SpellTypeProcessor
-    can be deleted."** `include/client/spell/spell_type_processor.h`,
+    can be deleted."** Commit `ef2c3080` on `task/T324`.
+    `include/client/spell/spell_type_processor.h`,
     `src/client/spell/spell_type_processor.cpp`, `EverQuest::GetSpellTypeProcessor()`,
     the `m_spell_type_processor` member and its construction are gone, along
     with `tests/test_spell_group_targeting.cpp` (which pinned only the deleted

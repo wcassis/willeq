@@ -108,7 +108,9 @@ the same predicate on the consumer that is live, so nothing is lost.
 
 ## Review (slot1, 2026-09-02)
 
-Done as planned. Branch `task/T324` from `fable` at `bcbf2ddc`.
+Done as planned. Branch `task/T324` from `fable` at `bcbf2ddc`; the work is
+commit `ef2c3080` plus a follow-up that only stamps that hash into the
+tombstone and the board.
 
 ### Was it reachable after all? No.
 

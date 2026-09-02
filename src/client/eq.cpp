@@ -259,7 +259,7 @@ bool EverQuest::InitializeSpellSystem(const std::string& eqClientPath)
 		this, &m_spell_manager->getDatabase(), m_buff_manager.get());
 	LOG_DEBUG(MOD_SPELL, "Spell effects processor initialized");
 
-	// T324 (2026-09-02, commit below): the client-side spell TARGET-RESOLUTION
+	// T324 (2026-09-02, commit ef2c3080): the client-side spell TARGET-RESOLUTION
 	// layer that used to be constructed here was deleted --
 	// EQ::SpellTypeProcessor (include/client/spell/spell_type_processor.h,
 	// src/client/spell/spell_type_processor.cpp) and its rain-spell instance
