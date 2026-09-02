@@ -24,11 +24,6 @@ bool NullInputHandler::consumeAction(InputAction action) {
     return was_pending;
 }
 
-void NullInputHandler::resetMouseDeltas() {
-    m_state.mouseDeltaX = 0;
-    m_state.mouseDeltaY = 0;
-}
-
 std::optional<SpellCastRequest> NullInputHandler::consumeSpellCastRequest() {
     if (m_spellCastRequests.empty()) {
         return std::nullopt;

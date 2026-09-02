@@ -1,5 +1,4 @@
 #include "client/input/graphics_input_handler.h"
-#include "client/input/hotkey_manager.h"
 #include "common/logging.h"
 
 #ifdef EQT_HAS_GRAPHICS
@@ -29,57 +28,32 @@ void GraphicsInputHandler::updateFromEventReceiver() {
 #ifdef EQT_HAS_GRAPHICS
     if (!m_eventReceiver) return;
 
-    // Reset movement state
-    m_state.moveForward = false;
-    m_state.moveBackward = false;
-    m_state.strafeLeft = false;
-    m_state.strafeRight = false;
-    m_state.turnLeft = false;
-    m_state.turnRight = false;
-    m_state.shiftHeld = m_eventReceiver->isKeyDown(irr::KEY_LSHIFT) ||
-                        m_eventReceiver->isKeyDown(irr::KEY_RSHIFT);
-
-    // Update movement state from held keys using HotkeyManager
-    // Skip when chat input is focused to prevent typing from triggering movement
-    if (!m_eventReceiver->isChatInputFocused()) {
-        auto& hotkeyMgr = HotkeyManager::instance();
-        for (int keyCode = 0; keyCode < irr::KEY_KEY_CODES_COUNT; ++keyCode) {
-            if (m_eventReceiver->isKeyDown(static_cast<irr::EKEY_CODE>(keyCode))) {
-                HotkeyAction action;
-                if (hotkeyMgr.isMovementKey(static_cast<irr::EKEY_CODE>(keyCode), action)) {
-                    switch (action) {
-                        case HotkeyAction::MoveForward: m_state.moveForward = true; break;
-                        case HotkeyAction::MoveBackward: m_state.moveBackward = true; break;
-                        case HotkeyAction::StrafeLeft: m_state.strafeLeft = true; break;
-                        case HotkeyAction::StrafeRight: m_state.strafeRight = true; break;
-                        case HotkeyAction::TurnLeft: m_state.turnLeft = true; break;
-                        case HotkeyAction::TurnRight: m_state.turnRight = true; break;
-                        default: break;
-                    }
-                }
-            }
-        }
-    }
-
-    // Update mouse state
-    m_state.mouseX = m_eventReceiver->getMouseX();
-    m_state.mouseY = m_eventReceiver->getMouseY();
-    // T312: the getMouseDeltaX/Y() calls that used to sit here were DELETED.
-    // Those accessors are a destructive read-and-reset, and the render
-    // thread's mouse-look (IrrlichtRenderer::updatePlayerMovement) is their
-    // real consumer -- exactly the two-consumer shape of T230/T235. This
-    // side wrote the value into InputState::mouseDelta{X,Y}, which has no
-    // reader anywhere in the tree (InputHandler::getState() has zero
-    // production callers), so the poll could only ever STEAL the delta: any
-    // game tick that landed between two frames froze the camera for that
-    // frame. m_state.mouseDelta{X,Y} therefore stay 0 here, as they already
-    // do in NullInputHandler.
-    m_state.leftButtonDown = m_eventReceiver->isLeftButtonDown();
-    m_state.rightButtonDown = m_eventReceiver->isRightButtonDown();
-    m_state.leftButtonClicked = m_eventReceiver->wasLeftButtonClicked();
-    m_state.leftButtonReleased = m_eventReceiver->wasLeftButtonReleased();
-    m_state.clickMouseX = m_eventReceiver->getClickMouseX();
-    m_state.clickMouseY = m_eventReceiver->getClickMouseY();
+    // T315: everything that used to happen here -- the movement-key scan,
+    // the shift check, the mouse position, the button states and the two
+    // click one-shots -- wrote into InputState, a snapshot struct with no
+    // reader anywhere in the tree. The struct is gone; so is this fill.
+    //
+    // Two of those reads were actively harmful, not merely wasted:
+    //
+    //   * getMouseDeltaX/Y() (deleted by T312) -- a destructive
+    //     read-and-reset whose real consumer is the render thread's
+    //     mouse-look in IrrlichtRenderer::updatePlayerMovement(). A game
+    //     tick landing between two frames froze the camera for that frame.
+    //   * wasLeftButtonClicked()/wasLeftButtonReleased() (deleted here) --
+    //     the same shape. Their real consumer is
+    //     IrrlichtRenderer::processFrameInput(), which drives
+    //     pendingUIClick_, the static-UI hit test and handleMouseTargeting().
+    //     Whenever this poll won the atomic exchange, the click was
+    //     consumed and NO UI EVER SAW IT: an inventory slot, loot row or
+    //     spell gem that silently did nothing.
+    //
+    // The rule, now pinned by tests/test_read_and_reset_ownership.cpp:
+    // a destructive read-and-reset accessor gets exactly one caller unless
+    // the accumulator is made per-consumer. Do not re-add a poll here.
+    //
+    // Movement is read where it is used: renderer_player_physics.cpp polls
+    // isKeyDown() through the same HotkeyManager bindings, on the render
+    // thread, non-destructively.
 
     // Check for quit
     if (m_eventReceiver->quitRequested()) {
@@ -180,11 +154,6 @@ bool GraphicsInputHandler::consumeAction(InputAction action) {
     bool was_pending = m_pendingActions[index];
     m_pendingActions[index] = false;
     return was_pending;
-}
-
-void GraphicsInputHandler::resetMouseDeltas() {
-    m_state.mouseDeltaX = 0;
-    m_state.mouseDeltaY = 0;
 }
 
 std::optional<SpellCastRequest> GraphicsInputHandler::consumeSpellCastRequest() {

@@ -486,7 +486,6 @@ class FakeInputHandler : public input::IInputHandler {
 public:
     // Scriptable state
     std::set<input::InputAction> pendingActions;
-    input::InputState state;
     std::queue<input::SpellCastRequest> spellCasts;
     std::queue<input::HotbarRequest> hotbarRequests;
     std::queue<input::TargetRequest> targetRequests;
@@ -497,7 +496,6 @@ public:
 
     // Recording
     int updateCalls = 0;
-    int resetMouseDeltasCalls = 0;
     std::vector<input::InputAction> consumedActions;  // every consumeAction hit
 
     void update() override { ++updateCalls; }
@@ -513,9 +511,6 @@ public:
         }
         return false;
     }
-
-    const input::InputState& getState() const override { return state; }
-    void resetMouseDeltas() override { ++resetMouseDeltasCalls; }
 
     std::optional<input::SpellCastRequest> consumeSpellCastRequest() override {
         return pop(spellCasts);

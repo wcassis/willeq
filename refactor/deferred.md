@@ -545,31 +545,26 @@ are not fable defects.
 bundle into the fix.** Evidence: `refactor/T312_event_receiver_thread_safety.md`
 Review, `review/T312/`.
 
-30. **`InputState` / `InputHandler::getState()` are ENTIRELY DEAD across all
-    four handlers.** `getState()` has **zero callers** in `src/` or `tests/`;
-    `resetMouseDeltas()` likewise; `CameraController::update()` — the other
-    delta consumer — is never called.
-    *Impact:* none directly, but see item 31: the dead struct is the SINK that
-    made two live input paths look legitimate. **EXECUTOR-READY** (delete, or
-    say what it is for).
+30. ~~**`InputState` / `InputHandler::getState()` are ENTIRELY DEAD across all
+    four handlers.**~~ **CLOSED by T315.** `InputState`, `getState()`,
+    `resetMouseDeltas()` and `NullInputHandler`'s six movement setters were
+    deleted from the interface and all four handlers; continuous state is
+    polled where it is used, on the thread that uses it. Re-verified before
+    deleting: zero callers of `getState()` in `src/` or `tests/`.
+    `tests/test_read_and_reset_ownership.cpp` fails if the struct returns.
 
-31. **`wasLeftButtonClicked()` / `wasLeftButtonReleased()` are the same
-    double-consumer shape T312 just fixed for the mouse delta — and this one
-    SILENTLY EATS CLICKS.** Both are atomic read-and-reset, so it is not a
-    race; but the game-thread consumer writes its result into the dead
-    `InputState` of item 30, so whenever it wins the race to the flag the click
-    is consumed and **no UI ever sees it**.
-    *Impact:* intermittently dropped mouse clicks in a real session — a live,
-    user-visible defect, and exactly the failure mode T312 measured for the
-    mouse delta (a stolen delta froze the camera for a frame).
-    ⚠ **T225 ruled that "both threads are legitimate consumers" here. That
-    ruling PREDATES the discovery that one of the two consumers writes to a
-    struct nothing reads** — it should not be cited as settling this.
-    **EXECUTOR-READY**, and it is one unit with item 30.
-    **This is the FOURTH instance of the two-consumer pattern** (T230, T235,
-    T312's mouse delta, this) — the pattern itself is now worth a sweep:
-    *a read-and-reset accessor with more than one caller is a defect by
-    construction unless the accumulator is per-consumer.*
+31. ~~**`wasLeftButtonClicked()` / `wasLeftButtonReleased()` SILENTLY EAT
+    CLICKS.**~~ **CLOSED by T315.** The game-thread caller in
+    `GraphicsInputHandler::updateFromEventReceiver()` was deleted; the render
+    thread's `processFrameInput()` is now the sole consumer.
+    `ClickOwnershipTest.GameThreadPollDoesNotStealUIClick` reads **0 of 100
+    clicks pre-fix, 100 of 100 post-fix**. T225's "both threads are legitimate
+    consumers" ruling is superseded in the header comment.
+    **The sweep is done**: all 17 destructive read-and-reset accessors on
+    `RendererEventReceiver` are enumerated in `kSweep` in
+    `tests/test_read_and_reset_ownership.cpp` with their allowed call-site
+    count, and that test fails if any grows a second caller — so a fifth
+    instance of the pattern cannot land silently. Table in the T315 Review.
 
 32. **`RendererEventReceiver` deserves its own TU** — T312's clean follow-up,
     deliberately not bundled with a correctness fix. Already scoped:

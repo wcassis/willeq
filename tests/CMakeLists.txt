@@ -2149,6 +2149,23 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_bridge_queue_race)
 ENDIF()
 
+# T315: the read-and-reset double-consumer sweep. The click one-shots
+# (wasLeftButtonClicked/Released) were the fourth instance of the pattern;
+# this target holds the deterministic before/after test and the
+# source-scanning guard that fails when any of the swept accessors grows a
+# second caller. No device needed -- same reasoning as
+# test_bridge_queue_race above.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_read_and_reset_ownership
+        test_read_and_reset_ownership.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_read_and_reset_ownership PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_read_and_reset_ownership GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_read_and_reset_ownership PRIVATE
+        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+    GTEST_DISCOVER_TESTS(test_read_and_reset_ownership)
+ENDIF()
+
 # T111: coverage for IrrlichtRenderer::isEntityBlockingProgressiveLoad(), the
 # pure predicate extracted from checkProgressiveLoadingComplete() to fix the
 # deferred-entity-pickup bug T109 shipped inert around. No device needed --

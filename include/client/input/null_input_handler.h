@@ -26,8 +26,6 @@ public:
     bool hasAction(InputAction action) const override;
     bool consumeAction(InputAction action) override;
 
-    const InputState& getState() const override { return m_state; }
-    void resetMouseDeltas() override;
 
     std::optional<SpellCastRequest> consumeSpellCastRequest() override;
     std::optional<HotbarRequest> consumeHotbarRequest() override;
@@ -87,15 +85,12 @@ public:
      */
     void injectRawCommand(const std::string& command);
 
-    /**
-     * Set movement state directly (for scripted movement).
-     */
-    void setMoveForward(bool value) { m_state.moveForward = value; }
-    void setMoveBackward(bool value) { m_state.moveBackward = value; }
-    void setStrafeLeft(bool value) { m_state.strafeLeft = value; }
-    void setStrafeRight(bool value) { m_state.strafeRight = value; }
-    void setTurnLeft(bool value) { m_state.turnLeft = value; }
-    void setTurnRight(bool value) { m_state.turnRight = value; }
+    // T315: the six setMove*/setTurn*/setStrafe* setters that used to sit
+    // here wrote into the snapshot struct that nothing read, so scripted
+    // movement never moved anything through this path. They had zero
+    // callers (the setMoveForward() hits in eq_movement.cpp are
+    // GameState's player object, a different class). Deleted with the
+    // struct. Scripted movement goes through EQ's move commands.
 
     /**
      * Deactivate the handler (for shutdown).
@@ -104,7 +99,6 @@ public:
 
 private:
     bool m_active = true;
-    InputState m_state;
 
     // Pending actions (injected programmatically)
     bool m_pendingActions[static_cast<size_t>(InputAction::Count)] = {false};
