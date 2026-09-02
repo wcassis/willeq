@@ -463,3 +463,504 @@ it to territory and repoint it — that is correction 10, not scope creep.
   metric).
 - You find yourself wanting to decompose a method, delete dead content, trim an
   include block, or add a TU this plan does not name.
+
+---
+
+## Review (executed 2026-09-02, slot1, branch `task/J24-combat-split`)
+
+**Base / fork point: `e81a9898482d6150f4da648f915885a830c11bab`** ("Batch J: fold
+J32's corrections…"), the `fable` tip at dispatch. Every measurement below is at
+that tip.
+
+### 1. Line count and drift
+
+**2,119 lines — EXACTLY what §Measured recorded at `824adb28`. Zero drift**, in
+the total and in every range and cut boundary. Correction 9 did not fire.
+
+### 2. §Measured re-verified with my own greps
+
+| property | plan | measured at my tip | ✓ |
+|---|---|---|---|
+| total lines | 2,119 | **2,119** | ✓ |
+| preamble | 1-49, 14 includes, pack pair 17/48, three structs 18-47 | **identical** | ✓ |
+| namespace tokens | none | **0** (`grep -c namespace` = 0) | ✓ |
+| method definitions | 77 | **77 members + 1 free function = 78** — see below | ⚠ |
+| largest method | 192 (1360-1551) | **192**, 2nd 108 (1798-1905) | ✓ |
+| `// ====` banners | 0 | **0** (`grep -cE '^// ={4,}'`) | ✓ |
+| conditional directives | 6 (7/9, 509/513, 545/549) | **6, exactly those lines** | ✓ |
+| file-scope `static` / anon ns | zero | **zero** (`grep -n '^static \|^namespace'` exit 1) | ✓ |
+| multi-line comment regions | zero | **zero** — total `/*` count is **0** | ✓ |
+
+**Counting pattern stated (correction 46).** `grep -cE '^[A-Za-z_].*CombatManager::'`
+= **76**; that pattern misses the constructor, whose definition line begins
+`CombatManager::CombatManager(` so there is no `CombatManager::` after column 1.
+The pattern actually used for every count in this Review is
+`grep -cE '^[A-Za-z_][A-Za-z_0-9:<>,&\* ]*\('` = **78** file-scope function
+definitions: **77 `CombatManager` members** (the plan's figure, confirmed) **plus
+one namespace-scope free function** (§3).
+
+Preprocessor dump at my tip, pasted (§Do not cut inside a conditional):
+
+```
+7: #ifdef WITH_AUDIO
+9: #endif
+509: #ifdef WITH_AUDIO
+513: #endif
+545: #ifdef WITH_AUDIO
+549: #endif
+```
+
+All three pairs are matched and none straddles a cut: 7/9 is preamble,
+509/513 and 545/549 are both inside 50-789 (the stays range).
+
+### 3. ⚠ Correction 21 AND 51 — re-derived, and correction 51 scored a hit
+
+`grep -n '^static \|^namespace' src/client/combat.cpp` → **exit 1, no output.**
+Zero `static` symbols, zero anonymous namespaces, exactly as §Measured says.
+
+⚠ **But the narrow pattern misses one symbol, exactly as correction 51 warns.**
+Widening to every column-0 definition that is not a `CombatManager` member:
+
+```
+$ grep -nE '^[A-Za-z_][A-Za-z_0-9:<>,&\* ]*\(' src/client/combat.cpp | grep -v 'CombatManager::'
+1658:bool IsCorpseEntity(const Entity& entity) {
+```
+
+**`IsCorpseEntity` is a namespace-scope free function with external linkage** —
+the J32 shape. Its readers, tree-wide:
+
+```
+$ grep -rn 'IsCorpseEntity' src/ include/ tests/ scripts/
+src/client/combat.cpp:1658:bool IsCorpseEntity(const Entity& entity) {
+src/client/combat.cpp:1670:	return IsCorpseEntity(entity);
+include/client/combat.h:22:bool IsCorpseEntity(const Entity& entity);
+```
+
+**It is declared in the public header `include/client/combat.h:22`**, so it would
+have been safe across a cut regardless — and in fact definition (1658) and its
+sole reader (1670, inside `CombatManager::IsCorpse`) are **both in range
+1360-2119**, the `combat_hunting.cpp` range. **Same range: correction 21
+satisfied.** Had it been `static`, it would still have been safe here, but the
+plan's `^static ` pattern would not have shown it at all. **This is the second
+consecutive unit where the widened pattern found something the narrow one
+missed.**
+
+The three packet structs, re-derived (§Correction 21's table, not cited):
+
+```
+$ grep -n 'ClientTarget_Struct\|Consider_Struct\|Action_Struct' src/client/combat.cpp
+18:struct ClientTarget_Struct {
+22:struct Consider_Struct {
+33:struct Action_Struct {
+220:			packet.Resize(sizeof(ClientTarget_Struct));
+221:			ClientTarget_Struct* ct = (ClientTarget_Struct*)packet.Data();
+261:	packet.Resize(sizeof(ClientTarget_Struct));
+262:	ClientTarget_Struct* ct = (ClientTarget_Struct*)packet.Data();
+```
+
+| symbol | defn | readers | range holding defn | range holding readers | same? |
+|---|---|---|---|---|---|
+| `ClientTarget_Struct` | 18-20 | 220, 221, 261, 262 | 15-48 (stays) | **50-789 (stays)** | ✅ same TU |
+| `Consider_Struct` | 22-31 | **none** | 15-48 (stays) | — | ✅ |
+| `Action_Struct` | 33-47 | **none** | 15-48 (stays) | — | ✅ |
+
+All four readers are in `combat.cpp`, the same TU as the definitions. The two new
+TUs need neither the structs nor the pack directives.
+
+### 4. Comment depth at every cut — computed, not asserted
+
+Using the `//`-stripping counter from §Correction 33:
+
+```
+depth after line 49   = 0
+depth after line 50   = 0
+depth after line 789  = 0
+depth after line 790  = 0
+depth after line 1359 = 0
+depth after line 1360 = 0
+depth after line 2119 = 0
+```
+
+Total `/*` occurrences in the whole file: **0** (`grep -c '/\*'` = 0). Depth is 0
+everywhere by construction — correction 33's "no multi-line regions" holds in the
+strongest possible form here, and unlike J13 there are not even single-line
+`/* */` argument comments.
+
+### 5. Cut boundaries at my tip, with neighbours
+
+Cut **790** (785-793):
+```
+785:		total_mobs, mobs_in_range, range);
+786:
+787:	return hostiles;
+788: }
+789:
+790: std::vector<CombatTarget> CombatManager::GetNearbyAllies(float range) {
+791:	std::vector<CombatTarget> allies;
+792:	const auto& entities = m_eq->GetEntities();
+793:	glm::vec3 my_pos = m_eq->GetPosition();
+```
+Blank at 789, predecessor 788 closes `GetNearbyHostiles`. J03's rule satisfied.
+
+Cut **1360** (1355-1363):
+```
+1355:		base_range, my_size, …, adjusted_range);
+1356:
+1357:	return adjusted_range;
+1358: }
+1359:
+1360: void CombatManager::FindNextHuntTarget() {
+1361:	LOG_DEBUG(MOD_COMBAT, "FindNextHuntTarget: Starting scan (…)",
+1362:		static_cast<int>(m_combat_state), …);
+1363:
+```
+Blank at 1359, predecessor 1358 closes the range helper. J03's rule satisfied.
+**Both boundaries are exactly as §Every cut boundary predicted.**
+
+### 6. File-header comment lines written — every one, enumerated
+
+`src/client/combat.cpp`, **8 new lines prepended** (original line 1 becomes 9):
+```
+1: // combat.cpp -- part 1 of 3: targeting and auto-attack.
+2: //
+3: // J24 (Batch J, file-size reclamation) lifted the other two thirds out of this
+4: // file verbatim: the per-round combat pump now lives in combat_rounds.cpp and
+5: // the auto-hunt / consider / looting cluster in combat_hunting.cpp. The packet
+6: // structure block below stays here, together with its matched global structure
+7: // packing directive pair, because this is the only translation unit that reads
+8: // any of it.
+```
+
+`src/client/combat_rounds.cpp`, lines **1-11**:
+```
+ 1: // combat_rounds.cpp -- part 2 of 3: the per-round combat pump.
+ 2: //
+ 3: // J24 (Batch J, file-size reclamation) moved this cluster verbatim out of
+ 4: // combat.cpp: ally scanning, the auto-hunt update, the combat round itself, and
+ 5: // the range and suitability helpers it calls. Move-only -- no interface,
+ 6: // behaviour or decomposition change.
+ 7: //
+ 8: // This TU deliberately carries no copy of combat.cpp's packet structure block
+ 9: // or of its matched global structure packing directive pair: nothing here reads
+10: // them, and a half-copied pair silently changes the layout of every struct
+11: // declared after it. See refactor/J24_combat_split.md.
+```
+
+`src/client/combat_hunting.cpp`, lines **1-14**:
+```
+ 1: // combat_hunting.cpp -- part 3 of 3: auto-hunting, consider handling, looting.
+ 2: //
+ 3: // J24 (Batch J, file-size reclamation) moved this cluster verbatim out of
+ 4: // combat.cpp: hunt-target discovery, the consider response path, the hunt list,
+ 5: // and the loot state machine that follows a kill. Move-only.
+ 6: //
+ 7: // The hunt-target scan is 192 lines and was moved WHOLE. Decomposing it is a
+ 8: // recorded Batch-G candidate that this move-only commit deliberately does not
+ 9: // touch.
+10: //
+11: // This TU deliberately carries no copy of combat.cpp's packet structure block
+12: // or of its matched global structure packing directive pair: nothing here reads
+13: // them, and a half-copied pair silently changes the layout of every struct
+14: // declared after it. See refactor/J24_combat_split.md.
+```
+
+**33 new comment lines total (8 + 11 + 14). No other comment in any file was
+changed.**
+
+⚠ **Corrections 40/42/45 compliance, and it mattered here.** §Review-must-answer
+item 11 prescribes `grep -n 'pragma pack'` on all three TUs as an acceptance
+check. A header comment spelling that token out would have made the new TUs
+return hits from a comment and read exactly like a half-copied pair — the
+correction-45 mechanism, firing on the plan's own verification step. **All three
+headers describe the directives in words** ("matched global structure packing
+directive pair") and none contains the literal token, so the item-11 grep below
+is a faithful picture. For the same reason no header names the two dead structs,
+even though §Review item 12 asks them to be recorded — they are recorded here, in
+the Review, which is where a record belongs.
+
+⚠ **Correction 30 did NOT fire.** Both new TUs' preamble slice ends on the
+original's blank line 49 and their bodies begin at a method definition, so no
+double blank appears anywhere. No hand-fixing was needed or done.
+
+### 7. CMake add-sites — derived, not transcribed
+
+⚠ **The dispatch brief correctly refused to quote a number (correction 49). I
+found ONE**, which agrees with §CMake.
+
+Method, avoiding all three known under-count traps: enumerated every CMake file
+in the tree with `find -name CMakeLists.txt -o -name '*.cmake'` (excluding
+`build*` and `third_party`) — **23 files** — and grepped all of them by
+**filename**, case-insensitively.
+
+```
+$ xargs -a <the 23 cmake files> grep -in 'client/combat\.cpp'
+/mnt/projects/fable/wt/slot1/CMakeLists.txt:302:    src/client/combat.cpp
+```
+
+**Exactly one site.** It is inside `SET(CLIENT_CORE_SOURCES` which **opens at
+`:267`**, not the `:265`/`:300` the plan records — **2 lines of rot**, the
+expected kind. Both new TUs added immediately below it.
+
+- Trap 1 (naming `tests/CMakeLists.txt`): avoided — the sweep is over all 23
+  files by enumeration, and `tests/CMakeLists.txt` holds nothing relevant anyway.
+- Trap 2 (lowercase commands): avoided — grepped the filename, never `set(`.
+- Trap 3 (`--include='CMakeLists.txt'` missing `<dir>/CMakeLists.txt`): avoided —
+  `--include` was never used; the file list came from `find` and includes the
+  root file by name.
+
+The plan's named false positive is real and its line number has moved: the
+`test_combat.cpp` hit is at **`tests/cmake/commands.cmake:288`**, not `:278`. It
+is the test's own source. Nothing added there. **This unit touches no
+`gles2_zone_benchmark` site**, confirming §CMake.
+
+### 8. `tests/` and `scripts/` — correction 10, both greps pasted
+
+```
+$ grep -rn 'combat\.cpp' tests/ scripts/
+tests/test_hunt_target_body_type.cpp:10:// IsTargetSuitableForHunt() (combat.cpp), so a player running /hunt had targets
+tests/test_command_processor.cpp:811:// (combat.cpp; see the gravestone comment in application_zone_loading.cpp); …
+tests/test_combat_manager.cpp:20:// Note: tests/test_combat.cpp already covers combat *enums and structs*
+tests/test_combat_manager.cpp:115:// per-frame poll (see combat.cpp's PublishTargetChanged()/
+tests/test_combat_manager.cpp:257:// … (combat.cpp's
+tests/test_combat_manager.cpp:700:// path, combat.cpp:818/825/1168/1843/1861). See
+tests/test_combat_manager.cpp:712://   * CombatManager::ProcessCombatRound() (combat.cpp) calls
+tests/test_combat_manager.cpp:907:// finding, combat.cpp) -- this test is about the death-event wiring,
+tests/test_state_modules_secondary.cpp:473:// SetTarget()/ClearTarget() choke points (combat.cpp) -- and
+tests/cmake/commands.cmake:288:    test_combat.cpp
+```
+**Ten hits: nine comments and one CMake source line for a different file. Zero
+functional readers.**
+
+```
+$ grep -hn 'kRoot / "src\|kRoot / "include' tests/*.cpp | sort -u
+… (17 lines; the full list is the reachability sweep's eq.h / event_bus.h /
+renderer_intents.h / action_dispatcher*.cpp / eq_bridge_intents.cpp /
+renderer_event_receiver.cpp / renderer_frame_render.cpp /
+renderer_frame_input.cpp / renderer_command_catalog.cpp set) …
+```
+**`src/client/combat.cpp` does not appear.** No test opens this file as text; no
+repoint is needed, exactly as §tests/scripts predicted. I also checked J33's
+filename-keyed sweep (`test_first_person_camera_single_formula.cpp`): it recurses
+`src/client/graphics` only, so a `src/client/` TU cannot enter it.
+
+⚠ **Correction 24 — the stale citations were ALREADY stale at my base**, checked
+line by line rather than assumed. `test_combat_manager.cpp:700` cites
+`combat.cpp:818/825/1168/1843/1861` as the sites of the pre-T26 blocking sleeps.
+At `e81a9898`, **before this split touched anything**, those lines are
+`CombatManager::GetHighestPriorityTarget() {`, a lambda parameter list,
+`return true;`, and two `//` comments inside the hunt scan. **None is a loot
+call and none is a sleep.** Fifth unit in a row to find this. Pre-existing doc
+rot; **not attributable to J24**, owned by J21's successor pass.
+
+### 9. Both content proofs — pasted, both exit 0
+
+Both are extracted **from the produced files**, not from scratch ranges, so they
+cover assembly as well as content.
+
+**(a) Byte-identical re-concatenation**, segments in original order —
+`combat.cpp[58..797]` (orig 50-789) + `combat_rounds.cpp[27..596]` (orig
+790-1359) + `combat_hunting.cpp[30..789]` (orig 1360-2119):
+```
+2070 orig_body.txt
+2070 reconcat.txt
+cmp -> BYTE_PROOF_EXIT=0
+```
+**2,070 lines, `cmp` exit 0 — exactly the count §byte-identical predicted.**
+
+**(b) Line multiset**, `sort` of the same two sides:
+```
+diff before.txt after.txt -> MULTISET_EXIT=0
+```
+**Empty diff**, as predicted (no cross-TU header, nothing relocated into an
+existing file, so neither correction 7 nor 20 applies).
+
+Correction 17/20 note: the proof helpers here are three `sed -n` extractions with
+no shell counters at all, so J05's non-`local` failure mode has no surface. Both
+proofs passed first attempt; neither had to be debugged.
+
+### 10. Item 11 — `grep -n 'pragma pack'` on all three TUs
+
+```
+combat.cpp:        25:#pragma pack(1)
+                   56:#pragma pack()
+combat_rounds.cpp:   (no output, grep exit 1)
+combat_hunting.cpp:  (no output, grep exit 1)
+```
+**`combat.cpp` shows exactly the two it has today** (at 25/56, = original 17/48
+plus the 8 header lines) **and the new TUs show none.** HAZARD 1 discharged.
+
+Per-TU preprocessor dumps, confirming every fence is matched in the file that
+holds it:
+```
+combat.cpp:         15/17, 517/521, 553/557  (3 matched WITH_AUDIO pairs)
+combat_rounds.cpp:  18/20                    (1 matched pair, the copied preamble)
+combat_hunting.cpp: 21/23                    (1 matched pair, the copied preamble)
+```
+
+### 11. ⚠ Item 12 — DEAD-CONTENT SITE #8, recorded and moved verbatim
+
+`Consider_Struct` (original 22-31) and `Action_Struct` (33-47) — **26 lines
+counting the blank between them, defined and never referenced anywhere in the
+tree.** Verified rather than cited:
+
+```
+$ grep -rn 'Consider_Struct\|Action_Struct' src/ include/ tests/
+```
+returns 15 hits, and **not one of them reads either of these two definitions**:
+- `include/common/packet_structs.h:427` is a **different** struct,
+  `EQT::Consider_Struct`, with its own 28-byte `static_assert`; its readers are
+  `eq_player_social.cpp:628` and `test_packet_structs.cpp:241`, both qualified
+  `EQT::`.
+- `eq_combat_actions.cpp:45` declares a **third**, function-local
+  `struct Consider_Struct` inside its own handler.
+- Every `Action_Struct` hit is a comment or a `ClickObjectAction_Struct` /
+  `Target_Struct` substring match.
+
+**Where they landed: both stay in `src/client/combat.cpp`, at its lines 30-39
+and 41-55** (original 22-31 and 33-47, shifted by the 8 header lines), inside the
+structure-packing pair. **Not deleted, not tidied, not moved out of the block.**
+Recorded here as **dead-content site #8** for the batch's one standing
+recommendation, which is Will's to accept.
+
+### 12. Final counts, method split, and a plan-arithmetic correction
+
+| file | lines | header | preamble | body | defs |
+|---|---|---|---|---|---|
+| `src/client/combat.cpp` | **797** | 8 | 1-49 → 9-57 | orig 50-789 | **25** |
+| `src/client/combat_rounds.cpp` | **596** | 11 | 1-14 + 49 | orig 790-1359 (570) | **27** |
+| `src/client/combat_hunting.cpp` | **789** | 14 | 1-14 + 49 | orig 1360-2119 (760) | **26** |
+| | **2,182** | 33 | | 2,070 | **78** |
+
+`check_file_sizes.sh --files`: **3 ok, 0 warn, 0 fail.** Largest TU **797**, well
+under the 1,500 warn line — 703 lines of headroom.
+
+⚠ **§The split's ≈lines column is 34 too high for BOTH new TUs, and the error is
+internal to the plan** (the correction 19/47 class). It predicts 619 and 809;
+the produced bodies-plus-preamble are **585 and 775**. The difference is exactly
+**34** in each case — the size of the 15-48 struct block, which §Includes and the
+§split table's own middle row explicitly say is **not** copied to either TU. The
+column was computed as `49 + range` (the whole preamble) where §Includes
+prescribes `15 + range`. **The plan's arithmetic line — "with the struct block
+staying behind, the two new TUs are `15 + range`" — is the correct one**, and it
+reproduces exactly: 15 + 570 = 585, 15 + 760 = 775. Adding the prescribed headers
+gives 596 and 789. **Nothing was dropped; the estimate contradicted itself, as
+correction 12 warns estimates do in both directions.**
+
+⚠ **The per-TU method prediction (roughly 30 / 20 / 27) does not reproduce under
+any counting pattern — the real split is 25 / 27 / 26.** The ranges were exact;
+the derived counts were not. **Fifth unit running with this exact shape** (J13,
+J25, J26, J32, now J24). Correction 46 is doing its job and should stay.
+
+### 13. Acceptance results, by exit code
+
+| step | result |
+|---|---|
+| `cmake --build build -j24` | ⚠ first invocation **exit 143** at the 600 s ceiling; re-invocation **exit 0** |
+| ELF scan after the 143 | **221 binaries scanned, 0 bad** — no truncation, no absence |
+| `scripts/build-gles2-x86.sh` | **exit 0**, first invocation |
+| `ctest -j6` | **exit 8** — 3506/3507, sole failure `AudioManagerTest.PreloadCommonSounds` (the documented ALSA host quirk, named in `test_baseline.txt`). **Zero new failures.** |
+| `visual_gate` (test #3504, in suite) | **Passed, 22.15 s** |
+| goldens | `git status --porcelain` shows **only** `CMakeLists.txt`, `combat.cpp`, and the two new TUs. **No golden touched.** |
+| `scripts/build-arm-noble.sh` | **exit 0**, first invocation |
+| `check_file_sizes.sh --files` | **3 ok, 0 warn, 0 fail** |
+| `test_combat_manager` | **66/66 PASSED** standalone; **163/163** for the whole `-R 'CombatManager\|test_combat\|Combat'` selection |
+| `test_combat` | **10/10 PASSED** |
+
+⚠ **Correction 41 was satisfied by ORDER, not by a standalone re-run.**
+`build-gles2-x86.sh` ran **before** `ctest -j6`: the source edits were made at
+~14:1x, `build-gles2/bin/gles2_zone_benchmark` is stamped **14:33**, and the
+in-suite gate ran after that. The gate therefore exercised a benchmark built from
+this unit's own sources. No standalone re-run was needed. **A render-step failure
+would have been a genuine surprise here (no `gles2_zone_benchmark` add-site);
+there was none.**
+
+⚠ **The truncation trap did not fire this time**, but the scan was run anyway per
+correction 32 and cost about a second. The 143 landed on a compile in a
+three-wide wave; the re-invocation rebuilt cleanly and all 221 binaries carry
+valid ELF headers.
+
+The combat suite was singled out as requested: **`test_combat_manager` is 66
+tests in 12 suites and all 66 pass**, both standalone against the freshly
+relinked binary and inside `ctest`. Its known stale comments are unchanged — J24
+edited no test file, and §Territory forbids it. The `:700` citation block is the
+one this Review documents in §8 as already-stale-at-base.
+
+### 14. Verifier — committed first, then verified
+
+```
+BASE = e81a9898482d6150f4da648f915885a830c11bab
+$ python3 scripts/refactor/verify_move_only.py "$BASE..HEAD" \
+      --repo /mnt/projects/fable/wt/slot1
+
+Non-C++ files changed (not verified, review separately):
+  CMakeLists.txt
+  refactor/J24_combat_split.md
+
+Files verified: 3
+Boilerplate: +61 / -0 lines (allowed)
+
+PASS: move-only (modulo boilerplate).
+VERIFIER_EXIT=0
+```
+
+**EXIT 0, `+0/-0` substantive — the plan's prediction held exactly.** No line was
+flagged, so there is nothing to enumerate and no orchestrator sign-off is needed
+(contrast corrections 5 and 9).
+
+**The 61 boilerplate lines are derivable from what this plan prescribes and
+nothing else**, which is what correction 19 asks for:
+
+| source | lines |
+|---|---|
+| header comments written (§6): 8 + 11 + 14 | **33** |
+| copied preamble 1-14 × 2 new TUs — 12 `#include` + `#ifdef` + `#endif`, all in the allowlist; the blank at 49 normalises away | **28** |
+| **total** | **61** |
+
+All three verifier traps were avoided deliberately, and it is worth stating so
+because two of them share a signature: the commit happened **before** the run
+(correction 13 — an uncommitted tree prints `No C++ files changed` and exits 0);
+`--repo` names this slot, not the default `.`, which would have verified `main/`;
+and the base is the **fork point** from `git merge-base`, not `fable`, which
+moves under a three-wide wave. `$BASE` here happens to equal the dispatch tip
+because no other unit had merged when this ran.
+
+`git status --porcelain` after the commit is **empty** — no golden, and nothing
+else in the tree, was touched.
+
+### 15. Findings only, not fixes
+
+1. **Correction 51 scored its second consecutive hit.** `IsCorpseEntity` is
+   invisible to the `^static |^namespace` pattern §Measured prescribes. It was
+   safe here twice over (header-declared, and definition and reader in the same
+   range), but the audit pattern in every remaining plan should be the widened
+   column-0 form, not `^static `.
+2. **§The split's line estimates are 34 high for both new TUs** because the
+   column used the whole 49-line preamble against §Includes' prescribed 14+1.
+   Correct the row rather than the executor's arithmetic.
+3. **The per-TU method prediction (30/20/27) is 25/27/26.** Ranges exact, derived
+   counts wrong — fifth unit.
+4. `CLIENT_CORE_SOURCES` opens at **`:267`** and `combat.cpp` sits at **`:302`**,
+   not the `:265`/`:300` recorded; the named false positive is at
+   `tests/cmake/commands.cmake:288`, not `:278`. Ordinary line rot.
+5. **Dead-content site #8** (§11): 26 lines, zero readers, moved verbatim.
+6. **`docs/module_map.md` needs two new rows**, for `combat_rounds.cpp` and
+   `combat_hunting.cpp`, and its `combat.cpp` row needs the new size. **Recorded,
+   not acted on** — outside territory.
+7. **Newly created doc rot, attributed honestly (the J31 distinction).** Four of
+   the nine comment mentions in §8 now point a reader at `combat.cpp` for code
+   that moved: `test_hunt_target_body_type.cpp:10` (the hunt-suitability
+   predicate → `combat_hunting.cpp`), `test_combat_manager.cpp:115` (the target
+   publish helpers stay, still correct), `:712` (the combat round →
+   `combat_rounds.cpp`), and `:907` (the hunt scan → `combat_hunting.cpp`).
+   `test_state_modules_secondary.cpp:473` and `test_combat_manager.cpp:257` name
+   the target choke points, which **stay** in `combat.cpp` and remain correct.
+   **These are comment-only and break nothing** — no test reads this file as
+   text — but unlike the `:700` citation they were accurate at my base. Queue
+   them against J24, not against pre-existing rot.
+8. **Wall clock ~48 min**, of which the cut, the CMake edit and both proofs were
+   **under 4 minutes**. The bar was everything else. **Slowest step by a wide
+   margin: `cmake --build -j24`, which burned a full 600 s ceiling and then
+   ~5 more minutes** — the wave stretch is real for the x86 build but did **not**
+   reach `ctest` (174.8 s, comfortably inside J06's 120.7 s / J02's 6.8 min
+   range) and did not reach the gles2 or ARM builds, both of which completed on
+   their first invocation. Correction 14's "may happen, not will" holds.
