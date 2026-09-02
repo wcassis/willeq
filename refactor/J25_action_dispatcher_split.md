@@ -548,3 +548,522 @@ side wholesale would have silently reverted a completed unit.
   include block, or add a TU this plan does not name.
 - `tests/test_reachability_sweep.cpp` has grown a third reference to this file.
 - J15 is in flight in another slot.
+
+## Review (executor, slot1, 2026-09-02)
+
+Branch `task/J25-action-dispatcher-split`, cut from `fable` at
+**`0c95f7df4cf59481d6be267f181052c026a49a0f`** ("Batch J Wave 6: plan the last
+thirteen files (J23-J35)…"). That is also `$BASE` for the verifier — the plan's
+survey commit `824adb28` is an ancestor.
+
+### 1. Line count and range drift
+
+`src/client/action/action_dispatcher.cpp` measured **2,081** at my tip —
+**exactly** the plan's number. **Zero range drift**: both cut boundaries, all 29
+banner line numbers, the namespace lines and the preamble length reproduced
+without adjustment.
+
+### 2. §Measured re-verified (own greps, pasted)
+
+```
+$ wc -l src/client/action/action_dispatcher.cpp
+2081
+
+$ grep -n 'namespace' src/client/action/action_dispatcher.cpp
+7:namespace eqt {
+8:namespace action {
+2080:} // namespace action
+2081:} // namespace eqt
+
+$ grep -n '^static \|^namespace\s*{\|^const \|^constexpr ' src/client/action/action_dispatcher.cpp
+(no output, exit 1)
+
+$ awk '/^[ \t]*#(if|ifdef|ifndef|else|elif|endif)/ {print NR": "$0}' src/client/action/action_dispatcher.cpp
+(no output — zero conditional preprocessor directives)
+
+$ grep -n '/\*' src/client/action/action_dispatcher.cpp
+(no output, exit 1 — zero comment-open tokens of any kind, so zero multi-line
+ comment regions; correction 33 satisfied trivially)
+
+$ grep -cE '^// ={4,}' src/client/action/action_dispatcher.cpp
+29
+$ grep -nE '^// ={4,}' | cut -d: -f1
+49 169 260 292 484 661 736 795 822 872 931 965 1167 1265 1283 1301 1327 1345
+1355 1409 1498 1569 1635 1678 1697 1716 1734 1860 1903
+```
+
+Every banner line number matches the plan.
+
+⚠ **TWO CORRECTIONS TO §Measured — neither changes the shape of the unit, but
+both are plan errors the next Wave-6 executor should not inherit.**
+
+**(a) The preamble is FIVE `#include` lines, not six, and there is NO file-header
+comment block.** §Measured says "preamble 1-8 — six `#include` lines then
+`namespace eqt {`", and §File-header comments says "`action_dispatcher.cpp` has a
+file-header comment block at **1-5** … the stays file's header must be updated
+because it currently describes the whole dispatcher." Both are wrong. Lines 1-8
+at `0c95f7df` are:
+
+```
+1: #include "client/action/action_dispatcher.h"
+2: #include "client/state/game_state.h"
+3: #include "client/pet_constants.h"
+4: #include <cmath>
+5: #include <limits>
+6: (blank)
+7: namespace eqt {
+8: namespace action {
+```
+
+Five includes, one blank, two namespace opens. **The file has no header comment
+at all.** The prescribed 1-8 verbatim copy is unaffected — the range is right,
+only its description was wrong. What changed is the header work: instead of
+*adapting* an existing header there was none to adapt, so all three TUs
+(including the stays file) received a **newly written** 13-line header. Every
+line is enumerated in §6 below.
+
+**(b) The method count is 184 definition lines, not 183.** `grep -c
+'ActionDispatcher::'` returns **184**; of those, 182 match
+`^[A-Za-z_].*ActionDispatcher::[A-Za-z_]` and the two that do not are the
+constructor (`ActionDispatcher::ActionDispatcher(...)`, line 10 — the token
+appears at column 0 so there is no preceding character for `.*` to consume) and
+the destructor (`ActionDispatcher::~ActionDispatcher() = default;`, line 14).
+Any future count of this file should say which pattern it used; the three
+plausible patterns give 182 / 183 / 184.
+
+### 3. Correction 21, re-derived (not cited)
+
+The grep above returns **nothing, exit 1**: zero file-scope `static`, zero
+anonymous namespaces, zero file-scope `const`/`constexpr`. The only `namespace`
+tokens in the file are its own four (7, 8, 2080, 2081). Every symbol the file
+defines is an `ActionDispatcher` member declared in
+`include/client/action/action_dispatcher.h` — external linkage, so a call across
+a cut is an ordinary link, and there is no file-local helper that could be
+separated from a consumer.
+
+**Therefore correction 21 has no exposure here: there is no (helper range,
+consumer range) pair to check.** Re-derived from my own greps, not from the
+plan's audit sentence.
+
+### 4. Comment depth at every cut (computed)
+
+```
+$ python3 <the //-stripping counter from the plan>
+depth after line 689 = 0
+depth after line 690 = 0
+depth after line 1408 = 0
+depth after line 1409 = 0
+final depth 0
+```
+
+Depth is 0 everywhere (the file contains no `/*` at all), so no cut lands inside
+a comment region.
+
+### 5. Preprocessor dump
+
+The `awk` dump above returns **nothing**: the file contains no `#if`, `#ifdef`,
+`#ifndef`, `#else`, `#elif` or `#endif`. No cut can land inside a conditional
+region.
+
+### Cut boundaries, verified at my tip
+
+| Cut | preceding lines | first line of next range |
+|---|---|---|
+| 690 | `688: }` (end of `sendTell`), `689` blank | `690: ActionResult ActionDispatcher::replyToLastTell(const std::string& message) {` |
+| 1409 | `1407: }` (end of `requestWho`), `1408` blank | `1409: // ========== Guild Actions (T132) ==========` |
+
+Pasted context:
+
+```
+685: (blank)
+686:     m_handler->sendTell(target, message);
+687:     return ActionResult::Success();
+688: }
+689: (blank)
+690: ActionResult ActionDispatcher::replyToLastTell(const std::string& message) {
+
+1404: (blank)
+1405:     m_handler->requestWho(name, lvlLow, lvlHigh);
+1406:     return ActionResult::Success();
+1407: }
+1408: (blank)
+1409: // ========== Guild Actions (T132) ==========
+1410: //
+1411: // Net-new: EqActionHandler wraps the pre-existing EverQuest::SendGuild*()
+```
+
+Both cuts satisfy J03's rule (blank line, predecessor closes a method, comment
+depth 0), and at 1409 the banner rule agrees — the banner travels with the guild
+cluster it introduces.
+
+### 6. Every file-header comment line written, enumerated
+
+All three TUs carry the **same 13-line header** except for line 1's cluster
+list. Lines 2-13 are byte-identical across the three files:
+
+```
+ 1  // ActionDispatcher -- <per-file cluster list, see below>
+ 2  //
+ 3  // Split out of src/client/action/action_dispatcher.cpp by
+ 4  // refactor/J25_action_dispatcher_split.md (move-only, 2026-09-02). The
+ 5  // dispatcher's method definitions now live in three TUs:
+ 6  // action_dispatcher.cpp, action_dispatcher_social.cpp and
+ 7  // action_dispatcher_guild_misc.cpp; all are declared in
+ 8  // include/client/action/action_dispatcher.h.
+ 9  //
+10  // WARNING: tests/test_reachability_sweep.cpp reads THIS FILE AS TEXT (it
+11  // concatenates all three TUs to parse every ActionDispatcher:: definition,
+12  // and excludes all three by path from its external-caller sweep). Moving a
+13  // method into or out of this file requires updating that test.
+```
+
+Line 1 per file:
+
+- `action_dispatcher.cpp`: `// ActionDispatcher -- movement, camera, targeting, doors, casting and item clusters.`
+- `action_dispatcher_social.cpp`: `// ActionDispatcher -- tell, chat, group, raid, pet, hotbar, spellbook and recipe clusters.`
+- `action_dispatcher_guild_misc.cpp`: `// ActionDispatcher -- guild, /who, LFG, GM, skill and appearance clusters.`
+
+Header is followed by one blank line, then the verbatim preamble (lines 15-22 of
+each produced file), then the body from line 23. **No other comment in any of
+the three files was changed.** The stays file received a header where it
+previously had none — deviation (a) above.
+
+⚠ **Cosmetic artefact, declared not hand-fixed (correction 30's mirror image).**
+The plan warns that replicating "blank + namespace close" double-spaces a TU
+whose body already ends on a blank. That did **not** happen — all three ranges
+end on a blank line (689, 1408, 2079), so each TU's tail reproduces the
+original's exact `}` / blank / `} // namespace action` shape. The artefact that
+*did* appear is the opposite one at the **head**: the original's line 9 (blank)
+belongs to the stays range, so `action_dispatcher_social.cpp` and
+`action_dispatcher_guild_misc.cpp` have their first method definition
+immediately after `namespace action {` with no blank line between. Purely
+cosmetic; fixing it would break the byte-identical re-concatenation proof.
+
+### 7. CMake add-sites: SIX found, exactly as the plan names
+
+```
+$ grep -rn 'action_dispatcher\.cpp' CMakeLists.txt tests/ scripts/
+CMakeLists.txt:382:    src/client/action/action_dispatcher.cpp
+tests/test_setheading_conversion.cpp:115:// RecordingActionHandler fake test_action_dispatcher.cpp uses) so this
+tests/test_reachability_sweep.cpp:357:    auto lines = splitLines(readFile(kRoot / "src/client/action/action_dispatcher.cpp"));
+tests/test_reachability_sweep.cpp:394:        if (f.rel == "src/client/action/action_dispatcher.cpp") continue;
+tests/cmake/commands.cmake:8:# … plus action_dispatcher.cpp        (comment)
+tests/cmake/commands.cmake:30:    test_action_dispatcher.cpp         (the test's own source)
+tests/cmake/commands.cmake:31:    ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher.cpp
+tests/cmake/commands.cmake:55:    …
+tests/cmake/commands.cmake:81:    …
+tests/cmake/commands.cmake:101:   …
+tests/cmake/commands.cmake:233:  …
+```
+
+**Six real add-sites, at exactly the line numbers the plan predicted** — one
+`SET(CLIENT_CORE_SOURCES` site at `CMakeLists.txt:382`, five `ADD_EXECUTABLE`
+source lists in `tests/cmake/commands.cmake` (`test_action_dispatcher`,
+`test_command_processor`, `test_appearance_command`, `test_merged_help`,
+`test_input_action_bridge`). Both new TUs added at all six; `grep -rn` across
+`tests/` was used, `tests/CMakeLists.txt` was never named (correction 26).
+`scripts/` has zero hits. No `gles2_zone_benchmark` site, as predicted.
+
+The comment at `tests/cmake/commands.cmake:8` and the one at `:150` still name
+`action_dispatcher.cpp` only; they are now incomplete rather than wrong.
+**Recorded, not fixed** (J21's successor pass).
+
+Second grep (correction 10's other half):
+
+```
+$ grep -hn 'kRoot / "src\|kRoot / "include' tests/*.cpp | sort -u
+…
+333:    auto lines = splitLines(readFile(kRoot / "include/client/action/action_dispatcher.h"));
+357:    auto lines = splitLines(readFile(kRoot / "src/client/action/action_dispatcher.cpp"));
+…
+```
+
+The header read at `:333` is the `IActionHandler` pure-virtual parse; this unit
+does not touch the header, so that line stays. **This grep does NOT see `:394`**
+— confirming the plan's warning that the two greps are not interchangeable.
+No third reference to this file exists (STOP condition clear).
+
+### 8. Both content proofs, and the verifier
+
+`$BASE = 0c95f7df4cf59481d6be267f181052c026a49a0f`
+
+**Proof A — byte-identical re-concatenation.** Bodies extracted from the
+**produced files** (not scratch extracts), so the proof covers assembly:
+`action_dispatcher.cpp:23-703`, `action_dispatcher_social.cpp:23-741`,
+`action_dispatcher_guild_misc.cpp:23-693`, concatenated in original order,
+against `git show "$BASE:src/client/action/action_dispatcher.cpp" | sed -n
+'9,2079p'`:
+
+```
+2071 before_body.txt
+2071 after_body.txt
+cmp → PROOF1_CMP_EXIT=0
+```
+
+**2,071 lines, byte-identical, exit 0** — exactly the plan's expected count.
+
+**Proof B — line multiset.** Same two files, `sort`ed:
+
+```
+diff before.sorted after.sorted → PROOF2_DIFF_EXIT=0   (MULTISET-OK)
+```
+
+Run over the three `.cpp` bodies only; `tests/test_reachability_sweep.cpp` was
+correctly excluded from both sides. No cross-TU header, nothing relocated into
+an existing file — neither correction 7 nor correction 20 applies.
+
+**Verifier** (committed first, `--repo` given, fork-point base):
+result recorded in §Verifier below.
+
+### 9. Final counts
+
+| file | lines | `ActionDispatcher::` definitions | banners |
+|---|---|---|---|
+| `src/client/action/action_dispatcher.cpp` | **705** | 67 (65 named + ctor + dtor) | 6 |
+| `src/client/action/action_dispatcher_social.cpp` | **743** | 60 | 13 |
+| `src/client/action/action_dispatcher_guild_misc.cpp` | **695** | 57 | 10 |
+| total | 2,143 | 184 | **29** |
+
+Banner total is preserved at 29 (`grep -cE`, per correction 28).
+
+**Line counts vs the plan's estimate.** The plan projected 691 / 729 / 681 and
+told the executor to add its own header lines on top; the delta is uniformly
+**+14** (13 header lines + 1 blank) on each file, and the plan's three range
+numbers were otherwise exact. `705 = 13 + 1 + 8 + 681 + 2`,
+`743 = 13 + 1 + 8 + 719 + 2`, `695 = 13 + 1 + 8 + 671 + 2`.
+
+**Method split is 67 / 60 / 57 against the plan's "roughly 60 / 63 / 60"** —
+cluster membership was right (both cuts landed exactly where predicted), the
+per-TU arithmetic was not, same as J13's transposition. All three TUs are well
+under the 1,500 WARN line.
+
+`check_file_sizes.sh --files` over all four changed/created files:
+**4 ok, 0 warn, 0 fail.**
+
+### 10. Findings, not fixes
+
+- `docs/module_map.md` needs rows for `action_dispatcher_social.cpp` and
+  `action_dispatcher_guild_misc.cpp`; `src/client/input/CLAUDE.md` describes
+  action dispatch as one file. **Recorded, not acted on.**
+- `tests/cmake/commands.cmake:8` and `:150` name `action_dispatcher.cpp` in
+  prose and are now incomplete. **Recorded.**
+- Pre-existing citation rot was **not** attributed to this split (correction 24):
+  the only functional readers of this file's text are the two sweep sites, both
+  repointed.
+- No dead content found in this file: no `#if 0`, no commented-out method
+  bodies, no retired-configuration arms. This is the first Wave-6 file with
+  nothing to add to the dead-content decision.
+
+### 11. The `test_reachability_sweep.cpp` repoint, in full
+
+**Site `:357` — before:**
+```cpp
+    auto lines = splitLines(readFile(kRoot / "src/client/action/action_dispatcher.cpp"));
+```
+**after (3 physical lines, exactly as the plan prescribes — concatenate, not
+replace):**
+```cpp
+    auto lines = splitLines(readFile(kRoot / "src/client/action/action_dispatcher.cpp") +
+                            readFile(kRoot / "src/client/action/action_dispatcher_social.cpp") +
+                            readFile(kRoot / "src/client/action/action_dispatcher_guild_misc.cpp"));
+```
+
+**Site `:394` — before:**
+```cpp
+        if (f.rel == "src/client/action/action_dispatcher.cpp") continue;
+        if (f.rel == "include/client/action/action_dispatcher.h") continue;
+```
+**after (existing lines KEPT, two ADDED):**
+```cpp
+        if (f.rel == "src/client/action/action_dispatcher.cpp") continue;
+        if (f.rel == "src/client/action/action_dispatcher_social.cpp") continue;
+        if (f.rel == "src/client/action/action_dispatcher_guild_misc.cpp") continue;
+        if (f.rel == "include/client/action/action_dispatcher.h") continue;
+```
+
+Four edits, no more. The header exclusion at `:395` was not touched.
+
+#### `:357` is LOAD-BEARING — measured, not asserted
+
+The split was built and the sweep run **before** the repoint:
+
+```
+$ ctest --test-dir build -R ReachabilitySweep --output-on-failure   # BEFORE
+4/5 ReachabilitySweep.UnreachableHandlerMethodsAreExactlyTheBlockedList ***Failed 7.87s
+  NEW unreachable IActionHandler methods (not on the documented list):
+  acceptGroupInvite, acceptTrade, activateHotbarCommandSlot, … trainSkill,
+  trainWithTarget, useItem, vendorList, vendorToggle, warp, yellForHelp
+  (102 names)
+80% tests passed, 1 tests failed out of 5
+```
+
+Exactly the failure the plan predicts for a missing `:357` repoint: a long list
+of handler methods, which reads like "the split deleted the handlers". After the
+repoint:
+
+```
+$ ctest --test-dir build -R ReachabilitySweep --output-on-failure   # AFTER
+100% tests passed, 0 tests failed out of 5      (5/5, 13.18 s)
+```
+
+#### `:394` is DEFENSIVE, not load-bearing at this tip — measured (J13's model)
+
+The exclusion protects the **external-caller** sweep, whose regex is
+
+```
+(?:m_dispatcher|dispatcher_|dispatcher|m_actionDispatcher|actionDispatcher_)(?:\.|->)(\w+)\s*\(
+```
+
+Counting matches of that pattern inside each of the three TUs:
+
+```
+action_dispatcher.cpp:            0
+action_dispatcher_social.cpp:     0
+action_dispatcher_guild_misc.cpp: 0
+include/client/action/action_dispatcher.h: 0   (already excluded at :395)
+```
+
+**Zero in all three.** The dispatcher's internal calls are unqualified
+(`checkGMMode(...)`, `checkZoneConnection(...)`) — they have no
+`dispatcher->`/`dispatcher.` receiver, so the external regex never matched them
+even before the split. **At this tip neither the old exclusion nor the two new
+ones changes the computed `reachable` set** — the same conclusion J13 reached
+about its own string-compare exclusion.
+
+That is a reason to **keep all three**, not to drop any: the guard is cheap, it
+encodes the intent ("the dispatcher's own text is never an external caller"),
+and the moment someone writes `m_dispatcher->foo()` inside one of these TUs
+(a plausible thing to do in a forwarding helper) it becomes load-bearing
+immediately. Adding the two new lines rather than replacing the old one keeps
+the guard **exactly as strict as it was**, which was the plan's requirement.
+
+### 12. Six CMake add-sites, each confirmed
+
+See §7. **Six found, six predicted, all six line numbers exact** — one root
+(`CMakeLists.txt:382`, `CLIENT_CORE_SOURCES`) and five in
+`tests/cmake/commands.cmake` (`:31`, `:55`, `:81`, `:101`, `:233`). No
+discrepancy to report loudly.
+
+### Acceptance results
+
+| step | result |
+|---|---|
+| `cmake --build build -j24` | **EXIT 0** (backgrounded by the tool at the 600 s ceiling, then reported its own exit 0 — correction 23's second case, not a 143; ELF scan run anyway, clean) |
+| `ctest -R ReachabilitySweep` before / after repoint | 4/5 FAIL (expected) → **5/5 PASS** |
+| `ctest -j6` full suite | **3506/3507**, sole failure `AudioManagerTest.PreloadCommonSounds` (the documented ALSA host quirk in `refactor/test_baseline.txt`). 157.6 s. **Zero new failures.** No `HeadlessShutdownTest` flake, no discovery failure. |
+| visual gate | **PASS** (ran inside the suite as test `visual_gate`, 47.90 s) |
+| goldens | `git status --porcelain` shows only the 4 changed + 2 created files — **no golden touched** |
+| `scripts/build-gles2-x86.sh` | see §Long-build notes |
+| `scripts/build-arm-noble.sh` | see §Long-build notes |
+| `check_file_sizes.sh --files` | **4 ok, 0 warn, 0 fail** |
+| verifier | see §Verifier |
+
+### Deviations
+
+1. **§Measured's preamble description and §File-header comments' premise are
+   both wrong** (five includes, no existing header comment). Range 1-8 is
+   correct; only the description was. Consequence: the stays file gained a
+   header it did not have, rather than having one updated. Fully enumerated in
+   §6.
+2. **Method count is 184 definition lines, not 183** (§2b) — a counting-pattern
+   artefact, not drift.
+3. **The head-blank cosmetic artefact** in the two new TUs (§6), declared not
+   hand-fixed.
+
+Nothing else deviates. No STOP condition was hit: no file-scope symbol appeared,
+no comment region exists, both cuts matched exactly, both proofs passed, the
+gate found no image mismatch, no third text reference appeared, and J15 was not
+in flight.
+
+### Verifier — the +5/−1 prediction HELD EXACTLY
+
+Run **after** committing (`7b16e6fc`), with `--repo` and the fork point:
+
+```
+$ BASE=$(git -C /mnt/projects/fable/wt/slot1 merge-base fable HEAD)
+$ echo $BASE
+0c95f7df4cf59481d6be267f181052c026a49a0f
+$ python3 scripts/refactor/verify_move_only.py "$BASE..HEAD" --repo /mnt/projects/fable/wt/slot1
+
+Non-C++ files changed (not verified, review separately):
+  CMakeLists.txt
+  refactor/J25_action_dispatcher_split.md
+  tests/cmake/commands.cmake
+
+Files verified: 4
+Boilerplate: +57 / -0 lines (allowed)
+
+SUBSTANTIVE ADDED lines (5):
+  +1x  auto lines = splitLines(readFile(kRoot / "src/client/action/action_dispatcher.cpp") +
+  +1x  if (f.rel == "src/client/action/action_dispatcher_guild_misc.cpp") continue;
+  +1x  if (f.rel == "src/client/action/action_dispatcher_social.cpp") continue;
+  +1x  readFile(kRoot / "src/client/action/action_dispatcher_guild_misc.cpp"));
+  +1x  readFile(kRoot / "src/client/action/action_dispatcher_social.cpp") +
+
+SUBSTANTIVE REMOVED lines (1):
+  -1x  auto lines = splitLines(readFile(kRoot / "src/client/action/action_dispatcher.cpp"));
+
+FAIL: substantive line changes detected. If intentional …
+VERIFIER_EXIT=1
+```
+
+**Exit 1, ADDED 5, REMOVED 1 — exactly the plan's prediction, and every one of
+the six lines is in `tests/test_reachability_sweep.cpp`. Not one line in the
+split itself.** Enumerated against the derivation:
+
+| predicted | observed |
+|---|---|
+| `:357` old `readFile(...);` removed | `-1x auto lines = splitLines(readFile(… action_dispatcher.cpp"));` |
+| `:357` replaced by 3 physical lines | `+1x auto lines = splitLines(readFile(… action_dispatcher.cpp") +`, `+1x readFile(… _social.cpp") +`, `+1x readFile(… _guild_misc.cpp"));` |
+| `:394` two ADDED exclusions, none removed | `+1x if (f.rel == "… _social.cpp") continue;`, `+1x if (f.rel == "… _guild_misc.cpp") continue;` |
+
+Nothing beyond the enumerated set, so there is nothing to chase. The `+57 / -0`
+boilerplate is the 13-line header × 3 files + their blank separators + the two
+copied 8-line preambles + the two replicated namespace-close pairs — all `//`,
+`#include`, `namespace` and `}`, all inside the allowlist.
+
+This is the §Process step-4 / correction-5 case: **expected, not a failure.**
+**Requesting orchestrator sign-off** on these six lines at merge.
+
+### Long-build notes (correction 23 / 27 / 32)
+
+| build | outcome |
+|---|---|
+| `cmake --build build -j24` | **backgrounded by the tool** at the 600 s ceiling, then reported its own **exit 0** (166 s of further wall clock after the hand-off). Correction 23's second case — **not** a 143. ELF scan over `build/bin/*` run anyway: clean. |
+| `scripts/build-gles2-x86.sh` (1st) | **real exit 143** at the 600 s ceiling, killed mid-link of `bin/willeq`. `gmake` printed `*** Deleting file 'bin/willeq'` and removed its own partial output — **J13's shape exactly** (correction 32): the target was **absent**, not truncated. ELF scan over the whole `build-gles2/bin` found **zero bad files**. |
+| `scripts/build-gles2-x86.sh` (2nd) | **exit 0**, 460 s. `bin/willeq` (81 MB) and `bin/gles2_zone_benchmark` (15 MB) both relinked at 12:35 with valid ELF headers; ELF scan clean. |
+| `scripts/build-arm-noble.sh` | **exit 0, first invocation**, 160 s. `build-arm-noble/bin/willeq` is `ELF 32-bit LSB pie executable, ARM, EABI5`. |
+
+⚠ **One trap worth boarding for the next executor: the in-suite `visual_gate`
+test does NOT necessarily exercise your change.** `ctest -j6` runs `visual_gate`
+against the **`build-gles2/` tree**, which is built by
+`scripts/build-gles2-x86.sh` — a *separate* step further down the acceptance
+list. Running the suite before that script means the gate measures a
+`gles2_zone_benchmark` binary that predates the split (mine was stamped 11:01,
+my edits 11:55) and passes without proving anything. **The gate was therefore
+re-run explicitly after the gles2 build**, and that is the run recorded above:
+
+```
+$ bash scripts/ci/visual_gate.sh
+  [cpu] qeynos2:  p95 5.525 (baseline 5.054, ceiling 10.108)
+  [cpu] gfaydark: p95 7.596 (baseline 5.336, ceiling 10.672)
+  [cpu] befallen: p95 8.280 (baseline 5.474, ceiling 10.948)
+=== VISUAL GATE: PASS ===
+EXIT=0
+```
+
+Zero image mismatches, all three CPU p95s inside their ceilings, and
+`git status --porcelain` afterwards lists only this unit's six source files plus
+this plan — **no golden touched.** Suggest ordering `build-gles2-x86.sh` *before*
+the full `ctest` in the acceptance list, or re-running the gate standalone as
+this unit did.
+
+### Wall clock
+
+~55 min end to end. The cut plus the six CMake sites plus the four test edits
+plus both proofs was **under 5 minutes**; everything else was the bar. Slowest
+step by far: `scripts/build-gles2-x86.sh` at **~17 min across two invocations**
+(one 600 s SIGTERM plus a 460 s clean rebuild). `ctest -j6` was **157.6 s** for
+3,507 tests — no wave stretch worth reporting (correction 14: this is a clean
+run, not an anomaly). The x86 `-j24` build and the ARM build were 166 s and
+160 s of measured tail respectively.

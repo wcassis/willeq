@@ -29,6 +29,8 @@ SET(ACTION_LAYER_STATE_SOURCES
 ADD_EXECUTABLE(test_action_dispatcher
     test_action_dispatcher.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher_social.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher_guild_misc.cpp
     ${ACTION_LAYER_STATE_SOURCES}
 )
 TARGET_LINK_LIBRARIES(test_action_dispatcher GTest::gtest_main)
@@ -53,6 +55,8 @@ ADD_EXECUTABLE(test_command_processor
     test_command_processor_world.cpp
     test_command_processor_senders.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher_social.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher_guild_misc.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_bank.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_train.cpp
@@ -79,6 +83,8 @@ GTEST_DISCOVER_TESTS(test_command_processor)
 ADD_EXECUTABLE(test_appearance_command
     test_appearance_command.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher_social.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher_guild_misc.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_bank.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_train.cpp
@@ -99,6 +105,8 @@ GTEST_DISCOVER_TESTS(test_appearance_command)
 ADD_EXECUTABLE(test_merged_help
     test_merged_help.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher_social.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher_guild_misc.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_bank.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_train.cpp
@@ -231,6 +239,8 @@ GTEST_DISCOVER_TESTS(test_loot_window_actions)
 ADD_EXECUTABLE(test_input_action_bridge
     test_input_action_bridge.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher_social.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher_guild_misc.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_bank.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_train.cpp
