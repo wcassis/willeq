@@ -1006,6 +1006,55 @@ J33 1, J34 2 (⚠ `model_viewer`, not just `GRAPHICS_SOURCES`), **J35 7**. **J29
 J32 and J35 all touch `gles2_zone_benchmark`** and share five to seven CMake lines
 with each other — merge one at a time.
 
+## ⚠ CORRECTION 40 FROM J31 (2026-09-02) — THE PRESCRIBED FILE HEADER CAN DISARM THE GUARD IT DOCUMENTS
+
+**§File-header comments tells each new TU to warn about any test that scans it
+as text. Following that literally — naming the scanned tokens verbatim — BREAKS
+ONE GUARD LOUDLY AND SATISFIES THREE SILENTLY.**
+
+J31 caught this in draft, before building. Its header named the tokens
+`tests/test_static_ui_scroll.cpp` looks for:
+- the **counting** guard requires exactly two reads of the wheel accumulator;
+  mentioning it once in a comment made the count **3**. Loud, harmless.
+- **the dangerous half:** three guards are `find(...) != npos` checks. A header
+  comment containing the literal gate expression **satisfies them on its own** —
+  so the test would stay green after someone deleted the real gate from the
+  code. **The prescribed defence would have disarmed the guard it defends.**
+
+**Rule: a file-header warning must DESCRIBE the scanned tokens in words and say
+why they are not spelled out. Never quote a token a text-scanning test greps
+for.** J31's two headers are the reference implementation.
+
+⚠ **This generalises past headers: any comment anywhere can satisfy a
+`find != npos` guard.** The `tests/` text-scanning guards are structurally
+weak in this way, and the batch has now met three flavours of them (readFile
+counting, `find != npos` presence, string-compare exclusion, plus J33's
+filename-keyed sweep). Worth boarding as its own hardening item once Wave 6
+lands.
+
+### J31's result
+
+`renderer_frame.cpp` 1,752 → **513 / 747 / 597**, method split 1/7/1 as
+predicted, **body estimates exact**, zero drift. **Verifier prediction held to
+the line** (+6/−4 including the Counter arithmetic on two identical lines).
+Three proofs, all exit 0.
+
+**Two record errors it corrected.** The orchestrator's dispatch brief said
+**12 CMake add-sites; the real number is ONE** (`CMakeLists.txt:489`) — 12 is
+**J32's** figure, mis-transcribed into J31's brief. J31 searched all 23 CMake
+files with `-i` before concluding, so neither correction 26 nor the uppercase
+trap could have hidden anything. And the file's text-scan record named the wrong
+test file for all three sites, as the dispatch had already flagged.
+
+⚠ **Unlike J06/J07/J08's stale citations, J31's doc rot is NEWLY CREATED** — four
+comment-only citations were accurate at its base and now name the wrong TU.
+Attribute those to J31 in the doc-hygiene queue rather than to pre-existing rot.
+
+**Correction 30 did not fire** — appending the closes to a body range that
+already ends on the original's blank line produces no double-space. And
+§File-header comments asks for "five to eight lines" *and* a warning paragraph
+that cannot fit in eight; content wins, relax the wording.
+
 ## Unit table
 
 | Unit | File | Lines | → TUs | Largest after | Wave | Notes |
