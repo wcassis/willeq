@@ -695,15 +695,15 @@ TEST(ScrollSourceInvariants, OnEventAccumulatesTheMouseWheel) {
 
 TEST(ScrollSourceInvariants, NothingElseConsumesTheWheelAccumulator) {
     // One consumer, so a UI-consumed notch can never also drive the camera.
-    const std::string frame = readFile(kRoot / "src/client/graphics/renderer_frame.cpp");
+    const std::string frame = readFile(kRoot / "src/client/graphics/renderer_frame_input.cpp");
     size_t n = 0, at = 0;
     while ((at = frame.find("getMouseWheelDelta()", at)) != std::string::npos) { ++n; ++at; }
     EXPECT_EQ(n, 2u) << "expected exactly the UI read and the no-UI drain in "
-                        "renderer_frame.cpp";
+                        "renderer_frame_input.cpp";
 }
 
 TEST(ScrollSourceInvariants, TheFrameRoutesTheWheelIntoTheStaticUI) {
-    const std::string frame = readFile(kRoot / "src/client/graphics/renderer_frame.cpp");
+    const std::string frame = readFile(kRoot / "src/client/graphics/renderer_frame_input.cpp");
     EXPECT_NE(frame.find("staticUIInput_->processWheel("), std::string::npos)
         << "the wheel never reaches the static UI -- every panel is pinned to page one again";
     EXPECT_NE(frame.find("staticUIInput_->processScrollKey("), std::string::npos)
