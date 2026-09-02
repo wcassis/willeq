@@ -746,10 +746,13 @@ void EverQuest::OnGraphicsMovement(const eqt::events::PlayerPositionChanged& upd
 	}
 
 	// Update position from graphics input
-	// T310 Leg B: the renderer provides playerZ_, which is the model node's
-	// ORIGIN (== the server's Z), not the feet -- renderer_player_physics.cpp
-	// snaps it to groundZ + collisionZOffset. SendPositionUpdate() sends it
-	// verbatim; nothing adds size/2 anywhere on the send path.
+	// T310 Leg B / T311: the renderer provides playerZ_, which is the model
+	// node's ORIGIN, not the feet -- renderer_player_physics.cpp snaps it to
+	// groundZ + collisionZOffset. That is the RENDER frame, and GameState's
+	// player z stays in it (it is handed straight back to setPlayerPosition).
+	// It is NOT what goes on the wire: SendPositionUpdate() converts to the
+	// WIRE frame (groundZ + 0.625*size, measured off the official client in
+	// T311 Leg A) at the packet edge. See include/client/position_frames.h.
 	// T288: one store, and no PlayerMoved on the state bus -- this is the
 	// renderer's own movement arriving, echoing it back as a state event
 	// would be a new per-frame event stream (see setPositionNoEvent).
@@ -892,6 +895,13 @@ void EverQuest::ProcessBridgeIntents() {
 			if constexpr (std::is_same_v<T, eqt::events::PlayerPositionChanged>) {
 				// D14/S2: movement intent — sole movement channel
 				OnGraphicsMovement(i);
+			}
+			// T311: the renderer's measured origin-to-feet distance for our own
+			// model. One store (PlayerState), no event — nothing downstream of
+			// the game thread consumes it; it exists so the packet edges can
+			// convert render frame <-> wire frame.
+			else if constexpr (std::is_same_v<T, eqt::events::PlayerModelGeometryChanged>) {
+				m_game_state.player().setCollisionZOffset(i.collisionZOffset);
 			}
 			// ================================================================
 			// D15: Interaction intents (D20a — intent-only, callbacks removed)

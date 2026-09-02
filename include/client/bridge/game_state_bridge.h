@@ -139,22 +139,34 @@ private:
     static void coalesceIntents(std::vector<events::RendererIntent>& intents) {
         if (intents.size() < 2) return;
 
-        // Find the last PlayerPositionChanged
+        // Find the last PlayerPositionChanged, and the last
+        // PlayerModelGeometryChanged (T311: the renderer republishes the
+        // player's measured origin-to-feet distance every frame -- it has
+        // nowhere to cache "did this change" without a renderer member -- so
+        // this queue would otherwise grow one entry per rendered frame between
+        // game-thread drains. Both are pure latest-wins state.)
         int lastPosIdx = -1;
+        int lastGeomIdx = -1;
         for (int i = static_cast<int>(intents.size()) - 1; i >= 0; --i) {
-            if (std::holds_alternative<events::PlayerPositionChanged>(intents[i])) {
+            if (lastPosIdx < 0 && std::holds_alternative<events::PlayerPositionChanged>(intents[i])) {
                 lastPosIdx = i;
-                break;
             }
+            if (lastGeomIdx < 0 && std::holds_alternative<events::PlayerModelGeometryChanged>(intents[i])) {
+                lastGeomIdx = i;
+            }
+            if (lastPosIdx >= 0 && lastGeomIdx >= 0) break;
         }
 
-        if (lastPosIdx < 0) return;
+        if (lastPosIdx < 0 && lastGeomIdx < 0) return;
 
-        // Remove earlier PlayerPositionChanged intents
+        // Remove the superseded ones
         std::vector<events::RendererIntent> filtered;
         filtered.reserve(intents.size());
         for (int i = 0; i < static_cast<int>(intents.size()); ++i) {
             if (std::holds_alternative<events::PlayerPositionChanged>(intents[i]) && i != lastPosIdx) {
+                continue;  // Skip — superseded
+            }
+            if (std::holds_alternative<events::PlayerModelGeometryChanged>(intents[i]) && i != lastGeomIdx) {
                 continue;  // Skip — superseded
             }
             filtered.push_back(std::move(intents[i]));

@@ -56,12 +56,20 @@ public:
     glm::vec3 position() const { return glm::vec3(m_x, m_y, m_z); }
     float size() const { return m_size; }
 
+    // T311: the player model's measured origin-to-feet distance, published by
+    // the renderer (PlayerModelGeometryChanged intent). 0 = not known yet.
+    // Used ONLY to convert between the render frame and the wire frame --
+    // see include/client/position_frames.h. It is not game state the server
+    // knows about; it is a property of the shipped mesh.
+    float collisionZOffset() const { return m_collisionZOffset; }
+
     // Position setters (fires PlayerMoved event)
     void setPosition(float x, float y, float z);
     void setPosition(const glm::vec3& pos);
     void setHeading(float heading);
     void setPositionAndHeading(float x, float y, float z, float heading);
     void setSize(float size) { m_size = size; }
+    void setCollisionZOffset(float offset) { m_collisionZOffset = offset; }
 
     // T288: the movement integrator's write path -- SAME storage as
     // setPosition()/setHeading() above, but it does NOT fire PlayerMoved.
@@ -354,6 +362,7 @@ private:
     float m_z = 0.0f;
     float m_heading = 0.0f;
     float m_size = 6.0f;
+    float m_collisionZOffset = 0.0f;  // T311: renderer-measured; 0 = unknown
     float m_dx = 0.0f;
     float m_dy = 0.0f;
     float m_dz = 0.0f;

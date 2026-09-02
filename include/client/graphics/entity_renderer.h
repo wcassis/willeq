@@ -52,6 +52,39 @@ namespace Graphics {
 //
 // "Model CENTER" was never true and the phrase has been removed from this
 // subsystem. The node origin is simply the mesh's own origin.
+//
+// T311 ADDENDUM -- WHAT THE OFFICIAL CLIENT ACTUALLY PUTS THERE, MEASURED.
+//
+// Everything above is about the server and about the meshes. It said nothing
+// about the third party: what the official Titanium CLIENT transmits. T311
+// Leg A measured it on the wire against a live server (server-side hexdump of
+// the C->S OP_ClientUpdate; the Titanium DECODE for that opcode is IN()-only,
+// so the dump is the transmitted value):
+//
+//     wireZ = groundZ + 0.625f * size          // == 0.2 * size * 3.125
+//
+// Three sizes (3/6/12), two races, two ground heights; size is exactly linear,
+// and there is NO race term -- under a Dwarf illusion the server's own Fixed Z
+// moved to the EQEmu Dwarf constant while the client went on sending the 3.125
+// value. So the client behaves as if EVERY model used 3.125, and the agreement
+// with Mob::GetZOffset() above is a coincidence of EQEmu's DEFAULT. Do not
+// reimplement GetZOffset() and do not add a per-race table.
+//
+// THE CONSEQUENCE FOR THIS FILE: 0.625 * size is NOT a landmark of the shipped
+// mesh. For a Human male it is 3.75, while the origin-to-feet distance measured
+// below is 3.004, half the bbox height is 3.339 and the crown is 3.674. The
+// WIRE z and the RENDER node origin are therefore two different quantities and
+// must stay two different variables:
+//
+//     nodeOriginZ = groundZ + collisionZOffset      // this file; unchanged
+//     wireZ       = groundZ + 0.625f * size         // the packet edges only
+//
+// collisionZOffsetFromBounds() and getPlayerCollisionZOffset() are the RENDER
+// frame and are correct as they are -- T310 Leg B measured them off the meshes.
+// The conversion between the two frames lives in exactly one place,
+// include/client/position_frames.h, and is applied only where a packet is built
+// or parsed (eq_movement.cpp's SendPositionUpdate, eq_entities.cpp's two
+// self-spawn paths). Do not fold either quantity into the other.
 
 // Distance from a mesh's node ORIGIN down to its lowest point (its feet), in
 // world units, for a node scaled uniformly by `scale`. Positive when the origin

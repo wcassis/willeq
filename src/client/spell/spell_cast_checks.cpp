@@ -17,6 +17,7 @@
 #include "client/spell/buff_manager.h"
 #include "common/logging.h"
 
+#include "client/position_frames.h"
 #include <glm/glm.hpp>
 #include <memory>
 
@@ -29,12 +30,15 @@ namespace EQ {
 // CheckLosFN: server z (model centre) + size/2 * 0.9, size 6 when the
 // entity reports none.
 //
-// T310 Leg B: the +size/2 applied to the PLAYER below exists only to undo the
-// unmatched size/2 that eq_entities.cpp subtracts on zone-in. That subtraction
-// is a defect (the send path and the server both leave z alone), and once the
-// renderer's ground snap has run, PosZ() is already in the server frame and
-// this compensation double-counts. Both are left as they are until Leg C can
-// verify the round trip against a live server; they are noted, not fixed here.
+// T311 (closes T310 Leg B's note): the old +size/2 applied to the PLAYER here
+// existed only to undo the unmatched size/2 that eq_entities.cpp subtracted on
+// zone-in. Both are gone. GetPosition().z is now the RENDER frame (the model
+// node's origin), while every OTHER entity's z is the WIRE frame straight off
+// the packet, so the player has to be lifted into the wire frame before the two
+// can be compared -- one call to renderZToWireZ, the same expression the send
+// path uses (include/client/position_frames.h). After that both endpoints of
+// the ray are in the server's own frame, which is the frame eqemu's CheckLosFN
+// runs in, and eyeZ() applies identically to both.
 bool SpellManager::checkLineOfSight(uint16_t target_id) const
 {
     std::shared_ptr<const HCMap> map = m_eq->GetZoneMap();
@@ -56,7 +60,7 @@ bool SpellManager::checkLineOfSight(uint16_t target_id) const
 
     glm::vec3 from = m_eq->GetPosition();
     float mySize = m_eq->GetSize() > 0.0f ? m_eq->GetSize() : kDefaultSize;
-    from.z = eyeZ(from.z + mySize / 2.0f, mySize);
+    from.z = eyeZ(eqt::renderZToWireZ(from.z, m_eq->GetPlayerCollisionZOffset(), mySize), mySize);
     glm::vec3 to(it->second.x, it->second.y, eyeZ(it->second.z, it->second.size));
 
     bool clear = map->CheckLOS(from, to);

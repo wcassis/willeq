@@ -47,6 +47,7 @@
 #include "client/spell/buff_manager.h"
 #include "client/inventory/inventory_constants.h"
 #include "client/bridge/game_state_bridge.h"
+#include "client/position_frames.h"
 #include "client/bridge/irrlicht_bridge.h"
 #include "common/logging.h"
 #include "common/packet_structs.h"
@@ -409,29 +410,33 @@ void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 #endif
 				// Update our position to match server spawn position
 				m_game_state.player().setSize(entity.size);
-				// *** T310 Leg B: THIS SUBTRACTION IS UNMATCHED AND THE COMMENT
-				// THAT JUSTIFIED IT WAS FALSE. SendPositionUpdate()
-				// (eq_movement.cpp:1100, "Send Z position directly without
-				// offset") sends PosZ() VERBATIM -- it has never added size/2
-				// back. The server applies no z transform of its own either
-				// (Client::Handle_OP_ClientUpdate, eqemu zone/client_packet.cpp:4831;
-				// Mob::FixZ returns immediately for a Client, zone/waypoints.cpp:832),
-				// so the round trip is asymmetric by size/2 (3.0 units for a
-				// default humanoid) until the renderer's ground snap overwrites
-				// it on the first movement frame. Left in place ONLY because
-				// removing it changes what fable puts on the wire and that needs
-				// live two-client verification (T310 Leg C owns the server). ***
+				// T311 (closes T310 Leg B's note): the spawn struct's z is the
+				// WIRE frame -- groundZ + 0.625*size, MEASURED off the official
+				// Titanium client (T311 Leg A). GameState's player z is the
+				// RENDER frame (the model node's origin, groundZ +
+				// collisionZOffset), because it is fed straight to
+				// IrrlichtRenderer::setPlayerPosition(). So convert.
+				//
+				// The old `- size/2` was neither: 3.0 for a default humanoid
+				// against a true wire offset of 3.75 and a true mesh offset of
+				// 3.004, and the comment that justified it (that
+				// SendPositionUpdate added it back) was false. The send path now
+				// converts explicitly at its own packet edge, so this is the
+				// matching half and the round trip closes.
 				// T288: one store; heading deliberately NOT written from spawn
 				// data (see the note below), so this is a position-only write.
-				SetPosLocal(entity.x, entity.y, entity.z - (entity.size / 2.0f));
+				SetPosLocal(entity.x, entity.y,
+				            eqt::wireZToRenderZ(entity.z,
+				                                m_game_state.player().collisionZOffset(),
+				                                entity.size));
 				// Don't update heading from spawn data as it may be scaled differently
 
 				if (s_debug_level >= 1) {
-					LOG_INFO(MOD_ZONE, "[ZONE-IN] Updated client pos from spawn: ({:.2f},{:.2f},{:.2f}) (feet Z, server Z was {:.2f}) heading unchanged={:.2f}",
+					LOG_INFO(MOD_ZONE, "[ZONE-IN] Updated client pos from spawn: ({:.2f},{:.2f},{:.2f}) (render/node-origin Z, wire Z was {:.2f}) heading unchanged={:.2f}",
 					         PosX(), PosY(), PosZ(), entity.z, HeadingDeg());
 				}
 
-				// Update bridge with corrected feet Z position
+				// Update bridge with the render-frame (node-origin) Z
 				if (m_bridge) {
 					float heading512 = HeadingDeg() * 512.0f / 360.0f;
 					eqt::state::PlayerMovedData pdata;
@@ -1189,17 +1194,19 @@ void EverQuest::ZoneProcessNewSpawn(const EQ::Net::Packet &p)
 			}
 			// Update our position to match server spawn position
 			m_game_state.player().setSize(entity.size);
-			// T310 Leg B: same unmatched size/2 subtraction as the ZoneSpawns
-			// path above -- see the note there. SendPositionUpdate() does NOT
-			// add it back, and neither does the server.
-			SetPosLocal(entity.x, entity.y, entity.z - (entity.size / 2.0f));  // T288: one store
+			// T311: same wire-frame -> render-frame conversion as the
+			// ZoneSpawns path above -- see the note there.
+			SetPosLocal(entity.x, entity.y,
+			            eqt::wireZToRenderZ(entity.z,
+			                                m_game_state.player().collisionZOffset(),
+			                                entity.size));  // T288: one store
 
 			if (s_debug_level >= 1) {
-				LOG_INFO(MOD_ZONE, "[ZONE-IN] Updated client pos from NewSpawn: ({:.2f},{:.2f},{:.2f}) (feet Z, server Z was {:.2f})",
+				LOG_INFO(MOD_ZONE, "[ZONE-IN] Updated client pos from NewSpawn: ({:.2f},{:.2f},{:.2f}) (render/node-origin Z, wire Z was {:.2f})",
 					PosX(), PosY(), PosZ(), entity.z);
 			}
 
-			// Update bridge with corrected feet Z position
+			// Update bridge with the render-frame (node-origin) Z
 			if (m_bridge) {
 				float heading512 = HeadingDeg() * 512.0f / 360.0f;
 				eqt::state::PlayerMovedData pdata;
