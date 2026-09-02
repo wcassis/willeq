@@ -8,7 +8,12 @@
 #endif
 #include <cstring>
 #include "client/graphics/zone_shader_sources_gles2.h"
-#include "client/graphics/zone_shader_sources_gl.h"
+// T326: the companion desktop-GL sources header was deleted here. Its whole
+// body sat behind a build configuration P30/P32 retired, so no supported
+// build ever parsed it. The preprocessor gates below are left exactly as
+// they were -- collapsing them would change behaviour in that retired
+// configuration. Recover with:
+//   git show bcbf2ddc:src/client/graphics/zone_shader_sources_gl.h
 #include "client/graphics/zone_shader_callbacks.h"
 
 namespace EQT {

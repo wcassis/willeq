@@ -8,7 +8,7 @@
 - `EntityRenderer` - Character/NPC 3D model rendering with GLSL shaders, split across `entity_renderer.cpp` + 12 `entity_*.cpp` TUs (J03)
 - `RaceModelLoader` - Loads character models from S3D archives by race ID
 - `DoorManager` - Door object rendering and state management
-- `ZoneShader` - GLSL shader source and callbacks (GL 2.1 and GLES2 variants); J09 moved the sources and callbacks into three private headers beside `zone_shader.cpp` (`zone_shader_sources_gl.h`, `zone_shader_sources_gles2.h`, `zone_shader_callbacks.h`) — include them from `zone_shader.cpp` and nowhere else
+- `ZoneShader` - GLSL ES shader source and callbacks; J09 moved the sources and callbacks into private headers beside `zone_shader.cpp` (`zone_shader_sources_gles2.h`, `zone_shader_callbacks.h`) — include them from `zone_shader.cpp` and nowhere else. T326 deleted the desktop-GL companion sources header: its build configuration was retired by P30/P32, so nothing in the acceptance bar parsed it.
 - `TextureAtlas` - Atlas tile layout (256px slots, 248px inner, 4px padding)
 - `ConstrainedRendererConfig` - Hardware-tier presets (OrangePi, low, medium, high)
 - `ConstrainedTextureCache` - LRU-evicting texture cache with memory budget
@@ -61,7 +61,7 @@ The GLES2 tier uses an all-shader pipeline with 6 built-in programs:
 
 All VS use `precision highp float` (FP32 on Mali 400 vertex processor). All FS use `precision mediump float` (FP16 on Mali 400 fragment cores).
 
-Custom shader materials registered by `zone_shader.cpp` use the GLES ES 1.0 sources (`zone_shader_sources_gles2.h`) when `EQT_HAS_GLES2` is defined, and `zone_shader_sources_gl.h` otherwise (`attribute`/`varying` instead of `gl_Vertex`/`gl_TexCoord[]`, `precision` qualifiers).
+Custom shader materials registered by `zone_shader.cpp` use the GLES ES 1.0 sources (`zone_shader_sources_gles2.h`), which is the only shader source set left — `EQT_HAS_GLES2` is defined by every supported configure. The `#ifdef`/`#else` gates in `zone_shader.cpp` were kept as-is by T326; the `#else` arms no longer resolve, which is correct for a configuration P30's CMake gate already rejects.
 
 ## Hybrid Per-Vertex/Per-Pixel Lighting
 

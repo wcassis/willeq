@@ -41,7 +41,6 @@ review section under `refactor/F*.md` and `refactor/J*.md`.
 | eq_player_info.cpp | 369 | J07 remainder: stat getters, group accessors, tribute/AA handlers (SendAATable/RespondAA/TributeInfo/SendGuildTributes), exp/zonein, world-objects-sent |
 | eq_zone_handshake.cpp | 351 | J02: the ZoneSend* handshake senders (SessionReady, ZoneEntry, ReqClientSpawn, ClientReady, SetServerFilter, StreamIdentify, Ack, ReqNewZone, AA/tribute requests, SpawnAppearance, SendExpZonein) |
 | eq_commands_movement.cpp | 322 | RegisterMovementCommands (movement/combat/utility-debug/sky commands) |
-| eq_ucs.cpp | 320 | J02: the UCS/chat-server connection and its packet handlers — deferred, not wired (`docs/decisions.md` 2026-08-27) |
 | eq_gm.cpp | 307 | GM command senders + processors (wired T148) |
 | eq_guild.cpp | 266 | Guild senders + processors (m_guild_id populated T133) |
 | eq_commands_train.cpp | 264 | T280: `/train` and `/trainclose` game-registry side |
@@ -120,11 +119,12 @@ review section under `refactor/F*.md` and `refactor/J*.md`.
 |---|---|---|
 | zone_shader_sources_gles2.h | 1,017 | GLSL ES 1.0 shader sources (private header, `zone_shader.cpp` only) |
 | zone_shader_callbacks.h | 702 | `ShaderCallback` and friends (private header, `zone_shader.cpp` only) |
-| src/client/graphics/zone_shader.cpp | 520 | Material registration and the `getActive*()` accessors |
-| zone_shader_sources_gl.h | 370 | Desktop-GL (GLSL 1.20) shader sources (private header, `zone_shader.cpp` only) |
+| src/client/graphics/zone_shader.cpp | 525 | Material registration and the `getActive*()` accessors |
 
-The three headers are `#include`d by `zone_shader.cpp` and by nothing else;
+The two headers are `#include`d by `zone_shader.cpp` and by nothing else;
 they hold file-local `static` definitions and are not a public interface.
+T326 deleted a third, desktop-GL sources header — its build configuration was
+retired by P30/P32 and no supported build parsed it.
 
 ## Simulation worker — SimulationWorker class
 
@@ -160,7 +160,7 @@ they hold file-local `static` definitions and are not a public interface.
 
 | TU | Lines | Contents |
 |---|---|---|
-| wld_loader.cpp | 749 | Core: parseFromArchive/parseWldBuffer, the fragment dispatch loop, memory accounting, region bounds/lookup, checkZoneLine |
+| wld_loader.cpp | 475 | Core: parseFromArchive/parseWldBuffer, the fragment dispatch loop, memory accounting, region bounds/lookup, checkZoneLine |
 | wld_fragments_actor.cpp | 504 | 0x14/0x15 actor def+ref, 0x2C/0x2D mesh reference |
 | wld_fragments_bsp.cpp | 502 | 0x37, 0x21 BSP tree, 0x22 region, 0x29 region flags, zone-line string decode |
 | wld_fragments_mesh.cpp | 484 | 0x36 mesh, combined/per-region geometry accessors, PVS presence |
