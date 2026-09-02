@@ -100,8 +100,10 @@ TEST(ScriptHeldEchoTest, HeldScriptCommandAnnouncesOnceNotPerTick) {
     std::string out = testing::internal::GetCapturedStdout();
 
     EXPECT_EQ(countOf(out, "CMD outcome=held"), 1u) << out;
-    // Same vocabulary as T30's piped-stdin intercept (grep application.cpp:
-    // registry=pending, message="waiting for connection").
+    // Same vocabulary as T30's piped-stdin intercept
+    // (Application::processPreConnectionLifecycleCommands in
+    // application_commands.cpp since J06: registry=pending,
+    // message="waiting for connection").
     EXPECT_NE(out.find("CMD outcome=held registry=pending recognized=false "
                        "message=\"waiting for connection\" cmd=\"/attack\""),
               std::string::npos) << out;

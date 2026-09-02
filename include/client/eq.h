@@ -770,7 +770,7 @@ public:
 
 	// T52 test seam: m_game_state.world().pendingZoneX()/y/z/id have three producers
 	// (ZoneProcessZoneChange, CheckZoneLine, and the bind/death path in
-	// eq.cpp) and one consumer (WorldProcessZoneServerInfo), all private.
+	// eq_player_state.cpp) and one consumer (WorldProcessZoneServerInfo), all private.
 	// Minimal, behavior-preserving read-only accessors so tests can pin
 	// each producer's coordinate convention without a live connection --
 	// combined with ReplayZonePacket (for producer A) or a direct
@@ -1325,7 +1325,7 @@ public:
 	uint16_t GetCurrentTargetId() const { return m_game_state.combat().targetId(); }
 
 	// T133: populated from the player's own PlayerProfile packet
-	// (ZoneProcessPlayerProfile, eq.cpp). 0 means "not in a guild" -- every
+	// (ZoneProcessPlayerProfile, eq_zone_entry.cpp). 0 means "not in a guild" -- every
 	// SendGuild*() sender in eq_guild.cpp guards on that, correctly.
 	uint32_t GetGuildID() const { return m_guild_id; }
 
@@ -1343,7 +1343,7 @@ public:
 	// T148: "GM mode was ON at login", NOT "this account has GM privileges".
 	//
 	// Populated once, from PlayerProfile.gm at offset 13054, in
-	// ZoneProcessPlayerProfile (eq.cpp) -- the SAME parse site and the same
+	// ZoneProcessPlayerProfile (eq_zone_entry.cpp) -- the SAME parse site and the same
 	// once-per-login shape as m_guild_id above. Its only server-side writer
 	// is Client::SetGM(bool) (eqemu zone/client.cpp:2659), i.e. the `#gm
 	// on|off` toggle, which Save()s so the value persists in the character
@@ -2564,7 +2564,7 @@ public:
 	// argument -- a 1-based buff slot number, or a spell-name substring --
 	// against BuffManager's player buffs. SendBuffCancelRequest() is the
 	// single wire hop it and the buff-bar click (BuffCancelIntent) share;
-	// it removes nothing locally, it only asks. Defined in eq_player_info.cpp
+	// it removes nothing locally, it only asks. Defined in eq_player_buffs.cpp
 	// beside ZoneProcessBuff(), which handles the server's answer.
 	void RequestCancelBuff(const std::string& args);
 	void SendBuffCancelRequest(uint8_t slot);

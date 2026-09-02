@@ -82,7 +82,7 @@ const float FOLLOW_MAX_SPEED_MULT = 1.5f;    // Maximum speed multiplier when fa
 // T88: FRAME CONTRACT -- x, y, z here are CLIENT frame, i.e. the same frame
 // as the client position (docs/CLAUDE.md's "Client Internal Coordinates"), NOT
 // server/wire frame. The two are axis-swapped (client_x = server_y,
-// client_y = server_x -- see ZoneProcessPlayerProfile in eq.cpp and
+// client_y = server_x -- see ZoneProcessPlayerProfile in eq_zone_entry.cpp and
 // SendPositionUpdate below). This was previously undocumented at every
 // site on this call path (Move, MoveToWithPath, moveToLocation, and the
 // /move command registration in eq_commands_movement.cpp) -- T88 found

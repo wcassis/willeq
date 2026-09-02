@@ -216,8 +216,9 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
         // cost a rebuild per candidate value (Will, 2026-08-29: "This should
         // not require recompiling"). Registry 3, because the camera lives on
         // this object and must be driven from the RENDER thread
-        // (application.cpp:1204 -- never call renderer methods from the game
-        // thread). The catalog row is in
+        // (Application::dispatchToActionOrRenderer in
+        // application_commands.cpp -- never call renderer methods from the
+        // game thread). The catalog row is in
         // src/client/help/renderer_command_catalog.cpp; without it
         // FindRendererCommand() reports registry=none and nothing is queued.
         //

@@ -79,7 +79,8 @@ void CommandProcessor::registerBuiltinCommands() {
     // T98: target/cast/interrupt registrations removed -- shadowed dead code.
     // T51: attack/stopattack/aa registrations removed from this registry.
     // T29's dispatch order (registry 1 -- EverQuest::m_command_registry --
-    // tried first, see application.cpp's DispatchSlashCommand) meant these
+    // tried first, see Application::DispatchSlashCommand in
+    // application_commands.cpp) meant these
     // three were always shadowed dead code: registry 1's own /attack (alias
     // "att"), /stopattack, /aa (alias "~") won every collision (T51 Piece
     // 0 live probe, benchmarks/audits/T51/). ActionDispatcher::

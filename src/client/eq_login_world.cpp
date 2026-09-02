@@ -74,7 +74,7 @@ void EverQuest::LoginOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> c
 
 	// T05: record real network traffic only (replayed packets enter via
 	// ReplayLoginPacket -> DispatchLoginPacket and are never re-recorded) --
-	// mirrors R01's rule for zone (see eq.cpp:725).
+	// mirrors R01's rule for zone (see EverQuest::ZoneOnPacketRecv, eq.cpp).
 	if (m_session_recorder && p.Length() >= 2) {
 		m_session_recorder->record(EQT::Net::SessionStream::Login, EQT::Net::SessionDirection::ServerToClient,
 			opcode, (const uint8_t*)p.Data() + 2, static_cast<uint32_t>(p.Length() - 2));
@@ -396,7 +396,7 @@ void EverQuest::WorldOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> c
 
 	// T05: record real network traffic only (replayed packets enter via
 	// ReplayWorldPacket -> DispatchWorldPacket and are never re-recorded) --
-	// mirrors R01's rule for zone (see eq.cpp:725).
+	// mirrors R01's rule for zone (see EverQuest::ZoneOnPacketRecv, eq.cpp).
 	if (m_session_recorder && p.Length() >= 2) {
 		m_session_recorder->record(EQT::Net::SessionStream::World, EQT::Net::SessionDirection::ServerToClient,
 			opcode, (const uint8_t*)p.Data() + 2, static_cast<uint32_t>(p.Length() - 2));

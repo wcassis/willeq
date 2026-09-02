@@ -157,7 +157,7 @@ public:
 
     // T276: the first free spellbook slot, or -1 when all 400 are taken.
     // A slot is free when it holds SPELL_UNKNOWN (0xFFFFFFFF) or 0 -- the
-    // PlayerProfile spellbook uses BOTH sentinels for "empty" (eq.cpp's own
+    // PlayerProfile spellbook uses BOTH sentinels for "empty" (the client's own
     // scribed-count loop skips both), and the array is filled with
     // SPELL_UNKNOWN before any profile arrives. Returns int32_t, not
     // uint16_t, so "none free" is representable.

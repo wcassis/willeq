@@ -13,7 +13,8 @@
 //      are honestly declared advisory rather than pretended live).
 //   4. /fpcam is reachable from BOTH command paths: the renderer if-chain
 //      (in-game chat) and the catalog gate that a --script / console run
-//      passes through (application.cpp:1231 -- without the catalog row the
+//      passes through (Application::dispatchToActionOrRenderer in
+//      application_commands.cpp -- without the catalog row the
 //      command is reported registry=none and never queued).
 //   5. --fpcam parses at startup, so a sweep can launch a fresh process per
 //      candidate instead of typing into a running one.
@@ -454,7 +455,7 @@ TEST_F(FpCamRendererTest, DumpTracksASet) {
 }
 
 // Path B: the catalog gate every NON-chat path passes through --
-// Application::dispatchToActionOrRenderer() (application.cpp:1231) refuses
+// Application::dispatchToActionOrRenderer() (application_commands.cpp) refuses
 // anything FindRendererCommand() does not know, reporting registry=none, so a
 // --script run or piped console input would never queue /fpcam without this
 // row. This is the exact half T308 had to go back and fix for another command.
@@ -468,13 +469,15 @@ TEST_F(FpTunablesTest, FpcamIsInTheRendererCommandCatalog) {
     EXPECT_FALSE(info->description.empty());
 }
 
-// ...and the SAME dispatcher a --script step (application.cpp:1162) and piped
-// stdin (application.cpp:395) run through, which is the half that has to be
-// proven separately: the chat window reaches processSlashCommand() by a
-// different route entirely (eq_chat.cpp:344 + the unrecognized-command
+// ...and the SAME dispatcher a --script step (Application::updateScript,
+// application_commands.cpp) and piped stdin (the unified dispatcher wired in
+// Application::initialize, application.cpp) run through, which is the half
+// that has to be proven separately: the chat window reaches
+// processSlashCommand() by a different route entirely
+// (EverQuest::DispatchSlashCommand in eq_chat.cpp + the unrecognized-command
 // fallback). A bare Application has no renderer, so the honest outcome here is
-// the graphics-mode REFUSAL -- reaching which means the catalog gate at
-// application.cpp:1231 admitted /fpcam. An unknown name never gets that far.
+// the graphics-mode REFUSAL -- reaching which means the catalog gate in
+// dispatchToActionOrRenderer() admitted /fpcam. An unknown name never gets that far.
 TEST_F(FpTunablesTest, FpcamIsClassifiedAsARendererCommandByTheScriptDispatcher) {
     eqt::Application app;
     eqt::CommandDispatchResult r = app.DispatchSlashCommand("/fpcam dump");

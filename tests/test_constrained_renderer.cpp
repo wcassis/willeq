@@ -665,8 +665,9 @@ TEST_F(ConstrainedRendererConfigTest, JsonOverride_OcclusionMaxOccluderRegions_A
 TEST_F(ConstrainedRendererConfigTest, ShippedOrangePiPreset_ActivelyCarries256) {
     // P39 active-proof: the REAL shipped config/constrained_presets.json
     // (not a synthetic copy) must now carry occlusionMaxOccluderRegions
-    // explicitly, and the exact application.cpp sequence (fromPreset then
-    // loadJsonOverrides) must resolve to the P14-blessed 256.
+    // explicitly, and the exact sequence Application::initialize()
+    // (application.cpp) runs -- fromPreset then loadJsonOverrides -- must
+    // resolve to the P14-blessed 256.
 #ifdef WILLEQ_CONSTRAINED_PRESETS_JSON
     auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::OrangePi);
     bool applied = config.loadJsonOverrides("orangepi", WILLEQ_CONSTRAINED_PRESETS_JSON);

@@ -191,7 +191,7 @@ float IrrlichtRenderer::getFirstPersonVerticalFov() const {
 }
 
 // T310 Leg A -- `/fpcam dump`: gather the RESOLVED first-person pose. Only the
-// GATHER lives here, because irrlicht_renderer.cpp is the ONE translation unit
+// GATHER lives here, because this camera TU is the ONE translation unit
 // allowed to read the camera formula
 // (tests/test_first_person_camera_single_formula.cpp); the FORMATTING is
 // FormatFirstPersonPoseDump() in first_person_tunables.cpp, which is what

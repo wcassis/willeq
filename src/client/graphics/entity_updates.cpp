@@ -376,7 +376,7 @@ void EntityRenderer::processUpdate(const PendingUpdate& update) {
         visual.sceneNode->setPosition(irr::core::vector3df(x, z + visual.modelYOffset, y));
 
         // Convert EQ heading to Irrlicht Y rotation
-        // Heading arrives already in degrees (0-360) from eq.cpp 11-bit conversion
+        // Heading arrives already in degrees (0-360) from eq_entities.cpp 11-bit conversion
         // EQ heading: 0=North(+Y), increases clockwise
         // Irrlicht Y rotation: 0=+Z, increases counter-clockwise
         // Must negate to convert between coordinate systems

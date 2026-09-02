@@ -7,7 +7,7 @@
 namespace EQT {
 namespace Graphics {
 
-#ifndef EQT_HAS_GLES2   // was the `#else` arm of zone_shader.cpp:1018
+#ifndef EQT_HAS_GLES2   // was the `#else` arm of the pre-J09 zone_shader.cpp
 
 // ============================================================================
 // Existing per-vertex lighting shaders (for non-atlas rendering)

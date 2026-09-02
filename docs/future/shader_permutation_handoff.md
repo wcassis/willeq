@@ -71,7 +71,8 @@ Replace the 5 static Standard VS string literals with a generator function. The 
 **Key file locations:**
 - Zone shader header: `include/client/graphics/zone_shader.h`
 - Zone shader implementation: `src/client/graphics/zone_shader.cpp`
-- GLES2 VS source strings are embedded as C++ string literals in the zone shader .cpp file, selected at compile time by `EQT_HAS_GLES2`
+- Since J09 (2026-09-02) the shader source strings live in two private headers beside it — `zone_shader_sources_gles2.h` and `zone_shader_sources_gl.h` — and the callbacks in `zone_shader_callbacks.h`. All three are included by `zone_shader.cpp` and nothing else.
+- GLES2 VS source strings are embedded as C++ string literals in `zone_shader_sources_gles2.h`, selected at compile time by `EQT_HAS_GLES2`
 
 **Generator pseudocode:**
 
@@ -403,8 +404,9 @@ If applying permutations to desktop GL, the generator needs a separate code path
 |------|---------|
 | `include/client/graphics/zone_shader.h` | Replace single material ID members with arrays. Add light count parameter to `getActive*()` methods. Add `buildStandardVS()` declaration. Add `MAX_VERTEX_LIGHTS` constant. |
 | `src/client/graphics/zone_shader.cpp` | Add `buildStandardVS()` generator function. Replace single `addHighLevelShaderMaterial` calls with registration loops. Update `getActive*()` implementations. Remove or keep `uNumPointLights` uniform based on analysis. |
+| `zone_shader_sources_gles2.h` / `zone_shader_sources_gl.h` | The source strings the generator replaces (J09 moved them out of `zone_shader.cpp`). |
 | Entity rendering code (location TBD) | Pass active vertex light count to `getActive*()` when selecting materials. Optionally add draw call bucketing by light count. |
-| `ShaderCallback` (in zone_shader.cpp) | Option A: no changes. Option B: adjust light array uniform upload size. |
+| `ShaderCallback` (in `zone_shader_callbacks.h` since J09) | Option A: no changes. Option B: adjust light array uniform upload size. |
 
 ## Summary of What Does NOT Change
 

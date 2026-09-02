@@ -201,10 +201,12 @@ void InventoryState::fireInventoryChangedEvent(int16_t slot, bool hasItem) {
 
     // T28: report the actual occupancy this call was given, instead of the
     // previous hardcoded `hasItem = true`.
-    // T39: setEquipmentOccupied/setGeneralOccupied/setBankOccupied are now
-    // wired -- Application::syncInventoryState() (application.cpp) polls
-    // InventoryManager (authoritative) every frame and mirrors slot
-    // occupancy here, so this fires for real now. Still no production
+    // T39: setEquipmentOccupied/setGeneralOccupied/setBankOccupied are
+    // wired, so this fires for real. (T39's per-frame poll,
+    // Application::syncInventoryState(), is GONE -- like syncCombatState()
+    // and syncNPCInteractionState() before it, the write moved to the
+    // mutation site: EverQuest::SyncInventorySlotToGameState() in
+    // eq_merchant.cpp calls these three setters directly.) Still no production
     // reader of the occupancy arrays (confirmed unchanged from T28) -- the
     // live InventorySlotChanged events consumers care about (enriched by
     // S2) come from the eq_bridge path instead. See refactor/deferred.md

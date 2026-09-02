@@ -1220,7 +1220,8 @@ void EqActionHandler::closeTradeskillContainer() {
 //     /appearance -- the bug that motivated this unit.
 //   * It is also the CORRECT source for the other five. Entity's copies are
 //     the current VISUAL, which an illusion overwrites
-//     (eq_entities.cpp:2131-2134). Merging from Entity while illusioned would
+//     (EverQuest::ZoneProcessIllusion, eq_entities.cpp). Merging from Entity
+//     while illusioned would
 //     persist the illusion's hair and beard into the character's saved
 //     profile; merging from the profile cannot.
 // Entity remains the fallback for its five fields when no profile has been
@@ -1410,7 +1411,7 @@ void EqActionHandler::sendAnimation(uint8_t animationId, uint8_t speed) {
 // ========== Social (T102) ==========
 // Ported from game's Social-category handlers (eq_commands.cpp). /who
 // (requestWho) ports the Social section's who_cmd -- see
-// command_processor.cpp's cmdWho for why that one was chosen over
+// command_processor_social.cpp's cmdWho for why that one was chosen over
 // Movement's later, intra-registry-shadowing-winner `who`.
 
 void EqActionHandler::inspectTarget(uint16_t targetId) {

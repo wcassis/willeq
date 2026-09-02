@@ -340,8 +340,9 @@ TEST(WorldStateTest, ResetZoneStateClearsTransitionAndConnectionState) {
 // ZoneChangedEventPositionComesFromPendingZoneNotSetZoneArgs): before this
 // fix, fireZoneChangedEvent() populated the event's x/y/z/heading from the
 // *pending zone* fields, not from the position passed to setZone(). This was
-// a genuine production bug -- eq.cpp:1909 calls setZone() with no position
-// info, while eq.cpp:1912-1922 separately pushes the correct arrival
+// a genuine production bug -- ZoneProcessNewZone (eq_zone_entry.cpp since
+// J02) called setZone() with no position info, while the same handler
+// separately pushes the correct arrival
 // position (m_safe_x/y/z) onto the bridge. Two channels disagreed: the
 // bridge (irrlicht_bridge/console_bridge) got the right position, the
 // EventBus subscriber (console_renderer.cpp) got (0,0,0) or whatever stale

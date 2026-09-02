@@ -57,9 +57,10 @@ TEST(CombatManagerTargeting, SetTargetById_Hit) {
     // send a packet" assertable for CombatManager's sends too. Empirically
     // it does not -- that counter is only incremented by the internal
     // reply-helper methods used inside ZoneProcess* S->C handlers
-    // (eq.cpp:1630 etc.), not by the generic public
+    // (the m_replay_suppressed_sends sites in eq_login_world.cpp /
+    // eq_zone_handshake.cpp / eq_player_buffs.cpp), not by the generic public
     // EverQuest::QueuePacket(opcode, packet) overload CombatManager calls
-    // (eq.cpp:3672), which silently no-ops when m_zone_connection is null
+    // (eq.cpp), which silently no-ops when m_zone_connection is null
     // with no side effect at all. There is no accessor to assert a
     // CombatManager-initiated send was attempted; only the resulting state
     // change is assertable. See Review for the full note.
@@ -438,7 +439,7 @@ TEST(CombatManagerCycling, CorpsesAreExcluded) {
 
     // Death_Struct: victim_id(4) killer_id(4) corpse_id(4) bind_zone(4)
     // spell_id(4) attack_skill(4) damage(4) -- offsets include the 2-byte
-    // opcode prefix (eq.cpp:3136-3142).
+    // opcode prefix (EverQuest::ZoneProcessDeath, eq_player_state.cpp).
     auto deathPayload = BuildPayload(30, [&](EQ::Net::DynamicPacket& p) {
         p.PutUInt32(2, 30);   // victim_id
         p.PutUInt32(6, 0);    // killer_id (0 = the player)
@@ -700,29 +701,28 @@ TEST(CombatManagerConfig, AutoMovementRoundTrips) {
 // refactor/T26_loot_state_machine.md.
 // ===================================================================
 //
-// Thread trace (read, not guessed): the modern UI-driven "loot all" click
-// goes through EverQuest::LootAllFromCorpse (eq_bridge.cpp:1573, the D18a
-// game-side loot tracking path) which is NON-blocking -- it queues one slot
-// at a time and re-requests per server round trip. It does NOT call
-// CombatManager::LootAll() at all.
+// Thread trace (re-read at J21, not guessed). Two paths reach the loot
+// machine, and both end on the GAME THREAD:
 //
-// CombatManager::LootAll()/ProcessLootWindow()/CheckAutoLoot() used to
-// block via sleep_for; they are reached through a different, still-live
-// path: ProcessCombatRound() (combat.cpp:1192) calls
-// CombatManager::LootCorpse()/BeginLootRequest() when an auto-hunted target
-// dies with auto-loot enabled. That path does NOT set
-// EverQuest::m_player_looting_corpse_id (that variable belongs to the
-// separate UI loot-window flow), so when the server's loot item response
-// (OP_ItemPacket) arrives, EverQuest::eq.cpp's dispatch switch
-// (~eq.cpp:1020-1023) takes the "Headless mode looting" branch:
-//     } else if (m_combat_manager && m_combat_manager->IsLooting()) {
-//         ZoneProcessLootItem(p);
-//     }
-// ZoneProcessLootItem (eq_combat_actions.cpp:527) calls
-// m_combat_manager->CheckAutoLoot() directly and synchronously -- no
+//   * The UI "loot all" click arrives as LootAllIntent and is handled in
+//     EverQuest::ProcessBridgeIntents (eq_bridge.cpp), which calls
+//     CombatManager::LootAll(). (This is a change from the pre-T268 shape
+//     this comment used to describe: there is no EverQuest::LootAllFromCorpse
+//     any more.)
+//   * CombatManager::ProcessCombatRound() (combat.cpp) calls
+//     LootCorpse()/BeginLootRequest() when an auto-hunted target dies with
+//     auto-loot enabled.
+//
+// The server's loot item response (OP_ItemPacket) is dispatched by
+// DispatchZonePacket (eq_zone_dispatch.cpp since J02). T268 deleted the
+// second, headless-only ZoneProcessLootItem parser that used to sit behind an
+// "IsLooting()" branch there; every loot ItemPacket now goes to
+// ZoneProcessLootItemToUI (eq_merchant.cpp) -- or, when a slot request is
+// pending, ZoneProcessLootedItemToInventory -- and that path also feeds
+// CombatManager's auto-loot queue. It runs directly and synchronously, no
 // dispatch to another thread. Per CLAUDE.md's threading model, all network
-// packet handling ("Network events (TickNetwork)") runs on the GAME
-// THREAD, so CheckAutoLoot() (and everything it calls) must never block.
+// packet handling ("Network events (TickNetwork)") runs on the GAME THREAD,
+// so CheckAutoLoot() (and everything it calls) must never block.
 //
 // T26 replaced the sleeps with LootSubState + CombatManager::UpdateLootState(),
 // ticked every game frame from Application::updateGameState (unconditional,
@@ -1284,7 +1284,8 @@ TEST(CombatManagerCorpseRecognition, PlayerCorpseIsExcludedFromTargetCycling) {
 TEST(CombatManagerCorpseRecognition, MobRenameToPlayerCorpseFormSetsTheFlag) {
     // The HC_OP_MobRename handler carried the second copy of the literal.
     // MobRename_Struct: old_name[64], old_name_again[64], new_name[64] --
-    // the handler reads the FIRST 64-byte field (eq.cpp:1389).
+    // the handler reads the FIRST 64-byte field (the HC_OP_MobRename case in
+    // DispatchZonePacket, eq_zone_dispatch.cpp).
     EverQuest eq = MakeEq();
     ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn,
         NewSpawnPayloadAt(36, "Testmelee", 0, 10, 0, 5, /*npc_type=*/0)));

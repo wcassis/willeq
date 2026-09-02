@@ -13,7 +13,7 @@
 // SpellManager::setSpellGems() instead -- so a spell-gem hotkey cast on a
 // gem the server had memorised reported success and sent nothing (T235 live
 // AFTER run). The gems here are loaded through setSpellGems(), the exact
-// call eq.cpp's PlayerProfile handler makes, and the assertion is on the
+// call the PlayerProfile handler (eq_zone_entry.cpp) makes, and the assertion is on the
 // wire: exactly one OP_CastSpell whose slot/spell/target fields are the
 // gem's. These tests FAIL on the pre-T240 code (measured: review/T240/
 // red_cast.txt) because CombatManager's map is empty there.
@@ -191,7 +191,7 @@ public:
         return 0;
     }
 
-    // The PlayerProfile load path: eq.cpp's HC_OP_PlayerProfile handler
+    // The PlayerProfile load path: ZoneProcessPlayerProfile (eq_zone_entry.cpp)
     // ends in exactly this setSpellGems() call with the 8 mem_spells.
     void loadGemsLikePlayerProfile(const std::array<uint32_t, 8>& gems) {
         eq.GetSpellManager()->setSpellGems(gems.data(), gems.size());
@@ -542,7 +542,8 @@ uint32_t findSelfSpellWithReagent(EverQuest& eq, uint32_t& reagent_id, uint32_t&
 }
 
 // The PlayerProfile / OP_Buff path: BuffManager::setPlayerBuff() with the
-// wire struct, exactly what eq_player_info.cpp's handler calls.
+// wire struct, exactly what the OP_Buff handler calls (eq_player_buffs.cpp
+// since J07; the PlayerProfile-side setPlayerBuffs() is in eq_zone_entry.cpp).
 void giveSelfBuff(EverQuest& eq, uint8_t slot, uint32_t spell_id) {
     EQT::SpellBuff_Struct b{};
     b.effect_type = static_cast<uint8_t>(EQ::BuffEffectType::Inverse);
@@ -917,8 +918,8 @@ TEST(EqActionHandlerCast, CastSpell_NoMapLoaded_LineOfSightPermissive) {
 // =====================================================================
 // T247: the instantaneous OP_Stun packet blocks casting for its duration,
 // and an NPC that lands an attack on us is aggro to CombatManager, so
-// CheckForAggro engages it. Both RED on pre-T247 code: eq.cpp's OP_Stun
-// handler stored nothing (and misparsed eqemu's 4-byte Stun_Struct as a
+// CheckForAggro engages it. Both RED on pre-T247 code: the OP_Stun
+// handler (ZoneProcessStun, eq_combat_actions.cpp) stored nothing (and misparsed eqemu's 4-byte Stun_Struct as a
 // target/duration pair), and CombatTarget::is_aggro was hard-coded false.
 // =====================================================================
 

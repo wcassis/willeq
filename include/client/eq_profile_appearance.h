@@ -1,7 +1,8 @@
 // The player's own appearance, as carried by OP_PlayerProfile.
 //
-// T167. ZoneProcessPlayerProfile parsed all seven of these fields into locals
-// and then read none of them (eq.cpp:2091-2097) -- the implemented-but-
+// T167. ZoneProcessPlayerProfile (EverQuest, eq_zone_entry.cpp since J02)
+// parsed all seven of these fields into locals and then read none of them
+// -- the implemented-but-
 // unreached pattern, and the FIRST instance of it found on a RECEIVE path
 // rather than a send path. The consequence was user-visible: /appearance
 // (T153) had no source for eyecolor1/eyecolor2 at all, so every appearance
@@ -11,8 +12,8 @@
 // have set to zero.
 //
 // Parsing lives here as a free function, not as more of
-// ZoneProcessPlayerProfile, for two reasons: eq.cpp is at its accepted size
-// ceiling, and a private method cannot be tested. The offsets are the part
+// ZoneProcessPlayerProfile, for two reasons: its TU was at its accepted size
+// ceiling at the time, and a private method cannot be tested. The offsets are the part
 // that can silently rot, so they are what the tests pin.
 
 #pragma once

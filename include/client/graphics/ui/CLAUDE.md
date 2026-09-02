@@ -109,11 +109,14 @@ migration); `Application::DispatchSlashCommand` tries them in order:
    (aliases `/memory`, `/mem_report`), `/music`, `/sound`, `/volume`
    (`/vol`), `/musicvolume` (`/mvol`), `/effectsvolume` (`/evol`, `/sfxvol`).
 2. **Registry 2 — `action::CommandProcessor`**
-   (`src/client/action/command_processor.cpp`, 134 registrations at
-   `e70e3347`): the real slash vocabulary, listed below by its own category
-   strings. Derived from the `registerCommand({...})` calls — regenerate
-   from the source, do not hand-edit.
-3. **Registry 3 — renderer if-chain** (`IrrlichtRenderer::processSlashCommand()`,
+   (`src/client/action/command_processor_registration.cpp`, 142
+   `registerCommand({...})` calls at `9684644f`; J04 split the handlers into
+   `command_processor_{social,spells_gm,world,bank,loot,train}.cpp`): the real
+   slash vocabulary, listed below by its own category strings. Derived from
+   the `registerCommand({...})` calls — regenerate from the source, do not
+   hand-edit.
+3. **Registry 3 — renderer if-chain** (`IrrlichtRenderer::processSlashCommand()`
+   in `src/client/graphics/renderer_slash_commands.cpp` since J11,
    reached via the `RendererCommand` bridge queue): ~70 debug/graphics
    toggles (`/sort`, `/portal`, `/plight`, `/detail`, `/screenshot`,
    `/dumpscene`, `/hideui` (aliases `/toggleui`, `/ui` — the scriptable half

@@ -3,12 +3,12 @@
 ## Components
 
 **IrrlichtRenderer** (`include/client/graphics/`, `src/client/graphics/`)
-- `IrrlichtRenderer` - Main renderer, split across `irrlicht_renderer.cpp` (3,054 lines at `e70e3347`) + 19 `renderer_*.cpp` TUs (see `docs/module_map.md`); T166 split `renderer_zone_load.cpp` into `renderer_zone_load{,_entities,_env,_objects}.cpp` at the 3,000-line ceiling. Manages scene, visibility, lighting, UI
+- `IrrlichtRenderer` - Main renderer, split across `irrlicht_renderer.cpp` (908 lines at `9684644f`) + 24 `renderer_*.cpp` TUs (see `docs/module_map.md`); T166 split `renderer_zone_load.cpp` into `renderer_zone_load{,_entities,_env,_objects}.cpp` and J11 split the core into `renderer_{init,frame,camera,hud_env,slash_commands,event_receiver}.cpp`. Manages scene, visibility, lighting, UI
 - `CameraController` - FPS-style camera with free/follow/first-person modes
-- `EntityRenderer` - Character/NPC 3D model rendering with GLSL shaders
+- `EntityRenderer` - Character/NPC 3D model rendering with GLSL shaders, split across `entity_renderer.cpp` + 12 `entity_*.cpp` TUs (J03)
 - `RaceModelLoader` - Loads character models from S3D archives by race ID
 - `DoorManager` - Door object rendering and state management
-- `ZoneShader` - GLSL shader source and callbacks (GL 2.1 and GLES2 variants)
+- `ZoneShader` - GLSL shader source and callbacks (GL 2.1 and GLES2 variants); J09 moved the sources and callbacks into three private headers beside `zone_shader.cpp` (`zone_shader_sources_gl.h`, `zone_shader_sources_gles2.h`, `zone_shader_callbacks.h`) — include them from `zone_shader.cpp` and nowhere else
 - `TextureAtlas` - Atlas tile layout (256px slots, 248px inner, 4px padding)
 - `ConstrainedRendererConfig` - Hardware-tier presets (OrangePi, low, medium, high)
 - `ConstrainedTextureCache` - LRU-evicting texture cache with memory budget
@@ -27,7 +27,7 @@
 
 **EQ File Loaders** (`include/client/graphics/eq/`)
 - `pfs.cpp/h` - PFS/S3D archive reader
-- `wld_loader.cpp/h` - WLD fragment parser (0x03-0x36 fragments)
+- `wld_loader.cpp/h` - WLD fragment parser (0x03-0x36 fragments); J05 moved the per-fragment parsers into six `wld_fragments_*.cpp` TUs sharing `wld_internal.h`
 - `s3d_loader.cpp/h` - High-level zone/model/character loader
 - `dds_decoder.cpp/h` - DXT1/DXT3/DXT5 texture decompression
 - `zone_geometry.cpp/h` - Irrlicht mesh builder with texture support
@@ -61,7 +61,7 @@ The GLES2 tier uses an all-shader pipeline with 6 built-in programs:
 
 All VS use `precision highp float` (FP32 on Mali 400 vertex processor). All FS use `precision mediump float` (FP16 on Mali 400 fragment cores).
 
-Custom shader materials from `zone_shader.cpp` use GLES ES 1.0 variants when `EQT_HAS_GLES2` is defined (`attribute`/`varying` instead of `gl_Vertex`/`gl_TexCoord[]`, `precision` qualifiers).
+Custom shader materials registered by `zone_shader.cpp` use the GLES ES 1.0 sources (`zone_shader_sources_gles2.h`) when `EQT_HAS_GLES2` is defined, and `zone_shader_sources_gl.h` otherwise (`attribute`/`varying` instead of `gl_Vertex`/`gl_TexCoord[]`, `precision` qualifiers).
 
 ## Hybrid Per-Vertex/Per-Pixel Lighting
 
@@ -124,7 +124,7 @@ On memory-limited devices (Orange Pi One: 512 MB shared RAM), the renderer uses 
 - T214 (`3e4e8a95`): `unloadZone()` retains archives named by `isPersistentEQE1Archive()` (`willeq.eqe1`, the client's own pack opened once at init) instead of destroying every loader; `EQT_EQE1_REQUEST_LOG_DIR` dumps every distinct EQE1 name requested and the archive that served it (`6f2f22f6`). An archive is legitimately open iff it is the zone's own (`{zone}`/`{zone}_obj`/`{zone}_chr`) or a lookup needed it — zero lookups on a zone-own archive is normal, not waste (`e70e3347`).
 - T266: the EQE1 candidate set is no longer frozen at zone load. A race that reaches the entity prep queue after load queues its archive (`addSpawnedRaceEQE1Candidate`), and a name no candidate holds opens its first indexed owner (`EQE1TextureIndex::resolve`, rule R2) instead of returning nothing -- which, under all-or-nothing, was a client exit for any post-load spawn (T263: GM-spawned race 195 in qeynos2). Names in NO archive stay FATAL. Such opens are logged `late-open` and tagged in the `EQT_EQE1_REQUEST_LOG_DIR` TSV's new `how` column.
 - T284: composite entity sheets are no longer bulk-opened. `loadZoneStep0_EQE1()` used to open EVERY `.eqe1` in the `--composite-entities` directory; with the shipped layout (composite dir == `--eqe1-path`) that mapped all 1506 packs / 4.44 GiB of the ETC1 tree at step 0. A sheet name now resolves through the same index-driven open every other EQE1 lookup uses (`openArchiveContaining()` -> `EQE1TextureIndex::resolve`, T207/T266) and opens exactly one pack -- measured 498 packs / 66,330,912 B -> **1 pack / 174,856 B** for a single-race composite run. T281 made this possible by indexing the 498 sheet packs. A composite directory that is NOT the indexed `--eqe1-path` is covered by `openCompositeSheetEQE1()` (sheet packs are self-named, so the name names its pack). Nothing on the Pi changed here -- decision #3 is Will's.
-- T198 (`28a59bf4`): the composite entity atlas (`enableCompositeEntities`) is OFF on the `orangepi` preset — the Pi's failure with `--eqe1-path` was address-space exhaustion from mapping all 664 composite sheets (T195/T197), not heap. Not a knob to revisit for load-time reasons.
+- Composite entities stay OFF on the `orangepi` preset (`enableCompositeEntities == false`). **The T195/T197 address-space rationale is DEAD and must not be cited again** — T284 deleted the eager scan that caused it and T289 measured VmPeak 3,128 MB -> 575 MB on the Pi. The decision stands on RESIDENT cost instead: +13.4 MB for one zone's seven composite races, scaling with the number of distinct resident races, on a 483 MB board. Will chose not to spend that budget; see `docs/decisions.md` 2026-08-27 "Composite entities stay OFF on the orangepi". Not a knob to revisit, and not for load-time reasons.
 
 **Region meshes are always built eagerly at zone load** (`loadZoneStep4_Regions()`), not lazily/progressively. A `ConstrainedMeshCache` class existed for lazy/progressive region-mesh loading with LRU eviction under a memory budget (24 MB on the `orangepi` preset) but was **removed T67 (2026-08-11): it was never constructed in any shipped build.** The only statement that ever touched its owning `unique_ptr` as an lvalue was a `.reset()` sitting behind a null check on that same pointer, so it was always null for the entire process lifetime, and every one of its ~40 call sites was a read behind a guard that never passed. There was also no way to turn it on: the derived budget field (`meshMemoryBytes`) was computed per preset and consumed by nothing. If Pi memory pressure is ever measured to need this (P10b's single "71 evictions" observation was never reproduced — P13/P13b measured zero evictions across four later configurations), the implementation is fully recoverable, not reimplemented from scratch: last shipped at commit `49844c72` (2026-03-08, "PVS direct index lookup, SimWorker copy elimination, DRM page flip fix, stderr buffering"), `include/client/graphics/constrained_mesh_cache.h` + `src/client/graphics/constrained_mesh_cache.cpp` — `git show 49844c72:src/client/graphics/constrained_mesh_cache.cpp` retrieves it in one command. Its one genuinely-live piece, the mesh-size estimator, was relocated verbatim to `estimateMeshSizeBytes()` in `include/client/graphics/eq/zone_geometry.h` / `src/client/graphics/eq/zone_geometry.cpp` rather than deleted.
 

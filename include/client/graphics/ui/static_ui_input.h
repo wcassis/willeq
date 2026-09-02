@@ -150,7 +150,8 @@ public:
      * The `/scroll` command body: parse `args`, route, scroll, and return
      * the line to echo. Lives here rather than in the renderer's slash
      * switch so the parsing sits beside the router it drives (and out of
-     * irrlicht_renderer.cpp, which is already over the file-size ceiling).
+     * irrlicht_renderer.cpp, which was over the file-size ceiling at the
+     * time; J11 has since split it).
      *
      * Grammar: [chat|skills|loot] [up|down|top|bottom] [lines]
      * An omitted panel means "whatever is under the cursor", the same rule

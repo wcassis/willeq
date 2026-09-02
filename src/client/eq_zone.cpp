@@ -113,7 +113,7 @@ void EverQuest::RelocateWithinZone(float x, float y, float z, float server_headi
 	// PlayerProfile carries at offset 13128 (m_pp.heading == m_Position.w).
 	//
 	// Heading conversion is a verbatim copy of ZoneProcessPlayerProfile's
-	// (eq.cpp, "LOAD-BEARING -- DO NOT HARMONIZE"): this is the PLAYER's own
+	// (eq_zone_entry.cpp, "LOAD-BEARING -- DO NOT HARMONIZE"): this is the PLAYER's own
 	// heading arriving from the server, exactly the case that comment
 	// covers, so it gets the same `90 - server_heading_deg` flip and the
 	// same wrap. Deliberately NOT factored into a shared helper -- see
@@ -440,7 +440,7 @@ void EverQuest::CleanupZone()
 	// gameplay resumed -- at which point applying it would have wiped the
 	// zone that had just finished loading, not the one being left. The old
 	// zone's renderer state is now unloaded synchronously and correctly by
-	// Application::loadZoneGraphicsOnThread() (application.cpp), right
+	// Application::loadZoneGraphicsOnThread() (application_zone_loading.cpp), right
 	// before the new zone's own load begins. See
 	// refactor/P17_eviction_hygiene.md Review for the eviction-mystery
 	// mechanism this closes.

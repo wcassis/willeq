@@ -99,10 +99,11 @@ void IrrlichtRenderer::loadZoneStep0_EQE1(ZoneLoadContext& ctx) {
         // befallen*/global* only, so `fishe0301.bmp` was not found and the
         // all-or-nothing rule turned that into a fatal exit (T198).
         //
-        // The spawn list is already available here: Application registered
-        // every snapshot entity into entityRenderer_ (application.cpp:1647)
-        // before calling loadZoneSequential, so the distinct race set is known
-        // before a single archive is opened.
+        // The spawn list is already available here:
+        // Application::loadZoneGraphicsOnThread() (application_zone_loading.cpp)
+        // registered every snapshot entity into entityRenderer_ before calling
+        // loadZoneSequential, so the distinct race set is known before a single
+        // archive is opened.
         //
         // These are APPENDED TO THE LAZY LIST, not opened. Entries are mmap'd
         // one at a time only when ConstrainedTextureCache actually misses, so
@@ -159,10 +160,16 @@ void IrrlichtRenderer::loadZoneStep0_EQE1(ZoneLoadContext& ctx) {
         // beside the packs in the ETC1 tree (compositeEntityPath == eqe1Path),
         // so that scan mapped all 1506 packs / 4.44 GiB of the tree at step 0
         // to reach the handful of sheets a zone's races actually use. On the
-        // 32-bit ARM Pi that is T195's address-space exhaustion (VmSize peaked
-        // at 3.13 GB of a ~3 GB ceiling, std::bad_alloc from mmap, not from a
-        // shortage of RAM) -- the reason composite entities are off there
-        // (T198, decision #3).
+        // 32-bit ARM Pi that scan was T195's address-space exhaustion (VmSize
+        // peaked at 3.13 GB of a ~3 GB ceiling, std::bad_alloc from mmap, not
+        // from a shortage of RAM).
+        //
+        // NOTE: that exhaustion is NOT why composite entities are off on the
+        // orangepi preset any more. Deleting this scan killed the
+        // address-space argument outright (T289 measured VmPeak 3,128 MB ->
+        // 575 MB on the Pi). Composites stay off for their RESIDENT cost
+        // instead -- see docs/decisions.md 2026-08-27, "Composite entities stay
+        // OFF on the orangepi". Do not cite the T195/T198 rationale again.
         //
         // Nothing replaces it here, because nothing has to: a composite sheet
         // name is requested by RaceModelLoader::preloadModelData() through

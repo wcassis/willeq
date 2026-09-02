@@ -50,10 +50,11 @@ namespace Graphics {
 //             bash, hand-to-hand, archery, swim attack, round kick.
 //             T307 measured c01 (kick) and the halberd swing (c03/c04)
 //             directly; the rest are the same family, played through the
-//             same path (eq.cpp's combat-skill dispatch, skill_constants.h's
+//             same path (the CombatSkillAnimation publish in
+//             eq_zone_entry.cpp, skill_constants.h's
 //             getSkillAnimationCode()).
 //   t07..t09  flying kick, tiger strike, dragon punch -- the monk special
-//             ATTACKS. They are combat skills that eq.cpp dispatches
+//             ATTACKS. They are combat skills the client dispatches
 //             identically to c01/c11; only their code letter differs.
 //             Included by that family argument, NOT by measurement.
 //

@@ -172,8 +172,9 @@ void CharacterModelView::updateCharacterModel() {
     // retained only for interface parity (setInventoryManager()).
 
     // Create animated node with equipment. compositeAllowed=false matches
-    // entity_renderer.cpp's player branch (isPlayer forces
-    // compositeEligible=false — see entity_renderer.cpp:546): the doll
+    // the EntityRenderer's player branch (isPlayer forces
+    // compositeEligible=false in EntityRenderer::buildEntityMesh,
+    // entity_mesh_build.cpp): the doll
     // must render through the same per-part path the player's own
     // in-world model uses, never the composite-sheet path (T60 plan,
     // Step 4), or it could visually disagree with the in-world model.

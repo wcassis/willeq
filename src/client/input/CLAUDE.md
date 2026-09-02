@@ -7,7 +7,7 @@ Input flows through a four-layer pipeline: capture → hotkey resolution → act
 ## Input Layer (`include/client/input/`)
 
 **IInputHandler** (`input_handler.h`) — Abstract interface defining the input contract:
-- `InputAction` enum (79 discrete one-shot actions): Quit, Screenshot, Jump, ToggleAutoAttack, TargetSelf, ToggleInventory, etc.
+- `InputAction` enum (40 discrete one-shot actions plus a `Count` sentinel, re-counted J21): Quit, Screenshot, Jump, ToggleAutoAttack, TargetSelf, ToggleInventory, etc.
 - Continuous state (movement, mouse position) is polled at the point of
   use, on the thread that uses it -- there is deliberately no snapshot
   struct. T315 deleted `InputState`: it had no reader, and filling it
@@ -21,7 +21,7 @@ Input flows through a four-layer pipeline: capture → hotkey resolution → act
 - Handles movement keys, mouse input, text input, debug toggles
 
 **HotkeyManager** (`hotkey_manager.h`) — Configurable key binding system:
-- `HotkeyAction` enum (150+ actions) covering movement, toggles, targeting, interaction
+- `HotkeyAction` enum (76 actions plus a `Count` sentinel, re-counted J21) covering movement, toggles, targeting, interaction
 - `HotkeyBinding` struct: key code + `ModifierFlags` (Ctrl/Shift/Alt) + action
 - `HotkeyMode` enum: Global (always active) vs Player (gameplay only)
 - Loads/saves from `config/hotkeys.json`, supports runtime overrides from `willeq.json`
@@ -31,14 +31,21 @@ Input flows through a four-layer pipeline: capture → hotkey resolution → act
 
 ## Action Layer (`include/client/action/`)
 
-**CommandProcessor** (`command_processor.h`) — Slash command text processing:
+**CommandProcessor** (`command_processor.h`) — Slash command text processing.
+Implementation split across nine TUs in `src/client/action/` (J04, plus
+T268/T269/T280): `command_processor.cpp` holds the core (parse, dispatch,
+registry queries), `command_processor_registration.cpp` holds
+`registerBuiltinCommands()` and its 142 `registerCommand({…})` calls, and the
+handlers live in `command_processor_{social,spells_gm,world,bank,loot,train}.cpp`
+behind the shared private header `command_processor_internal.h`. See
+`docs/module_map.md`.
 - Maps command name → handler function via `CommandInfo` structs
 - Built-in commands: chat (/say, /tell), movement (/loc, /sit), combat (/target, /cast), group (/invite), utility (/who, /help)
 - Alias support, tab completion, category browsing
 - Returns `ActionResult` (success + message)
 
 **ActionDispatcher** (`action_dispatcher.h`) — Central hub for all game actions:
-- 100+ action methods covering movement, combat, interaction, chat, group, inventory, spells, skills, pet, trade
+- ~180 action methods covering movement, combat, interaction, chat, group, inventory, spells, skills, pet, trade
 - Validates via `GameState`, delegates to `IActionHandler` (typically `EverQuest`)
 - `Direction` enum (Forward/Backward/Left/Right/Up/Down)
 - `ChatChannel` enum (Say/Shout/OOC/Tell/Group/Guild/Raid/Emote)
@@ -70,7 +77,7 @@ is a thin `EverQuest::Request*` wrapper (T136/T138) — `EqActionHandler` has no
 bridge pointer by design.
 
 `InputActionBridge` dispatches keyboard hotbar presses by the slot's content
-type (T174, `input_action_bridge.cpp:~400-440`): Spell → `castSpell`, Skill →
+type (T174, `InputActionBridge::processHotbarRequests()`): Spell → `castSpell`, Skill →
 `useSkill`; Item and Emote slots are DEBUG-logged and skipped (an Item slot
 carries an item id, `useItem()` takes an inventory slot, and no resolver exists
 at this layer — recorded open in `refactor/deferred.md`).

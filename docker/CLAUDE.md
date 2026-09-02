@@ -6,18 +6,23 @@
 
 | Dockerfile | Target | Architecture | Notes |
 |-----------|--------|-------------|-------|
-| `Dockerfile.arm-noble` | Orange Pi One | armhf (32-bit) | Primary build target, Lima/Mesa GLES2 |
-| `Dockerfile.arm64-noble` | Rock64 (RK3328) | aarch64 (64-bit) | Lima/Mesa GLES2 |
+| `Dockerfile.arm-noble` | Orange Pi One | armhf (32-bit) | Primary build target; native GLES2 (`COpenGLES2Driver`) on DRM/KMS, Mesa/Lima supplying EGL |
+| `Dockerfile.arm64-noble` | Rock64 (RK3328) | aarch64 (64-bit) | Same GLES2 path, 64-bit |
 | `Dockerfile` | Desktop | x86_64 | Multi-stage: builder, runtime, vnc |
 | `Dockerfile.arm-cross` | ARM (legacy) | armhf | Superseded by arm-noble |
 
 **Build command**: `scripts/build-arm-noble.sh`
 ```bash
-./scripts/build-arm-noble.sh                # Graphics + Audio (default)
-./scripts/build-arm-noble.sh --headless     # No graphics
-./scripts/build-arm-noble.sh --no-audio     # No audio
-./scripts/build-arm-noble.sh --no-gles2     # Desktop GL instead of GLES2
+./scripts/build-arm-noble.sh                    # Graphics + Audio (default)
+./scripts/build-arm-noble.sh --headless         # No graphics
+./scripts/build-arm-noble.sh --no-audio         # No audio
+./scripts/build-arm-noble.sh --t122-texprobe    # Texture-probe instrumentation
 ```
+
+There is no `--no-gles2`. P32 (`docs/decisions.md` 2026-07-28 addendum)
+retired the desktop-GL ARM build and deleted the flag; the script's own
+usage text lists the three above. GLES2 (`COpenGLES2Driver`) is the only
+ARM renderer and there is no fallback.
 
 **Sysroot strategy**: Uses `debootstrap --foreign --arch=armhf` to create Noble (24.04) armhf sysroot with cross-compiled dependencies. Libraries are compiled with `arm-linux-gnueabihf-gcc` and `-march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard`.
 
@@ -29,7 +34,7 @@
 
 ## DRM/GLES2 Driver (`irrlicht-drm/`)
 
-Custom Irrlicht device and GLES2 driver for direct rendering on ARM SBCs without X11. ~5,200 lines across 10 files.
+Custom Irrlicht device and GLES2 driver for direct rendering on ARM SBCs without X11. 6,170 lines across 14 files at `9684644f` (10 driver/device sources plus `drm_mode_select.h`, `gl_call_counters.h`, `gpu_sync_probe.h`, `t122_texprobe.h`).
 
 ### CIrrDeviceFB (`CIrrDeviceFB.h/.cpp`)
 

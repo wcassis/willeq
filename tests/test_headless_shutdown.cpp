@@ -139,7 +139,8 @@ TEST_F(HeadlessShutdownTest, PipedQuitWithNoServerExitsCleanFiveTimesInARow) {
 
 // Companion case: a command that is NOT in the pre-connection lifecycle
 // allowlist (movement/combat/etc.) must be held, not dropped or silently
-// dispatched -- the gate at application.cpp's m_fullyConnected check exists
+// dispatched -- the gate at Application::processInput()'s m_fullyConnected
+// check (application_commands.cpp) exists
 // for a real reason (loading-drift protection) and T30 must not have
 // widened it. Observability side of the same fix: a script piping into a
 // client that never connects must see *something* on stdout instead of

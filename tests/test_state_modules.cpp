@@ -1054,10 +1054,11 @@ TEST(InventoryStateTest, ClearBankOnlyAffectsBankSlots) {
 // InventorySlotChangedEventAlwaysReportsHasItemTrue): fireInventoryChangedEvent()
 // used to always publish hasItem=true regardless of the actual occupied
 // state passed to the setter. It now reports the real value.
-// T39: setEquipmentOccupied()/setGeneralOccupied()/setBankOccupied() are now
-// wired -- Application::syncInventoryState() (application.cpp) polls the
-// authoritative InventoryManager every frame and mirrors slot occupancy
-// through these setters. Still no production READER of the resulting
+// T39: setEquipmentOccupied()/setGeneralOccupied()/setBankOccupied() are
+// wired. T39's per-frame poll (Application::syncInventoryState()) no longer
+// exists; the write moved to the mutation site --
+// EverQuest::SyncInventorySlotToGameState() in eq_merchant.cpp calls these
+// three setters directly. Still no production READER of the resulting
 // occupancy arrays (confirmed unchanged from T28's finding) -- the live
 // InventorySlotChanged events consumers care about (enriched by S2) come
 // from the eq_bridge path instead -- see refactor/deferred.md "Dead

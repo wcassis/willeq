@@ -227,7 +227,7 @@ void PlayerState::setTrainer(uint16_t npcId, const std::string& name) {
     m_trainerNpcId = npcId;
     m_trainerName = name;
 
-    // Note: TrainerWindowOpened event is published from eq.cpp with full skill data.
+    // Note: TrainerWindowOpened event is published from eq_merchant.cpp with full skill data.
     // This method only tracks state for polling.
 }
 

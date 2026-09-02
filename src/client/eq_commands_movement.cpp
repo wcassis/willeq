@@ -140,7 +140,7 @@ void EverQuest::RegisterMovementCommands()
 	// The fix requires seeing BOTH EverQuest::m_command_registry (this
 	// registry) and action::CommandProcessor's catalog, and only
 	// Application holds pointers to both. So /help now lives in
-	// Application::dispatchToActionOrRenderer() (application.cpp),
+	// Application::dispatchToActionOrRenderer() (application_commands.cpp),
 	// implemented via eqt::help::BuildHelpResponse()
 	// (include/client/help/merged_help.h) -- it is reached through the SAME
 	// unrecognized-command fallback every other action/renderer command
@@ -160,7 +160,7 @@ void EverQuest::RegisterMovementCommands()
 	// remaining caller in this file was one of the 26 redundant duplicates
 	// removed by T139 (see refactor/T139_delete_duplicate_commands.md).
 	// registry-3's fallback (Application::dispatchToActionOrRenderer,
-	// application.cpp) forwards the identical "/" + cmdBody string to
+	// application_commands.cpp) forwards the identical "/" + cmdBody string to
 	// IrrlichtRenderer::processSlashCommand() automatically once no game- or
 	// action-registry command claims the name, so nothing here needs
 	// replacing -- the same renderer entry points still run.
@@ -171,7 +171,7 @@ void EverQuest::RegisterMovementCommands()
 	// graphics-only singletons (SpellEffectsConfig, WeatherConfigLoader)
 	// directly from the game thread, with no lock protecting them against
 	// the render thread (T138). Both are now implemented in
-	// IrrlichtRenderer::processSlashCommand() (irrlicht_renderer.cpp),
+	// IrrlichtRenderer::processSlashCommand() (renderer_slash_commands.cpp),
 	// reached via registry-3's fallback exactly like reloadeffects/
 	// reloadweather already were -- see refactor/T142_bridge_route_
 	// singletons.md. All four aliases were taught to processSlashCommand()

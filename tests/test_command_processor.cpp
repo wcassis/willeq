@@ -805,9 +805,10 @@ TEST_F(CommandProcessorTest, UnknownCommand_DisplaysErrorViaRenderer) {
 // this reader deliberately untouched, see refactor/deferred.md "Dead
 // parallel state copies in the state layer, WITH LIVE READERS"), so
 // hasTarget() was permanently false and /hail always took the no-target
-// branch. Application::syncCombatState() (application.cpp) now mirrors
-// this same GameState instance's combat() from the authoritative
-// CombatManager every frame; these tests exercise CommandProcessor's
+// branch. Application::syncCombatState() was itself deleted (T104): the
+// authoritative CombatManager now writes this same GameState instance's
+// combat() directly from its SetTarget/ClearTarget choke points
+// (combat.cpp; see the gravestone comment in application_zone_loading.cpp); these tests exercise CommandProcessor's
 // branch directly against `state` (bypassing Application) since
 // CommandProcessor only ever sees state::GameState&, per T12's
 // decoupling -- these would have FAILED before this unit (hailTarget()

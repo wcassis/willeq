@@ -352,8 +352,9 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	//
 	// LOAD-BEARING — DO NOT "HARMONIZE" THIS WITH THE OTHER HEADING SITES.
 	// The `90 -` flip below is applied to the PLAYER's own heading here, and
-	// deliberately NOT to other entities (eq_entities.cpp:~294-297 assigns
-	// server_heading directly, with its own extra /4.0f). That asymmetry looks
+	// deliberately NOT to other entities (ZoneProcessNewSpawn/ZoneProcessZoneSpawns
+	// in eq_entities.cpp assign server_heading directly, with their own extra
+	// /4.0f). That asymmetry looks
 	// exactly like the duplicated-then-drifted defect class this codebase keeps
 	// hitting, and it is not: players and NPCs do not share the same default
 	// rotation, and the model files themselves carry differing default
@@ -661,7 +662,8 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 				buffs[i].player_id = p.GetUInt32(offset + 16);
 			}
 			m_buff_manager->setPlayerBuffs(buffs.data(), BUFF_COUNT);
-			// T277: and tell the renderer (eq_player_info.cpp). Without
+			// T277: and tell the renderer (PublishPlayerBuffs,
+			// eq_player_buffs.cpp). Without
 			// this the buff bar starts every session empty -- eqemu never
 			// sends OP_Buff for a buff that is merely still running.
 			PublishPlayerBuffs(buffs.data(), BUFF_COUNT);

@@ -92,7 +92,8 @@ uint32_t FindSpellId(SpellDatabase& db, uint32_t lo, uint32_t hi,
 
 // Extends zonetest::NewSpawnPayloadAt with an explicit bodytype (offset
 // base+335, base=2 for a single NewSpawn packet -- same struct WriteSpawnStruct
-// writes, see eq_entities.cpp:339 for the read side). Kept local to this file
+// writes; the read side is EverQuest::ZoneProcessNewSpawn /
+// ZoneProcessZoneSpawns in eq_entities.cpp). Kept local to this file
 // rather than promoted into zone_stream_test_utils.h since only the creature-
 // type-restriction tests need it.
 std::vector<uint8_t> NewSpawnPayloadWithBodyType(uint32_t spawn_id, const std::string& name,

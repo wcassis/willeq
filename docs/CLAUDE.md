@@ -37,7 +37,8 @@ The EQ server sends positions with X and Y swapped relative to zone geometry. Th
 
 When receiving spawn packets, the client **immediately swaps X and Y**:
 ```cpp
-// In eq.cpp - server sends (server_x, server_y, z)
+// In eq_entities.cpp (ZoneProcessNewSpawn/ZoneProcessZoneSpawns) --
+// server sends (server_x, server_y, z)
 entity.x = server_y;  // Client X = Server Y
 entity.y = server_x;  // Client Y = Server X
 entity.z = z;         // Z unchanged
@@ -78,7 +79,7 @@ vertex.Pos.Y = v.z;  // EQ Z (vertical) → Irrlicht Y (vertical)
 vertex.Pos.Z = v.y;  // EQ Y (horizontal) → Irrlicht Z (horizontal)
 ```
 
-Example from `irrlicht_renderer.cpp`:
+Example of the same swap in the renderer (`CameraController`, `camera_controller.cpp`; the mesh side is in `src/client/graphics/eq/mesh_building.cpp`):
 ```cpp
 irr::core::vector3df camPos(x, camZ, y);  // x, z, y order
 ```
@@ -155,7 +156,8 @@ Audio system uses client internal coordinates directly (no transformation).
 
 - **Player and NPC headings are NOT handled identically, and that is correct.**
   The player's own heading from PlayerProfile gets a `90 - server_heading_deg`
-  flip (`src/client/eq.cpp`, see the load-bearing comment there); other
+  flip (`EverQuest::ZoneProcessPlayerProfile` in `src/client/eq_zone_entry.cpp`,
+  see the load-bearing comment there); other
   entities' headings from spawn packets do not (`src/client/eq_entities.cpp`,
   which applies its own extra `/4.0f` instead). **Players and NPCs do not share
   the same default rotation, and the model files carry differing default
