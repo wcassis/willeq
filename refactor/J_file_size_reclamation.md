@@ -347,6 +347,41 @@ live victim in this file**.
 `module_map.md` likewise for `eq.cpp`'s five. Outside every unit's territory —
 **fold into a later J unit or a hygiene pass.**
 
+## ⚠ CORRECTIONS FROM J11 (2026-09-02) — and THE HARD-CAP LIST IS NOW EMPTY
+
+**All four files over the 3,000-line hard ceiling are cleared:** `eq.cpp`
+3,923 → 1,022 (J02), `entity_renderer.cpp` 3,244 → 540 (J03),
+`command_processor.cpp` 3,024 → 284 (J04), `irrlicht_renderer.cpp` 3,296 → 908
+(J11). `find src include | awk '$1>3000'` returns nothing.
+
+**9. Correction 5 is TOO NARROW — the verifier exception is a PREAMBLE-CONTENT
+problem, not just a shared-helper one, and it will recur in every unit.** J11
+needed no internal header (both anonymous namespaces verified single-consumer)
+and still exited 1 with **70 lines**: the mandated verbatim preamble contains 12
+`extern` GLES2 declarations and a one-line `WindowManager` stub, none of which
+`BOILERPLATE` names, × 5 new TUs = 65 lines, plus 5 test repoints. Proven
+byte-identical; signed off at merge. **Expect this wherever the original's
+preamble carries anything beyond includes/pragmas/namespaces.**
+
+**10. TERRITORY MUST COVER TESTS THAT SCAN SOURCE TEXT.** Four tests read
+`irrlicht_renderer.cpp` **as text** and had to be repointed — outside J11's
+stated territory and **not optional: three would have failed and one would have
+silently asserted nothing.** **Every unit must run
+`grep -rn '<basename>' tests/ scripts/` BEFORE cutting** and add what it finds
+to its territory. J05, J06, J09 and J13 likely have such guards.
+(J11's repoint made one guard strictly tighter, not weaker — worth aiming for.)
+
+**11. J03's cutting rule REPLACES the banner rule outright.** `irrlicht_renderer.cpp`
+had 2 banners in 3,296 lines; the rule — *cut at a blank line whose predecessor
+closes a method, and verify comment depth 0 at the cut* — decided all 14 cuts
+mechanically. **Worth scripting once for the remaining units.**
+
+**12. Line estimates are unreliable in BOTH directions** — J03 ran 1-6 lines
+high (counting the namespace close per cluster), J11 ran 20-130 lines LOW (the
+survey assumed a 97-line preamble against a real 109, × 6 TUs). Cluster
+membership has been right every time; the arithmetic has not. Treat projected
+counts as indicative only.
+
 ## Unit table
 
 | Unit | File | Lines | → TUs | Largest after | Wave | Notes |
