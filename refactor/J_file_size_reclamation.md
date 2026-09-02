@@ -1420,6 +1420,51 @@ line — none is a loot call), while four other mentions were accurate at base a
 now point at the wrong TU. Queue the latter against J24, not against pre-existing
 rot.
 
+## ⚠ CORRECTIONS FROM J29 (2026-09-02)
+
+**65. A FOURTH EXIT-143 OUTCOME: "COMPLETED BUT UNRECORDED". AN ABSENT EXIT FILE
+IS NO RESULT, NOT A BAD ONE.** J29's ARM build log ends with the script's own
+`=== Build complete ===` — it **finished**, and the tool killed the wrapper
+before the trailing `echo EXIT=$?` ran, so **no exit file existed at all**.
+Classifying that from the log would have been the exact trap the dispatch warns
+about. The taxonomy is now: killed compile (**truncates**), killed link
+(**deletes**), killed `ar` (**deletes an archive the binary scan cannot see**),
+and **finished-but-unrecorded (no exit file)**. J29 re-ran and took exit 0 from
+the re-run — correct. ⚠ **The orchestrator hit this same shape three times today
+from the other side**, reading a wrapper's exit code instead of the command's.
+**Rule: read the exit code from inside the log; if it is absent, you have no
+result and must re-run.**
+
+**66. DROP PER-TU METHOD COUNTS FROM PLANS ENTIRELY — correction 46 is now FOUR
+FOR FOUR** (J13, J25, J26, J29). J29's plan predicted 7/3/7 against an actual
+8/4/5 (total 17 correct) because its split table simply omitted four methods.
+**Ranges have been exact in every single unit; derived counts have slipped in
+five.** The count adds nothing the ranges do not already pin, and a wrong one
+costs an executor a reconciliation.
+
+**67. Include counts are a third derived quantity that keeps slipping** — the
+preamble has **eleven** `#include` lines, not ten. **Third Wave-6 unit to correct
+an include count**, and it only surfaced because J29 derived its verifier total
+(45) from first principles rather than accepting the prediction.
+
+### J29's result
+
+1,793 → **568 / 688 / 586**, all three exactly as predicted, **zero range
+drift**. **Verifier exit 0, +45/−0, zero substantive.** Three proofs, all exit 0,
+including a byte-for-byte diff of the 326-line `loadModelFromCachedChr` across
+the split.
+
+**Its correction-21 evidence is the form to copy:** it pasted the grep *and its
+exit status* (no output, exit 1), then stated the inference explicitly — the set
+of file-local symbols is empty, therefore the set of disagreeing
+(definition, consumer) pairs is empty — and confirmed against the build. It also
+ran correction 36's pre-check for an out-of-class static member definition in the
+preamble.
+
+**Correction 41's fixed order used**, benchmark stamped 14:34:56 against 13:59:03
+edits. Seven CMake sites found and edited; root line numbers drifted +4/+8 while
+the target names were right — **fourth consecutive unit with that exact shape.**
+
 ## Unit table
 
 | Unit | File | Lines | → TUs | Largest after | Wave | Notes |
