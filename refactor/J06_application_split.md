@@ -298,3 +298,245 @@ Concurrent at dispatch: **J05** (`src/client/graphics/eq/wld_loader.cpp` + new
 `eq_player_*.cpp`, `CMakeLists.txt`). No source overlap with either.
 ⚠ **`CMakeLists.txt` is shared with both** — which is why **merges are
 serialized one at a time with a rebase.**
+
+---
+
+## Review (executor, slot3, 2026-09-02)
+
+**Branch `task/J06-application-split`, cut from `fable` at
+`524db263b11b4dfd19691065d35f2c73ebb0cdd0` ("Batch J: the hard-cap list is
+EMPTY; fold J11's four corrections"). Verifier base rev = that same hash
+(`git merge-base fable HEAD`).**
+
+**Every acceptance item passed on the first attempt. No exception needs
+sign-off: `verify_move_only.py` exited 0.**
+
+### 1. Hazard 1 — Option A, and why
+
+**Took Option A.** `mainLoop` stays with `initialize`; nothing promoted, no
+internal header, no linkage change.
+
+Re-measured at my tip. `grep -rn 's_terminateRequested\|HandleSig' src/ include/ tests/`
+returns exactly the eleven hits the plan predicted at `ed97d701` and **no new
+reader had appeared**: definitions at `:75/77/82/86/91`, the write at `:78`,
+the four `signal()` address-takes at `:204-206, 208` inside `initialize`, and
+the single read at `:922` inside `mainLoop`. Two consumers, both now in the
+stays-TU.
+
+The tradeoff as I saw it:
+
+- Option B's *entire* benefit is cosmetic — a 948-line stays-TU instead of an
+  849-line one. Both are far under the 1,500 WARN, and `check_file_sizes.sh`
+  reports `ok` for 948. **There is no size problem to solve**, so the gain is
+  the aesthetic claim that `mainLoop` belongs beside `render`.
+- Its cost is real and permanent: five `static`s with internal linkage become
+  `inline` externally-linked entities in a header. `s_terminateRequested` is a
+  **live async-signal-safe object** — the one thing a SIGTERM handler is allowed
+  to touch. Changing its linkage is a semantic change smuggled into a commit
+  whose whole contract is "verbatim relocation". That it happens to be benign
+  today is not the same as it being move-only.
+- And it converts a clean exit-0 verifier run into a five-line enumerated
+  exception requiring orchestrator sign-off — a cost paid by the reviewer, not
+  by me, in exchange for 99 lines of file-length cosmetics.
+
+The lifecycle grouping is also not a *worse* home for `mainLoop` than the frame
+TU, merely a different one: `mainLoop` is the thread-and-shutdown loop that
+drives `run`/`requestQuit`/`gameThreadLoop`, all of which stay. Filing it with
+`updateGameState`/`render` would split the lifecycle cluster to unify a frame
+cluster — a lateral move.
+
+**I did not contort any code to force a green exit.** The verifier is green
+because Option A genuinely introduces no non-boilerplate lines.
+
+### 2. Preprocessor / comment boundary check
+
+Directive map at my tip below line 58 (`awk 'NR>=59 && /^[ \t]*(#if|#ifdef|#ifndef|#else|#elif|#endif)/'`):
+
+```
+81 #ifndef _WIN32 | 90 #ifdef EQT_HAS_GRAPHICS | 94 #endif | 95 #endif
+134/145 | 175/197 | 203/207/209/211 | 268/278 | 411 | 640/656/665
+722/724/731/759 | 851/888 | 1500/1512 | 1516/1595/1597
+1604 … 1939/1965 … 1967
+2154/2167/2170/2171 | 2172/2178 | 2188/2191 | 2211/2218
+2229/2250/2263/2264 | 2266/2298
+```
+
+Identical to the plan's `ed97d701` list — **zero drift**. Running-depth check at
+every cut point:
+
+```
+line   61 depth_after=0      line 1599 depth_after=0
+line  947 depth_after=0      line 1600 depth_after=0
+line  948 depth_after=0      line 1995 depth_after=0
+line 1437 depth_after=0      line 1996 depth_after=0
+line 1438 depth_after=0      line 2367 depth_after=0   line 2368 depth_after=0
+```
+
+⚠ **Confirmed `1604-1967` was NOT cut.** The four interior cuts are at 948,
+1438, 1600 and 1996; the nearest to that region is 1600, four lines above its
+open, and 1996, twenty-nine below its close. The whole 364-line
+`#ifdef EQT_HAS_GRAPHICS` region — six zone-loading methods plus the nested
+`#if defined(WITH_RDP) && defined(WITH_AUDIO)` at `1939/1965` — travels intact
+inside `application_zone_loading.cpp`.
+
+Block comments: `grep -n '/\*\|\*/'` yields **four hits, all the same
+single-line `/*sig*/` parameter-name comment** at `:77/82/86/91`. No multi-line
+block comment exists in this file, so comment depth is 0 everywhere. No
+anonymous namespace (`grep -n '^namespace {'` empty). The only file-scope
+statics are Hazard 1's five.
+
+Every cut satisfies J03's rule (blank line whose predecessor closes a method):
+946 `}` / 947 blank; 1436 `}` / 1437 blank; 1598 `}` / 1599 blank; 1994 `}` /
+1995 blank. **No range had to be moved.**
+
+### 3. CMake add-sites
+
+`grep -n 'application\.cpp' CMakeLists.txt tests/CMakeLists.txt` → **exactly one
+site, `CMakeLists.txt:385`, inside `SET(CLIENT_CORE_SOURCES`** — matching the
+plan's count of one. `tests/CMakeLists.txt`: **zero**. Four lines added beside
+the original; `CMakeLists.txt` 1,919 → 1,923.
+
+### 4. Both content proofs
+
+Body = lines 62-2367 of the original, **2,306 lines**.
+
+**Byte-identical re-concatenation** (bodies re-extracted *from the five files on
+disk*, each stripped of its 61-line preamble and 1-line namespace close, in
+original cluster order):
+
+```
+$ wc -l after2.txt                      -> 2306
+$ cmp before_body.txt after2.txt ; echo -> RECONCAT-FROM-DISK-EXIT=0
+```
+
+**Line-multiset check** (same inputs, `sort`ed):
+
+```
+$ diff before_sorted.txt after2_sorted.txt ; echo -> MULTISET-FROM-DISK-EXIT=0
+```
+
+No header was created, so J04 correction 7's under-count trap does not apply —
+the `.cpp` bodies are the complete `after` set.
+
+Preamble identity, additionally checked per TU: `cmp <(head -61 $f) pre.txt`
+exit 0 for all four new TUs, and each ends `} // namespace eqt`.
+
+**Verifier:**
+
+```
+$ BASE=$(git merge-base fable HEAD)   # 524db263b11b4dfd19691065d35f2c73ebb0cdd0
+$ python3 scripts/refactor/verify_move_only.py "$BASE..HEAD" \
+      --repo /mnt/projects/fable/wt/slot3
+Non-C++ files changed (not verified, review separately):
+  CMakeLists.txt
+Files verified: 5
+Boilerplate: +224 / -0 lines (allowed)
+PASS: move-only (modulo boilerplate).
+VERIFY_EXIT=0
+```
+
+(+224 = the four replicated 56-line boilerplate-classified preamble slices. No
+non-boilerplate additions, no removals. **No sign-off exception is needed for
+this unit.**)
+
+⚠ Note for the next executor: the verifier compares **committed** revisions. Run
+before committing it prints `No C++ files changed` and **exits 0** — a green
+result that proves nothing, and one that looks exactly like a pass. Commit
+first, then verify. Worth adding to the template.
+
+### 5. Drift, final counts, timings
+
+**File was 2,368 lines at my tip — no drift from the plan's `ed97d701`
+measurement.** Every range in the cluster table was correct as written; the
+arithmetic `61 + 886 + 490 + 162 + 396 + 372 + 1 = 2368` held exactly.
+
+| TU | plan ≈ | actual | body |
+|---|---|---|---|
+| `application.cpp` (stays) | ~947 | **948** | 62-947 (886) |
+| `application_commands.cpp` | ~553 | **552** | 948-1437 (490) |
+| `application_frame.cpp` | ~225 | **224** | 1438-1599 (162) |
+| `application_zone_loading.cpp` | ~459 | **458** | 1600-1995 (396) |
+| `application_config.cpp` | ~435 | **434** | 1996-2367 (372) |
+
+All five estimates were **exactly one high** — the plan added a namespace close
+*and* a preamble line per TU (61 + body + 1 = the actual). Batch correction 12
+says estimates err in both directions; here the error was uniform and trivial.
+Largest TU 948, 552 short of the WARN. `check_file_sizes.sh --files` on all six
+changed/created files: **5 ok, 1 warn, 0 fail** — the warn is the grandfathered
+`CMakeLists.txt`.
+
+Acceptance, all by exit code:
+
+| step | result |
+|---|---|
+| `cmake --build build -j24` | **EXIT 0** (~5.0 min) |
+| `ctest --test-dir build -j6` | **1 failed / 3505**, `AudioManagerTest.PreloadCommonSounds` (the documented ALSA host quirk, the only entry in `test_baseline.txt`). **Zero new failures.** 120.7 s |
+| `visual_gate` (inside ctest) | **Passed**, 20.18 s |
+| goldens | `git status --porcelain` **empty** after the gate |
+| `verify_move_only.py --repo <slot>` | **EXIT 0**, PASS |
+| byte-identical re-concat | **EXIT 0**, 2,306 lines |
+| line multiset | **EXIT 0** |
+| `scripts/build-gles2-x86.sh` | **EXIT 0** |
+| `scripts/build-arm-noble.sh` | **EXIT 0, first invocation** |
+| `check_file_sizes.sh --files` | 5 ok, 1 pre-existing warn, **0 fail** |
+
+**Wall clock ~28 min. Slowest step: `cmake --build -j24` at ~5.0 min** — it
+exceeded the 600 s Bash ceiling and was backgrounded, then polled with
+`scripts/wait_for.sh` (met at 300 s). The cut itself plus CMake plus both proofs
+was **under 3 minutes**; everything else was the bar, as J01/J02 measured.
+
+**Concurrency did NOT stretch the tail this time.** `ctest -j6` ran in **120.7 s
+(2.0 min)** against J02's 6.8 min under a three-wide wave and J01's 3.0 min solo
+— i.e. *faster than the solo baseline*, on a suite that has since grown to 3,505
+tests. `build-arm-noble.sh` finished inside one 600 s call rather than the
+expected two (J04's correction 6). Both suggest slot1/slot2 were between
+build-heavy phases during my tail rather than that the contention effect is
+gone; a later unit should not plan on this.
+
+⚠ `HeadlessShutdownTest.NonLifecycleCommandIsHeldNotDroppedOrApplied` — the
+flake the plan flagged as closest to J06's territory — **passed in the wave
+run**. No isolated re-run was needed.
+
+### 6. Findings only (recorded, NOT acted on)
+
+- **`Application::initialize` is 587 lines** (`:105-691`), confirmed at my tip
+  against the §Optional Batch-G list's 569. It is 62% of the surviving
+  `application.cpp` and sets that TU's floor: no further split of this file is
+  worth doing until `initialize` is decomposed. Out of scope here (move-only).
+- **The T104/T49 deleted-method tombstone comment block at `1969-1990`**
+  (22 lines) rode into `application_zone_loading.cpp` verbatim, as the range
+  required. Same shape as J02's `eq_ucs.cpp` leftover: commented-out history
+  that git already keeps.
+- **`tests/` carries 13 references to `application.cpp`, ALL of them comments —
+  and 6 of them cite line numbers that this split has now invalidated.**
+  `grep -rn 'application\.cpp' tests/ scripts/` (the J11 correction-10 check)
+  found **zero functional readers**: no test opens this file as text, unlike
+  `irrlicht_renderer.cpp`'s four guards. So **nothing joined my territory and no
+  test needed repointing.** But the stale citations are real doc rot —
+  `tests/test_first_person_tunables.cpp` alone names `application.cpp:1231`
+  (twice), `:1162` and `:395`. Of those, `:395` still resolves inside the
+  stays-TU; `:1162` and `:1231` are now in `application_commands.cpp` at
+  `:275` and `:344`. Also `tests/test_headless_command_refusal.cpp:103` tells a
+  future reader to "grep application.cpp", which will now miss.
+  **A comment-only follow-up, outside move-only scope. Recommend folding into
+  the same hygiene pass as the `docs/module_map.md` debt.**
+- `docs/module_map.md` needs entries for the four new TUs, and `docs/future/
+  ui_fixes.md` cites `application.cpp` ~lines 438/462 — both now stale. Flagged
+  follow-up, explicitly outside this unit's territory.
+
+### 7. What the template still gets wrong
+
+1. **The verifier silently no-ops on an uncommitted tree** (see §4). `No C++
+   files changed` + exit 0 is indistinguishable from a pass at a glance. This is
+   a *third* failure mode with the same shape as the `--repo` and base-rev traps
+   the corrections already document, and the acceptance section should say
+   "commit first".
+2. **Correction 12 says line estimates err in both directions; for J06 every
+   one was off by exactly +1 in the same direction**, because the estimator
+   counted `61 + body` and the real file is `61 + body + 1`. Trivial, but the
+   plan's own arithmetic identity (`61 + … + 1 = 2368`) already encodes the
+   fix — the per-row `≈` column just didn't use it.
+3. **Correction 6's "expect to call `build-arm-noble.sh` twice" did not hold**
+   (one call, exit 0), and neither did J02's 2.3x `ctest` stretch. The
+   scheduling numbers in §Scheduling are a *worst case observed*, not a
+   forecast; wording them as "expect" makes a green run look anomalous.
