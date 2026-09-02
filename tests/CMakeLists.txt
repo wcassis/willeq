@@ -2118,6 +2118,20 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_spell_gem_key_race)
 ENDIF()
 
+# T312: RendererEventReceiver's cross-thread state -- the bridgeQueue_
+# heap-corruption race, the key-array races, and the mouse-delta double
+# consumer. Doubles as the ThreadSanitizer driver (build a separate
+# -fsanitize=thread tree per the P23/T35 precedent). No device needed --
+# same reasoning as test_spell_gem_key_race above.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_bridge_queue_race
+        test_bridge_queue_race.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_bridge_queue_race PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_bridge_queue_race GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_bridge_queue_race)
+ENDIF()
+
 # T111: coverage for IrrlichtRenderer::isEntityBlockingProgressiveLoad(), the
 # pure predicate extracted from checkProgressiveLoadingComplete() to fix the
 # deferred-entity-pickup bug T109 shipped inert around. No device needed --

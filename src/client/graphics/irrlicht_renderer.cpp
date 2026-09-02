@@ -228,18 +228,21 @@ static void logDriverDetails(irr::video::IVideoDriver* driver, irr::IrrlichtDevi
 // --- RendererEventReceiver Implementation ---
 
 RendererEventReceiver::RendererEventReceiver() {
+    // T312: std::atomic<bool> has no aggregate initializer, so the arrays
+    // are zeroed here (as they always were) rather than at the declaration.
     for (int i = 0; i < irr::KEY_KEY_CODES_COUNT; ++i) {
-        keyIsDown_[i] = false;
-        keyWasPressed_[i] = false;
+        keyIsDown_[i].store(false, std::memory_order_relaxed);
+        keyWasPressed_[i].store(false, std::memory_order_relaxed);
     }
 }
 
 bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
     if (event.EventType == irr::EET_KEY_INPUT_EVENT) {
-        keyIsDown_[event.KeyInput.Key] = event.KeyInput.PressedDown;
+        keyIsDown_[event.KeyInput.Key].store(event.KeyInput.PressedDown,
+                                            std::memory_order_relaxed);
 
         if (event.KeyInput.PressedDown) {
-            keyWasPressed_[event.KeyInput.Key] = true;
+            keyWasPressed_[event.KeyInput.Key].store(true, std::memory_order_relaxed);
 
             // Queue key event for chat input (all printable characters)
             KeyEvent keyEvent;
@@ -269,7 +272,8 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
 
             // Look up action from HotkeyManager
             // Check Alt key state (Irrlicht doesn't expose Alt in KeyInput directly)
-            bool alt = keyIsDown_[irr::KEY_LMENU] || keyIsDown_[irr::KEY_RMENU];
+            bool alt = keyIsDown_[irr::KEY_LMENU].load(std::memory_order_relaxed) ||
+                       keyIsDown_[irr::KEY_RMENU].load(std::memory_order_relaxed);
             auto& hotkeyMgr = eqt::input::HotkeyManager::instance();
             auto action = hotkeyMgr.getAction(
                 event.KeyInput.Key,
@@ -302,8 +306,8 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
 
                     // === Player Mode Actions ===
                     // Game actions → bridgeQueue (routed through InputActionBridge)
-                    case HA::ToggleAutorun: bridgeQueue_.push_back({RA::ToggleAutorun}); break;
-                    case HA::ToggleAutoAttack: bridgeQueue_.push_back({RA::ToggleAutoAttack}); break;
+                    case HA::ToggleAutorun: pushBridgeAction({RA::ToggleAutorun}); break;
+                    case HA::ToggleAutoAttack: pushBridgeAction({RA::ToggleAutoAttack}); break;
                     case HA::ToggleInventory: actionQueue_.push_back({RA::ToggleInventory}); break;
                     case HA::ToggleSkills: actionQueue_.push_back({RA::ToggleSkills}); break;
                     case HA::ToggleGroup: actionQueue_.push_back({RA::ToggleGroup}); break;
@@ -330,25 +334,25 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                         break;
                     case HA::InteractDoor: actionQueue_.push_back({RA::DoorInteract}); break;
                     case HA::InteractWorldObject: actionQueue_.push_back({RA::WorldObjectInteract}); break;
-                    case HA::Hail: bridgeQueue_.push_back({RA::Hail}); break;
-                    case HA::Consider: bridgeQueue_.push_back({RA::Consider}); break;
+                    case HA::Hail: pushBridgeAction({RA::Hail}); break;
+                    case HA::Consider: pushBridgeAction({RA::Consider}); break;
                     case HA::ClearTarget:
                         // Both queues: bridge clears combat target, renderer clears display
-                        bridgeQueue_.push_back({RA::ClearTarget});
+                        pushBridgeAction({RA::ClearTarget});
                         actionQueue_.push_back({RA::ClearTarget});
                         break;
 
                     // Targeting → bridgeQueue (routed through InputActionBridge)
-                    case HA::TargetSelf: bridgeQueue_.push_back({RA::TargetSelf}); break;
-                    case HA::TargetGroupMember1: bridgeQueue_.push_back({RA::TargetGroupMember1}); break;
-                    case HA::TargetGroupMember2: bridgeQueue_.push_back({RA::TargetGroupMember2}); break;
-                    case HA::TargetGroupMember3: bridgeQueue_.push_back({RA::TargetGroupMember3}); break;
-                    case HA::TargetGroupMember4: bridgeQueue_.push_back({RA::TargetGroupMember4}); break;
-                    case HA::TargetGroupMember5: bridgeQueue_.push_back({RA::TargetGroupMember5}); break;
-                    case HA::TargetNearestPC: bridgeQueue_.push_back({RA::TargetNearestPC}); break;
-                    case HA::TargetNearestNPC: bridgeQueue_.push_back({RA::TargetNearestNPC}); break;
-                    case HA::CycleTargets: bridgeQueue_.push_back({RA::CycleTargets}); break;
-                    case HA::CycleTargetsReverse: bridgeQueue_.push_back({RA::CycleTargetsReverse}); break;
+                    case HA::TargetSelf: pushBridgeAction({RA::TargetSelf}); break;
+                    case HA::TargetGroupMember1: pushBridgeAction({RA::TargetGroupMember1}); break;
+                    case HA::TargetGroupMember2: pushBridgeAction({RA::TargetGroupMember2}); break;
+                    case HA::TargetGroupMember3: pushBridgeAction({RA::TargetGroupMember3}); break;
+                    case HA::TargetGroupMember4: pushBridgeAction({RA::TargetGroupMember4}); break;
+                    case HA::TargetGroupMember5: pushBridgeAction({RA::TargetGroupMember5}); break;
+                    case HA::TargetNearestPC: pushBridgeAction({RA::TargetNearestPC}); break;
+                    case HA::TargetNearestNPC: pushBridgeAction({RA::TargetNearestNPC}); break;
+                    case HA::CycleTargets: pushBridgeAction({RA::CycleTargets}); break;
+                    case HA::CycleTargetsReverse: pushBridgeAction({RA::CycleTargetsReverse}); break;
 
                     case HA::OpenChat: enterKeyPressed_ = true; break;
                     case HA::OpenChatSlash: slashKeyPressed_ = true; break;
@@ -391,7 +395,7 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                 }
                 LOG_DEBUG(MOD_INPUT, "[INPUT-TRACE] OnEvent: action {} -> actionQ={}, bridgeQ={}, zoomDelta={}",
                     hotkeyMgr.actionEnumToName(*action),
-                    actionQueue_.size(), bridgeQueue_.size(), cameraZoomDelta_);
+                    actionQueue_.size(), getBridgeQueueSize(), cameraZoomDelta_);
             }
         }
         return true;
@@ -400,35 +404,35 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
     if (event.EventType == irr::EET_MOUSE_INPUT_EVENT) {
         switch (event.MouseInput.Event) {
             case irr::EMIE_LMOUSE_PRESSED_DOWN:
-                leftButtonDown_ = true;
+                leftButtonDown_.store(true, std::memory_order_relaxed);
                 // Record click position for targeting
-                clickMouseX_ = event.MouseInput.X;
-                clickMouseY_ = event.MouseInput.Y;
+                clickMouseX_.store(event.MouseInput.X, std::memory_order_relaxed);
+                clickMouseY_.store(event.MouseInput.Y, std::memory_order_relaxed);
                 leftButtonClicked_ = true;
                 // Reset mouse delta tracking to prevent camera jump on click
-                mouseX_ = event.MouseInput.X;
-                mouseY_ = event.MouseInput.Y;
+                mouseX_.store(event.MouseInput.X, std::memory_order_relaxed);
+                mouseY_.store(event.MouseInput.Y, std::memory_order_relaxed);
                 lastMouseX_ = event.MouseInput.X;
                 lastMouseY_ = event.MouseInput.Y;
                 break;
             case irr::EMIE_LMOUSE_LEFT_UP:
-                leftButtonDown_ = false;
+                leftButtonDown_.store(false, std::memory_order_relaxed);
                 leftButtonReleased_ = true;
                 break;
             case irr::EMIE_RMOUSE_PRESSED_DOWN:
-                rightButtonDown_ = true;
+                rightButtonDown_.store(true, std::memory_order_relaxed);
                 break;
             case irr::EMIE_RMOUSE_LEFT_UP:
-                rightButtonDown_ = false;
+                rightButtonDown_.store(false, std::memory_order_relaxed);
                 break;
             case irr::EMIE_MOUSE_MOVED:
-                mouseX_ = event.MouseInput.X;
-                mouseY_ = event.MouseInput.Y;
+                mouseX_.store(event.MouseInput.X, std::memory_order_relaxed);
+                mouseY_.store(event.MouseInput.Y, std::memory_order_relaxed);
                 if (event.MouseInput.isRightPressed()) {
-                    rightButtonDown_ = true;
+                    rightButtonDown_.store(true, std::memory_order_relaxed);
                 }
                 if (event.MouseInput.isLeftPressed()) {
-                    leftButtonDown_ = true;
+                    leftButtonDown_.store(true, std::memory_order_relaxed);
                 }
                 break;
             default:
@@ -441,24 +445,30 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
 }
 
 bool RendererEventReceiver::isKeyDown(irr::EKEY_CODE keyCode) const {
-    return keyIsDown_[keyCode];
+    return keyIsDown_[keyCode].load(std::memory_order_relaxed);
 }
 
+// T312: read-and-reset in one step, so a press is observed exactly once
+// even though the write is on the render thread and the read on the game
+// thread (GraphicsInputHandler's Jump check is the only caller).
 bool RendererEventReceiver::wasKeyPressed(irr::EKEY_CODE keyCode) {
-    bool pressed = keyWasPressed_[keyCode];
-    keyWasPressed_[keyCode] = false;
-    return pressed;
+    return keyWasPressed_[keyCode].exchange(false, std::memory_order_relaxed);
 }
 
+// T312: render thread only (IrrlichtRenderer::updatePlayerMovement's
+// mouse-look). One load of the shared position, so the delta and the new
+// baseline cannot disagree; lastMouseX_/Y_ are unshared.
 int RendererEventReceiver::getMouseDeltaX() {
-    int delta = mouseX_ - lastMouseX_;
-    lastMouseX_ = mouseX_;
+    const int x = mouseX_.load(std::memory_order_relaxed);
+    const int delta = x - lastMouseX_;
+    lastMouseX_ = x;
     return delta;
 }
 
 int RendererEventReceiver::getMouseDeltaY() {
-    int delta = mouseY_ - lastMouseY_;
-    lastMouseY_ = mouseY_;
+    const int y = mouseY_.load(std::memory_order_relaxed);
+    const int delta = y - lastMouseY_;
+    lastMouseY_ = y;
     return delta;
 }
 

@@ -363,30 +363,61 @@ public:
     bool isKeyDown(irr::EKEY_CODE keyCode) const;
     bool wasKeyPressed(irr::EKEY_CODE keyCode);
 
-    // Mouse state
-    int getMouseX() const { return mouseX_; }
-    int getMouseY() const { return mouseY_; }
+    // Mouse state. T312: the position/button scalars are written in
+    // OnEvent (render thread) and read from BOTH threads, so they are
+    // relaxed atomics -- same discipline as the T225 one-shot flags. The
+    // delta accessors below are RENDER-THREAD ONLY (see the note there).
+    int getMouseX() const { return mouseX_.load(std::memory_order_relaxed); }
+    int getMouseY() const { return mouseY_.load(std::memory_order_relaxed); }
+    // T312: destructive read-and-reset, and the ONLY caller is the
+    // mouse-look in IrrlichtRenderer::updatePlayerMovement() on the render
+    // thread. GraphicsInputHandler used to call these too, from the game
+    // thread, storing the result in an InputState field that has no reader
+    // anywhere in the tree -- so that call only ever STOLE the delta and
+    // froze the camera for a frame. It was deleted; do not add a second
+    // consumer without making the accumulator per-consumer.
     int getMouseDeltaX();
     int getMouseDeltaY();
-    bool isLeftButtonDown() const { return leftButtonDown_; }
-    bool isRightButtonDown() const { return rightButtonDown_; }
+    bool isLeftButtonDown() const { return leftButtonDown_.load(std::memory_order_relaxed); }
+    bool isRightButtonDown() const { return rightButtonDown_.load(std::memory_order_relaxed); }
     bool wasLeftButtonClicked();  // Returns true once per click (not hold)
     bool wasLeftButtonReleased(); // Returns true once when button is released
-    int getClickMouseX() const { return clickMouseX_; }
-    int getClickMouseY() const { return clickMouseY_; }
+    int getClickMouseX() const { return clickMouseX_.load(std::memory_order_relaxed); }
+    int getClickMouseY() const { return clickMouseY_.load(std::memory_order_relaxed); }
 
     // Input state queries (render thread sets, game thread polls -- atomic)
     bool quitRequested() const { return quitRequested_.load(std::memory_order_relaxed); }
     void setQuitRequested(bool quit) { quitRequested_.store(quit, std::memory_order_relaxed); }
 
     // Action queue for renderer-internal actions (UI toggles, debug, camera, etc.)
+    // T312: RENDER THREAD ONLY -- filled in OnEvent and drained by
+    // IrrlichtRenderer::processFrame() (renderer_frame.cpp), both on the
+    // render thread. Unlike bridgeQueue_ below it needs no lock; if you
+    // ever add a game-thread drain, it needs one.
     std::vector<RendererEvent> drainActions() { std::vector<RendererEvent> r; r.swap(actionQueue_); return r; }
 
     // Bridge queue for game actions routed through InputActionBridge
-    // (targeting, combat, movement toggles)
-    std::vector<RendererEvent> drainBridgeActions() { std::vector<RendererEvent> r; r.swap(bridgeQueue_); return r; }
-    size_t getBridgeQueueSize() const { return bridgeQueue_.size(); }
-    void pushBridgeAction(RendererEvent event) { bridgeQueue_.push_back(std::move(event)); }
+    // (targeting, combat, movement toggles).
+    // T312: CROSS-THREAD -- pushed on the render thread (OnEvent's decoded
+    // hotkeys, IrrlichtRenderer::pushBridgeAction) and swap-drained on the
+    // game thread (GraphicsInputHandler::updateFromEventReceiver). A
+    // reallocating push_back racing the swap is heap corruption, so every
+    // access -- size() included -- goes through bridgeMutex_. There is no
+    // raw access to bridgeQueue_ anywhere; keep it that way.
+    std::vector<RendererEvent> drainBridgeActions() {
+        std::vector<RendererEvent> r;
+        std::lock_guard<std::mutex> lock(bridgeMutex_);
+        r.swap(bridgeQueue_);
+        return r;
+    }
+    size_t getBridgeQueueSize() const {
+        std::lock_guard<std::mutex> lock(bridgeMutex_);
+        return bridgeQueue_.size();
+    }
+    void pushBridgeAction(RendererEvent event) {
+        std::lock_guard<std::mutex> lock(bridgeMutex_);
+        bridgeQueue_.push_back(std::move(event));
+    }
 
     // Spell gem and hotbar requests (use intData in RendererEvent for new code).
     // Read-and-reset via exchange: see the T225 note on the fields below.
@@ -432,13 +463,25 @@ public:
     eqt::input::HotkeyMode getCurrentMode() const { return currentMode_; }
 
 private:
-    // Continuous key/mouse state
-    bool keyIsDown_[irr::KEY_KEY_CODES_COUNT] = {false};
-    bool keyWasPressed_[irr::KEY_KEY_CODES_COUNT] = {false};
-    int mouseX_ = 0, mouseY_ = 0;
+    // Continuous key/mouse state.
+    // T312: the key arrays are WRITTEN in OnEvent (render thread) and READ
+    // on both threads -- isKeyDown() from renderer_player_physics /
+    // renderer_overlays / renderer_rdp (render) and from
+    // GraphicsInputHandler (game). Every access in the tree is by a single
+    // element (constructor loop, OnEvent's indexed writes, the two
+    // accessors); nothing copies, memsets, or takes the array as a whole,
+    // so a per-element std::atomic<bool> is exactly the granularity of the
+    // sharing. Relaxed: each key is independent, with no ordering
+    // relationship to any other field (the T225 argument).
+    std::atomic<bool> keyIsDown_[irr::KEY_KEY_CODES_COUNT];
+    std::atomic<bool> keyWasPressed_[irr::KEY_KEY_CODES_COUNT];
+    std::atomic<int> mouseX_{0};
+    std::atomic<int> mouseY_{0};
+    // Render thread only: touched solely by getMouseDelta{X,Y}(), whose one
+    // consumer is the render-thread mouse-look.
     int lastMouseX_ = 0, lastMouseY_ = 0;
-    bool leftButtonDown_ = false;
-    bool rightButtonDown_ = false;
+    std::atomic<bool> leftButtonDown_{false};
+    std::atomic<bool> rightButtonDown_{false};
     // T225: the read-and-reset flags below are SET on the render thread
     // (OnEvent, from Irrlicht input) and CONSUMED on BOTH threads -- the
     // render thread in IrrlichtRenderer::processFrameInput() and the game
@@ -451,13 +494,16 @@ private:
     // flag; see refactor/T225_event_receiver_flags.md.
     std::atomic<bool> leftButtonClicked_{false};
     std::atomic<bool> leftButtonReleased_{false};
-    int clickMouseX_ = 0, clickMouseY_ = 0;
+    std::atomic<int> clickMouseX_{0};
+    std::atomic<int> clickMouseY_{0};
     std::atomic<bool> quitRequested_{false};
     std::atomic<bool> chatInputFocused_{false};  // Set by renderer, read by GraphicsInputHandler
 
     // Action queue (replaces ~47 boolean flags) — renderer-internal actions
     std::vector<RendererEvent> actionQueue_;
-    // Bridge queue — game actions routed to GraphicsInputHandler → InputActionBridge
+    // Bridge queue — game actions routed to GraphicsInputHandler → InputActionBridge.
+    // T312: guarded by bridgeMutex_ (see the accessors above).
+    mutable std::mutex bridgeMutex_;
     std::vector<RendererEvent> bridgeQueue_;
 
     // Spell gem and hotbar (indexed values, not simple booleans; -1 = none).
