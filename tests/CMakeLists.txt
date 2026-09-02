@@ -2161,6 +2161,30 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_spell_gem_key_race)
 ENDIF()
 
+# T319: ConsoleRenderer's target-HP readout. IOutputRenderer::
+# updateCurrentTargetHP() had no production caller, so the headless status
+# line froze the target's HP at acquisition. No graphics, no device.
+ADD_EXECUTABLE(test_console_target_hp
+    test_console_target_hp.cpp
+)
+TARGET_LINK_LIBRARIES(test_console_target_hp GTest::gtest_main willeq_core)
+GTEST_DISCOVER_TESTS(test_console_target_hp)
+
+# T319: the R key (ReplyToTell) end to end -- OnEvent decode, the
+# mutex-guarded bridgeQueue_, GraphicsInputHandler, the real
+# InputActionBridge + ActionDispatcher, the action callback Application
+# installs, and IrrlichtRenderer::processChatInput() writing the prefill
+# into chatPanelState_. No device needed -- same reasoning as
+# test_spell_gem_key_race above.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_reply_to_tell_key
+        test_reply_to_tell_key.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_reply_to_tell_key PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_reply_to_tell_key GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_reply_to_tell_key)
+ENDIF()
+
 # T312: RendererEventReceiver's cross-thread state -- the bridgeQueue_
 # heap-corruption race, the key-array races, and the mouse-delta double
 # consumer. Doubles as the ThreadSanitizer driver (build a separate

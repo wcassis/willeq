@@ -17,7 +17,26 @@ public:
     CameraController(irr::scene::ICameraSceneNode* camera);
     ~CameraController() = default;
 
-    // Update camera based on input
+    // Update camera based on input -- the free-fly camera.
+    //
+    // T319 -- KEPT DELIBERATELY. This has no caller, but it is the ONLY
+    // implementation of CameraMode::Free, and Free is reachable: it is one
+    // of the three modes cycleCameraMode() rotates through (the
+    // ToggleCameraMode hotkey) and `--camera free` selects it on the
+    // command line. Nothing updates the camera in that mode today, so Free
+    // is a mode in which the view simply freezes. Deleting this removes
+    // the feature's only body and leaves the two ways of entering it.
+    //
+    // WHAT WOULD WIRE IT: a `cameraMode_ == CameraMode::Free` branch in
+    // IrrlichtRenderer::updatePlayerMovement()
+    // (renderer_player_physics.cpp), next to the existing Follow and
+    // FirstPerson branches, passing the movement key states it already
+    // reads plus the mouse deltas it already consumes there. The mouse
+    // deltas are a destructive read-and-reset with exactly one owner
+    // (T312/T315) and updatePlayerMovement() IS that owner, so the branch
+    // belongs there and nowhere else. It also has to decide whether the
+    // player keeps moving while the camera flies free; that is a design
+    // question, which is why this unit did not answer it.
     void update(float deltaTime, bool forward, bool backward, bool left, bool right,
                 bool up, bool down, int mouseDeltaX, int mouseDeltaY, bool mouseEnabled);
 

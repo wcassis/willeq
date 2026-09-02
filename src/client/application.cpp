@@ -610,6 +610,23 @@ bool Application::initialize(const ApplicationConfig& config) {
                     m_graphicsInputHandler = std::make_unique<input::GraphicsInputHandler>(eventReceiver);
                     m_inputBridge->setInputHandler(m_graphicsInputHandler.get());
                     LOG_INFO(MOD_GRAPHICS, "Graphics input handler connected to bridge");
+
+                    // T319: setActionCallback() had NO production caller, so
+                    // every dispatcher result the bridge produced went to a
+                    // debug log and nowhere else -- which is why wiring the R
+                    // key alone would not have made it work. This is the
+                    // return leg: the game thread hands the result to the
+                    // renderer, which parks a chat prefill for its own thread
+                    // to pick up. The decision lives in
+                    // IrrlichtRenderer::handleActionResult(), not here, so
+                    // the test can drive the same code the app does.
+                    // m_renderer is destroyed BEFORE m_inputBridge in
+                    // shutdown(), so the callback is cleared there.
+                    m_inputBridge->setActionCallback(
+                        [eqRenderer](const std::string& name,
+                                     const action::ActionResult& result) {
+                            eqRenderer->handleActionResult(name, result.success, result.message);
+                        });
                 }
 
                 // Wire loading status and set initial progress text.
@@ -730,6 +747,12 @@ void Application::shutdown() {
     m_stateSyncBridge.reset();
     m_irrlichtBridge.reset();
     if (m_renderer) {
+        // T319: the action callback captures the raw renderer pointer and
+        // m_inputBridge outlives m_renderer (it is reset further down), so
+        // drop the callback before the renderer goes away.
+        if (m_inputBridge) {
+            m_inputBridge->setActionCallback(nullptr);
+        }
         m_renderer->shutdown();
         m_renderer.reset();
     }
@@ -1784,12 +1807,9 @@ void Application::loadZoneGraphicsOnThread(EQT::Graphics::LoadingStatus& status)
     float heading512 = snap.playerHeading * 512.0f / 360.0f;
     m_renderer->setPlayerPosition(snap.playerX, snap.playerY, snap.playerZ, heading512);
 
-    // 8. Hotbar callback
-    setupHotbarCallback();
-
     m_eqClient->SetPlayerGraphicsEntityPending(true);
 
-    // 9. Sequential zone asset loading
+    // 8. Sequential zone asset loading
     m_renderer->loadZoneSequential(snap.eqClientPath, status);
 
     if (m_renderer->hasLoadFailed()) {
@@ -1897,9 +1917,6 @@ void Application::loadZoneGraphics() {
     float heading512 = snap.playerHeading * 512.0f / 360.0f;
     m_renderer->setPlayerPosition(snap.playerX, snap.playerY, snap.playerZ, heading512);
 
-    // 8. Hotbar
-    setupHotbarCallback();
-
     m_eqClient->SetPlayerGraphicsEntityPending(true);
 
     if (m_renderer->isProgressiveLoadingActive()) {
@@ -1914,11 +1931,6 @@ void Application::loadZoneGraphics() {
         m_graphicsCompleteReady.store(true, std::memory_order_release);
         LOG_INFO(MOD_GRAPHICS, "loadZoneGraphics: instant scene ready");
     }
-}
-
-void Application::setupHotbarCallback() {
-    // WindowManager removed — hotbar changed callback not wired
-    // TODO: Wire hotbar changed callback through new UI path
 }
 
 // U07b: publishHotbarSnapshot removed — HotbarModel::publishAllSlots() handles this

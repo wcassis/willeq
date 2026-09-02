@@ -14,6 +14,7 @@
 #include <unordered_set>
 #include <set>
 #include <utility>
+#include <optional>
 #include <glm/glm.hpp>
 #include "client/state/entity_pose_state.h"
 #include "client/graphics/eq/s3d_loader.h"
@@ -120,6 +121,7 @@ enum class RendererAction : uint8_t {
     ClearTarget, ToggleInventory, ToggleGroup, ToggleSkills,
     TogglePet, ToggleSpellbook, ToggleBuffWindow, ToggleOptions,
     DoorInteract, WorldObjectInteract,
+    ReplyToTell,                // T319: R key -> ActionDispatcher::openReplyToTell()
 
     // Targeting
     TargetSelf, TargetGroupMember1, TargetGroupMember2, TargetGroupMember3,
@@ -479,9 +481,6 @@ public:
     void setChatInputFocused(bool focused) { chatInputFocused_.store(focused, std::memory_order_relaxed); }
     bool isChatInputFocused() const { return chatInputFocused_.load(std::memory_order_relaxed); }
 
-    // Current mode (for hotkey lookups)
-    eqt::input::HotkeyMode getCurrentMode() const { return currentMode_; }
-
 private:
     // Continuous key/mouse state.
     // T312: the key arrays are WRITTEN in OnEvent (render thread) and READ
@@ -544,8 +543,15 @@ private:
     bool slashKeyPressed_ = false;
     bool escapeKeyPressed_ = false;
 
-    // Current hotkey mode for key lookups
-    eqt::input::HotkeyMode currentMode_ = eqt::input::HotkeyMode::Player;
+    // T319: currentMode_ and getCurrentMode() are gone. HotkeyMode has
+    // exactly two values, Global and Player; getAction() checks Global
+    // bindings first in every case and then the mode passed in, so the
+    // only mode this receiver could usefully be in is Player. Nothing ever
+    // wrote the member and nothing ever called the getter -- it was
+    // configuration that could not be configured. OnEvent now passes
+    // HotkeyMode::Player literally. Bringing a real mode back (a "cursor
+    // mode", say) means adding the HotkeyMode enumerator, its bindings,
+    // and a writer; a member with no writer is not a head start on that.
 };
 
 // Entry for front-to-back sorted zone drawing
@@ -996,6 +1002,33 @@ public:
     void processPlayerInput(const std::vector<RendererEvent>& actions);
     void processInputDeltas(float deltaTime);
     void processChatInput();
+
+    // ---- T319: chat-input prefill (game thread -> render thread) ----
+    // The R key (HotkeyAction::ReplyToTell) decodes on the render thread,
+    // crosses to the game thread through bridgeQueue_ ->
+    // GraphicsInputHandler -> InputActionBridge ->
+    // ActionDispatcher::openReplyToTell(), which produces the text the
+    // chat input is meant to open with ("/tell <Name> "). That text has to
+    // come BACK to the render thread, where chatPanelState_ lives.
+    //
+    // handleActionResult() is the body of the InputActionBridge action
+    // callback Application installs (application.cpp); it runs on the GAME
+    // thread. requestChatPrefill() parks the text under
+    // chatPrefillMutex_; processChatInput() takes it on the render thread.
+    // Keep every access to pendingChatPrefill_ inside these two -- same
+    // no-raw-access rule as bridgeQueue_ (T312).
+    void handleActionResult(const std::string& actionName, bool success,
+                            const std::string& message);
+    void requestChatPrefill(const std::string& text) {
+        std::lock_guard<std::mutex> lock(chatPrefillMutex_);
+        pendingChatPrefill_ = text;
+    }
+    std::optional<std::string> takeChatPrefill() {
+        std::lock_guard<std::mutex> lock(chatPrefillMutex_);
+        std::optional<std::string> taken;
+        taken.swap(pendingChatPrefill_);
+        return taken;
+    }
 
     // Run the main render loop (blocking)
     void run();
@@ -1750,6 +1783,14 @@ private:
     friend class SpellGemKeyRaceTest_GemKeySurvivesRenderFrameForGameThread_Test;
     friend class SpellGemKeyRaceTest_RenderFrameWithChatUnfocusedLeavesRequestUntouched_Test;
 
+    // T319 (refactor/T319_reachability_cleanup.md): test-only access to
+    // eventReceiver_ so tests/test_reply_to_tell_key.cpp can install a real
+    // RendererEventReceiver on a bare, never-Init()'d renderer and drive the
+    // R key from OnEvent all the way to chatPanelState_. Same hand-expanded
+    // FRIEND_TEST idiom as T235 above; only the fixture needs it (the TEST_F
+    // bodies use public members only, and friendship is not inherited).
+    friend class ReplyToTellKeyTest;
+
     // PVS neighborhood cache: suppress onPvsRegionChanged() when moving within
     // a cluster of adjacent regions. Only fire when leaving the neighborhood.
     std::unordered_set<size_t> pvsNeighborhood_;  // regions within K portal hops of anchor
@@ -2183,6 +2224,12 @@ private:
     uint8_t paperdollLastGender_ = 0;
     EQT::Graphics::EntityAppearance paperdollLastAppearance_{};
     bool paperdollHasAppearance_ = false;
+
+    // T319: see handleActionResult()/requestChatPrefill()/takeChatPrefill()
+    // above. Written on the game thread, read on the render thread; every
+    // access goes through those accessors.
+    mutable std::mutex chatPrefillMutex_;
+    std::optional<std::string> pendingChatPrefill_;
     void ensurePaperdollInitialized();
     void updatePaperdollForFrame();
 public:

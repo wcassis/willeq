@@ -222,7 +222,12 @@ everything else is open.
     (a) the four `EverQuest::StartMove*`/`StartTurn*` setters have **zero callers
     anywhere in src/ or tests/** — only the `Stop*` half is reachable (from
     `stopAllMovement()`), so the game-side keyboard-movement system can be turned
-    off and never on; (b) game-side movement steps write through `SetPosLocal()`,
+    off and never on. **T319 re-verified this and KEPT them deliberately** (they are
+    the head of a complete, live path: flags → `UpdateMovement()`'s keyboard branch →
+    `UpdateKeyboardMovement()` → `SetPosLocal`/`FixZ`/`CheckZoneLine`/
+    `SendPositionUpdate`), with a header comment in `eq_movement.cpp` naming the two
+    callers that would wire it. **They are NOT the answer to autorun** — (b) below
+    still holds and is the wall; (b) game-side movement steps write through `SetPosLocal()`,
     which deliberately fires **no** `PlayerMoved` event, so a handler-side autorun
     is invisible to the renderer and gets overwritten by the renderer's
     authoritative `PlayerPositionChanged` intent; (c) the only live autorun
@@ -303,13 +308,18 @@ everything else is open.
     `Failure("You have no one to reply to.")`, the same wording `/reply` uses
     (T222). Pinned end to end from a real `OP_ChannelMessage` tell in
     `tests/test_zone_chat.cpp`, plus the dispatcher and `InputActionBridge` legs.
-    **What remains, all in T315's territory this dispatch:** `HotkeyAction::ReplyToTell`
-    (R key) has **no `case` in `IrrlichtRenderer`'s HA switch** and no
-    `RendererAction` enumerator, and `ConsoleInputHandler` never raises
-    `InputAction::ReplyToTell` either — so nothing produces the action in
-    production; and `InputActionBridge::setActionCallback()` has **no production
-    caller**, so the prefill string currently reaches only a debug log. Wiring the
-    key and consuming the prefill in the chat input are renderer-side work.
+    **CLOSED END TO END by T319.** `HotkeyAction::ReplyToTell` now has a case in
+    `RendererEventReceiver::OnEvent` (`pushBridgeAction({RA::ReplyToTell})` — the new
+    `RendererAction::ReplyToTell`), `GraphicsInputHandler` maps it to
+    `InputAction::ReplyToTell` gated on chat focus, and the return leg exists:
+    `Application` installs the first production `setActionCallback()`, whose body is
+    `IrrlichtRenderer::handleActionResult()` → `requestChatPrefill()` (mutex-guarded,
+    game thread) → `processChatInput()` → `chatPanelState_.inputText`. Pinned by
+    `tests/test_reply_to_tell_key.cpp`, which drives the real receiver, the real
+    bridge/dispatcher and the real render-thread frame step and asserts on the text a
+    user sees; 3 of its 5 tests were measured RED with the OnEvent case removed.
+    `ConsoleInputHandler` still never raises `InputAction::ReplyToTell` — the console
+    has `/reply`, which is the same capability, so that is deliberate, not a gap.
     Audit provenance: #5.
 
 14. ~~**`InteractWorldObject` keybind always fails**~~ **CLOSED by T316.**
@@ -726,24 +736,24 @@ Review, `review/T312/`.
     `tests/test_command_output_routing.cpp` (typed into `ProcessChatInput()`, asserted on
     the bridge's `SystemMessage` events). See `refactor/T308_humanoid_and_command_output.md`.
 
-20. **`IOutputRenderer::updateCurrentTargetHP` is caller-less.** Declared
-    `include/client/output/output_renderer.h:197`; implemented at
-    `src/client/output/console_renderer.cpp:311` and
-    `src/client/output/null_renderer.cpp:69`; the only other occurrence is a test
-    fixture (`tests/command_processor_test_fixture.h:70`). **Zero production callers**
-    — verified by grep over `src/`, `include/` and `tests/` at this tip.
-    *Impact:* none today; it is a trap for the next reader and the named gap T264's
-    reachability sweep did not cover. **EXECUTOR-READY** (delete, or wire it from the
-    HP-update path). Historical entries: the "Reachability state is clean" paragraph
-    and the "Not swept" bullet in the AUDIT section below.
+20. ~~**`IOutputRenderer::updateCurrentTargetHP` is caller-less**~~ **CLOSED by T319
+    — WIRED, and the impact was NOT "none today".** `ConsoleRenderer::printStatusLine()`
+    prints `| Target: <name> <hp>%` from `m_targetHpPercent`, whose only writer was
+    `setCurrentTarget()`, so in headless mode a target's HP froze at whatever
+    `TargetChanged` carried at acquisition — a mob fought to 5% still read 100% on
+    every status line. T319 subscribed `ConsoleRenderer` to `EntityStatsChanged`
+    (published by `EntityManager::fireEntityStatsChangedEvent`) and calls
+    `updateCurrentTargetHP()` for the current target only; the method also now takes
+    `m_outputMutex`, which `printStatusLine()` already held for the read. Pinned by
+    `tests/test_console_target_hp.cpp` (measured RED without the call).
 
-21. **`Application::setupHotbarCallback()` is empty and is still called twice at
-    startup** — body at `src/client/application.cpp:1883-1886` (`// WindowManager
-    removed — hotbar changed callback not wired`), called from `:1752` and `:1865`.
-    *Impact:* none today; the hotbar-changed callback is genuinely not wired, so a
-    hotbar mutation from the game side does not notify the renderer through this
-    route. **EXECUTOR-READY**: either delete both calls and the method, or wire it and
-    say which live gesture proves it. Audit provenance: #11.
+21. ~~**`Application::setupHotbarCallback()` is empty and is still called twice at
+    startup**~~ **CLOSED by T319 — DELETED (method + both calls + declaration).** The
+    route it was a placeholder for already exists and is live:
+    `HotbarModel::setSlot()`/`clearSlot()` call `publishSlot()`, which pushes
+    `HotbarSlotAssigned` onto the bridge, and `Application` calls `publishAllSlots()`
+    at zone-in. There was nothing left for a callback to carry, so this was an empty
+    body plus a stale TODO, not a missing feature. Audit provenance: #11.
 
 ### TIER 4 — process and bookkeeping
 
@@ -916,18 +926,18 @@ A full audit of every batch plan answered the owner's question "were the partial
 2. **CRC validation disabled on EVERY zone connect** — `eq.cpp:718` `zone_opts.skip_crc_validation = true; // TODO: Remove after CRC bug is fixed`.
 3. **Autorun key is a live no-op** — `eq_action_handler.cpp:142` (bound at `input_action_bridge.cpp:72`).
 4. **`InteractWorldObject` keybind always fails** — `action_dispatcher.cpp:523`.
-5. **`ReplyToTell` keybind returns a sentinel and does nothing** — `action_dispatcher.cpp:688`.
+5. ~~**`ReplyToTell` keybind returns a sentinel and does nothing**~~ — `action_dispatcher.cpp:688`. Action fixed by T316; the R key wired end to end by T319 (tier 3 item 13).
 6. **Guild rank HARDCODED on the wire** — `eq_guild.cpp:54,105` (`officer = 2`, `leaderstatus = 2`), reached from `/guildinvite` and `/guildremove`.
 7. **`/mem <name>` partial-name search is exact-match only** — `spell_database.cpp:180`.
 8. **Skill combat/position gates unenforced** — `skill_manager.cpp:273,284,734,758`; Backstab's position check ALWAYS returns true.
 9. ~~**Group spells target by PROXIMITY, not group membership**~~ — CLOSED by T314 (2026-09-02); see tier 2 item 5.
 10. **`GraphicalMode::initialize` falls through to the console renderer for Irrlicht modes** — `graphical_mode.cpp:41`.
-11. `Application::setupHotbarCallback` body is empty after the WindowManager removal and is still called twice at startup — `application.cpp:1885`.
+11. ~~`Application::setupHotbarCallback` body is empty after the WindowManager removal and is still called twice at startup~~ — deleted by T319 (tier 3 item 21).
 12. RDP remote input ignores caps lock — `renderer_rdp.cpp:159`.
 
 **TWO UNMERGED BRANCHES ARE 300 COMMITS AHEAD AND WERE NEVER AUDITED** by the 2026-08-11 survey: `task/eqcpp-zoneprocess-track-b-remaining` and `task/eqemu-zone-line-transition-scenario`, both branching from `4b5f2c8d`/`9564e18f`, pre-dating the entire lettered programme. Five other unmerged branches are correctly parked (self-refuted or superseded).
 
-**Reachability state is clean:** `kBlockedHandlerMethods` is EMPTY; only `SpellbookStateIntent` remains blocked (waiting on the spellbook open/close pose feature); `m_character` is the sole permanent duplicate-store exception. Not swept by T264: the InputAction/hotkey axis, and `IOutputRenderer::updateCurrentTargetHP` (caller-less at `console_renderer.cpp:311`, `null_renderer.cpp:69`).
+**Reachability state is clean:** `kBlockedHandlerMethods` is EMPTY; only `SpellbookStateIntent` remains blocked (waiting on the spellbook open/close pose feature); `m_character` is the sole permanent duplicate-store exception. Not swept by T264: the InputAction/hotkey axis (T319 closed the two known holes in it — the R key and the empty hotbar callback — but the axis as a whole still has no sweep test). `IOutputRenderer::updateCurrentTargetHP` is no longer caller-less (T319 wired it; `tests/test_console_target_hp.cpp`).
 
 - **⚠ PI HYGIENE (T289, 2026-08-26): the Pi's `/tmp/config` and `/tmp/data` were STALE** — old `race_models.json`, an Aug-23 `willeq.db`, and **no `data/eqe1_texture_index.json` at all**. A timed run against them would have measured a client with no T207 index and no late-open path, silently. **Re-stage config+data from the slot before ANY timed Pi run.**
 - **⚠ `CmaFree` reached 0 kB in all four T289 runs including the CONTROL legs** — the P02 EQE1/ETC1 CMA leak is real, unchanged and NOT composite-related. New fact: **`drop_caches` recovers CMA on this kernel** (11,184 kB after 4 days uptime → 69 MB), a reboot is not required.
@@ -949,7 +959,7 @@ A full audit of every batch plan answered the owner's question "were the partial
   - ~~F7 Manual tradeskill combine + close container~~ **CLOSED T278 `472d6863`** (`/combine [slot]`, `/closecontainer`; live: carried Forge produced Boots of Ro in the DB). **`/recipecombine` was NOT this feature** -- it is T149's AUTO-combine (OP_RecipeAutoCombine, server picks components); `SendTradeSkillCombine` and `SendCloseContainer` were reachable only from the two dead arms, exactly as T264 said. Third find: `InventoryManager::clearWorldContainerSlots()` had zero callers. **Bug fixed on the way: `ZoneProcessClearObject` read OP_ClearObject's first 4 bytes as a world-object `drop_id`, but the packet is `{uint8 Clear=1; uint8 Unknown[7]}` -- so the id was ALWAYS the literal 1 and any ground spawn with drop_id 1 was silently deleted.** ~~**OWED (T278): the client cannot PUT items into a world container~~ **CLOSED T282 `950339bb`** (live world combine: two components consumed, Boots of Ro produced). Server rules read off eqemu, and three of them are traps: with NO container open a put falls to `SwapItem` Step 5 where `CalcSlotId(4000)` is INVALID_INDEX -> **the item is DESTROYED and SwapItem still returns true with no packet back** (now refused client-side); taking an item OUT calls `DeleteItem(dst)` first, so an occupied destination is silently destroyed (refused); NO DROP is LEGAL in a world container (the client's refusal was invented -- removed); and `Object::HandleClick` sends contents with bag index 0-9 which untranslated IS equipment slots 0-9 -- an occupied forge would have overwritten charm/ears/head (remapped). Neither put nor take is confirmed by the server (both arms `return true` silently), so the model carries them locally -- flagged. **UNPLANNED DEFECT FIXED: `processItemPacket()` read the type at offset 0 and the item at offset 4, but the dispatcher passes an OPCODE-PREFIXED packet (its two siblings correctly skip 2+4). The stray `\0\0` landed on instance field 0 -- the STACK COUNT -- so every stacked item arriving as an OP_ItemPacket (looted stacks, vendor buys) silently became quantity 1.** Server-side, not fixed: `Object::Close()` leaves stale `object_contents` rows. Old note: -- `InventoryManager::isValidSlot()` rejects 4000-4009, so `/equip <from> 4000` never sends; the world form of /combine is correct on the wire but not usable from the client alone. Class A, next inventory unit.** Server-side note: eqemu empties a world container on first open by a new user (`ItemInstance::ClearByFlags` switch falls through) -- do not repeat the `object_contents` pre-fill experiment.
   - ~~F8 Train a skill at a trainer / close trainer~~ **CLOSED T280 `176bb944`** -- **ALL EIGHT ARE NOW CLOSED.** `/train <skill>`, `/train list`, `/trainclose`; live: skill 1 -> 2 -> 21, points 10 -> 9, copper 17 -> 7. Wire truth: Titanium has `OP_GMTraining/GMEndTraining/GMTrainSkill`; `OP_GMEndTrainingResponse` is COMMENTED OUT and `OP_GMTrainSkillConfirm` is ABSENT (gated on >= SoF). `GMSkillChange_Struct` is 12 bytes with a **uint16 npcid** -- eqemu's own per-field offset comments are all wrong. **The only reply Titanium gets is `OP_SkillUpdate`: `TakeMoneyFromPP(Cost)` defaults `update_client=false`, so the server deducts and saves the coin and NEVER TELLS THE CLIENT** (confirmed live -- copper moved in the DB, client money did not). Nothing is written locally; the test asserts the absence. Two defects fixed: the client quoted an INVENTED price `(current+1)*10` under a comment calling it "the EQ training cost formula" (eqemu is `(current-10)^3/100`; 510 vs 640 at skill 50), and the server's per-skill caps were read once and thrown away. ⚠ The caps in `GMTrainee_Struct` are MaxLevel caps, not the player's level caps, so `/train list` can show something the server then refuses (it answers politely) -- left as the server's job. ~~⚠ Practice points live in TWO stores~~ CLOSED T283 `ef05b11f` (`PlayerState::m_practicePoints` survives; `EverQuest::m_practice_points` had exactly ONE reader -- the OP_SkillUpdate spend gate -- while every user-visible reader already went through PlayerState). Old note: practice points lived in two stores (`EverQuest::m_practice_points`, `PlayerState::m_practicePoints`), both fed from the same PlayerProfile -- cannot drift in production, but a test seeding one gets a silently wrong answer. Class A tiny.
   - ~~**LOOT PANEL is a genuine FEATURE REQUEST**~~ **BUILT T290 `cb96cd8e` (Will: REQUIRED).** Recovered from `0f25cb57^` (the pre-static-UI window, 1,030 lines) and ported to static panels in ~320: KEPT the open/close/add/remove state machine, the packed display-row -> corpse-slot indirection (the load-bearing part), the scrolled window and the Loot All/Close buttons; REWROTE the item container (renderer has no `ItemInstance`) and the 4x2 icon grid -> full-width name rows (no item-icon atlas exists in the static UI); DROPPED `WindowBase`, the draggable thumb, `DestroyAll` (no Titanium packet) and ~250 lines of pre-flight duplicating a refusal the server already sends. Live: panel shows the corpse's real name + 7 real items, `/loot <name>` removes exactly that row and the list re-packs, `/lootall` drains and the panel closes on the SERVER's event, DB restored to an empty diff. The three loot intents are DELISTED. **Found on the way: `StaticUIInput::processKey()` had NO production caller** -- the whole ESC-dismisses-a-popup handler was reached only from tests (T48 class); now wired into `renderer_frame.cpp`'s escape handling ahead of clear-target. ~~**OWED (T290, class A): mouse-wheel plumbing does not exist in `StaticUIInput`, so `scrollOffset` is honoured by render and hit-test but nothing moves it** -- the one piece of the old window not restored.~~ **PAID by T313** (wheel + PageUp/PageDown + `/scroll`, one router for all three panels; see tier 2 item 12 above). Also: the panel deliberately never self-closes (a local close would desync `CombatManager`'s LOOTING state). Old note: (T283 `ef05b11f`, correctly STOPped): there is no panel and no half of one.** `PopupType::Loot` is a bare enumerator; none of `static_panels.cpp`'s thirteen render functions is a loot popup; `static_ui_input.cpp` knows only `Inventory` + a generic Escape arm; **there is no renderer-side corpse-contents state at all** (it went with U07c3's `getWindowManager()` removal) and the four loot events reach `IrrlichtBridge` only to LOG_TRACE, discarding their payloads -- the renderer does not know what is on a corpse. Unlike T272/T277 (which hit-tested pixels ALREADY DRAWN), this needs a `LootPanelState`, four real bridge arms, a renderer, layout, hit-testing, the three intents, tests and a golden re-bless. **Class C -- Will's call whether to build it.** The three loot intents stay blocked with the reason written into `test_reachability_sweep.cpp` and `include/client/graphics/ui/CLAUDE.md`. **[T302 2026-08-28: ranked in "THE ONE CLASS-A LIST" at the top of this file, tier 2 item 12 -- and T302 found the gap is BROADER than the loot panel: chat scrollback (`static_panels.h:67`) and the skills window (`:340`) have the identical never-written `scrollOffset`, and no wheel or PageUp path exists anywhere in the static UI. One input path, not three.]** **[T313 2026-09-02: DONE, one input path.]**
-  - Not swept: InputAction/hotkey axis; `IOutputRenderer::updateCurrentTargetHP` family is caller-less.
+  - Not swept: InputAction/hotkey axis (still no sweep test; T319 closed its two known holes). `IOutputRenderer::updateCurrentTargetHP` was wired by T319 and is no longer caller-less.
 
 ~~- **NEW (T227 STOP note): `CombatManager::Update()` on `m_update_thread` → CheckForAggro/ProcessCombatRound/FindNextHuntTarget → `SetTarget`/`ClearTarget` → `combat()` writes OFF the game thread, gated on `/combat on`.** Pre-existing off-thread write class (the same reason UpdateMovement was moved off that thread, eq.cpp ~3766). Class A: route those target changes through the game thread (intent/queue) or move Update() itself. `review/T227/`.~~ **CLOSED T245: `m_update_thread` DELETED; `CombatManager::Update()` is ticked from `UpdateMovement()` on the game thread, self-paced to `kUpdateIntervalMs` (500 ms). TSAN BEFORE (`/hunt on`, three beetles) vs AFTER in `review/T245/`. Note found on the way: `CombatTarget::is_aggro` is hard-coded `false` (TODO in `GetNearbyHostiles`), so `CheckForAggro` can never fire -- the only reachable off-thread writer was the hunt path.**
 - **T230 MERGED `660449be`: `CombatManager::SetTarget(name)` chain DELETED (zero production reach); keyboard hotbar Item slots fire via `useItemById`; `EqActionHandler::useItem` was a STUB, fixed. ⚠ REACHABILITY PATTERN #12 found LIVE: the ENTIRE T174 keyboard hotbar route (Spell/Skill/Item) was dead — `IrrlichtRenderer::processChatInput()` (render thread, `renderer_frame.cpp`) called `getHotbarActivationRequest()` (an exchange) and DISCARDED it every frame, starving `GraphicsInputHandler::consumeHotbarRequest()`. Two lines deleted; proven by DB item charges 5→3 per key press. T174 had never been probed live. **Emote/Macro/Combat CLOSED T239 `422ce591`** (one shared `ActivateHotbarCommandSlot`, macro proven on the observer, combat toggle live).**

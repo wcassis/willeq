@@ -872,6 +872,27 @@ void IrrlichtRenderer::processChatInput() {
     // graphics_input_handler.cpp). See refactor/T230_target_resolver_and_
     // hotbar_items.md, Live leg.
 
+    // T319: a game-thread action can ask for the chat input to open
+    // prefilled. Today the one producer is the R key (ReplyToTell):
+    // OnEvent -> bridgeQueue_ -> GraphicsInputHandler -> InputActionBridge
+    // -> ActionDispatcher::openReplyToTell() -> the action callback
+    // Application installs -> IrrlichtRenderer::handleActionResult() ->
+    // requestChatPrefill(). This is the render-thread end of that trip and
+    // the only reader of the parked text.
+    //
+    // It runs before the Enter/slash checks and regardless of current
+    // focus: dropping the text when chat happens to be focused would lose
+    // it silently, which is the whole failure class this unit is closing.
+    if (auto prefill = takeChatPrefill()) {
+        chatInputFocused_ = true;
+        chatPanelState_.inputActive = true;
+        chatPanelState_.inputText = *prefill;
+        chatPanelState_.cursorPos = static_cast<int>(prefill->size());
+        eventReceiver_->setChatInputFocused(true);
+        eventReceiver_->clearPendingKeyEvents();
+        return;
+    }
+
     // Open chat input on Enter or / key
     if (!chatInputFocused_) {
         if (eventReceiver_->enterKeyPressed()) {

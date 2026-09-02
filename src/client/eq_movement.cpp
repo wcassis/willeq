@@ -1917,6 +1917,42 @@ float EverQuest::GetMovementSpeed() const
 }
 
 // Keyboard control methods
+//
+// T319 -- KEPT DELIBERATELY, and the reason matters.
+//
+// The four Start* below have ZERO callers; only the Stop* half is reached
+// (EqActionHandler::stopAllMovement()). So the game-side keyboard-movement
+// system can be switched off but never on. That is not four stray
+// functions: Start* -> the four PlayerState flags -> UpdateMovement()'s
+// keyboard branch (eq_movement.cpp, the "Update keyboard-based movement
+// first" block) -> UpdateKeyboardMovement() -> SetPosLocal + FixZ +
+// CheckZoneLine + SendPositionUpdate is a complete, working movement path.
+// Everything downstream of the flags is live and exercised; the only thing
+// missing is a writer for the flags. Deleting the Start* half deletes the
+// path, keeps a Stop* half that then switches off something nothing can
+// switch on, and buys four functions' worth of lines.
+//
+// WHAT WOULD WIRE IT. Two callers, in this order:
+//   1. IActionHandler gains startMoveForward()/startMoveBackward()/
+//      startTurnLeft()/startTurnRight() next to the existing
+//      stopAllMovement(), EqActionHandler forwards them here, and
+//      ActionDispatcher exposes them; InputActionBridge then drives them
+//      from the continuous movement keys the way it drives the discrete
+//      actions today. That is the headless/scripted movement route -- the
+//      graphical client does NOT need it, because
+//      renderer_player_physics.cpp polls the same HotkeyManager bindings
+//      on the render thread and moves the player through the
+//      PlayerPositionChanged intent instead.
+//   2. Whoever does that must also decide what the renderer sees.
+//      UpdateKeyboardMovement() moves the player with SetPosLocal(), which
+//      deliberately publishes no PlayerMoved -- that is the same wall T316
+//      hit for autorun. A game-side mover has to publish the position
+//      itself or the renderer will show a stationary player walking.
+//
+// AUTORUN IS NOT THE REASON THESE STAY. Autorun is a separate open item and
+// T316 established that a handler-side implementation cannot work as long
+// as (2) holds. These stay because the keyboard-movement path is the only
+// game-side mover the client has, not because autorun might one day use it.
 void EverQuest::StartMoveForward()
 {
 	if (!IsFullyZonedIn()) return;

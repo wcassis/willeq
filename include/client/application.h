@@ -410,7 +410,13 @@ private:
     bool isLoadingThreadActive() const { return false; }
 #endif
     bool checkLoadingComplete();
-    void setupHotbarCallback();  // Wire hotbar changed callback to renderer
+    // T319: setupHotbarCallback() deleted -- an empty body with a stale
+    // "TODO: wire through the new UI path" that two zone-load paths called
+    // for no effect. The route it was a placeholder for already exists and
+    // is live: HotbarModel::setSlot()/clearSlot() call publishSlot(), which
+    // pushes HotbarSlotAssigned onto the bridge, and Application calls
+    // publishAllSlots() at zone-in. There is nothing left for a callback
+    // to carry.
     void setupRDPAudio(void* rdpServer);  // D20g: Wire RDP audio streaming
     // U07b: publishHotbarSnapshot removed — HotbarModel::publishAllSlots() handles this
 
