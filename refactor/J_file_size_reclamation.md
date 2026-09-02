@@ -1602,6 +1602,56 @@ relaunched detached with a **unit-private exit file** and read the code from
 inside it. That combination — private exit file, read from within — is the
 practice the whole batch should have started with.
 
+## ⚠ CORRECTIONS FROM J34 (2026-09-02) — AND EVERY .cpp IS NOW UNDER THE CEILING
+
+**78. THE POSITIVE CONTROLS NAMED IN CORRECTIONS 51 AND 61 ARE THEMSELVES
+STALE — the batch invalidated its own examples.** Those corrections cite
+`zone_geometry.cpp`'s `heightToColor` and `combat.cpp`'s `IsCorpseEntity` as
+files where the widened grep must match. **Both are gone from those files at this
+tip, because J32 and J24 split them.** A unit using either as its
+correction-60 positive control would get an empty result from a *working*
+pattern and could conclude the pattern was broken — or, worse, believe a genuine
+empty result it had not actually validated.
+**Use `src/client/position.cpp`, which J34 verified works as a control for BOTH
+patterns.** ⚠ **General lesson: a positive control inside the batch's own working
+set has a shelf life. Pick controls from files no unit will touch.**
+
+**79. Include counts slipped for the FOURTH Wave-6 unit** (eleven, not thirteen)
+and the whole-file method count for the **seventh consecutive** unit (40, not
+41), while ranges were again exact. Corrections 66 and 67 stand.
+
+**80. The `tests/`/`scripts/` characterisation was wrong in BOTH directions this
+time** — zero comment hits, and the single real hit is a functional `#include`
+of the *header* in a test whose target links `willeq_core`, so it is **not** an
+add-site. Third unit to correct this boilerplate.
+
+### J34's result — and the milestone
+
+1,517 → **850 + 704**, one cut, 650 lines of headroom. **Verifier exit 0, +0/−0
+substantive, +35 boilerplate — prediction exact**, with all 35 enumerated from
+the script's own `collect()` rather than accepted. Both proofs exit 0 over 1,497
+lines, `body(TU)` extracted structurally and the preambles **independently
+re-derived** (28 and 27).
+
+**Correction 69's second half honoured**: the stays file was `100644` at base and
+was written in place with `cp` rather than chmod-ed, so `git diff --raw` shows no
+mode change.
+
+**Correction 41's fixed order used** — benchmark stamped 16:13:28 against ~15:55
+edits, gate passed non-vacuously on its first and only run.
+
+⚠ **Corrections 56 and 65 fired together for the second time** (the `ar` site's
+fourth instance): killed while archiving `libwilleq_core.a`, gmake deleted it,
+**and no exit file existed at all** — no result rather than a bad one. Re-ran,
+widened scan of 221 binaries + 2 archives, 0 BAD.
+
+**🎯 WITH J34 MERGED, EVERY `.cpp` IN THE TREE IS UNDER THE 1,500-LINE SOFT
+LIMIT.** From 31 files over the limit and 4 over the 3,000 hard cap this morning,
+the remaining oversize files are **four headers and nothing else** — of which
+`packet_structs.h` and `action_dispatcher.h` split mechanically (J14, J15) and
+`eq.h` / `irrlicht_renderer.h` need Will's growth-gating ruling because no
+mechanical split reaches 1,500 on a class body of 1,905 lines.
+
 ## Unit table
 
 | Unit | File | Lines | → TUs | Largest after | Wave | Notes |
