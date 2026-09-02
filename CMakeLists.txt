@@ -271,6 +271,9 @@ SET(CLIENT_CORE_SOURCES
     src/client/eq_player_state.cpp
     src/client/eq_bridge.cpp
     src/client/eq_entities.cpp
+    src/client/eq_entities_appearance.cpp
+    src/client/eq_entities_updates.cpp
+    src/client/eq_entities_world.cpp
     src/client/eq_commands.cpp
     src/client/eq_commands_movement.cpp
     src/client/eq_commands_spells.cpp

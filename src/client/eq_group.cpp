@@ -11,9 +11,15 @@
 // GetGroupLeaderName, HasPendingGroupInvite, GetPendingInviterName,
 // SyncGroupMemberToGameState) were already moved to eq_player_info.cpp in
 // F07 and are not part of this file.
+//
+// Batch J unit J08 relocated ZoneProcessRaidUpdate and SendRaidCommand here
+// from eq_entities.cpp, where F11 had left them; they are appended below the
+// group handlers under their own banner. Moved verbatim, no behavior change.
+// See refactor/J08_eq_entities_split.md.
 
 #include "client/eq.h"
 #include "client/bridge/game_state_bridge.h"
+#include "client/raid_update.h"
 #include "common/logging.h"
 #include "common/packet_structs.h"
 
@@ -757,4 +763,218 @@ void EverQuest::ZoneProcessGroupCancelInvite(const EQ::Net::Packet& p)
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::GroupChanged, std::move(gdata)));
 	}
+}
+
+// ============================================================================
+// Raid Methods
+// ============================================================================
+
+// T169: every raid membership event arrives here, and until now this
+// function read one uint32 and switched on six guessed values -- four of
+// which disagreed with eqemu's own enum (common/raid.h). What that cost:
+//   * action 2 was reported as "member joined"; it is raidMemberNameChange.
+//   * action 3 was reported as "the raid leader has changed"; it is
+//     raidRemove1, a member LEAVING.
+//   * action 6 was reported as "the raid has disbanded"; it is raidMembers,
+//     the full member list. The real disband is action 5, which was unhandled.
+//   * action 10 was reported as a lock-state update; it is raidNoRaid, the
+//     server telling us we are not in a raid. Lock/unlock are 17 and 18.
+//   * action 20 -- what a raid INVITE actually produces -- fell through to
+//     "Unknown raid action", so an invited player was told NOTHING AT ALL.
+// The body was never parsed, so no message could name anyone.
+//
+// Decoding now lives in DecodeRaidUpdate() (raid_update.cpp), where the
+// per-action body shapes are documented and pinned by test. This function is
+// only the rendering.
+//
+// T179 added the accept path and the /raid commands; T180 added the roster
+// below and split the zone-in handshake back out of action 10. The member-list
+// parse T169 expected (action 6) turned out to be unavailable on Titanium --
+// its ENCODE has no case for raidMembers and ships the general with the list
+// stripped -- so the roster is assembled from the action-0 stream instead.
+// See raid_update.h.
+void EverQuest::ZoneProcessRaidUpdate(const EQ::Net::Packet &p)
+{
+	const EQT::RaidUpdate u = EQT::DecodeRaidUpdate(p, 2);
+
+	if (!u.valid) {
+		LOG_WARN(MOD_ZONE, "RaidUpdate too short for action {} ({}): {} bytes",
+		         u.raw_action, EQT::RaidActionName(u.raw_action), p.Length());
+		return;
+	}
+
+	// T180: not every OP_RaidUpdate is a raid event. Client::CompleteConnect
+	// reuses this opcode for the zone-in name handshake, whose first uint32
+	// happens to be 0x0A -- the raidNoRaid code. It arrives on EVERY zone
+	// entry, with or without a raid. Until T180 this produced a WARN per
+	// zone-in ("too short for action 10"); reporting it as "You are not in a
+	// raid" instead would have been worse, since it would have cleared real
+	// raid membership every time the player zoned.
+	if (u.zone_in_name) {
+		LOG_DEBUG(MOD_ZONE, "RaidUpdate: zone-in name handshake for '{}' (not a raid event)",
+		          u.player_name);
+		return;
+	}
+
+	LOG_DEBUG(MOD_ZONE, "RaidUpdate action={} ({}) player='{}' leader='{}' parameter={}",
+	          u.raw_action, EQT::RaidActionName(u.raw_action),
+	          u.player_name, u.leader_name, u.parameter);
+
+	// Membership first, then the message: /raid list must be right the instant
+	// the player is told something changed. The policy lives in RaidRoster so
+	// it is testable without a live client.
+	m_raid_roster.Apply(u, m_character);
+
+	// Every event names a member, and several of them are about US. eqemu
+	// sends the same packet to the whole raid, so without this comparison the
+	// client would announce "You have joined the raid" for every member.
+	const bool about_me = !u.player_name.empty() && u.player_name == m_character;
+
+	switch (u.action) {
+	case EQT::RaidAction::Add:
+		if (about_me) {
+			m_in_raid = true;
+			m_pending_raid_inviter.clear();  // accepted / already in
+			AddChatSystemMessage("You have joined the raid.");
+		} else {
+			AddChatSystemMessage(fmt::format("{} has joined the raid.", u.player_name));
+		}
+		break;
+
+	case EQT::RaidAction::Remove1:
+	case EQT::RaidAction::Remove2:
+		if (about_me) {
+			m_in_raid = false;
+			m_raid_leader.clear();
+			m_raid_locked = false;
+			AddChatSystemMessage("You have left the raid.");
+		} else {
+			AddChatSystemMessage(fmt::format("{} has left the raid.", u.player_name));
+		}
+		break;
+
+	case EQT::RaidAction::Disband:
+		m_in_raid = false;
+		m_raid_leader.clear();
+		m_pending_raid_inviter.clear();
+		m_raid_locked = false;
+		AddChatSystemMessage("The raid has disbanded.");
+		break;
+
+	case EQT::RaidAction::Create:
+		m_in_raid = true;
+		m_raid_leader = u.leader_name;
+		// A fresh raid is unlocked; Create also starts a fresh roster stream.
+		m_raid_locked = false;
+		AddChatSystemMessage(fmt::format("{} has formed a raid.", u.leader_name));
+		break;
+
+	case EQT::RaidAction::NoRaid:
+		// Only a genuine 140-byte raidNoRaid reaches here; the 136-byte zone-in
+		// handshake that also presents 10 returned above (T180).
+		m_in_raid = false;
+		m_raid_leader.clear();
+		m_pending_raid_inviter.clear();
+		m_raid_locked = false;
+		AddChatSystemMessage("You are not in a raid.");
+		break;
+
+	case EQT::RaidAction::SetLeader:
+		// The invite. eqemu builds this in Handle_OP_RaidCommand's
+		// RaidCommandInvite arm (client_packet.cpp:12356): leader_name is the
+		// player inviting, player_name is us.
+		//
+		// There is deliberately no accept here. Accepting means sending
+		// OP_RaidCommand with action 1 (RaidCommandAcceptInvite),
+		// player_name = the inviter, leader_name = us -- a sender this client
+		// does not have (T168 deleted the broken raid sender rather than
+		// leave it parked). Saying so out loud beats the previous behaviour,
+		// which was to say nothing and log "Unknown raid action: 20".
+		// T179: leader_name is the inviter (see the decode header). Remember it
+		// so /raid accept can answer, and tell the player how.
+		m_pending_raid_inviter = u.leader_name;
+		AddChatSystemMessage(fmt::format(
+			"{} invites you to join a raid. Type /raid accept to join.",
+			u.leader_name));
+		break;
+
+	case EQT::RaidAction::MakeLeader:
+		m_raid_leader = u.player_name;
+		AddChatSystemMessage(fmt::format("{} is now the raid leader.", u.player_name));
+		break;
+
+	case EQT::RaidAction::NoLongerLeader:
+		AddChatSystemMessage("You are no longer the raid leader.");
+		break;
+
+	case EQT::RaidAction::Lock:
+	case EQT::RaidAction::Unlock: {
+		// T182. eqemu sends the SAME action whether the state just CHANGED
+		// (LockRaid -> SendRaidLock, broadcast to the raid) or was ALREADY
+		// what you asked for (Handle_OP_RaidCommand -> SendRaidLockTo, to you
+		// alone). The packets are identical, so "now locked" vs "already
+		// locked" can only come from the state we track -- which is also why
+		// we track it. It is re-established on zone-in: the rejoin path sends
+		// SendRaidLockTo only when the raid is locked.
+		const bool locking = (u.action == EQT::RaidAction::Lock);
+		const bool changed = (m_raid_locked != locking);
+		m_raid_locked = locking;
+		if (changed) {
+			AddChatSystemMessage(locking ? "The raid is now locked."
+			                             : "The raid is now unlocked.");
+		} else {
+			AddChatSystemMessage(locking ? "The raid is already locked."
+			                             : "The raid is not locked.");
+		}
+		break;
+	}
+
+	case EQT::RaidAction::SetMotd:
+		if (!u.text.empty()) {
+			AddChatSystemMessage(fmt::format("Raid MOTD: {}", u.text));
+		}
+		break;
+
+	case EQT::RaidAction::SetNote:
+		LOG_DEBUG(MOD_ZONE, "Raid note for {}: '{}'", u.player_name, u.text);
+		break;
+
+	case EQT::RaidAction::Members:
+		// The roster (details + member list, 395+ bytes). Parsing it is the
+		// raid unit's job; announcing something we have not parsed would be
+		// the same class of guess this unit is removing.
+		LOG_DEBUG(MOD_ZONE, "Raid member list received ({} bytes) -- not parsed", p.Length());
+		break;
+
+	default:
+		// Named, not guessed: known-but-unhandled and genuinely unknown are
+		// different facts and now read differently in the log.
+		LOG_DEBUG(MOD_ZONE, "Raid action {} ({}) not handled by this client",
+		          u.raw_action, EQT::RaidActionName(u.raw_action));
+		break;
+	}
+}
+
+// T179: send an OP_RaidCommand (Titanium wire opcode OP_RaidInvite, 0x5891,
+// routed by eqemu to Handle_OP_RaidCommand). The body is the 140-byte internal
+// RaidGeneral_Struct built by EQT::encodeRaidCommand -- the handler rejects
+// anything shorter. Called only from the action layer (/raid commands).
+void EverQuest::SendRaidCommand(uint32_t action, const std::string& player_name,
+                               const std::string& leader_name, uint32_t parameter)
+{
+	if (!m_zone_connection || !m_game_state.world().isZoneConnected()) {
+		LOG_WARN(MOD_ZONE, "SendRaidCommand: not connected");
+		return;
+	}
+
+	const std::vector<uint8_t> body =
+		EQT::encodeRaidCommand(action, player_name, leader_name, parameter);
+
+	EQ::Net::DynamicPacket p;
+	p.PutUInt16(0, HC_OP_RaidInvite);
+	p.PutData(2, const_cast<uint8_t*>(body.data()), body.size());
+	m_zone_connection->QueuePacket(p, 0, true);
+
+	LOG_INFO(MOD_ZONE, "Sent OP_RaidCommand action={} player='{}' leader='{}'",
+	         action, player_name, leader_name);
 }

@@ -1,0 +1,391 @@
+// EverQuest door and world-object cluster: the door-type helper, move door,
+// the spawn-appearance/animation/click-door senders, and the world object
+// (tradeskill container) senders and handlers.
+//
+// Clusters of eq_entities.cpp (Batch F unit F11), split off by Batch J unit
+// J08. Moved verbatim, no behavior change. See
+// refactor/J08_eq_entities_split.md and refactor/F11_entities.md.
+//
+// NOTE: SendTradeSkillCombine and ZoneProcessTradeSkillCombine (nestled
+// among the world-object senders/handlers in eq.cpp, between
+// SendClickObject/SendCloseContainer and ZoneProcessClickObjectAction/
+// SendJump respectively) are item-economy, judgment-called to stay in
+// eq.cpp for consistency with F05 (merchant/inventory/trade split).
+//
+// NOTE: ZoneProcessPlayerStateAdd/Death/PlayerStateRemove/Stamina/
+// ZonePlayerToBind/LevelUpdate (immediately following ZoneProcessMoveDoor
+// in eq.cpp) are not named in this unit's scope and stay in eq.cpp.
+
+#include "client/eq.h"
+#include "client/world_object.h"
+#include "client/combat.h"
+#include "client/trade_manager.h"
+#include "client/raid_update.h"
+#include "client/spell/buff_manager.h"
+#include "client/inventory/inventory_constants.h"
+#include "client/bridge/game_state_bridge.h"
+#include "client/position_frames.h"
+#include "client/bridge/irrlicht_bridge.h"
+#include "common/logging.h"
+#include "common/packet_structs.h"
+#include "common/name_utils.h"
+
+// P28: entity_pose_state.h is game-state-owned (S2 decoupling comment in the
+// header), and inventory_manager.h/item_instance.h are the same
+// renderer-free data model used unconditionally elsewhere — un-guarded.
+#include "client/state/entity_pose_state.h"
+#include "client/inventory/inventory_manager.h"
+#include "client/inventory/item_instance.h"
+
+#ifdef WITH_AUDIO
+#include "client/audio/audio_manager.h"
+#include "client/audio/door_sounds.h"
+#endif
+
+#include "client/animation_constants.h"
+#include <algorithm>
+#include <cstddef>
+#include <cstring>
+#include <cmath>
+
+// Helper function to determine door type from door name
+#ifdef WITH_AUDIO
+static EQT::Audio::DoorType getDoorTypeFromName(const std::string& name) {
+	// Convert to lowercase for comparison
+	std::string lowerName = name;
+	std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), ::tolower);
+
+	// Check for secret doors
+	if (lowerName.find("secret") != std::string::npos ||
+	    lowerName.find("hidden") != std::string::npos) {
+		return EQT::Audio::DoorType::Secret;
+	}
+
+	// Check for metal doors/gates
+	if (lowerName.find("gate") != std::string::npos ||
+	    lowerName.find("iron") != std::string::npos ||
+	    lowerName.find("metal") != std::string::npos ||
+	    lowerName.find("grate") != std::string::npos ||
+	    lowerName.find("portcullis") != std::string::npos ||
+	    lowerName.find("bars") != std::string::npos) {
+		return EQT::Audio::DoorType::Metal;
+	}
+
+	// Check for stone doors
+	if (lowerName.find("stone") != std::string::npos ||
+	    lowerName.find("rock") != std::string::npos ||
+	    lowerName.find("boulder") != std::string::npos ||
+	    lowerName.find("crypt") != std::string::npos ||
+	    lowerName.find("tomb") != std::string::npos) {
+		return EQT::Audio::DoorType::Stone;
+	}
+
+	// Check for sliding doors
+	if (lowerName.find("slide") != std::string::npos ||
+	    lowerName.find("panel") != std::string::npos) {
+		return EQT::Audio::DoorType::Sliding;
+	}
+
+	// Default to wood for most doors
+	return EQT::Audio::DoorType::Wood;
+}
+#endif
+
+void EverQuest::ZoneProcessMoveDoor(const EQ::Net::Packet &p)
+{
+	// MoveDoor indicates door animations (opening/closing)
+	// Packet format: opcode(2) + MoveDoor_Struct(2)
+	// action: 0x02 = close (go to closed visual state)
+	//         0x03 = open (go to open visual state)
+
+	if (p.Length() < 4) {
+		LOG_WARN(MOD_ENTITY, "MoveDoor packet too small: {} bytes", p.Length());
+		return;
+	}
+
+	uint8_t door_id = p.GetUInt8(2);
+	uint8_t action = p.GetUInt8(3);
+
+	// Update door state in game state manager
+	const EQT::DoorState* door = m_game_state.doors().getDoor(door_id);
+	if (door) {
+		bool is_open = (action == 0x03);
+		m_game_state.doors().setDoorState(door_id, is_open);
+
+		// Check if this was a user-initiated door click
+		bool user_initiated = (m_pending_door_clicks.erase(door_id) > 0);
+
+		// Log at debug level 2+ for all doors, or level 1+ for user-initiated
+		if (s_debug_level >= 2 || (user_initiated && s_debug_level >= 1)) {
+			LOG_DEBUG(MOD_ENTITY, "Door {} {}{}", door_id,
+			          is_open ? "opened" : "closed",
+			          user_initiated ? " (user)" : "");
+		}
+
+#ifdef WITH_AUDIO
+		// Play door sound only if player is close to the door
+		if (m_audio_manager) {
+			glm::vec3 doorPos(door->x, door->y, door->z);
+			glm::vec3 playerPos(PosX(), PosY(), PosZ());
+			float distance = glm::distance(doorPos, playerPos);
+
+			// Only play door sounds within 10 units
+			constexpr float DOOR_SOUND_MAX_DISTANCE = 10.0f;
+			if (distance <= DOOR_SOUND_MAX_DISTANCE) {
+				EQT::Audio::DoorType doorType = getDoorTypeFromName(door->name);
+				uint32_t soundId = EQT::Audio::DoorSounds::getDoorSound(doorType, is_open);
+				m_audio_manager->playSound(soundId, doorPos);
+			}
+		}
+#endif
+
+		// Publish DoorStateChanged event to bridge
+		if (m_bridge) {
+			eqt::state::DoorStateChangedData data;
+			data.doorId = door_id;
+			data.isOpen = is_open;
+			data.userInitiated = user_initiated;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::DoorStateChanged, std::move(data)));
+		}
+	} else {
+		if (s_debug_level >= 2) {
+			LOG_DEBUG(MOD_ENTITY, "MoveDoor for unknown door {}", door_id);
+		}
+	}
+}
+
+void EverQuest::SendSpawnAppearance(uint16_t type, uint32_t value)
+{
+	if (!IsFullyZonedIn()) {
+		return;
+	}
+	
+	EQ::Net::DynamicPacket p;
+	p.Resize(10);  // SpawnAppearance packet size: 2 bytes opcode + 8 bytes struct
+	
+	p.PutUInt16(0, HC_OP_SpawnAppearance);
+	p.PutUInt16(2, MySpawnId());  // spawn_id
+	p.PutUInt16(4, type);            // type
+	p.PutUInt32(6, value);           // parameter
+	// Removed the extra 4 bytes that were at offset 10
+	
+	m_zone_connection->QueuePacket(p);
+	
+	if (s_debug_level >= 1) {
+		LOG_DEBUG(MOD_MAIN, "Sent SpawnAppearance: spawn_id={}, type={}, value={}", 
+			MySpawnId(), type, value);
+	}
+}
+
+void EverQuest::SendAnimation(uint8_t animation_id, uint8_t animation_speed)
+{
+	if (!IsFullyZonedIn()) {
+		return;
+	}
+	
+	EQ::Net::DynamicPacket p;
+	p.Resize(6);  // Animation packet size: 2 bytes opcode + 4 bytes data
+	
+	p.PutUInt16(0, HC_OP_Animation);      // opcode (OP_Animation)
+	p.PutUInt16(2, MySpawnId());        // spawn_id
+	p.PutUInt8(4, animation_speed);       // animation speed (usually 10)
+	p.PutUInt8(5, animation_id);          // animation ID
+	
+	m_zone_connection->QueuePacket(p, 0, false);  // Send unreliable
+	
+	if (s_debug_level >= 1) {
+		LOG_DEBUG(MOD_MAIN, "Sent Animation: spawn_id={}, speed={}, animation_id={}",
+			MySpawnId(), animation_speed, animation_id);
+	}
+}
+
+void EverQuest::SendClickDoor(uint8_t door_id, uint32_t item_id)
+{
+	if (!IsFullyZonedIn()) {
+		LOG_DEBUG(MOD_ENTITY, "Cannot click door - not fully zoned in");
+		return;
+	}
+
+	// Check if door exists
+	const EQT::DoorState* door = m_game_state.doors().getDoor(door_id);
+	if (!door) {
+		LOG_WARN(MOD_ENTITY, "Attempted to click unknown door {}", door_id);
+		return;
+	}
+
+	LOG_INFO(MOD_ENTITY, "Clicking door {} ('{}')", door_id, door->name);
+
+	// Track this as a user-initiated door click
+	m_pending_door_clicks.insert(door_id);
+
+	// Build ClickDoor packet
+	EQ::Net::DynamicPacket p;
+	p.Resize(2 + sizeof(EQT::ClickDoor_Struct));
+
+	p.PutUInt16(0, HC_OP_ClickDoor);
+	p.PutUInt8(2, door_id);           // doorid
+	p.PutUInt8(3, 0);                 // unknown001
+	p.PutUInt8(4, 0);                 // unknown002
+	p.PutUInt8(5, 0);                 // unknown003
+	p.PutUInt8(6, 0);                 // picklockskill
+	p.PutUInt8(7, 0);                 // unknown005[0]
+	p.PutUInt8(8, 0);                 // unknown005[1]
+	p.PutUInt8(9, 0);                 // unknown005[2]
+	p.PutUInt32(10, item_id);         // item_id (key)
+	p.PutUInt16(14, MySpawnId());   // player_id
+	p.PutUInt16(16, 0);               // unknown014
+
+	m_zone_connection->QueuePacket(p, 0, true);
+}
+
+// ============================================================================
+// World Object / Tradeskill Methods
+// ============================================================================
+
+void EverQuest::SendClickObject(uint32_t drop_id)
+{
+	if (!IsFullyZonedIn()) {
+		LOG_DEBUG(MOD_ENTITY, "Cannot click object - not fully zoned in");
+		return;
+	}
+
+	// Check if object exists
+	auto it = m_world_objects.find(drop_id);
+	if (it == m_world_objects.end()) {
+		LOG_WARN(MOD_ENTITY, "Attempted to click unknown object {}", drop_id);
+		return;
+	}
+
+	LOG_INFO(MOD_ENTITY, "Clicking object {} ('{}') type={} ({})",
+		drop_id, it->second.name, it->second.object_type,
+		it->second.getTradeskillName());
+
+	// Build ClickObject packet
+	EQ::Net::DynamicPacket p;
+	p.Resize(2 + sizeof(EQT::ClickObject_Struct));
+
+	p.PutUInt16(0, HC_OP_ClickObject);
+	p.PutUInt32(2, drop_id);           // drop_id
+	p.PutUInt32(6, MySpawnId());     // player_id
+
+	m_zone_connection->QueuePacket(p, 0, true);
+}
+
+void EverQuest::SendCloseContainer(uint32_t drop_id)
+{
+	if (!IsFullyZonedIn()) {
+		LOG_DEBUG(MOD_ENTITY, "Cannot close container - not fully zoned in");
+		return;
+	}
+
+	LOG_DEBUG(MOD_ENTITY, "Closing tradeskill container {}", drop_id);
+
+	// Build ClickObjectAction packet to close the container
+	EQ::Net::DynamicPacket p;
+	p.Resize(2 + sizeof(EQT::ClickObjectAction_Struct));
+
+	p.PutUInt16(0, HC_OP_ClickObjectAction);
+	p.PutUInt32(2, MySpawnId());     // player_id
+	p.PutUInt32(6, drop_id);           // drop_id
+	p.PutUInt32(10, 0);                // open = 0 (closing)
+	p.PutUInt32(14, 0);                // type
+	p.PutUInt32(18, 0);                // unknown16
+	p.PutUInt32(22, 0);                // icon
+	p.PutUInt32(26, 0);                // unknown24
+	// object_name is 64 bytes of zeros (not needed for close)
+	for (int i = 0; i < 64; i++) {
+		p.PutUInt8(30 + i, 0);
+	}
+
+	m_zone_connection->QueuePacket(p, 0, true);
+
+	// Clear active tradeskill object. T278: eqemu does NOT echo
+	// ClickObjectAction open=0 (Object::Close() answers with OP_ClearObject
+	// instead), so this local clear is the only one there will be -- T282
+	// keeps the inventory model's copy in step with it here rather than
+	// waiting for a confirmation that never comes.
+	m_active_tradeskill_object_id = 0;
+	if (m_inventory_manager) {
+		m_inventory_manager->setWorldContainerOpen(false);
+	}
+}
+
+const eqt::WorldObject* EverQuest::GetWorldObject(uint32_t drop_id) const
+{
+	auto it = m_world_objects.find(drop_id);
+	if (it != m_world_objects.end()) {
+		return &it->second;
+	}
+	return nullptr;
+}
+
+void EverQuest::ClearWorldObjects()
+{
+	LOG_DEBUG(MOD_ENTITY, "Clearing {} world objects", m_world_objects.size());
+	m_world_objects.clear();
+	m_active_tradeskill_object_id = 0;
+	if (m_inventory_manager) {
+		m_inventory_manager->setWorldContainerOpen(false);
+	}
+}
+
+void EverQuest::ZoneProcessClickObjectAction(const EQ::Net::Packet &p)
+{
+	// Parse ClickObjectAction_Struct from packet (skip 2-byte opcode)
+	if (p.Length() < 2 + sizeof(EQT::ClickObjectAction_Struct)) {
+		LOG_WARN(MOD_ENTITY, "ClickObjectAction packet too small: {} bytes (need {})",
+			p.Length(), 2 + sizeof(EQT::ClickObjectAction_Struct));
+		return;
+	}
+
+	const auto* action = reinterpret_cast<const EQT::ClickObjectAction_Struct*>(p.Data() + 2);
+
+	std::string objectName(action->object_name, strnlen(action->object_name, sizeof(action->object_name)));
+
+	if (action->open == 1) {
+		// Server is telling us to open a tradeskill container
+		LOG_INFO(MOD_ENTITY, "Opening tradeskill container: drop_id={} type={} icon={} name='{}'",
+			action->drop_id, action->type, action->icon, objectName);
+
+		// Store the active tradeskill object ID
+		m_active_tradeskill_object_id = action->drop_id;
+		// T282 -- the inventory model gates moves into/out of 4000-4009 on
+		// this, because eqemu's SwapItem Step 3 is gated on the same thing
+		// server-side and destroys the item when it is not.
+		if (m_inventory_manager) {
+			m_inventory_manager->setWorldContainerOpen(true);
+		}
+
+		// Open tradeskill container via bridge
+		if (m_bridge) {
+			eqt::state::TradeskillContainerOpenedEvent data;
+			data.isWorldObject = true;
+			data.objectId = action->drop_id;
+			data.inventorySlot = -1;
+			data.containerName = objectName;
+			data.containerType = static_cast<uint8_t>(action->type);
+			data.slotCount = eqt::inventory::WORLD_COUNT;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::TradeskillContainerOpened, std::move(data)));
+		}
+	} else {
+		// Server is confirming container is closed
+		LOG_DEBUG(MOD_ENTITY, "Tradeskill container closed: drop_id={}", action->drop_id);
+		m_active_tradeskill_object_id = 0;
+		if (m_inventory_manager) {
+			m_inventory_manager->setWorldContainerOpen(false);
+		}
+
+		// Close tradeskill container via bridge
+		if (m_bridge) {
+			eqt::state::TradeskillContainerClosedEvent data;
+			data.wasWorldObject = true;
+			data.objectId = action->drop_id;
+			data.inventorySlot = -1;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::TradeskillContainerClosed, std::move(data)));
+		}
+	}
+}
+
