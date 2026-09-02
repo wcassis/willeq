@@ -817,6 +817,50 @@ Two smaller plan errors it caught: the cut-boundary table misattributes line
 below is right, the cut is unaffected), and the plan's whole
 `tests/CMakeLists.txt`-is-2,850-lines urgency paragraph is obsolete.
 
+## ⚠ CORRECTIONS FROM J12 (2026-09-02)
+
+**28. THE BANNER SANITY CHECK IS BROKEN AS WRITTEN.**
+`grep -c '^// ={4,}' <file>` returns **0**, not the real count — `{4,}` is not a
+POSIX BRE interval, so the pattern never matches. The `awk` form in the plans is
+correct, but **anyone cross-checking with plain `grep -c` will conclude the
+banners vanished.** Use `grep -cE`. (Same family as the uppercase-CMake trap: a
+grep that silently returns nothing reads exactly like a real answer.)
+
+**29. `readelf -h` is a stronger and equally cheap truncation check** than the
+`head -c 4 | od` recipe. Either works; prefer `readelf`.
+
+**30. The tail convention double-spaces some TUs.** "blank + namespace close,
+replicated in each TU" produces a double blank line in any TU whose body already
+ends on the original's blank line. Cosmetic, invisible to both proofs and the
+verifier — declare it rather than hand-fixing it.
+
+**31. ORCHESTRATOR-SIDE: a doc-hygiene unit running CONCURRENTLY with a split
+guarantees an alternatives-shaped conflict in the split file.** J21 edited two
+comments in `eq_action_handler.cpp` while J12 was splitting it, so git offered
+the entire pre-split file as one side. Taking either side wholesale silently
+reverts a completed unit. **Resolve by taking the split and re-applying the
+comment edits into the TU that now holds each line.** Better: **do not schedule
+a tree-wide doc pass alongside splits** — or scope it to exclude every file with
+a unit in flight. (Same shape as T322's conflict earlier today.)
+
+### J12's result — and the truncation trap fired a FOURTH time
+
+`eq_action_handler.cpp` 2,248 → **783 / 570 / 957**, method split 68/21/85
+**exactly** as planned, **zero range drift** (all 26 banner line numbers, both
+cut boundaries and every comment-depth check reproduced). **Verifier exit 0 with
+the predicted `+57/-0`** — and the number was derivable from the plan alone:
+(19 includes + 2 namespace + 5 header) x 2 new TUs + 5. Both proofs run against
+the produced files rather than scratch extracts, so they cover assembly too.
+
+⚠ **The x86 build hit exit 143 and its re-invocation exited 0 with a completely
+clean log while two binaries were still truncated** — 21 MB of zeroes each.
+**Fourth independent instance today** (J07's twelve, J10's three, the
+orchestrator's one, now these two); the ARM build hit its own 143 separately.
+This is not an edge case; it is the normal consequence of a three-wide wave.
+
+The two cutting rules disagreed at exactly the one predicted place (a banner with
+no preceding blank line) and nowhere else.
+
 ## Unit table
 
 | Unit | File | Lines | → TUs | Largest after | Wave | Notes |
