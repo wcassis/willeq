@@ -762,8 +762,27 @@ diff <(git show "$BASE:..." | sed -n '19,824p') <(sed -n '30,835p' <new>)
 ```
 $ python3 scripts/refactor/verify_move_only.py "$BASE..HEAD" \
       --repo /mnt/projects/fable/wt/slot3
-<see VERIFIER OUTPUT block appended below>
+Non-C++ files changed (not verified, review separately):
+  CMakeLists.txt
+  refactor/J33_renderer_player_physics_split.md
+
+Files verified: 2
+Boilerplate: +33 / -0 lines (allowed)
+
+PASS: move-only (modulo boilerplate).
+VERIFIER_EXIT=0
 ```
+
+**Exit 0, `+0/-0` substantive — the prediction held exactly, and no
+orchestrator sign-off is owed.** The 33 allowlisted boilerplate lines are, in
+full: the **17 header-comment lines** enumerated in item 6 (11 + 6, all `//`),
+the collision TU's copy of the preamble — **12 `#include` + 2 `namespace … {`**
+= 14 distinct lines, the blank being dropped by the normalizer — and the **2
+replicated namespace closes** (`} // namespace Graphics`, `} // namespace EQT`),
+which are bare `}` with a `//` tail. 17 + 14 + 2 = **33.** Nothing outside that
+set was flagged. The commit was made **before** the verifier ran, `--repo`
+pointed at slot3, and `$BASE` is the fork point, so none of the three
+false-answer traps applies.
 
 ### 9. Final line counts, method counts, timing
 
