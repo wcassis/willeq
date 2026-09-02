@@ -687,3 +687,636 @@ anything in `include/client/`.**
 ---
 
 ## Review (to be written by the executor)
+
+### Verdict: PASS. Move-only, 109/109 asserts identical, both deliberate-break tests refused by the compiler, verifier exit 0 / +0 -0 as predicted.
+
+Branch `task/J14-packet-structs-split`, cut from `fable` at
+**`40429250142c20b3adaf407af677e0495d7532d0`** ("Batch J Wave 7: plan the four
+remaining oversize headers (J14-J17)"). Slot 2. No Pi, no eqemu.
+
+---
+
+#### 1. Line count at my tip, and range drift
+
+`include/common/packet_structs.h` = **2,215 lines** at `40429250` -- identical
+to the plan's measurement at `09c99b0b`. **Zero range drift.** Every cut
+boundary, every struct/enum/assert count and every named line number in
+Measured held exactly.
+
+#### 2. Measured, re-verified
+
+| property | plan | mine | note |
+|---|---|---|---|
+| total lines | 2,215 | **2,215** | agree |
+| `grep -c '^struct '` | 120 | **120** | agree |
+| `grep -c '^enum '` | 5 | **5** | agree |
+| `grep -c '^static_assert'` | 109 | **109** | agree |
+| `grep -c 'static_assert'` | 111 | **111** | agree (2 prose mentions in 1-37) |
+| guard | 39/40, `#endif` 2215 | **39/40/2215** | agree |
+| includes | 42-44 | **42-44** | agree |
+| namespace `EQT` | 46 open, 2211 close | **46/2211** | agree |
+| nested `namespace Position` | 2192-2209 | **2192/2209** | agree |
+| pack region | push 64, pop 2213 (after ns close) | **64/2213** | agree |
+| conditional directives | 3 (39, 40, 2215) | **3** | agree |
+| banner sections | 21 | **21 sections = 42 `====` LINES** | see below |
+| file-scope constants | "27" | **23** | plan arithmetic error, see below |
+| namespace-scope free functions | zero at col 0 | **zero** | agree |
+| file mode | -- | **`100644`** (`git ls-files -s`) | agree |
+
+Two corrections to Measured, neither of them tree drift:
+
+- **Banners.** `grep -cE '^// ={4,}'` returns **42**, not 21. The file's banners
+  are three-line blocks (rule line / title / rule line), so 21 *sections* =
+  42 matching *lines*. The plan's acceptance item says "the eleven new headers
+  must sum to 21" -- read as lines that is wrong for the original too. I
+  conserved the measured quantity: **original 42, eleven new headers 42,
+  umbrella 0.**
+- **File-scope constant count.** The plan says 27 but its own breakdown is
+  13 + `PET_BUFF_COUNT` + 9 = **23**, which is what I measure. The narrow grep
+  returns **25 lines** = 23 constants + 2 `namespace` lines. No symbol has
+  appeared or moved since `09c99b0b`; the 27 is a plan arithmetic slip, not
+  drift, so I did not STOP.
+
+#### 3. Correction 21, re-derived (not cited)
+
+**Narrow grep** (`grep -nE '^static |^namespace|^const |^constexpr |^extern '`),
+exit **0**, 25 lines:
+
+```
+46:namespace EQT {
+49:static const uint32_t BUFF_COUNT = 25;
+50:static const uint32_t MAX_PP_SKILL = 100;
+51:static const uint32_t MAX_PP_LANGUAGE = 28;
+52:static const uint32_t MAX_PP_AA_ARRAY = 240;
+53:static const uint32_t MAX_PP_DISCIPLINES = 100;
+54:static const uint32_t MAX_PLAYER_TRIBUTES = 5;
+55:static const uint32_t MAX_RECAST_TYPES = 20;
+56:static const uint32_t SPELLBOOK_SIZE = 400;
+57:static const uint32_t SPELL_GEM_COUNT = 9;
+58:static const uint32_t BANDOLIERS_SIZE = 4;
+59:static const uint32_t BANDOLIER_ITEM_COUNT = 4;
+60:static const uint32_t POTION_BELT_SIZE = 4;
+61:static const uint32_t TEXTURE_COUNT = 9;  // materialCount
+402:static constexpr int PET_BUFF_COUNT = 30;
+1247:static const int32_t COINTYPE_CP = 0;  // Copper
+1248:static const int32_t COINTYPE_SP = 1;  // Silver
+1249:static const int32_t COINTYPE_GP = 2;  // Gold
+1250:static const int32_t COINTYPE_PP = 3;  // Platinum
+1253:static const int32_t COINSLOT_CURSOR = 0;
+1254:static const int32_t COINSLOT_INVENTORY = 1;
+1255:static const int32_t COINSLOT_BANK = 2;
+1256:static const int32_t COINSLOT_TRADE = 3;
+1257:static const int32_t COINSLOT_SHAREDBANK = 4;
+2192:namespace Position {
+```
+
+**Widened grep** (`grep -nE '^[A-Za-z_][A-Za-z_0-9:<>,&\* ]*\('`):
+**exit 0**, **109 unfiltered matches** -- the pattern is live on this file.
+Filtered through `grep -v 'static_assert('` it returns **no output, exit 1**:
+every one of the 109 is a compile-time size check at column 0. **There are zero
+namespace-scope free functions in this header**, so the set of
+(free-function definition, cross-tile consumer) pairs is empty by construction.
+The three `Position::Extract*` helpers are `inline` and indented inside
+`namespace Position` (2192-2209), invisible to the widened pattern; the narrow
+one catches their enclosing namespace at 2192, and the whole region lands
+intact in `gm.h`.
+
+**Positive controls -- `src/client/position.cpp`** (correction 78; the
+correction-51/61 controls are gone from their files):
+
+| pattern | control result |
+|---|---|
+| narrow | `11:constexpr float position_eps = 0.0001f;` (1 line, exit 0) |
+| widened | **31 matches**, exit 0 -- `15:inline bool ValueWithin(...)`, `19/30/40:std::string to_string(...)`, `49/53:bool IsOrigin(...)`, `60:float DistanceSquared(...)`, `68:float Distance(...)`, ... |
+
+Both patterns are proven live before any empty result was believed.
+
+**Symbol-to-tile agreement** (computed, not cited -- word-boundary scan over
+the whole file, definitions excluded):
+
+| symbol(s) | def line | def tile | in-file consumer lines | consumer tile(s) | agree? |
+|---|---|---|---|---|---|
+| `TEXTURE_COUNT` | 61 | common | 100, 131 | common | yes, same tile |
+| `MAX_PP_DISCIPLINES` | 53 | common | 566, 1756 | character, travel_misc | yes, via `common.h` |
+| `BANDOLIER_ITEM_COUNT` | 59 | common | 596 | character | yes, via `common.h` |
+| `POTION_BELT_SIZE` | 60 | common | 616 | character | yes, via `common.h` |
+| `MAX_PP_SKILL` | 50 | common | 1340 | merchant | yes, via `common.h` |
+| `BUFF_COUNT`, `MAX_PP_LANGUAGE`, `MAX_PP_AA_ARRAY`, `MAX_PLAYER_TRIBUTES`, `MAX_RECAST_TYPES`, `SPELLBOOK_SIZE`, `SPELL_GEM_COUNT`, `BANDOLIERS_SIZE` | 49-58 | common | **none** | -- | external only, via umbrella |
+| `PET_BUFF_COUNT` | 402 | combat | 406, 407 | combat | yes, same tile |
+| all nine `COINTYPE_*`/`COINSLOT_*` | 1247-1257 | merchant | **none** | -- | external only, via umbrella |
+| `Tint_Struct` | 70 | common | 81, 90-98, 100 | common | yes, same tile |
+| `Texture_Struct` | 109 | common | 112, 121-129, 131 | common | yes, same tile |
+| `TintProfile` | 87 | common | 103, **241** | common, **spawn** | yes, via `common.h` |
+| `TextureProfile` | 118 | common | 134, **217** | common, **spawn** | yes, via `common.h` |
+
+**Both dispatch-brief corrections confirmed independently:**
+`Spawn_Struct` (217, 241) is the **only** cross-tile consumer of the shared
+tint/texture types; `Illusion_Struct` (line 363) references **none** of them;
+and `grep -rn 'WearChange_Struct' include/ src/` returns **nothing, exit 1** --
+the struct does not exist in this tree. The rule discharging every cross-tile
+row is that all ten non-`common` headers include `common/packets/common.h`.
+
+#### 4. Comment depth at every cut (computed with the `//`-stripping counter)
+
+```
+depth before line    47 = 0   | (blank)
+depth before line    62 = 0   | (blank)
+depth before line    66 = 0   | /*
+depth before line   135 = 0   | (blank)
+depth before line   381 = 0   | /*
+depth before line   382 = 1   |  * Spell Buff structure (in profile)
+depth before line   536 = 0   | (blank)
+depth before line   682 = 0   | /*
+depth before line   805 = 0   | // =========...
+depth before line  1052 = 0   | // =========...
+depth before line  1128 = 0   | // =========...
+depth before line  1398 = 0   | // =========...
+depth before line  1633 = 0   | // =========...
+depth before line  1829 = 0   | // =========...
+depth before line  2210 = 0   | (blank)
+final whole-file depth = 0
+```
+
+**381 vs 382, resolved: the block comment OPENS at 381.** Depth before 382 is
+**1**, so cutting at 382 would have left an unterminated `/*` in `spawn.h` and
+an unopened `*/` in `combat.h` -- exactly the J02 defect the plan flagged.
+**I used spawn = 135-380 and combat = 381-535.** The arithmetic is unchanged
+(246 + 155 = 401 = 380-135+1 + 535-381+1).
+
+Every other cut sits at depth 0. All fifteen boundaries measured, none asserted.
+
+#### 5. Preprocessor dump, with its positive control
+
+`awk '/^[ \t]*#(if|ifdef|ifndef|else|elif|endif|define)/'` on
+`include/common/packet_structs.h`:
+
+```
+39: #ifndef EQT_PACKET_STRUCTS_H
+40: #define EQT_PACKET_STRUCTS_H
+2215: #endif // EQT_PACKET_STRUCTS_H
+```
+
+Exactly three lines -- the include guard and nothing else. **Zero conditional
+compilation anywhere in the file**, so no cut can land inside a conditional
+region.
+
+Positive control, same `awk` on `include/client/graphics/irrlicht_renderer.h`:
+**24 directives** (`1/2` guard, `53 #ifdef WITH_RDP`, `56 #endif`,
+`58 #if defined(EQT_HAS_DRM) && !defined(EQT_HAS_GLES2)`, `60 #endif`,
+`1067 #ifdef EQT_HAS_GLES2`, `1069 #else`, `1071 #endif`, `1326 #ifdef WITH_RDP`,
+`1365 #endif`, `1493/1504`, `1627/1629`, `1994/2007`, `2138/2140/2142`,
+`2493/2514`, `2520 #endif`). The pattern is live; the three-line result is a
+finding, not a broken grep.
+
+#### 6. Pack-pairing table -- and a correction to the plan's own check
+
+⚠ **The plan's prescribed grep (`grep -c 'pragma pack(push'` unanchored) is
+confounded by three PROSE lines and reports a false imbalance.** Three comment
+lines in this file spell the directives out: original line **12** (rule 1 of the
+T147 RULES block, which stays in the umbrella and may not be edited),
+original **1393** (the T147 note, now `merchant.h:288`) and original **1737**
+(the T145 note, now `travel_misc.h:127`). Both tables, pasted in full:
+
+**(a) the plan's unanchored grep -- three prose false positives:**
+
+```
+common/packet_structs.h                        push=1 pop=0     <- prose, rules block line 12
+packets/character.h                            push=1 pop=1
+packets/combat.h                               push=1 pop=1
+packets/common.h                               push=1 pop=1
+packets/gm.h                                   push=1 pop=1
+packets/group.h                                push=1 pop=1
+packets/guild.h                                push=1 pop=1
+packets/merchant.h                             push=1 pop=2     <- +1 prose (T147 note)
+packets/spawn.h                                push=1 pop=1
+packets/travel_misc.h                          push=1 pop=2     <- +1 prose (T145 note)
+packets/world_object.h                         push=1 pop=1
+packets/zone.h                                 push=1 pop=1
+```
+
+**(b) DIRECTIVES ONLY, anchored at column 0 -- the check that means something:**
+
+```
+common/packet_structs.h                        push=0 pop=0
+packets/character.h                            push=1 pop=1
+packets/combat.h                               push=1 pop=1
+packets/common.h                               push=1 pop=1
+packets/gm.h                                   push=1 pop=1
+packets/group.h                                push=1 pop=1
+packets/guild.h                                push=1 pop=1
+packets/merchant.h                             push=1 pop=1
+packets/spawn.h                                push=1 pop=1
+packets/travel_misc.h                          push=1 pop=1
+packets/world_object.h                         push=1 pop=1
+packets/zone.h                                 push=1 pop=1
+```
+
+Eleven pushes, eleven pops, each pair in its own file. **The umbrella carries
+no pack directive at all.** (`grep -c '^#pragma pack'` on it = 0; the single
+unanchored hit is prose inside the untouched RULES block. This is the
+correction-45/62/78 class firing on the plan's own acceptance step -- but the
+offending text is pre-existing and unmodifiable, so the fix is the anchored
+grep, not a comment edit.)
+
+**No `#include` inside any push/pop region**, in all twelve files -- verified by
+a directive-depth walker rather than by inspection:
+
+```
+packet_structs.h        final_depth=0 includes_inside=NONE
+packets/character.h     final_depth=0 includes_inside=NONE
+packets/combat.h        final_depth=0 includes_inside=NONE
+packets/common.h        final_depth=0 includes_inside=NONE
+packets/gm.h            final_depth=0 includes_inside=NONE
+packets/group.h         final_depth=0 includes_inside=NONE
+packets/guild.h         final_depth=0 includes_inside=NONE
+packets/merchant.h      final_depth=0 includes_inside=NONE
+packets/spawn.h         final_depth=0 includes_inside=NONE
+packets/travel_misc.h   final_depth=0 includes_inside=NONE
+packets/world_object.h  final_depth=0 includes_inside=NONE
+packets/zone.h          final_depth=0 includes_inside=NONE
+```
+
+**Declared structural deviation** (the unit's only one): the original pops
+*after* `} // namespace EQT`; every new header pops *before* its namespace
+close, so the pack region is exactly the struct region. Identical in effect,
+strictly tighter, and it is the sole structural change this unit makes.
+
+#### 7. Both `static_assert` proofs
+
+**(a) the 109-line multiset diff**
+
+```
+$ git show 40429250:include/common/packet_structs.h | grep '^static_assert' | sort > asserts_before.txt
+$ cat include/common/packets/*.h            | grep '^static_assert' | sort > asserts_after.txt
+$ diff asserts_before.txt asserts_after.txt ; echo $?
+0
+$ wc -l asserts_before.txt asserts_after.txt
+  109 asserts_before.txt
+  109 asserts_after.txt
+```
+
+**ASSERTS-IDENTICAL.** 109 before, 109 after, byte-for-byte the same multiset
+(108 `sizeof`, 1 `offsetof`). Re-run after the two deliberate-break tests were
+reverted: still exit 0.
+
+**(b) the deliberate-break test -- the proof they still FIRE**
+
+Probe TU: `#include "common/packet_structs.h"` + `int main(){return 0;}`,
+compiled `g++ -std=c++17 -fsyntax-only -I include`. Unmodified baseline:
+**exit 0**.
+
+**`EnvDamage2_Struct` (the T145 struct, `travel_misc.h:143`), 31 -> 36:**
+
+```
+travel_misc.h:143:41: error: static assertion failed: EnvDamage2_Struct must be 31 bytes
+  143 | static_assert(sizeof(EnvDamage2_Struct) == 36, "EnvDamage2_Struct must be 31 bytes");
+      |               ~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~
+travel_misc.h:143:41: note: the comparison reduces to (31 == 36)
+EXIT = 1
+```
+
+**The compiler REFUSES.** Decisively: GCC prints
+`the comparison reduces to (31 == 36)`, i.e. `sizeof(EnvDamage2_Struct)` is
+still **31** after the split. The struct is still packed. **T145 is NOT
+reproduced.** Reverted; probe recompiles at **exit 0**.
+
+**`Spawn_Struct` (`spawn.h:134`, the cross-header case), 385 -> 392:**
+
+```
+spawn.h:134:36: error: static assertion failed: Spawn_Struct must be 385 bytes
+  134 | static_assert(sizeof(Spawn_Struct) == 392, "Spawn_Struct must be 385 bytes");
+      |               ~~~~~~~~~~~~~~~~~~~~~^~~~~~
+spawn.h:134:36: note: the comparison reduces to (385 == 392)
+EXIT = 1
+```
+
+**Refused, and `sizeof(Spawn_Struct)` is still 385** -- which is the cross-header
+result that matters: `Spawn_Struct` embeds `TintProfile` and `TextureProfile`
+from `common.h`, so a `common.h` that popped its packing at the wrong place, or
+an include pulled in while packing was active, would show up here as a size
+change. It does not. Reverted; probe recompiles at **exit 0**.
+
+Same-header (`travel_misc.h`) and cross-header (`spawn.h` -> `common.h`) cases
+both covered. Neither STOP condition fired.
+
+#### 8. Every file-header comment line I wrote, and the correction-45 audit
+
+Each of the eleven domain headers carries **nine** comment lines: one or two
+naming its sections, then a seven-line shared block. The shared block, verbatim:
+
+```
+//
+// Wire layouts, extracted verbatim from the umbrella header by
+// refactor/J14_packet_structs_split.md. The RULES for this file family live
+// in the umbrella, include/common/packet_structs.h -- read them before
+// touching a struct or a compile-time size check here.
+//
+// This header opens and closes its own one-byte packing region; no include
+// sits inside it.
+```
+
+The per-header section lines:
+
+| header | section line(s) |
+|---|---|
+| `common.h` | `// Shared wire constants and the colour-tint / texture profile layouts that` / `// the spawn structures build on.` |
+| `spawn.h` | `// Login, world-entry, zone-entry and spawn wire layouts: LoginInfo through` / `// NewZone, SpawnAppearance and Illusion.` |
+| `combat.h` | `// Buff, consider, combat-ability, corpse-money, chat, death and despawn` / `// wire layouts.` |
+| `character.h` | `// Character-sheet wire layouts: bind points, AAs, disciplines, tributes,` / `// bandolier and potion belt, target, and the spell cast/memorize path.` |
+| `zone.h` | `// Zone change, zone points and door wire layouts.` (one line) |
+| `world_object.h` | `// World object and tradeskill wire layouts, plus track, resurrect, /who and` / `// inspect.` |
+| `group.h` | `// Group wire layouts: the group action constants and the seven group` / `// packet structures.` |
+| `merchant.h` | `// Vendor/merchant, money, trade, book, GM-training and pet-command wire` / `// layouts.` |
+| `guild.h` | `// Guild, corpse-management and consent-system wire layouts, plus emote and` / `// the server message filter.` |
+| `travel_misc.h` | `// Travel, group split, LFG, combat abilities, disciplines, banking and the` / `// phase 3 miscellaneous wire layouts.` |
+| `gm.h` | `// Dueling, skills, tradeskill recipe, cosmetic, phase 4 miscellaneous, GM` / `// command and petition wire layouts, plus the position bitfield helpers.` |
+
+The umbrella's eight new comment lines (lines 42-49; the 1-37 RULES block is
+**byte-identical and untouched**):
+
+```
+// J14: this file was 2,215 lines of wire layouts. It is now an umbrella over
+// include/common/packets/. Every struct, enum, constant and compile-time size
+// check moved verbatim; nothing was edited, and the files that include this
+// header see exactly the same declarations they saw before.
+//
+// Each domain header opens and closes its OWN one-byte packing region. This
+// file must NOT wrap them in one -- see rule 1 above, and
+// refactor/J14_packet_structs_split.md.
+```
+
+**Correction-45 audit of my own text, against every grep this plan runs:**
+
+| grepped token | present in my comments? | consequence |
+|---|---|---|
+| `static_assert` | **no** -- I wrote "compile-time size check" | assert multiset unaffected (109 = 109) |
+| `pragma pack(push` / `pragma pack(pop)` | **no** -- I wrote "one-byte packing region" | pack table unaffected; the three false positives in table (a) are all PRE-EXISTING prose I did not write and may not edit |
+| `^// ={4,}` | **no** | banner conservation 42 -> 42 exact |
+| `packet_structs` | **yes**, twice per domain header (22 lines) | **audited harmless**: every `packet_structs` grep in this plan scans `CMakeLists.txt`, `cmake`, `tests`, `scripts`, `benchmarks` -- none scans `include/`. Re-ran all of them after writing the headers: identical results. The plan's own §Header shape prescribes this exact citation while §File-header comments lists `packet_structs` as a dangerous token -- a self-contradiction (correction 78's shape). Resolved in favour of the citation, since the reference is load-bearing for a reader and provably outside every grep's scope. |
+
+I also verified `namespace` was safe to write here (J34 had to avoid it): the
+plan's narrow grep is only ever run against the **original** header, never
+against the produced ones.
+
+#### 9. CMake add-sites, and the tests/scripts greps
+
+**CMake add-sites found: ZERO**, matching the plan's prediction exactly. This
+project lists no headers in any source list.
+
+```
+$ grep -rn 'packet_structs' CMakeLists.txt cmake tests scripts benchmarks
+```
+returns 40 lines: 24 functional `#include "common/packet_structs.h"` lines in
+`tests/*.cpp`, 12 prose comments about **eqemu's** `common/eq_packet_structs.h`
+(a different file in a different repository), and four lines in
+`tests/cmake/data_formats.cmake` naming the target `test_packet_structs`:
+
+```
+tests/cmake/data_formats.cmake:10:ADD_EXECUTABLE(test_packet_structs
+tests/cmake/data_formats.cmake:11:    test_packet_structs.cpp
+tests/cmake/data_formats.cmake:14:TARGET_LINK_LIBRARIES(test_packet_structs GTest::gtest_main)
+tests/cmake/data_formats.cmake:15:GTEST_DISCOVER_TESTS(test_packet_structs)
+```
+
+That is a **.cpp** target that already links what it needs. **No edit.** I did
+not name `tests/CMakeLists.txt` (correction 26), did not use `--include`
+(correction 55), and greped the filename rather than lowercase CMake commands
+(correction 12). No line numbers cited (corrections 59/76): the target is
+`test_packet_structs`, in the `data_formats` fragment; locate it yourself.
+
+**Both text-scan greps, at my tip:**
+
+```
+$ grep -rn 'packet_structs' tests scripts
+```
+-> the same 24 `#include`s + 12 eqemu prose comments + the four CMake lines.
+**No test and no script reads this header as text.** `scripts/` contributes
+**zero** hits of any kind.
+
+```
+$ grep -hn 'kRoot / "src\|kRoot / "include' tests/*.cpp | sort -u
+```
+-> 17 distinct source paths, all under `include/client/...` or
+`src/client/...`: `include/client/eq.h`, `include/client/state/*`,
+`include/client/events/renderer_intents.h`,
+`include/client/action/action_dispatcher.h`,
+`src/client/graphics/renderer_event_receiver.cpp`,
+`src/client/graphics/renderer_frame_{render,input}.cpp`,
+`src/client/eq_bridge_intents.cpp`, `src/client/action/action_dispatcher*.cpp`,
+`src/client/help/renderer_command_catalog.cpp`, plus
+`kGraphicsDir = kRoot / "src" / "client" / "graphics"`.
+**`include/common/packet_structs.h` appears nowhere.** No surprise hit; nothing
+was added to territory.
+
+**`tests/test_reachability_sweep.cpp` sweeps `src` and `include` recursively**,
+so all eleven new headers entered it automatically. All 14
+`Reachability`-matching tests **passed** (`ReachabilitySweep.*` +
+`HotbarReachabilityTest.*`, 0 failed of 14) -- the new headers contribute zero
+new unreachable entries and zero parse changes.
+
+#### 10. Both content proofs, and the verifier
+
+**Proof 1 -- line multiset.** `body(header)` defined **structurally**: the lines
+strictly between that file's own `^#pragma pack(push, 1)` and its own
+`^#pragma pack(pop)`, minus the one blank line the template inserts on each
+side (both asserted to be blank before stripping, so a mis-slice throws rather
+than silently shortening). Bodies extracted from the **produced files**, never
+from the scratch slices.
+
+```
+before lines 2159   after lines 2159
+$ diff before_sorted.txt after_sorted.txt ; echo $?
+0
+```
+**MULTISET-OK.**
+
+**Proof 2 -- byte-identical re-concatenation.** Ordering convention: the eleven
+bodies concatenated in **original file order**, `common` first. `common`'s two
+source blocks (47-61 and 66-134) are *contiguous* under the movable-set
+definition -- lines 62-65 are structural and belong to no tile -- so `common.h`'s
+single body block already reproduces `47-61` immediately followed by `66-134`,
+and no interleaving is required. Compared against
+`sed -n '47,61p'` + `sed -n '66,2209p'` of the base blob:
+
+```
+$ cmp orig_ranges.txt recon.txt ; echo $?
+0
+$ wc -l recon.txt
+2159
+```
+**Byte-identical over 2,159 lines.** Arithmetic: 15 + 2144 = 2159, and
+84 + 246 + 155 + 146 + 123 + 247 + 76 + 270 + 235 + 196 + 381 = **2159**.
+(Note spawn/combat are 246/155, not the plan's 247/154, because of the 381
+boundary resolution in item 4; the sum is unchanged.)
+
+**The verifier -- committed first.**
+
+```
+$ git -C /mnt/projects/fable/wt/slot2 commit ...        # FIRST
+$ BASE=$(git merge-base fable HEAD)
+40429250142c20b3adaf407af677e0495d7532d0
+$ python3 scripts/refactor/verify_move_only.py "$BASE..HEAD" \
+      --repo /mnt/projects/fable/wt/slot2
+```
+
+`$BASE` = **`40429250142c20b3adaf407af677e0495d7532d0`** -- the fork point, not
+`fable` (which has moved under this wave). `--repo` passed explicitly. The tree
+was committed before the run, so the `No C++ files changed`/exit-0 no-op could
+not fire. Full output:
+
+```
+Non-C++ files changed (not verified, review separately):
+  refactor/J14_packet_structs_split.md
+
+Files verified: 12
+Boilerplate: +244 / -1 lines (allowed)
+
+PASS: move-only (modulo boilerplate).
+VERIFIER_EXIT = 0
+```
+
+**Every flagged line enumerated.** The verifier reports **zero substantive
+lines in either direction**; the entire delta is its BOILERPLATE allowlist
+(`#include`, `#pragma`, `#ifndef`, `#define`, `#endif`, any comment,
+`namespace ... {`, bare `}`). The `-1` is a single line, identified by
+differencing the removals against the union of all twelve produced files:
+
+```
+removed lines with NO occurrence anywhere in the 12 new files:
+   '// Compile-time struct packing'
+```
+
+That is original line 63, one of the four structural lines (62-65) this plan
+designates as belonging to no tile -- each new header writes its own equivalent
+and the umbrella keeps none. It is a comment, hence boilerplate, hence free.
+The `+244` is the eleven preambles and the umbrella's rewritten head: eleven x
+(9 comment + `#ifndef` + `#define` + 3-4 `#include` + `namespace EQT {` +
+`#pragma pack(push, 1)` + `#pragma pack(pop)` + `} // namespace EQT` +
+`#endif` + separating blanks), plus the umbrella's 8 new comment lines and 11
+new `#include`s. Nothing outside that set appears.
+
+**Result matched the prediction exactly: exit 0, +0 added / -0 removed
+substantive.** The enumerated set is empty, so there is nothing beyond it to
+chase. The derivation holds as written: every moved line kept its exact text
+and its count of 1 and therefore cancels; the eleven copied preambles are
+`#include` / `#ifndef` / `#define` / `#pragma` / `namespace EQT {` / `}` /
+`#endif` / comments, all BOILERPLATE; `namespace EQT {` and the pack directives
+change count 1 -> 11, and boilerplate is exempt from count changes too. No
+`inline`, no `using`, no signature change, no test repoint.
+
+`git diff --raw` shows **exactly twelve files**, all under `include/common/`:
+`M include/common/packet_structs.h` (`100644` -> `100644`, **no mode change**)
+and eleven `A ... 100644`. Nothing under `src/`, `tests/`, `scripts/`, `docs/`
+or `CMakeLists.txt`. Created files were `chmod 644` before `git add`; the stays
+file was rewritten in place and its `100644` preserved (verified with
+`git ls-files -s` at base and `git diff --raw` after).
+
+#### 11. Final line counts (computed), timings
+
+| file | lines |
+|---|---|
+| `include/common/packet_structs.h` (umbrella) | **67** |
+| `include/common/packets/common.h` | **112** |
+| `include/common/packets/spawn.h` | **275** |
+| `include/common/packets/combat.h` | **184** |
+| `include/common/packets/character.h` | **175** |
+| `include/common/packets/zone.h` | **151** |
+| `include/common/packets/world_object.h` | **276** |
+| `include/common/packets/group.h` | **105** |
+| `include/common/packets/merchant.h` | **299** |
+| `include/common/packets/guild.h` | **264** |
+| `include/common/packets/travel_misc.h` | **225** |
+| `include/common/packets/gm.h` | **410** |
+| **total** | **2,543** |
+
+2,215 -> largest file **410** (`gm.h`), 1,090 lines of headroom under the 1,500
+ceiling. Finished size is `28 + range` for the ten headers carrying
+`common.h`, `27 + range` for `common.h` itself (no `common.h` include) --
+`zone.h` is `28 + 123 = 151` and shows as one line shorter in the header block
+because its section description is a single line. The umbrella is
+`37 (untouched RULES) + 30` = **67**, derived, not quoted.
+
+`scripts/refactor/check_file_sizes.sh --files` on all twelve:
+**`checked 12 file(s): 12 ok, 0 warn, 0 fail`**, exit 0.
+
+**Acceptance bar, by exit code:**
+
+| step | result |
+|---|---|
+| `cmake --build build -j24` (detached, unit-private exit file) | **exit 0**, 210 s. No 143, no truncation scan needed. |
+| `scripts/build-gles2-x86.sh` (**BEFORE** ctest, correction 41) | **exit 0**, ~940 s |
+| `ctest -j6` full suite | **3,498 tests, 2 failed** -> resolved to **1**, the baseline ALSA exception |
+| `ctest -R PacketStruct -N` | **43 tests**, before == after (`test_packet_structs.cpp` untouched by this unit) |
+| visual gate (`visual_gate`, in-suite) | **PASSED, 21.54 s** |
+| goldens | **untouched** -- `git status --porcelain` shows only `M include/common/packet_structs.h` and `?? include/common/packets/` |
+| `scripts/build-arm-noble.sh` | **exit 0**, ~660 s |
+| `check_file_sizes.sh --files` x12 | **12 ok, 0 warn, 0 fail** |
+| verifier | **exit 0, +0/-0** |
+
+**Correction 41, satisfied and measured:** `build-gles2/bin/gles2_zone_benchmark`
+is stamped **21:18:57**; my last header edit is **21:02:38**; `ctest -j6`
+launched at ~21:23. The in-suite gate tested the current tree, not a stale one.
+
+**The two ctest failures, both dispositioned:**
+
+1. `AudioManagerTest.PreloadCommonSounds` -- the documented ALSA host quirk in
+   `refactor/test_baseline.txt`. Expected.
+2. `check_build_tree_orphans` -- **pre-existing build-tree litter, not this
+   unit.** `build/bin/test_spell_group_targeting` is stamped **17:38 today**,
+   hours before this branch existed, and its source was deleted by **T324**
+   (`tests/cmake/spells.cmake:49` records the removal). cmake never prunes
+   `bin/`. I deleted the stale binary from the gitignored build tree and the
+   test **passes**. No source, test or CMake file was touched.
+
+**Zero new failures vs `refactor/test_baseline.txt`.**
+
+One `ctest` discovery-stage failure occurred on a `-R PacketStruct -N` listing
+run issued while the GLES2 build was still settling
+(`GoogleTestAddTests.cmake:112`, "Process terminated due to timeout", naming
+`test_progressive_load_rearm`). Diagnosed per protocol before acting:
+`readelf -h` exit 0 and `--gtest_list_tests` exit 0 with a full case list, so
+the binary was intact -- cold-cache contention, the J05/J07/T323 class, not
+truncation. Re-ran; clean.
+
+**Wall clock ~95 min.** Mechanical work (measure, generate, both content proofs,
+both break tests) was **under 20 minutes**; the fixed bar was everything else.
+**Slowest step: `build-gles2-x86.sh` at ~940 s**, followed by ARM at ~660 s.
+Wave concurrency (slot1 T327, slot3 J17) did stretch the tail -- the GLES2 build
+needed two `wait_for.sh` invocations and the main build ran 210 s against a
+warm tree -- but nothing exceeded a second poll, and per correction 14 that is
+not an anomaly worth reporting as one.
+
+Per corrections 66/75/79 I report **no per-header struct counts**: the ranges
+are exact and proven byte-identical; derived counts are the quantity that has
+slipped for seven consecutive units.
+
+#### 12. Findings (recorded, not acted on)
+
+1. **`docs/module_map.md` needs eleven new rows** -- one per
+   `include/common/packets/*.h` -- plus an amended `packet_structs.h` row
+   saying it is now an umbrella. **Recorded, not acted on** (out of territory).
+2. **The plan's pack-pairing check is wrong as prescribed** (item 6). The
+   unanchored `grep -c 'pragma pack(push'` reports `push=1 pop=0` for the
+   umbrella and `pop=2` for two headers, purely from pre-existing prose that
+   cannot be edited (one line is inside the untouched T147 RULES block). **Any
+   future unit auditing this file family must anchor the grep at column 0.**
+   This is correction 45/62/78's shape firing on a plan's own acceptance step
+   for the *fourth* time -- and it is the first instance where the offending
+   text is unmodifiable, so the check must change, not the comment.
+3. **The plan's banner acceptance figure conflates sections with lines** (21 vs
+   42). Conserved as lines; both numbers stated.
+4. **The plan's "27 file-scope constants" contradicts its own breakdown** (23).
+   Fifth instance of the prose-vs-table class (corrections 19/47/63/64/80).
+5. **`spawn`/`combat` are 246/155, not the plan's 247/154** -- the 381 boundary
+   the plan flagged as uncertain resolved to 381, as the plan's own contingency
+   predicted. Sum unchanged at 2,159.
+6. **The plan's §Header shape and §File-header comments contradict each other**
+   on whether `packet_structs` may appear in a new header's comment. Audited
+   and resolved (item 8); a future plan should settle it rather than leave it
+   to the executor.
+7. Stale build-tree binary `test_spell_group_targeting` (finding 2 of the ctest
+   section) will re-appear in **any** worktree whose `build/bin` predates T324.
+   Not attributable to any split. **Recorded.**
+8. Per correction 24, I attribute **no** stale `tests/` line-number citation to
+   this split -- I found none referring to this header at all, stale or
+   otherwise, because no test reads it as text.
