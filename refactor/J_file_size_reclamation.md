@@ -1723,6 +1723,62 @@ the queue** — and `test_bridge_queue_race` passes.
 **Correction 41 followed** (gles2 first; benchmark stamped 21:01 against a 20:47
 edit, so the gate was not vacuous).
 
+## ⚠ CORRECTIONS FROM J14 (2026-09-02) — INCLUDING THE FIRST CASE WHERE THE *CHECK* MUST CHANGE
+
+**90. THE PACK-PAIRING GREP MUST BE ANCHORED AT COLUMN 0 — and here the CHECK
+had to change, not the comment.** The prescribed unanchored
+`grep -c 'pragma pack(push'` reports `umbrella push=1 pop=0`, `merchant pop=2`,
+`travel_misc pop=2`. All three hits are **pre-existing PROSE**: rule 1 of the
+T147 RULES block and the T145/T147 explanatory notes — text the plan explicitly
+forbids editing. Anchored at column 0 the table is clean (umbrella 0/0, all
+eleven 1/1).
+⚠ **This is the first instance of the correction-45/62/78 class where the
+offending text is UNMODIFIABLE**, so the rule "describe the token in words
+instead of quoting it" cannot apply. **When the token lives in prose you may not
+touch, fix the check.** J14 also walked directive depth to confirm no `#include`
+sits inside any push/pop region, final depth 0 in all twelve files.
+
+**91. Banner acceptance conflates SECTIONS with LINES** — 21 sections are **42**
+`^// ={4,}` lines (a banner is a pair). Conserved 42 → 42. State which you mean.
+
+**92. Two more derived-count slips:** "27 file-scope constants" contradicts the
+plan's own breakdown (13+1+9 = **23**) — fifth prose-vs-table slip — and the
+spawn/combat body counts are 246/155, not 247/154. ⚠ **The 381 boundary the plan
+flagged resolved to 381 precisely because depth is 1 at 382** — cutting there
+would have split a `/* */`. The sum was unchanged, so only the boundary check
+caught it.
+
+**93. §Header shape and §File-header comments contradict each other** on whether
+the original header's name may appear in a new header's comment. J14 audited it
+as harmless here (no grep in that plan scans `include/`) and re-ran every grep
+identical after writing — **but a future plan should settle it rather than
+leaving it to the executor.**
+
+### J14's result — and the strongest single proof in the batch
+
+2,215 → a **67-line umbrella** + eleven domain headers (largest 410), **12 ok /
+0 warn / 0 fail**, zero drift. **Verifier exit 0, +0/−0 substantive** exactly as
+predicted; the lone `−1` was identified by differencing removals against the
+union of all twelve produced files and is the one structural comment the plan
+assigns to no tile.
+
+**The 109 `static_assert`s diff byte-identical as a multiset**, re-checked after
+the break tests. **And the deliberate-break test refused both cases** — GCC's
+own note is the evidence: `EnvDamage2_Struct` 31→36 gave *"the comparison
+reduces to (31 == 36)"* and `Spawn_Struct` 385→392 gave *"(385 == 392)"*,
+proving the structs are still packed at their original sizes **including the
+cross-header case** that reaches `TintProfile`/`TextureProfile` through
+`common.h`. **T145 was not reproduced.** For a header defining a live wire
+protocol, that is worth more than any line count.
+
+Both dispatch-brief corrections independently confirmed: `Spawn_Struct` is the
+only in-file consumer of the tint/texture types, `Illusion_Struct` references
+none, and `WearChange_Struct` does not exist in this tree.
+
+⚠ Correction 89 fired again — the T324 orphan binary failed
+`check_build_tree_orphans` in this slot too. Correctly dispositioned as
+pre-existing litter and deleted.
+
 ## Unit table
 
 | Unit | File | Lines | → TUs | Largest after | Wave | Notes |
