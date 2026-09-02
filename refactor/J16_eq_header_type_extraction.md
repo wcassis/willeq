@@ -620,3 +620,440 @@ concurrently.**
 ---
 
 ## Review (to be written by the executor)
+
+---
+
+## Review (executed 2026-09-02, slot1, branch `task/J16-eq-header-types`)
+
+Base / fork point: **`55a7be1e`** (`fable` tip, the J15 merge). Cut after J15, as
+dispatched.
+
+### 1. Line count at my tip, and range drift
+
+**`include/client/eq.h` was 2,635 lines, not the 2,643 this plan measured at
+`09c99b0b` (nor the survey's 2,645).** The header moved again between the plan
+being written and this unit running. **Every range in §The split shifts by one
+at the front, and the class region is seven lines shorter.** Re-derived tiling,
+computed at my tip:
+
+| region | plan (`09c99b0b`) | **measured at `55a7be1e`** | length |
+|---|---|---|---|
+| preamble | 1-121 | **1-120** | 120 |
+| opcode tables | 122-500 | **121-499** | **379** (unchanged) |
+| ordinary enums + name lookup | 501-637 | **500-636** | **137** (unchanged) |
+| structs, constants, aliases | 638-737 | **637-736** | **100** (unchanged) |
+| `class EverQuest` region | 738-2643 | **737-2635** | **1,899** (plan said 1,906) |
+
+`120 + 379 + 137 + 100 + 1899 = 2635` ✅ — the arithmetic closes exactly, so
+there is no gap and no overlap. **The three moved ranges are byte-for-byte the
+same lengths the plan predicted**; all the drift is in the preamble (−1) and
+inside the class (−7).
+
+### 2. §Measured properties, re-verified
+
+Every property held except the two counts below. Nothing changed shape, so no
+STOP was warranted.
+
+- `#pragma once` at line 1, no `#ifndef` guard — held.
+- **No enclosing namespace** — held; every namespace the narrow grep found is a
+  forward-declaration block in the preamble (lines 12-108), all of which stay.
+- 11 enums, 3 structs, 2 file-scope constants, 2 `using` aliases, 1 free
+  function declaration — held.
+- **`ChatChannelName` is at 608, not 609** (the same −1 shift).
+- **`NPC_INTERACTION_DISTANCE` / `_SQUARED` are at 728/729, not 729/730.**
+- ⚠ **Includers: 87, not 88.** Re-counted with the plan's own grep at my tip:
+  87 before and **87 after**, and `git diff --stat` names none of them. I did
+  not chase which file the plan's 88th was; the count is a derived quantity and
+  correction 67 says to measure it, which I did, before and after.
+- ⚠ **The sweep sites are at `:437` and `:452`**, exactly as J15's Review
+  predicted after its own edits at 333/399 — confirmed at my tip, not inherited.
+
+### 3. `eq.h` did NOT reach 1,500, and that is the expected outcome
+
+**`include/client/eq.h` finished at 2,025 lines.** `check_file_sizes.sh` emits
+one WARN on it. **This is the accepted result of this unit, not a shortfall.**
+A class definition cannot span files: `class EverQuest` alone is 1,899 lines and
+the preamble it genuinely needs (OpenSSL, glm, `game_state.h`, the graphics and
+audio forward-declaration blocks) is another 120. `120 + 6 + 1899 = 2025`.
+Every free-standing type is now out. **The purpose of this unit was to leave the
+header containing only the class, which is the starting condition for the
+component-extraction programme Will approved with no deadline. Do not re-open
+this.**
+
+### 4. Correction 21 — both greps, both controls, re-derived
+
+Narrow grep on `eq.h`, **exit 0**:
+
+```
+12:namespace Json { class Value; }
+41:namespace eqt {
+45:namespace EQ {
+51:namespace EQT {
+61:namespace eqt {
+62:namespace bridge {
+71:namespace EQT {
+72:namespace Audio {
+80:namespace EQT {
+81:namespace Graphics {
+93:namespace EQT { namespace Graphics { struct LoadingStatus; } }
+101:namespace EQT { namespace Graphics { struct BspTree; class PfsArchive; class WldLoader; } }
+102:namespace eqt { namespace events { struct PlayerPositionChanged; } }
+103:namespace eqt {
+104:namespace inventory {
+108:namespace ui {
+728:static constexpr float NPC_INTERACTION_DISTANCE = 15.0f;
+729:static constexpr float NPC_INTERACTION_DISTANCE_SQUARED = NPC_INTERACTION_DISTANCE * NPC_INTERACTION_DISTANCE;
+```
+
+Widened grep on `eq.h`, **exit 0, 1 unfiltered match**:
+
+```
+608:std::string ChatChannelName(uint32_t channel);
+```
+
+Positive controls, both live (`src/client/position.cpp`, per correction 78 —
+the corrections-51/61 controls are gone): narrow returns
+`11:constexpr float position_eps = 0.0001f;`, widened returns **31** matches.
+Neither grep returned an empty result I had to trust.
+
+**This file is the batch's live proof of correction 68 in BOTH directions:**
+
+- **The narrow grep alone would have missed `ChatChannelName(uint32_t)`** at
+  608 entirely — it is not `static`/`const`/`constexpr`/`extern` and does not
+  open a namespace, so the anchored pattern cannot see a free function
+  declaration.
+- **The widened grep alone would have missed BOTH
+  `NPC_INTERACTION_DISTANCE` constants** at 728/729 — the widened pattern is
+  call-shaped and requires a `(`, which `static constexpr float kFoo = 15.0f;`
+  does not have. Obeying correction 61 literally here would have concluded
+  "one file-scope symbol" and shipped both constants unexamined.
+
+Tile assignment and consumer resolution, re-derived (not cited):
+
+| symbol | line | tile | consumers | resolved |
+|---|---|---|---|---|
+| `NPC_INTERACTION_DISTANCE`, `_SQUARED` | 728, 729 | `eq_types.h` (637-736) | `class EverQuest`, `src/client/*.cpp` | ✅ via `eq.h`'s include at the original position |
+| `using eqt::state::MAX_GROUP_MEMBERS` | 724 | `eq_types.h` | same | ✅ |
+| `using GroupMember = eqt::state::GroupMember` | 736 | `eq_types.h` | same | ✅ |
+| `ChatChannelName(uint32_t)` | 608 | `eq_enums.h` (500-636) | defined in `src/client/eq_chat.cpp`, called from console/bridge | ✅ — `eq_chat.cpp` still sees the declaration via `eq.h`; the build links, exit 0 |
+| `ChatChannelType` | in 500-636 | `eq_enums.h` | its own lookup + the class | ✅ same tile / `eq.h` |
+| four opcode tables | 121-499 | `eq_opcodes.h` | the class, `src/client/eq_*.cpp`, `tests/` | ✅ via `eq.h` |
+| `WorldServer`, `CharacterSelectEntry`, `Entity` | 638-717 | `eq_types.h` | the class's member containers | ✅ |
+
+No file-scope symbol has appeared or moved since `09c99b0b` beyond the uniform
+−1 shift. No STOP.
+
+### 5. Comment depth at all four cuts — computed, not asserted
+
+The `//`-stripping counter over my tip's file, at my (shifted) cuts:
+
+```
+depth before line 121 = 0
+depth before line 500 = 0
+depth before line 637 = 0
+depth before line 737 = 0
+final depth 0
+```
+
+Surrounding lines at each cut:
+
+```
+118: }              <- close of the eqt::ui / eqt forward-declaration blocks
+119: }
+120: (blank)
+121: // Titanium login opcodes
+122: enum TitaniumLoginOpcodes {
+---
+498: 	HC_OP_UCS_Ignore = 0x41
+499: };               <- close of UCSClientOpcodes
+500: (blank)
+501: // Character animations
+---
+635: 	COMPLETE = 15   // Hide loading screen, show game world
+636: };               <- close of LoadingPhase
+637: (blank)
+638: struct WorldServer     <- no leading comment, as the plan flagged
+---
+735: // type, and GroupState is the one store.
+736: using GroupMember = eqt::state::GroupMember;
+737: (blank)
+738: class EverQuest
+```
+
+Ranges 2 and 3 keep their leading blank separator, so the three ranges tile
+`121-736` with no gap.
+
+### 6. Preprocessor dump — no directive lies in the moved region
+
+```
+70: #ifdef WITH_AUDIO
+77: #endif
+79: #ifdef EQT_HAS_GRAPHICS
+94: #endif
+1482: #ifdef EQT_HAS_GRAPHICS
+1515: #endif
+2579: #ifdef EQT_HAS_GRAPHICS
+2590: #endif
+2592: #ifdef WITH_AUDIO
+2634: #endif
+```
+
+**Ten directives, every one `< 121` or `> 736`.** Zero in the moved region.
+Positive control (correction 60): the same `awk` against
+`include/client/graphics/irrlicht_renderer.h` returns directives at 1, 2, 53,
+56, 58, 60, 461, 463, 465, 720, 759, 887, 898, 1021, 1023, 1388, 1401, 1532,
+1534, 1536 — the pattern is live.
+
+All three conditional configurations are green: the `EQT_HAS_GRAPHICS`/GLES2
+tree (`build-gles2-x86.sh`, exit 0), ARM (`build-arm-noble.sh`, exit 0) and the
+headless path exercised by the suite.
+
+### 7. All three guards, measured. **No repoint was needed.**
+
+| guard | before | after |
+|---|---|---|
+| `scripts/ci/check_sender_reachability.py` | `checked 101 Send*/Request* methods in 329 production sources; 0 allowlisted` — PASS, exit 0 | **identical**, PASS, exit 0 |
+| `ReachabilitySweep.EverySenderHasACaller` — re-implemented parse | `senders.size() = 78` | **78** |
+| `DuplicateStateStores` — re-implemented `membersOf` | `eqMembers.size() = 150` | **150** |
+
+Following J15's standard, **I did not settle for the counts matching**: I
+serialised both parsed sets before and after and compared them element by
+element — `senders SET IDENTICAL: True`, `members SET IDENTICAL: True`. The
+guards count the same things, not merely the same number of things.
+
+`grep -cE 'Send[A-Za-z0-9_]+\(' ` on the three created headers, all **0**:
+
+```
+include/client/eq_opcodes.h:0
+include/client/eq_enums.h:0
+include/client/eq_types.h:0
+```
+
+Both are in the recursive `collect({"src","include"}, {".cpp",".h"})` sweep now,
+and neither can make an uncalled sender look called.
+
+Guard 3's `membersOf` was also checked against the three new `#include` lines
+added to `eq.h`: `kMemberDecl` requires a leading type, an `m_`-prefixed name
+and a trailing `;`, and `#include "client/eq_opcodes.h"` matches none of those.
+The extracted structs' fields are not `m_`-prefixed, which is why removing them
+left the set unchanged — the parse was never picking them up.
+
+Both live suite tests are green: `ReachabilitySweep.EverySenderHasACaller`
+Passed (2.24 s) and `DuplicateStateStores.EverQuestKeepsNoCopyOfAStateModuleMember`
+Passed (0.08 s).
+
+### 8. Every file-header comment line written, and the correction-45 audit
+
+`include/client/eq_opcodes.h` (3 lines):
+```
+// Titanium login, world and zone opcode tables, plus the UCS client table.
+// Lifted verbatim out of the umbrella client header by
+// refactor/J16_eq_header_type_extraction.md. Move-only; no value changed.
+```
+
+`include/client/eq_enums.h` (4 lines):
+```
+// Free-standing enumerations used across the client, plus the declaration of
+// the chat-channel name lookup that is defined in src/client/eq_chat.cpp.
+// Lifted verbatim out of the umbrella client header by
+// refactor/J16_eq_header_type_extraction.md. Move-only.
+```
+
+`include/client/eq_types.h` (4 lines):
+```
+// Small free-standing structs, the two NPC interaction distance constants and
+// the two group aliases used across the client.
+// Lifted verbatim out of the umbrella client header by
+// refactor/J16_eq_header_type_extraction.md. Move-only.
+```
+
+`include/client/eq.h` (3 lines, immediately above the three new includes):
+```
+// The free-standing enumerations, opcode tables and small structs that used to
+// live here now sit in the three headers below, included at their original
+// position so declaration order is unchanged.
+```
+
+**Correction-45 audit, token by token, against every check in this plan:**
+
+| token | appears in any written comment? |
+|---|---|
+| `Send` | no — no comment says it; guard 1's regex and guard 2's `senders` set are unaffected, and the measured sets are identical before/after |
+| `Request` | no |
+| `class EverQuest` | no — described as "the umbrella client header" |
+| `m_` | no |
+| `client/eq.h` | no — every reference is "the umbrella client header"; the file-name form appears only inside the moved code's own tombstone comments, which I did not touch |
+| `eq_opcodes` / `eq_enums` / `eq_types` | **not in any comment.** They appear only in the three `#include` directives in `eq.h`, which live under `include/`, outside the `tests`/`scripts` grep's scope. The `NPC interaction distance` phrase is deliberately spaced so it is not the constant's token, and the narrow grep is `^`-anchored regardless. |
+
+The plan's own suggested header blocks spell `eq.h` and name the new headers;
+**I deliberately did not copy them verbatim**, for exactly the reason correction
+62 exists. That is a deviation from §Header shape's literal text and it is
+flagged here, not absorbed.
+
+### 9. Header shape as built, and where the includes went
+
+Each new header has the minimal enumerated preamble §Header shape prescribes,
+and **nothing else** — `eq_opcodes.h` has no includes at all,
+`eq_enums.h` has `<cstdint>` and `<string>`, `eq_types.h` has those two plus
+`"client/state/game_state.h"`. **No namespace is opened or closed in any of
+them**; everything is at global scope, as it was.
+
+The three includes went **at the original position of the region — immediately
+after the preamble's last forward-declaration block (old line 120's blank) and
+immediately before the blank that precedes `class EverQuest`** — in dependency
+order opcodes, enums, types. **Not at the top of the include block.** Everything
+in the preamble is still declared before them and the class is still declared
+after, so declaration order for all 87 includers is bit-identical to what it
+was.
+
+### 10. CMake add-sites: **ZERO**, as predicted
+
+```bash
+grep -rn 'client/eq\.h\|eq_opcodes\|eq_enums\|eq_types' CMakeLists.txt cmake tests scripts benchmarks
+```
+returns hits only in `tests/*.cpp` (43 `#include "client/eq.h"` lines, 4 prose
+mentions, and the two `test_reachability_sweep.cpp` / one
+`test_duplicate_state_stores.cpp` path scans). **No `CMakeLists.txt`, no file
+under `cmake/`, no file under `tests/cmake/`, no script names the header.** This
+project lists no headers in its source lists, so the three created headers need
+no add-site either. Falsified rather than assumed.
+
+`grep -hn 'kRoot / "src\|kRoot / "include' tests/*.cpp` returns nothing new
+beyond the two known sites — no string-compare source-path scan was missed.
+
+### 11. All four content proofs, and the verifier
+
+Proofs computed with `body(header)` defined **structurally** — everything after
+the file's own last `#pragma once`/`#include` line — and extracted **from the
+produced files**, never from a scratch `sed` on the original:
+
+```
+eq_opcodes.h body lines = 379
+eq_enums.h   body lines = 137
+eq_types.h   body lines = 100
+region lines = 616
+concat lines = 616
+BYTE-IDENTICAL-CONCAT: True      <- proof 1: the three bodies in original order
+MULTISET-OK:           True      <- proof 2: line multiset vs BASE:eq.h 121-736
+class region orig lines = 1899 new lines = 1899
+CLASS-BYTE-IDENTICAL:  True      <- proof 3: BASE 737-2635 vs the class at my tip
+PREAMBLE-IDENTICAL:    True      <- proof 4 (extra): BASE 1-120 vs my tip's 1-120
+```
+
+Proof 4 is not in the plan; I added it because with the preamble AND the class
+region both proved byte-identical, and the moved region proved byte-identical by
+re-concatenation, **every line of the original file is accounted for** and the
+only new bytes in the tree are the four comment blocks and the three `#include`
+lines.
+
+**Verifier prediction and result.** I predicted **exit 0, +0/−0**, and — unlike
+J15 and J17 — that prediction was sound here, because the failure mode that
+broke theirs cannot fire: **this unit copies no preamble.** J15 and J17 each
+paid `+(N−1)` per non-boilerplate declaration in a verbatim-duplicated preamble,
+and forward declarations (`class Foo;`, `namespace X { struct Y; }`) are
+declarations the verifier does not allowlist. `eq.h`'s preamble holds **sixteen**
+such forward-declaration lines — had §Header shape's "carry the original include
+block verbatim" rule been followed, this unit would have predicted roughly
+`+32`. §Header shape's prescribed minimal preambles are the reason the number is
+zero, and I counted them in advance rather than inheriting the prediction.
+
+**Verifier, run after committing, with `--repo` and the fork point:**
+
+```
+$ BASE=$(git merge-base fable HEAD)   # 55a7be1e9d3f4124a85a00105e02d5b9160f24e0
+$ python3 scripts/refactor/verify_move_only.py "$BASE..HEAD" --repo /mnt/projects/fable/wt/slot1
+Non-C++ files changed (not verified, review separately):
+  refactor/J16_eq_header_type_extraction.md
+
+Files verified: 4
+Boilerplate: +25 / -0 lines (allowed)
+
+PASS: move-only (modulo boilerplate).
+VERIFIER_EXIT=0
+```
+
+**Exit 0, `+0 / −0` substantive — the prediction held exactly.** Nothing was
+flagged, so there is no flagged-line list to enumerate; nothing was contorted to
+get there. The 25 allowed boilerplate lines are exactly the unit's non-move
+content, enumerated: 11 comment lines across the three new headers + 3 comment
+lines in `eq.h` (14 total, all `//`), 3 `#pragma once`, 5 `#include` lines in
+the new headers (`<cstdint>` and `<string>` twice, `client/state/game_state.h`
+once), and 3 `#include` lines in `eq.h`. `14 + 3 + 5 + 3 = 25` ✅.
+
+I confirmed all three of the verifier's lying modes were avoided: `--repo`
+points at my slot (not `main/`), `$BASE` is the **merge-base**, not `fable`
+(which has moved), and the tree was **committed first** — the run reports
+"Files verified: 4", not "No C++ files changed".
+
+### 12. Acceptance bar — every step, by exit code
+
+| step | result |
+|---|---|
+| `cmake --build build -j24` | **exit 0** (read from a unit-private exit file). Backgrounded past the 600 s tool ceiling and finished on its own — **not** an exit 143, so no ELF-truncation scan was warranted. |
+| `scripts/build-gles2-x86.sh` — **run BEFORE ctest** (correction 41) | **exit 0** |
+| `scripts/build-arm-noble.sh` | **exit 0** |
+| `ctest --test-dir build -j6 --output-on-failure` | **exit 8**, `3497/3498 passed`, **one failure: `AudioManagerTest.PreloadCommonSounds`** — the documented ALSA host quirk, the sole entry in `refactor/test_baseline.txt`. **Zero new failures.** 17 skips, all pre-existing. No `HeadlessShutdownTest` flake, no discovery failure. |
+| `visual_gate` | **Passed, 22.80 s, inside the ctest run.** I built gles2 **first**, so the gate tested this unit's code: `build-gles2/bin/gles2_zone_benchmark` is stamped **22:09:17** against my last edit at **21:47:42** — the check J25 and J30 say to make. **`git status --porcelain` is empty; no golden was touched.** |
+| `check_file_sizes.sh --files` on all four | `checked 4 file(s): 3 ok, 1 warn, 0 fail` — the one WARN is `eq.h` at 2,025, **expected and accepted** |
+| `git diff --raw` modes | `100644 → 100644` on `eq.h` (its original mode, preserved — `cp` onto the existing file keeps it); the three created files `chmod 644` before staging, all recorded `100644`. **No spurious mode change.** |
+| `git diff --stat` | names **exactly four** code files — `eq.h` and the three new headers — plus this plan file. Nothing under `src/`, `scripts/`, `docs/`, `CMakeLists.txt` or `tests/`. **No guard repoint was needed, so there is no fifth file.** |
+
+**Final line counts, computed at the tip, not quoted:**
+
+| file | lines |
+|---|---|
+| `include/client/eq.h` | **2,025** (was 2,635; −610) |
+| `include/client/eq_opcodes.h` | **384** |
+| `include/client/eq_enums.h` | **146** |
+| `include/client/eq_types.h` | **111** |
+| total | **2,666** (2,635 + the 25 boilerplate lines + 6 blank/structural) |
+
+Wall clock ≈ 55 minutes. **Slowest step by a wide margin: the main `build -j24`
+at ~12.5 minutes** — `eq.h` has 87 includers, so this unit is close to a full
+rebuild, exactly as the plan warned. The ARM and gles2 builds were both well
+inside one tool call. **No wave concurrency was observed** (the plan requires
+J15 and J16 to be serialised, and J15 was already merged); nothing in the
+verification tail stretched, and per correction 14 I am reporting that as
+ordinary, not as an anomaly.
+
+### 13. Findings only — recorded, not acted on
+
+1. **`docs/module_map.md` needs rows for the three new headers.** Not touched —
+   out of territory.
+2. **The plan's includer count of 88 measures 87 at `55a7be1e`.** Recorded as a
+   measurement, not investigated; the count is stable across this unit.
+3. **`tests/test_wire_layout_t145.cpp:33` and `tests/test_eq_commands_equip.cpp:1152`
+   carry prose citations of the opcode source by its old file name.** They are
+   comments naming where the values were copied from; the values themselves are
+   duplicated deliberately in those tests. **Correction 24: this split did not
+   invalidate them and I am not attributing any staleness to it** — the opcode
+   values are unchanged and still reachable through the same include. Recorded
+   for whoever next touches those files.
+4. **The plan's own §Header shape blocks violate correction 45/62** — they spell
+   the new headers' base names and the old file name inside comment text that
+   this plan's own `tests`/`scripts` grep and Guard 1's regex read. J14 and J15
+   each found the same defect in their plans. **This is now four consecutive
+   units finding a self-contradiction in the prescribed header block; the
+   template should generate the comment text from the audit, not alongside it.**
+5. **The plan's `//`-stripping comment-depth counter and its structural
+   `body(header)` definition both worked unmodified** and are worth keeping
+   verbatim in the template.
+
+### What the template still gets wrong
+
+- **§Measured line numbers go stale within hours.** Every single one in this
+  plan was off by one (and the class region by seven) less than a day after it
+  was written. The **range lengths** (379/137/100) were exact. **The template
+  should state lengths and anchors — "the range from the blank before
+  `struct WorldServer` to the `using GroupMember` line, 100 lines" — and stop
+  publishing absolute line numbers**, which are the only part that rots.
+- **The `+0/−0` prediction was correct here and wrong for J15 and J17 for a
+  reason the template can compute mechanically.** The whole delta is
+  `+(N−1)` per non-boilerplate declaration in a duplicated preamble. **The
+  template should require the executor to run one grep — count the forward
+  declarations in the preamble being copied, times the number of copies minus
+  one — instead of restating "expect +0/−0" and then being surprised.** This
+  unit predicted zero *because* it copies no preamble, and said so in advance.
+- **The dispatch and the plan file disagreed on the plan's own filename**
+  (`J16_eq_header_types_split.md` vs the actual
+  `J16_eq_header_type_extraction.md`). Cheap to hit, cheap to fix.
