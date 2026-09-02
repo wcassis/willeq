@@ -218,10 +218,10 @@ const std::set<std::string> kBlockedIntents = {
 TEST(ReachabilitySweep, EveryIntentHasAConsumerArm) {
     auto members = variantMembers();
     ASSERT_GT(members.size(), 20u) << "variant parse failed";
-    std::string bridge = readFile(kRoot / "src/client/eq_bridge.cpp");
+    std::string bridge = readFile(kRoot / "src/client/eq_bridge_intents.cpp");
     for (const auto& n : members) {
         EXPECT_NE(bridge.find("is_same_v<T, eqt::events::" + n + ">"), std::string::npos)
-            << "RendererIntent member " << n << " has no arm in eq_bridge.cpp ProcessBridgeIntents";
+            << "RendererIntent member " << n << " has no arm in eq_bridge_intents.cpp ProcessBridgeIntents";
     }
 }
 
@@ -236,6 +236,7 @@ TEST(ReachabilitySweep, ProducerlessIntentsAreExactlyTheBlockedList) {
         bool found = false;
         for (const auto& f : files) {
             if (f.rel == "src/client/eq_bridge.cpp") continue;
+            if (f.rel == "src/client/eq_bridge_intents.cpp") continue;
             if (f.rel == "include/client/events/renderer_intents.h") continue;
             for (size_t i = 0; i < f.lines.size() && !found; ++i) {
                 std::string code = codePart(f.lines[i]);
@@ -255,7 +256,7 @@ TEST(ReachabilitySweep, ProducerlessIntentsAreExactlyTheBlockedList) {
     // Every blocked intent must still have its consumer arm (test 1 covers
     // members generally; this pins that a listed one was not deleted
     // without being delisted).
-    std::string bridge = readFile(kRoot / "src/client/eq_bridge.cpp");
+    std::string bridge = readFile(kRoot / "src/client/eq_bridge_intents.cpp");
     for (const auto& n : kBlockedIntents) {
         EXPECT_NE(bridge.find("is_same_v<T, eqt::events::" + n + ">"), std::string::npos)
             << "blocked intent " << n << " lost its consumer arm";
