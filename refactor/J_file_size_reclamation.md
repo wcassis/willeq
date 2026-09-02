@@ -1205,6 +1205,57 @@ skip-gated targets can go green without running.
 **Correction 41 followed correctly:** `build-gles2-x86.sh` ran BEFORE `ctest`,
 benchmark stamped 13:40 against 13:07 edits, so no standalone re-run was needed.
 
+## ⚠ CORRECTIONS FROM J32 (2026-09-02)
+
+**49. ORCHESTRATOR-SIDE, TWICE IN A ROW: STOP TRANSCRIBING CMAKE ADD-SITE COUNTS
+INTO DISPATCH BRIEFS.** J31 was handed J32's twelve; J32 was handed J31's/J29's
+seven. Both executors derived the truth themselves and were unharmed, but a less
+careful one would hunt for sites that do not exist or stop early believing it was
+done. **The brief must say "derive the count yourself and report it", never quote
+a number.** The plans and correction 39 were right both times; the transcription
+into the brief was the defect.
+
+**50. NEW GREP TRAP:
+`grep -rn --include='CMakeLists.txt' <dir>` DOES NOT MATCH `<dir>/CMakeLists.txt`
+on this host** (ugrep-backed). J32's first sweep returned only the three
+`tests/cmake/` hits and **looked complete — 3 of 12.** Same shape as correction 26
+(a silent partial answer), different cause. **Grep the root file BY NAME as well
+as recursing.** That is now three distinct ways to under-count CMake sites:
+naming `tests/CMakeLists.txt` (post-J20), lowercase commands, and this.
+
+**51. The correction-21 audit pattern MISSES NAMESPACE-SCOPE FREE FUNCTIONS.**
+`zone_geometry.cpp` has three; `heightToColor` is called at 1531 — **across the
+cut** — and is safe only because the public header declares it. **A `static` in
+that position would have been J08's defect and the audit would not have seen
+it.** Widen the pattern: file-scope symbols are not only `static` and anonymous
+namespaces.
+
+**52. `grep -c '<GUARD>'` is NOT a matched-pair check for a preprocessor fence.**
+J32's plan asked for one; it reports 3 vs 1 here because the preamble's `#endif`
+carries no trailing comment, which reads as an unbalanced fence. **Use a
+directive dump** (J32's `awk` form) instead.
+
+**53. Two more derived-count slips** (now four units running): the predicted
+12/2 method split is 13/1, and a prose sum `34 + 643 + 2 = 679` omits the two
+namespace opens against a correct table row of 681 — **exactly the off-by-two
+that correction 20 warns gets blamed on a dropped range.**
+
+### J32's result
+
+1,637 → **996 + 696**, zero drift on every line number in the plan. **Verifier
+exit 0, +0/−0 substantive, prediction exact.** Three proofs, all exit 0,
+including a byte-for-byte diff of the whole 638-line `EQT_HAS_TEXTURE_ATLAS`
+region and an `awk` fence-balance check on both files.
+
+**Two-not-three confirmed independently:** all six file-local entities terminate
+their consumer chain inside the single `#ifdef`, so there is no legal third cut —
+one would orphan four statics *and* break the fence, **and both halves would
+still compile in the default config**, which is what makes it dangerous rather
+than merely wrong.
+
+**Correction 41 followed correctly:** gles2 built before ctest, so the in-suite
+gate exercised a benchmark stamped by this unit's own build.
+
 ## Unit table
 
 | Unit | File | Lines | → TUs | Largest after | Wave | Notes |
