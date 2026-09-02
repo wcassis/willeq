@@ -255,6 +255,8 @@ SET(COMMON_SOURCES
     src/common/util/json_config.cpp
     src/common/net/packet.cpp
     src/common/net/daybreak_connection.cpp
+    src/common/net/daybreak_connection_decode.cpp
+    src/common/net/daybreak_connection_send.cpp
     src/common/net/crc32.cpp
     src/common/net/posix_udp_transport.cpp
     src/common/net/session_recorder.cpp

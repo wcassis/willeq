@@ -48,6 +48,8 @@ GTEST_DISCOVER_TESTS(test_pcap_step_through)
 ADD_EXECUTABLE(test_daybreak_connection_pcap
     test_daybreak_connection_pcap.cpp
     ${CMAKE_SOURCE_DIR}/src/common/net/daybreak_connection.cpp
+    ${CMAKE_SOURCE_DIR}/src/common/net/daybreak_connection_decode.cpp
+    ${CMAKE_SOURCE_DIR}/src/common/net/daybreak_connection_send.cpp
     ${CMAKE_SOURCE_DIR}/src/common/net/packet.cpp
     ${CMAKE_SOURCE_DIR}/src/common/net/crc32.cpp
     ${CMAKE_SOURCE_DIR}/src/common/net/posix_udp_transport.cpp
@@ -64,6 +66,8 @@ GTEST_DISCOVER_TESTS(test_daybreak_connection_pcap)
 ADD_EXECUTABLE(test_daybreak_crc_capture
     test_daybreak_crc_capture.cpp
     ${CMAKE_SOURCE_DIR}/src/common/net/daybreak_connection.cpp
+    ${CMAKE_SOURCE_DIR}/src/common/net/daybreak_connection_decode.cpp
+    ${CMAKE_SOURCE_DIR}/src/common/net/daybreak_connection_send.cpp
     ${CMAKE_SOURCE_DIR}/src/common/net/packet.cpp
     ${CMAKE_SOURCE_DIR}/src/common/net/crc32.cpp
 )
@@ -79,6 +83,8 @@ GTEST_DISCOVER_TESTS(test_daybreak_crc_capture)
 ADD_EXECUTABLE(test_daybreak_state_machine
     test_daybreak_state_machine.cpp
     ${CMAKE_SOURCE_DIR}/src/common/net/daybreak_connection.cpp
+    ${CMAKE_SOURCE_DIR}/src/common/net/daybreak_connection_decode.cpp
+    ${CMAKE_SOURCE_DIR}/src/common/net/daybreak_connection_send.cpp
     ${CMAKE_SOURCE_DIR}/src/common/net/packet.cpp
     ${CMAKE_SOURCE_DIR}/src/common/net/crc32.cpp
 )
