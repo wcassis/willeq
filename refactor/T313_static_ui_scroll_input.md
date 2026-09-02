@@ -309,3 +309,25 @@ back to zone 2 / (-74, 428, 3.751) / heading 160.
 4. `/target` takes a name (`/target a_rat`); bare `/target` is a usage error,
    not target-nearest.
 
+### Merge note — T312 already landed, and this merges clean onto it
+
+`fable` moved to `03a3b2ca` while this unit ran; `task/T312` is merged. Checked
+rather than assumed:
+
+- `git merge-tree --write-tree fable task/T313` → **exit 0, no conflicts**.
+- The merged header keeps this unit's hunk where it belongs: `getMouseWheelDelta()`
+  immediately after T312's `getEffectsVolumeDelta()`, `mouseWheelDelta_` with it,
+  `RendererAction::ScrollUIUp/ScrollUIDown` in the enum.
+- Semantically compatible too. T312 made the position/button scalars relaxed
+  atomics because they are read from both threads, but deliberately left the
+  **delta accumulators** (`cameraZoomDelta_`, `musicVolumeDelta_`,
+  `effectsVolumeDelta_`) as plain floats — they are render-thread only.
+  `mouseWheelDelta_` is exactly that shape: written in `OnEvent` and read in
+  `processFrameInput()`, both on the render thread. It also honours T312's
+  standing warning on the mouse-delta accessors ("do not add a second consumer
+  without making the accumulator per-consumer") — this one has a single
+  consumer plus the no-UI drain, and
+  `ScrollSourceInvariants.NothingElseConsumesTheWheelAccumulator` fails if that
+  ever stops being true.
+
+The branch was NOT merged here; the orchestrator merges.
