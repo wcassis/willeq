@@ -246,6 +246,55 @@ Titanium client** (7 of 8 chat channels work cross-zone without it), so the
 honest options are: delete the block (git keeps it), or keep it and say why.
 Recommend deletion in a later unit; not done here because it is not move-only.
 
+## ⚠ FURTHER CORRECTIONS FROM J04 (2026-09-02)
+
+**5. The "verifier clean" bar and the mandated internal header are MUTUALLY
+EXCLUSIVE.** J04 needed `command_processor_internal.h` for two shared
+anonymous-namespace helpers (§Process step 4 requires exactly this), and
+`verify_move_only.py`'s `BOILERPLATE` allowlist covers `#include`, `#pragma`,
+`namespace`, `}` and comments — but **not `inline` or `using`**. So any unit that
+promotes a file-local helper to a private header exits 1 by construction.
+**This is expected, not a failure.** The verifier's own text names the case
+("document in the unit review section for orchestrator sign-off"). Units must
+paste the full output and enumerate every flagged line; the orchestrator signs
+off in the merge commit. **Do not contort code to force a green exit** — J04
+correctly refused to. (Precedent: J04's 8 lines = 2 `inline` + 4 `using` +
+2 comments, helper bodies byte-identical, all 12 call sites textually untouched;
+signed off at merge.)
+
+**6. `build-arm-noble.sh` blows the 600 s tool ceiling under wave concurrency**
+— SIGTERM, **exit 143**, mid-`gles2_zone_benchmark`. J01 measured ~5 min solo;
+three-wide roughly doubles it. **Exit 143 means re-invoke, not breakage.** Every
+Wave-1+ unit should expect to call it twice.
+
+**7. The multiset check needs a stated convention when a unit creates a
+cross-TU header:** a naive "concatenate the .cpp bodies" **silently under-counts
+by the header's moved lines and still looks clean.** State the header's line
+contribution explicitly, or re-insert it at its original offset before
+comparing (what J04 did — byte-identical re-concatenation, 3,004 lines).
+
+**8. `tests/CMakeLists.txt` is now 2,778 lines** — over the soft limit, within
+222 of the hard cap, and **every J unit adds to it**. §Process grandfathers
+`CMakeLists.txt` by name but not this one. **Board a split before a later J unit
+trips a genuine FAIL through no fault of its own.**
+
+### A correction to Hazard 1's premise (J04)
+
+**There are no duplicate registrations in `registerBuiltinCommands`** — J04
+parsed all 142 calls: no duplicate primary names, no alias claimed twice, no
+alias colliding with a primary. **G02's shadowed `who` lives in the OTHER
+registry** — `graphics/ui/command_registry.cpp`'s `CommandRegistry`, fed from
+`eq_commands_*.cpp`. The last-registration-wins mechanism is real and the
+constraint (do not split that method) still stands, but it currently has **no
+live victim in this file**.
+
+### Doc debt created by J02/J04 (not yet done)
+
+`docs/module_map.md` and `src/client/input/CLAUDE.md` both describe
+`command_processor.cpp` as one file and need entries for its four new TUs;
+`module_map.md` likewise for `eq.cpp`'s five. Outside every unit's territory —
+**fold into a later J unit or a hygiene pass.**
+
 ## Unit table
 
 | Unit | File | Lines | → TUs | Largest after | Wave | Notes |
