@@ -483,6 +483,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/renderer_debug.cpp
         src/client/graphics/renderer_overlays.cpp
         src/client/graphics/renderer_player_physics.cpp
+        src/client/graphics/renderer_player_collision.cpp
         src/client/graphics/renderer_zone_draw.cpp
         src/client/graphics/renderer_zone_merge.cpp
         src/client/graphics/renderer_zone_stream.cpp
