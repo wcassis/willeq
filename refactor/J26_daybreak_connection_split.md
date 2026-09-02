@@ -508,3 +508,596 @@ promotes nothing), not any `tests/*.cpp`, not `docs/`.
 - You find yourself wanting to decompose a method, delete dead content, trim an
   include block, or add a TU this plan does not name.
 - A second out-of-class static member definition has appeared in the preamble.
+
+## Review (executor, slot2, 2026-09-02)
+
+Branch `task/J26-daybreak-split`, cut from `fable` at
+**`2498c3a5354a7df86d9126e31a3acb787af1664c`** ("Batch J: fold J33's
+corrections…"). That is also `$BASE` for the verifier; the plan's survey commit
+`824adb28` is an ancestor.
+
+### 1. Line count and range drift
+
+`src/common/net/daybreak_connection.cpp` measured **1,985** at my tip —
+**exactly** the plan's number. **Zero range drift.** Both cut boundaries, the
+18-line preamble, all six file-scope symbol line numbers and all four CMake
+add-site line numbers reproduced without adjustment. This is the second Wave-6
+unit in a row (after J25) with no drift at all.
+
+### 2. Every property in §Measured, re-verified with my own greps
+
+```
+$ wc -l src/common/net/daybreak_connection.cpp
+1985
+
+$ sed -n '1,18p' src/common/net/daybreak_connection.cpp
+ 1  #include "common/net/daybreak_connection.h"
+ 2  #include "common/util/data_verification.h"
+ 3  #include "common/net/crc32.h"
+ 4  #include "common/logging.h"
+ 5  #include <cstring>
+ 6  #include <zlib.h>
+ 7  #include <fmt/format.h>
+ 8  (blank)
+ 9  // observed client receive window is 300 packets, 140KB
+10  constexpr size_t MAX_CLIENT_RECV_PACKETS_PER_WINDOW = 300;
+11  constexpr size_t MAX_CLIENT_RECV_BYTES_PER_WINDOW   = 140 * 1024;
+12  (blank)
+13  // Send buffer for InternalSend (replaces libuv pool)
+14  static constexpr size_t SEND_BUFFER_SIZE = 4096;
+15  (blank)
+16  // Static debug level definition
+17  int EQ::Net::DaybreakConnection::s_debug_level = 0;
+18  (blank)
+
+$ grep -n 'namespace' src/common/net/daybreak_connection.cpp
+(no output, exit 1 -- confirms NO namespace wrapper; every definition is
+ fully qualified and each TU ends on its last method's closing brace)
+
+$ awk '/^[ \t]*#(if|ifdef|ifndef|else|elif|endif)/ {print NR": "$0}' \
+      src/common/net/daybreak_connection.cpp
+(no output -- ZERO conditional preprocessor directives anywhere in the file)
+
+$ grep -n '/\*' src/common/net/daybreak_connection.cpp
+(no output, exit 1 -- zero comment-open tokens of any kind, so zero multi-line
+ comment regions; correction 33 satisfied trivially)
+
+$ grep -cE '^// ={4,}' src/common/net/daybreak_connection.cpp
+0
+```
+
+**Every §Measured property holds. Nothing changed since `824adb28`; no STOP
+condition fired.** Line 17 is confirmed the **only** out-of-class static member
+definition in the preamble, and the only non-`inline`, non-`static` file-scope
+definition of any kind.
+
+⚠ **One correction to §Measured, and it does not change the shape of the unit:
+the method count is 45, not 50, by the pattern I used.** Stating the pattern
+per J25's advice:
+
+| pattern | count |
+|---|---|
+| `grep -cE '^[A-Za-z_].*EQ::Net::[A-Za-z_]+::'` (qualified definition at col 0) | **45** |
+| `grep -c '^{'` (opening brace on its own line) | **49** |
+
+Neither is 50. The 49 - 45 gap is definitions whose signature wraps so the
+qualified name is not on the brace's preceding line. Both free `static`
+functions (`Inflate`, `Deflate`) brace on the same line and are in neither
+count. **Any future count of this file should say which pattern it used.**
+
+### 3. Correction 21, re-derived (NOT cited)
+
+```
+$ grep -n '^static \|^constexpr \|^const \|^namespace\s*{\|^int EQ::' \
+       src/common/net/daybreak_connection.cpp
+10:constexpr size_t MAX_CLIENT_RECV_PACKETS_PER_WINDOW = 300;
+11:constexpr size_t MAX_CLIENT_RECV_BYTES_PER_WINDOW   = 140 * 1024;
+14:static constexpr size_t SEND_BUFFER_SIZE = 4096;
+17:int EQ::Net::DaybreakConnection::s_debug_level = 0;
+1343:static uint32_t Inflate(const uint8_t* in, uint32_t in_len, uint8_t* out, uint32_t out_len) {
+1381:static uint32_t Deflate(const uint8_t* in, uint32_t in_len, uint8_t* out, uint32_t out_len) {
+```
+
+**Six file-scope symbols, zero anonymous namespaces.** Reader locations:
+
+```
+-- MAX_CLIENT_RECV_PACKETS_PER_WINDOW   10 (def), 1524 (only reader)
+-- MAX_CLIENT_RECV_BYTES_PER_WINDOW     11 (def), 1525 (only reader)
+-- SEND_BUFFER_SIZE                     14 (def), 1730 1762 1764 1772 1774
+-- Inflate                            1343 (def), 1431 (only reader)
+-- Deflate                            1381 (def), 1466 (only reader)
+```
+
+Mapping each definition and each reader onto the ranges **this plan assigns**:
+
+| symbol | def line | def's assigned TU | reader lines | readers' assigned TU | same TU? |
+|---|---|---|---|---|---|
+| `MAX_CLIENT_RECV_PACKETS_PER_WINDOW` | 10 | `_send` (moved) | 1524 | `_send` (1211-1985) | ✅ |
+| `MAX_CLIENT_RECV_BYTES_PER_WINDOW` | 11 | `_send` (moved) | 1525 | `_send` (1211-1985) | ✅ |
+| `SEND_BUFFER_SIZE` | 14 | `_send` (moved) | 1730,1762,1764,1772,1774 | `_send` (1211-1985) | ✅ |
+| `Inflate` | 1343 | `_send` (1211-1985) | 1431 | `_send` (1211-1985) | ✅ |
+| `Deflate` | 1381 | `_send` (1211-1985) | 1466 | `_send` (1211-1985) | ✅ |
+| `s_debug_level` | 17 | `daybreak_connection.cpp` only | **none in this .cpp** | — | ✅ (see §11) |
+
+**Every internal-linkage symbol lands in the same TU as every one of its
+readers. No internal header is needed.** The J08 defect has no exposure here.
+
+Also re-derived: `Inflate`/`Deflate` do not collide with anything outside the
+file. `grep -rn 'Inflate\|Deflate' src/ include/ | grep -v daybreak_connection.cpp`
+returns only `EQ::InflateData` / `EQ::DeflateData` / `EQ::EstimateDeflateBuffer`
+in `src/common/util/compression.cpp` and `include/common/util/compression.h`,
+plus two callers of `EQ::InflateData` — **different, namespaced, externally
+linked symbols.** No shadowing, no ODR risk.
+
+### 4. Comment depth at every cut (computed, not asserted)
+
+Run with the plan's `//`-stripping counter:
+
+```
+depth AFTER line   18 = 0
+depth AFTER line   19 = 0
+depth AFTER line  479 = 0
+depth AFTER line  480 = 0
+depth AFTER line 1210 = 0
+depth AFTER line 1211 = 0
+depth AFTER line 1985 = 0
+final depth 0
+```
+
+The file contains no `/*` at all, so depth is 0 on every line; the `*/`-in-a-`//`
+trap the plan warns about (`eq_movement.cpp:18`) does not exist here. No cut
+lands inside a comment region.
+
+### 5. The preprocessor dump, pasted
+
+```
+$ awk '/^[ \t]*#(if|ifdef|ifndef|else|elif|endif)/ {print NR": "$0}' \
+      src/common/net/daybreak_connection.cpp
+(no output)
+```
+
+**Zero conditional preprocessor directives in 1,985 lines.** No cut can land
+inside a conditional region; the J02 hazard is structurally absent.
+
+### Cut boundaries, verified at my tip
+
+| Cut | preceding lines | first line of next range |
+|---|---|---|
+| 480 | `478: }` (closes `DaybreakConnectionManager`'s last method), `479` blank | `480: void EQ::Net::DaybreakConnection::ProcessPacket(Packet &p)` |
+| 1211 | `1209: }` (closes `ProcessDecodedPacket`), `1210` blank | `1211: bool EQ::Net::DaybreakConnection::ValidateCRC(Packet &p)` |
+
+Pasted context:
+
+```
+474:            if (m_owner->m_on_error_message) {
+475:                m_owner->m_on_error_message(fmt::format("Error processing connection: {0}", ex.what()));
+476:            }
+477:        }
+478:    }
+479:  (blank)
+480:  void EQ::Net::DaybreakConnection::ProcessPacket(Packet &p)
+481:  {
+482:      m_last_recv = Clock::now();
+
+1205:                }
+1206:                m_owner->m_on_packet_recv(self, p);
+1207:            }
+1208:        }
+1209:    }
+1210:  (blank)
+1211:  bool EQ::Net::DaybreakConnection::ValidateCRC(Packet &p)
+1212:  {
+```
+
+Both cuts satisfy J03's rule (blank line, predecessor closes a method, comment
+depth 0). There are no banners in this file, so the banner tie-breaker never
+applies.
+
+⚠ Arithmetic check the plan asks for: the plan's §The split prose says
+"479 + 731 + 775 = 1985", which is **1,985 only if 479 is read as lines 1-479
+(preamble inclusive)**. My ranges are 1-479 (479) + 480-1210 (731) +
+1211-1985 (775) = **1,985**. ✅ No gap, no overlap. The plan's own table row
+labels the third range "793" (body + preamble estimate) while the prose uses
+775 (the raw range) — both are right about different things; noting it so the
+next reader does not chase a phantom 18-line discrepancy.
+
+### 6. Every file-header comment line written, enumerated
+
+Three headers, each followed by exactly one blank line, then the verbatim
+preamble. **No other comment in any file was changed.**
+
+`src/common/net/daybreak_connection.cpp` — **9 lines**:
+```
+1  // DaybreakConnectionManager -- connection lifecycle, the tick/process loop,
+2  // the manager-side packet path, Connect/NewConnection and the option accessors.
+3  //
+4  // This TU also carries the out-of-class definition of DaybreakConnection's
+5  // static debug-level member. That definition has external linkage, so it must
+6  // appear in this TU alone and must never be copied into a sibling TU; doing so
+7  // is a duplicate-symbol link error.
+8  // Split from src/common/net/daybreak_connection.cpp by
+9  // refactor/J26_daybreak_connection_split.md (move-only, 2026-09-02).
+```
+
+`src/common/net/daybreak_connection_decode.cpp` — **7 lines**:
+```
+1  // DaybreakConnection -- the inbound decode path: ProcessPacket, ProcessQueue
+2  // and ProcessDecodedPacket (raw packet in, decoded packet dispatched).
+3  //
+4  // ProcessDecodedPacket is 453 lines and is a recorded Batch-G decomposition
+5  // candidate that J26 deliberately did NOT touch: this unit is move-only.
+6  // Split from src/common/net/daybreak_connection.cpp by
+7  // refactor/J26_daybreak_connection_split.md (move-only, 2026-09-02).
+```
+
+`src/common/net/daybreak_connection_send.cpp` — **8 lines**:
+```
+1  // DaybreakConnection -- CRC validation, zlib compression/decompression and the
+2  // outbound path: ProcessResend, InternalSend, InternalQueuePacket, FlushBuffer.
+3  //
+4  // The three file-local tuning constants in the preamble below were moved out of
+5  // the original's shared preamble into this TU because every one of their readers
+6  // lives here; the file-local Inflate/Deflate helpers were already in this range.
+7  // Split from src/common/net/daybreak_connection.cpp by
+8  // refactor/J26_daybreak_connection_split.md (move-only, 2026-09-02).
+```
+
+⚠ **Correction 40/42 observed deliberately.** Line 4-7 of the first header
+**describes** the static member in words and does **not** spell out its
+definition text. That is not decoration: §Review-must-answer item 11 requires
+`grep -rn 's_debug_level = 0' src/` to return exactly one line, and a header
+comment quoting the definition would have added a second, indistinguishable
+hit to that very check. **The prescribed warning would have corrupted the
+check the plan uses to validate the hazard.** This file has no text-scanning
+test guard, so the loud/silent distinction correction 42 draws does not apply —
+but the same discipline paid off against a plan-mandated grep instead.
+
+⚠ **Correction 30's artefact DID fire, twice, declared and not hand-fixed.**
+The prescribed preambles carry both original line 8 (blank) and original line
+15 or 18 (also blank), so `daybreak_connection.cpp` has a double blank at its
+lines 18-19 and `daybreak_connection_decode.cpp` at its lines 16-17.
+`daybreak_connection_send.cpp` is unaffected (its 1-14 run ends on code).
+Cosmetic, invisible to both proofs and the verifier; hand-fixing it would break
+the byte-identical re-concatenation.
+
+### 7. CMake add-sites: FOUR found, exactly as the plan names
+
+```
+$ grep -rn 'daybreak_connection\.cpp' CMakeLists.txt tests/ scripts/
+CMakeLists.txt:257:    src/common/net/daybreak_connection.cpp
+tests/test_daybreak_state_machine.cpp:5: * (src/common/net/daybreak_connection.cpp) through a FakeUdpTransport
+tests/test_daybreak_state_machine.cpp:684:  // (see the `length > 30` gate in daybreak_connection.cpp).
+tests/test_daybreak_crc_capture.cpp:289:// (`daybreak_connection.cpp`), which the option still controls.
+tests/cmake/network.cmake:50:    ${CMAKE_SOURCE_DIR}/src/common/net/daybreak_connection.cpp
+tests/cmake/network.cmake:66:    ${CMAKE_SOURCE_DIR}/src/common/net/daybreak_connection.cpp
+tests/cmake/network.cmake:81:    ${CMAKE_SOURCE_DIR}/src/common/net/daybreak_connection.cpp
+```
+
+**Four real add-sites at exactly the four line numbers the plan predicted**
+(`CMakeLists.txt:257` in `SET(COMMON_SOURCES` — not `CLIENT_CORE_SOURCES`;
+`tests/cmake/network.cmake:50/66/81` in `test_daybreak_connection_pcap`,
+`test_daybreak_crc_capture`, `test_daybreak_state_machine`). Both new TUs added
+at all four. `grep -rn` across `tests/`; `tests/CMakeLists.txt` was never named
+(correction 26). A case-insensitive sweep of every `*.cmake` and `CMakeLists.txt`
+in the tree found no fifth site. `scripts/` has zero hits. No
+`gles2_zone_benchmark` site, as predicted.
+
+The three `tests/*.cpp` hits are **comments only — zero functional readers.**
+
+Second grep (correction 10's other half):
+
+```
+$ grep -hn 'kRoot / "src\|kRoot / "include' tests/*.cpp | sort -u
+144:    const std::set<std::string> eqMembers = membersOf(kRoot / "include/client/eq.h");
+146:    const std::string src = readFile(kRoot / "src/client/graphics/renderer_event_receiver.cpp");
+151:        const fs::path p = kRoot / "include/client/state" / h;
+156:    const std::string src = readFile(kRoot / "src/client/graphics/renderer_frame_render.cpp");
+166:    auto lines = splitLines(readFile(kRoot / "include/client/events/renderer_intents.h"));
+221:    std::string bridge = readFile(kRoot / "src/client/eq_bridge_intents.cpp");
+259:    std::string bridge = readFile(kRoot / "src/client/eq_bridge_intents.cpp");
+271:    auto lines = splitLines(readFile(kRoot / "include/client/state/event_bus.h"));
+333:    auto lines = splitLines(readFile(kRoot / "include/client/action/action_dispatcher.h"));
+357:    auto lines = splitLines(readFile(kRoot / "src/client/action/action_dispatcher.cpp") +
+358:                            readFile(kRoot / "src/client/action/action_dispatcher_social.cpp") +
+359:                            readFile(kRoot / "src/client/action/action_dispatcher_guild_misc.cpp"));
+435:    auto lines = splitLines(readFile(kRoot / "include/client/eq.h"));
+49:const fs::path kGraphicsDir = kRoot / "src" / "client" / "graphics";
+652:    const std::string src = readFile(kRoot / "src/client/help/renderer_command_catalog.cpp");
+690:    const std::string src = readFile(kRoot / "src/client/graphics/renderer_event_receiver.cpp");
+698:    const std::string frame = readFile(kRoot / "src/client/graphics/renderer_frame_input.cpp");
+706:    const std::string frame = readFile(kRoot / "src/client/graphics/renderer_frame_input.cpp");
+```
+
+**Neither `src/common/net/daybreak_connection.cpp` nor any other `src/common/`
+path appears. No repoint is needed, and no test file was edited.** The
+`kGraphicsDir` recursive sweep at `:49`
+(`test_first_person_camera_single_formula.cpp`, correction 35) covers only
+`src/client/graphics` — this file is not under it, so this is the first Wave-6
+unit that inherits none of the three guard flavours.
+
+### 8. Both content proofs, and the verifier
+
+`$BASE = 2498c3a5354a7df86d9126e31a3acb787af1664c`
+
+**Proof A — byte-identical re-concatenation of the bodies.** Extracted from the
+**produced files**, so the proof covers assembly, not a scratch re-cut:
+`daybreak_connection.cpp:23-483`, `daybreak_connection_decode.cpp:18-748`,
+`daybreak_connection_send.cpp:25-799`, concatenated in original order, against
+`git show "$BASE:src/common/net/daybreak_connection.cpp" | sed -n '19,1985p'`:
+
+```
+1967 before_body.txt
+1967 after_body.txt
+cmp -> PROOF1_CMP_EXIT=0
+```
+
+**1,967 lines, byte-identical, exit 0 — exactly the count the plan predicted.**
+
+**Proof B1 — line multiset over the bodies.** Same two files, `sort`ed:
+
+```
+diff before.sorted after.sorted -> PROOF2A_DIFF_EXIT=0   (MULTISET-OK)
+```
+
+**Proof B2 — the preamble half, which correction 7 says a body-only proof
+silently ignores.** Whole file, lines **1-1985**, against all three produced
+files stripped of their header comment and its trailing blank
+(`daybreak_connection.cpp:11-483`, `daybreak_connection_decode.cpp:9-748`,
+`daybreak_connection_send.cpp:10-799`), as multisets:
+
+```
+1985 before_all.txt
+2003 after_all.txt
+diff -> exit 1, delta = 18 ADDED lines, 0 REMOVED:
+  > (blank) x4
+  > #include "common/logging.h"                  x2
+  > #include "common/net/crc32.h"                x2
+  > #include "common/net/daybreak_connection.h"  x2
+  > #include "common/util/data_verification.h"   x2
+  > #include <cstring>                           x2
+  > #include <fmt/format.h>                      x2
+  > #include <zlib.h>                            x2
+```
+
+**The delta is exactly and only the prescribed duplication: the 7-line include
+block copied into two extra TUs (14) plus original blank lines 8 and 18 copied
+into two extra TUs each (4). 14 + 4 = 18 = 2003 - 1985. ZERO removals**, so no
+preamble line was dropped. In particular **lines 9-14 and 16-17 each appear
+exactly once across the three TUs** — they moved, they did not duplicate.
+
+**Verifier** (committed first, `--repo` given, fork-point base) — see §Verifier
+result below.
+
+### 9. Final counts
+
+| file | lines | `EQ::Net::…::` definitions | free `static` fns |
+|---|---|---|---|
+| `src/common/net/daybreak_connection.cpp` | **483** | 17 | 0 |
+| `src/common/net/daybreak_connection_decode.cpp` | **748** | 5 | 0 |
+| `src/common/net/daybreak_connection_send.cpp` | **799** | 23 | 2 (`Inflate`, `Deflate`) |
+| total | 2,030 | **45** | 2 |
+
+**Largest TU 799**, against the plan's predicted ~793 — the +6 is my 8-line
+header minus 2, exactly derivable: `799 = 8 header + 1 blank + 14 preamble +
+1 blank + 775 body`. Likewise `483 = 9 + 1 + 8 + 465` and
+`748 = 7 + 1 + 8 + 1 + 731`. **The plan's range arithmetic was exact; the
+deltas are only the header lines it told me to add on top** (correction 12/19).
+
+**Method split 17 / 5 / 23 against the plan's predicted "roughly 17 / 3 / 30".**
+Cluster membership was right — both cuts landed exactly where predicted — but
+the decode TU holds five definitions, not three: `ProcessPacket`, `ProcessQueue`,
+**`RemoveFromQueue` (orig 1279)**, **`AddToQueue` (orig 1290)** and
+`ProcessDecodedPacket`. The two queue helpers sit between `ProcessQueue` and
+`ProcessDecodedPacket` in the original and travel with them. Same per-TU
+arithmetic slip J13 and J25 recorded; membership right, counts not.
+
+`check_file_sizes.sh --files` over all three: **3 ok, 0 warn, 0 fail.**
+
+**Wall clock ~55 min.** Slowest step: `cmake --build build -j24` at ~11 min
+(tool-backgrounded, exit 0 — correction 23's benign shape, not a 143).
+`ctest -j6` **217.98 s**; `build-gles2-x86.sh` ~11 min; `build-arm-noble.sh`
+clean on its **first** invocation. **Wave concurrency cost zero re-runs** —
+no exit 143 anywhere, so no ELF scan was load-bearing (I ran it three times
+anyway; `build/bin`, `build-gles2/bin`, `build-arm-noble/bin` all clean).
+Correction 14 applies: this is a clean run, not an anomaly.
+
+### 10. Findings, not fixes
+
+- **`docs/module_map.md` needs rows for `daybreak_connection_decode.cpp` and
+  `daybreak_connection_send.cpp`.** Recorded, not acted on — outside territory.
+- `tests/test_daybreak_state_machine.cpp:5` names
+  `src/common/net/daybreak_connection.cpp` as the TU it drives; that is now
+  incomplete rather than wrong (the state machine spans all three). `:684`
+  cites a gate that now lives in `daybreak_connection_decode.cpp`, and
+  `tests/test_daybreak_crc_capture.cpp:289` cites the CRC option whose
+  implementation now lives in `daybreak_connection_send.cpp`. **All three are
+  comments; all three were accurate at my base and are made stale by this
+  split.** Per J31's precedent these are **newly created** doc rot and should be
+  attributed to J26 in the hygiene queue, not to pre-existing rot.
+- **Correction 24 honoured:** I did not attribute any pre-existing stale
+  citation to this split. There were none to attribute — the file has only the
+  three comment sites above.
+- **No dead content in this file.** No `#if 0`, no commented-out method bodies,
+  no retired-configuration arms, no conditional compilation at all. Second
+  Wave-6 file (after J25's) with nothing to add to the dead-content decision.
+- ⚠ **`ProcessDecodedPacket` is 453 lines** and lands in a 748-line TU with 752
+  lines of headroom. Flagged as a Batch-G candidate in that TU's header;
+  **not touched.** Precedent: J02's `DispatchZonePacket` (880), J13's
+  `ProcessBridgeIntents` (580), J33's `updatePlayerMovement` (806).
+
+### 11. `grep -rn 's_debug_level = 0' src/` on the finished tree
+
+```
+$ grep -rn 's_debug_level = 0' src/
+src/client/eq.cpp:82:int EverQuest::s_debug_level = 0;
+src/common/net/daybreak_connection.cpp:21:int EQ::Net::DaybreakConnection::s_debug_level = 0;
+```
+
+**Exactly ONE `DaybreakConnection::s_debug_level` definition**, in
+`daybreak_connection.cpp` (now at line 21, moved down by the 9-line header +
+blank + the 3 removed constant/comment lines... specifically 17 -> 21 = +10
+header/blank, -6 for the removed lines 9-14, +0 net... precisely: original 17
+becomes 9 header + 1 blank + 8 include lines + 3 (orig 15,16,17) = 21). ✅
+
+The `EverQuest::s_debug_level` hit at `eq.cpp:82` is a **different class in a
+different TU**, pre-existing, untouched by this unit; it is why the grep must be
+read for the qualified name, not the bare token.
+
+Supporting evidence that no other TU needs the definition:
+`grep -n 's_debug_level' src/common/net/daybreak_connection.cpp` on the ORIGINAL
+returned **one line — line 17, the definition itself.** The class-static is read
+only through the header's `SetDebugLevel`/`GetDebugLevel` inline accessors
+(`include/common/net/daybreak_connection.h:165-166`), declared at `:262`, so all
+three TUs can read it with no additional definition. **The build's success is the
+loud proof: had the definition been duplicated, the link would have failed.**
+
+### 12. The four CMake add-sites, each confirmed, and the three targets LINK
+
+| site | target/variable | new TUs added |
+|---|---|---|
+| `CMakeLists.txt:257-259` | `SET(COMMON_SOURCES` | ✅ both |
+| `tests/cmake/network.cmake:50-52` | `ADD_EXECUTABLE(test_daybreak_connection_pcap` | ✅ both |
+| `tests/cmake/network.cmake:68-70` | `ADD_EXECUTABLE(test_daybreak_crc_capture` | ✅ both |
+| `tests/cmake/network.cmake:85-87` | `ADD_EXECUTABLE(test_daybreak_state_machine` | ✅ both |
+
+⚠ **The plan warns these targets can SKIP rather than fail, so `ctest` green
+proves nothing about them. Checked at the binary level instead:**
+
+```
+$ ls -l build/bin/test_daybreak_*
+-rwxrwxrwx 1459920 Sep  2 13:11 build/bin/test_daybreak_connection_pcap
+-rwxrwxrwx 1313128 Sep  2 13:11 build/bin/test_daybreak_crc_capture
+-rwxrwxrwx 1678232 Sep  2 13:10 build/bin/test_daybreak_state_machine
+
+$ for t in …; do "$t" --gtest_list_tests >/dev/null; echo $?; done
+0 / 0 / 0
+```
+
+All three **relinked after my 13:07 edits** and enumerate their cases — they
+link, they are not stale, and they are not truncated (`readelf -h` clean).
+
+⚠ **The captured-packet CRC suite, run explicitly** (it does NOT skip — its
+fixture `tests/data/t321_crc_capture.txt` is committed, unlike the
+`data/captures/session.pcap` the other two need):
+
+```
+$ build/bin/test_daybreak_crc_capture
+[ RUN/OK ] DaybreakCrcCaptureTest.RecordedSessionResponsesNegotiateTwoCrcBytes      (44 ms)
+[ RUN/OK ] DaybreakCrcCaptureTest.OnlyTheZoneStreamNegotiatesCompression            (28 ms)
+[ RUN/OK ] DaybreakCrcCaptureTest.EveryCapturedZonePacketPassesCrcValidation        (22 ms)
+[ RUN/OK ] DaybreakCrcCaptureTest.EveryCapturedLoginAndWorldPacketPassesCrcValidation (22 ms)
+[ RUN/OK ] DaybreakCrcCaptureTest.CorruptedAndTruncatedZonePacketsAreRejected       (17 ms)
+[ RUN/OK ] DaybreakCrcCaptureTest.SkipCrcValidationAcceptsACorruptedZonePacket      (24 ms)
+[ RUN/OK ] DaybreakCrcAlgorithm.RecordedZoneFrameCrcIsReproducible                  (14 ms)
+[==========] 7 tests from 2 test suites ran. (174 ms total)
+[  PASSED  ] 7 tests.
+CRC_EXIT=0
+```
+
+**7/7 PASSED against real recorded wire bytes**, standalone and again inside
+`ctest`. `ValidateCRC` moved 1,211 -> `daybreak_connection_send.cpp:25` and
+`ProcessDecodedPacket` moved 757 -> `daybreak_connection_decode.cpp:295`, and
+the transport still validates every captured login/world/zone packet, still
+rejects corrupted and truncated ones, and still reproduces the recorded zone
+frame's CRC bit-for-bit. `test_daybreak_state_machine` contributed **28 passing
+tests** in the suite run. The seven `PcapDaybreakHarnessTest` /
+`DaybreakConnectionPcapTest` cases skipped for the documented pre-existing
+reason (no `data/captures/session.pcap` in this worktree) — that is why the
+link check above, not `ctest` colour, is the evidence for those two targets.
+
+### Acceptance results
+
+| step | result |
+|---|---|
+| `cmake --build build -j24` | **exit 0** (tool-backgrounded ~11 min, NOT a 143) |
+| ELF scan `build/bin` | clean (0 bad) |
+| `ctest -j6` | **3506/3507**, 217.98 s. Sole failure `AudioManagerTest.PreloadCommonSounds` — the documented ALSA host quirk, **in `test_baseline.txt`**. **Zero new failures.** `HeadlessShutdownTest` did not flake. |
+| in-suite `visual_gate` (#3504) | **Passed, 24.41 s** |
+| `scripts/build-gles2-x86.sh` | **exit 0**, run **BEFORE** `ctest` (correction 41) |
+| goldens | `git status --porcelain` lists **only my 5 files**; zero golden/PNG entries |
+| `scripts/build-arm-noble.sh` | **exit 0, first invocation** |
+| `check_file_sizes.sh --files` | **3 ok, 0 warn, 0 fail** |
+
+⚠ **Correction 41, answered explicitly: I ran `scripts/build-gles2-x86.sh`
+BEFORE `ctest -j6`.** Evidence that the gate was not vacuous:
+`build-gles2/bin/gles2_zone_benchmark` and `build-gles2/bin/willeq` are both
+stamped **13:40**, against source edits made at **13:07** and a gate run at
+**~13:47**. The binary the gate exercised post-dates the split. **No standalone
+re-run was needed.**
+
+### What the template still gets wrong
+
+1. **§Measured's method count (50) does not reproduce under any pattern I
+   tried** — 45 by qualified-name-at-column-0, 49 by `^{`. J25 hit the same
+   class of problem and the fix is the same: **a plan that states a count must
+   state the pattern that produced it.**
+2. **The per-TU method prediction (17 / 3 / 30) is wrong for the decode TU** —
+   it is 5, because `RemoveFromQueue` and `AddToQueue` sit inside the 480-1210
+   range and the plan's §The split row does not list them. Cluster membership
+   was still correct. Third unit in a row (J13, J25, J26) where the per-TU
+   method arithmetic slipped while the ranges held: **plans should stop
+   predicting per-TU method counts, or derive them by actually counting inside
+   each range.**
+3. **§The split's arithmetic line contradicts its own table** — the prose says
+   "479 + 731 + 775 = 1985" while the table's third row is labelled 793. Both
+   are defensible (raw range vs range+preamble) but a reader checking the sum
+   against the table finds an 18-line phantom gap. **State one convention.**
+4. **§File-header comments and §Review-must-answer item 11 are in direct
+   tension, and the plan does not notice.** Item 11's grep is
+   `s_debug_level = 0`; §File-header tells `daybreak_connection.cpp`'s header
+   to "record that the definition lives here". A header that records it by
+   quoting it makes item 11 return two hits from one definition. This is
+   correction 40's mechanism (a comment satisfying a text search) hitting a
+   **plan-mandated grep** rather than a test guard — a shape neither correction
+   40 nor correction 42 anticipates. **Generalise the rule: never quote a token
+   that ANY check greps for, test or plan.**
+5. **The plan's preamble table produces a double blank line in two of three
+   TUs** (correction 30's artefact, in a file with no namespace close — so
+   correction 30's stated mechanism, "blank + namespace close", is too narrow).
+   It fires wherever a copied preamble slice both starts and ends adjacent to a
+   blank. Declared, not fixed.
+6. **Everything else in the plan reproduced exactly**: the 1,985 line count,
+   both cut boundaries, all six file-scope symbol lines, all reader lines, the
+   zero-conditional / zero-banner / zero-comment-region claims, all four CMake
+   add-site line numbers, the 1,967-line proof count, and the `+0/-0` verifier
+   prediction. **The correction-21 audit and the HAZARD 1 analysis were both
+   correct as written** — which is what made a new hazard class cost nothing.
+
+### Verifier result (run AFTER committing, with --repo, from the fork point)
+
+```
+$ BASE=$(git -C /mnt/projects/fable/wt/slot2 merge-base fable HEAD)
+$ echo $BASE
+2498c3a5354a7df86d9126e31a3acb787af1664c
+$ python3 scripts/refactor/verify_move_only.py "$BASE..HEAD" \
+      --repo /mnt/projects/fable/wt/slot2
+Non-C++ files changed (not verified, review separately):
+  CMakeLists.txt
+  refactor/J26_daybreak_connection_split.md
+  tests/cmake/network.cmake
+
+Files verified: 3
+Boilerplate: +38 / -0 lines (allowed)
+
+PASS: move-only (modulo boilerplate).
+VERIFIER_EXIT=0
+```
+
+**EXIT 0, `+0/-0` substantive — the plan's prediction held exactly.** No line
+was flagged, so there is nothing to enumerate and **no orchestrator sign-off is
+required** (this is not the correction-5 / §Process step-4 case).
+
+The 38 allowed boilerplate lines are derivable from what the plan prescribes and
+nothing else: **24 file-header comment lines** (9 + 7 + 8, all `//`) **+ 14
+duplicated `#include` lines** (the 7-line block copied into two new TUs).
+38 = 24 + 14. ✅
+
+All three trap conditions were avoided and each is stated so the next executor
+can check the same three: the tree was **committed first** (a dirty tree prints
+"No C++ files changed" and exits 0 — J06); `--repo` was **given** (its default
+`.` verifies `main/` — J02); and the base is the **fork point**, not `fable`
+(`fable..HEAD` reports concurrently-merged units as removals — J01). Slot1 (J32)
+and slot3 (J23) were both in flight during this run and neither appears in the
+verified set — confirmation the base is right.
+
+`git status --porcelain` after the commit: **empty. Goldens untouched.**
