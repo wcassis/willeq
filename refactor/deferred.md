@@ -670,6 +670,38 @@ Review, `review/T312/`.
     (`ConstrainedMeshCache`) and T68 (`SpellData::effects`), both of which went
     to Will. Do not scope an executor unit off this until that call is made.
 
+### TIER 2 addendum — found by T317 (2026-09-02): a THIRD guild defect, and two dead data fields
+
+34. **`OP_GuildInviteAccept` conflates accept/decline with rank, and ACCEPTING
+    AN INVITE JOINS YOU AS AN OFFICER.** fable sends `response = 1`; the
+    server's TI→internal mapping turns that into `GUILD_OFFICER`, not
+    `GUILD_MEMBER`. Same family as the two sites T317 fixed
+    (`refactor/T317_three_wire_lies.md` Review), found while tracing them and
+    outside that plan's scope.
+    *Impact:* every player who accepts a guild invite in fable joins with
+    officer rank. **EXECUTOR-READY.**
+    ⚠ **The decline half is a SERVER bug, not ours:** no value a Titanium client
+    can put in that field survives the TI mapping as `>= GUILD_INVITE_DECLINE
+    (9)`, so a decline is processed as an accept. Do not try to fix that
+    client-side; record it for upstream.
+
+35. **`endurance_cost` and `mana_cost` are 0 for EVERY skill** — nothing
+    populates them, so both of `getSkillUseError()`'s resource messages are
+    unreachable in production. T317 restored the messages (they were empty
+    bodies returning `""` for a real refusal) but the data behind them does not
+    exist.
+    *Impact:* a skill that should fail for endurance silently proceeds.
+    **Class B, data question** — the same shape as T68's `SpellData::effects`:
+    find whether the source data carries these and the loader drops them, or
+    whether they were never populated. Do not invent values.
+
+36. **`requires_combat` corresponds to nothing eqemu enforces**, and T317's new
+    client-side gate is therefore deliberately STRICTER than the server —
+    eqemu's `OPCombatAbility` has no in-combat requirement at all. Implemented
+    as the board asked; **flagged for Will**, with the one-line revert named at
+    the site. If he wants client and server to agree exactly, revert that gate
+    and leave the facing check (which IS server-derived).
+
 ### TIER 3 — implemented but unreachable
 
 19. **`GraphicalMode::initialize()` falls through to the console renderer for every
