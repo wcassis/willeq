@@ -9,7 +9,8 @@ harness batch** (`H_harness.md`, H01-H05), not this.
 ## Where the tree stands
 
 Measured at `9ae1460c`: **31 files over 1,500 lines; 4 over the 3,000 hard cap** —
-`src/client/eq.cpp` 3,913, `src/client/graphics/entity_renderer.cpp` 3,255,
+`src/client/eq.cpp` 3,913 (**3,923 at `2eb34f3d`, 2026-09-02 — it is still
+growing; re-measure at your own tip**), `src/client/graphics/entity_renderer.cpp` 3,255,
 `src/client/graphics/irrlicht_renderer.cpp` 3,237,
 `src/client/action/command_processor.cpp` 3,024. Batch F left `eq.cpp` at 3,629
 and `irrlicht_renderer.cpp` at 2,736 in 2026-07; both grew back, and
@@ -73,37 +74,135 @@ agent reads MOST. `eq.h` has 65 includers, `packet_structs.h` 41,
 `irrlicht_renderer.h` 39 — `eq.h` alone is ~30k tokens pulled into nearly every
 client-side task, a larger recurring context cost than any .cpp in the tree.
 
-## Process per unit — unchanged from Batch F, plus T166's bar
+## Process per unit — Batch F, plus T166's bar, plus J01's corrections
+
+**Everything in this section marked ⚠ was corrected after the J01 pilot ran
+(2026-09-02, `refactor/J01_inventory_manager_split.md` §Review). Units written
+before that date carry the old, wrong text — this section wins.**
 
 1. Orchestrator writes `refactor/J##_<name>.md`: the cluster table with line
-   ranges, target TU names, the include list, and the named hazards.
+   ranges, target TU names, and the named hazards.
 2. Executor in an assigned slot, branch `task/J##-<name>` cut from `fable`,
    per `refactor/EXECUTOR_PROTOCOL.md`. **Execute the plan exactly. No scope
    creep, no drive-by fixes, no method decomposition.**
 3. Acceptance, every unit:
-   - build clean (by EXIT CODE, never by grepping the log)
+   - build clean (by EXIT CODE, never by grepping the log — `grep ' error '`
+     never matches GCC, which prints `error:`)
    - full `ctest -j6` (**NOT -j24** — the visual gate's CPU ceiling flakes)
-   - `python3 scripts/refactor/verify_move_only.py fable..HEAD` clean
+   - ⚠ **`python3 scripts/refactor/verify_move_only.py "$(git merge-base fable
+     HEAD)..HEAD"`** — see the ⚠ box below. **NOT `fable..HEAD`.**
+   - ⚠ the **line-multiset check** (below) as a named second proof
    - visual gate PASS with **goldens untouched** (a re-bless here means the
      split changed behaviour — STOP and report)
    - `scripts/build-gles2-x86.sh` and `scripts/build-arm-noble.sh`
    - `check_file_sizes.sh --files` on every changed AND created file: 0 warn,
      0 fail. **A split that leaves a 2,400-line file is not done.**
-4. Any file-local `static` that must become accessible goes to a private
-   internal header and is declared in the unit's Review as the sanctioned
-   Batch-F exception (T166 precedent).
+4. Any file-local `static` or anonymous-namespace helper that must become
+   reachable from a second TU goes to a private internal header next to the
+   sources and is declared in the unit's Review as the sanctioned Batch-F
+   exception (T166's `wld_internal.h` precedent). J04 and J05 both need one.
 
-**Standing constraint:** every unit edits `CMakeLists.txt` (explicit source
-lists at `:266` and `:456` — no globs). Merge units ONE AT A TIME and rebase.
+### ⚠ The verifier's base revision — read this before you run it
+
+**`fable..HEAD` is WRONG for this batch and will produce a loud, spurious
+FAIL that looks like your own breakage.** Waves 1-4 run three units at once
+and merge as they land, so `fable` moves under at least two of every three
+units. `fable..HEAD` diffs against the *current* tip of `fable`, not your
+fork point — so it reports every OTHER unit's merged work, **in reverse**, as
+substantive removals. J01 saw exactly this: 533 removed lines and 18 added,
+none of them its own, because slot3's work merged twenty minutes into the run.
+
+Use the fork point:
+
+```bash
+BASE=$(git merge-base fable HEAD)     # or the literal hash named at dispatch
+python3 scripts/refactor/verify_move_only.py "$BASE..HEAD"
+```
+
+Record `$BASE` in the Review. If the verifier flags files your unit never
+touched, **you have the wrong base — do not start "fixing" anything.**
+
+### ⚠ The line-multiset check — the cheap second proof
+
+`verify_move_only.py` compares *distinct* normalized lines, so it cannot see a
+range that was duplicated into two TUs or dropped from both. Thirty seconds of
+`sort`/`diff` can:
+
+```bash
+# bodies of the split files (each stripped of its preamble and namespace
+# close) vs the pre-split original's body, as multisets
+cat <new TU bodies> | sort > /tmp/after.txt
+git show "$BASE:<original path>" | sed -n '<first body line>,<last body line>p' | sort > /tmp/before.txt
+diff /tmp/before.txt /tmp/after.txt && echo MULTISET-OK
+```
+
+Stronger still, and also cheap: re-concatenate the extracted ranges in their
+original order and confirm the result is **byte-identical** to the original
+body. Paste both results in the Review. J01 did both.
+
+### ⚠ CMake: grep, never trust a line number
+
+**Do not promise or trust a line number, and do not assume two add-sites.**
+The plan's old text said "explicit source lists at `:266` and `:456`"; at J01's
+tip `inventory_manager.cpp` appeared **exactly once**, at `CMakeLists.txt:319`
+in `CORE_SOURCES`. Line numbers in a 1,899-line file rot within **hours**, not
+days: J01's own merge moved `entity_renderer.cpp` from `CMakeLists.txt:458` to
+`:463` between this batch plan's survey and J03's, the same afternoon. Find the
+sites yourself:
+
+```bash
+grep -n '<original file basename>' CMakeLists.txt tests/CMakeLists.txt
+```
+
+`CMakeLists.txt` uses explicit source lists, no globs, in several variables
+(`CORE_SOURCES`, `GRAPHICS_SOURCES`, …) — add each new TU beside the original
+in **every** list that names it. **And check `tests/CMakeLists.txt` too:** J01
+needed nothing there (its tests link `willeq_core`), but J04's file is listed
+at four separate per-target source sites. Merge units ONE AT A TIME and rebase.
+
+### ⚠ Three more standing rules from the pilot
+
+- **Section banners travel with their cluster.** Give every range as the
+  **first line of the cluster's leading `// ====` comment**, not the first
+  statement, so no TU is left with an orphaned header comment and every
+  executor makes the same call.
+- **Each new TU carries the original's full include block, verbatim.** Not
+  "the includes it actually needs". This is what T166 did; trimming per-TU
+  include sets is a second, riskier change wearing a move-only commit's
+  clothes, and it removes a judgement call from seventeen executors.
+- **`chmod 644` every created file before `git add`.** J01's `sed >` pass
+  produced mode 755 and the first commit recorded a spurious
+  `100644 => 100755`; it was caught and amended, but it will recur.
+
+### Scheduling: what a unit actually costs (measured, J01)
+
+**~30 min wall clock end to end**, single agent, no retries: ~8 min reading the
+contract docs and surveying, **under 2 min for the cut itself and CMake**, and
+**~18 min for the verification bar** — `ctest -j6` 3.0 min, `build-arm-noble.sh`
+~5 min, `build-gles2-x86.sh` ~4 min, `cmake --build -j24` ~4 min.
+
+**The mechanical work is nearly free; a unit costs what the bar costs, and
+that cost is fixed per unit regardless of the file's size.** Do not schedule
+three concurrent units as three independent 30-minute jobs: `ctest -j6` on
+three slots at once is 18 test processes plus three visual gates, all
+contending, and the gate is precisely what the `-j6` cap exists to protect.
+**Expect the verification tail to stretch.**
+
+### Known pre-existing WARN — not a unit's fault
+
+`CMakeLists.txt` is **1,899 lines** and trips `check_file_sizes.sh`'s 1,500
+WARN. It has been over the line since long before Batch J, and every unit adds
+a few lines to it. **No J unit is to "fix" this, and no unit's acceptance is
+blocked by it.** Boarding the build-system split is the orchestrator's call.
 
 ## Unit table
 
 | Unit | File | Lines | → TUs | Largest after | Wave | Notes |
 |---|---|---|---|---|---|---|
-| J01 | `inventory/inventory_manager.cpp` | 2,502 | 4 | 795 | 0 (pilot) | zero file-local statics; two already-separate classes |
-| J02 | `eq.cpp` | 3,913 | 6 | 1,035 | 1 | `DispatchZonePacket` becomes its own ~950-line TU |
-| J03 | `graphics/entity_renderer.cpp` | 3,255 | 7 | 955 | 1 | keep the T307/T309 draw rule in one TU |
-| J04 | `action/command_processor.cpp` | 3,024 | 5 | 790 | 1 | ⚠ must NOT split `registerBuiltinCommands` |
+| ~~J01~~ (merged `7e0c7823`) | `inventory/inventory_manager.cpp` | 2,502 | 5 | **800** | 0 (pilot) | ✅ **DONE** `task/J01-inventory-split` `0166fae0`. 581 / 800 / 503 / 414 / 276. Zero hazards, verifier clean, gate PASS, goldens untouched. Six template corrections folded into §Process above |
+| J02 | `eq.cpp` | 3,913 (**3,923**) | 6 | ~1,065 | 1 | `DispatchZonePacket` becomes its own ~965-line TU **with no room to grow** — flag it, do not decompose it |
+| J03 | `graphics/entity_renderer.cpp` | 3,255 | 7 | ~500 | 1 | ⚠ **blocked on T318.** `updateFirstPersonBodyDrawRule()` is ALREADY its own TU (`entity_first_person_draw.cpp`, 90 lines); keep the rest of the first-person family with it |
+| J04 | `action/command_processor.cpp` | 3,024 | 5 | ~800 | 1 | ⚠ must NOT split `registerBuiltinCommands` (registration ORDER is load-bearing). ⚠ 3 anonymous namespaces, one used across two clusters → needs `command_internal.h`. ⚠ 4 sites in `tests/CMakeLists.txt` |
 | J05 | `graphics/eq/wld_loader.cpp` | 2,908 | 7 | 490 | 2 | needs `wld_internal.h` (`read_val<T>` used 114×) |
 | J06 | `application.cpp` | 2,356 | 5 | 815 | 2 | signal-handler static promotion |
 | J07 | `eq_player_info.cpp` | 2,301 | 4 | 745 | 2 | 118 small methods, no statics — lowest risk |
@@ -123,11 +222,14 @@ Full clearance is roughly **26-30 units**.
 
 ## Wave plan — three slots, collisions resolved
 
-- **Wave 0 (serial, pilot):** J01. Chosen over the hard-cap files deliberately —
-  zero statics, two separate classes, real unit-test coverage. Proves the
-  template on this tree before fan-out.
+- **Wave 0 (serial, pilot):** ✅ **COMPLETE.** J01 landed as five TUs (the plan
+  said four — `inventory_manager.cpp` itself stays and counts). Zero hazards
+  found, confirming the survey's hazard analysis; six template corrections
+  came back and are folded into §Process.
 - **Wave 1 (3-way):** J02 / J03 / J04. `irrlicht_renderer.cpp` is deliberately
-  NOT here: T312 owns it.
+  NOT here: T312 owns it. ⚠ **J03 is BLOCKED until T318 merges** — slot3 has
+  `entity_renderer.cpp` open right now (size-update path). J02 and J04 are
+  clear and can go immediately.
 - **Wave 2 (3-way):** J05 / J06 / J07.
 - **Wave 3 (3-way):** J08 / J09 / J10.
 - **Wave 4 (3-way, after T312 AND T313 merge):** J11 / J12 / J13.
@@ -141,6 +243,7 @@ Full clearance is roughly **26-30 units**.
 |---|---|---|
 | T311 (oracle capture) | no `src/` changes | nothing |
 | T312 (thread safety) | `irrlicht_renderer.h`/`.cpp`, `renderer_frame.cpp`, `graphics_input_handler.cpp`, `renderer_player_physics.cpp` | **J11, J17**, and the Wave-6 `renderer_frame` / `renderer_player_physics` units |
+| T318 (size update / guild rank) | `graphics/entity_renderer.*`, `renderer_entities.cpp`, `irrlicht_bridge.cpp`, `eq_entities.cpp`, `eq_guild.cpp`, `spell_effects.cpp`, `event_bus.h`, `tests/CMakeLists.txt` | **J03** (hard). Not J02 (`eq.cpp` untouched), not J04 |
 | T313 (UI scroll) | `graphics/ui/`, one hunk in `irrlicht_renderer.h` | **J17** (soft: J11). No `graphics/ui/` file is over 1,500 (largest `static_panels.cpp` 915), so no J unit wants that territory |
 
 ## Optional, NOT part of this batch — the Batch-G follow-up
