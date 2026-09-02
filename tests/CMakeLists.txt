@@ -2721,3 +2721,35 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
     GTEST_DISCOVER_TESTS(test_entity_collision_z_offset)
 ENDIF()
+
+# T320: OP_GroupUpdate carries TWO structs of the SAME 452-byte size --
+# GroupJoin_Struct for groupActJoin/groupActLeave, GroupUpdate_Struct for the
+# rest -- so only the action field distinguishes them. Reading a JOIN as a
+# GroupUpdate_Struct took `leadersname` out of the join struct's padding and
+# published a group with real members and an EMPTY leader, on the LEADER's own
+# client, at formation, with no zoning involved (review/T320/). Also pins that
+# CleanupZone() drops group state so the server's zone-entry refresh can
+# re-establish it, instead of the client carrying a phantom group across.
+ADD_EXECUTABLE(test_group_packet_shapes
+    test_group_packet_shapes.cpp
+)
+TARGET_LINK_LIBRARIES(test_group_packet_shapes GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_group_packet_shapes PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_group_packet_shapes)
+
+# T320 (Leg C): one chat-channel name table. eq_chat.cpp built the name twice
+# from two ternary chains forty lines apart and they had drifted -- auction
+# missing from the console chain, channel 14 (TellEcho) missing from both.
+# The last test is the guard against a third copy appearing; it reads
+# src/client/eq_chat.cpp via WILLEQ_REPO_ROOT (set at the top of this file),
+# the same shape as the T314 / T308 guards.
+ADD_EXECUTABLE(test_chat_channel_names
+    test_chat_channel_names.cpp
+)
+TARGET_LINK_LIBRARIES(test_chat_channel_names GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_chat_channel_names PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_chat_channel_names)

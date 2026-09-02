@@ -593,9 +593,21 @@ enum ChatChannelType {
 	CHAT_CHANNEL_SAY = 8,
 	CHAT_CHANNEL_PETITION = 10,
 	CHAT_CHANNEL_GMSAY = 11,
+	// T320: the server's echo of an OUTGOING tell. It printed as "chan14"
+	// for T297's entire run because neither name chain knew it existed.
+	CHAT_CHANNEL_TELL_ECHO = 14,
 	CHAT_CHANNEL_RAID = 15,
 	CHAT_CHANNEL_EMOTE = 22
 };
+
+// T320: the ONE channel-name table. eq_chat.cpp used to build the name twice
+// in ZoneProcessChannelMessage, forty lines apart, from two hand-written
+// ternary chains -- and they had drifted: the console [CHAT] chain omitted
+// CHAT_CHANNEL_AUCTION (every auction line printed "chan4"), the bridge chain
+// had it, and neither knew channel 14. Both consumers now call this; a third
+// copy is what tests/test_chat_channel_names.cpp exists to catch.
+// Returns "chanN" for any channel with no name, so the number survives.
+std::string ChatChannelName(uint32_t channel);
 
 // Loading phase enum for zone-in progress tracking
 // Covers the entire pre-gameplay process: login -> world -> zone -> game state -> graphics
@@ -2028,6 +2040,10 @@ private:
 	void ZoneProcessGroupInvite(const EQ::Net::Packet& p);
 	void ZoneProcessGroupFollow(const EQ::Net::Packet& p);
 	void ZoneProcessGroupUpdate(const EQ::Net::Packet& p);
+	// T320: groupActJoin carries a GroupJoin_Struct, not a GroupUpdate_Struct
+	// -- both are 452 bytes, so only the action can tell them apart.
+	void ZoneProcessGroupJoin(const EQ::Net::Packet& p);
+	void FillGroupMemberFromEntities(GroupMember& member) const;
 	void ZoneProcessGroupDisband(const EQ::Net::Packet& p);
 	void ZoneProcessGroupCancelInvite(const EQ::Net::Packet& p);
 

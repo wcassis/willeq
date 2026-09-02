@@ -78,13 +78,19 @@ TEST_F(ZoneChatTest, ChannelMessage_PushesChatEventWithMappedChannelName) {
     }
 }
 
-TEST_F(ZoneChatTest, ChannelMessage_UnknownChannelMapsToOther) {
+// T320: was ChannelMessage_UnknownChannelMapsToOther, asserting a flat
+// "other". That fallback threw the channel NUMBER away, and it is how
+// channel 14 (ChatChannel_TellEcho) stayed invisible: the bridge said
+// "other" while the console said "chan14", and only the console form was
+// diagnosable. One table now, and it keeps the number -- see
+// ChatChannelName() in eq_chat.cpp and tests/test_chat_channel_names.cpp.
+TEST_F(ZoneChatTest, ChannelMessage_UnknownChannelKeepsItsNumber) {
     auto payload = ChannelMessagePayload("Speaker", 77, "mystery");
     ASSERT_NO_THROW(ReplayZone(eq, HC_OP_ChannelMessage, payload));
 
     auto chats = DrainChat(bridge);
     ASSERT_EQ(chats.size(), 1u);
-    EXPECT_EQ(chats[0].channelName, "other");
+    EXPECT_EQ(chats[0].channelName, "chan77");
 }
 
 TEST_F(ZoneChatTest, ChannelMessage_TellFromOtherUpdatesLastTellSender) {
