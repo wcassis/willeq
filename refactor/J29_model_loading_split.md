@@ -509,3 +509,400 @@ resolve a CMake conflict by taking one side wholesale (correction 31).
   metric).
 - You find yourself wanting to decompose a method, delete dead content, trim an
   include block, or add a TU this plan does not name.
+
+## Review
+
+**Executed 2026-09-02 in `/mnt/projects/fable/wt/slot2`, branch
+`task/J29-model-loading-split` cut from `fable` at
+`0b9c3bb61464c31dbbdd3fa2a8fc21e3cfdd0d60`** ("Batch J: fold J26's corrections
+-- generalise correction 40 to any grep, including a plan's own acceptance
+step"). Wave concurrency: slot1 J32, slot3 J23.
+
+### 1. Line count at my tip — ZERO DRIFT
+
+`wc -l src/client/graphics/eq/model_loading.cpp` → **1,793**, exactly the
+plan's §Measured figure. Every cut boundary, every method boundary and all
+seven CMake add-sites reproduced; the only drift anywhere is CMake line
+numbers (below).
+
+### 2. §Measured re-verified — every property holds
+
+| property | plan | measured at my tip |
+|---|---|---|
+| total lines | 1,793 | **1,793** |
+| preamble | 1-17, 2 comment lines + 10 includes + 2 namespace opens | **confirmed** (see §6) |
+| namespace opens | 16-17 | **16-17** |
+| namespace closes | 1792-1793 | **1792-1793** |
+| method definitions | 17 | **17** (pattern: `grep -n '^[A-Za-z_].*RaceModelLoader::'`) |
+| `// ====` banners | 0 | **0** (`grep -cE '^// ={4,}'` → 0) |
+| conditional preprocessor directives | 0 | **0**, empty output (below) |
+| file-scope statics / anon namespaces | 0 of both | **0 of both**, grep exit 1 |
+| multi-line comment regions | 0 | **0** — `grep -n '/\*'` returns nothing, exit 1 |
+
+⚠ **Correction 36 pre-check (out-of-class static member definition in the
+preamble): none.** Lines 1-17 are two comment lines, ten `#include` lines, a
+blank and the two namespace opens — no definitions of any kind, so copying the
+preamble verbatim into both new TUs cannot duplicate a symbol.
+
+### 3. Correction 21, re-derived (not cited)
+
+```
+$ grep -n '^static \|^namespace\s*{\|^const \|^constexpr ' src/client/graphics/eq/model_loading.cpp
+$ echo $?
+1
+```
+**No output, exit 1: zero file-scope `static`s, zero anonymous namespaces, zero
+file-scope constants.**
+
+```
+$ grep -n 'namespace' src/client/graphics/eq/model_loading.cpp
+16:namespace EQT {
+17:namespace Graphics {
+1246:    namespace fs = std::filesystem;
+1792:} // namespace Graphics
+1793:} // namespace EQT
+```
+Five lines, exactly as the plan predicted. **Line 1246 is indented four spaces
+and sits inside `searchZoneChrFilesForModel` (1228-1495)** — a block-scope
+alias, not a namespace-scope entity. It and every use of `fs::` in that method
+are inside range **1228-1793**, which goes to `model_loading_search.cpp`: one
+range, definition and all consumers together.
+
+**Derivation of the conclusion, from scratch:** the set of file-local symbols is
+empty, so the set of (definition-range, consumer-range) pairs that could
+disagree is empty. Every symbol this TU defines is a `RaceModelLoader` member
+with external linkage, declared in
+`include/client/graphics/eq/race_model_loader.h`; members are visible across TUs
+by construction. **Correction 21 has no exposure here.** Confirmed empirically
+by the build: exit 0, no undeclared-identifier and no undefined-reference
+diagnostics.
+
+### 4. Comment depth at every cut — computed, not asserted
+
+The plan's `//`-stripping counter, run at my tip:
+```
+depth before line 564 = 0
+depth before line 1228 = 0
+final depth 0
+```
+The file contains no `/*` at all, so the counter's `//`-stripping guard never
+had anything to protect against here.
+
+### 5. Preprocessor dump — pasted, and it is empty
+
+```
+$ awk '/^[ \t]*#(if|ifdef|ifndef|else|elif|endif)/ {print NR": "$0}' src/client/graphics/eq/model_loading.cpp
+$ echo $?
+0
+```
+Zero lines of output. No cut can land inside a conditional region because there
+are none.
+
+### 6. Cut boundaries, with neighbours
+
+```
+562:    }
+563:
+564: bool RaceModelLoader::loadModelFromZoneChr(const std::string& zoneName, uint16_t raceId, uint8_t gender) {
+
+1226: }
+1227:
+1228: bool RaceModelLoader::searchZoneChrFilesForModel(uint16_t raceId, uint8_t gender) {
+
+1790: }
+1791:
+1792: } // namespace Graphics
+1793: } // namespace EQT
+```
+Both cuts are a blank line whose predecessor closes a method, at comment depth
+0. Exactly as the plan predicted.
+
+### 7. Every file-header comment line written, enumerated
+
+**`model_loading.cpp` (stays), 5 lines** — lines 1-2 unchanged from the
+original, 3-5 new:
+```
+1  // RaceModelLoader model loading methods - split from race_model_loader.cpp
+2  // These methods remain part of the RaceModelLoader class
+3  // Archive discovery plus the global and S3D load paths; the remainder was
+4  // moved to model_loading_chr.cpp and model_loading_search.cpp by
+5  // refactor/J29_model_loading_split.md (move-only, no behaviour change).
+```
+
+**`model_loading_chr.cpp`, 7 lines** — 1-2 copied from the original, 3-7 new:
+```
+1  // RaceModelLoader model loading methods - split from race_model_loader.cpp
+2  // These methods remain part of the RaceModelLoader class
+3  // The two .chr load paths, moved verbatim from model_loading.cpp by
+4  // refactor/J29_model_loading_split.md (move-only, no behaviour change).
+5  // loadModelFromCachedChr is 326 lines and loadModelFromZoneChr is 302;
+6  // both are recorded Batch-G decomposition candidates that J29 deliberately
+7  // did not touch.
+```
+
+**`model_loading_search.cpp`, 5 lines** — 1-2 copied, 3-5 new:
+```
+1  // RaceModelLoader model loading methods - split from race_model_loader.cpp
+2  // These methods remain part of the RaceModelLoader class
+3  // Zone .chr file search plus the mesh-lifetime and memory accounting,
+4  // moved verbatim from model_loading.cpp by
+5  // refactor/J29_model_loading_split.md (move-only, no behaviour change).
+```
+
+**Corrections 40/42/45 compliance:** this file is scanned by no text guard
+(§8), so there is no guard for a header to disarm — but no header line here
+quotes a token that any test, script, or this plan's own acceptance greps for.
+The plan's greps key on the `.cpp` filenames, which appear only in `src/` and
+in CMake, not in `tests/` or `scripts/`, so no header line can perturb them.
+No other comment in the file was changed.
+
+**Correction 30 did NOT fire.** All three TUs end `}` / blank / two closes —
+the original's line 563 / 1227 / 1791 blanks land exactly where the convention
+wants a blank, so nothing is double-spaced. No hand-fix was needed or made.
+
+### 8. Text-scanning guards — all three kinds checked
+
+```
+$ grep -rn 'model_loading' tests/ scripts/
+tests/cmake/ui_rendering.cmake:43:# for no test value) — T54's Review recommends test_race_model_loading.cpp
+tests/cmake/graphics.cmake:29:        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/model_loading.cpp
+tests/cmake/graphics.cmake:114:        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/model_loading.cpp
+```
+Two CMake add-sites and one comment. **Zero functional readers, zero
+string-compare exclusions.**
+
+```
+$ grep -hn 'kRoot / "src\|kRoot / "include' tests/*.cpp | sort -u
+```
+18 lines, none naming this file (the graphics-tree entries are
+`renderer_event_receiver.cpp`, `renderer_frame_render.cpp` and
+`renderer_frame_input.cpp`). **No repoint needed.**
+
+The filename-keyed recursive sweep, checked on the original **and on all three
+produced TUs**:
+```
+$ grep -n 'CameraMode::FirstPerson\|camera_->setPosition(\|camera_->setTarget(\|kFirstPerson\|firstPersonM\|firstPersonV\|computeFirstPersonCamera' \
+      src/client/graphics/eq/model_loading.cpp \
+      src/client/graphics/eq/model_loading_chr.cpp \
+      src/client/graphics/eq/model_loading_search.cpp
+$ echo $?
+1
+```
+**Empty, exit 1.** All three TUs enter `test_first_person_camera_single_formula.cpp`'s
+recursive sweep of `src/client/graphics` automatically, and all three are
+invisible to both parts of it. Confirmed by the suite: that test passes.
+
+### 9. CMake add-sites — SEVEN found, exactly as predicted; line numbers drifted
+
+| plan file:line | actual file:line | target |
+|---|---|---|
+| `CMakeLists.txt:458` | **`:462`** (+4) | `SET(GRAPHICS_SOURCES` |
+| `CMakeLists.txt:826` | **`:834`** (+8) | `ADD_EXECUTABLE(model_viewer` |
+| `CMakeLists.txt:1688` | **`:1696`** (+8) | `ADD_EXECUTABLE(gles2_zone_benchmark` ⚠ visual-gate binary |
+| `CMakeLists.txt:1812` | **`:1820`** (+8) | `ADD_EXECUTABLE(gles2_shader_diagnostic` |
+| `CMakeLists.txt:1898` | **`:1906`** (+8) | `ADD_EXECUTABLE(gles2_composite_audit` |
+| `tests/cmake/graphics.cmake:29` | **`:29`** (exact) | `ADD_EXECUTABLE(test_graphics` |
+| `tests/cmake/graphics.cmake:114` | **`:114`** (exact) | `ADD_EXECUTABLE(test_asset_loading` |
+| `tests/cmake/ui_rendering.cmake:43` | `:43` | comment, not edited |
+
+**Count matches the plan's SEVEN.** Root offsets are J23/J32/J35 landing
+between `824adb28` and my base. A case-insensitive `grep -rni` over every
+`*.cmake` and `CMakeLists.txt` in the tree found no eighth site. Each site got
+both new TUs inserted immediately after the original, preserving indentation
+and the `${CMAKE_SOURCE_DIR}` prefix where present: 10 lines added to
+`CMakeLists.txt`, 4 to `tests/cmake/graphics.cmake`.
+
+**The `gles2_zone_benchmark` add-site was made**, and the visual gate passed at
+the render step, which is the empirical confirmation (correction 15's
+disambiguation: a missed add-site fails at RENDER, contention fails on CPU p95;
+neither happened).
+
+### 10. Final line counts, and the prediction that produced them
+
+| file | plan body prediction | + header delta | predicted total | **actual** |
+|---|---|---|---|---|
+| `model_loading.cpp` | 565 | +3 | 568 | **568** |
+| `model_loading_chr.cpp` | 683 | +5 | 688 | **688** |
+| `model_loading_search.cpp` | 583 | +3 | 586 | **586** |
+
+**All three exact.** The plan's §Optional floor argument holds with room to
+spare: largest TU 688 against a 1,500 warn ceiling.
+
+Arithmetic check on the plan's own sum: `17 + 546 + 664 + 566 = 1793` ✅
+(the third addend carries the original's two namespace closes).
+
+⚠ **Per-TU METHOD counts: the plan predicted 7 / 3 / 7; the actual split is
+8 / 4 / 5.** Total 17 is right, the distribution is not. Counting pattern:
+`grep -c '^[A-Za-z_].*RaceModelLoader::'` — the same pattern that yields 17 on
+the original. The plan's split table lists methods by cluster and simply omits
+some inside each range (`loadArmorTextures` at 93 in the stays range;
+`loadModelFromArchiveIndex` and `searchAllGlobalsForModel` in the chr range;
+`addMeshRef` in the search range) — the RANGES are exact, only the derived
+counts are wrong. **This is the FOURTH unit where per-TU method arithmetic
+slipped while the ranges held exactly (J13, J25, J26, J29) — correction 46 is
+now four for four.**
+
+Methods by TU:
+- **`model_loading.cpp` (8)**: `loadGlobalModels`, `loadNumberedGlobalModels`,
+  `loadArmorTextures`, `getArmorTexture`, `loadZoneModels`, `loadModelFromS3D`,
+  `loadModelFromGlobalChr`, `loadModelFromNumberedGlobal`
+- **`model_loading_chr.cpp` (4)**: `loadModelFromZoneChr` (302),
+  `loadModelFromCachedChr` (326), `loadModelFromArchiveIndex`,
+  `searchAllGlobalsForModel`
+- **`model_loading_search.cpp` (5)**: `searchZoneChrFilesForModel` (268),
+  `addMeshRef`, `removeMeshRef`, `releaseRawTextureData`, `getMemoryStats`
+
+### 11. The three content proofs — all exit 0
+
+**Byte-identical re-concatenation**, extracted from the PRODUCED files
+(`model_loading.cpp` 21-566, `model_loading_chr.cpp` 23-686,
+`model_loading_search.cpp` 21-584 — the last stripped of its two namespace
+closes) in original order, against `git show "$BASE:…" | sed -n '18,1791p'`:
+```
+1774 cat.txt
+1774 orig_body.txt
+cmp → BYTE_PROOF_EXIT=0
+```
+
+**Line-multiset check** (same two files, `sort`ed):
+```
+diff before.txt after.txt → MULTISET_EXIT=0    MULTISET-OK
+```
+
+**`loadModelFromCachedChr` byte for byte across the split** — original
+867-1192 vs `model_loading_chr.cpp` 326-651:
+```
+diff → CACHEDCHR_EXIT=0
+model_loading_chr.cpp:326  bool RaceModelLoader::loadModelFromCachedChr(const std::string& chrFilename, uint16_t raceId, uint8_t gender) {
+model_loading_chr.cpp:651  }
+```
+**326 lines, exit 0.** (Offset is uniform: original line N → chr line N − 541.)
+
+No proof failed, so correction 20 never had to be applied.
+
+### 13. Acceptance bar — every step by EXIT CODE
+
+| step | result |
+|---|---|
+| `cmake --build build -j24` | **exit 0** (after two tool-ceiling 143s, see below) |
+| `scripts/build-gles2-x86.sh` | **exit 0** |
+| `ctest --test-dir build -j6 --output-on-failure` | **exit 8**, `3506/3507 passed`, 138.63 s |
+| in-suite `visual_gate` (#3504) | **Passed, 21.74 s** |
+| goldens | **untouched** — `git status --porcelain` lists only my 5 files |
+| `scripts/build-arm-noble.sh` | **exit 0** |
+| `check_file_sizes.sh --files` (all 3) | **3 ok, 0 warn, 0 fail** |
+
+**The single ctest failure is `AudioManagerTest.PreloadCommonSounds`** — the
+host ALSA quirk documented in `refactor/test_baseline.txt` and the executor
+protocol. **Zero new failures.** `HeadlessShutdownTest…` did not appear.
+
+⚠ **Correction 41 — I used the FIXED ORDER, not the standalone re-run.**
+`build-gles2-x86.sh` ran to completion (exit 0) BEFORE `ctest -j6`, so the
+in-suite gate exercised this unit's own binary:
+`build-gles2/bin/gles2_zone_benchmark` stamped **14:34:56**, against edits made
+at **13:59:03**. No standalone re-run was needed.
+
+⚠ **Three exit-143s, all tool-ceiling, none damaging — and the scan is what
+proved it.** Wave load from slot1/slot3 was heavy: the x86 build needed three
+invocations (69% then ~90% then done).
+- 143 #1 killed the **archive** of `libwilleq_core.a`; gmake printed
+  `*** Deleting file 'lib/libwilleq_core.a'` and removed it (J13's
+  absent-not-truncated shape).
+- 143 #2 killed five test **links**; same, gmake cleaned up.
+- 143 #3 was the ARM build, and it is a genuinely different animal: its log
+  ends with the script's own `=== Build complete ===`, i.e. **the build
+  finished and the tool killed the wrapper before the `echo EXIT=$?` line ran,
+  so no exit file was written.** Classifying by the log alone would have been
+  the very mistake the dispatch warns about; I re-ran it and took the **exit 0**
+  from the re-run.
+- After the final exit-0 x86 build I scanned **221 binaries in `build/bin` with
+  `readelf -h` (0 bad), every `.o` under `build/` (0 bad), and
+  `ar t libwilleq_core.a` (exit 0)**; and after the ARM build, **18 binaries and
+  every ARM `.o` (0 bad)**. The truncation trap did not fire this unit, but the
+  scan is what establishes that, not the exit code.
+
+### 14. Findings only — doc debt recorded, not acted on
+
+- `docs/module_map.md` needs new rows for `model_loading_chr.cpp` and
+  `model_loading_search.cpp`. **Recorded, not done** — J21's successor pass.
+- `tests/cmake/ui_rendering.cmake:43` mentions `test_race_model_loading.cpp`, a
+  file that does not exist. **Pre-existing at my base**, unrelated to this
+  split; not attributed to J29.
+- **No newly-created doc rot**: no `tests/` or `scripts/` file cites a line
+  number in `model_loading.cpp`, so nothing this unit did invalidated a
+  citation.
+- No dead content was found, so §The dead-content decision gains no site.
+
+### 15. Deviations
+
+**None.** No method decomposed, no include block trimmed, no interface changed,
+no test file edited, no internal header created, no TU added beyond the two the
+plan names, no golden re-blessed. Territory respected: `CMakeLists.txt`,
+`tests/cmake/graphics.cmake`, the three TUs and this plan file. Nothing else.
+
+### 16. What the template still gets wrong
+
+1. ⚠ **Correction 46 needs promoting from "state your pattern" to "do not
+   predict per-TU method counts at all."** Four units now (J13, J25, J26, J29)
+   have had the range table exact and the derived count wrong. The count adds
+   nothing a reviewer can act on — the ranges already pin the content — and it
+   costs each executor a paragraph of reconciliation. Either drop it or derive
+   it mechanically from the same grep the executor is told to run.
+2. ⚠ **A 143 whose log ends with the script's own success banner is a FOURTH
+   outcome the corrections do not name.** Corrections 23/27/32/44 distinguish
+   killed-compile (truncated file left) from killed-link (gmake deletes) — both
+   assume the build was interrupted. My ARM run **completed** and the tool
+   killed the wrapper before it could record the exit code. The rule
+   "classify by exit status" is right, but here there *was* no exit status to
+   read; the only safe move is re-running, which I did. Worth stating: **write
+   the exit file, and if it is absent, you have no result — not a bad one.**
+3. **§File-header comments' "each new TU gets its own adapted version" reads as
+   optional for the stays file** in one sentence and mandatory in the next. It
+   is mandatory; say it once.
+4. The plan's per-cut table is excellent and cost nothing to verify. Keep it.
+   Likewise the explicit header-delta instruction in §The split (correction 19)
+   — it made the 568/688/586 prediction exact and checkable in advance.
+
+### 12. The verifier — PREDICTION HELD, exit 0
+
+Run **after** committing, with `--repo`, from the fork point:
+```
+BASE=0b9c3bb61464c31dbbdd3fa2a8fc21e3cfdd0d60
+$ python3 scripts/refactor/verify_move_only.py "$BASE..HEAD" --repo /mnt/projects/fable/wt/slot2
+Non-C++ files changed (not verified, review separately):
+  CMakeLists.txt
+  refactor/J29_model_loading_split.md
+  tests/cmake/graphics.cmake
+
+Files verified: 3
+Boilerplate: +45 / -0 lines (allowed)
+
+PASS: move-only (modulo boilerplate).
+VERIFIER_EXIT=0
+```
+`$BASE` is the branch point, identical to the dispatch hash. **Zero
+substantive added, zero substantive removed — exactly the plan's `+0/-0`
+prediction, exit 0.**
+
+The 45 allowlisted lines are fully derivable, and the derivation exposes a
+record error (below). The verifier compares a Counter over *all* changed files
+at once, so a preamble line's count goes 1 → 3:
+
+| boilerplate | delta |
+|---|---|
+| 11 `#include` lines × 2 extra copies | +22 |
+| 2 `namespace … {` opens × 2 | +4 |
+| 2 `} // namespace …` closes × 2 | +4 |
+| the 2 original header comment lines × 2 | +4 |
+| new header comment lines (3 stays + 5 chr + 3 search) | +11 |
+| **total** | **+45** ✅ |
+
+⚠ **Record error in §Measured: the preamble has ELEVEN `#include` lines, not
+ten.** (`race_model_loader.h`, `willeq_database.h`, `race_codes.h`,
+`geometry_combiner.h`, `animation_mapping.h`, `pfs.h`,
+`graphics_archive_index.h`, `common/logging.h`, `<algorithm>`,
+`<filesystem>`, `<iostream>` — lines 4-14.) The structure still sums to 17
+(2 comments + blank + 11 includes + blank + 2 opens), and nothing about the
+split depends on the count, but the verifier arithmetic is off by 2 if you
+trust the plan's ten. **Same class as J25's "six includes (five)".** Third
+Wave-6 unit to correct an include count in §Measured.
