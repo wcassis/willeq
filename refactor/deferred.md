@@ -123,13 +123,32 @@ everything else is open.
 ### TIER 2 — live, user-reachable wrongness
 
 3. **CRC validation is disabled on EVERY zone connect** —
-   `src/client/eq.cpp:718`, `zone_opts.skip_crc_validation = true;  // TODO: Remove
-   after CRC bug is fixed`.
+   `zone_opts.skip_crc_validation = true;  // TODO: Remove after CRC bug is fixed`
+   in `EverQuest::ConnectToZone()`, `src/client/eq.cpp`.
    *Impact:* every corrupted or truncated zone-stream packet is accepted and parsed
    as if valid, for the whole session. This is the widest live correctness hole in
    the client.
-   **EXECUTOR-READY to root-cause**; the flip itself is blocked on finding the
-   underlying CRC bug, which nothing on this board describes. Audit provenance: #2.
+   **ROOT-CAUSED by T321 (2026-09-02): THERE IS NO CRC BUG.** All 73,356 CRC-bearing
+   packets in T311 Leg A's capture — login, world and zone, both directions — pass
+   `ValidateCRC()` with validation enabled. Login and world have validated CRC all
+   along (only the zone manager sets the flag); the sole difference between the zone
+   handshake and theirs is compression, which is applied inside the CRC on send and
+   stripped after validation on receive. The flag is a stale workaround for the
+   `OP_SessionResponse` byte-order bugs that **T21 (`ad221f29`, 2026-07-31) fixed**
+   six months after the flag was added (`895aad1e`, 2026-01-22); nothing retested it.
+   Pinned by `tests/test_daybreak_crc_capture.cpp` (7 tests) + fixture
+   `tests/data/t321_crc_capture.txt`. Full diagnosis, evidence tables and the
+   remaining unmeasured caveat (eqemu's own RNG collapse makes every recorded
+   `encode_key` a byte-swap palindrome, so key byte order is argued, not measured):
+   `refactor/T321_crc_root_cause.md` `## Review`.
+   **WHAT REMAINS is a one-line deletion plus a live acceptance run** — T321 could
+   not take it (eqemu unreachable from the dev host, lock ambiguous, and a stale
+   T312 client was still running in slot2). Scope: delete the flag line, zone in,
+   move, zone out, grep the log for `DROPPED_CRC`, and state plainly that a short
+   session does not prove the absence of a rare mismatch. Note the failure mode of a
+   real mismatch is a **dropped datagram, not a disconnect** — a dropped reliable
+   frame is re-sent on ack timeout. **EXECUTOR-READY (short, live).**
+   Audit provenance: #2.
 
 4. **UCS / chat server NEVER CONNECTS** — `src/client/eq_login_world.cpp:833-834`:
    `// TODO: Fix UCS implementation to use correct EQStream API` with
@@ -973,7 +992,7 @@ A full audit of every batch plan answered the owner's question "were the partial
 
 **NEWLY SURFACED CLASS-A DEFECTS (not previously on this board).** These are live paths, each with a file:line. **⚠ T302 (2026-08-28): THIS NUMBERING IS PROVENANCE, NOT SEVERITY — an item earned a number by being NEW THAT DAY. The severity-ranked queue of record is "THE ONE CLASS-A LIST" at the top of this file; every item below was re-verified against `4dd8b0bc` and appears there under its rank, with its audit number cited as provenance. Do not scope work off the order below.**
 1. **UCS/chat server NEVER CONNECTS** — `eq_login_world.cpp:834` `// TODO: Fix UCS implementation to use correct EQStream API`, `ConnectToUCS(...)` commented out inside the live `WorldProcessSetChatServer` handler. The whole cross-zone chat feature is dead.
-2. **CRC validation disabled on EVERY zone connect** — `eq.cpp:718` `zone_opts.skip_crc_validation = true; // TODO: Remove after CRC bug is fixed`.
+2. **CRC validation disabled on EVERY zone connect** — `eq.cpp` `zone_opts.skip_crc_validation = true; // TODO: Remove after CRC bug is fixed`. **T321 root-caused it: there is no CRC bug — the flag is stale. See tier 2 item 3.**
 3. **Autorun key is a live no-op** — `eq_action_handler.cpp:142` (bound at `input_action_bridge.cpp:72`).
 4. **`InteractWorldObject` keybind always fails** — `action_dispatcher.cpp:523`.
 5. ~~**`ReplyToTell` keybind returns a sentinel and does nothing**~~ — `action_dispatcher.cpp:688`. Action fixed by T316; the R key wired end to end by T319 (tier 3 item 13).
