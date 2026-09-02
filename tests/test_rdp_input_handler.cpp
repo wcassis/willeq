@@ -327,6 +327,153 @@ TEST_F(RDPWheelDeltaTest, HalfNotch) {
     EXPECT_FLOAT_EQ(rdpGetWheelDelta(flags), 0.5f);
 }
 
+// ============================================================================
+// T317 — caps lock over RDP
+//
+// `IrrlichtRenderer::handleRDPKeyboard` used to pass a hardcoded
+// `bool capsLock = false;  // TODO: track caps lock state` into
+// rdpScancodeToChar(), so typing over RDP with caps lock on produced the
+// wrong case. rdpScancodeToChar()'s own `shift ^ capsLock` was always
+// correct; only the call site lied.
+//
+// Caps lock cannot be read the way shift is (isKeyDown on the receiver): it
+// is a TOGGLE, not a held modifier. RDPLockKeyState remembers it.
+// ============================================================================
+
+class RDPCapsLockTest : public ::testing::Test {
+protected:
+    static constexpr uint8_t kCaps = EQT::Graphics::RDPLockKeyState::kCapsLockScancode;
+    static constexpr uint16_t kRelease = EQT::Graphics::RDPLockKeyState::kFlagRelease;
+    static constexpr uint8_t kQ = 0x10;
+    static constexpr uint8_t kOne = 0x02;
+
+    // One full physical press of caps lock.
+    static void Press(EQT::Graphics::RDPLockKeyState& s, uint8_t scancode) {
+        s.applyKeyEvent(0, scancode);
+        s.applyKeyEvent(kRelease, scancode);
+    }
+};
+
+// ---- The four-case table the plan asks for. caps+shift catches a naive OR.
+
+TEST_F(RDPCapsLockTest, CaseTable_ShiftTimesCapsLock) {
+    struct Case { bool shift; bool caps; wchar_t expect; const char* why; };
+    const Case cases[] = {
+        {false, false, L'q', "neither"},
+        {true,  false, L'Q', "shift only"},
+        {false, true,  L'Q', "caps only -- the case the hardcoded false broke"},
+        {true,  true,  L'q', "caps AND shift cancel: XOR, not OR"},
+    };
+    for (const auto& c : cases) {
+        EXPECT_EQ(rdpScancodeToChar(kQ, c.shift, c.caps), c.expect) << c.why;
+    }
+}
+
+TEST_F(RDPCapsLockTest, NEGATIVE_CapsLockDoesNotShiftTheNumberRow) {
+    // On a real keyboard caps lock affects letters only. `1` must not become
+    // `!` because caps is on -- only shift does that.
+    EXPECT_EQ(rdpScancodeToChar(kOne, /*shift=*/false, /*caps=*/true), L'1');
+    EXPECT_EQ(rdpScancodeToChar(kOne, /*shift=*/true, /*caps=*/true), L'!');
+    EXPECT_EQ(rdpScancodeToChar(kOne, /*shift=*/true, /*caps=*/false), L'!');
+}
+
+// ---- The state machine
+
+TEST_F(RDPCapsLockTest, StartsOffAndTogglesOnEachPress) {
+    EQT::Graphics::RDPLockKeyState state;
+    EXPECT_FALSE(state.capsLock());
+
+    Press(state, kCaps);
+    EXPECT_TRUE(state.capsLock());
+
+    Press(state, kCaps);
+    EXPECT_FALSE(state.capsLock());
+}
+
+TEST_F(RDPCapsLockTest, NEGATIVE_ItIsAToggleNotAHeldModifier) {
+    // A modifier would be false again after the release. A lock is not.
+    EQT::Graphics::RDPLockKeyState state;
+    state.applyKeyEvent(0, kCaps);
+    EXPECT_TRUE(state.capsLock());
+    state.applyKeyEvent(kRelease, kCaps);
+    EXPECT_TRUE(state.capsLock()) << "releasing the key must not clear the lock";
+}
+
+TEST_F(RDPCapsLockTest, NEGATIVE_AutoRepeatIsOnePressNotMany) {
+    // RDP repeats key-downs while the key is held. Toggling on each would
+    // leave the state a coin flip on how long the user leaned on the key.
+    EQT::Graphics::RDPLockKeyState state;
+    for (int i = 0; i < 7; ++i) {
+        state.applyKeyEvent(0, kCaps);  // held down, repeating
+    }
+    EXPECT_TRUE(state.capsLock()) << "seven repeats of one press is still one toggle";
+    state.applyKeyEvent(kRelease, kCaps);
+    EXPECT_TRUE(state.capsLock());
+
+    Press(state, kCaps);
+    EXPECT_FALSE(state.capsLock());
+}
+
+TEST_F(RDPCapsLockTest, NEGATIVE_OtherKeysDoNotTouchTheLock) {
+    EQT::Graphics::RDPLockKeyState state;
+    Press(state, kCaps);
+    ASSERT_TRUE(state.capsLock());
+    for (uint8_t sc : {kQ, kOne, uint8_t(0x2A) /*lshift*/, uint8_t(0x1D) /*lctrl*/}) {
+        Press(state, sc);
+    }
+    EXPECT_TRUE(state.capsLock());
+}
+
+// ---- KBD_SYNC: the only way to learn about a press from before we connected
+
+TEST_F(RDPCapsLockTest, SynchronizeAdoptsTheClientsLockState) {
+    EQT::Graphics::RDPLockKeyState state;
+    ASSERT_FALSE(state.capsLock());
+
+    state.applySynchronize(KBD_SYNC_CAPS_LOCK);
+    EXPECT_TRUE(state.capsLock())
+        << "a session that connects with caps lock already on must know it";
+
+    state.applySynchronize(0);
+    EXPECT_FALSE(state.capsLock());
+}
+
+TEST_F(RDPCapsLockTest, NEGATIVE_NumLockAndScrollLockAreNotCapsLock) {
+    // KBD_SYNC_SCROLL_LOCK is 0x1, KBD_SYNC_NUM_LOCK is 0x2, CAPS is 0x4.
+    // Reading the wrong bit is the obvious way to get this wrong.
+    EQT::Graphics::RDPLockKeyState state;
+    state.applySynchronize(KBD_SYNC_NUM_LOCK | KBD_SYNC_SCROLL_LOCK);
+    EXPECT_FALSE(state.capsLock());
+
+    state.applySynchronize(KBD_SYNC_NUM_LOCK | KBD_SYNC_CAPS_LOCK);
+    EXPECT_TRUE(state.capsLock());
+
+    // And our own constant matches FreeRDP's, not a neighbour's.
+    EXPECT_EQ(EQT::Graphics::RDPLockKeyState::kSyncCapsLock,
+              static_cast<uint32_t>(KBD_SYNC_CAPS_LOCK));
+}
+
+TEST_F(RDPCapsLockTest, SyncThenTogglingStillWorks) {
+    EQT::Graphics::RDPLockKeyState state;
+    state.applySynchronize(KBD_SYNC_CAPS_LOCK);
+    Press(state, kCaps);
+    EXPECT_FALSE(state.capsLock());
+    Press(state, kCaps);
+    EXPECT_TRUE(state.capsLock());
+}
+
+// ---- End to end: the state feeding the translator, which is the bug
+
+TEST_F(RDPCapsLockTest, TypingAfterPressingCapsLockProducesUppercase) {
+    EQT::Graphics::RDPLockKeyState state;
+    EXPECT_EQ(rdpScancodeToChar(kQ, false, state.capsLock()), L'q');
+    Press(state, kCaps);
+    EXPECT_EQ(rdpScancodeToChar(kQ, false, state.capsLock()), L'Q');
+    EXPECT_EQ(rdpScancodeToChar(kQ, true, state.capsLock()), L'q');
+    Press(state, kCaps);
+    EXPECT_EQ(rdpScancodeToChar(kQ, false, state.capsLock()), L'q');
+}
+
 #else
 
 // Provide a dummy test when RDP is not enabled

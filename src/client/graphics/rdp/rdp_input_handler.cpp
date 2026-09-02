@@ -139,6 +139,28 @@ irr::EKEY_CODE rdpScancodeToIrrlicht(uint8_t rdpScancode, bool extended) {
     }
 }
 
+void RDPLockKeyState::applyKeyEvent(uint16_t flags, uint8_t scancode) {
+    if (scancode != kCapsLockScancode) {
+        return;
+    }
+    const bool released = (flags & kFlagRelease) != 0;
+    if (released) {
+        capsKeyDown_ = false;
+        return;
+    }
+    if (capsKeyDown_) {
+        return;  // auto-repeat while held -- one physical press, one toggle
+    }
+    capsKeyDown_ = true;
+    capsLock_ = !capsLock_;
+}
+
+void RDPLockKeyState::applySynchronize(uint32_t syncFlags) {
+    // Authoritative: this is the client telling us its actual lock state.
+    capsLock_ = (syncFlags & kSyncCapsLock) != 0;
+    capsKeyDown_ = false;
+}
+
 wchar_t rdpScancodeToChar(uint8_t rdpScancode, bool shift, bool capsLock) {
     // Determine if we should use uppercase
     bool upper = shift ^ capsLock;

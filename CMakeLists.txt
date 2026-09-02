@@ -383,6 +383,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/spell/spell_animations.cpp
     src/client/spell/spells_eff_reader.cpp
     # Skill system sources
+    src/client/skill/behind_target.cpp
     src/client/skill/skill_cap_table.cpp
     src/client/skill/skill_manager.cpp
 )

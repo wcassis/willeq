@@ -48,6 +48,15 @@ using RDPKeyboardCallback = std::function<void(uint16_t flags, uint8_t scancode)
 using RDPMouseCallback = std::function<void(uint16_t flags, uint16_t x, uint16_t y)>;
 
 /**
+ * Callback for the RDP synchronize (KBD_SYNC) message -- the client telling
+ * the server its keyboard lock state (caps/num/scroll). T317: this is the
+ * only way to learn that caps lock was ALREADY on when the session connected,
+ * since the key stream cannot report a press from before we were listening.
+ * Flags are FreeRDP's KBD_SYNC_* bits.
+ */
+using RDPSyncCallback = std::function<void(uint32_t syncFlags)>;
+
+/**
  * Native RDP server for streaming WillEQ graphics.
  *
  * This class provides an RDP server that can stream the game's framebuffer
@@ -166,6 +175,11 @@ public:
     void setMouseCallback(RDPMouseCallback callback) { mouseCallback_ = std::move(callback); }
 
     /**
+     * Set the callback for keyboard-lock synchronize (KBD_SYNC) messages.
+     */
+    void setSyncCallback(RDPSyncCallback callback) { syncCallback_ = std::move(callback); }
+
+    /**
      * Send audio samples to connected RDP clients.
      *
      * Call this from the audio mixing callback to stream audio.
@@ -195,6 +209,7 @@ public:
     void onPeerDisconnected(RDPPeerContext* context);
     void onKeyboardEventInternal(uint16_t flags, uint8_t scancode);
     void onMouseEventInternal(uint16_t flags, uint16_t x, uint16_t y);
+    void onSynchronizeEventInternal(uint32_t syncFlags);
 
     // Audio callbacks (public for C callback access)
     void onAudioActivated(RDPPeerContext* context);
@@ -273,6 +288,7 @@ private:
     // Input callbacks
     RDPKeyboardCallback keyboardCallback_;
     RDPMouseCallback mouseCallback_;
+    RDPSyncCallback syncCallback_;
 
     // Audio streaming
     bool audioEnabled_ = true;

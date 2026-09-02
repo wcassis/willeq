@@ -50,6 +50,13 @@ bool IrrlichtRenderer::initRDP(uint16_t port) {
         handleRDPMouse(flags, x, y);
     });
 
+    // T317: the client's keyboard lock state, sent once at connect and again
+    // whenever it changes. Without this, a session that connects with caps
+    // lock already on has no way to know.
+    rdpServer_->setSyncCallback([this](uint32_t syncFlags) {
+        handleRDPSynchronize(syncFlags);
+    });
+
     LOG_INFO(MOD_GRAPHICS, "RDP server initialized on port {}", port);
     return true;
 }
@@ -156,8 +163,13 @@ void IrrlichtRenderer::handleRDPKeyboard(uint16_t flags, uint8_t scancode) {
     // Get character for text input
     bool shift = eventReceiver_->isKeyDown(irr::KEY_LSHIFT) ||
                  eventReceiver_->isKeyDown(irr::KEY_RSHIFT);
-    bool capsLock = false;  // TODO: track caps lock state
-    wchar_t character = rdpScancodeToChar(scancode, shift, capsLock);
+    // T317: caps lock was hardcoded false here, so typing over RDP with caps
+    // lock on produced the wrong case. It is a TOGGLE, not a held modifier --
+    // isKeyDown() cannot answer for it -- so rdpLockKeys_ remembers it, fed by
+    // this key stream and by the client's KBD_SYNC message. Update BEFORE
+    // translating: pressing caps lock takes effect from that keystroke on.
+    rdpLockKeys_.applyKeyEvent(flags, scancode);
+    wchar_t character = rdpScancodeToChar(scancode, shift, rdpLockKeys_.capsLock());
 
     // Create Irrlicht key event
     irr::SEvent event;
@@ -171,6 +183,10 @@ void IrrlichtRenderer::handleRDPKeyboard(uint16_t flags, uint8_t scancode) {
 
     // Post event to Irrlicht device
     device_->postEventFromUser(event);
+}
+
+void IrrlichtRenderer::handleRDPSynchronize(uint32_t syncFlags) {
+    rdpLockKeys_.applySynchronize(syncFlags);
 }
 
 void IrrlichtRenderer::handleRDPMouse(uint16_t flags, uint16_t x, uint16_t y) {

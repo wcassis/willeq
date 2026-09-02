@@ -441,6 +441,12 @@ void RDPServer::onPeerDisconnected(RDPPeerContext* context) {
     LOG_INFO(MOD_GRAPHICS, "RDP client disconnected (remaining: {})", activePeers_.size());
 }
 
+void RDPServer::onSynchronizeEventInternal(uint32_t syncFlags) {
+    if (syncCallback_) {
+        syncCallback_(syncFlags);
+    }
+}
+
 void RDPServer::onKeyboardEventInternal(uint16_t flags, uint8_t scancode) {
     if (keyboardCallback_) {
         keyboardCallback_(flags, scancode);
@@ -835,7 +841,13 @@ static BOOL onPeerActivate(freerdp_peer* client) {
 }
 
 static BOOL onSynchronizeEvent(rdpInput* input, UINT32 flags) {
-    // Synchronize keyboard state (num lock, caps lock, etc.)
+    // T317: the client's keyboard lock state (KBD_SYNC_CAPS_LOCK etc.). This
+    // used to be discarded, which is why a session that connected with caps
+    // lock already on typed lowercase until the key was pressed twice.
+    RDPPeerContext* context = reinterpret_cast<RDPPeerContext*>(input->context);
+    if (context && context->server) {
+        context->server->onSynchronizeEventInternal(flags);
+    }
     return TRUE;
 }
 

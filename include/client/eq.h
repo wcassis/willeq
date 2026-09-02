@@ -1283,6 +1283,17 @@ public:
 	// SendGuild*() sender in eq_guild.cpp guards on that, correctly.
 	uint32_t GetGuildID() const { return m_guild_id; }
 
+	// T317: the player's own guild rank, in the TITANIUM encoding the wire and
+	// the profile use -- 0 = member, 1 = officer, 2 = leader, 9
+	// (GUILD_RANK_NONE_TI) = none/unknown. Parsed from PlayerProfile offset
+	// 13055, one byte after `gm` at 13054, in ZoneProcessPlayerProfile: the
+	// same once-per-login shape as m_guild_id and m_gm_mode. The server folds
+	// its own 0..8 rank scale into these three values in
+	// common/patches/titanium.cpp:1494 -- a Titanium client cannot see any
+	// finer rank than that. See client/guild_packet_bodies.h for what the
+	// guild opcodes actually do with a rank byte.
+	uint8_t GetGuildRank() const { return m_guild_rank; }
+
 	// T148: "GM mode was ON at login", NOT "this account has GM privileges".
 	//
 	// Populated once, from PlayerProfile.gm at offset 13054, in
@@ -2084,6 +2095,9 @@ private:
 
 	// Guild state
 	uint32_t m_guild_id = 0;
+	// T317: Titanium rank encoding (0 member / 1 officer / 2 leader / 9 none).
+	// 9 == GUILD_RANK_NONE_TI is the correct "not in a guild" default.
+	uint8_t m_guild_rank = 9;
 	std::string m_guild_name;
 	bool m_has_pending_guild_invite = false;
 	std::string m_guild_invite_from;
