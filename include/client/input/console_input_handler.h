@@ -42,8 +42,6 @@ public:
     bool hasAction(InputAction action) const override;
     bool consumeAction(InputAction action) override;
 
-    const InputState& getState() const override { return m_state; }
-    void resetMouseDeltas() override;
 
     std::optional<SpellCastRequest> consumeSpellCastRequest() override;
     std::optional<HotbarRequest> consumeHotbarRequest() override;
@@ -95,7 +93,6 @@ private:
     mutable std::mutex m_mutex;
 
     // State
-    InputState m_state;
     bool m_pendingActions[static_cast<size_t>(InputAction::Count)] = {false};
 
     // Pending requests (thread-safe queues)

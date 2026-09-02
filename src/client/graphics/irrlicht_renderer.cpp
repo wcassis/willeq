@@ -483,8 +483,9 @@ int RendererEventReceiver::getMouseDeltaY() {
     return delta;
 }
 
-// T225: read-and-reset as one atomic exchange -- consumed on both the render
-// thread (processFrameInput) and the game thread (GraphicsInputHandler).
+// Read-and-reset as one atomic exchange. T315: ONE consumer, on the render
+// thread (processFrameInput). The game-thread caller was deleted -- see the
+// note at the declaration.
 bool RendererEventReceiver::wasLeftButtonClicked() {
     return leftButtonClicked_.exchange(false, std::memory_order_relaxed);
 }

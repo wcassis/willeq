@@ -103,12 +103,6 @@ bool ConsoleInputHandler::consumeAction(InputAction action) {
     return was_pending;
 }
 
-void ConsoleInputHandler::resetMouseDeltas() {
-    std::lock_guard<std::mutex> lock(m_mutex);
-    m_state.mouseDeltaX = 0;
-    m_state.mouseDeltaY = 0;
-}
-
 std::optional<SpellCastRequest> ConsoleInputHandler::consumeSpellCastRequest() {
     std::lock_guard<std::mutex> lock(m_mutex);
     if (m_spellCastRequests.empty()) {
@@ -200,17 +194,6 @@ void ConsoleInputHandler::inputThreadFunc() {
                     m_keyboardMode.store(false);
                     disableRawMode();
 
-                    // Clear movement state when switching modes
-                    {
-                        std::lock_guard<std::mutex> lock(m_mutex);
-                        m_state.moveForward = false;
-                        m_state.moveBackward = false;
-                        m_state.strafeLeft = false;
-                        m_state.strafeRight = false;
-                        m_state.turnLeft = false;
-                        m_state.turnRight = false;
-                    }
-
                     std::cout << "\r\n[Command mode] Enter command (or press Enter for keyboard mode): ";
                     std::cout.flush();
                 } else {
@@ -289,35 +272,13 @@ void ConsoleInputHandler::processKeyboardInput(char key) {
     std::lock_guard<std::mutex> lock(m_mutex);
 
     switch (key) {
-        // Movement keys (WASD)
-        case 'w':
-        case 'W':
-            m_state.moveForward = true;
-            break;
-        case 's':
-        case 'S':
-            m_state.moveBackward = true;
-            break;
-        case 'a':
-        case 'A':
-            m_state.turnLeft = true;
-            break;
-        case 'd':
-        case 'D':
-            m_state.turnRight = true;
-            break;
-        case 'q':
-        case 'Q':
-            m_state.strafeLeft = true;
-            break;
-        case 'e':
-        case 'E':
-            m_state.strafeRight = true;
-            break;
-
-        // Key release simulation (lowercase to stop)
-        // Note: In real terminal, we can't detect key release, so this is simplified
-        // Movement will need to be toggled or use a different approach
+        // T315: the WASD/QE cases here set InputState movement flags, and
+        // InputState had no reader in the tree -- console keyboard mode has
+        // never actually moved the character, in any build. The cases are
+        // deleted with the struct rather than left looking functional. If
+        // console keyboard movement is wanted, it has to be wired to the
+        // same move commands processCommand() below already emits, and
+        // proved by a test that observes the character moving.
 
         // Jump
         case ' ':
@@ -334,17 +295,6 @@ void ConsoleInputHandler::processKeyboardInput(char key) {
         case 'r':
         case 'R':
             m_pendingActions[static_cast<size_t>(InputAction::ToggleAutorun)] = true;
-            break;
-
-        // Stop all movement
-        case 'x':
-        case 'X':
-            m_state.moveForward = false;
-            m_state.moveBackward = false;
-            m_state.strafeLeft = false;
-            m_state.strafeRight = false;
-            m_state.turnLeft = false;
-            m_state.turnRight = false;
             break;
 
         // Quit

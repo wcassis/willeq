@@ -8,7 +8,10 @@ Input flows through a four-layer pipeline: capture → hotkey resolution → act
 
 **IInputHandler** (`input_handler.h`) — Abstract interface defining the input contract:
 - `InputAction` enum (79 discrete one-shot actions): Quit, Screenshot, Jump, ToggleAutoAttack, TargetSelf, ToggleInventory, etc.
-- `InputState` struct for continuous state (movement direction, mouse position)
+- Continuous state (movement, mouse position) is polled at the point of
+  use, on the thread that uses it -- there is deliberately no snapshot
+  struct. T315 deleted `InputState`: it had no reader, and filling it
+  stole the render thread's clicks and mouse deltas.
 - Request queues: `SpellCastRequest`, `HotbarRequest`, `TargetRequest`, `LootRequest`, `ChatMessage`
 - Implementations: `GraphicsInputHandler` (Irrlicht), `ConsoleInputHandler` (text), `NullInputHandler` (headless)
 

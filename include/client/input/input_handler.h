@@ -13,7 +13,8 @@ namespace input {
  * InputAction - Discrete input actions that can be triggered.
  *
  * These are one-shot actions that are consumed when processed.
- * For continuous state (like movement keys held), use InputState.
+ * For continuous state (like movement keys held), poll the source on the
+ * thread that consumes it (T315 -- see the note above IInputHandler).
  */
 enum class InputAction {
     // System
@@ -123,36 +124,29 @@ struct MoveCommand {
     std::string entityName;
 };
 
-/**
- * InputState - Continuous input state for polling.
+/*
+ * T315: the polled-snapshot struct that used to live here (a per-handler
+ * copy of movement flags, mouse position, mouse delta and the two click
+ * one-shots) is GONE, together with the getState() and resetMouseDeltas()
+ * interface members that were its only route out.
  *
- * This represents the current state of input devices.
- * For movement, these are polled each frame.
+ * It had no reader anywhere in the tree -- getState() had zero callers in
+ * src/ or tests/ -- so every handler spent each tick filling in a struct
+ * nobody looked at. That was not merely waste: filling it meant CONSUMING
+ * RendererEventReceiver's destructive read-and-reset accessors from the
+ * game thread, and those accessors have a real consumer on the render
+ * thread. T312 removed the mouse-delta theft that froze the camera; T315
+ * removed the click theft that silently swallowed clicks on inventory
+ * slots, loot rows and spell gems.
+ *
+ * Continuous state is polled where it is used, on the thread that uses it:
+ * movement from RendererEventReceiver::isKeyDown() in
+ * renderer_player_physics.cpp, mouse position and clicks in
+ * renderer_frame.cpp's processFrameInput(). If a future consumer needs a
+ * snapshot, wire the consumer FIRST -- see
+ * tests/test_read_and_reset_ownership.cpp, which fails if this struct
+ * comes back.
  */
-struct InputState {
-    // Movement keys (continuous state)
-    bool moveForward = false;
-    bool moveBackward = false;
-    bool strafeLeft = false;
-    bool strafeRight = false;
-    bool turnLeft = false;
-    bool turnRight = false;
-
-    // Mouse state (for graphics mode)
-    int mouseX = 0;
-    int mouseY = 0;
-    int mouseDeltaX = 0;
-    int mouseDeltaY = 0;
-    bool leftButtonDown = false;
-    bool rightButtonDown = false;
-    bool leftButtonClicked = false;   // Just clicked this frame
-    bool leftButtonReleased = false;  // Just released this frame
-    int clickMouseX = 0;              // Position where click started
-    int clickMouseY = 0;
-
-    // Shift key state (for loot corpse with shift+click)
-    bool shiftHeld = false;
-};
 
 /**
  * IInputHandler - Abstract interface for input handling.
@@ -195,18 +189,6 @@ public:
      * Consume an action, returning true if it was triggered.
      */
     virtual bool consumeAction(InputAction action) = 0;
-
-    // ========== Continuous State ==========
-
-    /**
-     * Get the current input state for polling.
-     */
-    virtual const InputState& getState() const = 0;
-
-    /**
-     * Reset mouse delta values (called after consuming deltas).
-     */
-    virtual void resetMouseDeltas() = 0;
 
     // ========== Special Requests ==========
 

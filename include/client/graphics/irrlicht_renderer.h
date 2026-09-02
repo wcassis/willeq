@@ -381,6 +381,14 @@ public:
     int getMouseDeltaY();
     bool isLeftButtonDown() const { return leftButtonDown_.load(std::memory_order_relaxed); }
     bool isRightButtonDown() const { return rightButtonDown_.load(std::memory_order_relaxed); }
+    // T315: destructive read-and-reset (atomic exchange), RENDER THREAD
+    // ONLY -- the sole consumer is IrrlichtRenderer::processFrameInput(),
+    // which drives pendingUIClick_, the static-UI hit test and
+    // handleMouseTargeting(). GraphicsInputHandler polled these too, on the
+    // game thread, into a dead InputState field; whenever it won the
+    // exchange the click was consumed and no UI ever saw it. Do not add a
+    // second caller -- tests/test_read_and_reset_ownership.cpp fails if you
+    // do.
     bool wasLeftButtonClicked();  // Returns true once per click (not hold)
     bool wasLeftButtonReleased(); // Returns true once when button is released
     int getClickMouseX() const { return clickMouseX_.load(std::memory_order_relaxed); }
@@ -493,16 +501,18 @@ private:
     int lastMouseX_ = 0, lastMouseY_ = 0;
     std::atomic<bool> leftButtonDown_{false};
     std::atomic<bool> rightButtonDown_{false};
-    // T225: the read-and-reset flags below are SET on the render thread
-    // (OnEvent, from Irrlicht input) and CONSUMED on BOTH threads -- the
-    // render thread in IrrlichtRenderer::processFrameInput() and the game
-    // thread in GraphicsInputHandler::updateFromEventReceiver(). Each is an
-    // independent one-shot flag with no ordering relationship to any other
-    // field, so a relaxed exchange() at the reader is sufficient: it makes
-    // the read-and-reset a single indivisible step (exactly one consumer
-    // observes a given press) without imposing a fence. Intent routing was
-    // rejected because both threads are legitimate consumers of the same
-    // flag; see refactor/T225_event_receiver_flags.md.
+    // SET on the render thread (OnEvent, from Irrlicht input) and consumed
+    // on the render thread (IrrlichtRenderer::processFrameInput()).
+    // T315 SUPERSEDES T225 HERE: T225 kept the game-thread consumer on the
+    // grounds that "both threads are legitimate consumers of the same
+    // flag". They were not -- the game-thread side
+    // (GraphicsInputHandler::updateFromEventReceiver) stored the result in
+    // InputState, a struct with zero readers, so it could only ever eat the
+    // click. It was deleted, along with InputState itself. They stay atomic
+    // because OnEvent writes them from the render thread's event pump while
+    // the flags are also touched during the frame, and a relaxed exchange()
+    // keeps the read-and-reset one indivisible step; there is no ordering
+    // relationship to any other field.
     std::atomic<bool> leftButtonClicked_{false};
     std::atomic<bool> leftButtonReleased_{false};
     std::atomic<int> clickMouseX_{0};
