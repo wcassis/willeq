@@ -561,3 +561,334 @@ insert into `SET(GRAPHICS_SOURCES`. **Merge one at a time and rebase.**
   `updatePlayerMovement` at your tip.
 - You find yourself needing to edit
   `tests/test_first_person_camera_single_formula.cpp`.
+
+## Review (executor, slot3, 2026-09-02)
+
+**Branch `task/J33-player-physics-split`, base `0c95f7df4cf59481d6be267f181052c026a49a0f`**
+(`fable` tip at checkout; the plan measured at `824adb28`).
+`git diff --stat 824adb28 HEAD -- src/client/graphics/renderer_player_physics.cpp`
+is **empty** — the file did not drift between the plan's survey and this tip.
+
+**13. T312 ancestry (measured, not read):**
+`git merge-base --is-ancestor c9b02f7e HEAD` → **exit 0.** T312 is an ancestor of
+the base. No live hold on this file.
+
+### 1. Line count at my tip
+
+**1,546 lines — exactly the plan's number. Zero range drift.** Every cut boundary
+in §Every cut boundary matched at my tip without offset.
+
+### 2. §Measured re-verified (own greps, pasted)
+
+```
+$ grep -n '^[A-Za-z_].*IrrlichtRenderer::' src/client/graphics/renderer_player_physics.cpp
+19, 826, 875, 968, 1031, 1038, 1050, 1101, 1122, 1134, 1148, 1168, 1212, 1257,
+1351, 1496, 1508, 1539            -> 18 method definitions ✅
+
+$ grep -n 'namespace' src/client/graphics/renderer_player_physics.cpp
+14:namespace EQT {
+15:namespace Graphics {
+1545:} // namespace Graphics
+1546:} // namespace EQT                      -> exactly four ✅
+
+$ grep -n '/\*' src/client/graphics/renderer_player_physics.cpp
+(no output, exit 1)                          -> zero comment regions ✅
+
+$ grep -cE '^// ={4,}' src/client/graphics/renderer_player_physics.cpp
+0                                            -> zero banners ✅ (correction 28's -E used)
+```
+
+Preamble 1-15 confirmed: 12 `#include`, blank at 13, `namespace EQT {` /
+`namespace Graphics {` at 14-15. Zero non-boilerplate lines.
+
+### 3. Correction 21, re-derived (not cited)
+
+```
+$ grep -n '^static \|^namespace\s*{\|^const \|^constexpr \|^extern ' \
+      src/client/graphics/renderer_player_physics.cpp
+(no output, exit 1)
+```
+
+**Zero file-scope `static` symbols, zero anonymous namespaces, zero file-scope
+constants.** Every one of the 18 definitions is an `IrrlichtRenderer::` member
+with external linkage declared in `include/client/graphics/irrlicht_renderer.h`,
+so there is no file-local symbol whose consumer could land in the other range.
+`updatePlayerMovement` (stays range) calling `checkMovementCollision` /
+`findGroundZ` / `findGroundZBspFiltered` (moved range) is an ordinary
+cross-TU member call resolved by the linker. **Correction 21 has no exposure
+here, confirmed by measurement, and the build proves it.**
+
+### 4. Comment depth at the cut (computed)
+
+```
+$ python3 <the //-stripping counter>
+depth after line 825 = 0
+depth after line 826 = 0
+```
+
+Depth 0 on both sides of the only cut, as expected from zero `/*` in the file.
+
+Cut context (822-830), pasted so it is on record that the two-line signature at
+826-827 was not split:
+
+```
+822:        }
+823:    }
+824: }
+825:
+826: bool IrrlichtRenderer::checkMovementCollision(float fromX, float fromY, float fromZ,
+827:                                                float toX, float toY, float toZ) {
+828:     if (!collisionMap_) {
+829:         return true;  // No collision map = allow movement
+830:     }
+```
+
+### 5. Preprocessor dump
+
+```
+$ awk '/^[ \t]*#(if|ifdef|ifndef|else|elif|endif)/ {print NR": "$0}' \
+      src/client/graphics/renderer_player_physics.cpp
+(no output)
+```
+
+**Zero conditional preprocessor directives in the whole file.** The cut cannot
+land inside a conditional region.
+
+### 6. File-header comment lines written (enumerated)
+
+`renderer_player_physics.cpp`, 11 lines prepended (all `//`):
+
+```
+1  // renderer_player_physics.cpp -- IrrlichtRenderer player-mode movement.
+2  // Split from the original 1,546-line TU by refactor/J33_renderer_player_physics_split.md
+3  // (move-only); the collision/raycast/ground-height family moved to
+4  // renderer_player_collision.cpp.
+5  // DO NOT RENAME THIS FILE, and DO NOT MOVE updatePlayerMovement() OUT OF IT:
+6  // tests/test_first_person_camera_single_formula.cpp names "renderer_player_physics.cpp"
+7  // as a string literal (kFloorSecondReader) and allows only this file and
+8  // renderer_camera.cpp to read firstPersonMinLookPitchDegrees. A rename or a move
+9  // fails TunablesAreReferencedFromOneTUOnly.
+10 // updatePlayerMovement() is 806 lines -- a recorded Batch-G decomposition candidate
+11 // that J33 deliberately did not touch; this TU has 673 lines of ceiling headroom.
+```
+
+`renderer_player_collision.cpp`, 6 lines (all `//`):
+
+```
+1 // renderer_player_collision.cpp -- IrrlichtRenderer movement collision, raycasts,
+2 // ground-height queries and collision debug lines.
+3 // Split from renderer_player_physics.cpp by
+4 // refactor/J33_renderer_player_physics_split.md (move-only, verbatim relocation).
+5 // updatePlayerMovement() stays in renderer_player_physics.cpp: a filename-keyed
+6 // guard in tests/test_first_person_camera_single_formula.cpp requires it.
+```
+
+**No other comment in either file was changed.**
+
+### 7. CMake add-sites and the tests/scripts greps
+
+```
+$ grep -rn 'renderer_player_physics\.cpp' CMakeLists.txt tests/ scripts/
+CMakeLists.txt:483:        src/client/graphics/renderer_player_physics.cpp
+tests/test_bridge_queue_race.cpp:149            (comment)
+tests/test_entity_collision_z_offset.cpp:9      (comment)
+tests/test_first_person_camera_single_formula.cpp:7,101,142,235,557  (5 hits: 4 comments + the kFloorSecondReader string literal at :147)
+tests/test_first_person_body_draw_rule.cpp:291  (comment)
+```
+
+**ONE CMake add-site, exactly as the plan predicted** — `CMakeLists.txt:483` in
+`SET(GRAPHICS_SOURCES` — and the new TU was inserted immediately after it. **No
+`tests/cmake/` fragment names this file; no test target changed; confirmed.**
+`gles2_zone_benchmark` untouched.
+
+Second grep (the exhaustive list of source paths any test opens as text):
+
+```
+$ grep -hn 'kRoot / "src\|kRoot / "include' tests/*.cpp | sort -u
+144: include/client/eq.h
+146: src/client/graphics/renderer_event_receiver.cpp
+151: include/client/state/<h>
+156: src/client/graphics/renderer_frame.cpp
+166: include/client/events/renderer_intents.h
+221: src/client/eq_bridge_intents.cpp
+259: src/client/eq_bridge_intents.cpp
+271: include/client/state/event_bus.h
+333: include/client/action/action_dispatcher.h
+357: src/client/action/action_dispatcher.cpp
+431: include/client/eq.h
+49:  const fs::path kGraphicsDir = kRoot / "src" / "client" / "graphics";
+652: src/client/help/renderer_command_catalog.cpp
+690: src/client/graphics/renderer_event_receiver.cpp
+698: src/client/graphics/renderer_frame.cpp
+706: src/client/graphics/renderer_frame.cpp
+```
+
+**`renderer_player_physics.cpp` does not appear as a `readFile` target — no
+repoint needed.** The `kGraphicsDir` line at `:49` is the recursive-sweep root
+that makes the third, filename-keyed guard invisible to both greps; it is
+handled in item 11.
+
+### 8. Both content proofs, and the verifier
+
+`BASE=0c95f7df4cf59481d6be267f181052c026a49a0f`
+
+**Byte-identical re-concatenation** — physics body (lines 27-836 of the new
+file = original 16-825, 810 lines) + collision body (lines 22-740 = original
+826-1544, 719 lines) = **1,529 lines**, against
+`git show "$BASE:...renderer_player_physics.cpp" | sed -n '16,1544p'`:
+
+```
+cmp before_body.txt after_concat.txt   -> CMP_EXIT=0
+```
+
+**Line-multiset check** on the same two sides, sorted:
+
+```
+diff before_sorted.txt after_sorted.txt -> MULTISET_EXIT=0   (MULTISET-OK)
+```
+
+**`updatePlayerMovement` byte-for-byte** (ranges derived from each file's own
+numbering: original 19-824 vs new 30-835, 806 lines each):
+
+```
+diff <(git show "$BASE:..." | sed -n '19,824p') <(sed -n '30,835p' <new>)
+-> exit 0, no output
+```
+(`sed -n '30p;835p'` on the new file prints
+`void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {` and `}`.)
+
+**Verifier — committed first, then run with `--repo` and the fork point:**
+
+```
+$ python3 scripts/refactor/verify_move_only.py "$BASE..HEAD" \
+      --repo /mnt/projects/fable/wt/slot3
+<see VERIFIER OUTPUT block appended below>
+```
+
+### 9. Final line counts, method counts, timing
+
+| file | lines | methods | derivation |
+|---|---|---|---|
+| `renderer_player_physics.cpp` | **838** | **1** | 11 header + 825 (orig 1-825) + 2 replicated closes |
+| `renderer_player_collision.cpp` | **742** | **17** | 6 header + 15 preamble + 721 (orig 826-1546, incl. the original's own closes) |
+
+**Method split 1 / 17 of 18 — exactly as predicted.** The plan's body figures
+(827 and 736) were **exactly right**; the deltas (+11, +6) are precisely the
+header-comment lines this plan itself prescribes, as correction 19 requires.
+`check_file_sizes.sh --files` on both: **2 ok, 0 warn, 0 fail.**
+
+Wall clock ≈ 2 h 15 m. **Slowest step by a wide margin: `build-gles2-x86.sh`,
+which hit the 600 s tool ceiling TWICE (exit 143) before completing on the third
+(detached) invocation.** `cmake --build build -j24` also hit 143 once. Wave
+concurrency stretched the verification tail heavily; the cut plus CMake plus all
+three proofs took **under 5 minutes** in total.
+
+⚠ **Truncation trap fired again (5th unit in the batch).** The first `cmake
+--build` exit-143 left **five zero-byte `build/bin/test_*`** files that
+`readelf -h` rejected (`test_eq_commands_equip`, `test_hunt_target_body_type`,
+`test_spell_body_type_targeting`, `test_spell_manager`, `test_train_skill`) —
+all zero-length, i.e. gmake had *started* deleting them. 261 recently-touched
+`.o` files all scanned clean. Deleted the five, rebuilt once, exit 0, second scan
+clean. Both `build-gles2-x86.sh` 143s were killed *links* that gmake deleted
+cleanly (correction 32's "absent" case): `lib/libwilleq_core.a` and
+`bin/gles2_zone_benchmark`; both scans found nothing bad.
+
+### Acceptance results
+
+| step | result |
+|---|---|
+| `cmake --build build -j24` | **exit 0** (after one exit-143 + truncation cleanup) |
+| ELF scan `build/bin/*` (221 files) | clean |
+| `ctest -R FirstPersonCameraSingleFormula` | **4/4 PASS**, run alone immediately after the cut |
+| `ctest -j6` full suite | **3506/3507**, 138.1 s. Sole failure `AudioManagerTest.PreloadCommonSounds` — the documented ALSA host quirk in `refactor/test_baseline.txt`. **Zero new failures.** No `HeadlessShutdownTest` flake this run. |
+| visual gate (in-suite test #3504) | **Passed**, 34.18 s |
+| `scripts/ci/visual_gate.sh` (standalone) | **=== VISUAL GATE: PASS ===**, all three zones, **zero image mismatches**; p95 CPU qeynos2 5.293/10.108, gfaydark 5.934/10.672, befallen 4.856/10.948 |
+| goldens | **untouched** — `git status --porcelain` after the gate shows only the two source files + the new TU |
+| `scripts/build-gles2-x86.sh` | **exit 0** (third invocation; two 600 s tool-ceiling kills) |
+| `scripts/build-arm-noble.sh` | **exit 0**, first invocation, ~7 min; ARM ELF scan clean |
+| `check_file_sizes.sh --files` (both files) | **2 ok, 0 warn, 0 fail** |
+
+### 10. Findings only, not fixes
+
+- **`docs/module_map.md` needs a row for `src/client/graphics/renderer_player_collision.cpp`**
+  (17 collision/raycast/ground-height members) and its `renderer_player_physics.cpp`
+  row narrowed to `updatePlayerMovement` alone. **Recorded, not acted on.**
+- Four `tests/` comments mention `renderer_player_physics.cpp`
+  (`test_bridge_queue_race.cpp:149`, `test_entity_collision_z_offset.cpp:9`,
+  `test_first_person_body_draw_rule.cpp:291`, and the five in
+  `test_first_person_camera_single_formula.cpp`). **All remain accurate after
+  this split** — every one refers to `updatePlayerMovement` or to the pitch
+  accumulator, both of which stayed. Per correction 24, no stale citation is
+  attributed to this unit.
+- **Cosmetic, declared not fixed (correction 30, in reverse):**
+  `renderer_player_collision.cpp` has **no blank line between
+  `namespace Graphics {` and its first method** — original line 16 (blank) and
+  17 (the `// --- Player Mode Movement Implementation ---` rule) belong to the
+  *stays* range, so the collision TU's body starts at original 826. Adding a
+  blank would have broken the multiset proof. **Left verbatim.** Conversely
+  `renderer_player_physics.cpp`'s tail is `}` / blank / two closes, which is the
+  normal shape, not a double blank. The original's three trailing blanks
+  (1542-1544) travelled with the collision TU untidied, as instructed.
+- **`kFirstPersonMaxUpPitchDegrees` is read at lines 118-119** (inside
+  `updatePlayerMovement`), which §Measured's token list did not mention. It is
+  **not** in the test's tunable list, so it constrains nothing — but a future
+  plan for this file should list it, because it is a first-person tunable that
+  the guard does *not* currently cover.
+
+### 11. The first-person guard, in full
+
+```
+$ grep -n 'CameraMode::FirstPerson\|camera_->setPosition(\|camera_->setTarget(\|kFirstPerson\|firstPersonM\|firstPersonV\|computeFirstPersonCamera' \
+      src/client/graphics/renderer_player_physics.cpp     # at BASE
+118:        if (playerPitch_ > kFirstPersonMaxUpPitchDegrees) playerPitch_ = kFirstPersonMaxUpPitchDegrees;
+119:        if (playerPitch_ < -kFirstPersonMaxUpPitchDegrees) playerPitch_ = -kFirstPersonMaxUpPitchDegrees;
+125:        // is consumed. computeFirstPersonCamera() clamps the total pitch again
+134:        if (cameraMode_ == CameraMode::FirstPerson) {
+135:            const float minLook = firstPersonMinLookPitchDegrees();
+731:    if (cameraMode_ == CameraMode::FirstPerson && (positionChanged || headingChanged || pitchChanged)) {
+```
+
+**Every one of these six lines is inside `updatePlayerMovement` (19-824) and
+therefore stayed in `renderer_player_physics.cpp`.** The same grep against
+`renderer_player_collision.cpp` returns **no output, exit 1** — the new TU
+matches none of the tokens, so it is invisible to both Part 1 and Part 2 of the
+sweep even though `fs::recursive_directory_iterator` does enumerate it.
+`camera_->setPosition(` / `camera_->setTarget(` appear in **neither** file, so
+Part 1 stays satisfied.
+
+I verified the constraint myself before cutting rather than taking the plan's
+word: `tests/test_first_person_camera_single_formula.cpp:147` declares
+`const std::string kFloorSecondReader = "renderer_player_physics.cpp";` and the
+`TunablesAreReferencedFromOneTUOnly` loop compares `path.filename().string()`
+against it for `firstPersonMinLookPitchDegrees` only. **My reading matches the
+plan's exactly.** Had `updatePlayerMovement` moved, `files` would have contained
+a third filename and the `EXPECT_TRUE(f == kHelperTU || f == kFloorSecondReader)`
+would have failed.
+
+```
+$ ctest --test-dir build -R FirstPersonCameraSingleFormula --output-on-failure
+900 OnlyTheHelperTUDrivesTheCameraInFirstPerson ......... Passed 1.66 sec
+901 TunablesAreReferencedFromOneTUOnly .................. Passed 0.92 sec
+902 TheOneBodyAppliesBothTunablesAndMouseLookPitch ...... Passed 0.01 sec
+903 DeadFirstPersonHelpersStayDeleted ................... Passed 1.99 sec
+100% tests passed, 0 tests failed out of 4
+```
+
+**`updatePlayerMovement` stayed in `renderer_player_physics.cpp`. No test file
+was edited.**
+
+### 12. Is the surviving 827-line (838 with header) TU acceptable?
+
+**Yes — I agree with the orchestrator, and I would not have decomposed it even
+if the plan had left the question open.** The ceiling is a context-budget rule,
+and the file now costs an agent roughly half what it did; 673 lines of headroom
+is not a file under pressure. The objection worth stating is a different one and
+it is not a Batch-J objection: `updatePlayerMovement` is 806 lines of
+input-sampling, collision probing, pitch clamping, camera-mode branching and
+position publishing in one body, and the *reason* it is hard to change is its
+internal structure, not the size of the file around it. Decomposing it would be
+a behaviour-risk change to the single hottest player-facing code path in the
+client — the one the visual gate and the first-person guards exist to protect —
+and doing it inside a commit whose contract is verbatim relocation would destroy
+the only cheap proof available (byte-identical re-concatenation). **Record it as
+a Batch-G candidate with the guard note attached; do not fold it into a split.**
