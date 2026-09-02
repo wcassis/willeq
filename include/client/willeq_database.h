@@ -133,6 +133,14 @@ struct SpellInfo {
     bool found = false;
 };
 
+// T316: one row of a partial-name spell search. Only id+name are read --
+// callers route the id back through SpellDatabase's LRU cache for the full
+// record, so the LIKE query never duplicates the 90-column SELECT.
+struct SpellNameMatch {
+    uint32_t id = 0;
+    std::string name;
+};
+
 // Central database for all EQ client data lookups.
 // Replaces in-memory parsed data structures with on-demand SQLite queries.
 // Thread-safe: WAL mode allows concurrent readers from game and sim threads.
@@ -157,6 +165,16 @@ public:
     // ── Spell queries ──
     SpellInfo getSpell(uint32_t spellId);
     SpellInfo getSpellByName(const std::string& name);
+    // T316: partial (substring) spell-name search -- the query
+    // /mem <partial name> needs and never had. The pattern is BOUND, never
+    // concatenated, and '%'/'_'/'\\' in @p partial are escaped so a player
+    // typing '%' matches a literal '%' instead of every spell in the game.
+    // Matching is SQLite's default ASCII-case-insensitive LIKE. Results are
+    // ordered shortest-name-first (an exact hit sorts to the front) and
+    // capped at @p limit rows.
+    std::vector<SpellNameMatch> findSpellsByNameLike(const std::string& partial,
+                                                     int limit = 50);
+
     uint32_t getSpellCount();
 
     // ── String queries ──
@@ -236,6 +254,7 @@ private:
     // Cached prepared statements (one per query type)
     sqlite3_stmt* stmtGetSpell_ = nullptr;
     sqlite3_stmt* stmtGetSpellByName_ = nullptr;
+    sqlite3_stmt* stmtFindSpellsByNameLike_ = nullptr;
     sqlite3_stmt* stmtGetSpellCount_ = nullptr;
     sqlite3_stmt* stmtGetString_ = nullptr;
     sqlite3_stmt* stmtGetDbString_ = nullptr;

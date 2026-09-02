@@ -195,6 +195,14 @@ public:
      */
     virtual bool hasTellToReplyTo() const = 0;
 
+    /**
+     * T316: the name of the last player who sent us a tell, or "" if none.
+     * ActionDispatcher::openReplyToTell() needs the NAME, not just the
+     * yes/no of hasTellToReplyTo(), so it can hand back the prefill text
+     * ("/tell <name> ") the chat input is meant to open with.
+     */
+    virtual std::string getLastTellSender() const = 0;
+
     // ========== Group ==========
 
     virtual void inviteToGroup(const std::string& playerName) = 0;
@@ -290,6 +298,23 @@ public:
     // ========== Tradeskill ==========
 
     virtual void clickWorldObject(uint32_t dropId) = 0;
+
+    /**
+     * T316: drop id of the nearest clickable world object (forge, chest,
+     * groundspawn) within interaction range, or 0 if there is none.
+     *
+     * World objects live in EverQuest::m_world_objects, not in GameState, so
+     * ActionDispatcher cannot run the query itself the way it runs
+     * DoorStateManager::getNearestDoor(). This is the same shape as
+     * hasTellToReplyTo(): a pure query on the handler that lets the
+     * dispatcher refuse with a user-visible message instead of dispatching
+     * blind.
+     *
+     * @param outDistance set to the distance to that object when one is
+     *        found (untouched otherwise), so interactNearest() can rank it
+     *        against the nearest door and NPC on the same scale.
+     */
+    virtual uint32_t findNearestWorldObject(float& outDistance) const = 0;
 
     // T149: the four recipe requests. NONE of them takes an object_type --
     // that is the container's type, and it is sourced inside the handler from

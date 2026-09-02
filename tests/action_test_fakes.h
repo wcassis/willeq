@@ -169,6 +169,12 @@ public:
     bool tellToReplyTo = true;
     bool hasTellToReplyTo() const override { return tellToReplyTo; }
 
+    // T316: openReplyToTell() needs the name, not just the flag. Also a pure
+    // query, also not recorded. Defaults non-empty so pre-T316 tests keep
+    // their "openReplyToTell succeeds" shape; set to "" for the no-tell case.
+    std::string lastTellSender = "Friend";
+    std::string getLastTellSender() const override { return lastTellSender; }
+
     // ========== Group ==========
     void inviteToGroup(const std::string& playerName) override {
         record("inviteToGroup", playerName);
@@ -230,6 +236,16 @@ public:
     // ========== Tradeskill ==========
     void clickWorldObject(uint32_t dropId) override {
         record("clickWorldObject", dropId);
+    }
+
+    // T316: pure query (not recorded), same shape as hasTellToReplyTo().
+    // 0 = nothing in range, which is the default so a test must opt in to
+    // having an object nearby.
+    uint32_t nearestWorldObjectId = 0;
+    float nearestWorldObjectDistance = 0.0f;
+    uint32_t findNearestWorldObject(float& outDistance) const override {
+        if (nearestWorldObjectId != 0) outDistance = nearestWorldObjectDistance;
+        return nearestWorldObjectId;
     }
 
     // T149: no object_type in any of these -- it is resolved from the open

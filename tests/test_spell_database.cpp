@@ -25,6 +25,7 @@
 #include "client/spell/spell_constants.h"
 #include "client/willeq_database.h"
 #include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <cstdlib>
 #include <string>
@@ -152,14 +153,15 @@ TEST_F(SpellDatabaseTest, HasSpellWorks) {
 // ============================================================================
 // Name Lookup Tests
 //
-// The legacy API supported case-insensitive and partial-name lookup
-// (LookupByNameCaseInsensitive, FindSpellsByPartialName). The current
-// getSpellByName()/findSpellsByName() only do a single exact-match SQL
-// query (WHERE name=?, no COLLATE NOCASE, no LIKE) — findSpellsByName is
-// a thin wrapper that returns at most one exact match. Those two test
-// cases were deleted since the capability they tested is gone; this test
-// replaces them with an exact-match round-trip, which is the surviving
-// capability.
+// getSpellByName() is the exact-match query (WHERE name=?, no COLLATE
+// NOCASE); findSpellsByName() is the partial one (T316: a bound, escaped
+// LIKE query, ASCII-case-insensitive, capped at kMaxNameSearchResults).
+// Until T316 findSpellsByName() just forwarded to getSpellByName(), so the
+// legacy partial-name capability was gone and the tests for it had been
+// deleted; the /mem-facing behaviour is pinned in
+// tests/test_eq_action_handler_spell_pet.cpp, at the layer a player reaches.
+// What is left here is the exact-match round-trip plus the escaping edge
+// cases.
 // ============================================================================
 
 TEST_F(SpellDatabaseTest, GetSpellByNameWorks) {
@@ -510,11 +512,10 @@ TEST_F(SpellDatabaseTest, MaxSpellIdTracksHighestLookedUpId) {
     EXPECT_EQ(db.getMaxSpellId(), highest);
 }
 
-// Deleted: IconicSpellsExist. It relied on findSpellsByName() doing
-// partial/substring matching (e.g. "heal" matching "Complete Heal"); the
-// current implementation only wraps an exact-match query, so lowercase
-// partial terms like "complete heal" would not match a title-cased exact
-// name like "Complete Heal" even if the row exists.
+// T316 restored partial/substring matching to findSpellsByName(), so a
+// lowercase term like "heal" matches "Complete Heal" again. The
+// substring/case/escaping cases live with the /mem coverage in
+// test_eq_action_handler_spell_pet.cpp; the two below are the local edges.
 
 // ============================================================================
 // Edge Case Tests
@@ -525,9 +526,38 @@ TEST_F(SpellDatabaseTest, EmptyStringSearchReturnsEmpty) {
         GTEST_SKIP() << "willeq.db not found, skipping";
     }
 
-    auto results = db.findSpellsByName("");
-    // Just verify it doesn't crash
-    (void)results;
+    // T316: an empty search term would build the pattern "%%" -- every spell
+    // in the game. It must return nothing instead.
+    EXPECT_TRUE(db.findSpellsByName("").empty());
+}
+
+TEST_F(SpellDatabaseTest, PartialNameSearchIsCaseInsensitiveAndSubstring) {
+    if (!hasDb()) {
+        GTEST_SKIP() << "willeq.db not found, skipping";
+    }
+
+    auto ids = scanSpellIds(1, 9000, 1);
+    ASSERT_GT(ids.size(), 0u);
+    const SpellData* spell = db.getSpell(ids[0]);
+    ASSERT_NE(spell, nullptr);
+    ASSERT_GE(spell->name.size(), 4u);
+
+    // A lowercased interior slice of the real name: not an exact match, and
+    // not even the same case as the row.
+    std::string fragment = spell->name.substr(1, spell->name.size() - 2);
+    for (char& c : fragment) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+
+    EXPECT_EQ(db.getSpellByName(fragment), nullptr) << "fragment: " << fragment;
+
+    auto results = db.findSpellsByName(fragment);
+    bool found = false;
+    for (const auto* s : results) {
+        if (s->id == spell->id) found = true;
+    }
+    EXPECT_TRUE(found) << "'" << fragment << "' must match '" << spell->name
+                       << "' -- before T316 findSpellsByName() was exact-match only";
 }
 
 TEST_F(SpellDatabaseTest, GetSpellByInvalidNameReturnsNull) {

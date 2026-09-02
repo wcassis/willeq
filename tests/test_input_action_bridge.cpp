@@ -316,6 +316,58 @@ TEST_F(InputActionBridgeTest, ChatMessages_UnknownChannelFallsBackToSay) {
 // Move commands
 // ===================================================================
 
+// T316: the two keybind-reachable actions that used to report success (or a
+// fixed failure) and change nothing. Driven here at the layer the key press
+// actually lands on -- InputAction -> InputActionBridge -> ActionDispatcher --
+// not at the dispatcher method, so the wiring is pinned along with the fix.
+TEST_F(InputActionBridgeTest, InteractWorldObject_ClicksNearestObject) {
+    handler.nearestWorldObjectId = 190;
+    handler.nearestWorldObjectDistance = 4.0f;
+    input.pendingActions = {InputAction::InteractWorldObject};
+
+    update();
+
+    EXPECT_TRUE(reportedOnce("InteractWorldObject", true))
+        << "this action reported failure unconditionally before T316";
+    EXPECT_TRUE(handler.calledOnceWith("clickWorldObject(190)"));
+}
+
+TEST_F(InputActionBridgeTest, InteractWorldObject_NothingNearby_ReportsFailure) {
+    handler.nearestWorldObjectId = 0;
+    input.pendingActions = {InputAction::InteractWorldObject};
+
+    update();
+
+    EXPECT_TRUE(reportedOnce("InteractWorldObject", false));
+    EXPECT_TRUE(handler.empty());
+}
+
+TEST_F(InputActionBridgeTest, ReplyToTell_ReportsPrefillWhenATellHasArrived) {
+    handler.lastTellSender = "Friend";
+    input.pendingActions = {InputAction::ReplyToTell};
+
+    ActionResult seen;
+    bridge->setActionCallback([&](const std::string& name, const ActionResult& r) {
+        if (name == "ReplyToTell") seen = r;
+    });
+
+    update();
+
+    EXPECT_TRUE(seen.success);
+    EXPECT_EQ(seen.message, "/tell Friend ")
+        << "the pre-T316 sentinel was the fixed string \"open_reply\"";
+}
+
+TEST_F(InputActionBridgeTest, ReplyToTell_NoTellReceived_ReportsFailure) {
+    handler.lastTellSender = "";
+    input.pendingActions = {InputAction::ReplyToTell};
+
+    update();
+
+    EXPECT_TRUE(reportedOnce("ReplyToTell", false))
+        << "reporting success with nobody to reply to was the defect";
+}
+
 TEST_F(InputActionBridgeTest, MoveCommands_AllFourTypesRoute) {
     MoveCommand coords{MoveCommand::Type::Coordinates, 10.0f, 20.0f, 30.0f, ""};
     MoveCommand entity{MoveCommand::Type::Entity, 0, 0, 0, "a_rat"};

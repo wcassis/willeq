@@ -93,6 +93,7 @@ public:
     void sendTell(const std::string& target, const std::string& message) override;
     void replyToLastTell(const std::string& message) override;
     bool hasTellToReplyTo() const override;
+    std::string getLastTellSender() const override;
 
     // ========== Group ==========
 
@@ -142,6 +143,7 @@ public:
     // ========== Tradeskill ==========
 
     void clickWorldObject(uint32_t dropId) override;
+    uint32_t findNearestWorldObject(float& outDistance) const override;
 
     // T149: recipe requests. object_type is NOT a parameter -- it is
     // resolved here from the open container via

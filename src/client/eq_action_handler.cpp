@@ -682,6 +682,10 @@ bool EqActionHandler::hasTellToReplyTo() const {
     return !m_eq.GetLastTellSender().empty();
 }
 
+std::string EqActionHandler::getLastTellSender() const {
+    return m_eq.GetLastTellSender();
+}
+
 // ========== Group ==========
 
 void EqActionHandler::inviteToGroup(const std::string& playerName) {
@@ -1061,6 +1065,48 @@ void EqActionHandler::dismissPet() {
 
 void EqActionHandler::clickWorldObject(uint32_t dropId) {
     m_eq.SendClickObject(dropId);
+}
+
+// T316: ActionDispatcher::interactNearestWorldObject() used to return
+// Failure("Use clickWorldObject with drop ID") unconditionally, so the
+// interact-object keybind could never open a forge, a chest or any ground
+// container. The dispatcher could not fix this itself: world objects are
+// held in EverQuest::m_world_objects, not in GameState, so unlike doors
+// there is nothing on m_state to query. This is that query.
+//
+// Range: kWorldObjectInteractRange mirrors the render-side default in
+// IrrlichtRenderer::getNearestWorldObject() (50 units) rather than inventing
+// a new number -- that is the client's existing notion of "the object you
+// are standing at". The server re-validates the click regardless.
+//
+// Returns 0 for "nothing in range". eqemu allocates ground-spawn drop ids
+// from 1, and WorldObject::drop_id defaults to 0, so 0 is never a real id.
+uint32_t EqActionHandler::findNearestWorldObject(float& outDistance) const {
+    constexpr float kWorldObjectInteractRange = 50.0f;
+
+    const auto& player = m_eq.GetGameState().player();
+    const float px = player.x();
+    const float py = player.y();
+    const float pz = player.z();
+
+    uint32_t nearestId = 0;
+    float nearestDistSq = kWorldObjectInteractRange * kWorldObjectInteractRange;
+
+    for (const auto& [dropId, obj] : m_eq.GetWorldObjects()) {
+        if (dropId == 0) continue;
+        const float dx = obj.x - px;
+        const float dy = obj.y - py;
+        const float dz = obj.z - pz;
+        const float distSq = dx * dx + dy * dy + dz * dz;
+        if (distSq <= nearestDistSq) {
+            nearestDistSq = distSq;
+            nearestId = dropId;
+        }
+    }
+    if (nearestId != 0) {
+        outDistance = std::sqrt(nearestDistSq);
+    }
+    return nearestId;
 }
 
 // T149 -- THE design point of this unit.
