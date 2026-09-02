@@ -465,6 +465,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/geometry_combiner.cpp
         src/client/graphics/eq/race_model_loader.cpp
         src/client/graphics/eq/model_loading.cpp
+        src/client/graphics/eq/model_loading_chr.cpp
+        src/client/graphics/eq/model_loading_search.cpp
         src/client/graphics/eq/mesh_building.cpp
         src/client/graphics/eq/animated_mesh_creation.cpp
         src/client/graphics/eq/variant_loading.cpp
@@ -840,6 +842,8 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         src/client/graphics/eq/geometry_combiner.cpp
         src/client/graphics/eq/race_model_loader.cpp
         src/client/graphics/eq/model_loading.cpp
+        src/client/graphics/eq/model_loading_chr.cpp
+        src/client/graphics/eq/model_loading_search.cpp
         src/client/graphics/eq/mesh_building.cpp
         src/client/graphics/eq/animated_mesh_creation.cpp
         src/client/graphics/eq/variant_loading.cpp
@@ -1709,6 +1713,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/software_occlusion_culler.cpp
         src/client/graphics/eq/race_model_loader.cpp
         src/client/graphics/eq/model_loading.cpp
+        src/client/graphics/eq/model_loading_chr.cpp
+        src/client/graphics/eq/model_loading_search.cpp
         src/client/graphics/eq/mesh_building.cpp
         src/client/graphics/eq/variant_loading.cpp
         src/client/graphics/eq/variant_loading_animation.cpp
@@ -1836,6 +1842,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/software_occlusion_culler.cpp
         src/client/graphics/eq/race_model_loader.cpp
         src/client/graphics/eq/model_loading.cpp
+        src/client/graphics/eq/model_loading_chr.cpp
+        src/client/graphics/eq/model_loading_search.cpp
         src/client/graphics/eq/mesh_building.cpp
         src/client/graphics/eq/variant_loading.cpp
         src/client/graphics/eq/variant_loading_animation.cpp
@@ -1925,6 +1933,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/software_occlusion_culler.cpp
         src/client/graphics/eq/race_model_loader.cpp
         src/client/graphics/eq/model_loading.cpp
+        src/client/graphics/eq/model_loading_chr.cpp
+        src/client/graphics/eq/model_loading_search.cpp
         src/client/graphics/eq/mesh_building.cpp
         src/client/graphics/eq/variant_loading.cpp
         src/client/graphics/eq/variant_loading_animation.cpp
