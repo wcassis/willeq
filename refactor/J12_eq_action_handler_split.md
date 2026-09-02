@@ -431,3 +431,333 @@ add it to territory and repoint it — that is not scope creep, it is correction
 - The visual gate fails on an **image mismatch** (as opposed to the CPU p95
   metric).
 - You find yourself wanting to cut at line 1691, or to add a fourth TU.
+
+---
+
+## Review (executor, slot3, 2026-09-02)
+
+**Branch `task/J12-action-handler-split`, cut from `fable` at
+`beaffdf404b3ffbcecab1235e2fe4fe1402f5b54`. Commit `9c36a801`.
+`$BASE = beaffdf404b3ffbcecab1235e2fe4fe1402f5b54` (the fork point equals the
+dispatch tip — no other unit merged during this run).**
+
+**Result: the whole bar passed, and the exit-0 verifier prediction held exactly,
+down to the predicted line count. Zero range drift. No STOP condition fired.**
+
+### 1. Line count and range drift
+
+`wc -l src/client/eq_action_handler.cpp` = **2,248** at my tip — the plan's
+re-measured figure, not the unit table's stale 2,202. **Zero drift**: all 26
+banner line numbers, the preamble (1-22), the body (23-2246), the tail
+(2247 blank + 2248 `} // namespace eqt`) and all three cut boundaries
+reproduced exactly as the plan states. Nothing had to be moved.
+
+The plan's arithmetic `22 + 755 + 541 + 928 + 2 = 2248` held on the nose:
+
+```
+wc: preamble=22 a=755 b=541 c=928
+```
+
+### 2. The four zero-hazard properties, re-verified at my tip
+
+```
+$ grep -n '^[[:space:]]*static ' src/client/eq_action_handler.cpp
+(no output, exit 1)
+
+$ grep -n 'namespace' src/client/eq_action_handler.cpp
+21:namespace eqt {
+2248:} // namespace eqt
+
+$ awk '/^[ \t]*#(if|ifdef|ifndef|else|elif|endif)/{print NR": "$0}' src/client/eq_action_handler.cpp
+(no output)
+
+$ grep -n '/\*' src/client/eq_action_handler.cpp
+(no output)
+```
+
+Zero file-scope statics, zero anonymous namespaces (the only two `namespace`
+tokens are the file's own open/close), zero preprocessor directives, zero block
+comments. **None has changed since `136a319b`.** Also re-confirmed **174**
+method definitions and that none has a multi-line signature:
+
+```
+$ grep -n 'EqActionHandler::' src/client/eq_action_handler.cpp | grep -v '^[0-9]*:[A-Za-z_]'
+(no output)
+```
+
+Comment depth at every cut, computed rather than asserted:
+
+```
+$ awk 'BEGIN{d=0} { n=gsub(/\/\*/,"&"); m=gsub(/\*\//,"&"); d+=n-m;
+        if(NR==22||NR==777||NR==1318||NR==2246) print "depth after line "NR" = "d }' \
+      src/client/eq_action_handler.cpp
+depth after line 22 = 0
+depth after line 777 = 0
+depth after line 1318 = 0
+depth after line 2246 = 0
+```
+
+### 3. Correction 21, checked rather than cited
+
+There are no file-local helpers of any kind, so no helper can be separated from
+its consumer. The grep that shows it — every column-0 declaration in the file
+other than the namespace open is an `EqActionHandler::` member:
+
+```
+$ grep -nE '^[A-Za-z_~]' src/client/eq_action_handler.cpp | grep -v 'EqActionHandler::'
+21:namespace eqt {
+```
+
+That is the whole list. Combined with the zero-statics grep above, correction 21
+has **no exposure in this unit**, as the Wave-4 planning pass predicted.
+
+### 4. The blank-line-before-banner check
+
+```
+$ awk '/^\/\/ ={4,}/{ if (prev != "") print NR": NO BLANK BEFORE: "$0 } {prev=$0}' \
+      src/client/eq_action_handler.cpp
+1691: NO BLANK BEFORE: // ========== Raid leader-only ops (T181) ==========
+```
+
+**Exactly one hit, line 1691, as predicted. I did not cut there.** The cuts are
+at 778 and 1319, both of which satisfy J03's rule (blank line at 777 / 1318,
+predecessor `}` closing `scribeItem` / `setInspectMessage`) *and* the banner
+rule. 1691 and its 23-line T181 prose block ride into
+`eq_action_handler_extended.cpp` untouched, in the middle of that TU.
+
+**No other place in this file has the two rules disagreeing** — the awk above is
+exhaustive over the banners, and the two rules are only in tension at a banner.
+I did not want a fourth TU: the three-way split already clears the ceiling with
+the largest TU at 957.
+
+⚠ Worth adding to the template: `grep -c '^// ={4,}' <file>` returns **0**, not
+26, because `{4,}` is not an interval in POSIX BRE. The awk form in the plan is
+correct; anyone cross-checking it with plain `grep -c` will conclude the banners
+have vanished. Use `grep -cE`.
+
+### 5. Every file-header comment line written (the unit's only non-move content)
+
+**Fifteen lines total, 5 per file**, all placed above line 1 of the copied
+preamble. Nothing else in any of the three files is new, and no existing comment
+was altered — the T95 block and the T181 block are byte-identical to their
+originals (proven by §7).
+
+`src/client/eq_action_handler.cpp` (5):
+
+```
+// eq_action_handler.cpp -- EqActionHandler: the core IActionHandler domains.
+// Movement, Combat, Combat (T102), Interaction, Chat, Group, Character
+// State and Inventory. The spell/trade/pet/tradeskill domains live in
+// eq_action_handler_spells_trade.cpp; the post-T102 extended families in
+// eq_action_handler_extended.cpp. Split by refactor/J12_eq_action_handler_split.md.
+```
+
+`src/client/eq_action_handler_spells_trade.cpp` (5):
+
+```
+// eq_action_handler_spells_trade.cpp -- EqActionHandler: the Spellbook,
+// Trade, Pet and Tradeskill domains, moved verbatim out of
+// eq_action_handler.cpp. Note the file's own grouping quirk: setAppearance
+// and setInspectMessage sit under the Tradeskill banner and stay there.
+// Split by refactor/J12_eq_action_handler_split.md.
+```
+
+`src/client/eq_action_handler_extended.cpp` (5):
+
+```
+// eq_action_handler_extended.cpp -- EqActionHandler: the extended action
+// families the file grew after T102 -- Extended Movement / Character State /
+// Combat, Entity Query, Utility, Social, Guild, Raid, Merchant, Find and GM.
+// Moved verbatim out of eq_action_handler.cpp.
+// Split by refactor/J12_eq_action_handler_split.md.
+```
+
+### 6. CMake add-sites: ONE, exactly as the plan named
+
+```
+$ grep -rn 'eq_action_handler\.cpp' CMakeLists.txt tests/CMakeLists.txt tests/cmake/
+CMakeLists.txt:402:    src/client/eq_action_handler.cpp
+```
+
+Both new TUs added immediately beside it inside `CLIENT_CORE_SOURCES`. **Zero
+sites in `tests/CMakeLists.txt` and zero in `tests/cmake/`** — the sixteen
+`test_eq_action_handler_*` targets link `willeq_core` and include only the
+header, confirmed by the grep above returning nothing under `tests/`.
+
+**Correction 10 pre-check, both greps, re-run at my tip:**
+
+```
+$ grep -rn 'eq_action_handler' tests/ scripts/          # 109 hits
+```
+
+All 109 are either `#include "client/eq_action_handler.h"` (the *header*) or
+comments in one test naming another test file. **Zero functional readers.** And
+the exhaustive text-reader enumeration:
+
+```
+$ grep -hn 'kRoot / "src\|kRoot / "include' tests/*.cpp | sort -u
+```
+
+returns 16 paths — `eq.h`, `renderer_event_receiver.cpp`, `renderer_frame.cpp`
+(×3), `renderer_intents.h`, `eq_bridge.cpp` (×2), `event_bus.h`,
+`action_dispatcher.h`, `action_dispatcher.cpp`,
+`renderer_command_catalog.cpp`, plus a `src/client/graphics` directory scan —
+and **`eq_action_handler.cpp` is not among them.** No repoint needed; territory
+unchanged.
+
+### 7. Both content proofs, and the verifier
+
+**Proof A — byte-identical re-concatenation, run against the PRODUCED files**
+(not the scratch extracts, so it also proves the assembly step). Each produced
+file stripped of its 5-line header, its 22-line copied preamble and its trailing
+`} // namespace eqt` (plus, for `_extended`, the one blank line before it):
+
+```
+$ sed -n '28,782p' src/client/eq_action_handler.cpp              > s1   # 755
+$ sed -n '28,568p' src/client/eq_action_handler_spells_trade.cpp > s2   # 541
+$ sed -n '28,955p' src/client/eq_action_handler_extended.cpp     > s3   # 928
+$ cat s1 s2 s3 > recat
+$ git show "$BASE:src/client/eq_action_handler.cpp" | sed -n '23,2246p' > orig_body
+$ wc -l orig_body recat
+2224 orig_body
+2224 recat
+$ cmp orig_body recat ; echo $?
+0
+```
+
+**2,224 lines, `cmp` exit 0.** (Correction 17/20 heeded — the extraction ran in
+a single non-recursive shell with no reused counters, and I ran the proof twice:
+once from the scratch ranges and once from the produced files, both exit 0.)
+
+**Proof B — line multiset:**
+
+```
+$ cat s1 s2 s3 | sort > /tmp/after.txt
+$ git show "$BASE:src/client/eq_action_handler.cpp" | sed -n '23,2246p' | sort > /tmp/before.txt
+$ diff /tmp/before.txt /tmp/after.txt ; echo $?
+0
+MULTISET-OK
+```
+
+**Empty diff, no exceptions at all** — as the plan predicted, since this unit
+creates no cross-TU header (correction 7 N/A) and relocates nothing into an
+existing file (correction 20 N/A).
+
+**Verifier — committed FIRST, then run, with `--repo`:**
+
+```
+$ BASE=$(git -C /mnt/projects/fable/wt/slot3 merge-base fable HEAD)
+$ echo $BASE
+beaffdf404b3ffbcecab1235e2fe4fe1402f5b54
+$ python3 scripts/refactor/verify_move_only.py "$BASE..HEAD" --repo /mnt/projects/fable/wt/slot3
+Non-C++ files changed (not verified, review separately):
+  CMakeLists.txt
+
+Files verified: 3
+Boilerplate: +57 / -0 lines (allowed)
+
+PASS: move-only (modulo boilerplate).
+$ echo $?
+0
+```
+
+**EXIT 0, PASS, +57 / -0 boilerplate, ZERO substantive lines in either
+direction — the prediction held.** And the *number* is derivable from the plan
+exactly as §Acceptance says (correction 19): (19 includes + 1 `namespace eqt {`
++ 1 `} // namespace eqt` + 5 header lines) × 2 new TUs = 52, **plus the stays
+file's 5 header lines = 57.** No sign-off exception is needed; this is the third
+clean-exit-0 unit of the batch after J06 and J08.
+
+### 8. Final counts, method counts, wall clock
+
+| file | lines | methods | check_file_sizes |
+|---|---|---|---|
+| `src/client/eq_action_handler.cpp` | **783** | 68 | ok |
+| `src/client/eq_action_handler_spells_trade.cpp` | **569** | 21 | ok |
+| `src/client/eq_action_handler_extended.cpp` | **957** | 85 | ok |
+| total | 2,309 | **174** | **3 ok, 0 warn, 0 fail** |
+
+**The method-count prediction 68 / 21 / 85 = 174 was exact.** The line counts
+run 4 high against the plan's ~779 / ~565 / ~952 — **uniformly and entirely
+explained by the 5 header lines minus 1**, because I used each body's own
+trailing blank line as the separator before `} // namespace eqt` rather than
+adding a second one. That is correction 12's usual off-by-a-small-constant, in
+the predictable direction for once.
+
+Full acceptance bar, every item by exit code:
+
+| step | result |
+|---|---|
+| `cmake --build build -j24` | **exit 143 first invocation**, exit 0 on re-invoke — see below |
+| ELF scan after the 143 | **2 truncated binaries found**, deleted and rebuilt; second full `readelf -h` sweep 0/221 bad |
+| `ctest -j6` | exit 8 — **3506/3507**, sole failure `AudioManagerTest.PreloadCommonSounds` (the documented ALSA host quirk). Zero new failures vs `refactor/test_baseline.txt`. No `HeadlessShutdownTest` flake this run. |
+| `verify_move_only.py` | **exit 0, PASS** |
+| re-concatenation `cmp` | **exit 0** (2,224 lines) |
+| multiset `diff` | **exit 0** |
+| `scripts/build-gles2-x86.sh` | exit 0, first invocation |
+| `scripts/ci/visual_gate.sh` | **PASS**, first invocation. qeynos2/gfaydark/befallen p95 CPU 9.624 / 7.549 all under ceiling, zero image mismatches. |
+| goldens untouched | `git status --porcelain` **empty** after the gate |
+| `scripts/build-arm-noble.sh` | **exit 143 first invocation**, exit 0 on re-invoke; ARM ELF sweep 0/18 bad |
+| `check_file_sizes.sh --files` (all 3) | **3 ok, 0 warn, 0 fail** |
+
+**Wall clock ~55 min.** Slowest step by far: the x86 build (10 min ceiling hit +
+~4 min resume + a third pass for the two truncated binaries ≈ 16 min), then ARM
+(10 min + ~5 min), then `ctest -j6` at **275 s**. **The cut plus CMake plus both
+proofs took under 4 minutes** — the ninth consecutive unit where the mechanical
+work is free and the bar is the whole cost.
+
+**Concurrency with J10 (slot1) and J21 (slot2) did stretch the tail**: both
+600 s tool-ceiling hits are correction 6's and correction 23's wave behaviour,
+not breakage. J21 is docs-only so it contributed little; J10 is a compile-heavy
+unit in the same tree.
+
+⚠ **The exit-143 trap fired for real, and correction 23's warning is right to be
+emphatic.** After the 143 the re-invocation exited 0 with a completely clean log,
+and **two binaries were still truncated behind it** —
+`test_group_accept_gm_hideme` and `test_zone_position_convention`, both ~21 MB
+of zeroes with `head -c 4` = `00000000` instead of `7f454c46`. Had I trusted the
+exit 0, `ctest` would have died at discovery reporting one of them per full
+suite run, exactly as J07 recorded. **The scan cost 3 seconds and saved two
+275-second suite runs.** Worth noting that `readelf -h` is a slightly stronger
+one-liner than the `head -c 4 | od` recipe in the plan and just as cheap; I ran
+both.
+
+### 9. Findings only, not fixes
+
+- **`docs/module_map.md` needs two new rows and a re-count.** It records this
+  file as **2,205 lines** and as one TU. Correct figures: `eq_action_handler.cpp`
+  **783**, `eq_action_handler_spells_trade.cpp` **569**,
+  `eq_action_handler_extended.cpp` **957**. **Recorded, not acted on** — J21's.
+  (Note the module map has been rewritten since this plan was written and now
+  reads "every split translation unit"; it is J21's territory either way and I
+  did not open it for editing.)
+- **No stale `tests/` line-number citation is attributable to this split**, and I
+  did not go hunting for pre-existing ones (correction 24 — three units have
+  already burned effort there). The 109 `tests/`+`scripts/` mentions of
+  `eq_action_handler` are all header includes or cross-references to *other test
+  files by name*; **none cites a line number in the source I split**, so this
+  unit invalidates nothing. That is a genuinely cleaner position than J06/J07/J08
+  found themselves in, and it is a property of this file, not of my care.
+- **The dead-content ledger gains nothing here.** This file has no commented-out
+  methods, no `#if 0`, and no retired-configuration gating — the first Wave-4
+  file with a clean bill on all three.
+- **One template nit, filed above in §4:** the plan's banner-count sanity check
+  needs `grep -cE`, not `grep -c`, or it silently reports zero banners.
+
+### 10. Deviations
+
+**One, cosmetic and declared:** the plan's tail convention (§The split row
+`2247-2248`, "blank + `} // namespace eqt`, replicated in each TU") would have
+produced a double blank line in `eq_action_handler.cpp` and
+`eq_action_handler_spells_trade.cpp`, whose bodies already end on the original's
+blank line (777 / 1318). I used each body's own trailing blank as the separator
+and appended only `} // namespace eqt`; `eq_action_handler_extended.cpp`, whose
+body ends at `}` on 2246, got the explicit blank line. **All three files
+therefore end `}` / blank / `} // namespace eqt`, identically.** This changes no
+moved line and is invisible to both proofs (which strip the tail) and to the
+verifier (`}` and blank lines are both boilerplate); it is the +4-vs-+5 line
+delta noted in §8.
+
+**No other deviation.** The branch name is `task/J12-action-handler-split` as
+named at dispatch, not the `task/J12-eq-action-handler-split` in this plan's
+header line.
