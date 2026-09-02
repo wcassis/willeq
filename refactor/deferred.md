@@ -18,6 +18,14 @@ Review — read that before scoping the next unit off this file.
 
 ## STATUS 2026-08-25 (T215 tracker refresh)
 
+**⚠ 2026-09-02: this heading has NO BODY — it has been an empty section for some
+time, even though several entries below and the orchestrator's memory both say
+"read the STATUS block first". Nothing was deleted here by this pass; the
+emptiness is recorded rather than papered over. THE QUEUE OF RECORD IS
+"⚠ THE ONE CLASS-A LIST" immediately below** (items 1-29, ranked by severity,
+tip `1fac024a`). Cross-references elsewhere in this file to "the STATUS block
+above" generally mean the bullet lists under "⚠ AUDIT 2026-08-27", further down.
+
 ## SERVER-SENT PLACEABLES AND DOORS ARE UNMEASURED BY ANY GATE (T303, 2026-08-28)
 
 **Will's question, and the answer is that it was never ensured.** The T80
@@ -76,6 +84,14 @@ each line — nothing was deleted.**
 Within a tier, ordered by breadth of blast radius. **Every entry below was
 re-verified against the tree at `4dd8b0bc` on 2026-08-28** — the two entries that
 turned out already closed are struck at the end of this section with their commits.
+
+**Numbering now runs 1-29** (1-24 from T302; 25-27 added by the T310 Leg C
+addendum; **28-29 added 2026-09-02 by T311 Leg A**). **Two entries changed state
+on 2026-09-02 and neither is blocked any more:** item 26 (the wire z) now carries
+the MEASURED expression `groundZ + 0.625 * size`, and item 15 (the non-sending
+position setter) is ANSWERED — including the discovery that its own `AT_DIE`
+premise was wrong. Items 25 and 17 and tier-2 item 9 are the struck/closed ones;
+everything else is open.
 
 ### TIER 1 — memory corruption
 
@@ -260,6 +276,49 @@ turned out already closed are struck at the end of this section with their commi
     settles is the WIRE behaviour. Historical entry: the T234/T237 bullet
     in the STATUS block above; reasoning in
     `refactor/T237_movement_mode_source_write.md` under "Server echo".
+    **★ ANSWERED BY MEASUREMENT — T311 Leg A, merged `dfc78a95`, 2026-09-02.
+    NO LONGER BLOCKED ON ANYTHING. And the item's own premise was WRONG.**
+    `AppearanceType::Die` is **0**, and across the WHOLE captured session — both
+    zone logs, both directions, all 71 `OP_SpawnAppearance` records — there are
+    **ZERO with type 0**. `AT_DIE` is a server→client **command** ("causes the
+    client to keel over and zone to bind point", its own comment at
+    `common/eq_constants.h:24`), it is **not part of the death sequence**, and
+    "death by `AT_DIE`" as written in the *Impact* line above **does not
+    happen** on Titanium as EQEmu drives it. Strike that phrase.
+    What the official client ACTUALLY does on death (two deaths captured,
+    identical in shape — `#damage 100000` and `#kill`):
+    1. sends **one** `OP_SpawnAppearance` **type 14 (`Animation`) param 115
+       (`Lying`)** — the only appearance it sends on death;
+    2. **stops sending `OP_ClientUpdate` entirely.** The dead state is
+       **zero-length on the wire**: last update 20:12:30 at a normal live z,
+       next update in that zone 16 minutes later from a different character,
+       with **1102 logged records spanning the gap and not one a position
+       update**. Its z therefore never changes on death — it never sends one;
+    3. sends `OP_ZoneChange` and does a **full zone-in handshake, even when the
+       bind point is the zone it is already in** (death #2 was in the bind zone
+       and still re-zoned, loading screen and all — which also explains T310 Leg
+       C's `#goto` timeout).
+    Server side: `OP_BecomeCorpse` places the corpse at **the client's own z
+    with the +0.625*size offset NOT removed** (DB `character_corpses` row 33 =
+    `(-160.063, 634.455, 3.751)`); `OP_Death` (`Death_Struct`) carries **no
+    position at all**; `OP_ZonePlayerToBind` carries the destination
+    (`-510, 57, 31.75`, `"South Qeynos"`). On arrival the client echoes the
+    server's pose for one packet, then overrides it with its own
+    `ground + 0.625*size` within a second.
+    **What this item now needs** (all executor-ready, no ruling outstanding):
+    (a) the non-sending internal setter on `SetPositionState()` —
+    unchanged, small, and always was the real work;
+    (b) self's `positionState` set to `POS_DEAD`/prone from the **death path**
+    (`OP_Death` / `OP_BecomeCorpse` for self), **not** from the `AT_DIE` arm,
+    which self will never receive — and the `AT_DIE` arm at
+    `src/client/eq_entities.cpp:774-782` should be annotated as
+    other-spawns-only rather than treated as the self death hook;
+    (c) if fable is to match the oracle, the client stops transmitting position
+    while dead and re-zones on respawn. That is a behaviour choice on top of the
+    setter, and it is consistent with Will's settled death MODEL (memory
+    `wills-standing-decisions` #5).
+    Evidence and packet bytes: `refactor/T311_oracle_position_and_death_capture.md`
+    Review, Q3; capture under `review/T311/legA/`.
 
 16. **First person renders the player's own body, at rest and while running, and
     never shows the weapon.** The full failure table is the Leg C section at the top
@@ -318,6 +377,11 @@ both were reported and deliberately NOT fixed.** ~~both need Will's call~~
 item 25 (the CAMERA azimuth) is ACCEPTED as-is and will not be fixed; item 26
 (what goes ON THE WIRE) is to MATCH the official client, executing as T311.** Evidence: `refactor/T310_camera_match_against_oracle.md`
 (Leg C Review), `review/T310/legC/`.
+**2026-09-02: T311 Leg A (`dfc78a95`) MEASURED item 26 on the wire — see the
+starred block inside item 26 below, and
+`refactor/T311_oracle_position_and_death_capture.md`'s Review for the packet
+bytes. Leg B (`refactor/T311_leg_b_wire_z_match.md`) is dispatched and implements
+it. Item 25 stays closed by ruling.**
 
 25. ~~**fable's first-person camera azimuth is MIRRORED against the official
     client's**~~ — **DECIDED 2026-09-01 (Will): ACCEPTED AS-IS, WILL NOT BE
@@ -380,6 +444,39 @@ item 25 (the CAMERA azimuth) is ACCEPTED as-is and will not be fixed; item 26
     (2026-09-01)** — they are not a separate unit; Leg B settles the whole
     subsystem against the oracle's wire values rather than fixing them one site
     at a time.
+    **★ MEASURED ON THE WIRE — T311 Leg A, merged `dfc78a95`, 2026-09-02.**
+    The answer is
+
+        wireZ = groundZ + 0.625f * size          // == 0.2f * size * 3.125f
+
+    with **no race term** and **size exactly linear** (`#size 3 / 6 / 12` gave
+    1.878 / 3.751 / 7.501 at ground 0.00; a Barbarian at default size 7 gave
+    4.376). The oracle also adds a +0.001..0.003 collision epsilon that creeps
+    ~0.001 per landing — that is push-out-of-the-floor noise and must **not** be
+    reproduced. Evidence is a server-side hexdump of `OP_ClientUpdate` at
+    `Logs::PacketClientServer` Detail; it is the client's transmitted value
+    because Titanium's `DECODE(OP_ClientUpdate)`
+    (`common/patches/titanium.cpp:2633-2653`) is `IN()`-only and does no
+    arithmetic. Three sizes x two races x two ground heights, plus 904 logged
+    C→S updates.
+    **⚠ The agreement with EQEmu's `Mob::GetZOffset()` is a COINCIDENCE of
+    EQEmu's DEFAULT constant, not a shared rule.** The discriminator: a Dwarf
+    illusion (`#feature race 8`) moved the server's own `Fixed Z` to 28.84
+    (EQEmu's Dwarf constant 0.7 → `0.2*6*0.7`) while **the client went on
+    sending 31.75**. The official client uses 3.125 for every model regardless
+    of race; it does not consult a per-race table. For every playable race but
+    Dwarf the two happen to agree exactly.
+    Structural consequence for Leg B: `0.625 * size` is **not** any landmark of
+    the shipped mesh (Human male origin-to-feet 3.004, half-bbox 3.339, crown
+    3.674), so the wire z and the render node origin cannot stay the same
+    variable — they must be split. The inbound half
+    (`node origin z = wireZ - 0.625*size + collisionZOffset`) is an INFERENCE,
+    not a measurement, and Leg B's two-client acceptance test is what
+    discriminates it.
+    **Implementing unit: `refactor/T311_leg_b_wire_z_match.md` (DISPATCHED,
+    slot1).** Full decode tables, the death sequence and the exact sites (10 of
+    them) are in `refactor/T311_oracle_position_and_death_capture.md`'s Review;
+    the capture is under `review/T311/legA/`.
 
 27. **Auto-attack produced NO SWING in 12 live runs** with `/target` and `/attack`
     both confirmed in the log (max own-geometry coverage 0.90%, zero frames above
@@ -391,6 +488,35 @@ item 25 (the CAMERA azimuth) is ACCEPTED as-is and will not be fixed; item 26
     presses attack and sees no swing is a live defect if it reproduces.
     **EXECUTOR-READY as a diagnosis unit**; needs the server.
 
+### TIER 2 addendum — found by T311 Leg A and deliberately NOT fixed (2026-09-02)
+
+Leg A was capture-and-characterise and changed no production code. These two are
+fable defects it turned up on the way; the server-side curiosities and the
+test-environment note it also found are in their own section below, because they
+are not fable defects.
+
+28. **`headZ` is computed and then never used in live water detection** —
+    `src/client/eq_movement.cpp:1741-1742`:
+    `constexpr float HEAD_HEIGHT_OFFSET = 6.0f; float headZ = PosZ() + 6.0f;`
+    and `findRegionForPoint` on the very next line is called with **`PosZ()`**,
+    not `headZ`. A dead local in a live path — water/region detection is being
+    done at the feet frame while the code reads as though it uses the head.
+    *Impact:* whatever the head-height offset was meant to correct for is not
+    corrected; the constant is also wrong under the measured wire z (the head
+    sits about `0.375 * size` = 2.25 above it for size 6, not 6.0).
+    **IN SCOPE FOR T311 LEG B** (`refactor/T311_leg_b_wire_z_match.md`, site 8) —
+    do not open a separate unit.
+
+29. **The wire `heading` field is `heading * 4`, and whether fable packs the same
+    scaling is UNCHECKED.** Measured on the oracle: the 12-bit `heading` field
+    carried **1920** where the server's `#loc` read **480.00**. fable packs this
+    field itself at `src/client/eq_movement.cpp:1113` and Leg A did **not**
+    verify fable's own encoding.
+    *Impact:* unknown until checked. If fable disagrees, it is a **second live
+    wire defect** in the same packet as item 26 — every other player would see
+    fable's character facing the wrong way.
+    **T311 Leg B will check it** (dispatched, slot1). Not yet a confirmed defect;
+    boarded so it cannot be lost if Leg B is cut short.
 
 ### TIER 3 — implemented but unreachable
 
@@ -488,6 +614,42 @@ hand, not in ignorance of it: T284 killed the address-space argument (1.49x the
 no allocation failure. **Composites are OFF BY CHOICE, not by necessity. Do not
 re-open this citing T284 or T289 — they are the evidence the ruling was made
 on.** Also recorded in `docs/decisions.md` (2026-08-27 block, same outcome).
+
+
+## T311 LEG A — SERVER-SIDE CURIOSITIES AND A TEST-ENVIRONMENT NOTE (2026-09-02, merged `dfc78a95`)
+
+**None of these is a fable defect.** They are boarded so they are not
+re-discovered, and because two of them will confuse the next person reading a
+capture. The two fable defects Leg A found are items 28 and 29 in "THE ONE
+CLASS-A LIST" above. Full evidence:
+`refactor/T311_oracle_position_and_death_capture.md` Review, "Found and
+deliberately NOT fixed"; capture under `review/T311/legA/`.
+
+- **An unexplained +0.75 between the stored/bind z and the z in the S→C self
+  `OP_ZoneEntry` spawn struct.** Five arrivals out of five: 3.0 → 3.75 for a
+  fresh login, and 31.75 → 32.5 at the bind point on all four death arrivals. A
+  grep for an obvious `+= 0.75` in the zone source did not find it.
+  **Server-side, unexplained, and overwritten by the client within one second**
+  (the client's next update carries its own `ground + 0.625*size`). Harmless to
+  fable today; it matters only if someone tries to derive the wire rule from the
+  spawn struct instead of from `OP_ClientUpdate`.
+- **`#feature race 10` (Ogre) and `#feature race 128` (Iksar) reproducibly KILL a
+  level-1 character** — twice, within ~5 s of the command each time (two extra
+  corpses, two extra re-zones in the capture). **Server-side curiosity, not a
+  fable defect**, and not chased. It is boarded because it silently VOIDED two
+  rows of Leg A's own illusion sweep: the character died and re-zoned, clearing
+  the illusion, before the `#loc` was read, so those two readings measured a
+  plain Human. **Any future illusion sweep must check for a death between the
+  command and the reading.**
+- **TEST-ENVIRONMENT, NOT A DEFECT: `Testchar` was not in its documented restore
+  state on arrival.** `refactor/EXECUTOR_PROTOCOL.md` records
+  `zone_id=36, x=-77.9232, y=21.9086, z=3, h=190`; the DB held
+  `zone_id=2, x=-74, y=428, z=3.751, h=160` — T310 Leg C's qeynos2 pose. Leg A
+  did not touch it and left it as found. **A live unit must SELECT the character's
+  row before relying on the documented pose, not assume it.** Annotated at the
+  source in `refactor/EXECUTOR_PROTOCOL.md`. (Its z of 3.751 is itself
+  corroborating evidence for item 26: it is the official client's settled value
+  at exactly that spot.)
 
 
 ## ⚠ FIRST PERSON — THE LIVE GATE FAILED (T300 Leg C, 2026-08-27). THE CLAMP DOES NOT HIDE THE BODY.
@@ -607,7 +769,7 @@ A full audit of every batch plan answered the owner's question "were the partial
 
 ~~- **NEW (T227 STOP note): `CombatManager::Update()` on `m_update_thread` → CheckForAggro/ProcessCombatRound/FindNextHuntTarget → `SetTarget`/`ClearTarget` → `combat()` writes OFF the game thread, gated on `/combat on`.** Pre-existing off-thread write class (the same reason UpdateMovement was moved off that thread, eq.cpp ~3766). Class A: route those target changes through the game thread (intent/queue) or move Update() itself. `review/T227/`.~~ **CLOSED T245: `m_update_thread` DELETED; `CombatManager::Update()` is ticked from `UpdateMovement()` on the game thread, self-paced to `kUpdateIntervalMs` (500 ms). TSAN BEFORE (`/hunt on`, three beetles) vs AFTER in `review/T245/`. Note found on the way: `CombatTarget::is_aggro` is hard-coded `false` (TODO in `GetNearbyHostiles`), so `CheckForAggro` can never fire -- the only reachable off-thread writer was the hunt path.**
 - **T230 MERGED `660449be`: `CombatManager::SetTarget(name)` chain DELETED (zero production reach); keyboard hotbar Item slots fire via `useItemById`; `EqActionHandler::useItem` was a STUB, fixed. ⚠ REACHABILITY PATTERN #12 found LIVE: the ENTIRE T174 keyboard hotbar route (Spell/Skill/Item) was dead — `IrrlichtRenderer::processChatInput()` (render thread, `renderer_frame.cpp`) called `getHotbarActivationRequest()` (an exchange) and DISCARDED it every frame, starving `GraphicsInputHandler::consumeHotbarRequest()`. Two lines deleted; proven by DB item charges 5→3 per key press. T174 had never been probed live. **Emote/Macro/Combat CLOSED T239 `422ce591`** (one shared `ActivateHotbarCommandSlot`, macro proven on the observer, combat toggle live).**
-- **T234 `bf448c0a` + T237 `e2092db3`: five EqActionHandler transforms pinned against the real client (21 tests, 8/8 deliberate breaks caught); movementMode/positionState now written into GameState at the source. Flagged, not done: server-FORCED self position changes (stun, AT_DIE, GM) have no non-sending internal setter — class A, small.** **[T302 2026-08-28: ranked in "THE ONE CLASS-A LIST" at the top of this file, tier 2 item 15 -- executor-ready except for what `AT_DIE` for self means for `POS_DEAD`, ~~which is Will's~~ **-- which Will answered 2026-09-01 by declining to rule and instructing us to MEASURE it: capture an official-client death session and copy what it does. Now blocked on T311 Leg A (dispatched), not on Will.**]**
+- **T234 `bf448c0a` + T237 `e2092db3`: five EqActionHandler transforms pinned against the real client (21 tests, 8/8 deliberate breaks caught); movementMode/positionState now written into GameState at the source. Flagged, not done: server-FORCED self position changes (stun, AT_DIE, GM) have no non-sending internal setter — class A, small.** **[T302 2026-08-28: ranked in "THE ONE CLASS-A LIST" at the top of this file, tier 2 item 15 -- executor-ready except for what `AT_DIE` for self means for `POS_DEAD`, ~~which is Will's~~ **-- which Will answered 2026-09-01 by declining to rule and instructing us to MEASURE it: capture an official-client death session and copy what it does. Now blocked on T311 Leg A (dispatched), not on Will.**] [T311 Leg A 2026-09-02 `dfc78a95`: MEASURED AND UNBLOCKED. `AT_DIE` (AppearanceType 0) appears ZERO times in either direction in the whole captured session -- it is a server-to-client command and is NOT part of the death sequence, so "AT_DIE" in the flagged-not-done sentence above is a WRONG premise. The official client sends one `OP_SpawnAppearance` type 14 param 115 (Lying), then stops sending `OP_ClientUpdate` entirely, then `OP_ZoneChange` -- a full zone-in even into the zone it is already in. The setter itself is unchanged work; see item 15 in "THE ONE CLASS-A LIST" for what the item now needs.]**
 - ~~**NEW (T239): `/emote <text>` (cmdEmote → OP_ChannelMessage channel 22) produced NO chat on a second client and no self-echo; `/wave` (OP_Animation) is not logged by a headless observer either. Titanium's official client sends OP_Emote (a different struct) — the `/emote` command's wire behaviour is a pre-existing open question. Class B: capture what the official client sends (eq-oracle) or read eqemu's Handle_OP_Emote, then fix cmdEmote. `review/T239/`.**~~ CLOSED T243 `8196394c` — AND two larger defects: `HC_OP_Emote` was OP_Animation's number (inbound text emotes never dispatched; renamed `HC_OP_Animation`, real `OP_Emote=0x547a` added), and **`ZoneSendSetServerFilter` sent 0xFFFFFFFF×29 which eqemu reads as HIDE for every filtered class** (socials, guild/group/shout/OOC/auction, others' hits, pet hits, DoTs, crits — now show-all like the official default; per-class defaults are a one-line table if chat volume is a problem). Observer-proven.
 - **T245 leads:** ~~`CombatTarget::is_aggro` hard-coded false → no auto-defence~~ CLOSED T247 `451cecbf` (aggro inferred from OP_Damage/OP_Action on self, 10 s memory; `CheckForAggro` engages in ~1 s live; OP_Stun was decoding the 4-byte ms duration as two halves — fixed, cast refused while stunned, timed stuns expire client-side because eqemu never sends the unstun). ~~Open: stun-vs-movement; first-aggro-in-scan~~ CLOSED T254 `26c6394b` (server ACCEPTS movement while stunned -- client_packet.cpp:4831, cheat_manager.cpp:277 exempts stunned -- so no gate; latest attacker engaged, ties nearest, live two-beetle proof); befallen holds dozens of leftover GM-spawned `a_scaled_wolf_pup` at Testchar's home spot (server hygiene: `#depopzone`/`#repop` before hunt probes). **T248 `e4a73c9e` CLOSED the MidiPlayer/miniaudio teardown race — it was a CRASH class (heap-use-after-free + SEGV in `MidiPlayer::render` under TSAN, 139 reports → 0) fixed by a lock-free `RenderBarrier` epoch handshake on stop/seekTo/freeChannel; miniaudio log callback wired (T128 item closed).**
 - ~~**NEW (T240): `beginCastFromGem()`'s result switch collapses OutOfRange / NoLineOfSight / InvalidTarget into "Cannot cast spell" — the official client names each. Class A, small (eq_strings ids exist).**~~ CLOSED T244 `25695e62` (one table `cast_refusal.h`; a SECOND drifted copy in eq_bridge.cpp's CastSpellIntent arm also folded). ~~⚠ `checkPlayerState/checkLineOfSight/checkReagents` are `return true` STUBS~~ CLOSED T246 `408cd295`: buff-based stun/mez/silence/fear, reagents (willeq.db had NO reagent columns — schema v4, 383 reagent rows), LoS via `HCMap::CheckLOS`. Still permissive: ~~instantaneous `OP_Stun`~~ (CLOSED T247), `noexpend_reagent_id`, count-0 components; ~~eqstr 433 per-item form not emitted~~ CLOSED T251 `a252a7a4` (name from the ItemPacket cache; unseen reagent → 272). ~~NEW (T251): a THIRD refusal site — the hotbar Spell arm~~ CLOSED T253 `7e1c7c0f` (no fourth site); `InventoryManager::getItemById()` returns `false` not `nullptr` on miss. Class A, tiny.

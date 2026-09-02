@@ -7,6 +7,26 @@ audit which Will asked for first. Legs are independent and may run in parallel.
 
 ## Leg 1 — THE DEATH STATE. Owns eqemu (schedule after T301 Leg A releases the lock).
 
+**⚠ 2026-09-02 — THE "MEASURE BEFORE IMPLEMENTING" STEP BELOW HAS LARGELY BEEN
+TAKEN, AND IT REFUTES THIS LEG'S `AT_DIE` PREMISE.** T311 Leg A (`dfc78a95`,
+`refactor/T311_oracle_position_and_death_capture.md`) captured an official-client
+session containing two deaths and decoded every position-bearing packet.
+**`AT_DIE` (AppearanceType 0) appears ZERO times in either direction in the whole
+session.** It is a server→client *command* and is NOT part of the death sequence,
+so "applying a server-originated death would echo `AT_DIE` back to the server"
+(step 1 below) describes something that does not occur. What the official client
+actually does: **one** C→S `OP_SpawnAppearance` type 14 (Animation) param 115
+(Lying), then it **stops sending `OP_ClientUpdate` entirely** (a zero-length dead
+state on the wire), then `OP_ZoneChange` — a full zone-in **even when the bind
+point is the zone it is already in**. Server side, `OP_BecomeCorpse` carries the
+client's own z (offset not removed), `OP_Death` carries no position, and
+`OP_ZonePlayerToBind` carries the destination. The non-sending setter (step 1) is
+still needed and unchanged; the state must be driven from the **death path**, not
+from the `AT_DIE` arm at `eq_entities.cpp:774-782`, which self will never receive.
+**Still unmeasured by T311 Leg A: the unconscious-vs-dead HP threshold** — both
+captured deaths were instant kills (`#damage 100000` and `#kill`). Re-scope this
+leg against `deferred.md` item 15 before dispatching.
+
 **Will's ruling, and it corrects the orchestrator's proposal:** Titanium has **NO
 "release to bind"**. HP reaching 0 puts the player **unconscious and prone with NO
 control of the character**. If HP drops further (exact threshold unconfirmed) the

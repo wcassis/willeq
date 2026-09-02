@@ -82,6 +82,11 @@ references this file; plans carry only unit-specific content.
   start`; NEVER `eqemu-server:launcher` direct. Never modify server
   code. DB reads + documented character-position writes OK (restore
   after: Testchar → zone_id=36, x=-77.9232, y=21.9086, z=3, h=190).
+  **⚠ DO NOT ASSUME Testchar IS AT THAT POSE — SELECT IT FIRST.** T311 Leg A
+  (2026-09-02) found it at `zone_id=2, x=-74, y=428, z=3.751, h=160`
+  (T310 Leg C's qeynos2 pose) on arrival, and left it as found. The line
+  above is the pose to restore to when YOU move it, not a guarantee of the
+  pose you inherit. Boarded in `refactor/deferred.md`.
   Clean shutdown (down.sh) + restore configs at end.
 - Client: build-gles2/bin/willeq (EGL surfaceless, no X needed); ALWAYS pass
   `--eqe1-path` on any run whose pixels will be judged — the S3D path thrashes
