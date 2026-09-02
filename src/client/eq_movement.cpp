@@ -1112,9 +1112,18 @@ void EverQuest::SendPositionUpdate()
 	// Clients) and that is precisely why the first half was a defect: whatever
 	// we send is what every other player sees, and we were sending 3.00 where
 	// the official client sends 3.751.
-	update.z_pos = eqt::renderZToWireZ(PosZ(),
-	                                   m_game_state.player().collisionZOffset(),
-	                                   m_game_state.player().size());
+	//
+	// zAwaitingFrameConversion means PosZ() is still the raw wire value the
+	// self-spawn delivered (the model had not loaded, so nothing converted it).
+	// Converting it here would add the offset a SECOND time, and since the
+	// server saves what we send and hands it back next login, that error
+	// compounds 0.625 per zone-in -- measured 3.63 -> 4.25 -> 4.88 over three
+	// logins. Send it back verbatim until the renderer has told us the offset.
+	update.z_pos = m_game_state.player().zAwaitingFrameConversion()
+		? PosZ()
+		: eqt::renderZToWireZ(PosZ(),
+		                      m_game_state.player().collisionZOffset(),
+		                      m_game_state.player().size());
 	// Deltas follow the same transformation:
 	// Internal delta_x (change in client x) = change in server's y = server's delta_y
 	// Internal delta_y (change in client y) = change in server's x = server's delta_x

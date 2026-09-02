@@ -405,3 +405,85 @@ TEST(WireZ, TheConstantIsThreePointOneTwoFive_NotEQEmusPerRaceTable) {
     // A size of 0 means "the entity reported none", not "no offset".
     EXPECT_FLOAT_EQ(eqt::wireZOffsetForSize(0.0f), eqt::wireZOffsetForSize(6.0f));
 }
+
+// ---------------------------------------------------------------------------
+// Part 3 (T311, LIVE-FOUND): the self-spawn arrives BEFORE the model, so the
+// two conversions must not disagree ACROSS TIME.
+//
+// Found on a live server, not in review. The self spawn stores its z while the
+// mesh offset is still unknown, so the inbound conversion is the identity and
+// the stored z is still a raw WIRE value. The send path then saw a known offset
+// (the model had loaded by then) and converted it -- adding 0.625*size to a
+// value that already contained it. The server saves what a client sends and
+// hands it back on the next login, so the error COMPOUNDED: three successive
+// logins of the same character transmitted 3.63063, then 4.25, then 4.880627,
+// against the official client's 3.751 at the same spot. (0.625 exactly per
+// login, which is how it was identified: 3.75 - the measured mesh offset.)
+//
+// PlayerState::zAwaitingFrameConversion is the fix, and this is its pin.
+// ---------------------------------------------------------------------------
+
+TEST(WireZ, SelfSpawnBeforeModelLoads_DoesNotDoubleConvert) {
+    EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Test_SetMySpawnIdForSeam(460);
+    IntentBridge bridge;
+    eq.setBridge(&bridge);
+
+    // Zone in: the server hands us the wire z, and no model has loaded.
+    ASSERT_FLOAT_EQ(eq.GetPlayerCollisionZOffset(), 0.0f);
+    const float wireFromServer = 3.751f;
+    eq.SetPosition(0.0f, 0.0f, wireFromServer);
+    eq.Test_SetZAwaitingFrameConversionForSeam(true);
+    eq.Test_SetPlayerSizeForSeam(6.0f);
+
+    // Standing still, before the model arrives: send back exactly what we were
+    // given. Converting here is what produced the drift.
+    eq.SendPositionUpdate();
+    EXPECT_FLOAT_EQ(eq.Test_GetLastComputedPositionUpdate().z_pos, wireFromServer)
+        << "an unconverted wire z must go back out verbatim";
+
+    // The model loads. The deferred half of the conversion runs exactly once.
+    bridge.pushIntent(eqt::events::PlayerModelGeometryChanged{kHumanMaleCollisionZOffset});
+    eq.ProcessBridgeIntents();
+    EXPECT_FALSE(eq.Test_GetZAwaitingFrameConversionForSeam());
+    EXPECT_NEAR(eq.GetPosition().z, wireFromServer - 3.75f + kHumanMaleCollisionZOffset, 1e-4f)
+        << "the stored z must now be in the render frame";
+
+    // And the round trip is closed: what we transmit is what we were handed.
+    // Before the fix this read 4.376 -- 0.625 too high, and it compounded.
+    eq.SendPositionUpdate();
+    EXPECT_NEAR(eq.Test_GetLastComputedPositionUpdate().z_pos, wireFromServer, 1e-4f);
+
+    // Repeating the geometry intent must not convert a second time.
+    bridge.pushIntent(eqt::events::PlayerModelGeometryChanged{kHumanMaleCollisionZOffset});
+    eq.ProcessBridgeIntents();
+    eq.SendPositionUpdate();
+    EXPECT_NEAR(eq.Test_GetLastComputedPositionUpdate().z_pos, wireFromServer, 1e-4f)
+        << "the deferred conversion must be idempotent";
+}
+
+// Three simulated logins of the same character, each starting from what the
+// previous one transmitted -- the exact loop that was measured drifting.
+TEST(WireZ, RepeatedZoneInsDoNotAccumulate) {
+    float carried = 3.751f;
+    for (int login = 0; login < 3; ++login) {
+        EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
+        eq.Test_SetBypassSendGuardForSeam(true);
+        eq.Test_SetMySpawnIdForSeam(460);
+        IntentBridge bridge;
+        eq.setBridge(&bridge);
+
+        eq.SetPosition(0.0f, 0.0f, carried);
+        eq.Test_SetZAwaitingFrameConversionForSeam(true);
+        eq.Test_SetPlayerSizeForSeam(6.0f);
+        bridge.pushIntent(eqt::events::PlayerModelGeometryChanged{kHumanMaleCollisionZOffset});
+        eq.ProcessBridgeIntents();
+        eq.SendPositionUpdate();
+
+        carried = eq.Test_GetLastComputedPositionUpdate().z_pos;
+        EXPECT_NEAR(carried, 3.751f, 1e-3f)
+            << "login " << login << ": a standing zone-in must be a fixed point, "
+               "not a value that creeps 0.625 every time";
+    }
+}

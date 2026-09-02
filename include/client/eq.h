@@ -817,6 +817,10 @@ public:
 	// wire z is 0.625 * size, so a test that does not vary size cannot pin the
 	// measured size-linearity.
 	void Test_SetPlayerSizeForSeam(float size) { m_game_state.player().setSize(size); }
+	// T311: the deferred-conversion flag a self-spawn sets when the model has
+	// not loaded yet. A headless test has no renderer to reach the real setter.
+	void Test_SetZAwaitingFrameConversionForSeam(bool a) { m_game_state.player().setZAwaitingFrameConversion(a); }
+	bool Test_GetZAwaitingFrameConversionForSeam() const { return m_game_state.player().zAwaitingFrameConversion(); }
 
 	// T221 test seam: m_game_state.pet().petSpawnId() is normally set only by pet detection
 	// in ZoneSpawns/NewSpawn/ClientUpdate; lets a test drive the MobHealth

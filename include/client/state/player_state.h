@@ -63,6 +63,17 @@ public:
     // knows about; it is a property of the shipped mesh.
     float collisionZOffset() const { return m_collisionZOffset; }
 
+    // T311: TRUE while the stored z is still a raw WIRE value that has not yet
+    // been converted to the render frame, because the mesh offset was not known
+    // when it arrived (a self-spawn lands before the model loads). Nothing may
+    // apply the render->wire conversion to it in that state -- doing so adds
+    // 0.625*size to a value that already contains it, and because the result is
+    // saved by the server and handed back on the next login, the error COMPOUNDS
+    // one 0.625 per zone-in. Measured drifting 3.63 -> 4.25 -> 4.88 across three
+    // logins before this flag existed.
+    bool zAwaitingFrameConversion() const { return m_zAwaitingFrameConversion; }
+    void setZAwaitingFrameConversion(bool awaiting) { m_zAwaitingFrameConversion = awaiting; }
+
     // Position setters (fires PlayerMoved event)
     void setPosition(float x, float y, float z);
     void setPosition(const glm::vec3& pos);
@@ -363,6 +374,7 @@ private:
     float m_heading = 0.0f;
     float m_size = 6.0f;
     float m_collisionZOffset = 0.0f;  // T311: renderer-measured; 0 = unknown
+    bool m_zAwaitingFrameConversion = false;  // T311: see the accessor's note
     float m_dx = 0.0f;
     float m_dy = 0.0f;
     float m_dz = 0.0f;

@@ -67,6 +67,7 @@
 #include <limits>
 
 #include "client/bridge/game_state_bridge.h"
+#include "client/position_frames.h"
 #include "client/bridge/irrlicht_bridge.h"
 
 #ifdef WITH_AUDIO
@@ -756,7 +757,10 @@ void EverQuest::OnGraphicsMovement(const eqt::events::PlayerPositionChanged& upd
 	// T288: one store, and no PlayerMoved on the state bus -- this is the
 	// renderer's own movement arriving, echoing it back as a state event
 	// would be a new per-frame event stream (see setPositionNoEvent).
-	SetPosLocal(update.x, update.y, update.z);  // Node-origin (server-frame) Z from renderer
+	// A z the RENDERER produced is definitively in the render frame, whatever
+	// state the self-spawn left behind (T311).
+	m_game_state.player().setZAwaitingFrameConversion(false);
+	SetPosLocal(update.x, update.y, update.z);  // node-origin (render-frame) Z from the renderer
 	// Convert heading from EQ format (0-512) to degrees (0-360) for internal use
 	SetHeadingLocal(update.heading * 360.0f / 512.0f);
 
@@ -901,7 +905,22 @@ void EverQuest::ProcessBridgeIntents() {
 			// the game thread consumes it; it exists so the packet edges can
 			// convert render frame <-> wire frame.
 			else if constexpr (std::is_same_v<T, eqt::events::PlayerModelGeometryChanged>) {
-				m_game_state.player().setCollisionZOffset(i.collisionZOffset);
+				auto& player = m_game_state.player();
+				const float previous = player.collisionZOffset();
+				player.setCollisionZOffset(i.collisionZOffset);
+				// The deferred half of the self-spawn conversion. The spawn z
+				// arrives before the model does, so it is stored raw; the moment
+				// the mesh offset is measurable, convert it into the render frame
+				// exactly once. Without this the send path would treat a wire
+				// value as a render value and add the offset a second time.
+				if (i.collisionZOffset > 0.0f && previous <= 0.0f
+				    && player.zAwaitingFrameConversion()) {
+					player.setZAwaitingFrameConversion(false);
+					// SetPosition (not SetPosLocal): the renderer was handed the
+					// unconverted z at zone-in and needs the corrected one.
+					SetPosition(PosX(), PosY(),
+					            eqt::wireZToRenderZ(PosZ(), i.collisionZOffset, player.size()));
+				}
 			}
 			// ================================================================
 			// D15: Interaction intents (D20a — intent-only, callbacks removed)

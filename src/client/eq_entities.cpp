@@ -425,10 +425,18 @@ void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 				// matching half and the round trip closes.
 				// T288: one store; heading deliberately NOT written from spawn
 				// data (see the note below), so this is a position-only write.
+				//
+				// The offset is normally NOT known yet here -- the self spawn
+				// arrives before the model loads -- so this conversion is the
+				// identity and the stored z is still the raw wire value. Say so,
+				// or the send path will convert a value that was never in the
+				// render frame (T311: that compounded 0.625 per login).
 				SetPosLocal(entity.x, entity.y,
 				            eqt::wireZToRenderZ(entity.z,
 				                                m_game_state.player().collisionZOffset(),
 				                                entity.size));
+				m_game_state.player().setZAwaitingFrameConversion(
+					m_game_state.player().collisionZOffset() <= 0.0f);
 				// Don't update heading from spawn data as it may be scaled differently
 
 				if (s_debug_level >= 1) {
@@ -1200,6 +1208,8 @@ void EverQuest::ZoneProcessNewSpawn(const EQ::Net::Packet &p)
 			            eqt::wireZToRenderZ(entity.z,
 			                                m_game_state.player().collisionZOffset(),
 			                                entity.size));  // T288: one store
+			m_game_state.player().setZAwaitingFrameConversion(
+				m_game_state.player().collisionZOffset() <= 0.0f);
 
 			if (s_debug_level >= 1) {
 				LOG_INFO(MOD_ZONE, "[ZONE-IN] Updated client pos from NewSpawn: ({:.2f},{:.2f},{:.2f}) (render/node-origin Z, wire Z was {:.2f})",
@@ -2125,7 +2135,11 @@ void EverQuest::ListEntities(const std::string& search) const
 			break;
 		}
 		
-		std::cout << fmt::format("  {} (ID: {}) - Level {} {} - {:.1f} units away at ({:.0f}, {:.0f}, {:.0f})",
+		// T311: two decimals, not zero. This listing is the instrument a
+		// second (observing) client is read with, and the whole T311
+		// question is a 0.75-unit difference in z -- {:.0f} rounded 3.00
+		// and 3.75 to "3" and "4" and could not show it.
+		std::cout << fmt::format("  {} (ID: {}) - Level {} {} - {:.1f} units away at ({:.2f}, {:.2f}, {:.2f})",
 			entity->name, entity->spawn_id, entity->level,
 			entity->class_id == 0 ? "NPC" : fmt::format("Class {}", entity->class_id),
 			dist, entity->x, entity->y, entity->z) << std::endl;
