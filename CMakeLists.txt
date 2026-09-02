@@ -383,6 +383,10 @@ SET(CLIENT_CORE_SOURCES
     src/client/help/renderer_command_catalog.cpp
     # Application layer sources
     src/client/application.cpp
+    src/client/application_commands.cpp
+    src/client/application_frame.cpp
+    src/client/application_zone_loading.cpp
+    src/client/application_config.cpp
     src/client/eq_action_handler.cpp
     # Spell system sources
     src/client/spell/spell_database.cpp
