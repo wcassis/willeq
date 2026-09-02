@@ -382,6 +382,54 @@ survey assumed a 97-line preamble against a real 109, × 6 TUs). Cluster
 membership has been right every time; the arithmetic has not. Treat projected
 counts as indicative only.
 
+## ⚠ CORRECTIONS FROM J06 (2026-09-02)
+
+**13. THE VERIFIER SILENTLY NO-OPS ON AN UNCOMMITTED TREE — it prints
+`No C++ files changed` and EXITS 0.** J06 hit this. **This is the THIRD trap
+with the same green-or-alarming-but-wrong signature**, after the missing
+`--repo` (verifies `main/`) and the wrong base rev (shows another unit's work as
+removals). All three look like a definitive answer and are not one.
+**The acceptance line must read: COMMIT FIRST, THEN VERIFY.**
+
+**14. Corrections 6 and the J02 timing note are WORST CASES OBSERVED, not
+forecasts, and the word "expect" makes a clean run read as an anomaly.** J06's
+`ctest -j6` ran in **120.7 s — faster than J01's 3.0 min SOLO, on a larger
+suite** — and `build-arm-noble.sh` completed on its FIRST invocation. Wave
+contention varies with what the other slots are doing (and one earlier
+measurement was inflated by an orphaned client process burning 113% CPU for five
+hours, killed 2026-09-02). Treat the stretch figures as "may happen", not "will".
+
+### J06's own result — the cleanest unit of the batch
+
+`application.cpp` 2,368 → **948**, plus `application_commands.cpp` 552,
+`application_zone_loading.cpp` 458, `application_config.cpp` 434,
+`application_frame.cpp` 224. **Verifier exit 0, PASS, +224/-0 boilerplate — no
+exception, no sign-off needed.** Both proofs `cmp`/`diff` exit 0. Zero range
+drift; the plan's estimates were uniformly exactly 1 low (counting
+`61 + body` instead of `61 + body + 1`).
+
+**Hazard 1 resolved as Option A** (`mainLoop` stays with `initialize`, nothing
+promoted), argued rather than picked: Option B's entire benefit was 99 lines of
+cosmetics on a TU the size checker already calls `ok`, against the cost of
+converting a live async-signal-safe object's internal linkage to external inside
+a commit whose contract is verbatim relocation.
+
+**Doc rot found, not fixed (comment-only, outside move-only scope):** 13 `tests/`
+and `scripts/` mentions of `application.cpp`, **all comments, zero functional
+readers** — so unlike `irrlicht_renderer.cpp` no repoint was needed — but **6
+cite line numbers this split invalidated**, and
+`test_headless_command_refusal.cpp:103` tells a reader to "grep application.cpp",
+which will now miss. **Fold into the `docs/module_map.md` hygiene pass** along
+with J02's and J04's entries.
+
+**Also recorded:** `Application::initialize` is **587 lines** (not the 569 on
+record) — 62% of the surviving TU and the floor for any further split; and the
+22-line T104/T49 tombstone comment block rode into the zone-loading TU verbatim,
+the same shape as J02's `eq_ucs.cpp` leftover. **That is now THREE dead-content
+findings in the batch** (`eq_ucs.cpp` 320 lines of commented-out methods,
+`wld_loader.cpp` 286 lines of `#if 0`, this) — the batch owes one decision
+covering all of them.
+
 ## Unit table
 
 | Unit | File | Lines | → TUs | Largest after | Wave | Notes |
