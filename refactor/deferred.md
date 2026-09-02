@@ -518,6 +518,45 @@ are not fable defects.
     **T311 Leg B will check it** (dispatched, slot1). Not yet a confirmed defect;
     boarded so it cannot be lost if Leg B is cut short.
 
+### TIER 2 addendum — found by T312 and deliberately NOT fixed (2026-09-02)
+
+**T312 fixed the `bridgeQueue_` heap corruption and the two scalar races
+(CLOSED, merged `c9b02f7e`); these are what it found on the way and did not
+bundle into the fix.** Evidence: `refactor/T312_event_receiver_thread_safety.md`
+Review, `review/T312/`.
+
+30. **`InputState` / `InputHandler::getState()` are ENTIRELY DEAD across all
+    four handlers.** `getState()` has **zero callers** in `src/` or `tests/`;
+    `resetMouseDeltas()` likewise; `CameraController::update()` — the other
+    delta consumer — is never called.
+    *Impact:* none directly, but see item 31: the dead struct is the SINK that
+    made two live input paths look legitimate. **EXECUTOR-READY** (delete, or
+    say what it is for).
+
+31. **`wasLeftButtonClicked()` / `wasLeftButtonReleased()` are the same
+    double-consumer shape T312 just fixed for the mouse delta — and this one
+    SILENTLY EATS CLICKS.** Both are atomic read-and-reset, so it is not a
+    race; but the game-thread consumer writes its result into the dead
+    `InputState` of item 30, so whenever it wins the race to the flag the click
+    is consumed and **no UI ever sees it**.
+    *Impact:* intermittently dropped mouse clicks in a real session — a live,
+    user-visible defect, and exactly the failure mode T312 measured for the
+    mouse delta (a stolen delta froze the camera for a frame).
+    ⚠ **T225 ruled that "both threads are legitimate consumers" here. That
+    ruling PREDATES the discovery that one of the two consumers writes to a
+    struct nothing reads** — it should not be cited as settling this.
+    **EXECUTOR-READY**, and it is one unit with item 30.
+    **This is the FOURTH instance of the two-consumer pattern** (T230, T235,
+    T312's mouse delta, this) — the pattern itself is now worth a sweep:
+    *a read-and-reset accessor with more than one caller is a defect by
+    construction unless the accumulator is per-consumer.*
+
+32. **`RendererEventReceiver` deserves its own TU** — T312's clean follow-up,
+    deliberately not bundled with a correctness fix. Already scoped:
+    Batch J's **J11** (`refactor/J_file_size_reclamation.md`) splits
+    `irrlicht_renderer.cpp` and carries `renderer_event_receiver.cpp` (~340
+    lines) as one of its six TUs. Nothing extra to plan.
+
 ### TIER 3 — implemented but unreachable
 
 19. **`GraphicalMode::initialize()` falls through to the console renderer for every
