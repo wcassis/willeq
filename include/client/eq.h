@@ -813,6 +813,14 @@ public:
 	// MoveToWithPath() without first replaying a full PlayerProfile.
 	// Test-only; not called from any production path.
 	void Test_SetMySpawnIdForSeam(uint16_t spawn_id) { SetMySpawnId(spawn_id); }
+	// T311: player model size, normally set from the self spawn struct. The
+	// wire z is 0.625 * size, so a test that does not vary size cannot pin the
+	// measured size-linearity.
+	void Test_SetPlayerSizeForSeam(float size) { m_game_state.player().setSize(size); }
+	// T311: the deferred-conversion flag a self-spawn sets when the model has
+	// not loaded yet. A headless test has no renderer to reach the real setter.
+	void Test_SetZAwaitingFrameConversionForSeam(bool a) { m_game_state.player().setZAwaitingFrameConversion(a); }
+	bool Test_GetZAwaitingFrameConversionForSeam() const { return m_game_state.player().zAwaitingFrameConversion(); }
 
 	// T221 test seam: m_game_state.pet().petSpawnId() is normally set only by pet detection
 	// in ZoneSpawns/NewSpawn/ClientUpdate; lets a test drive the MobHealth
@@ -980,6 +988,10 @@ public:
 	// the shared_ptr so a zone change cannot free it mid-query (P35).
 	std::shared_ptr<const HCMap> GetZoneMap() const { return m_zone_map; }
 	float GetSize() const { return m_game_state.player().size(); }  // player model size (6 until the spawn says otherwise)
+	// T311: the renderer-measured origin-to-feet distance of OUR model; 0 until
+	// the model loads. Only for render-frame <-> wire-frame conversion --
+	// include/client/position_frames.h.
+	float GetPlayerCollisionZOffset() const { return m_game_state.player().collisionZOffset(); }
 	// T247: true while an instantaneous OP_Stun (eqemu Stun_Struct, duration
 	// in ms; 0 = UnStun) is in force. Buff-borne stuns are BuffManager's.
 	bool IsStunned() const;

@@ -27,6 +27,20 @@ struct PlayerPositionChanged {
     float dx, dy, dz;  // Velocity/delta (animation derived on game thread from velocity + water state)
 };
 
+// T311: the player model's own measured origin-to-feet distance, published by
+// the renderer whenever it changes (model load, race/size change).
+//
+// The game thread needs it to convert between the RENDER frame it receives from
+// the renderer and the WIRE frame it must transmit -- see
+// include/client/position_frames.h. It is a property of the SHIPPED MESH, so
+// only the renderer can measure it (EntityRenderer::getPlayerCollisionZOffset,
+// from collisionZOffsetFromBounds); it is pushed as a one-way intent rather than
+// read back synchronously because EverQuest holds no renderer pointer by design
+// (CLAUDE.md, "Key separation").
+struct PlayerModelGeometryChanged {
+    float collisionZOffset;  // |bbox.MinEdge.Y| * scale, world units; 0 = unknown
+};
+
 // --- Targeting ---
 
 struct TargetIntent {
@@ -232,6 +246,7 @@ struct EquipmentChangedIntent {
 using RendererIntent = std::variant<
     // Movement
     PlayerPositionChanged,
+    PlayerModelGeometryChanged,
     // Targeting
     TargetIntent,
     // Chat

@@ -45,6 +45,7 @@
 #endif
 #include "client/skill/skill_manager.h"
 #include "client/bridge/game_state_bridge.h"
+#include "client/position_frames.h"
 // P28: wld_loader.h (and the zone_bsp.h BspTree/RegionType it pulls in) has no
 // renderer dependency — UpdateWaterState() below needs the complete BspTree
 // type regardless of graphics.
@@ -1097,8 +1098,32 @@ void EverQuest::SendPositionUpdate()
 	// So to send back: server's y_pos = client x, server's x_pos = client y
 	update.y_pos = PosX();  // client x holds server's original y
 	update.x_pos = PosY();  // client y holds server's original x
-	// Send Z position directly without offset - server stores the actual position
-	update.z_pos = PosZ();
+	// T311: PosZ() is the RENDER frame (the model node's origin, which the
+	// renderer snaps to groundZ + collisionZOffset). The WIRE frame is
+	// groundZ + 0.625*size -- MEASURED off the official Titanium client
+	// against a live server (T311 Leg A: at a qeynos2 spot whose server
+	// raycast reads Best Z = -0.00 the official client transmits 3.751, and
+	// the value tracks size exactly linearly with no race term). Convert here,
+	// at the packet edge, and nowhere else.
+	//
+	// The pre-T311 comment here read "Send Z position directly without offset -
+	// server stores the actual position". The second half is true (the server
+	// applies no transform to a client's z at all -- Mob::FixZ early-returns for
+	// Clients) and that is precisely why the first half was a defect: whatever
+	// we send is what every other player sees, and we were sending 3.00 where
+	// the official client sends 3.751.
+	//
+	// zAwaitingFrameConversion means PosZ() is still the raw wire value the
+	// self-spawn delivered (the model had not loaded, so nothing converted it).
+	// Converting it here would add the offset a SECOND time, and since the
+	// server saves what we send and hands it back next login, that error
+	// compounds 0.625 per zone-in -- measured 3.63 -> 4.25 -> 4.88 over three
+	// logins. Send it back verbatim until the renderer has told us the offset.
+	update.z_pos = m_game_state.player().zAwaitingFrameConversion()
+		? PosZ()
+		: eqt::renderZToWireZ(PosZ(),
+		                      m_game_state.player().collisionZOffset(),
+		                      m_game_state.player().size());
 	// Deltas follow the same transformation:
 	// Internal delta_x (change in client x) = change in server's y = server's delta_y
 	// Internal delta_y (change in client y) = change in server's x = server's delta_x
@@ -1737,7 +1762,19 @@ void EverQuest::UpdateWaterState()
 		const auto& bspTree = m_zone_bsp_tree;
 		if (bspTree) {
 			// Check the region at current player position
-			// In EQ, the "head" is approximately 6 units above feet position
+			//
+			// T311 CORRECTION: T311 Leg A's Review lists this headZ as "computed
+			// and never used -- a live dead local". THAT IS A MISREADING: headZ
+			// is read below, at the findRegionForPoint() that decides OnSurface
+			// vs Submerged. It is not dead and nothing was deleted here.
+			//
+			// The 6.0 itself IS questionable -- PosZ() is the model node's
+			// ORIGIN (render frame), not the feet, and for a Human male the
+			// crown is only ~3.65 above that origin, so this samples ~2.3 units
+			// ABOVE the head. Correcting it moves the OnSurface/Submerged
+			// threshold by about three units, which is a behavioural change in
+			// water detection with no live coverage; it is NOT this unit's
+			// change (T311 is the wire z) and is boarded instead.
 			constexpr float HEAD_HEIGHT_OFFSET = 6.0f;
 			float headZ = PosZ() + HEAD_HEIGHT_OFFSET;
 

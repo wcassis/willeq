@@ -1029,6 +1029,23 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
 
         entityRenderer_->updateEntityCastingBars(deltaTime, camera_);
         entityRenderer_->processExpiredCombatBuffers();
+
+        // T311: publish the player model's measured origin-to-feet distance to
+        // the game thread. It is a property of the SHIPPED MESH -- only the
+        // renderer can measure it -- and the game thread needs it to convert the
+        // RENDER-frame z it gets from us into the WIRE-frame z the official
+        // client transmits (include/client/position_frames.h). EverQuest holds
+        // no renderer pointer by design, so this is a one-way intent, not a
+        // synchronous read.
+        //
+        // Republished every frame rather than on change: caching "last
+        // published" would need a new IrrlichtRenderer member, and
+        // GameStateBridge::coalesceIntents already collapses these to the latest
+        // one per drain, so the queue cannot grow.
+        if (bridge_) {
+            bridge_->pushIntent(eqt::events::PlayerModelGeometryChanged{
+                entityRenderer_->getPlayerCollisionZOffset()});
+        }
     }
     frameTimings_.entityUpdate = measureSection();
 
