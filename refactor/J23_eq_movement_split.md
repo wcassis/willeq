@@ -531,3 +531,564 @@ new `include/client/eq_movement_internal.h`, `CMakeLists.txt` (the one
   include block, or add a TU this plan does not name.
 - Any of the eight constants has acquired a reader outside
   `src/client/eq_movement.cpp`.
+
+---
+
+## Review (executor, slot3, 2026-09-02)
+
+**Branch `task/J23-eq-movement-split`, cut from `fable` at `2498c3a5`
+("Batch J: fold J33's corrections"). `$BASE = 2498c3a5354a7df86d9126e31a3acb787af1664c`
+(`git merge-base fable HEAD`, unchanged throughout — no wave merge moved it).**
+
+### 1. Line count at my tip, and range drift
+
+`wc -l src/client/eq_movement.cpp` = **2,139** — exactly what the plan measured
+at `824adb28`. **Zero drift.** Every range, cut boundary and preprocessor line
+number below reproduced exactly. This is the second Wave-6 unit (after J31/J33)
+to find its survey stable, and it holds despite the plan's own warning that
+T311 Leg B and T322 had touched this file recently — both landed before
+`824adb28`.
+
+### 2. Every property in §Measured, re-verified
+
+| property | plan | measured at `2498c3a5` | |
+|---|---|---|---|
+| total lines | 2,139 | **2,139** | ✅ |
+| preamble | 1-81, constants at 70-80 | **1-81, constants at 70-80** | ✅ |
+| namespace | none | `grep -n '^namespace'` returns **nothing** | ✅ |
+| method definitions | 43 | **43** (`grep -c '^[A-Za-z_].*EverQuest::'`) | ✅ |
+| `// ====` banners | 0 | **0** (`grep -cE '^// ={4,}'`, per correction 28) | ✅ |
+| file-scope `static` / anon ns | none | `grep -n '^static \|^namespace'` returns **nothing** | ✅ |
+| multi-line comment regions | zero | depth 0 everywhere, final depth 0 | ✅ |
+
+```
+$ grep -n '^static \|^namespace' src/client/eq_movement.cpp
+(no output)
+$ grep -cE '^// ={4,}' src/client/eq_movement.cpp
+0
+$ grep -c '^[A-Za-z_].*EverQuest::' src/client/eq_movement.cpp
+43
+```
+
+⚠ **Correction 36 check (out-of-class static member definitions in the
+preamble): NONE.** Lines 1-81 are a comment block, `#include`s, the `#ifndef
+M_PI` pair, and eleven internal-linkage `const float` lines. Nothing with
+external linkage is defined in the copied region, so the verbatim-preamble copy
+carries no duplicate-symbol risk.
+
+⚠ **Correction 35 / J33's filename-keyed sweep does NOT apply.**
+`tests/test_first_person_camera_single_formula.cpp:49` sweeps
+`kRoot / "src" / "client" / "graphics"` recursively. `src/client/eq_movement.cpp`
+is not under that subtree, so neither `kHelperTU` nor `kFloorSecondReader`
+constrains this unit's filenames. The prescribed first-person token grep also
+returns nothing in this file.
+
+### 3. Correction 21, re-derived (not cited)
+
+`grep -rn '\b<sym>\b' src/ include/ tests/ scripts/` for each of the eight
+constants. **Every hit is inside `src/client/eq_movement.cpp`; nothing else in
+the tree names any of them.** Full output:
+
+```
+DEFAULT_RUN_SPEED           71 (def)   1519
+DEFAULT_WALK_SPEED          72 (def)   1522, 1525, 2111
+WALK_SPEED_THRESHOLD        73 (def)   1753, 2109
+POSITION_UPDATE_INTERVAL_MS 74 (def)   1003
+FOLLOW_CLOSE_DISTANCE       77 (def)   891, 895
+FOLLOW_FAR_DISTANCE         78 (def)   889, 895
+FOLLOW_MIN_SPEED_MULT       79 (def)   892, 896
+FOLLOW_MAX_SPEED_MULT       80 (def)   890, 896
+```
+
+Mapping each reader onto the ranges **this plan assigns**:
+
+| symbol | definition's range | readers | reader range(s) | same range? |
+|---|---|---|---|---|
+| `DEFAULT_RUN_SPEED` | preamble | 1519 | 1304-2139 | ✗ |
+| `DEFAULT_WALK_SPEED` | preamble | 1522, 1525, 2111 | 1304-2139 | ✗ |
+| `WALK_SPEED_THRESHOLD` | preamble | 1753, 2109 | 1304-2139 | ✗ |
+| `POSITION_UPDATE_INTERVAL_MS` | preamble | 1003 | 509-1303 | ✗ |
+| `FOLLOW_CLOSE_DISTANCE` | preamble | 891, 895 | 509-1303 | ✗ |
+| `FOLLOW_FAR_DISTANCE` | preamble | 889, 895 | 509-1303 | ✗ |
+| `FOLLOW_MIN_SPEED_MULT` | preamble | 892, 896 | 509-1303 | ✗ |
+| `FOLLOW_MAX_SPEED_MULT` | preamble | 890, 896 | 509-1303 | ✗ |
+
+**Two distinct ranges consume them — 1304-2139 takes three, 509-1303 takes
+five — so no assignment of the eleven definition lines to a single range works.
+Confirmed independently: this is J08's defect shape, and HAZARD 1 option (a)
+(the internal header) is the resolution that makes every consumer's TU have a
+declaration in scope by construction.**
+
+⚠ **Range 82-508 reads none of the eight** — verified: the lowest reader line
+in the whole file is **889**, well past 508. It includes the header anyway, per
+the plan, so all three preambles are identical and no judgement call is left to
+a future reader. A namespace-scope `const` with no reader produces no warning in
+C++ and the build confirms it (`-Wall` clean across all four configurations
+built below).
+
+**No constant has acquired a reader outside `src/client/eq_movement.cpp`** — the
+last STOP condition is not triggered.
+
+### 4. Comment depth at every cut — computed, not asserted
+
+Using the plan's `//`-stripping counter verbatim:
+
+```
+depth before line 82   = 0
+depth before line 509  = 0
+depth before line 1304 = 0
+final depth = 0
+```
+
+The `:18` trap the plan warns about (a `//` line containing `*/` twice) is
+real and the stripping counter handles it; a naive counter goes to -2.
+
+### 5. The preprocessor dump — no cut lands inside a conditional
+
+```
+$ awk '/^[ \t]*#(if|ifdef|ifndef|else|elif|endif)/ {print NR": "$0}' src/client/eq_movement.cpp
+43: #ifdef EQT_HAS_NAVMESH
+45: #endif
+53: #ifdef WITH_AUDIO
+55: #endif
+66: #ifndef M_PI
+68: #endif
+1341: #if defined(EQT_HAS_NAVMESH)
+1349: #endif
+1898: #ifdef WITH_AUDIO
+1903: #endif
+```
+
+**All ten lines reproduce the plan exactly.** Three pairs are preamble (copied
+into every TU). The two body pairs — 1341/1349 inside `LoadPathfinder`, and
+1898/1903 inside `OnEnterWater` — both fall wholly inside **1304-2139**, so
+neither cut (509, 1304) is inside a conditional region.
+
+Post-split, each TU's directives are balanced within itself:
+
+| TU | directive lines |
+|---|---|
+| `eq_movement.cpp` | 31/33, 41/43, 54/56 (preamble only) |
+| `eq_movement_update.cpp` | 31/33, 41/43, 54/56 (preamble only) |
+| `eq_movement_state.cpp` | 25/27, 35/37, 48/50 (preamble) + **91/99** (navmesh) + **648/653** (audio) |
+| `eq_movement_internal.h` | none |
+
+### 6. Cut boundaries, with neighbours, at my tip
+
+```
+cut 509                          cut 1304
+504|   std::cout << "Movement…"   1299|   // Check if we're close enough…
+505|   }                          1300|   float dist = CalculateDistance2D(…)
+506|  }                           1301|   return dist < 2.0f;
+507| }                            1302| }
+508| (blank)                      1303| (blank)
+509| void EverQuest::UpdateMove…  1304| // Pathfinding implementation
+                                  1305| void EverQuest::LoadPathfinder(…)
+```
+
+Both cuts satisfy J03's rule (correction 11): **a blank line whose predecessor
+closes a method, comment depth 0.** The leading comment at 1304 travels with
+`LoadPathfinder`, per the surviving half of the banner rule.
+
+**Blank-line convention: the trailing blank stays with the preceding range and
+each new range starts at its first non-blank line.** So `eq_movement.cpp`'s body
+ends on a blank (old 508), `eq_movement_update.cpp`'s ends on a blank (old
+1303), and `eq_movement_state.cpp`'s ends on `}` (old 2139).
+
+⚠ **PLAN ERROR (record it).** §Every cut boundary says "This file separates
+methods with TWO blank lines, not one". **Measured: the file has 141 single-blank
+runs and exactly ONE double-blank run** (1008/1009, between `UpdateMovement` and
+`SendPositionUpdate`). The convention is one blank; the double is a single
+outlier, it sits mid-range in `eq_movement_update.cpp`, and it is untouched.
+**Neither of my two cuts is at a double blank**, so the ambiguity the plan
+raises never arises. **Correction 30's double-spaced-tail artefact did not fire**
+(there is no namespace close to replicate).
+
+### 7. CMake add-sites — **ONE**, matching the plan
+
+```
+$ find <slot> \( -name CMakeLists.txt -o -name '*.cmake' \) \
+      -not -path '*/build*' -not -path '*third_party*' -exec grep -Hni eq_movement {} +
+/mnt/projects/fable/wt/slot3/CMakeLists.txt:297:    src/client/eq_movement.cpp
+```
+
+`CMakeLists.txt:297`, inside `SET(CLIENT_CORE_SOURCES` (opens at `:265` —
+confirmed, and confirmed UPPERCASE per correction 12). Both new TUs added
+immediately below it. **No `tests/cmake/` fragment names this file**; searched
+all 23 CMake files in the tree with `-i`, so neither correction 26 (never name
+`tests/CMakeLists.txt`) nor the uppercase trap could hide a site. The internal
+header needs no CMake entry. `gles2_zone_benchmark` is untouched.
+
+⚠ **NEW TRAP, worth folding into the template — `grep -rn --include=` IS
+SILENTLY EMPTY ON THIS HOST.** `grep` here is **ugrep 7.8.4**, and
+`grep -rn --include=CMakeLists.txt --include=*.cmake -i eq_movement <dir>`
+returns **nothing, exit 1** on a tree where the site demonstrably exists — while
+`grep -rn -i eq_movement <explicit file list>` finds it and
+`find … -exec grep -Hni … {} +` finds it. This is the **fifth** member of the
+silently-empty-grep family the batch has catalogued (after uppercase CMake,
+`grep -c '{4,}'`, `grep ' error '`, and ugrep's literal `\|`). **A unit that
+counted its add-sites with `--include=` would report ZERO sites and look
+thorough.** Use `find … -exec grep` or an explicit file list.
+
+### 8. `tests/` and `scripts/` — both greps, run at my tip
+
+```
+$ grep -rn 'eq_movement' tests/ scripts/
+tests/test_setheading_conversion.cpp:8            // …eq_movement.cpp's
+tests/test_eq_action_handler_enum_guards.cpp:20   // …eq_movement.cpp's no-op guard).
+tests/test_eq_action_handler_transforms_real.cpp:603  // both setters (eq_movement.cpp);
+tests/test_position_frame_roundtrip.cpp:12,30,63,206,383  // (5 comment hits)
+tests/test_zone_position_convention.cpp:295       // (eq_movement.cpp) is gated on…
+```
+**Nine hits, ALL comments, ZERO functional readers.** (The plan said "comment-only
+hits"; the count is nine.)
+
+```
+$ grep -hn 'kRoot / "src\|kRoot / "include' tests/*.cpp | sort -u
+```
+returns 17 distinct source paths — `eq.h`, `renderer_event_receiver.cpp`,
+`renderer_frame_render.cpp`, `renderer_intents.h`, `eq_bridge_intents.cpp` ×2,
+`event_bus.h`, `action_dispatcher{,_social,_guild_misc}.cpp`,
+`action_dispatcher.h`, `renderer_command_catalog.cpp`,
+`renderer_frame_input.cpp` ×2, plus `kGraphicsDir`. **`src/client/eq_movement.cpp`
+is not among them.** **No repoint needed; no `tests/` file was edited.**
+
+### 9. File-header comment lines — every one enumerated
+
+The pre-split file-header comment block is **lines 1-38** (not the "1-30" §File-header
+comments claims — a plan error; line 30 is mid-way through the
+`StartUpdateLoop`/`StopUpdateLoop` NOTE, and the block runs to `:38`). All 38
+lines were replaced with per-TU headers. Line 39 (blank) onward is verbatim.
+
+- **`eq_movement.cpp` — 26 header lines.** Names the commanded-movement cluster
+  (Move/MoveTo/MoveToEntity/MoveToEntityWithinRange, Follow/StopFollow, both
+  `StartCombatMovement` overloads, `UpdateCombatMovement`, Face/FaceEntity,
+  `Test_SnapToMovementTargetForSeam`, `StopMovement`); cites J23 and F08; names
+  both sibling TUs and what each holds; says the eight constants moved to the
+  internal header. **Carries forward, condensed into two lines, the pre-split
+  header's four still-true NOTEs** (FindEntityByName/ListEntities,
+  SafeQueueZonePacket, StartUpdateLoop/StopUpdateLoop, QueuePacket all left in
+  `eq.cpp` by F08) and keeps the G03 `StartCombatMovement(uint16_t)` NOTE
+  verbatim. The old header's *enumeration of the whole file's contents* — which
+  is what would have gone actively wrong — is gone.
+- **`eq_movement_update.cpp` — 26 header lines.** Names `UpdateMovement`,
+  `SendPositionUpdate`, and the four geometry/arrival helpers; cites J23 and
+  F08; names the siblings; **states in plain words that `UpdateMovement` is 499
+  lines and is a recorded Batch-G decomposition candidate J23 deliberately did
+  not touch**, with both reasons (a verbatim-relocation commit's byte proof, and
+  ~646 lines of headroom under the warn ceiling), pointing at
+  `refactor/J_file_size_reclamation.md` §Optional. Says this TU reads five of
+  the eight constants.
+- **`eq_movement_state.cpp` — 20 header lines.** Names all six clusters
+  (pathfinding, movement mode / position state, jump + history, water state,
+  speed, keyboard control); cites J23 and F08; names both siblings; says this TU
+  reads three of the eight constants.
+- **`eq_movement_internal.h` — 7 written lines**, verbatim as §HAZARD 1
+  prescribes (6 `//` + `#pragma once`).
+
+**No other comment in the file was changed.** All header text is `//` and
+therefore allowlisted boilerplate for the verifier.
+
+⚠ **Correction 40 has no exposure here** and I did not have to reword anything:
+**no test scans this file as text at all** (§8), so no header line can satisfy a
+`find != npos` guard or perturb a counting guard. Nothing was quoted defensively
+because there is nothing to defend.
+
+### 10. The internal header — 19 lines, signed-off contents
+
+`include/client/eq_movement_internal.h`, mode 644, **exactly 19 lines**, matching
+the plan's prescription:
+
+| lines | content |
+|---|---|
+| 1-6 | the six `//` lines §HAZARD 1 prescribes, verbatim |
+| 7 | `#pragma once` |
+| 8 | blank |
+| 9-19 | **`eq_movement.cpp:70-80` VERBATIM** — asserted programmatically in the proof script (`hdr[8:] == orig[69:80]`), not eyeballed |
+
+**7 written + 1 blank + 11 moved = 19.** ✅
+
+**Enumerated exception list (correction 10 — each measured, not added for
+symmetry).** Every one of the eight is promoted for the same measured reason,
+and no ninth symbol was added:
+
+| symbol | why it is in this header |
+|---|---|
+| `DEFAULT_RUN_SPEED` | read at 1519 (state TU) — outside the definition's TU |
+| `DEFAULT_WALK_SPEED` | read at 1522/1525/2111 (state TU) |
+| `WALK_SPEED_THRESHOLD` | read at 1753/2109 (state TU) |
+| `POSITION_UPDATE_INTERVAL_MS` | read at 1003 (update TU) |
+| `FOLLOW_CLOSE_DISTANCE` | read at 891/895 (update TU) |
+| `FOLLOW_FAR_DISTANCE` | read at 889/895 (update TU) |
+| `FOLLOW_MIN_SPEED_MULT` | read at 892/896 (update TU) |
+| `FOLLOW_MAX_SPEED_MULT` | read at 890/896 (update TU) |
+
+The two grouping comments (`// Movement constants`, `// Following constants`)
+and the blank between the groups travel too — that is the whole 70-80 block and
+the reason option (c) was rejected.
+
+⚠ **Correction 18 honoured: the constants stay at GLOBAL scope**, exactly where
+they are today. No `detail` namespace, no `using` declarations, **zero call sites
+textually changed**. This is J05's shape (2 exception lines for 114 sites), not
+J04's (8 lines for 12 sites) — and here it is cheaper still, because `const
+float` initialisers are boilerplate-adjacent in a way `static inline` was not.
+
+### 11. Both content proofs — pasted, with the header counted explicitly
+
+**How the header was counted, in both proofs.** The naive recipe (concatenate
+the three .cpp bodies) under-counts by exactly 11 lines and still looks clean
+(correction 7). I used **J04's method**: re-insert the header's 11 moved lines
+**at their original offset** and run both comparisons over **lines 70-2139**
+(2,070 lines), not 82-2139. The reconstruction is literally
+
+`hdr[8:19]` (the 11 moved lines) `+ orig[81]` (the blank) `+ body(stays) +
+body(update) + body(state)`
+
+where `body(f)` is defined structurally — everything two lines after that TU's
+`#include "client/eq_movement_internal.h"` — rather than by an offset constant,
+so no arithmetic of mine can shorten a range (corrections 17/20: suspect the
+proof first; count variables are not hand-rolled at all here).
+
+```
+BASE = 2498c3a5354a7df86d9126e31a3acb787af1664c
+original lines = 2139
+bodies: 427 795 836   sum 2058
+header total lines = 19 | written = 7 | blank = 1 | moved constant lines = 11
+header moved block == original 70-80 VERBATIM: OK
+recon lines = 2070   target lines = 2070
+PROOF1 cmp  exit = 0 -> BYTE-IDENTICAL
+PROOF2 diff exit = 0 -> MULTISET-OK
+```
+
+Arithmetic that must hold, and does: **81 + 427 + 795 + 836 = 2,139**, and
+**11 (header) + 1 (blank 81) + 2,058 (bodies) = 2,070 = lines 70-2139.**
+
+### 12. The verifier
+
+```
+$ git -C /mnt/projects/fable/wt/slot3 commit …          # FIRST (correction 13)
+$ BASE=$(git -C … merge-base fable HEAD)                # = 2498c3a5, the fork point
+$ python3 scripts/refactor/verify_move_only.py "$BASE..HEAD" \
+      --repo /mnt/projects/fable/wt/slot3                # --repo, not the default '.'
+```
+
+All three of the batch's confident-looking-wrong-answer traps were avoided
+explicitly: committed first (not `No C++ files changed`/exit 0), fork point (not
+`fable..HEAD`), and `--repo <slot>` (not `main/`).
+
+```
+BASE=2498c3a5354a7df86d9126e31a3acb787af1664c
+VERIFY_EXIT=0
+
+Non-C++ files changed (not verified, review separately):
+  CMakeLists.txt
+  refactor/J23_eq_movement_split.md
+
+Files verified: 4
+Boilerplate: +127 / -29 lines (allowed)
+
+PASS: move-only (modulo boilerplate).
+```
+
+**Result: EXIT 0, `+0/-0` substantive — the plan's prediction held EXACTLY, and
+there is NOTHING to enumerate and NOTHING to sign off.** The full flagged set is
+empty; every line the diff touches is `#include`, `#pragma`, `//`, `}` or blank.
+
+⚠ **THE DISPATCH BRIEF WAS WRONG ON THIS POINT, AND THE PLAN WAS RIGHT.** The
+brief stated that "the verifier will exit 1 by construction -- promoting anything
+trips it", generalising from correction 5 (J04's `inline`/`using`) and correction
+9 (J11's `extern` preamble). **That generalisation does not hold for a pure
+RELOCATION into a header.** §Expected verifier result derived the correct answer
+from the plan's own prescribed output and it is worth restating, because it is a
+genuinely useful distinction the batch had not yet isolated:
+
+- The verifier compares **distinct normalized lines as a multiset across the
+  whole changeset**, not per file. The eleven constant lines are **removed from
+  `eq_movement.cpp` and added to `eq_movement_internal.h` unchanged**, so each
+  distinct line's count is 1 before and 1 after. **They cancel.**
+- J04 and J05 exited 1 because promotion **rewrote the lines** (`static inline
+  read_val` -> `inline read_val`; `namespace detail` + `using`). A changed line
+  is a removal plus an addition and cannot cancel.
+- J11 exited 1 because its non-boilerplate preamble lines were **duplicated**
+  into five TUs — 1 before, 5 after.
+
+**The rule, sharper than correction 5/9: a promoted symbol costs verifier lines
+only if its text CHANGES or its COUNT changes. Move eleven lines verbatim into a
+header included by every TU that used to see them, keep them in their existing
+namespace, and the cost is zero.** Correction 18's "keep it in its existing
+namespace" is what buys this — it is the difference between J05's 2 lines and
+J04's 8, and here it is the difference between some number and none at all.
+**A future plan prescribing an internal header should predict exit 0 unless it
+also prescribes a text change.**
+
+Both the `--repo` trap and the wrong-base trap are ruled out positively rather
+than by assumption: the verifier names **exactly** this unit's 4 C++ files and 2
+non-C++ files and nothing else, which is what a correct base + correct repo looks
+like. A wrong repo would have listed `main/`'s merged units; a wrong base would
+have listed slot1's or slot2's.
+
+### 13. Final numbers
+
+| file | lines | methods | note |
+|---|---|---|---|
+| `src/client/eq_movement.cpp` | **486** | **13** | commanded movement API |
+| `src/client/eq_movement_update.cpp` | **854** | **6** | per-tick pump; holds the 499-line `UpdateMovement` |
+| `src/client/eq_movement_state.cpp` | **889** | **24** | pathfinding / state / jump / water / keyboard |
+| `include/client/eq_movement_internal.h` | **19** | — | the eight constants |
+| **total** | **2,248** | **43** | 3 TUs, largest **889** |
+
+`check_file_sizes.sh --files` over all four: **4 ok, 0 warn, 0 fail.**
+
+**Method counts: 13 / 6 / 24, against the plan's "roughly 14 / 6 / 23".** The
+one-off in each direction is `Test_SnapToMovementTargetForSeam` (:480) and the
+`LoadPathfinder`/`SetMovementMode` boundary — cluster membership was right, the
+count was approximate, as §Optional's "roughly" allowed.
+
+⚠ **Predicted vs actual sizes, and WHY they differ — this is correction 12/19
+territory and the plan flagged it.** §The split predicts 498 / 866 / 908. Those
+numbers are `71 (preamble) + range`, where 71 assumes the **38-line pre-split
+header rides along verbatim**. §File-header comments then tells each TU to write
+its **own** header, which the plan explicitly says "lands on top of that". The
+derivable identity is:
+
+**TU lines = (own header) + 31 (lines 39-69) + 1 (the `#include`) + 1 (blank 81) + body**
+
+- `eq_movement.cpp` = 26 + 33 + 427 = **486** (plan 498; my header is 12 shorter than 38)
+- `eq_movement_update.cpp` = 26 + 33 + 795 = **854** (plan 866; same 12)
+- `eq_movement_state.cpp` = 20 + 33 + 836 = **889** (plan 908; my header is 18 shorter, and the plan's 908 also over-counts the range by ~1)
+
+**Every TU came in slightly under the plan, uniformly, for one reason: my
+adapted headers are shorter than the 38-line block the estimate carried.** Body
+ranges are exact to the line. Largest TU **889**, 611 lines under the warn
+ceiling.
+
+### 14. Acceptance — every item, by exit code
+
+| step | result |
+|---|---|
+| `cmake --build build -j24` | first invocation **exit 143** (10 min tool ceiling); re-invocation **exit 0** |
+| ELF scan after the 143 | **221 binaries scanned, 0 BAD** |
+| `scripts/build-gles2-x86.sh` | first **exit 143**; re-invocation **exit 0**; 40 binaries, 0 BAD |
+| `ctest -j6` | **3506/3507 passed**; sole failure `AudioManagerTest.PreloadCommonSounds` — the documented ALSA host quirk, the only entry in `refactor/test_baseline.txt`. **Zero new failures.** ctest exits 8 because of it. |
+| visual gate (in-suite #3504) | **Passed, 43.62 s** |
+| goldens | `git status --porcelain` shows only my 5 intended paths — **untouched** |
+| `scripts/build-arm-noble.sh` | **exit 0, first invocation**; 18 binaries, 0 BAD |
+| `check_file_sizes.sh --files` | **0 warn, 0 fail** |
+| `verify_move_only.py "$BASE..HEAD" --repo <slot>` | **exit 0, PASS, +0/-0 substantive** (§12) |
+
+⚠ **GATE ORDERING (correction 41): I used the FIX, not the workaround. I ran
+`scripts/build-gles2-x86.sh` BEFORE `ctest -j6`**, so the in-suite `visual_gate`
+ran against a `gles2_zone_benchmark` **stamped 13:45** against edits made at
+~13:15. **The in-suite run is therefore the one that counts, and no standalone
+re-run was needed.** (J25 and J33 both had to re-run standalone; building first
+is strictly cheaper — it costs nothing, since `build-gles2-x86.sh` is on the bar
+anyway, and it removes a whole class of vacuous pass.)
+
+⚠ **The truncation trap fired a SIXTH and SEVENTH time — both the J13
+absent-not-truncated shape, and one of them is a NEW kill site.**
+- The x86 `build/` 143 was killed **archiving `lib/libwilleq_core.a`**, and the
+  log's last line is `gmake[2]: *** Deleting file 'lib/libwilleq_core.a'`. **The
+  batch's record so far only has killed *compiles* (J07/J10/J12) and killed
+  *links* (J13/J33). A killed `ar` is a third site, and it behaves like a link:
+  gmake deletes its own partial archive.** Worth recording, because a truncated
+  static library would not be caught by a `build/bin/*` ELF scan at all —
+  `readelf -h` on an archive is not what the scan checks. Here gmake cleaned up
+  and the rebuild was clean, but the scan as written would not have found it.
+- The `build-gles2-x86.sh` 143 was killed linking `bin/willeq`; gmake deleted it
+  cleanly. **0 BAD both times.**
+- Both re-invocations exited 0 and both post-scans were clean, so the J07/J10/J12
+  "clean exit 0 over truncated binaries" trap did **not** fire here. **The scan is
+  what distinguishes the two outcomes and it cost seconds; keep it mandatory.**
+
+### 15. Findings only (not fixed)
+
+1. **`docs/module_map.md` needs two new rows** — `eq_movement_update.cpp` and
+   `eq_movement_state.cpp` — and its `eq_movement.cpp` row is now wrong (2,139 →
+   486, and the file no longer holds `UpdateMovement`). **Recorded, not acted on**
+   (territory, and correction 24's queue).
+2. **Nine `tests/` comment citations of `eq_movement.cpp` are now imprecise.**
+   Per correction 24 I checked them **at my base commit**: none of the nine cites
+   a **line number** — they all name the file, or a method in it, in prose. So
+   unlike J06/J07/J08 there is no pre-existing line-number rot here, and unlike
+   J31 I have **not newly invalidated** any line citation. What I *have* done is
+   make five of them name the wrong TU: the three
+   `SendPositionUpdate`/`UpdateMovement` references
+   (`test_position_frame_roundtrip.cpp:12,206,383`) now point at
+   `eq_movement_update.cpp`, and `test_zone_position_convention.cpp:295` and
+   `test_setheading_conversion.cpp:8` point at the update/state TUs respectively.
+   **Attribute those five to J23 in the doc-hygiene queue.** The remaining four
+   are still correct or still ambiguous-either-way.
+3. **`UpdateMovement` is 499 lines** and is now 58% of its 854-line TU. Batch-G
+   candidate, **flagged in the TU's own file header so the question is not
+   re-opened by the next reader**, exactly as J33 did for `updatePlayerMovement`.
+   The §Optional test — `preamble + largest method` = 33 + 499 = **532** against a
+   1,500 ceiling — says clearly there is **no ceiling problem** and therefore no
+   Batch-G decision owed here either (correction 34's arithmetic, applied to this
+   file). `SendPositionUpdate` at 229 is a distant second.
+4. **No dead-content site found in this file** — no `#if 0`, no commented-out
+   method bodies, no retired-configuration arm. The eight-site dead-content
+   decision gains nothing from J23.
+
+### 16. Plan errors to fold into the template
+
+1. ⚠ **The two-blank-line claim is wrong** (§Every cut boundary). One blank is
+   the convention: **141 single-blank runs, exactly one double** (1008/1009).
+   Neither cut is affected, but a unit trusting the claim would look for a
+   convention that isn't there.
+2. ⚠ **The file-header comment block is 1-38, not 1-30** (§File-header comments).
+   A unit that replaced only 1-30 would leave eight orphaned NOTE lines above its
+   new header.
+3. ⚠ **The predicted TU sizes (498/866/908) are `71 + range`, which silently
+   assumes the 38-line pre-split header rides along** — while §File-header
+   comments tells you to write your own. The two sections are consistent only if
+   you read the correction-12 caveat, which the plan does include. **Better shape
+   for future plans: state the preamble as `(your header) + 33 + body` and let the
+   executor fill in the first term.**
+4. ⚠ **NEW, and the most dangerous: `grep -rn --include=…` silently finds
+   nothing on this host** (ugrep 7.8.4). See §7. Fifth member of the
+   silently-empty-grep family. **Add it to the batch's grep-trap list.**
+5. **The `tests/`/`scripts/` grep returns nine hits, not an unstated number** —
+   all comments, zero functional readers, as predicted.
+6. **Method-count prediction 14/6/23 is actually 13/6/24.** Minor; cluster
+   membership was exact, which is the batch's consistent pattern (correction 12).
+7. ⚠ **The dispatch brief's "the verifier will exit 1 by construction" is wrong
+   for a verbatim promotion, and the plan's own §Expected verifier result was
+   right.** See §12 for the derivation. A brief that tells an executor to expect
+   a failing exit code invites them to stop chasing an anomaly that is really
+   there; here the correct expectation (exit 0, +0/-0) was also the observed one,
+   so nothing was missed, but the reasoning should be corrected in the template
+   rather than left as folklore. **Promotion costs verifier lines only when the
+   promoted text CHANGES or its COUNT changes.**
+
+### 17. Wall clock
+
+**~75 min end to end.** The cut itself, the CMake edit and **both proofs took
+under 4 minutes**; the survey and re-derivation ~12; everything else was the bar.
+**Slowest step: the x86 `build/` build — two invocations, ~10 min (killed at the
+ceiling) + ~6, so ~16 min for one build.** `build-gles2-x86.sh` cost the same
+shape (~10 killed + ~4). `ctest -j6` was **265.8 s**, and `build-arm-noble.sh`
+finished on its **first** invocation.
+
+**Did wave concurrency stretch the tail? Yes — and the cost was entirely in the
+two exit-143s, ~14 min of pure re-run.** Both are correction 6/14's shape: not
+breakage, re-invoke. `ctest -j6` at 4.4 min against J02's three-wide 6.8 min and
+J06's solo-beating 2.0 min sits mid-range, so correction 14 holds: the stretch
+figures are "may happen", not "will". Slot1 (J32) and slot2 (J26) were both
+active throughout.
+
+### 18. Deviations
+
+**One, and it is the one the plan enumerates and justifies (§Includes and the
+preamble, the correction-20 discipline):** lines **70-80 do not travel in the
+copied preamble**. They move once, into `include/client/eq_movement_internal.h`,
+and all three TUs carry `#include "client/eq_movement_internal.h"` at the point
+those eleven lines occupied — line 69's blank, then the include, then line 81's
+blank, then the body. Lines 39-69 and 81 are copied **verbatim** into all three
+TUs, including the `EQT_HAS_NAVMESH` and `WITH_AUDIO` groups and the `#ifndef
+M_PI` pair.
+
+**Nothing else deviates.** No method decomposed, no dead content deleted, no
+include block trimmed, no reordering, no interface change, no `tests/` file
+touched, no `include/client/eq.h` touched, no TU added beyond the two named.
+HAZARD 1 resolved as **option (a)**, as prescribed. All four created/changed
+files are mode 644.

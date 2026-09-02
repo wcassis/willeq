@@ -1,0 +1,889 @@
+// EverQuest movement: the STATE AND DEPENDENCIES side -- everything
+// movement depends on or derives from, as opposed to the commands that
+// drive it (eq_movement.cpp) or the tick that runs it
+// (eq_movement_update.cpp).
+//  - Pathfinding: LoadPathfinder, FindPath, MoveToWithPath, FollowPath.
+//  - Movement mode / position state: SetMovementMode, SetPositionState.
+//  - Jump and movement history: SendJump, SendMovementHistory, Jump,
+//    UpdateJump.
+//  - Water state: UpdateWaterState, OnEnterWater, OnExitWater, GetSwimSpeed.
+//  - Speed: GetMovementSpeed.
+//  - Keyboard control: StartMove*/StopMove*/StartTurn*/StopTurn* and
+//    UpdateKeyboardMovement.
+//
+// Split out of a 2,139-line eq_movement.cpp by J23
+// (refactor/J23_eq_movement_split.md), which itself came out of eq.cpp in
+// Batch F unit F08. Move-only: no behavior change, no interface change.
+//
+// The eight movement/following tuning constants that used to live in the
+// pre-split preamble now live in include/client/eq_movement_internal.h;
+// this TU reads three of them.
+
+#include "client/eq.h"
+#include "client/combat.h"
+#include "client/pathfinder_interface.h"
+#ifdef EQT_HAS_NAVMESH
+#include "client/pathfinder_nav_mesh.h"
+#endif
+#include "client/skill/skill_manager.h"
+#include "client/bridge/game_state_bridge.h"
+#include "client/position_frames.h"
+// P28: wld_loader.h (and the zone_bsp.h BspTree/RegionType it pulls in) has no
+// renderer dependency — UpdateWaterState() below needs the complete BspTree
+// type regardless of graphics.
+#include "client/graphics/eq/wld_loader.h"
+#ifdef WITH_AUDIO
+#include "client/audio/water_sounds.h"
+#endif
+#include "common/logging.h"
+
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <cstring>
+#include <ctime>
+#include <map>
+#include <tuple>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+#include "client/eq_movement_internal.h"
+
+// Pathfinding implementation
+void EverQuest::LoadPathfinder(const std::string& zone_name)
+{
+	if (zone_name.empty()) {
+		LOG_DEBUG(MOD_MAIN, "LoadPathfinder: Zone name is empty, skipping");
+		return;
+	}
+	
+	LOG_DEBUG(MOD_MAIN, "LoadPathfinder: Loading pathfinder for zone '{}'", zone_name);
+
+	// Release previous pathfinder if any - clear renderer's reference via bridge
+	if (m_bridge) {
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::NavmeshChanged,
+			eqt::state::NavmeshChangedData{nullptr}));
+	}
+	m_pathfinder.reset();
+	m_current_path.clear();
+	m_current_path_index = 0;
+	
+	try {
+		// Use the IPathfinder factory method to load the navigation mesh
+		m_pathfinder.reset(IPathfinder::Load(zone_name, m_navmesh_path));
+		
+		if (m_pathfinder) {
+			// Check if it's actually a PathfinderNavmesh vs PathfinderNull
+			// This is a bit of a hack but helps us understand what type we got
+			PathfinderOptions test_opts;
+			bool partial = false, stuck = false;
+			auto test_path = m_pathfinder->FindPath(
+				glm::vec3(0, 0, 0), glm::vec3(1, 1, 1), partial, stuck, test_opts);
+
+			if (s_debug_level >= 2) {
+				LOG_DEBUG(MOD_MAIN, "Loaded pathfinder for zone: {} (type: {})",
+					zone_name, test_path.empty() ? "NavMesh" : "Null");
+			}
+
+#if defined(EQT_HAS_NAVMESH)
+			// Pass navmesh to renderer via bridge for visualization overlay
+			if (m_bridge) {
+				PathfinderNavmesh* navmesh = dynamic_cast<PathfinderNavmesh*>(m_pathfinder.get());
+				m_bridge->pushEvent(eqt::state::GameEvent(
+					eqt::state::GameEventType::NavmeshChanged,
+					eqt::state::NavmeshChangedData{navmesh}));
+			}
+#endif
+		} else {
+			if (s_debug_level >= 1) {
+				LOG_DEBUG(MOD_MAIN, "No navigation mesh available for zone: {}", zone_name);
+			}
+		}
+	} catch (const std::exception& e) {
+		if (s_debug_level >= 1) {
+			LOG_DEBUG(MOD_MAIN, "Failed to load navigation mesh for {}: {}", zone_name, e.what());
+		}
+	}
+}
+
+bool EverQuest::FindPath(float start_x, float start_y, float start_z, float end_x, float end_y, float end_z)
+{
+	LOG_DEBUG(MOD_MAIN, "FindPath called: from ({:.2f},{:.2f},{:.2f}) to ({:.2f},{:.2f},{:.2f})", start_x, start_y, start_z, end_x, end_y, end_z);
+	
+	if (!m_pathfinder) {
+		LOG_DEBUG(MOD_MAIN, "FindPath: No pathfinder object available (m_pathfinder is null)");
+		return false;
+	}
+	
+	// Clear previous path
+	m_current_path.clear();
+	m_current_path_index = 0;
+	
+	// Set up pathfinding options
+	PathfinderOptions opts;
+	opts.smooth_path = true;
+	opts.step_size = 10.0f; // Distance between waypoints
+	opts.offset = 5.0f; // Height offset for character
+	
+	// Find the path
+	bool partial = false;
+	bool stuck = false;
+	LOG_DEBUG(MOD_MAIN, "FindPath: Calling m_pathfinder->FindPath()...");
+	IPathfinder::IPath path = m_pathfinder->FindPath(
+		glm::vec3(start_x, start_y, start_z),
+		glm::vec3(end_x, end_y, end_z),
+		partial,
+		stuck,
+		opts
+	);
+	LOG_DEBUG(MOD_PATHFIND, "FindPath: Result - path size: {}, partial: {}, stuck: {}",
+		path.size(), partial, stuck);
+
+	if (path.empty()) {
+		LOG_DEBUG(MOD_PATHFIND, "No path found from ({:.1f}, {:.1f}, {:.1f}) to ({:.1f}, {:.1f}, {:.1f})",
+			start_x, start_y, start_z, end_x, end_y, end_z);
+		if (partial) {
+			LOG_DEBUG(MOD_PATHFIND, "  (Partial path available)");
+		}
+		if (stuck) {
+			LOG_DEBUG(MOD_PATHFIND, "  (Path leads back to start - stuck)");
+		}
+		return false;
+	}
+
+	// Convert path nodes to vec3 waypoints
+	for (const auto& node : path) {
+		// Skip teleport nodes for now
+		if (!node.teleport) {
+			m_current_path.push_back(node.pos);
+		}
+	}
+
+	LOG_DEBUG(MOD_PATHFIND, "Found path with {} waypoints", m_current_path.size());
+	if (ShouldLog(MOD_PATHFIND, LOG_TRACE)) {
+		for (size_t i = 0; i < m_current_path.size() && i < 5; i++) {
+			const auto& pos = m_current_path[i];
+			LOG_TRACE(MOD_PATHFIND, "  Waypoint {}: ({:.1f}, {:.1f}, {:.1f})",
+				i, pos.x, pos.y, pos.z);
+		}
+		if (m_current_path.size() > 5) {
+			LOG_TRACE(MOD_PATHFIND, "  ...");
+		}
+	}
+	
+	return true;
+}
+
+// T88: FRAME CONTRACT -- CLIENT frame, same as EverQuest::Move() above.
+void EverQuest::MoveToWithPath(float x, float y, float z)
+{
+	// T88 test seam: see Test_SetBypassSendGuardForSeam's comment in eq.h.
+	if (!m_test_bypass_send_guard && !IsFullyZonedIn()) {
+		LOG_ERROR(MOD_PATHFIND, "Not in zone yet");
+		return;
+	}
+	
+	// If pathfinding is disabled or not available, use direct movement
+	if (!m_use_pathfinding || !m_pathfinder) {
+		MoveTo(x, y, z);
+		return;
+	}
+	
+	// Find path from current position to target
+	if (FindPath(PosX(), PosY(), PosZ(), x, y, z)) {
+		// Face the final destination immediately
+		float new_heading = CalculateHeading(PosX(), PosY(), x, y);
+		if (std::abs(new_heading - HeadingDeg()) > 0.1f) {
+			SetHeadingLocal(new_heading);
+			SendPositionUpdate();
+		}
+		
+		// Start following the path
+		m_current_path_index = 0;
+		FollowPath();
+	} else {
+		// Fallback to direct movement if pathfinding fails
+		LOG_WARN(MOD_PATHFIND, "Pathfinding failed, using direct movement");
+		MoveTo(x, y, z);
+	}
+}
+
+void EverQuest::FollowPath()
+{
+	if (m_current_path.empty() || m_current_path_index >= m_current_path.size()) {
+		StopMovement();
+		return;
+	}
+	
+	// Skip waypoints that are too close to current position (within 1 unit)
+	while (m_current_path_index < m_current_path.size()) {
+		const auto& waypoint = m_current_path[m_current_path_index];
+		float dist = CalculateDistance2D(PosX(), PosY(), waypoint.x, waypoint.y);
+		
+		if (dist > 1.0f) {
+			// This waypoint is far enough, move to it
+			MoveTo(waypoint.x, waypoint.y, waypoint.z);
+			break;
+		} else {
+			// Skip this waypoint, it's too close
+			if (s_debug_level >= 2) {
+				LOG_DEBUG(MOD_MAIN, "Skipping waypoint {} at ({:.1f},{:.1f},{:.1f}) - too close (dist={:.1f})", m_current_path_index, waypoint.x, waypoint.y, waypoint.z, dist);
+			}
+			m_current_path_index++;
+		}
+	}
+	
+	// If we've gone through all waypoints, stop
+	if (m_current_path_index >= m_current_path.size()) {
+		StopMovement();
+		return;
+	}
+	
+	// The UpdateMovement function will handle checking when we reach waypoints
+}
+
+void EverQuest::SetMovementMode(MovementMode mode)
+{
+	if (static_cast<MovementMode>(m_game_state.player().movementMode()) == mode) {
+		return;
+	}
+
+	// T237: write the source BEFORE the bridge publish (docs/decisions.md
+	// 2026-08-25, ONE GameState rule) -- the enums are value-identical.
+	// T286: and it is now the only store.
+	m_game_state.player().setMovementMode(static_cast<eqt::state::MovementMode>(mode));
+
+	if (m_bridge) {
+		eqt::state::PlayerMovementModeChangedData data;
+		data.mode = static_cast<uint8_t>(mode);
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::PlayerMovementModeChanged, std::move(data)));
+	}
+
+	// Update movement speed based on mode
+	switch (mode) {
+		case MOVE_MODE_RUN:
+			m_game_state.player().setMoveSpeed(DEFAULT_RUN_SPEED);
+			break;
+		case MOVE_MODE_WALK:
+			m_game_state.player().setMoveSpeed(DEFAULT_WALK_SPEED);
+			break;
+		case MOVE_MODE_SNEAK:
+			m_game_state.player().setMoveSpeed(DEFAULT_WALK_SPEED * 0.6f);  // Sneak is 60% of walk speed
+			SetSneak(true);
+			break;
+	}
+	
+	if (s_debug_level >= 1) {
+		LOG_DEBUG(MOD_MAIN, "Movement mode changed to {} (speed: {:.1f})", 
+			mode == MOVE_MODE_RUN ? "RUN" : mode == MOVE_MODE_WALK ? "WALK" : "SNEAK", 
+			m_game_state.player().moveSpeed());
+	}
+}
+
+void EverQuest::SetPositionState(PositionState state)
+{
+	if (static_cast<PositionState>(m_game_state.player().positionState()) == state) {
+		return;
+	}
+
+	// T237: source write precedes the bridge guard (see SetMovementMode).
+	// T286: and it is now the only store.
+	m_game_state.player().setPositionState(static_cast<eqt::state::PositionState>(state));
+
+	if (m_bridge) {
+		eqt::state::PlayerPositionStateChangedData data;
+		data.state = static_cast<uint8_t>(state);
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::PlayerPositionStateChanged, std::move(data)));
+	}
+
+	switch (state) {
+		case POS_STANDING:
+			SendSpawnAppearance(AT_ANIMATION, 100);  // Animation::Standing
+			if (m_game_state.player().isMoving()) {
+				StopMovement();
+			}
+			// Cancel camp timer if standing up
+			if (m_game_state.player().isCamping()) {
+				CancelCamp();
+			}
+			break;
+		case POS_SITTING:
+			SendSpawnAppearance(AT_ANIMATION, 110);  // Animation::Sitting
+			if (m_game_state.player().isMoving()) {
+				StopMovement();
+			}
+			break;
+		case POS_CROUCHING:
+			SendSpawnAppearance(AT_ANIMATION, 111);  // Animation::Crouching
+			break;
+		case POS_FEIGN_DEATH:
+			SendSpawnAppearance(AT_ANIMATION, ANIM_LYING);  // Use lying animation for feign death
+			if (m_game_state.player().isMoving()) {
+				StopMovement();
+			}
+			break;
+		case POS_DEAD:
+			SendSpawnAppearance(AT_DIE, 0);  // Use AT_DIE for actual death
+			if (m_game_state.player().isMoving()) {
+				StopMovement();
+			}
+			break;
+	}
+	
+	if (s_debug_level >= 1) {
+		const char* state_names[] = {"STANDING", "SITTING", "CROUCHING", "FEIGN_DEATH", "DEAD"};
+		LOG_DEBUG(MOD_MAIN, "Position state changed to {}", state_names[state]);
+	}
+}
+
+void EverQuest::SendJump()
+{
+	if (!IsFullyZonedIn()) {
+		return;
+	}
+	
+	EQ::Net::DynamicPacket p;
+	p.Resize(2);  // Jump packet size: 2 bytes opcode only (no data)
+	
+	p.PutUInt16(0, HC_OP_Jump);  // opcode
+	
+	m_zone_connection->QueuePacket(p, 0, false);
+	
+	if (s_debug_level >= 1) {
+		LOG_DEBUG(MOD_MAIN, "Sent OP_Jump packet (2 bytes)");
+	}
+}
+
+void EverQuest::SendMovementHistory()
+{
+	if (!IsFullyZonedIn() || m_movement_history.empty() || !m_zone_connection) {
+		return;
+	}
+
+	// Additional safety check
+	if (!m_game_state.world().isZoneConnected() || !m_zone_connection_manager) {
+		LOG_WARN(MOD_ZONE, "SendMovementHistory called with invalid connection state");
+		return;
+	}
+
+	// Add debugging info about connection state
+	LOG_TRACE(MOD_ZONE, "SendMovementHistory called at time {} - connection ptr: {}, connected: {}, history size: {}",
+		static_cast<uint32_t>(std::time(nullptr)),
+		static_cast<void*>(m_zone_connection.get()),
+		m_game_state.world().isZoneConnected(),
+		m_movement_history.size());
+
+	// Limit history to last 70 entries (similar to what client sends)
+	while (m_movement_history.size() > 70) {
+		m_movement_history.pop_front();
+	}
+
+	// For unreliable packets, we have a max of ~250 bytes (255 - CRC)
+	// Each entry is 17 bytes, plus 2 bytes for opcode
+	// So we can fit about 14 entries per unreliable packet: (250 - 2) / 17 = 14.5
+	const size_t MAX_ENTRIES_PER_PACKET = 14;
+	(void)MAX_ENTRIES_PER_PACKET; // Unused but kept for documentation
+
+	// Real clients send all entries in one packet, so we must send as reliable
+	// to match their behavior (they send 67-70 entries = 1139-1190 bytes + 2 = 1141-1192 total)
+	size_t packet_size = 2 + (m_movement_history.size() * sizeof(MovementHistoryEntry));
+
+	LOG_TRACE(MOD_ZONE, "Creating OP_FloatListThing packet: {} entries, {} bytes total",
+		m_movement_history.size(), packet_size);
+
+	EQ::Net::DynamicPacket p;
+	p.Resize(packet_size);
+
+	p.PutUInt16(0, HC_OP_FloatListThing);
+
+	// Pack movement entries
+	size_t offset = 2;
+	try {
+		for (const auto& entry : m_movement_history) {
+			// UpdateMovementEntry struct layout:
+			// float Y, float X, float Z, uint8 type, uint32 timestamp
+			p.PutFloat(offset, entry.y);      // Y first
+			p.PutFloat(offset + 4, entry.x);  // then X
+			p.PutFloat(offset + 8, entry.z);  // then Z
+			p.PutUInt8(offset + 12, entry.type);
+			p.PutUInt32(offset + 13, entry.timestamp);
+			offset += 17;
+		}
+
+		if (s_debug_level >= 2) {
+			LOG_DEBUG(MOD_ZONE, "About to queue OP_FloatListThing as reliable packet");
+		}
+
+		// Send as reliable since it exceeds unreliable packet size limit
+		if (!SafeQueueZonePacket(p, 0, true)) {  // Send reliable
+			LOG_ERROR(MOD_ZONE, "Failed to queue OP_FloatListThing packet - SafeQueueZonePacket returned false");
+		} else {
+			LOG_TRACE(MOD_ZONE, "Successfully queued OP_FloatListThing with {} movement entries ({} bytes) as reliable",
+				m_movement_history.size(), packet_size);
+		}
+	}
+	catch (const std::exception& e) {
+		LOG_ERROR(MOD_ZONE, "Exception packing movement history: {}", e.what());
+	}
+	catch (...) {
+		LOG_ERROR(MOD_ZONE, "Unknown exception packing movement history");
+	}
+}
+
+void EverQuest::Jump()
+{
+	if (m_game_state.player().isJumping()) {
+		if (s_debug_level >= 1) {
+			LOG_DEBUG(MOD_MAIN, "Jump blocked - already jumping");
+		}
+		return;  // Can't jump while already jumping
+	}
+	
+	// Allow jumping while moving or standing
+	m_game_state.player().setJumping(true);
+	m_game_state.player().setJumpStartZ(PosZ());
+	m_game_state.player().setJumpStartTime(std::chrono::steady_clock::now());
+	
+	// Real clients have a tiny position shift when jumping (to trigger server broadcasts)
+	// Add a small random X/Y movement like real clients do
+	static int jump_count = 0;
+	jump_count++;
+	float tiny_shift = (jump_count % 2 == 0) ? -0.04f : 0.04f;  // Alternate direction
+	
+	// Apply tiny shift to X or Y position (alternate between them)
+	if (jump_count % 4 < 2) {
+		SetPosLocal(PosX() + tiny_shift, PosY(), PosZ());
+	} else {
+		SetPosLocal(PosX(), PosY() + tiny_shift, PosZ());
+	}
+	
+	// Real clients send standing animation before jumping
+	SendSpawnAppearance(AT_ANIMATION, ANIM_STANDING);   // 100
+	
+	// Send OP_Jump packet like real clients do
+	SendJump();
+	
+	// Don't set animation to jump - real clients keep animation at 0 in ClientUpdate
+	
+	if (s_debug_level >= 1) {
+		LOG_DEBUG(MOD_MAIN, "Jump initiated from z={}", PosZ());
+	}
+	
+	// Don't block - let the update loop handle the jump
+	// The jump will be processed by UpdateMovement() calls
+}
+
+void EverQuest::UpdateJump()
+{
+	if (!m_game_state.player().isJumping()) {
+		return;
+	}
+	
+	auto now = std::chrono::steady_clock::now();
+	auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_game_state.player().jumpStartTime()).count();
+	
+	// Jump physics: parabolic arc
+	// Jump lasts about 1 second, peaks at 0.5 seconds
+	const float jump_duration_ms = 1000.0f;
+	const float jump_height = 25.0f;  // Maximum height of jump (increased for visibility)
+	
+	if (elapsed >= jump_duration_ms) {
+		// Jump complete
+		m_game_state.player().setJumping(false);
+		// Return to original height (or use FixZ)
+		SetPosLocal(PosX(), PosY(), m_game_state.player().jumpStartZ());
+		
+		// Return to appropriate animation
+		if (m_game_state.player().isMoving()) {
+			m_game_state.player().setAnimation((m_game_state.player().moveSpeed() >= WALK_SPEED_THRESHOLD) ? ANIM_RUN : ANIM_WALK);
+		} else {
+			m_game_state.player().setAnimation(ANIM_STAND);
+		}
+		
+		if (s_debug_level >= 1) {
+			LOG_DEBUG(MOD_MAIN, "Jump completed");
+		}
+	} else {
+		// Calculate jump height using parabola
+		float t = elapsed / jump_duration_ms;  // 0 to 1
+		float height = 4.0f * jump_height * t * (1.0f - t);  // Parabola peaking at t=0.5
+		SetPosLocal(PosX(), PosY(), m_game_state.player().jumpStartZ() + height);
+		
+		if (s_debug_level >= 2) {
+			static int jump_frame = 0;
+			if (jump_frame % 10 == 0) {  // Log every 10th frame
+				LOG_DEBUG(MOD_MAIN, "Jump progress: t={:.2f}, height={:.2f}, z={:.2f}", 
+					t, height, PosZ());
+			}
+			jump_frame++;
+		}
+	}
+}
+
+void EverQuest::UpdateWaterState()
+{
+	if (!IsFullyZonedIn()) {
+		return;
+	}
+
+	WaterState newState = WaterState::NotInWater;
+	float waterSurfaceZ = 0.0f;
+
+	// Fully underwater zones - these don't have BSP water regions
+	// The entire zone is submerged so we hardcode them here
+	bool isFullyUnderwaterZone = (CurrentZoneName() == "kedge");
+
+	if (isFullyUnderwaterZone) {
+		newState = WaterState::Submerged;
+	} else {
+		// Normal water detection via BSP regions (D20f3: reads typed game-state BSP tree)
+		const auto& bspTree = m_zone_bsp_tree;
+		if (bspTree) {
+			// Check the region at current player position
+			//
+			// T311 CORRECTION: T311 Leg A's Review lists this headZ as "computed
+			// and never used -- a live dead local". THAT IS A MISREADING: headZ
+			// is read below, at the findRegionForPoint() that decides OnSurface
+			// vs Submerged. It is not dead and nothing was deleted here.
+			//
+			// The 6.0 itself IS questionable -- PosZ() is the model node's
+			// ORIGIN (render frame), not the feet, and for a Human male the
+			// crown is only ~3.65 above that origin, so this samples ~2.3 units
+			// ABOVE the head. Correcting it moves the OnSurface/Submerged
+			// threshold by about three units, which is a behavioural change in
+			// water detection with no live coverage; it is NOT this unit's
+			// change (T311 is the wire z) and is boarded instead.
+			constexpr float HEAD_HEIGHT_OFFSET = 6.0f;
+			float headZ = PosZ() + HEAD_HEIGHT_OFFSET;
+
+			auto region = bspTree->findRegionForPoint(PosX(), PosY(), PosZ());
+
+			if (region) {
+				// Check if this region is water
+				bool isWaterRegion = false;
+				for (auto type : region->regionTypes) {
+					if (type == EQT::Graphics::RegionType::Water ||
+					    type == EQT::Graphics::RegionType::FreezingWater ||
+					    type == EQT::Graphics::RegionType::WaterBlockLOS) {
+						isWaterRegion = true;
+						break;
+					}
+				}
+
+				if (isWaterRegion) {
+					// Check if head is also in water (determines OnSurface vs Submerged)
+					auto headRegion = bspTree->findRegionForPoint(PosX(), PosY(), headZ);
+					bool headInWater = false;
+					if (headRegion) {
+						for (auto type : headRegion->regionTypes) {
+							if (type == EQT::Graphics::RegionType::Water ||
+							    type == EQT::Graphics::RegionType::FreezingWater ||
+							    type == EQT::Graphics::RegionType::WaterBlockLOS) {
+								headInWater = true;
+								break;
+							}
+						}
+					}
+
+					if (headInWater) {
+						newState = WaterState::Submerged;
+					} else {
+						newState = WaterState::OnSurface;
+						// Estimate water surface Z (head is above water, feet are in)
+						waterSurfaceZ = PosZ() + (HEAD_HEIGHT_OFFSET / 2.0f);
+					}
+				}
+			}
+		}
+	}
+
+	// Handle state transitions
+	if (newState != m_water_state) {
+		WaterState oldState = m_water_state;
+		m_water_state = newState;
+		m_water_surface_z = waterSurfaceZ;
+
+		if (oldState == WaterState::NotInWater && newState != WaterState::NotInWater) {
+			OnEnterWater();
+		} else if (oldState != WaterState::NotInWater && newState == WaterState::NotInWater) {
+			OnExitWater();
+		}
+
+		// Publish SwimmingStateChanged event to bridge (only on state change)
+		if (m_bridge) {
+			float swimSpd = GetSwimSpeed();
+			bool lev = false;
+			auto me = m_entities.find(MySpawnId());
+			if (me != m_entities.end() && me->second.flymode == 2) {
+				lev = true;
+			}
+			eqt::state::SwimmingStateChangedData data;
+			data.isSwimming = (newState != WaterState::NotInWater);
+			data.swimSpeed = swimSpd;
+			data.isLevitating = lev;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::SwimmingStateChanged, std::move(data)));
+		}
+	}
+
+}
+
+void EverQuest::OnEnterWater()
+{
+	if (s_debug_level >= 1) {
+		LOG_DEBUG(MOD_MAIN, "Entering water at ({:.2f}, {:.2f}, {:.2f})", PosX(), PosY(), PosZ());
+	}
+
+	// Cancel any jump in progress
+	m_game_state.player().setJumping(false);
+
+	// Send flymode=3 (water) to server
+	SendSpawnAppearance(AT_FLYMODE, 3);
+
+#ifdef WITH_AUDIO
+	// Play water entry sound
+	if (m_audio_manager) {
+		PlaySound(EQT::Audio::WaterSoundIds::WaterIn);
+	}
+#endif
+}
+
+void EverQuest::OnExitWater()
+{
+	if (s_debug_level >= 1) {
+		LOG_DEBUG(MOD_MAIN, "Exiting water at ({:.2f}, {:.2f}, {:.2f})", PosX(), PosY(), PosZ());
+	}
+
+	// Check if player is levitating (flymode 2 from buffs)
+	// If levitating, keep flymode 2, otherwise reset to 0
+	auto myEntity = m_entities.find(MySpawnId());
+	uint8_t newFlymode = 0;
+	if (myEntity != m_entities.end() && myEntity->second.flymode == 2) {
+		newFlymode = 2;  // Keep levitating
+	}
+
+	SendSpawnAppearance(AT_FLYMODE, newFlymode);
+
+	m_water_state = WaterState::NotInWater;
+}
+
+float EverQuest::GetSwimSpeed() const
+{
+	// Base swim speed is slower than running
+	constexpr float BASE_SWIM_SPEED = 20.0f;
+
+	// Skill bonus: up to 50% at max skill (200)
+	uint32_t swimSkill = 0;
+	if (m_skill_manager) {
+		swimSkill = m_skill_manager->getSkillValue(50);  // Skill ID 50 = Swimming
+	}
+
+	// Cap skill at 200 for calculation
+	if (swimSkill > 200) swimSkill = 200;
+
+	// Formula: BASE_SPEED * (1.0 + (skill / 200) * 0.5)
+	// At skill 0: 20 units/sec
+	// At skill 200: 30 units/sec
+	float skillBonus = (static_cast<float>(swimSkill) / 200.0f) * 0.5f;
+	return BASE_SWIM_SPEED * (1.0f + skillBonus);
+}
+
+float EverQuest::GetMovementSpeed() const
+{
+	// Return current movement speed, which may be modified by buffs, encumbrance, etc.
+	return m_game_state.player().moveSpeed();
+}
+
+// Keyboard control methods
+//
+// T319 -- KEPT DELIBERATELY, and the reason matters.
+//
+// The four Start* below have ZERO callers; only the Stop* half is reached
+// (EqActionHandler::stopAllMovement()). So the game-side keyboard-movement
+// system can be switched off but never on. That is not four stray
+// functions: Start* -> the four PlayerState flags -> UpdateMovement()'s
+// keyboard branch (eq_movement.cpp, the "Update keyboard-based movement
+// first" block) -> UpdateKeyboardMovement() -> SetPosLocal + FixZ +
+// CheckZoneLine + SendPositionUpdate is a complete, working movement path.
+// Everything downstream of the flags is live and exercised; the only thing
+// missing is a writer for the flags. Deleting the Start* half deletes the
+// path, keeps a Stop* half that then switches off something nothing can
+// switch on, and buys four functions' worth of lines.
+//
+// WHAT WOULD WIRE IT. Two callers, in this order:
+//   1. IActionHandler gains startMoveForward()/startMoveBackward()/
+//      startTurnLeft()/startTurnRight() next to the existing
+//      stopAllMovement(), EqActionHandler forwards them here, and
+//      ActionDispatcher exposes them; InputActionBridge then drives them
+//      from the continuous movement keys the way it drives the discrete
+//      actions today. That is the headless/scripted movement route -- the
+//      graphical client does NOT need it, because
+//      renderer_player_physics.cpp polls the same HotkeyManager bindings
+//      on the render thread and moves the player through the
+//      PlayerPositionChanged intent instead.
+//   2. Whoever does that must also decide what the renderer sees.
+//      UpdateKeyboardMovement() moves the player with SetPosLocal(), which
+//      deliberately publishes no PlayerMoved -- that is the same wall T316
+//      hit for autorun. A game-side mover has to publish the position
+//      itself or the renderer will show a stationary player walking.
+//
+// AUTORUN IS NOT THE REASON THESE STAY. Autorun is a separate open item and
+// T316 established that a handler-side implementation cannot work as long
+// as (2) holds. These stay because the keyboard-movement path is the only
+// game-side mover the client has, not because autorun might one day use it.
+void EverQuest::StartMoveForward()
+{
+	if (!IsFullyZonedIn()) return;
+
+	// Clear any console-based movement (moveto, follow) when user takes manual control
+	if (!m_current_path.empty() || m_game_state.player().targetX() != 0.0f || m_game_state.player().targetY() != 0.0f || m_game_state.player().targetZ() != 0.0f) {
+		m_current_path.clear();
+		m_current_path_index = 0;
+		m_game_state.player().clearMovementTarget();
+		m_game_state.player().clearFollowTarget();
+		LOG_DEBUG(MOD_MAIN, "Cleared pathfinding state due to manual movement");
+	}
+
+	m_game_state.player().setMoveForward(true);
+	if (s_debug_level >= 2) {
+		LOG_DEBUG(MOD_MAIN, "Starting forward movement");
+	}
+}
+
+void EverQuest::StartMoveBackward()
+{
+	if (!IsFullyZonedIn()) return;
+	m_game_state.player().setMoveBackward(true);
+	if (s_debug_level >= 2) {
+		LOG_DEBUG(MOD_MAIN, "Starting backward movement");
+	}
+}
+
+void EverQuest::StartTurnLeft()
+{
+	if (!IsFullyZonedIn()) return;
+	m_game_state.player().setTurnLeft(true);
+	if (s_debug_level >= 2) {
+		LOG_DEBUG(MOD_MAIN, "Starting left turn");
+	}
+}
+
+void EverQuest::StartTurnRight()
+{
+	if (!IsFullyZonedIn()) return;
+	m_game_state.player().setTurnRight(true);
+	if (s_debug_level >= 2) {
+		LOG_DEBUG(MOD_MAIN, "Starting right turn");
+	}
+}
+
+void EverQuest::StopMoveForward()
+{
+	m_game_state.player().setMoveForward(false);
+	if (!m_game_state.player().moveBackward() && !m_game_state.player().turnLeft() && !m_game_state.player().turnRight()) {
+		m_game_state.player().setMoving(false);
+		m_game_state.player().setAnimation(ANIM_STAND);
+		SendPositionUpdate();  // Send immediate update when stopping
+		if (s_debug_level >= 2) {
+			LOG_DEBUG(MOD_MAIN, "Stopping all movement");
+		}
+	}
+}
+
+void EverQuest::StopMoveBackward()
+{
+	m_game_state.player().setMoveBackward(false);
+	if (!m_game_state.player().moveForward() && !m_game_state.player().turnLeft() && !m_game_state.player().turnRight()) {
+		m_game_state.player().setMoving(false);
+		m_game_state.player().setAnimation(ANIM_STAND);
+		SendPositionUpdate();  // Send immediate update when stopping
+		if (s_debug_level >= 2) {
+			LOG_DEBUG(MOD_MAIN, "Stopping all movement");
+		}
+	}
+}
+
+void EverQuest::StopTurnLeft()
+{
+	m_game_state.player().setTurnLeft(false);
+	if (!m_game_state.player().moveForward() && !m_game_state.player().moveBackward() && !m_game_state.player().turnRight()) {
+		m_game_state.player().setMoving(false);
+		m_game_state.player().setAnimation(ANIM_STAND);
+		SendPositionUpdate();  // Send immediate update when stopping
+	}
+}
+
+void EverQuest::StopTurnRight()
+{
+	m_game_state.player().setTurnRight(false);
+	if (!m_game_state.player().moveForward() && !m_game_state.player().moveBackward() && !m_game_state.player().turnLeft()) {
+		m_game_state.player().setMoving(false);
+		m_game_state.player().setAnimation(ANIM_STAND);
+		SendPositionUpdate();  // Send immediate update when stopping
+	}
+}
+
+void EverQuest::UpdateKeyboardMovement()
+{
+	if (!IsFullyZonedIn()) return;
+	
+	// Handle turning
+	const float turn_speed = 90.0f; // degrees per second (4 seconds for full rotation)
+	float delta_heading = 0.0f;
+	
+	if (m_game_state.player().turnLeft() && !m_game_state.player().turnRight()) {
+		delta_heading = -turn_speed * 0.5f; // 500ms tick rate
+	} else if (m_game_state.player().turnRight() && !m_game_state.player().turnLeft()) {
+		delta_heading = turn_speed * 0.5f;
+	}
+	
+	if (delta_heading != 0.0f) {
+		float h = HeadingDeg() + delta_heading;
+		// Normalize heading to 0-360
+		while (h < 0.0f) h += 360.0f;
+		while (h >= 360.0f) h -= 360.0f;
+		SetHeadingLocal(h);
+	}
+	
+	// Handle forward/backward movement
+	float move_distance = 0.0f;
+	
+	if (m_game_state.player().moveForward() && !m_game_state.player().moveBackward()) {
+		move_distance = GetMovementSpeed() * 0.5f; // 500ms tick rate
+		m_game_state.player().setMoving(true);
+		m_game_state.player().setAnimation((m_game_state.player().moveSpeed() >= WALK_SPEED_THRESHOLD) ? ANIM_RUN : ANIM_WALK);
+	} else if (m_game_state.player().moveBackward() && !m_game_state.player().moveForward()) {
+		move_distance = -DEFAULT_WALK_SPEED * 0.5f; // Backward uses walk speed, 500ms tick
+		m_game_state.player().setMoving(true);
+		m_game_state.player().setAnimation(ANIM_WALK); // Always walk when moving backward
+	} else if (!m_game_state.player().moveForward() && !m_game_state.player().moveBackward() && !m_game_state.player().turnLeft() && !m_game_state.player().turnRight()) {
+		// Not moving
+		if (m_game_state.player().isMoving()) {
+			m_game_state.player().setMoving(false);
+			m_game_state.player().setAnimation(ANIM_STAND);
+		}
+	}
+	
+	// Apply movement
+	if (move_distance != 0.0f) {
+		// Convert heading to radians for calculations
+		float heading_rad = HeadingDeg() * M_PI / 180.0f;
+
+		// Calculate new position
+		// In EQ coordinates: +X = East, +Y = North
+		// Heading 0 = North, 90 = East, 180 = South, 270 = West
+		float new_x = PosX() + move_distance * sin(heading_rad);
+		float new_y = PosY() + move_distance * cos(heading_rad);
+
+		// Update position
+		SetPosLocal(new_x, new_y, PosZ());
+
+		// Fix Z position if we have map data
+		FixZ();
+	}
+}
