@@ -504,3 +504,391 @@ private headers, `CMakeLists.txt`) and **J10**
 `CMakeLists.txt`, `tests/CMakeLists.txt`). No source overlap with either.
 ⚠ **`CMakeLists.txt` is shared with both** — which is why **merges are
 serialized one at a time with a rebase.**
+
+## Review (executor, slot3, 2026-09-02)
+
+**Branch `task/J08-eq-entities-split`, cut from `fable` at
+`02d97d80fe2358d1925b8ba245160df30376e310`** ("Batch J Wave 3: plan J08/J09/J10,
+and settle the dead-content decision"). That is one commit past the `f215651a`
+this plan measured — the plan-file commit itself — and
+`git diff f215651a 02d97d80 -- src/client/eq_entities.cpp src/client/eq_group.cpp`
+is empty. Split commit `ab483e7a`.
+
+### 1. Line counts and range drift — ZERO drift
+
+`eq_entities.cpp` **2,786**, `eq_group.cpp` **760**, exactly as planned. Every
+one of the six interior cut boundaries verified line-by-line at the tip and
+matched the plan's neighbour table character for character:
+
+```
+991: }        992: (blank)   993: void EverQuest::ZoneProcessGroundSpawn(const EQ::Net::Packet &p)
+1322: }       1323: (blank)  1324: // T169: every raid membership event arrives here, and until now this
+1508: }       1509: (blank)  1510: void EverQuest::ZoneProcessClientUpdate(const EQ::Net::Packet &p)
+1808: }       1809: (blank)  1810: void EverQuest::ZoneProcessDeleteSpawn(const EQ::Net::Packet &p)
+2421: }       2422: (blank)  2423: // Helper function to determine door type from door name
+2762: }       2763: (blank)  2764: // T179: send an OP_RaidCommand (Titanium wire opcode OP_RaidInvite,
+```
+
+Preamble 1-72 (40-line header, blank@41, includes 42-72), blank@73, body from
+74, line 2786 the closing `}` of `SendRaidCommand`. All as described.
+
+### 2. ⚠ THE ONE DEVIATION — the plan's own ranges do not compile
+
+**Both single-consumer claims are CORRECT.** Whole-tree greps:
+
+```
+$ grep -rn 'EXP_FOR_LEVEL\|MAX_EXP_LEVEL\|CalculateExpProgress' src include tests
+src/client/eq_entities.cpp:10://    CalculateExpProgress/EXP_FOR_LEVEL/MAX_EXP_LEVEL helpers),   [comment]
+src/client/eq_entities.cpp:76:static const uint32_t EXP_FOR_LEVEL[] = {
+src/client/eq_entities.cpp:143:static const int MAX_EXP_LEVEL = sizeof(EXP_FOR_LEVEL) / sizeof(EXP_FOR_LEVEL[0]) - 1;
+src/client/eq_entities.cpp:146:static float CalculateExpProgress(uint32_t exp, uint8_t level) {
+src/client/eq_entities.cpp:147,151,152                                  [inside CalculateExpProgress]
+src/client/eq_entities.cpp:1318:  data.progress = CalculateExpProgress(m_exp, m_game_state.player().level());
+
+$ grep -rn 'getDoorTypeFromName' src include tests
+src/client/eq_entities.cpp:18:  [comment]
+src/client/eq_entities.cpp:2425:static EQT::Audio::DoorType getDoorTypeFromName(const std::string& name) {
+src/client/eq_entities.cpp:2507:    EQT::Audio::DoorType doorType = getDoorTypeFromName(door->name);
+```
+
+`getDoorTypeFromName` (2425) and its caller (2507) are both inside range
+2423-2763 → `eq_entities_world.cpp`. Fine, exactly as planned.
+
+**But the exp cluster is NOT.** The plan says it "keeps [the statics] together
+with their only callers", and then assigns the helpers (74-165) to the **stays**
+range 74-992 and their sole consumer `ZoneProcessExpUpdate` (1296-1322) to range
+993-1323 → `eq_entities_updates.cpp`. **Those are different translation units.**
+Executed literally, `eq_entities_updates.cpp` would not compile
+(`CalculateExpProgress` undeclared) and `eq_entities.cpp` would carry three
+`static`s with no reader.
+
+**Resolution taken: the helper cluster travels with its consumer.** Range
+**74-166** (93 lines: the helpers plus their leading `// Experience required for
+each level` comment and the blank at 166) moves to `eq_entities_updates.cpp` and
+is pasted **first**, ahead of 993-1323. The stays range becomes **167-992** (826
+lines). Cut at 167 obeys J03's rule — `165: }` closes `CalculateExpProgress`,
+`166` is blank, comment depth 0 — and original order is preserved end to end, so
+the byte-identical proof still runs over one monotonic sequence of eight ranges.
+
+This is the minimum-deviation fix: it keeps everything file-local (**no internal
+header, no `static` removed, no linkage changed, no signature touched**), and it
+is what the plan's own HAZARD-1 text prescribes for the exactly-analogous door
+case ("if you were tempted to move the door handler and the helper apart,
+don't"). **It costs zero verifier exception lines.** Corrected arithmetic:
+`72 + 1 + 93 + 826 + 331 + 186 + 300 + 613 + 341 + 23 = 2786`.
+
+**Batch lesson (new): a plan that assigns a file-local `static` and its single
+consumer to different ranges is a compile error the acceptance bar catches only
+at the build step, after the cut. The single-consumer grep proves the helper can
+stay file-local; it does NOT prove the plan's ranges keep it that way. Check the
+range assignment too, not just the consumer count.**
+
+### 3. Preprocessor and block-comment checks — pasted
+
+```
+$ awk 'NR>=73 && /^[ \t]*(#if|#ifdef|#ifndef|#else|#elif|#endif)/ {print NR": "$0}' src/client/eq_entities.cpp
+397: #ifdef EQT_HAS_GRAPHICS      410: #endif
+536: #ifdef WITH_AUDIO            539: #endif
+1261: #ifdef EQT_HAS_GRAPHICS     1269: #endif
+1773: #ifdef EQT_HAS_GRAPHICS     1775: #endif
+1803: #ifdef EQT_HAS_GRAPHICS     1805: #endif
+1900: #ifdef EQT_HAS_GRAPHICS     1902: #endif
+2424: #ifdef WITH_AUDIO           2464: #endif
+2497: #ifdef WITH_AUDIO           2512: #endif
+```
+
+Exactly the eight pairs the plan names (the plan's prose says "eleven" and its
+own table lists eight — the table is right; **the word "eleven" in HAZARD 1 is
+wrong**, and the ninth pair is the `63/66` preamble one). **None of the seven cut
+points (the six planned plus 167) lands inside a conditional.** The two
+`WITH_AUDIO` regions 2424/2464 and 2497/2512 both sit wholly inside 2423-2763.
+
+```
+$ grep -n '/\*\|\*/' src/client/eq_entities.cpp
+185:	/*	
+226:	*/
+```
+
+Exactly the two lines predicted. Comment depth 0 at every cut. **No range had to
+be moved for a comment or a conditional** — the one range that moved (§2) moved
+for a linkage reason.
+
+### 4. Includes added to `eq_group.cpp` — exactly ONE line
+
+```
+#include "client/raid_update.h"
+```
+
+Inserted after `#include "client/bridge/game_state_bridge.h"`, beside the other
+`client/` includes. **`<vector>` was NOT needed** — the build is clean without
+it, confirming the plan's guess that it comes in transitively through `eq.h`.
+**`eq_entities.cpp`'s 31-line preamble was NOT pasted onto `eq_group.cpp`**;
+`eq_group.cpp`'s include block is its original six lines plus that one.
+
+### 5. Every header/banner line written or changed, across all five files
+
+These are the unit's **only** non-move changes. No other comment in any file was
+touched.
+
+`src/client/eq_entities.cpp` — 10 lines, replacing the original 40:
+```
+// EverQuest zone-spawn cluster: zone spawns, time of day, spawn doors,
+// zonepoints, and spawn appearance.
+//
+// Split out of eq.cpp by Batch F unit F11 and narrowed to these clusters by
+// Batch J unit J08. Moved verbatim, no behavior change. See
+// refactor/J08_eq_entities_split.md and refactor/F11_entities.md.
+//
+// NOTE: ZoneProcessAnimation (between ZoneProcessSpawnAppearance and
+// ZoneProcessGroundSpawn in eq.cpp) is chat/emote text processing, not
+// named in this unit's scope, and stays in eq.cpp.
+```
+
+`src/client/eq_entities_updates.cpp` — 10 lines:
+```
+// EverQuest entity-update cluster: the exp-progress helpers, ground spawns,
+// weather, new spawns, exp updates, and client position updates.
+//
+// Clusters of eq_entities.cpp (Batch F unit F11), split off by Batch J unit
+// J08. Moved verbatim, no behavior change. See
+// refactor/J08_eq_entities_split.md and refactor/F11_entities.md.
+//
+// NOTE: ZoneProcessGuildMOTD (between ZoneProcessRaidUpdate and
+// ZoneProcessClientUpdate in eq.cpp) is guild domain (see F04) and stays
+// in eq.cpp.
+```
+
+`src/client/eq_entities_appearance.cpp` — 7 lines:
+```
+// EverQuest entity teardown/health/appearance cluster: delete spawn, mob
+// health, HP updates, entity lookup helpers, wear change, appearance
+// application and illusion.
+//
+// Clusters of eq_entities.cpp (Batch F unit F11), split off by Batch J unit
+// J08. Moved verbatim, no behavior change. See
+// refactor/J08_eq_entities_split.md and refactor/F11_entities.md.
+```
+
+`src/client/eq_entities_world.cpp` — 17 lines:
+```
+// EverQuest door and world-object cluster: the door-type helper, move door,
+// the spawn-appearance/animation/click-door senders, and the world object
+// (tradeskill container) senders and handlers.
+//
+// Clusters of eq_entities.cpp (Batch F unit F11), split off by Batch J unit
+// J08. Moved verbatim, no behavior change. See
+// refactor/J08_eq_entities_split.md and refactor/F11_entities.md.
+//
+// NOTE: SendTradeSkillCombine and ZoneProcessTradeSkillCombine (nestled
+// among the world-object senders/handlers in eq.cpp, between
+// SendClickObject/SendCloseContainer and ZoneProcessClickObjectAction/
+// SendJump respectively) are item-economy, judgment-called to stay in
+// eq.cpp for consistency with F05 (merchant/inventory/trade split).
+//
+// NOTE: ZoneProcessPlayerStateAdd/Death/PlayerStateRemove/Stamina/
+// ZonePlayerToBind/LevelUpdate (immediately following ZoneProcessMoveDoor
+// in eq.cpp) are not named in this unit's scope and stay in eq.cpp.
+```
+
+**All four original `NOTE:` paragraphs survive, byte-verbatim**, each routed to
+the TU that now holds the method it anchors on: NOTE 1 (ZoneProcessAnimation ↔
+SpawnAppearance) → the stays file; NOTE 2 (ZoneProcessGuildMOTD ↔ ClientUpdate)
+→ updates; NOTES 3 and 4 (tradeskill senders, PlayerState handlers ↔
+MoveDoor) → world. None was dropped and none was reworded.
+
+`src/client/eq_group.cpp` — 5 lines appended to the existing 13-line header
+(the original 13 are unchanged):
+```
+//
+// Batch J unit J08 relocated ZoneProcessRaidUpdate and SendRaidCommand here
+// from eq_entities.cpp, where F11 had left them; they are appended below the
+// group handlers under their own banner. Moved verbatim, no behavior change.
+// See refactor/J08_eq_entities_split.md.
+```
+plus the sanctioned three-line banner (with its two surrounding blanks) at
+767-771, in the file's existing style:
+```
+// ============================================================================
+// Raid Methods
+// ============================================================================
+```
+
+### 6. CMake add-sites — TWO, exactly as planned
+
+```
+$ grep -n 'eq_entities\.cpp\|eq_group\.cpp' CMakeLists.txt tests/CMakeLists.txt
+tests/CMakeLists.txt:1782:# T18: entity-domain zone-stream tests (eq_entities.cpp) -- real-capture
+CMakeLists.txt:273:    src/client/eq_entities.cpp
+CMakeLists.txt:290:    src/client/eq_group.cpp
+```
+
+A repo-wide grep over `*.txt`/`*.cmake`/`*.sh` found nothing else. Both live
+sites are in `SET(CLIENT_CORE_SOURCES`. The three new TUs were added beside
+`eq_entities.cpp` in alphabetical order (`eq_entities`, `_appearance`,
+`_updates`, `_world`). `eq_group.cpp` needed no new source line.
+**`tests/CMakeLists.txt` is UNCHANGED by this unit** — its single hit is a
+comment, and J20 is untouched.
+
+### 7. Both content proofs — with `eq_group.cpp` counted on both sides
+
+**Byte-identical re-concatenation.** The eight ranges in original order, taken
+from wherever each now lives — including `eq_group.cpp:772-957` (the relocated
+1324-1509) and `eq_group.cpp:958-980` (the relocated 2764-2786):
+
+```
+$ wc -l orig_body.txt recat.txt
+2713 orig_body.txt
+2713 recat.txt
+$ cmp orig_body.txt recat.txt ; echo $?
+0
+```
+
+⚠ **The first attempt of this proof FAILED at line 1251** — the exact line where
+the relocated raid range begins. The cause was my own arithmetic on
+`eq_group.cpp`'s new offsets (I had the banner block two lines off), not a
+dropped range. **Correction 17's advice generalises: when a proof fails, suspect
+the proof first — and note that on this unit a mis-sliced destination fails
+precisely at the relocation seam, which is the most alarming place it could
+fail.**
+
+**Line-multiset check, both destinations included:**
+
+```
+# before: pre-split bodies of BOTH files
+{ git show "$BASE:src/client/eq_entities.cpp" | sed -n '74,2786p'
+  git show "$BASE:src/client/eq_group.cpp"    | sed -n '26,760p'; } | sort > before.txt
+# after: the four eq_entities* bodies (each stripped of header+blank+31 includes+blank)
+#        + eq_group.cpp lines 32-766 and 772-980 (its whole body incl. both relocated
+#        ranges, minus the 5 structural lines J08 added at 767-771)
+$ wc -l before.txt after.txt
+3448 before.txt
+3448 after.txt
+$ diff before.txt after.txt ; echo $?
+0
+```
+
+Contributions counted explicitly: `eq_entities.cpp` body 2,713 (before) →
+2,504 across four TUs (after); `eq_group.cpp` body 735 (before) → 944 (after),
+i.e. **+209 relocated lines**, which is the figure the naive recipe would have
+silently lost. Lines added to `eq_group.cpp` and deliberately excluded from the
+multiset, enumerated: 1 `#include`, 3 banner, 2 blanks — plus the 5 header
+comment lines, which are above the body window.
+
+**Verifier** (committed first — J06's correction 13; `--repo` passed — J02's
+correction 1; fork point, not `fable..HEAD` — J01's):
+
+```
+$ BASE=$(git -C /mnt/projects/fable/wt/slot3 merge-base fable HEAD)
+  02d97d80fe2358d1925b8ba245160df30376e310
+$ python3 scripts/refactor/verify_move_only.py "$BASE..HEAD" \
+      --repo /mnt/projects/fable/wt/slot3
+Non-C++ files changed (not verified, review separately):
+  CMakeLists.txt
+
+Files verified: 5
+Boilerplate: +118 / -21 lines (allowed)
+
+PASS: move-only (modulo boilerplate).
+VERIFIER_EXIT=0
+```
+
+**Exit 0, as the plan predicted. No exception, nothing needing orchestrator
+sign-off.**
+
+### 8. Final line counts, acceptance results, timings
+
+| File | before | after |
+|---|---|---|
+| `src/client/eq_entities.cpp` | 2,786 | **869** |
+| `src/client/eq_entities_updates.cpp` | — | **767** |
+| `src/client/eq_entities_appearance.cpp` | — | **653** |
+| `src/client/eq_entities_world.cpp` | — | **391** |
+| `src/client/eq_group.cpp` | 760 | **980** |
+
+Largest surviving TU **980** (`eq_group.cpp`), then 869. The plan projected
+991/703/685/413/971; the deviation in §2 moved 93 lines from the first column to
+the second, and the residue is correction 12 again — the estimates ran
+**0 to 32 lines high** per TU (`_appearance` 685→653 was the worst, 32 high;
+`_world` 413→391, 22 high; `eq_group` 971→980, **9 LOW**, because the plan did
+not count the 5 header + 3 banner + 2 blank lines it authorised in the same
+breath).
+
+| Step | Result |
+|---|---|
+| `cmake --build build -j24` | **EXIT 0** (no 143, no re-invoke) |
+| `ctest -j6` | **3498/3499**, 248.8 s; sole failure `AudioManagerTest.PreloadCommonSounds` (the documented ALSA host quirk). Zero new failures vs `refactor/test_baseline.txt`. No `HeadlessShutdownTest` flake. |
+| `verify_move_only.py` | **EXIT 0**, PASS |
+| byte-identical re-concat | `cmp` **exit 0** over 2,713 lines |
+| line multiset | `diff` **exit 0** over 3,448 lines |
+| `scripts/build-gles2-x86.sh` | **EXIT 0** |
+| visual gate | **PASS**; `git status --porcelain` empty afterwards, goldens untouched. p95 CPU qeynos2 4.423/10.108, gfaydark 6.914/10.672, befallen 6.095/10.948 — no metric near its ceiling, zero image mismatches. |
+| `scripts/build-arm-noble.sh` | **EXIT 0** (ran ~11 min; the Bash tool backgrounded it at the 600 s mark rather than SIGTERM-ing it, so this was **not** an exit-143) |
+| ELF scan | all binaries in `build/bin`, `build-gles2/bin` and `build-arm-noble/bin` carry valid ELF magic — zero truncated |
+| `check_file_sizes.sh --files` | 5 ok, **1 warn, 0 fail** — the warn is `CMakeLists.txt` at 2,019, pre-existing and grandfathered |
+
+**~50 min wall clock.** Slowest step: `build-arm-noble.sh` (~11 min), then
+`ctest -j6` (248.8 s = 4.1 min) and the x86 build (~4 min). The cut, CMake and
+both proofs together took **under 6 minutes**, including one failed proof
+re-run. Concurrency with slot1's T322 and slot2's J20 did **not** visibly stretch
+anything: `ctest -j6` at 4.1 min is between J06's solo-ish 2.0 and J02's
+three-wide 6.8, and the visual gate passed first time with CPU p95 well under
+half its ceiling — J05's contention signature did not appear.
+
+⚠ **One note for the protocol, not in it today:** a long build can end **either**
+as exit 143 (SIGTERM at the tool ceiling) **or** by being moved to a background
+task that later reports its own exit code. The second is not the truncation trap
+and needs no ELF-scan-and-delete cycle — but it looks superficially similar in a
+transcript, and only the first invalidates the binaries. I ran the ELF scan
+anyway; it was clean.
+
+### 9. Findings only — recorded, not acted on
+
+- **The 42-line commented-out packet-hex-dump block at 185-226** rode verbatim
+  into the stays file (now at `eq_entities.cpp:245-286`). Commented-out *code*
+  inside a live method — the batch's sixth dead-content site and, as the plan
+  notes, the first of that shape. Left untouched for the batch's pending
+  dead-content hygiene unit.
+- **All four `NOTE:` paragraphs and every T-unit archaeology comment survive**:
+  the T169/T179/T180 block (24 lines) travelled into `eq_group.cpp` with
+  `ZoneProcessRaidUpdate`, the T179 block (4 lines) with `SendRaidCommand`, the
+  T221 block with `ApplyAppearanceToGameState` into `_appearance`, and the
+  door-type comment with `getDoorTypeFromName` into `_world`. **Confirmed
+  present and byte-identical** — they are inside the `cmp`-clean 2,713 lines.
+- **The tests/scripts pre-check found MORE than the plan's twelve.**
+  `grep -rn 'eq_entities' tests/ scripts/` returns **19 hits** (18 in `tests/`
+  plus `tests/CMakeLists.txt:1782`), and one false positive in
+  `scripts/analyze_load_log.sh:313` which matches the substring `seq_entities`.
+  `grep -rn 'eq_group' tests/ scripts/` returns **1**
+  (`test_spell_group_targeting.cpp:210`). **Every one is a comment; ZERO
+  functional readers; no repoint needed.** The plan's "twelve" undercounts —
+  the extra files are `zone_stream_test_utils.h:151`,
+  `test_zone_entities.cpp:1`, `test_game_state_source_writes.cpp:88,156`,
+  `test_position_store_coherence.cpp:55`,
+  `test_position_frame_roundtrip.cpp:383`,
+  `test_spell_group_targeting.cpp:56`, `test_entity_size_change.cpp:16`,
+  `test_zone_connection_flow.cpp:634,935`.
+- **All seven line-number citations were ALREADY STALE before this split** —
+  checked against the file at `$BASE`, not against the post-split tree:
+
+  | citation | claims | actually at `$BASE` |
+  |---|---|---|
+  | `test_zone_connection_flow.cpp:101` | gender at `:360-361`/`:1202-1203` | `last_update_time` / blank; `// Initialize movement fields` / `delta_x` (gender is at `:318`) |
+  | `:347` | DeleteSpawn at `:1598` | inside `ZoneProcessClientUpdate` (DeleteSpawn is `:1810`) |
+  | `:349` | NewSpawn at `:1035` | a `}` in `ZoneProcessGroundSpawn` (NewSpawn is `:1080`) |
+  | `:355` | ClientUpdate at `:1323` | a blank line (ClientUpdate is `:1510`) |
+  | `:410`, `:419` | ZoneProcessTimeOfDay guard at `:484` | a `LOG_INFO` in `ZoneProcessZoneSpawns` (TimeOfDay is `:512`) |
+  | `:981` | `Entity::guild_id` at `:318` | `entity.gender` |
+  | `test_spell_manager.cpp:95` | read side at `:339` | `entity.beard` |
+
+  **Seven for seven wrong before J08 touched anything.** This is the third unit
+  (after J06 and J07) to record the same pattern; the batch should stop treating
+  a split as the thing that invalidates these. Comment-only, outside a move-only
+  commit's scope — they belong in the `docs/module_map.md` hygiene pass.
+- **`docs/module_map.md`** — `:23` lists `eq_entities.cpp` at **2,641** (it was
+  2,786, now 869) and `:33` lists `eq_group.cpp` at **595** (it was 760, now
+  980). `:33` already attributes "raid (T169-T184: OP_RaidUpdate decode, raid
+  senders)" to `eq_group.cpp`; **that claim is true as of this commit.** Both
+  rows need updating and three new rows are owed, in the hygiene pass.
+- **Nothing new that looks unreachable.** Every relocated and split method keeps
+  its existing callers; no dispatcher entry, header declaration or call site was
+  touched.
