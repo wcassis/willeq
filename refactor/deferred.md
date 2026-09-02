@@ -702,6 +702,56 @@ Review, `review/T312/`.
     the site. If he wants client and server to agree exactly, revert that gate
     and leave the facing check (which IS server-derived).
 
+### CLOSED by T318 (2026-09-02), plus what it found
+
+**Item 8 (SPA 89 shrink/grow + SPA 58 illusion) — CLOSED, merged `5d7d7b08`.**
+**The board's diagnosis was wrong in an instructive way.** The entry said the
+handlers "are one `LOG_DEBUG` each and write nothing" and implied fable needed a
+local size-update path. It did not: **the server already broadcasts every size
+change** — SPA 89 → `Mob::ChangeSize()` → `SendAppearancePacket(AppearanceType::Size)`
+with `whole_zone` defaulting true and `ignore_self` false, and SPA 58's
+`OP_Illusion` carries size as well — and fable already DECODED both. Three real
+defects sat after the decode:
+1. **The `AT_SIZE` arm divided by 10** on a comment claiming "EQ uses size*10".
+   The server sends `(uint32) size` on the `Spawn_Struct` scale, so **a shrunk
+   player was read as 0.3 instead of 3.**
+2. The value was then dropped under `// TODO: Graphics rendering could update
+   entity scale`.
+3. `ZoneProcessIllusion` published `EntityAppearanceChanged` **without** the size.
+**Illusion needed nothing deferred** — the race/gender/texture model swap was
+wired long before this unit; only size was falling out. The three `SpellEffects`
+handlers deliberately stay effect-free: a local apply would double-apply and
+desync from what other players see (the T310 rule), and they now document the
+server chain so nobody rebuilds prediction later.
+⚠ The `serverSize`-stashed-in-`collisionHeight` trap had **THREE** sites, not the
+two on record — the async build path also recovered and cleared it. Now a real
+`EntityVisual::serverSize` member with one shared multiplier helper.
+
+**Item 34 (accepting a guild invite joins you as an officer) — CLOSED, same
+commit.** ⚠ **`OP_GuildInviteAccept` uses a DIFFERENT remap table from
+`OP_GuildInvite`** — accept maps `0 → GUILD_RECRUIT (8)`, `1 → GUILD_OFFICER (3)`,
+default → `GUILD_RANK_NONE (0)`; T317's documented `0 → GUILD_MEMBER (5)` is the
+*invite* opcode's. Copying T317's value would have been wrong. Correct byte is
+**0**; it was sending 1. `GUILD_MEMBER (5)` is unreachable from Titanium here.
+The decline half is confirmed **unfixable client-side**: the
+`response >= GUILD_INVITE_DECLINE (9)` test runs against the ALREADY-REMAPPED
+value, which can only be 8, 3 or 0. fable now sends an honest `9` so it is at
+least distinguishable; recorded for upstream in `guild_packet_bodies.h`.
+
+37. **`SendGuildInviteAccept(false)` tells the player "You have declined the
+    guild invite." while the server joins them at rank 0.** Direct consequence of
+    the server bug above — **unfixable on the wire**, so the honest options are
+    user-facing text ("could not decline"; or suppress the claim). **Class C,
+    a wording call.** T318 found it and correctly did not invent copy.
+
+38. **`setEntitySize()` does not update `collisionHeight` / `deckZ`** (the boat
+    deck surface). Nothing in the game shrinks a boat, so it is a documented
+    limit rather than a live defect. Class B, cheap if ever needed.
+
+39. **Doc drift: root `CLAUDE.md` and `include/client/state/CLAUDE.md` both say
+    "96 event types"; there are now 97.** Tier 4. Strike this when someone next
+    edits either file.
+
 ### TIER 3 — implemented but unreachable
 
 19. **`GraphicalMode::initialize()` falls through to the console renderer for every
