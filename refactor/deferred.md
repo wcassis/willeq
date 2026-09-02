@@ -751,12 +751,24 @@ Review, `review/T312/`.
     find whether the source data carries these and the loader drops them, or
     whether they were never populated. Do not invent values.
 
-36. **`requires_combat` corresponds to nothing eqemu enforces**, and T317's new
-    client-side gate is therefore deliberately STRICTER than the server —
-    eqemu's `OPCombatAbility` has no in-combat requirement at all. Implemented
-    as the board asked; **flagged for Will**, with the one-line revert named at
-    the site. If he wants client and server to agree exactly, revert that gate
-    and leave the facing check (which IS server-derived).
+36. ~~**`requires_combat` corresponds to nothing eqemu enforces**~~ — **CLOSED
+    by T325 (2026-09-02), `task/T325`.** **Will's ruling, 2026-09-02: "revert
+    the combat gate."** Done the way T317's own Review named: `requires_combat`
+    cleared in `skill_data.h`, NOT by re-hollowing `checkCombatRequirement()`
+    (which would have recreated the no-op gate T317 was dispatched to fix).
+    **All eleven cleared, none kept** — re-derived per skill against the opcode
+    fable actually sends, and none of the three server handlers has an
+    in-combat requirement: `OP_CombatAbility` → `Client::OPCombatAbility`
+    (8/10/21/23/26/30/38/52), `OP_Disarm` → `Handle_OP_Disarm` (16),
+    `OP_InstillDoubt` → `Handle_OP_InstillDoubt` → `Mob::InstillDoubt` (71).
+    `requires_target` survives on all eleven. **The facing check is untouched
+    and still passes** — it IS server-derived, and T159's check-and-message
+    pairing is intact. The field, the predicate and `"You must be in combat"`
+    all stay, kept whole and pinned by three `MechanismIsIntact_*` tests that
+    set the flag by hand; the message is now DORMANT in production, the same
+    shape as item 35's resource messages, and explicitly not T159's class (it
+    never lies about the reason — it can only be reached when the predicate
+    really refused).
 
 ### CLOSED by T318 (2026-09-02), plus what it found
 

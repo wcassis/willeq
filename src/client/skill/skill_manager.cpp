@@ -280,6 +280,15 @@ std::string SkillManager::getSkillUseError(uint8_t skill_id) const {
     // T317: this branch was empty, so canUseSkill() could refuse on the combat
     // gate while getSkillUseError() returned "" -- activateSkill() then fired
     // its failure callback with a blank reason.
+    //
+    // T325: no SHIPPED skill sets requires_combat any more (Will's ruling --
+    // see skill_data.h's initializeSkillData()), so this message is dormant in
+    // production, the same way board item 35's "Not enough endurance" is. It is
+    // NOT the T159 defect class: T159's message LIED, blaming facing for an
+    // endurance failure. This one still says exactly what refused, and it can
+    // only be reached when the predicate really did refuse -- it is left paired
+    // with its check rather than deleted, so the mechanism stays whole. The
+    // pairing is exercised by test_skill_gates' MechanismIsIntact tests.
     if (skill.requires_combat && !checkCombatRequirement(skill_id)) {
         return "You must be in combat";
     }
@@ -764,14 +773,19 @@ bool SkillManager::checkCombatRequirement(uint8_t skill_id) const {
     // aggro memory is how this client knows an NPC is on it, and a player who
     // is being hit is in combat whether or not their own swing is on.
     //
-    // ⚠ DELIBERATELY STRICTER THAN THE SERVER. eqemu's OPCombatAbility
-    // (zone/special_attacks.cpp:325) has NO in-combat requirement at all: it
-    // checks for a target, that we are not feared/stunned/mezzed/dead/casting,
-    // that we have the skill, and IsAttackAllowed. So this gate can refuse a
-    // send eqemu would have accepted -- a Kick with auto-attack off and no
-    // aggro. That is a product call, flagged in refactor/T317's Review; if it
-    // is unwanted, the fix is to clear requires_combat in skill_data.h rather
-    // than to re-hollow this function.
+    // ⚠ T317 flagged this as DELIBERATELY STRICTER THAN THE SERVER: eqemu's
+    // OPCombatAbility (zone/special_attacks.cpp:325) has NO in-combat
+    // requirement at all, so the gate refused sends eqemu would have accepted
+    // -- an opening Kick, and an opening Backstab from stealth, with
+    // auto-attack off and no aggro.
+    //
+    // T325 (Will's ruling, 2026-09-02) reverted that, THE WAY T317 SAID TO:
+    // by clearing requires_combat in skill_data.h, not by re-hollowing this
+    // function. Nothing shipped sets the flag now, so this predicate's early
+    // return above is the only path production takes. Everything below stays
+    // implemented and tested so the mechanism is ready if a real requirement
+    // ever turns up -- DO NOT replace it with `return true`, which is the
+    // no-op gate T317 was dispatched to fix.
     auto* combat = m_eq ? m_eq->GetCombatManager() : nullptr;
     if (!combat) {
         return false;
