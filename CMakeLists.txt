@@ -400,6 +400,8 @@ SET(CLIENT_CORE_SOURCES
     src/client/application_zone_loading.cpp
     src/client/application_config.cpp
     src/client/eq_action_handler.cpp
+    src/client/eq_action_handler_spells_trade.cpp
+    src/client/eq_action_handler_extended.cpp
     # Spell system sources
     src/client/spell/spell_database.cpp
     src/client/spell/spell_manager.cpp
