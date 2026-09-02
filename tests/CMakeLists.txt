@@ -234,6 +234,22 @@ ADD_EXECUTABLE(test_daybreak_connection_pcap
 TARGET_LINK_LIBRARIES(test_daybreak_connection_pcap GTest::gtest ${ZLIB_LIBRARIES} ${FMT_LIB})
 GTEST_DISCOVER_TESTS(test_daybreak_connection_pcap)
 
+# T321: CRC validation driven by REAL captured wire bytes (login/world/zone
+# session responses + a covering sample of each stream) from T311 Leg A's
+# 73,506-packet pcap. Pins that ValidateCRC() accepts every recorded packet,
+# rejects corrupted/truncated ones, and that skip_crc_validation (which
+# src/client/eq.cpp sets on every zone connect) accepts corruption.
+ADD_EXECUTABLE(test_daybreak_crc_capture
+    test_daybreak_crc_capture.cpp
+    ${CMAKE_SOURCE_DIR}/src/common/net/daybreak_connection.cpp
+    ${CMAKE_SOURCE_DIR}/src/common/net/packet.cpp
+    ${CMAKE_SOURCE_DIR}/src/common/net/crc32.cpp
+)
+TARGET_COMPILE_DEFINITIONS(test_daybreak_crc_capture PRIVATE
+    T321_CRC_CAPTURE="${CMAKE_SOURCE_DIR}/tests/data/t321_crc_capture.txt")
+TARGET_LINK_LIBRARIES(test_daybreak_crc_capture GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB})
+GTEST_DISCOVER_TESTS(test_daybreak_crc_capture)
+
 # T17: DaybreakConnection/DaybreakConnectionManager state-machine tests
 # driven through a FakeUdpTransport (tests/fake_udp_transport.h) — session
 # lifecycle, sequencing, fragmentation (both directions), ack/retransmit,
