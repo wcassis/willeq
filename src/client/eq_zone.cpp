@@ -379,6 +379,21 @@ void EverQuest::CleanupZone()
 		OnPetRemoved();
 	}
 
+	// T320: group state must NOT be carried across a zone transition.
+	// A group packet delivered while the client is between zone servers is
+	// simply lost -- T297 measured the arriving client never processing a
+	// disband that the source zone had already sent, then reporting "In
+	// group (2 members)" and happily /gsay-ing into a group that no longer
+	// existed, with no error. So the client stops trusting what it carried
+	// across and lets the server say what is true: eqemu's zone-entry path
+	// calls RefreshGroupFromDB() whenever the arriving client still has a
+	// group (zone/client_packet.cpp:765 -> zone/zonedb.cpp:2585), which
+	// sends a full groupActUpdate with the real roster and leader. If there
+	// is no group any more, nothing arrives and "not in group" -- what this
+	// clear leaves behind -- is the correct answer. Either way the client
+	// ends the transition agreeing with the server instead of guessing.
+	ClearGroup();
+
 	// Clear world objects (forges, looms, groundspawns)
 	ClearWorldObjects();
 

@@ -27,6 +27,38 @@
 
 #include <cstring>
 
+// T320: the single channel-name table (declared in eq.h). Every consumer that
+// turns a wire channel number into a display name goes through here -- the
+// console [CHAT] line and the bridge's ChatMessageData::channelName both did
+// it themselves, from two ternary chains forty lines apart in
+// ZoneProcessChannelMessage below, and the two had drifted apart: the console
+// chain had no CHAT_CHANNEL_AUCTION case (auction printed as "chan4" for
+// T297's whole live run) while the bridge chain did, and NEITHER knew channel
+// 14, the server's echo of an outgoing tell ("chan14").
+//
+// Unnamed channels deliberately fall through to "chanN" rather than a flat
+// "other" so an unhandled number stays diagnosable in a log -- that fallback
+// is how channel 14 was spotted at all.
+std::string ChatChannelName(uint32_t channel)
+{
+	switch (channel) {
+	case CHAT_CHANNEL_GUILD:     return "guild";
+	case CHAT_CHANNEL_GROUP:     return "group";
+	case CHAT_CHANNEL_SHOUT:     return "shout";
+	case CHAT_CHANNEL_AUCTION:   return "auction";
+	case CHAT_CHANNEL_OOC:       return "ooc";
+	case CHAT_CHANNEL_BROADCAST: return "broadcast";
+	case CHAT_CHANNEL_TELL:      return "tell";
+	case CHAT_CHANNEL_SAY:       return "say";
+	case CHAT_CHANNEL_PETITION:  return "petition";
+	case CHAT_CHANNEL_GMSAY:     return "gmsay";
+	case CHAT_CHANNEL_TELL_ECHO: return "tellecho";
+	case CHAT_CHANNEL_RAID:      return "raid";
+	case CHAT_CHANNEL_EMOTE:     return "emote";
+	default:                     return fmt::format("chan{}", channel);
+	}
+}
+
 void EverQuest::ZoneSendChannelMessage(const std::string &message, ChatChannelType channel, const std::string &target)
 {
 	// Based on ChannelMessage_Struct from titanium_structs.h:
@@ -73,15 +105,14 @@ void EverQuest::ZoneSendChannelMessage(const std::string &message, ChatChannelTy
 	memcpy((char*)p.Data() + 150, message.c_str(), message_len);
 
 	if (s_debug_level >= 1) {
+		// T320: this was a THIRD copy of the channel-name table, on the SEND
+		// side, and drifted differently again from the two receive-side
+		// chains -- it had auction but no emote, petition, gmsay, raid or
+		// broadcast, and fell back to a bare "unknown" that threw the channel
+		// number away entirely. Found by the guard test written for the other
+		// two (tests/test_chat_channel_names.cpp), not by reading.
 		std::cout << fmt::format("Sending {} message: '{}'",
-			channel == CHAT_CHANNEL_SAY ? "say" :
-			channel == CHAT_CHANNEL_TELL ? "tell" :
-			channel == CHAT_CHANNEL_SHOUT ? "shout" :
-			channel == CHAT_CHANNEL_OOC ? "ooc" :
-			channel == CHAT_CHANNEL_AUCTION ? "auction" :
-			channel == CHAT_CHANNEL_GROUP ? "group" :
-			channel == CHAT_CHANNEL_GUILD ? "guild" : "unknown",
-			message) << std::endl;
+			ChatChannelName(channel), message) << std::endl;
 	}
 
 	DumpPacket("C->S", HC_OP_ChannelMessage, p);
@@ -117,14 +148,7 @@ void EverQuest::ZoneProcessChannelMessage(const EQ::Net::Packet &p)
 	if (s_debug_level >= 1) {
 		std::cout << fmt::format("[CHAT] {} ({}): {}",
 			sender,
-			channel == CHAT_CHANNEL_SAY ? "say" :
-			channel == CHAT_CHANNEL_TELL ? "tell" :
-			channel == CHAT_CHANNEL_SHOUT ? "shout" :
-			channel == CHAT_CHANNEL_OOC ? "ooc" :
-			channel == CHAT_CHANNEL_GROUP ? "group" :
-			channel == CHAT_CHANNEL_GUILD ? "guild" :
-			channel == CHAT_CHANNEL_EMOTE ? "emote" :
-			fmt::format("chan{}", channel),
+			ChatChannelName(channel),   // T320: one table, see top of file
 			message) << std::endl;
 
 		if (!target.empty() && channel == CHAT_CHANNEL_TELL) {
@@ -138,15 +162,7 @@ void EverQuest::ZoneProcessChannelMessage(const EQ::Net::Packet &p)
 		data.sender = sender;
 		data.message = message;
 		data.channelType = channel;
-		data.channelName =
-			channel == CHAT_CHANNEL_SAY ? "say" :
-			channel == CHAT_CHANNEL_TELL ? "tell" :
-			channel == CHAT_CHANNEL_SHOUT ? "shout" :
-			channel == CHAT_CHANNEL_OOC ? "ooc" :
-			channel == CHAT_CHANNEL_GROUP ? "group" :
-			channel == CHAT_CHANNEL_GUILD ? "guild" :
-			channel == CHAT_CHANNEL_AUCTION ? "auction" :
-			channel == CHAT_CHANNEL_EMOTE ? "emote" : "other";
+		data.channelName = ChatChannelName(channel);  // T320: one table
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::ChatMessage, std::move(data)));
 	}
@@ -189,6 +205,19 @@ void EverQuest::SendChatMessage(const std::string &message, const std::string &c
 	// Check if we're connected to the zone
 	if (!m_zone_connection || !m_game_state.world().isZoneConnected()) {
 		LOG_WARN(MOD_MAIN, "Not connected to zone server");
+		return;
+	}
+
+	// T320: say so when there is no group to say it to. The measured
+	// complaint was not only that group state went stale across a zone
+	// transition, but that /gsay into a group that no longer existed
+	// produced NO error -- the message just vanished. The server drops a
+	// group ChannelMessage from an ungrouped client silently
+	// (eqemu zone/client.cpp ChannelMessageReceived: no group, no
+	// Group::GroupMessage, no reply), so the client has to be the one to
+	// tell the player.
+	if (channel == CHAT_CHANNEL_GROUP && !m_game_state.group().inGroup()) {
+		AddChatSystemMessage("You must be in a group to use that command.");
 		return;
 	}
 

@@ -369,26 +369,84 @@ void EverQuest::ZoneProcessGroupFollow(const EQ::Net::Packet& p)
 	LOG_DEBUG(MOD_MAIN, "GroupFollow packet received ({} bytes)", p.Length());
 }
 
+// T320: fill in a member's live stats from the entity list, if they are in
+// this zone. Shared by the JOIN and UPDATE paths.
+void EverQuest::FillGroupMemberFromEntities(GroupMember& member) const
+{
+	for (const auto& [id, entity] : m_entities) {
+		if (entity.name == member.name) {
+			member.spawnId = id;
+			member.level = entity.level;
+			member.classId = entity.class_id;
+			member.hpPercent = entity.hp_percent;
+			member.inZone = true;
+			return;
+		}
+	}
+}
+
+// T320: eqemu does NOT use one struct for every OP_GroupUpdate action.
+//
+//   groupActJoin (0) / groupActLeave (1) -> GroupJoin_Struct
+//        action(4) yourname[64] membername[64] <padding to 452>
+//   everything else                      -> GroupUpdate_Struct / GroupUpdate2
+//        action(4) yourname[64] membername[5][64] leadersname[64]
+//
+// Both are 452 bytes on the wire (eqemu zone/groups.cpp: AddMember and
+// DelMember allocate sizeof(GroupJoin_Struct), which is also 452 in
+// common/eq_packet_structs.h), so a SIZE CHECK CANNOT TELL THEM APART. This
+// handler used to read every action as a GroupUpdate_Struct, which meant a
+// JOIN had its `leadersname` read out of GroupJoin_Struct's padding: all
+// zeroes. That is the measured "In group (2 members), leader: <empty>" --
+// count and roster disagreeing because the leader came from padding.
+//
+// It is reachable with NO zoning at all. On Titanium the INVITER is told a
+// member joined with groupActJoin and nothing else -- eqemu only sends the
+// inviter a full refresh on SoD+ (zone/client.cpp:5206,
+// `RefreshGroupFromDB(inviter)` guarded by ClientVersion() >= SoD) -- so
+// every group this client formed had an empty leader from the moment it was
+// formed. Live evidence: review/T320/b1_gmon_A_testchar.log line 1360
+// ("Group update: 2 members, leader: ") against the same instant on the
+// invitee, review/T320/b1_gmon_B_oraclerogue.log line 314 ("leader:
+// Testchar"), and T297's review before it.
 void EverQuest::ZoneProcessGroupUpdate(const EQ::Net::Packet& p)
 {
+	// Only `action` is common to both layouts, so read that first and let
+	// each case demand the size ITS struct needs.
+	if (p.Length() < 2 + sizeof(uint32_t)) {
+		LOG_WARN(MOD_MAIN, "GroupUpdate packet too small: {} bytes", p.Length());
+		return;
+	}
+	const char* const body = static_cast<const char*>(p.Data()) + 2;
+	uint32_t action = 0;
+	std::memcpy(&action, body, sizeof(action));
+
+	if (action == EQT::GROUP_ACT_JOIN) {
+		ZoneProcessGroupJoin(p);
+		return;
+	}
+
 	if (p.Length() < 2 + sizeof(EQT::GroupUpdate_Struct)) {
 		LOG_WARN(MOD_MAIN, "GroupUpdate packet too small: {} bytes", p.Length());
 		return;
 	}
 
-	auto* data = reinterpret_cast<const EQT::GroupUpdate_Struct*>(static_cast<const char*>(p.Data()) + 2);
+	auto* data = reinterpret_cast<const EQT::GroupUpdate_Struct*>(body);
 
 	switch (data->action) {
 		case EQT::GROUP_ACT_UPDATE:
-		case EQT::GROUP_ACT_JOIN:
 		{
 			// Full group update
 			ClearGroup();
 			const std::string leaderName(data->leadersname);
 			const bool isLeader = (leaderName == m_character);
 
-			// Phase 7.5 / T286: GroupState is the only store
-			m_game_state.group().setInGroup(true);
+			// T320: populate the roster and the leader BEFORE flipping
+			// inGroup. setInGroup(true) fires a GroupChanged, and it used to
+			// fire it here -- immediately after ClearGroup() -- so the first
+			// thing every consumer saw for a new group was inGroup=true with
+			// memberCount 0 and an empty leader name. Ordering it last makes
+			// the only in-group GroupChanged a complete one.
 			m_game_state.group().setLeaderName(leaderName);
 			m_game_state.group().setIsLeader(isLeader);
 
@@ -417,16 +475,7 @@ void EverQuest::ZoneProcessGroupUpdate(const EQ::Net::Packet& p)
 					member.isLeader = (member_name == leaderName);
 
 					// Try to find entity for HP/mana
-					for (const auto& [id, entity] : m_entities) {
-						if (entity.name == member_name) {
-							member.spawnId = id;
-							member.level = entity.level;
-							member.classId = entity.class_id;
-							member.hpPercent = entity.hp_percent;
-							member.inZone = true;
-							break;
-						}
-					}
+					FillGroupMemberFromEntities(member);
 
 					m_game_state.group().setMember(memberCount, member);
 					memberCount++;
@@ -435,6 +484,9 @@ void EverQuest::ZoneProcessGroupUpdate(const EQ::Net::Packet& p)
 
 			// Phase 7.5: Recalculate member count in GameState
 			m_game_state.group().recalculateMemberCount();
+
+			// T320: flip inGroup LAST -- leader and roster are real now.
+			m_game_state.group().setInGroup(true);
 
 			AddChatSystemMessage("Group updated");
 			LOG_INFO(MOD_MAIN, "Group update: {} members, leader: {}",
@@ -472,8 +524,15 @@ void EverQuest::ZoneProcessGroupUpdate(const EQ::Net::Packet& p)
 
 		case EQT::GROUP_ACT_LEAVE:
 		{
-			// Someone left the group
-			std::string member_name(data->membername[0]);
+			// Someone left the group. T320: this action carries a
+			// GroupJoin_Struct too (eqemu zone/groups.cpp DelMember), not a
+			// GroupUpdate_Struct -- read it as one. The single `membername`
+			// happens to sit at the same offset 68 as membername[0] does, so
+			// the old cast read the right bytes by luck; say so out loud
+			// rather than leave the next reader to rediscover it.
+			auto* join = reinterpret_cast<const EQT::GroupJoin_Struct*>(body);
+			std::string member_name(join->membername,
+									strnlen(join->membername, sizeof(join->membername)));
 			int idx = FindGroupMemberByName(member_name);
 			if (idx >= 0) {
 				// Remove member by shifting (T286: GroupState is the only
@@ -554,6 +613,111 @@ void EverQuest::ZoneProcessGroupUpdate(const EQ::Net::Packet& p)
 		default:
 			LOG_DEBUG(MOD_MAIN, "Unhandled group action: {}", data->action);
 			break;
+	}
+}
+
+// T320: groupActJoin -- "this one person just joined your group".
+// eqemu sends it, as a GroupJoin_Struct, only to members who were ALREADY in
+// the group (zone/groups.cpp Group::AddMember skips the new member). The new
+// member instead gets a full groupActUpdate via RefreshGroupFromDB. So this
+// is an INCREMENTAL add: it must not clear the roster and must not touch the
+// leader, because the packet does not carry one.
+void EverQuest::ZoneProcessGroupJoin(const EQ::Net::Packet& p)
+{
+	if (p.Length() < 2 + sizeof(EQT::GroupJoin_Struct)) {
+		LOG_WARN(MOD_MAIN, "GroupJoin packet too small: {} bytes", p.Length());
+		return;
+	}
+
+	auto* data = reinterpret_cast<const EQT::GroupJoin_Struct*>(
+		static_cast<const char*>(p.Data()) + 2);
+	const std::string joiner(data->membername,
+							 strnlen(data->membername, sizeof(data->membername)));
+
+	if (joiner.empty() || joiner == m_character) {
+		// Nothing to add. Our own name here would mean the server told us we
+		// joined ourselves; the full update is what informs a new member.
+		return;
+	}
+
+	auto& group = m_game_state.group();
+
+	if (!group.inGroup()) {
+		// A JOIN while ungrouped means WE created this group by inviting --
+		// AddMember only notifies existing members, and the only way to be an
+		// existing member of a brand-new group is to be the leader who made
+		// it. Titanium gets no other packet saying so (the inviter's
+		// RefreshGroupFromDB is SoD+ only), so this is where the client learns
+		// it leads the group. Set the leader BEFORE any member, so no
+		// consumer ever sees members with no leader.
+		group.setLeaderName(m_character);
+		group.setIsLeader(true);
+		group.clearPendingInvite();
+
+		GroupMember self;
+		self.name = m_character;
+		self.spawnId = MySpawnId();
+		self.level = m_game_state.player().level();
+		self.classId = static_cast<uint8_t>(m_game_state.player().classId());
+		self.hpPercent = (m_game_state.player().maxHP() > 0)
+			? static_cast<uint8_t>(m_game_state.player().curHP() * 100 / m_game_state.player().maxHP()) : 100;
+		self.manaPercent = (m_game_state.player().maxMana() > 0)
+			? static_cast<uint8_t>(m_game_state.player().curMana() * 100 / m_game_state.player().maxMana()) : 100;
+		self.isLeader = true;
+		self.inZone = true;
+		group.setMember(0, self);
+	}
+
+	int slot = group.findMemberByName(joiner);
+	if (slot < 0) {
+		for (int i = 0; i < MAX_GROUP_MEMBERS; ++i) {
+			const GroupMember* gm = group.getMember(i);
+			if (gm && gm->name.empty()) { slot = i; break; }
+		}
+	}
+	if (slot < 0) {
+		LOG_WARN(MOD_MAIN, "Group join for {} but the group is full", joiner);
+		return;
+	}
+
+	GroupMember member;
+	member.name = joiner;
+	member.isLeader = (joiner == group.leaderName());
+	FillGroupMemberFromEntities(member);
+	group.setMember(slot, member);
+
+	group.recalculateMemberCount();
+	// Last, so the one in-group GroupChanged this publishes is complete.
+	group.setInGroup(true);
+
+	AddChatSystemMessage(joiner + " has joined the group");
+	LOG_INFO(MOD_MAIN, "Group join: {} ({} members, leader: {})",
+			 joiner, group.memberCount(), group.leaderName());
+
+	if (m_bridge) {
+		eqt::state::GroupChangedData gdata;
+		gdata.inGroup = true;
+		gdata.isLeader = group.isLeader();
+		gdata.leaderName = group.leaderName();
+		gdata.memberCount = group.memberCount();
+		m_bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::GroupChanged, std::move(gdata)));
+
+		for (int mi = 0; mi < MAX_GROUP_MEMBERS; ++mi) {
+			const GroupMember* gm = group.getMember(mi);
+			if (!gm || gm->name.empty()) continue;
+			eqt::state::GroupMemberUpdatedData mdata;
+			mdata.memberIndex = mi;
+			mdata.name = gm->name;
+			mdata.spawnId = gm->spawnId;
+			mdata.level = gm->level;
+			mdata.classId = gm->classId;
+			mdata.hpPercent = gm->hpPercent;
+			mdata.manaPercent = gm->manaPercent;
+			mdata.inZone = gm->inZone;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::GroupMemberUpdated, std::move(mdata)));
+		}
 	}
 }
 
