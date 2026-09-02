@@ -546,3 +546,347 @@ Concurrent at dispatch: **J08** (`src/client/eq_entities.cpp` + new
 `CMakeLists.txt`, `tests/CMakeLists.txt`). No source overlap with either.
 ⚠ **`CMakeLists.txt` is shared with both** — which is why **merges are
 serialized one at a time with a rebase.**
+
+---
+
+## Review (executed 2026-09-02, slot2, branch `task/J09-zone-shader-split`)
+
+**Base / tip.** Branch cut from `fable` at **`8b0dfcfb`** ("Protocol: the session
+scratchpad is shared across slots…"), which is `$BASE` = `git merge-base fable
+HEAD` = `8b0dfcfb871bf6ddcac131034487736cde99def6`. Split commit
+**`af5144b9`**. **PASS on every bar item; zero deviations from the plan's
+shape; zero re-runs.**
+
+### 1. Line count at my tip — no drift
+
+`src/client/graphics/zone_shader.cpp` = **2,561** lines at `8b0dfcfb`, exactly
+the plan's measurement at `f215651a`. `include/client/graphics/zone_shader.h` =
+**301**, untouched. **Every one of the plan's 37 preprocessor line numbers, 12
+banner triples, 7 cut boundaries and 4 CMake sites reproduced verbatim at my
+tip.** This is the first Wave-3 unit with zero range drift (contrast correction
+19, where `eq_entities.cpp` had grown 50 lines under J08).
+
+### 2. The `friend` question — RE-VERIFIED, the claim holds
+
+```
+$ sed -n '1409,2088p' src/client/graphics/zone_shader.cpp | grep -o 'owner_->[A-Za-z_]*' | sort -u
+owner_->ambientColor          owner_->lightPos
+owner_->attenLutTexture       owner_->lutScale
+owner_->fireGlowLightColor    owner_->numFireGlowLights
+owner_->fireGlowLightIntensity owner_->numPointLights
+owner_->fireGlowLightPos      owner_->playerLightAtten
+owner_->fireGlowLightRadius   owner_->playerLightColor
+owner_->fogColor              owner_->playerLightPos
+owner_->fogEnd                owner_->shaderDebug
+owner_->fogStart              owner_->sunColor
+owner_->frameId               owner_->sunDir
+owner_->getAtlasPageTexture   owner_->tintColor
+owner_->lightAtten            owner_->unifiedLighting
+owner_->lightColor            owner_->windParams
+                              owner_->windTime
+   → 27 distinct members, matching the plan's list exactly.
+
+$ ... | grep -n 'owner_->m_'        → no output (exit 1)   # ZERO raw member accesses
+$ grep -n 'friend' include/client/graphics/zone_shader.h
+                                    → no output (exit 1)
+$ awk 'NR<=301 && /public:|private:|protected:/ {print NR": "$0}' include/client/graphics/zone_shader.h
+16: public:
+219: private:
+```
+
+All 27 members sit in the single `public:` region (`:16`–`:218`). **No `friend`
+added; `zone_shader.h` not touched at all.** The prediction held.
+
+### 3. Preprocessor boundary check + comment depth
+
+`grep -n '/\*' src/client/graphics/zone_shader.cpp` → **no output (exit 1)**:
+zero block comments, so comment depth is 0 at every line and every cut is
+trivially safe on that axis.
+
+The `awk` preprocessor listing returned **exactly the 37 lines the plan names,
+at the same line numbers**: the big two-arm block at `22`/`1018`/`1375`; the LUT
+helpers' guard at `1380`/`1406`; 20 lines interior to the callbacks block
+(1423–2086); 8 interior to the stays range (2107–2440); and the preamble group
+at `3`/`6`/`8`. **No cut point other than 1018/1375 lands on or inside a
+conditional** — confirmed. All seven cut boundaries reproduced their documented
+`line-1 / line / line+1` triples exactly.
+
+### 4. How the `#ifdef` / `#else` / `#endif` was rendered across the two headers
+
+Original `22`…`1018`…`1375` became:
+
+| Original | Became | Where |
+|---|---|---|
+| `22 #ifdef EQT_HAS_GLES2` | unchanged, verbatim | `zone_shader_sources_gles2.h:31` |
+| — | **added** `#endif // EQT_HAS_GLES2` | `zone_shader_sources_gles2.h:1014` |
+| `1018 #else // !EQT_HAS_GLES2 — Desktop GL / GLSL 1.20` | **replaced by** ``#ifndef EQT_HAS_GLES2   // was the `#else` arm of zone_shader.cpp:1018`` | `zone_shader_sources_gl.h:10` |
+| `1375 #endif // EQT_HAS_GLES2` | **comment retitled**: `#endif // !EQT_HAS_GLES2` | `zone_shader_sources_gl.h:367` |
+
+Both headers are included unconditionally by `zone_shader.cpp`; exactly one arm
+survives preprocessing in any configuration, as before. **The two arms were not
+merged, no literal was de-`static`ed, no `inline` added, no `detail` namespace
+introduced; both headers open `namespace EQT { namespace Graphics {` themselves,
+so every reference in the .cpp is textually untouched.**
+
+⚠ **Correction to the plan's own arithmetic (minor).** §Acceptance predicts
+"exactly 2 differing lines"; the actual re-concatenation diff is **3 changed
+lines across 2 hunks**, because the plan's own header-shape template
+(§"Exact header shapes") specifies `#endif // !EQT_HAS_GLES2` for header B's
+closer — a **comment-text** change to line 1375 that the prediction did not
+count. The three are enumerated in §8 below. **The `!` was kept**: with an
+`#ifndef` above it, `#endif // EQT_HAS_GLES2` would be actively misleading.
+
+### 5. Includer counts and include-path form
+
+```
+$ grep -rn 'zone_shader_sources_gles2.h\|zone_shader_sources_gl.h\|zone_shader_callbacks.h' src/ include/ tests/
+src/client/graphics/zone_shader.cpp:10:#include "client/graphics/zone_shader_sources_gles2.h"
+src/client/graphics/zone_shader.cpp:11:#include "client/graphics/zone_shader_sources_gl.h"
+src/client/graphics/zone_shader.cpp:12:#include "client/graphics/zone_shader_callbacks.h"
+```
+
+**One includer each, and all three are that same TU.** Path form is the
+project-relative-from-`src/` form, matching the `wld_internal.h` precedent
+(`#include "client/graphics/eq/wld_internal.h"` in the four `wld_*` TUs);
+`${CMAKE_SOURCE_DIR}/src` is on the global `INCLUDE_DIRECTORIES` list
+(`CMakeLists.txt:195`), so no CMake change was needed to make the form work.
+Each header carries the "PRIVATE … include from zone_shader.cpp only" comment.
+
+Include **order** is as mandated — `_gles2`, `_gl`, `_callbacks`, all inside the
+include block ahead of `namespace EQT {`, so the 26 literals and the three
+classes are all declared before the constructor's 18 `new` sites.
+
+### 6. ⚠ FINDING — **no build configuration in the tree compiles the desktop-GL arm**
+
+`zone_shader_sources_gl.h`'s body is guarded by `#ifndef EQT_HAS_GLES2`.
+`EQT_HAS_GLES2` is defined at `CMakeLists.txt:707` under `IF(EQT_GLES2)`.
+All three configurations this unit built — `build/` (the GLES2 dev tree),
+`build-gles2/` (`scripts/build-gles2-x86.sh`) and `build-arm-noble/`
+(`scripts/build-arm-noble.sh`) — set `EQT_GLES2=ON`. **So the arm is compiled
+by none of them.**
+
+The only configuration that *would* compile it is `EQT_GRAPHICS=ON EQT_DRM=ON
+EQT_GLES2=OFF`: `CMakeLists.txt:129` FATAL_ERRORs unless one of `EQT_DRM` or
+`EQT_GLES2` is set, so `EQT_DRM` alone is the sole remaining door. **P32 retired
+exactly that configuration** — `CMakeLists.txt:701-706` says the
+`EQT_GLES2=OFF` "Desktop GL mode via Lima" branch was removed and
+`build-arm-noble.sh` no longer offers `--no-gles2`. It is consistent with the
+`.cpp` preamble, whose `#elif defined(EQT_HAS_DRM) → #include <GL/gl.h>` at
+lines 6-7 pairs the desktop arm with `EQT_HAS_DRM`.
+
+**So: 356 lines of GLSL 1.20 that no reachable configuration compiles.** This is
+the batch's **seventh dead-content site** and belongs on the board with the other
+six (`eq_ucs.cpp`'s 320 commented-out lines, `wld_loader.cpp`'s 278-line `#if 0`,
+J06's tombstone block, …). ⚠ **Recorded, NOT acted on** — the plan is explicit
+that this is "not a licence to delete it in this unit."
+
+Because nothing in the bar compiles it, I added a **standalone syntax probe** so
+the arm is not shipped unparsed:
+
+```
+$ printf '#include "client/graphics/zone_shader_sources_gl.h"\nint main(){return 0;}\n' > glarm_probe.cpp
+$ g++ -fsyntax-only -Wall -UEQT_HAS_GLES2 -Isrc -Iinclude glarm_probe.cpp ; echo $?
+0
+$ # parity check on the other arm
+$ g++ -fsyntax-only -DEQT_HAS_GLES2 -Isrc -Iinclude gles2_probe.cpp ; echo $?
+0
+```
+
+**Both arms parse clean.** (Probe files live in the scratchpad, not the repo.)
+
+### 7. CMake — **4 sites found, 4 predicted, 0 edited**
+
+```
+$ grep -n 'zone_shader\.cpp' CMakeLists.txt tests/CMakeLists.txt tests/cmake/*.cmake
+CMakeLists.txt:485      SET(GRAPHICS_SOURCES
+CMakeLists.txt:1656     ADD_EXECUTABLE(gles2_zone_benchmark      ← the visual-gate binary
+CMakeLists.txt:1777     ADD_EXECUTABLE(gles2_shader_diagnostic
+CMakeLists.txt:1860     ADD_EXECUTABLE(gles2_composite_audit
+```
+
+**Exactly four, all in the root file, zero in `tests/CMakeLists.txt` and zero in
+the new `tests/cmake/*.cmake` fragments** (J20's split). This unit creates no
+`.cpp`, so **nothing was added at any site and `CMakeLists.txt` is unmodified**.
+`grep -c '\.h$' CMakeLists.txt` → **0**: the project lists no headers in CMake,
+so the three new headers need no add-site either. Confirmed by the fact that the
+build picked them up with no configure change.
+
+### 8. The two content proofs
+
+Original body = lines **14–2559** = **2,546** lines.
+Reassembled body = **2,547** lines. Contributions, stated explicitly per
+correction 7:
+
+| Source | Header/TU lines | Original range | Count |
+|---|---|---|---|
+| `zone_shader_sources_gles2.h` | 10–1013 | 14–1017 | 1,004 |
+| `zone_shader_sources_gles2.h` | 1014 | *(new `#endif`)* | 1 |
+| `zone_shader_sources_gl.h` | 10 | *(replaces 1018)* | 1 |
+| `zone_shader_sources_gl.h` | 11–366 | 1019–1374 | 356 |
+| `zone_shader_sources_gl.h` | 367 | *(replaces 1375)* | 1 |
+| `zone_shader.cpp` | 16–47 | 1376–1407 | 32 |
+| `zone_shader_callbacks.h` | 20–700 | 1408–2088 | 681 |
+| `zone_shader.cpp` | 48–518 | 2089–2559 | 471 |
+| | | **total** | **2,547** |
+
+**Proof A — byte-identical re-concatenation, in original order:**
+
+```
+=== line counts: before 2546 / after 2547 ===
+=== RECONCAT DIFF ===
+1005c1005,1006
+< #else // !EQT_HAS_GLES2 — Desktop GL / GLSL 1.20
+---
+> #endif // EQT_HAS_GLES2
+> #ifndef EQT_HAS_GLES2   // was the `#else` arm of zone_shader.cpp:1018
+1362c1363
+< #endif // EQT_HAS_GLES2
+---
+> #endif // !EQT_HAS_GLES2
+```
+
+**Two hunks, three changed lines, and they are the unit's ONLY non-verbatim
+change.** All 2,544 other lines — including every one of the 1,362 GLSL lines
+and all 681 lines of callback code — are byte-identical.
+
+**Proof B — line multiset (`sort`, never `sort -u`):**
+
+```
+=== MULTISET DIFF ===
+723d722
+< #else // !EQT_HAS_GLES2 — Desktop GL / GLSL 1.20
+736a736
+> #endif // !EQT_HAS_GLES2
+1287a1288
+> #ifndef EQT_HAS_GLES2   // was the `#else` arm of zone_shader.cpp:1018
+```
+
+**The same three lines, and nothing else** — the multiset is otherwise exactly
+preserved, so no GLSL line was duplicated into two files or dropped from both.
+This is the check that mattered: HAZARD 2 is real (the two arms share many
+identical `uniform`/`varying`/`}` lines, and `verify_move_only.py` allowlists a
+bare `}`), and only a counting comparison can see through it.
+
+⚠ **Correction 17 bit, exactly as warned — and the proof was wrong before the
+code was.** My first `body()` helper mis-derived header B's offsets (it emitted
+its `#endif` twice and swept up a trailing blank), producing a 2,548-line result
+and a 4-line diff that read like a stray inserted line. **Suspect the proof
+first**: `local`-scoping was already correct, but the *range arithmetic* is the
+other half of that lesson and the plan does not say so. **Recommend generalising
+correction 17: derive proof ranges from the produced files' own structure, and
+treat any proof failure whose diff is pure whitespace or pure preprocessor as a
+proof bug until shown otherwise.**
+
+**Verifier — exit 0, as predicted (correction 23 holds):**
+
+```
+$ BASE=$(git -C /mnt/projects/fable/wt/slot2 merge-base fable HEAD)   # 8b0dfcfb…
+$ python3 scripts/refactor/verify_move_only.py "$BASE..HEAD" --repo /mnt/projects/fable/wt/slot2
+
+Files verified: 4
+Boilerplate: +41 / -1 lines (allowed)
+
+PASS: move-only (modulo boilerplate).
+VERIFIER_EXIT=0
+```
+
+Run **after** committing (`af5144b9`), **with `--repo`**, **against the fork
+point** — all three of the documented traps avoided. **+41/-1**: the 41 are
+3 `#pragma once`, 13 comment lines, 6 `namespace … {`, 6 `}` closes, 12
+`#include` (9 copied into the callbacks header + 3 new in the .cpp), plus the
+new `#endif`/`#ifndef`/`#endif`; the −1 is the original `#else`. **This is the
+first unit in the batch to pass the verifier while splitting a live conditional
+across a file boundary, and the first since J06 to need no sign-off exception.**
+
+### 9. Final line counts, timings, wave effects
+
+| File | Plan estimate | **Actual** | Δ |
+|---|---|---|---|
+| `src/client/graphics/zone_shader.cpp` | ~525 | **520** | −5 |
+| `src/client/graphics/zone_shader_sources_gles2.h` | ~1,010 | **1,017** | +7 |
+| `src/client/graphics/zone_shader_sources_gl.h` | ~365 | **370** | +5 |
+| `src/client/graphics/zone_shader_callbacks.h` | ~700 | **702** | +2 |
+| | | 2,561 → **2,609** | +48 boilerplate |
+
+`check_file_sizes.sh --files` on all four: **4 ok, 0 warn, 0 fail.** The largest
+(1,017) is comfortably under the 1,500 WARN line, so the contingency fourth
+header was not needed. Correction 12 holds again — cluster membership exact,
+arithmetic off by −5…+7.
+
+| Step | Result | Time |
+|---|---|---|
+| `cmake --build build -j24` | **exit 0**, first invocation, no SIGTERM | ~4 min |
+| `ctest -j6` | **3,498 / 3,499**; sole failure `AudioManagerTest.PreloadCommonSounds` (the documented ALSA host quirk) | **399.4 s** |
+| `scripts/build-gles2-x86.sh` | **exit 0** | ~3 min |
+| `scripts/ci/visual_gate.sh` | **PASS, first run**, `git status --porcelain` empty | ~1 min |
+| `scripts/build-arm-noble.sh` | **exit 0, FIRST invocation** — no 143 | ~5 min |
+| `check_file_sizes.sh --files` | 4 ok, 0 warn, 0 fail | instant |
+
+**No exit-143 build, so the ELF-magic truncation scan was not triggered.** No
+`HeadlessShutdownTest` flake. **Zero re-runs of anything.** Total ~35 min wall
+clock, of which the cut plus both proofs was **under 6 minutes** — the bar is
+still the whole cost.
+
+**Visual gate detail** (goldens untouched, zero image mismatches, all three
+zones well under ceiling): qeynos2 p95 CPU **3.884** (ceiling 10.108), gfaydark
+**4.915** (10.672), befallen **6.838** (10.948). Notably the gate did **not**
+flake despite J08 and J10 running concurrently — correction 14's "may happen,
+not will" is right again. **Concurrency with J08/J10 cost this unit nothing
+measurable**; `ctest -j6` at 399 s is between J02's three-wide 6.8 min and
+J06's solo-beating 120.7 s.
+
+**⚠ The load-bearing gate result for THIS unit is that the gate passed at the
+RENDER step at all.** `gles2_zone_benchmark` compiles `zone_shader.cpp`, and
+this unit changed what that TU includes; a render-step pass is the direct
+evidence that all 26 shader sources and all three callback classes reached the
+compiler in the right order.
+
+### 10. Findings only — recorded, not acted on
+
+1. **The desktop-GL arm is unreachable** — §6 above. 356 lines of GLSL 1.20 that
+   no configuration in the tree compiles, kept because P32 retired the door
+   rather than the code. **Batch dead-content site #7.**
+2. **Doc rot the split invalidates** (comment-only, outside a move-only commit):
+   - `docs/future/shader_permutation_handoff.md:73` — "Zone shader
+     implementation: `src/client/graphics/zone_shader.cpp`" is now four files.
+   - `docs/future/shader_permutation_handoff.md:405` — the change-table row for
+     `zone_shader.cpp` describes work now split across the .cpp and
+     `zone_shader_sources_*.h`.
+   - `docs/future/shader_permutation_handoff.md:407` — **``| `ShaderCallback`
+     (in zone_shader.cpp) |``** names the wrong file; it is now
+     `zone_shader_callbacks.h`. Also `:299`/`:313` discuss `ShaderCallback`
+     without a path.
+   - `docs/reference/shader_overview.md:134` — **"Files:
+     `include/client/graphics/zone_shader.h` + `src/client/graphics/zone_shader.cpp`"**
+     now under-describes the module by three headers.
+   **Fold into the `docs/module_map.md` hygiene pass J02/J04/J06/J07 already
+   owe** — that pass now has five units' worth of entries.
+3. **`docs/module_map.md` has no `zone_shader` entry at all**, so nothing there
+   went stale — but the new four-file shape is worth adding in the same pass.
+4. **No unreachable code found inside the moved ranges.** All 26 shader sources
+   are named by the constructor, all three callback classes are instantiated
+   (7 + 4 + 7 = 18 times), and both LUT helpers have live callers at 2399/2431.
+5. **`tests/`+`scripts/` pre-check re-run at my tip: still ZERO hits for
+   `zone_shader` of any kind** — no functional readers, no comment mentions, no
+   line-number citations to rot. Unique in the batch so far, and the reason this
+   unit needed no territory expansion (contrast correction 10 / J11).
+
+### What the template still gets wrong
+
+- **§Acceptance's "expect exactly 2 differing lines" contradicts §"Exact header
+  shapes"**, which prescribes the `!EQT_HAS_GLES2` comment retitle that makes it
+  three. Harmless here because the plan also demanded the diff be pasted and
+  enumerated — but a unit that trusted the count over the paste would have
+  reported a spurious anomaly. **Where a plan predicts a diff size, it must
+  derive the number from its own prescribed output, not from the semantic
+  intent.**
+- **Correction 17 is stated too narrowly.** "Declare count variables `local`"
+  names one instance of a general rule; the failure that actually occurred here
+  was **range arithmetic against the produced file's line numbering**, with no
+  variable scoping involved. See §8.
+- **The plan's "1 TU + 3 private headers" call was right and worth the space it
+  took.** Re-deriving why the survey's "3 TUs + 2 hdrs" is impossible would have
+  cost real time; having the `static`-linkage and 100%-inline arguments written
+  out meant the shape was never in question. **Wave-4 plans should keep doing
+  this wherever they overrule a survey row.**
+
