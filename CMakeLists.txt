@@ -264,6 +264,11 @@ SET(COMMON_SOURCES
 # Client sources (core - without main.cpp, for library)
 SET(CLIENT_CORE_SOURCES
     src/client/eq.cpp
+    src/client/eq_zone_dispatch.cpp
+    src/client/eq_zone_handshake.cpp
+    src/client/eq_zone_entry.cpp
+    src/client/eq_ucs.cpp
+    src/client/eq_player_state.cpp
     src/client/eq_bridge.cpp
     src/client/eq_entities.cpp
     src/client/eq_commands.cpp
