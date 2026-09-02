@@ -1,0 +1,261 @@
+# tests/cmake/ui_rendering.cmake -- included from tests/CMakeLists.txt.
+# Graphics-side integration: zoning graphics, inventory/model view, first-person body, UI panels and atlases.
+# Moved verbatim from tests/CMakeLists.txt by J20 (no target, source or
+# link changes). Included in the tests/ directory scope, so every variable
+# set in the top-level preamble is in effect here.
+
+# Integration test: Zoning with Graphics (connects to real EQEmu server with graphics enabled)
+# This test is NOT auto-discovered because it requires a running server and X display.
+# Run manually with: DISPLAY=:99 ./bin/test_zoning_graphics_integration
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_zoning_graphics_integration
+        test_zoning_graphics_integration.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_zoning_graphics_integration PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_zoning_graphics_integration GTest::gtest_main willeq_core)
+    # T164 (2026-08-21): registered with ctest ONLY under -DEQT_LIVE_TESTS=ON, and
+    # labelled "live" so it can never join the default suite. Discovery is safe --
+    # each main() only parses args and prints before RUN_ALL_TESTS(), so
+    # --gtest_list_tests returns without touching a server (verified: 4 / 7 / 8
+    # tests listed in <1s with no eqemu running). These binaries are still BUILT
+    # unconditionally; before T164 they were built on every unit and run by
+    # nothing.
+    #   cmake -S . -B build -DEQT_LIVE_TESTS=ON
+    #   ctest --test-dir build -L live
+    IF(EQT_LIVE_TESTS)
+        GTEST_DISCOVER_TESTS(test_zoning_graphics_integration PROPERTIES LABELS "live")
+    ENDIF()
+ENDIF()
+
+# Headless character-model loading/animation suite (RaceModelLoader +
+# EQAnimatedMeshSceneNode). Originally an EQEmu-server + DISPLAY + paperdoll-
+# UI integration test (InventoryModelViewTest); T54 (2026-08-10) deleted that
+# fixture — its six TEST_F cases were unconditionally GTEST_SKIP()'d
+# ("WindowManager has been deleted"), not environment-gated, because the
+# paperdoll UI they exercised (WindowManager/InventoryWindow/
+# CharacterModelView) was itself deleted in 0f25cb57. The salvageable
+# assertions (textures applied, loads for race/gender, animation coherence)
+# now live in RaceModelAnimationHeadlessTest (added P12B, extended T54),
+# which needs neither a server nor a display — EDT_NULL device only. Safe
+# to auto-discover.
+#
+# Filename kept as-is for this unit (renaming would churn CMake/git history
+# for no test value) — T54's Review recommends test_race_model_loading.cpp
+# as a truer name for a future rename.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_inventory_model_view
+        test_inventory_model_view.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_inventory_model_view PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_inventory_model_view GTest::gtest_main willeq_core)
+    # T270: the fixture opens the shipped db as the race source (race codes
+    # are db-only now).
+    TARGET_COMPILE_DEFINITIONS(test_inventory_model_view PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    GTEST_DISCOVER_TESTS(test_inventory_model_view)
+ENDIF()
+
+# T309: the measured first-person draw rule (predicate + the withhold seam).
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_first_person_body_draw_rule
+        test_first_person_body_draw_rule.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_first_person_body_draw_rule PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_first_person_body_draw_rule GTest::gtest willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_first_person_body_draw_rule PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    GTEST_DISCOVER_TESTS(test_first_person_body_draw_rule)
+ENDIF()
+
+# T301 Leg C: first-person weapon attachment geometry (probe).
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_first_person_weapon_attachment
+        test_first_person_weapon_attachment.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_first_person_weapon_attachment PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_first_person_weapon_attachment GTest::gtest willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_first_person_weapon_attachment PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    GTEST_DISCOVER_TESTS(test_first_person_weapon_attachment)
+ENDIF()
+
+# T301 Leg D: the UI-hide toggle, from the paths a user or a capture script
+# reaches (/hideui and the F11 hotkey), plus source pins on the two single-site
+# steps that need a GL device to execute.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_ui_hide_command
+        test_ui_hide_command.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_ui_hide_command PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_ui_hide_command GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_ui_hide_command PRIVATE
+        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+    GTEST_DISCOVER_TESTS(test_ui_hide_command)
+ENDIF()
+
+# T267: race 330 (playable Froglok) resolves to and loads from the row's
+# globalpcfroglok_chr.s3d. Same EDT_NULL + willeq_core gate as
+# test_inventory_model_view; opens the shipped data/willeq.db as the race
+# source and skips without it or the client tree.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_race_330_loader
+        test_race_330_loader.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_race_330_loader PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_race_330_loader GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_race_330_loader PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    GTEST_DISCOVER_TESTS(test_race_330_loader)
+ENDIF()
+
+# T285: pins the two applyPaletteMask plumbing sites (P46d Part B / P50) --
+# mesh_building.cpp's on-demand texture fallback and animated_mesh_creation.cpp's
+# equipment texture-variant swap. Same EDT_NULL + willeq_core gate as
+# test_race_330_loader; opens the shipped data/willeq.db and the real client
+# tree and skips without either.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_palette_mask_plumbing
+        test_palette_mask_plumbing.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_palette_mask_plumbing PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_palette_mask_plumbing GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_palette_mask_plumbing PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    GTEST_DISCOVER_TESTS(test_palette_mask_plumbing)
+ENDIF()
+
+# T271: race DISPLAY NAMES come from the db (EverQuest::GetRaceName was
+# shifted -- 14 "Iksar", 128 "Vah Shir", 130 "Froglok", 330 "Drakkin" -- and
+# it is printed to the player). Opens the shipped data/willeq.db and skips
+# without it; no device, no server. Gated on graphics only because the
+# T274 deleted the caller-less graphics-side twin EQT::Graphics::getRaceName;
+# the target stays graphics-gated because EQT::Graphics::getRaceScale (which
+# does have callers) is still held to the same rows here.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_race_names
+        test_race_names.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_race_names PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_race_names GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_race_names PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    GTEST_DISCOVER_TESTS(test_race_names)
+ENDIF()
+
+# T54: first tests for the static-panel UI (StaticUIInput hit-testing,
+# processKey popup dismissal, and an EDT_NULL renderInventoryPopup smoke
+# test). Pure hit-testing needs no device at all; the optional rendering
+# tail uses EDT_NULL like test_door_loading's DoorManagerGraphicsTest.
+# Same gate as test_inventory_model_view (needs Irrlicht + the graphics UI
+# sources in willeq_core) — safe to auto-discover, nothing here needs a
+# server or DISPLAY.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_static_ui_panels
+        test_static_ui_panels.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_static_ui_panels PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_static_ui_panels GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_static_ui_panels)
+ENDIF()
+
+# T275: pixel-level assertions on the ATLAS-backed UIRenderer path (a real
+# headless GLES2 device + the real ui_atlas out of willeq.eqe1). Every UI
+# capture harness before this ran with atlas=nullptr, so the atlas path had
+# no pixel coverage at all -- see refactor/T275_uirenderer_drawrect_invisible.md.
+# Self-skips without the EQE1 asset or a usable GLES2 device.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_ui_atlas_pixels
+        test_ui_atlas_pixels.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_ui_atlas_pixels PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_ui_atlas_pixels GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_ui_atlas_pixels)
+ENDIF()
+
+# T313: the static UI's missing scroll INPUT -- chat scrollback, the skills
+# list and the loot list all honoured a scrollOffset nothing ever wrote.
+# Mostly device-free (it drives StaticUIInput and IrrlichtRenderer's slash
+# command directly, test_ui_hide_command.cpp's idiom); the chat leg alone
+# needs a headless GLES2 device + willeq.eqe1 and self-skips without them,
+# because renderChatPanel() is the only place the wrapped-line window exists.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_static_ui_scroll
+        test_static_ui_scroll.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_static_ui_scroll PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_static_ui_scroll GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_static_ui_scroll PRIVATE
+        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+    GTEST_DISCOVER_TESTS(test_static_ui_scroll)
+ENDIF()
+
+# T279: pixel proof for the EQE1 ALPHA COMPANION mip filter. Builds synthetic
+# complete/truncated ETC1 packs and draws the companion minified through a real
+# headless GLES2 device -- see refactor/T279_complete_mip_chains.md.
+# Self-skips without a usable GLES2 device.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_eqe1_alpha_companion_mip
+        test_eqe1_alpha_companion_mip.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_eqe1_alpha_companion_mip PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_eqe1_alpha_companion_mip GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_eqe1_alpha_companion_mip)
+ENDIF()
+
+# T156: /useskill + the hotbar/skills-popup intent producers. Same graphics
+# gate as test_static_ui_panels above (it drives StaticUIInput), and no device
+# is created — see refactor/T156_skill_reachability.md. Deliberately a NEW
+# file: test_command_processor.cpp was past the 3000-line FAIL ceiling when
+# T156 landed (T165 has since split it).
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_skill_reachability
+        test_skill_reachability.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_skill_reachability PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_skill_reachability GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_skill_reachability)
+ENDIF()
+
+# T272: the spellbook popup's click -> MemorizeSpellIntent -> SpellManager
+# route (destination-gem policy, the real StaticUIInput producer, and the
+# eq_bridge.cpp consumer arm whose arguments were swapped). Needs Irrlicht
+# headers for static_panels.h and willeq.db for the consumer leg (self-skips
+# without it, test_spell_manager's precedent).
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_spellbook_memorize
+        test_spellbook_memorize.cpp
+    )
+    TARGET_COMPILE_DEFINITIONS(test_spellbook_memorize PRIVATE WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    TARGET_INCLUDE_DIRECTORIES(test_spellbook_memorize PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_spellbook_memorize GTest::gtest willeq_core)
+    GTEST_DISCOVER_TESTS(test_spellbook_memorize)
+ENDIF()
+
+# T277: clicking a buff off the buff bar. Geometry (hitTestBuffBar), the
+# click producer (StaticUIInput), the OP_Buff request bytes, and the real
+# eq_bridge consumer arm asserting the buff is NOT removed optimistically.
+# Needs Irrlicht headers for static_panels.h and willeq.db for the consumer
+# legs (self-skips without it, test_spellbook_memorize's precedent).
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_buff_click_off
+        test_buff_click_off.cpp
+    )
+    TARGET_COMPILE_DEFINITIONS(test_buff_click_off PRIVATE WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    TARGET_INCLUDE_DIRECTORIES(test_buff_click_off PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_buff_click_off GTest::gtest willeq_core)
+    GTEST_DISCOVER_TESTS(test_buff_click_off)
+ENDIF()
+
+# T290: the loot window, restored. The four bridge-arm bodies (applyLoot*),
+# the row/button geometry that renderLootPopup() shares with the hit tests,
+# and the real StaticUIInput producer for the three loot intents. Same
+# graphics gate as test_buff_click_off (needs Irrlicht headers for
+# static_panels.h); no device, no server, no db.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_loot_panel
+        test_loot_panel.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_loot_panel PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_loot_panel GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_loot_panel)
+ENDIF()

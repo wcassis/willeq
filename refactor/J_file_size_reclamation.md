@@ -640,7 +640,7 @@ tree, and `wld_loader.cpp` drops by 37%.
 | J16 | `include/client/eq.h` type extraction | 2,538 | +3 hdrs | ~1,930 | 5 | after J02, J08; leave forwarding includes |
 | J17 | `include/client/graphics/irrlicht_renderer.h` | 2,395 | +2 hdrs | ~1,820 | 5 | after J11 |
 | J18+ | the residual ~13 files (§Residual) | — | — | — | 6 | re-measure first; several shrink as callers move |
-| **J20** | **`tests/CMakeLists.txt`** | **2,778** | per-domain `.cmake` fragments | — | **none — see below** | ⚠ **HIGH-CONFLICT with every in-flight J unit.** Within 222 lines of the hard cap and every J unit appends to it. Wants a quiet moment, not a wave slot |
+| ~~**J20**~~ ✅ **DONE** | **`tests/CMakeLists.txt`** | **2,850 → 135** | per-domain `.cmake` fragments | — | **none — see below** | ⚠ **HIGH-CONFLICT with every in-flight J unit.** Within 222 lines of the hard cap and every J unit appends to it. Wants a quiet moment, not a wave slot |
 
 Full clearance is roughly **26-30 units**.
 
@@ -681,7 +681,29 @@ Full clearance is roughly **26-30 units**.
 | T318 (size update / guild rank) | `graphics/entity_renderer.*`, `renderer_entities.cpp`, `irrlicht_bridge.cpp`, `eq_entities.cpp`, `eq_guild.cpp`, `spell_effects.cpp`, `event_bus.h`, `tests/CMakeLists.txt` | **J03** (hard). Not J02 (`eq.cpp` untouched), not J04 |
 | T313 (UI scroll) | `graphics/ui/`, one hunk in `irrlicht_renderer.h` | **J17** (soft: J11). No `graphics/ui/` file is over 1,500 (largest `static_panels.cpp` 915), so no J unit wants that territory |
 
-## J20 — split `tests/CMakeLists.txt` (2,778 lines). Boarded, unscheduled.
+## J20 — split `tests/CMakeLists.txt`. ✅ **DONE** — `task/J20-tests-cmake-split`
+
+**Executed 2026-09-02 from `53d819bd`. Review: `refactor/J20_tests_cmake_split.md`.**
+2,850 → **135** lines + **18 fragments** under `tests/cmake/`, largest 532
+(`commands.cmake`). `ctest -N` 3,499 before and after, proven equal (sorted AND
+in ctest order); target list `cmp`-identical at 1,235 lines; `ctest -j6`
+3,498/3,499 with only the documented `AudioManagerTest.PreloadCommonSounds`;
+from-scratch configure+build reproduces the same list; gate PASS, goldens
+untouched; 19/19 files ok on `check_file_sizes.sh`.
+
+⚠ **Every J unit from here adds its test target to
+`tests/cmake/<domain>.cmake`, not to `tests/CMakeLists.txt`.**
+
+⚠ **Two traps the review documents — read them before diffing `ctest -N`:**
+`test_irrlicht_camera_command` has 8 parameterized test NAMES that embed an
+ASLR-randomised pointer and therefore change on every relink (redact
+`72-byte object <...>` before comparing); and two consecutive `ctest -N` runs
+agree even when the names are unstable, because `PRE_TEST` discovery reuses its
+generated file — that check is vacuous. Also: **the session scratchpad is shared
+across slots and across earlier sessions**, so a `--exit-file` wait can return
+success against someone else's hours-old file.
+
+### Original scoping (kept for the record)
 
 **Why it exists:** `tests/CMakeLists.txt` is **2,778 lines** — over the 1,500
 WARN and **within 222 lines of the 3,000 hard cap** — and it holds **175
