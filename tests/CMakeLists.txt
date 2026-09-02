@@ -477,7 +477,7 @@ ADD_EXECUTABLE(test_merged_help
 # T223: the registry-3 drift guard parses the renderer's if/else chain source
 # text and asserts its `cmd == "/x"` literal set equals the static catalog.
 TARGET_COMPILE_DEFINITIONS(test_merged_help PRIVATE
-    RENDERER_COMMAND_SOURCE="${CMAKE_SOURCE_DIR}/src/client/graphics/irrlicht_renderer.cpp")
+    RENDERER_COMMAND_SOURCE="${CMAKE_SOURCE_DIR}/src/client/graphics/renderer_slash_commands.cpp")  # J11
 TARGET_LINK_LIBRARIES(test_merged_help GTest::gtest_main fmt::fmt)
 GTEST_DISCOVER_TESTS(test_merged_help)
 

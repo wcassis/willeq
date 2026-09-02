@@ -444,6 +444,11 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/animated_mesh_eye.cpp
         src/client/graphics/first_person_eye.cpp
         src/client/graphics/irrlicht_renderer.cpp
+        src/client/graphics/renderer_event_receiver.cpp  # J11
+        src/client/graphics/renderer_init.cpp  # J11
+        src/client/graphics/renderer_slash_commands.cpp  # J11
+        src/client/graphics/renderer_hud_env.cpp  # J11
+        src/client/graphics/renderer_camera.cpp  # J11
         # T166: the loadZoneSequential() step sequence, split out of one
         # 2996-line TU. Driver + geometry steps here, the rest alongside.
         src/client/graphics/renderer_zone_load.cpp

@@ -143,7 +143,7 @@ TEST_F(UIHideCommandTest, RendererActionFromThatKeyTogglesTheUI) {
 // --- The two single-site steps that need a GL device to execute ---
 
 TEST(UIHideSourceInvariants, KeyEventSwitchQueuesTheRendererAction) {
-    const std::string src = readFile(kRoot / "src/client/graphics/irrlicht_renderer.cpp");
+    const std::string src = readFile(kRoot / "src/client/graphics/renderer_event_receiver.cpp");  // J11
     EXPECT_NE(src.find("case HA::ToggleAllUI: actionQueue_.push_back({RA::ToggleAllUI});"),
               std::string::npos)
         << "the F11 hotkey no longer reaches RendererAction::ToggleAllUI -- the key is dead";

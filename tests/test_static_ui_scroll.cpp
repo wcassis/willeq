@@ -687,7 +687,7 @@ TEST(ScrollSourceInvariants, OnEventAccumulatesTheMouseWheel) {
     // wheel fell through to `default: break` and the whole client discarded
     // it. (Which is also why routing it to the UI cannot regress camera
     // zoom: zoom is bound to HA::CameraZoomIn/Out, never to the wheel.)
-    const std::string src = readFile(kRoot / "src/client/graphics/irrlicht_renderer.cpp");
+    const std::string src = readFile(kRoot / "src/client/graphics/renderer_event_receiver.cpp");  // J11
     EXPECT_NE(src.find("case irr::EMIE_MOUSE_WHEEL:"), std::string::npos)
         << "the mouse wheel is dropped by OnEvent() again";
     EXPECT_NE(src.find("mouseWheelDelta_ += event.MouseInput.Wheel;"), std::string::npos);
