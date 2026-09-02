@@ -33,14 +33,17 @@ SEPARATE, OPTIONAL goal. Do not fold them in.
 
 ## The one genuinely hard problem: headers, and it is a god-class problem
 
-Four headers are over the soft limit, in two different shapes:
+Four headers are over the soft limit, in two different shapes. ⚠ **All four
+GREW between the survey and `136a319b` — `eq.h` by 107 lines and
+`irrlicht_renderer.h` by 125 — so every "mechanical to ~N" figure below is
+optimistic by that much. Re-measure at the unit's own tip.**
 
 | header | lines | shape | verdict |
 |---|---|---|---|
-| `include/common/packet_structs.h` | 2,207 | 125 independent packed structs, already banner-sectioned | **mechanical**, clears fully |
-| `include/client/action/action_dispatcher.h` | 1,556 | 3 independent entities (types / `IActionHandler` / `ActionDispatcher`) | **mechanical**, clears fully |
-| `include/client/graphics/irrlicht_renderer.h` | 2,395 | 20 free types + one god class | mechanical to ~1,820, then **design change** |
-| `include/client/eq.h` | 2,538 | 504 lines of enums + 3 structs + `class EverQuest` (897 declarations) | mechanical to ~1,930, then **design change** |
+| `include/common/packet_structs.h` | 2,207 → **2,215** | 125 independent packed structs, already banner-sectioned | **mechanical**, clears fully |
+| `include/client/action/action_dispatcher.h` | 1,556 → **1,581** | 3 independent entities (types / `IActionHandler` / `ActionDispatcher`) | **mechanical**, clears fully |
+| `include/client/graphics/irrlicht_renderer.h` | 2,395 → **2,520** | 20 free types + one god class | mechanical to ~1,820, then **design change** |
+| `include/client/eq.h` | 2,538 → **2,645** | 504 lines of enums + 3 structs + `class EverQuest` (897 declarations) | mechanical to ~1,930, then **design change** |
 
 Extracting every free-standing type from `eq.h` still leaves `class EverQuest`
 itself at ~1,811 lines. Nothing mechanical closes that gap — only pimpl'ing the
@@ -704,6 +707,75 @@ where its own table correctly lists **eight** (the table is right), and the
 tests/scripts pre-check found **19** hits, not the 12 recorded (all comments,
 zero functional readers).
 
+## ⚠ CORRECTIONS FROM THE WAVE-4 PLANNING PASS (2026-09-02, at `136a319b`)
+
+Re-measured `eq_action_handler.cpp` and `eq_bridge.cpp` while writing J12/J13,
+**audited every already-written-but-unexecuted plan against correction 21**, and
+re-measured all fourteen §Residual files. Four things.
+
+**25. ✅ THE CORRECTION-21 AUDIT CAME BACK CLEAN — and J10 was the only plan it
+could have hit.** J01–J09, J11 and J20 have all executed; **J10 is the only
+written-but-unexecuted plan in the batch**, and it does not have the defect:
+- `constrained_texture_cache.cpp` has **exactly one file-scope symbol**,
+  `static std::string eqe1ArchiveStem` at **1807**, and **exactly one consumer**,
+  `recordEQE1Request` at **1824** — verified by
+  `grep -rn 'eqe1ArchiveStem' src/ include/ tests/ scripts/`, which returns those
+  two lines and nothing else. **Both fall inside J10's single range 1537-2209**,
+  so the helper travels with its consumer. J10's plan already says so and already
+  tells the executor to re-confirm it with their own grep.
+- Everything else the file declares `static` is **function-local** (`kSuffix` 68,
+  the four `pfn*` lookups at 1620/1622/1891/1948, `GL_ETC1_RGB8` 1873,
+  `thread_local result` 1772, `kPayloadNames` 2172) and moves inside its method.
+  **Zero anonymous namespaces**, confirmed.
+- J12's and J13's files have **zero file-scope statics and zero anonymous
+  namespaces at all**, so correction 21 has no exposure in either. Both plans
+  say so and require the executor to paste the grep rather than cite the claim.
+
+**Standing form of the check, for every remaining plan:** for each file-local
+`static` / anonymous-namespace function / file-scope constant, do not stop at
+"it has a single consumer" — **name the range the plan assigns the helper and
+the range it assigns each consumer, and confirm they are the same range.**
+
+**26. J12 and J13 were BOTH stale, in the same direction, and one is 46 lines
+off.** `eq_action_handler.cpp` is **2,248**, not 2,202 (and has **174** methods,
+not 173). `eq_bridge.cpp` is **2,127**, not 2,098 — and `docs/module_map.md:27`
+still records it as **2,001**. **`ProcessBridgeIntents` is 580 lines (892-1471),
+not the 558 in §Optional** — correct that row when J13 lands. Correction 9 keeps
+holding: **re-measure every remaining unit's file at its own tip.**
+
+**27. ⚠ CORRECTION 10 SCORED ITS FIRST HIT SINCE J11, AND IT IS J13's ONLY REAL
+HAZARD.** `tests/test_reachability_sweep.cpp` opens `src/client/eq_bridge.cpp`
+**as text at three sites** (`:221`, `:238`, `:258`) and asserts that every
+`RendererIntent` member has an `is_same_v<T, eqt::events::…>` arm in it. All
+three break when `ProcessBridgeIntents` moves out: two would **fail for every
+intent member**, and the third — a *string-compare exclusion*, not a `readFile`
+— would silently let the consumer arms be mistaken for producers. J13 carries
+the exact three-line repoint and puts the file in its territory.
+⚠ **The two greps are not interchangeable.** `grep -rn '<basename>' tests/
+scripts/` is what finds the string-compare exclusion;
+`grep -hn 'kRoot / "src\|kRoot / "include' tests/*.cpp | sort -u` is what
+enumerates every source path any test opens as text. **Run both.** J12's file,
+run through the same pair, has **zero** text readers.
+
+Recorded for Wave 6 from the same sweep: **`renderer_frame.cpp` is read as text
+at three sites** and **`action/action_dispatcher.cpp` at one**
+(`test_reachability_sweep.cpp:356`, plus `test_ui_hide_command.cpp` and
+`test_first_person_camera_single_formula.cpp` for `renderer_frame`). Those units
+inherit J11's problem; the rest of the residual list does not.
+
+**28. ⚠ THE RESIDUAL LIST DID NOT SHRINK — FOUR OF ITS FILES GREW.** The batch
+plan's §Residual row says "re-measure first; several shrink as callers move."
+**Measured at `136a319b`: not one file dropped below 1,500.** `eq_movement.cpp`
+went 2,033 → **2,139**, `action_dispatcher.cpp` 2,039 → **2,081**,
+`renderer_frame.cpp` 1,691 → **1,752**, `eq_bridge.cpp` 2,098 → **2,127**.
+`combat.cpp` and the ten others are unchanged. **Splitting a file has not been
+moving lines into the residual set — unrelated T-unit feature work has.**
+§Residual below is now a measured list, not a survey.
+
+**Total over the 1,500 warn ceiling at `136a319b`: 21 files** — 4 headers
+(J14-J17), 3 with plans written (J10 in flight, J12, J13), and **14 for Wave 6**.
+Zero over the 3,000 hard cap.
+
 ## Unit table
 
 | Unit | File | Lines | → TUs | Largest after | Wave | Notes |
@@ -719,13 +791,13 @@ zero functional readers).
 | J09 | `graphics/zone_shader.cpp` | **2,561** | **1 TU + 3 hdrs** (not 3+2) | **~1,010** (a header) | 3 | ⭐ **planned: `refactor/J09_zone_shader_split.md`.** **1,362** GLSL lines in two identical-identifier `#ifdef`/`#else` arms → two private headers, `#else` becomes `#ifndef`; the 3 callback classes are all-inline and instantiated 18× by the ctor → a third header, no new `.cpp`. ✅ **no `friend` needed — measured.** Predicted verifier exit **0**. 4 CMake sites, one `gles2_zone_benchmark`, none needing an edit |
 | J10 | `graphics/constrained_texture_cache.cpp` | **2,211** | 4 | **~812** | 3 | ⭐ **planned: `refactor/J10_constrained_texture_cache_split.md`.** ⚠ the 299-line `#if 0` T04 region (with a SECOND `isPending`/`hasPendingWork` and 4 nested `#ifdef` pairs) travels intact in one TU. Predicted verifier exit **1 with exactly 21 lines** (2 `typedef`s + 1 `extern`, × 3 TUs). ⚠ **TWELVE CMake sites**, one `gles2_zone_benchmark`, three in `tests/` |
 | J11 | `graphics/irrlicht_renderer.cpp` | 3,237 | 6 | 980 | 4 | **hard dependency: T312 must merge first** |
-| J12 | `eq_action_handler.cpp` | 2,202 | 3 | 750 | 4 | 173 forwarding methods, trivial |
-| J13 | `eq_bridge.cpp` | 2,098 | 3 | — | 4 | |
-| J14 | `include/common/packet_structs.h` | 2,207 | umbrella + `packets/*.h` | — | 5 | ⚠ `#pragma pack(push,1)` per header; T145/T147 bit this twice |
-| J15 | `include/client/action/action_dispatcher.h` | 1,556 | 3 | 1,060 | 5 | after J04 and J12 |
-| J16 | `include/client/eq.h` type extraction | 2,538 | +3 hdrs | ~1,930 | 5 | after J02, J08; leave forwarding includes |
-| J17 | `include/client/graphics/irrlicht_renderer.h` | 2,395 | +2 hdrs | ~1,820 | 5 | after J11 |
-| J18+ | the residual ~13 files (§Residual) | — | — | — | 6 | re-measure first; several shrink as callers move |
+| J12 | `eq_action_handler.cpp` | **2,248** (survey said 2,202) | 3 | **~952** | 4 | ⭐ **planned: `refactor/J12_eq_action_handler_split.md`.** **174** forwarding methods (not 173), largest **55**. **Zero statics, zero anonymous namespaces, zero preprocessor directives, zero block comments, zero text readers in `tests/`** — the lowest-risk unit left. Predicted verifier exit **0**. **ONE** CMake site. ⚠ one banner (`:1691`) has no blank line before it and is NOT a legal cut point |
+| J13 | `eq_bridge.cpp` | **2,127** (survey said 2,098; `module_map.md` says 2,001) | 3 | **~891** | 4 | ⭐ **planned: `refactor/J13_eq_bridge_split.md`.** ⚠ **`tests/test_reachability_sweep.cpp` scans this file AS TEXT at three sites and all three break** — the repoint is in territory, not optional (correction 27). `ProcessBridgeIntents` is **580** lines (not 558) and gets its own ~700-line TU — **flagged Batch-G, not decomposed**. Three preprocessor regions span whole methods. Predicted verifier exit **1 with exactly +3/-2**, all in the test repoint. **ONE** CMake site |
+| J14 | `include/common/packet_structs.h` | **2,215** | umbrella + `packets/*.h` | — | 5 | ⚠ `#pragma pack(push,1)` per header; T145/T147 bit this twice |
+| J15 | `include/client/action/action_dispatcher.h` | **1,581** | 3 | 1,060 | 5 | after J04 and J12 |
+| J16 | `include/client/eq.h` type extraction | **2,645** | +3 hdrs | ~1,930 | 5 | after J02, J08; leave forwarding includes |
+| J17 | `include/client/graphics/irrlicht_renderer.h` | **2,520** | +2 hdrs | ~1,820 | 5 | after J11 |
+| J18+ | the residual **14** files (§Residual) | — | — | — | 6 | ⚠ **RE-MEASURED at `136a319b` — nothing shrank; four files GREW.** §Residual is now a measured table with each file's largest method. Dispatchable without another survey |
 | ~~**J20**~~ ✅ **DONE** | **`tests/CMakeLists.txt`** | **2,850 → 135** | per-domain `.cmake` fragments | — | **none — see below** | ⚠ **HIGH-CONFLICT with every in-flight J unit.** Within 222 lines of the hard cap and every J unit appends to it. Wants a quiet moment, not a wave slot |
 
 Full clearance is roughly **26-30 units**.
@@ -753,7 +825,17 @@ Full clearance is roughly **26-30 units**.
   **2,786**, T318) and its relocation size (161 → **209**), and
   `zone_shader.cpp`'s GLSL block (1,345 → **1,362**). ⚠ **J09 and J10 both
   touch `gles2_zone_benchmark`.**
-- **Wave 4 (3-way, after T312 AND T313 merge):** J11 / J12 / J13.
+- **Wave 4 (after T312 AND T313 merge):** J11 has already landed, so this is a
+  **2-way wave: J12 / J13.** **Both planned** —
+  `refactor/J12_eq_action_handler_split.md`,
+  `refactor/J13_eq_bridge_split.md`, each carrying all twenty-eight corrections
+  inline so no executor rediscovers them. Re-measured at `136a319b`; **both
+  survey numbers were stale** (2,202 → **2,248**, 2,098 → **2,127**) and so was
+  `ProcessBridgeIntents` (558 → **580**). ⚠ **Neither touches
+  `gles2_zone_benchmark`; each has exactly ONE CMake site
+  (`CLIENT_CORE_SOURCES`). J13 must repoint
+  `tests/test_reachability_sweep.cpp`; J12 touches no test.** The two file
+  territories are disjoint, so they can run concurrently.
 - **Wave 5 (headers, after the policy amendment):** J14 anytime a slot is free;
   J15 after J04+J12; J16 after J02+J08; J17 after J11.
 - **Wave 6:** the residual list, re-measured.
@@ -845,20 +927,53 @@ can be taken separately: `DispatchZonePacket` 880 (`eq.cpp:800`),
 `updatePlayerMovement` 806 (`renderer_player_physics.cpp:19`),
 `registerBuiltinCommands` 768 (`command_processor.cpp:285`),
 `Application::initialize` 569 (`application.cpp:105`),
-`ProcessBridgeIntents` 558 (`eq_bridge.cpp:885`),
+`ProcessBridgeIntents` **580** (`eq_bridge.cpp:892` — was recorded as 558 at `:885`; re-measured at `136a319b`),
 `createDefaultConfig` 548 (`detail_manager.cpp:1203` — a data table, leave it),
 `processFrameRender` 546 (`renderer_frame.cpp:1143`).
 
-## Residual (§15 of the survey) — surveyed, not yet mapped
+## Residual → **WAVE 6**, re-measured at `136a319b` (2026-09-02)
 
-`daybreak_connection.cpp` 1,985 · `eq_merchant.cpp` 1,931 ·
-`detail_texture_atlas.cpp` 1,826 · `model_loading.cpp` 1,793 ·
-`sky_renderer.cpp` 1,770 · `detail_manager.cpp` 1,754 (lifting the 548-line
-config table alone clears it) · `renderer_frame.cpp` 1,691 (T312) ·
-`zone_geometry.cpp` 1,637 · `variant_loading.cpp` 1,607 ·
-`renderer_player_physics.cpp` 1,546 (T312) · `spell_visual_fx.cpp` 1,517 ·
-`combat.cpp` 2,119 · `eq_bridge.cpp` 2,098 (= J13) ·
-`action_dispatcher.cpp` 2,039 · `eq_movement.cpp` 2,033.
+**This is a measured list, not a survey. Wave 6 can be dispatched from it
+without another survey pass** — but each unit still re-measures its own file at
+its own tip (correction 9), because these numbers went stale inside a day the
+last two times.
+
+`eq_bridge.cpp` has left this list (it is **J13**). Fourteen files remain. The
+**largest method** column is what sets a TU's floor (`preamble + largest
+method`), so it decides whether a file is a pure Batch-F relocation or needs a
+Batch-G decision first.
+
+| file | lines | largest method | floor-setter | note |
+|---|---|---|---|---|
+| `src/client/eq_movement.cpp` | **2,139** (was 2,033) | **499** `EverQuest::UpdateMovement` (509-1007) | 2nd: 229 `SendPositionUpdate` | grew 106 lines since the survey |
+| `src/client/combat.cpp` | **2,119** | 192 `CombatManager::FindNextHuntTarget` (1360-1551) | 2nd: 108 `ListHuntTargets` | ⚠ `CombatManager` is a `friend` of `EverQuest` |
+| `src/client/action/action_dispatcher.cpp` | **2,081** (was 2,039) | **68** `ActionDispatcher::interactNearest` (539-606) | 2nd: 24 | ⚠ **TEXT-SCANNED** by `test_reachability_sweep.cpp:356`. Lowest floor in the batch; pairs with **J15** |
+| `src/common/net/daybreak_connection.cpp` | **1,985** | **453** `DaybreakConnection::ProcessDecodedPacket` (757-1209) | 2nd: 130 `ProcessPacket` | the only `src/common/` file in the batch |
+| `src/client/eq_merchant.cpp` | **1,931** | 219 `EverQuest::SetupTradeManagerCallbacks` (678-896) | 2nd: 105 | |
+| `src/client/graphics/detail/detail_texture_atlas.cpp` | **1,826** | 152 `DetailTextureAtlas::createAtlas` (18-169) | 2nd: 84 | |
+| `src/client/graphics/eq/model_loading.cpp` | **1,793** | **326** `RaceModelLoader::loadModelFromCachedChr` (867-1192) | 2nd: 302, 3rd: 268 | three big siblings; splits three ways naturally |
+| `src/client/graphics/sky_renderer.cpp` | **1,770** | 144 `SkyRenderer::calculateSkyColors` (1168-1311) | 2nd: 124 | |
+| `src/client/graphics/detail/detail_manager.cpp` | **1,754** | **548** `DetailManager::createDefaultConfig` (1203-1750) | 2nd: 205 `classifyTexture` | ⚠ **lifting the 548-line config table ALONE clears it** (1,754 → 1,206). A §Optional method, but here relocating it verbatim IS the split |
+| `src/client/graphics/renderer_frame.cpp` | **1,752** (was 1,691) | **546** `IrrlichtRenderer::processFrameRender` (1204-1749) | 2nd: 472 `processFrame`, 3rd: 211 | ⚠ **T312 territory.** ⚠ **TEXT-SCANNED at THREE sites** (`test_reachability_sweep.cpp:156`, `test_ui_hide_command.cpp:698,706`) |
+| `src/client/graphics/eq/zone_geometry.cpp` | **1,637** | **499** `ZoneMeshBuilder::buildAtlasedMesh` (1061-1559) | 2nd: 259, 3rd: 198 | |
+| `src/client/graphics/eq/variant_loading.cpp` | **1,607** | ⚠ **815** `RaceModelLoader::loadModelFromGlobalChrWithVariantsForAnimation` (382-1196) | 2nd: **396** `preloadVariantModel` | ⚠ **the batch's worst floor: 2 methods = 1,211 of 1,607 lines.** A 2-way split works (~850 / ~780) but leaves no headroom. §Optional already names the 815 |
+| `src/client/graphics/renderer_player_physics.cpp` | **1,546** | ⚠ **806** `IrrlichtRenderer::updatePlayerMovement` (19-824) | 2nd: 142 | ⚠ **T312 territory.** Only **46 lines over** the ceiling; one cut after `updatePlayerMovement` clears it |
+| `src/client/graphics/spell_visual_fx.cpp` | **1,517** | 125 `SpellVisualFX::createCastGlow` (353-477) | 2nd: 90 | only **17 lines over**; the cheapest unit in the batch |
+
+**Scheduling notes for Wave 6, from the measurement:**
+- **`renderer_frame.cpp` and `renderer_player_physics.cpp` are both T312
+  territory** — same block as J11/J17. Do not board them until T312 merges.
+- **`action_dispatcher.cpp` should be boarded WITH or AFTER J15**
+  (`include/client/action/action_dispatcher.h`, 1,581) — same entity, and J15 is
+  already gated on J04+J12.
+- **`spell_visual_fx.cpp` (17 over) and `renderer_player_physics.cpp` (46 over)
+  are one-cut units.** They still cost the full bar (~30-60 min); that cost is
+  fixed per unit regardless of file size. Consider pairing them in one slot.
+- **`variant_loading.cpp` is the one file whose Wave-6 unit should be planned
+  last**, because a 2-way split at 815 + 396 leaves ~90 lines of headroom in the
+  larger TU and the next feature unit to touch it re-crosses the line. It is the
+  strongest candidate in the tree for a Batch-G decision taken *before* its
+  Batch-F split rather than after.
 
 ## Final state after Waves 0-5
 
