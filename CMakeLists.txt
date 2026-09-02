@@ -317,6 +317,12 @@ SET(CLIENT_CORE_SOURCES
     # GRAPHICS_SOURCES.
     src/client/graphics/eq/pfs.cpp
     src/client/graphics/eq/wld_loader.cpp
+    src/client/graphics/eq/wld_fragments_material.cpp
+    src/client/graphics/eq/wld_fragments_mesh.cpp
+    src/client/graphics/eq/wld_fragments_actor.cpp
+    src/client/graphics/eq/wld_fragments_skeleton.cpp
+    src/client/graphics/eq/wld_fragments_light.cpp
+    src/client/graphics/eq/wld_fragments_bsp.cpp
     # P28: same misclassification — inventory manager, hotbar model, chat
     # buffer, and chat command registry are plain data models with no
     # renderer dependency (declassified in eq.h; see the P28 unit).
@@ -781,6 +787,12 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         tools/tool_race_db.cpp
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp
+        src/client/graphics/eq/wld_fragments_material.cpp
+        src/client/graphics/eq/wld_fragments_mesh.cpp
+        src/client/graphics/eq/wld_fragments_actor.cpp
+        src/client/graphics/eq/wld_fragments_skeleton.cpp
+        src/client/graphics/eq/wld_fragments_light.cpp
+        src/client/graphics/eq/wld_fragments_bsp.cpp
         src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
         src/client/graphics/eq/zone_geometry.cpp
@@ -911,6 +923,12 @@ IF(EQT_GRAPHICS)
         tools/s3d_dump.cpp
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp
+        src/client/graphics/eq/wld_fragments_material.cpp
+        src/client/graphics/eq/wld_fragments_mesh.cpp
+        src/client/graphics/eq/wld_fragments_actor.cpp
+        src/client/graphics/eq/wld_fragments_skeleton.cpp
+        src/client/graphics/eq/wld_fragments_light.cpp
+        src/client/graphics/eq/wld_fragments_bsp.cpp
         src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
         src/client/graphics/eq/zone_geometry.cpp
@@ -962,6 +980,12 @@ IF(EQT_GRAPHICS)
         tools/entity_composite_builder.cpp
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp
+        src/client/graphics/eq/wld_fragments_material.cpp
+        src/client/graphics/eq/wld_fragments_mesh.cpp
+        src/client/graphics/eq/wld_fragments_actor.cpp
+        src/client/graphics/eq/wld_fragments_skeleton.cpp
+        src/client/graphics/eq/wld_fragments_light.cpp
+        src/client/graphics/eq/wld_fragments_bsp.cpp
         src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
         src/client/graphics/eq/zone_geometry.cpp
@@ -1036,6 +1060,12 @@ IF(EQT_GRAPHICS)
         tools/wld_dump.cpp
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp
+        src/client/graphics/eq/wld_fragments_material.cpp
+        src/client/graphics/eq/wld_fragments_mesh.cpp
+        src/client/graphics/eq/wld_fragments_actor.cpp
+        src/client/graphics/eq/wld_fragments_skeleton.cpp
+        src/client/graphics/eq/wld_fragments_light.cpp
+        src/client/graphics/eq/wld_fragments_bsp.cpp
         src/client/zone_bsp.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(wld_dump PRIVATE
@@ -1053,6 +1083,12 @@ IF(EQT_GRAPHICS)
         tools/bsp_region_finder.cpp
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp
+        src/client/graphics/eq/wld_fragments_material.cpp
+        src/client/graphics/eq/wld_fragments_mesh.cpp
+        src/client/graphics/eq/wld_fragments_actor.cpp
+        src/client/graphics/eq/wld_fragments_skeleton.cpp
+        src/client/graphics/eq/wld_fragments_light.cpp
+        src/client/graphics/eq/wld_fragments_bsp.cpp
         src/client/zone_bsp.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(bsp_region_finder PRIVATE
@@ -1069,6 +1105,12 @@ IF(EQT_GRAPHICS)
         tools/zone_region_classifier.cpp
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp
+        src/client/graphics/eq/wld_fragments_material.cpp
+        src/client/graphics/eq/wld_fragments_mesh.cpp
+        src/client/graphics/eq/wld_fragments_actor.cpp
+        src/client/graphics/eq/wld_fragments_skeleton.cpp
+        src/client/graphics/eq/wld_fragments_light.cpp
+        src/client/graphics/eq/wld_fragments_bsp.cpp
         src/client/zone_bsp.cpp
         src/client/graphics/portal_system.cpp
         src/client/graphics/portal_geometry_clipper.cpp
@@ -1091,6 +1133,12 @@ IF(EQT_GRAPHICS)
         tools/region_poly_audit.cpp
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp
+        src/client/graphics/eq/wld_fragments_material.cpp
+        src/client/graphics/eq/wld_fragments_mesh.cpp
+        src/client/graphics/eq/wld_fragments_actor.cpp
+        src/client/graphics/eq/wld_fragments_skeleton.cpp
+        src/client/graphics/eq/wld_fragments_light.cpp
+        src/client/graphics/eq/wld_fragments_bsp.cpp
         src/client/zone_bsp.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(region_poly_audit PRIVATE
@@ -1114,6 +1162,12 @@ IF(EQT_GRAPHICS)
         tools/generate_surface_map.cpp
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp
+        src/client/graphics/eq/wld_fragments_material.cpp
+        src/client/graphics/eq/wld_fragments_mesh.cpp
+        src/client/graphics/eq/wld_fragments_actor.cpp
+        src/client/graphics/eq/wld_fragments_skeleton.cpp
+        src/client/graphics/eq/wld_fragments_light.cpp
+        src/client/graphics/eq/wld_fragments_bsp.cpp
         src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
         src/client/graphics/eq/zone_geometry.cpp
@@ -1166,6 +1220,12 @@ IF(EQT_GRAPHICS)
         tools/zone_line_editor.cpp
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp
+        src/client/graphics/eq/wld_fragments_material.cpp
+        src/client/graphics/eq/wld_fragments_mesh.cpp
+        src/client/graphics/eq/wld_fragments_actor.cpp
+        src/client/graphics/eq/wld_fragments_skeleton.cpp
+        src/client/graphics/eq/wld_fragments_light.cpp
+        src/client/graphics/eq/wld_fragments_bsp.cpp
         src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
         src/client/graphics/eq/zone_geometry.cpp
@@ -1263,6 +1323,12 @@ IF(EQT_GRAPHICS)
         tools/equipment_index_builder.cpp
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp
+        src/client/graphics/eq/wld_fragments_material.cpp
+        src/client/graphics/eq/wld_fragments_mesh.cpp
+        src/client/graphics/eq/wld_fragments_actor.cpp
+        src/client/graphics/eq/wld_fragments_skeleton.cpp
+        src/client/graphics/eq/wld_fragments_light.cpp
+        src/client/graphics/eq/wld_fragments_bsp.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(equipment_index_builder PRIVATE
         ${CMAKE_SOURCE_DIR}/include
@@ -1372,6 +1438,12 @@ IF(EQT_GRAPHICS)
         tools/atlas_uv_audit.cpp
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp
+        src/client/graphics/eq/wld_fragments_material.cpp
+        src/client/graphics/eq/wld_fragments_mesh.cpp
+        src/client/graphics/eq/wld_fragments_actor.cpp
+        src/client/graphics/eq/wld_fragments_skeleton.cpp
+        src/client/graphics/eq/wld_fragments_light.cpp
+        src/client/graphics/eq/wld_fragments_bsp.cpp
         src/client/zone_bsp.cpp
         src/client/graphics/eq/dds_decoder.cpp
     )
@@ -1557,6 +1629,12 @@ IF(EQT_GRAPHICS)
         # Zone loading pipeline (same sources as zone_line_editor + extras)
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp
+        src/client/graphics/eq/wld_fragments_material.cpp
+        src/client/graphics/eq/wld_fragments_mesh.cpp
+        src/client/graphics/eq/wld_fragments_actor.cpp
+        src/client/graphics/eq/wld_fragments_skeleton.cpp
+        src/client/graphics/eq/wld_fragments_light.cpp
+        src/client/graphics/eq/wld_fragments_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
         src/client/graphics/eq/zone_geometry.cpp
         src/client/graphics/eq/dds_decoder.cpp
@@ -1672,6 +1750,12 @@ IF(EQT_GRAPHICS)
         tools/hwcaps/zone_bench_histogram.cpp
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp
+        src/client/graphics/eq/wld_fragments_material.cpp
+        src/client/graphics/eq/wld_fragments_mesh.cpp
+        src/client/graphics/eq/wld_fragments_actor.cpp
+        src/client/graphics/eq/wld_fragments_skeleton.cpp
+        src/client/graphics/eq/wld_fragments_light.cpp
+        src/client/graphics/eq/wld_fragments_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
         src/client/graphics/eq/zone_geometry.cpp
         src/client/graphics/eq/dds_decoder.cpp
@@ -1749,6 +1833,12 @@ IF(EQT_GRAPHICS)
         tools/hwcaps/zone_bench_histogram.cpp
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp
+        src/client/graphics/eq/wld_fragments_material.cpp
+        src/client/graphics/eq/wld_fragments_mesh.cpp
+        src/client/graphics/eq/wld_fragments_actor.cpp
+        src/client/graphics/eq/wld_fragments_skeleton.cpp
+        src/client/graphics/eq/wld_fragments_light.cpp
+        src/client/graphics/eq/wld_fragments_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
         src/client/graphics/eq/zone_geometry.cpp
         src/client/graphics/eq/dds_decoder.cpp

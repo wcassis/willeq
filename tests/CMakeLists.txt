@@ -1217,6 +1217,12 @@ IF(EQT_GRAPHICS)
         test_wld_zones_comprehensive.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/pfs.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_loader.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_material.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_mesh.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_actor.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_skeleton.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_light.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_bsp.cpp
         ${CMAKE_SOURCE_DIR}/src/client/zone_bsp.cpp
     )
     TARGET_LINK_LIBRARIES(test_wld GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB})
@@ -1251,6 +1257,12 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/variant_loading.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/zone_geometry.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_loader.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_material.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_mesh.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_actor.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_skeleton.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_light.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_bsp.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/s3d_loader.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/skeletal_animator.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/animated_mesh_scene_node.cpp
@@ -1310,6 +1322,12 @@ IF(EQT_GRAPHICS)
         test_asset_loading.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/pfs.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_loader.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_material.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_mesh.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_actor.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_skeleton.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_light.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_bsp.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/s3d_loader.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/zone_geometry.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/dds_decoder.cpp
@@ -1406,6 +1424,12 @@ IF(EQT_GRAPHICS)
         test_door_loading.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/pfs.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_loader.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_material.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_mesh.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_actor.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_skeleton.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_light.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_bsp.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/s3d_loader.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/zone_geometry.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/dds_decoder.cpp
