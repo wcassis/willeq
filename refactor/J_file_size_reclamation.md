@@ -861,6 +861,43 @@ This is not an edge case; it is the normal consequence of a three-wide wave.
 The two cutting rules disagreed at exactly the one predicted place (a banner with
 no preceding blank line) and nowhere else.
 
+## ⚠ CORRECTIONS FROM J13 (2026-09-02)
+
+**32. A KILLED *LINK* DELETES ITS OUTPUT; A KILLED *COMPILE* CAN LEAVE A
+TRUNCATED FILE. The ELF scan's outcome is NOT predictable from the exit code —
+keep it mandatory either way.** J13's `build-gles2-x86.sh` cost **two
+consecutive exit-143s** (~25 of ~70 min wall clock) and `gmake` **deleted its own
+partial output on SIGTERM both times**, so the target was *absent* rather than
+truncated and the ELF scan (run twice) correctly found nothing. That does not
+contradict J07/J10/J12 — their traps needed a partial file to survive. **Absent
+and truncated are different failures with the same trigger; the scan
+distinguishes them and costs seconds.**
+
+**33. "Zero block comments" claims must mean "zero MULTI-LINE comment
+regions".** J13's plan said zero; `grep -n '/\*'` returns **ten** — all
+single-line `/*bank=*/` argument comments, none near a cut. Comment *depth* at
+every cut was 0, which is what the rule actually needs. Reword future plans.
+
+### J13's result
+
+`eq_bridge.cpp` 2,127 → **892** + 705 + 746, methods 21/2/22, zero range drift.
+`ProcessBridgeIntents` is **580 lines** (not 558) and moved whole — Batch-G
+candidate, flagged not solved. Three proofs, all exit 0, including a standalone
+diff of that method.
+
+**How it handled the silent text-scanning guard is the model for the rest of the
+batch.** The third site is a string-compare exclusion that `readFile` greps
+cannot see; J13 kept the old exclusion, added the new TU, and then **measured
+whether the guard was load-bearing at all** rather than asserting it —
+`grep -c 'pushIntent('` is 0 in all three TUs, so at this tip neither exclusion
+changes the computed set. Both are defensive, which is a reason to keep both,
+not to drop either. `ctest -R ReachabilitySweep` 5/5.
+
+Two plan errors: per-TU method counts were transposed (its own cluster
+enumerations were right), and it predicted `packets_skills.cmake:58` would stay
+correct — the method it names **moves**, so all five `tests/cmake/` comment lines
+are now stale, not two of four. Owned by J21's successor pass.
+
 ## Unit table
 
 | Unit | File | Lines | → TUs | Largest after | Wave | Notes |
