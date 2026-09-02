@@ -1256,6 +1256,61 @@ than merely wrong.
 **Correction 41 followed correctly:** gles2 built before ctest, so the in-suite
 gate exercised a benchmark stamped by this unit's own build.
 
+## ⚠ CORRECTIONS FROM J23 (2026-09-02)
+
+**54. "PROMOTING A HELPER TRIPS THE VERIFIER BY CONSTRUCTION" IS FALSE — and the
+sharper rule explains every earlier exception.** J23 promoted eleven constants
+into a new internal header and got **exit 0, +0/−0 substantive.** The verifier
+compares distinct normalized lines as a multiset across the whole changeset: the
+eleven lines leave the `.cpp` and reappear **unchanged** in the header, count 1
+before and 1 after, so they cancel.
+**A promoted symbol costs verifier lines only if its TEXT changes or its COUNT
+changes.** J04 paid 8 because it rewrote signatures and added `using`
+declarations; J05 paid 2 because it dropped `static`; J11 paid 65 because its
+preamble lines were **duplicated ×5**. **Correction 18 — keep the symbol in its
+existing namespace — is what buys the zero.** (The orchestrator's dispatch brief
+asserted the opposite; the plan was right.)
+
+**55. ⚠ `grep -rn --include=<pat>` SILENTLY RETURNS NOTHING on this host**
+(ugrep 7.8.4) even where the file demonstrably exists. **A unit counting CMake
+add-sites that way reports ZERO and looks thorough.** Use
+`find … -exec grep -Hn … {} +`. This is the **fifth** member of the
+silently-empty-grep family, after: lowercase CMake commands, `{4,}` in a BRE,
+`--include='CMakeLists.txt' <dir>` missing `<dir>/CMakeLists.txt`, and naming
+`tests/CMakeLists.txt` post-J20. **On this host, an empty grep result is not
+evidence of absence until the pattern is proven to match something.**
+
+**56. A killed `ar` is a THIRD exit-143 site, and the prescribed ELF scan cannot
+see it.** The record had killed compiles (truncate) and killed links (delete).
+J23's x86 build died **archiving `libwilleq_core.a`**; gmake deleted it, so it
+behaved like a link — but **scanning `build/bin/*` would not catch a truncated
+static library at all.** Widen the scan to `lib*.a` as well as binaries.
+
+**57. Predicted TU sizes must state the preamble convention they assume.** J23's
+assumed the 38-line old header rides along while §File-header comments tells the
+executor to write a new one. Better shape: `(your header) + <constant> + body`.
+Bodies were exact to the line; zero range drift on anything measured.
+
+Two smaller record errors: the file-header block is 1-38, not 1-30 (replacing
+only 1-30 orphans eight NOTE lines), and the "two blank lines" claim is false —
+141 single-blank runs and exactly one double, neither at a cut.
+
+### J23's result
+
+2,139 → **486 / 854 / 889** plus a 19-line internal header, exactly as
+prescribed. **Verifier exit 0, no sign-off needed.** Both proofs run over lines
+70-2139 with the header's eleven lines **re-inserted at their original offset**
+(J04's method), and the script asserts the header's content matches the original
+range **programmatically** rather than by eye. `body(TU)` was defined
+structurally rather than by an offset constant, so no arithmetic could silently
+shorten a range — the failure mode that produced J08's alarming false alarm.
+
+**Gate ordering: the fix, not the workaround** — gles2 built before ctest, gate
+run against a benchmark stamped by this unit's own build.
+
+⚠ Five `tests/` comments **newly** name the wrong TU (attribute to J23, not to
+pre-existing rot).
+
 ## Unit table
 
 | Unit | File | Lines | → TUs | Largest after | Wave | Notes |
