@@ -2659,6 +2659,29 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_skill_possession_gate)
 
+# T317: the two skill gates that were not gates -- checkCombatRequirement()
+# substituted "has a target" for "in combat", and checkPositionRequirement()
+# returned true unconditionally AND had no caller. Same headless EverQuest
+# seam as test_skill_possession_gate.cpp; no network, no graphics, no eqemu.
+ADD_EXECUTABLE(test_skill_gates
+    test_skill_gates.cpp
+)
+TARGET_LINK_LIBRARIES(test_skill_gates GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_skill_gates PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_skill_gates)
+
+# T317: the guild opcodes' rank fields, and where the player's real rank lives
+ADD_EXECUTABLE(test_guild_wire_rank
+    test_guild_wire_rank.cpp
+)
+TARGET_LINK_LIBRARIES(test_guild_wire_rank GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_guild_wire_rank PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_guild_wire_rank)
+
 # T162: the commands that emitted a skill opcode without passing T159's gate
 ADD_EXECUTABLE(test_skill_gate_bypasses
     test_skill_gate_bypasses.cpp

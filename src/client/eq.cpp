@@ -2202,6 +2202,14 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	// authority outside the client). See
 	// review/T148/playerprofile_gm_offset_annotated.txt.
 	uint8_t gm_mode = p.GetUInt8(base + 13054);    // offset 13054
+	// T317: PlayerProfile.guildrank, offset 13055 -- the byte immediately
+	// after gm, in the same run of single-byte flags T148 walked. Titanium
+	// encoding (0 member / 1 officer / 2 leader / 9 none); the server folds
+	// its internal 0..8 scale into it in common/patches/titanium.cpp:1494.
+	// This is the client's ONLY source for its own guild rank, and until now
+	// it was not read at all -- which is why the two guild senders in
+	// eq_guild.cpp were writing a literal into their rank fields.
+	uint8_t guild_rank = p.GetUInt8(base + 13055);  // offset 13055
 	
 	// Position data is stored differently - it's in bind points at offset 24
 	// But the current position is at offset 13116-13128
@@ -2299,6 +2307,8 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	// applies. See refactor/T133_guild_id_population.md Review for the
 	// live-log evidence this is the correct, and only necessary, hook.
 	m_guild_id = guild_id;
+	// T317: same once-per-login shape as m_guild_id above.
+	m_guild_rank = guild_rank;
 	// T148: the login-time GM-mode gate. Same shape as m_guild_id above --
 	// parsed from the player's own profile packet, assigned once, no spawn-id
 	// matching. This is the ONLY place m_gm_mode is written: the check is

@@ -1410,7 +1410,12 @@ struct GuildCommand_Struct {
 /*0064*/ char     myname[64];     // Inviter name
 /*0128*/ uint16_t guildeqid;      // Guild ID
 /*0130*/ uint8_t  unknown130[2];  // Padding
-/*0132*/ uint32_t officer;        // Inviter rank (0=member, 1=officer, 2=leader)
+/*0132*/ uint32_t officer;        // T317: NOT the inviter's rank, despite the
+                                  // name. eqemu reads it as the rank to GRANT
+                                  // `othername` (0=member, 1=officer,
+                                  // 2=leader, Titanium encoding); the sender's
+                                  // authority comes from the server's own
+                                  // GuildRank(). See client/guild_packet_bodies.h.
 /*0136*/
 };
 static_assert(sizeof(GuildCommand_Struct) == 136, "GuildCommand_Struct must be 136 bytes");
@@ -1440,7 +1445,10 @@ struct GuildRemove_Struct {
 /*0000*/ char     target[64];     // Player being removed
 /*0064*/ char     name[64];       // Player doing the removal
 /*0128*/ uint32_t unknown128;     // Unknown
-/*0132*/ uint32_t leaderstatus;   // Remover's rank
+/*0132*/ uint32_t leaderstatus;   // Remover's rank (Titanium encoding). T317:
+                                  // eqemu's Handle_OP_GuildRemove casts the
+                                  // body to GuildCommand_Struct and reads only
+                                  // `othername`; this field is never read.
 /*0136*/
 };
 static_assert(sizeof(GuildRemove_Struct) == 136, "GuildRemove_Struct must be 136 bytes");

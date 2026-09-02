@@ -36,6 +36,54 @@ irr::EKEY_CODE rdpScancodeToIrrlicht(uint8_t rdpScancode, bool extended);
 wchar_t rdpScancodeToChar(uint8_t rdpScancode, bool shift, bool capsLock);
 
 /**
+ * Caps-lock (and friends) tracking for the RDP key stream (T317).
+ *
+ * WHY THIS IS NOT JUST ANOTHER MODIFIER
+ *
+ *   `IrrlichtRenderer::handleRDPKeyboard` reads shift by asking the Irrlicht
+ *   event receiver whether KEY_LSHIFT/KEY_RSHIFT are *down* -- correct for a
+ *   held modifier, useless for a lock. Caps lock is a TOGGLE: it flips on a
+ *   key-down and stays flipped after the key comes back up, so there is no
+ *   "is it down" question to ask. It has to be remembered.
+ *
+ *   Two inputs feed it, and both matter:
+ *     - The key stream itself. RDP scancode 0x3A, key-down (KBD_FLAGS_RELEASE
+ *       clear). Auto-repeat sends repeated downs while the key is held, so a
+ *       down is only a toggle if the key was not already down.
+ *     - The client's own lock state, which RDP sends in its synchronize /
+ *       KBD_SYNC message (`rdpInput::SynchronizeEvent`). This is the ONLY way
+ *       to learn that caps lock was already on when the session connected --
+ *       the key stream cannot tell us about a press that happened before we
+ *       were listening. FreeRDP's KBD_SYNC_CAPS_LOCK is 0x00000004
+ *       (freerdp/input.h: SCROLL 0x1, NUM 0x2, CAPS 0x4, KANA 0x8).
+ */
+class RDPLockKeyState {
+public:
+    /** RDP scancode of the caps-lock key. */
+    static constexpr uint8_t kCapsLockScancode = 0x3A;
+    /** KBD_FLAGS_RELEASE, as handleRDPKeyboard reads it. */
+    static constexpr uint16_t kFlagRelease = 0x8000;
+    /** FreeRDP KBD_SYNC_CAPS_LOCK (freerdp/input.h). NOT 0x2 -- that is
+     *  KBD_SYNC_NUM_LOCK. */
+    static constexpr uint32_t kSyncCapsLock = 0x00000004;
+
+    /**
+     * Feed one key event from the RDP stream. Ignores everything but caps
+     * lock, ignores releases, and ignores auto-repeat downs.
+     */
+    void applyKeyEvent(uint16_t flags, uint8_t scancode);
+
+    /** Feed the flags from an RDP synchronize (KBD_SYNC) message. */
+    void applySynchronize(uint32_t syncFlags);
+
+    bool capsLock() const { return capsLock_; }
+
+private:
+    bool capsLock_ = false;
+    bool capsKeyDown_ = false;
+};
+
+/**
  * Translate RDP mouse flags to Irrlicht mouse event type.
  *
  * @param rdpFlags The RDP pointer flags (PTR_FLAGS_*)

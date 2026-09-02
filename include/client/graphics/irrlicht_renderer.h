@@ -51,6 +51,7 @@
 
 #ifdef WITH_RDP
 #include "client/graphics/rdp/rdp_server.h"
+#include "client/graphics/rdp/rdp_input_handler.h"
 #endif
 
 #if defined(EQT_HAS_DRM) && !defined(EQT_HAS_GLES2)
@@ -2448,8 +2449,17 @@ private:
     // Capture framebuffer and send to RDP clients
     void captureFrameForRDP();
 
+    // T317: caps lock is a TOGGLE, not a held modifier, so it cannot be read
+    // off the Irrlicht event receiver the way shift is -- it has to be
+    // remembered across key events. Fed by both the RDP key stream and the
+    // client's KBD_SYNC message. See rdp/rdp_input_handler.h.
+    RDPLockKeyState rdpLockKeys_;
+
     // Handle RDP keyboard input
     void handleRDPKeyboard(uint16_t flags, uint8_t scancode);
+
+    // Handle an RDP synchronize (KBD_SYNC) message: the client's lock state
+    void handleRDPSynchronize(uint32_t syncFlags);
 
     // Handle RDP mouse input
     void handleRDPMouse(uint16_t flags, uint16_t x, uint16_t y);

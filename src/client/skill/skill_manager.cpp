@@ -7,6 +7,7 @@
 #include "client/combat.h"
 #include "client/skill/skill_cap_table.h"
 #include "client/skill/skill_packet_bodies.h"
+#include "client/skill/behind_target.h"
 #include "client/inventory/inventory_manager.h"
 #include "client/inventory/inventory_constants.h"
 #include "client/bridge/game_state_bridge.h"
@@ -225,6 +226,13 @@ bool SkillManager::canUseSkill(uint8_t skill_id) const {
         return false;
     }
 
+    // T317: checkPositionRequirement() had NO caller -- canUseSkill() never
+    // consulted it. Implementing it without wiring it here would have left
+    // Backstab's facing rule as unreachable as it was before.
+    if (!checkPositionRequirement(skill_id, target_id)) {
+        return false;
+    }
+
     // Check resource requirements
     if (!checkResourceRequirement(skill_id)) {
         return false;
@@ -269,19 +277,30 @@ std::string SkillManager::getSkillUseError(uint8_t skill_id) const {
         return "You must have a target";
     }
 
-    if (skill.requires_combat) {
-        // TODO: Check if in combat
+    // T317: this branch was empty, so canUseSkill() could refuse on the combat
+    // gate while getSkillUseError() returned "" -- activateSkill() then fired
+    // its failure callback with a blank reason.
+    if (skill.requires_combat && !checkCombatRequirement(skill_id)) {
+        return "You must be in combat";
     }
 
-    // T159 (T158 defect 3): this used to `return "You must be behind your
-    // target"` for ANY requires_behind skill, unconditionally, ahead of the
-    // resource check -- so a Backstab that failed for lack of endurance blamed
-    // the player's facing. checkPositionRequirement() always returns true, so
-    // canUseSkill() can never fail for this reason and reporting it is always a
-    // lie. Only Backstab sets the flag, so it was latent. When facing is
-    // actually implemented, both sides go back in together.
-    if (skill.requires_behind) {
-        // TODO: check facing here AND in checkPositionRequirement(), together.
+    // T159 (T158 defect 3) removed a message that lied: this used to
+    // `return "You must be behind your target"` for ANY requires_behind skill,
+    // unconditionally and ahead of the resource check, while
+    // checkPositionRequirement() returned true unconditionally -- so a
+    // Backstab that failed for lack of endurance blamed the player's facing,
+    // and canUseSkill() could never actually fail for facing at all. T159 left
+    // a standing instruction: when facing is really implemented, the check and
+    // the message go back in TOGETHER.
+    //
+    // T317 honours it. checkPositionRequirement() now implements eqemu's
+    // Mob::BehindMob (client/skill/behind_target.h) and canUseSkill() calls
+    // it, so this message is produced only when facing really is the reason.
+    // The resource predicate is repeated here on purpose: it keeps the T159
+    // case correct, so a Backstab short of endurance still says endurance.
+    if (skill.requires_behind && checkResourceRequirement(skill_id) &&
+        !checkPositionRequirement(skill_id, target_id)) {
+        return "You must be behind your target";
     }
 
     if (!checkResourceRequirement(skill_id)) {
@@ -731,13 +750,38 @@ bool SkillManager::checkCombatRequirement(uint8_t skill_id) const {
         return true;
     }
 
-    // TODO: Check if player is in combat
-    // For now, assume combat skills can be used if we have a target
-    if (m_eq && m_eq->GetCombatManager()) {
-        return m_eq->GetCombatManager()->HasTarget();
+    // T317: this used to `return GetCombatManager()->HasTarget()` -- "I have
+    // something selected" standing in for "I am fighting". They are not the
+    // same thing, and every requires_combat skill also sets requires_target,
+    // so the substitute made this gate a no-op: checkTargetRequirement() had
+    // already asked the same question.
+    //
+    // The real in-combat signal is CombatManager's own COMBAT_STATE_ENGAGED.
+    // It is NOT auto-combat-only: EnableAutoAttack()/EnableAutoFire() set it
+    // directly (combat.cpp:489, :607) and DisableAutoAttack()/DisableAutoFire()
+    // clear it, and both are reachable from /aa and the Combat hotbar slot
+    // without /combat ever being enabled. Being attacked counts too -- T247's
+    // aggro memory is how this client knows an NPC is on it, and a player who
+    // is being hit is in combat whether or not their own swing is on.
+    //
+    // ⚠ DELIBERATELY STRICTER THAN THE SERVER. eqemu's OPCombatAbility
+    // (zone/special_attacks.cpp:325) has NO in-combat requirement at all: it
+    // checks for a target, that we are not feared/stunned/mezzed/dead/casting,
+    // that we have the skill, and IsAttackAllowed. So this gate can refuse a
+    // send eqemu would have accepted -- a Kick with auto-attack off and no
+    // aggro. That is a product call, flagged in refactor/T317's Review; if it
+    // is unwanted, the fix is to clear requires_combat in skill_data.h rather
+    // than to re-hollow this function.
+    auto* combat = m_eq ? m_eq->GetCombatManager() : nullptr;
+    if (!combat) {
+        return false;
     }
-
-    return false;
+    if (combat->GetCombatState() == COMBAT_STATE_ENGAGED ||
+        combat->IsAutoAttackEnabled() || combat->IsAutoFireEnabled()) {
+        return true;
+    }
+    // Under attack by the thing we have selected.
+    return combat->HasTarget() && combat->IsRecentAttacker(combat->GetTargetId());
 }
 
 bool SkillManager::checkTargetRequirement(uint8_t skill_id, uint16_t target_id) const {
@@ -755,9 +799,39 @@ bool SkillManager::checkPositionRequirement(uint8_t skill_id, uint16_t target_id
         return true;
     }
 
-    // TODO: Check if player is behind target
-    // This requires position and heading calculations
-    return true;  // For now, assume position is valid
+    // T317: was `return true;  // For now, assume position is valid` -- an
+    // unconditional pass, which is also why T159 had to delete the refusal
+    // message that quoted it (see canUseSkill's requires_behind comment).
+    // Both go back in together, as T159's note instructed.
+    //
+    // The test is eqemu's own Mob::BehindMob, ported in
+    // client/skill/behind_target.h. It needs the TARGET's heading and both
+    // positions in SERVER coordinates; this client stores entity positions
+    // x/y-swapped (entity.x = server_y) and holds every entity's heading in
+    // the unflipped server convention, so the swap is undone here and no
+    // heading flip is applied. Read behind_target.h before changing any of
+    // that -- docs/CLAUDE.md's Heading/Rotation Conventions warning applies.
+    if (!m_eq) {
+        return true;  // no world to measure against; do not refuse
+    }
+    const auto& entities = m_eq->GetEntities();
+    auto it = entities.find(target_id);
+    if (it == entities.end()) {
+        // Target not in our entity map (out of range, or not spawned yet).
+        // Refusing here would turn a missing spawn into a facing complaint.
+        return true;
+    }
+    const Entity& target = it->second;
+
+    // GetPosition() is the one player-position store (T288). Same x/y swap as
+    // the entity map: .x is server y, .y is server x.
+    const glm::vec3 me = m_eq->GetPosition();
+
+    return EQ::skill::IsBehindTarget(/*target_server_x=*/target.y,
+                                      /*target_server_y=*/target.x,
+                                      /*target_heading_deg=*/target.heading,
+                                      /*attacker_server_x=*/me.y,
+                                      /*attacker_server_y=*/me.x);
 }
 
 bool SkillManager::checkResourceRequirement(uint8_t skill_id) const {

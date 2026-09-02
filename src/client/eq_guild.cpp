@@ -7,6 +7,7 @@
 #include "client/eq.h"
 #include "common/logging.h"
 #include "common/packet_structs.h"
+#include "client/guild_packet_bodies.h"
 #include <cstring>
 
 // T133: every sender below used to build its OWN opcode-prefixed packet
@@ -46,12 +47,16 @@ void EverQuest::SendGuildInvite(const std::string& player_name)
 		return;
 	}
 
-	EQT::GuildCommand_Struct invite;
-	memset(&invite, 0, sizeof(invite));
-	strncpy(invite.othername, player_name.c_str(), 63);
-	strncpy(invite.myname, m_character.c_str(), 63);
-	invite.guildeqid = static_cast<uint16_t>(m_guild_id);
-	invite.officer = 2;  // TODO: Use actual rank
+	// T317: this used to be `invite.officer = 2;  // TODO: Use actual rank`.
+	// eqemu does not read this field as the SENDER's rank at all -- it is the
+	// rank being granted to `othername`, and 2 is GUILD_LEADER_TI, so every
+	// /guildinvite was asking the server to install the invitee as guild
+	// leader (or, for an existing member, to promote them to leader). Only the
+	// server-side CheckPermission on our own real rank stopped it. A plain
+	// invite grants GUILD_MEMBER_TI. Full handler trace in
+	// client/guild_packet_bodies.h.
+	EQT::GuildCommand_Struct invite =
+		EQ::guild::BuildGuildInvite(player_name, m_character, m_guild_id);
 
 	EQ::Net::DynamicPacket packet;
 	packet.Resize(sizeof(EQT::GuildCommand_Struct));
@@ -98,11 +103,14 @@ void EverQuest::SendGuildRemove(const std::string& player_name)
 		return;
 	}
 
-	EQT::GuildRemove_Struct remove;
-	memset(&remove, 0, sizeof(remove));
-	strncpy(remove.target, player_name.c_str(), 63);
-	strncpy(remove.name, m_character.c_str(), 63);
-	remove.leaderstatus = 2;  // TODO: Use actual rank
+	// T317: was `remove.leaderstatus = 2;  // TODO: Use actual rank`. eqemu's
+	// Handle_OP_GuildRemove casts the body to GuildCommand_Struct and reads
+	// only `othername`; leaderstatus is never touched, and the remover's
+	// authority comes from the server's own GuildRank(). Sending the player's
+	// real rank (PlayerProfile offset 13055) changes nothing on the server --
+	// it just stops the client asserting something it had not checked.
+	EQT::GuildRemove_Struct remove =
+		EQ::guild::BuildGuildRemove(player_name, m_character, m_guild_rank);
 
 	EQ::Net::DynamicPacket packet;
 	packet.Resize(sizeof(EQT::GuildRemove_Struct));
