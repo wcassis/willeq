@@ -568,6 +568,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/detail/detail_chunk.cpp
         src/client/graphics/detail/detail_config_loader.cpp
         src/client/graphics/detail/detail_texture_atlas.cpp
+        src/client/graphics/detail/detail_texture_atlas_flora.cpp
+        src/client/graphics/detail/detail_texture_atlas_grass.cpp
         src/client/graphics/detail/seasonal_controller.cpp
         src/client/graphics/detail/foliage_disturbance.cpp
         src/client/graphics/detail/footprint_manager.cpp

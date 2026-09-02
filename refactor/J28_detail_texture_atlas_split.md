@@ -471,3 +471,448 @@ not add a `detail/` directory-wide edit of any kind.
   metric).
 - You find yourself wanting to decompose a method, delete dead content, trim an
   include block, or add a TU this plan does not name.
+
+---
+
+## Review (executed 2026-09-02, slot2, branch `task/J28-detail-atlas-split`)
+
+**Base / fork point: `bc0b60e8897168bb31a07a12e6f0df19f17b2c2e`**
+("Batch J: fold J29's corrections -- a fourth exit-143 outcome, and drop per-TU
+method counts entirely"). `git merge-base fable HEAD` returned the same hash.
+
+### 1. Line count at my tip
+
+`wc -l src/client/graphics/detail/detail_texture_atlas.cpp` → **1,826**.
+**Zero drift** from the plan's `824adb28` measurement. Every line number in
+§Measured, §The split and §Every cut boundary reproduced exactly.
+
+### 2. §Measured, re-verified — all greps pasted with exit status
+
+```
+$ grep -n 'namespace' src/client/graphics/detail/detail_texture_atlas.cpp ; echo EXIT=$?
+6:namespace EQT {
+7:namespace Graphics {
+8:namespace Detail {
+1824:} // namespace Detail
+1825:} // namespace Graphics
+1826:} // namespace EQT
+EXIT=0
+```
+Exactly six lines, at 6/7/8 and 1824/1825/1826, as predicted.
+
+```
+$ grep -n '^static \|^namespace\s*{\|^const \|^constexpr ' <file> ; echo EXIT=$?
+EXIT=1        (no output)
+$ grep -n '/\*' <file> ; echo EXIT=$?
+EXIT=1        (no output)
+$ awk '/^[ \t]*#(if|ifdef|ifndef|else|elif|endif)/ {print NR": "$0}' <file> ; echo EXIT=$?
+EXIT=0        (no output — zero directives)
+$ grep -cE '^// ={4,}' <file>
+12
+```
+
+Preamble (lines 1-8), pasted verbatim:
+```
+1: #include "client/graphics/detail/detail_texture_atlas.h"
+2: #include "common/logging.h"
+3: #include <random>
+4: #include <cmath>
+5: (blank)
+6: namespace EQT {
+7: namespace Graphics {
+8: namespace Detail {
+```
+**Four `#include` lines** — the plan's count is correct (correction 67 did not
+fire here). Zero non-boilerplate preamble content.
+
+Banner positions confirmed at 462/464, 620/622, 801/803, 995/997, 1189/1191,
+1362/1365 — all twelve exact.
+
+**Correction 60 / 55 — POSITIVE CONTROLS for every empty result.** On this host
+an empty grep proves nothing until the pattern is shown to match somewhere:
+
+| pattern | control file | control result |
+|---|---|---|
+| `awk '/^[ \t]*#(if\|ifdef\|…)/'` | `include/client/graphics/detail/detail_texture_atlas.h` | matched lines 1 and 185 |
+| `grep -n '/\*'` | `src/client/graphics/detail/detail_manager.cpp` | 1 hit |
+| `grep -n '^static \|^namespace\s*{\|…'` | `src/client/graphics/constrained_renderer_config.cpp` | `14:static bool isPowerOf2(int v) {` |
+| widened correction-61 pattern | same file | matched `14:static bool isPowerOf2(…)` (a non-member) plus 4 member defs |
+| first-person token list | `src/client/graphics/renderer_camera.cpp` | 17 hits |
+| `grep -rn <name> tests/ scripts/` | token `renderer_frame_input` | 2 hits in `tests/test_static_ui_scroll.cpp` |
+| CMake `find … \| xargs grep -Hn` | token `detail_manager` | `CMakeLists.txt:566` |
+
+Nothing in §Measured changed since `824adb28`. **No STOP condition triggered.**
+
+### 3. Correction 21 / 51 / 61 — re-derived, not cited
+
+The **widened** pattern (correction 61 — the narrow `^static \|^namespace` one
+is blind to namespace-scope free functions, the class that produced J08's
+non-compiling plan):
+
+```
+$ grep -nE '^[A-Za-z_][A-Za-z_0-9:<>,&\* ]*\(' src/client/graphics/detail/detail_texture_atlas.cpp \
+    | grep -v 'DetailTextureAtlas::' ; echo EXIT=$?
+EXIT=1        (no output)
+
+$ grep -cnE '^[A-Za-z_][A-Za-z_0-9:<>,&\* ]*\(' src/client/graphics/detail/detail_texture_atlas.cpp
+45
+```
+
+**The inference, stated explicitly:** the widened pattern matches **45** lines in
+this file and **all 45** are `DetailTextureAtlas::` member definitions. After
+filtering those out the result set is **empty (exit 1)**. Combined with the
+narrow grep's empty result and the six-line `namespace` result (no anonymous
+namespace anywhere), **the set of file-local symbols in this file is empty.**
+A (definition, consumer) pair can only disagree about its range if a definition
+exists; the set of definitions is empty, therefore **the set of disagreeing
+pairs is empty, and correction 21 has no exposure in this file.** Confirmed
+downstream by a clean link in all three build configurations.
+
+The drawing primitives that biome methods call across the cut (`drawLine`,
+`drawRect`, …) are `DetailTextureAtlas` **members with external linkage**,
+declared in the public header — the cross-TU calls this split creates are
+ordinary links, exactly as the plan states.
+
+**Correction 36 pre-check** — out-of-class static member definition in the
+preamble, which would make the verbatim-preamble rule a duplicate-symbol link
+error:
+```
+$ sed -n '1,8p' <file> | grep -nE '^[A-Za-z_].*::[A-Za-z_0-9]+\s*(=|;)' ; echo EXIT=$?
+EXIT=1        (no output)
+```
+The preamble is four `#include`s, a blank and three `namespace … {`. **No
+definition of any kind. The verbatim copy is safe.**
+
+### 4. Comment depth at every cut — computed, not asserted
+
+The file contains **zero** `/*` tokens, so depth is 0 on every line by
+construction. Run anyway with the `//`-stripping counter from §Correction 33:
+
+```
+depth before line 10   = 0     (start of the stays body)
+depth before line 463  = 0     (cut 462)
+depth before line 1190 = 0     (cut 1189)
+depth before line 1825 = 0
+final depth over whole file = 0
+```
+
+### 5. Preprocessor dump
+
+```
+$ awk '/^[ \t]*#(if|ifdef|ifndef|else|elif|endif)/ {print NR": "$0}' <file>
+(no output)
+```
+**Zero conditional directives in the file**, so no cut can land inside a
+conditional region. Pattern proven live against the header (matches at 1 and
+185) per correction 60 — an empty result here is a real zero.
+
+### 6. Cut boundaries — J03's rule and the banner rule agree at both
+
+```
+458:         }
+459:     }
+460: }                <-- closes drawDesertRock
+461:                  <-- blank
+--- CUT 462 ---
+462: // ============================================================
+463: // Snow biome (Velious) - Row 1
+464: // ============================================================
+465:
+466: void DetailTextureAtlas::drawIceCrystal(irr::video::IImage* image, int startX, int startY) {
+```
+```
+1185:         }
+1186:     }
+1187: }                <-- closes drawSwampMushroom's neighbour
+1188:                  <-- blank
+--- CUT 1189 ---
+1189: // ============================================================
+1190: // Footprints (for different surface types) - Row 5
+1191: // ============================================================
+1192:
+1193: void DetailTextureAtlas::drawFootprintLeft(irr::video::IImage* image, int startX, int startY, int r, int g, int b) {
+```
+Both cuts are a blank line whose predecessor closes a method, at comment depth
+0 (J03's rule), **and** both are the first line of a `// ====` banner, which
+travels with the cluster it introduces (the tie-breaker). **The two rules agree
+at both boundaries; they disagree nowhere at my tip.**
+
+Tail, confirming the grass range carries the original's closes:
+```
+1822: }
+1823:                  <-- blank
+1824: } // namespace Detail
+1825: } // namespace Graphics
+1826: } // namespace EQT
+```
+
+### 7. File-header comment lines — every line enumerated
+
+Fifteen lines total, five per TU. **None contains a `// ====` banner prefix**
+(the banner counts below prove it), and **none quotes a token that any test,
+script or this plan's own acceptance steps grep for** — corrections 40/42/45/62.
+The plan's own greps run over `CMakeLists.txt`/`*.cmake` and `tests/`/`scripts/`,
+none of which sees a comment in `src/`; the file-header text nevertheless avoids
+every first-person tunable name and every `// ====` prefix.
+
+`detail_texture_atlas.cpp` (lines 1-5):
+```
+// detail_texture_atlas.cpp -- atlas assembly plus the shared drawing
+// primitives every tile painter calls, and the desert-biome row.
+// The snow, swamp and cactus rows live in detail_texture_atlas_flora.cpp;
+// the footprint and grass rows in detail_texture_atlas_grass.cpp.
+// Split per refactor/J28_detail_texture_atlas_split.md -- move-only.
+```
+`detail_texture_atlas_flora.cpp` (lines 1-5):
+```
+// detail_texture_atlas_flora.cpp -- DetailTextureAtlas tile painters for the
+// snow (Velious), swamp and cactus biome rows.
+// Atlas assembly and the shared drawing primitives stay in
+// detail_texture_atlas.cpp; footprints and grass are in the _grass TU.
+// Split per refactor/J28_detail_texture_atlas_split.md -- move-only.
+```
+`detail_texture_atlas_grass.cpp` (lines 1-5):
+```
+// detail_texture_atlas_grass.cpp -- DetailTextureAtlas tile painters for the
+// footprint row and the grass row.
+// Atlas assembly and the shared drawing primitives stay in
+// detail_texture_atlas.cpp; the flora biome rows are in the _flora TU.
+// Split per refactor/J28_detail_texture_atlas_split.md -- move-only.
+```
+**No other comment in any of the three files was changed.**
+
+Banner conservation (correction 28's `-cE`): **0 + 8 + 4 = 12**, matching the
+original's 12 exactly — the headers add none.
+
+**Correction 30 did NOT fire.** Each body range ends on the original's own blank
+line (461, 1188, 1823), so appending the three closes directly reproduces the
+original's `} / blank / closes` shape with no double blank. Verified with
+`cat -A` on all three tails.
+
+### 8. CMake — count derived, never trusted
+
+Swept **all 25** CMake files in the worktree (excluding `build*/`) by
+`find … | xargs grep -Hn`, not `--include=` (corrections 50 and 55), and named
+the root file explicitly as well:
+
+```
+$ find <slot> -name 'CMakeLists.txt' -o -name '*.cmake' | grep -v '/build' \
+    | xargs grep -Hn 'detail_texture_atlas'
+<slot>/CMakeLists.txt:570:        src/client/graphics/detail/detail_texture_atlas.cpp
+
+$ grep -n 'detail_texture_atlas' <slot>/CMakeLists.txt
+570:        src/client/graphics/detail/detail_texture_atlas.cpp
+```
+A case-insensitive sweep (`grep -Hni 'detail_texture'`) returns the same single
+hit.
+
+**ONE add-site — matching the plan's count.** In `SET(GRAPHICS_SOURCES` which
+opens at **`:447`** (inside `IF(EQT_GRAPHICS)` at `:446`; `:445` is the empty
+`SET(GRAPHICS_SOURCES)` initialiser).
+
+⚠ **Both root CMake line numbers in this plan are stale while the target name is
+right — the fifth consecutive unit with that exact shape** (corrections 49/59,
+J23/J24/J29/J35). The plan says the add-site is `:553` and the `SET(` opener is
+`:439`; the truth at `bc0b60e8` is **`:570`** and **`:447`** (+17 and +8).
+No `tests/cmake/` fragment, tool or benchmark target names this file — in
+particular **`gles2_zone_benchmark` has no site**, as the plan states.
+
+Both new TUs were inserted immediately after `:570`, same indentation.
+
+### 9. `tests/` and `scripts/` — both greps, at my tip
+
+```
+$ grep -rn 'detail_texture_atlas' tests/ scripts/ ; echo EXIT=$?
+EXIT=1        (no output)
+
+$ grep -hn 'kRoot / "src\|kRoot / "include' tests/*.cpp | sort -u
+144:    const std::set<std::string> eqMembers = membersOf(kRoot / "include/client/eq.h");
+146:    const std::string src = readFile(kRoot / "src/client/graphics/renderer_event_receiver.cpp");  // J11
+151:        const fs::path p = kRoot / "include/client/state" / h;
+156:    const std::string src = readFile(kRoot / "src/client/graphics/renderer_frame_render.cpp");
+166:    auto lines = splitLines(readFile(kRoot / "include/client/events/renderer_intents.h"));
+221:    std::string bridge = readFile(kRoot / "src/client/eq_bridge_intents.cpp");
+259:    std::string bridge = readFile(kRoot / "src/client/eq_bridge_intents.cpp");
+271:    auto lines = splitLines(readFile(kRoot / "include/client/state/event_bus.h"));
+333:    auto lines = splitLines(readFile(kRoot / "include/client/action/action_dispatcher.h"));
+357:    auto lines = splitLines(readFile(kRoot / "src/client/action/action_dispatcher.cpp") +
+358:                            readFile(kRoot / "src/client/action/action_dispatcher_social.cpp") +
+359:                            readFile(kRoot / "src/client/action/action_dispatcher_guild_misc.cpp"));
+435:    auto lines = splitLines(readFile(kRoot / "include/client/eq.h"));
+49:const fs::path kGraphicsDir = kRoot / "src" / "client" / "graphics";
+652:    const std::string src = readFile(kRoot / "src/client/help/renderer_command_catalog.cpp");
+690:    const std::string src = readFile(kRoot / "src/client/graphics/renderer_event_receiver.cpp");  // J11
+698:    const std::string frame = readFile(kRoot / "src/client/graphics/renderer_frame_input.cpp");
+706:    const std::string frame = readFile(kRoot / "src/client/graphics/renderer_frame_input.cpp");
+```
+This file appears in neither list. **No repoint needed.**
+
+⚠ **Record correction (same class as J35's):** the plan says the first grep
+returns "comment-only hits and zero functional readers". At `bc0b60e8` it
+returns **nothing at all — zero hits of any kind, exit 1.** There are no comment
+mentions either. **This unit therefore creates ZERO new `tests/` doc rot.**
+
+**Correction 35's recursive sweep** (`test_first_person_camera_single_formula.cpp`
+walks all of `src/client/graphics` and keys two assertions on filename):
+```
+$ grep -n 'CameraMode::FirstPerson\|camera_->setPosition(\|camera_->setTarget(\|kFirstPerson\|firstPerson\|computeFirstPersonCamera' <file> ; echo EXIT=$?
+EXIT=1        (no output)
+```
+The file matches **none** of the swept tokens, so all three TUs enter the sweep
+and are invisible to both parts of it. Confirmed by the green suite —
+`test_first_person_camera_single_formula` passed.
+
+### 10. The split as executed
+
+| TU | header | preamble | body range | closes | total |
+|---|---|---|---|---|---|
+| `detail_texture_atlas.cpp` | 5 | 8 | 9-461 (453) | 3 replicated | **469** |
+| `detail_texture_atlas_flora.cpp` | 5 | 8 | 462-1188 (727) | 3 replicated | **743** |
+| `detail_texture_atlas_grass.cpp` | 5 | 8 | 1189-1826 (638, **includes the original's own closes**) | — | **651** |
+
+Arithmetic: `8 + 453 + 727 + 638 = 1826` ✓ (matches the original exactly).
+Predicted-from-the-plan sizes were `464 / 738 / 646` **plus the header lines the
+plan itself prescribes** (correction 19/57): `+5` each → **469 / 743 / 651**.
+**Exact, zero drift in either direction.**
+
+Per correction 66 this Review reports **no per-TU method counts**; the ranges
+above pin the content and the two proofs below pin it byte-for-byte.
+
+`check_file_sizes.sh --files` on all three:
+```
+checking 3 file(s) (explicit file list)
+ok    …/detail_texture_atlas.cpp: 469 lines
+ok    …/detail_texture_atlas_flora.cpp: 743 lines
+ok    …/detail_texture_atlas_grass.cpp: 651 lines
+checked 3 file(s): 3 ok, 0 warn, 0 fail
+EXIT=0
+```
+
+### 11. Both content proofs
+
+`body(TU)` is defined **structurally, never by an offset constant** (J23's
+method, correction 20): a helper locates the **third** `^namespace <id> \{$`
+line and the **three trailing** `} // namespace ` lines in each produced file,
+asserts there are exactly three of each and that the closes are the final three
+lines, and emits everything between. No arithmetic can silently shorten a range.
+
+Extracted body sizes: **453 / 727 / 635** = **1,815**.
+(The grass body is 635, not 638, precisely because the extractor strips that
+TU's three closes — which are the original's own 1824-1826.)
+
+**Proof 1 — byte-identical re-concatenation, in original order:**
+```
+$ cat b1 b2 b3 > recat.txt              # 1815 lines
+$ git show "$BASE:src/client/graphics/detail/detail_texture_atlas.cpp" \
+      | sed -n '9,1823p' > orig_body.txt   # 1815 lines
+$ cmp orig_body.txt recat.txt ; echo CMP_EXIT=$?
+CMP_EXIT=0
+```
+
+**Proof 2 — line multiset:**
+```
+$ sort orig_body.txt > before.txt ; sort recat.txt > after.txt
+$ diff before.txt after.txt ; echo DIFF_EXIT=$?
+DIFF_EXIT=0
+```
+**Both exit 0 over 1,815 lines.** Bodies extracted from the *produced files*,
+not from the scratch slices used to build them.
+
+### 12. Verifier
+
+```
+BASE=bc0b60e8897168bb31a07a12e6f0df19f17b2c2e   # git merge-base fable HEAD
+python3 scripts/refactor/verify_move_only.py "$BASE..HEAD" \
+    --repo /mnt/projects/fable/wt/slot2
+```
+Run **after committing** (commit `838d18c6`), with `--repo` naming this slot —
+guarding all three wrong-answer modes in §Acceptance: `--repo` present, the
+fork point rather than `fable..HEAD`, and a committed tree.
+
+```
+Non-C++ files changed (not verified, review separately):
+  CMakeLists.txt
+  refactor/J28_detail_texture_atlas_split.md
+
+Files verified: 3
+Boilerplate: +35 / -0 lines (allowed)
+
+PASS: move-only (modulo boilerplate).
+VERIFIER_EXIT=0
+```
+
+**EXIT 0, `+0/-0` substantive — the plan's prediction held exactly.**
+
+Every one of the 35 boilerplate lines is enumerable from what this plan
+prescribes and nothing else:
+
+| source | count |
+|---|---|
+| file-header comment lines (5 per TU x 3) | 15 |
+| `#include` lines, preamble copied into 2 new TUs (4 x 2) | 8 |
+| `namespace ... {` opens, copied into 2 new TUs (3 x 2) | 6 |
+| `} // namespace ...` closes, replicated into 2 TUs (3 x 2) | 6 |
+| **total** | **35** |
+
+**35 = 35. Nothing is flagged beyond the enumerated set**, so there is no
+finding to chase and no §Process step-4 / correction-5 sign-off is owed.
+
+### 13. Acceptance results
+
+| step | result |
+|---|---|
+| `cmake --build build -j24` | **EXIT=0** (read from the exit file, 480 s) — see the exit-143 note below |
+| binary/archive scan | **221 binaries, 1 archive, 0 BAD** (`readelf -h` + `ar t`) |
+| `scripts/build-gles2-x86.sh` | **EXIT=0**, run **BEFORE** `ctest` (correction 41's fix) |
+| `ctest -j6` (3,507 tests) | **3,506 passed, 1 failed** — `AudioManagerTest.PreloadCommonSounds`, the documented ALSA host quirk and the only entry in `refactor/test_baseline.txt`. **Zero new failures.** ctest exit 8 is that one failure. |
+| visual gate (in-suite `#3504`) | **PASSED, 31.23 s** |
+| goldens | **untouched** — `git status --porcelain` shows only `CMakeLists.txt`, the modified `detail_texture_atlas.cpp` and the two new TUs |
+| `scripts/build-arm-noble.sh` | **EXIT=0** (521 s) |
+| `check_file_sizes.sh --files` | **0 warn, 0 fail** |
+
+**Gate ordering used: the fix, not the workaround.** `build-gles2-x86.sh`
+completed at **15:28** (`gles2_zone_benchmark` stamped **15:28:16**,
+`willeq` 15:28:03) against source edits stamped **14:59:38**; `ctest` was
+launched afterwards. The in-suite `visual_gate` therefore exercised a benchmark
+built from this unit's own tree — **no standalone re-run was needed.** Since
+this file builds the foliage/detail texture atlas, a pixel change was a live
+possibility; **the gate passed with no image mismatch and no golden touched.**
+
+⚠ **Exit-143 note (corrections 56 and 65 both in play).** The first
+`cmake --build` attempt was killed at the 600 s tool ceiling. **No exit file
+existed at all** — correction 65's "finished-but-unrecorded" signature — so the
+log was read for the cause rather than for a verdict, and it was unambiguous:
+```
+gmake[2]: *** Deleting file 'lib/libwilleq_core.a'
+gmake[2]: *** [.../build.make:5122: lib/libwilleq_core.a] Terminated
+```
+**Correction 56's killed-`ar` site, third occurrence on record.** The scan was
+run over `build/bin/*` (`readelf -h`) **and** every `lib*.a` (`ar t`): **221
+binaries, 1 archive, 0 BAD** — the only casualty was the archive gmake had
+already deleted itself. The build was relaunched detached with its own
+unit-private exit file (never a generic name — the shared-scratchpad trap) and
+polled with `scripts/wait_for.sh`; it reported **EXIT=0 after 480 s**, a real
+rebuild, not a 0-second lie. Post-rebuild scan re-run: **0 BAD**.
+
+### 14. Findings only — not fixed
+
+1. **`docs/module_map.md` needs two new rows**, for
+   `detail_texture_atlas_flora.cpp` and `detail_texture_atlas_grass.cpp`.
+   Recorded, not acted on (territory).
+2. **Root CMake line numbers stale for the fifth consecutive unit** while the
+   target name was right: `:553`→`:570`, opener `:439`→`:447`. Corrections 49
+   and 59 stand; plans should keep naming targets and stop citing lines.
+3. **The plan's `tests/`/`scripts/` record is wrong in the harmless direction**
+   — it predicts "comment-only hits"; there are **zero hits of any kind**. Same
+   correction J35 filed. **This unit creates no new `tests/` doc rot at all.**
+4. **Correction 30 did not fire** on any of the three TUs (bodies already end on
+   the original's blank), and the plan's own §Correction 30 warning is therefore
+   inapplicable here — declared, nothing hand-fixed.
+5. **The plan's include count (four) is correct**, unlike three earlier Wave-6
+   units (correction 67).
+6. `CMakeLists.txt` remains a grandfathered pre-existing WARN (now +2 lines).
+   Not this unit's to fix.
+
+**Every STOP condition was checked and none triggered.** No method was
+decomposed, no dead content deleted, no include block trimmed, no header
+touched, no `tests/` file touched, no TU created beyond the two the plan names.
