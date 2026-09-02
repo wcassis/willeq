@@ -715,7 +715,6 @@ void EverQuest::ConnectToZone()
 	// are all pre-allocated in EverQuest constructor / Application::initialize()
 
 	EQ::Net::DaybreakConnectionManagerOptions zone_opts;
-	zone_opts.skip_crc_validation = true;  // TODO: Remove after CRC bug is fixed
 	auto transport = std::make_unique<EQ::Net::PosixUdpTransport>();
 	m_zone_connection_manager.reset(new EQ::Net::DaybreakConnectionManager(zone_opts, std::move(transport)));
 	m_zone_connection_manager->OnNewConnection(std::bind(&EverQuest::ZoneOnNewConnection, this, std::placeholders::_1));

@@ -58,8 +58,9 @@ GTEST_DISCOVER_TESTS(test_daybreak_connection_pcap)
 # T321: CRC validation driven by REAL captured wire bytes (login/world/zone
 # session responses + a covering sample of each stream) from T311 Leg A's
 # 73,506-packet pcap. Pins that ValidateCRC() accepts every recorded packet,
-# rejects corrupted/truncated ones, and that skip_crc_validation (which
-# src/client/eq.cpp sets on every zone connect) accepts corruption.
+# rejects corrupted/truncated ones, and that skip_crc_validation accepts
+# corruption (T323 deleted its only production caller in eq.cpp; the flag
+# remains as an option and the test guards what re-enabling it would cost).
 ADD_EXECUTABLE(test_daybreak_crc_capture
     test_daybreak_crc_capture.cpp
     ${CMAKE_SOURCE_DIR}/src/common/net/daybreak_connection.cpp
