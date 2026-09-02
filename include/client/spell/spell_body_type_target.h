@@ -10,7 +10,9 @@
 //     BT_ANIMAL = 20, BT_PLANT = 24, BT_DRAGON = 25);
 //   * SpellTypeProcessor::isValidTarget() -- a third, differently-wrong set
 //     (21 for Plant, which is really Animal; 22 for Giant, which is really
-//     Insect), with Undead/Summoned/Animal not checked at all.
+//     Insect), with Undead/Summoned/Animal not checked at all. T324
+//     (2026-09-02) deleted that entire class -- nothing ever called it -- so
+//     SpellManager is now the only consumer of this header.
 // Both now call this one predicate, which spells its constants out of
 // client/eq_body_types.h -- the values transcribed from the server that
 // stamps them (eqemu common/bodytypes.h).

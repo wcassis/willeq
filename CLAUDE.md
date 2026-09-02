@@ -316,9 +316,15 @@ The client connects through three stages, each with its own connection manager:
 - `TradeManager` - Player-to-player trading, item/money exchange, trade state machine
 
 **Spells** (`src/client/spell/`)
-- `SpellManager` - Spell casting, gem state, cooldowns, memorization
-- `SpellEffects` - Effect processing (damage, healing, buffs)
-- `SpellTypeProcessor` - Target type validation and selection
+- `SpellManager` - Spell casting, gem state, cooldowns, memorization. The only
+  one of these a player reaches: gem click / `/cast` -> `beginCastFromGem()` ->
+  `validateCast()`.
+- `SpellEffects` - Effect processing (damage, healing, buffs). **Constructed but
+  no longer called by anything** since T324 deleted its sole consumer; awaiting a
+  wire-or-delete ruling (`refactor/deferred.md` item 37).
+- `SpellTypeProcessor` - **DELETED (T324, 2026-09-02)**. Client-side target
+  resolution with zero callers; the server resolves spell targets and reports
+  each landing. Tombstone in `src/client/eq.cpp`; do not rebuild it.
 
 **Skills** (`include/client/skill/`)
 - `SkillManager` - Tracks player skills, handles activation, cooldowns

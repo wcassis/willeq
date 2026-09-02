@@ -210,6 +210,11 @@ everything else is open.
    defect was LATENT, not live. The T264 reachability pattern, applied to an entire
    subsystem — **needs its own class-A item: wire `SpellTypeProcessor` in, or delete
    it.** Audit provenance: #9.
+   **⚠ SUPERSEDED (T324, 2026-09-02): the class was DELETED on Will's ruling — see
+   item 33. `tests/test_spell_group_targeting.cpp`, named above, went with it; the
+   group-targeting contract it encoded survives only as prose in
+   `refactor/T314_spell_targeting_correctness.md`'s Review. Nothing in this item
+   describes live code any more.**
 
 6. **Guild rank is HARDCODED on the wire** — `src/client/eq_guild.cpp:54`
    (`invite.officer = 2;  // TODO: Use actual rank`) and `:105`
@@ -480,7 +485,8 @@ everything else is open.
 ### TIER 2 addendum — the body-type numbering (T308, 2026-08-28) — CLOSED by T314 (2026-09-02)
 
 **Both remaining copies are gone.** `SpellManager::isValidCreatureTarget()` and
-`SpellTypeProcessor::isValidTarget()` now call one predicate,
+`SpellTypeProcessor::isValidTarget()` now call one predicate (**T324 has since
+deleted the latter outright — item 33**),
 `EQ::BodyTypeSatisfiesTargetType()`
 (`include/client/spell/spell_body_type_target.h`), which spells its constants out of
 `include/client/eq_body_types.h`. **Every value in that header was re-checked against
@@ -500,7 +506,11 @@ What the two copies were doing, for the record:
   `return true`), so those three restrictions **accepted every creature in the game**.
   (This one was LATENT: T314 found `SpellTypeProcessor` has no production caller at
   all — see tier 2 item 5. The `SpellManager` copy above IS live, reached from
-  `/cast` and gem clicks via `beginCastFromGem()` → `validateCast()`.)
+  `/cast` and gem clicks via `beginCastFromGem()` → `validateCast()`. **T324
+  deleted the latent consumer entirely (item 33), so `SpellManager` is now the
+  only caller of the shared predicate; the three tests that asserted against the
+  deleted one were removed and the rest of
+  `tests/test_spell_body_type_targeting.cpp` still runs.**)
 
 The accept sets are now eqemu's own, `Mob::DetermineSpellTargets()`
 (`zone/spells.cpp` ~1936-1995): Undead = {Undead, SummonedUndead, Vampire};
@@ -705,7 +715,22 @@ Review, `review/T312/`.
 
 ### TIER 2/3 addendum — found by T314 (2026-09-02): AN ENTIRE SUBSYSTEM IS UNREACHED
 
-33. **`SpellTypeProcessor` IS NEVER CALLED FROM PRODUCTION — the T264
+33. **CLOSED (T324, 2026-09-02) — DELETED. Will ruled directly: "SpellTypeProcessor
+    can be deleted."** Commit `ef2c3080` on `task/T324`.
+    `include/client/spell/spell_type_processor.h`,
+    `src/client/spell/spell_type_processor.cpp`, `EverQuest::GetSpellTypeProcessor()`,
+    the `m_spell_type_processor` member and its construction are gone, along
+    with `tests/test_spell_group_targeting.cpp` (which pinned only the deleted
+    class). A tombstone in `src/client/eq.cpp` names what went and why so it is
+    not rebuilt. Nothing `SpellManager` uses was touched: T314's
+    `spell_body_type_target.{h,cpp}` and `eq_body_types.h` stay, and the eight
+    remaining cases of `tests/test_spell_body_type_targeting.cpp` (predicate
+    table, `SpellManager` consumer, source guard) still run — only the three
+    that asserted against the deleted consumer were removed. Plan and full
+    dead-subtree tracing: `refactor/T324_delete_spell_type_processor.md`.
+    ⚠ **New finding, boarded as item 37: `SpellEffects` is now callerless too.**
+    *Original entry follows.*
+    **`SpellTypeProcessor` IS NEVER CALLED FROM PRODUCTION — the T264
     reachability pattern applied to a whole subsystem, and it re-scopes two
     entries on this list.** `m_spell_type_processor` appears at exactly three
     sites in the tree: the `make_unique` (`src/client/eq.cpp:264`), the getter
@@ -750,6 +775,33 @@ Review, `review/T312/`.
     **Class B, data question** — the same shape as T68's `SpellData::effects`:
     find whether the source data carries these and the loader drops them, or
     whether they were never populated. Do not invent values.
+
+### TIER 2/3 addendum — found by T324 (2026-09-02): the layer BELOW the one just deleted is dead as well
+
+37. **`EQ::SpellEffects` HAS ZERO CALLERS since item 33 was deleted — the whole
+    client-side spell-RESOLUTION stack is now unreached, not just its targeting
+    half.** `m_spell_effects` is still constructed in `src/client/eq.cpp`, but
+    the class that used it was item 33 and it is gone. Verified at `bcbf2ddc`
+    by checking **every** public member individually — `processSpell`,
+    `processEffect`, `calculateEffectValue` and all ~40 `handle*` entry points:
+    no caller outside `spell_effects.cpp` other than the deleted class.
+    `EverQuest::GetSpellEffects()` has zero callers. `spell_effects.cpp` has no
+    entry point from the server-packet path either: it publishes no bridge
+    event, pushes no intent, implements no action-handler virtual, and reaches
+    `EverQuest` only for `AddChatSystemMessage()` and `GetEntityID()`.
+    *Size:* `src/client/spell/spell_effects.cpp` 947 lines +
+    `include/client/spell/spell_effects.h` 173 lines.
+    *Note:* T318 already found three of its handlers (shrink, grow, illusion)
+    reduced to a single `LOG_DEBUG` each precisely because **the server is
+    authoritative and broadcasts the change itself** — the same reason item 33
+    was deleted. That reasoning applies to the rest of the file.
+    **CLASS C, needs a ruling: wire it in, or delete it.** T324 deliberately
+    did NOT sweep it up: Will's ruling named one class, and this is a much
+    larger surface (a per-SPA handler bank a future effect-display or
+    prediction layer is the natural consumer for). Executor recommendation is
+    **delete** — nothing has ever called it, and every behaviour it models is
+    something eqemu already reports per target. Same shape as T67
+    (`ConstrainedMeshCache`) and T68 (`SpellData::effects`).
 
 36. **`requires_combat` corresponds to nothing eqemu enforces**, and T317's new
     client-side gate is therefore deliberately STRICTER than the server —
