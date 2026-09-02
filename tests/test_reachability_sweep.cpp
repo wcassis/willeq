@@ -330,7 +330,7 @@ TEST(ReachabilitySweep, EveryEventIsPublishedAndConsumed) {
 // ===================================================================
 
 std::set<std::string> handlerPureVirtuals() {
-    auto lines = splitLines(readFile(kRoot / "include/client/action/action_dispatcher.h"));
+    auto lines = splitLines(readFile(kRoot / "include/client/action/action_handler.h"));
     std::set<std::string> out;
     bool in = false;
     std::regex pv(R"(virtual\s+[A-Za-z_:<>0-9]+\s+(\w+)\s*\(.*\)\s*(const\s*)?=\s*0;)");
@@ -397,6 +397,8 @@ TEST(ReachabilitySweep, UnreachableHandlerMethodsAreExactlyTheBlockedList) {
         if (f.rel == "src/client/action/action_dispatcher_social.cpp") continue;
         if (f.rel == "src/client/action/action_dispatcher_guild_misc.cpp") continue;
         if (f.rel == "include/client/action/action_dispatcher.h") continue;
+        if (f.rel == "include/client/action/action_types.h") continue;
+        if (f.rel == "include/client/action/action_handler.h") continue;
         for (const auto& raw : f.lines) {
             std::string code = codePart(raw);
             auto b = std::sregex_iterator(code.begin(), code.end(), ext);
