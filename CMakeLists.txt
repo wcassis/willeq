@@ -270,6 +270,8 @@ SET(CLIENT_CORE_SOURCES
     src/client/eq_ucs.cpp
     src/client/eq_player_state.cpp
     src/client/eq_bridge.cpp
+    src/client/eq_bridge_intents.cpp
+    src/client/eq_bridge_ui_audio.cpp
     src/client/eq_entities.cpp
     src/client/eq_entities_appearance.cpp
     src/client/eq_entities_updates.cpp

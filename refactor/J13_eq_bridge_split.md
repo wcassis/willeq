@@ -552,3 +552,442 @@ have silently asserted nothing.**
 - The visual gate fails on an **image mismatch** (as opposed to the CPU p95
   metric).
 - You find yourself decomposing `ProcessBridgeIntents`.
+
+---
+
+## Review (executed 2026-09-02, slot1, branch `task/J13-eq-bridge-split`)
+
+**Base / tip.** Branch cut from `fable` at **`96e22d2f`** ("Batch J: fold J10's
+corrections …"), which is `$BASE` = `git merge-base fable HEAD` =
+`96e22d2f0055d515b58b9b8bf81a65c43100b4f8`. Split commit **`988be0b1`**.
+**PASS on every bar item. One deliberate, plan-sanctioned deviation: the `:224`
+diagnostic string was updated, so the verifier reports 4 added / 3 removed
+rather than 3 / 2 — see §8.**
+
+`git diff 136a319b HEAD -- src/client/eq_bridge.cpp tests/test_reachability_sweep.cpp`
+is **empty** — both of this unit's substantive inputs are byte-identical to the
+plan's survey commit. Only `CMakeLists.txt` moved (+27 lines from J10/J12 merges),
+which is why the add-site was re-grepped rather than trusted.
+
+### 1. Line count at my tip — zero drift
+
+`src/client/eq_bridge.cpp` = **2,127** lines, exactly the plan's measurement at
+`136a319b`. The unit table's **2,098** and `docs/module_map.md:27`'s **2,001**
+are both stale, as the plan says; **2,127 is the number.** Every cut boundary,
+every preprocessor line number and the single CMake add-site reproduced exactly.
+
+### 2. `ProcessBridgeIntents` — 580 lines, NOT decomposed
+
+`892-1471` inclusive = **580 lines**, confirming the plan's re-measurement and
+correcting §Optional of the batch plan, which records **558**. **It was moved
+whole and verbatim** (§8, proof C: `diff` exit 0 over 580 lines) and is 82% of
+`eq_bridge_intents.cpp` (580 / 705). Recorded as a Batch-G decomposition
+candidate in that TU's file header; not touched here.
+
+### 3. The three zero-hazard properties — my own greps
+
+```
+$ grep -n '^\s*static ' src/client/eq_bridge.cpp
+(no output, exit 1)                      -> ZERO file-scope statics
+
+$ grep -n 'namespace' src/client/eq_bridge.cpp
+1501:           using namespace eqt::inventory;
+                                         -> ONE hit, inside a method body;
+                                            ZERO anonymous namespaces, zero
+                                            namespace wrapper to replicate
+```
+
+**Therefore zero correction-21 exposure**: there is no file-local helper to
+place, so the question "is the helper in the same range as its consumer?" has no
+instances. Nothing was promoted; **no internal header was created.**
+
+⚠ **One correction to the plan's §Review-must-answer item 3.** It asks me to
+confirm "zero block comments". That is **not true, and it does not matter**:
+
+```
+$ grep -n '/\*' src/client/eq_bridge.cpp
+1243, 1244, 1261, 1262, 1269, 1302, 1303, 1322, 1323, 1329
+```
+
+Ten hits, **all of them single-line `/*bank=*/`-style argument-naming comments
+opened and closed on the same physical line**, and **all ten inside
+`ProcessBridgeIntents` (1243-1329)** — nowhere near a cut. **Comment depth at
+107, 892 and 1486 is 0**, which is the property the cutting rule actually needs.
+The plan's premise (no multi-line `/* … */` region) holds; only its wording is
+wrong.
+
+### 4. Preprocessor boundary check — pasted
+
+```
+$ awk '/^[ \t]*#(if|ifdef|ifndef|else|elif|endif)/ {print NR": "$0}' src/client/eq_bridge.cpp
+ 18 #ifdef EQT_HAS_NAVMESH      20 #endif
+ 52 #ifdef EQT_HAS_GRAPHICS     65 #endif
+ 73 #ifdef WITH_AUDIO           80 #endif
+ 99 #ifdef __linux__           101 #endif
+103 #ifndef M_PI               105 #endif      <- preamble ends
+107 #ifdef EQT_HAS_GRAPHICS ... 221 #endif // EQT_HAS_GRAPHICS
+182 #ifdef WITH_AUDIO          184 #endif
+272 #ifdef EQT_HAS_GRAPHICS    283 #endif
+308 #ifdef EQT_HAS_GRAPHICS    310 #endif
+312 #ifdef WITH_AUDIO   337 #else   339 #endif
+342 #ifdef EQT_HAS_GRAPHICS    443 #endif
+1333 #ifdef WITH_AUDIO        1339 #endif
+1342 #ifdef WITH_AUDIO        1348 #endif
+1882 #ifdef WITH_AUDIO  1926 #ifdef EQT_HAS_GRAPHICS  1942 #endif  2039 #endif // WITH_AUDIO
+```
+
+Every line number is **identical to the plan's table**. Cut **892** sits between
+the `342/443` region and the `1333` one; cut **1486** sits between `1342/1348`
+and `1882`. **Neither interior cut lands inside any region**, and the same `awk`
+run over each produced TU shows every guard opened and closed within its own
+file (13 directives in `eq_bridge.cpp`, 4 in `eq_bridge_intents.cpp`, 4 in
+`eq_bridge_ui_audio.cpp`, all balanced).
+
+Cut boundaries, pasted as required:
+
+```
+888     m_bridge->pushEvent(eqt::state::GameEvent(
+889             eqt::state::GameEventType::BankCurrencyChanged, std::move(bdata)));
+890 }                       <- closes PublishBankCoinProjection
+891                         <- blank: the cut
+892 void EverQuest::ProcessBridgeIntents() {
+893     if (!m_bridge) return;
+894
+
+1482            m_bridge->applyEvent(event);
+1483    }
+1484 }                      <- closes ProcessBridgeEvents
+1485                        <- blank: the cut
+1486 void EverQuest::UpdateInventoryStats() {
+1487
+1488    // Calculate equipment bonuses from inventory
+```
+
+Both are plain method boundaries: blank line, predecessor closes a method,
+comment depth 0, no banner, no conditional. J03's rule applied cleanly.
+
+### 5. The `test_reachability_sweep.cpp` repoint — in full
+
+**Both pre-cut greps were run** (they are not interchangeable, correction 27):
+
+- `grep -rn 'eq_bridge' tests/ scripts/` → **29 hits**, of which **26 are
+  comments** (in 14 test files plus 4 `tests/cmake/*.cmake` fragments) and
+  **3 are functional, all in `test_reachability_sweep.cpp`** at `:221`, `:238`,
+  `:258`. Nothing under `scripts/`.
+- `grep -hn 'kRoot / "src\|kRoot / "include' tests/*.cpp | sort -u` → the
+  complete text-scanned-source list; `src/client/eq_bridge.cpp` appears
+  **exactly twice**, `:221` and `:258`. **This grep does not see `:238`**, which
+  is a `f.rel ==` string compare rather than a `readFile` — exactly the silent
+  site the plan warns about. **No new text reader has appeared since
+  `136a319b`.**
+
+The diff, in full (4 changed lines, +3/-2 net):
+
+```diff
+@@ -219,8 +219,8 @@ TEST(ReachabilitySweep, EveryIntentHasAConsumerArm) {
+-    std::string bridge = readFile(kRoot / "src/client/eq_bridge.cpp");
++    std::string bridge = readFile(kRoot / "src/client/eq_bridge_intents.cpp");
+     for (const auto& n : members) {
+         EXPECT_NE(bridge.find("is_same_v<T, eqt::events::" + n + ">"), std::string::npos)
+-            << "RendererIntent member " << n << " has no arm in eq_bridge.cpp ProcessBridgeIntents";
++            << "RendererIntent member " << n << " has no arm in eq_bridge_intents.cpp ProcessBridgeIntents";
+@@ -237,4 +237,5 @@ TEST(ReachabilitySweep, ProducerlessIntentsAreExactlyTheBlockedList) {
+         for (const auto& f : files) {
+             if (f.rel == "src/client/eq_bridge.cpp") continue;
++            if (f.rel == "src/client/eq_bridge_intents.cpp") continue;
+             if (f.rel == "include/client/events/renderer_intents.h") continue;
+@@ -256,5 +257,5 @@
+-    std::string bridge = readFile(kRoot / "src/client/eq_bridge.cpp");
++    std::string bridge = readFile(kRoot / "src/client/eq_bridge_intents.cpp");
+```
+
+**I KEPT the `eq_bridge.cpp` exclusion at `:238` and ADDED the new one; I did not
+replace it.** Why that keeps the guard exactly as strict: the producer sweep
+walks every `.cpp`/`.h` under `src/` and `include/` looking for a `pushIntent(`
+or a `<Name> intent` declaration, and treats a hit as proof the intent has a
+producer. The exclusion exists so the *consumer* arms are never counted as
+producers. After the split that content lives in **two** files, so excluding
+both leaves exactly the same set of lines invisible to the sweep as before.
+Replacing the line would have newly exposed the surviving `eq_bridge.cpp` — a
+behaviour change dressed as a repoint.
+
+⚠ **Honest note on how load-bearing the `:238` line currently is.** I measured
+it rather than asserting it: `grep -c 'pushIntent('` returns **0** for all three
+TUs, and `grep 'Intent intent'` returns nothing in `eq_bridge_intents.cpp`. So
+**at this tip neither the old nor the new exclusion changes the computed
+`producerless` set** — both are defensive. That is a reason to keep both, not a
+reason to drop either: the arms are one `pushIntent(` away from silently
+declaring a producer-less intent reachable, which is precisely the failure the
+plan calls the worst outcome.
+
+`ctest --test-dir build -R ReachabilitySweep --output-on-failure`, **run alone,
+immediately after the cut and before the full suite**:
+
+```
+    Start 895: ReachabilitySweep.EveryIntentHasAConsumerArm
+1/5 Test #895: ReachabilitySweep.EveryIntentHasAConsumerArm ................   Passed  0.02 sec
+    Start 896: ReachabilitySweep.ProducerlessIntentsAreExactlyTheBlockedList
+2/5 Test #896: ReachabilitySweep.ProducerlessIntentsAreExactlyTheBlockedList  Passed  3.25 sec
+3/5 Test #897: ReachabilitySweep.EveryEventIsPublishedAndConsumed ..........   Passed  3.11 sec
+4/5 Test #898: ReachabilitySweep.UnreachableHandlerMethodsAreExactlyTheBlockedList  Passed  6.73 sec
+5/5 Test #899: ReachabilitySweep.EverySenderHasACaller ....................   Passed  2.75 sec
+
+100% tests passed, 0 tests failed out of 5
+Total Test time (real) = 78.12 sec        (exit 0)
+```
+
+### 6. Every file-header comment line written or changed — enumerated
+
+The 92-line preamble `14-105` plus the blank at `106` was copied **byte for
+byte** into all three TUs; `md5sum` of the three copies is identical
+(`8474c1c947f2380d7d3df657801f926f`). **Nothing else in the preamble was
+touched, including the P28 block.** Only the 1-13 F10 header was adapted.
+
+**a. `src/client/eq_bridge.cpp` — header rewritten, 13 lines → 14.** Necessary
+because the old text described three files' worth of content. Lines 1-3 and
+11-14 are unchanged from the original; the changed/new lines are:
+
+```
+ 4 // and split three ways by J13 (refactor/J13_eq_bridge_split.md).
+ 5 // Contains graphics lifecycle (Init/Shutdown), the per-frame tick methods,
+ 6 // zone-load snapshot creation, the spawn/pet/movement bridge helpers, and
+ 7 // the T269 bank-coin projection helpers.
+ 8 // The bridge intent/event pumps now live in eq_bridge_intents.cpp; inventory
+ 9 // stat sync, the loot-window UI flow, client config / hotbar / inspect
+10 // persistence and the audio helpers live in eq_bridge_ui_audio.cpp.
+```
+(line 3 gained the trailing words "split out of eq.cpp (F10)" → "…(F10)" with
+the sentence continuing onto the new line 4.)
+
+**b. `src/client/eq_bridge_intents.cpp` — 18 new lines**, all `//`:
+
+```
+ 1 // eq_bridge_intents.cpp
+ 2 //
+ 3 // The EverQuest <-> renderer bridge pumps, split out of eq_bridge.cpp by J13
+ 4 // (refactor/J13_eq_bridge_split.md); originally split out of eq.cpp (F10).
+ 5 // Contains ProcessBridgeIntents (the renderer -> game intent consumer, with
+ 6 // one is_same_v<T, eqt::events::...> arm per RendererIntent member) and
+ 7 // ProcessBridgeEvents (the single-stage game -> renderer event drain).
+ 8 //
+ 9 // ProcessBridgeIntents is 580 lines and is a recorded Batch-G decomposition
+10 // candidate; J13 deliberately did NOT decompose it (this commit is move-only).
+11 //
+12 // NOTE: tests/test_reachability_sweep.cpp opens THIS FILE AS TEXT and asserts
+13 // that every RendererIntent member has an is_same_v<T, eqt::events::...> arm
+14 // in it, and that every blocked intent still has one. If you move an arm out
+15 // of this file, repoint that test.
+16 //
+17 // This is a pure move; no behavior or interface changes. See
+18 // refactor/F10_bridge.md for the original moved/left mapping.
+```
+
+**c. `src/client/eq_bridge_ui_audio.cpp` — 11 new lines**, all `//`:
+
+```
+ 1 // eq_bridge_ui_audio.cpp
+ 2 //
+ 3 // The parts of the EverQuest <-> renderer bridge layer that ride the bridge
+ 4 // rather than being it, split out of eq_bridge.cpp by J13
+ 5 // (refactor/J13_eq_bridge_split.md); originally split out of eq.cpp (F10).
+ 6 // Contains inventory stat sync, the player-mode loot-window UI flow, client
+ 7 // config / hotbar / inspect-message persistence, the audio system (init and
+ 8 // shutdown, day-night state, the PlaySound* helpers) and inventory item use.
+ 9 //
+10 // This is a pure move; no behavior or interface changes. See
+11 // refactor/F10_bridge.md for the original moved/left mapping.
+```
+
+All 43 header lines are `//` and therefore boilerplate to the verifier — which
+is why the split itself contributes **zero** substantive lines (§8).
+
+### 7. CMake add-sites — ONE, as the plan says
+
+```
+$ grep -rn 'eq_bridge\.cpp' CMakeLists.txt tests/ cmake/
+CMakeLists.txt:272:    src/client/eq_bridge.cpp        <- the ONE add-site
+```
+plus **28 comment-only hits** (14 `tests/*.cpp`, 4 lines across
+`tests/cmake/{packets_skills,commands,ui_rendering}.cmake`). I grepped **across
+all of `tests/`**, never naming `tests/CMakeLists.txt` (correction 26).
+**No `tests/cmake/` fragment needed an edit** — this unit adds no test target and
+no source to an existing target; it changes one test *source*, which is already
+listed by name.
+
+Edit made (`CMakeLists.txt`, `SET(CLIENT_CORE_SOURCES` opening at `:265`):
+
+```diff
+     src/client/eq_bridge.cpp
++    src/client/eq_bridge_intents.cpp
++    src/client/eq_bridge_ui_audio.cpp
+```
+
+Comment hits that go stale: `tests/cmake/commands.cmake:150` and `:399` and
+`tests/cmake/ui_rendering.cmake:221`/`:236` all say "the eq_bridge.cpp arms",
+which now live in `eq_bridge_intents.cpp`. `tests/cmake/packets_skills.cmake:58`
+(`ActivateHotbarCommandSlot`) stays correct only by luck of range —
+`ActivateHotbarCommandSlot` moved to **`eq_bridge_ui_audio.cpp`**, so that
+comment is now stale too, contrary to the plan's prediction that it would
+remain correct. **Recorded for J21; not fixed here.**
+
+### 8. All three content proofs, and the verifier
+
+`$BASE = 96e22d2f0055d515b58b9b8bf81a65c43100b4f8`.
+
+**Proof A — byte-identical re-concatenation.** The three bodies (each produced
+file stripped of its adapted header and the copied 93-line preamble block:
+`eq_bridge.cpp` from 108, `eq_bridge_intents.cpp` from 112,
+`eq_bridge_ui_audio.cpp` from 105) concatenated in original order, against
+`git show "$BASE:src/client/eq_bridge.cpp" | sed -n '107,2127p'`:
+
+```
+785 + 594 + 642 = 2021 lines   ==   2021 lines
+cmp before_body.txt after_body.txt   ->  CMP-EXIT=0
+```
+
+**Proof B — line multiset.** Same two files, `sort`ed:
+```
+diff before.sorted after.sorted      ->  MULTISET-EXIT=0   MULTISET-OK
+```
+Run over the **three .cpp bodies only**; `test_reachability_sweep.cpp` was not
+concatenated into either side. No cross-TU header and no relocation into an
+existing file, so neither correction 7 nor correction 20 applies and the diff is
+empty, as predicted.
+
+**Proof C — `ProcessBridgeIntents` byte for byte.**
+```
+diff <(git show "$BASE:src/client/eq_bridge.cpp" | sed -n '892,1471p') \
+     <(sed -n '112,691p' src/client/eq_bridge_intents.cpp)
+580 lines vs 580 lines               ->  PBI-EXIT=0
+first line: void EverQuest::ProcessBridgeIntents() {
+last  line: }
+```
+
+**Verifier — EXIT 1, and the flagged set is EXACTLY the plan's 4-added /
+3-removed alternative.**
+
+```
+$ python3 scripts/refactor/verify_move_only.py "$BASE..HEAD" --repo /mnt/projects/fable/wt/slot1
+Non-C++ files changed (not verified, review separately):
+  CMakeLists.txt
+
+Files verified: 4
+Boilerplate: +208 / -5 lines (allowed)
+
+SUBSTANTIVE ADDED lines (4):
+  +1x  << "RendererIntent member " << n << " has no arm in eq_bridge_intents.cpp ProcessBridgeIntents";
+  +1x  if (f.rel == "src/client/eq_bridge_intents.cpp") continue;
+  +2x  std::string bridge = readFile(kRoot / "src/client/eq_bridge_intents.cpp");
+
+SUBSTANTIVE REMOVED lines (3):
+  -1x  << "RendererIntent member " << n << " has no arm in eq_bridge.cpp ProcessBridgeIntents";
+  -2x  std::string bridge = readFile(kRoot / "src/client/eq_bridge.cpp");
+
+FAIL: substantive line changes detected.
+VERIFY_EXIT=1
+```
+
+Enumerated against what this plan prescribes:
+
+| flagged line | prescribed by | count |
+|---|---|---|
+| `readFile(… eq_bridge_intents.cpp)` added | §Hazard edits 1 and 2 (`:221`, `:258`) | +2 |
+| `readFile(… eq_bridge.cpp)` removed | same, textually identical line, count 2 | -2 |
+| `if (f.rel == "src/client/eq_bridge_intents.cpp") continue;` | §Hazard edit 3 (added, not replacing) | +1 |
+| diagnostic string naming `eq_bridge_intents.cpp` | §Hazard, the optional `:224` update | +1 |
+| diagnostic string naming `eq_bridge.cpp` | same | -1 |
+
+**I DID update the `:224` diagnostic string**, which the plan says to prefer and
+which it prices at exactly `+1x / -1x`. So the result is **4 added / 3 removed,
+not 3 / 2 — the plan's own stated alternative, reached deliberately.** Every
+flagged line is in `tests/test_reachability_sweep.cpp`; **zero substantive lines
+come from the split itself**, exactly as the derivation predicted (the whole
+preamble and all 43 header lines are `//` / `#include` / `#ifdef` / `#define` /
+`#endif` boilerplate, and blanks are normalized away). The `+208 / -5`
+boilerplate figure is the two copied preambles plus the three headers.
+**Requesting orchestrator sign-off on these five lines** (§Process step 4 /
+correction 5). Nothing was contorted to force a green exit.
+
+Run correctly on all three counts: **after committing**, with **`--repo`**
+pointing at slot1, and against the **merge base**, not `fable..HEAD`.
+
+### 9. Final line counts, method counts, timing
+
+| file | lines | methods | plan predicted |
+|---|---|---|---|
+| `src/client/eq_bridge.cpp` | **892** | **21** | ~891 / 22 |
+| `src/client/eq_bridge_intents.cpp` | **705** | **2** | ~700 / 2 |
+| `src/client/eq_bridge_ui_audio.cpp` | **746** | **22** | ~748 / 21 |
+| total | 2,343 | **45** | 45 |
+
+Line counts land within 1-2 of the estimates: each TU is `header + 93 + range`,
+so `14+93+785 = 892`, `18+93+594 = 705`, `11+93+642 = 746`. The plan's `~891`
+counted a 13-line header for the stays file; mine is 14.
+
+⚠ **The plan's per-TU method counts are transposed.** It predicts 22 / 2 / 21;
+the truth is **21 / 2 / 22**. Its own §The split row for 107-891 enumerates
+**21** names (InitGraphics … PublishBankCoinProjection) and its 1486-2127 row
+enumerates **22** (UpdateInventoryStats … ActivateHotbarCommandSlot). The
+cluster membership is right; only the arithmetic in the "— NN methods" tails is
+wrong. Total 45 is correct.
+
+**Wall clock ~70 min**, of which the cut, the CMake edit, the repoint and all
+three proofs took **under 5 minutes**. The slowest step by a wide margin was
+`scripts/build-gles2-x86.sh`: **two consecutive exit-143 timeouts at the 600 s
+tool ceiling**, then a clean exit 0 on the third invocation. That single step
+cost ~25 of the 70 minutes. Concurrency with J12 (slot3) and J21 (slot2) is the
+likely cause; `ctest -j6` was unaffected at **145.8 s**.
+
+⚠ **The exit-143 ELF scan was run and found nothing, for a reason worth
+recording:** `gmake` **deleted its own partial output** on SIGTERM
+(`gmake[3]: *** Deleting file 'bin/willeq'`, then the same for
+`bin/gles2_zone_benchmark`), so instead of the J07/J10 truncated-binary trap the
+target was simply **absent** and the next invocation relinked it properly. The
+scan over `build-gles2/bin/*` returned zero BAD files both times. **A killed
+*link* deletes; the trap arises when the kill lands such that a partial file
+survives newer than its inputs.** Do not conclude from this that the scan is
+unnecessary — conclude that its outcome is not predictable from the exit code
+alone, which is why it is cheap and mandatory.
+
+Acceptance bar, by exit code:
+
+| step | result |
+|---|---|
+| `cmake --build build -j24` | **exit 0** |
+| `ctest -R ReachabilitySweep` (alone, pre-suite) | **exit 0**, 5/5 |
+| `ctest -j6` full suite | **3506 / 3507**; sole failure `AudioManagerTest.PreloadCommonSounds`, the documented ALSA host quirk in `test_baseline.txt`. **Zero new failures.** No `HeadlessShutdownTest` flake, no discovery failure. |
+| `scripts/build-gles2-x86.sh` | **exit 0** (3rd invocation; two prior 143s) |
+| `scripts/ci/visual_gate.sh` | **PASS**, exit 0. CPU p95: qeynos2 4.917/10.108, gfaydark 6.187/10.672, befallen 7.268/10.948. Zero image mismatches. `git status --porcelain` afterwards showed **only this unit's five files** — no golden touched. |
+| `scripts/build-arm-noble.sh` | **exit 0**, first invocation |
+| `check_file_sizes.sh --files` (4 files) | **4 ok, 0 warn, 0 fail** |
+| file modes | all three created files recorded `100644` |
+
+### 10. Findings only, not fixes
+
+Checked at `$BASE`, per correction 24 — **do not attribute any of these to this
+split**:
+
+- `docs/module_map.md:27` records `eq_bridge.cpp` as **2,001 lines and one TU**.
+  It was **2,127 and one TU** before I started; it is now 892 across three TUs.
+  Both the count and the structure need updating. **J21.**
+- `docs/decisions.md:403` cites `eq_bridge.cpp:947`. That line is now inside
+  `eq_bridge_intents.cpp`; it was already a bare line-number citation into a
+  2,127-line file before the split. **J21.**
+- `tests/test_combat_manager.cpp:704` cites `eq_bridge.cpp:1573` for
+  `EverQuest::LootAllFromCorpse` — **that method does not exist anywhere in this
+  file**, at `$BASE` or now (`grep -c LootAllFromCorpse src/client/eq_bridge*.cpp`
+  = 0). Already wrong before the split, as the plan says. **Fourth unit in a row
+  to find pre-existing stale citations.** **J21.**
+- The four `tests/cmake/*.cmake` comment hits in §7, of which **all five lines**
+  (including `packets_skills.cmake:58`, which the plan expected to survive) now
+  name the wrong TU. **J21.**
+- `tests/test_reachability_sweep.cpp:11`, `:13` and `:193` are header comments
+  naming `eq_bridge.cpp` as the home of the consumer arms. They are now wrong.
+  I left them: territory limits me to the three prescribed code edits plus the
+  sanctioned `:224` diagnostic. **J21.**
+- Batch-plan record corrections this unit makes: `eq_bridge.cpp` is **2,127**
+  (§Optional/unit-table say 2,098); `ProcessBridgeIntents` is **580** (§Optional
+  says 558); the plan's per-TU method counts are **21 / 2 / 22**, not 22 / 2 / 21;
+  and `src/client/eq_bridge.cpp` **does** contain ten single-line `/*…*/`
+  comments, so "zero block comments" should read "zero multi-line comment
+  regions".
