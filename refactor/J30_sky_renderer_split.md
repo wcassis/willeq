@@ -506,3 +506,661 @@ site), and this plan file. **Nothing else** — not
 - You find yourself wanting to decompose a method, delete dead content, trim an
   include block, or add a TU this plan does not name.
 - Any cut boundary has drifted inside the 1644-1767 `EQT_HAS_GLES2` region.
+
+## Review (executor, slot3, 2026-09-02)
+
+**Branch `task/J30-sky-renderer-split`, cut from `fable` at
+`3cf86bd114aa06e38d22f1e90068de61e58a52c9` ("Batch J: J35 closes the
+variant_loading Batch-G question -- it was an artefact of assuming a two-way
+split"). `$BASE = 3cf86bd114aa06e38d22f1e90068de61e58a52c9`
+(`git merge-base fable HEAD`), unchanged throughout the run.**
+
+### 1. Line count at my tip, and range drift
+
+`wc -l src/client/graphics/sky_renderer.cpp` = **1,770** — exactly what the plan
+measured at `824adb28`. **Zero drift in the source file.** Both cut boundaries,
+the preamble extent, the four preprocessor directive lines, the two banner
+lines, the two namespace opens and the two namespace closes all reproduced to
+the line. Correction 9 did not fire here.
+
+⚠ **Drift DID occur in `CMakeLists.txt`** — see item 7. The single add-site moved
+`522 -> 534` and its enclosing `SET(GRAPHICS_SOURCES` moved `439 -> 445`.
+**Fourth consecutive unit where the CMake target name was right and the line
+number was stale** (correction 59).
+
+### 2. Every property in Measured, re-verified with my own greps
+
+| property | plan | measured at `3cf86bd1` | |
+|---|---|---|---|
+| total lines | 1,770 | **1,770** | ok |
+| preamble | 1-19, 6 includes + GLES2 group 10-16 with a 3-line `extern` at 13-15 + opens 18-19 | **identical** | ok |
+| namespace | opened 18-19, closed 1769-1770 | **exactly those four lines** | ok |
+| method definitions | 49 | **47** | see below |
+| largest method | 144, `calculateSkyColors` 1168-1311 | **1168-1311, 144** | ok |
+| 2nd largest | 124, `createCustomSkyDome` 564-687 | **564-687, 124** | ok |
+| `// ====` banners | 2, at 1640/1642 | **2, at 1640 and 1642** (`grep -cE`) | ok |
+| conditional directives | 4: 10/16 and 1644/1767 | **exactly those four** | ok |
+| file-scope `static` / anon ns | 0 / 0 | **0 / 0** | ok |
+| multi-line comment regions | 0; one single-line `/*` at 48 | **`grep -n '/\*'` returns line 48 only** | ok |
+
+⚠ **Record correction (correction 46, and this is now the fifth unit where a
+derived count slipped while the ranges held exactly): the method count is 47,
+not 49.** My counting pattern, stated as correction 46 requires:
+`grep -c '^[A-Za-z_].*SkyRenderer::'` — qualified name at column 0. It returns
+**47** for the pre-split file and 21 + 14 + 12 = 47 afterwards. `grep -c '^{'`
+returns **1** (the constructor's initializer-list body brace at line 26), so
+that alternative pattern is useless in this file. I could not reproduce 49 under
+any pattern. **No STOP condition: this is a derived count, not a range.**
+
+```
+$ awk '/^[ \t]*#(if|ifdef|ifndef|else|elif|endif)/ {print NR": "$0}' src/client/graphics/sky_renderer.cpp
+10: #ifdef EQT_HAS_GLES2
+16: #endif
+1644: #ifdef EQT_HAS_GLES2
+1767: #endif // EQT_HAS_GLES2
+
+$ grep -nE '^// ={4,}' src/client/graphics/sky_renderer.cpp
+1640:// ============================================================================
+1642:// ============================================================================
+
+$ grep -n '/\*' src/client/graphics/sky_renderer.cpp
+48:void SkyRenderer::onTextureEvicted(const std::string& name, irr::video::ITexture* /*texture*/) {
+
+$ grep -n 'namespace' src/client/graphics/sky_renderer.cpp
+18:namespace EQT {
+19:namespace Graphics {
+1769:} // namespace Graphics
+1770:} // namespace EQT
+
+$ grep -n '^static \|^namespace\s*{\|^const \|^constexpr \|^extern ' src/client/graphics/sky_renderer.cpp
+13:extern void* gles2WrapTexture(void* driver, const char* name, unsigned int glTexName,
+
+$ grep -n 'gles2WrapTexture' src/client/graphics/sky_renderer.cpp
+13:extern void* gles2WrapTexture(...)          <- the declaration
+1742:        gles2WrapTexture(driver_, stripState_.textureName.c_str(),   <- the sole call
+```
+
+**Line 1742 is inside range 1168-1770**, so the only caller lands in
+`sky_renderer_colors.cpp`, exactly as the plan predicts. The symbol is defined in
+`COpenGLES2Driver.cpp`, not here.
+
+⚠ **EVERY EMPTY OR NEAR-EMPTY GREP IS PROVEN, NOT ASSUMED** (the dispatch
+brief's five silent-nothing modes, plus corrections 55 and 60). Each pattern was
+run against a file where it must match before I believed a zero:
+
+| pattern | positive control | hits there |
+|---|---|---|
+| `^static ` | `src/client/graphics/eq/wld_loader.cpp` | 1 |
+| `^namespace {` | `src/client/raid_update.cpp` | 1 |
+| `^const ` | `src/client/trade_manager.cpp` | 2 |
+| `^constexpr ` | `src/client/position.cpp` | 1 |
+| `^extern ` | matched in the target file itself (line 13) | 1 |
+| first-person token set | `src/client/graphics/renderer_camera.cpp` | 20 |
+| `awk` directive dump | matched in the target file itself | 4 |
+| `grep -cE '^// ={4,}'` | correction 28's `-E` form used; plain `-c` would return 0 | 2 |
+| CMake filename sweep | same sweep for `variant_loading` | 21 hits in 2 files |
+| `grep -rn <name> tests/ scripts/` | same grep for `variant_loading` | 3+ hits |
+
+⚠ **Correction 36 check (out-of-class static member definition in the copied
+preamble): NONE.** Preamble 1-19 is 6 `#include`s, an `#ifdef`/`#endif` pair, a
+`//` comment, a 3-physical-line `extern` **declaration**, two `namespace … {`
+and two blanks. Nothing with external linkage is *defined* there, so copying it
+verbatim into two more TUs carries no duplicate-symbol risk. (Confirmed by the
+link: `willeq_core` archives cleanly and every binary links.)
+
+**No Measured property has changed since `824adb28` except the method count,
+which is a counting-pattern artefact rather than a change in the file. No STOP
+condition fired.**
+
+### 3. Correction 21 — re-derived, not cited, and widened per correction 51
+
+**The file defines ZERO file-scope symbols of any kind.** The standard pattern
+would have been enough here, but correction 51 exists because it misses
+namespace-scope free functions (J32's `heightToColor` was called across its
+cut), so I ran the widened form — **every column-0 line that is not a comment, a
+preprocessor directive, a blank or a `}`**:
+
+```
+$ grep -n '^[^ \t}]' src/client/graphics/sky_renderer.cpp | grep -v '^[0-9]*:[/#]'
+13:extern void* gles2WrapTexture(void* driver, const char* name, unsigned int glTexName,
+18:namespace EQT {
+19:namespace Graphics {
+21:SkyRenderer::SkyRenderer(...)
+26:{
+29:SkyRenderer::~SkyRenderer() {
+... 45 further lines, EVERY ONE of the form `<type> SkyRenderer::<method>(` ...
+1763:bool SkyRenderer::isStripActive() const {
+```
+
+That is **52 lines total: the `extern` declaration, the two `namespace … {`
+opens, the constructor's column-0 `{` at line 26, and 47 `SkyRenderer::` member
+definitions. Nothing else.** So there is **no namespace-scope free function, no
+file-scope constant, no anonymous namespace, and no `static` at any scope** —
+`grep -n 'static '` (unanchored) returns nothing at all, so there is not even a
+function-local static.
+
+**Mapping each file-scope entity to the range that assigns it and the range that
+consumes it:**
+
+| entity | kind | defined where | this plan's range for the definition | consumers | consumers' range |
+|---|---|---|---|---|---|
+| `gles2WrapTexture` | **declaration only**; defined in `COpenGLES2Driver.cpp` | preamble 13-15 | **copied verbatim into all three TUs** | line 1742 only | 1168-1770 (`…_colors.cpp`) |
+| all 47 `SkyRenderer::` members | class members, **external linkage**, declared in `include/client/graphics/sky_renderer.h` | 20-1768 | across all three ranges | each other, and callers outside this file | every TU includes the header via the copied preamble |
+
+**The only symbol whose definition/consumer split could matter is
+`gles2WrapTexture`, and the definition is not in this file at all — it is
+resolved by the linker from the GLES2 driver.** Its declaration is present in
+every TU because the preamble is copied verbatim, so no TU can be missing it.
+Every other symbol is a class member visible through a header all three TUs
+include. **Correction 21 therefore has no exposure here: there is no helper that
+could be separated from its consumer, because there is no file-local helper.**
+
+### 4. Comment depth at every cut — computed, not asserted
+
+Run with the plan's `//`-stripping counter (which is what defends against the
+`eq_movement.cpp:18` trap where a `//` line containing `*/` drives a naive
+counter negative):
+
+```
+depth before line 689  = 0
+depth before line 1168 = 0
+final depth = 0
+```
+
+The file's only `/*` is the single-line `/*texture*/` parameter comment at line
+48, well inside the stays range. **Comment depth is 0 at both cuts and 0 at the
+end of the file**, so correction 33's distinction (multi-line *regions*, not
+single-line `/* … */`) is satisfied and neither cut can land inside a comment.
+
+### 5. The preprocessor dump — no cut lands inside a conditional
+
+```
+$ awk '/^[ \t]*#(if|ifdef|ifndef|else|elif|endif)/ {print NR": "$0}' src/client/graphics/sky_renderer.cpp
+10: #ifdef EQT_HAS_GLES2
+16: #endif
+1644: #ifdef EQT_HAS_GLES2
+1767: #endif // EQT_HAS_GLES2
+```
+
+**Correction 60's positive control is intrinsic here** — this file HAS
+directives, so a non-empty result proves the pattern works; no external control
+was needed (unlike J35, whose file had zero).
+
+Two conditional regions, both matched pairs. **Cut 689 and cut 1168 are both
+outside both regions**: 689 and 1168 are each greater than 16 and less than
+1644. **The 124-line trailing region 1644-1767 falls entirely inside range
+1168-1770** and travels whole into `sky_renderer_colors.cpp`, where it now
+occupies **lines 512-635 (124 lines, unchanged)**. Post-split directive dumps:
+
+```
+sky_renderer.cpp            17: #ifdef EQT_HAS_GLES2   23: #endif
+sky_renderer_celestial.cpp  18: #ifdef EQT_HAS_GLES2   24: #endif
+sky_renderer_colors.cpp     26: #ifdef EQT_HAS_GLES2   32: #endif
+                           512: #ifdef EQT_HAS_GLES2  635: #endif // EQT_HAS_GLES2
+```
+
+**Every fence is matched in every TU. No unopened `#endif`, no unterminated
+`#ifdef`.** Correction 52's rule honoured: I used the directive dump, not
+`grep -c '<GUARD>'` (which would report 3 vs 1 in the colors TU because the
+preamble's `#endif` carries no trailing comment).
+
+**Both cut boundaries, pasted with their neighbours:**
+
+```
+cut 689                                        cut 1168
+685|     LOG_INFO(MOD_GRAPHICS, "Created…      1164| irr::video::SColor SkyRenderer::
+686|              vertCount, indexCount / 3);      |   getRecommendedFogColor() const {
+687| }        <- closes createCustomSkyDome    1165|     return currentSkyColors_.fog;
+688| (blank)                                   1166| }   <- closes getRecommendedFogColor
+689| void SkyRenderer::updateDomeVertexAlpha() 1167| (blank)
+     { <- first line of the next range         1168| SkyColorSet SkyRenderer::
+                                                   |   calculateSkyColors(float timeOfDay)
+                                                   |   const {   <- first line of next range
+```
+
+Both satisfy J03's rule (correction 11): **a blank line whose predecessor closes
+a method, comment depth 0.** Both first lines are complete one-line signatures,
+so no signature was split. **The trailing blank stays with the preceding range**
+(688 with the stays body, 1167 with the celestial body), which reproduces the
+original's own shape.
+
+### 6. Every file-header comment line I wrote, enumerated
+
+`sky_renderer.cpp` had **no file-header comment block** — it opened straight
+into `#include` at line 1. So **no existing comment was replaced, changed or
+removed anywhere**; all header content is pure addition on top of a verbatim
+preamble. This is proven, not asserted: PROOF1 (item 8) is a byte-identical
+re-concatenation of everything from line 20 down, and the preamble 1-19 is
+byte-identical in all three TUs (item 11).
+
+- **`sky_renderer.cpp` — 7 header lines.** Line 1 names the TU and its subject
+  (sky dome construction and geometry); lines 2-4 name its clusters
+  (constructor, teardown, initialization and sky-type selection; the dome mesh
+  precompute; dome creation from precomputed and from WLD geometry; the custom
+  dome builder); lines 5-7 record that it was split move-only from the original
+  1,770-line file by `refactor/J30_sky_renderer_split.md` and name both
+  companion TUs.
+- **`sky_renderer_celestial.cpp` — 8 header lines.** Lines 1-2 name the TU and
+  its subject (celestial bodies, cloud layers, per-frame dome updates); lines
+  3-5 name its clusters (dome vertex alpha, mesh construction from zone
+  geometry, celestial body creation / positioning / sizing, sky visibility, sky
+  node teardown, the current-colour and fog accessors); lines 6-8 the same
+  move-only provenance line and both companions.
+- **`sky_renderer_colors.cpp` — 16 header lines.** Lines 1-2 name the TU and its
+  subject (sky colour derivation and the GLES2 strip upload path); lines 3-5
+  name its clusters (colour computation and interpolation, sky-layer and sun-glow
+  colours, category selection, per-category special colours, cloud scrolling, the
+  incremental strip-upload family); lines 6-8 provenance and companions; line 9 a
+  bare `//` separator; **lines 10-16 are the region warning this plan requires** —
+  that the TU owns the file's trailing conditional-compilation region (the one
+  guarded on the GLES2 feature macro, originally lines 1644-1767) **whole**, that
+  it must stay whole because the region spans complete method definitions, and
+  that a cut inside it would leave one file with an unmatched closing directive
+  and the other with an unterminated opening one **while both halves still
+  compiled in the default configuration** — which is what makes it dangerous
+  rather than merely wrong.
+
+⚠ **Correction 45 (the widened correction 40) honoured, and it had real exposure
+in the colors header.** The natural way to write that warning is to quote the
+guard macro. I did not. Nothing in any of the three headers quotes a token that
+any check greps for:
+
+- **The guard macro is never spelled out** — described as "the GLES2 feature
+  macro". A header naming it would inflate any `grep -c` fence check (correction
+  52's exact failure mode) and would show up in any future audit of that macro's
+  use sites.
+- **`gles2WrapTexture` is never named** — this plan's own item-11 check
+  (`grep -rn 'gles2WrapTexture' src/`) would otherwise return three extra hits
+  from comments. **This is correction 45's precise shape: a plan's own
+  verification step defeated by a comment the same plan prescribed.**
+- **No `// ====` sequence.** `grep -cE '^// ={4,}'` still reads **0 / 0 / 2** —
+  the 2 being the original's banner pair at old-1640/1642, now in the colors TU
+  and unchanged.
+- **No first-person token.** These files live under `src/client/graphics`, so
+  they enter `tests/test_first_person_camera_single_formula.cpp`'s recursive
+  sweep automatically. The token grep returns **0 in all three TUs** (item 12).
+
+Every header line begins `//`, so all 31 are allowlisted boilerplate for the
+verifier.
+
+⚠ **Correction 30 declared, not fixed.** The original's line 20 is blank
+(between `namespace Graphics {` at 19 and the constructor at 21), and that blank
+belongs to the stays range. The two **new** TUs therefore begin their body
+immediately after `namespace Graphics {` with no blank between — J25's
+**inverted** form of correction 30, not the double-spaced tail J12 saw. On the
+tail side correction 30 did **not** fire: the original's own line 1768 is blank
+and rides with the colors body, so appending the two closes reproduces the
+original's exact 1767/1768/1769/1770 shape, and the stays and celestial bodies
+each end on their range's own trailing blank (688 and 1167). **Cosmetic,
+invisible to both proofs and the verifier; hand-fixing it would insert a line
+that is in neither the before nor the after multiset.**
+
+### 7. CMake add-sites — **I found ONE**, matching this plan's count
+
+Derived, not trusted (correction 49 — the brief explicitly told me to derive it).
+The sweep enumerated **all 23** `CMakeLists.txt` and `*.cmake` files in the tree
+outside `build*` and `third_party` with
+`find … -name 'CMakeLists.txt' -o -name '*.cmake'` and then
+`xargs … grep -Hni`. **I did not use `grep -rn --include=`** (correction 55, the
+fifth silent-nothing mode), **did not recurse into a directory hoping to reach
+its own `CMakeLists.txt`** (correction 50), **never named
+`tests/CMakeLists.txt`** (correction 26), and **greped for the filename, not for
+lowercase CMake commands** (correction 12). The sweep was proven live by running
+the identical pipeline for `variant_loading`, which returned 21 hits across two
+files.
+
+| file:line (at my tip) | plan said | enclosing target | edited |
+|---|---|---|---|
+| `CMakeLists.txt:534` | `:522` | `SET(GRAPHICS_SOURCES` at **`:445`** (plan said `:439`) | **yes — both new TUs inserted at 535/536** |
+
+**One found, one edited, +2 lines. The count matched exactly; both line numbers
+were stale.** Fourth consecutive unit with that shape (correction 59). No
+`tests/cmake/` fragment names this file, no tool or benchmark target does, and
+**this unit does not touch `gles2_zone_benchmark`** — confirmed, since the sweep
+returned exactly one hit across all 23 CMake files.
+
+`CMakeLists.txt` remains the pre-existing WARN that Process grandfathers by
+name; my 2 added lines are not mine to fix.
+
+### 8. `tests/` and `scripts/`, both greps, and both content proofs
+
+```
+$ grep -rn 'sky_renderer' tests/ scripts/
+(no output, exit 1)
+```
+
+⚠ **A small correction to this plan's record.** The `tests/` and `scripts/`
+section predicts "comment-only hits and zero functional readers". At my tip
+there are **no hits of any kind** — not one comment, not one CMake entry, not
+one string. The conclusion (no repoint needed) is right; the description of the
+hits is not. **J30 creates zero `tests/` doc rot**, the same clean case J35 hit.
+
+```
+$ grep -hn 'kRoot / "src\|kRoot / "include' tests/*.cpp | sort -u
+```
+returns 17 distinct entries — `include/client/eq.h` ×2,
+`renderer_event_receiver.cpp` ×2, `renderer_frame_render.cpp`,
+`include/client/state/…`, `renderer_intents.h`, `eq_bridge_intents.cpp` ×2,
+`event_bus.h`, `action_dispatcher.h`, `action_dispatcher{,_social,_guild_misc}.cpp`,
+`renderer_command_catalog.cpp`, `renderer_frame_input.cpp` ×2, plus the
+`kGraphicsDir` root at `:49`. **No `sky_renderer` path is among them**, so no
+test opens this file as text and there is no string-compare exclusion naming it
+(J13's invisible shape). **No test file was edited.**
+
+**Both content proofs, plus a third.** `body(TU)` is defined **structurally**
+(everything strictly between that TU's `namespace Graphics {` line and its
+`} // namespace Graphics` line, **both asserted unique by count before use**)
+rather than by an offset constant — J23's and J35's method, and the defence
+against the arithmetic bug that produced J05's and J08's false alarms. Count
+variables are function-local (correction 20's `local` lesson).
+
+```
+BASE=3cf86bd114aa06e38d22f1e90068de61e58a52c9
+
+sky_renderer.cpp:            body lines 27-695  = 669
+sky_renderer_celestial.cpp:  body lines 28-506  = 479
+sky_renderer_colors.cpp:     body lines 36-636  = 601
+
+before = git show "$BASE:src/client/graphics/sky_renderer.cpp" | sed -n '20,1768p'  = 1749 lines
+recon  = cat body(stays) body(celestial) body(colors)                               = 1749 lines
+
+$ cmp before recon
+PROOF1 byte-identical re-concatenation: exit 0
+
+$ diff <(sort before) <(sort recon)
+PROOF2 line-multiset: exit 0
+```
+
+Arithmetic that must hold, and does: **19 + 669 + 479 + 603 = 1,770**, this
+plan's own form with the third range carrying the two namespace closes; and
+equivalently **19 (preamble) + 669 + 479 + 601 + 2 (closes) = 1,770**. The
+`before` side runs to **1768, not 1770**, because the original's own closes are
+inside the third range — correction 20's off-by-two, which reads exactly like a
+dropped range if you get it wrong.
+
+**PROOF3 — the preamble is byte-identical in all three TUs.** `md5sum` of the
+three `extern` physical lines in each produced TU, located by finding each TU's
+`#include "client/graphics/sky_renderer.h"` line and taking the following 12th
+to 14th lines (so the proof does not depend on my header lengths):
+
+```
+f17e6999250cbab4d2222f8baf5f74c6  sky_renderer.cpp            (preamble starts at line  8)
+f17e6999250cbab4d2222f8baf5f74c6  sky_renderer_celestial.cpp  (preamble starts at line  9)
+f17e6999250cbab4d2222f8baf5f74c6  sky_renderer_colors.cpp     (preamble starts at line 17)
+f17e6999250cbab4d2222f8baf5f74c6  $BASE:sky_renderer.cpp lines 13-15
+```
+
+**All four identical.** See item 11.
+
+### The verifier
+
+Committed **FIRST**, then verified. All three of the batch's
+confident-looking-wrong-answer traps ruled out positively: `--repo` given
+explicitly (an executor's cwd is not its slot, and omitting it verifies
+`main/`); the **fork point** used, not `fable..HEAD`; and the tree was
+committed, so the run cannot be the `No C++ files changed` / exit-0 non-answer.
+The verifier names exactly this unit's 3 C++ files and 2 non-C++ files and
+nothing else — a wrong repo would list `main/`'s merged units and a wrong base
+would list slot1's or slot2's.
+
+```
+BASE=3cf86bd114aa06e38d22f1e90068de61e58a52c9
+
+Non-C++ files changed (not verified, review separately):
+  CMakeLists.txt
+  refactor/J30_sky_renderer_split.md
+
+Files verified: 3
+Boilerplate: +63 / -0 lines (allowed)
+
+SUBSTANTIVE ADDED lines (6):
+  +2x  extern void* gles2WrapTexture(void* driver, const char* name, unsigned int glTexName,
+  +2x  unsigned int gpuBytes = 0);
+  +2x  unsigned int width, unsigned int height,
+
+FAIL: substantive line changes detected. If intentional (e.g. de-static-ing a
+helper), document in the unit review section for orchestrator sign-off.
+VERIFY_EXIT=1
+```
+
+The `+63 / -0` boilerplate figure is derivable, and worth stating so the next
+unit can predict its own: **31 newly written header lines** (7 + 8 + 16) plus
+the **32 preamble and namespace-close lines whose normalized multiset COUNT
+rises from 1 to 3** while their text is unchanged — correction 54's rule seen
+from the counter's side: a boilerplate line registers in that figure when its
+count changes, even though it costs the substantive verdict nothing. Nothing was
+removed, because this file had no pre-existing header comment to replace
+(contrast J35's `-1`).
+
+**Result: EXIT 1 with exactly 6 substantive ADDED and 0 REMOVED — the
+prediction held EXACTLY.** See item 11 for the enumeration and the sign-off
+request.
+
+### 9. Final line counts, method counts, wall clock
+
+| file | lines | methods | note |
+|---|---|---|---|
+| `src/client/graphics/sky_renderer.cpp` | **697** | **21** | sky dome construction and geometry |
+| `src/client/graphics/sky_renderer_celestial.cpp` | **508** | **14** | celestial bodies, cloud layers, per-frame dome updates |
+| `src/client/graphics/sky_renderer_colors.cpp` | **638** | **12** | colour derivation + the whole GLES2 strip-upload region |
+| **total** | **1,843** | **47** | 3 TUs, largest **697**, **803 lines of headroom** |
+
+**Predicted vs actual, stated in correction 57's shape** so the reconciliation is
+mechanical rather than a puzzle. The derivable identity is:
+
+**TU lines = (my header) + 19 (preamble 1-19) + body + 2 (namespace closes)**
+
+- `sky_renderer.cpp` = 7 + 19 + 669 + 2 = **697** (plan ~690)
+- `sky_renderer_celestial.cpp` = 8 + 19 + 479 + 2 = **508** (plan ~500)
+- `sky_renderer_colors.cpp` = 16 + 19 + 601 + 2 = **638** (plan ~622)
+
+**Every TU came in exactly `(my header)` lines over the plan's figure — 7, 8 and
+16, nothing else differs.** The plan's 690/500/622 are `preamble + range
+(+ closes)` and carry no file-header comment at all, which the plan states
+explicitly ("your new file-header comment lines land on top of that"). **Body
+ranges are exact to the line; zero range drift.** Largest TU 697 against the
+1,500-line warn ceiling — computed, not quoted (correction 58): headroom is
+**803**.
+
+⚠ **Method split 21 / 14 / 12, against the plan's predicted "roughly 18 / 17 /
+14 of the 49".** The total is 47, not 49 (item 2), and the per-TU distribution
+differs by +3 / -3 / -2. **The ranges held exactly and the derived counts did
+not — the sixth unit running with that shape** (J13, J25, J26, J32, J33, now
+J30). Counting pattern stated: `^[A-Za-z_].*SkyRenderer::`.
+
+**Wall clock: ~95 min end to end.** Contract reading (the protocol, all sixty
+corrections, the two named Reviews) and the survey ~30 min; **the cut, the CMake
+edit and all three proofs took under 4 minutes**; the rest was the bar.
+**Slowest step: the x86 `build/` build — two invocations, 10 min (killed at the
+ceiling) + ~7 min.** `ctest -j6` needed two invocations for an unrelated reason
+(below). `build-gles2-x86.sh` also needed two (~10 min killed + ~6 min).
+`build-arm-noble.sh` exited **0 first invocation**.
+
+**Did wave concurrency stretch the tail? Yes, and the whole cost was retries,
+not breakage** — two exit-143s and one ctest discovery flake, ~20 min of pure
+re-running, with slot1 (J24, `combat.cpp`) and slot2 (J29, `model_loading.cpp`)
+active throughout. Correction 14's framing holds: these are worst cases
+observed, and nothing here was a defect.
+
+### Acceptance — every item, classified by EXIT CODE
+
+| step | result |
+|---|---|
+| `cmake --build build -j24` | first invocation **exit 143** at the 600 s ceiling; **re-invocation exit 0** |
+| ELF + archive scan after that 143 | **197 binaries + 2 archives, 0 BAD**; after the clean build **221 binaries, 0 BAD** |
+| `scripts/build-gles2-x86.sh` (**run BEFORE `ctest`**, correction 41) | first invocation **exit 143**; **re-invocation exit 0**; 40 binaries + archives, **0 BAD** |
+| `ctest -j6` (**NOT -j24**) | first invocation **exit 8 at DISCOVERY**, see below; **re-run: 3506/3507 passed** |
+| sole ctest failure | `AudioManagerTest.PreloadCommonSounds` — the documented ALSA host quirk and the only entry in `refactor/test_baseline.txt`. **Zero new failures.** ctest exits 8 because of it. |
+| visual gate (in-suite #3504) | **Passed, 21.90 s** |
+| goldens | `git status --porcelain` lists only my 4 intended paths — **untouched, no re-bless** |
+| `scripts/build-arm-noble.sh` | **exit 0, first invocation**; 18 binaries + archives, 0 BAD |
+| `check_file_sizes.sh --files` × 3 | **3 ok, 0 warn, 0 fail** (697 / 508 / 638) |
+| `verify_move_only.py "$BASE..HEAD" --repo <slot>` | **exit 1, `+6/-0` substantive — prediction exact**; sign-off requested (item 11) |
+
+⚠ **GATE ORDERING (correction 41): I used THE FIX, not the workaround.**
+`scripts/build-gles2-x86.sh` ran **before** `ctest -j6`, so the in-suite
+`visual_gate` ran against a `gles2_zone_benchmark` **stamped 15:26** against
+edits made at **14:52**. **The in-suite run is the one that counts and no
+standalone re-run was needed.** Before my rebuild, `build-gles2/bin/` held a
+benchmark stamped **14:24** — i.e. a tree that predated my edits — which is
+exactly the vacuous pass correction 41 describes, and I would have shipped it
+had the bar's written order been followed.
+
+⚠ **The visual gate passed on both the CPU metric and the image comparison** —
+no re-bless, no golden touched, and no image mismatch. This file renders the
+sky, so that was the live risk in this unit; the split is behaviour-neutral.
+
+⚠ **The truncation trap fired twice, and neither was a truncation.**
+- The `build/` 143 killed *compiles* and *links* of test binaries; gmake deleted
+  its partial outputs and the scan found 0 BAD among 197 binaries and both
+  archives.
+- The `build-gles2/` 143 was **killed archiving `lib/libwilleq_core.a`**
+  (`gmake[3]: *** Deleting file 'lib/libwilleq_core.a'` is the log's last line) —
+  **correction 56's `ar` site, now its third recorded instance after J23 and
+  J35.** `readelf -h` on `build-gles2/bin/*` alone would have been blind to it;
+  the archive was already gone, so widening the scan with `ar t` is what turns
+  "I checked" into a real answer.
+
+⚠ **The first `ctest` exit 8 was correction 16's case, not a truncation.** It
+died in `GoogleTestAddTests.cmake` with "Process terminated due to timeout"
+while listing `test_eq_action_handler_movement_utility`. I checked the binary
+before concluding anything: `readelf -h` exit 0, and
+`--gtest_list_tests` **exit 0 listing 17 cases in ~2 s**. Cold-cache contention
+under wave load (the J05/J07 shape). The re-run listed it without complaint.
+`HeadlessShutdownTest.NonLifecycleCommandIsHeldNotDroppedOrApplied` did not
+appear in either run.
+
+### 11. The six predicted `extern` lines, enumerated — and the sign-off request
+
+**The verifier's flagged set is exactly the predicted set, and nothing else.**
+The three physical lines are, from the original's 13-15:
+
+1. `extern void* gles2WrapTexture(void* driver, const char* name, unsigned int glTexName,`
+2. `                                unsigned int width, unsigned int height,`
+3. `                                unsigned int gpuBytes = 0);`
+
+Each has **normalized count 1 before** (one copy, in `sky_renderer.cpp`) and
+**count 3 after** (the original plus two new TUs), so each costs **+2**, and
+**3 × 2 = 6 substantive ADDED, 0 REMOVED.** The derivation this plan gives is
+correct in every clause: `extern` is not in `verify_move_only.py`'s
+`BOILERPLATE` allowlist, while `#include`, `#pragma`, `#ifdef`, `#endif`, any
+comment, `namespace … {` and a bare `}` all are — which is why the replicated
+namespace closes, the six includes, the conditional group's directives, the
+comment at line 12 and all 31 of my header lines cost the substantive verdict
+nothing (they appear in the `+55 / -0` boilerplate figure instead).
+
+**Byte-identity across all three TUs is proven, not eyeballed** (PROOF3, item 8):
+the `md5sum` of the three lines is `f17e6999250cbab4d2222f8baf5f74c6` in each
+produced TU **and** in `$BASE`'s original. The three lines are therefore
+byte-identical everywhere they appear, which is what makes the duplication a
+declaration copy rather than a divergence.
+
+**This is correction 54's rule seen from the other side:** a duplicated line
+costs the verifier because its **count** changes, exactly as a promoted symbol
+that keeps its text and count costs nothing. The 6 is intrinsic to copying the
+preamble verbatim into two TUs, which the plan requires.
+
+⚠ **I did NOT trim the `extern` from the two TUs that never call
+`gles2WrapTexture`**, as the plan directs. `sky_renderer_celestial.cpp` and
+`sky_renderer.cpp` carry a declaration they do not use; the sole call site is
+line 1742 of the original, now in `sky_renderer_colors.cpp`. An unused
+declaration is harmless — no ODR issue, no link cost, no warning at either
+`-Wall` level the tree builds with (both builds are clean).
+
+**Orchestrator sign-off requested for the 6 substantive ADDED lines as the
+Process step-4 / correction-5 case: expected, enumerated, byte-identical, and
+exactly the number this plan predicted before the unit ran.**
+
+### 12. The `test_first_person_camera_single_formula.cpp` check
+
+```
+$ grep -n 'CameraMode::FirstPerson\|camera_->setPosition(\|camera_->setTarget(\|kFirstPerson\|firstPersonM\|firstPersonV\|computeFirstPersonCamera' \
+      src/client/graphics/sky_renderer.cpp
+(no output, exit 1 — at $BASE, and 0 hits in all three produced TUs)
+```
+
+Proven non-vacuous: the identical pattern returns **20 hits** in
+`src/client/graphics/renderer_camera.cpp`.
+
+All three TUs live under `src/client/graphics`, so all three **enter that test's
+recursive sweep automatically** — this is the guard that names no file and so
+appears in neither standard grep. They are nonetheless invisible to both parts
+of it:
+
+- **Part 1** (the offender check) needs a file that both mentions the
+  first-person camera mode **and** moves the camera. None of the three does
+  either, so none is an offender and `renderer_camera.cpp`'s exemption is not
+  needed.
+- **Part 2** (the at-most-N-readers count per tunable) counts reads of six
+  first-person tunables. All three TUs read **zero** of them, so every tunable's
+  reader count is unchanged and the two-reader exemption for
+  `renderer_player_physics.cpp` is untouched.
+
+Per correction 42 this particular guard is a *loud* shape rather than a silent
+one — it strips line comments first and asserts at-most-N, so a comment could
+only add a false positive — but I kept the blanket rule anyway (item 6) because
+it is free and always safe.
+
+### 10. Findings only, not fixes
+
+1. **`docs/module_map.md` needs two new rows** — `sky_renderer_celestial.cpp`
+   and `sky_renderer_colors.cpp` — and its `sky_renderer.cpp` row (if any) is now
+   wrong: 1,770 -> 697, and the file no longer holds 26 of its 47 methods.
+   **Recorded, not acted on** (correction 24's queue; `docs/` is outside my
+   territory).
+2. **No `tests/` or `scripts/` citation of this file exists at all**, stale or
+   otherwise — the grep returns nothing. **J30 creates zero `tests/` doc rot**
+   (contrast J23's five and J31's four). This plan's "comment-only hits"
+   description is wrong in the harmless direction; see item 8.
+3. **The method count is 47, not 49, under every pattern I could construct**
+   (item 2), and the per-TU prediction 18/17/14 is 21/14/12. **Derived counts,
+   not ranges** — the ranges were exact.
+4. **All CMake line numbers in this plan are stale** (`:522` -> `:534`, opener
+   `:439` -> `:445`) while the target name and the count of one were right.
+   Fourth consecutive unit; correction 59's "name targets, never cite line
+   numbers" is the right instruction and the dispatch brief gave it.
+5. **No dead-content site in this file** — no `#if 0`, no commented-out method
+   body, no retired-configuration arm. The batch's seven-site dead-content
+   decision gains nothing from J30.
+6. **The trailing conditional region is flagged in `sky_renderer_colors.cpp`'s
+   own header** (in words, never quoting the macro) so the next person to move a
+   method out of that TU is warned that the region must not be split.
+
+### Plan errors and template notes
+
+1. ⚠ **The method count (49) does not reproduce; it is 47.** Correction 46 asked
+   plans to state their counting pattern and this one did not. Sixth unit with a
+   slipped derived count.
+2. ⚠ **Both CMake line numbers are stale**, count correct — correction 59's
+   fourth consecutive instance.
+3. **The `tests/`/`scripts/` section predicts "comment-only hits"; there are no
+   hits at all.** A unit reconciling the two sections finds a phantom
+   discrepancy, exactly as J35 reported for its own plan. **This is now twice —
+   the template's boilerplate for that section should say "expect nothing" rather
+   than describing hits the surveyor did not verify.**
+4. ⚠ **The predicted TU sizes (690 / 500 / 622) assume a zero-line file header
+   while the plan simultaneously prescribes a 4-6 line one.** Correction 57's
+   `(your header) + <constant> + body` shape would remove the reconciliation;
+   here the constant is **19 + 2 = 21**. The plan does flag this in prose, which
+   is why it cost nothing — but the table would be better.
+5. **The prescribed header length ("four to six lines") cannot hold for the
+   colors TU**, which also has to carry the region warning. Mine is 16. Same
+   observation J31 made about its own plan; **content should win and the wording
+   should say so.**
+6. **Correction 60's positive control was free here** because the file has
+   directives — worth noting that the control is only needed when the dump comes
+   back empty.
+7. **Correction 30 fired in J25's inverted form only** (no blank after the
+   namespace open in the two new TUs); the tail is clean because the original's
+   1768 is blank. Declared, not fixed.
+
+### Deviations
+
+**None.** No method decomposed, no dead content deleted, no include block
+trimmed, no reordering, no interface change, no header in `include/` touched, no
+`tests/` file touched, no TU added beyond the two this plan names, and the
+`extern` was not trimmed from the TUs that do not use it. The preamble (lines
+1-19) was copied verbatim into both new TUs with **nothing replaced** — this
+file had no pre-existing header comment, so all header content is pure addition.
+All three files are mode **644** (`chmod 644` before `git add`; verified in the
+commit, no `100644 => 100755`).
