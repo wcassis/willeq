@@ -31,6 +31,7 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/animated_mesh_creation.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/variant_loading.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/zone_geometry.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/zone_geometry_atlased.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_loader.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_material.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_mesh.cpp
@@ -108,6 +109,7 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_bsp.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/s3d_loader.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/zone_geometry.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/zone_geometry_atlased.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/dds_decoder.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/race_codes.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/race_model_loader.cpp

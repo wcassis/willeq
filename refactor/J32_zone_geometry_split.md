@@ -562,3 +562,475 @@ CMake conflict by taking one side wholesale (correction 31).
 - The `EQT_HAS_TEXTURE_ATLAS` region's boundaries are not exactly 923 and 1560 at
   your tip.
 - Any of the six file-local entities has acquired a reader outside 919-1561.
+
+---
+
+## Review (executed 2026-09-02, slot1, branch `task/J32-zone-geometry-split`)
+
+**Base / fork point: `2498c3a5354a7df86d9126e31a3acb787af1664c`** ("Batch J: fold
+J33's corrections…"), the `fable` tip at dispatch. All measurements below are at
+that tip.
+
+### 1. Line count and drift
+
+**1,637 lines — EXACTLY what §Measured recorded at `824adb28`. Zero drift**, in
+line count and in every range. Every line number in §The split, §Every cut
+boundary and §Correction 21 was correct as written. This is the first Wave-6 file
+this executor has seen with no stale numbers at all (contrast correction 9).
+
+### 2. §Measured re-verified
+
+| property | plan | measured at my tip | ✓ |
+|---|---|---|---|
+| total lines | 1,637 | **1,637** | ✓ |
+| namespace opens / closes | 35-36 / 1636-1637 | **35,36 / 1636,1637** | ✓ |
+| method definitions | 14 | **14** `ZoneMeshBuilder::` | ✓ |
+| banners `^// ={4,}` | 13 | **13** at 16,18,33,563,565,716,718,919,921,1057,1059,1562,1564 | ✓ |
+| preprocessor directives | 4 | **4** | ✓ |
+| multi-line comment regions | zero | **zero** (`grep -n '/\*'` exit 1, total `/*` count 0) | ✓ |
+
+Preprocessor dump at my tip (pasted, §Do not cut inside a conditional):
+
+```
+6: #ifdef EQT_HAS_TEXTURE_ATLAS
+8: #endif
+923: #ifdef EQT_HAS_TEXTURE_ATLAS
+1560: #endif // EQT_HAS_TEXTURE_ATLAS
+```
+
+**The region boundaries are exactly 923 and 1560.** Neither cut (919, 1562) lands
+inside it: 919 precedes the `#ifdef`, 1562 follows the `#endif`.
+
+⚠ **One §Measured omission, not a defect but worth recording.** §Measured's
+file-scope grep pattern (`^static |^struct |…`) cannot see the file's **three
+namespace-scope free functions** — `heightToColor` (43), `normalToColor` (67),
+`estimateMeshSizeBytes` (79) — because their definitions begin `irr::video::…` /
+`size_t`. They are **not** file-local: all three are **declared in
+`include/client/graphics/eq/zone_geometry.h`** (lines 202, 203, 211) and
+`estimateMeshSizeBytes` has an external consumer in
+`src/client/graphics/renderer_zone_draw.cpp:1142`. **`heightToColor` is called at
+line 1531, inside `buildAtlasedMesh`** — i.e. across this unit's cut. That is
+safe precisely because it is header-declared, and the new TU carries the header
+include; no promotion, no internal header. Had it been `static`, this split would
+have been J08's defect. **Plans should grep for namespace-scope free functions,
+not only `^static`.**
+
+### 3. Correction 21 — re-derived, not cited
+
+`grep -n '^static \|^struct \|^namespace\s*{\|^const \|^constexpr '`:
+
+```
+926:struct TessVertex {
+933:struct TessTriangle {
+937:static TessVertex lerpVertex(const TessVertex& a, const TessVertex& b, float t) {
+954:static std::vector<TessVertex> clipPolygon(const std::vector<TessVertex>& poly,
+988:static void fanTriangulate(const std::vector<TessVertex>& poly, std::vector<TessTriangle>& out) {
+1004:static std::vector<TessTriangle> splitTriangleToUVCells(const TessVertex& v0,
+```
+
+Zero anonymous namespaces. Per-symbol readers, from my own greps:
+
+| symbol | def | every reader | range holding defn | range holding readers | same? |
+|---|---|---|---|---|---|
+| `TessVertex` | 926 | 934, 937, 954, 957, 988, 1004, 1005, 1006, 1020, 1026, 1039, 1156, 1157, 1158 | 919-1561 | 919-1561 | ✅ |
+| `TessTriangle` | 933 | 988, 991, 1004, 1050, 1080 | 919-1561 | 919-1561 | ✅ |
+| `lerpVertex` | 937 | 980 | 919-1561 | 919-1561 | ✅ |
+| `clipPolygon` | 954 | 1028, 1029, 1041, 1042 | 919-1561 | 919-1561 | ✅ |
+| `fanTriangulate` | 988 | 1052 | 919-1561 | 919-1561 | ✅ |
+| `splitTriangleToUVCells` | 1004 | 1159 (inside `buildAtlasedMesh`) | 919-1561 | 919-1561 | ✅ |
+
+External sweep over `src/ include/ tests/` excluding `zone_geometry.cpp`
+returned **nothing** (grep exit 1) — all six are genuinely file-local.
+
+**Confirming the two-not-three call, independently.** The six entities span
+926-1055 and their only consumer chain terminates in `buildAtlasedMesh`
+(1061-1559) at line 1159. Both sit inside the single `#ifdef` at 923-1560.
+**A third TU could only be cut inside that region**, which would (a) orphan four
+`static` functions from their sole consumer — J08's defect exactly — and (b)
+break the `#ifdef`/`#endif` pair. There is no third legal cut. **Two TUs is not a
+conservative choice here; it is the only one.** The unsplit region is 638 lines,
+and the resulting 696-line TU has 804 lines of headroom, so nothing is bought by
+trying.
+
+### 4. Comment depth at every cut — computed, not asserted
+
+Using the `//`-stripping counter from §Correction 33:
+
+```
+depth after line 918  = 0
+depth after line 919  = 0
+depth after line 1561 = 0
+depth after line 1562 = 0
+```
+
+Total `/*` occurrences in the file: **0**. Depth is 0 everywhere by construction.
+
+### 5. Cut boundaries at my tip, with neighbours
+
+Cut **919** (915-925):
+```
+915:              mesh->getMeshBufferCount() > 0 ? mesh->getMeshBuffer(0)->getVertexCount() : 0);
+916:    return mesh;
+917: }
+918:
+919: // ============================================================================
+920: // Pre-Tessellation: Split triangles at integer UV boundaries
+921: // ============================================================================
+922:
+923: #ifdef EQT_HAS_TEXTURE_ATLAS
+```
+Blank at 918 whose predecessor 917 closes `buildCompositeMesh`. J03's rule
+satisfied exactly.
+
+Cut **1562** (1556-1566):
+```
+1556:             totalBuffers, pageBuckets.size(), fallbackTriangles.size());
+1557:
+1558:    return mesh;
+1559: }
+1560: #endif // EQT_HAS_TEXTURE_ATLAS
+1561:
+1562: // ============================================================================
+1563: // Performance: Lazy Texture Loading (Phase 3)
+1564: // ============================================================================
+```
+As the plan warned, the predecessor is an `#endif`, not a `}`.
+
+### 6. ⚠ Item 12 — where the `#endif` went
+
+**`#endif // EQT_HAS_TEXTURE_ATLAS` (original 1560) and the blank at 1561 are
+both in `zone_geometry_atlased.cpp`**, at its lines 693 and 694. Verified by the
+per-TU preprocessor dumps:
+
+```
+zone_geometry_atlased.cpp:   20: #ifdef EQT_HAS_TEXTURE_ATLAS
+                             22: #endif
+                             56: #ifdef EQT_HAS_TEXTURE_ATLAS
+                            693: #endif // EQT_HAS_TEXTURE_ATLAS
+zone_geometry.cpp:            8: #ifdef EQT_HAS_TEXTURE_ATLAS
+                             10: #endif
+```
+
+**Both files are balanced** — 2 pairs in the atlas TU, 1 pair in the stays TU,
+and no unmatched directive in either.
+
+⚠ **`grep -c 'EQT_HAS_TEXTURE_ATLAS'` is NOT a matched-pair check and the plan's
+item 12 should not ask for it.** It returns **3** for the atlas TU and **1** for
+the stays TU, because the bare `#endif` at original line 8 carries no trailing
+comment. The counts are *asymmetric by construction* and would read as an
+unbalanced fence to anyone taking them at face value. **The `awk` preprocessor
+dump above is the correct check** and is what this Review certifies on.
+
+### 7. File-header comment lines written — every one, enumerated
+
+`zone_geometry_atlased.cpp` lines 1-14 (then a blank at 15):
+```
+ 1: // zone_geometry_atlased.cpp -- the texture-atlas half of ZoneMeshBuilder.
+ 2: //
+ 3: // J32 (Batch J, file-size reclamation) lifted this out of zone_geometry.cpp
+ 4: // verbatim. It holds the whole feature-conditional region that the atlas macro
+ 5: // fences off in the original file, and that region MUST NOT be split further:
+ 6: // six file-local entities (two tessellation structs and four static helpers)
+ 7: // live inside it together with their only consumer, so any cut between them
+ 8: // leaves undeclared statics -- and, because the conditional is on in the
+ 9: // default configuration, a mismatched fence would still compile here and break
+10: // only where the feature is off.
+11: //
+12: // buildAtlasedMesh is 499 lines. It is a recorded Batch-G decomposition
+13: // candidate that J32 deliberately did not touch: this is a move-only commit.
+```
+
+`zone_geometry.cpp` lines 1-2:
+```
+1: // Part 1 of 2: the non-atlased ZoneMeshBuilder path. The texture-atlas
+2: // conditional region and buildAtlasedMesh live in zone_geometry_atlased.cpp (J32).
+```
+
+**Sixteen new lines total (14 + 2), all `//` or blank. No other comment in either
+file was changed.**
+
+**Correction 40/42 compliance:** neither header spells out a token any
+text-scanning test greps for. The header describes the atlas macro *in words*
+("the atlas macro", "the feature-conditional region") rather than writing the
+macro name, so the per-TU directive counts above stay a faithful picture of the
+fence structure. No first-person token appears in either file — see §14.
+
+⚠ **Correction 30 did NOT fire.** The atlas TU's body already ends on the
+original's blank line 1561, so appending the two namespace closes produced no
+double blank. Same outcome J31 reported.
+
+### 8. Both content proofs, plus the region proof
+
+All three run against `$BASE = 2498c3a5…`.
+
+**(a) Byte-identical, seam-aware, three-segment re-concatenation** — assembled as
+`zone_geometry.cpp[37..920]` + `zone_geometry_atlased.cpp[52..694]` +
+`zone_geometry.cpp[921..996]`, i.e. original `35-918`, `919-1561`, `1562-1637`
+**in that order, third segment from the stays TU's tail**:
+```
+1603 orig_body.txt
+1603 reconcat.txt
+cmp -> BYTE_PROOF_EXIT=0
+```
+**1,603 lines, `cmp` exit 0**, exactly as the plan predicted. The naive
+`cat stays atlased` order was never attempted; the discontiguity was handled up
+front, so J08's seam failure did not recur.
+
+**(b) Line multiset** — `sort` of the same two sides:
+```
+diff before.txt after.txt -> MULTISET_EXIT=0
+```
+
+**(c) The whole conditional region, byte for byte** — original 923-1560 against
+`zone_geometry_atlased.cpp` 56-693:
+```
+diff -> IFDEF_PROOF_EXIT=0
+```
+**638 lines, exit 0.** The 499-line `buildAtlasedMesh` and all six file-local
+entities survived verbatim.
+
+### 9. Verifier
+
+```
+BASE=2498c3a5354a7df86d9126e31a3acb787af1664c
+python3 scripts/refactor/verify_move_only.py "$BASE..HEAD" \
+    --repo /mnt/projects/fable/wt/slot1
+```
+Run **after** committing, **with** `--repo`, **from the fork point**. Result
+pasted in §Verifier output below. **Prediction was EXIT 0, +0/-0 substantive —
+and it held exactly.** The derivation was sound: the copied preamble is 100%
+`#include`/`#ifdef`/`#endif`/`//`/blank, there is no `extern`, `typedef` or
+file-scope definition in it, and correction 36's hazard (an out-of-class static
+member definition in the preamble, `daybreak_connection.cpp`'s shape) does not
+apply here — grepped and absent.
+
+### 10. Final counts
+
+| file | lines | `ZoneMeshBuilder::` methods | other defs |
+|---|---|---|---|
+| `src/client/graphics/eq/zone_geometry.cpp` | **996** | **13** | 3 namespace-scope free functions (`heightToColor`, `normalToColor`, `estimateMeshSizeBytes`) |
+| `src/client/graphics/eq/zone_geometry_atlased.cpp` | **696** | **1** (`buildAtlasedMesh`) | 2 structs + 4 `static` free functions |
+| total | 1,692 | 14 | — |
+
+`check_file_sizes.sh --files`: **2 ok, 0 warn, 0 fail.**
+
+**Predicted-vs-actual, and two record errors in the plan:**
+
+- **Line counts land exactly on the plan's arithmetic plus the header lines it
+  prescribes.** 994 + 2 = **996**; 681 + 15 (14 comment + 1 blank) = **696**.
+  ⚠ Note the plan's arithmetic line says `34 + 643 + 2 = 679` for the atlas TU
+  while its own §The split table says **681** — the 679 figure **omits the two
+  namespace OPEN lines**, which the TU obviously needs. 681 is right; the
+  sentence is wrong. Trivial, but it is the kind of off-by-two that correction 20
+  says will be blamed on a dropped range.
+- ⚠ **§Review-must-answer item 9 predicts a 12 / 2 method split. The correct
+  answer is 13 / 1.** Only `buildAtlasedMesh` is inside 919-1561; the other
+  thirteen (`ZoneMeshBuilder` ctor, `buildMesh`, `buildColoredMesh`,
+  `loadTextureFromBMP`, `buildTexturedMesh`, `buildTexturedMeshFromUploaded`,
+  `buildCompositeMesh`, `registerLazyTexture`, `getOrLoadTexture`, `hasTexture`,
+  `registerUploadedTexture`, `setConstrainedTextureCache`, `clearTextureCache`)
+  all stay. `hasTexture` (1607) and `setConstrainedTextureCache` (1626) sit in
+  the 1562-1637 tail, which is presumably where the miscount came from — they are
+  not listed in §The split's tail row either.
+
+Banners: 9 (stays) + 7 (atlas) = **16** = the original 13 + the 3 replicated with
+the UV-notes preamble block. `grep -cE`, per correction 28.
+
+### 11. CMake — TWELVE add-sites, all confirmed
+
+⚠ **The dispatch brief said SEVEN. It is TWELVE**, exactly as this plan and
+correction 39 say. Seven is J29's/J35's figure — the same mis-transcription
+class as J31's brief (which was handed J32's twelve). **Count them yourself; the
+brief is not the record.**
+
+Nine in the root `CMakeLists.txt` (line numbers drifted +2..+8 from the plan's,
+targets identical — re-derived by scanning backwards for the enclosing
+`ADD_EXECUTABLE`/`SET`):
+
+| plan line | my line | target |
+|---|---|---|
+| 451 | **453** | `SET(GRAPHICS_SOURCES` (opens 441) |
+| 811 | **817** | `ADD_EXECUTABLE(model_viewer` (804) |
+| 950 | **956** | `ADD_EXECUTABLE(s3d_dump` (944) |
+| 1010 | **1016** | `ADD_EXECUTABLE(entity_composite_builder` (1004) |
+| 1195 | **1201** | `ADD_EXECUTABLE(generate_surface_map` (1189) |
+| 1256 | **1262** | `ADD_EXECUTABLE(zone_line_editor` (1250) |
+| 1667 | **1673** | ⚠ `ADD_EXECUTABLE(gles2_zone_benchmark` (1652) — the visual-gate binary |
+| 1791 | **1797** | `ADD_EXECUTABLE(gles2_shader_diagnostic` (1782) |
+| 1877 | **1883** | `ADD_EXECUTABLE(gles2_composite_audit` (1868) |
+
+Three in `tests/cmake/` fragments (correction 26 — `tests/CMakeLists.txt` was
+never named):
+
+| file:line | target |
+|---|---|
+| `tests/cmake/graphics.cmake:33` | `ADD_EXECUTABLE(test_graphics` (20) |
+| `tests/cmake/graphics.cmake:110` | `ADD_EXECUTABLE(test_asset_loading` (99) |
+| `tests/cmake/zone_integration.cmake:58` | `ADD_EXECUTABLE(test_door_loading` (47) |
+
+All twelve edited (`grep -c zone_geometry_atlased`: 9 / 2 / 1). The
+`gles2_zone_benchmark` site was hit and **the visual gate passed at the RENDER
+step**, which is the observable proof it was not missed.
+
+⚠ **A GREP TRAP WORTH BOARDING, NEW.** My first sweep was
+`grep -rn -i 'zone_geometry' --include='CMakeLists.txt' --include='*.cmake' <repo>`
+and it returned **only the three `tests/cmake/` hits — the root `CMakeLists.txt`
+did not match, silently.** A direct `grep -n 'zone_geometry' <repo>/CMakeLists.txt`
+returns all nine. This host's `grep` is `ugrep`-backed (see the standing
+`\|`-is-literal note), and `-r` + `--include` on a directory argument evidently
+does not consider the directory's own top-level `CMakeLists.txt` the way GNU grep
+does. **Had I trusted that one command I would have found 3 of 12 and it would
+have looked complete** — the same shape as correction 26's failure, from a
+different cause. **Always grep the root `CMakeLists.txt` by NAME as well as
+recursing.**
+
+### 12. `tests/` and `scripts/` — both greps, pasted
+
+```
+$ grep -rn 'zone_geometry' tests/ scripts/
+tests/test_door_loading.cpp:24:#include "client/graphics/eq/zone_geometry.h"
+tests/test_palette_mask_plumbing.cpp:39:#include "client/graphics/eq/zone_geometry.h"
+tests/test_inventory_model_view.cpp:116:        // cache for ..." — zone_geometry.cpp:273). This is a real
+tests/test_wld_conversions.cpp:239:    //   - Y/Z swap: pos.Y = z, pos.Z = y (zone_geometry.cpp, the
+tests/cmake/graphics.cmake:33, :110, tests/cmake/zone_integration.cmake:58
+```
+Two `#include` of the **header** (unaffected — no header change) and **two
+comment-only citations**. Zero functional text readers. `scripts/` returns
+nothing.
+
+```
+$ grep -hn 'kRoot / "src\|kRoot / "include' tests/*.cpp | sort -u
+```
+17 lines, listing `eq.h`, `renderer_event_receiver.cpp`,
+`renderer_frame_render.cpp`, `renderer_intents.h`, `eq_bridge_intents.cpp`,
+`event_bus.h`, `action_dispatcher.h`, the three `action_dispatcher*.cpp`,
+`renderer_command_catalog.cpp`, `renderer_frame_input.cpp`, plus `kGraphicsDir`.
+**`zone_geometry.cpp` is not among them. No repoint needed** — the plan's record
+was right in both directions.
+
+⚠ **Doc rot, recorded not acted on (correction 24, correction 10).** The two
+comment citations were checked **at my base commit**:
+- `tests/test_inventory_model_view.cpp:116` cites `zone_geometry.cpp:273` for a
+  texture-cache log string. **Line 273 at the base is inside
+  `loadTextureFromBMP` and is not that string** — already stale before this
+  split, pre-existing rot, J21's successor pass.
+- `tests/test_wld_conversions.cpp:239` cites the file with no line number and
+  refers to the Y/Z swap in the mesh builders, which **stayed** in
+  `zone_geometry.cpp`. **Still accurate after the split.**
+
+**No citation was made wrong by J32.** `docs/module_map.md` needs one new row for
+`zone_geometry_atlased.cpp` — **recorded, not acted on** (out of territory).
+
+### 13. `test_first_person_camera_single_formula.cpp` — pasted
+
+```
+$ grep -n 'CameraMode::FirstPerson\|camera_->setPosition(\|camera_->setTarget(\|kFirstPerson\|firstPersonM\|firstPersonV\|computeFirstPersonCamera' \
+      src/client/graphics/eq/zone_geometry.cpp
+(no output, exit 1)
+$ ... zone_geometry_atlased.cpp
+(no output, exit 1)
+```
+
+`zone_geometry_atlased.cpp` enters the recursive `kGraphicsDir` sweep
+automatically (it is under `src/client/graphics/`), and **matches none of the
+sweep's tokens**, so it is invisible to both Part 1 (the `FirstPerson` +
+`camera_->set*` offender check) and Part 2 (the at-most-one-reader tunable
+count). **No test file was edited.** Confirmed empirically: `ctest` ran the
+suite green.
+
+### 14. Acceptance results
+
+| step | result |
+|---|---|
+| `cmake --build build -j24` | **EXIT 0** (`BUILD_EXIT` captured to a unit-private exit file, read back as `0`). ~19 min under three-slot wave load. **No exit 143**, so no truncation risk — the `readelf -h` scan over `build/bin/*` was run anyway and reported **zero BAD**. |
+| `scripts/build-gles2-x86.sh` | **EXIT 0**, ~11 min. **Run BEFORE `ctest`** — see below. |
+| `ctest --test-dir build -j6` | **3506 / 3507 passed.** Sole failure `AudioManagerTest.PreloadCommonSounds` — the documented ALSA host quirk, and the only expected failure. `refactor/test_baseline.txt` lists no other. **Zero new failures.** 17 skips, all pre-existing. |
+| **visual gate** | **PASS** (in-suite `visual_gate`, test #3504, 40.42 s). |
+| goldens | `git status --porcelain` after the whole bar lists exactly **5 paths**: the two source files and the three CMake files. **No golden touched.** |
+| `scripts/build-arm-noble.sh` | **EXIT 0**, ~9 min. |
+| `check_file_sizes.sh --files` | **2 ok, 0 warn, 0 fail.** |
+
+⚠ **CORRECTION 41 — WHICH ORDERING I USED. I fixed the ORDER: I ran
+`scripts/build-gles2-x86.sh` to completion (exit 0) BEFORE launching `ctest`,
+rather than re-running the gate standalone afterwards.** Evidence the gate was
+not vacuous: `build-gles2/bin/gles2_zone_benchmark` was stamped **13:40** by that
+build, and `ctest` was launched **after** its exit file appeared. **The in-suite
+gate run therefore exercised a binary built from this unit's split**, including
+the `gles2_zone_benchmark` add-site. No standalone re-run was needed.
+
+The gate passing at the **render** step is the specific evidence that the
+`CMakeLists.txt:1673` add-site was not missed — the failure mode the plan warned
+reads like a behaviour change. No CPU-p95 near-miss was observed either, despite
+the wave.
+
+**Wall clock ~55 min**, slowest step `cmake --build -j24` at ~19 min. **Wave
+concurrency stretched the tail substantially** — J01's solo figures were ~4 min
+for the main build and ~4 min for gles2; both roughly tripled here, and `ctest
+-j6` took 226 s against J01's 180 s. **This matches §Scheduling's warning and is
+not an anomaly** (correction 14).
+
+### 15. Deviations
+
+**None.** The plan was executed exactly: two TUs, move-only, no header change, no
+decomposition, no include trimming, no reordering, no deletion. The only content
+added anywhere is the sixteen enumerated comment lines and the twelve CMake
+lines.
+
+### 16. Findings for the template
+
+1. ⚠ **NEW GREP TRAP (§11):** `grep -rn --include='CMakeLists.txt' <dir>` **does
+   not match `<dir>/CMakeLists.txt` on this host**. Found 3 of 12 add-sites and
+   looked complete. Same failure shape as correction 26, different cause. **Grep
+   the root file by name.**
+2. ⚠ **`grep -c '<MACRO>'` is not a matched-pair check (§6).** Item 12 asks for
+   one and it necessarily reports asymmetric counts here (3 vs 1) because one
+   `#endif` carries no trailing comment. Replace with the `awk` directive dump.
+3. ⚠ **§Measured's file-scope grep misses namespace-scope free functions (§2).**
+   Three of them exist in this file, one is called across the cut, and it is only
+   safe because the header declares it. A `static` in that position would have
+   been J08's defect and **the audit pattern would not have seen it.**
+4. **Item 9's 12/2 method prediction is wrong; it is 13/1 (§10)**, and §The
+   split's tail row omits `hasTexture` and `setConstrainedTextureCache`.
+5. **§The split's `34 + 643 + 2 = 679` omits the two namespace opens (§10);**
+   the table's 681 is correct.
+6. **The dispatch brief's add-site count was wrong for the second unit running
+   (§11)** — J31 got J32's twelve, J32 got J29's seven. **The plan file, not the
+   brief, is the record.**
+7. **The plan's two-not-three reasoning is correct and independently confirmed
+   (§3):** there is no legal third cut. Recorded so it is not re-litigated.
+8. `docs/module_map.md` needs a row for `zone_geometry_atlased.cpp`. **Recorded,
+   not acted on** — out of territory.
+9. `buildAtlasedMesh` (499 lines) remains a Batch-G candidate, flagged in the new
+   TU's header. **696-line TU, 804 lines of headroom — no ceiling problem**,
+   same disposition as correction 34's for J33.
+
+### Verifier output (run after committing `27885052`, with `--repo`, from the fork point)
+
+```
+BASE=2498c3a5354a7df86d9126e31a3acb787af1664c
+$ python3 scripts/refactor/verify_move_only.py "$BASE..HEAD" \
+      --repo /mnt/projects/fable/wt/slot1
+
+Non-C++ files changed (not verified, review separately):
+  CMakeLists.txt
+  refactor/J32_zone_geometry_split.md
+  tests/cmake/graphics.cmake
+  tests/cmake/zone_integration.cmake
+
+Files verified: 2
+Boilerplate: +51 / -0 lines (allowed)
+
+PASS: move-only (modulo boilerplate).
+VERIFIER_EXIT=0
+```
+
+**EXIT 0, ZERO substantive lines added or removed — the prediction held exactly,
+and there is nothing to enumerate or sign off.** The 51 allowed boilerplate
+additions are the replicated preamble and structure, all `#include` / `#ifdef` /
+`#endif` / `//` / `namespace` / bare `}`: 14 includes with the conditional pair,
+the 18-line UV-notes comment block, the two namespace opens, the two namespace
+closes, and the 16 new comment lines enumerated in §7. **Nothing beyond the
+predicted set appeared, so no §Process step-4 / correction-5 sign-off is owed.**
+
+New file mode is **100644** (`chmod 644` applied before `git add`; the commit
+records `create mode 100644`) — J01's spurious mode change did not recur.
