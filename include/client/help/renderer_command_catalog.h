@@ -16,7 +16,7 @@
 //
 // DRIFT GUARD: the if/else chain is still the dispatcher; this table is not
 // derived from it at compile time. tests/test_merged_help.cpp parses
-// irrlicht_renderer.cpp's `cmd == "/name"` literals and asserts the two
+// renderer_slash_commands.cpp's `cmd == "/name"` literals and asserts the two
 // sets are identical, so adding a branch without a catalog entry (or the
 // reverse) fails the suite rather than silently drifting.
 

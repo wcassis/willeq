@@ -829,8 +829,8 @@ public:
     void createEntityRenderer();
 
     // T124: idempotent guard-registration helpers, defined in
-    // renderer_zone_merge.cpp (not here -- irrlicht_renderer.cpp is at the
-    // check_file_sizes.sh budget). ensureBoidsTextureGuard() is safe to
+    // renderer_zone_merge.cpp (not here -- irrlicht_renderer.cpp was at the
+    // check_file_sizes.sh budget when this was written). ensureBoidsTextureGuard() is safe to
     // call from either of boidsManager_'s two lazy-construction sites. See
     // DoorTextureGuard/BoidsManager::swapEvictedTexture()'s doc comments
     // for the gaps these close.
@@ -1706,7 +1706,7 @@ private:
     // initLoadingScreen() alongside the placeholder-resolving guards above
     // ONLY if doorManager_ already exists at that point; otherwise
     // constructed lazily the first time doorManager_ itself is (see
-    // irrlicht_renderer.cpp, both sites). See renderer_zone_merge.h's
+    // renderer_init.cpp and renderer_zone_load_objects.cpp, both sites). See renderer_zone_merge.h's
     // DoorTextureGuard doc comment.
     std::unique_ptr<DoorTextureGuard> doorTextureGuard_;
 
@@ -2261,7 +2261,7 @@ public:
     // appearance changed too, so the doll should re-render next time it's
     // visible. Safe to call even if the doll doesn't exist yet or the
     // popup is closed (no-op in both cases). Out-of-line (defined in
-    // irrlicht_renderer.cpp): CharacterModelView is only forward-declared
+    // renderer_hud_env.cpp): CharacterModelView is only forward-declared
     // here, and this header is included by TUs that don't otherwise need
     // its full definition.
     void markPaperdollDirty();
@@ -2411,7 +2411,7 @@ private:
         }
         void OnPostRender() override {}
         void OnRenderPassPreRender(irr::scene::E_SCENE_NODE_RENDER_PASS renderPass) override;
-        // Implementation in irrlicht_renderer.cpp (needs access to IrrlichtRenderer)
+        // Implementation in renderer_zone_draw.cpp (needs access to IrrlichtRenderer)
         void OnRenderPassPostRender(irr::scene::E_SCENE_NODE_RENDER_PASS renderPass) override {
             auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::steady_clock::now() - passStart_).count();

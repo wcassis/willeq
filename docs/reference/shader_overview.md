@@ -131,7 +131,7 @@ Also has a derivatives variant with the same adaptive threshold as AlphaTest3D.
 
 ## 3. Zone Shader Manager (`ZoneShaderManager`)
 
-**Files:** `include/client/graphics/zone_shader.h` + `src/client/graphics/zone_shader.cpp`
+**Files:** `include/client/graphics/zone_shader.h` + `src/client/graphics/zone_shader.cpp`. Since J09 (2026-09-02) the source strings and the callbacks live in three private headers included only by that .cpp: `zone_shader_sources_gles2.h`, `zone_shader_sources_gl.h`, `zone_shader_callbacks.h`.
 
 Custom Irrlicht materials registered via `addHighLevelShaderMaterial()`. These extend the built-in programs with per-pixel player lighting, wind animation, and an active material switching system. Each backend (GLES2 / desktop GL) has its own complete set of shader source strings, selected at compile time.
 

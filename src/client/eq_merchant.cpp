@@ -707,7 +707,7 @@ void EverQuest::SetupTradeManagerCallbacks()
 	// T103: each lambda below now ALSO writes the same data directly into
 	// m_game_state.trade() (EverQuest's OWN GameState instance), same-thread,
 	// synchronous -- mirroring how SyncEntityToGameState() already writes
-	// m_game_state.entities() directly (eq_player_info.cpp:261) rather than
+	// m_game_state.entities() directly (GetMaxWeight, eq_player_info.cpp) rather than
 	// only through the cross-thread bridge. This is what EqActionHandler
 	// reads (m_eq.GetGameState().trade()); the bridge events these lambdas
 	// already pushed are, separately, what GameStateSyncBridge now also
@@ -1006,7 +1006,8 @@ void EverQuest::ZoneProcessLootedItemToInventory(const EQ::Net::Packet &p)
 	// This is called when an item is being looted from a corpse to inventory
 	// The item packet format is the same as ZoneProcessLootItemToUI
 
-	// T42: processItemPacket() is the same choke point the generic eq.cpp
+	// T42: processItemPacket() is the same choke point the generic
+	// eq_zone_dispatch.cpp
 	// ItemPacket fallback uses for vendor-buy/bank-window placement; publish
 	// InventorySlotChanged here too (not one of T41's three named paths, but
 	// the same gap -- a looted item landing in inventory never told the UI

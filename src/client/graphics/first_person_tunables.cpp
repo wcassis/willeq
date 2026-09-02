@@ -1,7 +1,7 @@
 // T310 Leg A -- the /fpcam command's text half: name lookup, parsing,
 // formatting. See include/client/graphics/first_person_tunables.h.
 //
-// WHY THIS IS ITS OWN TU AND NOT MORE OF irrlicht_renderer.cpp: that file is
+// WHY THIS IS ITS OWN TU AND NOT MORE OF irrlicht_renderer.cpp: that file was
 // the ONE sanctioned home of the first-person camera formula
 // (tests/test_first_person_camera_single_formula.cpp), it is already enormous,
 // and none of this needs a camera. The /fpcam arm over there is a five-line
@@ -227,7 +227,7 @@ std::vector<std::string> FormatFirstPersonPoseDump(const FirstPersonPoseSample& 
 
 // ------------------------------------------------------------------------
 // The command's text half. `dump` is NOT handled here -- it needs the live
-// camera and is answered in irrlicht_renderer.cpp.
+// camera and is answered in renderer_camera.cpp (J11).
 // ------------------------------------------------------------------------
 std::vector<std::string> FirstPersonTunablesCommandLines(const std::string& args) {
     std::vector<std::string> out;

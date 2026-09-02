@@ -4,8 +4,13 @@
 // --composite-entities directory. The shipped layout puts the sheet JSONs
 // beside the packs in the ETC1 tree, so that scan mapped all 1506 packs /
 // 4.44 GiB to reach the handful of sheets a zone's races use. On the 32-bit
-// ARM Pi that is T195's address-space exhaustion (mmap, not RAM) -- the
-// reason composite entities are off there (T198, decision #3).
+// ARM Pi that scan was T195's address-space exhaustion (mmap, not RAM).
+//
+// That exhaustion is no longer the reason composite entities are off on the
+// orangepi preset: T284 removed the scan and T289 measured VmPeak 3,128 MB ->
+// 575 MB on the Pi. They stay off for their resident cost -- see
+// docs/decisions.md 2026-08-27, "Composite entities stay OFF on the
+// orangepi". Do not cite the T195/T198 rationale again.
 //
 // Two guards, at the two levels the fix lives at:
 //

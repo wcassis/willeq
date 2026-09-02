@@ -292,7 +292,7 @@ TEST(SpellbookFreeSlot, SkipsOccupiedSlots) {
 
 TEST(SpellbookFreeSlot, ZeroCountsAsEmptyLikeTheSentinel) {
     // The PlayerProfile spellbook uses BOTH 0 and 0xFFFFFFFF for "empty" --
-    // eq.cpp's own scribed-count loop skips both.
+    // the client's own scribed-count loop (eq_zone_entry.cpp) skips both.
     EQ::SpellManager mgr(nullptr);
     std::array<uint32_t, EQ::MAX_SPELLBOOK_SLOTS> book;
     book.fill(EQ::SPELL_UNKNOWN);

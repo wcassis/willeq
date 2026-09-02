@@ -524,7 +524,7 @@ TEST(LoginWorldRobustness, LoginProcessLoginResponse_ExactlyHeaderLength_Returns
 //
 // In production this is very likely unreachable: m_login_connection_manager
 // is only ever non-null once LoginOnPacketRecv's callback has been wired to
-// it (eq.cpp:250-254), and m_login_connection is set synchronously inside
+// it (EverQuest::ConnectToLogin, eq.cpp), and m_login_connection is set synchronously inside
 // Connect() before any packet could arrive on it -- so by the time
 // DispatchLoginPacket runs via the real network path, both are already
 // set. This appears to be a gap specific to replaying a login sequence

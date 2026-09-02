@@ -287,7 +287,8 @@ TEST_F(TextureLoadingTest, DXT5SixAlphaPlusExtremes) {
 
 // Test material type masking
 TEST_F(TextureLoadingTest, MaterialTypeMasking) {
-    // Both eqsage (material.js:82) and willeq (wld_loader.cpp:277)
+    // Both eqsage (material.js:82) and willeq
+    // (WldLoader::parseFragment30, wld_fragments_material.cpp since J05)
     // mask with ~0x80000000 to extract material type
 
     uint32_t parameters = 0x80000001;  // High bit set + diffuse type
@@ -303,7 +304,8 @@ TEST_F(TextureLoadingTest, MaterialTypeMasking) {
 
 // Test animation flags
 TEST_F(TextureLoadingTest, AnimationFlags) {
-    // eqsage (bitmap-info.js:3-8) and willeq (wld_loader.cpp:234)
+    // eqsage (bitmap-info.js:3-8) and willeq
+    // (WldLoader::parseFragment04, wld_fragments_material.cpp since J05)
 
     uint32_t flags = FLAG_ANIMATED | FLAG_HAS_SLEEP;  // 0x18
 

@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Additional context is in subdirectory CLAUDE.md files:
 - `src/client/graphics/CLAUDE.md` - Rendering, shaders, GLES2, zone loading, performance
 - `include/client/graphics/ui/CLAUDE.md` - Static UI panels, key bindings, slash commands
-- `include/client/state/CLAUDE.md` - Game state modules, EventBus, 96 event types
+- `include/client/state/CLAUDE.md` - Game state modules, EventBus, 97 event types
 - `include/client/bridge/CLAUDE.md` - Event/intent bridge, thread-safe game↔renderer communication
 - `src/client/input/CLAUDE.md` - Input handlers, hotkey manager, command processor, action dispatch
 - `src/client/audio/CLAUDE.md` - Audio system, sound categories, audio tests
@@ -15,7 +15,7 @@ Additional context is in subdirectory CLAUDE.md files:
 ## Orientation (read before large tasks)
 
 - `docs/decisions.md` — standing architecture decisions. Settled; do not re-litigate.
-- `docs/module_map.md` — functional map of the oversized files (eq.cpp, irrlicht_renderer.cpp). Consult it instead of scanning those files.
+- `docs/module_map.md` — functional map of every split translation unit (EverQuest, Application, CommandProcessor, InventoryManager, IrrlichtRenderer, EntityRenderer, WLDLoader, SimulationWorker, ZoneShader, tests/cmake). Consult it to find the right TU instead of scanning.
 - `refactor/deferred.md` — known-open items; read its `## STATUS` block (dated, top of file) first — it carries the current tip, suite count and the open items by class. `refactor/F_file_split.md` is COMPLETE (historical); the active unit plans are `refactor/T<nn>_*.md`.
 - `refactor/testing_progress.md` — the testing session's tracker; its "Handoffs to the perf session" section is the inbound channel for cross-session handbacks. Check it (and strike items you close) when orchestrating.
 - `refactor/completed/` and most of `docs/reference/` are historical snapshots (bannered); do not trust their findings as current.
@@ -56,8 +56,9 @@ bash scripts/build-gles2-x86.sh --irrlicht-only
 
 ```bash
 # Configure (from project root) — the GLES2-config tree is now the primary
-# dev/test tree (tests on, full ctest suite, 2745/2746 passing at e70e3347 —
-# the sole known exception is the documented ALSA host quirk below)
+# dev/test tree (tests on, full ctest suite, 3506/3507 passing at 9684644f —
+# the sole known exception is the documented ALSA host quirk below; the count
+# grows constantly, do not trust it as current)
 mkdir -p build && cmake -S . -B build \
     -DEQT_GRAPHICS=ON \
     -DEQT_GLES2=ON \
@@ -263,9 +264,9 @@ Audio updates                       Zone load completion detection
 ```
 
 - **GameStateBridge** (`include/client/bridge/game_state_bridge.h`) — thread-safe queue pair using swap-vector pattern. Game thread pushes events (state changes), renderer pushes intents (user actions). D24 coalesces EntityMoved events per entity and PlayerPositionChanged intents.
-- **IrrlichtBridge** (`include/client/bridge/irrlicht_bridge.h`) — translates game events into IrrlichtRenderer calls (switch over the 96 `GameEventType` enumerators (T264: every event now has a publisher and a consumer, pinned by test_reachability_sweep))
+- **IrrlichtBridge** (`include/client/bridge/irrlicht_bridge.h`) — translates game events into IrrlichtRenderer calls (switch over the 97 `GameEventType` enumerators (T264: every event now has a publisher and a consumer, pinned by test_reachability_sweep))
 - **ConsoleBridge** (`include/client/bridge/console_bridge.h`) — logs events to console in headless mode
-- **Event types** (`include/client/state/event_bus.h`) — 96 event types covering all game state changes
+- **Event types** (`include/client/state/event_bus.h`) — 97 event types covering all game state changes
 - **Intent types** (`include/client/events/renderer_intents.h`) — 33 intent structs in the `RendererIntent` variant (T264 pruned; T268 deleted DestroyAllLootIntent -- no Titanium destroy-loot packet; pinned by test_reachability_sweep) for user actions
 
 **Key separation**: EverQuest communicates with the renderer only through the bridge — no `m_renderer` member, no `GetRenderer()` accessor. Application owns the renderer and wires it to EverQuest via bridge pointers. Player movement flows renderer→game exclusively via the `PlayerPositionChanged` intent (S2 removed the legacy synchronous callback); inventory UI state flows game→renderer exclusively via enriched `InventorySlotChanged` events; bridge payloads are typed (no `void*`). The graphics-facing game code is concentrated in `eq_bridge.cpp` (the boundary TU); `eq.cpp` itself has only two graphics includes (loading status + command registry). Remaining known seams (InitGraphics renderer parameter, asset loaders living in the `EQT::Graphics` namespace) are tracked in `refactor/deferred.md` — do not "fix" coupling ad hoc.
@@ -279,14 +280,14 @@ The client connects through three stages, each with its own connection manager:
 
 ### Core Components
 
-**Application class** (`include/client/application.h`, `src/client/application.cpp`)
+**Application class** (`include/client/application.h`, `src/client/application.cpp` + 4 `application_*.cpp` TUs, J06)
 - Top-level orchestrator — owns renderer, bridge, game thread, loading thread
 - Spawns game thread running EverQuest tick loop
 - Main thread runs render loop (or sleeps in headless mode)
 - Manages zone loading thread (GL context transfer, snapshot handoff)
 
-**EverQuest class** (`include/client/eq.h`, implementation split across `src/client/eq.cpp` + 18 `eq_*.cpp` domain TUs)
-- Game state and network logic. eq.cpp itself (3,934 lines at `e70e3347`) holds only the core: lifecycle, packet dispatcher, zone connection. Everything else (movement, entities, chat, merchant, bridge, …) lives in domain TUs — consult `docs/module_map.md` to find the right file
+**EverQuest class** (`include/client/eq.h`, implementation split across `src/client/eq.cpp` + 27 `eq_*.cpp` domain TUs)
+- Game state and network logic. eq.cpp itself (1,026 lines at `9684644f`, after J02) holds only the core: lifecycle, connection setup, the zone packet-receive callback. Everything else (the zone-stream dispatcher, zone entry, movement, entities, chat, merchant, bridge, …) lives in domain TUs — consult `docs/module_map.md` to find the right file
 - Manages all three connection stages
 - Handles entity tracking, movement, chat, combat, and doors
 - All Titanium opcodes defined as enums: `TitaniumLoginOpcodes`, `TitaniumWorldOpcodes`, `TitaniumZoneOpcodes`

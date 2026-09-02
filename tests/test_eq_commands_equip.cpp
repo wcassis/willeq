@@ -27,7 +27,8 @@
 //
 // These tests assert what the command pushed onto the bridge's intent queue
 // directly (bridge.drainIntents()) -- the SAME MoveItemIntent the inventory
-// UI's drag-and-drop gesture pushes (inventory_manager.cpp) -- rather than
+// UI's drag-and-drop gesture pushes (InventoryManager::moveItem,
+// inventory_cursor.cpp) -- rather than
 // driving all the way through ProcessBridgeIntents() -> SendMoveItem() ->
 // QueuePacket(): this unit's territory is the command's reachability into
 // the intent system, not re-verifying SendMoveItem/ZoneProcessMoveItem

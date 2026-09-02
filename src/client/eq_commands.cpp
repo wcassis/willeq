@@ -521,7 +521,8 @@ void EverQuest::RequestVendorBuy(uint32_t slot, uint8_t quantity)
 	// "buy" click pushes. From here every hop is IDENTICAL to the
 	// gesture's: the intent sits in GameStateBridge's intent queue and is
 	// drained by the same EverQuest::ProcessBridgeIntents() ->
-	// BuyFromVendor(npcId, slot, quantity) dispatch (eq_bridge.cpp:1069)
+	// BuyFromVendor(npcId, slot, quantity) dispatch (the VendorBuyIntent
+	// arm of ProcessBridgeIntents, eq_bridge.cpp)
 	// on the next GameTick(). The one hop that differs from the pre-T136
 	// game-registry path: the caller is now action::EqActionHandler,
 	// reached via action::CommandProcessor -- but both the OLD
@@ -566,7 +567,8 @@ void EverQuest::RequestVendorSell(uint32_t slot, uint8_t quantity)
 // and restart the client to get a character holding a weapon at all.
 //
 // /equip pushes the SAME MoveItemIntent{fromSlot, toSlot, quantity} the
-// inventory UI's drag-and-drop gesture pushes (inventory_manager.cpp),
+// inventory UI's drag-and-drop gesture pushes (InventoryManager::moveItem,
+// inventory_cursor.cpp),
 // drained by the same ProcessBridgeIntents() -> SendMoveItem() dispatch --
 // same maximum-fidelity choice T48/T50 made for vendor/bank. Slot ids use
 // the canonical eqt::inventory::EquipmentSlot enum/ranges

@@ -81,7 +81,8 @@ std::vector<uint8_t> PlayerProfilePayload(float server_x, float server_y, float 
 }
 
 // NewZone: char_name[64] then zone_short_name at packet offset 66, zone_id at
-// packet offset 686, safe coords at 494/498/502 (eq.cpp ZoneProcessNewZone).
+// packet offset 686, safe coords at 494/498/502
+// (ZoneProcessNewZone, eq_zone_entry.cpp).
 std::vector<uint8_t> NewZonePayload(const std::string& shortName, uint16_t zoneId,
                                     float safe_server_x, float safe_server_y, float safe_z) {
     return BuildPayload(2 + 700, [&](EQ::Net::DynamicPacket& p) {

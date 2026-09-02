@@ -44,8 +44,8 @@ enum class ChatChannel {
  * carries "what the user asked to change" rather than "what goes on the wire".
  *
  * Note for the merge site: this client parses eyecolor1/eyecolor2 nowhere it
- * keeps them (EverQuest's PlayerProfile read drops them into unused locals at
- * eq.cpp:2097-2098, and Entity has no eyecolor fields at all), so they cannot
+ * keeps them (EverQuest::ZoneProcessPlayerProfile, eq_zone_entry.cpp, drops
+ * them into unused locals, and Entity has no eyecolor fields at all), so they cannot
  * be preserved and default to 0. The handler prints the full seven-field body
  * it is about to send so nothing is changed silently.
  */
@@ -376,7 +376,7 @@ public:
     // Ported from game's Social-category handlers (eq_commands.cpp);
     // /who ported from the Social section's who_cmd, CHOSEN over
     // Movement's later-registered, intra-registry-shadowing-winner `who` --
-    // see command_processor.cpp's cmdWho for why.
+    // see command_processor_social.cpp's cmdWho for why.
     virtual void inspectTarget(uint16_t targetId) = 0;
     virtual void toggleLFG() = 0;
     virtual void setSurname(const std::string& surname) = 0;

@@ -260,8 +260,8 @@ CastResult SpellManager::beginCastFromGem(uint8_t gem_slot, uint16_t target_id)
     // waiting for the server to echo BeginCast back to us. GameStateSyncBridge
     // needs this to reconstruct casting state without polling SpellManager,
     // and the poll it replaces read this state on the very next tick after
-    // this local assignment -- deferring to the server echo (eq_player_info.cpp's
-    // ZoneProcessBeginCast) alone would add a network round-trip of latency
+    // this local assignment -- deferring to the server echo
+    // (ZoneProcessBeginCast, eq_player_buffs.cpp) alone would add a network round-trip of latency
     // the old poll never had.
     publishCastStarted(spell_id, target_id, m_cast_duration_ms);
 
@@ -1209,7 +1209,7 @@ void SpellManager::startGemCooldown(uint8_t gem_slot, uint32_t duration_ms)
 
 // T44: push SpellCastStarted for our own cast, at the moment it begins
 // locally -- see beginCastFromGem()/beginCastById() for why this can't wait
-// for the server-echoed BeginCast packet (eq_player_info.cpp also publishes
+// for the server-echoed BeginCast packet (eq_player_buffs.cpp also publishes
 // SpellCastStarted, for any caster including NPCs/other players; that one is
 // unrelated to this, driven by the packet, not local intent).
 void SpellManager::publishCastStarted(uint32_t spell_id, uint16_t target_id, uint32_t cast_time_ms) {

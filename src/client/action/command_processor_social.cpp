@@ -118,10 +118,11 @@ ActionResult CommandProcessor::cmdConsider(const std::string& args) {
 
 ActionResult CommandProcessor::cmdHail(const std::string& args) {
     // T39: m_state.combat().hasTarget() is now correct as written.
-    // Application::syncCombatState() (application.cpp) mirrors
-    // CombatManager's target into this same state::GameState instance
-    // (Application::m_gameState -- the one CommandProcessor is constructed
-    // with) every frame, keeping the decoupling T12 established: this file
+    // CombatManager writes its target into this same state::GameState
+    // instance from its own choke points (SetTarget/ClearTarget, combat.cpp)
+    // -- T39's per-frame Application::syncCombatState() poll was deleted by
+    // T104 and T227 folded the write to the source. That keeps the
+    // decoupling T12 established: this file
     // still holds only state::GameState& and ActionDispatcher&, no
     // CombatManager dependency was added. See refactor/deferred.md "Dead
     // parallel state copies in the state layer, WITH LIVE READERS" for the
@@ -381,11 +382,12 @@ ActionResult CommandProcessor::cmdGroupAccept(const std::string& args) {
 // same change -- see refactor/T102_migrate_combat_social.md's atomicity
 // section). Unlike Group's GameStateSyncBridge gap (T99) or Trade's total
 // absence of a GameState projection (see cmdTrade below), combat targeting
-// IS reliably live here: m_state.combat() is kept current by
-// Application::syncCombatState() (application.cpp), a per-frame
-// CombatManager poll that predates GameStateSyncBridge and is unrelated to
-// it -- the same read path cmdHail (T39) already uses. Checked by reading
-// syncCombatState() in full before writing any of the code below.
+// IS reliably live here: m_state.combat() is kept current by CombatManager
+// itself, from SetTarget/ClearTarget (combat.cpp) -- the same read path
+// cmdHail (T39) already uses. When this comment was written that currency
+// came from Application::syncCombatState(), a per-frame poll unrelated to
+// GameStateSyncBridge; T104 deleted the poll and T227 moved the write to the
+// choke points. See the gravestone comment in application_zone_loading.cpp.
 
 uint16_t CommandProcessor::resolveCombatTarget(const std::string& name, std::string* outError) {
     if (!name.empty()) {

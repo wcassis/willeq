@@ -288,7 +288,8 @@ void EverQuest::ZoneProcessBuff(const EQ::Net::Packet &p)
 
 // T277: game -> renderer for ONE player buff slot. Extracted from
 // ZoneProcessBuff()'s apply branch so the PlayerProfile's zone-in buffs
-// (eq.cpp) can publish the same event through the same body -- before this
+// (ZoneProcessPlayerProfile, eq_zone_entry.cpp) can publish the same event
+// through the same body -- before this
 // they went into BuffManager and stopped there, so the buff bar started
 // every session empty no matter what the player was actually holding.
 void EverQuest::PublishPlayerBuffUpdated(uint8_t slot, const EQT::SpellBuff_Struct& buff)

@@ -37,7 +37,7 @@ protected:
 // Test vertex scale calculation matches eqsage: 1.0 / (1 << scale)
 TEST_F(CoordinateSystemTest, VertexScaleCalculation) {
     // eqsage (mesh.js line 102): const scale = 1.0 / (1 << reader.readInt16())
-    // willeq (wld_loader.cpp line 351): float scale = 1.0f / static_cast<float>(1 << header->scale)
+    // willeq (WldLoader::parseFragment36, wld_fragments_mesh.cpp): float scale = 1.0f / static_cast<float>(1 << header->scale)
 
     // Test common scale values
     EXPECT_FLOAT_EQ(1.0f / (1 << 0), 1.0f);       // scale=0
@@ -74,7 +74,7 @@ TEST_F(CoordinateSystemTest, NormalConversion) {
     //   const y = reader.readInt8() / 128.0;
     //   const z = reader.readInt8() / 128.0;
     //   vec3.normalize(vec, vec);
-    // willeq (wld_loader.cpp lines 407-416): same calculation
+    // willeq (WldLoader::parseFragment36, wld_fragments_mesh.cpp): same calculation
 
     // Test boundary values
     EXPECT_NEAR(127 * NORMAL_SCALE, 0.9921875f, 0.0001f);   // Max positive int8
@@ -110,7 +110,7 @@ TEST_F(CoordinateSystemTest, DegenerateNormalHandling) {
 // Test UV old format: int16 / 256.0
 TEST_F(CoordinateSystemTest, UVConversionOldFormat) {
     // eqsage (mesh.js line 121): vec2.fromValues(reader.readInt16() / 256.0, reader.readInt16() / 256.0)
-    // willeq (wld_loader.cpp lines 385-386): geom->vertices[i].u = tc->u * recip256
+    // willeq (WldLoader::parseFragment36, wld_fragments_mesh.cpp): geom->vertices[i].u = tc->u * recip256
 
     // Test typical UV values
     EXPECT_NEAR(128 * UV_SCALE_OLD, 0.5f, 0.0001f);
@@ -124,7 +124,7 @@ TEST_F(CoordinateSystemTest, UVConversionOldFormat) {
 // Test UV new format: float32 directly (no conversion)
 TEST_F(CoordinateSystemTest, UVConversionNewFormat) {
     // eqsage (mesh.js line 117): vec2.fromValues(reader.readFloat32(), reader.readFloat32())
-    // willeq (wld_loader.cpp lines 394-396): tc->u used directly
+    // willeq (WldLoader::parseFragment36, wld_fragments_mesh.cpp): tc->u used directly
 
     // New format uses float32 directly - just verify identity
     float u = 0.5f, v = 0.75f;
@@ -145,7 +145,7 @@ TEST_F(CoordinateSystemTest, PolygonWindingReversal) {
     // Simulate raw polygon indices from file
     uint16_t rawIndices[3] = {0, 1, 2};
 
-    // willeq winding reversal (wld_loader.cpp lines 437-439)
+    // willeq winding reversal (WldLoader::parseFragment36, wld_fragments_mesh.cpp)
     uint16_t v1 = rawIndices[2];  // 2
     uint16_t v2 = rawIndices[1];  // 1
     uint16_t v3 = rawIndices[0];  // 0
@@ -174,7 +174,7 @@ TEST_F(CoordinateSystemTest, PolygonWindingReversal) {
 TEST_F(CoordinateSystemTest, RotationModifier) {
     // Both eqsage and willeq use: 360.0 / 512.0 = 0.703125
     // eqsage (location.js line 13): const modifier = 1.0 / 512.0 * 360.0
-    // willeq (wld_loader.cpp line 797): const float rotModifier = 360.0f / 512.0f
+    // willeq (WldLoader::parseFragment15, wld_fragments_actor.cpp): const float rotModifier = 360.0f / 512.0f
 
     EXPECT_NEAR(ROT_MODIFIER, 0.703125f, 0.0001f);
 }
@@ -186,7 +186,7 @@ TEST_F(CoordinateSystemTest, RotationConversion) {
     //   this.rotateZ = rotateY * modifier;
     //   this.rotateY = rotateX * modifier * -1;
     //
-    // willeq (wld_loader.cpp lines 798-800):
+    // willeq (WldLoader::parseFragment15, wld_fragments_actor.cpp):
     //   float finalRotX = 0.0f;
     //   float finalRotY = rawRotX * rotModifier * -1.0f;
     //   float finalRotZ = rawRotY * rotModifier;
@@ -236,11 +236,13 @@ TEST_F(CoordinateSystemTest, CoordinateSystemDocumentation) {
     //   - Winding reversal at export (lines 360-366 s3d-decoder.js)
     //
     // willeq -> Irrlicht (left-handed like EQ, DirectX UVs):
-    //   - Y/Z swap: pos.Y = z, pos.Z = y (zone_geometry.cpp:119-124)
+    //   - Y/Z swap: pos.Y = z, pos.Z = y (zone_geometry.cpp, the
+    //     `vertex.Pos.Y = v.z; vertex.Pos.Z = v.y;` sites)
     //   - NO X flip (Irrlicht is left-handed like EQ)
     //   - NO V negate (DirectX UV origin is top-left like EQ)
     //   - NO +180° rotation (Irrlicht is left-handed like EQ)
-    //   - Winding reversal at parse (wld_loader.cpp:437-439)
+    //   - Winding reversal at parse (WldLoader::parseFragment36,
+    //     wld_fragments_mesh.cpp since J05)
 
     // This test just documents the design - no assertions needed
     SUCCEED();

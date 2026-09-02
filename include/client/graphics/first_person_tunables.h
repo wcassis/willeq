@@ -218,7 +218,8 @@ bool fpTunableApplyAssignment(const std::string& assignment, std::string& error)
 bool fpTunableApplyAssignmentList(const std::string& list, std::string& error);
 
 // One resolved first-person pose, as `/fpcam dump` reports it. The renderer
-// gathers it (only irrlicht_renderer.cpp may read the camera formula --
+// gathers it (only the renderer's camera TU, renderer_camera.cpp, may read
+// the camera formula --
 // tests/test_first_person_camera_single_formula.cpp) and this header's
 // formatter turns it into lines, so the WORDING of the sweep's input format is
 // testable without a camera and does not grow the renderer's TU.

@@ -353,7 +353,8 @@ private:
 	// ProcessCombatRound target: eqemu renames the SAME entity in place
 	// on death (OP_MobRename finds it by parsing the id back out of the
 	// "...'s_corpseNNN" name and looks it up by that id -- see
-	// eq.cpp:ZoneProcessOPCode's HC_OP_MobRename case) rather than
+	// the HC_OP_MobRename case of DispatchZonePacket, eq_zone_dispatch.cpp)
+	// rather than
 	// spawning a second entity, confirmed live against T32's transcript
 	// (benchmarks/audits/T32/transcript_primary.txt: "Entity 171 became
 	// corpse: 'a_scaled_wolf_pup000' -> 'a_scaled_wolf_pup's_corpse171'"

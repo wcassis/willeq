@@ -15,7 +15,7 @@ std::string Lower(std::string s) {
 }
 
 // Order and grouping mirror IrrlichtRenderer::processSlashCommand()'s
-// if/else chain (src/client/graphics/irrlicht_renderer.cpp). Keep them in
+// if/else chain (src/client/graphics/renderer_slash_commands.cpp). Keep them in
 // sync -- the drift test in tests/test_merged_help.cpp enforces name-set
 // equality, not order.
 const std::vector<RendererCommandInfo> kCatalog = {

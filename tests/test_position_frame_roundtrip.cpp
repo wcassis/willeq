@@ -7,7 +7,7 @@
 // See refactor/T88_position_frame_determination.md's Review for the full
 // write-up. Summary of what these tests establish:
 //
-//   - Inbound (ZoneProcessPlayerProfile, eq.cpp): m_x = server_y,
+//   - Inbound (ZoneProcessPlayerProfile, eq_zone_entry.cpp): m_x = server_y,
 //     m_y = server_x (SetPosition(server_y, server_x, z)).
 //   - Outbound (SendPositionUpdate, eq_movement.cpp): x_pos = m_y,
 //     y_pos = m_x.
@@ -56,7 +56,7 @@ std::vector<uint8_t> BuildPayload(size_t totalPacketSize,
 }
 
 // Same layout as test_zone_position_convention.cpp's builder: PlayerProfile
-// position/heading fields, at eq.cpp's read offsets (server_x@13116,
+// position/heading fields, at eq_zone_entry.cpp's read offsets (server_x@13116,
 // server_y@13120, z@13124, heading@13128, all +base(=2)) -- plus the
 // entity/spawn id at offset 14384 (also +base), which test_zone_position_
 // convention.cpp's builder didn't need but SendPositionUpdate() does: it

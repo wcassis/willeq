@@ -694,7 +694,8 @@ protected:
         };
     }
 
-    // willeq's parsing in wld_loader.cpp (should match eqsageParsing exactly)
+    // willeq's parsing in wld_fragments_actor.cpp (WldLoader::parseFragment15,
+    // split out of wld_loader.cpp by J05) -- should match eqsageParsing exactly
     Rotation willeqParsing(float rawRotX, float rawRotY, float rawRotZ) {
         const float modifier = 360.0f / 512.0f;
         return {

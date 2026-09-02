@@ -29,7 +29,8 @@ void HotbarModel::assignSlot(int index, HotbarSlotType type, uint32_t id,
 
     // Resolve display name
     // T239: Emote and Macro slots are named by their command text; the
-    // resolver only knows spells and skills (eq.cpp) and returns "" for them.
+    // resolver only knows spells and skills (installed by EverQuest's ctor,
+    // eq.cpp) and returns "" for them.
     if (type == HotbarSlotType::Emote || type == HotbarSlotType::Macro) {
         slot.name = emoteText.empty() ? hotbarSlotTypeName(type) : emoteText.substr(0, 10);
     } else if (nameResolver_ && type != HotbarSlotType::Empty) {

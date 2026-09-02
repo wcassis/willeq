@@ -291,7 +291,7 @@ bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
 	animNode->setPosition(irr::core::vector3df(x, z + visual.modelYOffset, y));
 
 	// Set rotation (EQ heading to Irrlicht Y rotation)
-	// Heading arrives already in degrees (0-360) from eq.cpp 11-bit conversion
+	// Heading arrives already in degrees (0-360) from eq_entities.cpp 11-bit conversion
 	// EQ heading: 0=North(+Y), increases clockwise
 	// Irrlicht Y rotation: 0=+Z, increases counter-clockwise
 	// Must negate to convert between coordinate systems
@@ -449,7 +449,7 @@ bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
     visual.meshNode->setPosition(irr::core::vector3df(x, z + visual.modelYOffset, y));
 
     // Set rotation (EQ heading to Irrlicht Y rotation)
-    // Heading arrives already in degrees (0-360) from eq.cpp 11-bit conversion
+    // Heading arrives already in degrees (0-360) from eq_entities.cpp 11-bit conversion
     // EQ heading: 0=North(+Y), increases clockwise
     // Irrlicht Y rotation: 0=+Z, increases counter-clockwise
     // Must negate to convert between coordinate systems

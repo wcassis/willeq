@@ -12,7 +12,7 @@
 //     CLIENT format: m_pending_zone_x = wire-offset-70 (server's y),
 //     m_pending_zone_y = wire-offset-74 (server's x). This is CORRECT and
 //     matches the same convention used by the (separately verified, live)
-//     PlayerProfile handler in eq.cpp.
+//     PlayerProfile handler (ZoneProcessPlayerProfile, eq_zone_entry.cpp).
 //   - Producer B (CheckZoneLine, eq_zone.cpp): stores result.targetX/Y/Z
 //     straight through with NO swap -- confirmed live to already be in
 //     CLIENT format (sourced from the zone's own WLD-derived zone-line
@@ -121,7 +121,7 @@ std::vector<uint8_t> BuildZoneServerInfoPacket() {
 
 // T58: builds a full-size (19588 fixed body + 2-byte opcode) PlayerProfile
 // payload, populated ONLY at the fields ZoneProcessPlayerProfile's
-// position/heading block reads (eq.cpp:2148-2151 -- server_x@13116,
+// position/heading block reads (eq_zone_entry.cpp since J02 -- server_x@13116,
 // server_y@13120, z@13124, heading@13128, all offsets +base(=2)). Same idiom
 // as test_zone_connection_flow.cpp's PlayerProfile builders.
 std::vector<uint8_t> BuildPlayerProfilePayload(float server_x, float server_y, float z,
@@ -251,7 +251,7 @@ TEST(ZonePositionConvention, Consumer_AppliesPendingZoneWithoutASecondSwap) {
 }
 
 // ---------------------------------------------------------------------------
-// T55: Producer C (ZoneProcessZonePlayerToBind, eq.cpp) -- death/bind respawn.
+// T55: Producer C (ZoneProcessZonePlayerToBind, eq_player_state.cpp) -- death/bind respawn.
 //
 // T52 found this producer and confirmed it uses the same correct swap as
 // producer A, but it had NO test at all. This closes that coverage gap.
@@ -276,7 +276,7 @@ TEST(ZonePositionConvention, ProducerC_SwapsWireOffsetsIntoClientFormat) {
 }
 
 // ---------------------------------------------------------------------------
-// T55: the propagation gap -- SetPosition (eq.cpp) has zero production
+// T55: the propagation gap -- SetPosition (eq_player_state.cpp) has zero production
 // callers, so forced relocations write the raw m_x/m_y/m_z members but never
 // the state layer's PlayerState. These pin the fix at the two forced-
 // relocation sites in this unit's territory that had no local position write
@@ -366,7 +366,7 @@ TEST(ZonePositionConvention, ForcedRelocation_SameZoneDeathRespawnPropagatesLoca
 }
 
 // ---------------------------------------------------------------------------
-// T58: ZoneProcessPlayerProfile (eq.cpp) -- the packet that actually
+// T58: ZoneProcessPlayerProfile (eq_zone_entry.cpp) -- the packet that actually
 // determines landing position on ordinary zone-in. T55 deliberately left
 // this site alone (own territory, own risk); this unit closes it.
 //
@@ -385,8 +385,8 @@ TEST(ZonePositionConvention, PlayerProfile_PropagatesToGameStatePlayerPosition) 
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
 
     // Distinct values so an x/y transposition is unmistakable: server_x=333,
-    // server_y=444. Established convention (eq.cpp:2154-2156): client m_x =
-    // server_y, client m_y = server_x.
+    // server_y=444. Established convention (ZoneProcessPlayerProfile,
+    // eq_zone_entry.cpp): client m_x = server_y, client m_y = server_x.
     auto payload = BuildPlayerProfilePayload(/*server_x=*/333.0f, /*server_y=*/444.0f,
                                               /*z=*/5.0f, /*wire_heading=*/128.0f);
     ReplayZone(eq, HC_OP_PlayerProfile, payload);
@@ -410,7 +410,8 @@ TEST(ZonePositionConvention, PlayerProfile_PropagatesToGameStatePlayerPosition) 
 TEST(ZonePositionConvention, PlayerProfile_HeadingConversionPreservedBitForBit) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
 
-    // wire_heading=128.0 (12-bit-scaled-value/4 units, per eq.cpp:2157-2158):
+    // wire_heading=128.0 (12-bit-scaled-value/4 units, per
+    // ZoneProcessPlayerProfile in eq_zone_entry.cpp):
     // server_heading_deg = 128 * 360 / 512 = 90.0; m_heading = 90 - 90 = 0.0.
     // Chosen deliberately non-degenerate for the m_heading<0/>=360 wrap
     // branches to stay exercised elsewhere (ProducerC's own test uses a
@@ -425,7 +426,7 @@ TEST(ZonePositionConvention, PlayerProfile_HeadingConversionPreservedBitForBit) 
     const float kExpectedHeadingDeg = 45.0f;
 
     // GetHeading() already reads m_game_state.player().heading() (it always
-    // has -- see eq.cpp's GetHeading(), unrelated to this unit). Pre-fix,
+    // has -- see EverQuest::GetHeading() in eq_player_state.cpp, unrelated to this unit). Pre-fix,
     // ZoneProcessPlayerProfile never wrote that field on the ordinary
     // zone-in path, so GetHeading() would return the constructor's 0.0
     // default here instead of the computed value -- this is the "renders in
@@ -440,7 +441,7 @@ TEST(ZonePositionConvention, PlayerProfile_ExactlyOnePlayerMovedReachesBridgeInB
 
     // wire_heading=64 -> m_heading=45.0deg (see the test above) ->
     // heading512 = 45.0 * 512/360 = 64.0 (the format the hand-rolled bridge
-    // publish at eq.cpp:2177-2184 has always sent -- this unit must not
+    // publish in ZoneProcessPlayerProfile (eq_zone_entry.cpp) has always sent -- this unit must not
     // change it, only add the missing state write alongside it).
     auto payload = BuildPlayerProfilePayload(/*server_x=*/1.0f, /*server_y=*/2.0f,
                                               /*z=*/3.0f, /*wire_heading=*/64.0f);

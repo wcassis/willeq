@@ -182,7 +182,9 @@ TEST(T145WireLayout, MerchantPair_SizesAreInvertedRelativeToEqemuNames_ByDesign)
 //
 // EverQuest::QueuePacket(uint16_t opcode, DynamicPacket*) (eq.cpp) ALWAYS
 // prepends the opcode itself, so its callers must hand it a BODY-ONLY packet.
-// Four callers in eq_player_info.cpp also wrote the opcode into the body,
+// Four callers (SendCamp/SendLogout/SendWhoAllRequest/SendInspectRequest, in
+// eq_player_info.cpp at the time, eq_player_social.cpp since J07) also wrote
+// the opcode into the body,
 // producing a packet two bytes too long with the opcode duplicated at the
 // front of the payload. This is the same defect class T133 found across
 // eq_guild.cpp's senders and T134 found in SendRezzAnswer.

@@ -1,7 +1,8 @@
 // T04: zone connection-flow sequencing tests.
 //
-// Targets CheckZoneRequestPhaseComplete (eq.cpp:2724) and the surrounding
-// zone-stream dispatcher (DispatchZonePacket, eq.cpp:749), driven entirely
+// Targets CheckZoneRequestPhaseComplete (eq_zone_entry.cpp) and the
+// surrounding zone-stream dispatcher (DispatchZonePacket,
+// eq_zone_dispatch.cpp) -- both split out of eq.cpp by J02 -- driven entirely
 // through the Batch R replay/test seam (EverQuest::ReplayZonePacket,
 // eq.h:697) -- no network, no graphics, no live connection.
 //
@@ -67,11 +68,11 @@ void Replay(EverQuest& eq, uint16_t opcode, const std::vector<uint8_t>& payload)
 // The four gating-relevant packets, built with the minimal (empty) payload
 // their handlers actually need -- none of ZoneProcessSendAATable,
 // ZoneProcessRespondAA, ZoneProcessTributeInfo, ZoneProcessSendGuildTributes
-// read any packet fields (eq_player_info.cpp:38-81); they only log, bump a
+// read any packet fields (all four in eq_player_info.cpp); they only log, bump a
 // counter (except RespondAA), and call CheckZoneRequestPhaseComplete().
 void SendNewZone(EverQuest& eq) {
     // Zero-length payload: ZoneProcessNewZone guards every field read behind
-    // p.Length() thresholds (eq.cpp:1854 onward), so an empty payload safely
+    // p.Length() thresholds (ZoneProcessNewZone, eq_zone_entry.cpp), so an empty payload safely
     // skips zone-name/environment parsing and falls through to
     // m_new_zone_received = true plus the four AA/tribute/guild-tribute
     // request sends (suppressed, no live connection).
@@ -98,8 +99,8 @@ public:
 // with is_pet/pet_owner_id, which that helper doesn't need for its own
 // tests), for building a synthetic "our pet, already in the zone" NPC spawn.
 // is_pet at struct offset 329 (uint8), pet_owner_id at 189 (uint32) --
-// confirmed via eq_entities.cpp:360-361/1202-1203, the same offsets
-// ZoneProcessSpawnAll/NewSpawn read.
+// confirmed against eq_entities.cpp, the same offsets
+// ZoneProcessZoneSpawns/ZoneProcessNewSpawn read.
 void WritePetSpawnStruct(EQ::Net::DynamicPacket& p, size_t base, uint32_t spawnId,
                           const std::string& name, uint32_t petOwnerId) {
     p.PutCString(base + 7, name.c_str());
@@ -114,7 +115,7 @@ void WritePetSpawnStruct(EQ::Net::DynamicPacket& p, size_t base, uint32_t spawnI
 }
 
 // T43: builds a minimal but well-formed Titanium serialized-item string, the
-// same wire format TitaniumItemParser::parseItem() (inventory_manager.cpp)
+// same wire format TitaniumItemParser::parseItem() (inventory_item_parser.cpp)
 // expects from a real HC_OP_CharInventory/HC_OP_ItemPacket -- instance
 // fields, then a quoted block of >=135 static fields, per
 // "titanium.cpp SerializeItem" (see parseInstanceData/parseStaticData's own
@@ -160,7 +161,7 @@ std::string BuildItemString(int16_t slot, uint32_t itemId, const std::string& na
 //
 // The check is invoked from all FIVE gate handlers: ZoneProcessSendAATable,
 // ZoneProcessRespondAA, ZoneProcessTributeInfo, ZoneProcessSendGuildTributes
-// (eq_player_info.cpp) and -- since T228 -- ZoneProcessNewZone (eq.cpp).
+// (eq_player_info.cpp) and -- since T228 -- ZoneProcessNewZone (eq_zone_entry.cpp).
 // T04 originally found NewZone missing from that list, which meant a
 // NewZone arriving LAST never completed the phase; see
 // NewZoneArrivingLast_CompletesPhase below.
@@ -194,7 +195,7 @@ TEST(ZoneRequestPhaseGating, WithholdingAATable_DoesNotAdvance) {
     SendTributeInfo(eq);
     SendGuildTributes(eq);
     // m_aa_table_count stays 0: RespondAA calls the check but does not
-    // increment the AA counter (eq_player_info.cpp:57-63), so it cannot
+    // increment the AA counter (ZoneProcessRespondAA, eq_player_info.cpp), so it cannot
     // substitute for SendAATable.
     SendRespondAA(eq);
 
@@ -344,15 +345,15 @@ TEST(DispatcherRobustness, ZeroLengthPayload_GuardedHandlersSafe) {
 
     // Handlers that explicitly guard on p.Length() before reading any
     // field, so a zero-length payload must be a safe no-op / early return.
-    EXPECT_NO_THROW(Replay(eq, HC_OP_DeleteSpawn, EmptyPayload()));     // eq_entities.cpp:1598 (needs 4)
+    EXPECT_NO_THROW(Replay(eq, HC_OP_DeleteSpawn, EmptyPayload()));     // ZoneProcessDeleteSpawn (needs 4)
     EXPECT_NO_THROW(Replay(eq, HC_OP_ZoneSpawns, EmptyPayload()));      // loop condition offset+385<=Length()
-    EXPECT_NO_THROW(Replay(eq, HC_OP_NewSpawn, EmptyPayload()));        // eq_entities.cpp:1035 (needs 387)
-    EXPECT_NO_THROW(Replay(eq, HC_OP_NewZone, EmptyPayload()));         // eq.cpp:1854 (needs 96)
+    EXPECT_NO_THROW(Replay(eq, HC_OP_NewSpawn, EmptyPayload()));        // ZoneProcessNewSpawn (needs 387)
+    EXPECT_NO_THROW(Replay(eq, HC_OP_NewZone, EmptyPayload()));         // ZoneProcessNewZone (needs 96)
     EXPECT_NO_THROW(Replay(eq, HC_OP_SendAATable, EmptyPayload()));     // reads nothing
     EXPECT_NO_THROW(Replay(eq, HC_OP_RespondAA, EmptyPayload()));       // reads nothing
     EXPECT_NO_THROW(Replay(eq, HC_OP_TributeInfo, EmptyPayload()));     // reads nothing
     EXPECT_NO_THROW(Replay(eq, HC_OP_SendGuildTributes, EmptyPayload())); // reads nothing
-    EXPECT_NO_THROW(Replay(eq, HC_OP_ClientUpdate, EmptyPayload()));    // eq_entities.cpp:1323 (needs 24)
+    EXPECT_NO_THROW(Replay(eq, HC_OP_ClientUpdate, EmptyPayload()));    // ZoneProcessClientUpdate (needs 24)
     EXPECT_NO_THROW(Replay(eq, HC_OP_GuildMOTD, EmptyPayload()));       // reads nothing
 }
 
@@ -407,8 +408,9 @@ TEST(DispatcherRobustness, DuplicateDelivery_Harmless) {
 // GetFloat throw std::out_of_range rather than reading out of bounds -- see
 // src/common/net/packet.cpp:207-250), which was UNCAUGHT anywhere between
 // DispatchZonePacket and the network receive callback in production. T05
-// added length guards to both handlers (src/client/eq_entities.cpp:484,
-// src/client/eq.cpp:1999) so a truncated packet -- exactly what a lossy
+// added length guards to both handlers (ZoneProcessTimeOfDay in
+// src/client/eq_entities.cpp, ZoneProcessPlayerProfile in
+// src/client/eq_zone_entry.cpp) so a truncated packet -- exactly what a lossy
 // network produces -- now returns safely instead of throwing.
 //
 // These tests were pinned as BUG_*_ThrowsOutOfRange in T04; T05 flips them to
@@ -416,7 +418,7 @@ TEST(DispatcherRobustness, DuplicateDelivery_Harmless) {
 // section of refactor/T05_login_world_seam.md.
 
 TEST(DispatcherRobustness, TimeOfDay_ZeroLengthPayload_ReturnsSafely) {
-    // ZoneProcessTimeOfDay (eq_entities.cpp:484) now guards p.Length() < 8
+    // ZoneProcessTimeOfDay (eq_entities.cpp) now guards p.Length() < 8
     // before reading GetUInt8(2)/GetUInt8(3)/GetUInt8(4)/GetUInt8(5)/
     // GetUInt16(6). A zero-length (or any <8-byte) TimeOfDay payload no
     // longer throws, and time-of-day state is left unchanged.
@@ -425,7 +427,7 @@ TEST(DispatcherRobustness, TimeOfDay_ZeroLengthPayload_ReturnsSafely) {
 }
 
 TEST(DispatcherRobustness, PlayerProfile_TruncatedPayload_ReturnsSafely) {
-    // ZoneProcessPlayerProfile (eq.cpp:1986) logs a LOG_WARN when
+    // ZoneProcessPlayerProfile (eq_zone_entry.cpp) logs a LOG_WARN when
     // p.Length() < base+19588 and now returns immediately instead of
     // falling through to unconditional field reads (GetUInt32(base+4)
     // etc.), so any payload shorter than the full 19588-byte
@@ -505,7 +507,7 @@ TEST(ObservableZoneState, FullHandshake_ProducesCoherentState) {
     EXPECT_EQ(eq.GetLoadingPhase(), LoadingPhase::COMPLETE);
     // IsFullyZonedIn() additionally requires m_zone_connected, which is only
     // set true by the real DaybreakConnection status callback
-    // (eq.cpp:687) -- unreachable through the replay seam. This is a known
+    // (EverQuest::ZoneOnStatusChange*, eq.cpp) -- unreachable through the replay seam. This is a known
     // ceiling of ReplayZonePacket, not a bug: the replay harness proves the
     // zone S->C *packet handling* is correct, not end-to-end liveness of a
     // real socket.
@@ -807,7 +809,7 @@ TEST(FullStateSnapshot, HeadlessZoneInPopulatesGameState) {
     }
 
     // PlayerProfile: identity, HP/mana (player stats), and one memorized
-    // spell gem (spellbook/mem_spells offsets per eq.cpp's
+    // spell gem (spellbook/mem_spells offsets per eq_zone_entry.cpp's
     // ZoneProcessPlayerProfile comment: spell_book at 2312, mem_spells at
     // 4360, 8 x uint32 each).
     {
@@ -978,7 +980,8 @@ TEST(GuildIdPopulation, OtherEntitySpawn_DoesNotPopulateOwnGuildId) {
     // The second half the plan calls out as "the one that would rot": a
     // ZoneSpawns entry for a DIFFERENT spawn (some other player/NPC, not
     // us) carries its own guildID at Spawn_Struct offset 238. That value
-    // belongs to Entity::guild_id for THAT spawn (eq_entities.cpp:318) --
+    // belongs to Entity::guild_id for THAT spawn (ZoneProcessZoneSpawns,
+    // eq_entities.cpp) --
     // it must never be mistaken for, or copied into, the player's own
     // m_guild_id.
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");

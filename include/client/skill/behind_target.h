@@ -22,7 +22,8 @@
  *
  *   docs/CLAUDE.md's Heading/Rotation Conventions warning applies to this
  *   file's callers. This client stores the PLAYER's own heading flipped
- *   (`90 - server_heading_deg`, eq.cpp's PlayerProfile parse) and every OTHER
+ *   (`90 - server_heading_deg`, ZoneProcessPlayerProfile in eq_zone_entry.cpp)
+ *   and every OTHER
  *   entity's heading unflipped (`server_heading`, eq_entities.cpp). That
  *   asymmetry is load-bearing and must not be harmonised.
  *

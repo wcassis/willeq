@@ -1,7 +1,7 @@
 /*
  * T318 -- entity size changes (shrink, grow, illusion).
  *
- * Split out of entity_renderer.cpp, which is over the file-size ceiling and is
+ * Split out of entity_renderer.cpp, which was over the file-size ceiling and is
  * scheduled for splitting as Batch J's J03.
  */
 #include "client/graphics/entity_renderer.h"

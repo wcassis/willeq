@@ -399,16 +399,19 @@ vocabularies** (verified by orchestrator, fable `a22d634`):
 1. `EverQuest::m_command_registry` — the real slash vocabulary
    (`/combat`, `/assist`, `/duel`, …, registered across
    `eq_commands*.cpp`). Reached ONLY via `EverQuest::ProcessChatInput()`
-   (`eq_chat.cpp:276`), fed from the chat-window intent
-   (`eq_bridge.cpp:947`). **Also wrapped entirely in
+   (`EverQuest::DispatchSlashCommand`, `eq_chat.cpp`), fed from the
+   chat-window intent (`ChatInputIntent` -> `ProcessChatInput`,
+   `eq_bridge.cpp`). **Also wrapped entirely in
    `#ifdef EQT_HAS_GRAPHICS`** — so in a headless-compiled build, slash
    commands do not exist at all.
 2. `action::CommandProcessor` — a second slash vocabulary, the only one
-   `--script` dispatches to (`application.cpp:901`).
+   `--script` dispatches to (`Application::DispatchSlashCommand`,
+   `application_commands.cpp`).
 3. Renderer debug registry (`/sort`, `/mergedraws`, `/screenshot`, …) —
    reached via the `GameEventType::RendererCommand` bridge queue.
    `--script` forwards its unrecognized commands here as a fallback.
-4. `ConsoleInputHandler` (`console_input_handler.cpp:276`) — a bespoke
+4. `ConsoleInputHandler` (`ConsoleInputHandler::processCommand`,
+   `console_input_handler.cpp`) — a bespoke
    NON-slash word vocabulary (`say`, `tell`, `quit`) on stdin, behind an
    interactive raw-mode/keyboard-mode toggle built for a human at a tty,
    not for a pipe.
@@ -427,8 +430,9 @@ debugging session, do not rediscover them):
 - The stdin reader must not assume a tty. Piped stdin has no raw mode,
   and `ConsoleInputHandler`'s mode toggle would consume the first line as
   a mode switch.
-- Only one component may read stdin (`application.cpp:808,818` already
-  documents a DRM-mode duplicate-read hazard).
+- Only one component may read stdin (`Application::processInput` in
+  `application_commands.cpp` already documents a DRM-mode duplicate-read
+  hazard).
 - Automation needs to know when a command has been *applied*, not just
   accepted — stdout has to carry a result, or scripts go back to sleeping
   and guessing, which is the class of bug T26 just removed.
@@ -642,7 +646,9 @@ distinct resident composite races — which does not survive multiplication in a
 race-dense zone. Will chose not to spend that budget.
 
 **Do not "fix" this by re-enabling it, and do not repeat the T195 rationale.**
-Superseded wording still sits in `src/client/graphics/CLAUDE.md:127`.
+J21 (2026-09-02) struck the superseded wording from
+`src/client/graphics/CLAUDE.md`, `renderer_zone_load.cpp` and
+`tests/test_eqe1_composite_open.cpp`; those three now point here.
 
 ## 2026-08-27 (later) — REVERSED: first person is the player model + eye camera + a clamped down-pitch (Will)
 
@@ -714,12 +720,14 @@ failure this guards against).
 
 ## 2026-08-27 — CRC validation bypass and UCS: Will's rulings
 
-- **CRC validation bypass: NOT a work item.** `eq.cpp:718` sets
+- **CRC validation bypass: NOT a work item.** `EverQuest::ConnectToZone`
+  (`eq.cpp`) sets
   `zone_opts.skip_crc_validation = true` with a `// TODO: Remove after CRC bug
   is fixed`. Will has ruled this out of scope; leave it and do not re-raise it.
 - **UCS/chat server: DEFERRED, CONDITIONALLY.** `ConnectToUCS(...)` is
   commented out in the live `WorldProcessSetChatServer` handler
-  (`eq_login_world.cpp:834`). Will: *"ignore the UCS/chat server for now **as
+  (`eq_login_world.cpp`, `WorldProcessSetChatServer`; the implementation
+  itself now lives in `eq_ucs.cpp`, J02). Will: *"ignore the UCS/chat server for now **as
   long as zone-wide and cross-zone communication is working**."*
   **SOURCE ANALYSIS (T297 `48800a8f`) SAYS THE DEFERRAL IS SAFE, LIVE PROOF
   STILL OWED.** From `/mnt/projects/akk-stack/code`: the ONLY branch reaching

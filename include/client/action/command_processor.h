@@ -368,7 +368,7 @@ private:
     // action::CommandProcessor had ZERO registrations for either family
     // before this unit. Net-new plumbing over the pre-existing
     // EverQuest::SendCorpseDrag()/SendCorpseDrop()/SendConsent()/
-    // SendConsentDeny()/SendRezzAnswer(bool) senders (eq_player_info.cpp).
+    // SendConsentDeny()/SendRezzAnswer(bool) senders (eq_player_social.cpp).
     // Registrations removed from eq_commands.cpp's Corpse/Resurrection
     // blocks in the same change. See refactor/T134_migrate_corpse_rez.md.
     ActionResult cmdCorpseDrag(const std::string& args);

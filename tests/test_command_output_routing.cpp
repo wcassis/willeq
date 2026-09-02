@@ -38,7 +38,9 @@ namespace eqt {
 
 // Builds exactly the four objects Application::init() builds between its
 // EverQuest construction and its CommandProcessor construction
-// (application.cpp), then calls the production wiring function. No network, no
+// (application.cpp; the wiring itself is
+// Application::wireUnifiedCommandDispatch in application_commands.cpp), then
+// calls the production wiring function. No network, no
 // renderer, no graphics -- init() itself cannot run under ctest (it connects).
 struct ApplicationCommandOutputTestPeer {
     static void wire(Application& app, std::unique_ptr<EverQuest> eq) {

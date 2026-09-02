@@ -16,7 +16,8 @@
  * Y offsets and the first-person eye offset. A grep for first_person lands
  * on all of it.
  *
- * Split out of entity_renderer.cpp, which is over the file-size ceiling.
+ * Split out of entity_renderer.cpp, which was over the file-size ceiling
+ * (J03 has since split it further).
  */
 #include "client/graphics/entity_renderer.h"
 #include "client/graphics/simulation_worker.h"
@@ -55,7 +56,7 @@ namespace Graphics {
 // EQAnimatedMeshSceneNode::getCurrentAnimation() is the animation code the
 // per-instance SkeletalAnimator is running, and getAnimator().getState() is
 // whether it is actually PLAYING. Combat animations arrive here through
-// setPlayerEntityAnimation()/setEntityAnimation() (eq.cpp's combat-skill
+// setPlayerEntityAnimation()/setEntityAnimation() (the combat-skill
 // dispatch, entity_combat_anim.cpp's buffer, the spell and skill managers) as
 // NON-LOOPING play-through animations.
 //

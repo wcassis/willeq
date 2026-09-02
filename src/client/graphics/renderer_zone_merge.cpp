@@ -531,7 +531,7 @@ void DoorTextureGuard::onTextureEvicted(const std::string& /*name*/,
 // T124: shutdown()-time unregister for objectNodeTextureGuard_ (T123 --
 // registered in initLoadingScreen() but never unregistered before this
 // unit) and the four T124 guards. Defined here, not irrlicht_renderer.cpp
-// (at the check_file_sizes.sh budget).
+// (which was at the check_file_sizes.sh budget when this was written).
 void IrrlichtRenderer::unregisterRemainingT124Guards() {
     unregisterGuard(constrainedTextureCache_, objectNodeTextureGuard_);
     unregisterGuard(constrainedTextureCache_, doorTextureGuard_);
@@ -539,8 +539,9 @@ void IrrlichtRenderer::unregisterRemainingT124Guards() {
     unregisterGuard(constrainedTextureCache_, boidsTextureGuard_);
 }
 
-// T124: defined here (not irrlicht_renderer.cpp, which is at the
-// check_file_sizes.sh budget). Called once from loadGlobalAssets() right
+// T124: defined here (not irrlicht_renderer.cpp, which was at the
+// check_file_sizes.sh budget when this was written). Called once from
+// loadGlobalAssets() (renderer_init.cpp) right
 // after doorManager_'s own lazy construction. See DoorTextureGuard's doc
 // comment (header) for the gap closed.
 void IrrlichtRenderer::ensureDoorTextureGuard() {
@@ -551,7 +552,7 @@ void IrrlichtRenderer::ensureDoorTextureGuard() {
 }
 
 // T124: idempotent, safe to call from either of boidsManager_'s two
-// lazy-construction sites in irrlicht_renderer.cpp. See BoidsManager::
+// lazy-construction sites (renderer_init.cpp, renderer_hud_env.cpp). See BoidsManager::
 // swapEvictedTexture()'s doc comment for the gap closed.
 void IrrlichtRenderer::ensureBoidsTextureGuard() {
     if (boidsTextureGuard_ || !constrainedTextureCache_ || !boidsManager_) return;

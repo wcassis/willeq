@@ -52,8 +52,9 @@ TEST(FirstPersonDrawRulePredicate, TheCombatFamilyIsAnAttack) {
                              "c07", "c08", "c09", "c10", "c11"}) {
         EXPECT_TRUE(isAttackAnimationCode(code)) << code;
     }
-    // The monk special attacks, included by the family argument (eq.cpp
-    // dispatches them exactly like c01/c11) and NOT by measurement.
+    // The monk special attacks, included by the family argument (the
+    // combat-animation dispatch in eq_combat_actions.cpp treats them exactly
+    // like c01/c11) and NOT by measurement.
     for (const char* code : {"t07", "t08", "t09"}) {
         EXPECT_TRUE(isAttackAnimationCode(code)) << code;
     }

@@ -20,7 +20,7 @@ This plan outlines the implementation of a runtime-adjustable environmental deta
 |--------|----------|-----------|
 | IrrlichtRenderer | `include/client/graphics/irrlicht_renderer.h` | Integration point, frame loop |
 | AnimatedTextureManager | `include/client/graphics/animated_texture_manager.h` | Pattern for texture animation |
-| Vertex Animations | `irrlicht_renderer.cpp:1170` (updateVertexAnimations) | Pattern for wind animation |
+| Vertex Animations | `sim_animation.cpp` (the SimulationWorker vertex/tree animation pass; the old `IrrlichtRenderer::updateVertexAnimations` no longer exists) | Pattern for wind animation |
 | SkyConfig | `include/client/graphics/sky_config.h` | Zone weather/environment data |
 | BSP Tree | `include/client/graphics/eq/wld_loader.h` | Region queries, zone lines |
 | CommandRegistry | `include/client/graphics/ui/command_registry.h` | Slash command registration |
@@ -1261,7 +1261,7 @@ Headers are in `include/client/graphics/detail/`:
 
 ## References
 
-- Existing vertex animation: `irrlicht_renderer.cpp:1170` (`updateVertexAnimations`)
+- Existing vertex animation: `sim_animation.cpp` (`IrrlichtRenderer::updateVertexAnimations` was removed; the pass now lives in SimulationWorker)
 - Existing texture animation: `animated_texture_manager.cpp`
 - Zone BSP regions: `wld_loader.h:BspRegion`
 - Performance analysis: `.agent/rendering_performance_plan.md`

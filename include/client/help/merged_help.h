@@ -17,7 +17,7 @@
 // renderer_command_catalog.h, tagged "(graphics)". Before T223 registry 3
 // was invisible here (T143) because it had no catalog at all.
 //
-// Lives in its own TU (not folded into application.cpp, already over the
+// Lives in its own TU (not folded into application.cpp, which was over the
 // file-size warn threshold) so it is independently testable without
 // linking Application, EverQuest, or Irrlicht -- see tests/
 // test_merged_help.cpp.

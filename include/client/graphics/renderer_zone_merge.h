@@ -175,7 +175,7 @@ public:
     // placeholder: the cache's placeholder ITexture*, resolved ONCE by the
     // caller BEFORE constructing this guard (via a plain, non-reentrant
     // ConstrainedTextureCache::getPlaceholderTexture() call at init time --
-    // see irrlicht_renderer.cpp, "Pre-create placeholder texture before
+    // see renderer_init.cpp, "Pre-create placeholder texture before
     // render loop starts", which already runs before any eviction can
     // occur) and cached here as a plain pointer. THIS IS LOAD-BEARING, not
     // a style choice: onTextureEvicted() runs on the SAME thread and INSIDE
@@ -422,7 +422,8 @@ public:
     // persists for the renderer's lifetime (clearDoors() empties the map,
     // never destroys/recreates DoorManager itself -- doorManager_ is
     // constructed lazily exactly once, guarded by `if (!doorManager_)` in
-    // irrlicht_renderer.cpp), safe to hold a reference for the guard's own
+    // renderer_init.cpp / renderer_zone_load_objects.cpp), safe to hold a
+    // reference for the guard's own
     // lifetime (also renderer-owned, constructed alongside doorManager_).
     //
     // placeholder: resolved ONCE by the caller before construction, same
@@ -470,7 +471,7 @@ private:
 // T124: shutdown()-time unregister-before-destroy helper, shared to avoid
 // the 3-line `if (cache && guard) cache->removeEvictionListener(guard.get());
 // guard.reset();` pattern being copy-pasted once per guard (irrlicht_renderer.cpp
-// is at the check_file_sizes.sh budget -- this also directly serves that).
+// was at the check_file_sizes.sh budget -- this also directly served that).
 template <typename GuardPtr>
 void unregisterGuard(ConstrainedTextureCache* cache, GuardPtr& guard) {
     if (cache && guard) cache->removeEvictionListener(guard.get());

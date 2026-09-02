@@ -90,7 +90,7 @@ public:
     // ConstrainedTextureCache evicts a texture. atlasTexture_ and
     // creatureMaterial_ are both set exactly ONCE, in init() (BoidsManager
     // is a renderer-lifetime singleton, lazily constructed at most once per
-    // renderer -- both call sites in irrlicht_renderer.cpp guard with
+    // renderer -- both call sites (renderer_init.cpp, renderer_hud_env.cpp) guard with
     // `if (!boidsManager_)`), and never rebuilt per zone. render() reads
     // creatureMaterial_ EVERY FRAME via driver_->setMaterial() -- this is
     // not a scene-node holder at all (creatures are drawn with raw

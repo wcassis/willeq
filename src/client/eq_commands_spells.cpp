@@ -106,7 +106,7 @@ void EverQuest::RegisterSpellCommands()
 	// toggleplants/togglerocks/toggledebris/season/detailinfo) was one of
 	// the 8 redundant duplicates this file contributed to T139's 34 (see
 	// refactor/T139_delete_duplicate_commands.md). registry-3's fallback
-	// (Application::dispatchToActionOrRenderer, application.cpp) forwards
+	// (Application::dispatchToActionOrRenderer, application_commands.cpp) forwards
 	// the identical "/" + cmdBody string to
 	// IrrlichtRenderer::processSlashCommand() automatically once no game- or
 	// action-registry command claims the name, so nothing here needs

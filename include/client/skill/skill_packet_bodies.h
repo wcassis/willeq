@@ -131,7 +131,7 @@ MakePickPocketBody(uint32_t to, uint32_t from, uint16_t myskill) {
 // eqemu EQ::item::ItemTypePoison, common/item_data.h:100.
 //
 // NOTE: this client parses that field into `ItemInstance::skillType`
-// (inventory_manager.cpp:284 reads serialized field 56, which titanium.cpp:3429
+// (inventory_item_parser.cpp reads serialized field 56, which titanium.cpp:3429
 // writes as `item->ItemType`). The name is a weapon-centric misnomer -- for
 // weapons the ItemType enum values ARE the weapon skill ids, which is why the
 // misnaming has never shown up -- but the field carries the full ItemType.
