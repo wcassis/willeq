@@ -48,7 +48,7 @@ namespace {
 const fs::path kRoot = WILLEQ_REPO_ROOT;
 const fs::path kGraphicsDir = kRoot / "src" / "client" / "graphics";
 // The one sanctioned home of the formula.
-const std::string kHelperTU = "irrlicht_renderer.cpp";
+const std::string kHelperTU = "renderer_camera.cpp";  // J11: was irrlicht_renderer.cpp
 const std::string kHelperName = "repositionFirstPersonCamera";
 
 std::string readFile(const fs::path& p) {

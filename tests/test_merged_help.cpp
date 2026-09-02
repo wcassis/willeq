@@ -354,9 +354,11 @@ TEST(RendererCommandCatalogTest, MatchesRendererIfChainExactly) {
     const std::string src = buf.str();
     const size_t fnStart = src.find("IrrlichtRenderer::processSlashCommand(");
     ASSERT_NE(fnStart, std::string::npos);
-    // The chain ends at the next member definition after the function.
-    const size_t fnEnd = src.find("\nvoid IrrlichtRenderer::", fnStart + 1);
-    ASSERT_NE(fnEnd, std::string::npos);
+    // The chain ends at the next member definition after the function, or at
+    // end of file: since J11 processSlashCommand() is the last definition in
+    // renderer_slash_commands.cpp, so there is no following member.
+    size_t fnEnd = src.find("\nvoid IrrlichtRenderer::", fnStart + 1);
+    if (fnEnd == std::string::npos) fnEnd = src.size();
     const std::string body = src.substr(fnStart, fnEnd - fnStart);
 
     std::set<std::string> fromChain;
