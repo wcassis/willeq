@@ -188,3 +188,203 @@ Concurrent at dispatch: **J02** (`eq.cpp` + new `eq_*.cpp`, `CMakeLists.txt`),
 `CMakeLists.txt` is the only shared file, which is why merges are serialized
 one at a time with a rebase. **T318 is a hard predecessor, not a peer — see
 the gate at the top.**
+
+---
+
+## Review (slot3, 2026-09-02, branch `task/J03-entity-renderer-split`, commit `f6037efc`)
+
+**Done as specified. Move-only. Zero deviations from the cluster plan beyond
+the line-number drift T318 introduced (§1) and one comment edit in
+`entity_first_person_draw.cpp`'s header (§5), which is boilerplate under the
+verifier and is declared here.** Base tip verified `d3b2c995` at checkout.
+
+### 1. How much T318 moved the ranges
+
+`entity_renderer.cpp` was **3,244 lines at my tip, not 3,255** — T318 took 11
+lines out of it by lifting the size-update path into the new
+`src/client/graphics/entity_size.cpp` (58 lines, already listed in
+`CMakeLists.txt:472`). **Nothing T318 added landed in this file at all**, so no
+cluster of this plan inherited a non-obvious piece of the size path: the
+`serverSize` member it promoted is declared in the header (untouched territory)
+and read inside `registerEntity`, which was already going to
+`entity_mesh_build.cpp`.
+
+The drift is a uniform **-11 lines from `createEntity` onward** plus **-1 at the
+top**, i.e. every plan boundary shifted, but the *cluster membership* is
+identical to the plan's. Boundaries at my tip:
+
+| plan range | actual range | → |
+|---|---|---|
+| 1-29 | **1-29** (unchanged) | preamble, replicated 6× |
+| 30-274 | **30-274** | stays in `entity_renderer.cpp` (part A) |
+| 275-860 | **275-855** | `entity_mesh_build.cpp` |
+| 861-1330 | **856-1319** | `entity_build_step.cpp` |
+| 1331-1944 | **1320-1933** | `entity_updates.cpp` |
+| 1945-2285 | **1934-2274** | `entity_interpolation.cpp` |
+| 2286-2705 | **2275-2694** | `entity_lifecycle.cpp` |
+| 2706-2989 | **2695-2978** | appended to `entity_first_person_draw.cpp` |
+| 2990-3253 | **2979-3242** | stays in `entity_renderer.cpp` (part B) |
+| 3254-3255 | **3243-3244** | namespace close, replicated 6× |
+
+The partition is contiguous and exhaustive over body lines 30-3242.
+
+⚠ **No range had to be moved for a comment or `#if` boundary** — J02's failure
+mode does not recur here, but I checked for it rather than assuming: a
+character-by-character scanner (tracking `/* */`, `//` and string literals)
+confirmed **every one of the eight cut points is at block-comment depth 0**, and
+each boundary is a blank line preceded by a closing `}`, so no cluster inherits
+an orphaned leading banner. **`grep -n '^#\|^// ='` returns only the 25 include
+lines** — no preprocessor conditional and no `// ====` banner exists anywhere in
+the body, as the plan claimed.
+
+### 2. Hazards, re-checked at my tip
+
+1. **`getGreenCutoff`** — `grep -rn 'getGreenCutoff' src/client/graphics/`
+   returns exactly two hits, the definition at `:32` and its sole caller at
+   `:52` inside `getConColor`. Both are in the 30-274 stays-cluster. **No
+   internal header, nothing de-static-ed.** T318 added no second caller.
+2. **No anonymous namespaces, no file-scope objects, no file-local statics
+   other than `getGreenCutoff`.** `grep -n '^namespace\|^static\|^const '`
+   returns only `namespace EQT {`, `namespace Graphics {` and that one static.
+   Nothing new arrived with T318.
+3. The two `updateFirstPersonBodyDrawRule()` call sites are unqualified member
+   calls and needed no change; one now lives in `entity_updates.cpp` and one in
+   `entity_first_person_draw.cpp` itself.
+
+### 3. Final line counts
+
+| file | lines | plan estimate |
+|---|---|---|
+| `src/client/graphics/entity_renderer.cpp` | **540** (was 3,244) | ~540 |
+| `src/client/graphics/entity_updates.cpp` | **645** | ~645 |
+| `src/client/graphics/entity_mesh_build.cpp` | **612** | ~617 |
+| `src/client/graphics/entity_build_step.cpp` | **495** | ~501 |
+| `src/client/graphics/entity_lifecycle.cpp` | **451** | ~451 |
+| `src/client/graphics/entity_first_person_draw.cpp` | **401** (was 90) | ~374 |
+| `src/client/graphics/entity_interpolation.cpp` | **372** | ~372 |
+| `CMakeLists.txt` | 1,910 (+5) | — |
+
+3,244 + 90 → 3,516 across seven TUs; the +182 is five extra copies of the
+29-line preamble, the 26-line include block that replaced
+`entity_first_person_draw.cpp`'s five-line one, and six extra header lines.
+
+### 4. Both proofs
+
+`BASE=$(git merge-base fable HEAD)` = **`d3b2c9953efea9e0a62ab6ccc38ea7f5b7c0d86f`**
+(the tip named at dispatch; `fable` had not moved by the time I ran it).
+
+```
+$ python3 scripts/refactor/verify_move_only.py "$BASE..HEAD" --repo /mnt/projects/fable/wt/slot3
+Non-C++ files changed (not verified, review separately):
+  CMakeLists.txt
+
+Files verified: 7
+Boilerplate: +174 / -2 lines (allowed)
+
+PASS: move-only (modulo boilerplate).
+```
+
+**Clean on the first try** — `--repo` was passed from the outset, per J02's
+correction. The `-2` boilerplate removals are the two comment lines of the
+header sentence rewritten in §5; the `+174` is the replicated preambles.
+
+**Line-multiset check — both halves, both pass:**
+
+```
+  range 30-274      ->   245 lines
+  range 275-855     ->   581 lines
+  range 856-1319    ->   464 lines
+  range 1320-1933   ->   614 lines
+  range 1934-2274   ->   341 lines
+  range 2275-2694   ->   420 lines
+  range 2695-2978   ->   284 lines
+  range 2979-3242   ->   264 lines
+PROOF A byte-identical: OK (3213 vs 3213 lines)
+PROOF B multiset: MULTISET-OK
+```
+
+Proof A re-concatenates the eight extracted ranges **out of the new files** in
+original order and compares byte-for-byte against
+`git show "$BASE:src/client/graphics/entity_renderer.cpp" | sed -n '30,3242p'`.
+Proof B is the multiset form, and additionally folds in
+`entity_first_person_draw.cpp`'s original body (lines 20-88 at `$BASE`) on both
+sides, so the append is covered too. Script:
+`scratchpad/proof.py`, reproducible from `$BASE`.
+
+### 5. The first-person feature is now whole, in one TU
+
+`entity_first_person_draw.cpp` (401 lines) now holds, in this order:
+`updateFirstPersonBodyDrawRule` and `isPlayerBodyWithheldFromRenderList` (the
+T309 per-frame driver, unmoved), then `setPlayerFirstPersonMode`,
+`isPlayerInFirstPersonMode`, `updatePlayerEntityPosition`,
+`setPlayerEntityAnimation`, `setPlayerSpawnId`, `getPlayerModelYOffset`,
+`getPlayerCollisionZOffset` and `getPlayerFirstPersonEyeOffset`. A `grep -rn
+first_person src/client/graphics/` now lands on the whole feature.
+
+**Its header comment did not still read correctly for the enlarged file** — it
+ended "This TU is only the per-frame driver," which the append makes false. I
+replaced that clause (2 lines removed, 8 added) with a paragraph naming
+everything the TU now carries and attributing the move to J03. The T307/T309
+rule paragraph, the pointer to `first_person_body_draw.h`,
+`refactor/T307_official_draw_rule.md` and `review/T307/README.md` are untouched.
+This is the unit's **only** non-relocation edit; it is comment text, allowlisted
+by the verifier as boilerplate, and is declared here rather than absorbed
+silently. Per the plan the file took `entity_renderer.cpp`'s full 25-include
+block on top and kept its own `first_person_body_draw.h` include.
+`first_person_body_draw.h`, `first_person_eye.h`, `first_person_camera.h` and
+`animated_mesh_scene_node.cpp` were not touched.
+
+### CMake
+
+`grep -n 'entity_renderer\.cpp\|entity_first_person_draw\.cpp' CMakeLists.txt
+tests/CMakeLists.txt` → **exactly one site**, `CMakeLists.txt:468` in
+`GRAPHICS_SOURCES` (the plan said `:463`; J02's merge moved it 5 lines in the
+same afternoon — the process rule about line numbers earns its place again).
+All five new TUs added directly beneath it. `entity_first_person_draw.cpp` was
+already listed at `:471` and needed no entry. `tests/CMakeLists.txt` names
+neither file.
+
+### 6. Acceptance
+
+| step | result |
+|---|---|
+| `cmake --build build -j24` | **EXIT=0** (first invocation hit the 600 s tool ceiling mid-build and was re-run; the classification is the second run's exit code) |
+| `ctest -j6` | **3,477 / 3,478 pass**, 250 s. Sole failure `AudioManagerTest.PreloadCommonSounds` — the ALSA host quirk, line 8 of `refactor/test_baseline.txt`. **Zero new failures.** `HeadlessShutdownTest.NonLifecycleCommandIsHeldNotDroppedOrApplied` passed, no re-run needed |
+| `verify_move_only.py "$BASE..HEAD" --repo <slot>` | **PASS**, first try |
+| line-multiset check | **byte-identical + MULTISET-OK** |
+| visual gate | **Passed, 31.88 s**, and `git status --porcelain` showed **no golden change** — only the 3 modified and 5 new sources |
+| `scripts/build-gles2-x86.sh` | **EXIT=0** |
+| `scripts/build-arm-noble.sh` | **EXIT=0** |
+| `check_file_sizes.sh --files` (all 8) | **7 ok, 1 warn, 0 fail** — the warn is `CMakeLists.txt` at 1,910, the known pre-existing WARN §Process disclaims |
+| `chmod 644` on created files | done in the cut script; `git diff --stat` records no mode change |
+
+### 7. Wall clock and concurrency
+
+**~40 min end to end.** Reading the contracts and surveying ~10 min; **the cut,
+CMake and both proofs together under 4 min** (one off-by-one in my own extract
+script, caught by proof B reporting a single missing blank line — the proof
+earning its keep); the bar ~26 min. **The slowest step by far was
+`cmake --build -j24`: it exceeded the 600 s tool ceiling on the first
+invocation** and completed on the second — J01 measured this step at ~4 min
+solo, so a three-slot wave stretched it past 10 min, a >2.5x stretch, worse
+than J02's 2.3x on `ctest`. `ctest -j6` itself took **250 s (4.2 min)**,
+between J01's 3.0 solo and J02's 6.8 under contention. **Budget ~40 min per
+unit in a three-wide wave, and expect the x86 build, not `ctest`, to be the
+step that needs a second invocation.**
+
+### 8. What the template still gets wrong
+
+1. ⚠ **A timed-out `cmake --build` is a routine event in a three-wide wave, not
+   an anomaly.** The protocol warns that a mid-link kill can silently truncate a
+   test binary; that is now the *expected* path for this batch's build step, and
+   every unit should plan on two invocations. It cost 10 minutes here.
+2. **The plan's per-TU line estimates were 1-6 lines high across the board**
+   because they counted the namespace-close as part of each cluster. Harmless,
+   but the arithmetic in future J plans is systematically off by the close.
+3. **`--repo` and `merge-base` both worked exactly as J02 documented** — those
+   two corrections are good and need no further change.
+4. The §Process instruction to take ranges "from the leading `// ====` banner"
+   has no purchase in this file (there are none), and here the honest rule is
+   the one I used: **cut at a blank line whose predecessor closes a method, and
+   verify comment depth 0 at the cut**. Worth generalising, since J02's hazard
+   and this file's cleanliness are two faces of the same check.
