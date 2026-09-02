@@ -1362,6 +1362,64 @@ deleted it, scan widened to `lib*.a` with `ar t`: 221 binaries + 2 archives,
 J35 creates **zero** `tests/` doc rot — the plan's "comment-only hits" claim was
 wrong; there are no comment hits at all.
 
+## ⚠ CORRECTIONS FROM J24 (2026-09-02)
+
+**61. THE WIDENED CORRECTION-51 GREP HAS NOW SCORED TWICE RUNNING — MAKE IT THE
+ONLY PATTERN.** `grep -n '^static \|^namespace'` returns nothing for
+`combat.cpp` (exit 1), exactly as its §Measured claimed. The widened pattern
+finds `IsCorpseEntity` at 1658 — **a namespace-scope free function, J32's exact
+shape.** Safe here twice over (declared in the public header; definition and its
+sole reader both inside one range), but the narrow pattern **cannot see this
+class of symbol at all**, and it is the class that produces a non-compiling plan.
+Use only:
+`grep -nE '^[A-Za-z_][A-Za-z_0-9:<>,&\* ]*\(' <file> | grep -v '<Class>::'`
+
+**62. CORRECTION 45 NEARLY FIRED ON A PLAN'S OWN ACCEPTANCE STEP — THIRD TIME
+THIS CLASS.** J24's item 11 prescribes `grep -n 'pragma pack'` across all three
+TUs while §File-header comments tells each TU to explain why it has no pack
+directive — **a header spelling the token out makes the new TUs return comment
+hits that read exactly like a half-copied pack pair.** (J26 hit the identical
+shape on `s_debug_level`; J31 on a test guard.) All three headers describe it in
+words; item 11 comes back clean. **Any plan that prescribes a grep AND a header
+mentioning the same token is self-contradicting by construction.**
+
+**63. Method counts slipped for the FIFTH consecutive unit while ranges held
+exactly.** Predicted 30/20/27, real 25/27/26 — and note the plan-style pattern
+`^[A-Za-z_].*<Class>::` **silently misses the constructor.** Plans should stop
+predicting per-TU method counts, or state the pattern and accept they are
+indicative.
+
+**64. Another prose-vs-table contradiction (correction 19/47 class):** §The
+split's line column used `49 + range` where §Includes prescribes `15 + range`,
+making both new TUs 34 lines too high. The plan's own arithmetic sentence was
+right and its table was wrong.
+
+### J24's result
+
+2,119 → **797 / 596 / 789**, zero range drift on every line number including all
+six preprocessor directives. **Verifier exit 0, +0/−0 substantive** (61
+boilerplate = 33 header + 14 preamble × 2). Both proofs exit 0 over 2,070 lines,
+extracted from the produced files.
+
+**The combat suite was reported explicitly, as asked: `test_combat_manager`
+66/66**, standalone against the relinked binary and in ctest; the whole
+combat selection 163/163; **no test file touched.** Correction 41's fix used
+(gles2 before ctest, benchmark stamped after the edits).
+
+**CMake: ONE site, derived** — and the recorded `SET(` opener was 2 lines stale,
+while the plan's named false positive had moved 10 lines. Third consecutive unit
+where counts were right and line numbers were not.
+
+**Dead-content site #8 confirmed and moved verbatim:** `Consider_Struct` +
+`Action_Struct`, 26 lines, zero readers — the 15 tree-wide grep hits are all
+different symbols. Now at `combat.cpp:30-39` and `:41-55`.
+
+**Doc rot split honestly per J31's distinction:** five citations in
+`test_combat_manager.cpp:700` were **already stale at base** (checked line by
+line — none is a loot call), while four other mentions were accurate at base and
+now point at the wrong TU. Queue the latter against J24, not against pre-existing
+rot.
+
 ## Unit table
 
 | Unit | File | Lines | → TUs | Largest after | Wave | Notes |
