@@ -278,6 +278,58 @@ comparing (what J04 did — byte-identical re-concatenation, 3,004 lines).
 `CMakeLists.txt` by name but not this one. **Board a split before a later J unit
 trips a genuine FAIL through no fault of its own.**
 
+## ⚠ CORRECTIONS FROM THE WAVE-2 PLANNING PASS (2026-09-02)
+
+Re-measured every Wave-2 file at `ed97d701` while writing J05/J06/J07. Four
+things the survey got wrong or under-stated:
+
+**9. `application.cpp` is 2,368, not 2,356** — T319 grew it. `wld_loader.cpp`
+(2,908) and `eq_player_info.cpp` (2,301) are unchanged. **Re-measure every
+remaining unit's file at its own tip; the survey's numbers are from before three
+splits and eight bug-fix units merged.**
+
+**10. J05's internal-header need is NARROWER than the survey claims — take only
+`read_val<T>`.** The survey says `wld_internal.h` is needed for `read_val<T>`
+*and* `HASH_KEY`/`decodeStringHash`. Only the first is true:
+- `read_val<T>` — genuinely broad. **114 call sites**, spread continuously
+  through every fragment parser (measured by 200-line bucket:
+  3/9/9/11/16/2/13/12/13/21/5). No 7-way partition keeps it file-local. It must
+  be promoted, and doing so costs **exactly one changed signature line**.
+- `decodeStringHash` — **already declared in the public header**
+  (`include/client/graphics/eq/wld_loader.h:720`). External linkage today. Needs
+  nothing.
+- `HASH_KEY` — **exactly one reader in the whole tree**, `wld_loader.cpp:28`,
+  inside `decodeStringHash` itself. Travels with it for free.
+
+Corollary for every future unit: **an internal header's contents are an
+enumerated, individually signed-off exception list.** Do not add a symbol to one
+"for symmetry" — measure each.
+
+Related: J05's header can also avoid J04's `namespace detail` + `using` pattern
+entirely by keeping `read_val` in its existing `EQT::Graphics` namespace, which
+leaves all 114 call sites textually untouched and **halves the exception list to
+one added + one removed line**. Prefer that shape when the symbol's current
+namespace is already shared by every consumer.
+
+**11. ⚠ CMake add-site counts vary by two orders of magnitude, and nobody has
+been counting.** J01 found 1, J02 found 1, J04 found 5. **J05 has NINETEEN** —
+`CLIENT_CORE_SOURCES` plus **fourteen tool/benchmark targets** (`model_viewer`,
+`s3d_dump`, `entity_composite_builder`, `wld_dump`, `bsp_region_finder`,
+`zone_region_classifier`, `region_poly_audit`, `generate_surface_map`,
+`zone_line_editor`, `equipment_index_builder`, `atlas_uv_audit`,
+**`gles2_zone_benchmark`**, `gles2_shader_diagnostic`, `gles2_composite_audit`)
+plus **four test targets**. J06 and J07 have one each.
+⚠ **`gles2_zone_benchmark` is the binary `scripts/ci/visual_gate.sh` runs**, so
+a missed add-site there surfaces as a *visual gate failure*, which an executor
+will misdiagnose as a behaviour change. **Every unit must count its own sites
+before starting and report the count**; the shape of the file gives no hint —
+`wld_loader.cpp` is a leaf parser and has the most exposure in the tree.
+
+**12. ⚠ The CMake commands in this project are UPPERCASE.** `ADD_EXECUTABLE`,
+`SET`, `IF`. `grep -n 'add_executable'` and `grep -n '^set('` both return
+**nothing**, silently — which reads exactly like "no sites here". §Process
+already says to grep for the **filename**; this is why that matters.
+
 ### A correction to Hazard 1's premise (J04)
 
 **There are no duplicate registrations in `registerBuiltinCommands`** — J04
@@ -303,9 +355,9 @@ live victim in this file**.
 | J02 | `eq.cpp` | 3,913 (**3,923**) | 6 | ~1,065 | 1 | `DispatchZonePacket` becomes its own ~965-line TU **with no room to grow** — flag it, do not decompose it |
 | J03 | `graphics/entity_renderer.cpp` | 3,255 | 7 | ~500 | 1 | ⚠ **blocked on T318.** `updateFirstPersonBodyDrawRule()` is ALREADY its own TU (`entity_first_person_draw.cpp`, 90 lines); keep the rest of the first-person family with it |
 | J04 | `action/command_processor.cpp` | 3,024 | 5 | ~800 | 1 | ⚠ must NOT split `registerBuiltinCommands` (registration ORDER is load-bearing). ⚠ 3 anonymous namespaces, one used across two clusters → needs `command_internal.h`. ⚠ 4 sites in `tests/CMakeLists.txt` |
-| J05 | `graphics/eq/wld_loader.cpp` | 2,908 | 7 | 490 | 2 | needs `wld_internal.h` (`read_val<T>` used 114×) |
-| J06 | `application.cpp` | 2,356 | 5 | 815 | 2 | signal-handler static promotion |
-| J07 | `eq_player_info.cpp` | 2,301 | 4 | 745 | 2 | 118 small methods, no statics — lowest risk |
+| J05 | `graphics/eq/wld_loader.cpp` | **2,908** | 7 +1 hdr | **~748** | 2 | ⭐ **planned: `refactor/J05_wld_loader_split.md`.** needs `wld_internal.h` (`read_val<T>` used 114×) — so it **exits the verifier 1 by construction** (correction 5). ⚠ **NINETEEN CMake add-sites**, one of them `gles2_zone_benchmark` (the visual-gate binary). ⚠ worst mutation score in the repo |
+| J06 | `application.cpp` | **2,368** (survey said 2,356; T319 grew it) | 5 | **~947** | 2 | ⭐ **planned: `refactor/J06_application_split.md`.** `s_terminateRequested` + 4 signal handlers: read by `mainLoop`, address-taken by `initialize`. Two options in the plan; the executor argues its choice |
+| J07 | `eq_player_info.cpp` | **2,301** | 4 | **~753** | 2 | ⭐ **planned: `refactor/J07_eq_player_info_split.md`.** 118 small methods, no statics, no namespace, no hazards — **lowest risk in the batch, identical bar.** The batch's control sample for what the bar alone costs |
 | J08 | `eq_entities.cpp` | 2,736 | 4 | 970 | 3 | also relocates 161 lines into `eq_group.cpp` |
 | J09 | `graphics/zone_shader.cpp` | 2,561 | 3 +2 hdrs | 990 | 3 | 1,345 lines are GLSL string literals |
 | J10 | `graphics/constrained_texture_cache.cpp` | 2,211 | 4 | 780 | 3 | carry the `#if 0` guard region intact |
@@ -317,6 +369,7 @@ live victim in this file**.
 | J16 | `include/client/eq.h` type extraction | 2,538 | +3 hdrs | ~1,930 | 5 | after J02, J08; leave forwarding includes |
 | J17 | `include/client/graphics/irrlicht_renderer.h` | 2,395 | +2 hdrs | ~1,820 | 5 | after J11 |
 | J18+ | the residual ~13 files (§Residual) | — | — | — | 6 | re-measure first; several shrink as callers move |
+| **J20** | **`tests/CMakeLists.txt`** | **2,778** | per-domain `.cmake` fragments | — | **none — see below** | ⚠ **HIGH-CONFLICT with every in-flight J unit.** Within 222 lines of the hard cap and every J unit appends to it. Wants a quiet moment, not a wave slot |
 
 Full clearance is roughly **26-30 units**.
 
@@ -330,7 +383,11 @@ Full clearance is roughly **26-30 units**.
   NOT here: T312 owns it. ⚠ **J03 is BLOCKED until T318 merges** — slot3 has
   `entity_renderer.cpp` open right now (size-update path). J02 and J04 are
   clear and can go immediately.
-- **Wave 2 (3-way):** J05 / J06 / J07.
+- **Wave 2 (3-way):** J05 / J06 / J07. **All three planned** —
+  `refactor/J05_wld_loader_split.md`, `refactor/J06_application_split.md`,
+  `refactor/J07_eq_player_info_split.md`, each carrying all eight corrections
+  inline so no executor rediscovers them. Re-measured at `ed97d701`; the only
+  stale survey number was `application.cpp` (2,356 → **2,368**, T319).
 - **Wave 3 (3-way):** J08 / J09 / J10.
 - **Wave 4 (3-way, after T312 AND T313 merge):** J11 / J12 / J13.
 - **Wave 5 (headers, after the policy amendment):** J14 anytime a slot is free;
@@ -345,6 +402,53 @@ Full clearance is roughly **26-30 units**.
 | T312 (thread safety) | `irrlicht_renderer.h`/`.cpp`, `renderer_frame.cpp`, `graphics_input_handler.cpp`, `renderer_player_physics.cpp` | **J11, J17**, and the Wave-6 `renderer_frame` / `renderer_player_physics` units |
 | T318 (size update / guild rank) | `graphics/entity_renderer.*`, `renderer_entities.cpp`, `irrlicht_bridge.cpp`, `eq_entities.cpp`, `eq_guild.cpp`, `spell_effects.cpp`, `event_bus.h`, `tests/CMakeLists.txt` | **J03** (hard). Not J02 (`eq.cpp` untouched), not J04 |
 | T313 (UI scroll) | `graphics/ui/`, one hunk in `irrlicht_renderer.h` | **J17** (soft: J11). No `graphics/ui/` file is over 1,500 (largest `static_panels.cpp` 915), so no J unit wants that territory |
+
+## J20 — split `tests/CMakeLists.txt` (2,778 lines). Boarded, unscheduled.
+
+**Why it exists:** `tests/CMakeLists.txt` is **2,778 lines** — over the 1,500
+WARN and **within 222 lines of the 3,000 hard cap** — and it holds **175
+`ADD_EXECUTABLE` blocks with 177 `GTEST_DISCOVER_TESTS` calls**. §Process
+grandfathers the root `CMakeLists.txt` by name; it does **not** grandfather this
+one. **Every J unit that touches a test target appends to it** (J04 added 16
+lines; J05 will add ~24). Left alone, a later J unit trips a genuine FAIL
+through no fault of its own and has to either fix an unrelated build-system
+problem inline or get the rule waived — which is exactly the harm T115 recorded
+and T166 exists to prevent.
+
+**Scope — mechanical, and nothing more:**
+1. Carve the file into **per-domain `.cmake` fragments** under
+   `tests/cmake/` (e.g. `network.cmake`, `graphics.cmake`, `wld.cmake`,
+   `audio.cmake`, `commands.cmake`, `state.cmake`, …), each holding whole
+   `IF(…) / ADD_EXECUTABLE / TARGET_LINK_LIBRARIES / GTEST_DISCOVER_TESTS /
+   ENDIF()` blocks moved **verbatim**.
+2. `tests/CMakeLists.txt` keeps its preamble — the `INCLUDE(GoogleTest)` and the
+   **T163 `PRE_TEST` discovery-mode block, which is load-bearing and heavily
+   commented; do not summarise it, do not move it into a fragment** — and
+   becomes a list of `INCLUDE(cmake/<domain>.cmake)` lines.
+3. **No target renames. No source-list edits. No link-library changes. No
+   behaviour change.** Not even a drive-by dedup of a repeated source path.
+
+**Acceptance — the one that actually matters is a target-set diff:**
+- `ctest -N` before and after, sorted, **byte-identical**: same test names, same
+  count, same order. Paste the diff.
+- the same for the target list (`cmake --build build --target help`, sorted).
+- full `ctest -j6` green, zero new failures vs `refactor/test_baseline.txt`.
+- `check_file_sizes.sh --files` on the new top-level file and every fragment →
+  0 warn, 0 fail. The root `CMakeLists.txt` WARN is not this unit's.
+- `scripts/build-gles2-x86.sh` and `scripts/build-arm-noble.sh` clean
+  (`build-arm-noble.sh` exit 143 = re-invoke).
+- a **from-scratch** configure + build, not just incremental: the T163 discovery
+  path is exactly what a stale cache would hide.
+- `verify_move_only.py` does not apply — CMake is a non-C++ file it declines to
+  verify. **The `ctest -N` diff is this unit's central proof in its place.**
+
+⚠ **Scheduling: this unit is HIGH-CONFLICT with every in-flight J unit and with
+most T units.** Any unit that adds a test target rebases into a file that no
+longer exists in the same shape, and the conflict is not a clean append. **Do
+not give it a wave slot alongside other J units.** It wants a quiet moment —
+no J unit in flight, no T unit holding `tests/CMakeLists.txt` — and it should
+merge alone. Between Wave 2 and Wave 3 is the natural window if one opens;
+otherwise before Wave 5 (the header wave), which touches test targets least.
 
 ## Optional, NOT part of this batch — the Batch-G follow-up
 
