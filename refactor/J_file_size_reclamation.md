@@ -1779,6 +1779,51 @@ none, and `WearChange_Struct` does not exist in this tree.
 `check_build_tree_orphans` in this slot too. Correctly dispositioned as
 pre-existing litter and deleted.
 
+## ⚠ CORRECTIONS FROM J16 (2026-09-02) — THE LAST MOVE-ONLY UNIT
+
+**94. STOP PUBLISHING ABSOLUTE LINE NUMBERS IN PLANS. Publish RANGE LENGTHS AND
+ANCHORS.** J16's file was **2,635, not the plan's 2,643** — every absolute
+number in §Measured was off by one at the front and by seven in the class
+region, **while the three range LENGTHS were exact** (379/137/100) and the
+tiling closed to the line. **Across the batch, ranges have been right and
+absolute positions have rotted within a day.** This subsumes corrections 59, 76
+and every "stale line number" note.
+
+**95. MAKE THE VERIFIER PREDICTION COMPUTABLE INSTEAD OF RESTATING IT.** The
+rule is now known: **one grep for forward declarations in the preamble being
+copied, times (copies − 1).** J16 applied it in reverse and got the right answer
+for the right reason — it predicted **+0/−0 and said why in advance: this unit
+copies no preamble at all.** ⚠ **It therefore deliberately did NOT follow
+§Process's "carry the include block verbatim" rule**, which would have
+replicated 16 forward declarations for ~+32 lines and no benefit. **That rule is
+for TU splits, not for lifting free types out of a header.**
+
+**96. FOURTH CONSECUTIVE UNIT to find its plan's prescribed header comment block
+violating correction 45** (J14, J15, J17, J16). Every one wrote safe wording
+itself and declared the deviation. **The template must generate that text from
+the audit rather than hand the executor a block that fails its own greps.**
+
+### J16's result — and Batch J's move-only work is COMPLETE
+
+`eq.h` **2,635 → 2,025** plus `eq_opcodes.h` 384, `eq_enums.h` 146,
+`eq_types.h` 111. **Verifier exit 0, +0/−0**, all 25 boilerplate lines
+enumerated. **87 includers** (not 88), unchanged, none edited. Zero CMake
+add-sites, falsified by grep.
+
+**Four content proofs** — byte-identical re-concatenation, multiset, a
+byte-identical diff of the **1,899-line class**, and an extra preamble check —
+which together account for **every line** of the original.
+
+**Its text-guard evidence matches J15's standard and extends it:** three guards
+key on this header, and rather than compare counts it **serialised both parsed
+sets and compared element-wise** — senders 78, members 150, *sets identical*.
+Counts can match while contents differ; sets cannot.
+
+**`eq.h` is the batch's definitive proof that correction 68 needs BOTH greps:**
+the narrow one alone misses `ChatChannelName(uint32_t)`; the widened one alone
+misses both `NPC_INTERACTION_DISTANCE` constants, because a call-shaped pattern
+requires a `(`. Neither is sufficient; both controls proven live.
+
 ## Unit table
 
 | Unit | File | Lines | → TUs | Largest after | Wave | Notes |
