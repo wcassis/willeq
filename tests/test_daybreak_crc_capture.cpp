@@ -1,11 +1,13 @@
 /**
  * T321 — CRC validation against REAL captured wire bytes.
  *
- * `src/client/eq.cpp` disables CRC validation on every zone connect
- * (`zone_opts.skip_crc_validation = true; // TODO: Remove after CRC bug is
- * fixed`). This test pins what `ValidateCRC()` actually does with real
- * traffic, so the diagnosis survives whether or not that flag is ever
- * flipped.
+ * T321 proved there was never a CRC bug: all 73,356 CRC-bearing datagrams in
+ * a real captured session validate. T323 then deleted the stale
+ * `zone_opts.skip_crc_validation = true;` line from
+ * `EverQuest::ConnectToZone()`, so fable now validates the zone stream like
+ * it has always validated login and world. This test pins what
+ * `ValidateCRC()` actually does with real traffic, so the diagnosis and the
+ * flip both stay pinned.
  *
  * The bytes come from `review/T311/legA/T311A_official_client_session.pcap`
  * (T311 Leg A: one official Titanium client against a local eqemu, 73,506
@@ -279,13 +281,17 @@ TEST_F(DaybreakCrcCaptureTest, CorruptedAndTruncatedZonePacketsAreRejected) {
 	}
 }
 
-// This is the live defect, pinned: with the flag eq.cpp sets on every zone
-// connect, a packet that fails CRC is accepted and parsed as valid.
+// The escape hatch, pinned. This WAS the live defect: until T323 deleted the
+// line, `EverQuest::ConnectToZone()` set this flag on every zone connect and a
+// packet that failed CRC was accepted and parsed as valid. No production code
+// sets it any more — the test is kept as a guard on what re-enabling it would
+// cost, and it is still a real assertion about `ValidateCRC`'s early-out
+// (`daybreak_connection.cpp`), which the option still controls.
 TEST_F(DaybreakCrcCaptureTest, SkipCrcValidationAcceptsACorruptedZonePacket) {
 	auto recs = LoadCapture();
 	ASSERT_FALSE(recs.empty()) << "fixture missing: " << T321_CRC_CAPTURE;
 
-	opts_.skip_crc_validation = true;  // what src/client/eq.cpp does today
+	opts_.skip_crc_validation = true;  // no production caller since T323
 	ASSERT_NO_FATAL_FAILURE(OpenSession(*FirstOf(recs, "zone")));
 
 	const std::vector<uint8_t> *victim = nullptr;
