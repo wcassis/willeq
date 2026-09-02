@@ -1559,6 +1559,49 @@ words.
 `libwilleq_core.a`. J30 notes `build-gles2/bin/*` alone would have been blind to
 it, which is why the scan must include `lib*.a`.
 
+## ⚠ CORRECTIONS FROM J28 (2026-09-02)
+
+**76. STOP CITING ROOT CMAKE LINE NUMBERS IN PLANS — FIFTH CONSECUTIVE UNIT.**
+J28's were `:553`→`:570` (+17) and the opener `:439`→`:447` (+8), **with the
+target name right**, exactly as in J24, J29, J30 and J35. **Plans should name
+the target and the `SET(...)` variable and require the executor to locate it.**
+The count has been right every time; the line numbers never survive a day.
+
+**77. "Expect comment-only hits in `tests`/`scripts`" is now wrong for the THIRD
+unit** (J28, J30, J35 all found **zero hits, exit 1**). Change the boilerplate to
+"expect nothing" so a hit is the surprise. These three units also create **no
+new `tests/` doc rot**, unlike J23/J24/J27/J31.
+
+### J28's result
+
+1,826 → **469 / 743 / 651**, zero range drift — the plan's own `464/738/646`
+plus the 5 header lines it prescribes, exactly. **Verifier exit 0, +0/−0
+substantive, prediction held**, and all 35 boilerplate lines enumerated rather
+than accepted.
+
+Both proofs exit 0 over 1,815 lines, with `body(TU)` defined structurally — it
+located the third namespace open and **asserted exactly three trailing
+`} // namespace` lines** rather than trusting an offset. Bodies extracted from
+the produced files.
+
+**Its correction-21 evidence is the strongest form yet:** the widened grep with
+its **exit status printed** (exit 1, no output), a **count of the unfiltered
+matches** (45, all member definitions) to prove the pattern was live rather than
+broken, the correction-36 preamble pre-check, and the inference stated
+explicitly. This is what correction 60 asks for and it should be the template's
+worked example.
+
+**Correction 41's fixed order used**; benchmark stamped 15:28:16 against 14:59:38
+edits, gate PASSED, **no image mismatch** — notable because this file builds the
+foliage atlas.
+
+⚠ **Corrections 56 and 65 fired TOGETHER:** the first main build was killed while
+archiving `libwilleq_core.a` (the `ar` site, third instance) **and left no exit
+file at all**. J28 scanned 221 binaries plus every `lib*.a` (0 BAD), then
+relaunched detached with a **unit-private exit file** and read the code from
+inside it. That combination — private exit file, read from within — is the
+practice the whole batch should have started with.
+
 ## Unit table
 
 | Unit | File | Lines | → TUs | Largest after | Wave | Notes |
