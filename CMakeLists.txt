@@ -300,6 +300,8 @@ SET(CLIENT_CORE_SOURCES
     src/client/eq_chat.cpp
     src/client/eq_combat_actions.cpp
     src/client/combat.cpp
+    src/client/combat_rounds.cpp
+    src/client/combat_hunting.cpp
     src/client/corpse_predicate.cpp
     src/client/bind_wound_outcome.cpp
     src/client/who_format.cpp
