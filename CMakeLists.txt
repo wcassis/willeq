@@ -548,6 +548,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/text_batch.cpp
         # Detail system (grass, plants, debris)
         src/client/graphics/detail/detail_manager.cpp
+        src/client/graphics/detail/detail_zone_configs.cpp
         src/client/graphics/detail/detail_chunk.cpp
         src/client/graphics/detail/detail_config_loader.cpp
         src/client/graphics/detail/detail_texture_atlas.cpp
