@@ -243,3 +243,69 @@ is small and localised:
 | `scripts/build-arm-noble.sh` | **PASS** (EXIT=0) |
 | `scripts/refactor/check_file_sizes.sh fable` | 7 ok, 2 warn, 1 fail — **all pre-existing**; no new FAIL, and the failing file grew by 26 lines |
 
+### Live acceptance — PASS, both halves, on a real corpse
+
+eqemu lock taken atomically after slot1's T311 and slot2's T312 released it;
+stack started with `scripts/eqemu/up.sh`, shut down with `down.sh`, lock file
+deleted. Testchar (GM) in qeynos2, `--eqe1-path /mnt/projects/EverQuest_ETC1`,
+daylight forced with `#set time 11 0` first. Media + a README in
+**`/mnt/projects/fable/review/T313/`**.
+
+A rat spawned with `#npctypespawn 351043`, given a **28-item** loot list with
+`#npcloot add`, and killed. The loot panel shows 8 rows, so **twenty of those
+twenty-eight items were unreachable by any click before this unit**.
+
+`live/` — the scripted half (`/scroll`):
+
+| capture | the panel's own "N-M of T" line |
+|---|---|
+| `live_01_loot_page1_unscrolled.png` | **1-8 of 28** (Cloth Cap … Cloth Sleeves) |
+| `live_02_loot_page2_after_scroll.png` | **21-28 of 28** after `/scroll loot bottom`, ending on *Small Cloth Veil* |
+| `live_03_after_looting_last_row.png` | chat: **"Looting Small Cloth Veil (slot 35)… --You have looted a Small Cloth Veil--"**, list drops to **20-27 of 27** |
+
+**Corpse slot 35 — the 28th and last row — was looted.** That is the
+user-visible proof the plan asked for.
+
+`live/` — the real wheel (Xvfb `:95` + `--egl-x11` + `xdotool click 5` x10,
+pointer parked at 400,300 inside the popup, no slash command anywhere):
+
+| capture | |
+|---|---|
+| `wheel_01_before_wheel.png` | **1-8 of 27** |
+| `wheel_02_after_real_mouse_wheel.png` | **20-27 of 27**, with the row under the cursor highlighted — the pointer demonstrably over the panel |
+
+That closes the one hop the unit tests cannot reach: Irrlicht really does
+deliver `EMIE_MOUSE_WHEEL` to `OnEvent()` under the X11 EGL device, and the
+accumulator really is read and routed on the render thread.
+
+`synthetic/` — the same production render functions driven by the test binary
+(`WILLEQ_T313_CAPTURE_DIR=<dir> ./bin/test_static_ui_scroll`), so the reviewed
+pixels come from the calls the assertions run on: the loot popup at 1-8 of 14
+and 7-14 of 14, and the chat box at offset 0, one page up, and a deliberate
+over-scroll showing `renderChatPanel()`'s clamp.
+
+**DB restored to an EMPTY diff** (`db_before.txt` vs `db_after.txt`): general
+slots 23-30 and the cursor slot 33 back to their original contents, character
+back to zone 2 / (-74, 428, 3.751) / heading 160.
+
+### Live-session traps worth carrying forward
+
+1. **`#gm on` is required before `#kill`, `#damage` and `#npcloot`.** Three runs
+   were lost to this. `#npctypespawn` and `#set time` work on account status
+   alone, so GM commands *appear* to be working; the target-taking ones
+   silently do nothing until the GM flag is on. T290's memory note has the
+   `#set gm on` recipe for reaching another player — this is the same switch,
+   needed for one's own harmful commands too. Neither the client nor the
+   server log says a word when it is off.
+2. **T290's cursor trap is still live, and there is a second one.** Testchar
+   had `Wooden Fishing Tackle` on the cursor (`inventory.slot_id = 33`) *and*
+   all eight general slots (23-30) full of `Scaled Curskin` — with either in
+   place, every loot is refused. Both cleared for the session and restored
+   after.
+3. **An inventory with ZERO rows makes the zone log "Error loading inventory
+   for char_id 65 from the database" on every connect.** Clearing slots 23-33
+   left the character with no inventory rows at all; putting one row back
+   silenced it. Leave at least one item on a test character.
+4. `/target` takes a name (`/target a_rat`); bare `/target` is a usage error,
+   not target-nearest.
+

@@ -41,6 +41,7 @@
 #include <functional>
 #include <memory>
 #include <sstream>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -488,6 +489,19 @@ TEST_F(SkillsScrollTest, TheRowHitTestNeverReachesPastTheDRAWNWindow) {
 // harness as test_ui_atlas_pixels.cpp; self-skips without the EQE1 asset or
 // a usable device.
 
+// Set WILLEQ_T313_CAPTURE_DIR to have the pixel legs below also write their
+// framebuffers out as PNGs -- that is how review/T313's before/after pair was
+// made, so the reviewed pixels come from the same production render calls the
+// assertions run on rather than from a separate one-off harness.
+const char* captureDir() { return std::getenv("WILLEQ_T313_CAPTURE_DIR"); }
+
+void maybeCapture(irr::video::IVideoDriver* driver, irr::video::IImage* shot,
+                  const std::string& name) {
+    const char* dir = captureDir();
+    if (!dir || !shot) return;
+    driver->writeImageToFile(shot, (std::string(dir) + "/" + name + ".png").c_str());
+}
+
 class ChatScrollPixelTest : public ::testing::Test {
 protected:
     irr::IrrlichtDevice* device_ = nullptr;
@@ -563,6 +577,7 @@ protected:
             driver_->endScene();
         }
         shot = driver_->createScreenShot();
+        maybeCapture(driver_, shot, "chat_offset_" + std::to_string(offset));
         std::vector<uint32_t> px;
         if (shot) {
             const auto& r = layout_.chatMessages;
@@ -693,4 +708,113 @@ TEST(ScrollSourceInvariants, TheFrameRoutesTheWheelIntoTheStaticUI) {
         << "the wheel never reaches the static UI -- every panel is pinned to page one again";
     EXPECT_NE(frame.find("staticUIInput_->processScrollKey("), std::string::npos)
         << "PageUp/PageDown never reach the static UI";
+}
+
+// ===========================================================================
+// Leg B (pixels) -- the loot popup, drawn by renderLootPopup() itself
+// ===========================================================================
+//
+// The loot leg above proves the ROW SET through hitTestLootRow() and the real
+// intents. This proves the same thing in pixels, through the production
+// render function and the real UI atlas, and is what review/T313's
+// before/after pair is captured from.
+
+class LootScrollPixelTest : public ::testing::Test {
+protected:
+    irr::IrrlichtDevice* device_ = nullptr;
+    irr::video::IVideoDriver* driver_ = nullptr;
+    EQE1Loader loader_;
+    std::unique_ptr<ConstrainedTextureCache> cache_;
+    std::unique_ptr<UIAtlas> atlas_;
+    TextBatch textBatch_;
+    UILayout layout_;
+    LootPanelState loot_;
+
+    void SetUp() override {
+        std::ifstream probe(kWilleqEqe1);
+        if (!probe.good()) GTEST_SKIP() << "willeq.eqe1 not present at " << kWilleqEqe1;
+        if (!loader_.open(kWilleqEqe1)) GTEST_SKIP() << "Failed to open " << kWilleqEqe1;
+
+        irr::SIrrlichtCreationParameters params;
+        params.DriverType = irr::video::EDT_OGLES2;
+        params.WindowSize = irr::core::dimension2d<irr::u32>(800, 600);
+        params.Fullscreen = true;
+        device_ = irr::createDeviceEx(params);
+        if (!device_) GTEST_SKIP() << "no EDT_OGLES2 device";
+        driver_ = device_->getVideoDriver();
+        textBatch_.init(device_->getGUIEnvironment());
+        layout_.computeLayout(800, 600);
+
+        auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::TNT);
+        cache_ = std::make_unique<ConstrainedTextureCache>(config);
+        cache_->setDriver(driver_);
+        cache_->addEQE1Loader(&loader_);
+        atlas_ = std::make_unique<UIAtlas>();
+        if (!atlas_->load(driver_, cache_.get())) GTEST_SKIP() << "UIAtlas::load() failed";
+
+        // 14 items, 8 visible rows: slots 8..13 are off the first page.
+        loot_.isOpen = true;
+        loot_.corpseId = 4242;
+        loot_.corpseName = "a decaying skeleton";
+        static const char* kNames[14] = {
+            "Rusty Short Sword", "Tattered Cloth Cap", "Bone Chips",
+            "Small Bronze Ring", "Rat Whiskers", "Cracked Staff",
+            "Fire Beetle Eye", "Worn Leather Boots",
+            "Silver Amulet", "Gnoll Fang", "Muffin", "Bottle of Milk",
+            "Jade Shard", "A Tiny Gold Idol"};
+        for (int i = 0; i < 14; ++i) {
+            loot_.items.push_back({static_cast<uint8_t>(i), 5000u + i, kNames[i]});
+        }
+    }
+
+    void TearDown() override {
+        atlas_.reset();
+        cache_.reset();
+        if (device_) { device_->drop(); device_ = nullptr; }
+    }
+
+    std::vector<uint32_t> renderAndRead(const std::string& captureName) {
+        UIRenderer ui;
+        ui.init(driver_, atlas_.get(), &textBatch_);
+        driver_->beginScene(true, true, irr::video::SColor(255, 0, 0, 0));
+        driver_->endScene();
+        for (int frame = 0; frame < 2; ++frame) {
+            driver_->beginScene(true, true, irr::video::SColor(255, 0, 0, 0));
+            ui.beginFrame();
+            renderLootPopup(ui, layout_, loot_);
+            ui.endFrame();
+            driver_->endScene();
+        }
+        irr::video::IImage* shot = driver_->createScreenShot();
+        maybeCapture(driver_, shot, captureName);
+        std::vector<uint32_t> px;
+        if (shot) {
+            const auto& r = layout_.centerPopup;
+            for (int y = r.UpperLeftCorner.Y; y < r.LowerRightCorner.Y; ++y) {
+                for (int x = r.UpperLeftCorner.X; x < r.LowerRightCorner.X; ++x) {
+                    px.push_back(shot->getPixel(x, y).color);
+                }
+            }
+            shot->drop();
+        }
+        return px;
+    }
+};
+
+TEST_F(LootScrollPixelTest, ScrollingRedrawsTheLootListWithDifferentRows) {
+    ASSERT_EQ(loot_.scrollOffset, 0);
+    auto firstPage = renderAndRead("loot_before_scroll_page1_of_14_items");
+    ASSERT_FALSE(firstPage.empty()) << "framebuffer readback produced nothing";
+
+    ChatPanelState chat;
+    SkillsPopupState skills;
+    StaticUIInput::scrollPanel(ScrollTarget::Loot, -100, layout_, chat, skills, loot_);
+    ASSERT_EQ(loot_.scrollOffset, loot_.maxScrollOffset());
+    ASSERT_EQ(loot_.scrollOffset, 6);
+
+    auto lastPage = renderAndRead("loot_after_scroll_page2_slots_6_to_13");
+    ASSERT_EQ(lastPage.size(), firstPage.size());
+    EXPECT_NE(firstPage, lastPage)
+        << "renderLootPopup() drew identical pixels before and after a full scroll -- "
+           "the last six items are still unreachable";
 }
