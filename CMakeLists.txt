@@ -451,6 +451,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/sky_loader.cpp
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/eq/zone_geometry.cpp
+        src/client/graphics/eq/zone_geometry_atlased.cpp
         src/client/graphics/eq/race_codes.cpp
         src/client/graphics/eq/animation_mapping.cpp
         src/client/graphics/eq/equipment_textures.cpp
@@ -815,6 +816,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
         src/client/graphics/eq/zone_geometry.cpp
+        src/client/graphics/eq/zone_geometry_atlased.cpp
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
@@ -954,6 +956,7 @@ IF(EQT_GRAPHICS)
         src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
         src/client/graphics/eq/zone_geometry.cpp
+        src/client/graphics/eq/zone_geometry_atlased.cpp
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
@@ -1014,6 +1017,7 @@ IF(EQT_GRAPHICS)
         src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
         src/client/graphics/eq/zone_geometry.cpp
+        src/client/graphics/eq/zone_geometry_atlased.cpp
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
@@ -1199,6 +1203,7 @@ IF(EQT_GRAPHICS)
         src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
         src/client/graphics/eq/zone_geometry.cpp
+        src/client/graphics/eq/zone_geometry_atlased.cpp
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
@@ -1260,6 +1265,7 @@ IF(EQT_GRAPHICS)
         src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
         src/client/graphics/eq/zone_geometry.cpp
+        src/client/graphics/eq/zone_geometry_atlased.cpp
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
@@ -1671,6 +1677,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/wld_fragments_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
         src/client/graphics/eq/zone_geometry.cpp
+        src/client/graphics/eq/zone_geometry_atlased.cpp
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
@@ -1795,6 +1802,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/wld_fragments_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
         src/client/graphics/eq/zone_geometry.cpp
+        src/client/graphics/eq/zone_geometry_atlased.cpp
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
@@ -1881,6 +1889,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/wld_fragments_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
         src/client/graphics/eq/zone_geometry.cpp
+        src/client/graphics/eq/zone_geometry_atlased.cpp
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
