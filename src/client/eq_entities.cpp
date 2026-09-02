@@ -896,15 +896,33 @@ void EverQuest::ZoneProcessSpawnAppearance(const EQ::Net::Packet &p)
 		break;
 
 	case AT_SIZE:
-		// Size change
+		// T318: shrink, grow and illusion. The SERVER is authoritative --
+		// eqemu's Mob::ChangeSize() (zone/mob.cpp) does
+		//
+		//     size = clamp(in_size, 1, 255);           // clients/pets: [3, 15]
+		//     SendAppearancePacket(AppearanceType::Size, (uint32) size);
+		//
+		// to the WHOLE ZONE including self, so `parameter` is the size itself,
+		// truncated to an integer -- on exactly the scale Spawn_Struct::size
+		// uses, where a normal humanoid is 6. It was being divided by 10 here
+		// ("EQ uses size*10"), which the server source flatly contradicts: a
+		// shrunk player would have landed at 0.3 instead of 3. Nothing read the
+		// value anyway -- the renderer was never told, so every shrink and grow
+		// in the game was dropped while the client reported success.
 		{
+			float new_size = static_cast<float>(parameter);
 			auto it = m_entities.find(spawn_id);
 			if (it != m_entities.end()) {
-				// Size is stored as a float, parameter contains size value
-				it->second.size = static_cast<float>(parameter) / 10.0f;  // EQ uses size*10
-				LOG_DEBUG(MOD_ENTITY, "Entity {} size set to {}", spawn_id, it->second.size);
+				it->second.size = new_size;
+				LOG_DEBUG(MOD_ENTITY, "Entity {} size set to {}", spawn_id, new_size);
 			}
-			// TODO: Graphics rendering could update entity scale
+			if (m_bridge && new_size > 0.0f) {
+				eqt::state::EntitySizeChangedData data;
+				data.spawnId = spawn_id;
+				data.size = new_size;
+				m_bridge->pushEvent(eqt::state::GameEvent(
+					eqt::state::GameEventType::EntitySizeChanged, std::move(data)));
+			}
 		}
 		break;
 
@@ -2367,6 +2385,17 @@ void EverQuest::ZoneProcessIllusion(const EQ::Net::Packet &p)
 	if (m_bridge) {
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::EntityAppearanceChanged, std::move(data)));
+		// T318: EntityAppearanceChanged swaps the MODEL (race/gender/textures);
+		// the illusion's own size rides in the same packet and is a separate
+		// concern for the renderer, so it goes out as its own event -- the same
+		// one AT_SIZE publishes.
+		if (new_size > 0.0f) {
+			eqt::state::EntitySizeChangedData sizeData;
+			sizeData.spawnId = static_cast<uint16_t>(spawn_id);
+			sizeData.size = new_size;
+			m_bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::EntitySizeChanged, std::move(sizeData)));
+		}
 	}
 }
 
