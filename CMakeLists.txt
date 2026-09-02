@@ -373,6 +373,7 @@ SET(CLIENT_CORE_SOURCES
     # Spell system sources
     src/client/spell/spell_database.cpp
     src/client/spell/spell_manager.cpp
+    src/client/spell/spell_body_type_target.cpp
     src/client/spell/spell_cast_checks.cpp
     src/client/spell/cast_refusal.cpp
     src/client/spell/buff_manager.cpp

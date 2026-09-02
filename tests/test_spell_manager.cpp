@@ -593,9 +593,11 @@ TEST(SpellManagerValidate, SelfSpellSkipsRangeCheckEvenFarAway) {
 
 TEST(SpellManagerValidate, AnimalRestrictionRejectsNonAnimalTarget) {
     EverQuest eq = MakeEq();
-    // bodytype 0 = Humanoid.
+    // T314: bodytype 1 = Humanoid (eqemu common/bodytypes.h via
+    // client/eq_body_types.h). This test used to say 0, which is the old
+    // off-by-one BT_HUMANOID; 0 is "no spawn data recorded".
     ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn,
-        NewSpawnPayloadWithBodyType(100, "a_guard", 0, 10, 0, /*bodytype=*/0)));
+        NewSpawnPayloadWithBodyType(100, "a_guard", 0, 10, 0, /*bodytype=*/1)));
     auto* mgr = eq.GetSpellManager();
 
     SpellData spell = MakeSpell(SpellTargetType::Animal, /*mana_cost=*/0, /*range=*/0);
@@ -604,9 +606,11 @@ TEST(SpellManagerValidate, AnimalRestrictionRejectsNonAnimalTarget) {
 
 TEST(SpellManagerValidate, AnimalRestrictionAcceptsAnimalTarget) {
     EverQuest eq = MakeEq();
-    // bodytype 20 = Animal (isValidCreatureTarget's BT_ANIMAL).
+    // T314: bodytype 21 = Animal. This test used to say 20 (Luggald), the
+    // old off-by-one BT_ANIMAL. Full accept/reject table:
+    // tests/test_spell_body_type_targeting.cpp.
     ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn,
-        NewSpawnPayloadWithBodyType(100, "a_wolf", 0, 10, 0, /*bodytype=*/20)));
+        NewSpawnPayloadWithBodyType(100, "a_wolf", 0, 10, 0, /*bodytype=*/21)));
     auto* mgr = eq.GetSpellManager();
 
     SpellData spell = MakeSpell(SpellTargetType::Animal, /*mana_cost=*/0, /*range=*/0);
@@ -615,9 +619,10 @@ TEST(SpellManagerValidate, AnimalRestrictionAcceptsAnimalTarget) {
 
 TEST(SpellManagerValidate, UndeadRestrictionAcceptsVampireBodytype) {
     EverQuest eq = MakeEq();
-    // bodytype 11 = Vampire, folded into Undead per isValidCreatureTarget.
+    // T314: bodytype 12 = Vampire, an accepted undead target (eqemu
+    // ST_Undead). This test used to say 11 (NoTarget), the old BT_VAMPIRE.
     ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn,
-        NewSpawnPayloadWithBodyType(100, "a_vampire", 0, 10, 0, /*bodytype=*/11)));
+        NewSpawnPayloadWithBodyType(100, "a_vampire", 0, 10, 0, /*bodytype=*/12)));
     auto* mgr = eq.GetSpellManager();
 
     SpellData spell = MakeSpell(SpellTargetType::Undead, /*mana_cost=*/0, /*range=*/0);
@@ -627,7 +632,7 @@ TEST(SpellManagerValidate, UndeadRestrictionAcceptsVampireBodytype) {
 TEST(SpellManagerValidate, UnrestrictedTargetTypeIgnoresBodytype) {
     EverQuest eq = MakeEq();
     ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn,
-        NewSpawnPayloadWithBodyType(100, "a_guard", 0, 10, 0, /*bodytype=*/0)));
+        NewSpawnPayloadWithBodyType(100, "a_guard", 0, 10, 0, /*bodytype=*/1)));
     auto* mgr = eq.GetSpellManager();
 
     SpellData spell = MakeSpell(SpellTargetType::Single, /*mana_cost=*/0, /*range=*/0);

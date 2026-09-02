@@ -3,6 +3,7 @@
  */
 
 #include "client/spell/spell_manager.h"
+#include "client/spell/spell_body_type_target.h"
 #include "client/eq.h"
 #include "client/combat.h"
 #include "client/bridge/game_state_bridge.h"
@@ -450,56 +451,15 @@ bool SpellManager::isValidCreatureTarget(const SpellData& spell, uint16_t target
     }
 
     const Entity& target = it->second;
-    uint8_t bodytype = target.bodytype;
 
-    // Body type constants (from EQ)
-    constexpr uint8_t BT_HUMANOID = 0;
-    constexpr uint8_t BT_UNDEAD = 2;
-    constexpr uint8_t BT_GIANT = 3;
-    constexpr uint8_t BT_SUMMONED_UNDEAD = 7;
-    constexpr uint8_t BT_BANE_GIANT = 8;
-    constexpr uint8_t BT_VAMPIRE = 11;
-    constexpr uint8_t BT_ANIMAL = 20;
-    constexpr uint8_t BT_INSECT = 21;
-    constexpr uint8_t BT_SUMMONED = 23;
-    constexpr uint8_t BT_PLANT = 24;
-    constexpr uint8_t BT_DRAGON = 25;
-    constexpr uint8_t BT_SUMMONED2 = 26;
-    constexpr uint8_t BT_SUMMONED3 = 27;
-    constexpr uint8_t BT_DRAGON2 = 28;
-
-    switch (spell.target_type) {
-        case SpellTargetType::Animal:
-            // Animal only - includes insects
-            return bodytype == BT_ANIMAL || bodytype == BT_INSECT;
-
-        case SpellTargetType::Undead:
-        case SpellTargetType::UndeadAE:
-            // Undead only - includes vampires and summoned undead
-            return bodytype == BT_UNDEAD || bodytype == BT_SUMMONED_UNDEAD || bodytype == BT_VAMPIRE;
-
-        case SpellTargetType::Summoned:
-        case SpellTargetType::SummonedAE:
-            // Summoned only - all summoned variants
-            return bodytype == BT_SUMMONED || bodytype == BT_SUMMONED2 || bodytype == BT_SUMMONED3;
-
-        case SpellTargetType::Corpse:
-            // Corpse only - check is_corpse flag
-            return target.is_corpse;
-
-        case SpellTargetType::Plant:
-            return bodytype == BT_PLANT;
-
-        case SpellTargetType::Giant:
-            return bodytype == BT_GIANT || bodytype == BT_BANE_GIANT;
-
-        case SpellTargetType::Dragon:
-            return bodytype == BT_DRAGON || bodytype == BT_DRAGON2;
-
-        default:
-            // Not a creature-restricted spell type
-            return true;
-    }
+    // T314: the body-type numbering has ONE home -- client/eq_body_types.h,
+    // via BodyTypeSatisfiesTargetType(). The local BT_* block that used to sit
+    // here was off by one for every value (BT_HUMANOID = 0, BT_ANIMAL = 20,
+    // BT_PLANT = 24 ...), so every creature-restricted spell tested the wrong
+    // body type: refused against a legitimate target, accepted against an
+    // illegitimate one.
+    return BodyTypeSatisfiesTargetType(spell.target_type, target.bodytype,
+                                       target.is_corpse);
 }
 
 // ============================================================================

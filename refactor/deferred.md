@@ -140,13 +140,30 @@ everything else is open.
    **EXECUTOR-READY** — `refactor/T297_cross_zone_chat_verify.md` is written.
    Audit provenance: #1.
 
-5. **Group spells target by PROXIMITY, not group membership** —
-   `src/client/spell/spell_type_processor.cpp:246` (`// TODO: When group system is
-   implemented...`) and `:278` (`// TODO: Check if actually in group`). The loop
-   takes every non-corpse player entity inside `range`.
-   *Impact:* a group heal or buff lands on strangers standing nearby and misses group
-   mates who are out of range. Wrong on both sides. **EXECUTOR-READY** — the group
-   domain exists in `GameState` (T286 swept it). Audit provenance: #9.
+5. ~~**Group spells target by PROXIMITY, not group membership**~~ **CLOSED by T314
+   (2026-09-02).** `findGroupTargets()` now intersects `GameState.group()`
+   membership with the spell's radius. **Range decision, pinned:** membership AND
+   range, not membership instead of range — eqemu `Group::CastGroupSpell()`
+   (`zone/groups.cpp:813`) casts on the caster's own slot unconditionally and
+   range-checks every other member, logging "Group spell: [x] is out of range".
+   The radius is `Mob::GetAOERange()` (`zone/spells.cpp:5666`): `aoe_range`, else
+   `range`, else 10 — `processGroupSpell()` was passing `spell.range`
+   unconditionally, the wrong radius for every group buff whose `aoe_range` is set,
+   so that was a second live defect fixed in the same place. Membership matches by
+   spawn id and falls back to name, because `eq_group.cpp` only resolves spawn ids
+   for members who were already in the zone at group-update time. Pinned by
+   `tests/test_spell_group_targeting.cpp` (10 tests, all NEGATIVE-asserting:
+   adjacent non-members, an out-of-radius member, an ungrouped caster in a crowd,
+   and an NPC sharing a member's name; each negative was re-run against the
+   re-injected old behaviour and four of them FAILED, so they are load-bearing).
+   **⚠ CORRECTION TO THIS ITEM'S IMPACT LINE, found by T314: the whole of
+   `SpellTypeProcessor` IS UNREACHED FROM PRODUCTION** — `m_spell_type_processor`
+   exists only as a `make_unique` (`eq.cpp:264`), an accessor with ZERO callers
+   (`eq.h:1023`) and the member itself; `update()` is never ticked and
+   `processSpell()` is never invoked. No group heal reaches this code today, so the
+   defect was LATENT, not live. The T264 reachability pattern, applied to an entire
+   subsystem — **needs its own class-A item: wire `SpellTypeProcessor` in, or delete
+   it.** Audit provenance: #9.
 
 6. **Guild rank is HARDCODED on the wire** — `src/client/eq_guild.cpp:54`
    (`invite.officer = 2;  // TODO: Use actual rank`) and `:105`
@@ -346,27 +363,47 @@ everything else is open.
     *Impact:* typing over RDP produces the wrong case whenever caps lock is on.
     **EXECUTOR-READY**, tiny. Audit provenance: #12.
 
-### TIER 2 addendum — the body-type numbering (T308, 2026-08-28)
+### TIER 2 addendum — the body-type numbering (T308, 2026-08-28) — CLOSED by T314 (2026-09-02)
 
-**Two more copies of the EverQuest body-type numbering are live and wrong, and both
-decide spell targeting.** eqemu's `common/bodytypes.h` is the authority
-(`Humanoid == 1`); the client now has one correct copy in
-`include/client/eq_body_types.h` (added by T308).
+**Both remaining copies are gone.** `SpellManager::isValidCreatureTarget()` and
+`SpellTypeProcessor::isValidTarget()` now call one predicate,
+`EQ::BodyTypeSatisfiesTargetType()`
+(`include/client/spell/spell_body_type_target.h`), which spells its constants out of
+`include/client/eq_body_types.h`. **Every value in that header was re-checked against
+`eqemu/common/bodytypes.h` in T314 and they agree exactly — the header needed no
+change.**
 
-- `SpellManager::CheckTargetBodyType()` — `src/client/spell/spell_manager.cpp:456-469`,
-  local `BT_*` constants **off by one for every value** (`BT_HUMANOID = 0`,
-  `BT_UNDEAD = 2`, `BT_ANIMAL = 20`, ...). Every undead / animal / summoned /
-  plant / giant / dragon restricted spell tests the wrong body type.
-- `SpellTypeProcessor` — `src/client/spell/spell_type_processor.cpp:585-591`, a THIRD
-  and differently-wrong set: `21` for Plant (that is Insect; Plant is 25) and `22` for
-  Giant (that is Monster; Giant is 4). Only its `26` for Dragon is right.
+What the two copies were doing, for the record:
 
-*Impact:* a creature-restricted spell is refused against a legitimate target and
-accepted against an illegitimate one. **EXECUTOR-READY** — repoint both at
-`client/eq_body_types.h` and pin through a cast the user actually makes. T308 fixed the
-third copy (`EverQuest::GetBodyTypeName()`, display only) and deliberately left these
-two, because they change live spell behaviour. The fourth and worst copy,
-`CombatManager::IsHumanoid()`'s race-id table, is CLOSED by T308 Leg 1
+- `SpellManager::isValidCreatureTarget()` — local `BT_*` constants off by one for
+  every value (`BT_HUMANOID = 0`, `BT_UNDEAD = 2`, `BT_ANIMAL = 20`, `BT_PLANT = 24`,
+  `BT_DRAGON = 25`). Its "Animal or Insect" set was really `{Luggald(20),
+  Animal(21)}`: it accepted Luggald, and Insect — the body type it thought it was
+  allowing — was never in the set.
+- `SpellTypeProcessor::isValidTarget()` — a third, differently wrong set: bare `21`
+  for Plant (21 is Animal), bare `22` for Giant (22 is Insect), and Undead / Summoned
+  / Animal not checked at all (`// Would need body type check - placeholder` →
+  `return true`), so those three restrictions **accepted every creature in the game**.
+  (This one was LATENT: T314 found `SpellTypeProcessor` has no production caller at
+  all — see tier 2 item 5. The `SpellManager` copy above IS live, reached from
+  `/cast` and gem clicks via `beginCastFromGem()` → `validateCast()`.)
+
+The accept sets are now eqemu's own, `Mob::DetermineSpellTargets()`
+(`zone/spells.cpp` ~1936-1995): Undead = {Undead, SummonedUndead, Vampire};
+Summoned = {Summoned, Summoned2, Summoned3}; Animal = {Animal} only; Plant =
+{Plant}; Giant = {Giant, RaidGiant}; Dragon = {Dragon, VeliousDragon}. **Two
+deliberate narrowings vs. the old client:** Insect is no longer an animal target,
+and Dragon2(29) is no longer a dragon target — the server folds only RaidGiant and
+VeliousDragon, and matching the oracle beats keeping the old guesses.
+
+Pinned by `tests/test_spell_body_type_targeting.cpp`: a 37-row accept/reject table
+(every accepted value paired with a neighbour that must be refused, including the two
+the old code actually confused — Plant(25)/Animal(21) and Giant(4)/Insect(22)), both
+consumers driven end to end, and a source-scanning guard
+(`SpellBodyTypeGuard.NoBTConstantOrBareBodyTypeIntegerSurvivesInSpellCode`) that fails
+if any `BT_*` identifier or bare body-type integer comparison reappears anywhere under
+`src/client/spell/` or `include/client/spell/`. The fourth and worst copy,
+`CombatManager::IsHumanoid()`'s race-id table, was closed by T308 Leg 1
 (`tests/test_hunt_target_body_type.cpp`).
 
 ### TIER 2 addendum — the first-person camera azimuth and the wire z (T310 Leg C, 2026-08-29)
@@ -736,7 +773,7 @@ A full audit of every batch plan answered the owner's question "were the partial
 6. **Guild rank HARDCODED on the wire** — `eq_guild.cpp:54,105` (`officer = 2`, `leaderstatus = 2`), reached from `/guildinvite` and `/guildremove`.
 7. **`/mem <name>` partial-name search is exact-match only** — `spell_database.cpp:180`.
 8. **Skill combat/position gates unenforced** — `skill_manager.cpp:273,284,734,758`; Backstab's position check ALWAYS returns true.
-9. **Group spells target by PROXIMITY, not group membership** — `spell_type_processor.cpp:246,278`.
+9. ~~**Group spells target by PROXIMITY, not group membership**~~ — CLOSED by T314 (2026-09-02); see tier 2 item 5.
 10. **`GraphicalMode::initialize` falls through to the console renderer for Irrlicht modes** — `graphical_mode.cpp:41`.
 11. `Application::setupHotbarCallback` body is empty after the WindowManager removal and is still called twice at startup — `application.cpp:1885`.
 12. RDP remote input ignores caps lock — `renderer_rdp.cpp:159`.

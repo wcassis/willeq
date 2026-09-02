@@ -60,6 +60,18 @@ were wrong**:
 | `SpellManager::CheckTargetBodyType()`'s local `BT_*` constants (`spell/spell_manager.cpp:456-469`) | off by one the same way (`BT_HUMANOID = 0`, `BT_UNDEAD = 2`, `BT_ANIMAL = 20`). **NOT fixed** — see below. |
 | `SpellTypeProcessor::` (`spell/spell_type_processor.cpp:585-591`) | a THIRD, differently-wrong set: `21` for Plant (really Insect; Plant is 25) and `22` for Giant (really Monster; Giant is 4). Only its `26` for Dragon is right. **NOT fixed.** |
 
+**[T314, 2026-09-02: BOTH SPELL COPIES ARE NOW CLOSED.** They share
+`EQ::BodyTypeSatisfiesTargetType()` (`include/client/spell/spell_body_type_target.h`),
+which reads `client/eq_body_types.h`, and a source-scanning guard in
+`tests/test_spell_body_type_targeting.cpp` fails if any `BT_*` identifier or bare
+body-type integer comparison reappears under `src/client/spell/`. Two footnotes to the
+table above: the `SpellManager` row's "Animal or Insect" set was really
+`{Luggald(20), Animal(21)}` — Insect was never in it; and the `SpellTypeProcessor`
+row understates the damage, because its Undead/Summoned/Animal arms were
+`// placeholder` → `return true`, accepting every creature in the game. T314 also
+re-checked every value in `eq_body_types.h` against `eqemu/common/bodytypes.h`: they
+agree exactly.]**
+
 **The two spell copies are reported, not fixed, and they are their own class-A item.**
 They decide which creatures a creature-restricted spell may target — an undead nuke,
 an animal charm, a Plant/Giant/Dragon-only line. Correcting them changes spell
