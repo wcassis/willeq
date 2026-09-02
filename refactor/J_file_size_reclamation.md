@@ -1511,6 +1511,54 @@ Correction 41's fixed order used; correction 59 (stale root CMake line numbers,
 right target names) now **four consecutive units**. Four `tests/` comments newly
 name the wrong TU — attribute to J27.
 
+## ⚠ CORRECTIONS FROM J30 (2026-09-02)
+
+**72. CORRECTION 41'S VACUOUS PASS WAS OBSERVED DIRECTLY, NOT INFERRED.** Before
+J30's own rebuild, its `build-gles2/` held a benchmark stamped **14:24** against
+edits at **14:52** — an in-suite gate run there would have passed while testing
+a binary older than the change. After running `build-gles2-x86.sh` first the
+benchmark was stamped 15:26 and the gate exercised the real build.
+**This is the empirical confirmation of correction 41; treat the fixed order as
+mandatory, not preferred.**
+
+**73. "Expect comment-only hits in `tests/`/`scripts/`" is boilerplate that has
+now been wrong TWICE** (J30 and J35 both found **zero hits of any kind**). Plans
+should say "expect nothing" and let a hit be the surprise.
+
+**74. Header-length guidance keeps being falsified by the plans' own required
+content** — "four to six lines" cannot hold for a TU that must also carry a
+region warning (J30's is 16; J31 made the identical point). **Drop the length
+guidance; require the content.** Correction 57's `(your header) + <constant> +
+body` shape then removes the size reconciliation entirely.
+
+**75. Derived counts slipped for the SIXTH consecutive unit** — method count is
+47, not 49 (reproducible under no pattern), per-TU 21/14/12 not 18/17/14, while
+**body ranges were exact to the line**. Correction 66 stands: drop them.
+
+### J30's result
+
+1,770 → **697 / 508 / 638**, 803 lines of headroom, body ranges exact.
+**Verifier exit 1 with the predicted +6/−0** — the three `extern` lines × 2 new
+TUs, md5-identical across all three files and the original (correction 54: the
+**count** changed, so it costs lines). Signed off at merge.
+
+Three proofs, all exit 0, with `body(TU)` defined **structurally** between each
+TU's asserted-unique namespace open and close — never by offset constants.
+
+**Its widened grep was run with a positive control** (proven live against another
+file, 21 hits) before its empty result was believed — correction 60 working as
+intended. 52 lines returned, all accounted for: one extern, two namespace opens,
+a column-0 brace, and 47 member definitions.
+
+**Correction 45 had real bite:** the natural header warning for the colors TU
+would have quoted the guard macro and `gles2WrapTexture`, inflating **this
+plan's own item-11 grep**. Fourth unit to hit that shape; both described in
+words.
+
+⚠ **Correction 56's `ar` site fired a third time** — killed while archiving
+`libwilleq_core.a`. J30 notes `build-gles2/bin/*` alone would have been blind to
+it, which is why the scan must include `lib*.a`.
+
 ## Unit table
 
 | Unit | File | Lines | → TUs | Largest after | Wave | Notes |
