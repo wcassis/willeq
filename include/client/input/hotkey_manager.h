@@ -57,6 +57,11 @@ enum class HotkeyAction : uint32_t {
     ToggleCameraMode,
     ToggleOldModels,
     ToggleAllUI,
+    // T313: scroll the static-UI panel under the cursor (chat scrollback,
+    // the skills list, the loot list). Global, not Player, because the two
+    // popups that scroll are reachable in any mode.
+    ScrollUIUp,
+    ScrollUIDown,
     ToggleUILock,
     SaveUILayout,
     ResetUIDefaults,

@@ -1903,6 +1903,23 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_ui_atlas_pixels)
 ENDIF()
 
+# T313: the static UI's missing scroll INPUT -- chat scrollback, the skills
+# list and the loot list all honoured a scrollOffset nothing ever wrote.
+# Mostly device-free (it drives StaticUIInput and IrrlichtRenderer's slash
+# command directly, test_ui_hide_command.cpp's idiom); the chat leg alone
+# needs a headless GLES2 device + willeq.eqe1 and self-skips without them,
+# because renderChatPanel() is the only place the wrapped-line window exists.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_static_ui_scroll
+        test_static_ui_scroll.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_static_ui_scroll PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_static_ui_scroll GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_static_ui_scroll PRIVATE
+        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+    GTEST_DISCOVER_TESTS(test_static_ui_scroll)
+ENDIF()
+
 # T279: pixel proof for the EQE1 ALPHA COMPANION mip filter. Builds synthetic
 # complete/truncated ETC1 packs and draws the companion minified through a real
 # headless GLES2 device -- see refactor/T279_complete_mip_chains.md.

@@ -7,7 +7,7 @@ The old WindowManager/WindowBase draggable window system was completely removed 
 - `UIRenderer` - Batched quad drawing API. Accumulates `SpriteQuad` structs per frame, flushes in `endFrame()`. Supports atlas-backed sprites or solid color fallback. Methods: `drawRect()`, `drawSprite()`, `drawBar()`, `drawPanel()`.
 - `UILayout` - Anchor-based screen region definitions. `computeLayout(width, height)` positions all panels for any resolution. Constants: MARGIN=4, BAR_HEIGHT=14, SLOT_SIZE=32.
 - `StaticPanels` - Free render functions (not a class hierarchy) for each panel. Each takes a `UIRenderer`, `UILayout`, and a plain data struct. No state ownership.
-- `StaticUIInput` - Mouse/keyboard input handler for static UI. Communicates with game thread via `GameStateBridge` intents. Hit-tests slot grids for inventory, hotbar, spell gems. Its `processKey()` (ESC dismisses the top popup) had NO production caller until T290 wired it into `renderer_frame.cpp`'s escape handling, ahead of clear-target.
+- `StaticUIInput` - Mouse/keyboard input handler for static UI. Communicates with game thread via `GameStateBridge` intents. Hit-tests slot grids for inventory, hotbar, spell gems. Its `processKey()` (ESC dismisses the top popup) had NO production caller until T290 wired it into `renderer_frame.cpp`'s escape handling, ahead of clear-target. **Scrolling (T313):** `processWheel()` / `processScrollKey()` / `runScrollCommand()` all funnel into ONE router — `scrollTargetAt()` picks the panel under the cursor (loot > skills > chat, the draw order), `scrollPanel()` moves it. Before T313 there was no scroll writer of any kind: chat scrollback, the skills list and the loot list all honoured a `scrollOffset` in both their render body and their hit test that nothing ever wrote, so a corpse with more than 8 items was partly UNLOOTABLE. **The offset conventions differ and are not harmonised** — chat counts lines up from the BOTTOM (0 = newest), skills and loot count rows down from the TOP; `scrollPanel()`'s `lines > 0` means "towards older content" either way. The clamps stay with the panels: `renderChatPanel()` owns chat's upper bound (it is the only code that knows the wrapped-line count), `SkillsPopupState::maxScrollOffset(visibleRows)` and `LootPanelState::maxScrollOffset()` own the other two.
 - `UIAtlas` - Loads pre-generated sprite atlas (`ui_atlas.png` + `ui_atlas.json`). Provides `UISprite` enum (SlotBackground, BarHP, PanelBorder, etc.) with source rects.
 - `CommandRegistry` - Slash command registration and dispatch. Case-insensitive lookup, alias support, tab completion, category-based help.
 
@@ -46,6 +46,8 @@ Center popups (inventory, spellbook, skills, vendor, bank, loot, trade) share th
 |-----|--------|
 | F11 | Toggle ALL UI (T301: also hides the static panels -- chat, hotbar, gems, popups, XP bar; before T301 it gated only the casting bars, the legacy `guienv_` draw and the FPS counter, so with the static UI on it hid nothing. Scriptable as `/hideui`.) |
 | F12 | Screenshot |
+| PageUp / PageDown | Scroll the static-UI panel under the cursor one page (chat scrollback, the skills list, the loot list). T313; scriptable as `/scroll`. PageDown used to be a second StrafeRight binding — that moved to Home, pairing with StrafeLeft's End, so paging a loot list does not also strafe. |
+| Mouse wheel | Scroll that same panel 3 lines per notch. T313: `EMIE_MOUSE_WHEEL` had no case in `RendererEventReceiver::OnEvent()` at all before this, so the wheel was discarded client-wide — camera zoom is the `CameraZoomIn/Out` hotkeys, never the wheel, and the static UI is the wheel's sole consumer. |
 | LMB+drag | Look around (camera) |
 | RMB+drag | Look around (camera) |
 | Ctrl+LMB+drag | Look around (single-button mouse) |
@@ -115,7 +117,10 @@ migration); `Application::DispatchSlashCommand` tries them in order:
    reached via the `RendererCommand` bridge queue): ~70 debug/graphics
    toggles (`/sort`, `/portal`, `/plight`, `/detail`, `/screenshot`,
    `/dumpscene`, `/hideui` (aliases `/toggleui`, `/ui` — the scriptable half
-   of F11, T301), `/newskills`, `/newinv`, `/newbook`, `/weatherpreset`, …)
+   of F11, T301), `/scroll [chat|skills|loot] [up|down|top|bottom] [lines]`
+   (the scriptable half of the wheel and PageUp/PageDown, T313 — a `--script`
+   run cannot generate either), `/newskills`, `/newinv`, `/newbook`,
+   `/weatherpreset`, …)
    — see `src/client/graphics/CLAUDE.md`. Not queryable by `/help` (T143).
 
 `/help [command]` (registry-aware since T143 `e979a821`) lists registries

@@ -303,6 +303,8 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                     case HA::ToggleCameraMode: actionQueue_.push_back({RA::ToggleCameraMode}); break;
                     case HA::ToggleOldModels: actionQueue_.push_back({RA::ToggleOldModels}); break;
                     case HA::ToggleAllUI: actionQueue_.push_back({RA::ToggleAllUI}); break;
+                    case HA::ScrollUIUp: actionQueue_.push_back({RA::ScrollUIUp}); break;
+                    case HA::ScrollUIDown: actionQueue_.push_back({RA::ScrollUIDown}); break;
 
                     // === Player Mode Actions ===
                     // Game actions → bridgeQueue (routed through InputActionBridge)
@@ -424,6 +426,15 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                 break;
             case irr::EMIE_RMOUSE_LEFT_UP:
                 rightButtonDown_.store(false, std::memory_order_relaxed);
+                break;
+            case irr::EMIE_MOUSE_WHEEL:
+                // T313: this case did not exist. The switch fell through to
+                // `default: break` and the wheel was discarded by the whole
+                // client -- which is also why routing it to the UI cannot
+                // regress camera zoom: zoom is bound to keys
+                // (HA::CameraZoomIn/Out), never to the wheel. Accumulated,
+                // not latched, so several notches in one frame all count.
+                mouseWheelDelta_ += event.MouseInput.Wheel;
                 break;
             case irr::EMIE_MOUSE_MOVED:
                 mouseX_.store(event.MouseInput.X, std::memory_order_relaxed);
@@ -1294,6 +1305,21 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
     else if (cmd == "/hideui" || cmd == "/toggleui" || cmd == "/ui") {
         toggleAllUI();
         chat(fmt::format("UI: {}", isAllUIHidden() ? "HIDDEN" : "VISIBLE"));
+    }
+    // T313: the scriptable half of the static-UI scroll, for the same
+    // reason /hideui exists (T301 Leg D) -- a --script run or a headless
+    // capture harness cannot generate a mouse wheel or a key event, and
+    // before this unit chat scrollback, the skills list and the loot list
+    // had no writer of any kind. Routing is by CURSOR POSITION exactly as
+    // the wheel's is, so `/scroll up` with the pointer over the chat box
+    // does the same thing as a wheel notch there; an explicit panel name
+    // overrides that for a script that never moves the pointer.
+    else if (cmd == "/scroll") {
+        chat(EQT::Graphics::StaticUIInput::runScrollCommand(
+            args,
+            eventReceiver_ ? eventReceiver_->getMouseX() : 0,
+            eventReceiver_ ? eventReceiver_->getMouseY() : 0,
+            uiLayout_, chatPanelState_, skillsPopupState_, lootState_));
     }
     else if (cmd == "/newui") {
         newUIEnabled_ = !newUIEnabled_;

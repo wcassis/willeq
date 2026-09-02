@@ -96,6 +96,15 @@ void renderTargetInfo(UIRenderer& ui, const UILayout& layout,
     }
 }
 
+int chatVisibleLines(const UILayout& layout, int lineHeight) {
+    if (lineHeight <= 0) lineHeight = 14;
+    // Same two edges renderChatPanel() measures between.
+    int h = (layout.chatMessages.LowerRightCorner.Y - 1) -
+            (layout.chatMessages.UpperLeftCorner.Y + 1);
+    int lines = h / lineHeight;
+    return lines > 0 ? lines : 1;
+}
+
 void renderChatPanel(UIRenderer& ui, const UILayout& layout,
                      ChatPanelState& state) {
     auto* tb = ui.getTextBatch();
@@ -820,6 +829,15 @@ void renderSpellbookPopup(UIRenderer& ui, const UILayout& layout,
     }
 }
 
+int skillsVisibleRows(const UILayout& layout) {
+    // The popup's content box: below the title row, above the bottom
+    // scroll-position line -- the same `getHeight() - 40` the row loop used
+    // before this helper existed.
+    int contentH = layout.centerPopup.getHeight() - 40;
+    int rows = contentH / (SkillsPopupState::LINE_H + SkillsPopupState::ROW_PAD);
+    return rows > 0 ? rows : 1;
+}
+
 void renderSkillsPopup(UIRenderer& ui, const UILayout& layout,
                         const SkillsPopupState& state) {
     if (!state.isOpen) return;
@@ -834,13 +852,17 @@ void renderSkillsPopup(UIRenderer& ui, const UILayout& layout,
             irr::video::SColor(255, 255, 215, 0));
     }
 
-    constexpr irr::s32 LINE_H = 18;
-    constexpr irr::s32 PAD = 2;
+    // T313: LINE_H/PAD were file-local constexprs here and duplicated
+    // verbatim in StaticUIInput's row hit test; they now live on
+    // SkillsPopupState, and the row count comes from the shared
+    // skillsVisibleRows() so the drawn window, the hit-testable window and
+    // the scroll clamp cannot disagree.
+    constexpr irr::s32 LINE_H = SkillsPopupState::LINE_H;
+    constexpr irr::s32 PAD = SkillsPopupState::ROW_PAD;
     irr::s32 startX = popup.UpperLeftCorner.X + 8;
     irr::s32 startY = popup.UpperLeftCorner.Y + 24;
     irr::s32 contentW = popup.getWidth() - 16;
-    irr::s32 contentH = popup.getHeight() - 40;
-    int visibleLines = contentH / (LINE_H + PAD);
+    int visibleLines = skillsVisibleRows(layout);
 
     int totalSkills = static_cast<int>(state.skills.size());
     int startIdx = state.scrollOffset;

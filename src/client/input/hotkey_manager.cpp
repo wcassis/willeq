@@ -115,6 +115,8 @@ static const ActionNameMapping s_actionNameMappings[] = {
     {"ToggleCameraMode", HotkeyAction::ToggleCameraMode},
     {"ToggleOldModels", HotkeyAction::ToggleOldModels},
     {"ToggleAllUI", HotkeyAction::ToggleAllUI},
+    {"ScrollUIUp", HotkeyAction::ScrollUIUp},
+    {"ScrollUIDown", HotkeyAction::ScrollUIDown},
     {"ToggleUILock", HotkeyAction::ToggleUILock},
     {"SaveUILayout", HotkeyAction::SaveUILayout},
     {"ResetUIDefaults", HotkeyAction::ResetUIDefaults},
@@ -445,6 +447,13 @@ void HotkeyManager::setupDefaults() {
     addBinding(HotkeyAction::Quit, HotkeyMode::Global, irr::KEY_ESCAPE, ModifierFlags::Shift);
     addBinding(HotkeyAction::ToggleOptions, HotkeyMode::Global, irr::KEY_KEY_O);
     addBinding(HotkeyAction::ToggleAllUI, HotkeyMode::Global, irr::KEY_F11);
+    // T313: PageUp/PageDown scroll the static-UI panel under the cursor --
+    // chat scrollback, the skills list, the loot list -- which is what they
+    // do in the real client. PageDown used to be a second binding for
+    // StrafeRight; that moved to Home, pairing with StrafeLeft's End, so
+    // scrolling a loot list does not also strafe the player.
+    addBinding(HotkeyAction::ScrollUIUp, HotkeyMode::Global, irr::KEY_PRIOR);
+    addBinding(HotkeyAction::ScrollUIDown, HotkeyMode::Global, irr::KEY_NEXT);
 
     // === Player Mode - Movement ===
     addBinding(HotkeyAction::MoveForward, HotkeyMode::Player, irr::KEY_KEY_W);
@@ -454,7 +463,7 @@ void HotkeyManager::setupDefaults() {
     addBinding(HotkeyAction::StrafeLeft, HotkeyMode::Player, irr::KEY_KEY_A, ModifierFlags::Ctrl);
     addBinding(HotkeyAction::StrafeLeft, HotkeyMode::Player, irr::KEY_END);
     addBinding(HotkeyAction::StrafeRight, HotkeyMode::Player, irr::KEY_KEY_D, ModifierFlags::Ctrl);
-    addBinding(HotkeyAction::StrafeRight, HotkeyMode::Player, irr::KEY_NEXT);  // Page Down
+    addBinding(HotkeyAction::StrafeRight, HotkeyMode::Player, irr::KEY_HOME);  // T313: was Page Down
     addBinding(HotkeyAction::TurnLeft, HotkeyMode::Player, irr::KEY_KEY_A);
     addBinding(HotkeyAction::TurnLeft, HotkeyMode::Player, irr::KEY_LEFT);
     addBinding(HotkeyAction::TurnRight, HotkeyMode::Player, irr::KEY_KEY_D);

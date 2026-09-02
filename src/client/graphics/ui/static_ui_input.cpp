@@ -11,6 +11,10 @@
 #include "client/events/renderer_intents.h"
 #include "common/logging.h"
 #include <algorithm>
+#include <cmath>
+#include <cstdlib>
+#include <sstream>
+#include <vector>
 
 namespace EQT {
 namespace Graphics {
@@ -254,9 +258,15 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
             mouseY < layout.centerPopup.LowerRightCorner.Y) {
             consumed = true;
             int startY = layout.centerPopup.UpperLeftCorner.Y + 24;
-            constexpr int LINE_H = 18;
-            constexpr int PAD = 2;
-            for (int i = 0; i < 20; ++i) {  // max visible
+            // T313: LINE_H/PAD were a second copy of renderSkillsPopup()'s
+            // own constants and the loop bound was a hard-coded 20 -- more
+            // rows than the popup ever DRAWS (15 at 800x600), so a click
+            // low in the popup could activate a skill that was not on
+            // screen. Both now come from the shared source.
+            constexpr int LINE_H = SkillsPopupState::LINE_H;
+            constexpr int PAD = SkillsPopupState::ROW_PAD;
+            const int visibleRows = skillsVisibleRows(layout);
+            for (int i = 0; i < visibleRows; ++i) {
                 int ry = startY + i * (LINE_H + PAD);
                 if (mouseY >= ry && mouseY < ry + LINE_H) {
                     skills.hoveredRow = i;
@@ -308,6 +318,176 @@ bool StaticUIInput::processKey(irr::EKEY_CODE key, bool pressed, bool /*shift*/,
     }
 
     return false;
+}
+
+// ===========================================================================
+// T313 -- the scroll input path.
+//
+// One router. scrollTargetAt() picks the panel, scrollPanel() moves it, and
+// the wheel / PageUp-PageDown / `/scroll` entry points differ only in the
+// step they pass. Nothing below invents a clamp: chat's upper bound is
+// renderChatPanel()'s (it is the only code that knows the wrapped-line
+// count), skills' is SkillsPopupState::maxScrollOffset(), loot's is
+// LootPanelState::maxScrollOffset().
+// ===========================================================================
+
+ScrollTarget StaticUIInput::scrollTargetAt(int mouseX, int mouseY,
+                                           const UILayout& layout,
+                                           const SkillsPopupState& skills,
+                                           const LootPanelState& loot) {
+    const irr::core::vector2di p(mouseX, mouseY);
+
+    // Popups first, topmost first -- the same precedence processKey()'s ESC
+    // handler uses. Both draw into layout.centerPopup.
+    if (layout.centerPopup.isPointInside(p)) {
+        if (loot.isOpen) return ScrollTarget::Loot;
+        if (skills.isOpen) return ScrollTarget::Skills;
+        return ScrollTarget::None;
+    }
+
+    // The whole chat panel scrolls, not just the message area: the tab strip
+    // and the input field are part of the box the user is pointing at, and
+    // the alternative is a dead 16px band at the top and bottom of it.
+    if (layout.chatPanel.isPointInside(p)) return ScrollTarget::Chat;
+
+    return ScrollTarget::None;
+}
+
+int StaticUIInput::pageSize(ScrollTarget target, const UILayout& layout) {
+    switch (target) {
+        case ScrollTarget::Chat:
+            return chatVisibleLines(layout);
+        case ScrollTarget::Skills:
+            return skillsVisibleRows(layout);
+        case ScrollTarget::Loot:
+            return LootPanelState::VISIBLE_ROWS;
+        case ScrollTarget::None:
+        default:
+            return 0;
+    }
+}
+
+bool StaticUIInput::scrollPanel(ScrollTarget target, int lines,
+                                const UILayout& layout,
+                                ChatPanelState& chat,
+                                SkillsPopupState& skills,
+                                LootPanelState& loot) {
+    switch (target) {
+        case ScrollTarget::Chat: {
+            // From the BOTTOM: 0 is pinned to the newest line, and scrolling
+            // UP (lines > 0) means a LARGER offset. The top end is clamped by
+            // renderChatPanel(), which is the only place the wrapped-line
+            // total exists; overshooting here is corrected on the next drawn
+            // frame rather than silently discarded.
+            int next = chat.scrollOffset + lines;
+            chat.scrollOffset = next > 0 ? next : 0;
+            return true;
+        }
+        case ScrollTarget::Skills: {
+            // From the TOP: scrolling UP means a SMALLER offset.
+            int maxOff = skills.maxScrollOffset(skillsVisibleRows(layout));
+            int next = skills.scrollOffset - lines;
+            skills.scrollOffset = std::max(0, std::min(next, maxOff));
+            return true;
+        }
+        case ScrollTarget::Loot: {
+            int maxOff = loot.maxScrollOffset();
+            int next = loot.scrollOffset - lines;
+            loot.scrollOffset = std::max(0, std::min(next, maxOff));
+            // The hovered row is an ON-SCREEN row index; the row under the
+            // unmoved cursor is a different item now. Recomputed by the next
+            // processInput().
+            loot.hoveredRow = -1;
+            return true;
+        }
+        case ScrollTarget::None:
+        default:
+            return false;
+    }
+}
+
+bool StaticUIInput::processWheel(int mouseX, int mouseY, float wheelDelta,
+                                 const UILayout& layout,
+                                 ChatPanelState& chat,
+                                 SkillsPopupState& skills,
+                                 LootPanelState& loot) {
+    if (wheelDelta == 0.0f) return false;
+    ScrollTarget target = scrollTargetAt(mouseX, mouseY, layout, skills, loot);
+    if (target == ScrollTarget::None) return false;
+
+    // Irrlicht's Wheel is +1 per notch away from the user. Round rather than
+    // truncate so a fractional accumulation (trackpads, the RDP wheel
+    // translation in rdp_input_handler.cpp) still moves a line.
+    int notches = static_cast<int>(std::lround(wheelDelta));
+    if (notches == 0) notches = (wheelDelta > 0.0f) ? 1 : -1;
+    return scrollPanel(target, notches * WHEEL_LINES, layout, chat, skills, loot);
+}
+
+bool StaticUIInput::processScrollKey(bool up, int mouseX, int mouseY,
+                                     const UILayout& layout,
+                                     ChatPanelState& chat,
+                                     SkillsPopupState& skills,
+                                     LootPanelState& loot) {
+    ScrollTarget target = scrollTargetAt(mouseX, mouseY, layout, skills, loot);
+    if (target == ScrollTarget::None) {
+        // A page key with the cursor out in the world still has an obvious
+        // subject when a scrollable popup is up -- you opened it, it is the
+        // only thing on screen, and requiring the cursor to be inside it as
+        // well would make the keyboard path useless to a --script run, which
+        // never moves the pointer off (0,0).
+        if (loot.isOpen) target = ScrollTarget::Loot;
+        else if (skills.isOpen) target = ScrollTarget::Skills;
+        else target = ScrollTarget::Chat;   // the always-present panel
+    }
+    int page = pageSize(target, layout);
+    if (page <= 0) return false;
+    return scrollPanel(target, up ? page : -page, layout, chat, skills, loot);
+}
+
+std::string StaticUIInput::runScrollCommand(const std::string& args,
+                                            int mouseX, int mouseY,
+                                            const UILayout& layout,
+                                            ChatPanelState& chat,
+                                            SkillsPopupState& skills,
+                                            LootPanelState& loot) {
+    std::vector<std::string> tok;
+    {
+        std::istringstream iss(args);
+        std::string w;
+        while (iss >> w) tok.push_back(w);
+    }
+
+    ScrollTarget target = ScrollTarget::None;
+    size_t dirIdx = 0;
+    if (!tok.empty()) {
+        if (tok[0] == "chat") { target = ScrollTarget::Chat; dirIdx = 1; }
+        else if (tok[0] == "skills") { target = ScrollTarget::Skills; dirIdx = 1; }
+        else if (tok[0] == "loot") { target = ScrollTarget::Loot; dirIdx = 1; }
+    }
+    if (target == ScrollTarget::None) {
+        target = scrollTargetAt(mouseX, mouseY, layout, skills, loot);
+    }
+    if (target == ScrollTarget::None) {
+        return "Scroll: no scrollable panel under the cursor "
+               "(usage: /scroll [chat|skills|loot] [up|down|top|bottom] [lines])";
+    }
+
+    const std::string which = tok.size() > dirIdx ? tok[dirIdx] : std::string("up");
+    int lines = pageSize(target, layout);
+    if (tok.size() > dirIdx + 1) {
+        int n = std::atoi(tok[dirIdx + 1].c_str());
+        if (n > 0) lines = n;
+    }
+    // "top"/"bottom" ride the same clamps rather than reaching into the
+    // panels: a step larger than any list saturates at the end of travel.
+    if (which == "top") lines = 1000000;
+    else if (which == "bottom") lines = -1000000;
+    else if (which == "down") lines = -lines;
+
+    scrollPanel(target, lines, layout, chat, skills, loot);
+
+    static const char* kNames[] = {"none", "chat", "skills", "loot"};
+    return std::string("Scroll: ") + kNames[static_cast<int>(target)] + " " + which;
 }
 
 int StaticUIInput::hitTestSlotRow(int mx, int my, int startX, int startY,
