@@ -476,6 +476,148 @@ to the tests file. **J20 (splitting it) is now the most urgent unit in the
 batch**; the next two or three units will otherwise trip a genuine FAIL through
 no fault of their own.
 
+## ⚠ CORRECTIONS FROM THE WAVE-3 PLANNING PASS (2026-09-02)
+
+Re-measured all three Wave-3 files at `f215651a` while writing J08/J09/J10. All
+three plans carry every correction inline; nothing below needs chasing.
+
+**19. `eq_entities.cpp` is 2,786, not 2,736 — and the relocation is 209 lines,
+not 161.** T318 (`2fe75e35`, the size-update publish) grew the file by 50 lines
+after the survey. The "161 lines into `eq_group.cpp`" figure counted only
+`ZoneProcessRaidUpdate`'s body (1348-1508) and **excluded both its own 24-line
+T169/T179/T180 comment block and `SendRaidCommand` entirely**. The real move is
+**1324-1509 (186) + 2764-2786 (23) = 209 lines**. `eq_group.cpp` is **760
+lines** today and becomes ~971. **Correction 9 keeps holding: re-measure every
+remaining unit's file at its own tip.**
+
+**20. ⚠ Moving code INTO an existing file breaks the verbatim-preamble rule, and
+the rule does not say so.** §Process step "each new TU carries the original's
+full include block, verbatim" is written for *newly created* TUs. J08 relocates
+into `eq_group.cpp`, which must **not** receive `eq_entities.cpp`'s 31-line
+include block — it needs exactly one added line (`#include
+"client/raid_update.h"`). **A destination file gets a narrow, enumerated,
+individually-justified include list, the same discipline correction 10 imposed
+on internal headers.** And **both content proofs must include the destination
+file's body**, or they under-count by the relocated range and still look clean
+(correction 7, generalised).
+
+**21. `zone_shader.cpp`'s survey row ("3 TUs + 2 hdrs") does not survive
+measurement — the real shape is 1 TU + 3 private headers.** Two independent
+reasons, both measured:
+- The **1,362** GLSL lines (survey said 1,345) are two `#ifdef EQT_HAS_GLES2` /
+  `#else` arms declaring the **same eight identifiers**. They are `static` and
+  must stay `static`; de-`static`-ing them would put eight identically-named
+  symbols in the link. **They can only move to headers** — one per arm, `#else`
+  becoming `#ifndef`, each included by exactly one TU.
+- The three shader-callback classes are **100% inline, in-class**, and the
+  `ZoneShaderManager` constructor instantiates them **18 times**. A separate
+  `.cpp` for them would need a declaring header that, being all-inline, would
+  hold the entire implementation — leaving the `.cpp` empty. So they too become
+  a header.
+Result: `zone_shader.cpp` **2,561 → ~525**, plus `zone_shader_sources_gles2.h`
+~1,010, `zone_shader_sources_gl.h` ~365, `zone_shader_callbacks.h` ~700.
+
+**22. ✅ J09's "no `friend` needed" claim HOLDS — now measured, not read.**
+`include/client/graphics/zone_shader.h` has **no `friend` declaration at all**,
+and the three callbacks touch `owner_` through exactly **27 distinct members,
+every one a public accessor** declared between `public:` (`:16`) and `private:`
+(`:219`); the two constants they qualify are public `static constexpr`. **There
+is not one raw-member access in 681 lines of callback code.** The unit does not
+change shape on that axis.
+
+**23. ⚠ `verify_move_only.py`'s BOILERPLATE allowlist is WIDER than any
+correction has said, and that is load-bearing for J09.** Read
+`scripts/refactor/verify_move_only.py:25-28`: it matches
+`#include`, `#pragma`, `#ifndef`, `#ifdef`, `#if`, `#define`, `#endif`,
+`#else`, `#elif`, any comment, `namespace … {`, and a bare `}`. So **rewriting
+an `#else` as an `#ifndef` across a file boundary costs zero exception lines**,
+and J09 is predicted to exit **0** despite splitting a live conditional. The
+corollary bites too: **a bare `}` is allowlisted**, so a wholly dropped block's
+braces are invisible to the verifier — which is exactly why the multiset and
+re-concatenation proofs are not optional.
+
+**24. `constrained_texture_cache.cpp`'s preamble is correction 9's case, and the
+cost is computable in advance: 21 lines.** Lines 29-32 (two function-pointer
+`typedef`s, 4 physical lines) and 35-37 (`extern void* gles2WrapTexture`, 3
+physical lines) sit inside the preamble's
+`#if defined(EQT_HAS_DRM) || defined(EQT_HAS_GLES2)` region and are **not**
+boilerplate. × 3 new TUs = **21 substantive added lines, 0 removed.** J10 is
+therefore predicted to exit **1 by construction**, with an exception list that
+can be stated before the unit runs. **When a preamble's non-boilerplate content
+is enumerable, the plan should predict the exact exception count** — it turns
+"the verifier failed" into "the verifier agreed with the plan".
+
+**25. Neither `zone_shader.cpp` nor `constrained_texture_cache.cpp` has a single
+`// ====` banner** (zone_shader has twelve; ctc has **none**, only `// ------`
+section rules; `eq_entities.cpp` has **two** in 2,786 lines). **Correction 11
+stands: J03's rule — cut at a blank line whose predecessor closes a method,
+verify comment depth 0 at the cut — is the batch's cutting rule, and the banner
+rule is now only a tie-breaker for where a leading comment belongs.**
+
+**26. CMake exposure, counted before dispatch: J08 = 2, J09 = 4, J10 = 12.**
+⚠ **J09 and J10 BOTH touch `gles2_zone_benchmark`** (`CMakeLists.txt:1645`
+/ `:1656`), the visual-gate binary. J09 creates no `.cpp` so it has nothing to
+add at any of its four; **J10 must add three TUs at all twelve sites** — nine in
+the root file (`GRAPHICS_SOURCES`, `model_viewer`, `s3d_dump`,
+`entity_composite_builder`, `generate_surface_map`, `zone_line_editor`,
+`gles2_zone_benchmark`, `gles2_shader_diagnostic`, `gles2_composite_audit`) and
+three in `tests/CMakeLists.txt` (`test_graphics`, `test_asset_loading`,
+`test_door_loading`).
+
+**27. Correction 10's tests/scripts pre-check came back CLEAN for all three
+Wave-3 files — but only because it was run.** `grep -rn '<basename>' tests/
+scripts/` finds **12 comment hits for `eq_entities`, 1 for `eq_group`, 0 for
+`zone_shader`, and 19 header-`#include`s plus 3 prose mentions for
+`constrained_texture_cache` — ZERO functional readers of any of the three as
+text.** No repoints needed. ⚠ **Several `eq_entities.cpp` line-number citations
+in `tests/test_zone_connection_flow.cpp` were ALREADY STALE before this split**
+(`:347` cites 1598, `:349` cites 1035, `:355` cites 1323 — none matches the
+current handler offsets). Same pattern J06 and J07 recorded: **line-number
+citations in test comments rot on their own, long before a split touches them.**
+
+## The dead-content decision — ONE recommendation for Will, covering SIX sites
+
+The batch has now found six blocks of content that exist only to be read, and
+has deliberately relocated every one of them verbatim rather than judge them
+mid-split. They are **not one kind of thing**, and J07's Review drew the
+distinction that makes this decidable:
+
+> commented-out **code** is debt; a paragraph explaining a **deliberate absence**
+> is documentation.
+
+| # | site | size | kind |
+|---|---|---|---|
+| 1 | `src/client/eq_ucs.cpp` — 241 lines of commented-out `UCS*` methods + 79 of includes | **320 lines, ZERO live code** | **code** |
+| 2 | `wld_loader.cpp` — the trailing `#if 0` block (J05 corrected 286 → **278**) | 278 lines, **37% of the surviving file** | **code** |
+| 3 | `constrained_texture_cache.cpp:818-1120` — the T04 `#if 0` upload queue, containing a **second definition of `isPending`/`hasPendingWork`** and four nested `#ifdef` pairs | 299 lines, **13.5% of the file** | **code** |
+| 4 | `eq_entities.cpp:185-226` — a commented-out packet hex-dump debug block inside `ZoneProcessZoneSpawns` | 42 lines | **code** |
+| 5 | `application_zone_loading.cpp` — the T104/T49 tombstone block (J06) | 22 lines | **documentation** |
+| 6 | `eq_player_misc.cpp:74-96` (T168 boats) and `:199+` (T145 `OP_ENVDAMAGE`), `eq_player_info.cpp:366` (T286) — J07's three | ~35 lines | **documentation** |
+
+**Recommendation (one decision, not six):**
+
+- **Delete the four "code" sites** — #1, #2, #3, #4 — in a single dedicated
+  hygiene unit, **not inside any J split** (deletion is not move-only, and a
+  J unit's whole contract is that nothing changed). Git keeps every line;
+  `refactor/completed/` keeps the archaeology. For #1 the case is already made:
+  **T297 PROVED UCS is not needed by a Titanium client** (7 of 8 chat channels
+  work cross-zone without it), so `eq_ucs.cpp` is a TU that compiles nothing and
+  documents a feature we have decided not to build. For #3, delete the `#if 0`
+  region **and** leave the three-line `// T04: Upload queue removed. Use
+  getOrLoad() + uploadTexture() instead.` rule above it — that rule is the
+  documentation; the 299 lines are the debt.
+- **Keep every "documentation" site** — #5 and #6 — unchanged, and stop treating
+  them as findings. A paragraph that tells the next reader *why the obvious
+  thing is absent* is the cheapest defect prevention in the tree; `eq_entities.cpp`'s
+  four `NOTE:` paragraphs about what stayed in `eq.cpp` are the same shape and
+  have already stopped at least one unit from "restoring" a deliberate split.
+- **Standing rule going forward:** a J unit **records** dead content and
+  **moves it verbatim**. It never deletes and never tidies. The recommendation
+  above is Will's to accept or reject; until he does, nothing is deleted.
+
+Total recoverable if accepted: **~939 lines**, one whole TU removed from the
+tree, and `wld_loader.cpp` drops by 37%.
+
 ## Unit table
 
 | Unit | File | Lines | → TUs | Largest after | Wave | Notes |
@@ -487,9 +629,9 @@ no fault of their own.
 | J05 | `graphics/eq/wld_loader.cpp` | **2,908** | 7 +1 hdr | **~748** | 2 | ⭐ **planned: `refactor/J05_wld_loader_split.md`.** needs `wld_internal.h` (`read_val<T>` used 114×) — so it **exits the verifier 1 by construction** (correction 5). ⚠ **NINETEEN CMake add-sites**, one of them `gles2_zone_benchmark` (the visual-gate binary). ⚠ worst mutation score in the repo |
 | J06 | `application.cpp` | **2,368** (survey said 2,356; T319 grew it) | 5 | **~947** | 2 | ⭐ **planned: `refactor/J06_application_split.md`.** `s_terminateRequested` + 4 signal handlers: read by `mainLoop`, address-taken by `initialize`. Two options in the plan; the executor argues its choice |
 | J07 | `eq_player_info.cpp` | **2,301** | 4 | **~753** | 2 | ⭐ **planned: `refactor/J07_eq_player_info_split.md`.** 118 small methods, no statics, no namespace, no hazards — **lowest risk in the batch, identical bar.** The batch's control sample for what the bar alone costs |
-| J08 | `eq_entities.cpp` | 2,736 | 4 | 970 | 3 | also relocates 161 lines into `eq_group.cpp` |
-| J09 | `graphics/zone_shader.cpp` | 2,561 | 3 +2 hdrs | 990 | 3 | 1,345 lines are GLSL string literals |
-| J10 | `graphics/constrained_texture_cache.cpp` | 2,211 | 4 | 780 | 3 | carry the `#if 0` guard region intact |
+| J08 | `eq_entities.cpp` | **2,786** (survey said 2,736; T318 grew it) | 4 | **~991** | 3 | ⭐ **planned: `refactor/J08_eq_entities_split.md`.** also relocates **209** lines (not 161) into `eq_group.cpp`, which is **760** today → ~971. ⚠ the only unit that moves code INTO an existing file: narrow enumerated includes there, and both proofs must count it. 2 CMake sites |
+| J09 | `graphics/zone_shader.cpp` | **2,561** | **1 TU + 3 hdrs** (not 3+2) | **~1,010** (a header) | 3 | ⭐ **planned: `refactor/J09_zone_shader_split.md`.** **1,362** GLSL lines in two identical-identifier `#ifdef`/`#else` arms → two private headers, `#else` becomes `#ifndef`; the 3 callback classes are all-inline and instantiated 18× by the ctor → a third header, no new `.cpp`. ✅ **no `friend` needed — measured.** Predicted verifier exit **0**. 4 CMake sites, one `gles2_zone_benchmark`, none needing an edit |
+| J10 | `graphics/constrained_texture_cache.cpp` | **2,211** | 4 | **~812** | 3 | ⭐ **planned: `refactor/J10_constrained_texture_cache_split.md`.** ⚠ the 299-line `#if 0` T04 region (with a SECOND `isPending`/`hasPendingWork` and 4 nested `#ifdef` pairs) travels intact in one TU. Predicted verifier exit **1 with exactly 21 lines** (2 `typedef`s + 1 `extern`, × 3 TUs). ⚠ **TWELVE CMake sites**, one `gles2_zone_benchmark`, three in `tests/` |
 | J11 | `graphics/irrlicht_renderer.cpp` | 3,237 | 6 | 980 | 4 | **hard dependency: T312 must merge first** |
 | J12 | `eq_action_handler.cpp` | 2,202 | 3 | 750 | 4 | 173 forwarding methods, trivial |
 | J13 | `eq_bridge.cpp` | 2,098 | 3 | — | 4 | |
@@ -517,7 +659,14 @@ Full clearance is roughly **26-30 units**.
   `refactor/J07_eq_player_info_split.md`, each carrying all eight corrections
   inline so no executor rediscovers them. Re-measured at `ed97d701`; the only
   stale survey number was `application.cpp` (2,356 → **2,368**, T319).
-- **Wave 3 (3-way):** J08 / J09 / J10.
+- **Wave 3 (3-way):** J08 / J09 / J10. **All three planned** —
+  `refactor/J08_eq_entities_split.md`, `refactor/J09_zone_shader_split.md`,
+  `refactor/J10_constrained_texture_cache_split.md`, each carrying all
+  eighteen corrections inline so no executor rediscovers them. Re-measured at
+  `f215651a`; the stale survey numbers were `eq_entities.cpp` (2,736 →
+  **2,786**, T318) and its relocation size (161 → **209**), and
+  `zone_shader.cpp`'s GLSL block (1,345 → **1,362**). ⚠ **J09 and J10 both
+  touch `gles2_zone_benchmark`.**
 - **Wave 4 (3-way, after T312 AND T313 merge):** J11 / J12 / J13.
 - **Wave 5 (headers, after the policy amendment):** J14 anytime a slot is free;
   J15 after J04+J12; J16 after J02+J08; J17 after J11.
