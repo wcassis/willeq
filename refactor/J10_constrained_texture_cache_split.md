@@ -489,3 +489,412 @@ Concurrent at dispatch: **J08** (`src/client/eq_entities.cpp` + new
 overlap with either. ⚠ **`CMakeLists.txt` is shared with both, and this unit is
 the only one of the three that also edits `tests/CMakeLists.txt`** — which is
 why **merges are serialized one at a time with a rebase.**
+
+## Review
+
+**Executor: slot1, branch `task/J10-texture-cache-split`. Base tip
+`424d8f6620e861b873dfcfda37d9bf8c3130a6b0` (NOT the `f215651a` this plan
+measured — `fable` had advanced by the T322 merge). Commit
+`54d1271084101e283b875016c1e4b894f0870cbe`.**
+
+**Result: every acceptance item PASS. The verifier exited 1 with exactly the
+21 predicted lines — the prediction held to the line.**
+
+### 1. Line count at tip, and drift
+
+`src/client/graphics/constrained_texture_cache.cpp` is **2,211 lines** at
+`424d8f66`, matching the plan exactly. `git diff f215651a..424d8f66 --
+src/client/graphics/constrained_texture_cache.cpp` is **empty** — the T322
+merge did not touch this file. **Zero range drift.** Every line number, cut
+boundary and preprocessor offset in the plan was correct as written.
+
+One drift outside the file: **the three test add-sites are no longer in
+`tests/CMakeLists.txt`** — J20 split it hours before dispatch and that file is
+now **135 lines**. See §6.
+
+### 2. The `#if 0` proof
+
+The region arrived byte for byte. Original **818-1120** →
+`constrained_texture_cache_upload_queue.cpp` **58-360**:
+
+```
+$ diff <(git show "$BASE:src/client/graphics/constrained_texture_cache.cpp" | sed -n '818,1120p') \
+       <(sed -n '58,360p' src/client/graphics/constrained_texture_cache_upload_queue.cpp)
+DIFF-EXIT=0  new-range-lines=303
+```
+
+**303 lines, exit 0, no output.** The `#if 0` itself is at
+`constrained_texture_cache_upload_queue.cpp:62` and its `#endif` at `:360` —
+299 lines, unsplit, in one TU, uncommented, unreindented, unreformatted.
+
+⚠ **Both `isPending`/`hasPendingWork` pairs still exist**, exactly as required:
+
+| copy | line | status |
+|---|---|---|
+| `isPending` | 351 | **disabled** — inside the `#if 0` |
+| `hasPendingWork` | 356 | **disabled** — inside the `#if 0` |
+| `#endif  // T04: End of removed upload queue block` | **360** | the boundary |
+| `isPending` | **362** | **LIVE** |
+| `hasPendingWork` | **367** | **LIVE** |
+
+The four signature lines, quoted from the new file:
+
+```
+351| bool ConstrainedTextureCache::isPending(const std::string& name) const {
+356| bool ConstrainedTextureCache::hasPendingWork() const {
+362| bool ConstrainedTextureCache::isPending(const std::string& name) const {
+367| bool ConstrainedTextureCache::hasPendingWork() const {
+```
+
+⚠ **A finding that strengthens the plan's warning: the two `isPending` bodies
+are NOT identical.** The disabled one reads `pendingDecodes_`; the live one
+reads `decodedEntries_`:
+
+```
+353|     return pendingDecodes_.count(name) > 0 || pendingAsyncUploads_.count(name) > 0;   <- DISABLED
+364|     return decodedEntries_.count(name) > 0 || pendingAsyncUploads_.count(name) > 0;   <- LIVE
+```
+
+So "delete the duplicate" is not even a cosmetic no-op here — the two copies
+disagree about which member they query, and the disabled one names a member the
+live code does not use. Deleting the wrong one would not merely remove
+behaviour, it would substitute different behaviour. (`hasPendingWork`'s two
+bodies ARE identical.) **Nothing in either pair was touched.**
+
+### 3. Preprocessor boundary check
+
+`awk '/^[ \t]*(#if|#ifdef|#ifndef|#else|#elif|#endif)/'` at the branch tip
+reproduced the plan's table **exactly** — all 28 directive lines at the stated
+line numbers, all 14 regions. **None of the four interior cut points (809,
+1132, 1537, 2210) lands inside a conditional.** Post-split per-TU balance:
+
+| TU | `#if*` | `#endif` |
+|---|---|---|
+| `constrained_texture_cache.cpp` | 3 | 3 |
+| `constrained_texture_cache_upload_queue.cpp` | 7 | 7 |
+| `constrained_texture_cache_eviction.cpp` | 2 | 2 |
+| `constrained_texture_cache_compressed.cpp` | 6 | 6 |
+
+`grep -n '/\*'` on the original: **exit 1, empty.** J02's comment-nesting trap
+cannot fire. Lines **1118-1136** of the original, the tightest boundary:
+
+```
+1118|     return !decodedEntries_.empty() || !pendingAsyncUploads_.empty();
+1119| }
+1120| #endif  // T04: End of removed upload queue block
+1121|
+1122| bool ConstrainedTextureCache::isPending(const std::string& name) const {
+1123|     std::lock_guard<std::mutex> lock(mutex_);
+1124|     return decodedEntries_.count(name) > 0 || pendingAsyncUploads_.count(name) > 0;
+1125| }
+1126|
+1127| bool ConstrainedTextureCache::hasPendingWork() const {
+1128|     std::lock_guard<std::mutex> lock(mutex_);
+1129|     return !decodedEntries_.empty() || !pendingAsyncUploads_.empty();
+1130| }
+1131|
+1132| // ---------------------------------------------------------------------------
+1133| // Eviction listeners (lock mutex_)
+1134| // ---------------------------------------------------------------------------
+1135|
+1136| void ConstrainedTextureCache::addEvictionListener(TextureEvictionListener* listener) {
+```
+
+⚠ **A small correction to the plan's own text:** the cut table row for 1132
+says "`1130: }` (end of the **live** `isPending`)", and the paragraph below it
+then says `hasPendingWork` is the method closing at 1130. **The paragraph is
+right and the table cell is wrong** — 1125 closes the live `isPending`, 1130
+closes the live `hasPendingWork`. The cut line itself (1132) is unaffected;
+noting it so the next reader of this plan is not misled.
+
+### 4. The `eqe1ArchiveStem` single-consumer grep
+
+```
+$ grep -rn 'eqe1ArchiveStem' src/ include/ tests/
+src/client/graphics/constrained_texture_cache.cpp:1807:static std::string eqe1ArchiveStem(const std::string& filepath) {
+src/client/graphics/constrained_texture_cache.cpp:1824:        slot.servedBy = servedBy ? eqe1ArchiveStem(servedBy->getFilePath()) : "<NOT-FOUND>";
+```
+
+**Two hits: the definition and its single caller.** Both inside 1537-2209, so
+both land in `constrained_texture_cache_compressed.cpp`. **Nothing promoted, no
+internal header created.** (The caller is at 1824, inside `recordEQE1Request` —
+the plan said 1815, which is that method's opening line; same method.)
+
+### 5. Every created file-header comment line
+
+The unit's **only** non-move change beyond the 21 predicted preamble copies.
+21 comment lines total, all allowlisted boilerplate for the verifier but
+visible to the multiset check, so enumerated in full:
+
+`constrained_texture_cache.cpp` (5 lines, new — the file had no header before):
+```
+// constrained_texture_cache.cpp — ConstrainedTextureCache: the live load/upload
+// path and the public surface. Cache keys, construction/driver wiring,
+// getOrLoad()/uploadTexture()/uploadAllPending(), registration, queries,
+// statistics, the ledger dump, freeze/unfreeze and the setters.
+// Split from the 2,211-line original by refactor/J10_constrained_texture_cache_split.md.
+```
+
+`constrained_texture_cache_upload_queue.cpp` (**6 lines** — one more than the
+others, because the plan mandates the `#if 0` sentence):
+```
+// constrained_texture_cache_upload_queue.cpp — the placeholder-texture accessor,
+// the quarantined T04 upload queue, and the live pending-work predicates.
+// ⚠ ~299 of this file's ~373 lines are a deliberately DISABLED `#if 0` region,
+// preserved VERBATIM by J10; the live isPending()/hasPendingWork() are the
+// copies AFTER the `#endif`, not the disabled definitions inside it.
+// Split from the 2,211-line original by refactor/J10_constrained_texture_cache_split.md.
+```
+
+`constrained_texture_cache_eviction.cpp` (5 lines):
+```
+// constrained_texture_cache_eviction.cpp — eviction and CPU-side image decode.
+// Eviction listeners, evictUntilAvailable()/evictTexture(), texture sizing, and
+// the decode/resample family (processTextureData, downsampleToMaxSize,
+// convertTo16Bit, detectAlpha, decodeBMP) plus clearTextureReferences().
+// Split from the 2,211-line original by refactor/J10_constrained_texture_cache_split.md.
+```
+
+`constrained_texture_cache_compressed.cpp` (5 lines):
+```
+// constrained_texture_cache_compressed.cpp — GPU compressed upload and EQE1.
+// Compressed-format probing and tryCompressedUpload(), the EQE1 flat-pack
+// loader registry, raw-data/entry lookup and request logging, and the
+// uploadCompressedETC1()/uploadCompressedV2() upload paths.
+// Split from the 2,211-line original by refactor/J10_constrained_texture_cache_split.md.
+```
+
+**No other comment in the tree was changed, and nothing inside the `#if 0`
+region was touched.**
+
+### 6. CMake add-sites: TWELVE found, exactly as predicted — but not where the plan says
+
+**Twelve sites, nine + three, all twelve patched.** The nine root-file sites are
+at the plan's exact line numbers. ⚠ **The three test sites are NOT in
+`tests/CMakeLists.txt`** — J20 split that file into `tests/cmake/*.cmake`
+fragments hours before this dispatch, and the plan's `:1271 / :1348 / :1442`
+line numbers no longer exist. The targets are unchanged; only their homes moved.
+
+| file:line (at my tip) | target | plan said |
+|---|---|---|
+| `CMakeLists.txt:521` | `SET(GRAPHICS_SOURCES` (`:432`) | ✅ `:521` |
+| `CMakeLists.txt:804` | `ADD_EXECUTABLE(model_viewer` (`:788`) | ✅ `:804` |
+| `CMakeLists.txt:940` | `ADD_EXECUTABLE(s3d_dump` (`:925`) | ✅ `:940` |
+| `CMakeLists.txt:997` | `ADD_EXECUTABLE(entity_composite_builder` (`:982`) | ✅ `:997` |
+| `CMakeLists.txt:1179` | `ADD_EXECUTABLE(generate_surface_map` (`:1164`) | ✅ `:1179` |
+| `CMakeLists.txt:1237` | `ADD_EXECUTABLE(zone_line_editor` (`:1222`) | ✅ `:1237` |
+| `CMakeLists.txt:1645` | ⚠ `ADD_EXECUTABLE(gles2_zone_benchmark` (`:1621`) | ✅ `:1645` |
+| `CMakeLists.txt:1766` | `ADD_EXECUTABLE(gles2_shader_diagnostic` (`:1748`) | ✅ `:1766` |
+| `CMakeLists.txt:1849` | `ADD_EXECUTABLE(gles2_composite_audit` (`:1831`) | ✅ `:1849` |
+| **`tests/cmake/graphics.cmake:46`** | `ADD_EXECUTABLE(test_graphics` (`:20`) | ✗ said `tests/CMakeLists.txt:1271` |
+| **`tests/cmake/graphics.cmake:123`** | `ADD_EXECUTABLE(test_asset_loading` (`:96`) | ✗ said `tests/CMakeLists.txt:1348` |
+| **`tests/cmake/zone_integration.cmake:66`** | `ADD_EXECUTABLE(test_door_loading` (`:47`) | ✗ said `tests/CMakeLists.txt:1442` |
+
+The plan's grep line — `grep -n 'constrained_texture_cache.cpp' CMakeLists.txt
+tests/CMakeLists.txt` — would have returned **nine, not twelve**, and silently.
+**Use `grep -rn` across `tests/` for the remaining J units.**
+`tests/cmake/renderer_guards.cmake:31` names `test_constrained_texture_cache.cpp`
+(the *test* source, a different file); **not touched**, per the plan.
+
+**New line counts:** `CMakeLists.txt` **2,016 → 2,043** (+27). ⚠ **The plan's
+`tests/CMakeLists.txt` paragraph is obsolete: that file is now 135 lines, not
+~2,850, and this unit adds nothing to it.** J20's urgency argument is
+discharged — the fragments this unit grew are `graphics.cmake` **162** and
+`zone_integration.cmake` **199**, both far under any limit.
+
+### 7. Both content proofs, and the verifier
+
+**`$BASE = 424d8f6620e861b873dfcfda37d9bf8c3130a6b0`** (`git merge-base fable HEAD`).
+Run **after** committing, with `--repo` — all three of the script's
+confident-wrong-answer traps avoided.
+
+```
+$ python3 scripts/refactor/verify_move_only.py "$BASE..HEAD" --repo /mnt/projects/fable/wt/slot1
+Non-C++ files changed (not verified, review separately):
+  CMakeLists.txt
+  tests/cmake/graphics.cmake
+  tests/cmake/zone_integration.cmake
+
+Files verified: 4
+Boilerplate: +120 / -0 lines (allowed)
+
+SUBSTANTIVE ADDED lines (21):
+  +3x  GLenum internalformat, GLsizei width, GLsizei height, GLint border,
+  +3x  GLsizei imageSize, const void* data);
+  +3x  extern void* gles2WrapTexture(void* driver, const char* name, unsigned int glTexName,
+  +3x  typedef void (*PFNGLCOMPRESSEDTEXIMAGE2DPROC_)(GLenum target, GLint level,
+  +3x  typedef void (*PFNGLGENERATEMIPMAPPROC_)(GLenum target);
+  +3x  unsigned int gpuBytes);
+  +3x  unsigned int width, unsigned int height,
+
+FAIL: substantive line changes detected. If intentional (e.g. de-static-ing a helper), document in the unit review section for orchestrator sign-off.
+VERIFIER_EXIT=1
+```
+
+⚠ **EXIT 1 with EXACTLY 21 substantive added lines and 0 removed — the
+prediction held to the line. There is no twenty-second line.** Enumerated, all
+seven distinct lines × 3 new TUs:
+
+| # | original line | text | ×3 |
+|---|---|---|---|
+| 1 | **29** | `typedef void (*PFNGLGENERATEMIPMAPPROC_)(GLenum target);` | 3 |
+| 2 | **30** | `typedef void (*PFNGLCOMPRESSEDTEXIMAGE2DPROC_)(GLenum target, GLint level,` | 3 |
+| 3 | **31** | `GLenum internalformat, GLsizei width, GLsizei height, GLint border,` | 3 |
+| 4 | **32** | `GLsizei imageSize, const void* data);` | 3 |
+| 5 | **35** | `extern void* gles2WrapTexture(void* driver, const char* name, unsigned int glTexName,` | 3 |
+| 6 | **36** | `unsigned int width, unsigned int height,` | 3 |
+| 7 | **37** | `unsigned int gpuBytes);` | 3 |
+
+**= 21.** Each is a **byte-identical copy** of an existing line in the
+original's preamble — proven mechanically, not by eye: the preamble was
+extracted once with `sed -n '1,42p'` and `cat`-ed unmodified into all four TUs,
+and Proof A below is byte-exact over the whole body. **Nothing was hoisted into
+a header, no per-TU include set was trimmed, no code was contorted to force a
+green exit.** This is the §Process step-4 / correction-9 / correction-24 case.
+**Requesting orchestrator sign-off on these 21 lines.**
+
+**Proof A — byte-identical re-concatenation.** The four TU bodies, each stripped
+of its header comment, the copied 42-line preamble and the 2 namespace closes,
+concatenated **in original order** (43-808, 809-1131, 1132-1536, 1537-2209):
+
+```
+766 + 323 + 405 + 673 = 2167 lines
+$ cmp origbody.txt recat.txt
+CMP-EXIT=0
+```
+
+**2,167 lines, `cmp` exit 0, zero reverted lines.** (Per correction 17, the
+strip helper's count variable is declared `local`.)
+
+**Proof B — line multiset.**
+```
+$ diff <(sort origbody.txt) <(sort recat.txt)
+MULTISET-EXIT=0
+```
+**Empty, exit 0, no exceptions at all** — this unit creates no cross-TU header,
+so J04's correction 7 does not apply.
+
+**Arithmetic:** `42 (preamble) + 766 + 323 + 405 + 673 + 2 (closes) = 2211`. ✅
+
+### 8. Final line counts, wall clock, concurrency
+
+| TU | lines | = header + preamble + body + closes |
+|---|---|---|
+| `constrained_texture_cache.cpp` (stays) | **815** | 5 + 42 + 766 + 2 |
+| `constrained_texture_cache_compressed.cpp` | **722** | 5 + 42 + 673 + 2 |
+| `constrained_texture_cache_eviction.cpp` | **454** | 5 + 42 + 405 + 2 |
+| `constrained_texture_cache_upload_queue.cpp` | **373** | 6 + 42 + 323 + 2 |
+| **total** | **2,364** | 2,211 + 21 header + 126 duplicated preamble/closes + … |
+
+**2,211 → largest 815.** The plan predicted ~812/~723/~455/~373; **correction 12
+holds — cluster membership was perfect, and the arithmetic was 1-3 lines off in
+three of four rows** (the plan counted a 41-line preamble; I copied 1-42
+including the blank separator at 42, so each new TU is +1 over the estimate, and
+the upload-queue TU is +1 again for its mandated sixth header line).
+
+**Acceptance, by exit code:**
+
+| step | result |
+|---|---|
+| `cmake -S . -B build …` reconfigure | **exit 0** |
+| `cmake --build build -j24` (1st) | **exit 143** — 600 s ceiling |
+| `cmake --build build -j24` (2nd) | **exit 0** ⚠ **AND LYING** — see below |
+| ELF scan, 221 binaries | ⚠ **3 BAD** |
+| `cmake --build build -j24` (3rd, after `rm`) | **exit 0**, ELF scan **0 bad / 221** |
+| `ctest -j6` | **3506/3507**, 320.0 s |
+| `verify_move_only.py` | **exit 1, 21 lines** (predicted) |
+| Proof A `cmp` | **exit 0**, 2,167 lines |
+| Proof B multiset `diff` | **exit 0**, empty |
+| Proof C `#if 0` `diff` | **exit 0**, 303 lines |
+| `scripts/build-gles2-x86.sh` | **exit 0** |
+| `scripts/ci/visual_gate.sh` | **exit 0 — VISUAL GATE: PASS** |
+| `git status --porcelain` after the gate | **empty — goldens untouched** |
+| `scripts/build-arm-noble.sh` | **exit 0, first invocation** |
+| `check_file_sizes.sh --files` (6 files) | **6 ok, 0 warn, 0 fail** |
+
+The single `ctest` failure is **`AudioManagerTest.PreloadCommonSounds`**, the
+documented ALSA host quirk and the only entry in `test_baseline.txt`. **Zero new
+failures.** `HeadlessShutdownTest.NonLifecycleCommandIsHeldNotDroppedOrApplied`
+did **not** flake this run. `visual_gate` also passed as ctest #3504 (20.55 s),
+and the standalone gate's CPU p95 came in at **5.278 / 5.487 / (qeynos2)**
+against ceilings of 10.672 / 10.948 — roughly half the ceiling, so correction
+15's contention mode did not bite either.
+
+⚠ **THE J07 TRAP FIRED, AND IT IS EXACTLY AS ADVERTISED.** After the exit-143
+build, the re-invocation **exited 0 while three binaries were still truncated
+mid-link**:
+
+```
+BAD build/bin/test_eq_action_handler_transforms_real   71045120 bytes, header all \0
+BAD build/bin/test_zone_chat                           71084835 bytes, header all \0
+BAD build/bin/test_zone_entities                       51630080 bytes, header all \0
+```
+
+All three are **multi-megabyte files with an all-zero ELF header** — large
+enough that a size check alone would have passed them, and newer than their
+inputs so cmake would never have relinked them. Had I trusted the exit 0,
+`ctest` would have died at discovery reporting **one** of the three, costing a
+full 5-minute suite run per binary to find the rest. **The one-pass ELF scan is
+worth its place in the protocol; this unit is the second independent
+confirmation after J07.**
+
+**Wall clock ~55 min.** The cut plus all twelve CMake sites plus all three
+proofs took **under 5 minutes**; everything else was the bar. **Slowest step:
+the build, at ~22 min across three invocations** — the exit-143 retry plus the
+truncation rebuild cost ~12 min of pure re-run, which is this unit's entire
+concurrency tax. `ctest -j6` at 320 s and `build-arm-noble.sh` first-time-clean
+both suggest J08/J09 were not in their heavy phases when I hit mine.
+
+### 9. Findings only — recorded, not acted on
+
+1. ⚠ **The 299-line `#if 0` region — the batch's seventh dead-content site, and
+   the largest after `eq_ucs.cpp`'s 320.** It is **13.5% of the original file**
+   and now **80% of `constrained_texture_cache_upload_queue.cpp`**. It is
+   **commented-out code, not an explanatory tombstone** — the three-line T04
+   comment above it at 818-820 is the documentation, and the 299 lines below it
+   are the debt. **Record against the batch's pending dead-content decision.**
+   ⚠ **New evidence for that decision, found by this unit:** the disabled
+   `isPending` queries `pendingDecodes_` while the live one queries
+   `decodedEntries_` (§2). The dead code is not a stale copy of the live code —
+   it is a copy of an **older, different** implementation. That makes it
+   actively misleading to a reader, which strengthens the case for deletion:
+   anyone reading the disabled block to understand the upload queue is reading a
+   design that no longer describes anything.
+2. **The 19 `tests/` header includers are now 15**, and the claim still holds
+   where it matters: `grep -rn 'constrained_texture_cache' tests/ scripts/`
+   returns **15 `#include`s of the header, 4 prose comments naming
+   `test_constrained_texture_cache.cpp`, and nothing at all from `scripts/`.**
+   **ZERO functional readers of the .cpp as text**, so no repoint was needed —
+   correction 10's pre-check came back clean, re-run at my own tip as required.
+   (The 19→15 delta is drift in the plan's count, not something this unit
+   changed; no test file was touched.)
+3. **`docs/future/entity_texture_atlas.md:240` confirmed still present and still
+   wrong:** it names `constrained_texture_cache.cpp::queueDecodedARGB()` as
+   something to change, and that method has been inside the `#if 0` region — not
+   compiled, not linked — since T04. **A prospective design doc planning against
+   dead code.** It is now doubly stale: the method it names has also moved file,
+   to `constrained_texture_cache_upload_queue.cpp:70`. **For the board; outside
+   this unit's territory.**
+4. ⚠ **Two more live references to the dead region, both inside this unit's
+   territory and both deliberately left alone:**
+   `constrained_texture_cache.cpp:156` (a comment reading "all acquire mutex_
+   (except queueDecoded/queueDecodedARGB…)") now describes methods that live in
+   a different file and do not exist, and
+   `include/client/graphics/constrained_texture_cache.h:234` carries the
+   matching T04 tombstone. **Neither is this unit's to fix** — the header is
+   explicitly out of territory and the comment edit is not move-only — but both
+   should ride along with whatever resolves the dead-content decision.
+5. **The plan's own cut-table cell for line 1132 misattributes the closing brace
+   at 1130** (it says live `isPending`; it is live `hasPendingWork`). §3.
+6. **A process finding worth propagating: the plan's CMake grep line was already
+   wrong at dispatch time**, because J20 landed between planning and dispatch.
+   It would have found nine of twelve sites and looked complete. Three of the
+   twelve were test targets, so the miss would have surfaced as link errors —
+   recoverable. **But a J20-era plan that lists `tests/CMakeLists.txt` line
+   numbers is stale by construction; remaining J units should grep `tests/`
+   recursively rather than naming the file.**
+
+**Deviations: none.** The split is verbatim, the `#if 0` region is intact, no
+interface changed, no method was decomposed, no include set was trimmed, and
+the only edits beyond relocation are the 21 enumerated header-comment lines and
+the 21 duplicated preamble lines the verifier flagged.

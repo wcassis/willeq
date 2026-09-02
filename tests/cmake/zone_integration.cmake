@@ -64,6 +64,9 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/common/performance_metrics.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/constrained_renderer_config.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/constrained_texture_cache.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/constrained_texture_cache_upload_queue.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/constrained_texture_cache_eviction.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/constrained_texture_cache_compressed.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/texture_upload_ledger.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eqe1_loader.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/background_thread_pool.cpp
