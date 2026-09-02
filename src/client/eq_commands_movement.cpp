@@ -19,7 +19,6 @@
 #include "client/world_object.h"
 #include "client/spell/spell_manager.h"
 #include "client/spell/buff_manager.h"
-#include "client/spell/spell_effects.h"
 #include "client/skill/skill_manager.h"
 #include "client/zone_lines.h"
 #include "client/formatted_message.h"

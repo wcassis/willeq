@@ -319,12 +319,15 @@ The client connects through three stages, each with its own connection manager:
 - `SpellManager` - Spell casting, gem state, cooldowns, memorization. The only
   one of these a player reaches: gem click / `/cast` -> `beginCastFromGem()` ->
   `validateCast()`.
-- `SpellEffects` - Effect processing (damage, healing, buffs). **Constructed but
-  no longer called by anything** since T324 deleted its sole consumer; awaiting a
-  wire-or-delete ruling (`refactor/deferred.md` item 37).
 - `SpellTypeProcessor` - **DELETED (T324, 2026-09-02)**. Client-side target
   resolution with zero callers; the server resolves spell targets and reports
-  each landing. Tombstone in `src/client/eq.cpp`; do not rebuild it.
+  each landing.
+- `SpellEffects` - **DELETED (T327, 2026-09-02)**, on Will's ruling. Effect
+  application with zero callers once T324 removed its sole consumer; all 49
+  per-effect handlers were logging stubs, and its value-scaling table was wrong
+  against the server (board item 45).
+- Both deletions share one tombstone in `src/client/eq.cpp`. Do not rebuild
+  either; the server is authoritative and reports every landing per target.
 
 **Skills** (`include/client/skill/`)
 - `SkillManager` - Tracks player skills, handles activation, cooldowns

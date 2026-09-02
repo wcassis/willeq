@@ -778,7 +778,27 @@ Review, `review/T312/`.
 
 ### TIER 2/3 addendum — found by T324 (2026-09-02): the layer BELOW the one just deleted is dead as well
 
-44. **`EQ::SpellEffects` HAS ZERO CALLERS since item 33 was deleted — the whole
+44. **CLOSED (T327, 2026-09-02) — DELETED. Will ruled directly, after being
+    shown what is in the file: "delete it all."** `task/T327`.
+    `include/client/spell/spell_effects.h`,
+    `src/client/spell/spell_effects.cpp`, the `EffectResult` struct,
+    `EverQuest::GetSpellEffects`, the `m_spell_effects` member and its
+    construction are all gone; the ten stale `#include`s in the `eq_*.cpp` TUs
+    went with them. The T324 tombstone in `src/client/eq.cpp` was extended to
+    cover both layers of the deleted stack and now carries the formula warning
+    below. **No test changed state** — no `tests/cmake/*.cmake` built the TU and
+    no test included the header, so nothing under `build/bin` went stale either.
+    **Nothing `SpellManager` or `BuffManager` depends on was touched**:
+    `SpellDatabase`, `SpellEffectSlot`, `ResistType` and the `SpellEffect` enum
+    all have live consumers and stay. Two things were confirmed during
+    execution that the original entry did not know: **all 49 `handle*` methods
+    were logging stubs** that applied nothing (the heal handler did not heal,
+    the teleport handler did not teleport), and **the `BuffManager*` the class
+    was constructed with was never dereferenced once**. Plan and full
+    dead-subtree table: `refactor/T327_delete_spell_effects.md`.
+    ⚠ **New finding boarded as item 45: the value-scaling formulas were wrong
+    against the server.** *Original entry follows.*
+    **`EQ::SpellEffects` HAD ZERO CALLERS since item 33 was deleted — the whole
     client-side spell-RESOLUTION stack is now unreached, not just its targeting
     half.** `m_spell_effects` is still constructed in `src/client/eq.cpp`, but
     the class that used it was item 33 and it is gone. Verified at `bcbf2ddc`
@@ -802,6 +822,51 @@ Review, `review/T312/`.
     **delete** — nothing has ever called it, and every behaviour it models is
     something eqemu already reports per target. Same shape as T67
     (`ConstrainedMeshCache`) and T68 (`SpellData::effects`).
+
+
+### TIER 3 addendum — found by T327 (2026-09-02) while deleting item 44
+
+45. **`SpellEffects::calculateEffectValue` WAS WRONG AGAINST THE SERVER, AND
+    NOTHING EVER CAUGHT IT BECAUSE NOTHING EVER CALLED IT.** Recorded here
+    because the code is deleted and this is the part worth keeping. Compared
+    line by line against eqemu's `Mob::CalcSpellEffectValue_formula`
+    (`zone/spell_effects.cpp:3513`, local checkout
+    `/mnt/projects/akk-stack/code/zone/spell_effects.cpp`):
+    - **Every linear formula was shifted by one slot.** fable's 101
+      (`base + level`) is eqemu's 102; fable's 102 (`base + 2L`) is eqemu's
+      103; 103→104 and 104→105 likewise. eqemu's own 101 is `base + level/2`,
+      which fable had nowhere.
+    - **107 and 108 were not level formulas at all.** fable had
+      `base + (level - 12)` / `base + (level - 16)`; in eqemu both are
+      **tick-based decay** over the buff's remaining duration
+      (`ubase - ticdif` and `ubase - 2*ticdif`, `ticdif` from
+      `CalcBuffDuration_formula`), and both set `degenerating_effects`.
+      Formula 122 ("splurt") is the same shape (`ubase - 12*ticdif`); fable
+      had `base + (level - 40)`.
+    - **109-113, 119, 121, 123-125 all disagreed.** eqemu: 109 `base + L/4`,
+      110 `base + L/6`, 111 `base + 6*(L-16)`, 112 `base + 8*(L-24)`,
+      113 `base + 10*(L-34)`, 119 `base + L/8`, 121 `base + L/3`,
+      123 `random(ubase, |max|)`, 124/125 step up only above level 50. fable
+      had a plausible-looking invented rule for each.
+    - **The `updownsign` mechanism was absent entirely**, along with the
+      `ubase = abs(base)` normalisation it depends on. eqemu sets
+      `updownsign = -1` when `max < base && max != 0` — precisely the spells
+      that grow *downward* (snares, damage). Without it every one of them
+      scales the wrong way.
+    - **Missing outright:** formulas 0, 1-99 (`base + level*formulaID`), 60,
+      70, 114-118, 120, 126-144, 201/203 and the 1000-1999 splurt family — all
+      fell through to a bare `result = base`.
+    *Defect class:* the same as the body-type tables T308/T314 fixed — written
+    from something other than the server and never validated, because it was
+    unreachable. **This is the argument against "keep it, it might be useful":
+    unreachable code does not stay correct, and this table was never correct
+    to begin with.**
+    **If client-side effect calculation is ever wanted, transcribe the
+    formulas from `Mob::CalcSpellEffectValue_formula`. Do NOT recover them
+    from `spell_effects.cpp` or from its git history.** Named in the
+    `src/client/eq.cpp` tombstone so a future reader cannot miss it.
+    **Class C / informational** — no action while the server stays
+    authoritative, which is the standing position (items 33 and 44, T318).
 
 36. ~~**`requires_combat` corresponds to nothing eqemu enforces**~~ — **CLOSED
     by T325 (2026-09-02), `task/T325`.** **Will's ruling, 2026-09-02: "revert

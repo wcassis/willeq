@@ -3,7 +3,8 @@
  * guild-invite accept joins you as a member rather than an officer.
  *
  * THE DEFECT. SPA 89 (ModelSize) and SPA 58 (Illusion) were dispatched in
- * spell_effects.cpp to three handlers that were one LOG_DEBUG each, while the
+ * the since-deleted spell_effects.cpp (T327) to three handlers that were one
+ * LOG_DEBUG each, while the
  * client told the player "shrunk" / "enlarged" / "illusioned". The plan
  * assumed a local prediction path had to be built. IT DID NOT: the server is
  * authoritative and already tells us.

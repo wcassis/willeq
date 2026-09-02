@@ -423,7 +423,6 @@ SET(CLIENT_CORE_SOURCES
     src/client/spell/cast_refusal.cpp
     src/client/spell/buff_manager.cpp
     src/client/spell/buff_cancel_request.cpp
-    src/client/spell/spell_effects.cpp
     src/client/spell/spell_animations.cpp
     src/client/spell/spells_eff_reader.cpp
     # Skill system sources
