@@ -317,6 +317,11 @@ SET(CLIENT_CORE_SOURCES
     # renderer dependency (declassified in eq.h; see the P28 unit).
     src/client/inventory/inventory_constants.cpp
     src/client/inventory/inventory_manager.cpp
+    # J01: inventory_manager.cpp split move-only into four TUs
+    src/client/inventory/inventory_item_parser.cpp
+    src/client/inventory/inventory_cursor.cpp
+    src/client/inventory/inventory_bags.cpp
+    src/client/inventory/inventory_packets.cpp
     src/client/hotbar/hotbar_model.cpp
     src/client/chat/chat_message_buffer.cpp
     src/client/graphics/ui/command_registry.cpp
