@@ -532,6 +532,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/animated_texture_manager.cpp
         src/client/graphics/sky_config.cpp
         src/client/graphics/sky_renderer.cpp
+        src/client/graphics/sky_renderer_celestial.cpp
+        src/client/graphics/sky_renderer_colors.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/frame_budget_governor.cpp
         src/client/graphics/texture_atlas.cpp
