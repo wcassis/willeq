@@ -16,9 +16,16 @@
 //     (spell/spell_manager.cpp) were off by one the same way;
 //   * SpellTypeProcessor (spell/spell_type_processor.cpp) used a third,
 //     differently-wrong set (21 for Plant, 22 for Giant).
-// Only the first is corrected in T308; the two spell copies change spell
-// targeting behaviour and are reported as their own item. Anything that needs
-// a body type from now on includes this header instead of writing a number.
+// T308 corrected only the first; T314 (2026-09-02) killed both spell copies --
+// they now share EQ::BodyTypeSatisfiesTargetType()
+// (include/client/spell/spell_body_type_target.h), which reads its constants
+// from here, and tests/test_spell_body_type_targeting.cpp scans
+// src/client/spell/ on every ctest so no fourth copy can reappear there.
+// Anything that needs a body type includes this header instead of writing a
+// number.
+//
+// T314 re-checked every value below against eqemu/common/bodytypes.h: they
+// agree exactly. Nothing here is a guess.
 //
 // Body types above 64 make the mob invisible (eqemu's own note).
 

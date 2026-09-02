@@ -5,6 +5,8 @@
 #include <client/spell/spell_type_processor.h>
 #include <client/spell/spell_database.h>
 #include <client/spell/spell_effects.h>
+#include <client/spell/spell_body_type_target.h>
+#include <client/state/game_state.h>
 #include <client/eq.h>
 #include <common/logging.h>
 #include <algorithm>
@@ -232,6 +234,39 @@ std::vector<uint16_t> SpellTypeProcessor::findPBAETargets(
     return targets;
 }
 
+float SpellTypeProcessor::groupSpellRadius(const SpellData& spell)
+{
+    // eqemu Mob::GetAOERange(): aoe_range, else range, else 10.
+    if (spell.aoe_range > 0.0f) {
+        return spell.aoe_range;
+    }
+    if (spell.range > 0.0f) {
+        return spell.range;
+    }
+    return DEFAULT_GROUP_RADIUS;
+}
+
+bool SpellTypeProcessor::isGroupMember(uint16_t entity_id, const std::string& name) const
+{
+    if (!m_eq) {
+        return false;
+    }
+
+    const auto& group = m_eq->GetGameState().group();
+    if (!group.inGroup()) {
+        return false;
+    }
+
+    // Spawn id is the authoritative match. It is only populated for members
+    // who were already in the entity list when the group update arrived
+    // (eq_group.cpp), so fall back to the name -- which GroupUpdate_Struct
+    // always carries -- for a member who zoned in afterwards.
+    if (group.findMemberBySpawnId(entity_id) >= 0) {
+        return true;
+    }
+    return !name.empty() && group.findMemberByName(name) >= 0;
+}
+
 std::vector<uint16_t> SpellTypeProcessor::findGroupTargets(uint16_t caster_id, float range)
 {
     std::vector<uint16_t> targets;
@@ -240,16 +275,31 @@ std::vector<uint16_t> SpellTypeProcessor::findGroupTargets(uint16_t caster_id, f
         return targets;
     }
 
-    // Always include caster for group spells
+    // The caster is always affected, in a group or not, and is NOT range
+    // checked -- eqemu Group::CastGroupSpell() calls SpellOnTarget(caster)
+    // on the caster's own slot before it measures anybody's distance.
     targets.push_back(caster_id);
 
-    // TODO: When group system is implemented, get actual group member IDs
-    // For now, find nearby players within range as a placeholder
+    // T314: membership is a real check now. GroupState is live
+    // (eqt::state::GroupState in the single GameState) -- the TODO that used
+    // to stand here, "when group system is implemented", was stale, and
+    // "nearby player" as a stand-in for "group member" meant a group heal
+    // landed on strangers standing next to the caster and missed group mates
+    // who were out of range.
+    if (!m_eq->GetGameState().group().inGroup()) {
+        return targets;  // solo: a group spell is a self spell
+    }
+
     float caster_x, caster_y, caster_z;
     if (!getEntityPosition(caster_id, caster_x, caster_y, caster_z)) {
         return targets;
     }
 
+    // Membership AND range, not one instead of the other. Real EQ group
+    // spells keep a radius: eqemu skips a member with
+    // "Group spell: [x] is out of range". The radius is the spell's AE range,
+    // falling back to its cast range and then to 10 -- Mob::GetAOERange(),
+    // zone/spells.cpp; processGroupSpell() resolves it and passes it here.
     float range_sq = range * range;
 
     for (const auto& [entity_id, entity] : m_eq->GetEntities()) {
@@ -268,6 +318,11 @@ std::vector<uint16_t> SpellTypeProcessor::findGroupTargets(uint16_t caster_id, f
             continue;
         }
 
+        // Must actually be in the group.
+        if (!isGroupMember(entity_id, entity.name)) {
+            continue;
+        }
+
         // Check range
         float dx = entity.x - caster_x;
         float dy = entity.y - caster_y;
@@ -275,8 +330,6 @@ std::vector<uint16_t> SpellTypeProcessor::findGroupTargets(uint16_t caster_id, f
         float dist_sq = dx * dx + dy * dy + dz * dz;
 
         if (dist_sq <= range_sq) {
-            // TODO: Check if actually in group
-            // For now, just check range
             targets.push_back(entity_id);
         }
     }
@@ -495,8 +548,8 @@ void SpellTypeProcessor::processGroupSpell(const SpellData& spell, uint16_t cast
         return;
     }
 
-    // Find group members in range
-    std::vector<uint16_t> targets = findGroupTargets(caster_id, spell.range);
+    // Find group members in range (see groupSpellRadius()).
+    std::vector<uint16_t> targets = findGroupTargets(caster_id, groupSpellRadius(spell));
 
     LOG_DEBUG(MOD_SPELL, "Group spell '{}' affecting {} targets", spell.name, targets.size());
 
@@ -567,32 +620,14 @@ bool SpellTypeProcessor::isValidTarget(uint16_t entity_id, const SpellData& spel
         return false;
     }
 
-    // Check target type restrictions
-    switch (spell.target_type) {
-        case SpellTargetType::Undead:
-            // Would need body type check - placeholder
-            return true;
-
-        case SpellTargetType::Summoned:
-            // Would need summoned check - placeholder
-            return true;
-
-        case SpellTargetType::Animal:
-            // Would need body type check - placeholder
-            return true;
-
-        case SpellTargetType::Plant:
-            return entity.bodytype == 21;  // Plant body type
-
-        case SpellTargetType::Giant:
-            return entity.bodytype == 22;  // Giant body type
-
-        case SpellTargetType::Dragon:
-            return entity.bodytype == 26;  // Dragon body type
-
-        default:
-            return true;
-    }
+    // T314: creature restrictions come from the one shared predicate
+    // (client/spell/spell_body_type_target.h -> client/eq_body_types.h).
+    // What used to be here was a third hand-written body-type table: bare 21
+    // for Plant (21 is Animal), bare 22 for Giant (22 is Insect), and
+    // Undead/Summoned/Animal fell through to `return true`, accepting
+    // EVERYTHING.
+    return BodyTypeSatisfiesTargetType(spell.target_type, entity.bodytype,
+                                       entity.is_corpse);
 }
 
 bool SpellTypeProcessor::isNPC(uint16_t entity_id) const

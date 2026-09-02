@@ -11,6 +11,7 @@
 
 #include "spell_data.h"
 #include "spell_constants.h"
+#include <string>
 #include <vector>
 #include <chrono>
 #include <random>
@@ -78,8 +79,22 @@ public:
     // Find PBAE targets around caster
     std::vector<uint16_t> findPBAETargets(uint16_t caster_id, float radius, bool beneficial);
 
-    // Find group members in range
+    // Find group members in range. `range` is the group radius -- see
+    // processGroupSpell(), which resolves it the way eqemu's
+    // Mob::GetAOERange() does (aoe_range, else range, else 10).
     std::vector<uint16_t> findGroupTargets(uint16_t caster_id, float range);
+
+    // T314: eqemu Mob::GetAOERange()'s last-resort radius when a spell row
+    // carries neither an AE range nor a cast range (zone/spells.cpp).
+    static constexpr float DEFAULT_GROUP_RADIUS = 10.0f;
+
+    // T314: the radius a group spell reaches its members at. Transcribed from
+    // eqemu Mob::GetAOERange() (zone/spells.cpp), which is what
+    // Group::CastGroupSpell() range-checks against: the spell's AE range,
+    // else its cast range, else 10. processGroupSpell() used spell.range
+    // unconditionally, which is the wrong radius for every group buff whose
+    // aoe_range is set.
+    static float groupSpellRadius(const SpellData& spell);
 
     // ========================================================================
     // Rain Spell Management
@@ -138,6 +153,11 @@ private:
 
     // Check if entity is player character
     bool isPlayer(uint16_t entity_id) const;
+
+    // T314: true if the entity is in the player's group (GroupState), matched
+    // by spawn id and falling back to name for a member who zoned in after
+    // the last group update.
+    bool isGroupMember(uint16_t entity_id, const std::string& name) const;
 
     // ========================================================================
     // Data Members

@@ -896,6 +896,32 @@ ENDIF()
 # discovery calls in this file now behave identically.
 GTEST_DISCOVER_TESTS(test_spell_manager)
 
+# T314: spell targeting correctness -- group spells target the caster's GROUP
+# (eqt::state::GroupState) intersected with the spell's AE radius, and the two
+# hand-rolled body-type tables in src/client/spell/ are gone. Both files are
+# headless (no DB, no graphics, no eqemu): the group tests replay
+# OP_NewSpawn/OP_GroupUpdate into a live EverQuest, and the body-type tests
+# call the one shared predicate plus both of its consumers. The guard test in
+# test_spell_body_type_targeting scans the source tree, so it needs
+# WILLEQ_REPO_ROOT (set globally at the top of this file).
+ADD_EXECUTABLE(test_spell_group_targeting
+    test_spell_group_targeting.cpp
+)
+TARGET_LINK_LIBRARIES(test_spell_group_targeting GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_spell_group_targeting PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_spell_group_targeting)
+
+ADD_EXECUTABLE(test_spell_body_type_targeting
+    test_spell_body_type_targeting.cpp
+)
+TARGET_LINK_LIBRARIES(test_spell_body_type_targeting GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_spell_body_type_targeting PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_spell_body_type_targeting)
+
 ADD_EXECUTABLE(test_spell_manager_timing
     test_spell_manager_timing.cpp
 )
