@@ -67,3 +67,179 @@ the merges. Everything else lives in `src/client/graphics/ui/`.
   proof; a screenshot pair goes to `/mnt/projects/fable/review/T313/` with a README.
 - **Full `ctest -j6`** (NOT -j24), zero new failures vs `refactor/test_baseline.txt`.
 - If a golden re-bless looks necessary, **STOP and report** — do not re-bless.
+
+---
+
+## Review
+
+**Branch `task/T313`, cut from `fable` `9ae1460c`. x86 only, no Pi.**
+
+### What currently consumed the wheel: NOTHING. The plan's premise was wrong, and that is the finding.
+
+The plan said to check "what currently consumes the mouse wheel (camera zoom
+does)". It does not. `RendererEventReceiver::OnEvent()`'s
+`EET_MOUSE_INPUT_EVENT` switch had cases for the four button transitions and
+`EMIE_MOUSE_MOVED`, and **no `EMIE_MOUSE_WHEEL` case at all** — every wheel
+event fell into `default: break` and was discarded by the entire client.
+Camera zoom is `cameraZoomDelta_`, and its only writers are the two hotkey
+arms `HA::CameraZoomIn`/`HA::CameraZoomOut` (`irrlicht_renderer.cpp:379-380`,
+bound to `+`/`-` in `config/hotkeys.json`); nothing anywhere assigns it from a
+wheel. The only other appearance of the wheel in the tree is
+`rdp_input_handler.cpp`'s `rdpGetWheelDelta()`, which *synthesises* an
+Irrlicht wheel event from RDP flags — and that event then hit the same missing
+case and was dropped too.
+
+So the "UI-consumed wheel must not also zoom the camera" hazard could not
+arise: the static UI is the wheel's **first and sole** consumer. Two things
+keep it that way rather than relying on that being remembered:
+
+- `renderer_frame.cpp` reads `getMouseWheelDelta()` in exactly two places —
+  the UI route, and an `else` branch that *drains* it when the static UI is
+  off, so a wheel spun with `/newui` disabled cannot accumulate and then fire
+  a page of scroll the moment the UI comes back.
+- `ScrollSourceInvariants.NothingElseConsumesTheWheelAccumulator` fails if a
+  third reader is ever added.
+
+### The routing rule
+
+One router, three entry points, in `static_ui_input.cpp`:
+
+```
+scrollTargetAt(mx, my, layout, skills, loot)   ->  ScrollTarget
+scrollPanel(target, lines, layout, chat, skills, loot)
+```
+
+`scrollTargetAt()` uses the panels' own rects, in the order the panels are
+**drawn** — which is also the order `processKey()` already dismisses them with
+ESC:
+
+| order | target | condition |
+|---|---|---|
+| 1 | Loot | cursor inside `layout.centerPopup` **and** `loot.isOpen` |
+| 2 | Skills | cursor inside `layout.centerPopup` **and** `skills.isOpen` |
+| 3 | Chat | cursor inside `layout.chatPanel` |
+| — | None | anywhere else (the wheel is then not consumed) |
+
+The whole `chatPanel` scrolls, not just `chatMessages`: the tab strip and the
+input field are part of the box the user is pointing at, and the alternative
+is a dead ~16px band at each end of it.
+
+`scrollPanel()`'s `lines > 0` **always** means "towards older / earlier
+content", and each panel's own convention is honoured underneath rather than
+harmonised:
+
+| panel | offset measured from | up (`lines > 0`) is | upper clamp owned by |
+|---|---|---|---|
+| chat | BOTTOM (`0` = newest line) | `scrollOffset += lines` | `renderChatPanel()` — the only code that knows the wrapped-line count |
+| skills | TOP | `scrollOffset -= lines` | `SkillsPopupState::maxScrollOffset(visibleRows)` (new; the render body never clamped, so an unclamped writer would scroll the list off the panel) |
+| loot | TOP | `scrollOffset -= lines` | `LootPanelState::maxScrollOffset()` (already existed) |
+
+Entry points: **wheel** (3 lines/notch, accumulated so several notches in one
+frame all count), **PageUp/PageDown** (one page), **`/scroll [chat|skills|loot]
+[up|down|top|bottom] [lines]`**.
+
+### The keyboard path, and the one behaviour change outside the defect
+
+`KEY_PRIOR` (PageUp) was unbound. `KEY_NEXT` (PageDown) was a **second**
+binding for `StrafeRight` (`hotkey_manager.cpp:457` and `config/hotkeys.json`),
+so paging a loot list would also have strafed the character. The suppression
+point for that — `graphics_input_handler.cpp`'s movement loop — is slot2's
+file territory this dispatch, so suppressing it there was not available.
+
+**Deviation, flagged:** `StrafeRight`'s PageDown binding moved to `KEY_HOME`,
+pairing with `StrafeLeft`'s existing `KEY_END`; `Ctrl+D` is untouched.
+PageUp/PageDown became `HotkeyAction::ScrollUIUp`/`ScrollUIDown` in **Global**
+mode (the two scrolling popups are reachable in any mode). This is a
+user-visible default-keybind change beyond the literal defect, made because
+the alternative was shipping a scroll key that also moves the player. It
+matches the real client, where PageUp/PageDown are chat scrollback. Pinned by
+`ScrollBindings.StrafeRightMovedOffPageDownSoScrollingDoesNotAlsoMoveThePlayer`.
+
+`/scroll` exists for the same reason `/hideui` does (T301 Leg D): a `--script`
+run or a headless harness owns no X server and can generate neither a wheel
+nor a key event. Its body lives in `static_ui_input.cpp`, not the renderer's
+slash chain, because `irrlicht_renderer.cpp` is already past the file-size
+FAIL ceiling. With no panel named it routes by cursor exactly as the wheel
+does; `processScrollKey()` additionally falls back to the open popup (then
+chat) when the cursor is nowhere, because a `--script` run never moves the
+pointer off (0,0) and requiring it inside the popup would make the keyboard
+path useless to exactly the harnesses it exists for.
+
+### Per-panel evidence — `tests/test_static_ui_scroll.cpp`, 38 tests, all pass
+
+| leg | panel | how the ROW SET is asserted |
+|---|---|---|
+| B | **loot** | `hitTestLootRow()` — `renderLootPopup()`'s twin — reports rows 0..7 unscrolled and rows 4..11 after `scrollPanel(-4)`. Plus the before/after pair below. |
+| B | **skills** | a click on visible row 0 produces `SkillActivateIntent{0}` before and `{3}` after `scrollPanel(-3)`: the same screen row is a different skill. |
+| B | **chat** | `renderChatPanel()` itself, into a real headless GLES2 framebuffer with the real `UIAtlas` (test_ui_atlas_pixels.cpp's harness) — 120 messages, the `chatMessages` rect read back at offset 0 and one page up, asserted **different**. Chat is the only panel whose window cannot be asserted otherwise: the wrapped-line count exists nowhere but inside that function. Self-skips without `willeq.eqe1` or a device. |
+
+The headline pair, `LootScrollTest`:
+
+- `TheDefect_CorpseSlot13IsUnreachableBeforeAnyScroll` — 14 items on the
+  corpse, 8 visible rows. Clicking **every** visible row unscrolled produces 8
+  `LootItemIntent`s, all with `slot < 8`. Rows 8..13 could not be drawn, could
+  not be hit-tested, and were takeable only via Loot All.
+- `TheFix_ScrollingBringsSlot13OntoARowAndLootsIt` — two wheel notches down
+  (clamped at `maxScrollOffset() == 6`), click the last visible row, get
+  `LootItemIntent{corpse 4242, slot 13}`.
+
+Also pinned: the wheel is not consumed over empty screen; a zero wheel is
+never consumed; short lists do not scroll; both clamps saturate rather than
+run past; `applyLootWindowOpened()`'s reset-to-top still wins over a scrolled
+state; scrolling clears the now-stale `hoveredRow`.
+
+### Found on the way, fixed (small, same file, same feature)
+
+`StaticUIInput`'s skills-row hit test looped over a **hard-coded 20 rows**
+while `renderSkillsPopup()` only ever draws `contentH / 20` of them (15 at
+800x600), and carried its own duplicate copies of the render body's `LINE_H`/
+`PAD` constants. A click low in the popup could therefore activate a skill
+that was not on screen. Both the constants and the row count now come from one
+source (`SkillsPopupState::LINE_H`/`ROW_PAD` and the new
+`skillsVisibleRows(layout)`), read by the render loop, the hit test and the
+scroll clamp — the buff bar's T277 rule. Pinned by
+`SkillsScrollTest.TheRowHitTestNeverReachesPastTheDRAWNWindow`.
+
+### Found and deliberately NOT fixed
+
+- **Chat's scrollOffset is not reset when a new message arrives.** Scrolled
+  back in the buffer, an incoming line shifts the whole view by one wrapped
+  line because the offset counts lines, not messages. Real clients pin the
+  view instead. That is a rendering-policy change inside `renderChatPanel()`,
+  not a missing input path, and it needs a golden opinion — out of scope here,
+  reported.
+- **No scrollbar thumb is draggable.** Chat draws a thumb
+  (`static_panels.cpp`); it is decoration, and the loot/skills panels draw a
+  "N-M of T" line instead because the static UI has no thumb sprite. Adding
+  drag is a new interaction, not the missing writer.
+- **The spellbook paginates rather than scrolls** and is deliberately not a
+  scroll target: it has `currentPage` and Prev/Next hit zones, which are a
+  different, already-working model.
+- **`irrlicht_renderer.cpp` remains a file-size FAIL** (3263 lines vs 3237 at
+  `fable`; the ceiling is 3000). Pre-existing. The `/scroll` body was moved
+  into `static_ui_input.cpp` to keep the growth to 26 lines (the wheel case,
+  two hotkey arms, a 7-line command call).
+
+### Sibling territory — read before merging
+
+**Slot2 (T312) is editing four of the same files.** Every edit of mine in them
+is small and localised:
+
+| file | my hunks |
+|---|---|
+| `include/client/graphics/irrlicht_renderer.h` | 2: two `RendererAction` enumerators on the `Screenshot, ToggleAllUI,` line; and **one** hunk carrying `getMouseWheelDelta()` + `mouseWheelDelta_` together (deliberately kept as a single hunk, with a `private:`/`public:` sandwich, rather than putting the member 70 lines away beside `bridgeQueue_` — which is precisely what T312 is rewriting) |
+| `src/client/graphics/irrlicht_renderer.cpp` | 3: the `EMIE_MOUSE_WHEEL` case; two `HA::ScrollUI*` arms in the hotkey switch; the 7-line `/scroll` arm |
+| `src/client/graphics/renderer_frame.cpp` | 2: the wheel read inside the existing chat-hover block in `processFrameInput()`; the two `RA::ScrollUI*` arms in `processCommonInput()` |
+| `src/client/input/graphics_input_handler.cpp`, `src/client/graphics/renderer_player_physics.cpp` | **untouched** |
+
+### Verification
+
+| step | result |
+|---|---|
+| `cmake --build build -j24` | **PASS** (EXIT=0) |
+| `ctest --test-dir build -j6` | **PASS** — 3361/3362; the sole failure is the documented ALSA host quirk `AudioManagerTest.PreloadCommonSounds`. Zero new failures vs `refactor/test_baseline.txt`. (Suite was 3324 before this unit's 38 tests.) |
+| `scripts/build-gles2-x86.sh` | **PASS** (EXIT=0) |
+| `scripts/ci/visual_gate.sh` | **PASS**, goldens untouched (`git status` shows no golden path modified) |
+| `scripts/build-arm-noble.sh` | **PASS** (EXIT=0) |
+| `scripts/refactor/check_file_sizes.sh fable` | 7 ok, 2 warn, 1 fail — **all pre-existing**; no new FAIL, and the failing file grew by 26 lines |
+

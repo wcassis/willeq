@@ -536,6 +536,18 @@ void IrrlichtRenderer::processFrameInput(float deltaTime) {
         int my = eventReceiver_->getMouseY();
         chatPanelState_.mouseHover = uiLayout_.chatPanel.isPointInside(
             irr::core::position2d<irr::s32>(mx, my));
+
+        // T313: the mouse wheel, routed by cursor position to whichever
+        // static-UI panel is under it. Read-and-reset, once per frame, one
+        // consumer -- and the ONLY consumer: nothing in the client read the
+        // wheel before this unit (camera zoom is the CameraZoomIn/Out
+        // hotkeys, not the wheel), so a UI-consumed notch cannot also zoom.
+        if (newUIEnabled_ && staticUIInput_) {
+            staticUIInput_->processWheel(mx, my, eventReceiver_->getMouseWheelDelta(),
+                uiLayout_, chatPanelState_, skillsPopupState_, lootState_);
+        } else {
+            eventReceiver_->getMouseWheelDelta();  // drain, never accumulate
+        }
     }
 
     // Update camera and player movement
@@ -563,6 +575,17 @@ void IrrlichtRenderer::processCommonInput(const std::vector<RendererEvent>& acti
         switch (event.action) {
             case RA::Screenshot: pendingScreenshot_ = true; break;
             case RA::ToggleAllUI: toggleAllUI(); break;
+            // T313: PageUp/PageDown. Same router as the wheel; a whole page
+            // per press. Global-mode actions, so they work with a popup up.
+            case RA::ScrollUIUp:
+            case RA::ScrollUIDown:
+                if (newUIEnabled_ && staticUIInput_ && eventReceiver_) {
+                    staticUIInput_->processScrollKey(
+                        event.action == RA::ScrollUIUp,
+                        eventReceiver_->getMouseX(), eventReceiver_->getMouseY(),
+                        uiLayout_, chatPanelState_, skillsPopupState_, lootState_);
+                }
+                break;
             case RA::ToggleZoneLights: toggleZoneLights(); break;
             case RA::CycleObjectLights: cycleObjectLights(); break;
             case RA::ToggleOptions:

@@ -52,6 +52,9 @@ const std::vector<RendererCommandInfo> kCatalog = {
     // T301 Leg D: hides EVERY panel (chat, hotbar, gems, buffs, popups, XP bar,
     // casting bars, FPS counter) -- the scriptable half of the F11 hotkey.
     {"hideui", {"toggleui", "ui"}, "Show/hide the whole UI (same as F11)"},
+    // T313: the scriptable half of the static-UI scroll (PageUp/PageDown and
+    // the mouse wheel are the interactive halves).
+    {"scroll", {}, "Scroll a UI panel: /scroll [chat|skills|loot] [up|down|top|bottom] [lines]"},
     {"newui", {}, "Toggle the static UI"},
     {"newbook", {}, "Toggle the spellbook window"},
     {"newbookprev", {}, "Spellbook: previous page"},

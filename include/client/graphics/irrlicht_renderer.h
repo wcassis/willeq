@@ -111,6 +111,7 @@ enum class RendererAction : uint8_t {
     ToggleWireframe, ToggleHUD, ToggleNameTags, ToggleZoneLights,
     CycleObjectLights, ToggleCameraMode, ToggleOldModels,
     Screenshot, ToggleAllUI,
+    ScrollUIUp, ScrollUIDown,   // T313: static-UI scroll (PageUp/PageDown)
 
     // Player-mode actions
     ToggleAutorun, ToggleAutoAttack, Hail, Consider,
@@ -397,6 +398,16 @@ public:
     float getCameraZoomDelta() { float d = cameraZoomDelta_; cameraZoomDelta_ = 0; return d; }
     float getMusicVolumeDelta() { float d = musicVolumeDelta_; musicVolumeDelta_ = 0; return d; }
     float getEffectsVolumeDelta() { float d = effectsVolumeDelta_; effectsVolumeDelta_ = 0; return d; }
+    // T313: the mouse wheel. Before this unit EMIE_MOUSE_WHEEL had no case
+    // in OnEvent() at all -- nothing in the client consumed it, camera zoom
+    // included (that is hotkey-only, CameraZoomIn/Out above) -- so the
+    // static UI is its sole consumer and there is no zoom to double-fire.
+    // Declared here rather than beside the other accumulators below so the
+    // whole thing is one hunk (T312 is editing this header concurrently).
+    float getMouseWheelDelta() { float d = mouseWheelDelta_; mouseWheelDelta_ = 0; return d; }
+private:
+    float mouseWheelDelta_ = 0.0f;
+public:
 
     // Chat input key events
     struct KeyEvent {

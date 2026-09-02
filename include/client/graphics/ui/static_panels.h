@@ -76,6 +76,20 @@ struct ChatPanelState {
 void renderChatPanel(UIRenderer& ui, const UILayout& layout,
                      ChatPanelState& state);
 
+/**
+ * T313 -- how many wrapped lines the chat message area shows at once.
+ *
+ * The scroll input needs a page size, and renderChatPanel() derives the
+ * same number from `layout.chatMessages` and the font's line height. The
+ * font is only reachable through a live TextBatch, so the default here is
+ * renderChatPanel()'s own `lineH <= 0` fallback; a caller that has a
+ * TextBatch should pass its getLineHeight(). Getting it slightly wrong
+ * costs at most a line of overshoot, because renderChatPanel() re-clamps
+ * `scrollOffset` against the REAL wrapped-line count every frame -- that
+ * clamp, not this helper, is the authority.
+ */
+int chatVisibleLines(const UILayout& layout, int lineHeight = 14);
+
 // Popup types for center screen area
 enum class PopupType : uint8_t {
     None = 0,
@@ -339,11 +353,35 @@ struct SkillsPopupState {
     std::vector<SkillDisplayItem> skills;
     int scrollOffset = 0;  // Lines scrolled from top
     int hoveredRow = -1;
+
+    // T313: row metrics, hoisted out of renderSkillsPopup()'s body (where
+    // they were file-local constexprs) because StaticUIInput had already
+    // grown its own copy of the same two numbers for the row hit test. One
+    // source, three readers -- the buff bar's T277 rule.
+    static constexpr int LINE_H = 18;
+    static constexpr int ROW_PAD = 2;
+
+    // Highest legal scrollOffset for a window `visibleRows` tall. Unlike
+    // the chat panel and the loot popup, renderSkillsPopup() does NOT clamp
+    // (it just starts at scrollOffset and stops at the end of the list), so
+    // an unclamped writer would scroll the list clean off the panel. Every
+    // T313 writer goes through this.
+    int maxScrollOffset(int visibleRows) const {
+        int over = static_cast<int>(skills.size()) - visibleRows;
+        return over > 0 ? over : 0;
+    }
 };
 
 /** Render skills popup (center screen). */
 void renderSkillsPopup(UIRenderer& ui, const UILayout& layout,
                         const SkillsPopupState& state);
+
+/**
+ * T313 -- how many skill rows the popup shows at once, from the layout
+ * alone. renderSkillsPopup()'s row loop, the row hit test and the scroll
+ * clamp all ask this rather than recomputing contentH / (LINE_H + ROW_PAD).
+ */
+int skillsVisibleRows(const UILayout& layout);
 
 // ---------------------------------------------------------------------------
 // T290 -- the loot window, restored.
