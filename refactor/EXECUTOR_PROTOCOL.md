@@ -42,7 +42,15 @@ references this file; plans carry only unit-specific content.
   in `GoogleTestAddTests.cmake`) can also be plain cold-cache contention with an
   intact binary — J05 and J07 each hit one. Check the binary
   (`--gtest_list_tests`) before concluding truncation. **Two different discovery
-  failures, two causes, neither is a test failure.** NEVER end a turn waiting on a
+  failures, two causes, neither is a test failure.**
+  ⚠ **A THIRD cause (T323, 2026-09-02): `ctest` launched on top of a still-running
+  `cmake --check-build-system` reads the 174 `*_include.cmake` discovery shims
+  MID-WRITE and dies with "Maximum recursion depth of 1000 exceeded" in ~60 s,
+  naming an innocent test.** No binary is damaged; waiting for the real exit file
+  and re-running is sufficient. Root cause is the same class as the shared-scratchpad
+  trap: trusting an exit file that did not exist because the `cat` was chained and
+  its stderr lost. **Never start a test run against a build you have not confirmed
+  finished by reading a file you know was written by THAT run.** NEVER end a turn waiting on a
   background task or monitor. This failure mode has stalled 5+ units
   (T128 alone stalled 3 times in one unit); it is forbidden. Use
   `scripts/wait_for.sh` instead of writing your own polling loop — it

@@ -141,7 +141,24 @@ everything else is open.
    remaining unmeasured caveat (eqemu's own RNG collapse makes every recorded
    `encode_key` a byte-swap palindrome, so key byte order is argued, not measured):
    `refactor/T321_crc_root_cause.md` `## Review`.
-   **WHAT REMAINS is a one-line deletion plus a live acceptance run** — T321 could
+   **✅ CLOSED by T323 (2026-09-02, `86ada50e`): the flag is DELETED and CRC
+   validation is LIVE on the zone stream.** `skip_crc_validation` now has no
+   production caller and defaults false on all three managers. Measured, not
+   argued: two headless sessions, six zone-ins across three zone servers with two
+   world reconnects, `--log-module=NET:TRACE` → **3,592 datagrams passed
+   `ValidateCRC()`, `DROPPED_CRC` = 0, `DROPPED` (any reason) = 0**, and
+   `RECV == DECODED` exactly, so nothing was dropped at any stage.
+   ⚠ **The honest claim is "no mismatch was observed", not "there are none"** —
+   ~8 minutes and ~4,000 datagrams cannot prove absence. Two things make that
+   acceptable: a real mismatch **drops a datagram and does not disconnect**
+   (re-sent on ack timeout), so `DROPPED_CRC == 0` is the real evidence and
+   "stayed connected" is the weak one; and any future occurrence is
+   self-documenting via a WARN plus hex dump. The encode key's byte order remains
+   unmeasured (eqemu only issues palindromic keys) — unchanged from T321.
+   T321's 7 capture tests all still pass; `SkipCrcValidationAcceptsACorruptedZonePacket`
+   was KEPT and re-framed, since the option still exists and that test is the only
+   coverage of its branch.
+   ~~WHAT REMAINS is a one-line deletion plus a live acceptance run~~ — T321 could
    not take it (eqemu unreachable from the dev host, lock ambiguous, and a stale
    T312 client was still running in slot2). Scope: delete the flag line, zone in,
    move, zone out, grep the log for `DROPPED_CRC`, and state plainly that a short
@@ -823,6 +840,19 @@ reuses the generated `<target>[1]_tests.cmake` unless the binary is newer, so a
 matching pair can be entirely vacuous. And redact the hex-dumped object above
 before diffing, or the comparison fails for a reason that has nothing to do with
 what you changed.
+
+### T323 (2026-09-02): the GM-flag anomaly is now FOUR consecutive sightings
+
+43. **Something on the eqemu server is setting `Oraclerogue`'s persisted `gm`
+    flag to 1.** Found by **T297, T320, T322 and T323** — four consecutive live
+    units, none of which issued `#gm` or touched that row, and T323 captured it
+    in its `db_before.txt` **before starting any client**.
+    *Impact:* unknown, but it silently changes what a test character can do —
+    and GM status has already confounded one measurement this week (T297's
+    zoning client was GM while the oracle's was not, which T320 had to control
+    for before its verdict could stand).
+    **No longer plausibly a stale value from one forgotten session.**
+    **EXECUTOR-READY as a short investigation** — server-side, needs eqemu.
 
 ### TIER 3 — implemented but unreachable
 
