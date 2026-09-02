@@ -874,20 +874,38 @@ void SpellEffects::handleReflectSpell(uint16_t target_id, int32_t percent_chance
 // Appearance Handlers
 // ============================================================================
 
+// T318 -- DO NOT give these handlers a local effect.
+//
+// SPA 58 (Illusion) and SPA 89 (ModelSize) are applied by the SERVER, and the
+// server tells every client in the zone what it did:
+//
+//   * shrink/grow  -> Mob::ChangeSize() clamps the new size and sends
+//                     OP_SpawnAppearance AT_SIZE (29) to the whole zone,
+//                     including the caster/target themselves;
+//   * illusion     -> Mob::SendIllusionPacket() sends OP_Illusion carrying the
+//                     new race, gender, textures AND size.
+//
+// Both are decoded in eq_entities.cpp and now reach the renderer as
+// EntitySizeChanged / EntityAppearanceChanged. Applying anything here as well
+// would double-apply the change and desync this client from what every other
+// player sees, which is exactly what T310 settled: the server's word is the
+// truth. These stay as trace points on the client's own local view of the
+// spell, and the visible effect comes back off the wire.
 void SpellEffects::handleIllusion(uint16_t target_id, uint16_t race_id, uint8_t gender, uint8_t texture)
 {
-    LOG_DEBUG(MOD_SPELL, "Illusion: race {} gender {} texture {} on target {}",
+    LOG_DEBUG(MOD_SPELL, "Illusion: race {} gender {} texture {} on target {} "
+              "(applied on OP_Illusion from the server)",
               race_id, gender, texture, target_id);
 }
 
 void SpellEffects::handleShrink(uint16_t target_id)
 {
-    LOG_DEBUG(MOD_SPELL, "Shrink: target {}", target_id);
+    LOG_DEBUG(MOD_SPELL, "Shrink: target {} (applied on AT_SIZE from the server)", target_id);
 }
 
 void SpellEffects::handleGrow(uint16_t target_id)
 {
-    LOG_DEBUG(MOD_SPELL, "Grow: target {}", target_id);
+    LOG_DEBUG(MOD_SPELL, "Grow: target {} (applied on AT_SIZE from the server)", target_id);
 }
 
 // ============================================================================

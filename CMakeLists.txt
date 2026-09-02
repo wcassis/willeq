@@ -464,6 +464,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/entity_castbars.cpp
         src/client/graphics/entity_combat_anim.cpp
         src/client/graphics/entity_first_person_draw.cpp
+        src/client/graphics/entity_size.cpp
         src/client/graphics/entity_spatial.cpp
         src/client/graphics/entity_equipment.cpp
         src/client/graphics/background_thread_pool.cpp

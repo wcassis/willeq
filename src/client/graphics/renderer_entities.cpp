@@ -103,6 +103,13 @@ void IrrlichtRenderer::startCorpseDecay(uint16_t spawnId) {
     }
 }
 
+void IrrlichtRenderer::setEntitySize(uint16_t spawnId, float serverSize) {
+    if (isLoading()) return;
+    if (entityRenderer_) {
+        entityRenderer_->setEntitySize(spawnId, serverSize);
+    }
+}
+
 void IrrlichtRenderer::setEntityLight(uint16_t spawnId, uint8_t lightLevel) {
     if (isLoading()) return;
     // Handle player light specially - it's always highest priority in light pool

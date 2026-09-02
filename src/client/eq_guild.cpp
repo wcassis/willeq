@@ -73,12 +73,13 @@ void EverQuest::SendGuildInviteAccept(bool accept)
 		return;
 	}
 
-	EQT::GuildInviteAccept_Struct response;
-	memset(&response, 0, sizeof(response));
-	strncpy(response.inviter, m_guild_invite_from.c_str(), 63);
-	strncpy(response.newmember, m_character.c_str(), 63);
-	response.response = accept ? 1 : 0;
-	response.guildeqid = m_guild_invite_id;
+	// T318: `response` is a RANK, not a yes/no flag. `accept ? 1 : 0` sent
+	// GUILD_OFFICER_TI on accept, and the server joined the player to the
+	// guild as an OFFICER. See guild_packet_bodies.h for the handler's remap
+	// table, and for why no Titanium byte can actually decline.
+	EQT::GuildInviteAccept_Struct response =
+		EQ::guild::BuildGuildInviteAccept(m_guild_invite_from, m_character,
+		                                  m_guild_invite_id, accept);
 
 	EQ::Net::DynamicPacket packet;
 	packet.Resize(sizeof(EQT::GuildInviteAccept_Struct));

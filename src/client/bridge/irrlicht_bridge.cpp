@@ -109,6 +109,12 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             }
         }
         break;
+    case state::GameEventType::EntitySizeChanged:
+        if (renderer_) {
+            auto& d = std::get<state::EntitySizeChangedData>(event.data);
+            renderer_->setEntitySize(d.spawnId, d.size);
+        }
+        break;
     case state::GameEventType::EntityLightChanged:
         if (renderer_) {
             auto& d = std::get<state::EntityLightChangedData>(event.data);
