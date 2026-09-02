@@ -1671,6 +1671,58 @@ the remaining oversize files are **four headers and nothing else** — of which
 `eq.h` / `irrlicht_renderer.h` need Will's growth-gating ruling because no
 mechanical split reaches 1,500 on a class body of 1,905 lines.
 
+## ⚠ CORRECTIONS FROM J17 (2026-09-02)
+
+**87. A FORWARD DECLARATION IS SUBSTANTIVE TO THE VERIFIER — "the copied
+preamble is all boilerplate" is FALSE.** J17 predicted +0/−0 and got **+24/−0**:
+eight single-line forward declarations (`class PathfinderNavmesh;`,
+`namespace EQT { struct ZoneLineBoundingBox; }`, …) × 3 new headers. They are
+declarations, not namespace openers, so `BOILERPLATE` does not cover them.
+**Correction 9's class, J11's +65 in miniature.** Any header-split plan must
+count forward declarations in its predicted delta. J17 correctly **refused to
+trim the preamble to force green.**
+
+**88. §Header shape's own sketch WOULD BREAK THE BUILD.** It places the
+cross-header `#include` after the verbatim preamble block — whose last line is
+`namespace Graphics {` — putting an `#include` **inside two open namespaces**,
+the exact hazard the same plan warns about two sections later. J17 placed it
+before the namespace opens. **Fix the sketch.**
+
+**89. ⚠ A STALE ORPHAN BINARY FROM T324 WILL FAIL `check_build_tree_orphans` IN
+ANY SLOT WHOSE BUILD TREE PREDATES IT — and it looks like the current unit's
+fault.** `build/bin/test_spell_group_targeting` was orphaned when T324 deleted
+its source; **cmake never prunes `bin/`**. J17 hit it, correctly diagnosed it as
+not its own, deleted the binary and moved on. Any unit seeing this should do the
+same rather than hunting its own diff.
+
+Three smaller record errors: the plan attributes its two text-scan sites to
+`test_reachability_sweep.cpp` when they are `test_static_ui_scroll.cpp:690` and
+`test_ui_hide_command.cpp:146` (**line numbers right, file wrong** — the same
+mistake J31's plan made); §Correction 21's "narrow grep returns only namespace
+lines" is wrong because that pattern includes `^extern `; and "fourteen"
+conditional directives is really 22.
+
+### J17's result
+
+`irrlicht_renderer.h` **2,520 → 1,914**, plus 361 / 302 / 266. The surviving
+header now contains **only `class IrrlichtRenderer`** — the accepted outcome,
+and the starting condition for component extraction. Nothing compressed, nothing
+decomposed.
+
+**60 includers before and after, none edited.** Zero CMake add-sites, falsified
+rather than assumed (it grepped the three new basenames too). Three content
+proofs all pass, including a byte-identical diff of the 1,799-line class itself.
+Both symbol greps run **with a live positive control** (`position.cpp`: narrow
+finds a constexpr, widened finds 31 matches).
+
+⚠ **T312's `bridgeQueue_` invariant explicitly re-verified**: the no-raw-access
+comment, all three locked accessors and `bridgeMutex_`/`bridgeQueue_` as adjacent
+members moved as one byte-identical block — **the mutex was not separated from
+the queue** — and `test_bridge_queue_race` passes.
+
+**Correction 41 followed** (gles2 first; benchmark stamped 21:01 against a 20:47
+edit, so the gate was not vacuous).
+
 ## Unit table
 
 | Unit | File | Lines | → TUs | Largest after | Wave | Notes |
