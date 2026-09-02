@@ -728,7 +728,7 @@ Review, `review/T312/`.
     table, `SpellManager` consumer, source guard) still run — only the three
     that asserted against the deleted consumer were removed. Plan and full
     dead-subtree tracing: `refactor/T324_delete_spell_type_processor.md`.
-    ⚠ **New finding, boarded as item 37: `SpellEffects` is now callerless too.**
+    ⚠ **New finding, boarded as item 44: `SpellEffects` is now callerless too.**
     *Original entry follows.*
     **`SpellTypeProcessor` IS NEVER CALLED FROM PRODUCTION — the T264
     reachability pattern applied to a whole subsystem, and it re-scopes two
@@ -778,7 +778,7 @@ Review, `review/T312/`.
 
 ### TIER 2/3 addendum — found by T324 (2026-09-02): the layer BELOW the one just deleted is dead as well
 
-37. **`EQ::SpellEffects` HAS ZERO CALLERS since item 33 was deleted — the whole
+44. **`EQ::SpellEffects` HAS ZERO CALLERS since item 33 was deleted — the whole
     client-side spell-RESOLUTION stack is now unreached, not just its targeting
     half.** `m_spell_effects` is still constructed in `src/client/eq.cpp`, but
     the class that used it was item 33 and it is gone. Verified at `bcbf2ddc`
@@ -803,12 +803,24 @@ Review, `review/T312/`.
     something eqemu already reports per target. Same shape as T67
     (`ConstrainedMeshCache`) and T68 (`SpellData::effects`).
 
-36. **`requires_combat` corresponds to nothing eqemu enforces**, and T317's new
-    client-side gate is therefore deliberately STRICTER than the server —
-    eqemu's `OPCombatAbility` has no in-combat requirement at all. Implemented
-    as the board asked; **flagged for Will**, with the one-line revert named at
-    the site. If he wants client and server to agree exactly, revert that gate
-    and leave the facing check (which IS server-derived).
+36. ~~**`requires_combat` corresponds to nothing eqemu enforces**~~ — **CLOSED
+    by T325 (2026-09-02), `task/T325`.** **Will's ruling, 2026-09-02: "revert
+    the combat gate."** Done the way T317's own Review named: `requires_combat`
+    cleared in `skill_data.h`, NOT by re-hollowing `checkCombatRequirement()`
+    (which would have recreated the no-op gate T317 was dispatched to fix).
+    **All eleven cleared, none kept** — re-derived per skill against the opcode
+    fable actually sends, and none of the three server handlers has an
+    in-combat requirement: `OP_CombatAbility` → `Client::OPCombatAbility`
+    (8/10/21/23/26/30/38/52), `OP_Disarm` → `Handle_OP_Disarm` (16),
+    `OP_InstillDoubt` → `Handle_OP_InstillDoubt` → `Mob::InstillDoubt` (71).
+    `requires_target` survives on all eleven. **The facing check is untouched
+    and still passes** — it IS server-derived, and T159's check-and-message
+    pairing is intact. The field, the predicate and `"You must be in combat"`
+    all stay, kept whole and pinned by three `MechanismIsIntact_*` tests that
+    set the flag by hand; the message is now DORMANT in production, the same
+    shape as item 35's resource messages, and explicitly not T159's class (it
+    never lies about the reason — it can only be reached when the predicate
+    really refused).
 
 ### CLOSED by T318 (2026-09-02), plus what it found
 

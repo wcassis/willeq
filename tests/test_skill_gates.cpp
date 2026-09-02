@@ -13,8 +13,14 @@
 //   * The matching branches in getSkillUseError() were empty bodies, so
 //     canUseSkill() could refuse while getSkillUseError() reported "".
 //
-// Every test below asserts the NEGATIVE -- the gate refusing when it should.
-// A test that only proves the allowed case passes on the old code.
+// T325 (2026-09-02) REVERTED the combat gate on Will's ruling -- see section
+// B1 for the per-opcode server derivation and for which of T317's assertions
+// were pinning real behaviour and which were pinning the over-strict gate.
+// The facing gate is untouched: it IS server-derived and stays, paired with
+// its message exactly as T159 instructed.
+//
+// Every FACING test below asserts the NEGATIVE -- the gate refusing when it
+// should. A test that only proves the allowed case passes on the old code.
 //
 // The facing rule is a port of eqemu's Mob::BehindMob / Mob::MobAngle
 // (akk-stack/code/zone/mob.h:222, zone/mob.cpp:4576), which is what
@@ -45,9 +51,9 @@ constexpr uint8_t kWarrior = 1;
 constexpr uint8_t kHuman = 1;
 constexpr uint8_t kLevel = 30;
 
-constexpr uint8_t kBackstab = 8;   // requires_target + requires_combat + requires_behind
-constexpr uint8_t kKick = 30;      // requires_target + requires_combat
-constexpr uint8_t kApplyPoison = 6;  // no target, no combat -- the control
+constexpr uint8_t kBackstab = 8;   // requires_target + requires_behind (T325: no combat)
+constexpr uint8_t kKick = 30;      // requires_target (T325: no combat)
+constexpr uint8_t kApplyPoison = 6;  // no target -- the control
 
 // A NewSpawn at a chosen server position AND heading. zone_stream_test_utils'
 // NewSpawnPayloadAt() hardcodes heading 0, and heading is the whole point here.
@@ -202,80 +208,6 @@ protected:
     TestBridge bridge;
 };
 
-// ---- B1. The combat gate ------------------------------------------------
-
-TEST_F(SkillGateTest, NEGATIVE_KickIsRefusedWithATargetButNoCombat) {
-    // THE defect: this is exactly the state the old gate passed, because it
-    // asked "do I have a target" and the answer was yes.
-    auto& skills = Skills(kWarrior);
-    TargetNpc(0, 0, 0.0f);
-
-    ASSERT_TRUE(eq.GetCombatManager()->HasTarget());
-    ASSERT_FALSE(eq.GetCombatManager()->IsAutoAttackEnabled());
-    ASSERT_EQ(eq.GetCombatManager()->GetCombatState(), COMBAT_STATE_IDLE);
-
-    EXPECT_FALSE(skills.canUseSkill(kKick));
-    EXPECT_EQ(skills.getSkillUseError(kKick), "You must be in combat")
-        << "the empty branch used to leave this blank";
-    EXPECT_FALSE(skills.activateSkill(kKick, 0));
-    EXPECT_FALSE(skills.isSkillOnCooldown(kKick))
-        << "a refused activation must not have reached sendSkillUsePacket()";
-}
-
-TEST_F(SkillGateTest, EngagingAutoAttackSatisfiesTheCombatGate) {
-    auto& skills = Skills(kWarrior);
-    TargetNpc(0, 0, 0.0f);
-    EngageCombat();
-
-    ASSERT_EQ(eq.GetCombatManager()->GetCombatState(), COMBAT_STATE_ENGAGED);
-    EXPECT_TRUE(skills.canUseSkill(kKick));
-    EXPECT_EQ(skills.getSkillUseError(kKick), "");
-}
-
-TEST_F(SkillGateTest, DisengagingPutsTheCombatGateBack) {
-    auto& skills = Skills(kWarrior);
-    TargetNpc(0, 0, 0.0f);
-    EngageCombat();
-    ASSERT_TRUE(skills.canUseSkill(kKick));
-
-    eq.GetCombatManager()->DisableAutoAttack();
-    EXPECT_FALSE(skills.canUseSkill(kKick));
-    EXPECT_EQ(skills.getSkillUseError(kKick), "You must be in combat");
-}
-
-TEST_F(SkillGateTest, BeingAttackedCountsAsCombatEvenWithAutoAttackOff) {
-    // T247's aggro memory: an NPC whose attacks arrived with us as the target
-    // is on us. A player being hit is in combat whether or not their own
-    // swing is on.
-    auto& skills = Skills(kWarrior);
-    const uint16_t npc = TargetNpc(0, 0, 0.0f);
-    ASSERT_FALSE(skills.canUseSkill(kKick));
-
-    eq.GetCombatManager()->NoteAttackedBy(npc);
-    EXPECT_TRUE(eq.GetCombatManager()->IsRecentAttacker(npc));
-    EXPECT_TRUE(skills.canUseSkill(kKick));
-}
-
-TEST_F(SkillGateTest, NEGATIVE_AggroFromSomeoneElseDoesNotUnlockTheGate) {
-    // The aggro branch is scoped to the CURRENT TARGET on purpose; a mob
-    // hitting us across the zone is not a licence to Kick a different one.
-    auto& skills = Skills(kWarrior);
-    TargetNpc(0, 0, 0.0f, /*spawn_id=*/500);
-    eq.GetCombatManager()->NoteAttackedBy(/*some other spawn=*/999);
-
-    EXPECT_FALSE(skills.canUseSkill(kKick));
-    EXPECT_EQ(skills.getSkillUseError(kKick), "You must be in combat");
-}
-
-TEST_F(SkillGateTest, SkillsWithoutTheCombatFlagAreUntouched) {
-    auto& skills = Skills(kRogue);
-    ASSERT_EQ(eq.GetCombatManager()->GetCombatState(), COMBAT_STATE_IDLE);
-    EXPECT_TRUE(skills.canUseSkill(kApplyPoison));
-    EXPECT_EQ(skills.getSkillUseError(kApplyPoison), "");
-}
-
-// ---- B2. The facing gate ------------------------------------------------
-
 // Finds a server-space attacker offset that IS behind a target facing
 // `heading_deg`, and one that is not, using the ported predicate itself as
 // the oracle -- so these tests pin SkillManager's WIRING (swap, heading
@@ -299,6 +231,177 @@ Offsets FindOffsets(float heading_deg) {
     }
     return o;
 }
+
+// ---- B1. The combat gate ------------------------------------------------
+//
+// T325 (Will's ruling, 2026-09-02): the combat gate is REVERTED, by clearing
+// requires_combat in skill_data.h rather than by re-hollowing
+// checkCombatRequirement(). Server evidence, re-derived per opcode:
+//   * 8/10/21/23/26/30/38/52 -> OP_CombatAbility -> Client::OPCombatAbility
+//     (zone/special_attacks.cpp:325)
+//   * 16 -> OP_Disarm -> Handle_OP_Disarm (client_packet.cpp:5749)
+//   * 71 -> OP_InstillDoubt -> Handle_OP_InstillDoubt (:9095) -> InstillDoubt
+// NONE of the three carries an in-combat requirement, so all eleven flags were
+// cleared and none was kept.
+//
+// The tests below are in two groups, and the distinction matters:
+//   T325_*            -- the new contract. These FAIL on T317's code.
+//   MechanismIsIntact -- the predicate and its refusal message, exercised by
+//                        setting the flag by hand. Nothing shipped sets it, so
+//                        without these the mechanism T317 built (and the
+//                        "You must be in combat" string) would be untested and
+//                        free to rot into the no-op it used to be.
+
+TEST_F(SkillGateTest, T325_AnOpeningKickIsPermittedWithATargetAndNoCombat) {
+    // THE acceptance case, and the exact state T317's gate refused. eqemu's
+    // OPCombatAbility would have accepted this send.
+    auto& skills = Skills(kWarrior);
+    TargetNpc(0, 0, 0.0f);
+
+    ASSERT_TRUE(eq.GetCombatManager()->HasTarget());
+    ASSERT_FALSE(eq.GetCombatManager()->IsAutoAttackEnabled());
+    ASSERT_FALSE(eq.GetCombatManager()->IsAutoFireEnabled());
+    ASSERT_EQ(eq.GetCombatManager()->GetCombatState(), COMBAT_STATE_IDLE);
+
+    EXPECT_TRUE(skills.canUseSkill(kKick));
+    EXPECT_EQ(skills.getSkillUseError(kKick), "");
+    EXPECT_TRUE(skills.activateSkill(kKick, 0));
+    EXPECT_TRUE(skills.isSkillOnCooldown(kKick))
+        << "an allowed activation must have reached sendSkillUsePacket()";
+}
+
+TEST_F(SkillGateTest, T325_AnOpeningBackstabFromStealthIsPermitted) {
+    // The rogue's standard opener: behind the target, auto-attack off, nothing
+    // has aggro on us yet. T317's gate refused it with "You must be in combat";
+    // the server has no such rule (Mob::TryBackstab checks the weapon and
+    // BehindMob, nothing else).
+    const Offsets off = FindOffsets(0.0f);
+    ASSERT_NE(off.behind_x + off.behind_y, 0) << "test setup: no behind offset found";
+
+    auto& skills = Skills(kRogue);
+    TargetNpc(-off.behind_x, -off.behind_y, /*heading_deg=*/0.0f);
+
+    ASSERT_EQ(eq.GetCombatManager()->GetCombatState(), COMBAT_STATE_IDLE);
+    ASSERT_FALSE(eq.GetCombatManager()->IsRecentAttacker(500));
+
+    EXPECT_TRUE(skills.canUseSkill(kBackstab));
+    EXPECT_EQ(skills.getSkillUseError(kBackstab), "");
+    EXPECT_TRUE(skills.activateSkill(kBackstab, 0));
+    EXPECT_TRUE(skills.isSkillOnCooldown(kBackstab));
+}
+
+TEST_F(SkillGateTest, T325_NoShippedSkillCarriesTheCombatFlag) {
+    // Pins the ruling itself across the whole table, so re-adding the flag to
+    // any skill is a deliberate act with a test to answer to -- not a quiet
+    // edit in a switch statement.
+    auto& skills = Skills(kRogue);
+    for (uint8_t id = 0; id < EQT::MAX_PP_SKILL; ++id) {
+        const auto* data = skills.getSkill(id);
+        if (!data) {
+            continue;
+        }
+        EXPECT_FALSE(data->requires_combat)
+            << "skill " << static_cast<int>(id) << " (" << data->name
+            << ") sets requires_combat; T325 cleared all eleven. If a server "
+               "handler really does require combat, say which and why.";
+    }
+}
+
+TEST_F(SkillGateTest, T325_TheElevenT317FlaggedStillRequireATarget) {
+    // The revert clears requires_combat ONLY. Every one of those eqemu handlers
+    // genuinely needs a target, so requires_target must survive it.
+    auto& skills = Skills(kRogue);
+    for (uint8_t id : {8, 10, 16, 21, 23, 26, 30, 38, 52, 71}) {
+        const auto* data = skills.getSkill(id);
+        ASSERT_NE(data, nullptr) << "skill " << static_cast<int>(id);
+        EXPECT_TRUE(data->requires_target) << "skill " << static_cast<int>(id);
+    }
+}
+
+TEST_F(SkillGateTest, ATargetIsStillRequired) {
+    // The gate that DID have a server counterpart is untouched: no target, no
+    // Kick. (Real behaviour, unchanged by T325.)
+    auto& skills = Skills(kWarrior);
+    ASSERT_EQ(eq.GetCombatManager()->GetTargetId(), 0);
+    EXPECT_FALSE(skills.canUseSkill(kKick));
+    EXPECT_EQ(skills.getSkillUseError(kKick), "You must have a target");
+}
+
+TEST_F(SkillGateTest, EngagingAutoAttackDoesNotChangeTheAnswerEither) {
+    // Real behaviour before and after: in combat, Kick is allowed. It is now
+    // allowed both ways round, which is the point.
+    auto& skills = Skills(kWarrior);
+    TargetNpc(0, 0, 0.0f);
+    EXPECT_TRUE(skills.canUseSkill(kKick));
+
+    EngageCombat();
+    ASSERT_EQ(eq.GetCombatManager()->GetCombatState(), COMBAT_STATE_ENGAGED);
+    EXPECT_TRUE(skills.canUseSkill(kKick));
+
+    eq.GetCombatManager()->DisableAutoAttack();
+    EXPECT_TRUE(skills.canUseSkill(kKick))
+        << "disengaging must no longer take the skill away";
+    EXPECT_EQ(skills.getSkillUseError(kKick), "");
+}
+
+TEST_F(SkillGateTest, SkillsWithoutTheCombatFlagAreUntouched) {
+    auto& skills = Skills(kRogue);
+    ASSERT_EQ(eq.GetCombatManager()->GetCombatState(), COMBAT_STATE_IDLE);
+    EXPECT_TRUE(skills.canUseSkill(kApplyPoison));
+    EXPECT_EQ(skills.getSkillUseError(kApplyPoison), "");
+}
+
+// ---- B1b. The mechanism, still whole ------------------------------------
+
+TEST_F(SkillGateTest, MechanismIsIntact_TheFlagStillRefusesAndStillSaysWhy) {
+    // checkCombatRequirement() must NOT be re-hollowed to `return true` -- that
+    // is the no-op gate T317 was dispatched to fix. Set the flag by hand (the
+    // same public mutable accessor board item 35's endurance case uses) and the
+    // predicate must still refuse, with the paired message rather than "".
+    auto& skills = Skills(kWarrior);
+    TargetNpc(0, 0, 0.0f);
+    auto* data = skills.getSkill(kKick);
+    ASSERT_NE(data, nullptr);
+    data->requires_combat = true;
+
+    EXPECT_FALSE(skills.canUseSkill(kKick));
+    EXPECT_EQ(skills.getSkillUseError(kKick), "You must be in combat");
+    EXPECT_FALSE(skills.activateSkill(kKick, 0));
+    EXPECT_FALSE(skills.isSkillOnCooldown(kKick));
+
+    EngageCombat();
+    EXPECT_TRUE(skills.canUseSkill(kKick));
+    EXPECT_EQ(skills.getSkillUseError(kKick), "");
+}
+
+TEST_F(SkillGateTest, MechanismIsIntact_BeingAttackedByTheTargetSatisfiesIt) {
+    // T247's aggro memory branch, still live.
+    auto& skills = Skills(kWarrior);
+    const uint16_t npc = TargetNpc(0, 0, 0.0f);
+    auto* data = skills.getSkill(kKick);
+    ASSERT_NE(data, nullptr);
+    data->requires_combat = true;
+    ASSERT_FALSE(skills.canUseSkill(kKick));
+
+    eq.GetCombatManager()->NoteAttackedBy(npc);
+    EXPECT_TRUE(eq.GetCombatManager()->IsRecentAttacker(npc));
+    EXPECT_TRUE(skills.canUseSkill(kKick));
+}
+
+TEST_F(SkillGateTest, MechanismIsIntact_AggroFromSomeoneElseDoesNotSatisfyIt) {
+    // The aggro branch is scoped to the CURRENT TARGET on purpose.
+    auto& skills = Skills(kWarrior);
+    TargetNpc(0, 0, 0.0f, /*spawn_id=*/500);
+    auto* data = skills.getSkill(kKick);
+    ASSERT_NE(data, nullptr);
+    data->requires_combat = true;
+
+    eq.GetCombatManager()->NoteAttackedBy(/*some other spawn=*/999);
+    EXPECT_FALSE(skills.canUseSkill(kKick));
+    EXPECT_EQ(skills.getSkillUseError(kKick), "You must be in combat");
+}
+
+// ---- B2. The facing gate ------------------------------------------------
 
 TEST_F(SkillGateTest, NEGATIVE_BackstabIsRefusedFromTheFrontOfTheTarget) {
     // The whole point of item 7: before this, checkPositionRequirement()

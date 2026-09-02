@@ -71,7 +71,7 @@ stays constructed; nothing else changes about it.
 - `tests/cmake/spells.cmake`: drop the deleted target
 - `CLAUDE.md`, `include/client/eq_body_types.h`,
   `include/client/spell/spell_body_type_target.h`: struck / put in past tense
-- `refactor/deferred.md`: item 33 CLOSED; new item 37 for `SpellEffects`
+- `refactor/deferred.md`: item 33 CLOSED; new item 44 for `SpellEffects`
 
 ## On the deleted tests
 
@@ -180,11 +180,11 @@ of test edits, against ~35 lines of tombstone and doc prose.
   37-row predicate table, the `SpellManagerBodyType` cases against the live
   consumer, and `SpellBodyTypeGuard.NoBTConstantOrBareBodyTypeIntegerSurvivesInSpellCode`, the source-scanning guard that keeps the numbering in one home. All
   still pass.
-- `EQ::SpellEffects` — kept deliberately; see the line drawn above and item 37.
+- `EQ::SpellEffects` — kept deliberately; see the line drawn above and item 44.
 
 ### Deviations
 
 None from the plan. One judgement call, flagged rather than absorbed: the
 `SpellEffects` half of the dead subtree was **not** deleted, because Will's
 ruling named one class and this is a second class-C decision. Boarded as
-item 37 with an executor recommendation to delete.
+item 44 with an executor recommendation to delete.

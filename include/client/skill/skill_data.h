@@ -45,7 +45,11 @@ struct SkillData {
     // Requirements
     uint8_t min_level = 1;              // Minimum level to use
     bool requires_target = false;       // Needs a valid target
-    bool requires_combat = false;       // Must be in combat
+    // Must be in combat. T325: NO shipped skill sets this -- eqemu enforces no
+    // in-combat requirement on any opcode fable sends for a skill (see the
+    // per-opcode derivation in initializeSkillData() below). The mechanism is
+    // kept, working and tested, for anything that ever genuinely needs it.
+    bool requires_combat = false;
     bool requires_behind = false;       // Must be behind target (Backstab)
 
     // Costs
@@ -165,22 +169,55 @@ inline void initializeSkillData(SkillData& skill, uint8_t skill_id) {
     }
 
     // Set skill-specific flags
+    //
+    // T325 (Will's ruling, 2026-09-02): NO skill sets requires_combat any more.
+    // T317 set it on eleven skills -- Backstab(8), Bash(10), Disarm(16),
+    // DragonPunch(21), EagleStrike(23), FlyingKick(26), Kick(30),
+    // RoundKick(38), TigerClaw(52), Intimidation(71) -- and implemented a real
+    // in-combat gate behind it, then flagged in its own Review that the result
+    // was DELIBERATELY STRICTER THAN THE SERVER. It was, and it cost the rogue
+    // his opener: an opening Backstab from stealth, and an opening Kick, were
+    // refused client-side with auto-attack off and no aggro, both of which
+    // eqemu accepts.
+    //
+    // Re-derived per skill against the opcode fable actually sends
+    // (SkillManager::getSkillOpcode) and that opcode's eqemu handler:
+    //   * 8, 10, 21, 23, 26, 30, 38, 52 -> OP_CombatAbility ->
+    //     Client::OPCombatAbility (zone/special_attacks.cpp:325): target
+    //     exists, not casting/feared/stunned/mezzed/DivineAura/dead, MaxSkill,
+    //     target id matches, IsAttackAllowed, CombatRange, reuse timer. NO
+    //     in-combat requirement. (Backstab's extra rules live in
+    //     Mob::TryBackstab -- 1H piercing weapon and BehindMob -- also no
+    //     in-combat test.)
+    //   * 16 -> OP_Disarm -> Client::Handle_OP_Disarm (client_packet.cpp:5749):
+    //     not dead/zoning, HasSkill, timer, source id sanity, no corpse, has
+    //     target, targets match, range <= 400, not feigned, IsAttackAllowed.
+    //     NO in-combat requirement.
+    //   * 71 -> OP_InstillDoubt -> Client::Handle_OP_InstillDoubt
+    //     (client_packet.cpp:9095) -> Mob::InstillDoubt: timer, target is an
+    //     NPC, no DivineAura, CombatRange. NO in-combat requirement.
+    //
+    // So all eleven were cleared, and none was kept. The FIELD, the predicate
+    // SkillManager::checkCombatRequirement() and the "You must be in combat"
+    // message all stay -- the mechanism is intact and correct for anything
+    // that ever genuinely needs it. Reverting by re-hollowing the predicate
+    // instead would have recreated the no-op gate T317 was dispatched to fix.
+    //
+    // requires_target stays on all eleven: every one of those handlers really
+    // does need a target.
     switch (skill_id) {
-        // Combat skills requiring target and combat state
+        // Combat skills requiring a target (but NOT combat -- see above)
         case 8:  // Backstab
             skill.requires_target = true;
-            skill.requires_combat = true;
             skill.requires_behind = true;
             break;
 
         case 10: // Bash
             skill.requires_target = true;
-            skill.requires_combat = true;
             break;
 
         case 16: // Disarm
             skill.requires_target = true;
-            skill.requires_combat = true;
             break;
 
         case 21: // DragonPunch
@@ -190,12 +227,10 @@ inline void initializeSkillData(SkillData& skill, uint8_t skill_id) {
         case 38: // RoundKick
         case 52: // TigerClaw
             skill.requires_target = true;
-            skill.requires_combat = true;
             break;
 
         case 71: // Intimidation
             skill.requires_target = true;
-            skill.requires_combat = true;
             break;
 
         // Skills requiring target but not necessarily combat
