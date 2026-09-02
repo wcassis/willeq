@@ -58,6 +58,17 @@ references this file; plans carry only unit-specific content.
   exit, so you can act without a second command. Deadline is capped at
   540s so a single invocation can never approach the Bash tool's 600s
   ceiling. `scripts/wait_for.sh --help` for full usage.
+- ⚠⚠ **THE SESSION SCRATCHPAD IS SHARED ACROSS SLOTS AND ACROSS EARLIER
+  SESSIONS — same hazard class as the git stash (J20, 2026-09-02).** J20's
+  `wait_for.sh --exit-file .../gles2.exit` returned **MET, exit 0, after 0
+  seconds** against a file written at 01:56 by an UNRELATED earlier run, while
+  its own GLES2 build was still compiling — so it launched the visual gate on
+  top of an unfinished build and had to redo the leg. **Generic names
+  (`build.log`, `gate.exit`, `ctest.log`) are guaranteed collisions in a
+  three-slot wave.** Always `rm -f` the exit file immediately before launching
+  the thing that writes it, or use a unit-private subdirectory, AND sanity-check
+  the elapsed time `wait_for.sh` reports — a 0-second MET is a lie, not a fast
+  build.
 - Stay out of parallel units' file territory (named in each plan).
 - **NEVER use `git stash`. THE STASH STACK IS SHARED ACROSS ALL WORKTREES** —
   it lives in the common `.git`, exactly like the eqemu lock, and slots are NOT

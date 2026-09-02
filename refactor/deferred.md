@@ -804,6 +804,26 @@ least distinguishable; recorded for upstream in `guild_packet_bodies.h`.
     any `crc_bytes` other than 2 or 4.** Theoretical against eqemu (which only
     sends 2), but it is a silent total-rejection path with no log line. Class B.
 
+### Found by J20 (2026-09-02): eight test names contain a RANDOMISED POINTER
+
+42. **Eight `CameraCommandRoundTripTest` cases in `test_irrlicht_camera_command`
+    have no `PrintTo`, so gtest names each case by HEX-DUMPING the parameter
+    object — including an ASLR-randomised pointer.** Running the unmodified
+    binary's `--gtest_list_tests` twice gives **16 differing lines**.
+    *Impact:* those eight ctest names are **not stable identifiers** — `ctest -R`
+    cannot reliably select them, and any tooling that diffs `ctest -N` output
+    sees a spurious change. J20 had to redact `72-byte object <...>` before its
+    set-equality proof would work at all.
+    **EXECUTOR-READY and small** — give the parameter type a `PrintTo` (or a
+    name generator). Class B.
+
+⚠ **Two methodology notes from the same unit, for anyone comparing test sets:**
+`ctest -N` run twice **proves nothing** — with `DISCOVERY_MODE PRE_TEST` ctest
+reuses the generated `<target>[1]_tests.cmake` unless the binary is newer, so a
+matching pair can be entirely vacuous. And redact the hex-dumped object above
+before diffing, or the comparison fails for a reason that has nothing to do with
+what you changed.
+
 ### TIER 3 — implemented but unreachable
 
 19. **`GraphicalMode::initialize()` falls through to the console renderer for every
