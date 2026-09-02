@@ -618,6 +618,48 @@ distinction that makes this decidable:
 Total recoverable if accepted: **~939 lines**, one whole TU removed from the
 tree, and `wld_loader.cpp` drops by 37%.
 
+## ⚠ CORRECTIONS FROM J09 (2026-09-02)
+
+**19. A PREDICTED DIFF SIZE MUST BE DERIVED FROM THE PLAN'S OWN PRESCRIBED
+OUTPUT.** J09's plan predicted "exactly 2 differing lines" in one section while
+another section prescribed a comment retitle that makes it **3** — the plan
+contradicted itself, and a unit trusting the count over the pasted diff would
+have reported a phantom anomaly. **When a plan predicts a number, derive it from
+what the plan itself tells the executor to write.** (J10's 21-line prediction was
+derived correctly; this one was not.)
+
+**20. Correction 17 was stated too narrowly.** J09's one proof failure was range
+arithmetic against the produced files' line numbering — no variable scoping
+involved. **The rule is "suspect the proof first"; `local` count variables are
+one instance of it, not the rule.**
+
+### J09's result — the cleanest of Wave 3
+
+2,561 → `zone_shader.cpp` **520** + three private headers (1,017 / 370 / 702),
+no fourth header needed. **Zero range drift** — all 37 preprocessor line
+numbers, 12 banner triples, 7 cut boundaries and 4 CMake sites reproduced
+exactly, which is unusual this late in the batch. Build, gate, gles2 and ARM all
+passed **first invocation**; no exit 143, so no ELF scan was needed.
+
+**Both planning predictions held, and both had been measured rather than
+assumed:** no `friend` is needed (27 distinct `owner_->` members, all public,
+**zero raw member accesses** in 681 lines of callback code), and the verifier
+**exits 0** despite rewriting `#else` to `#ifndef` across a file boundary —
+**the first unit in the batch to split a live conditional across a file boundary
+and still pass clean.** Both proofs came back with the same three preprocessor
+lines and nothing else, so no GLSL line was duplicated or dropped.
+
+⚠ **DEAD-CONTENT SITE #7, and the largest of the reachability kind:**
+`zone_shader_sources_gl.h`'s **356 lines compile only under
+`EQT_GRAPHICS=ON EQT_DRM=ON EQT_GLES2=OFF`, a configuration P32 RETIRED**
+(`CMakeLists.txt:701-706`; `build-arm-noble.sh` dropped `--no-gles2`). **None of
+the three configurations in the acceptance bar compiles it.** Since nothing in
+the bar would parse it, J09 added a standalone
+`g++ -fsyntax-only -UEQT_HAS_GLES2` probe and confirmed both arms parse clean —
+but the arm is unreachable in every shipped build. **This belongs in the
+dead-content decision as a distinct kind: not commented out, not `#if 0`, but
+gated on a retired build configuration.**
+
 ## Unit table
 
 | Unit | File | Lines | → TUs | Largest after | Wave | Notes |
