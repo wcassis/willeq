@@ -61,6 +61,13 @@ costs ~+13 MB RSS on a 483 MB board. Recommendation: composites can be
 re-enabled on `orangepi` — but that is Will's call, and this unit changed
 nothing.**
 
+**⚠ WILL'S CALL WAS MADE, 2026-09-01: composites STAY OFF on the `orangepi`
+preset — decided WITH the numbers above in hand, not in ignorance of them. The
+recommendation in the paragraph above is therefore DECLINED and this unit is
+fully closed; composites are off BY CHOICE, not by necessity. Do not re-open
+this citing T284 or T289 — they are the evidence the ruling was made on.
+Recorded in `refactor/deferred.md` and `docs/decisions.md`.**
+
 No source, config or preset was touched. `git status` clean against `fable`
 apart from this plan file. Composites were switched on the same way T287 did
 it on x86: the `--composite-entities <dir>` CLI flag, which sets

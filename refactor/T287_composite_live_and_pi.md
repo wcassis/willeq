@@ -14,7 +14,17 @@ against T284's benchmark numbers (1 pack, 174,856 B for a Human). Confirm
 entities render (screenshot, 0 magenta) and nothing regressed vs T191/T192's
 composite-adoption findings.
 
-## Part 2 — the Pi run: DO NOT START WITHOUT WILL'S GO
+## Part 2 — the Pi run: ~~DO NOT START WITHOUT WILL'S GO~~ — CLOSED 2026-09-01
+
+> **DECIDED 2026-09-01 (Will): composites STAY OFF on the `orangepi` preset.**
+> The ruling was made WITH this unit's evidence in hand, not in ignorance of it
+> — T284 killed the address-space argument and T289 measured VmPeak 575 MB /
+> +13.4 MB RSS on a 483 MB board with composites ON and no allocation failure.
+> Composites are OFF **by choice, not by necessity**. **T287 Part 2 is CLOSED,
+> not pending; nothing here awaits Will.** Do not re-open citing T284/T289 —
+> they are the evidence the ruling was made on. Recorded in
+> `refactor/deferred.md` and `docs/decisions.md`.
+
 Decision #3 (composites OFF on orangepi) was justified by address-space
 exhaustion, which T284 removed. Whether to re-enable is Will's call. If he
 says go: P02 protocol via `scripts/pi/pi_common.py`, ARM_BUILD_BIN_DIR
@@ -148,7 +158,10 @@ re-run: this unit adds no code, only `refactor/T287_*.md` and `review/T287/`.
   mine. Pre-existing `npc_id=1063` GM leftovers and Testchar's 01:29 corpse
   were left untouched. Lock taken atomically as `T287`, clean shutdown, lock
   deleted.
-- **Part 2 remains open and needs Will's go.** T284 showed the address-space
+- ~~**Part 2 remains open and needs Will's go.**~~ **CLOSED 2026-09-01: Part 2
+  ran as T289 (Will gave the measurement go on 2026-08-26), and on 2026-09-01
+  Will ruled that composites STAY OFF on the Pi — with T284's and T289's numbers
+  in hand. Nothing in this unit awaits Will.** T284 showed the address-space
   argument behind decision #3 no longer describes the code; this unit shows the
   index-driven open works in the real client. Neither is a Pi measurement, and
   neither re-enables composites anywhere.
