@@ -609,3 +609,584 @@ rebase.**
 - A fourth text reader of this file has appeared.
 - Any cut boundary has drifted inside one of the nine conditional regions after
   line 1203.
+
+---
+
+## Review (executed 2026-09-02, slot2, branch `task/J31-renderer-frame-split`)
+
+**Base / tip.** Branch cut from `fable` at **`0c95f7df`** ("Batch J Wave 6: plan
+the last thirteen files (J23-J35)…"), which is `$BASE` =
+`git merge-base fable HEAD` = `0c95f7df4cf59481d6be267f181052c026a49a0f`.
+Split commit **`13ac54ca`**. **PASS on every bar item.** The verifier exits 1
+with **exactly** the predicted 6-added / 4-removed set — the §Process step-4 /
+correction-5 case, requesting orchestrator sign-off.
+
+**One finding worth the plan's attention, found during the cut and fixed before
+the build: the file-header warning the plan prescribes can itself satisfy the
+guard it warns about.** See §11.
+
+### 1. Line count at my tip — zero drift
+
+`src/client/graphics/renderer_frame.cpp` = **1,752 lines**, exactly the plan's
+measurement at `824adb28`.
+`git diff 824adb28 HEAD -- src/client/graphics/renderer_frame.cpp
+tests/test_static_ui_scroll.cpp tests/test_ui_hide_command.cpp` is **empty** —
+all three inputs are byte-identical to the survey commit. Every cut boundary,
+every preprocessor line number, every method line number and the single CMake
+add-site reproduced **exactly**. Correction 9's "every survey number is stale"
+warning did not fire here.
+
+### 2. §Measured re-verified at my tip — every property holds
+
+```
+$ wc -l src/client/graphics/renderer_frame.cpp
+1752
+
+$ grep -n '^[A-Za-z_].*IrrlichtRenderer::' src/client/graphics/renderer_frame.cpp
+32:bool IrrlichtRenderer::processFrame(float deltaTime) {
+506:void IrrlichtRenderer::processFrameInput(float deltaTime) {
+572:void IrrlichtRenderer::processCommonInput(const std::vector<RendererEvent>& actions) {
+606:void IrrlichtRenderer::processPlayerInput(const std::vector<RendererEvent>& actions) {
+818:void IrrlichtRenderer::processInputDeltas(float deltaTime) {
+847:void IrrlichtRenderer::processChatInput() {
+994:void IrrlichtRenderer::processFrameVisibility() {
+1025:void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
+1204:bool IrrlichtRenderer::processFrameRender(float deltaTime) {
+
+$ grep -nE '^// ={4,}' src/client/graphics/renderer_frame.cpp
+505:// ===== Phase 1: Input =====
+993:// ===== Phase 2: Visibility =====
+1024:// ===== Phase 3: Simulation =====
+1203:// ===== Phase 4: Render =====
+$ grep -cE '^// ={4,}' src/client/graphics/renderer_frame.cpp
+4
+```
+
+**9 methods; largest `processFrameRender` 546 (1204-1749); 2nd `processFrame`
+472 (32-503); 3rd `processPlayerInput` 211 (606-816).** 4 banners, single-line.
+Preamble 1-30 exactly as described: 18 includes, `__linux__` 19-21,
+`EQT_HAS_GLES2` 23-27 with the `extern` at **26**, namespace opens at 29-30.
+Namespace closes at **1751-1752**. Zero file-scope statics, zero anonymous
+namespaces, zero multi-line comment regions.
+
+### 3. Correction 21, re-derived (not cited)
+
+```
+$ grep -n '^static \|^namespace\s*{\|^const \|^constexpr \|^extern ' src/client/graphics/renderer_frame.cpp
+26:extern void gles2Draw3DLinesBatch(void* driver, const float* vertices, unsigned int lineCount);
+
+$ grep -n 'namespace' src/client/graphics/renderer_frame.cpp
+29:namespace EQT {
+30:namespace Graphics {
+1751:} // namespace Graphics
+1752:} // namespace EQT
+```
+
+Exactly as the plan states: **one file-scope item, and it is a declaration, not
+a definition.** I located the definition rather than trusting the plan:
+
+```
+$ grep -rn 'void gles2Draw3DLinesBatch' src/ docker/
+...
+docker/irrlicht-drm/COpenGLES2Driver.cpp:2214:void gles2Draw3DLinesBatch(void* driver, const float* vertices, unsigned int lineCount)
+```
+
+Six other graphics TUs (`irrlicht_renderer.cpp:77`, `renderer_hud_env.cpp:77`,
+`renderer_camera.cpp:77`, `renderer_init.cpp:77`, `renderer_slash_commands.cpp:77`,
+`renderer_event_receiver.cpp:77`) already carry the identical declaration, so
+duplicating it a further two times is established practice in this tree, not a
+novelty. ⚠ **The in-file comment at 24-25 says "Declared in
+irrlicht_renderer.cpp"; the definition is actually in
+`docker/irrlicht-drm/COpenGLES2Driver.cpp:2214`** (the plan says the same). That
+comment is pre-existing and slightly wrong; it moved verbatim into all three
+TUs. **Recorded, not fixed** — move-only.
+
+**Correction-21 mapping.** The only file-scope symbol is a declaration of an
+external symbol, so there is no definition/consumer range to align. Its sole
+in-file caller is inside `processFrameRender`, i.e. range 1203-1750
+(`renderer_frame_render.cpp`), which carries the declaration; the other two TUs
+carry an unused declaration, which is correct and was **not** trimmed. **Zero
+correction-21 exposure — same conclusion as the plan's audit, reached
+independently.**
+
+Cross-TU calls (`processFrame` → `processFrameInput` / `processFrameVisibility` /
+`processFrameSimulation` / `processFrameRender`) are `IrrlichtRenderer` members
+with external linkage declared in `include/client/graphics/irrlicht_renderer.h` —
+ordinary links. The build confirms it.
+
+### 4. Comment depth at every cut — computed, not asserted
+
+Using the plan's `//`-stripping counter:
+
+```
+depth after line 504 = 0
+depth after line 505 = 0
+depth after line 1202 = 0
+depth after line 1203 = 0
+final depth 0
+```
+
+Comment depth is **0** at both cuts and at end of file. `grep -n "/\*"` returns
+five lines (981, 1364, 1704, 1737, 1739), every one a single-line `/*…*/` —
+correction 33's case, and it holds.
+
+### 5. Preprocessor dump — no cut lands inside a conditional
+
+```
+19: #ifdef __linux__          1326: #ifdef __linux__
+21: #endif                    1340: #endif
+23: #ifdef EQT_HAS_GLES2      1345: #ifdef EQT_HAS_GLES2
+27: #endif                    1347: #else
+83: #ifdef EQT_HAS_GLES2      1349: #endif
+90: #endif                    1397: #ifdef EQT_HAS_GLES2
+121: #ifdef EQT_HAS_GLES2     1411: #endif
+123: #endif                   1415: #ifdef EQT_HAS_DRM
+                              1425: #endif
+                              1551: #ifdef EQT_HAS_GLES2
+                              1607: #endif
+                              1612: #ifdef EQT_HAS_GLES2
+                              1633: #endif
+                              1706: #ifdef WITH_RDP
+                              1708: #endif
+```
+
+**23 directives**, exactly as measured. Two regions in the preamble (copied
+whole into every TU); two inside `processFrame` (83/90, 121/123 — inside the
+*stays* range); **nine regions, all after 1203, all wholly inside
+`processFrameRender`**, which moves whole. **Neither cut (505, 1203) falls
+between an `#if`/`#endif` pair.**
+
+### Cut boundaries, pasted
+
+```
+Cut 505:                              Cut 1203:
+  502:     return true;                 1199:     updateHUD();
+  503: }                                1200:     frameTimings_.hudUpdate = measureSection();
+  504: (blank)                          1201: }
+  505: // ===== Phase 1: Input =====    1202: (blank)
+  506: void IrrlichtRenderer::          1203: // ===== Phase 4: Render =====
+       processFrameInput(float …) {     1204: bool IrrlichtRenderer::
+                                              processFrameRender(float …) {
+```
+
+Both satisfy J03's rule (blank line whose predecessor closes a method) *and* the
+banner tie-breaker, which agree at both boundaries.
+
+### 6. Every file-header comment line written, enumerated
+
+No other comment in the tree was changed. All three headers are new; the
+original had none.
+
+**`renderer_frame.cpp` — 7 lines added at the top:**
+```
+1  // renderer_frame.cpp - IrrlichtRenderer's per-frame orchestrator.
+2  //
+3  // Holds processFrame() alone, which sequences the four frame phases.
+4  // Phase 1 (input), Phase 2 (visibility) and Phase 3 (simulation) live in
+5  // renderer_frame_input.cpp; Phase 4 (render) lives in
+6  // renderer_frame_render.cpp.
+7  // Split per refactor/J31_renderer_frame_split.md (move-only).
+```
+
+**`renderer_frame_input.cpp` — 17 lines:**
+```
+ 1  // renderer_frame_input.cpp - IrrlichtRenderer frame phases 1-3.
+ 2  //
+ 3  // Phase 1 input (processFrameInput, processCommonInput, processPlayerInput,
+ 4  // processInputDeltas, processChatInput), Phase 2 visibility
+ 5  // (processFrameVisibility), Phase 3 simulation (processFrameSimulation).
+ 6  // The orchestrator processFrame() stays in renderer_frame.cpp; Phase 4 is in
+ 7  // renderer_frame_render.cpp.
+ 8  //
+ 9  // WARNING: tests/test_static_ui_scroll.cpp reads THIS FILE as text. It counts
+10  // the reads of the event receiver's mouse-wheel accumulator and requires
+11  // exactly two, and it requires that the static UI input object's wheel and
+12  // scroll-key routing calls both appear here. Moving the wheel accumulator or
+13  // either routing call out of this TU fails those assertions with a message
+14  // that wrongly reads as a behaviour change. The literal tokens are spelled
+15  // out in that test, deliberately not here: a comment naming them would
+16  // satisfy the guard on its own.
+17  // Split per refactor/J31_renderer_frame_split.md (move-only).
+```
+
+**`renderer_frame_render.cpp` — 17 lines:**
+```
+ 1  // renderer_frame_render.cpp - IrrlichtRenderer frame phase 4 (render).
+ 2  //
+ 3  // Holds processFrameRender() alone. Phases 1-3 live in
+ 4  // renderer_frame_input.cpp; the orchestrator processFrame() stays in
+ 5  // renderer_frame.cpp.
+ 6  //
+ 7  // processFrameRender is 546 lines and is a recorded Batch-G decomposition
+ 8  // candidate that J31 deliberately did NOT touch (move-only). All nine of this
+ 9  // file's conditional regions (__linux__, EQT_HAS_GLES2, EQT_HAS_DRM,
+10  // WITH_RDP) live wholly inside it.
+11  //
+12  // WARNING: tests/test_ui_hide_command.cpp reads THIS FILE as text and
+13  // requires that the static-UI draw block's guard, which ands the new-UI flag
+14  // and the UI renderer against the negated all-UI-hidden flag, appear here
+15  // verbatim. The literal condition is spelled out in that test, deliberately
+16  // not here: a comment naming it would satisfy the guard on its own.
+17  // Split per refactor/J31_renderer_frame_split.md (move-only).
+```
+
+⚠ **Correction 30 did not fire.** Each body range already ends on the original's
+blank line (504, 1202, 1750), and I appended the two closes **directly** with no
+extra blank, so no TU is double-spaced and no hand-fix was needed. The render TU
+reproduces the original's exact 1749-1752 tail byte for byte.
+
+### 7. CMake add-sites — **ONE**, as the plan says; the dispatch's "12" is wrong
+
+```
+$ find . \( -name 'CMakeLists.txt' -o -name '*.cmake' \) -not -path '*/third_party/*' \
+       -not -path '*/build*' -exec grep -Hn -i 'renderer_frame' {} +
+./CMakeLists.txt:489:        src/client/graphics/renderer_frame.cpp
+```
+
+Searched **all 23** CMake files in the tree (the top-level, three toolchain
+files, `tests/CMakeLists.txt` and all 18 `tests/cmake/*.cmake` fragments) —
+enumerated by `find`, so correction 26's trap (naming `tests/CMakeLists.txt` and
+missing the fragments) could not apply, and `-i` covers the UPPERCASE-command
+trap. **Exactly one site**, `SET(GRAPHICS_SOURCES` at `CMakeLists.txt:489`; both
+new TUs added there, +2 lines.
+
+⚠ **Correction to the dispatch, not to the plan.** My dispatch brief stated
+"This file has 12 CMake add-sites — the most in Wave 6". **That is false and it
+belongs to J32**: correction 39 of the batch plan reads "J31 1, **J32 12**". The
+plan file's §CMake correctly says ONE. I measured ONE. **The 12 was a
+transcription error in the dispatch; the batch plan and this plan are both
+right.** Flagging it because a dispatch that tells an executor to expect twelve
+sites invites them to keep hunting past a correct answer, or worse, to widen
+territory to find them.
+
+**No `tests/cmake/` fragment names this file** — confirmed by the same
+exhaustive `find`. This unit adds no target and no source to any target, so no
+fragment edit was needed. `gles2_zone_benchmark` untouched.
+
+### 8. Both content proofs, plus the standalone `processFrameRender` diff
+
+`$BASE = 0c95f7df4cf59481d6be267f181052c026a49a0f`.
+
+**Byte-identical re-concatenation** (ranges `31-504`, `505-1202`, `1203-1750`,
+in original order, taken from the *produced* files' body ranges 38-511 / 48-745 /
+48-595):
+```
+$ cmp orig_body.txt reconcat.txt ; echo $?
+0
+$ wc -l reconcat.txt
+1720
+```
+**1,720 lines, `cmp` exit 0.**
+
+**Line-multiset check** (three `.cpp` bodies only, each stripped of header,
+preamble and namespace closes; `before` runs to **1750**, not 1752, since the
+original's own closes are inside the third range):
+```
+$ wc -l before.txt after.txt
+1720 before.txt
+1720 after.txt
+$ diff before.txt after.txt ; echo $?
+0            -> MULTISET-OK
+```
+The two test files were **not** concatenated into either side.
+
+**`processFrameRender` byte for byte:**
+```
+$ diff <(git show "$BASE:src/client/graphics/renderer_frame.cpp" | sed -n '1204,1749p') \
+       <(sed -n '49,594p' src/client/graphics/renderer_frame_render.cpp) ; echo $?
+0
+```
+**546 lines, exit 0.** First and last lines of the new range confirm the
+alignment: `49` is `bool IrrlichtRenderer::processFrameRender(float deltaTime) {`
+and `594` is `}`.
+
+No proof failed, so correction 20's "suspect the proof first" was not needed —
+worth recording that the batch's three-for-three proof-bug streak has now broken.
+
+**Verifier — EXIT 1 with EXACTLY the predicted set:**
+```
+$ python3 scripts/refactor/verify_move_only.py "$BASE..HEAD" --repo /mnt/projects/fable/wt/slot2
+Non-C++ files changed (not verified, review separately):
+  CMakeLists.txt
+
+Files verified: 5
+Boilerplate: +99 / -0 lines (allowed)
+
+SUBSTANTIVE ADDED lines (6):
+  +1x  "renderer_frame_input.cpp";
+  +2x  const std::string frame = readFile(kRoot / "src/client/graphics/renderer_frame_input.cpp");
+  +1x  const std::string src = readFile(kRoot / "src/client/graphics/renderer_frame_render.cpp");
+  +2x  extern void gles2Draw3DLinesBatch(void* driver, const float* vertices, unsigned int lineCount);
+
+SUBSTANTIVE REMOVED lines (4):
+  -1x  "renderer_frame.cpp";
+  -2x  const std::string frame = readFile(kRoot / "src/client/graphics/renderer_frame.cpp");
+  -1x  const std::string src = readFile(kRoot / "src/client/graphics/renderer_frame.cpp");
+
+FAIL: substantive line changes detected. …
+VERIFIER EXIT=1
+```
+
+**ADDED 6 / REMOVED 4 — the prediction held exactly, line for line, including
+the `+2x`/`-2x` `Counter` arithmetic on the two textually identical
+`test_static_ui_scroll.cpp` lines and the `+2x` on the duplicated `extern`.**
+I **did** update the `:702` diagnostic string, so the 6/4 branch of the
+prediction applies rather than the 5/3 branch. **Nothing beyond the enumerated
+set was flagged; nothing to chase. Requesting orchestrator sign-off** per
+§Process step 4 / correction 5.
+
+### 9. Final line counts, method counts, timings
+
+| file | lines | methods | note |
+|---|---|---|---|
+| `src/client/graphics/renderer_frame.cpp` | **513** | **1** | `processFrame` |
+| `src/client/graphics/renderer_frame_input.cpp` | **747** | **7** | phases 1-3 |
+| `src/client/graphics/renderer_frame_render.cpp` | **597** | **1** | `processFrameRender` |
+| total | 1,857 | **9** | vs 1,752 in one TU |
+
+**Method counts are 1 / 7 / 1 = 9, exactly as predicted.** Largest TU **747**,
+comfortably under the plan's ~730 target and 753 under the warn ceiling.
+
+**The plan's estimates were right to the line, once the headers are added back**
+(correction 12 / 19): predicted `506 / 730 / 580` bodies plus my `7 / 17 / 17`
+header lines = **513 / 747 / 597**. Exact. The plan predicted 14-line-equivalent
+headers loosely as "five to eight lines"; I wrote 7 / 17 / 17 because the two
+warning paragraphs the plan **requires** (§File-header comments) do not fit in
+eight lines. **That is the one place the plan's own prescriptions are internally
+tight** — "five to eight lines" and "must record, in plain words, that
+tests/… scan THIS file as text and for what" cannot both be met. I honoured the
+content requirement over the length suggestion. Worth relaxing to "five to
+eight, or as long as the required warning needs" in the template.
+
+Banner distribution after the split: `renderer_frame.cpp` **0**,
+`renderer_frame_input.cpp` **3** (Phases 1, 2, 3), `renderer_frame_render.cpp`
+**1** (Phase 4) — 4 total, conserved (`grep -cE`, per correction 28).
+
+**Wall clock ≈ 75 min**, of which the mechanical cut + CMake was **under 4 min**.
+Timings:
+
+| step | result | wall |
+|---|---|---|
+| `cmake --build build -j24` | **exit 0** | ~11.5 min (backgrounded, not a 143) |
+| guard tests alone | 5/5 pass | 23 s (after one re-run, see below) |
+| `ctest -j6` full | **3506/3507** | ~2.4 min |
+| `scripts/build-gles2-x86.sh` | **exit 0** | ~12 min |
+| `scripts/build-arm-noble.sh` | **exit 0** | ~11 min (run concurrently with gles2) |
+| visual gate | **PASS** | ~80 s |
+| `check_file_sizes.sh --files` | 5 ok, **0 warn 0 fail** | s |
+
+**Slowest step: `build-gles2-x86.sh` (~12 min).** Wave concurrency (slot1 J25,
+slot3 J33) did stretch the tail — the first `cmake --build` invocation ran past
+the 540 s `wait_for` deadline and needed a second poll — but **no step failed on
+contention and nothing needed a re-run for load**, so correction 14 applies: this
+is a clean run, not an anomaly.
+
+**No 143 anywhere; every build reported its own exit code.** I ran the ELF scan
+over all of `build/bin` regardless (correction 32 — "run it either way; it costs
+seconds"): **0 bad binaries.**
+
+**One discovery flake, correctly classified.** The first
+`ctest -R 'ScrollSourceInvariants|UIHideSourceInvariants'` died with **exit 8** in
+`GoogleTestAddTests.cmake` naming
+`test_eq_action_handler_enum_guards` — a binary **this unit does not touch**.
+Per correction 16 I checked the binary before concluding anything:
+`readelf -h` exit 0 and `--gtest_list_tests` exit 0, i.e. **intact**. It was
+cold-cache/wave contention (the J05/J07 class), and the identical re-run passed.
+**Not truncation, not a test failure.** Worth noting the plan's warning is
+accurate and load-bearing: the naive read of "exit 8 in discovery" would have
+sent me hunting a mid-link truncation in an unrelated binary.
+
+**`ctest -j6` full suite: 3507 tests, 3506 passed, 1 failed —
+`AudioManagerTest.PreloadCommonSounds`, the documented ALSA host quirk in
+`refactor/test_baseline.txt`. Zero new failures.**
+`HeadlessShutdownTest.NonLifecycleCommandIsHeldNotDroppedOrApplied` did **not**
+flake this run.
+
+**Visual gate: `=== VISUAL GATE: PASS ===`, goldens untouched** —
+`git status --porcelain` after the gate listed only this unit's four modified and
+two new files, no golden. All three zones passed on both CPU p95 and image
+comparison (`qeynos2`, `gfaydark` p95 9.345 vs ceiling 10.672, `befallen` p95
+9.508 vs ceiling 10.948 — closer to the ceiling than J05's re-run measured, which
+is the wave load, but under it on the first attempt with **zero image
+mismatches**). **The frame loop's behaviour is unchanged.**
+
+### 10. Findings only, not fixes
+
+- **`docs/module_map.md:91`** reads
+  `| renderer_frame.cpp | 1,752 | processFrame + input/visibility/simulation/render sub-passes |`.
+  That row is now wrong in both its size and its content column, and **two new
+  rows are owed** for `renderer_frame_input.cpp` and `renderer_frame_render.cpp`.
+  **Recorded for J21's successor pass; not acted on.**
+- **Four comment-only mentions of `renderer_frame.cpp` now name the wrong TU**
+  (correction 24 — I checked each **at `$BASE`**, and all four were accurate
+  before this split, so unlike J06/J07/J08's cases this rot **is** newly created
+  by J31 and should be attributed to it):
+  - `tests/test_read_and_reset_ownership.cpp:14` and `:98` — both cite
+    "renderer_frame.cpp's processFrameInput()", now in
+    **`renderer_frame_input.cpp`**.
+  - `tests/test_bridge_queue_race.cpp:8` — cites "renderer_frame.cpp's" for
+    render-thread hotkey decoding, now in **`renderer_frame_input.cpp`**.
+  - `tests/test_ui_hide_command.cpp:18` — cites `(renderer_frame.cpp)` for the
+    static UI block, now in **`renderer_frame_render.cpp`**.
+  All four are **comments in files outside this unit's four prescribed edits**;
+  fixing them is a second change in a move-only commit. **Recorded, not fixed.**
+- The pre-existing comment at `renderer_frame.cpp:24-25` ("Declared in
+  irrlicht_renderer.cpp") misnames the definition site, which is
+  `docker/irrlicht-drm/COpenGLES2Driver.cpp:2214`. It moved verbatim into all
+  three TUs, so the tree now has **three** copies of a slightly wrong comment
+  where it had one (and six other graphics TUs already carry the same text).
+  **Recorded, not fixed** — and a candidate for J21.
+- **No dead content** was found or removed.
+
+### 11. The text-scan repoint, in full — and the header-comment trap
+
+**Four lines changed, exactly as prescribed, no more.**
+
+| file:line | before | after |
+|---|---|---|
+| `test_static_ui_scroll.cpp:698` | `    const std::string frame = readFile(kRoot / "src/client/graphics/renderer_frame.cpp");` | `…/renderer_frame_input.cpp");` |
+| `test_static_ui_scroll.cpp:702` | `                        "renderer_frame.cpp";` | `                        "renderer_frame_input.cpp";` |
+| `test_static_ui_scroll.cpp:706` | `    const std::string frame = readFile(kRoot / "src/client/graphics/renderer_frame.cpp");` | `…/renderer_frame_input.cpp");` |
+| `test_ui_hide_command.cpp:156` | `    const std::string src = readFile(kRoot / "src/client/graphics/renderer_frame.cpp");` | `…/renderer_frame_render.cpp");` |
+
+**I DID update the `:702` diagnostic string**, so the verifier prediction is the
+**6/4** branch, which is what it reported. No assertion was weakened, no test
+merged, no both-files fallback added. `renderer_event_receiver.cpp`'s two
+readers (`test_static_ui_scroll.cpp:690`, `test_ui_hide_command.cpp:146`) were
+left untouched, as territory requires.
+
+The tokens landed where the plan predicted, confirmed in the produced files by
+substring count (not `grep -c`, which counts lines):
+
+```
+getMouseWheelDelta()                  in renderer_frame_input.cpp  = 2
+staticUIInput_->processWheel(         in renderer_frame_input.cpp  = 1
+staticUIInput_->processScrollKey(     in renderer_frame_input.cpp  = 1
+if (newUIEnabled_ && uiRenderer_ && !allUIHidden_)
+                                      in renderer_frame_render.cpp = 1
+```
+and **zero** occurrences of any of them in the other TUs.
+
+```
+$ ctest --test-dir build -R 'ScrollSourceInvariants|UIHideSourceInvariants' --output-on-failure
+1/5 Test #2623: UIHideSourceInvariants.KeyEventSwitchQueuesTheRendererAction .... Passed 0.04 sec
+2/5 Test #2624: UIHideSourceInvariants.StaticUiBlockIsGatedOnAllUIHidden ........ Passed 0.02 sec
+3/5 Test #2722: ScrollSourceInvariants.OnEventAccumulatesTheMouseWheel .......... Passed 0.03 sec
+4/5 Test #2723: ScrollSourceInvariants.NothingElseConsumesTheWheelAccumulator ... Passed 0.04 sec
+5/5 Test #2724: ScrollSourceInvariants.TheFrameRoutesTheWheelIntoTheStaticUI .... Passed 0.03 sec
+
+100% tests passed, 0 tests failed out of 5
+```
+
+#### ⚠ NEW HAZARD — the prescribed file-header warning can satisfy the guard it warns about
+
+**My first draft of the two headers followed §File-header comments literally and
+named the scanned tokens verbatim.** That is wrong in two distinct ways, and one
+of them is silent:
+
+1. **Loud:** `renderer_frame_input.cpp`'s header contained the literal
+   `getMouseWheelDelta()`. `NothingElseConsumesTheWheelAccumulator` counts
+   **substring occurrences of the whole file**, comments included, so the count
+   became **3** and the test would have failed asserting "expected exactly the UI
+   read and the no-UI drain" — the *same* misleading message the plan warns about,
+   arriving from the opposite direction. I caught this before building.
+2. **Silent, and worse:** the same headers contained the literal
+   `staticUIInput_->processWheel(`, `staticUIInput_->processScrollKey(` and
+   `if (newUIEnabled_ && uiRenderer_ && !allUIHidden_)`. Those three assertions
+   are `find(...) != npos`. **A comment naming the token satisfies the assertion
+   on its own** — so if someone later deleted the real `allUIHidden_` gate, the
+   guard would still pass, on the strength of the header comment describing it.
+   **The defence J31 was told to write would have disarmed the guard it was
+   defending.** This is exactly the J11 shape ("a guard left pointing at the
+   wrong file can pass while asserting nothing"), reached by a new route: a guard
+   pointing at the *right* file, satisfied by prose.
+
+**Resolution:** both headers describe the scanned tokens **in words, never as
+literals**, and say so explicitly ("The literal tokens are spelled out in that
+test, deliberately not here: a comment naming them would satisfy the guard on its
+own"). The counts above confirm 2 / 1 / 1 / 1 with the headers in place.
+
+**Template change recommended (correction 40):** §File-header comments currently
+says a new TU's header "must record, in plain words, that <test> scans THIS file
+as text and for what". Add: **"and must NOT contain any literal token that test
+searches for — describe it. A `find != npos` guard is satisfied by a comment, so
+naming the token in the header silently disarms the guard; a counting guard is
+broken loudly by it."** Every future Wave-6+ unit whose file has a text reader
+inherits this, and the two failure modes look nothing alike.
+
+### 12. The correction to the record — batch plan §Residual is wrong for this file
+
+**The batch plan's §Residual row for `renderer_frame.cpp` names
+`test_reachability_sweep.cpp:156` and `test_ui_hide_command.cpp:698,706`.
+Both citations are wrong**, as this plan says and as I re-derived independently
+at my tip:
+
+```
+$ grep -rn 'renderer_frame' tests/ scripts/
+tests/test_bridge_queue_race.cpp:8://     the RENDER thread (OnEvent's decoded hotkeys; renderer_frame.cpp's
+tests/test_static_ui_scroll.cpp:698:    const std::string frame = readFile(kRoot / "src/client/graphics/renderer_frame.cpp");
+tests/test_static_ui_scroll.cpp:702:                        "renderer_frame.cpp";
+tests/test_static_ui_scroll.cpp:706:    const std::string frame = readFile(kRoot / "src/client/graphics/renderer_frame.cpp");
+tests/test_read_and_reset_ownership.cpp:14://   * renderer_frame.cpp's processFrameInput() (RENDER thread) -- the real
+tests/test_read_and_reset_ownership.cpp:98:        // The render thread's consumer (renderer_frame.cpp processFrameInput).
+tests/test_ui_hide_command.cpp:18: *      (renderer_frame.cpp). The STATIC UI block right below them -- chat,
+tests/test_ui_hide_command.cpp:156:    const std::string src = readFile(kRoot / "src/client/graphics/renderer_frame.cpp");
+```
+```
+$ grep -hn 'kRoot / "src\|kRoot / "include' tests/*.cpp | sort -u
+… 156:    const std::string src = readFile(kRoot / "src/client/graphics/renderer_frame.cpp");
+… 698:    const std::string frame = readFile(kRoot / "src/client/graphics/renderer_frame.cpp");
+… 706:    const std::string frame = readFile(kRoot / "src/client/graphics/renderer_frame.cpp");
+```
+
+**`test_reachability_sweep.cpp` does not read this file at all** — it appears
+nowhere in either grep. **The correct list, for §Residual:**
+
+| site | kind |
+|---|---|
+| `tests/test_static_ui_scroll.cpp:698` | functional (`readFile`, count == 2) |
+| `tests/test_static_ui_scroll.cpp:702` | diagnostic string |
+| `tests/test_static_ui_scroll.cpp:706` | functional (`readFile`, two `find != npos`) |
+| `tests/test_ui_hide_command.cpp:156` | functional (`readFile`, one `find != npos`) |
+| `tests/test_bridge_queue_race.cpp:8`, `tests/test_read_and_reset_ownership.cpp:14`, `:98`, `tests/test_ui_hide_command.cpp:18` | comment-only |
+
+**Three functional readers, one diagnostic, four comments. No fourth functional
+reader appeared**, so that STOP condition did not fire. **Both standard greps
+were needed and neither alone was sufficient** — the first finds the diagnostic
+string at `:702`, which the second cannot see.
+
+### 13. T312 and T313 are ancestors of my base — verified, not read off a note
+
+```
+$ git merge-base --is-ancestor c9b02f7e HEAD ; echo $?
+0
+$ git merge-base --is-ancestor f0046f7c HEAD ; echo $?
+0
+```
+Both exit 0. **No live hold on this file.**
+
+### 14. The `test_first_person_camera_single_formula.cpp` check — empty, as predicted
+
+```
+$ grep -n 'CameraMode::FirstPerson\|camera_->setPosition(\|camera_->setTarget(\|kFirstPerson\|firstPersonM\|firstPersonV\|computeFirstPersonCamera' src/client/graphics/renderer_frame.cpp
+(no output, exit 1)
+```
+
+`renderer_frame.cpp` matches **none** of the first-person tokens, so it is
+invisible to both parts of that recursive sweep, and the two new TUs — which
+carry only content from this file — are too. The sweep runs over
+`src/client/graphics` recursively and did pick up both new files; **it passed**
+in the full suite. Neither new filename collides with `kHelperTU`
+(`renderer_camera.cpp`) or `kFloorSecondReader`
+(`renderer_player_physics.cpp`, J33's file).
+
+### Deviations
+
+**One, and it is a plan-content conflict rather than a departure:** the file
+headers are 7 / 17 / 17 lines, not the "five to eight" §File-header comments
+suggests, because the warning text that same section **requires** does not fit in
+eight lines. Content requirement honoured over length suggestion; see §9.
+
+**No other deviation.** Nothing was decomposed, no include block trimmed, no dead
+content removed, no comment other than the three new headers changed, no file
+outside territory touched.
