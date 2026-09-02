@@ -898,6 +898,114 @@ enumerations were right), and it predicted `packets_skills.cmake:58` would stay
 correct — the method it names **moves**, so all five `tests/cmake/` comment lines
 are now stale, not two of four. Owned by J21's successor pass.
 
+## ⚠ CORRECTIONS FROM THE WAVE-6 PLANNING PASS (2026-09-02, at `824adb28`)
+
+**All thirteen remaining Wave-6 files re-measured at `824adb28`, all thirteen
+plans written (J23-J35), and every plan audited against correction 21 before
+being committed.** Six things.
+
+**34. ⚠ THE §RESIDUAL CALL ON `variant_loading.cpp` DOES NOT SURVIVE ARITHMETIC —
+there is no Batch-G decision owed, and the same is true of
+`renderer_player_physics.cpp`.** §Residual calls `variant_loading.cpp` "the
+batch's worst floor" and "the strongest candidate in the tree for a Batch-G
+decision taken *before* its Batch-F split". **It measured a TWO-way split.** A
+three-way split at the two legal cut points 382 and 1198 puts the 815-line and
+396-line methods in **different** TUs:
+
+| file | TUs | largest | headroom |
+|---|---|---|---|
+| `variant_loading.cpp` 1,607 | 383 / **833** / 425 | 833 | **667** |
+| `renderer_player_physics.cpp` 1,546 | **827** / 736 | 827 | **673** |
+
+The test §Headline finding actually sets is **`preamble + largest method` vs the
+ceiling**: `15 + 815 = 830` and `15 + 806 = 821`, both comfortably under 1,500.
+**A method dominating a small TU is a readability observation, not a ceiling
+problem.** Both are plain Batch-F relocations; both are flagged in their plans and
+in their new TUs' file headers so the question is not re-opened. **Update
+§Residual and the scheduling note.**
+
+**35. ⚠ THE RESIDUAL LIST'S TEXT-SCAN RECORD WAS WRONG IN BOTH DIRECTIONS, AND
+THERE IS A THIRD KIND OF GUARD NEITHER STANDARD GREP FINDS.**
+- `action_dispatcher.cpp` is recorded as text-scanned **×1** at
+  `test_reachability_sweep.cpp:356`. It is **×2** — `:357` (a `readFile` that
+  parses every `ActionDispatcher::` definition) **and `:394`, a string-compare
+  exclusion** of exactly J13's invisible shape. Missing `:394` would silently
+  invert the external-caller sweep and let an unreachable method be declared
+  reached.
+- `renderer_frame.cpp` is recorded as text-scanned ×3 at
+  `test_reachability_sweep.cpp:156` and `test_ui_hide_command.cpp:698,706`.
+  **Every one of those citations is wrong.** `test_reachability_sweep.cpp` does
+  not read this file at all. The real sites are
+  **`test_static_ui_scroll.cpp:698` and `:706`** (plus a diagnostic string at
+  `:702`) **and `test_ui_hide_command.cpp:156`**. The `:698` assertion counts
+  `getMouseWheelDelta()` and requires **exactly 2** — after a split it reads 0 and
+  fails saying the wheel is consumed by nothing.
+- ⚠ **NEW: `tests/test_first_person_camera_single_formula.cpp` sweeps every
+  `.cpp`/`.h` under `src/client/graphics` RECURSIVELY and keys two assertions on
+  FILENAME** (`kHelperTU = "renderer_camera.cpp"`,
+  `kFloorSecondReader = "renderer_player_physics.cpp"`). **It names no path that
+  `grep -hn 'kRoot / "src…'` can find**, so every graphics-tree unit in this batch
+  from now on inherits it automatically. Concretely it **forces
+  `updatePlayerMovement` to stay in a file called `renderer_player_physics.cpp`**,
+  because line 135 is the tree's second permitted reader of
+  `firstPersonMinLookPitchDegrees`. **J33's single cut is chosen around that
+  constraint.** Add a third pre-check to §Process:
+  ```bash
+  grep -n 'CameraMode::FirstPerson\|camera_->setPosition(\|camera_->setTarget(\|kFirstPerson\|firstPersonM\|firstPersonV\|computeFirstPersonCamera' <file>
+  ```
+
+**36. ⚠ A PREAMBLE CAN CONTAIN A DEFINITION, AND COPYING IT VERBATIM IS A
+DUPLICATE-SYMBOL LINK ERROR. NEW HAZARD CLASS.**
+`src/common/net/daybreak_connection.cpp:17` is
+`int EQ::Net::DaybreakConnection::s_debug_level = 0;` — the out-of-class
+definition of a static data member, **external linkage**. Every prior unit's
+non-boilerplate preamble content was a *declaration* (`extern`, `typedef`) or an
+internal-linkage constant, both safe to duplicate. **This one is not.** J26
+prescribes an enumerated deviation: lines 16-17 stay in the original TU and
+appear in no other. **Every remaining unit must grep its preamble for
+out-of-class static member definitions before copying it.**
+
+**37. ✅ THE CORRECTION-21 AUDIT OF ALL THIRTEEN WAVE-6 PLANS CAME BACK CLEAN.**
+Every file-scope symbol in every one of the thirteen files was enumerated
+mechanically, its readers located, and each reader's line mapped onto the range
+its plan assigns:
+- **Six files are CLEAN** — zero file-scope statics, zero anonymous namespaces,
+  zero file-scope constants: `action_dispatcher.cpp`, `detail_texture_atlas.cpp`,
+  `model_loading.cpp`, `renderer_player_physics.cpp`, `spell_visual_fx.cpp`,
+  `variant_loading.cpp`.
+- **Five are satisfied by construction** — definition and every reader inside one
+  range: `combat.cpp` (`ClientTarget_Struct`, readers 220/221/261/262, all in the
+  stays range), `eq_merchant.cpp` (both `kTradeskillFavorites*`, all in
+  1346-1932), `zone_geometry.cpp` (**all six** tessellation entities and their
+  readers inside the single `EQT_HAS_TEXTURE_ATLAS` region 923-1560 — ⚠ **a
+  three-way split there WOULD have been J08's defect**), `sky_renderer.cpp` and
+  `renderer_frame.cpp` (their `extern`s are declarations of symbols defined in
+  `COpenGLES2Driver.cpp`).
+- **Two need an enumerated preamble deviation**, both prescribed in their plans:
+  `daybreak_connection.cpp` (correction 36 above, plus moving the three constants
+  to the one TU that reads them) and **`eq_movement.cpp`, the only file in Wave 6
+  that genuinely needs an internal header** — its eight `const float` constants
+  have readers in **two** of its three ranges, so no assignment of the definitions
+  to a single range works. `include/client/eq_movement_internal.h`, 19 lines,
+  §Process step 4, precedent `wld_internal.h` / `command_processor_internal.h`.
+
+**38. ⚠ T312 AND T313 ARE BOTH MERGED — the two blocked Wave-6 files are
+unblocked, verified rather than assumed.** `git merge-base --is-ancestor
+c9b02f7e HEAD` succeeds (T312, `Merge branch 'task/T312' into fable`), and T313
+landed at `f0046f7c`. **The in-flight collision matrix's T312 row is now
+historical.** `renderer_frame.cpp` (J31) and `renderer_player_physics.cpp` (J33)
+carry no hold.
+
+**39. Nothing shrank, and the residual numbers were stable for once.** Twelve of
+the thirteen files measured **exactly** what §Residual recorded; the thirteenth,
+`eq_merchant.cpp`, is **1,932, not 1,931** (+1). **None is under 1,500.**
+Add-site counts, which the shape of a file never predicts: J23 1, J24 1, **J25 6**
+(five in `tests/cmake/commands.cmake`), **J26 4** (three in
+`tests/cmake/network.cmake`), J27 1, J28 1, **J29 7**, J30 1, J31 1, **J32 12**,
+J33 1, J34 2 (⚠ `model_viewer`, not just `GRAPHICS_SOURCES`), **J35 7**. **J29,
+J32 and J35 all touch `gles2_zone_benchmark`** and share five to seven CMake lines
+with each other — merge one at a time.
+
 ## Unit table
 
 | Unit | File | Lines | → TUs | Largest after | Wave | Notes |
@@ -919,7 +1027,20 @@ are now stale, not two of four. Owned by J21's successor pass.
 | J15 | `include/client/action/action_dispatcher.h` | **1,581** | 3 | 1,060 | 5 | after J04 and J12 |
 | J16 | `include/client/eq.h` type extraction | **2,645** | +3 hdrs | ~1,930 | 5 | after J02, J08; leave forwarding includes |
 | J17 | `include/client/graphics/irrlicht_renderer.h` | **2,520** | +2 hdrs | ~1,820 | 5 | after J11 |
-| J18+ | the residual **14** files (§Residual) | — | — | — | 6 | ⚠ **RE-MEASURED at `136a319b` — nothing shrank; four files GREW.** §Residual is now a measured table with each file's largest method. Dispatchable without another survey |
+| J22 | `graphics/detail/detail_manager.cpp` | 1,754 | 2 | ~1,206 | 6 | **in flight** — lifting the 548-line `createDefaultConfig` table alone clears it |
+| J23 | `eq_movement.cpp` | **2,139** | 3 | **~908** | 6 | ⭐ **planned: `refactor/J23_eq_movement_split.md`.** ⚠ **the only Wave-6 unit needing an internal header** — 8 `const float` with readers in two ranges → `include/client/eq_movement_internal.h`, 19 lines. Predicted verifier **0**. 1 CMake site |
+| J24 | `combat.cpp` | **2,119** | 3 | **~809** | 6 | ⭐ **planned: `refactor/J24_combat_split.md`.** ⚠ `#pragma pack(1)`/`pack()` pair + 3 structs stay with their only reader; `Consider_Struct`/`Action_Struct` are **dead — site #8**. Predicted **0**. 1 CMake site |
+| J25 | `action/action_dispatcher.cpp` | **2,081** | 3 | **~729** | 6 | ⭐ **planned: `refactor/J25_action_dispatcher_split.md`.** ⚠ **TWO text-scan sites, not one** — `test_reachability_sweep.cpp:357` and **`:394`, a string-compare exclusion**. **SIX** CMake sites (five in `tests/cmake/commands.cmake`). Predicted **1, +5/-1**. ⚠ **serialise against J15** |
+| J26 | `common/net/daybreak_connection.cpp` | **1,985** | 3 | **~793** | 6 | ⭐ **planned: `refactor/J26_daybreak_connection_split.md`.** ⚠ **preamble line 17 is a static-member DEFINITION — copying it is a duplicate-symbol link error** (new hazard class, correction 36). Only `src/common/` file in the batch. **FOUR** CMake sites. Predicted **0** |
+| J27 | `eq_merchant.cpp` | **1,932** (was 1,931) | 3 | **~702** | 6 | ⭐ **planned: `refactor/J27_eq_merchant_split.md`.** Zero hazards; six single-line `/*…*/` and no multi-line region. Predicted **0**. 1 CMake site |
+| J28 | `graphics/detail/detail_texture_atlas.cpp` | **1,826** | 3 | **~738** | 6 | ⭐ **planned: `refactor/J28_detail_texture_atlas_split.md`.** **Wave 6's control sample** — zero preprocessor, zero statics, zero text readers, 1 CMake site. Both cuts on banner starts. Predicted **0** |
+| J29 | `graphics/eq/model_loading.cpp` | **1,793** | 3 | **~683** | 6 | ⭐ **planned: `refactor/J29_model_loading_split.md`.** Three big siblings (326/302/268), one per TU. **SEVEN** CMake sites, ⚠ one `gles2_zone_benchmark`. Predicted **0**. ⚠ shares seven CMake lines with J35 |
+| J30 | `graphics/sky_renderer.cpp` | **1,770** | 3 | **~690** | 6 | ⭐ **planned: `refactor/J30_sky_renderer_split.md`.** ⚠ a 124-line trailing `EQT_HAS_GLES2` region must not be cut. Predicted **1 with exactly 6 lines** (3-line `extern` × 2 TUs). 1 CMake site |
+| J31 | `graphics/renderer_frame.cpp` | **1,752** | 3 | **~730** | 6 | ⭐ **planned: `refactor/J31_renderer_frame_split.md`.** ✅ **T312 unblocked.** ⚠ **three text-scan sites and §Residual named the WRONG FILES for all three** (`test_static_ui_scroll.cpp:698,706` + `test_ui_hide_command.cpp:156`). Predicted **1, +6/-4**. 1 CMake site |
+| J32 | `graphics/eq/zone_geometry.cpp` | **1,637** | 2 | **~994** | 6 | ⭐ **planned: `refactor/J32_zone_geometry_split.md`.** ⚠ **discontiguous stays** (1-918 + 1562-1637); the whole 638-line `EQT_HAS_TEXTURE_ATLAS` region 923-1560 lifts out with all six file-local entities. **TWELVE** CMake sites, ⚠ one `gles2_zone_benchmark`. Predicted **0** |
+| J33 | `graphics/renderer_player_physics.cpp` | **1,546** | 2 | **~827** | 6 | ⭐ **planned: `refactor/J33_renderer_player_physics_split.md`.** ✅ **T312 unblocked.** ⚠ **`updatePlayerMovement` MUST STAY in a file with this NAME** — `test_first_person_camera_single_formula.cpp` names it as a string literal. **No Batch-G decision owed** (673 lines headroom). Predicted **0**. 1 CMake site |
+| J34 | `graphics/spell_visual_fx.cpp` | **1,517** | 2 | **~841** | 6 | ⭐ **planned: `refactor/J34_spell_visual_fx_split.md`.** Cheapest unit in the batch (17 over), one cut on a banner. ⚠ `namespace EQ`, not `EQT::Graphics`. **TWO** CMake sites (⚠ `model_viewer`). Predicted **0** |
+| J35 | `graphics/eq/variant_loading.cpp` | **1,607** | 3 | **~833** | 6 | ⭐ **planned: `refactor/J35_variant_loading_split.md`.** ⚠ **§Residual's "worst floor / Batch-G first" call is REFUTED** — a 3-way split at 382/1198 puts the 815 and the 396 in different TUs, largest 833, **667 lines headroom**. **SEVEN** CMake sites, ⚠ one `gles2_zone_benchmark`. Predicted **0** |
 | ~~**J20**~~ ✅ **DONE** | **`tests/CMakeLists.txt`** | **2,850 → 135** | per-domain `.cmake` fragments | — | **none — see below** | ⚠ **HIGH-CONFLICT with every in-flight J unit.** Within 222 lines of the hard cap and every J unit appends to it. Wants a quiet moment, not a wave slot |
 
 Full clearance is roughly **26-30 units**.
@@ -960,7 +1081,14 @@ Full clearance is roughly **26-30 units**.
   territories are disjoint, so they can run concurrently.
 - **Wave 5 (headers, after the policy amendment):** J14 anytime a slot is free;
   J15 after J04+J12; J16 after J02+J08; J17 after J11.
-- **Wave 6:** the residual list, re-measured.
+- **Wave 6 (thirteen units, ALL PLANNED, 2026-09-02 at `824adb28`):** J23-J35,
+  plus J22 (`detail_manager.cpp`) already in flight. Each plan carries all
+  thirty-nine corrections inline so no executor rediscovers them. **T312 and T313
+  are merged, verified by `git merge-base --is-ancestor` — J31 and J33 are
+  unblocked.** ⚠ **§Residual's Batch-G call on `variant_loading.cpp` is refuted
+  (correction 34); its text-scan record was wrong for two files and missed a third
+  kind of guard entirely (correction 35).** Recommended dispatch order and the
+  serialisation constraints are in §Wave 6 dispatch order below.
 
 ### In-flight collision matrix
 
@@ -1082,20 +1210,66 @@ Batch-G decision first.
 | `src/client/graphics/renderer_player_physics.cpp` | **1,546** | ⚠ **806** `IrrlichtRenderer::updatePlayerMovement` (19-824) | 2nd: 142 | ⚠ **T312 territory.** Only **46 lines over** the ceiling; one cut after `updatePlayerMovement` clears it |
 | `src/client/graphics/spell_visual_fx.cpp` | **1,517** | 125 `SpellVisualFX::createCastGlow` (353-477) | 2nd: 90 | only **17 lines over**; the cheapest unit in the batch |
 
+## Wave 6 dispatch order (recommended, 2026-09-02)
+
+**Thirteen units, three slots. All planned. Constraints, then the order.**
+
+**Hard serialisation constraints:**
+1. **J25 must not run concurrently with J15** (`include/client/action/action_dispatcher.h`).
+   Same entity; J15 restructures the header J25's every method is declared in.
+   Correction 31 is the precedent for what a concurrent edit costs.
+2. **J29, J32 and J35 share five to seven CMake add-site lines** (`GRAPHICS_SOURCES`,
+   `model_viewer`, `gles2_zone_benchmark`, `gles2_shader_diagnostic`,
+   `gles2_composite_audit`, `test_graphics`, `test_asset_loading`). Their source
+   territories are disjoint so they may run concurrently, but **merge one at a
+   time and rebase**, and never resolve a CMake conflict by taking one side
+   wholesale.
+3. **J28 must not touch `detail_manager.cpp`** while **J22** is in flight in the
+   same directory.
+4. **J31 and J33 both insert into `SET(GRAPHICS_SOURCES`** — same rule as 2.
+5. **No tree-wide doc pass (J21's successor) alongside any of these** — correction
+   31. Scope it to exclude every file with a unit in flight.
+
+**Order, highest information per unit first, riskiest guards early while there is
+slack to re-run them:**
+
+| wave | slot 1 | slot 2 | slot 3 | why here |
+|---|---|---|---|---|
+| **6a** | **J25** action_dispatcher | **J31** renderer_frame | **J33** renderer_player_physics | ⚠ **All three carry a text-scanning guard, and all three of this batch's guard records were wrong.** Run them first, together, so the three corrections land before nine quieter units are dispatched against a stale record. J33 also settles the Batch-G question in practice. |
+| **6b** | **J32** zone_geometry | **J26** daybreak_connection | **J23** eq_movement | The three structural one-offs: a discontiguous stays + twelve CMake sites; the batch's first preamble **definition** hazard; the batch's only Wave-6 internal header. Each produces a correction worth having before the bulk units. |
+| **6c** | **J29** model_loading | **J35** variant_loading | **J24** combat | J29 and J35 share seven CMake lines — same wave is fine, **merge serially**. J35 tests correction 34's refutation. J24 is independent. |
+| **6d** | **J27** eq_merchant | **J30** sky_renderer | **J28** detail_texture_atlas | The three low-risk units. **J28 is Wave 6's control sample** for what the bar alone costs — the role J07 played in Wave 2. |
+| **6e** | **J34** spell_visual_fx | — | — | 17 lines over, one cut. ⚠ **Pair it in a slot with any 6d unit that finishes early** — the bar costs the same regardless of file size, and this is the cheapest cut in the batch. |
+
+**J15 goes after 6a** (it is already gated on J04+J12, both merged; adding J25
+makes three).
+
+**Predicted verifier outcomes, so a wave's results can be triaged at a glance:**
+exit **0** for J23, J24, J26, J27, J28, J29, J32, J33, J34, J35; exit **1** with a
+predicted, enumerated list for **J25** (`+5/-1`, all in
+`test_reachability_sweep.cpp`), **J30** (`+6/-0`, a 3-line `extern` × 2 TUs) and
+**J31** (`+6/-4`, a 1-line `extern` × 2 plus four test-file lines). **Any other
+result is a real finding.**
+
 **Scheduling notes for Wave 6, from the measurement:**
-- **`renderer_frame.cpp` and `renderer_player_physics.cpp` are both T312
-  territory** — same block as J11/J17. Do not board them until T312 merges.
+- ~~**`renderer_frame.cpp` and `renderer_player_physics.cpp` are both T312
+  territory**~~ ✅ **T312 merged (`c9b02f7e`) and T313 merged (`f0046f7c`);
+  both verified as ancestors of `824adb28` by `git merge-base --is-ancestor`, not
+  read off a note. J31 and J33 are UNBLOCKED.**
 - **`action_dispatcher.cpp` should be boarded WITH or AFTER J15**
   (`include/client/action/action_dispatcher.h`, 1,581) — same entity, and J15 is
   already gated on J04+J12.
 - **`spell_visual_fx.cpp` (17 over) and `renderer_player_physics.cpp` (46 over)
   are one-cut units.** They still cost the full bar (~30-60 min); that cost is
   fixed per unit regardless of file size. Consider pairing them in one slot.
-- **`variant_loading.cpp` is the one file whose Wave-6 unit should be planned
-  last**, because a 2-way split at 815 + 396 leaves ~90 lines of headroom in the
-  larger TU and the next feature unit to touch it re-crosses the line. It is the
-  strongest candidate in the tree for a Batch-G decision taken *before* its
-  Batch-F split rather than after.
+- ~~**`variant_loading.cpp` … strongest candidate for a Batch-G decision taken
+  before its Batch-F split**~~ ⚠ **REFUTED — see correction 34.** That reasoning
+  assumed a two-way split. A three-way split at 382 and 1198 puts the 815-line
+  and 396-line methods in **different** TUs: 383 / **833** / 425, **667 lines of
+  headroom** in the largest. The floor is `15 + 815 = 830`, well under the
+  ceiling. **No Batch-G decision is owed.** `refactor/J35_variant_loading_split.md`
+  carries the arithmetic. The same question was asked of
+  `renderer_player_physics.cpp` (806 of 1,546) and answered the same way — J33.
 
 ## Final state after Waves 0-5
 
