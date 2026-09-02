@@ -1055,6 +1055,52 @@ already ends on the original's blank line produces no double-space. And
 §File-header comments asks for "five to eight lines" *and* a warning paragraph
 that cannot fit in eight; content wins, relax the wording.
 
+## ⚠⚠ CORRECTION 41 FROM J25 (2026-09-02) — THE IN-SUITE VISUAL GATE MAY PROVE NOTHING, AND THE BAR'S ORDER CAUSES IT
+
+**`scripts/ci/visual_gate.sh` runs against `build-gles2/` — a SEPARATE build
+tree — and the acceptance bar lists `build-gles2-x86.sh` AFTER `ctest -j6`.** So
+a unit that follows the bar in order runs the in-suite `visual_gate` test
+against **whatever binary was in `build-gles2/` beforehand**, which predates its
+own edits. J25 measured this: its gate run used a `gles2_zone_benchmark`
+**stamped 11:01 against edits made at 11:55**, and it **passed while proving
+nothing**. It then re-ran the gate standalone after the gles2 build.
+
+**FIX THE ORDER: run `scripts/build-gles2-x86.sh` BEFORE `ctest -j6`**, or re-run
+the gate standalone afterwards and say which you did. Every remaining unit must
+do one or the other.
+
+⚠ **Retroactive scope, stated honestly:** any earlier Batch J unit that followed
+the bar's written order may have a vacuous gate result. What is NOT in doubt for
+those units is that they compiled under gles2 (the build ran and exited 0) and
+that **goldens were untouched** (`git status` empty is independent of the gate).
+What is in doubt is whether the gate exercised the split. The orchestrator is
+re-running the gate on the accumulated tree rather than assuming per-unit.
+**A stale-binary pass is the same failure family as the other three the batch has
+found — a green result that answers a question nobody asked.**
+
+### J25's result
+
+`action_dispatcher.cpp` 2,081 → **705 / 743 / 695**, zero range drift (both cuts
+and all 29 banner line numbers exact). **The +5/−1 verifier prediction held
+EXACTLY.** Both proofs exit 0, extracted from the produced files. Six CMake
+add-sites, all six line numbers exact.
+
+**Its guard handling is the best in the batch and should be the pattern.** For
+`:357` it built the split, ran the sweep **before** repointing, and recorded the
+failure: 102 handler methods named — precisely the "the split deleted the
+handlers" misdiagnosis. For the silent `:394` it measured that the
+external-caller regex matches **zero times in all three TUs** (the dispatcher's
+internal calls are unqualified), so all three exclusions are defensive, and it
+**added** rather than replaced so the guard stays exactly as strict.
+
+Three smaller record errors: §Measured says six `#include`s (five) and describes
+a file-header comment block at 1-5 that **does not exist** — the file had no
+header at all, so all three TUs got newly written ones; and the method count is
+184 or 182 or 183 depending on the counting pattern, so plans should state
+theirs. Correction 30's artefact appeared **inverted** (no double-spaced tail;
+instead no blank after the namespace open) — cosmetic, declared not fixed since
+fixing breaks the byte proof.
+
 ## Unit table
 
 | Unit | File | Lines | → TUs | Largest after | Wave | Notes |
