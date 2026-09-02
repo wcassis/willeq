@@ -230,3 +230,353 @@ Concurrent at dispatch: **J02** (`eq.cpp` + new `eq_*.cpp`, `CMakeLists.txt`),
 overlap with any of them. ⚠ **`tests/CMakeLists.txt` is shared with T318** and
 `CMakeLists.txt` with J02/J03 — which is why merges are serialized one at a
 time with a rebase.
+
+---
+
+## Review (slot2, 2026-09-02, branch `task/J04-command-processor-split`)
+
+**Done exactly as specified. Move-only. Zero line-range drift — every boundary
+in the cluster table was byte-correct at my tip.**
+
+Branch cut from `fable` at **`091a13fd`** ("Merge branch 'task/T319' into
+fable"), not the `7e0c7823` the plan measured at. `git diff 7e0c7823 HEAD --
+src/client/action/command_processor.cpp` is **empty**: the file did not move
+between those tips, so the plan's ranges applied verbatim.
+
+### Result — final line counts
+
+| file | lines | original range |
+|---|---|---|
+| `command_processor.cpp` | **284** | 19-282 (ctor..`displayError`) |
+| `command_processor_registration.cpp` | **791** | 283-1053 (`registerBuiltinCommands`) |
+| `command_processor_social.cpp` | **798** | 1054-1831 |
+| `command_processor_world.cpp` | **490** | 1832-1882 + 1919-2333 |
+| `command_processor_spells_gm.cpp` | **713** | 2334-3022 |
+| `command_processor_internal.h` | **60** | 1883-1918 (the two shared helpers) |
+
+3,024 → 3,136 across five TUs + one header. The +112 is four extra copies of
+the 18-line preamble, five namespace closes, the header's own 20 lines of
+guard/banner/includes/namespaces, and the six Hazard-2 lines.
+`CMakeLists.txt` 1,900→1,904, `tests/CMakeLists.txt` 2,762→2,778.
+
+### 1. `registerBuiltinCommands` moved WHOLE — proven, not asserted
+
+**No per-domain helpers were created. The method was not decomposed. There was
+zero internal reordering.** Proven directly rather than by inspection:
+
+```
+$ git show 091a13fd:src/client/action/command_processor.cpp | sed -n '283,1053p' > reg_orig.txt
+$ sed -n '19,789p' src/client/action/command_processor_registration.cpp    > reg_new.txt
+$ diff reg_orig.txt reg_new.txt ; echo $?
+0
+```
+
+The banner comment, the 771-line method, and all **142** `registerCommand({…})`
+calls are byte-identical and in their original textual order. (`git diff -M`
+does not report a rename here, as expected: the original file still exists with
+its first 282 lines, so all four new TUs show as `create mode 100644`.)
+
+### 2. Hazard 2 — the sanctioned Batch-F exception (T166 `wld_internal.h` precedent)
+
+**Symbols:** `detail::parseU32Strict(const std::string&, uint32_t&)` and
+`detail::splitWhitespace(const std::string&)`, moved verbatim (bodies
+unchanged, only the `inline` keyword added to each signature) out of the
+anonymous namespace at `:1881-1929` into the new private header
+**`src/client/action/command_processor_internal.h`**, inside
+`namespace eqt { namespace action { namespace detail {`, `#pragma once`.
+
+**Consuming TUs (both, and only these two):**
+- `command_processor_world.cpp` — **10** call sites (orig. `:1956, 1978, 1979,
+  1987, 1988, 1995, 2003, 2018, 2023, 2035`, across the recipe family and
+  `cmdCombine`)
+- `command_processor_spells_gm.cpp` — **2** call sites, both inside
+  `cmdAppearance` (orig. `:2981`, `:2990`)
+
+Each includes the header and carries `using detail::parseU32Strict;` /
+`using detail::splitWhitespace;` at `eqt::action` scope, so **all twelve call
+sites are textually untouched** — no call site was rewritten. (The plan's Hazard-2 text says "the eight call
+sites"; the actual count at this tip is **twelve** — 10 + 2. Counted, not
+taken on trust.)
+
+`kDefaultMinTrivial` / `kDefaultMaxTrivial` stayed in an anonymous namespace in
+`command_processor_world.cpp` beside `cmdRecipeSearch`, their only user, as the
+plan directs. The surviving anonymous block in that TU is the original
+`namespace {` … `} // namespace` with the two functions lifted out.
+
+**Why duplication was rejected:** two independent definitions of a parser with
+overflow/trailing-junk semantics is an ODR violation that the compiler will not
+diagnose (internal linkage in each TU makes it legal-but-divergent), and the
+two copies would drift the first time someone fixes a parse bug in one command
+family. **Why re-routing `cmdAppearance` was rejected:** it would file a GM
+appearance command inside the merchant/tradeskill TU purely to keep a line
+range contiguous, making the feature unfindable — the plan's own reasoning, and
+correct.
+
+The other two anonymous namespaces were confirmed self-contained and travelled
+free: `:1516-1545` (`normalizeSkillName`/`findSkillIdByName`, sole caller
+`cmdUseSkill` at `:1578`) inside the social cluster, and `:2125-2151`
+(`ParseMerchantSlot`/`ParseMerchantQuantity`, callers at `:2163/2167/2204/2208`)
+inside the world cluster.
+
+### 3. Every non-move line, enumerated
+
+Exactly **six added, two removed** substantive lines. Nothing else.
+
+**Hazard 3 (the one permitted comment correction), in `command_processor_social.cpp`:**
+```
+-    // via splitWhitespace() (an anonymous-namespace helper defined later in this
+-    // TU, not visible here).
++    // via splitWhitespace() (a helper in command_processor_internal.h, which
++    // this TU does not include).
+```
+(Comment lines; the verifier allowlists them as boilerplate, so they do not
+appear in its substantive counts, but they do appear in the multiset check.)
+
+**Hazard 2 boilerplate — `inline` (2 added / 2 removed), in `command_processor_internal.h`:**
+```
+- bool parseU32Strict(const std::string& text, uint32_t& out) {
++ inline bool parseU32Strict(const std::string& text, uint32_t& out) {
+- std::vector<std::string> splitWhitespace(const std::string& text) {
++ inline std::vector<std::string> splitWhitespace(const std::string& text) {
+```
+
+**Hazard 2 boilerplate — `using` (4 added), 2× in each of `command_processor_world.cpp`
+and `command_processor_spells_gm.cpp`:**
+```
++ using detail::parseU32Strict;
++ using detail::splitWhitespace;
+```
+
+Plus pure-boilerplate, allowlisted: 4 extra copies of the 14-include block, one
+`#include "client/action/command_processor_internal.h"` in each of the two
+consuming TUs, the header's `#pragma once` / 5 std includes / 3 namespace
+opens + closes, and 4 extra `namespace eqt {` / `namespace action {` /
+`} // namespace …` pairs.
+
+### PROOF 1 — byte-identical re-concatenation (the strong proof)
+
+The five TU bodies, with the header's 36 moved lines re-inserted at their
+original offset inside the world TU's anonymous namespace and the two `inline`
+keywords and Hazard-3 comment reverted, concatenated in original cluster order:
+
+```
+PROOF 1 (byte-identical re-concatenation, original order):
+  original body lines 19-3022 : 3004
+  reconstructed               : 3004
+  BYTE-IDENTICAL: YES
+```
+
+Every one of the 3,004 body lines is accounted for **exactly once**, in order,
+with no gaps and no overlap.
+
+### PROOF 2 — line multiset (the check the verifier cannot do)
+
+All six files' bodies + the two `using` pairs, normalised (stripped, blanks
+dropped), as multisets against the pre-split body:
+
+```
+PROOF 2 (line multiset, non-blank normalised):
+  before distinct/total: 1751 2594
+  after  distinct/total: 1753 2598
+  ADDED  : 8
+    +1x  // this TU does not include).
+    +1x  // via splitWhitespace() (a helper in command_processor_internal.h, which
+    +1x  inline bool parseU32Strict(const std::string& text, uint32_t& out) {
+    +1x  inline std::vector<std::string> splitWhitespace(const std::string& text) {
+    +2x  using detail::parseU32Strict;
+    +2x  using detail::splitWhitespace;
+  REMOVED: 4
+    -1x  // TU, not visible here).
+    -1x  // via splitWhitespace() (an anonymous-namespace helper defined later in this
+    -1x  bool parseU32Strict(const std::string& text, uint32_t& out) {
+    -1x  std::vector<std::string> splitWhitespace(const std::string& text) {
+```
+
+The delta is **exactly** the eight lines enumerated in §3 and nothing else.
+Because this is a per-*occurrence* count (not per-distinct-line), a range
+duplicated into two TUs or dropped from both would show up here; none did.
+
+### `verify_move_only.py` — ⚠ NOT clean, and it CANNOT be under this plan
+
+**Base rev: `BASE=091a13fdd27c6e153814fdd7c69e78863fb72272`** (`git merge-base
+fable HEAD`). Used the merge-base as instructed; no spurious foreign-file noise
+appeared, so the J01 template correction did its job.
+
+```
+$ BASE=$(git merge-base fable HEAD)
+$ python3 scripts/refactor/verify_move_only.py "$BASE..HEAD"
+Non-C++ files changed (not verified, review separately):
+  CMakeLists.txt
+  tests/CMakeLists.txt
+
+Files verified: 6
+Boilerplate: +95 / -2 lines (allowed)
+
+SUBSTANTIVE ADDED lines (6):
+  +1x  inline bool parseU32Strict(const std::string& text, uint32_t& out) {
+  +1x  inline std::vector<std::string> splitWhitespace(const std::string& text) {
+  +2x  using detail::parseU32Strict;
+  +2x  using detail::splitWhitespace;
+
+SUBSTANTIVE REMOVED lines (2):
+  -1x  bool parseU32Strict(const std::string& text, uint32_t& out) {
+  -1x  std::vector<std::string> splitWhitespace(const std::string& text) {
+
+FAIL: substantive line changes detected. If intentional (e.g. de-static-ing a
+helper), document in the unit review section for orchestrator sign-off.
+```
+
+**This is not a failure of the split — it is the plan's Hazard-2 resolution
+being reported, and the two requirements are mutually exclusive.** The
+acceptance bar says "verifier clean"; Hazard 2 mandates adding `inline` to two
+signatures and four `using` declarations. `BOILERPLATE` in
+`verify_move_only.py` allowlists `#include`, `#pragma`, `namespace X {`, `}`
+and comments — it does **not** allowlist `inline` on a moved signature or a
+`using`-declaration, so no faithful execution of Hazard 2 can exit 0. The
+verifier's own failure text names exactly this case ("If intentional, e.g.
+de-static-ing a helper, document in the unit review section for orchestrator
+sign-off"), which is the T166 sanctioned-exception path. **Submitted for
+orchestrator sign-off on those 6+2 lines; there is nothing else in the diff.**
+
+I deliberately did not contort the code to force a green exit (e.g. putting
+`inline` on its own line, or hoisting the helpers into `eqt::action` to drop
+the `using`s) — that would trade an auditable, enumerated exception for a
+verifier-shaped hack.
+
+### Acceptance
+
+| step | result |
+|---|---|
+| `cmake --build build -j24` | **EXIT=0**, clean first try |
+| `ctest -j6` (full) | **3477/3478**; sole failure `AudioManagerTest.PreloadCommonSounds` — the documented ALSA host quirk in `test_baseline.txt`. **Zero new failures.** 169.4 s |
+| `verify_move_only.py 091a13fd..HEAD` | **6 added / 2 removed**, all Hazard-2, enumerated above — sign-off requested |
+| line-multiset check | **+8 / −4, exactly the enumerated lines** |
+| byte-identical re-concatenation | **YES** (3,004 lines) |
+| `registerBuiltinCommands` block `diff` | **exit 0, byte-identical** |
+| visual gate | **PASS** (ctest #3475, 28.38 s). `git status --porcelain` **empty** — goldens untouched, not re-blessed |
+| `scripts/build-gles2-x86.sh` | **EXIT=0** |
+| `scripts/build-arm-noble.sh` | **EXIT=0** (see note below) |
+| `check_file_sizes.sh --files` (6 sources) | **6 ok, 0 warn, 0 fail** |
+| `chmod 644` on created files | verified via `git ls-files -s`: all `100644` |
+
+`check_file_sizes.sh` also WARNs on `CMakeLists.txt` (1,904) and
+`tests/CMakeLists.txt` (2,778). **Both pre-existing** — 1,900 and 2,762 before
+this unit. `tests/CMakeLists.txt` is a *second* build-system file over the
+soft limit and it is closing on the 3,000 hard cap; §Process only names
+`CMakeLists.txt`. Not this unit's to fix (see finding 3 below).
+
+### 4. CMake add-sites actually found
+
+**Five, exactly as the plan predicted, and at the exact predicted line
+numbers** (`CMakeLists.txt:365`; `tests/CMakeLists.txt:402, 424, 440, 568`) —
+the one time this batch's "line numbers rot within hours" warning did not bite,
+because `fable` had not moved this file since the survey. I grepped anyway.
+
+- `CMakeLists.txt` — **1** site, `CORE_SOURCES`.
+- `tests/CMakeLists.txt` — **4** sites, all per-target explicit source lists:
+  `test_command_processor`, `test_appearance_command`, `test_merged_help`,
+  `test_input_action_bridge`.
+
+⚠ **Terminology correction for the batch:** the plan calls these "the five
+`test_command_processor*` targets". There is **one** target named
+`test_command_processor` (whose five *test .cpp files* T165 split); the other
+three test targets have unrelated names. All four built and ran:
+`CommandProcessorTest*` **383** cases, `AppearanceCommand*` **7**,
+`MergedHelp*` **21**, `InputActionBridge*` **40**. The registration-order net is
+`test_command_processor`'s 383 cases, which include `getAllCommandNames()`- and
+category-consistency assertions and all pass.
+
+### 5. Drift, wall clock, concurrency
+
+**Line-range drift vs the plan: NONE.** All ten cluster boundaries and all
+three anonymous-namespace ranges were exact. The only refinement was splitting
+the plan's `1832-2333` world range into `1832-1882` + `1919-2333` so the
+header's `1883-1918` comes out of the middle of it, leaving the surviving
+`namespace { … }` wrapper and the two `constexpr`s in place.
+
+**Wall clock ~36 min** (05:46 → 06:23 UTC), single agent, no retries on
+anything except the ARM build.
+
+| step | approx |
+|---|---|
+| reading contracts + surveying | 9 min |
+| the cut, header, CMake, hazard-3 fix | **~3 min** (one scripted pass) |
+| `cmake --build -j24` | 3 min |
+| both proofs + registration diff + duplicate scan | 2 min |
+| `ctest -j6` | 2.8 min |
+| `build-gles2-x86.sh` | 3 min |
+| **`build-arm-noble.sh`** | **>10 min — the slowest step by far** |
+
+⚠ **`build-arm-noble.sh` exceeded the Bash tool's 600 s ceiling and was
+SIGTERM'd at 10:00 (exit 143), mid-`gles2_zone_benchmark`.** Re-invoked per
+protocol; the incremental re-run finished **EXIT=0**. J01 measured this step at
+~5 min running alone. **Concurrency with J02/J03 roughly doubled it and pushed
+it past a single tool invocation** — this is exactly the stretched verification
+tail §Scheduling predicted, and it means **every Wave-1+ unit should expect to
+call `build-arm-noble.sh` twice.** Worth saying in §Process so an executor does
+not read exit 143 as breakage. Everything else was ~1.5-2× J01's solo timings.
+
+### 6. Findings (NOT acted on)
+
+1. **No duplicate `registerCommand` registrations exist in
+   `CommandProcessor::registerBuiltinCommands`.** I checked all 142 — parsed
+   the primary name and alias list out of every call:
+   - duplicate primary names: **none**
+   - aliases claimed by more than one command: **none**
+   - an alias colliding with another command's primary name: **none**
+
+   So Hazard 1's *mechanism* is real (`m_commands[lowerName] = …` is an
+   assignment, and `m_aliases[…] = …` likewise) but it currently has **no live
+   victim in this method**. **G02's shadowed `who` is in a different registry:**
+   `graphics/ui/command_registry.cpp`'s `CommandRegistry`, fed from
+   `eq_commands_*.cpp` — a separate system this unit never touched. The hazard
+   was still worth honouring: order is one careless helper-extraction away from
+   mattering, and nothing would have told us.
+2. **`registerBuiltinCommands` is 771 lines and now owns a 791-line TU with
+   ~700 lines of headroom before the 1,500 WARN.** It grows every time a
+   command is added. It is on §Optional's Batch-G list; flagging that
+   `command_processor_registration.cpp` is a single-method TU that can only be
+   reduced by decomposing that method, i.e. by taking the ordering decision
+   deliberately.
+3. **`tests/CMakeLists.txt` is 2,778 lines** — over the soft limit and within
+   222 lines of the 3,000 hard cap, and *every* J unit adds to it. §Process
+   grandfathers `CMakeLists.txt` (1,904) by name but not this one. **The
+   orchestrator should board a `tests/CMakeLists.txt` split before a later J
+   unit trips a genuine FAIL there through no fault of its own.**
+
+### 7. What the template still gets wrong
+
+1. ⚠ **"verifier clean" is unsatisfiable for any unit that needs an internal
+   header.** §Process step 4 mandates the internal-header exception *and* the
+   acceptance bar demands a clean verifier; `inline` and `using` are neither.
+   **J05 will hit this identically and harder** (`wld_internal.h`,
+   `read_val<T>` used 114× — likely `template`/`inline` on several signatures
+   plus a `using` per consuming TU). Either (a) re-word the bar as "verifier
+   clean **except** lines enumerated in the Review under the §Process step-4
+   exception", or (b) extend `BOILERPLATE` in `verify_move_only.py` with
+   `^inline\b` and `^using\b`. **(a) is better** — the point of the check is
+   that a human reads the exceptions, and there were exactly eight here.
+2. **The ARM build no longer fits one tool invocation under wave concurrency.**
+   Say so, and say exit 143 means re-invoke, not fail. (Protocol §Hard rules
+   mentions mid-link truncation; it does not warn that this specific step is
+   now routinely over the ceiling.)
+3. **Say "test targets", not "`test_command_processor*` targets".** Three of
+   the four have unrelated names; an executor looking for five `test_command_*`
+   binaries will conclude the build is broken.
+4. **The multiset check needs a stated convention for a cross-TU header.** Mine
+   counted the header's 36 moved lines and the `using` lines explicitly; a
+   naive "cat the .cpp bodies" would silently under-count by 36 and *still*
+   diff clean-looking. Spell out that the internal header's moved lines and
+   every `using` line join the `after` multiset.
+5. Otherwise the template held up perfectly. The merge-base fix worked (no
+   foreign-file noise despite two units merging alongside), the
+   banners-travel-with-the-cluster rule made every boundary unambiguous, the
+   full-include-block rule meant zero include archaeology, and `chmod 644` was
+   needed — the scripted emit produced 644 only because I chmod'd explicitly.
+
+### Not done (out of scope, deliberately)
+
+No method decomposition. No cleanup of the (nonexistent) duplicate
+registrations. `docs/module_map.md` and `src/client/input/CLAUDE.md` both
+describe `command_processor.cpp` and now need entries for the four new TUs —
+outside this unit's territory, flagged for the orchestrator.
