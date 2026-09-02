@@ -59,48 +59,9 @@ void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 	size_t offset = 2;
 	int spawn_count = 0;
 	
-	/*	
-	// Debug: Dump the beginning of the packet to understand structure
-	if (s_debug_level >= 1) {
-		std::cout << "First 50 bytes of ZoneSpawns packet:" << std::endl;
-		for (int i = 0; i < 50 && i < p.Length(); i++) {
-			std::cout << fmt::format("{:02x} ", p.GetUInt8(i));
-			if ((i + 1) % 16 == 0) std::cout << std::endl;
-		}
-		std::cout << std::endl;
-		
-		// Let's analyze the hex dump more carefully:
-		// At offset 9: "Renux_Herkanor000" - but this is the middle of a name
-		// The name field in Spawn_Struct is at offset 7
-		// If "Renux_Herkanor000" is at packet offset 9, and name is at struct offset 7,
-		// then the spawn struct starts at packet offset 9 - 7 = 2
-		
-		// But wait - we're seeing truncated names like "e_rat005" instead of "a_large_rat005"
-		// This means we're starting too late. Let's check different offsets
-		
-		// First, let's look for a complete name pattern
-		for (int test_offset = 0; test_offset < 20 && test_offset + 70 < p.Length(); test_offset++) {
-			char c = (char)p.GetUInt8(test_offset);
-			if (c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z') {
-				std::string test_name = p.GetCString(test_offset);
-				if (test_name.length() > 3 && test_name.length() < 64) {
-					std::cout << fmt::format("  Possible name at offset {}: '{}'", test_offset, test_name) << std::endl;
-				}
-			}
-		}
-		
-		// If we're getting "e_rat005" instead of "a_large_rat005", we're missing 6 characters
-		// Current offset is 8, name field is at +7, so we're reading from packet offset 15
-		// We need to start 6 bytes earlier: 8 - 6 = 2
-		offset = 2;
-		
-		// Calculate expected spawn count based on packet size
-		size_t data_size = p.Length() - offset;
-		size_t expected_spawns = data_size / 385;
-		std::cout << fmt::format("Packet has {} bytes of data, expecting approximately {} spawns", 
-			data_size, expected_spawns) << std::endl;
-	}
-	*/
+	// T326: a commented-out packet-dump scratchpad from the original spawn-offset
+	// investigation was deleted here; its one assignment is already made above.
+	// Recover with: git show bcbf2ddc:src/client/eq_entities.cpp
 
 	// Parse Spawn_Struct entries based on titanium_structs.h
 	while (offset + 385 <= p.Length()) { // Spawn_Struct is 385 bytes

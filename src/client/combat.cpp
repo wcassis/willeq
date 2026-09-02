@@ -27,32 +27,10 @@ struct ClientTarget_Struct {
 	uint32_t new_target;
 };
 
-struct Consider_Struct {
-	uint32_t playerid;
-	uint32_t targetid;
-	uint32_t faction;
-	uint32_t level;
-	int32_t  cur_hp;
-	int32_t  max_hp;
-	uint8_t  pvpcon;
-	uint8_t  unknown3[3];
-};
-
-struct Action_Struct {
-	uint16_t target;           // id of target
-	uint16_t source;           // id of caster/attacker
-	uint16_t level;            // level of caster for spells, attack rating for melee
-	uint32_t instrument_mod;   // base damage for melee, instrument mod for bard songs
-	float    force;
-	float    hit_heading;
-	float    hit_pitch;
-	uint8_t  type;             // 231 (0xE7) for spells, skill type for melee
-	uint16_t unknown23;        // min_damage
-	uint16_t unknown25;        // tohit
-	uint16_t spell;            // spell id being cast
-	uint8_t  spell_level;
-	uint8_t  effect_flag;      // if this is 4, a buff icon is made
-};
+// T326: two further packet structs that stood here had no reader in this TU or
+// its two J24 siblings, and were deleted. The namespaced equivalents in
+// include/common/packet_structs.h are the live ones.
+// Recover with: git show bcbf2ddc:src/client/combat.cpp
 #pragma pack()
 
 CombatManager::CombatManager(EverQuest* eq)

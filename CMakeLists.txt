@@ -269,7 +269,8 @@ SET(CLIENT_CORE_SOURCES
     src/client/eq_zone_dispatch.cpp
     src/client/eq_zone_handshake.cpp
     src/client/eq_zone_entry.cpp
-    src/client/eq_ucs.cpp
+    # T326: the chat-server TU was deleted here -- it held 79 include lines and
+    # one 241-line comment block, no code. Recover with: git show bcbf2ddc:src/client/eq_ucs.cpp
     src/client/eq_player_state.cpp
     src/client/eq_bridge.cpp
     src/client/eq_bridge_intents.cpp
