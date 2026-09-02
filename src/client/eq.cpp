@@ -266,7 +266,8 @@ bool EverQuest::InitializeSpellSystem(const std::string& eqClientPath)
 	// entry point was never reached. It resolved single/self/PBAE/targeted-AE/
 	// group/rain target sets locally.
 	//
-	// T327 (2026-09-02) deleted the EFFECT-APPLICATION layer below it:
+	// T327 (2026-09-02, commit 25bc9eaa) deleted the EFFECT-APPLICATION
+	// layer below it:
 	// EQ::SpellEffects (include/client/spell/spell_effects.h,
 	// src/client/spell/spell_effects.cpp, ~1,120 lines), the EffectResult
 	// struct, the accessor on this class and the member that used to be

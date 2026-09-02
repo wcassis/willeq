@@ -148,7 +148,9 @@ with the code, and named in the tombstone.
 
 ## Review (slot1, 2026-09-02)
 
-Done as planned, no deviations. Branch `task/T327` from `fable` at `09c99b0b`.
+Done as planned, no deviations. Branch `task/T327` from `fable` at `09c99b0b`;
+the work is commit `25bc9eaa` plus a follow-up that only stamps that hash into
+the tombstone and the board.
 
 ### Was it reachable after all? No.
 

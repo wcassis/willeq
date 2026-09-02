@@ -779,7 +779,7 @@ Review, `review/T312/`.
 ### TIER 2/3 addendum — found by T324 (2026-09-02): the layer BELOW the one just deleted is dead as well
 
 44. **CLOSED (T327, 2026-09-02) — DELETED. Will ruled directly, after being
-    shown what is in the file: "delete it all."** `task/T327`.
+    shown what is in the file: "delete it all."** Commit `25bc9eaa` on `task/T327`.
     `include/client/spell/spell_effects.h`,
     `src/client/spell/spell_effects.cpp`, the `EffectResult` struct,
     `EverQuest::GetSpellEffects`, the `m_spell_effects` member and its
