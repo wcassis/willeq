@@ -877,7 +877,7 @@ what you changed.
     as the 2026-08-11 one). Audit provenance: the "TWO UNMERGED BRANCHES" paragraph
     below.
 
-23. **Doc debt:** `docker/CLAUDE.md` still documents
+23. **Doc debt:** `docker/CLAUDE.md` still documents **CLOSED by J21 (2026-09-02, `34d7bc4c`)** -- the `--no-gles2` reference and the Lima/Mesa desktop-GL description are both corrected.
     `scripts/build-arm-noble.sh --no-gles2` (retired by P32) and describes the Pi
     target as Lima/Mesa desktop GL. **EXECUTOR-READY.**
 
@@ -1128,7 +1128,7 @@ A full audit of every batch plan answered the owner's question "were the partial
     (T198)~~ — all three CLOSED T223 `e6d31424` (catalog + drift-guard test;
     headless refusal; T142 console echo CLOSED T233 `78e041ad`); ~~`protectedRegions_` all-false (T79 census)~~ **REMOVED T292 `8d07e768` on Will's conditional ruling -- and the condition was VERIFIED three ways** (the producer's own loop in `sim_visibility.cpp` fills it under the same PVS+distance test as `meshLoadQueue`, commented as mesh-cache protection; T67's `30e04d3b` shows the ONLY writer was inside `if (constrainedMeshCache_)`, a pointer never constructed in any shipped build; and a consumer census confirmed PVS culling, door behaviour and the eager door/object build all use separate signals). -124 lines across 9 files: the member, Priority 3 (progressive door build) and Priority 4 (progressive PVS-object build), the two dead counters and their terms in the completion test (which reduces to what it has actually evaluated to since T67), `SimulationOutput::protectedRegions`, and `DoorManager::getDoorsInRegions()`. **Goldens did NOT move**; no re-bless. Note: the vector WAS correctly sized, so this was never a size-0 short circuit -- every element was simply false. ~~memory categories without budgets (T69)~~ **DERIVED T293 `b50fa48b` on Will's ruling** (envelope: 483 MB usable - 151 MB OS - 48 MB reserve = 284 MB -> adopted a 256 MB client RSS ceiling, 11% above T289's worst 230.3 MB; rule = `ceil_8MiB(worst_of_3_golden_zones x asset_scale_from_disk x 1.25)` with scales measured across all 310 zones: 2.34x geometry, 3.56x objects, 4.28x character models). Nothing is over budget -- highest utilisations are texture cache 63%, character models 61%, EQE1 mapped 45%. **Framebuffer verdict: 10 MiB HOLDS 1280x720 because the preset is 16-BIT (7.03 MiB, 67%); the orchestrator's '~11 MB' arithmetic assumed 32-bit, where it would be over by 573,440 B and `calculateMaxResolution()` silently narrows to 1072x808. Budget NOT raised; both halves pinned by tests.** **Real defect found: T69's framebuffer budget assertion had NEVER ONCE FIRED** -- the check sat inside the loop that exact-matches usage against the blessed baseline, and that loop skips any pair whose key is absent from the baseline (the committed manifest carries only three pre-T69 texture-cache fields). Wiring eight more budgets there would have shipped eight more DEAD assertions. `assert_memory_budgets()` now asserts independently of any bless, proven by deliberate 1-byte breach. **Gap left open on purpose: 76-90% of RSS is untracked, and T289 did not dump `/pmem`, so the Pi's tracked/untracked split is unmeasured and the envelope arithmetic cannot be closed end to end. No number was invented.** Cheap follow-up: a `/pmem` dump on a live Pi zone-in. UI-gesture-only reachability pattern (not
     retired); Z5.3 / P52 / `waitForFlipComplete()` perf residuals;
-    **doc debt:** `docker/CLAUDE.md` still documents
+    **doc debt:** `docker/CLAUDE.md` still documents **CLOSED by J21 (2026-09-02, `34d7bc4c`)** -- the `--no-gles2` reference and the Lima/Mesa desktop-GL description are both corrected.
     `build-arm-noble.sh --no-gles2` (retired P32) and describes the Pi
     target as Lima/Mesa desktop GL — out of T215's territory, see the
     cross-reference entry at the end of this file.
@@ -10208,7 +10208,7 @@ position and `#zone`'s coord args are ignored.
   shows a dangling `ITexture` (vtable 0x50) — settled it as a use-after-free
   of the UI atlas texture, which T205 `3b456a1b` then fixed
   (`ConstrainedTextureCache::clear()` destroyed the UI atlas).
-- **Doc debt outside T215's territory (2026-08-25):** `docker/CLAUDE.md:19`
+- **Doc debt outside T215's territory (2026-08-25):** `docker/CLAUDE.md:19` **CLOSED by J21 (2026-09-02, `34d7bc4c`)** -- the `--no-gles2` reference and the Lima/Mesa desktop-GL description are both corrected.
   still shows `./scripts/build-arm-noble.sh --no-gles2  # Desktop GL instead
   of GLES2` — that flag was retired by P32 (`docs/decisions.md` 2026-07-28
   addendum; GLES2 is the only ARM renderer) — and its target table calls the
