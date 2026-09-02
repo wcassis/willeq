@@ -1311,6 +1311,57 @@ run against a benchmark stamped by this unit's own build.
 ⚠ Five `tests/` comments **newly** name the wrong TU (attribute to J23, not to
 pre-existing rot).
 
+## ⚠ CORRECTIONS FROM J35 (2026-09-02) — AND THE BATCH-G QUESTION IS CLOSED
+
+**THE `variant_loading.cpp` DESIGN DECISION IS WITHDRAWN. It was an artefact of
+assuming a two-way split.** J35 re-derived the arithmetic independently and
+agreed with the plan: the two dominant methods are **815** and **396** lines
+(1,211 of 1,607, 75.4%), and the three-way cut at 382/1198 puts them in
+**different** TUs. Result **391 / 849 / 440**, largest TU **849 with 651 lines of
+headroom**; the floor is `preamble + largest method` = 830 against a 1,500
+ceiling. §Residual's "batch's worst floor / strongest Batch-G candidate" was
+measuring the only shape where the worry is real. **Nothing was decomposed, and
+no decision is owed.** Both methods are flagged in their TUs' headers so it is
+not re-opened. (Same outcome as J33's 806-line method with 673 spare.)
+
+**58. TELL THE EXECUTOR TO COMPUTE HEADROOM, NEVER QUOTE IT.** J35's plan
+prescribed 667/1,075 and its own prescribed headers falsify them (real:
+651/1,060). Correction 57's `(your header) + <constant> + body` shape removes
+this class of reconciliation entirely — here the constant is 15.
+
+**59. Root CMake line numbers are stale in every unit now — THIRD RUNNING —
+while the COUNTS have been right.** J35 found all seven targets named correctly
+and **all five root line numbers stale** (+7 to +19). Plans should name targets
+and never cite CMake line numbers.
+
+**60. The `awk` preprocessor cross-check needs a POSITIVE CONTROL.** J35's file
+has zero directives and so does `model_loading.cpp` — an empty result is
+indistinguishable from a broken pattern. **Prove the pattern matches somewhere
+before believing a zero** (the same discipline correction 55 forces on greps).
+
+### J35's result
+
+**Verifier exit 0, +0/−0 substantive, prediction exact.** FOUR proofs, all exit
+0: byte-identical re-concatenation over 1,590 lines, line-multiset, **and
+byte-for-byte diffs of both dominant methods across the split** (815 and 396
+lines) — the strongest evidence any unit has produced that a large method
+survived relocation intact. `body(TU)` defined structurally, not by offset
+constants (J23's method).
+
+**Its correction-21/51 audit is the reference:** it pasted the *widened* grep —
+every column-0 non-comment, non-directive, non-`}` line — proving the file
+defines zero file-scope symbols of any kind, including the namespace-scope free
+functions the standard pattern misses. And it **proved every empty grep against
+a file where the pattern must match** before believing the zero.
+
+**Correction 41's fix used** (gles2 before ctest). **Correction 56's `ar` site
+fired again** — main build killed while archiving `libwilleq_core.a`, gmake
+deleted it, scan widened to `lib*.a` with `ar t`: 221 binaries + 2 archives,
+0 BAD.
+
+J35 creates **zero** `tests/` doc rot — the plan's "comment-only hits" claim was
+wrong; there are no comment hits at all.
+
 ## Unit table
 
 | Unit | File | Lines | → TUs | Largest after | Wave | Notes |
