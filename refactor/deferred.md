@@ -614,6 +614,29 @@ Review, `review/T312/`.
     `irrlicht_renderer.cpp` and carries `renderer_event_receiver.cpp` (~340
     lines) as one of its six TUs. Nothing extra to plan.
 
+### TIER 2/3 addendum — found by T314 (2026-09-02): AN ENTIRE SUBSYSTEM IS UNREACHED
+
+33. **`SpellTypeProcessor` IS NEVER CALLED FROM PRODUCTION — the T264
+    reachability pattern applied to a whole subsystem, and it re-scopes two
+    entries on this list.** `m_spell_type_processor` appears at exactly three
+    sites in the tree: the `make_unique` (`src/client/eq.cpp:264`), the getter
+    `EverQuest::GetSpellTypeProcessor()` (`include/client/eq.h:1023`, **zero
+    callers**), and the member declaration (`eq.h:1980`). `update()` is never
+    ticked; `processSpell()` is never invoked. Verified by grep over `src/`,
+    `include/` and `tests/` at `3768aa6d`.
+    *Consequence for the board:* of the two defects T314 closed, **only
+    `SpellManager`'s body-type table was reachable by a player** (`/cast` or a
+    gem click → `beginCastFromGem()` → `validateCast()`). **Item 5's
+    group-spell proximity defect was LATENT, not live** — the impact line on
+    that entry was wrong and is corrected here rather than left standing. Same
+    for the processor's half of the body-type addendum.
+    *Impact today:* none directly — but every rain spell, every group-target
+    resolution and every spell-type behaviour in that file is dead code that
+    reads as live, and two units have now spent effort inside it.
+    **CLASS C, needs a ruling: wire it in, or delete it.** Same shape as T67
+    (`ConstrainedMeshCache`) and T68 (`SpellData::effects`), both of which went
+    to Will. Do not scope an executor unit off this until that call is made.
+
 ### TIER 3 — implemented but unreachable
 
 19. **`GraphicalMode::initialize()` falls through to the console renderer for every
