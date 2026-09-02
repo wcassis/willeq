@@ -466,6 +466,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/mesh_building.cpp
         src/client/graphics/eq/animated_mesh_creation.cpp
         src/client/graphics/eq/variant_loading.cpp
+        src/client/graphics/eq/variant_loading_animation.cpp
+        src/client/graphics/eq/variant_loading_preload.cpp
         src/client/graphics/eq/skeletal_animator.cpp
         src/client/graphics/eq/animated_mesh_scene_node.cpp
         src/client/graphics/eq/animated_mesh_eye.cpp
@@ -839,6 +841,8 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         src/client/graphics/eq/mesh_building.cpp
         src/client/graphics/eq/animated_mesh_creation.cpp
         src/client/graphics/eq/variant_loading.cpp
+        src/client/graphics/eq/variant_loading_animation.cpp
+        src/client/graphics/eq/variant_loading_preload.cpp
         src/client/graphics/eq/skeletal_animator.cpp
         src/client/graphics/eq/animated_mesh_scene_node.cpp
         src/client/graphics/eq/animated_mesh_eye.cpp
@@ -1705,6 +1709,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/model_loading.cpp
         src/client/graphics/eq/mesh_building.cpp
         src/client/graphics/eq/variant_loading.cpp
+        src/client/graphics/eq/variant_loading_animation.cpp
+        src/client/graphics/eq/variant_loading_preload.cpp
         src/client/graphics/eq/geometry_combiner.cpp
         src/client/graphics/eq/race_codes.cpp
         src/client/graphics/eq/animation_mapping.cpp
@@ -1830,6 +1836,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/model_loading.cpp
         src/client/graphics/eq/mesh_building.cpp
         src/client/graphics/eq/variant_loading.cpp
+        src/client/graphics/eq/variant_loading_animation.cpp
+        src/client/graphics/eq/variant_loading_preload.cpp
         src/client/graphics/eq/geometry_combiner.cpp
         src/client/graphics/eq/race_codes.cpp
         src/client/graphics/eq/animation_mapping.cpp
@@ -1917,6 +1925,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/model_loading.cpp
         src/client/graphics/eq/mesh_building.cpp
         src/client/graphics/eq/variant_loading.cpp
+        src/client/graphics/eq/variant_loading_animation.cpp
+        src/client/graphics/eq/variant_loading_preload.cpp
         src/client/graphics/eq/geometry_combiner.cpp
         src/client/graphics/eq/race_codes.cpp
         src/client/graphics/eq/animation_mapping.cpp

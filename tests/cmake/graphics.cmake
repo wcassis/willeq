@@ -30,6 +30,8 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/mesh_building.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/animated_mesh_creation.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/variant_loading.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/variant_loading_animation.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/variant_loading_preload.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/zone_geometry.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/zone_geometry_atlased.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_loader.cpp
@@ -117,6 +119,8 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/mesh_building.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/animated_mesh_creation.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/variant_loading.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/variant_loading_animation.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/variant_loading_preload.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/geometry_combiner.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/equipment_model_loader.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/equipment_textures.cpp
