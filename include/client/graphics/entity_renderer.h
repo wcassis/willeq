@@ -62,6 +62,21 @@ inline float collisionZOffsetFromBounds(const irr::core::aabbox3df& bbox, float 
     return -bbox.MinEdge.Y * scale;
 }
 
+// T318: the reference server size a race's per-race art scale is authored
+// against. Spawn_Struct::size and OP_SpawnAppearance AT_SIZE (29) both carry a
+// size on this scale -- a normal humanoid is 6.0 -- and the rendered scale is
+// the race scale times (serverSize / 6). Shrink/grow spells change nothing but
+// this number; eqemu clamps a client or pet to [3, 15] (Mob::ChangeSize).
+constexpr float kReferenceServerSize = 6.0f;
+
+// Rendered uniform scale for a race whose art scale is `raceScale` at server
+// size `serverSize`. serverSize <= 0 means "the server did not say", which is
+// the race scale unmodified -- NOT zero.
+inline float entityScaleForServerSize(float raceScale, float serverSize) {
+    return (serverSize > 0.0f) ? raceScale * (serverSize / kReferenceServerSize)
+                               : raceScale;
+}
+
 // Forward declarations
 class RaceModelLoader;
 class EntityPrepWorker;
@@ -157,6 +172,13 @@ struct EntityVisual {
     std::string currentAnimation;  // Current animation being played
     float modelYOffset = 0;        // Height offset to adjust for model origin (center vs base)
     float collisionZOffset = 0;    // Distance from the node origin (== server Z) down to the mesh's feet; see collisionZOffsetFromBounds()
+
+    // T318: the server's size for this entity (Spawn_Struct::size at spawn,
+    // OP_SpawnAppearance AT_SIZE / OP_Illusion afterwards). A REAL field: it
+    // used to be smuggled through collisionHeight between registerEntity() and
+    // buildEntityMesh(), which destroyed it as soon as the mesh was built and
+    // made a later size change impossible to apply. See setEntitySize().
+    float serverSize = 0;
 
     // Boat/object collision - allows entities to act as physical obstructions
     bool hasCollision = false;     // True if this entity has collision (boats, etc.)
@@ -403,6 +425,12 @@ public:
     // Set entity light level (from equipped light sources like lanterns, lightstones)
     // lightLevel: 0=no light, higher values=brighter light (max 255)
     void setEntityLight(uint16_t spawnId, uint8_t lightLevel);
+
+    // T318: apply a server size change (shrink/grow/illusion) to an already
+    // registered entity. Rescales the built node in place; if the mesh has not
+    // been built yet the new size is simply what the build will use. Returns
+    // false only when spawnId is not registered.
+    bool setEntitySize(uint16_t spawnId, float serverSize);
 
     // Check if entity is playing a playThrough animation
     bool isEntityPlayingThrough(uint16_t spawnId) const;

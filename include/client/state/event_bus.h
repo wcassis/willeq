@@ -31,6 +31,7 @@ enum class GameEventType {
     EntityMoved,
     EntityStatsChanged,
     EntityAppearanceChanged,
+    EntitySizeChanged,
     EntityLightChanged,
     EntityAnimationEvent,
     EntityWeaponSkillsChanged,
@@ -250,6 +251,14 @@ struct EntityAppearanceChangedData {
     uint8_t helm = 0;
     uint32_t equipment[9] = {0};
     uint32_t equipmentTint[9] = {0};
+};
+
+// T318: a server-authoritative size change (shrink, grow, illusion). `size` is
+// on the server's own scale -- a normal humanoid is 6.0, eqemu clamps a client
+// or a pet to [3, 15] -- NOT a multiplier.
+struct EntitySizeChangedData {
+    uint16_t spawnId = 0;
+    float size = 0.0f;
 };
 
 struct EntityLightChangedData {
@@ -925,6 +934,7 @@ using EventData = std::variant<
     EntityMovedData,
     EntityStatsChangedData,
     EntityAppearanceChangedData,
+    EntitySizeChangedData,
     EntityLightChangedData,
     EntityAnimationEventData,
     EntityWeaponSkillsChangedData,

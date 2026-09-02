@@ -311,9 +311,9 @@ bool EntityRenderer::registerEntity(uint16_t spawnId, uint16_t raceId, const std
     visual.timeSinceUpdate = 0;
     visual.appearance = appearance;
 
-    // Store server size in appearance for later use by buildEntityMesh
-    // We use the collisionHeight field (0 by default, only set for boats in buildEntityMesh)
-    visual.collisionHeight = serverSize;  // Temporarily store serverSize here
+    // T318: a real field. This used to be smuggled through collisionHeight and
+    // cleared by the mesh build, so nothing could rescale the entity afterwards.
+    visual.serverSize = serverSize;
 
     // Add to spatial grid for efficient visibility queries
     updateEntityGridPosition(spawnId, x, y);
@@ -416,14 +416,9 @@ bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
         return true;
     }
 
-    // Recover serverSize from temporary storage in collisionHeight
-    float serverSize = visual.collisionHeight;
-    visual.collisionHeight = 0;  // Reset to default
-
-    constexpr float REFERENCE_SIZE = 6.0f;
-    float sizeMultiplier = (serverSize > 0.0f) ? (serverSize / REFERENCE_SIZE) : 1.0f;
+    float serverSize = visual.serverSize;
     float baseScale = scale;
-    scale *= sizeMultiplier;
+    scale = entityScaleForServerSize(scale, serverSize);
 
     LOG_DEBUG(MOD_GRAPHICS, "buildEntityMesh[{}]: race={} size: {:.2f} * ({:.2f}/6) = {:.2f}",
               name, raceId, baseScale, serverSize, scale);
@@ -1043,13 +1038,7 @@ bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion) {
                 return true;
             }
 
-            // Recover serverSize from temporary storage in collisionHeight
-            float serverSize = vis.collisionHeight;
-            vis.collisionHeight = 0;
-
-            constexpr float REFERENCE_SIZE = 6.0f;
-            float sizeMultiplier = (serverSize > 0.0f) ? (serverSize / REFERENCE_SIZE) : 1.0f;
-            scale *= sizeMultiplier;
+            scale = entityScaleForServerSize(scale, vis.serverSize);
 
             // Temporarily clear weapon equipment IDs so createAnimatedNodeWithEquipment
             // doesn't bake weapon geometry — weapons are attached in EquipmentAttach phase

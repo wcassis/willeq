@@ -793,6 +793,7 @@ public:
     void removeEntity(uint16_t spawnId);
     void startCorpseDecay(uint16_t spawnId);  // Start fade-out animation for corpse
     void setEntityLight(uint16_t spawnId, uint8_t lightLevel);  // Set entity light source (lantern, lightstone)
+    void setEntitySize(uint16_t spawnId, float serverSize);     // T318: shrink/grow/illusion resize (server-authoritative)
     void clearEntities();
 
     // Door management

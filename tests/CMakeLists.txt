@@ -2708,6 +2708,21 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_first_person_eye_anatomy)
 ENDIF()
 
+# T318: shrink/grow/illusion reach the renderer (wire -> event -> node scale),
+# and OP_GuildInviteAccept's rank byte. EDT_NULL + willeq_core gate; the
+# real-node half skips without the shipped db or the client tree.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_entity_size_change
+        test_entity_size_change.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_entity_size_change PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_entity_size_change GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_entity_size_change PRIVATE
+        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}"
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    GTEST_DISCOVER_TESTS(test_entity_size_change)
+ENDIF()
+
 # T310 Leg B: collisionZOffset is the origin-to-feet distance, not half the
 # bbox. Same EDT_NULL + willeq_core gate as the eye anatomy tests; the
 # shipped-mesh half skips without the db or the client tree.

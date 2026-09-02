@@ -93,6 +93,33 @@ enum TitaniumRank : uint8_t {
 // NOT the sender's rank -- see the file header.
 constexpr uint8_t kInviteGrantsRank = kRankMember;
 
+// OP_GuildInviteAccept's `response` field is the SAME Titanium rank encoding,
+// not a yes/no flag, and it is the rank you join at (T318).
+// Handle_OP_GuildInviteAccept (zone/client_packet.cpp:8332) remaps it for any
+// pre-RoF client before doing anything else with it:
+//
+//     case GUILD_MEMBER_TI  (0): response = GUILD_RECRUIT (8); break;
+//     case GUILD_OFFICER_TI (1): response = GUILD_OFFICER (3); break;
+//     default:                   response = GUILD_RANK_NONE (0); break;
+//
+// and then passes it straight to guild_mgr.MemberAdd(..., response, ...).
+// This client sent `accept ? 1 : 0`, so ACCEPTING AN INVITE JOINED YOU AS
+// GUILD_OFFICER (3). The rank an ordinary new member should join at is the
+// bottom of the ladder, and the only value that reaches it from Titanium is
+// GUILD_MEMBER_TI (0) -> GUILD_RECRUIT (8). GUILD_MEMBER (5) itself is simply
+// not addressable by a Titanium client; 0 is the correct byte.
+constexpr uint8_t kInviteAcceptJoinsAsRank = kRankMember;
+
+// SERVER BUG, recorded here so nobody "fixes" it client-side (T318).
+// The same handler tests `response >= GUILD_INVITE_DECLINE (9)` AFTER the
+// remap above, and the remap can only ever produce 8, 3 or 0. No byte a
+// Titanium client can put on the wire declines an invite -- including this
+// one, GUILD_RANK_NONE_TI (9), which the `default` arm folds to 0. We send the
+// honest value anyway; a decline is currently processed by the server as an
+// accept at GUILD_RANK_NONE. Upstream fix: the decline test must run against
+// the RAW response, before the pre-RoF remap.
+constexpr uint8_t kInviteDeclineRank = kRankNone;
+
 inline void CopyName(char* dst, size_t cap, const std::string& src) {
     std::memset(dst, 0, cap);
     std::strncpy(dst, src.c_str(), cap - 1);
@@ -109,6 +136,21 @@ inline EQT::GuildCommand_Struct BuildGuildInvite(const std::string& target_name,
     CopyName(out.myname, sizeof(out.myname), my_name);
     out.guildeqid = static_cast<uint16_t>(guild_id);
     out.officer = grant_rank;
+    return out;
+}
+
+// OP_GuildInviteAccept body. `response` is the rank you are joining at, in the
+// Titanium encoding -- see kInviteAcceptJoinsAsRank / kInviteDeclineRank.
+inline EQT::GuildInviteAccept_Struct BuildGuildInviteAccept(const std::string& inviter_name,
+                                                            const std::string& my_name,
+                                                            uint32_t guild_id,
+                                                            bool accept) {
+    EQT::GuildInviteAccept_Struct out;
+    std::memset(&out, 0, sizeof(out));
+    CopyName(out.inviter, sizeof(out.inviter), inviter_name);
+    CopyName(out.newmember, sizeof(out.newmember), my_name);
+    out.response = accept ? kInviteAcceptJoinsAsRank : kInviteDeclineRank;
+    out.guildeqid = guild_id;
     return out;
 }
 
