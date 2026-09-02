@@ -4,9 +4,10 @@
 // renderer_player_collision.cpp.
 // DO NOT RENAME THIS FILE, and DO NOT MOVE updatePlayerMovement() OUT OF IT:
 // tests/test_first_person_camera_single_formula.cpp names "renderer_player_physics.cpp"
-// as a string literal (kFloorSecondReader) and allows only this file and
-// renderer_camera.cpp to read firstPersonMinLookPitchDegrees. A rename or a move
-// fails TunablesAreReferencedFromOneTUOnly.
+// as a string literal and allows only this file and renderer_camera.cpp to read
+// the first-person down-pitch floor accessor (deliberately not spelled out here:
+// correction 40 -- a comment naming a scanned token can weaken the guard that
+// scans for it). A rename or a move fails that test's tunable-reader assertion.
 // updatePlayerMovement() is 806 lines -- a recorded Batch-G decomposition candidate
 // that J33 deliberately did not touch; this TU has 673 lines of ceiling headroom.
 #include "client/graphics/irrlicht_renderer.h"

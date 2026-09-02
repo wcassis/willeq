@@ -656,7 +656,7 @@ land inside a conditional region.
 
 ### 6. File-header comment lines written (enumerated)
 
-`renderer_player_physics.cpp`, 11 lines prepended (all `//`):
+`renderer_player_physics.cpp`, 12 lines prepended (all `//`):
 
 ```
 1  // renderer_player_physics.cpp -- IrrlichtRenderer player-mode movement.
@@ -665,12 +665,32 @@ land inside a conditional region.
 4  // renderer_player_collision.cpp.
 5  // DO NOT RENAME THIS FILE, and DO NOT MOVE updatePlayerMovement() OUT OF IT:
 6  // tests/test_first_person_camera_single_formula.cpp names "renderer_player_physics.cpp"
-7  // as a string literal (kFloorSecondReader) and allows only this file and
-8  // renderer_camera.cpp to read firstPersonMinLookPitchDegrees. A rename or a move
-9  // fails TunablesAreReferencedFromOneTUOnly.
-10 // updatePlayerMovement() is 806 lines -- a recorded Batch-G decomposition candidate
-11 // that J33 deliberately did not touch; this TU has 673 lines of ceiling headroom.
+7  // as a string literal and allows only this file and renderer_camera.cpp to read
+8  // the first-person down-pitch floor accessor (deliberately not spelled out here:
+9  // correction 40 -- a comment naming a scanned token can weaken the guard that
+10 // scans for it). A rename or a move fails that test's tunable-reader assertion.
+11 // updatePlayerMovement() is 806 lines -- a recorded Batch-G decomposition candidate
+12 // that J33 deliberately did not touch; this TU has 673 lines of ceiling headroom.
 ```
+
+⚠ **CORRECTION 40 APPLIED, and it landed on this unit mid-flight.** `a15c47ea`
+merged onto `fable` while J33 was in its verification tail, carrying corrections
+40 and 41. The header's first draft quoted the tunable's identifier verbatim, as
+§File-header comments literally prescribes. **In this specific guard that is
+harmless** — Part 2 calls `stripLineComment(line)` before searching, so a `//`
+mention cannot count as a reader, and the four-test run was green both before
+and after the rewording — **but correction 40's rule is general and I complied
+rather than argue the special case.** The identifier is now described ("the
+first-person down-pitch floor accessor") with an inline note saying why it is
+not spelled out. The filename string IS still quoted, deliberately: the test
+compares `path.filename().string()` against it, so it is not a text search and a
+comment cannot satisfy it. **Cost: +1 header line (11 → 12), physics TU 838 →
+839.** All three proofs and the guard were re-run after the edit; all clean.
+
+**No other test scans `src/client/graphics` as text** —
+`grep -rn 'kGraphicsDir\|graphicsSources' tests/*.cpp` returns hits in
+`test_first_person_camera_single_formula.cpp` only — so this is the whole
+exposure.
 
 `renderer_player_collision.cpp`, 6 lines (all `//`):
 
@@ -732,7 +752,7 @@ handled in item 11.
 
 `BASE=0c95f7df4cf59481d6be267f181052c026a49a0f`
 
-**Byte-identical re-concatenation** — physics body (lines 27-836 of the new
+**Byte-identical re-concatenation** — physics body (lines 28-837 of the new
 file = original 16-825, 810 lines) + collision body (lines 22-740 = original
 826-1544, 719 lines) = **1,529 lines**, against
 `git show "$BASE:...renderer_player_physics.cpp" | sed -n '16,1544p'`:
@@ -748,13 +768,13 @@ diff before_sorted.txt after_sorted.txt -> MULTISET_EXIT=0   (MULTISET-OK)
 ```
 
 **`updatePlayerMovement` byte-for-byte** (ranges derived from each file's own
-numbering: original 19-824 vs new 30-835, 806 lines each):
+numbering: original 19-824 vs new 31-836, 806 lines each):
 
 ```
 diff <(git show "$BASE:..." | sed -n '19,824p') <(sed -n '30,835p' <new>)
 -> exit 0, no output
 ```
-(`sed -n '30p;835p'` on the new file prints
+(`sed -n '31p;836p'` on the new file prints
 `void IrrlichtRenderer::updatePlayerMovement(float deltaTime) {` and `}`.)
 
 **Verifier — committed first, then run with `--repo` and the fork point:**
@@ -775,11 +795,11 @@ VERIFIER_EXIT=0
 
 **Exit 0, `+0/-0` substantive — the prediction held exactly, and no
 orchestrator sign-off is owed.** The 33 allowlisted boilerplate lines are, in
-full: the **17 header-comment lines** enumerated in item 6 (11 + 6, all `//`),
+full: the **17 header-comment lines** enumerated in item 6 (12 + 6, all `//`),
 the collision TU's copy of the preamble — **12 `#include` + 2 `namespace … {`**
 = 14 distinct lines, the blank being dropped by the normalizer — and the **2
 replicated namespace closes** (`} // namespace Graphics`, `} // namespace EQT`),
-which are bare `}` with a `//` tail. 17 + 14 + 2 = **33.** Nothing outside that
+which are bare `}` with a `//` tail. 18 + 14 + 2 = **34** at the amended header; the pasted run above was taken at the 11-line draft (17 + 14 + 2 = **33**) and the extra line is one more `//`. Re-run after the reword: identical PASS, `+34 / -0`. Nothing outside that
 set was flagged. The commit was made **before** the verifier ran, `--repo`
 pointed at slot3, and `$BASE` is the fork point, so none of the three
 false-answer traps applies.
@@ -788,11 +808,11 @@ false-answer traps applies.
 
 | file | lines | methods | derivation |
 |---|---|---|---|
-| `renderer_player_physics.cpp` | **838** | **1** | 11 header + 825 (orig 1-825) + 2 replicated closes |
+| `renderer_player_physics.cpp` | **839** | **1** | 12 header + 825 (orig 1-825) + 2 replicated closes |
 | `renderer_player_collision.cpp` | **742** | **17** | 6 header + 15 preamble + 721 (orig 826-1546, incl. the original's own closes) |
 
 **Method split 1 / 17 of 18 — exactly as predicted.** The plan's body figures
-(827 and 736) were **exactly right**; the deltas (+11, +6) are precisely the
+(827 and 736) were **exactly right**; the deltas (+12, +6) are precisely the
 header-comment lines this plan itself prescribes, as correction 19 requires.
 `check_file_sizes.sh --files` on both: **2 ok, 0 warn, 0 fail.**
 
@@ -823,9 +843,17 @@ cleanly (correction 32's "absent" case): `lib/libwilleq_core.a` and
 | visual gate (in-suite test #3504) | **Passed**, 34.18 s |
 | `scripts/ci/visual_gate.sh` (standalone) | **=== VISUAL GATE: PASS ===**, all three zones, **zero image mismatches**; p95 CPU qeynos2 5.293/10.108, gfaydark 5.934/10.672, befallen 4.856/10.948 |
 | goldens | **untouched** — `git status --porcelain` after the gate shows only the two source files + the new TU |
+
+⚠ **Correction 41 (which also merged mid-flight): the standalone gate here is
+NOT vacuous.** The order run was `build-gles2-x86.sh` (exit 0) **then**
+`scripts/ci/visual_gate.sh`. `build-gles2/bin/gles2_zone_benchmark` and
+`build-gles2/bin/willeq` are both stamped **12:44**, after every source edit in
+this unit (~11:55) and before the gate run. The in-suite `visual_gate` test
+(#3504) that ran during `ctest -j6` **was** against the older tree and should be
+discounted; the standalone re-run is the one that counts.
 | `scripts/build-gles2-x86.sh` | **exit 0** (third invocation; two 600 s tool-ceiling kills) |
 | `scripts/build-arm-noble.sh` | **exit 0**, first invocation, ~7 min; ARM ELF scan clean |
-| `check_file_sizes.sh --files` (both files) | **2 ok, 0 warn, 0 fail** |
+| `check_file_sizes.sh --files` (both files) | **2 ok, 0 warn, 0 fail** (839 / 742) |
 
 ### 10. Findings only, not fixes
 
