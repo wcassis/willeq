@@ -33,49 +33,68 @@ SEPARATE, OPTIONAL goal. Do not fold them in.
 
 ## The one genuinely hard problem: headers, and it is a god-class problem
 
-Four headers are over the soft limit, in two different shapes. ⚠ **All four
-GREW between the survey and `136a319b` — `eq.h` by 107 lines and
-`irrlicht_renderer.h` by 125 — so every "mechanical to ~N" figure below is
-optimistic by that much. Re-measure at the unit's own tip.**
+Four headers are over the soft limit, in two different shapes. ⚠ **They move in
+BOTH directions with ordinary bug-fix work — `eq.h` grew 107 lines between the
+survey and `136a319b` and has since SHRUNK 2 — so re-measure at the unit's own
+tip, always.**
 
-| header | lines | shape | verdict |
-|---|---|---|---|
-| `include/common/packet_structs.h` | 2,207 → **2,215** | 125 independent packed structs, already banner-sectioned | **mechanical**, clears fully |
-| `include/client/action/action_dispatcher.h` | 1,556 → **1,581** | 3 independent entities (types / `IActionHandler` / `ActionDispatcher`) | **mechanical**, clears fully |
-| `include/client/graphics/irrlicht_renderer.h` | 2,395 → **2,520** | 20 free types + one god class | mechanical to ~1,820, then **design change** |
-| `include/client/eq.h` | 2,538 → **2,645** | 504 lines of enums + 3 structs + `class EverQuest` (897 declarations) | mechanical to ~1,930, then **design change** |
+**Re-measured at `09c99b0b` (2026-09-02, `fable` tip after T325), with includer
+counts measured rather than quoted:**
 
-Extracting every free-standing type from `eq.h` still leaves `class EverQuest`
-itself at ~1,811 lines. Nothing mechanical closes that gap — only pimpl'ing the
-private data block or extracting owned components does, and that turns the risk
-from "a compile error" into "a subtle lifetime bug".
+| header | lines | includers | shape | projected after its unit |
+|---|---|---|---|---|
+| `include/common/packet_structs.h` | **2,215** | **62** | 120 packed structs + 5 enums + 27 constants + 109 `static_assert`s | **J14**: umbrella ~70 + 11 domain headers, largest ~400. **Clears fully.** |
+| `include/client/action/action_dispatcher.h` | **1,581** | **23** | 3 independent entities (types / `IActionHandler` / `ActionDispatcher`) | **J15**: 3 headers, largest **~1,048**. **Clears fully.** |
+| `include/client/graphics/irrlicht_renderer.h` | **2,520** | **60** | 613 lines of free types + `class IrrlichtRenderer` (**1,799 lines**) | **J17**: 3 headers + **~1,910**. **Does not clear — and is not meant to.** |
+| `include/client/eq.h` | **2,643** (survey said 2,645) | **88** | 616 lines of enums/opcode tables/structs + `class EverQuest` (**1,905 lines**) | **J16**: 3 headers + **~2,030**. **Does not clear — and is not meant to.** |
 
-### PROPOSED POLICY AMENDMENT — needs Will's sign-off before J14-J17 land
+⚠ **The ~1,930 / ~1,820 figures the survey carried for `eq.h` and
+`irrlicht_renderer.h` were optimistic for a structural reason, not a measurement
+one: they assumed the 100-plus-line PREAMBLE left with the types.** It cannot —
+`class EverQuest` needs `<openssl/des.h>`, glm, `game_state.h` and thirty more,
+and `class IrrlichtRenderer` needs the whole graphics include block. Each god
+header keeps its own preamble and gains three `#include` lines, so the honest
+projections are **~2,030** and **~1,910**.
 
-`docs/decisions.md` is the record of Will's decisions, so this batch RECOMMENDS
-and does not self-apply:
+A class definition cannot span files. Nothing mechanical closes that gap — only
+pimpl'ing the private data block or extracting owned components does, and that
+turns the risk from "a compile error" into "a subtle lifetime bug".
 
-1. **Multi-type headers** (more than one top-level class/struct/enum defined —
-   mechanically decidable) keep the existing 1,500 warn / 3,000 fail unchanged.
-2. **Single-class headers** gate on GROWTH, not absolute size: add a `--no-grow`
-   mode to `scripts/refactor/check_file_sizes.sh` that fails a changed header
-   only if it grew while already over 1,500.
-   *Why:* the checker gates files a unit CHANGES. A flat FAIL would fire on the
-   next unit that adds one method to `EverQuest`, forcing it to either perform
-   an unrelated class decomposition or compress code to fit — which is exactly
-   the harm T115 recorded (a crash fix squeezed onto a shared line) and T166
-   exists to prevent. An unsatisfiable rule gets waived, and a waived rule
-   gates nothing.
-3. **Take the free lines anyway** (J16/J17), then grandfather `eq.h` (~1,930)
-   and `irrlicht_renderer.h` (~1,820) with a `deferred.md` entry naming the
-   class decomposition as the remaining debt.
-4. **Do NOT attempt the `EverQuest` / `IrrlichtRenderer` decomposition in this
-   batch.** It is a design question for Will, not a mechanical sweep.
+### ✅ WILL'S RULING — the header rule, decided 2026-09-02
 
-Rationale for gating headers at all rather than exempting them: they are what an
-agent reads MOST. `eq.h` has 65 includers, `packet_structs.h` 41,
-`irrlicht_renderer.h` 39 — `eq.h` alone is ~30k tokens pulled into nearly every
-client-side task, a larger recurring context cost than any .cpp in the tree.
+**Component extraction is APPROVED as a separate programme, with NO DEADLINE.
+The move-only header wins come FIRST.**
+
+What that settles, and what every J14-J17 executor must take as given:
+
+1. **J14 and J15 are ordinary mechanical splits** and clear the 1,500 soft limit
+   outright. Nothing special applies to them.
+2. **J16 and J17 take the free lines and stop.** They lift every free-standing
+   type out and leave each header containing **only its class** — that is the
+   deliverable, and it is the clean starting condition for the component
+   programme. **`eq.h` lands at ~2,030 and `irrlicht_renderer.h` at ~1,910.**
+3. ⚠ **The residue is NOT a failure and must not be reported as one.**
+   `check_file_sizes.sh` emits a WARN on each; **the WARN does not block
+   acceptance.** Both unit plans say this in a box at the top, because an
+   executor who treats it as a shortfall will do exactly the wrong thing next.
+4. **Do NOT attempt the `EverQuest` / `IrrlichtRenderer` decomposition inside
+   Batch J**, and do not "compress code to fit" — the harm T115 recorded (a
+   crash fix squeezed onto a shared line) and T166 exists to prevent.
+5. **The component-extraction programme gets its own batch and its own board
+   entry**, with no deadline attached. It is a design exercise, not a sweep.
+
+The earlier proposal to gate single-class headers on GROWTH rather than absolute
+size (a `--no-grow` mode for `check_file_sizes.sh`) is **not part of this
+ruling**. It remains a reasonable idea and is parked: with the component
+programme open-ended, a flat WARN on two named headers is tolerable, and adding
+a checker mode now would be solving a problem the programme is meant to remove.
+
+Rationale for gating headers at all rather than exempting them, unchanged and
+now measured: they are what an agent reads MOST. **`eq.h` has 88 includers,
+`irrlicht_renderer.h` 60, `packet_structs.h` 62, `action_dispatcher.h` 23** —
+`eq.h` alone is ~30k tokens pulled into nearly every client-side task, a larger
+recurring context cost than any .cpp in the tree. (The survey's 65 / 39 / 41
+counts were low; these were re-counted at `09c99b0b`.)
 
 ## Process per unit — Batch F, plus T166's bar, plus J01's corrections
 
@@ -1669,10 +1688,10 @@ mechanical split reaches 1,500 on a class body of 1,905 lines.
 | J11 | `graphics/irrlicht_renderer.cpp` | 3,237 | 6 | 980 | 4 | **hard dependency: T312 must merge first** |
 | J12 | `eq_action_handler.cpp` | **2,248** (survey said 2,202) | 3 | **~952** | 4 | ⭐ **planned: `refactor/J12_eq_action_handler_split.md`.** **174** forwarding methods (not 173), largest **55**. **Zero statics, zero anonymous namespaces, zero preprocessor directives, zero block comments, zero text readers in `tests/`** — the lowest-risk unit left. Predicted verifier exit **0**. **ONE** CMake site. ⚠ one banner (`:1691`) has no blank line before it and is NOT a legal cut point |
 | J13 | `eq_bridge.cpp` | **2,127** (survey said 2,098; `module_map.md` says 2,001) | 3 | **~891** | 4 | ⭐ **planned: `refactor/J13_eq_bridge_split.md`.** ⚠ **`tests/test_reachability_sweep.cpp` scans this file AS TEXT at three sites and all three break** — the repoint is in territory, not optional (correction 27). `ProcessBridgeIntents` is **580** lines (not 558) and gets its own ~700-line TU — **flagged Batch-G, not decomposed**. Three preprocessor regions span whole methods. Predicted verifier exit **1 with exactly +3/-2**, all in the test repoint. **ONE** CMake site |
-| J14 | `include/common/packet_structs.h` | **2,215** | umbrella + `packets/*.h` | — | 5 | ⚠ `#pragma pack(push,1)` per header; T145/T147 bit this twice |
-| J15 | `include/client/action/action_dispatcher.h` | **1,581** | 3 | 1,060 | 5 | after J04 and J12 |
-| J16 | `include/client/eq.h` type extraction | **2,645** | +3 hdrs | ~1,930 | 5 | after J02, J08; leave forwarding includes |
-| J17 | `include/client/graphics/irrlicht_renderer.h` | **2,520** | +2 hdrs | ~1,820 | 5 | after J11 |
+| J14 | `include/common/packet_structs.h` | **2,215** | umbrella + **11** domain headers | **~400** | **7** | ⭐ **planned: `refactor/J14_packet_structs_split.md`.** ⚠ **each domain header opens and closes its OWN `#pragma pack(push,1)`/`(pop)`; the umbrella carries NONE, and no `#include` may sit inside a pack region** — T145/T147 bit this twice. **The real proof is the 109 `static_assert`s** (108 `sizeof` + 1 `offsetof`): all must survive AND still fire — the plan prescribes a deliberate-break test on `EnvDamage2_Struct` and `Spawn_Struct`. ⚠ **`WearChange_Struct` does not exist in this tree and `Illusion_Struct` does NOT use the tint/texture profiles — `Spawn_Struct` is their only in-file consumer.** Zero conditional compilation, **ZERO CMake sites**, zero text readers. Predicted verifier **0, +0/-0** |
+| J15 | `include/client/action/action_dispatcher.h` | **1,581** | 3 | **~1,048** | **7** | ⭐ **planned: `refactor/J15_action_dispatcher_header_split.md`.** J04, J12 and **J25 all merged** — serialisation satisfied, but the executor must re-prove no slot holds `action_dispatcher`. ⚠ **`tests/test_reachability_sweep.cpp` reads this header AS TEXT at `:333` and excludes it at `:399`; the repoint is territory, not scope creep** — `handlerPureVirtuals()` scans for `class IActionHandler`, which moves. `ASSERT_GT(virtuals.size(), 100u)` at `:354` makes the failure LOUD rather than silent — do not weaken it. Zero preprocessor, zero file-scope symbols, **ZERO CMake sites**, 23 includers. Predicted verifier **1, +3/-1** (the repoint). ⚠ **shares `test_reachability_sweep.cpp` with J16 — serialise the two** |
+| J16 | `include/client/eq.h` type extraction | **2,643** (survey said 2,645 — it SHRANK) | +3 hdrs | **~2,030, and that is the accepted outcome** | **7** | ⭐ **planned: `refactor/J16_eq_header_type_extraction.md`.** J02 and J08 merged. Lifts **616** lines (122-737) into `eq_opcodes.h` / `eq_enums.h` / `eq_types.h`; `class EverQuest` is **1,905** lines and stays. ⚠ **DOES NOT REACH 1,500 AND IS NOT MEANT TO** — see §Will's ruling; the `check_file_sizes.sh` WARN does not block acceptance. ⚠ **11 enums, not 13** (4 are opcode tables). ⚠ **THREE text readers, all analysed SAFE and all to be MEASURED**: `scripts/ci/check_sender_reachability.py:43`, `test_reachability_sweep.cpp:435/:450`, `test_duplicate_state_stores.cpp:144` — every one keys on `Send*`/`m_` members, which stay. ⚠ **live correction-68 example in BOTH directions**: the narrow grep misses `ChatChannelName` at `:609`, the widened grep misses both `NPC_INTERACTION_DISTANCE` constants. **Everything is at GLOBAL scope — no namespace.** Zero preprocessor in the region, **ZERO CMake sites**, 88 includers. Predicted verifier **0, +0/-0** |
+| J17 | `include/client/graphics/irrlicht_renderer.h` | **2,520** | **+3 hdrs, not 2** | **~1,910, and that is the accepted outcome** | **7** | ⭐ **planned: `refactor/J17_irrlicht_renderer_header_split.md`.** J11 merged. ⚠ **THREE headers, not two: `RendererEventReceiver` (361-555) sits in the MIDDLE of the free-type region**, so a two-way split would need a discontiguous tile for no benefit. `renderer_types.h` (104-359) ← `renderer_event_receiver.h` (360-555); `renderer_draw_types.h` (556-716) is independent — measured. ⚠ **DOES NOT REACH 1,500 AND IS NOT MEANT TO** — `class IrrlichtRenderer` is **1,799** lines. ⚠ **the preamble's `extern void eqtGPUPhase*` trio at 68-70 must NOT travel** (correction 9/36): nothing in 104-716 uses them, and copying them would cost `+9`. ⚠ **the three new `#include`s go ABOVE `namespace EQT {` at :101, not at the region's old position inside it.** **ZERO banners**, zero preprocessor in the region, zero text readers, **ZERO CMake sites**, 60 includers. Predicted verifier **0, +0/-0**. ✅ **shares no file with J14/J15/J16 — the only Wave-7 unit that can run alongside any of them** |
 | J22 | `graphics/detail/detail_manager.cpp` | 1,754 | 2 | ~1,206 | 6 | **in flight** — lifting the 548-line `createDefaultConfig` table alone clears it |
 | J23 | `eq_movement.cpp` | **2,139** | 3 | **~908** | 6 | ⭐ **planned: `refactor/J23_eq_movement_split.md`.** ⚠ **the only Wave-6 unit needing an internal header** — 8 `const float` with readers in two ranges → `include/client/eq_movement_internal.h`, 19 lines. Predicted verifier **0**. 1 CMake site |
 | J24 | `combat.cpp` | **2,119** | 3 | **~809** | 6 | ⭐ **planned: `refactor/J24_combat_split.md`.** ⚠ `#pragma pack(1)`/`pack()` pair + 3 structs stay with their only reader; `Consider_Struct`/`Action_Struct` are **dead — site #8**. Predicted **0**. 1 CMake site |
@@ -1923,3 +1942,122 @@ All four hard-cap files gone from the FAIL list; the largest production TU in
 the tree drops from **3,913 to ~1,035**; both mechanically-splittable headers
 fully compliant; `eq.h` and `irrlicht_renderer.h` grandfathered with their
 class-decomposition debt named on the board.
+
+## ⚠ CORRECTIONS FROM THE WAVE-7 PLANNING PASS (2026-09-02, at `09c99b0b`)
+
+Re-measured all four remaining headers while writing J14-J17. **Every `.cpp` in
+the tree is under the soft limit; these four headers are the whole residual
+list.** Six things the survey got wrong or under-stated:
+
+**81. ⚠ THE SURVEY'S `~1,930` / `~1,820` PROJECTIONS FOR `eq.h` AND
+`irrlicht_renderer.h` WERE STRUCTURALLY WRONG, NOT MERELY STALE — they assumed
+the preamble left with the types.** It cannot: `class EverQuest` needs
+`<openssl/des.h>`, glm, `game_state.h` and ~30 more; `class IrrlichtRenderer`
+needs the whole ~50-line graphics include block plus its forward declarations.
+Each god header keeps its preamble and gains three `#include` lines, so the
+honest projections are **~2,030** and **~1,910**. **A projection derived by
+subtracting a range from a total, without asking what the residue needs to
+compile, is not a projection.** (Same family as correction 12 — cluster
+membership right, arithmetic wrong — but the error was in the *model*, not the
+sum.)
+
+**82. ⚠ THE SURVEY'S INCLUDER COUNTS WERE ALL LOW, BY 35-54%.** Measured at
+`09c99b0b` with
+`grep -rlE '#include[[:space:]]*[<"][^">]*<hdr>[">]' src include tests tools benchmarks scripts`:
+**`eq.h` 88** (survey 65), **`packet_structs.h` 62** (41),
+**`irrlicht_renderer.h` 60** (39), `action_dispatcher.h` 23. The survey almost
+certainly counted `src/` only — `tests/` alone holds 36 of `eq.h`'s. **The
+context-cost argument for gating headers is therefore stronger than it was
+stated, not weaker.**
+
+**83. ⚠ NONE OF THE FOUR HEADERS HAS A SINGLE CMAKE ADD-SITE — this project
+does not list headers in any source list.** Confirmed by
+`grep -rn '<basename>' CMakeLists.txt cmake tests scripts benchmarks`: the only
+hit across all four is a **comment** in the root `CMakeLists.txt`. **Every
+Wave-7 plan predicts ZERO and asks the executor to prove it.** ⚠ That is
+unusual enough to be worth doubting (counts have ranged 1 to 19 in this batch),
+which is why the prediction is stated as a number to falsify rather than a fact
+to cite.
+
+**84. ⚠ TWO OF THE FOUR HEADERS ARE READ AS TEXT BY GUARDS, AND ONLY ONE OF
+THEM ACTUALLY BREAKS.** Correction 10's pre-check, run on all four:
+- **`action_dispatcher.h` — BREAKS.** `test_reachability_sweep.cpp:333`
+  (`handlerPureVirtuals()`) scans it for `class IActionHandler`, which J15
+  moves. It would return an empty set — but `ASSERT_GT(virtuals.size(), 100u)`
+  at `:354` makes that **loud**, not silent, which is the difference between
+  this and J11's four readers. `:399` is an exclusion that must **gain** the new
+  headers, not be replaced.
+- **`eq.h` — three readers, ALL SAFE, and J16 must still measure them.**
+  `scripts/ci/check_sender_reachability.py:43`,
+  `test_reachability_sweep.cpp:435/:450` and
+  `test_duplicate_state_stores.cpp:144` all key on `Send*`/`Request*`
+  declarations or `m_`-prefixed members — **every one of which stays in
+  `eq.h`**. The extracted structs' fields are not `m_`-prefixed, so
+  `membersOf()` is unaffected. **Analysed safe, not assumed safe: each plan
+  requires a before/after parsed-set size.**
+- **`irrlicht_renderer.h` and `packet_structs.h` — zero readers.** ⚠ But
+  `test_reachability_sweep.cpp`'s `collect({"src","include"},{".cpp",".h"})`
+  sweeps `include/` **recursively**, so every header any of these units creates
+  enters that sweep automatically. All three plans require the new headers'
+  `Send*(` and `dispatcher->` counts to be printed as zeros.
+- ⚠ **`test_first_person_camera_single_formula.cpp` sweeps
+  `src/client/graphics` ONLY** (line 49), so J17's new headers under
+  `include/client/graphics/` do **not** enter it — and J17 requires that root to
+  be re-verified at the tip rather than trusted.
+
+**85. ⚠ J17 IS A THREE-WAY SPLIT, NOT THE TWO-WAY THE SURVEY SKETCHED.**
+`class RendererEventReceiver` (361-555) sits in the **middle** of the free-type
+region, so a two-header shape forces `renderer_types.h` to hold two
+discontiguous blocks (104-359 and 556-716) and costs the byte-identity proof its
+simplest form for nothing. Three contiguous tiles give a linear dependency chain
+(`renderer_types.h` ← `renderer_event_receiver.h`; `renderer_draw_types.h`
+independent — measured, not assumed) and a trivial re-concatenation. **The
+residue is identical either way.** ⚠ Also: `irrlicht_renderer.h` has **ZERO
+`// ====` banners**, so J03's cutting rule is the only rule that applies.
+
+**86. ⚠ THE DISPATCH BRIEF'S J14 HAZARD NOTE WAS WRONG ON TWO OF THREE SHARED
+TYPES.** It named `Spawn`/`Illusion`/`WearChange` as the users of
+`Tint_Struct`/`TintProfile`/`Texture_Struct`/`TextureProfile`. Measured:
+**`Spawn_Struct` (lines 217, 241) is the ONLY in-file consumer**,
+`Illusion_Struct` references none of them, and **`WearChange_Struct` does not
+exist anywhere in this tree**. The common header is still the right shape — for
+`Spawn_Struct`, for `TEXTURE_COUNT`, and for external includers — but the
+justification had to be re-derived rather than copied. **A hazard inherited from
+a brief is a lead, not a finding.**
+
+**Also measured, and folded into the plans rather than listed here:** all four
+headers have **zero conditional compilation inside the region being moved** (a
+first for this batch); `eq.h` has **no enclosing namespace at all** — everything
+is at global scope; `packet_structs.h`'s `#pragma pack(pop)` sits **after** the
+namespace close, which the split deliberately tightens; and `eq.h` is the
+batch's cleanest live example of **correction 68 in both directions** — the
+narrow grep misses `ChatChannelName` at `:609` and the widened grep misses both
+`NPC_INTERACTION_DISTANCE` constants.
+
+## Wave 7 dispatch order (recommended, 2026-09-02)
+
+Four units, three slots, **one serialisation constraint**.
+
+| order | unit | slot | why |
+|---|---|---|---|
+| **1st, together** | **J14** + **J17** | slot1, slot2 | Zero shared files with anything. J14 is the largest cut but the lowest-risk one (no CMake, no guards, no preprocessor); J17 is the heaviest *build* (60 includers, most of them the renderer's own TUs) so it should start early. |
+| **1st, together** | **J15** | slot3 | Also disjoint from J14 and J17. **Must go BEFORE J16** — see below. |
+| **2nd** | **J16** | any free slot, **after J15 has MERGED** | ⚠ **J15 and J16 both edit `tests/test_reachability_sweep.cpp`** (J15 at `:333`/`:399`, J16 possibly at `:435`/`:450`). Running them concurrently produces correction 31's alternatives-shaped conflict, where git offers the whole pre-edit file as one side and taking either side wholesale silently reverts a completed unit. J16 is also the heaviest rebuild after J17 (88 includers), so it benefits from a quieter tree. |
+
+**The only hard constraint is J15 → J16.** J14 and J17 are free-floating and
+can run in any wave position.
+
+⚠ **Do not schedule a `docs/module_map.md` hygiene pass alongside this wave**
+(correction 31). All four units create new headers that the map will need rows
+for; **collect them and do the map once, after Wave 7 merges.**
+
+**Merge one unit at a time and rebase**, as every wave has done.
+
+## Final state after Wave 7
+
+Every `.cpp` under the soft limit (achieved at J34); `packet_structs.h` and
+`action_dispatcher.h` fully compliant; **`eq.h` and `irrlicht_renderer.h`
+reduced to their class definitions plus include blocks (~2,030 and ~1,910),
+carrying a WARN by design and a named, no-deadline component-extraction
+programme as the remaining debt.** The batch's file-size goal is met for every
+file it can be met for.
