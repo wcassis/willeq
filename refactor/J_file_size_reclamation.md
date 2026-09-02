@@ -1101,6 +1101,58 @@ theirs. Correction 30's artefact appeared **inverted** (no double-spaced tail;
 instead no blank after the namespace open) — cosmetic, declared not fixed since
 fixing breaks the byte proof.
 
+## ⚠ CORRECTIONS FROM J33 (2026-09-02)
+
+**42. Correction 40's blanket "never quote a scanned token" is the RIGHT RULE,
+but plans should say WHICH GUARD SHAPES ARE ACTUALLY VULNERABLE.** J33 quoted a
+token, then reworded — and observed that in *that* guard quoting was harmless:
+`test_first_person_camera_single_formula.cpp` calls `stripLineComment` first,
+and its assertion is an **at-most-N-readers count**, so a comment can only add a
+false positive, never disarm. The dangerous shapes are the ones J31 and J13 hit:
+`find(...) != npos` **presence** checks (a comment satisfies them) and
+**string-compare exclusions** (a comment cannot, but a missed repoint silently
+inverts them). Keep the blanket rule — it is cheap and always safe — but say why,
+so an executor can tell a loud failure from a silent one.
+
+**43. `find -newermt '-15 minutes'` is rejected by this host's `bfs`-backed
+`find`.** Use `-mmin`.
+
+**44. Correction 41 bit J33 too, and the fix worked.** Its in-suite
+`visual_gate` (#3504) ran against a `build-gles2/` tree predating its edits; it
+re-ran the gate standalone after `build-gles2-x86.sh` (binary stamped 12:44
+against ~11:55 edits) and **the standalone run is the one that counts**. Every
+remaining unit: build gles2 BEFORE ctest, or re-run the gate standalone and say
+which.
+
+⚠ **The truncation trap fired a FIFTH time** — five zero-byte `build/bin/test_*`
+after an exit 143, all caught by `readelf -h`. Separately, both
+`build-gles2-x86.sh` 143s were killed *links* that gmake deleted cleanly
+(J13's absent-not-truncated shape). **Same trigger, two outcomes, and the scan
+is what tells them apart.**
+
+### J33's result
+
+`renderer_player_physics.cpp` 1,546 → **839** (one method) + 742 (17 methods).
+**Verifier exit 0 as predicted, +34/−0**, every line accounted for. Body
+predictions **exact**; zero range drift. Three proofs, all exit 0, including a
+byte-for-byte diff of the 806-line `updatePlayerMovement` across the split.
+
+**It verified the filename-keyed constraint independently before cutting rather
+than trusting the plan:** `kFloorSecondReader = "renderer_player_physics.cpp"`
+is compared against `path.filename()` for one tunable read at line 135, inside
+`updatePlayerMovement` — so the method had to stay in a file of that name,
+which forced the single cut and sent the collision family out. **No test file
+was edited**, and the new TU matches none of the sweep's tokens, so it is
+invisible to both parts despite entering the recursive sweep.
+
+**Item 12 is settled and should not be re-opened:** 673 lines of headroom means
+no ceiling problem, and decomposing an 806-line method on the hottest
+player-facing path *inside a verbatim-relocation commit* would destroy the only
+cheap proof available. Recorded as Batch-G with the guard note attached.
+
+§Measured's first-person token list is incomplete — it omits
+`kFirstPersonMaxUpPitchDegrees`, which the guard does not cover.
+
 ## Unit table
 
 | Unit | File | Lines | → TUs | Largest after | Wave | Notes |
