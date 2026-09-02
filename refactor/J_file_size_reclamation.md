@@ -660,6 +660,50 @@ but the arm is unreachable in every shipped build. **This belongs in the
 dead-content decision as a distinct kind: not commented out, not `#if 0`, but
 gated on a retired build configuration.**
 
+## ⚠ CORRECTIONS FROM J08 (2026-09-02) — including the batch's first plan defect
+
+**21. THE SINGLE-CONSUMER GREP PROVES A HELPER *CAN* STAY FILE-LOCAL. IT DOES
+NOT PROVE THE PLAN'S RANGES *KEEP* IT THAT WAY.** J08's plan assigned the exp
+helpers (`EXP_FOR_LEVEL` / `MAX_EXP_LEVEL` / `CalculateExpProgress`) to the
+**stays** range and their sole consumer `ZoneProcessExpUpdate` to a **different
+TU** — so the function would have been undeclared and the three statics
+readerless. It contradicted the plan's own sentence about keeping them with
+their callers. **This is the batch's first plan defect that only surfaces at the
+BUILD step**, and every remaining plan should be checked for it: for each
+file-local helper, confirm the plan puts it in the SAME range as its consumer,
+not merely that it has one consumer. J08 fixed it by moving the helper range to
+travel with the consumer; zero verifier exception lines resulted.
+
+**22. On a RELOCATING unit, a mis-sliced destination fails at the most alarming
+possible place.** J08's first re-concatenation attempt failed **exactly at the
+relocation seam** — from its own offset arithmetic on the destination file, not
+a dropped range. Reinforces correction 20: suspect the proof first.
+
+**23. A long build can end as exit 143 OR be backgrounded by the tool with its
+own exit code.** J08's `build-arm-noble.sh` did the latter (~11 min, exit 0).
+**Only the former invalidates binaries.** The protocol's exit-143 section does
+not distinguish them — do not run the ELF scan reflexively on every slow build,
+and do not skip it after a real 143.
+
+**24. STOP ATTRIBUTING STALE `tests/` LINE-NUMBER CITATIONS TO THE SPLITS.**
+J08 checked all seven of its file's citations line by line **at its base commit**
+and every one was **already wrong before the split** (one cites a line that is
+now inside a different function, one a blank line, one a struct field). **Third
+unit in a row to find this.** They are pre-existing doc rot, now owned by J21.
+
+### J08's result
+
+`eq_entities.cpp` 2,786 → **869**, plus 767 / 653 / 391, and `eq_group.cpp`
+760 → **980** (the +209 relocation). **Verifier exit 0, no exception.** Both
+proofs run WITH the destination included, per correction 20 — `cmp` exit 0 over
+2,713 lines, multiset `diff` exit 0 over 3,448. The naive recipe would have
+under-counted by exactly the 209 relocated lines and still looked clean.
+
+Two smaller plan errors it caught: HAZARD 1's prose says "eleven `#ifdef` pairs"
+where its own table correctly lists **eight** (the table is right), and the
+tests/scripts pre-check found **19** hits, not the 12 recorded (all comments,
+zero functional readers).
+
 ## Unit table
 
 | Unit | File | Lines | → TUs | Largest after | Wave | Notes |
