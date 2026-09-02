@@ -776,6 +776,47 @@ moving lines into the residual set — unrelated T-unit feature work has.**
 (J14-J17), 3 with plans written (J10 in flight, J12, J13), and **14 for Wave 6**.
 Zero over the 3,000 hard cap.
 
+## ⚠ CORRECTIONS FROM J10 (2026-09-02)
+
+**26. A PLAN THAT NAMES `tests/CMakeLists.txt` LINE NUMBERS IS STALE BY
+CONSTRUCTION SINCE J20 — and it fails SILENTLY.** J20 split that file (2,850 →
+135 + fragments) between J10's planning and its dispatch, so J10's prescribed
+`grep -n '... CMakeLists.txt tests/CMakeLists.txt'` **would have found nine of
+twelve add-sites and looked complete.** The three test sites had moved to
+`tests/cmake/graphics.cmake` and `tests/cmake/zone_integration.cmake`.
+**Remaining units must `grep -rn` across `tests/`, never name that file.**
+Losing 25% of the add-sites this way produces a link error at best and a
+silently-unbuilt test target at worst.
+
+**27. THE TRUNCATED-BINARY TRAP FIRED AGAIN, AND A SIZE CHECK WOULD HAVE PASSED
+IT.** J10's first build exited 143; the re-invocation **exited 0 with three
+binaries truncated mid-link** — 50-71 MB files with **all-zero ELF headers**.
+Second independent confirmation after J07. **Check the ELF magic, not the size**
+— these were far too large for any size heuristic to flag. (The orchestrator hit
+a third instance on its own merge build: a 377 MB file with zero magic bytes.)
+
+### J10's result
+
+2,211 → 815 / 722 / 454 / 373. **The 21-line verifier prediction held EXACTLY**
+— 7 preamble lines × 3 TUs, no twenty-second line — which is what a prediction
+derived from the plan's own prescribed output looks like (contrast correction
+19). Signed off at merge after md5-verifying all three blocks byte-identical.
+Three proofs, all exit 0: re-concatenation (2,167 lines), line-multiset, and a
+dedicated `#if 0`-region diff (303 lines).
+
+⚠ **NEW EVIDENCE FOR THE DEAD-CONTENT DECISION, and it points the other way from
+"just delete the duplicate": the two `isPending` bodies are NOT identical.** The
+disabled one reads `pendingDecodes_`; the live one reads `decodedEntries_`. The
+`#if 0` block is an **older, DIFFERENT implementation**, not a stale copy — so
+"delete the duplicate" would be substituting different behaviour for redundancy
+removal. It is still dead (299 lines, now 80% of its new TU) and still a
+deletion candidate, but the reason is "obsolete implementation", not "duplicate".
+
+Two smaller plan errors it caught: the cut-boundary table misattributes line
+1130 to the live `isPending` when it closes live `hasPendingWork` (the prose
+below is right, the cut is unaffected), and the plan's whole
+`tests/CMakeLists.txt`-is-2,850-lines urgency paragraph is obsolete.
+
 ## Unit table
 
 | Unit | File | Lines | → TUs | Largest after | Wave | Notes |
