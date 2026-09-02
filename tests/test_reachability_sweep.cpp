@@ -354,7 +354,9 @@ TEST(ReachabilitySweep, UnreachableHandlerMethodsAreExactlyTheBlockedList) {
     ASSERT_GT(virtuals.size(), 100u) << "IActionHandler parse failed";
 
     // Parse the dispatcher into methods.
-    auto lines = splitLines(readFile(kRoot / "src/client/action/action_dispatcher.cpp"));
+    auto lines = splitLines(readFile(kRoot / "src/client/action/action_dispatcher.cpp") +
+                            readFile(kRoot / "src/client/action/action_dispatcher_social.cpp") +
+                            readFile(kRoot / "src/client/action/action_dispatcher_guild_misc.cpp"));
     std::regex def(R"(^\S.*\bActionDispatcher::(\w+)\s*\()");
     std::regex handlerCall(R"(m_handler->(\w+)\s*\()");
     std::map<std::string, std::set<std::string>> callsHandler;   // method -> handler methods
@@ -392,6 +394,8 @@ TEST(ReachabilitySweep, UnreachableHandlerMethodsAreExactlyTheBlockedList) {
     std::set<std::string> reachable;
     for (const auto& f : files) {
         if (f.rel == "src/client/action/action_dispatcher.cpp") continue;
+        if (f.rel == "src/client/action/action_dispatcher_social.cpp") continue;
+        if (f.rel == "src/client/action/action_dispatcher_guild_misc.cpp") continue;
         if (f.rel == "include/client/action/action_dispatcher.h") continue;
         for (const auto& raw : f.lines) {
             std::string code = codePart(raw);
