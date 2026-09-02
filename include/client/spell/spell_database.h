@@ -38,6 +38,13 @@ public:
 
     // ── Lookup by Name ──
     const SpellData* getSpellByName(const std::string& name) const;
+
+    // T316: substring search, case-insensitive, ordered shortest-name-first.
+    // Empty input returns nothing (an empty pattern would otherwise match the
+    // whole table). Capped at kMaxNameSearchResults rows -- /mem only ever
+    // shows the first five and a count, and the cap keeps a one-letter query
+    // from pulling thousands of rows through the LRU cache.
+    static constexpr int kMaxNameSearchResults = 50;
     std::vector<const SpellData*> findSpellsByName(const std::string& partial_name) const;
 
     // ── Statistics ──

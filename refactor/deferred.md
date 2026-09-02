@@ -217,7 +217,24 @@ everything else is open.
    0.01 of this mesh's own CROWN above its feet (3.674 + 3.004 = 6.678), which is
    T310 Leg C's problem, not this item's.
 
-10. **The autorun key is a live no-op** — `EqActionHandler::toggleAutorun()`
+10. **The autorun key is a live no-op** — **STILL OPEN; T316 STOPPED on it and
+    narrowed it.** The fix is NOT in `EqActionHandler`. Measured in T316:
+    (a) the four `EverQuest::StartMove*`/`StartTurn*` setters have **zero callers
+    anywhere in src/ or tests/** — only the `Stop*` half is reachable (from
+    `stopAllMovement()`), so the game-side keyboard-movement system can be turned
+    off and never on; (b) game-side movement steps write through `SetPosLocal()`,
+    which deliberately fires **no** `PlayerMoved` event, so a handler-side autorun
+    is invisible to the renderer and gets overwritten by the renderer's
+    authoritative `PlayerPositionChanged` intent; (c) the only live autorun
+    consumer is `playerMovement_.autorun` in
+    `src/client/graphics/renderer_player_physics.cpp:63`
+    (`moveForward = forward || autorun`) — already wired, **never written by
+    anything**. The fix therefore needs a renderer setter
+    (`irrlicht_renderer.h`/`renderer_player_physics.cpp`) driven from the game side
+    by a new bridge event, plus cancel hooks (backward key in the physics update;
+    zone/death, which have no home yet). `irrlicht_renderer.*` was slot3's
+    territory in T316's dispatch, which is why T316 stopped rather than edited.
+    Original entry: `EqActionHandler::toggleAutorun()`
     (`src/client/eq_action_handler.cpp:139-142`) is a `LOG_DEBUG`. The path is fully
     live: three default bindings (`src/client/input/hotkey_manager.cpp:472-474`:
     Grave, Numpad+, NumLock) -> `bridgeQueue_` -> `GraphicsInputHandler`
@@ -228,12 +245,18 @@ everything else is open.
     *Impact:* three keys a player will actually press do nothing and report success.
     **EXECUTOR-READY.** Audit provenance: #3.
 
-11. **`/mem <name>` partial-name search is exact-match only** —
-    `SpellDatabase::findSpellsByName()`
-    (`src/client/spell/spell_database.cpp:174-186`) forwards to `getSpellByName()`
-    and returns 0 or 1 result; `// TODO: Add a LIKE query to WilleqDatabase`.
-    *Impact:* memorising by partial name fails unless the player types the spell name
-    exactly. **EXECUTOR-READY.** Audit provenance: #7.
+11. ~~**`/mem <name>` partial-name search is exact-match only**~~ **CLOSED by
+    T316.** `WilleqDatabase::findSpellsByNameLike()` is the new bound, escaped
+    `LIKE` query (`ESCAPE '\\'`, `%`/`_`/`\\` in the player's text escaped so
+    typing `%` matches a literal `%` and not all 8066 rows), ordered
+    shortest-name-first and capped at `SpellDatabase::kMaxNameSearchResults` (50);
+    `SpellDatabase::findSpellsByName()` routes every matched id back through the
+    LRU cache. `/mem`'s own disambiguation branch (exact, else single partial
+    match, else list five) was already correct and is unchanged. Pinned through
+    the handler in `tests/test_eq_action_handler_spell_pet.cpp` (partial +
+    lowercase resolves and starts the memorize; `%` and `_` stay literal; empty
+    matches nothing) plus two cases in `tests/test_spell_database.cpp`.
+    Audit provenance: #7.
 
 12. ~~**NO SCROLL INPUT EXISTS ANYWHERE IN THE STATIC UI.**~~ **CLOSED by T313.**
     One router supplies the missing writer: `StaticUIInput::scrollTargetAt()`
@@ -271,25 +294,40 @@ everything else is open.
     skills, and the fix is one input path, not three. Historical entry: the T290
     bullet in the F-list of the AUDIT section below.
 
-13. **`ReplyToTell` keybind returns a sentinel and does nothing** —
-    `ActionDispatcher::openReplyToTell()`
-    (`src/client/action/action_dispatcher.cpp:684-692`) returns
-    `ActionResult::Success("open_reply")` with a `// TODO: Implement when ChatState is
-    added to GameState`.
-    *Impact:* the reply-to-tell key reports success and opens nothing.
-    **EXECUTOR-READY** — but note the comment's premise is stale: `GameState` is now
-    the single store (T288) and the last-tell sender is what needs a home.
+13. **`ReplyToTell` returns a sentinel and does nothing** — **ACTION FIXED by
+    T316, KEY STILL NOT WIRED.** `ActionDispatcher::openReplyToTell()` no longer
+    returns `Success("open_reply")`: it asks
+    `IActionHandler::getLastTellSender()` (new; `EverQuest::m_last_tell_sender`
+    has held the name since T18) and returns `Success("/tell <Name> ")` — the
+    text the chat input opens prefilled with — or
+    `Failure("You have no one to reply to.")`, the same wording `/reply` uses
+    (T222). Pinned end to end from a real `OP_ChannelMessage` tell in
+    `tests/test_zone_chat.cpp`, plus the dispatcher and `InputActionBridge` legs.
+    **What remains, all in T315's territory this dispatch:** `HotkeyAction::ReplyToTell`
+    (R key) has **no `case` in `IrrlichtRenderer`'s HA switch** and no
+    `RendererAction` enumerator, and `ConsoleInputHandler` never raises
+    `InputAction::ReplyToTell` either — so nothing produces the action in
+    production; and `InputActionBridge::setActionCallback()` has **no production
+    caller**, so the prefill string currently reaches only a debug log. Wiring the
+    key and consuming the prefill in the chat input are renderer-side work.
     Audit provenance: #5.
 
-14. **`InteractWorldObject` keybind always fails** —
-    `ActionDispatcher::interactNearestWorldObject()`
-    (`src/client/action/action_dispatcher.cpp:518-526`) returns
-    `Failure("Use clickWorldObject with drop ID")`; `// TODO: Implement when
-    ObjectState is added to GameState`.
-    *Impact:* the interact key cannot open a forge, a chest or any ground container —
-    only the explicit drop-id path works, which no keybind reaches.
-    **EXECUTOR-READY**; the nearest-door sibling directly above it (`:509-516`) is the
-    working template. Audit provenance: #4.
+14. ~~**`InteractWorldObject` keybind always fails**~~ **CLOSED by T316.**
+    `ActionDispatcher::interactNearestWorldObject()` now runs
+    `IActionHandler::findNearestWorldObject(float& outDistance)` (new) and clicks
+    what it finds, refusing with "No object nearby" when nothing is in range —
+    the same shape as `clickNearestDoor()` above it. The query lives on the
+    handler, not on `GameState`: world objects are held in
+    `EverQuest::m_world_objects`, so there is nothing on `m_state` to query (the
+    old TODO's "when ObjectState is added to GameState" premise was never the
+    blocker). Range is 50 units, taken from
+    `IrrlichtRenderer::getNearestWorldObject()`'s own default rather than
+    invented. Found and fixed alongside: `interactNearest()`'s comment has always
+    said "door, object, or NPC" but it never checked objects — it does now, ranked
+    by real distance. Pinned in `tests/test_interact_world_object.cpp` (T144's
+    captured forge `OP_GroundSpawn` -> handler -> dispatcher, in range and out),
+    plus dispatcher and `InputActionBridge` legs.
+    Audit provenance: #4.
 
 15. **Server-FORCED self position/pose changes have no non-sending internal setter.**
     `EverQuest::SetPositionState()` (`src/client/eq_movement.cpp:1479-1532`) always

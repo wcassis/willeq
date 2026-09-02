@@ -2577,6 +2577,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_eq_action_handler_tradeskill)
 
+# T316: the interact-world-object no-op. Drives T144's captured OP_GroundSpawn
+# bytes through a real EverQuest into EqActionHandler::findNearestWorldObject()
+# and on through ActionDispatcher::interactNearestWorldObject() -- the path the
+# interact keybind reaches. Headless: no network, no graphics, no eqemu.
+ADD_EXECUTABLE(test_interact_world_object
+    test_interact_world_object.cpp
+)
+TARGET_LINK_LIBRARIES(test_interact_world_object GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_interact_world_object PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_interact_world_object)
+
 # T230: keyboard hotbar Item route below the action layer --
 # EqActionHandler::findItemSlotByItemId (the id->slot hop) and
 # EqActionHandler::useItem -> EverQuest::UseInventoryItem (the one click-

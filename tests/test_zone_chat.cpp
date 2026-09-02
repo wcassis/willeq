@@ -9,6 +9,7 @@
 #include <gtest/gtest.h>
 
 #include "client/bridge/game_state_bridge.h"
+#include "client/action/action_dispatcher.h"
 #include "client/eq_action_handler.h"
 #include "zone_stream_test_utils.h"
 
@@ -105,6 +106,30 @@ TEST_F(ZoneChatTest, ActionHandler_HasTellToReplyTo_FollowsReceivedTell) {
     ASSERT_NO_THROW(ReplayZone(eq, HC_OP_ChannelMessage, payload));
 
     EXPECT_TRUE(handler.hasTellToReplyTo());
+}
+
+// T316: reply-to-tell used to return Success("open_reply") -- a sentinel with
+// no sender in it, returned even when no tell had ever arrived. This is the
+// whole path: a real OP_ChannelMessage tell -> EverQuest::m_last_tell_sender
+// -> EqActionHandler::getLastTellSender() -> the action a keybind reaches.
+TEST_F(ZoneChatTest, OpenReplyToTell_PrefillsFromTheTellThatActuallyArrived) {
+    eqt::EqActionHandler handler(eq);
+    eqt::action::ActionDispatcher dispatcher(eq.GetGameState());
+    dispatcher.setActionHandler(&handler);
+
+    // Nobody has said anything yet: the action must refuse, not report success.
+    auto before = dispatcher.openReplyToTell();
+    EXPECT_FALSE(before.success);
+    EXPECT_EQ(before.message, "You have no one to reply to.");
+
+    auto payload = ChannelMessagePayload("Friend", CHAT_CHANNEL_TELL, "psst", "Testchar");
+    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_ChannelMessage, payload));
+
+    auto after = dispatcher.openReplyToTell();
+    EXPECT_TRUE(after.success);
+    EXPECT_EQ(after.message, "/tell Friend ")
+        << "the chat input must open prefilled with the sender of the tell "
+           "that arrived, not with the sentinel \"open_reply\"";
 }
 
 TEST_F(ZoneChatTest, ChannelMessage_OwnTellEchoDoesNotUpdateLastTellSender) {

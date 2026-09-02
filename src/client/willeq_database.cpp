@@ -164,6 +164,7 @@ void WilleqDatabase::close() {
     auto fin = [](sqlite3_stmt*& s) { if (s) { sqlite3_finalize(s); s = nullptr; } };
     fin(stmtGetSpell_);
     fin(stmtGetSpellByName_);
+    fin(stmtFindSpellsByNameLike_);
     fin(stmtGetSpellCount_);
     fin(stmtGetString_);
     fin(stmtGetDbString_);
@@ -402,6 +403,54 @@ SpellInfo WilleqDatabase::getSpellByName(const std::string& name) {
     }
 
     return info;
+}
+
+// T316: /mem <partial name> used to resolve through an exact-match query
+// only, so anything but the spell's full name failed. The pattern below is
+// BOUND (never string-concatenated into the SQL) and the user's text is
+// escaped first: without that, a player typing "%" would produce the pattern
+// "%%%" and match the entire spell table. ESCAPE '\' declares the escape
+// character to SQLite; backslash itself is escaped so it stays literal too.
+static std::string escapeLikePattern(const std::string& raw) {
+    std::string out;
+    out.reserve(raw.size() + 8);
+    for (char c : raw) {
+        if (c == '%' || c == '_' || c == '\\') {
+            out.push_back('\\');
+        }
+        out.push_back(c);
+    }
+    return out;
+}
+
+std::vector<SpellNameMatch> WilleqDatabase::findSpellsByNameLike(const std::string& partial,
+                                                                 int limit) {
+    ScopedQueryTimer timer(stats_);
+    std::lock_guard<std::mutex> lock(dbMutex_);
+    std::vector<SpellNameMatch> out;
+    if (!db_ || partial.empty() || limit <= 0) return out;
+
+    auto* stmt = prepare(
+        "SELECT id, name FROM spells WHERE name LIKE ?1 ESCAPE '\\' "
+        "ORDER BY length(name), name LIMIT ?2",
+        stmtFindSpellsByNameLike_);
+    if (!stmt) return out;
+
+    const std::string pattern = "%" + escapeLikePattern(partial) + "%";
+
+    sqlite3_reset(stmt);
+    sqlite3_clear_bindings(stmt);
+    sqlite3_bind_text(stmt, 1, pattern.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 2, limit);
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        SpellNameMatch m;
+        m.id = static_cast<uint32_t>(sqlite3_column_int(stmt, 0));
+        m.name = colText(stmt, 1);
+        out.push_back(std::move(m));
+    }
+    sqlite3_reset(stmt);
+    return out;
 }
 
 uint32_t WilleqDatabase::getSpellCount() {

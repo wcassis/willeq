@@ -897,8 +897,8 @@ TEST_F(ActionDispatcherTest, HandlerWithoutZone_CheckHandlerOnlyMethodsSucceed) 
     EXPECT_TRUE(dispatcher->cancelTrade().success);
     EXPECT_TRUE(dispatcher->setPathfinding(true).success);
 
-    // Every one of these (except openReplyToTell, which never touches the
-    // handler by design) must have actually dispatched.
+    // Every one of these (except openReplyToTell, which only QUERIES the
+    // handler -- T316 -- and never dispatches) must have actually dispatched.
     EXPECT_TRUE(handler.calledOnceWith("stopAllMovement()"));
     EXPECT_TRUE(handler.calledOnceWith("stopFollow()"));
     EXPECT_TRUE(handler.calledOnceWith("clearTarget()"));
@@ -919,13 +919,76 @@ TEST_F(ActionDispatcherTest, ZoneConnected_GatedMethodsSucceed) {
     EXPECT_EQ(handler.count(), 3u);
 }
 
-// openReplyToTell is a curious case: guarded by checkHandler() but never
-// dereferences m_handler on success (it's a UI-layer stub per its TODO).
-TEST_F(ActionDispatcherTest, OpenReplyToTell_SucceedsWithoutTouchingHandler) {
+// T316: openReplyToTell() used to return Success("open_reply") -- a sentinel,
+// no sender, and success even when no tell had ever arrived. It now asks the
+// handler for the last tell sender (a pure query, so the call log stays empty)
+// and hands back the text the chat input opens prefilled with.
+TEST_F(ActionDispatcherTest, OpenReplyToTell_ReturnsPrefillForLastTellSender) {
     connectHandler();
+    handler.lastTellSender = "Friend";
+
     auto result = dispatcher->openReplyToTell();
+
     EXPECT_TRUE(result.success);
+    EXPECT_EQ(result.message, "/tell Friend ")
+        << "the sentinel \"open_reply\" carried no sender and opened nothing";
+    EXPECT_TRUE(handler.empty()) << "a pure query, not a dispatch";
+}
+
+TEST_F(ActionDispatcherTest, OpenReplyToTell_NoTellReceived_FailsInsteadOfSucceeding) {
+    connectHandler();
+    handler.lastTellSender = "";
+
+    auto result = dispatcher->openReplyToTell();
+
+    EXPECT_FALSE(result.success);
+    // Same wording /reply refuses with (T222).
+    EXPECT_EQ(result.message, "You have no one to reply to.");
     EXPECT_TRUE(handler.empty());
+}
+
+// T316: interactNearestWorldObject() used to return
+// Failure("Use clickWorldObject with drop ID") unconditionally. It now runs
+// the handler's nearest-object query and clicks what it finds -- the same
+// shape as clickNearestDoor() directly above it in the dispatcher.
+TEST_F(ActionDispatcherTest, InteractNearestWorldObject_ClicksTheNearestObject) {
+    connectHandler();
+    connectZone();
+    handler.nearestWorldObjectId = 190;
+    handler.nearestWorldObjectDistance = 4.0f;
+
+    auto result = dispatcher->interactNearestWorldObject();
+
+    EXPECT_TRUE(result.success);
+    EXPECT_TRUE(handler.calledOnceWith("clickWorldObject(190)"));
+}
+
+TEST_F(ActionDispatcherTest, InteractNearestWorldObject_NothingNearby_FailsWithoutDispatching) {
+    connectHandler();
+    connectZone();
+    handler.nearestWorldObjectId = 0;
+
+    auto result = dispatcher->interactNearestWorldObject();
+
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(result.message, "No object nearby");
+    EXPECT_TRUE(handler.empty());
+}
+
+// T316: interactNearest()'s own comment has always said "door, object, or
+// NPC", but the object branch was missing -- with no door and no NPC it
+// refused even while standing at a forge.
+TEST_F(ActionDispatcherTest, InteractNearest_PicksWorldObjectWhenItIsTheOnlyThingAround) {
+    connectHandler();
+    connectZone();
+    handler.nearestWorldObjectId = 190;
+    handler.nearestWorldObjectDistance = 4.0f;
+
+    auto result = dispatcher->interactNearest();
+
+    EXPECT_TRUE(result.success);
+    EXPECT_EQ(result.message, "Interacting with object");
+    EXPECT_TRUE(handler.calledOnceWith("clickWorldObject(190)"));
 }
 
 // ===================================================================

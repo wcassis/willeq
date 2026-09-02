@@ -516,13 +516,24 @@ ActionResult ActionDispatcher::clickNearestDoor() {
     return ActionResult::Success();
 }
 
+// T316: this used to return Failure("Use clickWorldObject with drop ID")
+// unconditionally -- the interact-object keybind could never open a forge,
+// a chest or a ground container. Same shape as clickNearestDoor() ten lines
+// above, except the nearest-object query lives on the handler (world objects
+// are in EverQuest::m_world_objects, not GameState) -- see
+// IActionHandler::findNearestWorldObject().
 ActionResult ActionDispatcher::interactNearestWorldObject() {
     auto result = checkZoneConnection();
     if (!result.success) return result;
 
-    // TODO: Implement when ObjectState is added to GameState
-    // For now, world object interaction requires explicit drop ID
-    return ActionResult::Failure("Use clickWorldObject with drop ID");
+    float distance = 0.0f;
+    uint32_t dropId = m_handler->findNearestWorldObject(distance);
+    if (dropId == 0) {
+        return ActionResult::Failure("No object nearby");
+    }
+
+    m_handler->clickWorldObject(dropId);
+    return ActionResult::Success();
 }
 
 ActionResult ActionDispatcher::interactNearest() {
@@ -536,7 +547,7 @@ ActionResult ActionDispatcher::interactNearest() {
 
     // Find the nearest interactable: door or NPC
     float nearestDist = std::numeric_limits<float>::max();
-    enum class InteractType { None, Door, NPC } nearest = InteractType::None;
+    enum class InteractType { None, Door, Object, NPC } nearest = InteractType::None;
 
     // Check doors
     auto& doors = m_state.doors();
@@ -550,6 +561,17 @@ ActionResult ActionDispatcher::interactNearest() {
             nearestDist = dist;
             nearest = InteractType::Door;
         }
+    }
+
+    // T316: world objects. The comment at this function's call site has
+    // always said "door, object, or NPC" and the renderer's own generic
+    // interact (HA::Interact) tries a door then an object -- but this branch
+    // was missing, so a forge or a chest was never a candidate here either.
+    float objectDist = 0.0f;
+    uint32_t objectId = m_handler->findNearestWorldObject(objectDist);
+    if (objectId != 0 && objectDist < nearestDist) {
+        nearestDist = objectDist;
+        nearest = InteractType::Object;
     }
 
     // Check NPCs (non-player entities that are not hostile)
@@ -571,6 +593,9 @@ ActionResult ActionDispatcher::interactNearest() {
         case InteractType::Door:
             m_handler->clickNearestDoor();
             return ActionResult::Success("Interacting with door");
+        case InteractType::Object:
+            m_handler->clickWorldObject(objectId);
+            return ActionResult::Success("Interacting with object");
         case InteractType::NPC:
             m_handler->targetEntity(npc->spawnId);
             m_handler->hailTarget();
@@ -681,14 +706,31 @@ ActionResult ActionDispatcher::replyToLastTell(const std::string& message) {
     return ActionResult::Success();
 }
 
+// T316: this used to return Success("open_reply") -- a sentinel string, no
+// sender, nothing opened, and success reported even when no tell had ever
+// arrived. The old TODO said "implement when ChatState is added to
+// GameState"; that premise is stale (GameState has been the single store
+// since T288) and it was never the missing piece anyway. What was missing
+// was the last tell sender's NAME at this layer: EverQuest has tracked it in
+// m_last_tell_sender since T18, and IActionHandler::getLastTellSender()
+// (T316) exposes it.
+//
+// Success now carries the text the chat input is meant to open prefilled
+// with -- "/tell <Name> " -- rather than a sentinel; with no tell received
+// it refuses in the same words /reply uses (T222).
 ActionResult ActionDispatcher::openReplyToTell() {
     auto result = checkHandler();
     if (!result.success) return result;
 
-    // TODO: Implement when ChatState is added to GameState
-    // The UI layer should track the last tell sender and handle this
-    // For now, return a special message that the UI can recognize
-    return ActionResult::Success("open_reply");
+    const std::string sender = m_handler->getLastTellSender();
+    if (sender.empty()) {
+        return ActionResult::Failure("You have no one to reply to.");
+    }
+
+    // The raw wire name, not a display name: this text is meant to be sent
+    // back as a command, and that is the name the server matches on --
+    // exactly what replyToLastTell() passes to SendChatMessage().
+    return ActionResult::Success("/tell " + sender + " ");
 }
 
 // ========== Group Actions ==========

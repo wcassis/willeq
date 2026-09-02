@@ -17,11 +17,13 @@
 
 #include <gtest/gtest.h>
 
+#include "client/bridge/game_state_bridge.h"
 #include "client/eq.h"
 #include "client/eq_action_handler.h"
 #include "client/spell/spell_manager.h"
 #include "client/willeq_database.h"
 
+#include <cctype>
 #include <cstdlib>
 #include <fstream>
 #include <functional>
@@ -53,6 +55,13 @@ EQT::WilleqDatabase g_willeq_db;
 bool g_db_available = false;
 
 bool hasDb() { return g_db_available; }
+
+// T316: a null-consumer bridge so the memorize-started event can be observed
+// (test_eq_action_handler_tradeskill.cpp's idiom).
+class RecordingBridge : public eqt::bridge::GameStateBridge {
+public:
+    void applyEvent(const eqt::state::GameEvent&) override {}
+};
 
 // EverQuest is not copyable/movable (owns unique_ptrs, a std::thread, an
 // atomic<bool>, ...) -- unlike test_spell_manager.cpp's MakeEq() helper
@@ -249,6 +258,138 @@ TEST(EqActionHandlerSpellPet, MemorizeSpellByName_UnknownName_DoesNotMemorizeAny
 
     EXPECT_EQ(spellMgr->getMemorizedSpell(0), EQ::SPELL_UNKNOWN)
         << "an unresolvable spell name must not memorize anything";
+}
+
+// ---------------------------------------------------------------------
+// T316: /mem <partial name>. findSpellsByName() forwarded to the exact-match
+// query getSpellByName(), so a partial name found nothing and the player was
+// told the spell did not exist -- for a spell that is right there in the
+// book. It now runs a bound, escaped LIKE query.
+// ---------------------------------------------------------------------
+
+TEST(EqActionHandlerSpellPet, MemorizeSpellByName_PartialName_ResolvesAndMemorizes) {
+    if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
+    MAKE_TEST_EQ(eq)
+    RecordingBridge bridge;
+    eq.setBridge(&bridge);
+    ASSERT_TRUE(eq.InitializeSpellSystem(""));
+    EqActionHandler handler(eq);
+    auto* spellMgr = eq.GetSpellManager();
+    auto& db = spellMgr->getDatabase();
+
+    // Find a spell SOME class can cast at 60 whose name has a lowercased tail
+    // that identifies exactly ONE spell -- so the /mem disambiguation branch
+    // is not what is under test here, the resolution is. (The Warrior filter
+    // the exact-match test above uses matches nothing in this database, which
+    // is why that test skips; scanning the classes avoids inheriting that.)
+    uint32_t id = 0;
+    std::string partial;
+    EQ::PlayerClass casterClass = EQ::PlayerClass::Unknown;
+    for (uint32_t candidate = 1; candidate <= 4000 && id == 0; ++candidate) {
+        const EQ::SpellData* s = db.getSpell(candidate);
+        if (!s || s->name.size() < 8) continue;
+
+        EQ::PlayerClass usable = EQ::PlayerClass::Unknown;
+        for (uint8_t c = 1; c <= 16; ++c) {
+            if (s->canClassUse(static_cast<EQ::PlayerClass>(c), 60)) {
+                usable = static_cast<EQ::PlayerClass>(c);
+                break;
+            }
+        }
+        if (usable == EQ::PlayerClass::Unknown) continue;
+
+        std::string tail = s->name.substr(1);
+        for (char& c : tail) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        auto matches = db.findSpellsByName(tail);
+        if (matches.size() == 1 && matches[0]->id == candidate) {
+            id = candidate;
+            partial = tail;
+            casterClass = usable;
+        }
+    }
+    if (id == 0) GTEST_SKIP() << "no uniquely-identifying partial found in scanned range";
+
+    // The pre-T316 behaviour, still available and still exact: this is why
+    // /mem used to fail.
+    EXPECT_EQ(db.getSpellByName(partial), nullptr)
+        << "'" << partial << "' is deliberately not an exact spell name";
+
+    const std::string fullName = db.getSpell(id)->name;
+
+    ASSERT_TRUE(spellMgr->scribeSpell(id, 0));
+    eq.GetGameState().player().setClass(static_cast<uint32_t>(casterClass));
+    eq.GetGameState().player().setLevel(60);
+    ASSERT_EQ(spellMgr->getMemorizedSpell(4), EQ::SPELL_UNKNOWN);
+    bridge.drainEvents();
+
+    handler.memorizeSpellByName(partial, 5);  // gem 5 (1-indexed) -> index 4
+
+    // Memorization is timed (SpellManager::updateMemorization completes it on
+    // a later tick), so the gem is not filled synchronously. What IS
+    // synchronous is the memorize-started event, and it names the spell the
+    // partial resolved to -- which is precisely what was broken.
+    EXPECT_TRUE(spellMgr->isMemorizing())
+        << "/mem with the partial, lowercased name '" << partial << "' must "
+           "start memorizing spell " << id << "; before T316 the name "
+           "resolved to nothing and the player was told it did not exist";
+
+    std::string startedName;
+    for (const auto& ev : bridge.drainEvents()) {
+        if (ev.type == eqt::state::GameEventType::SpellMemorizeVisualStarted) {
+            startedName = std::get<eqt::state::SpellMemorizeVisualStartedData>(ev.data).spellName;
+        }
+    }
+    EXPECT_EQ(startedName, fullName);
+}
+
+TEST(EqActionHandlerSpellPet, FindSpellsByName_PartialMatchesManySpells) {
+    if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
+    MAKE_TEST_EQ(eq)
+    ASSERT_TRUE(eq.InitializeSpellSystem(""));
+    auto& db = eq.GetSpellManager()->getDatabase();
+
+    // Lowercase on purpose: SQLite's LIKE is ASCII-case-insensitive, and the
+    // exact-match query it replaced was not.
+    auto matches = db.findSpellsByName("heal");
+    EXPECT_GT(matches.size(), 1u)
+        << "a substring shared by many spells must return many spells";
+    EXPECT_LE(static_cast<int>(matches.size()), EQ::SpellDatabase::kMaxNameSearchResults);
+    for (const auto* s : matches) {
+        std::string lower = s->name;
+        for (char& c : lower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        EXPECT_NE(lower.find("heal"), std::string::npos) << s->name;
+    }
+}
+
+// The escaping half. Unescaped, "%" is the SQL "match anything" wildcard and
+// "_" is "match any one character": either would return the row cap for every
+// query. Both must be literal characters from the player's point of view.
+TEST(EqActionHandlerSpellPet, FindSpellsByName_WildcardCharactersAreLiteral) {
+    if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
+    MAKE_TEST_EQ(eq)
+    ASSERT_TRUE(eq.InitializeSpellSystem(""));
+    auto& db = eq.GetSpellManager()->getDatabase();
+
+    for (const char* wildcard : {"%", "_"}) {
+        auto matches = db.findSpellsByName(wildcard);
+        EXPECT_LT(static_cast<int>(matches.size()), EQ::SpellDatabase::kMaxNameSearchResults)
+            << "'" << wildcard << "' matched the row cap -- it is being "
+               "treated as a SQL wildcard, not as a character the player typed";
+        for (const auto* s : matches) {
+            EXPECT_NE(s->name.find(wildcard), std::string::npos)
+                << "'" << s->name << "' does not literally contain '" << wildcard << "'";
+        }
+    }
+}
+
+TEST(EqActionHandlerSpellPet, FindSpellsByName_EmptyInputMatchesNothing) {
+    if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
+    MAKE_TEST_EQ(eq)
+    ASSERT_TRUE(eq.InitializeSpellSystem(""));
+    auto& db = eq.GetSpellManager()->getDatabase();
+
+    // An empty pattern would be "%%" -- every spell in the game.
+    EXPECT_TRUE(db.findSpellsByName("").empty());
 }
 
 // ---------------------------------------------------------------------

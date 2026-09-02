@@ -171,16 +171,22 @@ const SpellData* SpellDatabase::getSpellByName(const std::string& name) const {
     return nullptr;
 }
 
+// T316: this used to forward to getSpellByName() -- an exact-match query --
+// so /mem <partial name> found nothing unless the player typed the spell's
+// full name. It now runs a real substring LIKE query (bound + escaped, see
+// WilleqDatabase::findSpellsByNameLike) and routes every matched id back
+// through getSpell() so the results come out of the same LRU cache as every
+// other lookup rather than a second full-column SELECT.
 std::vector<const SpellData*> SpellDatabase::findSpellsByName(const std::string& partial_name) const {
     std::vector<const SpellData*> results;
-    if (!m_db) return results;
+    if (!m_db || partial_name.empty()) return results;
 
-    // Use SQL LIKE query for partial matching
-    // For now, search by exact prefix via getSpellByName fallback
-    // TODO: Add a LIKE query to WilleqDatabase for partial name search
-    auto* spell = getSpellByName(partial_name);
-    if (spell) {
-        results.push_back(spell);
+    auto matches = m_db->findSpellsByNameLike(partial_name, kMaxNameSearchResults);
+    results.reserve(matches.size());
+    for (const auto& match : matches) {
+        if (const SpellData* spell = getSpell(match.id)) {
+            results.push_back(spell);
+        }
     }
     return results;
 }
