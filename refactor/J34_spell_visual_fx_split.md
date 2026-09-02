@@ -775,10 +775,38 @@ it that could silently shorten a range.)
 ```
 BASE = 678bd30702abe3fd931200010bd6ed1f48c941da   (git merge-base fable HEAD)
 $ python3 scripts/refactor/verify_move_only.py "$BASE..HEAD" --repo /mnt/projects/fable/wt/slot3
-<<<VERIFIER_OUTPUT>>>
+Non-C++ files changed (not verified, review separately):
+  CMakeLists.txt
+  refactor/J34_spell_visual_fx_split.md
+
+Files verified: 2
+Boilerplate: +35 / -0 lines (allowed)
+
+PASS: move-only (modulo boilerplate).
+VERIFIER_EXIT=0
 ```
 
-**Prediction was EXIT 0, +0/−0 substantive. Result: <<<VERIFIER_VERDICT>>>.**
+**Prediction was EXIT 0, +0/-0 substantive. Result: EXIT 0, +0/-0 substantive,
++35 boilerplate / -0. The prediction held exactly.**
+
+**Every one of the 35 flagged lines enumerated** (re-run through the script's own
+`collect()` so the list is the verifier's, not my reconstruction) — all
+boilerplate, all explained by the preamble copy and the two headers, and
+**nothing beyond the predicted set**:
+
+| count | line | why |
+|---|---|---|
+| +11 | the eleven `#include` lines | preamble copied verbatim into the new TU; each distinct line's count goes 1 -> 2 |
+| +1 | `#ifdef EQT_HAS_GLES2` | ditto |
+| +1 | `#endif` | ditto |
+| +1 | `namespace EQ {` | the new TU's open |
+| +1 | `} // namespace EQ` | the close replicated into the stays file |
+| +20 | `/*`, `*/`, four bare `*`, and the fourteen distinct header text lines (two of which appear in both headers, hence count 2) | the two adapted `/* … */` file headers |
+
+**REMOVED: 0.** Correction 54's rule is visible here in the clean case: the
+preamble lines' **count** changed (1 -> 2), which is exactly why they cost
+boilerplate lines, while every one of the 1,497 body lines kept both its text
+and its count and therefore cancelled to zero.
 
 Re-derived from what the plan prescribes, using the **real** include count of
 eleven rather than §Measured's thirteen: the copied preamble is 100% boilerplate
