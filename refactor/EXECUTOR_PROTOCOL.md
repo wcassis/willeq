@@ -25,7 +25,24 @@ references this file; plans carry only unit-specific content.
   with a shell-parse error, not a test failure (T293). Verify a build by
   its EXIT CODE, never by grepping its log: `cmake --build ... > log 2>&1;
   echo EXIT=$?` — and note `grep ' error '` NEVER matches GCC, which prints
-  `error:`.** NEVER end a turn waiting on a
+  `error:`.**
+  ⚠⚠ **AND THE RE-INVOCATION AFTER A TIMEOUT LIES TO YOU (J07, 2026-09-02).**
+  After a build is killed at the 600 s ceiling (exit 143), the second
+  `cmake --build` **exits 0 while binaries are still TRUNCATED mid-link** —
+  cmake does not rebuild them, because the partial file is NEWER than its
+  inputs. J07 had **twelve** truncated binaries behind a clean exit 0. Worse,
+  **`ctest` reports only the FIRST discovery failure**, so fixing them one at a
+  time costs a full suite run each. **After ANY exit-143 build, scan for
+  truncation in one pass before trusting the rebuild** — check every produced
+  binary for a valid ELF magic (`\x7fELF`) and non-trivial size, and delete +
+  rebuild every one that fails. This is the T293 trap, and it is worse than
+  T293 recorded.
+  ⚠ Related but DIFFERENT: a `ctest` **discovery-stage** failure
+  ("Process terminated due to timeout" while listing a test's cases, or exit 8
+  in `GoogleTestAddTests.cmake`) can also be plain cold-cache contention with an
+  intact binary — J05 and J07 each hit one. Check the binary
+  (`--gtest_list_tests`) before concluding truncation. **Two different discovery
+  failures, two causes, neither is a test failure.** NEVER end a turn waiting on a
   background task or monitor. This failure mode has stalled 5+ units
   (T128 alone stalled 3 times in one unit); it is forbidden. Use
   `scripts/wait_for.sh` instead of writing your own polling loop — it
