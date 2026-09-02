@@ -64,8 +64,16 @@ void GraphicsInputHandler::updateFromEventReceiver() {
     // Update mouse state
     m_state.mouseX = m_eventReceiver->getMouseX();
     m_state.mouseY = m_eventReceiver->getMouseY();
-    m_state.mouseDeltaX = m_eventReceiver->getMouseDeltaX();
-    m_state.mouseDeltaY = m_eventReceiver->getMouseDeltaY();
+    // T312: the getMouseDeltaX/Y() calls that used to sit here were DELETED.
+    // Those accessors are a destructive read-and-reset, and the render
+    // thread's mouse-look (IrrlichtRenderer::updatePlayerMovement) is their
+    // real consumer -- exactly the two-consumer shape of T230/T235. This
+    // side wrote the value into InputState::mouseDelta{X,Y}, which has no
+    // reader anywhere in the tree (InputHandler::getState() has zero
+    // production callers), so the poll could only ever STEAL the delta: any
+    // game tick that landed between two frames froze the camera for that
+    // frame. m_state.mouseDelta{X,Y} therefore stay 0 here, as they already
+    // do in NullInputHandler.
     m_state.leftButtonDown = m_eventReceiver->isLeftButtonDown();
     m_state.rightButtonDown = m_eventReceiver->isRightButtonDown();
     m_state.leftButtonClicked = m_eventReceiver->wasLeftButtonClicked();
