@@ -1,0 +1,265 @@
+# tests/cmake/action_handlers.cmake -- included from tests/CMakeLists.txt.
+# EqActionHandler families: casting, transforms, GM commands, who/inspect, trade, raid, login/world seam.
+# Moved verbatim from tests/CMakeLists.txt by J20 (no target, source or
+# link changes). Included in the tests/ directory scope, so every variable
+# set in the top-level preamble is in effect here.
+
+# T240: castSpell()/castSpellOnTarget()/memorizeSpell() against the real
+# EverQuest + EQ::SpellManager + a real DaybreakConnection over
+# FakeUdpTransport (T234 WireHarness idiom), gems loaded through the same
+# setSpellGems() call the PlayerProfile handler makes, outbound
+# OP_CastSpell / OP_MemorizeSpell bytes asserted. Replaces T93's
+# test_eq_action_handler_transforms (its two tests observed the
+# CombatManager gem map/IsCasting() that T240 deleted; the 1-based gem
+# conversion they pinned is pinned here on the real store). DB-gated cases
+# skip without data/willeq.db. No network, no graphics, no eqemu.
+ADD_EXECUTABLE(test_eq_action_handler_cast
+    test_eq_action_handler_cast.cpp
+)
+TARGET_COMPILE_DEFINITIONS(test_eq_action_handler_cast PRIVATE WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+TARGET_LINK_LIBRARIES(test_eq_action_handler_cast GTest::gtest willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_eq_action_handler_cast PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_eq_action_handler_cast)
+
+# T234: the five transforms T93 listed but could not reach (targetSelf,
+# targetGroupMember, hailTarget, setMovementMode, setPositionState) pinned
+# against the real EverQuest: entities/pet/group via replayed NewSpawn +
+# GroupUpdate packets, and a real DaybreakConnection over FakeUdpTransport
+# installed as m_zone_connection so the outbound TargetMouse/ChannelMessage
+# bytes can be asserted. No network, no graphics, no eqemu.
+ADD_EXECUTABLE(test_eq_action_handler_transforms_real
+    test_eq_action_handler_transforms_real.cpp
+)
+TARGET_LINK_LIBRARIES(test_eq_action_handler_transforms_real GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_eq_action_handler_transforms_real PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_eq_action_handler_transforms_real)
+
+# T167: PlayerProfile appearance parse + the /appearance merge. Pins the seven
+# PlayerProfile offsets (verified against eqemu's titanium_structs.h) and the
+# merge that keeps an unnamed field from being reset to zero on the server.
+# Same headless EverQuest + EqActionHandler idiom as the transforms tests
+# above -- no network, no graphics, no eqemu.
+ADD_EXECUTABLE(test_profile_appearance
+    test_profile_appearance.cpp
+)
+TARGET_LINK_LIBRARIES(test_profile_appearance GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_profile_appearance PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_profile_appearance)
+
+# T217: group-accept inviter name (the T99 aliasing bug) and the OP_GMHideMe
+# sender body (the T148 misroute). Headless EverQuest + TestBridge + the T88
+# send-guard bypass; the hideme body is read through a T167-style seam.
+ADD_EXECUTABLE(test_group_accept_gm_hideme
+    test_group_accept_gm_hideme.cpp
+)
+TARGET_LINK_LIBRARIES(test_group_accept_gm_hideme GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_group_accept_gm_hideme PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_group_accept_gm_hideme)
+
+# T229: the two remaining T148 GM-sender defects -- SendGMSummon's zeroed
+# coordinates (eqemu READS them) and ZoneProcessGMFind's int32 decode of a
+# float reply. Pins both structs against eqemu's field order/types.
+ADD_EXECUTABLE(test_gm_summon_find
+    test_gm_summon_find.cpp
+)
+TARGET_LINK_LIBRARIES(test_gm_summon_find GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_gm_summon_find PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_gm_summon_find)
+
+# T169: OP_RaidUpdate decoding -- the action codes against eqemu's
+# common/raid.h and the per-action body shapes (actions 8, 10, 14 and 30 do
+# NOT have `parameter` where the general body does). Links willeq_core for
+# EQT::DecodeRaidUpdate + EQ::Net::Packet; no network, no graphics, no eqemu.
+ADD_EXECUTABLE(test_raid_update_decode
+    test_raid_update_decode.cpp
+)
+TARGET_LINK_LIBRARIES(test_raid_update_decode GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_raid_update_decode PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_raid_update_decode)
+
+# T177: OP_Bind_Wound reply outcome mapping. Pure function, no network/graphics;
+# links only the single TU under test.
+ADD_EXECUTABLE(test_bind_wound_outcome
+    test_bind_wound_outcome.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/bind_wound_outcome.cpp
+)
+TARGET_LINK_LIBRARIES(test_bind_wound_outcome GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_bind_wound_outcome)
+
+# T178: OP_WhoAllResponse %1 count substitution. Pure function, no deps.
+ADD_EXECUTABLE(test_who_format
+    test_who_format.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/who_format.cpp
+)
+TARGET_LINK_LIBRARIES(test_who_format GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_who_format)
+
+# T224: OP_WhoAllResponse entry parsing/formatting (pure, who_response.cpp)
+# plus the handler end-to-end through the ReplayZonePacket seam, observed as
+# SystemMessage bridge events (same idiom as test_zone_chat.cpp).
+ADD_EXECUTABLE(test_who_response
+    test_who_response.cpp
+)
+TARGET_LINK_LIBRARIES(test_who_response GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_who_response PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+# T271: /who renders the race name, which is served from race_models now --
+# the fixture opens the shipped db the way EverQuest::OpenDatabase() does.
+TARGET_COMPILE_DEFINITIONS(test_who_response PRIVATE
+    WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+GTEST_DISCOVER_TESTS(test_who_response)
+
+# T170: OP_InspectAnswer generation -- the field inversion between the request
+# and the answer (TargetID is the requester in an answer, the inspected player
+# in a request) and the sender itself through a real headless EverQuest.
+ADD_EXECUTABLE(test_inspect_answer
+    test_inspect_answer.cpp
+)
+TARGET_LINK_LIBRARIES(test_inspect_answer GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_inspect_answer PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_inspect_answer)
+
+# T95: regression tests for the previously-unvalidated int->enum casts in
+# EqActionHandler::setMovementMode()/setPositionState()/sendPetCommand() --
+# T93's deferred finding. MovementMode/PositionState are plain enums with no
+# fixed underlying type, so an out-of-range static_cast into them was
+# undefined behaviour, not merely a wrong result. Same headless EverQuest +
+# EqActionHandler idiom as T88/T90/T93 above -- no network, no graphics, no
+# eqemu.
+ADD_EXECUTABLE(test_eq_action_handler_enum_guards
+    test_eq_action_handler_enum_guards.cpp
+)
+TARGET_LINK_LIBRARIES(test_eq_action_handler_enum_guards GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_eq_action_handler_enum_guards PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_eq_action_handler_enum_guards)
+
+# T103: regression tests proving EqActionHandler's trade methods
+# (requestTrade/acceptTrade/cancelTrade/declineTrade) read precondition/
+# display state from state::TradeState (the projection T103 added) rather
+# than reaching into TradeManager directly. Same headless EverQuest +
+# EqActionHandler idiom as T95 above -- no network, no graphics, no eqemu.
+ADD_EXECUTABLE(test_eq_action_handler_trade
+    test_eq_action_handler_trade.cpp
+)
+TARGET_LINK_LIBRARIES(test_eq_action_handler_trade GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_eq_action_handler_trade PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_eq_action_handler_trade)
+
+# T101: real-EqActionHandler coverage for the SpellManager-backed methods
+# the Spells+Pet migration added/repointed (beginCastFromGem(),
+# interruptCast() [repointed from CombatManager], forgetSpell() [repointed
+# from a stub], memorizeSpellByName()). Same headless EverQuest +
+# EqActionHandler idiom as T88/T90/T93/T95 above -- no network, no
+# graphics, no eqemu. DB-dependent cases follow test_spell_manager.cpp's
+# hasDb() + GTEST_SKIP precedent.
+ADD_EXECUTABLE(test_eq_action_handler_spell_pet
+    test_eq_action_handler_spell_pet.cpp
+)
+TARGET_COMPILE_DEFINITIONS(test_eq_action_handler_spell_pet PRIVATE WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+TARGET_LINK_LIBRARIES(test_eq_action_handler_spell_pet GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_eq_action_handler_spell_pet PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_eq_action_handler_spell_pet)
+
+# T221 (Option A stage 2): every READ-model domain the GameStateSyncBridge
+# projection was the sole writer of (pet, spells, entity position/appearance,
+# combat target/auto-attack, inventory occupancy) is now written at the source
+# (EverQuest::m_game_state) by the owning handler. Each case runs with and
+# without a bridge attached (the no-bridge leg proves the writes precede the
+# bridge guards). Headless EverQuest + ReplayZonePacket seam, same idiom as
+# test_combat_manager / test_eq_action_handler_spell_pet (DB-dependent cast
+# case follows the hasDb() + GTEST_SKIP precedent). Own main() registers the
+# global willeq.db, so gtest_main is NOT linked.
+ADD_EXECUTABLE(test_game_state_source_writes
+    test_game_state_source_writes.cpp
+)
+TARGET_COMPILE_DEFINITIONS(test_game_state_source_writes PRIVATE WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+TARGET_LINK_LIBRARIES(test_game_state_source_writes GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_game_state_source_writes PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_game_state_source_writes)
+
+# T288: position/heading, spawn id and zone identity have one store each.
+# Coherence assertions across the public EverQuest accessors and the state
+# layer, driven through the real packet handlers (replay seam). No network,
+# no graphics, no eqemu.
+ADD_EXECUTABLE(test_position_store_coherence
+    test_position_store_coherence.cpp
+)
+TARGET_LINK_LIBRARIES(test_position_store_coherence GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_position_store_coherence PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_position_store_coherence)
+
+# T05: login/world replay seam smoke test (ReplayLoginPacket/ReplayWorldPacket
+# -> DispatchLoginPacket/DispatchWorldPacket). Same replay-seam idiom as
+# test_zone_connection_flow above -- no network, no graphics, no live
+# connection -- so safe to auto-discover.
+ADD_EXECUTABLE(test_login_world_seam
+    test_login_world_seam.cpp
+)
+TARGET_LINK_LIBRARIES(test_login_world_seam GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_login_world_seam PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_login_world_seam)
+
+# T18: entity-domain zone-stream tests (eq_entities.cpp) -- real-capture
+# full-stream replay + synthetic Spawn_Struct decode and malformed-packet
+# guards. Same replay-seam idiom as test_zone_connection_flow.
+ADD_EXECUTABLE(test_zone_entities
+    test_zone_entities.cpp
+)
+TARGET_LINK_LIBRARIES(test_zone_entities GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_zone_entities PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_zone_entities)
+
+# T18: chat-domain zone-stream tests (eq_chat.cpp) -- ChannelMessage channel
+# mapping, /reply tracking, size guards, and real-capture chat replay,
+# observed through GameStateBridge events.
+ADD_EXECUTABLE(test_zone_chat
+    test_zone_chat.cpp
+)
+TARGET_LINK_LIBRARIES(test_zone_chat GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_zone_chat PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_zone_chat)
+
+# T06: login/world flow coverage (real-capture replay, synthetic sequencing,
+# and robustness cases) -- the thing the T05 seam above was built for. Same
+# replay-seam idiom -- no network, no graphics, no live connection -- so safe
+# to auto-discover. Real-capture replay self-skips when data/captures/session.sleq
+# is absent.
+ADD_EXECUTABLE(test_login_world_flow
+    test_login_world_flow.cpp
+)
+TARGET_LINK_LIBRARIES(test_login_world_flow GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_login_world_flow PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_login_world_flow)

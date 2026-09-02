@@ -1,0 +1,202 @@
+# tests/cmake/packets_skills.cmake -- included from tests/CMakeLists.txt.
+# Captured-packet replay, skill gates/possession, tradeskill + hotbar handlers, entity size/collision, group/chat packet shapes.
+# Moved verbatim from tests/CMakeLists.txt by J20 (no target, source or
+# link changes). Included in the tests/ directory scope, so every variable
+# set in the top-level preamble is in effect here.
+
+# T147: captured-bytes harness (tests/captured_packets.h) -- pins packet structs
+# to real observed wire bytes rather than to sizeof(). See the header's docstring.
+ADD_EXECUTABLE(test_captured_packets test_captured_packets.cpp)
+TARGET_LINK_LIBRARIES(test_captured_packets GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_captured_packets)
+
+# T149: real-EverQuest/EqActionHandler coverage for the four tradeskill recipe
+# commands -- specifically that object_type is resolved from the OPEN
+# container (T144's WorldObject::object_type + the drop_id
+# ZoneProcessClickObjectAction records) and never supplied by the caller.
+# Drives T144's real captured OP_GroundSpawn bytes through the production
+# replay seam. Same headless EverQuest + EqActionHandler idiom as
+# test_eq_action_handler_trade above -- no network, no graphics, no eqemu.
+ADD_EXECUTABLE(test_eq_action_handler_tradeskill
+    test_eq_action_handler_tradeskill.cpp
+)
+TARGET_LINK_LIBRARIES(test_eq_action_handler_tradeskill GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_eq_action_handler_tradeskill PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_eq_action_handler_tradeskill)
+
+# T316: the interact-world-object no-op. Drives T144's captured OP_GroundSpawn
+# bytes through a real EverQuest into EqActionHandler::findNearestWorldObject()
+# and on through ActionDispatcher::interactNearestWorldObject() -- the path the
+# interact keybind reaches. Headless: no network, no graphics, no eqemu.
+ADD_EXECUTABLE(test_interact_world_object
+    test_interact_world_object.cpp
+)
+TARGET_LINK_LIBRARIES(test_interact_world_object GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_interact_world_object PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_interact_world_object)
+
+# T230: keyboard hotbar Item route below the action layer --
+# EqActionHandler::findItemSlotByItemId (the id->slot hop) and
+# EqActionHandler::useItem -> EverQuest::UseInventoryItem (the one click-
+# effect sender, shared with the mouse path). Same headless EverQuest +
+# RecordingBridge idiom as test_eq_action_handler_tradeskill above.
+ADD_EXECUTABLE(test_eq_action_handler_hotbar_item
+    test_eq_action_handler_hotbar_item.cpp
+)
+TARGET_LINK_LIBRARIES(test_eq_action_handler_hotbar_item GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_eq_action_handler_hotbar_item PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_eq_action_handler_hotbar_item)
+
+# T239: real-EverQuest coverage for the keyboard hotbar Emote/Macro/Combat
+# route below the action layer: EqActionHandler::activateHotbarCommandSlot
+# -> EverQuest::ActivateHotbarCommandSlot (eq_bridge.cpp; the ONE command-slot
+# body, shared with the mouse HotbarActivateIntent arm).
+ADD_EXECUTABLE(test_eq_action_handler_hotbar_command
+    test_eq_action_handler_hotbar_command.cpp
+)
+TARGET_LINK_LIBRARIES(test_eq_action_handler_hotbar_command GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_eq_action_handler_hotbar_command PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_eq_action_handler_hotbar_command)
+
+# T152: the two skill-opcode bodies this client had to build from scratch
+# (OP_Disarm, OP_PickPocket), pinned field-by-field at named offsets against
+# eqemu's Disarm_Struct / PickPocket_Struct. Header-only -- no willeq_core, no
+# network, no graphics. NOTE the authority is eqemu SOURCE, not captured wire
+# bytes; see the file's docstring and T152's Review.
+ADD_EXECUTABLE(test_skill_packet_bodies test_skill_packet_bodies.cpp)
+TARGET_LINK_LIBRARIES(test_skill_packet_bodies GTest::gtest_main)
+TARGET_INCLUDE_DIRECTORIES(test_skill_packet_bodies PRIVATE ${CMAKE_SOURCE_DIR}/include)
+GTEST_DISCOVER_TESTS(test_skill_packet_bodies)
+
+# T159: the skill possession gate and the real per-class cap table behind it.
+# Loads the SHIPPED config/skill_caps.json by path (WILLEQ_REPO_ROOT) -- the
+# gate's data must be the file the client ships, not a fixture. Same headless
+# EverQuest seam as test_combat_manager.cpp (MakeEq() + live CombatManager /
+# SkillManager + TestBridge); no network, no graphics device, no eqemu.
+# New file: test_command_processor.cpp is past the 3000-line FAIL ceiling.
+ADD_EXECUTABLE(test_skill_possession_gate
+    test_skill_possession_gate.cpp
+)
+TARGET_LINK_LIBRARIES(test_skill_possession_gate GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_skill_possession_gate PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_skill_possession_gate)
+
+# T317: the two skill gates that were not gates -- checkCombatRequirement()
+# substituted "has a target" for "in combat", and checkPositionRequirement()
+# returned true unconditionally AND had no caller. Same headless EverQuest
+# seam as test_skill_possession_gate.cpp; no network, no graphics, no eqemu.
+ADD_EXECUTABLE(test_skill_gates
+    test_skill_gates.cpp
+)
+TARGET_LINK_LIBRARIES(test_skill_gates GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_skill_gates PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_skill_gates)
+
+# T317: the guild opcodes' rank fields, and where the player's real rank lives
+ADD_EXECUTABLE(test_guild_wire_rank
+    test_guild_wire_rank.cpp
+)
+TARGET_LINK_LIBRARIES(test_guild_wire_rank GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_guild_wire_rank PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_guild_wire_rank)
+
+# T162: the commands that emitted a skill opcode without passing T159's gate
+ADD_EXECUTABLE(test_skill_gate_bypasses
+    test_skill_gate_bypasses.cpp
+)
+TARGET_LINK_LIBRARIES(test_skill_gate_bypasses GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_skill_gate_bypasses PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_skill_gate_bypasses)
+
+# T301 Leg B: the first-person eye is inside the head and derived per race
+# from the mesh. Pure-geometry parts need nothing; the shipped-mesh parts use
+# the same EDT_NULL + willeq_core gate as test_race_330_loader and skip
+# without the db or the client tree. NOTHING HERE RASTERIZES -- see the file
+# header; T301 Leg E is the live gate.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_first_person_eye_anatomy
+        test_first_person_eye_anatomy.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_first_person_eye_anatomy PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_first_person_eye_anatomy GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_first_person_eye_anatomy PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    GTEST_DISCOVER_TESTS(test_first_person_eye_anatomy)
+ENDIF()
+
+# T318: shrink/grow/illusion reach the renderer (wire -> event -> node scale),
+# and OP_GuildInviteAccept's rank byte. EDT_NULL + willeq_core gate; the
+# real-node half skips without the shipped db or the client tree.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_entity_size_change
+        test_entity_size_change.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_entity_size_change PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_entity_size_change GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_entity_size_change PRIVATE
+        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}"
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    GTEST_DISCOVER_TESTS(test_entity_size_change)
+ENDIF()
+
+# T310 Leg B: collisionZOffset is the origin-to-feet distance, not half the
+# bbox. Same EDT_NULL + willeq_core gate as the eye anatomy tests; the
+# shipped-mesh half skips without the db or the client tree.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_entity_collision_z_offset
+        test_entity_collision_z_offset.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_entity_collision_z_offset PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_entity_collision_z_offset GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_entity_collision_z_offset PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    GTEST_DISCOVER_TESTS(test_entity_collision_z_offset)
+ENDIF()
+
+# T320: OP_GroupUpdate carries TWO structs of the SAME 452-byte size --
+# GroupJoin_Struct for groupActJoin/groupActLeave, GroupUpdate_Struct for the
+# rest -- so only the action field distinguishes them. Reading a JOIN as a
+# GroupUpdate_Struct took `leadersname` out of the join struct's padding and
+# published a group with real members and an EMPTY leader, on the LEADER's own
+# client, at formation, with no zoning involved (review/T320/). Also pins that
+# CleanupZone() drops group state so the server's zone-entry refresh can
+# re-establish it, instead of the client carrying a phantom group across.
+ADD_EXECUTABLE(test_group_packet_shapes
+    test_group_packet_shapes.cpp
+)
+TARGET_LINK_LIBRARIES(test_group_packet_shapes GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_group_packet_shapes PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_group_packet_shapes)
+
+# T320 (Leg C): one chat-channel name table. eq_chat.cpp built the name twice
+# from two ternary chains forty lines apart and they had drifted -- auction
+# missing from the console chain, channel 14 (TellEcho) missing from both.
+# The last test is the guard against a third copy appearing; it reads
+# src/client/eq_chat.cpp via WILLEQ_REPO_ROOT (set at the top of this file),
+# the same shape as the T314 / T308 guards.
+ADD_EXECUTABLE(test_chat_channel_names
+    test_chat_channel_names.cpp
+)
+TARGET_LINK_LIBRARIES(test_chat_channel_names GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_chat_channel_names PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_chat_channel_names)
