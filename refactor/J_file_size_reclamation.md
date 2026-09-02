@@ -430,6 +430,52 @@ findings in the batch** (`eq_ucs.cpp` 320 lines of commented-out methods,
 `wld_loader.cpp` 286 lines of `#if 0`, this) — the batch owes one decision
 covering all of them.
 
+## ⚠ CORRECTIONS FROM J05 (2026-09-02)
+
+**15. A VISUAL-GATE FAIL IS NOT NECESSARILY A PIXEL FAIL — check WHICH metric
+failed before believing you changed rendering.** J05's first gate run failed on
+`befallen` **p95 CPU 11.684 vs a 10.948 ceiling** with **zero image mismatches**
+and a clean `git status`; the re-run measured **4.676**. That is a 2.5x swing on
+a 2x ceiling under three-wide load. ⚠ **This also disambiguates the J05 warning
+about `gles2_zone_benchmark`: a missed CMake site for that binary fails at the
+RENDER step, not the CPU step.** Different failure, different cause.
+
+**16. `ctest` exit 8 during `GoogleTestAddTests.cmake` discovery is NOT the T293
+truncated-binary trap.** J05 hit a discovery timeout listing one test; the binary
+was intact (`--gtest_list_tests` exit 0 on demand) and the re-run was clean.
+Check the binary before concluding a mid-link truncation.
+
+**17. Declare count variables `local` in your proof helpers.** A non-local `n`
+in J05's `body()` helper truncated one range and produced a 247-line shortfall
+**that read exactly like a dropped range**. When a proof fails, suspect the
+proof first.
+
+**18. Correction 10's namespace advice is now a RULE, not an option: keep a
+promoted helper in its EXISTING namespace.** J05 = 2 exception lines for 114
+call sites; J04 = 8 lines for 12 call sites, because it introduced a `detail`
+namespace and needed `using` declarations. Same problem, four times the paperwork.
+
+### J05's result
+
+2,908 → 7 TUs + an 18-line header, largest 749. Verifier exit 1 with **exactly
+the two predicted lines** (`static inline read_val` → `inline read_val`), signed
+off at merge. Both proofs clean (`cmp` exit 0 over 2,894 lines; multiset with the
+header's 8 lines counted in). **All 19 CMake sites confirmed** — 15 in the root
+list, 4 in tests. ~62 min wall clock, of which the cut plus CMake plus both
+proofs was under 6; wave concurrency cost ~14 min in pure re-runs.
+
+**Corrections to the record J05 made:** the dead `#if 0` block is **278 lines,
+not 286** (both this plan and J05's said 286, which is the whole 2623-2908 tail
+including two comments and the namespace closes) — still 37% of the surviving
+file. And **`resolveTextureName` no longer exists anywhere in the tree**, which
+corrects `T10_wld_kill_rate.md:281`.
+
+⚠ **`tests/CMakeLists.txt` is now 2,850 — within 150 lines of the hard cap, and
+`CMakeLists.txt` has crossed 2,000 (1,914 → 2,004).** J05 alone added 24 lines
+to the tests file. **J20 (splitting it) is now the most urgent unit in the
+batch**; the next two or three units will otherwise trip a genuine FAIL through
+no fault of their own.
+
 ## Unit table
 
 | Unit | File | Lines | → TUs | Largest after | Wave | Notes |
