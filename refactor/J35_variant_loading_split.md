@@ -576,3 +576,556 @@ side would have silently reverted a completed unit).
   your tip — in which case this file genuinely IS a Batch-G case and the unit's
   shape changes. **Report; do not improvise a decomposition.**
 - You conclude that a two-way split is preferable.
+
+## Review (executor, slot3, 2026-09-02)
+
+**Branch `task/J35-variant-loading-split`, cut from `fable` at `755d7094`
+("Batch J: fold J23's corrections -- a verbatim promotion costs the verifier
+nothing, and a fifth silently-empty grep").
+`$BASE = 755d7094acebf35cd06469c40da19dc5eeab91fc` (`git merge-base fable HEAD`,
+unchanged throughout — no wave merge moved it under me).**
+
+### 11 (answered first, because it gates the unit). The Batch-G arithmetic, re-derived
+
+**I re-derived every number before cutting. I AGREE with this plan and DISAGREE
+with `refactor/J_file_size_reclamation.md` §Residual. No Batch-G decision is
+owed here, and this was a plain Batch-F relocation.**
+
+Method extents measured at my tip (`^[A-Za-z_].*RaceModelLoader::` for starts,
+`^}` for closes — both patterns proven to match, see §2):
+
+| method | range | lines |
+|---|---|---|
+| `getMeshForRaceWithAppearance` | 17-75 | 59 |
+| `loadModelFromGlobalChrWithVariants` | 77-214 | 138 |
+| `getAnimatedMeshWithAppearance` | 216-380 | 165 |
+| **`loadModelFromGlobalChrWithVariantsForAnimation`** | **382-1196** | **815** |
+| `getVariantModelData` | 1198-1207 | 10 |
+| **`preloadVariantModel`** | **1209-1604** | **396** |
+
+- Two methods = **815 + 396 = 1,211 of 1,607 = 75.4%** of the file. ✅ the plan.
+- **Floor = preamble + largest method = 15 + 815 = 830.** Ceiling 1,500.
+  **830 < 1,500 with 670 to spare.** The §Headline-finding test is passed, so
+  this file is **not** decomposition-first for the purpose of the ceiling.
+- **The two dominant methods land in DIFFERENT TUs** at the two legal cut points
+  382 and 1198, which is the whole of the disagreement with §Residual —
+  §Residual measured a TWO-way split (`~850 / ~780`), and a two-way split is
+  the only shape in which the worry is real.
+- Structural sizes at a 2-line header (the plan's own basis): **383 / 833 / 425**,
+  largest 833, headroom 667. **Reproduced exactly.** My realised sizes are larger
+  only because §File-header comments prescribes longer headers — see §9.
+
+**§Residual's row and its scheduling note both need correcting**, in the
+direction correction 34 already states. Recording it as a finding, not editing
+it (item 10).
+
+Two supporting observations, offered as the reason the conclusion is not merely
+arithmetic: the 815-line method occupies 96% of an 849-line TU, which is a
+**readability** observation identical in kind to J33's 806-of-839 and J23's
+499-of-854 — and in all three cases the only cheap correctness proof available
+(a byte-for-byte diff of the method across the split, §8 PROOF3/PROOF4) is
+destroyed the moment the method is decomposed inside the same commit. Batch G,
+separately, or not at all.
+
+### 1. Line count at my tip, and range drift
+
+`wc -l src/client/graphics/eq/variant_loading.cpp` = **1,607** — exactly what
+the plan measured at `824adb28`. **Zero drift in the source file**: all six
+method start lines, all six close lines, both cut boundaries, the preamble
+extent and both namespace-close lines reproduced to the line.
+
+⚠ **Drift DID occur in `CMakeLists.txt`** — see §7. Every one of the five root
+add-site line numbers has moved (+7 to +19). The plan's own instruction to grep
+rather than trust a line number is what made that a non-event.
+
+### 2. Every property in §Measured, re-verified with my own greps
+
+| property | plan | measured at `755d7094` | |
+|---|---|---|---|
+| total lines | 1,607 | **1,607** | ✅ |
+| preamble | 1-15, 2-line header + 9 includes + 2 namespace opens | **identical** | ✅ |
+| namespace | opened 14-15, closed 1606-1607 | **exactly those four lines** | ✅ |
+| method definitions | 6 | **6** | ✅ |
+| largest / 2nd / 3rd | 815 / 396 / 165 | **815 / 396 / 165** | ✅ |
+| `// ====` banners | 0 | **0** (`grep -cE`, correction 28) | ✅ |
+| conditional preprocessor directives | 0 | **0** | ✅ |
+| file-scope `static` / anon ns | 0 / 0 | **0 / 0** | ✅ |
+| multi-line comment regions | 0 | `grep -n '/\*'` returns **nothing at all** | ✅ |
+
+```
+$ grep -n '^static \|^namespace\s*{\|^const \|^constexpr \|^extern ' src/client/graphics/eq/variant_loading.cpp
+(no output, exit 1)
+
+$ grep -n 'namespace' src/client/graphics/eq/variant_loading.cpp
+14:namespace EQT {
+15:namespace Graphics {
+1606:} // namespace Graphics
+1607:} // namespace EQT
+
+$ grep -rn 'makeVariantCacheKey' include/
+include/client/graphics/eq/race_model_loader.h:372:    static uint64_t makeVariantCacheKey(...)
+include/client/graphics/eq/race_model_loader.h:477:    // ...counterparts (makeCacheKey / makeVariantCacheKey).
+
+$ grep -c '^[A-Za-z_].*RaceModelLoader::' src/client/graphics/eq/variant_loading.cpp
+6
+$ grep -cE '^// ={4,}' src/client/graphics/eq/variant_loading.cpp
+0
+$ grep -n 'static ' src/client/graphics/eq/variant_loading.cpp
+(no output — so there is not even a FUNCTION-local static in this file)
+```
+
+⚠ **THE EMPTY GREPS ARE PROVEN, NOT ASSUMED** (the dispatch brief's five silent
+nothings). I ran each empty pattern against a file where it must match before
+believing the zero:
+
+| pattern | proof it can match |
+|---|---|
+| `^static ` | `src/client/graphics/eq/wld_loader.cpp:17` |
+| `^namespace {` | `src/client/raid_update.cpp`, `who_response.cpp`, `eq_commands_train.cpp` |
+| `^const ` | `door_state_manager.cpp`, `raid_update.cpp`, `trade_manager.cpp` |
+| `^constexpr ` | `position.cpp`, `raid_update.cpp`, `world_object.cpp` |
+| `^extern ` | `renderer_gpu_upload.cpp`, `renderer_zone_draw.cpp`, `sky_renderer.cpp` |
+| the first-person token set | 27 hits in `src/client/graphics/renderer_camera.cpp` |
+| `^[A-Za-z_].*RaceModelLoader::` | 6 hits in the target file itself |
+| `^// ={4,}` with `-cE` | correction 28's form used; plain `-c` would lie |
+| CMake filename sweep | `find … -exec grep -Hn` (correction 55); `--include=` NOT used |
+
+⚠ **Correction 36 check (out-of-class static member definition in the copied
+preamble): NONE.** Lines 1-15 are two `//` lines, nine `#include`s, two
+`namespace … {` and blanks. Nothing with external linkage is defined there, so
+copying the preamble verbatim into two more TUs carries no duplicate-symbol
+risk.
+
+**No §Measured property has changed since `824adb28`. No STOP condition fired.**
+
+### 3. Correction 21 — re-derived, not cited, and widened per correction 51
+
+**The file defines ZERO file-scope symbols of any kind**, so correction 21 has
+no exposure and the "name the helper's range and its consumers' range" table is
+empty by construction. That claim is only worth anything if the search was wide
+enough, so I ran the widened form correction 51 demands — **namespace-scope free
+functions are not `static` and the standard pattern misses them** (J32's
+`heightToColor` was called across its cut):
+
+```
+$ grep -n '^[^ \t}]' src/client/graphics/eq/variant_loading.cpp | grep -v '^[0-9]*:[/#]'
+14:namespace EQT {
+15:namespace Graphics {
+17:irr::scene::IMesh* RaceModelLoader::getMeshForRaceWithAppearance(uint16_t raceId, uint8_t gender,
+77:bool RaceModelLoader::loadModelFromGlobalChrWithVariants(uint16_t raceId, uint8_t gender,
+216:EQAnimatedMesh* RaceModelLoader::getAnimatedMeshWithAppearance(uint16_t raceId, uint8_t gender,
+382:bool RaceModelLoader::loadModelFromGlobalChrWithVariantsForAnimation(uint16_t raceId, uint8_t gender,
+1198:std::shared_ptr<RaceModelData> RaceModelLoader::getVariantModelData(uint16_t raceId, uint8_t gender,
+1209:bool RaceModelLoader::preloadVariantModel(uint16_t raceId, uint8_t gender,
+```
+
+**That is EVERY column-0 line in the file that is not a comment, a preprocessor
+directive, a blank or a `}`.** It enumerates the two namespace opens and the six
+`RaceModelLoader::` member definitions **and nothing else** — so there is no
+namespace-scope free function, no file-scope constant, no anonymous namespace,
+and no `static` at any scope. Each of the six symbols has external linkage and
+is declared in `include/client/graphics/eq/race_model_loader.h`, which every TU
+includes via the copied preamble.
+
+The one symbol the plan singles out, `makeVariantCacheKey`, is a **class static
+member declared (and defined inline) in the header at `:372`**, not here. Its
+eight call sites in this file are at 25, 200 (stays range), 238, 252, 847, 1182
+(847/1182 in the animation range), 1200 and 1211 (preload range) — **three
+different ranges call it, and all three see it through the header**, which is
+exactly why this is not J08's defect. Nothing file-local crosses a cut because
+nothing file-local exists.
+
+### 4. Comment depth at every cut — computed with the `//`-stripping counter
+
+```
+depth before line 382  = 0
+depth before line 1198 = 0
+final depth = 0
+```
+
+`grep -n '/\*'` returns **nothing at all** in this file, so correction 33's
+"single-line `/*bank=*/`" caveat does not even arise: there is no `/*` anywhere,
+comment depth is 0 on every one of the 1,607 lines, and the `eq_movement.cpp:18`
+`*/`-inside-a-`//` trap has no instance here either.
+
+### 5. The preprocessor dump — no cut lands inside a conditional
+
+```
+$ awk '/^[ \t]*#(if|ifdef|ifndef|else|elif|endif)/ {print NR": "$0}' \
+      src/client/graphics/eq/variant_loading.cpp
+(no output)
+```
+
+**Zero conditional preprocessor directives in the whole file**, exactly as
+§Measured says — so neither cut can be inside a conditional region, and the
+three produced TUs each contain zero directives too (re-checked post-split).
+The `awk` form is the one J32's correction 52 endorses over `grep -c '<GUARD>'`;
+I confirmed it is not silently broken by running it against
+`src/client/graphics/eq/model_loading.cpp` — which, it turns out, **also has
+zero**, so the stronger proof is that the same `awk` reproduced all ten
+directives in `src/client/eq_movement.cpp` from J23's Review.
+
+### 13. Both two-line signatures at the cuts, pasted — neither was split
+
+```
+cut 382                                       cut 1198
+378| (blank)                                   1194| (blank)
+379|     return animMesh;                      1195|     return false;
+380| }                                         1196| }
+381| (blank)                                   1197| (blank)
+382| bool RaceModelLoader::loadModelFrom       1198| std::shared_ptr<RaceModelData> RaceModel
+   |   GlobalChrWithVariantsForAnimation(         |   Loader::getVariantModelData(uint16_t
+   |   uint16_t raceId, uint8_t gender,           |   raceId, uint8_t gender,
+383|     uint8_t headVariant, uint8_t          1199|     uint8_t headVariant, uint8_t
+   |   bodyVariant) {                             |   bodyVariant) {
+384|     // NOTE: We defer loading global…     1200|     uint64_t key = makeVariantCacheKey(…
+```
+
+Both cuts satisfy J03's rule (correction 11): **a blank line whose predecessor
+closes a method, comment depth 0.** Both first lines are the FIRST line of a
+two-line signature (382-383, 1198-1199); **the extracted ranges start at 382 and
+1198 respectively, so both signatures travel whole.** Verified mechanically as
+well as by eye: the animation TU's method occupies its lines 32-846 and diffs
+byte-for-byte against the original's 382-1196 (§8 PROOF3), which is only
+possible if line 383 came with line 382.
+
+**Blank-line convention:** the trailing blank stays with the preceding range, so
+`variant_loading.cpp`'s body ends on old-381 (blank),
+`variant_loading_animation.cpp`'s on old-1197 (blank), and
+`variant_loading_preload.cpp`'s on old-1605 (blank) — which is the original's
+own shape at 1605/1606. **Correction 30 did NOT fire**: appending "blank +
+namespace close" where the body already ends on a blank reproduces the
+original's exact tail, and no TU is double-spaced.
+
+⚠ **Correction 30's INVERTED form (J25's) DID fire, and I declared rather than
+fixed it.** The original has a blank at line 16 between `namespace Graphics {`
+and the first method. That blank belongs to the stays range, so the two NEW TUs
+have their first method immediately after `namespace Graphics {` with no blank
+between. Cosmetic, invisible to both proofs and the verifier; hand-fixing it
+would insert a line that is in neither the before nor the after multiset.
+
+### 6. Every file-header comment line I wrote, enumerated
+
+The pre-split header is **lines 1-2**. All three TUs got their own; **no other
+comment anywhere in the file was changed** (proven: PROOF1 is a byte-identical
+re-concatenation of everything from line 16 down).
+
+- **`variant_loading.cpp` — 10 header lines** (replacing the 2). Line 1 retitles
+  to "race and appearance to mesh resolution"; line 2 is the original's second
+  line verbatim; then a blank-comment separator, two lines saying it was
+  originally split from `race_model_loader.cpp` and then three ways by
+  `refactor/J35_variant_loading_split.md` (move-only, verbatim relocation),
+  three lines naming this TU's three methods, and two lines naming both sibling
+  TUs and what each holds.
+- **`variant_loading_animation.cpp` — 18 header lines.** Same first two lines
+  (retitled to "the animation-aware variant loader"); two lines citing
+  `refactor/J35_variant_loading_split.md`; two lines saying the TU holds exactly
+  one method and naming it; then **the seven-line Batch-G paragraph
+  §File-header comments requires**: that the method is 815 lines, that it is a
+  recorded decomposition candidate on the Batch-G follow-up list in
+  `refactor/J_file_size_reclamation.md` (section Optional), that J35
+  deliberately did not touch it and why (a verbatim-relocation commit's byte
+  proof is destroyed by decomposition), that this is **not** a ceiling problem
+  because the TU sits **651 lines** under the 1,500-line warn ceiling, and that
+  the floor for any TU holding this method is 830. Two closing lines name the
+  siblings.
+- **`variant_loading_preload.cpp` — 17 header lines.** Same shape; names
+  `getVariantModelData` and `preloadVariantModel`; the Batch-G paragraph records
+  that `preloadVariantModel` is **396 lines**, is on the same §Optional list,
+  was deliberately not touched for the same reason, and that the TU sits
+  **1,060 lines** under the ceiling.
+
+⚠ **The two headroom figures are MY realised numbers (651 / 1,060), not the
+plan's structural 667 / 1,075** — the difference is exactly the extra header
+lines the plan told me to write (18-2 = 16, and 17-2 = 15). Putting the plan's
+figure in the file would have been a number that is wrong the moment anyone
+checks it with `wc -l`.
+
+⚠ **Correction 45 (the widened correction 40) honoured, and it has real
+exposure here.** Nothing in any of the three headers quotes a token that any
+check greps for:
+- No `// ====` sequence — the banner check (`grep -cE '^// ={4,}'`) still reads
+  **0** in all three TUs.
+- **No first-person token.** These files live under `src/client/graphics`, so
+  they enter `tests/test_first_person_camera_single_formula.cpp`'s recursive
+  sweep automatically (correction 35). The prescribed token grep returns **0 in
+  all three TUs**, so they are invisible to both parts of that sweep. Writing
+  even a prose sentence containing one of those identifiers would have perturbed
+  its at-most-N-readers count.
+- The headers describe the Batch-G candidacy **in words** and never reproduce a
+  code line, so no `find(...) != npos` guard anywhere can be satisfied by a
+  comment of mine, and this plan's own §Correction-21 greps (`^static `,
+  `^const `, …) cannot match a `//` line.
+
+Every header line is `//`, so all of it is allowlisted boilerplate for the
+verifier (§8).
+
+### 7. CMake add-sites — **I found SEVEN**, matching the plan's count exactly
+
+Found with `find … -exec grep -Hni`, never `grep -rn --include=` (correction 55),
+and with the root `CMakeLists.txt` reached by name via `-name CMakeLists.txt`
+rather than by recursing into a directory (correction 50). `tests/CMakeLists.txt`
+was never named (correction 26). The search covered every `CMakeLists.txt` and
+`*.cmake` in the tree outside `build*` and `third_party`.
+
+| file:line (at my tip) | plan said | enclosing target (line) | edited |
+|---|---|---|---|
+| `CMakeLists.txt:468` | 461 | `SET(GRAPHICS_SOURCES` (`:445`) | ✅ |
+| `CMakeLists.txt:841` | 829 | `ADD_EXECUTABLE(model_viewer` (`:809`) | ✅ |
+| `CMakeLists.txt:1707` | 1690 | ⚠ `ADD_EXECUTABLE(gles2_zone_benchmark` (`:1662`) — the visual-gate binary | ✅ |
+| `CMakeLists.txt:1832` | 1814 | `ADD_EXECUTABLE(gles2_shader_diagnostic` (`:1793`) | ✅ |
+| `CMakeLists.txt:1919` | 1900 | `ADD_EXECUTABLE(gles2_composite_audit` (`:1880`) | ✅ |
+| `tests/cmake/graphics.cmake:32` | 32 | `ADD_EXECUTABLE(test_graphics` (`:20`) | ✅ |
+| `tests/cmake/graphics.cmake:119` | 117 | `ADD_EXECUTABLE(test_asset_loading` (`:100`) | ✅ |
+
+**Seven found, seven edited, +14 lines** (both new TUs inserted immediately below
+the original in every list). **Every target name in the plan is correct; every
+line number in the plan is stale** — five root sites drifted +7 to +19 and the
+second tests site +2, which is J29/J32 landing in the same lists during this
+wave. The count is what mattered and the count held.
+
+⚠ **`gles2_zone_benchmark` is among the seven and it is edited** — a miss there
+fails the visual gate at the RENDER step, not the CPU step (correction 15). The
+gate passed (§14), which is independent confirmation the site was not missed.
+
+`CMakeLists.txt` is the pre-existing WARN §Process grandfathers by name; my 10
+added lines are not mine to fix.
+
+### 8. `tests/` and `scripts/` — both greps, run at my tip, and both content proofs
+
+```
+$ grep -rn 'variant_loading' tests/ scripts/
+tests/cmake/graphics.cmake:32:        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/variant_loading.cpp
+tests/cmake/graphics.cmake:119:       ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/variant_loading.cpp
+```
+
+⚠ **A small correction to the plan's record.** §`tests/` and `scripts/` predicts
+"comment-only hits and zero functional readers". At my tip there are **no comment
+hits at all** — the only two hits are the two `tests/cmake/graphics.cmake`
+add-sites the plan already counts separately in §CMake. **Zero text readers,
+zero comments, so nothing to repoint and no `tests/` doc rot to attribute to
+J35** (contrast J23's five and J31's four). The conclusion the plan draws is
+right; the description of the hits is not.
+
+```
+$ grep -hn 'kRoot / "src\|kRoot / "include' tests/*.cpp | sort -u
+```
+returns 17 distinct source paths (`include/client/eq.h`,
+`renderer_event_receiver.cpp`, `renderer_frame_render.cpp`,
+`renderer_intents.h`, `eq_bridge_intents.cpp` ×2, `event_bus.h`,
+`action_dispatcher{,_social,_guild_misc}.cpp`, `action_dispatcher.h`,
+`renderer_command_catalog.cpp`, `renderer_frame_input.cpp` ×2, plus the
+`kGraphicsDir` root). **`src/client/graphics/eq/variant_loading.cpp` is not
+among them.**
+
+```
+$ grep -n 'CameraMode::FirstPerson\|camera_->setPosition(\|camera_->setTarget(\|kFirstPerson\|firstPersonM\|firstPersonV\|computeFirstPersonCamera' \
+      src/client/graphics/eq/variant_loading.cpp
+(no output, exit 1 — and 0 in all three produced TUs)
+```
+
+**No test file was edited. No repoint was needed.**
+
+**Both content proofs — plus two more.** `body(TU)` is defined **structurally**
+(everything strictly between that TU's single `namespace Graphics {` line and its
+single `} // namespace Graphics` line, both asserted unique) rather than by an
+offset constant, so no arithmetic of mine can silently shorten a range —
+corrections 17/20, the failure mode that produced J05's and J08's false alarms.
+
+```
+BASE=755d7094acebf35cd06469c40da19dc5eeab91fc
+original lines = 1607
+bodies: 366 816 408   sum 1590
+target lines = 1590        (git show "$BASE:…variant_loading.cpp" | sed -n '16,1605p')
+recon  lines = 1590
+PROOF1 byte-identical re-concatenation: OK        (cmp exit 0)
+PROOF2 line-multiset:                  MULTISET-OK (diff exit 0)
+animation method new range: lines 32-846 (815)
+preload   method new range: lines 42-437 (396)
+PROOF3 loadModelFromGlobalChrWithVariantsForAnimation 815 lines: IDENTICAL
+PROOF4 preloadVariantModel 396 lines:                            IDENTICAL
+```
+
+Arithmetic that must hold, and does: **381 + 816 + 410 = 1,607** (the plan's
+form, third range carrying the two closes) and equivalently
+**15 (preamble) + 366 + 816 + 408 + 2 (closes) = 1,607**. The before side runs
+to **1605**, not 1607, because the original's own closes are inside the third
+range (correction 20). The two namespace closes were additionally diffed against
+the original's 1606-1607 before assembly (exit 0).
+
+### 12 / 8 (cont). The verifier
+
+Committed FIRST (correction 13), fork point (not `fable..HEAD`), `--repo <slot>`
+(not the default `.`). All three of the batch's confident-looking-wrong-answer
+traps ruled out positively: the verifier names **exactly** this unit's 3 C++
+files and 2 non-C++ files and nothing else — a wrong repo would list `main/`'s
+merged units, a wrong base would list slot1's or slot2's, and an uncommitted tree
+would print `No C++ files changed`.
+
+```
+BASE=755d7094acebf35cd06469c40da19dc5eeab91fc
+VERIFY_EXIT=0
+
+Non-C++ files changed (not verified, review separately):
+  CMakeLists.txt
+  refactor/J35_variant_loading_split.md
+  tests/cmake/graphics.cmake
+
+Files verified: 3
+Boilerplate: +70 / -1 lines (allowed)
+
+PASS: move-only (modulo boilerplate).
+```
+
+**Result: EXIT 0, `+0/-0` substantive — the plan's prediction held EXACTLY.
+The flagged set is EMPTY: there is nothing to enumerate and nothing to sign
+off.** Every line the diff touches is `//`, `#include`, `namespace … {`, a bare
+`}`, or blank. The plan's derivation was correct in every clause: the copied
+preamble is 100% boilerplate (no `extern`, no `typedef`, no file-scope
+definition — contrast J30's 6 and J31's 2), the replicated closes are bare `}`
+with a `//` tail, the header adaptations are `//`, and there was no internal
+header, no test repoint and no preamble deviation.
+
+The `+70 / -1` boilerplate figure is derivable and worth stating so the next
+unit can predict its own: **−1** is the original's line 1 (the only header line
+not carried forward verbatim into at least one TU — line 2 survives in all
+three), and **+70** is the 45 newly written header lines plus the copied
+preamble and namespace-close lines whose multiset COUNT rises from 1 to 3
+(correction 54's rule: a boilerplate line costs the counter when its count
+changes, even though it costs the *substantive* verdict nothing).
+
+### 9. Final line counts, method counts, wall clock
+
+| file | lines | methods | note |
+|---|---|---|---|
+| `src/client/graphics/eq/variant_loading.cpp` | **391** | **3** | race+appearance → mesh |
+| `src/client/graphics/eq/variant_loading_animation.cpp` | **849** | **1** | the 815-line animation-aware loader |
+| `src/client/graphics/eq/variant_loading_preload.cpp` | **440** | **2** | variant cache + the 396-line preloader |
+| **total** | **1,680** | **6** | 3 TUs, largest **849**, **651 lines of headroom** |
+
+**Method split 3 / 1 / 2 — exactly the plan's prediction.** (Correction 46's
+counting pattern, stated: `^[A-Za-z_].*RaceModelLoader::` at column 0, which
+gives 6 for the pre-split file and 3+1+2 after.)
+
+⚠ **Predicted vs actual, and WHY** (correction 12/19/57 territory; §The split
+flags it and correction 57 asks for exactly this shape). The derivable identity
+is:
+
+**TU lines = (my header) + 13 (original lines 3-15) + body + 2 (namespace closes)**
+
+- `variant_loading.cpp` = 10 + 13 + 366 + 2 = **391** (plan 383)
+- `variant_loading_animation.cpp` = 18 + 13 + 816 + 2 = **849** (plan 833)
+- `variant_loading_preload.cpp` = 17 + 13 + 408 + 2 = **440** (plan 425)
+
+**Every TU came in exactly `(my header − 2)` lines over the plan's figure — 8,
+16 and 15 — and nothing else differs.** The plan's 383/833/425 are
+`15 + range (+ closes)`, i.e. they carry the **2-line** pre-split header, while
+§File-header comments tells the executor to write a longer one; the plan says so
+("your new file-header comment lines land on top of that") and it is right.
+**Body ranges are exact to the line; zero range drift.** Largest TU 849 against
+a 1,500 warn ceiling.
+
+**Wall clock: ~80 min end to end.** Contract reading and the survey/re-derivation
+~25 min; **the cut, the seven CMake edits and all four proofs took under 5
+minutes**; the rest was the bar. **Slowest step: the x86 `build/` build — two
+invocations, 10 min (killed at the ceiling) + ~6 min.** `ctest -j6` was
+**143.5 s** — faster than J01's 3.0 min solo, so correction 14 holds again: the
+stretch figures are "may happen", not "will". `build-gles2-x86.sh` took ~15 min
+but exited **0 on its first invocation**; `build-arm-noble.sh` likewise.
+
+**Did wave concurrency stretch the tail? Yes, and the entire cost was the one
+exit-143** (~10 min of pure re-run) — correction 6/14's shape: not breakage,
+re-invoke. Slot1 (J24, `combat.cpp`) and slot2 (J29, `model_loading.cpp`) were
+active throughout, and I deliberately overlapped the gles2 build with the main
+build, which is probably what pushed the main build over the ceiling.
+
+### 14. Acceptance — every item, classified by exit code
+
+| step | result |
+|---|---|
+| `scripts/build-gles2-x86.sh` (**run FIRST**, correction 41) | **exit 0, first invocation**; 40 binaries + archives scanned, 0 BAD |
+| `cmake --build build -j24` | first invocation **exit 143** at the 600 s tool ceiling; **re-invocation exit 0** |
+| ELF + archive scan after the 143 | **221 binaries, 2 archives, 0 BAD** |
+| `ctest -j6` (**NOT -j24**) | **3506/3507 passed**; sole failure `AudioManagerTest.PreloadCommonSounds`, the documented ALSA host quirk and the only entry in `refactor/test_baseline.txt`. **Zero new failures.** ctest exits 8 because of it. |
+| visual gate (in-suite #3504) | **Passed, 20.69 s** |
+| goldens | `git status --porcelain` lists only my 5 intended paths — **untouched, no re-bless** |
+| `scripts/build-arm-noble.sh` | **exit 0, first invocation**; 18 binaries + archives scanned, 0 BAD |
+| `check_file_sizes.sh --files` × 3 | **3 ok, 0 warn, 0 fail** (391 / 849 / 440) |
+| `verify_move_only.py "$BASE..HEAD" --repo <slot>` | **exit 0, PASS, `+0/-0` substantive** — prediction exact, no sign-off needed |
+
+⚠ **GATE ORDERING (correction 41): I used the FIX, not the workaround.**
+`scripts/build-gles2-x86.sh` ran **before** `ctest -j6`, so the in-suite
+`visual_gate` ran against a `gles2_zone_benchmark` **stamped 14:24** against
+edits made at **14:07**. **The in-suite run is the one that counts and no
+standalone re-run was needed.** This also independently confirms the
+`gles2_zone_benchmark` add-site was not missed: a missed site fails the gate at
+the RENDER step (correction 15), and the gate passed.
+
+⚠ **The truncation trap fired again — the J23/correction-56 shape, and it is the
+`ar` site.** The x86 `build/` 143 was killed **archiving `lib/libwilleq_core.a`**
+(`gmake[2]: *** Deleting file 'lib/libwilleq_core.a'` is the log's last line), so
+gmake cleaned up after itself and nothing was left truncated. **I widened the
+scan to `lib*.a` (with `ar t`, since `readelf -h` on an archive proves nothing)
+as correction 56 requires** — 0 BAD either way, but the `build/bin/*` scan alone
+would have been blind to it. **Second independent instance of a killed `ar`
+after J23's.**
+
+### 10. Findings only, not fixes
+
+1. ⚠ **`refactor/J_file_size_reclamation.md` §Residual and its scheduling note
+   are wrong about this file and need correcting** — "the batch's worst floor"
+   and "the strongest candidate in the tree for a Batch-G decision taken before
+   its Batch-F split". Measured floor is **830 against a 1,500 ceiling**. This is
+   §11's finding; correction 34 already states the fix, but the §Residual row
+   itself still carries the old text. **Recorded, not edited** (outside
+   territory).
+2. **`docs/module_map.md` needs two new rows** — `variant_loading_animation.cpp`
+   and `variant_loading_preload.cpp` — and its `variant_loading.cpp` row (if any)
+   is now wrong: 1,607 → 391, and the file no longer holds four of its six
+   methods. **Recorded, not acted on** (correction 24's queue).
+3. **No `tests/` or `scripts/` citation of this file exists at all**, stale or
+   otherwise — the only two hits in that tree are CMake source-list entries.
+   **J35 creates zero doc rot in `tests/`**, which is unusual for this batch and
+   worth recording as the clean case.
+4. **No dead-content site in this file** — no `#if 0`, no commented-out method
+   bodies, no retired-configuration arm, not even a `/*` anywhere. The
+   seven-site dead-content decision gains nothing from J35.
+5. **Both dominant methods are flagged in their own TUs' file headers** so the
+   Batch-G question is not re-opened by the next reader — J33's and J23's
+   pattern, and the specific thing this plan's opening box asks for.
+
+### Plan errors and template notes
+
+1. ⚠ **All five root `CMakeLists.txt` line numbers are stale** (+7 to +19); the
+   second `tests/cmake/graphics.cmake` site moved 117 → 119. **The seven target
+   names and the count of seven are exactly right.** This is the third
+   consecutive unit where the count held and the line numbers did not —
+   correction 49's "derive the count yourself" is the right instruction and the
+   dispatch brief gave it.
+2. ⚠ **§`tests/` and `scripts/` says "comment-only hits"; there are no comment
+   hits.** The two hits are the CMake add-sites §CMake already counts. Harmless,
+   but a unit reconciling the two sections finds a phantom discrepancy.
+3. **§File-header comments' prescribed content cannot be written without
+   changing the plan's own predicted TU sizes**, and the plan's 383/833/425
+   silently assume the 2-line pre-split header rides along. Correction 57's
+   recommended shape — state it as `(your header) + <constant> + body` — would
+   have removed the reconciliation entirely. Here the constant is **13 + 2**.
+4. ⚠ **The plan's prescribed headroom figures (667 / 1,075) become wrong the
+   moment the prescribed headers are written** (651 / 1,060). A plan that tells
+   an executor to write a number into a file should tell them to compute it,
+   not quote it. Same family as correction 19.
+5. **Correction 30 did not fire in its stated form** (no double-spaced tail) but
+   **did fire inverted** (no blank after the namespace open in the two new TUs),
+   which is J25's observation, not J12's. Declared, not fixed.
+6. **The `awk` preprocessor-dump cross-check needs a file that HAS directives.**
+   `model_loading.cpp` has none either, so it is useless as a positive control;
+   `src/client/eq_movement.cpp` (ten directives, from J23's Review) is.
+
+### Deviations
+
+**None.** No method decomposed, no dead content deleted, no include block
+trimmed, no reordering, no interface change, no header touched, no `tests/`
+`.cpp` touched, no TU added beyond the two the plan names, and the two-way
+option was not taken. The preamble (lines 1-15) was copied verbatim into both
+new TUs with only lines 1-2 replaced per §File-header comments, exactly as
+prescribed. All three files are mode 644.
