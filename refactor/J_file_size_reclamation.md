@@ -1465,6 +1465,52 @@ preamble.
 edits. Seven CMake sites found and edited; root line numbers drifted +4/+8 while
 the target names were right — **fourth consecutive unit with that exact shape.**
 
+## ⚠ CORRECTIONS FROM J27 (2026-09-02) — INCLUDING A FIX TO CORRECTION 61 ITSELF
+
+**68. CORRECTION 61 IS WRONG AS WRITTEN AND MUST NOT BE FOLLOWED LITERALLY.**
+It says the widened pattern should be "the ONLY pattern". **The widened pattern
+is call-shaped (`…\(`) and CANNOT match `static constexpr size_t kFoo = 500;`**
+— which is `eq_merchant.cpp`'s only file-scope symbol class. Obeying 61
+literally would have concluded "zero file-scope symbols" and **never checked
+where those constants' readers land** — reintroducing correction 21's defect by
+way of its own fix.
+**Corrected rule: the widened pattern REPLACES `^static |^namespace` for FREE
+FUNCTIONS, and runs ALONGSIDE it. Run both. Neither alone is sufficient.**
+(Orchestrator note: 61 was written after two units where the widened pattern
+scored, and generalised from two data points. J27 is the counter-example.)
+
+**69. THE `chmod 644` RULE NEEDS A SECOND HALF — J01's trap has an inverse.**
+`eq_merchant.cpp` was **`100755` at base** (3 of 82 `src/client` files are), so
+"chmod 644 every created file" applied to the *stays* file recorded a spurious
+`100755 => 100644` mode change. Caught before sign-off and amended.
+**Rule: `chmod 644` every CREATED file; PRESERVE the original mode on the file
+that stays.** Any remaining unit landing on one of the stray 755s will hit this.
+
+**70. Correction 62 has an unnamed sibling shape:** a plan's `grep -v <file>.cpp`
+exclusion filter **stops excluding the symbols' new home after the split**.
+Filter on the stem, not the full filename.
+
+**71. §The split's "≈lines" column conflates RANGE LENGTH with FINISHED FILE
+SIZE** — a third variant of the prose-vs-table class (corrections 19, 47, 64).
+
+### J27's result
+
+1,932 → **677 / 702 / 621**. **The first Wave-6 file whose survey number did not
+go stale** — every line number in the plan matched exactly, including both cuts,
+all ten preprocessor directives, all four banners, both statics and the two
+largest methods. **Verifier exit 0, +0/−0 substantive.** Both proofs pass
+(70,199 bytes on each side), with `body(TU)` defined structurally so the proof
+**re-derived each preamble length independently** and printed 34 for all three,
+confirming the header convention landed rather than assuming it.
+
+**It ran the widened grep WITH A POSITIVE CONTROL** (correction 60) before
+believing its empty result — which is why the `static constexpr` gap surfaced as
+a template error rather than a silent miss.
+
+Correction 41's fixed order used; correction 59 (stale root CMake line numbers,
+right target names) now **four consecutive units**. Four `tests/` comments newly
+name the wrong TU — attribute to J27.
+
 ## Unit table
 
 | Unit | File | Lines | → TUs | Largest after | Wave | Notes |
