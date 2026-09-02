@@ -153,7 +153,7 @@ TEST(UIHideSourceInvariants, StaticUiBlockIsGatedOnAllUIHidden) {
     // THE DEFECT THIS LEG FIXED. Before T301 this read
     // `if (newUIEnabled_ && uiRenderer_)`, so hiding the UI left the chat
     // panel and the hotbar painted over every captured frame.
-    const std::string src = readFile(kRoot / "src/client/graphics/renderer_frame.cpp");
+    const std::string src = readFile(kRoot / "src/client/graphics/renderer_frame_render.cpp");
     EXPECT_NE(src.find("if (newUIEnabled_ && uiRenderer_ && !allUIHidden_)"), std::string::npos)
         << "the static UI panels are drawn without consulting allUIHidden_ -- /hideui and F11 "
            "will leave the chat box and hotbar over every frame of a visual gate again";
