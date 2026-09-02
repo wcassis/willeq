@@ -1496,6 +1496,20 @@ GTEST_DISCOVER_TESTS(test_zone_connection_flow)
 # sites (two producers in eq_zone.cpp, one consumer in eq_login_world.cpp).
 # Same replay-seam idiom as test_zone_connection_flow above -- no network,
 # no graphics, no live connection -- so safe to auto-discover.
+# T322: pins the zone-transition connection lifecycle -- the graceful
+# source-zone hand-off (OP_SaveOnZoneReq + OP_DeleteSpawn, server closes the
+# session) that keeps eqemu from treating every zone change as a linkdead
+# disconnect and disbanding the group, plus the OP_LogoutReply routing that
+# must keep a real logout disconnecting. Headless: no network, no graphics.
+ADD_EXECUTABLE(test_zone_out_handshake
+    test_zone_out_handshake.cpp
+)
+TARGET_LINK_LIBRARIES(test_zone_out_handshake GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_zone_out_handshake PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_zone_out_handshake)
+
 ADD_EXECUTABLE(test_zone_position_convention
     test_zone_position_convention.cpp
 )

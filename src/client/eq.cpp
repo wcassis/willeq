@@ -737,6 +737,10 @@ void EverQuest::ZoneOnStatusChangeReconnectEnabled(std::shared_ptr<EQ::Net::Dayb
 		// T286: this write had NO WorldState counterpart, so world()
 		// .isZoneConnected() never became true on the reconnect path.
 		m_game_state.world().setZoneConnected(true);
+		// T322: the destination zone session is up, so the zone-to-zone
+		// transition is over -- the next world login is a fresh one unless
+		// ProcessDeferredZoneChange latches it again.
+		m_zone_to_zone_in_progress = false;
 		// Send stream identify immediately after connection
 		ZoneSendStreamIdentify();
 		m_zone_session_established = true;

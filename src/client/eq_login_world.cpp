@@ -506,9 +506,21 @@ void EverQuest::WorldSendClientAuth()
 	memcpy(login_info + dbid_len + 1, m_key.c_str(), key_len);
 
 	// Set zoning flag at offset 188 of LoginInfo
-	// If we're already in a zone (reconnecting for zone-to-zone), set zoning = 1
-	// Otherwise, set zoning = 0 (fresh login from character select)
-	uint8_t zoning_flag = (m_game_state.world().isZoneConnected() || m_game_state.world().zoneChangeRequested()) ? 1 : 0;
+	// If we're reconnecting to world mid zone-to-zone, set zoning = 1;
+	// a fresh login from character select is zoning = 0.
+	//
+	// T322: this used to read WorldState's isZoneConnected()/
+	// zoneChangeRequested(), and so was ALWAYS 0 -- ProcessDeferredZoneChange
+	// tears the zone down (CleanupZone -> resetZoneState) before reconnecting
+	// to world, which clears both. Measured live: every OP_SendLoginInfo
+	// fable has ever sent carried zoning=0, including the zone-to-zone
+	// reconnect. eqemu's world reads that byte as "fresh login" and DELETES
+	// the character's group_id row (world/client.cpp:934), which removed the
+	// zoning player from a group the source zone had correctly preserved.
+	// m_zone_to_zone_in_progress is latched across the teardown for exactly
+	// this read. (The official client's group_id rows stayed intact across
+	// the same transition -- T320's oracle capture.)
+	uint8_t zoning_flag = m_zone_to_zone_in_progress ? 1 : 0;
 	p.PutUInt8(2 + 188, zoning_flag);
 
 	LOG_INFO(MOD_WORLD, "Sending login info: dbid={}, key={}, zoning={}", dbid_str, m_key, zoning_flag);
@@ -719,6 +731,19 @@ void EverQuest::WorldProcessEnterWorld(const EQ::Net::Packet &p)
 void EverQuest::WorldProcessPostEnterWorld(const EQ::Net::Packet &p)
 {
 	LOG_DEBUG(MOD_WORLD, "Post enter world received");
+
+	// T322: on a ZONING world pass (OP_SendLoginInfo zoning == 1) this is the
+	// last thing world sends before it waits for our OP_EnterWorld. The
+	// fresh-login trigger below (WorldProcessExpansionInfo) never fires here:
+	// eqemu skips the whole character-select block -- guild list, char info,
+	// expansion info -- when is_player_zoning is set (world/client.cpp
+	// 516-523, 847), which is exactly what makes it a zoning pass. Without
+	// this the client sat in world forever after T322 started sending
+	// zoning=1, so the two changes are one change.
+	if (m_zone_to_zone_in_progress && !m_enter_world_sent) {
+		LOG_DEBUG(MOD_WORLD, "Zoning world pass: sending EnterWorld now");
+		WorldSendEnterWorld(m_character);
+	}
 }
 
 void EverQuest::WorldProcessExpansionInfo(const EQ::Net::Packet &p)

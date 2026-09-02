@@ -91,15 +91,18 @@ void EverQuest::ZoneProcessRequestClientZoneChange(const EQ::Net::Packet &p)
 		return;
 	}
 
-	// Respond with OP_ZoneChange to initiate the actual zone change
-	// The server will then respond with OP_ZoneChange with success=1
-	// T52 ride-along: this is a reply to a SERVER-initiated request
-	// (RequestClientZoneChange_Struct, "the server is requesting..." per
-	// the comment above), so it is solicited -- zone_reason should read
-	// ZoneSolicited (0), not the previous hardcoded ZoneUnsolicited (1).
-	// Cosmetic only: eqemu only logs zone_reason, never uses it for logic
-	// (verified against the real server source; see this unit's Review).
-	RequestZoneChange(zone_id, target_x, target_y, target_z, heading, /*solicited=*/true);
+	// Respond with OP_ZoneChange to initiate the actual zone change.
+	// The server will then respond with OP_ZoneChange with success=1.
+	//
+	// T322: echo back the `type` the server just handed us, which is what
+	// the official Titanium client does -- T320 measured zone_reason [1] on
+	// the oracle's OP_ZoneChange against fable's 0. eqemu always sends
+	// type == 0x01 here (zoning.cpp 983 and 1022), and every one of its ten
+	// zone_reason references is a log-format argument, so this is wire
+	// fidelity only, not a behaviour fix. It supersedes T52's reasoning,
+	// which picked the constant by argument ("this is solicited, so 0")
+	// rather than by matching the oracle.
+	RequestZoneChange(zone_id, target_x, target_y, target_z, heading, /*zone_reason=*/type);
 }
 
 void EverQuest::RelocateWithinZone(float x, float y, float z, float server_heading)
@@ -245,7 +248,7 @@ void EverQuest::ZoneProcessZoneChange(const EQ::Net::Packet &p)
 	LOG_TRACE(MOD_ZONE, "Zone change approved, will process disconnect on next update");
 }
 
-void EverQuest::RequestZoneChange(uint16_t zone_id, float x, float y, float z, float heading, bool solicited)
+void EverQuest::RequestZoneChange(uint16_t zone_id, float x, float y, float z, float heading, uint32_t zone_reason)
 {
 	// T231 test seam: record the attempt before the connection gate, so a
 	// headless test can tell "decided to reply with OP_ZoneChange" from
@@ -309,12 +312,12 @@ void EverQuest::RequestZoneChange(uint16_t zone_id, float x, float y, float z, f
 	p.PutFloat(74, y);  // Server's x-field = our y
 	p.PutFloat(78, z);
 
-	// zone_reason at offset 82 (T52 ride-along, cosmetic only -- confirmed
-	// against the real eqemu source that zone_reason is a log-only "memo
-	// field", never used for server-side logic; see the Review)
-	// 0 = ZoneSolicited (server-requested)
-	// 1 = ZoneUnsolicited (client-initiated, like zone line)
-	p.PutUInt32(82, solicited ? 0 : 1);
+	// zone_reason at offset 82. Log-only memo field server-side (confirmed
+	// against the real eqemu source: all ten references are log-format
+	// arguments). T322 makes this echo the server's `type` on a solicited
+	// change, matching the oracle; 1 (ZoneUnsolicited) is the default for a
+	// client-initiated crossing, which has nothing to echo.
+	p.PutUInt32(82, zone_reason);
 
 	// success at offset 86
 	// 0 = request (we're asking)
@@ -485,9 +488,97 @@ void EverQuest::CleanupZone()
 	LOG_DEBUG(MOD_ZONE, "Zone cleanup complete");
 }
 
+bool EverQuest::BeginGracefulZoneOut()
+{
+	// T322 -- THE ZONE-TRANSITION CONNECTION LIFECYCLE. Do not "simplify"
+	// this back into an immediate DisconnectFromZone(); the group survival
+	// of every zoning player depends on it, and it is pinned by
+	// tests/test_zone_out_handshake.cpp.
+	//
+	// What the official Titanium client does with the source-zone session
+	// (measured, T320's own capture review/T320/legA_qeynos2_zonelog_slice.log,
+	// re-read by T322): after the server's OP_ZoneChange approval it does
+	// NOT close the socket. It keeps sending OP_ClientUpdate, then sends
+	//     C->S OP_SaveOnZoneReq  (192-byte body, contents ignored by eqemu)
+	//     C->S OP_DeleteSpawn    (its own entity id)
+	// and the SERVER closes the session: eqemu Handle_OP_DeleteSpawn
+	// (client_packet.cpp 5727) queues OP_LogoutReply, broadcasts the despawn
+	// to everyone else, then calls Disconnect() -> eqs->Close() and
+	// client_state = DISCONNECTED.
+	//
+	// Why that decides the group. eqemu's Client::Process has two exits:
+	//   * session left ESTABLISHED with no packet (a client-side socket
+	//     close): client_process.cpp 582 -> OnDisconnect(true), whose FIRST
+	//     statement is an unconditional LeaveGroup() that never consults
+	//     bZoning -> the group is disbanded at MemberCount < 3.
+	//   * client_state == DISCONNECTED set from inside the packet loop (the
+	//     graceful hand-off above): the block at client_process.cpp 620 runs
+	//     first in that same iteration, sees bZoning, prints
+	//     "%s left the zone.", calls Group::MemberZoned() -- which KEEPS the
+	//     group -- and finishes with OnDisconnect(false), no LeaveGroup().
+	// fable was taking the first exit, 8 ms after the approval. This takes
+	// the second.
+	if (m_zone_out_handshake_pending) {
+		// eqemu answers one OP_ZoneChange with two approvals (its
+		// ServerOP_ZoneToZoneRequest handler runs twice -- normal, the
+		// official client sees the same doubling, T320). Hand off once.
+		LOG_DEBUG(MOD_ZONE, "Graceful zone-out already in flight, not re-sending");
+		return true;
+	}
+
+	if (!m_zone_connection && !m_test_force_zone_out_handshake) {
+		LOG_DEBUG(MOD_ZONE, "No zone connection to hand off gracefully");
+		return false;
+	}
+
+	// Stop reconnect attempts before the server closes the session on us --
+	// the close is expected from this point on, not a fault.
+	if (m_zone_connection_manager) {
+		m_zone_connection_manager->OnConnectionStateChange(
+			std::bind(&EverQuest::ZoneOnStatusChangeReconnectDisabled, this,
+				std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+	}
+
+	// OP_SaveOnZoneReq: eqemu routes it to Handle_OP_Save, which ignores the
+	// payload entirely and just calls Save(). The official client sends a
+	// 192-byte body (194 on the wire with the opcode); match the shape.
+	{
+		EQ::Net::DynamicPacket save;
+		save.Resize(192);
+		memset(save.Data(), 0, 192);
+		QueuePacket(HC_OP_SaveOnZoneReq, &save);
+	}
+
+	// OP_DeleteSpawn carrying our OWN entity id -- EntityId_Struct, 4 bytes.
+	{
+		EQ::Net::DynamicPacket del;
+		del.Resize(4);
+		memset(del.Data(), 0, 4);
+		del.PutUInt32(0, static_cast<uint32_t>(MySpawnId()));
+		QueuePacket(HC_OP_DeleteSpawn, &del);
+	}
+
+	m_zone_out_handshake_pending = true;
+	m_zone_out_acknowledged = false;
+	m_zone_out_handshake_deadline = std::chrono::steady_clock::now()
+		+ std::chrono::milliseconds(kZoneOutHandshakeTimeoutMs);
+
+	LOG_DEBUG(MOD_ZONE, "Graceful zone-out sent (entity {}), awaiting source-zone acknowledgement",
+		MySpawnId());
+	return true;
+}
+
 void EverQuest::DisconnectFromZone()
 {
 	LOG_DEBUG(MOD_ZONE, "Disconnecting from current zone server");
+
+	// T322: whatever brought us here (graceful zone-out, acknowledged or
+	// timed out; a logout; a failure partway through a zone change), the
+	// hand-off is over. Clearing here is what guarantees no stale pending
+	// flag can wedge the next transition, and that the connection is always
+	// closed exactly once even when the acknowledgement never arrives.
+	m_zone_out_handshake_pending = false;
+	m_zone_out_acknowledged = false;
 
 	// Cleanup zone state first
 	CleanupZone();
@@ -516,6 +607,16 @@ void EverQuest::ProcessDeferredZoneChange()
 	// This method is called from UpdateMovement, which is outside of any callback context.
 	// This ensures safe destruction of connection managers.
 	LOG_DEBUG(MOD_ZONE, "Processing deferred zone change");
+
+	// T322: latch the transition BEFORE the teardown. The world reconnect
+	// below has to tell world "I am zoning, not logging in fresh" (the
+	// `zoning` byte of OP_SendLoginInfo), and eqemu acts on that: with
+	// zoning == 0 world/client.cpp:934 DELETES this character's group_id row
+	// on the way through, which silently drops the zoning player out of the
+	// group even though the source zone kept it. Every WorldState zone flag
+	// the old expression read is wiped by resetZoneState() inside
+	// DisconnectFromZone(), one line below, so the flag has to live here.
+	m_zone_to_zone_in_progress = true;
 
 	LOG_TRACE(MOD_ZONE, "Step 1: Disconnecting from current zone");
 	// NOTE: DisconnectFromZone() calls CleanupZone() which does unloadZone() and
@@ -893,7 +994,7 @@ void EverQuest::CheckZoneLine()
 		// the zone line ourselves) -- solicited=false (ZoneUnsolicited),
 		// the existing/default behavior; stated explicitly per T52's
 		// ride-along fix at the other call site.
-		RequestZoneChange(m_game_state.world().pendingZoneId(), m_game_state.world().pendingZoneX(), m_game_state.world().pendingZoneY(), m_game_state.world().pendingZoneZ(), m_game_state.world().pendingZoneHeading(), /*solicited=*/false);
+		RequestZoneChange(m_game_state.world().pendingZoneId(), m_game_state.world().pendingZoneX(), m_game_state.world().pendingZoneY(), m_game_state.world().pendingZoneZ(), m_game_state.world().pendingZoneHeading(), /*zone_reason=*/1);
 	} else {
 		// Not in a zone line - clear the triggered flag if we were previously in one
 		if (m_game_state.world().zoneLineTriggered()) {
