@@ -371,6 +371,10 @@ SET(CLIENT_CORE_SOURCES
     src/client/action/command_processor_bank.cpp
     src/client/action/command_processor_train.cpp
     src/client/action/command_processor_loot.cpp  # T268
+    src/client/action/command_processor_registration.cpp  # J04
+    src/client/action/command_processor_social.cpp  # J04
+    src/client/action/command_processor_world.cpp  # J04
+    src/client/action/command_processor_spells_gm.cpp  # J04
     # Help system sources (T143: merges EverQuest::m_command_registry +
     # action::CommandProcessor catalogs for a registry-aware /help)
     src/client/help/merged_help.cpp

@@ -403,6 +403,10 @@ ADD_EXECUTABLE(test_command_processor
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_bank.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_train.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_loot.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_registration.cpp  # J04
+    ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_social.cpp  # J04
+    ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_world.cpp  # J04
+    ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_spells_gm.cpp  # J04
     ${ACTION_LAYER_STATE_SOURCES}
 )
 # T140: cmdMove/cmdMoveTo/cmdFollow use fmt::format directly (T88's
@@ -425,6 +429,10 @@ ADD_EXECUTABLE(test_appearance_command
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_bank.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_train.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_loot.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_registration.cpp  # J04
+    ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_social.cpp  # J04
+    ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_world.cpp  # J04
+    ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_spells_gm.cpp  # J04
     ${ACTION_LAYER_STATE_SOURCES}
 )
 TARGET_LINK_LIBRARIES(test_appearance_command GTest::gtest_main fmt::fmt)
@@ -441,6 +449,10 @@ ADD_EXECUTABLE(test_merged_help
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_bank.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_train.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_loot.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_registration.cpp  # J04
+    ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_social.cpp  # J04
+    ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_world.cpp  # J04
+    ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_spells_gm.cpp  # J04
     ${CMAKE_SOURCE_DIR}/src/client/graphics/ui/command_registry.cpp
     ${CMAKE_SOURCE_DIR}/src/client/help/merged_help.cpp
     ${CMAKE_SOURCE_DIR}/src/client/help/renderer_command_catalog.cpp
@@ -569,6 +581,10 @@ ADD_EXECUTABLE(test_input_action_bridge
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_bank.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_train.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_loot.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_registration.cpp  # J04
+    ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_social.cpp  # J04
+    ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_world.cpp  # J04
+    ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_spells_gm.cpp  # J04
     ${CMAKE_SOURCE_DIR}/src/client/action/input_action_bridge.cpp
     # T174: the bridge now reads HotbarModel to route keyboard hotbar presses
     # by slot content type. hotbar_model.cpp is dependency-light (event_bus +
