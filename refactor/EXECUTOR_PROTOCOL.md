@@ -36,6 +36,14 @@ references this file; plans carry only unit-specific content.
   truncation in one pass before trusting the rebuild** — check every produced
   binary for a valid ELF magic (`\x7fELF`) and non-trivial size, and delete +
   rebuild every one that fails. This is the T293 trap, and it is worse than
+  ⚠⚠ **THE SCAN HAS A HOLE: it validates artifacts that EXIST and is blind to one
+  that is ABSENT (orchestrator, 2026-09-02).** A killed `ar` DELETES the archive
+  outright, so `readelf -h` over `build/bin/*` plus `ar t` over `lib*.a` reported
+  **"221 binaries + archives, bad=0" while `build/lib/libwilleq_core.a` was
+  missing entirely** — a glob cannot match a file that is gone. **Assert the
+  artifacts you EXPECT are present FIRST, then validate them.** Absence and
+  corruption are different failures with the same trigger, and only the second
+  is caught by a scan over what you find.
   T293 recorded.
   ⚠ Related but DIFFERENT: a `ctest` **discovery-stage** failure
   ("Process terminated due to timeout" while listing a test's cases, or exit 8
