@@ -195,6 +195,57 @@ WARN. It has been over the line since long before Batch J, and every unit adds
 a few lines to it. **No J unit is to "fix" this, and no unit's acceptance is
 blocked by it.** Boarding the build-system split is the orchestrator's call.
 
+## ⚠ TEMPLATE CORRECTIONS FROM J02 (2026-09-02) — apply to every remaining unit
+
+**1. `verify_move_only.py` MUST be run with `--repo <slot>`. Highest priority.**
+It defaults `--repo` to `.`, which is NOT the executor's slot — this project
+forbids `cd` and an agent's cwd resets between calls. Run as the acceptance line
+used to specify it, J02 verified `main/` instead of its own worktree and printed
+a loud FAIL full of an unrelated merged unit's lines. ⚠ **That failure has the
+SAME SIGNATURE as the wrong-base-rev failure** (another unit's work appearing as
+removals) and a different cause — an executor will misdiagnose it. The
+acceptance line is now:
+`python3 scripts/refactor/verify_move_only.py "$(git merge-base fable HEAD)..HEAD" --repo <your slot>`
+
+**2. Survey ranges are NOT compile-checked, and one of J02's did not compile.**
+The plan's UCS range cut **inside a block comment** — `eq.cpp:2933` opened `/*`
+and `:3170` closed it, so all eleven `UCS*` methods are commented out. Cutting at
+the stated boundary would have left an unterminated `/*` in one file and an
+unopened `*/` in the other. **Every unit must check its boundaries against
+comment and `#if` nesting before cutting**, and report any range it had to move.
+
+**3. Take ranges from the leading banner comment** — J02 found three of six of
+its own plan's rows still started one line after the banner, contradicting the
+process rule added after J01.
+
+**4. The CMake variable is `CLIENT_CORE_SOURCES`, not `CORE_SOURCES`** — one
+add-site, found by grep, as the process now instructs.
+
+### Scheduling, measured (J01 solo vs J02 in a three-wide wave)
+
+**~32 min end to end, of which the cut plus CMake plus both proofs was 4
+minutes** — the bar is everything else. **`ctest -j6` went 3.0 min solo → 6.8 min
+under a three-slot wave, a 2.3x stretch**, and is the single slowest step.
+Budget **~35 min per unit in a three-wide wave**. The `-j6` cap did protect the
+visual gate (22.9 s, no flake); it did **not** protect a subprocess-timeout test
+— see the flake note below.
+
+⚠ **`HeadlessShutdownTest.NonLifecycleCommandIsHeldNotDroppedOrApplied` is a
+LOAD-DEPENDENT FLAKE**, not a regression: a 5 s subprocess-timing test that
+captured empty output under three-slot contention and passes 5/5 in isolation on
+the same binary. It is NOT in `test_baseline.txt`. **Do not re-diagnose it per
+unit** — if it fails in a wave run, re-run it alone before reporting anything.
+
+### J02's own leftover, for a later decision
+
+`src/client/eq_ucs.cpp` is **320 lines containing ZERO code** — 241 lines of
+commented-out `UCS*` methods plus 79 of includes. It builds and it is exactly
+what the contract specified, but giving dead commented code its own TU is
+probably not what anyone wants. **T297 has since PROVEN UCS is not needed by a
+Titanium client** (7 of 8 chat channels work cross-zone without it), so the
+honest options are: delete the block (git keeps it), or keep it and say why.
+Recommend deletion in a later unit; not done here because it is not move-only.
+
 ## Unit table
 
 | Unit | File | Lines | → TUs | Largest after | Wave | Notes |
