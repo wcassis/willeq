@@ -672,3 +672,637 @@ with any of them. It is the only Wave-7 unit with that property.
 ---
 
 ## Review (to be written by the executor)
+
+**Executed 2026-09-02 in `/mnt/projects/fable/wt/slot3`, branch
+`task/J17-renderer-header-split`, cut from `fable` at
+`40429250142c20b3adaf407af677e0495d7532d0` ("Batch J Wave 7: plan the four
+remaining oversize headers (J14-J17)"). Result: the split itself is clean —
+all four content proofs pass, all three builds exit 0, the suite is green and
+the visual gate PASSES with goldens untouched. ⚠ **ONE DEVIATION NEEDING
+ORCHESTRATOR SIGN-OFF: the verifier returned exit 1, `+24 / -0`, not the
+predicted `+0 / -0`.** All 24 lines are enumerated in §14 — they are eight
+verbatim preamble forward declarations x three headers, and the plan's claim
+that the whole copied preamble is boilerplate to the verifier is simply wrong.
+No code was contorted to chase a green exit.**
+
+### 1. Line count at my tip, and range drift
+
+2,520 lines at my tip — identical to the plan's measurement at `09c99b0b`.
+**Zero range drift.** Every cut boundary, the guard positions, the namespace
+opens/closes and the class extent are exactly where the plan says.
+
+### 2. Every property in §Measured, re-verified
+
+| property | plan | measured at my tip | verdict |
+|---|---|---|---|
+| total lines | 2,520 | 2,520 | match |
+| guard | `#ifndef`/`#define` 1-2, `#endif` 2520 | same | match |
+| namespaces | open 101/102, close 2517/2518 | same | match |
+| free-type region | 104-716 (613 lines) | same | match |
+| class | 717-2515 (1,799 lines) | same | match |
+| `// ====` banners | 0 | `grep -cE '^// ={4,}'` -> **0** | match |
+| preproc directives in 104-716 | 0 | **0** (awk over the slice returns nothing) | match |
+| file-scope constants | 0 | **0** | match |
+| includers | 60 | **60** | match |
+| text-scanning readers of this header | 0 | **0** | match |
+| conditional directives in the whole file | "fourteen" | **22** | ⚠ **plan drift, see below** |
+
+⚠ **One plan number is wrong and it is worth recording:** the plan says the
+header has *fourteen* conditional preprocessor directives. The actual count is
+**22** (the plan's own enumerated list in the §Measured row already names 22
+line numbers, so the word "fourteen" is a typo, not a code change). **The
+property that matters — that none of them lies inside 104-716 — holds
+exactly.** No STOP condition is triggered.
+
+⚠ **A second, smaller plan inaccuracy:** §Correction 21 claims the narrow grep
+"returns only `namespace` lines". It does not — its pattern includes
+`^extern `, so it also returns lines 68, 69 and 70. This changes nothing about
+the conclusion (those three are the timer-query externs, they live in the
+preamble, and they did not travel), but the next reader should not be startled
+by three extra lines.
+
+### 3. `irrlicht_renderer.h` did NOT reach 1,500 — it reached **1,914** — and that is the expected outcome
+
+Stated plainly so nobody re-opens it: **`include/client/graphics/irrlicht_renderer.h`
+is 1,914 lines after this unit, `check_file_sizes.sh` emits one WARN on it, and
+that WARN is the accepted result.** A class definition cannot span files;
+`class IrrlichtRenderer` alone is 1,799 lines and it is byte-identical after
+this unit (proof 4 below). What remains is that class, the preamble it
+genuinely needs, and three new `#include` lines. **Will has already ruled that
+component extraction is a separate programme with no deadline and that the
+move-only header wins come first.** This unit's deliverable is that
+`irrlicht_renderer.h` now contains **only the class** — the clean starting
+condition for that programme. Nothing was compressed, nothing was decomposed,
+nothing was deleted.
+
+### 4. Correction 21, re-derived (not cited)
+
+**Narrow grep, on the target:**
+```
+$ grep -nE '^static |^namespace|^const |^constexpr |^extern ' include/client/graphics/irrlicht_renderer.h ; echo exit=$?
+68:extern void eqtGPUPhaseBegin(int phase);
+69:extern void eqtGPUPhaseEnd(int phase);
+70:extern void eqtGPUPhaseCollectResults();
+79:namespace EQT { struct ZoneLineBoundingBox; }
+82:namespace eqt {
+84:namespace inventory { class InventoryManager; }
+85:namespace bridge { class GameStateBridge; }
+89:namespace EQ { class SpellVisualFX; }
+90:namespace eqt { namespace ui { class ChatMessageBuffer; class CharacterModelView; } }
+91:namespace EQT { namespace Graphics { class TextBatch; class UIAtlas; class UIRenderer; class StaticUIInput; } }
+97:namespace EQT { namespace Graphics { class ConstrainedTextureCache; } }
+101:namespace EQT {
+102:namespace Graphics {
+exit=0
+```
+**Zero file-scope `static`, `const` or `constexpr`.** Every other hit is a
+namespace open or forward-declaration wrapper.
+
+**Widened (call-shaped) grep, on the target — with its exit status and its
+unfiltered match count, per J28's template:**
+```
+$ grep -nE '^[A-Za-z_][A-Za-z_0-9:<>,&\* ]*\(' include/client/graphics/irrlicht_renderer.h ; echo exit=$?
+68:extern void eqtGPUPhaseBegin(int phase);
+69:extern void eqtGPUPhaseEnd(int phase);
+70:extern void eqtGPUPhaseCollectResults();
+exit=0
+$ grep -cE '^[A-Za-z_][A-Za-z_0-9:<>,&\* ]*\(' include/client/graphics/irrlicht_renderer.h
+3
+```
+**Exit 0, three unfiltered matches — the pattern is live on this file, not
+silently empty.**
+
+**Positive control, `src/client/position.cpp` (correction 78):**
+```
+$ grep -nE '^static |^namespace|^const |^constexpr |^extern ' src/client/position.cpp
+11:constexpr float position_eps = 0.0001f;
+$ grep -cE '^[A-Za-z_][A-Za-z_0-9:<>,&\* ]*\(' src/client/position.cpp
+31
+$ grep -nE '^[A-Za-z_][A-Za-z_0-9:<>,&\* ]*\(' src/client/position.cpp | head -6
+15:inline bool ValueWithin(T value, T min, T max) {
+19:std::string to_string(const glm::vec4 &position)
+30:std::string to_string(const glm::vec3 &position)
+40:std::string to_string(const glm::vec2 &position)
+49:bool IsOrigin(const glm::vec3 &position) {
+53:bool IsOrigin(const glm::vec4 &position) {
+```
+**Both patterns match on the control**, so both empty/small results on the
+target are real, not pattern failures.
+
+**Where the three timer-query externs live and what happened to them:** lines
+**68, 69, 70** — inside the preamble (1-103), immediately below a six-line
+`// P52:` comment at 62-67. **Nothing in 104-716 references them:**
+```
+$ sed -n '104,716p' include/client/graphics/irrlicht_renderer.h | grep -n 'eqtGPUPhase' ; echo exit=$?
+exit=1
+```
+**They did NOT travel.** The copied preamble in each new header is lines
+**3-61 and 71-102** — 62-70 skipped. Their real consumers are `.cpp` files this
+unit does not touch, and they remain declared, exactly once, in
+`irrlicht_renderer.h`. **This is why the verifier came back +0 / -0** rather
+than +9.
+
+**Therefore correction 21 has no exposure here:** no file-scope symbol in
+104-716 could be separated from a consumer, because there is no file-scope
+symbol in 104-716 at all. Every symbol there is a type or a class member with
+external linkage.
+
+### 5. Dependency evidence
+
+**556-716 references none of the 104-359 types:**
+```
+$ sed -n '556,716p' … | grep -nE 'RendererEvent|RendererAction|TargetInfo|ObjectLight|VertexAnimatedMesh|PlayerMovementState|RendererConfig|VisionType|DeferredObject|ZoneLoadStep|PendingZoneComputations|PlayerModeConfig'
+115:    size_t textureCacheBytesLimit = 0;   // budget: ConstrainedRendererConfig::textureMemoryBytes-derived
+138:    size_t framebufferBudgetBytes = 0;   // ConstrainedRendererConfig::framebufferMemoryBytes (the real budget)
+```
+⚠ **Both hits are false positives and both are comments.** My pattern's
+`RendererConfig` alternative matched inside **`ConstrainedRendererConfig`** — a
+*different* type, which comes from an included constrained-rendering header,
+not from 104-359. **Zero code references, zero references to the actual
+`RendererConfig` struct.** `renderer_draw_types.h` is genuinely independent of
+the other two tiles.
+
+**361-555 does reference `RendererEvent` (8 code sites, as the plan measured):**
+lines are relative to 361:
+```
+  1:class RendererEventReceiver : public irr::IEventReceiver {
+  3:    RendererEventReceiver();
+ 49:    std::vector<RendererEvent> drainActions() { … }
+ 59:    std::vector<RendererEvent> drainBridgeActions() {
+ 60:        std::vector<RendererEvent> r;
+ 69:    void pushBridgeAction(RendererEvent event) {
+ 74:    // …use intData in RendererEvent for new code…
+164:    std::vector<RendererEvent> actionQueue_;
+168:    std::vector<RendererEvent> bridgeQueue_;
+```
+Hence `renderer_event_receiver.h` includes `renderer_types.h`. Chain honoured.
+
+**The only `IrrlichtRenderer` mentions in 104-716 are six COMMENT lines**
+(offsets relative to 104): 274, 285, 303, 311, 371, 402 — naming
+`::updatePlayerMovement`, `::processFrameInput`, `::processFrame`,
+`::pushBridgeAction`, `::processChatInput` and `::processFrameInput` again.
+**No code dependency in either direction.** None of those six comment lines was
+touched.
+
+**No RDP, DRM or EGL type in 104-716.** The single hit for that pattern is a
+comment naming a TU (`// renderer_overlays / renderer_rdp (render) and from`),
+not a type.
+
+**T312's `bridgeQueue_` mutex invariant survived — checked explicitly.** All
+of its machinery lives inside 361-555 and therefore moved as one contiguous,
+byte-identical block into `renderer_event_receiver.h`: the "no raw access"
+comment (417-418), the three locked accessors (drain at 421-422, size at
+426-427, push at 430-431, each opening with
+`std::lock_guard<std::mutex> lock(bridgeMutex_);`), and the two members
+(`mutable std::mutex bridgeMutex_;` at 527, `std::vector<RendererEvent>
+bridgeQueue_;` at 528). **The mutex and the queue it guards did not become
+separated by the split** — they are adjacent lines in the same class in the
+same new header. The only other mentions in the file are two comments inside
+`class IrrlichtRenderer` (1009, 1020) restating the rule; both are in the
+byte-identical class region. `test_bridge_queue_race` passes.
+
+### 6. Comment depth at all four cuts — computed, not asserted
+
+```
+depth before line 104 = 0
+depth before line 360 = 0
+depth before line 556 = 0
+depth before line 717 = 0
+final depth 0
+```
+Surrounding lines, all four matching the plan exactly:
+
+| cut | preceding | first line of next range |
+|---|---|---|
+| 104 | `102: namespace Graphics {`, `103` blank | `104: // Forward declarations` |
+| 360 | `358: };` (closes `RendererConfig`), `359` blank | `360: // Event receiver for keyboard/mouse input` |
+| 556 | `555: };` (closes `RendererEventReceiver`) | `556` blank, `557: // Entry for front-to-back sorted zone drawing` |
+| 717 | `715: };` (closes `MemoryReportBreakdown`), `716` blank | `717: // Main Irrlicht renderer class` |
+
+J03's rule (cut at a blank whose predecessor closes a definition, comment depth
+0) is satisfied at every cut, and each leading comment travelled with the
+entity it introduces.
+
+### 7. The preprocessor dump
+
+All 22 conditional directives, none in 104-716:
+```
+1, 2, 53, 56, 58, 60      <- preamble
+1067, 1069, 1071, 1326, 1365, 1493, 1504, 1627, 1629,
+1994, 2007, 2138, 2140, 2142, 2493, 2514   <- inside class IrrlichtRenderer
+2520                       <- trailing guard #endif
+```
+The identical `awk` restricted to `NR>=104 && NR<=716` prints **nothing**. The
+whole-file run is its own positive control (22 hits), so the empty slice is a
+real emptiness. `WITH_RDP` is compiled in neither the gles2 nor the ARM
+configuration by default; the `EQT_HAS_DRM && !EQT_HAS_GLES2` arm is off in the
+gles2 build. Both acceptance builds are clean regardless, since nothing
+conditional moved.
+
+### 8. Where the three new `#include` lines went
+
+**Above `namespace EQT {`**, immediately after the last preamble include
+(`first_person_camera.h`, originally line 99) and before the blank + namespace
+opens. As written:
+```
+  99: #include "client/graphics/first_person_camera.h"
+ 100:
+ 101: // J17: the free-standing types that used to sit below this preamble now live in
+ 102: // three sibling headers, included here so that every existing includer of this
+ 103: // header sees exactly the same declarations, in the same order, as before.
+ 104: #include "client/graphics/renderer_types.h"
+ 105: #include "client/graphics/renderer_event_receiver.h"
+ 106: #include "client/graphics/renderer_draw_types.h"
+ 107:
+ 108: namespace EQT {
+ 109: namespace Graphics {
+ 110:
+ 111: // Main Irrlicht renderer class
+```
+**They are outside both namespaces**, in dependency order, verified by compile
+(the x86 gles2, main and ARM builds all exit 0 — a nested
+`EQT::Graphics::EQT::Graphics::…` would have failed 60 TUs immediately).
+
+⚠ **Deviation from the plan's §Header shape sketch, and it is a real plan
+defect.** The sketch places the `renderer_types.h` include for
+`renderer_event_receiver.h` **after** `<lines 71-102 verbatim>` — but line 102
+is `namespace Graphics {`, so following that sketch literally would put an
+`#include` **inside** two open namespaces: precisely the nesting hazard the
+plan's own §Where the three includes go section warns is "the single most
+likely way to get this unit wrong". **I placed it before the namespace opens
+instead**, i.e. the copied preamble for that one file is `3-61`, `71-99`, the
+new include, then `100-102`. Same content, correct scope.
+
+### 9. The three per-file guard triples
+
+Each directive counted separately (correction 52):
+
+| file | `#ifndef` | `#define` | `#endif //` | occurrences of the umbrella guard |
+|---|---|---|---|---|
+| `renderer_types.h` (`EQT_GRAPHICS_RENDERER_TYPES_H`) | 1 | 1 | 1 | **0** |
+| `renderer_event_receiver.h` (`EQT_GRAPHICS_RENDERER_EVENT_RECEIVER_H`) | 1 | 1 | 1 | **0** |
+| `renderer_draw_types.h` (`EQT_GRAPHICS_RENDERER_DRAW_TYPES_H`) | 1 | 1 | 1 | **0** |
+
+**None reuses `EQT_GRAPHICS_IRRLICHT_RENDERER_H`.**
+
+### 10. The guards, measured
+
+**(a) `grep -rn 'irrlicht_renderer\|renderer_types\|renderer_draw_types\|renderer_event_receiver' tests scripts`** — 27 hits, every one accounted for:
+16 are `#include "client/graphics/irrlicht_renderer.h"` lines in test TUs
+(unchanged, and unchanged in count), 9 are prose comments about the **`.cpp`**,
+and **two are genuine text reads** — both of
+`readFile(kRoot / "src/client/graphics/renderer_event_receiver.cpp")`, in
+`tests/test_static_ui_scroll.cpp:690` and `tests/test_ui_hide_command.cpp:146`.
+⚠ **The plan attributes both of those lines to `tests/test_reachability_sweep.cpp`
+(":690 and one other at :146"). That attribution is wrong — the line numbers
+are right, the file is not.** Recorded, not acted on (correction 24). Either
+way the conclusion holds: **they read the `.cpp` under `src/`, a different file
+from the header this unit created, and this unit does not touch it.** Both
+tests pass.
+
+**No test and no script reads `include/client/graphics/irrlicht_renderer.h`, or
+any of the three new headers, as text.**
+
+**(b) `grep -hn 'kRoot / "src\|kRoot / "include' tests/*.cpp | sort -u`** — the
+exhaustive list of source paths any test opens is 18 lines covering
+`include/client/eq.h`, `include/client/state/*`, `include/client/events/renderer_intents.h`,
+`include/client/action/action_dispatcher.h`, and `src/client/...` files
+including `renderer_event_receiver.cpp`, `renderer_frame_render.cpp`,
+`renderer_frame_input.cpp`, `renderer_command_catalog.cpp`,
+`eq_bridge_intents.cpp` and the three action_dispatcher TUs. **There is no
+`include/client/graphics/` path in that list at all.**
+
+**(c) First-person sweep root at my tip** — `tests/test_first_person_camera_single_formula.cpp:49`
+still reads `const fs::path kGraphicsDir = kRoot / "src" / "client" / "graphics";`.
+**It has NOT widened to `include/`**, so the three new headers do not enter it
+and neither filename-keyed rule applies. Belt and braces, the region grep for
+its six tokens over 104-716 returns **nothing, exit 1**, and the same grep over
+the three finished headers also returns nothing, exit 1.
+
+**(d) Reachability sweep** — `tests/test_reachability_sweep.cpp` does
+`collect({"src", "include"}, {".cpp", ".h"})` at four sites, so the three new
+headers **do** enter it automatically. The zero-counts:
+```
+$ grep -cE '(m_dispatcher|dispatcher_|dispatcher|m_actionDispatcher|actionDispatcher_)(\.|->)\w+\(' include/client/graphics/renderer_*.h
+renderer_event_receiver.h:0
+renderer_draw_types.h:0
+renderer_types.h:0
+$ grep -cE 'Send[A-Za-z0-9_]+\(' include/client/graphics/renderer_*.h
+renderer_event_receiver.h:0
+renderer_draw_types.h:0
+renderer_types.h:0
+```
+`ctest -R 'FirstPerson|ReachabilitySweep'`: **43/43 passed.**
+
+### 11. Every file-header comment line I wrote, enumerated, and the correction-45 audit
+
+Six lines, identical in all three new headers except the first:
+```
+1  // <one-line description, per file, see below>
+2  // Extracted verbatim from the umbrella renderer header by
+3  // refactor/J17_irrlicht_renderer_header_split.md. Move-only: no line of the
+4  // extracted block was edited. The three timer-query free-function
+5  // declarations in that header's preamble deliberately did not travel; see
+6  // that plan for why.
+```
+Line 1 per file:
+- `renderer_types.h`: `// Free-standing renderer enums, structs and forward declarations.`
+- `renderer_event_receiver.h`: `// The renderer keyboard/mouse event receiver class.`
+- `renderer_draw_types.h`: `// Draw-ordering entries, texture-guard forward declarations and memory-report structs.`
+
+Plus three comment lines added to `irrlicht_renderer.h` (quoted in §8 above,
+lines 101-103).
+
+**Correction 45/62 audit, token by token, against every grep this plan runs:**
+
+| dangerous token | appears in any header comment I wrote? |
+|---|---|
+| the timer-query extern name | **no** — described in words as "timer-query free-function declarations" |
+| `CameraMode::FirstPerson`, `firstPerson`, `kFirstPerson`, `computeFirstPersonCamera` | **no** |
+| the `camera_->setPosition(` / `setTarget(` shapes | **no** |
+| `irrlicht_renderer` as a bare filename | **no** — the source header is described in words as "the umbrella renderer header". It appears only inside the plan-file path on line 3, which is not `#include`-shaped and so cannot affect the includer grep (re-measured after the edit: still **60**) |
+| `renderer_types` / `renderer_event_receiver` / `renderer_draw_types` | **no** — the three headers are described as "three sibling headers" |
+| any `Send…(` or dispatcher call shape | **no** — proven by the zero-counts in §10(d), run *after* the headers were written |
+| `EQT_GRAPHICS_IRRLICHT_RENDERER_H` | **no** — `grep -c` returns 0 in all three |
+
+Every grep in this plan was re-run against the finished files, not just the
+pre-edit ones, and none was inflated by my own prose.
+
+### 12. Includer count, before and after
+
+**60 before, 60 after.** Identical command, run at both points:
+```
+grep -rlE '#include[[:space:]]*[<"][^">]*irrlicht_renderer\.h[">]' src include tests tools benchmarks scripts | wc -l
+```
+`git diff --stat` names **exactly four files** and none of the 60:
+```
+ include/client/graphics/irrlicht_renderer.h       | 620 +---------------------
+ include/client/graphics/renderer_draw_types.h     | 266 ++++++++++
+ include/client/graphics/renderer_event_receiver.h | 302 +++++++++++
+ include/client/graphics/renderer_types.h          | 361 +++++++++++++
+ 4 files changed, 936 insertions(+), 613 deletions(-)
+```
+**No includer was edited.** Every one of the 60 sees the same declarations in
+the same order as before.
+
+### 13. CMake add-sites found: **ZERO**, matching the prediction
+
+The grep over `CMakeLists.txt`, `cmake/`, `tests/`, `scripts/` and
+`benchmarks/` returns seven hits, none of them an add-site:
+- `CMakeLists.txt:481-482` — the **`.cpp`** source-list entries for
+  `irrlicht_renderer.cpp` and `renderer_event_receiver.cpp` (J11's, already
+  correct, untouched).
+- `CMakeLists.txt:583` — a prose comment mentioning the header.
+- `tests/cmake/renderer_guards.cmake:82` — a T66 comment about the `.cpp`.
+- three hits in `benchmarks/audits/**` evidence text files.
+
+**This project lists no headers in any CMake source list — I falsified the
+assumption rather than inheriting it, by grepping for the three new basenames
+too (zero hits) and by confirming the builds pick them up purely through the
+include path.** The three new headers need no CMake site, and adding one would
+be wrong.
+
+### 14. All four content proofs, and the verifier
+
+`$BASE = 40429250142c20b3adaf407af677e0495d7532d0` (the fork point,
+`git merge-base fable HEAD`).
+
+**Proof 1 — byte-identical re-concatenation.** Bodies extracted **from the
+produced files** (J12's rule), each delimited **structurally** — between that
+file's own `namespace Graphics {` line and its own `} // namespace Graphics`
+line, never by an offset constant — concatenated in original order
+(`renderer_types`, `renderer_event_receiver`, `renderer_draw_types`) and
+compared against `git show "$BASE:…irrlicht_renderer.h" | sed -n '104,716p'`:
+```
+concat body lines 613
+613 before_cat.txt
+613 after_cat.txt
+cmp -> CMP_EXIT=0
+```
+**613 lines, byte-identical, exit 0.**
+
+**Proof 2 — the line-multiset check.** Both sides sorted, `diff`:
+```
+MULTISET_EXIT=0
+```
+No line duplicated into two headers, none dropped from all three — the failure
+mode `verify_move_only.py` structurally cannot see.
+
+**Proof 3 — `class IrrlichtRenderer` byte-identical.**
+`git show "$BASE:…" | sed -n '717,2515p'` against the class region at my tip:
+```
+class comment found at line 111 (located structurally, not by an offset)
+1799 class_before.txt
+1799 class_after.txt
+cmp -> CLASS_CMP_EXIT=0
+```
+**1,799 lines, byte-identical.** This unit touched nothing inside the class.
+
+**Proof 4 — the verifier.** ⚠ **THIS IS THE UNIT'S ONE DEVIATION: the
+prediction was `+0 / -0`, the actual result is `+24 / -0`, exit 1. The plan's
+prediction is wrong, the code is not. Orchestrator sign-off needed.**
+```
+$ BASE=$(git -C /mnt/projects/fable/wt/slot3 merge-base fable HEAD)
+$ python3 scripts/refactor/verify_move_only.py "$BASE..HEAD" --repo /mnt/projects/fable/wt/slot3
+BASE=40429250142c20b3adaf407af677e0495d7532d0
+
+Non-C++ files changed (not verified, review separately):
+  refactor/J17_irrlicht_renderer_header_split.md
+
+Files verified: 4
+Boilerplate: +256 / -0 lines (allowed)
+
+SUBSTANTIVE ADDED lines (24):
+  +3x  class PathfinderNavmesh;
+  +3x  namespace EQ { class SpellVisualFX; }
+  +3x  namespace EQT { namespace Graphics { class ConstrainedTextureCache; } }
+  +3x  namespace EQT { namespace Graphics { class TextBatch; class UIAtlas; class UIRenderer; class StaticUIInput; } }
+  +3x  namespace EQT { struct ZoneLineBoundingBox; }
+  +3x  namespace bridge { class GameStateBridge; }
+  +3x  namespace eqt { namespace ui { class ChatMessageBuffer; class CharacterModelView; } }
+  +3x  namespace inventory { class InventoryManager; }
+
+FAIL: substantive line changes detected.
+VERIFIER_EXIT=1
+```
+
+**Every one of the 24 is enumerated and accounted for. There is no
+unexplained residue.** They are **eight distinct lines, each copied once into
+each of the three new headers** (8 x 3 = 24). All eight are **verbatim
+forward-declaration lines from the original preamble** — original lines **76,
+79, 84, 85, 89, 90, 91 and 97** — which §Header shape *mandates* copying:
+
+```
+ 76: class PathfinderNavmesh;
+ 79: namespace EQT { struct ZoneLineBoundingBox; }
+ 84: namespace inventory { class InventoryManager; }
+ 85: namespace bridge { class GameStateBridge; }
+ 89: namespace EQ { class SpellVisualFX; }
+ 90: namespace eqt { namespace ui { class ChatMessageBuffer; class CharacterModelView; } }
+ 91: namespace EQT { namespace Graphics { class TextBatch; class UIAtlas; class UIRenderer; class StaticUIInput; } }
+ 97: namespace EQT { namespace Graphics { class ConstrainedTextureCache; } }
+```
+
+**REMOVED is 0** — nothing was lost, and no line outside this set was flagged.
+
+**Why the prediction missed.** The plan asserts (§Acceptance, and again in
+§Header shape) that "the whole 3-61/71-102 block is `#include`, `#if…`,
+`namespace … {` and comments, i.e. **BOILERPLATE** to the verifier, so copying
+it three times is free." **That is false.** `verify_move_only.py` treats a bare
+`namespace EQT {` opener as boilerplate, but a **single-line forward
+declaration** — `namespace X { class Y; }` or a plain `class Z;` — carries a
+declaration and is correctly counted as substantive. The plan's own §Header
+shape row that flagged "⚠ non-boilerplate preamble content" named **only**
+lines 62-70; it should have named 76, 79, 84, 85, 89, 90, 91 and 97 as well.
+
+**This is correction 9's cost class exactly, and it is the same shape as J11's
++65** (a verbatim preamble carrying 12 extern declarations and a stub, 13 lines
+x 5 TUs). Here it is 8 lines x 3 headers = 24. The plan correctly identified the
+*mechanism* and then under-counted the lines it applies to.
+
+**What I did NOT do about it.** I did **not** trim the forward-declaration
+block from the copied preambles to force a green exit. §Header shape is
+explicit — "Do NOT trim per-header include sets… trimming is a second, riskier
+change wearing a move-only commit's clothes" — and the plan's own bar says
+**"NEVER contort code to force a green exit"**. Trimming would also require
+per-header dependency analysis of eight declarations across three files, which
+is a different unit. **The +24 is the honest cost of the preamble-verbatim rule
+this plan chose.** By the plan's own reasoning about the analogous +9 case
+("either outcome is acceptable and neither is a defect; what is NOT acceptable
+is not knowing which you produced"), this is acceptable — but it exceeds the
+enumerated set, which the STOP conditions name, so **I am flagging it for
+orchestrator sign-off rather than absorbing it.**
+
+**The `62-70` decision was correct and did hold.** The three timer-query
+externs did **not** travel. Had they, the result would be **+33**, not +24.
+
+⚠ **My first run of proof 3 also FAILED, and there the proof was wrong, not the
+code** (correction 20, now four units running). I had extracted the "after"
+class region with a hand-computed offset (`109,1907`) that was two lines off
+because of the note comment I added. Re-anchoring on
+`grep -n '^// Main Irrlicht renderer class$'` gave exit 0 immediately.
+**Suspect the proof first.** It is also a live argument for the plan's own
+"define body() STRUCTURALLY, never by an offset constant" rule applying to
+*every* proof in a unit, not only to the body extraction.
+
+### 15. Final line counts (computed) and timings
+
+`P`, my copied-preamble length, stated explicitly per correction 57:
+**`P = 88` lines** for `renderer_types.h` and `renderer_draw_types.h`
+(source lines 3-61 = 59 lines, plus 71-102 = 32 lines, minus... precisely:
+3-61 is 59 lines and 71-99 is 29 lines and 100-102 is 3 lines, total **91**),
+and **`P = 92`** for `renderer_event_receiver.h` (the same 91 plus its one
+`renderer_types.h` include, placed before the namespace opens). The header
+comment block `H` is **7 lines** (6 comment lines + 1 blank); the guard block
+is 3 lines (`#ifndef`, `#define`, blank); the tail is 4 lines
+(`} // namespace Graphics`, `} // namespace EQT`, blank, `#endif // GUARD`).
+
+| file | before | after | composition |
+|---|---|---|---|
+| `include/client/graphics/irrlicht_renderer.h` | 2,520 | **1,914** | 99 preamble + 7 (blank + 3-line note + 3 includes) + 4 (blank, 2 namespace opens, blank) + 1,804 class-through-`#endif` |
+| `include/client/graphics/renderer_types.h` | — | **361** | 7 H + 3 guard + 91 P + 256 range + 4 tail |
+| `include/client/graphics/renderer_event_receiver.h` | — | **302** | 7 H + 3 guard + 92 P + 196 range + 4 tail |
+| `include/client/graphics/renderer_draw_types.h` | — | **266** | 7 H + 3 guard + 91 P + 161 range + 4 tail |
+
+Arithmetic check on the split: `103 + 256 + 196 + 161 + 1804 = 2520`. Holds.
+
+`check_file_sizes.sh --files` on all four:
+```
+WARN  include/client/graphics/irrlicht_renderer.h: 1914 lines (> 1500)
+ok    include/client/graphics/renderer_types.h: 361 lines
+ok    include/client/graphics/renderer_event_receiver.h: 302 lines
+ok    include/client/graphics/renderer_draw_types.h: 266 lines
+checked 4 file(s): 3 ok, 1 warn, 0 fail
+```
+**One WARN, on the surviving header, exactly as this plan predicts. It does not
+block acceptance.** Three created files: 0 warn, 0 fail.
+
+⚠ **Cosmetic artefact, declared and NOT hand-fixed** (corrections 30/48): in
+`renderer_event_receiver.h` the body begins immediately below
+`namespace Graphics {` with no separating blank line, because its range starts
+at original line 360 (a comment) rather than at a blank. This is the inverted
+form of the double-space artefact. **Fixing it would break the byte-identity
+proof, so I left it.** The other two files are unaffected.
+
+**Timings, wall clock ~1h05m:**
+
+| step | result | wall |
+|---|---|---|
+| `scripts/build-gles2-x86.sh` (**run FIRST**, correction 41) | **exit 0** | ~17 min |
+| `cmake --build build -j24` (main GLES2-config tree) | **exit 0** | ~13 min ⟵ slowest |
+| `ctest -j6` (3,498 tests) | see below | 4 min |
+| `scripts/build-arm-noble.sh` | **exit 0** | ~9 min |
+| four content proofs + all greps | all pass | ~2 min |
+
+**No build hit exit 143.** I ran every long build detached, writing its exit
+code into a **unit-private** file under a `j17/` subdirectory (the shared
+scratchpad hazard, J20), `rm -f`'d each exit file immediately before launching
+the thing that writes it, and read the code from inside that file. The
+harness's own "background command completed (exit code 0)" notifications fired
+for the *launcher* shell, not the build — twice they arrived while the build
+was still compiling, and `wait_for.sh` correctly reported `file: absent`.
+**An absent exit file is NO RESULT: I waited and re-invoked rather than
+believing the notification.** Elapsed times reported by `wait_for.sh` were all
+non-trivial (210s, 500s, 241s, 540s) — no 0-second false MET.
+
+**The gles2 tree really was rebuilt before the gate ran** (correction 72, the
+vacuous-gate trap): `build-gles2/bin/gles2_zone_benchmark` is stamped
+**21:01:15**, my last source edit **20:47:10**, and `ctest` started after that.
+The benchmark is 14 minutes newer than the edit — the gate is not vacuous.
+Given this unit touches the renderer's own header, that ordering mattered more
+here than anywhere else in the batch.
+
+**Test results: 3,496 of 3,498 passed on the full run; both failures resolved
+to non-findings; the visual gate PASSED (26.84 s) with goldens untouched
+(`git status --porcelain` names only my four files).**
+1. `AudioManagerTest.PreloadCommonSounds` — **the documented ALSA host quirk**,
+   the sole expected failure in `refactor/test_baseline.txt`.
+2. `check_build_tree_orphans` — **a pre-existing stale artefact in this slot's
+   build tree, not a J17 finding.** It flagged
+   `build/bin/test_spell_group_targeting`, a 70 MB binary stamped 17:28 today,
+   left behind when **T324** deleted `tests/test_spell_group_targeting.cpp`
+   (`tests/cmake/spells.cmake:49` records the removal; `git log` confirms
+   commit `ef2c3080`). cmake never prunes `bin/`. I deleted the orphan and the
+   test passes; **no source, CMake or test file was changed to make it pass.**
+   Worth flagging to the orchestrator: **any slot whose build tree predates
+   T324/T327 will hit this**, and it looks alarming in an unrelated unit's run.
+
+**Wave concurrency did not stretch the verification tail noticeably** — slot1
+(T327) and slot2 (J14) were active throughout and the figures above are
+unremarkable against the batch's record. Reported as a clean run, not an
+anomaly (correction 14).
+
+### 16. Findings only — recorded, not acted on
+
+1. **`docs/module_map.md` needs three new rows** — `renderer_types.h`,
+   `renderer_event_receiver.h`, `renderer_draw_types.h`. **Not done here**
+   (`docs/` is outside this unit's territory).
+2. **Plan defect, §Header shape**: its sketch places the cross-header
+   `#include` after the copied `namespace Graphics {` line, which would nest
+   the namespaces. See §8. **The batch document should fix the sketch** — this
+   is the one place a careful executor following the plan literally would have
+   broken the build.
+3. **Plan says "fourteen" conditional directives; there are 22.** See §2.
+4. **Plan misattributes the two `readFile` text-scan sites** to
+   `test_reachability_sweep.cpp`; they are in `test_static_ui_scroll.cpp:690`
+   and `test_ui_hide_command.cpp:146`. See §10(a). **No stale line-number
+   citation in `tests/` is attributable to this split** (correction 24) — I
+   changed no test file.
+5. **Plan's §Correction 21 claim that the narrow grep "returns only namespace
+   lines"** is inaccurate: its pattern includes `^extern `. See §2.
+6. ⚠ **Plan's verifier prediction is wrong: the copied preamble is NOT all
+   boilerplate.** Eight single-line forward declarations in 71-102 are
+   substantive to `verify_move_only.py`, so any unit that copies this preamble
+   verbatim into N headers pays `8 x (N-1)`... here `8 x 3 = 24`, since all
+   three copies are additions. **§Header shape's "⚠ non-boilerplate preamble
+   content" row should name lines 76, 79, 84, 85, 89, 90, 91 and 97 alongside
+   62-70**, and the batch document should record that a one-line
+   `namespace X { class Y; }` is a declaration, not a namespace opener. See
+   §14.
+7. **Generalise the structural-anchor rule to every proof, not just body
+   extraction.** My proof-3 offset bug (§14) would have been impossible under
+   it, and it is the fourth consecutive unit to lose time to a bad proof rather
+   than a bad change.
+8. **Stale-orphan hygiene**: see the `check_build_tree_orphans` note in §15.
+   A slot-setup step that prunes `build/bin/` of binaries with no target would
+   remove a recurring false alarm from every unit in the wave.
