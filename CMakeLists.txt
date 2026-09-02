@@ -466,6 +466,11 @@ IF(EQT_GRAPHICS)
         src/client/graphics/software_occlusion_culler.cpp
         src/client/graphics/camera_controller.cpp
         src/client/graphics/entity_renderer.cpp
+        src/client/graphics/entity_mesh_build.cpp
+        src/client/graphics/entity_build_step.cpp
+        src/client/graphics/entity_updates.cpp
+        src/client/graphics/entity_interpolation.cpp
+        src/client/graphics/entity_lifecycle.cpp
         src/client/graphics/entity_castbars.cpp
         src/client/graphics/entity_combat_anim.cpp
         src/client/graphics/entity_first_person_draw.cpp
