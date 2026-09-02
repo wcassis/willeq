@@ -1153,6 +1153,58 @@ cheap proof available. Recorded as Batch-G with the guard note attached.
 §Measured's first-person token list is incomplete — it omits
 `kFirstPersonMaxUpPitchDegrees`, which the guard does not cover.
 
+## ⚠ CORRECTIONS FROM J26 (2026-09-02)
+
+**45. GENERALISE CORRECTION 40: a comment can satisfy ANY text check, not just a
+test guard.** J26 found the mechanism firing on a **plan-mandated grep**. Its
+Review item 11 verifies uniqueness with `grep -rn 's_debug_level = 0' src/`,
+while §File-header tells the stays TU to "record that the definition lives
+here" — **a header quoting the definition makes that grep return two hits from
+one definition.** Neither correction 40 (test guards) nor 42 (which guard shapes)
+anticipated a plan's own verification step. **Rule: never quote a token that any
+check greps for — test, script, or the plan's own acceptance step.** J26
+described it in words instead.
+
+**46. State the counting pattern whenever a plan quotes a method count.**
+§Measured's "50 methods" reproduces under **no** pattern (45 by
+qualified-name-at-column-0, 49 by `^{`). And the per-TU prediction was wrong for
+one TU — 5 rather than 30, because two methods inside the range were omitted from
+the split table. **Third unit running where per-TU method arithmetic slipped
+while the RANGES held exactly** (J13, J25, J26). Ranges are reliable; derived
+counts are not.
+
+**47. A plan's prose sum must be checked against its own table.** J26's
+§The split sums 479+731+775 against a row labelled 793 — a reader verifying the
+arithmetic finds a phantom 18-line gap that does not exist.
+
+**48. Correction 30's mechanism is broader than stated** — it fired twice in a
+file with **no namespace close at all**, because the prescribed preamble slices
+begin and end adjacent to a blank. Cosmetic; declare rather than hand-fix
+(fixing breaks the byte proof).
+
+### J26's result — a brand-new hazard class that cost nothing
+
+1,985 → **483 / 748 / 799**. **Verifier exit 0, `+38/-0`, zero substantive** —
+the plan's `+0/-0` prediction held, and the 38 is derivable (24 header-comment
+lines + 7 includes × 2 new TUs). Both proofs exit 0, plus the correction-7
+whole-file check showing exactly 18 added and 0 removed. Zero range drift on
+every measured quantity.
+
+**The out-of-class static member definition** (`s_debug_level`) stayed in one TU
+only; the declaration is in the header and the value is reached solely through
+inline accessors, so the other two TUs need no definition. The three tuning
+constants **moved** rather than duplicating, because all their readers are in one
+range. **No internal header was needed.** The hazard was identified in planning,
+and the unit hit nothing it had not been told about.
+
+**The CRC capture suite was reported explicitly, as asked: 7/7 PASSED** —
+standalone and in ctest, with all three `test_daybreak_*` binaries confirmed
+RELINKED at the binary level rather than trusted from a green aggregate, because
+skip-gated targets can go green without running.
+
+**Correction 41 followed correctly:** `build-gles2-x86.sh` ran BEFORE `ctest`,
+benchmark stamped 13:40 against 13:07 edits, so no standalone re-run was needed.
+
 ## Unit table
 
 | Unit | File | Lines | → TUs | Largest after | Wave | Notes |
