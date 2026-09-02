@@ -159,10 +159,202 @@ the live legs test.
 
 ### Status of the live legs
 
-**NOT RUN — blocked on the eqemu lock.** `/mnt/projects/fable/.eqemu-lock`
-was held by `T296 2026-08-27` (written 06:02:55Z, one minute before this unit
-tried to take it) with `./bin/world`, `./bin/zone arena` and the zone fleet
-live. Per `refactor/EXECUTOR_PROTOCOL.md` a non-zero `noclobber` take means
-another session owns the server: STOP, never overwrite. Steps 2-5 and the
-verdict on Will's condition remain owed and need a re-dispatch once the lock
-is free.
+**RUN 2026-09-02** (the 2026-08-27 attempt was blocked on T296's lock; that
+paragraph is superseded). Lock taken with `noclobber`, exit 0. Evidence:
+`/mnt/projects/fable/review/T297/` (README there).
+
+---
+
+## Review (executor, slot1, 2026-09-02 04:45-05:10 UTC)
+
+Branch `task/T297` off `fable` `2eb34f3d` ("Merge branch 'task/T311-legB'").
+**No client code changed** — this is a verification unit and the plan's STOP
+condition ("if a channel is broken, report it as a defect and STOP") was hit.
+
+### Setup and deviations
+
+- **The server was already running with NO lock held** (launcher fleet up
+  since 02:52 UTC: `world`, `ucs`, 14 static zones + ~12 dynamic slots). This
+  is the trap recorded this week. Per the trap's own note, `up.sh` was NOT
+  run on top of it; the running fleet was used as found, having first
+  confirmed exactly one `loginserver` and one `world`. `down.sh` at the end,
+  lock deleted.
+- Characters: **A = Testchar** (willeq_test, acct status 200, char 65) is the
+  SENDER; **B = Oraclerogue** (willeq_rogue, acct status **250**, char 81) is
+  the OBSERVER. Every assertion below is read off B's log except the two
+  B->A probes, which are read off A's.
+- **Anti-spam is a non-issue here**, correcting this plan's own step-1 note
+  and the old `review/T297/README.md`: `MinStatusToBypassAntiSpam` is 80
+  (default ruleset) / 100 (the active override), and *both* accounts are
+  200/250. Neither character is rate-limited. `Chat:GlobalChatLevelLimit` = 1,
+  `ServerWideOOC` / `ServerWideAuction` both `true`, confirmed by live query.
+- Movement was by **`/say #zone <shortname>`** and `#summon`, never a DB
+  `zone_id` edit (the standing trap). `#gm on` was issued on Testchar first.
+- Guild staged in-game with `/say #guild set <name> 1` (T256's method), rows
+  deleted at restore.
+- Group formed in-zone with `/invite` + `/groupaccept` **before** anyone
+  separated, exactly as the plan required.
+- Same-zone leg was run at **distance 0** — `#summon` put both at
+  `(-82, 35, 3)` in befallen (`/loc` on both clients) — so neither the
+  say-200 nor the emote-135 radius can be confused with a routing result.
+
+### The measured matrix
+
+Cross-zone leg: A in `qeynos`, B in `befallen` (run 1); and the mirror, B in
+`qeynos`, A in `befallen` (run 2). Verbatim observer lines in
+`review/T297/README.md`.
+
+| channel | routed by | same-zone | cross-zone | matches prediction |
+|---|---|---|---|---|
+| say | zone (`entity_list`, range 200) | **RECEIVED** | not received *(by design)* | YES |
+| shout | zone (`entity_list`, zone-wide) | **RECEIVED** | not received *(by design)* | YES |
+| emote | zone (`OP_Emote`, range 135) | **RECEIVED** | not received *(by design)* | YES |
+| ooc | world (`ZSList::SendPacket`) | **RECEIVED** | **RECEIVED** | YES |
+| auction | world (`ZSList::SendPacket`) | **RECEIVED** | **RECEIVED** | YES |
+| tell | world (`ClientList::FindCharacter`) | **RECEIVED** | **RECEIVED** | YES |
+| guild | world (`SendPacketToZonesWithGuild`) | **RECEIVED** | **RECEIVED** | YES |
+| group | zone + world (`ServerOP_OOZGroupMessage`) | **RECEIVED** | **NOT RECEIVED** | **NO** |
+
+Both directions were exercised: A->B on every row, plus B->A `tell` and `ooc`
+cross-zone (run 1, seen on A at 04:55:46 / 04:55:54) and B->A `gsay`
+cross-zone (run 2, not received). The tell round trip therefore proves
+world's `FindCharacter` -> destination-zone route in both directions.
+
+**The step-1 prediction was right on 7 of 8 rows, and right about UCS.**
+`ConnectToUCS(...)` being commented out at `eq_login_world.cpp:833-834` cost
+this client **nothing**: ooc, auction, tell and guild — the four channels
+world dispatches — all crossed zones with the client's UCS connection absent,
+and the server's `bin/ucs` process was running the whole time and was never
+in the path.
+
+### DEFECT 1 (blocking) — the group is DISBANDED when either member zones
+
+Group chat did not fail because of chat routing. It failed because there was
+no group left to route to.
+
+- Run 1: Testchar (the **leader**) `#zone`d befallen -> qeynos at 04:53:49.
+  B's log, same second: `Your group has been disbanded` / `[GROUP] Not in
+  group`. A's subsequent `/gsay T297-GROUP-CROSSZONE` produced no delivery
+  and no server echo.
+- Run 2 (the isolating leg): the **non-leader** zoned instead. Same result,
+  mirrored — A (the leader, who never moved) logged `Your group has been
+  disbanded` at 05:04:21, the instant B `#zone`d. So it is **not** about who
+  the leader is.
+
+Server-side proof, `logs/zone/befallen_..._353.log` (container clock is UTC-5;
+23:53:49 CDT == 04:53:49 UTC). Immediately after the ZoneToZone approval the
+**source zone** emits two `OP_GroupUpdate` packets, one per member, whose
+first dword is `06 00 00 00` — `groupActDisband`
+(`common/eq_packet_structs.h:2478`):
+
+    [Zone] [Packet S->C] [OP_GroupUpdate] [0x2dd6] Size [454]
+       0: 06 00 00 00 54 65 73 74 - 63 68 61 72 00 00 00 00  | ....Testchar....
+    [Zone] [Packet S->C] [OP_GroupUpdate] [0x2dd6] Size [454]
+       0: 06 00 00 00 4F 72 61 63 - 6C 65 72 6F 67 75 65 00  | ....Oraclerogue.
+
+**There is no client->server group packet anywhere near the transition** —
+the zone's full `OP_Group*` packet list for the session shows only the
+`OP_GroupInvite` / `OP_GroupFollow` of group formation, and then these
+server-originated disbands. The client did not ask for this.
+
+How far the mechanism was narrowed (from `/mnt/projects/akk-stack/code`):
+
+- `Group::MemberZoned` (`zone/groups.cpp:547`) — the intended zone-out path —
+  does **not** disband; it just nulls the member out of `members[]`.
+- The only eqemu path that turns a two-person group into a `DisbandGroup()`
+  is `Client::LeaveGroup()` (`zone/groups.cpp:1258`): `if (MemberCount < 3)
+  g->DisbandGroup();`. That fits both runs exactly (the group was 2 members
+  in both).
+- On a zone-out, `LeaveGroup()` is reachable only where `bZoning` is false —
+  `client_process.cpp:639` (`if (!bZoning) { ... LeaveGroup(); }`) and
+  `~Client()` (`client.cpp:766`, `if (isgrouped && !bZoning && is_zone_loaded)`).
+  `Handle_OP_ZoneChange` sets `bZoning = true` and only `SendZoneCancel` /
+  `SendZoneError` clear it; neither ran (the zone log shows
+  `response [1]`, `success [1]`).
+
+So the source zone behaved as though the client had logged out rather than
+zoned, even though the OP_ZoneChange handshake visibly succeeded. **Which
+side is at fault is NOT settled by this unit.** Two things kept it open:
+neither observer log carried the `"%s logged out."` / `"%s left the zone."`
+`MessageGroup` line that would discriminate the two branches
+(`client_process.cpp:636/655`), and the zone log shows the
+`ServerOP_ZoneToZoneRequest` response handler running **twice** for a single
+client OP_ZoneChange (two `ZoneToZone ... response [1]` lines, two
+`OP_ZoneChange` S->C) — unexplained, and worth a look by whoever fixes this.
+The clean way to settle it is the eq-oracle official client doing the
+identical `#zone` while grouped: if the official client's group survives, it
+is ours. **Not fixed here — separate unit.**
+
+### DEFECT 2 (client, non-blocking) — phantom group state survives the disband
+
+The client does not end up agreeing with the server about the group.
+
+- Run 1: A was mid-zone-transition when the disband was queued and **never
+  processed it** (`grep -c disbanded run1_A_testchar.log` = 0). On arriving in
+  qeynos it reported `[GROUP] In group (2 members), leader: ` — inGroup true,
+  member count 2, **leader name empty** — and then happily sent `/gsay` into
+  a group that no longer existed, with no error shown to the player.
+- Run 2: the mirror. B, the client that zoned, still reported `[GROUP] In
+  group (2 members), leader: Testchar` at 05:04:24, three seconds after the
+  server had disbanded the group.
+
+Either way the client shows a group that is not there. There is no group-state
+re-sync on zone-in; whatever `GroupState` held before the transition is
+carried across unverified. Fixing Defect 1 does not by itself fix this — a
+disband delivered while the client is between zone servers will always be
+lost, so zone-in needs to re-establish group state from the server rather
+than trust the pre-zone copy.
+
+### DEFECT 3 (cosmetic) — the two chat-channel name tables have drifted apart
+
+`src/client/eq_chat.cpp` builds the channel name twice in one function,
+40 lines apart, from two hand-written ternary chains:
+
+- the console `[CHAT]` line (line ~119) omits `CHAT_CHANNEL_AUCTION`, so every
+  auction message printed as `[CHAT] Testchar (chan4): ...` in both runs;
+- the bridge `ChatMessageData::channelName` (line ~141) **does** include
+  auction, so the UI and the console disagree on the same packet;
+- neither knows channel **14** (`ChatChannel_TellEcho`, the server's
+  confirmation of an outgoing tell), which printed as `(chan14)`.
+
+This is the duplicated-then-drifted pattern, not a routing problem — the
+messages all arrived. One shared lookup would close it.
+
+### Verdict on Will's condition
+
+Will deferred UCS *"as long as zone-wide and cross-zone communication is
+working."* Read as the plan defines it (say/shout/emote work **zone-wide**;
+ooc/auction/tell/guild/group work **cross-zone**):
+
+> **The condition holds for 7 of the 8 channels, and it holds for the reason
+> Will cares about: nothing a Titanium client can say needs UCS.** Zone-wide
+> chat is fully working. Cross-zone ooc, auction, tell and guild are fully
+> working in both directions with the UCS connection commented out.
+>
+> **It does not hold for group chat** — and the cause is not chat at all. The
+> group itself is destroyed by the server the moment anybody zones, so *no*
+> group feature survives a zone transition, chat included. **Leaving UCS
+> deferred is still the right call; this is a grouping defect, not a UCS
+> one.** It needs its own unit, and that unit should start by deciding
+> whether the zone-out handshake or eqemu is at fault (see Defect 1).
+
+### Verification
+
+No source change, so the plan's narrowed bar applies: no build, no ctest, no
+visual gate, no `check_file_sizes.sh` (nothing to check).
+
+| step | result |
+|---|---|
+| `cmake --build build -j24 --target willeq` | EXIT=0 (needed to run the branch's client) |
+| live run 1 (leader zones) | A exit=0, B exit=0 |
+| live run 2 (non-leader zones) | A exit=0, B exit=0 |
+| DB restore | `diff db_before.txt db_restored.txt` **empty** |
+| eqemu `down.sh` | EXIT=0, 0 zone processes remain, lock deleted |
+
+Restores: `guild_members` rows for chars 65 and 81 deleted (staged this unit;
+the before-state was chars 66 and 68 only). Testchar -> zone 2,
+`-74 / 428 / 3.751`, h160. Oraclerogue -> zone 36, `-259 / -1201 / -5.75`, h0.
+Testchar `gm` flag reset to 0 (this unit set it with `#gm on`).
+**Deviation, flagged:** Oraclerogue's persisted `gm` flag was found at 1 and
+left at 1 — no command this unit issued could have set it, and there is no
+recorded prior value to restore to. `Oracledwarf` (char 82) untouched.
