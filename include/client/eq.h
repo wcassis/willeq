@@ -935,6 +935,28 @@ public:
 	// movement steps for targets outside that 2-unit snap radius. Test-only.
 	void Test_SnapToMovementTargetForSeam();
 
+	// T322 test seams: the zone-transition connection lifecycle. The
+	// hand-off itself is gated on a live m_zone_connection (there is nobody
+	// to hand off to without one), which no headless test can supply, so
+	// Test_BeginGracefulZoneOutForSeam() lifts exactly that one gate and
+	// nothing else -- the packets it queues, the flags it arms and the
+	// OP_LogoutReply routing that follows are the production code paths.
+	// Read-only otherwise; test-only. See tests/test_zone_out_handshake.cpp.
+	// force_gate=false leaves the live-connection gate in place, so the
+	// no-connection fallback can be pinned too.
+	bool Test_BeginGracefulZoneOutForSeam(bool force_gate = true) {
+		m_test_force_zone_out_handshake = force_gate;
+		const bool armed = BeginGracefulZoneOut();
+		m_test_force_zone_out_handshake = false;
+		return armed;
+	}
+	void Test_DisconnectFromZoneForSeam() { DisconnectFromZone(); }
+	bool Test_IsZoneOutHandshakePending() const { return m_zone_out_handshake_pending; }
+	bool Test_IsZoneOutAcknowledged() const { return m_zone_out_acknowledged; }
+	bool Test_IsPendingLogoutDisconnect() const { return m_pending_logout_disconnect; }
+	bool Test_IsZoneToZoneInProgress() const { return m_zone_to_zone_in_progress; }
+	void Test_SetZoneToZoneInProgressForSeam(bool v) { m_zone_to_zone_in_progress = v; }
+
 	static void SetDebugLevel(int level) { s_debug_level = level; ::SetDebugLevel(level); }
 	static int GetDebugLevel() { return s_debug_level; }
 
@@ -1828,7 +1850,19 @@ private:
 	void ZoneProcessPetBuffWindow(const EQ::Net::Packet &p);
 
 	// Zone transition methods
-	void RequestZoneChange(uint16_t zone_id, float x, float y, float z, float heading, bool solicited = false);
+	// T322: zone_reason is the value echoed into OP_ZoneChange's zone_reason
+	// field. The official Titanium client echoes back the `type` byte the
+	// server handed it in OP_RequestClientZoneChange (always 0x01 in eqemu,
+	// zoning.cpp 983/1022); for a client-initiated zone-line crossing there
+	// is nothing to echo and 1 (ZoneUnsolicited) is the right default. It is
+	// a log-only memo field server-side -- matched for wire fidelity, not
+	// because any server logic reads it.
+	void RequestZoneChange(uint16_t zone_id, float x, float y, float z, float heading, uint32_t zone_reason = 1);
+	// T322: the graceful source-zone hand-off the official client performs
+	// before its zone-server session goes away. Returns false if it could
+	// not be sent (no zone connection), in which case the caller must fall
+	// straight through to the hard teardown.
+	bool BeginGracefulZoneOut();
 	// T231: same-zone OP_RequestClientZoneChange -- apply the destination
 	// locally (state + renderer + one forced OP_ClientUpdate), no zone cycle.
 	void RelocateWithinZone(float x, float y, float z, float server_heading);
@@ -1992,6 +2026,37 @@ private:
 	// is still on the call stack — a use-after-free). Deferred the same way as
 	// m_game_state.world().zoneChangeApproved(): set here, processed at the top of UpdateMovement().
 	bool m_pending_logout_disconnect = false;
+
+	// T322: graceful zone-out hand-off state. The official Titanium client
+	// does NOT close its source-zone socket on a zone change: it sends
+	// OP_SaveOnZoneReq then OP_DeleteSpawn(own entity id) and lets the SERVER
+	// close the session (eqemu Handle_OP_DeleteSpawn -> Disconnect()). That
+	// difference decides whether the group survives -- see the block comment
+	// on BeginGracefulZoneOut() in eq_zone.cpp.
+	//
+	// m_zone_out_handshake_pending: hand-off sent, waiting for the source
+	// zone's OP_LogoutReply. While set, ZoneProcessLogoutReply() treats that
+	// reply as a zone-out acknowledgement and NOT as a logout -- the logout
+	// path (SendLogout/camp, and the world-side disconnect) is untouched
+	// whenever this flag is clear.
+	bool m_zone_out_handshake_pending = false;
+	bool m_zone_out_acknowledged = false;
+	std::chrono::steady_clock::time_point m_zone_out_handshake_deadline{};
+	// Bound on how long the transition waits for the acknowledgement. A lost
+	// or never-sent reply must not wedge zoning, so the teardown runs anyway.
+	static constexpr int kZoneOutHandshakeTimeoutMs = 2000;
+	// T322 test seam (see Test_BeginGracefulZoneOutForSeam): lifts the
+	// live-connection gate in BeginGracefulZoneOut() only. Never set in
+	// production.
+	bool m_test_force_zone_out_handshake = false;
+
+	// T322: "this world reconnect is a ZONE TRANSITION, not a fresh login."
+	// It cannot live in WorldState: CleanupZone() -> resetZoneState() clears
+	// every zone flag, and it runs (inside DisconnectFromZone) BEFORE the
+	// world reconnect that has to read it -- which is why the zoning byte in
+	// OP_SendLoginInfo was always 0. Set in ProcessDeferredZoneChange(),
+	// cleared once the destination zone session is up (or on a logout).
+	bool m_zone_to_zone_in_progress = false;
 
 	// Combat manager
 	std::unique_ptr<CombatManager> m_combat_manager;

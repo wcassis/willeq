@@ -180,3 +180,17 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_setheading_conversion PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
 GTEST_DISCOVER_TESTS(test_setheading_conversion)
+
+# T322: pins the zone-transition connection lifecycle -- the graceful
+# source-zone hand-off (OP_SaveOnZoneReq + OP_DeleteSpawn, server closes the
+# session) that keeps eqemu from treating every zone change as a linkdead
+# disconnect and disbanding the group, plus the OP_LogoutReply routing that
+# must keep a real logout disconnecting. Headless: no network, no graphics.
+ADD_EXECUTABLE(test_zone_out_handshake
+    test_zone_out_handshake.cpp
+)
+TARGET_LINK_LIBRARIES(test_zone_out_handshake GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_zone_out_handshake PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_zone_out_handshake)

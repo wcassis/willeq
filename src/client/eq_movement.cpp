@@ -523,11 +523,44 @@ void EverQuest::UpdateMovement()
 
 	// Process deferred zone change if approved
 	// This MUST be at the very start of UpdateMovement to process outside of any callback context
+	//
+	// T322: the teardown is no longer immediate. The official client hands
+	// the source zone off gracefully (OP_SaveOnZoneReq + OP_DeleteSpawn) and
+	// lets the SERVER close the session; closing it ourselves is what made
+	// eqemu treat a zone change as a linkdead disconnect and disband the
+	// group. See BeginGracefulZoneOut() in eq_zone.cpp for the full
+	// mechanism. Note the ordering: the logout branch above still runs
+	// FIRST and still calls DisconnectFromZone() directly -- a logout
+	// genuinely should disconnect, and this unit does not touch it.
 	if (m_game_state.world().zoneChangeApproved()) {
 		m_game_state.world().setZoneChangeApproved(false);  // T286: only store
+		if (BeginGracefulZoneOut()) {
+			return;  // Wait for the source zone's acknowledgement (below)
+		}
+		// Nothing to hand off (no live zone connection) -- fall straight
+		// through to the hard teardown rather than stalling the transition.
 		LOG_DEBUG(MOD_ZONE, "Processing deferred zone change...");
 		ProcessDeferredZoneChange();
 		LOG_DEBUG(MOD_ZONE, "Deferred zone change processed");
+		return;  // Don't process movement while zone changing
+	}
+
+	// T322: waiting on the source zone's OP_LogoutReply acknowledgement of
+	// our graceful zone-out. Bounded: a lost or never-sent reply must not
+	// wedge zoning, so the teardown runs on the deadline regardless. Either
+	// way DisconnectFromZone() runs exactly once, so the old connection can
+	// never be leaked.
+	if (m_zone_out_handshake_pending) {
+		const bool timed_out = std::chrono::steady_clock::now() >= m_zone_out_handshake_deadline;
+		if (m_zone_out_acknowledged || timed_out) {
+			if (timed_out && !m_zone_out_acknowledged) {
+				LOG_WARN(MOD_ZONE, "Source zone did not acknowledge zone-out within {} ms; tearing down anyway",
+					kZoneOutHandshakeTimeoutMs);
+			}
+			LOG_DEBUG(MOD_ZONE, "Processing deferred zone change...");
+			ProcessDeferredZoneChange();  // clears the handshake flags
+			LOG_DEBUG(MOD_ZONE, "Deferred zone change processed");
+		}
 		return;  // Don't process movement while zone changing
 	}
 

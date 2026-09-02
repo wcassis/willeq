@@ -187,8 +187,26 @@ void EverQuest::SendLogout()
 
 void EverQuest::ZoneProcessLogoutReply(const EQ::Net::Packet &p)
 {
+	// T322: on a zone change the source zone answers our graceful zone-out
+	// (OP_SaveOnZoneReq + OP_DeleteSpawn) with this same OP_LogoutReply --
+	// eqemu Handle_OP_DeleteSpawn queues it before calling Disconnect().
+	// That is an acknowledgement that we may now tear the session down, NOT
+	// a logout: quitting the game here would end the session mid-transition.
+	// The flag is only ever set by BeginGracefulZoneOut(), so when no
+	// zone-out is in flight -- camp/SendLogout, and the world-side path --
+	// the behaviour below is exactly what it always was.
+	if (m_zone_out_handshake_pending) {
+		LOG_DEBUG(MOD_ZONE, "Source zone acknowledged graceful zone-out");
+		m_zone_out_acknowledged = true;
+		return;
+	}
+
 	// Server confirmed logout - now we can safely disconnect
 	LOG_INFO(MOD_MAIN, "Logout confirmed by server");
+
+	// T322: a logout is not a zone transition; make sure a stale latch can
+	// never make the next world login claim to be one.
+	m_zone_to_zone_in_progress = false;
 
 	// D20c4: Signal quit via flag — Application checks and exits
 	RequestQuit();
