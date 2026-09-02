@@ -46,7 +46,6 @@ namespace EQ {
     class SpellManager;
     class BuffManager;
     class SpellEffects;
-    class SpellTypeProcessor;
     class SkillManager;
 }
 
@@ -1066,7 +1065,6 @@ public:
 	EQ::SpellManager* GetSpellManager() { return m_spell_manager.get(); }
 	EQ::BuffManager* GetBuffManager() { return m_buff_manager.get(); }
 	EQ::SpellEffects* GetSpellEffects() { return m_spell_effects.get(); }
-	EQ::SpellTypeProcessor* GetSpellTypeProcessor() { return m_spell_type_processor.get(); }
 	EQ::SkillManager* GetSkillManager() { return m_skill_manager.get(); }
 	// T71: needed for /equip's local-state sync fix to be testable without a
 	// live server (getItem()/hasCursorItem() must see seeded test items) --
@@ -2073,11 +2071,11 @@ private:
 	// Buff manager
 	std::unique_ptr<EQ::BuffManager> m_buff_manager;
 
-	// Spell effects processor
+	// Spell effects processor.
+	// T324: its only consumer (the deleted spell target-resolution layer) is
+	// gone, so nothing calls into this any more -- see the tombstone in
+	// eq.cpp and item 37 in refactor/deferred.md.
 	std::unique_ptr<EQ::SpellEffects> m_spell_effects;
-
-	// Spell type processor (handles targeting and multi-target spells)
-	std::unique_ptr<EQ::SpellTypeProcessor> m_spell_type_processor;
 
 	// Pending spell scribe state (for handling server confirmation)
 	uint32_t m_pending_scribe_spell_id = 0;

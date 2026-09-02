@@ -12,7 +12,6 @@
 #include "client/spell/spell_manager.h"
 #include "client/spell/buff_manager.h"
 #include "client/spell/spell_effects.h"
-#include "client/spell/spell_type_processor.h"
 #include "client/skill/skill_manager.h"
 #include "client/zone_lines.h"
 #include "client/formatted_message.h"
@@ -260,10 +259,34 @@ bool EverQuest::InitializeSpellSystem(const std::string& eqClientPath)
 		this, &m_spell_manager->getDatabase(), m_buff_manager.get());
 	LOG_DEBUG(MOD_SPELL, "Spell effects processor initialized");
 
-	// S04: Create spell type processor (depends on spell DB + spell effects)
-	m_spell_type_processor = std::make_unique<EQ::SpellTypeProcessor>(
-		this, &m_spell_manager->getDatabase(), m_spell_effects.get());
-	LOG_DEBUG(MOD_SPELL, "Spell type processor initialized");
+	// T324 (2026-09-02, commit below): the client-side spell TARGET-RESOLUTION
+	// layer that used to be constructed here was deleted --
+	// EQ::SpellTypeProcessor (include/client/spell/spell_type_processor.h,
+	// src/client/spell/spell_type_processor.cpp) and its rain-spell instance
+	// struct, together with EverQuest::GetSpellTypeProcessor(). It had ZERO
+	// callers: the accessor was never used, its per-frame tick was never run,
+	// and its entry point was never reached. It resolved single/self/PBAE/
+	// targeted-AE/group/rain target sets locally and applied the results
+	// through EQ::SpellEffects.
+	//
+	// DO NOT REBUILD IT. The server is authoritative for spell resolution:
+	// eqemu picks the targets and reports each landing individually (action,
+	// damage, buff and appearance packets), and this client displays what it
+	// is told -- the same conclusion T318 reached for shrink/grow, where the
+	// server already broadcasts every size change. See board item 33 in
+	// refactor/deferred.md, refactor/T324_delete_spell_type_processor.md, and
+	// the Review of refactor/T314_spell_targeting_correctness.md, which
+	// transcribes eqemu's group-targeting rule in full should it ever be
+	// needed again.
+	//
+	// The body-type targeting rule those units fixed did NOT go with it: it
+	// lives in include/client/spell/spell_body_type_target.h and is used by
+	// EQ::SpellManager, which is reachable from a gem click and from /cast.
+	//
+	// ALSO NOTE: m_spell_effects (constructed just above) is now itself
+	// without a caller -- the deleted class was its only consumer. That is a
+	// separate, larger decision and is boarded as item 37; it was deliberately
+	// left standing rather than swept up here.
 
 	return true;
 }
@@ -711,7 +734,7 @@ void EverQuest::ConnectToZone()
 
 	SetLoadingPhase(LoadingPhase::ZONE_CONNECTING);
 
-	// S04: inventory_manager, spell DB, buff_manager, spell_effects, spell_type_processor
+	// S04: inventory_manager, spell DB, buff_manager, spell_effects
 	// are all pre-allocated in EverQuest constructor / Application::initialize()
 
 	EQ::Net::DaybreakConnectionManagerOptions zone_opts;

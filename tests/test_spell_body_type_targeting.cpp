@@ -13,6 +13,10 @@
 //   bare 21 for Plant (21 is Animal), bare 22 for Giant (22 is Insect), and
 //   Undead / Summoned / Animal not checked AT ALL ("Would need body type
 //   check - placeholder" -> return true), so those three accepted everything.
+//   T324 (2026-09-02) DELETED that second consumer outright -- it had zero
+//   callers and the server resolves spell targets -- so the three cases that
+//   asserted against it are gone from this file. What remains covers the one
+//   consumer a player can reach.
 //
 // Both now go through EQ::BodyTypeSatisfiesTargetType(), which spells its
 // constants out of client/eq_body_types.h -- the T308 header transcribed from
@@ -41,7 +45,6 @@
 #define private public
 #define protected public
 #include "client/spell/spell_manager.h"
-#include "client/spell/spell_type_processor.h"
 #undef private
 #undef protected
 
@@ -231,53 +234,6 @@ TEST(SpellManagerBodyType, ValidateCastRefusesUndeadSpellOnALivingHumanoid) {
     SpellData spell = MakeSpell(SpellTargetType::Undead);
     EXPECT_EQ(mgr->validateCast(spell, 100), CastResult::InvalidTarget);
     EXPECT_EQ(mgr->validateCast(spell, 101), CastResult::Success);
-}
-
-// ===================================================================
-// Consumer 2 -- SpellTypeProcessor::isValidTarget()
-// ===================================================================
-
-TEST(SpellTypeProcessorBodyType, UndeadRestrictionNoLongerAcceptsEverything) {
-    EverQuest eq = MakeEq();
-    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn, NpcWithBodyType(100, "a_guard", BT::Humanoid)));
-    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn, NpcWithBodyType(101, "a_skeleton", BT::Undead)));
-    SpellTypeProcessor proc(&eq, nullptr, nullptr);
-
-    SpellData spell = MakeSpell(SpellTargetType::Undead);
-    EXPECT_FALSE(proc.isValidTarget(100, spell, 1))
-        << "Humanoid(1) accepted by an undead-only spell (the old 'placeholder -> return true')";
-    EXPECT_TRUE(proc.isValidTarget(101, spell, 1));
-}
-
-TEST(SpellTypeProcessorBodyType, AnimalRestrictionNoLongerAcceptsEverything) {
-    EverQuest eq = MakeEq();
-    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn, NpcWithBodyType(100, "a_guard", BT::Humanoid)));
-    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn, NpcWithBodyType(101, "a_wolf", BT::Animal)));
-    SpellTypeProcessor proc(&eq, nullptr, nullptr);
-
-    SpellData spell = MakeSpell(SpellTargetType::Animal);
-    EXPECT_FALSE(proc.isValidTarget(100, spell, 1));
-    EXPECT_TRUE(proc.isValidTarget(101, spell, 1));
-}
-
-// The two values the old processor literally had wrong: it asked for 21 on a
-// Plant spell (21 is Animal) and 22 on a Giant spell (22 is Insect). Both of
-// those inputs must now be REFUSED, and the real values accepted.
-TEST(SpellTypeProcessorBodyType, PlantAndGiantUseTheServerNumbersNotTheOldOnes) {
-    EverQuest eq = MakeEq();
-    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn, NpcWithBodyType(100, "a_treant", BT::Plant)));
-    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn, NpcWithBodyType(101, "a_wolf", BT::Animal)));
-    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn, NpcWithBodyType(102, "a_hill_giant", BT::Giant)));
-    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn, NpcWithBodyType(103, "a_wasp", BT::Insect)));
-    SpellTypeProcessor proc(&eq, nullptr, nullptr);
-
-    SpellData plant = MakeSpell(SpellTargetType::Plant);
-    EXPECT_TRUE(proc.isValidTarget(100, plant, 1));
-    EXPECT_FALSE(proc.isValidTarget(101, plant, 1)) << "old code's Plant == 21 (Animal)";
-
-    SpellData giant = MakeSpell(SpellTargetType::Giant);
-    EXPECT_TRUE(proc.isValidTarget(102, giant, 1));
-    EXPECT_FALSE(proc.isValidTarget(103, giant, 1)) << "old code's Giant == 22 (Insect)";
 }
 
 // ===================================================================

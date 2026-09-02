@@ -15,7 +15,8 @@
 //   * SpellManager::CheckTargetBodyType()'s local BT_* constants
 //     (spell/spell_manager.cpp) were off by one the same way;
 //   * SpellTypeProcessor (spell/spell_type_processor.cpp) used a third,
-//     differently-wrong set (21 for Plant, 22 for Giant).
+//     differently-wrong set (21 for Plant, 22 for Giant). That whole class was
+//     deleted by T324 (2026-09-02) -- it had no callers at all.
 // T308 corrected only the first; T314 (2026-09-02) killed both spell copies --
 // they now share EQ::BodyTypeSatisfiesTargetType()
 // (include/client/spell/spell_body_type_target.h), which reads its constants
