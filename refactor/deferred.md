@@ -154,10 +154,20 @@ everything else is open.
    `// TODO: Fix UCS implementation to use correct EQStream API` with
    `ConnectToUCS(...)` commented out inside the live `WorldProcessSetChatServer`
    handler, which does parse and store host/port/mail key.
-   *Impact:* the entire cross-zone chat feature (tells across zones, mail, global
-   channels) is dead in every session.
-   **EXECUTOR-READY** — `refactor/T297_cross_zone_chat_verify.md` is written.
-   Audit provenance: #1.
+   ~~*Impact:* the entire cross-zone chat feature (tells across zones, mail, global
+   channels) is dead in every session.~~
+   **⚠ THAT IMPACT LINE IS REFUTED — MEASURED by T297 (2026-09-02).** Cross-zone
+   `ooc`, `auction`, `tell` and `guild` all work **in both directions with
+   `ConnectToUCS` still commented out**; say/shout/emote do not cross zones **by
+   design** (they are zone-scoped). 7 of 8 channels match the server source's own
+   prediction; the same-zone leg ran at distance 0 so no radius gate could be
+   mistaken for a routing result. eqemu's `bin/ucs` was up throughout and was never
+   in the path. **Nothing a Titanium client can say depends on UCS.**
+   **Will's deferral was conditional on cross-zone chat working. It works, so the
+   deferral REMAINS CORRECT and this is no longer a live defect** — it is latent
+   work for a later era. The one failure T297 found is a GROUPING defect, not a
+   chat one (see T320). Full matrix: `refactor/T297_cross_zone_chat_verify.md`
+   `## Review`. Audit provenance: #1.
 
 5. ~~**Group spells target by PROXIMITY, not group membership**~~ **CLOSED by T314
    (2026-09-02).** `findGroupTargets()` now intersects `GameState.group()`
@@ -780,6 +790,19 @@ least distinguishable; recorded for upstream in `guild_packet_bodies.h`.
 39. **Doc drift: root `CLAUDE.md` and `include/client/state/CLAUDE.md` both say
     "96 event types"; there are now 97.** Tier 4. Strike this when someone next
     edits either file.
+
+### Found by T321 (2026-09-02) and deliberately not fixed
+
+40. **`tests/test_daybreak_connection_pcap.cpp:139-146` ENCODES THE PRE-T21
+    BUG** — it reads `connect_code` / `encode_key` / `max_packet_size` raw off
+    the wire, the exact reads T21 (`ad221f29`) fixed in production. **It would
+    not notice a regression of T21's fix**, and it passes today only because
+    eqemu's key is a byte-swap palindrome. A test that cannot fail is worse than
+    no test. **EXECUTOR-READY.**
+
+41. **`ValidateCRC`'s `default: return false` silently fails EVERY packet for
+    any `crc_bytes` other than 2 or 4.** Theoretical against eqemu (which only
+    sends 2), but it is a silent total-rejection path with no log line. Class B.
 
 ### TIER 3 — implemented but unreachable
 
