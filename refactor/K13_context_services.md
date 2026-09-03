@@ -5,18 +5,18 @@ merge.** Not the end of the programme — it is the unit that turns the
 `EverQuest&` transition handle from "everything" into a measured, boarded
 residue.
 
-## Measured at `233ff30b` (2026-09-03), after K09
+## Measured at `fa92c523` (2026-09-03), after K12 (re-measured; K09-tip numbers were 926 total)
 
-`owner_.` appears **926 times** across the ten components. The targets
-concentrate:
+`owner_.` appears **1,478 times** across the twelve components. The targets
+concentrate in the same four groups, in the same proportions:
 
 | target group | uses | becomes |
 |---|---|---|
-| `AddChatSystemMessage` / `AddChatCombatMessage` / `AddChatMissMessage` | ~155 | `ctx_.out.System(…)` etc. — a `ChatOutput` class owning the three bodies now stranded in `eq_chat.cpp` (K03 left them; 67 lines) |
-| `MySpawnId`, `PosX/Y/Z`, `HeadingDeg`, `IsFullyZonedIn`, `CurrentZoneName/Id`, `SetPosLocal`, `SetHeadingLocal`, `SetMySpawnId`, `SetPosition`, `SetHeading`, `SetLoadingPhase` | ~430 | `ctx_.self` — a `PlayerFacade` class holding the K08 facade bodies (`eq_player_info.cpp`, 46 accessors) plus these; it wraps `game_state` and nothing else |
-| `Zone()`, `Player()`, `Entities()`, `Merchant()`, `LoginWorld()`, `Movement()`, `Group()`, `Chat()`, `Guild()`, `Gm()`, `Bridge()`, `Commands()` | ~215 | `ctx_.<family>()` — the context carries a pointer to each sibling component, set by `EverQuest` after construction (components are constructed in dependency order; late-bound pointers avoid the order problem) |
-| `QueuePacket` | 22 | `ctx_.net.Queue(op, pkt)` — a `PacketSender` wrapping `m_zone_connection` + the replay guard + `m_replay_suppressed_sends` (which then LEAVES `EverQuest`, closing K09's deviation 1) |
-| `owner_.m_*` direct member reaches (`m_replay_suppressed_sends` 24, `m_pending_loot_slots` 14, `m_zone_bsp_tree` 9, `m_zone_map` 8, `m_world_objects` 8, `m_guild_id` 8, `m_eq_client_path` 6, `m_vendor_items` 5, `m_test_bypass_send_guard` 5, …) | ~100 | each is a K13 DECISION: move to the last family using it (§3), or to a context service, one line of rationale per member in the Review |
+| `AddChatSystemMessage` / `AddChatCombatMessage` / `AddChatMissMessage` | ~300 | `ctx_.out.System(…)` etc. — a `ChatOutput` class owning the three bodies now stranded in `eq_chat.cpp` (K03 left them; 67 lines) |
+| `MySpawnId`, `PosX/Y/Z`, `HeadingDeg`, `IsFullyZonedIn`, `CurrentZoneName/Id`, `SetPosLocal`, `SetHeadingLocal`, `SetMySpawnId`, `SetPosition`, `SetHeading`, `SetLoadingPhase`, `IsBankWindowOpen`, `IsVendorWindowOpen` | ~560 | `ctx_.self` — a `PlayerFacade` class holding the K08 facade bodies (`eq_player_info.cpp`, 46 accessors) plus these; it wraps `game_state` and nothing else |
+| `Zone()`, `Player()`, `Entities()`, `Merchant()`, `LoginWorld()`, `Movement()`, `Group()`, `Chat()`, `Guild()`, `Gm()`, `Bridge()`, `Commands()` | ~350 | `ctx_.<family>()` — the context carries a pointer to each sibling component, set by `EverQuest` after construction (components are constructed in dependency order; late-bound pointers avoid the order problem) |
+| `QueuePacket` / `SafeQueueZonePacket` | 29 | `ctx_.net.Queue(op, pkt)` — a `PacketSender` wrapping `m_zone_connection` + the replay guard + `m_replay_suppressed_sends` (which then LEAVES `EverQuest`, closing K09's deviation 1) |
+| `owner_.m_*` direct member reaches (`m_replay_suppressed_sends` 24, `m_pending_loot_slots` 14, `m_zone_bsp_tree` 9, `m_zone_map` 8, `m_world_objects` 8, `m_guild_id` 8, `m_eq_client_path` 6, `m_vendor_items` 5, `m_test_bypass_send_guard` 5, `m_zone_audio_manager` 14, `m_hotbar_model` 11, `m_constrained_config` 8, `m_graphics_initialized` 5, `m_session_recorder` 4, …) | ~180 | each is a K13 DECISION: move to the last family using it (§3), or to a context service, one line of rationale per member in the Review |
 | the zone-environment set (`m_zone_map`, `m_zone_bsp_tree*`, `m_zone_fog_*`, `m_zone_sky_type`, `m_zone_type`) | ~30 | K11 measured: written by `ZoneComponent::ZoneProcessNewZone`, loaded/torn down inside `ZoneComponent`, read by one bridge body → **re-home into `ZoneComponent`** behind getters; `m_hotbar_model` and `m_zone_audio_manager` stay on `EverQuest` as ctor-wired subsystem handles |
 | everything else | ≤ 50 | measured, listed, and BOARDED as the residue — with the friend line kept only for components that still have one |
 
@@ -64,7 +64,7 @@ have their own headers under `include/client/` and their own tests.
 
 - A service needs state that is not `game_state`, the bridge, or the zone
   connection → STOP; that is a design question.
-- The `owner_.` residue after step 5 exceeds 150 → STOP and report the
+- The `owner_.` residue after step 5 exceeds 250 → STOP and report the
   table; the plan's grouping was wrong.
 
 ## Territory
