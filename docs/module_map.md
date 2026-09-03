@@ -42,8 +42,8 @@ review section under `refactor/F*.md` and `refactor/J*.md`.
 | eq_player_info.cpp | 369 | J07 remainder: stat getters, group accessors, tribute/AA handlers (SendAATable/RespondAA/TributeInfo/SendGuildTributes), exp/zonein, world-objects-sent |
 | eq_zone_handshake.cpp | 349 | J02: the ZoneSend* handshake senders (SessionReady, ZoneEntry, ReqClientSpawn, ClientReady, SetServerFilter, StreamIdentify, Ack, ReqNewZone, AA/tribute requests, SpawnAppearance, SendExpZonein) |
 | eq_commands_movement.cpp | 320 | RegisterMovementCommands (movement/combat/utility-debug/sky commands) |
-| eq_gm.cpp | 307 | GM command senders + processors (wired T148) |
 | guild_component.cpp (in `src/client/guild/`) | 276 | K01: `eqt::guild::GuildComponent` — the guild senders + processors, moved out of `class EverQuest` (was `eq_guild.cpp`; m_guild_id populated T133) |
+| gm_component.cpp (in `src/client/gm/`) | 317 | K02: `eqt::gm::GmComponent` — the GM command senders + processors, moved out of `class EverQuest` (was `eq_gm.cpp`; wired T148) |
 | eq_commands_train.cpp | 264 | T280: `/train` and `/trainclose` game-registry side |
 | eq_profile_appearance.cpp | 20 | PlayerProfile appearance fields stored so `/appearance` merges faithfully (T167) |
 | eq_action_handler_extended.cpp | 957 | J12: the `EqActionHandler` remainder — GM/debug, camp/logout, report, world-object and tradeskill actions |
@@ -66,7 +66,7 @@ This table and that plan must agree; change both together.
 | family | TUs | `EverQuest::` defs | single-family members | K unit |
 |---|---|---|---|---|
 | guild | `guild/guild_component` | 11 | 3 | **K01 DONE** (pilot; `ClientContext` in `include/client/client_context.h`) |
-| gm | `eq_gm` | 12 | 2 | K02 |
+| gm | `gm/gm_component` | 12 | 2 | **K02 DONE** |
 | chat | `eq_chat`, `eq_strings` | 13 | 1 | K03 |
 | group | `eq_group` | 25 | 5 | K04 |
 | merchant | `eq_merchant`, `_trade`, `_vendor_bank` | 56 | 1 | K05 |

@@ -105,6 +105,8 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 	// K01: the guild family. Constructed first so nothing below can reach a
 	// null m_guild.
 	m_guild = std::make_unique<eqt::guild::GuildComponent>(m_ctx, *this);
+	// K02: the gm family, same shape.
+	m_gm = std::make_unique<eqt::gm::GmComponent>(m_ctx, *this);
 
 	m_host = host;
 	m_port = port;

@@ -286,7 +286,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/eq_strings.cpp
     src/client/eq_login_world.cpp
     src/client/guild/guild_component.cpp
-    src/client/eq_gm.cpp
+    src/client/gm/gm_component.cpp
     src/client/eq_merchant.cpp
     src/client/eq_merchant_trade.cpp
     src/client/eq_merchant_vendor_bank.cpp

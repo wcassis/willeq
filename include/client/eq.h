@@ -125,6 +125,7 @@ namespace ui {
 #include "client/eq_enums.h"
 #include "client/eq_types.h"
 #include "client/guild/guild_component.h"  // K01: ClientContext + GuildComponent
+#include "client/gm/gm_component.h"  // K02: GmComponent
 
 class EverQuest
 {
@@ -252,28 +253,6 @@ public:
 		EQT::ProfileAppearance body;
 	};
 	TestSentFaceChange Test_GetLastFaceChange() const { return m_test_last_face_change; }
-
-	// T217 test seam: the complete OP_GMHideMe packet (opcode + body) the
-	// last SendGMHideMe() call built, captured before the connection gate.
-	// Raw bytes rather than decoded fields so the test pins the wire layout
-	// eqemu's Handle_OP_GMHideMe size-checks, not a re-derivation of it.
-	struct TestSentGMHideMe {
-		bool sent = false;
-		std::vector<uint8_t> bytes;
-	};
-	const TestSentGMHideMe& Test_GetLastGMHideMe() const { return m_test_last_gm_hideme; }
-
-	// T229 test seam, same shape: the complete OP_GMSummon packet (opcode +
-	// 152-byte GMSummon_Struct) the last SendGMSummon() call built, captured
-	// before the connection gate. Pins that the body carries the GM's own
-	// position in SERVER coordinates as floats -- eqemu's OPGMSummon reads
-	// them (MovePC to gms->x/y/z), so the zeros T148 shipped sent the target
-	// to the origin.
-	struct TestSentGMSummon {
-		bool sent = false;
-		std::vector<uint8_t> bytes;
-	};
-	const TestSentGMSummon& Test_GetLastGMSummon() const { return m_test_last_gm_summon; }
 
 	// T170 test seam: the two id fields of the last inspect answer built. They
 	// are the whole point -- they mean the OPPOSITE of the request struct's.
@@ -604,6 +583,9 @@ public:
 	// through Guild(), there are no forwarders. HasPendingGuildInvite() had
 	// zero callers tree-wide and was deleted rather than moved (§Mechanism 5).
 	eqt::guild::GuildComponent& Guild() { return *m_guild; }
+	// K02 (Batch K): the gm family is eqt::gm::GmComponent; callers go through
+	// Gm(), there are no forwarders.
+	eqt::gm::GmComponent& Gm() { return *m_gm; }
 	eqt::ClientContext& Context() { return m_ctx; }
 	// Phase 3: Corpse Management
 	void SendCorpseDrag(const std::string& corpse_name);
@@ -683,16 +665,8 @@ public:
 	// name. The former zero-argument form wrote a uint32 spawn id ahead of
 	// the string and could never match a character.
 	void SendFriendsWho(const std::string& friends_list);
-	// Phase 4: GM Commands
-	void SendGMZoneRequest(const std::string& charname, uint16_t zone_id);
-	void SendGMSummon(const std::string& charname);
-	void SendGMGoto(const std::string& charname);
-	void SendGMFind(const std::string& charname);
-	void SendGMKick(const std::string& charname);
-	void SendGMKill(const std::string& charname);
-	void SendGMHideMe(bool hide);
-	void SendGMEmoteZone(const std::string& text);
-	void SendGMLastName(const std::string& charname, const std::string& lastname);
+	// K02 (Batch K): the GM command senders are eqt::gm::GmComponent's; callers
+	// go through Gm().
 	// Phase 4: Petitions
 	void SendPetition(const std::string& text);
 	void SetSneak(bool sneak);
@@ -826,6 +800,7 @@ public:
 	friend class CombatManager;
 	friend class TradeManager;
 	friend class eqt::guild::GuildComponent;  // K01 transition; K-final removes it
+	friend class eqt::gm::GmComponent;  // K02 transition; K-final removes it
 
 	// String database for EQ message lookups (works in all modes)
 	bool LoadStringFiles(const std::string& eqClientPath);
@@ -1224,9 +1199,8 @@ private:
 	void ZoneProcessCameraEffect(const EQ::Net::Packet &p);
 	void ZoneProcessPlayMP3(const EQ::Net::Packet &p);
 	void ZoneProcessSound(const EQ::Net::Packet &p);
-	void ZoneProcessGMZoneRequest(const EQ::Net::Packet &p);
-	void ZoneProcessGMFind(const EQ::Net::Packet &p);
-	void ZoneProcessGMSummon(const EQ::Net::Packet &p);
+	// K02 (Batch K): the GM packet handlers are eqt::gm::GmComponent's;
+	// DispatchZonePacket calls m_gm->ZoneProcessGM*() directly.
 	// Pet packet handlers
 	void ZoneProcessPetBuffWindow(const EQ::Net::Packet &p);
 
@@ -1534,12 +1508,6 @@ private:
 
 	// T167 test seam -- see Test_GetLastFaceChange().
 	TestSentFaceChange m_test_last_face_change;
-
-	// T217 test seam -- see Test_GetLastGMHideMe().
-	TestSentGMHideMe m_test_last_gm_hideme;
-
-	// T229 test seam -- see Test_GetLastGMSummon().
-	TestSentGMSummon m_test_last_gm_summon;
 
 	// T170 test seam -- see Test_GetLastInspectAnswer().
 	TestSentInspectAnswer m_test_last_inspect_answer;
@@ -2021,4 +1989,5 @@ private:
 	// K01: declared last -- every member m_ctx references is declared above.
 	eqt::ClientContext m_ctx;
 	std::unique_ptr<eqt::guild::GuildComponent> m_guild;
+	std::unique_ptr<eqt::gm::GmComponent> m_gm;
 };

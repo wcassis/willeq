@@ -919,39 +919,39 @@ bool EqActionHandler::isGMMode() const {
 }
 
 void EqActionHandler::gmZoneRequest(const std::string& charName, uint16_t zoneId) {
-    m_eq.SendGMZoneRequest(charName, zoneId);
+    m_eq.Gm().SendGMZoneRequest(charName, zoneId);
 }
 
 void EqActionHandler::gmSummon(const std::string& charName) {
-    m_eq.SendGMSummon(charName);
+    m_eq.Gm().SendGMSummon(charName);
 }
 
 void EqActionHandler::gmGoto(const std::string& charName) {
-    m_eq.SendGMGoto(charName);
+    m_eq.Gm().SendGMGoto(charName);
 }
 
 void EqActionHandler::gmFind(const std::string& charName) {
-    m_eq.SendGMFind(charName);
+    m_eq.Gm().SendGMFind(charName);
 }
 
 void EqActionHandler::gmKick(const std::string& charName) {
-    m_eq.SendGMKick(charName);
+    m_eq.Gm().SendGMKick(charName);
 }
 
 void EqActionHandler::gmKill(const std::string& charName) {
-    m_eq.SendGMKill(charName);
+    m_eq.Gm().SendGMKill(charName);
 }
 
 void EqActionHandler::gmHideMe(bool hide) {
-    m_eq.SendGMHideMe(hide);
+    m_eq.Gm().SendGMHideMe(hide);
 }
 
 void EqActionHandler::gmEmoteZone(const std::string& text) {
-    m_eq.SendGMEmoteZone(text);
+    m_eq.Gm().SendGMEmoteZone(text);
 }
 
 void EqActionHandler::gmLastName(const std::string& charName, const std::string& lastName) {
-    m_eq.SendGMLastName(charName, lastName);
+    m_eq.Gm().SendGMLastName(charName, lastName);
 }
 
 } // namespace eqt
