@@ -194,8 +194,8 @@ directory + `eq.h` + `eq.cpp` ctor wiring + `tests/CMakeLists.txt`/`tests/cmake`
 | K08 | player (may be two units) | K07 | largest; plan file must show the cut |
 | K09 | zone | K08 | 17 private members; `DispatchZonePacket` moves whole |
 | K10 | login_world | K09 | connection managers move with it |
-| K11 | bridge-intents → bridge layer | K10 | different mechanism: these become `GameStateBridge`/intent handlers, not a component |
-| K12 | commands → action handlers | K11 | different mechanism: each `/command` body becomes an `IActionHandler` method or is deleted if the registry already has it (T139/T223 deleted duplicates before — measure) |
+| K11 | bridge → `BridgeComponent` | K09 | SAME mechanism (revised 2026-09-03: extract first, fold into the bridge layer later); keeps ≤5 lifecycle forwarders for `Application` |
+| K12 | commands + combat_actions → `CommandsComponent` | K09 | SAME mechanism (revised 2026-09-03); the registry-merge into the action layer is a later measured unit. Runs alongside K11 |
 | K13 | final: `EqActionHandler` retargets to components, forwarders with a single caller are inlined at the caller, `friend` lines and the `EverQuest&` handle removed, `src/client/eq_*.cpp` directory move completed, `module_map.md` regenerated | K12 | |
 
 **After K01 merges, K02–K04 have disjoint territory and can run three-wide.**
