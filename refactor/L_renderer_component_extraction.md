@@ -89,6 +89,31 @@ Ratchet: `include/client/graphics/irrlicht_renderer.h` allowlist entry is
 lowered every unit exactly as `eq.h` was. Predict the delta from
 declarations + inline accessors + members before dispatch.
 
+## L01 corrections (2026-09-03) — the Batch L template
+
+1. Namespace is `EQT::Graphics` (the renderer's own); no lowercase
+   `eqt::graphics` exists and inventing one costs a substitution class.
+2. The core is **54 members** (the plan's 52 rows held two multi-member
+   lines); `renderer_context.h` needs NO include of `irrlicht_renderer.h` —
+   `renderer_types.h` plus 17 forward declarations cover every reference
+   binding. `gpuUploadThread_` carries `#ifdef EQT_HAS_GLES2` in both the
+   struct and the initialiser list.
+3. **Cost scaffolding at +3..+6 lines per construct**, not +1 — the transition
+   notes are real lines; L01 predicted −48 and landed −31 with exact
+   arithmetic on the deleted blocks.
+4. Dropping `irrlicht_renderer.h` from a moved TU drops ~60 transitive
+   includes; expect "incomplete type" errors and add the direct includes
+   (renderer version of K03 e).
+5. `IOutputRenderer` virtual overrides (`setCurrentTarget`,
+   `clearCurrentTarget`, `toggleHUD`, `toggleNameTags`, `toggleWireframe`,
+   `dumpScene`, `getMemoryReport`…) MUST stay on `IrrlichtRenderer` as
+   forwarders — the interface is the sanctioned surface, like K11's
+   `Application` entry points. Count them per unit.
+6. Tests bind the context by MUTATION through public accessors, not by
+   address equality on private members.
+7. A component that names no `IrrlichtRenderer` private static/nested
+   type/constant needs no `friend` (K13 ii) — `RdpComponent` has none.
+
 ## Per-unit plan files
 
 `refactor/L01_rdp_component.md` … written after K13, from a re-measurement
