@@ -363,3 +363,32 @@ it without taking that measurement first.
   `EverQuest::s_debug_level`), which friendship grants and no `owner_.` census
   sees. Both lines were restored in-unit. Closes when: `refactor/K_component_extraction.md`
   §Mechanism 7 states the two-axis rule. Prov: K13 Review.
+
+## Added 2026-09-03 by the L03 Review (overlays extraction)
+
+- **B041** (A) `src/client/bridge/irrlicht_bridge.cpp` `IrrlichtBridge::applyEvent`,
+  `state::GameEventType::NavmeshChanged` arm — **the navmesh overlay (Ctrl+N) can
+  never draw anything.** The arm's whole body is a `LOG_TRACE` under the comment
+  "Handled by renderer if navmesh visualization is active", which is false: the
+  only writer of the renderer's navmesh pointer is
+  `EQT::Graphics::OverlaysComponent::setNavmesh` (L03 moved it off
+  `IrrlichtRenderer`) and **nothing calls it**, so the pointer is permanently
+  null and `updateNavmeshOverlay()` returns immediately. Three publishers push
+  the event (`src/client/movement/movement_state.cpp` x2,
+  `src/client/zone/zone_component.cpp`) carrying the navmesh in
+  `NavmeshChangedData`. L03 kept `setNavmesh` rather than applying Mechanism 5 to
+  it precisely so this stays a one-line fix. Closes when: the arm calls
+  `renderer_->setNavmesh(...)` with the event's payload and Ctrl+N draws in a
+  navmesh-enabled zone. Prov: L03 Review.
+
+- **B042** (B) `src/client/graphics/overlays/overlays_component.cpp`
+  `EQT::Graphics::OverlaysComponent::drawZoneLineOverlay` — **the zone-line debug
+  border can never turn on.** It is called every frame from
+  `renderer_frame_render.cpp` and gates on `inZoneLine_`, whose only writer was
+  `IrrlichtRenderer::setZoneLineDebug()`. That method had zero callers tree-wide
+  and no `pushEvent`, so L03 deleted it under Mechanism 5; the three members it
+  wrote (`inZoneLine_`, `zoneLineTargetZoneId_`, `zoneLineDebugText_`) were kept
+  because the live draw body reads them. This is a disclosure, not a regression —
+  the overlay was equally unreachable before L03. Closes when: either the zone
+  entry path sets the state (the feature is wanted) or the draw body and its
+  three members go (it is not). Prov: L03 Review.

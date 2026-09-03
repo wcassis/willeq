@@ -326,7 +326,7 @@ bool IrrlichtRenderer::loadZoneStep10_Sky(ZoneLoadContext& ctx) {
         }
         if (storedZoneEnvironment_.pending) storedZoneEnvironment_.pending = false;
         if (computations && computations->skyLoadData) computations->skyLoadData.reset();
-        setupFog();
+        overlays_->setupFog();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: complete, skyRenderer_={}, skyInit={}, skyEnabled={}, "
                   "isIndoorZone_={}, fogEnabled_={}, renderDistance_={:.0f}, weatherSystem_={}",
                   (bool)skyRenderer_,
@@ -565,7 +565,7 @@ void IrrlichtRenderer::loadZoneStep11_Env(ZoneLoadContext& ctx) {
                   "fireGlowIcospheresEnabled_={}, maxFireGlowLights_={}, fireEffectsEnabled_={}",
                   fireGlowLightingEnabled_, fireGlowIcospheresEnabled_,
                   maxFireGlowLights_, fireEffectsEnabled_);
-        applyEnvironmentalDisplaySettings();
+        overlays_->applyEnvironmentalDisplaySettings();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: POST applyEnvSettings: fireGlowLightingEnabled_={}, "
                   "fireGlowIcospheresEnabled_={}, maxFireGlowLights_={}, fireEffectsEnabled_={}",
                   fireGlowLightingEnabled_, fireGlowIcospheresEnabled_,

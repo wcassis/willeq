@@ -250,6 +250,8 @@ IrrlichtRenderer::IrrlichtRenderer()
     rdp_ = std::make_unique<RdpComponent>(ctx_, *this);
 #endif
     eqe1_ = std::make_unique<Eqe1ArchiveComponent>(ctx_, *this);
+    // L03 (Batch L): the overlays family.
+    overlays_ = std::make_unique<OverlaysComponent>(ctx_, *this);
 }
 
 IrrlichtRenderer::~IrrlichtRenderer() {
@@ -542,7 +544,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
 
     // Setup HUD (needed for loading screen text)
     LOG_TRACE(MOD_GRAPHICS, "Setting up HUD...");
-    setupHUD();
+    overlays_->setupHUD();
 
     // S05: Pre-allocate renderer-lifetime subsystems (survive zone changes)
 

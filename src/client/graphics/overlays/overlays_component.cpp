@@ -1,3 +1,17 @@
+// Overlays and targeting -- EQT::Graphics::OverlaysComponent.
+//
+// L03 (Batch L, refactor/L_renderer_component_extraction.md): moved from
+// src/client/graphics/renderer_overlays.cpp to here, and the bodies rebased
+// from IrrlichtRenderer onto EQT::Graphics::OverlaysComponent. Verbatim --
+// the only edits inside a body are the four substitutions the mechanism
+// allows: a core member becomes ctx_.X, a member shared with another family
+// but outside the core becomes owner_.X_, a method that stayed on
+// IrrlichtRenderer becomes owner_.Foo(), and IrrlichtRenderer:: becomes
+// OverlaysComponent::. setZoneLineDebug() had zero callers tree-wide and
+// published no event; it was deleted per Batch K's Mechanism 5. See the L03
+// Review.
+
+#include "client/graphics/overlays/overlays_component.h"
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/bridge/game_state_bridge.h"
 #include "client/state/event_bus.h"
@@ -14,11 +28,11 @@
 namespace EQT {
 namespace Graphics {
 
-void IrrlichtRenderer::toggleMapOverlay() {
-    showMapOverlay_ = !showMapOverlay_;
-    LOG_INFO(MOD_GRAPHICS, "Map overlay: {}", showMapOverlay_ ? "ON" : "OFF");
+void OverlaysComponent::toggleMapOverlay() {
+    owner_.showMapOverlay_ = !owner_.showMapOverlay_;
+    LOG_INFO(MOD_GRAPHICS, "Map overlay: {}", owner_.showMapOverlay_ ? "ON" : "OFF");
 
-    if (!showMapOverlay_) {
+    if (!owner_.showMapOverlay_) {
         mapOverlayTriangles_.clear();
     } else {
         // Force update on next frame
@@ -26,8 +40,8 @@ void IrrlichtRenderer::toggleMapOverlay() {
     }
 }
 
-void IrrlichtRenderer::updateMapOverlay(const glm::vec3& playerPos) {
-    if (!showMapOverlay_ || !collisionMap_) {
+void OverlaysComponent::updateMapOverlay(const glm::vec3& playerPos) {
+    if (!owner_.showMapOverlay_ || !ctx_.collisionMap) {
         return;
     }
 
@@ -43,7 +57,7 @@ void IrrlichtRenderer::updateMapOverlay(const glm::vec3& playerPos) {
     mapOverlayTriangles_.clear();
 
     // Get triangles within radius from HCMap
-    auto triangles = collisionMap_->GetTrianglesInRadius(playerPos, mapOverlayRadius_);
+    auto triangles = ctx_.collisionMap->GetTrianglesInRadius(playerPos, mapOverlayRadius_);
 
     if (triangles.empty()) {
         LOG_DEBUG(MOD_GRAPHICS, "Map overlay: No triangles found within radius {} at ({}, {}, {})",
@@ -53,7 +67,7 @@ void IrrlichtRenderer::updateMapOverlay(const glm::vec3& playerPos) {
 
     // Get Z range for color gradient
     float minZ, maxZ;
-    collisionMap_->GetZRange(minZ, maxZ);
+    ctx_.collisionMap->GetZRange(minZ, maxZ);
 
     // Triangles are already in Irrlicht Y-up format from HCMap
     for (const auto& tri : triangles) {
@@ -77,7 +91,7 @@ void IrrlichtRenderer::updateMapOverlay(const glm::vec3& playerPos) {
     LOG_DEBUG(MOD_GRAPHICS, "Map overlay: Updated with {} triangles", mapOverlayTriangles_.size());
 }
 
-irr::video::SColor IrrlichtRenderer::getMapOverlayColor(float y, float minY, float maxY, const glm::vec3& normal) const {
+irr::video::SColor OverlaysComponent::getMapOverlayColor(float y, float minY, float maxY, const glm::vec3& normal) const {
     // Normalize Y (height) to 0-1 range
     float range = maxY - minY;
     float t = (range > 0.001f) ? (y - minY) / range : 0.5f;
@@ -115,8 +129,8 @@ irr::video::SColor IrrlichtRenderer::getMapOverlayColor(float y, float minY, flo
     return irr::video::SColor(200, r, g, b);  // Slightly transparent
 }
 
-void IrrlichtRenderer::drawMapOverlay() {
-    if (!showMapOverlay_ || !driver_ || mapOverlayTriangles_.empty()) {
+void OverlaysComponent::drawMapOverlay() {
+    if (!owner_.showMapOverlay_ || !ctx_.driver || mapOverlayTriangles_.empty()) {
         return;
     }
 
@@ -128,7 +142,7 @@ void IrrlichtRenderer::drawMapOverlay() {
     lineMaterial.MaterialType = irr::video::EMT_SOLID;
     lineMaterial.ZBuffer = irr::video::ECFN_LESSEQUAL;  // Respect depth
     lineMaterial.ZWriteEnable = false;
-    driver_->setMaterial(lineMaterial);
+    ctx_.driver->setMaterial(lineMaterial);
 
     // Build transform for placeables (rotation and/or mirroring)
     // These transforms are around the world origin to test coordinate alignment
@@ -136,7 +150,7 @@ void IrrlichtRenderer::drawMapOverlay() {
     placeableTransform.makeIdentity();
 
     // Apply X-axis mirror if enabled (scale X by -1)
-    if (mapOverlayMirrorX_) {
+    if (owner_.mapOverlayMirrorX_) {
         irr::core::matrix4 mirrorMatrix;
         mirrorMatrix.makeIdentity();
         mirrorMatrix.setScale(irr::core::vector3df(-1.0f, 1.0f, 1.0f));
@@ -144,38 +158,46 @@ void IrrlichtRenderer::drawMapOverlay() {
     }
 
     // Apply rotation if set
-    if (mapOverlayRotation_ != 0) {
+    if (owner_.mapOverlayRotation_ != 0) {
         irr::core::matrix4 rotMatrix;
-        rotMatrix.setRotationDegrees(irr::core::vector3df(0, mapOverlayRotation_ * 90.0f, 0));
+        rotMatrix.setRotationDegrees(irr::core::vector3df(0, owner_.mapOverlayRotation_ * 90.0f, 0));
         placeableTransform *= rotMatrix;
     }
 
     // Draw terrain triangles first (no transform)
-    driver_->setTransform(irr::video::ETS_WORLD, irr::core::matrix4());
+    ctx_.driver->setTransform(irr::video::ETS_WORLD, irr::core::matrix4());
     for (const auto& tri : mapOverlayTriangles_) {
         if (!tri.isPlaceable) {
-            driver_->draw3DLine(tri.v1, tri.v2, tri.color);
-            driver_->draw3DLine(tri.v2, tri.v3, tri.color);
-            driver_->draw3DLine(tri.v3, tri.v1, tri.color);
+            ctx_.driver->draw3DLine(tri.v1, tri.v2, tri.color);
+            ctx_.driver->draw3DLine(tri.v2, tri.v3, tri.color);
+            ctx_.driver->draw3DLine(tri.v3, tri.v1, tri.color);
         }
     }
 
     // Draw placeable triangles (with transform if set)
-    driver_->setTransform(irr::video::ETS_WORLD, placeableTransform);
+    ctx_.driver->setTransform(irr::video::ETS_WORLD, placeableTransform);
     for (const auto& tri : mapOverlayTriangles_) {
         if (tri.isPlaceable) {
-            driver_->draw3DLine(tri.v1, tri.v2, tri.color);
-            driver_->draw3DLine(tri.v2, tri.v3, tri.color);
-            driver_->draw3DLine(tri.v3, tri.v1, tri.color);
+            ctx_.driver->draw3DLine(tri.v1, tri.v2, tri.color);
+            ctx_.driver->draw3DLine(tri.v2, tri.v3, tri.color);
+            ctx_.driver->draw3DLine(tri.v3, tri.v1, tri.color);
         }
     }
 }
 
-void IrrlichtRenderer::toggleNavmeshOverlay() {
-    showNavmeshOverlay_ = !showNavmeshOverlay_;
-    LOG_INFO(MOD_GRAPHICS, "Navmesh overlay: {}", showNavmeshOverlay_ ? "ON" : "OFF");
+// L03: was an inline accessor on IrrlichtRenderer (setNavmesh). It moved with
+// navmesh_, which is single-family; out-of-line because owner_.isLoading()
+// needs the complete IrrlichtRenderer type.
+void OverlaysComponent::setNavmesh(PathfinderNavmesh* navmesh) {
+    if (owner_.isLoading()) return;
+    navmesh_ = navmesh;
+}
 
-    if (!showNavmeshOverlay_) {
+void OverlaysComponent::toggleNavmeshOverlay() {
+    owner_.showNavmeshOverlay_ = !owner_.showNavmeshOverlay_;
+    LOG_INFO(MOD_GRAPHICS, "Navmesh overlay: {}", owner_.showNavmeshOverlay_ ? "ON" : "OFF");
+
+    if (!owner_.showNavmeshOverlay_) {
         navmeshOverlayTriangles_.clear();
     } else {
         // Force update on next frame
@@ -183,8 +205,8 @@ void IrrlichtRenderer::toggleNavmeshOverlay() {
     }
 }
 
-void IrrlichtRenderer::updateNavmeshOverlay(const glm::vec3& playerPos) {
-    if (!showNavmeshOverlay_ || !navmesh_) {
+void OverlaysComponent::updateNavmeshOverlay(const glm::vec3& playerPos) {
+    if (!owner_.showNavmeshOverlay_ || !navmesh_) {
         return;
     }
 
@@ -228,7 +250,7 @@ void IrrlichtRenderer::updateNavmeshOverlay(const glm::vec3& playerPos) {
 #endif
 }
 
-irr::video::SColor IrrlichtRenderer::getNavmeshAreaColor(uint8_t areaType) const {
+irr::video::SColor OverlaysComponent::getNavmeshAreaColor(uint8_t areaType) const {
     // Area types from PathfinderNavmesh (see pathfinder_interface.h):
     // 0 = Normal (walkable)
     // 1 = Water
@@ -267,8 +289,8 @@ irr::video::SColor IrrlichtRenderer::getNavmeshAreaColor(uint8_t areaType) const
     }
 }
 
-void IrrlichtRenderer::drawNavmeshOverlay() {
-    if (!showNavmeshOverlay_ || !driver_ || navmeshOverlayTriangles_.empty()) {
+void OverlaysComponent::drawNavmeshOverlay() {
+    if (!owner_.showNavmeshOverlay_ || !ctx_.driver || navmeshOverlayTriangles_.empty()) {
         return;
     }
 
@@ -280,7 +302,7 @@ void IrrlichtRenderer::drawNavmeshOverlay() {
     lineMaterial.MaterialType = irr::video::EMT_SOLID;
     lineMaterial.ZBuffer = irr::video::ECFN_LESSEQUAL;  // Respect depth
     lineMaterial.ZWriteEnable = false;
-    driver_->setMaterial(lineMaterial);
+    ctx_.driver->setMaterial(lineMaterial);
 
     // Build transform matrix for rotation and/or mirroring
     // These transforms are around the world origin to test coordinate alignment
@@ -288,7 +310,7 @@ void IrrlichtRenderer::drawNavmeshOverlay() {
     navmeshTransform.makeIdentity();
 
     // Apply X-axis mirror if enabled (scale X by -1)
-    if (navmeshOverlayMirrorX_) {
+    if (owner_.navmeshOverlayMirrorX_) {
         irr::core::matrix4 mirrorMatrix;
         mirrorMatrix.makeIdentity();
         mirrorMatrix.setScale(irr::core::vector3df(-1.0f, 1.0f, 1.0f));
@@ -296,29 +318,29 @@ void IrrlichtRenderer::drawNavmeshOverlay() {
     }
 
     // Apply rotation if set
-    if (navmeshOverlayRotation_ != 0) {
+    if (owner_.navmeshOverlayRotation_ != 0) {
         irr::core::matrix4 rotMatrix;
-        rotMatrix.setRotationDegrees(irr::core::vector3df(0, navmeshOverlayRotation_ * 90.0f, 0));
+        rotMatrix.setRotationDegrees(irr::core::vector3df(0, owner_.navmeshOverlayRotation_ * 90.0f, 0));
         navmeshTransform *= rotMatrix;
     }
 
     // Set transform and draw all triangles as wireframe
-    driver_->setTransform(irr::video::ETS_WORLD, navmeshTransform);
+    ctx_.driver->setTransform(irr::video::ETS_WORLD, navmeshTransform);
 
     for (const auto& tri : navmeshOverlayTriangles_) {
-        driver_->draw3DLine(tri.v1, tri.v2, tri.color);
-        driver_->draw3DLine(tri.v2, tri.v3, tri.color);
-        driver_->draw3DLine(tri.v3, tri.v1, tri.color);
+        ctx_.driver->draw3DLine(tri.v1, tri.v2, tri.color);
+        ctx_.driver->draw3DLine(tri.v2, tri.v3, tri.color);
+        ctx_.driver->draw3DLine(tri.v3, tri.v1, tri.color);
     }
 }
 
 #ifdef EQT_HAS_GLES2
-void IrrlichtRenderer::drawTargetOutline() {
-    if (currentTargetId_ == 0 || !entityRenderer_ || !driver_) return;
-    if (!have3DTransforms_) return;  // Need captured 3D matrices
+void OverlaysComponent::drawTargetOutline() {
+    if (owner_.currentTargetId_ == 0 || !ctx_.entityRenderer || !ctx_.driver) return;
+    if (!owner_.have3DTransforms_) return;  // Need captured 3D matrices
 
-    const auto& entities = entityRenderer_->getEntities();
-    auto it = entities.find(currentTargetId_);
+    const auto& entities = ctx_.entityRenderer->getEntities();
+    auto it = entities.find(owner_.currentTargetId_);
     if (it == entities.end()) return;
 
     const EntityVisual& visual = it->second;
@@ -333,8 +355,8 @@ void IrrlichtRenderer::drawTargetOutline() {
     // Restore 3D camera matrices — after drawAll(), ETS_VIEW and ETS_PROJECTION
     // may have been overwritten by 2D rendering (billboards, GUI nodes, overlays).
     // The correct 3D matrices were captured during the ESNRP_SOLID render pass.
-    driver_->setTransform(irr::video::ETS_VIEW, captured3DView_);
-    driver_->setTransform(irr::video::ETS_PROJECTION, captured3DProj_);
+    ctx_.driver->setTransform(irr::video::ETS_VIEW, owner_.captured3DView_);
+    ctx_.driver->setTransform(irr::video::ETS_PROJECTION, owner_.captured3DProj_);
 
     // Stencil reference value above portal range (portals use 1-4)
     const GLint STENCIL_REF = 128;
@@ -372,13 +394,13 @@ void IrrlichtRenderer::drawTargetOutline() {
     glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
     glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
 
-    driver_->setTransform(irr::video::ETS_WORLD, normalTransform);
-    driver_->setMaterial(outlineMat);
+    ctx_.driver->setTransform(irr::video::ETS_WORLD, normalTransform);
+    ctx_.driver->setMaterial(outlineMat);
     // Override depth write after setMaterial (EMT_SOLID forces it ON)
     glDepthMask(GL_FALSE);
     for (irr::u32 i = 0; i < mesh->getMeshBufferCount(); ++i) {
         irr::scene::IMeshBuffer* mb = mesh->getMeshBuffer(i);
-        if (mb) driver_->drawMeshBuffer(mb);
+        if (mb) ctx_.driver->drawMeshBuffer(mb);
     }
 
     // --- Pass 2: Draw outline at scaled-up size (only where stencil != ref) ---
@@ -421,13 +443,13 @@ void IrrlichtRenderer::drawTargetOutline() {
             verts[v].Color = outlineColor;
     }
 
-    driver_->setTransform(irr::video::ETS_WORLD, outlineTransform);
-    driver_->setMaterial(outlineMat);
+    ctx_.driver->setTransform(irr::video::ETS_WORLD, outlineTransform);
+    ctx_.driver->setMaterial(outlineMat);
     // Override depth write after setMaterial (don't contaminate depth buffer)
     glDepthMask(GL_FALSE);
     for (irr::u32 i = 0; i < mesh->getMeshBufferCount(); ++i) {
         irr::scene::IMeshBuffer* mb = mesh->getMeshBuffer(i);
-        if (mb) driver_->drawMeshBuffer(mb);
+        if (mb) ctx_.driver->drawMeshBuffer(mb);
     }
 
     // Restore white vertex colors (entity's normal rendering expects white)
@@ -447,15 +469,15 @@ void IrrlichtRenderer::drawTargetOutline() {
     glEnable(GL_DEPTH_TEST);
 }
 #else
-void IrrlichtRenderer::drawTargetSelectionBox() {
+void OverlaysComponent::drawTargetSelectionBox() {
     // Check if we have a target
-    if (currentTargetId_ == 0 || !entityRenderer_ || !driver_) {
+    if (owner_.currentTargetId_ == 0 || !ctx_.entityRenderer || !ctx_.driver) {
         return;
     }
 
     // Find the targeted entity
-    const auto& entities = entityRenderer_->getEntities();
-    auto it = entities.find(currentTargetId_);
+    const auto& entities = ctx_.entityRenderer->getEntities();
+    auto it = entities.find(owner_.currentTargetId_);
     if (it == entities.end()) {
         return;
     }
@@ -477,8 +499,8 @@ void IrrlichtRenderer::drawTargetSelectionBox() {
     lineMaterial.MaterialType = irr::video::EMT_SOLID;
     lineMaterial.ZBuffer = irr::video::ECFN_LESSEQUAL;
     lineMaterial.ZWriteEnable = false;
-    driver_->setMaterial(lineMaterial);
-    driver_->setTransform(irr::video::ETS_WORLD, irr::core::matrix4());
+    ctx_.driver->setMaterial(lineMaterial);
+    ctx_.driver->setTransform(irr::video::ETS_WORLD, irr::core::matrix4());
 
     // White color for selection box
     irr::video::SColor white(255, 255, 255, 255);
@@ -496,79 +518,79 @@ void IrrlichtRenderer::drawTargetSelectionBox() {
 
     // Draw the 12 edges of the bounding box
     // Bottom face
-    driver_->draw3DLine(corners[0], corners[1], white);
-    driver_->draw3DLine(corners[1], corners[2], white);
-    driver_->draw3DLine(corners[2], corners[3], white);
-    driver_->draw3DLine(corners[3], corners[0], white);
+    ctx_.driver->draw3DLine(corners[0], corners[1], white);
+    ctx_.driver->draw3DLine(corners[1], corners[2], white);
+    ctx_.driver->draw3DLine(corners[2], corners[3], white);
+    ctx_.driver->draw3DLine(corners[3], corners[0], white);
 
     // Top face
-    driver_->draw3DLine(corners[4], corners[5], white);
-    driver_->draw3DLine(corners[5], corners[6], white);
-    driver_->draw3DLine(corners[6], corners[7], white);
-    driver_->draw3DLine(corners[7], corners[4], white);
+    ctx_.driver->draw3DLine(corners[4], corners[5], white);
+    ctx_.driver->draw3DLine(corners[5], corners[6], white);
+    ctx_.driver->draw3DLine(corners[6], corners[7], white);
+    ctx_.driver->draw3DLine(corners[7], corners[4], white);
 
     // Vertical edges
-    driver_->draw3DLine(corners[0], corners[4], white);
-    driver_->draw3DLine(corners[1], corners[5], white);
-    driver_->draw3DLine(corners[2], corners[6], white);
-    driver_->draw3DLine(corners[3], corners[7], white);
+    ctx_.driver->draw3DLine(corners[0], corners[4], white);
+    ctx_.driver->draw3DLine(corners[1], corners[5], white);
+    ctx_.driver->draw3DLine(corners[2], corners[6], white);
+    ctx_.driver->draw3DLine(corners[3], corners[7], white);
 }
 #endif
 
 // --- Mouse Targeting Implementation ---
 
-void IrrlichtRenderer::setCurrentTarget(uint16_t spawnId, const std::string& name, uint8_t hpPercent, uint8_t level) {
-    currentTargetId_ = spawnId;
-    currentTargetName_ = name;
+void OverlaysComponent::setCurrentTarget(uint16_t spawnId, const std::string& name, uint8_t hpPercent, uint8_t level) {
+    owner_.currentTargetId_ = spawnId;
+    owner_.currentTargetName_ = name;
     currentTargetHpPercent_ = hpPercent;
     currentTargetLevel_ = level;
     // Enable animation debugging for targeted entity
-    if (entityRenderer_) {
-        entityRenderer_->setDebugTargetId(spawnId);
+    if (ctx_.entityRenderer) {
+        ctx_.entityRenderer->setDebugTargetId(spawnId);
     }
 }
 
-void IrrlichtRenderer::clearCurrentTarget() {
-    if (isLoading()) return;
-    currentTargetId_ = 0;
-    currentTargetName_.clear();
+void OverlaysComponent::clearCurrentTarget() {
+    if (owner_.isLoading()) return;
+    owner_.currentTargetId_ = 0;
+    owner_.currentTargetName_.clear();
     currentTargetHpPercent_ = 100;
     currentTargetLevel_ = 0;
     currentTargetInfo_ = TargetInfo();  // Reset to defaults
     // Disable animation debugging
-    if (entityRenderer_) {
-        entityRenderer_->setDebugTargetId(0);
+    if (ctx_.entityRenderer) {
+        ctx_.entityRenderer->setDebugTargetId(0);
     }
 }
 
-void IrrlichtRenderer::setCurrentTargetInfo(const TargetInfo& info) {
-    if (isLoading()) return;
+void OverlaysComponent::setCurrentTargetInfo(const TargetInfo& info) {
+    if (owner_.isLoading()) return;
     currentTargetInfo_ = info;
     // Also update the legacy fields for backward compatibility
-    currentTargetId_ = info.spawnId;
-    currentTargetName_ = info.name;
+    owner_.currentTargetId_ = info.spawnId;
+    owner_.currentTargetName_ = info.name;
     currentTargetHpPercent_ = info.hpPercent;
     currentTargetLevel_ = info.level;
     // Enable animation debugging for targeted entity
-    if (entityRenderer_) {
-        entityRenderer_->setDebugTargetId(info.spawnId);
+    if (ctx_.entityRenderer) {
+        ctx_.entityRenderer->setDebugTargetId(info.spawnId);
     }
 }
 
-void IrrlichtRenderer::handleMouseTargeting(int clickX, int clickY) {
-    if (!eventReceiver_ || !camera_ || !entityRenderer_) {
+void OverlaysComponent::handleMouseTargeting(int clickX, int clickY) {
+    if (!ctx_.eventReceiver || !ctx_.camera || !ctx_.entityRenderer) {
         return;
     }
 
-    bool shiftHeld = eventReceiver_->isKeyDown(irr::KEY_LSHIFT) || eventReceiver_->isKeyDown(irr::KEY_RSHIFT);
-    bool ctrlHeld = eventReceiver_->isKeyDown(irr::KEY_LCONTROL) || eventReceiver_->isKeyDown(irr::KEY_RCONTROL);
+    bool shiftHeld = ctx_.eventReceiver->isKeyDown(irr::KEY_LSHIFT) || ctx_.eventReceiver->isKeyDown(irr::KEY_RSHIFT);
+    bool ctrlHeld = ctx_.eventReceiver->isKeyDown(irr::KEY_LCONTROL) || ctx_.eventReceiver->isKeyDown(irr::KEY_RCONTROL);
 
     // Get entity at click position
     uint16_t targetId = getEntityAtScreenPos(clickX, clickY);
 
     if (targetId != 0) {
         // Found an entity - verify it's visible (LOS from camera)
-        const auto& entities = entityRenderer_->getEntities();
+        const auto& entities = ctx_.entityRenderer->getEntities();
         auto it = entities.find(targetId);
         if (it != entities.end()) {
             const auto& visual = it->second;
@@ -576,20 +598,20 @@ void IrrlichtRenderer::handleMouseTargeting(int clickX, int clickY) {
             // Convert entity position to Irrlicht coords for LOS check
             // EQ (x, y, z) -> Irrlicht (x, z, y)
             irr::core::vector3df entityPos(visual.lastX, visual.lastZ + 5.0f, visual.lastY);
-            irr::core::vector3df cameraPos = camera_->getPosition();
+            irr::core::vector3df cameraPos = ctx_.camera->getPosition();
 
             if (checkEntityLOS(cameraPos, entityPos)) {
                 // Check for shift+click on corpse to loot
                 if (shiftHeld && visual.isCorpse) {
-                    if (bridge_) bridge_->pushIntent(eqt::events::LootCorpseIntent{targetId});
+                    if (ctx_.bridge) ctx_.bridge->pushIntent(eqt::events::LootCorpseIntent{targetId});
                 } else if (ctrlHeld && visual.isNPC && !visual.isCorpse) {
                     // Ctrl+click on NPC - banker interaction
                     LOG_INFO(MOD_GRAPHICS, "Ctrl+click on NPC: {} (ID: {})", visual.name, targetId);
-                    if (bridge_) bridge_->pushIntent(eqt::events::BankerInteractIntent{targetId});
+                    if (ctx_.bridge) ctx_.bridge->pushIntent(eqt::events::BankerInteractIntent{targetId});
                 } else {
                     // Entity is visible - set as target
                     LOG_INFO(MOD_GRAPHICS, "Target selected: {} (ID: {})", visual.name, targetId);
-                    if (bridge_) bridge_->pushIntent(eqt::events::TargetIntent{targetId});
+                    if (ctx_.bridge) ctx_.bridge->pushIntent(eqt::events::TargetIntent{targetId});
                 }
             } else {
                 LOG_DEBUG(MOD_GRAPHICS, "Cannot target {} - obstructed", visual.name);
@@ -598,37 +620,37 @@ void IrrlichtRenderer::handleMouseTargeting(int clickX, int clickY) {
     } else {
         // No entity found - check for door click
         bool handledClick = false;
-        if (doorManager_) {
-            uint8_t doorId = doorManager_->getDoorAtScreenPos(clickX, clickY, camera_, collisionManager_);
+        if (ctx_.doorManager) {
+            uint8_t doorId = ctx_.doorManager->getDoorAtScreenPos(clickX, clickY, ctx_.camera, owner_.collisionManager_);
             if (doorId != 0) {
                 LOG_INFO(MOD_GRAPHICS, "Door clicked: ID {}", doorId);
-                if (bridge_) bridge_->pushIntent(eqt::events::DoorInteractIntent{doorId});
+                if (ctx_.bridge) ctx_.bridge->pushIntent(eqt::events::DoorInteractIntent{doorId});
                 handledClick = true;
             }
         }
 
         // Check for world object (tradeskill container) click
         if (!handledClick) {
-            uint32_t objectId = getWorldObjectAtScreenPos(clickX, clickY);
+            uint32_t objectId = owner_.getWorldObjectAtScreenPos(clickX, clickY);
             if (objectId != 0) {
                 LOG_INFO(MOD_GRAPHICS, "World object clicked: dropId {}", objectId);
-                if (bridge_) bridge_->pushIntent(eqt::events::WorldObjectInteractIntent{objectId});
+                if (ctx_.bridge) ctx_.bridge->pushIntent(eqt::events::WorldObjectInteractIntent{objectId});
             }
         }
     }
 }
 
-uint16_t IrrlichtRenderer::getEntityAtScreenPos(int screenX, int screenY) {
-    if (!collisionManager_ || !camera_ || !entityRenderer_ || !driver_) {
+uint16_t OverlaysComponent::getEntityAtScreenPos(int screenX, int screenY) {
+    if (!owner_.collisionManager_ || !ctx_.camera || !ctx_.entityRenderer || !ctx_.driver) {
         return 0;
     }
 
     // Get ray from camera through screen position
-    irr::core::line3df ray = collisionManager_->getRayFromScreenCoordinates(
-        irr::core::position2di(screenX, screenY), camera_);
+    irr::core::line3df ray = owner_.collisionManager_->getRayFromScreenCoordinates(
+        irr::core::position2di(screenX, screenY), ctx_.camera);
 
     // Check each entity for intersection
-    const auto& entities = entityRenderer_->getEntities();
+    const auto& entities = ctx_.entityRenderer->getEntities();
     float closestDist = std::numeric_limits<float>::max();
     uint16_t closestEntity = 0;
 
@@ -681,20 +703,20 @@ uint16_t IrrlichtRenderer::getEntityAtScreenPos(int screenX, int screenY) {
     return closestEntity;
 }
 
-bool IrrlichtRenderer::checkEntityLOS(const irr::core::vector3df& cameraPos, const irr::core::vector3df& entityPos) {
-    if (!zoneBspTree_) {
+bool OverlaysComponent::checkEntityLOS(const irr::core::vector3df& cameraPos, const irr::core::vector3df& entityPos) {
+    if (!ctx_.zoneBspTree) {
         return true;  // No BSP data — can't do collision, assume visible
     }
 
     // BSP PVS check first — if target region isn't visible from camera region, blocked by zone geometry
-    if (zoneBspTree_) {
+    if (ctx_.zoneBspTree) {
         // Irrlicht (x, y, z) -> EQ (x, z, y)
-        size_t camRegion = zoneBspTree_->findRegionIndexForPoint(cameraPos.X, cameraPos.Z, cameraPos.Y);
-        size_t entRegion = zoneBspTree_->findRegionIndexForPoint(entityPos.X, entityPos.Z, entityPos.Y);
+        size_t camRegion = ctx_.zoneBspTree->findRegionIndexForPoint(cameraPos.X, cameraPos.Z, cameraPos.Y);
+        size_t entRegion = ctx_.zoneBspTree->findRegionIndexForPoint(entityPos.X, entityPos.Z, entityPos.Y);
 
         if (camRegion != SIZE_MAX && entRegion != SIZE_MAX && camRegion != entRegion) {
-            if (camRegion < zoneBspTree_->regions.size()) {
-                const auto& pvs = zoneBspTree_->regions[camRegion]->visibleRegions;
+            if (camRegion < ctx_.zoneBspTree->regions.size()) {
+                const auto& pvs = ctx_.zoneBspTree->regions[camRegion]->visibleRegions;
                 if (entRegion < pvs.size() && !pvs[entRegion]) {
                     return false;  // Not PVS-visible — wall between camera and entity
                 }
@@ -706,7 +728,7 @@ bool IrrlichtRenderer::checkEntityLOS(const irr::core::vector3df& cameraPos, con
     irr::core::vector3df hitPoint;
     irr::core::triangle3df hitTriangle;
 
-    bool hit = checkCollisionBspFiltered(cameraPos, entityPos, hitPoint, hitTriangle);
+    bool hit = owner_.checkCollisionBspFiltered(cameraPos, entityPos, hitPoint, hitTriangle);
 
     if (!hit) {
         return true;  // No obstruction
@@ -720,20 +742,13 @@ bool IrrlichtRenderer::checkEntityLOS(const irr::core::vector3df& cameraPos, con
     return hitDist > (entityDist - 10.0f);
 }
 
-void IrrlichtRenderer::setZoneLineDebug(bool inZoneLine, uint16_t targetZoneId, const std::string& debugText) {
-    if (isLoading()) return;
-    inZoneLine_ = inZoneLine;
-    zoneLineTargetZoneId_ = targetZoneId;
-    zoneLineDebugText_ = debugText;
-}
-
-void IrrlichtRenderer::drawZoneLineOverlay() {
-    if (!inZoneLine_ || !driver_) {
+void OverlaysComponent::drawZoneLineOverlay() {
+    if (!inZoneLine_ || !ctx_.driver) {
         return;
     }
 
     // Draw a semi-transparent pink overlay on the screen edges
-    irr::core::dimension2d<irr::u32> screenSize = driver_->getScreenSize();
+    irr::core::dimension2d<irr::u32> screenSize = ctx_.driver->getScreenSize();
 
     // Pink color with alpha
     irr::video::SColor pink(100, 255, 50, 150);  // Semi-transparent pink
@@ -742,17 +757,17 @@ void IrrlichtRenderer::drawZoneLineOverlay() {
     int borderWidth = 15;
 
     // Top border
-    driver_->draw2DRectangle(pink, irr::core::rect<irr::s32>(0, 0, screenSize.Width, borderWidth));
+    ctx_.driver->draw2DRectangle(pink, irr::core::rect<irr::s32>(0, 0, screenSize.Width, borderWidth));
     // Bottom border
-    driver_->draw2DRectangle(pink, irr::core::rect<irr::s32>(0, screenSize.Height - borderWidth, screenSize.Width, screenSize.Height));
+    ctx_.driver->draw2DRectangle(pink, irr::core::rect<irr::s32>(0, screenSize.Height - borderWidth, screenSize.Width, screenSize.Height));
     // Left border
-    driver_->draw2DRectangle(pink, irr::core::rect<irr::s32>(0, borderWidth, borderWidth, screenSize.Height - borderWidth));
+    ctx_.driver->draw2DRectangle(pink, irr::core::rect<irr::s32>(0, borderWidth, borderWidth, screenSize.Height - borderWidth));
     // Right border
-    driver_->draw2DRectangle(pink, irr::core::rect<irr::s32>(screenSize.Width - borderWidth, borderWidth, screenSize.Width, screenSize.Height - borderWidth));
+    ctx_.driver->draw2DRectangle(pink, irr::core::rect<irr::s32>(screenSize.Width - borderWidth, borderWidth, screenSize.Width, screenSize.Height - borderWidth));
 
     // Draw zone line text using GUI environment's built-in font
-    if (guienv_) {
-        irr::gui::IGUIFont* font = guienv_->getBuiltInFont();
+    if (owner_.guienv_) {
+        irr::gui::IGUIFont* font = owner_.guienv_->getBuiltInFont();
         if (font) {
             std::wstring text = L"[ZONE LINE] Target Zone: " + std::to_wstring(zoneLineTargetZoneId_);
             irr::core::dimension2d<irr::u32> textSize = font->getDimension(text.c_str());
@@ -774,12 +789,12 @@ void IrrlichtRenderer::drawZoneLineOverlay() {
     }
 }
 
-void IrrlichtRenderer::setZoneLineBoundingBoxes(const std::vector<EQT::ZoneLineBoundingBox>& boxes) {
-    if (isLoading()) return;
+void OverlaysComponent::setZoneLineBoundingBoxes(const std::vector<EQT::ZoneLineBoundingBox>& boxes) {
+    if (owner_.isLoading()) return;
     // Clear existing boxes first
     clearZoneLineBoundingBoxes();
 
-    if (!smgr_ || !driver_) {
+    if (!ctx_.smgr || !ctx_.driver) {
         LOG_WARN(MOD_GRAPHICS, "Cannot create zone line boxes - renderer not initialized");
         return;
     }
@@ -792,7 +807,7 @@ void IrrlichtRenderer::setZoneLineBoundingBoxes(const std::vector<EQT::ZoneLineB
     zoneLineBoxesCreated_ = showZoneLineBoxes_;
 }
 
-void IrrlichtRenderer::clearZoneLineBoundingBoxes() {
+void OverlaysComponent::clearZoneLineBoundingBoxes() {
     for (auto& boxNode : zoneLineBoxNodes_) {
         if (boxNode.node) {
             boxNode.node->remove();
@@ -803,7 +818,7 @@ void IrrlichtRenderer::clearZoneLineBoundingBoxes() {
     zoneLineBoxesCreated_ = false;
 }
 
-void IrrlichtRenderer::toggleZoneLineVisualization() {
+void OverlaysComponent::toggleZoneLineVisualization() {
     showZoneLineBoxes_ = !showZoneLineBoxes_;
 
     // Remove/recreate scene nodes instead of toggling visibility.
@@ -816,12 +831,12 @@ void IrrlichtRenderer::toggleZoneLineVisualization() {
     }
 
     // Notify EverQuest to enable/disable zoning when zone lines are toggled
-    if (bridge_) bridge_->pushIntent(eqt::events::ZoningEnabledIntent{showZoneLineBoxes_});
+    if (ctx_.bridge) ctx_.bridge->pushIntent(eqt::events::ZoningEnabledIntent{showZoneLineBoxes_});
 
     LOG_INFO(MOD_GRAPHICS, "Zone line visualization and zoning {}", showZoneLineBoxes_ ? "enabled" : "disabled");
 }
 
-void IrrlichtRenderer::removeZoneLineBoxSceneNodes() {
+void OverlaysComponent::removeZoneLineBoxSceneNodes() {
     for (auto& boxNode : zoneLineBoxNodes_) {
         if (boxNode.node) {
             boxNode.node->remove();
@@ -831,8 +846,8 @@ void IrrlichtRenderer::removeZoneLineBoxSceneNodes() {
     zoneLineBoxesCreated_ = false;
 }
 
-void IrrlichtRenderer::recreateZoneLineBoxSceneNodes() {
-    if (zoneLineBoxesCreated_ || !smgr_ || !driver_) return;
+void OverlaysComponent::recreateZoneLineBoxSceneNodes() {
+    if (zoneLineBoxesCreated_ || !ctx_.smgr || !ctx_.driver) return;
 
     // Recreate scene nodes from stored bounding box data
     for (auto& boxNode : zoneLineBoxNodes_) {
@@ -849,7 +864,7 @@ void IrrlichtRenderer::recreateZoneLineBoxSceneNodes() {
     zoneLineBoxesCreated_ = true;
 }
 
-void IrrlichtRenderer::createZoneLineBoxMesh(const EQT::ZoneLineBoundingBox& box) {
+void OverlaysComponent::createZoneLineBoxMesh(const EQT::ZoneLineBoundingBox& box) {
     // Store metadata and coordinates for later recreation
     ZoneLineBoxNode boxNode;
     boxNode.node = nullptr;
@@ -859,15 +874,15 @@ void IrrlichtRenderer::createZoneLineBoxMesh(const EQT::ZoneLineBoundingBox& box
     boxNode.maxX = box.maxX; boxNode.maxY = box.maxY; boxNode.maxZ = box.maxZ;
 
     // Only create scene nodes if visualization is currently enabled
-    if (showZoneLineBoxes_ && smgr_ && driver_) {
+    if (showZoneLineBoxes_ && ctx_.smgr && ctx_.driver) {
         createZoneLineBoxMeshForNode(box, boxNode);
     }
 
     zoneLineBoxNodes_.push_back(boxNode);
 }
 
-void IrrlichtRenderer::createZoneLineBoxMeshForNode(const EQT::ZoneLineBoundingBox& box, ZoneLineBoxNode& boxNode) {
-    if (!smgr_ || !driver_) return;
+void OverlaysComponent::createZoneLineBoxMeshForNode(const EQT::ZoneLineBoundingBox& box, ZoneLineBoxNode& boxNode) {
+    if (!ctx_.smgr || !ctx_.driver) return;
 
     // Convert EQ coordinates to Irrlicht coordinates
     // EQ uses Z-up: (x, y, z) -> Irrlicht Y-up: (x, z, y)
@@ -891,7 +906,7 @@ void IrrlichtRenderer::createZoneLineBoxMeshForNode(const EQT::ZoneLineBoundingB
         centerX, centerY, centerZ, width, height, depth);
 
     // Create a cube mesh using geometry creator
-    const irr::scene::IGeometryCreator* geomCreator = smgr_->getGeometryCreator();
+    const irr::scene::IGeometryCreator* geomCreator = ctx_.smgr->getGeometryCreator();
     if (!geomCreator) {
         LOG_WARN(MOD_GRAPHICS, "No geometry creator available");
         return;
@@ -905,7 +920,7 @@ void IrrlichtRenderer::createZoneLineBoxMeshForNode(const EQT::ZoneLineBoundingB
     }
 
     // Create scene node for the box
-    irr::scene::IMeshSceneNode* node = smgr_->addMeshSceneNode(cubeMesh);
+    irr::scene::IMeshSceneNode* node = ctx_.smgr->addMeshSceneNode(cubeMesh);
     cubeMesh->drop();  // Scene manager now owns it
 
     if (!node) {
@@ -953,15 +968,15 @@ void IrrlichtRenderer::createZoneLineBoxMeshForNode(const EQT::ZoneLineBoundingB
         box.targetZoneId, centerX, centerY, centerZ, width, height, depth);
 }
 
-void IrrlichtRenderer::drawZoneLineBoxLabels() {
-    if (!showZoneLineBoxes_ || !driver_ || !guienv_ || !camera_) {
+void OverlaysComponent::drawZoneLineBoxLabels() {
+    if (!showZoneLineBoxes_ || !ctx_.driver || !owner_.guienv_ || !ctx_.camera) {
         return;
     }
 
-    irr::gui::IGUIFont* font = guienv_->getBuiltInFont();
+    irr::gui::IGUIFont* font = owner_.guienv_->getBuiltInFont();
     if (!font) return;
 
-    irr::core::dimension2d<irr::u32> screenSize = driver_->getScreenSize();
+    irr::core::dimension2d<irr::u32> screenSize = ctx_.driver->getScreenSize();
 
     for (const auto& boxNode : zoneLineBoxNodes_) {
         if (!boxNode.node || !boxNode.node->isVisible()) continue;
@@ -970,8 +985,8 @@ void IrrlichtRenderer::drawZoneLineBoxLabels() {
         irr::core::vector3df boxPos = boxNode.node->getAbsolutePosition();
 
         // Convert 3D position to 2D screen position
-        irr::core::position2d<irr::s32> screenPos = smgr_->getSceneCollisionManager()->getScreenCoordinatesFrom3DPosition(
-            boxPos, camera_);
+        irr::core::position2d<irr::s32> screenPos = ctx_.smgr->getSceneCollisionManager()->getScreenCoordinatesFrom3DPosition(
+            boxPos, ctx_.camera);
 
         // Check if on screen
         if (screenPos.X < 0 || screenPos.X >= (irr::s32)screenSize.Width ||
@@ -992,7 +1007,7 @@ void IrrlichtRenderer::drawZoneLineBoxLabels() {
 
         // Background rectangle
         irr::video::SColor bgColor(150, 0, 0, 0);
-        driver_->draw2DRectangle(bgColor, irr::core::rect<irr::s32>(
+        ctx_.driver->draw2DRectangle(bgColor, irr::core::rect<irr::s32>(
             textX - 2, textY - 2, textX + textSize.Width + 2, textY + textSize.Height + 2));
 
         // Text color based on type
@@ -1005,21 +1020,21 @@ void IrrlichtRenderer::drawZoneLineBoxLabels() {
     }
 }
 
-void IrrlichtRenderer::drawFPSCounter() {
-    if (!driver_ || !guienv_) {
+void OverlaysComponent::drawFPSCounter() {
+    if (!ctx_.driver || !owner_.guienv_) {
         return;
     }
 
-    irr::gui::IGUIFont* font = guienv_->getBuiltInFont();
+    irr::gui::IGUIFont* font = owner_.guienv_->getBuiltInFont();
     if (!font) {
         return;
     }
 
     // Build FPS text
-    std::wstring fpsText = L"FPS: " + std::to_wstring(currentFps_);
+    std::wstring fpsText = L"FPS: " + std::to_wstring(owner_.currentFps_);
 
     // Get screen dimensions and text size for centering
-    irr::core::dimension2d<irr::u32> screenSize = driver_->getScreenSize();
+    irr::core::dimension2d<irr::u32> screenSize = ctx_.driver->getScreenSize();
     irr::core::dimension2d<irr::u32> textSize = font->getDimension(fpsText.c_str());
 
     // Position at top center with small padding from top edge
@@ -1030,7 +1045,7 @@ void IrrlichtRenderer::drawFPSCounter() {
     irr::core::rect<irr::s32> bgRect(textX - 4, textY - 2,
                                       textX + textSize.Width + 4,
                                       textY + textSize.Height + 2);
-    driver_->draw2DRectangle(irr::video::SColor(128, 0, 0, 0), bgRect);
+    ctx_.driver->draw2DRectangle(irr::video::SColor(128, 0, 0, 0), bgRect);
 
     // Draw FPS text in white
     font->draw(fpsText.c_str(),

@@ -488,9 +488,12 @@ IF(EQT_GRAPHICS)
         src/client/graphics/first_person_eye.cpp
         src/client/graphics/irrlicht_renderer.cpp
         src/client/graphics/renderer_event_receiver.cpp  # J11
+        # L03 (Batch L): the overlays family, was renderer_overlays.cpp +
+        # renderer_hud_env.cpp.
+        src/client/graphics/overlays/overlays_component.cpp
+        src/client/graphics/overlays/overlays_hud_env.cpp
         src/client/graphics/renderer_init.cpp  # J11
         src/client/graphics/renderer_slash_commands.cpp  # J11
-        src/client/graphics/renderer_hud_env.cpp  # J11
         src/client/graphics/renderer_camera.cpp  # J11
         # T166: the loadZoneSequential() step sequence, split out of one
         # 2996-line TU. Driver + geometry steps here, the rest alongside.
@@ -502,7 +505,6 @@ IF(EQT_GRAPHICS)
         src/client/graphics/renderer_zone_lifecycle.cpp
         src/client/graphics/renderer_diagnostics.cpp
         src/client/graphics/renderer_debug.cpp
-        src/client/graphics/renderer_overlays.cpp
         src/client/graphics/renderer_player_physics.cpp
         src/client/graphics/renderer_player_collision.cpp
         src/client/graphics/renderer_zone_draw.cpp

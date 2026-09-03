@@ -108,7 +108,7 @@ void IrrlichtRenderer::processFrameInput(float deltaTime) {
 
     // Handle mouse targeting
     if (hadClick) {
-        handleMouseTargeting(clickX, clickY);
+        overlays_->handleMouseTargeting(clickX, clickY);
     }
 }
 
@@ -137,7 +137,7 @@ void IrrlichtRenderer::processCommonInput(const std::vector<RendererEvent>& acti
             case RA::ClearTarget:
                 if (currentTargetId_ != 0) {
                     LOG_INFO(MOD_GRAPHICS, "[TARGET] Cleared target: {}", currentTargetName_);
-                    clearCurrentTarget();
+                    overlays_->clearCurrentTarget();
                     SetTrackedTargetId(0);
                 }
                 break;
@@ -213,8 +213,8 @@ void IrrlichtRenderer::processPlayerInput(const std::vector<RendererEvent>& acti
                 break;  // Buff bar always visible when buffs exist
 
             // Debug overlays
-            case RA::ToggleZoneLineVisualization: toggleZoneLineVisualization(); break;
-            case RA::ToggleMapOverlay: toggleMapOverlay(); break;
+            case RA::ToggleZoneLineVisualization: overlays_->toggleZoneLineVisualization(); break;
+            case RA::ToggleMapOverlay: overlays_->toggleMapOverlay(); break;
             case RA::RotateMapOverlay:
                 mapOverlayRotation_ = (mapOverlayRotation_ + 1) % 4;
                 LOG_INFO(MOD_GRAPHICS, "Map overlay placeable rotation: {}° around Y axis (terrain unchanged)", mapOverlayRotation_ * 90);
@@ -223,7 +223,7 @@ void IrrlichtRenderer::processPlayerInput(const std::vector<RendererEvent>& acti
                 mapOverlayMirrorX_ = !mapOverlayMirrorX_;
                 LOG_INFO(MOD_GRAPHICS, "Map overlay placeable X mirror: {} (terrain unchanged)", mapOverlayMirrorX_ ? "ON" : "OFF");
                 break;
-            case RA::ToggleNavmeshOverlay: toggleNavmeshOverlay(); break;
+            case RA::ToggleNavmeshOverlay: overlays_->toggleNavmeshOverlay(); break;
             case RA::RotateNavmeshOverlay:
                 navmeshOverlayRotation_ = (navmeshOverlayRotation_ + 1) % 4;
                 LOG_INFO(MOD_GRAPHICS, "Navmesh overlay rotation: {}° around Y axis", navmeshOverlayRotation_ * 90);
@@ -526,7 +526,7 @@ void IrrlichtRenderer::processChatInput() {
         }
         if (!popupConsumedEscape && currentTargetId_ != 0) {
             LOG_INFO(MOD_GRAPHICS, "[TARGET] Cleared target: {}", currentTargetName_);
-            clearCurrentTarget();
+            overlays_->clearCurrentTarget();
             SetTrackedTargetId(0);
             eventReceiver_->pushBridgeAction({RendererAction::ClearTarget});
         }
@@ -739,7 +739,7 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
     // HUD
     hudAnimTimer_ += deltaTime;
     if (hudAnimTimer_ > 10000.0f) hudAnimTimer_ = 0.0f;
-    updateHUD();
+    overlays_->updateHUD();
     frameTimings_.hudUpdate = measureSection();
 }
 

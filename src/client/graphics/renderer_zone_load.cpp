@@ -862,7 +862,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         LOG_INFO(MOD_GRAPHICS, "loadZoneSequential: [{}%] {}", percent, text);
         // Render a loading frame so the progress bar updates visually
         std::wstring wtext(text.begin(), text.end());
-        drawLoadingScreen(percent / 100.0f, wtext);
+        overlays_->drawLoadingScreen(percent / 100.0f, wtext);
     };
 
     // ── Setup ────────────────────────────────────────────────────────────────

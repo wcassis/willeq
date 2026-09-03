@@ -890,7 +890,7 @@ void IrrlichtRenderer::setClipDistance(float distance) {
     }
 
     // Update fog to match new render distance
-    setupFog();
+    overlays_->setupFog();
 
     LOG_INFO(MOD_GRAPHICS, "Render distance set to {}, camera far plane: {}",
              distance, camera_ ? camera_->getFarValue() : SKY_FAR_PLANE);
