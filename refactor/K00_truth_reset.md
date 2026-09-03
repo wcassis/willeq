@@ -202,3 +202,156 @@ not needed (no code under `src/` changes).
 
 (filled by each executor: per-item confirmation table for Leg A; before/after
 checker output for Leg B; deviations.)
+
+## Review — Leg B
+
+Branch `task/K00-legB-enforce`, base tip `3808ebe9` (confirmed at checkout).
+
+### B1 — `check_file_sizes.sh --all`
+
+Since `--all` did not exist before this unit, "before" is the first run of
+the new mode against the unmodified allowlist (i.e. against the tip with the
+seeded no-grow ceilings, before any code change); this is also the pre-unit
+tree-wide state the plan asked to record, since no file under `src/`,
+`include/`, `tests/` was touched by this unit.
+
+- `bash scripts/refactor/check_file_sizes.sh -C <slot> --all`
+- **796 files checked: 796 ok, 0 warn, 0 fail. Exit 0.**
+- WARN list: **empty.** No file besides the two allowlisted headers is over
+  1,500 lines anywhere under `src/`, `include/`, `tests/` — confirms J34's
+  claim for `.cpp` and extends it to `.h`/`.hpp` and the `tests/` tree.
+- Allowlisted files, both `ok` (within their seeded ceiling, not WARNed):
+  - `include/client/eq.h`: 2025 lines (allowlisted max 2025)
+  - `include/client/graphics/irrlicht_renderer.h`: 1914 lines (allowlisted
+    max 1914)
+- No file over 3,000 — the STOP condition on a >3,000 finding did not fire.
+- Ratchet correctness verified by temporarily lowering `eq.h`'s allowlisted
+  max to 2000 (below its real 2025) and re-running `--all`: reproduced
+  `FAIL include/client/eq.h: 2025 lines (> allowlisted max 2000 — no-grow
+  ratchet exceeded; ...)`, exit 1, `795 ok, 0 warn, 1 fail`. Allowlist file
+  restored immediately after (`git diff` on it shows the seeded values only).
+- Existing modes reconfirmed unchanged: diff-mode against `fable` from the
+  slot on its task branch (no `src/`/`include/`/`tests/` changes in this
+  unit) prints `no C++ files to check ... nothing was checked, this is not a
+  pass`, exit 0 (T37 behaviour intact); `--files <path>` still WARNs
+  `include/client/eq.h` at 2025 lines exactly as before.
+
+### B2 — `check_doc_citations.py`
+
+Run against the tip before Leg A has merged (per the plan, `BOARD.md` is
+expected absent):
+
+- `python3 scripts/refactor/check_doc_citations.py --repo <slot>`
+- **13 live docs checked, 176 citations found: 163 ok, 13 fail. Exit 1.**
+- `NOTE refactor/BOARD.md not found — skipped (Leg A may not have merged
+  yet)` — the documented skip-missing-input path fired correctly.
+- The 13 FAILs (recorded here, not fixed — Leg A's territory):
+  1. `CLAUDE.md:183` cites `review/T64/README.md` — does not exist in the
+     repo tree. This is a **structural false positive**: `review/` is the
+     sanctioned outside-checkout path for capture media
+     (`EXECUTOR_PROTOCOL.md`), not part of the repo, so any citation into it
+     will always FAIL here. Flagging for Leg A/orchestrator awareness, not a
+     doc bug.
+  2. `refactor/EXECUTOR_PROTOCOL.md:230` cites `review/T64/README.md` — same
+     structural false positive as #1.
+  3. `src/client/graphics/CLAUDE.md:129` cites
+     `include/client/graphics/constrained_mesh_cache.h` — deleted T67, the
+     doc's own prose says so two sentences earlier.
+  4-5. Same line cites `src/client/graphics/constrained_mesh_cache.cpp`
+     twice (once in prose, once inside a `git show` command) — same T67
+     deletion, genuinely stale.
+  6. `src/client/graphics/CLAUDE.md:249` cites `./scripts/gdb_zone_crash.sh`
+     — does not exist.
+  7. `docs/decisions.md:524` cites
+     `include/client/graphics/ui/loot_window.h` — does not exist.
+  8. `docs/decisions.md:525` cites `src/client/graphics/ui/loot_window.cpp`
+     — does not exist.
+  9. `docs/decisions.md:526` cites `refactor/D06b_publish_loot_vendor.md` —
+     does not exist.
+  10. `docs/decisions.md:758` cites `world/zoneserver.cpp:423` — this is a
+      citation into `/mnt/projects/akk-stack/code` (a sibling project, named
+      explicitly two lines above in the source text), not this repo. A
+      second structural false-positive category: an intentional
+      cross-project citation will always FAIL a repo-relative resolver.
+  11. `docs/decisions.md:28` (this unit's own new B4 entry) cites
+      `refactor/BOARD.md` — expected, Leg A has not merged; will resolve
+      once it does.
+  12. `refactor/K_component_extraction.md:70` cites
+      `include/client/client_context.h` — does not exist (component not yet
+      extracted).
+  13. `refactor/K_component_extraction.md:147` cites
+      `refactor/K01_guild_component.md` — a prospective future unit plan,
+      not yet written.
+- Deviation flagged for the orchestrator/Leg A: two FAIL categories
+  (`review/...` paths, and the one intentional cross-project citation in
+  `docs/decisions.md:758`) are **not** doc staleness — they are citations
+  the checker cannot resolve by design (outside-repo by convention).
+  `check_doc_citations.py` was left implementing the literal spec (repo-root
+  resolution only) rather than special-casing `review/` or absolute
+  cross-project paths, since the plan's territory for B2 did not ask for an
+  exception list and inventing one would be guessing at Leg A's intent for
+  how such citations should read. Recorded here as a finding for Will/the
+  orchestrator to rule on (e.g. an explicit exemption comment convention, or
+  leave the doc author to route around it).
+
+### B3 — ctest registration
+
+`tests/cmake/hygiene.cmake` (new) adds `FileSizeCeiling` (label `hygiene`)
+running `check_file_sizes.sh -C ${CMAKE_SOURCE_DIR} --all`, and
+`DocCitations` (label `hygiene`) running `check_doc_citations.py --repo
+${CMAKE_SOURCE_DIR}`. Included from `tests/CMakeLists.txt` via
+`INCLUDE(cmake/hygiene.cmake)`, appended after the existing
+`INCLUDE(cmake/packets_skills.cmake)` line, following the file's own stated
+rule ("ADD A NEW TEST TARGET TO THE FRAGMENT FOR ITS DOMAIN"). No `add_test`
+of a script pre-existed under `tests/cmake/`; `tests/cmake/eqe1.cmake` (script
+tests `check_sender_reachability`, `check_build_tree_orphans`) supplied the
+closest precedent for `ADD_TEST(... COMMAND python3/bash <script>)`, and
+`GTEST_DISCOVER_TESTS(... PROPERTIES LABELS "live")` (three sites, e.g.
+`tests/cmake/zone_integration.cmake:118`) supplied the label-property
+convention, applied here via `SET_TESTS_PROPERTIES(<name> PROPERTIES LABELS
+"hygiene")` since these are plain `ADD_TEST` targets, not
+`GTEST_DISCOVER_TESTS`.
+
+`ctest --test-dir <slot>/build -R 'FileSizeCeiling|DocCitations'
+--output-on-failure`:
+
+```
+1/2 Test #3499: FileSizeCeiling ..................   Passed    6.66 sec
+2/2 Test #3500: DocCitations .....................***Failed    0.59 sec
+50% tests passed, 1 tests failed out of 2
+```
+
+`DocCitations` failing here is the expected pre-Leg-A-merge state the plan
+names explicitly (B3: "DocCitations may FAIL before Leg A merges ... the
+orchestrator sequences the merge so Leg A lands first"); its output is the
+same 13-FAIL list itemized under B2 above, plus the `BOARD.md` skip note.
+
+### Full verification bar
+
+1. `cmake --build <slot>/build -j24` — **exit 0.**
+2. `ctest --test-dir <slot>/build -j6 --output-on-failure` — **3498/3500
+   passed.** The two failures are exactly the two expected: `AudioManagerTest
+   .PreloadCommonSounds` (documented ALSA host quirk) and `DocCitations`
+   (expected pre-Leg-A-merge FAIL, see B2/B3 above). No other regression.
+   Total test time 118.65s. Steps 3-5 (build-gles2-x86.sh,
+   build-arm-noble.sh, visual gate) not run per the plan's narrowed
+   verification bar for Leg B (no code under `src/` changed).
+
+### Deviations
+
+- None from the territory list: touched exactly
+  `scripts/refactor/check_file_sizes.sh` (modified, new `--all` mode added,
+  existing modes' behaviour reconfirmed unchanged),
+  `scripts/refactor/file_size_allowlist.txt` (new, two seeded entries at
+  measured current line counts), `scripts/refactor/check_doc_citations.py`
+  (new), `tests/cmake/hygiene.cmake` (new, one file), `tests/CMakeLists.txt`
+  (one include line), `docs/decisions.md` (one new dated entry). `git status
+  --porcelain` at finish: exactly those six paths.
+- `check_doc_citations.py`'s citation-with-line extension set was widened
+  slightly beyond the plan's bare-path list (`.cpp|.h|.py|.sh|.md`) to also
+  accept `.hpp` and `.cmake` for the *with-line-number* form only — the
+  bare-path-no-line FAIL rule stayed exactly as specified. Called out in
+  case Will wants the with-line set narrowed to match exactly; nothing in
+  the live docs currently exercises the difference (no `.hpp:NNN` or
+  `.cmake:NNN` citation was found in this scan).
+- No STOP condition fired: no file over 3,000 lines under `--all`.

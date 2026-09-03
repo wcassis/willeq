@@ -6,6 +6,29 @@ Newest entries first. Each entry: decision, rationale, implications.
 
 ---
 
+## 2026-09-03 — File-size ceiling and doc citations are enforced tree-wide by ctest (K00)
+
+**Decision:** `scripts/refactor/check_file_sizes.sh --all` and
+`scripts/refactor/check_doc_citations.py` run as ctest tests
+(`FileSizeCeiling`, `DocCitations`, label `hygiene`) against the whole tree,
+not just files changed vs a base revision.
+
+**Rationale:** the diff-only mode enforced the ceiling only for the unit
+that introduced a file; nothing re-checked it once merged, and no
+mechanism caught a live doc's citation going stale as the tree moved
+under it.
+
+**Implications:** `include/client/eq.h` and
+`include/client/graphics/irrlicht_renderer.h` are allowlisted in
+`scripts/refactor/file_size_allowlist.txt` at their measured line counts
+(single-class files pending `refactor/K_component_extraction.md`) under a
+no-grow ratchet — each K unit that shrinks one lowers its allowlisted
+maximum, never raises it. No other file may exceed 1,500 lines without a
+new allowlist entry and a reason. Every live doc (root and subdirectory
+`CLAUDE.md`, `docs/*.md`, `refactor/BOARD.md`,
+`refactor/EXECUTOR_PROTOCOL.md`, `refactor/K_*.md`) must cite only
+resolvable paths and in-bounds line numbers.
+
 ## 2026-08-25 — Loading time is SECONDARY to correctness; there is no maximum load time
 
 **Decision (Will):** the only bar for zone loading is that it **completes
