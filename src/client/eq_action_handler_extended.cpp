@@ -169,35 +169,35 @@ void EqActionHandler::requestWho(const std::string& name, int lvlLow, int lvlHig
 // handlers called these same methods directly.
 
 void EqActionHandler::guildInvite(const std::string& playerName) {
-    m_eq.SendGuildInvite(playerName);
+    m_eq.Guild().SendGuildInvite(playerName);
 }
 
 void EqActionHandler::guildAcceptInvite() {
-    m_eq.SendGuildInviteAccept(true);
+    m_eq.Guild().SendGuildInviteAccept(true);
 }
 
 void EqActionHandler::guildDeclineInvite() {
-    m_eq.SendGuildInviteAccept(false);
+    m_eq.Guild().SendGuildInviteAccept(false);
 }
 
 void EqActionHandler::guildRemove(const std::string& playerName) {
-    m_eq.SendGuildRemove(playerName);
+    m_eq.Guild().SendGuildRemove(playerName);
 }
 
 void EqActionHandler::guildDemote(const std::string& playerName) {
-    m_eq.SendGuildDemote(playerName);
+    m_eq.Guild().SendGuildDemote(playerName);
 }
 
 void EqActionHandler::guildMakeLeader(const std::string& playerName) {
-    m_eq.SendGuildLeader(playerName);
+    m_eq.Guild().SendGuildLeader(playerName);
 }
 
 void EqActionHandler::requestGuildMOTD() {
-    m_eq.SendGetGuildMOTD();
+    m_eq.Guild().SendGetGuildMOTD();
 }
 
 void EqActionHandler::setGuildMOTD(const std::string& motd) {
-    m_eq.SendSetGuildMOTD(motd);
+    m_eq.Guild().SendSetGuildMOTD(motd);
 }
 
 void EqActionHandler::corpseDrag(const std::string& corpseName) {

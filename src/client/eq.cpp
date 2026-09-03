@@ -80,7 +80,32 @@
 int EverQuest::s_debug_level = 0;
 
 EverQuest::EverQuest(const std::string &host, int port, const std::string &user, const std::string &pass, const std::string &server, const std::string &character)
+	// K01 (Batch K, refactor/K_component_extraction.md): m_ctx bundles the
+	// fifteen shared-service members every extracted component receives by
+	// reference. Reference members must be bound here; nothing is read
+	// through them during construction.
+	: m_ctx{m_game_state,
+	        m_bridge,
+	        m_zone_connection,
+	        m_entities,
+	        m_character,
+	        m_combat_manager,
+#ifdef WITH_AUDIO
+	        m_audio_manager,
+#endif
+	        m_trade_manager,
+	        m_spell_manager,
+	        m_inventory_manager,
+	        m_skill_manager,
+	        m_zone_connection_manager,
+	        m_command_registry,
+	        m_buff_manager,
+	        m_active_tradeskill_object_id}
 {
+	// K01: the guild family. Constructed first so nothing below can reach a
+	// null m_guild.
+	m_guild = std::make_unique<eqt::guild::GuildComponent>(m_ctx, *this);
+
 	m_host = host;
 	m_port = port;
 	m_user = user;

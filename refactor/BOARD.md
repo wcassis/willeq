@@ -131,9 +131,18 @@ it without taking that measurement first.
   **Unconfirmed at this tip, needs a TSAN run** to show the warnings are still
   raised. Prov: archived board, T114.
 
+- **B019** (B) `include/client/eq.h` `EverQuest::m_guild_name` — declared and
+  default-initialised, **zero references anywhere** in `src/`, `include/` or
+  `tests/` (K01 measured with `grep -rw` at `e888e89c`). The reachability
+  pattern again: nothing parses a guild name off the wire into it and nothing
+  reads it. K01 left it alone (structural unit, no drive-by fixes). Closes
+  when: the member is deleted, or a guild-name source and reader are wired.
+  Prov: K01 Review, `refactor/K01_guild_component.md`.
+
 ## C — needs Will's decision
 
-- **B017** (C) `src/client/eq_guild.cpp` `EverQuest::SendGuildInviteAccept` —
+- **B017** (C) `src/client/guild/guild_component.cpp`
+  `eqt::guild::GuildComponent::SendGuildInviteAccept` —
   prints "You have declined the guild invite." on a path the server processes as
   an accept. T318 confirmed the decline is **unfixable client-side** (the server
   tests an already-remapped value). The open half is user-facing wording, and no

@@ -114,6 +114,16 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_guild_wire_rank)
 
+# K01 (Batch K): the extracted eqt::guild::GuildComponent, driven directly
+ADD_EXECUTABLE(test_guild_component
+    test_guild_component.cpp
+)
+TARGET_LINK_LIBRARIES(test_guild_component GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_guild_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_guild_component)
+
 # T162: the commands that emitted a skill opcode without passing T159's gate
 ADD_EXECUTABLE(test_skill_gate_bypasses
     test_skill_gate_bypasses.cpp

@@ -611,16 +611,16 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 		ZoneProcessInspectAnswer(p);
 		break;
 	case HC_OP_GuildInvite:
-		ZoneProcessGuildInvite(p);
+		m_guild->ZoneProcessGuildInvite(p);
 		break;
 	case HC_OP_GetGuildMOTDReply:
-		ZoneProcessGuildMOTDReply(p);
+		m_guild->ZoneProcessGuildMOTDReply(p);
 		break;
 	case HC_OP_GuildMemberUpdate:
-		ZoneProcessGuildMemberUpdate(p);
+		m_guild->ZoneProcessGuildMemberUpdate(p);
 		break;
 	case HC_OP_GuildMemberAdd:
-		ZoneProcessGuildMemberAdd(p);
+		m_guild->ZoneProcessGuildMemberAdd(p);
 		break;
 	// Phase 3 packet handlers
 	case HC_OP_ConsentResponse:

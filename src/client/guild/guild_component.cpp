@@ -3,8 +3,18 @@
 // Split out of eq.cpp (Batch F, unit F04): guild invite/accept/remove/demote/
 // leader/MOTD senders plus the guild Process* packet handlers. Moved
 // verbatim, no behavior change. See refactor/F04_ucs_guild_gm.md.
+//
+// K01 (Batch K, refactor/K_component_extraction.md): moved again, from
+// src/client/eq_guild.cpp to here, and the bodies rebased from EverQuest onto
+// eqt::guild::GuildComponent. Still verbatim -- only the substitutions
+// §Mechanism 4 allows (m_character -> ctx_.character; m_guild_id/m_guild_rank
+// -> owner_.*, they stay on EverQuest; QueuePacket/AddChatSystemMessage ->
+// owner_.*), plus one qualification the batch method did not anticipate:
+// s_debug_level is EverQuest's private static, reached through the friendship
+// as EverQuest::s_debug_level. See the K01 Review.
 
 #include "client/eq.h"
+#include "client/guild/guild_component.h"
 #include "common/logging.h"
 #include "common/packet_structs.h"
 #include "client/guild_packet_bodies.h"
@@ -40,10 +50,10 @@
 // (src/client/eq_guild.cpp), not a new packet handler, so fixed here
 // rather than reported as a STOP.
 
-void EverQuest::SendGuildInvite(const std::string& player_name)
+void eqt::guild::GuildComponent::SendGuildInvite(const std::string& player_name)
 {
-	if (m_guild_id == 0) {
-		AddChatSystemMessage("You are not in a guild.");
+	if (owner_.m_guild_id == 0) {
+		owner_.AddChatSystemMessage("You are not in a guild.");
 		return;
 	}
 
@@ -56,20 +66,20 @@ void EverQuest::SendGuildInvite(const std::string& player_name)
 	// invite grants GUILD_MEMBER_TI. Full handler trace in
 	// client/guild_packet_bodies.h.
 	EQT::GuildCommand_Struct invite =
-		EQ::guild::BuildGuildInvite(player_name, m_character, m_guild_id);
+		EQ::guild::BuildGuildInvite(player_name, ctx_.character, owner_.m_guild_id);
 
 	EQ::Net::DynamicPacket packet;
 	packet.Resize(sizeof(EQT::GuildCommand_Struct));
 	memcpy(packet.Data(), &invite, sizeof(EQT::GuildCommand_Struct));
-	QueuePacket(HC_OP_GuildInvite, &packet);
+	owner_.QueuePacket(HC_OP_GuildInvite, &packet);
 
-	AddChatSystemMessage(fmt::format("Inviting {} to join your guild.", player_name));
+	owner_.AddChatSystemMessage(fmt::format("Inviting {} to join your guild.", player_name));
 }
 
-void EverQuest::SendGuildInviteAccept(bool accept)
+void eqt::guild::GuildComponent::SendGuildInviteAccept(bool accept)
 {
 	if (!m_has_pending_guild_invite) {
-		AddChatSystemMessage("You don't have a pending guild invite.");
+		owner_.AddChatSystemMessage("You don't have a pending guild invite.");
 		return;
 	}
 
@@ -78,29 +88,29 @@ void EverQuest::SendGuildInviteAccept(bool accept)
 	// guild as an OFFICER. See guild_packet_bodies.h for the handler's remap
 	// table, and for why no Titanium byte can actually decline.
 	EQT::GuildInviteAccept_Struct response =
-		EQ::guild::BuildGuildInviteAccept(m_guild_invite_from, m_character,
+		EQ::guild::BuildGuildInviteAccept(m_guild_invite_from, ctx_.character,
 		                                  m_guild_invite_id, accept);
 
 	EQ::Net::DynamicPacket packet;
 	packet.Resize(sizeof(EQT::GuildInviteAccept_Struct));
 	memcpy(packet.Data(), &response, sizeof(EQT::GuildInviteAccept_Struct));
-	QueuePacket(HC_OP_GuildInviteAccept, &packet);
+	owner_.QueuePacket(HC_OP_GuildInviteAccept, &packet);
 
 	m_has_pending_guild_invite = false;
 	m_guild_invite_from.clear();
 	m_guild_invite_id = 0;
 
 	if (accept) {
-		AddChatSystemMessage("You have accepted the guild invite.");
+		owner_.AddChatSystemMessage("You have accepted the guild invite.");
 	} else {
-		AddChatSystemMessage("You have declined the guild invite.");
+		owner_.AddChatSystemMessage("You have declined the guild invite.");
 	}
 }
 
-void EverQuest::SendGuildRemove(const std::string& player_name)
+void eqt::guild::GuildComponent::SendGuildRemove(const std::string& player_name)
 {
-	if (m_guild_id == 0) {
-		AddChatSystemMessage("You are not in a guild.");
+	if (owner_.m_guild_id == 0) {
+		owner_.AddChatSystemMessage("You are not in a guild.");
 		return;
 	}
 
@@ -111,87 +121,87 @@ void EverQuest::SendGuildRemove(const std::string& player_name)
 	// real rank (PlayerProfile offset 13055) changes nothing on the server --
 	// it just stops the client asserting something it had not checked.
 	EQT::GuildRemove_Struct remove =
-		EQ::guild::BuildGuildRemove(player_name, m_character, m_guild_rank);
+		EQ::guild::BuildGuildRemove(player_name, ctx_.character, owner_.m_guild_rank);
 
 	EQ::Net::DynamicPacket packet;
 	packet.Resize(sizeof(EQT::GuildRemove_Struct));
 	memcpy(packet.Data(), &remove, sizeof(EQT::GuildRemove_Struct));
-	QueuePacket(HC_OP_GuildRemove, &packet);
+	owner_.QueuePacket(HC_OP_GuildRemove, &packet);
 
-	AddChatSystemMessage(fmt::format("Removing {} from the guild.", player_name));
+	owner_.AddChatSystemMessage(fmt::format("Removing {} from the guild.", player_name));
 }
 
-void EverQuest::SendGuildDemote(const std::string& player_name)
+void eqt::guild::GuildComponent::SendGuildDemote(const std::string& player_name)
 {
-	if (m_guild_id == 0) {
-		AddChatSystemMessage("You are not in a guild.");
+	if (owner_.m_guild_id == 0) {
+		owner_.AddChatSystemMessage("You are not in a guild.");
 		return;
 	}
 
 	EQT::GuildDemote_Struct demote;
 	memset(&demote, 0, sizeof(demote));
-	strncpy(demote.name, m_character.c_str(), 63);
+	strncpy(demote.name, ctx_.character.c_str(), 63);
 	strncpy(demote.target, player_name.c_str(), 63);
 
 	EQ::Net::DynamicPacket packet;
 	packet.Resize(sizeof(EQT::GuildDemote_Struct));
 	memcpy(packet.Data(), &demote, sizeof(EQT::GuildDemote_Struct));
-	QueuePacket(HC_OP_GuildDemote, &packet);
+	owner_.QueuePacket(HC_OP_GuildDemote, &packet);
 
-	AddChatSystemMessage(fmt::format("Demoting {} in the guild.", player_name));
+	owner_.AddChatSystemMessage(fmt::format("Demoting {} in the guild.", player_name));
 }
 
-void EverQuest::SendGuildLeader(const std::string& player_name)
+void eqt::guild::GuildComponent::SendGuildLeader(const std::string& player_name)
 {
-	if (m_guild_id == 0) {
-		AddChatSystemMessage("You are not in a guild.");
+	if (owner_.m_guild_id == 0) {
+		owner_.AddChatSystemMessage("You are not in a guild.");
 		return;
 	}
 
 	EQT::GuildMakeLeader_Struct leader;
 	memset(&leader, 0, sizeof(leader));
-	strncpy(leader.name, m_character.c_str(), 63);
+	strncpy(leader.name, ctx_.character.c_str(), 63);
 	strncpy(leader.target, player_name.c_str(), 63);
 
 	EQ::Net::DynamicPacket packet;
 	packet.Resize(sizeof(EQT::GuildMakeLeader_Struct));
 	memcpy(packet.Data(), &leader, sizeof(EQT::GuildMakeLeader_Struct));
-	QueuePacket(HC_OP_GuildLeader, &packet);
+	owner_.QueuePacket(HC_OP_GuildLeader, &packet);
 
-	AddChatSystemMessage(fmt::format("Transferring guild leadership to {}.", player_name));
+	owner_.AddChatSystemMessage(fmt::format("Transferring guild leadership to {}.", player_name));
 }
 
-void EverQuest::SendGetGuildMOTD()
+void eqt::guild::GuildComponent::SendGetGuildMOTD()
 {
 	// Empty packet to request MOTD -- body-only convention (see file
 	// header comment): QueuePacket() adds the opcode itself, so an empty
 	// DynamicPacket here means "opcode, zero-byte body" on the wire.
 	EQ::Net::DynamicPacket packet;
-	QueuePacket(HC_OP_GetGuildMOTD, &packet);
+	owner_.QueuePacket(HC_OP_GetGuildMOTD, &packet);
 }
 
-void EverQuest::SendSetGuildMOTD(const std::string& motd)
+void eqt::guild::GuildComponent::SendSetGuildMOTD(const std::string& motd)
 {
-	if (m_guild_id == 0) {
-		AddChatSystemMessage("You are not in a guild.");
+	if (owner_.m_guild_id == 0) {
+		owner_.AddChatSystemMessage("You are not in a guild.");
 		return;
 	}
 
 	EQT::GuildMOTD_Struct gmotd;
 	memset(&gmotd, 0, sizeof(gmotd));
-	strncpy(gmotd.name, m_character.c_str(), 63);
-	strncpy(gmotd.setby_name, m_character.c_str(), 63);
+	strncpy(gmotd.name, ctx_.character.c_str(), 63);
+	strncpy(gmotd.setby_name, ctx_.character.c_str(), 63);
 	strncpy(gmotd.motd, motd.c_str(), 511);
 
 	EQ::Net::DynamicPacket packet;
 	packet.Resize(sizeof(EQT::GuildMOTD_Struct));
 	memcpy(packet.Data(), &gmotd, sizeof(EQT::GuildMOTD_Struct));
-	QueuePacket(HC_OP_SetGuildMOTD, &packet);
+	owner_.QueuePacket(HC_OP_SetGuildMOTD, &packet);
 
-	AddChatSystemMessage("Guild MOTD updated.");
+	owner_.AddChatSystemMessage("Guild MOTD updated.");
 }
 
-void EverQuest::ZoneProcessGuildInvite(const EQ::Net::Packet &p)
+void eqt::guild::GuildComponent::ZoneProcessGuildInvite(const EQ::Net::Packet &p)
 {
 	// Received a guild invite
 	if (p.Length() < 2 + sizeof(EQT::GuildCommand_Struct)) {
@@ -209,11 +219,11 @@ void EverQuest::ZoneProcessGuildInvite(const EQ::Net::Packet &p)
 	m_guild_invite_id = invite->guildeqid;
 
 	LOG_INFO(MOD_MAIN, "Guild invite received from {}", inviter);
-	AddChatSystemMessage(fmt::format("{} has invited you to join a guild.", inviter));
-	AddChatSystemMessage("Type /guildaccept to accept or /guilddecline to decline.");
+	owner_.AddChatSystemMessage(fmt::format("{} has invited you to join a guild.", inviter));
+	owner_.AddChatSystemMessage("Type /guildaccept to accept or /guilddecline to decline.");
 }
 
-void EverQuest::ZoneProcessGuildMOTDReply(const EQ::Net::Packet &p)
+void eqt::guild::GuildComponent::ZoneProcessGuildMOTDReply(const EQ::Net::Packet &p)
 {
 	// Received guild MOTD
 	if (p.Length() < 2 + sizeof(EQT::GuildMOTD_Struct)) {
@@ -228,10 +238,10 @@ void EverQuest::ZoneProcessGuildMOTDReply(const EQ::Net::Packet &p)
 	std::string message(motd->motd, strnlen(motd->motd, 512));
 
 	LOG_INFO(MOD_MAIN, "Guild MOTD (set by {}): {}", setby, message);
-	AddChatSystemMessage(fmt::format("Guild MOTD (set by {}): {}", setby, message));
+	owner_.AddChatSystemMessage(fmt::format("Guild MOTD (set by {}): {}", setby, message));
 }
 
-void EverQuest::ZoneProcessGuildMemberUpdate(const EQ::Net::Packet &p)
+void eqt::guild::GuildComponent::ZoneProcessGuildMemberUpdate(const EQ::Net::Packet &p)
 {
 	// Guild member status update (zone change, etc.)
 	if (p.Length() < 2 + sizeof(EQT::GuildMemberUpdate_Struct)) {
@@ -243,12 +253,12 @@ void EverQuest::ZoneProcessGuildMemberUpdate(const EQ::Net::Packet &p)
 
 	std::string member_name(update->member_name, strnlen(update->member_name, 64));
 
-	if (s_debug_level >= 2) {
+	if (EverQuest::s_debug_level >= 2) {
 		LOG_DEBUG(MOD_MAIN, "Guild member {} changed zone to {}", member_name, update->zone_id);
 	}
 }
 
-void EverQuest::ZoneProcessGuildMemberAdd(const EQ::Net::Packet &p)
+void eqt::guild::GuildComponent::ZoneProcessGuildMemberAdd(const EQ::Net::Packet &p)
 {
 	// New guild member added
 	if (p.Length() < 2 + 92) {  // Minimum size for GuildJoin_Struct
@@ -262,5 +272,5 @@ void EverQuest::ZoneProcessGuildMemberAdd(const EQ::Net::Packet &p)
 	std::string member_name(name, strnlen(name, 64));
 
 	LOG_INFO(MOD_MAIN, "{} has joined the guild", member_name);
-	AddChatSystemMessage(fmt::format("{} has joined the guild.", member_name));
+	owner_.AddChatSystemMessage(fmt::format("{} has joined the guild.", member_name));
 }

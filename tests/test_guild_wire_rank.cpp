@@ -199,10 +199,10 @@ TEST_F(GuildWireRankTest, RemoveTargetSitsWhereTheServerReadsOthername) {
 
 TEST_F(GuildWireRankTest, GuildSendersStillRefuseWhenNotInAGuild) {
     bridge.drainEvents();
-    eq.SendGuildInvite("Bob");
+    eq.Guild().SendGuildInvite("Bob");
     EXPECT_TRUE(AnyContains(DrainSystemMessages(bridge), "You are not in a guild."));
 
-    eq.SendGuildRemove("Bob");
+    eq.Guild().SendGuildRemove("Bob");
     EXPECT_TRUE(AnyContains(DrainSystemMessages(bridge), "You are not in a guild."));
 }
 
@@ -210,10 +210,10 @@ TEST_F(GuildWireRankTest, GuildSendersRunToCompletionOnceTheProfileGivesUsAGuild
     LoadProfile(eq, /*guild_id=*/77, /*guild_rank=*/EQ::guild::kRankOfficer);
     bridge.drainEvents();
 
-    eq.SendGuildInvite("Bob");
+    eq.Guild().SendGuildInvite("Bob");
     EXPECT_TRUE(AnyContains(DrainSystemMessages(bridge), "Inviting Bob to join your guild."));
 
-    eq.SendGuildRemove("Bob");
+    eq.Guild().SendGuildRemove("Bob");
     EXPECT_TRUE(AnyContains(DrainSystemMessages(bridge), "Removing Bob from the guild."));
 }
 

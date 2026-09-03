@@ -124,6 +124,7 @@ namespace ui {
 #include "client/eq_opcodes.h"
 #include "client/eq_enums.h"
 #include "client/eq_types.h"
+#include "client/guild/guild_component.h"  // K01: ClientContext + GuildComponent
 
 class EverQuest
 {
@@ -599,15 +600,11 @@ public:
 	// held -- the same last-writer-wins the real client has.
 	const std::string& GetInspectMessage() const { return m_inspect_message; }
 	void SetInspectMessage(const std::string& message);
-	// Guild functions
-	void SendGuildInvite(const std::string& player_name);
-	void SendGuildInviteAccept(bool accept);
-	void SendGuildRemove(const std::string& player_name);
-	void SendGuildDemote(const std::string& player_name);
-	void SendGuildLeader(const std::string& player_name);
-	void SendGetGuildMOTD();
-	void SendSetGuildMOTD(const std::string& motd);
-	bool HasPendingGuildInvite() const { return m_has_pending_guild_invite; }
+	// K01 (Batch K): the guild family is eqt::guild::GuildComponent; callers go
+	// through Guild(), there are no forwarders. HasPendingGuildInvite() had
+	// zero callers tree-wide and was deleted rather than moved (§Mechanism 5).
+	eqt::guild::GuildComponent& Guild() { return *m_guild; }
+	eqt::ClientContext& Context() { return m_ctx; }
 	// Phase 3: Corpse Management
 	void SendCorpseDrag(const std::string& corpse_name);
 	void SendCorpseDrop();
@@ -828,6 +825,7 @@ public:
 	// Friend classes for system access
 	friend class CombatManager;
 	friend class TradeManager;
+	friend class eqt::guild::GuildComponent;  // K01 transition; K-final removes it
 
 	// String database for EQ message lookups (works in all modes)
 	bool LoadStringFiles(const std::string& eqClientPath);
@@ -1206,11 +1204,8 @@ private:
 	static Json::Value* ResolveClientConfigForWrite(Json::Value& root);
 	static const Json::Value* ResolveClientConfigForRead(const Json::Value& root);
 	void ZoneProcessInspectAnswer(const EQ::Net::Packet &p);
-	// Guild packet handlers
-	void ZoneProcessGuildInvite(const EQ::Net::Packet &p);
-	void ZoneProcessGuildMOTDReply(const EQ::Net::Packet &p);
-	void ZoneProcessGuildMemberUpdate(const EQ::Net::Packet &p);
-	void ZoneProcessGuildMemberAdd(const EQ::Net::Packet &p);
+	// K01: the four guild packet handlers are GuildComponent's; DispatchZonePacket
+	// calls m_guild->ZoneProcessGuild*() directly.
 	// Phase 3 packet handlers
 	void ZoneProcessConsentResponse(const EQ::Net::Packet &p);
 	void ZoneProcessDenyResponse(const EQ::Net::Packet &p);
@@ -1566,15 +1561,15 @@ private:
 	// see SendInspectAnswer() and SaveInspectMessage().
 	std::string m_inspect_message;
 
-	// Guild state
+	// Guild state. K01: the pending-invite trio moved into GuildComponent.
+	// m_guild_id/m_guild_rank STAY -- written by the zone family
+	// (eq_zone_entry.cpp, eq_entities.cpp), read by the public getters.
+	// m_guild_name has ZERO references tree-wide (K01; BOARD B-item).
 	uint32_t m_guild_id = 0;
 	// T317: Titanium rank encoding (0 member / 1 officer / 2 leader / 9 none).
 	// 9 == GUILD_RANK_NONE_TI is the correct "not in a guild" default.
 	uint8_t m_guild_rank = 9;
 	std::string m_guild_name;
-	bool m_has_pending_guild_invite = false;
-	std::string m_guild_invite_from;
-	uint32_t m_guild_invite_id = 0;
 
 	// Movement methods
 	void MoveTo(float x, float y, float z);
@@ -2022,4 +2017,8 @@ public:
 	void PlaySpellSound(uint32_t spellId);
 	void PlayUISound(uint32_t soundId);
 #endif
+private:
+	// K01: declared last -- every member m_ctx references is declared above.
+	eqt::ClientContext m_ctx;
+	std::unique_ptr<eqt::guild::GuildComponent> m_guild;
 };
