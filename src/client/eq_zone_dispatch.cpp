@@ -673,13 +673,13 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 		ZoneProcessSound(p);
 		break;
 	case HC_OP_GMZoneRequest:
-		ZoneProcessGMZoneRequest(p);
+		m_gm->ZoneProcessGMZoneRequest(p);
 		break;
 	case HC_OP_GMFind:
-		ZoneProcessGMFind(p);
+		m_gm->ZoneProcessGMFind(p);
 		break;
 	case HC_OP_GMSummon:
-		ZoneProcessGMSummon(p);
+		m_gm->ZoneProcessGMSummon(p);
 		break;
 	case HC_OP_MobRename:
 		// Mob name change - typically when mob becomes corpse

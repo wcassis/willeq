@@ -120,12 +120,12 @@ protected:
 };
 
 TEST_F(GMHideMeTest, NothingBuiltBeforeAnyCall) {
-    EXPECT_FALSE(eq.Test_GetLastGMHideMe().sent);
+    EXPECT_FALSE(eq.Gm().Test_GetLastGMHideMe().sent);
 }
 
 TEST_F(GMHideMeTest, HideOnSendsOpGMHideMeWithVisibilityZero) {
-    eq.SendGMHideMe(true);
-    const auto& sent = eq.Test_GetLastGMHideMe();
+    eq.Gm().SendGMHideMe(true);
+    const auto& sent = eq.Gm().Test_GetLastGMHideMe();
     ASSERT_TRUE(sent.sent);
     // 2-byte opcode + the 8-byte SpawnAppearance_Struct Handle_OP_GMHideMe
     // size-checks against.
@@ -144,8 +144,8 @@ TEST_F(GMHideMeTest, HideOnSendsOpGMHideMeWithVisibilityZero) {
 }
 
 TEST_F(GMHideMeTest, HideOffSendsVisibilityOne) {
-    eq.SendGMHideMe(false);
-    const auto& sent = eq.Test_GetLastGMHideMe();
+    eq.Gm().SendGMHideMe(false);
+    const auto& sent = eq.Gm().Test_GetLastGMHideMe();
     ASSERT_TRUE(sent.sent);
     ASSERT_EQ(sent.bytes.size(), 10u);
     uint16_t opcode = static_cast<uint16_t>(sent.bytes[0] | (sent.bytes[1] << 8));
@@ -160,8 +160,8 @@ TEST_F(GMHideMeTest, DoesNotGoOutAsSpawnAppearance) {
     // The old path routed through SendSpawnAppearance(), whose guard is
     // IsFullyZonedIn(); with no connection it would have built nothing at all.
     // The new sender always builds the packet, so the seam sees it.
-    eq.SendGMHideMe(true);
-    EXPECT_TRUE(eq.Test_GetLastGMHideMe().sent);
+    eq.Gm().SendGMHideMe(true);
+    EXPECT_TRUE(eq.Gm().Test_GetLastGMHideMe().sent);
 }
 
 }  // namespace

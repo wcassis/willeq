@@ -76,16 +76,16 @@ protected:
 };
 
 TEST_F(GMSummonTest, NothingBuiltBeforeAnyCall) {
-    EXPECT_FALSE(eq.Test_GetLastGMSummon().sent);
+    EXPECT_FALSE(eq.Gm().Test_GetLastGMSummon().sent);
 }
 
 TEST_F(GMSummonTest, BodyCarriesGMPositionAsServerFloats) {
     // Internal convention: m_x = server_y, m_y = server_x. Stand the GM at
     // server (x=156, y=-1009, z=51) -- Testbuddy's T148 spot.
     eq.SetPosition(-1009.0f, 156.0f, 51.0f);
-    eq.SendGMSummon("Testbuddy");
+    eq.Gm().SendGMSummon("Testbuddy");
 
-    const auto& sent = eq.Test_GetLastGMSummon();
+    const auto& sent = eq.Gm().Test_GetLastGMSummon();
     ASSERT_TRUE(sent.sent);
     ASSERT_EQ(sent.bytes.size(), 2u + sizeof(EQT::GMSummon_Struct));
     ASSERT_EQ(sent.bytes.size(), 154u) << "Handle_OP_GMSummon size-checks 152";
@@ -112,8 +112,8 @@ TEST_F(GMSummonTest, BodyCarriesGMPositionAsServerFloats) {
 
 TEST_F(GMSummonTest, NegativeCoordinatesAreIeeeFloatsNotInts) {
     eq.SetPosition(-1009.0f, 156.0f, 51.0f);
-    eq.SendGMSummon("Testbuddy");
-    const auto& sent = eq.Test_GetLastGMSummon();
+    eq.Gm().SendGMSummon("Testbuddy");
+    const auto& sent = eq.Gm().Test_GetLastGMSummon();
     ASSERT_EQ(sent.bytes.size(), 154u);
     uint32_t y_word = 0;
     std::memcpy(&y_word, sent.bytes.data() + 2 + 136, 4);

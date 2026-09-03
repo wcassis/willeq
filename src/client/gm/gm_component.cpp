@@ -4,13 +4,23 @@
 // kick/kill/hideme/emotezone/lastname senders plus their Process* packet
 // handlers. Moved verbatim, no behavior change. See
 // refactor/F04_ucs_guild_gm.md.
+//
+// K02 (Batch K, refactor/K_component_extraction.md): moved again, from
+// src/client/eq_gm.cpp to here, and the bodies rebased from EverQuest onto
+// eqt::gm::GmComponent. Still verbatim -- only the substitutions §Mechanism 4
+// allows (m_zone_connection/m_game_state/m_character -> ctx_.*;
+// PosX()/PosY()/PosZ()/MySpawnId()/AddChatSystemMessage() -> owner_.*, they
+// stay on EverQuest). m_test_last_gm_hideme/m_test_last_gm_summon moved WITH
+// this family, so those two references need no prefix at all. See the K02
+// Review.
 
 #include "client/eq.h"
+#include "client/gm/gm_component.h"
 #include "common/logging.h"
 #include "common/packet_structs.h"
 #include <cstring>
 
-void EverQuest::SendGMZoneRequest(const std::string& charname, uint16_t zone_id)
+void eqt::gm::GmComponent::SendGMZoneRequest(const std::string& charname, uint16_t zone_id)
 {
 	EQ::Net::DynamicPacket packet;
 	packet.PutUInt16(0, HC_OP_GMZoneRequest);
@@ -21,8 +31,8 @@ void EverQuest::SendGMZoneRequest(const std::string& charname, uint16_t zone_id)
 	gm.zone_id = zone_id;
 	packet.PutData(2, &gm, sizeof(gm));
 
-	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
-		m_zone_connection->QueuePacket(packet);
+	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
+		ctx_.zone_connection->QueuePacket(packet);
 		LOG_INFO(MOD_MAIN, "GM zone request: {} to zone {}", charname, zone_id);
 	}
 }
@@ -44,7 +54,7 @@ void EverQuest::SendGMZoneRequest(const std::string& charname, uint16_t zone_id)
 // client x = server y, client y = server x (the T52 convention SendPositionUpdate and
 // SendZoneChange both invert on the way out), so the wire's y-field gets our
 // client x and the wire's x-field gets our client y.
-void EverQuest::SendGMSummon(const std::string& charname)
+void eqt::gm::GmComponent::SendGMSummon(const std::string& charname)
 {
 	EQ::Net::DynamicPacket packet;
 	packet.PutUInt16(0, HC_OP_GMSummon);
@@ -52,10 +62,10 @@ void EverQuest::SendGMSummon(const std::string& charname)
 	EQT::GMSummon_Struct gm;
 	memset(&gm, 0, sizeof(gm));
 	strncpy(gm.charname, charname.c_str(), 63);
-	strncpy(gm.gmname, m_character.c_str(), 63);
-	gm.y = PosX();  // server's y = our x
-	gm.x = PosY();  // server's x = our y
-	gm.z = PosZ();
+	strncpy(gm.gmname, ctx_.character.c_str(), 63);
+	gm.y = owner_.PosX();  // server's y = our x
+	gm.x = owner_.PosY();  // server's x = our y
+	gm.z = owner_.PosZ();
 	packet.PutData(2, &gm, sizeof(gm));
 
 	// T229 test seam (same shape as T217's hideme one): the bytes we actually
@@ -65,13 +75,13 @@ void EverQuest::SendGMSummon(const std::string& charname)
 		static_cast<const uint8_t*>(packet.Data()),
 		static_cast<const uint8_t*>(packet.Data()) + packet.Length());
 
-	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
-		m_zone_connection->QueuePacket(packet);
-		LOG_INFO(MOD_MAIN, "GM summon: {} to ({:.1f}, {:.1f}, {:.1f})", charname, PosX(), PosY(), PosZ());
+	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
+		ctx_.zone_connection->QueuePacket(packet);
+		LOG_INFO(MOD_MAIN, "GM summon: {} to ({:.1f}, {:.1f}, {:.1f})", charname, owner_.PosX(), owner_.PosY(), owner_.PosZ());
 	}
 }
 
-void EverQuest::SendGMGoto(const std::string& charname)
+void eqt::gm::GmComponent::SendGMGoto(const std::string& charname)
 {
 	EQ::Net::DynamicPacket packet;
 	packet.PutUInt16(0, HC_OP_GMGoto);
@@ -79,16 +89,16 @@ void EverQuest::SendGMGoto(const std::string& charname)
 	EQT::GMSummon_Struct gm;
 	memset(&gm, 0, sizeof(gm));
 	strncpy(gm.charname, charname.c_str(), 63);
-	strncpy(gm.gmname, m_character.c_str(), 63);
+	strncpy(gm.gmname, ctx_.character.c_str(), 63);
 	packet.PutData(2, &gm, sizeof(gm));
 
-	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
-		m_zone_connection->QueuePacket(packet);
+	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
+		ctx_.zone_connection->QueuePacket(packet);
 		LOG_INFO(MOD_MAIN, "GM goto: {}", charname);
 	}
 }
 
-void EverQuest::SendGMFind(const std::string& charname)
+void eqt::gm::GmComponent::SendGMFind(const std::string& charname)
 {
 	EQ::Net::DynamicPacket packet;
 	packet.PutUInt16(0, HC_OP_GMFind);
@@ -96,11 +106,11 @@ void EverQuest::SendGMFind(const std::string& charname)
 	EQT::GMSummon_Struct gm;
 	memset(&gm, 0, sizeof(gm));
 	strncpy(gm.charname, charname.c_str(), 63);
-	strncpy(gm.gmname, m_character.c_str(), 63);
+	strncpy(gm.gmname, ctx_.character.c_str(), 63);
 	packet.PutData(2, &gm, sizeof(gm));
 
-	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
-		m_zone_connection->QueuePacket(packet);
+	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
+		ctx_.zone_connection->QueuePacket(packet);
 		LOG_DEBUG(MOD_MAIN, "GM find: {}", charname);
 	}
 }
@@ -113,7 +123,7 @@ void EverQuest::SendGMFind(const std::string& charname)
 // success here. These two senders use the correct 1-arg
 // `m_zone_connection->QueuePacket(packet)` convention (the packet carries its
 // own opcode); they needed no change beyond the struct fix.
-void EverQuest::SendGMKick(const std::string& charname)
+void eqt::gm::GmComponent::SendGMKick(const std::string& charname)
 {
 	EQ::Net::DynamicPacket packet;
 	packet.PutUInt16(0, HC_OP_GMKick);
@@ -121,16 +131,16 @@ void EverQuest::SendGMKick(const std::string& charname)
 	EQT::GMKick_Struct gm;
 	memset(&gm, 0, sizeof(gm));
 	strncpy(gm.name, charname.c_str(), 63);
-	strncpy(gm.gmname, m_character.c_str(), 63);
+	strncpy(gm.gmname, ctx_.character.c_str(), 63);
 	packet.PutData(2, &gm, sizeof(gm));
 
-	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
-		m_zone_connection->QueuePacket(packet);
+	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
+		ctx_.zone_connection->QueuePacket(packet);
 		LOG_INFO(MOD_MAIN, "GM kick: {}", charname);
 	}
 }
 
-void EverQuest::SendGMKill(const std::string& charname)
+void eqt::gm::GmComponent::SendGMKill(const std::string& charname)
 {
 	EQ::Net::DynamicPacket packet;
 	packet.PutUInt16(0, HC_OP_GMKill);
@@ -138,11 +148,11 @@ void EverQuest::SendGMKill(const std::string& charname)
 	EQT::GMKick_Struct gm;  // Same struct as kick
 	memset(&gm, 0, sizeof(gm));
 	strncpy(gm.name, charname.c_str(), 63);
-	strncpy(gm.gmname, m_character.c_str(), 63);
+	strncpy(gm.gmname, ctx_.character.c_str(), 63);
 	packet.PutData(2, &gm, sizeof(gm));
 
-	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
-		m_zone_connection->QueuePacket(packet);
+	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
+		ctx_.zone_connection->QueuePacket(packet);
 		LOG_INFO(MOD_MAIN, "GM kill: {}", charname);
 	}
 }
@@ -160,14 +170,14 @@ void EverQuest::SendGMKill(const std::string& charname)
 // So parameter is a VISIBILITY flag, not a hide flag: 0 = hide me, 1 = show
 // me. spawn_id/type are filled the way the SpawnAppearance path fills them
 // (ours, AT_GM) for the reader's benefit; the server ignores both.
-void EverQuest::SendGMHideMe(bool hide)
+void eqt::gm::GmComponent::SendGMHideMe(bool hide)
 {
 	EQ::Net::DynamicPacket packet;
 	packet.PutUInt16(0, HC_OP_GMHideMe);
 
 	EQT::SpawnAppearance_Struct sa;
 	memset(&sa, 0, sizeof(sa));
-	sa.spawn_id = MySpawnId();
+	sa.spawn_id = owner_.MySpawnId();
 	sa.type = AT_GM;
 	sa.parameter = hide ? 0 : 1;
 	packet.PutData(2, &sa, sizeof(sa));
@@ -179,8 +189,8 @@ void EverQuest::SendGMHideMe(bool hide)
 		static_cast<const uint8_t*>(packet.Data()),
 		static_cast<const uint8_t*>(packet.Data()) + packet.Length());
 
-	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
-		m_zone_connection->QueuePacket(packet);
+	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
+		ctx_.zone_connection->QueuePacket(packet);
 		LOG_INFO(MOD_MAIN, "GM hide: {}", hide ? "ON" : "OFF");
 	}
 }
@@ -202,7 +212,7 @@ void EverQuest::SendGMHideMe(bool hide)
 // packet_structs.h: it is one fixed-size char array with no field layout to
 // get wrong, and keeping it local avoids touching a header the parallel
 // struct-audit units share.
-void EverQuest::SendGMEmoteZone(const std::string& text)
+void eqt::gm::GmComponent::SendGMEmoteZone(const std::string& text)
 {
 	EQ::Net::DynamicPacket packet;
 	packet.PutUInt16(0, HC_OP_GMEmoteZone);
@@ -214,13 +224,13 @@ void EverQuest::SendGMEmoteZone(const std::string& text)
 	strncpy(body, text.c_str(), sizeof(body) - 1);
 	packet.PutData(2, body, sizeof(body));
 
-	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
-		m_zone_connection->QueuePacket(packet);
+	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
+		ctx_.zone_connection->QueuePacket(packet);
 		LOG_INFO(MOD_MAIN, "GM zone emote: {}", text);
 	}
 }
 
-void EverQuest::SendGMLastName(const std::string& charname, const std::string& lastname)
+void eqt::gm::GmComponent::SendGMLastName(const std::string& charname, const std::string& lastname)
 {
 	EQ::Net::DynamicPacket packet;
 	packet.PutUInt16(0, HC_OP_GMLastName);
@@ -228,17 +238,17 @@ void EverQuest::SendGMLastName(const std::string& charname, const std::string& l
 	EQT::GMLastName_Struct gm;
 	memset(&gm, 0, sizeof(gm));
 	strncpy(gm.name, charname.c_str(), 63);
-	strncpy(gm.gmname, m_character.c_str(), 63);
+	strncpy(gm.gmname, ctx_.character.c_str(), 63);
 	strncpy(gm.lastname, lastname.c_str(), 63);
 	packet.PutData(2, &gm, sizeof(gm));
 
-	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
-		m_zone_connection->QueuePacket(packet);
+	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
+		ctx_.zone_connection->QueuePacket(packet);
 		LOG_INFO(MOD_MAIN, "GM set lastname for {}: {}", charname, lastname);
 	}
 }
 
-void EverQuest::ZoneProcessGMZoneRequest(const EQ::Net::Packet &p)
+void eqt::gm::GmComponent::ZoneProcessGMZoneRequest(const EQ::Net::Packet &p)
 {
 	if (p.Length() < 2 + sizeof(EQT::GMZoneRequest_Struct)) {
 		return;
@@ -251,7 +261,7 @@ void EverQuest::ZoneProcessGMZoneRequest(const EQ::Net::Packet &p)
 		LOG_INFO(MOD_MAIN, "GM zone request approved for zone {}", gm->zone_id);
 	} else {
 		LOG_WARN(MOD_MAIN, "GM zone request denied");
-		AddChatSystemMessage("Zone request denied.");
+		owner_.AddChatSystemMessage("Zone request denied.");
 	}
 }
 
@@ -268,7 +278,7 @@ void EverQuest::ZoneProcessGMZoneRequest(const EQ::Net::Packet &p)
 // The chat line is printed in the same convention /loc uses for the GM's own
 // position (our internal x = server y, y = server x), so a GM can compare the
 // two directly.
-void EverQuest::ZoneProcessGMFind(const EQ::Net::Packet &p)
+void eqt::gm::GmComponent::ZoneProcessGMFind(const EQ::Net::Packet &p)
 {
 	if (p.Length() < 2 + sizeof(EQT::GMFind_Struct)) {
 		return;
@@ -280,16 +290,16 @@ void EverQuest::ZoneProcessGMFind(const EQ::Net::Packet &p)
 	std::string charname(gm->charname, strnlen(gm->charname, 64));
 	if (!gm->success) {
 		LOG_INFO(MOD_MAIN, "GM find: {} not found in this zone", charname);
-		AddChatSystemMessage(fmt::format("{} is not in this zone.", charname));
+		owner_.AddChatSystemMessage(fmt::format("{} is not in this zone.", charname));
 		return;
 	}
 	LOG_INFO(MOD_MAIN, "GM find result: {} in zone {} at ({:.1f}, {:.1f}, {:.1f}) [server x={:.1f} y={:.1f}]",
 		charname, gm->zoneID, gm->y, gm->x, gm->z, gm->x, gm->y);
-	AddChatSystemMessage(fmt::format("{} is in zone {} at {:.1f}, {:.1f}, {:.1f}",
+	owner_.AddChatSystemMessage(fmt::format("{} is in zone {} at {:.1f}, {:.1f}, {:.1f}",
 		charname, gm->zoneID, gm->y, gm->x, gm->z));
 }
 
-void EverQuest::ZoneProcessGMSummon(const EQ::Net::Packet &p)
+void eqt::gm::GmComponent::ZoneProcessGMSummon(const EQ::Net::Packet &p)
 {
 	if (p.Length() < 2 + sizeof(EQT::GMSummon_Struct)) {
 		return;
@@ -302,6 +312,6 @@ void EverQuest::ZoneProcessGMSummon(const EQ::Net::Packet &p)
 		LOG_INFO(MOD_MAIN, "GM summon successful");
 	} else {
 		LOG_WARN(MOD_MAIN, "GM summon failed");
-		AddChatSystemMessage("Summon failed.");
+		owner_.AddChatSystemMessage("Summon failed.");
 	}
 }
