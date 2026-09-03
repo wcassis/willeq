@@ -77,9 +77,10 @@ into the component.**
    moved code makes go through it, unchanged in spelling. `EverQuest` declares
    `friend class <Family>Component` for the transition. K-final removes both.
 3. **Members move.** Every single-family `m_*` member moves into the
-   component as-is. Shared members are reached as `ctx_.foo`. A member used by
-   two families: the unit that extracts the second family decides, and
-   records it.
+   component as-is. Core members (the 15) are reached as `ctx_.foo`. A member
+   shared with another family but outside the core stays in `EverQuest` and
+   is reached as `owner_.m_foo` through the transition friendship; the unit
+   that extracts the LAST family using it moves it, and records the decision.
 4. **Methods move.** Bodies move verbatim into `src/client/<family>/…` (the
    existing TU files `git mv`'d into the directory). The only edits inside a
    body are `m_x` → `ctx_.x` or `owner_.x`, and `Foo()` → `owner_.Foo()` for
