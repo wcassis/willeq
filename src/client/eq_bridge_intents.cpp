@@ -353,7 +353,7 @@ void EverQuest::ProcessBridgeIntents() {
 				}
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::ZoningEnabledIntent>) {
-				SetZoningEnabled(i.enabled);
+				m_zone->SetZoningEnabled(i.enabled);
 				LOG_INFO(MOD_ZONE, "Zoning {}", i.enabled ? "enabled" : "disabled");
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::ChatSubmitIntent>) {

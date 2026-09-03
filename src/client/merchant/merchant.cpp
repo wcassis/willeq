@@ -329,9 +329,9 @@ void eqt::merchant::MerchantComponent::ScribeSpellFromScroll(uint32_t spellId, u
 
 	// Store pending scribe state for confirmation handling (eq.cpp's
 	// HC_OP_MemorizeSpell case matches on it).
-	owner_.m_pending_scribe_spell_id = spellId;
-	owner_.m_pending_scribe_book_slot = bookSlot;
-	owner_.m_pending_scribe_source_slot = sourceSlot;
+	owner_.Zone().PendingScribeSpellId() = spellId;
+	owner_.Zone().PendingScribeBookSlot() = bookSlot;
+	owner_.Zone().PendingScribeSourceSlot() = sourceSlot;
 
 	owner_.AddChatSystemMessage(fmt::format("Scribing {}...",
 		spellData ? spellData->name : "spell"));

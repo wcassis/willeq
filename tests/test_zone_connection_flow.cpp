@@ -410,7 +410,7 @@ TEST(DispatcherRobustness, DuplicateDelivery_Harmless) {
 // DispatchZonePacket and the network receive callback in production. T05
 // added length guards to both handlers (ZoneProcessTimeOfDay in
 // src/client/eq_entities.cpp, ZoneProcessPlayerProfile in
-// src/client/eq_zone_entry.cpp) so a truncated packet -- exactly what a lossy
+// src/client/zone/zone_entry.cpp) so a truncated packet -- exactly what a lossy
 // network produces -- now returns safely instead of throwing.
 //
 // These tests were pinned as BUG_*_ThrowsOutOfRange in T04; T05 flips them to
@@ -1105,7 +1105,7 @@ TEST(GuildIdPopulation, MidSessionSpawnAppearance_OtherEntity_DoesNotAffectOwnGu
 
 TEST(GMModeGate, OwnPlayerProfile_GMFlagSet_PopulatesGMMode) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    EXPECT_FALSE(eq.GetGMMode()) << "GM mode must start false before any PlayerProfile arrives";
+    EXPECT_FALSE(eq.Zone().GetGMMode()) << "GM mode must start false before any PlayerProfile arrives";
 
     auto payload = BuildPayload(2 + 19588, [&](EQ::Net::DynamicPacket& p) {
         p.PutUInt8(2 + 20, 10);
@@ -1115,7 +1115,7 @@ TEST(GMModeGate, OwnPlayerProfile_GMFlagSet_PopulatesGMMode) {
     });
     Replay(eq, HC_OP_PlayerProfile, payload);
 
-    EXPECT_TRUE(eq.GetGMMode())
+    EXPECT_TRUE(eq.Zone().GetGMMode())
         << "PlayerProfile.gm (offset 13054) must reach m_gm_mode";
 }
 
@@ -1128,7 +1128,7 @@ TEST(GMModeGate, OwnPlayerProfile_GMFlagClear_LeavesGMModeFalse) {
         // gm at offset 13054 left at the packet's default zero fill.
     });
     Replay(eq, HC_OP_PlayerProfile, payload);
-    EXPECT_FALSE(eq.GetGMMode());
+    EXPECT_FALSE(eq.Zone().GetGMMode());
 }
 
 TEST(GMModeGate, NeighbouringPvpAndAnonBytesDoNotBleedIntoGMMode) {
@@ -1147,7 +1147,7 @@ TEST(GMModeGate, NeighbouringPvpAndAnonBytesDoNotBleedIntoGMMode) {
     });
     Replay(eq, HC_OP_PlayerProfile, payload);
 
-    EXPECT_FALSE(eq.GetGMMode())
+    EXPECT_FALSE(eq.Zone().GetGMMode())
         << "an off-by-one at the parse site would read pvp, anon or guildrank as the GM flag";
     EXPECT_EQ(eq.GetGuildID(), 42u) << "guild_id must still parse from the same region";
 }
@@ -1169,10 +1169,10 @@ TEST(GMModeGate, GMModeIsLoginTimeOnly_NoMidSessionRefresh) {
         // gm left clear -- logged in with GM mode OFF.
     });
     Replay(eq, HC_OP_PlayerProfile, payload);
-    ASSERT_FALSE(eq.GetGMMode());
+    ASSERT_FALSE(eq.Zone().GetGMMode());
 
     Replay(eq, HC_OP_SpawnAppearance, SpawnAppearancePayload(kMySpawnId, AT_GM, 1));
-    EXPECT_FALSE(eq.GetGMMode())
+    EXPECT_FALSE(eq.Zone().GetGMMode())
         << "GM mode is checked ONCE AT LOGIN by design; AT_GM must not refresh it mid-session";
 }
 
@@ -1188,7 +1188,7 @@ TEST(GMModeGate, SecondPlayerProfileRefreshesGMMode) {
         p.PutUInt32(2 + 14384, 5005);
     });
     Replay(eq, HC_OP_PlayerProfile, off);
-    ASSERT_FALSE(eq.GetGMMode());
+    ASSERT_FALSE(eq.Zone().GetGMMode());
 
     auto on = BuildPayload(2 + 19588, [&](EQ::Net::DynamicPacket& p) {
         p.PutUInt8(2 + 20, 10);
@@ -1197,7 +1197,7 @@ TEST(GMModeGate, SecondPlayerProfileRefreshesGMMode) {
         p.PutUInt32(2 + 14384, 5005);
     });
     Replay(eq, HC_OP_PlayerProfile, on);
-    EXPECT_TRUE(eq.GetGMMode());
+    EXPECT_TRUE(eq.Zone().GetGMMode());
 }
 
 // ============================================================================

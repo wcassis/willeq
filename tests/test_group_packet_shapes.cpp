@@ -204,7 +204,7 @@ TEST_F(GroupPacketTest, ZoneCleanupDropsGroupStateSoZoneInCanReestablishIt) {
     ASSERT_TRUE(group().inGroup());
     ASSERT_EQ(group().memberCount(), 2);
 
-    eq.CleanupZone();
+    eq.Zone().CleanupZone();
 
     EXPECT_FALSE(group().inGroup());
     EXPECT_EQ(group().memberCount(), 0);

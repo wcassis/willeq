@@ -122,6 +122,8 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 	m_login_world = std::make_unique<eqt::login_world::LoginWorldComponent>(m_ctx, *this);
 	// K08: the player family. The player-state facade stays on EverQuest.
 	m_player = std::make_unique<eqt::player::PlayerComponent>(m_ctx, *this);
+	// K09: the zone family -- handshake, entry, DispatchZonePacket, lifecycle.
+	m_zone = std::make_unique<eqt::zone::ZoneComponent>(m_ctx, *this);
 
 	m_login_world->SetCredentials(host, port, user, pass, server);
 	m_character = character;
@@ -402,7 +404,7 @@ EverQuest::~EverQuest()
 	}
 	
 	// Clear movement history
-	m_movement_history.clear();
+	m_zone->MovementHistory().clear();
 }
 
 // Loading phase tracking implementation
@@ -594,7 +596,7 @@ void EverQuest::PublishFullStateSnapshot() {
 	// --- XP progress ---
 	{
 		// EQ XP is 0-330 for current level (330 = level up)
-		float progress = (m_exp > 0) ? static_cast<float>(m_exp % 330) / 330.0f : 0.0f;
+		float progress = (m_zone->Exp() > 0) ? static_cast<float>(m_zone->Exp() % 330) / 330.0f : 0.0f;
 		eqt::state::ExpProgressChangedData data;
 		data.progress = progress;
 		m_bridge->pushEvent(eqt::state::GameEvent(
@@ -793,21 +795,21 @@ void EverQuest::ZoneOnStatusChangeReconnectEnabled(std::shared_ptr<EQ::Net::Dayb
 		// T322: the destination zone session is up, so the zone-to-zone
 		// transition is over -- the next world login is a fresh one unless
 		// ProcessDeferredZoneChange latches it again.
-		m_zone_to_zone_in_progress = false;
+		m_zone->ZoneToZoneInProgress() = false;
 		// Send stream identify immediately after connection
-		ZoneSendStreamIdentify();
+		m_zone->ZoneSendStreamIdentify();
 		m_zone_session_established = true;
 
 		// Send ack packet and zone entry immediately after session established
-		ZoneSendAckPacket();
-		ZoneSendZoneEntry();
+		m_zone->ZoneSendAckPacket();
+		m_zone->ZoneSendZoneEntry();
 	}
 
 	if (to == EQ::Net::StatusDisconnected) {
 		LOG_INFO(MOD_ZONE, "Zone connection lost, reconnecting.");
 		m_game_state.world().setZoneConnected(false);  // T286: only store
 		m_zone_session_established = false;
-		m_zone_entry_sent = false;
+		m_zone->ZoneEntrySent() = false;
 		// m_client_spawned = false; // Deprecated
 		m_zone_connection.reset();
 		SetLoadingPhase(LoadingPhase::ZONE_CONNECTING);
@@ -837,7 +839,7 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 			opcode, (const uint8_t*)p.Data() + 2, static_cast<uint32_t>(p.Length() - 2));
 	}
 
-	DispatchZonePacket(p);
+	m_zone->DispatchZonePacket(p);
 }
 
 // Batch R replay/test seam: build a synthetic app packet (2-byte opcode
@@ -851,7 +853,7 @@ void EverQuest::ReplayZonePacket(uint16_t opcode, const uint8_t* data, size_t si
 	if (size > 0 && data != nullptr) {
 		memcpy(static_cast<char*>(p.Data()) + 2, data, size);
 	}
-	DispatchZonePacket(p);
+	m_zone->DispatchZonePacket(p);
 }
 
 bool EverQuest::SafeQueueZonePacket(EQ::Net::Packet &p, int stream, bool reliable)

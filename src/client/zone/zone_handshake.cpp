@@ -76,20 +76,7 @@
 
 
 // Zone packet senders
-void EverQuest::ZoneSendSessionReady()
-{
-	EQ::Net::DynamicPacket p;
-	p.Resize(14);
-	p.PutUInt16(0, HC_OP_SessionReady);
-	p.PutUInt32(2, m_zone_sequence++);  // sequence
-	p.PutUInt32(6, 0);  // unknown
-	p.PutUInt32(10, 2048);  // max length
-	
-	DumpPacket("C->S", HC_OP_SessionReady, p);
-	m_zone_connection->QueuePacket(p);
-}
-
-void EverQuest::ZoneSendZoneEntry()
+void eqt::zone::ZoneComponent::ZoneSendZoneEntry()
 {
 	// Zone entry packet - ClientZoneEntry_Struct
 	EQ::Net::DynamicPacket p;
@@ -103,20 +90,20 @@ void EverQuest::ZoneSendZoneEntry()
 	
 	// char_name[64] at offset 6
 	size_t name_offset = 6;
-	size_t name_len = m_character.length();
+	size_t name_len = ctx_.character.length();
 	if (name_len > 63) name_len = 63;
-	memcpy((char*)p.Data() + name_offset, m_character.c_str(), name_len);
+	memcpy((char*)p.Data() + name_offset, ctx_.character.c_str(), name_len);
 	
 	// Fill rest of name field with zeros (64 bytes total for name)
 	for (size_t i = name_offset + name_len; i < name_offset + 64; i++) {
 		p.PutUInt8(i, 0);
 	}
 	
-	DumpPacket("C->S", HC_OP_ZoneEntry, p);
-	if (m_zone_connection) {
-		m_zone_connection->QueuePacket(p);
+	EverQuest::DumpPacket("C->S", HC_OP_ZoneEntry, p);
+	if (ctx_.zone_connection) {
+		ctx_.zone_connection->QueuePacket(p);
 	} else {
-		++m_replay_suppressed_sends;
+		++owner_.m_replay_suppressed_sends;
 	}
 	m_zone_entry_sent = true;
 	
@@ -126,30 +113,30 @@ void EverQuest::ZoneSendZoneEntry()
 	
 	// Add zone entry to movement history
 	MovementHistoryEntry zone_entry;
-	zone_entry.x = PosX();
-	zone_entry.y = PosY();
-	zone_entry.z = PosZ();
+	zone_entry.x = owner_.PosX();
+	zone_entry.y = owner_.PosY();
+	zone_entry.z = owner_.PosZ();
 	zone_entry.type = 4; // ZoneLine type
 	zone_entry.timestamp = static_cast<uint32_t>(std::time(nullptr));
 	m_movement_history.push_back(zone_entry);
 }
 
-void EverQuest::ZoneSendReqClientSpawn()
+void eqt::zone::ZoneComponent::ZoneSendReqClientSpawn()
 {
 	EQ::Net::DynamicPacket p;
 	p.Resize(2);
 	
 	p.PutUInt16(0, HC_OP_ReqClientSpawn);
 	
-	DumpPacket("C->S", HC_OP_ReqClientSpawn, p);
-	if (m_zone_connection) {
-		m_zone_connection->QueuePacket(p);
+	EverQuest::DumpPacket("C->S", HC_OP_ReqClientSpawn, p);
+	if (ctx_.zone_connection) {
+		ctx_.zone_connection->QueuePacket(p);
 	} else {
-		++m_replay_suppressed_sends;
+		++owner_.m_replay_suppressed_sends;
 	}
 }
 
-void EverQuest::ZoneSendClientReady()
+void eqt::zone::ZoneComponent::ZoneSendClientReady()
 {
 	EQ::Net::DynamicPacket p;
 	p.Resize(2);
@@ -158,16 +145,16 @@ void EverQuest::ZoneSendClientReady()
 	
 	LOG_DEBUG(MOD_ZONE, "Sending OP_ClientReady");
 
-	DumpPacket("C->S", HC_OP_ClientReady, p);
-	if (m_zone_connection) {
-		m_zone_connection->QueuePacket(p);
+	EverQuest::DumpPacket("C->S", HC_OP_ClientReady, p);
+	if (ctx_.zone_connection) {
+		ctx_.zone_connection->QueuePacket(p);
 	} else {
-		++m_replay_suppressed_sends;
+		++owner_.m_replay_suppressed_sends;
 	}
-	m_game_state.world().setClientReady(true);  // T286: only store
+	ctx_.game_state.world().setClientReady(true);  // T286: only store
 }
 
-void EverQuest::ZoneSendSetServerFilter()
+void eqt::zone::ZoneComponent::ZoneSendSetServerFilter()
 {
 	// Set server filter for what types of messages we want
 	// SetServerFilter_Struct is uint32 filters[29] = 116 bytes
@@ -196,16 +183,16 @@ void EverQuest::ZoneSendSetServerFilter()
 	
 	LOG_DEBUG(MOD_ZONE, "Sending OP_SetServerFilter");
 
-	DumpPacket("C->S", HC_OP_SetServerFilter, p);
-	if (m_zone_connection) {
-		m_zone_connection->QueuePacket(p);
+	EverQuest::DumpPacket("C->S", HC_OP_SetServerFilter, p);
+	if (ctx_.zone_connection) {
+		ctx_.zone_connection->QueuePacket(p);
 	} else {
-		++m_replay_suppressed_sends;
+		++owner_.m_replay_suppressed_sends;
 	}
 	m_server_filter_sent = true;
 }
 
-void EverQuest::ZoneSendStreamIdentify()
+void eqt::zone::ZoneComponent::ZoneSendStreamIdentify()
 {
 	// Send stream identify with Titanium zone opcode
 	EQ::Net::DynamicPacket p;
@@ -215,10 +202,10 @@ void EverQuest::ZoneSendStreamIdentify()
 	
 	LOG_DEBUG(MOD_ZONE, "Sending stream identify with opcode {:#06x} (Titanium_zone)", 0x7213);
 	
-	m_zone_connection->QueuePacket(p, 0, false);  // Send unreliable
+	ctx_.zone_connection->QueuePacket(p, 0, false);  // Send unreliable
 }
 
-void EverQuest::ZoneSendAckPacket()
+void eqt::zone::ZoneComponent::ZoneSendAckPacket()
 {
 	EQ::Net::DynamicPacket p;
 	p.Resize(6);
@@ -226,47 +213,47 @@ void EverQuest::ZoneSendAckPacket()
 	p.PutUInt16(0, HC_OP_AckPacket);
 	p.PutUInt32(2, 0);  // sequence or something
 	
-	DumpPacket("C->S", HC_OP_AckPacket, p);
-	if (m_zone_connection) {
-		m_zone_connection->QueuePacket(p);
+	EverQuest::DumpPacket("C->S", HC_OP_AckPacket, p);
+	if (ctx_.zone_connection) {
+		ctx_.zone_connection->QueuePacket(p);
 	} else {
-		++m_replay_suppressed_sends;
+		++owner_.m_replay_suppressed_sends;
 	}
 }
 
-void EverQuest::ZoneSendReqNewZone()
+void eqt::zone::ZoneComponent::ZoneSendReqNewZone()
 {
 	EQ::Net::DynamicPacket p;
 	p.Resize(2);
 	
 	p.PutUInt16(0, HC_OP_ReqNewZone);
 	
-	DumpPacket("C->S", HC_OP_ReqNewZone, p);
-	if (m_zone_connection) {
-		m_zone_connection->QueuePacket(p);
+	EverQuest::DumpPacket("C->S", HC_OP_ReqNewZone, p);
+	if (ctx_.zone_connection) {
+		ctx_.zone_connection->QueuePacket(p);
 	} else {
-		++m_replay_suppressed_sends;
+		++owner_.m_replay_suppressed_sends;
 	}
 	m_req_new_zone_sent = true;
 }
 
-void EverQuest::ZoneSendSendAATable()
+void eqt::zone::ZoneComponent::ZoneSendSendAATable()
 {
 	EQ::Net::DynamicPacket p;
 	p.Resize(2);
 	
 	p.PutUInt16(0, HC_OP_SendAATable);
 	
-	DumpPacket("C->S", HC_OP_SendAATable, p);
-	if (m_zone_connection) {
-		m_zone_connection->QueuePacket(p);
+	EverQuest::DumpPacket("C->S", HC_OP_SendAATable, p);
+	if (ctx_.zone_connection) {
+		ctx_.zone_connection->QueuePacket(p);
 	} else {
-		++m_replay_suppressed_sends;
+		++owner_.m_replay_suppressed_sends;
 	}
 	m_aa_table_sent = true;
 }
 
-void EverQuest::ZoneSendUpdateAA()
+void eqt::zone::ZoneComponent::ZoneSendUpdateAA()
 {
 	EQ::Net::DynamicPacket p;
 	p.Resize(12);  // Typical UpdateAA size
@@ -274,75 +261,59 @@ void EverQuest::ZoneSendUpdateAA()
 	p.PutUInt16(0, HC_OP_UpdateAA);
 	// Rest is AA data - zeros for now
 	
-	DumpPacket("C->S", HC_OP_UpdateAA, p);
-	if (m_zone_connection) {
-		m_zone_connection->QueuePacket(p);
+	EverQuest::DumpPacket("C->S", HC_OP_UpdateAA, p);
+	if (ctx_.zone_connection) {
+		ctx_.zone_connection->QueuePacket(p);
 	} else {
-		++m_replay_suppressed_sends;
+		++owner_.m_replay_suppressed_sends;
 	}
 	m_update_aa_sent = true;
 }
 
-void EverQuest::ZoneSendSendTributes()
+void eqt::zone::ZoneComponent::ZoneSendSendTributes()
 {
 	EQ::Net::DynamicPacket p;
 	p.Resize(2);
 	
 	p.PutUInt16(0, HC_OP_SendTributes);
 	
-	DumpPacket("C->S", HC_OP_SendTributes, p);
-	if (m_zone_connection) {
-		m_zone_connection->QueuePacket(p);
+	EverQuest::DumpPacket("C->S", HC_OP_SendTributes, p);
+	if (ctx_.zone_connection) {
+		ctx_.zone_connection->QueuePacket(p);
 	} else {
-		++m_replay_suppressed_sends;
+		++owner_.m_replay_suppressed_sends;
 	}
 	m_tributes_sent = true;
 }
 
-void EverQuest::ZoneSendRequestGuildTributes()
+void eqt::zone::ZoneComponent::ZoneSendRequestGuildTributes()
 {
 	EQ::Net::DynamicPacket p;
 	p.Resize(2);
 	
 	p.PutUInt16(0, HC_OP_RequestGuildTributes);
 	
-	DumpPacket("C->S", HC_OP_RequestGuildTributes, p);
-	if (m_zone_connection) {
-		m_zone_connection->QueuePacket(p);
+	EverQuest::DumpPacket("C->S", HC_OP_RequestGuildTributes, p);
+	if (ctx_.zone_connection) {
+		ctx_.zone_connection->QueuePacket(p);
 	} else {
-		++m_replay_suppressed_sends;
+		++owner_.m_replay_suppressed_sends;
 	}
 	m_guild_tributes_sent = true;
 }
 
-void EverQuest::ZoneSendSpawnAppearance()
-{
-	EQ::Net::DynamicPacket p;
-	p.Resize(14);  // Typical spawn appearance size
-	
-	p.PutUInt16(0, HC_OP_SpawnAppearance);
-	p.PutUInt16(2, 0);  // spawn id (0 = self)
-	p.PutUInt16(4, 14);  // type (14 = animation)
-	p.PutUInt32(6, 0);  // value
-	p.PutUInt32(10, 0);  // unknown
-	
-	DumpPacket("C->S", HC_OP_SpawnAppearance, p);
-	m_zone_connection->QueuePacket(p);
-	m_spawn_appearance_sent = true;
-}
-
-void EverQuest::ZoneSendSendExpZonein()
+void eqt::zone::ZoneComponent::ZoneSendSendExpZonein()
 {
 	EQ::Net::DynamicPacket p;
 	p.Resize(2);
 	
 	p.PutUInt16(0, HC_OP_SendExpZonein);
 	
-	DumpPacket("C->S", HC_OP_SendExpZonein, p);
-	if (m_zone_connection) {
-		m_zone_connection->QueuePacket(p);
+	EverQuest::DumpPacket("C->S", HC_OP_SendExpZonein, p);
+	if (ctx_.zone_connection) {
+		ctx_.zone_connection->QueuePacket(p);
 	} else {
-		++m_replay_suppressed_sends;
+		++owner_.m_replay_suppressed_sends;
 	}
 	m_exp_zonein_sent = true;
 }

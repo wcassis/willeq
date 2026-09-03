@@ -729,14 +729,14 @@ void EqActionHandler::showOrSetZoning(const std::string& args) {
         trimmed = trimmed.substr(1);
     }
     if (trimmed.empty()) {
-        m_eq.AddChatSystemMessage(fmt::format("Zoning is {}", m_eq.IsZoningEnabled() ? "on" : "off"));
+        m_eq.AddChatSystemMessage(fmt::format("Zoning is {}", m_eq.Zone().IsZoningEnabled() ? "on" : "off"));
         return;
     }
     if (trimmed == "on") {
-        m_eq.SetZoningEnabled(true);
+        m_eq.Zone().SetZoningEnabled(true);
         m_eq.AddChatSystemMessage("Zoning is now on");
     } else if (trimmed == "off") {
-        m_eq.SetZoningEnabled(false);
+        m_eq.Zone().SetZoningEnabled(false);
         m_eq.AddChatSystemMessage("Zoning is now off");
     } else {
         m_eq.AddChatSystemMessage("Usage: /zoning [on|off]");
@@ -915,7 +915,7 @@ void EqActionHandler::friendsWho(const std::string& friendsList) {
 // through RecordingActionHandler without an EverQuest instance.
 
 bool EqActionHandler::isGMMode() const {
-    return m_eq.GetGMMode();
+    return m_eq.Zone().GetGMMode();
 }
 
 void EqActionHandler::gmZoneRequest(const std::string& charName, uint16_t zoneId) {

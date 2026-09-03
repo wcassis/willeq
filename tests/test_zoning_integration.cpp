@@ -185,10 +185,10 @@ protected:
 
             // Configure paths if available
             if (!config_.mapsPath.empty()) {
-                eq_->SetMapsPath(config_.mapsPath);
+                eq_->Zone().SetMapsPath(config_.mapsPath);
             }
             if (!config_.navmeshPath.empty()) {
-                eq_->SetNavmeshPath(config_.navmeshPath);
+                eq_->Zone().SetNavmeshPath(config_.navmeshPath);
             }
             if (!config_.eqClientPath.empty()) {
                 eq_->SetEQClientPath(config_.eqClientPath);

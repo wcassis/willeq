@@ -568,7 +568,7 @@ void LoginWorldComponent::WorldSendClientAuth()
 	// m_zone_to_zone_in_progress is latched across the teardown for exactly
 	// this read. (The official client's group_id rows stayed intact across
 	// the same transition -- T320's oracle capture.)
-	uint8_t zoning_flag = owner_.m_zone_to_zone_in_progress ? 1 : 0;
+	uint8_t zoning_flag = owner_.Zone().ZoneToZoneInProgress() ? 1 : 0;
 	p.PutUInt8(2 + 188, zoning_flag);
 
 	LOG_INFO(MOD_WORLD, "Sending login info: dbid={}, key={}, zoning={}", dbid_str, m_key, zoning_flag);
@@ -788,7 +788,7 @@ void LoginWorldComponent::WorldProcessPostEnterWorld(const EQ::Net::Packet &p)
 	// 516-523, 847), which is exactly what makes it a zoning pass. Without
 	// this the client sat in world forever after T322 started sending
 	// zoning=1, so the two changes are one change.
-	if (owner_.m_zone_to_zone_in_progress && !m_enter_world_sent) {
+	if (owner_.Zone().ZoneToZoneInProgress() && !m_enter_world_sent) {
 		LOG_DEBUG(MOD_WORLD, "Zoning world pass: sending EnterWorld now");
 		WorldSendEnterWorld(ctx_.character);
 	}
@@ -973,7 +973,7 @@ void LoginWorldComponent::WorldProcessZoneServerInfo(const EQ::Net::Packet &p)
 		}
 
 		// Disconnect from current zone (this also calls CleanupZone)
-		owner_.DisconnectFromZone();
+		owner_.Zone().DisconnectFromZone();
 	}
 
 	// Store new zone server info

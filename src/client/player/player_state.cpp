@@ -421,7 +421,7 @@ void eqt::player::PlayerComponent::ZoneProcessZonePlayerToBind(const EQ::Net::Pa
 	// Client must respond with OP_ZoneChange to initiate the zone change
 	// The server will then send OP_ZoneChange back with success=1
 	// For same-zone deaths, the server still expects this handshake
-	owner_.RequestZoneChange(target_zone_id, bind_x, bind_y, bind_z, bind_heading);
+	owner_.Zone().RequestZoneChange(target_zone_id, bind_x, bind_y, bind_z, bind_heading);
 }
 
 void eqt::player::PlayerComponent::ZoneProcessLevelUpdate(const EQ::Net::Packet &p)

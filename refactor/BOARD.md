@@ -195,7 +195,8 @@ it without taking that measurement first.
   "WILL'S RULING", 2026-09-02.
 
 - **B025** (P) Eight methods dominate their TUs and were left out of Batch J
-  deliberately: `EverQuest::DispatchZonePacket` 880 (`eq.cpp`),
+  deliberately: `eqt::zone::ZoneComponent::DispatchZonePacket` 880
+  (`src/client/zone/zone_dispatch.cpp`, K09),
   `RaceModelLoader::loadModelFromGlobalChrWithVariantsForAnimation` 815
   (`variant_loading.cpp`), `IrrlichtRenderer::updatePlayerMovement` 806
   (`renderer_player_physics.cpp`), `CommandProcessor::registerBuiltinCommands` 768

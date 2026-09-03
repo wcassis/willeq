@@ -371,11 +371,11 @@ eqt::ZoneLoadSnapshot EverQuest::CreateZoneLoadSnapshot() const {
 		snap.doors.push_back(door);
 	}
 	// Zone lines (expand geometry + extract bounding boxes)
-	if (m_zone_lines && m_zone_lines->hasZoneLines()) {
+	if (m_zone->ZoneLinesPtr() && m_zone->ZoneLinesPtr()->hasZoneLines()) {
 		if (m_zone_map) {
-			m_zone_lines->expandZoneLinesToGeometry(m_zone_map.get());
+			m_zone->ZoneLinesPtr()->expandZoneLinesToGeometry(m_zone_map.get());
 		}
-		snap.zoneLineBBoxes = m_zone_lines->getZoneLineBoundingBoxes();
+		snap.zoneLineBBoxes = m_zone->ZoneLinesPtr()->getZoneLineBoundingBoxes();
 	}
 	snap.zoneMap = m_zone_map;
 	snap.eqClientPath = m_eq_client_path;
@@ -811,7 +811,7 @@ void EverQuest::OnGraphicsMovement(const eqt::events::PlayerPositionChanged& upd
 	}
 
 	// Check for zone line collision
-	CheckZoneLine();
+	m_zone->CheckZoneLine();
 
 	// SendPositionUpdate has internal 250ms throttling
 	m_movement->SendPositionUpdate();

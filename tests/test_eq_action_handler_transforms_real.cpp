@@ -706,7 +706,7 @@ TEST(EqActionHandlerTransformsReal, SetServerFilter_ShowAllUsesEqemuPerSlotConve
     WireHarness h;
     h.clearSent();
 
-    h.eq.ZoneSendSetServerFilter();
+    h.eq.Zone().ZoneSendSetServerFilter();
 
     std::vector<SentAppPacket> pk;
     for (auto& p : h.sentPackets()) {

@@ -141,9 +141,28 @@ const std::map<std::string, std::string> kNotDuplicates = {
 }  // namespace
 
 TEST(DuplicateStateStores, EverQuestKeepsNoCopyOfAStateModuleMember) {
-    const std::set<std::string> eqMembers = membersOf(kRoot / "include/client/eq.h");
+    // Batch K (refactor/K_component_extraction.md) moves EverQuest's data
+    // members out of eq.h family by family, onto
+    // eqt::<family>::<Family>Component. The sweep's INPUT set therefore has to
+    // be eq.h PLUS every component header, or the guard silently shrinks as
+    // the batch proceeds and stops watching the members it moved -- K09 caught
+    // it at 71 members left in eq.h, 29 under this test's own floor. Same
+    // widening ReachabilitySweep.EverySenderHasACaller took at K05, and the
+    // assertion below is unchanged: no EverQuest-side member may duplicate a
+    // state module's, wherever the component split has put it.
+    std::set<std::string> eqMembers = membersOf(kRoot / "include/client/eq.h");
+    for (const auto& e : fs::recursive_directory_iterator(kRoot / "include/client")) {
+        if (!e.is_regular_file()) continue;
+        const std::string name = e.path().filename().string();
+        if (name.size() < 12 ||
+            name.compare(name.size() - 12, 12, "_component.h") != 0) {
+            continue;
+        }
+        for (const auto& m : membersOf(e.path())) eqMembers.insert(m);
+    }
     ASSERT_GT(eqMembers.size(), 100u)
-        << "eq.h member parse collapsed -- the regex, not the code, is wrong";
+        << "eq.h/component member parse collapsed -- the regex, not the code, "
+           "is wrong";
 
     // normalised state member -> "Class::m_member"
     std::map<std::string, std::string> stateByKey;

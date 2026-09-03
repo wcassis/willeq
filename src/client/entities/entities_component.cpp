@@ -261,7 +261,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessZoneSpawns(const EQ::Net::Pack
 				}
 				// Mark player entity as pending creation - will be created when ClientUpdate arrives
 				// This ensures the loading screen stays visible until the player model is fully loaded
-				owner_.m_player_graphics_entity_pending = true;
+				owner_.Zone().PlayerGraphicsEntityPending() = true;
 #endif
 				// Update our position to match server spawn position
 				ctx_.game_state.player().setSize(entity.size);
@@ -489,7 +489,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessSendZonepoints(const EQ::Net::
 	LOG_DEBUG(MOD_ZONE, "Received zone points: {} entries", count);
 
 	// Parse zone points and store them in ZoneLines
-	if (owner_.m_zone_lines && count > 0) {
+	if (owner_.Zone().ZoneLinesPtr() && count > 0) {
 		std::vector<EQT::ZonePoint> zonePoints;
 		zonePoints.reserve(count);
 
@@ -520,7 +520,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessSendZonepoints(const EQ::Net::
 			}
 		}
 
-		owner_.m_zone_lines->setServerZonePoints(zonePoints);
+		owner_.Zone().ZoneLinesPtr()->setServerZonePoints(zonePoints);
 
 		// Publish ZoneLineBoundingBoxes event to bridge
 		if (ctx_.bridge) {
@@ -535,17 +535,17 @@ void eqt::entities::EntitiesComponent::ZoneProcessSendZonepoints(const EQ::Net::
 	// After zone points, check if we need to send server filter
 	// This is old logic - server filter is now sent after GuildMOTD
 	// But keeping it here for compatibility if the flow is different
-	if (owner_.m_zone_entry_sent && !ctx_.game_state.world().isClientReady()) {
+	if (owner_.Zone().ZoneEntrySent() && !ctx_.game_state.world().isClientReady()) {
 		// This path shouldn't normally be taken anymore
-		if (!owner_.m_server_filter_sent && owner_.m_send_exp_zonein_received) {
+		if (!owner_.Zone().ServerFilterSent() && owner_.Zone().SendExpZoneinReceived()) {
 			LOG_DEBUG(MOD_ZONE, "ZoneProcessSendZonepoints calling ZoneSendSetServerFilter (fallback)");
-			owner_.ZoneSendSetServerFilter();
+			owner_.Zone().ZoneSendSetServerFilter();
 		}
 
 		// Send client ready - This shouldn't happen here anymore
-		if (!ctx_.game_state.world().isClientReady() && owner_.m_server_filter_sent) {
+		if (!ctx_.game_state.world().isClientReady() && owner_.Zone().ServerFilterSent()) {
 			LOG_DEBUG(MOD_ZONE, "ZoneProcessSendZonepoints calling ZoneSendClientReady");
-			owner_.ZoneSendClientReady();
+			owner_.Zone().ZoneSendClientReady();
 		}
 	}
 }

@@ -269,7 +269,7 @@ void Application::loadZoneGraphicsOnThread(EQT::Graphics::LoadingStatus& status)
     float heading512 = snap.playerHeading * 512.0f / 360.0f;
     m_renderer->setPlayerPosition(snap.playerX, snap.playerY, snap.playerZ, heading512);
 
-    m_eqClient->SetPlayerGraphicsEntityPending(true);
+    m_eqClient->Zone().SetPlayerGraphicsEntityPending(true);
 
     // 8. Sequential zone asset loading
     m_renderer->loadZoneSequential(snap.eqClientPath, status);
@@ -379,7 +379,7 @@ void Application::loadZoneGraphics() {
     float heading512 = snap.playerHeading * 512.0f / 360.0f;
     m_renderer->setPlayerPosition(snap.playerX, snap.playerY, snap.playerZ, heading512);
 
-    m_eqClient->SetPlayerGraphicsEntityPending(true);
+    m_eqClient->Zone().SetPlayerGraphicsEntityPending(true);
 
     if (m_renderer->isProgressiveLoadingActive()) {
         LOG_INFO(MOD_GRAPHICS, "loadZoneGraphics: automatic mode — loading screen remains visible");

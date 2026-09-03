@@ -269,7 +269,7 @@ TEST(PositionStoreCoherence, CleanupZoneClearsTheOneZoneIdentity) {
         eqt::state::GameEventType::ZoneChanged,
         [&](const eqt::state::GameEvent&) { ++zoneChangedOnStateBus; });
 
-    eq.CleanupZone();
+    eq.Zone().CleanupZone();
 
     EXPECT_EQ(eq.GetCurrentZoneName(), "");
     EXPECT_EQ(eq.GetGameState().world().zoneName(), "");
@@ -285,12 +285,12 @@ TEST(PositionStoreCoherence, ZoneToSecondZoneAndBackKeepsIdentityCoherent) {
     ReplayZone(eq, HC_OP_NewZone, NewZonePayload("befallen", 36, 10.0f, 20.0f, 3.0f));
     ASSERT_EQ(eq.GetGameState().world().zoneId(), 36);
 
-    eq.CleanupZone();
+    eq.Zone().CleanupZone();
     ReplayZone(eq, HC_OP_NewZone, NewZonePayload("arena", 77, 1.0f, 2.0f, 3.0f));
     EXPECT_EQ(eq.GetCurrentZoneName(), "arena");
     EXPECT_EQ(eq.GetGameState().world().zoneId(), 77);
 
-    eq.CleanupZone();
+    eq.Zone().CleanupZone();
     ReplayZone(eq, HC_OP_NewZone, NewZonePayload("befallen", 36, 10.0f, 20.0f, 3.0f));
     EXPECT_EQ(eq.GetCurrentZoneName(), "befallen");
     EXPECT_EQ(eq.GetGameState().world().zoneId(), 36);

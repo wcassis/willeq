@@ -76,7 +76,7 @@
 
 
 // Zone packet processors
-void EverQuest::ZoneProcessNewZone(const EQ::Net::Packet &p)
+void eqt::zone::ZoneComponent::ZoneProcessNewZone(const EQ::Net::Packet &p)
 {
 	// NewZone packet contains zone information
 	// NewZone_Struct: char_name[64], zone_short_name[32], zone_long_name[278], ...
@@ -100,31 +100,31 @@ void EverQuest::ZoneProcessNewZone(const EQ::Net::Packet &p)
 		// Offsets are +2 for opcode prefix
 		if (p.Length() >= 477) {  // Need sky field at offset 474 (+2 = 476)
 			// Zone type at offset 374 (0=outdoor, 1=dungeon, etc.)
-			m_zone_type = p.GetUInt8(376);
+			owner_.m_zone_type = p.GetUInt8(376);
 
 			// Sky type at offset 474
-			m_zone_sky_type = p.GetUInt8(476);
+			owner_.m_zone_sky_type = p.GetUInt8(476);
 
 			// Fog colors at offsets 375-386
 			for (int i = 0; i < 4; i++) {
-				m_zone_fog_red[i] = p.GetUInt8(377 + i);
-				m_zone_fog_green[i] = p.GetUInt8(381 + i);
-				m_zone_fog_blue[i] = p.GetUInt8(385 + i);
+				owner_.m_zone_fog_red[i] = p.GetUInt8(377 + i);
+				owner_.m_zone_fog_green[i] = p.GetUInt8(381 + i);
+				owner_.m_zone_fog_blue[i] = p.GetUInt8(385 + i);
 			}
 
 			// Fog clip distances at offsets 388-419
 			if (p.Length() >= 422) {
 				for (int i = 0; i < 4; i++) {
-					m_zone_fog_minclip[i] = p.GetFloat(390 + i * 4);
-					m_zone_fog_maxclip[i] = p.GetFloat(406 + i * 4);
+					owner_.m_zone_fog_minclip[i] = p.GetFloat(390 + i * 4);
+					owner_.m_zone_fog_maxclip[i] = p.GetFloat(406 + i * 4);
 				}
 			}
 
-			if (s_debug_level >= 3) {
+			if (EverQuest::s_debug_level >= 3) {
 				LOG_DEBUG(MOD_MAIN, "Zone environment: ztype={}, sky={}, fog RGB=({},{},{}), clip={}-{}",
-					m_zone_type, m_zone_sky_type,
-					m_zone_fog_red[0], m_zone_fog_green[0], m_zone_fog_blue[0],
-					m_zone_fog_minclip[0], m_zone_fog_maxclip[0]);
+					owner_.m_zone_type, owner_.m_zone_sky_type,
+					owner_.m_zone_fog_red[0], owner_.m_zone_fog_green[0], owner_.m_zone_fog_blue[0],
+					owner_.m_zone_fog_minclip[0], owner_.m_zone_fog_maxclip[0]);
 			}
 		}
 
@@ -148,52 +148,52 @@ void EverQuest::ZoneProcessNewZone(const EQ::Net::Packet &p)
 		// are usually still zero here -- see refactor/deferred.md "Dead parallel
 		// state copies..." entry). Heading is 0.0f to match the bridge publish
 		// immediately below; this client does not yet track arrival heading.
-		m_game_state.world().setZone(zone_name, zone_id,
+		ctx_.game_state.world().setZone(zone_name, zone_id,
 			m_safe_x, m_safe_y, m_safe_z, 0.0f);
 
 		// Publish ZoneChanged event to bridge
-		if (m_bridge) {
+		if (ctx_.bridge) {
 			eqt::state::ZoneChangedData data;
-			data.zoneName = CurrentZoneName();
-			data.zoneId = CurrentZoneId();
+			data.zoneName = owner_.CurrentZoneName();
+			data.zoneId = owner_.CurrentZoneId();
 			data.x = m_safe_x;
 			data.y = m_safe_y;
 			data.z = m_safe_z;
 			data.heading = 0.0f;
-			m_bridge->pushEvent(eqt::state::GameEvent(
+			ctx_.bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::ZoneChanged, std::move(data)));
 		}
 
-		if (s_debug_level >= 2) {
+		if (EverQuest::s_debug_level >= 2) {
 			LOG_DEBUG(MOD_MAIN, "Received new zone data for: {} (zone_id={})",
-				CurrentZoneName(), CurrentZoneId());
+				owner_.CurrentZoneName(), owner_.CurrentZoneId());
 		}
 
 		// Load pathfinder for this zone
-		m_movement->LoadPathfinder(CurrentZoneName());
+		owner_.Movement().LoadPathfinder(owner_.CurrentZoneName());
 
 		// Load zone map for terrain height calculations
-		LoadZoneMap(CurrentZoneName());
+		LoadZoneMap(owner_.CurrentZoneName());
 
 		// Load zone lines for zone transitions
-		LoadZoneLines(CurrentZoneName());
+		LoadZoneLines(owner_.CurrentZoneName());
 
 		// Open zone S3D archive, parse WLD, extract BSP tree
-		LoadZoneSources(CurrentZoneName());
+		LoadZoneSources(owner_.CurrentZoneName());
 
 		// Update zone music and sound emitters
 #ifdef WITH_AUDIO
 		// Phase 13: Load zone sound emitters FIRST (unloadZone() stops music)
-		if (m_zone_audio_manager && !m_eq_client_path.empty()) {
-			m_zone_audio_manager->loadZone(CurrentZoneName(), m_eq_client_path);
+		if (owner_.m_zone_audio_manager && !owner_.m_eq_client_path.empty()) {
+			owner_.m_zone_audio_manager->loadZone(owner_.CurrentZoneName(), owner_.m_eq_client_path);
 		}
 		// THEN start zone music (after loadZone to avoid being stopped by unloadZone)
-		if (m_audio_manager) {
-			m_audio_manager->onZoneChange(CurrentZoneName());
+		if (ctx_.audio_manager) {
+			ctx_.audio_manager->onZoneChange(owner_.CurrentZoneName());
 		}
 #endif
 	} else {
-		if (s_debug_level >= 2) {
+		if (EverQuest::s_debug_level >= 2) {
 			LOG_DEBUG(MOD_MAIN, "Received new zone data");
 		}
 	}
@@ -236,11 +236,11 @@ void EverQuest::ZoneProcessNewZone(const EQ::Net::Packet &p)
 	CheckZoneRequestPhaseComplete();
 }
 
-void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
+void eqt::zone::ZoneComponent::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 {
-	SetLoadingPhase(LoadingPhase::ZONE_RECEIVING_PROFILE);
+	owner_.SetLoadingPhase(LoadingPhase::ZONE_RECEIVING_PROFILE);
 
-	if (s_debug_level >= 2) {
+	if (EverQuest::s_debug_level >= 2) {
 		LOG_DEBUG(MOD_MAIN, "PlayerProfile received, size={} bytes", p.Length());
 	}
 
@@ -275,7 +275,7 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	// read by nothing; the result is now STORED, same once-per-profile shape
 	// as m_guild_id (T133) and m_gm_mode (T148) below. Offsets and the full
 	// rationale live in client/player/profile_appearance.h, where a test pins them.
-	m_profile_appearance = EQT::ParseProfileAppearance(p, base);
+	owner_.m_profile_appearance = EQT::ParseProfileAppearance(p, base);
 
 	// Experience points
 	uint32_t exp = p.GetUInt32(base + 2268);     // offset 2268
@@ -384,33 +384,33 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	// refactor/T58_playerprofile_propagation.md Review's trace table). The
 	// hand-rolled bridge push below is unchanged and remains the only thing
 	// that reaches the renderer.
-	SetPosition(server_y, server_x, z);
-	SetHeading(new_heading);
+	owner_.SetPosition(server_y, server_x, z);
+	owner_.SetHeading(new_heading);
 
 	// Debug: Zone-in position tracking
-	if (s_debug_level >= 1) {
+	if (EverQuest::s_debug_level >= 1) {
 		LOG_INFO(MOD_ZONE, "[ZONE-IN] PlayerProfile position: server=({:.2f},{:.2f},{:.2f}) heading={:.2f} -> client=({:.2f},{:.2f},{:.2f}) heading={:.2f}",
-		         server_x, server_y, z, heading, PosX(), PosY(), PosZ(), HeadingDeg());
+		         server_x, server_y, z, heading, owner_.PosX(), owner_.PosY(), owner_.PosZ(), owner_.HeadingDeg());
 		// Additional logging in consistent format for position debugging
 		LOG_DEBUG(MOD_MOVEMENT, "POS S->C PlayerProfile [SELF] profile_heading={:.2f} -> server_heading_deg={:.2f} -> heading={:.2f}deg",
-			heading, server_heading_deg, HeadingDeg());
+			heading, server_heading_deg, owner_.HeadingDeg());
 		LOG_DEBUG(MOD_MOVEMENT, "POS S->C PlayerProfile [SELF] server_pos=({:.2f},{:.2f},{:.2f}) -> client_pos=({:.2f},{:.2f},{:.2f})",
-			server_x, server_y, z, PosX(), PosY(), PosZ());
+			server_x, server_y, z, owner_.PosX(), owner_.PosY(), owner_.PosZ());
 	}
 
 	// Sync initial position to bridge (important for Player mode)
-	if (m_bridge) {
-		float heading512 = HeadingDeg() * 512.0f / 360.0f;
-		if (s_debug_level >= 1) {
+	if (ctx_.bridge) {
+		float heading512 = owner_.HeadingDeg() * 512.0f / 360.0f;
+		if (EverQuest::s_debug_level >= 1) {
 			LOG_INFO(MOD_ZONE, "[ZONE-IN] Publishing PlayerMoved from PlayerProfile: ({:.2f},{:.2f},{:.2f}) heading={:.2f}deg -> {:.2f} (512 fmt)",
-			         PosX(), PosY(), PosZ(), HeadingDeg(), heading512);
+			         owner_.PosX(), owner_.PosY(), owner_.PosZ(), owner_.HeadingDeg(), heading512);
 		}
 		eqt::state::PlayerMovedData data;
-		data.x = PosX(); data.y = PosY(); data.z = PosZ();
+		data.x = owner_.PosX(); data.y = owner_.PosY(); data.z = owner_.PosZ();
 		data.heading = heading512;
 		data.dx = 0; data.dy = 0; data.dz = 0;
 		data.isMoving = false;
-		m_bridge->pushEvent(eqt::state::GameEvent(
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::PlayerMoved, std::move(data)));
 	}
 
@@ -432,9 +432,9 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	// describes the player, so no spawn-id matching or ordering hazard
 	// applies. See refactor/T133_guild_id_population.md Review for the
 	// live-log evidence this is the correct, and only necessary, hook.
-	m_guild_id = guild_id;
+	owner_.m_guild_id = guild_id;
 	// T317: same once-per-login shape as m_guild_id above.
-	m_guild_rank = guild_rank;
+	owner_.m_guild_rank = guild_rank;
 	// T148: the login-time GM-mode gate. Same shape as m_guild_id above --
 	// parsed from the player's own profile packet, assigned once, no spawn-id
 	// matching. This is the ONLY place m_gm_mode is written: the check is
@@ -445,8 +445,8 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	m_gm_mode = (gm_mode != 0);
 
 	// Phase 7.2 / T286: the single store for all of the above
-	auto& player = m_game_state.player();
-	player.setName(name[0] ? name : m_character);  // Use server name if available, else local
+	auto& player = ctx_.game_state.player();
+	player.setName(name[0] ? name : ctx_.character);  // Use server name if available, else local
 	player.setLastName(last_name);
 	player.setLevel(level);
 	player.setClass(class_);
@@ -462,8 +462,8 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	player.setPracticePoints(practice_points);
 
 	// Initialize skill manager with player info first
-	if (m_skill_manager) {
-		m_skill_manager->initialize(static_cast<uint8_t>(class_), static_cast<uint8_t>(race), level);
+	if (ctx_.skill_manager) {
+		ctx_.skill_manager->initialize(static_cast<uint8_t>(class_), static_cast<uint8_t>(race), level);
 
 		// Skills are stored as uint32_t[100] starting at offset 4460
 		// Reference: EQEmu titanium_structs.h PlayerProfile_Struct
@@ -475,15 +475,15 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 				skills[i] = p.GetUInt32(base + skill_offset + (i * 4));
 				if (skills[i] > 0) {
 					nonzero_count++;
-					if (s_debug_level >= 2) {
+					if (EverQuest::s_debug_level >= 2) {
 						LOG_DEBUG(MOD_MAIN, "Skill[{}] = {}", i, skills[i]);
 					}
 				}
 			}
-			m_skill_manager->updateAllSkills(skills, EQT::MAX_PP_SKILL);
+			ctx_.skill_manager->updateAllSkills(skills, EQT::MAX_PP_SKILL);
 			LOG_INFO(MOD_MAIN, "Loaded {} skills from PlayerProfile ({} non-zero)", EQT::MAX_PP_SKILL, nonzero_count);
-			if (m_bridge) {
-				m_bridge->pushEvent(eqt::state::GameEvent(
+			if (ctx_.bridge) {
+				ctx_.bridge->pushEvent(eqt::state::GameEvent(
 					eqt::state::GameEventType::SkillsRefreshed, eqt::state::SkillsRefreshedData{}));
 			}
 		} else {
@@ -499,50 +499,50 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	// Left guarded, a headless build's inventory manager never learned the
 	// player's race/class/level, so item-restriction validation silently
 	// used stale defaults for the whole session.
-	if (m_inventory_manager) {
-		m_inventory_manager->setPlayerInfo(race, class_, level);
+	if (ctx_.inventory_manager) {
+		ctx_.inventory_manager->setPlayerInfo(race, class_, level);
 	}
 
 	// Store bind point (swap x/y like we do for position -- server x/y are swapped)
-	m_game_state.player().setBindPoint(bind_zone_id, bind_y, bind_x, bind_z, bind_heading);
+	ctx_.game_state.player().setBindPoint(bind_zone_id, bind_y, bind_x, bind_z, bind_heading);
 
 	// The entity ID appears to be at offset 14384 based on previous debugging
 	uint32_t entity_id = 0;
 	if (p.Length() > base + 14384) {
 		entity_id = p.GetUInt32(base + 14384);
 		uint16_t new_spawn_id = static_cast<uint16_t>(entity_id);
-		if (MySpawnId() != 0 && MySpawnId() != new_spawn_id) {
-			LOG_WARN(MOD_ZONE, "Spawn ID changed unexpectedly: {} -> {}", MySpawnId(), new_spawn_id);
+		if (owner_.MySpawnId() != 0 && owner_.MySpawnId() != new_spawn_id) {
+			LOG_WARN(MOD_ZONE, "Spawn ID changed unexpectedly: {} -> {}", owner_.MySpawnId(), new_spawn_id);
 		}
 		// T288: this is the ordinary zone-in source of the player's own
 		// spawn id, and before T288 it was the ONE write site that did not
 		// mirror to PlayerState -- so the state layer's spawnId() stayed 0
 		// for the session and getNearestPlayer()'s "skip myself" argument
 		// could never exclude the player.
-		SetMySpawnId(new_spawn_id);
+		owner_.SetMySpawnId(new_spawn_id);
 	}
 	
 	// For size, we need to check if it's sent in the profile or if we get it from spawn
 	// It's not in the standard PlayerProfile_Struct, so we'll use default
 	float size = 6.0f;  // Default player size
 	
-	if (s_debug_level >= 2) {
+	if (EverQuest::s_debug_level >= 2) {
 		LOG_DEBUG(MOD_MAIN, "=== CHARACTER DATA ===");
 		LOG_DEBUG(MOD_MAIN, "Name: {} {} (Level {} {} {})",
-			name, last_name, level, GetClassName(class_), GetRaceName(race));
+			name, last_name, level, EverQuest::GetClassName(class_), EverQuest::GetRaceName(race));
 		LOG_DEBUG(MOD_MAIN, "Gender: {} Race: {} Class: {} Deity: {}",
 			gender, race, class_, deity);
 		LOG_DEBUG(MOD_MAIN, "=== POSITION DATA ===");
 		LOG_DEBUG(MOD_MAIN, "Server raw: x={:.2f} y={:.2f} z={:.2f} heading={:.2f}",
 			server_x, server_y, z, heading);
 		LOG_DEBUG(MOD_MAIN, "Internal (swapped): x={:.2f} y={:.2f} z={:.2f} heading={:.2f}",
-			PosX(), PosY(), PosZ(), HeadingDeg());
+			owner_.PosX(), owner_.PosY(), owner_.PosZ(), owner_.HeadingDeg());
 		LOG_DEBUG(MOD_MAIN, "Size: {:.2f} (default, will be updated from spawn)", size);
 		LOG_DEBUG(MOD_MAIN, "=== BIND POINT ===");
 		LOG_DEBUG(MOD_MAIN, "Bind raw: zone={} x={:.2f} y={:.2f} z={:.2f} heading={:.2f}",
 			bind_zone_id, bind_x, bind_y, bind_z, bind_heading);
 		LOG_DEBUG(MOD_MAIN, "Bind internal: zone={} m_game_state.player().bindX()={:.2f} m_game_state.player().bindY()={:.2f} m_game_state.player().bindZ()={:.2f}",
-			m_game_state.player().bindZoneId(), m_game_state.player().bindX(), m_game_state.player().bindY(), m_game_state.player().bindZ());
+			ctx_.game_state.player().bindZoneId(), ctx_.game_state.player().bindX(), ctx_.game_state.player().bindY(), ctx_.game_state.player().bindZ());
 		LOG_DEBUG(MOD_MAIN, "=== STATS ===");
 		LOG_DEBUG(MOD_MAIN, "HP: {} Mana: {} End: {}", cur_hp, mana, endurance);
 		LOG_DEBUG(MOD_MAIN, "STR:{} STA:{} CHA:{} DEX:{} INT:{} AGI:{} WIS:{}",
@@ -556,13 +556,13 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	
 	// Add ourselves to the entity list
 	Entity self_entity;
-	self_entity.spawn_id = MySpawnId();
+	self_entity.spawn_id = owner_.MySpawnId();
 	self_entity.name = std::string(name);
 	// Use already-swapped client x and y, and transformed heading
-	self_entity.x = PosX();
-	self_entity.y = PosY();
-	self_entity.z = PosZ();
-	self_entity.heading = HeadingDeg();  // Use transformed heading (360 - raw_heading)
+	self_entity.x = owner_.PosX();
+	self_entity.y = owner_.PosY();
+	self_entity.z = owner_.PosZ();
+	self_entity.heading = owner_.HeadingDeg();  // Use transformed heading (360 - raw_heading)
 	self_entity.level = level;
 	self_entity.class_id = static_cast<uint8_t>(class_);
 	self_entity.race_id = static_cast<uint16_t>(race);
@@ -580,19 +580,19 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	self_entity.last_update_time = std::time(nullptr);
 	
 	// Update our own size
-	m_game_state.player().setSize(size);
+	ctx_.game_state.player().setSize(size);
 	
 	// Store in entity list (sync to both local map and EntityManager)
-	m_entities[MySpawnId()] = self_entity;
-	m_player->SyncEntityToGameState(self_entity);
+	ctx_.entities[owner_.MySpawnId()] = self_entity;
+	owner_.Player().SyncEntityToGameState(self_entity);
 
-	if (s_debug_level >= 1) {
-		LOG_DEBUG(MOD_MAIN, "Added self to entity list: {} (ID: {})", self_entity.name, MySpawnId());
+	if (EverQuest::s_debug_level >= 1) {
+		LOG_DEBUG(MOD_MAIN, "Added self to entity list: {} (ID: {})", self_entity.name, owner_.MySpawnId());
 	}
 
 	// Extract spell gems and spellbook from PlayerProfile
 	// Titanium offsets: spell_book at 2312 (400 x uint32), mem_spells at 4360 (8 x uint32)
-	if (m_spell_manager) {
+	if (ctx_.spell_manager) {
 		constexpr size_t SPELLBOOK_OFFSET = 2312;
 		constexpr size_t MEM_SPELLS_OFFSET = 4360;
 		constexpr size_t SPELLBOOK_SIZE = 400;
@@ -604,7 +604,7 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 			for (size_t i = 0; i < SPELLBOOK_SIZE; ++i) {
 				spellbook[i] = p.GetUInt32(base + SPELLBOOK_OFFSET + i * 4);
 			}
-			m_spell_manager->setSpellbook(spellbook.data(), SPELLBOOK_SIZE);
+			ctx_.spell_manager->setSpellbook(spellbook.data(), SPELLBOOK_SIZE);
 
 			// Count non-empty spellbook entries for debug
 			size_t scribed_count = 0;
@@ -613,7 +613,7 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 					scribed_count++;
 				}
 			}
-			if (s_debug_level >= 1) {
+			if (EverQuest::s_debug_level >= 1) {
 				LOG_DEBUG(MOD_SPELL, "Loaded {} spells from spellbook", scribed_count);
 			}
 		}
@@ -624,13 +624,13 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 			for (size_t i = 0; i < SPELL_GEM_COUNT; ++i) {
 				mem_spells[i] = p.GetUInt32(base + MEM_SPELLS_OFFSET + i * 4);
 			}
-			m_spell_manager->setSpellGems(mem_spells.data(), SPELL_GEM_COUNT);
+			ctx_.spell_manager->setSpellGems(mem_spells.data(), SPELL_GEM_COUNT);
 
-			if (s_debug_level >= 1) {
+			if (EverQuest::s_debug_level >= 1) {
 				LOG_DEBUG(MOD_SPELL, "Memorized spells:");
 				for (size_t i = 0; i < SPELL_GEM_COUNT; ++i) {
 					if (mem_spells[i] != 0xFFFFFFFF && mem_spells[i] != 0) {
-						const EQ::SpellData* spell = m_spell_manager->getSpell(mem_spells[i]);
+						const EQ::SpellData* spell = ctx_.spell_manager->getSpell(mem_spells[i]);
 						std::string name = spell ? spell->name : "Unknown";
 						LOG_DEBUG(MOD_SPELL, "  Gem {}: {} (ID {})", i + 1, name, mem_spells[i]);
 					}
@@ -641,7 +641,7 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 
 	// Extract player buffs from PlayerProfile
 	// Titanium offsets: buffs at 5008, 25 SpellBuff_Struct entries (20 bytes each)
-	if (m_buff_manager) {
+	if (ctx_.buff_manager) {
 		constexpr size_t BUFF_OFFSET = 5008;
 		constexpr size_t BUFF_COUNT = 25;
 		constexpr size_t BUFF_STRUCT_SIZE = 20;
@@ -659,20 +659,20 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 				buffs[i].counters = p.GetUInt32(offset + 12);
 				buffs[i].player_id = p.GetUInt32(offset + 16);
 			}
-			m_buff_manager->setPlayerBuffs(buffs.data(), BUFF_COUNT);
+			ctx_.buff_manager->setPlayerBuffs(buffs.data(), BUFF_COUNT);
 			// T277: and tell the renderer (PublishPlayerBuffs,
 			// eq_player_buffs.cpp). Without
 			// this the buff bar starts every session empty -- eqemu never
 			// sends OP_Buff for a buff that is merely still running.
-			m_player->PublishPlayerBuffs(buffs.data(), BUFF_COUNT);
+			owner_.Player().PublishPlayerBuffs(buffs.data(), BUFF_COUNT);
 
-			if (s_debug_level >= 1) {
+			if (EverQuest::s_debug_level >= 1) {
 				size_t active_count = 0;
 				for (size_t i = 0; i < BUFF_COUNT; ++i) {
 					if (buffs[i].spellid != 0 && buffs[i].spellid != 0xFFFFFFFF && buffs[i].effect_type != 0) {
 						active_count++;
-						if (m_spell_manager) {
-							const EQ::SpellData* spell = m_spell_manager->getSpell(buffs[i].spellid);
+						if (ctx_.spell_manager) {
+							const EQ::SpellData* spell = ctx_.spell_manager->getSpell(buffs[i].spellid);
 							std::string name = spell ? spell->name : "Unknown";
 							LOG_DEBUG(MOD_SPELL, "  Buff slot {}: {} (ID {}, duration={})",
 								i, name, buffs[i].spellid, buffs[i].duration);
@@ -685,16 +685,16 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	}
 
 	// Calculate stats from equipment and update
-	UpdateInventoryStats();
+	owner_.UpdateInventoryStats();
 
 	// Publish CharacterInfoChanged event to bridge
-	if (m_bridge) {
+	if (ctx_.bridge) {
 		eqt::state::CharacterInfoChangedData data;
-		data.name = m_character;
-		data.level = m_game_state.player().level();
-		data.className = GetClassName(m_game_state.player().classId());
-		data.deity = GetDeityName(m_game_state.player().deity());
-		m_bridge->pushEvent(eqt::state::GameEvent(
+		data.name = ctx_.character;
+		data.level = ctx_.game_state.player().level();
+		data.className = EverQuest::GetClassName(ctx_.game_state.player().classId());
+		data.deity = EverQuest::GetDeityName(ctx_.game_state.player().deity());
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::CharacterInfoChanged, std::move(data)));
 	}
 }
@@ -705,7 +705,7 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 
 
 
-void EverQuest::ZoneProcessAnimation(const EQ::Net::Packet &p)
+void eqt::zone::ZoneComponent::ZoneProcessAnimation(const EQ::Net::Packet &p)
 {
 	// OP_Animation packet format (T243: was ZoneProcessEmote):
 	// Offset 0-1: Opcode
@@ -720,18 +720,18 @@ void EverQuest::ZoneProcessAnimation(const EQ::Net::Packet &p)
 	uint8_t anim_speed = p.GetUInt8(4);
 	uint8_t anim_id = p.GetUInt8(5);
 
-	if (s_debug_level >= 2 || IsTrackedTarget(spawn_id)) {
+	if (EverQuest::s_debug_level >= 2 || IsTrackedTarget(spawn_id)) {
 		LOG_DEBUG(MOD_ENTITY, "[EMOTE] spawn_id={}, speed={}, anim_id={}", spawn_id, anim_speed, anim_id);
 	}
 
 	// Update entity animation state
-	auto it = m_entities.find(spawn_id);
-	if (it != m_entities.end()) {
+	auto it = ctx_.entities.find(spawn_id);
+	if (it != ctx_.entities.end()) {
 		it->second.animation = anim_id;
 	}
 
 	// Publish animation events via bridge (D17b: bridge is sole path to renderer)
-	if (m_bridge) {
+	if (ctx_.bridge) {
 		// Map animation ID to EQ model animation code
 		std::string animCode;
 		bool loop = false;
@@ -741,8 +741,8 @@ void EverQuest::ZoneProcessAnimation(const EQ::Net::Packet &p)
 		// Read from game state (entity struct) instead of querying the renderer (D17a)
 		uint8_t primaryWeaponSkill = 255;
 		uint8_t secondaryWeaponSkill = 255;
-		auto weaponIt = m_entities.find(spawn_id);
-		if (weaponIt != m_entities.end()) {
+		auto weaponIt = ctx_.entities.find(spawn_id);
+		if (weaponIt != ctx_.entities.end()) {
 			primaryWeaponSkill = weaponIt->second.primary_weapon_skill;
 			secondaryWeaponSkill = weaponIt->second.secondary_weapon_skill;
 		}
@@ -766,8 +766,8 @@ void EverQuest::ZoneProcessAnimation(const EQ::Net::Packet &p)
 		// For the PLAYER, queue these into the combat buffer so they're
 		// processed with proper priority alongside weapon attacks
 		case 10: // Round kick
-			if (spawn_id == MySpawnId()) {
-				m_bridge->pushEvent(eqt::state::GameEvent(
+			if (spawn_id == owner_.MySpawnId()) {
+				ctx_.bridge->pushEvent(eqt::state::GameEvent(
 					eqt::state::GameEventType::CombatSkillAnimation,
 					eqt::state::CombatSkillAnimationData{spawn_id, EQ::ANIM_ROUND_KICK}));
 				LOG_DEBUG(MOD_COMBAT, "Queued round kick animation for player");
@@ -776,8 +776,8 @@ void EverQuest::ZoneProcessAnimation(const EQ::Net::Packet &p)
 			animCode = EQ::ANIM_ROUND_KICK;  // c11
 			break;
 		case 11: // ANIM_KICK
-			if (spawn_id == MySpawnId()) {
-				m_bridge->pushEvent(eqt::state::GameEvent(
+			if (spawn_id == owner_.MySpawnId()) {
+				ctx_.bridge->pushEvent(eqt::state::GameEvent(
 					eqt::state::GameEventType::CombatSkillAnimation,
 					eqt::state::CombatSkillAnimationData{spawn_id, EQ::ANIM_KICK}));
 				LOG_DEBUG(MOD_COMBAT, "Queued kick animation for player");
@@ -786,8 +786,8 @@ void EverQuest::ZoneProcessAnimation(const EQ::Net::Packet &p)
 			animCode = EQ::ANIM_KICK;  // c01 - basic kick
 			break;
 		case 12: // ANIM_BASH
-			if (spawn_id == MySpawnId()) {
-				m_bridge->pushEvent(eqt::state::GameEvent(
+			if (spawn_id == owner_.MySpawnId()) {
+				ctx_.bridge->pushEvent(eqt::state::GameEvent(
 					eqt::state::GameEventType::CombatSkillAnimation,
 					eqt::state::CombatSkillAnimationData{spawn_id, EQ::ANIM_BASH}));
 				LOG_DEBUG(MOD_COMBAT, "Queued bash animation for player");
@@ -796,8 +796,8 @@ void EverQuest::ZoneProcessAnimation(const EQ::Net::Packet &p)
 			animCode = EQ::ANIM_BASH;  // c07 - Shield bash
 			break;
 		case 13: // Tiger Claw / Eagle Strike (rapid strikes)
-			if (spawn_id == MySpawnId()) {
-				m_bridge->pushEvent(eqt::state::GameEvent(
+			if (spawn_id == owner_.MySpawnId()) {
+				ctx_.bridge->pushEvent(eqt::state::GameEvent(
 					eqt::state::GameEventType::CombatSkillAnimation,
 					eqt::state::CombatSkillAnimationData{spawn_id, EQ::ANIM_TIGER_STRIKE}));
 				LOG_DEBUG(MOD_COMBAT, "Queued tiger claw/eagle strike animation for player");
@@ -806,8 +806,8 @@ void EverQuest::ZoneProcessAnimation(const EQ::Net::Packet &p)
 			animCode = EQ::ANIM_TIGER_STRIKE;  // t08
 			break;
 		case 14: // Flying kick
-			if (spawn_id == MySpawnId()) {
-				m_bridge->pushEvent(eqt::state::GameEvent(
+			if (spawn_id == owner_.MySpawnId()) {
+				ctx_.bridge->pushEvent(eqt::state::GameEvent(
 					eqt::state::GameEventType::CombatSkillAnimation,
 					eqt::state::CombatSkillAnimationData{spawn_id, EQ::ANIM_FLYING_KICK}));
 				LOG_DEBUG(MOD_COMBAT, "Queued flying kick animation for player");
@@ -816,8 +816,8 @@ void EverQuest::ZoneProcessAnimation(const EQ::Net::Packet &p)
 			animCode = EQ::ANIM_FLYING_KICK;  // t07
 			break;
 		case 15: // Dragon Punch
-			if (spawn_id == MySpawnId()) {
-				m_bridge->pushEvent(eqt::state::GameEvent(
+			if (spawn_id == owner_.MySpawnId()) {
+				ctx_.bridge->pushEvent(eqt::state::GameEvent(
 					eqt::state::GameEventType::CombatSkillAnimation,
 					eqt::state::CombatSkillAnimationData{spawn_id, EQ::ANIM_DRAGON_PUNCH}));
 				LOG_DEBUG(MOD_COMBAT, "Queued dragon punch animation for player");
@@ -833,10 +833,10 @@ void EverQuest::ZoneProcessAnimation(const EQ::Net::Packet &p)
 			// For the PLAYER, we need to integrate this with the combat buffer system
 			// so that attack animations take priority over damage reactions when the
 			// player is both attacking and being attacked simultaneously
-			if (spawn_id == MySpawnId()) {
+			if (spawn_id == owner_.MySpawnId()) {
 				// Queue received damage into player's combat buffer instead of playing immediately
 				// This allows the buffer processing to decide attack vs damage priority
-				m_bridge->pushEvent(eqt::state::GameEvent(
+				ctx_.bridge->pushEvent(eqt::state::GameEvent(
 					eqt::state::GameEventType::ReceivedDamageAnimation,
 					eqt::state::ReceivedDamageAnimationData{spawn_id}));
 				LOG_DEBUG(MOD_COMBAT, "Queued received damage animation for player (will process with combat buffer)");
@@ -984,9 +984,9 @@ void EverQuest::ZoneProcessAnimation(const EQ::Net::Packet &p)
 			data.animName = animCode;
 			data.loop = loop;
 			data.playThrough = playThrough;
-			m_bridge->pushEvent(eqt::state::GameEvent(
+			ctx_.bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::EntityAnimationEvent, std::move(data)));
-			if (s_debug_level >= 2 || IsTrackedTarget(spawn_id)) {
+			if (EverQuest::s_debug_level >= 2 || IsTrackedTarget(spawn_id)) {
 				LOG_DEBUG(MOD_ENTITY, "[EMOTE] Set animation '{}' on spawn_id={} (anim_id={}, weaponSkill={})",
 					animCode, spawn_id, anim_id, primaryWeaponSkill);
 			}
@@ -1000,7 +1000,7 @@ void EverQuest::ZoneProcessAnimation(const EQ::Net::Packet &p)
 
 
 
-void EverQuest::ZoneProcessGuildMOTD(const EQ::Net::Packet &p)
+void eqt::zone::ZoneComponent::ZoneProcessGuildMOTD(const EQ::Net::Packet &p)
 {
 	LOG_DEBUG(MOD_ZONE, "Received guild MOTD");
 
@@ -1011,10 +1011,10 @@ void EverQuest::ZoneProcessGuildMOTD(const EQ::Net::Packet &p)
 		m_server_filter_sent = true;
 	}
 
-	if (!m_game_state.world().isClientReady()) {
-		SetLoadingPhase(LoadingPhase::ZONE_PLAYER_READY, "Finalizing connection...");
+	if (!ctx_.game_state.world().isClientReady()) {
+		owner_.SetLoadingPhase(LoadingPhase::ZONE_PLAYER_READY, "Finalizing connection...");
 		ZoneSendClientReady();
-		m_game_state.world().setClientReady(true);  // T286: only store
+		ctx_.game_state.world().setClientReady(true);  // T286: only store
 
 		// Note: We don't start the update loop here - we wait for our first ClientUpdate
 		// which confirms the server has our position. StartUpdateLoop() is called in
@@ -1028,7 +1028,7 @@ void EverQuest::ZoneProcessGuildMOTD(const EQ::Net::Packet &p)
 
 
 
-void EverQuest::CheckZoneRequestPhaseComplete()
+void eqt::zone::ZoneComponent::CheckZoneRequestPhaseComplete()
 {
 	// Check if we've received all expected responses from Zone Request phase
 	// We need to have received:
@@ -1044,7 +1044,7 @@ void EverQuest::CheckZoneRequestPhaseComplete()
 	    m_guild_tribute_count > 0 &&
 	    !m_req_client_spawn_sent) {
 
-		SetLoadingPhase(LoadingPhase::ZONE_REQUEST_PHASE);
+		owner_.SetLoadingPhase(LoadingPhase::ZONE_REQUEST_PHASE);
 		LOG_INFO(MOD_ZONE, "Zone Request phase complete, sending ReqClientSpawn");
 
 		// Move to Player Spawn Request phase

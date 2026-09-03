@@ -1145,7 +1145,7 @@ EQ::Net::DynamicPacket CharInventoryPacket(const std::vector<std::string>& items
 }
 
 // T282: processItemPacket() is only ever handed a packet that still carries
-// its 2-byte OPCODE -- EverQuest::DispatchZonePacket() passes the dispatched
+// its 2-byte OPCODE -- ZoneComponent::DispatchZonePacket() passes the dispatched
 // packet straight through, and the loot path forwards the same one. This
 // helper used to omit it, which hid a 2-byte misalignment in the parse
 // (instance field 0, the stack count, was the only casualty).

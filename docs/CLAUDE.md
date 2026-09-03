@@ -156,7 +156,7 @@ Audio system uses client internal coordinates directly (no transformation).
 
 - **Player and NPC headings are NOT handled identically, and that is correct.**
   The player's own heading from PlayerProfile gets a `90 - server_heading_deg`
-  flip (`EverQuest::ZoneProcessPlayerProfile` in `src/client/eq_zone_entry.cpp`,
+  flip (`eqt::zone::ZoneComponent::ZoneProcessPlayerProfile` in `src/client/zone/zone_entry.cpp`,
   see the load-bearing comment there); other
   entities' headings from spawn packets do not (`src/client/entities/entities_component.cpp`,
   which applies its own extra `/4.0f` instead). **Players and NPCs do not share
