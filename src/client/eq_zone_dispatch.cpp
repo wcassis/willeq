@@ -196,7 +196,7 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 		ZoneProcessHPUpdate(p);
 		break;
 	case HC_OP_ChannelMessage:
-		ZoneProcessChannelMessage(p);
+		m_chat->ZoneProcessChannelMessage(p);
 		break;
 	case HC_OP_WearChange:
 		ZoneProcessWearChange(p);
@@ -246,10 +246,10 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 		ZoneProcessBuff(p);
 		break;
 	case HC_OP_ColoredText:
-		ZoneProcessColoredText(p);
+		m_chat->ZoneProcessColoredText(p);
 		break;
 	case HC_OP_FormattedMessage:
-		ZoneProcessFormattedMessage(p);
+		m_chat->ZoneProcessFormattedMessage(p);
 		break;
 	case HC_OP_PlayerStateAdd:
 		ZoneProcessPlayerStateAdd(p);
@@ -271,7 +271,7 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 		break;
 	case HC_OP_Emote:
 		// T243: text emote broadcast ("Testchar waves at ...")
-		ZoneProcessEmote(p);
+		m_chat->ZoneProcessEmote(p);
 		break;
 	
 	// Combat-related opcodes
@@ -458,7 +458,7 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 		ZoneProcessRequestClientZoneChange(p);
 		break;
 	case HC_OP_SimpleMessage:
-		ZoneProcessSimpleMessage(p);
+		m_chat->ZoneProcessSimpleMessage(p);
 		break;
 	case HC_OP_TargetHoTT:
 		// Target's target information

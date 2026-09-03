@@ -724,7 +724,7 @@ bool EverQuest::ActivateHotbarCommandSlot(eqt::HotbarSlotType type, const std::s
 			AddChatSystemMessage("Hotbar slot has no command");
 			return false;
 		}
-		ProcessChatInput(text);
+		m_chat->ProcessChatInput(text);
 		return true;
 	case eqt::HotbarSlotType::Combat:
 		if (!m_combat_manager) return false;

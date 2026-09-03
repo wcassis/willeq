@@ -357,7 +357,7 @@ void EverQuest::ProcessBridgeIntents() {
 				LOG_INFO(MOD_ZONE, "Zoning {}", i.enabled ? "enabled" : "disabled");
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::ChatSubmitIntent>) {
-				ProcessChatInput(i.text);
+				m_chat->ProcessChatInput(i.text);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::ReadItemIntent>) {
 				RequestReadBook(i.filename, i.type);

@@ -55,7 +55,7 @@ struct Harness {
     std::vector<std::string> fallbackSeen;  // cmd_line without its leading '/'
     Harness() { eq.setBridge(&bridge); }
     void installFallback() {
-        eq.SetUnrecognizedCommandFallback([this](const std::string& cmdLine) {
+        eq.Chat().SetUnrecognizedCommandFallback([this](const std::string& cmdLine) {
             fallbackSeen.push_back(cmdLine);
             return true;
         });

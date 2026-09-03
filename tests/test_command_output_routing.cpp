@@ -101,7 +101,7 @@ protected:
 
     // The user typing into the chat window.
     std::vector<std::string> Type(const std::string& line) {
-        client().ProcessChatInput(line);
+        client().Chat().ProcessChatInput(line);
         return DrainSystemMessages(m_bridge);
     }
 
@@ -146,7 +146,7 @@ TEST_F(CommandOutputRouting, StdoutRoutingIsUnchangedForHeadlessAndScriptRuns) {
     ApplicationCommandOutputTestPeer::processor(m_app).setOutputRenderer(&console);
 
     testing::internal::CaptureStdout();
-    client().ProcessChatInput("/tell");
+    client().Chat().ProcessChatInput("/tell");
     std::string out = testing::internal::GetCapturedStdout();
 
     EXPECT_NE(out.find("Usage:"), std::string::npos)
