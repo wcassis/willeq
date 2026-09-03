@@ -110,6 +110,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_rdp_component)
 ENDIF()
 
+# L03 (Batch L, refactor/L03_overlays_component.md): the OverlaysComponent
+# extracted from IrrlichtRenderer. Same bare, never-Init()'d IrrlichtRenderer
+# idiom as test_rdp_component above.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_overlays_component
+        test_overlays_component.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_overlays_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_overlays_component GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_overlays_component)
+ENDIF()
+
 # T310 Leg A: the first-person camera tunables (/fpcam, --fpcam). Same bare,
 # never-Init()'d IrrlichtRenderer idiom as test_irrlicht_camera_command above,
 # plus the catalog gate and Application::parseArguments -- so ONE binary covers

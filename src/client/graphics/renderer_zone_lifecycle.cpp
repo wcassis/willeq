@@ -310,7 +310,7 @@ void IrrlichtRenderer::unloadZone() {
     vertexAnimatedMeshes_.clear();
 
     // Clear zone line visualization boxes
-    clearZoneLineBoundingBoxes();
+    overlays_->clearZoneLineBoundingBoxes();
 
     // Clear constrained texture cache to free old zone textures from driver
     if (constrainedTextureCache_) {

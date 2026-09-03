@@ -123,7 +123,7 @@ This table and that plan must agree; change both together.
 
 ## Renderer — IrrlichtRenderer class (`include/client/graphics/irrlicht_renderer.h`)
 
-`irrlicht_renderer.cpp` + 23 `renderer_*.cpp` TUs (J11 split the core), plus
+`irrlicht_renderer.cpp` + 21 `renderer_*.cpp` TUs (J11 split the core), plus
 the components Batch L extracts.
 
 Batch L (`refactor/L_renderer_component_extraction.md`) is doing to
@@ -136,6 +136,7 @@ component below.
 | Component | Header | TU |
 |---|---|---|
 | `EQT::Graphics::RdpComponent` | `include/client/graphics/rdp/rdp_component.h` | `src/client/graphics/rdp/rdp_component.cpp` |
+| `EQT::Graphics::OverlaysComponent` | `include/client/graphics/overlays/overlays_component.h` | `src/client/graphics/overlays/overlays_component.cpp`, `src/client/graphics/overlays/overlays_hud_env.cpp` |
 
 | TU | Lines | Contents |
 |---|---|---|
@@ -145,14 +146,14 @@ component below.
 | renderer_zone_draw.cpp | 1,155 | createZoneMesh, sorted/portal zone drawing, region meshes, VBO helpers |
 | renderer_zone_load_env.cpp | 1,139 | loadZoneStep10_Sky, 11_Env, 12_Lights, 12b_Simulation, 13_Cleanup (split from renderer_zone_load.cpp, T166) |
 | renderer_sim_bridge.cpp | 1,113 | SimulationWorker marshaling: buildSimulationZoneData, postSimulationInput, applySimulationOutput (split by lifetime contract, T116) |
-| renderer_overlays.cpp | 1,042 | Map/navmesh overlays, target outline/selection, targeting/LOS, zone-line overlay, FPS |
+| src/client/graphics/overlays/overlays_component.cpp | 1,057 | `EQT::Graphics::OverlaysComponent` — map/navmesh overlays, target outline/selection, mouse targeting/LOS, zone-line overlay and bounding boxes, FPS counter. Extracted from IrrlichtRenderer by L03 (Batch L). Header `include/client/graphics/overlays/overlays_component.h` |
 | renderer_zone_load.cpp | 993 | loadZoneSequential driver + the remaining per-step methods with ZoneLoadContext (Batch G01; split T166) |
 | src/client/graphics/irrlicht_renderer.cpp | 908 | Core after J11: ctor/dtor, run(), saveScreenshot, sky/door/world-object façades, player/vision state, createEntityRenderer, diagnostics setters |
 | renderer_zone_stream.cpp | 873 | Lazy/background mesh load pipeline, progressive load, PVS neighborhood, deferred-entity pickup (T111/T210) |
 | renderer_init.cpp | 757 | J11: init/shutdown, loading screen (initLoadingScreen, loadGlobalAssets, show/hideLoadingScreen) |
 | renderer_zone_lifecycle.cpp | 739 | unloadZone (retains persistent EQE1 archives, T214), setZoneEnvironment, placeholder build/destroy, instant scene, zone-ready state |
 | renderer_effects.cpp | 697 | Fire-glow icospheres, EQE1 archive loading |
-| renderer_hud_env.cpp | 643 | J11: fog setup, loading-screen draw, environmental display settings, HUD setup/update, paperdoll |
+| src/client/graphics/overlays/overlays_hud_env.cpp | 653 | `EQT::Graphics::OverlaysComponent` (second TU) — fog setup, loading-screen draw, environmental display settings, HUD setup/update, inventory paperdoll |
 | renderer_slash_commands.cpp | 592 | J11: `IrrlichtRenderer::processSlashCommand()` — the registry-3 if-chain |
 | renderer_zone_load_objects.cpp | 578 | loadZoneStep6_Objects, 7_Doors, 9_Collision (split from renderer_zone_load.cpp, T166) |
 | renderer_debug.cpp | 573 | Debug toggles/cycles, debug shader swaps |

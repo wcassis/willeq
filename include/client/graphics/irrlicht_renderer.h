@@ -51,6 +51,7 @@
 #include "client/input/hotkey_manager.h"
 
 #include "client/graphics/renderer_context.h"
+#include "client/graphics/overlays/overlays_component.h"
 #ifdef WITH_RDP
 #include "client/graphics/rdp/rdp_server.h"
 #include "client/graphics/rdp/rdp_input_handler.h"
@@ -506,7 +507,7 @@ public:
         if (camera_) {
             camera_->setFarValue(std::max(renderDistance_, SKY_FAR_PLANE));
         }
-        setupFog();
+        overlays_->setupFog();
         // Sync render distance to entity renderer
         if (entityRenderer_) {
             entityRenderer_->setRenderDistance(renderDistance_);
@@ -527,7 +528,7 @@ public:
     void setFogThickness(float thickness) {
         if (isLoading()) return;
         fogThickness_ = thickness;
-        setupFog();
+        overlays_->setupFog();
     }
     float getFogThickness() const { return fogThickness_; }
 
@@ -538,6 +539,10 @@ public:
     // L01 (Batch L): the shared-state bundle the extracted renderer
     // components bind by reference. See renderer_context.h.
     RendererContext& Context() { return ctx_; }
+
+    // L03 (Batch L): the overlays component. In-renderer callers reach the
+    // family through overlays_->; this accessor is for tests.
+    OverlaysComponent& Overlays() { return *overlays_; }
     irr::gui::IGUIEnvironment* getGUIEnvironment() { return guienv_; }
 
     // Get entity renderer
@@ -562,12 +567,17 @@ public:
     // each site that invoked them already pushes the equivalent bridge
     // intent (TargetIntent, LootCorpseIntent, VendorToggleIntent, ...).
 
-    // Current target management
-    void setCurrentTarget(uint16_t spawnId, const std::string& name, uint8_t hpPercent = 100, uint8_t level = 0);
-    void setCurrentTargetInfo(const TargetInfo& info);
-    void clearCurrentTarget();
+    // Current target management. L03 (Batch L): the bodies moved to
+    // OverlaysComponent; these three stay as one-line forwarders because
+    // irrlicht_bridge.cpp calls them and must not learn a component exists
+    // (the K11 rule) -- setCurrentTarget/clearCurrentTarget are also the
+    // IOutputRenderer-shaped public surface ConsoleRenderer/NullRenderer
+    // implement. getCurrentTargetInfo() had zero callers tree-wide and moved
+    // with currentTargetInfo_, so it was deleted (Mechanism 5).
+    void setCurrentTarget(uint16_t spawnId, const std::string& name, uint8_t hpPercent = 100, uint8_t level = 0) { overlays_->setCurrentTarget(spawnId, name, hpPercent, level); }
+    void setCurrentTargetInfo(const TargetInfo& info) { overlays_->setCurrentTargetInfo(info); }
+    void clearCurrentTarget() { overlays_->clearCurrentTarget(); }
     uint16_t getCurrentTargetId() const { return currentTargetId_; }
-    const TargetInfo& getCurrentTargetInfo() const { return currentTargetInfo_; }
 
     // Collision map for player mode movement. shared_ptr<const HCMap>
     // (P35): shares ownership with the game thread's m_zone_map and
@@ -577,7 +587,7 @@ public:
     void setCollisionMap(std::shared_ptr<const HCMap> map) { if (isLoading()) return; collisionMap_ = std::move(map); }
 
     // Navmesh pathfinder for navmesh overlay visualization
-    void setNavmesh(PathfinderNavmesh* navmesh) { if (isLoading()) return; navmesh_ = navmesh; }
+    void setNavmesh(PathfinderNavmesh* navmesh) { overlays_->setNavmesh(navmesh); }
 
     // Clip distance (camera far plane) - for constrained rendering mode
     void setClipDistance(float distance);
@@ -614,24 +624,20 @@ public:
         // Immediately redraw loading screen so progress updates are visible
         // during blocking operations like LoadZoneGraphics()
         if (loadingScreenVisible_) {
-            drawLoadingScreen(progress, text);
+            overlays_->drawLoadingScreen(progress, text);
         }
     }
 
     // Loading screen title (e.g., "Connecting...", "Loading Zone...")
-    void setLoadingTitle(const std::wstring& title) {
-        loadingTitle_ = title;
-    }
+    void setLoadingTitle(const std::wstring& title) { overlays_->setLoadingTitle(title); }
 
-    // Zone line debugging
-    void setZoneLineDebug(bool inZoneLine, uint16_t targetZoneId = 0, const std::string& debugText = "");
-    bool isInZoneLine() const { return inZoneLine_; }
-
-    // Zone line bounding box visualization
-    void setZoneLineBoundingBoxes(const std::vector<EQT::ZoneLineBoundingBox>& boxes);
-    void clearZoneLineBoundingBoxes();
-    void toggleZoneLineVisualization();
-    bool isZoneLineVisualizationEnabled() const { return showZoneLineBoxes_; }
+    // Zone line bounding box visualization. L03: implemented by
+    // OverlaysComponent; this one stays as a forwarder because
+    // application_zone_loading.cpp calls it (the K11 rule). The renderer's
+    // own callers of clearZoneLineBoundingBoxes()/toggleZoneLineVisualization()
+    // were retargeted to overlays_->. setZoneLineDebug(), isInZoneLine() and
+    // isZoneLineVisualizationEnabled() had zero callers tree-wide (Mechanism 5).
+    void setZoneLineBoundingBoxes(const std::vector<EQT::ZoneLineBoundingBox>& boxes) { overlays_->setZoneLineBoundingBoxes(boxes); }
     bool isInventoryOpen() const;
     void setCharacterInfo(const std::wstring& name, int level, const std::wstring& className);
     void setCharacterDeity(const std::wstring& deity);
@@ -798,18 +804,11 @@ private:
     void loadZoneStep12b_Simulation(ZoneLoadContext& ctx);
     void loadZoneStep13_Cleanup(ZoneLoadContext& ctx);
 
-    void setupFog();
-    void setupHUD();
-    void updateHUD();
-    void applyEnvironmentalDisplaySettings();  // Apply saved display settings to environmental systems
     // advanceDeferredInit() folded into P11_Env_* phases of advanceBackgroundZoneLoad()
     void createZoneMesh();
     bool rebuildRegionMesh(size_t regionIdx);  // Build mesh for a single region
     // updateZoneLightColors() removed — vision/weather modifiers now applied in SimulationWorker
     void updateObjectLightColors(float deltaTime = 0.0f);  // Update object light colors based on weather + fire flicker
-
-    // Loading screen
-    void drawLoadingScreen(float progress, const std::wstring& stageText);
 
     // Player mode movement and collision
     void updatePlayerMovement(float deltaTime);
@@ -818,11 +817,6 @@ private:
     float findGroundZ(float x, float y, float currentZ);
     // PVS visibility check for a BSP region (used at insertion time for objects/lights)
     bool isRegionPvsVisible(size_t regionIdx) const;
-    // Mouse targeting
-    void handleMouseTargeting(int clickX, int clickY);
-    uint16_t getEntityAtScreenPos(int screenX, int screenY);
-    bool checkEntityLOS(const irr::core::vector3df& cameraPos, const irr::core::vector3df& entityPos);
-
     irr::IrrlichtDevice* device_ = nullptr;
     irr::video::IVideoDriver* driver_ = nullptr;
     irr::scene::ISceneManager* smgr_ = nullptr;
@@ -1156,6 +1150,13 @@ private:
     // bodies use public members only, and friendship is not inherited).
     friend class ReplyToTellKeyTest;
 
+    // L03 (Batch L): OverlaysComponent reaches thirty IrrlichtRenderer
+    // members that are shared with another family but outside the
+    // RendererContext core (owner_.X_), and six IrrlichtRenderer methods
+    // that stayed behind (owner_.Foo()). It names no IrrlichtRenderer
+    // static, so only the first axis of K13 correction (ii) is live.
+    friend class OverlaysComponent;
+
     // PVS neighborhood cache: suppress onPvsRegionChanged() when moving within
     // a cluster of adjacent regions. Only fire when leaving the neighborhood.
     std::unordered_set<size_t> pvsNeighborhood_;  // regions within K portal hops of anchor
@@ -1318,7 +1319,6 @@ private:
     size_t loadedEntityCount_ = 0;  // Number of entities fully loaded so far
     float loadingProgress_ = 0.0f;  // Loading progress for zone transitions (0.0 - 1.0)
     std::wstring loadingText_ = L"Initializing...";  // Loading stage text
-    std::wstring loadingTitle_ = L"EverQuest";  // Loading screen title
     bool wireframeMode_ = false;
     bool pendingScreenshot_ = false;  // Deferred to after render, before swap
     bool hudEnabled_ = true;
@@ -1389,26 +1389,12 @@ private:
     // HUD elements
     irr::gui::IGUIStaticText* hudText_ = nullptr;
     irr::gui::IGUIStaticText* hotkeysText_ = nullptr;  // Hotkey hints in upper right
-    irr::gui::IGUIStaticText* headingDebugText_ = nullptr;  // Heading debug info (right side)
     float hudAnimTimer_ = 0.0f;  // Timer for HUD animations (auto attack indicator)
 
     // Performance: HUD dirty tracking to avoid rebuilding every frame
     // K15 (B034): cachedHudText_ / cachedHotkeysText_ / cachedHeadingDebugText_
     // deleted -- zero references; the dirty tracking below is what is live.
-    // Cached state values to detect changes
-    struct HudCachedState {
-        int fps = 0;
-        int playerX = 0, playerY = 0, playerZ = 0;
-        size_t entityCount = 0;
-        size_t modeledEntityCount = 0;
-        uint16_t targetId = 0;
-        uint8_t targetHpPercent = 0;
-        bool wireframeMode = false;
-        bool oldModels = true;
-        std::string cameraMode;
-        std::string zoneName;
-    };
-    HudCachedState hudCachedState_;
+    // L03: HudCachedState and hudCachedState_ moved to OverlaysComponent.
 
     // FPS tracking
     int currentFps_ = 0;
@@ -1436,9 +1422,6 @@ private:
     // Target selection
     uint16_t currentTargetId_ = 0;
     std::string currentTargetName_;
-    uint8_t currentTargetHpPercent_ = 100;
-    uint8_t currentTargetLevel_ = 0;
-    TargetInfo currentTargetInfo_;  // Extended target info for HUD display
 
     // Irrlicht-based collision (using zone geometry directly)
     // Legacy meta selectors — only used by HCMap fallback/debug path (no BSP)
@@ -1501,73 +1484,18 @@ private:
     void drawCollisionDebugLines(float deltaTime);
     void clearCollisionDebugLines();
 
-    // Target selection visualization
-#ifdef EQT_HAS_GLES2
-    void drawTargetOutline();       // Stencil-based silhouette outline (GLES2)
-#else
-    void drawTargetSelectionBox();  // Wireframe bounding box (desktop GL)
-#endif
-
-    // Zone line debugging
-    bool inZoneLine_ = false;
-    uint16_t zoneLineTargetZoneId_ = 0;
-    std::string zoneLineDebugText_;
-    void drawZoneLineOverlay();
-
-    // Zone line bounding box visualization
-    struct ZoneLineBoxNode {
-        irr::scene::IMeshSceneNode* node = nullptr;
-        uint16_t targetZoneId = 0;
-        bool isProximityBased = false;
-        // Store original EQ coords for recreating scene nodes
-        float minX = 0, minY = 0, minZ = 0;
-        float maxX = 0, maxY = 0, maxZ = 0;
-    };
-    std::vector<ZoneLineBoxNode> zoneLineBoxNodes_;
-    bool showZoneLineBoxes_ = false;  // Toggle with Ctrl+Z or /zone
-    bool zoneLineBoxesCreated_ = false;  // Whether scene nodes exist
-    void createZoneLineBoxMesh(const EQT::ZoneLineBoundingBox& box);
-    void createZoneLineBoxMeshForNode(const EQT::ZoneLineBoundingBox& box, ZoneLineBoxNode& boxNode);
-    void removeZoneLineBoxSceneNodes();
-    void recreateZoneLineBoxSceneNodes();
-    void drawZoneLineBoxLabels();
-
-    // Map overlay visualization (Ctrl+M)
+    // L03 (Batch L): the target highlight, the zone-line debug/bounding-box
+    // visualization, the map overlay and the navmesh overlay -- their draw
+    // methods, their nested triangle/box types and their single-family state
+    // -- moved to OverlaysComponent. Only the members the frame family also
+    // touches stayed here (Batch K Mechanism 3); the overlay TUs reach them
+    // as owner_.X_.
     bool showMapOverlay_ = false;
-    glm::vec3 lastMapOverlayUpdatePos_ = glm::vec3(0.0f);
-    float mapOverlayRadius_ = 100.0f;  // Radius around player to show
     int mapOverlayRotation_ = 0;       // Rotation index: 0=0°, 1=90°, 2=180°, 3=270° around Y axis
     bool mapOverlayMirrorX_ = false;   // Mirror placeables across YZ plane (negate X)
-    struct MapOverlayTriangle {
-        irr::core::vector3df v1, v2, v3;
-        irr::video::SColor color;  // Based on height and normal
-        bool isPlaceable;          // True if from placeable object (rotation applies)
-    };
-    std::vector<MapOverlayTriangle> mapOverlayTriangles_;
-    void toggleMapOverlay();
-    void updateMapOverlay(const glm::vec3& playerPos);
-    void drawMapOverlay();
-    irr::video::SColor getMapOverlayColor(float z, float minZ, float maxZ, const glm::vec3& normal) const;
-
-    // Navmesh overlay visualization (Ctrl+N)
-    PathfinderNavmesh* navmesh_ = nullptr;
     bool showNavmeshOverlay_ = false;
-    glm::vec3 lastNavmeshOverlayUpdatePos_ = glm::vec3(0.0f);
-    float navmeshOverlayRadius_ = 100.0f;  // Radius around player to show
-    int navmeshOverlayRotation_ = 0;       // Rotation index: 0=0°, 1=90°, 2=180°, 3=270° around Y axis
+    int navmeshOverlayRotation_ = 0;   // Rotation index: 0=0°, 1=90°, 2=180°, 3=270° around Y axis
     bool navmeshOverlayMirrorX_ = false;   // Mirror across YZ plane (negate X)
-    struct NavmeshOverlayTriangle {
-        irr::core::vector3df v1, v2, v3;
-        irr::video::SColor color;  // Based on area type
-    };
-    std::vector<NavmeshOverlayTriangle> navmeshOverlayTriangles_;
-    void toggleNavmeshOverlay();
-    void updateNavmeshOverlay(const glm::vec3& playerPos);
-    void drawNavmeshOverlay();
-    irr::video::SColor getNavmeshAreaColor(uint8_t areaType) const;
-
-    // FPS counter (centered at top of screen)
-    void drawFPSCounter();
 
     // U07c3: WindowManager deleted — inventoryManager remains for bridge data access
 
@@ -1586,20 +1514,16 @@ private:
     // open (updatePaperdollForFrame(), called from the frame loop) and
     // only on markDirty() triggers, never per frame — see
     // refactor/T60_paperdoll_restore.md's Review.
+    // L03: the doll itself stays (renderer_entities and the frame family
+    // reach it); its bookkeeping members and both methods moved to
+    // OverlaysComponent.
     std::unique_ptr<eqt::ui::CharacterModelView> characterModelView_;
-    bool paperdollInitAttempted_ = false;  // Avoid retrying init() every frame if it failed once
-    uint16_t paperdollLastRaceId_ = 0;
-    uint8_t paperdollLastGender_ = 0;
-    EQT::Graphics::EntityAppearance paperdollLastAppearance_{};
-    bool paperdollHasAppearance_ = false;
 
     // T319: see handleActionResult()/requestChatPrefill()/takeChatPrefill()
     // above. Written on the game thread, read on the render thread; every
     // access goes through those accessors.
     mutable std::mutex chatPrefillMutex_;
     std::optional<std::string> pendingChatPrefill_;
-    void ensurePaperdollInitialized();
-    void updatePaperdollForFrame();
 public:
     // U03d+: Cached data from bridge events for new static UI panels.
     // Public so IrrlichtBridge can update them directly.
@@ -1627,11 +1551,9 @@ public:
     // 0-21) — an equip-slot display change usually means the entity's
     // appearance changed too, so the doll should re-render next time it's
     // visible. Safe to call even if the doll doesn't exist yet or the
-    // popup is closed (no-op in both cases). Out-of-line (defined in
-    // renderer_hud_env.cpp): CharacterModelView is only forward-declared
-    // here, and this header is included by TUs that don't otherwise need
-    // its full definition.
-    void markPaperdollDirty();
+    // popup is closed (no-op in both cases). L03: a one-line forwarder to
+    // OverlaysComponent, which owns the body (the K11 rule).
+    void markPaperdollDirty() { overlays_->markPaperdollDirty(); }
 private:
 
     // T74: snap camera_ to the player's own eye position/facing. The only
@@ -1863,6 +1785,11 @@ private:
     // in the IrrlichtRenderer ctor body; see renderer_init.cpp.
     std::unique_ptr<RdpComponent> rdp_;
 #endif // WITH_RDP
+
+    // L03 (Batch L): the overlays family -- HUD, map/navmesh/zone-line
+    // overlays, mouse targeting, the loading screen, fog and the paperdoll.
+    // Constructed in the IrrlichtRenderer ctor body; see renderer_init.cpp.
+    std::unique_ptr<OverlaysComponent> overlays_;
 };
 
 } // namespace Graphics

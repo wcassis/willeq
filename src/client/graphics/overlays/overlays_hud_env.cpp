@@ -1,3 +1,13 @@
+// HUD, fog, loading screen, environment display settings and the inventory
+// paperdoll -- EQT::Graphics::OverlaysComponent (second TU of the family).
+//
+// L03 (Batch L, refactor/L_renderer_component_extraction.md): moved from
+// src/client/graphics/renderer_hud_env.cpp to here, and the bodies rebased
+// from IrrlichtRenderer onto EQT::Graphics::OverlaysComponent. Verbatim --
+// the only edits inside a body are the four substitutions the mechanism
+// allows (ctx_.X, owner_.X_, owner_.Foo(), OverlaysComponent::).
+
+#include "client/graphics/overlays/overlays_component.h"
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/renderer_zone_merge.h"  // ZoneMergeBuffers complete type (unique_ptr member destruction)
 #include "client/willeq_database.h"
@@ -107,8 +117,8 @@ namespace eqt { namespace ui { class WindowManager { public: virtual ~WindowMana
 namespace EQT {
 namespace Graphics {
 
-void IrrlichtRenderer::setupFog() {
-    if (!driver_) {
+void OverlaysComponent::setupFog() {
+    if (!ctx_.driver) {
         return;
     }
 
@@ -117,17 +127,17 @@ void IrrlichtRenderer::setupFog() {
     // - fogStart = renderDistance_ - fogThickness_ (where fade begins)
     // - Everything beyond renderDistance_ is culled, nothing renders there
     // - Fog creates a smooth fade zone at the edge
-    float fogEnd = renderDistance_;
-    float fogStart = renderDistance_ - fogThickness_;
+    float fogEnd = ctx_.renderDistance;
+    float fogStart = ctx_.renderDistance - owner_.fogThickness_;
     fogStart = std::max(0.0f, fogStart);  // Ensure non-negative
 
     // Get fog color from sky renderer if available, otherwise use default
     irr::video::SColor fogColor(255, 128, 128, 160);  // Default: light gray-blue
-    if (skyRenderer_ && skyRenderer_->isInitialized()) {
-        fogColor = skyRenderer_->getRecommendedFogColor();
+    if (ctx_.skyRenderer && ctx_.skyRenderer->isInitialized()) {
+        fogColor = ctx_.skyRenderer->getRecommendedFogColor();
     }
 
-    driver_->setFog(
+    ctx_.driver->setFog(
         fogColor,
         irr::video::EFT_FOG_LINEAR,
         fogStart,
@@ -138,8 +148,8 @@ void IrrlichtRenderer::setupFog() {
     );
 
     // Update shader fog uniforms
-    if (zoneShader_ && zoneShader_->isAvailable()) {
-        zoneShader_->setFog(fogStart, fogEnd,
+    if (ctx_.zoneShader && ctx_.zoneShader->isAvailable()) {
+        ctx_.zoneShader->setFog(fogStart, fogEnd,
                             fogColor.getRed() / 255.0f,
                             fogColor.getGreen() / 255.0f,
                             fogColor.getBlue() / 255.0f,
@@ -147,11 +157,11 @@ void IrrlichtRenderer::setupFog() {
     }
 
     LOG_INFO(MOD_GRAPHICS, "Fog: start={:.0f}, end={:.0f} (renderDistance={:.0f}, fogThickness={:.0f})",
-        fogStart, fogEnd, renderDistance_, fogThickness_);
+        fogStart, fogEnd, ctx_.renderDistance, owner_.fogThickness_);
 }
 
-void IrrlichtRenderer::drawLoadingScreen(float progress, const std::wstring& stageText) {
-    if (!driver_ || !device_) return;
+void OverlaysComponent::drawLoadingScreen(float progress, const std::wstring& stageText) {
+    if (!ctx_.driver || !ctx_.device) return;
 
     // Debug log loading progress (when debug level > 0)
     float clampedProgressForLog = std::max(0.0f, std::min(1.0f, progress));
@@ -164,9 +174,9 @@ void IrrlichtRenderer::drawLoadingScreen(float progress, const std::wstring& sta
     LOG_DEBUG(MOD_GRAPHICS_LOAD, "[Loading] {} - {} ({}%)", titleNarrow, stageTextNarrow, percentComplete);
 
     // Immediately render a frame showing loading progress
-    driver_->beginScene(true, true, irr::video::SColor(255, 20, 20, 40));
+    ctx_.driver->beginScene(true, true, irr::video::SColor(255, 20, 20, 40));
 
-    irr::core::dimension2d<irr::u32> screenSize = driver_->getScreenSize();
+    irr::core::dimension2d<irr::u32> screenSize = ctx_.driver->getScreenSize();
 
     // Progress bar dimensions
     const int barWidth = 400;
@@ -180,23 +190,23 @@ void IrrlichtRenderer::drawLoadingScreen(float progress, const std::wstring& sta
     irr::video::SColor fillColor(255, 80, 120, 200);
 
     // Draw border
-    driver_->draw2DRectangle(borderColor,
+    ctx_.driver->draw2DRectangle(borderColor,
         irr::core::recti(barX - 2, barY - 2, barX + barWidth + 2, barY + barHeight + 2));
 
     // Draw background
-    driver_->draw2DRectangle(bgColor,
+    ctx_.driver->draw2DRectangle(bgColor,
         irr::core::recti(barX, barY, barX + barWidth, barY + barHeight));
 
     // Draw progress fill
     float clampedProgress = std::max(0.0f, std::min(1.0f, progress));
     int fillWidth = static_cast<int>(barWidth * clampedProgress);
     if (fillWidth > 0) {
-        driver_->draw2DRectangle(fillColor,
+        ctx_.driver->draw2DRectangle(fillColor,
             irr::core::recti(barX, barY, barX + fillWidth, barY + barHeight));
     }
 
     // Draw text using built-in font
-    irr::gui::IGUIFont* font = guienv_ ? guienv_->getBuiltInFont() : nullptr;
+    irr::gui::IGUIFont* font = owner_.guienv_ ? owner_.guienv_->getBuiltInFont() : nullptr;
     if (font) {
         // Dynamic title (e.g., "EverQuest", "Connecting...", "Loading Zone...")
         irr::core::dimension2d<irr::u32> titleSize = font->getDimension(loadingTitle_.c_str());
@@ -224,39 +234,39 @@ void IrrlichtRenderer::drawLoadingScreen(float progress, const std::wstring& sta
             irr::video::SColor(255, 255, 255, 255));
     }
 
-    driver_->endScene();
+    ctx_.driver->endScene();
 }
 
-void IrrlichtRenderer::applyEnvironmentalDisplaySettings() {
-    const auto& settings = cachedDisplaySettings_;
-    bool zoneLoaded = !currentZoneName_.empty();
+void OverlaysComponent::applyEnvironmentalDisplaySettings() {
+    const auto& settings = owner_.cachedDisplaySettings_;
+    bool zoneLoaded = !ctx_.currentZoneName.empty();
 
     // --- Particle Manager: toggle atmospheric billboard particles ---
     // ParticleManager is always created (in loadGlobalAssets) for unified fire support.
     // This toggle controls only the atmospheric billboard emitters (dust, pollen, etc.)
-    if (particleManager_) {
-        particleManager_->setEnabled(settings.atmosphericParticles);
+    if (ctx_.particleManager) {
+        ctx_.particleManager->setEnabled(settings.atmosphericParticles);
     }
 
     // Lazily create weather effects if not yet created and particles are available
-    if (!weatherEffects_ && particleManager_) {
+    if (!ctx_.weatherEffects && ctx_.particleManager) {
         LOG_TRACE(MOD_GRAPHICS, "Lazy-creating weather effects controller...");
-        weatherEffects_ = std::make_unique<WeatherEffectsController>(
-            smgr_, driver_, particleManager_.get(), skyRenderer_.get());
-        if (constrainedTextureCache_) {
-            weatherEffects_->setConstrainedTextureCache(constrainedTextureCache_);
+        ctx_.weatherEffects = std::make_unique<WeatherEffectsController>(
+            ctx_.smgr, ctx_.driver, ctx_.particleManager.get(), ctx_.skyRenderer.get());
+        if (ctx_.constrainedTextureCache) {
+            ctx_.weatherEffects->setConstrainedTextureCache(ctx_.constrainedTextureCache);
         }
         LOG_TRACE(MOD_GRAPHICS, "Lazy-initializing weather effects (loading textures)...");
-        if (!weatherEffects_->initialize(config_.eqClientPath)) {
+        if (!ctx_.weatherEffects->initialize(ctx_.config.eqClientPath)) {
             LOG_WARN(MOD_GRAPHICS, "Failed to initialize weather effects controller (lazy)");
         }
-        if (weatherSystem_) {
-            weatherSystem_->addListener(weatherEffects_.get());
+        if (owner_.weatherSystem_) {
+            owner_.weatherSystem_->addListener(ctx_.weatherEffects.get());
         }
         LOG_INFO(MOD_GRAPHICS, "Weather effects created (toggled on via settings)");
     }
 
-    if (particleManager_) {
+    if (ctx_.particleManager) {
         Environment::EffectQuality quality;
         switch (settings.environmentQuality) {
             case eqt::ui::EffectQuality::Off:
@@ -276,74 +286,74 @@ void IrrlichtRenderer::applyEnvironmentalDisplaySettings() {
                 break;
         }
 
-        particleManager_->setQuality(quality);
-        particleManager_->setEnabled(settings.atmosphericParticles);
-        particleManager_->setDensity(settings.environmentDensity);
-        particleManager_->setTypeEnabled(Environment::ParticleType::Ember, settings.fireEffects);
-        particleManager_->setTypeEnabled(Environment::ParticleType::Smoke, settings.fireEffects);
+        ctx_.particleManager->setQuality(quality);
+        ctx_.particleManager->setEnabled(settings.atmosphericParticles);
+        ctx_.particleManager->setDensity(settings.environmentDensity);
+        ctx_.particleManager->setTypeEnabled(Environment::ParticleType::Ember, settings.fireEffects);
+        ctx_.particleManager->setTypeEnabled(Environment::ParticleType::Smoke, settings.fireEffects);
 
         LOG_DEBUG(MOD_GRAPHICS, "Applied particle settings: quality={}, enabled={}, density={}, fire={}",
                  static_cast<int>(quality), settings.atmosphericParticles, settings.environmentDensity, settings.fireEffects);
     }
 
     // Fire effects (light flickering)
-    fireEffectsEnabled_ = settings.fireEffects;
+    ctx_.fireEffectsEnabled = settings.fireEffects;
 
     // --- Boids Manager: lazy create if toggled on ---
-    if (settings.ambientCreatures && !boidsManager_ && smgr_ && driver_) {
-        boidsManager_ = std::make_unique<Environment::BoidsManager>(smgr_, driver_);
-        if (constrainedTextureCache_) boidsManager_->setConstrainedTextureCache(constrainedTextureCache_);  // T124
-        if (!boidsManager_->init(config_.eqClientPath)) {
+    if (settings.ambientCreatures && !ctx_.boidsManager && ctx_.smgr && ctx_.driver) {
+        ctx_.boidsManager = std::make_unique<Environment::BoidsManager>(ctx_.smgr, ctx_.driver);
+        if (ctx_.constrainedTextureCache) ctx_.boidsManager->setConstrainedTextureCache(ctx_.constrainedTextureCache);  // T124
+        if (!ctx_.boidsManager->init(ctx_.config.eqClientPath)) {
             LOG_WARN(MOD_GRAPHICS, "Failed to initialize boids manager (lazy)");
         } else {
             LOG_INFO(MOD_GRAPHICS, "Boids manager created (toggled on via settings)");
         }
-        ensureBoidsTextureGuard();
+        owner_.ensureBoidsTextureGuard();
         if (zoneLoaded) {
-            Environment::ZoneBiome biome = Environment::ZoneBiomeDetector::instance().getBiome(currentZoneName_);
-            if (zoneBoundsValid_) {
-                boidsManager_->onZoneEnter(currentZoneName_, biome,
-                    glm::vec3(zoneBoundsMinX_, zoneBoundsMinY_, -1000.0f),
-                    glm::vec3(zoneBoundsMaxX_, zoneBoundsMaxY_, 1000.0f));
+            Environment::ZoneBiome biome = Environment::ZoneBiomeDetector::instance().getBiome(ctx_.currentZoneName);
+            if (owner_.zoneBoundsValid_) {
+                ctx_.boidsManager->onZoneEnter(ctx_.currentZoneName, biome,
+                    glm::vec3(owner_.zoneBoundsMinX_, owner_.zoneBoundsMinY_, -1000.0f),
+                    glm::vec3(owner_.zoneBoundsMaxX_, owner_.zoneBoundsMaxY_, 1000.0f));
             } else {
-                boidsManager_->onZoneEnter(currentZoneName_, biome);
+                ctx_.boidsManager->onZoneEnter(ctx_.currentZoneName, biome);
             }
         }
     }
 
-    if (boidsManager_) {
+    if (ctx_.boidsManager) {
         int quality = static_cast<int>(settings.environmentQuality);
-        boidsManager_->setQuality(quality);
-        boidsManager_->setEnabled(settings.ambientCreatures);
-        boidsManager_->setDensity(settings.environmentDensity);
+        ctx_.boidsManager->setQuality(quality);
+        ctx_.boidsManager->setEnabled(settings.ambientCreatures);
+        ctx_.boidsManager->setDensity(settings.environmentDensity);
 
         LOG_DEBUG(MOD_GRAPHICS, "Applied boids settings: quality={}, enabled={}, density={}",
                  quality, settings.ambientCreatures, settings.environmentDensity);
     }
 
     // --- Detail Manager: lazy create if toggled on ---
-    if (settings.detailObjectsEnabled && !detailManager_ && smgr_ && driver_) {
-        detailManager_ = std::make_unique<Detail::DetailManager>(smgr_, driver_);
-        detailManager_->setSurfaceMapsPath("data/detail/zones");
-        if (constrainedTextureCache_) {
-            detailManager_->setConstrainedTextureCache(constrainedTextureCache_);
+    if (settings.detailObjectsEnabled && !ctx_.detailManager && ctx_.smgr && ctx_.driver) {
+        ctx_.detailManager = std::make_unique<Detail::DetailManager>(ctx_.smgr, ctx_.driver);
+        ctx_.detailManager->setSurfaceMapsPath("data/detail/zones");
+        if (ctx_.constrainedTextureCache) {
+            ctx_.detailManager->setConstrainedTextureCache(ctx_.constrainedTextureCache);
         }
         LOG_INFO(MOD_GRAPHICS, "Detail manager created (toggled on via settings)");
 
     }
 
-    if (detailManager_) {
-        detailManager_->setEnabled(settings.detailObjectsEnabled);
-        detailManager_->setDensity(settings.detailDensity);
-        detailManager_->setCategoryEnabled(Detail::DetailCategory::Grass, settings.detailGrass);
-        detailManager_->setCategoryEnabled(Detail::DetailCategory::Plants, settings.detailPlants);
-        detailManager_->setCategoryEnabled(Detail::DetailCategory::Rocks, settings.detailRocks);
-        detailManager_->setCategoryEnabled(Detail::DetailCategory::Debris, settings.detailDebris);
+    if (ctx_.detailManager) {
+        ctx_.detailManager->setEnabled(settings.detailObjectsEnabled);
+        ctx_.detailManager->setDensity(settings.detailDensity);
+        ctx_.detailManager->setCategoryEnabled(Detail::DetailCategory::Grass, settings.detailGrass);
+        ctx_.detailManager->setCategoryEnabled(Detail::DetailCategory::Plants, settings.detailPlants);
+        ctx_.detailManager->setCategoryEnabled(Detail::DetailCategory::Rocks, settings.detailRocks);
+        ctx_.detailManager->setCategoryEnabled(Detail::DetailCategory::Debris, settings.detailDebris);
 
-        auto foliageConfig = detailManager_->getFoliageDisturbanceConfig();
+        auto foliageConfig = ctx_.detailManager->getFoliageDisturbanceConfig();
         if (foliageConfig.enabled != settings.reactiveFoliage) {
             foliageConfig.enabled = settings.reactiveFoliage;
-            detailManager_->setFoliageDisturbanceConfig(foliageConfig);
+            ctx_.detailManager->setFoliageDisturbanceConfig(foliageConfig);
         }
 
         LOG_DEBUG(MOD_GRAPHICS, "Applied detail settings: enabled={}, density={:.2f}, grass={}, plants={}, rocks={}, debris={}, reactiveFoliage={}",
@@ -353,53 +363,53 @@ void IrrlichtRenderer::applyEnvironmentalDisplaySettings() {
     }
 
     // --- Tumbleweed Manager: lazy create if toggled on ---
-    if (settings.rollingObjects && !tumbleweedManager_ && smgr_ && driver_) {
-        tumbleweedManager_ = std::make_unique<Environment::TumbleweedManager>(smgr_, driver_);
-        if (!tumbleweedManager_->init()) {
+    if (settings.rollingObjects && !ctx_.tumbleweedManager && ctx_.smgr && ctx_.driver) {
+        ctx_.tumbleweedManager = std::make_unique<Environment::TumbleweedManager>(ctx_.smgr, ctx_.driver);
+        if (!ctx_.tumbleweedManager->init()) {
             LOG_WARN(MOD_GRAPHICS, "Failed to initialize tumbleweed manager (lazy)");
         } else {
             LOG_INFO(MOD_GRAPHICS, "Tumbleweed manager created (toggled on via settings)");
         }
         if (zoneLoaded) {
-            Environment::ZoneBiome biome = Environment::ZoneBiomeDetector::instance().getBiome(currentZoneName_);
-            tumbleweedManager_->onZoneEnter(currentZoneName_, biome);
+            Environment::ZoneBiome biome = Environment::ZoneBiomeDetector::instance().getBiome(ctx_.currentZoneName);
+            ctx_.tumbleweedManager->onZoneEnter(ctx_.currentZoneName, biome);
         }
     }
 
-    if (tumbleweedManager_) {
-        tumbleweedManager_->setEnabled(settings.rollingObjects);
+    if (ctx_.tumbleweedManager) {
+        ctx_.tumbleweedManager->setEnabled(settings.rollingObjects);
 
         LOG_DEBUG(MOD_GRAPHICS, "Applied tumbleweed settings: enabled={}",
                  settings.rollingObjects);
     }
 
     // --- Sky Renderer: toggle based on setting + indoor zone state ---
-    if (skyRenderer_) {
-        bool skyAllowed = !isIndoorZone_ && settings.skyEnabled;
-        skyRenderer_->setEnabled(skyAllowed);
+    if (ctx_.skyRenderer) {
+        bool skyAllowed = !owner_.isIndoorZone_ && settings.skyEnabled;
+        ctx_.skyRenderer->setEnabled(skyAllowed);
         LOG_DEBUG(MOD_GRAPHICS, "Applied sky settings: enabled={} (setting={}, indoor={})",
-                 skyAllowed, settings.skyEnabled, isIndoorZone_);
+                 skyAllowed, settings.skyEnabled, owner_.isIndoorZone_);
     }
 
     // --- Tree Wind Controller: toggle wind animation ---
-    treeWindController_.setEnabled(settings.animatedTrees);
+    ctx_.treeWindController.setEnabled(settings.animatedTrees);
     LOG_DEBUG(MOD_GRAPHICS, "Applied tree animation settings: enabled={}", settings.animatedTrees);
 
     // --- Fire Glow Lighting + Icospheres ---
     // fireEffects is the master gate for all fire-based effects
-    fireGlowLightingEnabled_ = settings.fireEffects && settings.enableFireGlowLighting;
-    fireGlowIcospheresEnabled_ = settings.fireEffects && settings.enableFireGlowIcospheres;
-    maxFireGlowLights_ = settings.maxFireGlowLights;
-    if (!fireGlowLightingEnabled_ && zoneShader_) {
-        zoneShader_->clearFireGlowLights();
+    owner_.fireGlowLightingEnabled_ = settings.fireEffects && settings.enableFireGlowLighting;
+    owner_.fireGlowIcospheresEnabled_ = settings.fireEffects && settings.enableFireGlowIcospheres;
+    owner_.maxFireGlowLights_ = settings.maxFireGlowLights;
+    if (!owner_.fireGlowLightingEnabled_ && ctx_.zoneShader) {
+        ctx_.zoneShader->clearFireGlowLights();
     }
 }
 
-void IrrlichtRenderer::setupHUD() {
-    if (!guienv_) return;
+void OverlaysComponent::setupHUD() {
+    if (!owner_.guienv_) return;
 
     // Main HUD in upper left - made taller to show player + target info
-    hudText_ = guienv_->addStaticText(
+    owner_.hudText_ = owner_.guienv_->addStaticText(
         L"",
         irr::core::rect<irr::s32>(10, 10, 450, 500),
         false,
@@ -409,13 +419,13 @@ void IrrlichtRenderer::setupHUD() {
         false
     );
 
-    if (hudText_) {
-        hudText_->setOverrideColor(irr::video::SColor(255, 255, 255, 255));
+    if (owner_.hudText_) {
+        owner_.hudText_->setOverrideColor(irr::video::SColor(255, 255, 255, 255));
     }
 
     // Hotkey hints in upper right
-    int screenWidth = config_.width;
-    hotkeysText_ = guienv_->addStaticText(
+    int screenWidth = ctx_.config.width;
+    owner_.hotkeysText_ = owner_.guienv_->addStaticText(
         L"",
         irr::core::rect<irr::s32>(screenWidth - 400, 10, screenWidth - 10, 80),
         false,
@@ -425,14 +435,14 @@ void IrrlichtRenderer::setupHUD() {
         false
     );
 
-    if (hotkeysText_) {
-        hotkeysText_->setOverrideColor(irr::video::SColor(255, 200, 200, 200));  // Slightly dimmer
-        hotkeysText_->setTextAlignment(irr::gui::EGUIA_LOWERRIGHT, irr::gui::EGUIA_UPPERLEFT);
+    if (owner_.hotkeysText_) {
+        owner_.hotkeysText_->setOverrideColor(irr::video::SColor(255, 200, 200, 200));  // Slightly dimmer
+        owner_.hotkeysText_->setTextAlignment(irr::gui::EGUIA_LOWERRIGHT, irr::gui::EGUIA_UPPERLEFT);
     }
 
     // Heading debug info centered at top (for Player mode)
     int centerX = screenWidth / 2;
-    headingDebugText_ = guienv_->addStaticText(
+    headingDebugText_ = owner_.guienv_->addStaticText(
         L"",
         irr::core::rect<irr::s32>(centerX - 175, 10, centerX + 175, 150),
         false,
@@ -448,26 +458,26 @@ void IrrlichtRenderer::setupHUD() {
     }
 }
 
-void IrrlichtRenderer::updateHUD() {
-    if (!hudText_ || !hudEnabled_) return;
+void OverlaysComponent::updateHUD() {
+    if (!owner_.hudText_ || !owner_.hudEnabled_) return;
 
     // Performance optimization: check if HUD state has changed
     // Build current state snapshot for comparison
     HudCachedState currentState;
-    currentState.fps = currentFps_;
-    currentState.playerX = static_cast<int>(playerX_);
-    currentState.playerY = static_cast<int>(playerY_);
-    currentState.playerZ = static_cast<int>(playerZ_);
-    if (entityRenderer_) {
-        currentState.entityCount = entityRenderer_->getEntityCount();
-        currentState.modeledEntityCount = entityRenderer_->getModeledEntityCount();
+    currentState.fps = owner_.currentFps_;
+    currentState.playerX = static_cast<int>(ctx_.playerX);
+    currentState.playerY = static_cast<int>(ctx_.playerY);
+    currentState.playerZ = static_cast<int>(ctx_.playerZ);
+    if (ctx_.entityRenderer) {
+        currentState.entityCount = ctx_.entityRenderer->getEntityCount();
+        currentState.modeledEntityCount = ctx_.entityRenderer->getModeledEntityCount();
     }
-    currentState.targetId = currentTargetId_;
+    currentState.targetId = owner_.currentTargetId_;
     currentState.targetHpPercent = currentTargetHpPercent_;
-    currentState.wireframeMode = wireframeMode_;
-    currentState.oldModels = isUsingOldModels();
-    currentState.cameraMode = getCameraModeString();
-    currentState.zoneName = currentZoneName_;
+    currentState.wireframeMode = ctx_.wireframeMode;
+    currentState.oldModels = owner_.isUsingOldModels();
+    currentState.cameraMode = owner_.getCameraModeString();
+    currentState.zoneName = ctx_.currentZoneName;
 
     // Check if state has changed
     bool stateChanged = (currentState.fps != hudCachedState_.fps ||
@@ -500,9 +510,9 @@ void IrrlichtRenderer::updateHUD() {
     {
         // === PLAYER MODE HUD ===
         // Show heading debug info for current target (on right side)
-        if (currentTargetId_ != 0 && entityRenderer_) {
-            const auto& entities = entityRenderer_->getEntities();
-            auto it = entities.find(currentTargetId_);
+        if (owner_.currentTargetId_ != 0 && ctx_.entityRenderer) {
+            const auto& entities = ctx_.entityRenderer->getEntities();
+            auto it = entities.find(owner_.currentTargetId_);
             if (it != entities.end()) {
                 const EntityVisual& visual = it->second;
                 headingDebug << L"--- TARGET HEADING DEBUG ---\n";
@@ -528,9 +538,9 @@ void IrrlichtRenderer::updateHUD() {
         }
     }
 
-    hudText_->setText(text.str().c_str());
-    if (hotkeysText_) {
-        hotkeysText_->setText(hotkeys.str().c_str());
+    owner_.hudText_->setText(text.str().c_str());
+    if (owner_.hotkeysText_) {
+        owner_.hotkeysText_->setText(hotkeys.str().c_str());
     }
     if (headingDebugText_) {
         headingDebugText_->setText(headingDebug.str().c_str());
@@ -541,17 +551,17 @@ void IrrlichtRenderer::updateHUD() {
 // T60: Inventory paperdoll (CharacterModelView)
 // ============================================================================
 
-void IrrlichtRenderer::markPaperdollDirty() {
-    if (characterModelView_) characterModelView_->markDirty();
+void OverlaysComponent::markPaperdollDirty() {
+    if (owner_.characterModelView_) owner_.characterModelView_->markDirty();
 }
 
-void IrrlichtRenderer::ensurePaperdollInitialized() {
-    if (characterModelView_ || paperdollInitAttempted_) {
+void OverlaysComponent::ensurePaperdollInitialized() {
+    if (owner_.characterModelView_ || paperdollInitAttempted_) {
         return;
     }
     paperdollInitAttempted_ = true;
 
-    if (!smgr_ || !driver_) {
+    if (!ctx_.smgr || !ctx_.driver) {
         LOG_WARN(MOD_UI, "IrrlichtRenderer: paperdoll init skipped, no scene manager/driver yet");
         return;
     }
@@ -564,10 +574,10 @@ void IrrlichtRenderer::ensurePaperdollInitialized() {
     constexpr int kPaperdollHeight = 256;
 
     auto doll = std::make_unique<eqt::ui::CharacterModelView>();
-    doll->init(smgr_, driver_, kPaperdollWidth, kPaperdollHeight);
-    if (entityRenderer_) {
-        doll->setRaceModelLoader(entityRenderer_->getRaceModelLoader());
-        doll->setEquipmentModelLoader(entityRenderer_->getEquipmentModelLoader());
+    doll->init(ctx_.smgr, ctx_.driver, kPaperdollWidth, kPaperdollHeight);
+    if (ctx_.entityRenderer) {
+        doll->setRaceModelLoader(ctx_.entityRenderer->getRaceModelLoader());
+        doll->setEquipmentModelLoader(ctx_.entityRenderer->getEquipmentModelLoader());
     }
     // No InventoryManager is wired here (S2 decoupled the renderer from it
     // entirely — IrrlichtRenderer holds no InventoryManager pointer to
@@ -575,7 +585,7 @@ void IrrlichtRenderer::ensurePaperdollInitialized() {
     // fine: the doll's appearance comes from the player's live
     // EntityAppearance (updatePaperdollForFrame(), below), matching Step
     // 4 of the plan, not from inventory item materials.
-    characterModelView_ = std::move(doll);
+    owner_.characterModelView_ = std::move(doll);
     LOG_INFO(MOD_UI, "IrrlichtRenderer: paperdoll (CharacterModelView) constructed lazily on first popup open");
 }
 
@@ -595,9 +605,9 @@ bool appearanceEquals(const EQT::Graphics::EntityAppearance& a, const EQT::Graph
 }
 } // namespace
 
-void IrrlichtRenderer::updatePaperdollForFrame() {
+void OverlaysComponent::updatePaperdollForFrame() {
     ensurePaperdollInitialized();
-    if (!characterModelView_ || !entityRenderer_) {
+    if (!owner_.characterModelView_ || !ctx_.entityRenderer) {
         return;
     }
 
@@ -606,7 +616,7 @@ void IrrlichtRenderer::updatePaperdollForFrame() {
     // separately-reconstructed one — so the doll can never visually
     // disagree with what the player actually sees.
     const EQT::Graphics::EntityVisual* playerVisual = nullptr;
-    for (const auto& [spawnId, visual] : entityRenderer_->getEntities()) {
+    for (const auto& [spawnId, visual] : ctx_.entityRenderer->getEntities()) {
         if (visual.isPlayer) {
             playerVisual = &visual;
             break;
@@ -628,15 +638,15 @@ void IrrlichtRenderer::updatePaperdollForFrame() {
         paperdollHasAppearance_ = true;
         // setCharacter() rebuilds the model and marks the doll dirty
         // internally — only call it when something actually changed.
-        characterModelView_->setCharacter(playerVisual->raceId, playerVisual->gender,
+        owner_.characterModelView_->setCharacter(playerVisual->raceId, playerVisual->gender,
                                            playerVisual->appearance);
     }
 
     // update()/renderToTexture() are cheap no-ops when not dirty — safe to
     // call every frame the popup is open; the RTT itself only re-renders
     // on markDirty() triggers (appearance change, popup open, drag-rotate).
-    characterModelView_->update(16.0f);  // Approximate frame delta for idle-anim throttling
-    characterModelView_->renderToTexture();
+    owner_.characterModelView_->update(16.0f);  // Approximate frame delta for idle-anim throttling
+    owner_.characterModelView_->renderToTexture();
 }
 
 } // namespace Graphics

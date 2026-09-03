@@ -49,7 +49,7 @@ namespace Graphics {
 bool IrrlichtRenderer::processFrameRender(float deltaTime) {
     // If loading screen is visible, show it instead of rendering zone
     if (loadingScreenVisible_) {
-        drawLoadingScreen(loadingProgress_, loadingText_);
+        overlays_->drawLoadingScreen(loadingProgress_, loadingText_);
         return false;  // Signal loading screen was shown
     }
 
@@ -188,9 +188,9 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
     LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 3: target outline");
     // Draw selection indicator around targeted entity
 #ifdef EQT_HAS_GLES2
-    drawTargetOutline();
+    overlays_->drawTargetOutline();
 #else
-    drawTargetSelectionBox();
+    overlays_->drawTargetSelectionBox();
 #endif
     frameTimings_.targetBox = measureSection();
 
@@ -380,14 +380,14 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
 
     // Map overlay
     if (showMapOverlay_) {
-        updateMapOverlay(glm::vec3(playerX_, playerZ_, playerY_));
-        drawMapOverlay();
+        overlays_->updateMapOverlay(glm::vec3(playerX_, playerZ_, playerY_));
+        overlays_->drawMapOverlay();
     }
 
     // Navmesh overlay
     if (showNavmeshOverlay_) {
-        updateNavmeshOverlay(glm::vec3(playerX_, playerZ_, playerY_));
-        drawNavmeshOverlay();
+        overlays_->updateNavmeshOverlay(glm::vec3(playerX_, playerZ_, playerY_));
+        overlays_->drawNavmeshOverlay();
     }
 
     // Portal wireframe debug overlay — batched into a single GL_LINES draw call.
@@ -489,7 +489,7 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
         guienv_->drawAll();
     }
     if (!allUIHidden_) {
-        drawFPSCounter();
+        overlays_->drawFPSCounter();
     }
     frameTimings_.guiDrawAll = measureSection();
 
@@ -507,7 +507,7 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
     // own markDirty()/dirty_ flag (never a per-frame re-render). Nothing
     // runs here when the popup is closed.
     if (newUIEnabled_ && inventoryState_.activePopup == PopupType::Inventory) {
-        updatePaperdollForFrame();
+        overlays_->updatePaperdollForFrame();
     }
     inventoryState_.paperdollTexture = characterModelView_ ? characterModelView_->getTexture() : nullptr;
 
@@ -543,8 +543,8 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
     frameTimings_.staticUI = measureSection();
 
     // Draw zone line overlay
-    drawZoneLineOverlay();
-    drawZoneLineBoxLabels();
+    overlays_->drawZoneLineOverlay();
+    overlays_->drawZoneLineBoxLabels();
     frameTimings_.zoneLineOverlay = measureSection();
     eqtGPUPhaseEnd(2 /* GPUSyncPhase::ParticlesUI */);
 
