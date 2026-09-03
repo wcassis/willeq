@@ -222,6 +222,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_chat_component)
 
+# K05 (Batch K): the extracted eqt::merchant::MerchantComponent, driven
+# directly -- construction, the ClientContext binding, the one member that
+# moved (m_trainer_skill_caps) and the owner_ transition handle.
+ADD_EXECUTABLE(test_merchant_component
+    test_merchant_component.cpp
+)
+TARGET_LINK_LIBRARIES(test_merchant_component GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_merchant_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_merchant_component)
+
 ADD_EXECUTABLE(test_chat_channel_names
     test_chat_channel_names.cpp
 )

@@ -135,13 +135,13 @@ void EverQuest::UpdateMovement()
 		if (it == m_entities.end()) {
 			// Banker NPC no longer exists (despawned, etc.)
 			LOG_DEBUG(MOD_INVENTORY, "Banker NPC {} no longer exists, closing bank", m_game_state.player().bankerNpcId());
-			CloseBankWindow();
+			m_merchant->CloseBankWindow();
 		} else {
 			float dist = CalculateDistance2D(PosX(), PosY(), it->second.x, it->second.y);
 			if (dist > NPC_INTERACTION_DISTANCE) {
 				LOG_DEBUG(MOD_INVENTORY, "Player moved too far from banker ({:.1f} > {:.1f}), closing bank",
 					dist, NPC_INTERACTION_DISTANCE);
-				CloseBankWindow();
+				m_merchant->CloseBankWindow();
 				AddChatSystemMessage("You have moved too far from the banker.");
 			}
 		}

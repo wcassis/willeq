@@ -1,4 +1,5 @@
-// EverQuest trade-callback, loot and shop transaction cluster.
+// eqt::merchant::MerchantComponent -- trade-callback, loot and shop
+// transaction cluster.
 //
 // Split out of eq_merchant.cpp (Batch J, unit J27), which was itself split
 // out of eq.cpp (Batch F, unit F05): SetupTradeManagerCallbacks and the
@@ -6,6 +7,17 @@
 // transfer handlers, and the shop request/buy/sell/money/end handlers.
 // Moved verbatim, no behavior change. See refactor/F05_merchant.md and
 // refactor/J27_eq_merchant_split.md.
+//
+// K05 (Batch K, refactor/K_component_extraction.md) moved it again, from
+// src/client/eq_merchant_trade.cpp, and rebased the bodies from EverQuest onto
+// eqt::merchant::MerchantComponent. Still verbatim -- only the substitutions
+// Mechanism 4 allows (core members -> ctx_..., the loot/vendor/scribe members
+// that stay on EverQuest -> owner_.m_..., the accessors and output primitives
+// that stay behind -> owner_.Foo(), and EverQuest's statics s_debug_level,
+// DumpPacket and FormatPrice qualified as EverQuest:: -- friendship grants
+// access, not scope). See the K05 Review.
+
+#include "client/merchant/merchant_component.h"
 
 #include "client/eq.h"
 #include "client/combat.h"
@@ -32,30 +44,30 @@
 #include <algorithm>
 #include <vector>
 
-void EverQuest::SetupTradeManagerCallbacks()
+void eqt::merchant::MerchantComponent::SetupTradeManagerCallbacks()
 {
-	if (!m_trade_manager) {
+	if (!ctx_.trade_manager) {
 		return;
 	}
 
 	// Set up network callbacks
-	m_trade_manager->setSendTradeRequest([this](const EQT::TradeRequest_Struct& req) {
+	ctx_.trade_manager->setSendTradeRequest([this](const EQT::TradeRequest_Struct& req) {
 		SendTradeRequest(req);
 	});
 
-	m_trade_manager->setSendTradeRequestAck([this](const EQT::TradeRequestAck_Struct& ack) {
+	ctx_.trade_manager->setSendTradeRequestAck([this](const EQT::TradeRequestAck_Struct& ack) {
 		SendTradeRequestAck(ack);
 	});
 
-	m_trade_manager->setSendMoveCoin([this](const EQT::MoveCoin_Struct& move) {
+	ctx_.trade_manager->setSendMoveCoin([this](const EQT::MoveCoin_Struct& move) {
 		SendMoveCoin(move);
 	});
 
-	m_trade_manager->setSendTradeAcceptClick([this](const EQT::TradeAcceptClick_Struct& accept) {
+	ctx_.trade_manager->setSendTradeAcceptClick([this](const EQT::TradeAcceptClick_Struct& accept) {
 		SendTradeAcceptClick(accept);
 	});
 
-	m_trade_manager->setSendCancelTrade([this](const EQT::CancelTrade_Struct& cancel) {
+	ctx_.trade_manager->setSendCancelTrade([this](const EQT::CancelTrade_Struct& cancel) {
 		SendCancelTrade(cancel);
 	});
 
@@ -72,152 +84,152 @@ void EverQuest::SetupTradeManagerCallbacks()
 	// game_state_sync_bridge.cpp) for any render-side consumer. Two
 	// instances, two mechanisms, one source of truth -- same shape T81
 	// established for entities.
-	m_trade_manager->setOnRequestReceived([this](uint32_t spawnId, const std::string& name) {
-		m_game_state.trade().setPendingRequest(spawnId, name);
-		if (m_bridge) {
+	ctx_.trade_manager->setOnRequestReceived([this](uint32_t spawnId, const std::string& name) {
+		ctx_.game_state.trade().setPendingRequest(spawnId, name);
+		if (ctx_.bridge) {
 			eqt::state::TradeRequestReceivedData tdata;
 			tdata.spawnId = spawnId;
 			tdata.name = name;
-			m_bridge->pushEvent(eqt::state::GameEvent(
+			ctx_.bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::TradeRequestReceived, std::move(tdata)));
 		}
 	});
 
-	m_trade_manager->setOnStateChanged([this](TradeState state) {
+	ctx_.trade_manager->setOnStateChanged([this](TradeState state) {
 		// Update inventory manager NPC trade flag for item validation
-		if (m_inventory_manager) {
+		if (ctx_.inventory_manager) {
 			if (state == TradeState::Active) {
-				m_inventory_manager->setNpcTrade(m_trade_manager->isNpcTrade());
+				ctx_.inventory_manager->setNpcTrade(ctx_.trade_manager->isNpcTrade());
 			} else if (state == TradeState::None || state == TradeState::Completed) {
-				m_inventory_manager->setNpcTrade(false);
+				ctx_.inventory_manager->setNpcTrade(false);
 			}
 		}
 
 		if (state == TradeState::Active) {
 			// Publish TradeStarted
-			m_game_state.trade().startTrade(
-				static_cast<uint16_t>(m_trade_manager->getPartnerSpawnId()),
-				m_trade_manager->getPartnerName(),
-				m_trade_manager->isNpcTrade());
-			if (m_bridge) {
+			ctx_.game_state.trade().startTrade(
+				static_cast<uint16_t>(ctx_.trade_manager->getPartnerSpawnId()),
+				ctx_.trade_manager->getPartnerName(),
+				ctx_.trade_manager->isNpcTrade());
+			if (ctx_.bridge) {
 				eqt::state::TradeStartedData tdata;
-				tdata.partnerId = m_trade_manager->getPartnerSpawnId();
-				tdata.partnerName = m_trade_manager->getPartnerName();
-				tdata.isNpc = m_trade_manager->isNpcTrade();
-				m_bridge->pushEvent(eqt::state::GameEvent(
+				tdata.partnerId = ctx_.trade_manager->getPartnerSpawnId();
+				tdata.partnerName = ctx_.trade_manager->getPartnerName();
+				tdata.isNpc = ctx_.trade_manager->isNpcTrade();
+				ctx_.bridge->pushEvent(eqt::state::GameEvent(
 					eqt::state::GameEventType::TradeStarted, std::move(tdata)));
 			}
 		} else if (state == TradeState::None) {
 			// Only close on None state (cancel) - Completed is handled by m_on_completed
-			m_game_state.trade().reset();
-			if (m_bridge) {
-				m_bridge->pushEvent(eqt::state::GameEvent(
+			ctx_.game_state.trade().reset();
+			if (ctx_.bridge) {
+				ctx_.bridge->pushEvent(eqt::state::GameEvent(
 					eqt::state::GameEventType::TradeCancelled, eqt::state::TradeCancelledData{}));
 			}
 		}
 	});
 
-	m_trade_manager->setOnItemUpdated([this](bool isOwn, int slot) {
+	ctx_.trade_manager->setOnItemUpdated([this](bool isOwn, int slot) {
 		if (!isOwn) {
 			// Partner item updated - publish to bridge and the projection.
 			// Own items are displayed from inventory trade slots (not
 			// tracked here -- see trade_state.h's class comment; this isOwn
 			// branch is never actually taken in production, since nothing
 			// calls TradeManager::addItemToTrade()).
-			const auto* item = m_trade_manager->getPartnerItem(slot);
+			const auto* item = ctx_.trade_manager->getPartnerItem(slot);
 			uint32_t itemId = item ? item->itemId : 0;
 			std::string itemName = item ? item->name : "";
-			m_game_state.trade().setPartnerItem(slot, itemId, itemName);
-			if (m_bridge) {
+			ctx_.game_state.trade().setPartnerItem(slot, itemId, itemName);
+			if (ctx_.bridge) {
 				eqt::state::TradeItemUpdatedData tdata;
 				tdata.who = 1;  // partner
 				tdata.slot = static_cast<uint8_t>(slot);
 				tdata.itemId = itemId;
 				tdata.itemName = itemName;
-				m_bridge->pushEvent(eqt::state::GameEvent(
+				ctx_.bridge->pushEvent(eqt::state::GameEvent(
 					eqt::state::GameEventType::TradeItemUpdated, std::move(tdata)));
 			}
 		}
 	});
 
-	m_trade_manager->setOnMoneyUpdated([this](bool isOwn) {
-		const auto& srcMoney = isOwn ? m_trade_manager->getOwnMoney() : m_trade_manager->getPartnerMoney();
+	ctx_.trade_manager->setOnMoneyUpdated([this](bool isOwn) {
+		const auto& srcMoney = isOwn ? ctx_.trade_manager->getOwnMoney() : ctx_.trade_manager->getPartnerMoney();
 		eqt::state::TradeMoney projMoney;
 		projMoney.platinum = srcMoney.platinum;
 		projMoney.gold = srcMoney.gold;
 		projMoney.silver = srcMoney.silver;
 		projMoney.copper = srcMoney.copper;
-		m_game_state.trade().setMoney(isOwn, projMoney);
-		if (m_bridge) {
+		ctx_.game_state.trade().setMoney(isOwn, projMoney);
+		if (ctx_.bridge) {
 			eqt::state::TradeMoneyUpdatedData tdata;
 			tdata.who = isOwn ? 0 : 1;
 			tdata.platinum = srcMoney.platinum;
 			tdata.gold = srcMoney.gold;
 			tdata.silver = srcMoney.silver;
 			tdata.copper = srcMoney.copper;
-			m_bridge->pushEvent(eqt::state::GameEvent(
+			ctx_.bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::TradeMoneyUpdated, std::move(tdata)));
 		}
 	});
 
-	m_trade_manager->setOnAcceptStateChanged([this](bool ownAccepted, bool partnerAccepted) {
-		m_game_state.trade().setAcceptState(ownAccepted, partnerAccepted);
-		if (m_bridge) {
+	ctx_.trade_manager->setOnAcceptStateChanged([this](bool ownAccepted, bool partnerAccepted) {
+		ctx_.game_state.trade().setAcceptState(ownAccepted, partnerAccepted);
+		if (ctx_.bridge) {
 			eqt::state::TradeAcceptStateChangedData tdata;
 			tdata.ownAccepted = ownAccepted;
 			tdata.partnerAccepted = partnerAccepted;
-			m_bridge->pushEvent(eqt::state::GameEvent(
+			ctx_.bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::TradeAcceptStateChanged, std::move(tdata)));
 		}
 	});
 
-	m_trade_manager->setOnCompleted([this]() {
+	ctx_.trade_manager->setOnCompleted([this]() {
 		// Generate chat messages for what was exchanged
-		std::string partnerName = EQT::toDisplayName(m_trade_manager->getPartnerName());
-		const auto& partnerMoney = m_trade_manager->getPartnerMoney();
-		const auto& ownMoney = m_trade_manager->getOwnMoney();
+		std::string partnerName = EQT::toDisplayName(ctx_.trade_manager->getPartnerName());
+		const auto& partnerMoney = ctx_.trade_manager->getPartnerMoney();
+		const auto& ownMoney = ctx_.trade_manager->getOwnMoney();
 
 		// Report money received from partner
 		if (partnerMoney.platinum > 0) {
-			AddChatSystemMessage(fmt::format("You receive {} platinum from {}.", partnerMoney.platinum, partnerName));
+			owner_.AddChatSystemMessage(fmt::format("You receive {} platinum from {}.", partnerMoney.platinum, partnerName));
 		}
 		if (partnerMoney.gold > 0) {
-			AddChatSystemMessage(fmt::format("You receive {} gold from {}.", partnerMoney.gold, partnerName));
+			owner_.AddChatSystemMessage(fmt::format("You receive {} gold from {}.", partnerMoney.gold, partnerName));
 		}
 		if (partnerMoney.silver > 0) {
-			AddChatSystemMessage(fmt::format("You receive {} silver from {}.", partnerMoney.silver, partnerName));
+			owner_.AddChatSystemMessage(fmt::format("You receive {} silver from {}.", partnerMoney.silver, partnerName));
 		}
 		if (partnerMoney.copper > 0) {
-			AddChatSystemMessage(fmt::format("You receive {} copper from {}.", partnerMoney.copper, partnerName));
+			owner_.AddChatSystemMessage(fmt::format("You receive {} copper from {}.", partnerMoney.copper, partnerName));
 		}
 
 		// Report items received from partner
 		for (int i = 0; i < 8; i++) {
-			const auto* item = m_trade_manager->getPartnerItem(i);
+			const auto* item = ctx_.trade_manager->getPartnerItem(i);
 			if (item) {
-				AddChatSystemMessage(fmt::format("You receive {} from {}.", item->name, partnerName));
+				owner_.AddChatSystemMessage(fmt::format("You receive {} from {}.", item->name, partnerName));
 			}
 		}
 
 		// Report money given to partner
 		if (ownMoney.platinum > 0) {
-			AddChatSystemMessage(fmt::format("You give {} platinum to {}.", ownMoney.platinum, partnerName));
+			owner_.AddChatSystemMessage(fmt::format("You give {} platinum to {}.", ownMoney.platinum, partnerName));
 		}
 		if (ownMoney.gold > 0) {
-			AddChatSystemMessage(fmt::format("You give {} gold to {}.", ownMoney.gold, partnerName));
+			owner_.AddChatSystemMessage(fmt::format("You give {} gold to {}.", ownMoney.gold, partnerName));
 		}
 		if (ownMoney.silver > 0) {
-			AddChatSystemMessage(fmt::format("You give {} silver to {}.", ownMoney.silver, partnerName));
+			owner_.AddChatSystemMessage(fmt::format("You give {} silver to {}.", ownMoney.silver, partnerName));
 		}
 		if (ownMoney.copper > 0) {
-			AddChatSystemMessage(fmt::format("You give {} copper to {}.", ownMoney.copper, partnerName));
+			owner_.AddChatSystemMessage(fmt::format("You give {} copper to {}.", ownMoney.copper, partnerName));
 		}
 
 		// Report items given to partner
 		for (int i = 0; i < 8; i++) {
-			const auto* item = m_trade_manager->getOwnItem(i);
+			const auto* item = ctx_.trade_manager->getOwnItem(i);
 			if (item) {
-				AddChatSystemMessage(fmt::format("You give {} to {}.", item->name, partnerName));
+				owner_.AddChatSystemMessage(fmt::format("You give {} to {}.", item->name, partnerName));
 			}
 		}
 
@@ -226,33 +238,33 @@ void EverQuest::SetupTradeManagerCallbacks()
 		// resetTradeState() hasn't run yet at this point in
 		// handleFinishTrade()'s sequence), then clear the projection now
 		// that the summary has been read out of it.
-		m_game_state.trade().reset();
-		if (m_bridge) {
-			m_bridge->pushEvent(eqt::state::GameEvent(
+		ctx_.game_state.trade().reset();
+		if (ctx_.bridge) {
+			ctx_.bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::TradeCompleted, eqt::state::TradeCompletedData{}));
 		}
 	});
 
-	m_trade_manager->setOnCancelled([this](TradeEndReason reason, const std::string& requesterName) {
+	ctx_.trade_manager->setOnCancelled([this](TradeEndReason reason, const std::string& requesterName) {
 		// T222: exactly one chat line per end reason -- declineTrade()
 		// no longer prints its own.
 		if (reason == TradeEndReason::DeclinedLocal) {
-			AddChatSystemMessage(fmt::format("Declined trade request from {}.",
+			owner_.AddChatSystemMessage(fmt::format("Declined trade request from {}.",
 				EQT::toDisplayName(requesterName)));
 		} else {
-			AddChatSystemMessage("Trade cancelled.");
+			owner_.AddChatSystemMessage("Trade cancelled.");
 		}
 
 		// Publish TradeCancelled event to bridge
-		m_game_state.trade().reset();
-		if (m_bridge) {
-			m_bridge->pushEvent(eqt::state::GameEvent(
+		ctx_.game_state.trade().reset();
+		if (ctx_.bridge) {
+			ctx_.bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::TradeCancelled, eqt::state::TradeCancelledData{}));
 		}
 	});
 }
 
-void EverQuest::ZoneProcessLootItemToUI(const EQ::Net::Packet &p)
+void eqt::merchant::MerchantComponent::ZoneProcessLootItemToUI(const EQ::Net::Packet &p)
 {
 	LOG_DEBUG(MOD_INVENTORY, "ZoneProcessLootItemToUI called, packet length={}", p.Length());
 
@@ -275,7 +287,7 @@ void EverQuest::ZoneProcessLootItemToUI(const EQ::Net::Packet &p)
 
 	std::string item_data(data, data_len);
 
-	if (s_debug_level >= 3) {
+	if (EverQuest::s_debug_level >= 3) {
 		LOG_TRACE(MOD_INVENTORY, "Item data length={}", item_data.length());
 		LOG_TRACE(MOD_INVENTORY, "Item data preview: {}", item_data.substr(0, std::min(size_t(200), item_data.length())));
 	}
@@ -288,7 +300,7 @@ void EverQuest::ZoneProcessLootItemToUI(const EQ::Net::Packet &p)
 		fields.push_back(field);
 	}
 
-	if (s_debug_level >= 3) {
+	if (EverQuest::s_debug_level >= 3) {
 		LOG_TRACE(MOD_INVENTORY, "Parsed {} fields", fields.size());
 		for (size_t i = 0; i < fields.size() && i < 20; i++) {
 			LOG_TRACE(MOD_INVENTORY, "  field[{}] = '{}'", i, fields[i].substr(0, 50));
@@ -328,24 +340,24 @@ void EverQuest::ZoneProcessLootItemToUI(const EQ::Net::Packet &p)
 			} catch (...) {}
 
 			// Track loot item in game state (D18a: game-side loot item tracking)
-			m_loot_items[slot_num] = GameLootItem{itemId, item_name};
+			owner_.m_loot_items[slot_num] = EverQuest::GameLootItem{itemId, item_name};
 
 			// T268: feed the auto-loot queue too (this replaces the deleted
 			// headless-only ZoneProcessLootItem). CheckAutoLoot() is a
 			// non-blocking nudge; UpdateLootState() decides on the game tick.
-			if (m_combat_manager) {
-				m_combat_manager->AddLootItem(static_cast<uint32_t>(slot_num));
-				m_combat_manager->CheckAutoLoot();
+			if (ctx_.combat_manager) {
+				ctx_.combat_manager->AddLootItem(static_cast<uint32_t>(slot_num));
+				ctx_.combat_manager->CheckAutoLoot();
 			}
 
 			// Publish LootItemAdded
-			if (m_bridge) {
+			if (ctx_.bridge) {
 				eqt::state::LootItemAddedData ldata;
-				ldata.corpseId = m_game_state.player().lootingCorpseId();
+				ldata.corpseId = ctx_.game_state.player().lootingCorpseId();
 				ldata.slot = static_cast<uint8_t>(slot_num);
 				ldata.itemId = itemId;
 				ldata.itemName = item_name;
-				m_bridge->pushEvent(eqt::state::GameEvent(
+				ctx_.bridge->pushEvent(eqt::state::GameEvent(
 					eqt::state::GameEventType::LootItemAdded, std::move(ldata)));
 			}
 		} catch (const std::exception& e) {
@@ -356,9 +368,9 @@ void EverQuest::ZoneProcessLootItemToUI(const EQ::Net::Packet &p)
 	}
 }
 
-void EverQuest::ZoneProcessLootedItemToInventory(const EQ::Net::Packet &p)
+void eqt::merchant::MerchantComponent::ZoneProcessLootedItemToInventory(const EQ::Net::Packet &p)
 {
-	LOG_DEBUG(MOD_INVENTORY, "ZoneProcessLootedItemToInventory called, pending_slots={}", m_pending_loot_slots.size());
+	LOG_DEBUG(MOD_INVENTORY, "ZoneProcessLootedItemToInventory called, pending_slots={}", owner_.m_pending_loot_slots.size());
 
 	// This is called when an item is being looted from a corpse to inventory
 	// The item packet format is the same as ZoneProcessLootItemToUI
@@ -375,10 +387,10 @@ void EverQuest::ZoneProcessLootedItemToInventory(const EQ::Net::Packet &p)
 		}
 		eqt::state::InventorySlotChangedData data;
 		data.slotId = slot;
-		const auto* item = m_inventory_manager ? m_inventory_manager->getItem(slot) : nullptr;
+		const auto* item = ctx_.inventory_manager ? ctx_.inventory_manager->getItem(slot) : nullptr;
 		data.hasItem = (item != nullptr && item->itemId != 0);
 		SyncInventorySlotToGameState(slot, data.hasItem);  // T221
-		if (!m_bridge) {
+		if (!ctx_.bridge) {
 			return;
 		}
 		data.itemId = data.hasItem ? item->itemId : 0;
@@ -387,40 +399,40 @@ void EverQuest::ZoneProcessLootedItemToInventory(const EQ::Net::Packet &p)
 		data.quantity = data.hasItem ? item->quantity : 0;
 		LOG_DEBUG(MOD_INVENTORY, "Publishing InventorySlotChanged (loot-to-inventory): slot={} hasItem={} itemId={} name='{}' qty={}",
 			data.slotId, data.hasItem, data.itemId, data.itemName, data.quantity);
-		m_bridge->pushEvent(eqt::state::GameEvent(
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::InventorySlotChanged, std::move(data)));
 	};
 
-	if (m_pending_loot_slots.empty()) {
+	if (owner_.m_pending_loot_slots.empty()) {
 		// No pending loot - shouldn't happen, but handle gracefully
 		LOG_DEBUG(MOD_INVENTORY, "ZoneProcessLootedItemToInventory: No pending loot slots! Treating as inventory item.");
-		if (m_inventory_manager) {
-			publishLootedSlot(m_inventory_manager->processItemPacket(p));
+		if (ctx_.inventory_manager) {
+			publishLootedSlot(ctx_.inventory_manager->processItemPacket(p));
 		}
 		return;
 	}
 
 	// Get the slot we're expecting to receive
-	int16_t expected_slot = m_pending_loot_slots.front();
-	m_pending_loot_slots.erase(m_pending_loot_slots.begin());
+	int16_t expected_slot = owner_.m_pending_loot_slots.front();
+	owner_.m_pending_loot_slots.erase(owner_.m_pending_loot_slots.begin());
 
 	LOG_DEBUG(MOD_INVENTORY, "ZoneProcessLootedItemToInventory: Processing looted item for corpse slot {}, remaining pending={}",
-		expected_slot, m_pending_loot_slots.size());
+		expected_slot, owner_.m_pending_loot_slots.size());
 
 	// Add item to player's inventory
-	if (m_inventory_manager) {
+	if (ctx_.inventory_manager) {
 		LOG_TRACE(MOD_INVENTORY, "Adding item to inventory via processItemPacket");
-		publishLootedSlot(m_inventory_manager->processItemPacket(p));
+		publishLootedSlot(ctx_.inventory_manager->processItemPacket(p));
 	}
 
 	// Remove from game-side loot tracking and publish event
-	m_loot_items.erase(expected_slot);
+	owner_.m_loot_items.erase(expected_slot);
 
-	if (m_bridge) {
+	if (ctx_.bridge) {
 		eqt::state::LootItemRemovedData data;
-		data.corpseId = m_game_state.player().lootingCorpseId();
+		data.corpseId = ctx_.game_state.player().lootingCorpseId();
 		data.slot = static_cast<uint8_t>(expected_slot);
-		m_bridge->pushEvent(eqt::state::GameEvent(
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::LootItemRemoved, std::move(data)));
 	}
 	LOG_TRACE(MOD_INVENTORY, "Removed item from loot window slot {}", expected_slot);
@@ -429,38 +441,38 @@ void EverQuest::ZoneProcessLootedItemToInventory(const EQ::Net::Packet &p)
 	// re-requested by a later /lootall). Loot-all sequencing itself is
 	// CombatManager's LootingItems state -- the confirmation-driven
 	// m_loot_all_* loop that used to continue here was the drifted duplicate.
-	if (m_combat_manager) {
-		m_combat_manager->RemoveLootItem(static_cast<uint32_t>(expected_slot));
+	if (ctx_.combat_manager) {
+		ctx_.combat_manager->RemoveLootItem(static_cast<uint32_t>(expected_slot));
 	}
 }
 
-void EverQuest::SetupLootCallbacks()
+void eqt::merchant::MerchantComponent::SetupLootCallbacks()
 {
 	/* D20a: intents handle loot actions */
 }
 
-void EverQuest::SetupVendorCallbacks()
+void eqt::merchant::MerchantComponent::SetupVendorCallbacks()
 {
 	/* D20a: intents handle vendor actions */
 }
 
-void EverQuest::SetupBankCallbacks()
+void eqt::merchant::MerchantComponent::SetupBankCallbacks()
 {
 	/* D20a: intents handle bank actions */
 }
 
-void EverQuest::SetupTradeWindowCallbacks()
+void eqt::merchant::MerchantComponent::SetupTradeWindowCallbacks()
 {
 	// D20e3: Trade window init moved to InitGraphics (needs renderer)
 	// This stub remains for the call in InitGraphics; actual init is done there.
 }
 
-void EverQuest::SetupTradeskillCallbacks()
+void eqt::merchant::MerchantComponent::SetupTradeskillCallbacks()
 {
 	/* D20b1: WindowManager pushes TradeskillCombineIntent/TradeskillCloseIntent via bridge */
 }
 
-void EverQuest::ZoneProcessShopRequest(const EQ::Net::Packet &p)
+void eqt::merchant::MerchantComponent::ZoneProcessShopRequest(const EQ::Net::Packet &p)
 {
 	// Server response to our shop request
 	// Wire layout: npc_id(4), player_id(4), action(4), sell_rate(4) -- eqemu's
@@ -488,8 +500,8 @@ void EverQuest::ZoneProcessShopRequest(const EQ::Net::Packet &p)
 		const uint16_t vendorNpcId = static_cast<uint16_t>(npc_id);
 
 		// Get vendor name from entity if available (converted to display format)
-		auto it = m_entities.find(vendorNpcId);
-		const std::string vendorName = (it != m_entities.end())
+		auto it = ctx_.entities.find(vendorNpcId);
+		const std::string vendorName = (it != ctx_.entities.end())
 			? EQT::toDisplayName(it->second.name)
 			: std::string("Merchant");
 
@@ -497,32 +509,32 @@ void EverQuest::ZoneProcessShopRequest(const EQ::Net::Packet &p)
 		// GameStateSyncBridge projection wrote player().vendor; the projection
 		// is gone, so the handler that owns the data writes it.
 		// T286: it is now the ONLY write -- EverQuest keeps no vendor copy.
-		m_game_state.player().setVendor(vendorNpcId, sell_rate, vendorName);
+		ctx_.game_state.player().setVendor(vendorNpcId, sell_rate, vendorName);
 
 		// Publish VendorWindowOpened (D18a: bridge is sole path to renderer)
-		if (m_bridge) {
+		if (ctx_.bridge) {
 			eqt::state::WindowOpenedData data;
-			data.npcId = m_game_state.player().vendorNpcId();
-			data.npcName = m_game_state.player().vendorName();
-			data.sellRate = m_game_state.player().vendorSellRate();
-			m_bridge->pushEvent(eqt::state::GameEvent(
+			data.npcId = ctx_.game_state.player().vendorNpcId();
+			data.npcName = ctx_.game_state.player().vendorName();
+			data.sellRate = ctx_.game_state.player().vendorSellRate();
+			ctx_.bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::VendorWindowOpened, std::move(data)));
 		}
 
 #ifdef WITH_AUDIO
 		// Start vendor/bank music (context-based, will restore on close)
-		if (m_audio_manager) {
-			m_audio_manager->startVendorBankMusic();
+		if (ctx_.audio_manager) {
+			ctx_.audio_manager->startVendorBankMusic();
 		}
 #endif
 
-		LOG_INFO(MOD_INVENTORY, "Opened vendor window for {} (id={})", m_game_state.player().vendorName(), m_game_state.player().vendorNpcId());
+		LOG_INFO(MOD_INVENTORY, "Opened vendor window for {} (id={})", ctx_.game_state.player().vendorName(), ctx_.game_state.player().vendorNpcId());
 	} else {
 		LOG_WARN(MOD_INVENTORY, "Vendor open failed: action={}", action);
 	}
 }
 
-void EverQuest::ZoneProcessShopPlayerBuy(const EQ::Net::Packet &p)
+void eqt::merchant::MerchantComponent::ZoneProcessShopPlayerBuy(const EQ::Net::Packet &p)
 {
 	// Server confirmation of purchase
 	// Merchant_Purchase_Struct: npc_id(4), player_id(4), itemslot(4), unknown12(4), quantity(4), action(4)
@@ -541,21 +553,21 @@ void EverQuest::ZoneProcessShopPlayerBuy(const EQ::Net::Packet &p)
 		npc_id, player_id, itemslot, quantity, action);
 
 	// Display purchase confirmation and update money (D18a: uses game-side vendor items)
-	auto vendorIt = m_vendor_items.find(itemslot);
-	if (vendorIt != m_vendor_items.end()) {
+	auto vendorIt = owner_.m_vendor_items.find(itemslot);
+	if (vendorIt != owner_.m_vendor_items.end()) {
 		int32_t totalPrice = vendorIt->second.price * static_cast<int32_t>(quantity);
-		std::string priceStr = FormatPrice(totalPrice);
+		std::string priceStr = EverQuest::FormatPrice(totalPrice);
 		if (quantity > 1) {
-			AddChatSystemMessage(fmt::format("You purchased {} x{} for {}", vendorIt->second.name, quantity, priceStr));
+			owner_.AddChatSystemMessage(fmt::format("You purchased {} x{} for {}", vendorIt->second.name, quantity, priceStr));
 		} else {
-			AddChatSystemMessage(fmt::format("You purchased {} for {}", vendorIt->second.name, priceStr));
+			owner_.AddChatSystemMessage(fmt::format("You purchased {} for {}", vendorIt->second.name, priceStr));
 		}
 
 		// Deduct money from local currency (server confirms purchase = money spent)
-		int64_t totalCopper = static_cast<int64_t>(m_game_state.player().platinum()) * 1000 +
-		                      static_cast<int64_t>(m_game_state.player().gold()) * 100 +
-		                      static_cast<int64_t>(m_game_state.player().silver()) * 10 +
-		                      static_cast<int64_t>(m_game_state.player().copper());
+		int64_t totalCopper = static_cast<int64_t>(ctx_.game_state.player().platinum()) * 1000 +
+		                      static_cast<int64_t>(ctx_.game_state.player().gold()) * 100 +
+		                      static_cast<int64_t>(ctx_.game_state.player().silver()) * 10 +
+		                      static_cast<int64_t>(ctx_.game_state.player().copper());
 		totalCopper -= totalPrice;
 		if (totalCopper < 0) totalCopper = 0;
 
@@ -566,16 +578,16 @@ void EverQuest::ZoneProcessShopPlayerBuy(const EQ::Net::Packet &p)
 		totalCopper %= 100;
 		const uint32_t newSilver = static_cast<uint32_t>(totalCopper / 10);
 		const uint32_t newCopper = static_cast<uint32_t>(totalCopper % 10);
-		m_game_state.player().setCurrency(newPlatinum, newGold, newSilver, newCopper);
+		ctx_.game_state.player().setCurrency(newPlatinum, newGold, newSilver, newCopper);
 
-		LOG_DEBUG(MOD_INVENTORY, "Updated money: {}pp {}gp {}sp {}cp", m_game_state.player().platinum(), m_game_state.player().gold(), m_game_state.player().silver(), m_game_state.player().copper());
+		LOG_DEBUG(MOD_INVENTORY, "Updated money: {}pp {}gp {}sp {}cp", ctx_.game_state.player().platinum(), ctx_.game_state.player().gold(), ctx_.game_state.player().silver(), ctx_.game_state.player().copper());
 	}
 
 	// ItemPacket with type 103 (inventory) handles the actual item placement
 	// and stack quantity updates via InventoryManager::setItem()
 }
 
-void EverQuest::ZoneProcessShopPlayerSell(const EQ::Net::Packet &p)
+void eqt::merchant::MerchantComponent::ZoneProcessShopPlayerSell(const EQ::Net::Packet &p)
 {
 	// Server confirmation of sale
 	// Merchant_Sell_Response_Struct: npc_id(4), itemslot(4), quantity(4), price(4)
@@ -592,27 +604,27 @@ void EverQuest::ZoneProcessShopPlayerSell(const EQ::Net::Packet &p)
 
 	// Display sale confirmation and update inventory (D18a: no renderer dependency)
 	{
-		std::string priceStr = FormatPrice(static_cast<int32_t>(resp->price));
+		std::string priceStr = EverQuest::FormatPrice(static_cast<int32_t>(resp->price));
 		if (resp->quantity > 1) {
-			AddChatSystemMessage(fmt::format("You sold {} items for {}", resp->quantity, priceStr));
+			owner_.AddChatSystemMessage(fmt::format("You sold {} items for {}", resp->quantity, priceStr));
 		} else {
-			AddChatSystemMessage(fmt::format("You sold item for {}", priceStr));
+			owner_.AddChatSystemMessage(fmt::format("You sold item for {}", priceStr));
 		}
 
 		// Remove item from local inventory
 		int16_t invSlot = static_cast<int16_t>(resp->itemslot);
-		if (m_inventory_manager) {
-			const auto* item = m_inventory_manager->getItem(invSlot);
+		if (ctx_.inventory_manager) {
+			const auto* item = ctx_.inventory_manager->getItem(invSlot);
 			if (item) {
 				if (item->stackable && item->quantity > static_cast<int32_t>(resp->quantity)) {
-					auto* mutableItem = m_inventory_manager->getItemMutable(invSlot);
+					auto* mutableItem = ctx_.inventory_manager->getItemMutable(invSlot);
 					if (mutableItem) {
 						mutableItem->quantity -= static_cast<int32_t>(resp->quantity);
 						LOG_DEBUG(MOD_INVENTORY, "Reduced stack at slot {} to {} items",
 							invSlot, mutableItem->quantity);
 					}
 				} else {
-					m_inventory_manager->removeItem(invSlot);
+					ctx_.inventory_manager->removeItem(invSlot);
 					LOG_DEBUG(MOD_INVENTORY, "Removed item from slot {}", invSlot);
 				}
 
@@ -625,17 +637,17 @@ void EverQuest::ZoneProcessShopPlayerSell(const EQ::Net::Packet &p)
 				{
 					eqt::state::InventorySlotChangedData data;
 					data.slotId = invSlot;
-					const auto* postItem = m_inventory_manager->getItem(invSlot);
+					const auto* postItem = ctx_.inventory_manager->getItem(invSlot);
 					data.hasItem = (postItem != nullptr && postItem->itemId != 0);
 					SyncInventorySlotToGameState(invSlot, data.hasItem);  // T221
-					if (m_bridge) {
+					if (ctx_.bridge) {
 						data.itemId = data.hasItem ? postItem->itemId : 0;
 						data.itemName = data.hasItem ? postItem->name : "";
 						data.iconId = data.hasItem ? postItem->icon : 0;
 						data.quantity = data.hasItem ? postItem->quantity : 0;
 						LOG_DEBUG(MOD_INVENTORY, "Publishing InventorySlotChanged (vendor sell): slot={} hasItem={} itemId={} name='{}' qty={}",
 							data.slotId, data.hasItem, data.itemId, data.itemName, data.quantity);
-						m_bridge->pushEvent(eqt::state::GameEvent(
+						ctx_.bridge->pushEvent(eqt::state::GameEvent(
 							eqt::state::GameEventType::InventorySlotChanged, std::move(data)));
 					}
 				}
@@ -644,7 +656,7 @@ void EverQuest::ZoneProcessShopPlayerSell(const EQ::Net::Packet &p)
 	}
 }
 
-void EverQuest::ZoneProcessMoneyUpdate(const EQ::Net::Packet &p)
+void eqt::merchant::MerchantComponent::ZoneProcessMoneyUpdate(const EQ::Net::Packet &p)
 {
 	// Money update after transaction
 	// MoneyUpdate_Struct: platinum(4), gold(4), silver(4), copper(4)
@@ -657,46 +669,46 @@ void EverQuest::ZoneProcessMoneyUpdate(const EQ::Net::Packet &p)
 		static_cast<const char*>(p.Data()) + 2);
 
 	// Update player money (T286: PlayerState is the only store)
-	m_game_state.player().setCurrency(static_cast<uint32_t>(money->platinum),
+	ctx_.game_state.player().setCurrency(static_cast<uint32_t>(money->platinum),
 	                                  static_cast<uint32_t>(money->gold),
 	                                  static_cast<uint32_t>(money->silver),
 	                                  static_cast<uint32_t>(money->copper));
 
 	LOG_DEBUG(MOD_INVENTORY, "Money updated: {}pp {}gp {}sp {}cp",
-		m_game_state.player().platinum(), m_game_state.player().gold(), m_game_state.player().silver(), m_game_state.player().copper());
+		ctx_.game_state.player().platinum(), ctx_.game_state.player().gold(), ctx_.game_state.player().silver(), ctx_.game_state.player().copper());
 
 	// Publish CurrencyChanged (D18a: bridge is sole path to renderer)
-	if (m_bridge) {
+	if (ctx_.bridge) {
 		eqt::state::CurrencyChangedData data;
-		data.platinum = static_cast<int32_t>(m_game_state.player().platinum());
-		data.gold = static_cast<int32_t>(m_game_state.player().gold());
-		data.silver = static_cast<int32_t>(m_game_state.player().silver());
-		data.copper = static_cast<int32_t>(m_game_state.player().copper());
-		m_bridge->pushEvent(eqt::state::GameEvent(
+		data.platinum = static_cast<int32_t>(ctx_.game_state.player().platinum());
+		data.gold = static_cast<int32_t>(ctx_.game_state.player().gold());
+		data.silver = static_cast<int32_t>(ctx_.game_state.player().silver());
+		data.copper = static_cast<int32_t>(ctx_.game_state.player().copper());
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::CurrencyChanged, std::move(data)));
 	}
 }
 
-void EverQuest::ZoneProcessShopEndConfirm(const EQ::Net::Packet &p)
+void eqt::merchant::MerchantComponent::ZoneProcessShopEndConfirm(const EQ::Net::Packet &p)
 {
 	// Server confirms vendor session ended
 	LOG_DEBUG(MOD_INVENTORY, "ShopEndConfirm received, closing vendor window");
 
 	// T286: the closed-window event must carry the id we were AT, so it is
 	// captured before the (now single) store is cleared.
-	const uint16_t closedVendorNpcId = m_game_state.player().vendorNpcId();
+	const uint16_t closedVendorNpcId = ctx_.game_state.player().vendorNpcId();
 
 	// T227: source write (see ZoneProcessShopRequest).
-	m_game_state.player().clearVendor();
+	ctx_.game_state.player().clearVendor();
 
 	// Publish VendorWindowClosed (D18a: bridge is sole path to renderer)
-	if (m_bridge) {
+	if (ctx_.bridge) {
 		eqt::state::WindowClosedData data;
 		data.npcId = closedVendorNpcId;
-		m_bridge->pushEvent(eqt::state::GameEvent(
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::VendorWindowClosed, std::move(data)));
 	}
 
-	m_vendor_items.clear();
+	owner_.m_vendor_items.clear();
 }
 

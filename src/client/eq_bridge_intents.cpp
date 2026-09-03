@@ -232,7 +232,7 @@ void EverQuest::ProcessBridgeIntents() {
 			else if constexpr (std::is_same_v<T, eqt::events::VendorToggleIntent>) {
 				// If vendor window is open, close it
 				if (IsVendorWindowOpen()) {
-					CloseVendorWindow();
+					m_merchant->CloseVendorWindow();
 					return;
 				}
 
@@ -263,7 +263,7 @@ void EverQuest::ProcessBridgeIntents() {
 				}
 
 				LOG_DEBUG(MOD_INVENTORY, "Vendor toggle: Opening vendor {} (id={})", target.name, target_id);
-				RequestOpenVendor(target_id);
+				m_merchant->RequestOpenVendor(target_id);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::BankerInteractIntent>) {
 				// If bank window is already open, ignore
@@ -302,12 +302,12 @@ void EverQuest::ProcessBridgeIntents() {
 				}
 
 				LOG_INFO(MOD_INVENTORY, "Opening bank window for {} (id={})", target.name, i.npcId);
-				OpenBankWindow(i.npcId);
+				m_merchant->OpenBankWindow(i.npcId);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::TrainerToggleIntent>) {
 				// If trainer window is open, close it
 				if (IsTrainerWindowOpen()) {
-					CloseTrainerWindow();
+					m_merchant->CloseTrainerWindow();
 					return;
 				}
 
@@ -339,7 +339,7 @@ void EverQuest::ProcessBridgeIntents() {
 				}
 
 				LOG_DEBUG(MOD_MAIN, "Trainer toggle: Requesting trainer {} (id={}, class={})", target.name, target_id, target.class_id);
-				RequestTrainerWindow(target_id);
+				m_merchant->RequestTrainerWindow(target_id);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::WorldObjectInteractIntent>) {
 				auto it = m_world_objects.find(i.dropId);
@@ -360,7 +360,7 @@ void EverQuest::ProcessBridgeIntents() {
 				m_chat->ProcessChatInput(i.text);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::ReadItemIntent>) {
-				RequestReadBook(i.filename, i.type);
+				m_merchant->RequestReadBook(i.filename, i.type);
 			}
 			// ================================================================
 			// D16: UI intents (D20a — intent-only, callbacks removed)
@@ -386,7 +386,7 @@ void EverQuest::ProcessBridgeIntents() {
 				}
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::ScribeSpellIntent>) {
-				ScribeSpellFromScroll(i.spellId, i.bookSlot, i.sourceSlot);
+				m_merchant->ScribeSpellFromScroll(i.spellId, i.bookSlot, i.sourceSlot);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::SpellbookStateIntent>) {
 				SendSpawnAppearance(AT_ANIMATION, i.isOpen ? 110 : 100);
@@ -430,10 +430,10 @@ void EverQuest::ProcessBridgeIntents() {
 			}
 			// Vendor intents
 			else if constexpr (std::is_same_v<T, eqt::events::VendorBuyIntent>) {
-				BuyFromVendor(i.npcId, i.slot, i.quantity);
+				m_merchant->BuyFromVendor(i.npcId, i.slot, i.quantity);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::VendorSellIntent>) {
-				SellToVendor(i.npcId, i.slot, i.quantity);
+				m_merchant->SellToVendor(i.npcId, i.slot, i.quantity);
 			}
 			// Bank intents (T269: producers are EverQuest::RequestBankCoinMove/
 			// Convert via /bank deposit|withdraw|convert). Wire truth, from
@@ -474,7 +474,7 @@ void EverQuest::ProcessBridgeIntents() {
 				move.cointype1 = i.coinType;
 				move.cointype2 = i.coinType;
 				move.amount = i.amount;
-				SendMoveCoin(move);
+				m_merchant->SendMoveCoin(move);
 
 				BankCoinSet(i.coinType, /*bank=*/i.fromBank, srcCoins - static_cast<uint32_t>(i.amount));
 				BankCoinSet(i.coinType, /*bank=*/!i.fromBank, dstCoins + static_cast<uint32_t>(i.amount));
@@ -535,7 +535,7 @@ void EverQuest::ProcessBridgeIntents() {
 				move.cointype1 = i.fromCoinType;
 				move.cointype2 = i.toCoinType;
 				move.amount = i.amount;
-				SendMoveCoin(move);
+				m_merchant->SendMoveCoin(move);
 
 				BankCoinSet(i.fromCoinType, /*bank=*/true, srcCoins - static_cast<uint32_t>(i.amount));
 				BankCoinSet(i.toCoinType, /*bank=*/true, dstCoins + static_cast<uint32_t>(converted));
@@ -643,17 +643,17 @@ void EverQuest::ProcessBridgeIntents() {
 			}
 			// Trainer intents (D20b1)
 			else if constexpr (std::is_same_v<T, eqt::events::TrainSkillIntent>) {
-				TrainSkill(i.skillId);
+				m_merchant->TrainSkill(i.skillId);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::CloseTrainerIntent>) {
-				CloseTrainerWindow();
+				m_merchant->CloseTrainerWindow();
 			}
 			// Inventory intents (D20b1)
 			else if constexpr (std::is_same_v<T, eqt::events::MoveItemIntent>) {
-				SendMoveItem(i.fromSlot, i.toSlot, i.quantity);
+				m_merchant->SendMoveItem(i.fromSlot, i.toSlot, i.quantity);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::DeleteItemIntent>) {
-				SendDeleteItem(i.slot);
+				m_merchant->SendDeleteItem(i.slot);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::EquipmentChangedIntent>) {
 				UpdatePlayerAppearanceFromInventory();

@@ -111,6 +111,8 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 	m_chat = std::make_unique<eqt::chat::ChatComponent>(m_ctx, *this);
 	// K04: the group family (group, raid, pet). Same rule.
 	m_group = std::make_unique<eqt::group::GroupComponent>(m_ctx, *this);
+	// K05: the merchant family, same shape.
+	m_merchant = std::make_unique<eqt::merchant::MerchantComponent>(m_ctx, *this);
 
 	m_host = host;
 	m_port = port;
@@ -126,7 +128,7 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 
 	// Initialize trade manager
 	m_trade_manager = std::make_unique<TradeManager>();
-	SetupTradeManagerCallbacks();
+	m_merchant->SetupTradeManagerCallbacks();
 
 	// Initialize spell manager
 	m_spell_manager = std::make_unique<EQ::SpellManager>(this);
@@ -197,7 +199,7 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 	// declassification as T29's fix just below, applied to the member T29's
 	// comment named but didn't itself touch.
 	m_inventory_manager = std::make_unique<eqt::inventory::InventoryManager>();
-	SetupInventoryCallbacks();
+	m_merchant->SetupInventoryCallbacks();
 	// T259: TradeManager::setInventoryManager() had NO caller, so
 	// TradeManager::getOwnItem() (the "You give X to Y" lines) always saw a
 	// null manager and the trade-end clearing of the trade slots could not
@@ -711,7 +713,7 @@ void EverQuest::PublishFullStateSnapshot() {
 			eqt::state::InventorySlotChangedData data;
 			data.slotId = slot;
 			data.hasItem = (item != nullptr);
-			SyncInventorySlotToGameState(slot, data.hasItem);  // T221: zone-in parity
+			m_merchant->SyncInventorySlotToGameState(slot, data.hasItem);  // T221: zone-in parity
 			data.itemId = item ? item->itemId : 0;
 			data.itemName = item ? item->name : "";
 			data.iconId = item ? item->icon : 0;

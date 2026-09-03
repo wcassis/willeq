@@ -237,7 +237,7 @@ void EverQuest::ZoneProcessZoneChange(const EQ::Net::Packet &p)
 	// Close vendor window if open (we're leaving the zone)
 	if (IsVendorWindowOpen()) {
 		LOG_DEBUG(MOD_INVENTORY, "Closed vendor window due to zone change");
-		CloseVendorWindow();
+		m_merchant->CloseVendorWindow();
 	}
 
 	// IMPORTANT: We cannot directly call DisconnectFromZone() here because we're

@@ -141,7 +141,7 @@ TEST_F(EqCommandsBankTrainTest, Bank_AlreadyOpen_ClosesDirectly_WithoutRequiring
     // comment) and deliberately does not require a valid current target:
     // you may have changed target since opening, and closing must still
     // work.
-    eq.OpenBankWindow(999);  // real production entry point, not a backdoor
+    eq.Merchant().OpenBankWindow(999);  // real production entry point, not a backdoor
     ASSERT_TRUE(eq.IsBankWindowOpen());
     bridge.drainEvents();
     bridge.drainIntents();

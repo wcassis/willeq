@@ -434,32 +434,51 @@ TEST(ReachabilitySweep, UnreachableHandlerMethodsAreExactlyTheBlockedList) {
 // ===================================================================
 
 TEST(ReachabilitySweep, EverySenderHasACaller) {
-    auto lines = splitLines(readFile(kRoot / "include/client/eq.h"));
+    // Batch K (refactor/K_component_extraction.md) moves the Send* declarations
+    // out of eq.h family by family, onto eqt::<family>::<Family>Component. The
+    // guard's INPUT set therefore has to be eq.h PLUS every component header,
+    // or the sweep silently shrinks as the batch proceeds (K05 caught it at 49
+    // declarations left in eq.h, one under this test's own floor). The
+    // assertion is unchanged: every declared sender must have a caller
+    // somewhere that is not its own declaration or definition.
+    std::vector<fs::path> declFiles{kRoot / "include/client/eq.h"};
+    std::set<std::string> declRel{"include/client/eq.h"};
+    for (const auto& f : collect({"include/client"}, {".h"})) {
+        if (f.rel.find("_component.h") != std::string::npos) {
+            declFiles.push_back(f.path);
+            declRel.insert(f.rel);
+        }
+    }
+    ASSERT_GT(declFiles.size(), 1u) << "no <family>_component.h found";
+
     std::regex decl(R"(^\s*(?:virtual\s+)?(?:static\s+)?[A-Za-z_:<>0-9]+\s+\*?(Send[A-Za-z0-9_]+)\s*\()");
     std::set<std::string> senders;
-    for (const auto& l : lines) {
-        if (isCommentLine(l)) continue;
-        std::smatch m;
-        if (std::regex_search(l, m, decl)) senders.insert(m[1]);
+    for (const auto& df : declFiles) {
+        for (const auto& l : splitLines(readFile(df))) {
+            if (isCommentLine(l)) continue;
+            std::smatch m;
+            if (std::regex_search(l, m, decl)) senders.insert(m[1]);
+        }
     }
-    ASSERT_GT(senders.size(), 50u) << "eq.h Send* parse failed";
+    ASSERT_GT(senders.size(), 50u) << "eq.h/component Send* parse failed";
 
     auto files = collect({"src", "include"}, {".cpp", ".h"});
     std::set<std::string> uncalled;
     for (const auto& s : senders) {
         bool called = false;
         for (const auto& f : files) {
-            if (f.rel == "include/client/eq.h") continue;
+            if (declRel.count(f.rel)) continue;
             for (const auto& raw : f.lines) {
                 std::string code = codePart(raw);
                 if (code.find("EverQuest::" + s + "(") != std::string::npos) continue;  // definition
+                if (code.find("Component::" + s + "(") != std::string::npos) continue;  // Batch K definition
                 if (containsToken(code, s) && code.find(s + "(") != std::string::npos) { called = true; break; }
             }
             if (called) break;
         }
         if (!called) uncalled.insert(s);
     }
-    EXPECT_TRUE(uncalled.empty()) << "EverQuest::Send* with no caller: " << join(uncalled);
+    EXPECT_TRUE(uncalled.empty()) << "Send* with no caller: " << join(uncalled);
 }
 
 }  // namespace

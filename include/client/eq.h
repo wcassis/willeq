@@ -128,6 +128,7 @@ namespace ui {
 #include "client/gm/gm_component.h"  // K02: GmComponent
 #include "client/chat/chat_component.h"    // K03: ChatComponent
 #include "client/group/group_component.h"  // K04: GroupComponent (group/raid/pet)
+#include "client/merchant/merchant_component.h"  // K05: MerchantComponent
 
 class EverQuest
 {
@@ -551,6 +552,10 @@ public:
 	// K04 (Batch K): the group family -- group, raid and pet -- is
 	// eqt::group::GroupComponent. Same shape: no forwarders.
 	eqt::group::GroupComponent& Group() { return *m_group; }
+	// K05 (Batch K): the merchant family (inventory, scribe, book, trade, loot,
+	// vendor, bank, trainer, recipes) is eqt::merchant::MerchantComponent;
+	// callers go through Merchant(), there are no forwarders.
+	eqt::merchant::MerchantComponent& Merchant() { return *m_merchant; }
 	eqt::ClientContext& Context() { return m_ctx; }
 	// Phase 3: Corpse Management
 	void SendCorpseDrag(const std::string& corpse_name);
@@ -590,11 +595,8 @@ public:
 	// Phase 4: Skills
 	void SendBindWound(uint32_t target_id);
 	void SendTrackTarget(uint32_t target_id);
-	// Phase 4: Tradeskills
-	void SendRecipesFavorite(uint32_t object_type, const std::vector<uint32_t>& favorites);
-	void SendRecipesSearch(uint32_t object_type, const std::string& query, uint32_t mintrivial, uint32_t maxtrivial);
-	void SendRecipeDetails(uint32_t recipe_id);
-	void SendRecipeAutoCombine(uint32_t object_type, uint32_t recipe_id);
+	// K05 (Batch K): the Phase 4 tradeskill senders are
+	// eqt::merchant::MerchantComponent's; callers go through Merchant().
 	// Phase 4: Cosmetic
 	void SendSurname(const std::string& surname);
 	void SendFaceChange(uint8_t haircolor, uint8_t beardcolor, uint8_t eyecolor1, uint8_t eyecolor2,
@@ -751,6 +753,7 @@ public:
 	friend class eqt::gm::GmComponent;  // K02 transition; K-final removes it
 	friend class eqt::chat::ChatComponent;    // K03 transition; K-final removes it
 	friend class eqt::group::GroupComponent;  // K04 transition; K-final removes it
+	friend class eqt::merchant::MerchantComponent;  // K05 transition; K-final removes it
 
 	// String database for EQ message lookups (works in all modes)
 	bool LoadStringFiles(const std::string& eqClientPath);
@@ -946,10 +949,9 @@ private:
 
 	// Phase 7.5: Group sync helper
 
-	// T221: source-side twins of the two transforming READ-model projections
-	// (EntityAppearanceChanged partial merge; InventorySlotChanged occupancy).
+	// T221: source-side twin of the EntityAppearanceChanged partial merge; the
+	// InventorySlotChanged occupancy twin is K05's, on Merchant().
 	void ApplyAppearanceToGameState(const eqt::state::EntityAppearanceChangedData& data);
-	void SyncInventorySlotToGameState(int16_t slot, bool hasItem);
 
 	// Login
 	void LoginOnNewConnection(std::shared_ptr<EQ::Net::DaybreakConnection> connection);
@@ -1057,7 +1059,6 @@ private:
 
 	void ZoneProcessNewZone(const EQ::Net::Packet &p);
 	void ZoneProcessPlayerProfile(const EQ::Net::Packet &p);
-	void ZoneProcessCharInventory(const EQ::Net::Packet &p);
 	void ZoneProcessZoneSpawns(const EQ::Net::Packet &p);
 	void ZoneProcessTimeOfDay(const EQ::Net::Packet &p);
 	void ZoneProcessTributeUpdate(const EQ::Net::Packet &p);
@@ -1128,8 +1129,6 @@ private:
 	void ZoneProcessLFGAppearance(const EQ::Net::Packet &p);
 	// Phase 4 packet handlers
 	void ZoneProcessDuelRequest(const EQ::Net::Packet &p);
-	void ZoneProcessRecipeReply(const EQ::Net::Packet &p);
-	void ZoneProcessRecipeAutoCombine(const EQ::Net::Packet &p);
 	void ZoneProcessRandomReply(const EQ::Net::Packet &p);
 	void ZoneProcessFindPersonReply(const EQ::Net::Packet &p);
 	void ZoneProcessCameraEffect(const EQ::Net::Packet &p);
@@ -1571,14 +1570,6 @@ private:
 
 	// Player mode bank state
 
-	// Player mode trainer state
-	// T280: the per-skill CAPS the server sent in its OP_GMTraining reply
-	// (GMTrainee_Struct::skills[], one entry per skill id). They were read
-	// once to build the TrainerWindowOpened event and then thrown away, so
-	// /train had nothing to check a request against. Kept for the life of
-	// the trainer session; cleared by CloseTrainerWindow().
-	std::vector<uint32_t> m_trainer_skill_caps;
-
 	// Graphics callbacks (LoadZoneGraphics is public, others are private)
 	void OnSpawnAddedGraphics(const Entity& entity);  // Only creates entity if loading is complete
 	void OnSpawnRemovedGraphics(uint16_t spawn_id);
@@ -1590,46 +1581,10 @@ private:
 	void OnPetRemoved();
 	void OnPetButtonStateChanged(EQT::PetButton button, bool state);
 
-	// Inventory packet handlers
-	void ZoneProcessMoveItem(const EQ::Net::Packet& p);
-	void ZoneProcessDeleteItem(const EQ::Net::Packet& p);
-	void SetupInventoryCallbacks();
-	void SendMoveItem(int16_t fromSlot, int16_t toSlot, uint32_t quantity);
-	void SendDeleteItem(int16_t slot);
-
-	// Spell scribing from scroll
-	void ScribeSpellFromScroll(uint32_t spellId, uint16_t bookSlot, int16_t sourceSlot);
-	// T276: the one scribe-refusal string table, shared by /scribe's
-	// pre-flight and ScribeSpellFromScroll()'s guard (eq_merchant.cpp).
-	// Empty return = no refusal.
-	std::string ScribeRefusalMessage(uint32_t spellId);
-
-	// Loot packet handlers (Player mode)
-	void ZoneProcessLootItemToUI(const EQ::Net::Packet& p);
-	void ZoneProcessLootedItemToInventory(const EQ::Net::Packet& p);
-	void SetupLootCallbacks();
-
-	// Vendor packet handlers (Player mode)
-	void ZoneProcessShopRequest(const EQ::Net::Packet& p);
-	void ZoneProcessShopPlayerBuy(const EQ::Net::Packet& p);
-	void ZoneProcessShopPlayerSell(const EQ::Net::Packet& p);
-	void ZoneProcessShopEndConfirm(const EQ::Net::Packet& p);
-	void ZoneProcessVendorItemToUI(const EQ::Net::Packet& p);
-	void ZoneProcessMoneyUpdate(const EQ::Net::Packet& p);
-	void SetupVendorCallbacks();
-	void SetupBankCallbacks();
-
-	// Skill trainer packet handlers and send functions
-	void ZoneProcessGMTraining(const EQ::Net::Packet& p);
-	void SetupTrainerCallbacks();
-
-	// Trade packet handlers and send functions
-	void SetupTradeManagerCallbacks();
-	void SetupTradeWindowCallbacks();
-	bool ZoneProcessTradePartnerItem(const EQ::Net::Packet& p);
-	void SendTradeRequest(const EQT::TradeRequest_Struct& req);
-	void SendTradeRequestAck(const EQT::TradeRequestAck_Struct& ack);
-	void SendMoveCoin(const EQT::MoveCoin_Struct& move);
+	// K05 (Batch K): the inventory, scribe, loot, vendor, bank, trainer and
+	// trade packet handlers and wire senders are
+	// eqt::merchant::MerchantComponent's. DispatchZonePacket calls
+	// m_merchant->ZoneProcess*() directly; everything else goes via Merchant().
 
 	// T269 bank-coin helpers (eq_bridge.cpp, next to the Bank* intent arms).
 	// coinType is the wire scale (EQT::COINTYPE_*: 0=cp 1=sp 2=gp 3=pp).
@@ -1646,18 +1601,6 @@ private:
 	// BankCurrencyChanged. T286: no mirroring step -- the counters are
 	// GameState's own.
 	void PublishBankCoinProjection(bool inventoryChanged);
-	void SendTradeAcceptClick(const EQT::TradeAcceptClick_Struct& accept);
-	void SendCancelTrade(const EQT::CancelTrade_Struct& cancel);
-
-	// Tradeskill container callbacks
-	void SetupTradeskillCallbacks();
-
-	// Book/Note reading packet handlers
-	void ZoneProcessReadBook(const EQ::Net::Packet& p);
-	void SendReadBookRequest(uint8_t window, uint8_t type, const std::string& filename);
-	// T273: split the server's book text into chat lines. Public entry is
-	// ZoneProcessReadBook; exposed here only so the handler stays readable.
-	void SurfaceBookText(const std::string& text);
 
 public:
 	// Save entity data to JSON file for debugging
@@ -1679,11 +1622,8 @@ public:
 	// -1 when nothing matches (or no window is open).
 	int16_t FindLootSlotByName(const std::string& name) const;
 
-	// Vendor window methods (Player mode with graphics)
-	void RequestOpenVendor(uint16_t npcId);
-	void BuyFromVendor(uint16_t npcId, uint32_t itemSlot, uint32_t quantity);
-	void SellToVendor(uint16_t npcId, uint32_t itemSlot, uint32_t quantity);
-	void CloseVendorWindow();
+	// Vendor window state (Player mode with graphics). K05: the vendor open,
+	// buy, sell and close senders are on Merchant().
 	bool IsVendorWindowOpen() const { return m_game_state.player().vendorNpcId() != 0; }
 	uint16_t GetVendorNpcId() const { return m_game_state.player().vendorNpcId(); }
 
@@ -1739,16 +1679,13 @@ public:
 	// Defined in eq_bridge.cpp.
 	bool ActivateHotbarCommandSlot(eqt::HotbarSlotType type, const std::string& text);
 
-	// Bank window methods (Player mode with graphics)
-	void OpenBankWindow(uint16_t bankerNpcId = 0);
-	void CloseBankWindow();
+	// Bank window state (Player mode with graphics). K05: Open/CloseBankWindow
+	// are on Merchant().
 	bool IsBankWindowOpen() const { return m_game_state.player().bankerNpcId() != 0; }
 	uint16_t GetBankerNpcId() const { return m_game_state.player().bankerNpcId(); }
 
-	// Skill trainer window methods (Player mode with graphics)
-	void RequestTrainerWindow(uint16_t npcId);
-	void TrainSkill(uint8_t skillId);
-	void CloseTrainerWindow();
+	// Skill trainer window state (Player mode with graphics). K05:
+	// RequestTrainerWindow/TrainSkill/CloseTrainerWindow are on Merchant().
 	bool IsTrainerWindowOpen() const { return m_game_state.player().trainerNpcId() != 0; }
 	uint16_t GetTrainerNpcId() const { return m_game_state.player().trainerNpcId(); }
 
@@ -1767,13 +1704,6 @@ public:
 	void RequestCloseTrainer();
 	// T280: /train list -- the trainer session's offerings, with the price.
 	void ListTrainableSkills();
-	// T280: the trainer session's cap for one skill id (0 = this trainer
-	// does not teach it, or there is no session).
-	uint32_t GetTrainerSkillCap(uint8_t skillId) const;
-	// T280: eqemu's own training price in copper for a skill currently at
-	// `currentValue` (Client::OPGMTrainSkill). Static: it is arithmetic, and
-	// the trainer window and /train both quote it.
-	static uint32_t TrainingCost(uint32_t currentValue);
 
 	// T140: four thin wrappers, same rationale as T136's
 	// RequestVendorToggle/Buy/Sell -- action::EqActionHandler has no access
@@ -1787,17 +1717,6 @@ public:
 	void RequestTimeOfDay(const std::string& args);
 	void RequestBankToggle();
 	void RequestTraining();
-
-	// T269: /bank deposit|withdraw|convert. Push the kept
-	// BankCurrencyMoveIntent / BankCurrencyConvertIntent (the same shape a
-	// bank-window coin gesture would push) for ProcessBridgeIntents() to
-	// turn into OP_MoveCoin. Refuse (message, no intent) when the bank
-	// window is not open. Defined in eq_merchant.cpp next to SendMoveCoin.
-	void RequestBankCoinMove(uint8_t coinType, int32_t amount, bool fromBank);
-	void RequestBankCoinConvert(uint8_t fromCoinType, uint8_t toCoinType, int32_t amount);
-
-	// Book/Note reading methods (Player mode with graphics)
-	void RequestReadBook(const std::string& filename, uint8_t type = 0);
 
 	// T273: /read <slot|item name>. Resolves the carried item, refuses
 	// (message, no intent) when it is not a book/note, and otherwise pushes
@@ -1910,4 +1829,5 @@ private:
 	std::unique_ptr<eqt::gm::GmComponent> m_gm;
 	std::unique_ptr<eqt::chat::ChatComponent> m_chat;
 	std::unique_ptr<eqt::group::GroupComponent> m_group;
+	std::unique_ptr<eqt::merchant::MerchantComponent> m_merchant;
 };

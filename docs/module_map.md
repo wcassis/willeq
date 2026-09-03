@@ -24,7 +24,7 @@ review section under `refactor/F*.md` and `refactor/J*.md`.
 | eq_action_handler.cpp | 783 | `action::EqActionHandler` — the `IActionHandler` implementation wrapping `EverQuest` for `ActionDispatcher`/`CommandProcessor` (action-layer migration T99–T143; raid guards T179–T184; skill gate T159/T162) |
 | eq_movement.cpp | 486 | Move/Follow/UpdateMovement, SendPositionUpdate, pathfinding, water state, jump, keyboard movement |
 | eq_bridge.cpp | 890 | InitGraphics/ShutdownGraphics, GameTick, Pre/PostRenderTick, ProcessBridgeIntents/Events, zone-load snapshot, loot-window flow, hotbar config, audio init |
-| eq_merchant.cpp | 677 | Inventory/items, trade, loot/vendor/bank/trainer callbacks, recipes (tradeskill senders T149), ZoneProcessLootItemToUI |
+| src/client/merchant/merchant.cpp | 689 | K05: `eqt::merchant::MerchantComponent` — inventory item movement, ScribeSpellFromScroll, the trade request/coin/accept/cancel senders, ReadBook and ZoneProcessTradePartnerItem, moved out of `class EverQuest` (was `eq_merchant.cpp`) |
 | eq_commands.cpp | 1,110 | RegisterCommands driver + the game-registry remainder after T139 deleted 34 redundant commands (registry 1 of `docs/decisions.md` 2026-08-03) |
 | eq_zone.cpp | 1,094 | Zone change/teardown, CleanupZone, DisconnectFromZone, LoadZoneMap/Lines/Sources, CheckZoneLine, GetBestZ/FixZ, in-zone teleport (T231) |
 | eq_zone_entry.cpp | 1,057 | J02: ZoneProcessNewZone, ZoneProcessPlayerProfile (the LOAD-BEARING player heading flip), ZoneProcessAnimation, ZoneProcessGuildMOTD, CheckZoneRequestPhaseComplete |
@@ -54,8 +54,8 @@ review section under `refactor/F*.md` and `refactor/J*.md`.
 | eq_entities_appearance.cpp | 653 | J08: SpawnAppearance / WearChange / Illusion handlers, entity size (T318) |
 | eq_entities_updates.cpp | 767 | J08: ClientUpdate interpolation, HP / MobHealth, position broadcast |
 | eq_entities_world.cpp | 391 | J08: doors, ground spawns and world objects |
-| eq_merchant_trade.cpp | 702 | J13: player-to-player trade callbacks and senders |
-| eq_merchant_vendor_bank.cpp | 621 | J13: vendor, bank and trainer callbacks |
+| src/client/merchant/merchant_trade.cpp | 714 | K05: `eqt::merchant::MerchantComponent` — the trade/loot/vendor/bank/tradeskill Setup*Callbacks, the loot transfer handlers and the shop request/buy/sell/money/end handlers (was `eq_merchant_trade.cpp`, J13) |
+| src/client/merchant/merchant_vendor_bank.cpp | 633 | K05: `eqt::merchant::MerchantComponent` — the vendor window packet + open/buy/sell/close senders, the bank window, the GM trainer (owner of the moved `m_trainer_skill_caps`) and the Phase 4 tradeskill recipe senders/handlers (was `eq_merchant_vendor_bank.cpp`, J13) |
 | eq_movement_state.cpp | 889 | J13: SetMovementMode / SetPositionState, water and region state, jump |
 | eq_movement_update.cpp | 854 | J13: SendPositionUpdate and the wire packing (wire z = groundZ + 0.625*size, T311) |
 
@@ -70,7 +70,7 @@ This table and that plan must agree; change both together.
 | gm | `gm/gm_component` | 12 | 2 | **K02 DONE** |
 | chat | `chat/chat_component`, `eq_chat` (AddChat* only), `eq_strings` | 13 | 1 | **K03 DONE** (10 of 13 defs moved; the three AddChat* output primitives stay on `EverQuest`; `eq_strings` untouched, still a free-function candidate) |
 | group | `group/group_component` | 23 | 5 | **K04 DONE** (group, raid and pet together; `DismissPet`/`UpdateGroupMemberFromEntity` deleted, zero callers) |
-| merchant | `eq_merchant`, `_trade`, `_vendor_bank` | 56 | 1 | K05 |
+| merchant | `merchant/merchant`, `_trade`, `_vendor_bank` | 54 | 1 | **K05 DONE** (54 defs, not the 56 the batch table claimed; all 54 moved. `m_trainer_skill_caps` moved; the loot/vendor/scribe members stay on `EverQuest` pending K09/K11/K12) |
 | entities | `eq_entities`, `_appearance`, `_updates`, `_world` | 28 | 1 | K06 |
 | movement | `eq_movement`, `_state`, `_update` | 44 | 4 | K07 |
 | player | `eq_player_info`, `_misc`, `_social`, `_state`, `_buffs`, `eq_profile_appearance` | 142 | 11 | K08 (may split in two) |

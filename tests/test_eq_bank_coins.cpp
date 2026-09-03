@@ -167,7 +167,7 @@ TEST(BankCoinRequest, Move_WindowClosed_RefusesAndPushesNoIntent) {
     h.setPools(10, 0, 0, 0, 0, 0, 0, 0);
     h.bridge.drainEvents();
 
-    h.eq.RequestBankCoinMove(EQT::COINTYPE_PP, 5, /*fromBank=*/false);
+    h.eq.Merchant().RequestBankCoinMove(EQT::COINTYPE_PP, 5, /*fromBank=*/false);
 
     EXPECT_TRUE(h.bridge.drainIntents().empty());
     auto msgs = h.systemMessages();
@@ -177,10 +177,10 @@ TEST(BankCoinRequest, Move_WindowClosed_RefusesAndPushesNoIntent) {
 
 TEST(BankCoinRequest, Move_WindowOpen_PushesBankCurrencyMoveIntent) {
     BankCoinHarness h;
-    h.eq.OpenBankWindow(kBankerId);
+    h.eq.Merchant().OpenBankWindow(kBankerId);
     h.bridge.drainEvents();
 
-    h.eq.RequestBankCoinMove(EQT::COINTYPE_GP, 7, /*fromBank=*/true);
+    h.eq.Merchant().RequestBankCoinMove(EQT::COINTYPE_GP, 7, /*fromBank=*/true);
 
     auto intents = h.bridge.drainIntents();
     ASSERT_EQ(intents.size(), 1u);
@@ -196,7 +196,7 @@ TEST(BankCoinRequest, Convert_WindowClosed_RefusesAndPushesNoIntent) {
     BankCoinHarness h;
     h.bridge.drainEvents();
 
-    h.eq.RequestBankCoinConvert(EQT::COINTYPE_CP, EQT::COINTYPE_SP, 30);
+    h.eq.Merchant().RequestBankCoinConvert(EQT::COINTYPE_CP, EQT::COINTYPE_SP, 30);
 
     EXPECT_TRUE(h.bridge.drainIntents().empty());
     EXPECT_EQ(h.systemMessages().size(), 1u);
@@ -204,10 +204,10 @@ TEST(BankCoinRequest, Convert_WindowClosed_RefusesAndPushesNoIntent) {
 
 TEST(BankCoinRequest, Convert_WindowOpen_PushesBankCurrencyConvertIntent) {
     BankCoinHarness h;
-    h.eq.OpenBankWindow(kBankerId);
+    h.eq.Merchant().OpenBankWindow(kBankerId);
     h.bridge.drainEvents();
 
-    h.eq.RequestBankCoinConvert(EQT::COINTYPE_CP, EQT::COINTYPE_SP, 30);
+    h.eq.Merchant().RequestBankCoinConvert(EQT::COINTYPE_CP, EQT::COINTYPE_SP, 30);
 
     auto intents = h.bridge.drainIntents();
     ASSERT_EQ(intents.size(), 1u);
@@ -225,7 +225,7 @@ TEST(BankCoinRequest, Convert_WindowOpen_PushesBankCurrencyConvertIntent) {
 TEST(BankCoinIntent, Deposit_SendsInventoryToBankMoveCoin_AndProjectsBothPools) {
     BankCoinHarness h;
     h.setPools(10, 1, 2, 3, 4, 5, 6, 7);
-    h.eq.OpenBankWindow(kBankerId);
+    h.eq.Merchant().OpenBankWindow(kBankerId);
     h.bridge.drainEvents();
     h.clearSent();
 
@@ -267,7 +267,7 @@ TEST(BankCoinIntent, Deposit_SendsInventoryToBankMoveCoin_AndProjectsBothPools) 
 TEST(BankCoinIntent, Withdraw_SendsBankToInventoryMoveCoin) {
     BankCoinHarness h;
     h.setPools(0, 0, 0, 0, 0, 0, 0, 25);
-    h.eq.OpenBankWindow(kBankerId);
+    h.eq.Merchant().OpenBankWindow(kBankerId);
     h.bridge.drainEvents();
     h.clearSent();
 
@@ -291,7 +291,7 @@ TEST(BankCoinIntent, Withdraw_SendsBankToInventoryMoveCoin) {
 TEST(BankCoinIntent, Deposit_PoolLacksCoins_SendsNothing_ProjectionUnchanged) {
     BankCoinHarness h;
     h.setPools(3, 0, 0, 0, 0, 0, 0, 0);
-    h.eq.OpenBankWindow(kBankerId);
+    h.eq.Merchant().OpenBankWindow(kBankerId);
     h.bridge.drainEvents();
     h.clearSent();
 
@@ -329,7 +329,7 @@ TEST(BankCoinIntent, Move_WindowClosed_SendsNothing) {
 TEST(BankCoinIntent, ConvertUp_SendsBankToBankWithBothCoinTypes_AndProjectsRatio) {
     BankCoinHarness h;
     h.setPools(0, 0, 0, 0, 0, 0, 1, 30);
-    h.eq.OpenBankWindow(kBankerId);
+    h.eq.Merchant().OpenBankWindow(kBankerId);
     h.bridge.drainEvents();
     h.clearSent();
 
@@ -358,7 +358,7 @@ TEST(BankCoinIntent, ConvertDown_TwoStepsIsHundredToOne) {
     // pp -> sp: coppers(3)/coppers(1) = 1000/10 = 100 sp per pp.
     BankCoinHarness h;
     h.setPools(0, 0, 0, 0, 2, 0, 0, 0);
-    h.eq.OpenBankWindow(kBankerId);
+    h.eq.Merchant().OpenBankWindow(kBankerId);
     h.bridge.drainEvents();
     h.clearSent();
 
@@ -381,7 +381,7 @@ TEST(BankCoinIntent, ConvertUp_NotAMultiple_SendsNothing) {
     // it earlier with a message.
     BankCoinHarness h;
     h.setPools(0, 0, 0, 0, 0, 0, 0, 15);
-    h.eq.OpenBankWindow(kBankerId);
+    h.eq.Merchant().OpenBankWindow(kBankerId);
     h.bridge.drainEvents();
     h.clearSent();
 
@@ -397,7 +397,7 @@ TEST(BankCoinIntent, ConvertUp_NotAMultiple_SendsNothing) {
 TEST(BankCoinIntent, Convert_PoolLacksCoins_SendsNothing) {
     BankCoinHarness h;
     h.setPools(0, 0, 0, 0, 0, 0, 0, 20);
-    h.eq.OpenBankWindow(kBankerId);
+    h.eq.Merchant().OpenBankWindow(kBankerId);
     h.bridge.drainEvents();
     h.clearSent();
 
@@ -412,7 +412,7 @@ TEST(BankCoinIntent, Convert_PoolLacksCoins_SendsNothing) {
 TEST(BankCoinIntent, Convert_SameCoinType_SendsNothing) {
     BankCoinHarness h;
     h.setPools(0, 0, 0, 0, 0, 0, 0, 20);
-    h.eq.OpenBankWindow(kBankerId);
+    h.eq.Merchant().OpenBankWindow(kBankerId);
     h.bridge.drainEvents();
     h.clearSent();
 

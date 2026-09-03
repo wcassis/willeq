@@ -245,14 +245,14 @@ TEST(TrainCost, MatchesEqemusCubicFormula) {
     // Client::OPGMTrainSkill: AdjustedSkillLevel = skilllevel - 10;
     //                         if (AdjustedSkillLevel > 0)
     //                             Cost = Adj*Adj*Adj / 100;
-    EXPECT_EQ(EverQuest::TrainingCost(0), 0u);
-    EXPECT_EQ(EverQuest::TrainingCost(10), 0u);
-    EXPECT_EQ(EverQuest::TrainingCost(11), 0u);     // 1/100 == 0, integer
-    EXPECT_EQ(EverQuest::TrainingCost(15), 1u);     // 125/100
-    EXPECT_EQ(EverQuest::TrainingCost(20), 10u);    // 1000/100
-    EXPECT_EQ(EverQuest::TrainingCost(50), 640u);   // 64000/100
-    EXPECT_EQ(EverQuest::TrainingCost(100), 7290u); // 729000/100
-    EXPECT_EQ(EverQuest::TrainingCost(200), 6859u * 10u);  // 190^3/100
+    EXPECT_EQ(eqt::merchant::MerchantComponent::TrainingCost(0), 0u);
+    EXPECT_EQ(eqt::merchant::MerchantComponent::TrainingCost(10), 0u);
+    EXPECT_EQ(eqt::merchant::MerchantComponent::TrainingCost(11), 0u);     // 1/100 == 0, integer
+    EXPECT_EQ(eqt::merchant::MerchantComponent::TrainingCost(15), 1u);     // 125/100
+    EXPECT_EQ(eqt::merchant::MerchantComponent::TrainingCost(20), 10u);    // 1000/100
+    EXPECT_EQ(eqt::merchant::MerchantComponent::TrainingCost(50), 640u);   // 64000/100
+    EXPECT_EQ(eqt::merchant::MerchantComponent::TrainingCost(100), 7290u); // 729000/100
+    EXPECT_EQ(eqt::merchant::MerchantComponent::TrainingCost(200), 6859u * 10u);  // 190^3/100
 }
 
 // ===================================================================
@@ -265,9 +265,9 @@ TEST(TrainSession, GmTrainingReplyOpensTheSessionAndKeepsTheCaps) {
     h.openSession(100, 75);
     EXPECT_TRUE(h.eq.IsTrainerWindowOpen());
     EXPECT_EQ(h.eq.GetTrainerNpcId(), kTrainerId);
-    EXPECT_EQ(h.eq.GetTrainerSkillCap(kSkill1HSlash), 100u);
-    EXPECT_EQ(h.eq.GetTrainerSkillCap(kSkillBash), 75u);
-    EXPECT_EQ(h.eq.GetTrainerSkillCap(kSkillForage), 0u);
+    EXPECT_EQ(h.eq.Merchant().GetTrainerSkillCap(kSkill1HSlash), 100u);
+    EXPECT_EQ(h.eq.Merchant().GetTrainerSkillCap(kSkillBash), 75u);
+    EXPECT_EQ(h.eq.Merchant().GetTrainerSkillCap(kSkillForage), 0u);
 }
 
 TEST(TrainSession, TrainerWindowEventQuotesTheServersPrice) {
@@ -295,9 +295,9 @@ TEST(TrainSession, TrainerWindowEventQuotesTheServersPrice) {
 TEST(TrainSession, CapsAreClearedWhenTheSessionEnds) {
     TrainHarness h;
     h.openSession();
-    h.eq.CloseTrainerWindow();
+    h.eq.Merchant().CloseTrainerWindow();
     EXPECT_FALSE(h.eq.IsTrainerWindowOpen());
-    EXPECT_EQ(h.eq.GetTrainerSkillCap(kSkill1HSlash), 0u);
+    EXPECT_EQ(h.eq.Merchant().GetTrainerSkillCap(kSkill1HSlash), 0u);
 }
 
 // ===================================================================
@@ -398,7 +398,7 @@ TEST(TrainSkill, ByNamePushesTheIntentAndSendsTwelveExactBytes) {
 
     // Nothing is on the wire until the intent is drained on the game thread.
     EXPECT_TRUE(h.packetsWithOpcode(HC_OP_GMTrainSkill).empty());
-    h.eq.TrainSkill(intent->skillId);
+    h.eq.Merchant().TrainSkill(intent->skillId);
 
     auto pkts = h.packetsWithOpcode(HC_OP_GMTrainSkill);
     ASSERT_EQ(pkts.size(), 1u);
@@ -447,7 +447,7 @@ TEST(TrainSkill, WritesNoSkillValueAndNoMoneyLocally) {
     h.processor.processCommand("/train 1H Slash");
     auto intents = h.drainIntents();
     ASSERT_NE(FindTrainIntent(intents), nullptr);
-    h.eq.TrainSkill(kSkill1HSlash);
+    h.eq.Merchant().TrainSkill(kSkill1HSlash);
 
     EXPECT_EQ(h.eq.m_skill_manager->getSkillValue(kSkill1HSlash), 50u)
         << "the new value must come from the server's OP_SkillUpdate";
@@ -525,7 +525,7 @@ TEST(TrainClose, PushesTheIntentAndSendsEightExactBytes) {
         << "T264 F8's other blocked intent must now be produced";
 
     EXPECT_TRUE(h.packetsWithOpcode(HC_OP_GMEndTraining).empty());
-    h.eq.CloseTrainerWindow();
+    h.eq.Merchant().CloseTrainerWindow();
 
     auto pkts = h.packetsWithOpcode(HC_OP_GMEndTraining);
     ASSERT_EQ(pkts.size(), 1u);
