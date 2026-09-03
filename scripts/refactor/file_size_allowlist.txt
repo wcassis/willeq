@@ -1,2 +1,2 @@
 include/client/eq.h	899	single class; shrinks under refactor/K_component_extraction.md; may not grow
-include/client/graphics/irrlicht_renderer.h	1871	single class; shrinks under refactor/L_renderer_component_extraction.md; may not grow
+include/client/graphics/irrlicht_renderer.h	1809	single class; shrinks under refactor/L_renderer_component_extraction.md; may not grow

@@ -123,7 +123,7 @@ This table and that plan must agree; change both together.
 
 ## Renderer — IrrlichtRenderer class (`include/client/graphics/irrlicht_renderer.h`)
 
-`irrlicht_renderer.cpp` + 23 `renderer_*.cpp` TUs (J11 split the core), plus
+`irrlicht_renderer.cpp` + 22 `renderer_*.cpp` TUs (J11 split the core), plus
 the components Batch L extracts.
 
 Batch L (`refactor/L_renderer_component_extraction.md`) is doing to
@@ -136,6 +136,7 @@ component below.
 | Component | Header | TU |
 |---|---|---|
 | `EQT::Graphics::RdpComponent` | `include/client/graphics/rdp/rdp_component.h` | `src/client/graphics/rdp/rdp_component.cpp` |
+| `EQT::Graphics::Eqe1ArchiveComponent` | `include/client/graphics/eqe1/eqe1_archive_component.h` | `src/client/graphics/eqe1/eqe1_archive_component.cpp` |
 
 | TU | Lines | Contents |
 |---|---|---|
@@ -151,7 +152,6 @@ component below.
 | renderer_zone_stream.cpp | 873 | Lazy/background mesh load pipeline, progressive load, PVS neighborhood, deferred-entity pickup (T111/T210) |
 | renderer_init.cpp | 757 | J11: init/shutdown, loading screen (initLoadingScreen, loadGlobalAssets, show/hideLoadingScreen) |
 | renderer_zone_lifecycle.cpp | 739 | unloadZone (retains persistent EQE1 archives, T214), setZoneEnvironment, placeholder build/destroy, instant scene, zone-ready state |
-| renderer_effects.cpp | 697 | Fire-glow icospheres, EQE1 archive loading |
 | renderer_hud_env.cpp | 643 | J11: fog setup, loading-screen draw, environmental display settings, HUD setup/update, paperdoll |
 | renderer_slash_commands.cpp | 592 | J11: `IrrlichtRenderer::processSlashCommand()` — the registry-3 if-chain |
 | renderer_zone_load_objects.cpp | 578 | loadZoneStep6_Objects, 7_Doors, 9_Collision (split from renderer_zone_load.cpp, T166) |
@@ -162,6 +162,7 @@ component below.
 | renderer_entities.cpp | 502 | Entity/inventory/combat-anim façades (thin forwards) |
 | renderer_gpu_upload.cpp | 446 | GPU upload thread init/drain/apply |
 | renderer_event_receiver.cpp | 385 | J11: `RendererEventReceiver::OnEvent` and the key/mouse query surface |
+| src/client/graphics/eqe1/eqe1_archive_component.cpp | 726 | EQT::Graphics::Eqe1ArchiveComponent -- EQE1 flat-pack archive open/resolve/index/report plus the fire-glow icosphere renderer (EQT_HAS_DRM), extracted from IrrlichtRenderer by L02 (Batch L). Header include/client/graphics/eqe1/eqe1_archive_component.h |
 | src/client/graphics/rdp/rdp_component.cpp | 233 | EQT::Graphics::RdpComponent -- RDP server integration (WITH_RDP guard), extracted from IrrlichtRenderer by L01 (Batch L). Header include/client/graphics/rdp/rdp_component.h |
 | renderer_entity_load_gate.cpp | 68 | ensureEntityPrepWorkerStarted, deferEntityForLoadGate — the entity load distance gate (T109/T111) |
 

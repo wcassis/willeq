@@ -165,7 +165,7 @@ BenchMemorySnapshot computeMemorySnapshot(ZoneBench::ZoneBenchData& data, int wi
     // T80: EQE1Loader::getMappedBytes() (eqe1_loader.h, P04) has existed
     // since before T69 -- the "no per-loader byte count" comment T69 wrote
     // here was simply wrong, not a real API gap. IrrlichtRenderer::
-    // getEQE1MappedBytesTotal() (renderer_effects.cpp) sums the exact same
+    // getEQE1MappedBytesTotal() (eqe1_archive_component.cpp) sums the exact same
     // accessor over its own eqe1Loaders_; this is the equivalent sum over
     // ZoneBenchData::eqe1Loaders, same method, same reuse discipline as
     // every other category in this file.

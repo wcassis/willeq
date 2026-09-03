@@ -4,7 +4,7 @@
 // every configured global archive exists as an .eqe1 pack in the EQE1 asset
 // dir -- the file the loader actually opens (EQE1 is all-or-nothing, no S3D
 // fallback; "textures" exists ONLY as an .eqe1, so the .s3d dir is the wrong
-// oracle) -- and that the built-in fallback list in renderer_effects.cpp (a
+// oracle) -- and that the built-in fallback list in eqe1_archive_component.cpp (a
 // copy of the config) does not carry the phantom either.
 
 #include <gtest/gtest.h>
@@ -49,5 +49,5 @@ TEST(Eqe1ArchiveConfigTest, BuiltInFallbackListHasNoPhantomGequip7) {
     buf << in.rdbuf();
     const std::string src = buf.str();
     EXPECT_EQ(src.find("\"gequip7\""), std::string::npos)
-        << "renderer_effects.cpp's built-in EQE1 archive fallback still lists gequip7";
+        << "eqe1_archive_component.cpp's built-in EQE1 archive fallback still lists gequip7";
 }

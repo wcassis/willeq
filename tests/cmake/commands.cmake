@@ -150,7 +150,7 @@ ADD_EXECUTABLE(test_eqe1_archive_config
 )
 TARGET_COMPILE_DEFINITIONS(test_eqe1_archive_config PRIVATE
     EQE1_ARCHIVES_JSON="${CMAKE_SOURCE_DIR}/config/eqe1_archives.json"
-    RENDERER_EFFECTS_SOURCE="${CMAKE_SOURCE_DIR}/src/client/graphics/renderer_effects.cpp")
+    RENDERER_EFFECTS_SOURCE="${CMAKE_SOURCE_DIR}/src/client/graphics/eqe1/eqe1_archive_component.cpp")
 TARGET_LINK_LIBRARIES(test_eqe1_archive_config GTest::gtest_main ${JSONCPP_LIBRARIES})
 GTEST_DISCOVER_TESTS(test_eqe1_archive_config)
 

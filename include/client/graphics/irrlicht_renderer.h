@@ -51,6 +51,7 @@
 #include "client/input/hotkey_manager.h"
 
 #include "client/graphics/renderer_context.h"
+#include "client/graphics/eqe1/eqe1_archive_component.h"
 #ifdef WITH_RDP
 #include "client/graphics/rdp/rdp_server.h"
 #include "client/graphics/rdp/rdp_input_handler.h"
@@ -728,6 +729,12 @@ public:
     RDPServer* getRDPServer() { return rdp_->getRDPServer(); }
 #endif // WITH_RDP
 
+    // L02 (Batch L): the EQE1 archive family (open/resolve/report) and the
+    // fire-glow icospheres live in Eqe1ArchiveComponent. Nothing outside
+    // IrrlichtRenderer ever called any of them, so there are no forwarders --
+    // every call site was retargeted to eqe1_-> (Mechanism 5).
+    Eqe1ArchiveComponent& Eqe1() { return *eqe1_; }
+
 private:
     void createSoftwareCursor();
     void setupCamera();
@@ -892,51 +899,13 @@ private:
     std::unique_ptr<ZoneShaderManager> zoneShader_;  // GLSL fog/lighting/tint shader
     // Zone texture atlas removed (E10) — EQE1 flat packs replace atlas system
 
-    // EQE1 archive configuration — loaded from config/eqe1_archives.json
-    struct EQE1ArchiveEntry {
-        std::vector<std::string> zoneArchives;    // entries with {zone} placeholder
-        std::vector<std::string> globalArchives;  // loaded as-is
-    };
-    std::map<std::string, EQE1ArchiveEntry> eqe1ArchiveEntries_;  // "default" + per-zone overrides
-    bool loadEQE1ArchiveConfig(const std::string& path);
-    EQE1ArchiveEntry resolveEQE1Archives(const std::string& zoneName) const;
-
     // EQE1 flat pack loaders — lazy-opened on demand, keyed by archive base name
     // (e.g., "qeynos2", "global_chr", "gequip2"). Thread-safe via eqe1Mutex_.
     std::unordered_map<std::string, std::unique_ptr<EQE1Loader>> eqe1Loaders_;
     mutable std::mutex eqe1Mutex_;
-    // Try to open an EQE1 file and register with cache. Returns loader pointer or nullptr.
-    // Thread-safe — called from entity prep worker and equipment loader threads.
     // T207: name -> owning-archive index (data/eqe1_texture_index.json). Loaded
     // once and reused across zones; the candidate set is per-zone, not this.
     EQE1TextureIndex eqe1Index_;
-
-    const EQE1Loader* getOrOpenEQE1(const std::string& archiveBaseName);
-
-    // T284: getOrOpenEQE1's body, parameterised by directory. Exists so the
-    // composite-sheet fallback (openCompositeSheetEQE1) can open from a
-    // --composite-entities directory that is not --eqe1-path without a second
-    // copy of the open/register/negative-cache logic. Keyed by stem in the
-    // same eqe1Loaders_ map, so a stem is opened at most once per zone.
-    const EQE1Loader* getOrOpenEQE1FromDir(const std::string& archiveBaseName,
-                                           const std::string& dir);
-
-    // T284: open the self-named composite sheet pack for `name` from a
-    // composite directory the index does not cover. Returns nullptr (opening
-    // nothing) when composites are off, when the composite directory is the
-    // indexed eqe1Path (the shipped layout -- the index already answered), or
-    // when no such pack exists.
-    const EQE1Loader* openCompositeSheetEQE1(const std::string& name);
-
-    // T214: archives that are NOT zone assets and must survive unloadZone().
-    // "willeq" is the client's own pack (UI atlas + generated textures like
-    // detail_atlas); it is opened once at renderer init for the life of the
-    // process. Tearing it down with the zone's archives left detail_atlas
-    // unreachable, so the miss resolver opened textures.eqe1 (2.6MB) to serve
-    // that ONE name -- in every zone.
-    static bool isPersistentEQE1Archive(const std::string& archiveBaseName) {
-        return archiveBaseName == "willeq";
-    }
 
     // P04: global archives resolved for the current zone but not yet opened.
     // loadZoneStep0_EQE1 populates this (instead of eagerly opening every
@@ -962,32 +931,6 @@ private:
     // not name) and is tagged as such in the request log.
     size_t eqe1LoadTimeCandidateCount_ = 0;
 
-    // T199/T266: queue the archive race_models names for `raceId`
-    // (race_models.json s3d_file, keyed by stem) as an EQE1 candidate, unless
-    // it is already there. Returns true when it added one. Called for every
-    // spawned race at zone load (T199) and for every race that reaches the
-    // entity prep queue after load (T266).
-    bool addSpawnedRaceEQE1Candidate(uint16_t raceId);
-
-    // T207: resolve `name` to the one candidate archive that holds it and open
-    // exactly that archive, or return nullptr having opened nothing. Replaces
-    // tryOpenNextGlobalEQE1(), which probed the whole configured list.
-    // T266: a name held by NO candidate but by some archive in the tree opens
-    // that archive (rule R2, tagged `late-open` in the request log) instead of
-    // returning nullptr -- which, under all-or-nothing, was a client exit for
-    // any race that spawned after zone load. Only a name in NO archive still
-    // returns nullptr (a real asset gap; decision #2 keeps that fatal).
-    const EQE1Loader* openArchiveContaining(const std::string& name);
-
-    // T207: at zone-in-complete, report every opened EQE1 archive with the
-    // number of lookups it actually served. Archives with zero hits were opened
-    // by the linear probe in tryOpenNextGlobalEQE1() and were never needed --
-    // this is the before/after metric for the name->archive index fix.
-    void logEQE1ArchiveUsage() const;
-    // Sum of getMappedBytes() across every currently-open EQE1Loader (opened
-    // zone archives + whatever global archives lazy-open has pulled in so
-    // far). Used by --load-mem-audit and /pmem's accounted-vs-RSS breakdown.
-    size_t getEQE1MappedBytesTotal() const;
 #if defined(EQT_HAS_DRM) && !defined(EQT_HAS_GLES2)
     std::unique_ptr<GLES2EGLHelper> gles2Helper_;  // GLES2 context for ETC1 EGL image sharing
 #endif
@@ -1131,6 +1074,10 @@ private:
     // unconditional gtest include in a production header that ships to ARM
     // is a hard build break there -- caught by this unit's own ARM
     // cross-compile verification step.
+    // L02: Eqe1ArchiveComponent reaches 17 IrrlichtRenderer members that are
+    // shared with other families and so stay here (Mechanism 3).
+    friend class Eqe1ArchiveComponent;
+
     friend class SimulationOutputLifetimeTest_ApplyOutputAloneLeavesAllFourPointersUntouched_Test;
     friend class SimulationOutputLifetimeTest_ApplyOutputAloneLeavesAllFourPointersUntouched_PvsCullingOff_Test;
     friend class SimulationOutputLifetimeTest_BindBindsAllFourFromThePassedPersistentPointer_Test;
@@ -1349,25 +1296,12 @@ private:
     float fireGlowTime_ = 0.0f;       // Animation time accumulator
 
     // Icosphere rendering (animated fire glow volumes)
-    void buildIcosphereMesh();
-    void compileIcosphereShader();
-    void renderFireGlowIcospheres();
-    void updateFireGlowLighting();  // Select nearest N and set shader uniforms
     std::vector<float> icosphereVertices_;   // 3 floats per vertex (unit sphere positions)
     std::vector<uint16_t> icosphereIndices_;
 #ifdef EQT_HAS_DRM
     uint32_t icosphereVBO_ = 0;
     uint32_t icosphereIBO_ = 0;
     uint32_t icosphereProgram_ = 0;
-    int32_t icoLocViewProj_ = -1;
-    int32_t icoLocCenter_ = -1;
-    int32_t icoLocRadius_ = -1;
-    int32_t icoLocTime_ = -1;
-    int32_t icoLocJitterAmt_ = -1;
-    int32_t icoLocColor_ = -1;
-    int32_t icoLocFogStart_ = -1;
-    int32_t icoLocFogEnd_ = -1;
-    int32_t icoLocFogColor_ = -1;
 #endif
 
     CameraMode cameraMode_ = CameraMode::Follow;  // Default to third-person follow camera
@@ -1856,6 +1790,10 @@ private:
     bool sceneProfileEnabled_ = false;
     int sceneProfileFrameCount_ = 0;
     void profileSceneBreakdown();  // Run once to profile scene categories
+
+    // L02 (Batch L): the EQE1 archive family and the fire-glow icospheres.
+    // Constructed in the IrrlichtRenderer ctor body; see renderer_init.cpp.
+    std::unique_ptr<Eqe1ArchiveComponent> eqe1_;
 
 #ifdef WITH_RDP
     // L01 (Batch L): the rdp family -- the server handle, the caps-lock

@@ -77,9 +77,9 @@ void IrrlichtRenderer::loadZoneStep0_EQE1(ZoneLoadContext& ctx) {
         // they're queued and opened lazily, one at a time, only when
         // ConstrainedTextureCache actually misses a lookup against what's
         // already open. Most zones only ever touch a handful of them.
-        auto archiveList = resolveEQE1Archives(currentZoneName_);
+        auto archiveList = eqe1_->resolveEQE1Archives(currentZoneName_);
         for (const auto& name : archiveList.zoneArchives) {
-            getOrOpenEQE1(name);
+            eqe1_->getOrOpenEQE1(name);
         }
         {
             std::lock_guard<std::mutex> lock(eqe1CandidatesMutex_);
@@ -125,7 +125,7 @@ void IrrlichtRenderer::loadZoneStep0_EQE1(ZoneLoadContext& ctx) {
             }
             size_t added = 0;
             for (uint16_t raceId : spawnedRaces) {
-                if (addSpawnedRaceEQE1Candidate(raceId)) ++added;
+                if (eqe1_->addSpawnedRaceEQE1Candidate(raceId)) ++added;
             }
             LOG_INFO(MOD_GRAPHICS, "EQE1: {} distinct spawned races -> {} archive(s) queued "
                      "beyond the static list", spawnedRaces.size(), added);
@@ -150,7 +150,7 @@ void IrrlichtRenderer::loadZoneStep0_EQE1(ZoneLoadContext& ctx) {
         }
         if (constrainedTextureCache_) {
             constrainedTextureCache_->setEQE1ArchiveResolver(
-                [this](const std::string& n) { return openArchiveContaining(n); });
+                [this](const std::string& n) { return eqe1_->openArchiveContaining(n); });
         }
 
         // T284: composite entity sheets are NOT bulk-opened.
@@ -907,7 +907,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
         // meshBytes was constrainedMeshCache_'s usage, always 0 (T67: cache
         // removed, was never constructed in any shipped build).
         constexpr size_t meshBytes = 0;
-        logLoadMemAuditStep(stepName, getEQE1MappedBytesTotal(), texBytes, meshBytes, 0);
+        logLoadMemAuditStep(stepName, eqe1_->getEQE1MappedBytesTotal(), texBytes, meshBytes, 0);
     };
 
     sampleStep("00_start");
@@ -970,7 +970,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
     // T207: report which EQE1 archives actually served a lookup. Always on --
     // it is a handful of INFO lines once per zone-in, and the whole point is
     // that the waste was invisible until it was counted.
-    logEQE1ArchiveUsage();
+    eqe1_->logEQE1ArchiveUsage();
 
     // T214: dump the COMPLETE per-name EQE1 request list for this zone load.
     // logEQE1ArchiveUsage() above says which archives went unused; this says

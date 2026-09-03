@@ -110,6 +110,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_rdp_component)
 ENDIF()
 
+# L02 (Batch L, refactor/L02_eqe1_effects_component.md): the EQE1 archive
+# family + fire-glow icospheres extracted from IrrlichtRenderer. Same bare,
+# never-Init()'d IrrlichtRenderer idiom as test_rdp_component above; the one
+# asset-dependent case skips when the EQE1 tree is not mounted.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_eqe1_archive_component
+        test_eqe1_archive_component.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_eqe1_archive_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_eqe1_archive_component GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_eqe1_archive_component)
+ENDIF()
+
 # T310 Leg A: the first-person camera tunables (/fpcam, --fpcam). Same bare,
 # never-Init()'d IrrlichtRenderer idiom as test_irrlicht_camera_command above,
 # plus the catalog gate and Application::parseArguments -- so ONE binary covers
