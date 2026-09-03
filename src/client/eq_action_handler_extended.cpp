@@ -292,36 +292,36 @@ void EqActionHandler::raidInvite(const std::string& name) {
         return;
     }
     // RaidCommandInvite (3): player_name = invitee, leader_name = us.
-    m_eq.SendRaidCommand(3, name, m_eq.GetMyName());
+    m_eq.Group().SendRaidCommand(3, name, m_eq.GetMyName());
     m_eq.AddChatSystemMessage(fmt::format("You invite {} to join your raid.", name));
 }
 
 void EqActionHandler::raidAccept() {
-    const std::string inviter = m_eq.GetPendingRaidInviter();
+    const std::string inviter = m_eq.Group().GetPendingRaidInviter();
     if (inviter.empty()) {
         m_eq.AddChatSystemMessage("You have no pending raid invitation.");
         return;
     }
     // RaidCommandAcceptInvite (1): player_name = the INVITER, leader_name = us.
-    m_eq.SendRaidCommand(1, inviter, m_eq.GetMyName());
-    m_eq.ClearPendingRaidInvite();
+    m_eq.Group().SendRaidCommand(1, inviter, m_eq.GetMyName());
+    m_eq.Group().ClearPendingRaidInvite();
     m_eq.AddChatSystemMessage(fmt::format("You accept {}'s raid invitation.", inviter));
 }
 
 void EqActionHandler::raidLeave() {
-    if (!m_eq.IsInRaid()) {
+    if (!m_eq.Group().IsInRaid()) {
         m_eq.AddChatSystemMessage("You are not in a raid.");
         return;
     }
     // RaidCommandDisband (5) removing yourself: both names = us.
     const std::string me = m_eq.GetMyName();
-    m_eq.SendRaidCommand(5, me, me);
+    m_eq.Group().SendRaidCommand(5, me, me);
     m_eq.AddChatSystemMessage("You leave the raid.");
 }
 
 void EqActionHandler::raidStatus() {
-    if (m_eq.IsInRaid()) {
-        const std::string& leader = m_eq.GetRaidLeader();
+    if (m_eq.Group().IsInRaid()) {
+        const std::string& leader = m_eq.Group().GetRaidLeader();
         if (!leader.empty()) {
             m_eq.AddChatSystemMessage(fmt::format("You are in a raid led by {}.", leader));
         } else {
@@ -329,13 +329,13 @@ void EqActionHandler::raidStatus() {
         }
         // T182: only worth saying when it is true -- an unlocked raid is the
         // default and saying so every time is noise.
-        if (m_eq.IsRaidLocked()) {
+        if (m_eq.Group().IsRaidLocked()) {
             m_eq.AddChatSystemMessage("The raid is locked.");
         }
     } else {
         m_eq.AddChatSystemMessage("You are not in a raid.");
     }
-    const std::string pending = m_eq.GetPendingRaidInviter();
+    const std::string pending = m_eq.Group().GetPendingRaidInviter();
     if (!pending.empty()) {
         m_eq.AddChatSystemMessage(fmt::format(
             "Pending raid invitation from {} -- type /raid accept to join.", pending));
@@ -349,12 +349,12 @@ void EqActionHandler::raidStatus() {
 // arrive in. Members in the raid but in no group (kRaidGroupless) sort last,
 // under their own heading.
 void EqActionHandler::raidList() {
-    if (!m_eq.IsInRaid()) {
+    if (!m_eq.Group().IsInRaid()) {
         m_eq.AddChatSystemMessage("You are not in a raid.");
         return;
     }
 
-    std::vector<EQT::RaidMemberInfo> members = m_eq.GetRaidMembers();
+    std::vector<EQT::RaidMemberInfo> members = m_eq.Group().GetRaidMembers();
     if (members.empty()) {
         // In a raid but holding no members: either the adds have not arrived
         // yet, or something dropped them. Say which, rather than printing an
@@ -369,7 +369,7 @@ void EqActionHandler::raidList() {
                   return a.name < b.name;
               });
 
-    const std::string& leader = m_eq.GetRaidLeader();
+    const std::string& leader = m_eq.Group().GetRaidLeader();
     m_eq.AddChatSystemMessage(fmt::format("Raid members ({}):", members.size()));
 
     uint32_t current_group = 0;
@@ -421,7 +421,7 @@ void EqActionHandler::raidList() {
 // sentence.
 
 bool EqActionHandler::raidRequireMembership() {
-    if (!m_eq.IsInRaid()) {
+    if (!m_eq.Group().IsInRaid()) {
         m_eq.AddChatSystemMessage("You are not in a raid.");
         return false;
     }
@@ -432,7 +432,7 @@ bool EqActionHandler::raidRequireLeader(const std::string& what) {
     if (!raidRequireMembership()) {
         return false;
     }
-    const std::string& leader = m_eq.GetRaidLeader();
+    const std::string& leader = m_eq.Group().GetRaidLeader();
     if (leader.empty() || leader != m_eq.GetMyName()) {
         // The server would simply drop this on the floor.
         m_eq.AddChatSystemMessage(fmt::format(
@@ -447,7 +447,7 @@ bool EqActionHandler::raidRequireLeader(const std::string& what) {
 // which is not the same as "not a member" -- treat it as unknown and let the
 // command through rather than refusing on missing information.
 bool EqActionHandler::raidMemberKnown(const std::string& name) const {
-    const auto& members = m_eq.GetRaidMembers();
+    const auto& members = m_eq.Group().GetRaidMembers();
     if (members.empty()) {
         return true;
     }
@@ -491,7 +491,7 @@ void EqActionHandler::raidRemove(const std::string& name) {
     // RaidCommandDisband (5): leader_name = the member being removed,
     // player_name = whoever is doing the removing. Same shape as /raid leave,
     // which sends our own name in both.
-    m_eq.SendRaidCommand(5, m_eq.GetMyName(), name);
+    m_eq.Group().SendRaidCommand(5, m_eq.GetMyName(), name);
     m_eq.AddChatSystemMessage(fmt::format("You remove {} from the raid.", name));
 }
 
@@ -512,7 +512,7 @@ void EqActionHandler::raidMakeLeader(const std::string& name) {
         return;
     }
     // RaidCommandMakeLeader (30): leader_name = the NEW leader.
-    m_eq.SendRaidCommand(30, m_eq.GetMyName(), name);
+    m_eq.Group().SendRaidCommand(30, m_eq.GetMyName(), name);
     m_eq.AddChatSystemMessage(fmt::format("You make {} the raid leader.", name));
 }
 
@@ -534,7 +534,7 @@ void EqActionHandler::raidLootType(const std::string& mode) {
         return;
     }
     // RaidCommandLootType (20): parameter = the loot type.
-    m_eq.SendRaidCommand(20, m_eq.GetMyName(), m_eq.GetMyName(), loot_type);
+    m_eq.Group().SendRaidCommand(20, m_eq.GetMyName(), m_eq.GetMyName(), loot_type);
     m_eq.AddChatSystemMessage(fmt::format(
         "You set raid looting to {}.", EQT::RaidLootTypeName(loot_type)));
 }
@@ -553,7 +553,7 @@ void EqActionHandler::raidLooter(bool add, const std::string& name) {
     }
     // RaidCommandAddLooter (21) / RaidCommandRemoveLooter (22):
     // leader_name = the looter. Only meaningful under loot type 3 (Selected).
-    m_eq.SendRaidCommand(add ? 21 : 22, m_eq.GetMyName(), name);
+    m_eq.Group().SendRaidCommand(add ? 21 : 22, m_eq.GetMyName(), name);
     m_eq.AddChatSystemMessage(add
         ? fmt::format("You add {} as a raid looter.", name)
         : fmt::format("You remove {} as a raid looter.", name));
@@ -589,7 +589,7 @@ void EqActionHandler::raidGroup(const std::string& name, const std::string& grou
         return;
     }
 
-    const auto& members = m_eq.GetRaidMembers();
+    const auto& members = m_eq.Group().GetRaidMembers();
     const EQT::RaidMemberInfo* target = nullptr;
     for (const auto& m : members) {
         if (m.name == name) {
@@ -623,7 +623,7 @@ void EqActionHandler::raidGroup(const std::string& name, const std::string& grou
         }
     }
 
-    m_eq.SendRaidCommand(6, m_eq.GetMyName(), name, wire_group);
+    m_eq.Group().SendRaidCommand(6, m_eq.GetMyName(), name, wire_group);
     m_eq.AddChatSystemMessage(
         wire_group == EQT::kRaidGroupless
             ? fmt::format("You move {} out of their group.", name)
@@ -632,7 +632,7 @@ void EqActionHandler::raidGroup(const std::string& name, const std::string& grou
 
 size_t EqActionHandler::countRaidGroup(uint32_t wire_group) const {
     size_t n = 0;
-    for (const auto& m : m_eq.GetRaidMembers()) {
+    for (const auto& m : m_eq.Group().GetRaidMembers()) {
         if (m.group == wire_group) {
             ++n;
         }
@@ -656,7 +656,7 @@ void EqActionHandler::raidLock(bool lock) {
     if (!raidRequireLeader(lock ? "lock the raid" : "unlock the raid")) {
         return;
     }
-    m_eq.SendRaidCommand(lock ? 8 : 9, m_eq.GetMyName(), m_eq.GetMyName());
+    m_eq.Group().SendRaidCommand(lock ? 8 : 9, m_eq.GetMyName(), m_eq.GetMyName());
     m_eq.AddChatSystemMessage(lock ? "You lock the raid." : "You unlock the raid.");
 }
 

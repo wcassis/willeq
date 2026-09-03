@@ -269,7 +269,7 @@ void EqActionHandler::targetSelf() {
 }
 
 void EqActionHandler::targetGroupMember(int index) {
-    const GroupMember* member = m_eq.GetGroupMember(index);
+    const GroupMember* member = m_eq.Group().GetGroupMember(index);
     if (member && member->spawnId != 0) {
         auto* combat = getCombatManager();
         if (combat) {
@@ -694,7 +694,7 @@ std::string EqActionHandler::getLastTellSender() const {
 // ========== Group ==========
 
 void EqActionHandler::inviteToGroup(const std::string& playerName) {
-    m_eq.SendGroupInvite(playerName);
+    m_eq.Group().SendGroupInvite(playerName);
 }
 
 void EqActionHandler::inviteTarget() {
@@ -704,25 +704,25 @@ void EqActionHandler::inviteTarget() {
         const auto& entities = m_eq.GetGameState().entities();
         auto* entity = entities.getEntity(targetId);
         if (entity && !entity->name.empty()) {
-            m_eq.SendGroupInvite(entity->name);
+            m_eq.Group().SendGroupInvite(entity->name);
         }
     }
 }
 
 void EqActionHandler::acceptGroupInvite() {
-    m_eq.AcceptGroupInvite();
+    m_eq.Group().AcceptGroupInvite();
 }
 
 void EqActionHandler::declineGroupInvite() {
     // Get pending inviter and decline
     const auto& groupState = m_eq.GetGameState().group();
     if (groupState.hasPendingInvite()) {
-        m_eq.SendGroupDecline(groupState.pendingInviterName());
+        m_eq.Group().SendGroupDecline(groupState.pendingInviterName());
     }
 }
 
 void EqActionHandler::leaveGroup() {
-    m_eq.SendLeaveGroup();
+    m_eq.Group().SendLeaveGroup();
 }
 
 // ========== Character State ==========

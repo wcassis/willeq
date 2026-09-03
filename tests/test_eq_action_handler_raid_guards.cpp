@@ -121,7 +121,7 @@ protected:
 // ---------------------------------------------------------------------------
 
 TEST_F(EqActionHandlerRaidGuardTest, EveryLeaderOpRefusesWhenNotInARaid) {
-    ASSERT_FALSE(eq.IsInRaid());
+    ASSERT_FALSE(eq.Group().IsInRaid());
 
     handler.raidRemove(kOther);
     EXPECT_TRUE(AnyContains(DrainSystemMessages(bridge), "not in a raid"));
@@ -142,8 +142,8 @@ TEST_F(EqActionHandlerRaidGuardTest, EveryLeaderOpRefusesWhenNotInARaid) {
 
 TEST_F(EqActionHandlerRaidGuardTest, NonLeaderRemoveIsRefused) {
     FormRaid(kOther);  // somebody else leads
-    ASSERT_TRUE(eq.IsInRaid());
-    ASSERT_EQ(eq.GetRaidLeader(), kOther);
+    ASSERT_TRUE(eq.Group().IsInRaid());
+    ASSERT_EQ(eq.Group().GetRaidLeader(), kOther);
 
     handler.raidRemove(kOther);
 
@@ -189,7 +189,7 @@ TEST_F(EqActionHandlerRaidGuardTest, NonLeaderRemovingThemselfIsPointedAtRaidLea
 
 TEST_F(EqActionHandlerRaidGuardTest, LeaderRemoveIsAllowed) {
     FormRaid(kMe);  // we lead
-    ASSERT_EQ(eq.GetRaidLeader(), kMe);
+    ASSERT_EQ(eq.Group().GetRaidLeader(), kMe);
 
     handler.raidRemove(kOther);
 
@@ -217,7 +217,7 @@ TEST_F(EqActionHandlerRaidGuardTest, LosingLeadershipMidSessionStartsRefusing) {
     // raidMakeLeader (30): eqemu puts the NEW leader in both name fields.
     ReplayZone(eq, HC_OP_RaidUpdate, RaidGeneralPayload(30, kOther, kOther));
     bridge.drainEvents();
-    ASSERT_EQ(eq.GetRaidLeader(), kOther);
+    ASSERT_EQ(eq.Group().GetRaidLeader(), kOther);
 
     handler.raidRemove(kOther);
     EXPECT_TRUE(AnyContains(DrainSystemMessages(bridge), "Only the raid leader"));

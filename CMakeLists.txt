@@ -297,7 +297,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/eq_profile_appearance.cpp
     src/client/raid_update.cpp
     src/client/inspect_answer.cpp
-    src/client/eq_group.cpp
+    src/client/group/group_component.cpp
     src/client/eq_zone.cpp
     src/client/eq_movement.cpp
     src/client/eq_movement_update.cpp

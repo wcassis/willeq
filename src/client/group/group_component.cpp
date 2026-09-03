@@ -16,7 +16,20 @@
 // from eq_entities.cpp, where F11 had left them; they are appended below the
 // group handlers under their own banner. Moved verbatim, no behavior change.
 // See refactor/J08_eq_entities_split.md.
+//
+// K04 (Batch K, refactor/K_component_extraction.md): moved again, from
+// src/client/eq_group.cpp to here, and the bodies rebased from EverQuest onto
+// eqt::group::GroupComponent. Still verbatim -- only the substitutions
+// Mechanism 4 allows (m_game_state/m_bridge/m_character/m_zone_connection/
+// m_zone_connection_manager/m_entities -> ctx_.*; m_test_bypass_send_guard ->
+// owner_.*, it stays on EverQuest; IsFullyZonedIn/AddChatSystemMessage/HasPet/
+// MySpawnId/OnPetButtonStateChanged -> owner_.*). The raid state members
+// (m_in_raid, m_raid_leader, m_pending_raid_inviter, m_raid_roster,
+// m_raid_locked) moved into the component and are unqualified here as before.
+// DismissPet() and UpdateGroupMemberFromEntity() were deleted, not moved:
+// zero callers anywhere. See the K04 Review.
 
+#include "client/group/group_component.h"
 #include "client/eq.h"
 #include "client/bridge/game_state_bridge.h"
 #include "client/raid_update.h"
@@ -29,24 +42,24 @@
 // Group Methods
 // ============================================================================
 
-const GroupMember* EverQuest::GetGroupMember(int index) const
+const GroupMember* eqt::group::GroupComponent::GetGroupMember(int index) const
 {
 	// T286: GroupState is the only store.
-	if (index >= 0 && index < m_game_state.group().memberCount()) {
-		return m_game_state.group().getMember(index);
+	if (index >= 0 && index < ctx_.game_state.group().memberCount()) {
+		return ctx_.game_state.group().getMember(index);
 	}
 	return nullptr;
 }
 
-void EverQuest::SendGroupInvite(const std::string& target_name)
+void eqt::group::GroupComponent::SendGroupInvite(const std::string& target_name)
 {
-	if (!m_zone_connection_manager || !IsFullyZonedIn()) {
+	if (!ctx_.zone_connection_manager || !owner_.IsFullyZonedIn()) {
 		LOG_WARN(MOD_MAIN, "Cannot send group invite - not connected to zone");
 		return;
 	}
 
 	EQT::GroupInvite_Struct packet = {};
-	strncpy(packet.inviter_name, m_character.c_str(), 63);
+	strncpy(packet.inviter_name, ctx_.character.c_str(), 63);
 	strncpy(packet.invitee_name, target_name.c_str(), 63);
 
 	EQ::Net::DynamicPacket p;
@@ -54,7 +67,7 @@ void EverQuest::SendGroupInvite(const std::string& target_name)
 	p.PutUInt16(0, HC_OP_GroupInvite);
 	p.PutData(2, &packet, sizeof(packet));
 
-	m_zone_connection->QueuePacket(p, 0, true);
+	ctx_.zone_connection->QueuePacket(p, 0, true);
 	LOG_INFO(MOD_MAIN, "Sent group invite to {}", target_name);
 }
 
@@ -66,9 +79,9 @@ void EverQuest::SendGroupInvite(const std::string& target_name)
 // alias the member safely. The T88 send-guard bypass lets a headless test
 // run the clear-then-read sequence that only a live zone connection used to
 // reach; with the seam unset the guard is exactly what it was.
-void EverQuest::SendGroupFollow(const std::string& inviter_name)
+void eqt::group::GroupComponent::SendGroupFollow(const std::string& inviter_name)
 {
-	if (!m_test_bypass_send_guard && (!m_zone_connection_manager || !IsFullyZonedIn())) {
+	if (!owner_.m_test_bypass_send_guard && (!ctx_.zone_connection_manager || !owner_.IsFullyZonedIn())) {
 		LOG_WARN(MOD_MAIN, "Cannot accept group invite - not connected to zone");
 		return;
 	}
@@ -77,26 +90,26 @@ void EverQuest::SendGroupFollow(const std::string& inviter_name)
 
 	EQT::GroupFollow_Struct packet = {};
 	strncpy(packet.name1, inviter.c_str(), 63);
-	strncpy(packet.name2, m_character.c_str(), 63);
+	strncpy(packet.name2, ctx_.character.c_str(), 63);
 
 	EQ::Net::DynamicPacket p;
 	p.Resize(2 + sizeof(EQT::GroupFollow_Struct));
 	p.PutUInt16(0, HC_OP_GroupFollow);
 	p.PutData(2, &packet, sizeof(packet));
 
-	if (m_zone_connection) {
-		m_zone_connection->QueuePacket(p, 0, true);
+	if (ctx_.zone_connection) {
+		ctx_.zone_connection->QueuePacket(p, 0, true);
 	}
 
-	m_game_state.group().clearPendingInvite();  // T286: only store
+	ctx_.game_state.group().clearPendingInvite();  // T286: only store
 
 	LOG_INFO(MOD_MAIN, "Accepted group invite from {}", inviter);
 }
 
 // T217: same aliasing hazard as SendGroupFollow() above -- copy first.
-void EverQuest::SendGroupDecline(const std::string& inviter_name)
+void eqt::group::GroupComponent::SendGroupDecline(const std::string& inviter_name)
 {
-	if (!m_test_bypass_send_guard && (!m_zone_connection_manager || !IsFullyZonedIn())) {
+	if (!owner_.m_test_bypass_send_guard && (!ctx_.zone_connection_manager || !owner_.IsFullyZonedIn())) {
 		LOG_WARN(MOD_MAIN, "Cannot decline group invite - not connected to zone");
 		return;
 	}
@@ -105,7 +118,7 @@ void EverQuest::SendGroupDecline(const std::string& inviter_name)
 
 	EQT::GroupCancel_Struct packet = {};
 	strncpy(packet.name1, inviter.c_str(), 63);
-	strncpy(packet.name2, m_character.c_str(), 63);
+	strncpy(packet.name2, ctx_.character.c_str(), 63);
 	packet.toggle = 0;
 
 	EQ::Net::DynamicPacket p;
@@ -113,36 +126,36 @@ void EverQuest::SendGroupDecline(const std::string& inviter_name)
 	p.PutUInt16(0, HC_OP_GroupCancelInvite);
 	p.PutData(2, &packet, sizeof(packet));
 
-	if (m_zone_connection) {
-		m_zone_connection->QueuePacket(p, 0, true);
+	if (ctx_.zone_connection) {
+		ctx_.zone_connection->QueuePacket(p, 0, true);
 	}
 
-	m_game_state.group().clearPendingInvite();  // T286: only store
+	ctx_.game_state.group().clearPendingInvite();  // T286: only store
 
 	LOG_INFO(MOD_MAIN, "Declined group invite from {}", inviter);
 }
 
-void EverQuest::SendGroupDisband()
+void eqt::group::GroupComponent::SendGroupDisband()
 {
-	if (!m_zone_connection_manager || !IsFullyZonedIn() || !m_game_state.group().inGroup()) {
+	if (!ctx_.zone_connection_manager || !owner_.IsFullyZonedIn() || !ctx_.game_state.group().inGroup()) {
 		LOG_WARN(MOD_MAIN, "Cannot disband group - not in group or not connected");
 		return;
 	}
 
 	EQT::GroupDisband_Struct packet = {};
-	strncpy(packet.name1, m_character.c_str(), 63);
-	strncpy(packet.name2, m_character.c_str(), 63);
+	strncpy(packet.name1, ctx_.character.c_str(), 63);
+	strncpy(packet.name2, ctx_.character.c_str(), 63);
 
 	EQ::Net::DynamicPacket p;
 	p.Resize(2 + sizeof(EQT::GroupDisband_Struct));
 	p.PutUInt16(0, HC_OP_GroupDisband);
 	p.PutData(2, &packet, sizeof(packet));
 
-	m_zone_connection->QueuePacket(p, 0, true);
+	ctx_.zone_connection->QueuePacket(p, 0, true);
 	LOG_INFO(MOD_MAIN, "Sent group disband");
 }
 
-void EverQuest::SendLeaveGroup()
+void eqt::group::GroupComponent::SendLeaveGroup()
 {
 	// Same packet as disband for non-leader
 	SendGroupDisband();
@@ -165,20 +178,20 @@ void EverQuest::SendLeaveGroup()
 // T217: capture the inviter BEFORE SendGroupFollow(), which clears
 // m_pending_inviter_name as its last act. Reading the member afterwards
 // printed "You have joined 's group" (T99 live evidence, review/T99/).
-void EverQuest::AcceptGroupInvite()
+void eqt::group::GroupComponent::AcceptGroupInvite()
 {
-	if (m_game_state.group().hasPendingInvite()) {
-		const std::string inviter = m_game_state.group().pendingInviterName();
+	if (ctx_.game_state.group().hasPendingInvite()) {
+		const std::string inviter = ctx_.game_state.group().pendingInviterName();
 		SendGroupFollow(inviter);
-		AddChatSystemMessage("You have joined " + inviter + "'s group");
+		owner_.AddChatSystemMessage("You have joined " + inviter + "'s group");
 	}
 }
 
-void EverQuest::DeclineGroupInvite()
+void eqt::group::GroupComponent::DeclineGroupInvite()
 {
-	if (m_game_state.group().hasPendingInvite()) {
-		SendGroupDecline(m_game_state.group().pendingInviterName());
-		AddChatSystemMessage("Group invite declined");
+	if (ctx_.game_state.group().hasPendingInvite()) {
+		SendGroupDecline(ctx_.game_state.group().pendingInviterName());
+		owner_.AddChatSystemMessage("Group invite declined");
 	}
 }
 
@@ -186,40 +199,40 @@ void EverQuest::DeclineGroupInvite()
 // Pet Methods
 // ============================================================================
 
-const Entity* EverQuest::GetPetEntity() const
+const Entity* eqt::group::GroupComponent::GetPetEntity() const
 {
-	if (m_game_state.pet().petSpawnId() == 0) {
+	if (ctx_.game_state.pet().petSpawnId() == 0) {
 		return nullptr;
 	}
-	auto it = m_entities.find(m_game_state.pet().petSpawnId());
-	if (it != m_entities.end()) {
+	auto it = ctx_.entities.find(ctx_.game_state.pet().petSpawnId());
+	if (it != ctx_.entities.end()) {
 		return &it->second;
 	}
 	return nullptr;
 }
 
-std::string EverQuest::GetPetName() const
+std::string eqt::group::GroupComponent::GetPetName() const
 {
 	const Entity* pet = GetPetEntity();
 	return pet ? pet->name : "";
 }
 
-uint8_t EverQuest::GetPetLevel() const
+uint8_t eqt::group::GroupComponent::GetPetLevel() const
 {
 	const Entity* pet = GetPetEntity();
 	return pet ? pet->level : 0;
 }
 
-void EverQuest::SendPetCommand(EQT::PetCommand command, uint16_t target_id)
+void eqt::group::GroupComponent::SendPetCommand(EQT::PetCommand command, uint16_t target_id)
 {
-	if (!m_zone_connection_manager || !IsFullyZonedIn()) {
+	if (!ctx_.zone_connection_manager || !owner_.IsFullyZonedIn()) {
 		LOG_WARN(MOD_MAIN, "Cannot send pet command - not connected to zone");
 		return;
 	}
 
-	if (!HasPet()) {
+	if (!owner_.HasPet()) {
 		LOG_WARN(MOD_MAIN, "Cannot send pet command - no pet");
-		AddChatSystemMessage("You do not have a pet.");
+		owner_.AddChatSystemMessage("You do not have a pet.");
 		return;
 	}
 
@@ -232,7 +245,7 @@ void EverQuest::SendPetCommand(EQT::PetCommand command, uint16_t target_id)
 	p.PutUInt16(0, HC_OP_PetCommands);
 	p.PutData(2, &packet, sizeof(packet));
 
-	m_zone_connection->QueuePacket(p, 0, true);
+	ctx_.zone_connection->QueuePacket(p, 0, true);
 	LOG_DEBUG(MOD_MAIN, "Sent pet command: {} (target={})", EQT::GetPetCommandName(command), target_id);
 
 	// Optimistically update button states based on command sent.
@@ -243,50 +256,50 @@ void EverQuest::SendPetCommand(EQT::PetCommand command, uint16_t target_id)
 	// Follow, Guard, Sit are mutually exclusive position commands
 	switch (command) {
 	case EQT::PET_FOLLOWME:
-		OnPetButtonStateChanged(EQT::PET_BUTTON_FOLLOW, true);
-		OnPetButtonStateChanged(EQT::PET_BUTTON_GUARD, false);
-		OnPetButtonStateChanged(EQT::PET_BUTTON_SIT, false);
+		owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_FOLLOW, true);
+		owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_GUARD, false);
+		owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_SIT, false);
 		break;
 	case EQT::PET_GUARDHERE:
-		OnPetButtonStateChanged(EQT::PET_BUTTON_FOLLOW, false);
-		OnPetButtonStateChanged(EQT::PET_BUTTON_GUARD, true);
-		OnPetButtonStateChanged(EQT::PET_BUTTON_SIT, false);
+		owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_FOLLOW, false);
+		owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_GUARD, true);
+		owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_SIT, false);
 		break;
 	case EQT::PET_SITDOWN:  // PET_SIT is an alias for this
-		OnPetButtonStateChanged(EQT::PET_BUTTON_FOLLOW, false);
-		OnPetButtonStateChanged(EQT::PET_BUTTON_GUARD, false);
-		OnPetButtonStateChanged(EQT::PET_BUTTON_SIT, true);
+		owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_FOLLOW, false);
+		owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_GUARD, false);
+		owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_SIT, true);
 		break;
 	case EQT::PET_STANDUP:
 		// Standing up returns to follow mode
-		OnPetButtonStateChanged(EQT::PET_BUTTON_FOLLOW, true);
-		OnPetButtonStateChanged(EQT::PET_BUTTON_GUARD, false);
-		OnPetButtonStateChanged(EQT::PET_BUTTON_SIT, false);
+		owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_FOLLOW, true);
+		owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_GUARD, false);
+		owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_SIT, false);
 		break;
 	// Independent toggles
 	case EQT::PET_HOLD:
-		OnPetButtonStateChanged(EQT::PET_BUTTON_HOLD, !m_game_state.pet().getButtonState(EQT::PET_BUTTON_HOLD));
+		owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_HOLD, !ctx_.game_state.pet().getButtonState(EQT::PET_BUTTON_HOLD));
 		break;
 	case EQT::PET_HOLD_ON:
-		OnPetButtonStateChanged(EQT::PET_BUTTON_HOLD, true);
+		owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_HOLD, true);
 		break;
 	case EQT::PET_HOLD_OFF:
-		OnPetButtonStateChanged(EQT::PET_BUTTON_HOLD, false);
+		owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_HOLD, false);
 		break;
 	case EQT::PET_TAUNT:
-		OnPetButtonStateChanged(EQT::PET_BUTTON_TAUNT, !m_game_state.pet().getButtonState(EQT::PET_BUTTON_TAUNT));
+		owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_TAUNT, !ctx_.game_state.pet().getButtonState(EQT::PET_BUTTON_TAUNT));
 		break;
 	case EQT::PET_TAUNT_ON:
-		OnPetButtonStateChanged(EQT::PET_BUTTON_TAUNT, true);
+		owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_TAUNT, true);
 		break;
 	case EQT::PET_TAUNT_OFF:
-		OnPetButtonStateChanged(EQT::PET_BUTTON_TAUNT, false);
+		owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_TAUNT, false);
 		break;
 	case EQT::PET_FOCUS:
-		OnPetButtonStateChanged(EQT::PET_BUTTON_FOCUS, !m_game_state.pet().getButtonState(EQT::PET_BUTTON_FOCUS));
+		owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_FOCUS, !ctx_.game_state.pet().getButtonState(EQT::PET_BUTTON_FOCUS));
 		break;
 	case EQT::PET_SPELLHOLD:
-		OnPetButtonStateChanged(EQT::PET_BUTTON_SPELLHOLD, !m_game_state.pet().getButtonState(EQT::PET_BUTTON_SPELLHOLD));
+		owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_SPELLHOLD, !ctx_.game_state.pet().getButtonState(EQT::PET_BUTTON_SPELLHOLD));
 		break;
 	default:
 		// Attack, Back Off, Get Lost, etc. don't have toggle states
@@ -294,52 +307,19 @@ void EverQuest::SendPetCommand(EQT::PetCommand command, uint16_t target_id)
 	}
 }
 
-void EverQuest::DismissPet()
-{
-	SendPetCommand(EQT::PET_GETLOST);
-}
-
-void EverQuest::ClearGroup()
+void eqt::group::GroupComponent::ClearGroup()
 {
 	// Phase 7.5 / T286: GroupState is the only store
-	m_game_state.group().clearGroup();
+	ctx_.game_state.group().clearGroup();
 }
 
-int EverQuest::FindGroupMemberByName(const std::string& name) const
+int eqt::group::GroupComponent::FindGroupMemberByName(const std::string& name) const
 {
-	return m_game_state.group().findMemberByName(name);
-}
-
-void EverQuest::UpdateGroupMemberFromEntity(int index)
-{
-	if (index < 0 || index >= m_game_state.group().memberCount()) {
-		return;
-	}
-
-	GroupMember* member = m_game_state.group().getMemberMutable(index);
-	if (!member) {
-		return;
-	}
-
-	// Find entity by name
-	for (const auto& [id, entity] : m_entities) {
-		if (entity.name == member->name) {
-			member->spawnId = id;
-			member->level = entity.level;
-			member->classId = entity.class_id;
-			member->hpPercent = entity.hp_percent;
-			member->inZone = true;
-			return;
-		}
-	}
-
-	// Entity not found - mark as out of zone
-	member->spawnId = 0;
-	member->inZone = false;
+	return ctx_.game_state.group().findMemberByName(name);
 }
 
 // Group packet handlers
-void EverQuest::ZoneProcessGroupInvite(const EQ::Net::Packet& p)
+void eqt::group::GroupComponent::ZoneProcessGroupInvite(const EQ::Net::Packet& p)
 {
 	if (p.Length() < 2 + sizeof(EQT::GroupInvite_Struct)) {
 		LOG_WARN(MOD_MAIN, "GroupInvite packet too small: {} bytes", p.Length());
@@ -353,23 +333,23 @@ void EverQuest::ZoneProcessGroupInvite(const EQ::Net::Packet& p)
 	LOG_INFO(MOD_MAIN, "Group invite received: {} invited {}", inviter_name, invitee_name);
 
 	// Check if this invite is for us
-	if (invitee_name == m_character) {
+	if (invitee_name == ctx_.character) {
 		// Phase 7.5 / T286: GroupState is the only store
-		m_game_state.group().setPendingInvite(inviter_name);
+		ctx_.game_state.group().setPendingInvite(inviter_name);
 
-		AddChatSystemMessage(inviter_name + " has invited you to join a group");
+		owner_.AddChatSystemMessage(inviter_name + " has invited you to join a group");
 
 		// Publish GroupInviteReceived event to bridge
-		if (m_bridge) {
+		if (ctx_.bridge) {
 			eqt::state::GroupInviteReceivedData data;
 			data.inviterName = inviter_name;
-			m_bridge->pushEvent(eqt::state::GameEvent(
+			ctx_.bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::GroupInviteReceived, std::move(data)));
 		}
 	}
 }
 
-void EverQuest::ZoneProcessGroupFollow(const EQ::Net::Packet& p)
+void eqt::group::GroupComponent::ZoneProcessGroupFollow(const EQ::Net::Packet& p)
 {
 	// This is sent as confirmation that someone joined the group
 	LOG_DEBUG(MOD_MAIN, "GroupFollow packet received ({} bytes)", p.Length());
@@ -377,9 +357,9 @@ void EverQuest::ZoneProcessGroupFollow(const EQ::Net::Packet& p)
 
 // T320: fill in a member's live stats from the entity list, if they are in
 // this zone. Shared by the JOIN and UPDATE paths.
-void EverQuest::FillGroupMemberFromEntities(GroupMember& member) const
+void eqt::group::GroupComponent::FillGroupMemberFromEntities(GroupMember& member) const
 {
-	for (const auto& [id, entity] : m_entities) {
+	for (const auto& [id, entity] : ctx_.entities) {
 		if (entity.name == member.name) {
 			member.spawnId = id;
 			member.level = entity.level;
@@ -415,7 +395,7 @@ void EverQuest::FillGroupMemberFromEntities(GroupMember& member) const
 // ("Group update: 2 members, leader: ") against the same instant on the
 // invitee, review/T320/b1_gmon_B_oraclerogue.log line 314 ("leader:
 // Testchar"), and T297's review before it.
-void EverQuest::ZoneProcessGroupUpdate(const EQ::Net::Packet& p)
+void eqt::group::GroupComponent::ZoneProcessGroupUpdate(const EQ::Net::Packet& p)
 {
 	// Only `action` is common to both layouts, so read that first and let
 	// each case demand the size ITS struct needs.
@@ -445,7 +425,7 @@ void EverQuest::ZoneProcessGroupUpdate(const EQ::Net::Packet& p)
 			// Full group update
 			ClearGroup();
 			const std::string leaderName(data->leadersname);
-			const bool isLeader = (leaderName == m_character);
+			const bool isLeader = (leaderName == ctx_.character);
 
 			// T320: populate the roster and the leader BEFORE flipping
 			// inGroup. setInGroup(true) fires a GroupChanged, and it used to
@@ -453,29 +433,29 @@ void EverQuest::ZoneProcessGroupUpdate(const EQ::Net::Packet& p)
 			// thing every consumer saw for a new group was inGroup=true with
 			// memberCount 0 and an empty leader name. Ordering it last makes
 			// the only in-group GroupChanged a complete one.
-			m_game_state.group().setLeaderName(leaderName);
-			m_game_state.group().setIsLeader(isLeader);
+			ctx_.game_state.group().setLeaderName(leaderName);
+			ctx_.game_state.group().setIsLeader(isLeader);
 
 			// Hide pending invite since we joined
-			m_game_state.group().clearPendingInvite();  // Phase 7.5
+			ctx_.game_state.group().clearPendingInvite();  // Phase 7.5
 
 			// Add self first
 			GroupMember self;
-			self.name = m_character;
-			self.spawnId = MySpawnId();
-			self.level = m_game_state.player().level();
-			self.classId = static_cast<uint8_t>(m_game_state.player().classId());
-			self.hpPercent = (m_game_state.player().maxHP() > 0) ? static_cast<uint8_t>(m_game_state.player().curHP() * 100 / m_game_state.player().maxHP()) : 100;
-			self.manaPercent = (m_game_state.player().maxMana() > 0) ? static_cast<uint8_t>(m_game_state.player().curMana() * 100 / m_game_state.player().maxMana()) : 100;
+			self.name = ctx_.character;
+			self.spawnId = owner_.MySpawnId();
+			self.level = ctx_.game_state.player().level();
+			self.classId = static_cast<uint8_t>(ctx_.game_state.player().classId());
+			self.hpPercent = (ctx_.game_state.player().maxHP() > 0) ? static_cast<uint8_t>(ctx_.game_state.player().curHP() * 100 / ctx_.game_state.player().maxHP()) : 100;
+			self.manaPercent = (ctx_.game_state.player().maxMana() > 0) ? static_cast<uint8_t>(ctx_.game_state.player().curMana() * 100 / ctx_.game_state.player().maxMana()) : 100;
 			self.isLeader = isLeader;
 			self.inZone = true;
-			m_game_state.group().setMember(0, self);
+			ctx_.game_state.group().setMember(0, self);
 			int memberCount = 1;
 
 			// Add other members
 			for (int i = 0; i < 5 && memberCount < MAX_GROUP_MEMBERS; i++) {
 				std::string member_name(data->membername[i]);
-				if (!member_name.empty() && member_name != m_character) {
+				if (!member_name.empty() && member_name != ctx_.character) {
 					GroupMember member;
 					member.name = member_name;
 					member.isLeader = (member_name == leaderName);
@@ -483,34 +463,34 @@ void EverQuest::ZoneProcessGroupUpdate(const EQ::Net::Packet& p)
 					// Try to find entity for HP/mana
 					FillGroupMemberFromEntities(member);
 
-					m_game_state.group().setMember(memberCount, member);
+					ctx_.game_state.group().setMember(memberCount, member);
 					memberCount++;
 				}
 			}
 
 			// Phase 7.5: Recalculate member count in GameState
-			m_game_state.group().recalculateMemberCount();
+			ctx_.game_state.group().recalculateMemberCount();
 
 			// T320: flip inGroup LAST -- leader and roster are real now.
-			m_game_state.group().setInGroup(true);
+			ctx_.game_state.group().setInGroup(true);
 
-			AddChatSystemMessage("Group updated");
+			owner_.AddChatSystemMessage("Group updated");
 			LOG_INFO(MOD_MAIN, "Group update: {} members, leader: {}",
-					 m_game_state.group().memberCount(), leaderName);
+					 ctx_.game_state.group().memberCount(), leaderName);
 
 			// Publish GroupChanged event to bridge
-			if (m_bridge) {
+			if (ctx_.bridge) {
 				eqt::state::GroupChangedData gdata;
 				gdata.inGroup = true;
 				gdata.isLeader = isLeader;
 				gdata.leaderName = leaderName;
-				gdata.memberCount = m_game_state.group().memberCount();
-				m_bridge->pushEvent(eqt::state::GameEvent(
+				gdata.memberCount = ctx_.game_state.group().memberCount();
+				ctx_.bridge->pushEvent(eqt::state::GameEvent(
 					eqt::state::GameEventType::GroupChanged, std::move(gdata)));
 
 				// Publish GroupMemberUpdated for each member
-				for (int mi = 0; mi < m_game_state.group().memberCount(); mi++) {
-					const GroupMember* gm = m_game_state.group().getMember(mi);
+				for (int mi = 0; mi < ctx_.game_state.group().memberCount(); mi++) {
+					const GroupMember* gm = ctx_.game_state.group().getMember(mi);
 					if (!gm) continue;
 					eqt::state::GroupMemberUpdatedData mdata;
 					mdata.memberIndex = mi;
@@ -521,7 +501,7 @@ void EverQuest::ZoneProcessGroupUpdate(const EQ::Net::Packet& p)
 					mdata.hpPercent = gm->hpPercent;
 					mdata.manaPercent = gm->manaPercent;
 					mdata.inZone = gm->inZone;
-					m_bridge->pushEvent(eqt::state::GameEvent(
+					ctx_.bridge->pushEvent(eqt::state::GameEvent(
 						eqt::state::GameEventType::GroupMemberUpdated, std::move(mdata)));
 				}
 			}
@@ -543,7 +523,7 @@ void EverQuest::ZoneProcessGroupUpdate(const EQ::Net::Packet& p)
 			if (idx >= 0) {
 				// Remove member by shifting (T286: GroupState is the only
 				// store, so the shift happens in it directly)
-				auto& group = m_game_state.group();
+				auto& group = ctx_.game_state.group();
 				const int newCount = group.memberCount() - 1;
 				for (int i = idx; i < newCount; i++) {
 					const GroupMember* next = group.getMember(i + 1);
@@ -553,16 +533,16 @@ void EverQuest::ZoneProcessGroupUpdate(const EQ::Net::Packet& p)
 				group.setMember(newCount, GroupMember());
 				group.recalculateMemberCount();
 
-				AddChatSystemMessage(member_name + " has left the group");
+				owner_.AddChatSystemMessage(member_name + " has left the group");
 
 				// Publish GroupChanged event to bridge
-				if (m_bridge) {
+				if (ctx_.bridge) {
 					eqt::state::GroupChangedData gdata;
-					gdata.inGroup = m_game_state.group().inGroup();
-					gdata.isLeader = m_game_state.group().isLeader();
-					gdata.leaderName = m_game_state.group().leaderName();
-					gdata.memberCount = m_game_state.group().memberCount();
-					m_bridge->pushEvent(eqt::state::GameEvent(
+					gdata.inGroup = ctx_.game_state.group().inGroup();
+					gdata.isLeader = ctx_.game_state.group().isLeader();
+					gdata.leaderName = ctx_.game_state.group().leaderName();
+					gdata.memberCount = ctx_.game_state.group().memberCount();
+					ctx_.bridge->pushEvent(eqt::state::GameEvent(
 						eqt::state::GameEventType::GroupChanged, std::move(gdata)));
 				}
 			}
@@ -571,16 +551,16 @@ void EverQuest::ZoneProcessGroupUpdate(const EQ::Net::Packet& p)
 
 		case EQT::GROUP_ACT_DISBAND:
 			ClearGroup();  // Also syncs to GameState
-			AddChatSystemMessage("Your group has been disbanded");
+			owner_.AddChatSystemMessage("Your group has been disbanded");
 
 			// Publish GroupChanged event to bridge
-			if (m_bridge) {
+			if (ctx_.bridge) {
 				eqt::state::GroupChangedData gdata;
 				gdata.inGroup = false;
 				gdata.isLeader = false;
 				gdata.leaderName = "";
 				gdata.memberCount = 0;
-				m_bridge->pushEvent(eqt::state::GameEvent(
+				ctx_.bridge->pushEvent(eqt::state::GameEvent(
 					eqt::state::GameEventType::GroupChanged, std::move(gdata)));
 			}
 			break;
@@ -590,27 +570,27 @@ void EverQuest::ZoneProcessGroupUpdate(const EQ::Net::Packet& p)
 			std::string new_leader(data->leadersname);
 
 			// Phase 7.5 / T286: GroupState is the only store
-			m_game_state.group().setLeaderName(new_leader);
-			m_game_state.group().setIsLeader(new_leader == m_character);
+			ctx_.game_state.group().setLeaderName(new_leader);
+			ctx_.game_state.group().setIsLeader(new_leader == ctx_.character);
 
 			// Update leader flags
-			for (int i = 0; i < m_game_state.group().memberCount(); i++) {
-				GroupMember* gm = m_game_state.group().getMemberMutable(i);
+			for (int i = 0; i < ctx_.game_state.group().memberCount(); i++) {
+				GroupMember* gm = ctx_.game_state.group().getMemberMutable(i);
 				if (gm) {
 					gm->isLeader = (gm->name == new_leader);
 				}
 			}
 
-			AddChatSystemMessage(new_leader + " is now the group leader");
+			owner_.AddChatSystemMessage(new_leader + " is now the group leader");
 
 			// Publish GroupChanged event to bridge
-			if (m_bridge) {
+			if (ctx_.bridge) {
 				eqt::state::GroupChangedData gdata;
-				gdata.inGroup = m_game_state.group().inGroup();
-				gdata.isLeader = m_game_state.group().isLeader();
-				gdata.leaderName = m_game_state.group().leaderName();
-				gdata.memberCount = m_game_state.group().memberCount();
-				m_bridge->pushEvent(eqt::state::GameEvent(
+				gdata.inGroup = ctx_.game_state.group().inGroup();
+				gdata.isLeader = ctx_.game_state.group().isLeader();
+				gdata.leaderName = ctx_.game_state.group().leaderName();
+				gdata.memberCount = ctx_.game_state.group().memberCount();
+				ctx_.bridge->pushEvent(eqt::state::GameEvent(
 					eqt::state::GameEventType::GroupChanged, std::move(gdata)));
 			}
 			break;
@@ -628,7 +608,7 @@ void EverQuest::ZoneProcessGroupUpdate(const EQ::Net::Packet& p)
 // member instead gets a full groupActUpdate via RefreshGroupFromDB. So this
 // is an INCREMENTAL add: it must not clear the roster and must not touch the
 // leader, because the packet does not carry one.
-void EverQuest::ZoneProcessGroupJoin(const EQ::Net::Packet& p)
+void eqt::group::GroupComponent::ZoneProcessGroupJoin(const EQ::Net::Packet& p)
 {
 	if (p.Length() < 2 + sizeof(EQT::GroupJoin_Struct)) {
 		LOG_WARN(MOD_MAIN, "GroupJoin packet too small: {} bytes", p.Length());
@@ -640,13 +620,13 @@ void EverQuest::ZoneProcessGroupJoin(const EQ::Net::Packet& p)
 	const std::string joiner(data->membername,
 							 strnlen(data->membername, sizeof(data->membername)));
 
-	if (joiner.empty() || joiner == m_character) {
+	if (joiner.empty() || joiner == ctx_.character) {
 		// Nothing to add. Our own name here would mean the server told us we
 		// joined ourselves; the full update is what informs a new member.
 		return;
 	}
 
-	auto& group = m_game_state.group();
+	auto& group = ctx_.game_state.group();
 
 	if (!group.inGroup()) {
 		// A JOIN while ungrouped means WE created this group by inviting --
@@ -656,19 +636,19 @@ void EverQuest::ZoneProcessGroupJoin(const EQ::Net::Packet& p)
 		// RefreshGroupFromDB is SoD+ only), so this is where the client learns
 		// it leads the group. Set the leader BEFORE any member, so no
 		// consumer ever sees members with no leader.
-		group.setLeaderName(m_character);
+		group.setLeaderName(ctx_.character);
 		group.setIsLeader(true);
 		group.clearPendingInvite();
 
 		GroupMember self;
-		self.name = m_character;
-		self.spawnId = MySpawnId();
-		self.level = m_game_state.player().level();
-		self.classId = static_cast<uint8_t>(m_game_state.player().classId());
-		self.hpPercent = (m_game_state.player().maxHP() > 0)
-			? static_cast<uint8_t>(m_game_state.player().curHP() * 100 / m_game_state.player().maxHP()) : 100;
-		self.manaPercent = (m_game_state.player().maxMana() > 0)
-			? static_cast<uint8_t>(m_game_state.player().curMana() * 100 / m_game_state.player().maxMana()) : 100;
+		self.name = ctx_.character;
+		self.spawnId = owner_.MySpawnId();
+		self.level = ctx_.game_state.player().level();
+		self.classId = static_cast<uint8_t>(ctx_.game_state.player().classId());
+		self.hpPercent = (ctx_.game_state.player().maxHP() > 0)
+			? static_cast<uint8_t>(ctx_.game_state.player().curHP() * 100 / ctx_.game_state.player().maxHP()) : 100;
+		self.manaPercent = (ctx_.game_state.player().maxMana() > 0)
+			? static_cast<uint8_t>(ctx_.game_state.player().curMana() * 100 / ctx_.game_state.player().maxMana()) : 100;
 		self.isLeader = true;
 		self.inZone = true;
 		group.setMember(0, self);
@@ -696,17 +676,17 @@ void EverQuest::ZoneProcessGroupJoin(const EQ::Net::Packet& p)
 	// Last, so the one in-group GroupChanged this publishes is complete.
 	group.setInGroup(true);
 
-	AddChatSystemMessage(joiner + " has joined the group");
+	owner_.AddChatSystemMessage(joiner + " has joined the group");
 	LOG_INFO(MOD_MAIN, "Group join: {} ({} members, leader: {})",
 			 joiner, group.memberCount(), group.leaderName());
 
-	if (m_bridge) {
+	if (ctx_.bridge) {
 		eqt::state::GroupChangedData gdata;
 		gdata.inGroup = true;
 		gdata.isLeader = group.isLeader();
 		gdata.leaderName = group.leaderName();
 		gdata.memberCount = group.memberCount();
-		m_bridge->pushEvent(eqt::state::GameEvent(
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::GroupChanged, std::move(gdata)));
 
 		for (int mi = 0; mi < MAX_GROUP_MEMBERS; ++mi) {
@@ -721,46 +701,46 @@ void EverQuest::ZoneProcessGroupJoin(const EQ::Net::Packet& p)
 			mdata.hpPercent = gm->hpPercent;
 			mdata.manaPercent = gm->manaPercent;
 			mdata.inZone = gm->inZone;
-			m_bridge->pushEvent(eqt::state::GameEvent(
+			ctx_.bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::GroupMemberUpdated, std::move(mdata)));
 		}
 	}
 }
 
-void EverQuest::ZoneProcessGroupDisband(const EQ::Net::Packet& p)
+void eqt::group::GroupComponent::ZoneProcessGroupDisband(const EQ::Net::Packet& p)
 {
 	ClearGroup();
-	AddChatSystemMessage("Your group has been disbanded");
+	owner_.AddChatSystemMessage("Your group has been disbanded");
 	LOG_INFO(MOD_MAIN, "Group disbanded");
 
 	// Publish GroupChanged event to bridge
-	if (m_bridge) {
+	if (ctx_.bridge) {
 		eqt::state::GroupChangedData gdata;
 		gdata.inGroup = false;
 		gdata.isLeader = false;
 		gdata.leaderName = "";
 		gdata.memberCount = 0;
-		m_bridge->pushEvent(eqt::state::GameEvent(
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::GroupChanged, std::move(gdata)));
 	}
 }
 
-void EverQuest::ZoneProcessGroupCancelInvite(const EQ::Net::Packet& p)
+void eqt::group::GroupComponent::ZoneProcessGroupCancelInvite(const EQ::Net::Packet& p)
 {
 	// Phase 7.5 / T286: GroupState is the only store
-	m_game_state.group().clearPendingInvite();
+	ctx_.game_state.group().clearPendingInvite();
 
-	AddChatSystemMessage("Group invite cancelled");
+	owner_.AddChatSystemMessage("Group invite cancelled");
 	LOG_INFO(MOD_MAIN, "Group invite cancelled");
 
 	// Publish GroupChanged to trigger bridge hidePendingInvite
-	if (m_bridge) {
+	if (ctx_.bridge) {
 		eqt::state::GroupChangedData gdata;
-		gdata.inGroup = m_game_state.group().inGroup();
-		gdata.isLeader = m_game_state.group().isLeader();
-		gdata.leaderName = m_game_state.group().leaderName();
-		gdata.memberCount = m_game_state.group().memberCount();
-		m_bridge->pushEvent(eqt::state::GameEvent(
+		gdata.inGroup = ctx_.game_state.group().inGroup();
+		gdata.isLeader = ctx_.game_state.group().isLeader();
+		gdata.leaderName = ctx_.game_state.group().leaderName();
+		gdata.memberCount = ctx_.game_state.group().memberCount();
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::GroupChanged, std::move(gdata)));
 	}
 }
@@ -793,7 +773,7 @@ void EverQuest::ZoneProcessGroupCancelInvite(const EQ::Net::Packet& p)
 // its ENCODE has no case for raidMembers and ships the general with the list
 // stripped -- so the roster is assembled from the action-0 stream instead.
 // See raid_update.h.
-void EverQuest::ZoneProcessRaidUpdate(const EQ::Net::Packet &p)
+void eqt::group::GroupComponent::ZoneProcessRaidUpdate(const EQ::Net::Packet &p)
 {
 	const EQT::RaidUpdate u = EQT::DecodeRaidUpdate(p, 2);
 
@@ -823,21 +803,21 @@ void EverQuest::ZoneProcessRaidUpdate(const EQ::Net::Packet &p)
 	// Membership first, then the message: /raid list must be right the instant
 	// the player is told something changed. The policy lives in RaidRoster so
 	// it is testable without a live client.
-	m_raid_roster.Apply(u, m_character);
+	m_raid_roster.Apply(u, ctx_.character);
 
 	// Every event names a member, and several of them are about US. eqemu
 	// sends the same packet to the whole raid, so without this comparison the
 	// client would announce "You have joined the raid" for every member.
-	const bool about_me = !u.player_name.empty() && u.player_name == m_character;
+	const bool about_me = !u.player_name.empty() && u.player_name == ctx_.character;
 
 	switch (u.action) {
 	case EQT::RaidAction::Add:
 		if (about_me) {
 			m_in_raid = true;
 			m_pending_raid_inviter.clear();  // accepted / already in
-			AddChatSystemMessage("You have joined the raid.");
+			owner_.AddChatSystemMessage("You have joined the raid.");
 		} else {
-			AddChatSystemMessage(fmt::format("{} has joined the raid.", u.player_name));
+			owner_.AddChatSystemMessage(fmt::format("{} has joined the raid.", u.player_name));
 		}
 		break;
 
@@ -847,9 +827,9 @@ void EverQuest::ZoneProcessRaidUpdate(const EQ::Net::Packet &p)
 			m_in_raid = false;
 			m_raid_leader.clear();
 			m_raid_locked = false;
-			AddChatSystemMessage("You have left the raid.");
+			owner_.AddChatSystemMessage("You have left the raid.");
 		} else {
-			AddChatSystemMessage(fmt::format("{} has left the raid.", u.player_name));
+			owner_.AddChatSystemMessage(fmt::format("{} has left the raid.", u.player_name));
 		}
 		break;
 
@@ -858,7 +838,7 @@ void EverQuest::ZoneProcessRaidUpdate(const EQ::Net::Packet &p)
 		m_raid_leader.clear();
 		m_pending_raid_inviter.clear();
 		m_raid_locked = false;
-		AddChatSystemMessage("The raid has disbanded.");
+		owner_.AddChatSystemMessage("The raid has disbanded.");
 		break;
 
 	case EQT::RaidAction::Create:
@@ -866,7 +846,7 @@ void EverQuest::ZoneProcessRaidUpdate(const EQ::Net::Packet &p)
 		m_raid_leader = u.leader_name;
 		// A fresh raid is unlocked; Create also starts a fresh roster stream.
 		m_raid_locked = false;
-		AddChatSystemMessage(fmt::format("{} has formed a raid.", u.leader_name));
+		owner_.AddChatSystemMessage(fmt::format("{} has formed a raid.", u.leader_name));
 		break;
 
 	case EQT::RaidAction::NoRaid:
@@ -876,7 +856,7 @@ void EverQuest::ZoneProcessRaidUpdate(const EQ::Net::Packet &p)
 		m_raid_leader.clear();
 		m_pending_raid_inviter.clear();
 		m_raid_locked = false;
-		AddChatSystemMessage("You are not in a raid.");
+		owner_.AddChatSystemMessage("You are not in a raid.");
 		break;
 
 	case EQT::RaidAction::SetLeader:
@@ -893,18 +873,18 @@ void EverQuest::ZoneProcessRaidUpdate(const EQ::Net::Packet &p)
 		// T179: leader_name is the inviter (see the decode header). Remember it
 		// so /raid accept can answer, and tell the player how.
 		m_pending_raid_inviter = u.leader_name;
-		AddChatSystemMessage(fmt::format(
+		owner_.AddChatSystemMessage(fmt::format(
 			"{} invites you to join a raid. Type /raid accept to join.",
 			u.leader_name));
 		break;
 
 	case EQT::RaidAction::MakeLeader:
 		m_raid_leader = u.player_name;
-		AddChatSystemMessage(fmt::format("{} is now the raid leader.", u.player_name));
+		owner_.AddChatSystemMessage(fmt::format("{} is now the raid leader.", u.player_name));
 		break;
 
 	case EQT::RaidAction::NoLongerLeader:
-		AddChatSystemMessage("You are no longer the raid leader.");
+		owner_.AddChatSystemMessage("You are no longer the raid leader.");
 		break;
 
 	case EQT::RaidAction::Lock:
@@ -920,10 +900,10 @@ void EverQuest::ZoneProcessRaidUpdate(const EQ::Net::Packet &p)
 		const bool changed = (m_raid_locked != locking);
 		m_raid_locked = locking;
 		if (changed) {
-			AddChatSystemMessage(locking ? "The raid is now locked."
+			owner_.AddChatSystemMessage(locking ? "The raid is now locked."
 			                             : "The raid is now unlocked.");
 		} else {
-			AddChatSystemMessage(locking ? "The raid is already locked."
+			owner_.AddChatSystemMessage(locking ? "The raid is already locked."
 			                             : "The raid is not locked.");
 		}
 		break;
@@ -931,7 +911,7 @@ void EverQuest::ZoneProcessRaidUpdate(const EQ::Net::Packet &p)
 
 	case EQT::RaidAction::SetMotd:
 		if (!u.text.empty()) {
-			AddChatSystemMessage(fmt::format("Raid MOTD: {}", u.text));
+			owner_.AddChatSystemMessage(fmt::format("Raid MOTD: {}", u.text));
 		}
 		break;
 
@@ -959,10 +939,10 @@ void EverQuest::ZoneProcessRaidUpdate(const EQ::Net::Packet &p)
 // routed by eqemu to Handle_OP_RaidCommand). The body is the 140-byte internal
 // RaidGeneral_Struct built by EQT::encodeRaidCommand -- the handler rejects
 // anything shorter. Called only from the action layer (/raid commands).
-void EverQuest::SendRaidCommand(uint32_t action, const std::string& player_name,
+void eqt::group::GroupComponent::SendRaidCommand(uint32_t action, const std::string& player_name,
                                const std::string& leader_name, uint32_t parameter)
 {
-	if (!m_zone_connection || !m_game_state.world().isZoneConnected()) {
+	if (!ctx_.zone_connection || !ctx_.game_state.world().isZoneConnected()) {
 		LOG_WARN(MOD_ZONE, "SendRaidCommand: not connected");
 		return;
 	}
@@ -973,7 +953,7 @@ void EverQuest::SendRaidCommand(uint32_t action, const std::string& player_name,
 	EQ::Net::DynamicPacket p;
 	p.PutUInt16(0, HC_OP_RaidInvite);
 	p.PutData(2, const_cast<uint8_t*>(body.data()), body.size());
-	m_zone_connection->QueuePacket(p, 0, true);
+	ctx_.zone_connection->QueuePacket(p, 0, true);
 
 	LOG_INFO(MOD_ZONE, "Sent OP_RaidCommand action={} player='{}' leader='{}'",
 	         action, player_name, leader_name);

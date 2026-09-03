@@ -303,12 +303,12 @@ void EqActionHandler::sendPetCommand(uint8_t command, uint16_t targetId) {
             " is not valid and was not sent.");
         return;
     }
-    m_eq.SendPetCommand(static_cast<EQT::PetCommand>(command), targetId);
+    m_eq.Group().SendPetCommand(static_cast<EQT::PetCommand>(command), targetId);
 }
 
 void EqActionHandler::dismissPet() {
     // PET_GETLOST = 29 from pet_constants.h
-    m_eq.SendPetCommand(EQT::PET_GETLOST, 0);
+    m_eq.Group().SendPetCommand(EQT::PET_GETLOST, 0);
 }
 
 // ========== Tradeskill ==========

@@ -127,6 +127,7 @@ namespace ui {
 #include "client/guild/guild_component.h"  // K01: ClientContext + GuildComponent
 #include "client/gm/gm_component.h"  // K02: GmComponent
 #include "client/chat/chat_component.h"    // K03: ChatComponent
+#include "client/group/group_component.h"  // K04: GroupComponent (group/raid/pet)
 
 class EverQuest
 {
@@ -444,7 +445,6 @@ public:
 	bool IsInGroup() const;
 	bool IsGroupLeader() const;
 	int GetGroupMemberCount() const;
-	const GroupMember* GetGroupMember(int index) const;
 	const std::string& GetGroupLeaderName() const;
 	const std::string& GetMyName() const { return m_character; }
 	const std::string& GetMyLastName() const { return m_game_state.player().lastName(); }
@@ -467,38 +467,20 @@ public:
 	const std::string& GetMailKey() const { return m_mail_key; }
 	char GetChatConnectionType() const { return m_ucs_connection_type; }
 
-	// Group actions (send packets to server)
-	void SendGroupInvite(const std::string& target_name);
-	void SendGroupFollow(const std::string& inviter_name);  // Accept invite
-	void SendGroupDecline(const std::string& inviter_name); // Decline invite
-	void SendGroupDisband();
-	void SendLeaveGroup();
-
 	// Pending group invite handling (Phase 7.5: read from GameState)
 	bool HasPendingGroupInvite() const;
 	const std::string& GetPendingInviterName() const;
-	void AcceptGroupInvite();
-	void DeclineGroupInvite();
-
-	// Raid actions
 
 	// Pet queries
 	// T40: GetPetHpPercent()/GetPetButtonState() removed -- their only
 	// caller was Application::syncPetState(), which is now replaced by
 	// event-fed pet state via GameStateSyncBridge (PetStatsChanged /
 	// PetButtonStateChanged, both published in eq_bridge.cpp /
-	// eq_entities.cpp). GetPetSpawnId()/GetPetName()/GetPetLevel()/
-	// GetPetEntity() stay -- they still have live callers outside the
-	// deleted poll (eq_action_handler.cpp, spell_manager.cpp, eq.cpp).
+	// eq_entities.cpp). K04 moved GetPetName()/GetPetLevel()/GetPetEntity()
+	// and SendPetCommand() into GroupComponent; DismissPet() had zero callers
+	// and was deleted.
 	bool HasPet() const { return m_game_state.pet().petSpawnId() != 0; }
 	uint16_t GetPetSpawnId() const { return m_game_state.pet().petSpawnId(); }
-	const Entity* GetPetEntity() const;
-	std::string GetPetName() const;
-	uint8_t GetPetLevel() const;
-
-	// Pet commands
-	void SendPetCommand(EQT::PetCommand command, uint16_t target_id = 0);
-	void DismissPet();
 
 	// Movement state and behavior methods
 	void SetMovementMode(MovementMode mode);
@@ -566,6 +548,9 @@ public:
 	// K03 (Batch K): the chat family is eqt::chat::ChatComponent; callers go
 	// through Chat(), there are no forwarders.
 	eqt::chat::ChatComponent& Chat() { return *m_chat; }
+	// K04 (Batch K): the group family -- group, raid and pet -- is
+	// eqt::group::GroupComponent. Same shape: no forwarders.
+	eqt::group::GroupComponent& Group() { return *m_group; }
 	eqt::ClientContext& Context() { return m_ctx; }
 	// Phase 3: Corpse Management
 	void SendCorpseDrag(const std::string& corpse_name);
@@ -605,23 +590,6 @@ public:
 	// Phase 4: Skills
 	void SendBindWound(uint32_t target_id);
 	void SendTrackTarget(uint32_t target_id);
-
-	// T179: raid commands. Sends OP_RaidCommand (Titanium OP_RaidInvite, 0x5891).
-	void SendRaidCommand(uint32_t action, const std::string& player_name,
-	                     const std::string& leader_name, uint32_t parameter = 0);
-	// Raid state, maintained from the decoded OP_RaidUpdate stream.
-	bool IsInRaid() const { return m_in_raid; }
-	const std::string& GetRaidLeader() const { return m_raid_leader; }
-	const std::string& GetPendingRaidInviter() const { return m_pending_raid_inviter; }
-	void ClearPendingRaidInvite() { m_pending_raid_inviter.clear(); }
-	// T180: the member list, assembled from the action-0 stream -- Titanium's
-	// ENCODE drops eqemu's roster packet, so this is the only roster there is.
-	const std::vector<EQT::RaidMemberInfo>& GetRaidMembers() const {
-		return m_raid_roster.Members();
-	}
-	// T182: raid lock state, from actions 17/18. Re-established on zone-in --
-	// eqemu's rejoin path sends SendRaidLockTo only when the raid is locked.
-	bool IsRaidLocked() const { return m_raid_locked; }
 	// Phase 4: Tradeskills
 	void SendRecipesFavorite(uint32_t object_type, const std::vector<uint32_t>& favorites);
 	void SendRecipesSearch(uint32_t object_type, const std::string& query, uint32_t mintrivial, uint32_t maxtrivial);
@@ -782,6 +750,7 @@ public:
 	friend class eqt::guild::GuildComponent;  // K01 transition; K-final removes it
 	friend class eqt::gm::GmComponent;  // K02 transition; K-final removes it
 	friend class eqt::chat::ChatComponent;    // K03 transition; K-final removes it
+	friend class eqt::group::GroupComponent;  // K04 transition; K-final removes it
 
 	// String database for EQ message lookups (works in all modes)
 	bool LoadStringFiles(const std::string& eqClientPath);
@@ -1044,13 +1013,6 @@ private:
 	std::string m_server;
 	std::string m_character;
 
-	// T179/T180: raid state, derived from ZoneProcessRaidUpdate.
-	bool m_in_raid = false;
-	std::string m_raid_leader;
-	std::string m_pending_raid_inviter;
-	EQT::RaidRoster m_raid_roster;
-	bool m_raid_locked = false;
-
 	std::string m_key;
 	uint32_t m_dbid;
 
@@ -1119,7 +1081,6 @@ private:
 	void ZoneProcessSpawnAppearance(const EQ::Net::Packet &p);
 	void ZoneProcessAnimation(const EQ::Net::Packet &p);  // OP_Animation (T243 rename)
 	void ZoneProcessExpUpdate(const EQ::Net::Packet &p);
-	void ZoneProcessRaidUpdate(const EQ::Net::Packet &p);
 	void ZoneProcessGuildMOTD(const EQ::Net::Packet &p);
 	void ZoneProcessNewSpawn(const EQ::Net::Packet &p);
 	void ZoneProcessClientUpdate(const EQ::Net::Packet &p);
@@ -1419,22 +1380,6 @@ private:
 
 	// Chat state - for reply to tell
 	std::string m_last_tell_sender;
-
-	// Group helper methods
-	void ClearGroup();
-	int FindGroupMemberByName(const std::string& name) const;
-	void UpdateGroupMemberFromEntity(int index);
-
-	// Group packet handlers
-	void ZoneProcessGroupInvite(const EQ::Net::Packet& p);
-	void ZoneProcessGroupFollow(const EQ::Net::Packet& p);
-	void ZoneProcessGroupUpdate(const EQ::Net::Packet& p);
-	// T320: groupActJoin carries a GroupJoin_Struct, not a GroupUpdate_Struct
-	// -- both are 452 bytes, so only the action can tell them apart.
-	void ZoneProcessGroupJoin(const EQ::Net::Packet& p);
-	void FillGroupMemberFromEntities(GroupMember& member) const;
-	void ZoneProcessGroupDisband(const EQ::Net::Packet& p);
-	void ZoneProcessGroupCancelInvite(const EQ::Net::Packet& p);
 
 	// Movement history for anti-cheat
 	struct MovementHistoryEntry {
@@ -1964,4 +1909,5 @@ private:
 	std::unique_ptr<eqt::guild::GuildComponent> m_guild;
 	std::unique_ptr<eqt::gm::GmComponent> m_gm;
 	std::unique_ptr<eqt::chat::ChatComponent> m_chat;
+	std::unique_ptr<eqt::group::GroupComponent> m_group;
 };

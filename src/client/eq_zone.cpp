@@ -395,7 +395,7 @@ void EverQuest::CleanupZone()
 	// is no group any more, nothing arrives and "not in group" -- what this
 	// clear leaves behind -- is the correct answer. Either way the client
 	// ends the transition agreeing with the server instead of guessing.
-	ClearGroup();
+	m_group->ClearGroup();
 
 	// Clear world objects (forges, looms, groundspawns)
 	ClearWorldObjects();
