@@ -15,10 +15,17 @@ Two citation shapes are checked:
      exist. This catches a citation that dropped its line number but is
      still pointing at a moved/deleted file.
 
-Citations are resolved relative to the repo root. A citation to a path
-outside this repo (e.g. a sibling project's source file, cited for context)
-correctly FAILs here — that is a real finding for Leg A to triage, not a
-bug in this checker; this script does not fix docs, only reports.
+Citations are resolved relative to the repo root, with two exceptions
+(K00 Leg C):
+  - A citation whose path starts with `review/` is resolved against
+    `/mnt/projects/fable/review/` instead — the sanctioned outside-repo
+    media directory (`refactor/EXECUTOR_PROTOCOL.md`). OK if it exists
+    there, FAIL otherwise: `review/` citations are still real pointers that
+    can go stale, just not against this checkout.
+  - A citation whose path is absolute (starts with `/`) is a deliberate
+    cross-project reference (e.g. a sibling repo's source file, cited for
+    context) that this checker has no tree to resolve against. Reported as
+    SKIP, not FAIL or OK — recorded and counted, but not a pass/fail signal.
 
 Usage:
     check_doc_citations.py [--repo REPO_ROOT]
@@ -26,6 +33,7 @@ Usage:
 Exit 0 if every citation found resolves (including the case of zero live
 docs found, or zero citations found — always printed, never a silent pass,
 same T37 rule check_file_sizes.sh follows); exit 1 if any citation FAILs.
+SKIPs never affect the exit code.
 """
 import argparse
 import os
@@ -101,17 +109,47 @@ def find_live_docs(repo_root):
 # Path charset: letters, digits, underscore, dot, dash, slash. Extension set
 # for the WITH-line form is intentionally a little wider than the bare-path
 # FAIL rule (which the plan pins to .cpp|.h|.py|.sh|.md) — .hpp and .cmake
-# citations with an explicit line number are just as checkable.
+# citations with an explicit line number are just as checkable. The leading
+# "/?" admits an absolute path (SKIP, cross-project — see module docstring)
+# on top of the normal repo-relative form.
+#
+# The negative lookbehind before "/?" matters: without it, a placeholder
+# like "<slot>/scripts/foo.sh" (EXECUTOR_PROTOCOL.md's own convention for
+# "some worktree slot") would match starting at the "/" right after "<slot>"
+# and get misread as the absolute path "/scripts/foo.sh" instead of the
+# correctly-relative "scripts/foo.sh". Requiring the character before an
+# optional leading "/" NOT be a path-token character (alnum/._-/>) means a
+# leading "/" only starts a match when it truly opens a token (start of
+# string, whitespace, a backtick, a bracket, ":" etc).
 _EXT_WITH_LINE = r"cpp|h|hpp|py|sh|md|cmake"
 _EXT_BARE = r"cpp|h|py|sh|md"
+_NOT_PATH_TOKEN_BEFORE = r"(?<![A-Za-z0-9_.\->])"
 
 CITE_WITH_LINE = re.compile(
-    r"(?P<path>[A-Za-z0-9_.\-]+(?:/[A-Za-z0-9_.\-]+)+\.(?:%s)):(?P<line>[0-9]+)"
-    % _EXT_WITH_LINE
+    r"%s(?P<path>/?[A-Za-z0-9_.\-]+(?:/[A-Za-z0-9_.\-]+)+\.(?:%s)):(?P<line>[0-9]+)"
+    % (_NOT_PATH_TOKEN_BEFORE, _EXT_WITH_LINE)
 )
 CITE_BARE = re.compile(
-    r"(?P<path>[A-Za-z0-9_.\-]+(?:/[A-Za-z0-9_.\-]+)+\.(?:%s))" % _EXT_BARE
+    r"%s(?P<path>/?[A-Za-z0-9_.\-]+(?:/[A-Za-z0-9_.\-]+)+\.(?:%s))"
+    % (_NOT_PATH_TOKEN_BEFORE, _EXT_BARE)
 )
+
+# K00 Leg C: review/ is the sanctioned outside-repo media directory
+# (refactor/EXECUTOR_PROTOCOL.md) -- citations into it resolve against this
+# instead of the checkout.
+REVIEW_DIR = "/mnt/projects/fable/review"
+
+
+def resolve_target(repo_root, cited_path):
+    """Returns (target_path, status) where status is None (resolve normally),
+    or "SKIP" for an absolute cross-project path. review/ paths resolve
+    against REVIEW_DIR rather than SKIPping -- they are still real pointers
+    this host can check."""
+    if cited_path.startswith("review/"):
+        return os.path.join(REVIEW_DIR, cited_path[len("review/"):]), None
+    if cited_path.startswith("/"):
+        return cited_path, "SKIP"
+    return os.path.join(repo_root, cited_path), None
 
 
 def scan_doc(doc_path, repo_root, results):
@@ -135,20 +173,24 @@ def scan_doc(doc_path, repo_root, results):
 
 
 def check_with_line(doc_path, doc_lineno, repo_root, cited_path, cited_line):
-    target = os.path.join(repo_root, cited_path)
+    label = "%s:%d" % (cited_path, cited_line)
+    target, status = resolve_target(repo_root, cited_path)
+    if status == "SKIP":
+        return ("SKIP", doc_path, doc_lineno, label, "cross-project citation")
     if not os.path.isfile(target):
-        return ("FAIL", doc_path, doc_lineno, "%s:%d" % (cited_path, cited_line),
-                "file does not exist")
+        return ("FAIL", doc_path, doc_lineno, label, "file does not exist")
     with open(target, "r", encoding="utf-8", errors="replace") as fh:
         n_lines = sum(1 for _ in fh)
     if cited_line > n_lines:
-        return ("FAIL", doc_path, doc_lineno, "%s:%d" % (cited_path, cited_line),
+        return ("FAIL", doc_path, doc_lineno, label,
                 "line %d beyond file length (%d lines)" % (cited_line, n_lines))
-    return ("OK", doc_path, doc_lineno, "%s:%d" % (cited_path, cited_line), "")
+    return ("OK", doc_path, doc_lineno, label, "")
 
 
 def check_bare(doc_path, doc_lineno, repo_root, cited_path):
-    target = os.path.join(repo_root, cited_path)
+    target, status = resolve_target(repo_root, cited_path)
+    if status == "SKIP":
+        return ("SKIP", doc_path, doc_lineno, cited_path, "cross-project citation")
     if not os.path.isfile(target):
         return ("FAIL", doc_path, doc_lineno, cited_path, "file does not exist")
     return ("OK", doc_path, doc_lineno, cited_path, "")
@@ -188,11 +230,14 @@ def main():
 
     n_ok = sum(1 for r in results if r[0] == "OK")
     n_fail = sum(1 for r in results if r[0] == "FAIL")
+    n_skip = sum(1 for r in results if r[0] == "SKIP")
 
     for status, doc_path, doc_lineno, cite, reason in results:
         rel_doc = os.path.relpath(doc_path, repo_root)
         if status == "OK":
             print("OK    %s:%d cites %s" % (rel_doc, doc_lineno, cite))
+        elif status == "SKIP":
+            print("SKIP  %s:%d cites %s — %s" % (rel_doc, doc_lineno, cite, reason))
         else:
             print("FAIL  %s:%d cites %s — %s" % (rel_doc, doc_lineno, cite, reason))
 
@@ -201,8 +246,8 @@ def main():
         return 0
 
     print(
-        "checked %d live doc(s), %d citation(s): %d ok, %d fail"
-        % (len(docs), len(results), n_ok, n_fail)
+        "checked %d live doc(s), %d citation(s): %d ok, %d fail, %d skip"
+        % (len(docs), len(results), n_ok, n_fail, n_skip)
     )
     return 1 if n_fail else 0
 
