@@ -265,7 +265,7 @@ SET(COMMON_SOURCES
 
 # Client sources (core - without main.cpp, for library)
 SET(CLIENT_CORE_SOURCES
-    src/client/eq.cpp
+    src/client/core/everquest.cpp
     src/client/zone/zone_dispatch.cpp
     src/client/zone/zone_handshake.cpp
     src/client/zone/zone_entry.cpp
@@ -282,14 +282,14 @@ SET(CLIENT_CORE_SOURCES
     src/client/commands/commands_movement.cpp
     src/client/commands/commands_spells.cpp
     src/client/commands/commands_train.cpp
-    src/client/eq_strings.cpp
+    src/client/core/eq_strings.cpp
     src/client/login_world/login_world_component.cpp
     src/client/guild/guild_component.cpp
     src/client/gm/gm_component.cpp
     src/client/merchant/merchant.cpp
     src/client/merchant/merchant_trade.cpp
     src/client/merchant/merchant_vendor_bank.cpp
-    src/client/eq_player_info.cpp
+    src/client/core/eq_player_info.cpp
     src/client/raid_update.cpp
     src/client/inspect_answer.cpp
     src/client/group/group_component.cpp
@@ -304,7 +304,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/movement/movement_update.cpp
     src/client/movement/movement_state.cpp
     src/client/chat/chat_component.cpp
-    src/client/eq_chat.cpp
+    src/client/core/eq_chat.cpp
     # K13 (Batch K): the three context services.
     src/client/chat_output.cpp
     src/client/player_facade.cpp
@@ -418,9 +418,9 @@ SET(CLIENT_CORE_SOURCES
     src/client/application_frame.cpp
     src/client/application_zone_loading.cpp
     src/client/application_config.cpp
-    src/client/eq_action_handler.cpp
-    src/client/eq_action_handler_spells_trade.cpp
-    src/client/eq_action_handler_extended.cpp
+    src/client/action/eq_action_handler.cpp
+    src/client/action/eq_action_handler_spells_trade.cpp
+    src/client/action/eq_action_handler_extended.cpp
     # Spell system sources
     src/client/spell/spell_database.cpp
     src/client/spell/spell_manager.cpp

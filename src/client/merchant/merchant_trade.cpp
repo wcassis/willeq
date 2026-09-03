@@ -556,7 +556,7 @@ void eqt::merchant::MerchantComponent::ZoneProcessShopPlayerBuy(const EQ::Net::P
 	auto vendorIt = ctx_.Commands().VendorItems().find(itemslot);
 	if (vendorIt != ctx_.Commands().VendorItems().end()) {
 		int32_t totalPrice = vendorIt->second.price * static_cast<int32_t>(quantity);
-		std::string priceStr = EverQuest::FormatPrice(totalPrice);
+		std::string priceStr = eqt::strings::FormatPrice(totalPrice);
 		if (quantity > 1) {
 			ctx_.out.System(fmt::format("You purchased {} x{} for {}", vendorIt->second.name, quantity, priceStr));
 		} else {
@@ -604,7 +604,7 @@ void eqt::merchant::MerchantComponent::ZoneProcessShopPlayerSell(const EQ::Net::
 
 	// Display sale confirmation and update inventory (D18a: no renderer dependency)
 	{
-		std::string priceStr = EverQuest::FormatPrice(static_cast<int32_t>(resp->price));
+		std::string priceStr = eqt::strings::FormatPrice(static_cast<int32_t>(resp->price));
 		if (resp->quantity > 1) {
 			ctx_.out.System(fmt::format("You sold {} items for {}", resp->quantity, priceStr));
 		} else {

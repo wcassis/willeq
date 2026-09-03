@@ -389,7 +389,7 @@ void EqActionHandler::raidList() {
         std::string detail;
         if (m.level != 0 || m.class_id != 0) {
             detail = fmt::format(" (Level {} {})", m.level,
-                                 EverQuest::GetClassName(m.class_id));
+                                 eqt::strings::GetClassName(m.class_id));
         }
         std::string tags;
         if (!leader.empty() && m.name == leader) tags += " [raid leader]";
@@ -692,7 +692,7 @@ void EqActionHandler::vendorList() {
     for (const auto& [slot, item] : items) {
         std::string qtyStr = (item.quantity < 0) ? "unlimited" : std::to_string(item.quantity);
         m_eq.AddChatSystemMessage(fmt::format("  [slot {}] {} - {} (qty: {})",
-            slot, item.name, EverQuest::FormatVendorPrice(item.price), qtyStr));
+            slot, item.name, eqt::strings::FormatPrice(item.price), qtyStr));
     }
 }
 

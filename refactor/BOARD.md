@@ -30,7 +30,7 @@ it without taking that measurement first.
   (`OP_Death`/`OP_BecomeCorpse` for self), not the `AT_DIE` arm, drives self's
   `positionState`. Prov: deferred item 15.
 
-- **B002** (A) `src/client/eq_action_handler.cpp` `EqActionHandler::toggleAutorun`
+- **B002** (A) `src/client/action/eq_action_handler.cpp` `EqActionHandler::toggleAutorun`
   — a `LOG_DEBUG` stub, and the only live consumer
   (`renderer_player_physics.cpp`'s `playerMovement_.autorun`) has zero writers, so
   three bound keys report success and do nothing. Closes when: a renderer-side
@@ -290,7 +290,7 @@ it without taking that measurement first.
   is a separate small decision rather than one sweep:
   (1) **renderer-lifetime state** — `m_constrained_config` (8),
   `m_graphics_initialized` (5), `m_constrained_preset` (2),
-  `m_loading_status_ptr` (1), all `bridge`-only, read by four `src/client/eq.cpp`
+  `m_loading_status_ptr` (1), all `bridge`-only, read by four `src/client/core/everquest.cpp`
   bodies `Application` drives around the K11 forwarders;
   (2) **the loading-phase state machine** — `EverQuest::SetLoadingPhase` (12) +
   `m_loading_phase` (5) + `IsGraphicsReady` (1); not player state, so K13 did

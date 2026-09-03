@@ -24,10 +24,10 @@ std::string castRefusalMessage(EverQuest& eq, CastResult result)
         const eqt::inventory::ItemInstance* item =
             (inv && item_id != 0) ? inv->getItemById(item_id) : nullptr;
         if (item && !item->name.empty()) {
-            return eq.GetFormattedStringMessage(STR_MISSING_NAMED_COMPONENT, {item->name});
+            return eq.Strings().GetFormattedStringMessage(STR_MISSING_NAMED_COMPONENT, {item->name});
         }
     }
-    return eq.GetStringMessage(string_id);
+    return eq.Strings().GetStringMessage(string_id);
 }
 
 } // namespace EQ

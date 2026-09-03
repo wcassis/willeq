@@ -1,4 +1,5 @@
 #include "client/eq.h"
+#include "client/eq_strings.h"
 #include "client/willeq_database.h"
 #include "client/pathfinder_interface.h"
 #ifdef EQT_HAS_NAVMESH
@@ -57,6 +58,7 @@
 #include <sstream>
 #include <ctime>
 #include <algorithm>
+#include <iostream>
 #include <vector>
 #include <cmath>
 #include <cstring>
@@ -88,6 +90,9 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 	  m_player_facade{m_game_state, m_update_running},
 	  m_packet_sender{m_game_state, m_zone_connection, m_zone_connection_manager,
 	                  m_session_recorder, m_main_thread_id},
+	  // K14: the fourth context service, over EverQuest's own m_string_db
+	  // (declared well above this point, so it is already constructed).
+	  m_strings{m_string_db},
 	  m_ctx{m_game_state,
 	        m_bridge,
 	        m_zone_connection,
@@ -111,6 +116,7 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 	        m_chat_output,
 	        m_player_facade,
 	        m_packet_sender,
+	        m_strings,
 	        m_hotbar_model,
 	        m_eq_client_path,
 	        m_session_recorder
@@ -620,8 +626,8 @@ void EverQuest::PublishFullStateSnapshot() {
 		eqt::state::CharacterInfoChangedData data;
 		data.name = m_character;
 		data.level = m_game_state.player().level();
-		data.className = GetClassName(m_game_state.player().classId());
-		data.deity = GetDeityName(m_game_state.player().deity());
+		data.className = eqt::strings::GetClassName(m_game_state.player().classId());
+		data.deity = eqt::strings::GetDeityName(m_game_state.player().deity());
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::CharacterInfoChanged, std::move(data)));
 	}
@@ -863,7 +869,7 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 
 	LOG_TRACE(MOD_ZONE, "[ZONE RECV] opcode=0x{:04x} len={}", opcode, p.Length());
 
-	DumpPacket("S->C", opcode, p);
+	eqt::strings::DumpPacket("S->C", opcode, p);
 
 	// R01: record real network traffic only (replayed packets enter via
 	// ReplayZonePacket -> DispatchZonePacket and are never re-recorded)
@@ -1010,7 +1016,7 @@ void EverQuest::SetEQClientPath(const std::string& path) {
 	m_eq_client_path = path;
 
 	// Load EQ string files for message lookups
-	LoadStringFiles(path);
+	m_strings.LoadStringFiles(path);
 }
 
 #ifdef EQT_HAS_GRAPHICS
@@ -1050,3 +1056,97 @@ void EverQuest::ShutdownGraphics() {
 	m_bridge_component->ShutdownGraphics();
 }
 #endif // EQT_HAS_GRAPHICS
+
+// K14 (Batch K, refactor/K14_directory_move.md): DumpEntityAppearance moved
+// here from eq_strings.cpp verbatim. The plan's eq_strings entry grouped it
+// with DumpPacket as "debug helpers with s_debug_level reads", but the body
+// reads m_entities -- EverQuest's own entity map -- and has no
+// s_debug_level read at all, so it is not a pure lookup and does not belong
+// in eqt::strings. It stays on EverQuest, next to the state it dumps; the
+// five name-lookup calls inside it now reach eqt::strings (see this unit's
+// Review, deviation 1).
+void EverQuest::DumpEntityAppearance(const std::string& name) const {
+	// Find entity by name (case-insensitive, underscore-tolerant)
+	std::string search_lower = name;
+	std::transform(search_lower.begin(), search_lower.end(), search_lower.begin(), ::tolower);
+	std::replace(search_lower.begin(), search_lower.end(), ' ', '_');
+
+	for (const auto& [id, entity] : m_entities) {
+		std::string entity_name_lower = entity.name;
+		std::transform(entity_name_lower.begin(), entity_name_lower.end(), entity_name_lower.begin(), ::tolower);
+		if (entity_name_lower.find(search_lower) != std::string::npos) {
+			DumpEntityAppearance(id);
+			return;
+		}
+	}
+	std::cout << fmt::format("Entity '{}' not found", name) << std::endl;
+}
+
+void EverQuest::DumpEntityAppearance(uint16_t spawn_id) const {
+	auto it = m_entities.find(spawn_id);
+	if (it == m_entities.end()) {
+		std::cout << fmt::format("Entity with spawn_id {} not found", spawn_id) << std::endl;
+		return;
+	}
+
+	const Entity& e = it->second;
+
+	std::cout << "========================================" << std::endl;
+	std::cout << fmt::format("Entity Appearance Dump: {} (ID: {})", e.name, e.spawn_id) << std::endl;
+	std::cout << "========================================" << std::endl;
+
+	// Basic info
+	std::cout << fmt::format("Type:      {} ({})", eqt::strings::GetNpcTypeName(e.npc_type), e.npc_type) << std::endl;
+	std::cout << fmt::format("Race:      {} (ID: {})", eqt::strings::GetRaceName(e.race_id), e.race_id) << std::endl;
+	std::cout << fmt::format("Class:     {} (ID: {})", eqt::strings::GetClassName(e.class_id), e.class_id) << std::endl;
+	std::cout << fmt::format("Gender:    {} ({})", e.gender == 0 ? "Male" : (e.gender == 1 ? "Female" : "Neutral"), e.gender) << std::endl;
+	std::cout << fmt::format("Level:     {}", e.level) << std::endl;
+	std::cout << fmt::format("Body Type: {} (ID: {})", eqt::strings::GetBodyTypeName(e.bodytype), e.bodytype) << std::endl;
+	std::cout << fmt::format("Size:      {:.2f}", e.size) << std::endl;
+	std::cout << fmt::format("Light:     {}", e.light) << std::endl;
+
+	// Appearance details
+	std::cout << std::endl << "--- Facial Features ---" << std::endl;
+	std::cout << fmt::format("Face:       {}", e.face) << std::endl;
+	std::cout << fmt::format("Hair Color: {}", e.haircolor) << std::endl;
+	std::cout << fmt::format("Hair Style: {}", e.hairstyle) << std::endl;
+	std::cout << fmt::format("Beard:      {}", e.beard) << std::endl;
+	std::cout << fmt::format("Beard Color:{}", e.beardcolor) << std::endl;
+
+	// Equipment textures
+	std::cout << std::endl << "--- Equipment Textures (Material IDs) ---" << std::endl;
+	std::cout << fmt::format("Helm Texture:   {} (Show: {})", e.helm, e.showhelm ? "Yes" : "No") << std::endl;
+	std::cout << fmt::format("Chest Texture2: {} (equip_chest2 / mount color)", e.equip_chest2) << std::endl;
+
+	for (int i = 0; i < 9; i++) {
+		uint32_t mat = e.equipment[i];
+		uint32_t tint = e.equipment_tint[i];
+
+		// Parse tint components (BGRA format)
+		uint8_t tint_blue = (tint >> 0) & 0xFF;
+		uint8_t tint_green = (tint >> 8) & 0xFF;
+		uint8_t tint_red = (tint >> 16) & 0xFF;
+		uint8_t tint_use = (tint >> 24) & 0xFF;
+
+		std::string slot_name = eqt::strings::GetEquipSlotName(i);
+
+		if (mat != 0 || tint != 0) {
+			std::cout << fmt::format("  [{:>9}] Material: {:>5}", slot_name, mat);
+			if (tint != 0) {
+				std::cout << fmt::format("  Tint: RGB({:>3},{:>3},{:>3}) Use: 0x{:02X}",
+					tint_red, tint_green, tint_blue, tint_use);
+			}
+			std::cout << std::endl;
+		} else {
+			std::cout << fmt::format("  [{:>9}] (none)", slot_name) << std::endl;
+		}
+	}
+
+	// Position
+	std::cout << std::endl << "--- Position ---" << std::endl;
+	std::cout << fmt::format("Location: ({:.2f}, {:.2f}, {:.2f}) Heading: {:.1f}",
+		e.x, e.y, e.z, e.heading) << std::endl;
+	std::cout << fmt::format("HP:       {}%", e.hp_percent) << std::endl;
+
+	std::cout << "========================================" << std::endl;
+}

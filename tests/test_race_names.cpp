@@ -2,7 +2,7 @@
  * T271: race DISPLAY NAMES come from the db, the same way T270 made race
  * CODES db-only.
  *
- * The defect T270 found: EverQuest::GetRaceName() carried a pre-JSON table
+ * The defect T270 found: eqt::strings::GetRaceName() carried a pre-JSON table
  * that is shifted against the audited race_models rows --
  *   14  -> "Iksar"    (row 14 is WER Werewolf; Iksar is 128)
  *   128 -> "Vah Shir" (row 128 is IKM Iksar; Vah Shir is 130)
@@ -51,7 +51,7 @@ bool fileExists(const std::string& p) {
 constexpr uint16_t kMaxRaceId = 600;
 constexpr int kExpectedRowCount = 190;
 
-// Every id the deleted EverQuest::GetRaceName() switch answered for, with
+// Every id the deleted eqt::strings::GetRaceName() switch answered for, with
 // what it used to claim. The four shifted ones are called out by name below.
 struct ShiftedId { uint16_t id; const char* wasClaimed; const char* row; };
 const ShiftedId kShifted[] = {
@@ -88,13 +88,13 @@ protected:
 TEST_F(RaceNameNoDatabaseTest, EveryFormerlyHardcodedIdIsUnknown) {
     // The 16 ids the switch answered for, plus the four shifted ones.
     for (uint16_t id : {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 128, 130, 330}) {
-        EXPECT_EQ(EverQuest::GetRaceName(id), "Unknown (" + std::to_string(id) + ")")
+        EXPECT_EQ(eqt::strings::GetRaceName(id), "Unknown (" + std::to_string(id) + ")")
             << "race " << id;
     }
 }
 
 TEST_F(RaceNameNoDatabaseTest, UnmappedIdIsUnknownToo) {
-    EXPECT_EQ(EverQuest::GetRaceName(9999), "Unknown (9999)");
+    EXPECT_EQ(eqt::strings::GetRaceName(9999), "Unknown (9999)");
 }
 
 TEST_F(RaceNameFromDbTest, EveryRowServesItsOwnName) {
@@ -104,14 +104,14 @@ TEST_F(RaceNameFromDbTest, EveryRowServesItsOwnName) {
         if (!info.found) continue;
         ++rows;
         ASSERT_FALSE(info.name.empty()) << "race_models row " << id << " has no name";
-        EXPECT_EQ(EverQuest::GetRaceName(id), info.name) << "race " << id;
+        EXPECT_EQ(eqt::strings::GetRaceName(id), info.name) << "race " << id;
     }
     EXPECT_EQ(rows, kExpectedRowCount);
 }
 
 TEST_F(RaceNameFromDbTest, ShiftedIdsAnswerTheRow) {
     for (const auto& s : kShifted) {
-        EXPECT_EQ(EverQuest::GetRaceName(s.id), s.row)
+        EXPECT_EQ(eqt::strings::GetRaceName(s.id), s.row)
             << "race " << s.id << " used to be printed as \"" << s.wasClaimed << "\"";
     }
 }
@@ -124,8 +124,8 @@ TEST_F(RaceNameFromDbTest, ShiftedIdsAnswerTheRow) {
 // "Froglok" for both. The disambiguation now lives in the row's `note`
 // field, which nothing displays.
 TEST_F(RaceNameFromDbTest, PlayableFroglokPrintsAsFroglok) {
-    EXPECT_EQ(EverQuest::GetRaceName(330), "Froglok");
-    EXPECT_EQ(EverQuest::GetRaceName(26),  "Froglok");
+    EXPECT_EQ(eqt::strings::GetRaceName(330), "Froglok");
+    EXPECT_EQ(eqt::strings::GetRaceName(26),  "Froglok");
 }
 
 // The general rule the above is one instance of: no row's display name may
@@ -160,27 +160,27 @@ TEST_F(RaceNameFromDbTest, NoRowNameCarriesAnAnnotation) {
 // (T271 pinned these on EQT::Graphics::getRaceName(); T274 deleted that
 // caller-less twin and moved the pins here.)
 TEST_F(RaceNameFromDbTest, NamePinsTheContradictedIds) {
-    EXPECT_EQ(EverQuest::GetRaceName(13),  "Aviak");       // switch said "Wolf"
-    EXPECT_EQ(EverQuest::GetRaceName(21),  "Evil Eye");    // switch said "Skeleton"
-    EXPECT_EQ(EverQuest::GetRaceName(26),  "Froglok");     // switch said "Snake"
-    EXPECT_EQ(EverQuest::GetRaceName(35),  "Eel");         // switch said "Rat"
-    EXPECT_EQ(EverQuest::GetRaceName(42),  "Wolf");        // switch said "Wolf" -- agreed by luck
-    EXPECT_EQ(EverQuest::GetRaceName(46),  "Imp");         // switch said "Goblin"
-    EXPECT_EQ(EverQuest::GetRaceName(85),  "Spectre");     // switch said "Dragon"
-    EXPECT_EQ(EverQuest::GetRaceName(128), "Iksar");       // switch agreed here
+    EXPECT_EQ(eqt::strings::GetRaceName(13),  "Aviak");       // switch said "Wolf"
+    EXPECT_EQ(eqt::strings::GetRaceName(21),  "Evil Eye");    // switch said "Skeleton"
+    EXPECT_EQ(eqt::strings::GetRaceName(26),  "Froglok");     // switch said "Snake"
+    EXPECT_EQ(eqt::strings::GetRaceName(35),  "Eel");         // switch said "Rat"
+    EXPECT_EQ(eqt::strings::GetRaceName(42),  "Wolf");        // switch said "Wolf" -- agreed by luck
+    EXPECT_EQ(eqt::strings::GetRaceName(46),  "Imp");         // switch said "Goblin"
+    EXPECT_EQ(eqt::strings::GetRaceName(85),  "Spectre");     // switch said "Dragon"
+    EXPECT_EQ(eqt::strings::GetRaceName(128), "Iksar");       // switch agreed here
 }
 
 TEST_F(RaceNameFromDbTest, IdWithNoRowIsUnknownEvenWithTheDbOpen) {
     ASSERT_FALSE(db_.getRaceModel(9999).found);
-    EXPECT_EQ(EverQuest::GetRaceName(9999), "Unknown (9999)");
+    EXPECT_EQ(eqt::strings::GetRaceName(9999), "Unknown (9999)");
 }
 
 #ifdef EQT_HAS_GRAPHICS
 
 // T274: EQT::Graphics::getRaceName() -- the graphics-side twin these tests
-// used to hold against EverQuest::GetRaceName() -- is DELETED. It had zero
+// used to hold against eqt::strings::GetRaceName() -- is DELETED. It had zero
 // callers (T271), so the only way the two could disagree was in this file.
-// EverQuest::GetRaceName() is the single name function and every assertion
+// eqt::strings::GetRaceName() is the single name function and every assertion
 // below that used to name the twin now names it instead.
 
 // getRaceScale()'s fallback switch was shifted the same way (42 "Rat" 0.3 vs

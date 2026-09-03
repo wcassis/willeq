@@ -126,7 +126,7 @@ void eqt::chat::ChatComponent::ZoneSendChannelMessage(const std::string &message
 			ChatChannelName(channel), message) << std::endl;
 	}
 
-	EverQuest::DumpPacket("C->S", HC_OP_ChannelMessage, p);
+	eqt::strings::DumpPacket("C->S", HC_OP_ChannelMessage, p);
 	ctx_.zone_connection->QueuePacket(p);
 }
 
@@ -271,7 +271,7 @@ void eqt::chat::ChatComponent::ZoneSendEmote(const std::string &message)
 		std::cout << fmt::format("Sending emote: '{}'", message) << std::endl;
 	}
 
-	EverQuest::DumpPacket("C->S", HC_OP_Emote, p);
+	eqt::strings::DumpPacket("C->S", HC_OP_Emote, p);
 	ctx_.zone_connection->QueuePacket(p);
 
 	// Local echo. eqemu broadcasts the emote with ignore_sender=true
@@ -454,7 +454,7 @@ void eqt::chat::ChatComponent::ZoneProcessFormattedMessage(const EQ::Net::Packet
 	// Format the message using the template and arguments
 	std::string formatted_text;
 	if (!tmpl.empty()) {
-		formatted_text = owner_.GetFormattedStringMessage(string_id, args);
+		formatted_text = owner_.Strings().GetFormattedStringMessage(string_id, args);
 		LOG_DEBUG(MOD_ZONE, "[FormattedMessage] template='{}', formatted='{}'", tmpl, formatted_text);
 	} else {
 		// Fallback: join args with spaces if template not found
@@ -539,7 +539,7 @@ void eqt::chat::ChatComponent::ZoneProcessSimpleMessage(const EQ::Net::Packet &p
 	uint32_t color_type = p.GetUInt32(6);   // color at offset 4
 
 	// Get the message template for this string ID
-	std::string tmpl = owner_.GetStringMessage(string_id);
+	std::string tmpl = owner_.Strings().GetStringMessage(string_id);
 
 	LOG_DEBUG(MOD_ZONE, "[SimpleMessage] color_type={}, string_id={}, template='{}'",
 		color_type, string_id, tmpl);
@@ -573,7 +573,7 @@ void eqt::chat::ChatComponent::ZoneProcessSimpleMessage(const EQ::Net::Packet &p
 	// Format the message with arguments
 	std::string message_text;
 	if (!args.empty()) {
-		message_text = owner_.GetFormattedStringMessage(string_id, args);
+		message_text = owner_.Strings().GetFormattedStringMessage(string_id, args);
 	} else {
 		message_text = tmpl;
 	}

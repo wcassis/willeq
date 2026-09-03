@@ -529,7 +529,7 @@ void eqt::zone::ZoneComponent::ZoneProcessPlayerProfile(const EQ::Net::Packet &p
 	if (EverQuest::s_debug_level >= 2) {
 		LOG_DEBUG(MOD_MAIN, "=== CHARACTER DATA ===");
 		LOG_DEBUG(MOD_MAIN, "Name: {} {} (Level {} {} {})",
-			name, last_name, level, EverQuest::GetClassName(class_), EverQuest::GetRaceName(race));
+			name, last_name, level, eqt::strings::GetClassName(class_), eqt::strings::GetRaceName(race));
 		LOG_DEBUG(MOD_MAIN, "Gender: {} Race: {} Class: {} Deity: {}",
 			gender, race, class_, deity);
 		LOG_DEBUG(MOD_MAIN, "=== POSITION DATA ===");
@@ -692,8 +692,8 @@ void eqt::zone::ZoneComponent::ZoneProcessPlayerProfile(const EQ::Net::Packet &p
 		eqt::state::CharacterInfoChangedData data;
 		data.name = ctx_.character;
 		data.level = ctx_.game_state.player().level();
-		data.className = EverQuest::GetClassName(ctx_.game_state.player().classId());
-		data.deity = EverQuest::GetDeityName(ctx_.game_state.player().deity());
+		data.className = eqt::strings::GetClassName(ctx_.game_state.player().classId());
+		data.deity = eqt::strings::GetDeityName(ctx_.game_state.player().deity());
 		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::CharacterInfoChanged, std::move(data)));
 	}

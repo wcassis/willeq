@@ -265,8 +265,8 @@ GTEST_DISCOVER_TESTS(test_bridge_component)
 # from two ternary chains forty lines apart and they had drifted -- auction
 # missing from the console chain, channel 14 (TellEcho) missing from both.
 # The last test is the guard against a third copy appearing; it reads
-# src/client/eq_chat.cpp via WILLEQ_REPO_ROOT (set at the top of this file),
-# the same shape as the T314 / T308 guards.
+# src/client/core/eq_chat.cpp via WILLEQ_REPO_ROOT (set at the top of this
+# file), the same shape as the T314 / T308 guards.
 # K03 (Batch K): the extracted eqt::chat::ChatComponent, driven directly
 ADD_EXECUTABLE(test_chat_component
     test_chat_component.cpp

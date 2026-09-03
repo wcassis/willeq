@@ -26,6 +26,8 @@
 #include "client/chat_output.h"
 #include "client/packet_sender.h"
 #include "client/player_facade.h"
+// K14: the fourth context service -- the eqstr lookup surface.
+#include "client/eq_strings.h"
 
 #include <cstdint>
 #include <map>
@@ -132,6 +134,11 @@ struct ClientContext {
 	eqt::ChatOutput& out;
 	eqt::PlayerFacade& self;
 	eqt::PacketSender& net;
+	// K14 (Batch K, refactor/K14_directory_move.md): the fourth context
+	// service, added after K13 -- GetStringMessage/GetFormattedStringMessage/
+	// LoadStringFiles over EverQuest's own m_string_db (was 4 owner_. uses:
+	// commands 2, merchant 1, chat 1).
+	eqt::StringDb& strings;
 
 	// K13: four more shared members promoted out of the owner_.m_* residue.
 	// Each was reached through the transition handle by two or three families

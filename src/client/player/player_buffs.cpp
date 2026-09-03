@@ -465,7 +465,7 @@ void eqt::player::PlayerComponent::SendBuffCancelRequest(uint8_t slot)
 	LOG_INFO(MOD_SPELL, "Requesting buff cancel: slot={} spell={} ({})",
 		slot, buff->spell_id, name.empty() ? "unknown" : name);
 
-	EverQuest::DumpPacket("C->S", HC_OP_Buff, packet);
+	eqt::strings::DumpPacket("C->S", HC_OP_Buff, packet);
 	ctx_.zone_connection->QueuePacket(packet);
 }
 

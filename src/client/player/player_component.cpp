@@ -363,8 +363,8 @@ void eqt::player::PlayerComponent::ZoneProcessWhoAllResponse(const EQ::Net::Pack
 		std::string s = owner_.m_string_db.getString(id);
 		return s.empty() ? EQT::whoDefaultString(id) : s;
 	};
-	ctx.className = [](uint32_t c) { return EverQuest::GetClassName(c); };
-	ctx.raceName = [](uint32_t r) { return EverQuest::GetRaceName(r); };
+	ctx.className = [](uint32_t c) { return eqt::strings::GetClassName(c); };
+	ctx.raceName = [](uint32_t r) { return eqt::strings::GetRaceName(r); };
 	ctx.zoneName = [](uint32_t z) {
 		return EQT::ZoneLines::zoneShortNameFromId(static_cast<uint16_t>(z));
 	};

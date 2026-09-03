@@ -221,7 +221,7 @@ void eqt::commands::CommandsComponent::RequestTrainSkill(const std::string& args
 	const uint32_t cost = eqt::merchant::MerchantComponent::TrainingCost(current);
 	if (cost > 0) {
 		ctx_.out.System(fmt::format("Training {} ({} -> {}) for {}.",
-			label, current, current + 1, EverQuest::FormatPrice(static_cast<int32_t>(cost))));
+			label, current, current + 1, eqt::strings::FormatPrice(static_cast<int32_t>(cost))));
 	} else {
 		ctx_.out.System(fmt::format("Training {} ({} -> {}).", label, current, current + 1));
 	}
@@ -255,7 +255,7 @@ void eqt::commands::CommandsComponent::ListTrainableSkills()
 		const char* name = EQ::getSkillName(id);
 		ctx_.out.System(fmt::format("[{}] {} {}/{} - {}",
 			id, name ? name : "Unknown", current, cap,
-			EverQuest::FormatPrice(static_cast<int32_t>(eqt::merchant::MerchantComponent::TrainingCost(current)))));
+			eqt::strings::FormatPrice(static_cast<int32_t>(eqt::merchant::MerchantComponent::TrainingCost(current)))));
 		++shown;
 	}
 

@@ -10,7 +10,7 @@
 //
 // Why a header: before this unit three separate hand-written copies of this
 // numbering were live in the client and ALL THREE were wrong --
-//   * EverQuest::GetBodyTypeName() (eq_strings.cpp) was off by one for every
+//   * eqt::strings::GetBodyTypeName() (eq_strings.cpp) was off by one for every
 //     value (case 0 said "Humanoid", which is really Lycanthrope's slot);
 //   * SpellManager::CheckTargetBodyType()'s local BT_* constants
 //     (spell/spell_manager.cpp) were off by one the same way;
@@ -79,7 +79,7 @@ inline constexpr uint8_t InvisibleMan   = 66;
 inline constexpr uint8_t Special        = 67;
 
 // Display name for a body type id, or "BodyType<n>" for one this build does
-// not know. Serves EverQuest::GetBodyTypeName().
+// not know. Serves eqt::strings::GetBodyTypeName().
 std::string Name(uint8_t bodyType);
 
 }  // namespace BodyType

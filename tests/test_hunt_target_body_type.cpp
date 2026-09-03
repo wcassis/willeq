@@ -165,7 +165,7 @@ TEST(BodyTypeNames, MatchEqemuNumbering) {
     EXPECT_EQ(EQT::BodyType::Name(EQT::BodyType::Animal), "Animal");
     EXPECT_EQ(EQT::BodyType::Name(EQT::BodyType::Plant), "Plant");
     EXPECT_EQ(EQT::BodyType::Name(EQT::BodyType::Dragon), "Dragon");
-    // EverQuest::GetBodyTypeName() is a one-line delegate to Name() (it is
+    // eqt::strings::GetBodyTypeName() is a one-line delegate to Name() (it is
     // private on EverQuest, so the shared implementation is what is asserted).
     // 0 is not a valid eqemu body type; the deleted switch answered
     // "Humanoid" for it and so mis-named every real value after it.

@@ -951,7 +951,7 @@ void eqt::zone::ZoneComponent::DispatchZonePacket(const EQ::Net::Packet & p)
 		break;
 
 	default:
-		LOG_WARN(MOD_ZONE, "Unhandled zone opcode: {}", EverQuest::GetOpcodeName(opcode));
+		LOG_WARN(MOD_ZONE, "Unhandled zone opcode: {}", eqt::strings::GetOpcodeName(opcode));
 		break;
 	}
 }

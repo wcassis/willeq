@@ -84,7 +84,7 @@ TEST(ChatChannelNames, NoSecondCopyOfTheTableInEqChat) {
     // would silently start passing against a file that no longer holds the
     // code it was written to watch.
     std::string src;
-    for (const char* rel : {"/src/client/eq_chat.cpp",
+    for (const char* rel : {"/src/client/core/eq_chat.cpp",
                             "/src/client/chat/chat_component.cpp"}) {
         const std::string path = std::string(WILLEQ_REPO_ROOT) + rel;
         std::ifstream in(path);
