@@ -77,12 +77,12 @@ void eqt::merchant::MerchantComponent::ZoneProcessVendorItemToUI(const EQ::Net::
 	LOG_DEBUG(MOD_INVENTORY, "Creating vendor item: slot={} name='{}'", vendorSlot, item->name);
 
 	// Track vendor item in game state (D18a: game-side vendor item tracking)
-	EverQuest::GameVendorItem gvi;
+	eqt::commands::CommandsComponent::GameVendorItem gvi;
 	gvi.itemId = item->itemId;
 	gvi.name = item->name;
 	gvi.price = item->price;
 	gvi.quantity = item->quantity;
-	owner_.m_vendor_items[vendorSlot] = std::move(gvi);
+	owner_.Commands().VendorItems()[vendorSlot] = std::move(gvi);
 
 	// Publish VendorItemAdded (D18a: bridge is sole path to renderer)
 	if (ctx_.bridge) {
@@ -216,7 +216,7 @@ void eqt::merchant::MerchantComponent::CloseVendorWindow()
 	}
 #endif
 
-	owner_.m_vendor_items.clear();
+	owner_.Commands().VendorItems().clear();
 }
 
 void eqt::merchant::MerchantComponent::OpenBankWindow(uint16_t bankerNpcId)

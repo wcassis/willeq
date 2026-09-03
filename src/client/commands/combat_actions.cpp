@@ -1,10 +1,17 @@
-// EverQuest combat-resolution packet cluster.
+// eqt::commands::CommandsComponent combat-resolution packet cluster.
 //
 // Split out of eq.cpp (Batch F, unit F13): the Consider handler
 // (ZoneProcessConsider), the Action handler (ZoneProcessAction), the Damage
 // handler (ZoneProcessDamage, ~237 lines, plus its file-local getDamageVerb
-// helper) and the MoneyOnCorpse handler (ZoneProcessMoneyOnCorpse). Moved
-// verbatim, no behavior change. See refactor/F13_combat_actions.md.
+// helper), the MoneyOnCorpse handler (ZoneProcessMoneyOnCorpse), and the
+// OP_Stun handler (ZoneProcessStun/IsStunned, T247). Moved verbatim, no
+// behavior change. See refactor/F13_combat_actions.md.
+//
+// K12 (Batch K): moved again, from src/client/eq_combat_actions.cpp to
+// here, and the bodies rebased from EverQuest onto
+// eqt::commands::CommandsComponent -- the "combat actions" section of the
+// commands family, per the batch plan. m_stunned_until moved WITH this
+// family, so its references need no prefix at all. See the K12 Review.
 //
 // T268: the headless loot-item handler (ZoneProcessLootItem, a second parser
 // of the loot ItemPacket that read the item name from the wrong field) is
@@ -14,6 +21,7 @@
 // CloseLootWindow) lives in eq_bridge.cpp.
 
 #include "client/eq.h"
+#include "client/commands/commands_component.h"
 #include "client/combat.h"
 #include "client/spell/spell_manager.h"
 #include "client/trade_manager.h"
@@ -35,7 +43,7 @@
 #include <sstream>
 
 // Combat-related packet handlers
-void EverQuest::ZoneProcessConsider(const EQ::Net::Packet &p)
+void eqt::commands::CommandsComponent::ZoneProcessConsider(const EQ::Net::Packet &p)
 {
 	// Consider response from server
 	if (p.Length() < 30) { // 2 opcode + 28 Consider_Struct
@@ -53,21 +61,21 @@ void EverQuest::ZoneProcessConsider(const EQ::Net::Packet &p)
 		uint8_t  unknown3[3];
 	} *con = (Consider_Struct*)((uint8_t*)p.Data() + 2);
 
-	if (s_debug_level >= 1) {
+	if (EverQuest::s_debug_level >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Consider: target={}, faction={}, level={}, hp={}/{}",
 			con->targetid, con->faction, con->level, con->cur_hp, con->max_hp);
 	}
 
 	// Update combat manager with consider info
-	if (m_combat_manager) {
-		m_combat_manager->ProcessConsiderResponse(con->targetid, con->faction, con->level,
+	if (ctx_.combat_manager) {
+		ctx_.combat_manager->ProcessConsiderResponse(con->targetid, con->faction, con->level,
 			con->cur_hp, con->max_hp);
 	}
 
 	// Display consider message to chat
 	std::string target_name = "Unknown";
-	auto it = m_entities.find(static_cast<uint16_t>(con->targetid));
-	if (it != m_entities.end()) {
+	auto it = ctx_.entities.find(static_cast<uint16_t>(con->targetid));
+	if (it != ctx_.entities.end()) {
 		target_name = EQT::toDisplayName(it->second.name);
 	}
 
@@ -105,18 +113,18 @@ void EverQuest::ZoneProcessConsider(const EQ::Net::Packet &p)
 	// Format: "a gnoll scout regards you indifferently -- cons green"
 	std::string message = fmt::format("{} {} -- cons {}", target_name, faction_msg, con_color);
 	// Publish SystemMessage event to bridge
-	if (m_bridge) {
+	if (ctx_.bridge) {
 		eqt::state::ChatMessageData data;
 		data.message = message;
 		data.channelType = static_cast<uint32_t>(eqt::ui::ChatChannel::System);
 		data.channelName = "system";
-		m_bridge->pushEvent(eqt::state::GameEvent(
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::SystemMessage, std::move(data)));
 	}
 	LOG_INFO(MOD_MAIN, "{}", message);
 }
 
-void EverQuest::ZoneProcessAction(const EQ::Net::Packet &p)
+void eqt::commands::CommandsComponent::ZoneProcessAction(const EQ::Net::Packet &p)
 {
 	// Combat action (attack, spell cast, etc)
 	if (p.Length() < 33) { // 2 opcode + the 31-byte wire Action struct below
@@ -142,7 +150,7 @@ void EverQuest::ZoneProcessAction(const EQ::Net::Packet &p)
 
 	const ActionPacket_Struct* action = (const ActionPacket_Struct*)((uint8_t*)p.Data() + 2);
 
-	if (s_debug_level >= 1) {
+	if (EverQuest::s_debug_level >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Action: source={} -> target={}, type={}, spell={}", action->source, action->target, action->type, action->spell);
 	}
 
@@ -163,18 +171,18 @@ void EverQuest::ZoneProcessAction(const EQ::Net::Packet &p)
 
 	// T247: an NPC casting a detrimental spell at us is on our hate list.
 	// Beneficial NPC casts (and our own / other players' actions) are not.
-	if (action->target == MySpawnId() && action->source != MySpawnId() &&
-	    m_combat_manager && m_spell_manager) {
-		auto src = m_entities.find(action->source);
-		const EQ::SpellData* spell = m_spell_manager->getSpell(action->spell);
-		if (src != m_entities.end() && src->second.npc_type == 1 && spell && spell->isDetrimental()) {
-			m_combat_manager->NoteAttackedBy(action->source);
+	if (action->target == owner_.MySpawnId() && action->source != owner_.MySpawnId() &&
+	    ctx_.combat_manager && ctx_.spell_manager) {
+		auto src = ctx_.entities.find(action->source);
+		const EQ::SpellData* spell = ctx_.spell_manager->getSpell(action->spell);
+		if (src != ctx_.entities.end() && src->second.npc_type == 1 && spell && spell->isDetrimental()) {
+			ctx_.combat_manager->NoteAttackedBy(action->source);
 		}
 	}
 
 	// Pass to spell manager for spell effect handling
-	if (m_spell_manager) {
-		m_spell_manager->handleAction(spellAction);
+	if (ctx_.spell_manager) {
+		ctx_.spell_manager->handleAction(spellAction);
 	}
 
 	// Note: Attack animations are NOT triggered here - they come from animation updates
@@ -214,7 +222,7 @@ static std::pair<const char*, const char*> getDamageVerb(uint8_t damage_type) {
 	}
 }
 
-void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
+void eqt::commands::CommandsComponent::ZoneProcessDamage(const EQ::Net::Packet &p)
 {
 	LOG_INFO(MOD_COMBAT, "ZoneProcessDamage called, packet length={}", p.Length());
 
@@ -247,22 +255,22 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 	// T247: every attack an NPC makes on us arrives here -- hits, misses
 	// (damage 0) and DMG_INVULNERABLE (-5) alike -- and is the client's only
 	// evidence that it is on that NPC's hate list. Mark it for CheckForAggro.
-	if (target_id == MySpawnId() && source_id != MySpawnId() && m_combat_manager) {
-		auto src = m_entities.find(source_id);
-		if (src != m_entities.end() && src->second.npc_type == 1) {
-			m_combat_manager->NoteAttackedBy(source_id);
+	if (target_id == owner_.MySpawnId() && source_id != owner_.MySpawnId() && ctx_.combat_manager) {
+		auto src = ctx_.entities.find(source_id);
+		if (src != ctx_.entities.end() && src->second.npc_type == 1) {
+			ctx_.combat_manager->NoteAttackedBy(source_id);
 		}
 	}
 
 	// Cancel trade if player takes damage (entering combat)
-	if (target_id == MySpawnId() && damage_amount > 0 &&
-		m_trade_manager && m_trade_manager->isTrading()) {
+	if (target_id == owner_.MySpawnId() && damage_amount > 0 &&
+		ctx_.trade_manager && ctx_.trade_manager->isTrading()) {
 		LOG_DEBUG(MOD_MAIN, "Player took damage during trade, canceling trade");
-		m_trade_manager->cancelTrade();
-		AddChatSystemMessage("Trade cancelled - you entered combat");
+		ctx_.trade_manager->cancelTrade();
+		owner_.AddChatSystemMessage("Trade cancelled - you entered combat");
 	}
 
-	if (s_debug_level >= 3) {
+	if (EverQuest::s_debug_level >= 3) {
 		const uint8_t* data = static_cast<const uint8_t*>(p.Data()) + 2;
 		std::string hexBytes;
 		for (int i = 0; i < 12 && i < static_cast<int>(p.Length()) - 2; ++i) {
@@ -276,16 +284,16 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 	// Get entity names for combat messages
 	std::string target_name;
 	std::string source_name;
-	auto target_it = m_entities.find(target_id);
-	auto source_it = m_entities.find(source_id);
-	if (target_it != m_entities.end()) {
+	auto target_it = ctx_.entities.find(target_id);
+	auto source_it = ctx_.entities.find(source_id);
+	if (target_it != ctx_.entities.end()) {
 		target_name = EQT::toDisplayName(target_it->second.name);
 	}
-	if (source_it != m_entities.end()) {
+	if (source_it != ctx_.entities.end()) {
 		source_name = EQT::toDisplayName(source_it->second.name);
 	}
 
-	if (s_debug_level >= 2 || IsTrackedTarget(target_id) || IsTrackedTarget(source_id)) {
+	if (EverQuest::s_debug_level >= 2 || IsTrackedTarget(target_id) || IsTrackedTarget(source_id)) {
 		LOG_DEBUG(MOD_COMBAT, "{} -> {} for {} damage (type {})",
 			source_name.empty() ? std::to_string(source_id) : source_name,
 			target_name.empty() ? std::to_string(target_id) : target_name,
@@ -294,8 +302,8 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 
 	// Add combat chat messages
 	if (damage_amount > 0 && !target_name.empty()) {
-		bool player_is_target = (target_id == MySpawnId());
-		bool player_is_source = (source_id == MySpawnId());
+		bool player_is_target = (target_id == owner_.MySpawnId());
+		bool player_is_source = (source_id == owner_.MySpawnId());
 
 		// Get verb based on damage type (crush, slash, pierce, kick, etc.)
 		auto [verb_second, verb_third] = getDamageVerb(damage_type);
@@ -308,7 +316,7 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 			} else {
 				msg = fmt::format("You {} {} for {} points of damage.", verb_second, target_name, damage_amount);
 			}
-			AddChatCombatMessage(msg, true);
+			owner_.AddChatCombatMessage(msg, true);
 		} else if (player_is_target) {
 			// Player took damage
 			if (spell_id > 0 && spell_id != 0xFFFF) {
@@ -316,7 +324,7 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 			} else {
 				msg = fmt::format("{} {} YOU for {} points of damage.", source_name.empty() ? "Unknown" : source_name, verb_third, damage_amount);
 			}
-			AddChatCombatMessage(msg, true);
+			owner_.AddChatCombatMessage(msg, true);
 		} else if (!source_name.empty()) {
 			// Observing combat between others
 			if (spell_id > 0 && spell_id != 0xFFFF) {
@@ -324,12 +332,12 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 			} else {
 				msg = fmt::format("{} {} {} for {} points of damage.", source_name, verb_third, target_name, damage_amount);
 			}
-			AddChatCombatMessage(msg, false);
+			owner_.AddChatCombatMessage(msg, false);
 		}
 	} else if (damage_amount == 0 && !target_name.empty()) {
 		// Miss - use CombatMiss channel (filterable separately from hits)
-		bool player_is_source = (source_id == MySpawnId());
-		bool player_is_target = (target_id == MySpawnId());
+		bool player_is_source = (source_id == owner_.MySpawnId());
+		bool player_is_target = (target_id == owner_.MySpawnId());
 
 		// Get verb for miss messages too
 		auto [verb_second, verb_third] = getDamageVerb(damage_type);
@@ -337,67 +345,67 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 		std::string msg;
 		if (player_is_source) {
 			msg = fmt::format("You try to {} {} but miss!", verb_second, target_name);
-			AddChatMissMessage(msg);
+			owner_.AddChatMissMessage(msg);
 		} else if (player_is_target && !source_name.empty()) {
 			msg = fmt::format("{} tries to {} YOU but misses!", source_name, verb_second);
-			AddChatMissMessage(msg);
+			owner_.AddChatMissMessage(msg);
 		} else if (!source_name.empty()) {
 			// Observing combat between others - also show misses
 			msg = fmt::format("{} tries to {} {} but misses!", source_name, verb_second, target_name);
-			AddChatMissMessage(msg);
+			owner_.AddChatMissMessage(msg);
 		}
 	}
 
 #ifdef WITH_AUDIO
 	// Play combat sounds at target position
-	if (m_audio_manager && target_it != m_entities.end()) {
+	if (ctx_.audio_manager && target_it != ctx_.entities.end()) {
 		const Entity& target = target_it->second;
 		bool isMelee = (spell_id == 0 || spell_id == 0xFFFF);
 
 		if (damage_amount > 0) {
 			if (isMelee) {
 				// Melee hit sound
-				m_audio_manager->playSound(EQT::Audio::SoundId::MELEE_HIT,
+				ctx_.audio_manager->playSound(EQT::Audio::SoundId::MELEE_HIT,
 					glm::vec3(target.x, target.y, target.z));
 			} else {
 				// Spell damage - play spell impact sound
 				// TODO: Map specific spells to specific impact sounds
-				m_audio_manager->playSound(EQT::Audio::SoundId::SPELL_CAST,
+				ctx_.audio_manager->playSound(EQT::Audio::SoundId::SPELL_CAST,
 					glm::vec3(target.x, target.y, target.z));
 			}
 		} else if (isMelee) {
 			// Miss - play swing sound
-			m_audio_manager->playSound(EQT::Audio::SoundId::MELEE_MISS,
+			ctx_.audio_manager->playSound(EQT::Audio::SoundId::MELEE_MISS,
 				glm::vec3(target.x, target.y, target.z));
 		}
 	}
 #endif
 
 	// Publish DamageEvent to bridge
-	if (m_bridge && damage_amount > 0) {
+	if (ctx_.bridge && damage_amount > 0) {
 		eqt::state::DamageEventData data;
 		data.sourceId = source_id;
 		data.targetId = target_id;
 		data.amount = damage_amount;
 		data.type = damage_type;
-		m_bridge->pushEvent(eqt::state::GameEvent(
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::DamageEvent, std::move(data)));
 	}
 
 	// Publish combat animation events via bridge (D17b: bridge is sole path to renderer)
-	if (m_bridge) {
+	if (ctx_.bridge) {
 		bool isMeleeDamage = (damage_type < 80);
 
 		// Don't animate dead entities
-		auto target_entity_it = m_entities.find(target_id);
-		bool targetAlive = (target_entity_it != m_entities.end() && target_entity_it->second.hp_percent > 0);
+		auto target_entity_it = ctx_.entities.find(target_id);
+		bool targetAlive = (target_entity_it != ctx_.entities.end() && target_entity_it->second.hp_percent > 0);
 
 		if (isMeleeDamage && targetAlive) {
 			// Calculate damage percentage for animation selection
 			float damagePercent = 0.0f;
-			if (target_id == MySpawnId() && m_game_state.player().maxHP() > 0) {
-				damagePercent = (static_cast<float>(damage_amount) / static_cast<float>(m_game_state.player().maxHP())) * 100.0f;
-			} else if (target_entity_it != m_entities.end()) {
+			if (target_id == owner_.MySpawnId() && ctx_.game_state.player().maxHP() > 0) {
+				damagePercent = (static_cast<float>(damage_amount) / static_cast<float>(ctx_.game_state.player().maxHP())) * 100.0f;
+			} else if (target_entity_it != ctx_.entities.end()) {
 				uint8_t level = target_entity_it->second.level > 0 ? target_entity_it->second.level : 1;
 				float estimatedMaxHP = static_cast<float>(level) * 15.0f;
 				damagePercent = (static_cast<float>(damage_amount) / estimatedMaxHP) * 100.0f;
@@ -409,19 +417,19 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 			data.damageType = damage_type;
 			data.damageAmount = damage_amount;
 			data.damagePercent = static_cast<uint8_t>(damagePercent);
-			m_bridge->pushEvent(eqt::state::GameEvent(
+			ctx_.bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::CombatAnimation, std::move(data)));
 
-			if (s_debug_level >= 2 || IsTrackedTarget(target_id) || IsTrackedTarget(source_id)) {
+			if (EverQuest::s_debug_level >= 2 || IsTrackedTarget(target_id) || IsTrackedTarget(source_id)) {
 				LOG_DEBUG(MOD_COMBAT, "Queued melee anim: source={} target={} skill={} dmg={} pct={:.1f}%",
 					source_id, target_id, damage_type, damage_amount, damagePercent);
 			}
 		} else if (damage_amount > 0 && targetAlive && !isMeleeDamage) {
 			// Non-melee damage (spells, DoT, environmental) - play immediately
 			float damagePercent = 0.0f;
-			if (target_id == MySpawnId() && m_game_state.player().maxHP() > 0) {
-				damagePercent = (static_cast<float>(damage_amount) / static_cast<float>(m_game_state.player().maxHP())) * 100.0f;
-			} else if (target_entity_it != m_entities.end()) {
+			if (target_id == owner_.MySpawnId() && ctx_.game_state.player().maxHP() > 0) {
+				damagePercent = (static_cast<float>(damage_amount) / static_cast<float>(ctx_.game_state.player().maxHP())) * 100.0f;
+			} else if (target_entity_it != ctx_.entities.end()) {
 				uint8_t level = target_entity_it->second.level > 0 ? target_entity_it->second.level : 1;
 				float estimatedMaxHP = static_cast<float>(level) * 15.0f;
 				damagePercent = (static_cast<float>(damage_amount) / estimatedMaxHP) * 100.0f;
@@ -437,9 +445,9 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 			data.animName = damageAnim;
 			data.loop = false;
 			data.playThrough = true;
-			m_bridge->pushEvent(eqt::state::GameEvent(
+			ctx_.bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::EntityAnimationEvent, std::move(data)));
-			if (s_debug_level >= 2 || IsTrackedTarget(target_id)) {
+			if (EverQuest::s_debug_level >= 2 || IsTrackedTarget(target_id)) {
 				LOG_DEBUG(MOD_COMBAT, "Damage reaction '{}' on target={} (dmg={}, pct={:.1f}%, type={})",
 					damageAnim, target_id, damage_amount, damagePercent, damage_type);
 			}
@@ -448,13 +456,13 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 
 	// Check if target died
 	if (damage_amount > 0 && target_id != 0) {
-		auto it = m_entities.find(target_id);
-		if (it != m_entities.end() && it->second.hp_percent == 0) {
+		auto it = ctx_.entities.find(target_id);
+		if (it != ctx_.entities.end() && it->second.hp_percent == 0) {
 			// Target died, might want to loot
-			if (m_combat_manager && m_combat_manager->IsAutoAttackEnabled() &&
-				target_id == m_combat_manager->GetTargetId()) {
+			if (ctx_.combat_manager && ctx_.combat_manager->IsAutoAttackEnabled() &&
+				target_id == ctx_.combat_manager->GetTargetId()) {
 				// Our target died
-				if (s_debug_level >= 2 || IsTrackedTarget(target_id)) {
+				if (EverQuest::s_debug_level >= 2 || IsTrackedTarget(target_id)) {
 					LOG_DEBUG(MOD_COMBAT, "Target {} ({}) died", target_id, it->second.name);
 				}
 			}
@@ -462,7 +470,7 @@ void EverQuest::ZoneProcessDamage(const EQ::Net::Packet &p)
 	}
 }
 
-void EverQuest::ZoneProcessMoneyOnCorpse(const EQ::Net::Packet &p)
+void eqt::commands::CommandsComponent::ZoneProcessMoneyOnCorpse(const EQ::Net::Packet &p)
 {
 	// Money on corpse packet
 	if (p.Length() < 22) {
@@ -485,7 +493,7 @@ void EverQuest::ZoneProcessMoneyOnCorpse(const EQ::Net::Packet &p)
 	uint32_t silver = money->silver;
 	uint32_t copper = money->copper;
 
-	if (s_debug_level >= 1) {
+	if (EverQuest::s_debug_level >= 1) {
 		LOG_DEBUG(MOD_MAIN, "MoneyOnCorpse: {} platinum, {} gold, {} silver, {} copper\n", plat, gold, silver, copper);
 	}
 
@@ -497,12 +505,12 @@ void EverQuest::ZoneProcessMoneyOnCorpse(const EQ::Net::Packet &p)
 // not cut a longer one short (Mob::Stun's own rule); 0 clears. Only casting
 // consults this (SpellManager::checkPlayerState); the server still rejects
 // anything else a stunned client tries.
-void EverQuest::ZoneProcessStun(uint32_t duration_ms)
+void eqt::commands::CommandsComponent::ZoneProcessStun(uint32_t duration_ms)
 {
 	auto now = std::chrono::steady_clock::now();
 	if (duration_ms == 0) {
 		if (IsStunned()) {
-			AddChatSystemMessage(GetStringMessage(12480));  // You are no longer stunned.
+			owner_.AddChatSystemMessage(owner_.GetStringMessage(12480));  // You are no longer stunned.
 		}
 		m_stunned_until = {};
 		LOG_INFO(MOD_COMBAT, "OP_Stun: unstunned");
@@ -514,12 +522,12 @@ void EverQuest::ZoneProcessStun(uint32_t duration_ms)
 		m_stunned_until = until;
 	}
 	if (!was_stunned) {
-		AddChatSystemMessage(GetStringMessage(12479));  // You are stunned!
+		owner_.AddChatSystemMessage(owner_.GetStringMessage(12479));  // You are stunned!
 	}
 	LOG_INFO(MOD_COMBAT, "OP_Stun: stunned for {} ms", duration_ms);
 }
 
-bool EverQuest::IsStunned() const
+bool eqt::commands::CommandsComponent::IsStunned() const
 {
 	return m_stunned_until != std::chrono::steady_clock::time_point{} &&
 	       std::chrono::steady_clock::now() < m_stunned_until;

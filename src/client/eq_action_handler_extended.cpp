@@ -668,7 +668,7 @@ void EqActionHandler::raidLock(bool lock) {
 // owning the push, same as every guard/send in this family.
 
 void EqActionHandler::vendorToggle() {
-    m_eq.RequestVendorToggle();
+    m_eq.Commands().RequestVendorToggle();
 }
 
 // Pure state read + print, ported verbatim from eq_commands.cpp's old
@@ -681,7 +681,7 @@ void EqActionHandler::vendorList() {
         m_eq.AddChatSystemMessage("You are not at a vendor.");
         return;
     }
-    const auto& items = m_eq.GetVendorItems();
+    const auto& items = m_eq.Commands().VendorItems();
     const auto& vendorName = m_eq.GetVendorName();
     if (items.empty()) {
         m_eq.AddChatSystemMessage(fmt::format("{}'s inventory is empty (or still loading).", vendorName));
@@ -697,11 +697,11 @@ void EqActionHandler::vendorList() {
 }
 
 void EqActionHandler::buyFromVendor(uint32_t slot, uint8_t quantity) {
-    m_eq.RequestVendorBuy(slot, quantity);
+    m_eq.Commands().RequestVendorBuy(slot, quantity);
 }
 
 void EqActionHandler::sellToVendor(uint32_t slot, uint8_t quantity) {
-    m_eq.RequestVendorSell(slot, quantity);
+    m_eq.Commands().RequestVendorSell(slot, quantity);
 }
 
 // ========== Movement / Utility / Skills (T140) ==========
@@ -716,7 +716,7 @@ void EqActionHandler::showLocation() {
 }
 
 void EqActionHandler::warp(const std::string& args) {
-    m_eq.RequestWarp(args);
+    m_eq.Commands().RequestWarp(args);
 }
 
 // Ported verbatim from eq_commands_movement.cpp's old zoning_cmd lambda --
@@ -796,23 +796,23 @@ void EqActionHandler::perfReport() {
 }
 
 void EqActionHandler::timeOfDay(const std::string& args) {
-    m_eq.RequestTimeOfDay(args);
+    m_eq.Commands().RequestTimeOfDay(args);
 }
 
 void EqActionHandler::bankToggle() {
-    m_eq.RequestBankToggle();
+    m_eq.Commands().RequestBankToggle();
 }
 
 void EqActionHandler::trainWithTarget() {
-    m_eq.RequestTraining();
+    m_eq.Commands().RequestTraining();
 }
 
 void EqActionHandler::trainSkill(const std::string& args) {
-    m_eq.RequestTrainSkill(args);
+    m_eq.Commands().RequestTrainSkill(args);
 }
 
 void EqActionHandler::closeTrainer() {
-    m_eq.RequestCloseTrainer();
+    m_eq.Commands().RequestCloseTrainer();
 }
 
 void EqActionHandler::bankCoinMove(uint8_t coinType, int32_t amount, bool fromBank) {

@@ -1,4 +1,4 @@
-// EverQuest slash-command registration.
+// eqt::commands::CommandsComponent slash-command registration.
 //
 // Split out of eq.cpp (Batch F, unit F01): originally held RegisterCommands()
 // — the ~2,300-line cluster of lambda-based /slash command registrations —
@@ -8,12 +8,22 @@
 //
 // Batch G (unit G02): RegisterCommands() split into a short driver plus
 // per-domain Register*Commands() methods across 3 TUs (this file holds the
-// driver, diagnostics helpers, and RegisterSocialCommands(); the remaining
-// domains are in eq_commands_movement.cpp and eq_commands_spells.cpp). Lambda
+// driver, diagnostics helper, and RegisterSocialCommands(); the remaining
+// domains are in commands_movement.cpp and commands_spells.cpp). Lambda
 // bodies moved verbatim; registration order preserved exactly. See
 // refactor/G02_commands_split.md.
+//
+// K12 (Batch K): moved again, from src/client/eq_commands.cpp to here, and
+// the bodies rebased from EverQuest onto eqt::commands::CommandsComponent.
+// runLoadDiagnostics() has zero callers tree-wide (confirmed dead since
+// T105/T108) but is the sole publisher of the DiagnosticsSceneDump
+// GameEventType (still consumed by irrlicht_bridge.cpp) -- deleting it
+// failed ReachabilitySweep.EveryEventIsPublishedAndConsumed, so it is KEPT
+// here, private, moved verbatim. See the header's file banner and the K12
+// Review.
 
 #include "client/eq.h"
+#include "client/commands/commands_component.h"
 #include "client/willeq_database.h"
 #include "client/pathfinder_interface.h"
 #ifdef EQT_HAS_NAVMESH
@@ -116,8 +126,8 @@
 
 // ── Manual zone load diagnostics helpers ────────────────────────────────────
 
-void EverQuest::runPmemDiagnostics(const std::string& label) {
-	if (!m_bridge) return;
+void eqt::commands::CommandsComponent::runPmemDiagnostics(const std::string& label) {
+	if (!ctx_.bridge) return;
 
 	eqt::state::DiagnosticsMemoryReportData d;
 	d.label = label;
@@ -177,20 +187,20 @@ void EverQuest::runPmemDiagnostics(const std::string& label) {
 #endif
 
 #ifdef WITH_AUDIO
-	if (m_audio_manager && m_audio_manager->isInitialized()) {
+	if (ctx_.audio_manager && ctx_.audio_manager->isInitialized()) {
 		d.audioAvailable = true;
-		d.soundBufferCacheBytes = m_audio_manager->getSoundBufferCacheBytes();
-		d.soundBufferCacheMaxBytes = m_audio_manager->getSoundBufferCacheMaxBytes();
-		d.soundFontEstimateBytes = m_audio_manager->getSoundFontMemoryEstimate();
-		d.musicDecodedBytes = m_audio_manager->getMusicDecodedBytes();
-		d.audioPfsArchiveBytes = m_audio_manager->getPfsArchiveCacheBytes();
-		if (auto* sfx = m_audio_manager->getSfxManager()) {
+		d.soundBufferCacheBytes = ctx_.audio_manager->getSoundBufferCacheBytes();
+		d.soundBufferCacheMaxBytes = ctx_.audio_manager->getSoundBufferCacheMaxBytes();
+		d.soundFontEstimateBytes = ctx_.audio_manager->getSoundFontMemoryEstimate();
+		d.musicDecodedBytes = ctx_.audio_manager->getMusicDecodedBytes();
+		d.audioPfsArchiveBytes = ctx_.audio_manager->getPfsArchiveCacheBytes();
+		if (auto* sfx = ctx_.audio_manager->getSfxManager()) {
 			d.sfxCacheBytes = sfx->getCacheSize();
 		}
 	}
-	if (m_zone_audio_manager) {
-		d.zoneEmitterCount = m_zone_audio_manager->getEmitterCount();
-		d.activeEmitterCount = m_zone_audio_manager->getActiveEmitterCount();
+	if (owner_.m_zone_audio_manager) {
+		d.zoneEmitterCount = owner_.m_zone_audio_manager->getEmitterCount();
+		d.activeEmitterCount = owner_.m_zone_audio_manager->getActiveEmitterCount();
 	}
 	// T130: real-time audio callback timing (see event_bus.h field comments).
 	// Read here on the game thread from atomics the audio thread only ever
@@ -221,32 +231,35 @@ void EverQuest::runPmemDiagnostics(const std::string& label) {
 		ci.avgPing = conn->GetRollingPing();
 		d.connections.push_back(std::move(ci));
 	};
-	addConn("Zone", m_zone_connection);
-	addConn("World", m_login_world->WorldConnection());
-	addConn("Login", m_login_world->LoginConnection());
+	addConn("Zone", ctx_.zone_connection);
+	addConn("World", owner_.LoginWorld().WorldConnection());
+	addConn("Login", owner_.LoginWorld().LoginConnection());
 
-	d.entityCount = m_entities.size();
-	d.entityEstimateBytes = m_entities.size() * sizeof(Entity);
-	d.doorCount = m_game_state.doors().getDoorCount();
-	d.doorEstimateBytes = m_game_state.doors().getDoorCount() * sizeof(EQT::DoorState);
-	if (m_spell_manager) {
-		d.spellDbCount = m_spell_manager->getDatabase().getSpellCount();
+	d.entityCount = ctx_.entities.size();
+	d.entityEstimateBytes = ctx_.entities.size() * sizeof(Entity);
+	d.doorCount = ctx_.game_state.doors().getDoorCount();
+	d.doorEstimateBytes = ctx_.game_state.doors().getDoorCount() * sizeof(EQT::DoorState);
+	if (ctx_.spell_manager) {
+		d.spellDbCount = ctx_.spell_manager->getDatabase().getSpellCount();
 		d.spellDbEstimateBytes = d.spellDbCount * 512;
 	}
 
-	m_bridge->pushEvent(eqt::state::GameEvent(
+	ctx_.bridge->pushEvent(eqt::state::GameEvent(
 		eqt::state::GameEventType::DiagnosticsMemoryReport, std::move(d)));
 }
 
-void EverQuest::runLoadDiagnostics(const std::string& label) {
+// K12: runLoadDiagnostics() has zero callers tree-wide (confirmed dead
+// since T105/T108) but is the sole publisher of DiagnosticsSceneDump --
+// see the header's file banner and the K12 Review. Kept, moved verbatim.
+void eqt::commands::CommandsComponent::runLoadDiagnostics(const std::string& label) {
 	LOG_INFO(MOD_MAIN, "");
 	LOG_INFO(MOD_MAIN, "╔══════════════════════════════════════════════════════════════");
 	LOG_INFO(MOD_MAIN, "║ LOAD DIAGNOSTICS: {}", label);
 	LOG_INFO(MOD_MAIN, "╚══════════════════════════════════════════════════════════════");
 
 	// Scene dump via bridge
-	if (m_bridge) {
-		m_bridge->pushEvent(eqt::state::GameEvent(
+	if (ctx_.bridge) {
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::DiagnosticsSceneDump,
 			eqt::state::DiagnosticsSceneDumpData{label}));
 	}
@@ -258,7 +271,7 @@ void EverQuest::runLoadDiagnostics(const std::string& label) {
 	LOG_INFO(MOD_MAIN, "");
 }
 
-void EverQuest::RegisterCommands()
+void eqt::commands::CommandsComponent::RegisterCommands()
 {
 	// G02: driver — calls per-domain registration methods in the exact
 	// order their commands appeared in the original monolithic method.
@@ -318,7 +331,7 @@ bool ParseEquipSlot(const std::string& tok, int16_t& out) {
 
 }  // namespace
 
-void EverQuest::RegisterSocialCommands()
+void eqt::commands::CommandsComponent::RegisterSocialCommands()
 {
 	using namespace eqt::ui;
 
@@ -490,27 +503,27 @@ void EverQuest::RegisterSocialCommands()
 // above no longer calls RegisterVendorCommands() -- see the removed call
 // and this plan's Board for what that means for the registry).
 
-void EverQuest::RequestVendorToggle()
+void eqt::commands::CommandsComponent::RequestVendorToggle()
 {
-	if (!IsVendorWindowOpen() && (!m_combat_manager || !m_combat_manager->HasTarget())) {
-		AddChatSystemMessage("You don't have a target - target a merchant first.");
+	if (!owner_.IsVendorWindowOpen() && (!ctx_.combat_manager || !ctx_.combat_manager->HasTarget())) {
+		owner_.AddChatSystemMessage("You don't have a target - target a merchant first.");
 		return;
 	}
-	if (m_bridge) {
-		m_bridge->pushIntent(eqt::events::VendorToggleIntent{});
+	if (ctx_.bridge) {
+		ctx_.bridge->pushIntent(eqt::events::VendorToggleIntent{});
 	} else {
-		AddChatSystemMessage("Cannot open vendor - no bridge attached.");
+		owner_.AddChatSystemMessage("Cannot open vendor - no bridge attached.");
 	}
 }
 
-void EverQuest::RequestVendorBuy(uint32_t slot, uint8_t quantity)
+void eqt::commands::CommandsComponent::RequestVendorBuy(uint32_t slot, uint8_t quantity)
 {
-	if (!IsVendorWindowOpen()) {
-		AddChatSystemMessage("You are not at a vendor.");
+	if (!owner_.IsVendorWindowOpen()) {
+		owner_.AddChatSystemMessage("You are not at a vendor.");
 		return;
 	}
 	if (m_vendor_items.find(slot) == m_vendor_items.end()) {
-		AddChatSystemMessage(fmt::format("No item in vendor slot {} - see /vendorlist", slot));
+		owner_.AddChatSystemMessage(fmt::format("No item in vendor slot {} - see /vendorlist", slot));
 		return;
 	}
 
@@ -528,18 +541,18 @@ void EverQuest::RequestVendorBuy(uint32_t slot, uint8_t quantity)
 	// GAME thread (see this plan's Review, "Threading" section, for the
 	// traced call chain proving this for both entry points), so this is
 	// not a new cross-thread hazard.
-	if (m_bridge) {
-		m_bridge->pushIntent(eqt::events::VendorBuyIntent{
-			GetVendorNpcId(), static_cast<uint16_t>(slot), quantity});
+	if (ctx_.bridge) {
+		ctx_.bridge->pushIntent(eqt::events::VendorBuyIntent{
+			owner_.GetVendorNpcId(), static_cast<uint16_t>(slot), quantity});
 	} else {
-		AddChatSystemMessage("Cannot buy - no bridge attached.");
+		owner_.AddChatSystemMessage("Cannot buy - no bridge attached.");
 	}
 }
 
-void EverQuest::RequestVendorSell(uint32_t slot, uint8_t quantity)
+void eqt::commands::CommandsComponent::RequestVendorSell(uint32_t slot, uint8_t quantity)
 {
-	if (!IsVendorWindowOpen()) {
-		AddChatSystemMessage("You are not at a vendor.");
+	if (!owner_.IsVendorWindowOpen()) {
+		owner_.AddChatSystemMessage("You are not at a vendor.");
 		return;
 	}
 
@@ -549,11 +562,11 @@ void EverQuest::RequestVendorSell(uint32_t slot, uint8_t quantity)
 	// NO_DROP / stack-size validation stays entirely inside SellToVendor()
 	// (eq_merchant.cpp) -- unchanged, per the plan's fence against touching
 	// that function -- so this does not duplicate it.
-	if (m_bridge) {
-		m_bridge->pushIntent(eqt::events::VendorSellIntent{
-			GetVendorNpcId(), static_cast<uint16_t>(slot), quantity});
+	if (ctx_.bridge) {
+		ctx_.bridge->pushIntent(eqt::events::VendorSellIntent{
+			owner_.GetVendorNpcId(), static_cast<uint16_t>(slot), quantity});
 	} else {
-		AddChatSystemMessage("Cannot sell - no bridge attached.");
+		owner_.AddChatSystemMessage("Cannot sell - no bridge attached.");
 	}
 }
 
@@ -629,7 +642,7 @@ void EverQuest::RequestVendorSell(uint32_t slot, uint8_t quantity)
 // cannot push bridge intents" constraint that stopped three prior units on
 // this very command does not apply to this shape: this method (and its
 // caller, whichever registry it is reached through) never touches m_bridge.
-void EverQuest::RequestEquip(const std::string& args)
+void eqt::commands::CommandsComponent::RequestEquip(const std::string& args)
 {
 	// T71/T77 -- shared execution for both slot-bearing forms: hands
 	// concrete fromSlot/toSlot to InventoryManager::moveItem(), which does
@@ -637,12 +650,12 @@ void EverQuest::RequestEquip(const std::string& args)
 	// outcome message verbatim (moveItem() populates `message` on both
 	// success and failure).
 	auto doMove = [this](int16_t fromSlot, int16_t toSlot) {
-		if (!m_inventory_manager) {
-			AddChatSystemMessage(fmt::format("Nothing to move: {} is empty.", eqt::inventory::describeSlot(fromSlot)));
+		if (!ctx_.inventory_manager) {
+			owner_.AddChatSystemMessage(fmt::format("Nothing to move: {} is empty.", eqt::inventory::describeSlot(fromSlot)));
 			return;
 		}
-		auto outcome = m_inventory_manager->moveItem(fromSlot, toSlot);
-		AddChatSystemMessage(outcome.message);
+		auto outcome = ctx_.inventory_manager->moveItem(fromSlot, toSlot);
+		owner_.AddChatSystemMessage(outcome.message);
 	};
 
 	// ---- form dispatch ----
@@ -652,7 +665,7 @@ void EverQuest::RequestEquip(const std::string& args)
 	iss >> toTok;
 
 	if (fromTok.empty()) {
-		AddChatSystemMessage(
+		owner_.AddChatSystemMessage(
 			"Usage: /equip <fromSlot> <toSlot> | /equip <item name> | /equip list "
 			"(see include/client/inventory/inventory_constants.h for slot ids)");
 		return;
@@ -666,18 +679,18 @@ void EverQuest::RequestEquip(const std::string& args)
 	// discovering what a character was carrying before scripting
 	// against it.
 	if (lowerFirst == "list" && toTok.empty()) {
-		if (!m_inventory_manager) {
-			AddChatSystemMessage("Cannot list equipment - inventory not available.");
+		if (!ctx_.inventory_manager) {
+			owner_.AddChatSystemMessage("Cannot list equipment - inventory not available.");
 			return;
 		}
-		auto equipped = m_inventory_manager->getEquipmentItems();
+		auto equipped = ctx_.inventory_manager->getEquipmentItems();
 		if (equipped.empty()) {
-			AddChatSystemMessage("Nothing currently equipped.");
+			owner_.AddChatSystemMessage("Nothing currently equipped.");
 		} else {
-			AddChatSystemMessage(fmt::format("Equipped ({} item{}):",
+			owner_.AddChatSystemMessage(fmt::format("Equipped ({} item{}):",
 				equipped.size(), equipped.size() == 1 ? "" : "s"));
 			for (const auto& [slot, item] : equipped) {
-				AddChatSystemMessage(fmt::format("  {}: {}", eqt::inventory::describeSlot(slot), item->name));
+				owner_.AddChatSystemMessage(fmt::format("  {}: {}", eqt::inventory::describeSlot(slot), item->name));
 			}
 		}
 
@@ -685,37 +698,37 @@ void EverQuest::RequestEquip(const std::string& args)
 		// InventoryManager::findItemsByNameSubstring(): general slots +
 		// general-bag contents + cursor.
 		std::vector<std::pair<int16_t, const eqt::inventory::ItemInstance*>> carried;
-		for (const auto& [slot, item] : m_inventory_manager->getGeneralItems()) {
+		for (const auto& [slot, item] : ctx_.inventory_manager->getGeneralItems()) {
 			carried.emplace_back(slot, item);
 			if (item && item->isContainer()) {
-				for (int16_t bagSlot : m_inventory_manager->getBagContentsSlots(slot)) {
-					const auto* bagItem = m_inventory_manager->getItem(bagSlot);
+				for (int16_t bagSlot : ctx_.inventory_manager->getBagContentsSlots(slot)) {
+					const auto* bagItem = ctx_.inventory_manager->getItem(bagSlot);
 					if (bagItem) {
 						carried.emplace_back(bagSlot, bagItem);
 					}
 				}
 			}
 		}
-		if (m_inventory_manager->hasCursorItem()) {
-			carried.emplace_back(eqt::inventory::CURSOR_SLOT, m_inventory_manager->getCursorItem());
+		if (ctx_.inventory_manager->hasCursorItem()) {
+			carried.emplace_back(eqt::inventory::CURSOR_SLOT, ctx_.inventory_manager->getCursorItem());
 		}
 
 		bool printedHeader = false;
 		for (const auto& [slot, item] : carried) {
-			auto dest = m_inventory_manager->resolveEquipDestination(item);
+			auto dest = ctx_.inventory_manager->resolveEquipDestination(item);
 			if (dest.slot == eqt::inventory::SLOT_INVALID) {
 				continue;  // not equippable at all (a bag, a reagent, ...) -- not this list's business
 			}
 			if (!printedHeader) {
-				AddChatSystemMessage("Carried, equippable via /equip <name>:");
+				owner_.AddChatSystemMessage("Carried, equippable via /equip <name>:");
 				printedHeader = true;
 			}
-			AddChatSystemMessage(fmt::format("  {} ({}) -> {}{}",
+			owner_.AddChatSystemMessage(fmt::format("  {} ({}) -> {}{}",
 				item->name, eqt::inventory::describeSlot(slot), eqt::inventory::describeSlot(dest.slot),
 				dest.allCandidatesOccupied ? " (would replace)" : ""));
 		}
 		if (!printedHeader) {
-			AddChatSystemMessage("Nothing else carried that could be equipped.");
+			owner_.AddChatSystemMessage("Nothing else carried that could be equipped.");
 		}
 		return;
 	}
@@ -733,7 +746,7 @@ void EverQuest::RequestEquip(const std::string& args)
 		int16_t fromSlot = 0;
 		int16_t toSlot = 0;
 		if (toTok.empty() || !ParseEquipSlot(fromTok, fromSlot) || !ParseEquipSlot(toTok, toSlot)) {
-			AddChatSystemMessage("Usage: /equip <fromSlot> <toSlot> (see include/client/inventory/inventory_constants.h for slot ids)");
+			owner_.AddChatSystemMessage("Usage: /equip <fromSlot> <toSlot> (see include/client/inventory/inventory_constants.h for slot ids)");
 			return;
 		}
 		doMove(fromSlot, toSlot);
@@ -741,13 +754,13 @@ void EverQuest::RequestEquip(const std::string& args)
 	}
 
 	// T77 -- item-name form.
-	if (!m_inventory_manager) {
-		AddChatSystemMessage("Cannot resolve item name - inventory not available.");
+	if (!ctx_.inventory_manager) {
+		owner_.AddChatSystemMessage("Cannot resolve item name - inventory not available.");
 		return;
 	}
-	auto matches = m_inventory_manager->findItemsByNameSubstring(args);
+	auto matches = ctx_.inventory_manager->findItemsByNameSubstring(args);
 	if (matches.empty()) {
-		AddChatSystemMessage(fmt::format("No carried item matches '{}'.", args));
+		owner_.AddChatSystemMessage(fmt::format("No carried item matches '{}'.", args));
 		return;
 	}
 	// Ambiguous only if DISTINCT item names matched -- duplicate stacks
@@ -772,22 +785,22 @@ void EverQuest::RequestEquip(const std::string& args)
 			}
 			names += fmt::format("{} ({})", item->name, eqt::inventory::describeSlot(slot));
 		}
-		AddChatSystemMessage(fmt::format("'{}' matches multiple items: {} -- be more specific.", args, names));
+		owner_.AddChatSystemMessage(fmt::format("'{}' matches multiple items: {} -- be more specific.", args, names));
 		return;
 	}
 
 	int16_t fromSlot = matches.front().first;
 	const eqt::inventory::ItemInstance* item = matches.front().second;
-	auto dest = m_inventory_manager->resolveEquipDestination(item);
+	auto dest = ctx_.inventory_manager->resolveEquipDestination(item);
 	if (dest.slot == eqt::inventory::SLOT_INVALID) {
-		AddChatSystemMessage(fmt::format("{} cannot be equipped (fits no equipment slot).", item->name));
+		owner_.AddChatSystemMessage(fmt::format("{} cannot be equipped (fits no equipment slot).", item->name));
 		return;
 	}
 	if (dest.allCandidatesOccupied) {
-		AddChatSystemMessage(fmt::format("{} would replace what's already in {}.",
+		owner_.AddChatSystemMessage(fmt::format("{} would replace what's already in {}.",
 			item->name, eqt::inventory::describeSlot(dest.slot)));
 	}
-	AddChatSystemMessage(fmt::format("Resolved '{}' to {} ({}) -> {}.",
+	owner_.AddChatSystemMessage(fmt::format("Resolved '{}' to {} ({}) -> {}.",
 		args, item->name, eqt::inventory::describeSlot(fromSlot), eqt::inventory::describeSlot(dest.slot)));
 	doMove(fromSlot, dest.slot);
 }
@@ -822,13 +835,13 @@ void EverQuest::RequestEquip(const std::string& args)
 // copy, so it is a function now and /read calls it too. Returns nullptr
 // after having already sent the refusal (T178: every refusal names what was
 // asked for). `verb` appears in the messages ("read"/"scribe").
-const eqt::inventory::ItemInstance* EverQuest::ResolveCarriedItem(
+const eqt::inventory::ItemInstance* eqt::commands::CommandsComponent::ResolveCarriedItem(
 	const std::string& args, const char* verb, int16_t& slotOut)
 {
 	slotOut = eqt::inventory::SLOT_INVALID;
 
-	if (!m_inventory_manager) {
-		AddChatSystemMessage(fmt::format("Cannot {} - inventory not available.", verb));
+	if (!ctx_.inventory_manager) {
+		owner_.AddChatSystemMessage(fmt::format("Cannot {} - inventory not available.", verb));
 		return nullptr;
 	}
 
@@ -840,21 +853,21 @@ const eqt::inventory::ItemInstance* EverQuest::ResolveCarriedItem(
 	if (numericForm) {
 		int16_t parsed = 0;
 		if (!ParseEquipSlot(args, parsed)) {
-			AddChatSystemMessage(fmt::format("Invalid slot '{}' - use /{} <item name> instead.", args, verb));
+			owner_.AddChatSystemMessage(fmt::format("Invalid slot '{}' - use /{} <item name> instead.", args, verb));
 			return nullptr;
 		}
-		const eqt::inventory::ItemInstance* item = m_inventory_manager->getItem(parsed);
+		const eqt::inventory::ItemInstance* item = ctx_.inventory_manager->getItem(parsed);
 		if (!item) {
-			AddChatSystemMessage(fmt::format("Nothing in {}.", eqt::inventory::describeSlot(parsed)));
+			owner_.AddChatSystemMessage(fmt::format("Nothing in {}.", eqt::inventory::describeSlot(parsed)));
 			return nullptr;
 		}
 		slotOut = parsed;
 		return item;
 	}
 
-	auto matches = m_inventory_manager->findItemsByNameSubstring(args);
+	auto matches = ctx_.inventory_manager->findItemsByNameSubstring(args);
 	if (matches.empty()) {
-		AddChatSystemMessage(fmt::format("No carried item matches '{}'.", args));
+		owner_.AddChatSystemMessage(fmt::format("No carried item matches '{}'.", args));
 		return nullptr;
 	}
 	// Ambiguous only if DISTINCT item names matched -- two copies of the
@@ -879,17 +892,17 @@ const eqt::inventory::ItemInstance* EverQuest::ResolveCarriedItem(
 			}
 			names += fmt::format("{} ({})", i->name, eqt::inventory::describeSlot(s));
 		}
-		AddChatSystemMessage(fmt::format("'{}' matches multiple items: {} -- be more specific.", args, names));
+		owner_.AddChatSystemMessage(fmt::format("'{}' matches multiple items: {} -- be more specific.", args, names));
 		return nullptr;
 	}
 	slotOut = matches.front().first;
 	return matches.front().second;
 }
 
-void EverQuest::RequestReadItem(const std::string& args)
+void eqt::commands::CommandsComponent::RequestReadItem(const std::string& args)
 {
 	if (args.empty()) {
-		AddChatSystemMessage("Usage: /read <slot> | /read <item name> (a book or note you are carrying)");
+		owner_.AddChatSystemMessage("Usage: /read <slot> | /read <item name> (a book or note you are carrying)");
 		return;
 	}
 
@@ -900,18 +913,18 @@ void EverQuest::RequestReadItem(const std::string& args)
 	}
 
 	if (item->bookFilename.empty()) {
-		AddChatSystemMessage(fmt::format("{} ({}) is not a book or note.",
+		owner_.AddChatSystemMessage(fmt::format("{} ({}) is not a book or note.",
 			item->name, eqt::inventory::describeSlot(slot)));
 		return;
 	}
 
-	if (!m_bridge) {
-		AddChatSystemMessage("Cannot read - no bridge attached.");
+	if (!ctx_.bridge) {
+		owner_.AddChatSystemMessage("Cannot read - no bridge attached.");
 		return;
 	}
 
-	AddChatSystemMessage(fmt::format("Reading {} ({})...", item->name, eqt::inventory::describeSlot(slot)));
-	m_bridge->pushIntent(eqt::events::ReadItemIntent{
+	owner_.AddChatSystemMessage(fmt::format("Reading {} ({})...", item->name, eqt::inventory::describeSlot(slot)));
+	ctx_.bridge->pushIntent(eqt::events::ReadItemIntent{
 		item->bookFilename, static_cast<uint8_t>(item->bookType)});
 }
 
@@ -945,10 +958,10 @@ void EverQuest::RequestReadItem(const std::string& args)
 // The destination book slot is NOT taken from the user: the stock client
 // picks it, and a wrong slot silently overwrites a known spell. The first
 // free slot comes from SpellManager::findFreeSpellbookSlot().
-void EverQuest::RequestScribeItem(const std::string& args)
+void eqt::commands::CommandsComponent::RequestScribeItem(const std::string& args)
 {
 	if (args.empty()) {
-		AddChatSystemMessage("Usage: /scribe <slot> | /scribe <item name> (a spell scroll you are carrying)");
+		owner_.AddChatSystemMessage("Usage: /scribe <slot> | /scribe <item name> (a spell scroll you are carrying)");
 		return;
 	}
 
@@ -966,31 +979,31 @@ void EverQuest::RequestScribeItem(const std::string& args)
 	// prefix alone -- is the gate.
 	const uint32_t spellId = item->getScrollSpellId();
 	if (spellId == 0) {
-		AddChatSystemMessage(fmt::format("{} ({}) is not a spell scroll.",
+		owner_.AddChatSystemMessage(fmt::format("{} ({}) is not a spell scroll.",
 			item->name, eqt::inventory::describeSlot(slot)));
 		return;
 	}
 
-	if (!m_spell_manager) {
-		AddChatSystemMessage("Cannot scribe - spell system not available.");
+	if (!ctx_.spell_manager) {
+		owner_.AddChatSystemMessage("Cannot scribe - spell system not available.");
 		return;
 	}
 
 	// Pre-flight the same refusals ScribeSpellFromScroll() guards with, so
 	// nothing touches the cursor for a scribe that was never going to work.
-	if (std::string refusal = m_merchant->ScribeRefusalMessage(spellId); !refusal.empty()) {
-		AddChatSystemMessage(refusal);
+	if (std::string refusal = owner_.Merchant().ScribeRefusalMessage(spellId); !refusal.empty()) {
+		owner_.AddChatSystemMessage(refusal);
 		return;
 	}
 
-	const int32_t bookSlot = m_spell_manager->findFreeSpellbookSlot();
+	const int32_t bookSlot = ctx_.spell_manager->findFreeSpellbookSlot();
 	if (bookSlot < 0) {
-		AddChatSystemMessage("Your spellbook is full.");
+		owner_.AddChatSystemMessage("Your spellbook is full.");
 		return;
 	}
 
-	if (!m_bridge) {
-		AddChatSystemMessage("Cannot scribe - no bridge attached.");
+	if (!ctx_.bridge) {
+		owner_.AddChatSystemMessage("Cannot scribe - no bridge attached.");
 		return;
 	}
 
@@ -1003,14 +1016,14 @@ void EverQuest::RequestScribeItem(const std::string& args)
 	// (Doing the pickup inside the ScribeSpellIntent arm instead would defer
 	// the move to the NEXT drain -- the packets would go out backwards.)
 	if (slot != eqt::inventory::CURSOR_SLOT) {
-		if (m_inventory_manager->hasCursorItem()) {
-			AddChatSystemMessage("Your cursor is full - put down what you are holding first.");
+		if (ctx_.inventory_manager->hasCursorItem()) {
+			owner_.AddChatSystemMessage("Your cursor is full - put down what you are holding first.");
 			return;
 		}
-		m_inventory_manager->setSpellForScribe(spellId, slot);
+		ctx_.inventory_manager->setSpellForScribe(spellId, slot);
 	}
 
-	m_bridge->pushIntent(eqt::events::ScribeSpellIntent{
+	ctx_.bridge->pushIntent(eqt::events::ScribeSpellIntent{
 		spellId, static_cast<uint16_t>(bookSlot), slot});
 }
 
@@ -1057,22 +1070,22 @@ void EverQuest::RequestScribeItem(const std::string& args)
 // which is why those stay world-container-only.
 //
 // containerSlot == SLOT_INVALID selects the world form.
-void EverQuest::RequestTradeskillCombine(int16_t containerSlot)
+void eqt::commands::CommandsComponent::RequestTradeskillCombine(int16_t containerSlot)
 {
 	if (containerSlot == eqt::inventory::SLOT_INVALID) {
-		if (m_active_tradeskill_object_id == 0) {
-			AddChatSystemMessage("You must have a tradeskill container open.");
+		if (ctx_.active_tradeskill_object_id == 0) {
+			owner_.AddChatSystemMessage("You must have a tradeskill container open.");
 			return;
 		}
 		containerSlot = eqt::inventory::SLOT_TRADESKILL_EXPERIMENT_COMBINE;
 	} else {
-		if (!m_inventory_manager) {
-			AddChatSystemMessage("Cannot combine - inventory not available.");
+		if (!ctx_.inventory_manager) {
+			owner_.AddChatSystemMessage("Cannot combine - inventory not available.");
 			return;
 		}
-		const eqt::inventory::ItemInstance* item = m_inventory_manager->getItem(containerSlot);
+		const eqt::inventory::ItemInstance* item = ctx_.inventory_manager->getItem(containerSlot);
 		if (!item) {
-			AddChatSystemMessage(fmt::format("Nothing in {}.",
+			owner_.AddChatSystemMessage(fmt::format("Nothing in {}.",
 				eqt::inventory::describeSlot(containerSlot)));
 			return;
 		}
@@ -1080,31 +1093,31 @@ void EverQuest::RequestTradeskillCombine(int16_t containerSlot)
 		// recognize specified tradeskill container" (T178: name what was
 		// asked for).
 		if (!item->isContainer()) {
-			AddChatSystemMessage(fmt::format("{} ({}) is not a container.",
+			owner_.AddChatSystemMessage(fmt::format("{} ({}) is not a container.",
 				item->name, eqt::inventory::describeSlot(containerSlot)));
 			return;
 		}
 	}
 
-	if (!m_bridge) {
-		AddChatSystemMessage("Cannot combine - no bridge attached.");
+	if (!ctx_.bridge) {
+		owner_.AddChatSystemMessage("Cannot combine - no bridge attached.");
 		return;
 	}
 
-	m_bridge->pushIntent(eqt::events::TradeskillCombineIntent{containerSlot});
+	ctx_.bridge->pushIntent(eqt::events::TradeskillCombineIntent{containerSlot});
 }
 
-void EverQuest::RequestCloseTradeskillContainer()
+void eqt::commands::CommandsComponent::RequestCloseTradeskillContainer()
 {
-	if (m_active_tradeskill_object_id == 0) {
-		AddChatSystemMessage("You do not have a tradeskill container open.");
+	if (ctx_.active_tradeskill_object_id == 0) {
+		owner_.AddChatSystemMessage("You do not have a tradeskill container open.");
 		return;
 	}
 
-	if (!m_bridge) {
-		AddChatSystemMessage("Cannot close the container - no bridge attached.");
+	if (!ctx_.bridge) {
+		owner_.AddChatSystemMessage("Cannot close the container - no bridge attached.");
 		return;
 	}
 
-	m_bridge->pushIntent(eqt::events::TradeskillCloseIntent{m_active_tradeskill_object_id});
+	ctx_.bridge->pushIntent(eqt::events::TradeskillCloseIntent{ctx_.active_tradeskill_object_id});
 }

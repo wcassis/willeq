@@ -278,10 +278,10 @@ SET(CLIENT_CORE_SOURCES
     src/client/entities/entities_component_appearance.cpp
     src/client/entities/entities_component_updates.cpp
     src/client/entities/entities_component_world.cpp
-    src/client/eq_commands.cpp
-    src/client/eq_commands_movement.cpp
-    src/client/eq_commands_spells.cpp
-    src/client/eq_commands_train.cpp
+    src/client/commands/commands_component.cpp
+    src/client/commands/commands_movement.cpp
+    src/client/commands/commands_spells.cpp
+    src/client/commands/commands_train.cpp
     src/client/eq_strings.cpp
     src/client/login_world/login_world_component.cpp
     src/client/guild/guild_component.cpp
@@ -305,7 +305,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/movement/movement_state.cpp
     src/client/chat/chat_component.cpp
     src/client/eq_chat.cpp
-    src/client/eq_combat_actions.cpp
+    src/client/commands/combat_actions.cpp
     src/client/combat.cpp
     src/client/combat_rounds.cpp
     src/client/combat_hunting.cpp

@@ -61,6 +61,7 @@
 // everything else. It writes NO skill value, NO money, NO point count.
 
 #include "client/eq.h"
+#include "client/commands/commands_component.h"
 #include "client/bridge/game_state_bridge.h"
 #include "client/events/renderer_intents.h"
 #include "client/skill/skill_constants.h"
@@ -100,35 +101,35 @@ bool IsAllDigits(const std::string& s)
 
 }  // namespace
 
-void EverQuest::RequestCloseTrainer()
+void eqt::commands::CommandsComponent::RequestCloseTrainer()
 {
-	if (m_game_state.player().trainerNpcId() == 0) {
-		AddChatSystemMessage("You are not interacting with a trainer.");
+	if (ctx_.game_state.player().trainerNpcId() == 0) {
+		owner_.AddChatSystemMessage("You are not interacting with a trainer.");
 		return;
 	}
-	if (!m_bridge) {
-		AddChatSystemMessage("Cannot close the trainer window - no bridge attached.");
+	if (!ctx_.bridge) {
+		owner_.AddChatSystemMessage("Cannot close the trainer window - no bridge attached.");
 		return;
 	}
 	// The same intent a trainer-panel close button would push. There is no
 	// trainer panel yet (no hit-test anywhere in graphics/ui), so the
 	// command is the only producer today -- stated plainly, T277-style,
 	// rather than pretending a gesture exists.
-	m_bridge->pushIntent(eqt::events::CloseTrainerIntent{});
+	ctx_.bridge->pushIntent(eqt::events::CloseTrainerIntent{});
 }
 
-void EverQuest::RequestTrainSkill(const std::string& args)
+void eqt::commands::CommandsComponent::RequestTrainSkill(const std::string& args)
 {
 	const std::string arg = Trim(args);
 
-	if (m_game_state.player().trainerNpcId() == 0) {
-		AddChatSystemMessage(
+	if (ctx_.game_state.player().trainerNpcId() == 0) {
+		owner_.AddChatSystemMessage(
 			"You are not interacting with a trainer. Target your guildmaster and use /train.");
 		return;
 	}
 
 	if (arg.empty()) {
-		AddChatSystemMessage("Usage: /train <skill name> | /train <skill id> | /train list");
+		owner_.AddChatSystemMessage("Usage: /train <skill name> | /train <skill id> | /train list");
 		return;
 	}
 
@@ -147,7 +148,7 @@ void EverQuest::RequestTrainSkill(const std::string& args)
 	if (IsAllDigits(arg)) {
 		const long v = std::stol(arg);
 		if (v < 0 || v >= static_cast<long>(EQ::MAX_SKILL_ID)) {
-			AddChatSystemMessage(fmt::format(
+			owner_.AddChatSystemMessage(fmt::format(
 				"There is no skill {} (skill ids are 0-{}).", arg, EQ::MAX_SKILL_ID - 1));
 			return;
 		}
@@ -167,7 +168,7 @@ void EverQuest::RequestTrainSkill(const std::string& args)
 		}
 		const std::vector<int>& hits = !exact.empty() ? exact : partial;
 		if (hits.empty()) {
-			AddChatSystemMessage(fmt::format("You know of no skill called \"{}\".", arg));
+			owner_.AddChatSystemMessage(fmt::format("You know of no skill called \"{}\".", arg));
 			return;
 		}
 		if (hits.size() > 1) {
@@ -176,7 +177,7 @@ void EverQuest::RequestTrainSkill(const std::string& args)
 				if (i) names += ", ";
 				names += EQ::getSkillName(static_cast<uint8_t>(hits[i]));
 			}
-			AddChatSystemMessage(fmt::format("\"{}\" matches {} skills: {}", arg, hits.size(), names));
+			owner_.AddChatSystemMessage(fmt::format("\"{}\" matches {} skills: {}", arg, hits.size(), names));
 			return;
 		}
 		resolved = hits.front();
@@ -189,76 +190,76 @@ void EverQuest::RequestTrainSkill(const std::string& args)
 	// --- refusals the client can actually make ----------------------------
 
 	// eqemu's very first line is `if(!m_pp.points) return;` -- silent.
-	if (GetPracticePoints() == 0) {
-		AddChatSystemMessage("You have no training points left to spend.");
+	if (owner_.GetPracticePoints() == 0) {
+		owner_.AddChatSystemMessage("You have no training points left to spend.");
 		return;
 	}
 
-	const uint32_t cap = m_merchant->GetTrainerSkillCap(skillId);
+	const uint32_t cap = owner_.Merchant().GetTrainerSkillCap(skillId);
 	if (cap == 0) {
-		AddChatSystemMessage(fmt::format("{} cannot train you in {}.", m_game_state.player().trainerName(), label));
+		owner_.AddChatSystemMessage(fmt::format("{} cannot train you in {}.", ctx_.game_state.player().trainerName(), label));
 		return;
 	}
 
 	uint32_t current = 0;
-	if (m_skill_manager) {
-		current = m_skill_manager->getSkillValue(skillId);
+	if (ctx_.skill_manager) {
+		current = ctx_.skill_manager->getSkillValue(skillId);
 	}
 	if (current >= cap) {
 		// The server's MORE_SKILLED_THAN_I branch, said up front.
-		AddChatSystemMessage(fmt::format(
+		owner_.AddChatSystemMessage(fmt::format(
 			"You are already more skilled in {} than {} can teach ({} of {}).",
-			label, m_game_state.player().trainerName(), current, cap));
+			label, ctx_.game_state.player().trainerName(), current, cap));
 		return;
 	}
 
-	if (!m_bridge) {
-		AddChatSystemMessage("Cannot train - no bridge attached.");
+	if (!ctx_.bridge) {
+		owner_.AddChatSystemMessage("Cannot train - no bridge attached.");
 		return;
 	}
 
 	const uint32_t cost = eqt::merchant::MerchantComponent::TrainingCost(current);
 	if (cost > 0) {
-		AddChatSystemMessage(fmt::format("Training {} ({} -> {}) for {}.",
-			label, current, current + 1, FormatPrice(static_cast<int32_t>(cost))));
+		owner_.AddChatSystemMessage(fmt::format("Training {} ({} -> {}) for {}.",
+			label, current, current + 1, EverQuest::FormatPrice(static_cast<int32_t>(cost))));
 	} else {
-		AddChatSystemMessage(fmt::format("Training {} ({} -> {}).", label, current, current + 1));
+		owner_.AddChatSystemMessage(fmt::format("Training {} ({} -> {}).", label, current, current + 1));
 	}
 
 	LOG_DEBUG(MOD_MAIN, "T280 /train: skill {} ({}) cur={} cap={} cost={}c trainer={}",
-		skillId, label, current, cap, cost, m_game_state.player().trainerNpcId());
+		skillId, label, current, cap, cost, ctx_.game_state.player().trainerNpcId());
 
 	// Nothing local changes here. The new value arrives as OP_SkillUpdate.
-	m_bridge->pushIntent(eqt::events::TrainSkillIntent{skillId});
+	ctx_.bridge->pushIntent(eqt::events::TrainSkillIntent{skillId});
 }
 
-void EverQuest::ListTrainableSkills()
+void eqt::commands::CommandsComponent::ListTrainableSkills()
 {
-	if (m_game_state.player().trainerNpcId() == 0) {
-		AddChatSystemMessage("You are not interacting with a trainer.");
+	if (ctx_.game_state.player().trainerNpcId() == 0) {
+		owner_.AddChatSystemMessage("You are not interacting with a trainer.");
 		return;
 	}
 
-	AddChatSystemMessage(fmt::format("=== {} can train ({} training points) ===",
-		m_game_state.player().trainerName(), GetPracticePoints()));
+	owner_.AddChatSystemMessage(fmt::format("=== {} can train ({} training points) ===",
+		ctx_.game_state.player().trainerName(), owner_.GetPracticePoints()));
 
 	size_t shown = 0;
 	for (uint8_t id = 0; id < EQ::MAX_SKILL_ID; ++id) {
-		const uint32_t cap = m_merchant->GetTrainerSkillCap(id);
+		const uint32_t cap = owner_.Merchant().GetTrainerSkillCap(id);
 		if (cap == 0) continue;
 		uint32_t current = 0;
-		if (m_skill_manager) {
-			current = m_skill_manager->getSkillValue(id);
+		if (ctx_.skill_manager) {
+			current = ctx_.skill_manager->getSkillValue(id);
 		}
 		if (current >= cap) continue;
 		const char* name = EQ::getSkillName(id);
-		AddChatSystemMessage(fmt::format("[{}] {} {}/{} - {}",
+		owner_.AddChatSystemMessage(fmt::format("[{}] {} {}/{} - {}",
 			id, name ? name : "Unknown", current, cap,
-			FormatPrice(static_cast<int32_t>(eqt::merchant::MerchantComponent::TrainingCost(current)))));
+			EverQuest::FormatPrice(static_cast<int32_t>(eqt::merchant::MerchantComponent::TrainingCost(current)))));
 		++shown;
 	}
 
 	if (shown == 0) {
-		AddChatSystemMessage("Nothing here is trainable for you right now.");
+		owner_.AddChatSystemMessage("Nothing here is trainable for you right now.");
 	}
 }

@@ -447,11 +447,11 @@ void EqActionHandler::recipesFavorite(const std::vector<uint32_t>& recipeIds) {
 // (RequestTradeskillCombine / RequestCloseTradeskillContainer), which owns
 // m_active_tradeskill_object_id and pushes the kept intents.
 void EqActionHandler::tradeskillCombine(int16_t containerSlot) {
-    m_eq.RequestTradeskillCombine(containerSlot);
+    m_eq.Commands().RequestTradeskillCombine(containerSlot);
 }
 
 void EqActionHandler::closeTradeskillContainer() {
-    m_eq.RequestCloseTradeskillContainer();
+    m_eq.Commands().RequestCloseTradeskillContainer();
 }
 
 // T153: /appearance. SendFaceChange() had zero production callers, so nothing

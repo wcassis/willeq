@@ -762,7 +762,7 @@ void EqActionHandler::activateHotbarCommandSlot(eqt::HotbarSlotType type, const 
 // InventoryManager; nothing is duplicated here. See
 // refactor/T141_equip_extraction.md.
 void EqActionHandler::equip(const std::string& args) {
-    m_eq.RequestEquip(args);
+    m_eq.Commands().RequestEquip(args);
 }
 
 // T273: /read -- one free-text argument (slot number or item-name
@@ -770,14 +770,14 @@ void EqActionHandler::equip(const std::string& args) {
 // not-a-book refusal, and the ReadItemIntent push live in
 // EverQuest::RequestReadItem(); nothing is duplicated here.
 void EqActionHandler::readItem(const std::string& args) {
-    m_eq.RequestReadItem(args);
+    m_eq.Commands().RequestReadItem(args);
 }
 
 // T276: same one-line relay -- item resolution, the scroll/class/level/
 // full-book refusals and the ScribeSpellIntent push all live in
 // EverQuest::RequestScribeItem(); nothing is duplicated here.
 void EqActionHandler::scribeItem(const std::string& args) {
-    m_eq.RequestScribeItem(args);
+    m_eq.Commands().RequestScribeItem(args);
 }
 
 } // namespace eqt

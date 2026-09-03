@@ -89,7 +89,7 @@ protected:
 // ---------------------------------------------------------------------------
 
 TEST_F(EqCommandsBankTrainTest, Bank_NoTargetNotOpen_PrintsNoTarget_PushesNoIntent) {
-    eq.RequestBankToggle();
+    eq.Commands().RequestBankToggle();
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -111,7 +111,7 @@ TEST_F(EqCommandsBankTrainTest, Bank_WithNonBankerTarget_StillPushesIntent_Handl
     auto* cm = eq.GetCombatManager();
     ASSERT_TRUE(cm->SetTarget(100));
 
-    eq.RequestBankToggle();
+    eq.Commands().RequestBankToggle();
 
     EXPECT_TRUE(DrainSystemMessages(bridge).empty());
     auto intents = bridge.drainIntents();
@@ -126,7 +126,7 @@ TEST_F(EqCommandsBankTrainTest, Bank_WithValidBankerTarget_PushesBankerInteractI
     auto* cm = eq.GetCombatManager();
     ASSERT_TRUE(cm->SetTarget(200));
 
-    eq.RequestBankToggle();
+    eq.Commands().RequestBankToggle();
 
     EXPECT_TRUE(DrainSystemMessages(bridge).empty());
     auto intents = bridge.drainIntents();
@@ -147,7 +147,7 @@ TEST_F(EqCommandsBankTrainTest, Bank_AlreadyOpen_ClosesDirectly_WithoutRequiring
     bridge.drainIntents();
     ASSERT_FALSE(eq.GetCombatManager()->HasTarget());  // no target set at all
 
-    eq.RequestBankToggle();
+    eq.Commands().RequestBankToggle();
 
     EXPECT_FALSE(eq.IsBankWindowOpen());
     EXPECT_TRUE(bridge.drainIntents().empty());  // close is a direct call, not an intent
@@ -162,7 +162,7 @@ TEST_F(EqCommandsBankTrainTest, Bank_AlreadyOpen_ClosesDirectly_WithoutRequiring
 // ---------------------------------------------------------------------------
 
 TEST_F(EqCommandsBankTrainTest, Train_NoTarget_PrintsNoTrainerTargeted) {
-    eq.RequestTraining();
+    eq.Commands().RequestTraining();
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -176,7 +176,7 @@ TEST_F(EqCommandsBankTrainTest, Train_NotAnNpc_PrintsNotAnNpc) {
     bridge.drainEvents();
     ASSERT_TRUE(eq.GetCombatManager()->SetTarget(300));
 
-    eq.RequestTraining();
+    eq.Commands().RequestTraining();
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -187,7 +187,7 @@ TEST_F(EqCommandsBankTrainTest, Train_TargetClassOutsideGmRange_PrintsNotATraine
     SpawnNpcAt(301, "a_random_npc", /*classId=*/1);  // not in [20,35]
     ASSERT_TRUE(eq.GetCombatManager()->SetTarget(301));
 
-    eq.RequestTraining();
+    eq.Commands().RequestTraining();
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -199,7 +199,7 @@ TEST_F(EqCommandsBankTrainTest, Train_TooFar_PrintsActionableDistanceMessage) {
     SpawnNpcAt(302, "Distant_WarriorGM", /*classId=*/20, /*x=*/1000, /*y=*/1000);
     ASSERT_TRUE(eq.GetCombatManager()->SetTarget(302));
 
-    eq.RequestTraining();
+    eq.Commands().RequestTraining();
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -215,7 +215,7 @@ TEST_F(EqCommandsBankTrainTest, Train_WrongClassTrainer_PrintsActionableMessageN
     SpawnNpcAt(303, "Miltiades_Tal_Azroth", /*classId=*/22);
     ASSERT_TRUE(eq.GetCombatManager()->SetTarget(303));
 
-    eq.RequestTraining();
+    eq.Commands().RequestTraining();
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -230,7 +230,7 @@ TEST_F(EqCommandsBankTrainTest, Train_MatchingClassInRange_SendsTrainerRequest_N
     SpawnNpcAt(304, "a_warrior_gm", CLASS_WARRIOR_GM);  // trains class 20-19=1=Warrior
     ASSERT_TRUE(eq.GetCombatManager()->SetTarget(304));
 
-    eq.RequestTraining();
+    eq.Commands().RequestTraining();
 
     // No refusal message -- the pre-validation passed and RequestTrainerWindow()
     // (untouched, pre-existing code, out of this unit's territory) was called.
