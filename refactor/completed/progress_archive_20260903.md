@@ -1,3 +1,7 @@
+> **ARCHIVED 2026-09-03 by K00.** Superseded by `refactor/BOARD.md`.
+> The findings below are HISTORICAL: many were closed by later units without
+> being struck here. Do not scope work off this file.
+
 # Refactoring Progress
 
 Master tracker for the willeq architecture refactoring effort.

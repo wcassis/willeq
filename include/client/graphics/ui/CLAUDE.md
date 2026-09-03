@@ -64,12 +64,12 @@ Center popups (inventory, spellbook, skills, vendor, bank, loot, trade) share th
 |-----|--------|
 | WASD/Arrows | Move (with collision) |
 | Ctrl+A / End | Strafe left |
-| Ctrl+D / PageDown | Strafe right |
+| Ctrl+D / Home | Strafe right (T313 moved this off PageDown, which now scrolls the UI) |
 | Q | Toggle auto-attack |
 | Ctrl+Q | Attack (initiate combat) |
-| ` / NumLock / Numpad+ | Toggle autorun |
+| ` / NumLock / Numpad+ | Bound to Toggle autorun, but **autorun is a no-op** — `EqActionHandler::toggleAutorun()` is a stub and nothing writes the renderer's `autorun` flag (`refactor/BOARD.md` B002) |
 | Space | Jump |
-| 1-8 | Hotbar slots 1-8 (routed by slot content type since T174: Spell → cast, Skill → useSkill; Item and Emote slots are logged and skipped) |
+| 1-8 | Hotbar slots 1-8 (routed by slot content type: Spell → cast, Skill → useSkill, Item → useItemById (T230), Emote/Macro/Combat → activateHotbarCommandSlot (T239)) |
 | 9-0 | Hotbar slots 9-10 (same routing) |
 | Alt+1-8 | Cast spell from gem 1-8 |
 | F1 | Target self |
@@ -89,8 +89,9 @@ Center popups (inventory, spellbook, skills, vendor, bank, loot, trade) share th
 | U | Interact (nearest door/object) |
 | H | Hail (say "Hail" or "Hail, <target>") |
 | L | Cycle object lights |
-| ESC | Clear target |
+| ESC | Clear target (keybinding only — no slash command reaches it, `refactor/BOARD.md` B012) |
 | +/- | Camera zoom in/out |
+| PageUp / PageDown | Scroll the UI panel under the cursor (T313) |
 | Ctrl+Alt+C | Toggle collision |
 | Ctrl+Z | Toggle zone line visualization |
 | Enter | Open chat input |

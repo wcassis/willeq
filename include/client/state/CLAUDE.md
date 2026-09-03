@@ -2,7 +2,7 @@
 
 ## Overview
 
-Game state is fully decoupled from rendering. The `GameState` container aggregates 11 domain-specific state modules and an `EventBus`. All state mutations publish events that cross the thread boundary via `GameStateBridge`.
+Game state is fully decoupled from rendering. The `GameState` container aggregates 10 domain-specific state modules and an `EventBus`. All state mutations publish events that cross the thread boundary via `GameStateBridge`.
 
 ## GameState Container (`game_state.h`)
 
@@ -17,6 +17,7 @@ Central owner of all state modules:
 | `GroupState` | `group_state.h` | Group membership, member HP/mana |
 | `InventoryState` | `inventory_state.h` | Equipment (22 slots), general inventory (8 bags), currency |
 | `SpellState` | `spell_state.h` | Spellbook, memorized gems (8), buffs, cooldowns |
+| `TradeState` | `trade_state.h` | Player-to-player trade session state |
 | `PetState` | `pet_state.h` | Pet name/level/HP, command state |
 | `DoorStateManager` | (in game state layer) | Door positions and open/closed state |
 
@@ -29,7 +30,7 @@ Central owner of all state modules:
 
 Thread-safe publish/subscribe system for game state changes.
 
-**97 event types** (`GameEventType`, re-counted at fable `9684644f`, J21 — T318 added the 97th) organized by domain; `IrrlichtBridge` has a case for all 97 in its switch, `ConsoleBridge` logs a subset headless:
+**97 event types** (`GameEventType`, re-counted 2026-09-03) organized by domain; `IrrlichtBridge` has a case for all 97 in its switch, `ConsoleBridge` logs a subset headless:
 - **Player**: PositionChanged, StatsChanged, MovementModeChanged, LevelChanged
 - **Entity**: EntitySpawned, EntityDespawned, EntityMoved, EntityAppearanceChanged, EntityAnimation
 - **Door**: DoorSpawned, DoorStateChanged

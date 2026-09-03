@@ -15,7 +15,7 @@ The bridge is the sole communication channel between the game thread and the ren
 - **Swap-vector pattern**: drain swaps the entire vector in O(1), then processes outside the lock
 
 **IrrlichtBridge** (`irrlicht_bridge.h`) — Concrete bridge for 3D rendering:
-- `applyEvent()` implements an 839+ case switch translating events into `IrrlichtRenderer` method calls
+- `applyEvent()` implements a 97-case switch (one per `GameEventType`, counted 2026-09-03) translating events into `IrrlichtRenderer` method calls
 - Owns a pointer to `IrrlichtRenderer` (set via `setRenderer()`)
 - Implementation in `src/client/bridge/irrlicht_bridge.cpp`
 
@@ -38,28 +38,28 @@ EverQuest::tick()                    processFrame()
    └─ process user actions              (user actions)
 ```
 
-## Event Types (140+)
+## Event Types (97)
 
 Defined in `include/client/state/event_bus.h`. See `include/client/state/CLAUDE.md` for the full categorization.
 
-## Intent Types (50+)
+## Intent Types (35)
 
 Defined in `include/client/events/renderer_intents.h`. `RendererIntent` is a `std::variant` holding all intent structs:
 
 - **Movement**: `PlayerPositionChanged` (position + velocity)
 - **Targeting**: `TargetIntent` (T51: `AttackIntent`/`ToggleAutoAttackIntent` removed -- never had a producer; auto-attack is reached via direct `CombatManager` calls from `eq_commands_movement.cpp`/`ActionDispatcher`, not the intent system)
-- **Interaction**: `DoorInteractIntent`, `LootCorpseIntent`, `ZoningEnabledIntent`
-- **Commerce**: `VendorBuyIntent`, `VendorSellIntent`, `BankerInteractIntent`, `TradeRequestIntent`
-- **Spells**: `CastSpellIntent`, `MemorizeSpellIntent`, `ScribeSpellIntent`, `InterruptSpellIntent`
+- **Interaction**: `DoorInteractIntent`, `LootCorpseIntent`, `LootItemIntent`, `LootAllIntent`, `CloseLootIntent`, `WorldObjectInteractIntent`, `ZoningEnabledIntent`, `ReadItemIntent`
+- **Commerce**: `VendorToggleIntent`, `VendorBuyIntent`, `VendorSellIntent`, `BankerInteractIntent`, `BankCurrencyMoveIntent`, `BankCurrencyConvertIntent`
+- **Spells**: `CastSpellIntent`, `MemorizeSpellIntent`, `ScribeSpellIntent`, `SpellbookStateIntent`
+- **Buffs**: `BuffCancelIntent`
 - **Skills**: `SkillActivateIntent`
-- **Pet**: `PetCommandIntent`
-- **Group**: `GroupInviteIntent`, `GroupAcceptIntent`, `DisbandIntent`
-- **Hotbar**: `HotbarActivateIntent`, `HotbarChangedIntent`
+- **Hotbar**: `HotbarActivateIntent`
 - **Inventory**: `MoveItemIntent`, `DeleteItemIntent`, `EquipmentChangedIntent`
-- **Chat**: `ChatSubmitIntent`, `ChatLinkClickIntent`
+- **Chat**: `ChatSubmitIntent`
 - **Audio**: `MusicVolumeChangeIntent`, `EffectsVolumeChangeIntent`
-- **Diagnostics**: `RequestMemoryReport`, `RequestSceneDump`, `SlashCommandIntent`
+- **Trainer**: `TrainerToggleIntent`, `TrainSkillIntent`, `CloseTrainerIntent`
 - **Tradeskill**: `TradeskillCombineIntent`, `TradeskillCloseIntent`
+- **Model**: `PlayerModelGeometryChanged`
 
 ## Two-stage drain in graphics runs (T220, T227)
 
@@ -93,6 +93,6 @@ High-frequency events are deduplicated before delivery:
 ## Key Design Rules
 
 - **EverQuest has zero graphics dependencies**: No `m_renderer` member, no graphics includes
-- **Bridge is the only crossing point**: All 343+ former direct `m_renderer->` calls were replaced with events
+- **Bridge is the only crossing point**: every former direct `m_renderer->` call was replaced with an event
 - **Events are immutable**: Safe to read from any thread after drain
 - **Multi-renderer support**: Any `GameStateBridge` subclass can consume events (Irrlicht, Console, future RDP)

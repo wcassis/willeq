@@ -3,7 +3,7 @@
 ## Components
 
 **IrrlichtRenderer** (`include/client/graphics/`, `src/client/graphics/`)
-- `IrrlichtRenderer` - Main renderer, split across `irrlicht_renderer.cpp` (908 lines at `9684644f`) + 24 `renderer_*.cpp` TUs (see `docs/module_map.md`); T166 split `renderer_zone_load.cpp` into `renderer_zone_load{,_entities,_env,_objects}.cpp` and J11 split the core into `renderer_{init,frame,camera,hud_env,slash_commands,event_receiver}.cpp`. Manages scene, visibility, lighting, UI
+- `IrrlichtRenderer` - Main renderer, split across `irrlicht_renderer.cpp` (908 lines) + 27 `renderer_*.cpp` TUs (see `docs/module_map.md`); T166 split `renderer_zone_load.cpp` into `renderer_zone_load{,_entities,_env,_objects}.cpp` and J11 split the core into `renderer_{init,frame,camera,hud_env,slash_commands,event_receiver}.cpp`. Manages scene, visibility, lighting, UI
 - `CameraController` - FPS-style camera with free/follow/first-person modes
 - `EntityRenderer` - Character/NPC 3D model rendering with GLSL shaders, split across `entity_renderer.cpp` + 12 `entity_*.cpp` TUs (J03)
 - `RaceModelLoader` - Loads character models from S3D archives by race ID
