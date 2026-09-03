@@ -254,3 +254,11 @@ it without taking that measurement first.
   `cachedHeadingDebugText_`, `chatPrefillMutex_`, `pendingChatPrefill_` —
   eight data members with zero references tree-wide. Closes when: deleted.
   Prov: Batch L survey.
+
+## Added 2026-09-03 by the K09 Review (zone extraction)
+
+- **B035** (B) `include/client/zone/zone_component.h` `ZoneComponent::m_spawn_appearance_sent`
+  / `m_client_spawned` — write-only after K09 deleted their only readers
+  (`ZoneSendSpawnAppearance`, `ZoneSendSessionReady`, both unreachable and
+  unguarded). Closes when: deleted, or a reader that the handshake actually
+  needs is restored. Prov: K09 Review.
