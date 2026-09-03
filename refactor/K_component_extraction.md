@@ -255,6 +255,14 @@ into the component.**
    (`DumpEntityAppearance` reads `m_entities`); (nn) the K13 forwarder
    files (`eq_chat.cpp`, `eq_player_info.cpp`) were NOT empty — a plan
    must not guess a file's state after a unit it has not read.
+**K15 corrections (2026-09-03):** (oo) a name census cannot see a use
+   through a TYPED MEMBER POINTER (`m_renderer->processFrame()` needs the
+   full type with zero `IrrlichtRenderer` tokens in the file) — an include
+   is dead only when the compiler says so; (pp) a survey's "zero
+   references" claim expires the moment a later unit wires the member
+   (T319 wired two of B034's eight after the Batch L survey) — re-measure
+   at the unit tip, always; (qq) a knob wired only at the config end is a
+   knob that silently does nothing — wire both ends or neither.
 8. **Proof.** `verify_move_only.py` exits 1 by construction. Line-multiset
    check with the substitutions normalised BY NAME MAPPING (`ctx_.character`
    ↔ `m_character`, etc. — stripping the prefix alone leaves 7 false
@@ -306,7 +314,21 @@ member, the exact new file names, CMake add-sites (grep, never a line
 number), text readers of `eq.h` in `tests/` and `scripts/` that must be
 re-measured, predicted multiset residual, and the Review section.
 
-## Batch L (not planned yet)
+## CLOSE-OUT — 2026-09-03, tip `6ef09245`
+
+Fifteen units in one day (K00 truth reset + K01–K15), every one merged and
+verified green on the tip. `eq.h` **2,025 → 899**; `class EverQuest` keeps
+the ctor/lifecycle, the five `Application` entry points, the player-state
+facade forwarders and the shared-service core. Twelve components under
+`src/client/<family>/` + four context services (`ChatOutput`,
+`PlayerFacade`, `PacketSender`, `StringDb`). The transition handle is
+measured down to **83 uses** (BOARD B038), the friend lines to those with a
+qualified-private use (B039). Open structural decisions for Will: B006
+(`InitGraphics` narrowing — K15 measured the shape: two calls, an interface
+that does not exist yet), B036 (silent-by-omission sounds), B040
+(placeables gate). Suite 3,604 → run it.
+
+## Batch L (planned: `refactor/L_renderer_component_extraction.md`)
 
 The same programme for `class IrrlichtRenderer` (441 methods, 282 data
 members, 30 TUs). Its family cut is not as clean as EverQuest's because the
