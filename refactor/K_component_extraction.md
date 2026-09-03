@@ -194,6 +194,14 @@ into the component.**
    49 sites) stays on `EverQuest` under §3 — the K13 decision list now holds
    `m_inspect_message`, `m_zone_server_host/port`, `m_replay_suppressed_sends`,
    the player-state facade and the three `AddChat*` primitives.
+**K11 corrections (2026-09-03):** (cc) a receiver-aware caller scan misses
+   two-hop chains (`h.eq.Foo()`) — 22 sites in K11; only the compiler is
+   complete; (dd) `this` → `&owner_` (correction n) must NOT be applied to a
+   lambda capture `[this]` — three of K11's five `this` sites were captures,
+   including the `std::visit` visitor that IS `ProcessBridgeIntents`;
+   (ee) `test_reachability_sweep.cpp` reads TUs BY PATH and `readFile` on a
+   missing path returns an empty buffer that passes — the K03 (c) grep of
+   `tests/` for the TU filename is mandatory, not advisory.
 8. **Proof.** `verify_move_only.py` exits 1 by construction. Line-multiset
    check with the substitutions normalised BY NAME MAPPING (`ctx_.character`
    ↔ `m_character`, etc. — stripping the prefix alone leaves 7 false
