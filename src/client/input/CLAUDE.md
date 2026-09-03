@@ -64,7 +64,7 @@ behind the shared private header `command_processor_internal.h`. See
 
 Every slash command that reaches the game now goes through
 `action::CommandProcessor` → `ActionDispatcher` → `IActionHandler`
-(`EqActionHandler`, `src/client/eq_action_handler.cpp`). T97 audited
+(`EqActionHandler`, `src/client/action/eq_action_handler.cpp`). T97 audited
 reachability (34/65 `CommandProcessor` commands unreachable, shadowed by the
 game registry); T98 deleted the shadowed copies; T99 (Group, the pilot) through
 T140 migrated every family (Chat, Spells/Pet, Combat/Social, Trade, Guild,

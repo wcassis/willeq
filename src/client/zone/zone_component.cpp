@@ -323,7 +323,7 @@ void eqt::zone::ZoneComponent::RequestZoneChange(uint16_t zone_id, float x, floa
 	// 1 = response (server's reply)
 	p.PutInt32(86, 0);  // This is a request
 
-	EverQuest::DumpPacket("C->S", HC_OP_ZoneChange, p);
+	eqt::strings::DumpPacket("C->S", HC_OP_ZoneChange, p);
 
 	if (ctx_.net.SafeQueueZone(p)) {
 		ctx_.game_state.world().setZoneChangeRequested(true);  // T286: only store

@@ -99,7 +99,7 @@ void eqt::zone::ZoneComponent::ZoneSendZoneEntry()
 		p.PutUInt8(i, 0);
 	}
 	
-	EverQuest::DumpPacket("C->S", HC_OP_ZoneEntry, p);
+	eqt::strings::DumpPacket("C->S", HC_OP_ZoneEntry, p);
 	if (ctx_.zone_connection) {
 		ctx_.zone_connection->QueuePacket(p);
 	} else {
@@ -128,7 +128,7 @@ void eqt::zone::ZoneComponent::ZoneSendReqClientSpawn()
 	
 	p.PutUInt16(0, HC_OP_ReqClientSpawn);
 	
-	EverQuest::DumpPacket("C->S", HC_OP_ReqClientSpawn, p);
+	eqt::strings::DumpPacket("C->S", HC_OP_ReqClientSpawn, p);
 	if (ctx_.zone_connection) {
 		ctx_.zone_connection->QueuePacket(p);
 	} else {
@@ -145,7 +145,7 @@ void eqt::zone::ZoneComponent::ZoneSendClientReady()
 	
 	LOG_DEBUG(MOD_ZONE, "Sending OP_ClientReady");
 
-	EverQuest::DumpPacket("C->S", HC_OP_ClientReady, p);
+	eqt::strings::DumpPacket("C->S", HC_OP_ClientReady, p);
 	if (ctx_.zone_connection) {
 		ctx_.zone_connection->QueuePacket(p);
 	} else {
@@ -183,7 +183,7 @@ void eqt::zone::ZoneComponent::ZoneSendSetServerFilter()
 	
 	LOG_DEBUG(MOD_ZONE, "Sending OP_SetServerFilter");
 
-	EverQuest::DumpPacket("C->S", HC_OP_SetServerFilter, p);
+	eqt::strings::DumpPacket("C->S", HC_OP_SetServerFilter, p);
 	if (ctx_.zone_connection) {
 		ctx_.zone_connection->QueuePacket(p);
 	} else {
@@ -213,7 +213,7 @@ void eqt::zone::ZoneComponent::ZoneSendAckPacket()
 	p.PutUInt16(0, HC_OP_AckPacket);
 	p.PutUInt32(2, 0);  // sequence or something
 	
-	EverQuest::DumpPacket("C->S", HC_OP_AckPacket, p);
+	eqt::strings::DumpPacket("C->S", HC_OP_AckPacket, p);
 	if (ctx_.zone_connection) {
 		ctx_.zone_connection->QueuePacket(p);
 	} else {
@@ -228,7 +228,7 @@ void eqt::zone::ZoneComponent::ZoneSendReqNewZone()
 	
 	p.PutUInt16(0, HC_OP_ReqNewZone);
 	
-	EverQuest::DumpPacket("C->S", HC_OP_ReqNewZone, p);
+	eqt::strings::DumpPacket("C->S", HC_OP_ReqNewZone, p);
 	if (ctx_.zone_connection) {
 		ctx_.zone_connection->QueuePacket(p);
 	} else {
@@ -244,7 +244,7 @@ void eqt::zone::ZoneComponent::ZoneSendSendAATable()
 	
 	p.PutUInt16(0, HC_OP_SendAATable);
 	
-	EverQuest::DumpPacket("C->S", HC_OP_SendAATable, p);
+	eqt::strings::DumpPacket("C->S", HC_OP_SendAATable, p);
 	if (ctx_.zone_connection) {
 		ctx_.zone_connection->QueuePacket(p);
 	} else {
@@ -261,7 +261,7 @@ void eqt::zone::ZoneComponent::ZoneSendUpdateAA()
 	p.PutUInt16(0, HC_OP_UpdateAA);
 	// Rest is AA data - zeros for now
 	
-	EverQuest::DumpPacket("C->S", HC_OP_UpdateAA, p);
+	eqt::strings::DumpPacket("C->S", HC_OP_UpdateAA, p);
 	if (ctx_.zone_connection) {
 		ctx_.zone_connection->QueuePacket(p);
 	} else {
@@ -277,7 +277,7 @@ void eqt::zone::ZoneComponent::ZoneSendSendTributes()
 	
 	p.PutUInt16(0, HC_OP_SendTributes);
 	
-	EverQuest::DumpPacket("C->S", HC_OP_SendTributes, p);
+	eqt::strings::DumpPacket("C->S", HC_OP_SendTributes, p);
 	if (ctx_.zone_connection) {
 		ctx_.zone_connection->QueuePacket(p);
 	} else {
@@ -293,7 +293,7 @@ void eqt::zone::ZoneComponent::ZoneSendRequestGuildTributes()
 	
 	p.PutUInt16(0, HC_OP_RequestGuildTributes);
 	
-	EverQuest::DumpPacket("C->S", HC_OP_RequestGuildTributes, p);
+	eqt::strings::DumpPacket("C->S", HC_OP_RequestGuildTributes, p);
 	if (ctx_.zone_connection) {
 		ctx_.zone_connection->QueuePacket(p);
 	} else {
@@ -309,7 +309,7 @@ void eqt::zone::ZoneComponent::ZoneSendSendExpZonein()
 	
 	p.PutUInt16(0, HC_OP_SendExpZonein);
 	
-	EverQuest::DumpPacket("C->S", HC_OP_SendExpZonein, p);
+	eqt::strings::DumpPacket("C->S", HC_OP_SendExpZonein, p);
 	if (ctx_.zone_connection) {
 		ctx_.zone_connection->QueuePacket(p);
 	} else {

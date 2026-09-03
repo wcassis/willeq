@@ -13,9 +13,11 @@
 // correction: the fifth substitution shape):
 //   s_debug_level      -> EverQuest::GetDebugLevel()   (the public accessor
 //                         over the same private static)
-//   GetOpcodeName(...) -> EverQuest::GetOpcodeName(...) (made public in eq.h,
-//                         same standing T180's GetClassName and T271's
-//                         GetRaceName already have -- a pure lookup table)
+//   GetOpcodeName(...) -> eqt::strings::GetOpcodeName(...) (K14 moved it to a
+//                         free function in include/client/eq_strings.h, same
+//                         standing T180's GetClassName and T271's GetRaceName
+//                         had as public EverQuest statics -- a pure lookup
+//                         table, no EverQuest state)
 // Neither changes behaviour: GetDebugLevel() returns s_debug_level and nothing
 // else, and GetOpcodeName is a static switch over opcode values.
 
@@ -51,7 +53,7 @@ bool eqt::PacketSender::SafeQueueZone(EQ::Net::Packet &p, int stream, bool relia
 	if (reliable && p.Length() > 400 && EverQuest::GetDebugLevel() >= 2) {
 		uint16_t opcode = p.GetUInt16(0);
 		LOG_TRACE(MOD_ZONE, "SafeQueueZonePacket: Large reliable packet - opcode={:#06x} ({}), length={}, stream={}",
-			opcode, EverQuest::GetOpcodeName(opcode), p.Length(), stream);
+			opcode, eqt::strings::GetOpcodeName(opcode), p.Length(), stream);
 
 		// Check connection state before sending large packets
 		try {

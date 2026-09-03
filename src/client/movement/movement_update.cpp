@@ -760,7 +760,7 @@ void eqt::movement::MovementComponent::SendPositionUpdate()
 	m_test_last_sent_update.z_pos = update.z_pos;
 	m_test_last_sent_update.heading_scaled = update.heading_and_padding;
 
-	EverQuest::DumpPacket("C->S", HC_OP_ClientUpdate, p);
+	eqt::strings::DumpPacket("C->S", HC_OP_ClientUpdate, p);
 	ctx_.net.SafeQueueZone(p, 0, false);  // Send unreliable
 	
 	// Update last position

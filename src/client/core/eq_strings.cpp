@@ -1,5 +1,23 @@
-// Static name/string lookup tables and dump helpers for EverQuest.
-// Split out of eq.cpp (F02) — pure move, no behavior change.
+// Static name/string lookup tables, the string-message service, and dump
+// helpers. Split out of eq.cpp (F02) as EverQuest members -- pure move, no
+// behavior change. K14 (Batch K, refactor/K14_directory_move.md) split this
+// TU's own content two more ways: the ten pure lookups + DumpPacket became
+// free functions in namespace eqt::strings (include/client/eq_strings.h);
+// GetStringMessage/GetFormattedStringMessage/LoadStringFiles became
+// eqt::StringDb, the fourth context service, over EverQuest's own
+// m_string_db (spelled the same, K13 correction (kk)).
+//
+// Substitutions from the original EverQuest:: bodies, all K13 correction
+// (jj)'s "destination is not a friend" shape:
+//   s_debug_level (DumpPacket's read) -> EverQuest::GetDebugLevel(), the
+//     existing public accessor that returns that same static and nothing
+//     else.
+// GetOpcodeName's call from DumpPacket needed NO change at all: both moved
+// into the same eqt::strings namespace, so the call that used to read
+// GetOpcodeName(opcode) through friendship now reads it as an ordinary
+// same-namespace sibling call.
+
+#include "client/eq_strings.h"
 
 #include "client/eq.h"
 #include "client/eq_body_types.h"
@@ -12,7 +30,7 @@
 #include <algorithm>
 #include <cctype>
 
-std::string EverQuest::FormatPrice(int32_t copperAmount) {
+std::string eqt::strings::FormatPrice(int32_t copperAmount) {
 	if (copperAmount <= 0) return "Free";
 	std::string result;
 	int32_t pp = copperAmount / 1000; copperAmount %= 1000;
@@ -26,7 +44,7 @@ std::string EverQuest::FormatPrice(int32_t copperAmount) {
 	return result;
 }
 
-std::string EverQuest::GetOpcodeName(uint16_t opcode) {
+std::string eqt::strings::GetOpcodeName(uint16_t opcode) {
 	// Login opcodes
 	switch (opcode) {
 		case HC_OP_SessionReady: return "HC_OP_SessionReady";
@@ -269,7 +287,7 @@ std::string EverQuest::GetOpcodeName(uint16_t opcode) {
 	}
 }
 
-std::string EverQuest::GetStringMessage(uint32_t string_id) {
+std::string eqt::StringDb::GetStringMessage(uint32_t string_id) {
 	// Use StringDatabase if loaded
 	if (m_string_db.isLoaded()) {
 		std::string msg = m_string_db.getString(string_id);
@@ -393,7 +411,7 @@ std::string EverQuest::GetStringMessage(uint32_t string_id) {
 	}
 }
 
-std::string EverQuest::GetFormattedStringMessage(uint32_t string_id, const std::vector<std::string>& args) {
+std::string eqt::StringDb::GetFormattedStringMessage(uint32_t string_id, const std::vector<std::string>& args) {
 	// Use StringDatabase if loaded
 	if (m_string_db.isLoaded()) {
 		std::string msg = m_string_db.formatString(string_id, args);
@@ -421,7 +439,7 @@ std::string EverQuest::GetFormattedStringMessage(uint32_t string_id, const std::
 	return result;
 }
 
-bool EverQuest::LoadStringFiles(const std::string& eqClientPath) {
+bool eqt::StringDb::LoadStringFiles(const std::string& eqClientPath) {
 	(void)eqClientPath;
 	if (!m_string_db.initFromDatabase()) {
 		LOG_ERROR(MOD_MAIN, "Failed to initialize string database from SQLite");
@@ -432,7 +450,7 @@ bool EverQuest::LoadStringFiles(const std::string& eqClientPath) {
 	return true;
 }
 
-std::string EverQuest::GetChatTypeName(uint32_t chat_type) {
+std::string eqt::strings::GetChatTypeName(uint32_t chat_type) {
 	// Common chat types
 	switch (chat_type) {
 		case 0: return "Say";
@@ -489,7 +507,7 @@ std::string EverQuest::GetChatTypeName(uint32_t chat_type) {
 	}
 }
 
-std::string EverQuest::GetClassName(uint32_t class_id) {
+std::string eqt::strings::GetClassName(uint32_t class_id) {
 	switch (class_id) {
 		case 1: return "Warrior";
 		case 2: return "Cleric";
@@ -520,7 +538,7 @@ std::string EverQuest::GetClassName(uint32_t class_id) {
 // race-name table (its 3200-block is the LANGUAGE list), so race_models.name
 // is the only source in the tree; with no row the honest answer is
 // "Unknown (id)", the same wording the graphics-side twin already used.
-std::string EverQuest::GetRaceName(uint32_t race_id) {
+std::string eqt::strings::GetRaceName(uint32_t race_id) {
 	auto* db = EQT::WilleqDatabase::globalInstance();
 	if (db) {
 		auto info = db->getRaceModel(static_cast<uint16_t>(race_id));
@@ -529,7 +547,7 @@ std::string EverQuest::GetRaceName(uint32_t race_id) {
 	return fmt::format("Unknown ({})", race_id);
 }
 
-std::string EverQuest::GetDeityName(uint32_t deity_id) {
+std::string eqt::strings::GetDeityName(uint32_t deity_id) {
 	switch (deity_id) {
 		case 0: return "Agnostic";
 		case 140: return "Agnostic";
@@ -611,11 +629,11 @@ std::string Name(uint8_t bodyType) {
 }  // namespace BodyType
 }  // namespace EQT
 
-std::string EverQuest::GetBodyTypeName(uint8_t bodytype) {
+std::string eqt::strings::GetBodyTypeName(uint8_t bodytype) {
 	return EQT::BodyType::Name(bodytype);
 }
 
-std::string EverQuest::GetEquipSlotName(int slot) {
+std::string eqt::strings::GetEquipSlotName(int slot) {
 	switch (slot) {
 		case 0: return "Head";
 		case 1: return "Chest";
@@ -630,7 +648,7 @@ std::string EverQuest::GetEquipSlotName(int slot) {
 	}
 }
 
-std::string EverQuest::GetNpcTypeName(uint8_t npc_type) {
+std::string eqt::strings::GetNpcTypeName(uint8_t npc_type) {
 	switch (npc_type) {
 		case 0: return "Player";
 		case 1: return "NPC";
@@ -640,98 +658,12 @@ std::string EverQuest::GetNpcTypeName(uint8_t npc_type) {
 	}
 }
 
-void EverQuest::DumpEntityAppearance(const std::string& name) const {
-	// Find entity by name (case-insensitive, underscore-tolerant)
-	std::string search_lower = name;
-	std::transform(search_lower.begin(), search_lower.end(), search_lower.begin(), ::tolower);
-	std::replace(search_lower.begin(), search_lower.end(), ' ', '_');
-
-	for (const auto& [id, entity] : m_entities) {
-		std::string entity_name_lower = entity.name;
-		std::transform(entity_name_lower.begin(), entity_name_lower.end(), entity_name_lower.begin(), ::tolower);
-		if (entity_name_lower.find(search_lower) != std::string::npos) {
-			DumpEntityAppearance(id);
-			return;
-		}
-	}
-	std::cout << fmt::format("Entity '{}' not found", name) << std::endl;
-}
-
-void EverQuest::DumpEntityAppearance(uint16_t spawn_id) const {
-	auto it = m_entities.find(spawn_id);
-	if (it == m_entities.end()) {
-		std::cout << fmt::format("Entity with spawn_id {} not found", spawn_id) << std::endl;
-		return;
-	}
-
-	const Entity& e = it->second;
-
-	std::cout << "========================================" << std::endl;
-	std::cout << fmt::format("Entity Appearance Dump: {} (ID: {})", e.name, e.spawn_id) << std::endl;
-	std::cout << "========================================" << std::endl;
-
-	// Basic info
-	std::cout << fmt::format("Type:      {} ({})", GetNpcTypeName(e.npc_type), e.npc_type) << std::endl;
-	std::cout << fmt::format("Race:      {} (ID: {})", GetRaceName(e.race_id), e.race_id) << std::endl;
-	std::cout << fmt::format("Class:     {} (ID: {})", GetClassName(e.class_id), e.class_id) << std::endl;
-	std::cout << fmt::format("Gender:    {} ({})", e.gender == 0 ? "Male" : (e.gender == 1 ? "Female" : "Neutral"), e.gender) << std::endl;
-	std::cout << fmt::format("Level:     {}", e.level) << std::endl;
-	std::cout << fmt::format("Body Type: {} (ID: {})", GetBodyTypeName(e.bodytype), e.bodytype) << std::endl;
-	std::cout << fmt::format("Size:      {:.2f}", e.size) << std::endl;
-	std::cout << fmt::format("Light:     {}", e.light) << std::endl;
-
-	// Appearance details
-	std::cout << std::endl << "--- Facial Features ---" << std::endl;
-	std::cout << fmt::format("Face:       {}", e.face) << std::endl;
-	std::cout << fmt::format("Hair Color: {}", e.haircolor) << std::endl;
-	std::cout << fmt::format("Hair Style: {}", e.hairstyle) << std::endl;
-	std::cout << fmt::format("Beard:      {}", e.beard) << std::endl;
-	std::cout << fmt::format("Beard Color:{}", e.beardcolor) << std::endl;
-
-	// Equipment textures
-	std::cout << std::endl << "--- Equipment Textures (Material IDs) ---" << std::endl;
-	std::cout << fmt::format("Helm Texture:   {} (Show: {})", e.helm, e.showhelm ? "Yes" : "No") << std::endl;
-	std::cout << fmt::format("Chest Texture2: {} (equip_chest2 / mount color)", e.equip_chest2) << std::endl;
-
-	for (int i = 0; i < 9; i++) {
-		uint32_t mat = e.equipment[i];
-		uint32_t tint = e.equipment_tint[i];
-
-		// Parse tint components (BGRA format)
-		uint8_t tint_blue = (tint >> 0) & 0xFF;
-		uint8_t tint_green = (tint >> 8) & 0xFF;
-		uint8_t tint_red = (tint >> 16) & 0xFF;
-		uint8_t tint_use = (tint >> 24) & 0xFF;
-
-		std::string slot_name = GetEquipSlotName(i);
-
-		if (mat != 0 || tint != 0) {
-			std::cout << fmt::format("  [{:>9}] Material: {:>5}", slot_name, mat);
-			if (tint != 0) {
-				std::cout << fmt::format("  Tint: RGB({:>3},{:>3},{:>3}) Use: 0x{:02X}",
-					tint_red, tint_green, tint_blue, tint_use);
-			}
-			std::cout << std::endl;
-		} else {
-			std::cout << fmt::format("  [{:>9}] (none)", slot_name) << std::endl;
-		}
-	}
-
-	// Position
-	std::cout << std::endl << "--- Position ---" << std::endl;
-	std::cout << fmt::format("Location: ({:.2f}, {:.2f}, {:.2f}) Heading: {:.1f}",
-		e.x, e.y, e.z, e.heading) << std::endl;
-	std::cout << fmt::format("HP:       {}%", e.hp_percent) << std::endl;
-
-	std::cout << "========================================" << std::endl;
-}
-
-void EverQuest::DumpPacket(const std::string &prefix, uint16_t opcode, const EQ::Net::Packet &p) {
+void eqt::strings::DumpPacket(const std::string &prefix, uint16_t opcode, const EQ::Net::Packet &p) {
 	DumpPacket(prefix, opcode, (const uint8_t*)p.Data(), p.Length());
 }
 
-void EverQuest::DumpPacket(const std::string &prefix, uint16_t opcode, const uint8_t *data, size_t size) {
-	if (s_debug_level < 6) return;
+void eqt::strings::DumpPacket(const std::string &prefix, uint16_t opcode, const uint8_t *data, size_t size) {
+	if (EverQuest::GetDebugLevel() < 6) return;
 
 	LOG_TRACE(MOD_NET, "[Packet {}] [{}] [{:#06x}] Size [{}]",
 		prefix, GetOpcodeName(opcode), opcode, size);

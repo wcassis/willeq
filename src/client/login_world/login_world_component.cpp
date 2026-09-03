@@ -125,7 +125,7 @@ void LoginWorldComponent::LoginOnStatusChangeReconnectDisabled(std::shared_ptr<E
 void LoginWorldComponent::LoginOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> conn, const EQ::Net::Packet & p)
 {
 	auto opcode = p.GetUInt16(0);
-	EverQuest::DumpPacket("S->C", opcode, p);
+	eqt::strings::DumpPacket("S->C", opcode, p);
 
 	// T05: record real network traffic only (replayed packets enter via
 	// ReplayLoginPacket -> DispatchLoginPacket and are never re-recorded) --
@@ -185,7 +185,7 @@ void LoginWorldComponent::LoginSendSessionReady()
 	p.PutUInt32(6, 0);  // unknown
 	p.PutUInt32(10, 2048);  // max length
 
-	EverQuest::DumpPacket("C->S", HC_OP_SessionReady, p);
+	eqt::strings::DumpPacket("C->S", HC_OP_SessionReady, p);
 	if (m_login_connection) {
 		m_login_connection->QueuePacket(p);
 	} else {
@@ -219,7 +219,7 @@ void LoginWorldComponent::LoginSendLogin()
 	memset((char*)p.Data() + 12, 0, encrypted_len);
 	eqcrypt_block(&buffer[0], buffer_len, (char*)p.Data() + 12, true);
 
-	EverQuest::DumpPacket("C->S", HC_OP_Login, p);
+	eqt::strings::DumpPacket("C->S", HC_OP_Login, p);
 	if (m_login_connection) {
 		m_login_connection->QueuePacket(p);
 	} else {
@@ -236,7 +236,7 @@ void LoginWorldComponent::LoginSendServerRequest()
 	p.PutUInt32(6, 0);  // unknown
 	p.PutUInt16(10, 0);  // unknown
 
-	EverQuest::DumpPacket("C->S", HC_OP_ServerListRequest, p);
+	eqt::strings::DumpPacket("C->S", HC_OP_ServerListRequest, p);
 	if (m_login_connection) {
 		m_login_connection->QueuePacket(p);
 	} else {
@@ -254,7 +254,7 @@ void LoginWorldComponent::LoginSendPlayRequest(uint32_t id)
 	p.PutUInt16(10, 0);  // unknown
 	p.PutUInt32(12, id);  // server id
 
-	EverQuest::DumpPacket("C->S", HC_OP_PlayEverquestRequest, p);
+	eqt::strings::DumpPacket("C->S", HC_OP_PlayEverquestRequest, p);
 	if (m_login_connection) {
 		m_login_connection->QueuePacket(p);
 	} else {
@@ -447,7 +447,7 @@ void LoginWorldComponent::WorldOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakCon
 {
 	LOG_TRACE(MOD_WORLD, "WorldOnPacketRecv called");
 	auto opcode = p.GetUInt16(0);
-	EverQuest::DumpPacket("S->C", opcode, p);
+	eqt::strings::DumpPacket("S->C", opcode, p);
 
 	// T05: record real network traffic only (replayed packets enter via
 	// ReplayWorldPacket -> DispatchWorldPacket and are never re-recorded) --
@@ -521,7 +521,7 @@ void LoginWorldComponent::DispatchWorldPacket(const EQ::Net::Packet & p)
 		WorldProcessZoneServerInfo(p);
 		break;
 	default:
-		LOG_WARN(MOD_WORLD, "Unhandled world opcode: {}", EverQuest::GetOpcodeName(opcode));
+		LOG_WARN(MOD_WORLD, "Unhandled world opcode: {}", eqt::strings::GetOpcodeName(opcode));
 		break;
 	}
 }
@@ -573,7 +573,7 @@ void LoginWorldComponent::WorldSendClientAuth()
 
 	LOG_INFO(MOD_WORLD, "Sending login info: dbid={}, key={}, zoning={}", dbid_str, m_key, zoning_flag);
 
-	EverQuest::DumpPacket("C->S", HC_OP_SendLoginInfo, p);
+	eqt::strings::DumpPacket("C->S", HC_OP_SendLoginInfo, p);
 	if (m_world_connection) {
 		m_world_connection->QueuePacket(p);
 	} else {
@@ -602,7 +602,7 @@ void LoginWorldComponent::WorldSendEnterWorld(const std::string &character)
 	p.PutUInt32(66, 0);  // unknown
 	p.PutUInt32(70, 0);  // unknown
 
-	EverQuest::DumpPacket("C->S", HC_OP_EnterWorld, p);
+	eqt::strings::DumpPacket("C->S", HC_OP_EnterWorld, p);
 	if (m_world_connection) {
 		m_world_connection->QueuePacket(p);
 	} else {
@@ -684,7 +684,7 @@ void LoginWorldComponent::WorldSendApproveWorld()
 	p.PutUInt16(0, HC_OP_ApproveWorld);
 	// The rest is character-specific data which we'll leave as zeros for now
 
-	EverQuest::DumpPacket("C->S", HC_OP_ApproveWorld, p);
+	eqt::strings::DumpPacket("C->S", HC_OP_ApproveWorld, p);
 	if (m_world_connection) {
 		m_world_connection->QueuePacket(p);
 	} else {
@@ -704,7 +704,7 @@ void LoginWorldComponent::WorldSendWorldClientCRC()
 		p.PutUInt8(i, 0);
 	}
 
-	EverQuest::DumpPacket("C->S", HC_OP_World_Client_CRC1, p);
+	eqt::strings::DumpPacket("C->S", HC_OP_World_Client_CRC1, p);
 	if (m_world_connection) {
 		m_world_connection->QueuePacket(p);
 	} else {
@@ -713,7 +713,7 @@ void LoginWorldComponent::WorldSendWorldClientCRC()
 
 	// Send CRC2
 	p.PutUInt16(0, HC_OP_World_Client_CRC2);
-	EverQuest::DumpPacket("C->S", HC_OP_World_Client_CRC2, p);
+	eqt::strings::DumpPacket("C->S", HC_OP_World_Client_CRC2, p);
 	if (m_world_connection) {
 		m_world_connection->QueuePacket(p);
 	} else {
@@ -728,7 +728,7 @@ void LoginWorldComponent::WorldSendWorldClientReady()
 
 	p.PutUInt16(0, HC_OP_WorldClientReady);
 
-	EverQuest::DumpPacket("C->S", HC_OP_WorldClientReady, p);
+	eqt::strings::DumpPacket("C->S", HC_OP_WorldClientReady, p);
 	if (m_world_connection) {
 		m_world_connection->QueuePacket(p);
 	} else {
@@ -744,7 +744,7 @@ void LoginWorldComponent::WorldSendWorldComplete()
 
 	p.PutUInt16(0, HC_OP_WorldComplete);
 
-	EverQuest::DumpPacket("C->S", HC_OP_WorldComplete, p);
+	eqt::strings::DumpPacket("C->S", HC_OP_WorldComplete, p);
 	if (m_world_connection) {
 		m_world_connection->QueuePacket(p);
 	} else {
@@ -806,7 +806,7 @@ void LoginWorldComponent::WorldProcessExpansionInfo(const EQ::Net::Packet &p)
 		ack.Resize(6);
 		ack.PutUInt16(0, HC_OP_AckPacket);
 		ack.PutUInt32(2, 0);  // sequence or something
-		EverQuest::DumpPacket("C->S", HC_OP_AckPacket, ack);
+		eqt::strings::DumpPacket("C->S", HC_OP_AckPacket, ack);
 		if (m_world_connection) {
 			m_world_connection->QueuePacket(ack);
 		} else {

@@ -277,7 +277,7 @@ Audio updates                       Zone load completion detection
 - **Event types** (`include/client/state/event_bus.h`) — 97 event types covering all game state changes
 - **Intent types** (`include/client/events/renderer_intents.h`) — 35 intent structs in the `RendererIntent` variant (T264 pruned; T268 deleted DestroyAllLootIntent -- no Titanium destroy-loot packet; pinned by test_reachability_sweep) for user actions
 
-**Key separation**: EverQuest communicates with the renderer only through the bridge — no `m_renderer` member, no `GetRenderer()` accessor. Application owns the renderer and wires it to EverQuest via bridge pointers. Player movement flows renderer→game exclusively via the `PlayerPositionChanged` intent (S2 removed the legacy synchronous callback); inventory UI state flows game→renderer exclusively via enriched `InventorySlotChanged` events; bridge payloads are typed (no `void*`). The graphics-facing game code is concentrated in `src/client/bridge/bridge_component.cpp` (the boundary TU); `eq.cpp` itself has only two graphics includes (loading status + command registry). Remaining known seams (InitGraphics renderer parameter, asset loaders living in the `EQT::Graphics` namespace) are tracked in `refactor/BOARD.md` (item B006) — do not "fix" coupling ad hoc.
+**Key separation**: EverQuest communicates with the renderer only through the bridge — no `m_renderer` member, no `GetRenderer()` accessor. Application owns the renderer and wires it to EverQuest via bridge pointers. Player movement flows renderer→game exclusively via the `PlayerPositionChanged` intent (S2 removed the legacy synchronous callback); inventory UI state flows game→renderer exclusively via enriched `InventorySlotChanged` events; bridge payloads are typed (no `void*`). The graphics-facing game code is concentrated in `src/client/bridge/bridge_component.cpp` (the boundary TU); `src/client/core/everquest.cpp` itself has only two graphics includes (loading status + command registry). Remaining known seams (InitGraphics renderer parameter, asset loaders living in the `EQT::Graphics` namespace) are tracked in `refactor/BOARD.md` (item B006) — do not "fix" coupling ad hoc.
 
 ### Connection Flow
 
@@ -294,8 +294,8 @@ The client connects through three stages, each with its own connection manager:
 - Main thread runs render loop (or sleeps in headless mode)
 - Manages zone loading thread (GL context transfer, snapshot handoff)
 
-**EverQuest class** (`include/client/eq.h`, implementation split across `src/client/eq.cpp` + 37 `eq_*.cpp` domain TUs)
-- Game state and network logic. eq.cpp itself (1,073 lines) holds only the core: lifecycle, connection setup, the zone packet-receive callback. Everything else (the zone-stream dispatcher, zone entry, movement, entities, chat, merchant, bridge, …) lives in domain TUs — consult `docs/module_map.md` to find the right file
+**EverQuest class** (`include/client/eq.h`, implementation split across `src/client/core/everquest.cpp` + domain TUs under `src/client/core/`, `src/client/action/` and the extracted `src/client/<family>/` components, Batch K)
+- Game state and network logic. `src/client/core/everquest.cpp` itself (K14: moved from the old flat `eq.cpp`) holds only the core: lifecycle, connection setup, the zone packet-receive callback. Everything else (the zone-stream dispatcher, zone entry, movement, entities, chat, merchant, bridge, …) lives in domain TUs — consult `docs/module_map.md` to find the right file
 - Manages all three connection stages
 - Handles entity tracking, movement, chat, combat, and doors
 - All Titanium opcodes defined as enums: `TitaniumLoginOpcodes`, `TitaniumWorldOpcodes`, `TitaniumZoneOpcodes`
@@ -334,7 +334,7 @@ The client connects through three stages, each with its own connection manager:
   application with zero callers once T324 removed its sole consumer; all 49
   per-effect handlers were logging stubs, and its value-scaling table was wrong
   against the server (recorded in `refactor/completed/deferred_archive_20260903.md`, item 45).
-- Both deletions share one tombstone in `src/client/eq.cpp`. Do not rebuild
+- Both deletions share one tombstone in `src/client/core/everquest.cpp`. Do not rebuild
   either; the server is authoritative and reports every landing per target.
 
 **Skills** (`include/client/skill/`)

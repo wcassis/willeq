@@ -409,6 +409,12 @@ public:
 	eqt::ChatOutput& Out() { return m_chat_output; }
 	eqt::PlayerFacade& Self() { return m_player_facade; }
 	eqt::PacketSender& Net() { return m_packet_sender; }
+	// K14 (Batch K): the fourth context service -- the eqstr lookup surface
+	// (GetStringMessage/GetFormattedStringMessage/LoadStringFiles), over
+	// EverQuest's own m_string_db. Components reach it as ctx_.strings; this
+	// accessor is for everything else (the action layer, spell_cast_checks,
+	// the UI, tests).
+	eqt::StringDb& Strings() { return m_strings; }
 	// K05 (Batch K): the Phase 4 tradeskill senders are
 	// eqt::merchant::MerchantComponent's; callers go through Merchant().
 	// K02 (Batch K): the GM command senders are eqt::gm::GmComponent's; callers
@@ -505,9 +511,12 @@ public:
 	// K13 correction: friendship is NOT tested by the owner_. count alone.
 	// merchant and commands both reach zero owner_.m_ (their only handle uses
 	// are the two PUBLIC string-DB lookups) yet still need the friend line for
-	// the PRIVATE STATICS EverQuest::FormatPrice/DumpPacket/s_debug_level,
-	// which a component names by qualification, not through owner_. The
-	// residue table in refactor/K13_context_services.md records both axes.
+	// the PRIVATE STATIC EverQuest::s_debug_level, which every component
+	// names by qualification, not through owner_. (K14 moved FormatPrice and
+	// DumpPacket, the two other statics this note used to cite, out to
+	// eqt::strings -- s_debug_level alone still justifies the line, and
+	// still does for every other component here.) The residue table in
+	// refactor/K13_context_services.md records both axes.
 	friend class CombatManager;
 	friend class TradeManager;
 	friend class eqt::guild::GuildComponent;  // K01 transition; K-final removes it
@@ -522,8 +531,8 @@ public:
 	friend class eqt::bridge::BridgeComponent;  // K11 transition; K-final removes it
 	friend class eqt::commands::CommandsComponent;  // K12 transition; K-final removes it
 
-	// String database for EQ message lookups (works in all modes)
-	bool LoadStringFiles(const std::string& eqClientPath);
+	// String database for EQ message lookups (works in all modes). K14:
+	// LoadStringFiles moved to eqt::StringDb -- see Strings().
 	const EQT::StringDatabase& GetStringDatabase() const { return m_string_db; }
 
 	// S04: Pre-allocate spell system at startup (spell DB, buff manager, spell effects, spell type processor)
@@ -580,36 +589,14 @@ private:
 	// Bridge for cross-thread game state → renderer communication (Phase 2+)
 	eqt::bridge::GameStateBridge* m_bridge = nullptr;
 
-	// Utility functions
-	static void DumpPacket(const std::string &prefix, uint16_t opcode, const EQ::Net::Packet &p);
-	static void DumpPacket(const std::string &prefix, uint16_t opcode, const uint8_t *data, size_t size);
-public:
-	// K13: public because eqt::PacketSender -- a context service, not a
-	// friend component -- logs it from the moved SafeQueueZone() body. A pure
-	// static lookup over opcode values, exactly the standing T180 gave
-	// GetClassName and T271 GetRaceName.
-	static std::string GetOpcodeName(uint16_t opcode);
-	// T244: public because EqActionHandler (not a friend) renders cast
-	// refusals from official eqstr ids -- see client/spell/cast_refusal.h.
-	std::string GetStringMessage(uint32_t string_id);
-	// T251: public for the same reason -- castRefusalMessage() substitutes
-	// the missing component's name into 433 "You are missing %1.".
-	std::string GetFormattedStringMessage(uint32_t string_id, const std::vector<std::string>& args);
-private:
-	static std::string GetChatTypeName(uint32_t chat_type);
-public:
-	// T180: public because /raid list renders class names from EqActionHandler,
-	// which is not a friend. A pure lookup table over a wire enum -- no state,
-	// nothing to encapsulate. The alternative was pulling the graphics-side
-	// EQT::Graphics::getClassName into a non-graphics TU, i.e. a new dependency
-	// direction for a switch statement.
-	static std::string GetClassName(uint32_t class_id);
-	// T271: public for the same reason as GetClassName above -- it is a pure
-	// race_models lookup with no state, and tests must be able to hold it to
-	// the audited rows (it used to carry a shifted hardcoded table that was
-	// printed to the player).
-	static std::string GetRaceName(uint32_t race_id);
-private:
+	// K14 (Batch K, refactor/K14_directory_move.md): DumpPacket and eight
+	// name/price lookups (GetOpcodeName, GetChatTypeName, GetClassName,
+	// GetRaceName, GetDeityName, GetBodyTypeName, GetEquipSlotName,
+	// GetNpcTypeName, FormatPrice) moved to eqt::strings
+	// (include/client/eq_strings.h) as free functions;
+	// GetStringMessage/GetFormattedStringMessage moved to eqt::StringDb --
+	// see Strings().
+
 	// K13: the PRIVATE half of the player-state facade (PosX/PosY/PosZ/
 	// HeadingDeg/SetPosLocal/SetHeadingLocal/MySpawnId/SetMySpawnId/
 	// CurrentZoneName/CurrentZoneId, and the T288 banner explaining that they
@@ -617,12 +604,6 @@ private:
 	// eqt::PlayerFacade -- include/client/player_facade.h, which carries the
 	// banner verbatim. No caller outside the friend components existed, so
 	// nothing forwards.
-
-	static std::string GetDeityName(uint32_t deity_id);
-	static std::string GetBodyTypeName(uint8_t bodytype);
-	static std::string GetEquipSlotName(int slot);
-	static std::string GetNpcTypeName(uint8_t npc_type);
-
 
 	// Phase 7.5: Group sync helper
 
@@ -809,8 +790,8 @@ private:
 	// the last family still reading it (see MerchantComponent's file
 	// banner); Merchant's writers reach it through Commands().VendorItems().
 
-	// Format copper amount as currency string (e.g. "5p 3g 2s 1c")
-	static std::string FormatPrice(int32_t copperAmount);
+	// K14: FormatPrice (format copper as "5p 3g 2s 1c") moved to
+	// eqt::strings::FormatPrice -- see include/client/eq_strings.h.
 
 	// Player mode bank state
 
@@ -840,7 +821,8 @@ public:
 	// item-map twin, GetVendorItems(), moved to
 	// eqt::commands::CommandsComponent::VendorItems() -- see Commands().
 	const std::string& GetVendorName() const { return m_game_state.player().vendorName(); }
-	static std::string FormatVendorPrice(int32_t copperAmount) { return FormatPrice(copperAmount); }
+	// K14: FormatVendorPrice was a one-line alias for FormatPrice with a
+	// single caller, inlined there (§Mechanism 5).
 
 	// K12 (Batch K): RequestVendorToggle/Buy/Sell and RequestEquip moved to
 	// eqt::commands::CommandsComponent -- see Commands().
@@ -899,6 +881,8 @@ private:
 	eqt::ChatOutput m_chat_output;
 	eqt::PlayerFacade m_player_facade;
 	eqt::PacketSender m_packet_sender;
+	// K14: the fourth context service, over m_string_db (declared above).
+	eqt::StringDb m_strings;
 	// K01: declared last -- every member m_ctx references is declared above.
 	eqt::ClientContext m_ctx;
 	std::unique_ptr<eqt::guild::GuildComponent> m_guild;

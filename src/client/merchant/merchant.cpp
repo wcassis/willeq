@@ -177,7 +177,7 @@ void eqt::merchant::MerchantComponent::SendMoveItem(int16_t fromSlot, int16_t to
 
 	LOG_DEBUG(MOD_INVENTORY, "Sending MoveItem packet: {} -> {} (qty: {})", fromSlot, toSlot, quantity);
 
-	EverQuest::DumpPacket("C->S", HC_OP_MoveItem, packet);
+	eqt::strings::DumpPacket("C->S", HC_OP_MoveItem, packet);
 	ctx_.zone_connection->QueuePacket(packet);
 }
 
@@ -200,7 +200,7 @@ void eqt::merchant::MerchantComponent::SendDeleteItem(int16_t slot)
 
 	LOG_DEBUG(MOD_INVENTORY, "Sending DeleteItem: slot {}", slot);
 
-	EverQuest::DumpPacket("C->S", HC_OP_DeleteItem, packet);
+	eqt::strings::DumpPacket("C->S", HC_OP_DeleteItem, packet);
 	ctx_.zone_connection->QueuePacket(packet);
 }
 
@@ -237,10 +237,10 @@ std::string eqt::merchant::MerchantComponent::ScribeRefusalMessage(uint32_t spel
 	// written only by the PlayerProfile handler.
 	const uint8_t reqLevel = spellData->getClassLevel(static_cast<EQ::PlayerClass>(ctx_.self.GetClass()));
 	if (reqLevel == 255) {
-		return owner_.GetStringMessage(181);
+		return owner_.Strings().GetStringMessage(181);
 	}
 	if (ctx_.self.GetLevel() < reqLevel) {
-		return owner_.GetFormattedStringMessage(12048, {std::to_string(reqLevel), spellData->name});
+		return owner_.Strings().GetFormattedStringMessage(12048, {std::to_string(reqLevel), spellData->name});
 	}
 
 	return "";
@@ -323,7 +323,7 @@ void eqt::merchant::MerchantComponent::ScribeSpellFromScroll(uint32_t spellId, u
 
 		LOG_DEBUG(MOD_SPELL, "Sending MemorizeSpell: spell={} book_slot={} scribing=0 (scribe from scroll)",
 			spellId, bookSlot);
-		EverQuest::DumpPacket("C->S", HC_OP_MemorizeSpell, memPacket);
+		eqt::strings::DumpPacket("C->S", HC_OP_MemorizeSpell, memPacket);
 		ctx_.zone_connection->QueuePacket(memPacket);
 	}
 
@@ -351,7 +351,7 @@ void eqt::merchant::MerchantComponent::SendTradeRequest(const EQT::TradeRequest_
 	packet.PutUInt16(0, HC_OP_TradeRequest);
 	memcpy(packet.Data() + 2, &req, sizeof(EQT::TradeRequest_Struct));
 
-	EverQuest::DumpPacket("C->S", HC_OP_TradeRequest, packet);
+	eqt::strings::DumpPacket("C->S", HC_OP_TradeRequest, packet);
 	ctx_.zone_connection->QueuePacket(packet);
 }
 
@@ -367,7 +367,7 @@ void eqt::merchant::MerchantComponent::SendTradeRequestAck(const EQT::TradeReque
 	packet.PutUInt16(0, HC_OP_TradeRequestAck);
 	memcpy(packet.Data() + 2, &ack, sizeof(EQT::TradeRequestAck_Struct));
 
-	EverQuest::DumpPacket("C->S", HC_OP_TradeRequestAck, packet);
+	eqt::strings::DumpPacket("C->S", HC_OP_TradeRequestAck, packet);
 	ctx_.zone_connection->QueuePacket(packet);
 }
 
@@ -397,7 +397,7 @@ void eqt::merchant::MerchantComponent::SendMoveCoin(const EQT::MoveCoin_Struct& 
 	memcpy(packet.Data() + 2, &move, sizeof(EQT::MoveCoin_Struct));
 
 	LOG_DEBUG(MOD_MAIN, "Queueing MoveCoin packet, size={}", packet.Length());
-	EverQuest::DumpPacket("C->S", HC_OP_MoveCoin, packet);
+	eqt::strings::DumpPacket("C->S", HC_OP_MoveCoin, packet);
 	ctx_.zone_connection->QueuePacket(packet);
 }
 
@@ -452,7 +452,7 @@ void eqt::merchant::MerchantComponent::SendTradeAcceptClick(const EQT::TradeAcce
 	packet.PutUInt16(0, HC_OP_TradeAcceptClick);
 	memcpy(packet.Data() + 2, &accept, sizeof(EQT::TradeAcceptClick_Struct));
 
-	EverQuest::DumpPacket("C->S", HC_OP_TradeAcceptClick, packet);
+	eqt::strings::DumpPacket("C->S", HC_OP_TradeAcceptClick, packet);
 	ctx_.zone_connection->QueuePacket(packet);
 }
 
@@ -468,7 +468,7 @@ void eqt::merchant::MerchantComponent::SendCancelTrade(const EQT::CancelTrade_St
 	packet.PutUInt16(0, HC_OP_CancelTrade);
 	memcpy(packet.Data() + 2, &cancel, sizeof(EQT::CancelTrade_Struct));
 
-	EverQuest::DumpPacket("C->S", HC_OP_CancelTrade, packet);
+	eqt::strings::DumpPacket("C->S", HC_OP_CancelTrade, packet);
 	ctx_.zone_connection->QueuePacket(packet);
 }
 
@@ -499,7 +499,7 @@ void eqt::merchant::MerchantComponent::SendReadBookRequest(uint8_t window, uint8
 
 	LOG_DEBUG(MOD_MAIN, "Sending ReadBook request: window={} type={} filename='{}'", window, type, filename);
 
-	EverQuest::DumpPacket("C->S", HC_OP_ReadBook, packet);
+	eqt::strings::DumpPacket("C->S", HC_OP_ReadBook, packet);
 	ctx_.zone_connection->QueuePacket(packet);
 }
 

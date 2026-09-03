@@ -395,25 +395,25 @@ TEST(EqActionHandlerCast, CastRefusalStringIds_MatchEqstr) {
 // row would print "[Unknown message #N]" in place of the reason.
 TEST(EqActionHandlerCast, CastRefusalStrings_ResolveWithoutStringDb) {
     WireHarness h;
-    EXPECT_EQ(h.eq.GetStringMessage(100), "Your target is out of range, get closer!");
-    EXPECT_EQ(h.eq.GetStringMessage(108), "You cannot see your target.");
-    EXPECT_EQ(h.eq.GetStringMessage(175), "You can't cast spells while stunned!");
-    EXPECT_EQ(h.eq.GetStringMessage(199), "Insufficient Mana to cast this spell!");
-    EXPECT_EQ(h.eq.GetStringMessage(207), "You *CANNOT* cast spells, you have been silenced!");
-    EXPECT_EQ(h.eq.GetStringMessage(236), "Spell recast time not yet met.");
-    EXPECT_EQ(h.eq.GetStringMessage(251), "That spell can not affect this target NPC.");
-    EXPECT_EQ(h.eq.GetStringMessage(255), "You do not have a pet.");
+    EXPECT_EQ(h.eq.Strings().GetStringMessage(100), "Your target is out of range, get closer!");
+    EXPECT_EQ(h.eq.Strings().GetStringMessage(108), "You cannot see your target.");
+    EXPECT_EQ(h.eq.Strings().GetStringMessage(175), "You can't cast spells while stunned!");
+    EXPECT_EQ(h.eq.Strings().GetStringMessage(199), "Insufficient Mana to cast this spell!");
+    EXPECT_EQ(h.eq.Strings().GetStringMessage(207), "You *CANNOT* cast spells, you have been silenced!");
+    EXPECT_EQ(h.eq.Strings().GetStringMessage(236), "Spell recast time not yet met.");
+    EXPECT_EQ(h.eq.Strings().GetStringMessage(251), "That spell can not affect this target NPC.");
+    EXPECT_EQ(h.eq.Strings().GetStringMessage(255), "You do not have a pet.");
     // T251: exact eqstr text (T246's row said "spell components").
-    EXPECT_EQ(h.eq.GetStringMessage(272), "You are missing some required components.");
-    EXPECT_EQ(h.eq.GetStringMessage(12442), "You are already casting a spell!");
+    EXPECT_EQ(h.eq.Strings().GetStringMessage(272), "You are missing some required components.");
+    EXPECT_EQ(h.eq.Strings().GetStringMessage(12442), "You are already casting a spell!");
 }
 
 // T251: 433 "You are missing %1." is the named form of 272; the fallback
 // path (no string DB) must carry the row AND substitute %1.
 TEST(EqActionHandlerCast, CastRefusalStrings_MissingNamedComponent_ResolvesWithoutStringDb) {
     WireHarness h;
-    EXPECT_EQ(h.eq.GetStringMessage(433), "You are missing %1.");
-    EXPECT_EQ(h.eq.GetFormattedStringMessage(433, {"Bone Chips"}), "You are missing Bone Chips.");
+    EXPECT_EQ(h.eq.Strings().GetStringMessage(433), "You are missing %1.");
+    EXPECT_EQ(h.eq.Strings().GetFormattedStringMessage(433, {"Bone Chips"}), "You are missing Bone Chips.");
 }
 
 TEST(EqActionHandlerCast, CastSpell_TargetOutOfRange_SaysOutOfRange) {

@@ -486,7 +486,7 @@ void eqt::commands::CommandsComponent::RequestTraining()
 	uint32_t trained_class = static_cast<uint32_t>(target.class_id) - TRAINER_CLASS_OFFSET;
 	if (trained_class != ctx_.game_state.player().classId()) {
 		ctx_.out.System(fmt::format("{} trains {}s; you are a {}.",
-			target.name, EverQuest::GetClassName(trained_class), EverQuest::GetClassName(ctx_.game_state.player().classId())));
+			target.name, eqt::strings::GetClassName(trained_class), eqt::strings::GetClassName(ctx_.game_state.player().classId())));
 		return;
 	}
 

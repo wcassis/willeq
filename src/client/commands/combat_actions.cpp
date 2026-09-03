@@ -510,7 +510,7 @@ void eqt::commands::CommandsComponent::ZoneProcessStun(uint32_t duration_ms)
 	auto now = std::chrono::steady_clock::now();
 	if (duration_ms == 0) {
 		if (IsStunned()) {
-			ctx_.out.System(owner_.GetStringMessage(12480));  // You are no longer stunned.
+			ctx_.out.System(owner_.Strings().GetStringMessage(12480));  // You are no longer stunned.
 		}
 		m_stunned_until = {};
 		LOG_INFO(MOD_COMBAT, "OP_Stun: unstunned");
@@ -522,7 +522,7 @@ void eqt::commands::CommandsComponent::ZoneProcessStun(uint32_t duration_ms)
 		m_stunned_until = until;
 	}
 	if (!was_stunned) {
-		ctx_.out.System(owner_.GetStringMessage(12479));  // You are stunned!
+		ctx_.out.System(owner_.Strings().GetStringMessage(12479));  // You are stunned!
 	}
 	LOG_INFO(MOD_COMBAT, "OP_Stun: stunned for {} ms", duration_ms);
 }
