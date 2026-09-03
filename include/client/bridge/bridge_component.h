@@ -218,6 +218,7 @@ public:
 	void SetEffectsVolume(float volume) { m_audio_config_effects_volume = volume; }
 	void SetSoundFont(const std::string& path) { m_audio_config_soundfont = path; }
 	void SetVendorMusic(const std::string& filename) { m_audio_config_vendor_music = filename; }
+	void SetUse3DAudio(bool enabled) { m_audio_config_use_3d_audio = enabled; }
 #endif
 
 private:
@@ -286,9 +287,13 @@ private:
 	float m_audio_config_effects_volume = 1.0f;
 	std::string m_audio_config_soundfont;
 	std::string m_audio_config_vendor_music = "gl.xmi";
-	// K11: SetUse3DAudio() had zero callers tree-wide and was deleted
-	// (section Mechanism 5); the flag keeps its default and is still read by
-	// InitializeAudio(). Boarded.
+	// K15 (B037): re-wired. K11 deleted SetUse3DAudio() as callerless and the
+	// flag was then settable only by editing this header -- AND it had zero
+	// READERS too (the K11 note claiming InitializeAudio() read it was wrong,
+	// re-measured at 7c125b28). It now has both: Application sets it from
+	// "audio.use_3d", and InitializeAudio() pushes it into
+	// AudioManager::setUse3DAudio(), which gates the spatial branch of
+	// playSoundInternal().
 	bool m_audio_config_use_3d_audio = true;
 #endif
 

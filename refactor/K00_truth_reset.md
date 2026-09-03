@@ -243,7 +243,7 @@ Every command was run at `3808ebe9` in `wt/slot1`. `W` = the worktree root.
 | archive T114, `loadedModels_` | `grep -rc loadedModels_ src/client/graphics/eq/*.cpp` | 67 references across four TUs; lock coverage not checked | B016 (B), **unconfirmed, needs a TSAN run** |
 | item 37, decline wording | `grep -rn 'declined the guild' src include` | `eq_guild.cpp:96` intact | B017 (C) |
 | item 16, first person | `ls src/client/graphics/entity_first_person_draw.cpp` | present (T309 draw rule landed); eye placement unchanged | B018 (C) |
-| placeables/doors unmeasured | plan `T301`/section read; `tools/hwcaps/zone_bench_memory.h` annotated in place | no live memory harness exists | B019 (C) |
+| placeables/doors unmeasured | plan `T301`/section read; `tools/hwcaps/zone_bench_memory.h` annotated in place | no live memory harness exists | B040 (C), renumbered from B019 by K15 |
 | archive T69, budgets | `grep -rn deferred include/client/graphics/constrained_renderer_config.h` | the per-category budgets are still absent | B020 (C) |
 | archive T69, untracked RSS | archive read | not asserted in `visual_gate.py`; Leg B territory to change | B021 (C) |
 | archive T70, spells.eff | `ls src/client/graphics/spell_visual_fx.cpp` | present, 1,517 lines, still the hardcoded vocabulary | B022 (C) |

@@ -677,9 +677,8 @@ private:
 	// INTO that store, not a copy.
 
 	// Movement target
-	// K07: m_last_movement_update has ZERO references tree-wide (BOARD item);
-	// m_last_position_update_time moved into MovementComponent.
-	uint32_t m_last_movement_update = 0;
+	// K07: m_last_position_update_time moved into MovementComponent.
+	// K15 (B031): m_last_movement_update DELETED -- zero references tree-wide.
 
 	// Follow target
 
@@ -752,12 +751,12 @@ private:
 	// Guild state. K01: the pending-invite trio moved into GuildComponent.
 	// m_guild_id/m_guild_rank STAY -- written by the zone family
 	// (eq_zone_entry.cpp, eq_entities.cpp), read by the public getters.
-	// m_guild_name has ZERO references tree-wide (K01; BOARD B-item).
+	// K15 (B019): m_guild_name DELETED -- zero references tree-wide. Restore
+	// only alongside BOTH a wire source and a reader.
 	uint32_t m_guild_id = 0;
 	// T317: Titanium rank encoding (0 member / 1 officer / 2 leader / 9 none).
 	// 9 == GUILD_RANK_NONE_TI is the correct "not in a guild" default.
 	uint8_t m_guild_rank = 9;
-	std::string m_guild_name;
 
 
 	// P28: the bulk of this block (eq client/config paths, quit flag, hotbar

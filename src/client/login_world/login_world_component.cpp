@@ -903,9 +903,14 @@ void LoginWorldComponent::WorldProcessSetChatServer(const EQ::Net::Packet &p)
 	LOG_DEBUG(MOD_WORLD, "UCS connection info: {}:{}, type: '{}'",
 		m_ucs_host, m_ucs_port, m_ucs_connection_type);
 
-	// Connect to UCS server
-	// TODO: Fix UCS implementation to use correct EQStream API
-	// ConnectToUCS(m_ucs_host, m_ucs_port);
+	// K15 (board B005): the commented-out ConnectToUCS() call that stood here,
+	// and the UCSConnection class it named (src/client/ucs.cpp,
+	// include/client/ucs.h), are DELETED. T297 measured cross-zone ooc,
+	// auction, tell and guild all working with no UCS connection at all -- on
+	// this server the world/zone servers carry them. The parsed host, port,
+	// connection type and mail key above are kept: they are the wire contract
+	// T13 fixed and are asserted by test_login_world_flow.
+	// Recover the class with: git show 7c125b28:src/client/ucs.cpp
 }
 
 void LoginWorldComponent::WorldProcessZoneServerInfo(const EQ::Net::Packet &p)

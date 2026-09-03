@@ -320,14 +320,14 @@ private:
 	bool m_tributes_sent = false;
 	bool m_guild_tributes_sent = false;
 	bool m_req_client_spawn_sent = false;
-	// K09: written by CleanupZone and read by nothing -- ZoneSendSpawnAppearance,
-	// its only reader, had zero callers tree-wide and was deleted here
-	// (section Mechanism 5). Same shape as m_client_spawned. Boarded.
-	bool m_spawn_appearance_sent = false;
+	// K15 (B035): m_spawn_appearance_sent and m_client_spawned DELETED. K09
+	// deleted their only readers (ZoneSendSpawnAppearance, ZoneSendSessionReady
+	// -- both unreachable and unguarded), leaving two flags CleanupZone reset
+	// and nothing consulted. The live spawn-ready state is
+	// game_state.world().clientReady(), reset alongside them.
 	bool m_exp_zonein_sent = false;
 	bool m_send_exp_zonein_received = false;
 	bool m_server_filter_sent = false;
-	bool m_client_spawned = false;
 	int m_aa_table_count = 0;
 	int m_tribute_count = 0;
 	int m_guild_tribute_count = 0;
