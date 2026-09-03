@@ -65,46 +65,59 @@ into the component.**
 | core | `eq.cpp` | 38 | 3 | ctor/dtor, wiring, `Test_*` seams — stays |
 | action_handler | `eq_action_handler*` | 19 | 0 | `EqActionHandler` forwarders; retargeted in K-final only |
 
-## Mechanism (every unit, identical)
+## Mechanism (every unit, identical) — REVISED after the K01 pilot (2026-09-03)
 
-1. **Context.** K01 creates a new header, `client_context.h`, under
-   `include/client/`: `struct ClientContext` holding a reference (or pointer, matching the
-   current member type) to each of the 15 core members. `EverQuest` owns one
-   `ClientContext m_ctx` built in its ctor from its own members. No behaviour.
+1. **Context.** `include/client/client_context.h` (created by K01):
+   `struct eqt::ClientContext` holding a reference to each core member, named
+   without the `m_` prefix (`m_character` → `character`). **14 unconditional
+   members + `audio_manager` under `#ifdef WITH_AUDIO`** (K01 correction 1).
+   `EverQuest` owns `ClientContext m_ctx`, built in the ctor initialiser list
+   (the ctor had none before K01; reference members force one) and declared
+   AFTER every member it references. Accessor `Context()`.
 2. **Component class.** `include/client/<family>/<family>_component.h`,
-   `class <Family>Component`, constructed with `(ClientContext&, EverQuest&)`.
-   The `EverQuest&` is the **transition handle**: cross-family calls the
-   moved code makes go through it, unchanged in spelling. `EverQuest` declares
-   `friend class <Family>Component` for the transition. K-final removes both.
-3. **Members move.** Every single-family `m_*` member moves into the
-   component as-is. Core members (the 15) are reached as `ctx_.foo`. A member
-   shared with another family but outside the core stays in `EverQuest` and
-   is reached as `owner_.m_foo` through the transition friendship; the unit
-   that extracts the LAST family using it moves it, and records the decision.
-4. **Methods move.** Bodies move verbatim into `src/client/<family>/…` (the
-   existing TU files `git mv`'d into the directory). The only edits inside a
-   body are `m_x` → `ctx_.x` or `owner_.x`, and `Foo()` → `owner_.Foo()` for
-   a method that stayed behind. **No other change to a moved body. No
-   drive-by fixes.**
-5. **Forwarders.** For each moved method that has a caller outside the family
-   (measure with grep at the unit tip: `tests/`, `src/`, `include/`),
-   `EverQuest` keeps a one-line inline forwarder `return m_<family>->Foo(…);`.
-   Methods with no external caller are removed from `eq.h` outright.
-6. **Ratchet.** `scripts/refactor/file_size_allowlist.txt` entry for `eq.h`
-   is lowered to the new line count in the same commit. It must go down every
-   unit.
-7. **Tests.** Existing tests keep passing through the forwarders. Add
-   `tests/test_<family>_component.cpp` with at least: constructs against a
-   real `EverQuest` in headless mode, and one behaviour test per public
-   method group that exercises the component directly (not via the
-   forwarder). `test_duplicate_state_stores.cpp` scans `eq.h` as text: run it
-   and, if it must also scan the new component header, extend its file list
-   — that is territory, not scope creep (correction 27 shape).
-8. **Proof.** `verify_move_only.py` will exit 1 by construction (the `ctx_.`
-   / `owner_.` rewrites). Use the J-batch line-multiset check with those two
-   substitutions normalised (`sed 's/ctx_\.\|owner_\.//g'` on both sides)
-   and report the residual, which must be only the forwarders, the class
-   scaffolding and the friend line.
+   `class eqt::<family>::<Family>Component`, ctor `(ClientContext&, EverQuest&)`.
+   The `EverQuest&` is the **transition handle** for cross-family calls and for
+   shared non-core members; `EverQuest` declares `friend class` for it. K-final
+   removes both. `EverQuest` exposes `<Family>Component& <Family>()`.
+3. **Members move.** Single-family `m_*` members move into the component.
+   Core members are `ctx_.foo`. A member shared with another family but outside
+   the core stays in `EverQuest` as `owner_.m_foo`; the unit extracting the
+   LAST family using it moves it. A member with ZERO references tree-wide is
+   not moved: it is boarded as dead (K01 found `m_guild_name`).
+4. **Methods move.** Bodies move verbatim into `src/client/<family>/…` (`git mv`
+   of the existing TU). Exactly THREE substitutions are allowed inside a body:
+   `m_x` → `ctx_.x` / `owner_.m_x`; `Foo()` → `owner_.Foo()` for a method
+   that stayed behind; `s_debug_level` (and any other `EverQuest` static) →
+   `EverQuest::s_debug_level` (friendship grants access, not scope — K01
+   correction 2). **Apply substitutions to code lines only; a regex pass over
+   the whole file rewrites historical comments that quote old code** (K01
+   correction 4 — it falsified a 30-line note before being caught).
+5. **No forwarders.** Every caller of a moved method is retargeted to the
+   component through the accessor (`eq.Guild().SendGuildInvite(…)`), and the
+   declaration is deleted from `eq.h`. Callers live mostly in
+   `eq_action_handler*.cpp` and `eq_zone_dispatch.cpp`; those call sites, and
+   the call sites in `tests/`, are in every unit's territory FOR CALL-SITE
+   EDITS ONLY (assertions untouched). A method with zero callers is deleted
+   outright (§5 wins over any plan table that says otherwise). Forwarders were
+   the K01 pilot's first shape and cost +8 lines: they keep `eq.h` as the API
+   surface, which is the thing this batch exists to remove.
+6. **Ratchet.** `scripts/refactor/file_size_allowlist.txt`'s `eq.h` entry is
+   lowered to the new `wc -l` in the same commit. **The plan must PREDICT the
+   delta before dispatch** from: −(declarations deleted) −(members moved)
+   −(comment banners that go with them) +2 (accessor + member) +1 (friend)
+   +1 (include). K01 paid the one-time scaffolding (`m_ctx`, `Context()`,
+   `private:` reopen). Stop condition: the prediction is ≤ 0 or the unit does
+   not dispatch.
+7. **Tests.** `tests/test_<family>_component.cpp` constructs via
+   `zonetest::MakeEq()` and exercises the component directly; existing tests
+   are retargeted at the call site. `test_duplicate_state_stores.cpp` and
+   `test_reachability_sweep.cpp` scan `eq.h` as text — run them; K01 needed no
+   file-list edit, but a later family might (STOP and report if so).
+8. **Proof.** `verify_move_only.py` exits 1 by construction. Line-multiset
+   check with the substitutions normalised BY NAME MAPPING (`ctx_.character`
+   ↔ `m_character`, etc. — stripping the prefix alone leaves 7 false
+   residuals, K01 correction 3). The scaffolding residual lands in `eq.h`,
+   `eq.cpp` and the new header, NOT in the moved TU. Paste the residual.
 
 ## Unit table (one slot each; territory = the family's TUs + its new
 directory + `eq.h` + `eq.cpp` ctor wiring + `tests/CMakeLists.txt`/`tests/cmake`)
@@ -141,7 +154,7 @@ they sit in; the plan for that unit names them.
   method, do not improvise.
 - A test asserts on `EverQuest` having a member that moved and cannot be
   repointed by name → STOP and report (that test may be a stale guard).
-- `eq.h` does not shrink → STOP; the unit did nothing.
+- The predicted `eq.h` delta is > 0 → the plan is wrong; do not dispatch. A measured delta > 0 after execution → STOP and report the arithmetic; never compress code to fit.
 
 ## Per-unit plan files
 
