@@ -250,6 +250,11 @@ into the component.**
    reference under their own names exactly as `ClientContext` binds its
    core; (ll) `#define private public` test hacks are a standing caller
    class — only the compiler finds them.
+**K14 corrections (2026-09-03):** (mm) a "pure lookup" lead must be
+   checked for state reads before it becomes a free function
+   (`DumpEntityAppearance` reads `m_entities`); (nn) the K13 forwarder
+   files (`eq_chat.cpp`, `eq_player_info.cpp`) were NOT empty — a plan
+   must not guess a file's state after a unit it has not read.
 8. **Proof.** `verify_move_only.py` exits 1 by construction. Line-multiset
    check with the substitutions normalised BY NAME MAPPING (`ctx_.character`
    ↔ `m_character`, etc. — stripping the prefix alone leaves 7 false
