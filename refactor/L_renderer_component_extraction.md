@@ -114,6 +114,26 @@ declarations + inline accessors + members before dispatch.
 7. A component that names no `IrrlichtRenderer` private static/nested
    type/constant needs no `friend` (K13 ii) — `RdpComponent` has none.
 
+## L02 corrections (2026-09-03)
+
+8. **Component includes go OUTSIDE `#ifdef WITH_RDP`** (next to
+   `renderer_context.h`). Slot builds have `WITH_RDP=ON` and pass; the
+   gles2 tree (no FreeRDP) is the build that catches it.
+9. **`EQT_HAS_DRM`-only code is compiled ONLY by the ARM build.** The
+   icosphere bodies and `icoLoc*` members exist only under `-DEQT_DRM=ON`;
+   `build-arm-noble.sh` is the sole compiler of that third of L02 — prove
+   with `strings` on the ARM binary. Never skip ARM for a renderer unit.
+10. **A nested type in a moving SIGNATURE is exempt from §3**, and any
+   member typed by it follows it — otherwise the component header must
+   name `IrrlichtRenderer::Type` and re-include the 60-transitive header.
+   `renderer_init.cpp` is a terminal owner: "the last family moves it"
+   never fires for a member shared only with init/core.
+11. Banners travel with declarations — plan deltas that count declarations
+   only are 3–4× pessimistic; count the banner lines between them.
+12. `friend class` is needed whenever the component reaches private
+   renderer members through `owner_` (axis 1); `RdpComponent` was the
+   exception, not the rule.
+
 ## Per-unit plan files
 
 `refactor/L01_rdp_component.md` … written after K13, from a re-measurement
