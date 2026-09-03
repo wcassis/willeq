@@ -679,7 +679,7 @@ bool Application::initialize(const ApplicationConfig& config) {
     // DRM/EGL initialization can take 4-5 seconds on first run (Orange Pi), and the
     // login server will disconnect if no network pumping occurs during that window.
     LOG_INFO(MOD_MAIN, "Connecting to login server ({}:{})...", config.host, config.port);
-    m_eqClient->ConnectToLogin();
+    m_eqClient->LoginWorld().ConnectToLogin();
 
     m_running.store(true);
     m_lastUpdate = std::chrono::steady_clock::now();

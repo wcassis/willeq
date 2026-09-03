@@ -49,11 +49,11 @@ std::vector<uint8_t> BuildPayload(size_t totalPacketSize,
 }
 
 void ReplayLogin(EverQuest& eq, uint16_t opcode, const std::vector<uint8_t>& payload) {
-    eq.ReplayLoginPacket(opcode, payload.data(), payload.size());
+    eq.LoginWorld().ReplayLoginPacket(opcode, payload.data(), payload.size());
 }
 
 void ReplayWorld(EverQuest& eq, uint16_t opcode, const std::vector<uint8_t>& payload) {
-    eq.ReplayWorldPacket(opcode, payload.data(), payload.size());
+    eq.LoginWorld().ReplayWorldPacket(opcode, payload.data(), payload.size());
 }
 
 // Builds a Titanium ServerListResponse payload with exactly one server
@@ -177,7 +177,7 @@ TEST(LoginWorldCaptureReplay, RealSessionReplaysLoginAndWorldStreamsWithoutCrash
         // whole recorded login stream is now covered.
 
         if (isServerToClient && rec.stream == static_cast<uint8_t>(EQT::Net::SessionStream::Login)) {
-            ASSERT_NO_THROW(eq.ReplayLoginPacket(rec.opcode, payload.data(), payload.size()))
+            ASSERT_NO_THROW(eq.LoginWorld().ReplayLoginPacket(rec.opcode, payload.data(), payload.size()))
                 << "Login record #" << loginRecords << " (opcode " << rec.opcode
                 << ", " << payload.size() << " bytes) threw during replay";
             ++loginRecords;
@@ -185,7 +185,7 @@ TEST(LoginWorldCaptureReplay, RealSessionReplaysLoginAndWorldStreamsWithoutCrash
                 sawLoginAuthenticating = (eq.GetLoadingPhase() == LoadingPhase::LOGIN_AUTHENTICATING);
             }
         } else if (isServerToClient && rec.stream == static_cast<uint8_t>(EQT::Net::SessionStream::World)) {
-            ASSERT_NO_THROW(eq.ReplayWorldPacket(rec.opcode, payload.data(), payload.size()))
+            ASSERT_NO_THROW(eq.LoginWorld().ReplayWorldPacket(rec.opcode, payload.data(), payload.size()))
                 << "World record #" << worldRecords << " (opcode " << rec.opcode
                 << ", " << payload.size() << " bytes) threw during replay";
             ++worldRecords;
@@ -647,8 +647,8 @@ TEST(LoginWorldAccessors, LoginAccepted_RealCapture_ParsesAccountIdAndSessionKey
     }
 
     EverQuest eq("127.0.0.1", 0, "test", "test", "WillEQ", "Testchar");
-    EXPECT_EQ(eq.GetAccountId(), 0u);
-    EXPECT_TRUE(eq.GetSessionKey().empty());
+    EXPECT_EQ(eq.LoginWorld().GetAccountId(), 0u);
+    EXPECT_TRUE(eq.LoginWorld().GetSessionKey().empty());
 
     ASSERT_NO_THROW(ReplayLogin(eq, HC_OP_LoginAccepted, payload));
 
@@ -656,8 +656,8 @@ TEST(LoginWorldAccessors, LoginAccepted_RealCapture_ParsesAccountIdAndSessionKey
     // dbid=1, key="BW8BZW8UW4". Comparing GetSessionKey() to a known literal
     // here (not printing/logging it) is the extent of this unit's use of the
     // new accessor, per the plan's note on m_key being a live credential.
-    EXPECT_EQ(eq.GetAccountId(), 1u);
-    EXPECT_EQ(eq.GetSessionKey(), "BW8BZW8UW4");
+    EXPECT_EQ(eq.LoginWorld().GetAccountId(), 1u);
+    EXPECT_EQ(eq.LoginWorld().GetSessionKey(), "BW8BZW8UW4");
 }
 
 TEST(LoginWorldAccessors, ServerListResponse_RealCapture_PopulatesWorldServers) {
@@ -676,7 +676,7 @@ TEST(LoginWorldAccessors, ServerListResponse_RealCapture_PopulatesWorldServers) 
 
     ASSERT_NO_THROW(ReplayLogin(eq, HC_OP_ServerListResponse, payload));
 
-    const auto& servers = eq.GetWorldServers();
+    const auto& servers = eq.LoginWorld().GetWorldServers();
     ASSERT_EQ(servers.size(), 1u);
     ASSERT_NE(servers.find(2u), servers.end()) << "expected world-server id 2 (real capture)";
     const auto& ws = servers.at(2u);
@@ -698,7 +698,7 @@ TEST(LoginWorldAccessors, ServerListResponse_NoMatchingServer_StillPopulatesWorl
 
     EXPECT_NO_THROW(ReplayLogin(eq, HC_OP_ServerListResponse, payload));
 
-    const auto& servers = eq.GetWorldServers();
+    const auto& servers = eq.LoginWorld().GetWorldServers();
     ASSERT_EQ(servers.size(), 1u);
     ASSERT_NE(servers.find(42u), servers.end());
     EXPECT_EQ(servers.at(42u).long_name, "TestServer");
@@ -716,11 +716,11 @@ TEST(LoginWorldAccessors, SendCharInfo_RealCapture_FindsConfiguredCharacter) {
     // 2="Testmelee", slots 3-9 empty. "Testchar" is this test's configured
     // character, so the expected match index is 1.
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    EXPECT_EQ(eq.GetCharacterSelectIndex(), -1);
+    EXPECT_EQ(eq.LoginWorld().GetCharacterSelectIndex(), -1);
 
     ASSERT_NO_THROW(ReplayWorld(eq, HC_OP_SendCharInfo, payload));
 
-    EXPECT_EQ(eq.GetCharacterSelectIndex(), 1);
+    EXPECT_EQ(eq.LoginWorld().GetCharacterSelectIndex(), 1);
 }
 
 TEST(LoginWorldAccessors, SendCharInfo_CharacterNotInList_LeavesIndexAtNegativeOne) {
@@ -729,11 +729,11 @@ TEST(LoginWorldAccessors, SendCharInfo_CharacterNotInList_LeavesIndexAtNegativeO
 
     EXPECT_NO_THROW(ReplayWorld(eq, HC_OP_SendCharInfo, payload));
 
-    EXPECT_EQ(eq.GetCharacterSelectIndex(), -1);
+    EXPECT_EQ(eq.LoginWorld().GetCharacterSelectIndex(), -1);
     // T14: the non-matching character still occupies a slot, so it must
     // appear in the stored list even though the index stayed unset.
-    ASSERT_EQ(eq.GetCharacterSelectList().size(), 1u);
-    EXPECT_EQ(eq.GetCharacterSelectList()[0].name, "SomeoneElse");
+    ASSERT_EQ(eq.LoginWorld().GetCharacterSelectList().size(), 1u);
+    EXPECT_EQ(eq.LoginWorld().GetCharacterSelectList()[0].name, "SomeoneElse");
 }
 
 TEST(LoginWorldAccessors, SendCharInfo_RealCapture_PopulatesCharacterList) {
@@ -744,7 +744,7 @@ TEST(LoginWorldAccessors, SendCharInfo_RealCapture_PopulatesCharacterList) {
     }
 
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    EXPECT_TRUE(eq.GetCharacterSelectList().empty());
+    EXPECT_TRUE(eq.LoginWorld().GetCharacterSelectList().empty());
 
     ASSERT_NO_THROW(ReplayWorld(eq, HC_OP_SendCharInfo, payload));
 
@@ -753,7 +753,7 @@ TEST(LoginWorldAccessors, SendCharInfo_RealCapture_PopulatesCharacterList) {
     // empty-slot sentinel and must be filtered out. Numeric values pinned
     // from a discovery run against the capture: class 12=Wizard/1=Warrior,
     // race 6=High Elf/1=Human, zones 25/36.
-    const auto& list = eq.GetCharacterSelectList();
+    const auto& list = eq.LoginWorld().GetCharacterSelectList();
     ASSERT_EQ(list.size(), 3u);
     EXPECT_EQ(list[0].slot, 0);
     EXPECT_EQ(list[0].name, "Testcaster");
@@ -789,8 +789,8 @@ TEST(LoginWorldAccessors, SendCharInfo_SyntheticSlots_DecodesAllFieldsAndSkipsEm
 
     ASSERT_NO_THROW(ReplayWorld(eq, HC_OP_SendCharInfo, payload));
 
-    EXPECT_EQ(eq.GetCharacterSelectIndex(), 0);
-    const auto& list = eq.GetCharacterSelectList();
+    EXPECT_EQ(eq.LoginWorld().GetCharacterSelectIndex(), 0);
+    const auto& list = eq.LoginWorld().GetCharacterSelectList();
     ASSERT_EQ(list.size(), 2u);
     EXPECT_EQ(list[0].slot, 0);
     EXPECT_EQ(list[0].name, "Testchar");
@@ -815,7 +815,7 @@ TEST(LoginWorldAccessors, SendCharInfo_RedeliveryRebuildsListInsteadOfAppending)
     ASSERT_NO_THROW(ReplayWorld(eq, HC_OP_SendCharInfo, payload));
     ASSERT_NO_THROW(ReplayWorld(eq, HC_OP_SendCharInfo, payload));
 
-    EXPECT_EQ(eq.GetCharacterSelectList().size(), 1u);
+    EXPECT_EQ(eq.LoginWorld().GetCharacterSelectList().size(), 1u);
 }
 
 TEST(LoginWorldAccessors, ZoneServerInfo_RealCapture_ParsesHostAndPort) {
@@ -865,10 +865,10 @@ TEST(LoginWorldAccessors, SetChatServer_RealCapture_PopulatesHostPortTypeAndMail
 
     // Recorded payload:
     //   "10.0.30.23,7778,WillEQ Private Server.Testchar,B48FB5F37"
-    EXPECT_EQ(eq.GetChatServerHost(), "10.0.30.23");
-    EXPECT_EQ(eq.GetChatServerPort(), 7778);
-    EXPECT_EQ(eq.GetChatConnectionType(), 'B');  // ucsTitaniumChat
-    EXPECT_EQ(eq.GetMailKey(), "48FB5F37");      // 8 hex digits, type char stripped
+    EXPECT_EQ(eq.LoginWorld().GetChatServerHost(), "10.0.30.23");
+    EXPECT_EQ(eq.LoginWorld().GetChatServerPort(), 7778);
+    EXPECT_EQ(eq.LoginWorld().GetChatConnectionType(), 'B');  // ucsTitaniumChat
+    EXPECT_EQ(eq.LoginWorld().GetMailKey(), "48FB5F37");      // 8 hex digits, type char stripped
 }
 
 TEST(LoginWorldAccessors, SetChatServer2_RealCapture_UsesLowercaseMailConnectionType) {
@@ -886,8 +886,8 @@ TEST(LoginWorldAccessors, SetChatServer2_RealCapture_UsesLowercaseMailConnection
 
     ASSERT_NO_THROW(ReplayWorld(eq, HC_OP_SetChatServer2, payload));
 
-    EXPECT_EQ(eq.GetChatConnectionType(), 'b');  // ucsTitaniumMail
-    EXPECT_EQ(eq.GetMailKey(), "48FB5F37");
+    EXPECT_EQ(eq.LoginWorld().GetChatConnectionType(), 'b');  // ucsTitaniumMail
+    EXPECT_EQ(eq.LoginWorld().GetMailKey(), "48FB5F37");
 }
 
 TEST(LoginWorldAccessors, SetChatServer_FourFieldSynthetic_StripsTypeCharacterFromMailKey) {
@@ -902,10 +902,10 @@ TEST(LoginWorldAccessors, SetChatServer_FourFieldSynthetic_StripsTypeCharacterFr
 
     ASSERT_NO_THROW(ReplayWorld(eq, HC_OP_SetChatServer, payload));
 
-    EXPECT_EQ(eq.GetChatServerHost(), "chat.example.com");
-    EXPECT_EQ(eq.GetChatServerPort(), 9876);
-    EXPECT_EQ(eq.GetChatConnectionType(), 'X');
-    EXPECT_EQ(eq.GetMailKey(), "DEADBEEF");
+    EXPECT_EQ(eq.LoginWorld().GetChatServerHost(), "chat.example.com");
+    EXPECT_EQ(eq.LoginWorld().GetChatServerPort(), 9876);
+    EXPECT_EQ(eq.LoginWorld().GetChatConnectionType(), 'X');
+    EXPECT_EQ(eq.LoginWorld().GetMailKey(), "DEADBEEF");
 }
 
 TEST(LoginWorldAccessors, SetChatServer_MalformedInputsLeaveStateUntouched) {
@@ -931,10 +931,10 @@ TEST(LoginWorldAccessors, SetChatServer_MalformedInputsLeaveStateUntouched) {
     // would have silently truncated to 4464 without the range check.
     EXPECT_NO_THROW(replay("host,70000,server.char,Xkey"));
 
-    EXPECT_TRUE(eq.GetChatServerHost().empty());
-    EXPECT_EQ(eq.GetChatServerPort(), 0);
-    EXPECT_EQ(eq.GetChatConnectionType(), 0);
-    EXPECT_TRUE(eq.GetMailKey().empty());
+    EXPECT_TRUE(eq.LoginWorld().GetChatServerHost().empty());
+    EXPECT_EQ(eq.LoginWorld().GetChatServerPort(), 0);
+    EXPECT_EQ(eq.LoginWorld().GetChatConnectionType(), 0);
+    EXPECT_TRUE(eq.LoginWorld().GetMailKey().empty());
 }
 
 TEST(LoginWorldAccessors, ExpansionInfo_FirstDelivery_SetsWorldReadyAndEnterWorldSent) {
@@ -945,14 +945,14 @@ TEST(LoginWorldAccessors, ExpansionInfo_FirstDelivery_SetsWorldReadyAndEnterWorl
     // 2's WorldExpansionInfo_FirstDelivery_TriggersThreeSends -- this test
     // observes the same transition directly via the new accessors instead).
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    EXPECT_FALSE(eq.IsWorldReady());
-    EXPECT_FALSE(eq.HasSentEnterWorld());
+    EXPECT_FALSE(eq.LoginWorld().IsWorldReady());
+    EXPECT_FALSE(eq.LoginWorld().HasSentEnterWorld());
 
     auto payload = BuildPayload(2 + 4, [](EQ::Net::DynamicPacket& p) {
         p.PutUInt32(2, 0x1);  // expansions bitmask
     });
     EXPECT_NO_THROW(ReplayWorld(eq, HC_OP_ExpansionInfo, payload));
 
-    EXPECT_TRUE(eq.IsWorldReady());
-    EXPECT_TRUE(eq.HasSentEnterWorld());
+    EXPECT_TRUE(eq.LoginWorld().IsWorldReady());
+    EXPECT_TRUE(eq.LoginWorld().HasSentEnterWorld());
 }
