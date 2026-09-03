@@ -52,23 +52,41 @@ it without taking that measurement first.
 
 ## B — implemented-but-unreached, and hygiene needing a code change
 
-- **B005** (B) `src/client/ucs.cpp` / `include/client/ucs.h` `UCSConnection` — 413
-  lines of live-looking code with zero callers anywhere in `src/`, `include/` or
-  `tests/`; its entry point is commented out at its one call site in
-  `EverQuest::WorldProcessSetChatServer`. T297 measured that cross-zone `ooc`,
-  `auction`, `tell` and `guild` all work without it. Closes when: the TU, the
-  header, the CMake entry and the commented connect path are deleted with a
-  tombstone. Prov: deferred item 4 (`eq_ucs.cpp` was already deleted by T326;
-  this is the remaining half).
+- ~~**B005** (B) the `UCSConnection` TU and header (under `src/client/` and
+  `include/client/`, basename `ucs`) — 413 lines of live-looking code with zero
+  callers.~~ **CLOSED by K15**: re-measured at `7c125b28` (comment- and
+  string-filtered grep + the compiler) — zero references outside its own two
+  files. Both files, the `CMakeLists.txt` entry and the commented
+  `ConnectToUCS` call are deleted, with tombstones in `CMakeLists.txt` and at
+  the call site in
+  `LoginWorldComponent::WorldProcessSetChatServer`. The parsed `m_ucs_host` /
+  `m_ucs_port` / `m_ucs_connection_type` were **kept** — the plan asked for them
+  but they are NOT zero-reference: they carry the T13 wire contract and 13
+  assertions in `test_login_world_flow.cpp` / `test_login_world_component.cpp`
+  read them through public accessors. Prov: deferred item 4.
 
-- **B006** (B) the S2 leftovers — two TUs include
-  `include/client/graphics/irrlicht_renderer.h` and never name `IrrlichtRenderer`
-  (`application_frame`, `application_config`; K08 removed the four player
-  ones and K11 the two bridge ones);
-  `EverQuest::InitGraphics` still takes an `IrrlichtRenderer*`; the asset loaders
-  (`include/client/graphics/eq/pfs.h`, `include/client/graphics/eq/wld_loader.h`) still live in `EQT::Graphics`; and
-  `door_manager.cpp` reaches for the static `EverQuest::GetDebugLevel()`. Closes
-  when: each is removed by the K unit that owns its file. Prov: the S2 residue.
+- **B006** (B) the S2 leftovers — **PARTLY CLOSED by K15**, two halves left.
+  ~~`application_config.cpp`'s `irrlicht_renderer.h` include~~ **deleted** —
+  re-measured at `7c125b28` and confirmed by the compiler. **The survey's claim
+  was FALSE for `application_frame.cpp`**: it names no `IrrlichtRenderer` token,
+  but it drives the renderer through `m_renderer->getDriver()`,
+  `->processFrame()` and `->saveScreenshot()`, so removing the include gave
+  three "invalid use of incomplete type" errors. The include is kept and this is
+  the record — a name-token grep does not see a use through a typed member
+  pointer; only the compiler does.
+  ~~`door_manager.cpp`'s static `EverQuest::GetDebugLevel()`~~
+  **replaced**: the gate is now the logging module's own level query
+  (`ShouldLog` behind `LOG_DEBUG`/`LOG_TRACE` — user-initiated at DEBUG, every
+  other door at TRACE) and the `include/client/eq.h` include is gone from that
+  renderer TU. **STILL OPEN:** (1) `EverQuest::InitGraphics` still takes an
+  `IrrlichtRenderer*` — K15 read it and hit the plan's STOP condition: inside
+  `BridgeComponent::InitGraphics` the pointer reaches exactly two calls,
+  `initLoadingScreen(const RendererConfig&)` and `initDeferredGraphics()`, and
+  narrowing needs an interface that DOES NOT EXIST. The shape it would take is
+  recorded in `refactor/K15_leftovers_and_dead_members.md`'s Review; do not
+  invent it without a ruling. (2) the asset loaders
+  (`include/client/graphics/eq/pfs.h`, `include/client/graphics/eq/wld_loader.h`)
+  still live in `EQT::Graphics`. Prov: the S2 residue.
 
 - **B007** (B) `include/client/skill/skill_data.h` `SkillData::endurance_cost` /
   `mana_cost` — declared, defaulted 0, and assigned nowhere in the tree, so both
@@ -132,13 +150,9 @@ it without taking that measurement first.
   **Unconfirmed at this tip, needs a TSAN run** to show the warnings are still
   raised. Prov: archived board, T114.
 
-- **B019** (B) `include/client/eq.h` `EverQuest::m_guild_name` — declared and
-  default-initialised, **zero references anywhere** in `src/`, `include/` or
-  `tests/` (K01 measured with `grep -rw` at `e888e89c`). The reachability
-  pattern again: nothing parses a guild name off the wire into it and nothing
-  reads it. K01 left it alone (structural unit, no drive-by fixes). Closes
-  when: the member is deleted, or a guild-name source and reader are wired.
-  Prov: K01 Review, `refactor/K01_guild_component.md`.
+- ~~**B019** (B) `include/client/eq.h` `EverQuest::m_guild_name` — declared and
+  default-initialised, **zero references anywhere**.~~ **CLOSED by K15**:
+  re-measured at `7c125b28`, still zero references; deleted. Prov: K01 Review.
 
 ## C — needs Will's decision
 
@@ -155,13 +169,15 @@ it without taking that measurement first.
   static bbox crown, and Will judges the look on the live gate. Prov: deferred
   item 16.
 
-- **B019** (C) server-sent placeables and doors are measured by no gate — the
+- **B040** (C) server-sent placeables and doors are measured by no gate — the
   benchmark's `placeableObjectsBytes` (`tools/hwcaps/zone_bench_memory.h`) is
   summed over the zone's own S3D archive and never connects to a server, so
   eqemu's `object` and `doors` tables are counted by nothing. Closing it needs a
   live-client memory harness that does not exist; the decision is whether to
-  build one. Prov: the archived board's "SERVER-SENT PLACEABLES AND DOORS ARE
-  UNMEASURED BY ANY GATE" section.
+  build one. **(K15: renumbered from a duplicate `B019` — the ID collided with
+  the `m_guild_name` item above. The one cross-reference, in
+  `refactor/K00_truth_reset.md`, was fixed with it.)** Prov: the archived board's
+  "SERVER-SENT PLACEABLES AND DOORS ARE UNMEASURED BY ANY GATE" section.
 
 - **B020** (C) `include/client/graphics/constrained_renderer_config.h` — eight
   measured memory categories (zoneGeometry, s3dZoneSource, gpuTexture, vboEbo,
@@ -233,8 +249,9 @@ it without taking that measurement first.
   occurrence tree-wide (their own definition) and were deleted; `m_water_state`
   itself moved into `eqt::movement::MovementComponent`, its sole writer. Prov: K07 Review.
 
-- **B031** (B) `include/client/eq.h` `EverQuest::m_last_movement_update` — zero
-  references tree-wide. Closes when: deleted. Prov: K07 Review.
+- ~~**B031** (B) `include/client/eq.h` `EverQuest::m_last_movement_update` — zero
+  references tree-wide.~~ **CLOSED by K15**: re-measured at `7c125b28`, still
+  zero; deleted. Prov: K07 Review.
 
 - **B032** (A) `src/client/movement/movement_component.cpp` `MovementComponent::StartMoveForward`
   / `StartMoveBackward` / `StartTurnLeft` / `StartTurnRight` — the keyboard
@@ -245,25 +262,38 @@ it without taking that measurement first.
 
 ## Added 2026-09-03 by the Batch L survey (`refactor/L_renderer_component_extraction.md`)
 
-- **B033** (B) `include/client/graphics/irrlicht_renderer.h` `IrrlichtRenderer::resetCoordOffsets`,
-  `adjustOffset{X,Y,Z}`, `adjustRotation{X,Y,Z}`, `getOffset{X,Y,Z}`,
-  `getRotation{X,Y,Z}`, `stepToString` — 14 methods declared and defined
-  nowhere (the real offset/rotation ones live on `EntityRenderer`). Closes
-  when: the 14 declarations are deleted. Prov: Batch L survey.
-
-- **B034** (B) `include/client/graphics/irrlicht_renderer.h` `IrrlichtRenderer::lastOccCamX_`,
-  `lastOccFwdX_`, `hudCallback_`, `cachedHudText_`, `cachedHotkeysText_`,
-  `cachedHeadingDebugText_`, `chatPrefillMutex_`, `pendingChatPrefill_` —
-  eight data members with zero references tree-wide. Closes when: deleted.
+- ~~**B033** (B) `include/client/graphics/irrlicht_renderer.h` — 14 methods
+  declared and defined nowhere.~~ **CLOSED by K15**: all 14 re-measured at
+  `7c125b28` (each had exactly one occurrence tree-wide, its own declaration;
+  the offset/rotation pair really does live on `EntityRenderer`) and deleted.
   Prov: Batch L survey.
+
+- **B034** (B) `include/client/graphics/irrlicht_renderer.h` — **SIX of the
+  eight CLOSED by K15, and the survey's claim was FALSE for the other two.**
+  Deleted: ~~`lastOccCamX_`~~ (with its `lastOccCamY_/Z_` and the whole
+  `lastOccFwd{X,Y,Z}` line — the occlusion camera-movement gate was never
+  implemented), ~~`hudCallback_`~~ (its only reference was `setHUDCallback`,
+  which had zero callers; the `HUDCallback` typedef and the setter went with
+  it), ~~`cachedHudText_`~~, ~~`cachedHotkeysText_`~~,
+  ~~`cachedHeadingDebugText_`~~. **KEPT: `chatPrefillMutex_` and
+  `pendingChatPrefill_` are LIVE** — T319 wired them after the Batch L survey
+  was taken. `requestChatPrefill()` writes on the game thread from
+  `IrrlichtRenderer::handleActionResult` (`irrlicht_renderer.cpp`) and
+  `takeChatPrefill()` reads on the render thread in
+  `renderer_frame_input.cpp`; `test_reply_to_tell_key.cpp` covers the trip.
+  This entry stays open only as the record of that correction. Prov: Batch L
+  survey, corrected by K15.
 
 ## Added 2026-09-03 by the K09 Review (zone extraction)
 
-- **B035** (B) `include/client/zone/zone_component.h` `ZoneComponent::m_spawn_appearance_sent`
-  / `m_client_spawned` — write-only after K09 deleted their only readers
-  (`ZoneSendSpawnAppearance`, `ZoneSendSessionReady`, both unreachable and
-  unguarded). Closes when: deleted, or a reader that the handshake actually
-  needs is restored. Prov: K09 Review.
+- ~~**B035** (B) `include/client/zone/zone_component.h` `ZoneComponent::m_spawn_appearance_sent`
+  / `m_client_spawned` — write-only.~~ **CLOSED by K15**: re-measured at
+  `7c125b28` — the only occurrences were the two declarations, the two
+  `CleanupZone` resets and one already-commented-out line in
+  `src/client/eq.cpp`. Members and resets deleted; the live spawn-ready state
+  is `game_state.world().clientReady()`, reset on the adjacent line. The dead
+  comment in `eq.cpp` was left in place — that file is K14's territory this
+  wave. Prov: K09 Review.
 
 ## Added 2026-09-03 by the K11 Review (bridge extraction)
 
@@ -274,10 +304,16 @@ it without taking that measurement first.
   omission, not by design. Will's call whether to wire them (feature) or leave
   audio to zone music/ambient only. Prov: K11 Review.
 
-- **B037** (B) `include/client/bridge/bridge_component.h` `m_audio_config_use_3d_audio`
-  — its only setter (`SetUse3DAudio`) was dead and deleted; every other audio
-  option is wired from `application_config.cpp`, this one is settable only by
-  editing the header. Closes when: wired like its siblings or deleted. Prov:
+- ~~**B037** (B) `include/client/bridge/bridge_component.h` `m_audio_config_use_3d_audio`
+  — settable only by editing the header.~~ **CLOSED by K15 — WIRED, both ends.**
+  K11's note claiming the flag was "still read by `InitializeAudio()`" was
+  **wrong**: re-measured at `7c125b28`, it had zero writers AND zero readers, so
+  a config source alone would have produced a knob that does nothing. It now has
+  both: `audio.use_3d` (JSON) / `--no-3d-audio` (CLI) ->
+  `AppConfig::audioUse3D` -> `Bridge().SetUse3DAudio()` ->
+  `InitializeAudio()` -> `AudioManager::setUse3DAudio()`, which gates the
+  spatial branch of `AudioManager::playSoundInternal()` (off = every sound
+  plays centred at the effects volume, no attenuation, no panning). Prov:
   K11 Review.
 
 ## Added 2026-09-03 by the K13 Review (context services)

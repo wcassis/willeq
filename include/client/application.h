@@ -80,6 +80,7 @@ struct ApplicationConfig {
     float audioEffectsVolume = 1.0f;
     std::string audioSoundfont;
     std::string audioVendorMusic = "gl.xmi";
+    bool audioUse3D = true;  // K15 (B037): "audio.use_3d"
 
     // RDP settings (guarded by WITH_RDP at usage sites)
     bool rdpEnabled = false;

@@ -4,7 +4,10 @@
 #include "client/graphics/eq/s3d_loader.h"
 #include "client/graphics/eq/wld_loader.h"
 #include "client/graphics/eq/zone_geometry.h"
-#include "client/eq.h"
+// K15 (board B006): client/eq.h is GONE from this renderer TU. Its only
+// reason to be here was the static EverQuest::GetDebugLevel(); the logging
+// module's own level query (ShouldLog, behind LOG_TRACE/LOG_DEBUG) does the
+// same job without a game-class dependency.
 #include "common/logging.h"
 
 #include <algorithm>
@@ -942,10 +945,15 @@ void DoorManager::setDoorState(uint8_t doorId, bool open, bool userInitiated)
     if (visual.isOpen != open) {
         visual.isOpen = open;
         visual.isAnimating = true;
-        // Log at debug level 2+ for all doors, or level 1+ for user-initiated
-        int debugLevel = EverQuest::GetDebugLevel();
-        if (debugLevel >= 2 || (userInitiated && debugLevel >= 1)) {
+        // K15 (board B006): the old gate read EverQuest::GetDebugLevel() and
+        // printed at "level >= 2 for every door, level >= 1 when the player
+        // initiated it". The logging module already has that query
+        // (ShouldLog, inside the macros): a user-initiated door logs at
+        // DEBUG, every other door at the one-step-noisier TRACE.
+        if (userInitiated) {
             LOG_DEBUG(MOD_GRAPHICS, "Door {} {} animation started", doorId, open ? "opening" : "closing");
+        } else {
+            LOG_TRACE(MOD_GRAPHICS, "Door {} {} animation started", doorId, open ? "opening" : "closing");
         }
     }
 }

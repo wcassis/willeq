@@ -562,6 +562,12 @@ void eqt::bridge::BridgeComponent::InitializeAudio() {
 	ctx_.audio_manager->setMusicVolume(m_audio_config_music_volume);
 	ctx_.audio_manager->setEffectsVolume(m_audio_config_effects_volume);
 
+	// K15 (board B037): the configured 3D-positional-audio switch. Off means
+	// positioned sounds play centred (AudioManager::playSoundInternal).
+	ctx_.audio_manager->setUse3DAudio(m_audio_config_use_3d_audio);
+	LOG_DEBUG(MOD_AUDIO, "3D positional audio: {}",
+		m_audio_config_use_3d_audio ? "on" : "off");
+
 	LOG_DEBUG(MOD_AUDIO, "Audio volumes: master={:.0f}%, music={:.0f}%, effects={:.0f}%",
 		m_audio_config_master_volume * 100.0f,
 		m_audio_config_music_volume * 100.0f,

@@ -458,12 +458,10 @@ void eqt::zone::ZoneComponent::CleanupZone()
 	m_tributes_sent = false;
 	m_guild_tributes_sent = false;
 	m_req_client_spawn_sent = false;
-	m_spawn_appearance_sent = false;
 	m_exp_zonein_sent = false;
 	m_send_exp_zonein_received = false;
 	m_server_filter_sent = false;
 	ctx_.game_state.world().setClientReady(false);  // T286: only store
-	m_client_spawned = false;
 
 	// Reset AA/tribute tracking
 	m_aa_table_count = 0;

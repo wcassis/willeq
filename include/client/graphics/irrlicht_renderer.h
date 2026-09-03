@@ -280,7 +280,6 @@ public:
     // Updates status.percent/text between steps, checks status.quitRequested.
     void loadZoneSequential(const std::string& eqClientPath, struct LoadingStatus& status);
     bool hasLoadFailed() const { return loadFailed_; }
-    static const char* stepToString(ZoneLoadStep step);
 
     // T241: door / world-object interaction callbacks deleted (no setter
     // caller anywhere); DoorInteractIntent / WorldObjectInteractIntent are
@@ -485,19 +484,10 @@ public:
     std::vector<std::string> getSimWorkerDebugInfo() const;  // /simworker debug command
     void dumpScene() const;  // /dumpscene debug command — logs all scene graph nodes with positions and PVS regions
     void runSceneProfile();  // Run scene breakdown profiler (profiles next frame)
-    void resetCoordOffsets();
-    void adjustOffsetX(float delta);
-    void adjustOffsetY(float delta);
-    void adjustOffsetZ(float delta);
-    float getOffsetX() const;
-    float getOffsetY() const;
-    float getOffsetZ() const;
-    void adjustRotationX(float delta);
-    void adjustRotationY(float delta);
-    void adjustRotationZ(float delta);
-    float getRotationX() const;
-    float getRotationY() const;
-    float getRotationZ() const;
+    // K15 (B033): resetCoordOffsets / adjustOffset{X,Y,Z} / getOffset{X,Y,Z} /
+    // adjustRotation{X,Y,Z} / getRotation{X,Y,Z} and stepToString (above) were
+    // 14 declarations with no definition anywhere -- the real offset/rotation
+    // pair lives on EntityRenderer. Deleted; the linker never saw them.
 
     // Unified render distance (controls fog and object culling, NOT camera far plane)
     // The camera far plane must be larger to include the sky dome
@@ -550,9 +540,10 @@ public:
     // Get event receiver (for input state queries)
     RendererEventReceiver* getEventReceiver() { return eventReceiver_.get(); }
 
-    // HUD text update callback (for external HUD info)
-    using HUDCallback = std::function<std::wstring()>;
-    void setHUDCallback(HUDCallback callback) { hudCallback_ = callback; }
+    // K15 (B034): the HUD text update callback (HUDCallback, setHUDCallback,
+    // hudCallback_) is deleted -- the member's only reference was the setter,
+    // and the setter had zero callers tree-wide. HUD text is built in
+    // renderer_hud.cpp, not by an external callback.
 
     // S2: movement callback removed — player position flows via PlayerPositionChanged intent only
 
@@ -864,9 +855,9 @@ private:
     std::unique_ptr<FrustumCuller> frustumCuller_;
     std::unique_ptr<SoftwareOcclusionCuller> occlusionCuller_;
     std::unordered_set<size_t> occlusionCulledRegions_;
-    // Occlusion camera-movement gating
-    float lastOccCamX_ = 0.0f, lastOccCamY_ = 0.0f, lastOccCamZ_ = 0.0f;
-    float lastOccFwdX_ = 0.0f, lastOccFwdY_ = 1.0f, lastOccFwdZ_ = 0.0f;
+    // K15 (B034): the occlusion camera-movement gating members
+    // (lastOccCam{X,Y,Z}, lastOccFwd{X,Y,Z}) had zero references tree-wide --
+    // the gate was never implemented. Deleted.
     bool frustumDebugDraw_ = false;  // Draw region bboxes colored by frustum result
     std::unique_ptr<EntityRenderer> entityRenderer_;
     std::unique_ptr<class EntityPrepWorker> entityPrepWorker_;  // Background entity model preparation
@@ -1420,14 +1411,11 @@ private:
     irr::gui::IGUIStaticText* hudText_ = nullptr;
     irr::gui::IGUIStaticText* hotkeysText_ = nullptr;  // Hotkey hints in upper right
     irr::gui::IGUIStaticText* headingDebugText_ = nullptr;  // Heading debug info (right side)
-    HUDCallback hudCallback_;
     float hudAnimTimer_ = 0.0f;  // Timer for HUD animations (auto attack indicator)
 
     // Performance: HUD dirty tracking to avoid rebuilding every frame
-    // Cached HUD text for comparison
-    std::wstring cachedHudText_;
-    std::wstring cachedHotkeysText_;
-    std::wstring cachedHeadingDebugText_;
+    // K15 (B034): cachedHudText_ / cachedHotkeysText_ / cachedHeadingDebugText_
+    // deleted -- zero references; the dirty tracking below is what is live.
     // Cached state values to detect changes
     struct HudCachedState {
         int fps = 0;

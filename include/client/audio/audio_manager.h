@@ -120,6 +120,13 @@ public:
     void setAudioEnabled(bool enabled);
     bool isAudioEnabled() const { return audioEnabled_; }
 
+    // K15 (board B037): 3D positional audio on/off. When off, a positioned
+    // sound plays centred at the effects volume instead of going through
+    // SfxManager::playSpatial() -- see playSoundInternal(). Set once from
+    // config by BridgeComponent::InitializeAudio().
+    void setUse3DAudio(bool enabled) { use3DAudio_ = enabled; }
+    bool isUse3DAudio() const { return use3DAudio_; }
+
     // RDP audio streaming callback
     void setAudioOutputCallback(AudioOutputCallback callback);
 
@@ -175,6 +182,7 @@ private:
 private:
     bool initialized_ = false;
     bool audioEnabled_ = true;
+    bool use3DAudio_ = true;  // K15 (B037)
     std::string eqPath_;
     std::function<void()> tickCallback_;
     std::string soundFontPath_;

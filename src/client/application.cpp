@@ -275,6 +275,7 @@ bool Application::initialize(const ApplicationConfig& config) {
             m_eqClient->Bridge().SetSoundFont(config.audioSoundfont);
         }
         m_eqClient->Bridge().SetVendorMusic(config.audioVendorMusic);
+        m_eqClient->Bridge().SetUse3DAudio(config.audioUse3D);
 #endif
 
         LOG_DEBUG(MOD_MAIN, "EverQuest client created");

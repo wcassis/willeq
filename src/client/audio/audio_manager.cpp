@@ -275,8 +275,10 @@ void AudioManager::playSoundInternal(const std::string& filename, const glm::vec
                          buffer->getFrameCount(), buffer->getSampleRate(),
                          buffer->getChannels());
 
-    // Check if this is a positioned sound
-    if (position.x != 0.0f || position.y != 0.0f || position.z != 0.0f) {
+    // Check if this is a positioned sound. K15 (B037): use3DAudio_ is the
+    // configured "audio.use_3d" switch -- with it off, every sound plays
+    // centred at the effects volume, no attenuation and no panning.
+    if (use3DAudio_ && (position.x != 0.0f || position.y != 0.0f || position.z != 0.0f)) {
         sfxManager_->playSpatial(filename, position);
     } else {
         sfxManager_->play(filename, masterVolume_ * effectsVolume_);

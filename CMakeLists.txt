@@ -271,6 +271,10 @@ SET(CLIENT_CORE_SOURCES
     src/client/zone/zone_entry.cpp
     # T326: the chat-server TU was deleted here -- it held 79 include lines and
     # one 241-line comment block, no code. Recover with: git show bcbf2ddc:src/client/eq_ucs.cpp
+    # K15 (B005): src/client/ucs.cpp (413 lines, UCSConnection) was deleted from
+    # this list too -- zero callers tree-wide, and T297 measured cross-zone ooc,
+    # auction, tell and guild all working without it. Recover with:
+    # git show 7c125b28:src/client/ucs.cpp and 7c125b28:include/client/ucs.h
     src/client/bridge/bridge_component.cpp
     src/client/bridge/bridge_component_intents.cpp
     src/client/bridge/bridge_component_ui_audio.cpp
@@ -319,7 +323,6 @@ SET(CLIENT_CORE_SOURCES
     src/client/who_response.cpp
     src/client/trade_manager.cpp
     src/client/door_state_manager.cpp
-    src/client/ucs.cpp
     src/client/position.cpp
     src/client/world_object.cpp
     src/client/formatted_message.cpp

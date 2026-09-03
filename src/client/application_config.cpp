@@ -44,7 +44,8 @@
 #include "client/state/event_bus.h"
 #include "client/hotbar/hotbar_model.h"
 #ifdef EQT_HAS_GRAPHICS
-#include "client/graphics/irrlicht_renderer.h"
+// K15 (board B006): irrlicht_renderer.h removed -- this TU names no
+// symbol from it (S2 residue).
 #include "client/graphics/entity_renderer.h"
 #include "client/graphics/constrained_renderer_config.h"
 #include "client/graphics/constrained_texture_cache.h"
@@ -118,6 +119,9 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             config.sceneProfileEnabled = true;
         } else if (arg == "--no-audio" || arg == "-na") {
             config.audioEnabled = false;
+        } else if (arg == "--no-3d-audio") {
+            // K15 (board B037)
+            config.audioUse3D = false;
         } else if (arg == "--audio-volume") {
             if (i + 1 < argc) {
                 int vol = std::atoi(argv[++i]);
@@ -237,6 +241,7 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
 #endif
 #ifdef WITH_AUDIO
             std::cout << "  -na, --no-audio          Disable audio\n";
+            std::cout << "       --no-3d-audio       Disable 3D positional audio (sounds play centred)\n";
             std::cout << "  --audio-volume <0-100>   Master volume (default: 100)\n";
             std::cout << "  --music-volume <0-100>   Music volume (default: 50)\n";
             std::cout << "  --effects-volume <0-100> Sound effects volume (default: 100)\n";
@@ -359,6 +364,12 @@ bool Application::loadConfigFile(const std::string& configFile, ApplicationConfi
                 if (audio_config.isMember("vendor_music")) {
                     config.audioVendorMusic = audio_config["vendor_music"].asString();
                     LOG_INFO(MOD_AUDIO, "Vendor music from config: {}", config.audioVendorMusic);
+                }
+                // K15 (board B037)
+                if (audio_config.isMember("use_3d")) {
+                    config.audioUse3D = audio_config["use_3d"].asBool();
+                    LOG_INFO(MOD_AUDIO, "3D positional audio {} from config",
+                             config.audioUse3D ? "enabled" : "disabled");
                 }
             }
 #endif
