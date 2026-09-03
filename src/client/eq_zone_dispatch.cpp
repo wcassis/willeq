@@ -124,7 +124,7 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 		ZoneProcessTributeTimer(p);
 		break;
 	case HC_OP_CharInventory:
-		ZoneProcessCharInventory(p);
+		m_merchant->ZoneProcessCharInventory(p);
 		break;
 	case HC_OP_Weather:
 		ZoneProcessWeather(p);
@@ -342,12 +342,12 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 			// Check if this is a vendor item (type 100)
 			if (item_packet_type == EQT::ITEM_PACKET_MERCHANT && m_game_state.player().vendorNpcId() != 0) {
 				// Vendor item - add to vendor window via bridge
-				ZoneProcessVendorItemToUI(p);
+				m_merchant->ZoneProcessVendorItemToUI(p);
 			} else if (m_game_state.player().lootingCorpseId() != 0) {
 				// Looting (T268: every open path sets this). A pending slot means
 				// this is the item we asked for; otherwise it populates the window.
-				if (!m_pending_loot_slots.empty()) { ZoneProcessLootedItemToInventory(p); }
-				else { ZoneProcessLootItemToUI(p); }
+				if (!m_pending_loot_slots.empty()) { m_merchant->ZoneProcessLootedItemToInventory(p); }
+				else { m_merchant->ZoneProcessLootItemToUI(p); }
 			} else {
 				// Check if this is a trade partner item.
 				// T42: was #ifdef EQT_HAS_GRAPHICS -- TradeManager and
@@ -358,7 +358,7 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 				// graphics dependency found.
 				bool handled_as_trade = false;
 				if (m_trade_manager && m_trade_manager->isTrading()) {
-					handled_as_trade = ZoneProcessTradePartnerItem(p);
+					handled_as_trade = m_merchant->ZoneProcessTradePartnerItem(p);
 				}
 				if (!handled_as_trade) {
 					// Regular inventory item packet - pass to inventory manager.
@@ -370,7 +370,7 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 						int16_t changedSlot = m_inventory_manager->processItemPacket(p);
 						if (changedSlot != eqt::inventory::SLOT_INVALID) {
 							const auto* item = m_inventory_manager->getItem(changedSlot);
-							SyncInventorySlotToGameState(changedSlot,
+							m_merchant->SyncInventorySlotToGameState(changedSlot,
 								item != nullptr && item->itemId != 0);  // T221
 						}
 						if (m_bridge && changedSlot != eqt::inventory::SLOT_INVALID) {
@@ -405,28 +405,28 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 	// packets at all, regardless of any publish fix inside them. Un-guarded;
 	// no genuine graphics dependency found.
 	case HC_OP_MoveItem:
-		ZoneProcessMoveItem(p);
+		m_merchant->ZoneProcessMoveItem(p);
 		break;
 	case HC_OP_DeleteItem:
-		ZoneProcessDeleteItem(p);
+		m_merchant->ZoneProcessDeleteItem(p);
 		break;
 	case HC_OP_ShopRequest:
-		ZoneProcessShopRequest(p);
+		m_merchant->ZoneProcessShopRequest(p);
 		break;
 	case HC_OP_ShopPlayerBuy:
-		ZoneProcessShopPlayerBuy(p);
+		m_merchant->ZoneProcessShopPlayerBuy(p);
 		break;
 	case HC_OP_ShopPlayerSell:
-		ZoneProcessShopPlayerSell(p);
+		m_merchant->ZoneProcessShopPlayerSell(p);
 		break;
 	case HC_OP_ShopEndConfirm:
-		ZoneProcessShopEndConfirm(p);
+		m_merchant->ZoneProcessShopEndConfirm(p);
 		break;
 	case HC_OP_MoneyUpdate:
-		ZoneProcessMoneyUpdate(p);
+		m_merchant->ZoneProcessMoneyUpdate(p);
 		break;
 	case HC_OP_GMTraining:
-		ZoneProcessGMTraining(p);
+		m_merchant->ZoneProcessGMTraining(p);
 		break;
 	case 0x61f9: // OP_TargetCommand response
 		// Server may reject our target
@@ -652,10 +652,10 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 		ZoneProcessDuelRequest(p);
 		break;
 	case HC_OP_RecipeReply:
-		ZoneProcessRecipeReply(p);
+		m_merchant->ZoneProcessRecipeReply(p);
 		break;
 	case HC_OP_RecipeAutoCombine:
-		ZoneProcessRecipeAutoCombine(p);
+		m_merchant->ZoneProcessRecipeAutoCombine(p);
 		break;
 	case HC_OP_RandomReply:
 		ZoneProcessRandomReply(p);
@@ -944,7 +944,7 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 		LOG_DEBUG(MOD_MAIN, "InstillDoubt response received: {} bytes", p.Length());
 		break;
 	case HC_OP_ReadBook:
-		ZoneProcessReadBook(p);
+		m_merchant->ZoneProcessReadBook(p);
 		break;
 	case HC_OP_PetBuffWindow:
 		ZoneProcessPetBuffWindow(p);

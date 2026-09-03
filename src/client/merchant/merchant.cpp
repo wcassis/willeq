@@ -1,4 +1,5 @@
-// EverQuest inventory item movement, scroll/book and trade-request cluster.
+// eqt::merchant::MerchantComponent -- inventory item movement, scroll/book
+// and trade-request cluster.
 //
 // Split out of eq.cpp (Batch F, unit F05), then split again (Batch J, unit
 // J27): CharInventory/MoveItem/DeleteItem processing, the inventory
@@ -6,6 +7,17 @@
 // senders, ReadBook and the incoming TradePartnerItem packet. Moved
 // verbatim, no behavior change. See refactor/F05_merchant.md and
 // refactor/J27_eq_merchant_split.md.
+//
+// K05 (Batch K, refactor/K_component_extraction.md) moved it again, from
+// src/client/eq_merchant.cpp, and rebased the bodies from EverQuest onto
+// eqt::merchant::MerchantComponent. Still verbatim -- only the substitutions
+// Mechanism 4 allows (core members -> ctx_..., the loot/vendor/scribe members
+// that stay on EverQuest -> owner_.m_..., the accessors and output primitives
+// that stay behind -> owner_.Foo(), and EverQuest's statics s_debug_level,
+// DumpPacket and FormatPrice qualified as EverQuest:: -- friendship grants
+// access, not scope). See the K05 Review.
+
+#include "client/merchant/merchant_component.h"
 
 #include "client/eq.h"
 #include "client/combat.h"
@@ -32,19 +44,19 @@
 #include <algorithm>
 #include <vector>
 
-void EverQuest::ZoneProcessCharInventory(const EQ::Net::Packet &p)
+void eqt::merchant::MerchantComponent::ZoneProcessCharInventory(const EQ::Net::Packet &p)
 {
 	LOG_DEBUG(MOD_INVENTORY, "Received character inventory packet, size={}", p.Length());
 
-	if (m_inventory_manager) {
+	if (ctx_.inventory_manager) {
 		LOG_TRACE(MOD_INVENTORY, "Processing with inventory manager");
-		m_inventory_manager->processCharInventory(p);
+		ctx_.inventory_manager->processCharInventory(p);
 	} else {
 		LOG_ERROR(MOD_INVENTORY, "No inventory manager!");
 	}
 
 	// Update stats after inventory changes
-	UpdateInventoryStats();
+	owner_.UpdateInventoryStats();
 }
 
 // P28: the rest of this file (ZoneProcessMoveItem through the tradeskill
@@ -53,18 +65,18 @@ void EverQuest::ZoneProcessCharInventory(const EQ::Net::Packet &p)
 // with no Irrlicht/renderer usage anywhere in it — un-guarded to match the
 // unconditional eq.h declarations (55b101e had folded it under
 // EQT_HAS_GRAPHICS alongside the genuinely renderer-only code elsewhere).
-void EverQuest::ZoneProcessMoveItem(const EQ::Net::Packet &p)
+void eqt::merchant::MerchantComponent::ZoneProcessMoveItem(const EQ::Net::Packet &p)
 {
 	// Server response to our MoveItem request
 	// Format: MoveItem_Struct { from_slot, to_slot, number_in_stack }
 	LOG_DEBUG(MOD_INVENTORY, "Received MoveItem response");
 
-	if (m_inventory_manager) {
-		m_inventory_manager->processMoveItemResponse(p);
+	if (ctx_.inventory_manager) {
+		ctx_.inventory_manager->processMoveItemResponse(p);
 	}
 
 	// Update stats after item movement (may affect equipped items)
-	UpdateInventoryStats();
+	owner_.UpdateInventoryStats();
 
 	// Publish InventorySlotChanged for both slots involved in the move (D18a: bridge-only)
 	// T221: the source-side occupancy write precedes the bridge guard.
@@ -75,17 +87,17 @@ void EverQuest::ZoneProcessMoveItem(const EQ::Net::Packet &p)
 		auto publishSlot = [this](int16_t slot) {
 			eqt::state::InventorySlotChangedData data;
 			data.slotId = slot;
-			const auto* item = m_inventory_manager ? m_inventory_manager->getItem(slot) : nullptr;
+			const auto* item = ctx_.inventory_manager ? ctx_.inventory_manager->getItem(slot) : nullptr;
 			data.hasItem = (item != nullptr && item->itemId != 0);
 			SyncInventorySlotToGameState(slot, data.hasItem);
-			if (!m_bridge) {
+			if (!ctx_.bridge) {
 				return;
 			}
 			data.itemId = data.hasItem ? item->itemId : 0;
 			data.itemName = data.hasItem ? item->name : "";
 			data.iconId = data.hasItem ? item->icon : 0;
 			data.quantity = data.hasItem ? item->quantity : 0;
-			m_bridge->pushEvent(eqt::state::GameEvent(
+			ctx_.bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::InventorySlotChanged, std::move(data)));
 		};
 
@@ -94,13 +106,13 @@ void EverQuest::ZoneProcessMoveItem(const EQ::Net::Packet &p)
 	}
 }
 
-void EverQuest::ZoneProcessDeleteItem(const EQ::Net::Packet &p)
+void eqt::merchant::MerchantComponent::ZoneProcessDeleteItem(const EQ::Net::Packet &p)
 {
 	// Server response to our DeleteItem request
 	LOG_DEBUG(MOD_INVENTORY, "Received DeleteItem response");
 
-	if (m_inventory_manager) {
-		m_inventory_manager->processDeleteItemResponse(p);
+	if (ctx_.inventory_manager) {
+		ctx_.inventory_manager->processDeleteItemResponse(p);
 	}
 
 	// Publish InventorySlotChanged for the deleted slot (D18a: bridge-only)
@@ -108,14 +120,14 @@ void EverQuest::ZoneProcessDeleteItem(const EQ::Net::Packet &p)
 	if (p.Length() >= 6) {
 		int16_t slot = static_cast<int16_t>(p.GetUInt32(2));
 		SyncInventorySlotToGameState(slot, false);
-		if (!m_bridge) {
+		if (!ctx_.bridge) {
 			return;
 		}
 		eqt::state::InventorySlotChangedData data;
 		data.slotId = slot;
 		data.hasItem = false;
 		data.itemId = 0;
-		m_bridge->pushEvent(eqt::state::GameEvent(
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::InventorySlotChanged, std::move(data)));
 	}
 }
@@ -125,27 +137,27 @@ void EverQuest::ZoneProcessDeleteItem(const EQ::Net::Packet &p)
 // (inventory_constants.h). Not inside InventoryManager (D18a: it has no
 // GameState access). Called at every InventorySlotChanged publish site with
 // the event's (slot, hasItem), before each bridge guard.
-void EverQuest::SyncInventorySlotToGameState(int16_t slot, bool hasItem)
+void eqt::merchant::MerchantComponent::SyncInventorySlotToGameState(int16_t slot, bool hasItem)
 {
 	if (eqt::inventory::isEquipmentSlot(slot)) {
-		m_game_state.inventory().setEquipmentOccupied(slot, hasItem);
+		ctx_.game_state.inventory().setEquipmentOccupied(slot, hasItem);
 	} else if (eqt::inventory::isGeneralSlot(slot)) {
-		m_game_state.inventory().setGeneralOccupied(slot - eqt::inventory::GENERAL_BEGIN, hasItem);
+		ctx_.game_state.inventory().setGeneralOccupied(slot - eqt::inventory::GENERAL_BEGIN, hasItem);
 	} else if (eqt::inventory::isBankSlot(slot)) {
-		m_game_state.inventory().setBankOccupied(slot - eqt::inventory::BANK_BEGIN, hasItem);
+		ctx_.game_state.inventory().setBankOccupied(slot - eqt::inventory::BANK_BEGIN, hasItem);
 	}
 }
 
-void EverQuest::SetupInventoryCallbacks()
+void eqt::merchant::MerchantComponent::SetupInventoryCallbacks()
 {
 	/* D20b1: InventoryManager pushes MoveItemIntent/DeleteItemIntent/EquipmentChangedIntent via bridge */
 }
 
-void EverQuest::SendMoveItem(int16_t fromSlot, int16_t toSlot, uint32_t quantity)
+void eqt::merchant::MerchantComponent::SendMoveItem(int16_t fromSlot, int16_t toSlot, uint32_t quantity)
 {
 	LOG_DEBUG(MOD_INVENTORY, "SendMoveItem called: fromSlot={} toSlot={} qty={}", fromSlot, toSlot, quantity);
 
-	if (!m_zone_connection) {
+	if (!ctx_.zone_connection) {
 		LOG_WARN(MOD_INVENTORY, "No zone connection, not sending MoveItem");
 		return;
 	}
@@ -165,13 +177,13 @@ void EverQuest::SendMoveItem(int16_t fromSlot, int16_t toSlot, uint32_t quantity
 
 	LOG_DEBUG(MOD_INVENTORY, "Sending MoveItem packet: {} -> {} (qty: {})", fromSlot, toSlot, quantity);
 
-	DumpPacket("C->S", HC_OP_MoveItem, packet);
-	m_zone_connection->QueuePacket(packet);
+	EverQuest::DumpPacket("C->S", HC_OP_MoveItem, packet);
+	ctx_.zone_connection->QueuePacket(packet);
 }
 
-void EverQuest::SendDeleteItem(int16_t slot)
+void eqt::merchant::MerchantComponent::SendDeleteItem(int16_t slot)
 {
-	if (!m_zone_connection) {
+	if (!ctx_.zone_connection) {
 		return;
 	}
 
@@ -188,8 +200,8 @@ void EverQuest::SendDeleteItem(int16_t slot)
 
 	LOG_DEBUG(MOD_INVENTORY, "Sending DeleteItem: slot {}", slot);
 
-	DumpPacket("C->S", HC_OP_DeleteItem, packet);
-	m_zone_connection->QueuePacket(packet);
+	EverQuest::DumpPacket("C->S", HC_OP_DeleteItem, packet);
+	ctx_.zone_connection->QueuePacket(packet);
 }
 
 // T276 -- the ONE place a scribe refusal becomes a chat line, shared by the
@@ -205,17 +217,17 @@ void EverQuest::SendDeleteItem(int16_t slot)
 // cannot use this item."). The already-scribed refusal has no official
 // string -- the stock client never offers the gesture for a spell you know,
 // and eqemu would happily overwrite the book slot AND eat the scroll.
-std::string EverQuest::ScribeRefusalMessage(uint32_t spellId)
+std::string eqt::merchant::MerchantComponent::ScribeRefusalMessage(uint32_t spellId)
 {
-	if (!m_spell_manager) {
+	if (!ctx_.spell_manager) {
 		return "Cannot scribe - spell system not available.";
 	}
 
-	if (m_spell_manager->hasSpellScribed(spellId)) {
+	if (ctx_.spell_manager->hasSpellScribed(spellId)) {
 		return "You already have this spell scribed in your spellbook.";
 	}
 
-	const EQ::SpellData* spellData = m_spell_manager->getSpell(spellId);
+	const EQ::SpellData* spellData = ctx_.spell_manager->getSpell(spellId);
 	if (!spellData) {
 		return fmt::format("Spell {} does not exist or is invalid.", spellId);
 	}
@@ -223,12 +235,12 @@ std::string EverQuest::ScribeRefusalMessage(uint32_t spellId)
 	// GetClass()/GetLevel() read m_game_state.player() -- the authoritative
 	// copy. T276: this used the raw m_game_state.player().classId()/m_game_state.player().level() members, a second copy
 	// written only by the PlayerProfile handler.
-	const uint8_t reqLevel = spellData->getClassLevel(static_cast<EQ::PlayerClass>(GetClass()));
+	const uint8_t reqLevel = spellData->getClassLevel(static_cast<EQ::PlayerClass>(owner_.GetClass()));
 	if (reqLevel == 255) {
-		return GetStringMessage(181);
+		return owner_.GetStringMessage(181);
 	}
-	if (GetLevel() < reqLevel) {
-		return GetFormattedStringMessage(12048, {std::to_string(reqLevel), spellData->name});
+	if (owner_.GetLevel() < reqLevel) {
+		return owner_.GetFormattedStringMessage(12048, {std::to_string(reqLevel), spellData->name});
 	}
 
 	return "";
@@ -250,42 +262,42 @@ std::string EverQuest::ScribeRefusalMessage(uint32_t spellId)
 // OP_MemorizeSpell against an empty cursor. The comment this function
 // carried before T276 asserted the precondition was already met -- and
 // setSpellForScribe() had zero callers anywhere, so it never was.
-void EverQuest::ScribeSpellFromScroll(uint32_t spellId, uint16_t bookSlot, int16_t sourceSlot)
+void eqt::merchant::MerchantComponent::ScribeSpellFromScroll(uint32_t spellId, uint16_t bookSlot, int16_t sourceSlot)
 {
-	if (!m_zone_connection) {
+	if (!ctx_.zone_connection) {
 		LOG_WARN(MOD_SPELL, "No zone connection, cannot scribe spell");
 		return;
 	}
 
-	if (!m_spell_manager) {
+	if (!ctx_.spell_manager) {
 		LOG_WARN(MOD_SPELL, "No spell manager, cannot scribe spell");
 		return;
 	}
 
 	if (std::string refusal = ScribeRefusalMessage(spellId); !refusal.empty()) {
-		AddChatSystemMessage(refusal);
+		owner_.AddChatSystemMessage(refusal);
 		LOG_DEBUG(MOD_SPELL, "Refusing to scribe spell {}: {}", spellId, refusal);
 		return;
 	}
 
 	if (bookSlot >= EQ::MAX_SPELLBOOK_SLOTS) {
-		AddChatSystemMessage("Your spellbook is full.");
+		owner_.AddChatSystemMessage("Your spellbook is full.");
 		return;
 	}
 
 	// Last-line guard mirroring eqemu's own: the cursor must hold THIS
 	// scroll. Nothing but a producer bug can trip it, which is exactly why
 	// it is here -- the pre-T276 code sent the packet regardless.
-	if (m_inventory_manager) {
-		const eqt::inventory::ItemInstance* onCursor = m_inventory_manager->getCursorItem();
+	if (ctx_.inventory_manager) {
+		const eqt::inventory::ItemInstance* onCursor = ctx_.inventory_manager->getCursorItem();
 		if (!onCursor || onCursor->getScrollSpellId() != spellId) {
-			AddChatSystemMessage("The scroll is not on your cursor - cannot scribe.");
+			owner_.AddChatSystemMessage("The scroll is not on your cursor - cannot scribe.");
 			LOG_WARN(MOD_SPELL, "Scribe aborted: cursor does not hold spell {}'s scroll", spellId);
 			return;
 		}
 	}
 
-	const EQ::SpellData* spellData = m_spell_manager->getSpell(spellId);
+	const EQ::SpellData* spellData = ctx_.spell_manager->getSpell(spellId);
 
 	LOG_INFO(MOD_SPELL, "Scribing spell {} to spellbook slot {} (scroll from slot {})",
 		spellId, bookSlot, sourceSlot);
@@ -311,25 +323,25 @@ void EverQuest::ScribeSpellFromScroll(uint32_t spellId, uint16_t bookSlot, int16
 
 		LOG_DEBUG(MOD_SPELL, "Sending MemorizeSpell: spell={} book_slot={} scribing=0 (scribe from scroll)",
 			spellId, bookSlot);
-		DumpPacket("C->S", HC_OP_MemorizeSpell, memPacket);
-		m_zone_connection->QueuePacket(memPacket);
+		EverQuest::DumpPacket("C->S", HC_OP_MemorizeSpell, memPacket);
+		ctx_.zone_connection->QueuePacket(memPacket);
 	}
 
 	// Store pending scribe state for confirmation handling (eq.cpp's
 	// HC_OP_MemorizeSpell case matches on it).
-	m_pending_scribe_spell_id = spellId;
-	m_pending_scribe_book_slot = bookSlot;
-	m_pending_scribe_source_slot = sourceSlot;
+	owner_.m_pending_scribe_spell_id = spellId;
+	owner_.m_pending_scribe_book_slot = bookSlot;
+	owner_.m_pending_scribe_source_slot = sourceSlot;
 
-	AddChatSystemMessage(fmt::format("Scribing {}...",
+	owner_.AddChatSystemMessage(fmt::format("Scribing {}...",
 		spellData ? spellData->name : "spell"));
 }
 
 // Trade send functions
 
-void EverQuest::SendTradeRequest(const EQT::TradeRequest_Struct& req)
+void eqt::merchant::MerchantComponent::SendTradeRequest(const EQT::TradeRequest_Struct& req)
 {
-	if (!m_zone_connection) {
+	if (!ctx_.zone_connection) {
 		LOG_WARN(MOD_MAIN, "No zone connection, not sending TradeRequest");
 		return;
 	}
@@ -339,13 +351,13 @@ void EverQuest::SendTradeRequest(const EQT::TradeRequest_Struct& req)
 	packet.PutUInt16(0, HC_OP_TradeRequest);
 	memcpy(packet.Data() + 2, &req, sizeof(EQT::TradeRequest_Struct));
 
-	DumpPacket("C->S", HC_OP_TradeRequest, packet);
-	m_zone_connection->QueuePacket(packet);
+	EverQuest::DumpPacket("C->S", HC_OP_TradeRequest, packet);
+	ctx_.zone_connection->QueuePacket(packet);
 }
 
-void EverQuest::SendTradeRequestAck(const EQT::TradeRequestAck_Struct& ack)
+void eqt::merchant::MerchantComponent::SendTradeRequestAck(const EQT::TradeRequestAck_Struct& ack)
 {
-	if (!m_zone_connection) {
+	if (!ctx_.zone_connection) {
 		LOG_WARN(MOD_MAIN, "No zone connection, not sending TradeRequestAck");
 		return;
 	}
@@ -355,8 +367,8 @@ void EverQuest::SendTradeRequestAck(const EQT::TradeRequestAck_Struct& ack)
 	packet.PutUInt16(0, HC_OP_TradeRequestAck);
 	memcpy(packet.Data() + 2, &ack, sizeof(EQT::TradeRequestAck_Struct));
 
-	DumpPacket("C->S", HC_OP_TradeRequestAck, packet);
-	m_zone_connection->QueuePacket(packet);
+	EverQuest::DumpPacket("C->S", HC_OP_TradeRequestAck, packet);
+	ctx_.zone_connection->QueuePacket(packet);
 }
 
 // T168: SendTradeCoins was DELETED here. It sent on an opcode eqemu never
@@ -369,12 +381,12 @@ void EverQuest::SendTradeRequestAck(const EQT::TradeRequestAck_Struct& ack)
 // The struct and the inbound parse (eq.cpp's HC_OP_TradeCoins arm ->
 // TradeManager::handleTradeCoins) are correct and are kept.
 
-void EverQuest::SendMoveCoin(const EQT::MoveCoin_Struct& move)
+void eqt::merchant::MerchantComponent::SendMoveCoin(const EQT::MoveCoin_Struct& move)
 {
 	LOG_DEBUG(MOD_MAIN, "SendMoveCoin called: from_slot={} to_slot={} cointype1={} cointype2={} amount={}",
 		move.from_slot, move.to_slot, move.cointype1, move.cointype2, move.amount);
 
-	if (!m_zone_connection) {
+	if (!ctx_.zone_connection) {
 		LOG_WARN(MOD_MAIN, "No zone connection, not sending MoveCoin");
 		return;
 	}
@@ -385,8 +397,8 @@ void EverQuest::SendMoveCoin(const EQT::MoveCoin_Struct& move)
 	memcpy(packet.Data() + 2, &move, sizeof(EQT::MoveCoin_Struct));
 
 	LOG_DEBUG(MOD_MAIN, "Queueing MoveCoin packet, size={}", packet.Length());
-	DumpPacket("C->S", HC_OP_MoveCoin, packet);
-	m_zone_connection->QueuePacket(packet);
+	EverQuest::DumpPacket("C->S", HC_OP_MoveCoin, packet);
+	ctx_.zone_connection->QueuePacket(packet);
 }
 
 // T269: /bank deposit|withdraw -> the kept BankCurrencyMoveIntent (T264
@@ -400,37 +412,37 @@ void EverQuest::SendMoveCoin(const EQT::MoveCoin_Struct& move)
 // POSSIBLE_HACK player-event log -- when no banker is within
 // USE_NPC_RANGE2, and our proxy for "a banker is in range" is the window
 // BankerInteractIntent's distance check opened).
-void EverQuest::RequestBankCoinMove(uint8_t coinType, int32_t amount, bool fromBank)
+void eqt::merchant::MerchantComponent::RequestBankCoinMove(uint8_t coinType, int32_t amount, bool fromBank)
 {
-	if (!IsBankWindowOpen()) {
-		AddChatSystemMessage("You must have a bank window open to move coins.");
+	if (!owner_.IsBankWindowOpen()) {
+		owner_.AddChatSystemMessage("You must have a bank window open to move coins.");
 		return;
 	}
 
-	if (m_bridge) {
-		m_bridge->pushIntent(eqt::events::BankCurrencyMoveIntent{coinType, amount, fromBank});
+	if (ctx_.bridge) {
+		ctx_.bridge->pushIntent(eqt::events::BankCurrencyMoveIntent{coinType, amount, fromBank});
 	} else {
-		AddChatSystemMessage("Cannot move coins - no bridge attached.");
+		owner_.AddChatSystemMessage("Cannot move coins - no bridge attached.");
 	}
 }
 
-void EverQuest::RequestBankCoinConvert(uint8_t fromCoinType, uint8_t toCoinType, int32_t amount)
+void eqt::merchant::MerchantComponent::RequestBankCoinConvert(uint8_t fromCoinType, uint8_t toCoinType, int32_t amount)
 {
-	if (!IsBankWindowOpen()) {
-		AddChatSystemMessage("You must have a bank window open to convert coins.");
+	if (!owner_.IsBankWindowOpen()) {
+		owner_.AddChatSystemMessage("You must have a bank window open to convert coins.");
 		return;
 	}
 
-	if (m_bridge) {
-		m_bridge->pushIntent(eqt::events::BankCurrencyConvertIntent{fromCoinType, toCoinType, amount});
+	if (ctx_.bridge) {
+		ctx_.bridge->pushIntent(eqt::events::BankCurrencyConvertIntent{fromCoinType, toCoinType, amount});
 	} else {
-		AddChatSystemMessage("Cannot convert coins - no bridge attached.");
+		owner_.AddChatSystemMessage("Cannot convert coins - no bridge attached.");
 	}
 }
 
-void EverQuest::SendTradeAcceptClick(const EQT::TradeAcceptClick_Struct& accept)
+void eqt::merchant::MerchantComponent::SendTradeAcceptClick(const EQT::TradeAcceptClick_Struct& accept)
 {
-	if (!m_zone_connection) {
+	if (!ctx_.zone_connection) {
 		LOG_WARN(MOD_MAIN, "No zone connection, not sending TradeAcceptClick");
 		return;
 	}
@@ -440,13 +452,13 @@ void EverQuest::SendTradeAcceptClick(const EQT::TradeAcceptClick_Struct& accept)
 	packet.PutUInt16(0, HC_OP_TradeAcceptClick);
 	memcpy(packet.Data() + 2, &accept, sizeof(EQT::TradeAcceptClick_Struct));
 
-	DumpPacket("C->S", HC_OP_TradeAcceptClick, packet);
-	m_zone_connection->QueuePacket(packet);
+	EverQuest::DumpPacket("C->S", HC_OP_TradeAcceptClick, packet);
+	ctx_.zone_connection->QueuePacket(packet);
 }
 
-void EverQuest::SendCancelTrade(const EQT::CancelTrade_Struct& cancel)
+void eqt::merchant::MerchantComponent::SendCancelTrade(const EQT::CancelTrade_Struct& cancel)
 {
-	if (!m_zone_connection) {
+	if (!ctx_.zone_connection) {
 		LOG_WARN(MOD_MAIN, "No zone connection, not sending CancelTrade");
 		return;
 	}
@@ -456,15 +468,15 @@ void EverQuest::SendCancelTrade(const EQT::CancelTrade_Struct& cancel)
 	packet.PutUInt16(0, HC_OP_CancelTrade);
 	memcpy(packet.Data() + 2, &cancel, sizeof(EQT::CancelTrade_Struct));
 
-	DumpPacket("C->S", HC_OP_CancelTrade, packet);
-	m_zone_connection->QueuePacket(packet);
+	EverQuest::DumpPacket("C->S", HC_OP_CancelTrade, packet);
+	ctx_.zone_connection->QueuePacket(packet);
 }
 
 // Book/Note reading methods
 
-void EverQuest::SendReadBookRequest(uint8_t window, uint8_t type, const std::string& filename)
+void eqt::merchant::MerchantComponent::SendReadBookRequest(uint8_t window, uint8_t type, const std::string& filename)
 {
-	if (!m_zone_connection) {
+	if (!ctx_.zone_connection) {
 		LOG_WARN(MOD_MAIN, "No zone connection, not sending ReadBook request");
 		return;
 	}
@@ -487,11 +499,11 @@ void EverQuest::SendReadBookRequest(uint8_t window, uint8_t type, const std::str
 
 	LOG_DEBUG(MOD_MAIN, "Sending ReadBook request: window={} type={} filename='{}'", window, type, filename);
 
-	DumpPacket("C->S", HC_OP_ReadBook, packet);
-	m_zone_connection->QueuePacket(packet);
+	EverQuest::DumpPacket("C->S", HC_OP_ReadBook, packet);
+	ctx_.zone_connection->QueuePacket(packet);
 }
 
-void EverQuest::ZoneProcessReadBook(const EQ::Net::Packet& p)
+void eqt::merchant::MerchantComponent::ZoneProcessReadBook(const EQ::Net::Packet& p)
 {
 	// Response packet format:
 	// Offset 0-1: opcode (2 bytes)
@@ -517,11 +529,11 @@ void EverQuest::ZoneProcessReadBook(const EQ::Net::Packet& p)
 	LOG_TRACE(MOD_MAIN, "Book text: '{}'", bookText);
 
 	// Publish NoteWindowOpened event to bridge
-	if (m_bridge) {
+	if (ctx_.bridge) {
 		eqt::state::NoteWindowOpenedData data;
 		data.text = bookText;
 		data.type = type;
-		m_bridge->pushEvent(eqt::state::GameEvent(
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::NoteWindowOpened, std::move(data)));
 	}
 
@@ -539,10 +551,10 @@ void EverQuest::ZoneProcessReadBook(const EQ::Net::Packet& p)
 	SurfaceBookText(bookText);
 }
 
-void EverQuest::SurfaceBookText(const std::string& text)
+void eqt::merchant::MerchantComponent::SurfaceBookText(const std::string& text)
 {
 	if (text.empty()) {
-		AddChatSystemMessage("The page is blank.");
+		owner_.AddChatSystemMessage("The page is blank.");
 		return;
 	}
 
@@ -555,7 +567,7 @@ void EverQuest::SurfaceBookText(const std::string& text)
 			line.pop_back();
 		}
 		if (!line.empty()) {
-			AddChatSystemMessage(line);
+			owner_.AddChatSystemMessage(line);
 			any = true;
 		}
 		line.clear();
@@ -569,17 +581,17 @@ void EverQuest::SurfaceBookText(const std::string& text)
 	}
 	flush();
 	if (!any) {
-		AddChatSystemMessage("The page is blank.");
+		owner_.AddChatSystemMessage("The page is blank.");
 	}
 }
 
-void EverQuest::RequestReadBook(const std::string& filename, uint8_t type)
+void eqt::merchant::MerchantComponent::RequestReadBook(const std::string& filename, uint8_t type)
 {
 	// Send read book request with new window flag (0xFF)
 	SendReadBookRequest(0xFF, type, filename);
 }
 
-bool EverQuest::ZoneProcessTradePartnerItem(const EQ::Net::Packet& p)
+bool eqt::merchant::MerchantComponent::ZoneProcessTradePartnerItem(const EQ::Net::Packet& p)
 {
 	// Check if this is a partner trade item (ItemPacketTradeView = 101)
 	// Partner items are sent with packet type 101 and slot 0-3 (relative)
@@ -660,16 +672,16 @@ bool EverQuest::ZoneProcessTradePartnerItem(const EQ::Net::Packet& p)
 	LOG_INFO(MOD_MAIN, "Received trade partner item: {} in slot {}", item->name, slotId);
 
 	// Show chat message about the offered item
-	if (m_trade_manager) {
-		std::string partnerName = m_trade_manager->getPartnerName();
+	if (ctx_.trade_manager) {
+		std::string partnerName = ctx_.trade_manager->getPartnerName();
 		std::string itemName = item->name;
-		AddChatSystemMessage(fmt::format("{} has offered you a {}.",
+		owner_.AddChatSystemMessage(fmt::format("{} has offered you a {}.",
 			EQT::toDisplayName(partnerName), itemName));
 	}
 
 	// Pass to trade manager
-	if (m_trade_manager) {
-		m_trade_manager->handlePartnerItemPacket(slotId, std::move(item));
+	if (ctx_.trade_manager) {
+		ctx_.trade_manager->handlePartnerItemPacket(slotId, std::move(item));
 	}
 
 	return true;  // Handled as trade item

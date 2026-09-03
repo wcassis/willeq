@@ -384,7 +384,7 @@ void EverQuest::RegisterSpellCommands()
 void EverQuest::RequestBankToggle()
 {
 	if (IsBankWindowOpen()) {
-		CloseBankWindow();
+		m_merchant->CloseBankWindow();
 		return;
 	}
 
@@ -490,5 +490,5 @@ void EverQuest::RequestTraining()
 	}
 
 	// Request trainer window from server
-	RequestTrainerWindow(target_id);
+	m_merchant->RequestTrainerWindow(target_id);
 }

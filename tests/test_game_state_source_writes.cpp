@@ -687,7 +687,7 @@ TEST_P(SourceWrites, Npc_CloseVendorWindow_ClearsSourceVendor) {
     ReplayZone(eq, HC_OP_ShopRequest, ShopRequestPayload(kRatId, 1, 1.0f));
     ASSERT_TRUE(eq.GetGameState().player().isWithVendor());
 
-    eq.CloseVendorWindow();
+    eq.Merchant().CloseVendorWindow();
 
     EXPECT_FALSE(eq.GetGameState().player().isWithVendor());
 }
@@ -695,17 +695,17 @@ TEST_P(SourceWrites, Npc_CloseVendorWindow_ClearsSourceVendor) {
 TEST_P(SourceWrites, Npc_OpenBankWindow_WritesSourceBanker) {
     ASSERT_FALSE(eq.GetGameState().player().isAtBank());
 
-    eq.OpenBankWindow(kRatId);
+    eq.Merchant().OpenBankWindow(kRatId);
 
     EXPECT_TRUE(eq.GetGameState().player().isAtBank());
     EXPECT_EQ(eq.GetGameState().player().bankerNpcId(), kRatId);
 }
 
 TEST_P(SourceWrites, Npc_CloseBankWindow_ClearsSourceBanker) {
-    eq.OpenBankWindow(kRatId);
+    eq.Merchant().OpenBankWindow(kRatId);
     ASSERT_TRUE(eq.GetGameState().player().isAtBank());
 
-    eq.CloseBankWindow();
+    eq.Merchant().CloseBankWindow();
 
     EXPECT_FALSE(eq.GetGameState().player().isAtBank());
     EXPECT_EQ(eq.GetGameState().player().bankerNpcId(), 0);
@@ -728,7 +728,7 @@ TEST_P(SourceWrites, Npc_CloseTrainerWindow_ClearsSourceTrainer) {
     ReplayZone(eq, HC_OP_GMTraining, GMTrainingPayload(kRatId));
     ASSERT_TRUE(eq.GetGameState().player().isWithTrainer());
 
-    eq.CloseTrainerWindow();
+    eq.Merchant().CloseTrainerWindow();
 
     EXPECT_FALSE(eq.GetGameState().player().isWithTrainer());
     EXPECT_EQ(eq.GetGameState().player().trainerNpcId(), 0);

@@ -194,7 +194,7 @@ void EverQuest::RequestTrainSkill(const std::string& args)
 		return;
 	}
 
-	const uint32_t cap = GetTrainerSkillCap(skillId);
+	const uint32_t cap = m_merchant->GetTrainerSkillCap(skillId);
 	if (cap == 0) {
 		AddChatSystemMessage(fmt::format("{} cannot train you in {}.", m_game_state.player().trainerName(), label));
 		return;
@@ -217,7 +217,7 @@ void EverQuest::RequestTrainSkill(const std::string& args)
 		return;
 	}
 
-	const uint32_t cost = TrainingCost(current);
+	const uint32_t cost = eqt::merchant::MerchantComponent::TrainingCost(current);
 	if (cost > 0) {
 		AddChatSystemMessage(fmt::format("Training {} ({} -> {}) for {}.",
 			label, current, current + 1, FormatPrice(static_cast<int32_t>(cost))));
@@ -244,7 +244,7 @@ void EverQuest::ListTrainableSkills()
 
 	size_t shown = 0;
 	for (uint8_t id = 0; id < EQ::MAX_SKILL_ID; ++id) {
-		const uint32_t cap = GetTrainerSkillCap(id);
+		const uint32_t cap = m_merchant->GetTrainerSkillCap(id);
 		if (cap == 0) continue;
 		uint32_t current = 0;
 		if (m_skill_manager) {
@@ -254,7 +254,7 @@ void EverQuest::ListTrainableSkills()
 		const char* name = EQ::getSkillName(id);
 		AddChatSystemMessage(fmt::format("[{}] {} {}/{} - {}",
 			id, name ? name : "Unknown", current, cap,
-			FormatPrice(static_cast<int32_t>(TrainingCost(current)))));
+			FormatPrice(static_cast<int32_t>(eqt::merchant::MerchantComponent::TrainingCost(current)))));
 		++shown;
 	}
 

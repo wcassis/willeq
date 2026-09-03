@@ -1,4 +1,5 @@
-// EverQuest vendor-window, bank, GM trainer and tradeskill-recipe cluster.
+// eqt::merchant::MerchantComponent -- vendor-window, bank, GM trainer and
+// tradeskill-recipe cluster.
 //
 // Split out of eq_merchant.cpp (Batch J, unit J27), which was itself split
 // out of eq.cpp (Batch F, unit F05): the vendor UI packet and the vendor
@@ -6,6 +7,17 @@
 // GM training, and the Phase 4 tradeskill recipe senders/handlers. Moved
 // verbatim, no behavior change. See refactor/F05_merchant.md and
 // refactor/J27_eq_merchant_split.md.
+//
+// K05 (Batch K, refactor/K_component_extraction.md) moved it again, from
+// src/client/eq_merchant_vendor_bank.cpp, and rebased the bodies from EverQuest onto
+// eqt::merchant::MerchantComponent. Still verbatim -- only the substitutions
+// Mechanism 4 allows (core members -> ctx_..., the loot/vendor/scribe members
+// that stay on EverQuest -> owner_.m_..., the accessors and output primitives
+// that stay behind -> owner_.Foo(), and EverQuest's statics s_debug_level,
+// DumpPacket and FormatPrice qualified as EverQuest:: -- friendship grants
+// access, not scope). See the K05 Review.
+
+#include "client/merchant/merchant_component.h"
 
 #include "client/eq.h"
 #include "client/combat.h"
@@ -32,7 +44,7 @@
 #include <algorithm>
 #include <vector>
 
-void EverQuest::ZoneProcessVendorItemToUI(const EQ::Net::Packet &p)
+void eqt::merchant::MerchantComponent::ZoneProcessVendorItemToUI(const EQ::Net::Packet &p)
 {
 	LOG_DEBUG(MOD_INVENTORY, "ZoneProcessVendorItemToUI called, packet length={}", p.Length());
 
@@ -65,30 +77,30 @@ void EverQuest::ZoneProcessVendorItemToUI(const EQ::Net::Packet &p)
 	LOG_DEBUG(MOD_INVENTORY, "Creating vendor item: slot={} name='{}'", vendorSlot, item->name);
 
 	// Track vendor item in game state (D18a: game-side vendor item tracking)
-	GameVendorItem gvi;
+	EverQuest::GameVendorItem gvi;
 	gvi.itemId = item->itemId;
 	gvi.name = item->name;
 	gvi.price = item->price;
 	gvi.quantity = item->quantity;
-	m_vendor_items[vendorSlot] = std::move(gvi);
+	owner_.m_vendor_items[vendorSlot] = std::move(gvi);
 
 	// Publish VendorItemAdded (D18a: bridge is sole path to renderer)
-	if (m_bridge) {
+	if (ctx_.bridge) {
 		eqt::state::VendorItemAddedData vdata;
 		vdata.vendorSlot = static_cast<uint16_t>(vendorSlot);
 		vdata.itemId = item->itemId;
 		vdata.itemName = item->name;
 		vdata.price = item->price;
 		vdata.quantity = item->quantity;
-		m_bridge->pushEvent(eqt::state::GameEvent(
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::VendorItemAdded, std::move(vdata)));
 	}
 }
 
-void EverQuest::RequestOpenVendor(uint16_t npcId)
+void eqt::merchant::MerchantComponent::RequestOpenVendor(uint16_t npcId)
 {
-	if (m_game_state.player().vendorNpcId() != 0) {
-		LOG_DEBUG(MOD_INVENTORY, "Already in vendor session with NPC {}", m_game_state.player().vendorNpcId());
+	if (ctx_.game_state.player().vendorNpcId() != 0) {
+		LOG_DEBUG(MOD_INVENTORY, "Already in vendor session with NPC {}", ctx_.game_state.player().vendorNpcId());
 		return;
 	}
 
@@ -99,14 +111,14 @@ void EverQuest::RequestOpenVendor(uint16_t npcId)
 	EQT::Merchant_Click_Struct req;
 	memset(&req, 0, sizeof(req));
 	req.npc_id = npcId;
-	req.player_id = MySpawnId();
+	req.player_id = owner_.MySpawnId();
 	pkt.PutData(0, &req, sizeof(req));
-	QueuePacket(HC_OP_ShopRequest, &pkt);
+	owner_.QueuePacket(HC_OP_ShopRequest, &pkt);
 }
 
-void EverQuest::BuyFromVendor(uint16_t npcId, uint32_t itemSlot, uint32_t quantity)
+void eqt::merchant::MerchantComponent::BuyFromVendor(uint16_t npcId, uint32_t itemSlot, uint32_t quantity)
 {
-	if (m_game_state.player().vendorNpcId() == 0 || m_game_state.player().vendorNpcId() != npcId) {
+	if (ctx_.game_state.player().vendorNpcId() == 0 || ctx_.game_state.player().vendorNpcId() != npcId) {
 		LOG_WARN(MOD_INVENTORY, "BuyFromVendor: Not in vendor session with NPC {}", npcId);
 		return;
 	}
@@ -117,34 +129,34 @@ void EverQuest::BuyFromVendor(uint16_t npcId, uint32_t itemSlot, uint32_t quanti
 	EQ::Net::DynamicPacket pkt;
 	EQT::Merchant_Purchase_Struct buy;
 	buy.npc_id = npcId;
-	buy.player_id = MySpawnId();
+	buy.player_id = owner_.MySpawnId();
 	buy.itemslot = itemSlot;
 	buy.unknown12 = 0;
 	buy.quantity = quantity;
 	buy.action = EQT::MERCHANT_BUY;
 	pkt.PutData(0, &buy, sizeof(buy));
-	QueuePacket(HC_OP_ShopPlayerBuy, &pkt);
+	owner_.QueuePacket(HC_OP_ShopPlayerBuy, &pkt);
 }
 
-void EverQuest::SellToVendor(uint16_t npcId, uint32_t itemSlot, uint32_t quantity)
+void eqt::merchant::MerchantComponent::SellToVendor(uint16_t npcId, uint32_t itemSlot, uint32_t quantity)
 {
-	if (m_game_state.player().vendorNpcId() == 0 || m_game_state.player().vendorNpcId() != npcId) {
+	if (ctx_.game_state.player().vendorNpcId() == 0 || ctx_.game_state.player().vendorNpcId() != npcId) {
 		LOG_WARN(MOD_INVENTORY, "SellToVendor: Not in vendor session with NPC {}", npcId);
-		AddChatSystemMessage("You are not interacting with a vendor.");
+		owner_.AddChatSystemMessage("You are not interacting with a vendor.");
 		return;
 	}
 
 	// Validate the item exists and can be sold
-	if (m_inventory_manager) {
-		const auto* item = m_inventory_manager->getItem(static_cast<int16_t>(itemSlot));
+	if (ctx_.inventory_manager) {
+		const auto* item = ctx_.inventory_manager->getItem(static_cast<int16_t>(itemSlot));
 		if (!item) {
 			LOG_WARN(MOD_INVENTORY, "SellToVendor: No item at slot {}", itemSlot);
-			AddChatSystemMessage("That item is no longer in your inventory.");
+			owner_.AddChatSystemMessage("That item is no longer in your inventory.");
 			return;
 		}
 		if (item->noDrop) {
 			LOG_WARN(MOD_INVENTORY, "SellToVendor: Item '{}' is NO_DROP", item->name);
-			AddChatSystemMessage(fmt::format("You cannot sell {}.", item->name));
+			owner_.AddChatSystemMessage(fmt::format("You cannot sell {}.", item->name));
 			return;
 		}
 		if (item->stackable && static_cast<int32_t>(quantity) > item->quantity) {
@@ -164,52 +176,52 @@ void EverQuest::SellToVendor(uint16_t npcId, uint32_t itemSlot, uint32_t quantit
 	sell.quantity = quantity;
 	sell.unknown12 = 0;  // Server ignores this field
 	pkt.PutData(0, &sell, sizeof(sell));
-	QueuePacket(HC_OP_ShopPlayerSell, &pkt);
+	owner_.QueuePacket(HC_OP_ShopPlayerSell, &pkt);
 }
 
-void EverQuest::CloseVendorWindow()
+void eqt::merchant::MerchantComponent::CloseVendorWindow()
 {
-	if (m_game_state.player().vendorNpcId() == 0) {
+	if (ctx_.game_state.player().vendorNpcId() == 0) {
 		return;
 	}
 
-	LOG_DEBUG(MOD_INVENTORY, "Closing vendor window for NPC {}", m_game_state.player().vendorNpcId());
+	LOG_DEBUG(MOD_INVENTORY, "Closing vendor window for NPC {}", ctx_.game_state.player().vendorNpcId());
 
 	// Send Merchant_End_Struct
 	EQ::Net::DynamicPacket pkt;
 	EQT::Merchant_End_Struct end;
-	end.npc_id = m_game_state.player().vendorNpcId();
-	end.player_id = MySpawnId();
+	end.npc_id = ctx_.game_state.player().vendorNpcId();
+	end.player_id = owner_.MySpawnId();
 	pkt.PutData(0, &end, sizeof(end));
-	QueuePacket(HC_OP_ShopEnd, &pkt);
+	owner_.QueuePacket(HC_OP_ShopEnd, &pkt);
 
 	// T286: capture before clearing the single store (see ShopEndConfirm).
-	const uint16_t closedVendorNpcId = m_game_state.player().vendorNpcId();
+	const uint16_t closedVendorNpcId = ctx_.game_state.player().vendorNpcId();
 
 	// T227: source write (see ZoneProcessShopRequest).
-	m_game_state.player().clearVendor();
+	ctx_.game_state.player().clearVendor();
 
 	// Publish VendorWindowClosed
-	if (m_bridge) {
+	if (ctx_.bridge) {
 		eqt::state::WindowClosedData data;
 		data.npcId = closedVendorNpcId;
-		m_bridge->pushEvent(eqt::state::GameEvent(
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::VendorWindowClosed, std::move(data)));
 	}
 
 #ifdef WITH_AUDIO
 	// Stop vendor/bank music (context-based, will restore zone music or auto-attack music)
-	if (m_audio_manager) {
-		m_audio_manager->stopVendorBankMusic();
+	if (ctx_.audio_manager) {
+		ctx_.audio_manager->stopVendorBankMusic();
 	}
 #endif
 
-	m_vendor_items.clear();
+	owner_.m_vendor_items.clear();
 }
 
-void EverQuest::OpenBankWindow(uint16_t bankerNpcId)
+void eqt::merchant::MerchantComponent::OpenBankWindow(uint16_t bankerNpcId)
 {
-	if (m_game_state.player().bankerNpcId() != 0) {
+	if (ctx_.game_state.player().bankerNpcId() != 0) {
 		// Already have bank open, close it first
 		CloseBankWindow();
 	}
@@ -222,65 +234,65 @@ void EverQuest::OpenBankWindow(uint16_t bankerNpcId)
 
 	// T227: source write, ABOVE the bridge guard (see ZoneProcessShopRequest).
 	// T286: and the ONLY write -- EverQuest keeps no banker copy.
-	m_game_state.player().setBanker(bankerId);
+	ctx_.game_state.player().setBanker(bankerId);
 
 	// Publish BankWindowOpened
-	if (m_bridge) {
+	if (ctx_.bridge) {
 		eqt::state::WindowOpenedData data;
-		data.npcId = m_game_state.player().bankerNpcId();
-		auto it = m_entities.find(m_game_state.player().bankerNpcId());
-		data.npcName = (it != m_entities.end()) ? EQT::toDisplayName(it->second.name) : "Banker";
+		data.npcId = ctx_.game_state.player().bankerNpcId();
+		auto it = ctx_.entities.find(ctx_.game_state.player().bankerNpcId());
+		data.npcName = (it != ctx_.entities.end()) ? EQT::toDisplayName(it->second.name) : "Banker";
 		data.sellRate = 0.0f;
-		m_bridge->pushEvent(eqt::state::GameEvent(
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::BankWindowOpened, std::move(data)));
 	}
 
 #ifdef WITH_AUDIO
 	// Start vendor/bank music (context-based, will restore on close)
-	if (m_audio_manager) {
-		m_audio_manager->startVendorBankMusic();
+	if (ctx_.audio_manager) {
+		ctx_.audio_manager->startVendorBankMusic();
 	}
 #endif
 
-	AddChatSystemMessage("Bank window opened");
+	owner_.AddChatSystemMessage("Bank window opened");
 }
 
-void EverQuest::CloseBankWindow()
+void eqt::merchant::MerchantComponent::CloseBankWindow()
 {
-	if (m_game_state.player().bankerNpcId() == 0) {
+	if (ctx_.game_state.player().bankerNpcId() == 0) {
 		return;
 	}
 
-	LOG_DEBUG(MOD_INVENTORY, "Closing bank window (banker NPC: {})", m_game_state.player().bankerNpcId());
+	LOG_DEBUG(MOD_INVENTORY, "Closing bank window (banker NPC: {})", ctx_.game_state.player().bankerNpcId());
 
 	// T286: capture before clearing the single store (see ShopEndConfirm).
-	const uint16_t closedBankerNpcId = m_game_state.player().bankerNpcId();
+	const uint16_t closedBankerNpcId = ctx_.game_state.player().bankerNpcId();
 
 	// T227: source write (see ZoneProcessShopRequest).
-	m_game_state.player().clearBanker();
+	ctx_.game_state.player().clearBanker();
 
 	// Publish BankWindowClosed (carrying the banker we were AT)
-	if (m_bridge) {
+	if (ctx_.bridge) {
 		eqt::state::WindowClosedData data;
 		data.npcId = closedBankerNpcId;
-		m_bridge->pushEvent(eqt::state::GameEvent(
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::BankWindowClosed, std::move(data)));
 	}
 
 #ifdef WITH_AUDIO
 	// Stop vendor/bank music (context-based, will restore zone music or auto-attack music)
-	if (m_audio_manager) {
-		m_audio_manager->stopVendorBankMusic();
+	if (ctx_.audio_manager) {
+		ctx_.audio_manager->stopVendorBankMusic();
 	}
 #endif
 
-	AddChatSystemMessage("Bank window closed");
+	owner_.AddChatSystemMessage("Bank window closed");
 }
 // ============================================================================
 // Skill Trainer Window Methods
 // ============================================================================
 
-void EverQuest::SetupTrainerCallbacks()
+void eqt::merchant::MerchantComponent::SetupTrainerCallbacks()
 {
 	/* D20b1: WindowManager pushes TrainSkillIntent/CloseTrainerIntent via bridge */
 }
@@ -288,7 +300,7 @@ void EverQuest::SetupTrainerCallbacks()
 // T280: eqemu's training price, in copper, for raising a skill that is
 // currently at `currentValue` (Client::OPGMTrainSkill, zone/client_process.cpp).
 // Verbatim, including the integer division and the free first ten points.
-uint32_t EverQuest::TrainingCost(uint32_t currentValue)
+uint32_t eqt::merchant::MerchantComponent::TrainingCost(uint32_t currentValue)
 {
 	if (currentValue <= 10) {
 		return 0;
@@ -299,7 +311,7 @@ uint32_t EverQuest::TrainingCost(uint32_t currentValue)
 
 // T280: the open trainer session's cap for one skill (0 = not taught here,
 // or no session).
-uint32_t EverQuest::GetTrainerSkillCap(uint8_t skillId) const
+uint32_t eqt::merchant::MerchantComponent::GetTrainerSkillCap(uint8_t skillId) const
 {
 	if (skillId >= m_trainer_skill_caps.size()) {
 		return 0;
@@ -307,7 +319,7 @@ uint32_t EverQuest::GetTrainerSkillCap(uint8_t skillId) const
 	return m_trainer_skill_caps[skillId];
 }
 
-void EverQuest::ZoneProcessGMTraining(const EQ::Net::Packet& p)
+void eqt::merchant::MerchantComponent::ZoneProcessGMTraining(const EQ::Net::Packet& p)
 {
 	// Server response to our training request
 	// GMTrainee_Struct: npcid(4), playerid(4), skills[100](400), unknown408[40](40) = 448 bytes
@@ -328,24 +340,24 @@ void EverQuest::ZoneProcessGMTraining(const EQ::Net::Packet& p)
 	const uint16_t trainerNpcId = static_cast<uint16_t>(npc_id);
 
 	// Get trainer name from entity if available
-	auto it = m_entities.find(trainerNpcId);
-	const std::string trainerName = (it != m_entities.end())
+	auto it = ctx_.entities.find(trainerNpcId);
+	const std::string trainerName = (it != ctx_.entities.end())
 		? EQT::toDisplayName(it->second.name)
 		: std::string("Trainer");
 
 	// T227: source write, ABOVE the bridge guard (see ZoneProcessShopRequest).
 	// T286: and the ONLY write -- EverQuest keeps no trainer copy.
-	m_game_state.player().setTrainer(trainerNpcId, trainerName);
+	ctx_.game_state.player().setTrainer(trainerNpcId, trainerName);
 
 	// Build list of trainable skills and publish to bridge
 	eqt::state::TrainerWindowOpenedData trainerData;
-	trainerData.npcId = m_game_state.player().trainerNpcId();
-	trainerData.npcName = m_game_state.player().trainerName();
-	trainerData.platinum = GetPlatinum();
-	trainerData.gold = GetGold();
-	trainerData.silver = GetSilver();
-	trainerData.copper = GetCopper();
-	trainerData.practicePoints = GetPracticePoints();
+	trainerData.npcId = ctx_.game_state.player().trainerNpcId();
+	trainerData.npcName = ctx_.game_state.player().trainerName();
+	trainerData.platinum = owner_.GetPlatinum();
+	trainerData.gold = owner_.GetGold();
+	trainerData.silver = owner_.GetSilver();
+	trainerData.copper = owner_.GetCopper();
+	trainerData.practicePoints = owner_.GetPracticePoints();
 
 	// T280: keep the caps for the life of the session. /train has to answer
 	// "does this trainer teach that, and am I already at its cap" before it
@@ -363,8 +375,8 @@ void EverQuest::ZoneProcessGMTraining(const EQ::Net::Packet& p)
 
 		// Get current skill value
 		uint32_t current_value = 0;
-		if (m_skill_manager) {
-			current_value = m_skill_manager->getSkillValue(skill_id);
+		if (ctx_.skill_manager) {
+			current_value = ctx_.skill_manager->getSkillValue(skill_id);
 		}
 
 		// Skip skills already at or above max
@@ -397,26 +409,26 @@ void EverQuest::ZoneProcessGMTraining(const EQ::Net::Packet& p)
 		skill.cost = cost;
 		trainerData.skills.push_back(std::move(skill));
 
-		if (s_debug_level >= 2) {
+		if (EverQuest::s_debug_level >= 2) {
 			LOG_DEBUG(MOD_MAIN, "  Skill {}: {} cur={} max={} cost={}",
 				skill_id, skill_name, current_value, max_trainable, cost);
 		}
 	}
 
 	LOG_INFO(MOD_MAIN, "Trainer window opened for {} (id={}) with {} trainable skills",
-		m_game_state.player().trainerName(), m_game_state.player().trainerNpcId(), trainerData.skills.size());
+		ctx_.game_state.player().trainerName(), ctx_.game_state.player().trainerNpcId(), trainerData.skills.size());
 
 	// Publish TrainerWindowOpened event to bridge
-	if (m_bridge) {
-		m_bridge->pushEvent(eqt::state::GameEvent(
+	if (ctx_.bridge) {
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::TrainerWindowOpened, std::move(trainerData)));
 	}
 }
 
-void EverQuest::RequestTrainerWindow(uint16_t npcId)
+void eqt::merchant::MerchantComponent::RequestTrainerWindow(uint16_t npcId)
 {
-	if (m_game_state.player().trainerNpcId() != 0) {
-		LOG_DEBUG(MOD_MAIN, "Already in trainer session with NPC {}", m_game_state.player().trainerNpcId());
+	if (ctx_.game_state.player().trainerNpcId() != 0) {
+		LOG_DEBUG(MOD_MAIN, "Already in trainer session with NPC {}", ctx_.game_state.player().trainerNpcId());
 		return;
 	}
 
@@ -427,60 +439,60 @@ void EverQuest::RequestTrainerWindow(uint16_t npcId)
 	EQT::GMTrainee_Struct req;
 	memset(&req, 0, sizeof(req));
 	req.npcid = npcId;
-	req.playerid = MySpawnId();
+	req.playerid = owner_.MySpawnId();
 	pkt.PutData(0, &req, sizeof(req));
-	QueuePacket(HC_OP_GMTraining, &pkt);
+	owner_.QueuePacket(HC_OP_GMTraining, &pkt);
 }
 
-void EverQuest::TrainSkill(uint8_t skillId)
+void eqt::merchant::MerchantComponent::TrainSkill(uint8_t skillId)
 {
-	if (m_game_state.player().trainerNpcId() == 0) {
+	if (ctx_.game_state.player().trainerNpcId() == 0) {
 		LOG_WARN(MOD_MAIN, "TrainSkill: Not in trainer session");
-		AddChatSystemMessage("You are not interacting with a trainer.");
+		owner_.AddChatSystemMessage("You are not interacting with a trainer.");
 		return;
 	}
 
-	LOG_DEBUG(MOD_MAIN, "Training skill {} with trainer {}", skillId, m_game_state.player().trainerNpcId());
+	LOG_DEBUG(MOD_MAIN, "Training skill {} with trainer {}", skillId, ctx_.game_state.player().trainerNpcId());
 
 	// Send GMSkillChange_Struct
 	EQ::Net::DynamicPacket pkt;
 	EQT::GMSkillChange_Struct train;
 	memset(&train, 0, sizeof(train));
-	train.npcid = static_cast<uint16_t>(m_game_state.player().trainerNpcId());
+	train.npcid = static_cast<uint16_t>(ctx_.game_state.player().trainerNpcId());
 	train.skillbank = 0;  // 0 = normal skills, 1 = languages
 	train.skill_id = skillId;
 	pkt.PutData(0, &train, sizeof(train));
-	QueuePacket(HC_OP_GMTrainSkill, &pkt);
+	owner_.QueuePacket(HC_OP_GMTrainSkill, &pkt);
 }
 
-void EverQuest::CloseTrainerWindow()
+void eqt::merchant::MerchantComponent::CloseTrainerWindow()
 {
-	if (m_game_state.player().trainerNpcId() == 0) {
+	if (ctx_.game_state.player().trainerNpcId() == 0) {
 		return;
 	}
 
-	LOG_DEBUG(MOD_MAIN, "Closing trainer window for NPC {}", m_game_state.player().trainerNpcId());
+	LOG_DEBUG(MOD_MAIN, "Closing trainer window for NPC {}", ctx_.game_state.player().trainerNpcId());
 
 	// Send GMTrainEnd_Struct
 	EQ::Net::DynamicPacket pkt;
 	EQT::GMTrainEnd_Struct end;
-	end.npcid = m_game_state.player().trainerNpcId();
-	end.playerid = MySpawnId();
+	end.npcid = ctx_.game_state.player().trainerNpcId();
+	end.playerid = owner_.MySpawnId();
 	pkt.PutData(0, &end, sizeof(end));
-	QueuePacket(HC_OP_GMEndTraining, &pkt);
+	owner_.QueuePacket(HC_OP_GMEndTraining, &pkt);
 
 	// T286: capture before clearing the single store (see ShopEndConfirm).
-	const uint16_t closedTrainerNpcId = m_game_state.player().trainerNpcId();
+	const uint16_t closedTrainerNpcId = ctx_.game_state.player().trainerNpcId();
 
 	// T227: source write (see ZoneProcessShopRequest).
-	m_game_state.player().clearTrainer();
+	ctx_.game_state.player().clearTrainer();
 
 	// Publish TrainerWindowClosed event to bridge (carrying the trainer we
 	// were AT)
-	if (m_bridge) {
+	if (ctx_.bridge) {
 		eqt::state::WindowClosedData data;
 		data.npcId = closedTrainerNpcId;
-		m_bridge->pushEvent(eqt::state::GameEvent(
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::TrainerWindowClosed, std::move(data)));
 	}
 
@@ -510,7 +522,7 @@ static constexpr size_t kTradeskillFavoritesMaxRecipes = 500;
 static constexpr size_t kTradeskillFavoritesBodySize =
 	sizeof(uint32_t) * 2 + sizeof(uint32_t) * kTradeskillFavoritesMaxRecipes;  // 2008
 
-void EverQuest::SendRecipesFavorite(uint32_t object_type, const std::vector<uint32_t>& favorites)
+void eqt::merchant::MerchantComponent::SendRecipesFavorite(uint32_t object_type, const std::vector<uint32_t>& favorites)
 {
 	// Fixed-size, zero-padded body -- see the note above.
 	std::vector<uint8_t> body(kTradeskillFavoritesBodySize, 0);
@@ -530,13 +542,13 @@ void EverQuest::SendRecipesFavorite(uint32_t object_type, const std::vector<uint
 	packet.PutUInt16(0, HC_OP_RecipesFavorite);
 	packet.PutData(2, body.data(), body.size());
 
-	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
-		m_zone_connection->QueuePacket(packet);
+	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
+		ctx_.zone_connection->QueuePacket(packet);
 		LOG_DEBUG(MOD_MAIN, "Sent {} favorite recipes (object_type={})", count, object_type);
 	}
 }
 
-void EverQuest::SendRecipesSearch(uint32_t object_type, const std::string& query, uint32_t mintrivial, uint32_t maxtrivial)
+void eqt::merchant::MerchantComponent::SendRecipesSearch(uint32_t object_type, const std::string& query, uint32_t mintrivial, uint32_t maxtrivial)
 {
 	EQ::Net::DynamicPacket packet;
 	packet.PutUInt16(0, HC_OP_RecipesSearch);
@@ -552,25 +564,25 @@ void EverQuest::SendRecipesSearch(uint32_t object_type, const std::string& query
 	search.unknown5 = 0x0012DD4C;
 	packet.PutData(2, &search, sizeof(search));
 
-	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
-		m_zone_connection->QueuePacket(packet);
+	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
+		ctx_.zone_connection->QueuePacket(packet);
 		LOG_DEBUG(MOD_MAIN, "Recipe search: '{}'", query);
 	}
 }
 
-void EverQuest::SendRecipeDetails(uint32_t recipe_id)
+void eqt::merchant::MerchantComponent::SendRecipeDetails(uint32_t recipe_id)
 {
 	EQ::Net::DynamicPacket packet;
 	packet.PutUInt16(0, HC_OP_RecipeDetails);
 	packet.PutUInt32(2, recipe_id);
 
-	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
-		m_zone_connection->QueuePacket(packet);
+	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
+		ctx_.zone_connection->QueuePacket(packet);
 		LOG_DEBUG(MOD_MAIN, "Request recipe details: {}", recipe_id);
 	}
 }
 
-void EverQuest::SendRecipeAutoCombine(uint32_t object_type, uint32_t recipe_id)
+void eqt::merchant::MerchantComponent::SendRecipeAutoCombine(uint32_t object_type, uint32_t recipe_id)
 {
 	EQ::Net::DynamicPacket packet;
 	packet.PutUInt16(0, HC_OP_RecipeAutoCombine);
@@ -583,13 +595,13 @@ void EverQuest::SendRecipeAutoCombine(uint32_t object_type, uint32_t recipe_id)
 	combine.reply_code = 0xe16493;  // Magic request value
 	packet.PutData(2, &combine, sizeof(combine));
 
-	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
-		m_zone_connection->QueuePacket(packet);
+	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
+		ctx_.zone_connection->QueuePacket(packet);
 		LOG_DEBUG(MOD_MAIN, "Auto-combine recipe: {}", recipe_id);
 	}
 }
 
-void EverQuest::ZoneProcessRecipeReply(const EQ::Net::Packet &p)
+void eqt::merchant::MerchantComponent::ZoneProcessRecipeReply(const EQ::Net::Packet &p)
 {
 	if (p.Length() < 2 + sizeof(EQT::RecipeReply_Struct)) {
 		return;
@@ -602,7 +614,7 @@ void EverQuest::ZoneProcessRecipeReply(const EQ::Net::Packet &p)
 	LOG_DEBUG(MOD_MAIN, "Recipe: {} (ID: {}, Trivial: {})", name, recipe->recipe_id, recipe->trivial);
 }
 
-void EverQuest::ZoneProcessRecipeAutoCombine(const EQ::Net::Packet &p)
+void eqt::merchant::MerchantComponent::ZoneProcessRecipeAutoCombine(const EQ::Net::Packet &p)
 {
 	if (p.Length() < 2 + sizeof(EQT::RecipeAutoCombine_Struct)) {
 		return;
@@ -613,9 +625,9 @@ void EverQuest::ZoneProcessRecipeAutoCombine(const EQ::Net::Packet &p)
 
 	if (combine->reply_code == 0) {
 		LOG_INFO(MOD_MAIN, "Auto-combine successful for recipe {}", combine->recipe_id);
-		AddChatSystemMessage("Tradeskill combine successful!");
+		owner_.AddChatSystemMessage("Tradeskill combine successful!");
 	} else {
 		LOG_INFO(MOD_MAIN, "Auto-combine failed for recipe {}", combine->recipe_id);
-		AddChatSystemMessage("Tradeskill combine failed.");
+		owner_.AddChatSystemMessage("Tradeskill combine failed.");
 	}
 }

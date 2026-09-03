@@ -351,7 +351,7 @@ void EverQuest::ZoneProcessDeath(const EQ::Net::Packet &p)
 		// Close vendor window if open (can't shop while dead)
 		if (IsVendorWindowOpen()) {
 			LOG_DEBUG(MOD_INVENTORY, "Closed vendor window due to player death");
-			CloseVendorWindow();
+			m_merchant->CloseVendorWindow();
 		}
 
 		// Cancel trade if we died
@@ -372,7 +372,7 @@ void EverQuest::ZoneProcessDeath(const EQ::Net::Packet &p)
 	// If the vendor NPC died, close vendor window
 	if (m_game_state.player().vendorNpcId() != 0 && m_game_state.player().vendorNpcId() == victim_id) {
 		LOG_DEBUG(MOD_INVENTORY, "Closed vendor window due to vendor death");
-		CloseVendorWindow();
+		m_merchant->CloseVendorWindow();
 	}
 }
 

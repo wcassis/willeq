@@ -978,7 +978,7 @@ void EverQuest::RequestScribeItem(const std::string& args)
 
 	// Pre-flight the same refusals ScribeSpellFromScroll() guards with, so
 	// nothing touches the cursor for a scribe that was never going to work.
-	if (std::string refusal = ScribeRefusalMessage(spellId); !refusal.empty()) {
+	if (std::string refusal = m_merchant->ScribeRefusalMessage(spellId); !refusal.empty()) {
 		AddChatSystemMessage(refusal);
 		return;
 	}

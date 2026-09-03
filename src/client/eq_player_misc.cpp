@@ -345,7 +345,7 @@ void EverQuest::ZoneProcessClearObject(const EQ::Net::Packet &p)
 	// The UI holds its own copy of each slot, so an emptied slot has to be
 	// announced the same way a deleted item is (D18a: bridge-only).
 	for (int16_t slot = eqt::inventory::WORLD_BEGIN; slot <= eqt::inventory::WORLD_END; slot++) {
-		SyncInventorySlotToGameState(slot, false);
+		m_merchant->SyncInventorySlotToGameState(slot, false);
 		if (!m_bridge) {
 			continue;
 		}

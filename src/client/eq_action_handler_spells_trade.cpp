@@ -407,7 +407,7 @@ void EqActionHandler::recipeSearch(const std::string& query, uint32_t minTrivial
     }
     LOG_DEBUG(MOD_UI, "Recipe search in container type {} query='{}' trivial {}..{}",
               objectType, query, minTrivial, maxTrivial);
-    m_eq.SendRecipesSearch(objectType, query, minTrivial, maxTrivial);
+    m_eq.Merchant().SendRecipesSearch(objectType, query, minTrivial, maxTrivial);
 }
 
 void EqActionHandler::recipeDetails(uint32_t recipeId) {
@@ -419,7 +419,7 @@ void EqActionHandler::recipeDetails(uint32_t recipeId) {
     if (!resolveOpenContainerObjectType(objectType)) {
         return;
     }
-    m_eq.SendRecipeDetails(recipeId);
+    m_eq.Merchant().SendRecipeDetails(recipeId);
 }
 
 void EqActionHandler::recipeAutoCombine(uint32_t recipeId) {
@@ -427,7 +427,7 @@ void EqActionHandler::recipeAutoCombine(uint32_t recipeId) {
     if (!resolveOpenContainerObjectType(objectType)) {
         return;
     }
-    m_eq.SendRecipeAutoCombine(objectType, recipeId);
+    m_eq.Merchant().SendRecipeAutoCombine(objectType, recipeId);
 }
 
 void EqActionHandler::recipesFavorite(const std::vector<uint32_t>& recipeIds) {
@@ -435,7 +435,7 @@ void EqActionHandler::recipesFavorite(const std::vector<uint32_t>& recipeIds) {
     if (!resolveOpenContainerObjectType(objectType)) {
         return;
     }
-    m_eq.SendRecipesFavorite(objectType, recipeIds);
+    m_eq.Merchant().SendRecipesFavorite(objectType, recipeIds);
 }
 
 // T278: unlike the four recipe requests above, neither of these carries an

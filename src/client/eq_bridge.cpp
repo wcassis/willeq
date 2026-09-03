@@ -166,12 +166,12 @@ bool EverQuest::InitGraphics(int width, int height,
 	}
 
 	// Setup window callbacks (all empty stubs since D20a/D20b1)
-	SetupLootCallbacks();
-	SetupVendorCallbacks();
-	SetupBankCallbacks();
-	SetupTrainerCallbacks();
-	SetupTradeWindowCallbacks();
-	SetupTradeskillCallbacks();
+	m_merchant->SetupLootCallbacks();
+	m_merchant->SetupVendorCallbacks();
+	m_merchant->SetupBankCallbacks();
+	m_merchant->SetupTrainerCallbacks();
+	m_merchant->SetupTradeWindowCallbacks();
+	m_merchant->SetupTradeskillCallbacks();
 
 	// S2: movement callback removed — position flows via PlayerPositionChanged intent only
 
