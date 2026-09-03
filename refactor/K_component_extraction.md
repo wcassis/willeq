@@ -117,7 +117,19 @@ into the component.**
    `zonetest::MakeEq()` and exercises the component directly; existing tests
    are retargeted at the call site. `test_duplicate_state_stores.cpp` and
    `test_reachability_sweep.cpp` scan `eq.h` as text — run them; K01 needed no
-   file-list edit, but a later family might (STOP and report if so).
+   file-list edit, but a later family might (STOP and report if so). Any test
+   that reads the moved TU by filename is repointed in-unit (K03 c).
+**K03 corrections (2026-09-03):** (a) "zero callers" means zero INCLUDING
+   in-family callers — `ZoneSendEmote` had one in-family caller and a plan
+   table headed "callers outside the family" nearly deleted `/emote`;
+   (b) a caller table must record the RECEIVER EXPRESSION, not the name —
+   half of K03's lead sites were `UCSConnection::SendChatMessage` and
+   `Application::DispatchSlashCommand`; (c) **grep `tests/` for the moved
+   TU's FILENAME as a string before moving it** — `test_chat_channel_names`
+   read `eq_chat.cpp` as text and would have kept passing over an empty
+   guard; (d) an inline `eq.h` accessor on a moving member is part of the
+   move and appears in no method table; (e) re-derive the include set for
+   BOTH sides of a split TU.
 8. **Proof.** `verify_move_only.py` exits 1 by construction. Line-multiset
    check with the substitutions normalised BY NAME MAPPING (`ctx_.character`
    ↔ `m_character`, etc. — stripping the prefix alone leaves 7 false
