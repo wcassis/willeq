@@ -290,7 +290,7 @@ it without taking that measurement first.
   / `m_client_spawned` — write-only.~~ **CLOSED by K15**: re-measured at
   `7c125b28` — the only occurrences were the two declarations, the two
   `CleanupZone` resets and one already-commented-out line in
-  `src/client/eq.cpp`. Members and resets deleted; the live spawn-ready state
+  `src/client/core/everquest.cpp`. Members and resets deleted; the live spawn-ready state
   is `game_state.world().clientReady()`, reset on the adjacent line. The dead
   comment in `eq.cpp` was left in place — that file is K14's territory this
   wave. Prov: K09 Review.
