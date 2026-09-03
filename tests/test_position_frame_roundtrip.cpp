@@ -101,8 +101,8 @@ TEST(PositionFrameRoundTrip, ServerFrame_InboundThenOutbound_IsIdentity) {
 
     // Now transmit. This must produce EXACTLY the original server-frame
     // position back out -- that is the whole round trip.
-    eq.SendPositionUpdate();
-    auto sent = eq.Test_GetLastComputedPositionUpdate();
+    eq.Movement().SendPositionUpdate();
+    auto sent = eq.Movement().Test_GetLastComputedPositionUpdate();
 
     EXPECT_FLOAT_EQ(sent.x_pos, server_x)
         << "outbound x_pos must equal the ORIGINAL server_x for the round trip to be identity";
@@ -125,8 +125,8 @@ TEST(PositionFrameRoundTrip, ServerFrame_InboundThenOutbound_IsIdentity_SecondSa
     auto payload = BuildPlayerProfilePayload(server_x, server_y, z, /*wire_heading=*/64.0f);
     eq.ReplayZonePacket(HC_OP_PlayerProfile, payload.data(), payload.size());
 
-    eq.SendPositionUpdate();
-    auto sent = eq.Test_GetLastComputedPositionUpdate();
+    eq.Movement().SendPositionUpdate();
+    auto sent = eq.Movement().Test_GetLastComputedPositionUpdate();
 
     EXPECT_FLOAT_EQ(sent.x_pos, server_x);
     EXPECT_FLOAT_EQ(sent.y_pos, server_y);
@@ -157,14 +157,14 @@ TEST(PositionFrameRoundTrip, MoveToLocation_ClientFrameTarget_TransmitsUnderDocu
     // moveToLocation), i.e. this test drives the real command surface, not
     // a lower-level shortcut.
     handler.moveToLocation(client_target_x, client_target_y, 0.0f);
-    eq.UpdateMovement();  // snaps m_x/m_y to target (distance < 2.0), then StopMovement() sends
+    eq.Movement().UpdateMovement();  // snaps m_x/m_y to target (distance < 2.0), then StopMovement() sends
 
     glm::vec3 finalPos = eq.GetPosition();
     ASSERT_FLOAT_EQ(finalPos.x, client_target_x)
         << "Move() operates in client frame: m_x must equal the target x passed in, unswapped";
     ASSERT_FLOAT_EQ(finalPos.y, client_target_y);
 
-    auto sent = eq.Test_GetLastComputedPositionUpdate();
+    auto sent = eq.Movement().Test_GetLastComputedPositionUpdate();
 
     // Documented convention (docs/CLAUDE.md "EQ Server Coordinates":
     // client_x = server_y, client_y = server_x, i.e. the inverse is
@@ -207,13 +207,13 @@ TEST(PositionFrameRoundTrip, T85Scenario_ServerFrameNumbersFedToClientFrameMoveP
     // branch) rather than iterating real time-based movement steps, which
     // would just be re-testing the walk simulation this unit is not about.
     handler.moveToLocation(issued_x, issued_y, 3.75f);
-    eq.Test_SnapToMovementTargetForSeam();
+    eq.Movement().Test_SnapToMovementTargetForSeam();
 
     glm::vec3 finalPos = eq.GetPosition();
     EXPECT_FLOAT_EQ(finalPos.x, issued_x);
     EXPECT_FLOAT_EQ(finalPos.y, issued_y);
 
-    auto sent = eq.Test_GetLastComputedPositionUpdate();
+    auto sent = eq.Movement().Test_GetLastComputedPositionUpdate();
 
     // Client (-650, 310) transmits as server (x=310, y=-650) -- exactly the
     // mirrored pair T86 measured on the wire (306.462, -646.949), well
@@ -282,8 +282,8 @@ TEST(WireZ, DefaultHumanoidOnZeroGround_TransmitsTheOfficialClientsValue) {
     // The render frame is unchanged -- the model's feet are still on the ground.
     EXPECT_FLOAT_EQ(eq.GetPosition().z, kHumanMaleCollisionZOffset);
 
-    eq.SendPositionUpdate();
-    auto sent = eq.Test_GetLastComputedPositionUpdate();
+    eq.Movement().SendPositionUpdate();
+    auto sent = eq.Movement().Test_GetLastComputedPositionUpdate();
 
     // 0.625 * 6 == 3.75. The official client's extra +0.001 is a collision
     // epsilon it accumulates as it settles, and is deliberately not copied.
@@ -315,9 +315,9 @@ TEST(WireZ, NonDefaultSize_ScalesLinearlyWithNoRaceTerm) {
         eq.setBridge(&bridge);
 
         StandAt(eq, bridge, /*groundZ=*/0.0f, kHumanMaleCollisionZOffset, c.size);
-        eq.SendPositionUpdate();
+        eq.Movement().SendPositionUpdate();
 
-        EXPECT_NEAR(eq.Test_GetLastComputedPositionUpdate().z_pos, c.expected, 1e-4f)
+        EXPECT_NEAR(eq.Movement().Test_GetLastComputedPositionUpdate().z_pos, c.expected, 1e-4f)
             << "size " << c.size << ": wire z must be 0.625 * size above ground";
         // The mesh offset is a property of the MESH, not of size -- holding it
         // fixed across the sweep is the point. If the transmitted value tracked
@@ -335,9 +335,9 @@ TEST(WireZ, NonZeroGround_IsGroundPlusTheOffset) {
     eq.setBridge(&bridge);
 
     StandAt(eq, bridge, /*groundZ=*/28.0f, kHumanMaleCollisionZOffset, /*size=*/6.0f);
-    eq.SendPositionUpdate();
+    eq.Movement().SendPositionUpdate();
 
-    EXPECT_NEAR(eq.Test_GetLastComputedPositionUpdate().z_pos, 31.75f, 1e-4f);
+    EXPECT_NEAR(eq.Movement().Test_GetLastComputedPositionUpdate().z_pos, 31.75f, 1e-4f);
 }
 
 // The mesh offset is an INPUT, not a constant: a mesh with a different
@@ -354,8 +354,8 @@ TEST(WireZ, DifferentMeshOffset_SameGround_SameWireZ) {
         StandAt(eq, bridge, /*groundZ=*/0.0f, meshOffset, /*size=*/6.0f);
         EXPECT_FLOAT_EQ(eq.GetPosition().z, meshOffset);  // render frame follows the mesh
 
-        eq.SendPositionUpdate();
-        EXPECT_NEAR(eq.Test_GetLastComputedPositionUpdate().z_pos, 3.75f, 1e-4f)
+        eq.Movement().SendPositionUpdate();
+        EXPECT_NEAR(eq.Movement().Test_GetLastComputedPositionUpdate().z_pos, 3.75f, 1e-4f)
             << "mesh offset " << meshOffset << ": the WIRE z is ground-relative and "
                "must not depend on which mesh we happen to be wearing";
     }
@@ -374,8 +374,8 @@ TEST(WireZ, UnknownMeshOffset_ConversionIsTheIdentity) {
 
     ASSERT_FLOAT_EQ(eq.GetPlayerCollisionZOffset(), 0.0f) << "no model loaded yet";
     eq.SetPosition(0.0f, 0.0f, 3.0f);
-    eq.SendPositionUpdate();
-    EXPECT_FLOAT_EQ(eq.Test_GetLastComputedPositionUpdate().z_pos, 3.0f);
+    eq.Movement().SendPositionUpdate();
+    EXPECT_FLOAT_EQ(eq.Movement().Test_GetLastComputedPositionUpdate().z_pos, 3.0f);
 }
 
 // The two conversions must be an exact inverse pair, or a value that goes out
@@ -439,8 +439,8 @@ TEST(WireZ, SelfSpawnBeforeModelLoads_DoesNotDoubleConvert) {
 
     // Standing still, before the model arrives: send back exactly what we were
     // given. Converting here is what produced the drift.
-    eq.SendPositionUpdate();
-    EXPECT_FLOAT_EQ(eq.Test_GetLastComputedPositionUpdate().z_pos, wireFromServer)
+    eq.Movement().SendPositionUpdate();
+    EXPECT_FLOAT_EQ(eq.Movement().Test_GetLastComputedPositionUpdate().z_pos, wireFromServer)
         << "an unconverted wire z must go back out verbatim";
 
     // The model loads. The deferred half of the conversion runs exactly once.
@@ -452,14 +452,14 @@ TEST(WireZ, SelfSpawnBeforeModelLoads_DoesNotDoubleConvert) {
 
     // And the round trip is closed: what we transmit is what we were handed.
     // Before the fix this read 4.376 -- 0.625 too high, and it compounded.
-    eq.SendPositionUpdate();
-    EXPECT_NEAR(eq.Test_GetLastComputedPositionUpdate().z_pos, wireFromServer, 1e-4f);
+    eq.Movement().SendPositionUpdate();
+    EXPECT_NEAR(eq.Movement().Test_GetLastComputedPositionUpdate().z_pos, wireFromServer, 1e-4f);
 
     // Repeating the geometry intent must not convert a second time.
     bridge.pushIntent(eqt::events::PlayerModelGeometryChanged{kHumanMaleCollisionZOffset});
     eq.ProcessBridgeIntents();
-    eq.SendPositionUpdate();
-    EXPECT_NEAR(eq.Test_GetLastComputedPositionUpdate().z_pos, wireFromServer, 1e-4f)
+    eq.Movement().SendPositionUpdate();
+    EXPECT_NEAR(eq.Movement().Test_GetLastComputedPositionUpdate().z_pos, wireFromServer, 1e-4f)
         << "the deferred conversion must be idempotent";
 }
 
@@ -479,9 +479,9 @@ TEST(WireZ, RepeatedZoneInsDoNotAccumulate) {
         eq.Test_SetPlayerSizeForSeam(6.0f);
         bridge.pushIntent(eqt::events::PlayerModelGeometryChanged{kHumanMaleCollisionZOffset});
         eq.ProcessBridgeIntents();
-        eq.SendPositionUpdate();
+        eq.Movement().SendPositionUpdate();
 
-        carried = eq.Test_GetLastComputedPositionUpdate().z_pos;
+        carried = eq.Movement().Test_GetLastComputedPositionUpdate().z_pos;
         EXPECT_NEAR(carried, 3.751f, 1e-3f)
             << "login " << login << ": a standing zone-in must be a fixed point, "
                "not a value that creeps 0.625 every time";

@@ -264,7 +264,7 @@ void EverQuest::RequestWarp(const std::string& args)
 		}
 
 		// Send position update to server
-		SendPositionUpdate();
+		m_movement->SendPositionUpdate();
 
 		if (m_bridge) {
 			eqt::state::PlayerMovedData pdata;

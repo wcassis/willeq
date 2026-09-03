@@ -24,7 +24,13 @@
 // QueuePacket all sit between movement methods in eq.cpp and were
 // deliberately left there by F08 -- none of them is movement-exclusive.
 // NOTE: StartCombatMovement(uint16_t) was co-located here from eq.cpp by G03.
+//
+// K07 (Batch K, refactor/K_component_extraction.md): moved again, from
+// src/client/eq_movement{,_state,_update}.cpp to src/client/movement/, and the
+// bodies rebased from EverQuest onto eqt::movement::MovementComponent. Still
+// verbatim -- only the substitutions Mechanism 4 allows. See the K07 Review.
 
+#include "client/movement/movement_component.h"
 #include "client/eq.h"
 #include "client/combat.h"
 #include "client/pathfinder_interface.h"
@@ -55,7 +61,7 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-#include "client/eq_movement_internal.h"
+#include "client/movement/movement_internal.h"
 
 // T88: FRAME CONTRACT -- x, y, z here are CLIENT frame, i.e. the same frame
 // as the client position (docs/CLAUDE.md's "Client Internal Coordinates"), NOT
@@ -72,7 +78,7 @@
 // round-trip proof (tests/test_position_frame_roundtrip.cpp) establishing
 // the encoder/decoder pair is a correct, matched inverse -- there was
 // nothing to fix here except this comment and the log line below.
-void EverQuest::Move(float x, float y, float z)
+void eqt::movement::MovementComponent::Move(float x, float y, float z)
 {
 	// Log both frames up front: what was asked for (client frame) and what
 	// will actually hit the wire (server frame, per the swap above) --
@@ -87,11 +93,11 @@ void EverQuest::Move(float x, float y, float z)
 	// Non-blocking - movement will be handled by the update system
 }
 
-void EverQuest::MoveToEntity(const std::string &name)
+void eqt::movement::MovementComponent::MoveToEntity(const std::string &name)
 {
-	Entity* entity = FindEntityByName(name);
+	Entity* entity = owner_.FindEntityByName(name);
 	if (entity) {
-		if (s_debug_level >= 1) {
+		if (EverQuest::s_debug_level >= 1) {
 			std::cout << fmt::format("Found entity '{}' at ({:.2f}, {:.2f}, {:.2f})", 
 				entity->name, entity->x, entity->y, entity->z) << std::endl;
 		}
@@ -103,24 +109,24 @@ void EverQuest::MoveToEntity(const std::string &name)
 	}
 }
 
-void EverQuest::MoveToEntityWithinRange(const std::string &name, float stop_distance)
+void eqt::movement::MovementComponent::MoveToEntityWithinRange(const std::string &name, float stop_distance)
 {
-	Entity* entity = FindEntityByName(name);
+	Entity* entity = owner_.FindEntityByName(name);
 	if (entity) {
-		if (s_debug_level >= 1) {
+		if (EverQuest::s_debug_level >= 1) {
 			std::cout << fmt::format("Found entity '{}' at ({:.2f}, {:.2f}, {:.2f}), stopping within {:.1f} units", 
 				entity->name, entity->x, entity->y, entity->z, stop_distance) << std::endl;
 		}
 		
 		// Calculate current distance
-		float dx = entity->x - PosX();
-		float dy = entity->y - PosY();
-		float dz = entity->z - PosZ();
+		float dx = entity->x - owner_.PosX();
+		float dy = entity->y - owner_.PosY();
+		float dz = entity->z - owner_.PosZ();
 		float dist = std::sqrt(dx*dx + dy*dy + dz*dz);
 		
 		// If we're already within range, don't move
 		if (dist <= stop_distance) {
-			if (s_debug_level >= 1) {
+			if (EverQuest::s_debug_level >= 1) {
 				std::cout << fmt::format("Already within range ({:.1f} <= {:.1f})", dist, stop_distance) << std::endl;
 			}
 			return;
@@ -140,19 +146,19 @@ void EverQuest::MoveToEntityWithinRange(const std::string &name, float stop_dist
 		float predicted_z = entity->z + entity->delta_z * time_to_reach;
 		
 		// Calculate direction to predicted position
-		dx = predicted_x - PosX();
-		dy = predicted_y - PosY();
-		dz = predicted_z - PosZ();
+		dx = predicted_x - owner_.PosX();
+		dy = predicted_y - owner_.PosY();
+		dz = predicted_z - owner_.PosZ();
 		dist = std::sqrt(dx*dx + dy*dy + dz*dz);
 		
 		// Calculate position to stop at (stop_distance units away from predicted position)
 		// We want to move to 80% of the stop distance to ensure we're well within range
 		float move_ratio = (dist - stop_distance * 0.8f) / dist;
-		float target_x = PosX() + dx * move_ratio;
-		float target_y = PosY() + dy * move_ratio;
-		float target_z = PosZ() + dz * move_ratio;
+		float target_x = owner_.PosX() + dx * move_ratio;
+		float target_y = owner_.PosY() + dy * move_ratio;
+		float target_z = owner_.PosZ() + dz * move_ratio;
 		
-		if (s_debug_level >= 2) {
+		if (EverQuest::s_debug_level >= 2) {
 			LOG_DEBUG(MOD_MAIN, "Predictive targeting: entity at ({:.1f},{:.1f},{:.1f}), velocity ({:.1f},{:.1f},{:.1f})", entity->x, entity->y, entity->z, entity->delta_x, entity->delta_y, entity->delta_z);
 			LOG_DEBUG(MOD_MAIN, "Predicted position in {:.1f}s: ({:.1f},{:.1f},{:.1f})", time_to_reach, predicted_x, predicted_y, predicted_z);
 		}
@@ -161,13 +167,13 @@ void EverQuest::MoveToEntityWithinRange(const std::string &name, float stop_dist
 			target_x, target_y, target_z, stop_distance, entity->name);
 		
 		// For combat movement, don't block - let UpdateCombatMovement handle continuous tracking
-		if (m_game_state.combat().inCombatMovement()) {
+		if (ctx_.game_state.combat().inCombatMovement()) {
 			// Just set the target and let the movement system handle it
-			m_game_state.player().setMovementTarget(target_x, target_y, target_z);
-			m_game_state.player().setMoving(true);
-			SetHeadingLocal(CalculateHeading(PosX(), PosY(), predicted_x, predicted_y));
+			ctx_.game_state.player().setMovementTarget(target_x, target_y, target_z);
+			ctx_.game_state.player().setMoving(true);
+			owner_.SetHeadingLocal(CalculateHeading(owner_.PosX(), owner_.PosY(), predicted_x, predicted_y));
 			
-			if (s_debug_level >= 1) {
+			if (EverQuest::s_debug_level >= 1) {
 				LOG_DEBUG(MOD_MAIN, "Non-blocking combat movement initiated");
 			}
 		} else {
@@ -178,27 +184,27 @@ void EverQuest::MoveToEntityWithinRange(const std::string &name, float stop_dist
 	}
 }
 
-void EverQuest::Follow(const std::string &name)
+void eqt::movement::MovementComponent::Follow(const std::string &name)
 {
-	Entity* entity = FindEntityByName(name);
+	Entity* entity = owner_.FindEntityByName(name);
 	if (entity) {
-		m_game_state.player().setFollowTarget(entity->name);  // Store the actual entity name
+		ctx_.game_state.player().setFollowTarget(entity->name);  // Store the actual entity name
 		std::cout << fmt::format("Following {}", entity->name) << std::endl;
 		
 		// Calculate initial path if pathfinding is enabled
 		if (m_use_pathfinding && m_pathfinder) {
 			LOG_DEBUG(MOD_MAIN, "Follow: Pathfinding enabled, m_pathfinder={}", 
 				m_pathfinder ? "valid" : "null");
-			float dist = CalculateDistance2D(PosX(), PosY(), entity->x, entity->y);
+			float dist = CalculateDistance2D(owner_.PosX(), owner_.PosY(), entity->x, entity->y);
 			LOG_DEBUG(MOD_MAIN, "Follow: Distance to target: {:.2f}, follow_distance: {:.2f}", 
-				dist, m_game_state.player().followDistance());
-			if (dist > m_game_state.player().followDistance()) {
+				dist, ctx_.game_state.player().followDistance());
+			if (dist > ctx_.game_state.player().followDistance()) {
 				// Find path from current position to target
-				LOG_DEBUG(MOD_MAIN, "Follow: Calculating path from ({:.2f},{:.2f},{:.2f}) to ({:.2f},{:.2f},{:.2f})", PosX(), PosY(), PosZ(), entity->x, entity->y, entity->z);
-				if (FindPath(PosX(), PosY(), PosZ(), entity->x, entity->y, entity->z)) {
+				LOG_DEBUG(MOD_MAIN, "Follow: Calculating path from ({:.2f},{:.2f},{:.2f}) to ({:.2f},{:.2f},{:.2f})", owner_.PosX(), owner_.PosY(), owner_.PosZ(), entity->x, entity->y, entity->z);
+				if (FindPath(owner_.PosX(), owner_.PosY(), owner_.PosZ(), entity->x, entity->y, entity->z)) {
 					// Start following the path
 					m_current_path_index = 0;
-					m_game_state.player().setMoving(true);
+					ctx_.game_state.player().setMoving(true);
 					LOG_DEBUG(MOD_MOVEMENT, "Follow: Path calculated successfully with {} waypoints",
 						m_current_path.size());
 					for (size_t i = 0; i < std::min(m_current_path.size(), size_t(5)); i++) {
@@ -208,8 +214,8 @@ void EverQuest::Follow(const std::string &name)
 				} else {
 					// Pathfinding failed, use direct movement
 					LOG_DEBUG(MOD_MAIN, "Follow: Pathfinding failed, using direct movement");
-					m_game_state.player().setMovementTarget(entity->x, entity->y, entity->z);
-					m_game_state.player().setMoving(true);
+					ctx_.game_state.player().setMovementTarget(entity->x, entity->y, entity->z);
+					ctx_.game_state.player().setMoving(true);
 				}
 			}
 		} else {
@@ -220,26 +226,26 @@ void EverQuest::Follow(const std::string &name)
 	}
 }
 
-void EverQuest::StopFollow()
+void eqt::movement::MovementComponent::StopFollow()
 {
-	if (!m_game_state.player().followTarget().empty()) {
-		std::cout << fmt::format("Stopped following {}", m_game_state.player().followTarget()) << std::endl;
-		m_game_state.player().clearFollowTarget();
+	if (!ctx_.game_state.player().followTarget().empty()) {
+		std::cout << fmt::format("Stopped following {}", ctx_.game_state.player().followTarget()) << std::endl;
+		ctx_.game_state.player().clearFollowTarget();
 	}
 	StopMovement();
 }
 
-void EverQuest::StartCombatMovement(const std::string &name, float stop_distance)
+void eqt::movement::MovementComponent::StartCombatMovement(const std::string &name, float stop_distance)
 {
-	Entity* entity = FindEntityByName(name);
+	Entity* entity = owner_.FindEntityByName(name);
 	if (entity) {
 		// Phase 7.6 / T286: CombatState is the only store
-		m_game_state.combat().setCombatTarget(entity->name);
-		m_game_state.combat().setCombatStopDistance(stop_distance);
-		m_game_state.combat().setInCombatMovement(true);
-		m_game_state.combat().setLastCombatMovementUpdate(std::chrono::steady_clock::now());
+		ctx_.game_state.combat().setCombatTarget(entity->name);
+		ctx_.game_state.combat().setCombatStopDistance(stop_distance);
+		ctx_.game_state.combat().setInCombatMovement(true);
+		ctx_.game_state.combat().setLastCombatMovementUpdate(std::chrono::steady_clock::now());
 
-		if (s_debug_level >= 1) {
+		if (EverQuest::s_debug_level >= 1) {
 			std::cout << fmt::format("Starting combat movement to '{}' with stop distance {:.1f}",
 				entity->name, stop_distance) << std::endl;
 		}
@@ -252,12 +258,12 @@ void EverQuest::StartCombatMovement(const std::string &name, float stop_distance
 }
 
 // G03: uint16_t overload co-located from eq.cpp
-void EverQuest::StartCombatMovement(uint16_t entity_id)
+void eqt::movement::MovementComponent::StartCombatMovement(uint16_t entity_id)
 {
 	// Find the entity
-	auto it = m_entities.find(entity_id);
-	if (it == m_entities.end()) {
-		if (s_debug_level >= 1) {
+	auto it = ctx_.entities.find(entity_id);
+	if (it == ctx_.entities.end()) {
+		if (EverQuest::s_debug_level >= 1) {
 			LOG_DEBUG(MOD_MAIN, "StartCombatMovement: Entity {} not found", entity_id);
 		}
 		return;
@@ -266,44 +272,44 @@ void EverQuest::StartCombatMovement(uint16_t entity_id)
 	const auto& entity = it->second;
 	// Use previously set combat stop distance, or default to 5.0f
 	// Phase 7.6 / T286: CombatState is the only store
-	if (m_game_state.combat().combatStopDistance() <= 0.0f) {
-		m_game_state.combat().setCombatStopDistance(5.0f);
+	if (ctx_.game_state.combat().combatStopDistance() <= 0.0f) {
+		ctx_.game_state.combat().setCombatStopDistance(5.0f);
 	}
-	m_game_state.combat().setCombatTarget(entity.name);
-	m_game_state.combat().setInCombatMovement(true);
+	ctx_.game_state.combat().setCombatTarget(entity.name);
+	ctx_.game_state.combat().setInCombatMovement(true);
 
-	if (s_debug_level >= 1) {
+	if (EverQuest::s_debug_level >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Starting combat movement to {} (ID: {})", entity.name, entity_id);
 	}
 
 	// Start moving to the target
-	MoveToEntityWithinRange(entity.name, m_game_state.combat().combatStopDistance());
+	MoveToEntityWithinRange(entity.name, ctx_.game_state.combat().combatStopDistance());
 }
 
-void EverQuest::UpdateCombatMovement()
+void eqt::movement::MovementComponent::UpdateCombatMovement()
 {
-	if (!m_game_state.combat().inCombatMovement() || m_game_state.combat().combatTarget().empty()) {
+	if (!ctx_.game_state.combat().inCombatMovement() || ctx_.game_state.combat().combatTarget().empty()) {
 		return;
 	}
 	
-	Entity* entity = FindEntityByName(m_game_state.combat().combatTarget());
+	Entity* entity = owner_.FindEntityByName(ctx_.game_state.combat().combatTarget());
 	if (!entity) {
 		// Target disappeared
-		m_game_state.combat().setInCombatMovement(false);  // Phase 7.6 / T286
+		ctx_.game_state.combat().setInCombatMovement(false);  // Phase 7.6 / T286
 		StopMovement();
 		return;
 	}
 	
 	// Calculate current distance
-	float dx = entity->x - PosX();
-	float dy = entity->y - PosY();
-	float dz = entity->z - PosZ();
+	float dx = entity->x - owner_.PosX();
+	float dy = entity->y - owner_.PosY();
+	float dz = entity->z - owner_.PosZ();
 	float dist = std::sqrt(dx*dx + dy*dy + dz*dz);
 	
 	// Check if we're within range
-	if (dist <= m_game_state.combat().combatStopDistance()) {
+	if (dist <= ctx_.game_state.combat().combatStopDistance()) {
 		// We're in range, stop if moving
-		if (m_game_state.player().isMoving()) {
+		if (ctx_.game_state.player().isMoving()) {
 			StopMovement();
 		}
 		// Keep combat movement active to track if target moves away
@@ -314,11 +320,11 @@ void EverQuest::UpdateCombatMovement()
 	// Only update movement if target has moved significantly or enough time has passed
 	auto now = std::chrono::steady_clock::now();
 	auto time_since_update = std::chrono::duration_cast<std::chrono::milliseconds>(
-		now - m_game_state.combat().lastCombatMovementUpdate()).count();
+		now - ctx_.game_state.combat().lastCombatMovementUpdate()).count();
 	
 	// For hunting, always update to track the moving target
 	bool should_update = false;
-	bool is_hunting = m_combat_manager && m_combat_manager->IsAutoHunting();
+	bool is_hunting = ctx_.combat_manager && ctx_.combat_manager->IsAutoHunting();
 	
 	if (is_hunting) {
 		// When hunting, always update position to track moving targets
@@ -330,7 +336,7 @@ void EverQuest::UpdateCombatMovement()
 		
 		if (time_since_update >= update_interval) {
 			should_update = true;
-		} else if (m_game_state.player().isMoving()) {
+		} else if (ctx_.game_state.player().isMoving()) {
 			// Check if target moved significantly from where we're heading
 			if (!m_current_path.empty()) {
 				// Check distance from path endpoint to target
@@ -344,8 +350,8 @@ void EverQuest::UpdateCombatMovement()
 				}
 			} else {
 				// Direct movement - check against target position
-				float target_dx = std::abs(entity->x - m_game_state.player().targetX());
-				float target_dy = std::abs(entity->y - m_game_state.player().targetY());
+				float target_dx = std::abs(entity->x - ctx_.game_state.player().targetX());
+				float target_dy = std::abs(entity->y - ctx_.game_state.player().targetY());
 				if (target_dx > movement_threshold || target_dy > movement_threshold) {
 					should_update = true;
 				}
@@ -353,7 +359,7 @@ void EverQuest::UpdateCombatMovement()
 		}
 	}
 	
-	if (should_update || !m_game_state.player().isMoving()) {
+	if (should_update || !ctx_.game_state.player().isMoving()) {
 		// Only update direct target if we're not following a path
 		bool following_path = !m_current_path.empty() && m_current_path_index < m_current_path.size();
 		
@@ -370,31 +376,31 @@ void EverQuest::UpdateCombatMovement()
 				float predicted_z = entity->z + entity->delta_z * time_to_reach;
 				
 				// Recalculate direction to predicted position
-				dx = predicted_x - PosX();
-				dy = predicted_y - PosY();
-				dz = predicted_z - PosZ();
+				dx = predicted_x - owner_.PosX();
+				dy = predicted_y - owner_.PosY();
+				dz = predicted_z - owner_.PosZ();
 				dist = std::sqrt(dx*dx + dy*dy + dz*dz);
 			}
 			
 			// Calculate new position to move to
-			float move_ratio = (dist - m_game_state.combat().combatStopDistance() * 0.8f) / dist;
-			m_game_state.player().setMovementTarget(PosX() + dx * move_ratio, PosY() + dy * move_ratio, PosZ() + dz * move_ratio);
+			float move_ratio = (dist - ctx_.game_state.combat().combatStopDistance() * 0.8f) / dist;
+			ctx_.game_state.player().setMovementTarget(owner_.PosX() + dx * move_ratio, owner_.PosY() + dy * move_ratio, owner_.PosZ() + dz * move_ratio);
 			
 			// Update heading and start moving
-			SetHeadingLocal(CalculateHeading(PosX(), PosY(), m_game_state.player().targetX(), m_game_state.player().targetY()));
+			owner_.SetHeadingLocal(CalculateHeading(owner_.PosX(), owner_.PosY(), ctx_.game_state.player().targetX(), ctx_.game_state.player().targetY()));
 			
-			LOG_DEBUG(MOD_MOVEMENT, "Combat movement (direct): Set target=({:.1f},{:.1f},{:.1f})", m_game_state.player().targetX(), m_game_state.player().targetY(), m_game_state.player().targetZ());
+			LOG_DEBUG(MOD_MOVEMENT, "Combat movement (direct): Set target=({:.1f},{:.1f},{:.1f})", ctx_.game_state.player().targetX(), ctx_.game_state.player().targetY(), ctx_.game_state.player().targetZ());
 		} else {
 			LOG_DEBUG(MOD_MOVEMENT, "Combat movement (path): Keeping target=({:.1f},{:.1f},{:.1f}), path_index={}/{}",
-				m_game_state.player().targetX(), m_game_state.player().targetY(), m_game_state.player().targetZ(), m_current_path_index, m_current_path.size());
+				ctx_.game_state.player().targetX(), ctx_.game_state.player().targetY(), ctx_.game_state.player().targetZ(), m_current_path_index, m_current_path.size());
 		}
 		
-		m_game_state.player().setMoving(true);
-		m_game_state.combat().setLastCombatMovementUpdate(now);  // T286
+		ctx_.game_state.player().setMoving(true);
+		ctx_.game_state.combat().setLastCombatMovementUpdate(now);  // T286
 		
-		LOG_DEBUG(MOD_MOVEMENT, "Combat movement: from ({:.1f},{:.1f},{:.1f}) to target {} at ({:.1f},{:.1f},{:.1f}), dist={:.1f}, stop_dist={:.1f}", PosX(), PosY(), PosZ(), entity->name, entity->x, entity->y, entity->z, dist, m_game_state.combat().combatStopDistance());
+		LOG_DEBUG(MOD_MOVEMENT, "Combat movement: from ({:.1f},{:.1f},{:.1f}) to target {} at ({:.1f},{:.1f},{:.1f}), dist={:.1f}, stop_dist={:.1f}", owner_.PosX(), owner_.PosY(), owner_.PosZ(), entity->name, entity->x, entity->y, entity->z, dist, ctx_.game_state.combat().combatStopDistance());
 		LOG_DEBUG(MOD_MOVEMENT, "Combat movement: moving to ({:.1f},{:.1f},{:.1f}), m_game_state.player().isMoving() set to {}",
-			m_game_state.player().targetX(), m_game_state.player().targetY(), m_game_state.player().targetZ(), m_game_state.player().isMoving());
+			ctx_.game_state.player().targetX(), ctx_.game_state.player().targetY(), ctx_.game_state.player().targetZ(), ctx_.game_state.player().isMoving());
 		
 		// For now, use direct movement for combat (like the working attack command)
 		// We can add pathfinding later once basic movement works
@@ -405,26 +411,26 @@ void EverQuest::UpdateCombatMovement()
 	}
 }
 
-void EverQuest::Face(float x, float y, float z)
+void eqt::movement::MovementComponent::Face(float x, float y, float z)
 {
 	// Calculate heading to face the given position
-	float new_heading = CalculateHeading(PosX(), PosY(), x, y);
+	float new_heading = CalculateHeading(owner_.PosX(), owner_.PosY(), x, y);
 	
-	if (s_debug_level >= 2) {
-		LOG_DEBUG(MOD_MAIN, "Face: current pos ({:.1f},{:.1f}), target ({:.1f},{:.1f}), old heading {:.1f}°, new heading {:.1f}°", PosX(), PosY(), x, y, HeadingDeg(), new_heading);
+	if (EverQuest::s_debug_level >= 2) {
+		LOG_DEBUG(MOD_MAIN, "Face: current pos ({:.1f},{:.1f}), target ({:.1f},{:.1f}), old heading {:.1f}°, new heading {:.1f}°", owner_.PosX(), owner_.PosY(), x, y, owner_.HeadingDeg(), new_heading);
 	}
 	
 	// Always update heading - even small changes should be sent
 	// The previous 0.1f threshold was preventing the face command from working
-	SetHeadingLocal(new_heading);
+	owner_.SetHeadingLocal(new_heading);
 	SendPositionUpdate();
 }
 
-void EverQuest::FaceEntity(const std::string &name)
+void eqt::movement::MovementComponent::FaceEntity(const std::string &name)
 {
-	Entity* entity = FindEntityByName(name);
+	Entity* entity = owner_.FindEntityByName(name);
 	if (entity) {
-		if (s_debug_level >= 2) {
+		if (EverQuest::s_debug_level >= 2) {
 			std::cout << fmt::format("Facing entity '{}'", entity->name) << std::endl;
 		}
 		Face(entity->x, entity->y, entity->z);
@@ -433,52 +439,52 @@ void EverQuest::FaceEntity(const std::string &name)
 	}
 }
 
-void EverQuest::MoveTo(float x, float y, float z)
+void eqt::movement::MovementComponent::MoveTo(float x, float y, float z)
 {
 	// Trace who's calling MoveTo
-	if (s_debug_level >= 1 && std::abs(x - PosX()) < 0.1f && std::abs(y - PosY()) < 0.1f) {
-		LOG_DEBUG(MOD_MAIN, "WARNING: MoveTo called with current position! target=({:.2f},{:.2f},{:.2f}) current=({:.2f},{:.2f},{:.2f})", x, y, z, PosX(), PosY(), PosZ());
+	if (EverQuest::s_debug_level >= 1 && std::abs(x - owner_.PosX()) < 0.1f && std::abs(y - owner_.PosY()) < 0.1f) {
+		LOG_DEBUG(MOD_MAIN, "WARNING: MoveTo called with current position! target=({:.2f},{:.2f},{:.2f}) current=({:.2f},{:.2f},{:.2f})", x, y, z, owner_.PosX(), owner_.PosY(), owner_.PosZ());
 	}
 	
-	m_game_state.player().setMovementTarget(x, y, z);
-	m_game_state.player().setMoving(true);
+	ctx_.game_state.player().setMovementTarget(x, y, z);
+	ctx_.game_state.player().setMoving(true);
 	
 	// Calculate initial heading towards target
-	float new_heading = CalculateHeading(PosX(), PosY(), x, y);
-	SetHeadingLocal(new_heading);
+	float new_heading = CalculateHeading(owner_.PosX(), owner_.PosY(), x, y);
+	owner_.SetHeadingLocal(new_heading);
 	// Send immediate position update to show the heading change
 	SendPositionUpdate();
 	
-	if (s_debug_level >= 1) {
+	if (EverQuest::s_debug_level >= 1) {
 		LOG_DEBUG(MOD_MAIN, "MoveTo: Setting target=({:.2f}, {:.2f}, {:.2f}) from current=({:.2f}, {:.2f}, {:.2f}), heading={:.1f}, m_game_state.player().isMoving()={}", 
-			x, y, z, PosX(), PosY(), PosZ(), HeadingDeg(), m_game_state.player().isMoving());
+			x, y, z, owner_.PosX(), owner_.PosY(), owner_.PosZ(), owner_.HeadingDeg(), ctx_.game_state.player().isMoving());
 	}
 }
 
-void EverQuest::Test_SnapToMovementTargetForSeam()
+void eqt::movement::MovementComponent::Test_SnapToMovementTargetForSeam()
 {
 	// T88 test seam: see declaration comment in eq.h.
-	SetPosLocal(m_game_state.player().targetX(), m_game_state.player().targetY(),
-	            m_game_state.player().targetZ());
+	owner_.SetPosLocal(ctx_.game_state.player().targetX(), ctx_.game_state.player().targetY(),
+	            ctx_.game_state.player().targetZ());
 	StopMovement();
 }
 
-void EverQuest::StopMovement()
+void eqt::movement::MovementComponent::StopMovement()
 {
-	if (m_game_state.player().isMoving()) {
-		m_game_state.player().setMoving(false);
-		m_game_state.player().setAnimation(ANIM_STAND);
+	if (ctx_.game_state.player().isMoving()) {
+		ctx_.game_state.player().setMoving(false);
+		ctx_.game_state.player().setAnimation(ANIM_STAND);
 
 		// Clear any active path
 		m_current_path.clear();
 		m_current_path_index = 0;
 
 		// Clear target coordinates so UpdateMovement doesn't keep moving back
-		m_game_state.player().clearMovementTarget();
+		ctx_.game_state.player().clearMovementTarget();
 
 		SendPositionUpdate();
 
-		if (s_debug_level >= 1) {
+		if (EverQuest::s_debug_level >= 1) {
 			std::cout << "Movement stopped" << std::endl;
 		}
 	}

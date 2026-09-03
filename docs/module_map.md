@@ -22,7 +22,7 @@ review section under `refactor/F*.md` and `refactor/J*.md`.
 | src/client/eq.cpp | 1,073 | Core after J02: ctor/lifecycle, session recording, DB/spell-system init, ConnectToLogin/World/Zone, TickNetwork, loading-phase state, PublishFullStateSnapshot, zone connection callbacks, ZoneOnPacketRecv, ReplayZonePacket, SafeQueueZonePacket, QueuePacket, Start/StopUpdateLoop, SetEQClientPath/SetConstrainedConfig |
 | eq_entities.cpp | 830 | Zone spawns, NewSpawn/DeleteSpawn, ClientUpdate interp, HP/MobHealth, appearance/WearChange/Illusion, TimeOfDay, doors, world objects, FindEntityByName, corpse naming (T160/T185) |
 | eq_action_handler.cpp | 783 | `action::EqActionHandler` — the `IActionHandler` implementation wrapping `EverQuest` for `ActionDispatcher`/`CommandProcessor` (action-layer migration T99–T143; raid guards T179–T184; skill gate T159/T162) |
-| eq_movement.cpp | 486 | Move/Follow/UpdateMovement, SendPositionUpdate, pathfinding, water state, jump, keyboard movement |
+| src/client/movement/movement_component.cpp | 492 | K07: eqt::movement::MovementComponent -- Move/MoveTo/MoveToEntity, Follow/StopFollow, StartCombatMovement, Face/FaceEntity, StopMovement |
 | eq_bridge.cpp | 890 | InitGraphics/ShutdownGraphics, GameTick, Pre/PostRenderTick, ProcessBridgeIntents/Events, zone-load snapshot, loot-window flow, hotbar config, audio init |
 | eq_merchant.cpp | 677 | Inventory/items, trade, loot/vendor/bank/trainer callbacks, recipes (tradeskill senders T149), ZoneProcessLootItemToUI |
 | eq_commands.cpp | 1,110 | RegisterCommands driver + the game-registry remainder after T139 deleted 34 redundant commands (registry 1 of `docs/decisions.md` 2026-08-03) |
@@ -56,8 +56,8 @@ review section under `refactor/F*.md` and `refactor/J*.md`.
 | eq_entities_world.cpp | 391 | J08: doors, ground spawns and world objects |
 | eq_merchant_trade.cpp | 702 | J13: player-to-player trade callbacks and senders |
 | eq_merchant_vendor_bank.cpp | 621 | J13: vendor, bank and trainer callbacks |
-| eq_movement_state.cpp | 889 | J13: SetMovementMode / SetPositionState, water and region state, jump |
-| eq_movement_update.cpp | 854 | J13: SendPositionUpdate and the wire packing (wire z = groundZ + 0.625*size, T311) |
+| src/client/movement/movement_state.cpp | 896 | K07: MovementComponent -- pathfinding (LoadPathfinder/FindPath/FollowPath), SetMovementMode / SetPositionState, jump, movement history, water and region state, keyboard control |
+| src/client/movement/movement_update.cpp | 850 | K07: MovementComponent -- UpdateMovement (the per-tick pump), SendPositionUpdate and the wire packing (wire z = groundZ + 0.625*size, T311) |
 
 ### Family grouping (source: `refactor/K_component_extraction.md` §Families)
 
@@ -72,7 +72,7 @@ This table and that plan must agree; change both together.
 | group | `group/group_component` | 23 | 5 | **K04 DONE** (group, raid and pet together; `DismissPet`/`UpdateGroupMemberFromEntity` deleted, zero callers) |
 | merchant | `eq_merchant`, `_trade`, `_vendor_bank` | 56 | 1 | K05 |
 | entities | `eq_entities`, `_appearance`, `_updates`, `_world` | 28 | 1 | K06 |
-| movement | `eq_movement`, `_state`, `_update` | 44 | 4 | K07 |
+| movement | `src/client/movement/movement_component`, `movement_state`, `movement_update` | 42 | 8 | **K07 DONE** (`eqt::movement::MovementComponent`; `HasReachedDestination` deleted, zero callers; `m_last_movement_update` boarded dead) |
 | player | `eq_player_info`, `_misc`, `_social`, `_state`, `_buffs`, `eq_profile_appearance` | 142 | 11 | K08 (may split in two) |
 | zone | `eq_zone`, `_dispatch`, `_entry`, `_handshake` | 41 | 17 | K09 |
 | login_world | `eq_login_world` | 42 | 9 | K10 |

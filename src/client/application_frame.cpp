@@ -88,7 +88,7 @@ void Application::updateGameState(float deltaTime) {
 
     // Update movement in EverQuest
     if (m_eqClient) {
-        m_eqClient->UpdateMovement();
+        m_eqClient->Movement().UpdateMovement();
 
         // T26: advance the loot state machine every game tick, unconditionally
         // (graphics or headless) -- same rationale as UpdateMovement() above.

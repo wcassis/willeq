@@ -206,6 +206,16 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_group_component)
 
+# K07 (Batch K): the extracted eqt::movement::MovementComponent, driven directly
+ADD_EXECUTABLE(test_movement_component
+    test_movement_component.cpp
+)
+TARGET_LINK_LIBRARIES(test_movement_component GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_movement_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_movement_component)
+
 # T320 (Leg C): one chat-channel name table. eq_chat.cpp built the name twice
 # from two ternary chains forty lines apart and they had drifted -- auction
 # missing from the console chain, channel 14 (TellEcho) missing from both.

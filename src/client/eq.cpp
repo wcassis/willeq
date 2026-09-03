@@ -111,6 +111,8 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 	m_chat = std::make_unique<eqt::chat::ChatComponent>(m_ctx, *this);
 	// K04: the group family (group, raid, pet). Same rule.
 	m_group = std::make_unique<eqt::group::GroupComponent>(m_ctx, *this);
+	// K07: the movement family. Same rule.
+	m_movement = std::make_unique<eqt::movement::MovementComponent>(m_ctx, *this);
 
 	m_host = host;
 	m_port = port;

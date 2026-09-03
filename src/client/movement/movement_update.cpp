@@ -25,6 +25,13 @@
 // pre-split preamble now live in include/client/eq_movement_internal.h;
 // this TU reads five of them.
 
+//
+// K07 (Batch K, refactor/K_component_extraction.md): moved again, from
+// src/client/eq_movement{,_state,_update}.cpp to src/client/movement/, and the
+// bodies rebased from EverQuest onto eqt::movement::MovementComponent. Still
+// verbatim -- only the substitutions Mechanism 4 allows. See the K07 Review.
+
+#include "client/movement/movement_component.h"
 #include "client/eq.h"
 #include "client/combat.h"
 #include "client/pathfinder_interface.h"
@@ -55,19 +62,19 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-#include "client/eq_movement_internal.h"
+#include "client/movement/movement_internal.h"
 
-void EverQuest::UpdateMovement()
+void eqt::movement::MovementComponent::UpdateMovement()
 {
 	// H03: Process a deferred post-logout disconnect if the server confirmed our
 	// OP_Logout. Must run before anything else, outside of any packet-callback
 	// context — see the comment on m_pending_logout_disconnect and
 	// ZoneProcessLogoutReply() for why this can't happen synchronously in the
 	// packet handler.
-	if (m_pending_logout_disconnect) {
-		m_pending_logout_disconnect = false;
+	if (owner_.m_pending_logout_disconnect) {
+		owner_.m_pending_logout_disconnect = false;
 		LOG_DEBUG(MOD_ZONE, "Processing deferred post-logout disconnect...");
-		DisconnectFromZone();
+		owner_.DisconnectFromZone();
 		LOG_DEBUG(MOD_ZONE, "Deferred post-logout disconnect processed");
 		return;  // Don't process movement post-logout
 	}
@@ -83,15 +90,15 @@ void EverQuest::UpdateMovement()
 	// mechanism. Note the ordering: the logout branch above still runs
 	// FIRST and still calls DisconnectFromZone() directly -- a logout
 	// genuinely should disconnect, and this unit does not touch it.
-	if (m_game_state.world().zoneChangeApproved()) {
-		m_game_state.world().setZoneChangeApproved(false);  // T286: only store
-		if (BeginGracefulZoneOut()) {
+	if (ctx_.game_state.world().zoneChangeApproved()) {
+		ctx_.game_state.world().setZoneChangeApproved(false);  // T286: only store
+		if (owner_.BeginGracefulZoneOut()) {
 			return;  // Wait for the source zone's acknowledgement (below)
 		}
 		// Nothing to hand off (no live zone connection) -- fall straight
 		// through to the hard teardown rather than stalling the transition.
 		LOG_DEBUG(MOD_ZONE, "Processing deferred zone change...");
-		ProcessDeferredZoneChange();
+		owner_.ProcessDeferredZoneChange();
 		LOG_DEBUG(MOD_ZONE, "Deferred zone change processed");
 		return;  // Don't process movement while zone changing
 	}
@@ -101,15 +108,15 @@ void EverQuest::UpdateMovement()
 	// wedge zoning, so the teardown runs on the deadline regardless. Either
 	// way DisconnectFromZone() runs exactly once, so the old connection can
 	// never be leaked.
-	if (m_zone_out_handshake_pending) {
-		const bool timed_out = std::chrono::steady_clock::now() >= m_zone_out_handshake_deadline;
-		if (m_zone_out_acknowledged || timed_out) {
-			if (timed_out && !m_zone_out_acknowledged) {
+	if (owner_.m_zone_out_handshake_pending) {
+		const bool timed_out = std::chrono::steady_clock::now() >= owner_.m_zone_out_handshake_deadline;
+		if (owner_.m_zone_out_acknowledged || timed_out) {
+			if (timed_out && !owner_.m_zone_out_acknowledged) {
 				LOG_WARN(MOD_ZONE, "Source zone did not acknowledge zone-out within {} ms; tearing down anyway",
-					kZoneOutHandshakeTimeoutMs);
+					EverQuest::kZoneOutHandshakeTimeoutMs);
 			}
 			LOG_DEBUG(MOD_ZONE, "Processing deferred zone change...");
-			ProcessDeferredZoneChange();  // clears the handshake flags
+			owner_.ProcessDeferredZoneChange();  // clears the handshake flags
 			LOG_DEBUG(MOD_ZONE, "Deferred zone change processed");
 		}
 		return;  // Don't process movement while zone changing
@@ -122,27 +129,27 @@ void EverQuest::UpdateMovement()
 	// FindNextHuntTarget) and reads m_entities, both game-thread data. Same
 	// gate the old loop had (m_update_running && IsFullyZonedIn()); Update()
 	// paces itself at kUpdateIntervalMs so the per-tick call is cheap.
-	if (m_combat_manager && IsFullyZonedIn()) {
-		m_combat_manager->Update();
+	if (ctx_.combat_manager && owner_.IsFullyZonedIn()) {
+		ctx_.combat_manager->Update();
 	}
 
 	// Update camp timer
-	UpdateCampTimer();
+	owner_.UpdateCampTimer();
 
 	// Check distance to banker NPC - close bank if player moved too far
-	if (IsBankWindowOpen() && m_game_state.player().bankerNpcId() != 0) {
-		auto it = m_entities.find(m_game_state.player().bankerNpcId());
-		if (it == m_entities.end()) {
+	if (owner_.IsBankWindowOpen() && ctx_.game_state.player().bankerNpcId() != 0) {
+		auto it = ctx_.entities.find(ctx_.game_state.player().bankerNpcId());
+		if (it == ctx_.entities.end()) {
 			// Banker NPC no longer exists (despawned, etc.)
-			LOG_DEBUG(MOD_INVENTORY, "Banker NPC {} no longer exists, closing bank", m_game_state.player().bankerNpcId());
-			CloseBankWindow();
+			LOG_DEBUG(MOD_INVENTORY, "Banker NPC {} no longer exists, closing bank", ctx_.game_state.player().bankerNpcId());
+			owner_.CloseBankWindow();
 		} else {
-			float dist = CalculateDistance2D(PosX(), PosY(), it->second.x, it->second.y);
+			float dist = CalculateDistance2D(owner_.PosX(), owner_.PosY(), it->second.x, it->second.y);
 			if (dist > NPC_INTERACTION_DISTANCE) {
 				LOG_DEBUG(MOD_INVENTORY, "Player moved too far from banker ({:.1f} > {:.1f}), closing bank",
 					dist, NPC_INTERACTION_DISTANCE);
-				CloseBankWindow();
-				AddChatSystemMessage("You have moved too far from the banker.");
+				owner_.CloseBankWindow();
+				owner_.AddChatSystemMessage("You have moved too far from the banker.");
 			}
 		}
 	}
@@ -150,18 +157,18 @@ void EverQuest::UpdateMovement()
 	// Debug: Log target at start of UpdateMovement
 	static auto last_update_debug = std::chrono::steady_clock::now();
 	auto now = std::chrono::steady_clock::now();
-	if (m_game_state.combat().inCombatMovement() &&
+	if (ctx_.game_state.combat().inCombatMovement() &&
 	    std::chrono::duration_cast<std::chrono::seconds>(now - last_update_debug).count() >= 1) {
 		LOG_DEBUG(MOD_MOVEMENT, "UpdateMovement START: target=({:.1f},{:.1f},{:.1f}) is_moving={} path_size={}",
-			m_game_state.player().targetX(), m_game_state.player().targetY(), m_game_state.player().targetZ(), m_game_state.player().isMoving(), m_current_path.size());
+			ctx_.game_state.player().targetX(), ctx_.game_state.player().targetY(), ctx_.game_state.player().targetZ(), ctx_.game_state.player().isMoving(), m_current_path.size());
 		last_update_debug = now;
 	}
 	
 	// Update keyboard-based movement first
-	if (m_game_state.player().moveForward() || m_game_state.player().moveBackward() || m_game_state.player().turnLeft() || m_game_state.player().turnRight()) {
+	if (ctx_.game_state.player().moveForward() || ctx_.game_state.player().moveBackward() || ctx_.game_state.player().turnLeft() || ctx_.game_state.player().turnRight()) {
 		UpdateKeyboardMovement();
 		// Check for zone line collision
-		CheckZoneLine();
+		owner_.CheckZoneLine();
 		// SendPositionUpdate has internal 250ms throttling
 		SendPositionUpdate();
 		// Don't process other movement if using keyboard
@@ -169,40 +176,40 @@ void EverQuest::UpdateMovement()
 	}
 	
 	// Update combat movement if active
-	if (m_game_state.combat().inCombatMovement()) {
+	if (ctx_.game_state.combat().inCombatMovement()) {
 		UpdateCombatMovement();
 	}
 	
 	// Check if we're following someone
-	if (!m_game_state.player().followTarget().empty()) {
+	if (!ctx_.game_state.player().followTarget().empty()) {
 		// Find the entity we're following
-		for (const auto& pair : m_entities) {
+		for (const auto& pair : ctx_.entities) {
 			const Entity& entity = pair.second;
-			if (entity.name == m_game_state.player().followTarget()) {
+			if (entity.name == ctx_.game_state.player().followTarget()) {
 				// Check if we're close enough
-				float dist = CalculateDistance2D(PosX(), PosY(), entity.x, entity.y);
-				float z_diff = std::abs(PosZ() - entity.z);
+				float dist = CalculateDistance2D(owner_.PosX(), owner_.PosY(), entity.x, entity.y);
+				float z_diff = std::abs(owner_.PosZ() - entity.z);
 				
 				// Log follow status periodically
 				static std::chrono::steady_clock::time_point last_follow_log = std::chrono::steady_clock::now();
 				auto now_follow = std::chrono::steady_clock::now();
 				auto elapsed_follow = std::chrono::duration_cast<std::chrono::milliseconds>(now_follow - last_follow_log);
 				
-				if (elapsed_follow.count() >= 1000 && s_debug_level >= 1) {
-					LOG_DEBUG(MOD_MAIN, "Following {}: Distance={:.1f} (stop at {:.1f}), Z-diff={:.1f}, Speed={:.1f}", m_game_state.player().followTarget(), dist, m_game_state.player().followDistance(), z_diff, m_game_state.player().moveSpeed());
+				if (elapsed_follow.count() >= 1000 && EverQuest::s_debug_level >= 1) {
+					LOG_DEBUG(MOD_MAIN, "Following {}: Distance={:.1f} (stop at {:.1f}), Z-diff={:.1f}, Speed={:.1f}", ctx_.game_state.player().followTarget(), dist, ctx_.game_state.player().followDistance(), z_diff, ctx_.game_state.player().moveSpeed());
 					last_follow_log = now_follow;
 				}
 				
-				if (dist < m_game_state.player().followDistance()) {
+				if (dist < ctx_.game_state.player().followDistance()) {
 					// We're close enough, stop if we were moving
-					if (m_game_state.player().isMoving()) {
-						if (s_debug_level >= 1) {
+					if (ctx_.game_state.player().isMoving()) {
+						if (EverQuest::s_debug_level >= 1) {
 							LOG_DEBUG(MOD_MAIN, "Reached follow distance ({:.1f}), stopping", dist);
 						}
 						StopMovement();
 					}
 					return;
-				} else if (dist > m_game_state.player().followDistance() * 1.5f) {
+				} else if (dist > ctx_.game_state.player().followDistance() * 1.5f) {
 					// Target has moved significantly, recalculate path
 					// Check if final destination changed significantly
 					float final_dest_dist = 0.0f;
@@ -212,7 +219,7 @@ void EverQuest::UpdateMovement()
 						final_dest_dist = CalculateDistance2D(final_waypoint.x, final_waypoint.y, entity.x, entity.y);
 					} else {
 						// No path, compare with our immediate target
-						final_dest_dist = CalculateDistance2D(m_game_state.player().targetX(), m_game_state.player().targetY(), entity.x, entity.y);
+						final_dest_dist = CalculateDistance2D(ctx_.game_state.player().targetX(), ctx_.game_state.player().targetY(), entity.x, entity.y);
 					}
 					
 					if (final_dest_dist > 5.0f || m_current_path.empty()) {
@@ -220,11 +227,11 @@ void EverQuest::UpdateMovement()
 						LOG_DEBUG(MOD_MAIN, "UpdateMovement: Target moved significantly (dist={:.2f})", final_dest_dist);
 						if (m_use_pathfinding && m_pathfinder) {
 							// Find path from current position to target
-							LOG_DEBUG(MOD_MAIN, "UpdateMovement: Recalculating path from ({:.2f},{:.2f},{:.2f}) to ({:.2f},{:.2f},{:.2f})", PosX(), PosY(), PosZ(), entity.x, entity.y, entity.z);
-							if (FindPath(PosX(), PosY(), PosZ(), entity.x, entity.y, entity.z)) {
+							LOG_DEBUG(MOD_MAIN, "UpdateMovement: Recalculating path from ({:.2f},{:.2f},{:.2f}) to ({:.2f},{:.2f},{:.2f})", owner_.PosX(), owner_.PosY(), owner_.PosZ(), entity.x, entity.y, entity.z);
+							if (FindPath(owner_.PosX(), owner_.PosY(), owner_.PosZ(), entity.x, entity.y, entity.z)) {
 								// Start following the path
 								m_current_path_index = 0;
-								m_game_state.player().setMoving(true);
+								ctx_.game_state.player().setMoving(true);
 								LOG_DEBUG(MOD_MOVEMENT, "UpdateMovement: Path recalculated with {} waypoints",
 									m_current_path.size());
 								for (size_t i = 0; i < std::min(m_current_path.size(), size_t(3)); i++) {
@@ -234,14 +241,14 @@ void EverQuest::UpdateMovement()
 							} else {
 								// Pathfinding failed, use direct movement
 								LOG_DEBUG(MOD_MAIN, "UpdateMovement: Pathfinding failed, using direct movement");
-								m_game_state.player().setMovementTarget(entity.x, entity.y, entity.z);
-								m_game_state.player().setMoving(true);
+								ctx_.game_state.player().setMovementTarget(entity.x, entity.y, entity.z);
+								ctx_.game_state.player().setMoving(true);
 							}
 						} else {
 							// Fallback to direct movement
 							LOG_DEBUG(MOD_MAIN, "UpdateMovement: Pathfinding disabled, using direct movement");
-							m_game_state.player().setMovementTarget(entity.x, entity.y, entity.z);
-							m_game_state.player().setMoving(true);
+							ctx_.game_state.player().setMovementTarget(entity.x, entity.y, entity.z);
+							ctx_.game_state.player().setMoving(true);
 						}
 					}
 				}
@@ -251,32 +258,32 @@ void EverQuest::UpdateMovement()
 	}
 	
 	// Always update jump if jumping, even when not moving
-	if (m_game_state.player().isJumping()) {
-		float old_z = PosZ();
+	if (ctx_.game_state.player().isJumping()) {
+		float old_z = owner_.PosZ();
 		UpdateJump();
 		
 		// If Z changed, send position update immediately
-		if (PosZ() != old_z) {
+		if (owner_.PosZ() != old_z) {
 			SendPositionUpdate();
 		}
 	}
 	
-	if (!m_game_state.player().isMoving()) {
+	if (!ctx_.game_state.player().isMoving()) {
 		// Still check for zone lines when stopped (player might have stopped in one)
-		CheckZoneLine();
+		owner_.CheckZoneLine();
 
 		// Send idle position updates like real clients (every 1-2 seconds)
 		static std::map<EverQuest*, std::chrono::steady_clock::time_point> last_idle_updates;
-		if (last_idle_updates.find(this) == last_idle_updates.end()) {
-			last_idle_updates[this] = std::chrono::steady_clock::now();
+		if (last_idle_updates.find(&owner_) == last_idle_updates.end()) {
+			last_idle_updates[&owner_] = std::chrono::steady_clock::now();
 		}
 
 		auto now = std::chrono::steady_clock::now();
-		auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_idle_updates[this]);
+		auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_idle_updates[&owner_]);
 
 		if (elapsed.count() >= 1500) {  // 1.5 seconds average
 			SendPositionUpdate();
-			last_idle_updates[this] = now;
+			last_idle_updates[&owner_] = now;
 		}
 		return;
 	}
@@ -285,14 +292,14 @@ void EverQuest::UpdateMovement()
 	if (!m_current_path.empty() && m_current_path_index < m_current_path.size()) {
 		// Check if we've reached the current waypoint
 		const auto& waypoint = m_current_path[m_current_path_index];
-		float dist_to_waypoint = CalculateDistance2D(PosX(), PosY(), waypoint.x, waypoint.y);
+		float dist_to_waypoint = CalculateDistance2D(owner_.PosX(), owner_.PosY(), waypoint.x, waypoint.y);
 
 		// Always log path progress for debugging coordinate issues
 		static auto last_path_debug = std::chrono::steady_clock::now();
 		auto now_path_debug = std::chrono::steady_clock::now();
 		if (std::chrono::duration_cast<std::chrono::milliseconds>(now_path_debug - last_path_debug).count() >= 500) {
 			LOG_INFO(MOD_MAIN, "Path progress: pos=({:.1f},{:.1f},{:.1f}) waypoint[{}]=({:.1f},{:.1f},{:.1f}) dist={:.1f}",
-				PosX(), PosY(), PosZ(), m_current_path_index, waypoint.x, waypoint.y, waypoint.z, dist_to_waypoint);
+				owner_.PosX(), owner_.PosY(), owner_.PosZ(), m_current_path_index, waypoint.x, waypoint.y, waypoint.z, dist_to_waypoint);
 			last_path_debug = now_path_debug;
 		}
 
@@ -303,10 +310,10 @@ void EverQuest::UpdateMovement()
 		static std::map<EverQuest*, std::pair<float, std::chrono::steady_clock::time_point>> stuck_detection;
 		auto now = std::chrono::steady_clock::now();
 		
-		if (stuck_detection.find(this) == stuck_detection.end()) {
-			stuck_detection[this] = {dist_to_waypoint, now};
+		if (stuck_detection.find(&owner_) == stuck_detection.end()) {
+			stuck_detection[&owner_] = {dist_to_waypoint, now};
 		} else {
-			auto& [last_dist, last_time] = stuck_detection[this];
+			auto& [last_dist, last_time] = stuck_detection[&owner_];
 			auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - last_time).count();
 			
 			// If we haven't moved closer to the waypoint in 3 seconds, we're stuck
@@ -319,29 +326,29 @@ void EverQuest::UpdateMovement()
 					m_current_path_index++;
 					LOG_DEBUG(MOD_MOVEMENT, "Skipping to next waypoint due to being stuck");
 					// Reset stuck detection for the new waypoint
-					stuck_detection.erase(this);
+					stuck_detection.erase(&owner_);
 				} else {
 					LOG_DEBUG(MOD_MOVEMENT, "Stuck on final waypoint, stopping movement");
 					StopMovement();
-					stuck_detection.erase(this);
+					stuck_detection.erase(&owner_);
 					return;
 				}
 			} else if (elapsed >= 1) {
 				// Update every second if we've made progress
 				if (std::abs(dist_to_waypoint - last_dist) > 0.5f) {
-					stuck_detection[this] = {dist_to_waypoint, now};
+					stuck_detection[&owner_] = {dist_to_waypoint, now};
 				}
 			}
 		}
 		
 		// Check both 2D distance and Z difference for waypoint reached
-		float z_diff_to_waypoint = std::abs(PosZ() - waypoint.z);
+		float z_diff_to_waypoint = std::abs(owner_.PosZ() - waypoint.z);
 		bool waypoint_reached = (dist_to_waypoint < 5.0f && z_diff_to_waypoint < 10.0f) || dist_to_waypoint < 3.0f;
 		
 		if (waypoint_reached) { // Within range of waypoint
 			// Move to next waypoint
 			m_current_path_index++;
-			stuck_detection.erase(this); // Clear stuck detection when reaching waypoint
+			stuck_detection.erase(&owner_); // Clear stuck detection when reaching waypoint
 			
 			if (m_current_path_index >= m_current_path.size()) {
 				// Reached the end of the path
@@ -353,7 +360,7 @@ void EverQuest::UpdateMovement()
 				const auto& next_waypoint = m_current_path[m_current_path_index];
 				
 				// Check if the next waypoint is different enough from current position
-				float dist_to_next = CalculateDistance2D(PosX(), PosY(), next_waypoint.x, next_waypoint.y);
+				float dist_to_next = CalculateDistance2D(owner_.PosX(), owner_.PosY(), next_waypoint.x, next_waypoint.y);
 				if (dist_to_next > 2.0f) {  // Only move if it's far enough away
 					MoveTo(next_waypoint.x, next_waypoint.y, next_waypoint.z);
 
@@ -371,9 +378,9 @@ void EverQuest::UpdateMovement()
 	
 	// Only process console-based target movement if we have an active target or path
 	// Skip this if we're in graphics Player mode without a console movement command
-	bool has_console_movement = !m_game_state.player().followTarget().empty() || !m_current_path.empty() ||
-	                            m_game_state.combat().inCombatMovement() ||
-	                            (m_game_state.player().targetX() != 0.0f || m_game_state.player().targetY() != 0.0f || m_game_state.player().targetZ() != 0.0f);
+	bool has_console_movement = !ctx_.game_state.player().followTarget().empty() || !m_current_path.empty() ||
+	                            ctx_.game_state.combat().inCombatMovement() ||
+	                            (ctx_.game_state.player().targetX() != 0.0f || ctx_.game_state.player().targetY() != 0.0f || ctx_.game_state.player().targetZ() != 0.0f);
 
 	if (!has_console_movement) {
 		// No console-based movement active, skip target processing
@@ -385,23 +392,23 @@ void EverQuest::UpdateMovement()
 	auto now_debug = std::chrono::steady_clock::now();
 	if (ShouldLog(MOD_MOVEMENT, LOG_DEBUG) && std::chrono::duration_cast<std::chrono::seconds>(now_debug - last_target_debug).count() >= 1) {
 		LOG_DEBUG(MOD_MOVEMENT, "Movement target check: current=({:.1f},{:.1f},{:.1f}) target=({:.1f},{:.1f},{:.1f}) path_size={} path_index={}",
-			PosX(), PosY(), PosZ(), m_game_state.player().targetX(), m_game_state.player().targetY(), m_game_state.player().targetZ(), m_current_path.size(), m_current_path_index);
+			owner_.PosX(), owner_.PosY(), owner_.PosZ(), ctx_.game_state.player().targetX(), ctx_.game_state.player().targetY(), ctx_.game_state.player().targetZ(), m_current_path.size(), m_current_path_index);
 		last_target_debug = now_debug;
 	}
 
 	// Calculate distance to target
-	float dx = m_game_state.player().targetX() - PosX();
-	float dy = m_game_state.player().targetY() - PosY();
-	float dz = m_game_state.player().targetZ() - PosZ();
+	float dx = ctx_.game_state.player().targetX() - owner_.PosX();
+	float dy = ctx_.game_state.player().targetY() - owner_.PosY();
+	float dz = ctx_.game_state.player().targetZ() - owner_.PosZ();
 	float distance = std::sqrt(dx * dx + dy * dy + dz * dz);
 
 	// Check if we've reached the target
 	if (distance < 2.0f) {  // Stop within 2 units of target
 		LOG_DEBUG(MOD_MOVEMENT, "Reached target at distance {:.2f}, target=({:.1f},{:.1f},{:.1f})",
-			distance, m_game_state.player().targetX(), m_game_state.player().targetY(), m_game_state.player().targetZ());
+			distance, ctx_.game_state.player().targetX(), ctx_.game_state.player().targetY(), ctx_.game_state.player().targetZ());
 
-		SetPosLocal(m_game_state.player().targetX(), m_game_state.player().targetY(),
-		            m_game_state.player().targetZ());
+		owner_.SetPosLocal(ctx_.game_state.player().targetX(), ctx_.game_state.player().targetY(),
+		            ctx_.game_state.player().targetZ());
 
 		// If following a path, check for next waypoint
 		if (!m_current_path.empty() && m_current_path_index < m_current_path.size() - 1) {
@@ -415,27 +422,27 @@ void EverQuest::UpdateMovement()
 	
 	// Calculate time delta based on actual elapsed time
 	static std::map<EverQuest*, std::chrono::steady_clock::time_point> last_move_times;
-	if (last_move_times.find(this) == last_move_times.end()) {
-		last_move_times[this] = std::chrono::steady_clock::now();
+	if (last_move_times.find(&owner_) == last_move_times.end()) {
+		last_move_times[&owner_] = std::chrono::steady_clock::now();
 	}
 	auto now_movement = std::chrono::steady_clock::now();
-	auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now_movement - last_move_times[this]);
-	last_move_times[this] = now_movement;
+	auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now_movement - last_move_times[&owner_]);
+	last_move_times[&owner_] = now_movement;
 	
 	float delta_time = elapsed.count() / 1000.0f;  // Convert to seconds
 	if (delta_time > 0.1f) delta_time = 0.1f;  // Cap at 100ms to prevent large jumps
 	
 	// Debug delta time issues
-	if (m_game_state.combat().inCombatMovement() && delta_time < 0.01f) {
+	if (ctx_.game_state.combat().inCombatMovement() && delta_time < 0.01f) {
 		LOG_WARN(MOD_MOVEMENT, "Very small delta_time: {:.6f}s ({}ms)",
 			delta_time, elapsed.count());
 	}
 	
 	// Calculate movement step using current movement speed
-	float current_speed = m_game_state.player().moveSpeed();
+	float current_speed = ctx_.game_state.player().moveSpeed();
 	
 	// Adjust speed when following
-	if (!m_game_state.player().followTarget().empty()) {
+	if (!ctx_.game_state.player().followTarget().empty()) {
 		// Speed up when far, slow down when close
 		if (distance > FOLLOW_FAR_DISTANCE) {
 			current_speed *= FOLLOW_MAX_SPEED_MULT;
@@ -455,42 +462,42 @@ void EverQuest::UpdateMovement()
 	
 	// Debug output for combat movement
 	static auto last_move_debug = std::chrono::steady_clock::now();
-	if (s_debug_level >= 1 && m_game_state.combat().inCombatMovement() && 
+	if (EverQuest::s_debug_level >= 1 && ctx_.game_state.combat().inCombatMovement() && 
 	    std::chrono::duration_cast<std::chrono::seconds>(now_movement - last_move_debug).count() >= 1) {
-		LOG_DEBUG(MOD_MAIN, "Movement update: pos=({:.1f},{:.1f},{:.1f}) target=({:.1f},{:.1f},{:.1f}) dist={:.1f} speed={:.1f} step={:.1f}", PosX(), PosY(), PosZ(), m_game_state.player().targetX(), m_game_state.player().targetY(), m_game_state.player().targetZ(), distance, current_speed, step);
+		LOG_DEBUG(MOD_MAIN, "Movement update: pos=({:.1f},{:.1f},{:.1f}) target=({:.1f},{:.1f},{:.1f}) dist={:.1f} speed={:.1f} step={:.1f}", owner_.PosX(), owner_.PosY(), owner_.PosZ(), ctx_.game_state.player().targetX(), ctx_.game_state.player().targetY(), ctx_.game_state.player().targetZ(), distance, current_speed, step);
 		last_move_debug = now_movement;
 	}
 	
 	// Normalize direction and move
 	float factor = step / distance;
-	float old_x = PosX();
-	float old_y = PosY();
-	SetPosLocal(PosX() + dx * factor, PosY() + dy * factor, PosZ() + dz * factor);
+	float old_x = owner_.PosX();
+	float old_y = owner_.PosY();
+	owner_.SetPosLocal(owner_.PosX() + dx * factor, owner_.PosY() + dy * factor, owner_.PosZ() + dz * factor);
 	
 	// Debug: verify position actually changed
-	if (s_debug_level >= 1 && m_game_state.combat().inCombatMovement()) {
-		LOG_DEBUG(MOD_MAIN, "Position update: ({:.1f},{:.1f}) -> ({:.1f},{:.1f}) delta=({:.3f},{:.3f})", old_x, old_y, PosX(), PosY(), PosX() - old_x, PosY() - old_y);
+	if (EverQuest::s_debug_level >= 1 && ctx_.game_state.combat().inCombatMovement()) {
+		LOG_DEBUG(MOD_MAIN, "Position update: ({:.1f},{:.1f}) -> ({:.1f},{:.1f}) delta=({:.3f},{:.3f})", old_x, old_y, owner_.PosX(), owner_.PosY(), owner_.PosX() - old_x, owner_.PosY() - old_y);
 	}
 	
 	// Update heading (from the pre-step position to the post-step position;
 	// old_x/old_y ARE that pre-step position -- identical arithmetic to the
 	// pre-T288 `PosX() - dx * factor` form, which recomputed it)
-	SetHeadingLocal(CalculateHeading(old_x, old_y, PosX(), PosY()));
+	owner_.SetHeadingLocal(CalculateHeading(old_x, old_y, owner_.PosX(), owner_.PosY()));
 
 	// Update bridge position for console-driven movement (moveto, follow, etc.)
-	if (m_bridge) {
+	if (ctx_.bridge) {
 		eqt::state::PlayerMovedData pdata;
-		pdata.x = PosX(); pdata.y = PosY(); pdata.z = PosZ();
-		pdata.heading = HeadingDeg();
+		pdata.x = owner_.PosX(); pdata.y = owner_.PosY(); pdata.z = owner_.PosZ();
+		pdata.heading = owner_.HeadingDeg();
 		pdata.dx = dx; pdata.dy = dy; pdata.dz = dz;
 		pdata.isMoving = true;
-		m_bridge->pushEvent(eqt::state::GameEvent(
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::PlayerMoved, std::move(pdata)));
 	}
 
 	// Set animation based on actual movement distance
 	// Don't change animation if we're jumping
-	if (!m_game_state.player().isJumping()) {
+	if (!ctx_.game_state.player().isJumping()) {
 		// Calculate movement distance in this update
 		float move_dist = std::sqrt(dx * dx + dy * dy);
 		
@@ -509,39 +516,39 @@ void EverQuest::UpdateMovement()
 		}
 		
 		// Only change animation if it's different
-		if (m_game_state.player().animation() != new_animation) {
-			m_game_state.player().setAnimation(new_animation);
+		if (ctx_.game_state.player().animation() != new_animation) {
+			ctx_.game_state.player().setAnimation(new_animation);
 		}
 	}
 	
 	// Update jump if jumping
-	bool was_jumping = m_game_state.player().isJumping();
-	float old_z = PosZ();
+	bool was_jumping = ctx_.game_state.player().isJumping();
+	float old_z = owner_.PosZ();
 	UpdateJump();
 	
 	// If jumping and Z changed, send position update immediately
-	if (m_game_state.player().isJumping() && PosZ() != old_z) {
+	if (ctx_.game_state.player().isJumping() && owner_.PosZ() != old_z) {
 		SendPositionUpdate();
 		m_last_position_update_time = now;
 	}
 	
 	// Fix Z position periodically to follow terrain (but not while jumping)
-	if (!m_game_state.player().isJumping()) {
+	if (!ctx_.game_state.player().isJumping()) {
 		static std::map<EverQuest*, std::chrono::steady_clock::time_point> last_z_fix_times;
-		if (last_z_fix_times.find(this) == last_z_fix_times.end()) {
-			last_z_fix_times[this] = now;
+		if (last_z_fix_times.find(&owner_) == last_z_fix_times.end()) {
+			last_z_fix_times[&owner_] = now;
 		}
 		
-		auto z_fix_elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_z_fix_times[this]);
+		auto z_fix_elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_z_fix_times[&owner_]);
 		// Fix Z every 1000ms while moving (once per second to reduce adjustments)
 		if (z_fix_elapsed.count() >= 1000) {
-			FixZ();
-			last_z_fix_times[this] = now;
+			owner_.FixZ();
+			last_z_fix_times[&owner_] = now;
 		}
 	}
 	
 	// Check for zone line collision
-	CheckZoneLine();
+	owner_.CheckZoneLine();
 
 	// Send position update with proper throttling per instance
 	if (!m_last_position_update_time.time_since_epoch().count()) {
@@ -558,14 +565,14 @@ void EverQuest::UpdateMovement()
 }
 
 
-void EverQuest::SendPositionUpdate()
+void eqt::movement::MovementComponent::SendPositionUpdate()
 {
 	// T88 test seam: m_test_bypass_send_guard skips this guard (and the
 	// throttle below) so a headless test can reach the encoder logic
 	// without a live m_zone_connection. See Test_SetBypassSendGuardForSeam.
-	if (!m_test_bypass_send_guard && (!IsFullyZonedIn() || !m_zone_connection)) {
+	if (!owner_.m_test_bypass_send_guard && (!owner_.IsFullyZonedIn() || !ctx_.zone_connection)) {
 		LOG_DEBUG(MOD_MOVEMENT, "SendPositionUpdate skipped: zoned_in={} zone_conn={}",
-			IsFullyZonedIn(), m_zone_connection != nullptr);
+			owner_.IsFullyZonedIn(), ctx_.zone_connection != nullptr);
 		return;
 	}
 
@@ -577,7 +584,7 @@ void EverQuest::SendPositionUpdate()
 	auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastSendTime);
 
 	// Allow immediate send when stopping (animation goes to 0) for responsiveness
-	bool isStoppingNow = (m_game_state.player().animation() == 0 && lastSentAnimation != 0);
+	bool isStoppingNow = (ctx_.game_state.player().animation() == 0 && lastSentAnimation != 0);
 
 	// T231: a forced update (same-zone teleport, RelocateWithinZone) skips
 	// the throttle -- the server is waiting on exactly this packet -- and
@@ -586,29 +593,29 @@ void EverQuest::SendPositionUpdate()
 	const bool force_update = m_force_next_position_update;
 	m_force_next_position_update = false;
 
-	if (!m_test_bypass_send_guard && !force_update && !isStoppingNow && elapsed.count() < 250) {
+	if (!owner_.m_test_bypass_send_guard && !force_update && !isStoppingNow && elapsed.count() < 250) {
 		// Throttled - skip this update
 		return;
 	}
 
 	lastSendTime = now;
-	lastSentAnimation = m_game_state.player().animation();
+	lastSentAnimation = ctx_.game_state.player().animation();
 	
 	// Keep track of last position for delta calculations (per instance, not static)
 	static std::map<EverQuest*, std::tuple<float, float, float, float>> last_positions;
 	
 	// Initialize last position if this is the first update
-	if (force_update || last_positions.find(this) == last_positions.end()) {
-		last_positions[this] = std::make_tuple(PosX(), PosY(), PosZ(), HeadingDeg());
+	if (force_update || last_positions.find(&owner_) == last_positions.end()) {
+		last_positions[&owner_] = std::make_tuple(owner_.PosX(), owner_.PosY(), owner_.PosZ(), owner_.HeadingDeg());
 	}
 	
-	auto& [last_x, last_y, last_z, last_heading] = last_positions[this];
+	auto& [last_x, last_y, last_z, last_heading] = last_positions[&owner_];
 	
 	// Calculate deltas
-	float delta_x = PosX() - last_x;
-	float delta_y = PosY() - last_y;
-	float delta_z = PosZ() - last_z;
-	float delta_heading_deg = HeadingDeg() - last_heading;
+	float delta_x = owner_.PosX() - last_x;
+	float delta_y = owner_.PosY() - last_y;
+	float delta_z = owner_.PosZ() - last_z;
+	float delta_heading_deg = owner_.HeadingDeg() - last_heading;
 	
 	// Normalize delta heading to -180 to 180
 	while (delta_heading_deg > 180.0f) delta_heading_deg -= 360.0f;
@@ -625,16 +632,16 @@ void EverQuest::SendPositionUpdate()
 	//
 	// C->S transformation: -(client heading) + 90 to match server convention
 	// Inverse of S->C transformation (client heading = 90 - server_h)
-	float server_heading = 90.0f - HeadingDeg();
+	float server_heading = 90.0f - owner_.HeadingDeg();
 	if (server_heading < 0.0f) server_heading += 360.0f;
 	if (server_heading >= 360.0f) server_heading -= 360.0f;
 	int heading_raw = static_cast<int>(server_heading * 2048.0f / 360.0f);
 	// FloatToEQ12 does modulo 2048, so values wrap
 	uint16_t heading_scaled = heading_raw % 2048;
 	
-	if (s_debug_level >= 2) {
+	if (EverQuest::s_debug_level >= 2) {
 		LOG_DEBUG(MOD_MOVEMENT, "POS C->S [SELF] heading={:.2f}deg -> server_heading={:.2f}deg -> heading_scaled={} (12-bit)",
-			HeadingDeg(), server_heading, heading_scaled);
+			owner_.HeadingDeg(), server_heading, heading_scaled);
 	}
 	
 	// Build the client position update body. The wire layout is 36 bytes of
@@ -660,28 +667,28 @@ void EverQuest::SendPositionUpdate()
 
 	// Use the spawn ID we extracted from PlayerProfile or ZoneSpawns
 	// This is what the server expects in ClientUpdate packets
-	update.spawn_id = MySpawnId();
-	m_game_state.player().incrementMovementSequence();
-	update.sequence = m_game_state.player().movementSequence();
+	update.spawn_id = owner_.MySpawnId();
+	ctx_.game_state.player().incrementMovementSequence();
+	update.sequence = ctx_.game_state.player().movementSequence();
 
 	// Validate that we have a valid spawn ID
-	if (MySpawnId() == 0) {
+	if (owner_.MySpawnId() == 0) {
 		LOG_ERROR(MOD_MOVEMENT, "SendMovementUpdate called with a spawn id of 0! Not sending update.");
 		return;
 	}
 
 	// Check if we're accidentally using another player's ID
-	auto it = m_entities.find(MySpawnId());
-	if (it != m_entities.end() && it->second.name != m_character) {
+	auto it = ctx_.entities.find(owner_.MySpawnId());
+	if (it != ctx_.entities.end() && it->second.name != ctx_.character) {
 		LOG_WARN(MOD_MOVEMENT, "m_my_spawn_id {} belongs to '{}', not our character '{}'!",
-			MySpawnId(), it->second.name, m_character);
+			owner_.MySpawnId(), it->second.name, ctx_.character);
 	}
 	
 	// Convert from internal coordinate system back to server coordinate system
 	// When receiving from server: client x = server y, client y = server x (see ZoneProcessPlayerProfile)
 	// So to send back: server's y_pos = client x, server's x_pos = client y
-	update.y_pos = PosX();  // client x holds server's original y
-	update.x_pos = PosY();  // client y holds server's original x
+	update.y_pos = owner_.PosX();  // client x holds server's original y
+	update.x_pos = owner_.PosY();  // client y holds server's original x
 	// T311: PosZ() is the RENDER frame (the model node's origin, which the
 	// renderer snaps to groundZ + collisionZOffset). The WIRE frame is
 	// groundZ + 0.625*size -- MEASURED off the official Titanium client
@@ -703,11 +710,11 @@ void EverQuest::SendPositionUpdate()
 	// server saves what we send and hands it back next login, that error
 	// compounds 0.625 per zone-in -- measured 3.63 -> 4.25 -> 4.88 over three
 	// logins. Send it back verbatim until the renderer has told us the offset.
-	update.z_pos = m_game_state.player().zAwaitingFrameConversion()
-		? PosZ()
-		: eqt::renderZToWireZ(PosZ(),
-		                      m_game_state.player().collisionZOffset(),
-		                      m_game_state.player().size());
+	update.z_pos = ctx_.game_state.player().zAwaitingFrameConversion()
+		? owner_.PosZ()
+		: eqt::renderZToWireZ(owner_.PosZ(),
+		                      ctx_.game_state.player().collisionZOffset(),
+		                      ctx_.game_state.player().size());
 	// Deltas follow the same transformation:
 	// Internal delta_x (change in client x) = change in server's y = server's delta_y
 	// Internal delta_y (change in client y) = change in server's x = server's delta_x
@@ -717,7 +724,7 @@ void EverQuest::SendPositionUpdate()
 	
 	// Pack animation and delta_heading into bitfield
 	// Use current animation state (which includes jump animation)
-	uint32_t anim_value = m_game_state.player().animation();
+	uint32_t anim_value = ctx_.game_state.player().animation();
 	update.anim_and_delta_heading = (anim_value & 0x3FF) | (0 << 10) | (1 << 20);
 	
 	// Pack heading into bitfield (12 bits)
@@ -730,19 +737,19 @@ void EverQuest::SendPositionUpdate()
 	memcpy((char*)p.Data() + 2, &update, sizeof(update));
 	
 	// Debug: Verify what's in the packet
-	if (s_debug_level >= 1) {
+	if (EverQuest::s_debug_level >= 1) {
 		uint16_t packet_spawn_id = p.GetUInt16(2); // spawn_id is first field after opcode
 		// LOG_DEBUG(MOD_MAIN, "ClientUpdate packet: spawn_id in struct = {}, spawn_id in packet = {}", 
 		// 	update.spawn_id, packet_spawn_id);
 	}
 	
 	// Log C->S position updates at debug level 2+
-	if (s_debug_level >= 2) {
+	if (EverQuest::s_debug_level >= 2) {
 		// Log server coordinates (x_pos, y_pos) = (client y, client x) due to coordinate swap
 		LOG_DEBUG(MOD_MOVEMENT, "POS C->S spawn_id={} server_pos=({:.2f}, {:.2f}, {:.2f}) heading={:.1f} anim={} server_delta=({:.2f}, {:.2f}, {:.2f})",
-			MySpawnId(), update.x_pos, update.y_pos, update.z_pos, HeadingDeg(), m_game_state.player().animation(), update.delta_x, update.delta_y, update.delta_z);
+			owner_.MySpawnId(), update.x_pos, update.y_pos, update.z_pos, owner_.HeadingDeg(), ctx_.game_state.player().animation(), update.delta_x, update.delta_y, update.delta_z);
 		LOG_DEBUG(MOD_MOVEMENT, "POS C->S [SELF] client_pos=({:.2f},{:.2f},{:.2f}) -> server_pos=({:.2f},{:.2f},{:.2f})",
-			PosX(), PosY(), PosZ(), update.x_pos, update.y_pos, update.z_pos);
+			owner_.PosX(), owner_.PosY(), owner_.PosZ(), update.x_pos, update.y_pos, update.z_pos);
 	}
 
 	// T88 test seam: capture what was actually computed, unconditionally,
@@ -753,29 +760,29 @@ void EverQuest::SendPositionUpdate()
 	m_test_last_sent_update.z_pos = update.z_pos;
 	m_test_last_sent_update.heading_scaled = update.heading_and_padding;
 
-	DumpPacket("C->S", HC_OP_ClientUpdate, p);
-	SafeQueueZonePacket(p, 0, false);  // Send unreliable
+	EverQuest::DumpPacket("C->S", HC_OP_ClientUpdate, p);
+	owner_.SafeQueueZonePacket(p, 0, false);  // Send unreliable
 	
 	// Update last position
-	last_x = PosX();
-	last_y = PosY();
-	last_z = PosZ();
-	last_heading = HeadingDeg();
+	last_x = owner_.PosX();
+	last_y = owner_.PosY();
+	last_z = owner_.PosZ();
+	last_heading = owner_.HeadingDeg();
 	
 	// Track movement history for anti-cheat
-	MovementHistoryEntry history_entry;
-	history_entry.x = PosX();
-	history_entry.y = PosY();
-	history_entry.z = PosZ();
+	EverQuest::MovementHistoryEntry history_entry;
+	history_entry.x = owner_.PosX();
+	history_entry.y = owner_.PosY();
+	history_entry.z = owner_.PosZ();
 	history_entry.type = 1; // Normal movement (Collision type)
 	history_entry.timestamp = static_cast<uint32_t>(std::time(nullptr));
 	
-	m_movement_history.push_back(history_entry);
+	owner_.m_movement_history.push_back(history_entry);
 	
 	// Send movement history every second (matching client behavior)
 	uint32_t current_time = static_cast<uint32_t>(std::time(nullptr));
-	if (current_time - m_last_movement_history_send >= 1) {
-		m_last_movement_history_send = current_time;  // Update timestamp BEFORE sending to prevent duplicates
+	if (current_time - owner_.m_last_movement_history_send >= 1) {
+		owner_.m_last_movement_history_send = current_time;  // Update timestamp BEFORE sending to prevent duplicates
 		try {
 			SendMovementHistory();
 		}
@@ -788,14 +795,14 @@ void EverQuest::SendPositionUpdate()
 	}
 }
 
-float EverQuest::CalculateHeading(float x1, float y1, float x2, float y2)
+float eqt::movement::MovementComponent::CalculateHeading(float x1, float y1, float x2, float y2)
 {
 	float dx = x2 - x1;
 	float dy = y2 - y1;
 	
 	// If we're not moving, preserve current heading
 	if (std::abs(dx) < 0.001f && std::abs(dy) < 0.001f) {
-		return HeadingDeg();
+		return owner_.HeadingDeg();
 	}
 	
 	// Calculate angle in radians
@@ -818,7 +825,7 @@ float EverQuest::CalculateHeading(float x1, float y1, float x2, float y2)
 	// (converted from raw values 14, 1567, 1018, 521)
 	
 	// Debug output with more detail
-	if (s_debug_level >= 2) {
+	if (EverQuest::s_debug_level >= 2) {
 		LOG_DEBUG(MOD_MAIN, "CalculateHeading: from ({:.1f},{:.1f}) to ({:.1f},{:.1f}), dx={:.1f}, dy={:.1f}, raw angle={:.1f}°, adjusted={:.1f}°", 
 			x1, y1, x2, y2, dx, dy, angle * 180.0f / M_PI, degrees);
 	}
@@ -826,7 +833,7 @@ float EverQuest::CalculateHeading(float x1, float y1, float x2, float y2)
 	return degrees;
 }
 
-float EverQuest::CalculateDistance(float x1, float y1, float z1, float x2, float y2, float z2) const
+float eqt::movement::MovementComponent::CalculateDistance(float x1, float y1, float z1, float x2, float y2, float z2) const
 {
 	float dx = x2 - x1;
 	float dy = y2 - y1;
@@ -834,21 +841,10 @@ float EverQuest::CalculateDistance(float x1, float y1, float z1, float x2, float
 	return std::sqrt(dx * dx + dy * dy + dz * dz);
 }
 
-float EverQuest::CalculateDistance2D(float x1, float y1, float x2, float y2) const
+float eqt::movement::MovementComponent::CalculateDistance2D(float x1, float y1, float x2, float y2) const
 {
 	float dx = x2 - x1;
 	float dy = y2 - y1;
 	return std::sqrt(dx * dx + dy * dy);
-}
-
-bool EverQuest::HasReachedDestination() const
-{
-	if (!m_game_state.player().isMoving()) {
-		return true;
-	}
-	
-	// Check if we're close enough to the target (within 2 units)
-	float dist = CalculateDistance2D(PosX(), PosY(), m_game_state.player().targetX(), m_game_state.player().targetY());
-	return dist < 2.0f;
 }
 

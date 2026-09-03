@@ -170,7 +170,7 @@ void EverQuest::ZoneProcessNewZone(const EQ::Net::Packet &p)
 		}
 
 		// Load pathfinder for this zone
-		LoadPathfinder(CurrentZoneName());
+		m_movement->LoadPathfinder(CurrentZoneName());
 
 		// Load zone map for terrain height calculations
 		LoadZoneMap(CurrentZoneName());

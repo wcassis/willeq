@@ -363,7 +363,7 @@ void EverQuest::ListEntities(const std::string& search) const
 			}
 		}
 		
-		float dist = CalculateDistance(PosX(), PosY(), PosZ(), entity.x, entity.y, entity.z);
+		float dist = m_movement->CalculateDistance(PosX(), PosY(), PosZ(), entity.x, entity.y, entity.z);
 		sorted_entities.push_back({dist, &entity});
 	}
 	

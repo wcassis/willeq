@@ -62,7 +62,7 @@ void SpawnNpc(EverQuest& eq, uint32_t id, const std::string& name,
 // the humanoid filter at all -- then tick again so a target is engaged.
 // Returns the name of the engaged target, or "" if the client engaged nothing.
 std::string RunHuntCycle(EverQuest& eq, const std::vector<uint32_t>& spawnIds) {
-    eq.SetPathfinding(true);           // /pathfinding on -- SetAutoHunting requires it
+    eq.Movement().SetPathfinding(true);           // /pathfinding on -- SetAutoHunting requires it
     auto* cm = eq.GetCombatManager();
     cm->Enable();                      // /combat on
     cm->SetAutoHunting(true);          // /hunt on

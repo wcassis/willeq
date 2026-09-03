@@ -22,7 +22,8 @@ it without taking that measurement first.
 
 ## A — live defects
 
-- **B001** (A) `src/client/eq_movement_state.cpp` `EverQuest::SetPositionState` —
+- **B001** (A) `src/client/movement/movement_state.cpp`
+  `eqt::movement::MovementComponent::SetPositionState` (K07 moved it) —
   every arm ends in `SendSpawnAppearance`, so a server-forced pose cannot be
   applied without echoing it back, and its `AT_DIE` arm encodes a pose self never
   receives. Closes when: a non-sending internal setter exists and the death path

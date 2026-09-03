@@ -126,19 +126,19 @@ void EqActionHandler::setHeading(float heading) {
     while (normalizedHeading < 0.0f) normalizedHeading += 360.0f;
     while (normalizedHeading >= 360.0f) normalizedHeading -= 360.0f;
     m_eq.SetHeading(normalizedHeading);
-    m_eq.SendPositionUpdate();
+    m_eq.Movement().SendPositionUpdate();
 }
 
 void EqActionHandler::jump() {
-    m_eq.Jump();
+    m_eq.Movement().Jump();
 }
 
 void EqActionHandler::sit() {
-    m_eq.SetPositionState(POS_SITTING);
+    m_eq.Movement().SetPositionState(POS_SITTING);
 }
 
 void EqActionHandler::stand() {
-    m_eq.SetPositionState(POS_STANDING);
+    m_eq.Movement().SetPositionState(POS_STANDING);
 }
 
 void EqActionHandler::toggleAutorun() {
@@ -148,10 +148,10 @@ void EqActionHandler::toggleAutorun() {
 }
 
 void EqActionHandler::stopAllMovement() {
-    m_eq.StopMoveForward();
-    m_eq.StopMoveBackward();
-    m_eq.StopTurnLeft();
-    m_eq.StopTurnRight();
+    m_eq.Movement().StopMoveForward();
+    m_eq.Movement().StopMoveBackward();
+    m_eq.Movement().StopTurnLeft();
+    m_eq.Movement().StopTurnRight();
     // Note: StopMovement() is private - the above calls handle keyboard movement
 }
 
@@ -162,19 +162,19 @@ void EqActionHandler::stopAllMovement() {
 // (e.g. a join spec captured from a live session) are reading SERVER frame
 // and must swap x/y before calling this.
 void EqActionHandler::moveToLocation(float x, float y, float z) {
-    m_eq.Move(x, y, z);
+    m_eq.Movement().Move(x, y, z);
 }
 
 void EqActionHandler::moveToEntity(const std::string& name) {
-    m_eq.MoveToEntity(name);
+    m_eq.Movement().MoveToEntity(name);
 }
 
 void EqActionHandler::followEntity(const std::string& name) {
-    m_eq.Follow(name);
+    m_eq.Movement().Follow(name);
 }
 
 void EqActionHandler::stopFollow() {
-    m_eq.StopFollow();
+    m_eq.Movement().StopFollow();
 }
 
 // ========== Combat ==========

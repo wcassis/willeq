@@ -55,7 +55,7 @@ void EverQuest::PerformEmote(uint32_t animation)
 	// Some emotes should stop movement
 	if (animation == ANIM_KNEEL || animation == ANIM_DEATH) {
 		if (m_game_state.player().isMoving()) {
-			StopMovement();
+			m_movement->StopMovement();
 		}
 	}
 	

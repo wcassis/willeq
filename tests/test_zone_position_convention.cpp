@@ -582,7 +582,7 @@ TEST(SameZoneRelocation, SameZone_ForcedClientUpdateCarriesDestination) {
     // The OP_ClientUpdate the handler sends must put the destination back in
     // SERVER coordinates: x_pos = m_y (server x), y_pos = m_x (server y);
     // heading 45deg -> server 90-45=45deg -> 45*2048/360 = 256 (12-bit).
-    auto sent = eq.Test_GetLastComputedPositionUpdate();
+    auto sent = eq.Movement().Test_GetLastComputedPositionUpdate();
     EXPECT_FLOAT_EQ(sent.x_pos, 146.0f);
     EXPECT_FLOAT_EQ(sent.y_pos, -1009.0f);
     EXPECT_FLOAT_EQ(sent.z_pos, 51.0f);

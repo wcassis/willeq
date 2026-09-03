@@ -416,13 +416,13 @@ TEST_P(SourceWrites, Move_ClientUpdateForUnknownEntity_IsNoOp) {
 TEST_P(SourceWrites, Move_SetMovementMode_WritesSourcePlayerMovementMode) {
     ASSERT_EQ(eq.GetGameState().player().movementMode(), eqt::state::MovementMode::Run);
 
-    eq.SetMovementMode(MOVE_MODE_WALK);
+    eq.Movement().SetMovementMode(MOVE_MODE_WALK);
     EXPECT_EQ(eq.GetGameState().player().movementMode(), eqt::state::MovementMode::Walk);
 
-    eq.SetMovementMode(MOVE_MODE_SNEAK);
+    eq.Movement().SetMovementMode(MOVE_MODE_SNEAK);
     EXPECT_EQ(eq.GetGameState().player().movementMode(), eqt::state::MovementMode::Sneak);
 
-    eq.SetMovementMode(MOVE_MODE_RUN);
+    eq.Movement().SetMovementMode(MOVE_MODE_RUN);
     EXPECT_EQ(eq.GetGameState().player().movementMode(), eqt::state::MovementMode::Run);
 }
 
@@ -437,7 +437,7 @@ TEST_P(SourceWrites, Move_SetPositionState_WritesSourcePlayerPositionState) {
         {POS_STANDING, eqt::state::PositionState::Standing},
     };
     for (const auto& c : cases) {
-        eq.SetPositionState(c.in);
+        eq.Movement().SetPositionState(c.in);
         EXPECT_EQ(eq.GetGameState().player().positionState(), c.want)
             << "input " << static_cast<int>(c.in);
     }

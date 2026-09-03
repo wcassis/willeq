@@ -231,7 +231,7 @@ void CombatManager::StartResting() {
 	m_is_resting = true;
 
 	// Sit down to rest
-	m_eq->SetPositionState(POS_SITTING);
+	m_eq->Movement().SetPositionState(POS_SITTING);
 
 	LOG_INFO(MOD_COMBAT, "Resting: HP={}%, Mana={}%",
 		m_stats.hp_percent, m_stats.mana_percent);
@@ -241,7 +241,7 @@ void CombatManager::StopResting() {
 	m_is_resting = false;
 
 	// Stand up
-	m_eq->SetPositionState(POS_STANDING);
+	m_eq->Movement().SetPositionState(POS_STANDING);
 
 	LOG_INFO(MOD_COMBAT, "Resuming hunt");
 }
@@ -310,7 +310,7 @@ void CombatManager::FleeToGuard() {
 	auto* guard = FindNearestGuard();
 	if (guard) {
 		SetCombatState(COMBAT_STATE_SEEKING_GUARD);
-		m_eq->Move(guard->x, guard->y, guard->z);
+		m_eq->Movement().Move(guard->x, guard->y, guard->z);
 	} else {
 		// No guard found, just flee in opposite direction
 		SelectBestFleePath();
@@ -692,7 +692,7 @@ void CombatManager::TickAwaitingCorpse(std::chrono::steady_clock::time_point now
 	if (it != entities.end() && IsCorpse(it->second)) {
 		LOG_DEBUG(MOD_COMBAT, "Found corpse: {} (ID: {}), initiating loot",
 			it->second.name, m_pending_corpse_id);
-		m_eq->MoveToEntityWithinRange(it->second.name, 10.0f);
+		m_eq->Movement().MoveToEntityWithinRange(it->second.name, 10.0f);
 		BeginLootRequest(m_pending_corpse_id);
 		return;
 	}
