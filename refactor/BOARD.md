@@ -308,8 +308,11 @@ it without taking that measurement first.
   denomination, combine — from its sound archives or a captured session,
   per `match-the-oracle`), and fable plays the same sounds at the same
   events (`InventoryManager` bag open/close, `ZoneProcessMoneyUpdate`
-  deltas, `ZoneProcessRecipeAutoCombine`/combine reply). Prov: K11 Review;
-  Will's ruling.
+  deltas, `ZoneProcessRecipeAutoCombine`/combine reply). **Plan:
+  `refactor/T328_ui_sounds.md`.** Found on the way: `include/client/audio/ui_sounds.h`
+  already catalogues UI sound IDs (`BUY_ITEM`, `BUTTON_CLICK`, `CHEST_OPEN`…)
+  and NO production code plays any of them — the reachability pattern again.
+  Prov: K11 Review; Will's ruling.
 
 - ~~**B037** (B) `include/client/bridge/bridge_component.h` `m_audio_config_use_3d_audio`
   — settable only by editing the header.~~ **CLOSED by K15 — WIRED, both ends.**
