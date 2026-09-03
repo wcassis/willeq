@@ -182,6 +182,18 @@ into the component.**
    and the component headers, scan the movers for bare `identifier(`, and
    emit the substitution list; K08's 2,700-line move reached a clean build
    on the second compile. K09 should reuse that script (see K08's Review).
+**K09 corrections (2026-09-03):** (y) **resolve zero-caller deletions
+   BEFORE the member single/shared decision, then re-measure** — a deleted
+   sender strands its only member (`m_zone_sequence`) and it would otherwise
+   move into the component as dead state; (z) an unguarded dereference in a
+   sender that every live sender guards is proof the sender is unreachable
+   under the replay harness; (aa) `DuplicateStateStores` has the same
+   cumulative-floor shape as `ReachabilitySweep` (K05 k) — it now also walks
+   `include/client/**/*_component.h`; K11+ inherit it; (bb) a member whose
+   test-facing accessor has dozens of call sites (`m_replay_suppressed_sends`,
+   49 sites) stays on `EverQuest` under §3 — the K13 decision list now holds
+   `m_inspect_message`, `m_zone_server_host/port`, `m_replay_suppressed_sends`,
+   the player-state facade and the three `AddChat*` primitives.
 8. **Proof.** `verify_move_only.py` exits 1 by construction. Line-multiset
    check with the substitutions normalised BY NAME MAPPING (`ctx_.character`
    ↔ `m_character`, etc. — stripping the prefix alone leaves 7 false
