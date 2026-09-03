@@ -130,6 +130,16 @@ into the component.**
    guard; (d) an inline `eq.h` accessor on a moving member is part of the
    move and appears in no method table; (e) re-derive the include set for
    BOTH sides of a split TU.
+**K04 corrections (2026-09-03):** (f) **INLINE ACCESSORS in `eq.h` that read
+   a moving member are part of the move and are invisible to every
+   "count `EverQuest::` bodies" measurement** — K04 found six (`IsInRaid`,
+   `GetRaidLeader`, …) carrying 20 external call sites the plan never saw.
+   Every plan from K05 on must list them: grep `eq.h` for each moving member
+   and collect the inline functions that touch it; (g) caller tables must be
+   comment-filtered — four of K04's leads were prose; (h) a member the plan
+   names may no longer exist (two of K04's seven survived only in comments);
+   (i) order the normalisation sed longest-name-first when names share a
+   prefix.
 8. **Proof.** `verify_move_only.py` exits 1 by construction. Line-multiset
    check with the substitutions normalised BY NAME MAPPING (`ctx_.character`
    ↔ `m_character`, etc. — stripping the prefix alone leaves 7 false
