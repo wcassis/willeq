@@ -567,7 +567,7 @@ void EqActionHandler::useSkill(uint32_t skillId) {
 // ========== Interaction ==========
 
 void EqActionHandler::hail() {
-    m_eq.SendChatMessage("Hail", "say");
+    m_eq.Chat().SendChatMessage("Hail", "say");
 }
 
 void EqActionHandler::hailTarget() {
@@ -577,7 +577,7 @@ void EqActionHandler::hailTarget() {
         const auto& entities = m_eq.GetGameState().entities();
         auto* entity = entities.getEntity(targetId);
         if (entity && !entity->name.empty()) {
-            m_eq.SendChatMessage("Hail, " + EQT::toDisplayName(entity->name), "say");
+            m_eq.Chat().SendChatMessage("Hail, " + EQT::toDisplayName(entity->name), "say");
             return;
         }
     }
@@ -667,11 +667,11 @@ void EqActionHandler::consider() {
 // ========== Chat ==========
 
 void EqActionHandler::sendChatMessage(action::ChatChannel channel, const std::string& message) {
-    m_eq.SendChatMessage(message, channelToString(channel));
+    m_eq.Chat().SendChatMessage(message, channelToString(channel));
 }
 
 void EqActionHandler::sendTell(const std::string& target, const std::string& message) {
-    m_eq.SendChatMessage(message, "tell", target);
+    m_eq.Chat().SendChatMessage(message, "tell", target);
 }
 
 void EqActionHandler::replyToLastTell(const std::string& message) {
@@ -680,7 +680,7 @@ void EqActionHandler::replyToLastTell(const std::string& message) {
         LOG_DEBUG(MOD_INPUT, "Reply to last tell: No one to reply to");
         return;
     }
-    m_eq.SendChatMessage(message, "tell", lastSender);
+    m_eq.Chat().SendChatMessage(message, "tell", lastSender);
 }
 
 bool EqActionHandler::hasTellToReplyTo() const {

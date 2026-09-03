@@ -126,6 +126,7 @@ namespace ui {
 #include "client/eq_types.h"
 #include "client/guild/guild_component.h"  // K01: ClientContext + GuildComponent
 #include "client/gm/gm_component.h"  // K02: GmComponent
+#include "client/chat/chat_component.h"    // K03: ChatComponent
 
 class EverQuest
 {
@@ -328,33 +329,9 @@ public:
 	static void SetDebugLevel(int level) { s_debug_level = level; ::SetDebugLevel(level); }
 	static int GetDebugLevel() { return s_debug_level; }
 
-	// Public chat interface
-	void SendChatMessage(const std::string &message, const std::string &channel_name, const std::string &target = "");
-	// T243: /emote wire form -- OP_Emote + Emote_Struct, plus the local echo
-	// the server deliberately does not send back to the actor.
-	void ZoneSendEmote(const std::string &message);
-	void ProcessChatInput(const std::string &input);  // Process chat window input (commands or messages)
-	// T29: the first stage of the unified slash-command dispatch order
-	// (registry 1: EverQuest::m_command_registry -- see docs/decisions.md
-	// 2026-08-02 and refactor/T29_unified_command_channel.md). Tries only
-	// this registry; does not touch chat/say fallback or emit an "unknown
-	// command" message -- that's ProcessChatInput's job for the live chat
-	// window, and Application::DispatchSlashCommand's job for stdin/script.
-	// Returns true iff m_command_registry recognised and executed cmdLine
-	// (cmdLine has NO leading '/'). Safe to call unconditionally (headless
-	// or graphics) -- the registry itself is no longer graphics-gated.
-	bool DispatchSlashCommand(const std::string &cmdLine);
-	// T29: invoked by ProcessChatInput() when DispatchSlashCommand() (registry
-	// 1) doesn't recognise a command typed in the live chat window -- lets
-	// the SAME registries 2/3 that stdin/--script use (see
-	// Application::dispatchToActionOrRenderer(), wired in by
-	// Application::wireUnifiedCommandDispatch()) also be reached from the
-	// chat window, without EverQuest needing to know about Application,
-	// CommandProcessor, or the renderer bridge's ownership. cmdLine has no
-	// leading '/'. Returns true if handled.
-	void SetUnrecognizedCommandFallback(std::function<bool(const std::string&)> fallback) {
-		m_unrecognized_command_fallback = std::move(fallback);
-	}
+	// Public chat interface. K03 (Batch K) moved everything else here into
+	// eqt::chat::ChatComponent; these three are output primitives with 30+
+	// callers across every family and stay put until K-final.
 	void AddChatSystemMessage(const std::string &text);  // Add system message to chat window
 	void AddChatCombatMessage(const std::string &text, bool is_self = false);  // Add combat message (is_self for player damage)
 	void AddChatMissMessage(const std::string &text);  // Add miss message (filterable separately)
@@ -586,6 +563,9 @@ public:
 	// K02 (Batch K): the gm family is eqt::gm::GmComponent; callers go through
 	// Gm(), there are no forwarders.
 	eqt::gm::GmComponent& Gm() { return *m_gm; }
+	// K03 (Batch K): the chat family is eqt::chat::ChatComponent; callers go
+	// through Chat(), there are no forwarders.
+	eqt::chat::ChatComponent& Chat() { return *m_chat; }
 	eqt::ClientContext& Context() { return m_ctx; }
 	// Phase 3: Corpse Management
 	void SendCorpseDrag(const std::string& corpse_name);
@@ -801,6 +781,7 @@ public:
 	friend class TradeManager;
 	friend class eqt::guild::GuildComponent;  // K01 transition; K-final removes it
 	friend class eqt::gm::GmComponent;  // K02 transition; K-final removes it
+	friend class eqt::chat::ChatComponent;    // K03 transition; K-final removes it
 
 	// String database for EQ message lookups (works in all modes)
 	bool LoadStringFiles(const std::string& eqClientPath);
@@ -1111,7 +1092,6 @@ private:
 	void ZoneSendSendExpZonein();
 	void ZoneSendSetServerFilter();
 	void ZoneSendClientReady();
-	void ZoneSendChannelMessage(const std::string &message, ChatChannelType channel, const std::string &target = "");
 
 	void ZoneProcessNewZone(const EQ::Net::Packet &p);
 	void ZoneProcessPlayerProfile(const EQ::Net::Packet &p);
@@ -1138,7 +1118,6 @@ private:
 	void ZoneProcessWorldObjectsSent(const EQ::Net::Packet &p);
 	void ZoneProcessSpawnAppearance(const EQ::Net::Packet &p);
 	void ZoneProcessAnimation(const EQ::Net::Packet &p);  // OP_Animation (T243 rename)
-	void ZoneProcessEmote(const EQ::Net::Packet &p);      // OP_Emote text (T243)
 	void ZoneProcessExpUpdate(const EQ::Net::Packet &p);
 	void ZoneProcessRaidUpdate(const EQ::Net::Packet &p);
 	void ZoneProcessGuildMOTD(const EQ::Net::Packet &p);
@@ -1147,7 +1126,6 @@ private:
 	void ZoneProcessDeleteSpawn(const EQ::Net::Packet &p);
 	void ZoneProcessMobHealth(const EQ::Net::Packet &p);
 	void ZoneProcessHPUpdate(const EQ::Net::Packet &p);
-	void ZoneProcessChannelMessage(const EQ::Net::Packet &p);
 	void ZoneProcessWearChange(const EQ::Net::Packet &p);
 	void UpdatePlayerAppearanceFromInventory();
 	void ZoneProcessIllusion(const EQ::Net::Packet &p);
@@ -1158,9 +1136,6 @@ private:
 	void ZoneProcessBeginCast(const EQ::Net::Packet &p);
 	void ZoneProcessManaChange(const EQ::Net::Packet &p);
 	void ZoneProcessBuff(const EQ::Net::Packet &p);
-	void ZoneProcessColoredText(const EQ::Net::Packet &p);
-	void ZoneProcessFormattedMessage(const EQ::Net::Packet &p);
-	void ZoneProcessSimpleMessage(const EQ::Net::Packet &p);
 	void ZoneProcessPlayerStateAdd(const EQ::Net::Packet &p);
 	void ZoneProcessDeath(const EQ::Net::Packet &p);
 	void ZoneProcessPlayerStateRemove(const EQ::Net::Packet &p);
@@ -1607,8 +1582,6 @@ private:
 
 	// Command registry for chat commands
 	std::unique_ptr<eqt::ui::CommandRegistry> m_command_registry;
-	// T29: see SetUnrecognizedCommandFallback() above.
-	std::function<bool(const std::string&)> m_unrecognized_command_fallback;
 	void RegisterCommands();  // Driver: calls per-domain registration methods below, in order (G02)
 	// G02: per-domain command registration, split out of the former monolithic
 	// RegisterCommands() body. Order between methods (and within each) matches
@@ -1990,4 +1963,5 @@ private:
 	eqt::ClientContext m_ctx;
 	std::unique_ptr<eqt::guild::GuildComponent> m_guild;
 	std::unique_ptr<eqt::gm::GmComponent> m_gm;
+	std::unique_ptr<eqt::chat::ChatComponent> m_chat;
 };

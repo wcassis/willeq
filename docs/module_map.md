@@ -34,7 +34,7 @@ review section under `refactor/F*.md` and `refactor/J*.md`.
 | eq_group.cpp | 980 | Group invite/update/disband, raid (T169–T184: OP_RaidUpdate decode, raid senders), pet accessors/commands |
 | eq_player_misc.cpp | 750 | J07: assist/boat/split/LFG/shielding/discipline/banker, save/popup/duel/bindwound, cosmetic misc social, camera/mp3/sound handlers |
 | eq_player_social.cpp | 704 | J07: emote/AFK/anon/roleplay/camp/logout, rezz/who/inspect (+ OP_InspectAnswer reply, T170), corpse/consent; the four T145 double-prefix senders (SendCamp/SendLogout/SendWhoAllRequest/SendInspectRequest) |
-| eq_chat.cpp | 645 | Channel messages, chat input, AddChat* family, colored/formatted/simple text, `EverQuest::DispatchSlashCommand` (registry 1 entry point) |
+| eq_chat.cpp | 67 | K03: only the three AddChat* output primitives (system/combat/miss) are left on `class EverQuest`; everything else moved to `src/client/chat/chat_component.cpp` |
 | eq_player_buffs.cpp | 616 | J07: task/DZ, spell-cast, mana, buff and pet-buff handlers, poison, track |
 | eq_player_state.cpp | 606 | J02: position/heading/moving accessors, AFK/anon/roleplay/camping flags, PlayerStateAdd/Remove, Death, Stamina, ZonePlayerToBind, LevelUpdate, tradeskill combine |
 | eq_combat_actions.cpp | 526 | Consider/Action/Damage/MoneyOnCorpse handlers, Bind_Wound reply (T177). T268 deleted the headless ZoneProcessLootItem parser |
@@ -42,6 +42,7 @@ review section under `refactor/F*.md` and `refactor/J*.md`.
 | eq_player_info.cpp | 369 | J07 remainder: stat getters, group accessors, tribute/AA handlers (SendAATable/RespondAA/TributeInfo/SendGuildTributes), exp/zonein, world-objects-sent |
 | eq_zone_handshake.cpp | 349 | J02: the ZoneSend* handshake senders (SessionReady, ZoneEntry, ReqClientSpawn, ClientReady, SetServerFilter, StreamIdentify, Ack, ReqNewZone, AA/tribute requests, SpawnAppearance, SendExpZonein) |
 | eq_commands_movement.cpp | 320 | RegisterMovementCommands (movement/combat/utility-debug/sky commands) |
+| chat_component.cpp (in `src/client/chat/`) | 607 | K03: `eqt::chat::ChatComponent` — channel message send/process, `SendChatMessage`, `ProcessChatInput`, `DispatchSlashCommand` (registry 1 entry point), emote send/process, colored/formatted/simple text, and `ChatChannelName()` (T320), moved out of `class EverQuest` (was `eq_chat.cpp`) |
 | guild_component.cpp (in `src/client/guild/`) | 276 | K01: `eqt::guild::GuildComponent` — the guild senders + processors, moved out of `class EverQuest` (was `eq_guild.cpp`; m_guild_id populated T133) |
 | gm_component.cpp (in `src/client/gm/`) | 317 | K02: `eqt::gm::GmComponent` — the GM command senders + processors, moved out of `class EverQuest` (was `eq_gm.cpp`; wired T148) |
 | eq_commands_train.cpp | 264 | T280: `/train` and `/trainclose` game-registry side |
@@ -67,7 +68,7 @@ This table and that plan must agree; change both together.
 |---|---|---|---|---|
 | guild | `guild/guild_component` | 11 | 3 | **K01 DONE** (pilot; `ClientContext` in `include/client/client_context.h`) |
 | gm | `gm/gm_component` | 12 | 2 | **K02 DONE** |
-| chat | `eq_chat`, `eq_strings` | 13 | 1 | K03 |
+| chat | `chat/chat_component`, `eq_chat` (AddChat* only), `eq_strings` | 13 | 1 | **K03 DONE** (10 of 13 defs moved; the three AddChat* output primitives stay on `EverQuest`; `eq_strings` untouched, still a free-function candidate) |
 | group | `eq_group` | 25 | 5 | K04 |
 | merchant | `eq_merchant`, `_trade`, `_vendor_bank` | 56 | 1 | K05 |
 | entities | `eq_entities`, `_appearance`, `_updates`, `_world` | 28 | 1 | K06 |

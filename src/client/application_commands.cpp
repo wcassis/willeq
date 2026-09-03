@@ -481,7 +481,7 @@ void Application::wireUnifiedCommandDispatch() {
     // ProcessChatInput() itself via EverQuest::DispatchSlashCommand())
     // already failed by the time this fallback runs. cmdLine has no
     // leading '/' (EverQuest strips it before calling the fallback).
-    m_eqClient->SetUnrecognizedCommandFallback([this](const std::string& cmdLine) {
+    m_eqClient->Chat().SetUnrecognizedCommandFallback([this](const std::string& cmdLine) {
         CommandDispatchResult result;
         result.command = "/" + cmdLine;
         return dispatchToActionOrRenderer(cmdLine, result);
@@ -537,7 +537,7 @@ CommandDispatchResult Application::DispatchSlashCommand(const std::string& rawLi
     // chat window uses (EverQuest::ProcessChatInput -> DispatchSlashCommand).
     // This is what --script never consulted before T29, which is why
     // /combat (T26's blocker) couldn't be reached from automation.
-    if (m_eqClient && m_eqClient->DispatchSlashCommand(cmdBody)) {
+    if (m_eqClient && m_eqClient->Chat().DispatchSlashCommand(cmdBody)) {
         result.recognized = true;
         result.registry = "game";
         result.success = true;

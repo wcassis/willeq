@@ -78,12 +78,22 @@ TEST(ChatChannelNames, UnknownChannelKeepsItsNumber) {
 // tracking, the ungrouped-/gsay guard, the T243 emote special-case) are
 // legitimate and must not have to be counted or budgeted for.
 TEST(ChatChannelNames, NoSecondCopyOfTheTableInEqChat) {
-    const std::string path = std::string(WILLEQ_REPO_ROOT) + "/src/client/eq_chat.cpp";
-    std::ifstream in(path);
-    ASSERT_TRUE(in.is_open()) << "cannot read " << path;
-    std::stringstream ss;
-    ss << in.rdbuf();
-    const std::string src = ss.str();
+    // K03 (Batch K) split eq_chat.cpp: the chat bodies (and ChatChannelName
+    // itself) now live in src/client/chat/chat_component.cpp and only the
+    // three AddChat* output primitives stayed behind. Scan BOTH, or the guard
+    // would silently start passing against a file that no longer holds the
+    // code it was written to watch.
+    std::string src;
+    for (const char* rel : {"/src/client/eq_chat.cpp",
+                            "/src/client/chat/chat_component.cpp"}) {
+        const std::string path = std::string(WILLEQ_REPO_ROOT) + rel;
+        std::ifstream in(path);
+        ASSERT_TRUE(in.is_open()) << "cannot read " << path;
+        std::stringstream ss;
+        ss << in.rdbuf();
+        src += ss.str();
+        src += "\n";
+    }
 
     std::vector<std::string> offenders;
     const std::string needle = "== CHAT_CHANNEL_";
@@ -98,7 +108,7 @@ TEST(ChatChannelNames, NoSecondCopyOfTheTableInEqChat) {
     }
 
     EXPECT_TRUE(offenders.empty())
-        << "eq_chat.cpp maps a channel to a NAME inline, " << offenders.size()
+        << "the chat TUs map a channel to a NAME inline, " << offenders.size()
         << " time(s) -- e.g.: " << (offenders.empty() ? "" : offenders.front())
         << "\nThat is the T320 drift coming back (three copies existed, and all "
            "three disagreed: auction missing from one, channel 14 from all). "

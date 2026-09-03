@@ -202,6 +202,16 @@ GTEST_DISCOVER_TESTS(test_group_packet_shapes)
 # The last test is the guard against a third copy appearing; it reads
 # src/client/eq_chat.cpp via WILLEQ_REPO_ROOT (set at the top of this file),
 # the same shape as the T314 / T308 guards.
+# K03 (Batch K): the extracted eqt::chat::ChatComponent, driven directly
+ADD_EXECUTABLE(test_chat_component
+    test_chat_component.cpp
+)
+TARGET_LINK_LIBRARIES(test_chat_component GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_chat_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_chat_component)
+
 ADD_EXECUTABLE(test_chat_channel_names
     test_chat_channel_names.cpp
 )

@@ -302,6 +302,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/eq_movement.cpp
     src/client/eq_movement_update.cpp
     src/client/eq_movement_state.cpp
+    src/client/chat/chat_component.cpp
     src/client/eq_chat.cpp
     src/client/eq_combat_actions.cpp
     src/client/combat.cpp
