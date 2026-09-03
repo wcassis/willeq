@@ -239,3 +239,17 @@ it without taking that measurement first.
   recorded the keep; the switch has no on position). Closes when: the input
   path calls the Start* methods and a live keypress moves the player, or the
   cluster is deleted together with its Stop* half. Prov: K07 Review, T316.
+
+## Added 2026-09-03 by the Batch L survey (`refactor/L_renderer_component_extraction.md`)
+
+- **B033** (B) `include/client/graphics/irrlicht_renderer.h` `IrrlichtRenderer::resetCoordOffsets`,
+  `adjustOffset{X,Y,Z}`, `adjustRotation{X,Y,Z}`, `getOffset{X,Y,Z}`,
+  `getRotation{X,Y,Z}`, `stepToString` — 14 methods declared and defined
+  nowhere (the real offset/rotation ones live on `EntityRenderer`). Closes
+  when: the 14 declarations are deleted. Prov: Batch L survey.
+
+- **B034** (B) `include/client/graphics/irrlicht_renderer.h` `IrrlichtRenderer::lastOccCamX_`,
+  `lastOccFwdX_`, `hudCallback_`, `cachedHudText_`, `cachedHotkeysText_`,
+  `cachedHeadingDebugText_`, `chatPrefillMutex_`, `pendingChatPrefill_` —
+  eight data members with zero references tree-wide. Closes when: deleted.
+  Prov: Batch L survey.
