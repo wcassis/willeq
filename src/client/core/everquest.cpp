@@ -849,7 +849,6 @@ void EverQuest::ZoneOnStatusChangeReconnectEnabled(std::shared_ptr<EQ::Net::Dayb
 		m_game_state.world().setZoneConnected(false);  // T286: only store
 		m_zone_session_established = false;
 		m_zone->ZoneEntrySent() = false;
-		// m_client_spawned = false; // Deprecated
 		m_zone_connection.reset();
 		SetLoadingPhase(LoadingPhase::ZONE_CONNECTING);
 		m_zone_connection_manager->Connect(m_zone_server_host, m_zone_server_port);
