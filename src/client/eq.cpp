@@ -117,14 +117,12 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 	m_entities_component = std::make_unique<eqt::entities::EntitiesComponent>(m_ctx, *this);
 	// K07: the movement family. Same rule.
 	m_movement = std::make_unique<eqt::movement::MovementComponent>(m_ctx, *this);
+	// K10: the login_world family. It owns the login/world connection managers,
+	// so it must exist before SetCredentials below.
+	m_login_world = std::make_unique<eqt::login_world::LoginWorldComponent>(m_ctx, *this);
 
-	m_host = host;
-	m_port = port;
-	m_user = user;
-	m_pass = pass;
-	m_server = server;
+	m_login_world->SetCredentials(host, port, user, pass, server);
 	m_character = character;
-	m_dbid = 0;
 	m_main_thread_id = std::this_thread::get_id();
 	
 	// Initialize combat manager
@@ -353,26 +351,13 @@ bool EverQuest::InitializeSpellSystem(const std::string& eqClientPath)
 	return true;
 }
 
-void EverQuest::ConnectToLogin()
-{
-	auto transport = std::make_unique<EQ::Net::PosixUdpTransport>();
-	m_login_connection_manager.reset(new EQ::Net::DaybreakConnectionManager(std::move(transport)));
-
-	m_login_connection_manager->OnNewConnection(std::bind(&EverQuest::LoginOnNewConnection, this, std::placeholders::_1));
-	m_login_connection_manager->OnConnectionStateChange(std::bind(&EverQuest::LoginOnStatusChangeReconnectEnabled, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
-	m_login_connection_manager->OnPacketRecv(std::bind(&EverQuest::LoginOnPacketRecv, this, std::placeholders::_1, std::placeholders::_2));
-
-	SetLoadingPhase(LoadingPhase::LOGIN_CONNECTING);
-	m_login_connection_manager->Connect(m_host, m_port);
-}
-
 void EverQuest::TickNetwork()
 {
-	if (m_login_connection_manager) {
-		m_login_connection_manager->Tick();
+	if (m_login_world->LoginManager()) {
+		m_login_world->LoginManager()->Tick();
 	}
-	if (m_world_connection_manager) {
-		m_world_connection_manager->Tick();
+	if (m_login_world->WorldManager()) {
+		m_login_world->WorldManager()->Tick();
 	}
 	if (m_zone_connection_manager) {
 		m_zone_connection_manager->Tick();
@@ -407,11 +392,11 @@ EverQuest::~EverQuest()
 	if (m_zone_connection_manager) {
 		m_zone_connection_manager.reset();
 	}
-	if (m_login_connection) {
-		m_login_connection.reset();
+	if (m_login_world->LoginConnection()) {
+		m_login_world->LoginConnection().reset();
 	}
-	if (m_login_connection_manager) {
-		m_login_connection_manager.reset();
+	if (m_login_world->LoginManager()) {
+		m_login_world->LoginManager().reset();
 	}
 	
 	// Clear movement history
@@ -768,24 +753,6 @@ void EverQuest::PublishFullStateSnapshot() {
 	}
 
 	LOG_INFO(MOD_MAIN, "State snapshot published");
-}
-
-
-void EverQuest::ConnectToWorld(const std::string& world_address)
-{
-	LOG_DEBUG(MOD_WORLD, "Creating new world connection manager for {}:9000", world_address);
-
-	SetLoadingPhase(LoadingPhase::WORLD_CONNECTING);
-
-	// Store the world server address for reconnection
-	m_world_server_host = world_address;
-
-	auto transport = std::make_unique<EQ::Net::PosixUdpTransport>();
-	m_world_connection_manager.reset(new EQ::Net::DaybreakConnectionManager(std::move(transport)));
-	m_world_connection_manager->OnNewConnection(std::bind(&EverQuest::WorldOnNewConnection, this, std::placeholders::_1));
-	m_world_connection_manager->OnConnectionStateChange(std::bind(&EverQuest::WorldOnStatusChangeReconnectEnabled, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
-	m_world_connection_manager->OnPacketRecv(std::bind(&EverQuest::WorldOnPacketRecv, this, std::placeholders::_1, std::placeholders::_2));
-	m_world_connection_manager->Connect(world_address, 9000);
 }
 
 

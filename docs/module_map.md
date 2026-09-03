@@ -28,7 +28,7 @@ review section under `refactor/F*.md` and `refactor/J*.md`.
 | eq_zone.cpp | 1,094 | Zone change/teardown, CleanupZone, DisconnectFromZone, LoadZoneMap/Lines/Sources, CheckZoneLine, GetBestZ/FixZ, in-zone teleport (T231) |
 | eq_zone_entry.cpp | 1,057 | J02: ZoneProcessNewZone, ZoneProcessPlayerProfile (the LOAD-BEARING player heading flip), ZoneProcessAnimation, ZoneProcessGuildMOTD, CheckZoneRequestPhaseComplete |
 | eq_zone_dispatch.cpp | 958 | J02: `DispatchZonePacket` — the zone-stream opcode switch, nothing else |
-| eq_login_world.cpp | 945 | Login-server + world-server connection handling, eqcrypt_block |
+| src/client/login_world/login_world_component.cpp | 996 | K10: eqt::login_world::LoginWorldComponent -- login-server + world-server connection handling (ConnectToLogin/ConnectToWorld, the Login*/World* handshakes, character select, chat-server info, zone handoff), eqcrypt_block |
 | eq_strings.cpp | 767 | Name/string lookup tables, opcode names, dump helpers |
 | eq_player_misc.cpp | 750 | J07: assist/boat/split/LFG/shielding/discipline/banker, save/popup/duel/bindwound, cosmetic misc social, camera/mp3/sound handlers |
 | eq_player_social.cpp | 704 | J07: emote/AFK/anon/roleplay/camp/logout, rezz/who/inspect (+ OP_InspectAnswer reply, T170), corpse/consent; the four T145 double-prefix senders (SendCamp/SendLogout/SendWhoAllRequest/SendInspectRequest) |
@@ -75,7 +75,7 @@ This table and that plan must agree; change both together.
 | movement | `src/client/movement/movement_component`, `movement_state`, `movement_update` | 42 | 8 | **K07 DONE** (`eqt::movement::MovementComponent`; `HasReachedDestination` deleted, zero callers; `m_last_movement_update` boarded dead) |
 | player | `eq_player_info`, `_misc`, `_social`, `_state`, `_buffs`, `eq_profile_appearance` | 142 | 11 | K08 (may split in two) |
 | zone | `eq_zone`, `_dispatch`, `_entry`, `_handshake` | 41 | 17 | K09 |
-| login_world | `eq_login_world` | 42 | 9 | K10 |
+| login_world | `src/client/login_world/login_world_component` | 37 | 22 | **K10 DONE** (`eqt::login_world::LoginWorldComponent`; both connection managers moved, `ConnectToLogin`/`ConnectToWorld` moved in from `eq.cpp`; `WorldSendSessionReady` and the two `World*ChannelMessage` declarations deleted, zero callers) |
 | bridge | `eq_bridge`, `_intents`, `_ui_audio` | 46 | 8 | K11 (becomes bridge/intent handlers, not a component) |
 | commands | `eq_commands`, `_movement`, `_spells`, `_train` | 32 | 0 | K12 (becomes action handlers) |
 | combat | `eq_combat_actions` | 6 | 1 | folds into whichever component owns attack |

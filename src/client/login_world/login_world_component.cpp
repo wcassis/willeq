@@ -2,16 +2,27 @@
 // Pure move — see refactor/F03_login_world.md for scope and verification.
 //
 // Covers:
-//   - Login cluster: EverQuest::Login{On,Send,Process}* (session handshake,
+//   - Login cluster: Login{On,Send,Process}* (session handshake,
 //     credential exchange via eqcrypt_block, server list, play request)
-//   - World cluster: EverQuest::World{On,Send,Process}* (character select,
+//   - World cluster: World{On,Send,Process}* (character select,
 //     zone handoff)
 //
 // eqcrypt_block is a free-function DES helper used exclusively by the login
 // cluster (LoginSendLogin / LoginProcessLoginResponse); it has no header
 // declaration and no other callers, so it moved with its callers unchanged.
+//
+// K10 (refactor/K_component_extraction.md): these bodies were EverQuest::
+// members in src/client/eq_login_world.cpp and are now
+// eqt::login_world::LoginWorldComponent members, moved verbatim bar the
+// substitutions section Mechanism allows. ConnectToLogin() and
+// ConnectToWorld() moved in from src/client/eq.cpp in the same unit --
+// they construct the two connection managers and bind these callbacks.
+// WorldSendSessionReady() was deleted: zero callers tree-wide (section
+// Mechanism 5); its body was an unconditional early return.
 
 #include "client/eq.h"
+#include "client/login_world/login_world_component.h"
+#include "common/net/posix_udp_transport.h"  // K10: ConnectToLogin/ConnectToWorld moved in from eq.cpp
 #include "common/logging.h"
 #include "common/packet_structs.h"
 #include <cstring>
@@ -36,13 +47,57 @@ const char* eqcrypt_block(const char *buffer_in, size_t buffer_in_sz, char* buff
 	return buffer_out;
 }
 
-void EverQuest::LoginOnNewConnection(std::shared_ptr<EQ::Net::DaybreakConnection> connection)
+namespace eqt {
+namespace login_world {
+
+void LoginWorldComponent::SetCredentials(const std::string& host, int port, const std::string& user,
+                                         const std::string& pass, const std::string& server)
+{
+	m_host = host;
+	m_port = port;
+	m_user = user;
+	m_pass = pass;
+	m_server = server;
+	m_dbid = 0;
+}
+
+void LoginWorldComponent::ConnectToLogin()
+{
+	auto transport = std::make_unique<EQ::Net::PosixUdpTransport>();
+	m_login_connection_manager.reset(new EQ::Net::DaybreakConnectionManager(std::move(transport)));
+
+	m_login_connection_manager->OnNewConnection(std::bind(&LoginWorldComponent::LoginOnNewConnection, this, std::placeholders::_1));
+	m_login_connection_manager->OnConnectionStateChange(std::bind(&LoginWorldComponent::LoginOnStatusChangeReconnectEnabled, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+	m_login_connection_manager->OnPacketRecv(std::bind(&LoginWorldComponent::LoginOnPacketRecv, this, std::placeholders::_1, std::placeholders::_2));
+
+	owner_.SetLoadingPhase(LoadingPhase::LOGIN_CONNECTING);
+	m_login_connection_manager->Connect(m_host, m_port);
+}
+
+void LoginWorldComponent::ConnectToWorld(const std::string& world_address)
+{
+	LOG_DEBUG(MOD_WORLD, "Creating new world connection manager for {}:9000", world_address);
+
+	owner_.SetLoadingPhase(LoadingPhase::WORLD_CONNECTING);
+
+	// Store the world server address for reconnection
+	m_world_server_host = world_address;
+
+	auto transport = std::make_unique<EQ::Net::PosixUdpTransport>();
+	m_world_connection_manager.reset(new EQ::Net::DaybreakConnectionManager(std::move(transport)));
+	m_world_connection_manager->OnNewConnection(std::bind(&LoginWorldComponent::WorldOnNewConnection, this, std::placeholders::_1));
+	m_world_connection_manager->OnConnectionStateChange(std::bind(&LoginWorldComponent::WorldOnStatusChangeReconnectEnabled, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+	m_world_connection_manager->OnPacketRecv(std::bind(&LoginWorldComponent::WorldOnPacketRecv, this, std::placeholders::_1, std::placeholders::_2));
+	m_world_connection_manager->Connect(world_address, 9000);
+}
+
+void LoginWorldComponent::LoginOnNewConnection(std::shared_ptr<EQ::Net::DaybreakConnection> connection)
 {
 	m_login_connection = connection;
 	LOG_INFO(MOD_WORLD, "Connecting...");
 }
 
-void EverQuest::LoginOnStatusChangeReconnectEnabled(std::shared_ptr<EQ::Net::DaybreakConnection> conn, EQ::Net::DbProtocolStatus from, EQ::Net::DbProtocolStatus to)
+void LoginWorldComponent::LoginOnStatusChangeReconnectEnabled(std::shared_ptr<EQ::Net::DaybreakConnection> conn, EQ::Net::DbProtocolStatus from, EQ::Net::DbProtocolStatus to)
 {
 	if (to == EQ::Net::StatusConnected) {
 		LOG_INFO(MOD_WORLD, "Login connected.");
@@ -55,28 +110,28 @@ void EverQuest::LoginOnStatusChangeReconnectEnabled(std::shared_ptr<EQ::Net::Day
 		m_key.clear();
 		m_dbid = 0;
 		m_login_connection.reset();
-		SetLoadingPhase(LoadingPhase::LOGIN_CONNECTING);
+		owner_.SetLoadingPhase(LoadingPhase::LOGIN_CONNECTING);
 		m_login_connection_manager->Connect(m_host, m_port);
 	}
 }
 
-void EverQuest::LoginOnStatusChangeReconnectDisabled(std::shared_ptr<EQ::Net::DaybreakConnection> conn, EQ::Net::DbProtocolStatus from, EQ::Net::DbProtocolStatus to)
+void LoginWorldComponent::LoginOnStatusChangeReconnectDisabled(std::shared_ptr<EQ::Net::DaybreakConnection> conn, EQ::Net::DbProtocolStatus from, EQ::Net::DbProtocolStatus to)
 {
 	if (to == EQ::Net::StatusDisconnected) {
 		m_login_connection.reset();
 	}
 }
 
-void EverQuest::LoginOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> conn, const EQ::Net::Packet & p)
+void LoginWorldComponent::LoginOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> conn, const EQ::Net::Packet & p)
 {
 	auto opcode = p.GetUInt16(0);
-	DumpPacket("S->C", opcode, p);
+	EverQuest::DumpPacket("S->C", opcode, p);
 
 	// T05: record real network traffic only (replayed packets enter via
 	// ReplayLoginPacket -> DispatchLoginPacket and are never re-recorded) --
 	// mirrors R01's rule for zone (see EverQuest::ZoneOnPacketRecv, eq.cpp).
-	if (m_session_recorder && p.Length() >= 2) {
-		m_session_recorder->record(EQT::Net::SessionStream::Login, EQT::Net::SessionDirection::ServerToClient,
+	if (owner_.m_session_recorder && p.Length() >= 2) {
+		owner_.m_session_recorder->record(EQT::Net::SessionStream::Login, EQT::Net::SessionDirection::ServerToClient,
 			opcode, (const uint8_t*)p.Data() + 2, static_cast<uint32_t>(p.Length() - 2));
 	}
 
@@ -87,7 +142,7 @@ void EverQuest::LoginOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> c
 // synthetic app packet (2-byte opcode prefix + payload, matching
 // session_log.h's on-disk layout) and run it through the same opcode switch
 // LoginOnPacketRecv uses.
-void EverQuest::ReplayLoginPacket(uint16_t opcode, const uint8_t* data, size_t size)
+void LoginWorldComponent::ReplayLoginPacket(uint16_t opcode, const uint8_t* data, size_t size)
 {
 	EQ::Net::DynamicPacket p;
 	p.Resize(2 + size);
@@ -98,7 +153,7 @@ void EverQuest::ReplayLoginPacket(uint16_t opcode, const uint8_t* data, size_t s
 	DispatchLoginPacket(p);
 }
 
-void EverQuest::DispatchLoginPacket(const EQ::Net::Packet & p)
+void LoginWorldComponent::DispatchLoginPacket(const EQ::Net::Packet & p)
 {
 	auto opcode = p.GetUInt16(0);
 
@@ -121,7 +176,7 @@ void EverQuest::DispatchLoginPacket(const EQ::Net::Packet & p)
 	}
 }
 
-void EverQuest::LoginSendSessionReady()
+void LoginWorldComponent::LoginSendSessionReady()
 {
 	EQ::Net::DynamicPacket p;
 	p.Resize(14);
@@ -130,17 +185,17 @@ void EverQuest::LoginSendSessionReady()
 	p.PutUInt32(6, 0);  // unknown
 	p.PutUInt32(10, 2048);  // max length
 
-	DumpPacket("C->S", HC_OP_SessionReady, p);
+	EverQuest::DumpPacket("C->S", HC_OP_SessionReady, p);
 	if (m_login_connection) {
 		m_login_connection->QueuePacket(p);
 	} else {
-		++m_replay_suppressed_sends;
+		++owner_.m_replay_suppressed_sends;
 	}
 }
 
-void EverQuest::LoginSendLogin()
+void LoginWorldComponent::LoginSendLogin()
 {
-	SetLoadingPhase(LoadingPhase::LOGIN_AUTHENTICATING);
+	owner_.SetLoadingPhase(LoadingPhase::LOGIN_AUTHENTICATING);
 	size_t buffer_len = m_user.length() + m_pass.length() + 2;
 	std::unique_ptr<char[]> buffer(new char[buffer_len]);
 	memset(buffer.get(), 0, buffer_len);
@@ -164,15 +219,15 @@ void EverQuest::LoginSendLogin()
 	memset((char*)p.Data() + 12, 0, encrypted_len);
 	eqcrypt_block(&buffer[0], buffer_len, (char*)p.Data() + 12, true);
 
-	DumpPacket("C->S", HC_OP_Login, p);
+	EverQuest::DumpPacket("C->S", HC_OP_Login, p);
 	if (m_login_connection) {
 		m_login_connection->QueuePacket(p);
 	} else {
-		++m_replay_suppressed_sends;
+		++owner_.m_replay_suppressed_sends;
 	}
 }
 
-void EverQuest::LoginSendServerRequest()
+void LoginWorldComponent::LoginSendServerRequest()
 {
 	EQ::Net::DynamicPacket p;
 	p.Resize(12);
@@ -181,15 +236,15 @@ void EverQuest::LoginSendServerRequest()
 	p.PutUInt32(6, 0);  // unknown
 	p.PutUInt16(10, 0);  // unknown
 
-	DumpPacket("C->S", HC_OP_ServerListRequest, p);
+	EverQuest::DumpPacket("C->S", HC_OP_ServerListRequest, p);
 	if (m_login_connection) {
 		m_login_connection->QueuePacket(p);
 	} else {
-		++m_replay_suppressed_sends;
+		++owner_.m_replay_suppressed_sends;
 	}
 }
 
-void EverQuest::LoginSendPlayRequest(uint32_t id)
+void LoginWorldComponent::LoginSendPlayRequest(uint32_t id)
 {
 	EQ::Net::DynamicPacket p;
 	p.Resize(16);
@@ -199,15 +254,15 @@ void EverQuest::LoginSendPlayRequest(uint32_t id)
 	p.PutUInt16(10, 0);  // unknown
 	p.PutUInt32(12, id);  // server id
 
-	DumpPacket("C->S", HC_OP_PlayEverquestRequest, p);
+	EverQuest::DumpPacket("C->S", HC_OP_PlayEverquestRequest, p);
 	if (m_login_connection) {
 		m_login_connection->QueuePacket(p);
 	} else {
-		++m_replay_suppressed_sends;
+		++owner_.m_replay_suppressed_sends;
 	}
 }
 
-void EverQuest::LoginProcessLoginResponse(const EQ::Net::Packet & p)
+void LoginWorldComponent::LoginProcessLoginResponse(const EQ::Net::Packet & p)
 {
 	// T07: Length() is size_t, so a packet shorter than the 12-byte header
 	// would underflow this subtraction to ~1.8e19 and feed it straight to
@@ -256,7 +311,7 @@ void EverQuest::LoginProcessLoginResponse(const EQ::Net::Packet & p)
 	}
 }
 
-void EverQuest::LoginProcessServerPacketList(const EQ::Net::Packet & p)
+void LoginWorldComponent::LoginProcessServerPacketList(const EQ::Net::Packet & p)
 {
 	m_world_servers.clear();
 	auto number_of_servers = p.GetUInt32(18);
@@ -303,7 +358,7 @@ void EverQuest::LoginProcessServerPacketList(const EQ::Net::Packet & p)
 	LoginDisableReconnect();
 }
 
-void EverQuest::LoginProcessServerPlayResponse(const EQ::Net::Packet &p)
+void LoginWorldComponent::LoginProcessServerPlayResponse(const EQ::Net::Packet &p)
 {
 	auto allowed = p.GetUInt8(12);
 
@@ -329,7 +384,7 @@ void EverQuest::LoginProcessServerPlayResponse(const EQ::Net::Packet &p)
 	}
 }
 
-void EverQuest::LoginDisableReconnect()
+void LoginWorldComponent::LoginDisableReconnect()
 {
 	// T07: both members are always set in production (LoginOnNewConnection /
 	// ConnectToLogin) before any packet can arrive, but this is reachable
@@ -337,20 +392,20 @@ void EverQuest::LoginDisableReconnect()
 	// null — T06 pinned that as a SIGSEGV. Guard both, matching the pattern
 	// used by every other connection use in this file.
 	if (m_login_connection_manager) {
-		m_login_connection_manager->OnConnectionStateChange(std::bind(&EverQuest::LoginOnStatusChangeReconnectDisabled, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+		m_login_connection_manager->OnConnectionStateChange(std::bind(&LoginWorldComponent::LoginOnStatusChangeReconnectDisabled, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
 	}
 	if (m_login_connection) {
 		m_login_connection->Close();
 	}
 }
 
-void EverQuest::WorldOnNewConnection(std::shared_ptr<EQ::Net::DaybreakConnection> connection)
+void LoginWorldComponent::WorldOnNewConnection(std::shared_ptr<EQ::Net::DaybreakConnection> connection)
 {
 	m_world_connection = connection;
 	LOG_DEBUG(MOD_WORLD, "World connection created: {}", connection ? "valid" : "null");
 }
 
-void EverQuest::WorldOnStatusChangeReconnectEnabled(std::shared_ptr<EQ::Net::DaybreakConnection> conn, EQ::Net::DbProtocolStatus from, EQ::Net::DbProtocolStatus to)
+void LoginWorldComponent::WorldOnStatusChangeReconnectEnabled(std::shared_ptr<EQ::Net::DaybreakConnection> conn, EQ::Net::DbProtocolStatus from, EQ::Net::DbProtocolStatus to)
 {
 	LOG_TRACE(MOD_WORLD, "WorldOnStatusChangeReconnectEnabled: from={} to={}", static_cast<int>(from), static_cast<int>(to));
 
@@ -366,7 +421,7 @@ void EverQuest::WorldOnStatusChangeReconnectEnabled(std::shared_ptr<EQ::Net::Day
 		m_world_connection.reset();
 
 		// Reconnect to world if we're in a zone (needed for zone transfers)
-		if (m_game_state.world().isZoneConnected() && !m_world_server_host.empty()) {
+		if (ctx_.game_state.world().isZoneConnected() && !m_world_server_host.empty()) {
 			LOG_DEBUG(MOD_WORLD, "Reconnecting to world server for zone transfer support");
 			m_world_connection_manager->Connect(m_world_server_host, 9000);
 		}
@@ -381,24 +436,24 @@ void EverQuest::WorldOnStatusChangeReconnectEnabled(std::shared_ptr<EQ::Net::Day
 	}
 }
 
-void EverQuest::WorldOnStatusChangeReconnectDisabled(std::shared_ptr<EQ::Net::DaybreakConnection> conn, EQ::Net::DbProtocolStatus from, EQ::Net::DbProtocolStatus to)
+void LoginWorldComponent::WorldOnStatusChangeReconnectDisabled(std::shared_ptr<EQ::Net::DaybreakConnection> conn, EQ::Net::DbProtocolStatus from, EQ::Net::DbProtocolStatus to)
 {
 	if (to == EQ::Net::StatusDisconnected) {
 		m_world_connection.reset();
 	}
 }
 
-void EverQuest::WorldOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> conn, const EQ::Net::Packet & p)
+void LoginWorldComponent::WorldOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> conn, const EQ::Net::Packet & p)
 {
 	LOG_TRACE(MOD_WORLD, "WorldOnPacketRecv called");
 	auto opcode = p.GetUInt16(0);
-	DumpPacket("S->C", opcode, p);
+	EverQuest::DumpPacket("S->C", opcode, p);
 
 	// T05: record real network traffic only (replayed packets enter via
 	// ReplayWorldPacket -> DispatchWorldPacket and are never re-recorded) --
 	// mirrors R01's rule for zone (see EverQuest::ZoneOnPacketRecv, eq.cpp).
-	if (m_session_recorder && p.Length() >= 2) {
-		m_session_recorder->record(EQT::Net::SessionStream::World, EQT::Net::SessionDirection::ServerToClient,
+	if (owner_.m_session_recorder && p.Length() >= 2) {
+		owner_.m_session_recorder->record(EQT::Net::SessionStream::World, EQT::Net::SessionDirection::ServerToClient,
 			opcode, (const uint8_t*)p.Data() + 2, static_cast<uint32_t>(p.Length() - 2));
 	}
 
@@ -409,7 +464,7 @@ void EverQuest::WorldOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> c
 // synthetic app packet (2-byte opcode prefix + payload, matching
 // session_log.h's on-disk layout) and run it through the same opcode switch
 // WorldOnPacketRecv uses.
-void EverQuest::ReplayWorldPacket(uint16_t opcode, const uint8_t* data, size_t size)
+void LoginWorldComponent::ReplayWorldPacket(uint16_t opcode, const uint8_t* data, size_t size)
 {
 	EQ::Net::DynamicPacket p;
 	p.Resize(2 + size);
@@ -420,7 +475,7 @@ void EverQuest::ReplayWorldPacket(uint16_t opcode, const uint8_t* data, size_t s
 	DispatchWorldPacket(p);
 }
 
-void EverQuest::DispatchWorldPacket(const EQ::Net::Packet & p)
+void LoginWorldComponent::DispatchWorldPacket(const EQ::Net::Packet & p)
 {
 	auto opcode = p.GetUInt16(0);
 
@@ -466,19 +521,12 @@ void EverQuest::DispatchWorldPacket(const EQ::Net::Packet & p)
 		WorldProcessZoneServerInfo(p);
 		break;
 	default:
-		LOG_WARN(MOD_WORLD, "Unhandled world opcode: {}", GetOpcodeName(opcode));
+		LOG_WARN(MOD_WORLD, "Unhandled world opcode: {}", EverQuest::GetOpcodeName(opcode));
 		break;
 	}
 }
 
-void EverQuest::WorldSendSessionReady()
-{
-	// Don't send SessionReady - world server doesn't expect it
-	// The issue must be something else
-	return;
-}
-
-void EverQuest::WorldSendClientAuth()
+void LoginWorldComponent::WorldSendClientAuth()
 {
 	EQ::Net::DynamicPacket p;
 	p.Resize(466);  // 2 bytes opcode + 464 bytes LoginInfo struct
@@ -520,20 +568,20 @@ void EverQuest::WorldSendClientAuth()
 	// m_zone_to_zone_in_progress is latched across the teardown for exactly
 	// this read. (The official client's group_id rows stayed intact across
 	// the same transition -- T320's oracle capture.)
-	uint8_t zoning_flag = m_zone_to_zone_in_progress ? 1 : 0;
+	uint8_t zoning_flag = owner_.m_zone_to_zone_in_progress ? 1 : 0;
 	p.PutUInt8(2 + 188, zoning_flag);
 
 	LOG_INFO(MOD_WORLD, "Sending login info: dbid={}, key={}, zoning={}", dbid_str, m_key, zoning_flag);
 
-	DumpPacket("C->S", HC_OP_SendLoginInfo, p);
+	EverQuest::DumpPacket("C->S", HC_OP_SendLoginInfo, p);
 	if (m_world_connection) {
 		m_world_connection->QueuePacket(p);
 	} else {
-		++m_replay_suppressed_sends;
+		++owner_.m_replay_suppressed_sends;
 	}
 }
 
-void EverQuest::WorldSendEnterWorld(const std::string &character)
+void LoginWorldComponent::WorldSendEnterWorld(const std::string &character)
 {
 	EQ::Net::DynamicPacket p;
 	p.Resize(74);  // Matching good log size
@@ -554,18 +602,18 @@ void EverQuest::WorldSendEnterWorld(const std::string &character)
 	p.PutUInt32(66, 0);  // unknown
 	p.PutUInt32(70, 0);  // unknown
 
-	DumpPacket("C->S", HC_OP_EnterWorld, p);
+	EverQuest::DumpPacket("C->S", HC_OP_EnterWorld, p);
 	if (m_world_connection) {
 		m_world_connection->QueuePacket(p);
 	} else {
-		++m_replay_suppressed_sends;
+		++owner_.m_replay_suppressed_sends;
 	}
 	m_enter_world_sent = true;
 }
 
-void EverQuest::WorldProcessCharacterSelect(const EQ::Net::Packet &p)
+void LoginWorldComponent::WorldProcessCharacterSelect(const EQ::Net::Packet &p)
 {
-	SetLoadingPhase(LoadingPhase::WORLD_CHARACTER_SELECT);
+	owner_.SetLoadingPhase(LoadingPhase::WORLD_CHARACTER_SELECT);
 
 	// For Titanium client, the packet is just the raw CharacterSelect_Struct
 	// Let's verify packet size
@@ -615,8 +663,8 @@ void EverQuest::WorldProcessCharacterSelect(const EQ::Net::Packet &p)
 
 			m_character_select_list.push_back({i, name, level, pclass, race, zone});
 
-			if (!found && m_character.compare(name) == 0) {
-				LOG_DEBUG(MOD_MAIN, "Found our character '{}' at index {}", m_character, i);
+			if (!found && ctx_.character.compare(name) == 0) {
+				LOG_DEBUG(MOD_MAIN, "Found our character '{}' at index {}", ctx_.character, i);
 				m_character_select_index = i;
 				found = true;
 			}
@@ -624,11 +672,11 @@ void EverQuest::WorldProcessCharacterSelect(const EQ::Net::Packet &p)
 	}
 
 	if (!found) {
-		LOG_ERROR(MOD_WORLD, "Could not find {}, cannot continue to login.", m_character);
+		LOG_ERROR(MOD_WORLD, "Could not find {}, cannot continue to login.", ctx_.character);
 	}
 }
 
-void EverQuest::WorldSendApproveWorld()
+void LoginWorldComponent::WorldSendApproveWorld()
 {
 	EQ::Net::DynamicPacket p;
 	p.Resize(274);  // Matching good log response size
@@ -636,15 +684,15 @@ void EverQuest::WorldSendApproveWorld()
 	p.PutUInt16(0, HC_OP_ApproveWorld);
 	// The rest is character-specific data which we'll leave as zeros for now
 
-	DumpPacket("C->S", HC_OP_ApproveWorld, p);
+	EverQuest::DumpPacket("C->S", HC_OP_ApproveWorld, p);
 	if (m_world_connection) {
 		m_world_connection->QueuePacket(p);
 	} else {
-		++m_replay_suppressed_sends;
+		++owner_.m_replay_suppressed_sends;
 	}
 }
 
-void EverQuest::WorldSendWorldClientCRC()
+void LoginWorldComponent::WorldSendWorldClientCRC()
 {
 	EQ::Net::DynamicPacket p;
 	p.Resize(2058);  // Matching good log size
@@ -656,65 +704,65 @@ void EverQuest::WorldSendWorldClientCRC()
 		p.PutUInt8(i, 0);
 	}
 
-	DumpPacket("C->S", HC_OP_World_Client_CRC1, p);
+	EverQuest::DumpPacket("C->S", HC_OP_World_Client_CRC1, p);
 	if (m_world_connection) {
 		m_world_connection->QueuePacket(p);
 	} else {
-		++m_replay_suppressed_sends;
+		++owner_.m_replay_suppressed_sends;
 	}
 
 	// Send CRC2
 	p.PutUInt16(0, HC_OP_World_Client_CRC2);
-	DumpPacket("C->S", HC_OP_World_Client_CRC2, p);
+	EverQuest::DumpPacket("C->S", HC_OP_World_Client_CRC2, p);
 	if (m_world_connection) {
 		m_world_connection->QueuePacket(p);
 	} else {
-		++m_replay_suppressed_sends;
+		++owner_.m_replay_suppressed_sends;
 	}
 }
 
-void EverQuest::WorldSendWorldClientReady()
+void LoginWorldComponent::WorldSendWorldClientReady()
 {
 	EQ::Net::DynamicPacket p;
 	p.Resize(2);
 
 	p.PutUInt16(0, HC_OP_WorldClientReady);
 
-	DumpPacket("C->S", HC_OP_WorldClientReady, p);
+	EverQuest::DumpPacket("C->S", HC_OP_WorldClientReady, p);
 	if (m_world_connection) {
 		m_world_connection->QueuePacket(p);
 	} else {
-		++m_replay_suppressed_sends;
+		++owner_.m_replay_suppressed_sends;
 	}
 	m_world_ready = true;
 }
 
-void EverQuest::WorldSendWorldComplete()
+void LoginWorldComponent::WorldSendWorldComplete()
 {
 	EQ::Net::DynamicPacket p;
 	p.Resize(2);
 
 	p.PutUInt16(0, HC_OP_WorldComplete);
 
-	DumpPacket("C->S", HC_OP_WorldComplete, p);
+	EverQuest::DumpPacket("C->S", HC_OP_WorldComplete, p);
 	if (m_world_connection) {
 		m_world_connection->QueuePacket(p);
 	} else {
-		++m_replay_suppressed_sends;
+		++owner_.m_replay_suppressed_sends;
 	}
 }
 
-void EverQuest::WorldProcessGuildsList(const EQ::Net::Packet &p)
+void LoginWorldComponent::WorldProcessGuildsList(const EQ::Net::Packet &p)
 {
 	LOG_DEBUG(MOD_WORLD, "Received guilds list");
 }
 
-void EverQuest::WorldProcessLogServer(const EQ::Net::Packet &p)
+void LoginWorldComponent::WorldProcessLogServer(const EQ::Net::Packet &p)
 {
 	LOG_DEBUG(MOD_WORLD, "Received log server info");
 }
 
-void EverQuest::WorldProcessApproveWorld(const EQ::Net::Packet &p)
+void LoginWorldComponent::WorldProcessApproveWorld(const EQ::Net::Packet &p)
 {
 	LOG_DEBUG(MOD_WORLD, "World approved, sending response");
 	WorldSendApproveWorld();
@@ -723,12 +771,12 @@ void EverQuest::WorldProcessApproveWorld(const EQ::Net::Packet &p)
 	WorldSendWorldClientCRC();
 }
 
-void EverQuest::WorldProcessEnterWorld(const EQ::Net::Packet &p)
+void LoginWorldComponent::WorldProcessEnterWorld(const EQ::Net::Packet &p)
 {
 	LOG_DEBUG(MOD_WORLD, "Server acknowledged enter world");
 }
 
-void EverQuest::WorldProcessPostEnterWorld(const EQ::Net::Packet &p)
+void LoginWorldComponent::WorldProcessPostEnterWorld(const EQ::Net::Packet &p)
 {
 	LOG_DEBUG(MOD_WORLD, "Post enter world received");
 
@@ -740,13 +788,13 @@ void EverQuest::WorldProcessPostEnterWorld(const EQ::Net::Packet &p)
 	// 516-523, 847), which is exactly what makes it a zoning pass. Without
 	// this the client sat in world forever after T322 started sending
 	// zoning=1, so the two changes are one change.
-	if (m_zone_to_zone_in_progress && !m_enter_world_sent) {
+	if (owner_.m_zone_to_zone_in_progress && !m_enter_world_sent) {
 		LOG_DEBUG(MOD_WORLD, "Zoning world pass: sending EnterWorld now");
-		WorldSendEnterWorld(m_character);
+		WorldSendEnterWorld(ctx_.character);
 	}
 }
 
-void EverQuest::WorldProcessExpansionInfo(const EQ::Net::Packet &p)
+void LoginWorldComponent::WorldProcessExpansionInfo(const EQ::Net::Packet &p)
 {
 	uint32_t expansions = p.GetUInt32(2);
 	LOG_DEBUG(MOD_WORLD, "Expansion info: {:#x}", expansions);
@@ -758,11 +806,11 @@ void EverQuest::WorldProcessExpansionInfo(const EQ::Net::Packet &p)
 		ack.Resize(6);
 		ack.PutUInt16(0, HC_OP_AckPacket);
 		ack.PutUInt32(2, 0);  // sequence or something
-		DumpPacket("C->S", HC_OP_AckPacket, ack);
+		EverQuest::DumpPacket("C->S", HC_OP_AckPacket, ack);
 		if (m_world_connection) {
 			m_world_connection->QueuePacket(ack);
 		} else {
-			++m_replay_suppressed_sends;
+			++owner_.m_replay_suppressed_sends;
 		}
 
 		// Then send WorldClientReady
@@ -770,17 +818,17 @@ void EverQuest::WorldProcessExpansionInfo(const EQ::Net::Packet &p)
 
 		// Now send EnterWorld
 		if (!m_enter_world_sent) {
-			WorldSendEnterWorld(m_character);
+			WorldSendEnterWorld(ctx_.character);
 		}
 	}
 }
 
-void EverQuest::WorldProcessMOTD(const EQ::Net::Packet &p)
+void LoginWorldComponent::WorldProcessMOTD(const EQ::Net::Packet &p)
 {
 	LOG_DEBUG(MOD_WORLD, "Received MOTD");
 }
 
-void EverQuest::WorldProcessSetChatServer(const EQ::Net::Packet &p)
+void LoginWorldComponent::WorldProcessSetChatServer(const EQ::Net::Packet &p)
 {
 	// Parse the chat server info from the world server.
 	//
@@ -801,7 +849,7 @@ void EverQuest::WorldProcessSetChatServer(const EQ::Net::Packet &p)
 	// shape, so it never populated anything and warned on every packet.
 	std::string chat_info = p.GetCString(2);
 
-	if (s_debug_level >= 2) {
+	if (EverQuest::s_debug_level >= 2) {
 		LOG_DEBUG(MOD_NET, "Received chat server info: {}", chat_info);
 	}
 
@@ -860,7 +908,7 @@ void EverQuest::WorldProcessSetChatServer(const EQ::Net::Packet &p)
 	// ConnectToUCS(m_ucs_host, m_ucs_port);
 }
 
-void EverQuest::WorldProcessZoneServerInfo(const EQ::Net::Packet &p)
+void LoginWorldComponent::WorldProcessZoneServerInfo(const EQ::Net::Packet &p)
 {
 	LOG_DEBUG(MOD_WORLD, "Received ZoneServerInfo packet");
 
@@ -874,7 +922,7 @@ void EverQuest::WorldProcessZoneServerInfo(const EQ::Net::Packet &p)
 	LOG_DEBUG(MOD_ZONE, "Zone server info received: {}:{}", new_zone_host, new_zone_port);
 
 	// Check if this is a zone transition (we're already connected to a zone)
-	bool is_zone_transition = m_game_state.world().isZoneConnected() || m_zone_connection != nullptr;
+	bool is_zone_transition = ctx_.game_state.world().isZoneConnected() || ctx_.zone_connection != nullptr;
 
 	if (is_zone_transition) {
 		LOG_DEBUG(MOD_ZONE, "Zone transition detected - disconnecting from current zone");
@@ -906,10 +954,10 @@ void EverQuest::WorldProcessZoneServerInfo(const EQ::Net::Packet &p)
 		// from the subsequent PlayerProfile packet instead, never from
 		// here). Fixed as a correctness hardening for whenever that
 		// reachability changes, not because it explains any live symptom.
-		if (m_game_state.world().pendingZoneId() != 0) {
+		if (ctx_.game_state.world().pendingZoneId() != 0) {
 			LOG_DEBUG(MOD_ZONE, "Setting spawn position: client coords ({:.1f}, {:.1f}, {:.1f}) -> client x={:.1f}, y={:.1f}",
-				m_game_state.world().pendingZoneX(), m_game_state.world().pendingZoneY(), m_game_state.world().pendingZoneZ(),
-				m_game_state.world().pendingZoneX(), m_game_state.world().pendingZoneY());
+				ctx_.game_state.world().pendingZoneX(), ctx_.game_state.world().pendingZoneY(), ctx_.game_state.world().pendingZoneZ(),
+				ctx_.game_state.world().pendingZoneX(), ctx_.game_state.world().pendingZoneY());
 			// T55: route through SetPosition/SetHeading, the event-firing
 			// relocation path. T288 deleted the raw m_x/m_y/m_z members, so
 			// there is only one store to write now. See
@@ -918,28 +966,31 @@ void EverQuest::WorldProcessZoneServerInfo(const EQ::Net::Packet &p)
 			// traced production flow (is_zone_transition is always false),
 			// but is fixed as hardening for whenever that reachability
 			// changes, same rationale T52 used for its own fix here.
-			SetPosition(m_game_state.world().pendingZoneX(), m_game_state.world().pendingZoneY(), m_game_state.world().pendingZoneZ());
-			if (m_game_state.world().pendingZoneHeading() > 0) {
-				SetHeading(m_game_state.world().pendingZoneHeading());
+			owner_.SetPosition(ctx_.game_state.world().pendingZoneX(), ctx_.game_state.world().pendingZoneY(), ctx_.game_state.world().pendingZoneZ());
+			if (ctx_.game_state.world().pendingZoneHeading() > 0) {
+				owner_.SetHeading(ctx_.game_state.world().pendingZoneHeading());
 			}
 		}
 
 		// Disconnect from current zone (this also calls CleanupZone)
-		DisconnectFromZone();
+		owner_.DisconnectFromZone();
 	}
 
 	// Store new zone server info
-	m_zone_server_host = new_zone_host;
-	m_zone_server_port = new_zone_port;
+	owner_.m_zone_server_host = new_zone_host;
+	owner_.m_zone_server_port = new_zone_port;
 
 	// Clear pending zone info (T286: WorldState is the only store; this
 	// clear had no WorldState counterpart before, so the GameState copy
 	// kept a stale pending zone across the transition)
-	m_game_state.world().clearPendingZone();
+	ctx_.game_state.world().clearPendingZone();
 
 	// Send WorldComplete to acknowledge
 	WorldSendWorldComplete();
 
 	// Connect to the zone server
-	ConnectToZone();
+	owner_.ConnectToZone();
 }
+
+}  // namespace login_world
+}  // namespace eqt

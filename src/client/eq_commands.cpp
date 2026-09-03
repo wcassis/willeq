@@ -222,8 +222,8 @@ void EverQuest::runPmemDiagnostics(const std::string& label) {
 		d.connections.push_back(std::move(ci));
 	};
 	addConn("Zone", m_zone_connection);
-	addConn("World", m_world_connection);
-	addConn("Login", m_login_connection);
+	addConn("World", m_login_world->WorldConnection());
+	addConn("Login", m_login_world->LoginConnection());
 
 	d.entityCount = m_entities.size();
 	d.entityEstimateBytes = m_entities.size() * sizeof(Entity);

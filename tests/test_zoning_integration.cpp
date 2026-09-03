@@ -194,7 +194,7 @@ protected:
                 eq_->SetEQClientPath(config_.eqClientPath);
             }
 
-            eq_->ConnectToLogin();
+            eq_->LoginWorld().ConnectToLogin();
 
             return true;
         } catch (const std::exception& e) {

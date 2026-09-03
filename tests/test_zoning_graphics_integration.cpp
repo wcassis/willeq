@@ -267,7 +267,7 @@ protected:
             std::cout << "Graphics initialized successfully" << std::endl;
 #endif
 
-            eq_->ConnectToLogin();
+            eq_->LoginWorld().ConnectToLogin();
 
             return true;
         } catch (const std::exception& e) {

@@ -131,15 +131,13 @@ namespace ui {
 #include "client/merchant/merchant_component.h"  // K05: MerchantComponent
 #include "client/entities/entities_component.h"  // K06: EntitiesComponent
 #include "client/movement/movement_component.h"  // K07: MovementComponent
+#include "client/login_world/login_world_component.h"  // K10: LoginWorldComponent
 
 class EverQuest
 {
 public:
 	EverQuest(const std::string &host, int port, const std::string &user, const std::string &pass, const std::string &server, const std::string &character);
 	~EverQuest();
-
-	// Initiate login server connection (call after graphics init to avoid timeout during slow startup)
-	void ConnectToLogin();
 
 	// Poll-based network tick: drains recv, processes protocol, resends.
 	// Call from main loop instead of EQ::EventLoop::Get().Process().
@@ -152,11 +150,6 @@ public:
 	// matching include/common/net/session_log.h's RecordHeader layout.
 	// Any handler-triggered sends no-op safely (see m_replay_suppressed_sends).
 	void ReplayZonePacket(uint16_t opcode, const uint8_t* data, size_t size);
-
-	// T05: same replay/test seam as ReplayZonePacket, for the login and
-	// world opcode switches.
-	void ReplayLoginPacket(uint16_t opcode, const uint8_t* data, size_t size);
-	void ReplayWorldPacket(uint16_t opcode, const uint8_t* data, size_t size);
 
 	// Count of zone packet sends suppressed because m_zone_connection was
 	// null (replay/test mode). Only incremented by the Zone packet senders
@@ -409,21 +402,8 @@ public:
 
 	// Read-only observers of login/world state (T09). Trivial inline
 	// returns of existing members -- no new storage, no logic.
-	uint32_t GetAccountId() const { return m_dbid; }
-	const std::string& GetSessionKey() const { return m_key; }
-	bool IsWorldReady() const { return m_world_ready; }
-	bool HasSentEnterWorld() const { return m_enter_world_sent; }
 	const std::string& GetZoneServerHost() const { return m_zone_server_host; }
 	uint16_t GetZoneServerPort() const { return m_zone_server_port; }
-	const std::map<uint32_t, WorldServer>& GetWorldServers() const { return m_world_servers; }
-	int GetCharacterSelectIndex() const { return m_character_select_index; }
-	// T14: unlike the T09 observers above, this one is backed by new
-	// storage — occupied slots only, rebuilt on every OP_SendCharInfo.
-	const std::vector<CharacterSelectEntry>& GetCharacterSelectList() const { return m_character_select_list; }
-	const std::string& GetChatServerHost() const { return m_ucs_host; }
-	uint16_t GetChatServerPort() const { return m_ucs_port; }
-	const std::string& GetMailKey() const { return m_mail_key; }
-	char GetChatConnectionType() const { return m_ucs_connection_type; }
 
 	// Pending group invite handling (Phase 7.5: read from GameState)
 	bool HasPendingGroupInvite() const;
@@ -508,6 +488,9 @@ public:
 	// K07 (Batch K): the movement family is eqt::movement::MovementComponent;
 	// callers go through Movement().
 	eqt::movement::MovementComponent& Movement() { return *m_movement; }
+	// K10 (Batch K): the login_world family is eqt::login_world::LoginWorldComponent;
+	// callers go through LoginWorld().
+	eqt::login_world::LoginWorldComponent& LoginWorld() { return *m_login_world; }
 	eqt::ClientContext& Context() { return m_ctx; }
 	// Phase 3: Corpse Management
 	void SendCorpseDrag(const std::string& corpse_name);
@@ -696,6 +679,7 @@ public:
 	friend class eqt::merchant::MerchantComponent;  // K05 transition; K-final removes it
 	friend class eqt::entities::EntitiesComponent;  // K06 transition; K-final removes it
 	friend class eqt::movement::MovementComponent;  // K07 transition; K-final removes it
+	friend class eqt::login_world::LoginWorldComponent;  // K10 transition; K-final removes it
 
 	// String database for EQ message lookups (works in all modes)
 	bool LoadStringFiles(const std::string& eqClientPath);
@@ -892,85 +876,16 @@ private:
 	// Phase 7.5: Group sync helper
 
 
-	// Login
-	void LoginOnNewConnection(std::shared_ptr<EQ::Net::DaybreakConnection> connection);
-	void LoginOnStatusChangeReconnectEnabled(std::shared_ptr<EQ::Net::DaybreakConnection> conn, EQ::Net::DbProtocolStatus from, EQ::Net::DbProtocolStatus to);
-	void LoginOnStatusChangeReconnectDisabled(std::shared_ptr<EQ::Net::DaybreakConnection> conn, EQ::Net::DbProtocolStatus from, EQ::Net::DbProtocolStatus to);
-	void LoginOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> conn, const EQ::Net::Packet &p);
-	// Opcode switch shared by LoginOnPacketRecv and the ReplayLoginPacket test seam.
-	void DispatchLoginPacket(const EQ::Net::Packet &p);
-
-	void LoginSendSessionReady();
-	void LoginSendLogin();
-	void LoginSendServerRequest();
-	void LoginSendPlayRequest(uint32_t id);
-	void LoginProcessLoginResponse(const EQ::Net::Packet &p);
-	void LoginProcessServerPacketList(const EQ::Net::Packet &p);
-	void LoginProcessServerPlayResponse(const EQ::Net::Packet &p);
-
-	void LoginDisableReconnect();
-
-	std::unique_ptr<EQ::Net::DaybreakConnectionManager> m_login_connection_manager;
-	std::shared_ptr<EQ::Net::DaybreakConnection> m_login_connection;
-	std::map<uint32_t, WorldServer> m_world_servers;
-
-	// World
-	void ConnectToWorld(const std::string& world_address);
-
-	void WorldOnNewConnection(std::shared_ptr<EQ::Net::DaybreakConnection> connection);
-	void WorldOnStatusChangeReconnectEnabled(std::shared_ptr<EQ::Net::DaybreakConnection> conn, EQ::Net::DbProtocolStatus from, EQ::Net::DbProtocolStatus to);
-	void WorldOnStatusChangeReconnectDisabled(std::shared_ptr<EQ::Net::DaybreakConnection> conn, EQ::Net::DbProtocolStatus from, EQ::Net::DbProtocolStatus to);
-	void WorldOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> conn, const EQ::Net::Packet &p);
-	// Opcode switch shared by WorldOnPacketRecv and the ReplayWorldPacket test seam.
-	void DispatchWorldPacket(const EQ::Net::Packet &p);
-
-	void WorldSendSessionReady();
-	void WorldSendClientAuth();
-	void WorldSendEnterWorld(const std::string &character);
-	void WorldSendApproveWorld();
-	void WorldSendWorldClientCRC();
-	void WorldSendWorldClientReady();
-	void WorldSendWorldComplete();
-
-	void WorldProcessCharacterSelect(const EQ::Net::Packet &p);
-	void WorldProcessGuildsList(const EQ::Net::Packet &p);
-	void WorldProcessLogServer(const EQ::Net::Packet &p);
-	void WorldProcessApproveWorld(const EQ::Net::Packet &p);
-	void WorldProcessEnterWorld(const EQ::Net::Packet &p);
-	void WorldProcessPostEnterWorld(const EQ::Net::Packet &p);
-	void WorldProcessExpansionInfo(const EQ::Net::Packet &p);
-	void WorldProcessMOTD(const EQ::Net::Packet &p);
-	void WorldProcessSetChatServer(const EQ::Net::Packet &p);
-	void WorldProcessZoneServerInfo(const EQ::Net::Packet &p);
-
-	std::unique_ptr<EQ::Net::DaybreakConnectionManager> m_world_connection_manager;
-	std::shared_ptr<EQ::Net::DaybreakConnection> m_world_connection;
-
 	// Variables
-	std::string m_host;
-	int m_port;
-	std::string m_user;
-	std::string m_pass;
-	std::string m_server;
 	std::string m_character;
-
-	std::string m_key;
-	uint32_t m_dbid;
 
 	// Debug level
 	static int s_debug_level;
 
-	// Sequence numbers for packets
-	uint32_t m_login_sequence = 2;
-
-	// World server state
-	bool m_world_ready = false;
-	bool m_enter_world_sent = false;
+	// Zone server state (written by LoginWorldComponent's ZoneServerInfo
+	// handler, read by ConnectToZone below)
 	std::string m_zone_server_host;
 	uint16_t m_zone_server_port = 0;
-
-	// World server state for reconnection
-	std::string m_world_server_host;
 
 	// Zone server connection
 	void ConnectToZone();
@@ -1156,9 +1071,6 @@ private:
 	// World object tracking (forges, looms, groundspawns, etc.)
 	std::map<uint32_t, eqt::WorldObject> m_world_objects;
 	uint32_t m_active_tradeskill_object_id = 0;  // Currently open tradeskill container (0 = none)
-
-	int m_character_select_index = -1;
-	std::vector<CharacterSelectEntry> m_character_select_list;
 
 	// Character stats. T286: level/class/race/gender/deity, HP/mana/
 	// endurance, the seven attributes, currency, bank currency, weight and
@@ -1385,21 +1297,6 @@ private:
 
 	// Zone connection flow helpers
 	void CheckZoneRequestPhaseComplete();
-
-	// UCS
-	std::string m_ucs_host;
-	uint16_t m_ucs_port = 0;
-	std::string m_mail_key;
-	// T13: the connection-type character the world server concatenates onto
-	// the mail key. Titanium sends 'B' on OP_SetChatServer (chat) and 'b' on
-	// OP_SetChatServer2 (mail) — see emu_versions.h ucsTitaniumChat/Mail. A
-	// UCS implementation needs it to tell the two connections apart, so it is
-	// stored rather than discarded. 0 = nothing parsed yet.
-	char m_ucs_connection_type = 0;
-
-	// World server channel message routing
-	void WorldSendChannelMessage(const std::string &channel, const std::string &message, const std::string &target = "");
-	void WorldProcessChannelMessage(const EQ::Net::Packet &p);
 
 	// P28: the bulk of this block (eq client/config paths, quit flag, hotbar
 	// model, inventory manager, command registry, "Player mode" loot/vendor/
@@ -1729,4 +1626,5 @@ private:
 	std::unique_ptr<eqt::merchant::MerchantComponent> m_merchant;
 	std::unique_ptr<eqt::entities::EntitiesComponent> m_entities_component;
 	std::unique_ptr<eqt::movement::MovementComponent> m_movement;
+	std::unique_ptr<eqt::login_world::LoginWorldComponent> m_login_world;
 };

@@ -639,29 +639,29 @@ void EverQuest::ProcessDeferredZoneChange()
 	// later, correct signal for the same re-zone.
 
 	// Reconnect to world server to get new zone info
-	if (!m_world_server_host.empty()) {
+	if (!m_login_world->WorldServerHost().empty()) {
 		LOG_TRACE(MOD_ZONE, "Step 2: Creating new world connection manager");
 
 		SetLoadingPhase(LoadingPhase::WORLD_CONNECTING);
 
 		// Reset world connection state flags so we go through the full handshake again
-		m_world_ready = false;
-		m_enter_world_sent = false;
+		m_login_world->WorldReady() = false;
+		m_login_world->EnterWorldSent() = false;
 
 		// Reset old connections first
-		m_world_connection.reset();
+		m_login_world->WorldConnection().reset();
 		LOG_TRACE(MOD_ZONE, "Step 2a: Old world connection reset");
 
-		m_world_connection_manager.reset(new EQ::Net::DaybreakConnectionManager(std::make_unique<EQ::Net::PosixUdpTransport>()));
+		m_login_world->WorldManager().reset(new EQ::Net::DaybreakConnectionManager(std::make_unique<EQ::Net::PosixUdpTransport>()));
 		LOG_TRACE(MOD_ZONE, "Step 2b: New world connection manager created");
 
-		m_world_connection_manager->OnNewConnection(std::bind(&EverQuest::WorldOnNewConnection, this, std::placeholders::_1));
-		m_world_connection_manager->OnConnectionStateChange(std::bind(&EverQuest::WorldOnStatusChangeReconnectEnabled, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
-		m_world_connection_manager->OnPacketRecv(std::bind(&EverQuest::WorldOnPacketRecv, this, std::placeholders::_1, std::placeholders::_2));
+		m_login_world->WorldManager()->OnNewConnection(std::bind(&eqt::login_world::LoginWorldComponent::WorldOnNewConnection, m_login_world.get(), std::placeholders::_1));
+		m_login_world->WorldManager()->OnConnectionStateChange(std::bind(&eqt::login_world::LoginWorldComponent::WorldOnStatusChangeReconnectEnabled, m_login_world.get(), std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+		m_login_world->WorldManager()->OnPacketRecv(std::bind(&eqt::login_world::LoginWorldComponent::WorldOnPacketRecv, m_login_world.get(), std::placeholders::_1, std::placeholders::_2));
 		LOG_TRACE(MOD_ZONE, "Step 2c: Callbacks registered");
 
-		LOG_DEBUG(MOD_ZONE, "Step 3: Connecting to world server at {}:9000", m_world_server_host);
-		m_world_connection_manager->Connect(m_world_server_host, 9000);
+		LOG_DEBUG(MOD_ZONE, "Step 3: Connecting to world server at {}:9000", m_login_world->WorldServerHost());
+		m_login_world->WorldManager()->Connect(m_login_world->WorldServerHost(), 9000);
 		LOG_TRACE(MOD_ZONE, "Step 3 complete: Connect() called, waiting for callbacks");
 	} else {
 		LOG_ERROR(MOD_ZONE, "No world server address stored for reconnection!");

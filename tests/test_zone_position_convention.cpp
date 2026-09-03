@@ -68,7 +68,7 @@ void ReplayZone(EverQuest& eq, uint16_t opcode, const std::vector<uint8_t>& payl
 }
 
 void ReplayWorld(EverQuest& eq, uint16_t opcode, const std::vector<uint8_t>& payload) {
-    eq.ReplayWorldPacket(opcode, payload.data(), payload.size());
+    eq.LoginWorld().ReplayWorldPacket(opcode, payload.data(), payload.size());
 }
 
 // Builds a synthetic OP_ZoneChange server reply (ZoneChange_Struct, 88 bytes

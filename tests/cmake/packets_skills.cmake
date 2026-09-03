@@ -216,6 +216,17 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_movement_component)
 
+# K10 (Batch K): the extracted eqt::login_world::LoginWorldComponent, driven
+# directly through EverQuest::LoginWorld().
+ADD_EXECUTABLE(test_login_world_component
+    test_login_world_component.cpp
+)
+TARGET_LINK_LIBRARIES(test_login_world_component GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_login_world_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_login_world_component)
+
 # T320 (Leg C): one chat-channel name table. eq_chat.cpp built the name twice
 # from two ternary chains forty lines apart and they had drifted -- auction
 # missing from the console chain, channel 14 (TellEcho) missing from both.
