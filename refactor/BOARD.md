@@ -219,3 +219,23 @@ it without taking that measurement first.
 
 - **B028** (P) Batch Z's Z5.3 empty-draw measurement (one-triangle buffer
   isolation) was never taken. Prov: archived board, Batch Z.
+
+## Added 2026-09-03 by the K07 Review (movement extraction)
+
+- **B029** (B) `src/client/movement/movement_state.cpp` `MovementComponent::m_water_surface_z`
+  — written on every water-state change and read by nothing; swim height has
+  no consumer. Closes when: a reader exists or the member is deleted. Prov: K07 Review.
+
+- **B030** (B) `include/client/eq.h` `EverQuest::m_swim_up` / `m_swim_down` with
+  `SetSwimUp` / `SetSwimDown` — zero readers, zero setter callers. Closes when:
+  deleted or wired to the swim path. Prov: K07 Review.
+
+- **B031** (B) `include/client/eq.h` `EverQuest::m_last_movement_update` — zero
+  references tree-wide. Closes when: deleted. Prov: K07 Review.
+
+- **B032** (A) `src/client/movement/movement_component.cpp` `MovementComponent::StartMoveForward`
+  / `StartMoveBackward` / `StartTurnLeft` / `StartTurnRight` — the keyboard
+  movement START half has zero callers while the STOP half is called (T316
+  recorded the keep; the switch has no on position). Closes when: the input
+  path calls the Start* methods and a live keypress moves the player, or the
+  cluster is deleted together with its Stop* half. Prov: K07 Review, T316.
