@@ -61,11 +61,11 @@ it without taking that measurement first.
   this is the remaining half).
 
 - **B006** (B) the S2 leftovers — eight TUs include
-  `graphics/irrlicht_renderer.h` and never name `IrrlichtRenderer`
+  `include/client/graphics/irrlicht_renderer.h` and never name `IrrlichtRenderer`
   (`eq_bridge_ui_audio`, `eq_bridge_intents`, `eq_player_info`, `_misc`,
   `_social`, `_buffs`, `application_frame`, `application_config`);
   `EverQuest::InitGraphics` still takes an `IrrlichtRenderer*`; the asset loaders
-  (`graphics/eq/pfs.h`, `wld_loader.h`) still live in `EQT::Graphics`; and
+  (`include/client/graphics/eq/pfs.h`, `include/client/graphics/eq/wld_loader.h`) still live in `EQT::Graphics`; and
   `door_manager.cpp` reaches for the static `EverQuest::GetDebugLevel()`. Closes
   when: each is removed by the K unit that owns its file. Prov: the S2 residue.
 

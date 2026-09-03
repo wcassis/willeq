@@ -130,7 +130,7 @@ references this file; plans carry only unit-specific content.
   (2026-09-02) found it at `zone_id=2, x=-74, y=428, z=3.751, h=160`
   (T310 Leg C's qeynos2 pose) on arrival, and left it as found. The line
   above is the pose to restore to when YOU move it, not a guarantee of the
-  pose you inherit. Boarded in `refactor/deferred.md`.
+  pose you inherit. Boarded in `refactor/BOARD.md`.
   Clean shutdown (down.sh) + restore configs at end.
 - Client: build-gles2/bin/willeq (EGL surfaceless, no X needed); ALWAYS pass
   `--eqe1-path` on any run whose pixels will be judged — the S3D path thrashes
@@ -162,9 +162,9 @@ references this file; plans carry only unit-specific content.
    found and fixed in the same unit. A future RDP segfault is a real bug,
    not a flake — do not re-waive without root-causing it.) **The suite
    grows constantly — 3208 at T293 (2026-08-27), 2745 at T214, 1234 at P27.
-   Do NOT treat any count written here as current: read the `## STATUS`
-   block in `refactor/deferred.md`, or simply run it. The only invariant is
-   that the ALSA quirk above is the sole expected failure.**
+   Do NOT treat any count written here as current: read the header block of
+   `refactor/BOARD.md`, or simply run it. The only invariant is that the
+   ALSA quirk above is the sole expected failure.**
 3. `bash <slot>/scripts/build-gles2-x86.sh`
 4. Visual gate PASS, goldens untouched (unless the plan says a re-bless
    is expected — then STOP for Will, never self-bless)
