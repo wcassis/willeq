@@ -67,8 +67,8 @@ into the component.**
 
 ## Mechanism (every unit, identical)
 
-1. **Context.** K01 creates `include/client/client_context.h`:
-   `struct ClientContext` holding a reference (or pointer, matching the
+1. **Context.** K01 creates a new header, `client_context.h`, under
+   `include/client/`: `struct ClientContext` holding a reference (or pointer, matching the
    current member type) to each of the 15 core members. `EverQuest` owns one
    `ClientContext m_ctx` built in its ctor from its own members. No behaviour.
 2. **Component class.** `include/client/<family>/<family>_component.h`,

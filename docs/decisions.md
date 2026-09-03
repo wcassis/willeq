@@ -206,7 +206,7 @@ radius mode IS provably lossless while demoting real regions, and count
 mode is provably lossy at >20-region views — the count-stays-default
 decision above still stands on TIMING alone (radius measured 1-17% slower
 in Q03), not on "savings don't exist." The flip remains an open candidate
-in refactor/deferred.md pending re-measurement under the final fixture.
+in refactor/completed/deferred_archive_20260903.md pending re-measurement under the final fixture.
 
 ## 2026-07-24 — Texture format: KEEP ETC1 (Will's decision, P03 data)
 
@@ -236,7 +236,7 @@ unrolled textures) ever tip the balance.
 
 **Status:** Batch F finished 2026-07-23 — all 25 units, 40 new domain TUs,
 every move verifier-proven behavior-preserving. Final layout:
-`docs/module_map.md`. Follow-up (Batch G) candidates in `refactor/deferred.md`:
+`docs/module_map.md`. Follow-up (Batch G) candidates in `refactor/completed/deferred_archive_20260903.md`:
 per-step helper decomposition of `loadZoneSequential` (needs header changes,
 outside move-only rules), splitting `eq_commands.cpp` (2,568 lines), and the
 Step-2 decoupling residue.
@@ -261,13 +261,19 @@ changed files. Legacy files are exempt until their split unit lands.
 
 **Decision:** Docs are split into two tiers.
 - **Load-bearing (kept accurate):** all `CLAUDE.md` files, `docs/decisions.md`,
-  `docs/module_map.md`, `refactor/progress.md`, `refactor/deferred.md`,
-  `docs/reference/arch_design_orig.md` / `arch_design_update.md`.
+  `docs/module_map.md`, `refactor/BOARD.md`,
+  `docs/reference/arch_design_orig.md` / `arch_design_update.md`. (The former
+  `progress.md` and `deferred.md` trackers under `refactor/` were archived by
+  K00, 2026-09-03, superseded by `refactor/BOARD.md` — see
+  `refactor/completed/progress_archive_20260903.md` and
+  `refactor/completed/deferred_archive_20260903.md`.)
 - **Historical (banner, never fixed):** `refactor/completed/*`, the rest of
   `docs/reference/*`, `docs/archive/*`. These carry a header marking them as
   point-in-time snapshots; superseded findings inside them are expected.
 
-Open work items deferred out of "done" batches live in `refactor/deferred.md`,
+Open work items deferred out of "done" batches live in
+`refactor/completed/deferred_archive_20260903.md` at the time of this
+decision (2026-07-22); superseded by `refactor/BOARD.md` (K00, 2026-09-03),
 not inside completed batch files.
 
 ## 2026-07-28 — GLES2 is the only 3D renderer
@@ -521,11 +527,11 @@ same unit, with before/after evidence.
 - **Pi composite run: GO** (T289 = T287 Part 2). Measurement only; re-enabling
   composites on the orangepi remains a separate decision after the numbers.
 - **Loot window: REQUIRED.** It existed and was ~80% working before the static-UI
-  migration. `include/client/graphics/ui/loot_window.h` (163 lines) and
-  `src/client/graphics/ui/loot_window.cpp` (867 lines) were deleted in U07c2
-  `0f25cb57`; `refactor/D06b_publish_loot_vendor.md` documents the publish path.
-  **Recover from history and port to the static-panel architecture — do not
-  design a new one.**
+  migration. The old `loot_window.h`/`loot_window.cpp` (deleted in U07c2
+  `0f25cb57`) were ported to the static-panel architecture as `LootPanelState` /
+  `src/client/graphics/ui/loot_panel.cpp` (T290) — see
+  `refactor/completed/D06b_publish_loot_vendor.md` for the publish-path design
+  and `include/client/graphics/ui/CLAUDE.md` for the shipped shape.
 - **`/bug`: DO NOT WIRE.** The command shape question is closed as won't-do.
 - **T180/T181 leftovers: KEEP** both (`EverQuest::GetClassName` public,
   `/raid looter add|remove`).
@@ -708,9 +714,10 @@ and T76's standoff are DELETED; the camera is at the player's XY with pitch
 3.65 degrees down and hFOV 62.8 degrees (both T298's measured values); first
 person uses the world's near plane like every other mode; down-pitch is clamped
 at 90 - vFOV/2, which is scale- and race-invariant and needs no size term. See
-`refactor/T300_leg_b_implementation.md` and `refactor/deferred.md`'s FIRST
-PERSON section. **Will judges the live result (Leg C); no headless test can —
-nothing in the suite rasterizes.**
+`refactor/T300_leg_b_implementation.md` and the (now archived) FIRST PERSON
+section of `refactor/completed/deferred_archive_20260903.md`. **Will judges
+the live result (Leg C); no headless test can — nothing in the suite
+rasterizes.**
 
 ## 2026-08-27 — First person gets a real viewmodel pass (Will) — SUPERSEDED, SEE ABOVE
 
@@ -755,7 +762,7 @@ failure this guards against).
   **SOURCE ANALYSIS (T297 `48800a8f`) SAYS THE DEFERRAL IS SAFE, LIVE PROOF
   STILL OWED.** From `/mnt/projects/akk-stack/code`: the ONLY branch reaching
   `UCSConnection::Instance()->SendMessage` is `chan_num == ChatChannel_UCSRelay`
-  (20) at `world/zoneserver.cpp:423` — an Underfoot-and-later relay a Titanium
+  (20) at `/mnt/projects/akk-stack/code/world/zoneserver.cpp:423` — an Underfoot-and-later relay a Titanium
   client never sends. **No channel this client can speak depends on UCS.**
   Tell, guild, ooc and auction are dispatched by WORLD itself; group has its
   own `ServerOP_OOZGroupMessage` path; say/shout/emote are zone-local BY

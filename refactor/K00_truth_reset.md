@@ -605,3 +605,148 @@ same 13-FAIL list itemized under B2 above, plus the `BOARD.md` skip note.
   the live docs currently exercises the difference (no `.hpp:NNN` or
   `.cmake:NNN` citation was found in this scan).
 - No STOP condition fired: no file over 3,000 lines under `--all`.
+
+## Review — Leg C
+
+Branch `task/K00-legC-citations`, base tip `e888e89c` (confirmed at
+checkout, after both K00 Leg A and Leg B merged).
+
+Baseline: `python3 scripts/refactor/check_doc_citations.py` at the merged
+tip, before any change — **14 live docs, 213 citations: 192 ok, 21 fail**,
+matching the dispatch exactly.
+
+### (1) Checker rules
+
+`scripts/refactor/check_doc_citations.py`:
+- A citation whose path starts with `review/` now resolves against
+  `/mnt/projects/fable/review/` (`REVIEW_DIR`) instead of the repo root —
+  OK if found there, FAIL otherwise. Fixed 2 of the 21 (both
+  `review/T64/README.md`, which exists on disk under `/mnt/projects/fable/review/T64/`).
+- An absolute-path citation (starts with `/`) is now reported `SKIP`, not
+  `FAIL`, and excluded from the exit-code decision (only FAILs make the
+  script exit 1). A `skip` count was added to the summary line and printed
+  per-citation as `SKIP ... — cross-project citation`.
+- **Regression caught before it shipped:** the naive implementation (making
+  the citation regex's leading path separator optional, `/?[A-Za-z0-9...]`)
+  turned four previously-correct OK results into false SKIPs —
+  `refactor/EXECUTOR_PROTOCOL.md`'s `` `<slot>/scripts/build-gles2-x86.sh` ``
+  convention (a bracketed worktree placeholder followed by a real
+  repo-relative path) let the regex start its match at the "/" right after
+  `<slot>`, misreading the genuinely-relative `scripts/build-gles2-x86.sh`
+  as the absolute path `/scripts/build-gles2-x86.sh`. Fixed with a negative
+  lookbehind (`(?<![A-Za-z0-9_.\->])`) before the optional leading "/", so a
+  "/" only opens an absolute-path match when it is not itself glued to a
+  preceding path-token character (a placeholder's closing `>`, in this
+  case). Verified before/after: the four sites
+  (`refactor/EXECUTOR_PROTOCOL.md:148,168,171,172`) are `OK`, not `SKIP`, in
+  the final run below.
+- Final run at the tip after all doc fixes: **14 live docs, 213 citations:
+  212 ok, 0 fail, 1 skip.** Exit 0. The one SKIP is the deliberate
+  cross-project citation at `docs/decisions.md:765` (see below).
+
+### (2) The 21 FAILs — what each was and what was done
+
+1-2. `CLAUDE.md:191` and `refactor/EXECUTOR_PROTOCOL.md:230`, both citing
+   `review/T64/README.md` — resolved by the new `review/` rule (file
+   exists at `/mnt/projects/fable/review/T64/README.md`). No doc edit.
+3. `src/client/graphics/CLAUDE.md:129` cites
+   `include/client/graphics/constrained_mesh_cache.h` (deleted T67) —
+   rewrote the sentence to name the file without a live-looking
+   directory-prefixed path (`constrained_mesh_cache.h`/`.cpp`, "formerly
+   under ... both deleted by T67"); the `git show 49844c72:...` retrieval
+   command was replaced with `git log --all -- '*constrained_mesh_cache*'`
+   (no path+extension pair left in the doc to cite as if live).
+4-5. Same line, `src/client/graphics/constrained_mesh_cache.cpp` cited
+   twice (prose + the old `git show` command) — same fix as #3.
+6. `src/client/graphics/CLAUDE.md:249` cites `./scripts/gdb_zone_crash.sh`
+   — `git log --all -- '*gdb_zone_crash*'` and a repo-wide `find` both
+   confirm this script never existed in this repo's history (not merely
+   deleted). Replaced the invented "sends keystrokes to trigger
+   movement/zoning" example with a factual pointer to the crash-debugging
+   tool that does exist, `scripts/gdb_core_bt.sh` (core-dump backtrace
+   extraction), and a one-line note that no zone-specific helper exists.
+7-9. `docs/decisions.md:524-526` cite `include/client/graphics/ui/loot_window.h`,
+   `src/client/graphics/ui/loot_window.cpp` (deleted U07c2 `0f25cb57`) and
+   `refactor/D06b_publish_loot_vendor.md` (moved to `refactor/completed/`
+   at some point before this unit — not part of K00's own archival).
+   `include/client/graphics/ui/CLAUDE.md` and `refactor/T290_loot_window.md`
+   confirm the loot window was rebuilt on the static-panel architecture as
+   `LootPanelState` / `src/client/graphics/ui/loot_panel.cpp` (T290).
+   Rewrote the bullet to say so, dropped the directory-prefixed dead paths
+   to bare filenames (no longer citation-shaped), and repointed the design
+   doc to its actual archived path `refactor/completed/D06b_publish_loot_vendor.md`.
+10. `docs/decisions.md:758` (now :765 after edits) cites
+   `world/zoneserver.cpp:423` — this is eqemu source, explicitly named two
+   lines above as `/mnt/projects/akk-stack/code`. Rewrote the citation as
+   the full absolute path `/mnt/projects/akk-stack/code/world/zoneserver.cpp:423`
+   so the SKIP rule catches it (confirmed: shows as SKIP in the final run,
+   not OK or FAIL — the checker cannot and should not verify a sibling
+   repo's line count, only flag that the citation is intentionally
+   external).
+11-15. `docs/decisions.md:209,239,264(x2),270,711` cite `refactor/deferred.md`
+   / `refactor/progress.md` in historical (dated) decision entries.
+   Repointed each to the K00 archive paths
+   (`refactor/completed/deferred_archive_20260903.md`,
+   `refactor/completed/progress_archive_20260903.md`) since every
+   `docs/decisions.md` entry describes a past decision, not the current
+   queue. The "Documentation truth tiers" entry (line ~260) additionally
+   had its "load-bearing" file list corrected (`refactor/BOARD.md` in
+   place of the two archived trackers) with a parenthetical explaining the
+   K00 archival — the only entry needing more than a path swap, because
+   the sentence describes what's *live*, not what a past commit changed.
+   Care was taken that the parenthetical's own archive-path mentions don't
+   reintroduce a citable `refactor/deferred.md`/`refactor/progress.md`
+   path (written as bare `deferred.md`/`progress.md`, i.e. without a `/`,
+   so they don't match the citation regex at all — they're prose, not
+   citations).
+16-17. `refactor/BOARD.md:64,68` cite `graphics/irrlicht_renderer.h` and
+   `graphics/eq/pfs.h` — include-relative shorthand missing the
+   `include/client/` prefix. Rewrote both to the full repo-relative path;
+   also fixed the adjacent `wld_loader.h` mention (was bare, non-citing,
+   left as-is where it already didn't match, but given the full path too
+   since it was in the same clause being edited: `include/client/graphics/eq/wld_loader.h`).
+18-19. `refactor/EXECUTOR_PROTOCOL.md:133,166` cite `refactor/deferred.md`
+   — both describe the CURRENT queue ("Boarded in ...", "read the
+   ## STATUS block ... or simply run it"), so repointed to
+   `refactor/BOARD.md` per the dispatch's explicit rule for this file. The
+   `## STATUS` block wording was also corrected — `BOARD.md` has no such
+   heading, it has a header block — to "the header block of
+   `refactor/BOARD.md`".
+20. `refactor/K_component_extraction.md:70` cites
+   `include/client/client_context.h` — a header K01 will create, not yet
+   present at this unit's tip. Rephrased per the dispatch's suggestion: "a
+   new header, `client_context.h`, under `include/client/`" — no longer a
+   `/`-joined path+extension citation.
+21. `refactor/K_component_extraction.md:147` cites
+   `refactor/K01_guild_component.md` — this file now exists (created by the
+   parallel K01 executor in slot1 between Leg B and Leg C); no edit needed,
+   confirmed OK in the final run.
+
+### Verification
+
+- `python3 scripts/refactor/check_doc_citations.py` (tip, after fixes):
+  exit 0, `checked 14 live doc(s), 213 citation(s): 212 ok, 0 fail, 1 skip`.
+- `cmake --build <slot>/build -j24` — exit 0 (re-ran `cmake -S <slot> -B
+  <slot>/build` first so the build tree picked up the merged
+  `tests/cmake/hygiene.cmake`/`INCLUDE()` line from Leg B).
+- `ctest --test-dir <slot>/build -R 'DocCitations|FileSizeCeiling'
+  --output-on-failure`: **both Passed** (`FileSizeCeiling` 28.97s,
+  `DocCitations` 1.56s), 100% of 2.
+- `ctest --test-dir <slot>/build -j6 --output-on-failure`: **3499/3500
+  passed.** The sole failure is the documented `AudioManagerTest
+  .PreloadCommonSounds` ALSA host quirk. `DocCitations` is green tree-wide.
+
+### Deviations
+
+- Territory held exactly: `scripts/refactor/check_doc_citations.py`,
+  `CLAUDE.md` (read, not edited — its one FAIL resolved via the checker
+  rule change, no doc edit needed), `src/client/graphics/CLAUDE.md`,
+  `docs/decisions.md`, `refactor/BOARD.md`, `refactor/EXECUTOR_PROTOCOL.md`,
+  `refactor/K_component_extraction.md`. No code under `src/`/`include/`
+  touched (confirmed by `git status --porcelain`: six files, all doc/script,
+  matching the territory list minus `CLAUDE.md`).
+- One regression was introduced and caught within this same unit (the
+  false-SKIP bug from the naive optional-leading-slash regex, detailed
+  under "(1) Checker rules" above) — fixed before commit, not left for a
+  future unit.
+- No STOP condition fired.
