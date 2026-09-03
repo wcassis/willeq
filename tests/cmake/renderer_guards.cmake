@@ -95,6 +95,21 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_irrlicht_camera_command)
 ENDIF()
 
+# L01 (Batch L, refactor/L01_rdp_component.md): the RendererContext binding
+# and the RdpComponent extracted from IrrlichtRenderer. Same bare,
+# never-Init()'d IrrlichtRenderer idiom as test_irrlicht_camera_command above.
+# Registered here rather than next to test_rdp_input_handler in audio.cmake
+# because it links willeq_core; the RDP assertions are #ifdef WITH_RDP so the
+# binary builds and passes in a configure without FreeRDP.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_rdp_component
+        test_rdp_component.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_rdp_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_rdp_component GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_rdp_component)
+ENDIF()
+
 # T310 Leg A: the first-person camera tunables (/fpcam, --fpcam). Same bare,
 # never-Init()'d IrrlichtRenderer idiom as test_irrlicht_camera_command above,
 # plus the catalog gate and Application::parseArguments -- so ONE binary covers

@@ -1,14 +1,21 @@
-// IrrlichtRenderer RDP remote-desktop integration.
-// Split out of irrlicht_renderer.cpp (F14) — verbatim move, no behavior change.
+// RDP remote-desktop integration -- EQT::Graphics::RdpComponent.
+// Split out of irrlicht_renderer.cpp (F14) -- verbatim move, no behavior change.
+//
+// L01 (Batch L, refactor/L_renderer_component_extraction.md): moved again,
+// from src/client/graphics/renderer_rdp.cpp to here, and the bodies rebased
+// from IrrlichtRenderer onto EQT::Graphics::RdpComponent. Still verbatim --
+// the only edits inside a body are the four core-member substitutions
+// RendererContext allows (driver_ -> ctx_.driver, device_ -> ctx_.device,
+// config_ -> ctx_.config, eventReceiver_ -> ctx_.eventReceiver). No method
+// that stayed on IrrlichtRenderer is called and no IrrlichtRenderer static or
+// nested type is named, so nothing else changed. getRDPClientCount() had zero
+// callers tree-wide and published no event; it was deleted per §Mechanism 5.
+// See the L01 Review.
 
-#include "client/graphics/irrlicht_renderer.h"
+#include "client/graphics/rdp/rdp_component.h"
+#include "client/graphics/renderer_event_receiver.h"  // L01: the moved bodies call ctx_.eventReceiver->isKeyDown()/isLeftButtonDown()
 #include "common/logging.h"
 #include <fmt/format.h>
-
-#ifdef WITH_RDP
-#include "client/graphics/rdp/rdp_server.h"
-#include "client/graphics/rdp/rdp_input_handler.h"
-#endif
 
 namespace EQT {
 namespace Graphics {
@@ -19,7 +26,7 @@ namespace Graphics {
 
 #ifdef WITH_RDP
 
-bool IrrlichtRenderer::initRDP(uint16_t port) {
+bool RdpComponent::initRDP(uint16_t port) {
     if (rdpServer_) {
         LOG_WARN(MOD_GRAPHICS, "RDP server already initialized");
         return true;
@@ -34,11 +41,11 @@ bool IrrlichtRenderer::initRDP(uint16_t port) {
     }
 
     // Set resolution to match window size
-    if (driver_) {
-        auto screenSize = driver_->getScreenSize();
+    if (ctx_.driver) {
+        auto screenSize = ctx_.driver->getScreenSize();
         rdpServer_->setResolution(screenSize.Width, screenSize.Height);
     } else {
-        rdpServer_->setResolution(config_.width, config_.height);
+        rdpServer_->setResolution(ctx_.config.width, ctx_.config.height);
     }
 
     // Set up input callbacks to route RDP input to the renderer
@@ -61,7 +68,7 @@ bool IrrlichtRenderer::initRDP(uint16_t port) {
     return true;
 }
 
-bool IrrlichtRenderer::startRDPServer() {
+bool RdpComponent::startRDPServer() {
     if (!rdpServer_) {
         LOG_ERROR(MOD_GRAPHICS, "RDP server not initialized");
         return false;
@@ -76,32 +83,28 @@ bool IrrlichtRenderer::startRDPServer() {
     return true;
 }
 
-void IrrlichtRenderer::stopRDPServer() {
+void RdpComponent::stopRDPServer() {
     if (rdpServer_) {
         rdpServer_->stop();
         LOG_INFO(MOD_GRAPHICS, "RDP server stopped");
     }
 }
 
-bool IrrlichtRenderer::isRDPRunning() const {
+bool RdpComponent::isRDPRunning() const {
     return rdpServer_ && rdpServer_->isRunning();
 }
 
-size_t IrrlichtRenderer::getRDPClientCount() const {
-    return rdpServer_ ? rdpServer_->getClientCount() : 0;
-}
-
-void IrrlichtRenderer::captureFrameForRDP() {
+void RdpComponent::captureFrameForRDP() {
     if (!rdpServer_ || !rdpServer_->isRunning() || rdpServer_->getClientCount() == 0) {
         return;
     }
 
-    if (!driver_) {
+    if (!ctx_.driver) {
         return;
     }
 
     // Capture the current framebuffer
-    irr::video::IImage* screenshot = driver_->createScreenShot();
+    irr::video::IImage* screenshot = ctx_.driver->createScreenShot();
     if (!screenshot) {
         return;
     }
@@ -145,8 +148,8 @@ void IrrlichtRenderer::captureFrameForRDP() {
     screenshot->drop();
 }
 
-void IrrlichtRenderer::handleRDPKeyboard(uint16_t flags, uint8_t scancode) {
-    if (!device_ || !eventReceiver_) {
+void RdpComponent::handleRDPKeyboard(uint16_t flags, uint8_t scancode) {
+    if (!ctx_.device || !ctx_.eventReceiver) {
         return;
     }
 
@@ -161,8 +164,8 @@ void IrrlichtRenderer::handleRDPKeyboard(uint16_t flags, uint8_t scancode) {
     }
 
     // Get character for text input
-    bool shift = eventReceiver_->isKeyDown(irr::KEY_LSHIFT) ||
-                 eventReceiver_->isKeyDown(irr::KEY_RSHIFT);
+    bool shift = ctx_.eventReceiver->isKeyDown(irr::KEY_LSHIFT) ||
+                 ctx_.eventReceiver->isKeyDown(irr::KEY_RSHIFT);
     // T317: caps lock was hardcoded false here, so typing over RDP with caps
     // lock on produced the wrong case. It is a TOGGLE, not a held modifier --
     // isKeyDown() cannot answer for it -- so rdpLockKeys_ remembers it, fed by
@@ -178,19 +181,19 @@ void IrrlichtRenderer::handleRDPKeyboard(uint16_t flags, uint8_t scancode) {
     event.KeyInput.Char = character;
     event.KeyInput.PressedDown = !released;
     event.KeyInput.Shift = shift;
-    event.KeyInput.Control = eventReceiver_->isKeyDown(irr::KEY_LCONTROL) ||
-                             eventReceiver_->isKeyDown(irr::KEY_RCONTROL);
+    event.KeyInput.Control = ctx_.eventReceiver->isKeyDown(irr::KEY_LCONTROL) ||
+                             ctx_.eventReceiver->isKeyDown(irr::KEY_RCONTROL);
 
     // Post event to Irrlicht device
-    device_->postEventFromUser(event);
+    ctx_.device->postEventFromUser(event);
 }
 
-void IrrlichtRenderer::handleRDPSynchronize(uint32_t syncFlags) {
+void RdpComponent::handleRDPSynchronize(uint32_t syncFlags) {
     rdpLockKeys_.applySynchronize(syncFlags);
 }
 
-void IrrlichtRenderer::handleRDPMouse(uint16_t flags, uint16_t x, uint16_t y) {
-    if (!device_ || !eventReceiver_) {
+void RdpComponent::handleRDPMouse(uint16_t flags, uint16_t x, uint16_t y) {
+    if (!ctx_.device || !ctx_.eventReceiver) {
         return;
     }
 
@@ -213,15 +216,15 @@ void IrrlichtRenderer::handleRDPMouse(uint16_t flags, uint16_t x, uint16_t y) {
 
     // Set button states
     event.MouseInput.ButtonStates = 0;
-    if (eventReceiver_->isLeftButtonDown()) {
+    if (ctx_.eventReceiver->isLeftButtonDown()) {
         event.MouseInput.ButtonStates |= irr::EMBSM_LEFT;
     }
-    if (eventReceiver_->isRightButtonDown()) {
+    if (ctx_.eventReceiver->isRightButtonDown()) {
         event.MouseInput.ButtonStates |= irr::EMBSM_RIGHT;
     }
 
     // Post event to Irrlicht device
-    device_->postEventFromUser(event);
+    ctx_.device->postEventFromUser(event);
 }
 
 #endif // WITH_RDP

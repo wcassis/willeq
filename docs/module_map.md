@@ -123,7 +123,19 @@ This table and that plan must agree; change both together.
 
 ## Renderer — IrrlichtRenderer class (`include/client/graphics/irrlicht_renderer.h`)
 
-`irrlicht_renderer.cpp` + 24 `renderer_*.cpp` TUs (J11 split the core).
+`irrlicht_renderer.cpp` + 23 `renderer_*.cpp` TUs (J11 split the core), plus
+the components Batch L extracts.
+
+Batch L (`refactor/L_renderer_component_extraction.md`) is doing to
+`IrrlichtRenderer` what Batch K did to `EverQuest`. L01 created
+`include/client/graphics/renderer_context.h` (139 lines) —
+`EQT::Graphics::RendererContext`, the 54 core members bound by reference, the
+renderer's counterpart to `include/client/client_context.h` — and the first
+component below.
+
+| Component | Header | TU |
+|---|---|---|
+| `EQT::Graphics::RdpComponent` | `include/client/graphics/rdp/rdp_component.h` | `src/client/graphics/rdp/rdp_component.cpp` |
 
 | TU | Lines | Contents |
 |---|---|---|
@@ -150,7 +162,7 @@ This table and that plan must agree; change both together.
 | renderer_entities.cpp | 502 | Entity/inventory/combat-anim façades (thin forwards) |
 | renderer_gpu_upload.cpp | 446 | GPU upload thread init/drain/apply |
 | renderer_event_receiver.cpp | 385 | J11: `RendererEventReceiver::OnEvent` and the key/mouse query surface |
-| renderer_rdp.cpp | 230 | RDP server integration (WITH_RDP guard) |
+| src/client/graphics/rdp/rdp_component.cpp | 233 | EQT::Graphics::RdpComponent -- RDP server integration (WITH_RDP guard), extracted from IrrlichtRenderer by L01 (Batch L). Header include/client/graphics/rdp/rdp_component.h |
 | renderer_entity_load_gate.cpp | 68 | ensureEntityPrepWorkerStarted, deferEntityForLoadGate — the entity load distance gate (T109/T111) |
 
 ## Zone shader — split by J09

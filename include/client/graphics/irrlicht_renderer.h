@@ -50,9 +50,11 @@
 #include "client/graphics/work_priority.h"
 #include "client/input/hotkey_manager.h"
 
+#include "client/graphics/renderer_context.h"
 #ifdef WITH_RDP
 #include "client/graphics/rdp/rdp_server.h"
 #include "client/graphics/rdp/rdp_input_handler.h"
+#include "client/graphics/rdp/rdp_component.h"
 #endif
 
 #if defined(EQT_HAS_DRM) && !defined(EQT_HAS_GLES2)
@@ -532,6 +534,10 @@ public:
     // Get Irrlicht device/driver/GUI (for loading thread GL context transfer)
     irr::IrrlichtDevice* getDevice() { return device_; }
     irr::video::IVideoDriver* getDriver() { return driver_; }
+
+    // L01 (Batch L): the shared-state bundle the extracted renderer
+    // components bind by reference. See renderer_context.h.
+    RendererContext& Context() { return ctx_; }
     irr::gui::IGUIEnvironment* getGUIEnvironment() { return guienv_; }
 
     // Get entity renderer
@@ -709,44 +715,17 @@ public:
     void setWeather(uint8_t type, uint8_t intensity);
 
 #ifdef WITH_RDP
-    // RDP server support (alternative to Xvfb+x11vnc)
-
-    /**
-     * Initialize the native RDP server.
-     *
-     * @param port The port to listen on (default: 3389)
-     * @return true on success, false on failure
-     */
-    bool initRDP(uint16_t port = 3389);
-
-    /**
-     * Start the RDP server.
-     * Call after initRDP() to begin accepting connections.
-     *
-     * @return true on success, false on failure
-     */
-    bool startRDPServer();
-
-    /**
-     * Stop the RDP server.
-     */
-    void stopRDPServer();
-
-    /**
-     * Check if the RDP server is running.
-     */
-    bool isRDPRunning() const;
-
-    /**
-     * Get the RDP server for audio integration.
-     * Returns nullptr if RDP is not enabled or not running.
-     */
-    RDPServer* getRDPServer() { return rdpServer_.get(); }
-
-    /**
-     * Get the number of connected RDP clients.
-     */
-    size_t getRDPClientCount() const;
+    // RDP server support (alternative to Xvfb+x11vnc). L01 (Batch L) moved
+    // the implementation to RdpComponent; these five stay as one-line
+    // forwarders because Application calls them and must not learn a
+    // component exists (the K11 rule). getRDPClientCount() had zero callers
+    // tree-wide and was deleted.
+    RdpComponent& Rdp() { return *rdp_; }
+    bool initRDP(uint16_t port = 3389) { return rdp_->initRDP(port); }
+    bool startRDPServer() { return rdp_->startRDPServer(); }
+    void stopRDPServer() { rdp_->stopRDPServer(); }
+    bool isRDPRunning() const { return rdp_->isRDPRunning(); }
+    RDPServer* getRDPServer() { return rdp_->getRDPServer(); }
 #endif // WITH_RDP
 
 private:
@@ -1448,6 +1427,12 @@ private:
     // Collision detection for player mode (shared ownership — P35)
     std::shared_ptr<const HCMap> collisionMap_;
 
+    // L01 (Batch L, refactor/L_renderer_component_extraction.md): the
+    // shared-state bundle every extracted renderer component binds by
+    // reference. Declared after every member it references; built in the
+    // ctor initialiser list (renderer_init.cpp). See renderer_context.h.
+    RendererContext ctx_;
+
     // Target selection
     uint16_t currentTargetId_ = 0;
     std::string currentTargetName_;
@@ -1873,26 +1858,10 @@ private:
     void profileSceneBreakdown();  // Run once to profile scene categories
 
 #ifdef WITH_RDP
-    // RDP server for native remote desktop streaming
-    std::unique_ptr<RDPServer> rdpServer_;
-
-    // Capture framebuffer and send to RDP clients
-    void captureFrameForRDP();
-
-    // T317: caps lock is a TOGGLE, not a held modifier, so it cannot be read
-    // off the Irrlicht event receiver the way shift is -- it has to be
-    // remembered across key events. Fed by both the RDP key stream and the
-    // client's KBD_SYNC message. See rdp/rdp_input_handler.h.
-    RDPLockKeyState rdpLockKeys_;
-
-    // Handle RDP keyboard input
-    void handleRDPKeyboard(uint16_t flags, uint8_t scancode);
-
-    // Handle an RDP synchronize (KBD_SYNC) message: the client's lock state
-    void handleRDPSynchronize(uint32_t syncFlags);
-
-    // Handle RDP mouse input
-    void handleRDPMouse(uint16_t flags, uint16_t x, uint16_t y);
+    // L01 (Batch L): the rdp family -- the server handle, the caps-lock
+    // state and the four handlers -- now lives in RdpComponent. Constructed
+    // in the IrrlichtRenderer ctor body; see renderer_init.cpp.
+    std::unique_ptr<RdpComponent> rdp_;
 #endif // WITH_RDP
 };
 

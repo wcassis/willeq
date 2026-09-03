@@ -645,7 +645,7 @@ IF(WITH_RDP)
         src/client/graphics/rdp/rdp_server.cpp
         src/client/graphics/rdp/rdp_peer_context.cpp
         src/client/graphics/rdp/rdp_input_handler.cpp
-        src/client/graphics/renderer_rdp.cpp
+        src/client/graphics/rdp/rdp_component.cpp
     )
 ENDIF()
 

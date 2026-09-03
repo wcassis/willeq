@@ -549,7 +549,7 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
     eqtGPUPhaseEnd(2 /* GPUSyncPhase::ParticlesUI */);
 
 #ifdef WITH_RDP
-    captureFrameForRDP();
+    rdp_->captureFrameForRDP();
 #endif
 
     // Draw software mouse cursor for DRM/KMS mode (no hardware cursor available)
