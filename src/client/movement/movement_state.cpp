@@ -316,7 +316,7 @@ void eqt::movement::MovementComponent::SetPositionState(PositionState state)
 			}
 			// Cancel camp timer if standing up
 			if (ctx_.game_state.player().isCamping()) {
-				owner_.CancelCamp();
+				owner_.Player().CancelCamp();
 			}
 			break;
 		case POS_SITTING:

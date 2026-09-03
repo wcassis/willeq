@@ -1,3 +1,4 @@
+#include "client/player/player_component.h"
 #include "client/eq.h"
 #include "client/willeq_database.h"
 #include "client/pathfinder_interface.h"
@@ -75,120 +76,20 @@
 #endif
 
 
-// Movement implementation
-
-// ============================================================================
-// Movement State Accessors (Phase 7.1 - use embedded m_game_state)
-// ============================================================================
-
-glm::vec3 EverQuest::Test_GetGameStatePlayerPosition() const
+void eqt::player::PlayerComponent::SetMoveSpeed(float speed)
 {
-	// T55 test seam: read the state layer's own copy directly (see eq.h).
-	const auto& player = m_game_state.player();
-	return glm::vec3(player.x(), player.y(), player.z());
+	ctx_.game_state.player().setMoveSpeed(speed);  // T286: only store
 }
-
-glm::vec3 EverQuest::GetPosition() const
-{
-	// T288: reads the one store (m_game_state.player()), the same storage
-	// Test_GetGameStatePlayerPosition() reads.
-	return m_game_state.player().position();
-}
-
-float EverQuest::GetHeading() const
-{
-	// Read from GameState (single source of truth)
-	return m_game_state.player().heading();
-}
-
-bool EverQuest::IsMoving() const
-{
-	// Read from GameState (single source of truth)
-	return m_game_state.player().isMoving();
-}
-
-void EverQuest::SetHeading(float heading)
-{
-	// T288: one store. setHeading() fires PlayerMoved on the state bus, as
-	// it always has -- this is the discrete-relocation path, not the
-	// per-tick integrator path (SetHeadingLocal()).
-	m_game_state.player().setHeading(heading);
-}
-
-void EverQuest::SetMoveSpeed(float speed)
-{
-	m_game_state.player().setMoveSpeed(speed);  // T286: only store
-}
-
-void EverQuest::SetPosition(float x, float y, float z)
-{
-	// T288: one store. setPosition() fires PlayerMoved on the state bus, as
-	// it always has -- this is the discrete-relocation path, not the
-	// per-tick integrator path (SetPosLocal()).
-	m_game_state.player().setPosition(x, y, z);
-}
-
-void EverQuest::SetMoving(bool moving)
-{
-	m_game_state.player().setMoving(moving);  // T286: only store
-}
-
-// ============================================================================
-// Character Stat Accessors (Phase 7.2 - use embedded m_game_state)
-// ============================================================================
-
-
-// ============================================================================
-// Entity Sync Helpers (Phase 7.4 - sync to EntityManager)
-// ============================================================================
-
 
 // ============================================================================
 // Combat State Sync (Phase 7.6 - sync to CombatState)
 // ============================================================================
 
-void EverQuest::SetCombatStopDistance(float distance)
+void eqt::player::PlayerComponent::SetCombatStopDistance(float distance)
 {
-	m_game_state.combat().setCombatStopDistance(distance);  // T286: only store
+	ctx_.game_state.combat().setCombatStopDistance(distance);  // T286: only store
 }
-
-// ============================================================================
-// Behavioral Flag Accessors (Phase 7.8 - read from PlayerState)
-// ============================================================================
-
-bool EverQuest::IsAFK() const
-{
-	return m_game_state.player().isAFK();
-}
-
-bool EverQuest::IsAnonymous() const
-{
-	return m_game_state.player().isAnonymous();
-}
-
-bool EverQuest::IsRoleplay() const
-{
-	return m_game_state.player().isRoleplay();
-}
-
-bool EverQuest::IsCamping() const
-{
-	return m_game_state.player().isCamping();
-}
-
-// ============================================================================
-
-
-
-
-
-
-
-
-
-
-
-void EverQuest::ZoneProcessPlayerStateAdd(const EQ::Net::Packet &p)
+void eqt::player::PlayerComponent::ZoneProcessPlayerStateAdd(const EQ::Net::Packet &p)
 {
 	// PlayerStateAdd adds a state/buff to a player
 	// This could be buffs, debuffs, or other state changes
@@ -200,7 +101,7 @@ void EverQuest::ZoneProcessPlayerStateAdd(const EQ::Net::Packet &p)
 	
 	// The exact structure depends on the state being added (buff/debuff/state change)
 	// Parse what we can from the packet
-	if (s_debug_level >= 2 && p.Length() >= 6) {
+	if (EverQuest::s_debug_level >= 2 && p.Length() >= 6) {
 		uint16_t stateType = p.GetUInt16(2);
 		uint16_t stateValue = p.GetUInt16(4);
 		LOG_DEBUG(MOD_ZONE, "[PlayerStateAdd] State added: type={:#06x}, value={:#06x}, size={} bytes",
@@ -208,7 +109,7 @@ void EverQuest::ZoneProcessPlayerStateAdd(const EQ::Net::Packet &p)
 	}
 }
 
-void EverQuest::ZoneProcessDeath(const EQ::Net::Packet &p)
+void eqt::player::PlayerComponent::ZoneProcessDeath(const EQ::Net::Packet &p)
 {
 	// Death packet indicates an entity has died
 	// Death_Struct layout (all uint32):
@@ -235,17 +136,17 @@ void EverQuest::ZoneProcessDeath(const EQ::Net::Packet &p)
 	
 	// Special case: killer_id 0 means the player character killed it
 	if (killer_id == 0) {
-		killer_id = MySpawnId();
-		killer_name = m_character;
+		killer_id = owner_.MySpawnId();
+		killer_name = ctx_.character;
 	} else {
-		auto killer_it = m_entities.find(killer_id);
-		if (killer_it != m_entities.end()) {
+		auto killer_it = ctx_.entities.find(killer_id);
+		if (killer_it != ctx_.entities.end()) {
 			killer_name = killer_it->second.name;
 		}
 	}
 	
-	auto victim_it = m_entities.find(victim_id);
-	if (victim_it != m_entities.end()) {
+	auto victim_it = ctx_.entities.find(victim_id);
+	if (victim_it != ctx_.entities.end()) {
 		victim_name = victim_it->second.name;
 		// Mark entity as dead (0 HP)
 		victim_it->second.hp_percent = 0;
@@ -279,22 +180,22 @@ void EverQuest::ZoneProcessDeath(const EQ::Net::Packet &p)
 		SyncEntityToGameState(victim_it->second);  // T268: isCorpse/name, as at the MobRename site
 #ifdef WITH_AUDIO
 		// Play death sound at victim's position
-		if (m_audio_manager) {
-			m_audio_manager->playSound(EQT::Audio::SoundId::DEATH,
+		if (ctx_.audio_manager) {
+			ctx_.audio_manager->playSound(EQT::Audio::SoundId::DEATH,
 				glm::vec3(victim_it->second.x, victim_it->second.y, victim_it->second.z));
 		}
 #endif
 
 		// Trigger death animation via bridge (D17b: bridge is sole path to renderer)
-		if (m_bridge) {
+		if (ctx_.bridge) {
 			eqt::state::EntityDeathAnimationData data;
 			data.spawnId = victim_id;
-			m_bridge->pushEvent(eqt::state::GameEvent(
+			ctx_.bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::EntityDeathAnimation, std::move(data)));
 		}
 	}
 
-	if (s_debug_level >= 1) {
+	if (EverQuest::s_debug_level >= 1) {
 		// spell_id of 0, 0xFFFF (65535), or 0xFFFFFFFF means no spell was used
 		bool hasValidSpell = spell_id > 0 && spell_id != 0xFFFF && spell_id != 0xFFFFFFFF;
 		if (hasValidSpell) {
@@ -309,31 +210,31 @@ void EverQuest::ZoneProcessDeath(const EQ::Net::Packet &p)
 	// Add combat chat messages for deaths
 	std::string victim_display = EQT::toDisplayName(victim_name);
 	std::string killer_display = EQT::toDisplayName(killer_name);
-	if (killer_id == MySpawnId()) {
+	if (killer_id == owner_.MySpawnId()) {
 		// Player killed something
-		AddChatCombatMessage(fmt::format("You hit {} for {} points of damage.", victim_display, damage), true);
-		AddChatCombatMessage(fmt::format("You have slain {}!", victim_display), true);
-	} else if (victim_id == MySpawnId()) {
+		owner_.AddChatCombatMessage(fmt::format("You hit {} for {} points of damage.", victim_display, damage), true);
+		owner_.AddChatCombatMessage(fmt::format("You have slain {}!", victim_display), true);
+	} else if (victim_id == owner_.MySpawnId()) {
 		// Player was killed
-		AddChatCombatMessage(fmt::format("{} hit you for {} points of damage.", killer_display, damage), true);
-		AddChatCombatMessage(fmt::format("You have been slain by {}!", killer_display), true);
+		owner_.AddChatCombatMessage(fmt::format("{} hit you for {} points of damage.", killer_display, damage), true);
+		owner_.AddChatCombatMessage(fmt::format("You have been slain by {}!", killer_display), true);
 	} else if (!victim_display.empty() && !killer_display.empty()) {
 		// Observing a kill
-		AddChatCombatMessage(fmt::format("{} hits {} for {} points of damage.", killer_display, victim_display, damage), false);
-		AddChatCombatMessage(fmt::format("{} has been slain by {}!", victim_display, killer_display), false);
+		owner_.AddChatCombatMessage(fmt::format("{} hits {} for {} points of damage.", killer_display, victim_display, damage), false);
+		owner_.AddChatCombatMessage(fmt::format("{} has been slain by {}!", victim_display, killer_display), false);
 	}
 
 	// Track the last entity we killed for SimpleMessage substitution
 	// Store the display name now before it gets modified to include "'s corpse"
-	if (killer_id == MySpawnId()) {
-		m_game_state.combat().setLastSlainEntityName(EQT::toDisplayName(victim_name));  // Phase 7.6 / T286
+	if (killer_id == owner_.MySpawnId()) {
+		ctx_.game_state.combat().setLastSlainEntityName(EQT::toDisplayName(victim_name));  // Phase 7.6 / T286
 	}
 
 	// Notify combat manager if this was our target
-	if (m_combat_manager && victim_id == m_combat_manager->GetTargetId()) {
+	if (ctx_.combat_manager && victim_id == ctx_.combat_manager->GetTargetId()) {
 		// Target died - disable auto-attack
 		LOG_DEBUG(MOD_COMBAT, "Our combat target {} died, disabling auto-attack", victim_id);
-		m_combat_manager->DisableAutoAttack();
+		ctx_.combat_manager->DisableAutoAttack();
 
 		// T33: this is the real, authoritative death signal -- wire the
 		// loot state machine here instead of the ProcessCombatRound()
@@ -342,41 +243,41 @@ void EverQuest::ZoneProcessDeath(const EQ::Net::Packet &p)
 		// "Auto-loot on kill has NEVER worked against a real server"
 		// finding). Gated internally on auto_loot && auto_hunting, same
 		// gate the dead poll always used.
-		m_combat_manager->NotifyTargetDied(victim_id);
+		ctx_.combat_manager->NotifyTargetDied(victim_id);
 	}
 	
 	// If we died, log it prominently
-	if (victim_id == MySpawnId()) {
+	if (victim_id == owner_.MySpawnId()) {
 		std::cout << "YOU HAVE BEEN SLAIN!" << std::endl;
 		// Close vendor window if open (can't shop while dead)
-		if (IsVendorWindowOpen()) {
+		if (owner_.IsVendorWindowOpen()) {
 			LOG_DEBUG(MOD_INVENTORY, "Closed vendor window due to player death");
-			m_merchant->CloseVendorWindow();
+			owner_.Merchant().CloseVendorWindow();
 		}
 
 		// Cancel trade if we died
-		if (m_trade_manager && m_trade_manager->isTrading()) {
+		if (ctx_.trade_manager && ctx_.trade_manager->isTrading()) {
 			LOG_DEBUG(MOD_MAIN, "Player died during trade, canceling trade");
-			m_trade_manager->cancelTrade();
+			ctx_.trade_manager->cancelTrade();
 		}
 	}
 
 	// Cancel trade if trade partner died
-	if (m_trade_manager && m_trade_manager->isTrading() &&
-		m_trade_manager->getPartnerSpawnId() == victim_id) {
+	if (ctx_.trade_manager && ctx_.trade_manager->isTrading() &&
+		ctx_.trade_manager->getPartnerSpawnId() == victim_id) {
 		LOG_DEBUG(MOD_MAIN, "Trade partner died, canceling trade");
-		m_trade_manager->cancelTrade();
-		AddChatSystemMessage("Trade cancelled - partner died");
+		ctx_.trade_manager->cancelTrade();
+		owner_.AddChatSystemMessage("Trade cancelled - partner died");
 	}
 
 	// If the vendor NPC died, close vendor window
-	if (m_game_state.player().vendorNpcId() != 0 && m_game_state.player().vendorNpcId() == victim_id) {
+	if (ctx_.game_state.player().vendorNpcId() != 0 && ctx_.game_state.player().vendorNpcId() == victim_id) {
 		LOG_DEBUG(MOD_INVENTORY, "Closed vendor window due to vendor death");
-		m_merchant->CloseVendorWindow();
+		owner_.Merchant().CloseVendorWindow();
 	}
 }
 
-void EverQuest::ZoneProcessPlayerStateRemove(const EQ::Net::Packet &p)
+void eqt::player::PlayerComponent::ZoneProcessPlayerStateRemove(const EQ::Net::Packet &p)
 {
 	// PlayerStateRemove removes a state/buff from a player
 	// This is the counterpart to PlayerStateAdd
@@ -388,7 +289,7 @@ void EverQuest::ZoneProcessPlayerStateRemove(const EQ::Net::Packet &p)
 	
 	// The exact structure depends on the state being removed (buff/debuff/state change)
 	// Parse what we can from the packet
-	if (s_debug_level >= 2 && p.Length() >= 6) {
+	if (EverQuest::s_debug_level >= 2 && p.Length() >= 6) {
 		uint16_t stateType = p.GetUInt16(2);
 		uint16_t stateValue = p.GetUInt16(4);
 		LOG_DEBUG(MOD_ZONE, "[PlayerStateRemove] State removed: type={:#06x}, value={:#06x}, size={} bytes",
@@ -396,7 +297,7 @@ void EverQuest::ZoneProcessPlayerStateRemove(const EQ::Net::Packet &p)
 	}
 }
 
-void EverQuest::ZoneProcessStamina(const EQ::Net::Packet &p)
+void eqt::player::PlayerComponent::ZoneProcessStamina(const EQ::Net::Packet &p)
 {
 	// Stamina (hunger/thirst) update packet — always refers to our own
 	// character (there is no spawn_id field; the server's Stamina_Struct
@@ -424,7 +325,7 @@ void EverQuest::ZoneProcessStamina(const EQ::Net::Packet &p)
 	// TODO: Store hunger/thirst values as member variables if needed.
 }
 
-void EverQuest::ZoneProcessZonePlayerToBind(const EQ::Net::Packet &p)
+void eqt::player::PlayerComponent::ZoneProcessZonePlayerToBind(const EQ::Net::Packet &p)
 {
 	// ZonePlayerToBind is sent when the player dies and needs to respawn at bind point
 	// Uses ZonePlayerToBind_Struct (variable length):
@@ -437,7 +338,7 @@ void EverQuest::ZoneProcessZonePlayerToBind(const EQ::Net::Packet &p)
 		LOG_WARN(MOD_MAIN, "ZonePlayerToBind packet too small: {} bytes (need at least 22)", p.Length());
 		// Fall back to stored bind point
 		LOG_DEBUG(MOD_MAIN, "Using stored bind point: zone {} at ({:.2f}, {:.2f}, {:.2f})",
-			m_game_state.player().bindZoneId(), m_game_state.player().bindX(), m_game_state.player().bindY(), m_game_state.player().bindZ());
+			ctx_.game_state.player().bindZoneId(), ctx_.game_state.player().bindX(), ctx_.game_state.player().bindY(), ctx_.game_state.player().bindZ());
 		return;
 	}
 
@@ -472,10 +373,10 @@ void EverQuest::ZoneProcessZonePlayerToBind(const EQ::Net::Packet &p)
 	// so producer C's pending-zone state is visible from GameState too, not
 	// just via the raw EverQuest members -- see
 	// refactor/T55_position_state_propagation.md.
-	m_game_state.world().setPendingZone(target_zone_id, bind_x, bind_y, bind_z, bind_heading);
+	ctx_.game_state.world().setPendingZone(target_zone_id, bind_x, bind_y, bind_z, bind_heading);
 
 	// Check if we're staying in the same zone or going to a different zone
-	bool is_same_zone = (target_zone_id == CurrentZoneId()) || (target_zone_id == 0);
+	bool is_same_zone = (target_zone_id == owner_.CurrentZoneId()) || (target_zone_id == 0);
 
 	// T55: this handler used to store the pending zone coordinates (above)
 	// but perform NO local position write at all -- the T39 pattern
@@ -509,21 +410,21 @@ void EverQuest::ZoneProcessZonePlayerToBind(const EQ::Net::Packet &p)
 	// is the zone-in consumer's job (WorldProcessZoneServerInfo /
 	// PlayerProfile), not this handler's.
 	if (is_same_zone) {
-		SetPosition(bind_x, bind_y, bind_z);
-		SetHeading(bind_heading);
+		owner_.SetPosition(bind_x, bind_y, bind_z);
+		owner_.SetHeading(bind_heading);
 		LOG_DEBUG(MOD_MAIN, "Same-zone respawn to ({:.2f}, {:.2f}, {:.2f})", bind_x, bind_y, bind_z);
 	} else {
 		LOG_DEBUG(MOD_MAIN, "Cross-zone respawn: current zone {} -> bind zone {}",
-			CurrentZoneId(), target_zone_id);
+			owner_.CurrentZoneId(), target_zone_id);
 	}
 
 	// Client must respond with OP_ZoneChange to initiate the zone change
 	// The server will then send OP_ZoneChange back with success=1
 	// For same-zone deaths, the server still expects this handshake
-	RequestZoneChange(target_zone_id, bind_x, bind_y, bind_z, bind_heading);
+	owner_.RequestZoneChange(target_zone_id, bind_x, bind_y, bind_z, bind_heading);
 }
 
-void EverQuest::ZoneProcessLevelUpdate(const EQ::Net::Packet &p)
+void eqt::player::PlayerComponent::ZoneProcessLevelUpdate(const EQ::Net::Packet &p)
 {
 	// LevelUpdate_Struct: level (4), level_old (4), exp (4) = 12 bytes
 	// Sent when player levels up or down (death exp loss can cause level loss)
@@ -541,13 +442,13 @@ void EverQuest::ZoneProcessLevelUpdate(const EQ::Net::Packet &p)
 
 	// Update player level (T286: PlayerState is the only store, so it is
 	// written here, at the source, BEFORE anything reads it back)
-	m_game_state.player().setLevel(static_cast<uint8_t>(new_level));
+	ctx_.game_state.player().setLevel(static_cast<uint8_t>(new_level));
 
 	// Update entity level if we have a spawn ID
-	if (MySpawnId() != 0) {
-		auto it = m_entities.find(MySpawnId());
-		if (it != m_entities.end()) {
-			it->second.level = m_game_state.player().level();
+	if (owner_.MySpawnId() != 0) {
+		auto it = ctx_.entities.find(owner_.MySpawnId());
+		if (it != ctx_.entities.end()) {
+			it->second.level = ctx_.game_state.player().level();
 		}
 	}
 
@@ -564,9 +465,9 @@ void EverQuest::ZoneProcessLevelUpdate(const EQ::Net::Packet &p)
 
 
 
-void EverQuest::SendTradeSkillCombine(int16_t container_slot)
+void eqt::player::PlayerComponent::SendTradeSkillCombine(int16_t container_slot)
 {
-	if (!IsFullyZonedIn()) {
+	if (!owner_.IsFullyZonedIn()) {
 		LOG_DEBUG(MOD_ENTITY, "Cannot combine - not fully zoned in");
 		return;
 	}
@@ -581,14 +482,14 @@ void EverQuest::SendTradeSkillCombine(int16_t container_slot)
 	p.PutInt16(2, container_slot);     // container_slot
 	p.PutInt16(4, 0);                  // guildtribute_slot (usually 0)
 
-	m_zone_connection->QueuePacket(p, 0, true);
+	ctx_.zone_connection->QueuePacket(p, 0, true);
 }
 
 
 
 
 
-void EverQuest::ZoneProcessTradeSkillCombine(const EQ::Net::Packet &p)
+void eqt::player::PlayerComponent::ZoneProcessTradeSkillCombine(const EQ::Net::Packet &p)
 {
 	// Server response to a combine attempt
 	// The server sends an empty acknowledgment packet (0 bytes payload)

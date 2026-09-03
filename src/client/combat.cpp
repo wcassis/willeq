@@ -342,7 +342,7 @@ void CombatManager::ConsiderTarget() {
 	// deliberately no separate /considercorpse command, which would be wired
 	// but practically unreachable.
 	if (GetConsiderOpcodeForTarget() == HC_OP_ConsiderCorpse) {
-		m_eq->SendConsiderCorpse(m_current_target_id);
+		m_eq->Player().SendConsiderCorpse(m_current_target_id);
 		LOG_DEBUG(MOD_COMBAT, "Sent corpse consider request for target ID: {}",
 			m_current_target_id);
 		return;

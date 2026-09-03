@@ -117,6 +117,8 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 	m_entities_component = std::make_unique<eqt::entities::EntitiesComponent>(m_ctx, *this);
 	// K07: the movement family. Same rule.
 	m_movement = std::make_unique<eqt::movement::MovementComponent>(m_ctx, *this);
+	// K08: the player family. The player-state facade stays on EverQuest.
+	m_player = std::make_unique<eqt::player::PlayerComponent>(m_ctx, *this);
 
 	m_host = host;
 	m_port = port;

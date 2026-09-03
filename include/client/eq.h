@@ -4,7 +4,7 @@
 #include "common/net/daybreak_connection.h"
 #include "common/net/session_recorder.h"
 #include "common/packet_structs.h"
-#include "client/eq_profile_appearance.h"
+#include "client/player/profile_appearance.h"
 
 // T171: SaveInspectMessage()/LoadInspectMessage() and the shared config-node
 // helpers take Json::Value by pointer/reference only, so a forward
@@ -131,6 +131,7 @@ namespace ui {
 #include "client/merchant/merchant_component.h"  // K05: MerchantComponent
 #include "client/entities/entities_component.h"  // K06: EntitiesComponent
 #include "client/movement/movement_component.h"  // K07: MovementComponent
+#include "client/player/player_component.h"  // K08: PlayerComponent
 
 class EverQuest
 {
@@ -234,27 +235,6 @@ public:
 	// pet branch directly. Test-only; not called from any production path.
 	void Test_SetPetSpawnIdForSeam(uint16_t spawn_id) { m_game_state.pet().setPet(spawn_id, "", 0); }
 
-	// T167 test seam, same shape as the T88 one above: the body
-	// SendFaceChange() actually built, captured unconditionally right before
-	// the connection-gated send. Without this, the merge in
-	// EqActionHandler::setAppearance() can only be tested by re-implementing
-	// it in the test -- which proves nothing. `sent` starts false so a test
-	// can assert that NOTHING was sent. Read-only; test-only.
-	struct TestSentFaceChange {
-		bool sent = false;
-		EQT::ProfileAppearance body;
-	};
-	TestSentFaceChange Test_GetLastFaceChange() const { return m_test_last_face_change; }
-
-	// T170 test seam: the two id fields of the last inspect answer built. They
-	// are the whole point -- they mean the OPPOSITE of the request struct's.
-	struct TestSentInspectAnswer {
-		bool sent = false;
-		uint32_t target_id = 0;   // the requester (routing)
-		uint32_t playerid = 0;    // the inspected player (us)
-	};
-	TestSentInspectAnswer Test_GetLastInspectAnswer() const { return m_test_last_inspect_answer; }
-
 	// T231 test seam: every RequestZoneChange() call is counted here BEFORE
 	// its live-connection gate, so a headless test can pin whether a server
 	// packet made the client decide to reply with OP_ZoneChange at all
@@ -328,7 +308,6 @@ public:
 	const eqt::ui::CommandRegistry* GetCommandRegistry() const { return m_command_registry.get(); }
 
 	// Public movement interface
-	void SetCombatStopDistance(float distance);  // Phase 7.6: also syncs to GameState
 	void SetHeading(float heading);
 	void SetPosition(float x, float y, float z);
 	void SetMoving(bool moving);
@@ -363,7 +342,6 @@ public:
 	void OnGraphicsComplete();   // Called when graphics loading finishes, enables gameplay
 	void DumpEntityAppearance(uint16_t spawn_id) const;
 	void DumpEntityAppearance(const std::string& name) const;
-	void SetMoveSpeed(float speed);
 	void SetNavmeshPath(const std::string& path) { m_navmesh_path = path; }
 	void SetMapsPath(const std::string& path) { m_maps_path = path; }
 
@@ -391,11 +369,6 @@ public:
 	void RequestQuit() { m_quit_requested = true; }
 	const std::string& GetLastTellSender() const { return m_last_tell_sender; }
 	void QueuePacket(uint16_t opcode, EQ::Net::DynamicPacket* packet);
-
-	void SendTradeSkillCombine(int16_t container_slot);
-
-	// Skill-specific packet sends
-	void SendApplyPoison(uint32_t inventory_slot);
 	const std::map<uint32_t, eqt::WorldObject>& GetWorldObjects() const { return m_world_objects; }
 	uint32_t GetActiveTradeskillObjectId() const { return m_active_tradeskill_object_id; }
 
@@ -450,29 +423,7 @@ public:
 
 	void StartUpdateLoop();
 	void StopUpdateLoop();
-	void PerformEmote(uint32_t animation);
-	void SetAFK(bool afk);
-	void SetAnonymous(bool anon);
-	void SetRoleplay(bool rp);
-	void StartCampTimer();
-	void CancelCamp();
-	void UpdateCampTimer();
 	bool IsCamping() const;  // Phase 7.8: reads from GameState
-	void SendCamp();         // Send OP_Camp to server
-	void SendLogout();       // Send OP_Logout to server
-	void SendRezzAnswer(bool accept);  // Send OP_RezzAnswer (accept/decline)
-	bool HasPendingRezz() const { return m_has_pending_rezz; }
-	void SendWhoAllRequest(const std::string& name = "", int lvllow = -1, int lvlhigh = -1,
-		int race = -1, int class_ = -1, bool gm = false);  // Send /who request
-	void SendInspectRequest(uint32_t target_id);  // Send /inspect request
-	// T170: answers an inspect request aimed at us. A Titanium client MUST
-	// do this -- eqemu only builds the answer itself for SoF+ clients and
-	// bots. Called from ZoneProcessInspectRequest, never by a command.
-	// Read the hazard note on the definition before touching it: the
-	// answer's text field overwrites the character's stored inspect
-	// message on the server.
-	void SendInspectAnswer(uint32_t requester_id);
-
 	// T171: the inspect message this client sends when answering an inspect.
 	// Truncated to EQT::INSPECT_MESSAGE_MAX_LEN on set -- the server stores
 	// only 256 bytes and a longer value would be stored unterminated.
@@ -508,65 +459,13 @@ public:
 	// K07 (Batch K): the movement family is eqt::movement::MovementComponent;
 	// callers go through Movement().
 	eqt::movement::MovementComponent& Movement() { return *m_movement; }
+	// K08 (Batch K): the player family is eqt::player::PlayerComponent. The
+	// player-state FACADE (stats, position, flags, group accessors) stayed on
+	// EverQuest -- see src/client/eq_player_info.cpp and the K08 Review.
+	eqt::player::PlayerComponent& Player() { return *m_player; }
 	eqt::ClientContext& Context() { return m_ctx; }
-	// Phase 3: Corpse Management
-	void SendCorpseDrag(const std::string& corpse_name);
-	void SendCorpseDrop();
-	void SendConsiderCorpse(uint32_t corpse_id);
-	bool IsDraggingCorpse() const { return m_is_dragging_corpse; }
-	// Phase 3: Consent System
-	void SendConsent(const std::string& player_name);
-	void SendConsentDeny(const std::string& player_name);
-	// Phase 3: Combat Targeting
-	void SendAssist(uint32_t target_id);
-	void SendAssistGroup(uint32_t target_id);
-	// Phase 3: Travel System
-	// Take (true) or release (false) control of the boat we are on.
-	// OP_ControlBoat carries no heading and no control type -- see T145.
-	// Phase 3: Group Split
-	void SendSplit(uint32_t platinum, uint32_t gold, uint32_t silver, uint32_t copper);
-	// Phase 3: LFG System
-	void SendLFGCommand(bool lfg_on);
-	bool IsLFG() const { return m_is_lfg; }
-	// Phase 3: Combat Abilities
-	void SendShielding(uint32_t target_id);
-	// Phase 3: Misc
-	void SendSave();
-	// Phase 4: Dueling
-	void SendDuelRequest(uint32_t target_id);
-	void SendDuelAccept(uint32_t target_id);
-	void SendDuelDecline(uint32_t target_id);
-	bool IsInDuel() const { return m_is_dueling; }
-	bool HasPendingDuel() const { return m_has_pending_duel; }
-	// T102: accessor for EqActionHandler::duelAccept()/duelDecline() -- the
-	// duel_cmd/duelaccept_cmd/dueldecline_cmd handlers being migrated read
-	// m_duel_initiator_id directly (same TU); the action layer can't (no
-	// friendship), so it needs a plain public getter, same shape as
-	// GetCombatManager()/GetTradeManager() above.
-	uint32_t GetPendingDuelInitiatorId() const { return m_duel_initiator_id; }
-	// Phase 4: Skills
-	void SendBindWound(uint32_t target_id);
-	void SendTrackTarget(uint32_t target_id);
 	// K05 (Batch K): the Phase 4 tradeskill senders are
 	// eqt::merchant::MerchantComponent's; callers go through Merchant().
-	// Phase 4: Cosmetic
-	void SendSurname(const std::string& surname);
-	void SendFaceChange(uint8_t haircolor, uint8_t beardcolor, uint8_t eyecolor1, uint8_t eyecolor2,
-		uint8_t hairstyle, uint8_t beard, uint8_t face);
-	// Phase 4: Misc
-	void SendRandom(uint32_t low, uint32_t high);
-	void SendFindPerson(uint32_t npc_id);
-	void SendRewind();
-	void SendYellForHelp();
-	void SendReport(const std::string& report_text);
-	// T150: takes the comma-delimited friends list the server expects.
-	// eqemu's Handle_OP_FriendsWho (zone/client_packet.cpp) casts the WHOLE
-	// application payload to `char*` and passes it to Client::FriendsWho(),
-	// which strchr()s it for ','; there is no encoder/struct for this opcode
-	// (common/patches has none), so any binary prefix corrupts the first
-	// name. The former zero-argument form wrote a uint32 spawn id ahead of
-	// the string and could never match a character.
-	void SendFriendsWho(const std::string& friends_list);
 	// K02 (Batch K): the GM command senders are eqt::gm::GmComponent's; callers
 	// go through Gm().
 	// Phase 4: Petitions
@@ -634,7 +533,7 @@ public:
 	//
 	// Unlike GetGMMode() this is NOT deliberately stale: it is re-set after a
 	// /appearance send, because eqemu applies the whole body and Save()s, so
-	// what we sent IS what the profile holds. See eq_profile_appearance.h.
+	// what we sent IS what the profile holds. See client/player/profile_appearance.h.
 	const EQT::ProfileAppearance& GetProfileAppearance() const { return m_profile_appearance; }
 	void SetProfileAppearance(const EQT::ProfileAppearance& appearance) { m_profile_appearance = appearance; }
 
@@ -696,6 +595,7 @@ public:
 	friend class eqt::merchant::MerchantComponent;  // K05 transition; K-final removes it
 	friend class eqt::entities::EntitiesComponent;  // K06 transition; K-final removes it
 	friend class eqt::movement::MovementComponent;  // K07 transition; K-final removes it
+	friend class eqt::player::PlayerComponent;  // K08 transition; K-final removes it
 
 	// String database for EQ message lookups (works in all modes)
 	bool LoadStringFiles(const std::string& eqClientPath);
@@ -885,9 +785,6 @@ private:
 	static std::string GetEquipSlotName(int slot);
 	static std::string GetNpcTypeName(uint8_t npc_type);
 
-	// Phase 7.4: Entity sync helpers
-	void SyncEntityToGameState(const Entity& entity);
-	void RemoveEntityFromGameState(uint16_t spawnId);
 
 	// Phase 7.5: Group sync helper
 
@@ -1001,67 +898,18 @@ private:
 	// K06 (Batch K): the 17 entities-family ZoneProcess* handlers are
 	// eqt::entities::EntitiesComponent's; DispatchZonePacket calls
 	// m_entities_component->ZoneProcess*() directly.
-	void ZoneProcessTributeUpdate(const EQ::Net::Packet &p);
-	void ZoneProcessTributeTimer(const EQ::Net::Packet &p);
-	void ZoneProcessSendAATable(const EQ::Net::Packet &p);
-	void ZoneProcessRespondAA(const EQ::Net::Packet &p);
-	void ZoneProcessTributeInfo(const EQ::Net::Packet &p);
-	void ZoneProcessSendGuildTributes(const EQ::Net::Packet &p);
-	void ZoneProcessTradeSkillCombine(const EQ::Net::Packet &p);
-	void ZoneProcessApplyPoison(const EQ::Net::Packet &p);
-	void ZoneProcessTrack(const EQ::Net::Packet &p);
-	void ZoneProcessBindWound(const EQ::Net::Packet &p);
-	void ZoneProcessSendAAStats(const EQ::Net::Packet &p);
-	void ZoneProcessSendExpZonein(const EQ::Net::Packet &p);
-	void ZoneProcessWorldObjectsSent(const EQ::Net::Packet &p);
 	void ZoneProcessAnimation(const EQ::Net::Packet &p);  // OP_Animation (T243 rename)
 	void ZoneProcessGuildMOTD(const EQ::Net::Packet &p);
-	void ZoneProcessCompletedTasks(const EQ::Net::Packet &p);
-	void ZoneProcessDzCompass(const EQ::Net::Packet &p);
-	void ZoneProcessDzExpeditionLockoutTimers(const EQ::Net::Packet &p);
-	void ZoneProcessBeginCast(const EQ::Net::Packet &p);
-	void ZoneProcessManaChange(const EQ::Net::Packet &p);
-	void ZoneProcessBuff(const EQ::Net::Packet &p);
-	void ZoneProcessPlayerStateAdd(const EQ::Net::Packet &p);
-	void ZoneProcessDeath(const EQ::Net::Packet &p);
-	void ZoneProcessPlayerStateRemove(const EQ::Net::Packet &p);
-	void ZoneProcessStamina(const EQ::Net::Packet &p);
-	void ZoneProcessZonePlayerToBind(const EQ::Net::Packet &p);
-	void ZoneProcessLevelUpdate(const EQ::Net::Packet &p);
 	void ZoneProcessZoneChange(const EQ::Net::Packet &p);
 	void ZoneProcessRequestClientZoneChange(const EQ::Net::Packet &p);
-	void ZoneProcessLogoutReply(const EQ::Net::Packet &p);
-	void ZoneProcessRezzRequest(const EQ::Net::Packet &p);
-	void ZoneProcessRezzComplete(const EQ::Net::Packet &p);
-	void ZoneProcessWhoAllResponse(const EQ::Net::Packet &p);
-	void ZoneProcessInspectRequest(const EQ::Net::Packet &p);
 	// T171: shared resolution of the per-client config node. See the
 	// definitions in eq_bridge.cpp for why read and write are separate.
 	static Json::Value* ResolveClientConfigForWrite(Json::Value& root);
 	static const Json::Value* ResolveClientConfigForRead(const Json::Value& root);
-	void ZoneProcessInspectAnswer(const EQ::Net::Packet &p);
 	// K01: the four guild packet handlers are GuildComponent's; DispatchZonePacket
 	// calls m_guild->ZoneProcessGuild*() directly.
-	// Phase 3 packet handlers
-	void ZoneProcessConsentResponse(const EQ::Net::Packet &p);
-	void ZoneProcessDenyResponse(const EQ::Net::Packet &p);
-	void ZoneProcessEnvDamage(const EQ::Net::Packet &p);
-	void ZoneProcessDisciplineUpdate(const EQ::Net::Packet &p);
-	void ZoneProcessDisciplineTimer(const EQ::Net::Packet &p);
-	void ZoneProcessBankerChange(const EQ::Net::Packet &p);
-	void ZoneProcessClearObject(const EQ::Net::Packet &p);
-	void ZoneProcessLFGAppearance(const EQ::Net::Packet &p);
-	// Phase 4 packet handlers
-	void ZoneProcessDuelRequest(const EQ::Net::Packet &p);
-	void ZoneProcessRandomReply(const EQ::Net::Packet &p);
-	void ZoneProcessFindPersonReply(const EQ::Net::Packet &p);
-	void ZoneProcessCameraEffect(const EQ::Net::Packet &p);
-	void ZoneProcessPlayMP3(const EQ::Net::Packet &p);
-	void ZoneProcessSound(const EQ::Net::Packet &p);
 	// K02 (Batch K): the GM packet handlers are eqt::gm::GmComponent's;
 	// DispatchZonePacket calls m_gm->ZoneProcessGM*() directly.
-	// Pet packet handlers
-	void ZoneProcessPetBuffWindow(const EQ::Net::Packet &p);
 
 	// Zone transition methods
 	// T322: zone_reason is the value echoed into OP_ZoneChange's zone_reason
@@ -1315,24 +1163,6 @@ private:
 	bool m_swim_up = false;          // Currently pressing swim up key
 	bool m_swim_down = false;        // Currently pressing swim down key
 
-	// Camp timer
-	static constexpr int CAMP_TIMER_SECONDS = 30;
-
-	// Pending resurrection offer
-	bool m_has_pending_rezz = false;
-	// Phase 3: Corpse drag state
-	bool m_is_dragging_corpse = false;
-	std::string m_dragged_corpse_name;
-	// Phase 3: Boat state
-	// Phase 3: LFG state
-	bool m_is_lfg = false;
-	// Phase 4: Duel state
-	bool m_is_dueling = false;
-	bool m_has_pending_duel = false;
-	uint32_t m_duel_target_id = 0;
-	uint32_t m_duel_initiator_id = 0;
-	EQT::Resurrect_Struct m_pending_rezz;
-
 	// T148: PlayerProfile.gm @13054 -- "GM mode was on at login". See
 	// GetGMMode() for the full contract (login-time only, deliberately
 	// stale, NOT an account-privilege flag).
@@ -1341,12 +1171,6 @@ private:
 	// T167: the seven PlayerProfile appearance fields. See
 	// GetProfileAppearance().
 	EQT::ProfileAppearance m_profile_appearance;
-
-	// T167 test seam -- see Test_GetLastFaceChange().
-	TestSentFaceChange m_test_last_face_change;
-
-	// T170 test seam -- see Test_GetLastInspectAnswer().
-	TestSentInspectAnswer m_test_last_inspect_answer;
 
 	// T231 test seam -- see Test_GetLastZoneChangeRequest().
 	TestZoneChangeRequest m_test_last_zone_change_request;
@@ -1637,20 +1461,6 @@ public:
 	// resolved inventory slot to slotOut.
 	const eqt::inventory::ItemInstance* ResolveCarriedItem(
 		const std::string& args, const char* verb, int16_t& slotOut);
-	// T277: click off a buff. RequestCancelBuff() resolves a user-facing
-	// argument -- a 1-based buff slot number, or a spell-name substring --
-	// against BuffManager's player buffs. SendBuffCancelRequest() is the
-	// single wire hop it and the buff-bar click (BuffCancelIntent) share;
-	// it removes nothing locally, it only asks. Defined in eq_player_buffs.cpp
-	// beside ZoneProcessBuff(), which handles the server's answer.
-	void RequestCancelBuff(const std::string& args);
-	void SendBuffCancelRequest(uint8_t slot);
-
-	// T277: publish ONE player buff slot to the renderer. Shared by
-	// ZoneProcessBuff()'s apply branch and the PlayerProfile's zone-in
-	// buffs, which previously reached BuffManager and stopped there.
-	void PublishPlayerBuffUpdated(uint8_t slot, const EQT::SpellBuff_Struct& buff);
-	void PublishPlayerBuffs(const EQT::SpellBuff_Struct* buffs, size_t count);
 	// T278: /combine and /closecontainer. Push the kept
 	// TradeskillCombineIntent / TradeskillCloseIntent -- the same intents a
 	// forge-window Combine button and its close box would push -- for
@@ -1729,4 +1539,5 @@ private:
 	std::unique_ptr<eqt::merchant::MerchantComponent> m_merchant;
 	std::unique_ptr<eqt::entities::EntitiesComponent> m_entities_component;
 	std::unique_ptr<eqt::movement::MovementComponent> m_movement;
+	std::unique_ptr<eqt::player::PlayerComponent> m_player;
 };

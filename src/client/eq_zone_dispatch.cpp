@@ -118,10 +118,10 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 		m_entities_component->ZoneProcessTimeOfDay(p);
 		break;
 	case HC_OP_TributeUpdate:
-		ZoneProcessTributeUpdate(p);
+		m_player->ZoneProcessTributeUpdate(p);
 		break;
 	case HC_OP_TributeTimer:
-		ZoneProcessTributeTimer(p);
+		m_player->ZoneProcessTributeTimer(p);
 		break;
 	case HC_OP_CharInventory:
 		m_merchant->ZoneProcessCharInventory(p);
@@ -133,16 +133,16 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 		ZoneProcessNewZone(p);
 		break;
 	case HC_OP_SendAATable:
-		ZoneProcessSendAATable(p);
+		m_player->ZoneProcessSendAATable(p);
 		break;
 	case HC_OP_RespondAA:
-		ZoneProcessRespondAA(p);
+		m_player->ZoneProcessRespondAA(p);
 		break;
 	case HC_OP_TributeInfo:
-		ZoneProcessTributeInfo(p);
+		m_player->ZoneProcessTributeInfo(p);
 		break;
 	case HC_OP_SendGuildTributes:
-		ZoneProcessSendGuildTributes(p);
+		m_player->ZoneProcessSendGuildTributes(p);
 		break;
 	case HC_OP_SpawnDoor:
 		m_entities_component->ZoneProcessSpawnDoor(p);
@@ -154,19 +154,19 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 		m_entities_component->ZoneProcessClickObjectAction(p);
 		break;
 	case HC_OP_TradeSkillCombine:
-		ZoneProcessTradeSkillCombine(p);
+		m_player->ZoneProcessTradeSkillCombine(p);
 		break;
 	case HC_OP_SendZonepoints:
 		m_entities_component->ZoneProcessSendZonepoints(p);
 		break;
 	case HC_OP_SendAAStats:
-		ZoneProcessSendAAStats(p);
+		m_player->ZoneProcessSendAAStats(p);
 		break;
 	case HC_OP_SendExpZonein:
-		ZoneProcessSendExpZonein(p);
+		m_player->ZoneProcessSendExpZonein(p);
 		break;
 	case HC_OP_WorldObjectsSent:
-		ZoneProcessWorldObjectsSent(p);
+		m_player->ZoneProcessWorldObjectsSent(p);
 		break;
 	case HC_OP_SpawnAppearance:
 		m_entities_component->ZoneProcessSpawnAppearance(p);
@@ -208,7 +208,7 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 		m_entities_component->ZoneProcessMoveDoor(p);
 		break;
 	case HC_OP_CompletedTasks:
-		ZoneProcessCompletedTasks(p);
+		m_player->ZoneProcessCompletedTasks(p);
 		break;
 	case HC_OP_TaskDescription:
 		// Task description data - not used in P1999
@@ -231,19 +231,19 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 		LOG_DEBUG(MOD_ZONE, "Received AAExpUpdate ({} bytes)", p.Length());
 		break;
 	case HC_OP_DzCompass:
-		ZoneProcessDzCompass(p);
+		m_player->ZoneProcessDzCompass(p);
 		break;
 	case HC_OP_DzExpeditionLockoutTimers:
-		ZoneProcessDzExpeditionLockoutTimers(p);
+		m_player->ZoneProcessDzExpeditionLockoutTimers(p);
 		break;
 	case HC_OP_BeginCast:
-		ZoneProcessBeginCast(p);
+		m_player->ZoneProcessBeginCast(p);
 		break;
 	case HC_OP_ManaChange:
-		ZoneProcessManaChange(p);
+		m_player->ZoneProcessManaChange(p);
 		break;
 	case HC_OP_Buff:
-		ZoneProcessBuff(p);
+		m_player->ZoneProcessBuff(p);
 		break;
 	case HC_OP_ColoredText:
 		m_chat->ZoneProcessColoredText(p);
@@ -252,16 +252,16 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 		m_chat->ZoneProcessFormattedMessage(p);
 		break;
 	case HC_OP_PlayerStateAdd:
-		ZoneProcessPlayerStateAdd(p);
+		m_player->ZoneProcessPlayerStateAdd(p);
 		break;
 	case HC_OP_Death:
-		ZoneProcessDeath(p);
+		m_player->ZoneProcessDeath(p);
 		break;
 	case HC_OP_PlayerStateRemove:
-		ZoneProcessPlayerStateRemove(p);
+		m_player->ZoneProcessPlayerStateRemove(p);
 		break;
 	case HC_OP_Stamina:
-		ZoneProcessStamina(p);
+		m_player->ZoneProcessStamina(p);
 		break;
 	case HC_OP_Animation:
 		// Animation packet - applies to all entities (not just self)
@@ -446,10 +446,10 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 		}
 		break;
 	case HC_OP_ZonePlayerToBind:
-		ZoneProcessZonePlayerToBind(p);
+		m_player->ZoneProcessZonePlayerToBind(p);
 		break;
 	case HC_OP_LevelUpdate:
-		ZoneProcessLevelUpdate(p);
+		m_player->ZoneProcessLevelUpdate(p);
 		break;
 	case HC_OP_ZoneChange:
 		ZoneProcessZoneChange(p);
@@ -593,22 +593,22 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 		}
 		break;
 	case HC_OP_LogoutReply:
-		ZoneProcessLogoutReply(p);
+		m_player->ZoneProcessLogoutReply(p);
 		break;
 	case HC_OP_RezzRequest:
-		ZoneProcessRezzRequest(p);
+		m_player->ZoneProcessRezzRequest(p);
 		break;
 	case HC_OP_RezzComplete:
-		ZoneProcessRezzComplete(p);
+		m_player->ZoneProcessRezzComplete(p);
 		break;
 	case HC_OP_WhoAllResponse:
-		ZoneProcessWhoAllResponse(p);
+		m_player->ZoneProcessWhoAllResponse(p);
 		break;
 	case HC_OP_InspectRequest:
-		ZoneProcessInspectRequest(p);
+		m_player->ZoneProcessInspectRequest(p);
 		break;
 	case HC_OP_InspectAnswer:
-		ZoneProcessInspectAnswer(p);
+		m_player->ZoneProcessInspectAnswer(p);
 		break;
 	case HC_OP_GuildInvite:
 		m_guild->ZoneProcessGuildInvite(p);
@@ -624,32 +624,32 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 		break;
 	// Phase 3 packet handlers
 	case HC_OP_ConsentResponse:
-		ZoneProcessConsentResponse(p);
+		m_player->ZoneProcessConsentResponse(p);
 		break;
 	case HC_OP_DenyResponse:
-		ZoneProcessDenyResponse(p);
+		m_player->ZoneProcessDenyResponse(p);
 		break;
 	case HC_OP_EnvDamage:
-		ZoneProcessEnvDamage(p);
+		m_player->ZoneProcessEnvDamage(p);
 		break;
 	case HC_OP_DisciplineUpdate:
-		ZoneProcessDisciplineUpdate(p);
+		m_player->ZoneProcessDisciplineUpdate(p);
 		break;
 	case HC_OP_DisciplineTimer:
-		ZoneProcessDisciplineTimer(p);
+		m_player->ZoneProcessDisciplineTimer(p);
 		break;
 	case HC_OP_BankerChange:
-		ZoneProcessBankerChange(p);
+		m_player->ZoneProcessBankerChange(p);
 		break;
 	case HC_OP_ClearObject:
-		ZoneProcessClearObject(p);
+		m_player->ZoneProcessClearObject(p);
 		break;
 	case HC_OP_LFGAppearance:
-		ZoneProcessLFGAppearance(p);
+		m_player->ZoneProcessLFGAppearance(p);
 		break;
 	// Phase 4 packet handlers
 	case HC_OP_RequestDuel:
-		ZoneProcessDuelRequest(p);
+		m_player->ZoneProcessDuelRequest(p);
 		break;
 	case HC_OP_RecipeReply:
 		m_merchant->ZoneProcessRecipeReply(p);
@@ -658,19 +658,19 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 		m_merchant->ZoneProcessRecipeAutoCombine(p);
 		break;
 	case HC_OP_RandomReply:
-		ZoneProcessRandomReply(p);
+		m_player->ZoneProcessRandomReply(p);
 		break;
 	case HC_OP_FindPersonReply:
-		ZoneProcessFindPersonReply(p);
+		m_player->ZoneProcessFindPersonReply(p);
 		break;
 	case HC_OP_CameraEffect:
-		ZoneProcessCameraEffect(p);
+		m_player->ZoneProcessCameraEffect(p);
 		break;
 	case HC_OP_PlayMP3:
-		ZoneProcessPlayMP3(p);
+		m_player->ZoneProcessPlayMP3(p);
 		break;
 	case HC_OP_Sound:
-		ZoneProcessSound(p);
+		m_player->ZoneProcessSound(p);
 		break;
 	case HC_OP_GMZoneRequest:
 		m_gm->ZoneProcessGMZoneRequest(p);
@@ -729,7 +729,7 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 					it->second.is_corpse = true;
 					// T268: GameState kept the LIVING name + isCorpse=false forever
 					// (markAsCorpse had no caller) -- /target and /loot missed it.
-					SyncEntityToGameState(it->second);
+					m_player->SyncEntityToGameState(it->second);
 					if (s_debug_level >= 1) {
 						LOG_INFO(MOD_ENTITY, "Entity {} became corpse: '{}' -> '{}'",
 							entity_id, old_name, new_name);
@@ -915,11 +915,11 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 		break;
 	case HC_OP_Track:
 		// Track response - contains list of trackable entities
-		ZoneProcessTrack(p);
+		m_player->ZoneProcessTrack(p);
 		break;
 	case HC_OP_ApplyPoison:
 		// Apply Poison response - success/failure from server
-		ZoneProcessApplyPoison(p);
+		m_player->ZoneProcessApplyPoison(p);
 		break;
 	case HC_OP_PickPocket:
 		// Pick Pocket response
@@ -929,7 +929,7 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 		// Bind Wound reply: `type` carries the outcome (done / no target /
 		// target gone / no bandage). T177 -- before this the player saw
 		// nothing 10s after starting a bandage.
-		ZoneProcessBindWound(p);
+		m_player->ZoneProcessBindWound(p);
 		break;
 	case HC_OP_SenseTraps:
 		// Sense Traps response
@@ -947,7 +947,7 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 		m_merchant->ZoneProcessReadBook(p);
 		break;
 	case HC_OP_PetBuffWindow:
-		ZoneProcessPetBuffWindow(p);
+		m_player->ZoneProcessPetBuffWindow(p);
 		break;
 
 	default:

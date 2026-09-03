@@ -417,7 +417,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessNewSpawn(const EQ::Net::Packet
 
 		// Add to entity list (sync to both local map and EntityManager)
 		ctx_.entities[entity.spawn_id] = entity;
-		owner_.SyncEntityToGameState(entity);
+		owner_.Player().SyncEntityToGameState(entity);
 
 #ifdef EQT_HAS_GRAPHICS
 		owner_.OnSpawnAddedGraphics(entity);

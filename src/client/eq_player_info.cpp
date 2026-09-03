@@ -1,116 +1,26 @@
-// EverQuest player stat getters, tribute/AA stubs, GameState/group sync.
+// EverQuest's PLAYER-STATE FACADE: the thin accessors over m_game_state that
+// the whole tree reads -- stats, currency, weight, position/heading/moving,
+// the behavioural flags, and the group accessors.
+//
+// K08 (Batch K, refactor/K_component_extraction.md) left these on EverQuest
+// deliberately. Every other body that used to live in eq_player_{info,misc,
+// social,state,buffs}.cpp moved into eqt::player::PlayerComponent
+// (src/client/player/); these did not, for the same reason K03 left the three
+// AddChat* primitives behind: they are not a family, they are the read surface
+// every family uses (GetPosition() alone has callers in combat, spells, skills
+// and the action handlers). K13 decides whether the facade becomes a
+// ClientContext service.
+//
+// The position/heading/moving/flag accessors were carried here verbatim from
+// eq_player_state.cpp, whose remainder became src/client/player/player_state.cpp.
 //
 // Clusters 1-3, split out of eq.cpp by Batch F unit F07 and narrowed to these
 // clusters by Batch J unit J07. Moved verbatim, no behavior change. See
 // refactor/J07_eq_player_info_split.md and refactor/F07_player_info.md.
 
 #include "client/eq.h"
-#include "client/inspect_answer.h"
-#include "client/bind_wound_outcome.h"
-#include "client/who_format.h"
-#include "client/who_response.h"
-#include "client/zone_lines.h"
-#include "client/combat.h"
-#include "client/spell/spell_manager.h"
-#include "client/spell/buff_manager.h"
-#include "client/spell/buff_cancel_request.h"
-#include "client/bridge/game_state_bridge.h"
-#include "common/logging.h"
-#include "common/packet_structs.h"
-#include "common/name_utils.h"
 
-#ifdef WITH_AUDIO
-#include "client/audio/audio_manager.h"
-#include "client/audio/sound_assets.h"
-#endif
-
-#include "client/world_object.h"
-#include "client/inventory/inventory_manager.h"
-#include "client/inventory/inventory_constants.h"
-
-#ifdef EQT_HAS_GRAPHICS
-#include "client/graphics/irrlicht_renderer.h"
-#endif
-
-#include <cstring>
-#include <algorithm>
-#include <cctype>
-#include <cstdlib>
-#include <chrono>
-
-// ============================================================================
-// Cluster 1: Tribute/AA stubs
-// ============================================================================
-
-void EverQuest::ZoneProcessTributeUpdate(const EQ::Net::Packet &p)
-{
-	LOG_DEBUG(MOD_ZONE, "Received tribute update");
-}
-
-void EverQuest::ZoneProcessTributeTimer(const EQ::Net::Packet &p)
-{
-	LOG_DEBUG(MOD_ZONE, "Received tribute timer");
-}
-
-void EverQuest::ZoneProcessSendAATable(const EQ::Net::Packet &p)
-{
-	LOG_DEBUG(MOD_ZONE, "Received AA table data");
-	m_aa_table_count++;
-	
-	// Check if all Zone Request phase responses received
-	CheckZoneRequestPhaseComplete();
-}
-
-void EverQuest::ZoneProcessRespondAA(const EQ::Net::Packet &p)
-{
-	LOG_DEBUG(MOD_ZONE, "Received AA response");
-	
-	// Check if all Zone Request phase responses received
-	CheckZoneRequestPhaseComplete();
-}
-
-void EverQuest::ZoneProcessTributeInfo(const EQ::Net::Packet &p)
-{
-	LOG_DEBUG(MOD_ZONE, "Received tribute info");
-	m_tribute_count++;
-	
-	// Check if all Zone Request phase responses received
-	CheckZoneRequestPhaseComplete();
-}
-
-void EverQuest::ZoneProcessSendGuildTributes(const EQ::Net::Packet &p)
-{
-	LOG_DEBUG(MOD_ZONE, "Received guild tributes");
-	m_guild_tribute_count++;
-	
-	// Check if all Zone Request phase responses received
-	CheckZoneRequestPhaseComplete();
-}
-
-void EverQuest::ZoneProcessSendAAStats(const EQ::Net::Packet &p)
-{
-	LOG_DEBUG(MOD_ZONE, "Received AA stats");
-}
-
-void EverQuest::ZoneProcessSendExpZonein(const EQ::Net::Packet &p)
-{
-	LOG_DEBUG(MOD_ZONE, "Received exp zone in - this triggers SendZoneInPackets()");
-
-	m_send_exp_zonein_received = true;
-
-	// ExpZonein triggers the server to send ExpUpdate, RaidUpdate, and GuildMOTD
-	// We'll wait for GuildMOTD before sending final packets
-}
-
-void EverQuest::ZoneProcessWorldObjectsSent(const EQ::Net::Packet &p)
-{
-	LOG_DEBUG(MOD_ZONE, "Received world objects sent");
-
-	// After world objects, send exp zonein if not already sent
-	if (!m_exp_zonein_sent) {
-		ZoneSendSendExpZonein();
-	}
-}
+#include <glm/glm.hpp>
 
 // ============================================================================
 // Cluster 2: Player stat getters
@@ -260,73 +170,79 @@ float EverQuest::GetMaxWeight() const
 {
 	return m_game_state.player().maxWeight();
 }
-
 // ============================================================================
-// Cluster 3: GameState sync + group accessors
+// Movement State Accessors (Phase 7.1 - use embedded m_game_state)
 // ============================================================================
 
-void EverQuest::SyncEntityToGameState(const Entity& entity)
+glm::vec3 EverQuest::Test_GetGameStatePlayerPosition() const
 {
-	// Convert from EQ::Entity (snake_case) to eqt::state::Entity (camelCase)
-	eqt::state::Entity stateEntity;
-	stateEntity.spawnId = entity.spawn_id;
-	stateEntity.name = entity.name;
-	stateEntity.x = entity.x;
-	stateEntity.y = entity.y;
-	stateEntity.z = entity.z;
-	stateEntity.heading = entity.heading;
-	stateEntity.level = entity.level;
-	stateEntity.classId = entity.class_id;
-	stateEntity.raceId = entity.race_id;
-	stateEntity.gender = entity.gender;
-	stateEntity.guildId = entity.guild_id;
-	stateEntity.animation = entity.animation;
-	stateEntity.hpPercent = entity.hp_percent;
-	stateEntity.curMana = entity.cur_mana;
-	stateEntity.maxMana = entity.max_mana;
-	stateEntity.size = entity.size;
-	stateEntity.isCorpse = entity.is_corpse;
-	stateEntity.face = entity.face;
-	stateEntity.haircolor = entity.haircolor;
-	stateEntity.hairstyle = entity.hairstyle;
-	stateEntity.beardcolor = entity.beardcolor;
-	stateEntity.beard = entity.beard;
-	stateEntity.equipChest2 = entity.equip_chest2;
-	stateEntity.helm = entity.helm;
-	stateEntity.showhelm = entity.showhelm;
-	stateEntity.bodytype = entity.bodytype;
-	stateEntity.npcType = entity.npc_type;
-	stateEntity.light = entity.light;
-	for (int i = 0; i < 9; ++i) {
-		stateEntity.equipment[i] = entity.equipment[i];
-		stateEntity.equipmentTint[i] = entity.equipment_tint[i];
-	}
-	stateEntity.deltaX = entity.delta_x;
-	stateEntity.deltaY = entity.delta_y;
-	stateEntity.deltaZ = entity.delta_z;
-	stateEntity.deltaHeading = entity.delta_heading;
-	stateEntity.lastUpdateTime = entity.last_update_time;
-	stateEntity.isPet = entity.is_pet;
-	stateEntity.petOwnerId = entity.pet_owner_id;
-	stateEntity.primaryWeaponSkill = entity.primary_weapon_skill;
-	stateEntity.secondaryWeaponSkill = entity.secondary_weapon_skill;
-
-	// Add or update in EntityManager
-	if (!m_game_state.entities().hasEntity(entity.spawn_id)) {
-		m_game_state.entities().addEntity(stateEntity);
-	} else {
-		// Update existing entity
-		auto* existingEntity = m_game_state.entities().getEntityMutable(entity.spawn_id);
-		if (existingEntity) {
-			*existingEntity = stateEntity;
-		}
-	}
-
+	// T55 test seam: read the state layer's own copy directly (see eq.h).
+	const auto& player = m_game_state.player();
+	return glm::vec3(player.x(), player.y(), player.z());
 }
 
-void EverQuest::RemoveEntityFromGameState(uint16_t spawnId)
+glm::vec3 EverQuest::GetPosition() const
 {
-	m_game_state.entities().removeEntity(spawnId);
+	// T288: reads the one store (m_game_state.player()), the same storage
+	// Test_GetGameStatePlayerPosition() reads.
+	return m_game_state.player().position();
+}
+
+float EverQuest::GetHeading() const
+{
+	// Read from GameState (single source of truth)
+	return m_game_state.player().heading();
+}
+
+bool EverQuest::IsMoving() const
+{
+	// Read from GameState (single source of truth)
+	return m_game_state.player().isMoving();
+}
+
+void EverQuest::SetHeading(float heading)
+{
+	// T288: one store. setHeading() fires PlayerMoved on the state bus, as
+	// it always has -- this is the discrete-relocation path, not the
+	// per-tick integrator path (SetHeadingLocal()).
+	m_game_state.player().setHeading(heading);
+}
+
+void EverQuest::SetPosition(float x, float y, float z)
+{
+	// T288: one store. setPosition() fires PlayerMoved on the state bus, as
+	// it always has -- this is the discrete-relocation path, not the
+	// per-tick integrator path (SetPosLocal()).
+	m_game_state.player().setPosition(x, y, z);
+}
+
+void EverQuest::SetMoving(bool moving)
+{
+	m_game_state.player().setMoving(moving);  // T286: only store
+}
+
+// ============================================================================
+// Behavioral Flag Accessors (Phase 7.8 - read from PlayerState)
+// ============================================================================
+
+bool EverQuest::IsAFK() const
+{
+	return m_game_state.player().isAFK();
+}
+
+bool EverQuest::IsAnonymous() const
+{
+	return m_game_state.player().isAnonymous();
+}
+
+bool EverQuest::IsRoleplay() const
+{
+	return m_game_state.player().isRoleplay();
+}
+
+bool EverQuest::IsCamping() const
+{
+	return m_game_state.player().isCamping();
 }
 
 // ============================================================================

@@ -314,7 +314,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessZoneSpawns(const EQ::Net::Pack
 
 			// Add to entity list (sync to both local map and EntityManager)
 			ctx_.entities[entity.spawn_id] = entity;
-			owner_.SyncEntityToGameState(entity);
+			owner_.Player().SyncEntityToGameState(entity);
 			spawn_count++;
 
 			// NOTE: Graphics entities are NOT created here during ZoneSpawns processing.

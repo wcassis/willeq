@@ -404,7 +404,7 @@ void EverQuest::ProcessBridgeIntents() {
 				// server would have refused. Now it asks and waits: the
 				// buff leaves the model only when OP_Buff comes back with
 				// bufffade == 1.
-				SendBuffCancelRequest(i.slot);
+				m_player->SendBuffCancelRequest(i.slot);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::SkillActivateIntent>) {
 				// T156: gained a real producer this unit (a click on a row of
@@ -633,7 +633,7 @@ void EverQuest::ProcessBridgeIntents() {
 			}
 			// Tradeskill intents (D20b1)
 			else if constexpr (std::is_same_v<T, eqt::events::TradeskillCombineIntent>) {
-				SendTradeSkillCombine(i.containerSlot);
+				m_player->SendTradeSkillCombine(i.containerSlot);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::TradeskillCloseIntent>) {
 				if (i.dropId != 0) {

@@ -70,7 +70,7 @@ void EqActionHandler::setPositionState(int state) {
 // ========== Extended Character State ==========
 
 void EqActionHandler::setRoleplay(bool rp) {
-    m_eq.SetRoleplay(rp);
+    m_eq.Player().SetRoleplay(rp);
 }
 
 void EqActionHandler::setPathfinding(bool enabled) {
@@ -134,29 +134,29 @@ void EqActionHandler::inspectTarget(uint16_t targetId) {
         m_eq.AddChatSystemMessage("No target - use /inspect <name> or target a player");
         return;
     }
-    m_eq.SendInspectRequest(resolved);
+    m_eq.Player().SendInspectRequest(resolved);
     m_eq.AddChatSystemMessage("Inspecting...");
 }
 
 void EqActionHandler::toggleLFG() {
-    m_eq.SendLFGCommand(!m_eq.IsLFG());
+    m_eq.Player().SendLFGCommand(!m_eq.Player().IsLFG());
 }
 
 void EqActionHandler::setSurname(const std::string& surname) {
-    m_eq.SendSurname(surname);
+    m_eq.Player().SendSurname(surname);
 }
 
 void EqActionHandler::rollRandom(uint32_t low, uint32_t high) {
     if (high < low) high = low;
-    m_eq.SendRandom(low, high);
+    m_eq.Player().SendRandom(low, high);
 }
 
 void EqActionHandler::yellForHelp() {
-    m_eq.SendYellForHelp();
+    m_eq.Player().SendYellForHelp();
 }
 
 void EqActionHandler::requestWho(const std::string& name, int lvlLow, int lvlHigh) {
-    m_eq.SendWhoAllRequest(name, lvlLow, lvlHigh);
+    m_eq.Player().SendWhoAllRequest(name, lvlLow, lvlHigh);
     m_eq.AddChatSystemMessage("Searching for players...");
 }
 
@@ -201,37 +201,37 @@ void EqActionHandler::setGuildMOTD(const std::string& motd) {
 }
 
 void EqActionHandler::corpseDrag(const std::string& corpseName) {
-    m_eq.SendCorpseDrag(corpseName);
+    m_eq.Player().SendCorpseDrag(corpseName);
 }
 
 void EqActionHandler::corpseDrop() {
-    m_eq.SendCorpseDrop();
+    m_eq.Player().SendCorpseDrop();
 }
 
 void EqActionHandler::consent(const std::string& playerName) {
-    m_eq.SendConsent(playerName);
+    m_eq.Player().SendConsent(playerName);
 }
 
 void EqActionHandler::consentDeny(const std::string& playerName) {
-    m_eq.SendConsentDeny(playerName);
+    m_eq.Player().SendConsentDeny(playerName);
 }
 
 void EqActionHandler::rezAccept() {
-    m_eq.SendRezzAnswer(true);
+    m_eq.Player().SendRezzAnswer(true);
 }
 
 void EqActionHandler::rezDecline() {
-    m_eq.SendRezzAnswer(false);
+    m_eq.Player().SendRezzAnswer(false);
 }
 
 // ========== Utility (T135) ==========
 
 void EqActionHandler::split(uint32_t platinum, uint32_t gold, uint32_t silver, uint32_t copper) {
-    m_eq.SendSplit(platinum, gold, silver, copper);
+    m_eq.Player().SendSplit(platinum, gold, silver, copper);
 }
 
 void EqActionHandler::save() {
-    m_eq.SendSave();
+    m_eq.Player().SendSave();
 }
 
 // Ported from game's bindwound_cmd (eq_commands.cpp) exactly: targetId==0
@@ -271,11 +271,11 @@ void EqActionHandler::bandage(uint16_t targetId) {
 }
 
 void EqActionHandler::rewind() {
-    m_eq.SendRewind();
+    m_eq.Player().SendRewind();
 }
 
 void EqActionHandler::bug(const std::string& description) {
-    m_eq.SendReport(description);
+    m_eq.Player().SendReport(description);
 }
 
 void EqActionHandler::petition(const std::string& text) {
@@ -753,7 +753,7 @@ void EqActionHandler::requestQuit() {
 void EqActionHandler::campNow() {
     m_eq.Movement().SetPositionState(POS_SITTING);
     m_eq.AddChatSystemMessage("You have begun to camp. You will log out in 30 seconds.");
-    m_eq.StartCampTimer();
+    m_eq.Player().StartCampTimer();
 }
 
 // Ported verbatim from eq_commands_movement.cpp's old debug_cmd lambda --
@@ -872,7 +872,7 @@ uint16_t EqActionHandler::resolveTargetOrCurrent(uint16_t targetId) {
 void EqActionHandler::assistGroup(uint16_t targetId) {
     uint16_t resolved = resolveTargetOrCurrent(targetId);
     if (resolved == 0) return;
-    m_eq.SendAssistGroup(resolved);
+    m_eq.Player().SendAssistGroup(resolved);
 }
 
 void EqActionHandler::trackTarget(uint16_t targetId) {
@@ -891,17 +891,17 @@ void EqActionHandler::trackTarget(uint16_t targetId) {
     if (!skillGateAllows(EQ::kSkillTracking)) return;
     uint16_t resolved = resolveTargetOrCurrent(targetId);
     if (resolved == 0) return;
-    m_eq.SendTrackTarget(resolved);
+    m_eq.Player().SendTrackTarget(resolved);
 }
 
 void EqActionHandler::findPerson(uint16_t targetId) {
     uint16_t resolved = resolveTargetOrCurrent(targetId);
     if (resolved == 0) return;
-    m_eq.SendFindPerson(resolved);
+    m_eq.Player().SendFindPerson(resolved);
 }
 
 void EqActionHandler::friendsWho(const std::string& friendsList) {
-    m_eq.SendFriendsWho(friendsList);
+    m_eq.Player().SendFriendsWho(friendsList);
 }
 
 // ========== GM (T148) ==========

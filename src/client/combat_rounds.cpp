@@ -436,7 +436,7 @@ void CombatManager::ProcessCombatRound() {
 					LOG_DEBUG(MOD_COMBAT, "ProcessCombatRound: Out of range, starting combat movement (stop_distance={:.1f})",
 						actual_combat_range * 0.8f);
 					// Pass the calculated combat range to movement system
-					m_eq->SetCombatStopDistance(actual_combat_range * 0.8f); // 80% to ensure we're well within range
+					m_eq->Player().SetCombatStopDistance(actual_combat_range * 0.8f); // 80% to ensure we're well within range
 					m_eq->Movement().StartCombatMovement(m_current_target_id);
 				} else {
 					LOG_DEBUG(MOD_COMBAT, "ProcessCombatRound: Out of range but auto movement disabled");

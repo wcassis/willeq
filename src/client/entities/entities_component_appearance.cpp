@@ -149,7 +149,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessDeleteSpawn(const EQ::Net::Pac
 
 		// Remove from both local map and EntityManager
 		ctx_.entities.erase(it);
-		owner_.RemoveEntityFromGameState(spawn_id);
+		owner_.Player().RemoveEntityFromGameState(spawn_id);
 	} else {
 		LOG_DEBUG(MOD_ENTITY, "DeleteSpawn for unknown spawn_id: {}", spawn_id);
 	}
