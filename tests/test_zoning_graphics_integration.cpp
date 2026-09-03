@@ -291,7 +291,7 @@ protected:
         while (!condition()) {
             eq_->TickNetwork();
             if (eq_) {
-                eq_->UpdateMovement();
+                eq_->Movement().UpdateMovement();
                 // Track phase transitions
                 if (trackPhases) {
                     trackPhase(eq_->GetLoadingPhase());
@@ -497,7 +497,7 @@ TEST_F(ZoningGraphicsIntegrationTest, ZoneTransitionWithGraphics) {
     // Process with graphics until zone change triggers
     for (int i = 0; i < 100; i++) {
         eq_->TickNetwork();
-        eq_->UpdateMovement();
+        eq_->Movement().UpdateMovement();
         trackPhase(eq_->GetLoadingPhase());
 #ifdef EQT_HAS_GRAPHICS
         if (renderer_) {
@@ -627,7 +627,7 @@ TEST_F(ZoningGraphicsIntegrationTest, MultipleZoneTransitionsWithGraphics) {
         // Process until zone change triggers
         for (int i = 0; i < 100; i++) {
             eq_->TickNetwork();
-            eq_->UpdateMovement();
+            eq_->Movement().UpdateMovement();
             trackPhase(eq_->GetLoadingPhase());
 #ifdef EQT_HAS_GRAPHICS
             if (renderer_) {
@@ -742,7 +742,7 @@ TEST_F(ZoningGraphicsIntegrationTest, CameraCollisionSafeDuringZoneTransition) {
 
     for (int i = 0; i < 200; i++) {
         eq_->TickNetwork();
-        eq_->UpdateMovement();
+        eq_->Movement().UpdateMovement();
 
         // Process graphics frame - this is where the crash would occur
         float deltaTime = getDeltaTime();

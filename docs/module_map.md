@@ -21,7 +21,7 @@ review section under `refactor/F*.md` and `refactor/J*.md`.
 |---|---|---|
 | src/client/eq.cpp | 1,073 | Core after J02: ctor/lifecycle, session recording, DB/spell-system init, ConnectToLogin/World/Zone, TickNetwork, loading-phase state, PublishFullStateSnapshot, zone connection callbacks, ZoneOnPacketRecv, ReplayZonePacket, SafeQueueZonePacket, QueuePacket, Start/StopUpdateLoop, SetEQClientPath/SetConstrainedConfig |
 | eq_action_handler.cpp | 783 | `action::EqActionHandler` — the `IActionHandler` implementation wrapping `EverQuest` for `ActionDispatcher`/`CommandProcessor` (action-layer migration T99–T143; raid guards T179–T184; skill gate T159/T162) |
-| eq_movement.cpp | 486 | Move/Follow/UpdateMovement, SendPositionUpdate, pathfinding, water state, jump, keyboard movement |
+| src/client/movement/movement_component.cpp | 492 | K07: eqt::movement::MovementComponent -- Move/MoveTo/MoveToEntity, Follow/StopFollow, StartCombatMovement, Face/FaceEntity, StopMovement |
 | eq_bridge.cpp | 890 | InitGraphics/ShutdownGraphics, GameTick, Pre/PostRenderTick, ProcessBridgeIntents/Events, zone-load snapshot, loot-window flow, hotbar config, audio init |
 | src/client/merchant/merchant.cpp | 689 | K05: `eqt::merchant::MerchantComponent` — inventory item movement, ScribeSpellFromScroll, the trade request/coin/accept/cancel senders, ReadBook and ZoneProcessTradePartnerItem, moved out of `class EverQuest` (was `eq_merchant.cpp`) |
 | eq_commands.cpp | 1,110 | RegisterCommands driver + the game-registry remainder after T139 deleted 34 redundant commands (registry 1 of `docs/decisions.md` 2026-08-03) |
@@ -56,8 +56,8 @@ review section under `refactor/F*.md` and `refactor/J*.md`.
 | entities_component_appearance.cpp (in `src/client/entities/`) | 668 | K06: `eqt::entities::EntitiesComponent` — teardown/health/appearance cluster (DeleteSpawn, MobHealth, HPUpdate, FindEntityByName, ListEntities, WearChange, ApplyAppearanceToGameState, UpdatePlayerAppearanceFromInventory, Illusion), moved out of `class EverQuest` (was `eq_entities_appearance.cpp`; entity size T318) |
 | entities_component_updates.cpp (in `src/client/entities/`) | 784 | K06: `eqt::entities::EntitiesComponent` — ground spawns, weather, new spawns, exp updates, ClientUpdate interpolation, moved out of `class EverQuest` (was `eq_entities_updates.cpp`) |
 | entities_component_world.cpp (in `src/client/entities/`) | 406 | K06: `eqt::entities::EntitiesComponent` — doors, spawn-appearance/animation/click-door senders, world-object (tradeskill container) senders and handlers, moved out of `class EverQuest` (was `eq_entities_world.cpp`) |
-| eq_movement_state.cpp | 889 | J13: SetMovementMode / SetPositionState, water and region state, jump |
-| eq_movement_update.cpp | 854 | J13: SendPositionUpdate and the wire packing (wire z = groundZ + 0.625*size, T311) |
+| src/client/movement/movement_state.cpp | 896 | K07: MovementComponent -- pathfinding (LoadPathfinder/FindPath/FollowPath), SetMovementMode / SetPositionState, jump, movement history, water and region state, keyboard control |
+| src/client/movement/movement_update.cpp | 850 | K07: MovementComponent -- UpdateMovement (the per-tick pump), SendPositionUpdate and the wire packing (wire z = groundZ + 0.625*size, T311) |
 
 ### Family grouping (source: `refactor/K_component_extraction.md` §Families)
 
@@ -72,7 +72,7 @@ This table and that plan must agree; change both together.
 | group | `group/group_component` | 23 | 5 | **K04 DONE** (group, raid and pet together; `DismissPet`/`UpdateGroupMemberFromEntity` deleted, zero callers) |
 | merchant | `merchant/merchant`, `_trade`, `_vendor_bank` | 54 | 1 | **K05 DONE** (54 defs, not the 56 the batch table claimed; all 54 moved. `m_trainer_skill_caps` moved; the loot/vendor/scribe members stay on `EverQuest` pending K09/K11/K12) |
 | entities | `entities/entities_component` (+ `_appearance`/`_updates`/`_world`) | 28 | 1 | **K06 DONE** (`m_entities`, the spawn-id -> Entity map, stays a core member — the component owns the handlers) |
-| movement | `eq_movement`, `_state`, `_update` | 44 | 4 | K07 |
+| movement | `src/client/movement/movement_component`, `movement_state`, `movement_update` | 42 | 8 | **K07 DONE** (`eqt::movement::MovementComponent`; `HasReachedDestination` deleted, zero callers; `m_last_movement_update` boarded dead) |
 | player | `eq_player_info`, `_misc`, `_social`, `_state`, `_buffs`, `eq_profile_appearance` | 142 | 11 | K08 (may split in two) |
 | zone | `eq_zone`, `_dispatch`, `_entry`, `_handshake` | 41 | 17 | K09 |
 | login_world | `eq_login_world` | 42 | 9 | K10 |

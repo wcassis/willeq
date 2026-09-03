@@ -210,7 +210,7 @@ protected:
         while (!condition()) {
             eq_->TickNetwork();
             if (eq_) {
-                eq_->UpdateMovement();
+                eq_->Movement().UpdateMovement();
                 // Track phase transitions
                 if (trackPhases) {
                     trackPhase(eq_->GetLoadingPhase());
@@ -385,7 +385,7 @@ TEST_F(ZoningIntegrationTest, ZoneTransition) {
     // UpdateMovement() contains the CheckZoneLine() call
     for (int i = 0; i < 50; i++) {
         eq_->TickNetwork();
-        eq_->UpdateMovement();
+        eq_->Movement().UpdateMovement();
         trackPhase(eq_->GetLoadingPhase());
         if (i % 10 == 0) {
             glm::vec3 pos = eq_->GetPosition();
@@ -530,7 +530,7 @@ TEST_F(ZoningIntegrationTest, GameStateAfterZoning) {
     // Process for a while with UpdateMovement to trigger zone line check
     for (int i = 0; i < 50; i++) {
         eq_->TickNetwork();
-        eq_->UpdateMovement();
+        eq_->Movement().UpdateMovement();
         trackPhase(eq_->GetLoadingPhase());
         std::this_thread::sleep_for(20ms);
         if (!eq_->IsFullyZonedIn()) {

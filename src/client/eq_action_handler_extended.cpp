@@ -45,7 +45,7 @@ void EqActionHandler::setMovementMode(int mode) {
             " is not valid (must be 0=Run, 1=Walk, or 2=Sneak).");
         return;
     }
-    m_eq.SetMovementMode(static_cast<MovementMode>(mode));
+    m_eq.Movement().SetMovementMode(static_cast<MovementMode>(mode));
 }
 
 void EqActionHandler::setPositionState(int state) {
@@ -64,7 +64,7 @@ void EqActionHandler::setPositionState(int state) {
             "FeignDeath/Dead).");
         return;
     }
-    m_eq.SetPositionState(static_cast<PositionState>(state));
+    m_eq.Movement().SetPositionState(static_cast<PositionState>(state));
 }
 
 // ========== Extended Character State ==========
@@ -74,7 +74,7 @@ void EqActionHandler::setRoleplay(bool rp) {
 }
 
 void EqActionHandler::setPathfinding(bool enabled) {
-    m_eq.SetPathfinding(enabled);
+    m_eq.Movement().SetPathfinding(enabled);
 }
 
 // ========== Extended Combat ==========
@@ -751,7 +751,7 @@ void EqActionHandler::requestQuit() {
 // down, ack, then start the 30-second camp timer. SetPositionState()/
 // StartCampTimer() were already public.
 void EqActionHandler::campNow() {
-    m_eq.SetPositionState(POS_SITTING);
+    m_eq.Movement().SetPositionState(POS_SITTING);
     m_eq.AddChatSystemMessage("You have begun to camp. You will log out in 30 seconds.");
     m_eq.StartCampTimer();
 }

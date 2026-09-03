@@ -184,8 +184,8 @@ TEST(PositionStoreCoherence, MovementIntegratorStepIsVisibleToTheStateLayer) {
     eq.Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(kSelfId);
 
-    eq.MoveTo(30.0f, 40.0f, 5.0f);
-    eq.Test_SnapToMovementTargetForSeam();
+    eq.Movement().MoveTo(30.0f, 40.0f, 5.0f);
+    eq.Movement().Test_SnapToMovementTargetForSeam();
 
     const glm::vec3 pos = eq.GetPosition();
     EXPECT_FLOAT_EQ(pos.x, 30.0f);

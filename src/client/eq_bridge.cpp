@@ -764,7 +764,7 @@ void EverQuest::OnGraphicsMovement(const eqt::events::PlayerPositionChanged& upd
 	SetHeadingLocal(update.heading * 360.0f / 512.0f);
 
 	// Check water state at new position
-	UpdateWaterState();
+	m_movement->UpdateWaterState();
 
 	// Derive movement state from velocity
 	float speed2D = std::sqrt(update.dx * update.dx + update.dy * update.dy);
@@ -814,7 +814,7 @@ void EverQuest::OnGraphicsMovement(const eqt::events::PlayerPositionChanged& upd
 	CheckZoneLine();
 
 	// SendPositionUpdate has internal 250ms throttling
-	SendPositionUpdate();
+	m_movement->SendPositionUpdate();
 }
 
 // ============================================================================

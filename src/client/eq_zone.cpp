@@ -128,8 +128,7 @@ void EverQuest::RelocateWithinZone(float x, float y, float z, float server_headi
 	// pre-teleport destination on the next UpdateMovement tick. Same fields
 	// StopMovement() clears, minus its own SendPositionUpdate() -- the
 	// forced update below is the one that must carry the new position.
-	m_current_path.clear();
-	m_current_path_index = 0;
+	m_movement->ResetPath();
 	m_game_state.player().clearMovementTarget();
 	m_game_state.player().setAnimation(ANIM_STAND);
 	SetMoving(false);
@@ -165,8 +164,8 @@ void EverQuest::RelocateWithinZone(float x, float y, float z, float server_headi
 	// relies entirely on this OP_ClientUpdate. Force it past the 250 ms
 	// throttle and with zero deltas (a teleport has no velocity; a
 	// last-position delta spanning the jump would be sent as one).
-	m_force_next_position_update = true;
-	SendPositionUpdate();
+	m_movement->ForceNextPositionUpdate();
+	m_movement->SendPositionUpdate();
 }
 
 void EverQuest::ZoneProcessZoneChange(const EQ::Net::Packet &p)
@@ -354,10 +353,9 @@ void EverQuest::CleanupZone()
 #endif
 
 	// Stop any movement
-	StopMovement();
+	m_movement->StopMovement();
 	m_game_state.player().setMoving(false);
-	m_current_path.clear();
-	m_current_path_index = 0;
+	m_movement->ResetPath();
 	m_game_state.player().clearFollowTarget();
 	// Phase 7.6 / T286: CombatState is the only store
 	m_game_state.combat().setInCombatMovement(false);
@@ -410,7 +408,7 @@ void EverQuest::CleanupZone()
 			eqt::state::GameEventType::NavmeshChanged,
 			eqt::state::NavmeshChangedData{nullptr}));
 	}
-	m_pathfinder.reset();
+	m_movement->ResetPathfinder();
 
 	// Clear collision map via bridge, then reset zone map
 	if (m_bridge) {

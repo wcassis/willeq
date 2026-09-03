@@ -378,7 +378,7 @@ void eqt::entities::EntitiesComponent::ListEntities(const std::string& search) c
 			}
 		}
 		
-		float dist = owner_.CalculateDistance(owner_.PosX(), owner_.PosY(), owner_.PosZ(), entity.x, entity.y, entity.z);
+		float dist = owner_.Movement().CalculateDistance(owner_.PosX(), owner_.PosY(), owner_.PosZ(), entity.x, entity.y, entity.z);
 		sorted_entities.push_back({dist, &entity});
 	}
 	

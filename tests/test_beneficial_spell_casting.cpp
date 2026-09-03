@@ -197,7 +197,7 @@ protected:
         while (!condition()) {
             eq_->TickNetwork();
             if (eq_) {
-                eq_->UpdateMovement();
+                eq_->Movement().UpdateMovement();
 #ifdef EQT_HAS_GRAPHICS
                 // D20c1: Process frame via split API. T220: PreRenderTick()
                 // is gone; this single-threaded harness uses the single-
@@ -226,7 +226,7 @@ protected:
         for (int i = 0; i < count; i++) {
             eq_->TickNetwork();
             if (eq_) {
-                eq_->UpdateMovement();
+                eq_->Movement().UpdateMovement();
 #ifdef EQT_HAS_GRAPHICS
                 float deltaTime = getDeltaTime();
                 eq_->ProcessBridgeEvents();
@@ -421,16 +421,16 @@ protected:
                   << ", need=" << required_mana << ")..." << std::endl;
 
         // Sit to regenerate mana faster
-        eq_->SetPositionState(POS_SITTING);
-        eq_->SendPositionUpdate();
+        eq_->Movement().SetPositionState(POS_SITTING);
+        eq_->Movement().SendPositionUpdate();
 
         bool got_mana = waitForWithGraphics([this, required_mana]() {
             return eq_->GetCurrentMana() >= required_mana;
         }, timeout_ms);
 
         // Stand back up
-        eq_->SetPositionState(POS_STANDING);
-        eq_->SendPositionUpdate();
+        eq_->Movement().SetPositionState(POS_STANDING);
+        eq_->Movement().SendPositionUpdate();
 
         if (got_mana) {
             std::cout << "Mana regenerated to " << eq_->GetCurrentMana() << std::endl;

@@ -115,6 +115,8 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 	m_merchant = std::make_unique<eqt::merchant::MerchantComponent>(m_ctx, *this);
 	// K06: the entities family, same shape.
 	m_entities_component = std::make_unique<eqt::entities::EntitiesComponent>(m_ctx, *this);
+	// K07: the movement family. Same rule.
+	m_movement = std::make_unique<eqt::movement::MovementComponent>(m_ctx, *this);
 
 	m_host = host;
 	m_port = port;

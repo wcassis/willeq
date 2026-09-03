@@ -171,7 +171,7 @@ void CombatManager::OnLootWindowClosed() {
 
 void CombatManager::SetAutoHunting(bool enable) {
 	// Check pathfinding requirement
-	if (enable && !m_eq->IsPathfindingEnabled()) {
+	if (enable && !m_eq->Movement().IsPathfindingEnabled()) {
 		LOG_ERROR(MOD_COMBAT, "Auto-hunting requires pathfinding to be enabled. Use 'pathfinding on' first.");
 		return;
 	}
@@ -374,7 +374,7 @@ void CombatManager::SelectBestFleePath() {
 			m_flee_destination = my_pos + (flee_direction * 100.0f);
 
 			// Start moving
-			m_eq->Move(m_flee_destination.x, m_flee_destination.y, m_flee_destination.z);
+			m_eq->Movement().Move(m_flee_destination.x, m_flee_destination.y, m_flee_destination.z);
 			break;
 		}
 	}
@@ -437,14 +437,14 @@ void CombatManager::ProcessCombatRound() {
 						actual_combat_range * 0.8f);
 					// Pass the calculated combat range to movement system
 					m_eq->SetCombatStopDistance(actual_combat_range * 0.8f); // 80% to ensure we're well within range
-					m_eq->StartCombatMovement(m_current_target_id);
+					m_eq->Movement().StartCombatMovement(m_current_target_id);
 				} else {
 					LOG_DEBUG(MOD_COMBAT, "ProcessCombatRound: Out of range but auto movement disabled");
 				}
 			} else {
 				// In range - first ensure we're facing the target
 				LOG_DEBUG(MOD_COMBAT, "ProcessCombatRound: In range, facing target");
-				m_eq->FaceEntity(entity.name);
+				m_eq->Movement().FaceEntity(entity.name);
 
 				// Check attack timer
 				auto time_since_last = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_last_attack_time).count();

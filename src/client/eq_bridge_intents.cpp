@@ -286,7 +286,7 @@ void EverQuest::ProcessBridgeIntents() {
 				}
 
 				// Check distance to NPC
-				float distSq = CalculateDistance2D(PosX(), PosY(), target.x, target.y);
+				float distSq = m_movement->CalculateDistance2D(PosX(), PosY(), target.x, target.y);
 				distSq = distSq * distSq;  // CalculateDistance2D returns distance, not squared
 				if (distSq > NPC_INTERACTION_DISTANCE_SQUARED) {
 					LOG_DEBUG(MOD_INVENTORY, "Banker interact: Target {} is too far away (dist={})", target.name, std::sqrt(distSq));
