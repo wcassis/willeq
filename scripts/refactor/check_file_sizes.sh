@@ -9,6 +9,14 @@
 #   check_file_sizes.sh -C <repo> [BASE_REV]    # anchor to <repo> instead of the
 #                                                # script's own checkout / ambient cwd
 #   check_file_sizes.sh --files f1 f2 ...       # check specific files
+#   check_file_sizes.sh --all                   # check every *.cpp/*.h/*.hpp under
+#                                                # src/, include/, tests/ (excludes
+#                                                # third_party/, build*/), tree-wide,
+#                                                # not just what changed vs a base rev
+#                                                # (K00). Consults the allowlist at
+#                                                # scripts/refactor/file_size_allowlist.txt
+#                                                # for files permitted over WARN with a
+#                                                # per-file no-grow ceiling.
 #
 # T79: this script used to resolve repo_root against the ambient cwd
 # (`git rev-parse --show-toplevel` with no -C), so running it exactly as the
@@ -53,7 +61,14 @@ fi
 #      git wrote to stderr, mapfile got nothing, and the script passed.
 # 1 stays exit 0 but now says so; 2 and 3 are errors, because they mean the
 # caller asked for a check that never happened.
-if [ "${1:-}" = "--files" ]; then
+all_mode=0
+if [ "${1:-}" = "--all" ]; then
+    all_mode=1
+    mapfile -t files < <(find "$repo_root/src" "$repo_root/include" "$repo_root/tests" \
+        -type d \( -name third_party -o -name 'build*' \) -prune -o \
+        -type f \( -name '*.cpp' -o -name '*.h' -o -name '*.hpp' \) -print 2>/dev/null | sort)
+    source_desc="every *.cpp/*.h/*.hpp under src/, include/, tests/ in $repo_root (excludes third_party/, build*/)"
+elif [ "${1:-}" = "--files" ]; then
     shift
     files=("$@")
     if [ "${#files[@]}" -eq 0 ]; then
@@ -79,6 +94,22 @@ if [ "${#files[@]}" -eq 0 ]; then
     exit 0
 fi
 
+# K00: --all consults the no-grow allowlist. Format: path<TAB>max_lines<TAB>reason,
+# path relative to repo_root. A listed file is permitted over WARN but FAILs if it
+# exceeds its own recorded max_lines (ratchet: a K unit lowers the number, it never
+# rises) — this is on top of, not instead of, the universal FAIL-over-3000 rule.
+allowlist_file="$script_dir/file_size_allowlist.txt"
+declare -A allow_max
+declare -A allow_reason
+if [ "$all_mode" -eq 1 ] && [ -f "$allowlist_file" ]; then
+    while IFS=$'\t' read -r a_path a_max a_reason; do
+        [ -z "$a_path" ] && continue
+        case "$a_path" in \#*) continue ;; esac
+        allow_max["$a_path"]="$a_max"
+        allow_reason["$a_path"]="$a_reason"
+    done < "$allowlist_file"
+fi
+
 echo "checking ${#files[@]} file(s) ($source_desc)"
 
 status=0
@@ -93,16 +124,33 @@ for f in "${files[@]}"; do
         status=2
         continue
     fi
+    # display/allowlist-match path: relative to repo_root when possible, so
+    # --all (which finds absolute paths) and --files/diff mode (already
+    # relative) key the allowlist the same way.
+    rel="$f"
+    case "$f" in
+        "$repo_root"/*) rel="${f#"$repo_root"/}" ;;
+    esac
     lines=$(wc -l < "$path")
     if [ "$lines" -gt "$FAIL" ]; then
-        echo "FAIL  $f: $lines lines (> $FAIL)"
+        echo "FAIL  $rel: $lines lines (> $FAIL)"
         status=1
         n_fail=$((n_fail + 1))
+    elif [ "$all_mode" -eq 1 ] && [ -n "${allow_max[$rel]+x}" ]; then
+        max="${allow_max[$rel]}"
+        if [ "$lines" -gt "$max" ]; then
+            echo "FAIL  $rel: $lines lines (> allowlisted max $max — no-grow ratchet exceeded; ${allow_reason[$rel]})"
+            status=1
+            n_fail=$((n_fail + 1))
+        else
+            echo "ok    $rel: $lines lines (allowlisted, max $max; ${allow_reason[$rel]})"
+            n_ok=$((n_ok + 1))
+        fi
     elif [ "$lines" -gt "$WARN" ]; then
-        echo "WARN  $f: $lines lines (> $WARN)"
+        echo "WARN  $rel: $lines lines (> $WARN)"
         n_warn=$((n_warn + 1))
     else
-        echo "ok    $f: $lines lines"
+        echo "ok    $rel: $lines lines"
         n_ok=$((n_ok + 1))
     fi
 done
