@@ -202,6 +202,15 @@ into the component.**
    (ee) `test_reachability_sweep.cpp` reads TUs BY PATH and `readFile` on a
    missing path returns an empty buffer that passes — the K03 (c) grep of
    `tests/` for the TU filename is mandatory, not advisory.
+**K12 corrections (2026-09-03):** (ff) **a zero-caller method may still be
+   the SOLE PUBLISHER of a `GameEventType`** — deleting `runLoadDiagnostics`
+   broke `ReachabilitySweep.EveryEventIsPublishedAndConsumed`; before
+   deleting, grep the body for `pushEvent`/`GameEventType::` and keep it
+   (private) if it publishes; (gg) tests may reach members through
+   `#define private public` — the compiler catches it, retarget the site;
+   (hh) a sonnet executor ended its turn waiting on a background build once
+   — the dispatch prompt must repeat the protocol's "never end a turn on a
+   wait" line verbatim and name the foreground timeout.
 8. **Proof.** `verify_move_only.py` exits 1 by construction. Line-multiset
    check with the substitutions normalised BY NAME MAPPING (`ctx_.character`
    ↔ `m_character`, etc. — stripping the prefix alone leaves 7 false
