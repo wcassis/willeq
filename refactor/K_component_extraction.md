@@ -149,6 +149,20 @@ into the component.**
    conflict with that fix if they branched before `a8886739`; (l) a
    "(was …)" note naming an old file path in `module_map.md` is a live citation —
    write bare filenames in prose.
+**K06/K07 corrections (2026-09-03):** (m) a component pointer may not
+   reuse an existing member name (`m_entities` is the map, so the component
+   is `m_entities_component`); (n) **fourth substitution: `this` →
+   `&owner_`** where a moved body uses `this` as an identity key
+   (function-static `std::map<EverQuest*,…>` throttle tables — 20 sites in
+   movement); (o) a recorded keep decision (the T316 `Start*` note) overrides
+   §5's zero-caller delete — cite it in the Review; (p) member greps must be
+   string-filtered as well as comment-filtered; (q) `EverQuest::` body counts
+   miss overloads; (r) **cross-family retargets in a three-wide wave
+   CONFLICT at merge by construction** — unit A retargets a call inside a TU
+   that unit B is moving. The orchestrator resolves every such hunk to
+   `owner_.<Family>().Foo(…)`; executors should write that form themselves
+   whenever the target family is already on `fable`, and `owner_.Foo()` only
+   when it is not.
 8. **Proof.** `verify_move_only.py` exits 1 by construction. Line-multiset
    check with the substitutions normalised BY NAME MAPPING (`ctx_.character`
    ↔ `m_character`, etc. — stripping the prefix alone leaves 7 false
