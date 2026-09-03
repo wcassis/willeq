@@ -223,7 +223,32 @@ static void logDriverDetails(irr::video::IVideoDriver* driver, irr::IrrlichtDevi
 
 // --- IrrlichtRenderer Implementation ---
 
-IrrlichtRenderer::IrrlichtRenderer() {
+// L01 (Batch L, refactor/L_renderer_component_extraction.md): the ctor had no
+// initialiser list before this unit. RendererContext holds references, which
+// forces one. The order below is the declaration order of RendererContext in
+// include/client/graphics/renderer_context.h -- aggregate initialisation, so
+// it must match exactly.
+IrrlichtRenderer::IrrlichtRenderer()
+    : ctx_{
+        config_, entityRenderer_, driver_, constrainedTextureCache_, smgr_, zoneShader_,
+        regionMeshNodes_, doorManager_, zoneBspTree_, objectNodes_, currentPvsRegion_, camera_,
+        weatherEffects_, device_, currentZone_, skyRenderer_, playerX_, playerY_, playerZ_,
+        particleManager_, detailManager_, currentZoneName_, boidsManager_,
+        regionBoundingBoxes_, manualZoneDrawEnabled_, progressiveLoadingActive_,
+        portalOcclusionEnabled_, fogEnabled_, usePvsCulling_, entityPrepReady_, wireframeMode_,
+        portalOcclusionEligible_, lightingEnabled_, fireEffectsEnabled_, eventReceiver_,
+        cameraController_, objectLights_, collisionMap_, animatedTextureManager_,
+        objectInSceneGraph_, portalSystem_, renderDistance_, frustumCuller_, governor_,
+        bridge_,
+#ifdef EQT_HAS_GLES2
+        gpuUploadThread_,
+#endif
+        tumbleweedManager_, entityPrepWorker_, occlusionCuller_, indoorRegions_,
+        treeWindController_, currentHour_, currentMinute_, objectPositions_
+      } {
+#ifdef WITH_RDP
+    rdp_ = std::make_unique<RdpComponent>(ctx_, *this);
+#endif
 }
 
 IrrlichtRenderer::~IrrlichtRenderer() {
