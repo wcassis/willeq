@@ -8,8 +8,25 @@
 // NOTE: ZoneProcessAnimation (between ZoneProcessSpawnAppearance and
 // ZoneProcessGroundSpawn in eq.cpp) is chat/emote text processing, not
 // named in this unit's scope, and stays in eq.cpp.
+//
+// K06 (Batch K, refactor/K_component_extraction.md): moved again, from
+// src/client/eq_entities.cpp to here, and the bodies rebased from EverQuest
+// onto eqt::entities::EntitiesComponent. Still verbatim -- only the
+// substitutions §Mechanism 4 allows (m_game_state/m_bridge/m_entities/
+// m_character/m_combat_manager/m_trade_manager -> ctx_.*; m_guild_id/
+// m_server_filter_sent/m_send_exp_zonein_received/m_zone_entry_sent/
+// m_zone_lines/m_player_graphics_entity_pending -> owner_.m_*, they stay on
+// EverQuest; SetLoadingPhase()/SetMySpawnId()/PosX()/PosY()/PosZ()/
+// HeadingDeg()/SetPosLocal()/SyncEntityToGameState()/OnPetCreated()/
+// OnPetButtonStateChanged()/UpdateDayNightState()/ZoneSendSetServerFilter()/
+// ZoneSendClientReady()/MySpawnId() -> owner_.*, they stay on EverQuest;
+// s_debug_level -> EverQuest::s_debug_level, reached through the friendship).
+// m_entities itself is the map, and STAYS a core member (ctx_.entities) --
+// this component owns the handlers that mutate it, not the storage. See the
+// K06 Review.
 
 #include "client/eq.h"
+#include "client/entities/entities_component.h"
 #include "client/world_object.h"
 #include "client/combat.h"
 #include "client/trade_manager.h"
@@ -41,14 +58,14 @@
 #include <cstring>
 #include <cmath>
 
-void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
+void eqt::entities::EntitiesComponent::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 {
-	SetLoadingPhase(LoadingPhase::ZONE_RECEIVING_SPAWNS);
+	owner_.SetLoadingPhase(LoadingPhase::ZONE_RECEIVING_SPAWNS);
 
 	// ZoneSpawns contains multiple Spawn_Struct entries
 	// Based on titanium_structs.h, Spawn_Struct is 385 bytes
 
-	if (s_debug_level >= 2) {
+	if (EverQuest::s_debug_level >= 2) {
 		LOG_DEBUG(MOD_ENTITY, "Received zone spawns packet, size: {} bytes", p.Length());
 	}
 	
@@ -138,7 +155,7 @@ void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 		if (entity.heading >= 360.0f) entity.heading -= 360.0f;
 
 		// Debug logging for current player at level 1+
-		if (s_debug_level >= 1 && entity.name == m_character) {
+		if (EverQuest::s_debug_level >= 1 && entity.name == ctx_.character) {
 			LOG_DEBUG(MOD_MOVEMENT, "POS S->C ZoneSpawns [SELF] spawn_id={} name='{}'", entity.spawn_id, entity.name);
 			LOG_DEBUG(MOD_MOVEMENT, "POS S->C ZoneSpawns [SELF] raw_heading={} -> server_heading={:.2f}deg -> entity.heading={:.2f}deg (isNPC={})",
 				raw_heading, server_heading, entity.heading, isNPC);
@@ -204,50 +221,50 @@ void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 		// Validate the spawn data before adding
 		if (entity.spawn_id > 0 && entity.spawn_id < 100000 && !entity.name.empty()) {
 			// Check if this is our own character and update our position
-			if (entity.name == m_character) {
-				if (MySpawnId() != 0 && MySpawnId() != entity.spawn_id) {
-					LOG_WARN(MOD_ZONE, "Spawn ID changed in ZoneSpawns: {} -> {}", MySpawnId(), entity.spawn_id);
+			if (entity.name == ctx_.character) {
+				if (owner_.MySpawnId() != 0 && owner_.MySpawnId() != entity.spawn_id) {
+					LOG_WARN(MOD_ZONE, "Spawn ID changed in ZoneSpawns: {} -> {}", owner_.MySpawnId(), entity.spawn_id);
 				}
-				SetMySpawnId(entity.spawn_id);  // T288: one store
-				if (m_trade_manager) {
-					m_trade_manager->setMySpawnId(MySpawnId());
+				owner_.SetMySpawnId(entity.spawn_id);  // T288: one store
+				if (ctx_.trade_manager) {
+					ctx_.trade_manager->setMySpawnId(owner_.MySpawnId());
 				}
 
 				// Debug: Zone-in position tracking at level 1
-				if (s_debug_level >= 1) {
-					LOG_INFO(MOD_ZONE, "[ZONE-IN] Found our spawn in ZoneSpawns: ID={} Name='{}'", MySpawnId(), m_character);
+				if (EverQuest::s_debug_level >= 1) {
+					LOG_INFO(MOD_ZONE, "[ZONE-IN] Found our spawn in ZoneSpawns: ID={} Name='{}'", owner_.MySpawnId(), ctx_.character);
 					LOG_INFO(MOD_ZONE, "[ZONE-IN] Spawn entity: pos=({:.2f},{:.2f},{:.2f}) heading={:.2f} size={:.2f}",
 					         entity.x, entity.y, entity.z, entity.heading, entity.size);
 					LOG_INFO(MOD_ZONE, "[ZONE-IN] Previous client pos: ({:.2f},{:.2f},{:.2f}) heading={:.2f}",
-					         PosX(), PosY(), PosZ(), HeadingDeg());
+					         owner_.PosX(), owner_.PosY(), owner_.PosZ(), owner_.HeadingDeg());
 				}
 
-				if (s_debug_level >= 2) {
+				if (EverQuest::s_debug_level >= 2) {
 					LOG_DEBUG(MOD_ENTITY, "=== FOUND OUR CHARACTER ===");
-					LOG_DEBUG(MOD_ENTITY, "Name: '{}' Spawn ID: {}", m_character, MySpawnId());
+					LOG_DEBUG(MOD_ENTITY, "Name: '{}' Spawn ID: {}", ctx_.character, owner_.MySpawnId());
 					LOG_DEBUG(MOD_ENTITY, "Position: x={:.2f} y={:.2f} z={:.2f} heading={:.2f}",
 						entity.x, entity.y, entity.z, entity.heading);
 					LOG_DEBUG(MOD_ENTITY, "Size: {:.2f} (THIS IS THE ACTUAL SIZE)", entity.size);
-					LOG_DEBUG(MOD_ENTITY, "Previous z={:.2f}, updating to entity.z={:.2f}", PosZ(), entity.z);
-					LOG_DEBUG(MOD_ENTITY, "Previous m_game_state.player().size()={:.2f}, updating to entity.size={:.2f}", m_game_state.player().size(), entity.size);
+					LOG_DEBUG(MOD_ENTITY, "Previous z={:.2f}, updating to entity.z={:.2f}", owner_.PosZ(), entity.z);
+					LOG_DEBUG(MOD_ENTITY, "Previous ctx_.game_state.player().size()={:.2f}, updating to entity.size={:.2f}", ctx_.game_state.player().size(), entity.size);
 					LOG_DEBUG(MOD_ENTITY, "==============================");
 				}
 #ifdef EQT_HAS_GRAPHICS
 				// Notify bridge of player spawn ID (D17b: bridge is sole path to renderer)
-				if (m_bridge) {
-					if (s_debug_level >= 1) {
-						LOG_INFO(MOD_ZONE, "[ZONE-IN] Publishing PlayerSpawnIdSet({}) from ZoneSpawns", MySpawnId());
+				if (ctx_.bridge) {
+					if (EverQuest::s_debug_level >= 1) {
+						LOG_INFO(MOD_ZONE, "[ZONE-IN] Publishing PlayerSpawnIdSet({}) from ZoneSpawns", owner_.MySpawnId());
 					}
-					m_bridge->pushEvent(eqt::state::GameEvent(
+					ctx_.bridge->pushEvent(eqt::state::GameEvent(
 						eqt::state::GameEventType::PlayerSpawnIdSet,
-						eqt::state::PlayerSpawnIdSetData{MySpawnId()}));
+						eqt::state::PlayerSpawnIdSetData{owner_.MySpawnId()}));
 				}
 				// Mark player entity as pending creation - will be created when ClientUpdate arrives
 				// This ensures the loading screen stays visible until the player model is fully loaded
-				m_player_graphics_entity_pending = true;
+				owner_.m_player_graphics_entity_pending = true;
 #endif
 				// Update our position to match server spawn position
-				m_game_state.player().setSize(entity.size);
+				ctx_.game_state.player().setSize(entity.size);
 				// T311 (closes T310 Leg B's note): the spawn struct's z is the
 				// WIRE frame -- groundZ + 0.625*size, MEASURED off the official
 				// Titanium client (T311 Leg A). GameState's player z is the
@@ -269,35 +286,35 @@ void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 				// identity and the stored z is still the raw wire value. Say so,
 				// or the send path will convert a value that was never in the
 				// render frame (T311: that compounded 0.625 per login).
-				SetPosLocal(entity.x, entity.y,
+				owner_.SetPosLocal(entity.x, entity.y,
 				            eqt::wireZToRenderZ(entity.z,
-				                                m_game_state.player().collisionZOffset(),
+				                                ctx_.game_state.player().collisionZOffset(),
 				                                entity.size));
-				m_game_state.player().setZAwaitingFrameConversion(
-					m_game_state.player().collisionZOffset() <= 0.0f);
+				ctx_.game_state.player().setZAwaitingFrameConversion(
+					ctx_.game_state.player().collisionZOffset() <= 0.0f);
 				// Don't update heading from spawn data as it may be scaled differently
 
-				if (s_debug_level >= 1) {
+				if (EverQuest::s_debug_level >= 1) {
 					LOG_INFO(MOD_ZONE, "[ZONE-IN] Updated client pos from spawn: ({:.2f},{:.2f},{:.2f}) (render/node-origin Z, wire Z was {:.2f}) heading unchanged={:.2f}",
-					         PosX(), PosY(), PosZ(), entity.z, HeadingDeg());
+					         owner_.PosX(), owner_.PosY(), owner_.PosZ(), entity.z, owner_.HeadingDeg());
 				}
 
 				// Update bridge with the render-frame (node-origin) Z
-				if (m_bridge) {
-					float heading512 = HeadingDeg() * 512.0f / 360.0f;
+				if (ctx_.bridge) {
+					float heading512 = owner_.HeadingDeg() * 512.0f / 360.0f;
 					eqt::state::PlayerMovedData pdata;
-					pdata.x = PosX(); pdata.y = PosY(); pdata.z = PosZ();
+					pdata.x = owner_.PosX(); pdata.y = owner_.PosY(); pdata.z = owner_.PosZ();
 					pdata.heading = heading512;
 					pdata.dx = 0; pdata.dy = 0; pdata.dz = 0;
 					pdata.isMoving = false;
-					m_bridge->pushEvent(eqt::state::GameEvent(
+					ctx_.bridge->pushEvent(eqt::state::GameEvent(
 						eqt::state::GameEventType::PlayerMoved, std::move(pdata)));
 				}
 			}
 
 			// Add to entity list (sync to both local map and EntityManager)
-			m_entities[entity.spawn_id] = entity;
-			SyncEntityToGameState(entity);
+			ctx_.entities[entity.spawn_id] = entity;
+			owner_.SyncEntityToGameState(entity);
 			spawn_count++;
 
 			// NOTE: Graphics entities are NOT created here during ZoneSpawns processing.
@@ -324,30 +341,30 @@ void EverQuest::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 	// Second pass: Check for pet after all spawns are loaded (if we know our spawn ID)
 	// This handles the case where our character is in ZoneSpawns. If not, deferred
 	// pet detection in ClientUpdate will find the pet when our spawn ID is set.
-	if (MySpawnId() != 0 && m_game_state.pet().petSpawnId() == 0) {
-		for (const auto& pair : m_entities) {
+	if (owner_.MySpawnId() != 0 && ctx_.game_state.pet().petSpawnId() == 0) {
+		for (const auto& pair : ctx_.entities) {
 			const Entity& ent = pair.second;
-			if (ent.is_pet != 0 && ent.pet_owner_id == MySpawnId()) {
+			if (ent.is_pet != 0 && ent.pet_owner_id == owner_.MySpawnId()) {
 				// T286: PetState is the only store. setPet() (via
 				// OnPetCreated below) clears the button states, so FOLLOW
 				// is set AFTER it, not before.
 				LOG_INFO(MOD_MAIN, "Pet detected in ZoneSpawns: {} (ID: {}) Level {} owned by us (ID: {})",
-					ent.name, ent.spawn_id, ent.level, MySpawnId());
+					ent.name, ent.spawn_id, ent.level, owner_.MySpawnId());
 				// T43: was #ifdef EQT_HAS_GRAPHICS. OnPetCreated() is a pure
 				// bridge-event publish (eq_bridge.cpp; no renderer dependency)
 				// -- gating it meant pet deltas never published in a headless
 				// build (known residual named in refactor/deferred.md's
 				// EQT_HAS_GRAPHICS pattern entry; T41's snapshot fix only
 				// covered a pet present at zone-in, not this delta path).
-				OnPetCreated(ent);
-				OnPetButtonStateChanged(EQT::PET_BUTTON_FOLLOW, true);
+				owner_.OnPetCreated(ent);
+				owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_FOLLOW, true);
 				break;
 			}
 		}
 	}
 }
 
-void EverQuest::ZoneProcessTimeOfDay(const EQ::Net::Packet &p)
+void eqt::entities::EntitiesComponent::ZoneProcessTimeOfDay(const EQ::Net::Packet &p)
 {
 	if (p.Length() < 8) {  // needs GetUInt8(2..5) + GetUInt16(6)
 		LOG_WARN(MOD_ZONE, "TimeOfDay packet too small: {} bytes (expected at least {})",
@@ -356,31 +373,31 @@ void EverQuest::ZoneProcessTimeOfDay(const EQ::Net::Packet &p)
 	}
 
 	// Phase 7.3 / T286: WorldState is the only store
-	m_game_state.world().setTimeOfDay(p.GetUInt8(2), p.GetUInt8(3), p.GetUInt8(4),
+	ctx_.game_state.world().setTimeOfDay(p.GetUInt8(2), p.GetUInt8(3), p.GetUInt8(4),
 	                                  p.GetUInt8(5), p.GetUInt16(6));
 
 	// Publish TimeOfDayChanged event to bridge
-	if (m_bridge) {
+	if (ctx_.bridge) {
 		eqt::state::TimeOfDayChangedData data;
-		data.hour = m_game_state.world().timeHour();
-		data.minute = m_game_state.world().timeMinute();
-		data.day = m_game_state.world().timeDay();
-		data.month = m_game_state.world().timeMonth();
-		data.year = m_game_state.world().timeYear();
-		m_bridge->pushEvent(eqt::state::GameEvent(
+		data.hour = ctx_.game_state.world().timeHour();
+		data.minute = ctx_.game_state.world().timeMinute();
+		data.day = ctx_.game_state.world().timeDay();
+		data.month = ctx_.game_state.world().timeMonth();
+		data.year = ctx_.game_state.world().timeYear();
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::TimeOfDayChanged, std::move(data)));
 	}
 
 #ifdef WITH_AUDIO
 	// Phase 13: Update day/night state for audio
-	UpdateDayNightState();
+	owner_.UpdateDayNightState();
 #endif
 
 	LOG_DEBUG(MOD_ZONE, "Time of day: {:02d}:{:02d} {:02d}/{:02d}{}",
-		m_game_state.world().timeHour(), m_game_state.world().timeMinute(), m_game_state.world().timeDay(), m_game_state.world().timeMonth(), m_game_state.world().timeYear());
+		ctx_.game_state.world().timeHour(), ctx_.game_state.world().timeMinute(), ctx_.game_state.world().timeDay(), ctx_.game_state.world().timeMonth(), ctx_.game_state.world().timeYear());
 }
 
-void EverQuest::ZoneProcessSpawnDoor(const EQ::Net::Packet &p)
+void eqt::entities::EntitiesComponent::ZoneProcessSpawnDoor(const EQ::Net::Packet &p)
 {
 	// Packet format: opcode(2) + array of Door_Struct(80)
 	// No count field - calculate from packet size
@@ -428,7 +445,7 @@ void EverQuest::ZoneProcessSpawnDoor(const EQ::Net::Packet &p)
 		door.isOpen = (door_data->state_at_spawn != 0) != door.invertState;
 
 		// Store in the write-model GameState (T219: was a separate third copy)
-		m_game_state.doors().addDoor(door);
+		ctx_.game_state.doors().addDoor(door);
 
 		// Debug: dump raw bytes at critical offsets (60-68)
 		LOG_DEBUG(MOD_ENTITY, "Door {} raw bytes @60-67: {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}",
@@ -439,7 +456,7 @@ void EverQuest::ZoneProcessSpawnDoor(const EQ::Net::Packet &p)
 		         door.incline, door.size, door.opentype, door_data->state_at_spawn, door.invertState ? 1 : 0);
 
 		// Publish DoorSpawned event to bridge
-		if (m_bridge) {
+		if (ctx_.bridge) {
 			eqt::state::DoorSpawnedData data;
 			data.doorId = door.doorId;
 			data.name = door.name;
@@ -453,13 +470,13 @@ void EverQuest::ZoneProcessSpawnDoor(const EQ::Net::Packet &p)
 			data.isOpen = door.isOpen;
 			data.invertState = door.invertState;
 			data.doorParam = door.doorParam;
-			m_bridge->pushEvent(eqt::state::GameEvent(
+			ctx_.bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::DoorSpawned, std::move(data)));
 		}
 	}
 }
 
-void EverQuest::ZoneProcessSendZonepoints(const EQ::Net::Packet &p)
+void eqt::entities::EntitiesComponent::ZoneProcessSendZonepoints(const EQ::Net::Packet &p)
 {
 	// Packet format: opcode(2) + count(4) + count * ZonePoint_Entry(24)
 	// Minimum size: 2 + 4 = 6 bytes
@@ -472,7 +489,7 @@ void EverQuest::ZoneProcessSendZonepoints(const EQ::Net::Packet &p)
 	LOG_DEBUG(MOD_ZONE, "Received zone points: {} entries", count);
 
 	// Parse zone points and store them in ZoneLines
-	if (m_zone_lines && count > 0) {
+	if (owner_.m_zone_lines && count > 0) {
 		std::vector<EQT::ZonePoint> zonePoints;
 		zonePoints.reserve(count);
 
@@ -497,18 +514,18 @@ void EverQuest::ZoneProcessSendZonepoints(const EQ::Net::Packet &p)
 
 			zonePoints.push_back(zp);
 
-			if (s_debug_level >= 3) {
+			if (EverQuest::s_debug_level >= 3) {
 				LOG_TRACE(MOD_ZONE, "  Zone point {}: zone={} pos=({},{},{}) heading={}",
 					zp.number, zp.targetZoneId, zp.targetX, zp.targetY, zp.targetZ, zp.heading);
 			}
 		}
 
-		m_zone_lines->setServerZonePoints(zonePoints);
+		owner_.m_zone_lines->setServerZonePoints(zonePoints);
 
 		// Publish ZoneLineBoundingBoxes event to bridge
-		if (m_bridge) {
+		if (ctx_.bridge) {
 			eqt::state::ZoneLineBoundingBoxesData data;
-			m_bridge->pushEvent(eqt::state::GameEvent(
+			ctx_.bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::ZoneLineBoundingBoxes, std::move(data)));
 		}
 
@@ -518,22 +535,22 @@ void EverQuest::ZoneProcessSendZonepoints(const EQ::Net::Packet &p)
 	// After zone points, check if we need to send server filter
 	// This is old logic - server filter is now sent after GuildMOTD
 	// But keeping it here for compatibility if the flow is different
-	if (m_zone_entry_sent && !m_game_state.world().isClientReady()) {
+	if (owner_.m_zone_entry_sent && !ctx_.game_state.world().isClientReady()) {
 		// This path shouldn't normally be taken anymore
-		if (!m_server_filter_sent && m_send_exp_zonein_received) {
+		if (!owner_.m_server_filter_sent && owner_.m_send_exp_zonein_received) {
 			LOG_DEBUG(MOD_ZONE, "ZoneProcessSendZonepoints calling ZoneSendSetServerFilter (fallback)");
-			ZoneSendSetServerFilter();
+			owner_.ZoneSendSetServerFilter();
 		}
 
 		// Send client ready - This shouldn't happen here anymore
-		if (!m_game_state.world().isClientReady() && m_server_filter_sent) {
+		if (!ctx_.game_state.world().isClientReady() && owner_.m_server_filter_sent) {
 			LOG_DEBUG(MOD_ZONE, "ZoneProcessSendZonepoints calling ZoneSendClientReady");
-			ZoneSendClientReady();
+			owner_.ZoneSendClientReady();
 		}
 	}
 }
 
-void EverQuest::ZoneProcessSpawnAppearance(const EQ::Net::Packet &p)
+void eqt::entities::EntitiesComponent::ZoneProcessSpawnAppearance(const EQ::Net::Packet &p)
 {
 	// SpawnAppearance_Struct: spawn_id(2), type(2), parameter(4) = 8 bytes + 2 opcode = 10 bytes
 	if (p.Length() < 10) {
@@ -551,13 +568,13 @@ void EverQuest::ZoneProcessSpawnAppearance(const EQ::Net::Packet &p)
 	case AT_ANIMATION:
 		// Animation update - set the entity's animation
 		{
-			auto it = m_entities.find(spawn_id);
-			if (it != m_entities.end()) {
+			auto it = ctx_.entities.find(spawn_id);
+			if (it != ctx_.entities.end()) {
 				it->second.animation = static_cast<uint8_t>(parameter);
 			}
 
 			// Publish animation events via bridge (D17b: bridge is sole path to renderer)
-			if (m_bridge) {
+			if (ctx_.bridge) {
 				// Map animation parameter to EQ model animation code
 				std::string animCode;
 				bool loop = true;
@@ -614,7 +631,7 @@ void EverQuest::ZoneProcessSpawnAppearance(const EQ::Net::Packet &p)
 						eqt::state::EntityPoseStateChangedData data;
 						data.spawnId = spawn_id;
 						data.poseState = poseState;
-						m_bridge->pushEvent(eqt::state::GameEvent(
+						ctx_.bridge->pushEvent(eqt::state::GameEvent(
 							eqt::state::GameEventType::EntityPoseStateChanged, std::move(data)));
 					}
 					eqt::state::EntityAnimationEventData data;
@@ -623,7 +640,7 @@ void EverQuest::ZoneProcessSpawnAppearance(const EQ::Net::Packet &p)
 					data.animName = animCode;
 					data.loop = loop;
 					data.playThrough = playThrough;
-					m_bridge->pushEvent(eqt::state::GameEvent(
+					ctx_.bridge->pushEvent(eqt::state::GameEvent(
 						eqt::state::GameEventType::EntityAnimationEvent, std::move(data)));
 					LogTargetEntity(spawn_id, "SpawnAppearance set animation '{}' pose={} on spawn_id={}",
 						animCode, static_cast<int>(poseState), spawn_id);
@@ -634,10 +651,10 @@ void EverQuest::ZoneProcessSpawnAppearance(const EQ::Net::Packet &p)
 
 	case AT_DIE:
 		// Entity died - trigger death animation (D17b: bridge-only)
-		if (m_bridge) {
+		if (ctx_.bridge) {
 			eqt::state::EntityDeathAnimationData data;
 			data.spawnId = spawn_id;
-			m_bridge->pushEvent(eqt::state::GameEvent(
+			ctx_.bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::EntityDeathAnimation, std::move(data)));
 		}
 		break;
@@ -645,8 +662,8 @@ void EverQuest::ZoneProcessSpawnAppearance(const EQ::Net::Packet &p)
 	case AT_HP_UPDATE:
 		// HP update
 		{
-			auto it = m_entities.find(spawn_id);
-			if (it != m_entities.end()) {
+			auto it = ctx_.entities.find(spawn_id);
+			if (it != ctx_.entities.end()) {
 				it->second.hp_percent = static_cast<uint8_t>(parameter);
 			}
 		}
@@ -657,10 +674,10 @@ void EverQuest::ZoneProcessSpawnAppearance(const EQ::Net::Packet &p)
 		// spawn_id=0 means "self", parameter contains the new spawn ID
 		if (spawn_id == 0 && parameter != 0) {
 			uint16_t newSpawnId = static_cast<uint16_t>(parameter);
-			LOG_INFO(MOD_ZONE, "Server assigned new spawn ID: {} (was {})", newSpawnId, MySpawnId());
-			SetMySpawnId(newSpawnId);  // T288: one store
-			if (m_trade_manager) {
-				m_trade_manager->setMySpawnId(MySpawnId());
+			LOG_INFO(MOD_ZONE, "Server assigned new spawn ID: {} (was {})", newSpawnId, owner_.MySpawnId());
+			owner_.SetMySpawnId(newSpawnId);  // T288: one store
+			if (ctx_.trade_manager) {
+				ctx_.trade_manager->setMySpawnId(owner_.MySpawnId());
 			}
 		}
 		break;
@@ -668,8 +685,8 @@ void EverQuest::ZoneProcessSpawnAppearance(const EQ::Net::Packet &p)
 	case AT_INVISIBLE:
 		// Invisibility state change
 		{
-			auto it = m_entities.find(spawn_id);
-			if (it != m_entities.end()) {
+			auto it = ctx_.entities.find(spawn_id);
+			if (it != ctx_.entities.end()) {
 				it->second.is_invisible = (parameter != 0);
 				LOG_DEBUG(MOD_ENTITY, "Entity {} invisibility set to {}", spawn_id, it->second.is_invisible);
 			}
@@ -680,8 +697,8 @@ void EverQuest::ZoneProcessSpawnAppearance(const EQ::Net::Packet &p)
 	case AT_SNEAK:
 		// Sneaking state change
 		{
-			auto it = m_entities.find(spawn_id);
-			if (it != m_entities.end()) {
+			auto it = ctx_.entities.find(spawn_id);
+			if (it != ctx_.entities.end()) {
 				it->second.is_sneaking = (parameter != 0);
 				LOG_DEBUG(MOD_ENTITY, "Entity {} sneaking set to {}", spawn_id, it->second.is_sneaking);
 			}
@@ -691,8 +708,8 @@ void EverQuest::ZoneProcessSpawnAppearance(const EQ::Net::Packet &p)
 	case AT_LINKDEAD:
 		// Linkdead state change
 		{
-			auto it = m_entities.find(spawn_id);
-			if (it != m_entities.end()) {
+			auto it = ctx_.entities.find(spawn_id);
+			if (it != ctx_.entities.end()) {
 				it->second.is_linkdead = (parameter != 0);
 				LOG_DEBUG(MOD_ENTITY, "Entity {} linkdead set to {}", spawn_id, it->second.is_linkdead);
 			}
@@ -703,8 +720,8 @@ void EverQuest::ZoneProcessSpawnAppearance(const EQ::Net::Packet &p)
 		// Levitate/fly mode change
 		// 0=ground, 1=flying, 2=levitate, 3=water, 4=floating, 5=levitate+run
 		{
-			auto it = m_entities.find(spawn_id);
-			if (it != m_entities.end()) {
+			auto it = ctx_.entities.find(spawn_id);
+			if (it != ctx_.entities.end()) {
 				it->second.flymode = static_cast<uint8_t>(parameter);
 				LOG_DEBUG(MOD_ENTITY, "Entity {} flymode set to {}", spawn_id, parameter);
 			}
@@ -715,8 +732,8 @@ void EverQuest::ZoneProcessSpawnAppearance(const EQ::Net::Packet &p)
 	case AT_AFK:
 		// AFK state change
 		{
-			auto it = m_entities.find(spawn_id);
-			if (it != m_entities.end()) {
+			auto it = ctx_.entities.find(spawn_id);
+			if (it != ctx_.entities.end()) {
 				it->second.is_afk = (parameter != 0);
 				LOG_DEBUG(MOD_ENTITY, "Entity {} AFK set to {}", spawn_id, it->second.is_afk);
 			}
@@ -726,8 +743,8 @@ void EverQuest::ZoneProcessSpawnAppearance(const EQ::Net::Packet &p)
 	case AT_ANONYMOUS:
 		// Anonymous/roleplay status change: 0=normal, 1=anon, 2=roleplay
 		{
-			auto it = m_entities.find(spawn_id);
-			if (it != m_entities.end()) {
+			auto it = ctx_.entities.find(spawn_id);
+			if (it != ctx_.entities.end()) {
 				it->second.anon_status = static_cast<uint8_t>(parameter);
 				LOG_DEBUG(MOD_ENTITY, "Entity {} anon_status set to {}", spawn_id, parameter);
 			}
@@ -737,8 +754,8 @@ void EverQuest::ZoneProcessSpawnAppearance(const EQ::Net::Packet &p)
 	case AT_PET:
 		// Pet owner ID update
 		{
-			auto it = m_entities.find(spawn_id);
-			if (it != m_entities.end()) {
+			auto it = ctx_.entities.find(spawn_id);
+			if (it != ctx_.entities.end()) {
 				it->second.pet_owner_id = parameter;
 				it->second.is_pet = (parameter != 0) ? 1 : 0;
 				LOG_DEBUG(MOD_ENTITY, "Entity {} pet_owner_id set to {}", spawn_id, parameter);
@@ -762,16 +779,16 @@ void EverQuest::ZoneProcessSpawnAppearance(const EQ::Net::Packet &p)
 		// in the game was dropped while the client reported success.
 		{
 			float new_size = static_cast<float>(parameter);
-			auto it = m_entities.find(spawn_id);
-			if (it != m_entities.end()) {
+			auto it = ctx_.entities.find(spawn_id);
+			if (it != ctx_.entities.end()) {
 				it->second.size = new_size;
 				LOG_DEBUG(MOD_ENTITY, "Entity {} size set to {}", spawn_id, new_size);
 			}
-			if (m_bridge && new_size > 0.0f) {
+			if (ctx_.bridge && new_size > 0.0f) {
 				eqt::state::EntitySizeChangedData data;
 				data.spawnId = spawn_id;
 				data.size = new_size;
-				m_bridge->pushEvent(eqt::state::GameEvent(
+				ctx_.bridge->pushEvent(eqt::state::GameEvent(
 					eqt::state::GameEventType::EntitySizeChanged, std::move(data)));
 			}
 		}
@@ -791,12 +808,12 @@ void EverQuest::ZoneProcessSpawnAppearance(const EQ::Net::Packet &p)
 		// data.
 		{
 			uint32_t normalized = (parameter == 0xFFFFFFFFu) ? 0u : parameter;
-			auto it = m_entities.find(spawn_id);
-			if (it != m_entities.end()) {
+			auto it = ctx_.entities.find(spawn_id);
+			if (it != ctx_.entities.end()) {
 				it->second.guild_id = normalized;
 			}
-			if (spawn_id == MySpawnId()) {
-				m_guild_id = normalized;
+			if (spawn_id == owner_.MySpawnId()) {
+				owner_.m_guild_id = normalized;
 				LOG_INFO(MOD_ENTITY, "Our guild id changed to {} via SpawnAppearance", normalized);
 			}
 		}
@@ -805,15 +822,15 @@ void EverQuest::ZoneProcessSpawnAppearance(const EQ::Net::Packet &p)
 	case AT_LIGHT:
 		// Light source change
 		{
-			auto it = m_entities.find(spawn_id);
-			if (it != m_entities.end()) {
+			auto it = ctx_.entities.find(spawn_id);
+			if (it != ctx_.entities.end()) {
 				it->second.light = static_cast<uint8_t>(parameter);
 				LOG_DEBUG(MOD_ENTITY, "Entity {} light set to {}", spawn_id, parameter);
-				if (m_bridge) {
+				if (ctx_.bridge) {
 					eqt::state::EntityLightChangedData data;
 					data.spawnId = spawn_id;
 					data.lightLevel = static_cast<uint8_t>(parameter);
-					m_bridge->pushEvent(eqt::state::GameEvent(
+					ctx_.bridge->pushEvent(eqt::state::GameEvent(
 						eqt::state::GameEventType::EntityLightChanged, std::move(data)));
 				}
 			}

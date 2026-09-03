@@ -103,7 +103,7 @@ void EqActionHandler::listHuntTargets() {
 // ========== Entity Query ==========
 
 void EqActionHandler::listEntities(const std::string& filter) {
-    m_eq.ListEntities(filter);
+    m_eq.Entities().ListEntities(filter);
 }
 
 void EqActionHandler::dumpEntityAppearance(const std::string& name) {
@@ -113,7 +113,7 @@ void EqActionHandler::dumpEntityAppearance(const std::string& name) {
 // ========== Utility ==========
 
 void EqActionHandler::sendAnimation(uint8_t animationId, uint8_t speed) {
-    m_eq.SendAnimation(animationId, speed);
+    m_eq.Entities().SendAnimation(animationId, speed);
 }
 
 // ========== Social (T102) ==========

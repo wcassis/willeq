@@ -72,7 +72,7 @@ TEST(InteractWorldObject, CapturedForge_FoundInRangeAndNotFoundOutOfRange) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
     ReplayCapturedForgeGroundSpawn(eq);
 
-    const eqt::WorldObject* forge = eq.GetWorldObject(190);
+    const eqt::WorldObject* forge = eq.Entities().GetWorldObject(190);
     ASSERT_NE(forge, nullptr);
 
     EqActionHandler handler(eq);
@@ -99,7 +99,7 @@ TEST(InteractWorldObject, Dispatcher_InteractSucceedsWithForgeInRange) {
     eq.Test_SetBypassSendGuardForSeam(true);
     ReplayCapturedForgeGroundSpawn(eq);
 
-    const eqt::WorldObject* forge = eq.GetWorldObject(190);
+    const eqt::WorldObject* forge = eq.Entities().GetWorldObject(190);
     ASSERT_NE(forge, nullptr);
     StandNear(eq, *forge, 3.0f);
 

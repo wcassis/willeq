@@ -499,11 +499,11 @@ TEST(TradeskillCombine, ClearObjectDoesNotDeleteTheWorldObjectWithDropIdOne) {
 
     h.serverClearObject();
 
-    EXPECT_NE(h.eq.GetWorldObject(1), nullptr)
+    EXPECT_NE(h.eq.Entities().GetWorldObject(1), nullptr)
         << "OP_ClearObject deleted an unrelated ground spawn";
     // ...and the forge is still there and still open (a combine's ClearObject
     // does not close the window).
-    EXPECT_NE(h.eq.GetWorldObject(kForgeDropId), nullptr);
+    EXPECT_NE(h.eq.Entities().GetWorldObject(kForgeDropId), nullptr);
     EXPECT_EQ(h.eq.GetActiveTradeskillObjectId(), kForgeDropId);
 }
 

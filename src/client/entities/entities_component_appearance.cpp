@@ -5,8 +5,23 @@
 // Clusters of eq_entities.cpp (Batch F unit F11), split off by Batch J unit
 // J08. Moved verbatim, no behavior change. See
 // refactor/J08_eq_entities_split.md and refactor/F11_entities.md.
+//
+// K06 (Batch K, refactor/K_component_extraction.md): moved again, from
+// src/client/eq_entities_appearance.cpp to here, and the bodies rebased from
+// EverQuest onto eqt::entities::EntitiesComponent. Still verbatim -- only the
+// substitutions §Mechanism 4 allows (m_game_state/m_bridge/m_entities/
+// m_combat_manager/m_trade_manager/m_inventory_manager/m_buff_manager ->
+// ctx_.*; m_loot_complete_corpse_id/m_loot_items/m_pending_loot_slots ->
+// owner_.m_* (loot cluster, K11 owns the eventual move); AddChatSystemMessage()/
+// OnPetRemoved()/OnSpawnRemovedGraphics()/RemoveEntityFromGameState()/
+// UpdateInventoryStats()/IsFullyZonedIn()/CalculateDistance()/PosX()/PosY()/
+// PosZ()/MySpawnId() -> owner_.*, they stay on EverQuest; s_debug_level ->
+// EverQuest::s_debug_level. IsTrackedTarget() is a free function
+// (common/logging.h), not an EverQuest member -- left bare. See the K06
+// Review.
 
 #include "client/eq.h"
+#include "client/entities/entities_component.h"
 #include "client/world_object.h"
 #include "client/combat.h"
 #include "client/trade_manager.h"
@@ -38,7 +53,7 @@
 #include <cstring>
 #include <cmath>
 
-void EverQuest::ZoneProcessDeleteSpawn(const EQ::Net::Packet &p)
+void eqt::entities::EntitiesComponent::ZoneProcessDeleteSpawn(const EQ::Net::Packet &p)
 {
 	// DeleteSpawn is sent when an entity despawns
 	// Format: spawn_id (2 bytes)
@@ -51,96 +66,96 @@ void EverQuest::ZoneProcessDeleteSpawn(const EQ::Net::Packet &p)
 	uint16_t spawn_id = p.GetUInt16(2);
 
 	// Special case: spawn_id 0 might mean "delete current target"
-	if (spawn_id == 0 && m_combat_manager && m_combat_manager->HasTarget()) {
-		spawn_id = m_combat_manager->GetTargetId();
-		if (s_debug_level >= 1) {
+	if (spawn_id == 0 && ctx_.combat_manager && ctx_.combat_manager->HasTarget()) {
+		spawn_id = ctx_.combat_manager->GetTargetId();
+		if (EverQuest::s_debug_level >= 1) {
 			LOG_DEBUG(MOD_MAIN, "DeleteSpawn with ID 0 interpreted as current target: {}", spawn_id);
 		}
 	}
 	
-	auto it = m_entities.find(spawn_id);
-	if (it != m_entities.end()) {
+	auto it = ctx_.entities.find(spawn_id);
+	if (it != ctx_.entities.end()) {
 		// Handle corpse deletion - only delete corpses we've finished looting
 		if (it->second.is_corpse) {
 			// If we're actively looting this corpse, close the loot window first
-			if (m_game_state.player().lootingCorpseId() == spawn_id) {
+			if (ctx_.game_state.player().lootingCorpseId() == spawn_id) {
 				LOG_DEBUG(MOD_ENTITY, "Corpse {} ({}) being deleted while looting, closing loot window", spawn_id, it->second.name);
 				// Publish LootWindowClosed (D18a: bridge is sole path to renderer)
-				if (m_bridge) {
+				if (ctx_.bridge) {
 					eqt::state::LootWindowClosedData lwdata;
 					lwdata.corpseId = spawn_id;
-					m_bridge->pushEvent(eqt::state::GameEvent(
+					ctx_.bridge->pushEvent(eqt::state::GameEvent(
 						eqt::state::GameEventType::LootWindowClosed, std::move(lwdata)));
 				}
-				m_loot_items.clear();
-				m_pending_loot_slots.clear();
-				m_game_state.player().clearLootingCorpse();  // Phase 7.7 / T286
+				owner_.m_loot_items.clear();
+				owner_.m_pending_loot_slots.clear();
+				ctx_.game_state.player().clearLootingCorpse();  // Phase 7.7 / T286
 				// Mark as ready for deletion
-				m_loot_complete_corpse_id = spawn_id;
+				owner_.m_loot_complete_corpse_id = spawn_id;
 				// T268: the loot policy machine leaves LOOTING with the window.
-				if (m_combat_manager) {
-					m_combat_manager->OnLootWindowClosed();
+				if (ctx_.combat_manager) {
+					ctx_.combat_manager->OnLootWindowClosed();
 				}
 			}
 
 			// Only delete corpses we've completed looting
 			// This prevents corpses from being deleted when NPCs die (server sends DeleteSpawn(0))
-			if (m_loot_complete_corpse_id != spawn_id) {
+			if (owner_.m_loot_complete_corpse_id != spawn_id) {
 				LOG_TRACE(MOD_ENTITY, "Ignoring DeleteSpawn for corpse {} ({}) - not finished looting", spawn_id, it->second.name);
 				return;
 			}
 
 			LOG_DEBUG(MOD_ENTITY, "Corpse {} ({}) removed by server after looting", spawn_id, it->second.name);
-			m_loot_complete_corpse_id = 0;  // Clear the flag
+			owner_.m_loot_complete_corpse_id = 0;  // Clear the flag
 		}
 
 		LOG_DEBUG(MOD_ENTITY, "Entity {} ({}) despawned", spawn_id, it->second.name);
 
 		// Cancel trade if partner despawned
-		if (m_trade_manager && m_trade_manager->isTrading() &&
-			m_trade_manager->getPartnerSpawnId() == spawn_id) {
+		if (ctx_.trade_manager && ctx_.trade_manager->isTrading() &&
+			ctx_.trade_manager->getPartnerSpawnId() == spawn_id) {
 			LOG_DEBUG(MOD_MAIN, "Trade partner despawned, canceling trade");
-			m_trade_manager->cancelTrade();
-			AddChatSystemMessage("Trade cancelled - partner is no longer available");
+			ctx_.trade_manager->cancelTrade();
+			owner_.AddChatSystemMessage("Trade cancelled - partner is no longer available");
 		}
 
 		// Check if our pet despawned
-		if (spawn_id == m_game_state.pet().petSpawnId()) {
+		if (spawn_id == ctx_.game_state.pet().petSpawnId()) {
 			LOG_INFO(MOD_MAIN, "Pet {} ({}) despawned", spawn_id, it->second.name);
 			// T286: PetState is the only store; OnPetRemoved's clearPet()
 			// zeroes the id and the button states.
 			// Clear pet buffs
-			if (m_buff_manager) {
-				m_buff_manager->clearPetBuffs();
+			if (ctx_.buff_manager) {
+				ctx_.buff_manager->clearPetBuffs();
 			}
 			// T221: was #ifdef EQT_HAS_GRAPHICS -- same T43 reasoning as
 			// OnPetCreated() above: a pure bridge publish (now also the
 			// source-side pet().clearPet()); gating it left the headless
 			// build's pet state set forever after a despawn.
-			OnPetRemoved();
+			owner_.OnPetRemoved();
 		}
 
 		// Check if our combat target despawned - disable auto-attack
-		if (m_combat_manager && m_combat_manager->HasTarget() &&
-			m_combat_manager->GetTargetId() == spawn_id) {
+		if (ctx_.combat_manager && ctx_.combat_manager->HasTarget() &&
+			ctx_.combat_manager->GetTargetId() == spawn_id) {
 			LOG_DEBUG(MOD_COMBAT, "Combat target {} ({}) despawned, disabling auto-attack", spawn_id, it->second.name);
-			m_combat_manager->DisableAutoAttack();
-			m_combat_manager->ClearTarget();
+			ctx_.combat_manager->DisableAutoAttack();
+			ctx_.combat_manager->ClearTarget();
 		}
 
 #ifdef EQT_HAS_GRAPHICS
-		OnSpawnRemovedGraphics(spawn_id);
+		owner_.OnSpawnRemovedGraphics(spawn_id);
 #endif
 
 		// Remove from both local map and EntityManager
-		m_entities.erase(it);
-		RemoveEntityFromGameState(spawn_id);
+		ctx_.entities.erase(it);
+		owner_.RemoveEntityFromGameState(spawn_id);
 	} else {
 		LOG_DEBUG(MOD_ENTITY, "DeleteSpawn for unknown spawn_id: {}", spawn_id);
 	}
 }
 
-void EverQuest::ZoneProcessMobHealth(const EQ::Net::Packet &p)
+void eqt::entities::EntitiesComponent::ZoneProcessMobHealth(const EQ::Net::Packet &p)
 {
 	// MobHealth updates an entity's health percentage
 	// Format: spawn_id (2 bytes), hp_percent (1 byte)
@@ -153,11 +168,11 @@ void EverQuest::ZoneProcessMobHealth(const EQ::Net::Packet &p)
 	uint16_t spawn_id = p.GetUInt16(2);
 	uint8_t hp_percent = p.GetUInt8(4);
 	
-	auto it = m_entities.find(spawn_id);
-	if (it != m_entities.end()) {
+	auto it = ctx_.entities.find(spawn_id);
+	if (it != ctx_.entities.end()) {
 		uint8_t old_hp = it->second.hp_percent;
 		it->second.hp_percent = hp_percent;
-		if (s_debug_level >= 2 || IsTrackedTarget(spawn_id)) {
+		if (EverQuest::s_debug_level >= 2 || IsTrackedTarget(spawn_id)) {
 			LOG_DEBUG(MOD_ENTITY, "[HP] Entity {} ({}) health: {}% -> {}%", spawn_id, it->second.name, old_hp, hp_percent);
 		}
 		// T221: source-side writes, hoisted out of the bridge guard below.
@@ -165,28 +180,28 @@ void EverQuest::ZoneProcessMobHealth(const EQ::Net::Packet &p)
 		// redundant with this. Pet HP: the PetStatsChanged projection (T40)
 		// is redundant with this. manaPercent keeps T40's honest derivation
 		// (reads 0 for every pet until something populates cur/max_mana).
-		if (m_game_state.combat().targetId() == spawn_id) {
-			m_game_state.combat().setTarget(spawn_id, it->second.name, hp_percent, it->second.level);
+		if (ctx_.game_state.combat().targetId() == spawn_id) {
+			ctx_.game_state.combat().setTarget(spawn_id, it->second.name, hp_percent, it->second.level);
 		}
-		if (m_game_state.pet().petSpawnId() == spawn_id) {
+		if (ctx_.game_state.pet().petSpawnId() == spawn_id) {
 			uint8_t manaPercent = (it->second.max_mana > 0)
 				? static_cast<uint8_t>((it->second.cur_mana * 100) / it->second.max_mana)
 				: 0;
-			m_game_state.pet().updatePetStats(hp_percent, manaPercent);
+			ctx_.game_state.pet().updatePetStats(hp_percent, manaPercent);
 		}
 		// Update target HP via bridge if this is our current target (D17b)
 		// Note: EntityStatsChanged event published below covers this
 		// Publish EntityStatsChanged event
-		if (m_bridge) {
+		if (ctx_.bridge) {
 			eqt::state::EntityStatsChangedData data;
 			data.spawnId = spawn_id;
 			data.hpPercent = hp_percent;
 			data.curMana = 0;
 			data.maxMana = 0;
-			m_bridge->pushEvent(eqt::state::GameEvent(
+			ctx_.bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::EntityStatsChanged, std::move(data)));
 			// If this entity is the current target, push TargetChanged with updated HP
-			if (m_game_state.combat().targetId() == spawn_id) {
+			if (ctx_.game_state.combat().targetId() == spawn_id) {
 				eqt::state::TargetChangedData tdata;
 				tdata.spawnId = spawn_id;
 				tdata.hpPercent = hp_percent;
@@ -204,7 +219,7 @@ void EverQuest::ZoneProcessMobHealth(const EQ::Net::Packet &p)
 					tdata.equipment[i] = it->second.equipment[i];
 					tdata.equipmentTint[i] = it->second.equipment_tint[i];
 				}
-				m_bridge->pushEvent(eqt::state::GameEvent(
+				ctx_.bridge->pushEvent(eqt::state::GameEvent(
 					eqt::state::GameEventType::TargetChanged, std::move(tdata)));
 			}
 			// T40: if this entity is our pet, push PetStatsChanged with the
@@ -213,21 +228,21 @@ void EverQuest::ZoneProcessMobHealth(const EQ::Net::Packet &p)
 			// are populated only for the player's own entity (ManaChange
 			// packet is player-only), never for pets, so this will read 0
 			// for every pet until/unless something starts populating it.
-			if (m_game_state.pet().petSpawnId() == spawn_id) {
+			if (ctx_.game_state.pet().petSpawnId() == spawn_id) {
 				eqt::state::PetStatsChangedData pdata;
 				pdata.spawnId = spawn_id;
 				pdata.hpPercent = hp_percent;
 				pdata.manaPercent = (it->second.max_mana > 0)
 					? static_cast<uint8_t>((it->second.cur_mana * 100) / it->second.max_mana)
 					: 0;
-				m_bridge->pushEvent(eqt::state::GameEvent(
+				ctx_.bridge->pushEvent(eqt::state::GameEvent(
 					eqt::state::GameEventType::PetStatsChanged, std::move(pdata)));
 			}
 		}
 	}
 }
 
-void EverQuest::ZoneProcessHPUpdate(const EQ::Net::Packet &p)
+void eqt::entities::EntitiesComponent::ZoneProcessHPUpdate(const EQ::Net::Packet &p)
 {
 	// HPUpdate is sent for an entity's HP
 	// SpawnHPUpdate_Struct format: cur_hp (4 bytes), max_hp (4 bytes), spawn_id (2 bytes)
@@ -244,11 +259,11 @@ void EverQuest::ZoneProcessHPUpdate(const EQ::Net::Packet &p)
 	uint16_t spawn_id = p.GetUInt16(10);
 
 	// Check if this is our own HP update
-	bool is_self = (spawn_id == MySpawnId());
+	bool is_self = (spawn_id == owner_.MySpawnId());
 
 	if (is_self) {
 		// Update player HP tracking (T286: PlayerState is the only store)
-		m_game_state.player().setHP(cur_hp, static_cast<uint32_t>(max_hp > 0 ? max_hp : 0));
+		ctx_.game_state.player().setHP(cur_hp, static_cast<uint32_t>(max_hp > 0 ? max_hp : 0));
 	}
 
 	if (is_self) {
@@ -258,25 +273,25 @@ void EverQuest::ZoneProcessHPUpdate(const EQ::Net::Packet &p)
 	}
 
 	// Update entity HP if we're tracking it
-	auto it = m_entities.find(spawn_id);
-	if (it != m_entities.end()) {
+	auto it = ctx_.entities.find(spawn_id);
+	if (it != ctx_.entities.end()) {
 		it->second.hp_percent = (max_hp > 0) ? static_cast<uint8_t>(cur_hp * 100 / max_hp) : 100;
 	}
 
 	// Update combat stats for our player
-	if (is_self && m_combat_manager) {
+	if (is_self && ctx_.combat_manager) {
 		CombatStats stats;
 		stats.current_hp = cur_hp;
 		stats.max_hp = max_hp > 0 ? static_cast<uint32_t>(max_hp) : 0;
 		// Don't update mana here - it comes from ManaChange packet
-		stats.current_mana = m_game_state.player().curMana();
-		stats.max_mana = m_game_state.player().maxMana();
+		stats.current_mana = ctx_.game_state.player().curMana();
+		stats.max_mana = ctx_.game_state.player().maxMana();
 		stats.current_endurance = 0;
 		stats.max_endurance = 0;
 		stats.hp_percent = (max_hp > 0) ? (static_cast<float>(cur_hp) * 100.0f / static_cast<float>(max_hp)) : 100.0f;
-		stats.mana_percent = (m_game_state.player().maxMana() > 0) ? (static_cast<float>(m_game_state.player().curMana()) * 100.0f / static_cast<float>(m_game_state.player().maxMana())) : 100.0f;
+		stats.mana_percent = (ctx_.game_state.player().maxMana() > 0) ? (static_cast<float>(ctx_.game_state.player().curMana()) * 100.0f / static_cast<float>(ctx_.game_state.player().maxMana())) : 100.0f;
 		stats.endurance_percent = 100.0f;
-		m_combat_manager->UpdateCombatStats(stats);
+		ctx_.combat_manager->UpdateCombatStats(stats);
 	}
 
 	// T43: was #ifdef EQT_HAS_GRAPHICS. UpdateInventoryStats() (eq_bridge.cpp)
@@ -285,25 +300,25 @@ void EverQuest::ZoneProcessHPUpdate(const EQ::Net::Packet &p)
 	// Left gated here, a headless build's equipment stats (weight, weapon
 	// skill types) never refreshed when player HP changed.
 	if (is_self) {
-		UpdateInventoryStats();
+		owner_.UpdateInventoryStats();
 	}
 
 	// Publish PlayerStatsChanged when our own HP changes
-	if (is_self && m_bridge) {
+	if (is_self && ctx_.bridge) {
 		eqt::state::PlayerStatsChangedData data;
-		data.curHP = m_game_state.player().curHP();
-		data.maxHP = m_game_state.player().maxHP();
-		data.curMana = m_game_state.player().curMana();
-		data.maxMana = m_game_state.player().maxMana();
-		data.curEndurance = m_game_state.player().curEndurance();
-		data.maxEndurance = m_game_state.player().maxEndurance();
-		data.level = m_game_state.player().level();
-		m_bridge->pushEvent(eqt::state::GameEvent(
+		data.curHP = ctx_.game_state.player().curHP();
+		data.maxHP = ctx_.game_state.player().maxHP();
+		data.curMana = ctx_.game_state.player().curMana();
+		data.maxMana = ctx_.game_state.player().maxMana();
+		data.curEndurance = ctx_.game_state.player().curEndurance();
+		data.maxEndurance = ctx_.game_state.player().maxEndurance();
+		data.level = ctx_.game_state.player().level();
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::PlayerStatsChanged, std::move(data)));
 	}
 }
 
-Entity* EverQuest::FindEntityByName(const std::string& name)
+Entity* eqt::entities::EntitiesComponent::FindEntityByName(const std::string& name)
 {
 	// Find entity by name (case-insensitive prefix match)
 	// Replace spaces with underscores in search term
@@ -311,7 +326,7 @@ Entity* EverQuest::FindEntityByName(const std::string& name)
 	std::transform(name_lower.begin(), name_lower.end(), name_lower.begin(), ::tolower);
 	std::replace(name_lower.begin(), name_lower.end(), ' ', '_');
 	
-	for (auto& pair : m_entities) {
+	for (auto& pair : ctx_.entities) {
 		Entity& entity = pair.second;
 		std::string entity_name_lower = entity.name;
 		std::transform(entity_name_lower.begin(), entity_name_lower.end(), entity_name_lower.begin(), ::tolower);
@@ -324,14 +339,14 @@ Entity* EverQuest::FindEntityByName(const std::string& name)
 	return nullptr;
 }
 
-void EverQuest::ListEntities(const std::string& search) const
+void eqt::entities::EntitiesComponent::ListEntities(const std::string& search) const
 {
-	if (!IsFullyZonedIn()) {
+	if (!owner_.IsFullyZonedIn()) {
 		std::cout << "Not in zone yet" << std::endl;
 		return;
 	}
 	
-	if (m_entities.empty()) {
+	if (ctx_.entities.empty()) {
 		std::cout << "No entities in zone" << std::endl;
 		return;
 	}
@@ -344,14 +359,14 @@ void EverQuest::ListEntities(const std::string& search) const
 	}
 	
 	if (search.empty()) {
-		std::cout << fmt::format("Entities in zone ({} total):", m_entities.size()) << std::endl;
+		std::cout << fmt::format("Entities in zone ({} total):", ctx_.entities.size()) << std::endl;
 	} else {
 		std::cout << fmt::format("Entities matching '{}' in zone:", search) << std::endl;
 	}
 	
 	// Sort entities by distance from player
 	std::vector<std::pair<float, const Entity*>> sorted_entities;
-	for (const auto& pair : m_entities) {
+	for (const auto& pair : ctx_.entities) {
 		const Entity& entity = pair.second;
 		
 		// Filter by search term if provided
@@ -363,7 +378,7 @@ void EverQuest::ListEntities(const std::string& search) const
 			}
 		}
 		
-		float dist = CalculateDistance(PosX(), PosY(), PosZ(), entity.x, entity.y, entity.z);
+		float dist = owner_.CalculateDistance(owner_.PosX(), owner_.PosY(), owner_.PosZ(), entity.x, entity.y, entity.z);
 		sorted_entities.push_back({dist, &entity});
 	}
 	
@@ -399,7 +414,7 @@ void EverQuest::ListEntities(const std::string& search) const
 	}
 }
 
-void EverQuest::ZoneProcessWearChange(const EQ::Net::Packet &p)
+void eqt::entities::EntitiesComponent::ZoneProcessWearChange(const EQ::Net::Packet &p)
 {
 	// WearChange indicates equipment changes on entities
 	// Titanium Format: spawn_id (2 bytes), material (2 bytes), color (4 bytes), wear_slot_id (1 byte)
@@ -420,8 +435,8 @@ void EverQuest::ZoneProcessWearChange(const EQ::Net::Packet &p)
 		spawn_id, wear_slot, material, color);
 
 	// Update the entity's equipment data
-	auto it = m_entities.find(spawn_id);
-	if (it != m_entities.end()) {
+	auto it = ctx_.entities.find(spawn_id);
+	if (it != ctx_.entities.end()) {
 		Entity& entity = it->second;
 
 		// Update equipment slot if valid (slots 0-8 map to equipment array)
@@ -437,7 +452,7 @@ void EverQuest::ZoneProcessWearChange(const EQ::Net::Packet &p)
 		data.spawnId = spawn_id;
 		data.raceId = entity.race_id;
 		data.gender = entity.gender;
-		data.isPlayer = (spawn_id == MySpawnId());
+		data.isPlayer = (spawn_id == owner_.MySpawnId());
 		data.face = entity.face;
 		data.haircolor = entity.haircolor;
 		data.hairstyle = entity.hairstyle;
@@ -450,8 +465,8 @@ void EverQuest::ZoneProcessWearChange(const EQ::Net::Packet &p)
 			data.equipmentTint[j] = entity.equipment_tint[j];
 		}
 		ApplyAppearanceToGameState(data);
-		if (m_bridge) {
-			m_bridge->pushEvent(eqt::state::GameEvent(
+		if (ctx_.bridge) {
+			ctx_.bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::EntityAppearanceChanged, std::move(data)));
 		}
 	}
@@ -464,9 +479,9 @@ void EverQuest::ZoneProcessWearChange(const EQ::Net::Packet &p)
 // INVENTORY items and never writes them back to m_entities -- merging the
 // payload is the only way the source matches what the projection held.
 // No-op for an unknown spawn, as the projection was.
-void EverQuest::ApplyAppearanceToGameState(const eqt::state::EntityAppearanceChangedData& d)
+void eqt::entities::EntitiesComponent::ApplyAppearanceToGameState(const eqt::state::EntityAppearanceChangedData& d)
 {
-	auto* existing = m_game_state.entities().getEntityMutable(d.spawnId);
+	auto* existing = ctx_.game_state.entities().getEntityMutable(d.spawnId);
 	if (!existing) {
 		return;
 	}
@@ -485,18 +500,18 @@ void EverQuest::ApplyAppearanceToGameState(const eqt::state::EntityAppearanceCha
 	}
 }
 
-void EverQuest::UpdatePlayerAppearanceFromInventory()
+void eqt::entities::EntitiesComponent::UpdatePlayerAppearanceFromInventory()
 {
 	// T221: was `!m_bridge || !m_inventory_manager` -- the source write below
 	// must not depend on a bridge being attached; only the publish does.
-	if (!m_inventory_manager) {
+	if (!ctx_.inventory_manager) {
 		return;
 	}
 
 	// Find the player entity
-	auto it = m_entities.find(MySpawnId());
-	if (it == m_entities.end()) {
-		LOG_WARN(MOD_ENTITY, "UpdatePlayerAppearanceFromInventory: player entity {} not found", MySpawnId());
+	auto it = ctx_.entities.find(owner_.MySpawnId());
+	if (it == ctx_.entities.end()) {
+		LOG_WARN(MOD_ENTITY, "UpdatePlayerAppearanceFromInventory: player entity {} not found", owner_.MySpawnId());
 		return;
 	}
 
@@ -504,7 +519,7 @@ void EverQuest::UpdatePlayerAppearanceFromInventory()
 
 	// Build appearance data from inventory items (D17b: bridge is sole path to renderer)
 	eqt::state::EntityAppearanceChangedData data;
-	data.spawnId = MySpawnId();
+	data.spawnId = owner_.MySpawnId();
 	data.raceId = entity.race_id;
 	data.gender = entity.gender;
 	data.isPlayer = true;
@@ -542,7 +557,7 @@ void EverQuest::UpdatePlayerAppearanceFromInventory()
 
 	LOG_DEBUG(MOD_INVENTORY, "UpdatePlayerAppearanceFromInventory: Building appearance from inventory");
 	for (const auto& mapping : mappings) {
-		const auto* item = m_inventory_manager->getItem(mapping.inventorySlot);
+		const auto* item = ctx_.inventory_manager->getItem(mapping.inventorySlot);
 		if (item) {
 			// Body armor: use material for texture variant and color for tint
 			if (mapping.equipSlotIndex < 7) {
@@ -560,15 +575,15 @@ void EverQuest::UpdatePlayerAppearanceFromInventory()
 	}
 
 	ApplyAppearanceToGameState(data);  // T221
-	if (m_bridge) {
-		m_bridge->pushEvent(eqt::state::GameEvent(
+	if (ctx_.bridge) {
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::EntityAppearanceChanged, std::move(data)));
 	}
 
 	LOG_DEBUG(MOD_INVENTORY, "UpdatePlayerAppearanceFromInventory: Updated player appearance");
 }
 
-void EverQuest::ZoneProcessIllusion(const EQ::Net::Packet &p)
+void eqt::entities::EntitiesComponent::ZoneProcessIllusion(const EQ::Net::Packet &p)
 {
 	// Illusion packet indicates race/appearance changes from illusion spells
 	// Packet format: opcode(2) + Illusion_Struct(168)
@@ -589,8 +604,8 @@ void EverQuest::ZoneProcessIllusion(const EQ::Net::Packet &p)
 	uint8_t new_helm = illusion->helmtexture;
 	float new_size = illusion->size;
 
-	auto it = m_entities.find(static_cast<uint16_t>(spawn_id));
-	if (it == m_entities.end()) {
+	auto it = ctx_.entities.find(static_cast<uint16_t>(spawn_id));
+	if (it == ctx_.entities.end()) {
 		LOG_DEBUG(MOD_ENTITY, "Illusion for unknown entity {}", spawn_id);
 		return;
 	}
@@ -621,7 +636,7 @@ void EverQuest::ZoneProcessIllusion(const EQ::Net::Packet &p)
 	data.spawnId = static_cast<uint16_t>(spawn_id);
 	data.raceId = entity.race_id;
 	data.gender = entity.gender;
-	data.isPlayer = (spawn_id == MySpawnId());
+	data.isPlayer = (spawn_id == owner_.MySpawnId());
 	data.face = entity.face;
 	data.haircolor = entity.haircolor;
 	data.hairstyle = entity.hairstyle;
@@ -634,8 +649,8 @@ void EverQuest::ZoneProcessIllusion(const EQ::Net::Packet &p)
 		data.equipmentTint[j] = entity.equipment_tint[j];
 	}
 	ApplyAppearanceToGameState(data);
-	if (m_bridge) {
-		m_bridge->pushEvent(eqt::state::GameEvent(
+	if (ctx_.bridge) {
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::EntityAppearanceChanged, std::move(data)));
 		// T318: EntityAppearanceChanged swaps the MODEL (race/gender/textures);
 		// the illusion's own size rides in the same packet and is a separate
@@ -645,7 +660,7 @@ void EverQuest::ZoneProcessIllusion(const EQ::Net::Packet &p)
 			eqt::state::EntitySizeChangedData sizeData;
 			sizeData.spawnId = static_cast<uint16_t>(spawn_id);
 			sizeData.size = new_size;
-			m_bridge->pushEvent(eqt::state::GameEvent(
+			ctx_.bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::EntitySizeChanged, std::move(sizeData)));
 		}
 	}

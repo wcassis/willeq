@@ -314,7 +314,7 @@ void EqActionHandler::dismissPet() {
 // ========== Tradeskill ==========
 
 void EqActionHandler::clickWorldObject(uint32_t dropId) {
-    m_eq.SendClickObject(dropId);
+    m_eq.Entities().SendClickObject(dropId);
 }
 
 // T316: ActionDispatcher::interactNearestWorldObject() used to return
@@ -386,7 +386,7 @@ bool EqActionHandler::resolveOpenContainerObjectType(uint32_t& objectTypeOut) {
         return false;
     }
 
-    const eqt::WorldObject* obj = m_eq.GetWorldObject(dropId);
+    const eqt::WorldObject* obj = m_eq.Entities().GetWorldObject(dropId);
     if (obj == nullptr) {
         // The container is open per the server but we have no ground-spawn
         // record for it -- report rather than guessing a type.

@@ -89,7 +89,7 @@ void EverQuest::Move(float x, float y, float z)
 
 void EverQuest::MoveToEntity(const std::string &name)
 {
-	Entity* entity = FindEntityByName(name);
+	Entity* entity = m_entities_component->FindEntityByName(name);
 	if (entity) {
 		if (s_debug_level >= 1) {
 			std::cout << fmt::format("Found entity '{}' at ({:.2f}, {:.2f}, {:.2f})", 
@@ -105,7 +105,7 @@ void EverQuest::MoveToEntity(const std::string &name)
 
 void EverQuest::MoveToEntityWithinRange(const std::string &name, float stop_distance)
 {
-	Entity* entity = FindEntityByName(name);
+	Entity* entity = m_entities_component->FindEntityByName(name);
 	if (entity) {
 		if (s_debug_level >= 1) {
 			std::cout << fmt::format("Found entity '{}' at ({:.2f}, {:.2f}, {:.2f}), stopping within {:.1f} units", 
@@ -180,7 +180,7 @@ void EverQuest::MoveToEntityWithinRange(const std::string &name, float stop_dist
 
 void EverQuest::Follow(const std::string &name)
 {
-	Entity* entity = FindEntityByName(name);
+	Entity* entity = m_entities_component->FindEntityByName(name);
 	if (entity) {
 		m_game_state.player().setFollowTarget(entity->name);  // Store the actual entity name
 		std::cout << fmt::format("Following {}", entity->name) << std::endl;
@@ -231,7 +231,7 @@ void EverQuest::StopFollow()
 
 void EverQuest::StartCombatMovement(const std::string &name, float stop_distance)
 {
-	Entity* entity = FindEntityByName(name);
+	Entity* entity = m_entities_component->FindEntityByName(name);
 	if (entity) {
 		// Phase 7.6 / T286: CombatState is the only store
 		m_game_state.combat().setCombatTarget(entity->name);
@@ -286,7 +286,7 @@ void EverQuest::UpdateCombatMovement()
 		return;
 	}
 	
-	Entity* entity = FindEntityByName(m_game_state.combat().combatTarget());
+	Entity* entity = m_entities_component->FindEntityByName(m_game_state.combat().combatTarget());
 	if (!entity) {
 		// Target disappeared
 		m_game_state.combat().setInCombatMovement(false);  // Phase 7.6 / T286
@@ -422,7 +422,7 @@ void EverQuest::Face(float x, float y, float z)
 
 void EverQuest::FaceEntity(const std::string &name)
 {
-	Entity* entity = FindEntityByName(name);
+	Entity* entity = m_entities_component->FindEntityByName(name);
 	if (entity) {
 		if (s_debug_level >= 2) {
 			std::cout << fmt::format("Facing entity '{}'", entity->name) << std::endl;

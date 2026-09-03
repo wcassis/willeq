@@ -20,7 +20,6 @@ review section under `refactor/F*.md` and `refactor/J*.md`.
 | TU | Lines | Contents |
 |---|---|---|
 | src/client/eq.cpp | 1,073 | Core after J02: ctor/lifecycle, session recording, DB/spell-system init, ConnectToLogin/World/Zone, TickNetwork, loading-phase state, PublishFullStateSnapshot, zone connection callbacks, ZoneOnPacketRecv, ReplayZonePacket, SafeQueueZonePacket, QueuePacket, Start/StopUpdateLoop, SetEQClientPath/SetConstrainedConfig |
-| eq_entities.cpp | 830 | Zone spawns, NewSpawn/DeleteSpawn, ClientUpdate interp, HP/MobHealth, appearance/WearChange/Illusion, TimeOfDay, doors, world objects, FindEntityByName, corpse naming (T160/T185) |
 | eq_action_handler.cpp | 783 | `action::EqActionHandler` — the `IActionHandler` implementation wrapping `EverQuest` for `ActionDispatcher`/`CommandProcessor` (action-layer migration T99–T143; raid guards T179–T184; skill gate T159/T162) |
 | eq_movement.cpp | 486 | Move/Follow/UpdateMovement, SendPositionUpdate, pathfinding, water state, jump, keyboard movement |
 | eq_bridge.cpp | 890 | InitGraphics/ShutdownGraphics, GameTick, Pre/PostRenderTick, ProcessBridgeIntents/Events, zone-load snapshot, loot-window flow, hotbar config, audio init |
@@ -51,11 +50,12 @@ review section under `refactor/F*.md` and `refactor/J*.md`.
 | eq_action_handler_spells_trade.cpp | 570 | J12: `EqActionHandler`'s spell, pet, trade and `/appearance` actions (SendFaceChange's producer, T153) |
 | eq_bridge_intents.cpp | 703 | J13: `ProcessBridgeIntents` — the `RendererIntent` variant switch |
 | eq_bridge_ui_audio.cpp | 744 | J13: bridge-side UI and audio wiring, hotbar slot activation |
-| eq_entities_appearance.cpp | 653 | J08: SpawnAppearance / WearChange / Illusion handlers, entity size (T318) |
-| eq_entities_updates.cpp | 767 | J08: ClientUpdate interpolation, HP / MobHealth, position broadcast |
-| eq_entities_world.cpp | 391 | J08: doors, ground spawns and world objects |
 | src/client/merchant/merchant_trade.cpp | 714 | K05: `eqt::merchant::MerchantComponent` — the trade/loot/vendor/bank/tradeskill Setup*Callbacks, the loot transfer handlers and the shop request/buy/sell/money/end handlers (was `eq_merchant_trade.cpp`, J13) |
 | src/client/merchant/merchant_vendor_bank.cpp | 633 | K05: `eqt::merchant::MerchantComponent` — the vendor window packet + open/buy/sell/close senders, the bank window, the GM trainer (owner of the moved `m_trainer_skill_caps`) and the Phase 4 tradeskill recipe senders/handlers (was `eq_merchant_vendor_bank.cpp`, J13) |
+| entities_component.cpp (in `src/client/entities/`) | 847 | K06: `eqt::entities::EntitiesComponent` — zone spawns, time of day, spawn doors, zonepoints, spawn appearance, moved out of `class EverQuest` (was `eq_entities.cpp`) |
+| entities_component_appearance.cpp (in `src/client/entities/`) | 668 | K06: `eqt::entities::EntitiesComponent` — teardown/health/appearance cluster (DeleteSpawn, MobHealth, HPUpdate, FindEntityByName, ListEntities, WearChange, ApplyAppearanceToGameState, UpdatePlayerAppearanceFromInventory, Illusion), moved out of `class EverQuest` (was `eq_entities_appearance.cpp`; entity size T318) |
+| entities_component_updates.cpp (in `src/client/entities/`) | 784 | K06: `eqt::entities::EntitiesComponent` — ground spawns, weather, new spawns, exp updates, ClientUpdate interpolation, moved out of `class EverQuest` (was `eq_entities_updates.cpp`) |
+| entities_component_world.cpp (in `src/client/entities/`) | 406 | K06: `eqt::entities::EntitiesComponent` — doors, spawn-appearance/animation/click-door senders, world-object (tradeskill container) senders and handlers, moved out of `class EverQuest` (was `eq_entities_world.cpp`) |
 | eq_movement_state.cpp | 889 | J13: SetMovementMode / SetPositionState, water and region state, jump |
 | eq_movement_update.cpp | 854 | J13: SendPositionUpdate and the wire packing (wire z = groundZ + 0.625*size, T311) |
 
@@ -71,7 +71,7 @@ This table and that plan must agree; change both together.
 | chat | `chat/chat_component`, `eq_chat` (AddChat* only), `eq_strings` | 13 | 1 | **K03 DONE** (10 of 13 defs moved; the three AddChat* output primitives stay on `EverQuest`; `eq_strings` untouched, still a free-function candidate) |
 | group | `group/group_component` | 23 | 5 | **K04 DONE** (group, raid and pet together; `DismissPet`/`UpdateGroupMemberFromEntity` deleted, zero callers) |
 | merchant | `merchant/merchant`, `_trade`, `_vendor_bank` | 54 | 1 | **K05 DONE** (54 defs, not the 56 the batch table claimed; all 54 moved. `m_trainer_skill_caps` moved; the loot/vendor/scribe members stay on `EverQuest` pending K09/K11/K12) |
-| entities | `eq_entities`, `_appearance`, `_updates`, `_world` | 28 | 1 | K06 |
+| entities | `entities/entities_component` (+ `_appearance`/`_updates`/`_world`) | 28 | 1 | **K06 DONE** (`m_entities`, the spawn-id -> Entity map, stays a core member — the component owns the handlers) |
 | movement | `eq_movement`, `_state`, `_update` | 44 | 4 | K07 |
 | player | `eq_player_info`, `_misc`, `_social`, `_state`, `_buffs`, `eq_profile_appearance` | 142 | 11 | K08 (may split in two) |
 | zone | `eq_zone`, `_dispatch`, `_entry`, `_handshake` | 41 | 17 | K09 |

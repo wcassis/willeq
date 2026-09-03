@@ -594,7 +594,7 @@ void EqActionHandler::clickNearestDoor() {
         gameState.player().z()
     );
     if (nearestDoor) {
-        m_eq.SendClickDoor(nearestDoor->doorId);
+        m_eq.Entities().SendClickDoor(nearestDoor->doorId);
     }
 }
 

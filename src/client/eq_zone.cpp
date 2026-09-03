@@ -398,7 +398,7 @@ void EverQuest::CleanupZone()
 	m_group->ClearGroup();
 
 	// Clear world objects (forges, looms, groundspawns)
-	ClearWorldObjects();
+	m_entities_component->ClearWorldObjects();
 
 	// Clear pathfinding, BSP, and zone source data
 	m_zone_bsp_tree.reset();

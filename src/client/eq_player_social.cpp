@@ -50,7 +50,7 @@ void EverQuest::PerformEmote(uint32_t animation)
 	}
 
 	// Send the emote animation using the proper Animation packet
-	SendAnimation(static_cast<uint8_t>(animation));
+	m_entities_component->SendAnimation(static_cast<uint8_t>(animation));
 	
 	// Some emotes should stop movement
 	if (animation == ANIM_KNEEL || animation == ANIM_DEATH) {
@@ -71,7 +71,7 @@ void EverQuest::SetAFK(bool afk)
 	}
 
 	m_game_state.player().setAFK(afk);  // Phase 7.8 / T286: only store
-	SendSpawnAppearance(AT_AFK, afk ? 1 : 0);
+	m_entities_component->SendSpawnAppearance(AT_AFK, afk ? 1 : 0);
 
 	if (s_debug_level >= 1) {
 		LOG_DEBUG(MOD_MAIN, "AFK status: {}", afk ? "ON" : "OFF");
@@ -85,7 +85,7 @@ void EverQuest::SetAnonymous(bool anon)
 	}
 
 	m_game_state.player().setAnonymous(anon);  // Phase 7.8 / T286: only store
-	SendSpawnAppearance(AT_ANONYMOUS, anon ? 1 : 0);
+	m_entities_component->SendSpawnAppearance(AT_ANONYMOUS, anon ? 1 : 0);
 
 	if (s_debug_level >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Anonymous status: {}", anon ? "ON" : "OFF");
@@ -99,7 +99,7 @@ void EverQuest::SetRoleplay(bool rp)
 	}
 
 	m_game_state.player().setRoleplay(rp);  // Phase 7.8 / T286: only store
-	SendSpawnAppearance(AT_ANONYMOUS, rp ? 2 : 0);  // 2 = roleplay
+	m_entities_component->SendSpawnAppearance(AT_ANONYMOUS, rp ? 2 : 0);  // 2 = roleplay
 
 	if (s_debug_level >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Roleplay status: {}", rp ? "ON" : "OFF");

@@ -129,6 +129,7 @@ namespace ui {
 #include "client/chat/chat_component.h"    // K03: ChatComponent
 #include "client/group/group_component.h"  // K04: GroupComponent (group/raid/pet)
 #include "client/merchant/merchant_component.h"  // K05: MerchantComponent
+#include "client/entities/entities_component.h"  // K06: EntitiesComponent
 
 class EverQuest
 {
@@ -392,7 +393,6 @@ public:
 	bool IsGraphicsReady() const { return m_loading_phase == LoadingPhase::COMPLETE; }
 	void OnGameStateComplete();  // Called when game state setup finishes, triggers graphics loading
 	void OnGraphicsComplete();   // Called when graphics loading finishes, enables gameplay
-	void ListEntities(const std::string& search = "") const;
 	void DumpEntityAppearance(uint16_t spawn_id) const;
 	void DumpEntityAppearance(const std::string& name) const;
 	void SetPathfinding(bool enabled) { m_use_pathfinding = enabled; }
@@ -427,20 +427,12 @@ public:
 	const std::string& GetLastTellSender() const { return m_last_tell_sender; }
 	void QueuePacket(uint16_t opcode, EQ::Net::DynamicPacket* packet);
 
-	// Door interaction
-	void SendClickDoor(uint8_t door_id, uint32_t item_id = 0);
-
-	// World object / Tradeskill interaction
-	void SendClickObject(uint32_t drop_id);
 	void SendTradeSkillCombine(int16_t container_slot);
-	void SendCloseContainer(uint32_t drop_id);
 
 	// Skill-specific packet sends
 	void SendApplyPoison(uint32_t inventory_slot);
 	const std::map<uint32_t, eqt::WorldObject>& GetWorldObjects() const { return m_world_objects; }
-	const eqt::WorldObject* GetWorldObject(uint32_t drop_id) const;
 	uint32_t GetActiveTradeskillObjectId() const { return m_active_tradeskill_object_id; }
-	void ClearWorldObjects();
 
 	// Group queries (Phase 7.5: read from GameState)
 	bool IsInGroup() const;
@@ -486,8 +478,6 @@ public:
 	// Movement state and behavior methods
 	void SetMovementMode(MovementMode mode);
 	void SetPositionState(PositionState state);
-	void SendSpawnAppearance(uint16_t type, uint32_t value);
-	void SendAnimation(uint8_t animation_id, uint8_t animation_speed = 10);
 	void SendJump();
 	void SendMovementHistory();
 	void Jump();
@@ -556,6 +546,10 @@ public:
 	// vendor, bank, trainer, recipes) is eqt::merchant::MerchantComponent;
 	// callers go through Merchant(), there are no forwarders.
 	eqt::merchant::MerchantComponent& Merchant() { return *m_merchant; }
+	// K06 (Batch K): the entities family is eqt::entities::EntitiesComponent;
+	// callers go through Entities(). m_entities (the spawn-id -> Entity map)
+	// stays a core member, ctx_.entities -- this owns the handlers, not the map.
+	eqt::entities::EntitiesComponent& Entities() { return *m_entities_component; }
 	eqt::ClientContext& Context() { return m_ctx; }
 	// Phase 3: Corpse Management
 	void SendCorpseDrag(const std::string& corpse_name);
@@ -754,6 +748,7 @@ public:
 	friend class eqt::chat::ChatComponent;    // K03 transition; K-final removes it
 	friend class eqt::group::GroupComponent;  // K04 transition; K-final removes it
 	friend class eqt::merchant::MerchantComponent;  // K05 transition; K-final removes it
+	friend class eqt::entities::EntitiesComponent;  // K06 transition; K-final removes it
 
 	// String database for EQ message lookups (works in all modes)
 	bool LoadStringFiles(const std::string& eqClientPath);
@@ -949,9 +944,6 @@ private:
 
 	// Phase 7.5: Group sync helper
 
-	// T221: source-side twin of the EntityAppearanceChanged partial merge; the
-	// InventorySlotChanged occupancy twin is K05's, on Merchant().
-	void ApplyAppearanceToGameState(const eqt::state::EntityAppearanceChangedData& data);
 
 	// Login
 	void LoginOnNewConnection(std::shared_ptr<EQ::Net::DaybreakConnection> connection);
@@ -1059,39 +1051,24 @@ private:
 
 	void ZoneProcessNewZone(const EQ::Net::Packet &p);
 	void ZoneProcessPlayerProfile(const EQ::Net::Packet &p);
-	void ZoneProcessZoneSpawns(const EQ::Net::Packet &p);
-	void ZoneProcessTimeOfDay(const EQ::Net::Packet &p);
+	// K06 (Batch K): the 17 entities-family ZoneProcess* handlers are
+	// eqt::entities::EntitiesComponent's; DispatchZonePacket calls
+	// m_entities_component->ZoneProcess*() directly.
 	void ZoneProcessTributeUpdate(const EQ::Net::Packet &p);
 	void ZoneProcessTributeTimer(const EQ::Net::Packet &p);
-	void ZoneProcessWeather(const EQ::Net::Packet &p);
 	void ZoneProcessSendAATable(const EQ::Net::Packet &p);
 	void ZoneProcessRespondAA(const EQ::Net::Packet &p);
 	void ZoneProcessTributeInfo(const EQ::Net::Packet &p);
 	void ZoneProcessSendGuildTributes(const EQ::Net::Packet &p);
-	void ZoneProcessSpawnDoor(const EQ::Net::Packet &p);
-	void ZoneProcessGroundSpawn(const EQ::Net::Packet &p);
-	void ZoneProcessClickObjectAction(const EQ::Net::Packet &p);
 	void ZoneProcessTradeSkillCombine(const EQ::Net::Packet &p);
 	void ZoneProcessApplyPoison(const EQ::Net::Packet &p);
 	void ZoneProcessTrack(const EQ::Net::Packet &p);
 	void ZoneProcessBindWound(const EQ::Net::Packet &p);
-	void ZoneProcessSendZonepoints(const EQ::Net::Packet &p);
 	void ZoneProcessSendAAStats(const EQ::Net::Packet &p);
 	void ZoneProcessSendExpZonein(const EQ::Net::Packet &p);
 	void ZoneProcessWorldObjectsSent(const EQ::Net::Packet &p);
-	void ZoneProcessSpawnAppearance(const EQ::Net::Packet &p);
 	void ZoneProcessAnimation(const EQ::Net::Packet &p);  // OP_Animation (T243 rename)
-	void ZoneProcessExpUpdate(const EQ::Net::Packet &p);
 	void ZoneProcessGuildMOTD(const EQ::Net::Packet &p);
-	void ZoneProcessNewSpawn(const EQ::Net::Packet &p);
-	void ZoneProcessClientUpdate(const EQ::Net::Packet &p);
-	void ZoneProcessDeleteSpawn(const EQ::Net::Packet &p);
-	void ZoneProcessMobHealth(const EQ::Net::Packet &p);
-	void ZoneProcessHPUpdate(const EQ::Net::Packet &p);
-	void ZoneProcessWearChange(const EQ::Net::Packet &p);
-	void UpdatePlayerAppearanceFromInventory();
-	void ZoneProcessIllusion(const EQ::Net::Packet &p);
-	void ZoneProcessMoveDoor(const EQ::Net::Packet &p);
 	void ZoneProcessCompletedTasks(const EQ::Net::Packet &p);
 	void ZoneProcessDzCompass(const EQ::Net::Packet &p);
 	void ZoneProcessDzExpeditionLockoutTimers(const EQ::Net::Packet &p);
@@ -1228,7 +1205,6 @@ private:
 	// T219: door state lives in m_game_state.doors() (the write model) --
 	// the former separate EQT::DoorStateManager member was a third copy that
 	// neither GameState instance ever saw (refactor/T78_two_gamestate_analysis.md item 3).
-	std::set<uint8_t> m_pending_door_clicks;  // Doors clicked by user, awaiting server response
 
 	// World object tracking (forges, looms, groundspawns, etc.)
 	std::map<uint32_t, eqt::WorldObject> m_world_objects;
@@ -1465,9 +1441,6 @@ private:
 	float CalculateHeading(float x1, float y1, float x2, float y2);
 	float CalculateDistance(float x1, float y1, float z1, float x2, float y2, float z2) const;
 	float CalculateDistance2D(float x1, float y1, float x2, float y2) const;
-
-	// Entity helper methods
-	Entity* FindEntityByName(const std::string& name);
 
 	// Pathfinding methods
 	void LoadPathfinder(const std::string& zone_name);
@@ -1830,4 +1803,5 @@ private:
 	std::unique_ptr<eqt::chat::ChatComponent> m_chat;
 	std::unique_ptr<eqt::group::GroupComponent> m_group;
 	std::unique_ptr<eqt::merchant::MerchantComponent> m_merchant;
+	std::unique_ptr<eqt::entities::EntitiesComponent> m_entities_component;
 };

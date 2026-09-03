@@ -1,0 +1,104 @@
+#pragma once
+
+// Batch K (refactor/K_component_extraction.md), unit K06.
+//
+// The entities family, lifted out of class EverQuest, following K01's
+// eqt::guild::GuildComponent shape. Every body in
+// src/client/entities/entities_component*.cpp is the body that used to live
+// in one of the four src/client/eq_entities*.cpp files, moved verbatim; the
+// only edits inside a body are the substitutions §Mechanism 4 allows (m_x ->
+// ctx_.x / owner_.m_x, Foo() -> owner_.Foo() for a method that stayed on
+// EverQuest).
+//
+// m_entities (the spawn-id -> Entity map itself) STAYS in EverQuest as a
+// core member, reached here as ctx_.entities: 11 TU families read it, well
+// past the batch's "core" threshold. This component owns the HANDLERS that
+// populate and mutate that map -- zone-spawn/appearance/health/wear/illusion
+// packet processing, door and world-object interaction, and the entity
+// lookup helpers -- not the map storage itself.
+//
+// `owner_` is the TRANSITION handle: the moved code still reaches EverQuest
+// members and methods that have not been extracted yet (m_exp, m_guild_id,
+// m_world_objects, AddChatSystemMessage(), ...). EverQuest declares
+// `friend class eqt::entities::EntitiesComponent` for exactly that. K-final
+// removes both the handle and the friendship.
+
+#include "client/client_context.h"
+
+#include <cstdint>
+#include <set>
+#include <string>
+
+class EverQuest;
+struct Entity;
+
+namespace eqt {
+struct WorldObject;
+namespace state {
+struct EntityAppearanceChangedData;
+}
+}
+
+namespace EQ {
+namespace Net {
+class Packet;
+}
+}
+
+namespace eqt {
+namespace entities {
+
+class EntitiesComponent {
+public:
+	EntitiesComponent(ClientContext& ctx, EverQuest& owner) : ctx_(ctx), owner_(owner) {}
+
+	// eq_entities.cpp: zone spawns, time of day, spawn doors, zonepoints,
+	// spawn appearance.
+	void ZoneProcessZoneSpawns(const EQ::Net::Packet &p);
+	void ZoneProcessTimeOfDay(const EQ::Net::Packet &p);
+	void ZoneProcessSpawnDoor(const EQ::Net::Packet &p);
+	void ZoneProcessSendZonepoints(const EQ::Net::Packet &p);
+	void ZoneProcessSpawnAppearance(const EQ::Net::Packet &p);
+
+	// eq_entities_appearance.cpp: teardown/health/appearance cluster.
+	void ZoneProcessDeleteSpawn(const EQ::Net::Packet &p);
+	void ZoneProcessMobHealth(const EQ::Net::Packet &p);
+	void ZoneProcessHPUpdate(const EQ::Net::Packet &p);
+	Entity* FindEntityByName(const std::string& name);
+	void ListEntities(const std::string& search = "") const;
+	void ZoneProcessWearChange(const EQ::Net::Packet &p);
+	void ApplyAppearanceToGameState(const eqt::state::EntityAppearanceChangedData& data);
+	void UpdatePlayerAppearanceFromInventory();
+	void ZoneProcessIllusion(const EQ::Net::Packet &p);
+
+	// eq_entities_updates.cpp: ground spawns, weather, new spawns, exp
+	// updates, client position updates.
+	void ZoneProcessGroundSpawn(const EQ::Net::Packet &p);
+	void ZoneProcessWeather(const EQ::Net::Packet &p);
+	void ZoneProcessNewSpawn(const EQ::Net::Packet &p);
+	void ZoneProcessExpUpdate(const EQ::Net::Packet &p);
+	void ZoneProcessClientUpdate(const EQ::Net::Packet &p);
+
+	// eq_entities_world.cpp: doors, spawn-appearance/animation/click-door
+	// senders, world-object (tradeskill container) senders and handlers.
+	void ZoneProcessMoveDoor(const EQ::Net::Packet &p);
+	void SendSpawnAppearance(uint16_t type, uint32_t value);
+	void SendAnimation(uint8_t animation_id, uint8_t animation_speed = 10);
+	void SendClickDoor(uint8_t door_id, uint32_t item_id = 0);
+	void SendClickObject(uint32_t drop_id);
+	void SendCloseContainer(uint32_t drop_id);
+	const eqt::WorldObject* GetWorldObject(uint32_t drop_id) const;
+	void ClearWorldObjects();
+	void ZoneProcessClickObjectAction(const EQ::Net::Packet &p);
+
+private:
+	ClientContext& ctx_;
+	EverQuest& owner_;
+
+	// Doors clicked by user, awaiting server response. Single-family; moved
+	// with SendClickDoor()/ZoneProcessSpawnDoor() (eq_entities_world.cpp).
+	std::set<uint8_t> m_pending_door_clicks;
+};
+
+}  // namespace entities
+}  // namespace eqt

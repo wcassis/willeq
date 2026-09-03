@@ -492,7 +492,7 @@ TEST_P(SourceWrites, Appearance_UpdatePlayerAppearanceFromInventory_MergesInvent
     chest.slots = 0xFFFFFFFFu;
     eq.GetInventoryManager()->setItem(eqt::inventory::SLOT_CHEST, chest);
 
-    eq.UpdatePlayerAppearanceFromInventory();
+    eq.Entities().UpdatePlayerAppearanceFromInventory();
 
     const auto* e = eq.GetGameState().entities().getEntity(kSelfId);
     ASSERT_NE(e, nullptr);

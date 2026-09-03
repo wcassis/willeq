@@ -227,7 +227,7 @@ void EverQuest::ProcessBridgeIntents() {
 				}
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::DoorInteractIntent>) {
-				SendClickDoor(i.doorId);
+				m_entities_component->SendClickDoor(i.doorId);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::VendorToggleIntent>) {
 				// If vendor window is open, close it
@@ -346,7 +346,7 @@ void EverQuest::ProcessBridgeIntents() {
 				if (it != m_world_objects.end() && it->second.isTradeskillContainer()) {
 					LOG_INFO(MOD_INVENTORY, "Clicking tradeskill container: dropId={} name='{}' type={}",
 						i.dropId, it->second.name, it->second.object_type);
-					SendClickObject(i.dropId);
+					m_entities_component->SendClickObject(i.dropId);
 				} else if (it != m_world_objects.end()) {
 					LOG_DEBUG(MOD_ENTITY, "World object {} is not a tradeskill container (type={})",
 						i.dropId, it->second.object_type);
@@ -389,7 +389,7 @@ void EverQuest::ProcessBridgeIntents() {
 				m_merchant->ScribeSpellFromScroll(i.spellId, i.bookSlot, i.sourceSlot);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::SpellbookStateIntent>) {
-				SendSpawnAppearance(AT_ANIMATION, i.isOpen ? 110 : 100);
+				m_entities_component->SendSpawnAppearance(AT_ANIMATION, i.isOpen ? 110 : 100);
 			}
 			// Buff/skill intents
 			else if constexpr (std::is_same_v<T, eqt::events::BuffCancelIntent>) {
@@ -637,7 +637,7 @@ void EverQuest::ProcessBridgeIntents() {
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::TradeskillCloseIntent>) {
 				if (i.dropId != 0) {
-					SendCloseContainer(i.dropId);
+					m_entities_component->SendCloseContainer(i.dropId);
 				}
 				m_active_tradeskill_object_id = 0;
 			}
@@ -656,7 +656,7 @@ void EverQuest::ProcessBridgeIntents() {
 				m_merchant->SendDeleteItem(i.slot);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::EquipmentChangedIntent>) {
-				UpdatePlayerAppearanceFromInventory();
+				m_entities_component->UpdatePlayerAppearanceFromInventory();
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::MemorizeSpellIntent>) {
 				// T272: this arm had its ARGUMENTS SWAPPED --

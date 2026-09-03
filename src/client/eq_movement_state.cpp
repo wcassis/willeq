@@ -303,7 +303,7 @@ void EverQuest::SetPositionState(PositionState state)
 
 	switch (state) {
 		case POS_STANDING:
-			SendSpawnAppearance(AT_ANIMATION, 100);  // Animation::Standing
+			m_entities_component->SendSpawnAppearance(AT_ANIMATION, 100);  // Animation::Standing
 			if (m_game_state.player().isMoving()) {
 				StopMovement();
 			}
@@ -313,22 +313,22 @@ void EverQuest::SetPositionState(PositionState state)
 			}
 			break;
 		case POS_SITTING:
-			SendSpawnAppearance(AT_ANIMATION, 110);  // Animation::Sitting
+			m_entities_component->SendSpawnAppearance(AT_ANIMATION, 110);  // Animation::Sitting
 			if (m_game_state.player().isMoving()) {
 				StopMovement();
 			}
 			break;
 		case POS_CROUCHING:
-			SendSpawnAppearance(AT_ANIMATION, 111);  // Animation::Crouching
+			m_entities_component->SendSpawnAppearance(AT_ANIMATION, 111);  // Animation::Crouching
 			break;
 		case POS_FEIGN_DEATH:
-			SendSpawnAppearance(AT_ANIMATION, ANIM_LYING);  // Use lying animation for feign death
+			m_entities_component->SendSpawnAppearance(AT_ANIMATION, ANIM_LYING);  // Use lying animation for feign death
 			if (m_game_state.player().isMoving()) {
 				StopMovement();
 			}
 			break;
 		case POS_DEAD:
-			SendSpawnAppearance(AT_DIE, 0);  // Use AT_DIE for actual death
+			m_entities_component->SendSpawnAppearance(AT_DIE, 0);  // Use AT_DIE for actual death
 			if (m_game_state.player().isMoving()) {
 				StopMovement();
 			}
@@ -463,7 +463,7 @@ void EverQuest::Jump()
 	}
 	
 	// Real clients send standing animation before jumping
-	SendSpawnAppearance(AT_ANIMATION, ANIM_STANDING);   // 100
+	m_entities_component->SendSpawnAppearance(AT_ANIMATION, ANIM_STANDING);   // 100
 	
 	// Send OP_Jump packet like real clients do
 	SendJump();
@@ -643,7 +643,7 @@ void EverQuest::OnEnterWater()
 	m_game_state.player().setJumping(false);
 
 	// Send flymode=3 (water) to server
-	SendSpawnAppearance(AT_FLYMODE, 3);
+	m_entities_component->SendSpawnAppearance(AT_FLYMODE, 3);
 
 #ifdef WITH_AUDIO
 	// Play water entry sound
@@ -667,7 +667,7 @@ void EverQuest::OnExitWater()
 		newFlymode = 2;  // Keep levitating
 	}
 
-	SendSpawnAppearance(AT_FLYMODE, newFlymode);
+	m_entities_component->SendSpawnAppearance(AT_FLYMODE, newFlymode);
 
 	m_water_state = WaterState::NotInWater;
 }

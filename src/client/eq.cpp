@@ -113,6 +113,8 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 	m_group = std::make_unique<eqt::group::GroupComponent>(m_ctx, *this);
 	// K05: the merchant family, same shape.
 	m_merchant = std::make_unique<eqt::merchant::MerchantComponent>(m_ctx, *this);
+	// K06: the entities family, same shape.
+	m_entities_component = std::make_unique<eqt::entities::EntitiesComponent>(m_ctx, *this);
 
 	m_host = host;
 	m_port = port;
@@ -1043,7 +1045,7 @@ void EverQuest::SetSneak(bool sneak)
 	}
 
 	m_game_state.player().setSneaking(sneak);  // Phase 7.8 / T286: only store
-	SendSpawnAppearance(AT_SNEAK, sneak ? 1 : 0);
+	m_entities_component->SendSpawnAppearance(AT_SNEAK, sneak ? 1 : 0);
 
 	if (s_debug_level >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Sneak status: {}", sneak ? "ON" : "OFF");
