@@ -147,7 +147,7 @@ into the component.**
    Batch-K budget and K05 exhausted it; the test now also walks
    `include/client/*/*_component.h`, so later units need no edit but WILL
    conflict with that fix if they branched before `a8886739`; (l) a
-   "(was `old/path.cpp`)" note in `module_map.md` is a live citation —
+   "(was …)" note naming an old file path in `module_map.md` is a live citation —
    write bare filenames in prose.
 8. **Proof.** `verify_move_only.py` exits 1 by construction. Line-multiset
    check with the substitutions normalised BY NAME MAPPING (`ctx_.character`
