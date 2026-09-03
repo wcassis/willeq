@@ -430,7 +430,7 @@ vocabularies** (verified by orchestrator, fable `a22d634`):
    `eq_commands*.cpp`). Reached ONLY via `EverQuest::ProcessChatInput()`
    (`EverQuest::DispatchSlashCommand`, `eq_chat.cpp`), fed from the
    chat-window intent (`ChatInputIntent` -> `ProcessChatInput`,
-   `eq_bridge.cpp`). **Also wrapped entirely in
+   `src/client/bridge/bridge_component_intents.cpp`). **Also wrapped entirely in
    `#ifdef EQT_HAS_GRAPHICS`** — so in a headless-compiled build, slash
    commands do not exist at all.
 2. `action::CommandProcessor` — a second slash vocabulary, the only one

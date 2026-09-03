@@ -99,7 +99,7 @@ void CombatManager::BeginLootRequest(uint16_t corpse_id) {
 	// PlayerState::setLootingCorpse) and publishes LootWindowOpened, so the
 	// item packets that follow populate EverQuest::m_loot_items (names
 	// included) for both this path and the shift+click intent.
-	m_eq->RequestLootCorpse(corpse_id);
+	m_eq->Bridge().RequestLootCorpse(corpse_id);
 
 	EnterLootSubState(LootSubState::AwaitingItems);
 }
@@ -112,7 +112,7 @@ void CombatManager::LootItem(uint32_t item_slot) {
 	// (eqemu Corpse::LootCorpseItem -> AutoPutLootInInventory); a cursor
 	// item would make the server refuse the next take
 	// (Character:CheckCursorEmptyWhenLooting).
-	m_eq->LootItemFromCorpse(m_current_corpse_id, static_cast<int16_t>(item_slot), true);
+	m_eq->Bridge().LootItemFromCorpse(m_current_corpse_id, static_cast<int16_t>(item_slot), true);
 }
 
 bool CombatManager::LootAll() {
@@ -147,7 +147,7 @@ void CombatManager::CloseLootWindow() {
 	}
 	// T268: EverQuest::CloseLootWindow is the ONE OP_EndLootRequest sender;
 	// it calls back OnLootWindowClosed() for the state transition below.
-	m_eq->CloseLootWindow(corpseId);
+	m_eq->Bridge().CloseLootWindow(corpseId);
 }
 
 void CombatManager::OnLootWindowClosed() {

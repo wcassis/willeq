@@ -134,6 +134,7 @@ namespace ui {
 #include "client/login_world/login_world_component.h"  // K10: LoginWorldComponent
 #include "client/player/player_component.h"  // K08: PlayerComponent
 #include "client/zone/zone_component.h"  // K09: ZoneComponent
+#include "client/bridge/bridge_component.h"  // K11: BridgeComponent
 
 class EverQuest
 {
@@ -374,17 +375,6 @@ public:
 	void StartUpdateLoop();
 	void StopUpdateLoop();
 	bool IsCamping() const;  // Phase 7.8: reads from GameState
-	// T171: the inspect message this client sends when answering an inspect.
-	// Truncated to EQT::INSPECT_MESSAGE_MAX_LEN on set -- the server stores
-	// only 256 bytes and a longer value would be stored unterminated.
-	//
-	// Setting it does NOT push anything to the server: there is no opcode for
-	// that on Titanium (OP_InspectMessageUpdate is SoF+ and is not even mapped
-	// in patch_Titanium.conf). It reaches the server the next time somebody
-	// inspects us, which is also the moment it replaces whatever the server
-	// held -- the same last-writer-wins the real client has.
-	const std::string& GetInspectMessage() const { return m_inspect_message; }
-	void SetInspectMessage(const std::string& message);
 	// K01 (Batch K): the guild family is eqt::guild::GuildComponent; callers go
 	// through Guild(), there are no forwarders. HasPendingGuildInvite() had
 	// zero callers tree-wide and was deleted rather than moved (§Mechanism 5).
@@ -419,6 +409,13 @@ public:
 	// K09 (Batch K): the zone family -- handshake, entry, the zone-stream
 	// opcode switch and the zone lifecycle -- is eqt::zone::ZoneComponent.
 	eqt::zone::ZoneComponent& Zone() { return *m_zone; }
+	// K11 (Batch K): the bridge family -- graphics lifecycle, the intent and
+	// event pumps, the loot window, config/hotbar/inspect persistence and
+	// audio -- is eqt::bridge::BridgeComponent. The five lifecycle entry
+	// points Application drives (setBridge, InitGraphics, ShutdownGraphics,
+	// GameTick, PostRenderTick) stay on EverQuest as forwarders; everything
+	// else goes through Bridge().
+	eqt::bridge::BridgeComponent& Bridge() { return *m_bridge_component; }
 	eqt::ClientContext& Context() { return m_ctx; }
 	// K05 (Batch K): the Phase 4 tradeskill senders are
 	// eqt::merchant::MerchantComponent's; callers go through Merchant().
@@ -468,16 +465,12 @@ public:
 	eqt::state::GameState& GetGameState() { return m_game_state; }
 	const eqt::state::GameState& GetGameState() const { return m_game_state; }
 
-	// Bridge for cross-thread game state ↔ renderer communication
-	// T46: moved out of the header (was an inline one-liner setting only
-	// m_bridge) so it can also wire the four managers' own bridge pointers
-	// via wireBridgeToSubsystems() -- previously that wiring happened only
-	// in InitGraphics(), so headless runs (which call only setBridge()) left
-	// InventoryManager/SpellManager/SkillManager/HotbarModel's bridge
-	// pointers null for the whole process. See wireBridgeToSubsystems().
+	// K11 (Batch K): one of the FIVE sanctioned lifecycle forwarders. The
+	// body is eqt::bridge::BridgeComponent::setBridge(); this forwards so
+	// Application can wire the bridge without knowing a component exists.
+	// The bridge PUMPS (ProcessBridgeIntents/ProcessBridgeEvents) are not
+	// lifecycle and go through Bridge().
 	void setBridge(eqt::bridge::GameStateBridge* bridge);
-	void ProcessBridgeIntents();  // Drain and process intents from the renderer (D14+)
-	void ProcessBridgeEvents();   // Drain and apply events to the renderer (D14+)
 
 	// Character stat getters (Phase 7.2 - read from GameState)
 	uint8_t GetLevel() const;
@@ -525,6 +518,7 @@ public:
 	friend class eqt::login_world::LoginWorldComponent;  // K10 transition; K-final removes it
 	friend class eqt::player::PlayerComponent;  // K08 transition; K-final removes it
 	friend class eqt::zone::ZoneComponent;  // K09 transition; K-final removes it
+	friend class eqt::bridge::BridgeComponent;  // K11 transition; K-final removes it
 
 	// String database for EQ message lookups (works in all modes)
 	bool LoadStringFiles(const std::string& eqClientPath);
@@ -549,22 +543,12 @@ public:
 	// Application drives GameStateSyncBridge's two-stage drain directly.)
 	void PostRenderTick(float deltaTime);  // Game thread: audio sync
 	void SetEQClientPath(const std::string& path);
-	void SetRegionMapsPath(const std::string& path) { m_region_maps_path = path; }
-	const std::string& GetEQClientPath() const { return m_eq_client_path; }
-	void SetConfigPath(const std::string& path) { m_config_path = path; }
-	const std::string& GetConfigPath() const { return m_config_path; }
-	void SaveHotbarConfig();  // Save hotbar assignments to config file
-	void LoadHotbarConfig();  // Load hotbar assignments from config file
-	void SaveInspectMessage();  // T171: persist the inspect message
-	void LoadInspectMessage();  // T171: restore it at startup
 	void PublishFullStateSnapshot(); // U00: Push all current state through bridge for new UI
 	// U07b: Standalone hotbar model
 	eqt::HotbarModel* GetHotbarModel() { return m_hotbar_model.get(); }
 	// Phase 7.3: Zone accessors read from GameState
 	const std::string& GetCurrentZoneName() const { return m_game_state.world().zoneName(); }
 	void GetTimeOfDay(uint8_t& hour, uint8_t& minute) const { hour = m_game_state.world().timeHour(); minute = m_game_state.world().timeMinute(); }
-	void OnGraphicsMovement(const eqt::events::PlayerPositionChanged& update);  // S2: takes the movement intent directly (name predates this being a plain bridge-intent handler)
-	void UpdateInventoryStats();  // Update inventory window with current stats (base + equipment)
 
 #ifdef EQT_HAS_GRAPHICS
 	// Graphics renderer methods — genuinely require the renderer/loading-thread
@@ -573,11 +557,7 @@ public:
 	                  EQT::Graphics::IrrlichtRenderer* renderer,
 	                  eqt::bridge::GameStateBridge* bridge);
 	void ShutdownGraphics();
-	eqt::ZoneLoadSnapshot CreateZoneLoadSnapshot() const;  // D20c3: snapshot for loading thread
-	void SetConstrainedPreset(EQT::Graphics::ConstrainedRenderingPreset preset) { m_constrained_preset = preset; }
-	EQT::Graphics::ConstrainedRenderingPreset GetConstrainedPreset() const { return m_constrained_preset; }
 	void SetConstrainedConfig(const EQT::Graphics::ConstrainedRendererConfig& config);
-	std::optional<EQT::Graphics::ConstrainedRendererConfig> GetConstrainedConfig() const { return m_constrained_config; }
 	// D20e3: GetRenderer() removed — EverQuest no longer holds a renderer pointer
 	// D20e2: Application owns loading status; EverQuest signals it via this pointer
 	void SetLoadingStatus(EQT::Graphics::LoadingStatus* status) { m_loading_status_ptr = status; }
@@ -585,18 +565,6 @@ public:
 	bool ConsumeZoneLoadRequest() { bool v = m_zone_load_requested; m_zone_load_requested = false; return v; }
 	// U07c3: SetWindowManager removed — old UI deleted
 	// D20g: SetRDPServer removed — RDP audio setup moved to Application
-	// D20f2: Typed BSP tree for water detection / zone lines
-	// P17/T260: installs the renderer's tree from a completed zone load.
-	// builtForZone is the zone that load was FOR (Application passes the
-	// consumed snapshot's zoneName). T260: a tree built for any zone other
-	// than the current one is REJECTED, not installed -- that is the
-	// graphicsCompleteReady finalization of the previous load landing after
-	// a fast re-zone's NewZone (P15's "SIZE_MAX with zone=<source>" FATAL was
-	// the previous zone's tree paired with the new zone's position). The
-	// tree LoadZoneSources() built for the current zone stays in place.
-	// P17 tagged with the zone name at call time, which is exactly
-	// the value that is wrong in that race.
-	void SetZoneBspTree(std::shared_ptr<EQT::Graphics::BspTree> bsp, const std::string& builtForZone);
 	// D20e2: LoadZoneGraphics moved to Application
 #endif
 
@@ -609,17 +577,6 @@ private:
 
 	// Bridge for cross-thread game state → renderer communication (Phase 2+)
 	eqt::bridge::GameStateBridge* m_bridge = nullptr;
-
-	// T46: assigns m_bridge and propagates the same pointer (including
-	// null) to the four managers' own bridge pointers
-	// (InventoryManager/SpellManager/SkillManager/HotbarModel), each of
-	// which is a separate member from m_bridge. Called from both
-	// setBridge() (the headless path) and InitGraphics() (the graphics
-	// path), so the managers get wired whichever path sets the bridge.
-	// Plain pointer assignment underneath, so calling it twice with the
-	// same pointer (graphics mode: InitGraphics() after Application's own
-	// setBridge()-equivalent construction) is a harmless no-op.
-	void wireBridgeToSubsystems(eqt::bridge::GameStateBridge* bridge);
 
 	// D20f2: Typed BSP tree for water detection, zone lines, collision
 	std::shared_ptr<EQT::Graphics::BspTree> m_zone_bsp_tree;
@@ -730,10 +687,6 @@ private:
 	void ZoneOnStatusChangeReconnectEnabled(std::shared_ptr<EQ::Net::DaybreakConnection> conn, EQ::Net::DbProtocolStatus from, EQ::Net::DbProtocolStatus to);
 	void ZoneOnStatusChangeReconnectDisabled(std::shared_ptr<EQ::Net::DaybreakConnection> conn, EQ::Net::DbProtocolStatus from, EQ::Net::DbProtocolStatus to);
 	void ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> conn, const EQ::Net::Packet &p);
-	// T171: shared resolution of the per-client config node. See the
-	// definitions in eq_bridge.cpp for why read and write are separate.
-	static Json::Value* ResolveClientConfigForWrite(Json::Value& root);
-	static const Json::Value* ResolveClientConfigForRead(const Json::Value& root);
 
 	// Combat packet handlers
 	void ZoneProcessConsider(const EQ::Net::Packet &p);
@@ -916,8 +869,6 @@ private:
 	// zone-load-request handshake).
 	// D20e3: m_renderer removed — Application owns the renderer
 	std::string m_eq_client_path;
-	std::string m_region_maps_path = "data/region_maps";
-	std::string m_config_path;  // Path to per-character config file
 	bool m_quit_requested = false;  // D20c4: Application checks this flag
 	// U07c3: m_hotbar_window_manager removed — old UI deleted
 	std::unique_ptr<eqt::HotbarModel> m_hotbar_model;  // U07b: standalone hotbar
@@ -945,19 +896,6 @@ private:
 	void runPmemDiagnostics(const std::string& label);
 	void runLoadDiagnostics(const std::string& label);
 
-	// Loot window state (game-side tracking, D18a). T268: the ONE loot
-	// window -- set by RequestLootCorpse for every open path (/loot,
-	// shift+click, auto-hunt) and read by the item-packet dispatch; the
-	// loot-all sequencing lives in CombatManager's LootSubState machine
-	// (the m_loot_all_* loop that duplicated it is gone).
-	std::vector<int16_t> m_pending_loot_slots;  // Corpse slots waiting for server confirmation
-	uint16_t m_loot_complete_corpse_id = 0;  // Corpse ID for which looting was completed (ready for deletion)
-	struct GameLootItem {
-		uint32_t itemId = 0;
-		std::string name;
-	};
-	std::map<int16_t, GameLootItem> m_loot_items;  // slot -> item data (game-side)
-
 	// Player mode vendor state (game-side tracking, D18a)
 	struct GameVendorItem {
 		uint32_t itemId = 0;
@@ -972,57 +910,18 @@ private:
 
 	// Player mode bank state
 
-	// Graphics callbacks (LoadZoneGraphics is public, others are private)
-	void OnSpawnAddedGraphics(const Entity& entity);  // Only creates entity if loading is complete
-	void OnSpawnRemovedGraphics(uint16_t spawn_id);
-	void OnSpawnMovedGraphics(uint16_t spawn_id, float x, float y, float z, float heading,
-	                          float dx, float dy, float dz, int32_t animation);
-
-	// Pet graphics callbacks
-	void OnPetCreated(const Entity& pet);
-	void OnPetRemoved();
-	void OnPetButtonStateChanged(EQT::PetButton button, bool state);
-
 	// K05 (Batch K): the inventory, scribe, loot, vendor, bank, trainer and
 	// trade packet handlers and wire senders are
 	// eqt::merchant::MerchantComponent's. DispatchZonePacket calls
 	// m_merchant->ZoneProcess*() directly; everything else goes via Merchant().
 
-	// T269 bank-coin helpers (eq_bridge.cpp, next to the Bank* intent arms).
-	// coinType is the wire scale (EQT::COINTYPE_*: 0=cp 1=sp 2=gp 3=pp).
-	// BankCoinGet/BankCoinSet read and write the counter for one
-	// denomination in one pool (bank=true -> the bank pool, false -> the
-	// on-hand pool). T286: the counters live only in
-	// m_game_state.player(), so this is a get/set pair rather than the
-	// pointer-into-a-member it used to be.
-	uint32_t BankCoinGet(uint8_t coinType, bool bank) const;
-	void BankCoinSet(uint8_t coinType, bool bank, uint32_t value);
-	static const char* BankCoinName(uint8_t coinType);
-	static int64_t BankCoinCoppers(uint8_t coinType);
-	// Publishes CurrencyChanged (only when the on-hand pool moved) +
-	// BankCurrencyChanged. T286: no mirroring step -- the counters are
-	// GameState's own.
-	void PublishBankCoinProjection(bool inventoryChanged);
-
 public:
-	// Save entity data to JSON file for debugging
-	void SaveEntityDataToFile(const std::string& filename);
-
-	// Loot window methods -- the single senders (T268): OP_LootRequest,
-	// OP_LootItem, OP_EndLootRequest. corpseId 0 means "the open window".
-	void RequestLootCorpse(uint16_t corpseId);
-	// autoLoot=true: item goes straight to inventory (eqemu
-	// AutoPutLootInInventory); false: to the cursor, as the UI gesture does.
-	// Returns false (nothing sent) when no window is open.
-	bool LootItemFromCorpse(uint16_t corpseId, int16_t slot, bool autoLoot = false);
-	void CloseLootWindow(uint16_t corpseId);
+	// K11 (Batch K): the loot window -- its three senders, its item map and
+	// its slot lookup -- is eqt::bridge::BridgeComponent's; callers go
+	// through Bridge(). This one read stays because it reads GameState, not
+	// the moved map. SaveEntityDataToFile() and GetLootWindowCorpseId() had
+	// zero callers tree-wide and were deleted (§Mechanism 5).
 	bool IsLootWindowOpen() const { return m_game_state.player().lootingCorpseId() != 0; }
-	uint16_t GetLootWindowCorpseId() const { return m_game_state.player().lootingCorpseId(); }
-	const std::map<int16_t, GameLootItem>& GetLootItems() const { return m_loot_items; }
-	// Case-insensitive match against the open window's item names: an exact
-	// match wins, else the lowest slot whose name contains `name`. Returns
-	// -1 when nothing matches (or no window is open).
-	int16_t FindLootSlotByName(const std::string& name) const;
 
 	// Vendor window state (Player mode with graphics). K05: the vendor open,
 	// buy, sell and close senders are on Merchant().
@@ -1059,27 +958,6 @@ public:
 	// (include/client/inventory/inventory_manager.h). Defined in
 	// eq_commands.cpp. See refactor/T141_equip_extraction.md.
 	void RequestEquip(const std::string& args);
-
-	// T230: fire an inventory item's click effect (OP_CastSpell, slot 10)
-	// from an INVENTORY slot. The one sender for both the mouse hotbar path
-	// (HotbarActivateIntent, Item) and the keyboard hotbar path
-	// (EqActionHandler::useItem). Every refusal is reported via
-	// AddChatSystemMessage; returns true only when the packet was queued.
-	// Pushes HotbarCooldownStarted for each hotbar slot holding the item.
-	// Defined in eq_bridge.cpp.
-	bool UseInventoryItem(int16_t slot);
-
-	// T239: fire a hotbar slot whose content is a COMMAND rather than a
-	// spell/skill/item: Emote and Macro carry command text (run through
-	// ProcessChatInput, the live chat window's unified dispatch entry);
-	// Combat toggles auto-attack (CombatManager::ToggleAutoAttack). The one
-	// body for both the mouse hotbar path (HotbarActivateIntent) and the
-	// keyboard hotbar path (EqActionHandler::activateHotbarCommandSlot <-
-	// ActionDispatcher <- InputActionBridge). Refusals are reported via
-	// AddChatSystemMessage; returns true only when something was executed.
-	// Any other slot type is not this function's business and returns false.
-	// Defined in eq_bridge.cpp.
-	bool ActivateHotbarCommandSlot(eqt::HotbarSlotType type, const std::string& text);
 
 	// Bank window state (Player mode with graphics). K05: Open/CloseBankWindow
 	// are on Merchant().
@@ -1172,43 +1050,16 @@ private:
 	std::unique_ptr<EQT::Audio::AudioManager> m_audio_manager;
 	// Zone audio manager for positioned sound emitters
 	std::unique_ptr<EQT::Audio::ZoneAudioManager> m_zone_audio_manager;
-	void InitializeAudio();
-	void ShutdownAudio();
 	// D20g: SetupRDPAudio moved to Application
-
-	// Day/night state for audio (calculated from game time)
-	bool m_is_daytime = true;
-	void UpdateDayNightState();
-
-	// Audio configuration (applied during InitializeAudio)
-	bool m_audio_config_enabled = true;
-	float m_audio_config_master_volume = 1.0f;
-	float m_audio_config_music_volume = 0.7f;
-	float m_audio_config_effects_volume = 1.0f;
-	std::string m_audio_config_soundfont;
-	std::string m_audio_config_vendor_music = "gl.xmi";
-	bool m_audio_config_use_3d_audio = true;
+	// K11 (Batch K): the audio lifecycle, the day/night flag, the audio
+	// config block and the sound helpers are
+	// eqt::bridge::BridgeComponent's; callers go through Bridge().
+	// GetZoneAudioManager(), IsDaytime(), SetUse3DAudio() and the four
+	// positional/typed Play* helpers had zero callers tree-wide and were
+	// deleted (§Mechanism 5).
 
 public:
 	EQT::Audio::AudioManager* GetAudioManager() { return m_audio_manager.get(); }
-	EQT::Audio::ZoneAudioManager* GetZoneAudioManager() { return m_zone_audio_manager.get(); }
-	bool IsDaytime() const { return m_is_daytime; }
-
-	// Audio configuration setters (call before InitGraphics/InitializeAudio)
-	void SetAudioEnabled(bool enabled) { m_audio_config_enabled = enabled; }
-	void SetMasterVolume(float volume) { m_audio_config_master_volume = volume; }
-	void SetMusicVolume(float volume) { m_audio_config_music_volume = volume; }
-	void SetEffectsVolume(float volume) { m_audio_config_effects_volume = volume; }
-	void SetSoundFont(const std::string& path) { m_audio_config_soundfont = path; }
-	void SetVendorMusic(const std::string& filename) { m_audio_config_vendor_music = filename; }
-	void SetUse3DAudio(bool enabled) { m_audio_config_use_3d_audio = enabled; }
-
-	// Sound effect helpers (client-triggered)
-	void PlaySound(uint32_t soundId);
-	void PlaySoundAt(uint32_t soundId, float x, float y, float z);
-	void PlayCombatSound(bool hit, float x, float y, float z);
-	void PlaySpellSound(uint32_t spellId);
-	void PlayUISound(uint32_t soundId);
 #endif
 private:
 	// K01: declared last -- every member m_ctx references is declared above.
@@ -1223,4 +1074,5 @@ private:
 	std::unique_ptr<eqt::login_world::LoginWorldComponent> m_login_world;
 	std::unique_ptr<eqt::player::PlayerComponent> m_player;
 	std::unique_ptr<eqt::zone::ZoneComponent> m_zone;
+	std::unique_ptr<eqt::bridge::BridgeComponent> m_bridge_component;
 };

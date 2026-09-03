@@ -260,7 +260,7 @@ constexpr float kHumanMaleCollisionZOffset = 3.004f;
 void StandAt(EverQuest& eq, eqt::bridge::GameStateBridge& bridge,
              float groundZ, float collisionZOffset, float size) {
     bridge.pushIntent(eqt::events::PlayerModelGeometryChanged{collisionZOffset});
-    eq.ProcessBridgeIntents();
+    eq.Bridge().ProcessBridgeIntents();
     // What the renderer's ground snap produces: node origin = ground + offset.
     eq.SetPosition(eq.GetPosition().x, eq.GetPosition().y, groundZ + collisionZOffset);
     eq.Test_SetPlayerSizeForSeam(size);
@@ -445,7 +445,7 @@ TEST(WireZ, SelfSpawnBeforeModelLoads_DoesNotDoubleConvert) {
 
     // The model loads. The deferred half of the conversion runs exactly once.
     bridge.pushIntent(eqt::events::PlayerModelGeometryChanged{kHumanMaleCollisionZOffset});
-    eq.ProcessBridgeIntents();
+    eq.Bridge().ProcessBridgeIntents();
     EXPECT_FALSE(eq.Test_GetZAwaitingFrameConversionForSeam());
     EXPECT_NEAR(eq.GetPosition().z, wireFromServer - 3.75f + kHumanMaleCollisionZOffset, 1e-4f)
         << "the stored z must now be in the render frame";
@@ -457,7 +457,7 @@ TEST(WireZ, SelfSpawnBeforeModelLoads_DoesNotDoubleConvert) {
 
     // Repeating the geometry intent must not convert a second time.
     bridge.pushIntent(eqt::events::PlayerModelGeometryChanged{kHumanMaleCollisionZOffset});
-    eq.ProcessBridgeIntents();
+    eq.Bridge().ProcessBridgeIntents();
     eq.Movement().SendPositionUpdate();
     EXPECT_NEAR(eq.Movement().Test_GetLastComputedPositionUpdate().z_pos, wireFromServer, 1e-4f)
         << "the deferred conversion must be idempotent";
@@ -478,7 +478,7 @@ TEST(WireZ, RepeatedZoneInsDoNotAccumulate) {
         eq.Test_SetZAwaitingFrameConversionForSeam(true);
         eq.Test_SetPlayerSizeForSeam(6.0f);
         bridge.pushIntent(eqt::events::PlayerModelGeometryChanged{kHumanMaleCollisionZOffset});
-        eq.ProcessBridgeIntents();
+        eq.Bridge().ProcessBridgeIntents();
         eq.Movement().SendPositionUpdate();
 
         carried = eq.Movement().Test_GetLastComputedPositionUpdate().z_pos;

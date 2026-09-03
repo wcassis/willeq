@@ -119,7 +119,7 @@ void Application::updateGameState(float deltaTime) {
     // (single stage: GameStateSyncBridge::applyEvent() forwards to
     // ConsoleBridge right here on the game thread).
     if (m_eqClient && m_consoleBridge && !m_graphicsInitialized) {
-        m_eqClient->ProcessBridgeEvents();
+        m_eqClient->Bridge().ProcessBridgeEvents();
     }
 #ifdef EQT_HAS_GRAPHICS
     // T220: graphics runs -- stage 1 of the split drain, on the GAME thread.

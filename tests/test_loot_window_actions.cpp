@@ -203,7 +203,7 @@ TEST_F(LootWindowActionsTest, LootByName_NoSuchCorpse_FailsAndSendsNothing) {
 
 TEST_F(LootWindowActionsTest, ShiftClickIntent_OpensThroughTheSamePathAsTheCommand) {
     bridge.pushIntent(eqt::events::LootCorpseIntent{kCorpseId});
-    eq.ProcessBridgeIntents();
+    eq.Bridge().ProcessBridgeIntents();
 
     const auto& q = eq.Test_GetQueuedPackets();
     ASSERT_EQ(q.size(), 1u);
@@ -308,7 +308,7 @@ TEST_F(LootWindowActionsTest, LootItemIntent_SendsLootItemToCursor) {
     OpenWithTwoItems();
 
     bridge.pushIntent(eqt::events::LootItemIntent{kCorpseId, 1});
-    eq.ProcessBridgeIntents();
+    eq.Bridge().ProcessBridgeIntents();
 
     const auto& q = eq.Test_GetQueuedPackets();
     ASSERT_EQ(q.size(), 1u);
@@ -370,7 +370,7 @@ TEST_F(LootWindowActionsTest, LootAllIntent_DrivesTheSameMachine) {
     OpenWithTwoItems();
 
     bridge.pushIntent(eqt::events::LootAllIntent{kCorpseId});
-    eq.ProcessBridgeIntents();
+    eq.Bridge().ProcessBridgeIntents();
     TickLootMachineToIdle();
 
     const auto& q = eq.Test_GetQueuedPackets();
@@ -419,7 +419,7 @@ TEST_F(LootWindowActionsTest, CloseIntent_SendsEndLootRequestOnly) {
     OpenWithTwoItems();
 
     bridge.pushIntent(eqt::events::CloseLootIntent{kCorpseId});
-    eq.ProcessBridgeIntents();
+    eq.Bridge().ProcessBridgeIntents();
 
     const auto& q = eq.Test_GetQueuedPackets();
     ASSERT_EQ(q.size(), 1u);

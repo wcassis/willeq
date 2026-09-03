@@ -124,6 +124,9 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 	m_player = std::make_unique<eqt::player::PlayerComponent>(m_ctx, *this);
 	// K09: the zone family -- handshake, entry, DispatchZonePacket, lifecycle.
 	m_zone = std::make_unique<eqt::zone::ZoneComponent>(m_ctx, *this);
+	// K11: the bridge family -- graphics lifecycle, the intent/event pumps,
+	// the loot window, config persistence and audio.
+	m_bridge_component = std::make_unique<eqt::bridge::BridgeComponent>(m_ctx, *this);
 
 	m_login_world->SetCredentials(host, port, user, pass, server);
 	m_character = character;
@@ -383,7 +386,7 @@ EverQuest::~EverQuest()
 
 	// Shutdown audio before other cleanup
 #ifdef WITH_AUDIO
-	ShutdownAudio();
+	m_bridge_component->ShutdownAudio();
 #endif
 
 	// Stop the update loop before destroying
@@ -1077,5 +1080,36 @@ void EverQuest::SetEQClientPath(const std::string& path) {
 void EverQuest::SetConstrainedConfig(const EQT::Graphics::ConstrainedRendererConfig& config) {
 	m_constrained_config = config;
 	m_constrained_preset = EQT::Graphics::ConstrainedRenderingPreset::Custom;
+}
+#endif // EQT_HAS_GRAPHICS
+
+// K11 (Batch K, refactor/K11_bridge_component.md): the FIVE sanctioned
+// forwarders of this batch. Every other moved method is reached through
+// Bridge(); these five are EverQuest's LIFECYCLE entry points -- Application
+// wires the bridge, starts graphics, ticks the game and stops it through
+// them, and must not have to know a component exists to do that. The bodies
+// live in src/client/bridge/bridge_component*.cpp. K13 decides whether they
+// survive.
+void EverQuest::setBridge(eqt::bridge::GameStateBridge* bridge) {
+	m_bridge_component->setBridge(bridge);
+}
+
+void EverQuest::GameTick(float deltaTime) {
+	m_bridge_component->GameTick(deltaTime);
+}
+
+void EverQuest::PostRenderTick(float deltaTime) {
+	m_bridge_component->PostRenderTick(deltaTime);
+}
+
+#ifdef EQT_HAS_GRAPHICS
+bool EverQuest::InitGraphics(int width, int height,
+                             EQT::Graphics::IrrlichtRenderer* renderer,
+                             eqt::bridge::GameStateBridge* bridge) {
+	return m_bridge_component->InitGraphics(width, height, renderer, bridge);
+}
+
+void EverQuest::ShutdownGraphics() {
+	m_bridge_component->ShutdownGraphics();
 }
 #endif // EQT_HAS_GRAPHICS

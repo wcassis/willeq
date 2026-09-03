@@ -310,7 +310,7 @@ TEST(SpellbookMemorizeConsumer, IntentMemorizesTheNamedSpellIntoTheNamedGem) {
 
     constexpr uint8_t kGem = 6;
     bridge.pushIntent(eqt::events::MemorizeSpellIntent{kGem, id});
-    eq.ProcessBridgeIntents();
+    eq.Bridge().ProcessBridgeIntents();
 
     EXPECT_TRUE(mgr->isMemorizing());
     EXPECT_EQ(mgr->m_memorize_slot, kGem);
@@ -331,7 +331,7 @@ TEST(SpellbookMemorizeConsumer, IntentForAnUnscribedSpellMemorizesNothing) {
     eq.setBridge(&bridge);
     // Deliberately NOT scribed.
     bridge.pushIntent(eqt::events::MemorizeSpellIntent{0, id});
-    eq.ProcessBridgeIntents();
+    eq.Bridge().ProcessBridgeIntents();
 
     EXPECT_FALSE(mgr->isMemorizing());
 }

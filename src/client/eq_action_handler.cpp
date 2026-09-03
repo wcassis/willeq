@@ -615,12 +615,12 @@ bool EqActionHandler::lootItem(uint16_t corpseId, int16_t slot) {
     if (!m_eq.IsLootWindowOpen()) {
         return false;
     }
-    const auto& items = m_eq.GetLootItems();
+    const auto& items = m_eq.Bridge().GetLootItems();
     auto it = items.find(slot);
     if (it == items.end()) {
         return false;
     }
-    if (!m_eq.LootItemFromCorpse(corpseId, slot, true)) {
+    if (!m_eq.Bridge().LootItemFromCorpse(corpseId, slot, true)) {
         return false;
     }
     m_eq.AddChatSystemMessage(fmt::format("Looting {} (slot {})...", it->second.name, slot));
@@ -628,7 +628,7 @@ bool EqActionHandler::lootItem(uint16_t corpseId, int16_t slot) {
 }
 
 bool EqActionHandler::lootItemByName(const std::string& name) {
-    int16_t slot = m_eq.FindLootSlotByName(name);
+    int16_t slot = m_eq.Bridge().FindLootSlotByName(name);
     if (slot < 0) {
         return false;
     }
@@ -644,7 +644,7 @@ bool EqActionHandler::lootAll(uint16_t corpseId) {
     if (!combat || !combat->LootAll()) {
         return false;
     }
-    size_t n = m_eq.GetLootItems().size();
+    size_t n = m_eq.Bridge().GetLootItems().size();
     m_eq.AddChatSystemMessage(fmt::format("Looting everything ({} item{})...", n, n == 1 ? "" : "s"));
     return true;
 }
@@ -653,7 +653,7 @@ bool EqActionHandler::closeLootWindow() {
     if (!m_eq.IsLootWindowOpen()) {
         return false;
     }
-    m_eq.CloseLootWindow(0);
+    m_eq.Bridge().CloseLootWindow(0);
     return true;
 }
 
@@ -741,7 +741,7 @@ void EqActionHandler::useItem(int16_t slot) {
     // T230: was a stub ("Use item not yet implemented") -- the keyboard
     // hotbar Item route now lands here, so it reaches the same click-effect
     // sender the mouse path uses (EverQuest::UseInventoryItem, eq_bridge.cpp).
-    m_eq.UseInventoryItem(slot);
+    m_eq.Bridge().UseInventoryItem(slot);
 }
 
 int16_t EqActionHandler::findItemSlotByItemId(uint32_t itemId) {
@@ -753,7 +753,7 @@ int16_t EqActionHandler::findItemSlotByItemId(uint32_t itemId) {
 void EqActionHandler::activateHotbarCommandSlot(eqt::HotbarSlotType type, const std::string& text) {
     // T239: the keyboard hotbar Emote/Macro/Combat route lands on the same
     // body the mouse HotbarActivateIntent arm calls (eq_bridge.cpp).
-    m_eq.ActivateHotbarCommandSlot(type, text);
+    m_eq.Bridge().ActivateHotbarCommandSlot(type, text);
 }
 
 // T141: /equip's three input forms all arrive as one free-text string --

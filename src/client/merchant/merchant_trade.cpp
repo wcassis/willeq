@@ -340,7 +340,7 @@ void eqt::merchant::MerchantComponent::ZoneProcessLootItemToUI(const EQ::Net::Pa
 			} catch (...) {}
 
 			// Track loot item in game state (D18a: game-side loot item tracking)
-			owner_.m_loot_items[slot_num] = EverQuest::GameLootItem{itemId, item_name};
+			owner_.Bridge().LootItems()[slot_num] = eqt::bridge::BridgeComponent::GameLootItem{itemId, item_name};
 
 			// T268: feed the auto-loot queue too (this replaces the deleted
 			// headless-only ZoneProcessLootItem). CheckAutoLoot() is a
@@ -370,7 +370,7 @@ void eqt::merchant::MerchantComponent::ZoneProcessLootItemToUI(const EQ::Net::Pa
 
 void eqt::merchant::MerchantComponent::ZoneProcessLootedItemToInventory(const EQ::Net::Packet &p)
 {
-	LOG_DEBUG(MOD_INVENTORY, "ZoneProcessLootedItemToInventory called, pending_slots={}", owner_.m_pending_loot_slots.size());
+	LOG_DEBUG(MOD_INVENTORY, "ZoneProcessLootedItemToInventory called, pending_slots={}", owner_.Bridge().PendingLootSlots().size());
 
 	// This is called when an item is being looted from a corpse to inventory
 	// The item packet format is the same as ZoneProcessLootItemToUI
@@ -403,7 +403,7 @@ void eqt::merchant::MerchantComponent::ZoneProcessLootedItemToInventory(const EQ
 			eqt::state::GameEventType::InventorySlotChanged, std::move(data)));
 	};
 
-	if (owner_.m_pending_loot_slots.empty()) {
+	if (owner_.Bridge().PendingLootSlots().empty()) {
 		// No pending loot - shouldn't happen, but handle gracefully
 		LOG_DEBUG(MOD_INVENTORY, "ZoneProcessLootedItemToInventory: No pending loot slots! Treating as inventory item.");
 		if (ctx_.inventory_manager) {
@@ -413,11 +413,11 @@ void eqt::merchant::MerchantComponent::ZoneProcessLootedItemToInventory(const EQ
 	}
 
 	// Get the slot we're expecting to receive
-	int16_t expected_slot = owner_.m_pending_loot_slots.front();
-	owner_.m_pending_loot_slots.erase(owner_.m_pending_loot_slots.begin());
+	int16_t expected_slot = owner_.Bridge().PendingLootSlots().front();
+	owner_.Bridge().PendingLootSlots().erase(owner_.Bridge().PendingLootSlots().begin());
 
 	LOG_DEBUG(MOD_INVENTORY, "ZoneProcessLootedItemToInventory: Processing looted item for corpse slot {}, remaining pending={}",
-		expected_slot, owner_.m_pending_loot_slots.size());
+		expected_slot, owner_.Bridge().PendingLootSlots().size());
 
 	// Add item to player's inventory
 	if (ctx_.inventory_manager) {
@@ -426,7 +426,7 @@ void eqt::merchant::MerchantComponent::ZoneProcessLootedItemToInventory(const EQ
 	}
 
 	// Remove from game-side loot tracking and publish event
-	owner_.m_loot_items.erase(expected_slot);
+	owner_.Bridge().LootItems().erase(expected_slot);
 
 	if (ctx_.bridge) {
 		eqt::state::LootItemRemovedData data;

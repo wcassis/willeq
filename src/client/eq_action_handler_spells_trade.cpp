@@ -542,7 +542,7 @@ void EqActionHandler::setAppearance(const action::AppearanceChange& change) {
 // handler at all.
 void EqActionHandler::setInspectMessage(const std::optional<std::string>& message) {
     if (!message) {
-        const std::string& current = m_eq.GetInspectMessage();
+        const std::string& current = m_eq.Bridge().GetInspectMessage();
         if (current.empty()) {
             m_eq.AddChatSystemMessage(
                 "Your inspect message is empty. Set one with "
@@ -554,12 +554,12 @@ void EqActionHandler::setInspectMessage(const std::optional<std::string>& messag
         return;
     }
 
-    m_eq.SetInspectMessage(*message);
-    m_eq.SaveInspectMessage();
+    m_eq.Bridge().SetInspectMessage(*message);
+    m_eq.Bridge().SaveInspectMessage();
 
     // Report what was actually stored, not what was asked for: SetInspectMessage
     // truncates at the server's 255-byte limit and the user should see that.
-    const std::string& stored = m_eq.GetInspectMessage();
+    const std::string& stored = m_eq.Bridge().GetInspectMessage();
     if (stored.empty()) {
         m_eq.AddChatSystemMessage("Inspect message cleared.");
     } else {

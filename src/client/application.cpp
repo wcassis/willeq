@@ -261,20 +261,20 @@ bool Application::initialize(const ApplicationConfig& config) {
             m_eqClient->SetEQClientPath(config.eqClientPath);
         }
         if (!config.regionMapsPath.empty()) {
-            m_eqClient->SetRegionMapsPath(config.regionMapsPath);
+            m_eqClient->Bridge().SetRegionMapsPath(config.regionMapsPath);
         }
-        m_eqClient->SetConfigPath(config.configFile);
+        m_eqClient->Bridge().SetConfigPath(config.configFile);
 
 #ifdef WITH_AUDIO
         // Apply audio settings
-        m_eqClient->SetAudioEnabled(config.audioEnabled);
-        m_eqClient->SetMasterVolume(config.audioMasterVolume);
-        m_eqClient->SetMusicVolume(config.audioMusicVolume);
-        m_eqClient->SetEffectsVolume(config.audioEffectsVolume);
+        m_eqClient->Bridge().SetAudioEnabled(config.audioEnabled);
+        m_eqClient->Bridge().SetMasterVolume(config.audioMasterVolume);
+        m_eqClient->Bridge().SetMusicVolume(config.audioMusicVolume);
+        m_eqClient->Bridge().SetEffectsVolume(config.audioEffectsVolume);
         if (!config.audioSoundfont.empty()) {
-            m_eqClient->SetSoundFont(config.audioSoundfont);
+            m_eqClient->Bridge().SetSoundFont(config.audioSoundfont);
         }
-        m_eqClient->SetVendorMusic(config.audioVendorMusic);
+        m_eqClient->Bridge().SetVendorMusic(config.audioVendorMusic);
 #endif
 
         LOG_DEBUG(MOD_MAIN, "EverQuest client created");
@@ -817,11 +817,11 @@ void Application::gameThreadLoop() {
                 // other T43 fixes -- gate removed, matches the unconditional
                 // eq.h declaration.
                 if (m_eqClient) {
-                    m_eqClient->LoadHotbarConfig();
+                    m_eqClient->Bridge().LoadHotbarConfig();
                     // T171: same config file, same moment. It must be loaded
                     // before anyone can inspect us, and being in the zone is
                     // the first point at which that is possible.
-                    m_eqClient->LoadInspectMessage();
+                    m_eqClient->Bridge().LoadInspectMessage();
                     // U07b: HotbarModel publishes its own events
                     if (m_eqClient->GetHotbarModel()) {
                         m_eqClient->GetHotbarModel()->publishAllSlots();
@@ -855,7 +855,7 @@ void Application::gameThreadLoop() {
                 LOG_INFO(MOD_MAIN, "Game thread: zone load requested, creating snapshot...");
                 {
                     std::lock_guard<std::mutex> lock(m_zoneLoadMutex);
-                    m_zoneLoadSnapshot = m_eqClient->CreateZoneLoadSnapshot();
+                    m_zoneLoadSnapshot = m_eqClient->Bridge().CreateZoneLoadSnapshot();
                 }
                 LOG_INFO(MOD_MAIN, "Game thread: snapshot created (zone='{}', entities={}, doors={})",
                          m_zoneLoadSnapshot.zoneName, m_zoneLoadSnapshot.entities.size(),
@@ -869,7 +869,7 @@ void Application::gameThreadLoop() {
                 if (m_eqClient) {
                     {
                         std::lock_guard<std::mutex> lock(m_zoneLoadMutex);
-                        m_eqClient->SetZoneBspTree(std::move(m_pendingBspTree), m_pendingBspTreeZone);
+                        m_eqClient->Bridge().SetZoneBspTree(std::move(m_pendingBspTree), m_pendingBspTreeZone);
                     }
                     m_eqClient->OnGraphicsComplete();
                 }

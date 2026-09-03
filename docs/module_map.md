@@ -19,10 +19,10 @@ review section under `refactor/F*.md` and `refactor/J*.md`.
 
 | TU | Lines | Contents |
 |---|---|---|
-| src/client/eq.cpp | 1,073 | Core after J02: ctor/lifecycle, session recording, DB/spell-system init, ConnectToLogin/World/Zone, TickNetwork, loading-phase state, PublishFullStateSnapshot, zone connection callbacks, ZoneOnPacketRecv, ReplayZonePacket, SafeQueueZonePacket, QueuePacket, Start/StopUpdateLoop, SetEQClientPath/SetConstrainedConfig |
+| src/client/eq.cpp | 1,115 | Core after J02: ctor/lifecycle, session recording, DB/spell-system init, ConnectToLogin/World/Zone, TickNetwork, loading-phase state, PublishFullStateSnapshot, zone connection callbacks, ZoneOnPacketRecv, ReplayZonePacket, SafeQueueZonePacket, QueuePacket, Start/StopUpdateLoop, SetEQClientPath/SetConstrainedConfig |
 | eq_action_handler.cpp | 783 | `action::EqActionHandler` — the `IActionHandler` implementation wrapping `EverQuest` for `ActionDispatcher`/`CommandProcessor` (action-layer migration T99–T143; raid guards T179–T184; skill gate T159/T162) |
 | src/client/movement/movement_component.cpp | 492 | K07: eqt::movement::MovementComponent -- Move/MoveTo/MoveToEntity, Follow/StopFollow, StartCombatMovement, Face/FaceEntity, StopMovement |
-| eq_bridge.cpp | 890 | InitGraphics/ShutdownGraphics, GameTick, Pre/PostRenderTick, ProcessBridgeIntents/Events, zone-load snapshot, loot-window flow, hotbar config, audio init |
+| src/client/bridge/bridge_component.cpp | 842 | K11: `eqt::bridge::BridgeComponent` — graphics lifecycle, the game-thread ticks, zone-load snapshot, BSP-tree install, the spawn/pet/movement bridge marshalling and the T269 bank-coin projection helpers |
 | src/client/merchant/merchant.cpp | 689 | K05: `eqt::merchant::MerchantComponent` — inventory item movement, ScribeSpellFromScroll, the trade request/coin/accept/cancel senders, ReadBook and ZoneProcessTradePartnerItem, moved out of `class EverQuest` (was `eq_merchant.cpp`) |
 | eq_commands.cpp | 1,110 | RegisterCommands driver + the game-registry remainder after T139 deleted 34 redundant commands (registry 1 of `docs/decisions.md` 2026-08-03) |
 | src/client/zone/zone_component.cpp | 1,092 | K09: `eqt::zone::ZoneComponent` — zone change/teardown, CleanupZone, DisconnectFromZone, ProcessDeferredZoneChange, BeginGracefulZoneOut (T322), LoadZoneMap/Lines/Sources, CheckZoneLine, GetBestZ/FixZ, in-zone teleport (T231) |
@@ -49,8 +49,8 @@ review section under `refactor/F*.md` and `refactor/J*.md`.
 | src/client/player/profile_appearance.cpp | 20 | PlayerProfile appearance fields stored so `/appearance` merges faithfully (T167); header `include/client/player/profile_appearance.h` |
 | eq_action_handler_extended.cpp | 957 | J12: the `EqActionHandler` remainder — GM/debug, camp/logout, report, world-object and tradeskill actions |
 | eq_action_handler_spells_trade.cpp | 570 | J12: `EqActionHandler`'s spell, pet, trade and `/appearance` actions (SendFaceChange's producer, T153) |
-| eq_bridge_intents.cpp | 703 | J13: `ProcessBridgeIntents` — the `RendererIntent` variant switch |
-| eq_bridge_ui_audio.cpp | 744 | J13: bridge-side UI and audio wiring, hotbar slot activation |
+| src/client/bridge/bridge_component_intents.cpp | 702 | K11: `eqt::bridge::BridgeComponent::ProcessBridgeIntents` — the `RendererIntent` variant switch — and `ProcessBridgeEvents` |
+| src/client/bridge/bridge_component_ui_audio.cpp | 710 | K11: `eqt::bridge::BridgeComponent` — inventory stat sync, the loot window, per-client config / hotbar / inspect-message persistence, the audio lifecycle and hotbar slot activation |
 | src/client/merchant/merchant_trade.cpp | 714 | K05: `eqt::merchant::MerchantComponent` — the trade/loot/vendor/bank/tradeskill Setup*Callbacks, the loot transfer handlers and the shop request/buy/sell/money/end handlers (was `eq_merchant_trade.cpp`, J13) |
 | src/client/merchant/merchant_vendor_bank.cpp | 633 | K05: `eqt::merchant::MerchantComponent` — the vendor window packet + open/buy/sell/close senders, the bank window, the GM trainer (owner of the moved `m_trainer_skill_caps`) and the Phase 4 tradeskill recipe senders/handlers (was `eq_merchant_vendor_bank.cpp`, J13) |
 | entities_component.cpp (in `src/client/entities/`) | 847 | K06: `eqt::entities::EntitiesComponent` — zone spawns, time of day, spawn doors, zonepoints, spawn appearance, moved out of `class EverQuest` (was `eq_entities.cpp`) |
@@ -77,7 +77,7 @@ This table and that plan must agree; change both together.
 | player | `src/client/player/player_component`, `player_misc`, `player_state`, `player_buffs`, `player_info`, `profile_appearance`; facade in `src/client/eq_player_info.cpp` | 139 | 11 | **K08 DONE** (139 defs, not the 142 the batch table claimed; 93 moved, the 46-body player-state facade stayed on `EverQuest`) |
 | zone | `src/client/zone/zone_component`, `zone_dispatch`, `zone_entry`, `zone_handshake` | 34 | 39 | **K09 DONE** (`eqt::zone::ZoneComponent`; `DispatchZonePacket` moved whole; `ZoneSendSessionReady`/`ZoneSendSpawnAppearance` deleted and `m_zone_sequence` boarded dead; the zone connection itself — `ConnectToZone`, the `ZoneOn*` callbacks, `ReplayZonePacket`, `SafeQueueZonePacket` — stays in `src/client/eq.cpp`) |
 | login_world | `src/client/login_world/login_world_component` | 37 | 22 | **K10 DONE** (`eqt::login_world::LoginWorldComponent`; both connection managers moved, `ConnectToLogin`/`ConnectToWorld` moved in from `eq.cpp`; `WorldSendSessionReady` and the two `World*ChannelMessage` declarations deleted, zero callers) |
-| bridge | `eq_bridge`, `_intents`, `_ui_audio` | 46 | 8 | K11 (becomes bridge/intent handlers, not a component) |
+| bridge | `src/client/bridge/bridge_component`, `bridge_component_intents`, `bridge_component_ui_audio` | 45 | 14 | **K11 DONE** (`eqt::bridge::BridgeComponent`; the loot cluster and the T171 inspect message moved in; `SaveEntityDataToFile`, `PlaySoundAt`, `PlayCombatSound`, `PlaySpellSound`, `PlayUISound` and seven dead inline accessors deleted, zero callers; FIVE sanctioned lifecycle forwarders — `setBridge`, `InitGraphics`, `ShutdownGraphics`, `GameTick`, `PostRenderTick` — stay on `EverQuest`, defined in `src/client/eq.cpp`) |
 | commands | `eq_commands`, `_movement`, `_spells`, `_train` | 32 | 0 | K12 (becomes action handlers) |
 | combat | `eq_combat_actions` | 6 | 1 | folds into whichever component owns attack |
 | core | `eq.cpp` | 38 | 3 | stays — ctor/dtor, wiring, `Test_*` seams |

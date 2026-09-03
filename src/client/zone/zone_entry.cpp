@@ -685,7 +685,7 @@ void eqt::zone::ZoneComponent::ZoneProcessPlayerProfile(const EQ::Net::Packet &p
 	}
 
 	// Calculate stats from equipment and update
-	owner_.UpdateInventoryStats();
+	owner_.Bridge().UpdateInventoryStats();
 
 	// Publish CharacterInfoChanged event to bridge
 	if (ctx_.bridge) {

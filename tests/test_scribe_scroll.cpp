@@ -537,7 +537,7 @@ TEST(ScribeScroll, RequestBytesMatchMemorizeSpellStructWithScribingZero) {
     h.seedScroll(kScrollSlot, "Spell: Minor Shielding", picks.usableAtLevel1);
     ASSERT_TRUE(h.processor.processCommand("/scribe Minor Shielding").success);
     h.clearSent();
-    h.eq.ProcessBridgeIntents();
+    h.eq.Bridge().ProcessBridgeIntents();
 
     auto mem = h.packetsWithOpcode(HC_OP_MemorizeSpell);
     ASSERT_EQ(mem.size(), 1u) << "exactly one OP_MemorizeSpell per /scribe";
@@ -569,7 +569,7 @@ TEST(ScribeScroll, MoveItemToCursorPrecedesTheMemorizeSpell) {
     h.seedScroll(kScrollSlot, "Spell: Minor Shielding", picks.usableAtLevel1);
     ASSERT_TRUE(h.processor.processCommand("/scribe Minor Shielding").success);
     h.clearSent();
-    h.eq.ProcessBridgeIntents();
+    h.eq.Bridge().ProcessBridgeIntents();
 
     int moveIdx = -1, memIdx = -1;
     const auto all = h.sentPackets();
@@ -616,7 +616,7 @@ TEST(ScribeScroll, AScrollAlreadyOnTheCursorIsNotMovedAgain) {
     ASSERT_TRUE(h.processor.processCommand(
         "/scribe " + std::to_string(eqt::inventory::CURSOR_SLOT)).success);
     h.clearSent();
-    h.eq.ProcessBridgeIntents();
+    h.eq.Bridge().ProcessBridgeIntents();
 
     EXPECT_TRUE(h.packetsWithOpcode(HC_OP_MoveItem).empty())
         << "already on the cursor -- nothing to move";
@@ -637,7 +637,7 @@ TEST(ScribeScroll, EchoWithScribingZeroAddsTheSpellAndConsumesTheScroll) {
 
     h.seedScroll(kScrollSlot, "Spell: Minor Shielding", picks.usableAtLevel1);
     ASSERT_TRUE(h.processor.processCommand("/scribe Minor Shielding").success);
-    h.eq.ProcessBridgeIntents();
+    h.eq.Bridge().ProcessBridgeIntents();
     ASSERT_TRUE(h.eq.GetInventoryManager()->hasCursorItem());
     ASSERT_FALSE(mgr->hasSpellScribed(picks.usableAtLevel1));
 
@@ -664,7 +664,7 @@ TEST(ScribeScroll, AMemorizeEchoDoesNotScribeAnything) {
 
     h.seedScroll(kScrollSlot, "Spell: Minor Shielding", picks.usableAtLevel1);
     ASSERT_TRUE(h.processor.processCommand("/scribe Minor Shielding").success);
-    h.eq.ProcessBridgeIntents();
+    h.eq.Bridge().ProcessBridgeIntents();
 
     ReplayZone(h.eq, HC_OP_MemorizeSpell, MemorizeEcho(2, picks.usableAtLevel1, 1));
 

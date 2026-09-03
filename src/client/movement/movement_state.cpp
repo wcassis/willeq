@@ -655,7 +655,7 @@ void eqt::movement::MovementComponent::OnEnterWater()
 #ifdef WITH_AUDIO
 	// Play water entry sound
 	if (ctx_.audio_manager) {
-		owner_.PlaySound(EQT::Audio::WaterSoundIds::WaterIn);
+		owner_.Bridge().PlaySound(EQT::Audio::WaterSoundIds::WaterIn);
 	}
 #endif
 }

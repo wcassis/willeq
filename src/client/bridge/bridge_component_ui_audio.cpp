@@ -1,4 +1,4 @@
-// eq_bridge_ui_audio.cpp
+// bridge_component_ui_audio.cpp
 //
 // The parts of the EverQuest <-> renderer bridge layer that ride the bridge
 // rather than being it, split out of eq_bridge.cpp by J13
@@ -46,7 +46,6 @@
 #include "client/hotbar/hotbar_model.h"
 #include "common/util/json_config.h"
 #ifdef EQT_HAS_GRAPHICS
-#include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/loading_thread.h"
 #include "client/graphics/constrained_renderer_config.h"
 #include "client/graphics/weather_effects_controller.h"
@@ -100,7 +99,7 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-void EverQuest::UpdateInventoryStats() {
+void eqt::bridge::BridgeComponent::UpdateInventoryStats() {
 
 	// Calculate equipment bonuses from inventory
 	eqt::inventory::EquipmentStats equipStats;
@@ -110,14 +109,14 @@ void EverQuest::UpdateInventoryStats() {
 	uint8_t primaryWeaponSkill = EQ::WEAPON_HAND_TO_HAND;  // Default to H2H (unarmed)
 	uint8_t secondaryWeaponSkill = EQ::WEAPON_NONE;
 
-	if (m_inventory_manager) {
-		equipStats = m_inventory_manager->calculateEquipmentStats();
-		totalWeight = m_inventory_manager->calculateTotalWeight();
+	if (ctx_.inventory_manager) {
+		equipStats = ctx_.inventory_manager->calculateEquipmentStats();
+		totalWeight = ctx_.inventory_manager->calculateTotalWeight();
 
 		// Get weapon skill types from equipped items
 		using namespace eqt::inventory;
-		const eqt::inventory::ItemInstance* primaryItem = m_inventory_manager->getItem(SLOT_PRIMARY);
-		const eqt::inventory::ItemInstance* secondaryItem = m_inventory_manager->getItem(SLOT_SECONDARY);
+		const eqt::inventory::ItemInstance* primaryItem = ctx_.inventory_manager->getItem(SLOT_PRIMARY);
+		const eqt::inventory::ItemInstance* secondaryItem = ctx_.inventory_manager->getItem(SLOT_SECONDARY);
 
 		if (primaryItem && primaryItem->itemId != 0) {
 			primaryWeaponSkill = primaryItem->skillType;
@@ -127,49 +126,49 @@ void EverQuest::UpdateInventoryStats() {
 		}
 
 		// Update our entity's weapon skill types
-		auto it = m_entities.find(MySpawnId());
-		if (it != m_entities.end()) {
+		auto it = ctx_.entities.find(owner_.MySpawnId());
+		if (it != ctx_.entities.end()) {
 			it->second.primary_weapon_skill = primaryWeaponSkill;
 			it->second.secondary_weapon_skill = secondaryWeaponSkill;
 		}
 
 		// Propagate weapon skill types via bridge (D17b: bridge is sole path to renderer)
-		if (m_bridge) {
+		if (ctx_.bridge) {
 			eqt::state::EntityWeaponSkillsChangedData data;
-			data.spawnId = MySpawnId();
+			data.spawnId = owner_.MySpawnId();
 			data.primaryWeaponSkill = primaryWeaponSkill;
 			data.secondaryWeaponSkill = secondaryWeaponSkill;
-			m_bridge->pushEvent(eqt::state::GameEvent(
+			ctx_.bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::EntityWeaponSkillsChanged, std::move(data)));
 		}
 	}
 
 	// Calculate total stats (base + equipment)
-	int totalStr = static_cast<int>(m_game_state.player().STR()) + equipStats.str;
-	int totalSta = static_cast<int>(m_game_state.player().STA()) + equipStats.sta;
-	int totalAgi = static_cast<int>(m_game_state.player().AGI()) + equipStats.agi;
-	int totalDex = static_cast<int>(m_game_state.player().DEX()) + equipStats.dex;
-	int totalWis = static_cast<int>(m_game_state.player().WIS()) + equipStats.wis;
-	int totalInt = static_cast<int>(m_game_state.player().INT()) + equipStats.int_;
-	int totalCha = static_cast<int>(m_game_state.player().CHA()) + equipStats.cha;
+	int totalStr = static_cast<int>(ctx_.game_state.player().STR()) + equipStats.str;
+	int totalSta = static_cast<int>(ctx_.game_state.player().STA()) + equipStats.sta;
+	int totalAgi = static_cast<int>(ctx_.game_state.player().AGI()) + equipStats.agi;
+	int totalDex = static_cast<int>(ctx_.game_state.player().DEX()) + equipStats.dex;
+	int totalWis = static_cast<int>(ctx_.game_state.player().WIS()) + equipStats.wis;
+	int totalInt = static_cast<int>(ctx_.game_state.player().INT()) + equipStats.int_;
+	int totalCha = static_cast<int>(ctx_.game_state.player().CHA()) + equipStats.cha;
 
 	// Max weight capacity is equal to total STR
 	float maxWeight = static_cast<float>(totalStr);
 
 	// Update weight tracking (T286: PlayerState is the only store)
-	m_game_state.player().setWeight(totalWeight, maxWeight);
+	ctx_.game_state.player().setWeight(totalWeight, maxWeight);
 
 	// Publish stats via bridge (D18a: bridge is sole path to renderer)
-	if (m_bridge) {
+	if (ctx_.bridge) {
 		eqt::state::PlayerStatsChangedData data;
-		data.curHP = m_game_state.player().curHP();
-		data.maxHP = m_game_state.player().maxHP();
-		data.curMana = m_game_state.player().curMana();
-		data.maxMana = m_game_state.player().maxMana();
-		data.curEndurance = m_game_state.player().curEndurance();
-		data.maxEndurance = m_game_state.player().maxEndurance();
-		data.level = m_game_state.player().level();
-		m_bridge->pushEvent(eqt::state::GameEvent(
+		data.curHP = ctx_.game_state.player().curHP();
+		data.maxHP = ctx_.game_state.player().maxHP();
+		data.curMana = ctx_.game_state.player().curMana();
+		data.maxMana = ctx_.game_state.player().maxMana();
+		data.curEndurance = ctx_.game_state.player().curEndurance();
+		data.maxEndurance = ctx_.game_state.player().maxEndurance();
+		data.level = ctx_.game_state.player().level();
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::PlayerStatsChanged, std::move(data)));
 
 		// Publish EquipmentStatsChanged
@@ -178,17 +177,17 @@ void EverQuest::UpdateInventoryStats() {
 		edata.atk = equipStats.atk;
 		edata.hp = equipStats.hp;
 		edata.mana = equipStats.mana;
-		edata.weight = m_game_state.player().weight();
-		m_bridge->pushEvent(eqt::state::GameEvent(
+		edata.weight = ctx_.game_state.player().weight();
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::EquipmentStatsChanged, std::move(edata)));
 
 		// Publish CurrencyChanged (updateCharacterStats includes currency)
 		eqt::state::CurrencyChangedData cdata;
-		cdata.platinum = static_cast<int32_t>(m_game_state.player().platinum());
-		cdata.gold = static_cast<int32_t>(m_game_state.player().gold());
-		cdata.silver = static_cast<int32_t>(m_game_state.player().silver());
-		cdata.copper = static_cast<int32_t>(m_game_state.player().copper());
-		m_bridge->pushEvent(eqt::state::GameEvent(
+		cdata.platinum = static_cast<int32_t>(ctx_.game_state.player().platinum());
+		cdata.gold = static_cast<int32_t>(ctx_.game_state.player().gold());
+		cdata.silver = static_cast<int32_t>(ctx_.game_state.player().silver());
+		cdata.copper = static_cast<int32_t>(ctx_.game_state.player().copper());
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::CurrencyChanged, std::move(cdata)));
 	}
 }
@@ -197,50 +196,50 @@ void EverQuest::UpdateInventoryStats() {
 // Player Mode Loot Window Methods
 // ============================================================================
 
-void EverQuest::RequestLootCorpse(uint16_t corpseId) {
+void eqt::bridge::BridgeComponent::RequestLootCorpse(uint16_t corpseId) {
 	LOG_DEBUG(MOD_INVENTORY, "RequestLootCorpse: corpseId={}", corpseId);
 
 	// Store the corpse being looted (T286: PlayerState is the only store)
-	m_game_state.player().setLootingCorpse(corpseId);  // Phase 7.7
-	LOG_TRACE(MOD_INVENTORY, "Set lootingCorpseId={}", m_game_state.player().lootingCorpseId());
+	ctx_.game_state.player().setLootingCorpse(corpseId);  // Phase 7.7
+	LOG_TRACE(MOD_INVENTORY, "Set lootingCorpseId={}", ctx_.game_state.player().lootingCorpseId());
 
 	// Send loot request packet - server expects only the corpse ID (4 bytes)
 	EQ::Net::DynamicPacket packet;
 	packet.Resize(4);
 	packet.PutUInt32(0, corpseId);
-	QueuePacket(HC_OP_LootRequest, &packet);
+	owner_.QueuePacket(HC_OP_LootRequest, &packet);
 
 	// Clear game-side loot items for new corpse
 	m_loot_items.clear();
 
 	// Publish LootWindowOpened (D18a: bridge is sole path to renderer)
-	if (m_bridge) {
+	if (ctx_.bridge) {
 		std::string corpseName = "Corpse";
-		auto it = m_entities.find(corpseId);
-		if (it != m_entities.end()) {
+		auto it = ctx_.entities.find(corpseId);
+		if (it != ctx_.entities.end()) {
 			corpseName = EQT::toDisplayName(it->second.name);
 		}
 		eqt::state::LootWindowOpenedData data;
 		data.corpseId = corpseId;
 		data.corpseName = corpseName;
-		m_bridge->pushEvent(eqt::state::GameEvent(
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::LootWindowOpened, std::move(data)));
 	}
 }
 
-bool EverQuest::LootItemFromCorpse(uint16_t corpseId, int16_t slot, bool autoLoot) {
+bool eqt::bridge::BridgeComponent::LootItemFromCorpse(uint16_t corpseId, int16_t slot, bool autoLoot) {
 	LOG_DEBUG(MOD_INVENTORY, "LootItemFromCorpse: corpseId={} slot={} autoLoot={} lootingCorpseId={} mySpawnId={}",
-		corpseId, slot, autoLoot, m_game_state.player().lootingCorpseId(), MySpawnId());
+		corpseId, slot, autoLoot, ctx_.game_state.player().lootingCorpseId(), owner_.MySpawnId());
 
 	// T268: no window, nothing to take -- eqemu would answer a bare
 	// OP_LootItem with an EndLoot error anyway (Corpse::LootCorpseItem's
 	// IsBeingLootedBy check).
-	if (m_game_state.player().lootingCorpseId() == 0) {
+	if (ctx_.game_state.player().lootingCorpseId() == 0) {
 		LOG_DEBUG(MOD_INVENTORY, "LootItemFromCorpse: no loot window open");
 		return false;
 	}
 	if (corpseId == 0) {
-		corpseId = m_game_state.player().lootingCorpseId();
+		corpseId = ctx_.game_state.player().lootingCorpseId();
 	}
 
 	// Track this slot as pending loot (waiting for server confirmation)
@@ -263,14 +262,14 @@ bool EverQuest::LootItemFromCorpse(uint16_t corpseId, int16_t slot, bool autoLoo
 	packet.Resize(sizeof(LootingItem_Struct));
 	LootingItem_Struct* li = (LootingItem_Struct*)packet.Data();
 	li->lootee = corpseId;
-	li->looter = MySpawnId();
+	li->looter = owner_.MySpawnId();
 	li->slot_id = static_cast<uint16_t>(slot);
 	li->unknown3[0] = 0;
 	li->unknown3[1] = 0;
 	li->auto_loot = autoLoot ? 1 : 0;
 
 	// Debug: print packet bytes (only at high debug level)
-	if (s_debug_level >= 3) {
+	if (EverQuest::s_debug_level >= 3) {
 		std::string hex_str;
 		const uint8_t* data = (const uint8_t*)packet.Data();
 		for (size_t i = 0; i < packet.Length(); i++) {
@@ -283,12 +282,12 @@ bool EverQuest::LootItemFromCorpse(uint16_t corpseId, int16_t slot, bool autoLoo
 	LOG_DEBUG(MOD_INVENTORY, "OP_LootItem: lootee={} looter={} slot_id={} auto_loot={}",
 		li->lootee, li->looter, li->slot_id, li->auto_loot);
 
-	QueuePacket(HC_OP_LootItem, &packet);
+	owner_.QueuePacket(HC_OP_LootItem, &packet);
 	return true;
 }
 
-int16_t EverQuest::FindLootSlotByName(const std::string& name) const {
-	if (m_game_state.player().lootingCorpseId() == 0 || name.empty()) {
+int16_t eqt::bridge::BridgeComponent::FindLootSlotByName(const std::string& name) const {
+	if (ctx_.game_state.player().lootingCorpseId() == 0 || name.empty()) {
 		return -1;
 	}
 	auto lower = [](std::string v) {
@@ -313,16 +312,16 @@ int16_t EverQuest::FindLootSlotByName(const std::string& name) const {
 	return partial;
 }
 
-void EverQuest::CloseLootWindow(uint16_t corpseId) {
+void eqt::bridge::BridgeComponent::CloseLootWindow(uint16_t corpseId) {
 	LOG_DEBUG(MOD_INVENTORY, "CloseLootWindow: corpseId={} m_game_state.player().lootingCorpseId()={}",
-		corpseId, m_game_state.player().lootingCorpseId());
+		corpseId, ctx_.game_state.player().lootingCorpseId());
 
 	// Use passed corpseId, or fall back to the store if 0
-	uint16_t targetCorpseId = (corpseId != 0) ? corpseId : m_game_state.player().lootingCorpseId();
+	uint16_t targetCorpseId = (corpseId != 0) ? corpseId : ctx_.game_state.player().lootingCorpseId();
 
 	// Clear the looting state
 	m_pending_loot_slots.clear();
-	m_game_state.player().clearLootingCorpse();  // Phase 7.7
+	ctx_.game_state.player().clearLootingCorpse();  // Phase 7.7
 
 	// Mark this corpse as ready for deletion (server will send DeleteSpawn after EndLootRequest)
 	m_loot_complete_corpse_id = targetCorpseId;
@@ -333,7 +332,7 @@ void EverQuest::CloseLootWindow(uint16_t corpseId) {
 	packet.Resize(4);
 	packet.PutUInt16(0, targetCorpseId);
 	packet.PutUInt16(2, 0);  // padding
-	QueuePacket(HC_OP_EndLootRequest, &packet);
+	owner_.QueuePacket(HC_OP_EndLootRequest, &packet);
 	LOG_DEBUG(MOD_INVENTORY, "CloseLootWindow: Sent HC_OP_EndLootRequest with corpseId={}", targetCorpseId);
 
 	// Clear game-side loot items
@@ -341,15 +340,15 @@ void EverQuest::CloseLootWindow(uint16_t corpseId) {
 
 	// T268: the loot policy machine leaves LOOTING with the window (this is
 	// the ONE close path; CombatManager::CloseLootWindow routes here).
-	if (m_combat_manager) {
-		m_combat_manager->OnLootWindowClosed();
+	if (ctx_.combat_manager) {
+		ctx_.combat_manager->OnLootWindowClosed();
 	}
 
 	// Publish LootWindowClosed (D18a: bridge is sole path to renderer)
-	if (m_bridge) {
+	if (ctx_.bridge) {
 		eqt::state::LootWindowClosedData data;
 		data.corpseId = targetCorpseId;
-		m_bridge->pushEvent(eqt::state::GameEvent(
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::LootWindowClosed, std::move(data)));
 	}
 }
@@ -360,7 +359,7 @@ void EverQuest::CloseLootWindow(uint16_t corpseId) {
 // common defect class, and two more hand-rolled copies of this shape is
 // exactly how it starts. Migrates the legacy top-level-array layout on the
 // way. Returns nullptr when the config has a shape we should not rewrite.
-Json::Value* EverQuest::ResolveClientConfigForWrite(Json::Value& root) {
+Json::Value* eqt::bridge::BridgeComponent::ResolveClientConfigForWrite(Json::Value& root) {
 	// A missing or unparseable config file leaves a NULL root
 	// (JsonConfigFile::Load returns a default-constructed Json::Value for
 	// both). Initialise it rather than bail: bailing is what the hotbar code
@@ -400,7 +399,7 @@ Json::Value* EverQuest::ResolveClientConfigForWrite(Json::Value& root) {
 // branch below) and never rewrites the file, and collapsing the two would
 // change one of the two behaviours. Extracted verbatim from
 // LoadHotbarConfig().
-const Json::Value* EverQuest::ResolveClientConfigForRead(const Json::Value& root) {
+const Json::Value* eqt::bridge::BridgeComponent::ResolveClientConfigForRead(const Json::Value& root) {
 	if (root.isArray() && root.size() > 0) {
 		return &root[0];
 	}
@@ -413,29 +412,29 @@ const Json::Value* EverQuest::ResolveClientConfigForRead(const Json::Value& root
 	return nullptr;
 }
 
-void EverQuest::SaveHotbarConfig() {
-	if (m_config_path.empty() || !m_hotbar_model) return;
+void eqt::bridge::BridgeComponent::SaveHotbarConfig() {
+	if (m_config_path.empty() || !owner_.m_hotbar_model) return;
 
 	auto config = EQ::JsonConfigFile::Load(m_config_path);
 	Json::Value& root = config.RawHandle();
 
 	Json::Value* clientConfig = ResolveClientConfigForWrite(root);
 	if (clientConfig && clientConfig->isObject()) {
-		(*clientConfig)["hotbar"] = m_hotbar_model->saveToJson();
+		(*clientConfig)["hotbar"] = owner_.m_hotbar_model->saveToJson();
 		config.Save(m_config_path);
 		LOG_DEBUG(MOD_CONFIG, "Saved hotbar config to {}", m_config_path);
 	}
 }
 
-void EverQuest::LoadHotbarConfig() {
-	if (m_config_path.empty() || !m_hotbar_model) return;
+void eqt::bridge::BridgeComponent::LoadHotbarConfig() {
+	if (m_config_path.empty() || !owner_.m_hotbar_model) return;
 
 	auto config = EQ::JsonConfigFile::Load(m_config_path);
 	const Json::Value& root = config.RawHandle();
 
 	const Json::Value* clientConfig = ResolveClientConfigForRead(root);
 	if (clientConfig && clientConfig->isObject() && clientConfig->isMember("hotbar")) {
-		m_hotbar_model->loadFromJson((*clientConfig)["hotbar"]);
+		owner_.m_hotbar_model->loadFromJson((*clientConfig)["hotbar"]);
 		LOG_DEBUG(MOD_CONFIG, "Loaded hotbar config from {}", m_config_path);
 	} else {
 		LOG_DEBUG(MOD_CONFIG, "No hotbar config found in {}", m_config_path);
@@ -451,7 +450,7 @@ void EverQuest::LoadHotbarConfig() {
 // text locally is therefore not a convenience -- it is the only way this
 // client can participate in the inspect protocol without destroying data, and
 // it is exactly what a real Titanium client does with its inspect window.
-void EverQuest::SetInspectMessage(const std::string& message) {
+void eqt::bridge::BridgeComponent::SetInspectMessage(const std::string& message) {
 	// Truncate here rather than at send time so what the user is shown after
 	// setting it is what will actually reach the server.
 	if (message.size() > EQT::INSPECT_MESSAGE_MAX_LEN) {
@@ -463,7 +462,7 @@ void EverQuest::SetInspectMessage(const std::string& message) {
 	}
 }
 
-void EverQuest::SaveInspectMessage() {
+void eqt::bridge::BridgeComponent::SaveInspectMessage() {
 	if (m_config_path.empty()) return;
 
 	auto config = EQ::JsonConfigFile::Load(m_config_path);
@@ -477,7 +476,7 @@ void EverQuest::SaveInspectMessage() {
 	}
 }
 
-void EverQuest::LoadInspectMessage() {
+void eqt::bridge::BridgeComponent::LoadInspectMessage() {
 	if (m_config_path.empty()) return;
 
 	auto config = EQ::JsonConfigFile::Load(m_config_path);
@@ -498,8 +497,8 @@ void EverQuest::LoadInspectMessage() {
 
 #ifdef WITH_AUDIO
 
-void EverQuest::InitializeAudio() {
-	if (m_audio_manager) {
+void eqt::bridge::BridgeComponent::InitializeAudio() {
+	if (ctx_.audio_manager) {
 		return;  // Already initialized
 	}
 
@@ -516,23 +515,23 @@ void EverQuest::InitializeAudio() {
 	// EQT_GRAPHICS=OFF + WITH_AUDIO=ON build could never find its sound
 	// assets and audio silently stayed disabled ("EQ client path not set")
 	// even though the path had actually been configured.
-	std::string eqPath = m_eq_client_path;
+	std::string eqPath = owner_.m_eq_client_path;
 
 	if (eqPath.empty()) {
 		LOG_WARN(MOD_AUDIO, "EQ client path not set, audio disabled");
 		return;
 	}
 
-	m_audio_manager = std::make_unique<EQT::Audio::AudioManager>();
+	ctx_.audio_manager = std::make_unique<EQT::Audio::AudioManager>();
 
 	// Pass event loop pump as tick callback so network stays alive during slow audio init
 	auto networkTick = [this]() {
-		TickNetwork();
+		owner_.TickNetwork();
 	};
 
-	if (!m_audio_manager->initialize(eqPath, false, m_audio_config_soundfont, networkTick)) {
+	if (!ctx_.audio_manager->initialize(eqPath, false, m_audio_config_soundfont, networkTick)) {
 		LOG_WARN(MOD_AUDIO, "Failed to initialize audio system");
-		m_audio_manager.reset();
+		ctx_.audio_manager.reset();
 		return;
 	}
 
@@ -541,17 +540,17 @@ void EverQuest::InitializeAudio() {
 	// state (no meaning without a renderer to constrain); skip when graphics
 	// is compiled out rather than guessing at a headless equivalent.
 #ifdef EQT_HAS_GRAPHICS
-	if (m_constrained_config && m_constrained_config->totalMemoryBudgetBytes > 0) {
-		m_audio_manager->setMemoryConstraints(
-			m_constrained_config->soundBufferCacheBytes,
-			m_constrained_config->lazyPfsLoading);
+	if (owner_.m_constrained_config && owner_.m_constrained_config->totalMemoryBudgetBytes > 0) {
+		ctx_.audio_manager->setMemoryConstraints(
+			owner_.m_constrained_config->soundBufferCacheBytes,
+			owner_.m_constrained_config->lazyPfsLoading);
 		LOG_INFO(MOD_AUDIO, "Audio memory constraints: soundCache={}KB, lazyPfs={}",
-			m_constrained_config->soundBufferCacheBytes / 1024,
-			m_constrained_config->lazyPfsLoading ? "yes" : "no");
+			owner_.m_constrained_config->soundBufferCacheBytes / 1024,
+			owner_.m_constrained_config->lazyPfsLoading ? "yes" : "no");
 	} else {
-		auto cfg = EQT::Graphics::ConstrainedRendererConfig::fromPreset(m_constrained_preset);
+		auto cfg = EQT::Graphics::ConstrainedRendererConfig::fromPreset(owner_.m_constrained_preset);
 		if (cfg.totalMemoryBudgetBytes > 0) {
-			m_audio_manager->setMemoryConstraints(cfg.soundBufferCacheBytes, cfg.lazyPfsLoading);
+			ctx_.audio_manager->setMemoryConstraints(cfg.soundBufferCacheBytes, cfg.lazyPfsLoading);
 			LOG_INFO(MOD_AUDIO, "Audio memory constraints (from preset): soundCache={}KB, lazyPfs={}",
 				cfg.soundBufferCacheBytes / 1024, cfg.lazyPfsLoading ? "yes" : "no");
 		}
@@ -559,9 +558,9 @@ void EverQuest::InitializeAudio() {
 #endif
 
 	// Apply configured volume levels
-	m_audio_manager->setMasterVolume(m_audio_config_master_volume);
-	m_audio_manager->setMusicVolume(m_audio_config_music_volume);
-	m_audio_manager->setEffectsVolume(m_audio_config_effects_volume);
+	ctx_.audio_manager->setMasterVolume(m_audio_config_master_volume);
+	ctx_.audio_manager->setMusicVolume(m_audio_config_music_volume);
+	ctx_.audio_manager->setEffectsVolume(m_audio_config_effects_volume);
 
 	LOG_DEBUG(MOD_AUDIO, "Audio volumes: master={:.0f}%, music={:.0f}%, effects={:.0f}%",
 		m_audio_config_master_volume * 100.0f,
@@ -569,88 +568,55 @@ void EverQuest::InitializeAudio() {
 		m_audio_config_effects_volume * 100.0f);
 
 	// Pump network before sound preloading
-	TickNetwork();
+	owner_.TickNetwork();
 
 	// Preload common sounds for faster playback
-	m_audio_manager->preloadCommonSounds();
+	ctx_.audio_manager->preloadCommonSounds();
 
 	// Phase 13: Initialize zone audio manager for positioned sound emitters
-	m_zone_audio_manager = std::make_unique<EQT::Audio::ZoneAudioManager>();
-	m_zone_audio_manager->setAudioManager(m_audio_manager.get());
+	owner_.m_zone_audio_manager = std::make_unique<EQT::Audio::ZoneAudioManager>();
+	owner_.m_zone_audio_manager->setAudioManager(ctx_.audio_manager.get());
 	LOG_DEBUG(MOD_AUDIO, "Zone audio manager initialized");
 
 	LOG_INFO(MOD_AUDIO, "Audio system initialized");
 }
 
-void EverQuest::ShutdownAudio() {
+void eqt::bridge::BridgeComponent::ShutdownAudio() {
 	// Shut down zone audio manager first
-	if (m_zone_audio_manager) {
-		m_zone_audio_manager->unloadZone();
-		m_zone_audio_manager.reset();
+	if (owner_.m_zone_audio_manager) {
+		owner_.m_zone_audio_manager->unloadZone();
+		owner_.m_zone_audio_manager.reset();
 	}
 
-	if (m_audio_manager) {
-		m_audio_manager->shutdown();
-		m_audio_manager.reset();
+	if (ctx_.audio_manager) {
+		ctx_.audio_manager->shutdown();
+		ctx_.audio_manager.reset();
 		LOG_INFO(MOD_AUDIO, "Audio system shut down");
 	}
 }
 
 // D20g: SetupRDPAudio moved to Application::setupRDPAudio()
 
-void EverQuest::UpdateDayNightState() {
+void eqt::bridge::BridgeComponent::UpdateDayNightState() {
 	// EverQuest day/night cycle:
 	// Day: 6:00 AM (hour 6) to 6:59 PM (hour 18)
 	// Night: 7:00 PM (hour 19) to 5:59 AM (hour 5)
 	bool wasDay = m_is_daytime;
-	m_is_daytime = (m_game_state.world().timeHour() >= 6 && m_game_state.world().timeHour() < 19);
+	m_is_daytime = (ctx_.game_state.world().timeHour() >= 6 && ctx_.game_state.world().timeHour() < 19);
 
 	// If day/night state changed, notify zone audio manager
-	if (wasDay != m_is_daytime && m_zone_audio_manager) {
-		m_zone_audio_manager->setDayNight(m_is_daytime);
+	if (wasDay != m_is_daytime && owner_.m_zone_audio_manager) {
+		owner_.m_zone_audio_manager->setDayNight(m_is_daytime);
 		LOG_DEBUG(MOD_AUDIO, "Day/night changed to {} (hour {})",
-			m_is_daytime ? "day" : "night", m_game_state.world().timeHour());
+			m_is_daytime ? "day" : "night", ctx_.game_state.world().timeHour());
 	}
 }
 
-void EverQuest::PlaySound(uint32_t soundId) {
+void eqt::bridge::BridgeComponent::PlaySound(uint32_t soundId) {
 	// Don't play sounds during zone loading
-	if (m_audio_manager && m_loading_phase == LoadingPhase::COMPLETE) {
-		m_audio_manager->playSound(soundId);
+	if (ctx_.audio_manager && owner_.m_loading_phase == LoadingPhase::COMPLETE) {
+		ctx_.audio_manager->playSound(soundId);
 	}
-}
-
-void EverQuest::PlaySoundAt(uint32_t soundId, float x, float y, float z) {
-	// Don't play sounds during zone loading
-	if (m_audio_manager && m_loading_phase == LoadingPhase::COMPLETE) {
-		m_audio_manager->playSound(soundId, glm::vec3(x, y, z));
-	}
-}
-
-void EverQuest::PlayCombatSound(bool hit, float x, float y, float z) {
-	// Don't play sounds during zone loading
-	if (!m_audio_manager || m_loading_phase != LoadingPhase::COMPLETE) return;
-
-	// Use sound IDs from SoundAssets
-	uint32_t soundId = hit ? EQT::Audio::SoundId::MELEE_HIT : EQT::Audio::SoundId::MELEE_SWING;
-	m_audio_manager->playSound(soundId, glm::vec3(x, y, z));
-}
-
-void EverQuest::PlaySpellSound(uint32_t spellId) {
-	// Don't play sounds during zone loading
-	if (!m_audio_manager || m_loading_phase != LoadingPhase::COMPLETE) return;
-
-	// Play generic spell cast sound
-	// TODO: Could map specific spells to specific sounds if needed
-	m_audio_manager->playSound(EQT::Audio::SoundId::SPELL_CAST);
-}
-
-void EverQuest::PlayUISound(uint32_t soundId) {
-	// Don't play sounds during zone loading
-	if (!m_audio_manager || m_loading_phase != LoadingPhase::COMPLETE) return;
-
-	// UI sounds are played at listener position (non-positional)
-	m_audio_manager->playSound(soundId);
 }
 
 #endif // WITH_AUDIO
@@ -663,22 +629,22 @@ void EverQuest::PlayUISound(uint32_t soundId) {
 // clicked hotbar index: every hotbar slot holding this item id gets the
 // HotbarCooldownStarted event, which is what the keyboard route needs (it has
 // no intent carrying an index) and is a superset of what the mouse path did.
-bool EverQuest::UseInventoryItem(int16_t slot) {
-	if (!m_inventory_manager) {
-		AddChatSystemMessage("Item not found in inventory");
+bool eqt::bridge::BridgeComponent::UseInventoryItem(int16_t slot) {
+	if (!ctx_.inventory_manager) {
+		owner_.AddChatSystemMessage("Item not found in inventory");
 		return false;
 	}
-	const auto* item = m_inventory_manager->getItem(slot);
+	const auto* item = ctx_.inventory_manager->getItem(slot);
 	if (!item) {
-		AddChatSystemMessage("Item not found");
+		owner_.AddChatSystemMessage("Item not found");
 		return false;
 	}
 	if (item->clickEffect.effectId == 0) {
-		AddChatSystemMessage(fmt::format("{} has no click effect", item->name));
+		owner_.AddChatSystemMessage(fmt::format("{} has no click effect", item->name));
 		return false;
 	}
 	if (item->clickEffect.type == 5 && slot >= eqt::inventory::GENERAL_BEGIN) {
-		AddChatSystemMessage("You must equip this item to use its effect");
+		owner_.AddChatSystemMessage("You must equip this item to use its effect");
 		return false;
 	}
 	EQ::Net::DynamicPacket packet;
@@ -686,21 +652,21 @@ bool EverQuest::UseInventoryItem(int16_t slot) {
 	packet.PutUInt32(0, 10);  // slot = 10 for item clicks
 	packet.PutUInt32(4, static_cast<uint32_t>(item->clickEffect.effectId));
 	packet.PutUInt32(8, static_cast<uint32_t>(slot));
-	uint16_t targetId = m_combat_manager ? m_combat_manager->GetTargetId() : 0;
+	uint16_t targetId = ctx_.combat_manager ? ctx_.combat_manager->GetTargetId() : 0;
 	packet.PutUInt32(12, targetId);
 	packet.PutUInt32(16, 0);
-	QueuePacket(HC_OP_CastSpell, &packet);
-	AddChatSystemMessage(fmt::format("Using {}", item->name));
+	owner_.QueuePacket(HC_OP_CastSpell, &packet);
+	owner_.AddChatSystemMessage(fmt::format("Using {}", item->name));
 
 	// Cooldown feedback to the renderer for every hotbar slot holding this item.
-	if (item->clickEffect.recastDelay > 0 && m_bridge && m_hotbar_model) {
-		for (int idx = 0; idx < m_hotbar_model->getSlotCount(); ++idx) {
-			const eqt::HotbarSlot& hs = m_hotbar_model->getSlot(idx);
+	if (item->clickEffect.recastDelay > 0 && ctx_.bridge && owner_.m_hotbar_model) {
+		for (int idx = 0; idx < owner_.m_hotbar_model->getSlotCount(); ++idx) {
+			const eqt::HotbarSlot& hs = owner_.m_hotbar_model->getSlot(idx);
 			if (hs.type != eqt::HotbarSlotType::Item || hs.id != item->itemId) continue;
 			eqt::state::HotbarCooldownStartedData cd;
 			cd.index = idx;
 			cd.durationMs = static_cast<uint32_t>(item->clickEffect.recastDelay);
-			m_bridge->pushEvent(eqt::state::GameEvent(
+			ctx_.bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::HotbarCooldownStarted, std::move(cd)));
 		}
 	}
@@ -716,23 +682,23 @@ bool EverQuest::UseInventoryItem(int16_t slot) {
 // dispatch path (registry 1, then Application's fallback registries). Combat
 // is the auto-attack toggle, the same rule /aa applies
 // (CombatManager::ToggleAutoAttack), with a message where /aa is silent.
-bool EverQuest::ActivateHotbarCommandSlot(eqt::HotbarSlotType type, const std::string& text) {
+bool eqt::bridge::BridgeComponent::ActivateHotbarCommandSlot(eqt::HotbarSlotType type, const std::string& text) {
 	switch (type) {
 	case eqt::HotbarSlotType::Emote:
 	case eqt::HotbarSlotType::Macro:
 		if (text.empty()) {
-			AddChatSystemMessage("Hotbar slot has no command");
+			owner_.AddChatSystemMessage("Hotbar slot has no command");
 			return false;
 		}
-		m_chat->ProcessChatInput(text);
+		owner_.Chat().ProcessChatInput(text);
 		return true;
 	case eqt::HotbarSlotType::Combat:
-		if (!m_combat_manager) return false;
-		if (!m_combat_manager->IsAutoAttackEnabled() && !m_combat_manager->HasTarget()) {
-			AddChatSystemMessage("You must have a target to attack");
+		if (!ctx_.combat_manager) return false;
+		if (!ctx_.combat_manager->IsAutoAttackEnabled() && !ctx_.combat_manager->HasTarget()) {
+			owner_.AddChatSystemMessage("You must have a target to attack");
 			return false;
 		}
-		m_combat_manager->ToggleAutoAttack();
+		ctx_.combat_manager->ToggleAutoAttack();
 		return true;
 	case eqt::HotbarSlotType::Empty:
 	case eqt::HotbarSlotType::Spell:
