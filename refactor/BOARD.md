@@ -262,3 +262,18 @@ it without taking that measurement first.
   (`ZoneSendSpawnAppearance`, `ZoneSendSessionReady`, both unreachable and
   unguarded). Closes when: deleted, or a reader that the handshake actually
   needs is restored. Prov: K09 Review.
+
+## Added 2026-09-03 by the K11 Review (bridge extraction)
+
+- **B036** (C) `src/client/bridge/bridge_component_ui_audio.cpp` — the four
+  positional/typed sound helpers (`PlaySoundAt`, `PlayCombatSound`,
+  `PlaySpellSound`, `PlayUISound`) and `SaveEntityDataToFile` had zero callers
+  and were deleted by K11: combat, casting and UI sounds are silent by
+  omission, not by design. Will's call whether to wire them (feature) or leave
+  audio to zone music/ambient only. Prov: K11 Review.
+
+- **B037** (B) `include/client/bridge/bridge_component.h` `m_audio_config_use_3d_audio`
+  — its only setter (`SetUse3DAudio`) was dead and deleted; every other audio
+  option is wired from `application_config.cpp`, this one is settable only by
+  editing the header. Closes when: wired like its siblings or deleted. Prov:
+  K11 Review.
