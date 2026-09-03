@@ -64,7 +64,7 @@ TEST_F(GroupAcceptTest, AcceptNamesTheInviterEvenThoughFollowClearsThePendingNam
     // m_pending_inviter_name exactly as it does live. No connection exists,
     // so nothing is actually sent.
     eq.Test_SetBypassSendGuardForSeam(true);
-    eq.AcceptGroupInvite();
+    eq.Group().AcceptGroupInvite();
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -73,13 +73,13 @@ TEST_F(GroupAcceptTest, AcceptNamesTheInviterEvenThoughFollowClearsThePendingNam
     // The follow must still have consumed the private pending-invite flag
     // (HasPendingGroupInvite() reads the state layer, which only the server's
     // GroupUpdate clears -- unchanged by T217): a second accept says nothing.
-    eq.AcceptGroupInvite();
+    eq.Group().AcceptGroupInvite();
     EXPECT_TRUE(DrainSystemMessages(bridge).empty());
 }
 
 TEST_F(GroupAcceptTest, AcceptWithoutPendingInviteSaysNothing) {
     eq.Test_SetBypassSendGuardForSeam(true);
-    eq.AcceptGroupInvite();
+    eq.Group().AcceptGroupInvite();
     EXPECT_TRUE(DrainSystemMessages(bridge).empty());
 }
 
@@ -89,12 +89,12 @@ TEST_F(GroupAcceptTest, DeclineStillConsumesThePendingInvite) {
     DrainSystemMessages(bridge);
 
     eq.Test_SetBypassSendGuardForSeam(true);
-    eq.DeclineGroupInvite();
+    eq.Group().DeclineGroupInvite();
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
     EXPECT_EQ(msgs[0], "Group invite declined");
-    eq.DeclineGroupInvite();
+    eq.Group().DeclineGroupInvite();
     EXPECT_TRUE(DrainSystemMessages(bridge).empty()) << "second decline must be a no-op";
 }
 
@@ -103,11 +103,11 @@ TEST_F(GroupAcceptTest, GuardStillBlocksWhenNotZonedIn) {
     // the invite stays pending (unchanged from before T217).
     ReplayZone(eq, HC_OP_GroupInvite, GroupInvitePayload("Oraclerogue", "Testchar"));
     DrainSystemMessages(bridge);
-    eq.SendGroupFollow("Oraclerogue");
+    eq.Group().SendGroupFollow("Oraclerogue");
     // Guard returned early, so the private flag is still set and a later
     // accept still fires its chat line.
     eq.Test_SetBypassSendGuardForSeam(true);
-    eq.AcceptGroupInvite();
+    eq.Group().AcceptGroupInvite();
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
     EXPECT_EQ(msgs[0], "You have joined Oraclerogue's group");

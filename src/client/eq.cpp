@@ -105,6 +105,8 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 	// K01: the guild family. Constructed first so nothing below can reach a
 	// null m_guild.
 	m_guild = std::make_unique<eqt::guild::GuildComponent>(m_ctx, *this);
+	// K04: the group family (group, raid, pet). Same rule.
+	m_group = std::make_unique<eqt::group::GroupComponent>(m_ctx, *this);
 
 	m_host = host;
 	m_port = port;
@@ -749,8 +751,8 @@ void EverQuest::PublishFullStateSnapshot() {
 	if (m_game_state.pet().petSpawnId() != 0) {
 		eqt::state::PetCreatedData data;
 		data.spawnId = m_game_state.pet().petSpawnId();
-		data.name = GetPetName();
-		data.level = GetPetLevel();
+		data.name = m_group->GetPetName();
+		data.level = m_group->GetPetLevel();
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::PetCreated, std::move(data)));
 	}

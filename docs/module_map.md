@@ -31,7 +31,6 @@ review section under `refactor/F*.md` and `refactor/J*.md`.
 | eq_zone_dispatch.cpp | 958 | J02: `DispatchZonePacket` — the zone-stream opcode switch, nothing else |
 | eq_login_world.cpp | 945 | Login-server + world-server connection handling, eqcrypt_block |
 | eq_strings.cpp | 767 | Name/string lookup tables, opcode names, dump helpers |
-| eq_group.cpp | 980 | Group invite/update/disband, raid (T169–T184: OP_RaidUpdate decode, raid senders), pet accessors/commands |
 | eq_player_misc.cpp | 750 | J07: assist/boat/split/LFG/shielding/discipline/banker, save/popup/duel/bindwound, cosmetic misc social, camera/mp3/sound handlers |
 | eq_player_social.cpp | 704 | J07: emote/AFK/anon/roleplay/camp/logout, rezz/who/inspect (+ OP_InspectAnswer reply, T170), corpse/consent; the four T145 double-prefix senders (SendCamp/SendLogout/SendWhoAllRequest/SendInspectRequest) |
 | eq_chat.cpp | 645 | Channel messages, chat input, AddChat* family, colored/formatted/simple text, `EverQuest::DispatchSlashCommand` (registry 1 entry point) |
@@ -43,6 +42,7 @@ review section under `refactor/F*.md` and `refactor/J*.md`.
 | eq_zone_handshake.cpp | 349 | J02: the ZoneSend* handshake senders (SessionReady, ZoneEntry, ReqClientSpawn, ClientReady, SetServerFilter, StreamIdentify, Ack, ReqNewZone, AA/tribute requests, SpawnAppearance, SendExpZonein) |
 | eq_commands_movement.cpp | 320 | RegisterMovementCommands (movement/combat/utility-debug/sky commands) |
 | eq_gm.cpp | 307 | GM command senders + processors (wired T148) |
+| group_component.cpp (in `src/client/group/`) | 960 | K04: `eqt::group::GroupComponent` — group invite/update/disband, raid (T169–T184: OP_RaidUpdate decode, raid senders), pet accessors/commands, moved out of `class EverQuest` (was `eq_group.cpp`) |
 | guild_component.cpp (in `src/client/guild/`) | 276 | K01: `eqt::guild::GuildComponent` — the guild senders + processors, moved out of `class EverQuest` (was `eq_guild.cpp`; m_guild_id populated T133) |
 | eq_commands_train.cpp | 264 | T280: `/train` and `/trainclose` game-registry side |
 | eq_profile_appearance.cpp | 20 | PlayerProfile appearance fields stored so `/appearance` merges faithfully (T167) |
@@ -68,7 +68,7 @@ This table and that plan must agree; change both together.
 | guild | `guild/guild_component` | 11 | 3 | **K01 DONE** (pilot; `ClientContext` in `include/client/client_context.h`) |
 | gm | `eq_gm` | 12 | 2 | K02 |
 | chat | `eq_chat`, `eq_strings` | 13 | 1 | K03 |
-| group | `eq_group` | 25 | 5 | K04 |
+| group | `group/group_component` | 23 | 5 | **K04 DONE** (group, raid and pet together; `DismissPet`/`UpdateGroupMemberFromEntity` deleted, zero callers) |
 | merchant | `eq_merchant`, `_trade`, `_vendor_bank` | 56 | 1 | K05 |
 | entities | `eq_entities`, `_appearance`, `_updates`, `_world` | 28 | 1 | K06 |
 | movement | `eq_movement`, `_state`, `_update` | 44 | 4 | K07 |

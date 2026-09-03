@@ -397,11 +397,11 @@ protected:
                                       "Testchar"));
         ASSERT_TRUE(h.eq.IsInGroup());
         ASSERT_EQ(h.eq.GetGroupMemberCount(), 3);
-        ASSERT_EQ(h.eq.GetGroupMember(0)->spawnId, kSelfId);
-        ASSERT_EQ(h.eq.GetGroupMember(1)->name, "Buddy");
-        ASSERT_EQ(h.eq.GetGroupMember(1)->spawnId, kBuddyId);
-        ASSERT_EQ(h.eq.GetGroupMember(2)->name, "Ghost");
-        ASSERT_EQ(h.eq.GetGroupMember(2)->spawnId, 0u);
+        ASSERT_EQ(h.eq.Group().GetGroupMember(0)->spawnId, kSelfId);
+        ASSERT_EQ(h.eq.Group().GetGroupMember(1)->name, "Buddy");
+        ASSERT_EQ(h.eq.Group().GetGroupMember(1)->spawnId, kBuddyId);
+        ASSERT_EQ(h.eq.Group().GetGroupMember(2)->name, "Ghost");
+        ASSERT_EQ(h.eq.Group().GetGroupMember(2)->spawnId, 0u);
 
         // Start on an unrelated target so "no change" is distinguishable
         // from "targeted self".

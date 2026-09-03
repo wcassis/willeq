@@ -175,7 +175,7 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 		ZoneProcessExpUpdate(p);
 		break;
 	case HC_OP_RaidUpdate:
-		ZoneProcessRaidUpdate(p);
+		m_group->ZoneProcessRaidUpdate(p);
 		break;
 	case HC_OP_GuildMOTD:
 		ZoneProcessGuildMOTD(p);
@@ -751,23 +751,23 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 
 	// Group packet handlers
 	case HC_OP_GroupInvite:
-		ZoneProcessGroupInvite(p);
+		m_group->ZoneProcessGroupInvite(p);
 		break;
 	case HC_OP_GroupInvite2:
 		// Alternate invite opcode - same handler
-		ZoneProcessGroupInvite(p);
+		m_group->ZoneProcessGroupInvite(p);
 		break;
 	case HC_OP_GroupFollow:
-		ZoneProcessGroupFollow(p);
+		m_group->ZoneProcessGroupFollow(p);
 		break;
 	case HC_OP_GroupUpdate:
-		ZoneProcessGroupUpdate(p);
+		m_group->ZoneProcessGroupUpdate(p);
 		break;
 	case HC_OP_GroupDisband:
-		ZoneProcessGroupDisband(p);
+		m_group->ZoneProcessGroupDisband(p);
 		break;
 	case HC_OP_GroupCancelInvite:
-		ZoneProcessGroupCancelInvite(p);
+		m_group->ZoneProcessGroupCancelInvite(p);
 		break;
 	case HC_OP_SetGroupTarget:
 		// Group target indicator - ignore for now
