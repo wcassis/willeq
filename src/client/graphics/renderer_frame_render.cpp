@@ -261,10 +261,10 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
     if (fireEffectsEnabled_ && !fireGlowLights_.empty() && zoneReady_ && have3DTransforms_) {
         fireGlowTime_ += deltaTime;
         if (fireGlowLightingEnabled_) {
-            updateFireGlowLighting();
+            eqe1_->updateFireGlowLighting();
         }
         if (fireGlowIcospheresEnabled_ && icosphereProgram_ != 0) {
-            renderFireGlowIcospheres();
+            eqe1_->renderFireGlowIcospheres();
         }
     }
 #endif

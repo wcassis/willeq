@@ -648,7 +648,7 @@ MemoryReportBreakdown IrrlichtRenderer::getMemoryReportBreakdown(const MemoryRep
     // inflated total produced). Reported on its own line below (mapped, not
     // resident -- callers reading this field must not treat it as RSS).
     {
-        b.eqe1MappedBytes = getEQE1MappedBytesTotal();
+        b.eqe1MappedBytes = eqe1_->getEQE1MappedBytesTotal();
         {
             std::lock_guard<std::mutex> lock(eqe1Mutex_);
             for (const auto& [name, loader] : eqe1Loaders_) {

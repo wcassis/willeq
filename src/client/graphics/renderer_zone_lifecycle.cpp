@@ -64,7 +64,7 @@ void IrrlichtRenderer::unloadZone() {
     {
         std::lock_guard<std::mutex> lock(eqe1Mutex_);
         for (auto it = eqe1Loaders_.begin(); it != eqe1Loaders_.end(); ) {
-            if (isPersistentEQE1Archive(it->first) && it->second) {
+            if (Eqe1ArchiveComponent::isPersistentEQE1Archive(it->first) && it->second) {
                 ++it;
             } else {
                 it = eqe1Loaders_.erase(it);

@@ -624,7 +624,7 @@ void IrrlichtRenderer::queueEntityPrepRequests() {
         // GM/summoned NPC, illusion) gets its archive queued as an EQE1
         // candidate BEFORE its prep job can ask for a texture. Deduped per
         // race inside; a no-op for every race zone load already queued.
-        if (addSpawnedRaceEQE1Candidate(vis.raceId)) {
+        if (eqe1_->addSpawnedRaceEQE1Candidate(vis.raceId)) {
             LOG_INFO(MOD_GRAPHICS, "EQE1: race {} spawned after zone load -> its archive "
                      "queued as a late candidate (spawn={})", vis.raceId, spawnId);
         }

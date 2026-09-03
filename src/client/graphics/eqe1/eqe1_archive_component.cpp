@@ -1,3 +1,32 @@
+// EQE1 flat-pack archive plumbing + the fire-glow icosphere renderer --
+// EQT::Graphics::Eqe1ArchiveComponent.
+//
+// L02 (Batch L, refactor/L_renderer_component_extraction.md): moved here from
+// src/client/graphics/renderer_effects.cpp and rebased from IrrlichtRenderer
+// onto Eqe1ArchiveComponent. Verbatim move -- the only edits inside a body are
+// the batch's sanctioned substitutions:
+//   * RendererContext core members (5): camera_, config_,
+//     constrainedTextureCache_, currentZoneName_, zoneShader_ -> ctx_.<name>
+//   * IrrlichtRenderer members shared with another family, which stay on the
+//     renderer under Mechanism 3 and are reached through the transition
+//     handle (17): captured3DProj_, captured3DView_, eqe1CandidateRaces_,
+//     eqe1CandidatesMutex_, eqe1Index_, eqe1Loaders_,
+//     eqe1LoadTimeCandidateCount_, eqe1Mutex_, fireGlowLights_, fireGlowTime_,
+//     icosphereIBO_, icosphereIndices_, icosphereProgram_, icosphereVBO_,
+//     icosphereVertices_, maxFireGlowLights_, pendingGlobalEQE1Archives_
+//     -> owner_.<name>
+//   * IrrlichtRenderer:: -> Eqe1ArchiveComponent:: (the 14 definition headers
+//     plus the one qualified call to isPersistentEQE1Archive, which moved)
+// The 9 icoLoc* uniform locations, the EQE1ArchiveEntry struct and the
+// eqe1ArchiveEntries_ map are single-family and moved into the component, so
+// they keep their bare names. No body was otherwise touched. See the L02
+// Review.
+//
+// irrlicht_renderer.h is still included: 17 owner_ members are private
+// IrrlichtRenderer state, so the complete type is required (and the component
+// is a friend).
+
+#include "client/graphics/eqe1/eqe1_archive_component.h"
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/eqe1_loader.h"
 #include "client/graphics/constrained_texture_cache.h"
@@ -44,7 +73,7 @@ namespace Graphics {
 #define GL_CURRENT_PROGRAM 0x8B8D
 #endif
 
-void IrrlichtRenderer::buildIcosphereMesh() {
+void Eqe1ArchiveComponent::buildIcosphereMesh() {
     // Build subdivision 2 icosphere (312 verts, 320 tris) on unit sphere
     const float t = (1.0f + sqrtf(5.0f)) / 2.0f;
     float icoV[][3] = {
@@ -88,39 +117,39 @@ void IrrlichtRenderer::buildIcosphereMesh() {
     }
 
     // Store vertices (position only — normal == position for unit sphere)
-    icosphereVertices_.clear();
-    icosphereVertices_ = std::move(pts);
+    owner_.icosphereVertices_.clear();
+    owner_.icosphereVertices_ = std::move(pts);
 
-    icosphereIndices_.clear();
+    owner_.icosphereIndices_.clear();
     for (const auto& tri : tris) {
-        icosphereIndices_.push_back(static_cast<uint16_t>(tri.i0));
-        icosphereIndices_.push_back(static_cast<uint16_t>(tri.i1));
-        icosphereIndices_.push_back(static_cast<uint16_t>(tri.i2));
+        owner_.icosphereIndices_.push_back(static_cast<uint16_t>(tri.i0));
+        owner_.icosphereIndices_.push_back(static_cast<uint16_t>(tri.i1));
+        owner_.icosphereIndices_.push_back(static_cast<uint16_t>(tri.i2));
     }
 
     // Upload to GPU
-    glGenBuffers(1, &icosphereVBO_);
-    glBindBuffer(GL_ARRAY_BUFFER, icosphereVBO_);
+    glGenBuffers(1, &owner_.icosphereVBO_);
+    glBindBuffer(GL_ARRAY_BUFFER, owner_.icosphereVBO_);
     glBufferData(GL_ARRAY_BUFFER,
-                 icosphereVertices_.size() * sizeof(float),
-                 icosphereVertices_.data(), GL_STATIC_DRAW);
+                 owner_.icosphereVertices_.size() * sizeof(float),
+                 owner_.icosphereVertices_.data(), GL_STATIC_DRAW);
 
-    glGenBuffers(1, &icosphereIBO_);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, icosphereIBO_);
+    glGenBuffers(1, &owner_.icosphereIBO_);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, owner_.icosphereIBO_);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER,
-                 icosphereIndices_.size() * sizeof(uint16_t),
-                 icosphereIndices_.data(), GL_STATIC_DRAW);
+                 owner_.icosphereIndices_.size() * sizeof(uint16_t),
+                 owner_.icosphereIndices_.data(), GL_STATIC_DRAW);
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
     LOG_INFO(MOD_GRAPHICS, "Built icosphere mesh: {} verts, {} tris, VBO={}, IBO={}",
-             static_cast<int>(icosphereVertices_.size()) / 3,
-             static_cast<int>(icosphereIndices_.size()) / 3,
-             icosphereVBO_, icosphereIBO_);
+             static_cast<int>(owner_.icosphereVertices_.size()) / 3,
+             static_cast<int>(owner_.icosphereIndices_.size()) / 3,
+             owner_.icosphereVBO_, owner_.icosphereIBO_);
 }
 
-void IrrlichtRenderer::compileIcosphereShader() {
+void Eqe1ArchiveComponent::compileIcosphereShader() {
     // Vertex shader: scale pulse + vertex jitter, fog distance
     static const char* VS_SRC = R"(
 precision highp float;
@@ -193,102 +222,102 @@ void main() {
     }
 
     // Link
-    icosphereProgram_ = glCreateProgram();
-    glAttachShader(icosphereProgram_, vs);
-    glAttachShader(icosphereProgram_, fs);
-    glBindAttribLocation(icosphereProgram_, 0, "aPosition");
-    glLinkProgram(icosphereProgram_);
-    glGetProgramiv(icosphereProgram_, GL_LINK_STATUS, &ok);
+    owner_.icosphereProgram_ = glCreateProgram();
+    glAttachShader(owner_.icosphereProgram_, vs);
+    glAttachShader(owner_.icosphereProgram_, fs);
+    glBindAttribLocation(owner_.icosphereProgram_, 0, "aPosition");
+    glLinkProgram(owner_.icosphereProgram_);
+    glGetProgramiv(owner_.icosphereProgram_, GL_LINK_STATUS, &ok);
     if (!ok) {
         char log[512];
-        glGetProgramInfoLog(icosphereProgram_, sizeof(log), nullptr, log);
+        glGetProgramInfoLog(owner_.icosphereProgram_, sizeof(log), nullptr, log);
         LOG_ERROR(MOD_GRAPHICS, "Icosphere program link error: {}", log);
-        glDeleteProgram(icosphereProgram_);
-        icosphereProgram_ = 0;
+        glDeleteProgram(owner_.icosphereProgram_);
+        owner_.icosphereProgram_ = 0;
         glDeleteShader(vs);
         glDeleteShader(fs);
         return;
     }
-    glDetachShader(icosphereProgram_, vs);
-    glDetachShader(icosphereProgram_, fs);
+    glDetachShader(owner_.icosphereProgram_, vs);
+    glDetachShader(owner_.icosphereProgram_, fs);
     glDeleteShader(vs);
     glDeleteShader(fs);
 
     // Cache uniform locations
-    icoLocViewProj_ = glGetUniformLocation(icosphereProgram_, "uViewProj");
-    icoLocCenter_ = glGetUniformLocation(icosphereProgram_, "uCenter");
-    icoLocRadius_ = glGetUniformLocation(icosphereProgram_, "uRadius");
-    icoLocTime_ = glGetUniformLocation(icosphereProgram_, "uTime");
-    icoLocJitterAmt_ = glGetUniformLocation(icosphereProgram_, "uJitterAmount");
-    icoLocColor_ = glGetUniformLocation(icosphereProgram_, "uColor");
-    icoLocFogStart_ = glGetUniformLocation(icosphereProgram_, "uFogStart");
-    icoLocFogEnd_ = glGetUniformLocation(icosphereProgram_, "uFogEnd");
-    icoLocFogColor_ = glGetUniformLocation(icosphereProgram_, "uFogColor");
+    icoLocViewProj_ = glGetUniformLocation(owner_.icosphereProgram_, "uViewProj");
+    icoLocCenter_ = glGetUniformLocation(owner_.icosphereProgram_, "uCenter");
+    icoLocRadius_ = glGetUniformLocation(owner_.icosphereProgram_, "uRadius");
+    icoLocTime_ = glGetUniformLocation(owner_.icosphereProgram_, "uTime");
+    icoLocJitterAmt_ = glGetUniformLocation(owner_.icosphereProgram_, "uJitterAmount");
+    icoLocColor_ = glGetUniformLocation(owner_.icosphereProgram_, "uColor");
+    icoLocFogStart_ = glGetUniformLocation(owner_.icosphereProgram_, "uFogStart");
+    icoLocFogEnd_ = glGetUniformLocation(owner_.icosphereProgram_, "uFogEnd");
+    icoLocFogColor_ = glGetUniformLocation(owner_.icosphereProgram_, "uFogColor");
 
-    LOG_INFO(MOD_GRAPHICS, "Compiled icosphere shader program={}", icosphereProgram_);
+    LOG_INFO(MOD_GRAPHICS, "Compiled icosphere shader program={}", owner_.icosphereProgram_);
 }
 
-void IrrlichtRenderer::updateFireGlowLighting() {
-    if (!zoneShader_ || fireGlowLights_.empty()) return;
+void Eqe1ArchiveComponent::updateFireGlowLighting() {
+    if (!ctx_.zoneShader || owner_.fireGlowLights_.empty()) return;
 
     // Get camera position in Irrlicht coords (Y-up)
-    irr::core::vector3df camPos = camera_ ? camera_->getAbsolutePosition()
+    irr::core::vector3df camPos = ctx_.camera ? ctx_.camera->getAbsolutePosition()
                                           : irr::core::vector3df(0, 0, 0);
 
     // Sort emitters by distance to camera, select nearest N
-    int maxN = std::min(maxFireGlowLights_,
-                        static_cast<int>(fireGlowLights_.size()));
+    int maxN = std::min(owner_.maxFireGlowLights_,
+                        static_cast<int>(owner_.fireGlowLights_.size()));
     maxN = std::min(maxN, ZoneShaderManager::MAX_FIRE_GLOW_LIGHTS);
 
     // Build index + distance array for partial sort
     struct EmitterDist { int index; float distSq; };
-    std::vector<EmitterDist> dists(fireGlowLights_.size());
-    for (size_t i = 0; i < fireGlowLights_.size(); ++i) {
-        float dx = fireGlowLights_[i].position.X - camPos.X;
-        float dy = fireGlowLights_[i].position.Y - camPos.Y;
-        float dz = fireGlowLights_[i].position.Z - camPos.Z;
+    std::vector<EmitterDist> dists(owner_.fireGlowLights_.size());
+    for (size_t i = 0; i < owner_.fireGlowLights_.size(); ++i) {
+        float dx = owner_.fireGlowLights_[i].position.X - camPos.X;
+        float dy = owner_.fireGlowLights_[i].position.Y - camPos.Y;
+        float dz = owner_.fireGlowLights_[i].position.Z - camPos.Z;
         dists[i] = { static_cast<int>(i), dx*dx + dy*dy + dz*dz };
     }
     std::partial_sort(dists.begin(), dists.begin() + maxN, dists.end(),
                       [](const EmitterDist& a, const EmitterDist& b) { return a.distSq < b.distSq; });
 
-    zoneShader_->clearFireGlowLights();
-    zoneShader_->setNumFireGlowLights(maxN);
+    ctx_.zoneShader->clearFireGlowLights();
+    ctx_.zoneShader->setNumFireGlowLights(maxN);
 
     for (int i = 0; i < maxN; ++i) {
-        const auto& e = fireGlowLights_[dists[i].index];
+        const auto& e = owner_.fireGlowLights_[dists[i].index];
         // Fire glow light uniforms are in Irrlicht coords (Y-up) — matches zone VS worldPos
-        zoneShader_->setFireGlowLight(i,
+        ctx_.zoneShader->setFireGlowLight(i,
             e.position.X, e.position.Y, e.position.Z,
             e.r, e.g, e.b,
             e.radius, 1.0f);
     }
 }
 
-void IrrlichtRenderer::renderFireGlowIcospheres() {
-    if (icosphereVBO_ == 0 || icosphereProgram_ == 0 || fireGlowLights_.empty()) return;
+void Eqe1ArchiveComponent::renderFireGlowIcospheres() {
+    if (owner_.icosphereVBO_ == 0 || owner_.icosphereProgram_ == 0 || owner_.fireGlowLights_.empty()) return;
 
     // Get camera position for nearest-N selection (reuse fire glow light selection)
-    irr::core::vector3df camPos = camera_ ? camera_->getAbsolutePosition()
+    irr::core::vector3df camPos = ctx_.camera ? ctx_.camera->getAbsolutePosition()
                                           : irr::core::vector3df(0, 0, 0);
 
-    int maxN = std::min(maxFireGlowLights_,
-                        static_cast<int>(fireGlowLights_.size()));
+    int maxN = std::min(owner_.maxFireGlowLights_,
+                        static_cast<int>(owner_.fireGlowLights_.size()));
 
     // Build distance-sorted indices
     struct EmitterDist { int index; float distSq; };
-    std::vector<EmitterDist> dists(fireGlowLights_.size());
-    for (size_t i = 0; i < fireGlowLights_.size(); ++i) {
-        float dx = fireGlowLights_[i].position.X - camPos.X;
-        float dy = fireGlowLights_[i].position.Y - camPos.Y;
-        float dz = fireGlowLights_[i].position.Z - camPos.Z;
+    std::vector<EmitterDist> dists(owner_.fireGlowLights_.size());
+    for (size_t i = 0; i < owner_.fireGlowLights_.size(); ++i) {
+        float dx = owner_.fireGlowLights_[i].position.X - camPos.X;
+        float dy = owner_.fireGlowLights_[i].position.Y - camPos.Y;
+        float dz = owner_.fireGlowLights_[i].position.Z - camPos.Z;
         dists[i] = { static_cast<int>(i), dx*dx + dy*dy + dz*dz };
     }
     std::partial_sort(dists.begin(), dists.begin() + maxN, dists.end(),
                       [](const EmitterDist& a, const EmitterDist& b) { return a.distSq < b.distSq; });
 
     // Build ViewProj matrix from captured 3D transforms
-    irr::core::matrix4 viewProj = captured3DProj_ * captured3DView_;
+    irr::core::matrix4 viewProj = owner_.captured3DProj_ * owner_.captured3DView_;
     float vpMat[16];
     for (int i = 0; i < 16; i++) vpMat[i] = viewProj[i];
 
@@ -304,7 +333,7 @@ void IrrlichtRenderer::renderFireGlowIcospheres() {
     GLboolean prevBlend = glIsEnabled(GL_BLEND);
 
     // Set render state: additive blend, depth test ON, depth write OFF, no cull
-    glUseProgram(icosphereProgram_);
+    glUseProgram(owner_.icosphereProgram_);
     glEnable(GL_BLEND);
     glBlendFunc(GL_ONE, GL_ONE);
     glDepthMask(GL_FALSE);
@@ -313,20 +342,20 @@ void IrrlichtRenderer::renderFireGlowIcospheres() {
 
     // Set shared uniforms
     glUniformMatrix4fv(icoLocViewProj_, 1, GL_FALSE, vpMat);
-    glUniform1f(icoLocTime_, fireGlowTime_);
+    glUniform1f(icoLocTime_, owner_.fireGlowTime_);
     glUniform1f(icoLocJitterAmt_, 0.08f);
 
-    float fogStart = zoneShader_ ? zoneShader_->fogStart() : 999999.0f;
-    float fogEnd = zoneShader_ ? zoneShader_->fogEnd() : 999999.0f;
-    const float* fogCol = zoneShader_ ? zoneShader_->fogColor() : nullptr;
+    float fogStart = ctx_.zoneShader ? ctx_.zoneShader->fogStart() : 999999.0f;
+    float fogEnd = ctx_.zoneShader ? ctx_.zoneShader->fogEnd() : 999999.0f;
+    const float* fogCol = ctx_.zoneShader ? ctx_.zoneShader->fogColor() : nullptr;
     glUniform1f(icoLocFogStart_, fogStart);
     glUniform1f(icoLocFogEnd_, fogEnd);
     if (fogCol) glUniform4f(icoLocFogColor_, fogCol[0], fogCol[1], fogCol[2], fogCol[3]);
     else glUniform4f(icoLocFogColor_, 0.0f, 0.0f, 0.0f, 0.0f);
 
     // Bind icosphere VBO/IBO
-    glBindBuffer(GL_ARRAY_BUFFER, icosphereVBO_);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, icosphereIBO_);
+    glBindBuffer(GL_ARRAY_BUFFER, owner_.icosphereVBO_);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, owner_.icosphereIBO_);
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
     // Disable other attribs that zone shaders may have left enabled
@@ -335,13 +364,13 @@ void IrrlichtRenderer::renderFireGlowIcospheres() {
     glDisableVertexAttribArray(3);
     glDisableVertexAttribArray(4);
 
-    int indexCount = static_cast<int>(icosphereIndices_.size());
+    int indexCount = static_cast<int>(owner_.icosphereIndices_.size());
 
     // xorshift RNG for per-emitter color flicker (deterministic per frame from time)
-    uint32_t flickerRng = static_cast<uint32_t>(fireGlowTime_ * 1000.0f) ^ 0xDEADBEEF;
+    uint32_t flickerRng = static_cast<uint32_t>(owner_.fireGlowTime_ * 1000.0f) ^ 0xDEADBEEF;
 
     for (int i = 0; i < maxN; ++i) {
-        const auto& e = fireGlowLights_[dists[i].index];
+        const auto& e = owner_.fireGlowLights_[dists[i].index];
 
         // Color flicker: random intensity variation per light per frame
         flickerRng ^= flickerRng << 13; flickerRng ^= flickerRng >> 17; flickerRng ^= flickerRng << 5;
@@ -373,18 +402,18 @@ void IrrlichtRenderer::renderFireGlowIcospheres() {
 // EQE1 flat pack lazy-open (thread-safe)
 // ---------------------------------------------------------------------------
 
-const EQE1Loader* IrrlichtRenderer::getOrOpenEQE1(const std::string& archiveBaseName) {
-    if (config_.constrainedConfig.eqe1Path.empty()) return nullptr;
-    return getOrOpenEQE1FromDir(archiveBaseName, config_.constrainedConfig.eqe1Path);
+const EQE1Loader* Eqe1ArchiveComponent::getOrOpenEQE1(const std::string& archiveBaseName) {
+    if (ctx_.config.constrainedConfig.eqe1Path.empty()) return nullptr;
+    return getOrOpenEQE1FromDir(archiveBaseName, ctx_.config.constrainedConfig.eqe1Path);
 }
 
-const EQE1Loader* IrrlichtRenderer::getOrOpenEQE1FromDir(const std::string& archiveBaseName,
+const EQE1Loader* Eqe1ArchiveComponent::getOrOpenEQE1FromDir(const std::string& archiveBaseName,
                                                          const std::string& dir) {
-    std::lock_guard<std::mutex> lock(eqe1Mutex_);
+    std::lock_guard<std::mutex> lock(owner_.eqe1Mutex_);
 
     // Already opened?
-    auto it = eqe1Loaders_.find(archiveBaseName);
-    if (it != eqe1Loaders_.end()) {
+    auto it = owner_.eqe1Loaders_.find(archiveBaseName);
+    if (it != owner_.eqe1Loaders_.end()) {
         return it->second.get();  // may be nullptr if previously failed
     }
 
@@ -393,23 +422,23 @@ const EQE1Loader* IrrlichtRenderer::getOrOpenEQE1FromDir(const std::string& arch
     auto loader = std::make_unique<EQE1Loader>();
     if (loader->open(path)) {
         const EQE1Loader* ptr = loader.get();
-        eqe1Loaders_[archiveBaseName] = std::move(loader);
+        owner_.eqe1Loaders_[archiveBaseName] = std::move(loader);
 
         // Register with cache (cache mutex is separate from eqe1Mutex_ — no deadlock)
-        if (constrainedTextureCache_) {
-            constrainedTextureCache_->addEQE1Loader(ptr);
+        if (ctx_.constrainedTextureCache) {
+            ctx_.constrainedTextureCache->addEQE1Loader(ptr);
         }
 
         return ptr;
     }
 
     // Store nullptr to prevent repeated open attempts
-    eqe1Loaders_[archiveBaseName] = nullptr;
+    owner_.eqe1Loaders_[archiveBaseName] = nullptr;
     LOG_DEBUG(MOD_GRAPHICS, "EQE1: {} not found, S3D fallback", path);
     return nullptr;
 }
 
-const EQE1Loader* IrrlichtRenderer::openCompositeSheetEQE1(const std::string& name) {
+const EQE1Loader* Eqe1ArchiveComponent::openCompositeSheetEQE1(const std::string& name) {
     // T284: the only composite case the name index cannot answer -- a
     // --composite-entities directory that is NOT the indexed --eqe1-path.
     //
@@ -426,9 +455,9 @@ const EQE1Loader* IrrlichtRenderer::openCompositeSheetEQE1(const std::string& na
     // verified all 498 shipped sheet packs have this shape) -- so the
     // requested name names its pack directly. At most one open, and none when
     // the file is not there.
-    if (!config_.constrainedConfig.enableCompositeEntities) return nullptr;
-    const std::string& dir = config_.constrainedConfig.compositeEntityPath;
-    if (dir.empty() || dir == config_.constrainedConfig.eqe1Path) return nullptr;
+    if (!ctx_.config.constrainedConfig.enableCompositeEntities) return nullptr;
+    const std::string& dir = ctx_.config.constrainedConfig.compositeEntityPath;
+    if (dir.empty() || dir == ctx_.config.constrainedConfig.eqe1Path) return nullptr;
     // Existence-check first so a name that is simply absent from the tree (the
     // decision-#2 asset gap) does not leave a negative entry in eqe1Loaders_
     // under a stem some later archive lookup might legitimately want.
@@ -437,7 +466,7 @@ const EQE1Loader* IrrlichtRenderer::openCompositeSheetEQE1(const std::string& na
     return getOrOpenEQE1FromDir(name, dir);
 }
 
-const EQE1Loader* IrrlichtRenderer::openArchiveContaining(const std::string& name) {
+const EQE1Loader* Eqe1ArchiveComponent::openArchiveContaining(const std::string& name) {
     // T207 / T266. Three rules, in order (EQE1TextureIndex::resolve):
     //   1. A name absent from the whole tree opens NOTHING. That is the case
     //      the old probe handled worst -- races 415/457 resolve to no archive,
@@ -455,18 +484,18 @@ const EQE1Loader* IrrlichtRenderer::openArchiveContaining(const std::string& nam
     //      none queued), and the same happens for any roamer/pet/summon of a
     //      race absent at zone load. The archive is appended to the candidate
     //      set so its sibling names take path 2 from then on.
-    if (!eqe1Index_.isLoaded()) return openCompositeSheetEQE1(name);
+    if (!owner_.eqe1Index_.isLoaded()) return openCompositeSheetEQE1(name);
 
     std::vector<std::string> candidates;
     size_t loadTimeCount = 0;
     {
-        std::lock_guard<std::mutex> lock(eqe1CandidatesMutex_);
-        candidates = pendingGlobalEQE1Archives_;
-        loadTimeCount = eqe1LoadTimeCandidateCount_;
+        std::lock_guard<std::mutex> lock(owner_.eqe1CandidatesMutex_);
+        candidates = owner_.pendingGlobalEQE1Archives_;
+        loadTimeCount = owner_.eqe1LoadTimeCandidateCount_;
     }
 
     EQE1TextureIndex::Resolution r;
-    if (!eqe1Index_.resolve(name, candidates, r)) return openCompositeSheetEQE1(name);
+    if (!owner_.eqe1Index_.resolve(name, candidates, r)) return openCompositeSheetEQE1(name);
 
     bool late = r.lateOpen;
     if (!late) {
@@ -478,19 +507,19 @@ const EQE1Loader* IrrlichtRenderer::openArchiveContaining(const std::string& nam
     }
 
     const bool alreadyOpen = [&] {
-        std::lock_guard<std::mutex> lock(eqe1Mutex_);
-        auto it = eqe1Loaders_.find(r.archive);
-        return it != eqe1Loaders_.end() && it->second != nullptr;
+        std::lock_guard<std::mutex> lock(owner_.eqe1Mutex_);
+        auto it = owner_.eqe1Loaders_.find(r.archive);
+        return it != owner_.eqe1Loaders_.end() && it->second != nullptr;
     }();
 
     const EQE1Loader* loader = getOrOpenEQE1(r.archive);
     if (!loader) return nullptr;
 
     if (r.lateOpen) {
-        std::lock_guard<std::mutex> lock(eqe1CandidatesMutex_);
-        if (std::find(pendingGlobalEQE1Archives_.begin(), pendingGlobalEQE1Archives_.end(),
-                      r.archive) == pendingGlobalEQE1Archives_.end()) {
-            pendingGlobalEQE1Archives_.push_back(r.archive);
+        std::lock_guard<std::mutex> lock(owner_.eqe1CandidatesMutex_);
+        if (std::find(owner_.pendingGlobalEQE1Archives_.begin(), owner_.pendingGlobalEQE1Archives_.end(),
+                      r.archive) == owner_.pendingGlobalEQE1Archives_.end()) {
+            owner_.pendingGlobalEQE1Archives_.push_back(r.archive);
         }
     }
     if (late && !alreadyOpen) {
@@ -498,15 +527,15 @@ const EQE1Loader* IrrlichtRenderer::openArchiveContaining(const std::string& nam
                  "in zone '{}' (rule R2)",
                  r.archive, name, r.ownerCount,
                  r.lateOpen ? "none in the candidate set" : "candidate added after zone load",
-                 currentZoneName_);
-        if (constrainedTextureCache_) constrainedTextureCache_->noteEQE1LateOpen(r.archive);
+                 ctx_.currentZoneName);
+        if (ctx_.constrainedTextureCache) ctx_.constrainedTextureCache->noteEQE1LateOpen(r.archive);
     }
     return loader;
 }
 
-bool IrrlichtRenderer::addSpawnedRaceEQE1Candidate(uint16_t raceId) {
-    std::lock_guard<std::mutex> lock(eqe1CandidatesMutex_);
-    if (!eqe1CandidateRaces_.insert(raceId).second) return false;
+bool Eqe1ArchiveComponent::addSpawnedRaceEQE1Candidate(uint16_t raceId) {
+    std::lock_guard<std::mutex> lock(owner_.eqe1CandidatesMutex_);
+    if (!owner_.eqe1CandidateRaces_.insert(raceId).second) return false;
     std::string s3d = EQT::Graphics::getRaceS3DFile(raceId);
     if (s3d.empty()) return false;
     // race_models stores "akanon_chr.s3d"; archives are keyed by stem.
@@ -516,19 +545,19 @@ bool IrrlichtRenderer::addSpawnedRaceEQE1Candidate(uint16_t raceId) {
                    [](unsigned char c) { return std::tolower(c); });
     if (s3d.empty()) return false;
     // Already opened as a zone archive, or already queued.
-    if (std::find(pendingGlobalEQE1Archives_.begin(), pendingGlobalEQE1Archives_.end(), s3d)
-        != pendingGlobalEQE1Archives_.end()) {
+    if (std::find(owner_.pendingGlobalEQE1Archives_.begin(), owner_.pendingGlobalEQE1Archives_.end(), s3d)
+        != owner_.pendingGlobalEQE1Archives_.end()) {
         return false;
     }
-    pendingGlobalEQE1Archives_.push_back(s3d);
+    owner_.pendingGlobalEQE1Archives_.push_back(s3d);
     return true;
 }
 
-void IrrlichtRenderer::logEQE1ArchiveUsage() const {
-    std::lock_guard<std::mutex> lock(eqe1Mutex_);
+void Eqe1ArchiveComponent::logEQE1ArchiveUsage() const {
+    std::lock_guard<std::mutex> lock(owner_.eqe1Mutex_);
 
     std::vector<std::pair<std::string, const EQE1Loader*>> open;
-    for (const auto& [name, loader] : eqe1Loaders_) {
+    for (const auto& [name, loader] : owner_.eqe1Loaders_) {
         if (loader && loader->isOpen()) open.emplace_back(name, loader.get());
     }
     if (open.empty()) return;
@@ -551,8 +580,8 @@ void IrrlichtRenderer::logEQE1ArchiveUsage() const {
     // reported as "16% wasted opens, 4065KB mapped for nothing" when the true
     // answer was zero waste. Classify before counting.
     auto isZoneOwn = [this](const std::string& n) {
-        return n == currentZoneName_ || n == currentZoneName_ + "_obj" ||
-               n == currentZoneName_ + "_chr";
+        return n == ctx_.currentZoneName || n == ctx_.currentZoneName + "_obj" ||
+               n == ctx_.currentZoneName + "_chr";
     };
 
     size_t wasted = 0, wastedBytes = 0, totalBytes = 0, totalHits = 0;
@@ -568,7 +597,7 @@ void IrrlichtRenderer::logEQE1ArchiveUsage() const {
             if (isZoneOwn(name)) {
                 ++zoneOwnIdle;
                 note = "   (zone-own, no lookups -- not waste)";
-            } else if (IrrlichtRenderer::isPersistentEQE1Archive(name)) {
+            } else if (Eqe1ArchiveComponent::isPersistentEQE1Archive(name)) {
                 note = "   (client pack, no lookups -- not waste)";
             } else {
                 ++wasted;
@@ -584,15 +613,15 @@ void IrrlichtRenderer::logEQE1ArchiveUsage() const {
              "EQE1-USAGE: zone '{}': {} archive(s) open, {} wasted open(s) "
              "({}% , {}KB of {}KB mapped for nothing), {} zone-own archive(s) "
              "idle (expected), {} lookups served total",
-             currentZoneName_, open.size(), wasted,
+             ctx_.currentZoneName, open.size(), wasted,
              open.empty() ? 0 : (wasted * 100 / open.size()),
              wastedBytes / 1024, totalBytes / 1024, zoneOwnIdle, totalHits);
 }
 
-size_t IrrlichtRenderer::getEQE1MappedBytesTotal() const {
-    std::lock_guard<std::mutex> lock(eqe1Mutex_);
+size_t Eqe1ArchiveComponent::getEQE1MappedBytesTotal() const {
+    std::lock_guard<std::mutex> lock(owner_.eqe1Mutex_);
     size_t total = 0;
-    for (const auto& [name, loader] : eqe1Loaders_) {
+    for (const auto& [name, loader] : owner_.eqe1Loaders_) {
         if (loader) total += loader->getMappedBytes();
     }
     return total;
@@ -602,7 +631,7 @@ size_t IrrlichtRenderer::getEQE1MappedBytesTotal() const {
 // EQE1 archive config (JSON-driven archive list)
 // ---------------------------------------------------------------------------
 
-bool IrrlichtRenderer::loadEQE1ArchiveConfig(const std::string& path) {
+bool Eqe1ArchiveComponent::loadEQE1ArchiveConfig(const std::string& path) {
     std::ifstream file(path);
     if (!file.is_open()) {
         LOG_INFO(MOD_GRAPHICS, "No {} found, using built-in EQE1 archive defaults", path);
@@ -658,7 +687,7 @@ bool IrrlichtRenderer::loadEQE1ArchiveConfig(const std::string& path) {
     return true;
 }
 
-IrrlichtRenderer::EQE1ArchiveEntry IrrlichtRenderer::resolveEQE1Archives(const std::string& zoneName) const {
+Eqe1ArchiveComponent::EQE1ArchiveEntry Eqe1ArchiveComponent::resolveEQE1Archives(const std::string& zoneName) const {
     EQE1ArchiveEntry result;
 
     // Start with default

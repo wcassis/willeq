@@ -249,6 +249,7 @@ IrrlichtRenderer::IrrlichtRenderer()
 #ifdef WITH_RDP
     rdp_ = std::make_unique<RdpComponent>(ctx_, *this);
 #endif
+    eqe1_ = std::make_unique<Eqe1ArchiveComponent>(ctx_, *this);
 }
 
 IrrlichtRenderer::~IrrlichtRenderer() {
@@ -317,8 +318,8 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     }
 
     // Load EQE1 archive configuration (which .eqe1 files to open per zone)
-    if (eqe1ArchiveEntries_.empty()) {
-        loadEQE1ArchiveConfig("config/eqe1_archives.json");
+    if (eqe1_->archiveEntries().empty()) {
+        eqe1_->loadEQE1ArchiveConfig("config/eqe1_archives.json");
     }
 
     // Item model mappings handled on-demand via SQLite — no pre-loading needed
@@ -429,7 +430,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     // U02: Load UI atlas from willeq.eqe1 flat pack (ETC1 compressed texture + JSON metadata)
     if (!config_.constrainedConfig.eqe1Path.empty() && constrainedTextureCache_) {
         // Open willeq.eqe1 early (before zone loading) so all willeq-generated assets are available
-        getOrOpenEQE1("willeq");
+        eqe1_->getOrOpenEQE1("willeq");
 
         uiAtlas_ = std::make_unique<UIAtlas>();
         if (!uiAtlas_->load(driver_, constrainedTextureCache_)) {

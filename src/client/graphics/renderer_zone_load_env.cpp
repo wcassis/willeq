@@ -579,8 +579,8 @@ void IrrlichtRenderer::loadZoneStep11_Env(ZoneLoadContext& ctx) {
 #ifdef EQT_HAS_DRM
         if (fireEffectsEnabled_ && fireGlowIcospheresEnabled_ && !fireGlowLights_.empty() && icosphereVertices_.empty()) {
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: building icosphere mesh + shader");
-            buildIcosphereMesh();
-            compileIcosphereShader();
+            eqe1_->buildIcosphereMesh();
+            eqe1_->compileIcosphereShader();
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: icosphere build done: vertices={}, indices={}, "
                       "VBO={}, IBO={}, program={}",
                       icosphereVertices_.size(), icosphereIndices_.size(),
