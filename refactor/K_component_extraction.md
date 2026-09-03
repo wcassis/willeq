@@ -101,6 +101,11 @@ into the component.**
    outright (§5 wins over any plan table that says otherwise). Forwarders were
    the K01 pilot's first shape and cost +8 lines: they keep `eq.h` as the API
    surface, which is the thing this batch exists to remove.
+   **From Wave 2 on, callers are found by the COMPILER, not by grep:** delete
+   the declarations from `eq.h`, build, retarget every site the error list
+   names, rebuild until clean, then grep `tests/` once for stragglers. Word
+   greps are inflated by name collisions (`Move`, `Face`, `Jump`, `Follow`
+   exist on four other classes) and are only a lead.
 6. **Ratchet.** `scripts/refactor/file_size_allowlist.txt`'s `eq.h` entry is
    lowered to the new `wc -l` in the same commit. **The plan must PREDICT the
    delta before dispatch** from: −(declarations deleted) −(members moved)
