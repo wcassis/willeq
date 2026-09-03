@@ -173,6 +173,15 @@ into the component.**
    (u) a body moved from a TU OTHER than the family's (K10 took
    `ConnectToLogin`/`ConnectToWorld` from `eq.cpp`) must be proved by a
    residual run on that TU too.
+**K08 corrections (2026-09-03):** (v) a non-`m_` file-scope or class
+   constant a mover uses (`CAMP_TIMER_SECONDS`) travels with it — widen the
+   member grep to every identifier the moved bodies reference that is
+   declared in `eq.h`; (w) comment filters must strip TRAILING `//`
+   comments, not only full-line ones; (x) **compute the whole retarget
+   mechanically before the first build** — parse the `eq.h` declarations
+   and the component headers, scan the movers for bare `identifier(`, and
+   emit the substitution list; K08's 2,700-line move reached a clean build
+   on the second compile. K09 should reuse that script (see K08's Review).
 8. **Proof.** `verify_move_only.py` exits 1 by construction. Line-multiset
    check with the substitutions normalised BY NAME MAPPING (`ctx_.character`
    ↔ `m_character`, etc. — stripping the prefix alone leaves 7 false
