@@ -202,3 +202,253 @@ not needed (no code under `src/` changes).
 
 (filled by each executor: per-item confirmation table for Leg A; before/after
 checker output for Leg B; deviations.)
+
+---
+
+## Review — Leg A
+
+Executed in `wt/slot1` on `task/K00-legA-board`, base `fable` = `3808ebe9`
+(verified at checkout). Docs-only: `git diff --stat $(git merge-base fable HEAD)..HEAD`
+touches 12 files, all `*.md`; no `*.cpp`, `*.h`, `*.py`, `*.sh` or `*.cmake`
+changed. Nothing was built.
+
+⚠ **`fable` moved under this unit.** It now carries `e8d51033` (the K01 plan),
+which post-dates the base named in the dispatch. A plain `git diff fable..HEAD`
+therefore shows a spurious deletion of `refactor/K01_guild_component.md`; the
+diff above is taken against the merge base, per the standing rule.
+
+### Per-item confirmation
+
+Every command was run at `3808ebe9` in `wt/slot1`. `W` = the worktree root.
+
+**Boarded (confirmed present).**
+
+| candidate | command | result | boarded as |
+|---|---|---|---|
+| item 15, non-sending position setter | `sed -n '287,345p' src/client/eq_movement_state.cpp` | `SetPositionState` has no non-sending overload; five arms end in `SendSpawnAppearance`, incl. `AT_DIE` | B001 (A) |
+| item 10, autorun | `sed -n '144,148p' src/client/eq_action_handler.cpp`; `grep -rn autorun src include` | body is one `LOG_DEBUG`; `playerMovement_.autorun` is READ at `renderer_player_physics.cpp:75` and written nowhere | B002 (A) |
+| item 27, no swing on auto-attack | — | no cheap tree check exists; the claim is about live behaviour | B003 (A), **unconfirmed, needs a live eqemu session** |
+| archive "static-panel UI surface untested after T54" | `grep -rn 'popW\|popH' include/client/graphics/ui/ui_layout.h` | `popW = 400`, `popH = 350`, hardcoded at every resolution | B004 (A), **unconfirmed, needs a rendered popup or a hit-test** |
+| item 4, UCS | `ls src/client/eq_ucs.cpp` → absent; `wc -l src/client/ucs.cpp` → 413; `grep -rn UCSConnection src include tests` → no hit outside its own pair; `grep -n ConnectToUCS src/client/eq_login_world.cpp` → `// ConnectToUCS(...)` | the TU named in the plan is gone (T326); a different 413-line zero-caller TU remains | B005 (B) |
+| S2 leftovers | per-file `grep -c IrrlichtRenderer` over the 15 TUs that include `graphics/irrlicht_renderer.h` → exactly 8 score 0; `sed -n '875,877p' include/client/eq.h`; `grep -n GetDebugLevel src/client/graphics/door_manager.cpp` | all three present; the "eight" in the plan is exact | B006 (B) |
+| item 35, skill costs | `grep -rn 'endurance_cost\|mana_cost' src include` | declared in `skill_data.h` with `= 0`, read in `skill_manager.cpp`, assigned nowhere | B007 (B) |
+| item 41, ValidateCRC | `sed -n '25,57p' src/common/net/daybreak_connection_send.cpp` | `default: return false;` with no log line | B008 (B) |
+| item 40, pcap test | `sed -n '135,150p' tests/test_daybreak_connection_pcap.cpp` | raw `*(uint32_t*)&pkt.data[2]` / `[6]` / `[13]` reads intact | B009 (B) |
+| item 42, gtest names | `grep -n 'PrintTo\|CameraCommandRoundTripTest' tests/test_irrlicht_camera_command.cpp` | four hits, none a `PrintTo` | B010 (B) |
+| item 38, setEntitySize | `grep -n 'collisionHeight\|deckZ' src/client/graphics/entity_size.cpp` | no hit; both members exist in `entity_renderer.h` | B011 (B) |
+| archive T39, clearTarget | `grep -c clearTarget src/client/action/command_processor_registration.cpp` | 0 | B012 (B) |
+| archive T143, /newskills | `grep -n newskills src/client/graphics/renderer_slash_commands.cpp` | one hit, in the registry-3 if/else chain | B013 (B) |
+| archive T92, preloadModelData | `grep -n getOrLoad src/client/graphics/eq/race_model_loader.cpp` | `getOrLoad(compositeBaseName, emptyData, …)` still at the composite-sheet site | B014 (B) |
+| archive T131, loadSoundFont | `grep -rn loadSoundFont src/client/audio` | raw swap, with the file's own comment at `midi_player.cpp:396` naming the single-call-site precondition | B015 (B) |
+| archive T114, `loadedModels_` | `grep -rc loadedModels_ src/client/graphics/eq/*.cpp` | 67 references across four TUs; lock coverage not checked | B016 (B), **unconfirmed, needs a TSAN run** |
+| item 37, decline wording | `grep -rn 'declined the guild' src include` | `eq_guild.cpp:96` intact | B017 (C) |
+| item 16, first person | `ls src/client/graphics/entity_first_person_draw.cpp` | present (T309 draw rule landed); eye placement unchanged | B018 (C) |
+| placeables/doors unmeasured | plan `T301`/section read; `tools/hwcaps/zone_bench_memory.h` annotated in place | no live memory harness exists | B019 (C) |
+| archive T69, budgets | `grep -rn deferred include/client/graphics/constrained_renderer_config.h` | the per-category budgets are still absent | B020 (C) |
+| archive T69, untracked RSS | archive read | not asserted in `visual_gate.py`; Leg B territory to change | B021 (C) |
+| archive T70, spells.eff | `ls src/client/graphics/spell_visual_fx.cpp` | present, 1,517 lines, still the hardcoded vocabulary | B022 (C) |
+| archive T146, SendReport | `grep -rn SendReport src/client` | producer now exists (`eq_action_handler_extended.cpp:278`); the wire-shape question is what remains | B023 (C) |
+| Batch K programme | `refactor/K_component_extraction.md` read; `wc -l include/client/eq.h` = 2,025 | the plan exists and is unboarded anywhere else | B024 (P) |
+| Batch-G follow-up, 8 methods | `grep -n 'Optional, NOT part of this batch' -A 12 refactor/J_file_size_reclamation.md` | the eight are listed with sizes | B025 (P) |
+| item 22, unmerged branches | `git rev-list --count fable..task/eqcpp-zoneprocess-track-b-remaining` = 300; same for `task/eqemu-zone-line-transition-scenario` = 300 | both branches exist, both 300 ahead | B026 (P) |
+| item 43, GM flag | — | server-side; no tree check possible | B027 (P), **needs eqemu** |
+| archive Batch Z, Z5.3 | archive read | never taken | B028 (P) |
+
+**Closed by this audit** — the anchor is gone or the behaviour is already fixed,
+so these are NOT on the board.
+
+| candidate | command | result | closed by |
+|---|---|---|---|
+| items 1, 2 — `bridgeQueue_` race + scalar RMWs | `grep -rn 'bridgeQueue_' include/client/graphics/irrlicht_renderer.h` | only two comments naming "the no-raw-access rule (T312)"; the raw vector is gone | T312 `c9b02f7e` |
+| item 3 — CRC skipped on zone connect | `sed -n '25,30p' src/common/net/daybreak_connection_send.cpp` | `skip_crc_validation` is an option with no production setter | T323 `86ada50e` |
+| item 6 — guild rank hardcoded | `grep -n 'officer\|leaderstatus' src/client/eq_guild.cpp` | both sites carry `// T317: this used to be …` | T317 |
+| item 7 — skill combat/position gates | `grep -n checkPositionRequirement src/client/skill/skill_manager.cpp` | called at `:232` and `:311`, implemented | T317 (position) + T325 (combat gate reverted on Will's ruling) |
+| item 18 — RDP caps lock | `grep -n capsLock src/client/graphics/renderer_rdp.cpp` | `rdpLockKeys_.capsLock()` | (tracked state now exists) |
+| item 19 — `GraphicalMode` fallthrough | `sed -n '30,55p' src/client/mode/graphical_mode.cpp` | explicit, with Will's 2026-08-28 ruling written in | T304 Leg 3 + T308 Leg 2 — **ruled on, not "awaiting Will"** |
+| item 26 — wire z | `grep -rn '0.625' src include` | `kWireZOffsetPerSize = 0.625f` in `position_frames.h`, used on the send path | T311 Leg B |
+| item 28 — dead `headZ` | `sed -n '549,600p' src/client/eq_movement_state.cpp` | `headZ` IS passed to `findRegionForPoint` at `:580`; the archive records the original claim as a misreading | T311 Leg B |
+| item 29 — wire heading scaling | `sed -n '612,632p' src/client/eq_movement_update.cpp` | fable packs `server_heading * 2048/360`, i.e. `4 ×` the 0-512 EQ unit — the same `heading * 4` the oracle carried (1920 at `#loc` 480) | confirmed by inspection here |
+| item 32 — `RendererEventReceiver` wants its own TU | `ls src/client/graphics/renderer_event_receiver.cpp` | present | J11 |
+| item 39 — "96 event types" doc drift | `awk` over `enum class GameEventType` = 97; `grep -rn '9[67] event'` over the live docs | every live doc already said 97 and 97 is correct | (already struck) |
+| archive — race 330 placeholder cube | `grep -n 330 config/race_models.json`; `grep -n 330 src/client/graphics/eq/race_codes.cpp` | row points at `globalpcfroglok_chr.s3d`; the hardcode is gone and commented as removed | T265/T267/T274 |
+| archive — hotbar Item/Emote slots skipped | `sed -n '320,345p' src/client/action/input_action_bridge.cpp` | Item → `useItemById`, Emote/Macro/Combat → `activateHotbarCommandSlot`; the skips are named as former | T230, T239 |
+| archive — `protectedRegions_` all-false | `grep -rn protectedRegions_ src include` | six hits, every one a tombstone comment | T292 `8d07e768` |
+| archive — `TargetHPUpdated` has no publisher | `grep -rn TargetHPUpdated src include` | zero hits; the event type no longer exists | T264 |
+| archive — `SendGMHideMe` misrouted | `sed -n '163,180p' src/client/eq_gm.cpp` | sends `HC_OP_GMHideMe` | T217 `175c97ca` |
+| archive — `SendFaceChange` has no caller | `grep -rn SendFaceChange src include` | called from `eq_action_handler_spells_trade.cpp:524` | T153 |
+| archive — masked textures forced `EMT_SOLID` | `grep -n textureMasked src/client/graphics/eq/mesh_building.cpp` | `isMaskedMaterial` is computed from `geometry->textureMasked()` | (fixed in place) |
+| archive — `SpellVisualFX::m_particle_manager` always null | `sed -n '276,278p' src/client/graphics/renderer_entities.cpp` | the call is guarded by `if (particleManager_)` and made after construction | (fixed in place) |
+| archive — registry 3 has no queryable catalog | `grep -n 'registry 3' src/client/graphics/renderer_slash_commands.cpp` | catalog + drift-guard landed | T223 `e6d31424` |
+| archive — `eq.cpp` is 3,898 lines, over the hard cap | `wc -l src/client/eq.cpp` | 1,073 | Batch J (J02) |
+| perf-session handoffs | `grep -n 'Handoffs to the perf session' -A 55 refactor/testing_progress.md` | every bullet struck and closed; the only residue is "the handoff channel is write-only", which the single-session model retires | — |
+
+Suite figure in the board header: 3497/3498 from
+`refactor/J16_eq_header_type_extraction.md`'s Review — the last merged code unit
+(`8e6b46f4`). Named on the board, as required.
+
+### Batch J close-out, measured
+
+`find src include tests -name '*.cpp' -o -name '*.h' -o -name '*.hpp' | xargs wc -l`,
+`third_party/` excluded: exactly two files exceed 1,500 lines —
+`include/client/eq.h` (2,025) and
+`include/client/graphics/irrlicht_renderer.h` (1,914). **Nothing exceeds 3,000.**
+This is what the new CLAUDE.md paragraph asserts, and it is measured, not
+copied from the J tracker.
+
+### A2 — archive
+
+`git mv` of `deferred.md`, `progress.md` and `testing_progress.md` into
+`refactor/completed/` under their `_archive_20260903` names, each with a
+three-line banner. **No STOP:** a tree-wide grep for the three filenames over
+`*.md *.py *.sh *.cmake *.cpp *.h` found **no script or test that reads any of
+them as text** — every hit outside `refactor/` is a prose or comment reference.
+References in code comments were left alone (outside this leg's territory);
+every reference in a LIVE doc in the territory list now points at `BOARD.md`,
+verified by a final grep that returns nothing.
+
+### False sentences fixed, with evidence
+
+`CLAUDE.md`
+- "read its `## STATUS` block (dated, top of file) first — it carries the current
+  tip, suite count and the open items by class" — the section has an empty body;
+  removed with the whole `deferred.md` bullet. Reading order now leads with
+  `refactor/BOARD.md`.
+- "`refactor/F_file_split.md` is COMPLETE (historical); the active unit plans are
+  `refactor/T<nn>_*.md`" — removed; the active plans are `refactor/K<nn>_*.md`.
+- "full ctest suite, 3506/3507 passing at `9684644f`" — replaced with "run it;
+  the sole expected failure is the ALSA quirk", per the plan.
+- "`src/client/eq.cpp` + 27 `eq_*.cpp` domain TUs" — `ls src/client/eq_*.cpp | wc -l`
+  = **37**.
+- "eq.cpp itself (1,026 lines at `9684644f`, after J02)" — `wc -l` = **1,073**.
+- "33 intent structs in the `RendererIntent` variant" — counted in
+  `renderer_intents.h` = **35**.
+- Seam tracking pointed at `refactor/deferred.md`; now at `BOARD.md` item B006.
+
+`README.md` (newest date 2026-07-28; not rewritten)
+- Added a dated 2026-09-03 "Status" paragraph at the top of Project Status
+  pointing at `BOARD.md` and `docs/module_map.md`, and saying the prose below it
+  is orientation, not a defect list.
+- **Deleted as false:** "First-person view is rebuilt on the measured mechanism
+  (player model at the eyes, clamped down-pitch keeps the body out of frame) but
+  the clamp angle is an inference…". Evidence: the clamp mechanism was refuted
+  live (archive, "THE CLAMP DOES NOT HIDE THE BODY" — `maxDownPitch = 90 - vFOV/2`
+  is by construction the angle that admits the body's own directions), and the
+  rule that shipped is T309's attack-animation draw rule,
+  `src/client/graphics/entity_first_person_draw.cpp`, which exists at this tip.
+  Replaced with what the tree does; eye placement moved to board item B018.
+- Two `deferred.md` references repointed; the plan-file naming was `T###_*.md`
+  only and now names the J and K series too.
+- Checked and left alone: "no character creation" (`grep -rn OP_CharacterCreate
+  src include` → zero hits, true) and "Weather effects (rain, snow) with particle
+  systems" (true — `WeatherEffectsController` drives
+  `particleManager_->activateWeatherParticles()` under `EQT_HAS_GLES2`; only the
+  screen-space overlays are non-GLES2).
+
+`include/client/state/CLAUDE.md`
+- "aggregates 11 domain-specific state modules" — `game_state.h` holds **10**
+  (`EventBus` is not one of them); corrected, and the missing `TradeState` row
+  added so the table matches the count.
+- Dropped the "re-counted at fable `9684644f`" provenance from the 97-event line
+  (the count is right; the stale hash is not a citation anyone can act on).
+
+`include/client/bridge/CLAUDE.md`
+- "`applyEvent()` implements an 839+ case switch" — `grep -c 'case '
+  src/client/bridge/irrlicht_bridge.cpp` = **97**, one per event type.
+- "## Event Types (140+)" — **97**.
+- "## Intent Types (50+)" — **35**.
+- Eleven named intents do not exist in `renderer_intents.h` (`grep -c` = 0 each):
+  `TradeRequestIntent`, `InterruptSpellIntent`, `PetCommandIntent`,
+  `GroupInviteIntent`, `GroupAcceptIntent`, `DisbandIntent`,
+  `HotbarChangedIntent`, `ChatLinkClickIntent`, `RequestMemoryReport`,
+  `RequestSceneDump`, `SlashCommandIntent`. The list was replaced with the real
+  variant members.
+- "All 343+ former direct `m_renderer->` calls" — an unverifiable count; reworded
+  without a number.
+
+`src/client/input/CLAUDE.md`
+- "`HotkeyAction` enum (76 actions…, re-counted J21)" — counted in
+  `hotkey_manager.h` = **80**.
+- "split across nine TUs" — the `command_processor` family is **eight**
+  (`command_processor{,_registration,_bank,_loot,_social,_spells_gm,_train,_world}.cpp`).
+- "~180 action methods" — 182 by `grep -cE` over `action_dispatcher.h`; adjusted.
+- "Item and Emote slots are DEBUG-logged and skipped … recorded open in
+  `refactor/deferred.md`" — **false**: `input_action_bridge.cpp` routes Item via
+  `useItemById` (T230) and Emote/Macro/Combat via `activateHotbarCommandSlot`
+  (T239). Rewritten to describe the live routing.
+
+`include/client/graphics/ui/CLAUDE.md`
+- "Ctrl+D / PageDown | Strafe right" — `hotkey_manager.cpp` binds StrafeRight to
+  `KEY_HOME` ("T313: was Page Down") and PageUp/PageDown to `ScrollUIUp/Down`.
+  Corrected, and a PageUp/PageDown row added.
+- "1-8 | Hotbar slots … Item and Emote slots are logged and skipped" — same false
+  claim as above; corrected.
+- The autorun row now says the binding exists and the action is a no-op, citing
+  board item B002, rather than implying the key works.
+- The ESC row notes it is keybinding-only (board item B012).
+
+`src/client/graphics/CLAUDE.md`
+- "24 `renderer_*.cpp` TUs" — `ls src/client/graphics/renderer_*.cpp | wc -l` =
+  **27**. The "908 lines" figure was re-measured and is still correct; the stale
+  `at 9684644f` hash was dropped.
+
+`docs/CLAUDE.md` — read against the tree; every documentation-layout and
+coordinate-system statement checked out (the `docs/reference/`,
+`docs/standards/`, `docs/plans/` inventories are accurate and the four coordinate
+systems match the code they cite). **No change made** — the plan says not to add
+prose.
+
+`docs/module_map.md`
+- The `eq_*.cpp` table said 27 TUs and listed 27; eleven real TUs were absent
+  (`eq_action_handler_extended`, `_spells_trade`, `eq_bridge_intents`,
+  `_ui_audio`, `eq_entities_appearance`, `_updates`, `_world`,
+  `eq_merchant_trade`, `_vendor_bank`, `eq_movement_state`, `_update`). Added.
+- Every `Lines` value in that table was stale (e.g. `eq_entities.cpp` 2,786 →
+  **830** after J08; `eq.cpp` 1,026 → **1,073**). The column was regenerated by
+  `wc -l` at this tip and the header now cites `3808ebe9` instead of `9684644f`.
+- Added the **Family grouping** block transcribed from
+  `refactor/K_component_extraction.md` §Families, with a line saying the two must
+  change together — the A3 deliverable.
+
+### Deviations
+
+1. **The plan's mandated UCS item names a file that no longer exists.**
+   `src/client/eq_ucs.cpp` was deleted by **T326** (`CMakeLists.txt` carries the
+   tombstone: "79 include lines and one 241-line comment block, no code"). The
+   real residue is `src/client/ucs.cpp` (413 lines, **live code, not comments**)
+   plus `include/client/ucs.h`, with zero callers. Boarded in that corrected
+   form as B005 rather than transcribed as written.
+2. **Two of the plan's territory files are under `src/` and `include/`**
+   (`src/client/input/CLAUDE.md`, `src/client/graphics/CLAUDE.md`,
+   `include/client/*/CLAUDE.md`), which the verification bar's "no file under
+   `src/`, `include/`" wording would forbid. Read as "no code file": the diff is
+   markdown-only, confirmed by
+   `git diff --name-only $(git merge-base fable HEAD) | grep -v '\.md$'`
+   returning nothing.
+3. **The archive tail was surveyed, not exhaustively confirmed.** Lines 1–1300 of
+   `deferred.md` (the ranked list, the placeables section, the 2026-08-27 audit
+   bullets) were read directly and every candidate in them is in one of the two
+   tables above. Lines 1300–10409 were surveyed by a dedicated scan that returned
+   ~70 candidates with open residue; the ones with a cheap tree anchor were
+   checked and are boarded or closed above. **Roughly thirty tail candidates were
+   neither boarded nor closed** because confirming them needs a build, a live
+   session, a Pi, or a rendered frame — chiefly: the blackburrow/crushbone blank
+   benchmark render, the befallen first-frame SIGSEGV, the ARM shutdown SIGSEGV
+   and the Mesa/Lima SIGBUS, the animated-composite pixel delta, the
+   `CreateZoneLoadSnapshot` "BSP region is SIZE_MAX" race, the pale fog shapes in
+   the goldens, the secondary-weapon paperdoll gap, and the `/shout`-`/ooc` relay
+   question. They remain in
+   `refactor/completed/deferred_archive_20260903.md`. **This is a real gap and is
+   flagged rather than absorbed:** the board is true about what it contains, and
+   it is not yet the complete set. Closing it wants one unit that takes those
+   measurements; it could not be done inside a docs-only leg.
+4. **`docs/CLAUDE.md` was left unchanged** — it is in the territory list, but
+   reading it against the tree found nothing false, and the plan forbids adding
+   prose.
+5. **No STOP was hit.** The board is 211 lines, under the 250-line target.
+
+### Board summary
+
+211 lines, 28 items: **4 class A** (2 of them unconfirmed — B003 needs a live
+session, B004 needs a rendered popup), **12 class B** (1 unconfirmed — B016
+needs TSAN), **7 class C**, **5 class P** (1 needs eqemu — B027).
+**22 candidates closed by this audit**, each with the command that showed it.

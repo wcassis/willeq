@@ -1,9 +1,9 @@
 # Module Map
 
-Post-Batch-F layout (2026-07-23), refreshed by T215 (2026-08-25) and again by
-J21 (2026-09-02, fable `9684644f`) after Batch J's eleven splits. The former
+Post-Batch-F layout (2026-07-23), refreshed by T215 (2026-08-25), by J21
+(2026-09-02) after Batch J's splits, and by K00 (2026-09-03, `3808ebe9`). The former
 mega-files are split into domain translation units; classes are unchanged —
-only method definitions moved. Line counts are `wc -l` at `9684644f`; they
+only method definitions moved. Line counts are `wc -l` at `3808ebe9`; they
 drift with normal work. Ceilings: warn >1,500, fail >3,000
 (`scripts/refactor/check_file_sizes.sh`). **As of Batch J no file in the tree
 is over the 3,000-line fail line** — the grandfathered pair this map used to
@@ -14,37 +14,71 @@ review section under `refactor/F*.md` and `refactor/J*.md`.
 
 ## Game state — EverQuest class (`include/client/eq.h`)
 
-`src/client/eq.cpp` + 27 `eq_*.cpp` domain TUs.
+`src/client/eq.cpp` + 37 `eq_*.cpp` domain TUs.
 
 | TU | Lines | Contents |
 |---|---|---|
-| src/client/eq.cpp | 1,026 | Core after J02: ctor/lifecycle, session recording, DB/spell-system init, ConnectToLogin/World/Zone, TickNetwork, loading-phase state, PublishFullStateSnapshot, zone connection callbacks, ZoneOnPacketRecv, ReplayZonePacket, SafeQueueZonePacket, QueuePacket, Start/StopUpdateLoop, SetEQClientPath/SetConstrainedConfig |
-| eq_entities.cpp | 2,786 | Zone spawns, NewSpawn/DeleteSpawn, ClientUpdate interp, HP/MobHealth, appearance/WearChange/Illusion, TimeOfDay, doors, world objects, FindEntityByName, corpse naming (T160/T185) |
-| eq_action_handler.cpp | 2,248 | `action::EqActionHandler` — the `IActionHandler` implementation wrapping `EverQuest` for `ActionDispatcher`/`CommandProcessor` (action-layer migration T99–T143; raid guards T179–T184; skill gate T159/T162) |
-| eq_movement.cpp | 2,139 | Move/Follow/UpdateMovement, SendPositionUpdate, pathfinding, water state, jump, keyboard movement |
-| eq_bridge.cpp | 2,127 | InitGraphics/ShutdownGraphics, GameTick, Pre/PostRenderTick, ProcessBridgeIntents/Events, zone-load snapshot, loot-window flow, hotbar config, audio init |
-| eq_merchant.cpp | 1,931 | Inventory/items, trade, loot/vendor/bank/trainer callbacks, recipes (tradeskill senders T149), ZoneProcessLootItemToUI |
+| src/client/eq.cpp | 1,073 | Core after J02: ctor/lifecycle, session recording, DB/spell-system init, ConnectToLogin/World/Zone, TickNetwork, loading-phase state, PublishFullStateSnapshot, zone connection callbacks, ZoneOnPacketRecv, ReplayZonePacket, SafeQueueZonePacket, QueuePacket, Start/StopUpdateLoop, SetEQClientPath/SetConstrainedConfig |
+| eq_entities.cpp | 830 | Zone spawns, NewSpawn/DeleteSpawn, ClientUpdate interp, HP/MobHealth, appearance/WearChange/Illusion, TimeOfDay, doors, world objects, FindEntityByName, corpse naming (T160/T185) |
+| eq_action_handler.cpp | 783 | `action::EqActionHandler` — the `IActionHandler` implementation wrapping `EverQuest` for `ActionDispatcher`/`CommandProcessor` (action-layer migration T99–T143; raid guards T179–T184; skill gate T159/T162) |
+| eq_movement.cpp | 486 | Move/Follow/UpdateMovement, SendPositionUpdate, pathfinding, water state, jump, keyboard movement |
+| eq_bridge.cpp | 890 | InitGraphics/ShutdownGraphics, GameTick, Pre/PostRenderTick, ProcessBridgeIntents/Events, zone-load snapshot, loot-window flow, hotbar config, audio init |
+| eq_merchant.cpp | 677 | Inventory/items, trade, loot/vendor/bank/trainer callbacks, recipes (tradeskill senders T149), ZoneProcessLootItemToUI |
 | eq_commands.cpp | 1,110 | RegisterCommands driver + the game-registry remainder after T139 deleted 34 redundant commands (registry 1 of `docs/decisions.md` 2026-08-03) |
 | eq_zone.cpp | 1,094 | Zone change/teardown, CleanupZone, DisconnectFromZone, LoadZoneMap/Lines/Sources, CheckZoneLine, GetBestZ/FixZ, in-zone teleport (T231) |
 | eq_zone_entry.cpp | 1,057 | J02: ZoneProcessNewZone, ZoneProcessPlayerProfile (the LOAD-BEARING player heading flip), ZoneProcessAnimation, ZoneProcessGuildMOTD, CheckZoneRequestPhaseComplete |
-| eq_zone_dispatch.cpp | 960 | J02: `DispatchZonePacket` — the zone-stream opcode switch, nothing else |
+| eq_zone_dispatch.cpp | 958 | J02: `DispatchZonePacket` — the zone-stream opcode switch, nothing else |
 | eq_login_world.cpp | 945 | Login-server + world-server connection handling, eqcrypt_block |
 | eq_strings.cpp | 767 | Name/string lookup tables, opcode names, dump helpers |
-| eq_group.cpp | 760 | Group invite/update/disband, raid (T169–T184: OP_RaidUpdate decode, raid senders), pet accessors/commands |
+| eq_group.cpp | 980 | Group invite/update/disband, raid (T169–T184: OP_RaidUpdate decode, raid senders), pet accessors/commands |
 | eq_player_misc.cpp | 750 | J07: assist/boat/split/LFG/shielding/discipline/banker, save/popup/duel/bindwound, cosmetic misc social, camera/mp3/sound handlers |
 | eq_player_social.cpp | 704 | J07: emote/AFK/anon/roleplay/camp/logout, rezz/who/inspect (+ OP_InspectAnswer reply, T170), corpse/consent; the four T145 double-prefix senders (SendCamp/SendLogout/SendWhoAllRequest/SendInspectRequest) |
 | eq_chat.cpp | 645 | Channel messages, chat input, AddChat* family, colored/formatted/simple text, `EverQuest::DispatchSlashCommand` (registry 1 entry point) |
-| eq_player_buffs.cpp | 615 | J07: task/DZ, spell-cast, mana, buff and pet-buff handlers, poison, track |
-| eq_player_state.cpp | 608 | J02: position/heading/moving accessors, AFK/anon/roleplay/camping flags, PlayerStateAdd/Remove, Death, Stamina, ZonePlayerToBind, LevelUpdate, tradeskill combine |
+| eq_player_buffs.cpp | 616 | J07: task/DZ, spell-cast, mana, buff and pet-buff handlers, poison, track |
+| eq_player_state.cpp | 606 | J02: position/heading/moving accessors, AFK/anon/roleplay/camping flags, PlayerStateAdd/Remove, Death, Stamina, ZonePlayerToBind, LevelUpdate, tradeskill combine |
 | eq_combat_actions.cpp | 526 | Consider/Action/Damage/MoneyOnCorpse handlers, Bind_Wound reply (T177). T268 deleted the headless ZoneProcessLootItem parser |
-| eq_commands_spells.cpp | 496 | RegisterSpellCommands (spell/skill/hotkey/detail/audio commands) |
+| eq_commands_spells.cpp | 494 | RegisterSpellCommands (spell/skill/hotkey/detail/audio commands) |
 | eq_player_info.cpp | 369 | J07 remainder: stat getters, group accessors, tribute/AA handlers (SendAATable/RespondAA/TributeInfo/SendGuildTributes), exp/zonein, world-objects-sent |
-| eq_zone_handshake.cpp | 351 | J02: the ZoneSend* handshake senders (SessionReady, ZoneEntry, ReqClientSpawn, ClientReady, SetServerFilter, StreamIdentify, Ack, ReqNewZone, AA/tribute requests, SpawnAppearance, SendExpZonein) |
-| eq_commands_movement.cpp | 322 | RegisterMovementCommands (movement/combat/utility-debug/sky commands) |
+| eq_zone_handshake.cpp | 349 | J02: the ZoneSend* handshake senders (SessionReady, ZoneEntry, ReqClientSpawn, ClientReady, SetServerFilter, StreamIdentify, Ack, ReqNewZone, AA/tribute requests, SpawnAppearance, SendExpZonein) |
+| eq_commands_movement.cpp | 320 | RegisterMovementCommands (movement/combat/utility-debug/sky commands) |
 | eq_gm.cpp | 307 | GM command senders + processors (wired T148) |
 | eq_guild.cpp | 266 | Guild senders + processors (m_guild_id populated T133) |
 | eq_commands_train.cpp | 264 | T280: `/train` and `/trainclose` game-registry side |
 | eq_profile_appearance.cpp | 20 | PlayerProfile appearance fields stored so `/appearance` merges faithfully (T167) |
+| eq_action_handler_extended.cpp | 957 | J12: the `EqActionHandler` remainder — GM/debug, camp/logout, report, world-object and tradeskill actions |
+| eq_action_handler_spells_trade.cpp | 570 | J12: `EqActionHandler`'s spell, pet, trade and `/appearance` actions (SendFaceChange's producer, T153) |
+| eq_bridge_intents.cpp | 703 | J13: `ProcessBridgeIntents` — the `RendererIntent` variant switch |
+| eq_bridge_ui_audio.cpp | 744 | J13: bridge-side UI and audio wiring, hotbar slot activation |
+| eq_entities_appearance.cpp | 653 | J08: SpawnAppearance / WearChange / Illusion handlers, entity size (T318) |
+| eq_entities_updates.cpp | 767 | J08: ClientUpdate interpolation, HP / MobHealth, position broadcast |
+| eq_entities_world.cpp | 391 | J08: doors, ground spawns and world objects |
+| eq_merchant_trade.cpp | 702 | J13: player-to-player trade callbacks and senders |
+| eq_merchant_vendor_bank.cpp | 621 | J13: vendor, bank and trainer callbacks |
+| eq_movement_state.cpp | 889 | J13: SetMovementMode / SetPositionState, water and region state, jump |
+| eq_movement_update.cpp | 854 | J13: SendPositionUpdate and the wire packing (wire z = groundZ + 0.625*size, T311) |
+
+### Family grouping (source: `refactor/K_component_extraction.md` §Families)
+
+The flat `eq_*.cpp` split names families that Batch K extracts into components.
+This table and that plan must agree; change both together.
+
+| family | TUs | `EverQuest::` defs | single-family members | K unit |
+|---|---|---|---|---|
+| guild | `eq_guild` | 12 | 3 | K01 (pilot, with `ClientContext`) |
+| gm | `eq_gm` | 12 | 2 | K02 |
+| chat | `eq_chat`, `eq_strings` | 13 | 1 | K03 |
+| group | `eq_group` | 25 | 5 | K04 |
+| merchant | `eq_merchant`, `_trade`, `_vendor_bank` | 56 | 1 | K05 |
+| entities | `eq_entities`, `_appearance`, `_updates`, `_world` | 28 | 1 | K06 |
+| movement | `eq_movement`, `_state`, `_update` | 44 | 4 | K07 |
+| player | `eq_player_info`, `_misc`, `_social`, `_state`, `_buffs`, `eq_profile_appearance` | 142 | 11 | K08 (may split in two) |
+| zone | `eq_zone`, `_dispatch`, `_entry`, `_handshake` | 41 | 17 | K09 |
+| login_world | `eq_login_world` | 42 | 9 | K10 |
+| bridge | `eq_bridge`, `_intents`, `_ui_audio` | 46 | 8 | K11 (becomes bridge/intent handlers, not a component) |
+| commands | `eq_commands`, `_movement`, `_spells`, `_train` | 32 | 0 | K12 (becomes action handlers) |
+| combat | `eq_combat_actions` | 6 | 1 | folds into whichever component owns attack |
+| core | `eq.cpp` | 38 | 3 | stays — ctor/dtor, wiring, `Test_*` seams |
+| action_handler | `eq_action_handler*` | 19 | 0 | K13 (retargeted last) |
 
 ## Application (`include/client/application.h`) — split by J06
 

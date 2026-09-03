@@ -10,6 +10,14 @@ I'm developing this on a remote Ubuntu 24 server without a GPU. The default run 
 
 ## Project Status
 
+**Status, 2026-09-03.** The open-work queue of record is `refactor/BOARD.md` —
+one confirmed entry per open item, classed A (live defect) / B (unreached or
+hygiene) / C (needs a decision) / P (process). `docs/module_map.md` is the map
+from a symbol to the translation unit that holds it. The prose below this
+paragraph was last revised 2026-07-28 and is a general orientation, not a
+current defect list; where the two disagree, the board wins.
+
+
 **What works reliably:**
 - Login, server selection, character selection, and zoning
 - 3D zone rendering with textures, lighting, fog, sky dome, and day/night cycle
@@ -38,7 +46,7 @@ I'm developing this on a remote Ubuntu 24 server without a GPU. The default run 
 - Swimming mechanics incomplete (keys exist, physics don't)
 - Boats/transport not implemented
 - Fall damage not implemented
-- First-person view is rebuilt on the measured mechanism (player model at the eyes, clamped down-pitch keeps the body out of frame) but the clamp angle is an inference pending a dedicated measurement, and the live look is unjudged (`refactor/T300_leg_b_implementation.md`)
+- First-person view draws the player's own model and weapon for the duration of an attack animation and at no other time (T307 measured the rule against the official client; T309 implemented it in `src/client/graphics/entity_first_person_draw.cpp`). The down-pitch clamp that earlier revisions of this file described as the hiding mechanism was refuted live and no longer exists. Eye placement is still open (`refactor/BOARD.md` B018)
 - UI is a fixed static-panel HUD; merchant, bank, loot, and trade are driven by slash commands rather than windows
 
 **Architecture note:** This is a thin client that delegates game logic to the server. Combat damage, spell effects, skill checks, and item transactions are all server-calculated. The client handles rendering, input, and state tracking.
@@ -818,12 +826,12 @@ tools/                       # eqe1_builder, verify_eqe1, willeq_db_builder, mod
                              # S3D/WLD dumpers, atlas builders, hwcaps/ GPU benchmarks
 third_party/                 # Header-only audio libs; irrlicht-gles2-x86/ (gitignored build output)
 docs/                        # decisions.md, module_map.md, standards/, reference/, plans/
-refactor/                    # Per-unit plans and reviews (T###_*.md), deferred.md
+refactor/                    # BOARD.md (open items), per-unit plans and reviews
 ```
 
 ## Project Process
 
-Work is organised as numbered units. An orchestrator session plans each unit as a document in `refactor/` (`T###_<name>.md`: territory, plan, review), and executor agents carry them out in git worktree slots (`wt/slot1..3`) on task branches named `task/T###-<name>` cut from the `fable` branch; the orchestrator reviews and merges. Standing rules for executors are in `refactor/EXECUTOR_PROTOCOL.md`, settled architecture decisions in `docs/decisions.md`, and open items in `refactor/deferred.md`. Per-directory `CLAUDE.md` files carry the working notes for each subsystem.
+Work is organised as numbered units. An orchestrator session plans each unit as a document in `refactor/` (`T###_<name>.md` / `J##_*.md` / `K##_*.md`: territory, plan, review), and executor agents carry them out in git worktree slots (`wt/slot1..3`) on task branches named `task/<unit>-<name>` cut from the `fable` branch; the orchestrator reviews and merges. Standing rules for executors are in `refactor/EXECUTOR_PROTOCOL.md`, settled architecture decisions in `docs/decisions.md`, and open items in `refactor/BOARD.md`. Per-directory `CLAUDE.md` files carry the working notes for each subsystem.
 
 ## Credits
 

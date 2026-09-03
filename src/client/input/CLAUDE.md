@@ -21,7 +21,7 @@ Input flows through a four-layer pipeline: capture → hotkey resolution → act
 - Handles movement keys, mouse input, text input, debug toggles
 
 **HotkeyManager** (`hotkey_manager.h`) — Configurable key binding system:
-- `HotkeyAction` enum (76 actions plus a `Count` sentinel, re-counted J21) covering movement, toggles, targeting, interaction
+- `HotkeyAction` enum (80 actions plus a `Count` sentinel, counted 2026-09-03) covering movement, toggles, targeting, interaction
 - `HotkeyBinding` struct: key code + `ModifierFlags` (Ctrl/Shift/Alt) + action
 - `HotkeyMode` enum: Global (always active) vs Player (gameplay only)
 - Loads/saves from `config/hotkeys.json`, supports runtime overrides from `willeq.json`
@@ -32,7 +32,7 @@ Input flows through a four-layer pipeline: capture → hotkey resolution → act
 ## Action Layer (`include/client/action/`)
 
 **CommandProcessor** (`command_processor.h`) — Slash command text processing.
-Implementation split across nine TUs in `src/client/action/` (J04, plus
+Implementation split across eight TUs in `src/client/action/` (J04, plus
 T268/T269/T280): `command_processor.cpp` holds the core (parse, dispatch,
 registry queries), `command_processor_registration.cpp` holds
 `registerBuiltinCommands()` and its 142 `registerCommand({…})` calls, and the
@@ -45,7 +45,7 @@ behind the shared private header `command_processor_internal.h`. See
 - Returns `ActionResult` (success + message)
 
 **ActionDispatcher** (`action_dispatcher.h`) — Central hub for all game actions:
-- ~180 action methods covering movement, combat, interaction, chat, group, inventory, spells, skills, pet, trade
+- ~182 action methods covering movement, combat, interaction, chat, group, inventory, spells, skills, pet, trade
 - Validates via `GameState`, delegates to `IActionHandler` (typically `EverQuest`)
 - `Direction` enum (Forward/Backward/Left/Right/Up/Down)
 - `ChatChannel` enum (Say/Shout/OOC/Tell/Group/Guild/Raid/Emote)
@@ -77,10 +77,12 @@ is a thin `EverQuest::Request*` wrapper (T136/T138) — `EqActionHandler` has no
 bridge pointer by design.
 
 `InputActionBridge` dispatches keyboard hotbar presses by the slot's content
-type (T174, `InputActionBridge::processHotbarRequests()`): Spell → `castSpell`, Skill →
-`useSkill`; Item and Emote slots are DEBUG-logged and skipped (an Item slot
-carries an item id, `useItem()` takes an inventory slot, and no resolver exists
-at this layer — recorded open in `refactor/deferred.md`).
+type (T174, `InputActionBridge::processHotbarRequests()`). Every slot type is
+routed: Spell → `castSpell`, Skill → `useSkill`, Item → `useItemById` (T230
+resolves the item id to an inventory slot through
+`IActionHandler::findItemSlotByItemId`, the same lookup the mouse path uses),
+and Emote/Macro/Combat → `activateHotbarCommandSlot` (T239, the same body as the
+mouse path). The DEBUG-logged skips T174 shipped are gone.
 
 ## Data Flow
 

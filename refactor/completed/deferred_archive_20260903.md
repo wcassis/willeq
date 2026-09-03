@@ -1,3 +1,7 @@
+> **ARCHIVED 2026-09-03 by K00.** Superseded by `refactor/BOARD.md`.
+> The findings below are HISTORICAL: many were closed by later units without
+> being struck here. Do not scope work off this file.
+
 # Deferred / Known-Open Items
 
 Live list of open work items extracted from "done" batches and audits

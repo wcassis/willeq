@@ -1,3 +1,7 @@
+> **ARCHIVED 2026-09-03 by K00.** Superseded by `refactor/BOARD.md`.
+> The findings below are HISTORICAL: many were closed by later units without
+> being struck here. Do not scope work off this file.
+
 # Testing campaign progress tracker
 
 Owner: testing session (charter: `refactor/TESTING_CHARTER.md`).

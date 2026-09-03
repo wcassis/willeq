@@ -16,14 +16,17 @@ Additional context is in subdirectory CLAUDE.md files:
 
 - `docs/decisions.md` — standing architecture decisions. Settled; do not re-litigate.
 - `docs/module_map.md` — functional map of every split translation unit (EverQuest, Application, CommandProcessor, InventoryManager, IrrlichtRenderer, EntityRenderer, WLDLoader, SimulationWorker, ZoneShader, tests/cmake). Consult it to find the right TU instead of scanning.
-- `refactor/deferred.md` — known-open items; read its `## STATUS` block (dated, top of file) first — it carries the current tip, suite count and the open items by class. `refactor/F_file_split.md` is COMPLETE (historical); the active unit plans are `refactor/T<nn>_*.md`.
-- `refactor/testing_progress.md` — the testing session's tracker; its "Handoffs to the perf session" section is the inbound channel for cross-session handbacks. Check it (and strike items you close) when orchestrating.
-- `refactor/completed/` and most of `docs/reference/` are historical snapshots (bannered); do not trust their findings as current.
-- Workspace: canonical checkout at `/mnt/projects/fable/main` (branch `fable`; symlink from `/mnt/projects/willeq-fable`), executor worktree slots at `/mnt/projects/fable/wt/slot1..3` plus `t1`, `t2` (testing-session slots). Task branches: `task/T<nn>-<name>` (older: `task/F##-<name>`). The `renderer` branch is reference-only — never merge it.
+- `refactor/BOARD.md` — **the open-work queue of record. Start here.** One entry per open item, each confirmed against the tree at the tip named in its header, classed A (live defect) / B (unreached or hygiene) / C (needs Will's decision) / P (process). Nothing else is a work queue.
+- `refactor/K_component_extraction.md` — the open structural programme (component extraction from `class EverQuest`, then `class IrrlichtRenderer`). The active unit plans are `refactor/K<nn>_*.md`.
+- `refactor/completed/` and most of `docs/reference/` are historical snapshots (bannered); do not trust their findings as current. That includes `deferred_archive_20260903.md`, `progress_archive_20260903.md` and `testing_progress_archive_20260903.md` — the three trackers `BOARD.md` replaced (K00, 2026-09-03). They are research records; many entries were closed by later units without being struck.
+- Workspace: canonical checkout at `/mnt/projects/fable/main` (branch `fable`; symlink from `/mnt/projects/willeq-fable`), executor worktree slots at `/mnt/projects/fable/wt/slot1..3` plus `t1`, `t2` (testing-session slots). Task branches: `task/<UNIT>-<name>`, e.g. `task/K01-guild-component`. The `renderer` branch is reference-only — never merge it.
+
+**Reading order for a new agent:** `refactor/BOARD.md` → `docs/module_map.md` →
+`docs/decisions.md` → the unit plan you were dispatched with.
 
 ## Process requirement
 
-- Every unit of work is PLANNED by the orchestrator (a `refactor/T<nn>_*.md`
+- Every unit of work is PLANNED by the orchestrator (a `refactor/<UNIT>_*.md`
   plan with scope, file territory, STOP conditions and a verification bar)
   and EXECUTED by executor agents in worktree slots under
   `refactor/EXECUTOR_PROTOCOL.md`. Independent legs are dispatched in
@@ -31,6 +34,12 @@ Additional context is in subdirectory CLAUDE.md files:
   orchestrator serializes merges onto `fable` (`docs/decisions.md`,
   2026-07-22 workspace layout). Do not execute unplanned work inline in
   `main`.
+- **Batch J is complete.** Every `.cpp` and `.h` under `src/`, `include/` and
+  `tests/` is under 1,500 lines except two single-class headers,
+  `include/client/eq.h` and `include/client/graphics/irrlicht_renderer.h`. Those
+  two carry a no-grow allowlist entry pending
+  `refactor/K_component_extraction.md`, which ratchets each one down as it
+  extracts a component. Nothing is over the 3,000-line hard cap.
 
 ## Project Overview
 
@@ -56,9 +65,8 @@ bash scripts/build-gles2-x86.sh --irrlicht-only
 
 ```bash
 # Configure (from project root) — the GLES2-config tree is now the primary
-# dev/test tree (tests on, full ctest suite, 3506/3507 passing at 9684644f —
-# the sole known exception is the documented ALSA host quirk below; the count
-# grows constantly, do not trust it as current)
+# dev/test tree (tests on, full ctest suite). Run it; the sole expected
+# failure is the ALSA quirk (AudioManagerTest.PreloadCommonSounds).
 mkdir -p build && cmake -S . -B build \
     -DEQT_GRAPHICS=ON \
     -DEQT_GLES2=ON \
@@ -267,9 +275,9 @@ Audio updates                       Zone load completion detection
 - **IrrlichtBridge** (`include/client/bridge/irrlicht_bridge.h`) — translates game events into IrrlichtRenderer calls (switch over the 97 `GameEventType` enumerators (T264: every event now has a publisher and a consumer, pinned by test_reachability_sweep))
 - **ConsoleBridge** (`include/client/bridge/console_bridge.h`) — logs events to console in headless mode
 - **Event types** (`include/client/state/event_bus.h`) — 97 event types covering all game state changes
-- **Intent types** (`include/client/events/renderer_intents.h`) — 33 intent structs in the `RendererIntent` variant (T264 pruned; T268 deleted DestroyAllLootIntent -- no Titanium destroy-loot packet; pinned by test_reachability_sweep) for user actions
+- **Intent types** (`include/client/events/renderer_intents.h`) — 35 intent structs in the `RendererIntent` variant (T264 pruned; T268 deleted DestroyAllLootIntent -- no Titanium destroy-loot packet; pinned by test_reachability_sweep) for user actions
 
-**Key separation**: EverQuest communicates with the renderer only through the bridge — no `m_renderer` member, no `GetRenderer()` accessor. Application owns the renderer and wires it to EverQuest via bridge pointers. Player movement flows renderer→game exclusively via the `PlayerPositionChanged` intent (S2 removed the legacy synchronous callback); inventory UI state flows game→renderer exclusively via enriched `InventorySlotChanged` events; bridge payloads are typed (no `void*`). The graphics-facing game code is concentrated in `eq_bridge.cpp` (the boundary TU); `eq.cpp` itself has only two graphics includes (loading status + command registry). Remaining known seams (InitGraphics renderer parameter, asset loaders living in the `EQT::Graphics` namespace) are tracked in `refactor/deferred.md` — do not "fix" coupling ad hoc.
+**Key separation**: EverQuest communicates with the renderer only through the bridge — no `m_renderer` member, no `GetRenderer()` accessor. Application owns the renderer and wires it to EverQuest via bridge pointers. Player movement flows renderer→game exclusively via the `PlayerPositionChanged` intent (S2 removed the legacy synchronous callback); inventory UI state flows game→renderer exclusively via enriched `InventorySlotChanged` events; bridge payloads are typed (no `void*`). The graphics-facing game code is concentrated in `eq_bridge.cpp` (the boundary TU); `eq.cpp` itself has only two graphics includes (loading status + command registry). Remaining known seams (InitGraphics renderer parameter, asset loaders living in the `EQT::Graphics` namespace) are tracked in `refactor/BOARD.md` (item B006) — do not "fix" coupling ad hoc.
 
 ### Connection Flow
 
@@ -286,8 +294,8 @@ The client connects through three stages, each with its own connection manager:
 - Main thread runs render loop (or sleeps in headless mode)
 - Manages zone loading thread (GL context transfer, snapshot handoff)
 
-**EverQuest class** (`include/client/eq.h`, implementation split across `src/client/eq.cpp` + 27 `eq_*.cpp` domain TUs)
-- Game state and network logic. eq.cpp itself (1,026 lines at `9684644f`, after J02) holds only the core: lifecycle, connection setup, the zone packet-receive callback. Everything else (the zone-stream dispatcher, zone entry, movement, entities, chat, merchant, bridge, …) lives in domain TUs — consult `docs/module_map.md` to find the right file
+**EverQuest class** (`include/client/eq.h`, implementation split across `src/client/eq.cpp` + 37 `eq_*.cpp` domain TUs)
+- Game state and network logic. eq.cpp itself (1,073 lines) holds only the core: lifecycle, connection setup, the zone packet-receive callback. Everything else (the zone-stream dispatcher, zone entry, movement, entities, chat, merchant, bridge, …) lives in domain TUs — consult `docs/module_map.md` to find the right file
 - Manages all three connection stages
 - Handles entity tracking, movement, chat, combat, and doors
 - All Titanium opcodes defined as enums: `TitaniumLoginOpcodes`, `TitaniumWorldOpcodes`, `TitaniumZoneOpcodes`
@@ -325,7 +333,7 @@ The client connects through three stages, each with its own connection manager:
 - `SpellEffects` - **DELETED (T327, 2026-09-02)**, on Will's ruling. Effect
   application with zero callers once T324 removed its sole consumer; all 49
   per-effect handlers were logging stubs, and its value-scaling table was wrong
-  against the server (board item 45).
+  against the server (recorded in `refactor/completed/deferred_archive_20260903.md`, item 45).
 - Both deletions share one tombstone in `src/client/eq.cpp`. Do not rebuild
   either; the server is authoritative and reports every landing per target.
 
