@@ -163,6 +163,16 @@ into the component.**
    `owner_.<Family>().Foo(…)`; executors should write that form themselves
    whenever the target family is already on `fable`, and `owner_.Foo()` only
    when it is not.
+**K10 corrections (2026-09-03):** (s) grep `eq.h` for the family's NAME
+   PREFIX, not just for bodies — K10 found two declarations defined nowhere
+   (a dead API promise invisible to body counts and member greps); a
+   tree-wide check after K10 found zero more; (t) `ucs.cpp`'s
+   `m_host/m_port/m_key/m_dbid` are `UCSConnection`'s own — the third unit
+   in a row where a "reader outside the family" was a same-named member of
+   another class: a member lead is only real if the receiver is `EverQuest`;
+   (u) a body moved from a TU OTHER than the family's (K10 took
+   `ConnectToLogin`/`ConnectToWorld` from `eq.cpp`) must be proved by a
+   residual run on that TU too.
 8. **Proof.** `verify_move_only.py` exits 1 by construction. Line-multiset
    check with the substitutions normalised BY NAME MAPPING (`ctx_.character`
    ↔ `m_character`, etc. — stripping the prefix alone leaves 7 false
