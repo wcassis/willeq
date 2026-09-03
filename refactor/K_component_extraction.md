@@ -140,6 +140,15 @@ into the component.**
    names may no longer exist (two of K04's seven survived only in comments);
    (i) order the normalisation sed longest-name-first when names share a
    prefix.
+**K05 corrections (2026-09-03):** (j) the third substitution covers ANY
+   `EverQuest`-scoped name — statics AND nested types (`GameLootItem` →
+   `EverQuest::GameLootItem`); (k) `ReachabilitySweep.EverySenderHasACaller`
+   parses `eq.h` for `Send*` and has a floor of 50 — it is a cumulative
+   Batch-K budget and K05 exhausted it; the test now also walks
+   `include/client/*/*_component.h`, so later units need no edit but WILL
+   conflict with that fix if they branched before `a8886739`; (l) a
+   "(was `old/path.cpp`)" note in `module_map.md` is a live citation —
+   write bare filenames in prose.
 8. **Proof.** `verify_move_only.py` exits 1 by construction. Line-multiset
    check with the substitutions normalised BY NAME MAPPING (`ctx_.character`
    ↔ `m_character`, etc. — stripping the prefix alone leaves 7 false
