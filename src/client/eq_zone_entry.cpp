@@ -274,7 +274,7 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	// Appearance. T167: these seven fields were parsed into locals here and
 	// read by nothing; the result is now STORED, same once-per-profile shape
 	// as m_guild_id (T133) and m_gm_mode (T148) below. Offsets and the full
-	// rationale live in eq_profile_appearance.h, where a test pins them.
+	// rationale live in client/player/profile_appearance.h, where a test pins them.
 	m_profile_appearance = EQT::ParseProfileAppearance(p, base);
 
 	// Experience points
@@ -584,7 +584,7 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 	
 	// Store in entity list (sync to both local map and EntityManager)
 	m_entities[MySpawnId()] = self_entity;
-	SyncEntityToGameState(self_entity);
+	m_player->SyncEntityToGameState(self_entity);
 
 	if (s_debug_level >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Added self to entity list: {} (ID: {})", self_entity.name, MySpawnId());
@@ -664,7 +664,7 @@ void EverQuest::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 			// eq_player_buffs.cpp). Without
 			// this the buff bar starts every session empty -- eqemu never
 			// sends OP_Buff for a buff that is merely still running.
-			PublishPlayerBuffs(buffs.data(), BUFF_COUNT);
+			m_player->PublishPlayerBuffs(buffs.data(), BUFF_COUNT);
 
 			if (s_debug_level >= 1) {
 				size_t active_count = 0;

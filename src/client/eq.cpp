@@ -120,6 +120,8 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 	// K10: the login_world family. It owns the login/world connection managers,
 	// so it must exist before SetCredentials below.
 	m_login_world = std::make_unique<eqt::login_world::LoginWorldComponent>(m_ctx, *this);
+	// K08: the player family. The player-state facade stays on EverQuest.
+	m_player = std::make_unique<eqt::player::PlayerComponent>(m_ctx, *this);
 
 	m_login_world->SetCredentials(host, port, user, pass, server);
 	m_character = character;

@@ -5,6 +5,7 @@
 // verbatim, no behavior change. See refactor/J07_eq_player_info_split.md and
 // refactor/F07_player_info.md.
 
+#include "client/player/player_component.h"
 #include "client/eq.h"
 #include "client/inspect_answer.h"
 #include "client/bind_wound_outcome.h"
@@ -29,10 +30,6 @@
 #include "client/inventory/inventory_manager.h"
 #include "client/inventory/inventory_constants.h"
 
-#ifdef EQT_HAS_GRAPHICS
-#include "client/graphics/irrlicht_renderer.h"
-#endif
-
 #include <cstring>
 #include <algorithm>
 #include <cctype>
@@ -43,22 +40,22 @@
 // Cluster 4: Tasks/DZ/BeginCast/ManaChange/Buff/PetBuff
 // ============================================================================
 
-void EverQuest::ZoneProcessCompletedTasks(const EQ::Net::Packet &p)
+void eqt::player::PlayerComponent::ZoneProcessCompletedTasks(const EQ::Net::Packet &p)
 {
 	// CompletedTasks sends the list of completed tasks
 	// This is informational - we can track it if needed
 	
-	if (s_debug_level >= 2) {
+	if (EverQuest::s_debug_level >= 2) {
 		LOG_DEBUG(MOD_MAIN, "Received completed tasks list ({} bytes)", p.Length());
 	}
 }
 
-void EverQuest::ZoneProcessDzCompass(const EQ::Net::Packet &p)
+void eqt::player::PlayerComponent::ZoneProcessDzCompass(const EQ::Net::Packet &p)
 {
 	// DzCompass updates the expedition/DZ compass direction
 	// Format: heading (4 bytes float), x (4 bytes float), y (4 bytes float), z (4 bytes float)
 	
-	if (s_debug_level >= 2) {
+	if (EverQuest::s_debug_level >= 2) {
 		if (p.Length() >= 18) {
 			float heading = p.GetFloat(2);
 			float x = p.GetFloat(6);
@@ -70,17 +67,17 @@ void EverQuest::ZoneProcessDzCompass(const EQ::Net::Packet &p)
 	}
 }
 
-void EverQuest::ZoneProcessDzExpeditionLockoutTimers(const EQ::Net::Packet &p)
+void eqt::player::PlayerComponent::ZoneProcessDzExpeditionLockoutTimers(const EQ::Net::Packet &p)
 {
 	// DzExpeditionLockoutTimers sends lockout timer information
 	// This is informational for expeditions/DZs
 	
-	if (s_debug_level >= 2) {
+	if (EverQuest::s_debug_level >= 2) {
 		LOG_DEBUG(MOD_MAIN, "Received DZ expedition lockout timers ({} bytes)", p.Length());
 	}
 }
 
-void EverQuest::ZoneProcessBeginCast(const EQ::Net::Packet &p)
+void eqt::player::PlayerComponent::ZoneProcessBeginCast(const EQ::Net::Packet &p)
 {
 	// BeginCast indicates an entity is starting to cast a spell
 	// Format: spawn_id (2 bytes), spell_id (2 bytes), cast_time (4 bytes)
@@ -95,26 +92,26 @@ void EverQuest::ZoneProcessBeginCast(const EQ::Net::Packet &p)
 	uint32_t cast_time = p.GetUInt32(6);
 
 	if (ShouldLog(MOD_SPELL, LOG_DEBUG)) {
-		auto it = m_entities.find(spawn_id);
-		std::string name = (it != m_entities.end()) ? EQT::toDisplayName(it->second.name) : "Unknown";
+		auto it = ctx_.entities.find(spawn_id);
+		std::string name = (it != ctx_.entities.end()) ? EQT::toDisplayName(it->second.name) : "Unknown";
 		LOG_DEBUG(MOD_SPELL, "{} (ID: {}) begins casting spell {} ({}ms)",
 			name, spawn_id, spell_id, cast_time);
 	}
 
 #ifdef WITH_AUDIO
 	// Play spell casting sound at caster's position
-	if (m_audio_manager) {
-		auto it = m_entities.find(spawn_id);
-		if (it != m_entities.end()) {
-			m_audio_manager->playSound(EQT::Audio::SoundId::SPELL_CAST,
+	if (ctx_.audio_manager) {
+		auto it = ctx_.entities.find(spawn_id);
+		if (it != ctx_.entities.end()) {
+			ctx_.audio_manager->playSound(EQT::Audio::SoundId::SPELL_CAST,
 				glm::vec3(it->second.x, it->second.y, it->second.z));
 		}
 	}
 #endif
 
 	// Notify spell manager about the cast
-	if (m_spell_manager) {
-		m_spell_manager->handleBeginCast(spawn_id, spell_id, cast_time);
+	if (ctx_.spell_manager) {
+		ctx_.spell_manager->handleBeginCast(spawn_id, spell_id, cast_time);
 	}
 
 	// Publish SpellCastStarted event to bridge. This is the server-echoed
@@ -128,24 +125,24 @@ void EverQuest::ZoneProcessBeginCast(const EQ::Net::Packet &p)
 	// T221: source-side twin of the projection's self-filter -- re-applies
 	// the echo for our own cast (castTimeMs may now be the server's, as the
 	// projection allowed); the SpellCastStarted projection is redundant.
-	if (spawn_id == GetEntityID()) {
-		uint16_t self_target = m_spell_manager ? m_spell_manager->getCurrentTargetId() : 0;
-		m_game_state.spells().setCasting(true, spell_id, self_target, cast_time);
+	if (spawn_id == owner_.GetEntityID()) {
+		uint16_t self_target = ctx_.spell_manager ? ctx_.spell_manager->getCurrentTargetId() : 0;
+		ctx_.game_state.spells().setCasting(true, spell_id, self_target, cast_time);
 	}
-	if (m_bridge) {
+	if (ctx_.bridge) {
 		eqt::state::SpellCastStartedData data;
 		data.casterId = spawn_id;
 		data.spellId = spell_id;
 		data.castTimeMs = cast_time;
-		if (m_spell_manager && spawn_id == GetEntityID()) {
-			data.targetId = m_spell_manager->getCurrentTargetId();
+		if (ctx_.spell_manager && spawn_id == owner_.GetEntityID()) {
+			data.targetId = ctx_.spell_manager->getCurrentTargetId();
 		}
-		m_bridge->pushEvent(eqt::state::GameEvent(
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::SpellCastStarted, std::move(data)));
 	}
 }
 
-void EverQuest::ZoneProcessManaChange(const EQ::Net::Packet &p)
+void eqt::player::PlayerComponent::ZoneProcessManaChange(const EQ::Net::Packet &p)
 {
 	// ManaChange updates the player's own mana (sent after casting spells, etc.)
 	// ManaChange_Struct format:
@@ -165,64 +162,64 @@ void EverQuest::ZoneProcessManaChange(const EQ::Net::Packet &p)
 	uint8_t keepcasting = p.GetUInt8(14);  // offset 12 in struct
 
 	// Update player mana tracking (T286: PlayerState is the only store)
-	m_game_state.player().setCurMana(new_mana);
+	ctx_.game_state.player().setCurMana(new_mana);
 
 	// Update our entity if we're tracking it
-	if (MySpawnId() != 0) {
-		auto it = m_entities.find(MySpawnId());
-		if (it != m_entities.end()) {
+	if (owner_.MySpawnId() != 0) {
+		auto it = ctx_.entities.find(owner_.MySpawnId());
+		if (it != ctx_.entities.end()) {
 			it->second.cur_mana = static_cast<uint16_t>(std::min(new_mana, static_cast<uint32_t>(65535)));
 		}
 	}
 
-	if (s_debug_level >= 2) {
+	if (EverQuest::s_debug_level >= 2) {
 		LOG_DEBUG(MOD_SPELL, "ManaChange: mana={}, stamina={}, spell_id={}, keepcasting={}",
 			new_mana, stamina, spell_id, keepcasting);
 	}
 
 	// Notify spell manager if available
-	if (m_spell_manager) {
-		m_spell_manager->handleManaChange(new_mana, stamina, spell_id);
+	if (ctx_.spell_manager) {
+		ctx_.spell_manager->handleManaChange(new_mana, stamina, spell_id);
 	}
 
 	// Also update endurance tracking (T286: PlayerState is the only store)
-	m_game_state.player().setEndurance(stamina, m_game_state.player().maxEndurance());
+	ctx_.game_state.player().setEndurance(stamina, ctx_.game_state.player().maxEndurance());
 
 	// Update combat stats with new mana value
-	if (m_combat_manager) {
+	if (ctx_.combat_manager) {
 		CombatStats stats;
-		stats.current_hp = m_game_state.player().curHP();
-		stats.max_hp = m_game_state.player().maxHP();
+		stats.current_hp = ctx_.game_state.player().curHP();
+		stats.max_hp = ctx_.game_state.player().maxHP();
 		stats.current_mana = new_mana;
-		stats.max_mana = m_game_state.player().maxMana();
+		stats.max_mana = ctx_.game_state.player().maxMana();
 		stats.current_endurance = stamina;
 		stats.max_endurance = 0;
-		stats.hp_percent = (m_game_state.player().maxHP() > 0) ? (static_cast<float>(m_game_state.player().curHP()) * 100.0f / static_cast<float>(m_game_state.player().maxHP())) : 100.0f;
-		stats.mana_percent = (m_game_state.player().maxMana() > 0) ? (static_cast<float>(new_mana) * 100.0f / static_cast<float>(m_game_state.player().maxMana())) : 100.0f;
+		stats.hp_percent = (ctx_.game_state.player().maxHP() > 0) ? (static_cast<float>(ctx_.game_state.player().curHP()) * 100.0f / static_cast<float>(ctx_.game_state.player().maxHP())) : 100.0f;
+		stats.mana_percent = (ctx_.game_state.player().maxMana() > 0) ? (static_cast<float>(new_mana) * 100.0f / static_cast<float>(ctx_.game_state.player().maxMana())) : 100.0f;
 		stats.endurance_percent = 100.0f;
-		m_combat_manager->UpdateCombatStats(stats);
+		ctx_.combat_manager->UpdateCombatStats(stats);
 	}
 
 	// T43: was #ifdef EQT_HAS_GRAPHICS -- see the identical note in
 	// eq_entities.cpp's HP-change UpdateInventoryStats() call site.
-	UpdateInventoryStats();
+	owner_.UpdateInventoryStats();
 
 	// Publish PlayerStatsChanged when mana/endurance changes
-	if (m_bridge) {
+	if (ctx_.bridge) {
 		eqt::state::PlayerStatsChangedData data;
-		data.curHP = m_game_state.player().curHP();
-		data.maxHP = m_game_state.player().maxHP();
+		data.curHP = ctx_.game_state.player().curHP();
+		data.maxHP = ctx_.game_state.player().maxHP();
 		data.curMana = new_mana;
-		data.maxMana = m_game_state.player().maxMana();
+		data.maxMana = ctx_.game_state.player().maxMana();
 		data.curEndurance = stamina;
-		data.maxEndurance = m_game_state.player().maxEndurance();
-		data.level = m_game_state.player().level();
-		m_bridge->pushEvent(eqt::state::GameEvent(
+		data.maxEndurance = ctx_.game_state.player().maxEndurance();
+		data.level = ctx_.game_state.player().level();
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::PlayerStatsChanged, std::move(data)));
 	}
 }
 
-void EverQuest::ZoneProcessBuff(const EQ::Net::Packet &p)
+void eqt::player::PlayerComponent::ZoneProcessBuff(const EQ::Net::Packet &p)
 {
 	// SpellBuffPacket_Struct format:
 	//   entityid (4 bytes), SpellBuff_Struct (20 bytes), slotid (4 bytes), bufffade (4 bytes)
@@ -251,35 +248,35 @@ void EverQuest::ZoneProcessBuff(const EQ::Net::Packet &p)
 	uint32_t buff_fade = p.GetUInt32(30);
 
 	// Check if this is our buff
-	bool is_self = (entity_id == MySpawnId());
+	bool is_self = (entity_id == owner_.MySpawnId());
 
 	LOG_DEBUG(MOD_SPELL, "Buff: entity={}, spell={}, slot={}, duration={}, fade={}, effect_type={}",
 		entity_id, buff.spellid, slot_id, buff.duration, buff_fade, buff.effect_type);
 
 	// Update buff manager
-	if (m_buff_manager) {
+	if (ctx_.buff_manager) {
 		if (buff_fade == 1) {
 			// Buff is fading
 			if (is_self) {
-				m_buff_manager->removePlayerBuffBySlot(static_cast<uint8_t>(slot_id));
+				ctx_.buff_manager->removePlayerBuffBySlot(static_cast<uint8_t>(slot_id));
 
 				// Publish BuffRemoved event to bridge
-				if (m_bridge) {
+				if (ctx_.bridge) {
 					eqt::state::BuffRemovedData data;
 					data.slot = static_cast<uint8_t>(slot_id);
-					m_bridge->pushEvent(eqt::state::GameEvent(
+					ctx_.bridge->pushEvent(eqt::state::GameEvent(
 						eqt::state::GameEventType::BuffRemoved, std::move(data)));
 				}
 			} else {
-				m_buff_manager->removeBuffBySlot(static_cast<uint16_t>(entity_id), static_cast<uint8_t>(slot_id));
+				ctx_.buff_manager->removeBuffBySlot(static_cast<uint16_t>(entity_id), static_cast<uint8_t>(slot_id));
 			}
 		} else if (buff.effect_type == 2 && buff.spellid != 0 && buff.spellid != 0xFFFFFFFF) {
 			// Buff is being applied
 			if (is_self) {
-				m_buff_manager->setPlayerBuff(static_cast<uint8_t>(slot_id), buff);
+				ctx_.buff_manager->setPlayerBuff(static_cast<uint8_t>(slot_id), buff);
 				PublishPlayerBuffUpdated(static_cast<uint8_t>(slot_id), buff);
 			} else {
-				m_buff_manager->setEntityBuff(static_cast<uint16_t>(entity_id),
+				ctx_.buff_manager->setEntityBuff(static_cast<uint16_t>(entity_id),
 					static_cast<uint8_t>(slot_id), buff);
 			}
 		}
@@ -292,25 +289,25 @@ void EverQuest::ZoneProcessBuff(const EQ::Net::Packet &p)
 // through the same body -- before this
 // they went into BuffManager and stopped there, so the buff bar started
 // every session empty no matter what the player was actually holding.
-void EverQuest::PublishPlayerBuffUpdated(uint8_t slot, const EQT::SpellBuff_Struct& buff)
+void eqt::player::PlayerComponent::PublishPlayerBuffUpdated(uint8_t slot, const EQT::SpellBuff_Struct& buff)
 {
-	if (!m_bridge) {
+	if (!ctx_.bridge) {
 		return;
 	}
 	eqt::state::BuffUpdatedData data;
 	data.slot = slot;
 	data.spellId = buff.spellid;
 	data.ticksLeft = static_cast<uint32_t>(buff.duration);
-	auto caster_it = m_entities.find(static_cast<uint16_t>(buff.player_id));
-	if (caster_it != m_entities.end()) {
+	auto caster_it = ctx_.entities.find(static_cast<uint16_t>(buff.player_id));
+	if (caster_it != ctx_.entities.end()) {
 		data.casterName = EQT::toDisplayName(caster_it->second.name);
 	}
-	if (m_spell_manager) {
-		const auto* spell = m_spell_manager->getSpell(buff.spellid);
+	if (ctx_.spell_manager) {
+		const auto* spell = ctx_.spell_manager->getSpell(buff.spellid);
 		data.spellName = spell ? spell->name : "";
 		data.iconId = spell ? spell->spell_icon : 0;
 	}
-	m_bridge->pushEvent(eqt::state::GameEvent(
+	ctx_.bridge->pushEvent(eqt::state::GameEvent(
 		eqt::state::GameEventType::BuffUpdated, std::move(data)));
 }
 
@@ -322,7 +319,7 @@ void EverQuest::PublishPlayerBuffUpdated(uint8_t slot, const EQT::SpellBuff_Stru
 // place a session ever hears about the buffs it starts with. Before this
 // they reached BuffManager and stopped, and renderBuffBar() drew an empty
 // bar all session with nothing for the click gesture to hit.
-void EverQuest::PublishPlayerBuffs(const EQT::SpellBuff_Struct* buffs, size_t count)
+void eqt::player::PlayerComponent::PublishPlayerBuffs(const EQT::SpellBuff_Struct* buffs, size_t count)
 {
 	if (!buffs) {
 		return;
@@ -344,10 +341,10 @@ void EverQuest::PublishPlayerBuffs(const EQT::SpellBuff_Struct* buffs, size_t co
 // spell-name substring (case-insensitive), matched against the player's
 // active buffs only -- never the whole spell database, so "there is no such
 // buff" and "you are not holding that buff" are the same answer.
-void EverQuest::RequestCancelBuff(const std::string& args)
+void eqt::player::PlayerComponent::RequestCancelBuff(const std::string& args)
 {
-	if (!m_buff_manager) {
-		AddChatSystemMessage("Buff system not initialized.");
+	if (!ctx_.buff_manager) {
+		owner_.AddChatSystemMessage("Buff system not initialized.");
 		return;
 	}
 
@@ -357,7 +354,7 @@ void EverQuest::RequestCancelBuff(const std::string& args)
 	if (end != std::string::npos) arg.erase(end + 1);
 
 	if (arg.empty()) {
-		AddChatSystemMessage("Usage: /removebuff <slot# | spell name>");
+		owner_.AddChatSystemMessage("Usage: /removebuff <slot# | spell name>");
 		return;
 	}
 
@@ -365,7 +362,7 @@ void EverQuest::RequestCancelBuff(const std::string& args)
 	if (arg.find_first_not_of("0123456789") == std::string::npos) {
 		unsigned long n = std::strtoul(arg.c_str(), nullptr, 10);
 		if (n < 1 || n > EQ::BuffManager::MAX_PLAYER_BUFFS) {
-			AddChatSystemMessage(fmt::format("Buff slot must be 1-{}.",
+			owner_.AddChatSystemMessage(fmt::format("Buff slot must be 1-{}.",
 				EQ::BuffManager::MAX_PLAYER_BUFFS));
 			return;
 		}
@@ -373,8 +370,8 @@ void EverQuest::RequestCancelBuff(const std::string& args)
 		return;
 	}
 
-	if (!m_spell_manager) {
-		AddChatSystemMessage("Spell system not initialized.");
+	if (!ctx_.spell_manager) {
+		owner_.AddChatSystemMessage("Spell system not initialized.");
 		return;
 	}
 
@@ -385,9 +382,9 @@ void EverQuest::RequestCancelBuff(const std::string& args)
 	int match = -1;
 	int matchCount = 0;
 	std::string matchNames;
-	for (const EQ::ActiveBuff& b : m_buff_manager->getPlayerBuffs()) {
+	for (const EQ::ActiveBuff& b : ctx_.buff_manager->getPlayerBuffs()) {
 		if (b.slot < 0) continue;
-		const EQ::SpellData* spell = m_spell_manager->getSpell(b.spell_id);
+		const EQ::SpellData* spell = ctx_.spell_manager->getSpell(b.spell_id);
 		if (!spell) continue;
 		std::string name = spell->name;
 		std::string lower = name;
@@ -408,11 +405,11 @@ void EverQuest::RequestCancelBuff(const std::string& args)
 	}
 
 	if (matchCount == 0) {
-		AddChatSystemMessage(fmt::format("You do not have a buff matching '{}'.", arg));
+		owner_.AddChatSystemMessage(fmt::format("You do not have a buff matching '{}'.", arg));
 		return;
 	}
 	if (matchCount > 1) {
-		AddChatSystemMessage(fmt::format("Multiple buffs match '{}': {}", arg, matchNames));
+		owner_.AddChatSystemMessage(fmt::format("Multiple buffs match '{}': {}", arg, matchNames));
 		return;
 	}
 	SendBuffCancelRequest(static_cast<uint8_t>(match));
@@ -426,9 +423,9 @@ void EverQuest::RequestCancelBuff(const std::string& args)
 // buff leaves the model only when the server confirms with its own OP_Buff
 // carrying bufffade == 1, which ZoneProcessBuff() above already handles. A
 // refusal (detrimental spell) echoes our own bytes back and the buff stays.
-void EverQuest::SendBuffCancelRequest(uint8_t slot)
+void eqt::player::PlayerComponent::SendBuffCancelRequest(uint8_t slot)
 {
-	if (!m_buff_manager) {
+	if (!ctx_.buff_manager) {
 		LOG_WARN(MOD_SPELL, "No buff manager, cannot cancel buff");
 		return;
 	}
@@ -437,42 +434,42 @@ void EverQuest::SendBuffCancelRequest(uint8_t slot)
 	// exist, and a slot that holds nothing. Everything else (detrimental,
 	// server-pinned) is the server's call.
 	if (slot >= EQ::BuffManager::MAX_PLAYER_BUFFS) {
-		AddChatSystemMessage(fmt::format("Buff slot must be 1-{}.",
+		owner_.AddChatSystemMessage(fmt::format("Buff slot must be 1-{}.",
 			EQ::BuffManager::MAX_PLAYER_BUFFS));
 		return;
 	}
 
-	const EQ::ActiveBuff* buff = m_buff_manager->getPlayerBuffBySlot(slot);
+	const EQ::ActiveBuff* buff = ctx_.buff_manager->getPlayerBuffBySlot(slot);
 	if (!buff) {
-		AddChatSystemMessage(fmt::format("No buff in slot {}.", slot + 1));
+		owner_.AddChatSystemMessage(fmt::format("No buff in slot {}.", slot + 1));
 		return;
 	}
 
-	if (!m_zone_connection) {
-		++m_replay_suppressed_sends;
+	if (!ctx_.zone_connection) {
+		++owner_.m_replay_suppressed_sends;
 		LOG_WARN(MOD_SPELL, "No zone connection, cannot cancel buff in slot {}", slot);
 		return;
 	}
 
-	auto bytes = EQ::BuildBuffCancelPacket(HC_OP_Buff, MySpawnId(), slot, *buff);
+	auto bytes = EQ::BuildBuffCancelPacket(HC_OP_Buff, owner_.MySpawnId(), slot, *buff);
 
 	EQ::Net::DynamicPacket packet;
 	packet.Resize(bytes.size());
 	std::memcpy(packet.Data(), bytes.data(), bytes.size());
 
 	std::string name;
-	if (m_spell_manager) {
-		const EQ::SpellData* spell = m_spell_manager->getSpell(buff->spell_id);
+	if (ctx_.spell_manager) {
+		const EQ::SpellData* spell = ctx_.spell_manager->getSpell(buff->spell_id);
 		if (spell) name = spell->name;
 	}
 	LOG_INFO(MOD_SPELL, "Requesting buff cancel: slot={} spell={} ({})",
 		slot, buff->spell_id, name.empty() ? "unknown" : name);
 
-	DumpPacket("C->S", HC_OP_Buff, packet);
-	m_zone_connection->QueuePacket(packet);
+	EverQuest::DumpPacket("C->S", HC_OP_Buff, packet);
+	ctx_.zone_connection->QueuePacket(packet);
 }
 
-void EverQuest::ZoneProcessPetBuffWindow(const EQ::Net::Packet &p)
+void eqt::player::PlayerComponent::ZoneProcessPetBuffWindow(const EQ::Net::Packet &p)
 {
 	// PetBuff_Struct format:
 	//   petid (4 bytes), spellid[30] (120 bytes), ticsremaining[30] (120 bytes), buffcount (4 bytes)
@@ -488,22 +485,22 @@ void EverQuest::ZoneProcessPetBuffWindow(const EQ::Net::Packet &p)
 		static_cast<const uint8_t*>(p.Data()) + 2);
 
 	// Verify this is for our pet
-	if (m_game_state.pet().petSpawnId() == 0) {
+	if (ctx_.game_state.pet().petSpawnId() == 0) {
 		LOG_DEBUG(MOD_SPELL, "Received PetBuffWindow but no pet tracked, petid={}", petBuffs->petid);
 		return;
 	}
 
-	if (petBuffs->petid != m_game_state.pet().petSpawnId()) {
+	if (petBuffs->petid != ctx_.game_state.pet().petSpawnId()) {
 		LOG_DEBUG(MOD_SPELL, "Received PetBuffWindow for different pet: {} (our pet: {})",
-			petBuffs->petid, m_game_state.pet().petSpawnId());
+			petBuffs->petid, ctx_.game_state.pet().petSpawnId());
 		return;
 	}
 
 	LOG_DEBUG(MOD_SPELL, "PetBuffWindow: petid={} buffcount={}", petBuffs->petid, petBuffs->buffcount);
 
 	// Update buff manager with pet buffs
-	if (m_buff_manager) {
-		m_buff_manager->setPetBuffs(static_cast<uint16_t>(petBuffs->petid), *petBuffs);
+	if (ctx_.buff_manager) {
+		ctx_.buff_manager->setPetBuffs(static_cast<uint16_t>(petBuffs->petid), *petBuffs);
 	}
 }
 
@@ -511,9 +508,9 @@ void EverQuest::ZoneProcessPetBuffWindow(const EQ::Net::Packet &p)
 // Cluster 5: ApplyPoison / Track
 // ============================================================================
 
-void EverQuest::SendApplyPoison(uint32_t inventory_slot)
+void eqt::player::PlayerComponent::SendApplyPoison(uint32_t inventory_slot)
 {
-	if (!IsFullyZonedIn()) {
+	if (!owner_.IsFullyZonedIn()) {
 		LOG_DEBUG(MOD_ENTITY, "Cannot apply poison - not fully zoned in");
 		return;
 	}
@@ -528,10 +525,10 @@ void EverQuest::SendApplyPoison(uint32_t inventory_slot)
 	p.PutUInt32(2, inventory_slot);  // inventorySlot
 	p.PutUInt32(6, 0);               // success (0 when sending, server fills in response)
 
-	m_zone_connection->QueuePacket(p, 0, true);
+	ctx_.zone_connection->QueuePacket(p, 0, true);
 }
 
-void EverQuest::ZoneProcessApplyPoison(const EQ::Net::Packet &p)
+void eqt::player::PlayerComponent::ZoneProcessApplyPoison(const EQ::Net::Packet &p)
 {
 	// Server response to apply poison attempt
 	// ApplyPoison_Struct: inventorySlot (4), success (4) = 8 bytes + 2 opcode = 10 bytes
@@ -546,13 +543,13 @@ void EverQuest::ZoneProcessApplyPoison(const EQ::Net::Packet &p)
 	LOG_DEBUG(MOD_ENTITY, "ApplyPoison response: slot={}, success={}", inventory_slot, success);
 
 	if (success) {
-		AddChatSystemMessage("You apply the poison to your weapon.");
+		owner_.AddChatSystemMessage("You apply the poison to your weapon.");
 	} else {
-		AddChatSystemMessage("You failed to apply the poison.");
+		owner_.AddChatSystemMessage("You failed to apply the poison.");
 	}
 }
 
-void EverQuest::ZoneProcessBindWound(const EQ::Net::Packet &p)
+void eqt::player::PlayerComponent::ZoneProcessBindWound(const EQ::Net::Packet &p)
 {
 	// Server reply to our OP_Bind_Wound. BindWound_Struct: to@0, unknown2@2,
 	// type@4, unknown6@6 -- +2 for the opcode = 10 bytes. `type` is the outcome;
@@ -568,11 +565,11 @@ void EverQuest::ZoneProcessBindWound(const EQ::Net::Packet &p)
 	LOG_DEBUG(MOD_ENTITY, "BindWound response: type={} -> '{}'", type, message);
 
 	if (!message.empty()) {
-		AddChatSystemMessage(message);
+		owner_.AddChatSystemMessage(message);
 	}
 }
 
-void EverQuest::ZoneProcessTrack(const EQ::Net::Packet &p)
+void eqt::player::PlayerComponent::ZoneProcessTrack(const EQ::Net::Packet &p)
 {
 	// Track response contains variable number of Track_Struct entries
 	// Each entry is 8 bytes: entityid (4) + distance (4)
@@ -589,11 +586,11 @@ void EverQuest::ZoneProcessTrack(const EQ::Net::Packet &p)
 	LOG_DEBUG(MOD_ENTITY, "Track response: {} bytes, {} entries", p.Length(), entry_count);
 
 	if (entry_count == 0) {
-		AddChatSystemMessage("No trackable entities nearby.");
+		owner_.AddChatSystemMessage("No trackable entities nearby.");
 		return;
 	}
 
-	AddChatSystemMessage(fmt::format("=== Tracking ({} targets) ===", entry_count));
+	owner_.AddChatSystemMessage(fmt::format("=== Tracking ({} targets) ===", entry_count));
 
 	size_t offset = 2;  // Skip opcode
 	for (size_t i = 0; i < entry_count && offset + sizeof(EQT::Track_Struct) <= p.Length(); i++) {
@@ -603,12 +600,12 @@ void EverQuest::ZoneProcessTrack(const EQ::Net::Packet &p)
 
 		// Look up entity name
 		std::string name = "Unknown";
-		auto it = m_entities.find(static_cast<uint16_t>(entity_id));
-		if (it != m_entities.end()) {
+		auto it = ctx_.entities.find(static_cast<uint16_t>(entity_id));
+		if (it != ctx_.entities.end()) {
 			name = it->second.name;
 		}
 
-		AddChatSystemMessage(fmt::format("  {} - {:.0f} units", name, distance));
+		owner_.AddChatSystemMessage(fmt::format("  {} - {:.0f} units", name, distance));
 		LOG_DEBUG(MOD_ENTITY, "  Track entry: entity_id={}, name={}, distance={:.1f}",
 			entity_id, name, distance);
 	}

@@ -1,4 +1,4 @@
-#include "client/eq_profile_appearance.h"
+#include "client/player/profile_appearance.h"
 
 #include "common/net/packet.h"
 

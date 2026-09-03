@@ -22,7 +22,7 @@
 
 #include "client/eq.h"
 #include "client/eq_action_handler.h"
-#include "client/eq_profile_appearance.h"
+#include "client/player/profile_appearance.h"
 #include "common/net/packet.h"
 
 using namespace eqt;
@@ -123,7 +123,7 @@ TEST(AppearanceMerge, UnnamedFieldsAreResentFromTheProfile) {
     change.face = 3;
     handler.setAppearance(change);
 
-    auto sent = eq.Test_GetLastFaceChange();
+    auto sent = eq.Player().Test_GetLastFaceChange();
     ASSERT_TRUE(sent.sent);
     EXPECT_EQ(sent.body.face, 3) << "the field the user named must change";
 
@@ -157,7 +157,7 @@ TEST(AppearanceMerge, EveryNamedFieldOverridesTheProfile) {
     change.face = 7;
     handler.setAppearance(change);
 
-    auto sent = eq.Test_GetLastFaceChange();
+    auto sent = eq.Player().Test_GetLastFaceChange();
     ASSERT_TRUE(sent.sent);
     EXPECT_EQ(sent.body.haircolor, 1);
     EXPECT_EQ(sent.body.beardcolor, 2);
@@ -181,7 +181,7 @@ TEST(AppearanceMerge, ZeroIsAValueNotAnAbsentField) {
     change.eyecolor1 = 0;
     handler.setAppearance(change);
 
-    auto sent = eq.Test_GetLastFaceChange();
+    auto sent = eq.Player().Test_GetLastFaceChange();
     ASSERT_TRUE(sent.sent);
     EXPECT_EQ(sent.body.eyecolor1, 0);
     EXPECT_EQ(sent.body.eyecolor2, kEyeColor2) << "the other eye is untouched";
@@ -200,13 +200,13 @@ TEST(AppearanceMerge, ASecondChangeDoesNotRevertTheFirst) {
     action::AppearanceChange first;
     first.eyecolor1 = 99;
     handler.setAppearance(first);
-    ASSERT_EQ(eq.Test_GetLastFaceChange().body.eyecolor1, 99);
+    ASSERT_EQ(eq.Player().Test_GetLastFaceChange().body.eyecolor1, 99);
 
     action::AppearanceChange second;
     second.face = 5;
     handler.setAppearance(second);
 
-    auto sent = eq.Test_GetLastFaceChange();
+    auto sent = eq.Player().Test_GetLastFaceChange();
     ASSERT_TRUE(sent.sent);
     EXPECT_EQ(sent.body.face, 5);
     EXPECT_EQ(sent.body.eyecolor1, 99)
@@ -231,7 +231,7 @@ TEST(AppearanceMerge, NoProfileAndNoSelfEntitySendsNothing) {
     change.face = 3;
     handler.setAppearance(change);
 
-    EXPECT_FALSE(eq.Test_GetLastFaceChange().sent)
+    EXPECT_FALSE(eq.Player().Test_GetLastFaceChange().sent)
         << "an all-zero body would have been copied into the profile and "
            "saved by eqemu, wiping an appearance the user never asked to "
            "change";

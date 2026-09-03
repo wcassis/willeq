@@ -118,11 +118,11 @@ TEST(InspectAnswer, SendInspectAnswerBuildsTheBodyFromOurOwnSpawnId) {
     eq.Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(kMe);
 
-    EXPECT_FALSE(eq.Test_GetLastInspectAnswer().sent);
+    EXPECT_FALSE(eq.Player().Test_GetLastInspectAnswer().sent);
 
-    eq.SendInspectAnswer(kRequester);
+    eq.Player().SendInspectAnswer(kRequester);
 
-    auto sent = eq.Test_GetLastInspectAnswer();
+    auto sent = eq.Player().Test_GetLastInspectAnswer();
     ASSERT_TRUE(sent.sent);
     EXPECT_EQ(sent.target_id, kRequester);
     EXPECT_EQ(sent.playerid, kMe);

@@ -569,7 +569,7 @@ bool SkillManager::sendBodiedSkillPacket(uint8_t skill_id, uint16_t target_id) {
             LOG_DEBUG(MOD_MAIN, "ApplyPoison: no poison item in inventory");
             return true;
         }
-        m_eq->SendApplyPoison(static_cast<uint32_t>(slot));
+        m_eq->Player().SendApplyPoison(static_cast<uint32_t>(slot));
         return true;
     }
 
@@ -587,7 +587,7 @@ bool SkillManager::sendBodiedSkillPacket(uint8_t skill_id, uint16_t target_id) {
             resolved = (combat && combat->HasTarget()) ? combat->GetTargetId()
                                                        : m_eq->GetMySpawnID();
         }
-        m_eq->SendBindWound(resolved);
+        m_eq->Player().SendBindWound(resolved);
         return true;
     }
 

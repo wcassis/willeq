@@ -30,14 +30,15 @@ review section under `refactor/F*.md` and `refactor/J*.md`.
 | eq_zone_dispatch.cpp | 958 | J02: `DispatchZonePacket` — the zone-stream opcode switch, nothing else |
 | src/client/login_world/login_world_component.cpp | 996 | K10: eqt::login_world::LoginWorldComponent -- login-server + world-server connection handling (ConnectToLogin/ConnectToWorld, the Login*/World* handshakes, character select, chat-server info, zone handoff), eqcrypt_block |
 | eq_strings.cpp | 767 | Name/string lookup tables, opcode names, dump helpers |
-| eq_player_misc.cpp | 750 | J07: assist/boat/split/LFG/shielding/discipline/banker, save/popup/duel/bindwound, cosmetic misc social, camera/mp3/sound handlers |
-| eq_player_social.cpp | 704 | J07: emote/AFK/anon/roleplay/camp/logout, rezz/who/inspect (+ OP_InspectAnswer reply, T170), corpse/consent; the four T145 double-prefix senders (SendCamp/SendLogout/SendWhoAllRequest/SendInspectRequest) |
+| src/client/player/player_misc.cpp | 747 | K08: `eqt::player::PlayerComponent` — assist/split/LFG/shielding/discipline/banker, save, duel, bindwound, track, cosmetic misc social, camera/mp3/sound handlers |
+| src/client/player/player_component.cpp | 701 | K08: `eqt::player::PlayerComponent` — emote/AFK/anon/roleplay/camp/logout, rezz/who/inspect (+ OP_InspectAnswer reply, T170), corpse/consent; the four T145 double-prefix senders (SendCamp/SendLogout/SendWhoAllRequest/SendInspectRequest) |
 | eq_chat.cpp | 67 | K03: only the three AddChat* output primitives (system/combat/miss) are left on `class EverQuest`; everything else moved to `src/client/chat/chat_component.cpp` |
-| eq_player_buffs.cpp | 616 | J07: task/DZ, spell-cast, mana, buff and pet-buff handlers, poison, track |
-| eq_player_state.cpp | 606 | J02: position/heading/moving accessors, AFK/anon/roleplay/camping flags, PlayerStateAdd/Remove, Death, Stamina, ZonePlayerToBind, LevelUpdate, tradeskill combine |
+| src/client/player/player_buffs.cpp | 613 | K08: `eqt::player::PlayerComponent` — task/DZ, spell-cast, mana, buff and pet-buff handlers, poison, bind wound, track |
+| src/client/player/player_state.cpp | 507 | K08: `eqt::player::PlayerComponent` — SetMoveSpeed/SetCombatStopDistance, PlayerStateAdd/Remove, Death, Stamina, ZonePlayerToBind, LevelUpdate, tradeskill combine. The position/heading/moving and AFK/anon/roleplay/camping accessors stayed on `class EverQuest` in `src/client/eq_player_info.cpp` |
 | eq_combat_actions.cpp | 526 | Consider/Action/Damage/MoneyOnCorpse handlers, Bind_Wound reply (T177). T268 deleted the headless ZoneProcessLootItem parser |
 | eq_commands_spells.cpp | 494 | RegisterSpellCommands (spell/skill/hotkey/detail/audio commands) |
-| eq_player_info.cpp | 369 | J07 remainder: stat getters, group accessors, tribute/AA handlers (SendAATable/RespondAA/TributeInfo/SendGuildTributes), exp/zonein, world-objects-sent |
+| src/client/eq_player_info.cpp | 285 | K08: the PLAYER-STATE FACADE that stayed on `class EverQuest` — stat/currency/weight getters, position/heading/moving accessors, AFK/anon/roleplay/camping flags, group accessors |
+| src/client/player/player_info.cpp | 186 | K08: `eqt::player::PlayerComponent` — tribute/AA handlers (SendAATable/RespondAA/TributeInfo/SendGuildTributes), exp/zonein, world-objects-sent, SyncEntityToGameState/RemoveEntityFromGameState |
 | eq_zone_handshake.cpp | 349 | J02: the ZoneSend* handshake senders (SessionReady, ZoneEntry, ReqClientSpawn, ClientReady, SetServerFilter, StreamIdentify, Ack, ReqNewZone, AA/tribute requests, SpawnAppearance, SendExpZonein) |
 | eq_commands_movement.cpp | 320 | RegisterMovementCommands (movement/combat/utility-debug/sky commands) |
 | chat_component.cpp (in `src/client/chat/`) | 607 | K03: `eqt::chat::ChatComponent` — channel message send/process, `SendChatMessage`, `ProcessChatInput`, `DispatchSlashCommand` (registry 1 entry point), emote send/process, colored/formatted/simple text, and `ChatChannelName()` (T320), moved out of `class EverQuest` (was `eq_chat.cpp`) |
@@ -45,7 +46,7 @@ review section under `refactor/F*.md` and `refactor/J*.md`.
 | guild_component.cpp (in `src/client/guild/`) | 276 | K01: `eqt::guild::GuildComponent` — the guild senders + processors, moved out of `class EverQuest` (was `eq_guild.cpp`; m_guild_id populated T133) |
 | gm_component.cpp (in `src/client/gm/`) | 317 | K02: `eqt::gm::GmComponent` — the GM command senders + processors, moved out of `class EverQuest` (was `eq_gm.cpp`; wired T148) |
 | eq_commands_train.cpp | 264 | T280: `/train` and `/trainclose` game-registry side |
-| eq_profile_appearance.cpp | 20 | PlayerProfile appearance fields stored so `/appearance` merges faithfully (T167) |
+| src/client/player/profile_appearance.cpp | 20 | PlayerProfile appearance fields stored so `/appearance` merges faithfully (T167); header `include/client/player/profile_appearance.h` |
 | eq_action_handler_extended.cpp | 957 | J12: the `EqActionHandler` remainder — GM/debug, camp/logout, report, world-object and tradeskill actions |
 | eq_action_handler_spells_trade.cpp | 570 | J12: `EqActionHandler`'s spell, pet, trade and `/appearance` actions (SendFaceChange's producer, T153) |
 | eq_bridge_intents.cpp | 703 | J13: `ProcessBridgeIntents` — the `RendererIntent` variant switch |
@@ -73,7 +74,7 @@ This table and that plan must agree; change both together.
 | merchant | `merchant/merchant`, `_trade`, `_vendor_bank` | 54 | 1 | **K05 DONE** (54 defs, not the 56 the batch table claimed; all 54 moved. `m_trainer_skill_caps` moved; the loot/vendor/scribe members stay on `EverQuest` pending K09/K11/K12) |
 | entities | `entities/entities_component` (+ `_appearance`/`_updates`/`_world`) | 28 | 1 | **K06 DONE** (`m_entities`, the spawn-id -> Entity map, stays a core member — the component owns the handlers) |
 | movement | `src/client/movement/movement_component`, `movement_state`, `movement_update` | 42 | 8 | **K07 DONE** (`eqt::movement::MovementComponent`; `HasReachedDestination` deleted, zero callers; `m_last_movement_update` boarded dead) |
-| player | `eq_player_info`, `_misc`, `_social`, `_state`, `_buffs`, `eq_profile_appearance` | 142 | 11 | K08 (may split in two) |
+| player | `src/client/player/player_component`, `player_misc`, `player_state`, `player_buffs`, `player_info`, `profile_appearance`; facade in `src/client/eq_player_info.cpp` | 139 | 11 | **K08 DONE** (139 defs, not the 142 the batch table claimed; 93 moved, the 46-body player-state facade stayed on `EverQuest`) |
 | zone | `eq_zone`, `_dispatch`, `_entry`, `_handshake` | 41 | 17 | K09 |
 | login_world | `src/client/login_world/login_world_component` | 37 | 22 | **K10 DONE** (`eqt::login_world::LoginWorldComponent`; both connection managers moved, `ConnectToLogin`/`ConnectToWorld` moved in from `eq.cpp`; `WorldSendSessionReady` and the two `World*ChannelMessage` declarations deleted, zero callers) |
 | bridge | `eq_bridge`, `_intents`, `_ui_audio` | 46 | 8 | K11 (becomes bridge/intent handlers, not a component) |

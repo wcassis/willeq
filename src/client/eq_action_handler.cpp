@@ -323,7 +323,7 @@ void EqActionHandler::assist(uint16_t targetId) {
         }
         resolved = combat->GetTargetId();
     }
-    m_eq.SendAssist(resolved);
+    m_eq.Player().SendAssist(resolved);
 }
 
 void EqActionHandler::shieldTarget(uint16_t targetId) {
@@ -338,7 +338,7 @@ void EqActionHandler::shieldTarget(uint16_t targetId) {
         }
         resolved = combat->GetTargetId();
     }
-    m_eq.SendShielding(resolved);
+    m_eq.Player().SendShielding(resolved);
 }
 
 void EqActionHandler::taunt() {
@@ -429,7 +429,7 @@ void EqActionHandler::duelRequest(uint16_t targetId) {
         }
         resolved = combat->GetTargetId();
     }
-    m_eq.SendDuelRequest(resolved);
+    m_eq.Player().SendDuelRequest(resolved);
 }
 
 // duelAccept()/duelDecline(): EverQuest's own pending-duel state
@@ -438,19 +438,19 @@ void EqActionHandler::duelRequest(uint16_t targetId) {
 // combat targeting there is no CombatManager-equivalent "authoritative
 // live source" to delegate to instead.
 void EqActionHandler::duelAccept() {
-    if (!m_eq.HasPendingDuel()) {
+    if (!m_eq.Player().HasPendingDuel()) {
         m_eq.AddChatSystemMessage("You have no pending duel challenge.");
         return;
     }
-    m_eq.SendDuelAccept(m_eq.GetPendingDuelInitiatorId());
+    m_eq.Player().SendDuelAccept(m_eq.Player().GetPendingDuelInitiatorId());
 }
 
 void EqActionHandler::duelDecline() {
-    if (!m_eq.HasPendingDuel()) {
+    if (!m_eq.Player().HasPendingDuel()) {
         m_eq.AddChatSystemMessage("You have no pending duel challenge.");
         return;
     }
-    m_eq.SendDuelDecline(m_eq.GetPendingDuelInitiatorId());
+    m_eq.Player().SendDuelDecline(m_eq.Player().GetPendingDuelInitiatorId());
 }
 
 // T240: castSpell()/castSpellOnTarget() are the action-layer casts (spell-gem
@@ -728,11 +728,11 @@ void EqActionHandler::leaveGroup() {
 // ========== Character State ==========
 
 void EqActionHandler::setAFK(bool afk) {
-    m_eq.SetAFK(afk);
+    m_eq.Player().SetAFK(afk);
 }
 
 void EqActionHandler::setAnonymous(bool anon) {
-    m_eq.SetAnonymous(anon);
+    m_eq.Player().SetAnonymous(anon);
 }
 
 // ========== Inventory ==========

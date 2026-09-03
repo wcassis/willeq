@@ -134,7 +134,7 @@ void eqt::movement::MovementComponent::UpdateMovement()
 	}
 
 	// Update camp timer
-	owner_.UpdateCampTimer();
+	owner_.Player().UpdateCampTimer();
 
 	// Check distance to banker NPC - close bank if player moved too far
 	if (owner_.IsBankWindowOpen() && ctx_.game_state.player().bankerNpcId() != 0) {

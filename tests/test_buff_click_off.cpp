@@ -389,7 +389,7 @@ TEST_F(BuffCancelConsumer, RemoveBuffByNameResolvesThroughTheLiveBuffModel) {
     GiveBuff(eq, 4, idB, 100);
 
     uint64_t before = eq.GetReplaySuppressedSendCount();
-    eq.RequestCancelBuff(nameB);
+    eq.Player().RequestCancelBuff(nameB);
     // No zone connection in a unit test: the send is suppressed and counted,
     // which is exactly the proof that resolution got as far as the wire hop
     // for the RIGHT slot -- an unresolvable name never reaches it.
@@ -409,15 +409,15 @@ TEST_F(BuffCancelConsumer, RemoveBuffRefusesLocallyOnlyWhatTheClientCanKnow) {
 
     uint64_t before = eq.GetReplaySuppressedSendCount();
 
-    eq.RequestCancelBuff("26");            // past MAX_PLAYER_BUFFS
-    eq.RequestCancelBuff("0");             // 1-based, so 0 is out of range
-    eq.RequestCancelBuff("3");             // in range, but empty
-    eq.RequestCancelBuff("Nosuchbuffname");
-    eq.RequestCancelBuff("");
+    eq.Player().RequestCancelBuff("26");            // past MAX_PLAYER_BUFFS
+    eq.Player().RequestCancelBuff("0");             // 1-based, so 0 is out of range
+    eq.Player().RequestCancelBuff("3");             // in range, but empty
+    eq.Player().RequestCancelBuff("Nosuchbuffname");
+    eq.Player().RequestCancelBuff("");
     EXPECT_EQ(eq.GetReplaySuppressedSendCount(), before)
         << "none of these may reach the wire";
 
-    eq.RequestCancelBuff("1");             // the occupied slot, 1-based
+    eq.Player().RequestCancelBuff("1");             // the occupied slot, 1-based
     EXPECT_EQ(eq.GetReplaySuppressedSendCount(), before + 1);
 }
 
@@ -478,7 +478,7 @@ TEST_F(BuffCancelConsumer, ProfileBuffsPublishTheSameEventTheBarConsumes) {
     b.level = 20;
     b.spellid = 202;
     b.duration = 120;
-    eq.PublishPlayerBuffUpdated(11, b);
+    eq.Player().PublishPlayerBuffUpdated(11, b);
 
     auto events = bridge.drainEvents();
     ASSERT_EQ(events.size(), 1u);

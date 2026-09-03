@@ -94,7 +94,7 @@ void EqActionHandler::cancelBuff(const std::string& args) {
     // slot/name lookup because BuffManager is the only place the player's
     // live buffs exist; the buff-bar click reaches the same wire hop
     // (SendBuffCancelRequest) through BuffCancelIntent.
-    m_eq.RequestCancelBuff(args);
+    m_eq.Player().RequestCancelBuff(args);
 }
 
 void EqActionHandler::listMemorizedSpells() {
@@ -521,7 +521,7 @@ void EqActionHandler::setAppearance(const action::AppearanceChange& change) {
         base.haircolor, base.beardcolor, base.eyecolor1, base.eyecolor2,
         base.hairstyle, base.beard, base.face));
 
-    m_eq.SendFaceChange(base.haircolor, base.beardcolor, base.eyecolor1,
+    m_eq.Player().SendFaceChange(base.haircolor, base.beardcolor, base.eyecolor1,
                         base.eyecolor2, base.hairstyle, base.beard, base.face);
 
     // Handle_OP_FaceChange applies all seven fields and Save()s with no

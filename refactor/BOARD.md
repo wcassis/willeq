@@ -179,7 +179,7 @@ it without taking that measurement first.
   `spell_affect_index` hits an empty padding record need a rendering ruling.
   Prov: archived board, T70.
 
-- **B023** (C) `src/client/eq_player_misc.cpp` `EverQuest::SendReport` — the wire
+- **B023** (C) `src/client/player/player_misc.cpp` `eqt::player::PlayerComponent::SendReport` — the wire
   shape does not match eqemu's `OP_Report` (pipe-delimited reported/reporter/
   message versus a 4-byte category plus raw text), so `AddReport()` is never
   reached. Fixing it is a command-shape decision, not a mechanical patch. Prov:
