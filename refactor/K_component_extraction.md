@@ -239,6 +239,17 @@ into the component.**
    `ClientContext` may not have private data members, so late-bound component
    pointers are public with a comment saying why -- `EverQuest` brace-
    initialises `m_ctx` in its initialiser list.
+**K13 corrections (2026-09-03):** (ii) the `friend` rule is TWO-AXIS —
+   a component may name a private `EverQuest` static by qualification
+   (`EverQuest::FormatPrice`, `s_debug_level`) with no `owner_.` in sight;
+   the census that decides whether a friend line can go must count
+   qualified private names too (BOARD B039); (jj) a non-friend destination
+   reaches `s_debug_level` through `EverQuest::GetDebugLevel()`; (kk) a
+   service that needs more than `game_state`/bridge/zone-connection is a
+   recorded design fact, not a STOP, when the extra members are bound by
+   reference under their own names exactly as `ClientContext` binds its
+   core; (ll) `#define private public` test hacks are a standing caller
+   class — only the compiler finds them.
 8. **Proof.** `verify_move_only.py` exits 1 by construction. Line-multiset
    check with the substitutions normalised BY NAME MAPPING (`ctx_.character`
    ↔ `m_character`, etc. — stripping the prefix alone leaves 7 false
