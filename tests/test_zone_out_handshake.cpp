@@ -59,7 +59,7 @@ TEST(ZoneOutHandshake, SendsSaveThenDeleteSpawnCarryingOurOwnEntityId) {
     eq.Test_SetCaptureQueuedPacketsForSeam(true);
     eq.Test_ClearQueuedPackets();
 
-    ASSERT_TRUE(eq.Test_BeginGracefulZoneOutForSeam());
+    ASSERT_TRUE(eq.Zone().Test_BeginGracefulZoneOutForSeam());
 
     const auto& sent = eq.Test_GetQueuedPackets();
     ASSERT_EQ(sent.size(), 2u) << "the hand-off is exactly two packets, in order";
@@ -77,11 +77,11 @@ TEST(ZoneOutHandshake, SendsSaveThenDeleteSpawnCarryingOurOwnEntityId) {
 
 TEST(ZoneOutHandshake, ArmsTheWaitRatherThanTearingDownImmediately) {
     EverQuest eq = MakeClient();
-    ASSERT_TRUE(eq.Test_BeginGracefulZoneOutForSeam());
+    ASSERT_TRUE(eq.Zone().Test_BeginGracefulZoneOutForSeam());
 
-    EXPECT_TRUE(eq.Test_IsZoneOutHandshakePending())
+    EXPECT_TRUE(eq.Zone().Test_IsZoneOutHandshakePending())
         << "the source-zone session must stay up until the server answers";
-    EXPECT_FALSE(eq.Test_IsZoneOutAcknowledged());
+    EXPECT_FALSE(eq.Zone().Test_IsZoneOutAcknowledged());
 }
 
 TEST(ZoneOutHandshake, WithoutALiveZoneConnectionItFallsBackToTheHardTeardown) {
@@ -89,8 +89,8 @@ TEST(ZoneOutHandshake, WithoutALiveZoneConnectionItFallsBackToTheHardTeardown) {
     // No seam: the real gate applies. There is nobody to hand off to, so the
     // caller must be told to tear down instead of waiting for an
     // acknowledgement that can never arrive.
-    EXPECT_FALSE(eq.Test_BeginGracefulZoneOutForSeam(/*force_gate=*/false));
-    EXPECT_FALSE(eq.Test_IsZoneOutHandshakePending());
+    EXPECT_FALSE(eq.Zone().Test_BeginGracefulZoneOutForSeam(/*force_gate=*/false));
+    EXPECT_FALSE(eq.Zone().Test_IsZoneOutHandshakePending());
 }
 
 // ---------------------------------------------------------------------------
@@ -99,11 +99,11 @@ TEST(ZoneOutHandshake, WithoutALiveZoneConnectionItFallsBackToTheHardTeardown) {
 
 TEST(ZoneOutHandshake, LogoutReplyDuringAZoneOutIsAnAcknowledgementNotALogout) {
     EverQuest eq = MakeClient();
-    ASSERT_TRUE(eq.Test_BeginGracefulZoneOutForSeam());
+    ASSERT_TRUE(eq.Zone().Test_BeginGracefulZoneOutForSeam());
 
     ReplayLogoutReply(eq);
 
-    EXPECT_TRUE(eq.Test_IsZoneOutAcknowledged());
+    EXPECT_TRUE(eq.Zone().Test_IsZoneOutAcknowledged());
     EXPECT_FALSE(eq.IsQuitRequested())
         << "quitting here would end the session in the middle of a zone change";
     EXPECT_FALSE(eq.Test_IsPendingLogoutDisconnect());
@@ -113,27 +113,27 @@ TEST(ZoneOutHandshake, LogoutReplyDuringAZoneOutIsAnAcknowledgementNotALogout) {
 // hand-off must not have taken that away.
 TEST(ZoneOutHandshake, LogoutReplyWithNoZoneOutInFlightStillDisconnects) {
     EverQuest eq = MakeClient();
-    ASSERT_FALSE(eq.Test_IsZoneOutHandshakePending());
+    ASSERT_FALSE(eq.Zone().Test_IsZoneOutHandshakePending());
 
     ReplayLogoutReply(eq);
 
     EXPECT_TRUE(eq.IsQuitRequested());
     EXPECT_TRUE(eq.Test_IsPendingLogoutDisconnect())
         << "UpdateMovement()'s logout branch calls DisconnectFromZone() off this flag";
-    EXPECT_FALSE(eq.Test_IsZoneOutAcknowledged());
+    EXPECT_FALSE(eq.Zone().Test_IsZoneOutAcknowledged());
 }
 
 // And once a transition is over, a later logout must behave normally again --
 // i.e. the flag is genuinely cleared by the teardown, not left latched.
 TEST(ZoneOutHandshake, TeardownClearsTheHandshakeSoALaterLogoutIsUnaffected) {
     EverQuest eq = MakeClient();
-    ASSERT_TRUE(eq.Test_BeginGracefulZoneOutForSeam());
+    ASSERT_TRUE(eq.Zone().Test_BeginGracefulZoneOutForSeam());
     ReplayLogoutReply(eq);
-    ASSERT_TRUE(eq.Test_IsZoneOutAcknowledged());
+    ASSERT_TRUE(eq.Zone().Test_IsZoneOutAcknowledged());
 
-    eq.Test_DisconnectFromZoneForSeam();  // what UpdateMovement()'s wait branch reaches
-    EXPECT_FALSE(eq.Test_IsZoneOutHandshakePending());
-    EXPECT_FALSE(eq.Test_IsZoneOutAcknowledged());
+    eq.Zone().Test_DisconnectFromZoneForSeam();  // what UpdateMovement()'s wait branch reaches
+    EXPECT_FALSE(eq.Zone().Test_IsZoneOutHandshakePending());
+    EXPECT_FALSE(eq.Zone().Test_IsZoneOutAcknowledged());
 
     ReplayLogoutReply(eq);
     EXPECT_TRUE(eq.IsQuitRequested());
@@ -156,25 +156,25 @@ TEST(ZoneOutHandshake, TeardownClearsTheHandshakeSoALaterLogoutIsUnaffected) {
 TEST(ZoneOutHandshake, WorldLoginZoningByteIsLatchedAcrossTheTeardown) {
     EverQuest eq = MakeClient();
     // A fresh client is not zoning.
-    EXPECT_FALSE(eq.Test_IsZoneToZoneInProgress());
+    EXPECT_FALSE(eq.Zone().Test_IsZoneToZoneInProgress());
 
     // What ProcessDeferredZoneChange() latches before DisconnectFromZone().
-    eq.Test_SetZoneToZoneInProgressForSeam(true);
+    eq.Zone().Test_SetZoneToZoneInProgressForSeam(true);
 
     // The teardown must NOT clear it -- that is the whole bug: the world
     // reconnect happens after this and has to still see "I am zoning".
-    eq.Test_DisconnectFromZoneForSeam();
-    EXPECT_TRUE(eq.Test_IsZoneToZoneInProgress())
+    eq.Zone().Test_DisconnectFromZoneForSeam();
+    EXPECT_TRUE(eq.Zone().Test_IsZoneToZoneInProgress())
         << "CleanupZone()/resetZoneState() must not be able to reach this flag";
 }
 
 TEST(ZoneOutHandshake, ALogoutClearsTheZoningLatch) {
     EverQuest eq = MakeClient();
-    eq.Test_SetZoneToZoneInProgressForSeam(true);
+    eq.Zone().Test_SetZoneToZoneInProgressForSeam(true);
 
     ReplayLogoutReply(eq);  // no hand-off in flight -> the real logout path
 
-    EXPECT_FALSE(eq.Test_IsZoneToZoneInProgress())
+    EXPECT_FALSE(eq.Zone().Test_IsZoneToZoneInProgress())
         << "a logout must not leave the next world login claiming to be a zone change";
     EXPECT_TRUE(eq.IsQuitRequested());
     EXPECT_TRUE(eq.Test_IsPendingLogoutDisconnect());

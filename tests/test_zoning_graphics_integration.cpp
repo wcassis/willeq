@@ -247,10 +247,10 @@ protected:
 
             // Configure paths - EQ client path is required for graphics
             if (!config_.mapsPath.empty()) {
-                eq_->SetMapsPath(config_.mapsPath);
+                eq_->Zone().SetMapsPath(config_.mapsPath);
             }
             if (!config_.navmeshPath.empty()) {
-                eq_->SetNavmeshPath(config_.navmeshPath);
+                eq_->Zone().SetNavmeshPath(config_.navmeshPath);
             }
             eq_->SetEQClientPath(config_.eqClientPath);
 

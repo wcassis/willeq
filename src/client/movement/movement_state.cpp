@@ -80,7 +80,7 @@ void eqt::movement::MovementComponent::LoadPathfinder(const std::string& zone_na
 	
 	try {
 		// Use the IPathfinder factory method to load the navigation mesh
-		m_pathfinder.reset(IPathfinder::Load(zone_name, owner_.m_navmesh_path));
+		m_pathfinder.reset(IPathfinder::Load(zone_name, owner_.Zone().NavmeshPath()));
 		
 		if (m_pathfinder) {
 			// Check if it's actually a PathfinderNavmesh vs PathfinderNull
@@ -368,7 +368,7 @@ void eqt::movement::MovementComponent::SendJump()
 
 void eqt::movement::MovementComponent::SendMovementHistory()
 {
-	if (!owner_.IsFullyZonedIn() || owner_.m_movement_history.empty() || !ctx_.zone_connection) {
+	if (!owner_.IsFullyZonedIn() || owner_.Zone().MovementHistory().empty() || !ctx_.zone_connection) {
 		return;
 	}
 
@@ -383,11 +383,11 @@ void eqt::movement::MovementComponent::SendMovementHistory()
 		static_cast<uint32_t>(std::time(nullptr)),
 		static_cast<void*>(ctx_.zone_connection.get()),
 		ctx_.game_state.world().isZoneConnected(),
-		owner_.m_movement_history.size());
+		owner_.Zone().MovementHistory().size());
 
 	// Limit history to last 70 entries (similar to what client sends)
-	while (owner_.m_movement_history.size() > 70) {
-		owner_.m_movement_history.pop_front();
+	while (owner_.Zone().MovementHistory().size() > 70) {
+		owner_.Zone().MovementHistory().pop_front();
 	}
 
 	// For unreliable packets, we have a max of ~250 bytes (255 - CRC)
@@ -398,10 +398,10 @@ void eqt::movement::MovementComponent::SendMovementHistory()
 
 	// Real clients send all entries in one packet, so we must send as reliable
 	// to match their behavior (they send 67-70 entries = 1139-1190 bytes + 2 = 1141-1192 total)
-	size_t packet_size = 2 + (owner_.m_movement_history.size() * sizeof(EverQuest::MovementHistoryEntry));
+	size_t packet_size = 2 + (owner_.Zone().MovementHistory().size() * sizeof(eqt::zone::ZoneComponent::MovementHistoryEntry));
 
 	LOG_TRACE(MOD_ZONE, "Creating OP_FloatListThing packet: {} entries, {} bytes total",
-		owner_.m_movement_history.size(), packet_size);
+		owner_.Zone().MovementHistory().size(), packet_size);
 
 	EQ::Net::DynamicPacket p;
 	p.Resize(packet_size);
@@ -411,7 +411,7 @@ void eqt::movement::MovementComponent::SendMovementHistory()
 	// Pack movement entries
 	size_t offset = 2;
 	try {
-		for (const auto& entry : owner_.m_movement_history) {
+		for (const auto& entry : owner_.Zone().MovementHistory()) {
 			// UpdateMovementEntry struct layout:
 			// float Y, float X, float Z, uint8 type, uint32 timestamp
 			p.PutFloat(offset, entry.y);      // Y first
@@ -431,7 +431,7 @@ void eqt::movement::MovementComponent::SendMovementHistory()
 			LOG_ERROR(MOD_ZONE, "Failed to queue OP_FloatListThing packet - SafeQueueZonePacket returned false");
 		} else {
 			LOG_TRACE(MOD_ZONE, "Successfully queued OP_FloatListThing with {} movement entries ({} bytes) as reliable",
-				owner_.m_movement_history.size(), packet_size);
+				owner_.Zone().MovementHistory().size(), packet_size);
 		}
 	}
 	catch (const std::exception& e) {
@@ -891,6 +891,6 @@ void eqt::movement::MovementComponent::UpdateKeyboardMovement()
 		owner_.SetPosLocal(new_x, new_y, owner_.PosZ());
 
 		// Fix Z position if we have map data
-		owner_.FixZ();
+		owner_.Zone().FixZ();
 	}
 }

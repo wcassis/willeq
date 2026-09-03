@@ -122,11 +122,11 @@ TEST_F(EqActionHandlerMovementUtilityTest, Zoning_NoArgs_ReportsCurrentState) {
 TEST_F(EqActionHandlerMovementUtilityTest, Zoning_On_EnablesZoning) {
     handler.showOrSetZoning("off");
     bridge.drainEvents();
-    ASSERT_FALSE(eq.IsZoningEnabled());
+    ASSERT_FALSE(eq.Zone().IsZoningEnabled());
 
     handler.showOrSetZoning("on");
 
-    EXPECT_TRUE(eq.IsZoningEnabled());
+    EXPECT_TRUE(eq.Zone().IsZoningEnabled());
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
     EXPECT_EQ(msgs[0], "Zoning is now on");
@@ -135,7 +135,7 @@ TEST_F(EqActionHandlerMovementUtilityTest, Zoning_On_EnablesZoning) {
 TEST_F(EqActionHandlerMovementUtilityTest, Zoning_Off_DisablesZoning) {
     handler.showOrSetZoning("off");
 
-    EXPECT_FALSE(eq.IsZoningEnabled());
+    EXPECT_FALSE(eq.Zone().IsZoningEnabled());
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
     EXPECT_EQ(msgs[0], "Zoning is now off");

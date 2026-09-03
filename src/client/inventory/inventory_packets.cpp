@@ -55,7 +55,7 @@ void InventoryManager::processCharInventory(const EQ::Net::Packet& packet) {
 }
 
 int16_t InventoryManager::processItemPacket(const EQ::Net::Packet& packet) {
-    // The packet handed in by EverQuest::DispatchZonePacket() (and by the
+    // The packet handed in by ZoneComponent::DispatchZonePacket() (and by the
     // loot path in eq_merchant.cpp, which forwards the same one) still
     // carries its 2-byte OPCODE, then ItemPacket_Struct: uint32 PacketType,
     // then the serialized item.

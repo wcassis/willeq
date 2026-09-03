@@ -266,9 +266,9 @@ SET(COMMON_SOURCES
 # Client sources (core - without main.cpp, for library)
 SET(CLIENT_CORE_SOURCES
     src/client/eq.cpp
-    src/client/eq_zone_dispatch.cpp
-    src/client/eq_zone_handshake.cpp
-    src/client/eq_zone_entry.cpp
+    src/client/zone/zone_dispatch.cpp
+    src/client/zone/zone_handshake.cpp
+    src/client/zone/zone_entry.cpp
     # T326: the chat-server TU was deleted here -- it held 79 include lines and
     # one 241-line comment block, no code. Recover with: git show bcbf2ddc:src/client/eq_ucs.cpp
     src/client/eq_bridge.cpp
@@ -293,7 +293,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/raid_update.cpp
     src/client/inspect_answer.cpp
     src/client/group/group_component.cpp
-    src/client/eq_zone.cpp
+    src/client/zone/zone_component.cpp
     src/client/movement/movement_component.cpp
     src/client/player/player_component.cpp
     src/client/player/player_misc.cpp
@@ -331,7 +331,7 @@ SET(CLIENT_CORE_SOURCES
     # P28: PfsArchive/WldLoader have no renderer dependency (zone_bsp.h: "no
     # graphics dependencies") and are used unconditionally by base game logic
     # regardless of EQT_GRAPHICS — audio_manager.cpp scans sound archives via
-    # PfsArchive, and eq_zone.cpp's LoadZoneSources() parses the zone WLD for
+    # PfsArchive, and zone_component.cpp's LoadZoneSources() parses the zone WLD for
     # the BSP tree (water detection / zone lines). Both were mis-listed under
     # GRAPHICS_SOURCES.
     src/client/graphics/eq/pfs.cpp

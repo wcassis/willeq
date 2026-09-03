@@ -228,10 +228,10 @@ bool Application::initialize(const ApplicationConfig& config) {
         // Configure EverQuest client
         m_eqClient->Movement().SetPathfinding(config.pathfindingEnabled);
         if (!config.navmeshPath.empty()) {
-            m_eqClient->SetNavmeshPath(config.navmeshPath);
+            m_eqClient->Zone().SetNavmeshPath(config.navmeshPath);
         }
         if (!config.mapsPath.empty()) {
-            m_eqClient->SetMapsPath(config.mapsPath);
+            m_eqClient->Zone().SetMapsPath(config.mapsPath);
         }
 
         // Open WilleqDatabase before any data lookups (SetEQClientPath loads strings)

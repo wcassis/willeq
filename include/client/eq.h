@@ -133,6 +133,7 @@ namespace ui {
 #include "client/movement/movement_component.h"  // K07: MovementComponent
 #include "client/login_world/login_world_component.h"  // K10: LoginWorldComponent
 #include "client/player/player_component.h"  // K08: PlayerComponent
+#include "client/zone/zone_component.h"  // K09: ZoneComponent
 
 class EverQuest
 {
@@ -228,16 +229,6 @@ public:
 	// pet branch directly. Test-only; not called from any production path.
 	void Test_SetPetSpawnIdForSeam(uint16_t spawn_id) { m_game_state.pet().setPet(spawn_id, "", 0); }
 
-	// T231 test seam: every RequestZoneChange() call is counted here BEFORE
-	// its live-connection gate, so a headless test can pin whether a server
-	// packet made the client decide to reply with OP_ZoneChange at all
-	// (same-zone: must not; cross-zone: must). Read-only; test-only.
-	struct TestZoneChangeRequest {
-		int attempts = 0;
-		uint16_t zone_id = 0;
-	};
-	TestZoneChangeRequest Test_GetLastZoneChangeRequest() const { return m_test_last_zone_change_request; }
-
 	// T268 test seam: every packet QueuePacket() was asked to send (opcode +
 	// body bytes), captured before the connection gate so a headless test can
 	// assert the exact wire sequence a loot action produces (OP_LootRequest,
@@ -260,27 +251,10 @@ public:
 		m_test_queued_packets.push_back(TestQueuedPacket{opcode, std::vector<uint8_t>(d, d + len)});
 	}
 
-	// T322 test seams: the zone-transition connection lifecycle. The
-	// hand-off itself is gated on a live m_zone_connection (there is nobody
-	// to hand off to without one), which no headless test can supply, so
-	// Test_BeginGracefulZoneOutForSeam() lifts exactly that one gate and
-	// nothing else -- the packets it queues, the flags it arms and the
-	// OP_LogoutReply routing that follows are the production code paths.
-	// Read-only otherwise; test-only. See tests/test_zone_out_handshake.cpp.
-	// force_gate=false leaves the live-connection gate in place, so the
-	// no-connection fallback can be pinned too.
-	bool Test_BeginGracefulZoneOutForSeam(bool force_gate = true) {
-		m_test_force_zone_out_handshake = force_gate;
-		const bool armed = BeginGracefulZoneOut();
-		m_test_force_zone_out_handshake = false;
-		return armed;
-	}
-	void Test_DisconnectFromZoneForSeam() { DisconnectFromZone(); }
-	bool Test_IsZoneOutHandshakePending() const { return m_zone_out_handshake_pending; }
-	bool Test_IsZoneOutAcknowledged() const { return m_zone_out_acknowledged; }
+	// T322 test seam: the deferred logout disconnect (H03). The zone-out
+	// handshake seams that stood here moved with their flags into
+	// eqt::zone::ZoneComponent -- reach them through Zone().
 	bool Test_IsPendingLogoutDisconnect() const { return m_pending_logout_disconnect; }
-	bool Test_IsZoneToZoneInProgress() const { return m_zone_to_zone_in_progress; }
-	void Test_SetZoneToZoneInProgressForSeam(bool v) { m_zone_to_zone_in_progress = v; }
 
 	static void SetDebugLevel(int level) { s_debug_level = level; ::SetDebugLevel(level); }
 	static int GetDebugLevel() { return s_debug_level; }
@@ -321,8 +295,6 @@ public:
 	bool IsMoving() const;
 	bool IsFullyZonedIn() const { return m_game_state.world().isZoneConnected() && m_game_state.world().isClientReady() && m_update_running; }
 	bool IsZoneChangeApproved() const { return m_game_state.world().zoneChangeApproved(); }
-	void SetZoningEnabled(bool enabled) { m_zoning_enabled = enabled; }
-	bool IsZoningEnabled() const { return m_zoning_enabled; }
 
 	// Loading phase tracking (covers entire pre-gameplay process)
 	LoadingPhase GetLoadingPhase() const { return m_loading_phase; }
@@ -335,8 +307,6 @@ public:
 	void OnGraphicsComplete();   // Called when graphics loading finishes, enables gameplay
 	void DumpEntityAppearance(uint16_t spawn_id) const;
 	void DumpEntityAppearance(const std::string& name) const;
-	void SetNavmeshPath(const std::string& path) { m_navmesh_path = path; }
-	void SetMapsPath(const std::string& path) { m_maps_path = path; }
 
 	// R01: Session recorder — records decoded application packets to `path`
 	// for later replay (--record-session CLI flag). No-op hooks elsewhere
@@ -446,6 +416,9 @@ public:
 	// player-state FACADE (stats, position, flags, group accessors) stayed on
 	// EverQuest -- see src/client/eq_player_info.cpp and the K08 Review.
 	eqt::player::PlayerComponent& Player() { return *m_player; }
+	// K09 (Batch K): the zone family -- handshake, entry, the zone-stream
+	// opcode switch and the zone lifecycle -- is eqt::zone::ZoneComponent.
+	eqt::zone::ZoneComponent& Zone() { return *m_zone; }
 	eqt::ClientContext& Context() { return m_ctx; }
 	// K05 (Batch K): the Phase 4 tradeskill senders are
 	// eqt::merchant::MerchantComponent's; callers go through Merchant().
@@ -479,35 +452,6 @@ public:
 	// finer rank than that. See client/guild_packet_bodies.h for what the
 	// guild opcodes actually do with a rank byte.
 	uint8_t GetGuildRank() const { return m_guild_rank; }
-
-	// T148: "GM mode was ON at login", NOT "this account has GM privileges".
-	//
-	// Populated once, from PlayerProfile.gm at offset 13054, in
-	// ZoneProcessPlayerProfile (eq_zone_entry.cpp) -- the SAME parse site and the same
-	// once-per-login shape as m_guild_id above. Its only server-side writer
-	// is Client::SetGM(bool) (eqemu zone/client.cpp:2659), i.e. the `#gm
-	// on|off` toggle, which Save()s so the value persists in the character
-	// profile.
-	//
-	// Account status -- what actually authorises GM commands SERVER-side, via
-	// Client::Admin() -- never reaches the client. There is no account-status
-	// field anywhere in the Titanium protocol. So this flag is the only
-	// GM-shaped signal a Titanium client can have, and it is a mode, not a
-	// permission. Name any user-facing string accordingly.
-	//
-	// DELIBERATELY STALE, by Will's decision of 2026-08-19: the check happens
-	// ONCE AT LOGIN. A GM who toggles `#gm` mid-session must log out and back
-	// in for the client to notice. The AT_GM live-update path (an AT_GM case
-	// in ZoneProcessSpawnAppearance, mirroring what T133 did for AT_GUILD_ID)
-	// was considered and EXPLICITLY DECLINED -- do not "fix" this by adding
-	// one. See refactor/T148_gm_status_gate.md.
-	//
-	// Offset 13054 is not taken on faith: eqemu's own header comments it
-	// `// 0=no, 1=yes (guessing!)`. It was captured off the wire across three
-	// logins with the flag toggled between them, with the neighbouring
-	// pvp@13052/anon@13053 bytes and birthday@13040 used as controls --
-	// review/T148/playerprofile_gm_offset_annotated.txt.
-	bool GetGMMode() const { return m_gm_mode; }
 
 	// T167: the player's own appearance, from the SAME parse site as
 	// m_guild_id and m_gm_mode above. CHECK .valid BEFORE USE -- zero is a
@@ -580,6 +524,7 @@ public:
 	friend class eqt::movement::MovementComponent;  // K07 transition; K-final removes it
 	friend class eqt::login_world::LoginWorldComponent;  // K10 transition; K-final removes it
 	friend class eqt::player::PlayerComponent;  // K08 transition; K-final removes it
+	friend class eqt::zone::ZoneComponent;  // K09 transition; K-final removes it
 
 	// String database for EQ message lookups (works in all modes)
 	bool LoadStringFiles(const std::string& eqClientPath);
@@ -634,7 +579,6 @@ public:
 	void SetConstrainedConfig(const EQT::Graphics::ConstrainedRendererConfig& config);
 	std::optional<EQT::Graphics::ConstrainedRendererConfig> GetConstrainedConfig() const { return m_constrained_config; }
 	// D20e3: GetRenderer() removed — EverQuest no longer holds a renderer pointer
-	void SetPlayerGraphicsEntityPending(bool v) { m_player_graphics_entity_pending = v; }
 	// D20e2: Application owns loading status; EverQuest signals it via this pointer
 	void SetLoadingStatus(EQT::Graphics::LoadingStatus* status) { m_loading_status_ptr = status; }
 	// D20e2: Flag for Application to detect re-zone loading requests
@@ -686,10 +630,6 @@ private:
 	// zone-in since P17 skipped the region lookup with a spurious "stale"
 	// WARN (captured for '') -- see refactor/T260_bsp_region_size_max.md.
 	std::string m_zone_bsp_tree_zone_name;
-
-	// Zone S3D/WLD sources — opened/parsed once at game state layer, shared with sequential loader
-	std::shared_ptr<EQT::Graphics::PfsArchive> m_zone_archive;
-	std::shared_ptr<EQT::Graphics::WldLoader> m_zone_wld;
 
 	// Utility functions
 	static void DumpPacket(const std::string &prefix, uint16_t opcode, const EQ::Net::Packet &p);
@@ -790,62 +730,10 @@ private:
 	void ZoneOnStatusChangeReconnectEnabled(std::shared_ptr<EQ::Net::DaybreakConnection> conn, EQ::Net::DbProtocolStatus from, EQ::Net::DbProtocolStatus to);
 	void ZoneOnStatusChangeReconnectDisabled(std::shared_ptr<EQ::Net::DaybreakConnection> conn, EQ::Net::DbProtocolStatus from, EQ::Net::DbProtocolStatus to);
 	void ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> conn, const EQ::Net::Packet &p);
-	// Opcode switch shared by ZoneOnPacketRecv and the ReplayZonePacket test seam.
-	void DispatchZonePacket(const EQ::Net::Packet &p);
-
-	void ZoneSendStreamIdentify();
-	void ZoneSendAckPacket();
-	void ZoneSendSessionReady();
-	void ZoneSendZoneEntry();
-	void ZoneSendReqNewZone();
-	void ZoneSendSendAATable();
-	void ZoneSendUpdateAA();
-	void ZoneSendSendTributes();
-	void ZoneSendRequestGuildTributes();
-	void ZoneSendSpawnAppearance();
-	void ZoneSendReqClientSpawn();
-	void ZoneSendSendExpZonein();
-	void ZoneSendSetServerFilter();
-	void ZoneSendClientReady();
-
-	void ZoneProcessNewZone(const EQ::Net::Packet &p);
-	void ZoneProcessPlayerProfile(const EQ::Net::Packet &p);
-	// K06 (Batch K): the 17 entities-family ZoneProcess* handlers are
-	// eqt::entities::EntitiesComponent's; DispatchZonePacket calls
-	// m_entities_component->ZoneProcess*() directly.
-	void ZoneProcessAnimation(const EQ::Net::Packet &p);  // OP_Animation (T243 rename)
-	void ZoneProcessGuildMOTD(const EQ::Net::Packet &p);
-	void ZoneProcessZoneChange(const EQ::Net::Packet &p);
-	void ZoneProcessRequestClientZoneChange(const EQ::Net::Packet &p);
 	// T171: shared resolution of the per-client config node. See the
 	// definitions in eq_bridge.cpp for why read and write are separate.
 	static Json::Value* ResolveClientConfigForWrite(Json::Value& root);
 	static const Json::Value* ResolveClientConfigForRead(const Json::Value& root);
-	// K01: the four guild packet handlers are GuildComponent's; DispatchZonePacket
-	// calls m_guild->ZoneProcessGuild*() directly.
-	// K02 (Batch K): the GM packet handlers are eqt::gm::GmComponent's;
-	// DispatchZonePacket calls m_gm->ZoneProcessGM*() directly.
-
-	// Zone transition methods
-	// T322: zone_reason is the value echoed into OP_ZoneChange's zone_reason
-	// field. The official Titanium client echoes back the `type` byte the
-	// server handed it in OP_RequestClientZoneChange (always 0x01 in eqemu,
-	// zoning.cpp 983/1022); for a client-initiated zone-line crossing there
-	// is nothing to echo and 1 (ZoneUnsolicited) is the right default. It is
-	// a log-only memo field server-side -- matched for wire fidelity, not
-	// because any server logic reads it.
-	void RequestZoneChange(uint16_t zone_id, float x, float y, float z, float heading, uint32_t zone_reason = 1);
-	// T322: the graceful source-zone hand-off the official client performs
-	// before its zone-server session goes away. Returns false if it could
-	// not be sent (no zone connection), in which case the caller must fall
-	// straight through to the hard teardown.
-	bool BeginGracefulZoneOut();
-	// T231: same-zone OP_RequestClientZoneChange -- apply the destination
-	// locally (state + renderer + one forced OP_ClientUpdate), no zone cycle.
-	void RelocateWithinZone(float x, float y, float z, float server_heading);
-	void CleanupZone();  // Cleanup current zone state for zone transition
-	void DisconnectFromZone();  // Disconnect from current zone server
-	void ProcessDeferredZoneChange();  // Process zone change outside of callback context
 
 	// Combat packet handlers
 	void ZoneProcessConsider(const EQ::Net::Packet &p);
@@ -874,26 +762,6 @@ private:
 
 	// Zone state
 	bool m_zone_session_established = false;
-	bool m_zone_entry_sent = false;
-	bool m_weather_received = false;
-	bool m_req_new_zone_sent = false;
-
-	// Time of day (from server)
-	bool m_new_zone_received = false;
-	bool m_aa_table_sent = false;
-	bool m_update_aa_sent = false;
-	bool m_tributes_sent = false;
-	bool m_guild_tributes_sent = false;
-	bool m_req_client_spawn_sent = false;
-	bool m_spawn_appearance_sent = false;
-	bool m_exp_zonein_sent = false;
-	bool m_send_exp_zonein_received = false;
-	bool m_server_filter_sent = false;
-	bool m_client_spawned = false;
-	uint32_t m_zone_sequence = 2;
-	int m_aa_table_count = 0;
-	int m_tribute_count = 0;
-	int m_guild_tribute_count = 0;
 
 	// Entity tracking
 	std::map<uint16_t, Entity> m_entities;
@@ -902,7 +770,6 @@ private:
 	// that store, not a copy.
 	// T247: expiry of the current OP_Stun; epoch (the default) = not stunned.
 	std::chrono::steady_clock::time_point m_stunned_until{};
-	bool m_player_graphics_entity_pending = false;  // True when player entity needs to be created on renderer after zoning
 
 	// Target tracking (server-authoritative — renderer is a consumer, not the source of truth)
 
@@ -919,13 +786,6 @@ private:
 	// World object tracking (forges, looms, groundspawns, etc.)
 	std::map<uint32_t, eqt::WorldObject> m_world_objects;
 	uint32_t m_active_tradeskill_object_id = 0;  // Currently open tradeskill container (0 = none)
-
-	// Character stats. T286: level/class/race/gender/deity, HP/mana/
-	// endurance, the seven attributes, currency, bank currency, weight and
-	// the bind point all live in m_game_state.player() and nowhere else.
-	// Only what PlayerState does NOT carry stays here.
-	uint32_t m_exp = 0;          // Current experience points
-	uint32_t m_exp_aa = 0;       // Current AA experience points
 
 	// Movement and position tracking. T288: position and heading live in
 	// m_game_state.player() and nowhere else -- PosX()/PosY()/PosZ()/
@@ -954,7 +814,6 @@ private:
 	uint8_t m_zone_fog_blue[4] = {0};
 	float m_zone_fog_minclip[4] = {0};     // Fog min clip distances
 	float m_zone_fog_maxclip[4] = {0};     // Fog max clip distances
-	float m_safe_x = 0, m_safe_y = 0, m_safe_z = 0;  // Zone safe coordinates (client coords)
 
 	// "Update loop" flag. Set at the first ClientUpdate (StartUpdateLoop),
 	// cleared by CleanupZone / the destructor (StopUpdateLoop). It is part of
@@ -964,7 +823,6 @@ private:
 	// so every GameState writer is game-thread. Nothing else ran on it.
 	std::atomic<bool> m_update_running{false};
 	std::thread::id m_main_thread_id;
-	std::string m_navmesh_path;
 
 	// R01: Session recorder (null unless --record-session was passed)
 	std::unique_ptr<EQT::Net::SessionRecorder> m_session_recorder;
@@ -982,49 +840,12 @@ private:
 	// side.
 	std::shared_ptr<const HCMap> m_zone_map;
 
-	// Zone lines for zone transitions
-	std::unique_ptr<EQT::ZoneLines> m_zone_lines;
-
-	// Zone line detection state
-	bool m_zoning_enabled = false;                                   // Whether zone line detection triggers zoning (Ctrl+Z toggles)
-
 	// H03: server confirmed our OP_Logout (ZoneProcessLogoutReply) — DisconnectFromZone()
 	// must not run synchronously from inside that packet handler (it resets
 	// m_zone_connection_manager, destroying the DaybreakConnectionManager whose Tick()
 	// is still on the call stack — a use-after-free). Deferred the same way as
 	// m_game_state.world().zoneChangeApproved(): set here, processed at the top of UpdateMovement().
 	bool m_pending_logout_disconnect = false;
-
-	// T322: graceful zone-out hand-off state. The official Titanium client
-	// does NOT close its source-zone socket on a zone change: it sends
-	// OP_SaveOnZoneReq then OP_DeleteSpawn(own entity id) and lets the SERVER
-	// close the session (eqemu Handle_OP_DeleteSpawn -> Disconnect()). That
-	// difference decides whether the group survives -- see the block comment
-	// on BeginGracefulZoneOut() in eq_zone.cpp.
-	//
-	// m_zone_out_handshake_pending: hand-off sent, waiting for the source
-	// zone's OP_LogoutReply. While set, ZoneProcessLogoutReply() treats that
-	// reply as a zone-out acknowledgement and NOT as a logout -- the logout
-	// path (SendLogout/camp, and the world-side disconnect) is untouched
-	// whenever this flag is clear.
-	bool m_zone_out_handshake_pending = false;
-	bool m_zone_out_acknowledged = false;
-	std::chrono::steady_clock::time_point m_zone_out_handshake_deadline{};
-	// Bound on how long the transition waits for the acknowledgement. A lost
-	// or never-sent reply must not wedge zoning, so the teardown runs anyway.
-	static constexpr int kZoneOutHandshakeTimeoutMs = 2000;
-	// T322 test seam (see Test_BeginGracefulZoneOutForSeam): lifts the
-	// live-connection gate in BeginGracefulZoneOut() only. Never set in
-	// production.
-	bool m_test_force_zone_out_handshake = false;
-
-	// T322: "this world reconnect is a ZONE TRANSITION, not a fresh login."
-	// It cannot live in WorldState: CleanupZone() -> resetZoneState() clears
-	// every zone flag, and it runs (inside DisconnectFromZone) BEFORE the
-	// world reconnect that has to read it -- which is why the zoning byte in
-	// OP_SendLoginInfo was always 0. Set in ProcessDeferredZoneChange(),
-	// cleared once the destination zone session is up (or on a logout).
-	bool m_zone_to_zone_in_progress = false;
 
 	// Combat manager
 	std::unique_ptr<CombatManager> m_combat_manager;
@@ -1041,11 +862,6 @@ private:
 	// Buff manager
 	std::unique_ptr<EQ::BuffManager> m_buff_manager;
 
-	// Pending spell scribe state (for handling server confirmation)
-	uint32_t m_pending_scribe_spell_id = 0;
-	uint16_t m_pending_scribe_book_slot = 0;
-	int16_t m_pending_scribe_source_slot = -1;
-
 	// Skill manager
 	std::unique_ptr<EQ::SkillManager> m_skill_manager;
 
@@ -1058,15 +874,6 @@ private:
 	// Chat state - for reply to tell
 	std::string m_last_tell_sender;
 
-	// Movement history for anti-cheat
-	struct MovementHistoryEntry {
-		float x, y, z;
-		uint8_t type;
-		uint32_t timestamp;
-	};
-	std::deque<MovementHistoryEntry> m_movement_history;
-	uint32_t m_last_movement_history_send = 0;
-	std::string m_maps_path;
 
 	// Movement and position state
 
@@ -1075,17 +882,9 @@ private:
 	bool m_swim_up = false;          // Currently pressing swim up key
 	bool m_swim_down = false;        // Currently pressing swim down key
 
-	// T148: PlayerProfile.gm @13054 -- "GM mode was on at login". See
-	// GetGMMode() for the full contract (login-time only, deliberately
-	// stale, NOT an account-privilege flag).
-	bool m_gm_mode = false;
-
 	// T167: the seven PlayerProfile appearance fields. See
 	// GetProfileAppearance().
 	EQT::ProfileAppearance m_profile_appearance;
-
-	// T231 test seam -- see Test_GetLastZoneChangeRequest().
-	TestZoneChangeRequest m_test_last_zone_change_request;
 
 	// T268 test seam -- see Test_GetQueuedPackets().
 	bool m_test_capture_queued_packets = false;
@@ -1106,21 +905,6 @@ private:
 	uint8_t m_guild_rank = 9;
 	std::string m_guild_name;
 
-
-	// Map methods
-	void LoadZoneMap(const std::string& zone_name);
-	float GetBestZ(float x, float y, float z);
-	void FixZ();
-
-	// Zone source data (S3D/WLD) — opens archive and parses WLD once for game state + graphics
-	void LoadZoneSources(const std::string& zone_name);
-
-	// Zone line methods
-	void LoadZoneLines(const std::string& zone_name);
-	void CheckZoneLine();  // Check if player is in a zone line and handle transition
-
-	// Zone connection flow helpers
-	void CheckZoneRequestPhaseComplete();
 
 	// P28: the bulk of this block (eq client/config paths, quit flag, hotbar
 	// model, inventory manager, command registry, "Player mode" loot/vendor/
@@ -1438,4 +1222,5 @@ private:
 	std::unique_ptr<eqt::movement::MovementComponent> m_movement;
 	std::unique_ptr<eqt::login_world::LoginWorldComponent> m_login_world;
 	std::unique_ptr<eqt::player::PlayerComponent> m_player;
+	std::unique_ptr<eqt::zone::ZoneComponent> m_zone;
 };

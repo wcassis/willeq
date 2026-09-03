@@ -648,7 +648,7 @@ TEST(ScribeScroll, EchoWithScribingZeroAddsTheSpellAndConsumesTheScroll) {
     EXPECT_FALSE(h.eq.GetInventoryManager()->hasCursorItem())
         << "the server deletes the scroll from the cursor (DeleteItemInInventory)";
     EXPECT_FALSE(h.eq.GetInventoryManager()->isHoldingSpellForScribe());
-    EXPECT_EQ(h.eq.m_pending_scribe_spell_id, 0u);
+    EXPECT_EQ(h.eq.Zone().PendingScribeSpellId(), 0u);
     EXPECT_TRUE(h.anyMessageContains("You have learned"));
 }
 
@@ -670,7 +670,7 @@ TEST(ScribeScroll, AMemorizeEchoDoesNotScribeAnything) {
 
     EXPECT_FALSE(mgr->hasSpellScribed(picks.usableAtLevel1));
     EXPECT_TRUE(h.eq.GetInventoryManager()->hasCursorItem());
-    EXPECT_EQ(h.eq.m_pending_scribe_spell_id, picks.usableAtLevel1);
+    EXPECT_EQ(h.eq.Zone().PendingScribeSpellId(), picks.usableAtLevel1);
 }
 
 }  // namespace

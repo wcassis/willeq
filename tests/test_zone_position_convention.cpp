@@ -547,7 +547,7 @@ TEST(SameZoneRelocation, SameZone_NoZoneChangeReply_PositionHeadingAndBridgeAppl
     ReplayZone(eq, HC_OP_RequestClientZoneChange, payload);
 
     // The defect: no OP_ZoneChange decision at all for a same-zone request.
-    EXPECT_EQ(eq.Test_GetLastZoneChangeRequest().attempts, 0)
+    EXPECT_EQ(eq.Zone().Test_GetLastZoneChangeRequest().attempts, 0)
         << "same-zone request must not reply with OP_ZoneChange";
 
     // Client coords: m_x = wire y, m_y = wire x (T52 convention).
@@ -599,7 +599,7 @@ TEST(SameZoneRelocation, CrossZone_StillRepliesWithZoneChange_NoLocalWrite) {
     auto payload = BuildRequestClientZoneChange(/*zone_id=*/2, 0, -1009.0f, 146.0f, 51.0f, 64.0f);
     ReplayZone(eq, HC_OP_RequestClientZoneChange, payload);
 
-    auto req = eq.Test_GetLastZoneChangeRequest();
+    auto req = eq.Zone().Test_GetLastZoneChangeRequest();
     EXPECT_EQ(req.attempts, 1) << "cross-zone request must still answer with OP_ZoneChange";
     EXPECT_EQ(req.zone_id, 2);
     // Cross-zone: the far side's PlayerProfile sets the landing position;
@@ -616,7 +616,7 @@ TEST(SameZoneRelocation, UnknownCurrentZone_KeepsHandshake) {
     // No NewZone replayed: m_current_zone_id is 0 -- never guess same-zone.
     auto payload = BuildRequestClientZoneChange(77, 0, -1009.0f, 146.0f, 51.0f, 64.0f);
     ReplayZone(eq, HC_OP_RequestClientZoneChange, payload);
-    EXPECT_EQ(eq.Test_GetLastZoneChangeRequest().attempts, 1);
+    EXPECT_EQ(eq.Zone().Test_GetLastZoneChangeRequest().attempts, 1);
     EXPECT_FLOAT_EQ(eq.GetPosition().x, 0.0f);
 }
 
@@ -627,6 +627,6 @@ TEST(SameZoneRelocation, NonZeroInstance_KeepsHandshake) {
     // own test is zoneID && instance_id; this client always sits in 0).
     auto payload = BuildRequestClientZoneChange(77, /*instance_id=*/3, -1009.0f, 146.0f, 51.0f, 64.0f);
     ReplayZone(eq, HC_OP_RequestClientZoneChange, payload);
-    EXPECT_EQ(eq.Test_GetLastZoneChangeRequest().attempts, 1);
+    EXPECT_EQ(eq.Zone().Test_GetLastZoneChangeRequest().attempts, 1);
     EXPECT_FLOAT_EQ(eq.GetPosition().x, 0.0f);
 }

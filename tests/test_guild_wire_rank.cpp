@@ -111,11 +111,11 @@ TEST_F(GuildWireRankTest, GuildRankIsNotConfusedWithTheGmByteNextToIt) {
     // one-byte slip would make these two track each other.
     LoadProfile(eq, /*guild_id=*/5, /*guild_rank=*/EQ::guild::kRankLeader, /*gm=*/0);
     EXPECT_EQ(eq.GetGuildRank(), EQ::guild::kRankLeader);
-    EXPECT_FALSE(eq.GetGMMode());
+    EXPECT_FALSE(eq.Zone().GetGMMode());
 
     LoadProfile(eq, /*guild_id=*/5, /*guild_rank=*/EQ::guild::kRankMember, /*gm=*/1);
     EXPECT_EQ(eq.GetGuildRank(), EQ::guild::kRankMember);
-    EXPECT_TRUE(eq.GetGMMode());
+    EXPECT_TRUE(eq.Zone().GetGMMode());
 }
 
 // ===================================================================

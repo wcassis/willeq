@@ -74,7 +74,7 @@ void eqt::movement::MovementComponent::UpdateMovement()
 	if (owner_.m_pending_logout_disconnect) {
 		owner_.m_pending_logout_disconnect = false;
 		LOG_DEBUG(MOD_ZONE, "Processing deferred post-logout disconnect...");
-		owner_.DisconnectFromZone();
+		owner_.Zone().DisconnectFromZone();
 		LOG_DEBUG(MOD_ZONE, "Deferred post-logout disconnect processed");
 		return;  // Don't process movement post-logout
 	}
@@ -92,13 +92,13 @@ void eqt::movement::MovementComponent::UpdateMovement()
 	// genuinely should disconnect, and this unit does not touch it.
 	if (ctx_.game_state.world().zoneChangeApproved()) {
 		ctx_.game_state.world().setZoneChangeApproved(false);  // T286: only store
-		if (owner_.BeginGracefulZoneOut()) {
+		if (owner_.Zone().BeginGracefulZoneOut()) {
 			return;  // Wait for the source zone's acknowledgement (below)
 		}
 		// Nothing to hand off (no live zone connection) -- fall straight
 		// through to the hard teardown rather than stalling the transition.
 		LOG_DEBUG(MOD_ZONE, "Processing deferred zone change...");
-		owner_.ProcessDeferredZoneChange();
+		owner_.Zone().ProcessDeferredZoneChange();
 		LOG_DEBUG(MOD_ZONE, "Deferred zone change processed");
 		return;  // Don't process movement while zone changing
 	}
@@ -108,15 +108,15 @@ void eqt::movement::MovementComponent::UpdateMovement()
 	// wedge zoning, so the teardown runs on the deadline regardless. Either
 	// way DisconnectFromZone() runs exactly once, so the old connection can
 	// never be leaked.
-	if (owner_.m_zone_out_handshake_pending) {
-		const bool timed_out = std::chrono::steady_clock::now() >= owner_.m_zone_out_handshake_deadline;
-		if (owner_.m_zone_out_acknowledged || timed_out) {
-			if (timed_out && !owner_.m_zone_out_acknowledged) {
+	if (owner_.Zone().ZoneOutHandshakePending()) {
+		const bool timed_out = std::chrono::steady_clock::now() >= owner_.Zone().ZoneOutHandshakeDeadline();
+		if (owner_.Zone().ZoneOutAcknowledged() || timed_out) {
+			if (timed_out && !owner_.Zone().ZoneOutAcknowledged()) {
 				LOG_WARN(MOD_ZONE, "Source zone did not acknowledge zone-out within {} ms; tearing down anyway",
-					EverQuest::kZoneOutHandshakeTimeoutMs);
+					eqt::zone::ZoneComponent::kZoneOutHandshakeTimeoutMs);
 			}
 			LOG_DEBUG(MOD_ZONE, "Processing deferred zone change...");
-			owner_.ProcessDeferredZoneChange();  // clears the handshake flags
+			owner_.Zone().ProcessDeferredZoneChange();  // clears the handshake flags
 			LOG_DEBUG(MOD_ZONE, "Deferred zone change processed");
 		}
 		return;  // Don't process movement while zone changing
@@ -168,7 +168,7 @@ void eqt::movement::MovementComponent::UpdateMovement()
 	if (ctx_.game_state.player().moveForward() || ctx_.game_state.player().moveBackward() || ctx_.game_state.player().turnLeft() || ctx_.game_state.player().turnRight()) {
 		UpdateKeyboardMovement();
 		// Check for zone line collision
-		owner_.CheckZoneLine();
+		owner_.Zone().CheckZoneLine();
 		// SendPositionUpdate has internal 250ms throttling
 		SendPositionUpdate();
 		// Don't process other movement if using keyboard
@@ -270,7 +270,7 @@ void eqt::movement::MovementComponent::UpdateMovement()
 	
 	if (!ctx_.game_state.player().isMoving()) {
 		// Still check for zone lines when stopped (player might have stopped in one)
-		owner_.CheckZoneLine();
+		owner_.Zone().CheckZoneLine();
 
 		// Send idle position updates like real clients (every 1-2 seconds)
 		static std::map<EverQuest*, std::chrono::steady_clock::time_point> last_idle_updates;
@@ -542,13 +542,13 @@ void eqt::movement::MovementComponent::UpdateMovement()
 		auto z_fix_elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_z_fix_times[&owner_]);
 		// Fix Z every 1000ms while moving (once per second to reduce adjustments)
 		if (z_fix_elapsed.count() >= 1000) {
-			owner_.FixZ();
+			owner_.Zone().FixZ();
 			last_z_fix_times[&owner_] = now;
 		}
 	}
 	
 	// Check for zone line collision
-	owner_.CheckZoneLine();
+	owner_.Zone().CheckZoneLine();
 
 	// Send position update with proper throttling per instance
 	if (!m_last_position_update_time.time_since_epoch().count()) {
@@ -770,19 +770,19 @@ void eqt::movement::MovementComponent::SendPositionUpdate()
 	last_heading = owner_.HeadingDeg();
 	
 	// Track movement history for anti-cheat
-	EverQuest::MovementHistoryEntry history_entry;
+	eqt::zone::ZoneComponent::MovementHistoryEntry history_entry;
 	history_entry.x = owner_.PosX();
 	history_entry.y = owner_.PosY();
 	history_entry.z = owner_.PosZ();
 	history_entry.type = 1; // Normal movement (Collision type)
 	history_entry.timestamp = static_cast<uint32_t>(std::time(nullptr));
 	
-	owner_.m_movement_history.push_back(history_entry);
+	owner_.Zone().MovementHistory().push_back(history_entry);
 	
 	// Send movement history every second (matching client behavior)
 	uint32_t current_time = static_cast<uint32_t>(std::time(nullptr));
-	if (current_time - owner_.m_last_movement_history_send >= 1) {
-		owner_.m_last_movement_history_send = current_time;  // Update timestamp BEFORE sending to prevent duplicates
+	if (current_time - owner_.Zone().LastMovementHistorySend() >= 1) {
+		owner_.Zone().LastMovementHistorySend() = current_time;  // Update timestamp BEFORE sending to prevent duplicates
 		try {
 			SendMovementHistory();
 		}

@@ -210,7 +210,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessWeather(const EQ::Net::Packet 
 {
 	LOG_DEBUG(MOD_ZONE, "Weather update received");
 
-	owner_.m_weather_received = true;
+	owner_.Zone().WeatherReceived() = true;
 
 	// Parse weather packet (8 bytes)
 	// type: 0=rain off, 1=snow off, 2=snow on (type 0 + intensity > 0 = rain on)
@@ -233,8 +233,8 @@ void eqt::entities::EntitiesComponent::ZoneProcessWeather(const EQ::Net::Packet 
 
 	// Weather is the last packet in Zone Entry phase
 	// Now we can send ReqNewZone
-	if (!owner_.m_req_new_zone_sent) {
-		owner_.ZoneSendReqNewZone();
+	if (!owner_.Zone().ReqNewZoneSent()) {
+		owner_.Zone().ZoneSendReqNewZone();
 	}
 }
 
@@ -468,15 +468,15 @@ void eqt::entities::EntitiesComponent::ZoneProcessExpUpdate(const EQ::Net::Packe
 	uint32_t aaxp = p.GetUInt32(base + 4);
 
 	LOG_DEBUG(MOD_ZONE, "Received exp update: exp={} aaxp={} (was exp={} aaxp={})",
-	          exp, aaxp, owner_.m_exp, owner_.m_exp_aa);
+	          exp, aaxp, owner_.Zone().Exp(), owner_.Zone().ExpAA());
 
-	owner_.m_exp = exp;
-	owner_.m_exp_aa = aaxp;
+	owner_.Zone().Exp() = exp;
+	owner_.Zone().ExpAA() = aaxp;
 
 	// Publish ExpProgressChanged event
 	if (ctx_.bridge) {
 		eqt::state::ExpProgressChangedData data;
-		data.progress = CalculateExpProgress(owner_.m_exp, ctx_.game_state.player().level());
+		data.progress = CalculateExpProgress(owner_.Zone().Exp(), ctx_.game_state.player().level());
 		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::ExpProgressChanged, std::move(data)));
 	}
@@ -632,7 +632,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessClientUpdate(const EQ::Net::Pa
 		}
 
 		// Also create player entity if it's pending (after zoning, entities were cleared)
-		if (owner_.m_player_graphics_entity_pending && owner_.MySpawnId() != 0) {
+		if (owner_.Zone().PlayerGraphicsEntityPending() && owner_.MySpawnId() != 0) {
 			needPlayerEntityCreation = true;
 		}
 
@@ -691,7 +691,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessClientUpdate(const EQ::Net::Pa
 				}
 
 				// Player entity has been created, clear the pending flag
-				owner_.m_player_graphics_entity_pending = false;
+				owner_.Zone().PlayerGraphicsEntityPending() = false;
 			} else {
 				LOG_WARN(MOD_ENTITY, "Player entity {} not found in ctx_.entities when setting spawn ID from ClientUpdate", owner_.MySpawnId());
 			}

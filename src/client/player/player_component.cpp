@@ -192,9 +192,9 @@ void eqt::player::PlayerComponent::ZoneProcessLogoutReply(const EQ::Net::Packet 
 	// The flag is only ever set by BeginGracefulZoneOut(), so when no
 	// zone-out is in flight -- camp/SendLogout, and the world-side path --
 	// the behaviour below is exactly what it always was.
-	if (owner_.m_zone_out_handshake_pending) {
+	if (owner_.Zone().ZoneOutHandshakePending()) {
 		LOG_DEBUG(MOD_ZONE, "Source zone acknowledged graceful zone-out");
-		owner_.m_zone_out_acknowledged = true;
+		owner_.Zone().ZoneOutAcknowledged() = true;
 		return;
 	}
 
@@ -203,7 +203,7 @@ void eqt::player::PlayerComponent::ZoneProcessLogoutReply(const EQ::Net::Packet 
 
 	// T322: a logout is not a zone transition; make sure a stale latch can
 	// never make the next world login claim to be one.
-	owner_.m_zone_to_zone_in_progress = false;
+	owner_.Zone().ZoneToZoneInProgress() = false;
 
 	// D20c4: Signal quit via flag — Application checks and exits
 	owner_.RequestQuit();
