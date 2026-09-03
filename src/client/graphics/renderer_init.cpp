@@ -246,6 +246,8 @@ IrrlichtRenderer::IrrlichtRenderer()
         tumbleweedManager_, entityPrepWorker_, occlusionCuller_, indoorRegions_,
         treeWindController_, currentHour_, currentMinute_, objectPositions_
       } {
+    // L04 (Batch L): the diagnostics family.
+    diagnostics_ = std::make_unique<DiagnosticsComponent>(ctx_, *this);
 #ifdef WITH_RDP
     rdp_ = std::make_unique<RdpComponent>(ctx_, *this);
 #endif

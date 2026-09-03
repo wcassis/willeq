@@ -584,7 +584,7 @@ void IrrlichtRenderer::destroyZonePlaceholder() {
 
 void IrrlichtRenderer::setupInstantScene(const std::string& zoneName, float playerX, float playerY, float playerZ) {
     currentZoneName_ = zoneName;
-    loadIndoorRegionMap(zoneName);
+    diagnostics_->loadIndoorRegionMap(zoneName);
 
     // S05: entityRenderer_ already created in initLoadingScreen()
 

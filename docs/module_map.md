@@ -123,7 +123,7 @@ This table and that plan must agree; change both together.
 
 ## Renderer — IrrlichtRenderer class (`include/client/graphics/irrlicht_renderer.h`)
 
-`irrlicht_renderer.cpp` + 23 `renderer_*.cpp` TUs (J11 split the core), plus
+`irrlicht_renderer.cpp` + 21 `renderer_*.cpp` TUs (J11 split the core), plus
 the components Batch L extracts.
 
 Batch L (`refactor/L_renderer_component_extraction.md`) is doing to
@@ -136,12 +136,12 @@ component below.
 | Component | Header | TU |
 |---|---|---|
 | `EQT::Graphics::RdpComponent` | `include/client/graphics/rdp/rdp_component.h` | `src/client/graphics/rdp/rdp_component.cpp` |
+| `EQT::Graphics::DiagnosticsComponent` | `include/client/graphics/diagnostics/diagnostics_component.h` | `src/client/graphics/diagnostics/diagnostics_component.cpp`, `src/client/graphics/diagnostics/diagnostics_debug.cpp` |
 
 | TU | Lines | Contents |
 |---|---|---|
-| renderer_frame.cpp | 1,752 | processFrame + input/visibility/simulation/render sub-passes |
 | renderer_player_physics.cpp | 1,546 | updatePlayerMovement, collision setup, BSP-filtered raycasting, collision debug lines |
-| renderer_diagnostics.cpp | 1,162 | dumpScene, profiling, frame timings, getMemoryReport, EQE1 usage report (T207/T214) |
+| src/client/graphics/diagnostics/diagnostics_component.cpp | 1,160 | EQT::Graphics::DiagnosticsComponent -- dumpScene, scene-breakdown and frame-timing profiling, getMemoryReport/getMemoryReportBreakdown, EQE1 usage report (T207/T214). Extracted from IrrlichtRenderer by L04 (Batch L). Header include/client/graphics/diagnostics/diagnostics_component.h |
 | renderer_zone_draw.cpp | 1,155 | createZoneMesh, sorted/portal zone drawing, region meshes, VBO helpers |
 | renderer_zone_load_env.cpp | 1,139 | loadZoneStep10_Sky, 11_Env, 12_Lights, 12b_Simulation, 13_Cleanup (split from renderer_zone_load.cpp, T166) |
 | renderer_sim_bridge.cpp | 1,113 | SimulationWorker marshaling: buildSimulationZoneData, postSimulationInput, applySimulationOutput (split by lifetime contract, T116) |
@@ -155,10 +155,11 @@ component below.
 | renderer_hud_env.cpp | 643 | J11: fog setup, loading-screen draw, environmental display settings, HUD setup/update, paperdoll |
 | renderer_slash_commands.cpp | 592 | J11: `IrrlichtRenderer::processSlashCommand()` — the registry-3 if-chain |
 | renderer_zone_load_objects.cpp | 578 | loadZoneStep6_Objects, 7_Doors, 9_Collision (split from renderer_zone_load.cpp, T166) |
-| renderer_debug.cpp | 573 | Debug toggles/cycles, debug shader swaps |
+| src/client/graphics/diagnostics/diagnostics_debug.cpp | 577 | EQT::Graphics::DiagnosticsComponent -- runtime debug toggles/cycles, debug shader swaps, indoor region map load. Same header |
 | renderer_camera.cpp | 571 | J11: camera/projection per mode, first-person pitch clamp and vFOV, /fpcam dump, camera mode cycling, player position/vision/swimming state |
 | renderer_zone_merge.cpp | 566 | ZoneMergeBuffers (build/destroy/renderMerged) + the texture-eviction guards: RegionMeshTextureGuard, EntityMeshTextureGuard, ObjectNodeTextureGuard (T123), DoorTextureGuard/boids (T124) |
 | renderer_zone_load_entities.cpp | 551 | loadZoneStep8_Entities + 8a_BaseModelPrep, 8b_VariantModelPrep, 8c_VariantTextures, 8d_EquipmentPrep, 8e_DistributePrepResults, 8f_BuildEntityMesh (split from renderer_zone_load.cpp, T166) |
+| renderer_frame.cpp | 527 | processFrame + input/visibility/simulation/render sub-passes, and measureSection() (moved here from the diagnostics family by L04 -- it is frame-phase state) |
 | renderer_entities.cpp | 502 | Entity/inventory/combat-anim façades (thin forwards) |
 | renderer_gpu_upload.cpp | 446 | GPU upload thread init/drain/apply |
 | renderer_event_receiver.cpp | 385 | J11: `RendererEventReceiver::OnEvent` and the key/mouse query surface |

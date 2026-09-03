@@ -51,6 +51,7 @@
 #include "client/input/hotkey_manager.h"
 
 #include "client/graphics/renderer_context.h"
+#include "client/graphics/diagnostics/diagnostics_component.h"
 #ifdef WITH_RDP
 #include "client/graphics/rdp/rdp_server.h"
 #include "client/graphics/rdp/rdp_input_handler.h"
@@ -432,29 +433,20 @@ public:
     // Take a screenshot
     bool saveScreenshot(const std::string& filename);
 
-    // Toggle rendering options
-    void toggleWireframe();
-    void toggleHUD();
-    void toggleAllUI();
+    // Toggle rendering options. L04 (Batch L) moved every toggle body to
+    // DiagnosticsComponent; call them through Diagnostics(). The readable
+    // state accessors stay here -- they read members other families share.
     // T301 Leg D: readable so /hideui can echo the resulting state and so the
     // toggle can be asserted headlessly (tests/test_ui_hide_command.cpp).
     bool isAllUIHidden() const { return allUIHidden_; }
-    void toggleNameTags();
-    void toggleFog();
-    void toggleZoneLights();
-    void cycleObjectLights();
-    void toggleOldModels();
-    bool isUsingOldModels() const;
 
     // Front-to-back sorting and portal occlusion controls
-    void toggleManualZoneDraw();
     bool isManualZoneDrawEnabled() const { return manualZoneDrawEnabled_; }
 
     // P10: cross-region zone draw merge (see renderer_zone_merge.h). Runtime
     // toggle mirrors /sort's pattern -- a renderer-owned bool separate from
     // the config-loaded mergeZoneDraws, which only supplies the initial value
     // at zone load.
-    void toggleMergeZoneDraws();
     bool isMergeZoneDrawsEnabled() const { return mergeZoneDrawsEnabled_; }
 
     // Toggle GPU upload thread on/off at runtime (for A/B frame timing comparison)
@@ -465,27 +457,25 @@ public:
     bool isGPUUploadThreadEnabled() const { return false; }
 #endif
 
-    // Debug lighting toggles (for isolating performance regressions)
-    void togglePlayerLight();
+    // Debug lighting toggles (for isolating performance regressions) --
+    // the toggles themselves are on DiagnosticsComponent (L04); these read
+    // the resulting state.
     bool isPlayerLightEnabled() const { return debugPlayerLightEnabled_; }
-    void swapZoneMeshMaterials();  // Walk zone meshes and swap material types after shader variant change
-    void swapToDebugShader(irr::s32 debugMat);    // Swap all per-pixel materials to debug visualization program
-    void swapFromDebugShader(irr::s32 debugMat);  // Restore original materials from debug mode
-    void toggleObjectLights();
     bool isObjectLightsEnabled() const { return debugObjectLightsEnabled_; }
-    void toggleDirectionalLight();
     bool isDirectionalLightEnabled() const { return debugDirectionalLightEnabled_; }
-    void togglePortalOcclusion();
     bool isPortalOcclusionEnabled() const { return portalOcclusionEnabled_; }
-    void togglePortalDebugDraw();
     bool isPortalDebugDrawEnabled() const { return portalDebugDraw_; }
-    void toggleStencilDebugDraw();
     bool isStencilDebugDrawEnabled() const { return stencilDebugDraw_; }
     void setFrameTimingEnabled(bool enabled);  // Enable/disable frame timing profiler
     bool isFrameTimingEnabled() const { return frameTimingEnabled_; }
     std::vector<std::string> getSimWorkerDebugInfo() const;  // /simworker debug command
-    void dumpScene() const;  // /dumpscene debug command — logs all scene graph nodes with positions and PVS regions
-    void runSceneProfile();  // Run scene breakdown profiler (profiles next frame)
+    // L04 (Batch L): implemented by DiagnosticsComponent. These three stay as
+    // one-line forwarders because irrlicht_bridge.cpp (dumpScene,
+    // getMemoryReport) and application.cpp (runSceneProfile) call them and
+    // must not learn a component exists -- the K11 rule.
+    void dumpScene() const { diagnostics_->dumpScene(); }  // /dumpscene debug command
+    void runSceneProfile() { diagnostics_->runSceneProfile(); }  // Run scene breakdown profiler (profiles next frame)
+    DiagnosticsComponent& Diagnostics() { return *diagnostics_; }
     // K15 (B033): resetCoordOffsets / adjustOffset{X,Y,Z} / getOffset{X,Y,Z} /
     // adjustRotation{X,Y,Z} / getRotation{X,Y,Z} and stepToString (above) were
     // 14 declarations with no definition anywhere -- the real offset/rotation
@@ -702,14 +692,12 @@ public:
     // Weather effects system access (rain, snow, lightning)
     WeatherEffectsController* getWeatherEffects() { return weatherEffects_.get(); }
 
-    // Memory usage report for /pmem command
-    std::vector<std::string> getMemoryReport(const MemoryReportInput& ext) const;
-
-    // T69: structured accessor backing getMemoryReport() — the same tally,
-    // named fields instead of formatted strings. Use this from code that
-    // needs to consume the accounting programmatically (CI, benchmarks);
-    // do not parse getMemoryReport()'s text output.
-    MemoryReportBreakdown getMemoryReportBreakdown(const MemoryReportInput& ext) const;
+    // Memory usage report for /pmem command (forwarder, see dumpScene above).
+    // The T69 structured accessor getMemoryReportBreakdown() had no caller
+    // outside the family and lives on DiagnosticsComponent only.
+    std::vector<std::string> getMemoryReport(const MemoryReportInput& ext) const {
+        return diagnostics_->getMemoryReport(ext);
+    }
 
     // Set weather from server packet (type: 0=none, 1=rain, 2=snow; intensity: 1-10)
     void setWeather(uint8_t type, uint8_t intensity);
@@ -1103,7 +1091,6 @@ private:
 
     // Per-region indoor classification (loaded from data/region_maps/<zone>.json)
     std::unordered_set<size_t> indoorRegions_;
-    bool loadIndoorRegionMap(const std::string& zoneName);
 
     // Region neighbor map (built from portal system for 1-depth PVS expansion)
     std::unordered_map<size_t, std::vector<size_t>> regionNeighbors_;
@@ -1235,13 +1222,6 @@ private:
 
     std::vector<irr::scene::IMeshSceneNode*> objectNodes_;
 
-    // Debug shader swap state (original material types saved when entering debug mode)
-    struct DebugMaterialEntry {
-        irr::scene::IMeshSceneNode* node;
-        irr::u32 materialIndex;
-        irr::s32 originalType;
-    };
-    std::vector<DebugMaterialEntry> debugOriginalMaterials_;
     std::vector<irr::core::vector3df> objectPositions_;  // Cached positions for distance culling
     std::vector<irr::core::aabbox3df> objectBoundingBoxes_;  // Cached world-space bounding boxes for distance-to-edge culling
     std::vector<bool> objectInSceneGraph_;  // Track which objects are in scene graph
@@ -1756,7 +1736,6 @@ private:
     FrameTimings frameTimingsAccum_;  // Accumulated over multiple frames
     int frameTimingsSampleCount_ = 0;
     bool frameTimingEnabled_ = false;  // Enable with /frametiming command
-    void logFrameTimings();  // Log accumulated frame timings
 
     // Render pass timer - hooks into Irrlicht's ILightManager to time individual render passes
     class RenderPassTimer : public irr::scene::ILightManager {
@@ -1855,7 +1834,16 @@ private:
     };
     bool sceneProfileEnabled_ = false;
     int sceneProfileFrameCount_ = 0;
-    void profileSceneBreakdown();  // Run once to profile scene categories
+
+    // L04 (Batch L): the diagnostics family -- scene dump, profiling, memory
+    // report and the runtime debug toggles -- now lives in
+    // DiagnosticsComponent. Constructed in the IrrlichtRenderer ctor body;
+    // see renderer_init.cpp. It reads 39 members that are shared with other
+    // families but sit below the context's 5-family core threshold, plus the
+    // private nested type SceneBreakdown, so it needs friendship (both axes of
+    // K13 correction ii).
+    friend class DiagnosticsComponent;
+    std::unique_ptr<DiagnosticsComponent> diagnostics_;
 
 #ifdef WITH_RDP
     // L01 (Batch L): the rdp family -- the server handle, the caps-lock

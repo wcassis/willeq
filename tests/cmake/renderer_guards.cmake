@@ -110,6 +110,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_rdp_component)
 ENDIF()
 
+# L04 (Batch L, refactor/L04_diagnostics_component.md): the DiagnosticsComponent
+# extracted from IrrlichtRenderer, and the breadth test of RendererContext --
+# both the ctx_ path and the owner_ transition-handle path are pinned by
+# mutation. Same bare, never-Init()'d IrrlichtRenderer idiom.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_diagnostics_component
+        test_diagnostics_component.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_diagnostics_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_diagnostics_component GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_diagnostics_component)
+ENDIF()
+
 # T310 Leg A: the first-person camera tunables (/fpcam, --fpcam). Same bare,
 # never-Init()'d IrrlichtRenderer idiom as test_irrlicht_camera_command above,
 # plus the catalog gate and Application::parseArguments -- so ONE binary covers

@@ -36,6 +36,20 @@ extern void gles2Draw3DLinesBatch(void* driver, const float* vertices, unsigned 
 namespace EQT {
 namespace Graphics {
 
+// L04 (refactor/L04_diagnostics_component.md): measureSection() used to sit in
+// renderer_diagnostics.cpp, but it is frame-phase state, not diagnostics --
+// sectionStart_ is declared under "Frame phase shared state" in
+// include/client/graphics/irrlicht_renderer.h and all 35 call sites are the
+// frame family's (renderer_frame.cpp, renderer_frame_input.cpp,
+// renderer_frame_render.cpp). It stays on IrrlichtRenderer and moves here, to
+// the family that owns it; L11 takes it with the rest of the frame family.
+int64_t IrrlichtRenderer::measureSection() {
+    auto now = std::chrono::steady_clock::now();
+    auto us = std::chrono::duration_cast<std::chrono::microseconds>(now - sectionStart_).count();
+    sectionStart_ = now;
+    return us;
+}
+
 bool IrrlichtRenderer::processFrame(float deltaTime) {
     auto frameStart = std::chrono::steady_clock::now();
     frameStart_ = frameStart;
@@ -499,7 +513,7 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
 
         // Log every 60 frames (~2 seconds at 30fps)
         if (frameTimingsSampleCount_ >= 60) {
-            logFrameTimings();
+            diagnostics_->logFrameTimings();
             // Reset accumulators
             frameTimingsAccum_ = FrameTimings();
             frameTimingsSampleCount_ = 0;

@@ -465,7 +465,7 @@ void IrrlichtRenderer::updateHUD() {
     currentState.targetId = currentTargetId_;
     currentState.targetHpPercent = currentTargetHpPercent_;
     currentState.wireframeMode = wireframeMode_;
-    currentState.oldModels = isUsingOldModels();
+    currentState.oldModels = diagnostics_->isUsingOldModels();
     currentState.cameraMode = getCameraModeString();
     currentState.zoneName = currentZoneName_;
 
