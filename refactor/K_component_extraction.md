@@ -211,6 +211,34 @@ into the component.**
    (hh) a sonnet executor ended its turn waiting on a background build once
    — the dispatch prompt must repeat the protocol's "never end a turn on a
    wait" line verbatim and name the foreground timeout.
+**K13 corrections (2026-09-03):** (ii) **the `friend class` test is TWO-AXIS.**
+   §Mechanism 7's "remove the friend line when zero `owner_.m_` remain" is
+   necessary but not sufficient: a component also names `EverQuest`'s PRIVATE
+   STATICS by qualification (`EverQuest::FormatPrice`, `::DumpPacket`,
+   `::s_debug_level` -- the third substitution, K05 (j)), which friendship
+   grants and which no `owner_.` census can see. K13 removed merchant's and
+   commands' lines on the one-axis rule and took 12 build errors. Remove the
+   line only when BOTH axes are zero; `eqt::gm::GmComponent` is the first and
+   so far only component that passes both, and it dropped the `EverQuest&`
+   ctor parameter with it; (jj) **a FIFTH substitution shape, for a
+   destination that is NOT a friend.** Every substitution in §Mechanism 4
+   assumes the body lands in a friend class. A CONTEXT SERVICE
+   (`eqt::ChatOutput`/`PlayerFacade`/`PacketSender`) is not one, so a private
+   `EverQuest` name it uses must become a public equivalent:
+   `s_debug_level` -> `EverQuest::GetDebugLevel()`, and
+   `GetOpcodeName(` -> `EverQuest::GetOpcodeName(` with the declaration moved
+   to `public:` (the T180/T271 standing for a pure static lookup). Name both
+   in the destination file's banner; (kk) **name every service member after
+   the `EverQuest` member it references** -- ChatOutput's `m_bridge`,
+   PlayerFacade's `m_game_state`, PacketSender's five -- and the moved bodies
+   need ZERO substitutions, which makes the §Mechanism 8 residual proof
+   trivial and exact (K13's three sets came back 0/0/0 with no name mapping at
+   all); (ll) `#define private public` test hacks (K12 (gg)) are now a
+   STANDING caller class, not a curiosity -- K13 hit two more
+   (`h.eq.m_world_objects`, `h.eq.m_zone_map`); (mm) an aggregate
+   `ClientContext` may not have private data members, so late-bound component
+   pointers are public with a comment saying why -- `EverQuest` brace-
+   initialises `m_ctx` in its initialiser list.
 8. **Proof.** `verify_move_only.py` exits 1 by construction. Line-multiset
    check with the substitutions normalised BY NAME MAPPING (`ctx_.character`
    ↔ `m_character`, etc. — stripping the prefix alone leaves 7 false

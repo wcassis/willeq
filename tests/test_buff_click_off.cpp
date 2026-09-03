@@ -388,12 +388,12 @@ TEST_F(BuffCancelConsumer, RemoveBuffByNameResolvesThroughTheLiveBuffModel) {
     GiveBuff(eq, 0, idA, 100);
     GiveBuff(eq, 4, idB, 100);
 
-    uint64_t before = eq.GetReplaySuppressedSendCount();
+    uint64_t before = eq.Net().ReplaySuppressedSendCount();
     eq.Player().RequestCancelBuff(nameB);
     // No zone connection in a unit test: the send is suppressed and counted,
     // which is exactly the proof that resolution got as far as the wire hop
     // for the RIGHT slot -- an unresolvable name never reaches it.
-    EXPECT_EQ(eq.GetReplaySuppressedSendCount(), before + 1);
+    EXPECT_EQ(eq.Net().ReplaySuppressedSendCount(), before + 1);
 
     // Both buffs still present: the request is not optimistic either way.
     EXPECT_NE(eq.GetBuffManager()->getPlayerBuffBySlot(0), nullptr);
@@ -407,18 +407,18 @@ TEST_F(BuffCancelConsumer, RemoveBuffRefusesLocallyOnlyWhatTheClientCanKnow) {
     eq.setBridge(&bridge);
     GiveBuff(eq, 0, 202, 100);
 
-    uint64_t before = eq.GetReplaySuppressedSendCount();
+    uint64_t before = eq.Net().ReplaySuppressedSendCount();
 
     eq.Player().RequestCancelBuff("26");            // past MAX_PLAYER_BUFFS
     eq.Player().RequestCancelBuff("0");             // 1-based, so 0 is out of range
     eq.Player().RequestCancelBuff("3");             // in range, but empty
     eq.Player().RequestCancelBuff("Nosuchbuffname");
     eq.Player().RequestCancelBuff("");
-    EXPECT_EQ(eq.GetReplaySuppressedSendCount(), before)
+    EXPECT_EQ(eq.Net().ReplaySuppressedSendCount(), before)
         << "none of these may reach the wire";
 
     eq.Player().RequestCancelBuff("1");             // the occupied slot, 1-based
-    EXPECT_EQ(eq.GetReplaySuppressedSendCount(), before + 1);
+    EXPECT_EQ(eq.Net().ReplaySuppressedSendCount(), before + 1);
 }
 
 

@@ -104,11 +104,11 @@ bool IsAllDigits(const std::string& s)
 void eqt::commands::CommandsComponent::RequestCloseTrainer()
 {
 	if (ctx_.game_state.player().trainerNpcId() == 0) {
-		owner_.AddChatSystemMessage("You are not interacting with a trainer.");
+		ctx_.out.System("You are not interacting with a trainer.");
 		return;
 	}
 	if (!ctx_.bridge) {
-		owner_.AddChatSystemMessage("Cannot close the trainer window - no bridge attached.");
+		ctx_.out.System("Cannot close the trainer window - no bridge attached.");
 		return;
 	}
 	// The same intent a trainer-panel close button would push. There is no
@@ -123,13 +123,13 @@ void eqt::commands::CommandsComponent::RequestTrainSkill(const std::string& args
 	const std::string arg = Trim(args);
 
 	if (ctx_.game_state.player().trainerNpcId() == 0) {
-		owner_.AddChatSystemMessage(
+		ctx_.out.System(
 			"You are not interacting with a trainer. Target your guildmaster and use /train.");
 		return;
 	}
 
 	if (arg.empty()) {
-		owner_.AddChatSystemMessage("Usage: /train <skill name> | /train <skill id> | /train list");
+		ctx_.out.System("Usage: /train <skill name> | /train <skill id> | /train list");
 		return;
 	}
 
@@ -148,7 +148,7 @@ void eqt::commands::CommandsComponent::RequestTrainSkill(const std::string& args
 	if (IsAllDigits(arg)) {
 		const long v = std::stol(arg);
 		if (v < 0 || v >= static_cast<long>(EQ::MAX_SKILL_ID)) {
-			owner_.AddChatSystemMessage(fmt::format(
+			ctx_.out.System(fmt::format(
 				"There is no skill {} (skill ids are 0-{}).", arg, EQ::MAX_SKILL_ID - 1));
 			return;
 		}
@@ -168,7 +168,7 @@ void eqt::commands::CommandsComponent::RequestTrainSkill(const std::string& args
 		}
 		const std::vector<int>& hits = !exact.empty() ? exact : partial;
 		if (hits.empty()) {
-			owner_.AddChatSystemMessage(fmt::format("You know of no skill called \"{}\".", arg));
+			ctx_.out.System(fmt::format("You know of no skill called \"{}\".", arg));
 			return;
 		}
 		if (hits.size() > 1) {
@@ -177,7 +177,7 @@ void eqt::commands::CommandsComponent::RequestTrainSkill(const std::string& args
 				if (i) names += ", ";
 				names += EQ::getSkillName(static_cast<uint8_t>(hits[i]));
 			}
-			owner_.AddChatSystemMessage(fmt::format("\"{}\" matches {} skills: {}", arg, hits.size(), names));
+			ctx_.out.System(fmt::format("\"{}\" matches {} skills: {}", arg, hits.size(), names));
 			return;
 		}
 		resolved = hits.front();
@@ -190,14 +190,14 @@ void eqt::commands::CommandsComponent::RequestTrainSkill(const std::string& args
 	// --- refusals the client can actually make ----------------------------
 
 	// eqemu's very first line is `if(!m_pp.points) return;` -- silent.
-	if (owner_.GetPracticePoints() == 0) {
-		owner_.AddChatSystemMessage("You have no training points left to spend.");
+	if (ctx_.self.GetPracticePoints() == 0) {
+		ctx_.out.System("You have no training points left to spend.");
 		return;
 	}
 
-	const uint32_t cap = owner_.Merchant().GetTrainerSkillCap(skillId);
+	const uint32_t cap = ctx_.Merchant().GetTrainerSkillCap(skillId);
 	if (cap == 0) {
-		owner_.AddChatSystemMessage(fmt::format("{} cannot train you in {}.", ctx_.game_state.player().trainerName(), label));
+		ctx_.out.System(fmt::format("{} cannot train you in {}.", ctx_.game_state.player().trainerName(), label));
 		return;
 	}
 
@@ -207,23 +207,23 @@ void eqt::commands::CommandsComponent::RequestTrainSkill(const std::string& args
 	}
 	if (current >= cap) {
 		// The server's MORE_SKILLED_THAN_I branch, said up front.
-		owner_.AddChatSystemMessage(fmt::format(
+		ctx_.out.System(fmt::format(
 			"You are already more skilled in {} than {} can teach ({} of {}).",
 			label, ctx_.game_state.player().trainerName(), current, cap));
 		return;
 	}
 
 	if (!ctx_.bridge) {
-		owner_.AddChatSystemMessage("Cannot train - no bridge attached.");
+		ctx_.out.System("Cannot train - no bridge attached.");
 		return;
 	}
 
 	const uint32_t cost = eqt::merchant::MerchantComponent::TrainingCost(current);
 	if (cost > 0) {
-		owner_.AddChatSystemMessage(fmt::format("Training {} ({} -> {}) for {}.",
+		ctx_.out.System(fmt::format("Training {} ({} -> {}) for {}.",
 			label, current, current + 1, EverQuest::FormatPrice(static_cast<int32_t>(cost))));
 	} else {
-		owner_.AddChatSystemMessage(fmt::format("Training {} ({} -> {}).", label, current, current + 1));
+		ctx_.out.System(fmt::format("Training {} ({} -> {}).", label, current, current + 1));
 	}
 
 	LOG_DEBUG(MOD_MAIN, "T280 /train: skill {} ({}) cur={} cap={} cost={}c trainer={}",
@@ -236,16 +236,16 @@ void eqt::commands::CommandsComponent::RequestTrainSkill(const std::string& args
 void eqt::commands::CommandsComponent::ListTrainableSkills()
 {
 	if (ctx_.game_state.player().trainerNpcId() == 0) {
-		owner_.AddChatSystemMessage("You are not interacting with a trainer.");
+		ctx_.out.System("You are not interacting with a trainer.");
 		return;
 	}
 
-	owner_.AddChatSystemMessage(fmt::format("=== {} can train ({} training points) ===",
-		ctx_.game_state.player().trainerName(), owner_.GetPracticePoints()));
+	ctx_.out.System(fmt::format("=== {} can train ({} training points) ===",
+		ctx_.game_state.player().trainerName(), ctx_.self.GetPracticePoints()));
 
 	size_t shown = 0;
 	for (uint8_t id = 0; id < EQ::MAX_SKILL_ID; ++id) {
-		const uint32_t cap = owner_.Merchant().GetTrainerSkillCap(id);
+		const uint32_t cap = ctx_.Merchant().GetTrainerSkillCap(id);
 		if (cap == 0) continue;
 		uint32_t current = 0;
 		if (ctx_.skill_manager) {
@@ -253,13 +253,13 @@ void eqt::commands::CommandsComponent::ListTrainableSkills()
 		}
 		if (current >= cap) continue;
 		const char* name = EQ::getSkillName(id);
-		owner_.AddChatSystemMessage(fmt::format("[{}] {} {}/{} - {}",
+		ctx_.out.System(fmt::format("[{}] {} {}/{} - {}",
 			id, name ? name : "Unknown", current, cap,
 			EverQuest::FormatPrice(static_cast<int32_t>(eqt::merchant::MerchantComponent::TrainingCost(current)))));
 		++shown;
 	}
 
 	if (shown == 0) {
-		owner_.AddChatSystemMessage("Nothing here is trainable for you right now.");
+		ctx_.out.System("Nothing here is trainable for you right now.");
 	}
 }

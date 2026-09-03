@@ -63,9 +63,9 @@ void eqt::gm::GmComponent::SendGMSummon(const std::string& charname)
 	memset(&gm, 0, sizeof(gm));
 	strncpy(gm.charname, charname.c_str(), 63);
 	strncpy(gm.gmname, ctx_.character.c_str(), 63);
-	gm.y = owner_.PosX();  // server's y = our x
-	gm.x = owner_.PosY();  // server's x = our y
-	gm.z = owner_.PosZ();
+	gm.y = ctx_.self.PosX();  // server's y = our x
+	gm.x = ctx_.self.PosY();  // server's x = our y
+	gm.z = ctx_.self.PosZ();
 	packet.PutData(2, &gm, sizeof(gm));
 
 	// T229 test seam (same shape as T217's hideme one): the bytes we actually
@@ -77,7 +77,7 @@ void eqt::gm::GmComponent::SendGMSummon(const std::string& charname)
 
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
 		ctx_.zone_connection->QueuePacket(packet);
-		LOG_INFO(MOD_MAIN, "GM summon: {} to ({:.1f}, {:.1f}, {:.1f})", charname, owner_.PosX(), owner_.PosY(), owner_.PosZ());
+		LOG_INFO(MOD_MAIN, "GM summon: {} to ({:.1f}, {:.1f}, {:.1f})", charname, ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ());
 	}
 }
 
@@ -177,7 +177,7 @@ void eqt::gm::GmComponent::SendGMHideMe(bool hide)
 
 	EQT::SpawnAppearance_Struct sa;
 	memset(&sa, 0, sizeof(sa));
-	sa.spawn_id = owner_.MySpawnId();
+	sa.spawn_id = ctx_.self.MySpawnId();
 	sa.type = AT_GM;
 	sa.parameter = hide ? 0 : 1;
 	packet.PutData(2, &sa, sizeof(sa));
@@ -261,7 +261,7 @@ void eqt::gm::GmComponent::ZoneProcessGMZoneRequest(const EQ::Net::Packet &p)
 		LOG_INFO(MOD_MAIN, "GM zone request approved for zone {}", gm->zone_id);
 	} else {
 		LOG_WARN(MOD_MAIN, "GM zone request denied");
-		owner_.AddChatSystemMessage("Zone request denied.");
+		ctx_.out.System("Zone request denied.");
 	}
 }
 
@@ -290,12 +290,12 @@ void eqt::gm::GmComponent::ZoneProcessGMFind(const EQ::Net::Packet &p)
 	std::string charname(gm->charname, strnlen(gm->charname, 64));
 	if (!gm->success) {
 		LOG_INFO(MOD_MAIN, "GM find: {} not found in this zone", charname);
-		owner_.AddChatSystemMessage(fmt::format("{} is not in this zone.", charname));
+		ctx_.out.System(fmt::format("{} is not in this zone.", charname));
 		return;
 	}
 	LOG_INFO(MOD_MAIN, "GM find result: {} in zone {} at ({:.1f}, {:.1f}, {:.1f}) [server x={:.1f} y={:.1f}]",
 		charname, gm->zoneID, gm->y, gm->x, gm->z, gm->x, gm->y);
-	owner_.AddChatSystemMessage(fmt::format("{} is in zone {} at {:.1f}, {:.1f}, {:.1f}",
+	ctx_.out.System(fmt::format("{} is in zone {} at {:.1f}, {:.1f}, {:.1f}",
 		charname, gm->zoneID, gm->y, gm->x, gm->z));
 }
 
@@ -312,6 +312,6 @@ void eqt::gm::GmComponent::ZoneProcessGMSummon(const EQ::Net::Packet &p)
 		LOG_INFO(MOD_MAIN, "GM summon successful");
 	} else {
 		LOG_WARN(MOD_MAIN, "GM summon failed");
-		owner_.AddChatSystemMessage("Summon failed.");
+		ctx_.out.System("Summon failed.");
 	}
 }

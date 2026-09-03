@@ -87,11 +87,11 @@ void eqt::entities::EntitiesComponent::ZoneProcessDeleteSpawn(const EQ::Net::Pac
 					ctx_.bridge->pushEvent(eqt::state::GameEvent(
 						eqt::state::GameEventType::LootWindowClosed, std::move(lwdata)));
 				}
-				owner_.Bridge().LootItems().clear();
-				owner_.Bridge().PendingLootSlots().clear();
+				ctx_.Bridge().LootItems().clear();
+				ctx_.Bridge().PendingLootSlots().clear();
 				ctx_.game_state.player().clearLootingCorpse();  // Phase 7.7 / T286
 				// Mark as ready for deletion
-				owner_.Bridge().LootCompleteCorpseId() = spawn_id;
+				ctx_.Bridge().LootCompleteCorpseId() = spawn_id;
 				// T268: the loot policy machine leaves LOOTING with the window.
 				if (ctx_.combat_manager) {
 					ctx_.combat_manager->OnLootWindowClosed();
@@ -100,13 +100,13 @@ void eqt::entities::EntitiesComponent::ZoneProcessDeleteSpawn(const EQ::Net::Pac
 
 			// Only delete corpses we've completed looting
 			// This prevents corpses from being deleted when NPCs die (server sends DeleteSpawn(0))
-			if (owner_.Bridge().LootCompleteCorpseId() != spawn_id) {
+			if (ctx_.Bridge().LootCompleteCorpseId() != spawn_id) {
 				LOG_TRACE(MOD_ENTITY, "Ignoring DeleteSpawn for corpse {} ({}) - not finished looting", spawn_id, it->second.name);
 				return;
 			}
 
 			LOG_DEBUG(MOD_ENTITY, "Corpse {} ({}) removed by server after looting", spawn_id, it->second.name);
-			owner_.Bridge().LootCompleteCorpseId() = 0;  // Clear the flag
+			ctx_.Bridge().LootCompleteCorpseId() = 0;  // Clear the flag
 		}
 
 		LOG_DEBUG(MOD_ENTITY, "Entity {} ({}) despawned", spawn_id, it->second.name);
@@ -116,7 +116,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessDeleteSpawn(const EQ::Net::Pac
 			ctx_.trade_manager->getPartnerSpawnId() == spawn_id) {
 			LOG_DEBUG(MOD_MAIN, "Trade partner despawned, canceling trade");
 			ctx_.trade_manager->cancelTrade();
-			owner_.AddChatSystemMessage("Trade cancelled - partner is no longer available");
+			ctx_.out.System("Trade cancelled - partner is no longer available");
 		}
 
 		// Check if our pet despawned
@@ -132,7 +132,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessDeleteSpawn(const EQ::Net::Pac
 			// OnPetCreated() above: a pure bridge publish (now also the
 			// source-side pet().clearPet()); gating it left the headless
 			// build's pet state set forever after a despawn.
-			owner_.Bridge().OnPetRemoved();
+			ctx_.Bridge().OnPetRemoved();
 		}
 
 		// Check if our combat target despawned - disable auto-attack
@@ -144,12 +144,12 @@ void eqt::entities::EntitiesComponent::ZoneProcessDeleteSpawn(const EQ::Net::Pac
 		}
 
 #ifdef EQT_HAS_GRAPHICS
-		owner_.Bridge().OnSpawnRemovedGraphics(spawn_id);
+		ctx_.Bridge().OnSpawnRemovedGraphics(spawn_id);
 #endif
 
 		// Remove from both local map and EntityManager
 		ctx_.entities.erase(it);
-		owner_.Player().RemoveEntityFromGameState(spawn_id);
+		ctx_.Player().RemoveEntityFromGameState(spawn_id);
 	} else {
 		LOG_DEBUG(MOD_ENTITY, "DeleteSpawn for unknown spawn_id: {}", spawn_id);
 	}
@@ -259,7 +259,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessHPUpdate(const EQ::Net::Packet
 	uint16_t spawn_id = p.GetUInt16(10);
 
 	// Check if this is our own HP update
-	bool is_self = (spawn_id == owner_.MySpawnId());
+	bool is_self = (spawn_id == ctx_.self.MySpawnId());
 
 	if (is_self) {
 		// Update player HP tracking (T286: PlayerState is the only store)
@@ -300,7 +300,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessHPUpdate(const EQ::Net::Packet
 	// Left gated here, a headless build's equipment stats (weight, weapon
 	// skill types) never refreshed when player HP changed.
 	if (is_self) {
-		owner_.Bridge().UpdateInventoryStats();
+		ctx_.Bridge().UpdateInventoryStats();
 	}
 
 	// Publish PlayerStatsChanged when our own HP changes
@@ -341,7 +341,7 @@ Entity* eqt::entities::EntitiesComponent::FindEntityByName(const std::string& na
 
 void eqt::entities::EntitiesComponent::ListEntities(const std::string& search) const
 {
-	if (!owner_.IsFullyZonedIn()) {
+	if (!ctx_.self.IsFullyZonedIn()) {
 		std::cout << "Not in zone yet" << std::endl;
 		return;
 	}
@@ -378,7 +378,7 @@ void eqt::entities::EntitiesComponent::ListEntities(const std::string& search) c
 			}
 		}
 		
-		float dist = owner_.Movement().CalculateDistance(owner_.PosX(), owner_.PosY(), owner_.PosZ(), entity.x, entity.y, entity.z);
+		float dist = ctx_.Movement().CalculateDistance(ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ(), entity.x, entity.y, entity.z);
 		sorted_entities.push_back({dist, &entity});
 	}
 	
@@ -452,7 +452,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessWearChange(const EQ::Net::Pack
 		data.spawnId = spawn_id;
 		data.raceId = entity.race_id;
 		data.gender = entity.gender;
-		data.isPlayer = (spawn_id == owner_.MySpawnId());
+		data.isPlayer = (spawn_id == ctx_.self.MySpawnId());
 		data.face = entity.face;
 		data.haircolor = entity.haircolor;
 		data.hairstyle = entity.hairstyle;
@@ -509,9 +509,9 @@ void eqt::entities::EntitiesComponent::UpdatePlayerAppearanceFromInventory()
 	}
 
 	// Find the player entity
-	auto it = ctx_.entities.find(owner_.MySpawnId());
+	auto it = ctx_.entities.find(ctx_.self.MySpawnId());
 	if (it == ctx_.entities.end()) {
-		LOG_WARN(MOD_ENTITY, "UpdatePlayerAppearanceFromInventory: player entity {} not found", owner_.MySpawnId());
+		LOG_WARN(MOD_ENTITY, "UpdatePlayerAppearanceFromInventory: player entity {} not found", ctx_.self.MySpawnId());
 		return;
 	}
 
@@ -519,7 +519,7 @@ void eqt::entities::EntitiesComponent::UpdatePlayerAppearanceFromInventory()
 
 	// Build appearance data from inventory items (D17b: bridge is sole path to renderer)
 	eqt::state::EntityAppearanceChangedData data;
-	data.spawnId = owner_.MySpawnId();
+	data.spawnId = ctx_.self.MySpawnId();
 	data.raceId = entity.race_id;
 	data.gender = entity.gender;
 	data.isPlayer = true;
@@ -636,7 +636,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessIllusion(const EQ::Net::Packet
 	data.spawnId = static_cast<uint16_t>(spawn_id);
 	data.raceId = entity.race_id;
 	data.gender = entity.gender;
-	data.isPlayer = (spawn_id == owner_.MySpawnId());
+	data.isPlayer = (spawn_id == ctx_.self.MySpawnId());
 	data.face = entity.face;
 	data.haircolor = entity.haircolor;
 	data.hairstyle = entity.hairstyle;

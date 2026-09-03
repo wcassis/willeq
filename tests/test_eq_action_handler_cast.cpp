@@ -864,7 +864,7 @@ TEST(EqActionHandlerCast, CastSpell_WallBetween_SaysCannotSeeTarget) {
     auto map = std::make_shared<HCMap>();
     ASSERT_TRUE(map->Load(path));
     std::remove(path.c_str());
-    h.eq.m_zone_map = map;
+    h.eq.Zone().ZoneMap() = map;
 
     // The map itself must report the wall before the cast path is blamed.
     EXPECT_FALSE(map->CheckLOS(glm::vec3(1.25f, 0.0f, 3.0f), glm::vec3(1.5f, 0.0f, 3.0f)));
@@ -901,7 +901,7 @@ TEST(EqActionHandlerCast, CastSpell_NoMapLoaded_LineOfSightPermissive) {
     ASSERT_TRUE(h.eq.InitializeSpellSystem(""));
     uint32_t id = h.findSingleTargetSpell();
     if (id == 0) GTEST_SKIP() << "no single-target level-1 wizard spell in scanned range";
-    ASSERT_EQ(h.eq.GetZoneMap(), nullptr);
+    ASSERT_EQ(h.eq.Zone().GetZoneMap(), nullptr);
 
     h.spawnSelfAndGuard();
     h.eq.GetGameState().player().setMana(1000, 1000);

@@ -84,7 +84,11 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 	// fifteen shared-service members every extracted component receives by
 	// reference. Reference members must be bound here; nothing is read
 	// through them during construction.
-	: m_ctx{m_game_state,
+	: m_chat_output{m_bridge},
+	  m_player_facade{m_game_state, m_update_running},
+	  m_packet_sender{m_game_state, m_zone_connection, m_zone_connection_manager,
+	                  m_session_recorder, m_main_thread_id},
+	  m_ctx{m_game_state,
 	        m_bridge,
 	        m_zone_connection,
 	        m_entities,
@@ -100,13 +104,26 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 	        m_zone_connection_manager,
 	        m_command_registry,
 	        m_buff_manager,
-	        m_active_tradeskill_object_id}
+	        m_active_tradeskill_object_id,
+	        // K13: the three context services, plus the four shared members
+	        // promoted out of the owner_.m_* residue. Declaration order in
+	        // eqt::ClientContext, not this list, is what binds them.
+	        m_chat_output,
+	        m_player_facade,
+	        m_packet_sender,
+	        m_hotbar_model,
+	        m_eq_client_path,
+	        m_session_recorder
+#ifdef WITH_AUDIO
+	        , m_zone_audio_manager
+#endif
+	        }
 {
 	// K01: the guild family. Constructed first so nothing below can reach a
 	// null m_guild.
 	m_guild = std::make_unique<eqt::guild::GuildComponent>(m_ctx, *this);
 	// K02: the gm family, same shape.
-	m_gm = std::make_unique<eqt::gm::GmComponent>(m_ctx, *this);
+	m_gm = std::make_unique<eqt::gm::GmComponent>(m_ctx);
 	// K03: the chat family, same shape.
 	m_chat = std::make_unique<eqt::chat::ChatComponent>(m_ctx, *this);
 	// K04: the group family (group, raid, pet). Same rule.
@@ -132,6 +149,14 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 	// allocated until RegisterCommands() is called below -- ctx_.command_registry
 	// is a reference to the member, not the pointee, so this is safe.
 	m_commands = std::make_unique<eqt::commands::CommandsComponent>(m_ctx, *this);
+
+	// K13: every component now exists, so the context can carry a pointer to
+	// each one. A component reaches a sibling as ctx_.Zone()/ctx_.Bridge()/...
+	// from here on; nothing above this line may.
+	m_ctx.SetComponents(m_guild.get(), m_gm.get(), m_chat.get(), m_group.get(),
+	                    m_merchant.get(), m_entities_component.get(), m_movement.get(),
+	                    m_login_world.get(), m_player.get(), m_zone.get(),
+	                    m_bridge_component.get(), m_commands.get());
 
 	m_login_world->SetCredentials(host, port, user, pass, server);
 	m_character = character;
@@ -242,7 +267,7 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 
 void EverQuest::StartSessionRecording(const std::string& path) {
 	m_session_recorder = std::make_unique<EQT::Net::SessionRecorder>();
-	if (m_session_recorder->open(path, m_character, CurrentZoneName())) {
+	if (m_session_recorder->open(path, m_character, m_player_facade.CurrentZoneName())) {
 		LOG_INFO(MOD_MAIN, "Session recording started: {}", path);
 	} else {
 		LOG_ERROR(MOD_MAIN, "Failed to start session recording to '{}'", path);
@@ -443,8 +468,8 @@ void EverQuest::SetLoadingPhase(LoadingPhase phase, const char* statusText) {
 	// Publish ZoneLoading event to bridge (also drives loading screen progress via bridge handler)
 	if (m_bridge) {
 		eqt::state::ZoneLoadingData data;
-		data.zoneName = CurrentZoneName();
-		data.zoneId = CurrentZoneId();
+		data.zoneName = m_player_facade.CurrentZoneName();
+		data.zoneId = m_player_facade.CurrentZoneId();
 		data.progress = progress;
 		data.statusMessage = m_loading_status_text ? m_loading_status_text : "";
 		m_bridge->pushEvent(eqt::state::GameEvent(
@@ -501,7 +526,7 @@ const char* EverQuest::GetLoadingStatusText() const {
 
 void EverQuest::OnGameStateComplete() {
 	LOG_INFO(MOD_MAIN, "[LOADING] Game state setup complete. Spawn ID: {}, Zone: {}",
-	         MySpawnId(), CurrentZoneName());
+	         m_player_facade.MySpawnId(), m_player_facade.CurrentZoneName());
 
 #ifdef EQT_HAS_GRAPHICS
 	if (m_graphics_initialized) {
@@ -521,8 +546,8 @@ void EverQuest::OnGameStateComplete() {
 		SetLoadingPhase(LoadingPhase::COMPLETE, "Ready!");
 		if (m_bridge) {
 			eqt::state::ZoneLoadedData data;
-			data.zoneName = CurrentZoneName();
-			data.zoneId = CurrentZoneId();
+			data.zoneName = m_player_facade.CurrentZoneName();
+			data.zoneId = m_player_facade.CurrentZoneId();
 			m_bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::ZoneLoaded, std::move(data)));
 		}
@@ -542,8 +567,8 @@ void EverQuest::OnGameStateComplete() {
 	SetLoadingPhase(LoadingPhase::COMPLETE, "Ready!");
 	if (m_bridge) {
 		eqt::state::ZoneLoadedData data;
-		data.zoneName = CurrentZoneName();
-		data.zoneId = CurrentZoneId();
+		data.zoneName = m_player_facade.CurrentZoneName();
+		data.zoneId = m_player_facade.CurrentZoneId();
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::ZoneLoaded, std::move(data)));
 	}
@@ -561,8 +586,8 @@ void EverQuest::OnGraphicsComplete() {
 	// ZoneLoaded bridge event drives setZoneReady(true) + hideLoadingScreen() via bridge handler
 	if (m_bridge) {
 		eqt::state::ZoneLoadedData data;
-		data.zoneName = CurrentZoneName();
-		data.zoneId = CurrentZoneId();
+		data.zoneName = m_player_facade.CurrentZoneName();
+		data.zoneId = m_player_facade.CurrentZoneId();
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::ZoneLoaded, std::move(data)));
 	}
@@ -864,77 +889,9 @@ void EverQuest::ReplayZonePacket(uint16_t opcode, const uint8_t* data, size_t si
 	m_zone->DispatchZonePacket(p);
 }
 
-bool EverQuest::SafeQueueZonePacket(EQ::Net::Packet &p, int stream, bool reliable)
-{
-	if (!m_zone_connection) {
-		LOG_WARN(MOD_ZONE, "Attempted to send packet with null zone connection");
-		return false;
-	}
-
-	if (m_session_recorder && p.Length() >= 2) {
-		m_session_recorder->record(EQT::Net::SessionStream::Zone, EQT::Net::SessionDirection::ClientToServer,
-			p.GetUInt16(0), (const uint8_t*)p.Data() + 2, static_cast<uint32_t>(p.Length() - 2));
-	}
-
-	// Update thread must use async to avoid libuv thread-safety violation
-	if (std::this_thread::get_id() != m_main_thread_id) {
-		if (m_zone_connection_manager) {
-			m_zone_connection_manager->QueuePacketAsync(m_zone_connection, p, stream, reliable);
-			return true;
-		}
-		return false;
-	}
-
-	// Add debugging for large reliable packets
-	if (reliable && p.Length() > 400 && s_debug_level >= 2) {
-		uint16_t opcode = p.GetUInt16(0);
-		LOG_TRACE(MOD_ZONE, "SafeQueueZonePacket: Large reliable packet - opcode={:#06x} ({}), length={}, stream={}",
-			opcode, GetOpcodeName(opcode), p.Length(), stream);
-
-		// Check connection state before sending large packets
-		try {
-			auto stats = m_zone_connection->GetStats();
-			LOG_DEBUG(MOD_ZONE, "Connection stats before large packet: sent={}, recv={}, resent={}", stats.sent_packets, stats.recv_packets, stats.resent_packets);
-		} catch (...) {
-			LOG_WARN(MOD_ZONE, "Failed to get connection stats");
-		}
-	}
-
-	// Check if connection is still valid
-	try {
-		// Get connection stats to verify the connection is still valid
-		auto stats = m_zone_connection->GetStats();
-
-		// Additional check - if stats look corrupted, don't send
-		if (stats.recv_packets == 0 && stats.sent_packets == 0 && m_game_state.world().isZoneConnected()) {
-			LOG_WARN(MOD_ZONE, "Zone connection appears invalid (zero stats)");
-			return false;
-		}
-
-		m_zone_connection->QueuePacket(p, stream, reliable);
-
-		// Log successful queueing of large reliable packets
-		if (reliable && p.Length() > 400 && s_debug_level >= 2) {
-			LOG_DEBUG(MOD_ZONE, "Large reliable packet queued successfully");
-		}
-
-		return true;
-	}
-	catch (const std::exception& e) {
-		LOG_ERROR(MOD_ZONE, "Exception in SafeQueueZonePacket: {} (opcode={:#06x}, len={}, reliable={})",
-			e.what(), p.GetUInt16(0), p.Length(), reliable);
-		m_zone_connection.reset();  // Clear the corrupted connection
-		m_game_state.world().setZoneConnected(false);  // T286: only store
-		return false;
-	}
-	catch (...) {
-		LOG_ERROR(MOD_ZONE, "Unknown exception in SafeQueueZonePacket (opcode={:#06x}, len={}, reliable={})",
-			p.GetUInt16(0), p.Length(), reliable);
-		m_zone_connection.reset();  // Clear the corrupted connection
-		m_game_state.world().setZoneConnected(false);  // T286: only store
-		return false;
-	}
-}
+// K13: SafeQueueZonePacket's body is now eqt::PacketSender::SafeQueueZone
+// (src/client/packet_sender.cpp), moved verbatim. It had no caller outside the
+// friend components, so no forwarder stands here.
 
 
 void EverQuest::StartUpdateLoop()
@@ -1034,38 +991,13 @@ void EverQuest::SetSneak(bool sneak)
 }
 
 
+// K13: one of the sanctioned forwarders. The body is
+// eqt::PacketSender::Queue(); this stays because 17 NON-component call sites
+// (combat.cpp 11, spell_manager.cpp 3, skill_manager.cpp 3) send through the
+// EverQuest receiver and are not EverQuest-family code.
 void EverQuest::QueuePacket(uint16_t opcode, EQ::Net::DynamicPacket* packet)
 {
-	if (!packet) {
-		return;
-	}
-	Test_RecordQueuedPacket(opcode, packet->Data(), packet->Length());  // T268 seam (no-op unless armed)
-	if (!m_zone_connection) {
-		return;
-	}
-
-	if (m_session_recorder) {
-		m_session_recorder->record(EQT::Net::SessionStream::Zone, EQT::Net::SessionDirection::ClientToServer,
-			opcode, packet->Data(), static_cast<uint32_t>(packet->Length()));
-	}
-
-	EQ::Net::DynamicPacket p;
-	p.Resize(packet->Length() + 2); // Add space for opcode
-	p.PutUInt16(0, opcode);
-	if (packet->Length() > 0) {
-		memcpy(static_cast<uint8_t*>(p.Data()) + 2, packet->Data(), packet->Length());
-	}
-
-	// Update thread must use async to avoid libuv thread-safety violation
-	if (std::this_thread::get_id() != m_main_thread_id) {
-		if (m_zone_connection_manager) {
-			m_zone_connection_manager->QueuePacketAsync(m_zone_connection, p);
-			return;
-		}
-		return;
-	}
-
-	m_zone_connection->QueuePacket(p);
+	m_packet_sender.Queue(opcode, packet);
 }
 
 

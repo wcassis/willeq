@@ -495,7 +495,7 @@ TEST(TradeskillCombine, ClearObjectDoesNotDeleteTheWorldObjectWithDropIdOne) {
     decoy.drop_id = 1;
     decoy.name = "a decoy";
     decoy.object_type = 0;
-    h.eq.m_world_objects[1] = decoy;
+    h.eq.Entities().WorldObjects()[1] = decoy;
 
     h.serverClearObject();
 

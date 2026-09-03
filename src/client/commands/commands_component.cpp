@@ -198,9 +198,9 @@ void eqt::commands::CommandsComponent::runPmemDiagnostics(const std::string& lab
 			d.sfxCacheBytes = sfx->getCacheSize();
 		}
 	}
-	if (owner_.m_zone_audio_manager) {
-		d.zoneEmitterCount = owner_.m_zone_audio_manager->getEmitterCount();
-		d.activeEmitterCount = owner_.m_zone_audio_manager->getActiveEmitterCount();
+	if (ctx_.zone_audio_manager) {
+		d.zoneEmitterCount = ctx_.zone_audio_manager->getEmitterCount();
+		d.activeEmitterCount = ctx_.zone_audio_manager->getActiveEmitterCount();
 	}
 	// T130: real-time audio callback timing (see event_bus.h field comments).
 	// Read here on the game thread from atomics the audio thread only ever
@@ -232,8 +232,8 @@ void eqt::commands::CommandsComponent::runPmemDiagnostics(const std::string& lab
 		d.connections.push_back(std::move(ci));
 	};
 	addConn("Zone", ctx_.zone_connection);
-	addConn("World", owner_.LoginWorld().WorldConnection());
-	addConn("Login", owner_.LoginWorld().LoginConnection());
+	addConn("World", ctx_.LoginWorld().WorldConnection());
+	addConn("Login", ctx_.LoginWorld().LoginConnection());
 
 	d.entityCount = ctx_.entities.size();
 	d.entityEstimateBytes = ctx_.entities.size() * sizeof(Entity);
@@ -505,25 +505,25 @@ void eqt::commands::CommandsComponent::RegisterSocialCommands()
 
 void eqt::commands::CommandsComponent::RequestVendorToggle()
 {
-	if (!owner_.IsVendorWindowOpen() && (!ctx_.combat_manager || !ctx_.combat_manager->HasTarget())) {
-		owner_.AddChatSystemMessage("You don't have a target - target a merchant first.");
+	if (!ctx_.self.IsVendorWindowOpen() && (!ctx_.combat_manager || !ctx_.combat_manager->HasTarget())) {
+		ctx_.out.System("You don't have a target - target a merchant first.");
 		return;
 	}
 	if (ctx_.bridge) {
 		ctx_.bridge->pushIntent(eqt::events::VendorToggleIntent{});
 	} else {
-		owner_.AddChatSystemMessage("Cannot open vendor - no bridge attached.");
+		ctx_.out.System("Cannot open vendor - no bridge attached.");
 	}
 }
 
 void eqt::commands::CommandsComponent::RequestVendorBuy(uint32_t slot, uint8_t quantity)
 {
-	if (!owner_.IsVendorWindowOpen()) {
-		owner_.AddChatSystemMessage("You are not at a vendor.");
+	if (!ctx_.self.IsVendorWindowOpen()) {
+		ctx_.out.System("You are not at a vendor.");
 		return;
 	}
 	if (m_vendor_items.find(slot) == m_vendor_items.end()) {
-		owner_.AddChatSystemMessage(fmt::format("No item in vendor slot {} - see /vendorlist", slot));
+		ctx_.out.System(fmt::format("No item in vendor slot {} - see /vendorlist", slot));
 		return;
 	}
 
@@ -543,16 +543,16 @@ void eqt::commands::CommandsComponent::RequestVendorBuy(uint32_t slot, uint8_t q
 	// not a new cross-thread hazard.
 	if (ctx_.bridge) {
 		ctx_.bridge->pushIntent(eqt::events::VendorBuyIntent{
-			owner_.GetVendorNpcId(), static_cast<uint16_t>(slot), quantity});
+			ctx_.self.GetVendorNpcId(), static_cast<uint16_t>(slot), quantity});
 	} else {
-		owner_.AddChatSystemMessage("Cannot buy - no bridge attached.");
+		ctx_.out.System("Cannot buy - no bridge attached.");
 	}
 }
 
 void eqt::commands::CommandsComponent::RequestVendorSell(uint32_t slot, uint8_t quantity)
 {
-	if (!owner_.IsVendorWindowOpen()) {
-		owner_.AddChatSystemMessage("You are not at a vendor.");
+	if (!ctx_.self.IsVendorWindowOpen()) {
+		ctx_.out.System("You are not at a vendor.");
 		return;
 	}
 
@@ -564,9 +564,9 @@ void eqt::commands::CommandsComponent::RequestVendorSell(uint32_t slot, uint8_t 
 	// that function -- so this does not duplicate it.
 	if (ctx_.bridge) {
 		ctx_.bridge->pushIntent(eqt::events::VendorSellIntent{
-			owner_.GetVendorNpcId(), static_cast<uint16_t>(slot), quantity});
+			ctx_.self.GetVendorNpcId(), static_cast<uint16_t>(slot), quantity});
 	} else {
-		owner_.AddChatSystemMessage("Cannot sell - no bridge attached.");
+		ctx_.out.System("Cannot sell - no bridge attached.");
 	}
 }
 
@@ -651,11 +651,11 @@ void eqt::commands::CommandsComponent::RequestEquip(const std::string& args)
 	// success and failure).
 	auto doMove = [this](int16_t fromSlot, int16_t toSlot) {
 		if (!ctx_.inventory_manager) {
-			owner_.AddChatSystemMessage(fmt::format("Nothing to move: {} is empty.", eqt::inventory::describeSlot(fromSlot)));
+			ctx_.out.System(fmt::format("Nothing to move: {} is empty.", eqt::inventory::describeSlot(fromSlot)));
 			return;
 		}
 		auto outcome = ctx_.inventory_manager->moveItem(fromSlot, toSlot);
-		owner_.AddChatSystemMessage(outcome.message);
+		ctx_.out.System(outcome.message);
 	};
 
 	// ---- form dispatch ----
@@ -665,7 +665,7 @@ void eqt::commands::CommandsComponent::RequestEquip(const std::string& args)
 	iss >> toTok;
 
 	if (fromTok.empty()) {
-		owner_.AddChatSystemMessage(
+		ctx_.out.System(
 			"Usage: /equip <fromSlot> <toSlot> | /equip <item name> | /equip list "
 			"(see include/client/inventory/inventory_constants.h for slot ids)");
 		return;
@@ -680,17 +680,17 @@ void eqt::commands::CommandsComponent::RequestEquip(const std::string& args)
 	// against it.
 	if (lowerFirst == "list" && toTok.empty()) {
 		if (!ctx_.inventory_manager) {
-			owner_.AddChatSystemMessage("Cannot list equipment - inventory not available.");
+			ctx_.out.System("Cannot list equipment - inventory not available.");
 			return;
 		}
 		auto equipped = ctx_.inventory_manager->getEquipmentItems();
 		if (equipped.empty()) {
-			owner_.AddChatSystemMessage("Nothing currently equipped.");
+			ctx_.out.System("Nothing currently equipped.");
 		} else {
-			owner_.AddChatSystemMessage(fmt::format("Equipped ({} item{}):",
+			ctx_.out.System(fmt::format("Equipped ({} item{}):",
 				equipped.size(), equipped.size() == 1 ? "" : "s"));
 			for (const auto& [slot, item] : equipped) {
-				owner_.AddChatSystemMessage(fmt::format("  {}: {}", eqt::inventory::describeSlot(slot), item->name));
+				ctx_.out.System(fmt::format("  {}: {}", eqt::inventory::describeSlot(slot), item->name));
 			}
 		}
 
@@ -720,15 +720,15 @@ void eqt::commands::CommandsComponent::RequestEquip(const std::string& args)
 				continue;  // not equippable at all (a bag, a reagent, ...) -- not this list's business
 			}
 			if (!printedHeader) {
-				owner_.AddChatSystemMessage("Carried, equippable via /equip <name>:");
+				ctx_.out.System("Carried, equippable via /equip <name>:");
 				printedHeader = true;
 			}
-			owner_.AddChatSystemMessage(fmt::format("  {} ({}) -> {}{}",
+			ctx_.out.System(fmt::format("  {} ({}) -> {}{}",
 				item->name, eqt::inventory::describeSlot(slot), eqt::inventory::describeSlot(dest.slot),
 				dest.allCandidatesOccupied ? " (would replace)" : ""));
 		}
 		if (!printedHeader) {
-			owner_.AddChatSystemMessage("Nothing else carried that could be equipped.");
+			ctx_.out.System("Nothing else carried that could be equipped.");
 		}
 		return;
 	}
@@ -746,7 +746,7 @@ void eqt::commands::CommandsComponent::RequestEquip(const std::string& args)
 		int16_t fromSlot = 0;
 		int16_t toSlot = 0;
 		if (toTok.empty() || !ParseEquipSlot(fromTok, fromSlot) || !ParseEquipSlot(toTok, toSlot)) {
-			owner_.AddChatSystemMessage("Usage: /equip <fromSlot> <toSlot> (see include/client/inventory/inventory_constants.h for slot ids)");
+			ctx_.out.System("Usage: /equip <fromSlot> <toSlot> (see include/client/inventory/inventory_constants.h for slot ids)");
 			return;
 		}
 		doMove(fromSlot, toSlot);
@@ -755,12 +755,12 @@ void eqt::commands::CommandsComponent::RequestEquip(const std::string& args)
 
 	// T77 -- item-name form.
 	if (!ctx_.inventory_manager) {
-		owner_.AddChatSystemMessage("Cannot resolve item name - inventory not available.");
+		ctx_.out.System("Cannot resolve item name - inventory not available.");
 		return;
 	}
 	auto matches = ctx_.inventory_manager->findItemsByNameSubstring(args);
 	if (matches.empty()) {
-		owner_.AddChatSystemMessage(fmt::format("No carried item matches '{}'.", args));
+		ctx_.out.System(fmt::format("No carried item matches '{}'.", args));
 		return;
 	}
 	// Ambiguous only if DISTINCT item names matched -- duplicate stacks
@@ -785,7 +785,7 @@ void eqt::commands::CommandsComponent::RequestEquip(const std::string& args)
 			}
 			names += fmt::format("{} ({})", item->name, eqt::inventory::describeSlot(slot));
 		}
-		owner_.AddChatSystemMessage(fmt::format("'{}' matches multiple items: {} -- be more specific.", args, names));
+		ctx_.out.System(fmt::format("'{}' matches multiple items: {} -- be more specific.", args, names));
 		return;
 	}
 
@@ -793,14 +793,14 @@ void eqt::commands::CommandsComponent::RequestEquip(const std::string& args)
 	const eqt::inventory::ItemInstance* item = matches.front().second;
 	auto dest = ctx_.inventory_manager->resolveEquipDestination(item);
 	if (dest.slot == eqt::inventory::SLOT_INVALID) {
-		owner_.AddChatSystemMessage(fmt::format("{} cannot be equipped (fits no equipment slot).", item->name));
+		ctx_.out.System(fmt::format("{} cannot be equipped (fits no equipment slot).", item->name));
 		return;
 	}
 	if (dest.allCandidatesOccupied) {
-		owner_.AddChatSystemMessage(fmt::format("{} would replace what's already in {}.",
+		ctx_.out.System(fmt::format("{} would replace what's already in {}.",
 			item->name, eqt::inventory::describeSlot(dest.slot)));
 	}
-	owner_.AddChatSystemMessage(fmt::format("Resolved '{}' to {} ({}) -> {}.",
+	ctx_.out.System(fmt::format("Resolved '{}' to {} ({}) -> {}.",
 		args, item->name, eqt::inventory::describeSlot(fromSlot), eqt::inventory::describeSlot(dest.slot)));
 	doMove(fromSlot, dest.slot);
 }
@@ -841,7 +841,7 @@ const eqt::inventory::ItemInstance* eqt::commands::CommandsComponent::ResolveCar
 	slotOut = eqt::inventory::SLOT_INVALID;
 
 	if (!ctx_.inventory_manager) {
-		owner_.AddChatSystemMessage(fmt::format("Cannot {} - inventory not available.", verb));
+		ctx_.out.System(fmt::format("Cannot {} - inventory not available.", verb));
 		return nullptr;
 	}
 
@@ -853,12 +853,12 @@ const eqt::inventory::ItemInstance* eqt::commands::CommandsComponent::ResolveCar
 	if (numericForm) {
 		int16_t parsed = 0;
 		if (!ParseEquipSlot(args, parsed)) {
-			owner_.AddChatSystemMessage(fmt::format("Invalid slot '{}' - use /{} <item name> instead.", args, verb));
+			ctx_.out.System(fmt::format("Invalid slot '{}' - use /{} <item name> instead.", args, verb));
 			return nullptr;
 		}
 		const eqt::inventory::ItemInstance* item = ctx_.inventory_manager->getItem(parsed);
 		if (!item) {
-			owner_.AddChatSystemMessage(fmt::format("Nothing in {}.", eqt::inventory::describeSlot(parsed)));
+			ctx_.out.System(fmt::format("Nothing in {}.", eqt::inventory::describeSlot(parsed)));
 			return nullptr;
 		}
 		slotOut = parsed;
@@ -867,7 +867,7 @@ const eqt::inventory::ItemInstance* eqt::commands::CommandsComponent::ResolveCar
 
 	auto matches = ctx_.inventory_manager->findItemsByNameSubstring(args);
 	if (matches.empty()) {
-		owner_.AddChatSystemMessage(fmt::format("No carried item matches '{}'.", args));
+		ctx_.out.System(fmt::format("No carried item matches '{}'.", args));
 		return nullptr;
 	}
 	// Ambiguous only if DISTINCT item names matched -- two copies of the
@@ -892,7 +892,7 @@ const eqt::inventory::ItemInstance* eqt::commands::CommandsComponent::ResolveCar
 			}
 			names += fmt::format("{} ({})", i->name, eqt::inventory::describeSlot(s));
 		}
-		owner_.AddChatSystemMessage(fmt::format("'{}' matches multiple items: {} -- be more specific.", args, names));
+		ctx_.out.System(fmt::format("'{}' matches multiple items: {} -- be more specific.", args, names));
 		return nullptr;
 	}
 	slotOut = matches.front().first;
@@ -902,7 +902,7 @@ const eqt::inventory::ItemInstance* eqt::commands::CommandsComponent::ResolveCar
 void eqt::commands::CommandsComponent::RequestReadItem(const std::string& args)
 {
 	if (args.empty()) {
-		owner_.AddChatSystemMessage("Usage: /read <slot> | /read <item name> (a book or note you are carrying)");
+		ctx_.out.System("Usage: /read <slot> | /read <item name> (a book or note you are carrying)");
 		return;
 	}
 
@@ -913,17 +913,17 @@ void eqt::commands::CommandsComponent::RequestReadItem(const std::string& args)
 	}
 
 	if (item->bookFilename.empty()) {
-		owner_.AddChatSystemMessage(fmt::format("{} ({}) is not a book or note.",
+		ctx_.out.System(fmt::format("{} ({}) is not a book or note.",
 			item->name, eqt::inventory::describeSlot(slot)));
 		return;
 	}
 
 	if (!ctx_.bridge) {
-		owner_.AddChatSystemMessage("Cannot read - no bridge attached.");
+		ctx_.out.System("Cannot read - no bridge attached.");
 		return;
 	}
 
-	owner_.AddChatSystemMessage(fmt::format("Reading {} ({})...", item->name, eqt::inventory::describeSlot(slot)));
+	ctx_.out.System(fmt::format("Reading {} ({})...", item->name, eqt::inventory::describeSlot(slot)));
 	ctx_.bridge->pushIntent(eqt::events::ReadItemIntent{
 		item->bookFilename, static_cast<uint8_t>(item->bookType)});
 }
@@ -961,7 +961,7 @@ void eqt::commands::CommandsComponent::RequestReadItem(const std::string& args)
 void eqt::commands::CommandsComponent::RequestScribeItem(const std::string& args)
 {
 	if (args.empty()) {
-		owner_.AddChatSystemMessage("Usage: /scribe <slot> | /scribe <item name> (a spell scroll you are carrying)");
+		ctx_.out.System("Usage: /scribe <slot> | /scribe <item name> (a spell scroll you are carrying)");
 		return;
 	}
 
@@ -979,31 +979,31 @@ void eqt::commands::CommandsComponent::RequestScribeItem(const std::string& args
 	// prefix alone -- is the gate.
 	const uint32_t spellId = item->getScrollSpellId();
 	if (spellId == 0) {
-		owner_.AddChatSystemMessage(fmt::format("{} ({}) is not a spell scroll.",
+		ctx_.out.System(fmt::format("{} ({}) is not a spell scroll.",
 			item->name, eqt::inventory::describeSlot(slot)));
 		return;
 	}
 
 	if (!ctx_.spell_manager) {
-		owner_.AddChatSystemMessage("Cannot scribe - spell system not available.");
+		ctx_.out.System("Cannot scribe - spell system not available.");
 		return;
 	}
 
 	// Pre-flight the same refusals ScribeSpellFromScroll() guards with, so
 	// nothing touches the cursor for a scribe that was never going to work.
-	if (std::string refusal = owner_.Merchant().ScribeRefusalMessage(spellId); !refusal.empty()) {
-		owner_.AddChatSystemMessage(refusal);
+	if (std::string refusal = ctx_.Merchant().ScribeRefusalMessage(spellId); !refusal.empty()) {
+		ctx_.out.System(refusal);
 		return;
 	}
 
 	const int32_t bookSlot = ctx_.spell_manager->findFreeSpellbookSlot();
 	if (bookSlot < 0) {
-		owner_.AddChatSystemMessage("Your spellbook is full.");
+		ctx_.out.System("Your spellbook is full.");
 		return;
 	}
 
 	if (!ctx_.bridge) {
-		owner_.AddChatSystemMessage("Cannot scribe - no bridge attached.");
+		ctx_.out.System("Cannot scribe - no bridge attached.");
 		return;
 	}
 
@@ -1017,7 +1017,7 @@ void eqt::commands::CommandsComponent::RequestScribeItem(const std::string& args
 	// the move to the NEXT drain -- the packets would go out backwards.)
 	if (slot != eqt::inventory::CURSOR_SLOT) {
 		if (ctx_.inventory_manager->hasCursorItem()) {
-			owner_.AddChatSystemMessage("Your cursor is full - put down what you are holding first.");
+			ctx_.out.System("Your cursor is full - put down what you are holding first.");
 			return;
 		}
 		ctx_.inventory_manager->setSpellForScribe(spellId, slot);
@@ -1074,18 +1074,18 @@ void eqt::commands::CommandsComponent::RequestTradeskillCombine(int16_t containe
 {
 	if (containerSlot == eqt::inventory::SLOT_INVALID) {
 		if (ctx_.active_tradeskill_object_id == 0) {
-			owner_.AddChatSystemMessage("You must have a tradeskill container open.");
+			ctx_.out.System("You must have a tradeskill container open.");
 			return;
 		}
 		containerSlot = eqt::inventory::SLOT_TRADESKILL_EXPERIMENT_COMBINE;
 	} else {
 		if (!ctx_.inventory_manager) {
-			owner_.AddChatSystemMessage("Cannot combine - inventory not available.");
+			ctx_.out.System("Cannot combine - inventory not available.");
 			return;
 		}
 		const eqt::inventory::ItemInstance* item = ctx_.inventory_manager->getItem(containerSlot);
 		if (!item) {
-			owner_.AddChatSystemMessage(fmt::format("Nothing in {}.",
+			ctx_.out.System(fmt::format("Nothing in {}.",
 				eqt::inventory::describeSlot(containerSlot)));
 			return;
 		}
@@ -1093,14 +1093,14 @@ void eqt::commands::CommandsComponent::RequestTradeskillCombine(int16_t containe
 		// recognize specified tradeskill container" (T178: name what was
 		// asked for).
 		if (!item->isContainer()) {
-			owner_.AddChatSystemMessage(fmt::format("{} ({}) is not a container.",
+			ctx_.out.System(fmt::format("{} ({}) is not a container.",
 				item->name, eqt::inventory::describeSlot(containerSlot)));
 			return;
 		}
 	}
 
 	if (!ctx_.bridge) {
-		owner_.AddChatSystemMessage("Cannot combine - no bridge attached.");
+		ctx_.out.System("Cannot combine - no bridge attached.");
 		return;
 	}
 
@@ -1110,12 +1110,12 @@ void eqt::commands::CommandsComponent::RequestTradeskillCombine(int16_t containe
 void eqt::commands::CommandsComponent::RequestCloseTradeskillContainer()
 {
 	if (ctx_.active_tradeskill_object_id == 0) {
-		owner_.AddChatSystemMessage("You do not have a tradeskill container open.");
+		ctx_.out.System("You do not have a tradeskill container open.");
 		return;
 	}
 
 	if (!ctx_.bridge) {
-		owner_.AddChatSystemMessage("Cannot close the container - no bridge attached.");
+		ctx_.out.System("Cannot close the container - no bridge attached.");
 		return;
 	}
 

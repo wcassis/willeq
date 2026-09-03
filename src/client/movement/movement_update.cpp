@@ -74,7 +74,7 @@ void eqt::movement::MovementComponent::UpdateMovement()
 	if (owner_.m_pending_logout_disconnect) {
 		owner_.m_pending_logout_disconnect = false;
 		LOG_DEBUG(MOD_ZONE, "Processing deferred post-logout disconnect...");
-		owner_.Zone().DisconnectFromZone();
+		ctx_.Zone().DisconnectFromZone();
 		LOG_DEBUG(MOD_ZONE, "Deferred post-logout disconnect processed");
 		return;  // Don't process movement post-logout
 	}
@@ -92,13 +92,13 @@ void eqt::movement::MovementComponent::UpdateMovement()
 	// genuinely should disconnect, and this unit does not touch it.
 	if (ctx_.game_state.world().zoneChangeApproved()) {
 		ctx_.game_state.world().setZoneChangeApproved(false);  // T286: only store
-		if (owner_.Zone().BeginGracefulZoneOut()) {
+		if (ctx_.Zone().BeginGracefulZoneOut()) {
 			return;  // Wait for the source zone's acknowledgement (below)
 		}
 		// Nothing to hand off (no live zone connection) -- fall straight
 		// through to the hard teardown rather than stalling the transition.
 		LOG_DEBUG(MOD_ZONE, "Processing deferred zone change...");
-		owner_.Zone().ProcessDeferredZoneChange();
+		ctx_.Zone().ProcessDeferredZoneChange();
 		LOG_DEBUG(MOD_ZONE, "Deferred zone change processed");
 		return;  // Don't process movement while zone changing
 	}
@@ -108,15 +108,15 @@ void eqt::movement::MovementComponent::UpdateMovement()
 	// wedge zoning, so the teardown runs on the deadline regardless. Either
 	// way DisconnectFromZone() runs exactly once, so the old connection can
 	// never be leaked.
-	if (owner_.Zone().ZoneOutHandshakePending()) {
-		const bool timed_out = std::chrono::steady_clock::now() >= owner_.Zone().ZoneOutHandshakeDeadline();
-		if (owner_.Zone().ZoneOutAcknowledged() || timed_out) {
-			if (timed_out && !owner_.Zone().ZoneOutAcknowledged()) {
+	if (ctx_.Zone().ZoneOutHandshakePending()) {
+		const bool timed_out = std::chrono::steady_clock::now() >= ctx_.Zone().ZoneOutHandshakeDeadline();
+		if (ctx_.Zone().ZoneOutAcknowledged() || timed_out) {
+			if (timed_out && !ctx_.Zone().ZoneOutAcknowledged()) {
 				LOG_WARN(MOD_ZONE, "Source zone did not acknowledge zone-out within {} ms; tearing down anyway",
 					eqt::zone::ZoneComponent::kZoneOutHandshakeTimeoutMs);
 			}
 			LOG_DEBUG(MOD_ZONE, "Processing deferred zone change...");
-			owner_.Zone().ProcessDeferredZoneChange();  // clears the handshake flags
+			ctx_.Zone().ProcessDeferredZoneChange();  // clears the handshake flags
 			LOG_DEBUG(MOD_ZONE, "Deferred zone change processed");
 		}
 		return;  // Don't process movement while zone changing
@@ -129,27 +129,27 @@ void eqt::movement::MovementComponent::UpdateMovement()
 	// FindNextHuntTarget) and reads m_entities, both game-thread data. Same
 	// gate the old loop had (m_update_running && IsFullyZonedIn()); Update()
 	// paces itself at kUpdateIntervalMs so the per-tick call is cheap.
-	if (ctx_.combat_manager && owner_.IsFullyZonedIn()) {
+	if (ctx_.combat_manager && ctx_.self.IsFullyZonedIn()) {
 		ctx_.combat_manager->Update();
 	}
 
 	// Update camp timer
-	owner_.Player().UpdateCampTimer();
+	ctx_.Player().UpdateCampTimer();
 
 	// Check distance to banker NPC - close bank if player moved too far
-	if (owner_.IsBankWindowOpen() && ctx_.game_state.player().bankerNpcId() != 0) {
+	if (ctx_.self.IsBankWindowOpen() && ctx_.game_state.player().bankerNpcId() != 0) {
 		auto it = ctx_.entities.find(ctx_.game_state.player().bankerNpcId());
 		if (it == ctx_.entities.end()) {
 			// Banker NPC no longer exists (despawned, etc.)
 			LOG_DEBUG(MOD_INVENTORY, "Banker NPC {} no longer exists, closing bank", ctx_.game_state.player().bankerNpcId());
-			owner_.Merchant().CloseBankWindow();
+			ctx_.Merchant().CloseBankWindow();
 		} else {
-			float dist = CalculateDistance2D(owner_.PosX(), owner_.PosY(), it->second.x, it->second.y);
+			float dist = CalculateDistance2D(ctx_.self.PosX(), ctx_.self.PosY(), it->second.x, it->second.y);
 			if (dist > NPC_INTERACTION_DISTANCE) {
 				LOG_DEBUG(MOD_INVENTORY, "Player moved too far from banker ({:.1f} > {:.1f}), closing bank",
 					dist, NPC_INTERACTION_DISTANCE);
-				owner_.Merchant().CloseBankWindow();
-				owner_.AddChatSystemMessage("You have moved too far from the banker.");
+				ctx_.Merchant().CloseBankWindow();
+				ctx_.out.System("You have moved too far from the banker.");
 			}
 		}
 	}
@@ -168,7 +168,7 @@ void eqt::movement::MovementComponent::UpdateMovement()
 	if (ctx_.game_state.player().moveForward() || ctx_.game_state.player().moveBackward() || ctx_.game_state.player().turnLeft() || ctx_.game_state.player().turnRight()) {
 		UpdateKeyboardMovement();
 		// Check for zone line collision
-		owner_.Zone().CheckZoneLine();
+		ctx_.Zone().CheckZoneLine();
 		// SendPositionUpdate has internal 250ms throttling
 		SendPositionUpdate();
 		// Don't process other movement if using keyboard
@@ -187,8 +187,8 @@ void eqt::movement::MovementComponent::UpdateMovement()
 			const Entity& entity = pair.second;
 			if (entity.name == ctx_.game_state.player().followTarget()) {
 				// Check if we're close enough
-				float dist = CalculateDistance2D(owner_.PosX(), owner_.PosY(), entity.x, entity.y);
-				float z_diff = std::abs(owner_.PosZ() - entity.z);
+				float dist = CalculateDistance2D(ctx_.self.PosX(), ctx_.self.PosY(), entity.x, entity.y);
+				float z_diff = std::abs(ctx_.self.PosZ() - entity.z);
 				
 				// Log follow status periodically
 				static std::chrono::steady_clock::time_point last_follow_log = std::chrono::steady_clock::now();
@@ -227,8 +227,8 @@ void eqt::movement::MovementComponent::UpdateMovement()
 						LOG_DEBUG(MOD_MAIN, "UpdateMovement: Target moved significantly (dist={:.2f})", final_dest_dist);
 						if (m_use_pathfinding && m_pathfinder) {
 							// Find path from current position to target
-							LOG_DEBUG(MOD_MAIN, "UpdateMovement: Recalculating path from ({:.2f},{:.2f},{:.2f}) to ({:.2f},{:.2f},{:.2f})", owner_.PosX(), owner_.PosY(), owner_.PosZ(), entity.x, entity.y, entity.z);
-							if (FindPath(owner_.PosX(), owner_.PosY(), owner_.PosZ(), entity.x, entity.y, entity.z)) {
+							LOG_DEBUG(MOD_MAIN, "UpdateMovement: Recalculating path from ({:.2f},{:.2f},{:.2f}) to ({:.2f},{:.2f},{:.2f})", ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ(), entity.x, entity.y, entity.z);
+							if (FindPath(ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ(), entity.x, entity.y, entity.z)) {
 								// Start following the path
 								m_current_path_index = 0;
 								ctx_.game_state.player().setMoving(true);
@@ -259,18 +259,18 @@ void eqt::movement::MovementComponent::UpdateMovement()
 	
 	// Always update jump if jumping, even when not moving
 	if (ctx_.game_state.player().isJumping()) {
-		float old_z = owner_.PosZ();
+		float old_z = ctx_.self.PosZ();
 		UpdateJump();
 		
 		// If Z changed, send position update immediately
-		if (owner_.PosZ() != old_z) {
+		if (ctx_.self.PosZ() != old_z) {
 			SendPositionUpdate();
 		}
 	}
 	
 	if (!ctx_.game_state.player().isMoving()) {
 		// Still check for zone lines when stopped (player might have stopped in one)
-		owner_.Zone().CheckZoneLine();
+		ctx_.Zone().CheckZoneLine();
 
 		// Send idle position updates like real clients (every 1-2 seconds)
 		static std::map<EverQuest*, std::chrono::steady_clock::time_point> last_idle_updates;
@@ -292,14 +292,14 @@ void eqt::movement::MovementComponent::UpdateMovement()
 	if (!m_current_path.empty() && m_current_path_index < m_current_path.size()) {
 		// Check if we've reached the current waypoint
 		const auto& waypoint = m_current_path[m_current_path_index];
-		float dist_to_waypoint = CalculateDistance2D(owner_.PosX(), owner_.PosY(), waypoint.x, waypoint.y);
+		float dist_to_waypoint = CalculateDistance2D(ctx_.self.PosX(), ctx_.self.PosY(), waypoint.x, waypoint.y);
 
 		// Always log path progress for debugging coordinate issues
 		static auto last_path_debug = std::chrono::steady_clock::now();
 		auto now_path_debug = std::chrono::steady_clock::now();
 		if (std::chrono::duration_cast<std::chrono::milliseconds>(now_path_debug - last_path_debug).count() >= 500) {
 			LOG_INFO(MOD_MAIN, "Path progress: pos=({:.1f},{:.1f},{:.1f}) waypoint[{}]=({:.1f},{:.1f},{:.1f}) dist={:.1f}",
-				owner_.PosX(), owner_.PosY(), owner_.PosZ(), m_current_path_index, waypoint.x, waypoint.y, waypoint.z, dist_to_waypoint);
+				ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ(), m_current_path_index, waypoint.x, waypoint.y, waypoint.z, dist_to_waypoint);
 			last_path_debug = now_path_debug;
 		}
 
@@ -342,7 +342,7 @@ void eqt::movement::MovementComponent::UpdateMovement()
 		}
 		
 		// Check both 2D distance and Z difference for waypoint reached
-		float z_diff_to_waypoint = std::abs(owner_.PosZ() - waypoint.z);
+		float z_diff_to_waypoint = std::abs(ctx_.self.PosZ() - waypoint.z);
 		bool waypoint_reached = (dist_to_waypoint < 5.0f && z_diff_to_waypoint < 10.0f) || dist_to_waypoint < 3.0f;
 		
 		if (waypoint_reached) { // Within range of waypoint
@@ -360,7 +360,7 @@ void eqt::movement::MovementComponent::UpdateMovement()
 				const auto& next_waypoint = m_current_path[m_current_path_index];
 				
 				// Check if the next waypoint is different enough from current position
-				float dist_to_next = CalculateDistance2D(owner_.PosX(), owner_.PosY(), next_waypoint.x, next_waypoint.y);
+				float dist_to_next = CalculateDistance2D(ctx_.self.PosX(), ctx_.self.PosY(), next_waypoint.x, next_waypoint.y);
 				if (dist_to_next > 2.0f) {  // Only move if it's far enough away
 					MoveTo(next_waypoint.x, next_waypoint.y, next_waypoint.z);
 
@@ -392,14 +392,14 @@ void eqt::movement::MovementComponent::UpdateMovement()
 	auto now_debug = std::chrono::steady_clock::now();
 	if (ShouldLog(MOD_MOVEMENT, LOG_DEBUG) && std::chrono::duration_cast<std::chrono::seconds>(now_debug - last_target_debug).count() >= 1) {
 		LOG_DEBUG(MOD_MOVEMENT, "Movement target check: current=({:.1f},{:.1f},{:.1f}) target=({:.1f},{:.1f},{:.1f}) path_size={} path_index={}",
-			owner_.PosX(), owner_.PosY(), owner_.PosZ(), ctx_.game_state.player().targetX(), ctx_.game_state.player().targetY(), ctx_.game_state.player().targetZ(), m_current_path.size(), m_current_path_index);
+			ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ(), ctx_.game_state.player().targetX(), ctx_.game_state.player().targetY(), ctx_.game_state.player().targetZ(), m_current_path.size(), m_current_path_index);
 		last_target_debug = now_debug;
 	}
 
 	// Calculate distance to target
-	float dx = ctx_.game_state.player().targetX() - owner_.PosX();
-	float dy = ctx_.game_state.player().targetY() - owner_.PosY();
-	float dz = ctx_.game_state.player().targetZ() - owner_.PosZ();
+	float dx = ctx_.game_state.player().targetX() - ctx_.self.PosX();
+	float dy = ctx_.game_state.player().targetY() - ctx_.self.PosY();
+	float dz = ctx_.game_state.player().targetZ() - ctx_.self.PosZ();
 	float distance = std::sqrt(dx * dx + dy * dy + dz * dz);
 
 	// Check if we've reached the target
@@ -407,7 +407,7 @@ void eqt::movement::MovementComponent::UpdateMovement()
 		LOG_DEBUG(MOD_MOVEMENT, "Reached target at distance {:.2f}, target=({:.1f},{:.1f},{:.1f})",
 			distance, ctx_.game_state.player().targetX(), ctx_.game_state.player().targetY(), ctx_.game_state.player().targetZ());
 
-		owner_.SetPosLocal(ctx_.game_state.player().targetX(), ctx_.game_state.player().targetY(),
+		ctx_.self.SetPosLocal(ctx_.game_state.player().targetX(), ctx_.game_state.player().targetY(),
 		            ctx_.game_state.player().targetZ());
 
 		// If following a path, check for next waypoint
@@ -464,31 +464,31 @@ void eqt::movement::MovementComponent::UpdateMovement()
 	static auto last_move_debug = std::chrono::steady_clock::now();
 	if (EverQuest::s_debug_level >= 1 && ctx_.game_state.combat().inCombatMovement() && 
 	    std::chrono::duration_cast<std::chrono::seconds>(now_movement - last_move_debug).count() >= 1) {
-		LOG_DEBUG(MOD_MAIN, "Movement update: pos=({:.1f},{:.1f},{:.1f}) target=({:.1f},{:.1f},{:.1f}) dist={:.1f} speed={:.1f} step={:.1f}", owner_.PosX(), owner_.PosY(), owner_.PosZ(), ctx_.game_state.player().targetX(), ctx_.game_state.player().targetY(), ctx_.game_state.player().targetZ(), distance, current_speed, step);
+		LOG_DEBUG(MOD_MAIN, "Movement update: pos=({:.1f},{:.1f},{:.1f}) target=({:.1f},{:.1f},{:.1f}) dist={:.1f} speed={:.1f} step={:.1f}", ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ(), ctx_.game_state.player().targetX(), ctx_.game_state.player().targetY(), ctx_.game_state.player().targetZ(), distance, current_speed, step);
 		last_move_debug = now_movement;
 	}
 	
 	// Normalize direction and move
 	float factor = step / distance;
-	float old_x = owner_.PosX();
-	float old_y = owner_.PosY();
-	owner_.SetPosLocal(owner_.PosX() + dx * factor, owner_.PosY() + dy * factor, owner_.PosZ() + dz * factor);
+	float old_x = ctx_.self.PosX();
+	float old_y = ctx_.self.PosY();
+	ctx_.self.SetPosLocal(ctx_.self.PosX() + dx * factor, ctx_.self.PosY() + dy * factor, ctx_.self.PosZ() + dz * factor);
 	
 	// Debug: verify position actually changed
 	if (EverQuest::s_debug_level >= 1 && ctx_.game_state.combat().inCombatMovement()) {
-		LOG_DEBUG(MOD_MAIN, "Position update: ({:.1f},{:.1f}) -> ({:.1f},{:.1f}) delta=({:.3f},{:.3f})", old_x, old_y, owner_.PosX(), owner_.PosY(), owner_.PosX() - old_x, owner_.PosY() - old_y);
+		LOG_DEBUG(MOD_MAIN, "Position update: ({:.1f},{:.1f}) -> ({:.1f},{:.1f}) delta=({:.3f},{:.3f})", old_x, old_y, ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosX() - old_x, ctx_.self.PosY() - old_y);
 	}
 	
 	// Update heading (from the pre-step position to the post-step position;
 	// old_x/old_y ARE that pre-step position -- identical arithmetic to the
 	// pre-T288 `PosX() - dx * factor` form, which recomputed it)
-	owner_.SetHeadingLocal(CalculateHeading(old_x, old_y, owner_.PosX(), owner_.PosY()));
+	ctx_.self.SetHeadingLocal(CalculateHeading(old_x, old_y, ctx_.self.PosX(), ctx_.self.PosY()));
 
 	// Update bridge position for console-driven movement (moveto, follow, etc.)
 	if (ctx_.bridge) {
 		eqt::state::PlayerMovedData pdata;
-		pdata.x = owner_.PosX(); pdata.y = owner_.PosY(); pdata.z = owner_.PosZ();
-		pdata.heading = owner_.HeadingDeg();
+		pdata.x = ctx_.self.PosX(); pdata.y = ctx_.self.PosY(); pdata.z = ctx_.self.PosZ();
+		pdata.heading = ctx_.self.HeadingDeg();
 		pdata.dx = dx; pdata.dy = dy; pdata.dz = dz;
 		pdata.isMoving = true;
 		ctx_.bridge->pushEvent(eqt::state::GameEvent(
@@ -523,11 +523,11 @@ void eqt::movement::MovementComponent::UpdateMovement()
 	
 	// Update jump if jumping
 	bool was_jumping = ctx_.game_state.player().isJumping();
-	float old_z = owner_.PosZ();
+	float old_z = ctx_.self.PosZ();
 	UpdateJump();
 	
 	// If jumping and Z changed, send position update immediately
-	if (ctx_.game_state.player().isJumping() && owner_.PosZ() != old_z) {
+	if (ctx_.game_state.player().isJumping() && ctx_.self.PosZ() != old_z) {
 		SendPositionUpdate();
 		m_last_position_update_time = now;
 	}
@@ -542,13 +542,13 @@ void eqt::movement::MovementComponent::UpdateMovement()
 		auto z_fix_elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_z_fix_times[&owner_]);
 		// Fix Z every 1000ms while moving (once per second to reduce adjustments)
 		if (z_fix_elapsed.count() >= 1000) {
-			owner_.Zone().FixZ();
+			ctx_.Zone().FixZ();
 			last_z_fix_times[&owner_] = now;
 		}
 	}
 	
 	// Check for zone line collision
-	owner_.Zone().CheckZoneLine();
+	ctx_.Zone().CheckZoneLine();
 
 	// Send position update with proper throttling per instance
 	if (!m_last_position_update_time.time_since_epoch().count()) {
@@ -570,9 +570,9 @@ void eqt::movement::MovementComponent::SendPositionUpdate()
 	// T88 test seam: m_test_bypass_send_guard skips this guard (and the
 	// throttle below) so a headless test can reach the encoder logic
 	// without a live m_zone_connection. See Test_SetBypassSendGuardForSeam.
-	if (!owner_.m_test_bypass_send_guard && (!owner_.IsFullyZonedIn() || !ctx_.zone_connection)) {
+	if (!owner_.m_test_bypass_send_guard && (!ctx_.self.IsFullyZonedIn() || !ctx_.zone_connection)) {
 		LOG_DEBUG(MOD_MOVEMENT, "SendPositionUpdate skipped: zoned_in={} zone_conn={}",
-			owner_.IsFullyZonedIn(), ctx_.zone_connection != nullptr);
+			ctx_.self.IsFullyZonedIn(), ctx_.zone_connection != nullptr);
 		return;
 	}
 
@@ -606,16 +606,16 @@ void eqt::movement::MovementComponent::SendPositionUpdate()
 	
 	// Initialize last position if this is the first update
 	if (force_update || last_positions.find(&owner_) == last_positions.end()) {
-		last_positions[&owner_] = std::make_tuple(owner_.PosX(), owner_.PosY(), owner_.PosZ(), owner_.HeadingDeg());
+		last_positions[&owner_] = std::make_tuple(ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ(), ctx_.self.HeadingDeg());
 	}
 	
 	auto& [last_x, last_y, last_z, last_heading] = last_positions[&owner_];
 	
 	// Calculate deltas
-	float delta_x = owner_.PosX() - last_x;
-	float delta_y = owner_.PosY() - last_y;
-	float delta_z = owner_.PosZ() - last_z;
-	float delta_heading_deg = owner_.HeadingDeg() - last_heading;
+	float delta_x = ctx_.self.PosX() - last_x;
+	float delta_y = ctx_.self.PosY() - last_y;
+	float delta_z = ctx_.self.PosZ() - last_z;
+	float delta_heading_deg = ctx_.self.HeadingDeg() - last_heading;
 	
 	// Normalize delta heading to -180 to 180
 	while (delta_heading_deg > 180.0f) delta_heading_deg -= 360.0f;
@@ -632,7 +632,7 @@ void eqt::movement::MovementComponent::SendPositionUpdate()
 	//
 	// C->S transformation: -(client heading) + 90 to match server convention
 	// Inverse of S->C transformation (client heading = 90 - server_h)
-	float server_heading = 90.0f - owner_.HeadingDeg();
+	float server_heading = 90.0f - ctx_.self.HeadingDeg();
 	if (server_heading < 0.0f) server_heading += 360.0f;
 	if (server_heading >= 360.0f) server_heading -= 360.0f;
 	int heading_raw = static_cast<int>(server_heading * 2048.0f / 360.0f);
@@ -641,7 +641,7 @@ void eqt::movement::MovementComponent::SendPositionUpdate()
 	
 	if (EverQuest::s_debug_level >= 2) {
 		LOG_DEBUG(MOD_MOVEMENT, "POS C->S [SELF] heading={:.2f}deg -> server_heading={:.2f}deg -> heading_scaled={} (12-bit)",
-			owner_.HeadingDeg(), server_heading, heading_scaled);
+			ctx_.self.HeadingDeg(), server_heading, heading_scaled);
 	}
 	
 	// Build the client position update body. The wire layout is 36 bytes of
@@ -667,28 +667,28 @@ void eqt::movement::MovementComponent::SendPositionUpdate()
 
 	// Use the spawn ID we extracted from PlayerProfile or ZoneSpawns
 	// This is what the server expects in ClientUpdate packets
-	update.spawn_id = owner_.MySpawnId();
+	update.spawn_id = ctx_.self.MySpawnId();
 	ctx_.game_state.player().incrementMovementSequence();
 	update.sequence = ctx_.game_state.player().movementSequence();
 
 	// Validate that we have a valid spawn ID
-	if (owner_.MySpawnId() == 0) {
+	if (ctx_.self.MySpawnId() == 0) {
 		LOG_ERROR(MOD_MOVEMENT, "SendMovementUpdate called with a spawn id of 0! Not sending update.");
 		return;
 	}
 
 	// Check if we're accidentally using another player's ID
-	auto it = ctx_.entities.find(owner_.MySpawnId());
+	auto it = ctx_.entities.find(ctx_.self.MySpawnId());
 	if (it != ctx_.entities.end() && it->second.name != ctx_.character) {
 		LOG_WARN(MOD_MOVEMENT, "m_my_spawn_id {} belongs to '{}', not our character '{}'!",
-			owner_.MySpawnId(), it->second.name, ctx_.character);
+			ctx_.self.MySpawnId(), it->second.name, ctx_.character);
 	}
 	
 	// Convert from internal coordinate system back to server coordinate system
 	// When receiving from server: client x = server y, client y = server x (see ZoneProcessPlayerProfile)
 	// So to send back: server's y_pos = client x, server's x_pos = client y
-	update.y_pos = owner_.PosX();  // client x holds server's original y
-	update.x_pos = owner_.PosY();  // client y holds server's original x
+	update.y_pos = ctx_.self.PosX();  // client x holds server's original y
+	update.x_pos = ctx_.self.PosY();  // client y holds server's original x
 	// T311: PosZ() is the RENDER frame (the model node's origin, which the
 	// renderer snaps to groundZ + collisionZOffset). The WIRE frame is
 	// groundZ + 0.625*size -- MEASURED off the official Titanium client
@@ -711,8 +711,8 @@ void eqt::movement::MovementComponent::SendPositionUpdate()
 	// compounds 0.625 per zone-in -- measured 3.63 -> 4.25 -> 4.88 over three
 	// logins. Send it back verbatim until the renderer has told us the offset.
 	update.z_pos = ctx_.game_state.player().zAwaitingFrameConversion()
-		? owner_.PosZ()
-		: eqt::renderZToWireZ(owner_.PosZ(),
+		? ctx_.self.PosZ()
+		: eqt::renderZToWireZ(ctx_.self.PosZ(),
 		                      ctx_.game_state.player().collisionZOffset(),
 		                      ctx_.game_state.player().size());
 	// Deltas follow the same transformation:
@@ -747,9 +747,9 @@ void eqt::movement::MovementComponent::SendPositionUpdate()
 	if (EverQuest::s_debug_level >= 2) {
 		// Log server coordinates (x_pos, y_pos) = (client y, client x) due to coordinate swap
 		LOG_DEBUG(MOD_MOVEMENT, "POS C->S spawn_id={} server_pos=({:.2f}, {:.2f}, {:.2f}) heading={:.1f} anim={} server_delta=({:.2f}, {:.2f}, {:.2f})",
-			owner_.MySpawnId(), update.x_pos, update.y_pos, update.z_pos, owner_.HeadingDeg(), ctx_.game_state.player().animation(), update.delta_x, update.delta_y, update.delta_z);
+			ctx_.self.MySpawnId(), update.x_pos, update.y_pos, update.z_pos, ctx_.self.HeadingDeg(), ctx_.game_state.player().animation(), update.delta_x, update.delta_y, update.delta_z);
 		LOG_DEBUG(MOD_MOVEMENT, "POS C->S [SELF] client_pos=({:.2f},{:.2f},{:.2f}) -> server_pos=({:.2f},{:.2f},{:.2f})",
-			owner_.PosX(), owner_.PosY(), owner_.PosZ(), update.x_pos, update.y_pos, update.z_pos);
+			ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ(), update.x_pos, update.y_pos, update.z_pos);
 	}
 
 	// T88 test seam: capture what was actually computed, unconditionally,
@@ -761,28 +761,28 @@ void eqt::movement::MovementComponent::SendPositionUpdate()
 	m_test_last_sent_update.heading_scaled = update.heading_and_padding;
 
 	EverQuest::DumpPacket("C->S", HC_OP_ClientUpdate, p);
-	owner_.SafeQueueZonePacket(p, 0, false);  // Send unreliable
+	ctx_.net.SafeQueueZone(p, 0, false);  // Send unreliable
 	
 	// Update last position
-	last_x = owner_.PosX();
-	last_y = owner_.PosY();
-	last_z = owner_.PosZ();
-	last_heading = owner_.HeadingDeg();
+	last_x = ctx_.self.PosX();
+	last_y = ctx_.self.PosY();
+	last_z = ctx_.self.PosZ();
+	last_heading = ctx_.self.HeadingDeg();
 	
 	// Track movement history for anti-cheat
 	eqt::zone::ZoneComponent::MovementHistoryEntry history_entry;
-	history_entry.x = owner_.PosX();
-	history_entry.y = owner_.PosY();
-	history_entry.z = owner_.PosZ();
+	history_entry.x = ctx_.self.PosX();
+	history_entry.y = ctx_.self.PosY();
+	history_entry.z = ctx_.self.PosZ();
 	history_entry.type = 1; // Normal movement (Collision type)
 	history_entry.timestamp = static_cast<uint32_t>(std::time(nullptr));
 	
-	owner_.Zone().MovementHistory().push_back(history_entry);
+	ctx_.Zone().MovementHistory().push_back(history_entry);
 	
 	// Send movement history every second (matching client behavior)
 	uint32_t current_time = static_cast<uint32_t>(std::time(nullptr));
-	if (current_time - owner_.Zone().LastMovementHistorySend() >= 1) {
-		owner_.Zone().LastMovementHistorySend() = current_time;  // Update timestamp BEFORE sending to prevent duplicates
+	if (current_time - ctx_.Zone().LastMovementHistorySend() >= 1) {
+		ctx_.Zone().LastMovementHistorySend() = current_time;  // Update timestamp BEFORE sending to prevent duplicates
 		try {
 			SendMovementHistory();
 		}
@@ -802,7 +802,7 @@ float eqt::movement::MovementComponent::CalculateHeading(float x1, float y1, flo
 	
 	// If we're not moving, preserve current heading
 	if (std::abs(dx) < 0.001f && std::abs(dy) < 0.001f) {
-		return owner_.HeadingDeg();
+		return ctx_.self.HeadingDeg();
 	}
 	
 	// Calculate angle in radians

@@ -80,7 +80,7 @@ void eqt::movement::MovementComponent::LoadPathfinder(const std::string& zone_na
 	
 	try {
 		// Use the IPathfinder factory method to load the navigation mesh
-		m_pathfinder.reset(IPathfinder::Load(zone_name, owner_.Zone().NavmeshPath()));
+		m_pathfinder.reset(IPathfinder::Load(zone_name, ctx_.Zone().NavmeshPath()));
 		
 		if (m_pathfinder) {
 			// Check if it's actually a PathfinderNavmesh vs PathfinderNull
@@ -188,7 +188,7 @@ bool eqt::movement::MovementComponent::FindPath(float start_x, float start_y, fl
 void eqt::movement::MovementComponent::MoveToWithPath(float x, float y, float z)
 {
 	// T88 test seam: see Test_SetBypassSendGuardForSeam's comment in eq.h.
-	if (!owner_.m_test_bypass_send_guard && !owner_.IsFullyZonedIn()) {
+	if (!owner_.m_test_bypass_send_guard && !ctx_.self.IsFullyZonedIn()) {
 		LOG_ERROR(MOD_PATHFIND, "Not in zone yet");
 		return;
 	}
@@ -200,11 +200,11 @@ void eqt::movement::MovementComponent::MoveToWithPath(float x, float y, float z)
 	}
 	
 	// Find path from current position to target
-	if (FindPath(owner_.PosX(), owner_.PosY(), owner_.PosZ(), x, y, z)) {
+	if (FindPath(ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ(), x, y, z)) {
 		// Face the final destination immediately
-		float new_heading = CalculateHeading(owner_.PosX(), owner_.PosY(), x, y);
-		if (std::abs(new_heading - owner_.HeadingDeg()) > 0.1f) {
-			owner_.SetHeadingLocal(new_heading);
+		float new_heading = CalculateHeading(ctx_.self.PosX(), ctx_.self.PosY(), x, y);
+		if (std::abs(new_heading - ctx_.self.HeadingDeg()) > 0.1f) {
+			ctx_.self.SetHeadingLocal(new_heading);
 			SendPositionUpdate();
 		}
 		
@@ -228,7 +228,7 @@ void eqt::movement::MovementComponent::FollowPath()
 	// Skip waypoints that are too close to current position (within 1 unit)
 	while (m_current_path_index < m_current_path.size()) {
 		const auto& waypoint = m_current_path[m_current_path_index];
-		float dist = CalculateDistance2D(owner_.PosX(), owner_.PosY(), waypoint.x, waypoint.y);
+		float dist = CalculateDistance2D(ctx_.self.PosX(), ctx_.self.PosY(), waypoint.x, waypoint.y);
 		
 		if (dist > 1.0f) {
 			// This waypoint is far enough, move to it
@@ -310,32 +310,32 @@ void eqt::movement::MovementComponent::SetPositionState(PositionState state)
 
 	switch (state) {
 		case POS_STANDING:
-			owner_.Entities().SendSpawnAppearance(AT_ANIMATION, 100);  // Animation::Standing
+			ctx_.Entities().SendSpawnAppearance(AT_ANIMATION, 100);  // Animation::Standing
 			if (ctx_.game_state.player().isMoving()) {
 				StopMovement();
 			}
 			// Cancel camp timer if standing up
 			if (ctx_.game_state.player().isCamping()) {
-				owner_.Player().CancelCamp();
+				ctx_.Player().CancelCamp();
 			}
 			break;
 		case POS_SITTING:
-			owner_.Entities().SendSpawnAppearance(AT_ANIMATION, 110);  // Animation::Sitting
+			ctx_.Entities().SendSpawnAppearance(AT_ANIMATION, 110);  // Animation::Sitting
 			if (ctx_.game_state.player().isMoving()) {
 				StopMovement();
 			}
 			break;
 		case POS_CROUCHING:
-			owner_.Entities().SendSpawnAppearance(AT_ANIMATION, 111);  // Animation::Crouching
+			ctx_.Entities().SendSpawnAppearance(AT_ANIMATION, 111);  // Animation::Crouching
 			break;
 		case POS_FEIGN_DEATH:
-			owner_.Entities().SendSpawnAppearance(AT_ANIMATION, ANIM_LYING);  // Use lying animation for feign death
+			ctx_.Entities().SendSpawnAppearance(AT_ANIMATION, ANIM_LYING);  // Use lying animation for feign death
 			if (ctx_.game_state.player().isMoving()) {
 				StopMovement();
 			}
 			break;
 		case POS_DEAD:
-			owner_.Entities().SendSpawnAppearance(AT_DIE, 0);  // Use AT_DIE for actual death
+			ctx_.Entities().SendSpawnAppearance(AT_DIE, 0);  // Use AT_DIE for actual death
 			if (ctx_.game_state.player().isMoving()) {
 				StopMovement();
 			}
@@ -350,7 +350,7 @@ void eqt::movement::MovementComponent::SetPositionState(PositionState state)
 
 void eqt::movement::MovementComponent::SendJump()
 {
-	if (!owner_.IsFullyZonedIn()) {
+	if (!ctx_.self.IsFullyZonedIn()) {
 		return;
 	}
 	
@@ -368,7 +368,7 @@ void eqt::movement::MovementComponent::SendJump()
 
 void eqt::movement::MovementComponent::SendMovementHistory()
 {
-	if (!owner_.IsFullyZonedIn() || owner_.Zone().MovementHistory().empty() || !ctx_.zone_connection) {
+	if (!ctx_.self.IsFullyZonedIn() || ctx_.Zone().MovementHistory().empty() || !ctx_.zone_connection) {
 		return;
 	}
 
@@ -383,11 +383,11 @@ void eqt::movement::MovementComponent::SendMovementHistory()
 		static_cast<uint32_t>(std::time(nullptr)),
 		static_cast<void*>(ctx_.zone_connection.get()),
 		ctx_.game_state.world().isZoneConnected(),
-		owner_.Zone().MovementHistory().size());
+		ctx_.Zone().MovementHistory().size());
 
 	// Limit history to last 70 entries (similar to what client sends)
-	while (owner_.Zone().MovementHistory().size() > 70) {
-		owner_.Zone().MovementHistory().pop_front();
+	while (ctx_.Zone().MovementHistory().size() > 70) {
+		ctx_.Zone().MovementHistory().pop_front();
 	}
 
 	// For unreliable packets, we have a max of ~250 bytes (255 - CRC)
@@ -398,10 +398,10 @@ void eqt::movement::MovementComponent::SendMovementHistory()
 
 	// Real clients send all entries in one packet, so we must send as reliable
 	// to match their behavior (they send 67-70 entries = 1139-1190 bytes + 2 = 1141-1192 total)
-	size_t packet_size = 2 + (owner_.Zone().MovementHistory().size() * sizeof(eqt::zone::ZoneComponent::MovementHistoryEntry));
+	size_t packet_size = 2 + (ctx_.Zone().MovementHistory().size() * sizeof(eqt::zone::ZoneComponent::MovementHistoryEntry));
 
 	LOG_TRACE(MOD_ZONE, "Creating OP_FloatListThing packet: {} entries, {} bytes total",
-		owner_.Zone().MovementHistory().size(), packet_size);
+		ctx_.Zone().MovementHistory().size(), packet_size);
 
 	EQ::Net::DynamicPacket p;
 	p.Resize(packet_size);
@@ -411,7 +411,7 @@ void eqt::movement::MovementComponent::SendMovementHistory()
 	// Pack movement entries
 	size_t offset = 2;
 	try {
-		for (const auto& entry : owner_.Zone().MovementHistory()) {
+		for (const auto& entry : ctx_.Zone().MovementHistory()) {
 			// UpdateMovementEntry struct layout:
 			// float Y, float X, float Z, uint8 type, uint32 timestamp
 			p.PutFloat(offset, entry.y);      // Y first
@@ -427,11 +427,11 @@ void eqt::movement::MovementComponent::SendMovementHistory()
 		}
 
 		// Send as reliable since it exceeds unreliable packet size limit
-		if (!owner_.SafeQueueZonePacket(p, 0, true)) {  // Send reliable
+		if (!ctx_.net.SafeQueueZone(p, 0, true)) {  // Send reliable
 			LOG_ERROR(MOD_ZONE, "Failed to queue OP_FloatListThing packet - SafeQueueZonePacket returned false");
 		} else {
 			LOG_TRACE(MOD_ZONE, "Successfully queued OP_FloatListThing with {} movement entries ({} bytes) as reliable",
-				owner_.Zone().MovementHistory().size(), packet_size);
+				ctx_.Zone().MovementHistory().size(), packet_size);
 		}
 	}
 	catch (const std::exception& e) {
@@ -453,7 +453,7 @@ void eqt::movement::MovementComponent::Jump()
 	
 	// Allow jumping while moving or standing
 	ctx_.game_state.player().setJumping(true);
-	ctx_.game_state.player().setJumpStartZ(owner_.PosZ());
+	ctx_.game_state.player().setJumpStartZ(ctx_.self.PosZ());
 	ctx_.game_state.player().setJumpStartTime(std::chrono::steady_clock::now());
 	
 	// Real clients have a tiny position shift when jumping (to trigger server broadcasts)
@@ -464,13 +464,13 @@ void eqt::movement::MovementComponent::Jump()
 	
 	// Apply tiny shift to X or Y position (alternate between them)
 	if (jump_count % 4 < 2) {
-		owner_.SetPosLocal(owner_.PosX() + tiny_shift, owner_.PosY(), owner_.PosZ());
+		ctx_.self.SetPosLocal(ctx_.self.PosX() + tiny_shift, ctx_.self.PosY(), ctx_.self.PosZ());
 	} else {
-		owner_.SetPosLocal(owner_.PosX(), owner_.PosY() + tiny_shift, owner_.PosZ());
+		ctx_.self.SetPosLocal(ctx_.self.PosX(), ctx_.self.PosY() + tiny_shift, ctx_.self.PosZ());
 	}
 	
 	// Real clients send standing animation before jumping
-	owner_.Entities().SendSpawnAppearance(AT_ANIMATION, ANIM_STANDING);   // 100
+	ctx_.Entities().SendSpawnAppearance(AT_ANIMATION, ANIM_STANDING);   // 100
 	
 	// Send OP_Jump packet like real clients do
 	SendJump();
@@ -478,7 +478,7 @@ void eqt::movement::MovementComponent::Jump()
 	// Don't set animation to jump - real clients keep animation at 0 in ClientUpdate
 	
 	if (EverQuest::s_debug_level >= 1) {
-		LOG_DEBUG(MOD_MAIN, "Jump initiated from z={}", owner_.PosZ());
+		LOG_DEBUG(MOD_MAIN, "Jump initiated from z={}", ctx_.self.PosZ());
 	}
 	
 	// Don't block - let the update loop handle the jump
@@ -503,7 +503,7 @@ void eqt::movement::MovementComponent::UpdateJump()
 		// Jump complete
 		ctx_.game_state.player().setJumping(false);
 		// Return to original height (or use FixZ)
-		owner_.SetPosLocal(owner_.PosX(), owner_.PosY(), ctx_.game_state.player().jumpStartZ());
+		ctx_.self.SetPosLocal(ctx_.self.PosX(), ctx_.self.PosY(), ctx_.game_state.player().jumpStartZ());
 		
 		// Return to appropriate animation
 		if (ctx_.game_state.player().isMoving()) {
@@ -519,13 +519,13 @@ void eqt::movement::MovementComponent::UpdateJump()
 		// Calculate jump height using parabola
 		float t = elapsed / jump_duration_ms;  // 0 to 1
 		float height = 4.0f * jump_height * t * (1.0f - t);  // Parabola peaking at t=0.5
-		owner_.SetPosLocal(owner_.PosX(), owner_.PosY(), ctx_.game_state.player().jumpStartZ() + height);
+		ctx_.self.SetPosLocal(ctx_.self.PosX(), ctx_.self.PosY(), ctx_.game_state.player().jumpStartZ() + height);
 		
 		if (EverQuest::s_debug_level >= 2) {
 			static int jump_frame = 0;
 			if (jump_frame % 10 == 0) {  // Log every 10th frame
 				LOG_DEBUG(MOD_MAIN, "Jump progress: t={:.2f}, height={:.2f}, z={:.2f}", 
-					t, height, owner_.PosZ());
+					t, height, ctx_.self.PosZ());
 			}
 			jump_frame++;
 		}
@@ -534,7 +534,7 @@ void eqt::movement::MovementComponent::UpdateJump()
 
 void eqt::movement::MovementComponent::UpdateWaterState()
 {
-	if (!owner_.IsFullyZonedIn()) {
+	if (!ctx_.self.IsFullyZonedIn()) {
 		return;
 	}
 
@@ -543,13 +543,13 @@ void eqt::movement::MovementComponent::UpdateWaterState()
 
 	// Fully underwater zones - these don't have BSP water regions
 	// The entire zone is submerged so we hardcode them here
-	bool isFullyUnderwaterZone = (owner_.CurrentZoneName() == "kedge");
+	bool isFullyUnderwaterZone = (ctx_.self.CurrentZoneName() == "kedge");
 
 	if (isFullyUnderwaterZone) {
 		newState = WaterState::Submerged;
 	} else {
 		// Normal water detection via BSP regions (D20f3: reads typed game-state BSP tree)
-		const auto& bspTree = owner_.m_zone_bsp_tree;
+		const auto& bspTree = ctx_.Zone().ZoneBspTree();
 		if (bspTree) {
 			// Check the region at current player position
 			//
@@ -566,9 +566,9 @@ void eqt::movement::MovementComponent::UpdateWaterState()
 			// water detection with no live coverage; it is NOT this unit's
 			// change (T311 is the wire z) and is boarded instead.
 			constexpr float HEAD_HEIGHT_OFFSET = 6.0f;
-			float headZ = owner_.PosZ() + HEAD_HEIGHT_OFFSET;
+			float headZ = ctx_.self.PosZ() + HEAD_HEIGHT_OFFSET;
 
-			auto region = bspTree->findRegionForPoint(owner_.PosX(), owner_.PosY(), owner_.PosZ());
+			auto region = bspTree->findRegionForPoint(ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ());
 
 			if (region) {
 				// Check if this region is water
@@ -584,7 +584,7 @@ void eqt::movement::MovementComponent::UpdateWaterState()
 
 				if (isWaterRegion) {
 					// Check if head is also in water (determines OnSurface vs Submerged)
-					auto headRegion = bspTree->findRegionForPoint(owner_.PosX(), owner_.PosY(), headZ);
+					auto headRegion = bspTree->findRegionForPoint(ctx_.self.PosX(), ctx_.self.PosY(), headZ);
 					bool headInWater = false;
 					if (headRegion) {
 						for (auto type : headRegion->regionTypes) {
@@ -602,7 +602,7 @@ void eqt::movement::MovementComponent::UpdateWaterState()
 					} else {
 						newState = WaterState::OnSurface;
 						// Estimate water surface Z (head is above water, feet are in)
-						waterSurfaceZ = owner_.PosZ() + (HEAD_HEIGHT_OFFSET / 2.0f);
+						waterSurfaceZ = ctx_.self.PosZ() + (HEAD_HEIGHT_OFFSET / 2.0f);
 					}
 				}
 			}
@@ -610,9 +610,9 @@ void eqt::movement::MovementComponent::UpdateWaterState()
 	}
 
 	// Handle state transitions
-	if (newState != owner_.m_water_state) {
-		WaterState oldState = owner_.m_water_state;
-		owner_.m_water_state = newState;
+	if (newState != m_water_state) {
+		WaterState oldState = m_water_state;
+		m_water_state = newState;
 		m_water_surface_z = waterSurfaceZ;
 
 		if (oldState == WaterState::NotInWater && newState != WaterState::NotInWater) {
@@ -625,7 +625,7 @@ void eqt::movement::MovementComponent::UpdateWaterState()
 		if (ctx_.bridge) {
 			float swimSpd = GetSwimSpeed();
 			bool lev = false;
-			auto me = ctx_.entities.find(owner_.MySpawnId());
+			auto me = ctx_.entities.find(ctx_.self.MySpawnId());
 			if (me != ctx_.entities.end() && me->second.flymode == 2) {
 				lev = true;
 			}
@@ -643,19 +643,19 @@ void eqt::movement::MovementComponent::UpdateWaterState()
 void eqt::movement::MovementComponent::OnEnterWater()
 {
 	if (EverQuest::s_debug_level >= 1) {
-		LOG_DEBUG(MOD_MAIN, "Entering water at ({:.2f}, {:.2f}, {:.2f})", owner_.PosX(), owner_.PosY(), owner_.PosZ());
+		LOG_DEBUG(MOD_MAIN, "Entering water at ({:.2f}, {:.2f}, {:.2f})", ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ());
 	}
 
 	// Cancel any jump in progress
 	ctx_.game_state.player().setJumping(false);
 
 	// Send flymode=3 (water) to server
-	owner_.Entities().SendSpawnAppearance(AT_FLYMODE, 3);
+	ctx_.Entities().SendSpawnAppearance(AT_FLYMODE, 3);
 
 #ifdef WITH_AUDIO
 	// Play water entry sound
 	if (ctx_.audio_manager) {
-		owner_.Bridge().PlaySound(EQT::Audio::WaterSoundIds::WaterIn);
+		ctx_.Bridge().PlaySound(EQT::Audio::WaterSoundIds::WaterIn);
 	}
 #endif
 }
@@ -663,20 +663,20 @@ void eqt::movement::MovementComponent::OnEnterWater()
 void eqt::movement::MovementComponent::OnExitWater()
 {
 	if (EverQuest::s_debug_level >= 1) {
-		LOG_DEBUG(MOD_MAIN, "Exiting water at ({:.2f}, {:.2f}, {:.2f})", owner_.PosX(), owner_.PosY(), owner_.PosZ());
+		LOG_DEBUG(MOD_MAIN, "Exiting water at ({:.2f}, {:.2f}, {:.2f})", ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ());
 	}
 
 	// Check if player is levitating (flymode 2 from buffs)
 	// If levitating, keep flymode 2, otherwise reset to 0
-	auto myEntity = ctx_.entities.find(owner_.MySpawnId());
+	auto myEntity = ctx_.entities.find(ctx_.self.MySpawnId());
 	uint8_t newFlymode = 0;
 	if (myEntity != ctx_.entities.end() && myEntity->second.flymode == 2) {
 		newFlymode = 2;  // Keep levitating
 	}
 
-	owner_.Entities().SendSpawnAppearance(AT_FLYMODE, newFlymode);
+	ctx_.Entities().SendSpawnAppearance(AT_FLYMODE, newFlymode);
 
-	owner_.m_water_state = WaterState::NotInWater;
+	m_water_state = WaterState::NotInWater;
 }
 
 float eqt::movement::MovementComponent::GetSwimSpeed() const
@@ -745,7 +745,7 @@ float eqt::movement::MovementComponent::GetMovementSpeed() const
 // game-side mover the client has, not because autorun might one day use it.
 void eqt::movement::MovementComponent::StartMoveForward()
 {
-	if (!owner_.IsFullyZonedIn()) return;
+	if (!ctx_.self.IsFullyZonedIn()) return;
 
 	// Clear any console-based movement (moveto, follow) when user takes manual control
 	if (!m_current_path.empty() || ctx_.game_state.player().targetX() != 0.0f || ctx_.game_state.player().targetY() != 0.0f || ctx_.game_state.player().targetZ() != 0.0f) {
@@ -764,7 +764,7 @@ void eqt::movement::MovementComponent::StartMoveForward()
 
 void eqt::movement::MovementComponent::StartMoveBackward()
 {
-	if (!owner_.IsFullyZonedIn()) return;
+	if (!ctx_.self.IsFullyZonedIn()) return;
 	ctx_.game_state.player().setMoveBackward(true);
 	if (EverQuest::s_debug_level >= 2) {
 		LOG_DEBUG(MOD_MAIN, "Starting backward movement");
@@ -773,7 +773,7 @@ void eqt::movement::MovementComponent::StartMoveBackward()
 
 void eqt::movement::MovementComponent::StartTurnLeft()
 {
-	if (!owner_.IsFullyZonedIn()) return;
+	if (!ctx_.self.IsFullyZonedIn()) return;
 	ctx_.game_state.player().setTurnLeft(true);
 	if (EverQuest::s_debug_level >= 2) {
 		LOG_DEBUG(MOD_MAIN, "Starting left turn");
@@ -782,7 +782,7 @@ void eqt::movement::MovementComponent::StartTurnLeft()
 
 void eqt::movement::MovementComponent::StartTurnRight()
 {
-	if (!owner_.IsFullyZonedIn()) return;
+	if (!ctx_.self.IsFullyZonedIn()) return;
 	ctx_.game_state.player().setTurnRight(true);
 	if (EverQuest::s_debug_level >= 2) {
 		LOG_DEBUG(MOD_MAIN, "Starting right turn");
@@ -837,7 +837,7 @@ void eqt::movement::MovementComponent::StopTurnRight()
 
 void eqt::movement::MovementComponent::UpdateKeyboardMovement()
 {
-	if (!owner_.IsFullyZonedIn()) return;
+	if (!ctx_.self.IsFullyZonedIn()) return;
 	
 	// Handle turning
 	const float turn_speed = 90.0f; // degrees per second (4 seconds for full rotation)
@@ -850,11 +850,11 @@ void eqt::movement::MovementComponent::UpdateKeyboardMovement()
 	}
 	
 	if (delta_heading != 0.0f) {
-		float h = owner_.HeadingDeg() + delta_heading;
+		float h = ctx_.self.HeadingDeg() + delta_heading;
 		// Normalize heading to 0-360
 		while (h < 0.0f) h += 360.0f;
 		while (h >= 360.0f) h -= 360.0f;
-		owner_.SetHeadingLocal(h);
+		ctx_.self.SetHeadingLocal(h);
 	}
 	
 	// Handle forward/backward movement
@@ -879,18 +879,18 @@ void eqt::movement::MovementComponent::UpdateKeyboardMovement()
 	// Apply movement
 	if (move_distance != 0.0f) {
 		// Convert heading to radians for calculations
-		float heading_rad = owner_.HeadingDeg() * M_PI / 180.0f;
+		float heading_rad = ctx_.self.HeadingDeg() * M_PI / 180.0f;
 
 		// Calculate new position
 		// In EQ coordinates: +X = East, +Y = North
 		// Heading 0 = North, 90 = East, 180 = South, 270 = West
-		float new_x = owner_.PosX() + move_distance * sin(heading_rad);
-		float new_y = owner_.PosY() + move_distance * cos(heading_rad);
+		float new_x = ctx_.self.PosX() + move_distance * sin(heading_rad);
+		float new_y = ctx_.self.PosY() + move_distance * cos(heading_rad);
 
 		// Update position
-		owner_.SetPosLocal(new_x, new_y, owner_.PosZ());
+		ctx_.self.SetPosLocal(new_x, new_y, ctx_.self.PosZ());
 
 		// Fix Z position if we have map data
-		owner_.Zone().FixZ();
+		ctx_.Zone().FixZ();
 	}
 }

@@ -170,7 +170,7 @@ std::string BuildItemString(int16_t slot, uint32_t itemId, const std::string& na
 TEST(ZoneRequestPhaseGating, FreshClient_PhaseNotYetRequested) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
     EXPECT_NE(eq.GetLoadingPhase(), LoadingPhase::ZONE_REQUEST_PHASE);
-    EXPECT_EQ(eq.GetReplaySuppressedSendCount(), 0u);
+    EXPECT_EQ(eq.Net().ReplaySuppressedSendCount(), 0u);
 }
 
 TEST(ZoneRequestPhaseGating, WithholdingNewZone_DoesNotAdvance) {
@@ -185,7 +185,7 @@ TEST(ZoneRequestPhaseGating, WithholdingNewZone_DoesNotAdvance) {
     // None of these three handlers send anything themselves (no live
     // connection needed either way), so the suppressed-send counter must
     // still be zero -- proof ZoneSendReqClientSpawn was never reached.
-    EXPECT_EQ(eq.GetReplaySuppressedSendCount(), 0u);
+    EXPECT_EQ(eq.Net().ReplaySuppressedSendCount(), 0u);
 }
 
 TEST(ZoneRequestPhaseGating, WithholdingAATable_DoesNotAdvance) {
@@ -200,7 +200,7 @@ TEST(ZoneRequestPhaseGating, WithholdingAATable_DoesNotAdvance) {
     SendRespondAA(eq);
 
     EXPECT_NE(eq.GetLoadingPhase(), LoadingPhase::ZONE_REQUEST_PHASE);
-    EXPECT_EQ(eq.GetReplaySuppressedSendCount(), 4u) << "ReqClientSpawn must not have been sent";
+    EXPECT_EQ(eq.Net().ReplaySuppressedSendCount(), 4u) << "ReqClientSpawn must not have been sent";
 }
 
 TEST(ZoneRequestPhaseGating, WithholdingTributeInfo_DoesNotAdvance) {
@@ -211,7 +211,7 @@ TEST(ZoneRequestPhaseGating, WithholdingTributeInfo_DoesNotAdvance) {
     SendGuildTributes(eq);
 
     EXPECT_NE(eq.GetLoadingPhase(), LoadingPhase::ZONE_REQUEST_PHASE);
-    EXPECT_EQ(eq.GetReplaySuppressedSendCount(), 4u);
+    EXPECT_EQ(eq.Net().ReplaySuppressedSendCount(), 4u);
 }
 
 TEST(ZoneRequestPhaseGating, WithholdingGuildTributes_DoesNotAdvance) {
@@ -222,7 +222,7 @@ TEST(ZoneRequestPhaseGating, WithholdingGuildTributes_DoesNotAdvance) {
     SendTributeInfo(eq);
 
     EXPECT_NE(eq.GetLoadingPhase(), LoadingPhase::ZONE_REQUEST_PHASE);
-    EXPECT_EQ(eq.GetReplaySuppressedSendCount(), 4u);
+    EXPECT_EQ(eq.Net().ReplaySuppressedSendCount(), 4u);
 }
 
 TEST(ZoneRequestPhaseGating, AllFourPresent_AdvancesExactlyOnce) {
@@ -234,7 +234,7 @@ TEST(ZoneRequestPhaseGating, AllFourPresent_AdvancesExactlyOnce) {
     SendGuildTributes(eq);    // last gate satisfied here -> fires ReqClientSpawn (+1)
 
     EXPECT_EQ(eq.GetLoadingPhase(), LoadingPhase::ZONE_REQUEST_PHASE);
-    EXPECT_EQ(eq.GetReplaySuppressedSendCount(), 5u);
+    EXPECT_EQ(eq.Net().ReplaySuppressedSendCount(), 5u);
 }
 
 TEST(ZoneRequestPhaseGating, FireOnceGuard_AdditionalPacketsDoNotRefire) {
@@ -244,7 +244,7 @@ TEST(ZoneRequestPhaseGating, FireOnceGuard_AdditionalPacketsDoNotRefire) {
     SendAATable(eq);
     SendTributeInfo(eq);
     SendGuildTributes(eq);
-    ASSERT_EQ(eq.GetReplaySuppressedSendCount(), 5u);
+    ASSERT_EQ(eq.Net().ReplaySuppressedSendCount(), 5u);
     ASSERT_EQ(eq.GetLoadingPhase(), LoadingPhase::ZONE_REQUEST_PHASE);
 
     // Keep feeding more of the same packets: m_req_client_spawn_sent guards
@@ -255,7 +255,7 @@ TEST(ZoneRequestPhaseGating, FireOnceGuard_AdditionalPacketsDoNotRefire) {
     SendRespondAA(eq);
 
     EXPECT_EQ(eq.GetLoadingPhase(), LoadingPhase::ZONE_REQUEST_PHASE);
-    EXPECT_EQ(eq.GetReplaySuppressedSendCount(), 5u)
+    EXPECT_EQ(eq.Net().ReplaySuppressedSendCount(), 5u)
         << "ReqClientSpawn fired again -- fire-once guard broken";
 }
 
@@ -271,7 +271,7 @@ TEST(ZoneRequestPhaseGating, OrderIndependent_DifferentOrderingsOfTrailingThreeC
         SendAATable(eq);
         SendTributeInfo(eq);
         EXPECT_EQ(eq.GetLoadingPhase(), LoadingPhase::ZONE_REQUEST_PHASE);
-        EXPECT_EQ(eq.GetReplaySuppressedSendCount(), 5u);
+        EXPECT_EQ(eq.Net().ReplaySuppressedSendCount(), 5u);
     }
     {
         EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
@@ -280,7 +280,7 @@ TEST(ZoneRequestPhaseGating, OrderIndependent_DifferentOrderingsOfTrailingThreeC
         SendGuildTributes(eq);
         SendAATable(eq);
         EXPECT_EQ(eq.GetLoadingPhase(), LoadingPhase::ZONE_REQUEST_PHASE);
-        EXPECT_EQ(eq.GetReplaySuppressedSendCount(), 5u);
+        EXPECT_EQ(eq.Net().ReplaySuppressedSendCount(), 5u);
     }
 }
 
@@ -299,21 +299,21 @@ TEST(ZoneRequestPhaseGating, NewZoneArrivingLast_CompletesPhase) {
     SendTributeInfo(eq);
     SendGuildTributes(eq);
     EXPECT_NE(eq.GetLoadingPhase(), LoadingPhase::ZONE_REQUEST_PHASE);
-    EXPECT_EQ(eq.GetReplaySuppressedSendCount(), 0u);
+    EXPECT_EQ(eq.Net().ReplaySuppressedSendCount(), 0u);
 
     SendNewZone(eq); // suppressed += 4 (AA/UpdateAA/tributes/guild-tributes)
                       // and, now, += 1 for ReqClientSpawn.
 
     EXPECT_EQ(eq.GetLoadingPhase(), LoadingPhase::ZONE_REQUEST_PHASE)
         << "NewZone arriving last must complete the zone-request phase";
-    EXPECT_EQ(eq.GetReplaySuppressedSendCount(), 5u)
+    EXPECT_EQ(eq.Net().ReplaySuppressedSendCount(), 5u)
         << "ReqClientSpawn must be sent once all four prerequisites are met";
 
     // Idempotence: a later gate packet re-runs the check but must not send
     // ReqClientSpawn a second time (m_req_client_spawn_sent guard).
     SendRespondAA(eq);
     EXPECT_EQ(eq.GetLoadingPhase(), LoadingPhase::ZONE_REQUEST_PHASE);
-    EXPECT_EQ(eq.GetReplaySuppressedSendCount(), 5u);
+    EXPECT_EQ(eq.Net().ReplaySuppressedSendCount(), 5u);
 }
 
 TEST(ZoneRequestPhaseGating, NewZoneFirst_CheckFromNewZoneIsANoOp) {
@@ -323,7 +323,7 @@ TEST(ZoneRequestPhaseGating, NewZoneFirst_CheckFromNewZoneIsANoOp) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
     SendNewZone(eq);
     EXPECT_NE(eq.GetLoadingPhase(), LoadingPhase::ZONE_REQUEST_PHASE);
-    EXPECT_EQ(eq.GetReplaySuppressedSendCount(), 4u);
+    EXPECT_EQ(eq.Net().ReplaySuppressedSendCount(), 4u);
 }
 
 // ============================================================================
@@ -336,7 +336,7 @@ TEST(DispatcherRobustness, UnknownOpcode_IgnoredWithoutCrash) {
     EXPECT_NO_THROW(Replay(eq, 0xFFFF, EmptyPayload()));
     EXPECT_NO_THROW(Replay(eq, 0xFFFF, std::vector<uint8_t>(50, 0xAB)));
     // State must be untouched.
-    EXPECT_EQ(eq.GetReplaySuppressedSendCount(), 0u);
+    EXPECT_EQ(eq.Net().ReplaySuppressedSendCount(), 0u);
     EXPECT_NE(eq.GetLoadingPhase(), LoadingPhase::ZONE_REQUEST_PHASE);
 }
 

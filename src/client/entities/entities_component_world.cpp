@@ -21,7 +21,7 @@
 // EverQuest onto eqt::entities::EntitiesComponent. Still verbatim -- only the
 // substitutions §Mechanism 4 allows (m_inventory_manager/m_bridge/
 // m_zone_connection/m_active_tradeskill_object_id/m_game_state/
-// m_audio_manager -> ctx_.*; m_world_objects -> owner_.m_world_objects (four
+// m_audio_manager -> ctx_.*; m_world_objects -> m_world_objects (four
 // reader sites remain on EverQuest: eq_player_misc.cpp,
 // eq_action_handler_spells_trade.cpp, eq_bridge_intents.cpp,
 // action/action_dispatcher.cpp -- moves here only when they retarget);
@@ -141,7 +141,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessMoveDoor(const EQ::Net::Packet
 		// Play door sound only if player is close to the door
 		if (ctx_.audio_manager) {
 			glm::vec3 doorPos(door->x, door->y, door->z);
-			glm::vec3 playerPos(owner_.PosX(), owner_.PosY(), owner_.PosZ());
+			glm::vec3 playerPos(ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ());
 			float distance = glm::distance(doorPos, playerPos);
 
 			// Only play door sounds within 10 units
@@ -172,7 +172,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessMoveDoor(const EQ::Net::Packet
 
 void eqt::entities::EntitiesComponent::SendSpawnAppearance(uint16_t type, uint32_t value)
 {
-	if (!owner_.IsFullyZonedIn()) {
+	if (!ctx_.self.IsFullyZonedIn()) {
 		return;
 	}
 	
@@ -180,7 +180,7 @@ void eqt::entities::EntitiesComponent::SendSpawnAppearance(uint16_t type, uint32
 	p.Resize(10);  // SpawnAppearance packet size: 2 bytes opcode + 8 bytes struct
 	
 	p.PutUInt16(0, HC_OP_SpawnAppearance);
-	p.PutUInt16(2, owner_.MySpawnId());  // spawn_id
+	p.PutUInt16(2, ctx_.self.MySpawnId());  // spawn_id
 	p.PutUInt16(4, type);            // type
 	p.PutUInt32(6, value);           // parameter
 	// Removed the extra 4 bytes that were at offset 10
@@ -189,13 +189,13 @@ void eqt::entities::EntitiesComponent::SendSpawnAppearance(uint16_t type, uint32
 	
 	if (EverQuest::s_debug_level >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Sent SpawnAppearance: spawn_id={}, type={}, value={}", 
-			owner_.MySpawnId(), type, value);
+			ctx_.self.MySpawnId(), type, value);
 	}
 }
 
 void eqt::entities::EntitiesComponent::SendAnimation(uint8_t animation_id, uint8_t animation_speed)
 {
-	if (!owner_.IsFullyZonedIn()) {
+	if (!ctx_.self.IsFullyZonedIn()) {
 		return;
 	}
 	
@@ -203,7 +203,7 @@ void eqt::entities::EntitiesComponent::SendAnimation(uint8_t animation_id, uint8
 	p.Resize(6);  // Animation packet size: 2 bytes opcode + 4 bytes data
 	
 	p.PutUInt16(0, HC_OP_Animation);      // opcode (OP_Animation)
-	p.PutUInt16(2, owner_.MySpawnId());        // spawn_id
+	p.PutUInt16(2, ctx_.self.MySpawnId());        // spawn_id
 	p.PutUInt8(4, animation_speed);       // animation speed (usually 10)
 	p.PutUInt8(5, animation_id);          // animation ID
 	
@@ -211,13 +211,13 @@ void eqt::entities::EntitiesComponent::SendAnimation(uint8_t animation_id, uint8
 	
 	if (EverQuest::s_debug_level >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Sent Animation: spawn_id={}, speed={}, animation_id={}",
-			owner_.MySpawnId(), animation_speed, animation_id);
+			ctx_.self.MySpawnId(), animation_speed, animation_id);
 	}
 }
 
 void eqt::entities::EntitiesComponent::SendClickDoor(uint8_t door_id, uint32_t item_id)
 {
-	if (!owner_.IsFullyZonedIn()) {
+	if (!ctx_.self.IsFullyZonedIn()) {
 		LOG_DEBUG(MOD_ENTITY, "Cannot click door - not fully zoned in");
 		return;
 	}
@@ -248,7 +248,7 @@ void eqt::entities::EntitiesComponent::SendClickDoor(uint8_t door_id, uint32_t i
 	p.PutUInt8(8, 0);                 // unknown005[1]
 	p.PutUInt8(9, 0);                 // unknown005[2]
 	p.PutUInt32(10, item_id);         // item_id (key)
-	p.PutUInt16(14, owner_.MySpawnId());   // player_id
+	p.PutUInt16(14, ctx_.self.MySpawnId());   // player_id
 	p.PutUInt16(16, 0);               // unknown014
 
 	ctx_.zone_connection->QueuePacket(p, 0, true);
@@ -260,14 +260,14 @@ void eqt::entities::EntitiesComponent::SendClickDoor(uint8_t door_id, uint32_t i
 
 void eqt::entities::EntitiesComponent::SendClickObject(uint32_t drop_id)
 {
-	if (!owner_.IsFullyZonedIn()) {
+	if (!ctx_.self.IsFullyZonedIn()) {
 		LOG_DEBUG(MOD_ENTITY, "Cannot click object - not fully zoned in");
 		return;
 	}
 
 	// Check if object exists
-	auto it = owner_.m_world_objects.find(drop_id);
-	if (it == owner_.m_world_objects.end()) {
+	auto it = m_world_objects.find(drop_id);
+	if (it == m_world_objects.end()) {
 		LOG_WARN(MOD_ENTITY, "Attempted to click unknown object {}", drop_id);
 		return;
 	}
@@ -282,14 +282,14 @@ void eqt::entities::EntitiesComponent::SendClickObject(uint32_t drop_id)
 
 	p.PutUInt16(0, HC_OP_ClickObject);
 	p.PutUInt32(2, drop_id);           // drop_id
-	p.PutUInt32(6, owner_.MySpawnId());     // player_id
+	p.PutUInt32(6, ctx_.self.MySpawnId());     // player_id
 
 	ctx_.zone_connection->QueuePacket(p, 0, true);
 }
 
 void eqt::entities::EntitiesComponent::SendCloseContainer(uint32_t drop_id)
 {
-	if (!owner_.IsFullyZonedIn()) {
+	if (!ctx_.self.IsFullyZonedIn()) {
 		LOG_DEBUG(MOD_ENTITY, "Cannot close container - not fully zoned in");
 		return;
 	}
@@ -301,7 +301,7 @@ void eqt::entities::EntitiesComponent::SendCloseContainer(uint32_t drop_id)
 	p.Resize(2 + sizeof(EQT::ClickObjectAction_Struct));
 
 	p.PutUInt16(0, HC_OP_ClickObjectAction);
-	p.PutUInt32(2, owner_.MySpawnId());     // player_id
+	p.PutUInt32(2, ctx_.self.MySpawnId());     // player_id
 	p.PutUInt32(6, drop_id);           // drop_id
 	p.PutUInt32(10, 0);                // open = 0 (closing)
 	p.PutUInt32(14, 0);                // type
@@ -328,8 +328,8 @@ void eqt::entities::EntitiesComponent::SendCloseContainer(uint32_t drop_id)
 
 const eqt::WorldObject* eqt::entities::EntitiesComponent::GetWorldObject(uint32_t drop_id) const
 {
-	auto it = owner_.m_world_objects.find(drop_id);
-	if (it != owner_.m_world_objects.end()) {
+	auto it = m_world_objects.find(drop_id);
+	if (it != m_world_objects.end()) {
 		return &it->second;
 	}
 	return nullptr;
@@ -337,8 +337,8 @@ const eqt::WorldObject* eqt::entities::EntitiesComponent::GetWorldObject(uint32_
 
 void eqt::entities::EntitiesComponent::ClearWorldObjects()
 {
-	LOG_DEBUG(MOD_ENTITY, "Clearing {} world objects", owner_.m_world_objects.size());
-	owner_.m_world_objects.clear();
+	LOG_DEBUG(MOD_ENTITY, "Clearing {} world objects", m_world_objects.size());
+	m_world_objects.clear();
 	ctx_.active_tradeskill_object_id = 0;
 	if (ctx_.inventory_manager) {
 		ctx_.inventory_manager->setWorldContainerOpen(false);

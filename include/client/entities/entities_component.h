@@ -24,8 +24,11 @@
 // removes both the handle and the friendship.
 
 #include "client/client_context.h"
+// K13: m_world_objects is a std::map BY VALUE -- WorldObject must be complete.
+#include "client/world_object.h"
 
 #include <cstdint>
+#include <map>
 #include <set>
 #include <string>
 
@@ -91,6 +94,15 @@ public:
 	void ClearWorldObjects();
 	void ZoneProcessClickObjectAction(const EQ::Net::Packet &p);
 
+	// K13 (Batch K): the world-object map (forges, looms, groundspawns, ...),
+	// re-homed here from EverQuest. This family creates it
+	// (ZoneProcessGroundSpawn), reads it (GetWorldObject/SendClickObject/
+	// SendCloseContainer) and clears it (ClearWorldObjects); the only reader
+	// outside it is one BridgeComponent intent arm and one action-handler
+	// listing, both of which go through the accessors below.
+	std::map<uint32_t, eqt::WorldObject>& WorldObjects() { return m_world_objects; }
+	const std::map<uint32_t, eqt::WorldObject>& GetWorldObjects() const { return m_world_objects; }
+
 private:
 	ClientContext& ctx_;
 	EverQuest& owner_;
@@ -98,6 +110,10 @@ private:
 	// Doors clicked by user, awaiting server response. Single-family; moved
 	// with SendClickDoor()/ZoneProcessSpawnDoor() (eq_entities_world.cpp).
 	std::set<uint8_t> m_pending_door_clicks;
+
+	// K13: world object tracking (forges, looms, groundspawns, etc.). Was
+	// EverQuest::m_world_objects.
+	std::map<uint32_t, eqt::WorldObject> m_world_objects;
 };
 
 }  // namespace entities

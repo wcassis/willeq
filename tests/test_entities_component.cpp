@@ -81,7 +81,7 @@ TEST_F(EntitiesComponentTest, GetWorldObjectReturnsNullptrForAnUntrackedDropId) 
 
 TEST_F(EntitiesComponentTest, ClearWorldObjectsIsSafeToCallOnAnEmptyTable) {
     EXPECT_NO_THROW(eq.Entities().ClearWorldObjects());
-    EXPECT_TRUE(eq.GetWorldObjects().empty());
+    EXPECT_TRUE(eq.Entities().GetWorldObjects().empty());
 }
 
 }  // namespace

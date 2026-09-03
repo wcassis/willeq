@@ -61,7 +61,7 @@ TEST(SessionReplaySynthetic, DrivesGameStateThroughPublicAccessors) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
 
     // Sanity: constructed headless, no live zone connection.
-    ASSERT_EQ(eq.GetReplaySuppressedSendCount(), 0u);
+    ASSERT_EQ(eq.Net().ReplaySuppressedSendCount(), 0u);
 
     // --- NewZone: sets current zone name/id, triggers AA/tribute request
     // sends (all suppressed since there's no live m_zone_connection). ---
@@ -79,7 +79,7 @@ TEST(SessionReplaySynthetic, DrivesGameStateThroughPublicAccessors) {
     // ZoneProcessNewZone unconditionally sends SendAATable/UpdateAA/
     // SendTributes/RequestGuildTributes the first time through; all four
     // must have been suppressed (null m_zone_connection) rather than crash.
-    EXPECT_EQ(eq.GetReplaySuppressedSendCount(), 4u);
+    EXPECT_EQ(eq.Net().ReplaySuppressedSendCount(), 4u);
 
     // --- PlayerProfile: our own stats, position, spawn id. ---
     const uint16_t kMySpawnId = 1001;

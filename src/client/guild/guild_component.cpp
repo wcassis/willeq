@@ -53,7 +53,7 @@
 void eqt::guild::GuildComponent::SendGuildInvite(const std::string& player_name)
 {
 	if (owner_.m_guild_id == 0) {
-		owner_.AddChatSystemMessage("You are not in a guild.");
+		ctx_.out.System("You are not in a guild.");
 		return;
 	}
 
@@ -71,15 +71,15 @@ void eqt::guild::GuildComponent::SendGuildInvite(const std::string& player_name)
 	EQ::Net::DynamicPacket packet;
 	packet.Resize(sizeof(EQT::GuildCommand_Struct));
 	memcpy(packet.Data(), &invite, sizeof(EQT::GuildCommand_Struct));
-	owner_.QueuePacket(HC_OP_GuildInvite, &packet);
+	ctx_.net.Queue(HC_OP_GuildInvite, &packet);
 
-	owner_.AddChatSystemMessage(fmt::format("Inviting {} to join your guild.", player_name));
+	ctx_.out.System(fmt::format("Inviting {} to join your guild.", player_name));
 }
 
 void eqt::guild::GuildComponent::SendGuildInviteAccept(bool accept)
 {
 	if (!m_has_pending_guild_invite) {
-		owner_.AddChatSystemMessage("You don't have a pending guild invite.");
+		ctx_.out.System("You don't have a pending guild invite.");
 		return;
 	}
 
@@ -94,23 +94,23 @@ void eqt::guild::GuildComponent::SendGuildInviteAccept(bool accept)
 	EQ::Net::DynamicPacket packet;
 	packet.Resize(sizeof(EQT::GuildInviteAccept_Struct));
 	memcpy(packet.Data(), &response, sizeof(EQT::GuildInviteAccept_Struct));
-	owner_.QueuePacket(HC_OP_GuildInviteAccept, &packet);
+	ctx_.net.Queue(HC_OP_GuildInviteAccept, &packet);
 
 	m_has_pending_guild_invite = false;
 	m_guild_invite_from.clear();
 	m_guild_invite_id = 0;
 
 	if (accept) {
-		owner_.AddChatSystemMessage("You have accepted the guild invite.");
+		ctx_.out.System("You have accepted the guild invite.");
 	} else {
-		owner_.AddChatSystemMessage("You have declined the guild invite.");
+		ctx_.out.System("You have declined the guild invite.");
 	}
 }
 
 void eqt::guild::GuildComponent::SendGuildRemove(const std::string& player_name)
 {
 	if (owner_.m_guild_id == 0) {
-		owner_.AddChatSystemMessage("You are not in a guild.");
+		ctx_.out.System("You are not in a guild.");
 		return;
 	}
 
@@ -126,15 +126,15 @@ void eqt::guild::GuildComponent::SendGuildRemove(const std::string& player_name)
 	EQ::Net::DynamicPacket packet;
 	packet.Resize(sizeof(EQT::GuildRemove_Struct));
 	memcpy(packet.Data(), &remove, sizeof(EQT::GuildRemove_Struct));
-	owner_.QueuePacket(HC_OP_GuildRemove, &packet);
+	ctx_.net.Queue(HC_OP_GuildRemove, &packet);
 
-	owner_.AddChatSystemMessage(fmt::format("Removing {} from the guild.", player_name));
+	ctx_.out.System(fmt::format("Removing {} from the guild.", player_name));
 }
 
 void eqt::guild::GuildComponent::SendGuildDemote(const std::string& player_name)
 {
 	if (owner_.m_guild_id == 0) {
-		owner_.AddChatSystemMessage("You are not in a guild.");
+		ctx_.out.System("You are not in a guild.");
 		return;
 	}
 
@@ -146,15 +146,15 @@ void eqt::guild::GuildComponent::SendGuildDemote(const std::string& player_name)
 	EQ::Net::DynamicPacket packet;
 	packet.Resize(sizeof(EQT::GuildDemote_Struct));
 	memcpy(packet.Data(), &demote, sizeof(EQT::GuildDemote_Struct));
-	owner_.QueuePacket(HC_OP_GuildDemote, &packet);
+	ctx_.net.Queue(HC_OP_GuildDemote, &packet);
 
-	owner_.AddChatSystemMessage(fmt::format("Demoting {} in the guild.", player_name));
+	ctx_.out.System(fmt::format("Demoting {} in the guild.", player_name));
 }
 
 void eqt::guild::GuildComponent::SendGuildLeader(const std::string& player_name)
 {
 	if (owner_.m_guild_id == 0) {
-		owner_.AddChatSystemMessage("You are not in a guild.");
+		ctx_.out.System("You are not in a guild.");
 		return;
 	}
 
@@ -166,9 +166,9 @@ void eqt::guild::GuildComponent::SendGuildLeader(const std::string& player_name)
 	EQ::Net::DynamicPacket packet;
 	packet.Resize(sizeof(EQT::GuildMakeLeader_Struct));
 	memcpy(packet.Data(), &leader, sizeof(EQT::GuildMakeLeader_Struct));
-	owner_.QueuePacket(HC_OP_GuildLeader, &packet);
+	ctx_.net.Queue(HC_OP_GuildLeader, &packet);
 
-	owner_.AddChatSystemMessage(fmt::format("Transferring guild leadership to {}.", player_name));
+	ctx_.out.System(fmt::format("Transferring guild leadership to {}.", player_name));
 }
 
 void eqt::guild::GuildComponent::SendGetGuildMOTD()
@@ -177,13 +177,13 @@ void eqt::guild::GuildComponent::SendGetGuildMOTD()
 	// header comment): QueuePacket() adds the opcode itself, so an empty
 	// DynamicPacket here means "opcode, zero-byte body" on the wire.
 	EQ::Net::DynamicPacket packet;
-	owner_.QueuePacket(HC_OP_GetGuildMOTD, &packet);
+	ctx_.net.Queue(HC_OP_GetGuildMOTD, &packet);
 }
 
 void eqt::guild::GuildComponent::SendSetGuildMOTD(const std::string& motd)
 {
 	if (owner_.m_guild_id == 0) {
-		owner_.AddChatSystemMessage("You are not in a guild.");
+		ctx_.out.System("You are not in a guild.");
 		return;
 	}
 
@@ -196,9 +196,9 @@ void eqt::guild::GuildComponent::SendSetGuildMOTD(const std::string& motd)
 	EQ::Net::DynamicPacket packet;
 	packet.Resize(sizeof(EQT::GuildMOTD_Struct));
 	memcpy(packet.Data(), &gmotd, sizeof(EQT::GuildMOTD_Struct));
-	owner_.QueuePacket(HC_OP_SetGuildMOTD, &packet);
+	ctx_.net.Queue(HC_OP_SetGuildMOTD, &packet);
 
-	owner_.AddChatSystemMessage("Guild MOTD updated.");
+	ctx_.out.System("Guild MOTD updated.");
 }
 
 void eqt::guild::GuildComponent::ZoneProcessGuildInvite(const EQ::Net::Packet &p)
@@ -219,8 +219,8 @@ void eqt::guild::GuildComponent::ZoneProcessGuildInvite(const EQ::Net::Packet &p
 	m_guild_invite_id = invite->guildeqid;
 
 	LOG_INFO(MOD_MAIN, "Guild invite received from {}", inviter);
-	owner_.AddChatSystemMessage(fmt::format("{} has invited you to join a guild.", inviter));
-	owner_.AddChatSystemMessage("Type /guildaccept to accept or /guilddecline to decline.");
+	ctx_.out.System(fmt::format("{} has invited you to join a guild.", inviter));
+	ctx_.out.System("Type /guildaccept to accept or /guilddecline to decline.");
 }
 
 void eqt::guild::GuildComponent::ZoneProcessGuildMOTDReply(const EQ::Net::Packet &p)
@@ -238,7 +238,7 @@ void eqt::guild::GuildComponent::ZoneProcessGuildMOTDReply(const EQ::Net::Packet
 	std::string message(motd->motd, strnlen(motd->motd, 512));
 
 	LOG_INFO(MOD_MAIN, "Guild MOTD (set by {}): {}", setby, message);
-	owner_.AddChatSystemMessage(fmt::format("Guild MOTD (set by {}): {}", setby, message));
+	ctx_.out.System(fmt::format("Guild MOTD (set by {}): {}", setby, message));
 }
 
 void eqt::guild::GuildComponent::ZoneProcessGuildMemberUpdate(const EQ::Net::Packet &p)
@@ -272,5 +272,5 @@ void eqt::guild::GuildComponent::ZoneProcessGuildMemberAdd(const EQ::Net::Packet
 	std::string member_name(name, strnlen(name, 64));
 
 	LOG_INFO(MOD_MAIN, "{} has joined the guild", member_name);
-	owner_.AddChatSystemMessage(fmt::format("{} has joined the guild.", member_name));
+	ctx_.out.System(fmt::format("{} has joined the guild.", member_name));
 }

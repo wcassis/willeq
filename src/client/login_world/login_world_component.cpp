@@ -130,8 +130,8 @@ void LoginWorldComponent::LoginOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakCon
 	// T05: record real network traffic only (replayed packets enter via
 	// ReplayLoginPacket -> DispatchLoginPacket and are never re-recorded) --
 	// mirrors R01's rule for zone (see EverQuest::ZoneOnPacketRecv, eq.cpp).
-	if (owner_.m_session_recorder && p.Length() >= 2) {
-		owner_.m_session_recorder->record(EQT::Net::SessionStream::Login, EQT::Net::SessionDirection::ServerToClient,
+	if (ctx_.session_recorder && p.Length() >= 2) {
+		ctx_.session_recorder->record(EQT::Net::SessionStream::Login, EQT::Net::SessionDirection::ServerToClient,
 			opcode, (const uint8_t*)p.Data() + 2, static_cast<uint32_t>(p.Length() - 2));
 	}
 
@@ -189,7 +189,7 @@ void LoginWorldComponent::LoginSendSessionReady()
 	if (m_login_connection) {
 		m_login_connection->QueuePacket(p);
 	} else {
-		++owner_.m_replay_suppressed_sends;
+		ctx_.net.NoteSuppressedSend();
 	}
 }
 
@@ -223,7 +223,7 @@ void LoginWorldComponent::LoginSendLogin()
 	if (m_login_connection) {
 		m_login_connection->QueuePacket(p);
 	} else {
-		++owner_.m_replay_suppressed_sends;
+		ctx_.net.NoteSuppressedSend();
 	}
 }
 
@@ -240,7 +240,7 @@ void LoginWorldComponent::LoginSendServerRequest()
 	if (m_login_connection) {
 		m_login_connection->QueuePacket(p);
 	} else {
-		++owner_.m_replay_suppressed_sends;
+		ctx_.net.NoteSuppressedSend();
 	}
 }
 
@@ -258,7 +258,7 @@ void LoginWorldComponent::LoginSendPlayRequest(uint32_t id)
 	if (m_login_connection) {
 		m_login_connection->QueuePacket(p);
 	} else {
-		++owner_.m_replay_suppressed_sends;
+		ctx_.net.NoteSuppressedSend();
 	}
 }
 
@@ -452,8 +452,8 @@ void LoginWorldComponent::WorldOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakCon
 	// T05: record real network traffic only (replayed packets enter via
 	// ReplayWorldPacket -> DispatchWorldPacket and are never re-recorded) --
 	// mirrors R01's rule for zone (see EverQuest::ZoneOnPacketRecv, eq.cpp).
-	if (owner_.m_session_recorder && p.Length() >= 2) {
-		owner_.m_session_recorder->record(EQT::Net::SessionStream::World, EQT::Net::SessionDirection::ServerToClient,
+	if (ctx_.session_recorder && p.Length() >= 2) {
+		ctx_.session_recorder->record(EQT::Net::SessionStream::World, EQT::Net::SessionDirection::ServerToClient,
 			opcode, (const uint8_t*)p.Data() + 2, static_cast<uint32_t>(p.Length() - 2));
 	}
 
@@ -568,7 +568,7 @@ void LoginWorldComponent::WorldSendClientAuth()
 	// m_zone_to_zone_in_progress is latched across the teardown for exactly
 	// this read. (The official client's group_id rows stayed intact across
 	// the same transition -- T320's oracle capture.)
-	uint8_t zoning_flag = owner_.Zone().ZoneToZoneInProgress() ? 1 : 0;
+	uint8_t zoning_flag = ctx_.Zone().ZoneToZoneInProgress() ? 1 : 0;
 	p.PutUInt8(2 + 188, zoning_flag);
 
 	LOG_INFO(MOD_WORLD, "Sending login info: dbid={}, key={}, zoning={}", dbid_str, m_key, zoning_flag);
@@ -577,7 +577,7 @@ void LoginWorldComponent::WorldSendClientAuth()
 	if (m_world_connection) {
 		m_world_connection->QueuePacket(p);
 	} else {
-		++owner_.m_replay_suppressed_sends;
+		ctx_.net.NoteSuppressedSend();
 	}
 }
 
@@ -606,7 +606,7 @@ void LoginWorldComponent::WorldSendEnterWorld(const std::string &character)
 	if (m_world_connection) {
 		m_world_connection->QueuePacket(p);
 	} else {
-		++owner_.m_replay_suppressed_sends;
+		ctx_.net.NoteSuppressedSend();
 	}
 	m_enter_world_sent = true;
 }
@@ -688,7 +688,7 @@ void LoginWorldComponent::WorldSendApproveWorld()
 	if (m_world_connection) {
 		m_world_connection->QueuePacket(p);
 	} else {
-		++owner_.m_replay_suppressed_sends;
+		ctx_.net.NoteSuppressedSend();
 	}
 }
 
@@ -708,7 +708,7 @@ void LoginWorldComponent::WorldSendWorldClientCRC()
 	if (m_world_connection) {
 		m_world_connection->QueuePacket(p);
 	} else {
-		++owner_.m_replay_suppressed_sends;
+		ctx_.net.NoteSuppressedSend();
 	}
 
 	// Send CRC2
@@ -717,7 +717,7 @@ void LoginWorldComponent::WorldSendWorldClientCRC()
 	if (m_world_connection) {
 		m_world_connection->QueuePacket(p);
 	} else {
-		++owner_.m_replay_suppressed_sends;
+		ctx_.net.NoteSuppressedSend();
 	}
 }
 
@@ -732,7 +732,7 @@ void LoginWorldComponent::WorldSendWorldClientReady()
 	if (m_world_connection) {
 		m_world_connection->QueuePacket(p);
 	} else {
-		++owner_.m_replay_suppressed_sends;
+		ctx_.net.NoteSuppressedSend();
 	}
 	m_world_ready = true;
 }
@@ -748,7 +748,7 @@ void LoginWorldComponent::WorldSendWorldComplete()
 	if (m_world_connection) {
 		m_world_connection->QueuePacket(p);
 	} else {
-		++owner_.m_replay_suppressed_sends;
+		ctx_.net.NoteSuppressedSend();
 	}
 }
 
@@ -788,7 +788,7 @@ void LoginWorldComponent::WorldProcessPostEnterWorld(const EQ::Net::Packet &p)
 	// 516-523, 847), which is exactly what makes it a zoning pass. Without
 	// this the client sat in world forever after T322 started sending
 	// zoning=1, so the two changes are one change.
-	if (owner_.Zone().ZoneToZoneInProgress() && !m_enter_world_sent) {
+	if (ctx_.Zone().ZoneToZoneInProgress() && !m_enter_world_sent) {
 		LOG_DEBUG(MOD_WORLD, "Zoning world pass: sending EnterWorld now");
 		WorldSendEnterWorld(ctx_.character);
 	}
@@ -810,7 +810,7 @@ void LoginWorldComponent::WorldProcessExpansionInfo(const EQ::Net::Packet &p)
 		if (m_world_connection) {
 			m_world_connection->QueuePacket(ack);
 		} else {
-			++owner_.m_replay_suppressed_sends;
+			ctx_.net.NoteSuppressedSend();
 		}
 
 		// Then send WorldClientReady
@@ -966,14 +966,14 @@ void LoginWorldComponent::WorldProcessZoneServerInfo(const EQ::Net::Packet &p)
 			// traced production flow (is_zone_transition is always false),
 			// but is fixed as hardening for whenever that reachability
 			// changes, same rationale T52 used for its own fix here.
-			owner_.SetPosition(ctx_.game_state.world().pendingZoneX(), ctx_.game_state.world().pendingZoneY(), ctx_.game_state.world().pendingZoneZ());
+			ctx_.self.SetPosition(ctx_.game_state.world().pendingZoneX(), ctx_.game_state.world().pendingZoneY(), ctx_.game_state.world().pendingZoneZ());
 			if (ctx_.game_state.world().pendingZoneHeading() > 0) {
-				owner_.SetHeading(ctx_.game_state.world().pendingZoneHeading());
+				ctx_.self.SetHeading(ctx_.game_state.world().pendingZoneHeading());
 			}
 		}
 
 		// Disconnect from current zone (this also calls CleanupZone)
-		owner_.Zone().DisconnectFromZone();
+		ctx_.Zone().DisconnectFromZone();
 	}
 
 	// Store new zone server info

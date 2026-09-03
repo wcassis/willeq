@@ -228,7 +228,7 @@ void eqt::chat::ChatComponent::SendChatMessage(const std::string &message, const
 	// Group::GroupMessage, no reply), so the client has to be the one to
 	// tell the player.
 	if (channel == CHAT_CHANNEL_GROUP && !ctx_.game_state.group().inGroup()) {
-		owner_.AddChatSystemMessage("You must be in a group to use that command.");
+		ctx_.out.System("You must be in a group to use that command.");
 		return;
 	}
 
@@ -363,7 +363,7 @@ void eqt::chat::ChatComponent::ProcessChatInput(const std::string &input)
 			size_t space_pos = cmd_line.find(' ');
 			std::string command = (space_pos != std::string::npos) ?
 				cmd_line.substr(0, space_pos) : cmd_line;
-			owner_.AddChatSystemMessage(fmt::format("Unknown command: /{}. Type /help for a list of commands.", command));
+			ctx_.out.System(fmt::format("Unknown command: /{}. Type /help for a list of commands.", command));
 		}
 	} else {
 		// No slash - treat as /say

@@ -155,10 +155,8 @@ public:
 	// Any handler-triggered sends no-op safely (see m_replay_suppressed_sends).
 	void ReplayZonePacket(uint16_t opcode, const uint8_t* data, size_t size);
 
-	// Count of zone packet sends suppressed because m_zone_connection was
-	// null (replay/test mode). Only incremented by the Zone packet senders
-	// reachable from S->C handlers (see ReplayZonePacket).
-	uint64_t GetReplaySuppressedSendCount() const { return m_replay_suppressed_sends; }
+	// K13: the suppressed-send counter moved to eqt::PacketSender -- read it
+	// as eq.Net().ReplaySuppressedSendCount().
 
 	// T52 test seam: m_game_state.world().pendingZoneX()/y/z/id have three producers
 	// (ZoneProcessZoneChange, CheckZoneLine, and the bind/death path in
@@ -216,7 +214,7 @@ public:
 	// decoded PlayerProfile/ZoneSpawns entity id. Lets a test drive Move()/
 	// MoveToWithPath() without first replaying a full PlayerProfile.
 	// Test-only; not called from any production path.
-	void Test_SetMySpawnIdForSeam(uint16_t spawn_id) { SetMySpawnId(spawn_id); }
+	void Test_SetMySpawnIdForSeam(uint16_t spawn_id) { m_player_facade.SetMySpawnId(spawn_id); }
 	// T311: player model size, normally set from the self spawn struct. The
 	// wire z is 0.625 * size, so a test that does not vary size cannot pin the
 	// measured size-linearity.
@@ -231,27 +229,13 @@ public:
 	// pet branch directly. Test-only; not called from any production path.
 	void Test_SetPetSpawnIdForSeam(uint16_t spawn_id) { m_game_state.pet().setPet(spawn_id, "", 0); }
 
-	// T268 test seam: every packet QueuePacket() was asked to send (opcode +
-	// body bytes), captured before the connection gate so a headless test can
-	// assert the exact wire sequence a loot action produces (OP_LootRequest,
-	// N x OP_LootItem, OP_EndLootRequest) instead of re-deriving it. Off by
-	// default (zero cost in production); Test_SetCaptureQueuedPacketsForSeam
-	// (true) turns it on. Read-only; test-only.
-	struct TestQueuedPacket {
-		uint16_t opcode = 0;
-		std::vector<uint8_t> bytes;  // body only (no opcode prefix)
-	};
-	void Test_SetCaptureQueuedPacketsForSeam(bool capture) { m_test_capture_queued_packets = capture; }
-	const std::vector<TestQueuedPacket>& Test_GetQueuedPackets() const { return m_test_queued_packets; }
-	void Test_ClearQueuedPackets() { m_test_queued_packets.clear(); }
-	// Called from QueuePacket() BEFORE its connection gate; no-op unless armed.
-	void Test_RecordQueuedPacket(uint16_t opcode, const void* body, size_t len) {
-		if (!m_test_capture_queued_packets) {
-			return;
-		}
-		const auto* d = static_cast<const uint8_t*>(body);
-		m_test_queued_packets.push_back(TestQueuedPacket{opcode, std::vector<uint8_t>(d, d + len)});
-	}
+	// T268 test seam. K13 moved the capture itself into eqt::PacketSender
+	// (it lives inside the body it captures); these three keep the EverQuest
+	// receiver the 30+ existing test call sites use.
+	using TestQueuedPacket = eqt::PacketSender::TestQueuedPacket;
+	void Test_SetCaptureQueuedPacketsForSeam(bool capture) { m_packet_sender.Test_SetCaptureQueuedPacketsForSeam(capture); }
+	const std::vector<TestQueuedPacket>& Test_GetQueuedPackets() const { return m_packet_sender.Test_GetQueuedPackets(); }
+	void Test_ClearQueuedPackets() { m_packet_sender.Test_ClearQueuedPackets(); }
 
 	// T322 test seam: the deferred logout disconnect (H03). The zone-out
 	// handshake seams that stood here moved with their flags into
@@ -277,10 +261,9 @@ public:
 	void SetPosition(float x, float y, float z);
 	void SetMoving(bool moving);
 	glm::vec3 GetPosition() const;
-	// T246: the zone's collision map (null until a zone's .map is loaded);
-	// game-thread readers (SpellManager::checkLineOfSight) take a copy of
-	// the shared_ptr so a zone change cannot free it mid-query (P35).
-	std::shared_ptr<const HCMap> GetZoneMap() const { return m_zone_map; }
+	// K13: the zone collision map, the BSP tree and the fog/sky/zone-type
+	// block moved into eqt::zone::ZoneComponent (K11 measured the shape and
+	// left the move here) -- read the map as eq.Zone().GetZoneMap().
 	float GetSize() const { return m_game_state.player().size(); }  // player model size (6 until the spawn says otherwise)
 	// T311: the renderer-measured origin-to-feet distance of OUR model; 0 until
 	// the model loads. Only for render-frame <-> wire-frame conversion --
@@ -291,7 +274,7 @@ public:
 	// eqt::commands::CommandsComponent -- see Commands().
 	float GetHeading() const;
 	bool IsMoving() const;
-	bool IsFullyZonedIn() const { return m_game_state.world().isZoneConnected() && m_game_state.world().isClientReady() && m_update_running; }
+	bool IsFullyZonedIn() const { return m_player_facade.IsFullyZonedIn(); }
 	bool IsZoneChangeApproved() const { return m_game_state.world().zoneChangeApproved(); }
 
 	// Loading phase tracking (covers entire pre-gameplay process)
@@ -323,14 +306,15 @@ public:
 	eqt::inventory::InventoryManager* GetInventoryManager() { return m_inventory_manager.get(); }
 
 	const std::map<uint16_t, Entity>& GetEntities() const { return m_entities; }
-	uint16_t GetEntityID() const { return MySpawnId(); }
+	uint16_t GetEntityID() const { return m_player_facade.GetEntityID(); }
 
 	// D20c4: Quit signaling — Application checks this flag
 	bool IsQuitRequested() const { return m_quit_requested; }
 	void RequestQuit() { m_quit_requested = true; }
 	const std::string& GetLastTellSender() const { return m_last_tell_sender; }
 	void QueuePacket(uint16_t opcode, EQ::Net::DynamicPacket* packet);
-	const std::map<uint32_t, eqt::WorldObject>& GetWorldObjects() const { return m_world_objects; }
+	// K13: m_world_objects moved into eqt::entities::EntitiesComponent --
+	// read it as eq.Entities().GetWorldObjects().
 	uint32_t GetActiveTradeskillObjectId() const { return m_active_tradeskill_object_id; }
 
 	// Group queries (Phase 7.5: read from GameState)
@@ -358,16 +342,16 @@ public:
 	// eq_entities.cpp). K04 moved GetPetName()/GetPetLevel()/GetPetEntity()
 	// and SendPetCommand() into GroupComponent; DismissPet() had zero callers
 	// and was deleted.
-	bool HasPet() const { return m_game_state.pet().petSpawnId() != 0; }
+	bool HasPet() const { return m_player_facade.HasPet(); }
 	uint16_t GetPetSpawnId() const { return m_game_state.pet().petSpawnId(); }
 
 	// Movement state and behavior methods
 
-	// Swimming methods
-	WaterState GetWaterState() const { return m_water_state; }
-	bool IsSwimming() const { return m_water_state != WaterState::NotInWater; }
-	void SetSwimUp(bool up) { m_swim_up = up; }
-	void SetSwimDown(bool down) { m_swim_down = down; }
+	// K13: m_water_state moved into eqt::movement::MovementComponent (its sole
+	// writer). GetWaterState(), IsSwimming(), SetSwimUp(), SetSwimDown(),
+	// m_swim_up and m_swim_down each had exactly ONE occurrence tree-wide --
+	// their own definition -- and were DELETED (Mechanism 5, K10 correction
+	// (s)); see refactor/BOARD.md.
 
 	void StartUpdateLoop();
 	void StopUpdateLoop();
@@ -419,6 +403,12 @@ public:
 	// eqt::commands::CommandsComponent; callers go through Commands().
 	eqt::commands::CommandsComponent& Commands() { return *m_commands; }
 	eqt::ClientContext& Context() { return m_ctx; }
+	// K13 (Batch K): the three CONTEXT SERVICES. Components reach them as
+	// ctx_.out / ctx_.self / ctx_.net; these three accessors are for
+	// everything else (chiefly the tests that read the replay counter).
+	eqt::ChatOutput& Out() { return m_chat_output; }
+	eqt::PlayerFacade& Self() { return m_player_facade; }
+	eqt::PacketSender& Net() { return m_packet_sender; }
 	// K05 (Batch K): the Phase 4 tradeskill senders are
 	// eqt::merchant::MerchantComponent's; callers go through Merchant().
 	// K02 (Batch K): the GM command senders are eqt::gm::GmComponent's; callers
@@ -433,7 +423,7 @@ public:
 	bool IsRoleplay() const;
 
 	// Additional public methods
-	uint16_t GetMySpawnID() const { return MySpawnId(); }
+	uint16_t GetMySpawnID() const { return m_player_facade.MySpawnId(); }
 	uint16_t GetCurrentTargetId() const { return m_game_state.combat().targetId(); }
 
 	// T133: populated from the player's own PlayerProfile packet
@@ -507,11 +497,20 @@ public:
 
 	// Keyboard state
 
-	// Friend classes for system access
+	// Friend classes for system access. K13: eqt::gm::GmComponent is GONE from
+	// this list -- it is the first component to reach ZERO owner_. uses of any
+	// kind and zero EverQuest-scoped private names, and it dropped the
+	// EverQuest& ctor parameter with the friendship.
+	//
+	// K13 correction: friendship is NOT tested by the owner_. count alone.
+	// merchant and commands both reach zero owner_.m_ (their only handle uses
+	// are the two PUBLIC string-DB lookups) yet still need the friend line for
+	// the PRIVATE STATICS EverQuest::FormatPrice/DumpPacket/s_debug_level,
+	// which a component names by qualification, not through owner_. The
+	// residue table in refactor/K13_context_services.md records both axes.
 	friend class CombatManager;
 	friend class TradeManager;
 	friend class eqt::guild::GuildComponent;  // K01 transition; K-final removes it
-	friend class eqt::gm::GmComponent;  // K02 transition; K-final removes it
 	friend class eqt::chat::ChatComponent;    // K03 transition; K-final removes it
 	friend class eqt::group::GroupComponent;  // K04 transition; K-final removes it
 	friend class eqt::merchant::MerchantComponent;  // K05 transition; K-final removes it
@@ -581,21 +580,15 @@ private:
 	// Bridge for cross-thread game state → renderer communication (Phase 2+)
 	eqt::bridge::GameStateBridge* m_bridge = nullptr;
 
-	// D20f2: Typed BSP tree for water detection, zone lines, collision
-	std::shared_ptr<EQT::Graphics::BspTree> m_zone_bsp_tree;
-	// P17: zone name m_zone_bsp_tree was built for (set by LoadZoneSources()
-	// and SetZoneBspTree()). Empty whenever m_zone_bsp_tree is null. Used by
-	// CreateZoneLoadSnapshot() to detect a stale tree that outlived a
-	// CleanupZone() reset. T260: LoadZoneSources() did not set it, so every
-	// zone-in since P17 skipped the region lookup with a spurious "stale"
-	// WARN (captured for '') -- see refactor/T260_bsp_region_size_max.md.
-	std::string m_zone_bsp_tree_zone_name;
-
 	// Utility functions
 	static void DumpPacket(const std::string &prefix, uint16_t opcode, const EQ::Net::Packet &p);
 	static void DumpPacket(const std::string &prefix, uint16_t opcode, const uint8_t *data, size_t size);
-	static std::string GetOpcodeName(uint16_t opcode);
 public:
+	// K13: public because eqt::PacketSender -- a context service, not a
+	// friend component -- logs it from the moved SafeQueueZone() body. A pure
+	// static lookup over opcode values, exactly the standing T180 gave
+	// GetClassName and T271 GetRaceName.
+	static std::string GetOpcodeName(uint16_t opcode);
 	// T244: public because EqActionHandler (not a friend) renders cast
 	// refusals from official eqstr ids -- see client/spell/cast_refusal.h.
 	std::string GetStringMessage(uint32_t string_id);
@@ -617,52 +610,13 @@ public:
 	// printed to the player).
 	static std::string GetRaceName(uint32_t race_id);
 private:
-	// ------------------------------------------------------------------
-	// T288: ONE store for position/heading, spawn id and zone identity.
-	//
-	// EverQuest used to keep its own position/heading, spawn id and zone
-	// name/id alongside the state layer's
-	// PlayerState/WorldState copies, and hand-mirror them at each wire
-	// site. Some sites mirrored, some did not: the self-ClientUpdate
-	// branch, the whole movement integrator and the PlayerProfile
-	// entity-id write all updated only EverQuest's copy, so every
-	// state-layer reader (GetHeading(), clickNearestDoor(),
-	// getNearestPlayer(), GameState::playerPosition()) saw the zone-in
-	// value for the rest of the session. T286 catalogued this class; these
-	// seven were the last of it.
-	//
-	// The members are GONE. What follows are accessors INTO
-	// m_game_state -- adding a member back here is the regression
-	// tests/test_duplicate_state_stores.cpp exists to catch.
-	//
-	// Coordinate order: PosX()/PosY()/PosZ() are CLIENT coordinates
-	// (INVERSEXY already applied -- client x is the server's y). Every
-	// wire site that reads them for an outbound packet swaps back; see
-	// docs/CLAUDE.md's coordinate section, and do not "simplify" a swap
-	// away. HeadingDeg() is the PLAYER's heading in degrees, carrying the
-	// deliberate `90 -` flip that NPC headings do not share.
-	float PosX() const { return m_game_state.player().x(); }
-	float PosY() const { return m_game_state.player().y(); }
-	float PosZ() const { return m_game_state.player().z(); }
-	float HeadingDeg() const { return m_game_state.player().heading(); }
-
-	// Movement-step writes: same store, no PlayerMoved event -- exactly the
-	// event behaviour the raw members had (see
-	// PlayerState::setPositionNoEvent). SetPosition()/SetHeading() remain
-	// the event-firing relocation path.
-	void SetPosLocal(float x, float y, float z) {
-		m_game_state.player().setPositionNoEvent(x, y, z);
-	}
-	void SetHeadingLocal(float heading) {
-		m_game_state.player().setHeadingNoEvent(heading);
-	}
-
-	uint16_t MySpawnId() const { return m_game_state.player().spawnId(); }
-	void SetMySpawnId(uint16_t id) { m_game_state.player().setSpawnId(id); }
-
-	const std::string& CurrentZoneName() const { return m_game_state.world().zoneName(); }
-	uint16_t CurrentZoneId() const { return m_game_state.world().zoneId(); }
-	// ------------------------------------------------------------------
+	// K13: the PRIVATE half of the player-state facade (PosX/PosY/PosZ/
+	// HeadingDeg/SetPosLocal/SetHeadingLocal/MySpawnId/SetMySpawnId/
+	// CurrentZoneName/CurrentZoneId, and the T288 banner explaining that they
+	// are accessors INTO m_game_state and never a second copy) moved to
+	// eqt::PlayerFacade -- include/client/player_facade.h, which carries the
+	// banner verbatim. No caller outside the friend components existed, so
+	// nothing forwards.
 
 	static std::string GetDeityName(uint32_t deity_id);
 	static std::string GetBodyTypeName(uint8_t bodytype);
@@ -698,12 +652,11 @@ private:
 	std::unique_ptr<EQ::Net::DaybreakConnectionManager> m_zone_connection_manager;
 	std::shared_ptr<EQ::Net::DaybreakConnection> m_zone_connection;
 
-	// Safe packet sending helper
-	bool SafeQueueZonePacket(EQ::Net::Packet &p, int stream = 0, bool reliable = true);
-
-	// Batch R: incremented whenever a Zone packet sender no-ops because
-	// m_zone_connection is null (replay/test mode has no live connection).
-	uint64_t m_replay_suppressed_sends = 0;
+	// K13: SafeQueueZonePacket() and QueuePacket()'s body, plus the
+	// suppressed-send counter, are eqt::PacketSender's -- reached as
+	// ctx_.net.SafeQueueZone()/Queue() inside a component and eq.Net()
+	// elsewhere. SafeQueueZonePacket had no caller outside the friend
+	// components, so nothing forwards for it.
 
 	// T88 test seam (see Test_SetBypassSendGuardForSeam and
 	// MovementComponent::Test_GetLastComputedPositionUpdate).
@@ -735,8 +688,6 @@ private:
 	// the former separate EQT::DoorStateManager member was a third copy that
 	// neither GameState instance ever saw (refactor/T78_two_gamestate_analysis.md item 3).
 
-	// World object tracking (forges, looms, groundspawns, etc.)
-	std::map<uint32_t, eqt::WorldObject> m_world_objects;
 	uint32_t m_active_tradeskill_object_id = 0;  // Currently open tradeskill container (0 = none)
 
 	// Movement and position tracking. T288: position and heading live in
@@ -758,15 +709,6 @@ private:
 	// T288: zone identity lives in m_game_state.world() and nowhere else --
 	// CurrentZoneName()/CurrentZoneId() above are accessors INTO that store.
 
-	// Zone environment data from NewZone packet
-	uint8_t m_zone_sky_type = 0;           // Sky type for rendering (0-255)
-	uint8_t m_zone_type = 0;               // Zone type (0=outdoor, 1=dungeon, etc.)
-	uint8_t m_zone_fog_red[4] = {0};       // Fog colors for 4 fog ranges
-	uint8_t m_zone_fog_green[4] = {0};
-	uint8_t m_zone_fog_blue[4] = {0};
-	float m_zone_fog_minclip[4] = {0};     // Fog min clip distances
-	float m_zone_fog_maxclip[4] = {0};     // Fog max clip distances
-
 	// "Update loop" flag. Set at the first ClientUpdate (StartUpdateLoop),
 	// cleared by CleanupZone / the destructor (StopUpdateLoop). It is part of
 	// IsFullyZonedIn() and gates OnGameStateComplete(). T245: the 500 ms
@@ -779,18 +721,6 @@ private:
 	// R01: Session recorder (null unless --record-session was passed)
 	std::unique_ptr<EQT::Net::SessionRecorder> m_session_recorder;
 
-	// Map for Z-height calculations. shared_ptr<const HCMap> (P35): the
-	// renderer/SimulationWorker boundary holds copies of this same
-	// shared_ptr (via CollisionMapChangedData / SimulationZoneData::hcMap),
-	// so a zone-change reset() here only drops the game thread's
-	// reference -- the object survives until every renderer-side holder
-	// (collisionMap_, SimulationWorker's zoneData_.hcMap) also releases
-	// it, closing the P34-adjacent CRITICAL UAF where the game thread
-	// freed the old HCMap out from under the SimulationWorker thread
-	// mid-zone-transition. HCMap is immutable zone data (all read paths
-	// are const methods) so const-ness costs nothing on the game-thread
-	// side.
-	std::shared_ptr<const HCMap> m_zone_map;
 
 	// H03: server confirmed our OP_Logout (ZoneProcessLogoutReply) — DisconnectFromZone()
 	// must not run synchronously from inside that packet handler (it resets
@@ -829,18 +759,9 @@ private:
 
 	// Movement and position state
 
-	// Swimming state
-	WaterState m_water_state = WaterState::NotInWater;
-	bool m_swim_up = false;          // Currently pressing swim up key
-	bool m_swim_down = false;        // Currently pressing swim down key
-
 	// T167: the seven PlayerProfile appearance fields. See
 	// GetProfileAppearance().
 	EQT::ProfileAppearance m_profile_appearance;
-
-	// T268 test seam -- see Test_GetQueuedPackets().
-	bool m_test_capture_queued_packets = false;
-	std::vector<TestQueuedPacket> m_test_queued_packets;
 
 	// T170/T171: what we send as our inspect message. eqemu never tells a
 	// Titanium client its own stored message, so this client keeps its own --
@@ -908,8 +829,8 @@ public:
 
 	// Vendor window state (Player mode with graphics). K05: the vendor open,
 	// buy, sell and close senders are on Merchant().
-	bool IsVendorWindowOpen() const { return m_game_state.player().vendorNpcId() != 0; }
-	uint16_t GetVendorNpcId() const { return m_game_state.player().vendorNpcId(); }
+	bool IsVendorWindowOpen() const { return m_player_facade.IsVendorWindowOpen(); }
+	uint16_t GetVendorNpcId() const { return m_player_facade.GetVendorNpcId(); }
 
 	// T136: minimal read accessor for the migrated /vendorlist command --
 	// see refactor/T136_migrate_merchant_family.md ("the state gap") for why
@@ -926,12 +847,12 @@ public:
 
 	// Bank window state (Player mode with graphics). K05: Open/CloseBankWindow
 	// are on Merchant().
-	bool IsBankWindowOpen() const { return m_game_state.player().bankerNpcId() != 0; }
+	bool IsBankWindowOpen() const { return m_player_facade.IsBankWindowOpen(); }
 	uint16_t GetBankerNpcId() const { return m_game_state.player().bankerNpcId(); }
 
 	// Skill trainer window state (Player mode with graphics). K05:
 	// RequestTrainerWindow/TrainSkill/CloseTrainerWindow are on Merchant().
-	bool IsTrainerWindowOpen() const { return m_game_state.player().trainerNpcId() != 0; }
+	bool IsTrainerWindowOpen() const { return m_player_facade.IsTrainerWindowOpen(); }
 	uint16_t GetTrainerNpcId() const { return m_game_state.player().trainerNpcId(); }
 
 	// K12 (Batch K): RequestTrainSkill/RequestCloseTrainer/ListTrainableSkills
@@ -973,6 +894,11 @@ public:
 	EQT::Audio::AudioManager* GetAudioManager() { return m_audio_manager.get(); }
 #endif
 private:
+	// K13: the three context services. Declared BEFORE m_ctx (which holds a
+	// reference to each) and after every member they wrap.
+	eqt::ChatOutput m_chat_output;
+	eqt::PlayerFacade m_player_facade;
+	eqt::PacketSender m_packet_sender;
 	// K01: declared last -- every member m_ctx references is declared above.
 	eqt::ClientContext m_ctx;
 	std::unique_ptr<eqt::guild::GuildComponent> m_guild;

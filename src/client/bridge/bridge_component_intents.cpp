@@ -135,8 +135,8 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 					player.setZAwaitingFrameConversion(false);
 					// SetPosition (not SetPosLocal): the renderer was handed the
 					// unconverted z at zone-in and needs the corrected one.
-					owner_.SetPosition(owner_.PosX(), owner_.PosY(),
-					            eqt::wireZToRenderZ(owner_.PosZ(), i.collisionZOffset, player.size()));
+					ctx_.self.SetPosition(ctx_.self.PosX(), ctx_.self.PosY(),
+					            eqt::wireZToRenderZ(ctx_.self.PosZ(), i.collisionZOffset, player.size()));
 				}
 			}
 			// ================================================================
@@ -226,12 +226,12 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 				}
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::DoorInteractIntent>) {
-				owner_.Entities().SendClickDoor(i.doorId);
+				ctx_.Entities().SendClickDoor(i.doorId);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::VendorToggleIntent>) {
 				// If vendor window is open, close it
-				if (owner_.IsVendorWindowOpen()) {
-					owner_.Merchant().CloseVendorWindow();
+				if (ctx_.self.IsVendorWindowOpen()) {
+					ctx_.Merchant().CloseVendorWindow();
 					return;
 				}
 
@@ -262,11 +262,11 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 				}
 
 				LOG_DEBUG(MOD_INVENTORY, "Vendor toggle: Opening vendor {} (id={})", target.name, target_id);
-				owner_.Merchant().RequestOpenVendor(target_id);
+				ctx_.Merchant().RequestOpenVendor(target_id);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::BankerInteractIntent>) {
 				// If bank window is already open, ignore
-				if (owner_.IsBankWindowOpen()) {
+				if (ctx_.self.IsBankWindowOpen()) {
 					LOG_DEBUG(MOD_INVENTORY, "Banker interact: Bank already open");
 					return;
 				}
@@ -285,28 +285,28 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 				}
 
 				// Check distance to NPC
-				float distSq = owner_.Movement().CalculateDistance2D(owner_.PosX(), owner_.PosY(), target.x, target.y);
+				float distSq = ctx_.Movement().CalculateDistance2D(ctx_.self.PosX(), ctx_.self.PosY(), target.x, target.y);
 				distSq = distSq * distSq;  // CalculateDistance2D returns distance, not squared
 				if (distSq > NPC_INTERACTION_DISTANCE_SQUARED) {
 					LOG_DEBUG(MOD_INVENTORY, "Banker interact: Target {} is too far away (dist={})", target.name, std::sqrt(distSq));
-					owner_.AddChatSystemMessage("You are too far away to interact with this NPC.");
+					ctx_.out.System("You are too far away to interact with this NPC.");
 					return;
 				}
 
 				constexpr uint8_t CLASS_BANKER = 40;
 				if (target.class_id != CLASS_BANKER) {
 					LOG_DEBUG(MOD_INVENTORY, "Banker interact: Target {} is not a banker (class={})", target.name, target.class_id);
-					owner_.AddChatSystemMessage("This NPC is not a banker.");
+					ctx_.out.System("This NPC is not a banker.");
 					return;
 				}
 
 				LOG_INFO(MOD_INVENTORY, "Opening bank window for {} (id={})", target.name, i.npcId);
-				owner_.Merchant().OpenBankWindow(i.npcId);
+				ctx_.Merchant().OpenBankWindow(i.npcId);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::TrainerToggleIntent>) {
 				// If trainer window is open, close it
-				if (owner_.IsTrainerWindowOpen()) {
-					owner_.Merchant().CloseTrainerWindow();
+				if (ctx_.self.IsTrainerWindowOpen()) {
+					ctx_.Merchant().CloseTrainerWindow();
 					return;
 				}
 
@@ -333,33 +333,33 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 				constexpr uint8_t CLASS_BERSERKER_GM = 35;
 				if (target.class_id < CLASS_WARRIOR_GM || target.class_id > CLASS_BERSERKER_GM) {
 					LOG_DEBUG(MOD_MAIN, "Trainer toggle: Target {} is not a trainer (class={})", target.name, target.class_id);
-					owner_.AddChatSystemMessage("That is not a trainer.");
+					ctx_.out.System("That is not a trainer.");
 					return;
 				}
 
 				LOG_DEBUG(MOD_MAIN, "Trainer toggle: Requesting trainer {} (id={}, class={})", target.name, target_id, target.class_id);
-				owner_.Merchant().RequestTrainerWindow(target_id);
+				ctx_.Merchant().RequestTrainerWindow(target_id);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::WorldObjectInteractIntent>) {
-				auto it = owner_.m_world_objects.find(i.dropId);
-				if (it != owner_.m_world_objects.end() && it->second.isTradeskillContainer()) {
+				auto it = ctx_.Entities().WorldObjects().find(i.dropId);
+				if (it != ctx_.Entities().WorldObjects().end() && it->second.isTradeskillContainer()) {
 					LOG_INFO(MOD_INVENTORY, "Clicking tradeskill container: dropId={} name='{}' type={}",
 						i.dropId, it->second.name, it->second.object_type);
-					owner_.Entities().SendClickObject(i.dropId);
-				} else if (it != owner_.m_world_objects.end()) {
+					ctx_.Entities().SendClickObject(i.dropId);
+				} else if (it != ctx_.Entities().WorldObjects().end()) {
 					LOG_DEBUG(MOD_ENTITY, "World object {} is not a tradeskill container (type={})",
 						i.dropId, it->second.object_type);
 				}
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::ZoningEnabledIntent>) {
-				owner_.Zone().SetZoningEnabled(i.enabled);
+				ctx_.Zone().SetZoningEnabled(i.enabled);
 				LOG_INFO(MOD_ZONE, "Zoning {}", i.enabled ? "enabled" : "disabled");
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::ChatSubmitIntent>) {
-				owner_.Chat().ProcessChatInput(i.text);
+				ctx_.Chat().ProcessChatInput(i.text);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::ReadItemIntent>) {
-				owner_.Merchant().RequestReadBook(i.filename, i.type);
+				ctx_.Merchant().RequestReadBook(i.filename, i.type);
 			}
 			// ================================================================
 			// D16: UI intents (D20a — intent-only, callbacks removed)
@@ -372,23 +372,23 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 				if (result == EQ::CastResult::Success) {
 					uint32_t spellId = ctx_.spell_manager->getMemorizedSpell(i.gemSlot);
 					const EQ::SpellData* spell = ctx_.spell_manager->getSpell(spellId);
-					if (spell) owner_.AddChatSystemMessage(fmt::format("Casting {}", spell->name));
+					if (spell) ctx_.out.System(fmt::format("Casting {}", spell->name));
 				} else if (std::string refusal = EQ::castRefusalMessage(owner_, result); !refusal.empty()) {
 					// T244: same official-string table as EqActionHandler::
 					// beginCastFromGem() -- the two sites had drifted. T251:
 					// same renderer too (names a missing component).
-					owner_.AddChatSystemMessage(refusal);
+					ctx_.out.System(refusal);
 				} else if (result == EQ::CastResult::NotMemorized) {
-					owner_.AddChatSystemMessage(fmt::format("No spell in gem {}", i.gemSlot + 1));
+					ctx_.out.System(fmt::format("No spell in gem {}", i.gemSlot + 1));
 				} else if (result == EQ::CastResult::SpellNotReady) {
-					owner_.AddChatSystemMessage("Spell not ready");
+					ctx_.out.System("Spell not ready");
 				}
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::ScribeSpellIntent>) {
-				owner_.Merchant().ScribeSpellFromScroll(i.spellId, i.bookSlot, i.sourceSlot);
+				ctx_.Merchant().ScribeSpellFromScroll(i.spellId, i.bookSlot, i.sourceSlot);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::SpellbookStateIntent>) {
-				owner_.Entities().SendSpawnAppearance(AT_ANIMATION, i.isOpen ? 110 : 100);
+				ctx_.Entities().SendSpawnAppearance(AT_ANIMATION, i.isOpen ? 110 : 100);
 			}
 			// Buff/skill intents
 			else if constexpr (std::is_same_v<T, eqt::events::BuffCancelIntent>) {
@@ -403,7 +403,7 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 				// server would have refused. Now it asks and waits: the
 				// buff leaves the model only when OP_Buff comes back with
 				// bufffade == 1.
-				owner_.Player().SendBuffCancelRequest(i.slot);
+				ctx_.Player().SendBuffCancelRequest(i.slot);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::SkillActivateIntent>) {
 				// T156: gained a real producer this unit (a click on a row of
@@ -429,10 +429,10 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 			}
 			// Vendor intents
 			else if constexpr (std::is_same_v<T, eqt::events::VendorBuyIntent>) {
-				owner_.Merchant().BuyFromVendor(i.npcId, i.slot, i.quantity);
+				ctx_.Merchant().BuyFromVendor(i.npcId, i.slot, i.quantity);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::VendorSellIntent>) {
-				owner_.Merchant().SellToVendor(i.npcId, i.slot, i.quantity);
+				ctx_.Merchant().SellToVendor(i.npcId, i.slot, i.quantity);
 			}
 			// Bank intents (T269: producers are EverQuest::RequestBankCoinMove/
 			// Convert via /bank deposit|withdraw|convert). Wire truth, from
@@ -447,7 +447,7 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 			// arithmetic the server applies to both the EverQuest counters and
 			// the GameState pools /bank's pre-check reads.
 			else if constexpr (std::is_same_v<T, eqt::events::BankCurrencyMoveIntent>) {
-				if (!owner_.IsBankWindowOpen()) {
+				if (!ctx_.self.IsBankWindowOpen()) {
 					LOG_WARN(MOD_INVENTORY, "Bank coin move refused: bank window not open (type={} amount={} fromBank={})",
 						i.coinType, i.amount, i.fromBank);
 					return;
@@ -462,7 +462,7 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 				if (srcCoins < static_cast<uint32_t>(i.amount)) {
 					// The server would silently move only what is there; refuse
 					// instead so the projection and the wire never disagree.
-					owner_.AddChatSystemMessage(fmt::format("You do not have {} {} {}.",
+					ctx_.out.System(fmt::format("You do not have {} {} {}.",
 						i.amount, BankCoinName(i.coinType), i.fromBank ? "in the bank" : "on hand"));
 					return;
 				}
@@ -473,7 +473,7 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 				move.cointype1 = i.coinType;
 				move.cointype2 = i.coinType;
 				move.amount = i.amount;
-				owner_.Merchant().SendMoveCoin(move);
+				ctx_.Merchant().SendMoveCoin(move);
 
 				BankCoinSet(i.coinType, /*bank=*/i.fromBank, srcCoins - static_cast<uint32_t>(i.amount));
 				BankCoinSet(i.coinType, /*bank=*/!i.fromBank, dstCoins + static_cast<uint32_t>(i.amount));
@@ -486,7 +486,7 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 				PublishBankCoinProjection(/*inventoryChanged=*/true);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::BankCurrencyConvertIntent>) {
-				if (!owner_.IsBankWindowOpen()) {
+				if (!ctx_.self.IsBankWindowOpen()) {
 					LOG_WARN(MOD_INVENTORY, "Bank coin convert refused: bank window not open");
 					return;
 				}
@@ -507,7 +507,7 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 						// The server would take only the largest multiple and
 						// leave the remainder -- the wire amount would then
 						// not describe what happened. Refuse.
-						owner_.AddChatSystemMessage(fmt::format("Amount must be a multiple of {} to convert {} to {}.",
+						ctx_.out.System(fmt::format("Amount must be a multiple of {} to convert {} to {}.",
 							step, BankCoinName(i.fromCoinType), BankCoinName(i.toCoinType)));
 						return;
 					}
@@ -519,12 +519,12 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 				const uint32_t srcCoins = BankCoinGet(i.fromCoinType, /*bank=*/true);
 				const uint32_t dstCoins = BankCoinGet(i.toCoinType, /*bank=*/true);
 				if (srcCoins < static_cast<uint32_t>(i.amount)) {
-					owner_.AddChatSystemMessage(fmt::format("You do not have {} {} in the bank.",
+					ctx_.out.System(fmt::format("You do not have {} {} in the bank.",
 						i.amount, BankCoinName(i.fromCoinType)));
 					return;
 				}
 				if (converted > static_cast<int64_t>(std::numeric_limits<uint32_t>::max() - dstCoins)) {
-					owner_.AddChatSystemMessage("That conversion would overflow the destination pool.");
+					ctx_.out.System("That conversion would overflow the destination pool.");
 					return;
 				}
 
@@ -534,7 +534,7 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 				move.cointype1 = i.fromCoinType;
 				move.cointype2 = i.toCoinType;
 				move.amount = i.amount;
-				owner_.Merchant().SendMoveCoin(move);
+				ctx_.Merchant().SendMoveCoin(move);
 
 				BankCoinSet(i.fromCoinType, /*bank=*/true, srcCoins - static_cast<uint32_t>(i.amount));
 				BankCoinSet(i.toCoinType, /*bank=*/true, dstCoins + static_cast<uint32_t>(converted));
@@ -551,7 +551,7 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 				if (ctx_.audio_manager) {
 					float newVol = std::max(0.0f, std::min(1.0f, ctx_.audio_manager->getMusicVolume() + i.delta));
 					ctx_.audio_manager->setMusicVolume(newVol);
-					owner_.AddChatSystemMessage(fmt::format("Music volume: {}%", static_cast<int>(newVol * 100)));
+					ctx_.out.System(fmt::format("Music volume: {}%", static_cast<int>(newVol * 100)));
 				}
 #endif
 			}
@@ -560,7 +560,7 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 				if (ctx_.audio_manager) {
 					float newVol = std::max(0.0f, std::min(1.0f, ctx_.audio_manager->getEffectsVolume() + i.delta));
 					ctx_.audio_manager->setEffectsVolume(newVol);
-					owner_.AddChatSystemMessage(fmt::format("Effects volume: {}%", static_cast<int>(newVol * 100)));
+					ctx_.out.System(fmt::format("Effects volume: {}%", static_cast<int>(newVol * 100)));
 				}
 #endif
 			}
@@ -579,16 +579,16 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 								EQ::CastResult result = ctx_.spell_manager->beginCastFromGem(gem, targetId);
 								if (result == EQ::CastResult::Success) {
 									const EQ::SpellData* spell = ctx_.spell_manager->getSpell(i.id);
-									if (spell) owner_.AddChatSystemMessage(fmt::format("Casting {}", spell->name));
+									if (spell) ctx_.out.System(fmt::format("Casting {}", spell->name));
 								} else if (std::string refusal = EQ::castRefusalMessage(owner_, result); !refusal.empty()) {
 									// T253: third refusal site, same table/renderer as
 									// CastSpellIntent above and EqActionHandler::
 									// beginCastFromGem(). Was three literals (mana /
 									// cooldown / already casting) and silence for
 									// every other refusal.
-									owner_.AddChatSystemMessage(refusal);
+									ctx_.out.System(refusal);
 								} else if (result == EQ::CastResult::SpellNotReady) {
-									owner_.AddChatSystemMessage("Spell not ready");
+									ctx_.out.System("Spell not ready");
 								}
 								break;
 							}
@@ -603,7 +603,7 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 					if (ctx_.inventory_manager) {
 						int16_t slot = ctx_.inventory_manager->findItemSlotByItemId(i.id);
 						if (slot == eqt::inventory::SLOT_INVALID) {
-							owner_.AddChatSystemMessage("Item not found in inventory");
+							ctx_.out.System("Item not found in inventory");
 							break;
 						}
 						UseInventoryItem(slot);
@@ -632,30 +632,30 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 			}
 			// Tradeskill intents (D20b1)
 			else if constexpr (std::is_same_v<T, eqt::events::TradeskillCombineIntent>) {
-				owner_.Player().SendTradeSkillCombine(i.containerSlot);
+				ctx_.Player().SendTradeSkillCombine(i.containerSlot);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::TradeskillCloseIntent>) {
 				if (i.dropId != 0) {
-					owner_.Entities().SendCloseContainer(i.dropId);
+					ctx_.Entities().SendCloseContainer(i.dropId);
 				}
 				ctx_.active_tradeskill_object_id = 0;
 			}
 			// Trainer intents (D20b1)
 			else if constexpr (std::is_same_v<T, eqt::events::TrainSkillIntent>) {
-				owner_.Merchant().TrainSkill(i.skillId);
+				ctx_.Merchant().TrainSkill(i.skillId);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::CloseTrainerIntent>) {
-				owner_.Merchant().CloseTrainerWindow();
+				ctx_.Merchant().CloseTrainerWindow();
 			}
 			// Inventory intents (D20b1)
 			else if constexpr (std::is_same_v<T, eqt::events::MoveItemIntent>) {
-				owner_.Merchant().SendMoveItem(i.fromSlot, i.toSlot, i.quantity);
+				ctx_.Merchant().SendMoveItem(i.fromSlot, i.toSlot, i.quantity);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::DeleteItemIntent>) {
-				owner_.Merchant().SendDeleteItem(i.slot);
+				ctx_.Merchant().SendDeleteItem(i.slot);
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::EquipmentChangedIntent>) {
-				owner_.Entities().UpdatePlayerAppearanceFromInventory();
+				ctx_.Entities().UpdatePlayerAppearanceFromInventory();
 			}
 			else if constexpr (std::is_same_v<T, eqt::events::MemorizeSpellIntent>) {
 				// T272: this arm had its ARGUMENTS SWAPPED --
@@ -671,11 +671,11 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 				// the feedback below mirrors the CastSpellIntent arm above,
 				// which likewise renders its own chat text.
 				if (!ctx_.spell_manager) {
-					owner_.AddChatSystemMessage("Spell system not initialized");
+					ctx_.out.System("Spell system not initialized");
 				} else if (ctx_.spell_manager->memorizeSpell(i.spellId, i.gemSlot)) {
-					owner_.AddChatSystemMessage(fmt::format("Memorizing spell in gem {}", i.gemSlot + 1));
+					ctx_.out.System(fmt::format("Memorizing spell in gem {}", i.gemSlot + 1));
 				} else {
-					owner_.AddChatSystemMessage(fmt::format(
+					ctx_.out.System(fmt::format(
 						"Cannot memorize into gem {} - check if scribed and level requirement",
 						i.gemSlot + 1));
 				}

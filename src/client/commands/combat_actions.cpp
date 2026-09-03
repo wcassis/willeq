@@ -171,7 +171,7 @@ void eqt::commands::CommandsComponent::ZoneProcessAction(const EQ::Net::Packet &
 
 	// T247: an NPC casting a detrimental spell at us is on our hate list.
 	// Beneficial NPC casts (and our own / other players' actions) are not.
-	if (action->target == owner_.MySpawnId() && action->source != owner_.MySpawnId() &&
+	if (action->target == ctx_.self.MySpawnId() && action->source != ctx_.self.MySpawnId() &&
 	    ctx_.combat_manager && ctx_.spell_manager) {
 		auto src = ctx_.entities.find(action->source);
 		const EQ::SpellData* spell = ctx_.spell_manager->getSpell(action->spell);
@@ -255,7 +255,7 @@ void eqt::commands::CommandsComponent::ZoneProcessDamage(const EQ::Net::Packet &
 	// T247: every attack an NPC makes on us arrives here -- hits, misses
 	// (damage 0) and DMG_INVULNERABLE (-5) alike -- and is the client's only
 	// evidence that it is on that NPC's hate list. Mark it for CheckForAggro.
-	if (target_id == owner_.MySpawnId() && source_id != owner_.MySpawnId() && ctx_.combat_manager) {
+	if (target_id == ctx_.self.MySpawnId() && source_id != ctx_.self.MySpawnId() && ctx_.combat_manager) {
 		auto src = ctx_.entities.find(source_id);
 		if (src != ctx_.entities.end() && src->second.npc_type == 1) {
 			ctx_.combat_manager->NoteAttackedBy(source_id);
@@ -263,11 +263,11 @@ void eqt::commands::CommandsComponent::ZoneProcessDamage(const EQ::Net::Packet &
 	}
 
 	// Cancel trade if player takes damage (entering combat)
-	if (target_id == owner_.MySpawnId() && damage_amount > 0 &&
+	if (target_id == ctx_.self.MySpawnId() && damage_amount > 0 &&
 		ctx_.trade_manager && ctx_.trade_manager->isTrading()) {
 		LOG_DEBUG(MOD_MAIN, "Player took damage during trade, canceling trade");
 		ctx_.trade_manager->cancelTrade();
-		owner_.AddChatSystemMessage("Trade cancelled - you entered combat");
+		ctx_.out.System("Trade cancelled - you entered combat");
 	}
 
 	if (EverQuest::s_debug_level >= 3) {
@@ -302,8 +302,8 @@ void eqt::commands::CommandsComponent::ZoneProcessDamage(const EQ::Net::Packet &
 
 	// Add combat chat messages
 	if (damage_amount > 0 && !target_name.empty()) {
-		bool player_is_target = (target_id == owner_.MySpawnId());
-		bool player_is_source = (source_id == owner_.MySpawnId());
+		bool player_is_target = (target_id == ctx_.self.MySpawnId());
+		bool player_is_source = (source_id == ctx_.self.MySpawnId());
 
 		// Get verb based on damage type (crush, slash, pierce, kick, etc.)
 		auto [verb_second, verb_third] = getDamageVerb(damage_type);
@@ -316,7 +316,7 @@ void eqt::commands::CommandsComponent::ZoneProcessDamage(const EQ::Net::Packet &
 			} else {
 				msg = fmt::format("You {} {} for {} points of damage.", verb_second, target_name, damage_amount);
 			}
-			owner_.AddChatCombatMessage(msg, true);
+			ctx_.out.Combat(msg, true);
 		} else if (player_is_target) {
 			// Player took damage
 			if (spell_id > 0 && spell_id != 0xFFFF) {
@@ -324,7 +324,7 @@ void eqt::commands::CommandsComponent::ZoneProcessDamage(const EQ::Net::Packet &
 			} else {
 				msg = fmt::format("{} {} YOU for {} points of damage.", source_name.empty() ? "Unknown" : source_name, verb_third, damage_amount);
 			}
-			owner_.AddChatCombatMessage(msg, true);
+			ctx_.out.Combat(msg, true);
 		} else if (!source_name.empty()) {
 			// Observing combat between others
 			if (spell_id > 0 && spell_id != 0xFFFF) {
@@ -332,12 +332,12 @@ void eqt::commands::CommandsComponent::ZoneProcessDamage(const EQ::Net::Packet &
 			} else {
 				msg = fmt::format("{} {} {} for {} points of damage.", source_name, verb_third, target_name, damage_amount);
 			}
-			owner_.AddChatCombatMessage(msg, false);
+			ctx_.out.Combat(msg, false);
 		}
 	} else if (damage_amount == 0 && !target_name.empty()) {
 		// Miss - use CombatMiss channel (filterable separately from hits)
-		bool player_is_source = (source_id == owner_.MySpawnId());
-		bool player_is_target = (target_id == owner_.MySpawnId());
+		bool player_is_source = (source_id == ctx_.self.MySpawnId());
+		bool player_is_target = (target_id == ctx_.self.MySpawnId());
 
 		// Get verb for miss messages too
 		auto [verb_second, verb_third] = getDamageVerb(damage_type);
@@ -345,14 +345,14 @@ void eqt::commands::CommandsComponent::ZoneProcessDamage(const EQ::Net::Packet &
 		std::string msg;
 		if (player_is_source) {
 			msg = fmt::format("You try to {} {} but miss!", verb_second, target_name);
-			owner_.AddChatMissMessage(msg);
+			ctx_.out.Miss(msg);
 		} else if (player_is_target && !source_name.empty()) {
 			msg = fmt::format("{} tries to {} YOU but misses!", source_name, verb_second);
-			owner_.AddChatMissMessage(msg);
+			ctx_.out.Miss(msg);
 		} else if (!source_name.empty()) {
 			// Observing combat between others - also show misses
 			msg = fmt::format("{} tries to {} {} but misses!", source_name, verb_second, target_name);
-			owner_.AddChatMissMessage(msg);
+			ctx_.out.Miss(msg);
 		}
 	}
 
@@ -403,7 +403,7 @@ void eqt::commands::CommandsComponent::ZoneProcessDamage(const EQ::Net::Packet &
 		if (isMeleeDamage && targetAlive) {
 			// Calculate damage percentage for animation selection
 			float damagePercent = 0.0f;
-			if (target_id == owner_.MySpawnId() && ctx_.game_state.player().maxHP() > 0) {
+			if (target_id == ctx_.self.MySpawnId() && ctx_.game_state.player().maxHP() > 0) {
 				damagePercent = (static_cast<float>(damage_amount) / static_cast<float>(ctx_.game_state.player().maxHP())) * 100.0f;
 			} else if (target_entity_it != ctx_.entities.end()) {
 				uint8_t level = target_entity_it->second.level > 0 ? target_entity_it->second.level : 1;
@@ -427,7 +427,7 @@ void eqt::commands::CommandsComponent::ZoneProcessDamage(const EQ::Net::Packet &
 		} else if (damage_amount > 0 && targetAlive && !isMeleeDamage) {
 			// Non-melee damage (spells, DoT, environmental) - play immediately
 			float damagePercent = 0.0f;
-			if (target_id == owner_.MySpawnId() && ctx_.game_state.player().maxHP() > 0) {
+			if (target_id == ctx_.self.MySpawnId() && ctx_.game_state.player().maxHP() > 0) {
 				damagePercent = (static_cast<float>(damage_amount) / static_cast<float>(ctx_.game_state.player().maxHP())) * 100.0f;
 			} else if (target_entity_it != ctx_.entities.end()) {
 				uint8_t level = target_entity_it->second.level > 0 ? target_entity_it->second.level : 1;
@@ -510,7 +510,7 @@ void eqt::commands::CommandsComponent::ZoneProcessStun(uint32_t duration_ms)
 	auto now = std::chrono::steady_clock::now();
 	if (duration_ms == 0) {
 		if (IsStunned()) {
-			owner_.AddChatSystemMessage(owner_.GetStringMessage(12480));  // You are no longer stunned.
+			ctx_.out.System(owner_.GetStringMessage(12480));  // You are no longer stunned.
 		}
 		m_stunned_until = {};
 		LOG_INFO(MOD_COMBAT, "OP_Stun: unstunned");
@@ -522,7 +522,7 @@ void eqt::commands::CommandsComponent::ZoneProcessStun(uint32_t duration_ms)
 		m_stunned_until = until;
 	}
 	if (!was_stunned) {
-		owner_.AddChatSystemMessage(owner_.GetStringMessage(12479));  // You are stunned!
+		ctx_.out.System(owner_.GetStringMessage(12479));  // You are stunned!
 	}
 	LOG_INFO(MOD_COMBAT, "OP_Stun: stunned for {} ms", duration_ms);
 }

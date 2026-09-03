@@ -103,7 +103,7 @@ void eqt::zone::ZoneComponent::ZoneSendZoneEntry()
 	if (ctx_.zone_connection) {
 		ctx_.zone_connection->QueuePacket(p);
 	} else {
-		++owner_.m_replay_suppressed_sends;
+		ctx_.net.NoteSuppressedSend();
 	}
 	m_zone_entry_sent = true;
 	
@@ -113,9 +113,9 @@ void eqt::zone::ZoneComponent::ZoneSendZoneEntry()
 	
 	// Add zone entry to movement history
 	MovementHistoryEntry zone_entry;
-	zone_entry.x = owner_.PosX();
-	zone_entry.y = owner_.PosY();
-	zone_entry.z = owner_.PosZ();
+	zone_entry.x = ctx_.self.PosX();
+	zone_entry.y = ctx_.self.PosY();
+	zone_entry.z = ctx_.self.PosZ();
 	zone_entry.type = 4; // ZoneLine type
 	zone_entry.timestamp = static_cast<uint32_t>(std::time(nullptr));
 	m_movement_history.push_back(zone_entry);
@@ -132,7 +132,7 @@ void eqt::zone::ZoneComponent::ZoneSendReqClientSpawn()
 	if (ctx_.zone_connection) {
 		ctx_.zone_connection->QueuePacket(p);
 	} else {
-		++owner_.m_replay_suppressed_sends;
+		ctx_.net.NoteSuppressedSend();
 	}
 }
 
@@ -149,7 +149,7 @@ void eqt::zone::ZoneComponent::ZoneSendClientReady()
 	if (ctx_.zone_connection) {
 		ctx_.zone_connection->QueuePacket(p);
 	} else {
-		++owner_.m_replay_suppressed_sends;
+		ctx_.net.NoteSuppressedSend();
 	}
 	ctx_.game_state.world().setClientReady(true);  // T286: only store
 }
@@ -187,7 +187,7 @@ void eqt::zone::ZoneComponent::ZoneSendSetServerFilter()
 	if (ctx_.zone_connection) {
 		ctx_.zone_connection->QueuePacket(p);
 	} else {
-		++owner_.m_replay_suppressed_sends;
+		ctx_.net.NoteSuppressedSend();
 	}
 	m_server_filter_sent = true;
 }
@@ -217,7 +217,7 @@ void eqt::zone::ZoneComponent::ZoneSendAckPacket()
 	if (ctx_.zone_connection) {
 		ctx_.zone_connection->QueuePacket(p);
 	} else {
-		++owner_.m_replay_suppressed_sends;
+		ctx_.net.NoteSuppressedSend();
 	}
 }
 
@@ -232,7 +232,7 @@ void eqt::zone::ZoneComponent::ZoneSendReqNewZone()
 	if (ctx_.zone_connection) {
 		ctx_.zone_connection->QueuePacket(p);
 	} else {
-		++owner_.m_replay_suppressed_sends;
+		ctx_.net.NoteSuppressedSend();
 	}
 	m_req_new_zone_sent = true;
 }
@@ -248,7 +248,7 @@ void eqt::zone::ZoneComponent::ZoneSendSendAATable()
 	if (ctx_.zone_connection) {
 		ctx_.zone_connection->QueuePacket(p);
 	} else {
-		++owner_.m_replay_suppressed_sends;
+		ctx_.net.NoteSuppressedSend();
 	}
 	m_aa_table_sent = true;
 }
@@ -265,7 +265,7 @@ void eqt::zone::ZoneComponent::ZoneSendUpdateAA()
 	if (ctx_.zone_connection) {
 		ctx_.zone_connection->QueuePacket(p);
 	} else {
-		++owner_.m_replay_suppressed_sends;
+		ctx_.net.NoteSuppressedSend();
 	}
 	m_update_aa_sent = true;
 }
@@ -281,7 +281,7 @@ void eqt::zone::ZoneComponent::ZoneSendSendTributes()
 	if (ctx_.zone_connection) {
 		ctx_.zone_connection->QueuePacket(p);
 	} else {
-		++owner_.m_replay_suppressed_sends;
+		ctx_.net.NoteSuppressedSend();
 	}
 	m_tributes_sent = true;
 }
@@ -297,7 +297,7 @@ void eqt::zone::ZoneComponent::ZoneSendRequestGuildTributes()
 	if (ctx_.zone_connection) {
 		ctx_.zone_connection->QueuePacket(p);
 	} else {
-		++owner_.m_replay_suppressed_sends;
+		ctx_.net.NoteSuppressedSend();
 	}
 	m_guild_tributes_sent = true;
 }
@@ -313,7 +313,7 @@ void eqt::zone::ZoneComponent::ZoneSendSendExpZonein()
 	if (ctx_.zone_connection) {
 		ctx_.zone_connection->QueuePacket(p);
 	} else {
-		++owner_.m_replay_suppressed_sends;
+		ctx_.net.NoteSuppressedSend();
 	}
 	m_exp_zonein_sent = true;
 }

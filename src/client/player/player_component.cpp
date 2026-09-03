@@ -42,17 +42,17 @@
 
 void eqt::player::PlayerComponent::PerformEmote(uint32_t animation)
 {
-	if (!owner_.IsFullyZonedIn()) {
+	if (!ctx_.self.IsFullyZonedIn()) {
 		return;
 	}
 
 	// Send the emote animation using the proper Animation packet
-	owner_.Entities().SendAnimation(static_cast<uint8_t>(animation));
+	ctx_.Entities().SendAnimation(static_cast<uint8_t>(animation));
 	
 	// Some emotes should stop movement
 	if (animation == ANIM_KNEEL || animation == ANIM_DEATH) {
 		if (ctx_.game_state.player().isMoving()) {
-			owner_.Movement().StopMovement();
+			ctx_.Movement().StopMovement();
 		}
 	}
 	
@@ -68,7 +68,7 @@ void eqt::player::PlayerComponent::SetAFK(bool afk)
 	}
 
 	ctx_.game_state.player().setAFK(afk);  // Phase 7.8 / T286: only store
-	owner_.Entities().SendSpawnAppearance(AT_AFK, afk ? 1 : 0);
+	ctx_.Entities().SendSpawnAppearance(AT_AFK, afk ? 1 : 0);
 
 	if (EverQuest::s_debug_level >= 1) {
 		LOG_DEBUG(MOD_MAIN, "AFK status: {}", afk ? "ON" : "OFF");
@@ -82,7 +82,7 @@ void eqt::player::PlayerComponent::SetAnonymous(bool anon)
 	}
 
 	ctx_.game_state.player().setAnonymous(anon);  // Phase 7.8 / T286: only store
-	owner_.Entities().SendSpawnAppearance(AT_ANONYMOUS, anon ? 1 : 0);
+	ctx_.Entities().SendSpawnAppearance(AT_ANONYMOUS, anon ? 1 : 0);
 
 	if (EverQuest::s_debug_level >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Anonymous status: {}", anon ? "ON" : "OFF");
@@ -96,7 +96,7 @@ void eqt::player::PlayerComponent::SetRoleplay(bool rp)
 	}
 
 	ctx_.game_state.player().setRoleplay(rp);  // Phase 7.8 / T286: only store
-	owner_.Entities().SendSpawnAppearance(AT_ANONYMOUS, rp ? 2 : 0);  // 2 = roleplay
+	ctx_.Entities().SendSpawnAppearance(AT_ANONYMOUS, rp ? 2 : 0);  // 2 = roleplay
 
 	if (EverQuest::s_debug_level >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Roleplay status: {}", rp ? "ON" : "OFF");
@@ -128,7 +128,7 @@ void eqt::player::PlayerComponent::CancelCamp()
 	}
 
 	ctx_.game_state.player().setCamping(false);  // Phase 7.8 / T286: only store
-	owner_.AddChatSystemMessage("You are no longer camping.");
+	ctx_.out.System("You are no longer camping.");
 
 	if (EverQuest::s_debug_level >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Camp timer cancelled");
@@ -147,7 +147,7 @@ void eqt::player::PlayerComponent::UpdateCampTimer()
 	if (elapsed >= CAMP_TIMER_SECONDS) {
 		// Camp timer complete, send logout to server
 		ctx_.game_state.player().setCamping(false);  // Phase 7.8 / T286: only store
-		owner_.AddChatSystemMessage("You have camped.");
+		ctx_.out.System("You have camped.");
 
 		// Send OP_Logout to server - server will respond with OP_LogoutReply
 		SendLogout();
@@ -164,7 +164,7 @@ void eqt::player::PlayerComponent::SendCamp()
 	// pkt) prepends the opcode itself (eq.cpp), so writing it into the body
 	// here too made this a 4-byte packet where the server expects 2.
 	EQ::Net::DynamicPacket packet;
-	owner_.QueuePacket(HC_OP_Camp, &packet);
+	ctx_.net.Queue(HC_OP_Camp, &packet);
 
 	if (EverQuest::s_debug_level >= 2) {
 		LOG_DEBUG(MOD_MAIN, "Sent OP_Camp to server");
@@ -175,7 +175,7 @@ void eqt::player::PlayerComponent::SendLogout()
 {
 	// OP_Logout is an empty packet -- body-only convention, see SendCamp().
 	EQ::Net::DynamicPacket packet;
-	owner_.QueuePacket(HC_OP_Logout, &packet);
+	ctx_.net.Queue(HC_OP_Logout, &packet);
 
 	if (EverQuest::s_debug_level >= 2) {
 		LOG_DEBUG(MOD_MAIN, "Sent OP_Logout to server");
@@ -192,9 +192,9 @@ void eqt::player::PlayerComponent::ZoneProcessLogoutReply(const EQ::Net::Packet 
 	// The flag is only ever set by BeginGracefulZoneOut(), so when no
 	// zone-out is in flight -- camp/SendLogout, and the world-side path --
 	// the behaviour below is exactly what it always was.
-	if (owner_.Zone().ZoneOutHandshakePending()) {
+	if (ctx_.Zone().ZoneOutHandshakePending()) {
 		LOG_DEBUG(MOD_ZONE, "Source zone acknowledged graceful zone-out");
-		owner_.Zone().ZoneOutAcknowledged() = true;
+		ctx_.Zone().ZoneOutAcknowledged() = true;
 		return;
 	}
 
@@ -203,7 +203,7 @@ void eqt::player::PlayerComponent::ZoneProcessLogoutReply(const EQ::Net::Packet 
 
 	// T322: a logout is not a zone transition; make sure a stale latch can
 	// never make the next world login claim to be one.
-	owner_.Zone().ZoneToZoneInProgress() = false;
+	ctx_.Zone().ZoneToZoneInProgress() = false;
 
 	// D20c4: Signal quit via flag — Application checks and exits
 	owner_.RequestQuit();
@@ -245,8 +245,8 @@ void eqt::player::PlayerComponent::ZoneProcessRezzRequest(const EQ::Net::Packet 
 	LOG_INFO(MOD_MAIN, "Resurrection offer from {} for corpse '{}' (spell {})",
 		rezzer_name, corpse_name, rez->spellid);
 
-	owner_.AddChatSystemMessage(fmt::format("{} is offering to resurrect you.", rezzer_name));
-	owner_.AddChatSystemMessage("Type /accept to accept or /decline to decline the resurrection.");
+	ctx_.out.System(fmt::format("{} is offering to resurrect you.", rezzer_name));
+	ctx_.out.System("Type /accept to accept or /decline to decline the resurrection.");
 
 	if (EverQuest::s_debug_level >= 2) {
 		LOG_DEBUG(MOD_MAIN, "Rez location: zone={}, instance={}, pos=({}, {}, {})",
@@ -261,7 +261,7 @@ void eqt::player::PlayerComponent::ZoneProcessRezzComplete(const EQ::Net::Packet
 	memset(&m_pending_rezz, 0, sizeof(m_pending_rezz));
 
 	LOG_INFO(MOD_MAIN, "Resurrection complete");
-	owner_.AddChatSystemMessage("You have been resurrected!");
+	ctx_.out.System("You have been resurrected!");
 
 	// The server will handle the zone change if needed via OP_ZoneChange
 }
@@ -269,7 +269,7 @@ void eqt::player::PlayerComponent::ZoneProcessRezzComplete(const EQ::Net::Packet
 void eqt::player::PlayerComponent::SendRezzAnswer(bool accept)
 {
 	if (!m_has_pending_rezz) {
-		owner_.AddChatSystemMessage("You don't have a pending resurrection offer.");
+		ctx_.out.System("You don't have a pending resurrection offer.");
 		return;
 	}
 
@@ -287,14 +287,14 @@ void eqt::player::PlayerComponent::SendRezzAnswer(bool accept)
 	EQ::Net::DynamicPacket packet;
 	packet.Resize(sizeof(EQT::Resurrect_Struct));
 	packet.PutData(0, &rez, sizeof(EQT::Resurrect_Struct));
-	owner_.QueuePacket(HC_OP_RezzAnswer, &packet);
+	ctx_.net.Queue(HC_OP_RezzAnswer, &packet);
 
 	if (accept) {
 		LOG_INFO(MOD_MAIN, "Accepted resurrection offer");
-		owner_.AddChatSystemMessage("You have accepted the resurrection.");
+		ctx_.out.System("You have accepted the resurrection.");
 	} else {
 		LOG_INFO(MOD_MAIN, "Declined resurrection offer");
-		owner_.AddChatSystemMessage("You have declined the resurrection.");
+		ctx_.out.System("You have declined the resurrection.");
 		// Clear pending rez on decline
 		m_has_pending_rezz = false;
 		memset(&m_pending_rezz, 0, sizeof(m_pending_rezz));
@@ -325,7 +325,7 @@ void eqt::player::PlayerComponent::SendWhoAllRequest(const std::string& name, in
 	EQ::Net::DynamicPacket packet;
 	packet.Resize(sizeof(EQT::Who_All_Struct));
 	packet.PutData(0, &who, sizeof(EQT::Who_All_Struct));
-	owner_.QueuePacket(HC_OP_WhoAllRequest, &packet);
+	ctx_.net.Queue(HC_OP_WhoAllRequest, &packet);
 
 	if (EverQuest::s_debug_level >= 2) {
 		LOG_DEBUG(MOD_MAIN, "Sent OP_WhoAllRequest: name='{}', race={}, class={}, lvl={}-{}",
@@ -374,13 +374,13 @@ void eqt::player::PlayerComponent::ZoneProcessWhoAllResponse(const EQ::Net::Pack
 	if (header->playerineqstring != 0 && header->playerineqstring != EQT::kWhoStringNone) {
 		std::string title = ctx.eqstr(header->playerineqstring);
 		if (!title.empty()) {
-			owner_.AddChatSystemMessage(title);
+			ctx_.out.System(title);
 		}
 	}
 
 	// Line 2: the rule ("---------------------------").
 	if (header->line[0] != '\0') {
-		owner_.AddChatSystemMessage(std::string(header->line, strnlen(header->line, sizeof(header->line))));
+		ctx_.out.System(std::string(header->line, strnlen(header->line, sizeof(header->line))));
 	}
 
 	// Entries.
@@ -401,7 +401,7 @@ void eqt::player::PlayerComponent::ZoneProcessWhoAllResponse(const EQ::Net::Pack
 		if (e.formatString == 0) {
 			continue;
 		}
-		owner_.AddChatSystemMessage(EQT::formatWhoAllEntry(e, ctx));
+		ctx_.out.System(EQT::formatWhoAllEntry(e, ctx));
 	}
 
 	// Last line: the count string (5028 / 5036 / 5029). T178: eqemu's string
@@ -420,9 +420,9 @@ void eqt::player::PlayerComponent::ZoneProcessWhoAllResponse(const EQ::Net::Pack
 	bool substituted = false;
 	std::string filled = EQT::substituteWhoCount(count_text, player_count, substituted);
 	if (substituted || player_count == 0) {
-		owner_.AddChatSystemMessage(filled);
+		ctx_.out.System(filled);
 	} else {
-		owner_.AddChatSystemMessage(fmt::format("{}: {}", filled, player_count));
+		ctx_.out.System(fmt::format("{}: {}", filled, player_count));
 	}
 }
 
@@ -431,14 +431,14 @@ void eqt::player::PlayerComponent::SendInspectRequest(uint32_t target_id)
 	// Build the inspect request
 	EQT::Inspect_Struct inspect;
 	inspect.TargetID = target_id;
-	inspect.PlayerID = owner_.MySpawnId();
+	inspect.PlayerID = ctx_.self.MySpawnId();
 
 	// Build and send the packet
 	// Body-only: QueuePacket(opcode, pkt) prepends the opcode itself.
 	EQ::Net::DynamicPacket packet;
 	packet.Resize(sizeof(EQT::Inspect_Struct));
 	packet.PutData(0, &inspect, sizeof(EQT::Inspect_Struct));
-	owner_.QueuePacket(HC_OP_InspectRequest, &packet);
+	ctx_.net.Queue(HC_OP_InspectRequest, &packet);
 
 	if (EverQuest::s_debug_level >= 2) {
 		LOG_DEBUG(MOD_MAIN, "Sent OP_InspectRequest for target {}", target_id);
@@ -468,7 +468,7 @@ void eqt::player::PlayerComponent::SendInspectRequest(uint32_t target_id)
 void eqt::player::PlayerComponent::SendInspectAnswer(uint32_t requester_id)
 {
 	EQT::InspectResponse_Struct answer =  // non-const: PutData takes void*
-		EQT::MakeInspectAnswer(requester_id, owner_.MySpawnId(), owner_.Bridge().GetInspectMessage());
+		EQT::MakeInspectAnswer(requester_id, ctx_.self.MySpawnId(), ctx_.Bridge().GetInspectMessage());
 
 	// T170 test seam, same shape as T88's and T167's: capture the body before
 	// the connection gate so a test can assert on the real encoder output.
@@ -480,7 +480,7 @@ void eqt::player::PlayerComponent::SendInspectAnswer(uint32_t requester_id)
 	EQ::Net::DynamicPacket packet;
 	packet.Resize(sizeof(EQT::InspectResponse_Struct));
 	packet.PutData(0, &answer, sizeof(EQT::InspectResponse_Struct));
-	owner_.QueuePacket(HC_OP_InspectAnswer, &packet);
+	ctx_.net.Queue(HC_OP_InspectAnswer, &packet);
 
 	LOG_DEBUG(MOD_MAIN, "Answered inspect request from entity {}", requester_id);
 }
@@ -504,7 +504,7 @@ void eqt::player::PlayerComponent::ZoneProcessInspectRequest(const EQ::Net::Pack
 	}
 
 	LOG_INFO(MOD_MAIN, "{} is inspecting you", inspector_name);
-	owner_.AddChatSystemMessage(fmt::format("{} is inspecting you.", inspector_name));
+	ctx_.out.System(fmt::format("{} is inspecting you.", inspector_name));
 
 	// T170: ANSWER IT. This is the half that was missing. eqemu forwards the
 	// request to us precisely because a Titanium client is expected to reply
@@ -539,20 +539,20 @@ void eqt::player::PlayerComponent::ZoneProcessInspectAnswer(const EQ::Net::Packe
 	}
 
 	LOG_INFO(MOD_MAIN, "Received inspect data for {}", target_name);
-	owner_.AddChatSystemMessage(fmt::format("Inspecting {}:", target_name));
+	ctx_.out.System(fmt::format("Inspecting {}:", target_name));
 
 	// Display equipped items
 	for (int i = 0; i < 22; i++) {
 		if (response->itemnames[i][0] != '\0') {
 			std::string item_name(response->itemnames[i], strnlen(response->itemnames[i], 64));
-			owner_.AddChatSystemMessage(fmt::format("  Slot {}: {}", i, item_name));
+			ctx_.out.System(fmt::format("  Slot {}: {}", i, item_name));
 		}
 	}
 
 	// Display inspect message if present
 	if (response->text[0] != '\0') {
 		std::string message(response->text, strnlen(response->text, 288));
-		owner_.AddChatSystemMessage(fmt::format("Message: {}", message));
+		ctx_.out.System(fmt::format("Message: {}", message));
 	}
 }
 
@@ -576,14 +576,14 @@ void eqt::player::PlayerComponent::SendCorpseDrag(const std::string& corpse_name
 		m_is_dragging_corpse = true;
 		m_dragged_corpse_name = corpse_name;
 		LOG_INFO(MOD_MAIN, "Started dragging corpse: {}", corpse_name);
-		owner_.AddChatSystemMessage(fmt::format("You begin to drag {}.", corpse_name));
+		ctx_.out.System(fmt::format("You begin to drag {}.", corpse_name));
 	}
 }
 
 void eqt::player::PlayerComponent::SendCorpseDrop()
 {
 	if (!m_is_dragging_corpse) {
-		owner_.AddChatSystemMessage("You are not dragging a corpse.");
+		ctx_.out.System("You are not dragging a corpse.");
 		return;
 	}
 
@@ -599,7 +599,7 @@ void eqt::player::PlayerComponent::SendCorpseDrop()
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
 		ctx_.zone_connection->QueuePacket(packet);
 		LOG_INFO(MOD_MAIN, "Dropped corpse: {}", m_dragged_corpse_name);
-		owner_.AddChatSystemMessage(fmt::format("You stop dragging {}.", m_dragged_corpse_name));
+		ctx_.out.System(fmt::format("You stop dragging {}.", m_dragged_corpse_name));
 		m_is_dragging_corpse = false;
 		m_dragged_corpse_name.clear();
 	}
@@ -624,7 +624,7 @@ void eqt::player::PlayerComponent::SendConsiderCorpse(uint32_t corpse_id)
 	// same body, not an invented one.
 	EQT::Consider_Struct con;
 	memset(&con, 0, sizeof(con));
-	con.playerid = owner_.GetEntityID();
+	con.playerid = ctx_.self.GetEntityID();
 	con.targetid = corpse_id;
 	packet.PutData(2, &con, sizeof(con));
 
@@ -647,7 +647,7 @@ void eqt::player::PlayerComponent::SendConsent(const std::string& player_name)
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
 		ctx_.zone_connection->QueuePacket(packet);
 		LOG_INFO(MOD_MAIN, "Granting corpse consent to: {}", player_name);
-		owner_.AddChatSystemMessage(fmt::format("You have granted {} permission to drag your corpse.", player_name));
+		ctx_.out.System(fmt::format("You have granted {} permission to drag your corpse.", player_name));
 	}
 }
 
@@ -660,7 +660,7 @@ void eqt::player::PlayerComponent::SendConsentDeny(const std::string& player_nam
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
 		ctx_.zone_connection->QueuePacket(packet);
 		LOG_INFO(MOD_MAIN, "Denying corpse consent for: {}", player_name);
-		owner_.AddChatSystemMessage(fmt::format("You have denied {} permission to drag your corpse.", player_name));
+		ctx_.out.System(fmt::format("You have denied {} permission to drag your corpse.", player_name));
 	}
 }
 
@@ -680,7 +680,7 @@ void eqt::player::PlayerComponent::ZoneProcessConsentResponse(const EQ::Net::Pac
 
 	LOG_INFO(MOD_MAIN, "Consent granted: {} can now loot {}'s corpse in {}",
 		grantname, ownername, zonename);
-	owner_.AddChatSystemMessage(fmt::format("{} has been given permission to drag your corpse.", grantname));
+	ctx_.out.System(fmt::format("{} has been given permission to drag your corpse.", grantname));
 }
 
 void eqt::player::PlayerComponent::ZoneProcessDenyResponse(const EQ::Net::Packet &p)
@@ -696,6 +696,6 @@ void eqt::player::PlayerComponent::ZoneProcessDenyResponse(const EQ::Net::Packet
 	std::string grantname(consent->grantname, strnlen(consent->grantname, 64));
 
 	LOG_INFO(MOD_MAIN, "Consent denied for: {}", grantname);
-	owner_.AddChatSystemMessage(fmt::format("{}'s permission to drag your corpse has been revoked.", grantname));
+	ctx_.out.System(fmt::format("{}'s permission to drag your corpse has been revoked.", grantname));
 }
 

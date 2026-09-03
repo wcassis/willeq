@@ -191,45 +191,45 @@ void eqt::merchant::MerchantComponent::SetupTradeManagerCallbacks()
 
 		// Report money received from partner
 		if (partnerMoney.platinum > 0) {
-			owner_.AddChatSystemMessage(fmt::format("You receive {} platinum from {}.", partnerMoney.platinum, partnerName));
+			ctx_.out.System(fmt::format("You receive {} platinum from {}.", partnerMoney.platinum, partnerName));
 		}
 		if (partnerMoney.gold > 0) {
-			owner_.AddChatSystemMessage(fmt::format("You receive {} gold from {}.", partnerMoney.gold, partnerName));
+			ctx_.out.System(fmt::format("You receive {} gold from {}.", partnerMoney.gold, partnerName));
 		}
 		if (partnerMoney.silver > 0) {
-			owner_.AddChatSystemMessage(fmt::format("You receive {} silver from {}.", partnerMoney.silver, partnerName));
+			ctx_.out.System(fmt::format("You receive {} silver from {}.", partnerMoney.silver, partnerName));
 		}
 		if (partnerMoney.copper > 0) {
-			owner_.AddChatSystemMessage(fmt::format("You receive {} copper from {}.", partnerMoney.copper, partnerName));
+			ctx_.out.System(fmt::format("You receive {} copper from {}.", partnerMoney.copper, partnerName));
 		}
 
 		// Report items received from partner
 		for (int i = 0; i < 8; i++) {
 			const auto* item = ctx_.trade_manager->getPartnerItem(i);
 			if (item) {
-				owner_.AddChatSystemMessage(fmt::format("You receive {} from {}.", item->name, partnerName));
+				ctx_.out.System(fmt::format("You receive {} from {}.", item->name, partnerName));
 			}
 		}
 
 		// Report money given to partner
 		if (ownMoney.platinum > 0) {
-			owner_.AddChatSystemMessage(fmt::format("You give {} platinum to {}.", ownMoney.platinum, partnerName));
+			ctx_.out.System(fmt::format("You give {} platinum to {}.", ownMoney.platinum, partnerName));
 		}
 		if (ownMoney.gold > 0) {
-			owner_.AddChatSystemMessage(fmt::format("You give {} gold to {}.", ownMoney.gold, partnerName));
+			ctx_.out.System(fmt::format("You give {} gold to {}.", ownMoney.gold, partnerName));
 		}
 		if (ownMoney.silver > 0) {
-			owner_.AddChatSystemMessage(fmt::format("You give {} silver to {}.", ownMoney.silver, partnerName));
+			ctx_.out.System(fmt::format("You give {} silver to {}.", ownMoney.silver, partnerName));
 		}
 		if (ownMoney.copper > 0) {
-			owner_.AddChatSystemMessage(fmt::format("You give {} copper to {}.", ownMoney.copper, partnerName));
+			ctx_.out.System(fmt::format("You give {} copper to {}.", ownMoney.copper, partnerName));
 		}
 
 		// Report items given to partner
 		for (int i = 0; i < 8; i++) {
 			const auto* item = ctx_.trade_manager->getOwnItem(i);
 			if (item) {
-				owner_.AddChatSystemMessage(fmt::format("You give {} to {}.", item->name, partnerName));
+				ctx_.out.System(fmt::format("You give {} to {}.", item->name, partnerName));
 			}
 		}
 
@@ -249,10 +249,10 @@ void eqt::merchant::MerchantComponent::SetupTradeManagerCallbacks()
 		// T222: exactly one chat line per end reason -- declineTrade()
 		// no longer prints its own.
 		if (reason == TradeEndReason::DeclinedLocal) {
-			owner_.AddChatSystemMessage(fmt::format("Declined trade request from {}.",
+			ctx_.out.System(fmt::format("Declined trade request from {}.",
 				EQT::toDisplayName(requesterName)));
 		} else {
-			owner_.AddChatSystemMessage("Trade cancelled.");
+			ctx_.out.System("Trade cancelled.");
 		}
 
 		// Publish TradeCancelled event to bridge
@@ -340,7 +340,7 @@ void eqt::merchant::MerchantComponent::ZoneProcessLootItemToUI(const EQ::Net::Pa
 			} catch (...) {}
 
 			// Track loot item in game state (D18a: game-side loot item tracking)
-			owner_.Bridge().LootItems()[slot_num] = eqt::bridge::BridgeComponent::GameLootItem{itemId, item_name};
+			ctx_.Bridge().LootItems()[slot_num] = eqt::bridge::BridgeComponent::GameLootItem{itemId, item_name};
 
 			// T268: feed the auto-loot queue too (this replaces the deleted
 			// headless-only ZoneProcessLootItem). CheckAutoLoot() is a
@@ -370,7 +370,7 @@ void eqt::merchant::MerchantComponent::ZoneProcessLootItemToUI(const EQ::Net::Pa
 
 void eqt::merchant::MerchantComponent::ZoneProcessLootedItemToInventory(const EQ::Net::Packet &p)
 {
-	LOG_DEBUG(MOD_INVENTORY, "ZoneProcessLootedItemToInventory called, pending_slots={}", owner_.Bridge().PendingLootSlots().size());
+	LOG_DEBUG(MOD_INVENTORY, "ZoneProcessLootedItemToInventory called, pending_slots={}", ctx_.Bridge().PendingLootSlots().size());
 
 	// This is called when an item is being looted from a corpse to inventory
 	// The item packet format is the same as ZoneProcessLootItemToUI
@@ -403,7 +403,7 @@ void eqt::merchant::MerchantComponent::ZoneProcessLootedItemToInventory(const EQ
 			eqt::state::GameEventType::InventorySlotChanged, std::move(data)));
 	};
 
-	if (owner_.Bridge().PendingLootSlots().empty()) {
+	if (ctx_.Bridge().PendingLootSlots().empty()) {
 		// No pending loot - shouldn't happen, but handle gracefully
 		LOG_DEBUG(MOD_INVENTORY, "ZoneProcessLootedItemToInventory: No pending loot slots! Treating as inventory item.");
 		if (ctx_.inventory_manager) {
@@ -413,11 +413,11 @@ void eqt::merchant::MerchantComponent::ZoneProcessLootedItemToInventory(const EQ
 	}
 
 	// Get the slot we're expecting to receive
-	int16_t expected_slot = owner_.Bridge().PendingLootSlots().front();
-	owner_.Bridge().PendingLootSlots().erase(owner_.Bridge().PendingLootSlots().begin());
+	int16_t expected_slot = ctx_.Bridge().PendingLootSlots().front();
+	ctx_.Bridge().PendingLootSlots().erase(ctx_.Bridge().PendingLootSlots().begin());
 
 	LOG_DEBUG(MOD_INVENTORY, "ZoneProcessLootedItemToInventory: Processing looted item for corpse slot {}, remaining pending={}",
-		expected_slot, owner_.Bridge().PendingLootSlots().size());
+		expected_slot, ctx_.Bridge().PendingLootSlots().size());
 
 	// Add item to player's inventory
 	if (ctx_.inventory_manager) {
@@ -426,7 +426,7 @@ void eqt::merchant::MerchantComponent::ZoneProcessLootedItemToInventory(const EQ
 	}
 
 	// Remove from game-side loot tracking and publish event
-	owner_.Bridge().LootItems().erase(expected_slot);
+	ctx_.Bridge().LootItems().erase(expected_slot);
 
 	if (ctx_.bridge) {
 		eqt::state::LootItemRemovedData data;
@@ -553,14 +553,14 @@ void eqt::merchant::MerchantComponent::ZoneProcessShopPlayerBuy(const EQ::Net::P
 		npc_id, player_id, itemslot, quantity, action);
 
 	// Display purchase confirmation and update money (D18a: uses game-side vendor items)
-	auto vendorIt = owner_.Commands().VendorItems().find(itemslot);
-	if (vendorIt != owner_.Commands().VendorItems().end()) {
+	auto vendorIt = ctx_.Commands().VendorItems().find(itemslot);
+	if (vendorIt != ctx_.Commands().VendorItems().end()) {
 		int32_t totalPrice = vendorIt->second.price * static_cast<int32_t>(quantity);
 		std::string priceStr = EverQuest::FormatPrice(totalPrice);
 		if (quantity > 1) {
-			owner_.AddChatSystemMessage(fmt::format("You purchased {} x{} for {}", vendorIt->second.name, quantity, priceStr));
+			ctx_.out.System(fmt::format("You purchased {} x{} for {}", vendorIt->second.name, quantity, priceStr));
 		} else {
-			owner_.AddChatSystemMessage(fmt::format("You purchased {} for {}", vendorIt->second.name, priceStr));
+			ctx_.out.System(fmt::format("You purchased {} for {}", vendorIt->second.name, priceStr));
 		}
 
 		// Deduct money from local currency (server confirms purchase = money spent)
@@ -606,9 +606,9 @@ void eqt::merchant::MerchantComponent::ZoneProcessShopPlayerSell(const EQ::Net::
 	{
 		std::string priceStr = EverQuest::FormatPrice(static_cast<int32_t>(resp->price));
 		if (resp->quantity > 1) {
-			owner_.AddChatSystemMessage(fmt::format("You sold {} items for {}", resp->quantity, priceStr));
+			ctx_.out.System(fmt::format("You sold {} items for {}", resp->quantity, priceStr));
 		} else {
-			owner_.AddChatSystemMessage(fmt::format("You sold item for {}", priceStr));
+			ctx_.out.System(fmt::format("You sold item for {}", priceStr));
 		}
 
 		// Remove item from local inventory
@@ -709,6 +709,6 @@ void eqt::merchant::MerchantComponent::ZoneProcessShopEndConfirm(const EQ::Net::
 			eqt::state::GameEventType::VendorWindowClosed, std::move(data)));
 	}
 
-	owner_.Commands().VendorItems().clear();
+	ctx_.Commands().VendorItems().clear();
 }
 

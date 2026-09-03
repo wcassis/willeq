@@ -1,285 +1,253 @@
-// EverQuest's PLAYER-STATE FACADE: the thin accessors over m_game_state that
-// the whole tree reads -- stats, currency, weight, position/heading/moving,
-// the behavioural flags, and the group accessors.
+// EverQuest's PLAYER-STATE FACADE -- now 46 forwarders.
 //
-// K08 (Batch K, refactor/K_component_extraction.md) left these on EverQuest
-// deliberately. Every other body that used to live in eq_player_{info,misc,
-// social,state,buffs}.cpp moved into eqt::player::PlayerComponent
-// (src/client/player/); these did not, for the same reason K03 left the three
-// AddChat* primitives behind: they are not a family, they are the read surface
-// every family uses (GetPosition() alone has callers in combat, spells, skills
-// and the action handlers). K13 decides whether the facade becomes a
-// ClientContext service.
+// K08 (Batch K, refactor/K_component_extraction.md) left these thin accessors
+// over m_game_state on EverQuest when the rest of the player family moved into
+// eqt::player::PlayerComponent, because they are not a family: they are the
+// read surface every family uses.
 //
-// The position/heading/moving/flag accessors were carried here verbatim from
-// eq_player_state.cpp, whose remainder became src/client/player/player_state.cpp.
+// K13 moved the BODIES into eqt::PlayerFacade (src/client/player_facade.cpp),
+// the context service the twelve components reach as ctx_.self. What is left
+// here is the sanctioned forwarder set: the callers OUTSIDE the EverQuest
+// family -- combat, the spell/skill/inventory managers, the action layer and
+// the UI -- keep the EverQuest receiver they always had. That is the plan's
+// explicit exception to §Mechanism 5's no-forwarder rule; K14 decides whether
+// the surface goes away entirely.
 //
-// Clusters 1-3, split out of eq.cpp by Batch F unit F07 and narrowed to these
-// clusters by Batch J unit J07. Moved verbatim, no behavior change. See
-// refactor/J07_eq_player_info_split.md and refactor/F07_player_info.md.
+// The PRIVATE half of the facade (PosX/PosY/PosZ/HeadingDeg/SetPosLocal/
+// SetHeadingLocal/MySpawnId/SetMySpawnId/CurrentZoneName/CurrentZoneId, which
+// stood inline in eq.h behind the T288 banner) had no caller outside the
+// friend components, so it kept no forwarder at all and is gone from eq.h.
 
 #include "client/eq.h"
 
 #include <glm/glm.hpp>
 
-// ============================================================================
-// Cluster 2: Player stat getters
-// ============================================================================
-
 uint8_t EverQuest::GetLevel() const
 {
-	return m_game_state.player().level();
+	return m_player_facade.GetLevel();
 }
 
 uint32_t EverQuest::GetClass() const
 {
-	return m_game_state.player().classId();
+	return m_player_facade.GetClass();
 }
 
 uint32_t EverQuest::GetRace() const
 {
-	return m_game_state.player().race();
+	return m_player_facade.GetRace();
 }
 
 uint32_t EverQuest::GetGender() const
 {
-	return m_game_state.player().gender();
+	return m_player_facade.GetGender();
 }
 
 uint32_t EverQuest::GetSTR() const
 {
-	return m_game_state.player().STR();
+	return m_player_facade.GetSTR();
 }
 
 uint32_t EverQuest::GetSTA() const
 {
-	return m_game_state.player().STA();
+	return m_player_facade.GetSTA();
 }
 
 uint32_t EverQuest::GetDEX() const
 {
-	return m_game_state.player().DEX();
+	return m_player_facade.GetDEX();
 }
 
 uint32_t EverQuest::GetAGI() const
 {
-	return m_game_state.player().AGI();
+	return m_player_facade.GetAGI();
 }
 
 uint32_t EverQuest::GetINT() const
 {
-	return m_game_state.player().INT();
+	return m_player_facade.GetINT();
 }
 
 uint32_t EverQuest::GetWIS() const
 {
-	return m_game_state.player().WIS();
+	return m_player_facade.GetWIS();
 }
 
 uint32_t EverQuest::GetCHA() const
 {
-	return m_game_state.player().CHA();
+	return m_player_facade.GetCHA();
 }
 
 uint32_t EverQuest::GetCurrentHP() const
 {
-	return m_game_state.player().curHP();
+	return m_player_facade.GetCurrentHP();
 }
 
 uint32_t EverQuest::GetMaxHP() const
 {
-	return m_game_state.player().maxHP();
+	return m_player_facade.GetMaxHP();
 }
 
 uint32_t EverQuest::GetCurrentMana() const
 {
-	return m_game_state.player().curMana();
+	return m_player_facade.GetCurrentMana();
 }
 
 uint32_t EverQuest::GetMaxMana() const
 {
-	return m_game_state.player().maxMana();
+	return m_player_facade.GetMaxMana();
 }
 
 uint32_t EverQuest::GetCurrentEndurance() const
 {
-	return m_game_state.player().curEndurance();
+	return m_player_facade.GetCurrentEndurance();
 }
 
 uint32_t EverQuest::GetMaxEndurance() const
 {
-	return m_game_state.player().maxEndurance();
+	return m_player_facade.GetMaxEndurance();
 }
 
 uint32_t EverQuest::GetDeity() const
 {
-	return m_game_state.player().deity();
+	return m_player_facade.GetDeity();
 }
 
 uint32_t EverQuest::GetPlatinum() const
 {
-	return m_game_state.player().platinum();
+	return m_player_facade.GetPlatinum();
 }
 
 uint32_t EverQuest::GetGold() const
 {
-	return m_game_state.player().gold();
+	return m_player_facade.GetGold();
 }
 
 uint32_t EverQuest::GetSilver() const
 {
-	return m_game_state.player().silver();
+	return m_player_facade.GetSilver();
 }
 
 uint32_t EverQuest::GetCopper() const
 {
-	return m_game_state.player().copper();
+	return m_player_facade.GetCopper();
 }
 
 uint32_t EverQuest::GetBankPlatinum() const
 {
-	return m_game_state.player().bankPlatinum();
+	return m_player_facade.GetBankPlatinum();
 }
 
 uint32_t EverQuest::GetBankGold() const
 {
-	return m_game_state.player().bankGold();
+	return m_player_facade.GetBankGold();
 }
 
 uint32_t EverQuest::GetBankSilver() const
 {
-	return m_game_state.player().bankSilver();
+	return m_player_facade.GetBankSilver();
 }
 
 uint32_t EverQuest::GetBankCopper() const
 {
-	return m_game_state.player().bankCopper();
+	return m_player_facade.GetBankCopper();
 }
 
 uint32_t EverQuest::GetPracticePoints() const
 {
-	return m_game_state.player().practicePoints();
+	return m_player_facade.GetPracticePoints();
 }
 
 float EverQuest::GetWeight() const
 {
-	return m_game_state.player().weight();
+	return m_player_facade.GetWeight();
 }
 
 float EverQuest::GetMaxWeight() const
 {
-	return m_game_state.player().maxWeight();
+	return m_player_facade.GetMaxWeight();
 }
-// ============================================================================
-// Movement State Accessors (Phase 7.1 - use embedded m_game_state)
-// ============================================================================
 
 glm::vec3 EverQuest::Test_GetGameStatePlayerPosition() const
 {
-	// T55 test seam: read the state layer's own copy directly (see eq.h).
-	const auto& player = m_game_state.player();
-	return glm::vec3(player.x(), player.y(), player.z());
+	return m_player_facade.Test_GetGameStatePlayerPosition();
 }
 
 glm::vec3 EverQuest::GetPosition() const
 {
-	// T288: reads the one store (m_game_state.player()), the same storage
-	// Test_GetGameStatePlayerPosition() reads.
-	return m_game_state.player().position();
+	return m_player_facade.GetPosition();
 }
 
 float EverQuest::GetHeading() const
 {
-	// Read from GameState (single source of truth)
-	return m_game_state.player().heading();
+	return m_player_facade.GetHeading();
 }
 
 bool EverQuest::IsMoving() const
 {
-	// Read from GameState (single source of truth)
-	return m_game_state.player().isMoving();
+	return m_player_facade.IsMoving();
 }
 
 void EverQuest::SetHeading(float heading)
 {
-	// T288: one store. setHeading() fires PlayerMoved on the state bus, as
-	// it always has -- this is the discrete-relocation path, not the
-	// per-tick integrator path (SetHeadingLocal()).
-	m_game_state.player().setHeading(heading);
+	m_player_facade.SetHeading(heading);
 }
 
 void EverQuest::SetPosition(float x, float y, float z)
 {
-	// T288: one store. setPosition() fires PlayerMoved on the state bus, as
-	// it always has -- this is the discrete-relocation path, not the
-	// per-tick integrator path (SetPosLocal()).
-	m_game_state.player().setPosition(x, y, z);
+	m_player_facade.SetPosition(x, y, z);
 }
 
 void EverQuest::SetMoving(bool moving)
 {
-	m_game_state.player().setMoving(moving);  // T286: only store
+	m_player_facade.SetMoving(moving);
 }
-
-// ============================================================================
-// Behavioral Flag Accessors (Phase 7.8 - read from PlayerState)
-// ============================================================================
 
 bool EverQuest::IsAFK() const
 {
-	return m_game_state.player().isAFK();
+	return m_player_facade.IsAFK();
 }
 
 bool EverQuest::IsAnonymous() const
 {
-	return m_game_state.player().isAnonymous();
+	return m_player_facade.IsAnonymous();
 }
 
 bool EverQuest::IsRoleplay() const
 {
-	return m_game_state.player().isRoleplay();
+	return m_player_facade.IsRoleplay();
 }
 
 bool EverQuest::IsCamping() const
 {
-	return m_game_state.player().isCamping();
+	return m_player_facade.IsCamping();
 }
-
-// ============================================================================
-// Group Accessors and Sync Helper (Phase 7.5 - read from GroupState)
-// ============================================================================
 
 bool EverQuest::IsInGroup() const
 {
-	return m_game_state.group().inGroup();
+	return m_player_facade.IsInGroup();
 }
 
 bool EverQuest::IsGroupLeader() const
 {
-	return m_game_state.group().isLeader();
+	return m_player_facade.IsGroupLeader();
 }
 
 int EverQuest::GetGroupMemberCount() const
 {
-	return m_game_state.group().memberCount();
+	return m_player_facade.GetGroupMemberCount();
 }
 
 const std::string& EverQuest::GetGroupLeaderName() const
 {
-	return m_game_state.group().leaderName();
+	return m_player_facade.GetGroupLeaderName();
 }
 
 bool EverQuest::HasPendingGroupInvite() const
 {
-	return m_game_state.group().hasPendingInvite();
+	return m_player_facade.HasPendingGroupInvite();
 }
 
 const std::string& EverQuest::GetPendingInviterName() const
 {
-	return m_game_state.group().pendingInviterName();
+	return m_player_facade.GetPendingInviterName();
 }
-
-// T286: SyncGroupMemberToGameState() is DELETED. It existed only to copy
-// EverQuest's own GroupMember array into GroupState's after every write;
-// with one array and one struct there is nothing left to convert.
-
