@@ -235,7 +235,7 @@ void EverQuest::RequestWarp(const std::string& args)
 			found_destination = true;
 		} else {
 			// Try to find entity by name
-			Entity* entity = FindEntityByName(trimmed);
+			Entity* entity = m_entities_component->FindEntityByName(trimmed);
 			if (entity) {
 				x = entity->x;
 				y = entity->y;

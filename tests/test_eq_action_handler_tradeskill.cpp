@@ -93,7 +93,7 @@ TEST(EqActionHandlerTradeskill, OpenContainerCarriesRealObjectTypeFromCapturedBy
 
     ReplayCapturedForgeGroundSpawn(eq);
 
-    const eqt::WorldObject* obj = eq.GetWorldObject(190);
+    const eqt::WorldObject* obj = eq.Entities().GetWorldObject(190);
     ASSERT_NE(obj, nullptr);
     EXPECT_EQ(obj->object_type, 17u);  // CONTAINER_BLACKSMITHING
     EXPECT_TRUE(obj->isTradeskillContainer());
@@ -106,7 +106,7 @@ TEST(EqActionHandlerTradeskill, OpenContainerCarriesRealObjectTypeFromCapturedBy
 
     // This is the exact lookup EqActionHandler::resolveOpenContainerObjectType
     // performs: active drop_id -> WorldObject -> object_type.
-    const eqt::WorldObject* open = eq.GetWorldObject(eq.GetActiveTradeskillObjectId());
+    const eqt::WorldObject* open = eq.Entities().GetWorldObject(eq.GetActiveTradeskillObjectId());
     ASSERT_NE(open, nullptr);
     EXPECT_EQ(open->object_type, 17u);
 
@@ -187,7 +187,7 @@ TEST(EqActionHandlerTradeskill, OpenContainerWithNoWorldObjectRecord_IsReportedN
     // No OP_GroundSpawn replayed: m_world_objects is empty.
     ReplayClickObjectAction(eq, 777, /*open=*/1, /*type=*/17);
     ASSERT_EQ(eq.GetActiveTradeskillObjectId(), 777u);
-    ASSERT_EQ(eq.GetWorldObject(777), nullptr);
+    ASSERT_EQ(eq.Entities().GetWorldObject(777), nullptr);
     bridge.drainEvents();
 
     handler.recipeSearch("iron", 0, 1000);

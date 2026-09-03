@@ -86,6 +86,17 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_gm_component)
 
+# K06 (Batch K): the extracted eqt::entities::EntitiesComponent, driven
+# directly
+ADD_EXECUTABLE(test_entities_component
+    test_entities_component.cpp
+)
+TARGET_LINK_LIBRARIES(test_entities_component GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_entities_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_entities_component)
+
 # T169: OP_RaidUpdate decoding -- the action codes against eqemu's
 # common/raid.h and the per-action body shapes (actions 8, 10, 14 and 30 do
 # NOT have `parameter` where the general body does). Links willeq_core for

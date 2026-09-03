@@ -37,7 +37,7 @@ The EQ server sends positions with X and Y swapped relative to zone geometry. Th
 
 When receiving spawn packets, the client **immediately swaps X and Y**:
 ```cpp
-// In eq_entities.cpp (ZoneProcessNewSpawn/ZoneProcessZoneSpawns) --
+// In src/client/entities/ (ZoneProcessNewSpawn/ZoneProcessZoneSpawns) --
 // server sends (server_x, server_y, z)
 entity.x = server_y;  // Client X = Server Y
 entity.y = server_x;  // Client Y = Server X
@@ -158,7 +158,7 @@ Audio system uses client internal coordinates directly (no transformation).
   The player's own heading from PlayerProfile gets a `90 - server_heading_deg`
   flip (`EverQuest::ZoneProcessPlayerProfile` in `src/client/eq_zone_entry.cpp`,
   see the load-bearing comment there); other
-  entities' headings from spawn packets do not (`src/client/eq_entities.cpp`,
+  entities' headings from spawn packets do not (`src/client/entities/entities_component.cpp`,
   which applies its own extra `/4.0f` instead). **Players and NPCs do not share
   the same default rotation, and the model files carry differing default
   rotations** — the code asymmetry compensates for a real asset difference.

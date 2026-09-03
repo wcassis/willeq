@@ -112,10 +112,10 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 		}
 		break;
 	case HC_OP_ZoneSpawns:
-		ZoneProcessZoneSpawns(p);
+		m_entities_component->ZoneProcessZoneSpawns(p);
 		break;
 	case HC_OP_TimeOfDay:
-		ZoneProcessTimeOfDay(p);
+		m_entities_component->ZoneProcessTimeOfDay(p);
 		break;
 	case HC_OP_TributeUpdate:
 		ZoneProcessTributeUpdate(p);
@@ -127,7 +127,7 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 		ZoneProcessCharInventory(p);
 		break;
 	case HC_OP_Weather:
-		ZoneProcessWeather(p);
+		m_entities_component->ZoneProcessWeather(p);
 		break;
 	case HC_OP_NewZone:
 		ZoneProcessNewZone(p);
@@ -145,19 +145,19 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 		ZoneProcessSendGuildTributes(p);
 		break;
 	case HC_OP_SpawnDoor:
-		ZoneProcessSpawnDoor(p);
+		m_entities_component->ZoneProcessSpawnDoor(p);
 		break;
 	case HC_OP_GroundSpawn:
-		ZoneProcessGroundSpawn(p);
+		m_entities_component->ZoneProcessGroundSpawn(p);
 		break;
 	case HC_OP_ClickObjectAction:
-		ZoneProcessClickObjectAction(p);
+		m_entities_component->ZoneProcessClickObjectAction(p);
 		break;
 	case HC_OP_TradeSkillCombine:
 		ZoneProcessTradeSkillCombine(p);
 		break;
 	case HC_OP_SendZonepoints:
-		ZoneProcessSendZonepoints(p);
+		m_entities_component->ZoneProcessSendZonepoints(p);
 		break;
 	case HC_OP_SendAAStats:
 		ZoneProcessSendAAStats(p);
@@ -169,10 +169,10 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 		ZoneProcessWorldObjectsSent(p);
 		break;
 	case HC_OP_SpawnAppearance:
-		ZoneProcessSpawnAppearance(p);
+		m_entities_component->ZoneProcessSpawnAppearance(p);
 		break;
 	case HC_OP_ExpUpdate:
-		ZoneProcessExpUpdate(p);
+		m_entities_component->ZoneProcessExpUpdate(p);
 		break;
 	case HC_OP_RaidUpdate:
 		ZoneProcessRaidUpdate(p);
@@ -181,31 +181,31 @@ void EverQuest::DispatchZonePacket(const EQ::Net::Packet & p)
 		ZoneProcessGuildMOTD(p);
 		break;
 	case HC_OP_NewSpawn:
-		ZoneProcessNewSpawn(p);
+		m_entities_component->ZoneProcessNewSpawn(p);
 		break;
 	case HC_OP_ClientUpdate:
-		ZoneProcessClientUpdate(p);
+		m_entities_component->ZoneProcessClientUpdate(p);
 		break;
 	case HC_OP_DeleteSpawn:
-		ZoneProcessDeleteSpawn(p);
+		m_entities_component->ZoneProcessDeleteSpawn(p);
 		break;
 	case HC_OP_MobHealth:
-		ZoneProcessMobHealth(p);
+		m_entities_component->ZoneProcessMobHealth(p);
 		break;
 	case HC_OP_HPUpdate:
-		ZoneProcessHPUpdate(p);
+		m_entities_component->ZoneProcessHPUpdate(p);
 		break;
 	case HC_OP_ChannelMessage:
 		m_chat->ZoneProcessChannelMessage(p);
 		break;
 	case HC_OP_WearChange:
-		ZoneProcessWearChange(p);
+		m_entities_component->ZoneProcessWearChange(p);
 		break;
 	case HC_OP_Illusion:
-		ZoneProcessIllusion(p);
+		m_entities_component->ZoneProcessIllusion(p);
 		break;
 	case HC_OP_MoveDoor:
-		ZoneProcessMoveDoor(p);
+		m_entities_component->ZoneProcessMoveDoor(p);
 		break;
 	case HC_OP_CompletedTasks:
 		ZoneProcessCompletedTasks(p);

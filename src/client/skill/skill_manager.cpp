@@ -732,7 +732,7 @@ void SkillManager::playSkillAnimation(uint8_t skill_id) {
 
     // Send animation ID to server (server may echo this back)
     if (anim_id != 0) {
-        m_eq->SendAnimation(anim_id);
+        m_eq->Entities().SendAnimation(anim_id);
     }
 
     // D20e1: Play skill animation via bridge event
