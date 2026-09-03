@@ -150,7 +150,7 @@ they sit in; the plan for that unit names them.
 
 ## Stop conditions (every unit)
 
-- A moved body needs an edit beyond the two substitutions → STOP, report the
+- A moved body needs an edit beyond the three substitutions → STOP, report the
   method, do not improvise.
 - A test asserts on `EverQuest` having a member that moved and cannot be
   repointed by name → STOP and report (that test may be a stale guard).
