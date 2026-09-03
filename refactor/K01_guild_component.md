@@ -272,13 +272,29 @@ territory and is being edited by slot2's citation leg, so it was left alone --
    note. Every K unit must exclude comment lines from the substitution pass and
    re-check them afterwards.
 
-5. **§Mechanism 5 and the per-unit member tables can disagree, and §Mechanism
-   does not say who wins.** `HasPendingGuildInvite()` has zero callers:
-   §Mechanism 5 says "removed from `eq.h` outright", the K01 plan says
-   "becomes a forwarder". Resolved here in favour of the plan (forwarder kept).
-   §Mechanism should state the precedence explicitly, and should note that
-   "no external caller" for a PUBLIC accessor is a reachability finding to
-   board, not a deletion to perform inside a structural unit.
+5. **NO FORWARDERS. Retarget callers; delete declarations.** (Rewritten after
+   the orchestrator's ruling on the ratchet analysis below -- this supersedes
+   §Mechanism 5 as written.) A forwarder keeps `eq.h` as the API surface, which
+   is the thing Batch K exists to remove, and it is line-neutral, which is why
+   the ratchet could not move. The rule for every K unit is:
+   - every moved method's declaration is **deleted** from `eq.h`, forwarder or
+     not;
+   - every caller is retargeted through the component accessor
+     (`m_eq.Guild().SendGuildInvite(...)` from outside, `m_guild->ZoneProcess*()`
+     from inside an `EverQuest` member);
+   - **test call sites are IN TERRITORY** for the unit -- call-site edits only,
+     assertions untouched. K01's plan said "leave `test_guild_wire_rank.cpp`
+     untouched", which is not compatible with deleting the declaration;
+   - a method with zero callers anywhere is deleted outright, not moved.
+     `HasPendingGuildInvite()` was that case, and §Mechanism 5 wins over a plan
+     table that says "becomes a forwarder": **§Mechanism is the method, the
+     per-unit plan carries only family-specific facts, so §Mechanism has
+     precedence on mechanism questions.**
+   - **the ratchet must go down every unit, and K01 has now paid the
+     scaffolding cost** (`ClientContext`, the include, the friend, `Guild()`,
+     `Context()`, the two members -- +7 lines, one-time for the whole batch).
+     K02 onward pay only +1 member and +1 accessor and delete every moved
+     declaration, so each should shrink `eq.h` by roughly its declaration count.
 
 6. **§Mechanism 6's ratchet and the third stop condition are unsatisfiable for
    a family whose methods all have external callers.** See the STOP section
@@ -328,3 +344,65 @@ territory and is being edited by slot2's citation leg, so it was left alone --
 - `EverQuest::m_guild_name` -- declared, initialised, **zero references
   tree-wide**. The reachability pattern again (this makes it #10+).
 - `refactor/BOARD.md:136` cites the moved `src/client/eq_guild.cpp`.
+
+---
+
+## Review addendum — forwarders dropped (second commit)
+
+Orchestrator ruling after the ratchet analysis above: **forwarders are dropped
+from Batch K entirely.** Merged `fable` (`44515c19`, K00 Leg C: doc citations
+plus the checker's `review/` and absolute-path rules) into the branch first --
+**clean merge, no conflicts, nothing resolved by hand.**
+
+### The three `eq.h` numbers
+
+| | lines | vs dispatch |
+|---|---|---|
+| at dispatch (`fable` `e888e89c`) | **2,025** | — |
+| first commit, with forwarders | **2,033** | +8 (the STOP) |
+| second commit, forwarders dropped | **2,024** | **-1** |
+
+`scripts/refactor/file_size_allowlist.txt` lowered 2,025 -> **2,024**.
+`FileSizeCeiling` PASSES. The margin is one line, which is the honest measure of
+this family: guild contributes 12 declarations, and the one-time `ClientContext`
+scaffolding (+7) very nearly eats all of it. No code was compressed to get
+there -- the only edits after the retarget were to comment lines this unit had
+itself added.
+
+### Retarget list
+
+| file | sites | change |
+|---|---|---|
+| `include/client/eq.h` | 12 declarations | **deleted**: 7 `SendGuild*`, `HasPendingGuildInvite()`, 4 `ZoneProcessGuild*`. `Guild()` and `Context()` are all that remain |
+| `src/client/eq_action_handler_extended.cpp` | **8** (not 7 -- `SendGuildInviteAccept` appears twice, for accept and decline) | `m_eq.Send*` -> `m_eq.Guild().Send*` |
+| `src/client/eq_zone_dispatch.cpp` | 4 | `ZoneProcessGuild*(p)` -> `m_guild->ZoneProcessGuild*(p)`. `ZoneProcessGuildMOTD` at the same file's line 181 is a DIFFERENT method (zone family, `eq_zone_entry.cpp`) and was correctly left alone |
+| `tests/test_guild_wire_rank.cpp` | 4 | `eq.Send*` -> `eq.Guild().Send*`. **Assertions untouched** |
+| `tests/test_wire_layout_t145.cpp` | **0** | its `SendGetGuildMOTD` mention is a COMMENT, not a call -- no edit needed |
+| `include/client/action/action_handler.h` | **0** | line 355 is a COMMENT naming `SendGuildInviteAccept(bool)` in prose, not a reference. Left as-is (it still describes the behaviour accurately) |
+| `tests/test_guild_component.cpp` | 2 | dropped the two assertions that read the deleted `eq.HasPendingGuildInvite()` forwarder; replaced one with "`Guild()` returns the same object every time" |
+
+### Multiset residual (re-run, corrected normalisation)
+
+Unchanged from the first commit: **10 lines, all ADDED, zero deleted, zero code
+lines modified** -- the 9-line K01 file-header note plus
+`#include "client/guild/guild_component.h"`. The moved bodies were not touched
+by the forwarder drop, which is the point.
+
+### Verification (second commit)
+
+| step | result |
+|---|---|
+| `git merge fable` | clean, no conflicts |
+| `cmake --build build -j24` | **exit 0** (one intermediate failure, caught and fixed: `test_guild_component.cpp` still called the deleted `eq.HasPendingGuildInvite()` forwarder) |
+| `ctest -j6 --output-on-failure` | **3,504 / 3,505 passed**, 17 skipped, **1 failure: `AudioManagerTest.PreloadCommonSounds` only** (the ALSA quirk). `DocCitations` **PASSES** (216 citations, 215 ok, 0 fail, 1 skip). `FileSizeCeiling` **PASSES** |
+| `check_file_sizes.sh --all` | **799 ok, 0 warn, 0 FAIL** |
+| visual gate / `build-arm-noble.sh` | **not re-run, and correctly so**: `git diff --name-only` over `src/client/graphics` and `include/client/graphics` between the merge base and HEAD is **empty** -- no graphics file changed in either commit. Both passed on the first commit |
+
+### BOARD.md
+
+- **B017** citation retargeted from `src/client/eq_guild.cpp` to
+  `src/client/guild/guild_component.cpp` (and the symbol from
+  `EverQuest::SendGuildInviteAccept` to
+  `eqt::guild::GuildComponent::SendGuildInviteAccept`).
+- **B019** added (next free ID, B class): `EverQuest::m_guild_name` --
+  declared, default-initialised, zero references tree-wide.

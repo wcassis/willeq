@@ -600,17 +600,11 @@ public:
 	// held -- the same last-writer-wins the real client has.
 	const std::string& GetInspectMessage() const { return m_inspect_message; }
 	void SetInspectMessage(const std::string& message);
-	// Guild functions -- K01: forwarders into eqt::guild::GuildComponent.
-	void SendGuildInvite(const std::string& player_name) { m_guild->SendGuildInvite(player_name); }
-	void SendGuildInviteAccept(bool accept) { m_guild->SendGuildInviteAccept(accept); }
-	void SendGuildRemove(const std::string& player_name) { m_guild->SendGuildRemove(player_name); }
-	void SendGuildDemote(const std::string& player_name) { m_guild->SendGuildDemote(player_name); }
-	void SendGuildLeader(const std::string& player_name) { m_guild->SendGuildLeader(player_name); }
-	void SendGetGuildMOTD() { m_guild->SendGetGuildMOTD(); }
-	void SendSetGuildMOTD(const std::string& motd) { m_guild->SendSetGuildMOTD(motd); }
-	bool HasPendingGuildInvite() const { return m_guild->HasPendingGuildInvite(); }
-	eqt::guild::GuildComponent& Guild() { return *m_guild; }   // K01
-	eqt::ClientContext& Context() { return m_ctx; }            // K01
+	// K01 (Batch K): the guild family is eqt::guild::GuildComponent; callers go
+	// through Guild(), there are no forwarders. HasPendingGuildInvite() had
+	// zero callers tree-wide and was deleted rather than moved (§Mechanism 5).
+	eqt::guild::GuildComponent& Guild() { return *m_guild; }
+	eqt::ClientContext& Context() { return m_ctx; }
 	// Phase 3: Corpse Management
 	void SendCorpseDrag(const std::string& corpse_name);
 	void SendCorpseDrop();
@@ -1210,11 +1204,8 @@ private:
 	static Json::Value* ResolveClientConfigForWrite(Json::Value& root);
 	static const Json::Value* ResolveClientConfigForRead(const Json::Value& root);
 	void ZoneProcessInspectAnswer(const EQ::Net::Packet &p);
-	// Guild packet handlers -- K01: forwarders, for DispatchZonePacket.
-	void ZoneProcessGuildInvite(const EQ::Net::Packet &p) { m_guild->ZoneProcessGuildInvite(p); }
-	void ZoneProcessGuildMOTDReply(const EQ::Net::Packet &p) { m_guild->ZoneProcessGuildMOTDReply(p); }
-	void ZoneProcessGuildMemberUpdate(const EQ::Net::Packet &p) { m_guild->ZoneProcessGuildMemberUpdate(p); }
-	void ZoneProcessGuildMemberAdd(const EQ::Net::Packet &p) { m_guild->ZoneProcessGuildMemberAdd(p); }
+	// K01: the four guild packet handlers are GuildComponent's; DispatchZonePacket
+	// calls m_guild->ZoneProcessGuild*() directly.
 	// Phase 3 packet handlers
 	void ZoneProcessConsentResponse(const EQ::Net::Packet &p);
 	void ZoneProcessDenyResponse(const EQ::Net::Packet &p);
@@ -1573,7 +1564,7 @@ private:
 	// Guild state. K01: the pending-invite trio moved into GuildComponent.
 	// m_guild_id/m_guild_rank STAY -- written by the zone family
 	// (eq_zone_entry.cpp, eq_entities.cpp), read by the public getters.
-	// m_guild_name has ZERO references tree-wide (K01 measured); left alone.
+	// m_guild_name has ZERO references tree-wide (K01; BOARD B-item).
 	uint32_t m_guild_id = 0;
 	// T317: Titanium rank encoding (0 member / 1 officer / 2 leader / 9 none).
 	// 9 == GUILD_RANK_NONE_TI is the correct "not in a guild" default.

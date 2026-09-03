@@ -34,7 +34,8 @@ class GuildComponent {
 public:
 	GuildComponent(ClientContext& ctx, EverQuest& owner) : ctx_(ctx), owner_(owner) {}
 
-	// Senders (were public on EverQuest; each keeps a forwarder there).
+	// Senders. Were public on EverQuest; K01 deleted those declarations and
+	// retargeted the callers (eq_action_handler_extended.cpp, tests).
 	void SendGuildInvite(const std::string& player_name);
 	void SendGuildInviteAccept(bool accept);
 	void SendGuildRemove(const std::string& player_name);
@@ -43,8 +44,8 @@ public:
 	void SendGetGuildMOTD();
 	void SendSetGuildMOTD(const std::string& motd);
 
-	// Packet handlers (were private on EverQuest; called from
-	// eq_zone_dispatch.cpp through a private forwarder there).
+	// Packet handlers. Were private on EverQuest; DispatchZonePacket
+	// (eq_zone_dispatch.cpp) now calls m_guild->ZoneProcessGuild*() directly.
 	void ZoneProcessGuildInvite(const EQ::Net::Packet& p);
 	void ZoneProcessGuildMOTDReply(const EQ::Net::Packet& p);
 	void ZoneProcessGuildMemberUpdate(const EQ::Net::Packet& p);

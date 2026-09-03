@@ -1,10 +1,11 @@
 // K01 (Batch K, refactor/K01_guild_component.md) -- eqt::guild::GuildComponent.
 //
-// test_guild_wire_rank.cpp is deliberately left untouched: it drives the same
-// senders through EverQuest's forwarders, and so proves the forwarders still
-// reach the moved bodies. THIS file drives the component DIRECTLY
-// (eq.Guild().Send...), which is the only thing that can catch a forwarder
-// that silently stopped being wired to anything.
+// K01 dropped forwarders entirely: EverQuest no longer declares a single
+// guild method, and every caller goes through EverQuest::Guild(). This file
+// covers the component itself -- construction against a real EverQuest, the
+// ClientContext binding, the guards, and the three data members that moved.
+// test_guild_wire_rank.cpp keeps its own assertions untouched (only its call
+// sites were retargeted) and still covers the wire builders.
 //
 // Same limitation the T317 file records: EverQuest::QueuePacket() no-ops
 // without a zone connection and leaves nothing inspectable, so what is
@@ -84,8 +85,8 @@ protected:
 
 TEST_F(GuildComponentTest, ComponentExistsAndStartsWithNoPendingInvite) {
     EXPECT_FALSE(eq.Guild().HasPendingGuildInvite());
-    // The forwarder and the component must be the same object's state.
-    EXPECT_EQ(eq.HasPendingGuildInvite(), eq.Guild().HasPendingGuildInvite());
+    // Guild() must hand back the SAME component every time, not a copy.
+    EXPECT_EQ(&eq.Guild(), &eq.Guild());
 }
 
 TEST_F(GuildComponentTest, ContextPointsAtTheOwningEverQuestsOwnMembers) {
@@ -97,7 +98,7 @@ TEST_F(GuildComponentTest, ContextPointsAtTheOwningEverQuestsOwnMembers) {
 }
 
 // ===================================================================
-// 2. Senders, driven on the component (port of the T317 cases)
+// 2. Senders on the component (port of the T317 cases)
 // ===================================================================
 
 TEST_F(GuildComponentTest, SendersRefuseOnTheComponentWhenNotInAGuild) {
@@ -141,11 +142,10 @@ TEST_F(GuildComponentTest, AcceptRefusesUntilAnInviteArrivesThenClearsTheState) 
     EXPECT_TRUE(AnyContains(DrainSystemMessages(bridge),
                             "You don't have a pending guild invite."));
 
-    // Now deliver one through the real dispatch path (EverQuest's forwarder
-    // is what DispatchZonePacket calls).
+    // Now deliver one through the real dispatch path (DispatchZonePacket calls
+    // m_guild->ZoneProcessGuildInvite directly since K01 dropped forwarders).
     ReplayZone(eq, HC_OP_GuildInvite, BuildInboundInvite("Bob", 77));
     EXPECT_TRUE(eq.Guild().HasPendingGuildInvite());
-    EXPECT_TRUE(eq.HasPendingGuildInvite());
     EXPECT_TRUE(AnyContains(DrainSystemMessages(bridge),
                             "Bob has invited you to join a guild."));
 
