@@ -137,7 +137,7 @@ bool SpellManager::checkReagents(const SpellData& spell, uint32_t* missing_item_
 // server's own refusal.
 CastResult SpellManager::checkPlayerState() const
 {
-    if (m_eq->IsStunned()) {
+    if (m_eq->Commands().IsStunned()) {
         LOG_DEBUG(MOD_SPELL, "checkPlayerState: stunned (OP_Stun in force)");
         return CastResult::Stunned;
     }

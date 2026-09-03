@@ -8,6 +8,7 @@
 // original file order. See refactor/G02_commands_split.md.
 
 #include "client/eq.h"
+#include "client/commands/commands_component.h"
 #include "client/willeq_database.h"
 #include "client/pathfinder_interface.h"
 #ifdef EQT_HAS_NAVMESH
@@ -94,7 +95,7 @@
 // graphics-only singletons directly (/hotkeys, plus /bank and /train
 // which were already individually guarded) are now guarded at their own
 // handler bodies instead of at the whole-function level.
-void EverQuest::RegisterSpellCommands()
+void eqt::commands::CommandsComponent::RegisterSpellCommands()
 {
 	using namespace eqt::ui;
 
@@ -152,42 +153,42 @@ void EverQuest::RegisterSpellCommands()
 		auto& hotkeyMgr = eqt::input::HotkeyManager::instance();
 		if (args == "reload") {
 			if (hotkeyMgr.reload()) {
-				AddChatSystemMessage("Hotkeys reloaded successfully.");
+				owner_.AddChatSystemMessage("Hotkeys reloaded successfully.");
 				auto conflicts = hotkeyMgr.detectConflicts();
 				if (!conflicts.empty()) {
-					AddChatSystemMessage(fmt::format("Warning: {} hotkey conflicts detected.", conflicts.size()));
+					owner_.AddChatSystemMessage(fmt::format("Warning: {} hotkey conflicts detected.", conflicts.size()));
 				}
 			} else {
-				AddChatSystemMessage("Failed to reload hotkeys. Check config file.");
+				owner_.AddChatSystemMessage("Failed to reload hotkeys. Check config file.");
 			}
 		} else if (args == "save") {
 			if (hotkeyMgr.saveToFile()) {
-				AddChatSystemMessage("Hotkeys saved successfully.");
+				owner_.AddChatSystemMessage("Hotkeys saved successfully.");
 			} else {
-				AddChatSystemMessage("Failed to save hotkeys.");
+				owner_.AddChatSystemMessage("Failed to save hotkeys.");
 			}
 		} else if (args == "conflicts") {
 			auto conflicts = hotkeyMgr.detectConflicts();
 			if (conflicts.empty()) {
-				AddChatSystemMessage("No hotkey conflicts detected.");
+				owner_.AddChatSystemMessage("No hotkey conflicts detected.");
 			} else {
-				AddChatSystemMessage(fmt::format("{} hotkey conflicts:", conflicts.size()));
+				owner_.AddChatSystemMessage(fmt::format("{} hotkey conflicts:", conflicts.size()));
 				for (const auto& c : conflicts) {
-					AddChatSystemMessage(c.message);
+					owner_.AddChatSystemMessage(c.message);
 				}
 			}
 		} else if (args.empty()) {
-			AddChatSystemMessage("Hotkey commands: reload, save, conflicts");
-			AddChatSystemMessage(fmt::format("Config path: {}", hotkeyMgr.getConfigPath()));
+			owner_.AddChatSystemMessage("Hotkey commands: reload, save, conflicts");
+			owner_.AddChatSystemMessage(fmt::format("Config path: {}", hotkeyMgr.getConfigPath()));
 		} else {
-			AddChatSystemMessage("Unknown hotkey subcommand. Use: reload, save, conflicts");
+			owner_.AddChatSystemMessage("Unknown hotkey subcommand. Use: reload, save, conflicts");
 		}
 #else
 		(void)args;
-		AddChatSystemMessage("/hotkeys requires graphics mode (not available in this headless build).");
+		owner_.AddChatSystemMessage("/hotkeys requires graphics mode (not available in this headless build).");
 #endif
 	};
-	m_command_registry->registerCommand(hotkeys);
+	ctx_.command_registry->registerCommand(hotkeys);
 
 	// === Detail System Commands (grass, plants, debris) ===
 
@@ -211,10 +212,10 @@ void EverQuest::RegisterSpellCommands()
 #ifdef EQT_HAS_GRAPHICS
 		runPmemDiagnostics(args.empty() ? "pmem" : args);
 #else
-		AddChatSystemMessage("/pmem requires graphics mode (not available in this headless build).");
+		owner_.AddChatSystemMessage("/pmem requires graphics mode (not available in this headless build).");
 #endif
 	};
-	m_command_registry->registerCommand(pmem);
+	ctx_.command_registry->registerCommand(pmem);
 
 #ifdef WITH_AUDIO
 	// === Audio Commands ===
@@ -225,8 +226,8 @@ void EverQuest::RegisterSpellCommands()
 	music_cmd.description = "Toggle or set music playback";
 	music_cmd.category = "Audio";
 	music_cmd.handler = [this](const std::string& args) {
-		if (!m_audio_manager) {
-			AddChatSystemMessage("Audio system not available.");
+		if (!ctx_.audio_manager) {
+			owner_.AddChatSystemMessage("Audio system not available.");
 			return;
 		}
 
@@ -234,25 +235,25 @@ void EverQuest::RegisterSpellCommands()
 		std::transform(arg.begin(), arg.end(), arg.begin(), ::tolower);
 
 		if (arg == "on") {
-			m_audio_manager->resumeMusic();
-			AddChatSystemMessage("Music enabled.");
+			ctx_.audio_manager->resumeMusic();
+			owner_.AddChatSystemMessage("Music enabled.");
 		} else if (arg == "off") {
-			m_audio_manager->pauseMusic();
-			AddChatSystemMessage("Music disabled.");
+			ctx_.audio_manager->pauseMusic();
+			owner_.AddChatSystemMessage("Music disabled.");
 		} else if (arg.empty()) {
 			// Toggle
-			if (m_audio_manager->isMusicPlaying()) {
-				m_audio_manager->pauseMusic();
-				AddChatSystemMessage("Music disabled.");
+			if (ctx_.audio_manager->isMusicPlaying()) {
+				ctx_.audio_manager->pauseMusic();
+				owner_.AddChatSystemMessage("Music disabled.");
 			} else {
-				m_audio_manager->resumeMusic();
-				AddChatSystemMessage("Music enabled.");
+				ctx_.audio_manager->resumeMusic();
+				owner_.AddChatSystemMessage("Music enabled.");
 			}
 		} else {
-			AddChatSystemMessage("Usage: /music [on|off]");
+			owner_.AddChatSystemMessage("Usage: /music [on|off]");
 		}
 	};
-	m_command_registry->registerCommand(music_cmd);
+	ctx_.command_registry->registerCommand(music_cmd);
 
 	Command sound_cmd;
 	sound_cmd.name = "sound";
@@ -260,8 +261,8 @@ void EverQuest::RegisterSpellCommands()
 	sound_cmd.description = "Toggle or set sound effects";
 	sound_cmd.category = "Audio";
 	sound_cmd.handler = [this](const std::string& args) {
-		if (!m_audio_manager) {
-			AddChatSystemMessage("Audio system not available.");
+		if (!ctx_.audio_manager) {
+			owner_.AddChatSystemMessage("Audio system not available.");
 			return;
 		}
 
@@ -269,21 +270,21 @@ void EverQuest::RegisterSpellCommands()
 		std::transform(arg.begin(), arg.end(), arg.begin(), ::tolower);
 
 		if (arg == "on") {
-			m_audio_manager->setAudioEnabled(true);
-			AddChatSystemMessage("Sound effects enabled.");
+			ctx_.audio_manager->setAudioEnabled(true);
+			owner_.AddChatSystemMessage("Sound effects enabled.");
 		} else if (arg == "off") {
-			m_audio_manager->setAudioEnabled(false);
-			AddChatSystemMessage("Sound effects disabled.");
+			ctx_.audio_manager->setAudioEnabled(false);
+			owner_.AddChatSystemMessage("Sound effects disabled.");
 		} else if (arg.empty()) {
 			// Toggle
-			bool currentState = m_audio_manager->isAudioEnabled();
-			m_audio_manager->setAudioEnabled(!currentState);
-			AddChatSystemMessage(fmt::format("Sound effects {}.", !currentState ? "enabled" : "disabled"));
+			bool currentState = ctx_.audio_manager->isAudioEnabled();
+			ctx_.audio_manager->setAudioEnabled(!currentState);
+			owner_.AddChatSystemMessage(fmt::format("Sound effects {}.", !currentState ? "enabled" : "disabled"));
 		} else {
-			AddChatSystemMessage("Usage: /sound [on|off]");
+			owner_.AddChatSystemMessage("Usage: /sound [on|off]");
 		}
 	};
-	m_command_registry->registerCommand(sound_cmd);
+	ctx_.command_registry->registerCommand(sound_cmd);
 
 	Command volume_cmd;
 	volume_cmd.name = "volume";
@@ -292,27 +293,27 @@ void EverQuest::RegisterSpellCommands()
 	volume_cmd.description = "Set master volume";
 	volume_cmd.category = "Audio";
 	volume_cmd.handler = [this](const std::string& args) {
-		if (!m_audio_manager) {
-			AddChatSystemMessage("Audio system not available.");
+		if (!ctx_.audio_manager) {
+			owner_.AddChatSystemMessage("Audio system not available.");
 			return;
 		}
 
 		if (args.empty()) {
-			int currentVol = static_cast<int>(m_audio_manager->getMasterVolume() * 100.0f);
-			AddChatSystemMessage(fmt::format("Master volume: {}%", currentVol));
+			int currentVol = static_cast<int>(ctx_.audio_manager->getMasterVolume() * 100.0f);
+			owner_.AddChatSystemMessage(fmt::format("Master volume: {}%", currentVol));
 			return;
 		}
 
 		try {
 			int vol = std::stoi(args);
 			vol = std::clamp(vol, 0, 100);
-			m_audio_manager->setMasterVolume(vol / 100.0f);
-			AddChatSystemMessage(fmt::format("Master volume set to {}%", vol));
+			ctx_.audio_manager->setMasterVolume(vol / 100.0f);
+			owner_.AddChatSystemMessage(fmt::format("Master volume set to {}%", vol));
 		} catch (const std::exception&) {
-			AddChatSystemMessage("Usage: /volume <0-100>");
+			owner_.AddChatSystemMessage("Usage: /volume <0-100>");
 		}
 	};
-	m_command_registry->registerCommand(volume_cmd);
+	ctx_.command_registry->registerCommand(volume_cmd);
 
 	Command musicvolume_cmd;
 	musicvolume_cmd.name = "musicvolume";
@@ -321,27 +322,27 @@ void EverQuest::RegisterSpellCommands()
 	musicvolume_cmd.description = "Set music volume";
 	musicvolume_cmd.category = "Audio";
 	musicvolume_cmd.handler = [this](const std::string& args) {
-		if (!m_audio_manager) {
-			AddChatSystemMessage("Audio system not available.");
+		if (!ctx_.audio_manager) {
+			owner_.AddChatSystemMessage("Audio system not available.");
 			return;
 		}
 
 		if (args.empty()) {
-			int currentVol = static_cast<int>(m_audio_manager->getMusicVolume() * 100.0f);
-			AddChatSystemMessage(fmt::format("Music volume: {}%", currentVol));
+			int currentVol = static_cast<int>(ctx_.audio_manager->getMusicVolume() * 100.0f);
+			owner_.AddChatSystemMessage(fmt::format("Music volume: {}%", currentVol));
 			return;
 		}
 
 		try {
 			int vol = std::stoi(args);
 			vol = std::clamp(vol, 0, 100);
-			m_audio_manager->setMusicVolume(vol / 100.0f);
-			AddChatSystemMessage(fmt::format("Music volume set to {}%", vol));
+			ctx_.audio_manager->setMusicVolume(vol / 100.0f);
+			owner_.AddChatSystemMessage(fmt::format("Music volume set to {}%", vol));
 		} catch (const std::exception&) {
-			AddChatSystemMessage("Usage: /musicvolume <0-100>");
+			owner_.AddChatSystemMessage("Usage: /musicvolume <0-100>");
 		}
 	};
-	m_command_registry->registerCommand(musicvolume_cmd);
+	ctx_.command_registry->registerCommand(musicvolume_cmd);
 
 	Command effectsvolume_cmd;
 	effectsvolume_cmd.name = "effectsvolume";
@@ -350,27 +351,27 @@ void EverQuest::RegisterSpellCommands()
 	effectsvolume_cmd.description = "Set sound effects volume";
 	effectsvolume_cmd.category = "Audio";
 	effectsvolume_cmd.handler = [this](const std::string& args) {
-		if (!m_audio_manager) {
-			AddChatSystemMessage("Audio system not available.");
+		if (!ctx_.audio_manager) {
+			owner_.AddChatSystemMessage("Audio system not available.");
 			return;
 		}
 
 		if (args.empty()) {
-			int currentVol = static_cast<int>(m_audio_manager->getEffectsVolume() * 100.0f);
-			AddChatSystemMessage(fmt::format("Effects volume: {}%", currentVol));
+			int currentVol = static_cast<int>(ctx_.audio_manager->getEffectsVolume() * 100.0f);
+			owner_.AddChatSystemMessage(fmt::format("Effects volume: {}%", currentVol));
 			return;
 		}
 
 		try {
 			int vol = std::stoi(args);
 			vol = std::clamp(vol, 0, 100);
-			m_audio_manager->setEffectsVolume(vol / 100.0f);
-			AddChatSystemMessage(fmt::format("Effects volume set to {}%", vol));
+			ctx_.audio_manager->setEffectsVolume(vol / 100.0f);
+			owner_.AddChatSystemMessage(fmt::format("Effects volume set to {}%", vol));
 		} catch (const std::exception&) {
-			AddChatSystemMessage("Usage: /effectsvolume <0-100>");
+			owner_.AddChatSystemMessage("Usage: /effectsvolume <0-100>");
 		}
 	};
-	m_command_registry->registerCommand(effectsvolume_cmd);
+	ctx_.command_registry->registerCommand(effectsvolume_cmd);
 #endif
 }
 
@@ -381,23 +382,23 @@ void EverQuest::RegisterSpellCommands()
 // REQUIRES a targeted banker", not the old degenerate self-closing dummy-id
 // fallback), still pushes the same eqt::events::BankerInteractIntent the
 // renderer's own ctrl+click-a-banker gesture pushes.
-void EverQuest::RequestBankToggle()
+void eqt::commands::CommandsComponent::RequestBankToggle()
 {
-	if (IsBankWindowOpen()) {
-		m_merchant->CloseBankWindow();
+	if (owner_.IsBankWindowOpen()) {
+		owner_.Merchant().CloseBankWindow();
 		return;
 	}
 
-	uint16_t target_id = m_combat_manager ? m_combat_manager->GetTargetId() : 0;
+	uint16_t target_id = ctx_.combat_manager ? ctx_.combat_manager->GetTargetId() : 0;
 	if (target_id == 0) {
-		AddChatSystemMessage("You don't have a target - target a banker first.");
+		owner_.AddChatSystemMessage("You don't have a target - target a banker first.");
 		return;
 	}
 
-	if (m_bridge) {
-		m_bridge->pushIntent(eqt::events::BankerInteractIntent{target_id});
+	if (ctx_.bridge) {
+		ctx_.bridge->pushIntent(eqt::events::BankerInteractIntent{target_id});
 	} else {
-		AddChatSystemMessage("Cannot open bank - no bridge attached.");
+		owner_.AddChatSystemMessage("Cannot open bank - no bridge attached.");
 	}
 }
 
@@ -409,19 +410,19 @@ void EverQuest::RequestBankToggle()
 // the layer owning the state rather than duplicating them against a new
 // public entity-by-id accessor. No behavior change, including the T50
 // distance/class pre-validation and its documented caveats.
-void EverQuest::RequestTraining()
+void eqt::commands::CommandsComponent::RequestTraining()
 {
 	// Check if we have a target
-	uint16_t target_id = m_combat_manager ? m_combat_manager->GetTargetId() : 0;
+	uint16_t target_id = ctx_.combat_manager ? ctx_.combat_manager->GetTargetId() : 0;
 	if (target_id == 0) {
-		AddChatSystemMessage("You must have a trainer targeted.");
+		owner_.AddChatSystemMessage("You must have a trainer targeted.");
 		return;
 	}
 
 	// Check if target exists
-	auto it = m_entities.find(target_id);
-	if (it == m_entities.end()) {
-		AddChatSystemMessage("Target not found.");
+	auto it = ctx_.entities.find(target_id);
+	if (it == ctx_.entities.end()) {
+		owner_.AddChatSystemMessage("Target not found.");
 		return;
 	}
 
@@ -429,7 +430,7 @@ void EverQuest::RequestTraining()
 
 	// Check if target is an NPC (not player, not corpse)
 	if (target.npc_type != 1) {
-		AddChatSystemMessage("That is not an NPC.");
+		owner_.AddChatSystemMessage("That is not an NPC.");
 		return;
 	}
 
@@ -438,7 +439,7 @@ void EverQuest::RequestTraining()
 	constexpr uint8_t CLASS_WARRIOR_GM = 20;
 	constexpr uint8_t CLASS_BERSERKER_GM = 35;
 	if (target.class_id < CLASS_WARRIOR_GM || target.class_id > CLASS_BERSERKER_GM) {
-		AddChatSystemMessage("That is not a trainer.");
+		owner_.AddChatSystemMessage("That is not a trainer.");
 		return;
 	}
 
@@ -462,9 +463,9 @@ void EverQuest::RequestTraining()
 	// rather than inventing a third distance constant (the plan
 	// explicitly forbids that); see Review for the tradeoff stated
 	// plainly.
-	float dist = m_movement->CalculateDistance2D(PosX(), PosY(), target.x, target.y);
+	float dist = owner_.Movement().CalculateDistance2D(owner_.PosX(), owner_.PosY(), target.x, target.y);
 	if (dist > NPC_INTERACTION_DISTANCE) {
-		AddChatSystemMessage(fmt::format("You are too far away to train with {}.", target.name));
+		owner_.AddChatSystemMessage(fmt::format("You are too far away to train with {}.", target.name));
 		return;
 	}
 
@@ -483,12 +484,12 @@ void EverQuest::RequestTraining()
 	// configuration now.
 	constexpr uint8_t TRAINER_CLASS_OFFSET = CLASS_WARRIOR_GM - 1; // WarriorGM(20) trains Warrior(1)
 	uint32_t trained_class = static_cast<uint32_t>(target.class_id) - TRAINER_CLASS_OFFSET;
-	if (trained_class != m_game_state.player().classId()) {
-		AddChatSystemMessage(fmt::format("{} trains {}s; you are a {}.",
-			target.name, GetClassName(trained_class), GetClassName(m_game_state.player().classId())));
+	if (trained_class != ctx_.game_state.player().classId()) {
+		owner_.AddChatSystemMessage(fmt::format("{} trains {}s; you are a {}.",
+			target.name, EverQuest::GetClassName(trained_class), EverQuest::GetClassName(ctx_.game_state.player().classId())));
 		return;
 	}
 
 	// Request trainer window from server
-	m_merchant->RequestTrainerWindow(target_id);
+	owner_.Merchant().RequestTrainerWindow(target_id);
 }

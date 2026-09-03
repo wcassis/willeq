@@ -276,16 +276,16 @@ void eqt::zone::ZoneComponent::DispatchZonePacket(const EQ::Net::Packet & p)
 	
 	// Combat-related opcodes
 	case 0x65ca: // OP_Consider response
-		owner_.ZoneProcessConsider(p);
+		owner_.Commands().ZoneProcessConsider(p);
 		break;
 	case HC_OP_Action: // OP_Action (combat/spell actions)
-		owner_.ZoneProcessAction(p);
+		owner_.Commands().ZoneProcessAction(p);
 		break;
 	case HC_OP_Damage:
-		owner_.ZoneProcessDamage(p);
+		owner_.Commands().ZoneProcessDamage(p);
 		break;
 	case HC_OP_MoneyOnCorpse:
-		owner_.ZoneProcessMoneyOnCorpse(p);
+		owner_.Commands().ZoneProcessMoneyOnCorpse(p);
 		break;
 	case HC_OP_LootRequest:
 		// Server responds to our loot request - confirms we can loot the corpse
@@ -745,7 +745,7 @@ void eqt::zone::ZoneComponent::DispatchZonePacket(const EQ::Net::Packet & p)
 		// there is no target field -- the pre-T247 code read a target/duration
 		// pair out of the low/high halves of the duration and stored nothing.
 		if (p.Length() >= 6) {
-			owner_.ZoneProcessStun(p.GetUInt32(2));
+			owner_.Commands().ZoneProcessStun(p.GetUInt32(2));
 		}
 		break;
 

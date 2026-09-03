@@ -8,6 +8,7 @@
 // See refactor/G02_commands_split.md.
 
 #include "client/eq.h"
+#include "client/commands/commands_component.h"
 #include "client/willeq_database.h"
 #include "client/pathfinder_interface.h"
 #ifdef EQT_HAS_NAVMESH
@@ -100,7 +101,7 @@
 // (spellreload, weatherquality) are now individually guarded at their
 // call sites, matching the existing /bank, /train pattern in
 // eq_commands_spells.cpp.
-void EverQuest::RegisterMovementCommands()
+void eqt::commands::CommandsComponent::RegisterMovementCommands()
 {
 	using namespace eqt::ui;
 
@@ -201,7 +202,7 @@ void EverQuest::RegisterMovementCommands()
 // the entity list directly (no pathfinding, no server round trip for the
 // teleport itself), still calls SendPositionUpdate() (real network send)
 // and pushes PlayerMovedData afterward, exactly as before.
-void EverQuest::RequestWarp(const std::string& args)
+void eqt::commands::CommandsComponent::RequestWarp(const std::string& args)
 {
 	float x, y, z;
 	bool found_destination = false;
@@ -213,19 +214,19 @@ void EverQuest::RequestWarp(const std::string& args)
 
 	if (trimmed.empty()) {
 		// No args - use current target if we have one
-		if (m_combat_manager && m_combat_manager->HasTarget()) {
-			uint16_t target_id = m_combat_manager->GetTargetId();
-			auto it = m_entities.find(target_id);
-			if (it != m_entities.end()) {
+		if (ctx_.combat_manager && ctx_.combat_manager->HasTarget()) {
+			uint16_t target_id = ctx_.combat_manager->GetTargetId();
+			auto it = ctx_.entities.find(target_id);
+			if (it != ctx_.entities.end()) {
 				x = it->second.x;
 				y = it->second.y;
 				z = it->second.z;
 				found_destination = true;
-				AddChatSystemMessage(fmt::format("Warping to target: {}", it->second.name));
+				owner_.AddChatSystemMessage(fmt::format("Warping to target: {}", it->second.name));
 			}
 		}
 		if (!found_destination) {
-			AddChatSystemMessage("Usage: /warp [x y z | entity_name] (or target an entity first)");
+			owner_.AddChatSystemMessage("Usage: /warp [x y z | entity_name] (or target an entity first)");
 			return;
 		}
 	} else {
@@ -235,15 +236,15 @@ void EverQuest::RequestWarp(const std::string& args)
 			found_destination = true;
 		} else {
 			// Try to find entity by name
-			Entity* entity = m_entities_component->FindEntityByName(trimmed);
+			Entity* entity = owner_.Entities().FindEntityByName(trimmed);
 			if (entity) {
 				x = entity->x;
 				y = entity->y;
 				z = entity->z;
 				found_destination = true;
-				AddChatSystemMessage(fmt::format("Warping to entity: {}", entity->name));
+				owner_.AddChatSystemMessage(fmt::format("Warping to entity: {}", entity->name));
 			} else {
-				AddChatSystemMessage(fmt::format("Entity '{}' not found", trimmed));
+				owner_.AddChatSystemMessage(fmt::format("Entity '{}' not found", trimmed));
 				return;
 			}
 		}
@@ -253,30 +254,30 @@ void EverQuest::RequestWarp(const std::string& args)
 		// Instantly set position. T288: one store; the hand-rolled bridge
 		// publish below is still the only thing the renderer sees, so this
 		// write stays event-free exactly as the raw members were.
-		SetPosLocal(x, y, z);
+		owner_.SetPosLocal(x, y, z);
 
 		// Update our entity in the entity list
-		auto it = m_entities.find(MySpawnId());
-		if (it != m_entities.end()) {
+		auto it = ctx_.entities.find(owner_.MySpawnId());
+		if (it != ctx_.entities.end()) {
 			it->second.x = x;
 			it->second.y = y;
 			it->second.z = z;
 		}
 
 		// Send position update to server
-		m_movement->SendPositionUpdate();
+		owner_.Movement().SendPositionUpdate();
 
-		if (m_bridge) {
+		if (ctx_.bridge) {
 			eqt::state::PlayerMovedData pdata;
 			pdata.x = x; pdata.y = y; pdata.z = z;
-			pdata.heading = HeadingDeg();
+			pdata.heading = owner_.HeadingDeg();
 			pdata.dx = 0; pdata.dy = 0; pdata.dz = 0;
 			pdata.isMoving = false;
-			m_bridge->pushEvent(eqt::state::GameEvent(
+			ctx_.bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::PlayerMoved, std::move(pdata)));
 		}
 
-		AddChatSystemMessage(fmt::format("Warped to ({:.1f}, {:.1f}, {:.1f})", x, y, z));
+		owner_.AddChatSystemMessage(fmt::format("Warped to ({:.1f}, {:.1f}, {:.1f})", x, y, z));
 	}
 }
 
@@ -285,36 +286,36 @@ void EverQuest::RequestWarp(const std::string& args)
 // and m_bridge are private, so EqActionHandler routes through this rather
 // than duplicating the read/write. No behavior change: same 0-23 range
 // check, same TimeOfDayChanged bridge push on set.
-void EverQuest::RequestTimeOfDay(const std::string& args)
+void eqt::commands::CommandsComponent::RequestTimeOfDay(const std::string& args)
 {
 	if (args.empty()) {
 		// Show current time
-		AddChatSystemMessage(fmt::format("Game time: {:02d}:{:02d}", m_game_state.world().timeHour(), m_game_state.world().timeMinute()));
+		owner_.AddChatSystemMessage(fmt::format("Game time: {:02d}:{:02d}", ctx_.game_state.world().timeHour(), ctx_.game_state.world().timeMinute()));
 	} else {
 		// Set time
 		try {
 			int hour = std::stoi(args);
 			if (hour < 0 || hour > 23) {
-				AddChatSystemMessage("Hour must be 0-23");
+				owner_.AddChatSystemMessage("Hour must be 0-23");
 				return;
 			}
 			// T286: WorldState is the only store. /time used to write only
 			// the EverQuest copy, so world().timeHour() kept the server's
 			// value and the two disagreed for the rest of the session.
-			m_game_state.world().setTimeOfDay(static_cast<uint8_t>(hour), 0);
+			ctx_.game_state.world().setTimeOfDay(static_cast<uint8_t>(hour), 0);
 
 			// Publish TimeOfDayChanged
-			if (m_bridge) {
+			if (ctx_.bridge) {
 				eqt::state::TimeOfDayChangedData tdata;
-				tdata.hour = m_game_state.world().timeHour();
-				tdata.minute = m_game_state.world().timeMinute();
-				m_bridge->pushEvent(eqt::state::GameEvent(
+				tdata.hour = ctx_.game_state.world().timeHour();
+				tdata.minute = ctx_.game_state.world().timeMinute();
+				ctx_.bridge->pushEvent(eqt::state::GameEvent(
 					eqt::state::GameEventType::TimeOfDayChanged, std::move(tdata)));
 			}
 
-			AddChatSystemMessage(fmt::format("Time set to {:02d}:00", m_game_state.world().timeHour()));
+			owner_.AddChatSystemMessage(fmt::format("Time set to {:02d}:00", ctx_.game_state.world().timeHour()));
 		} catch (...) {
-			AddChatSystemMessage("Usage: /time [0-23]");
+			owner_.AddChatSystemMessage("Usage: /time [0-23]");
 		}
 	}
 }

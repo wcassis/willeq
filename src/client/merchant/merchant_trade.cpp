@@ -553,8 +553,8 @@ void eqt::merchant::MerchantComponent::ZoneProcessShopPlayerBuy(const EQ::Net::P
 		npc_id, player_id, itemslot, quantity, action);
 
 	// Display purchase confirmation and update money (D18a: uses game-side vendor items)
-	auto vendorIt = owner_.m_vendor_items.find(itemslot);
-	if (vendorIt != owner_.m_vendor_items.end()) {
+	auto vendorIt = owner_.Commands().VendorItems().find(itemslot);
+	if (vendorIt != owner_.Commands().VendorItems().end()) {
 		int32_t totalPrice = vendorIt->second.price * static_cast<int32_t>(quantity);
 		std::string priceStr = EverQuest::FormatPrice(totalPrice);
 		if (quantity > 1) {
@@ -709,6 +709,6 @@ void eqt::merchant::MerchantComponent::ZoneProcessShopEndConfirm(const EQ::Net::
 			eqt::state::GameEventType::VendorWindowClosed, std::move(data)));
 	}
 
-	owner_.m_vendor_items.clear();
+	owner_.Commands().VendorItems().clear();
 }
 

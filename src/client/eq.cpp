@@ -124,6 +124,11 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 	m_player = std::make_unique<eqt::player::PlayerComponent>(m_ctx, *this);
 	// K09: the zone family -- handshake, entry, DispatchZonePacket, lifecycle.
 	m_zone = std::make_unique<eqt::zone::ZoneComponent>(m_ctx, *this);
+	// K12: the commands + combat_actions family. Constructed here (with the
+	// other components) even though m_command_registry itself is not
+	// allocated until RegisterCommands() is called below -- ctx_.command_registry
+	// is a reference to the member, not the pointee, so this is safe.
+	m_commands = std::make_unique<eqt::commands::CommandsComponent>(m_ctx, *this);
 
 	m_login_world->SetCredentials(host, port, user, pass, server);
 	m_character = character;
@@ -224,7 +229,7 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 	// stay guarded at their own handler bodies. Create the registry
 	// unconditionally so headless builds get the same vocabulary.
 	m_command_registry = std::make_unique<eqt::ui::CommandRegistry>();
-	RegisterCommands();
+	m_commands->RegisterCommands();
 	LOG_DEBUG(MOD_MAIN, "Command registry initialized");
 
 	// Connection is deferred to ConnectToLogin() so that graphics initialization

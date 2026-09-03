@@ -986,7 +986,7 @@ TEST(EqActionHandlerCast, CastSpell_AfterOpStun_SaysStunnedUntilItExpires) {
     EXPECT_EQ(h.lastSystemMessage(), "You can't cast spells while stunned!");
 
     // The stun runs out (backdate rather than sleep 5 s).
-    h.eq.m_stunned_until = std::chrono::steady_clock::now() - std::chrono::milliseconds(1);
+    h.eq.Commands().m_stunned_until = std::chrono::steady_clock::now() - std::chrono::milliseconds(1);
     h.clearSent();
 
     h.handler.castSpell(1);
@@ -1008,9 +1008,9 @@ TEST(EqActionHandlerCast, CastSpell_OpStunZero_ClearsTheStun) {
     ASSERT_TRUE(h.eq.GetCombatManager()->SetTarget(kGuardId));
 
     ReplayZone(h.eq, HC_OP_Stun, stunPayload(60000));
-    ASSERT_TRUE(h.eq.IsStunned());
+    ASSERT_TRUE(h.eq.Commands().IsStunned());
     ReplayZone(h.eq, HC_OP_Stun, stunPayload(0));   // Client::UnStun()
-    EXPECT_FALSE(h.eq.IsStunned());
+    EXPECT_FALSE(h.eq.Commands().IsStunned());
     h.clearSent();
 
     h.handler.castSpell(1);
@@ -1023,23 +1023,23 @@ TEST(EqActionHandlerCast, CastSpell_OpStunZero_ClearsTheStun) {
 // Stun_Struct duration is milliseconds; a 0 clears; expiry is by clock.
 TEST(EqActionHandlerCast, OpStun_TracksDurationInMilliseconds) {
     WireHarness h;
-    EXPECT_FALSE(h.eq.IsStunned());
+    EXPECT_FALSE(h.eq.Commands().IsStunned());
 
     ReplayZone(h.eq, HC_OP_Stun, std::vector<uint8_t>{0x88, 0x13});  // too short
-    EXPECT_FALSE(h.eq.IsStunned());
+    EXPECT_FALSE(h.eq.Commands().IsStunned());
 
     ReplayZone(h.eq, HC_OP_Stun, stunPayload(5000));
-    EXPECT_TRUE(h.eq.IsStunned());
-    auto remaining = h.eq.m_stunned_until - std::chrono::steady_clock::now();
+    EXPECT_TRUE(h.eq.Commands().IsStunned());
+    auto remaining = h.eq.Commands().m_stunned_until - std::chrono::steady_clock::now();
     EXPECT_GT(remaining, std::chrono::milliseconds(4000));
     EXPECT_LE(remaining, std::chrono::milliseconds(5000));
 
     // A shorter stun must not cut a longer one short (eqemu Mob::Stun rule).
     ReplayZone(h.eq, HC_OP_Stun, stunPayload(1000));
-    EXPECT_GT(h.eq.m_stunned_until - std::chrono::steady_clock::now(), std::chrono::milliseconds(3900));
+    EXPECT_GT(h.eq.Commands().m_stunned_until - std::chrono::steady_clock::now(), std::chrono::milliseconds(3900));
 
-    h.eq.m_stunned_until = std::chrono::steady_clock::now() - std::chrono::milliseconds(1);
-    EXPECT_FALSE(h.eq.IsStunned());
+    h.eq.Commands().m_stunned_until = std::chrono::steady_clock::now() - std::chrono::milliseconds(1);
+    EXPECT_FALSE(h.eq.Commands().IsStunned());
 }
 
 // The defect: an NPC hits us, /combat on, and nothing engages because

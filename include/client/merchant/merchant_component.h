@@ -14,8 +14,8 @@
 //
 // `owner_` is the TRANSITION handle: the moved code still reaches EverQuest
 // members and methods that have not been extracted yet -- the loot cluster
-// (m_loot_items, m_pending_loot_slots, whose owner K11 decides), m_vendor_items
-// (read by eq_commands.cpp, K12), the m_pending_scribe_* trio (written here,
+// (m_loot_items, m_pending_loot_slots, whose owner K11 decides), the
+// m_pending_scribe_* trio (written here,
 // read by the OP_MemorizeSpell arm of DispatchZonePacket, which is K09's), and
 // the output/accessor primitives AddChatSystemMessage(), QueuePacket(),
 // UpdateInventoryStats(), GetLevel()/GetClass()/GetPlatinum()/... EverQuest

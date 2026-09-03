@@ -108,7 +108,7 @@ protected:
 // ---------------------------------------------------------------------------
 
 TEST_F(EqCommandsEquipTest, NoArgs_PrintsUsage_PushesNoIntent) {
-    eq.RequestEquip("");
+    eq.Commands().RequestEquip("");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -117,7 +117,7 @@ TEST_F(EqCommandsEquipTest, NoArgs_PrintsUsage_PushesNoIntent) {
 }
 
 TEST_F(EqCommandsEquipTest, MissingSecondSlot_PrintsUsage_PushesNoIntent) {
-    eq.RequestEquip("22");
+    eq.Commands().RequestEquip("22");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -132,7 +132,7 @@ TEST_F(EqCommandsEquipTest, MissingSecondSlot_PrintsUsage_PushesNoIntent) {
 // longer a slot-usage error -- it's an item-name search for the literal
 // text "general 13", which finds nothing in an empty inventory.
 TEST_F(EqCommandsEquipTest, NonNumericFirstToken_TreatedAsItemNameSearch_NotFound) {
-    eq.RequestEquip("general 13");
+    eq.Commands().RequestEquip("general 13");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -146,7 +146,7 @@ TEST_F(EqCommandsEquipTest, TrailingGarbageOnSlot_PrintsUsage_PushesNoIntent) {
     // consumed-length discipline as T48's ParseVendorSlot: it must be
     // rejected outright, not silently truncated to 22, and not reinterpreted
     // as an item-name search.
-    eq.RequestEquip("22abc 13");
+    eq.Commands().RequestEquip("22abc 13");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -161,7 +161,7 @@ TEST_F(EqCommandsEquipTest, TrailingGarbageOnSlot_PrintsUsage_PushesNoIntent) {
 
 TEST_F(EqCommandsEquipTest, OutOfRangeSourceSlot_PrintsInvalidSourceSlot_PushesNoIntent) {
     // 9999 is not equipment/general/bag/cursor/bank/shared-bank/trade.
-    eq.RequestEquip("9999 13");
+    eq.Commands().RequestEquip("9999 13");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -171,7 +171,7 @@ TEST_F(EqCommandsEquipTest, OutOfRangeSourceSlot_PrintsInvalidSourceSlot_PushesN
 }
 
 TEST_F(EqCommandsEquipTest, OutOfRangeDestinationSlot_PrintsInvalidDestinationSlot_PushesNoIntent) {
-    eq.RequestEquip("22 9999");
+    eq.Commands().RequestEquip("22 9999");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -183,7 +183,7 @@ TEST_F(EqCommandsEquipTest, OutOfRangeDestinationSlot_PrintsInvalidDestinationSl
 TEST_F(EqCommandsEquipTest, NegativeSlot_RejectedAsInvalid_PushesNoIntent) {
     // -1 is SLOT_INVALID's own sentinel value -- must not be forwarded as a
     // "valid" slot just because it parses as an integer.
-    eq.RequestEquip("-1 13");
+    eq.Commands().RequestEquip("-1 13");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -199,7 +199,7 @@ TEST_F(EqCommandsEquipTest, NegativeSlot_RejectedAsInvalid_PushesNoIntent) {
 TEST_F(EqCommandsEquipTest, GeneralToPrimary_PushesMoveItemIntentWithExactSlots) {
     // The plan's own worked example: "e.g. equip a weapon: /equip 22 13".
     SeedItem(eq, 22, 6011);  // Rusty Mace (T63/T65/T71's shared test item)
-    eq.RequestEquip("22 13");
+    eq.Commands().RequestEquip("22 13");
 
     // The confirmation message is asserted separately below
     // (GeneralToPrimary_PrintsSlotNamesInConfirmation) -- just drain it here.
@@ -218,7 +218,7 @@ TEST_F(EqCommandsEquipTest, GeneralToPrimary_PushesMoveItemIntentWithExactSlots)
 
 TEST_F(EqCommandsEquipTest, GeneralToPrimary_PrintsSlotNamesInConfirmation) {
     SeedItem(eq, 22, 6011);
-    eq.RequestEquip("22 13");
+    eq.Commands().RequestEquip("22 13");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -234,7 +234,7 @@ TEST_F(EqCommandsEquipTest, UnequipPrimaryToGeneral_PushesMoveItemIntent) {
     // way moving into one does. Scope discipline: this is not a special
     // "unequip" command with its own semantics, just the same wrapper.
     SeedItem(eq, 13, 6011);
-    eq.RequestEquip("13 22");
+    eq.Commands().RequestEquip("13 22");
 
     auto intents = bridge.drainIntents();
     // fromSlot 13 (Primary) is an equipment slot -- same EquipmentChangedIntent
@@ -250,7 +250,7 @@ TEST_F(EqCommandsEquipTest, CursorToSecondary_PushesMoveItemIntent) {
     // CURSOR_SLOT (30) -> SLOT_SECONDARY (14): the other common real
     // sequence (pick an item up, then equip it).
     SeedItem(eq, CURSOR_SLOT, 9997);  // Dagger (T63/T65/T71's shared test item)
-    eq.RequestEquip("30 14");
+    eq.Commands().RequestEquip("30 14");
 
     auto intents = bridge.drainIntents();
     // toSlot 14 (Secondary) is an equipment slot; this path goes through
@@ -267,7 +267,7 @@ TEST_F(EqCommandsEquipTest, BankSlotToGeneral_RecognizedAsValid_PushesMoveItemIn
     // Bank slots (2000-2015) are a recognized category too -- /equip is a
     // generic slot-to-slot wrapper over SendMoveItem, not equip-only.
     SeedItem(eq, BANK_BEGIN, 9990);  // arbitrary stackable test item
-    eq.RequestEquip("2000 22");
+    eq.Commands().RequestEquip("2000 22");
 
     auto intents = bridge.drainIntents();
     ASSERT_EQ(intents.size(), 1u);
@@ -291,7 +291,7 @@ TEST_F(EqCommandsEquipTest, DirectSwap_UpdatesLocalInventoryModel) {
     // swap here; the local model must match it.
     SeedItem(eq, SLOT_PRIMARY, 6011);    // Rusty Mace
     SeedItem(eq, SLOT_SECONDARY, 9997);  // Dagger
-    eq.RequestEquip("13 14");
+    eq.Commands().RequestEquip("13 14");
 
     auto* inv = eq.GetInventoryManager();
     ASSERT_NE(inv, nullptr);
@@ -303,7 +303,7 @@ TEST_F(EqCommandsEquipTest, DirectSwap_UpdatesLocalInventoryModel) {
 
 TEST_F(EqCommandsEquipTest, DirectMoveToEmptySlot_ClearsSourceLocally) {
     SeedItem(eq, 22, 6011);
-    eq.RequestEquip("22 13");
+    eq.Commands().RequestEquip("22 13");
 
     auto* inv = eq.GetInventoryManager();
     ASSERT_NE(inv, nullptr);
@@ -315,7 +315,7 @@ TEST_F(EqCommandsEquipTest, DirectMoveToEmptySlot_ClearsSourceLocally) {
 TEST_F(EqCommandsEquipTest, EmptySourceSlot_PrintsErrorAndPushesNoIntent) {
     // No item was ever seeded at 13 -- /equip must refuse rather than send
     // a request for a move that cannot mean anything.
-    eq.RequestEquip("13 14");
+    eq.Commands().RequestEquip("13 14");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -326,7 +326,7 @@ TEST_F(EqCommandsEquipTest, EmptySourceSlot_PrintsErrorAndPushesNoIntent) {
 TEST_F(EqCommandsEquipTest, CursorToSecondary_UpdatesLocalInventoryModel) {
     SeedItem(eq, SLOT_SECONDARY, 9990);  // pre-existing occupant, displaced to cursor
     SeedItem(eq, CURSOR_SLOT, 9997);     // Dagger, picked up
-    eq.RequestEquip("30 14");
+    eq.Commands().RequestEquip("30 14");
 
     auto* inv = eq.GetInventoryManager();
     ASSERT_NE(inv, nullptr);
@@ -365,7 +365,7 @@ TEST_F(EqCommandsEquipTest, WrongSlotType_RejectedLocally_NamesItemAndSlot_Pushe
     // A Primary-only weapon aimed at Head (slot 2): canEquipInSlot() fails
     // first (wrong bitmask), not the restrictions check.
     SeedNamedItem(eq, 22, 7001, "Rusty Mace", EQUIPSLOT_PRIMARY);
-    eq.RequestEquip("22 2");
+    eq.Commands().RequestEquip("22 2");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -383,7 +383,7 @@ TEST_F(EqCommandsEquipTest, RestrictionFailure_RejectedLocally_PushesNoIntent) {
     // player (level 1, from InventoryManager's own playerLevel_ default) --
     // canEquipInSlot() passes, meetsRestrictions() fails.
     SeedNamedItem(eq, 22, 7002, "Ancient Blade", EQUIPSLOT_PRIMARY, /*reqLevel=*/50);
-    eq.RequestEquip("22 13");
+    eq.Commands().RequestEquip("22 13");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -396,7 +396,7 @@ TEST_F(EqCommandsEquipTest, LegalDestination_StillMoves) {
     // Confirms the pre-flight check is not overly strict -- a legal
     // destination still goes through exactly as before.
     SeedNamedItem(eq, 22, 7003, "Rusty Mace", EQUIPSLOT_PRIMARY);
-    eq.RequestEquip("22 13");
+    eq.Commands().RequestEquip("22 13");
 
     auto* inv = eq.GetInventoryManager();
     ASSERT_NE(inv->getItem(SLOT_PRIMARY), nullptr);
@@ -407,7 +407,7 @@ TEST_F(EqCommandsEquipTest, LegalDestination_StillMoves) {
 
 TEST_F(EqCommandsEquipTest, NoOpMove_SameSlot_RejectedLocally_PushesNoIntent) {
     SeedItem(eq, 22, 6011);
-    eq.RequestEquip("22 22");
+    eq.Commands().RequestEquip("22 22");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -421,7 +421,7 @@ TEST_F(EqCommandsEquipTest, NoOpMove_SameSlot_RejectedLocally_PushesNoIntent) {
 
 TEST_F(EqCommandsEquipTest, NameForm_ResolvesSlotFromItemBitmask_MovesAndReports) {
     SeedNamedItem(eq, 22, 7010, "Rusty Mace", EQUIPSLOT_PRIMARY);
-    eq.RequestEquip("Rusty Mace");
+    eq.Commands().RequestEquip("Rusty Mace");
 
     auto msgs = DrainSystemMessages(bridge);
     // "Resolved '<name>' to ..." followed by the usual "Moving item: ..."
@@ -438,7 +438,7 @@ TEST_F(EqCommandsEquipTest, NameForm_ResolvesSlotFromItemBitmask_MovesAndReports
 
 TEST_F(EqCommandsEquipTest, NameForm_SubstringMatch_CaseInsensitive) {
     SeedNamedItem(eq, 22, 7011, "Rusty Mace", EQUIPSLOT_PRIMARY);
-    eq.RequestEquip("rusty");
+    eq.Commands().RequestEquip("rusty");
 
     auto* inv = eq.GetInventoryManager();
     ASSERT_NE(inv->getItem(SLOT_PRIMARY), nullptr);
@@ -446,7 +446,7 @@ TEST_F(EqCommandsEquipTest, NameForm_SubstringMatch_CaseInsensitive) {
 }
 
 TEST_F(EqCommandsEquipTest, NameForm_NotFound_PushesNoIntent) {
-    eq.RequestEquip("nonexistent item");
+    eq.Commands().RequestEquip("nonexistent item");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -457,7 +457,7 @@ TEST_F(EqCommandsEquipTest, NameForm_NotFound_PushesNoIntent) {
 TEST_F(EqCommandsEquipTest, NameForm_AmbiguousAcrossDistinctItems_RejectedWithBothNamed) {
     SeedNamedItem(eq, 22, 7020, "Rusty Sword", EQUIPSLOT_PRIMARY);
     SeedNamedItem(eq, 23, 7021, "Broad Sword", EQUIPSLOT_PRIMARY);
-    eq.RequestEquip("sword");
+    eq.Commands().RequestEquip("sword");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -472,7 +472,7 @@ TEST_F(EqCommandsEquipTest, NameForm_DuplicateStacksOfSameItem_NotAmbiguous_Take
     // equip purposes, so this must NOT be treated as ambiguous.
     SeedNamedItem(eq, 22, 7030, "Throwing Dagger", EQUIPSLOT_PRIMARY);
     SeedNamedItem(eq, 23, 7030, "Throwing Dagger", EQUIPSLOT_PRIMARY);
-    eq.RequestEquip("Throwing Dagger");
+    eq.Commands().RequestEquip("Throwing Dagger");
 
     auto msgs = DrainSystemMessages(bridge);
     for (const auto& m : msgs) {
@@ -489,7 +489,7 @@ TEST_F(EqCommandsEquipTest, NameForm_PairedSlot_PrefersEmptyEar) {
     // occupied -- resolution must prefer the empty EAR2, not clobber EAR1.
     SeedNamedItem(eq, SLOT_EAR1, 8000, "Old Earring", EQUIPSLOT_EAR);
     SeedNamedItem(eq, 22, 8001, "Jade Earring", EQUIPSLOT_EAR);
-    eq.RequestEquip("Jade Earring");
+    eq.Commands().RequestEquip("Jade Earring");
 
     auto* inv = eq.GetInventoryManager();
     ASSERT_NE(inv->getItem(SLOT_EAR2), nullptr);
@@ -503,7 +503,7 @@ TEST_F(EqCommandsEquipTest, NameForm_BothPairedSlotsFull_ReportsWouldReplace_Sti
     SeedNamedItem(eq, SLOT_EAR1, 8010, "Old Earring", EQUIPSLOT_EAR);
     SeedNamedItem(eq, SLOT_EAR2, 8011, "Older Earring", EQUIPSLOT_EAR);
     SeedNamedItem(eq, 22, 8012, "New Earring", EQUIPSLOT_EAR);
-    eq.RequestEquip("New Earring");
+    eq.Commands().RequestEquip("New Earring");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_GE(msgs.size(), 1u);
@@ -518,7 +518,7 @@ TEST_F(EqCommandsEquipTest, NameForm_BothPairedSlotsFull_ReportsWouldReplace_Sti
 
 TEST_F(EqCommandsEquipTest, NameForm_ItemFitsNoEquipSlot_RejectedWithReason) {
     SeedNamedItem(eq, 22, 8020, "A Rock", /*slotsBitmask=*/0);
-    eq.RequestEquip("Rock");
+    eq.Commands().RequestEquip("Rock");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -532,7 +532,7 @@ TEST_F(EqCommandsEquipTest, NameForm_ItemFitsNoEquipSlot_RejectedWithReason) {
 // ---------------------------------------------------------------------------
 
 TEST_F(EqCommandsEquipTest, ListForm_EmptyInventory_ReportsNothing) {
-    eq.RequestEquip("list");
+    eq.Commands().RequestEquip("list");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 2u);
@@ -543,7 +543,7 @@ TEST_F(EqCommandsEquipTest, ListForm_EmptyInventory_ReportsNothing) {
 TEST_F(EqCommandsEquipTest, ListForm_ShowsEquippedAndCarriedWithResolution) {
     SeedNamedItem(eq, SLOT_PRIMARY, 9100, "Rusty Mace", EQUIPSLOT_PRIMARY);
     SeedNamedItem(eq, 22, 9101, "Dagger", EQUIPSLOT_SECONDARY);
-    eq.RequestEquip("list");
+    eq.Commands().RequestEquip("list");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_GE(msgs.size(), 4u);
@@ -586,7 +586,7 @@ TEST_F(EqCommandsEquipTest, Swap_DisplacedItemCannotGoInSourceEquipSlot_Rejected
     // Milk in Primary -- the server refuses that (swapNotAllowed).
     SeedNamedItem(eq, SLOT_PRIMARY, 7100, "Rusty Mace", EQUIPSLOT_PRIMARY);
     SeedNamedItem(eq, 22, 7101, "Skin of Milk", /*slotsBitmask=*/0);
-    eq.RequestEquip("13 22");
+    eq.Commands().RequestEquip("13 22");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -606,7 +606,7 @@ TEST_F(EqCommandsEquipTest, Swap_DisplacedItemFailsRestrictionsForSourceEquipSlo
     // sufficient level to use this item.") on the displaced side.
     SeedNamedItem(eq, SLOT_PRIMARY, 7110, "Rusty Mace", EQUIPSLOT_PRIMARY);
     SeedNamedItem(eq, 22, 7111, "Ancient Blade", EQUIPSLOT_PRIMARY, /*reqLevel=*/50);
-    eq.RequestEquip("13 22");
+    eq.Commands().RequestEquip("13 22");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -624,7 +624,7 @@ TEST_F(EqCommandsEquipTest, Swap_DisplacedItemLegalForSourceEquipSlot_StillMoves
     // strict.
     SeedNamedItem(eq, SLOT_PRIMARY, 7120, "Rusty Mace", EQUIPSLOT_PRIMARY);
     SeedNamedItem(eq, 22, 7121, "Broad Sword", EQUIPSLOT_PRIMARY);
-    eq.RequestEquip("13 22");
+    eq.Commands().RequestEquip("13 22");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -645,7 +645,7 @@ TEST_F(EqCommandsEquipTest, Swap_SourceIsGeneralSlot_DisplacedItemNotEquipChecke
     // non-equippable item is legal server-side and must stay legal here.
     SeedNamedItem(eq, 22, 7130, "Rusty Mace", EQUIPSLOT_PRIMARY);
     SeedNamedItem(eq, 23, 7131, "Skin of Milk", /*slotsBitmask=*/0);
-    eq.RequestEquip("22 23");
+    eq.Commands().RequestEquip("22 23");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -670,7 +670,7 @@ TEST_F(EqCommandsEquipTest, CursorSwap_IntoOccupiedGeneralSlot_StillMoves) {
     (void)bridge.drainIntents();
     (void)DrainSystemMessages(bridge);
     SeedNamedItem(eq, 22, 7141, "Scaled Curskin", /*slotsBitmask=*/0);
-    eq.RequestEquip("30 22");
+    eq.Commands().RequestEquip("30 22");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -709,7 +709,7 @@ TEST_F(EqCommandsEquipTest, CursorSwap_CursorItemFromEquipSlot_DisplacedNotCheck
     (void)bridge.drainIntents();
     (void)DrainSystemMessages(bridge);
     SeedNamedItem(eq, 22, 7151, "Skin of Milk", /*slotsBitmask=*/0);
-    eq.RequestEquip("30 22");
+    eq.Commands().RequestEquip("30 22");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -763,7 +763,7 @@ TEST_F(EqCommandsEquipTest, CursorSwap_CursorItemDoesNotFitDestination_StillRefu
     EXPECT_FALSE(inv->placeItem(SLOT_PRIMARY));
     EXPECT_TRUE(bridge.drainIntents().empty());
     // ...and so does /equip's pre-flight (the command path).
-    eq.RequestEquip("30 13");
+    eq.Commands().RequestEquip("30 13");
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
     EXPECT_NE(msgs[0].find("Skin of Milk"), std::string::npos) << msgs[0];
@@ -862,7 +862,7 @@ TEST_F(EqCommandsEquipTest, DirectSwap_BagOnBag_BothContentsFollowTheirBags) {
     SeedNamedItem(eq, calcBagSlotId(23, 0), 7401, "Bp", 0);
     SeedNamedItem(eq, calcBagSlotId(23, 1), 7402, "Bq", 0);
 
-    eq.RequestEquip("22 23");
+    eq.Commands().RequestEquip("22 23");
 
     ASSERT_NE(inv->getItem(23), nullptr);
     EXPECT_EQ(inv->getItem(23)->itemId, 7210u);  // A now in 23 ...
@@ -889,7 +889,7 @@ TEST_F(EqCommandsEquipTest, DirectMove_BagToEmptyGeneral_ContentsFollow) {
     SeedBag(eq, 22, 7210, "Small Bag A", 4);
     SeedNamedItem(eq, calcBagSlotId(22, 0), 7301, "Ax", 0);
 
-    eq.RequestEquip("22 24");
+    eq.Commands().RequestEquip("22 24");
 
     EXPECT_EQ(inv->getItem(22), nullptr);
     EXPECT_EQ(inv->getItem(calcBagSlotId(22, 0)), nullptr);
@@ -983,7 +983,7 @@ TEST_F(EqCommandsEquipTest, DirectMove_BagToEmptyBank_ContentsFollow) {
     SeedNamedItem(eq, calcBagSlotId(22, 0), 7301, "Ax", 0);
     SeedNamedItem(eq, calcBagSlotId(22, 1), 7302, "Ay", 0);
 
-    eq.RequestEquip("22 2000");
+    eq.Commands().RequestEquip("22 2000");
 
     EXPECT_EQ(inv->getItem(22), nullptr);
     EXPECT_EQ(inv->getItem(calcBagSlotId(22, 0)), nullptr);
@@ -1008,7 +1008,7 @@ TEST_F(EqCommandsEquipTest, DirectMove_BagFromBankToGeneral_ContentsFollow) {
     SeedBag(eq, 2001, 7210, "Small Bag A", 4);
     SeedNamedItem(eq, calcBankBagSlotId(2001, 3), 7301, "Ax", 0);
 
-    eq.RequestEquip("2001 24");
+    eq.Commands().RequestEquip("2001 24");
 
     EXPECT_EQ(inv->getItem(2001), nullptr);
     EXPECT_EQ(inv->getItem(calcBankBagSlotId(2001, 3)), nullptr);
@@ -1024,7 +1024,7 @@ TEST_F(EqCommandsEquipTest, DirectSwap_GeneralBagOnBankBag_BothContentsFollowThe
     SeedNamedItem(eq, calcBagSlotId(22, 0), 7301, "Ax", 0);
     SeedNamedItem(eq, calcBankBagSlotId(2000, 0), 7401, "Bp", 0);
 
-    eq.RequestEquip("22 2000");
+    eq.Commands().RequestEquip("22 2000");
 
     ASSERT_NE(inv->getItem(2000), nullptr);
     EXPECT_EQ(inv->getItem(2000)->itemId, 7210u);
@@ -1268,7 +1268,7 @@ TEST_F(EqCommandsEquipTest, ItemPacket_BankBagWithContents_ContentsLandInBankRan
     EXPECT_EQ(inv->getItem(calcBankBagSlotId(2000, 0))->itemId, 7301u);
     EXPECT_EQ(inv->getItem(calcBankBagSlotId(2000, 1))->itemId, 7302u);
 
-    eq.RequestEquip("2000 22");
+    eq.Commands().RequestEquip("2000 22");
     ASSERT_NE(inv->getItem(calcBagSlotId(22, 0)), nullptr);
     ASSERT_NE(inv->getItem(calcBagSlotId(22, 1)), nullptr);
     EXPECT_EQ(inv->getItem(calcBagSlotId(22, 0))->itemId, 7301u);
@@ -1375,7 +1375,7 @@ TEST_F(EqCommandsEquipTest, DirectMove_GeneralBagStraightIntoTradeSlot_RefusedBe
     (void)bridge.drainEvents();
     (void)bridge.drainIntents();
 
-    eq.RequestEquip("22 3000");
+    eq.Commands().RequestEquip("22 3000");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);

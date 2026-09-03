@@ -86,6 +86,17 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_gm_component)
 
+# K12 (Batch K): the extracted eqt::commands::CommandsComponent (commands +
+# combat_actions), driven directly
+ADD_EXECUTABLE(test_commands_component
+    test_commands_component.cpp
+)
+TARGET_LINK_LIBRARIES(test_commands_component GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_commands_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_commands_component)
+
 # K06 (Batch K): the extracted eqt::entities::EntitiesComponent, driven
 # directly
 ADD_EXECUTABLE(test_entities_component

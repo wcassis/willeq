@@ -313,7 +313,7 @@ bool Application::dispatchToActionOrRenderer(const std::string& cmdBody, Command
     // T143: registry-aware /help. /help (and aliases h, ?) is no longer
     // registered in registry 1 (EverQuest::m_command_registry) precisely so
     // it reaches HERE -- Application is the only object holding pointers to
-    // both registry 1 (via m_eqClient->GetCommandRegistry()) and registry 2
+    // both registry 1 (via m_eqClient->Commands().GetCommandRegistry()) and registry 2
     // (m_commandProcessor), so it is the only place that can build a merged
     // view. Intercepted before the registry-2 name check below so a /help
     // that also happens to collide with a real registry-2 command name
@@ -322,7 +322,7 @@ bool Application::dispatchToActionOrRenderer(const std::string& cmdBody, Command
     // refactor/T143_registry_aware_help.md.
     if (m_eqClient) {
         eqt::help::HelpResponse helpResponse = eqt::help::BuildHelpResponse(
-            cmdBody, m_eqClient->GetCommandRegistry(), m_commandProcessor.get());
+            cmdBody, m_eqClient->Commands().GetCommandRegistry(), m_commandProcessor.get());
         if (helpResponse.handled) {
             for (const auto& line : helpResponse.lines) {
                 m_eqClient->AddChatSystemMessage(line);

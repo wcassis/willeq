@@ -103,7 +103,7 @@ namespace eqt { namespace events { struct PlayerPositionChanged; } }
 namespace eqt {
 namespace inventory {
     class InventoryManager;
-    struct ItemInstance;   // T276: ResolveCarriedItem() returns one
+    struct ItemInstance;
 }
 namespace ui {
     class CommandRegistry;
@@ -134,6 +134,7 @@ namespace ui {
 #include "client/login_world/login_world_component.h"  // K10: LoginWorldComponent
 #include "client/player/player_component.h"  // K08: PlayerComponent
 #include "client/zone/zone_component.h"  // K09: ZoneComponent
+#include "client/commands/commands_component.h"  // K12: CommandsComponent (commands + combat_actions)
 
 class EverQuest
 {
@@ -266,13 +267,9 @@ public:
 	void AddChatCombatMessage(const std::string &text, bool is_self = false);  // Add combat message (is_self for player damage)
 	void AddChatMissMessage(const std::string &text);  // Add miss message (filterable separately)
 
-	// T143: read-only access to registry 1's catalog (name/alias/category
-	// introspection only -- NOT a way to execute commands; use
-	// DispatchSlashCommand() for that). Added so Application, which is the
-	// only object that also holds registry 2 (action::CommandProcessor),
-	// can build a merged /help view across both. See
-	// refactor/T143_registry_aware_help.md.
-	const eqt::ui::CommandRegistry* GetCommandRegistry() const { return m_command_registry.get(); }
+	// K12 (Batch K): the commands + combat_actions family is
+	// eqt::commands::CommandsComponent; callers go through Commands()
+	// (T143's GetCommandRegistry() moved there too).
 
 	// Public movement interface
 	void SetHeading(float heading);
@@ -288,9 +285,9 @@ public:
 	// the model loads. Only for render-frame <-> wire-frame conversion --
 	// include/client/position_frames.h.
 	float GetPlayerCollisionZOffset() const { return m_game_state.player().collisionZOffset(); }
-	// T247: true while an instantaneous OP_Stun (eqemu Stun_Struct, duration
-	// in ms; 0 = UnStun) is in force. Buff-borne stuns are BuffManager's.
-	bool IsStunned() const;
+	// K12 (Batch K): IsStunned() (T247: true while an instantaneous OP_Stun
+	// is in force; buff-borne stuns are BuffManager's) moved to
+	// eqt::commands::CommandsComponent -- see Commands().
 	float GetHeading() const;
 	bool IsMoving() const;
 	bool IsFullyZonedIn() const { return m_game_state.world().isZoneConnected() && m_game_state.world().isClientReady() && m_update_running; }
@@ -419,6 +416,11 @@ public:
 	// K09 (Batch K): the zone family -- handshake, entry, the zone-stream
 	// opcode switch and the zone lifecycle -- is eqt::zone::ZoneComponent.
 	eqt::zone::ZoneComponent& Zone() { return *m_zone; }
+	// K12 (Batch K): the commands + combat_actions family -- the game-registry
+	// slash-command driver, its surviving Request*() wrappers, and the
+	// Consider/Action/Damage/MoneyOnCorpse/Stun combat packet handlers -- is
+	// eqt::commands::CommandsComponent; callers go through Commands().
+	eqt::commands::CommandsComponent& Commands() { return *m_commands; }
 	eqt::ClientContext& Context() { return m_ctx; }
 	// K05 (Batch K): the Phase 4 tradeskill senders are
 	// eqt::merchant::MerchantComponent's; callers go through Merchant().
@@ -525,6 +527,7 @@ public:
 	friend class eqt::login_world::LoginWorldComponent;  // K10 transition; K-final removes it
 	friend class eqt::player::PlayerComponent;  // K08 transition; K-final removes it
 	friend class eqt::zone::ZoneComponent;  // K09 transition; K-final removes it
+	friend class eqt::commands::CommandsComponent;  // K12 transition; K-final removes it
 
 	// String database for EQ message lookups (works in all modes)
 	bool LoadStringFiles(const std::string& eqClientPath);
@@ -735,12 +738,9 @@ private:
 	static Json::Value* ResolveClientConfigForWrite(Json::Value& root);
 	static const Json::Value* ResolveClientConfigForRead(const Json::Value& root);
 
-	// Combat packet handlers
-	void ZoneProcessConsider(const EQ::Net::Packet &p);
-	void ZoneProcessAction(const EQ::Net::Packet &p);
-	void ZoneProcessDamage(const EQ::Net::Packet &p);
-	void ZoneProcessStun(uint32_t duration_ms);  // T247
-	void ZoneProcessMoneyOnCorpse(const EQ::Net::Packet &p);
+	// K12 (Batch K): the combat packet handlers (ZoneProcessConsider/Action/
+	// Damage/MoneyOnCorpse/Stun) moved to eqt::commands::CommandsComponent;
+	// DispatchZonePacket now calls owner_.Commands().ZoneProcess*() directly.
 
 	std::unique_ptr<EQ::Net::DaybreakConnectionManager> m_zone_connection_manager;
 	std::shared_ptr<EQ::Net::DaybreakConnection> m_zone_connection;
@@ -768,8 +768,7 @@ private:
 	// T288: the player's own spawn id lives in m_game_state.player() and
 	// nowhere else -- MySpawnId()/SetMySpawnId() above are accessors INTO
 	// that store, not a copy.
-	// T247: expiry of the current OP_Stun; epoch (the default) = not stunned.
-	std::chrono::steady_clock::time_point m_stunned_until{};
+	// K12: m_stunned_until (T247) moved to eqt::commands::CommandsComponent.
 
 	// Target tracking (server-authoritative — renderer is a consumer, not the source of truth)
 
@@ -926,24 +925,12 @@ private:
 	// Inventory manager
 	std::unique_ptr<eqt::inventory::InventoryManager> m_inventory_manager;
 
-	// Command registry for chat commands
+	// Command registry for chat commands. K12 (Batch K): RegisterCommands()
+	// (the driver), the per-domain Register*Commands() methods and the
+	// runPmemDiagnostics()/runLoadDiagnostics() diagnostics helpers moved to
+	// eqt::commands::CommandsComponent; called via m_commands->RegisterCommands()
+	// (eq.cpp).
 	std::unique_ptr<eqt::ui::CommandRegistry> m_command_registry;
-	void RegisterCommands();  // Driver: calls per-domain registration methods below, in order (G02)
-	// G02: per-domain command registration, split out of the former monolithic
-	// RegisterCommands() body. Order between methods (and within each) matches
-	// the original registration order exactly — see eq_commands.cpp driver.
-	void RegisterSocialCommands();    // Chat/group/trade/guild/corpse/duel/misc social commands (eq_commands.cpp)
-	void RegisterMovementCommands();  // Movement/combat/utility-debug/sky commands (eq_commands_movement.cpp)
-	void RegisterSpellCommands();     // Spell/skill/hotkey/detail/audio commands (eq_commands_spells.cpp)
-	// T136: RegisterVendorCommands() (T48: /vendorlist, /buy, /sell) removed
-	// -- migrated to action::CommandProcessor. See RequestVendorToggle()/
-	// RequestVendorBuy()/RequestVendorSell() below.
-	// T141: RegisterEquipmentCommands() (T66: /equip) removed -- migrated to
-	// action::CommandProcessor. See RequestEquip() below.
-
-	// Manual zone load diagnostics helpers
-	void runPmemDiagnostics(const std::string& label);
-	void runLoadDiagnostics(const std::string& label);
 
 	// Loot window state (game-side tracking, D18a). T268: the ONE loot
 	// window -- set by RequestLootCorpse for every open path (/loot,
@@ -958,14 +945,10 @@ private:
 	};
 	std::map<int16_t, GameLootItem> m_loot_items;  // slot -> item data (game-side)
 
-	// Player mode vendor state (game-side tracking, D18a)
-	struct GameVendorItem {
-		uint32_t itemId = 0;
-		std::string name;
-		int32_t price = 0;        // Price in copper
-		int32_t quantity = -1;    // -1 = unlimited
-	};
-	std::map<uint32_t, GameVendorItem> m_vendor_items;  // slot -> item data (game-side)
+	// K12 (Batch K): the player-mode vendor state (GameVendorItem struct +
+	// m_vendor_items) moved to eqt::commands::CommandsComponent -- it was
+	// the last family still reading it (see MerchantComponent's file
+	// banner); Merchant's writers reach it through Commands().VendorItems().
 
 	// Format copper amount as currency string (e.g. "5p 3g 2s 1c")
 	static std::string FormatPrice(int32_t copperAmount);
@@ -1029,36 +1012,18 @@ public:
 	bool IsVendorWindowOpen() const { return m_game_state.player().vendorNpcId() != 0; }
 	uint16_t GetVendorNpcId() const { return m_game_state.player().vendorNpcId(); }
 
-	// T136: minimal read accessors for the migrated /vendorlist command --
+	// T136: minimal read accessor for the migrated /vendorlist command --
 	// see refactor/T136_migrate_merchant_family.md ("the state gap") for why
-	// these two reads were exposed instead of building a vendor state
-	// domain (T103's GameStateSyncBridge precedent doesn't apply: this
-	// serves exactly one display command, not a cross-cutting need).
-	// GameVendorItem is private, but its members are public (default for a
-	// struct) -- callers iterate via structured bindings without ever
-	// naming the type, same idiom already used throughout eq_commands.cpp.
+	// this read was exposed instead of building a vendor state domain
+	// (T103's GameStateSyncBridge precedent doesn't apply: this serves
+	// exactly one display command, not a cross-cutting need). K12: the
+	// item-map twin, GetVendorItems(), moved to
+	// eqt::commands::CommandsComponent::VendorItems() -- see Commands().
 	const std::string& GetVendorName() const { return m_game_state.player().vendorName(); }
-	const std::map<uint32_t, GameVendorItem>& GetVendorItems() const { return m_vendor_items; }
 	static std::string FormatVendorPrice(int32_t copperAmount) { return FormatPrice(copperAmount); }
 
-	// T136: /vendor, /buy, /sell push the SAME eqt::events::Vendor*Intent
-	// the renderer's vendor-window gesture pushes (T48's max-fidelity
-	// choice, preserved). action::EqActionHandler has no access to the
-	// private m_bridge, so these thin wrappers carry the exact guard bodies
-	// eq_commands.cpp's old RegisterVendorCommands() lambdas had --
-	// stateful guards stay in the layer owning the state (T134); only
-	// usage-string/numeric-token parsing moved up to
-	// action::CommandProcessor::cmdBuy/cmdSell. Defined in eq_commands.cpp.
-	void RequestVendorToggle();
-	void RequestVendorBuy(uint32_t slot, uint8_t quantity);
-	void RequestVendorSell(uint32_t slot, uint8_t quantity);
-
-	// T141: /equip's thin orchestration entry point -- form dispatch +
-	// read-only report formatting only; all legality/mutation/bridge-push
-	// logic lives in InventoryManager::moveItem() and friends
-	// (include/client/inventory/inventory_manager.h). Defined in
-	// eq_commands.cpp. See refactor/T141_equip_extraction.md.
-	void RequestEquip(const std::string& args);
+	// K12 (Batch K): RequestVendorToggle/Buy/Sell and RequestEquip moved to
+	// eqt::commands::CommandsComponent -- see Commands().
 
 	// T230: fire an inventory item's click effect (OP_CastSpell, slot 10)
 	// from an INVENTORY slot. The one sender for both the mouse hotbar path
@@ -1091,67 +1056,13 @@ public:
 	bool IsTrainerWindowOpen() const { return m_game_state.player().trainerNpcId() != 0; }
 	uint16_t GetTrainerNpcId() const { return m_game_state.player().trainerNpcId(); }
 
-	// T280: /train <skill|id> and /trainclose (T264 F8). RequestTrainSkill()
-	// resolves the argument against the caps the OPEN trainer session sent,
-	// refuses locally (message, no intent, nothing on the wire) for the
-	// things the client can actually know -- no session, no training
-	// points, an unknown/ambiguous skill name, a skill this trainer does
-	// not teach, a skill already at this trainer's cap -- and otherwise
-	// pushes the kept TrainSkillIntent, the intent T264 listed as BLOCKED.
-	// It writes NOTHING locally: the new skill value arrives as the
-	// server's OP_SkillUpdate. `list` in place of a skill name prints the
-	// session's trainable skills. RequestCloseTrainer() pushes the kept
-	// CloseTrainerIntent. Both are defined in eq_commands_train.cpp.
-	void RequestTrainSkill(const std::string& args);
-	void RequestCloseTrainer();
-	// T280: /train list -- the trainer session's offerings, with the price.
-	void ListTrainableSkills();
-
-	// T140: four thin wrappers, same rationale as T136's
-	// RequestVendorToggle/Buy/Sell -- action::EqActionHandler has no access
-	// to EverQuest's private m_bridge/m_combat_manager/m_entities, so each
-	// carries its old eq_commands_*.cpp lambda body verbatim (guard logic
-	// included, unchanged) rather than exposing those members directly.
-	// Defined in eq_commands_movement.cpp (RequestWarp/RequestTimeOfDay,
-	// where the old lambdas lived) and eq_commands_spells.cpp
-	// (RequestBankToggle/RequestTraining, ditto).
-	void RequestWarp(const std::string& args);
-	void RequestTimeOfDay(const std::string& args);
-	void RequestBankToggle();
-	void RequestTraining();
-
-	// T273: /read <slot|item name>. Resolves the carried item, refuses
-	// (message, no intent) when it is not a book/note, and otherwise pushes
-	// the kept ReadItemIntent -- the same intent a book-item double-click
-	// gesture would push -- for ProcessBridgeIntents() to turn into
-	// RequestReadBook() -> OP_ReadBook. Defined in eq_commands.cpp next to
-	// RequestEquip, whose item-name resolution it mirrors.
-	void RequestReadItem(const std::string& args);
-
-	// T276: /scribe <slot|item name>. Resolves the carried spell scroll,
-	// refuses locally (message, no intent, nothing on the wire) for a
-	// non-scroll / already-known spell / wrong class / too low a level /
-	// a full spellbook, and otherwise pushes the kept ScribeSpellIntent --
-	// the intent T264 listed as BLOCKED (F5). Defined in eq_commands.cpp
-	// next to RequestReadItem, whose item resolution it mirrors.
-	void RequestScribeItem(const std::string& args);
-
-	// T276: shared slot|name resolution for /read and /scribe (T273's
-	// copy of /equip's rule, now one function). Returns nullptr after
-	// having already sent the refusal chat line; on success writes the
-	// resolved inventory slot to slotOut.
-	const eqt::inventory::ItemInstance* ResolveCarriedItem(
-		const std::string& args, const char* verb, int16_t& slotOut);
-	// T278: /combine and /closecontainer. Push the kept
-	// TradeskillCombineIntent / TradeskillCloseIntent -- the same intents a
-	// forge-window Combine button and its close box would push -- for
-	// ProcessBridgeIntents() to turn into SendTradeSkillCombine() /
-	// SendCloseContainer(). containerSlot == SLOT_INVALID means the world
-	// container the server has told us is open (refused, with a message and
-	// no intent, when there is none); any other value is a carried
-	// container's own inventory slot. Defined in eq_commands.cpp.
-	void RequestTradeskillCombine(int16_t containerSlot);
-	void RequestCloseTradeskillContainer();
+	// K12 (Batch K): RequestTrainSkill/RequestCloseTrainer/ListTrainableSkills
+	// (T280), RequestWarp/RequestTimeOfDay/RequestBankToggle/RequestTraining
+	// (T140), RequestReadItem/RequestScribeItem/ResolveCarriedItem (T273/
+	// T276) and RequestTradeskillCombine/RequestCloseTradeskillContainer
+	// (T278) all moved to eqt::commands::CommandsComponent -- see Commands().
+	// ListTrainableSkills() and ResolveCarriedItem() are private there
+	// (in-family callers only).
 
 private:
 #ifdef EQT_HAS_GRAPHICS
@@ -1223,4 +1134,5 @@ private:
 	std::unique_ptr<eqt::login_world::LoginWorldComponent> m_login_world;
 	std::unique_ptr<eqt::player::PlayerComponent> m_player;
 	std::unique_ptr<eqt::zone::ZoneComponent> m_zone;
+	std::unique_ptr<eqt::commands::CommandsComponent> m_commands;
 };
