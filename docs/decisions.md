@@ -776,3 +776,15 @@ failure this guards against).
   say/shout/ooc/auction/tell/guild/group). **If a channel turns out to be
   broken cross-zone, the deferral does not cover it and it comes back as a
   defect** — the ruling was conditional, not blanket.
+
+## 2026-09-03 — Will's rulings on the three open board calls
+
+- **B006, `InitGraphics` narrowing:** the two-method interface is approved.
+  `EverQuest::InitGraphics` (via `BridgeComponent::InitGraphics`) takes an
+  abstract type with exactly `initLoadingScreen(const RendererConfig&)` and
+  `initDeferredGraphics()`; `IrrlichtRenderer` implements it. Game logic
+  then names no renderer class. Unit K16, after L05.
+- **B036, UI sounds:** wanted — bag open/close, coin pickup by denomination,
+  possibly tradeskill combine. Measure the official client's sounds first
+  (match-the-oracle), then wire. A feature unit, not a structural one.
+- **B040, the placeables memory gate:** stays open, low priority.

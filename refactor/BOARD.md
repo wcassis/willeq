@@ -78,7 +78,7 @@ it without taking that measurement first.
   **replaced**: the gate is now the logging module's own level query
   (`ShouldLog` behind `LOG_DEBUG`/`LOG_TRACE` — user-initiated at DEBUG, every
   other door at TRACE) and the `include/client/eq.h` include is gone from that
-  renderer TU. **STILL OPEN:** (1) `EverQuest::InitGraphics` still takes an
+  renderer TU. **STILL OPEN — WILL RULED 2026-09-03: the two-method interface is APPROVED; executor-ready as unit K16 after L05 merges.** (1) `EverQuest::InitGraphics` still takes an
   `IrrlichtRenderer*` — K15 read it and hit the plan's STOP condition: inside
   `BridgeComponent::InitGraphics` the pointer reaches exactly two calls,
   `initLoadingScreen(const RendererConfig&)` and `initDeferredGraphics()`, and
@@ -173,8 +173,9 @@ it without taking that measurement first.
   benchmark's `placeableObjectsBytes` (`tools/hwcaps/zone_bench_memory.h`) is
   summed over the zone's own S3D archive and never connects to a server, so
   eqemu's `object` and `doors` tables are counted by nothing. Closing it needs a
-  live-client memory harness that does not exist; the decision is whether to
-  build one. **(K15: renumbered from a duplicate `B019` — the ID collided with
+  live-client memory harness that does not exist. **WILL RULED 2026-09-03:
+  leave open, LOW PRIORITY** — performance measurement is secondary to the
+  structural work. **(K15: renumbered from a duplicate `B019` — the ID collided with
   the `m_guild_name` item above. The one cross-reference, in
   `refactor/K00_truth_reset.md`, was fixed with it.)** Prov: the archived board's
   "SERVER-SENT PLACEABLES AND DOORS ARE UNMEASURED BY ANY GATE" section.
@@ -297,16 +298,18 @@ it without taking that measurement first.
 
 ## Added 2026-09-03 by the K11 Review (bridge extraction)
 
-- **B036** (C) `src/client/bridge/bridge_component_ui_audio.cpp` — K11 deleted
-  four uncalled wrapper helpers (`PlaySoundAt`, `PlayCombatSound`,
-  `PlaySpellSound`, `PlayUISound`) and `SaveEntityDataToFile`. **Corrected
-  2026-09-03 against the tree:** melee hits (`src/client/commands/combat_actions.cpp`),
-  spell casts (`src/client/player/player_buffs.cpp`), death (`src/client/player/player_state.cpp`),
-  doors (`src/client/entities/entities_component_world.cpp`) and water entry
-  (`src/client/movement/movement_state.cpp`) all play through `ctx_.audio_manager`
-  directly — they were never routed through the deleted wrappers. The only
-  genuinely unwired category is UI sounds (clicks, window open/close).
-  Will's call whether UI sounds are wanted at all. Prov: K11 Review.
+- **B036** (A, feature — **WILL RULED 2026-09-03**) UI sounds are wanted:
+  opening and closing bags, picking up coins (pp/gp/sp/cp), and possibly
+  tradeskill (combine) sounds — "there may be other UI sounds". Today no UI
+  event plays a sound (combat, cast, death, door and water sounds are wired
+  through `ctx_.audio_manager` and were never affected). Closes when: the
+  official client's UI sound set for those events is MEASURED (which sound
+  file the Titanium client plays on bag open/close, coin pickup by
+  denomination, combine — from its sound archives or a captured session,
+  per `match-the-oracle`), and fable plays the same sounds at the same
+  events (`InventoryManager` bag open/close, `ZoneProcessMoneyUpdate`
+  deltas, `ZoneProcessRecipeAutoCombine`/combine reply). Prov: K11 Review;
+  Will's ruling.
 
 - ~~**B037** (B) `include/client/bridge/bridge_component.h` `m_audio_config_use_3d_audio`
   — settable only by editing the header.~~ **CLOSED by K15 — WIRED, both ends.**
