@@ -297,12 +297,16 @@ it without taking that measurement first.
 
 ## Added 2026-09-03 by the K11 Review (bridge extraction)
 
-- **B036** (C) `src/client/bridge/bridge_component_ui_audio.cpp` — the four
-  positional/typed sound helpers (`PlaySoundAt`, `PlayCombatSound`,
-  `PlaySpellSound`, `PlayUISound`) and `SaveEntityDataToFile` had zero callers
-  and were deleted by K11: combat, casting and UI sounds are silent by
-  omission, not by design. Will's call whether to wire them (feature) or leave
-  audio to zone music/ambient only. Prov: K11 Review.
+- **B036** (C) `src/client/bridge/bridge_component_ui_audio.cpp` — K11 deleted
+  four uncalled wrapper helpers (`PlaySoundAt`, `PlayCombatSound`,
+  `PlaySpellSound`, `PlayUISound`) and `SaveEntityDataToFile`. **Corrected
+  2026-09-03 against the tree:** melee hits (`commands/combat_actions.cpp`),
+  spell casts (`player/player_buffs.cpp`), death (`player/player_state.cpp`),
+  doors (`entities/entities_component_world.cpp`) and water entry
+  (`movement/movement_state.cpp`) all play through `ctx_.audio_manager`
+  directly — they were never routed through the deleted wrappers. The only
+  genuinely unwired category is UI sounds (clicks, window open/close).
+  Will's call whether UI sounds are wanted at all. Prov: K11 Review.
 
 - ~~**B037** (B) `include/client/bridge/bridge_component.h` `m_audio_config_use_3d_audio`
   — settable only by editing the header.~~ **CLOSED by K15 — WIRED, both ends.**
