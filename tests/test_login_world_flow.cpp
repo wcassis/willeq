@@ -242,7 +242,7 @@ TEST(LoginWorldCaptureReplay, RealSessionReplaysLoginAndWorldStreamsWithoutCrash
     // world-complete x2) to keep a precise count meaningful/robust against
     // fixture changes; the per-opcode deltas are pinned individually in the
     // synthetic sequencing tests below instead.
-    EXPECT_GT(eq.GetReplaySuppressedSendCount(), 0u);
+    EXPECT_GT(eq.Net().ReplaySuppressedSendCount(), 0u);
 }
 
 // ============================================================================
@@ -259,11 +259,11 @@ TEST(LoginWorldSequencing, ServerListResponse_MatchingServer_TriggersPlayRequest
     EverQuest eq("127.0.0.1", 0, "test", "test", "TestServer", "Testchar");
 
     auto payload = BuildServerListResponsePayload("127.0.0.1", "TestServer", "us", "en");
-    auto before = eq.GetReplaySuppressedSendCount();
+    auto before = eq.Net().ReplaySuppressedSendCount();
 
     EXPECT_NO_THROW(ReplayLogin(eq, HC_OP_ServerListResponse, payload));
 
-    EXPECT_EQ(eq.GetReplaySuppressedSendCount(), before + 1);
+    EXPECT_EQ(eq.Net().ReplaySuppressedSendCount(), before + 1);
 }
 
 TEST(LoginWorldSequencing, WorldSessionReady_TriggersClientAuth_SuppressedSend) {
@@ -272,11 +272,11 @@ TEST(LoginWorldSequencing, WorldSessionReady_TriggersClientAuth_SuppressedSend) 
     // the same handler, WorldSendClientAuth().
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
 
-    auto before = eq.GetReplaySuppressedSendCount();
+    auto before = eq.Net().ReplaySuppressedSendCount();
 
     EXPECT_NO_THROW(ReplayWorld(eq, HC_OP_SessionReady, EmptyPayload()));
 
-    EXPECT_EQ(eq.GetReplaySuppressedSendCount(), before + 1);
+    EXPECT_EQ(eq.Net().ReplaySuppressedSendCount(), before + 1);
 }
 
 TEST(LoginWorldSequencing, WorldApproveWorld_TriggersApproveAndCRCSends) {
@@ -286,11 +286,11 @@ TEST(LoginWorldSequencing, WorldApproveWorld_TriggersApproveAndCRCSends) {
     // this is well-defined regardless of payload.
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
 
-    auto before = eq.GetReplaySuppressedSendCount();
+    auto before = eq.Net().ReplaySuppressedSendCount();
 
     EXPECT_NO_THROW(ReplayWorld(eq, HC_OP_ApproveWorld, EmptyPayload()));
 
-    EXPECT_EQ(eq.GetReplaySuppressedSendCount(), before + 3);
+    EXPECT_EQ(eq.Net().ReplaySuppressedSendCount(), before + 3);
 }
 
 TEST(LoginWorldSequencing, WorldExpansionInfo_FirstDelivery_TriggersThreeSends) {
@@ -308,11 +308,11 @@ TEST(LoginWorldSequencing, WorldExpansionInfo_FirstDelivery_TriggersThreeSends) 
     auto payload = BuildPayload(2 + 4, [](EQ::Net::DynamicPacket& p) {
         p.PutUInt32(2, 0x1);  // expansions bitmask
     });
-    auto before = eq.GetReplaySuppressedSendCount();
+    auto before = eq.Net().ReplaySuppressedSendCount();
 
     EXPECT_NO_THROW(ReplayWorld(eq, HC_OP_ExpansionInfo, payload));
 
-    EXPECT_EQ(eq.GetReplaySuppressedSendCount(), before + 3);
+    EXPECT_EQ(eq.Net().ReplaySuppressedSendCount(), before + 3);
 }
 
 TEST(LoginWorldSequencing, WorldExpansionInfo_SecondDelivery_IsNoOp) {
@@ -328,11 +328,11 @@ TEST(LoginWorldSequencing, WorldExpansionInfo_SecondDelivery_IsNoOp) {
     });
 
     ReplayWorld(eq, HC_OP_ExpansionInfo, payload);
-    auto afterFirst = eq.GetReplaySuppressedSendCount();
+    auto afterFirst = eq.Net().ReplaySuppressedSendCount();
 
     EXPECT_NO_THROW(ReplayWorld(eq, HC_OP_ExpansionInfo, payload));
 
-    EXPECT_EQ(eq.GetReplaySuppressedSendCount(), afterFirst);
+    EXPECT_EQ(eq.Net().ReplaySuppressedSendCount(), afterFirst);
 }
 
 TEST(LoginWorldSequencing, UnknownOpcode_NonEmptyGarbagePayload_IgnoredSafely) {
@@ -344,16 +344,16 @@ TEST(LoginWorldSequencing, UnknownOpcode_NonEmptyGarbagePayload_IgnoredSafely) {
     std::vector<uint8_t> garbage(64, 0xAB);
 
     auto loginPhaseBefore = eq.GetLoadingPhase();
-    auto loginSendsBefore = eq.GetReplaySuppressedSendCount();
+    auto loginSendsBefore = eq.Net().ReplaySuppressedSendCount();
     EXPECT_NO_THROW(ReplayLogin(eq, 0xFFFE, garbage));
     EXPECT_EQ(eq.GetLoadingPhase(), loginPhaseBefore);
-    EXPECT_EQ(eq.GetReplaySuppressedSendCount(), loginSendsBefore);
+    EXPECT_EQ(eq.Net().ReplaySuppressedSendCount(), loginSendsBefore);
 
     auto worldPhaseBefore = eq.GetLoadingPhase();
-    auto worldSendsBefore = eq.GetReplaySuppressedSendCount();
+    auto worldSendsBefore = eq.Net().ReplaySuppressedSendCount();
     EXPECT_NO_THROW(ReplayWorld(eq, 0xFFFE, garbage));
     EXPECT_EQ(eq.GetLoadingPhase(), worldPhaseBefore);
-    EXPECT_EQ(eq.GetReplaySuppressedSendCount(), worldSendsBefore);
+    EXPECT_EQ(eq.Net().ReplaySuppressedSendCount(), worldSendsBefore);
 }
 
 // ============================================================================

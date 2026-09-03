@@ -97,6 +97,17 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_commands_component)
 
+# K13 (Batch K): the three CONTEXT SERVICES -- eqt::ChatOutput,
+# eqt::PlayerFacade and eqt::PacketSender, driven directly.
+FOREACH(k13svc test_chat_output test_player_facade test_packet_sender)
+    ADD_EXECUTABLE(${k13svc} ${k13svc}.cpp)
+    TARGET_LINK_LIBRARIES(${k13svc} GTest::gtest_main willeq_core)
+    IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+        TARGET_INCLUDE_DIRECTORIES(${k13svc} PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    ENDIF()
+    GTEST_DISCOVER_TESTS(${k13svc})
+ENDFOREACH()
+
 # K06 (Batch K): the extracted eqt::entities::EntitiesComponent, driven
 # directly
 ADD_EXECUTABLE(test_entities_component

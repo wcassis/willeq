@@ -199,10 +199,10 @@ TEST(CombatManagerAutoAttack, EnableWithoutTargetIsNoOp) {
     EverQuest eq = MakeEq();
     auto* cm = eq.GetCombatManager();
 
-    uint64_t before = eq.GetReplaySuppressedSendCount();
+    uint64_t before = eq.Net().ReplaySuppressedSendCount();
     cm->EnableAutoAttack();
     EXPECT_FALSE(cm->IsAutoAttackEnabled());
-    EXPECT_EQ(eq.GetReplaySuppressedSendCount(), before);
+    EXPECT_EQ(eq.Net().ReplaySuppressedSendCount(), before);
 }
 
 TEST(CombatManagerAutoAttack, EnableWithTarget) {

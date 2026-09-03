@@ -112,103 +112,103 @@ void eqt::zone::ZoneComponent::DispatchZonePacket(const EQ::Net::Packet & p)
 		}
 		break;
 	case HC_OP_ZoneSpawns:
-		owner_.Entities().ZoneProcessZoneSpawns(p);
+		ctx_.Entities().ZoneProcessZoneSpawns(p);
 		break;
 	case HC_OP_TimeOfDay:
-		owner_.Entities().ZoneProcessTimeOfDay(p);
+		ctx_.Entities().ZoneProcessTimeOfDay(p);
 		break;
 	case HC_OP_TributeUpdate:
-		owner_.Player().ZoneProcessTributeUpdate(p);
+		ctx_.Player().ZoneProcessTributeUpdate(p);
 		break;
 	case HC_OP_TributeTimer:
-		owner_.Player().ZoneProcessTributeTimer(p);
+		ctx_.Player().ZoneProcessTributeTimer(p);
 		break;
 	case HC_OP_CharInventory:
-		owner_.Merchant().ZoneProcessCharInventory(p);
+		ctx_.Merchant().ZoneProcessCharInventory(p);
 		break;
 	case HC_OP_Weather:
-		owner_.Entities().ZoneProcessWeather(p);
+		ctx_.Entities().ZoneProcessWeather(p);
 		break;
 	case HC_OP_NewZone:
 		ZoneProcessNewZone(p);
 		break;
 	case HC_OP_SendAATable:
-		owner_.Player().ZoneProcessSendAATable(p);
+		ctx_.Player().ZoneProcessSendAATable(p);
 		break;
 	case HC_OP_RespondAA:
-		owner_.Player().ZoneProcessRespondAA(p);
+		ctx_.Player().ZoneProcessRespondAA(p);
 		break;
 	case HC_OP_TributeInfo:
-		owner_.Player().ZoneProcessTributeInfo(p);
+		ctx_.Player().ZoneProcessTributeInfo(p);
 		break;
 	case HC_OP_SendGuildTributes:
-		owner_.Player().ZoneProcessSendGuildTributes(p);
+		ctx_.Player().ZoneProcessSendGuildTributes(p);
 		break;
 	case HC_OP_SpawnDoor:
-		owner_.Entities().ZoneProcessSpawnDoor(p);
+		ctx_.Entities().ZoneProcessSpawnDoor(p);
 		break;
 	case HC_OP_GroundSpawn:
-		owner_.Entities().ZoneProcessGroundSpawn(p);
+		ctx_.Entities().ZoneProcessGroundSpawn(p);
 		break;
 	case HC_OP_ClickObjectAction:
-		owner_.Entities().ZoneProcessClickObjectAction(p);
+		ctx_.Entities().ZoneProcessClickObjectAction(p);
 		break;
 	case HC_OP_TradeSkillCombine:
-		owner_.Player().ZoneProcessTradeSkillCombine(p);
+		ctx_.Player().ZoneProcessTradeSkillCombine(p);
 		break;
 	case HC_OP_SendZonepoints:
-		owner_.Entities().ZoneProcessSendZonepoints(p);
+		ctx_.Entities().ZoneProcessSendZonepoints(p);
 		break;
 	case HC_OP_SendAAStats:
-		owner_.Player().ZoneProcessSendAAStats(p);
+		ctx_.Player().ZoneProcessSendAAStats(p);
 		break;
 	case HC_OP_SendExpZonein:
-		owner_.Player().ZoneProcessSendExpZonein(p);
+		ctx_.Player().ZoneProcessSendExpZonein(p);
 		break;
 	case HC_OP_WorldObjectsSent:
-		owner_.Player().ZoneProcessWorldObjectsSent(p);
+		ctx_.Player().ZoneProcessWorldObjectsSent(p);
 		break;
 	case HC_OP_SpawnAppearance:
-		owner_.Entities().ZoneProcessSpawnAppearance(p);
+		ctx_.Entities().ZoneProcessSpawnAppearance(p);
 		break;
 	case HC_OP_ExpUpdate:
-		owner_.Entities().ZoneProcessExpUpdate(p);
+		ctx_.Entities().ZoneProcessExpUpdate(p);
 		break;
 	case HC_OP_RaidUpdate:
-		owner_.Group().ZoneProcessRaidUpdate(p);
+		ctx_.Group().ZoneProcessRaidUpdate(p);
 		break;
 	case HC_OP_GuildMOTD:
 		ZoneProcessGuildMOTD(p);
 		break;
 	case HC_OP_NewSpawn:
-		owner_.Entities().ZoneProcessNewSpawn(p);
+		ctx_.Entities().ZoneProcessNewSpawn(p);
 		break;
 	case HC_OP_ClientUpdate:
-		owner_.Entities().ZoneProcessClientUpdate(p);
+		ctx_.Entities().ZoneProcessClientUpdate(p);
 		break;
 	case HC_OP_DeleteSpawn:
-		owner_.Entities().ZoneProcessDeleteSpawn(p);
+		ctx_.Entities().ZoneProcessDeleteSpawn(p);
 		break;
 	case HC_OP_MobHealth:
-		owner_.Entities().ZoneProcessMobHealth(p);
+		ctx_.Entities().ZoneProcessMobHealth(p);
 		break;
 	case HC_OP_HPUpdate:
-		owner_.Entities().ZoneProcessHPUpdate(p);
+		ctx_.Entities().ZoneProcessHPUpdate(p);
 		break;
 	case HC_OP_ChannelMessage:
-		owner_.Chat().ZoneProcessChannelMessage(p);
+		ctx_.Chat().ZoneProcessChannelMessage(p);
 		break;
 	case HC_OP_WearChange:
-		owner_.Entities().ZoneProcessWearChange(p);
+		ctx_.Entities().ZoneProcessWearChange(p);
 		break;
 	case HC_OP_Illusion:
-		owner_.Entities().ZoneProcessIllusion(p);
+		ctx_.Entities().ZoneProcessIllusion(p);
 		break;
 	case HC_OP_MoveDoor:
-		owner_.Entities().ZoneProcessMoveDoor(p);
+		ctx_.Entities().ZoneProcessMoveDoor(p);
 		break;
 	case HC_OP_CompletedTasks:
-		owner_.Player().ZoneProcessCompletedTasks(p);
+		ctx_.Player().ZoneProcessCompletedTasks(p);
 		break;
 	case HC_OP_TaskDescription:
 		// Task description data - not used in P1999
@@ -231,37 +231,37 @@ void eqt::zone::ZoneComponent::DispatchZonePacket(const EQ::Net::Packet & p)
 		LOG_DEBUG(MOD_ZONE, "Received AAExpUpdate ({} bytes)", p.Length());
 		break;
 	case HC_OP_DzCompass:
-		owner_.Player().ZoneProcessDzCompass(p);
+		ctx_.Player().ZoneProcessDzCompass(p);
 		break;
 	case HC_OP_DzExpeditionLockoutTimers:
-		owner_.Player().ZoneProcessDzExpeditionLockoutTimers(p);
+		ctx_.Player().ZoneProcessDzExpeditionLockoutTimers(p);
 		break;
 	case HC_OP_BeginCast:
-		owner_.Player().ZoneProcessBeginCast(p);
+		ctx_.Player().ZoneProcessBeginCast(p);
 		break;
 	case HC_OP_ManaChange:
-		owner_.Player().ZoneProcessManaChange(p);
+		ctx_.Player().ZoneProcessManaChange(p);
 		break;
 	case HC_OP_Buff:
-		owner_.Player().ZoneProcessBuff(p);
+		ctx_.Player().ZoneProcessBuff(p);
 		break;
 	case HC_OP_ColoredText:
-		owner_.Chat().ZoneProcessColoredText(p);
+		ctx_.Chat().ZoneProcessColoredText(p);
 		break;
 	case HC_OP_FormattedMessage:
-		owner_.Chat().ZoneProcessFormattedMessage(p);
+		ctx_.Chat().ZoneProcessFormattedMessage(p);
 		break;
 	case HC_OP_PlayerStateAdd:
-		owner_.Player().ZoneProcessPlayerStateAdd(p);
+		ctx_.Player().ZoneProcessPlayerStateAdd(p);
 		break;
 	case HC_OP_Death:
-		owner_.Player().ZoneProcessDeath(p);
+		ctx_.Player().ZoneProcessDeath(p);
 		break;
 	case HC_OP_PlayerStateRemove:
-		owner_.Player().ZoneProcessPlayerStateRemove(p);
+		ctx_.Player().ZoneProcessPlayerStateRemove(p);
 		break;
 	case HC_OP_Stamina:
-		owner_.Player().ZoneProcessStamina(p);
+		ctx_.Player().ZoneProcessStamina(p);
 		break;
 	case HC_OP_Animation:
 		// Animation packet - applies to all entities (not just self)
@@ -271,21 +271,21 @@ void eqt::zone::ZoneComponent::DispatchZonePacket(const EQ::Net::Packet & p)
 		break;
 	case HC_OP_Emote:
 		// T243: text emote broadcast ("Testchar waves at ...")
-		owner_.Chat().ZoneProcessEmote(p);
+		ctx_.Chat().ZoneProcessEmote(p);
 		break;
 	
 	// Combat-related opcodes
 	case 0x65ca: // OP_Consider response
-		owner_.Commands().ZoneProcessConsider(p);
+		ctx_.Commands().ZoneProcessConsider(p);
 		break;
 	case HC_OP_Action: // OP_Action (combat/spell actions)
-		owner_.Commands().ZoneProcessAction(p);
+		ctx_.Commands().ZoneProcessAction(p);
 		break;
 	case HC_OP_Damage:
-		owner_.Commands().ZoneProcessDamage(p);
+		ctx_.Commands().ZoneProcessDamage(p);
 		break;
 	case HC_OP_MoneyOnCorpse:
-		owner_.Commands().ZoneProcessMoneyOnCorpse(p);
+		ctx_.Commands().ZoneProcessMoneyOnCorpse(p);
 		break;
 	case HC_OP_LootRequest:
 		// Server responds to our loot request - confirms we can loot the corpse
@@ -296,9 +296,9 @@ void eqt::zone::ZoneComponent::DispatchZonePacket(const EQ::Net::Packet & p)
 
 			// Check if loot window is empty (no items to loot)
 			// If empty, auto-complete the loot session immediately
-			if (ctx_.game_state.player().lootingCorpseId() != 0 && owner_.Bridge().LootItems().empty()) {
+			if (ctx_.game_state.player().lootingCorpseId() != 0 && ctx_.Bridge().LootItems().empty()) {
 				LOG_DEBUG(MOD_INVENTORY, "LootRequest response: No items on corpse, auto-completing loot");
-				owner_.Bridge().CloseLootWindow(static_cast<uint16_t>(corpse_id));
+				ctx_.Bridge().CloseLootWindow(static_cast<uint16_t>(corpse_id));
 			}
 		}
 		break;
@@ -315,9 +315,9 @@ void eqt::zone::ZoneComponent::DispatchZonePacket(const EQ::Net::Packet & p)
 			if (auto_loot == -1) {
 				LOG_WARN(MOD_INVENTORY, "Loot DENIED by server!");
 				// Remove from pending slots
-				auto it = std::find(owner_.Bridge().PendingLootSlots().begin(), owner_.Bridge().PendingLootSlots().end(), slot_id);
-				if (it != owner_.Bridge().PendingLootSlots().end()) {
-					owner_.Bridge().PendingLootSlots().erase(it);
+				auto it = std::find(ctx_.Bridge().PendingLootSlots().begin(), ctx_.Bridge().PendingLootSlots().end(), slot_id);
+				if (it != ctx_.Bridge().PendingLootSlots().end()) {
+					ctx_.Bridge().PendingLootSlots().erase(it);
 				}
 			}
 		} else {
@@ -327,7 +327,7 @@ void eqt::zone::ZoneComponent::DispatchZonePacket(const EQ::Net::Packet & p)
 	case HC_OP_LootComplete:
 		// Server signals end of loot session (rarely sent by P1999/Titanium servers)
 		LOG_DEBUG(MOD_INVENTORY, "LootComplete received from server");
-		owner_.Bridge().PendingLootSlots().clear();
+		ctx_.Bridge().PendingLootSlots().clear();
 		break;
 	case HC_OP_ItemPacket:
 		// Item packets can be: vendor items (100), inventory items (103), or loot items
@@ -338,16 +338,16 @@ void eqt::zone::ZoneComponent::DispatchZonePacket(const EQ::Net::Packet & p)
 				item_packet_type = p.GetUInt32(2);
 			}
 			LOG_DEBUG(MOD_INVENTORY, "ItemPacket received, type={} m_game_state.player().lootingCorpseId()={} m_game_state.player().vendorNpcId()={} pending_slots={}",
-				item_packet_type, ctx_.game_state.player().lootingCorpseId(), ctx_.game_state.player().vendorNpcId(), owner_.Bridge().PendingLootSlots().size());
+				item_packet_type, ctx_.game_state.player().lootingCorpseId(), ctx_.game_state.player().vendorNpcId(), ctx_.Bridge().PendingLootSlots().size());
 			// Check if this is a vendor item (type 100)
 			if (item_packet_type == EQT::ITEM_PACKET_MERCHANT && ctx_.game_state.player().vendorNpcId() != 0) {
 				// Vendor item - add to vendor window via bridge
-				owner_.Merchant().ZoneProcessVendorItemToUI(p);
+				ctx_.Merchant().ZoneProcessVendorItemToUI(p);
 			} else if (ctx_.game_state.player().lootingCorpseId() != 0) {
 				// Looting (T268: every open path sets this). A pending slot means
 				// this is the item we asked for; otherwise it populates the window.
-				if (!owner_.Bridge().PendingLootSlots().empty()) { owner_.Merchant().ZoneProcessLootedItemToInventory(p); }
-				else { owner_.Merchant().ZoneProcessLootItemToUI(p); }
+				if (!ctx_.Bridge().PendingLootSlots().empty()) { ctx_.Merchant().ZoneProcessLootedItemToInventory(p); }
+				else { ctx_.Merchant().ZoneProcessLootItemToUI(p); }
 			} else {
 				// Check if this is a trade partner item.
 				// T42: was #ifdef EQT_HAS_GRAPHICS -- TradeManager and
@@ -358,7 +358,7 @@ void eqt::zone::ZoneComponent::DispatchZonePacket(const EQ::Net::Packet & p)
 				// graphics dependency found.
 				bool handled_as_trade = false;
 				if (ctx_.trade_manager && ctx_.trade_manager->isTrading()) {
-					handled_as_trade = owner_.Merchant().ZoneProcessTradePartnerItem(p);
+					handled_as_trade = ctx_.Merchant().ZoneProcessTradePartnerItem(p);
 				}
 				if (!handled_as_trade) {
 					// Regular inventory item packet - pass to inventory manager.
@@ -370,7 +370,7 @@ void eqt::zone::ZoneComponent::DispatchZonePacket(const EQ::Net::Packet & p)
 						int16_t changedSlot = ctx_.inventory_manager->processItemPacket(p);
 						if (changedSlot != eqt::inventory::SLOT_INVALID) {
 							const auto* item = ctx_.inventory_manager->getItem(changedSlot);
-							owner_.Merchant().SyncInventorySlotToGameState(changedSlot,
+							ctx_.Merchant().SyncInventorySlotToGameState(changedSlot,
 								item != nullptr && item->itemId != 0);  // T221
 						}
 						if (ctx_.bridge && changedSlot != eqt::inventory::SLOT_INVALID) {
@@ -405,28 +405,28 @@ void eqt::zone::ZoneComponent::DispatchZonePacket(const EQ::Net::Packet & p)
 	// packets at all, regardless of any publish fix inside them. Un-guarded;
 	// no genuine graphics dependency found.
 	case HC_OP_MoveItem:
-		owner_.Merchant().ZoneProcessMoveItem(p);
+		ctx_.Merchant().ZoneProcessMoveItem(p);
 		break;
 	case HC_OP_DeleteItem:
-		owner_.Merchant().ZoneProcessDeleteItem(p);
+		ctx_.Merchant().ZoneProcessDeleteItem(p);
 		break;
 	case HC_OP_ShopRequest:
-		owner_.Merchant().ZoneProcessShopRequest(p);
+		ctx_.Merchant().ZoneProcessShopRequest(p);
 		break;
 	case HC_OP_ShopPlayerBuy:
-		owner_.Merchant().ZoneProcessShopPlayerBuy(p);
+		ctx_.Merchant().ZoneProcessShopPlayerBuy(p);
 		break;
 	case HC_OP_ShopPlayerSell:
-		owner_.Merchant().ZoneProcessShopPlayerSell(p);
+		ctx_.Merchant().ZoneProcessShopPlayerSell(p);
 		break;
 	case HC_OP_ShopEndConfirm:
-		owner_.Merchant().ZoneProcessShopEndConfirm(p);
+		ctx_.Merchant().ZoneProcessShopEndConfirm(p);
 		break;
 	case HC_OP_MoneyUpdate:
-		owner_.Merchant().ZoneProcessMoneyUpdate(p);
+		ctx_.Merchant().ZoneProcessMoneyUpdate(p);
 		break;
 	case HC_OP_GMTraining:
-		owner_.Merchant().ZoneProcessGMTraining(p);
+		ctx_.Merchant().ZoneProcessGMTraining(p);
 		break;
 	case 0x61f9: // OP_TargetCommand response
 		// Server may reject our target
@@ -446,10 +446,10 @@ void eqt::zone::ZoneComponent::DispatchZonePacket(const EQ::Net::Packet & p)
 		}
 		break;
 	case HC_OP_ZonePlayerToBind:
-		owner_.Player().ZoneProcessZonePlayerToBind(p);
+		ctx_.Player().ZoneProcessZonePlayerToBind(p);
 		break;
 	case HC_OP_LevelUpdate:
-		owner_.Player().ZoneProcessLevelUpdate(p);
+		ctx_.Player().ZoneProcessLevelUpdate(p);
 		break;
 	case HC_OP_ZoneChange:
 		ZoneProcessZoneChange(p);
@@ -458,7 +458,7 @@ void eqt::zone::ZoneComponent::DispatchZonePacket(const EQ::Net::Packet & p)
 		ZoneProcessRequestClientZoneChange(p);
 		break;
 	case HC_OP_SimpleMessage:
-		owner_.Chat().ZoneProcessSimpleMessage(p);
+		ctx_.Chat().ZoneProcessSimpleMessage(p);
 		break;
 	case HC_OP_TargetHoTT:
 		// Target's target information
@@ -593,93 +593,93 @@ void eqt::zone::ZoneComponent::DispatchZonePacket(const EQ::Net::Packet & p)
 		}
 		break;
 	case HC_OP_LogoutReply:
-		owner_.Player().ZoneProcessLogoutReply(p);
+		ctx_.Player().ZoneProcessLogoutReply(p);
 		break;
 	case HC_OP_RezzRequest:
-		owner_.Player().ZoneProcessRezzRequest(p);
+		ctx_.Player().ZoneProcessRezzRequest(p);
 		break;
 	case HC_OP_RezzComplete:
-		owner_.Player().ZoneProcessRezzComplete(p);
+		ctx_.Player().ZoneProcessRezzComplete(p);
 		break;
 	case HC_OP_WhoAllResponse:
-		owner_.Player().ZoneProcessWhoAllResponse(p);
+		ctx_.Player().ZoneProcessWhoAllResponse(p);
 		break;
 	case HC_OP_InspectRequest:
-		owner_.Player().ZoneProcessInspectRequest(p);
+		ctx_.Player().ZoneProcessInspectRequest(p);
 		break;
 	case HC_OP_InspectAnswer:
-		owner_.Player().ZoneProcessInspectAnswer(p);
+		ctx_.Player().ZoneProcessInspectAnswer(p);
 		break;
 	case HC_OP_GuildInvite:
-		owner_.Guild().ZoneProcessGuildInvite(p);
+		ctx_.Guild().ZoneProcessGuildInvite(p);
 		break;
 	case HC_OP_GetGuildMOTDReply:
-		owner_.Guild().ZoneProcessGuildMOTDReply(p);
+		ctx_.Guild().ZoneProcessGuildMOTDReply(p);
 		break;
 	case HC_OP_GuildMemberUpdate:
-		owner_.Guild().ZoneProcessGuildMemberUpdate(p);
+		ctx_.Guild().ZoneProcessGuildMemberUpdate(p);
 		break;
 	case HC_OP_GuildMemberAdd:
-		owner_.Guild().ZoneProcessGuildMemberAdd(p);
+		ctx_.Guild().ZoneProcessGuildMemberAdd(p);
 		break;
 	// Phase 3 packet handlers
 	case HC_OP_ConsentResponse:
-		owner_.Player().ZoneProcessConsentResponse(p);
+		ctx_.Player().ZoneProcessConsentResponse(p);
 		break;
 	case HC_OP_DenyResponse:
-		owner_.Player().ZoneProcessDenyResponse(p);
+		ctx_.Player().ZoneProcessDenyResponse(p);
 		break;
 	case HC_OP_EnvDamage:
-		owner_.Player().ZoneProcessEnvDamage(p);
+		ctx_.Player().ZoneProcessEnvDamage(p);
 		break;
 	case HC_OP_DisciplineUpdate:
-		owner_.Player().ZoneProcessDisciplineUpdate(p);
+		ctx_.Player().ZoneProcessDisciplineUpdate(p);
 		break;
 	case HC_OP_DisciplineTimer:
-		owner_.Player().ZoneProcessDisciplineTimer(p);
+		ctx_.Player().ZoneProcessDisciplineTimer(p);
 		break;
 	case HC_OP_BankerChange:
-		owner_.Player().ZoneProcessBankerChange(p);
+		ctx_.Player().ZoneProcessBankerChange(p);
 		break;
 	case HC_OP_ClearObject:
-		owner_.Player().ZoneProcessClearObject(p);
+		ctx_.Player().ZoneProcessClearObject(p);
 		break;
 	case HC_OP_LFGAppearance:
-		owner_.Player().ZoneProcessLFGAppearance(p);
+		ctx_.Player().ZoneProcessLFGAppearance(p);
 		break;
 	// Phase 4 packet handlers
 	case HC_OP_RequestDuel:
-		owner_.Player().ZoneProcessDuelRequest(p);
+		ctx_.Player().ZoneProcessDuelRequest(p);
 		break;
 	case HC_OP_RecipeReply:
-		owner_.Merchant().ZoneProcessRecipeReply(p);
+		ctx_.Merchant().ZoneProcessRecipeReply(p);
 		break;
 	case HC_OP_RecipeAutoCombine:
-		owner_.Merchant().ZoneProcessRecipeAutoCombine(p);
+		ctx_.Merchant().ZoneProcessRecipeAutoCombine(p);
 		break;
 	case HC_OP_RandomReply:
-		owner_.Player().ZoneProcessRandomReply(p);
+		ctx_.Player().ZoneProcessRandomReply(p);
 		break;
 	case HC_OP_FindPersonReply:
-		owner_.Player().ZoneProcessFindPersonReply(p);
+		ctx_.Player().ZoneProcessFindPersonReply(p);
 		break;
 	case HC_OP_CameraEffect:
-		owner_.Player().ZoneProcessCameraEffect(p);
+		ctx_.Player().ZoneProcessCameraEffect(p);
 		break;
 	case HC_OP_PlayMP3:
-		owner_.Player().ZoneProcessPlayMP3(p);
+		ctx_.Player().ZoneProcessPlayMP3(p);
 		break;
 	case HC_OP_Sound:
-		owner_.Player().ZoneProcessSound(p);
+		ctx_.Player().ZoneProcessSound(p);
 		break;
 	case HC_OP_GMZoneRequest:
-		owner_.Gm().ZoneProcessGMZoneRequest(p);
+		ctx_.Gm().ZoneProcessGMZoneRequest(p);
 		break;
 	case HC_OP_GMFind:
-		owner_.Gm().ZoneProcessGMFind(p);
+		ctx_.Gm().ZoneProcessGMFind(p);
 		break;
 	case HC_OP_GMSummon:
-		owner_.Gm().ZoneProcessGMSummon(p);
+		ctx_.Gm().ZoneProcessGMSummon(p);
 		break;
 	case HC_OP_MobRename:
 		// Mob name change - typically when mob becomes corpse
@@ -729,7 +729,7 @@ void eqt::zone::ZoneComponent::DispatchZonePacket(const EQ::Net::Packet & p)
 					it->second.is_corpse = true;
 					// T268: GameState kept the LIVING name + isCorpse=false forever
 					// (markAsCorpse had no caller) -- /target and /loot missed it.
-					owner_.Player().SyncEntityToGameState(it->second);
+					ctx_.Player().SyncEntityToGameState(it->second);
 					if (EverQuest::s_debug_level >= 1) {
 						LOG_INFO(MOD_ENTITY, "Entity {} became corpse: '{}' -> '{}'",
 							entity_id, old_name, new_name);
@@ -745,29 +745,29 @@ void eqt::zone::ZoneComponent::DispatchZonePacket(const EQ::Net::Packet & p)
 		// there is no target field -- the pre-T247 code read a target/duration
 		// pair out of the low/high halves of the duration and stored nothing.
 		if (p.Length() >= 6) {
-			owner_.Commands().ZoneProcessStun(p.GetUInt32(2));
+			ctx_.Commands().ZoneProcessStun(p.GetUInt32(2));
 		}
 		break;
 
 	// Group packet handlers
 	case HC_OP_GroupInvite:
-		owner_.Group().ZoneProcessGroupInvite(p);
+		ctx_.Group().ZoneProcessGroupInvite(p);
 		break;
 	case HC_OP_GroupInvite2:
 		// Alternate invite opcode - same handler
-		owner_.Group().ZoneProcessGroupInvite(p);
+		ctx_.Group().ZoneProcessGroupInvite(p);
 		break;
 	case HC_OP_GroupFollow:
-		owner_.Group().ZoneProcessGroupFollow(p);
+		ctx_.Group().ZoneProcessGroupFollow(p);
 		break;
 	case HC_OP_GroupUpdate:
-		owner_.Group().ZoneProcessGroupUpdate(p);
+		ctx_.Group().ZoneProcessGroupUpdate(p);
 		break;
 	case HC_OP_GroupDisband:
-		owner_.Group().ZoneProcessGroupDisband(p);
+		ctx_.Group().ZoneProcessGroupDisband(p);
 		break;
 	case HC_OP_GroupCancelInvite:
-		owner_.Group().ZoneProcessGroupCancelInvite(p);
+		ctx_.Group().ZoneProcessGroupCancelInvite(p);
 		break;
 	case HC_OP_SetGroupTarget:
 		// Group target indicator - ignore for now
@@ -803,7 +803,7 @@ void eqt::zone::ZoneComponent::DispatchZonePacket(const EQ::Net::Packet & p)
 					const EQ::SpellData* spellData = ctx_.spell_manager->getSpell(spell_id);
 					std::string spellName = spellData ? spellData->name : "spell";
 
-					owner_.AddChatSystemMessage(fmt::format("You have learned {}!", spellName));
+					ctx_.out.System(fmt::format("You have learned {}!", spellName));
 					LOG_INFO(MOD_SPELL, "Successfully scribed spell {} ({}) to slot {}",
 						spellName, spell_id, slot);
 
@@ -857,7 +857,7 @@ void eqt::zone::ZoneComponent::DispatchZonePacket(const EQ::Net::Packet & p)
 				std::string message(msgStart, strnlen(msgStart, maxLen));
 
 				if (!message.empty()) {
-					owner_.AddChatSystemMessage(message);
+					ctx_.out.System(message);
 				}
 			}
 		}
@@ -876,11 +876,11 @@ void eqt::zone::ZoneComponent::DispatchZonePacket(const EQ::Net::Packet & p)
 			uint32_t amount = p.GetUInt32(18);  // offset 16 in struct + 2 for opcode
 			// Result: 0=Fail, 1=Plat, 2=Gold, 3=Silver, 4=Copper
 			if (result == 0) {
-				owner_.AddChatSystemMessage("You have been unable to convince your target to give you money.");
+				ctx_.out.System("You have been unable to convince your target to give you money.");
 			} else {
 				const char* coin_types[] = {"", "platinum", "gold", "silver", "copper"};
 				if (result <= 4) {
-					owner_.AddChatSystemMessage(fmt::format("You receive {} {}.", amount, coin_types[result]));
+					ctx_.out.System(fmt::format("You receive {} {}.", amount, coin_types[result]));
 				}
 			}
 		}
@@ -915,11 +915,11 @@ void eqt::zone::ZoneComponent::DispatchZonePacket(const EQ::Net::Packet & p)
 		break;
 	case HC_OP_Track:
 		// Track response - contains list of trackable entities
-		owner_.Player().ZoneProcessTrack(p);
+		ctx_.Player().ZoneProcessTrack(p);
 		break;
 	case HC_OP_ApplyPoison:
 		// Apply Poison response - success/failure from server
-		owner_.Player().ZoneProcessApplyPoison(p);
+		ctx_.Player().ZoneProcessApplyPoison(p);
 		break;
 	case HC_OP_PickPocket:
 		// Pick Pocket response
@@ -929,7 +929,7 @@ void eqt::zone::ZoneComponent::DispatchZonePacket(const EQ::Net::Packet & p)
 		// Bind Wound reply: `type` carries the outcome (done / no target /
 		// target gone / no bandage). T177 -- before this the player saw
 		// nothing 10s after starting a bandage.
-		owner_.Player().ZoneProcessBindWound(p);
+		ctx_.Player().ZoneProcessBindWound(p);
 		break;
 	case HC_OP_SenseTraps:
 		// Sense Traps response
@@ -944,10 +944,10 @@ void eqt::zone::ZoneComponent::DispatchZonePacket(const EQ::Net::Packet & p)
 		LOG_DEBUG(MOD_MAIN, "InstillDoubt response received: {} bytes", p.Length());
 		break;
 	case HC_OP_ReadBook:
-		owner_.Merchant().ZoneProcessReadBook(p);
+		ctx_.Merchant().ZoneProcessReadBook(p);
 		break;
 	case HC_OP_PetBuffWindow:
-		owner_.Player().ZoneProcessPetBuffWindow(p);
+		ctx_.Player().ZoneProcessPetBuffWindow(p);
 		break;
 
 	default:

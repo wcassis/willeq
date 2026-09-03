@@ -121,7 +121,7 @@ TEST_F(ZoneComponentTest, PathSettersMovedWithTheirMembers) {
 // this pins the K09 boundary so a later unit does not quietly move them
 // without re-reading the Review.
 TEST_F(ZoneComponentTest, TheReplayCounterAndLogoutSeamStayedOnEverQuest) {
-    EXPECT_EQ(eq.GetReplaySuppressedSendCount(), 0u);
+    EXPECT_EQ(eq.Net().ReplaySuppressedSendCount(), 0u);
     EXPECT_FALSE(eq.Test_IsPendingLogoutDisconnect());
 }
 

@@ -101,7 +101,7 @@ void eqt::player::PlayerComponent::SendAssistGroup(uint32_t target_id)
 void eqt::player::PlayerComponent::SendSplit(uint32_t platinum, uint32_t gold, uint32_t silver, uint32_t copper)
 {
 	if (!ctx_.game_state.group().inGroup()) {
-		owner_.AddChatSystemMessage("You are not in a group.");
+		ctx_.out.System("You are not in a group.");
 		return;
 	}
 
@@ -110,7 +110,7 @@ void eqt::player::PlayerComponent::SendSplit(uint32_t platinum, uint32_t gold, u
 	uint64_t my_copper = ctx_.game_state.player().copper() + ctx_.game_state.player().silver() * 10 + ctx_.game_state.player().gold() * 100 + ctx_.game_state.player().platinum() * 1000;
 
 	if (total_copper > my_copper) {
-		owner_.AddChatSystemMessage("You don't have that much money.");
+		ctx_.out.System("You don't have that much money.");
 		return;
 	}
 
@@ -127,7 +127,7 @@ void eqt::player::PlayerComponent::SendSplit(uint32_t platinum, uint32_t gold, u
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
 		ctx_.zone_connection->QueuePacket(packet);
 		LOG_INFO(MOD_MAIN, "Splitting {}p {}g {}s {}c with group", platinum, gold, silver, copper);
-		owner_.AddChatSystemMessage(fmt::format("You split {}p {}g {}s {}c with your group.",
+		ctx_.out.System(fmt::format("You split {}p {}g {}s {}c with your group.",
 			platinum, gold, silver, copper));
 	}
 }
@@ -146,7 +146,7 @@ void eqt::player::PlayerComponent::SendLFGCommand(bool lfg_on)
 		ctx_.zone_connection->QueuePacket(packet);
 		m_is_lfg = lfg_on;
 		LOG_INFO(MOD_MAIN, "LFG status: {}", lfg_on ? "ON" : "OFF");
-		owner_.AddChatSystemMessage(fmt::format("You are {} looking for a group.", lfg_on ? "now" : "no longer"));
+		ctx_.out.System(fmt::format("You are {} looking for a group.", lfg_on ? "now" : "no longer"));
 	}
 }
 
@@ -169,7 +169,7 @@ void eqt::player::PlayerComponent::ZoneProcessLFGAppearance(const EQ::Net::Packe
 	}
 
 	// Update our own status if it's us
-	if (lfg->spawn_id == owner_.MySpawnId()) {
+	if (lfg->spawn_id == ctx_.self.MySpawnId()) {
 		m_is_lfg = (lfg->lfg != 0);
 	}
 }
@@ -219,9 +219,9 @@ void eqt::player::PlayerComponent::ZoneProcessEnvDamage(const EQ::Net::Packet &p
 		default: damage_type = "environmental"; break;
 	}
 
-	if (env->id == owner_.MySpawnId()) {
+	if (env->id == ctx_.self.MySpawnId()) {
 		LOG_INFO(MOD_MAIN, "You took {} {} damage!", env->damage, damage_type);
-		owner_.AddChatSystemMessage(fmt::format("You took {} points of {} damage.", env->damage, damage_type));
+		ctx_.out.System(fmt::format("You took {} points of {} damage.", env->damage, damage_type));
 	}
 }
 
@@ -304,7 +304,7 @@ void eqt::player::PlayerComponent::SendSave()
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
 		ctx_.zone_connection->QueuePacket(packet);
 		LOG_INFO(MOD_MAIN, "Character save requested");
-		owner_.AddChatSystemMessage("Saving character...");
+		ctx_.out.System("Saving character...");
 	}
 }
 
@@ -342,7 +342,7 @@ void eqt::player::PlayerComponent::ZoneProcessClearObject(const EQ::Net::Packet 
 	// The UI holds its own copy of each slot, so an emptied slot has to be
 	// announced the same way a deleted item is (D18a: bridge-only).
 	for (int16_t slot = eqt::inventory::WORLD_BEGIN; slot <= eqt::inventory::WORLD_END; slot++) {
-		owner_.Merchant().SyncInventorySlotToGameState(slot, false);
+		ctx_.Merchant().SyncInventorySlotToGameState(slot, false);
 		if (!ctx_.bridge) {
 			continue;
 		}
@@ -365,7 +365,7 @@ void eqt::player::PlayerComponent::SendDuelRequest(uint32_t target_id)
 	packet.PutUInt16(0, HC_OP_RequestDuel);
 
 	EQT::Duel_Struct duel;
-	duel.duel_initiator = owner_.MySpawnId();
+	duel.duel_initiator = ctx_.self.MySpawnId();
 	duel.duel_target = target_id;
 	packet.PutData(2, &duel, sizeof(duel));
 
@@ -374,7 +374,7 @@ void eqt::player::PlayerComponent::SendDuelRequest(uint32_t target_id)
 		m_has_pending_duel = true;
 		m_duel_target_id = target_id;
 		LOG_INFO(MOD_MAIN, "Sent duel request to target ID: {}", target_id);
-		owner_.AddChatSystemMessage("You have challenged someone to a duel.");
+		ctx_.out.System("You have challenged someone to a duel.");
 	}
 }
 
@@ -385,7 +385,7 @@ void eqt::player::PlayerComponent::SendDuelAccept(uint32_t target_id)
 
 	EQT::Duel_Struct duel;
 	duel.duel_initiator = target_id;
-	duel.duel_target = owner_.MySpawnId();
+	duel.duel_target = ctx_.self.MySpawnId();
 	packet.PutData(2, &duel, sizeof(duel));
 
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
@@ -394,7 +394,7 @@ void eqt::player::PlayerComponent::SendDuelAccept(uint32_t target_id)
 		m_has_pending_duel = false;
 		m_duel_target_id = target_id;
 		LOG_INFO(MOD_MAIN, "Accepted duel from: {}", target_id);
-		owner_.AddChatSystemMessage("You have accepted the duel!");
+		ctx_.out.System("You have accepted the duel!");
 	}
 }
 
@@ -404,7 +404,7 @@ void eqt::player::PlayerComponent::SendDuelDecline(uint32_t target_id)
 	packet.PutUInt16(0, HC_OP_DuelDecline);
 
 	EQT::DuelResponse_Struct response;
-	response.target_id = owner_.MySpawnId();
+	response.target_id = ctx_.self.MySpawnId();
 	response.entity_id = target_id;
 	response.unknown = 0;
 	packet.PutData(2, &response, sizeof(response));
@@ -414,7 +414,7 @@ void eqt::player::PlayerComponent::SendDuelDecline(uint32_t target_id)
 		m_has_pending_duel = false;
 		m_duel_initiator_id = 0;
 		LOG_INFO(MOD_MAIN, "Declined duel from: {}", target_id);
-		owner_.AddChatSystemMessage("You have declined the duel.");
+		ctx_.out.System("You have declined the duel.");
 	}
 }
 
@@ -428,7 +428,7 @@ void eqt::player::PlayerComponent::ZoneProcessDuelRequest(const EQ::Net::Packet 
 		static_cast<const uint8_t*>(p.Data()) + 2);
 
 	// Someone challenged us to a duel
-	if (duel->duel_target == owner_.MySpawnId()) {
+	if (duel->duel_target == ctx_.self.MySpawnId()) {
 		m_has_pending_duel = true;
 		m_duel_initiator_id = duel->duel_initiator;
 
@@ -440,7 +440,7 @@ void eqt::player::PlayerComponent::ZoneProcessDuelRequest(const EQ::Net::Packet 
 		}
 
 		LOG_INFO(MOD_MAIN, "{} has challenged you to a duel!", challenger);
-		owner_.AddChatSystemMessage(fmt::format("{} has challenged you to a duel! Type /duelaccept or /dueldecline.", challenger));
+		ctx_.out.System(fmt::format("{} has challenged you to a duel! Type /duelaccept or /dueldecline.", challenger));
 	}
 }
 
@@ -496,7 +496,7 @@ void eqt::player::PlayerComponent::SendSurname(const std::string& surname)
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
 		ctx_.zone_connection->QueuePacket(packet);
 		LOG_INFO(MOD_MAIN, "Set surname to: {}", surname);
-		owner_.AddChatSystemMessage(fmt::format("Requesting surname: {}", surname));
+		ctx_.out.System(fmt::format("Requesting surname: {}", surname));
 	}
 }
 
@@ -566,7 +566,7 @@ void eqt::player::PlayerComponent::ZoneProcessRandomReply(const EQ::Net::Packet 
 
 	std::string name(rnd->name, strnlen(rnd->name, 64));
 	LOG_INFO(MOD_MAIN, "{} rolled {} ({} to {})", name, rnd->result, rnd->low, rnd->high);
-	owner_.AddChatSystemMessage(fmt::format("**A Magic Die is rolled by {}. It could have been {} to {}. It is {}.",
+	ctx_.out.System(fmt::format("**A Magic Die is rolled by {}. It could have been {} to {}. It is {}.",
 		name, rnd->low, rnd->high, rnd->result));
 }
 
@@ -577,9 +577,9 @@ void eqt::player::PlayerComponent::SendFindPerson(uint32_t npc_id)
 
 	EQT::FindPersonRequest_Struct fp;
 	fp.npc_id = npc_id;
-	fp.client_pos.x = owner_.PosX();
-	fp.client_pos.y = owner_.PosY();
-	fp.client_pos.z = owner_.PosZ();
+	fp.client_pos.x = ctx_.self.PosX();
+	fp.client_pos.y = ctx_.self.PosY();
+	fp.client_pos.z = ctx_.self.PosZ();
 	packet.PutData(2, &fp, sizeof(fp));
 
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
@@ -598,7 +598,7 @@ void eqt::player::PlayerComponent::ZoneProcessFindPersonReply(const EQ::Net::Pac
 		static_cast<const uint8_t*>(p.Data()) + 2);
 
 	LOG_INFO(MOD_MAIN, "Find person result: destination at ({}, {}, {})", dest->x, dest->y, dest->z);
-	owner_.AddChatSystemMessage(fmt::format("Path destination: {:.1f}, {:.1f}, {:.1f}", dest->x, dest->y, dest->z));
+	ctx_.out.System(fmt::format("Path destination: {:.1f}, {:.1f}, {:.1f}", dest->x, dest->y, dest->z));
 }
 
 void eqt::player::PlayerComponent::SendRewind()
@@ -609,7 +609,7 @@ void eqt::player::PlayerComponent::SendRewind()
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
 		ctx_.zone_connection->QueuePacket(packet);
 		LOG_INFO(MOD_MAIN, "Rewind requested");
-		owner_.AddChatSystemMessage("Attempting to rewind to a safe position...");
+		ctx_.out.System("Attempting to rewind to a safe position...");
 	}
 }
 
@@ -621,7 +621,7 @@ void eqt::player::PlayerComponent::SendYellForHelp()
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
 		ctx_.zone_connection->QueuePacket(packet);
 		LOG_INFO(MOD_MAIN, "Yelling for help!");
-		owner_.AddChatSystemMessage("You yell for help!");
+		ctx_.out.System("You yell for help!");
 	}
 }
 
@@ -637,7 +637,7 @@ void eqt::player::PlayerComponent::SendReport(const std::string& report_text)
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
 		ctx_.zone_connection->QueuePacket(packet);
 		LOG_INFO(MOD_MAIN, "Report submitted");
-		owner_.AddChatSystemMessage("Your report has been submitted.");
+		ctx_.out.System("Your report has been submitted.");
 	}
 }
 

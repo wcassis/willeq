@@ -41,7 +41,7 @@ namespace EQ {
 // runs in, and eyeZ() applies identically to both.
 bool SpellManager::checkLineOfSight(uint16_t target_id) const
 {
-    std::shared_ptr<const HCMap> map = m_eq->GetZoneMap();
+    std::shared_ptr<const HCMap> map = m_eq->Zone().GetZoneMap();
     if (!map || !map->IsLoaded()) {
         return true;
     }

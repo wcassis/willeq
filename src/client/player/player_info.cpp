@@ -58,10 +58,10 @@ void eqt::player::PlayerComponent::ZoneProcessTributeTimer(const EQ::Net::Packet
 void eqt::player::PlayerComponent::ZoneProcessSendAATable(const EQ::Net::Packet &p)
 {
 	LOG_DEBUG(MOD_ZONE, "Received AA table data");
-	owner_.Zone().AATableCount()++;
+	ctx_.Zone().AATableCount()++;
 	
 	// Check if all Zone Request phase responses received
-	owner_.Zone().CheckZoneRequestPhaseComplete();
+	ctx_.Zone().CheckZoneRequestPhaseComplete();
 }
 
 void eqt::player::PlayerComponent::ZoneProcessRespondAA(const EQ::Net::Packet &p)
@@ -69,25 +69,25 @@ void eqt::player::PlayerComponent::ZoneProcessRespondAA(const EQ::Net::Packet &p
 	LOG_DEBUG(MOD_ZONE, "Received AA response");
 	
 	// Check if all Zone Request phase responses received
-	owner_.Zone().CheckZoneRequestPhaseComplete();
+	ctx_.Zone().CheckZoneRequestPhaseComplete();
 }
 
 void eqt::player::PlayerComponent::ZoneProcessTributeInfo(const EQ::Net::Packet &p)
 {
 	LOG_DEBUG(MOD_ZONE, "Received tribute info");
-	owner_.Zone().TributeCount()++;
+	ctx_.Zone().TributeCount()++;
 	
 	// Check if all Zone Request phase responses received
-	owner_.Zone().CheckZoneRequestPhaseComplete();
+	ctx_.Zone().CheckZoneRequestPhaseComplete();
 }
 
 void eqt::player::PlayerComponent::ZoneProcessSendGuildTributes(const EQ::Net::Packet &p)
 {
 	LOG_DEBUG(MOD_ZONE, "Received guild tributes");
-	owner_.Zone().GuildTributeCount()++;
+	ctx_.Zone().GuildTributeCount()++;
 	
 	// Check if all Zone Request phase responses received
-	owner_.Zone().CheckZoneRequestPhaseComplete();
+	ctx_.Zone().CheckZoneRequestPhaseComplete();
 }
 
 void eqt::player::PlayerComponent::ZoneProcessSendAAStats(const EQ::Net::Packet &p)
@@ -99,7 +99,7 @@ void eqt::player::PlayerComponent::ZoneProcessSendExpZonein(const EQ::Net::Packe
 {
 	LOG_DEBUG(MOD_ZONE, "Received exp zone in - this triggers SendZoneInPackets()");
 
-	owner_.Zone().SendExpZoneinReceived() = true;
+	ctx_.Zone().SendExpZoneinReceived() = true;
 
 	// ExpZonein triggers the server to send ExpUpdate, RaidUpdate, and GuildMOTD
 	// We'll wait for GuildMOTD before sending final packets
@@ -110,8 +110,8 @@ void eqt::player::PlayerComponent::ZoneProcessWorldObjectsSent(const EQ::Net::Pa
 	LOG_DEBUG(MOD_ZONE, "Received world objects sent");
 
 	// After world objects, send exp zonein if not already sent
-	if (!owner_.Zone().ExpZoneinSent()) {
-		owner_.Zone().ZoneSendSendExpZonein();
+	if (!ctx_.Zone().ExpZoneinSent()) {
+		ctx_.Zone().ZoneSendSendExpZonein();
 	}
 }
 

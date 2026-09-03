@@ -153,39 +153,39 @@ void eqt::commands::CommandsComponent::RegisterSpellCommands()
 		auto& hotkeyMgr = eqt::input::HotkeyManager::instance();
 		if (args == "reload") {
 			if (hotkeyMgr.reload()) {
-				owner_.AddChatSystemMessage("Hotkeys reloaded successfully.");
+				ctx_.out.System("Hotkeys reloaded successfully.");
 				auto conflicts = hotkeyMgr.detectConflicts();
 				if (!conflicts.empty()) {
-					owner_.AddChatSystemMessage(fmt::format("Warning: {} hotkey conflicts detected.", conflicts.size()));
+					ctx_.out.System(fmt::format("Warning: {} hotkey conflicts detected.", conflicts.size()));
 				}
 			} else {
-				owner_.AddChatSystemMessage("Failed to reload hotkeys. Check config file.");
+				ctx_.out.System("Failed to reload hotkeys. Check config file.");
 			}
 		} else if (args == "save") {
 			if (hotkeyMgr.saveToFile()) {
-				owner_.AddChatSystemMessage("Hotkeys saved successfully.");
+				ctx_.out.System("Hotkeys saved successfully.");
 			} else {
-				owner_.AddChatSystemMessage("Failed to save hotkeys.");
+				ctx_.out.System("Failed to save hotkeys.");
 			}
 		} else if (args == "conflicts") {
 			auto conflicts = hotkeyMgr.detectConflicts();
 			if (conflicts.empty()) {
-				owner_.AddChatSystemMessage("No hotkey conflicts detected.");
+				ctx_.out.System("No hotkey conflicts detected.");
 			} else {
-				owner_.AddChatSystemMessage(fmt::format("{} hotkey conflicts:", conflicts.size()));
+				ctx_.out.System(fmt::format("{} hotkey conflicts:", conflicts.size()));
 				for (const auto& c : conflicts) {
-					owner_.AddChatSystemMessage(c.message);
+					ctx_.out.System(c.message);
 				}
 			}
 		} else if (args.empty()) {
-			owner_.AddChatSystemMessage("Hotkey commands: reload, save, conflicts");
-			owner_.AddChatSystemMessage(fmt::format("Config path: {}", hotkeyMgr.getConfigPath()));
+			ctx_.out.System("Hotkey commands: reload, save, conflicts");
+			ctx_.out.System(fmt::format("Config path: {}", hotkeyMgr.getConfigPath()));
 		} else {
-			owner_.AddChatSystemMessage("Unknown hotkey subcommand. Use: reload, save, conflicts");
+			ctx_.out.System("Unknown hotkey subcommand. Use: reload, save, conflicts");
 		}
 #else
 		(void)args;
-		owner_.AddChatSystemMessage("/hotkeys requires graphics mode (not available in this headless build).");
+		ctx_.out.System("/hotkeys requires graphics mode (not available in this headless build).");
 #endif
 	};
 	ctx_.command_registry->registerCommand(hotkeys);
@@ -212,7 +212,7 @@ void eqt::commands::CommandsComponent::RegisterSpellCommands()
 #ifdef EQT_HAS_GRAPHICS
 		runPmemDiagnostics(args.empty() ? "pmem" : args);
 #else
-		owner_.AddChatSystemMessage("/pmem requires graphics mode (not available in this headless build).");
+		ctx_.out.System("/pmem requires graphics mode (not available in this headless build).");
 #endif
 	};
 	ctx_.command_registry->registerCommand(pmem);
@@ -227,7 +227,7 @@ void eqt::commands::CommandsComponent::RegisterSpellCommands()
 	music_cmd.category = "Audio";
 	music_cmd.handler = [this](const std::string& args) {
 		if (!ctx_.audio_manager) {
-			owner_.AddChatSystemMessage("Audio system not available.");
+			ctx_.out.System("Audio system not available.");
 			return;
 		}
 
@@ -236,21 +236,21 @@ void eqt::commands::CommandsComponent::RegisterSpellCommands()
 
 		if (arg == "on") {
 			ctx_.audio_manager->resumeMusic();
-			owner_.AddChatSystemMessage("Music enabled.");
+			ctx_.out.System("Music enabled.");
 		} else if (arg == "off") {
 			ctx_.audio_manager->pauseMusic();
-			owner_.AddChatSystemMessage("Music disabled.");
+			ctx_.out.System("Music disabled.");
 		} else if (arg.empty()) {
 			// Toggle
 			if (ctx_.audio_manager->isMusicPlaying()) {
 				ctx_.audio_manager->pauseMusic();
-				owner_.AddChatSystemMessage("Music disabled.");
+				ctx_.out.System("Music disabled.");
 			} else {
 				ctx_.audio_manager->resumeMusic();
-				owner_.AddChatSystemMessage("Music enabled.");
+				ctx_.out.System("Music enabled.");
 			}
 		} else {
-			owner_.AddChatSystemMessage("Usage: /music [on|off]");
+			ctx_.out.System("Usage: /music [on|off]");
 		}
 	};
 	ctx_.command_registry->registerCommand(music_cmd);
@@ -262,7 +262,7 @@ void eqt::commands::CommandsComponent::RegisterSpellCommands()
 	sound_cmd.category = "Audio";
 	sound_cmd.handler = [this](const std::string& args) {
 		if (!ctx_.audio_manager) {
-			owner_.AddChatSystemMessage("Audio system not available.");
+			ctx_.out.System("Audio system not available.");
 			return;
 		}
 
@@ -271,17 +271,17 @@ void eqt::commands::CommandsComponent::RegisterSpellCommands()
 
 		if (arg == "on") {
 			ctx_.audio_manager->setAudioEnabled(true);
-			owner_.AddChatSystemMessage("Sound effects enabled.");
+			ctx_.out.System("Sound effects enabled.");
 		} else if (arg == "off") {
 			ctx_.audio_manager->setAudioEnabled(false);
-			owner_.AddChatSystemMessage("Sound effects disabled.");
+			ctx_.out.System("Sound effects disabled.");
 		} else if (arg.empty()) {
 			// Toggle
 			bool currentState = ctx_.audio_manager->isAudioEnabled();
 			ctx_.audio_manager->setAudioEnabled(!currentState);
-			owner_.AddChatSystemMessage(fmt::format("Sound effects {}.", !currentState ? "enabled" : "disabled"));
+			ctx_.out.System(fmt::format("Sound effects {}.", !currentState ? "enabled" : "disabled"));
 		} else {
-			owner_.AddChatSystemMessage("Usage: /sound [on|off]");
+			ctx_.out.System("Usage: /sound [on|off]");
 		}
 	};
 	ctx_.command_registry->registerCommand(sound_cmd);
@@ -294,13 +294,13 @@ void eqt::commands::CommandsComponent::RegisterSpellCommands()
 	volume_cmd.category = "Audio";
 	volume_cmd.handler = [this](const std::string& args) {
 		if (!ctx_.audio_manager) {
-			owner_.AddChatSystemMessage("Audio system not available.");
+			ctx_.out.System("Audio system not available.");
 			return;
 		}
 
 		if (args.empty()) {
 			int currentVol = static_cast<int>(ctx_.audio_manager->getMasterVolume() * 100.0f);
-			owner_.AddChatSystemMessage(fmt::format("Master volume: {}%", currentVol));
+			ctx_.out.System(fmt::format("Master volume: {}%", currentVol));
 			return;
 		}
 
@@ -308,9 +308,9 @@ void eqt::commands::CommandsComponent::RegisterSpellCommands()
 			int vol = std::stoi(args);
 			vol = std::clamp(vol, 0, 100);
 			ctx_.audio_manager->setMasterVolume(vol / 100.0f);
-			owner_.AddChatSystemMessage(fmt::format("Master volume set to {}%", vol));
+			ctx_.out.System(fmt::format("Master volume set to {}%", vol));
 		} catch (const std::exception&) {
-			owner_.AddChatSystemMessage("Usage: /volume <0-100>");
+			ctx_.out.System("Usage: /volume <0-100>");
 		}
 	};
 	ctx_.command_registry->registerCommand(volume_cmd);
@@ -323,13 +323,13 @@ void eqt::commands::CommandsComponent::RegisterSpellCommands()
 	musicvolume_cmd.category = "Audio";
 	musicvolume_cmd.handler = [this](const std::string& args) {
 		if (!ctx_.audio_manager) {
-			owner_.AddChatSystemMessage("Audio system not available.");
+			ctx_.out.System("Audio system not available.");
 			return;
 		}
 
 		if (args.empty()) {
 			int currentVol = static_cast<int>(ctx_.audio_manager->getMusicVolume() * 100.0f);
-			owner_.AddChatSystemMessage(fmt::format("Music volume: {}%", currentVol));
+			ctx_.out.System(fmt::format("Music volume: {}%", currentVol));
 			return;
 		}
 
@@ -337,9 +337,9 @@ void eqt::commands::CommandsComponent::RegisterSpellCommands()
 			int vol = std::stoi(args);
 			vol = std::clamp(vol, 0, 100);
 			ctx_.audio_manager->setMusicVolume(vol / 100.0f);
-			owner_.AddChatSystemMessage(fmt::format("Music volume set to {}%", vol));
+			ctx_.out.System(fmt::format("Music volume set to {}%", vol));
 		} catch (const std::exception&) {
-			owner_.AddChatSystemMessage("Usage: /musicvolume <0-100>");
+			ctx_.out.System("Usage: /musicvolume <0-100>");
 		}
 	};
 	ctx_.command_registry->registerCommand(musicvolume_cmd);
@@ -352,13 +352,13 @@ void eqt::commands::CommandsComponent::RegisterSpellCommands()
 	effectsvolume_cmd.category = "Audio";
 	effectsvolume_cmd.handler = [this](const std::string& args) {
 		if (!ctx_.audio_manager) {
-			owner_.AddChatSystemMessage("Audio system not available.");
+			ctx_.out.System("Audio system not available.");
 			return;
 		}
 
 		if (args.empty()) {
 			int currentVol = static_cast<int>(ctx_.audio_manager->getEffectsVolume() * 100.0f);
-			owner_.AddChatSystemMessage(fmt::format("Effects volume: {}%", currentVol));
+			ctx_.out.System(fmt::format("Effects volume: {}%", currentVol));
 			return;
 		}
 
@@ -366,9 +366,9 @@ void eqt::commands::CommandsComponent::RegisterSpellCommands()
 			int vol = std::stoi(args);
 			vol = std::clamp(vol, 0, 100);
 			ctx_.audio_manager->setEffectsVolume(vol / 100.0f);
-			owner_.AddChatSystemMessage(fmt::format("Effects volume set to {}%", vol));
+			ctx_.out.System(fmt::format("Effects volume set to {}%", vol));
 		} catch (const std::exception&) {
-			owner_.AddChatSystemMessage("Usage: /effectsvolume <0-100>");
+			ctx_.out.System("Usage: /effectsvolume <0-100>");
 		}
 	};
 	ctx_.command_registry->registerCommand(effectsvolume_cmd);
@@ -384,21 +384,21 @@ void eqt::commands::CommandsComponent::RegisterSpellCommands()
 // renderer's own ctrl+click-a-banker gesture pushes.
 void eqt::commands::CommandsComponent::RequestBankToggle()
 {
-	if (owner_.IsBankWindowOpen()) {
-		owner_.Merchant().CloseBankWindow();
+	if (ctx_.self.IsBankWindowOpen()) {
+		ctx_.Merchant().CloseBankWindow();
 		return;
 	}
 
 	uint16_t target_id = ctx_.combat_manager ? ctx_.combat_manager->GetTargetId() : 0;
 	if (target_id == 0) {
-		owner_.AddChatSystemMessage("You don't have a target - target a banker first.");
+		ctx_.out.System("You don't have a target - target a banker first.");
 		return;
 	}
 
 	if (ctx_.bridge) {
 		ctx_.bridge->pushIntent(eqt::events::BankerInteractIntent{target_id});
 	} else {
-		owner_.AddChatSystemMessage("Cannot open bank - no bridge attached.");
+		ctx_.out.System("Cannot open bank - no bridge attached.");
 	}
 }
 
@@ -415,14 +415,14 @@ void eqt::commands::CommandsComponent::RequestTraining()
 	// Check if we have a target
 	uint16_t target_id = ctx_.combat_manager ? ctx_.combat_manager->GetTargetId() : 0;
 	if (target_id == 0) {
-		owner_.AddChatSystemMessage("You must have a trainer targeted.");
+		ctx_.out.System("You must have a trainer targeted.");
 		return;
 	}
 
 	// Check if target exists
 	auto it = ctx_.entities.find(target_id);
 	if (it == ctx_.entities.end()) {
-		owner_.AddChatSystemMessage("Target not found.");
+		ctx_.out.System("Target not found.");
 		return;
 	}
 
@@ -430,7 +430,7 @@ void eqt::commands::CommandsComponent::RequestTraining()
 
 	// Check if target is an NPC (not player, not corpse)
 	if (target.npc_type != 1) {
-		owner_.AddChatSystemMessage("That is not an NPC.");
+		ctx_.out.System("That is not an NPC.");
 		return;
 	}
 
@@ -439,7 +439,7 @@ void eqt::commands::CommandsComponent::RequestTraining()
 	constexpr uint8_t CLASS_WARRIOR_GM = 20;
 	constexpr uint8_t CLASS_BERSERKER_GM = 35;
 	if (target.class_id < CLASS_WARRIOR_GM || target.class_id > CLASS_BERSERKER_GM) {
-		owner_.AddChatSystemMessage("That is not a trainer.");
+		ctx_.out.System("That is not a trainer.");
 		return;
 	}
 
@@ -463,9 +463,9 @@ void eqt::commands::CommandsComponent::RequestTraining()
 	// rather than inventing a third distance constant (the plan
 	// explicitly forbids that); see Review for the tradeoff stated
 	// plainly.
-	float dist = owner_.Movement().CalculateDistance2D(owner_.PosX(), owner_.PosY(), target.x, target.y);
+	float dist = ctx_.Movement().CalculateDistance2D(ctx_.self.PosX(), ctx_.self.PosY(), target.x, target.y);
 	if (dist > NPC_INTERACTION_DISTANCE) {
-		owner_.AddChatSystemMessage(fmt::format("You are too far away to train with {}.", target.name));
+		ctx_.out.System(fmt::format("You are too far away to train with {}.", target.name));
 		return;
 	}
 
@@ -485,11 +485,11 @@ void eqt::commands::CommandsComponent::RequestTraining()
 	constexpr uint8_t TRAINER_CLASS_OFFSET = CLASS_WARRIOR_GM - 1; // WarriorGM(20) trains Warrior(1)
 	uint32_t trained_class = static_cast<uint32_t>(target.class_id) - TRAINER_CLASS_OFFSET;
 	if (trained_class != ctx_.game_state.player().classId()) {
-		owner_.AddChatSystemMessage(fmt::format("{} trains {}s; you are a {}.",
+		ctx_.out.System(fmt::format("{} trains {}s; you are a {}.",
 			target.name, EverQuest::GetClassName(trained_class), EverQuest::GetClassName(ctx_.game_state.player().classId())));
 		return;
 	}
 
 	// Request trainer window from server
-	owner_.Merchant().RequestTrainerWindow(target_id);
+	ctx_.Merchant().RequestTrainerWindow(target_id);
 }

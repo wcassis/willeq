@@ -53,6 +53,7 @@
 #include <string>
 
 class EverQuest;
+class HCMap;
 
 namespace EQT {
 namespace Graphics {
@@ -220,6 +221,29 @@ public:
 	uint16_t& PendingScribeBookSlot() { return m_pending_scribe_book_slot; }
 	int16_t& PendingScribeSourceSlot() { return m_pending_scribe_source_slot; }
 
+	// K13 (Batch K): the ZONE ENVIRONMENT, re-homed here from EverQuest.
+	// K11 measured the shape and left the move to this unit: every one of
+	// these is WRITTEN by this family (ZoneProcessNewZone parses the fog/sky/
+	// zone-type block; LoadZoneSources/LoadZoneLines/CleanupZone own the map
+	// and the BSP tree's whole lifecycle) and READ by exactly one bridge body
+	// (BridgeComponent::CreateZoneLoadSnapshot) plus one movement body (water
+	// detection). The reference-returning accessors below are the same shape
+	// K09 gave MovementHistory() and K12 gave VendorItems().
+	std::shared_ptr<const HCMap>& ZoneMap() { return m_zone_map; }
+	// T246: the zone's collision map (null until a zone's .map is loaded);
+	// game-thread readers (SpellManager::checkLineOfSight) take a copy of
+	// the shared_ptr so a zone change cannot free it mid-query (P35).
+	std::shared_ptr<const HCMap> GetZoneMap() const { return m_zone_map; }
+	std::shared_ptr<EQT::Graphics::BspTree>& ZoneBspTree() { return m_zone_bsp_tree; }
+	std::string& ZoneBspTreeZoneName() { return m_zone_bsp_tree_zone_name; }
+	uint8_t& ZoneSkyType() { return m_zone_sky_type; }
+	uint8_t& ZoneTypeCode() { return m_zone_type; }
+	uint8_t* ZoneFogRed() { return m_zone_fog_red; }
+	uint8_t* ZoneFogGreen() { return m_zone_fog_green; }
+	uint8_t* ZoneFogBlue() { return m_zone_fog_blue; }
+	float* ZoneFogMinClip() { return m_zone_fog_minclip; }
+	float* ZoneFogMaxClip() { return m_zone_fog_maxclip; }
+
 private:
 	// Zone handshake senders reached only from inside the family.
 	void ZoneSendReqClientSpawn();
@@ -252,6 +276,38 @@ private:
 	// with the sequential loader.
 	std::shared_ptr<EQT::Graphics::PfsArchive> m_zone_archive;
 	std::shared_ptr<EQT::Graphics::WldLoader> m_zone_wld;
+
+	// K13: the zone environment (was EverQuest's).
+	//
+	// Map for Z-height calculations. shared_ptr<const HCMap> (P35): the
+	// renderer/SimulationWorker boundary holds copies of this same
+	// shared_ptr (via CollisionMapChangedData / SimulationZoneData::hcMap),
+	// so a zone-change reset() here only drops the game thread's
+	// reference -- the object survives until every renderer-side holder
+	// (collisionMap_, SimulationWorker's zoneData_.hcMap) also releases
+	// it, closing the P34-adjacent CRITICAL UAF where the game thread
+	// freed the old HCMap out from under the SimulationWorker thread
+	// mid-zone-transition. HCMap is immutable zone data (all read paths
+	// are const methods) so const-ness costs nothing on the game-thread
+	// side.
+	std::shared_ptr<const HCMap> m_zone_map;
+	// D20f2: Typed BSP tree for water detection, zone lines, collision
+	std::shared_ptr<EQT::Graphics::BspTree> m_zone_bsp_tree;
+	// P17: zone name m_zone_bsp_tree was built for (set by LoadZoneSources()
+	// and SetZoneBspTree()). Empty whenever m_zone_bsp_tree is null. Used by
+	// CreateZoneLoadSnapshot() to detect a stale tree that outlived a
+	// CleanupZone() reset. T260: LoadZoneSources() did not set it, so every
+	// zone-in since P17 skipped the region lookup with a spurious "stale"
+	// WARN (captured for '') -- see refactor/T260_bsp_region_size_max.md.
+	std::string m_zone_bsp_tree_zone_name;
+	// Zone environment data from NewZone packet
+	uint8_t m_zone_sky_type = 0;           // Sky type for rendering (0-255)
+	uint8_t m_zone_type = 0;               // Zone type (0=outdoor, 1=dungeon, etc.)
+	uint8_t m_zone_fog_red[4] = {0};       // Fog colors for 4 fog ranges
+	uint8_t m_zone_fog_green[4] = {0};
+	uint8_t m_zone_fog_blue[4] = {0};
+	float m_zone_fog_minclip[4] = {0};     // Fog min clip distances
+	float m_zone_fog_maxclip[4] = {0};     // Fog max clip distances
 
 	// Zone state
 	bool m_zone_entry_sent = false;

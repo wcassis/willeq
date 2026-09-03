@@ -116,6 +116,18 @@ public:
 	};
 	TestSentPositionUpdate Test_GetLastComputedPositionUpdate() const { return m_test_last_sent_update; }
 
+	// K13 (Batch K): the swimming/water state, re-homed here from EverQuest.
+	// This family is its sole writer (UpdateWaterState, and the reset in
+	// CleanupZone's movement half); the only reader outside it is
+	// BridgeComponent's movement-animation publish, through the accessor.
+	// EverQuest::GetWaterState()/IsSwimming()/SetSwimUp()/SetSwimDown() and
+	// m_swim_up/m_swim_down went with it -- all six had ZERO references
+	// tree-wide beyond their own definitions and were DELETED (K10
+	// correction (s)); see refactor/BOARD.md.
+	WaterState& WaterStateRef() { return m_water_state; }
+	WaterState GetWaterState() const { return m_water_state; }
+	bool IsSwimming() const { return m_water_state != WaterState::NotInWater; }
+
 private:
 	// Reached only from inside this family (measured by the compiler, K07).
 	void UpdateCombatMovement();
@@ -135,6 +147,9 @@ private:
 
 	ClientContext& ctx_;
 	EverQuest& owner_;
+
+	// K13: swimming state. Was EverQuest::m_water_state.
+	WaterState m_water_state = WaterState::NotInWater;
 
 	// Movement target timing.
 	std::chrono::steady_clock::time_point m_last_position_update_time;

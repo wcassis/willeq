@@ -56,7 +56,7 @@ void eqt::merchant::MerchantComponent::ZoneProcessCharInventory(const EQ::Net::P
 	}
 
 	// Update stats after inventory changes
-	owner_.Bridge().UpdateInventoryStats();
+	ctx_.Bridge().UpdateInventoryStats();
 }
 
 // P28: the rest of this file (ZoneProcessMoveItem through the tradeskill
@@ -76,7 +76,7 @@ void eqt::merchant::MerchantComponent::ZoneProcessMoveItem(const EQ::Net::Packet
 	}
 
 	// Update stats after item movement (may affect equipped items)
-	owner_.Bridge().UpdateInventoryStats();
+	ctx_.Bridge().UpdateInventoryStats();
 
 	// Publish InventorySlotChanged for both slots involved in the move (D18a: bridge-only)
 	// T221: the source-side occupancy write precedes the bridge guard.
@@ -235,11 +235,11 @@ std::string eqt::merchant::MerchantComponent::ScribeRefusalMessage(uint32_t spel
 	// GetClass()/GetLevel() read m_game_state.player() -- the authoritative
 	// copy. T276: this used the raw m_game_state.player().classId()/m_game_state.player().level() members, a second copy
 	// written only by the PlayerProfile handler.
-	const uint8_t reqLevel = spellData->getClassLevel(static_cast<EQ::PlayerClass>(owner_.GetClass()));
+	const uint8_t reqLevel = spellData->getClassLevel(static_cast<EQ::PlayerClass>(ctx_.self.GetClass()));
 	if (reqLevel == 255) {
 		return owner_.GetStringMessage(181);
 	}
-	if (owner_.GetLevel() < reqLevel) {
+	if (ctx_.self.GetLevel() < reqLevel) {
 		return owner_.GetFormattedStringMessage(12048, {std::to_string(reqLevel), spellData->name});
 	}
 
@@ -275,13 +275,13 @@ void eqt::merchant::MerchantComponent::ScribeSpellFromScroll(uint32_t spellId, u
 	}
 
 	if (std::string refusal = ScribeRefusalMessage(spellId); !refusal.empty()) {
-		owner_.AddChatSystemMessage(refusal);
+		ctx_.out.System(refusal);
 		LOG_DEBUG(MOD_SPELL, "Refusing to scribe spell {}: {}", spellId, refusal);
 		return;
 	}
 
 	if (bookSlot >= EQ::MAX_SPELLBOOK_SLOTS) {
-		owner_.AddChatSystemMessage("Your spellbook is full.");
+		ctx_.out.System("Your spellbook is full.");
 		return;
 	}
 
@@ -291,7 +291,7 @@ void eqt::merchant::MerchantComponent::ScribeSpellFromScroll(uint32_t spellId, u
 	if (ctx_.inventory_manager) {
 		const eqt::inventory::ItemInstance* onCursor = ctx_.inventory_manager->getCursorItem();
 		if (!onCursor || onCursor->getScrollSpellId() != spellId) {
-			owner_.AddChatSystemMessage("The scroll is not on your cursor - cannot scribe.");
+			ctx_.out.System("The scroll is not on your cursor - cannot scribe.");
 			LOG_WARN(MOD_SPELL, "Scribe aborted: cursor does not hold spell {}'s scroll", spellId);
 			return;
 		}
@@ -329,11 +329,11 @@ void eqt::merchant::MerchantComponent::ScribeSpellFromScroll(uint32_t spellId, u
 
 	// Store pending scribe state for confirmation handling (eq.cpp's
 	// HC_OP_MemorizeSpell case matches on it).
-	owner_.Zone().PendingScribeSpellId() = spellId;
-	owner_.Zone().PendingScribeBookSlot() = bookSlot;
-	owner_.Zone().PendingScribeSourceSlot() = sourceSlot;
+	ctx_.Zone().PendingScribeSpellId() = spellId;
+	ctx_.Zone().PendingScribeBookSlot() = bookSlot;
+	ctx_.Zone().PendingScribeSourceSlot() = sourceSlot;
 
-	owner_.AddChatSystemMessage(fmt::format("Scribing {}...",
+	ctx_.out.System(fmt::format("Scribing {}...",
 		spellData ? spellData->name : "spell"));
 }
 
@@ -414,29 +414,29 @@ void eqt::merchant::MerchantComponent::SendMoveCoin(const EQT::MoveCoin_Struct& 
 // BankerInteractIntent's distance check opened).
 void eqt::merchant::MerchantComponent::RequestBankCoinMove(uint8_t coinType, int32_t amount, bool fromBank)
 {
-	if (!owner_.IsBankWindowOpen()) {
-		owner_.AddChatSystemMessage("You must have a bank window open to move coins.");
+	if (!ctx_.self.IsBankWindowOpen()) {
+		ctx_.out.System("You must have a bank window open to move coins.");
 		return;
 	}
 
 	if (ctx_.bridge) {
 		ctx_.bridge->pushIntent(eqt::events::BankCurrencyMoveIntent{coinType, amount, fromBank});
 	} else {
-		owner_.AddChatSystemMessage("Cannot move coins - no bridge attached.");
+		ctx_.out.System("Cannot move coins - no bridge attached.");
 	}
 }
 
 void eqt::merchant::MerchantComponent::RequestBankCoinConvert(uint8_t fromCoinType, uint8_t toCoinType, int32_t amount)
 {
-	if (!owner_.IsBankWindowOpen()) {
-		owner_.AddChatSystemMessage("You must have a bank window open to convert coins.");
+	if (!ctx_.self.IsBankWindowOpen()) {
+		ctx_.out.System("You must have a bank window open to convert coins.");
 		return;
 	}
 
 	if (ctx_.bridge) {
 		ctx_.bridge->pushIntent(eqt::events::BankCurrencyConvertIntent{fromCoinType, toCoinType, amount});
 	} else {
-		owner_.AddChatSystemMessage("Cannot convert coins - no bridge attached.");
+		ctx_.out.System("Cannot convert coins - no bridge attached.");
 	}
 }
 
@@ -554,7 +554,7 @@ void eqt::merchant::MerchantComponent::ZoneProcessReadBook(const EQ::Net::Packet
 void eqt::merchant::MerchantComponent::SurfaceBookText(const std::string& text)
 {
 	if (text.empty()) {
-		owner_.AddChatSystemMessage("The page is blank.");
+		ctx_.out.System("The page is blank.");
 		return;
 	}
 
@@ -567,7 +567,7 @@ void eqt::merchant::MerchantComponent::SurfaceBookText(const std::string& text)
 			line.pop_back();
 		}
 		if (!line.empty()) {
-			owner_.AddChatSystemMessage(line);
+			ctx_.out.System(line);
 			any = true;
 		}
 		line.clear();
@@ -581,7 +581,7 @@ void eqt::merchant::MerchantComponent::SurfaceBookText(const std::string& text)
 	}
 	flush();
 	if (!any) {
-		owner_.AddChatSystemMessage("The page is blank.");
+		ctx_.out.System("The page is blank.");
 	}
 }
 
@@ -675,7 +675,7 @@ bool eqt::merchant::MerchantComponent::ZoneProcessTradePartnerItem(const EQ::Net
 	if (ctx_.trade_manager) {
 		std::string partnerName = ctx_.trade_manager->getPartnerName();
 		std::string itemName = item->name;
-		owner_.AddChatSystemMessage(fmt::format("{} has offered you a {}.",
+		ctx_.out.System(fmt::format("{} has offered you a {}.",
 			EQT::toDisplayName(partnerName), itemName));
 	}
 

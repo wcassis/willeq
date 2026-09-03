@@ -125,7 +125,7 @@ void eqt::player::PlayerComponent::ZoneProcessBeginCast(const EQ::Net::Packet &p
 	// T221: source-side twin of the projection's self-filter -- re-applies
 	// the echo for our own cast (castTimeMs may now be the server's, as the
 	// projection allowed); the SpellCastStarted projection is redundant.
-	if (spawn_id == owner_.GetEntityID()) {
+	if (spawn_id == ctx_.self.GetEntityID()) {
 		uint16_t self_target = ctx_.spell_manager ? ctx_.spell_manager->getCurrentTargetId() : 0;
 		ctx_.game_state.spells().setCasting(true, spell_id, self_target, cast_time);
 	}
@@ -134,7 +134,7 @@ void eqt::player::PlayerComponent::ZoneProcessBeginCast(const EQ::Net::Packet &p
 		data.casterId = spawn_id;
 		data.spellId = spell_id;
 		data.castTimeMs = cast_time;
-		if (ctx_.spell_manager && spawn_id == owner_.GetEntityID()) {
+		if (ctx_.spell_manager && spawn_id == ctx_.self.GetEntityID()) {
 			data.targetId = ctx_.spell_manager->getCurrentTargetId();
 		}
 		ctx_.bridge->pushEvent(eqt::state::GameEvent(
@@ -165,8 +165,8 @@ void eqt::player::PlayerComponent::ZoneProcessManaChange(const EQ::Net::Packet &
 	ctx_.game_state.player().setCurMana(new_mana);
 
 	// Update our entity if we're tracking it
-	if (owner_.MySpawnId() != 0) {
-		auto it = ctx_.entities.find(owner_.MySpawnId());
+	if (ctx_.self.MySpawnId() != 0) {
+		auto it = ctx_.entities.find(ctx_.self.MySpawnId());
 		if (it != ctx_.entities.end()) {
 			it->second.cur_mana = static_cast<uint16_t>(std::min(new_mana, static_cast<uint32_t>(65535)));
 		}
@@ -202,7 +202,7 @@ void eqt::player::PlayerComponent::ZoneProcessManaChange(const EQ::Net::Packet &
 
 	// T43: was #ifdef EQT_HAS_GRAPHICS -- see the identical note in
 	// eq_entities.cpp's HP-change UpdateInventoryStats() call site.
-	owner_.Bridge().UpdateInventoryStats();
+	ctx_.Bridge().UpdateInventoryStats();
 
 	// Publish PlayerStatsChanged when mana/endurance changes
 	if (ctx_.bridge) {
@@ -248,7 +248,7 @@ void eqt::player::PlayerComponent::ZoneProcessBuff(const EQ::Net::Packet &p)
 	uint32_t buff_fade = p.GetUInt32(30);
 
 	// Check if this is our buff
-	bool is_self = (entity_id == owner_.MySpawnId());
+	bool is_self = (entity_id == ctx_.self.MySpawnId());
 
 	LOG_DEBUG(MOD_SPELL, "Buff: entity={}, spell={}, slot={}, duration={}, fade={}, effect_type={}",
 		entity_id, buff.spellid, slot_id, buff.duration, buff_fade, buff.effect_type);
@@ -344,7 +344,7 @@ void eqt::player::PlayerComponent::PublishPlayerBuffs(const EQT::SpellBuff_Struc
 void eqt::player::PlayerComponent::RequestCancelBuff(const std::string& args)
 {
 	if (!ctx_.buff_manager) {
-		owner_.AddChatSystemMessage("Buff system not initialized.");
+		ctx_.out.System("Buff system not initialized.");
 		return;
 	}
 
@@ -354,7 +354,7 @@ void eqt::player::PlayerComponent::RequestCancelBuff(const std::string& args)
 	if (end != std::string::npos) arg.erase(end + 1);
 
 	if (arg.empty()) {
-		owner_.AddChatSystemMessage("Usage: /removebuff <slot# | spell name>");
+		ctx_.out.System("Usage: /removebuff <slot# | spell name>");
 		return;
 	}
 
@@ -362,7 +362,7 @@ void eqt::player::PlayerComponent::RequestCancelBuff(const std::string& args)
 	if (arg.find_first_not_of("0123456789") == std::string::npos) {
 		unsigned long n = std::strtoul(arg.c_str(), nullptr, 10);
 		if (n < 1 || n > EQ::BuffManager::MAX_PLAYER_BUFFS) {
-			owner_.AddChatSystemMessage(fmt::format("Buff slot must be 1-{}.",
+			ctx_.out.System(fmt::format("Buff slot must be 1-{}.",
 				EQ::BuffManager::MAX_PLAYER_BUFFS));
 			return;
 		}
@@ -371,7 +371,7 @@ void eqt::player::PlayerComponent::RequestCancelBuff(const std::string& args)
 	}
 
 	if (!ctx_.spell_manager) {
-		owner_.AddChatSystemMessage("Spell system not initialized.");
+		ctx_.out.System("Spell system not initialized.");
 		return;
 	}
 
@@ -405,11 +405,11 @@ void eqt::player::PlayerComponent::RequestCancelBuff(const std::string& args)
 	}
 
 	if (matchCount == 0) {
-		owner_.AddChatSystemMessage(fmt::format("You do not have a buff matching '{}'.", arg));
+		ctx_.out.System(fmt::format("You do not have a buff matching '{}'.", arg));
 		return;
 	}
 	if (matchCount > 1) {
-		owner_.AddChatSystemMessage(fmt::format("Multiple buffs match '{}': {}", arg, matchNames));
+		ctx_.out.System(fmt::format("Multiple buffs match '{}': {}", arg, matchNames));
 		return;
 	}
 	SendBuffCancelRequest(static_cast<uint8_t>(match));
@@ -434,24 +434,24 @@ void eqt::player::PlayerComponent::SendBuffCancelRequest(uint8_t slot)
 	// exist, and a slot that holds nothing. Everything else (detrimental,
 	// server-pinned) is the server's call.
 	if (slot >= EQ::BuffManager::MAX_PLAYER_BUFFS) {
-		owner_.AddChatSystemMessage(fmt::format("Buff slot must be 1-{}.",
+		ctx_.out.System(fmt::format("Buff slot must be 1-{}.",
 			EQ::BuffManager::MAX_PLAYER_BUFFS));
 		return;
 	}
 
 	const EQ::ActiveBuff* buff = ctx_.buff_manager->getPlayerBuffBySlot(slot);
 	if (!buff) {
-		owner_.AddChatSystemMessage(fmt::format("No buff in slot {}.", slot + 1));
+		ctx_.out.System(fmt::format("No buff in slot {}.", slot + 1));
 		return;
 	}
 
 	if (!ctx_.zone_connection) {
-		++owner_.m_replay_suppressed_sends;
+		ctx_.net.NoteSuppressedSend();
 		LOG_WARN(MOD_SPELL, "No zone connection, cannot cancel buff in slot {}", slot);
 		return;
 	}
 
-	auto bytes = EQ::BuildBuffCancelPacket(HC_OP_Buff, owner_.MySpawnId(), slot, *buff);
+	auto bytes = EQ::BuildBuffCancelPacket(HC_OP_Buff, ctx_.self.MySpawnId(), slot, *buff);
 
 	EQ::Net::DynamicPacket packet;
 	packet.Resize(bytes.size());
@@ -510,7 +510,7 @@ void eqt::player::PlayerComponent::ZoneProcessPetBuffWindow(const EQ::Net::Packe
 
 void eqt::player::PlayerComponent::SendApplyPoison(uint32_t inventory_slot)
 {
-	if (!owner_.IsFullyZonedIn()) {
+	if (!ctx_.self.IsFullyZonedIn()) {
 		LOG_DEBUG(MOD_ENTITY, "Cannot apply poison - not fully zoned in");
 		return;
 	}
@@ -543,9 +543,9 @@ void eqt::player::PlayerComponent::ZoneProcessApplyPoison(const EQ::Net::Packet 
 	LOG_DEBUG(MOD_ENTITY, "ApplyPoison response: slot={}, success={}", inventory_slot, success);
 
 	if (success) {
-		owner_.AddChatSystemMessage("You apply the poison to your weapon.");
+		ctx_.out.System("You apply the poison to your weapon.");
 	} else {
-		owner_.AddChatSystemMessage("You failed to apply the poison.");
+		ctx_.out.System("You failed to apply the poison.");
 	}
 }
 
@@ -565,7 +565,7 @@ void eqt::player::PlayerComponent::ZoneProcessBindWound(const EQ::Net::Packet &p
 	LOG_DEBUG(MOD_ENTITY, "BindWound response: type={} -> '{}'", type, message);
 
 	if (!message.empty()) {
-		owner_.AddChatSystemMessage(message);
+		ctx_.out.System(message);
 	}
 }
 
@@ -586,11 +586,11 @@ void eqt::player::PlayerComponent::ZoneProcessTrack(const EQ::Net::Packet &p)
 	LOG_DEBUG(MOD_ENTITY, "Track response: {} bytes, {} entries", p.Length(), entry_count);
 
 	if (entry_count == 0) {
-		owner_.AddChatSystemMessage("No trackable entities nearby.");
+		ctx_.out.System("No trackable entities nearby.");
 		return;
 	}
 
-	owner_.AddChatSystemMessage(fmt::format("=== Tracking ({} targets) ===", entry_count));
+	ctx_.out.System(fmt::format("=== Tracking ({} targets) ===", entry_count));
 
 	size_t offset = 2;  // Skip opcode
 	for (size_t i = 0; i < entry_count && offset + sizeof(EQT::Track_Struct) <= p.Length(); i++) {
@@ -605,7 +605,7 @@ void eqt::player::PlayerComponent::ZoneProcessTrack(const EQ::Net::Packet &p)
 			name = it->second.name;
 		}
 
-		owner_.AddChatSystemMessage(fmt::format("  {} - {:.0f} units", name, distance));
+		ctx_.out.System(fmt::format("  {} - {:.0f} units", name, distance));
 		LOG_DEBUG(MOD_ENTITY, "  Track entry: entity_id={}, name={}, distance={:.1f}",
 			entity_id, name, distance);
 	}

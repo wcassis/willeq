@@ -90,11 +90,11 @@ TEST_F(LoginWorldComponentTest, ReplaySeamsAcceptAnUnknownOpcode) {
 // not crashed -- m_replay_suppressed_sends stayed on EverQuest, so this pins
 // that the moved senders still reach it through owner_.
 TEST_F(LoginWorldComponentTest, SuppressedSendsAreStillCountedOnEverQuest) {
-    const uint64_t before = eq.GetReplaySuppressedSendCount();
+    const uint64_t before = eq.Net().ReplaySuppressedSendCount();
     // HC_OP_ChatMessage on the login stream -> LoginSendLogin() -> one
     // QueuePacket attempt on the null m_login_connection.
     eq.LoginWorld().ReplayLoginPacket(HC_OP_ChatMessage, nullptr, 0);
-    EXPECT_GT(eq.GetReplaySuppressedSendCount(), before);
+    EXPECT_GT(eq.Net().ReplaySuppressedSendCount(), before);
 }
 
 }  // namespace

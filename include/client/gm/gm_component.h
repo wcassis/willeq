@@ -9,19 +9,17 @@
 // the substitutions §Mechanism 4 allows (m_x -> ctx_.x / owner_.m_x,
 // Foo() -> owner_.Foo() for a method that stayed on EverQuest).
 //
-// `owner_` is the TRANSITION handle: the moved code still reaches EverQuest
-// members and methods that have not been extracted yet (PosX()/PosY()/PosZ(),
-// MySpawnId(), AddChatSystemMessage()). EverQuest declares
-// `friend class eqt::gm::GmComponent` for exactly that. K-final removes
-// both the handle and the friendship.
+// K13 REMOVED the EverQuest& transition handle and the friendship. The
+// EverQuest primitives these bodies used -- PosX()/PosY()/PosZ()/MySpawnId()
+// and AddChatSystemMessage() -- are now the context services ctx_.self and
+// ctx_.out, so this component sees nothing but ClientContext. It is the first
+// of the twelve to get there.
 
 #include "client/client_context.h"
 
 #include <cstdint>
 #include <string>
 #include <vector>
-
-class EverQuest;
 
 namespace EQ {
 namespace Net {
@@ -34,7 +32,11 @@ namespace gm {
 
 class GmComponent {
 public:
-	GmComponent(ClientContext& ctx, EverQuest& owner) : ctx_(ctx), owner_(owner) {}
+	// K13: the EverQuest& TRANSITION HANDLE is GONE from this component. It
+	// was the first to reach zero owner_. uses of any kind -- the three
+	// AddChat* primitives became ctx_.out, and PosX/PosY/PosZ/MySpawnId
+	// became ctx_.self. EverQuest no longer declares it a friend either.
+	explicit GmComponent(ClientContext& ctx) : ctx_(ctx) {}
 
 	// Senders. Were public on EverQuest; K02 deleted those declarations and
 	// retargeted the callers (eq_action_handler_extended.cpp, tests).
@@ -78,7 +80,6 @@ public:
 
 private:
 	ClientContext& ctx_;
-	EverQuest& owner_;
 
 	TestSentGMHideMe m_test_last_gm_hideme;
 	TestSentGMSummon m_test_last_gm_summon;

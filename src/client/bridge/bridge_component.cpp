@@ -113,7 +113,7 @@ bool eqt::bridge::BridgeComponent::InitGraphics(int width, int height,
 		return true;
 	}
 
-	if (owner_.m_eq_client_path.empty()) {
+	if (ctx_.eq_client_path.empty()) {
 		LOG_ERROR(MOD_GRAPHICS, "EQ client path not set. Call SetEQClientPath() first.");
 		return false;
 	}
@@ -127,14 +127,14 @@ bool eqt::bridge::BridgeComponent::InitGraphics(int width, int height,
 
 	// U07b: Wire hotbar model's save callback (bridge pointer itself is
 	// wired by wireBridgeToSubsystems() above).
-	if (owner_.m_hotbar_model) {
-		owner_.m_hotbar_model->setSaveCallback([this]() { SaveHotbarConfig(); });
+	if (ctx_.hotbar_model) {
+		ctx_.hotbar_model->setSaveCallback([this]() { SaveHotbarConfig(); });
 	}
 
 	EQT::Graphics::RendererConfig config;
 	config.width = width;
 	config.height = height;
-	config.eqClientPath = owner_.m_eq_client_path;
+	config.eqClientPath = ctx_.eq_client_path;
 	config.regionMapsPath = m_region_maps_path;
 	config.windowTitle = "WillEQ - " + ctx_.character;
 	config.lighting = false;
@@ -154,10 +154,10 @@ bool eqt::bridge::BridgeComponent::InitGraphics(int width, int height,
 	owner_.TickNetwork();
 
 	// Set collision map via bridge (shared_ptr copy, P35 — see eq.h)
-	if (owner_.m_zone_map && ctx_.bridge) {
+	if (ctx_.Zone().ZoneMap() && ctx_.bridge) {
 		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::CollisionMapChanged,
-			eqt::state::CollisionMapChangedData{owner_.m_zone_map}));
+			eqt::state::CollisionMapChangedData{ctx_.Zone().ZoneMap()}));
 	}
 
 	// One-time deferred renderer init (render distance, spell VFX)
@@ -166,12 +166,12 @@ bool eqt::bridge::BridgeComponent::InitGraphics(int width, int height,
 	}
 
 	// Setup window callbacks (all empty stubs since D20a/D20b1)
-	owner_.Merchant().SetupLootCallbacks();
-	owner_.Merchant().SetupVendorCallbacks();
-	owner_.Merchant().SetupBankCallbacks();
-	owner_.Merchant().SetupTrainerCallbacks();
-	owner_.Merchant().SetupTradeWindowCallbacks();
-	owner_.Merchant().SetupTradeskillCallbacks();
+	ctx_.Merchant().SetupLootCallbacks();
+	ctx_.Merchant().SetupVendorCallbacks();
+	ctx_.Merchant().SetupBankCallbacks();
+	ctx_.Merchant().SetupTrainerCallbacks();
+	ctx_.Merchant().SetupTradeWindowCallbacks();
+	ctx_.Merchant().SetupTradeskillCallbacks();
 
 	// S2: movement callback removed — position flows via PlayerPositionChanged intent only
 
@@ -183,7 +183,7 @@ bool eqt::bridge::BridgeComponent::InitGraphics(int width, int height,
 #endif
 
 	// If zone is already fully connected when graphics init, set zone ready
-	if (owner_.IsFullyZonedIn() && ctx_.bridge) {
+	if (ctx_.self.IsFullyZonedIn() && ctx_.bridge) {
 		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::NetworkReady,
 			eqt::state::NetworkReadyData{static_cast<uint32_t>(ctx_.entities.size()), true}));
@@ -248,8 +248,8 @@ void eqt::bridge::BridgeComponent::wireBridgeToSubsystems(eqt::bridge::GameState
 	if (ctx_.skill_manager) {
 		ctx_.skill_manager->setBridge(bridge);
 	}
-	if (owner_.m_hotbar_model) {
-		owner_.m_hotbar_model->setBridge(bridge);
+	if (ctx_.hotbar_model) {
+		ctx_.hotbar_model->setBridge(bridge);
 	}
 }
 
@@ -315,19 +315,19 @@ void eqt::bridge::BridgeComponent::PostRenderTick(float deltaTime) {
 	// NPCs sound distant. Player position is game state, no renderer query.
 	if (ctx_.audio_manager) {
 		// Convert EQ heading (0-512 clockwise from north) to forward vector
-		float headingRad = owner_.HeadingDeg() * (2.0f * static_cast<float>(M_PI)) / 512.0f;
+		float headingRad = ctx_.self.HeadingDeg() * (2.0f * static_cast<float>(M_PI)) / 512.0f;
 		float forwardX = std::sin(headingRad);
 		float forwardY = -std::cos(headingRad);
 		float forwardZ = 0.0f;
 
 		ctx_.audio_manager->setListenerPosition(
-			glm::vec3(owner_.PosX(), owner_.PosY(), owner_.PosZ()),
+			glm::vec3(ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ()),
 			glm::vec3(forwardX, forwardY, forwardZ),
 			glm::vec3(0.0f, 0.0f, 1.0f)  // Up is +Z in EQ coordinates
 		);
 
-		if (owner_.m_zone_audio_manager && owner_.m_loading_phase == LoadingPhase::COMPLETE) {
-			owner_.m_zone_audio_manager->update(deltaTime, glm::vec3(owner_.PosX(), owner_.PosY(), owner_.PosZ()), m_is_daytime);
+		if (ctx_.zone_audio_manager && owner_.m_loading_phase == LoadingPhase::COMPLETE) {
+			ctx_.zone_audio_manager->update(deltaTime, glm::vec3(ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ()), m_is_daytime);
 		}
 
 		// D20c2: Volume hotkeys handled via intents from renderer
@@ -343,23 +343,23 @@ void eqt::bridge::BridgeComponent::PostRenderTick(float deltaTime) {
 // D20c3: Create immutable snapshot of game state for zone loading thread
 eqt::ZoneLoadSnapshot eqt::bridge::BridgeComponent::CreateZoneLoadSnapshot() const {
 	eqt::ZoneLoadSnapshot snap;
-	snap.zoneName = owner_.CurrentZoneName();
-	snap.zoneId = owner_.CurrentZoneId();
-	snap.playerX = owner_.PosX();
-	snap.playerY = owner_.PosY();
-	snap.playerZ = owner_.PosZ();
-	snap.playerHeading = owner_.HeadingDeg();
-	snap.playerSpawnId = owner_.MySpawnId();
+	snap.zoneName = ctx_.self.CurrentZoneName();
+	snap.zoneId = ctx_.self.CurrentZoneId();
+	snap.playerX = ctx_.self.PosX();
+	snap.playerY = ctx_.self.PosY();
+	snap.playerZ = ctx_.self.PosZ();
+	snap.playerHeading = ctx_.self.HeadingDeg();
+	snap.playerSpawnId = ctx_.self.MySpawnId();
 	snap.playerName = ctx_.character;
 	snap.playerLevel = ctx_.game_state.player().level();
-	snap.skyType = owner_.m_zone_sky_type;
-	snap.zoneType = owner_.m_zone_type;
+	snap.skyType = ctx_.Zone().ZoneSkyType();
+	snap.zoneType = ctx_.Zone().ZoneTypeCode();
 	for (int i = 0; i < 4; i++) {
-		snap.fogRed[i] = owner_.m_zone_fog_red[i];
-		snap.fogGreen[i] = owner_.m_zone_fog_green[i];
-		snap.fogBlue[i] = owner_.m_zone_fog_blue[i];
-		snap.fogMinClip[i] = owner_.m_zone_fog_minclip[i];
-		snap.fogMaxClip[i] = owner_.m_zone_fog_maxclip[i];
+		snap.fogRed[i] = ctx_.Zone().ZoneFogRed()[i];
+		snap.fogGreen[i] = ctx_.Zone().ZoneFogGreen()[i];
+		snap.fogBlue[i] = ctx_.Zone().ZoneFogBlue()[i];
+		snap.fogMinClip[i] = ctx_.Zone().ZoneFogMinClip()[i];
+		snap.fogMaxClip[i] = ctx_.Zone().ZoneFogMaxClip()[i];
 	}
 	// Copy entities
 	snap.entities.reserve(ctx_.entities.size());
@@ -371,14 +371,14 @@ eqt::ZoneLoadSnapshot eqt::bridge::BridgeComponent::CreateZoneLoadSnapshot() con
 		snap.doors.push_back(door);
 	}
 	// Zone lines (expand geometry + extract bounding boxes)
-	if (owner_.Zone().ZoneLinesPtr() && owner_.Zone().ZoneLinesPtr()->hasZoneLines()) {
-		if (owner_.m_zone_map) {
-			owner_.Zone().ZoneLinesPtr()->expandZoneLinesToGeometry(owner_.m_zone_map.get());
+	if (ctx_.Zone().ZoneLinesPtr() && ctx_.Zone().ZoneLinesPtr()->hasZoneLines()) {
+		if (ctx_.Zone().ZoneMap()) {
+			ctx_.Zone().ZoneLinesPtr()->expandZoneLinesToGeometry(ctx_.Zone().ZoneMap().get());
 		}
-		snap.zoneLineBBoxes = owner_.Zone().ZoneLinesPtr()->getZoneLineBoundingBoxes();
+		snap.zoneLineBBoxes = ctx_.Zone().ZoneLinesPtr()->getZoneLineBoundingBoxes();
 	}
-	snap.zoneMap = owner_.m_zone_map;
-	snap.eqClientPath = owner_.m_eq_client_path;
+	snap.zoneMap = ctx_.Zone().ZoneMap();
+	snap.eqClientPath = ctx_.eq_client_path;
 
 	// P04: zoneArchive/zoneWld snapshot fields removed (never read; see
 	// zone_load_snapshot.h) — LoadZoneSources now releases both right after
@@ -404,36 +404,36 @@ eqt::ZoneLoadSnapshot eqt::bridge::BridgeComponent::CreateZoneLoadSnapshot() con
 	// playerBspRegion, and the renderer treats a SIZE_MAX camera region as
 	// "no PVS" everywhere. The former LOG_FATAL + std::exit(1) was the only
 	// effect the lookup ever had.
-	if (owner_.m_zone_bsp_tree && owner_.m_zone_bsp_tree_zone_name == owner_.CurrentZoneName()) {
-		snap.playerBspRegion = owner_.m_zone_bsp_tree->findRegionIndexForPoint(owner_.PosX(), owner_.PosY(), owner_.PosZ());
+	if (ctx_.Zone().ZoneBspTree() && ctx_.Zone().ZoneBspTreeZoneName() == ctx_.self.CurrentZoneName()) {
+		snap.playerBspRegion = ctx_.Zone().ZoneBspTree()->findRegionIndexForPoint(ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ());
 		if (snap.playerBspRegion == SIZE_MAX) {
 			LOG_WARN(MOD_MAIN, "Snapshot: player BSP region is SIZE_MAX (start position outside every "
 			         "BSP region) pos=({:.2f},{:.2f},{:.2f}) zone={} -- continuing, nothing consumes it (T260)",
-			         owner_.PosX(), owner_.PosY(), owner_.PosZ(), owner_.CurrentZoneName());
+			         ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ(), ctx_.self.CurrentZoneName());
 		} else {
 			LOG_INFO(MOD_MAIN, "Snapshot: player BSP region={} pos=({:.2f},{:.2f},{:.2f}) zone={}",
-			         snap.playerBspRegion, owner_.PosX(), owner_.PosY(), owner_.PosZ(), owner_.CurrentZoneName());
+			         snap.playerBspRegion, ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ(), ctx_.self.CurrentZoneName());
 		}
-	} else if (owner_.m_zone_bsp_tree) {
+	} else if (ctx_.Zone().ZoneBspTree()) {
 		LOG_WARN(MOD_MAIN, "Snapshot: m_zone_bsp_tree is stale (captured for '{}', current zone '{}') -- "
 		         "skipping region lookup, falling back to no-tree-yet (P17)",
-		         owner_.m_zone_bsp_tree_zone_name, owner_.CurrentZoneName());
+		         ctx_.Zone().ZoneBspTreeZoneName(), ctx_.self.CurrentZoneName());
 	}
 
 	return snap;
 }
 
 void eqt::bridge::BridgeComponent::SetZoneBspTree(std::shared_ptr<EQT::Graphics::BspTree> bsp, const std::string& builtForZone) {
-	if (bsp && builtForZone != owner_.CurrentZoneName()) {
+	if (bsp && builtForZone != ctx_.self.CurrentZoneName()) {
 		// The finalization of a load for a zone we have already left. Keep
 		// whatever LoadZoneSources() built for the current zone (or nothing).
 		LOG_WARN(MOD_MAIN, "SetZoneBspTree: rejecting tree built for '{}' (current zone '{}') -- "
 		         "late finalization of a previous load, keeping the current zone's tree (T260)",
-		         builtForZone, owner_.CurrentZoneName());
+		         builtForZone, ctx_.self.CurrentZoneName());
 		return;
 	}
-	owner_.m_zone_bsp_tree = std::move(bsp);
-	owner_.m_zone_bsp_tree_zone_name = owner_.m_zone_bsp_tree ? builtForZone : std::string();
+	ctx_.Zone().ZoneBspTree() = std::move(bsp);
+	ctx_.Zone().ZoneBspTreeZoneName() = ctx_.Zone().ZoneBspTree() ? builtForZone : std::string();
 }
 
 // D20e2: StartLoadingThread, JoinLoadingThread moved to Application
@@ -492,7 +492,7 @@ void eqt::bridge::BridgeComponent::OnSpawnAddedGraphics(const Entity& entity) {
 	data.gender = entity.gender;
 	data.npcType = entity.npc_type;
 	data.isCorpse = isCorpse;
-	data.isPlayer = (entity.spawn_id == owner_.MySpawnId());
+	data.isPlayer = (entity.spawn_id == ctx_.self.MySpawnId());
 	data.serverSize = entity.size;
 	data.face = entity.face;
 	data.haircolor = entity.haircolor;
@@ -662,7 +662,7 @@ void eqt::bridge::BridgeComponent::OnSpawnMovedGraphics(uint16_t spawn_id, float
 
 	// If this is our player entity, publish player position update
 	// so the camera follows the server-authoritative position
-	if (spawn_id == owner_.MySpawnId()) {
+	if (spawn_id == ctx_.self.MySpawnId()) {
 		// Convert heading from degrees (0-360) to EQ format (0-512)
 		float heading_512 = heading * 512.0f / 360.0f;
 		eqt::state::PlayerMovedData pdata;
@@ -711,17 +711,17 @@ void eqt::bridge::BridgeComponent::OnGraphicsMovement(const eqt::events::PlayerP
 	// A z the RENDERER produced is definitively in the render frame, whatever
 	// state the self-spawn left behind (T311).
 	ctx_.game_state.player().setZAwaitingFrameConversion(false);
-	owner_.SetPosLocal(update.x, update.y, update.z);  // node-origin (render-frame) Z from the renderer
+	ctx_.self.SetPosLocal(update.x, update.y, update.z);  // node-origin (render-frame) Z from the renderer
 	// Convert heading from EQ format (0-512) to degrees (0-360) for internal use
-	owner_.SetHeadingLocal(update.heading * 360.0f / 512.0f);
+	ctx_.self.SetHeadingLocal(update.heading * 360.0f / 512.0f);
 
 	// Check water state at new position
-	owner_.Movement().UpdateWaterState();
+	ctx_.Movement().UpdateWaterState();
 
 	// Derive movement state from velocity
 	float speed2D = std::sqrt(update.dx * update.dx + update.dy * update.dy);
 	float speed3D = std::sqrt(speed2D * speed2D + update.dz * update.dz);
-	bool isMoving = (owner_.m_water_state != WaterState::NotInWater) ? speed3D > 0.01f : speed2D > 0.01f;
+	bool isMoving = (ctx_.Movement().GetWaterState() != WaterState::NotInWater) ? speed3D > 0.01f : speed2D > 0.01f;
 	ctx_.game_state.player().setMoving(isMoving);
 
 	// Determine if moving backward by comparing velocity direction to heading
@@ -736,7 +736,7 @@ void eqt::bridge::BridgeComponent::OnGraphicsMovement(const eqt::events::PlayerP
 	bool isMovingBackward = isMoving && dotProduct < -0.01f;
 
 	// Determine animation based on movement state
-	if (owner_.m_water_state != WaterState::NotInWater) {
+	if (ctx_.Movement().GetWaterState() != WaterState::NotInWater) {
 		// Swimming animations
 		// Animation code 7 = swimming/treading, 6 = swim idle
 		if (isMoving) {
@@ -759,14 +759,14 @@ void eqt::bridge::BridgeComponent::OnGraphicsMovement(const eqt::events::PlayerP
 	if (EverQuest::s_debug_level >= 2) {
 		LOG_DEBUG(MOD_MOVEMENT, "OnGraphicsMovement: pos=({:.2f},{:.2f},{:.2f}) heading={:.1f} vel=({:.2f},{:.2f},{:.2f}) anim={} water={}",
 			update.x, update.y, update.z, update.heading, update.dx, update.dy, update.dz, ctx_.game_state.player().animation(),
-			static_cast<int>(owner_.m_water_state));
+			static_cast<int>(ctx_.Movement().GetWaterState()));
 	}
 
 	// Check for zone line collision
-	owner_.Zone().CheckZoneLine();
+	ctx_.Zone().CheckZoneLine();
 
 	// SendPositionUpdate has internal 250ms throttling
-	owner_.Movement().SendPositionUpdate();
+	ctx_.Movement().SendPositionUpdate();
 }
 
 // ============================================================================

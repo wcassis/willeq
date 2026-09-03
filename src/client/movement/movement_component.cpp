@@ -95,7 +95,7 @@ void eqt::movement::MovementComponent::Move(float x, float y, float z)
 
 void eqt::movement::MovementComponent::MoveToEntity(const std::string &name)
 {
-	Entity* entity = owner_.Entities().FindEntityByName(name);
+	Entity* entity = ctx_.Entities().FindEntityByName(name);
 	if (entity) {
 		if (EverQuest::s_debug_level >= 1) {
 			std::cout << fmt::format("Found entity '{}' at ({:.2f}, {:.2f}, {:.2f})", 
@@ -111,7 +111,7 @@ void eqt::movement::MovementComponent::MoveToEntity(const std::string &name)
 
 void eqt::movement::MovementComponent::MoveToEntityWithinRange(const std::string &name, float stop_distance)
 {
-	Entity* entity = owner_.Entities().FindEntityByName(name);
+	Entity* entity = ctx_.Entities().FindEntityByName(name);
 	if (entity) {
 		if (EverQuest::s_debug_level >= 1) {
 			std::cout << fmt::format("Found entity '{}' at ({:.2f}, {:.2f}, {:.2f}), stopping within {:.1f} units", 
@@ -119,9 +119,9 @@ void eqt::movement::MovementComponent::MoveToEntityWithinRange(const std::string
 		}
 		
 		// Calculate current distance
-		float dx = entity->x - owner_.PosX();
-		float dy = entity->y - owner_.PosY();
-		float dz = entity->z - owner_.PosZ();
+		float dx = entity->x - ctx_.self.PosX();
+		float dy = entity->y - ctx_.self.PosY();
+		float dz = entity->z - ctx_.self.PosZ();
 		float dist = std::sqrt(dx*dx + dy*dy + dz*dz);
 		
 		// If we're already within range, don't move
@@ -146,17 +146,17 @@ void eqt::movement::MovementComponent::MoveToEntityWithinRange(const std::string
 		float predicted_z = entity->z + entity->delta_z * time_to_reach;
 		
 		// Calculate direction to predicted position
-		dx = predicted_x - owner_.PosX();
-		dy = predicted_y - owner_.PosY();
-		dz = predicted_z - owner_.PosZ();
+		dx = predicted_x - ctx_.self.PosX();
+		dy = predicted_y - ctx_.self.PosY();
+		dz = predicted_z - ctx_.self.PosZ();
 		dist = std::sqrt(dx*dx + dy*dy + dz*dz);
 		
 		// Calculate position to stop at (stop_distance units away from predicted position)
 		// We want to move to 80% of the stop distance to ensure we're well within range
 		float move_ratio = (dist - stop_distance * 0.8f) / dist;
-		float target_x = owner_.PosX() + dx * move_ratio;
-		float target_y = owner_.PosY() + dy * move_ratio;
-		float target_z = owner_.PosZ() + dz * move_ratio;
+		float target_x = ctx_.self.PosX() + dx * move_ratio;
+		float target_y = ctx_.self.PosY() + dy * move_ratio;
+		float target_z = ctx_.self.PosZ() + dz * move_ratio;
 		
 		if (EverQuest::s_debug_level >= 2) {
 			LOG_DEBUG(MOD_MAIN, "Predictive targeting: entity at ({:.1f},{:.1f},{:.1f}), velocity ({:.1f},{:.1f},{:.1f})", entity->x, entity->y, entity->z, entity->delta_x, entity->delta_y, entity->delta_z);
@@ -171,7 +171,7 @@ void eqt::movement::MovementComponent::MoveToEntityWithinRange(const std::string
 			// Just set the target and let the movement system handle it
 			ctx_.game_state.player().setMovementTarget(target_x, target_y, target_z);
 			ctx_.game_state.player().setMoving(true);
-			owner_.SetHeadingLocal(CalculateHeading(owner_.PosX(), owner_.PosY(), predicted_x, predicted_y));
+			ctx_.self.SetHeadingLocal(CalculateHeading(ctx_.self.PosX(), ctx_.self.PosY(), predicted_x, predicted_y));
 			
 			if (EverQuest::s_debug_level >= 1) {
 				LOG_DEBUG(MOD_MAIN, "Non-blocking combat movement initiated");
@@ -186,7 +186,7 @@ void eqt::movement::MovementComponent::MoveToEntityWithinRange(const std::string
 
 void eqt::movement::MovementComponent::Follow(const std::string &name)
 {
-	Entity* entity = owner_.Entities().FindEntityByName(name);
+	Entity* entity = ctx_.Entities().FindEntityByName(name);
 	if (entity) {
 		ctx_.game_state.player().setFollowTarget(entity->name);  // Store the actual entity name
 		std::cout << fmt::format("Following {}", entity->name) << std::endl;
@@ -195,13 +195,13 @@ void eqt::movement::MovementComponent::Follow(const std::string &name)
 		if (m_use_pathfinding && m_pathfinder) {
 			LOG_DEBUG(MOD_MAIN, "Follow: Pathfinding enabled, m_pathfinder={}", 
 				m_pathfinder ? "valid" : "null");
-			float dist = CalculateDistance2D(owner_.PosX(), owner_.PosY(), entity->x, entity->y);
+			float dist = CalculateDistance2D(ctx_.self.PosX(), ctx_.self.PosY(), entity->x, entity->y);
 			LOG_DEBUG(MOD_MAIN, "Follow: Distance to target: {:.2f}, follow_distance: {:.2f}", 
 				dist, ctx_.game_state.player().followDistance());
 			if (dist > ctx_.game_state.player().followDistance()) {
 				// Find path from current position to target
-				LOG_DEBUG(MOD_MAIN, "Follow: Calculating path from ({:.2f},{:.2f},{:.2f}) to ({:.2f},{:.2f},{:.2f})", owner_.PosX(), owner_.PosY(), owner_.PosZ(), entity->x, entity->y, entity->z);
-				if (FindPath(owner_.PosX(), owner_.PosY(), owner_.PosZ(), entity->x, entity->y, entity->z)) {
+				LOG_DEBUG(MOD_MAIN, "Follow: Calculating path from ({:.2f},{:.2f},{:.2f}) to ({:.2f},{:.2f},{:.2f})", ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ(), entity->x, entity->y, entity->z);
+				if (FindPath(ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ(), entity->x, entity->y, entity->z)) {
 					// Start following the path
 					m_current_path_index = 0;
 					ctx_.game_state.player().setMoving(true);
@@ -237,7 +237,7 @@ void eqt::movement::MovementComponent::StopFollow()
 
 void eqt::movement::MovementComponent::StartCombatMovement(const std::string &name, float stop_distance)
 {
-	Entity* entity = owner_.Entities().FindEntityByName(name);
+	Entity* entity = ctx_.Entities().FindEntityByName(name);
 	if (entity) {
 		// Phase 7.6 / T286: CombatState is the only store
 		ctx_.game_state.combat().setCombatTarget(entity->name);
@@ -292,7 +292,7 @@ void eqt::movement::MovementComponent::UpdateCombatMovement()
 		return;
 	}
 	
-	Entity* entity = owner_.Entities().FindEntityByName(ctx_.game_state.combat().combatTarget());
+	Entity* entity = ctx_.Entities().FindEntityByName(ctx_.game_state.combat().combatTarget());
 	if (!entity) {
 		// Target disappeared
 		ctx_.game_state.combat().setInCombatMovement(false);  // Phase 7.6 / T286
@@ -301,9 +301,9 @@ void eqt::movement::MovementComponent::UpdateCombatMovement()
 	}
 	
 	// Calculate current distance
-	float dx = entity->x - owner_.PosX();
-	float dy = entity->y - owner_.PosY();
-	float dz = entity->z - owner_.PosZ();
+	float dx = entity->x - ctx_.self.PosX();
+	float dy = entity->y - ctx_.self.PosY();
+	float dz = entity->z - ctx_.self.PosZ();
 	float dist = std::sqrt(dx*dx + dy*dy + dz*dz);
 	
 	// Check if we're within range
@@ -376,18 +376,18 @@ void eqt::movement::MovementComponent::UpdateCombatMovement()
 				float predicted_z = entity->z + entity->delta_z * time_to_reach;
 				
 				// Recalculate direction to predicted position
-				dx = predicted_x - owner_.PosX();
-				dy = predicted_y - owner_.PosY();
-				dz = predicted_z - owner_.PosZ();
+				dx = predicted_x - ctx_.self.PosX();
+				dy = predicted_y - ctx_.self.PosY();
+				dz = predicted_z - ctx_.self.PosZ();
 				dist = std::sqrt(dx*dx + dy*dy + dz*dz);
 			}
 			
 			// Calculate new position to move to
 			float move_ratio = (dist - ctx_.game_state.combat().combatStopDistance() * 0.8f) / dist;
-			ctx_.game_state.player().setMovementTarget(owner_.PosX() + dx * move_ratio, owner_.PosY() + dy * move_ratio, owner_.PosZ() + dz * move_ratio);
+			ctx_.game_state.player().setMovementTarget(ctx_.self.PosX() + dx * move_ratio, ctx_.self.PosY() + dy * move_ratio, ctx_.self.PosZ() + dz * move_ratio);
 			
 			// Update heading and start moving
-			owner_.SetHeadingLocal(CalculateHeading(owner_.PosX(), owner_.PosY(), ctx_.game_state.player().targetX(), ctx_.game_state.player().targetY()));
+			ctx_.self.SetHeadingLocal(CalculateHeading(ctx_.self.PosX(), ctx_.self.PosY(), ctx_.game_state.player().targetX(), ctx_.game_state.player().targetY()));
 			
 			LOG_DEBUG(MOD_MOVEMENT, "Combat movement (direct): Set target=({:.1f},{:.1f},{:.1f})", ctx_.game_state.player().targetX(), ctx_.game_state.player().targetY(), ctx_.game_state.player().targetZ());
 		} else {
@@ -398,7 +398,7 @@ void eqt::movement::MovementComponent::UpdateCombatMovement()
 		ctx_.game_state.player().setMoving(true);
 		ctx_.game_state.combat().setLastCombatMovementUpdate(now);  // T286
 		
-		LOG_DEBUG(MOD_MOVEMENT, "Combat movement: from ({:.1f},{:.1f},{:.1f}) to target {} at ({:.1f},{:.1f},{:.1f}), dist={:.1f}, stop_dist={:.1f}", owner_.PosX(), owner_.PosY(), owner_.PosZ(), entity->name, entity->x, entity->y, entity->z, dist, ctx_.game_state.combat().combatStopDistance());
+		LOG_DEBUG(MOD_MOVEMENT, "Combat movement: from ({:.1f},{:.1f},{:.1f}) to target {} at ({:.1f},{:.1f},{:.1f}), dist={:.1f}, stop_dist={:.1f}", ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ(), entity->name, entity->x, entity->y, entity->z, dist, ctx_.game_state.combat().combatStopDistance());
 		LOG_DEBUG(MOD_MOVEMENT, "Combat movement: moving to ({:.1f},{:.1f},{:.1f}), m_game_state.player().isMoving() set to {}",
 			ctx_.game_state.player().targetX(), ctx_.game_state.player().targetY(), ctx_.game_state.player().targetZ(), ctx_.game_state.player().isMoving());
 		
@@ -414,21 +414,21 @@ void eqt::movement::MovementComponent::UpdateCombatMovement()
 void eqt::movement::MovementComponent::Face(float x, float y, float z)
 {
 	// Calculate heading to face the given position
-	float new_heading = CalculateHeading(owner_.PosX(), owner_.PosY(), x, y);
+	float new_heading = CalculateHeading(ctx_.self.PosX(), ctx_.self.PosY(), x, y);
 	
 	if (EverQuest::s_debug_level >= 2) {
-		LOG_DEBUG(MOD_MAIN, "Face: current pos ({:.1f},{:.1f}), target ({:.1f},{:.1f}), old heading {:.1f}°, new heading {:.1f}°", owner_.PosX(), owner_.PosY(), x, y, owner_.HeadingDeg(), new_heading);
+		LOG_DEBUG(MOD_MAIN, "Face: current pos ({:.1f},{:.1f}), target ({:.1f},{:.1f}), old heading {:.1f}°, new heading {:.1f}°", ctx_.self.PosX(), ctx_.self.PosY(), x, y, ctx_.self.HeadingDeg(), new_heading);
 	}
 	
 	// Always update heading - even small changes should be sent
 	// The previous 0.1f threshold was preventing the face command from working
-	owner_.SetHeadingLocal(new_heading);
+	ctx_.self.SetHeadingLocal(new_heading);
 	SendPositionUpdate();
 }
 
 void eqt::movement::MovementComponent::FaceEntity(const std::string &name)
 {
-	Entity* entity = owner_.Entities().FindEntityByName(name);
+	Entity* entity = ctx_.Entities().FindEntityByName(name);
 	if (entity) {
 		if (EverQuest::s_debug_level >= 2) {
 			std::cout << fmt::format("Facing entity '{}'", entity->name) << std::endl;
@@ -442,29 +442,29 @@ void eqt::movement::MovementComponent::FaceEntity(const std::string &name)
 void eqt::movement::MovementComponent::MoveTo(float x, float y, float z)
 {
 	// Trace who's calling MoveTo
-	if (EverQuest::s_debug_level >= 1 && std::abs(x - owner_.PosX()) < 0.1f && std::abs(y - owner_.PosY()) < 0.1f) {
-		LOG_DEBUG(MOD_MAIN, "WARNING: MoveTo called with current position! target=({:.2f},{:.2f},{:.2f}) current=({:.2f},{:.2f},{:.2f})", x, y, z, owner_.PosX(), owner_.PosY(), owner_.PosZ());
+	if (EverQuest::s_debug_level >= 1 && std::abs(x - ctx_.self.PosX()) < 0.1f && std::abs(y - ctx_.self.PosY()) < 0.1f) {
+		LOG_DEBUG(MOD_MAIN, "WARNING: MoveTo called with current position! target=({:.2f},{:.2f},{:.2f}) current=({:.2f},{:.2f},{:.2f})", x, y, z, ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ());
 	}
 	
 	ctx_.game_state.player().setMovementTarget(x, y, z);
 	ctx_.game_state.player().setMoving(true);
 	
 	// Calculate initial heading towards target
-	float new_heading = CalculateHeading(owner_.PosX(), owner_.PosY(), x, y);
-	owner_.SetHeadingLocal(new_heading);
+	float new_heading = CalculateHeading(ctx_.self.PosX(), ctx_.self.PosY(), x, y);
+	ctx_.self.SetHeadingLocal(new_heading);
 	// Send immediate position update to show the heading change
 	SendPositionUpdate();
 	
 	if (EverQuest::s_debug_level >= 1) {
 		LOG_DEBUG(MOD_MAIN, "MoveTo: Setting target=({:.2f}, {:.2f}, {:.2f}) from current=({:.2f}, {:.2f}, {:.2f}), heading={:.1f}, m_game_state.player().isMoving()={}", 
-			x, y, z, owner_.PosX(), owner_.PosY(), owner_.PosZ(), owner_.HeadingDeg(), ctx_.game_state.player().isMoving());
+			x, y, z, ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ(), ctx_.self.HeadingDeg(), ctx_.game_state.player().isMoving());
 	}
 }
 
 void eqt::movement::MovementComponent::Test_SnapToMovementTargetForSeam()
 {
 	// T88 test seam: see declaration comment in eq.h.
-	owner_.SetPosLocal(ctx_.game_state.player().targetX(), ctx_.game_state.player().targetY(),
+	ctx_.self.SetPosLocal(ctx_.game_state.player().targetX(), ctx_.game_state.player().targetY(),
 	            ctx_.game_state.player().targetZ());
 	StopMovement();
 }

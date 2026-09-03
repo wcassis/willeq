@@ -305,6 +305,10 @@ SET(CLIENT_CORE_SOURCES
     src/client/movement/movement_state.cpp
     src/client/chat/chat_component.cpp
     src/client/eq_chat.cpp
+    # K13 (Batch K): the three context services.
+    src/client/chat_output.cpp
+    src/client/player_facade.cpp
+    src/client/packet_sender.cpp
     src/client/commands/combat_actions.cpp
     src/client/combat.cpp
     src/client/combat_rounds.cpp

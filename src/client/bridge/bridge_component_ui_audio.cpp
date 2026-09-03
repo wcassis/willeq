@@ -126,7 +126,7 @@ void eqt::bridge::BridgeComponent::UpdateInventoryStats() {
 		}
 
 		// Update our entity's weapon skill types
-		auto it = ctx_.entities.find(owner_.MySpawnId());
+		auto it = ctx_.entities.find(ctx_.self.MySpawnId());
 		if (it != ctx_.entities.end()) {
 			it->second.primary_weapon_skill = primaryWeaponSkill;
 			it->second.secondary_weapon_skill = secondaryWeaponSkill;
@@ -135,7 +135,7 @@ void eqt::bridge::BridgeComponent::UpdateInventoryStats() {
 		// Propagate weapon skill types via bridge (D17b: bridge is sole path to renderer)
 		if (ctx_.bridge) {
 			eqt::state::EntityWeaponSkillsChangedData data;
-			data.spawnId = owner_.MySpawnId();
+			data.spawnId = ctx_.self.MySpawnId();
 			data.primaryWeaponSkill = primaryWeaponSkill;
 			data.secondaryWeaponSkill = secondaryWeaponSkill;
 			ctx_.bridge->pushEvent(eqt::state::GameEvent(
@@ -207,7 +207,7 @@ void eqt::bridge::BridgeComponent::RequestLootCorpse(uint16_t corpseId) {
 	EQ::Net::DynamicPacket packet;
 	packet.Resize(4);
 	packet.PutUInt32(0, corpseId);
-	owner_.QueuePacket(HC_OP_LootRequest, &packet);
+	ctx_.net.Queue(HC_OP_LootRequest, &packet);
 
 	// Clear game-side loot items for new corpse
 	m_loot_items.clear();
@@ -229,7 +229,7 @@ void eqt::bridge::BridgeComponent::RequestLootCorpse(uint16_t corpseId) {
 
 bool eqt::bridge::BridgeComponent::LootItemFromCorpse(uint16_t corpseId, int16_t slot, bool autoLoot) {
 	LOG_DEBUG(MOD_INVENTORY, "LootItemFromCorpse: corpseId={} slot={} autoLoot={} lootingCorpseId={} mySpawnId={}",
-		corpseId, slot, autoLoot, ctx_.game_state.player().lootingCorpseId(), owner_.MySpawnId());
+		corpseId, slot, autoLoot, ctx_.game_state.player().lootingCorpseId(), ctx_.self.MySpawnId());
 
 	// T268: no window, nothing to take -- eqemu would answer a bare
 	// OP_LootItem with an EndLoot error anyway (Corpse::LootCorpseItem's
@@ -262,7 +262,7 @@ bool eqt::bridge::BridgeComponent::LootItemFromCorpse(uint16_t corpseId, int16_t
 	packet.Resize(sizeof(LootingItem_Struct));
 	LootingItem_Struct* li = (LootingItem_Struct*)packet.Data();
 	li->lootee = corpseId;
-	li->looter = owner_.MySpawnId();
+	li->looter = ctx_.self.MySpawnId();
 	li->slot_id = static_cast<uint16_t>(slot);
 	li->unknown3[0] = 0;
 	li->unknown3[1] = 0;
@@ -282,7 +282,7 @@ bool eqt::bridge::BridgeComponent::LootItemFromCorpse(uint16_t corpseId, int16_t
 	LOG_DEBUG(MOD_INVENTORY, "OP_LootItem: lootee={} looter={} slot_id={} auto_loot={}",
 		li->lootee, li->looter, li->slot_id, li->auto_loot);
 
-	owner_.QueuePacket(HC_OP_LootItem, &packet);
+	ctx_.net.Queue(HC_OP_LootItem, &packet);
 	return true;
 }
 
@@ -332,7 +332,7 @@ void eqt::bridge::BridgeComponent::CloseLootWindow(uint16_t corpseId) {
 	packet.Resize(4);
 	packet.PutUInt16(0, targetCorpseId);
 	packet.PutUInt16(2, 0);  // padding
-	owner_.QueuePacket(HC_OP_EndLootRequest, &packet);
+	ctx_.net.Queue(HC_OP_EndLootRequest, &packet);
 	LOG_DEBUG(MOD_INVENTORY, "CloseLootWindow: Sent HC_OP_EndLootRequest with corpseId={}", targetCorpseId);
 
 	// Clear game-side loot items
@@ -413,28 +413,28 @@ const Json::Value* eqt::bridge::BridgeComponent::ResolveClientConfigForRead(cons
 }
 
 void eqt::bridge::BridgeComponent::SaveHotbarConfig() {
-	if (m_config_path.empty() || !owner_.m_hotbar_model) return;
+	if (m_config_path.empty() || !ctx_.hotbar_model) return;
 
 	auto config = EQ::JsonConfigFile::Load(m_config_path);
 	Json::Value& root = config.RawHandle();
 
 	Json::Value* clientConfig = ResolveClientConfigForWrite(root);
 	if (clientConfig && clientConfig->isObject()) {
-		(*clientConfig)["hotbar"] = owner_.m_hotbar_model->saveToJson();
+		(*clientConfig)["hotbar"] = ctx_.hotbar_model->saveToJson();
 		config.Save(m_config_path);
 		LOG_DEBUG(MOD_CONFIG, "Saved hotbar config to {}", m_config_path);
 	}
 }
 
 void eqt::bridge::BridgeComponent::LoadHotbarConfig() {
-	if (m_config_path.empty() || !owner_.m_hotbar_model) return;
+	if (m_config_path.empty() || !ctx_.hotbar_model) return;
 
 	auto config = EQ::JsonConfigFile::Load(m_config_path);
 	const Json::Value& root = config.RawHandle();
 
 	const Json::Value* clientConfig = ResolveClientConfigForRead(root);
 	if (clientConfig && clientConfig->isObject() && clientConfig->isMember("hotbar")) {
-		owner_.m_hotbar_model->loadFromJson((*clientConfig)["hotbar"]);
+		ctx_.hotbar_model->loadFromJson((*clientConfig)["hotbar"]);
 		LOG_DEBUG(MOD_CONFIG, "Loaded hotbar config from {}", m_config_path);
 	} else {
 		LOG_DEBUG(MOD_CONFIG, "No hotbar config found in {}", m_config_path);
@@ -515,7 +515,7 @@ void eqt::bridge::BridgeComponent::InitializeAudio() {
 	// EQT_GRAPHICS=OFF + WITH_AUDIO=ON build could never find its sound
 	// assets and audio silently stayed disabled ("EQ client path not set")
 	// even though the path had actually been configured.
-	std::string eqPath = owner_.m_eq_client_path;
+	std::string eqPath = ctx_.eq_client_path;
 
 	if (eqPath.empty()) {
 		LOG_WARN(MOD_AUDIO, "EQ client path not set, audio disabled");
@@ -574,8 +574,8 @@ void eqt::bridge::BridgeComponent::InitializeAudio() {
 	ctx_.audio_manager->preloadCommonSounds();
 
 	// Phase 13: Initialize zone audio manager for positioned sound emitters
-	owner_.m_zone_audio_manager = std::make_unique<EQT::Audio::ZoneAudioManager>();
-	owner_.m_zone_audio_manager->setAudioManager(ctx_.audio_manager.get());
+	ctx_.zone_audio_manager = std::make_unique<EQT::Audio::ZoneAudioManager>();
+	ctx_.zone_audio_manager->setAudioManager(ctx_.audio_manager.get());
 	LOG_DEBUG(MOD_AUDIO, "Zone audio manager initialized");
 
 	LOG_INFO(MOD_AUDIO, "Audio system initialized");
@@ -583,9 +583,9 @@ void eqt::bridge::BridgeComponent::InitializeAudio() {
 
 void eqt::bridge::BridgeComponent::ShutdownAudio() {
 	// Shut down zone audio manager first
-	if (owner_.m_zone_audio_manager) {
-		owner_.m_zone_audio_manager->unloadZone();
-		owner_.m_zone_audio_manager.reset();
+	if (ctx_.zone_audio_manager) {
+		ctx_.zone_audio_manager->unloadZone();
+		ctx_.zone_audio_manager.reset();
 	}
 
 	if (ctx_.audio_manager) {
@@ -605,8 +605,8 @@ void eqt::bridge::BridgeComponent::UpdateDayNightState() {
 	m_is_daytime = (ctx_.game_state.world().timeHour() >= 6 && ctx_.game_state.world().timeHour() < 19);
 
 	// If day/night state changed, notify zone audio manager
-	if (wasDay != m_is_daytime && owner_.m_zone_audio_manager) {
-		owner_.m_zone_audio_manager->setDayNight(m_is_daytime);
+	if (wasDay != m_is_daytime && ctx_.zone_audio_manager) {
+		ctx_.zone_audio_manager->setDayNight(m_is_daytime);
 		LOG_DEBUG(MOD_AUDIO, "Day/night changed to {} (hour {})",
 			m_is_daytime ? "day" : "night", ctx_.game_state.world().timeHour());
 	}
@@ -631,20 +631,20 @@ void eqt::bridge::BridgeComponent::PlaySound(uint32_t soundId) {
 // no intent carrying an index) and is a superset of what the mouse path did.
 bool eqt::bridge::BridgeComponent::UseInventoryItem(int16_t slot) {
 	if (!ctx_.inventory_manager) {
-		owner_.AddChatSystemMessage("Item not found in inventory");
+		ctx_.out.System("Item not found in inventory");
 		return false;
 	}
 	const auto* item = ctx_.inventory_manager->getItem(slot);
 	if (!item) {
-		owner_.AddChatSystemMessage("Item not found");
+		ctx_.out.System("Item not found");
 		return false;
 	}
 	if (item->clickEffect.effectId == 0) {
-		owner_.AddChatSystemMessage(fmt::format("{} has no click effect", item->name));
+		ctx_.out.System(fmt::format("{} has no click effect", item->name));
 		return false;
 	}
 	if (item->clickEffect.type == 5 && slot >= eqt::inventory::GENERAL_BEGIN) {
-		owner_.AddChatSystemMessage("You must equip this item to use its effect");
+		ctx_.out.System("You must equip this item to use its effect");
 		return false;
 	}
 	EQ::Net::DynamicPacket packet;
@@ -655,13 +655,13 @@ bool eqt::bridge::BridgeComponent::UseInventoryItem(int16_t slot) {
 	uint16_t targetId = ctx_.combat_manager ? ctx_.combat_manager->GetTargetId() : 0;
 	packet.PutUInt32(12, targetId);
 	packet.PutUInt32(16, 0);
-	owner_.QueuePacket(HC_OP_CastSpell, &packet);
-	owner_.AddChatSystemMessage(fmt::format("Using {}", item->name));
+	ctx_.net.Queue(HC_OP_CastSpell, &packet);
+	ctx_.out.System(fmt::format("Using {}", item->name));
 
 	// Cooldown feedback to the renderer for every hotbar slot holding this item.
-	if (item->clickEffect.recastDelay > 0 && ctx_.bridge && owner_.m_hotbar_model) {
-		for (int idx = 0; idx < owner_.m_hotbar_model->getSlotCount(); ++idx) {
-			const eqt::HotbarSlot& hs = owner_.m_hotbar_model->getSlot(idx);
+	if (item->clickEffect.recastDelay > 0 && ctx_.bridge && ctx_.hotbar_model) {
+		for (int idx = 0; idx < ctx_.hotbar_model->getSlotCount(); ++idx) {
+			const eqt::HotbarSlot& hs = ctx_.hotbar_model->getSlot(idx);
 			if (hs.type != eqt::HotbarSlotType::Item || hs.id != item->itemId) continue;
 			eqt::state::HotbarCooldownStartedData cd;
 			cd.index = idx;
@@ -687,15 +687,15 @@ bool eqt::bridge::BridgeComponent::ActivateHotbarCommandSlot(eqt::HotbarSlotType
 	case eqt::HotbarSlotType::Emote:
 	case eqt::HotbarSlotType::Macro:
 		if (text.empty()) {
-			owner_.AddChatSystemMessage("Hotbar slot has no command");
+			ctx_.out.System("Hotbar slot has no command");
 			return false;
 		}
-		owner_.Chat().ProcessChatInput(text);
+		ctx_.Chat().ProcessChatInput(text);
 		return true;
 	case eqt::HotbarSlotType::Combat:
 		if (!ctx_.combat_manager) return false;
 		if (!ctx_.combat_manager->IsAutoAttackEnabled() && !ctx_.combat_manager->HasTarget()) {
-			owner_.AddChatSystemMessage("You must have a target to attack");
+			ctx_.out.System("You must have a target to attack");
 			return false;
 		}
 		ctx_.combat_manager->ToggleAutoAttack();

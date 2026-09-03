@@ -222,11 +222,11 @@ void eqt::commands::CommandsComponent::RequestWarp(const std::string& args)
 				y = it->second.y;
 				z = it->second.z;
 				found_destination = true;
-				owner_.AddChatSystemMessage(fmt::format("Warping to target: {}", it->second.name));
+				ctx_.out.System(fmt::format("Warping to target: {}", it->second.name));
 			}
 		}
 		if (!found_destination) {
-			owner_.AddChatSystemMessage("Usage: /warp [x y z | entity_name] (or target an entity first)");
+			ctx_.out.System("Usage: /warp [x y z | entity_name] (or target an entity first)");
 			return;
 		}
 	} else {
@@ -236,15 +236,15 @@ void eqt::commands::CommandsComponent::RequestWarp(const std::string& args)
 			found_destination = true;
 		} else {
 			// Try to find entity by name
-			Entity* entity = owner_.Entities().FindEntityByName(trimmed);
+			Entity* entity = ctx_.Entities().FindEntityByName(trimmed);
 			if (entity) {
 				x = entity->x;
 				y = entity->y;
 				z = entity->z;
 				found_destination = true;
-				owner_.AddChatSystemMessage(fmt::format("Warping to entity: {}", entity->name));
+				ctx_.out.System(fmt::format("Warping to entity: {}", entity->name));
 			} else {
-				owner_.AddChatSystemMessage(fmt::format("Entity '{}' not found", trimmed));
+				ctx_.out.System(fmt::format("Entity '{}' not found", trimmed));
 				return;
 			}
 		}
@@ -254,10 +254,10 @@ void eqt::commands::CommandsComponent::RequestWarp(const std::string& args)
 		// Instantly set position. T288: one store; the hand-rolled bridge
 		// publish below is still the only thing the renderer sees, so this
 		// write stays event-free exactly as the raw members were.
-		owner_.SetPosLocal(x, y, z);
+		ctx_.self.SetPosLocal(x, y, z);
 
 		// Update our entity in the entity list
-		auto it = ctx_.entities.find(owner_.MySpawnId());
+		auto it = ctx_.entities.find(ctx_.self.MySpawnId());
 		if (it != ctx_.entities.end()) {
 			it->second.x = x;
 			it->second.y = y;
@@ -265,19 +265,19 @@ void eqt::commands::CommandsComponent::RequestWarp(const std::string& args)
 		}
 
 		// Send position update to server
-		owner_.Movement().SendPositionUpdate();
+		ctx_.Movement().SendPositionUpdate();
 
 		if (ctx_.bridge) {
 			eqt::state::PlayerMovedData pdata;
 			pdata.x = x; pdata.y = y; pdata.z = z;
-			pdata.heading = owner_.HeadingDeg();
+			pdata.heading = ctx_.self.HeadingDeg();
 			pdata.dx = 0; pdata.dy = 0; pdata.dz = 0;
 			pdata.isMoving = false;
 			ctx_.bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::PlayerMoved, std::move(pdata)));
 		}
 
-		owner_.AddChatSystemMessage(fmt::format("Warped to ({:.1f}, {:.1f}, {:.1f})", x, y, z));
+		ctx_.out.System(fmt::format("Warped to ({:.1f}, {:.1f}, {:.1f})", x, y, z));
 	}
 }
 
@@ -290,13 +290,13 @@ void eqt::commands::CommandsComponent::RequestTimeOfDay(const std::string& args)
 {
 	if (args.empty()) {
 		// Show current time
-		owner_.AddChatSystemMessage(fmt::format("Game time: {:02d}:{:02d}", ctx_.game_state.world().timeHour(), ctx_.game_state.world().timeMinute()));
+		ctx_.out.System(fmt::format("Game time: {:02d}:{:02d}", ctx_.game_state.world().timeHour(), ctx_.game_state.world().timeMinute()));
 	} else {
 		// Set time
 		try {
 			int hour = std::stoi(args);
 			if (hour < 0 || hour > 23) {
-				owner_.AddChatSystemMessage("Hour must be 0-23");
+				ctx_.out.System("Hour must be 0-23");
 				return;
 			}
 			// T286: WorldState is the only store. /time used to write only
@@ -313,9 +313,9 @@ void eqt::commands::CommandsComponent::RequestTimeOfDay(const std::string& args)
 					eqt::state::GameEventType::TimeOfDayChanged, std::move(tdata)));
 			}
 
-			owner_.AddChatSystemMessage(fmt::format("Time set to {:02d}:00", ctx_.game_state.world().timeHour()));
+			ctx_.out.System(fmt::format("Time set to {:02d}:00", ctx_.game_state.world().timeHour()));
 		} catch (...) {
-			owner_.AddChatSystemMessage("Usage: /time [0-23]");
+			ctx_.out.System("Usage: /time [0-23]");
 		}
 	}
 }

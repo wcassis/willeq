@@ -342,7 +342,7 @@ uint32_t EqActionHandler::findNearestWorldObject(float& outDistance) const {
     uint32_t nearestId = 0;
     float nearestDistSq = kWorldObjectInteractRange * kWorldObjectInteractRange;
 
-    for (const auto& [dropId, obj] : m_eq.GetWorldObjects()) {
+    for (const auto& [dropId, obj] : m_eq.Entities().GetWorldObjects()) {
         if (dropId == 0) continue;
         const float dx = obj.x - px;
         const float dy = obj.y - py;

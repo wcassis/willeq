@@ -136,7 +136,7 @@ void eqt::player::PlayerComponent::ZoneProcessDeath(const EQ::Net::Packet &p)
 	
 	// Special case: killer_id 0 means the player character killed it
 	if (killer_id == 0) {
-		killer_id = owner_.MySpawnId();
+		killer_id = ctx_.self.MySpawnId();
 		killer_name = ctx_.character;
 	} else {
 		auto killer_it = ctx_.entities.find(killer_id);
@@ -210,23 +210,23 @@ void eqt::player::PlayerComponent::ZoneProcessDeath(const EQ::Net::Packet &p)
 	// Add combat chat messages for deaths
 	std::string victim_display = EQT::toDisplayName(victim_name);
 	std::string killer_display = EQT::toDisplayName(killer_name);
-	if (killer_id == owner_.MySpawnId()) {
+	if (killer_id == ctx_.self.MySpawnId()) {
 		// Player killed something
-		owner_.AddChatCombatMessage(fmt::format("You hit {} for {} points of damage.", victim_display, damage), true);
-		owner_.AddChatCombatMessage(fmt::format("You have slain {}!", victim_display), true);
-	} else if (victim_id == owner_.MySpawnId()) {
+		ctx_.out.Combat(fmt::format("You hit {} for {} points of damage.", victim_display, damage), true);
+		ctx_.out.Combat(fmt::format("You have slain {}!", victim_display), true);
+	} else if (victim_id == ctx_.self.MySpawnId()) {
 		// Player was killed
-		owner_.AddChatCombatMessage(fmt::format("{} hit you for {} points of damage.", killer_display, damage), true);
-		owner_.AddChatCombatMessage(fmt::format("You have been slain by {}!", killer_display), true);
+		ctx_.out.Combat(fmt::format("{} hit you for {} points of damage.", killer_display, damage), true);
+		ctx_.out.Combat(fmt::format("You have been slain by {}!", killer_display), true);
 	} else if (!victim_display.empty() && !killer_display.empty()) {
 		// Observing a kill
-		owner_.AddChatCombatMessage(fmt::format("{} hits {} for {} points of damage.", killer_display, victim_display, damage), false);
-		owner_.AddChatCombatMessage(fmt::format("{} has been slain by {}!", victim_display, killer_display), false);
+		ctx_.out.Combat(fmt::format("{} hits {} for {} points of damage.", killer_display, victim_display, damage), false);
+		ctx_.out.Combat(fmt::format("{} has been slain by {}!", victim_display, killer_display), false);
 	}
 
 	// Track the last entity we killed for SimpleMessage substitution
 	// Store the display name now before it gets modified to include "'s corpse"
-	if (killer_id == owner_.MySpawnId()) {
+	if (killer_id == ctx_.self.MySpawnId()) {
 		ctx_.game_state.combat().setLastSlainEntityName(EQT::toDisplayName(victim_name));  // Phase 7.6 / T286
 	}
 
@@ -247,12 +247,12 @@ void eqt::player::PlayerComponent::ZoneProcessDeath(const EQ::Net::Packet &p)
 	}
 	
 	// If we died, log it prominently
-	if (victim_id == owner_.MySpawnId()) {
+	if (victim_id == ctx_.self.MySpawnId()) {
 		std::cout << "YOU HAVE BEEN SLAIN!" << std::endl;
 		// Close vendor window if open (can't shop while dead)
-		if (owner_.IsVendorWindowOpen()) {
+		if (ctx_.self.IsVendorWindowOpen()) {
 			LOG_DEBUG(MOD_INVENTORY, "Closed vendor window due to player death");
-			owner_.Merchant().CloseVendorWindow();
+			ctx_.Merchant().CloseVendorWindow();
 		}
 
 		// Cancel trade if we died
@@ -267,13 +267,13 @@ void eqt::player::PlayerComponent::ZoneProcessDeath(const EQ::Net::Packet &p)
 		ctx_.trade_manager->getPartnerSpawnId() == victim_id) {
 		LOG_DEBUG(MOD_MAIN, "Trade partner died, canceling trade");
 		ctx_.trade_manager->cancelTrade();
-		owner_.AddChatSystemMessage("Trade cancelled - partner died");
+		ctx_.out.System("Trade cancelled - partner died");
 	}
 
 	// If the vendor NPC died, close vendor window
 	if (ctx_.game_state.player().vendorNpcId() != 0 && ctx_.game_state.player().vendorNpcId() == victim_id) {
 		LOG_DEBUG(MOD_INVENTORY, "Closed vendor window due to vendor death");
-		owner_.Merchant().CloseVendorWindow();
+		ctx_.Merchant().CloseVendorWindow();
 	}
 }
 
@@ -376,7 +376,7 @@ void eqt::player::PlayerComponent::ZoneProcessZonePlayerToBind(const EQ::Net::Pa
 	ctx_.game_state.world().setPendingZone(target_zone_id, bind_x, bind_y, bind_z, bind_heading);
 
 	// Check if we're staying in the same zone or going to a different zone
-	bool is_same_zone = (target_zone_id == owner_.CurrentZoneId()) || (target_zone_id == 0);
+	bool is_same_zone = (target_zone_id == ctx_.self.CurrentZoneId()) || (target_zone_id == 0);
 
 	// T55: this handler used to store the pending zone coordinates (above)
 	// but perform NO local position write at all -- the T39 pattern
@@ -410,18 +410,18 @@ void eqt::player::PlayerComponent::ZoneProcessZonePlayerToBind(const EQ::Net::Pa
 	// is the zone-in consumer's job (WorldProcessZoneServerInfo /
 	// PlayerProfile), not this handler's.
 	if (is_same_zone) {
-		owner_.SetPosition(bind_x, bind_y, bind_z);
-		owner_.SetHeading(bind_heading);
+		ctx_.self.SetPosition(bind_x, bind_y, bind_z);
+		ctx_.self.SetHeading(bind_heading);
 		LOG_DEBUG(MOD_MAIN, "Same-zone respawn to ({:.2f}, {:.2f}, {:.2f})", bind_x, bind_y, bind_z);
 	} else {
 		LOG_DEBUG(MOD_MAIN, "Cross-zone respawn: current zone {} -> bind zone {}",
-			owner_.CurrentZoneId(), target_zone_id);
+			ctx_.self.CurrentZoneId(), target_zone_id);
 	}
 
 	// Client must respond with OP_ZoneChange to initiate the zone change
 	// The server will then send OP_ZoneChange back with success=1
 	// For same-zone deaths, the server still expects this handshake
-	owner_.Zone().RequestZoneChange(target_zone_id, bind_x, bind_y, bind_z, bind_heading);
+	ctx_.Zone().RequestZoneChange(target_zone_id, bind_x, bind_y, bind_z, bind_heading);
 }
 
 void eqt::player::PlayerComponent::ZoneProcessLevelUpdate(const EQ::Net::Packet &p)
@@ -445,8 +445,8 @@ void eqt::player::PlayerComponent::ZoneProcessLevelUpdate(const EQ::Net::Packet 
 	ctx_.game_state.player().setLevel(static_cast<uint8_t>(new_level));
 
 	// Update entity level if we have a spawn ID
-	if (owner_.MySpawnId() != 0) {
-		auto it = ctx_.entities.find(owner_.MySpawnId());
+	if (ctx_.self.MySpawnId() != 0) {
+		auto it = ctx_.entities.find(ctx_.self.MySpawnId());
 		if (it != ctx_.entities.end()) {
 			it->second.level = ctx_.game_state.player().level();
 		}
@@ -467,7 +467,7 @@ void eqt::player::PlayerComponent::ZoneProcessLevelUpdate(const EQ::Net::Packet 
 
 void eqt::player::PlayerComponent::SendTradeSkillCombine(int16_t container_slot)
 {
-	if (!owner_.IsFullyZonedIn()) {
+	if (!ctx_.self.IsFullyZonedIn()) {
 		LOG_DEBUG(MOD_ENTITY, "Cannot combine - not fully zoned in");
 		return;
 	}

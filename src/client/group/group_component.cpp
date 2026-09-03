@@ -53,7 +53,7 @@ const GroupMember* eqt::group::GroupComponent::GetGroupMember(int index) const
 
 void eqt::group::GroupComponent::SendGroupInvite(const std::string& target_name)
 {
-	if (!ctx_.zone_connection_manager || !owner_.IsFullyZonedIn()) {
+	if (!ctx_.zone_connection_manager || !ctx_.self.IsFullyZonedIn()) {
 		LOG_WARN(MOD_MAIN, "Cannot send group invite - not connected to zone");
 		return;
 	}
@@ -81,7 +81,7 @@ void eqt::group::GroupComponent::SendGroupInvite(const std::string& target_name)
 // reach; with the seam unset the guard is exactly what it was.
 void eqt::group::GroupComponent::SendGroupFollow(const std::string& inviter_name)
 {
-	if (!owner_.m_test_bypass_send_guard && (!ctx_.zone_connection_manager || !owner_.IsFullyZonedIn())) {
+	if (!owner_.m_test_bypass_send_guard && (!ctx_.zone_connection_manager || !ctx_.self.IsFullyZonedIn())) {
 		LOG_WARN(MOD_MAIN, "Cannot accept group invite - not connected to zone");
 		return;
 	}
@@ -109,7 +109,7 @@ void eqt::group::GroupComponent::SendGroupFollow(const std::string& inviter_name
 // T217: same aliasing hazard as SendGroupFollow() above -- copy first.
 void eqt::group::GroupComponent::SendGroupDecline(const std::string& inviter_name)
 {
-	if (!owner_.m_test_bypass_send_guard && (!ctx_.zone_connection_manager || !owner_.IsFullyZonedIn())) {
+	if (!owner_.m_test_bypass_send_guard && (!ctx_.zone_connection_manager || !ctx_.self.IsFullyZonedIn())) {
 		LOG_WARN(MOD_MAIN, "Cannot decline group invite - not connected to zone");
 		return;
 	}
@@ -137,7 +137,7 @@ void eqt::group::GroupComponent::SendGroupDecline(const std::string& inviter_nam
 
 void eqt::group::GroupComponent::SendGroupDisband()
 {
-	if (!ctx_.zone_connection_manager || !owner_.IsFullyZonedIn() || !ctx_.game_state.group().inGroup()) {
+	if (!ctx_.zone_connection_manager || !ctx_.self.IsFullyZonedIn() || !ctx_.game_state.group().inGroup()) {
 		LOG_WARN(MOD_MAIN, "Cannot disband group - not in group or not connected");
 		return;
 	}
@@ -183,7 +183,7 @@ void eqt::group::GroupComponent::AcceptGroupInvite()
 	if (ctx_.game_state.group().hasPendingInvite()) {
 		const std::string inviter = ctx_.game_state.group().pendingInviterName();
 		SendGroupFollow(inviter);
-		owner_.AddChatSystemMessage("You have joined " + inviter + "'s group");
+		ctx_.out.System("You have joined " + inviter + "'s group");
 	}
 }
 
@@ -191,7 +191,7 @@ void eqt::group::GroupComponent::DeclineGroupInvite()
 {
 	if (ctx_.game_state.group().hasPendingInvite()) {
 		SendGroupDecline(ctx_.game_state.group().pendingInviterName());
-		owner_.AddChatSystemMessage("Group invite declined");
+		ctx_.out.System("Group invite declined");
 	}
 }
 
@@ -225,14 +225,14 @@ uint8_t eqt::group::GroupComponent::GetPetLevel() const
 
 void eqt::group::GroupComponent::SendPetCommand(EQT::PetCommand command, uint16_t target_id)
 {
-	if (!ctx_.zone_connection_manager || !owner_.IsFullyZonedIn()) {
+	if (!ctx_.zone_connection_manager || !ctx_.self.IsFullyZonedIn()) {
 		LOG_WARN(MOD_MAIN, "Cannot send pet command - not connected to zone");
 		return;
 	}
 
-	if (!owner_.HasPet()) {
+	if (!ctx_.self.HasPet()) {
 		LOG_WARN(MOD_MAIN, "Cannot send pet command - no pet");
-		owner_.AddChatSystemMessage("You do not have a pet.");
+		ctx_.out.System("You do not have a pet.");
 		return;
 	}
 
@@ -256,50 +256,50 @@ void eqt::group::GroupComponent::SendPetCommand(EQT::PetCommand command, uint16_
 	// Follow, Guard, Sit are mutually exclusive position commands
 	switch (command) {
 	case EQT::PET_FOLLOWME:
-		owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_FOLLOW, true);
-		owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_GUARD, false);
-		owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_SIT, false);
+		ctx_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_FOLLOW, true);
+		ctx_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_GUARD, false);
+		ctx_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_SIT, false);
 		break;
 	case EQT::PET_GUARDHERE:
-		owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_FOLLOW, false);
-		owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_GUARD, true);
-		owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_SIT, false);
+		ctx_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_FOLLOW, false);
+		ctx_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_GUARD, true);
+		ctx_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_SIT, false);
 		break;
 	case EQT::PET_SITDOWN:  // PET_SIT is an alias for this
-		owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_FOLLOW, false);
-		owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_GUARD, false);
-		owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_SIT, true);
+		ctx_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_FOLLOW, false);
+		ctx_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_GUARD, false);
+		ctx_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_SIT, true);
 		break;
 	case EQT::PET_STANDUP:
 		// Standing up returns to follow mode
-		owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_FOLLOW, true);
-		owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_GUARD, false);
-		owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_SIT, false);
+		ctx_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_FOLLOW, true);
+		ctx_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_GUARD, false);
+		ctx_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_SIT, false);
 		break;
 	// Independent toggles
 	case EQT::PET_HOLD:
-		owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_HOLD, !ctx_.game_state.pet().getButtonState(EQT::PET_BUTTON_HOLD));
+		ctx_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_HOLD, !ctx_.game_state.pet().getButtonState(EQT::PET_BUTTON_HOLD));
 		break;
 	case EQT::PET_HOLD_ON:
-		owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_HOLD, true);
+		ctx_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_HOLD, true);
 		break;
 	case EQT::PET_HOLD_OFF:
-		owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_HOLD, false);
+		ctx_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_HOLD, false);
 		break;
 	case EQT::PET_TAUNT:
-		owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_TAUNT, !ctx_.game_state.pet().getButtonState(EQT::PET_BUTTON_TAUNT));
+		ctx_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_TAUNT, !ctx_.game_state.pet().getButtonState(EQT::PET_BUTTON_TAUNT));
 		break;
 	case EQT::PET_TAUNT_ON:
-		owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_TAUNT, true);
+		ctx_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_TAUNT, true);
 		break;
 	case EQT::PET_TAUNT_OFF:
-		owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_TAUNT, false);
+		ctx_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_TAUNT, false);
 		break;
 	case EQT::PET_FOCUS:
-		owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_FOCUS, !ctx_.game_state.pet().getButtonState(EQT::PET_BUTTON_FOCUS));
+		ctx_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_FOCUS, !ctx_.game_state.pet().getButtonState(EQT::PET_BUTTON_FOCUS));
 		break;
 	case EQT::PET_SPELLHOLD:
-		owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_SPELLHOLD, !ctx_.game_state.pet().getButtonState(EQT::PET_BUTTON_SPELLHOLD));
+		ctx_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_SPELLHOLD, !ctx_.game_state.pet().getButtonState(EQT::PET_BUTTON_SPELLHOLD));
 		break;
 	default:
 		// Attack, Back Off, Get Lost, etc. don't have toggle states
@@ -337,7 +337,7 @@ void eqt::group::GroupComponent::ZoneProcessGroupInvite(const EQ::Net::Packet& p
 		// Phase 7.5 / T286: GroupState is the only store
 		ctx_.game_state.group().setPendingInvite(inviter_name);
 
-		owner_.AddChatSystemMessage(inviter_name + " has invited you to join a group");
+		ctx_.out.System(inviter_name + " has invited you to join a group");
 
 		// Publish GroupInviteReceived event to bridge
 		if (ctx_.bridge) {
@@ -442,7 +442,7 @@ void eqt::group::GroupComponent::ZoneProcessGroupUpdate(const EQ::Net::Packet& p
 			// Add self first
 			GroupMember self;
 			self.name = ctx_.character;
-			self.spawnId = owner_.MySpawnId();
+			self.spawnId = ctx_.self.MySpawnId();
 			self.level = ctx_.game_state.player().level();
 			self.classId = static_cast<uint8_t>(ctx_.game_state.player().classId());
 			self.hpPercent = (ctx_.game_state.player().maxHP() > 0) ? static_cast<uint8_t>(ctx_.game_state.player().curHP() * 100 / ctx_.game_state.player().maxHP()) : 100;
@@ -474,7 +474,7 @@ void eqt::group::GroupComponent::ZoneProcessGroupUpdate(const EQ::Net::Packet& p
 			// T320: flip inGroup LAST -- leader and roster are real now.
 			ctx_.game_state.group().setInGroup(true);
 
-			owner_.AddChatSystemMessage("Group updated");
+			ctx_.out.System("Group updated");
 			LOG_INFO(MOD_MAIN, "Group update: {} members, leader: {}",
 					 ctx_.game_state.group().memberCount(), leaderName);
 
@@ -533,7 +533,7 @@ void eqt::group::GroupComponent::ZoneProcessGroupUpdate(const EQ::Net::Packet& p
 				group.setMember(newCount, GroupMember());
 				group.recalculateMemberCount();
 
-				owner_.AddChatSystemMessage(member_name + " has left the group");
+				ctx_.out.System(member_name + " has left the group");
 
 				// Publish GroupChanged event to bridge
 				if (ctx_.bridge) {
@@ -551,7 +551,7 @@ void eqt::group::GroupComponent::ZoneProcessGroupUpdate(const EQ::Net::Packet& p
 
 		case EQT::GROUP_ACT_DISBAND:
 			ClearGroup();  // Also syncs to GameState
-			owner_.AddChatSystemMessage("Your group has been disbanded");
+			ctx_.out.System("Your group has been disbanded");
 
 			// Publish GroupChanged event to bridge
 			if (ctx_.bridge) {
@@ -581,7 +581,7 @@ void eqt::group::GroupComponent::ZoneProcessGroupUpdate(const EQ::Net::Packet& p
 				}
 			}
 
-			owner_.AddChatSystemMessage(new_leader + " is now the group leader");
+			ctx_.out.System(new_leader + " is now the group leader");
 
 			// Publish GroupChanged event to bridge
 			if (ctx_.bridge) {
@@ -642,7 +642,7 @@ void eqt::group::GroupComponent::ZoneProcessGroupJoin(const EQ::Net::Packet& p)
 
 		GroupMember self;
 		self.name = ctx_.character;
-		self.spawnId = owner_.MySpawnId();
+		self.spawnId = ctx_.self.MySpawnId();
 		self.level = ctx_.game_state.player().level();
 		self.classId = static_cast<uint8_t>(ctx_.game_state.player().classId());
 		self.hpPercent = (ctx_.game_state.player().maxHP() > 0)
@@ -676,7 +676,7 @@ void eqt::group::GroupComponent::ZoneProcessGroupJoin(const EQ::Net::Packet& p)
 	// Last, so the one in-group GroupChanged this publishes is complete.
 	group.setInGroup(true);
 
-	owner_.AddChatSystemMessage(joiner + " has joined the group");
+	ctx_.out.System(joiner + " has joined the group");
 	LOG_INFO(MOD_MAIN, "Group join: {} ({} members, leader: {})",
 			 joiner, group.memberCount(), group.leaderName());
 
@@ -710,7 +710,7 @@ void eqt::group::GroupComponent::ZoneProcessGroupJoin(const EQ::Net::Packet& p)
 void eqt::group::GroupComponent::ZoneProcessGroupDisband(const EQ::Net::Packet& p)
 {
 	ClearGroup();
-	owner_.AddChatSystemMessage("Your group has been disbanded");
+	ctx_.out.System("Your group has been disbanded");
 	LOG_INFO(MOD_MAIN, "Group disbanded");
 
 	// Publish GroupChanged event to bridge
@@ -730,7 +730,7 @@ void eqt::group::GroupComponent::ZoneProcessGroupCancelInvite(const EQ::Net::Pac
 	// Phase 7.5 / T286: GroupState is the only store
 	ctx_.game_state.group().clearPendingInvite();
 
-	owner_.AddChatSystemMessage("Group invite cancelled");
+	ctx_.out.System("Group invite cancelled");
 	LOG_INFO(MOD_MAIN, "Group invite cancelled");
 
 	// Publish GroupChanged to trigger bridge hidePendingInvite
@@ -815,9 +815,9 @@ void eqt::group::GroupComponent::ZoneProcessRaidUpdate(const EQ::Net::Packet &p)
 		if (about_me) {
 			m_in_raid = true;
 			m_pending_raid_inviter.clear();  // accepted / already in
-			owner_.AddChatSystemMessage("You have joined the raid.");
+			ctx_.out.System("You have joined the raid.");
 		} else {
-			owner_.AddChatSystemMessage(fmt::format("{} has joined the raid.", u.player_name));
+			ctx_.out.System(fmt::format("{} has joined the raid.", u.player_name));
 		}
 		break;
 
@@ -827,9 +827,9 @@ void eqt::group::GroupComponent::ZoneProcessRaidUpdate(const EQ::Net::Packet &p)
 			m_in_raid = false;
 			m_raid_leader.clear();
 			m_raid_locked = false;
-			owner_.AddChatSystemMessage("You have left the raid.");
+			ctx_.out.System("You have left the raid.");
 		} else {
-			owner_.AddChatSystemMessage(fmt::format("{} has left the raid.", u.player_name));
+			ctx_.out.System(fmt::format("{} has left the raid.", u.player_name));
 		}
 		break;
 
@@ -838,7 +838,7 @@ void eqt::group::GroupComponent::ZoneProcessRaidUpdate(const EQ::Net::Packet &p)
 		m_raid_leader.clear();
 		m_pending_raid_inviter.clear();
 		m_raid_locked = false;
-		owner_.AddChatSystemMessage("The raid has disbanded.");
+		ctx_.out.System("The raid has disbanded.");
 		break;
 
 	case EQT::RaidAction::Create:
@@ -846,7 +846,7 @@ void eqt::group::GroupComponent::ZoneProcessRaidUpdate(const EQ::Net::Packet &p)
 		m_raid_leader = u.leader_name;
 		// A fresh raid is unlocked; Create also starts a fresh roster stream.
 		m_raid_locked = false;
-		owner_.AddChatSystemMessage(fmt::format("{} has formed a raid.", u.leader_name));
+		ctx_.out.System(fmt::format("{} has formed a raid.", u.leader_name));
 		break;
 
 	case EQT::RaidAction::NoRaid:
@@ -856,7 +856,7 @@ void eqt::group::GroupComponent::ZoneProcessRaidUpdate(const EQ::Net::Packet &p)
 		m_raid_leader.clear();
 		m_pending_raid_inviter.clear();
 		m_raid_locked = false;
-		owner_.AddChatSystemMessage("You are not in a raid.");
+		ctx_.out.System("You are not in a raid.");
 		break;
 
 	case EQT::RaidAction::SetLeader:
@@ -873,18 +873,18 @@ void eqt::group::GroupComponent::ZoneProcessRaidUpdate(const EQ::Net::Packet &p)
 		// T179: leader_name is the inviter (see the decode header). Remember it
 		// so /raid accept can answer, and tell the player how.
 		m_pending_raid_inviter = u.leader_name;
-		owner_.AddChatSystemMessage(fmt::format(
+		ctx_.out.System(fmt::format(
 			"{} invites you to join a raid. Type /raid accept to join.",
 			u.leader_name));
 		break;
 
 	case EQT::RaidAction::MakeLeader:
 		m_raid_leader = u.player_name;
-		owner_.AddChatSystemMessage(fmt::format("{} is now the raid leader.", u.player_name));
+		ctx_.out.System(fmt::format("{} is now the raid leader.", u.player_name));
 		break;
 
 	case EQT::RaidAction::NoLongerLeader:
-		owner_.AddChatSystemMessage("You are no longer the raid leader.");
+		ctx_.out.System("You are no longer the raid leader.");
 		break;
 
 	case EQT::RaidAction::Lock:
@@ -900,10 +900,10 @@ void eqt::group::GroupComponent::ZoneProcessRaidUpdate(const EQ::Net::Packet &p)
 		const bool changed = (m_raid_locked != locking);
 		m_raid_locked = locking;
 		if (changed) {
-			owner_.AddChatSystemMessage(locking ? "The raid is now locked."
+			ctx_.out.System(locking ? "The raid is now locked."
 			                             : "The raid is now unlocked.");
 		} else {
-			owner_.AddChatSystemMessage(locking ? "The raid is already locked."
+			ctx_.out.System(locking ? "The raid is already locked."
 			                             : "The raid is not locked.");
 		}
 		break;
@@ -911,7 +911,7 @@ void eqt::group::GroupComponent::ZoneProcessRaidUpdate(const EQ::Net::Packet &p)
 
 	case EQT::RaidAction::SetMotd:
 		if (!u.text.empty()) {
-			owner_.AddChatSystemMessage(fmt::format("Raid MOTD: {}", u.text));
+			ctx_.out.System(fmt::format("Raid MOTD: {}", u.text));
 		}
 		break;
 

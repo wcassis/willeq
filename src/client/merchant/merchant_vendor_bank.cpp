@@ -82,7 +82,7 @@ void eqt::merchant::MerchantComponent::ZoneProcessVendorItemToUI(const EQ::Net::
 	gvi.name = item->name;
 	gvi.price = item->price;
 	gvi.quantity = item->quantity;
-	owner_.Commands().VendorItems()[vendorSlot] = std::move(gvi);
+	ctx_.Commands().VendorItems()[vendorSlot] = std::move(gvi);
 
 	// Publish VendorItemAdded (D18a: bridge is sole path to renderer)
 	if (ctx_.bridge) {
@@ -111,9 +111,9 @@ void eqt::merchant::MerchantComponent::RequestOpenVendor(uint16_t npcId)
 	EQT::Merchant_Click_Struct req;
 	memset(&req, 0, sizeof(req));
 	req.npc_id = npcId;
-	req.player_id = owner_.MySpawnId();
+	req.player_id = ctx_.self.MySpawnId();
 	pkt.PutData(0, &req, sizeof(req));
-	owner_.QueuePacket(HC_OP_ShopRequest, &pkt);
+	ctx_.net.Queue(HC_OP_ShopRequest, &pkt);
 }
 
 void eqt::merchant::MerchantComponent::BuyFromVendor(uint16_t npcId, uint32_t itemSlot, uint32_t quantity)
@@ -129,20 +129,20 @@ void eqt::merchant::MerchantComponent::BuyFromVendor(uint16_t npcId, uint32_t it
 	EQ::Net::DynamicPacket pkt;
 	EQT::Merchant_Purchase_Struct buy;
 	buy.npc_id = npcId;
-	buy.player_id = owner_.MySpawnId();
+	buy.player_id = ctx_.self.MySpawnId();
 	buy.itemslot = itemSlot;
 	buy.unknown12 = 0;
 	buy.quantity = quantity;
 	buy.action = EQT::MERCHANT_BUY;
 	pkt.PutData(0, &buy, sizeof(buy));
-	owner_.QueuePacket(HC_OP_ShopPlayerBuy, &pkt);
+	ctx_.net.Queue(HC_OP_ShopPlayerBuy, &pkt);
 }
 
 void eqt::merchant::MerchantComponent::SellToVendor(uint16_t npcId, uint32_t itemSlot, uint32_t quantity)
 {
 	if (ctx_.game_state.player().vendorNpcId() == 0 || ctx_.game_state.player().vendorNpcId() != npcId) {
 		LOG_WARN(MOD_INVENTORY, "SellToVendor: Not in vendor session with NPC {}", npcId);
-		owner_.AddChatSystemMessage("You are not interacting with a vendor.");
+		ctx_.out.System("You are not interacting with a vendor.");
 		return;
 	}
 
@@ -151,12 +151,12 @@ void eqt::merchant::MerchantComponent::SellToVendor(uint16_t npcId, uint32_t ite
 		const auto* item = ctx_.inventory_manager->getItem(static_cast<int16_t>(itemSlot));
 		if (!item) {
 			LOG_WARN(MOD_INVENTORY, "SellToVendor: No item at slot {}", itemSlot);
-			owner_.AddChatSystemMessage("That item is no longer in your inventory.");
+			ctx_.out.System("That item is no longer in your inventory.");
 			return;
 		}
 		if (item->noDrop) {
 			LOG_WARN(MOD_INVENTORY, "SellToVendor: Item '{}' is NO_DROP", item->name);
-			owner_.AddChatSystemMessage(fmt::format("You cannot sell {}.", item->name));
+			ctx_.out.System(fmt::format("You cannot sell {}.", item->name));
 			return;
 		}
 		if (item->stackable && static_cast<int32_t>(quantity) > item->quantity) {
@@ -176,7 +176,7 @@ void eqt::merchant::MerchantComponent::SellToVendor(uint16_t npcId, uint32_t ite
 	sell.quantity = quantity;
 	sell.unknown12 = 0;  // Server ignores this field
 	pkt.PutData(0, &sell, sizeof(sell));
-	owner_.QueuePacket(HC_OP_ShopPlayerSell, &pkt);
+	ctx_.net.Queue(HC_OP_ShopPlayerSell, &pkt);
 }
 
 void eqt::merchant::MerchantComponent::CloseVendorWindow()
@@ -191,9 +191,9 @@ void eqt::merchant::MerchantComponent::CloseVendorWindow()
 	EQ::Net::DynamicPacket pkt;
 	EQT::Merchant_End_Struct end;
 	end.npc_id = ctx_.game_state.player().vendorNpcId();
-	end.player_id = owner_.MySpawnId();
+	end.player_id = ctx_.self.MySpawnId();
 	pkt.PutData(0, &end, sizeof(end));
-	owner_.QueuePacket(HC_OP_ShopEnd, &pkt);
+	ctx_.net.Queue(HC_OP_ShopEnd, &pkt);
 
 	// T286: capture before clearing the single store (see ShopEndConfirm).
 	const uint16_t closedVendorNpcId = ctx_.game_state.player().vendorNpcId();
@@ -216,7 +216,7 @@ void eqt::merchant::MerchantComponent::CloseVendorWindow()
 	}
 #endif
 
-	owner_.Commands().VendorItems().clear();
+	ctx_.Commands().VendorItems().clear();
 }
 
 void eqt::merchant::MerchantComponent::OpenBankWindow(uint16_t bankerNpcId)
@@ -254,7 +254,7 @@ void eqt::merchant::MerchantComponent::OpenBankWindow(uint16_t bankerNpcId)
 	}
 #endif
 
-	owner_.AddChatSystemMessage("Bank window opened");
+	ctx_.out.System("Bank window opened");
 }
 
 void eqt::merchant::MerchantComponent::CloseBankWindow()
@@ -286,7 +286,7 @@ void eqt::merchant::MerchantComponent::CloseBankWindow()
 	}
 #endif
 
-	owner_.AddChatSystemMessage("Bank window closed");
+	ctx_.out.System("Bank window closed");
 }
 // ============================================================================
 // Skill Trainer Window Methods
@@ -353,11 +353,11 @@ void eqt::merchant::MerchantComponent::ZoneProcessGMTraining(const EQ::Net::Pack
 	eqt::state::TrainerWindowOpenedData trainerData;
 	trainerData.npcId = ctx_.game_state.player().trainerNpcId();
 	trainerData.npcName = ctx_.game_state.player().trainerName();
-	trainerData.platinum = owner_.GetPlatinum();
-	trainerData.gold = owner_.GetGold();
-	trainerData.silver = owner_.GetSilver();
-	trainerData.copper = owner_.GetCopper();
-	trainerData.practicePoints = owner_.GetPracticePoints();
+	trainerData.platinum = ctx_.self.GetPlatinum();
+	trainerData.gold = ctx_.self.GetGold();
+	trainerData.silver = ctx_.self.GetSilver();
+	trainerData.copper = ctx_.self.GetCopper();
+	trainerData.practicePoints = ctx_.self.GetPracticePoints();
 
 	// T280: keep the caps for the life of the session. /train has to answer
 	// "does this trainer teach that, and am I already at its cap" before it
@@ -439,16 +439,16 @@ void eqt::merchant::MerchantComponent::RequestTrainerWindow(uint16_t npcId)
 	EQT::GMTrainee_Struct req;
 	memset(&req, 0, sizeof(req));
 	req.npcid = npcId;
-	req.playerid = owner_.MySpawnId();
+	req.playerid = ctx_.self.MySpawnId();
 	pkt.PutData(0, &req, sizeof(req));
-	owner_.QueuePacket(HC_OP_GMTraining, &pkt);
+	ctx_.net.Queue(HC_OP_GMTraining, &pkt);
 }
 
 void eqt::merchant::MerchantComponent::TrainSkill(uint8_t skillId)
 {
 	if (ctx_.game_state.player().trainerNpcId() == 0) {
 		LOG_WARN(MOD_MAIN, "TrainSkill: Not in trainer session");
-		owner_.AddChatSystemMessage("You are not interacting with a trainer.");
+		ctx_.out.System("You are not interacting with a trainer.");
 		return;
 	}
 
@@ -462,7 +462,7 @@ void eqt::merchant::MerchantComponent::TrainSkill(uint8_t skillId)
 	train.skillbank = 0;  // 0 = normal skills, 1 = languages
 	train.skill_id = skillId;
 	pkt.PutData(0, &train, sizeof(train));
-	owner_.QueuePacket(HC_OP_GMTrainSkill, &pkt);
+	ctx_.net.Queue(HC_OP_GMTrainSkill, &pkt);
 }
 
 void eqt::merchant::MerchantComponent::CloseTrainerWindow()
@@ -477,9 +477,9 @@ void eqt::merchant::MerchantComponent::CloseTrainerWindow()
 	EQ::Net::DynamicPacket pkt;
 	EQT::GMTrainEnd_Struct end;
 	end.npcid = ctx_.game_state.player().trainerNpcId();
-	end.playerid = owner_.MySpawnId();
+	end.playerid = ctx_.self.MySpawnId();
 	pkt.PutData(0, &end, sizeof(end));
-	owner_.QueuePacket(HC_OP_GMEndTraining, &pkt);
+	ctx_.net.Queue(HC_OP_GMEndTraining, &pkt);
 
 	// T286: capture before clearing the single store (see ShopEndConfirm).
 	const uint16_t closedTrainerNpcId = ctx_.game_state.player().trainerNpcId();
@@ -625,9 +625,9 @@ void eqt::merchant::MerchantComponent::ZoneProcessRecipeAutoCombine(const EQ::Ne
 
 	if (combine->reply_code == 0) {
 		LOG_INFO(MOD_MAIN, "Auto-combine successful for recipe {}", combine->recipe_id);
-		owner_.AddChatSystemMessage("Tradeskill combine successful!");
+		ctx_.out.System("Tradeskill combine successful!");
 	} else {
 		LOG_INFO(MOD_MAIN, "Auto-combine failed for recipe {}", combine->recipe_id);
-		owner_.AddChatSystemMessage("Tradeskill combine failed.");
+		ctx_.out.System("Tradeskill combine failed.");
 	}
 }
