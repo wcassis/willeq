@@ -420,7 +420,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessNewSpawn(const EQ::Net::Packet
 		owner_.Player().SyncEntityToGameState(entity);
 
 #ifdef EQT_HAS_GRAPHICS
-		owner_.OnSpawnAddedGraphics(entity);
+		owner_.Bridge().OnSpawnAddedGraphics(entity);
 		// Notify bridge of player spawn ID (D17b: bridge is sole path to renderer)
 		if (entity.name == ctx_.character && ctx_.bridge) {
 			ctx_.bridge->pushEvent(eqt::state::GameEvent(
@@ -439,8 +439,8 @@ void eqt::entities::EntitiesComponent::ZoneProcessNewSpawn(const EQ::Net::Packet
 
 			// T43: was #ifdef EQT_HAS_GRAPHICS -- see the identical note at
 			// the ZoneProcessSpawnAll second-pass call site above.
-			owner_.OnPetCreated(entity);
-			owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_FOLLOW, true);
+			owner_.Bridge().OnPetCreated(entity);
+			owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_FOLLOW, true);
 		}
 
 		if (EverQuest::s_debug_level >= 2) {
@@ -621,8 +621,8 @@ void eqt::entities::EntitiesComponent::ZoneProcessClientUpdate(const EQ::Net::Pa
 							ent.name, ent.spawn_id, ent.level, owner_.MySpawnId());
 						// T43: was #ifdef EQT_HAS_GRAPHICS -- see the identical
 						// note at the ZoneProcessSpawnAll second-pass call site.
-						owner_.OnPetCreated(ent);
-						owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_FOLLOW, true);
+						owner_.Bridge().OnPetCreated(ent);
+						owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_FOLLOW, true);
 						break;
 					}
 				}
@@ -746,7 +746,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessClientUpdate(const EQ::Net::Pa
 				static_cast<uint8_t>(animation));
 
 #ifdef EQT_HAS_GRAPHICS
-			owner_.OnSpawnMovedGraphics(owner_.MySpawnId(), x, y, z, h_player, dx, dy, dz, animation);
+			owner_.Bridge().OnSpawnMovedGraphics(owner_.MySpawnId(), x, y, z, h_player, dx, dy, dz, animation);
 #endif
 		}
 		return;
@@ -776,7 +776,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessClientUpdate(const EQ::Net::Pa
 			static_cast<uint8_t>(animation));
 
 #ifdef EQT_HAS_GRAPHICS
-		owner_.OnSpawnMovedGraphics(spawn_id, x, y, z, entity_heading, dx, dy, dz, animation);
+		owner_.Bridge().OnSpawnMovedGraphics(spawn_id, x, y, z, entity_heading, dx, dy, dz, animation);
 #endif
 
 	}

@@ -331,7 +331,7 @@ TEST(TradeskillCombine, IntentBecomesAFourByteNewCombineStructWithTheWorldContai
     h.clearSent();
 
     h.processor.processCommand("/combine");
-    h.eq.ProcessBridgeIntents();
+    h.eq.Bridge().ProcessBridgeIntents();
 
     auto pkts = h.packetsWithOpcode(HC_OP_TradeSkillCombine);
     ASSERT_EQ(pkts.size(), 1u) << "expected exactly one OP_TradeSkillCombine";
@@ -349,7 +349,7 @@ TEST(TradeskillCombine, CloseIntentBecomesA92ByteClickObjectActionWithOpenZero) 
     h.clearSent();
 
     h.processor.processCommand("/closecontainer");
-    h.eq.ProcessBridgeIntents();
+    h.eq.Bridge().ProcessBridgeIntents();
 
     auto pkts = h.packetsWithOpcode(HC_OP_ClickObjectAction);
     ASSERT_EQ(pkts.size(), 1u) << "expected exactly one OP_ClickObjectAction";
@@ -369,7 +369,7 @@ TEST(TradeskillCombine, CombineDoesNotCloseTheContainer) {
     h.openForge();
 
     h.processor.processCommand("/combine");
-    h.eq.ProcessBridgeIntents();
+    h.eq.Bridge().ProcessBridgeIntents();
 
     // A combine leaves the forge open -- the player usually makes several.
     EXPECT_EQ(h.eq.GetActiveTradeskillObjectId(), kForgeDropId);
@@ -412,7 +412,7 @@ TEST(TradeskillCombine, CarriedContainerFormSendsItsOwnInventorySlot) {
     // Issue it again and let the bridge drain it this time -- drainIntents()
     // above already consumed the first one.
     h.processor.processCommand("/combine " + std::to_string(kKitSlot));
-    h.eq.ProcessBridgeIntents();
+    h.eq.Bridge().ProcessBridgeIntents();
     auto pkts = h.packetsWithOpcode(HC_OP_TradeSkillCombine);
     ASSERT_EQ(pkts.size(), 1u);
     ASSERT_EQ(pkts[0].body.size(), 4u);
@@ -632,7 +632,7 @@ TEST(WorldContainerSlots, MoveIntoAWorldSlotSendsTheWorldSlotOnTheWire) {
     // ...and it reaches the wire as 4000, untranslated.
     inv->setItem(kFrom, T282Ore(17000, "Small Piece of Ore"));
     inv->moveItem(kFrom, eqt::inventory::WORLD_BEGIN + 1);
-    h.eq.ProcessBridgeIntents();
+    h.eq.Bridge().ProcessBridgeIntents();
     auto pkts = h.packetsWithOpcode(HC_OP_MoveItem);
     ASSERT_FALSE(pkts.empty());
     ASSERT_GE(pkts.back().body.size(), 8u);
@@ -734,7 +734,7 @@ TEST(WorldContainerSlots, LocalCloseCommandAlsoStopsAcceptingWorldSlotMoves) {
     // must not keep accepting world-slot moves while it waits.
     auto result = h.processor.processCommand("/closecontainer");
     EXPECT_TRUE(result.success) << result.message;
-    h.eq.ProcessBridgeIntents();
+    h.eq.Bridge().ProcessBridgeIntents();
     ASSERT_EQ(h.eq.GetActiveTradeskillObjectId(), 0u);
 
     inv->setItem(kFrom, T282Ore(17000, "Small Piece of Ore"));

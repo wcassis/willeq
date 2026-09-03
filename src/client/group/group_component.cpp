@@ -256,50 +256,50 @@ void eqt::group::GroupComponent::SendPetCommand(EQT::PetCommand command, uint16_
 	// Follow, Guard, Sit are mutually exclusive position commands
 	switch (command) {
 	case EQT::PET_FOLLOWME:
-		owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_FOLLOW, true);
-		owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_GUARD, false);
-		owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_SIT, false);
+		owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_FOLLOW, true);
+		owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_GUARD, false);
+		owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_SIT, false);
 		break;
 	case EQT::PET_GUARDHERE:
-		owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_FOLLOW, false);
-		owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_GUARD, true);
-		owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_SIT, false);
+		owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_FOLLOW, false);
+		owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_GUARD, true);
+		owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_SIT, false);
 		break;
 	case EQT::PET_SITDOWN:  // PET_SIT is an alias for this
-		owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_FOLLOW, false);
-		owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_GUARD, false);
-		owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_SIT, true);
+		owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_FOLLOW, false);
+		owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_GUARD, false);
+		owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_SIT, true);
 		break;
 	case EQT::PET_STANDUP:
 		// Standing up returns to follow mode
-		owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_FOLLOW, true);
-		owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_GUARD, false);
-		owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_SIT, false);
+		owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_FOLLOW, true);
+		owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_GUARD, false);
+		owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_SIT, false);
 		break;
 	// Independent toggles
 	case EQT::PET_HOLD:
-		owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_HOLD, !ctx_.game_state.pet().getButtonState(EQT::PET_BUTTON_HOLD));
+		owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_HOLD, !ctx_.game_state.pet().getButtonState(EQT::PET_BUTTON_HOLD));
 		break;
 	case EQT::PET_HOLD_ON:
-		owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_HOLD, true);
+		owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_HOLD, true);
 		break;
 	case EQT::PET_HOLD_OFF:
-		owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_HOLD, false);
+		owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_HOLD, false);
 		break;
 	case EQT::PET_TAUNT:
-		owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_TAUNT, !ctx_.game_state.pet().getButtonState(EQT::PET_BUTTON_TAUNT));
+		owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_TAUNT, !ctx_.game_state.pet().getButtonState(EQT::PET_BUTTON_TAUNT));
 		break;
 	case EQT::PET_TAUNT_ON:
-		owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_TAUNT, true);
+		owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_TAUNT, true);
 		break;
 	case EQT::PET_TAUNT_OFF:
-		owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_TAUNT, false);
+		owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_TAUNT, false);
 		break;
 	case EQT::PET_FOCUS:
-		owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_FOCUS, !ctx_.game_state.pet().getButtonState(EQT::PET_BUTTON_FOCUS));
+		owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_FOCUS, !ctx_.game_state.pet().getButtonState(EQT::PET_BUTTON_FOCUS));
 		break;
 	case EQT::PET_SPELLHOLD:
-		owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_SPELLHOLD, !ctx_.game_state.pet().getButtonState(EQT::PET_BUTTON_SPELLHOLD));
+		owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_SPELLHOLD, !ctx_.game_state.pet().getButtonState(EQT::PET_BUTTON_SPELLHOLD));
 		break;
 	default:
 		// Attack, Back Off, Get Lost, etc. don't have toggle states

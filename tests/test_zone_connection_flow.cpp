@@ -1259,7 +1259,7 @@ TEST(ZoneLoadSnapshot, PlayerRegionResolvedAfterZoneIn) {
     ASSERT_EQ(eq.GetCurrentZoneName(), "befallen");
     eq.SetPosition(kBefallenStartX, kBefallenStartY, kBefallenStartZ);
 
-    const auto snap = eq.CreateZoneLoadSnapshot();
+    const auto snap = eq.Bridge().CreateZoneLoadSnapshot();
     EXPECT_EQ(snap.zoneName, "befallen");
     EXPECT_NE(snap.playerBspRegion, SIZE_MAX)
         << "start position must resolve against the zone's own freshly loaded tree";
@@ -1276,14 +1276,14 @@ TEST(ZoneLoadSnapshot, TwoZoneSequenceResolvesAgainstSecondZoneTree) {
 
     SendNamedNewZone(eq, "befallen", 36);
     eq.SetPosition(kBefallenStartX, kBefallenStartY, kBefallenStartZ);
-    ASSERT_EQ(eq.CreateZoneLoadSnapshot().playerBspRegion, kBefallenStartRegion);
+    ASSERT_EQ(eq.Bridge().CreateZoneLoadSnapshot().playerBspRegion, kBefallenStartRegion);
 
     // Re-zone: the next NewZone rebuilds the game-side tree for arena.
     SendNamedNewZone(eq, "arena", 77);
     ASSERT_EQ(eq.GetCurrentZoneName(), "arena");
     eq.SetPosition(0.0f, 0.0f, 0.0f);
 
-    const auto snap = eq.CreateZoneLoadSnapshot();
+    const auto snap = eq.Bridge().CreateZoneLoadSnapshot();
     EXPECT_EQ(snap.zoneName, "arena");
     EXPECT_NE(snap.playerBspRegion, SIZE_MAX);
     EXPECT_EQ(snap.playerBspRegion, kArenaOriginRegion)
@@ -1307,7 +1307,7 @@ TEST(ZoneLoadSnapshot, LateFinalizationTreeForPreviousZoneIsRejected) {
 
     SendNamedNewZone(eq, "arena", 77);
     eq.SetPosition(0.0f, 0.0f, 0.0f);
-    ASSERT_EQ(eq.CreateZoneLoadSnapshot().playerBspRegion, kArenaOriginRegion);
+    ASSERT_EQ(eq.Bridge().CreateZoneLoadSnapshot().playerBspRegion, kArenaOriginRegion);
 
     // Build befallen's tree the way the renderer would have for the previous
     // load, and deliver it as the (late) finalization for that zone.
@@ -1317,9 +1317,9 @@ TEST(ZoneLoadSnapshot, LateFinalizationTreeForPreviousZoneIsRejected) {
     ASSERT_TRUE(befallenTree);
     ASSERT_EQ(befallenTree->findRegionIndexForPoint(0.0f, 0.0f, 0.0f), kBefallenOriginRegion);
 
-    eq.SetZoneBspTree(befallenTree, "befallen");
+    eq.Bridge().SetZoneBspTree(befallenTree, "befallen");
 
-    const auto snap = eq.CreateZoneLoadSnapshot();
+    const auto snap = eq.Bridge().CreateZoneLoadSnapshot();
     EXPECT_EQ(snap.zoneName, "arena");
     EXPECT_NE(snap.playerBspRegion, kBefallenOriginRegion)
         << "snapshot resolved the arena position against befallen's tree";
@@ -1341,9 +1341,9 @@ TEST(ZoneLoadSnapshot, MatchingFinalizationTreeIsInstalled) {
     ASSERT_TRUE(loader.parseFromArchive(dataPath + "/arena.s3d", "arena.wld"));
     auto arenaTree = loader.getBspTree();
     ASSERT_TRUE(arenaTree);
-    eq.SetZoneBspTree(arenaTree, "arena");
+    eq.Bridge().SetZoneBspTree(arenaTree, "arena");
 
-    EXPECT_EQ(eq.CreateZoneLoadSnapshot().playerBspRegion, kArenaOriginRegion);
+    EXPECT_EQ(eq.Bridge().CreateZoneLoadSnapshot().playerBspRegion, kArenaOriginRegion);
 }
 
 TEST(ZoneLoadSnapshot, OutOfTreeStartPositionIsNotFatal) {
@@ -1360,7 +1360,7 @@ TEST(ZoneLoadSnapshot, OutOfTreeStartPositionIsNotFatal) {
     SendNamedNewZone(eq, "befallen", 36);
     eq.SetPosition(-195.0f, -982.0f, 3.0f);
 
-    const auto snap = eq.CreateZoneLoadSnapshot();
+    const auto snap = eq.Bridge().CreateZoneLoadSnapshot();
     EXPECT_EQ(snap.zoneName, "befallen");
     EXPECT_EQ(snap.playerBspRegion, SIZE_MAX);
     EXPECT_FALSE(eq.IsQuitRequested());

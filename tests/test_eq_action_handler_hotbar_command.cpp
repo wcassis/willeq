@@ -142,9 +142,9 @@ TEST(EqActionHandlerHotbarCommand, SharedBody_RefusesNonCommandTypes) {
     h.installFallback();
     h.bridge.drainEvents();
 
-    EXPECT_FALSE(h.eq.ActivateHotbarCommandSlot(eqt::HotbarSlotType::Spell, "/wave"));
-    EXPECT_FALSE(h.eq.ActivateHotbarCommandSlot(eqt::HotbarSlotType::Item, "/wave"));
-    EXPECT_FALSE(h.eq.ActivateHotbarCommandSlot(eqt::HotbarSlotType::Empty, "/wave"));
+    EXPECT_FALSE(h.eq.Bridge().ActivateHotbarCommandSlot(eqt::HotbarSlotType::Spell, "/wave"));
+    EXPECT_FALSE(h.eq.Bridge().ActivateHotbarCommandSlot(eqt::HotbarSlotType::Item, "/wave"));
+    EXPECT_FALSE(h.eq.Bridge().ActivateHotbarCommandSlot(eqt::HotbarSlotType::Empty, "/wave"));
 
     EXPECT_TRUE(h.fallbackSeen.empty());
     EXPECT_TRUE(h.bridge.drainEvents().empty());

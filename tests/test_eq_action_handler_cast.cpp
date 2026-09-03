@@ -755,7 +755,7 @@ TEST(EqActionHandlerCast, CastSpellIntent_ReagentCountShort_SaysMissingNamedItem
     h.clearSent();
 
     h.bridge.pushIntent(eqt::events::CastSpellIntent{0});
-    h.eq.ProcessBridgeIntents();
+    h.eq.Bridge().ProcessBridgeIntents();
 
     EXPECT_FALSE(h.eq.GetSpellManager()->isCasting());
     EXPECT_TRUE(h.sentCasts().empty());
@@ -788,7 +788,7 @@ TEST(EqActionHandlerCast, HotbarSpellClick_ReagentCountShort_SaysMissingNamedIte
     click.type = eqt::HotbarSlotType::Spell;
     click.id = 351;
     h.bridge.pushIntent(click);
-    h.eq.ProcessBridgeIntents();
+    h.eq.Bridge().ProcessBridgeIntents();
 
     EXPECT_FALSE(h.eq.GetSpellManager()->isCasting());
     EXPECT_TRUE(h.sentCasts().empty());
@@ -814,7 +814,7 @@ TEST(EqActionHandlerCast, HotbarSpellClick_TargetOutOfRange_SaysOutOfRange) {
     click.type = eqt::HotbarSlotType::Spell;
     click.id = id;
     h.bridge.pushIntent(click);
-    h.eq.ProcessBridgeIntents();
+    h.eq.Bridge().ProcessBridgeIntents();
 
     EXPECT_FALSE(h.eq.GetSpellManager()->isCasting());
     EXPECT_TRUE(h.sentCasts().empty());

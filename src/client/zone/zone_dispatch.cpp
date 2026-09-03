@@ -296,9 +296,9 @@ void eqt::zone::ZoneComponent::DispatchZonePacket(const EQ::Net::Packet & p)
 
 			// Check if loot window is empty (no items to loot)
 			// If empty, auto-complete the loot session immediately
-			if (ctx_.game_state.player().lootingCorpseId() != 0 && owner_.m_loot_items.empty()) {
+			if (ctx_.game_state.player().lootingCorpseId() != 0 && owner_.Bridge().LootItems().empty()) {
 				LOG_DEBUG(MOD_INVENTORY, "LootRequest response: No items on corpse, auto-completing loot");
-				owner_.CloseLootWindow(static_cast<uint16_t>(corpse_id));
+				owner_.Bridge().CloseLootWindow(static_cast<uint16_t>(corpse_id));
 			}
 		}
 		break;
@@ -315,9 +315,9 @@ void eqt::zone::ZoneComponent::DispatchZonePacket(const EQ::Net::Packet & p)
 			if (auto_loot == -1) {
 				LOG_WARN(MOD_INVENTORY, "Loot DENIED by server!");
 				// Remove from pending slots
-				auto it = std::find(owner_.m_pending_loot_slots.begin(), owner_.m_pending_loot_slots.end(), slot_id);
-				if (it != owner_.m_pending_loot_slots.end()) {
-					owner_.m_pending_loot_slots.erase(it);
+				auto it = std::find(owner_.Bridge().PendingLootSlots().begin(), owner_.Bridge().PendingLootSlots().end(), slot_id);
+				if (it != owner_.Bridge().PendingLootSlots().end()) {
+					owner_.Bridge().PendingLootSlots().erase(it);
 				}
 			}
 		} else {
@@ -327,7 +327,7 @@ void eqt::zone::ZoneComponent::DispatchZonePacket(const EQ::Net::Packet & p)
 	case HC_OP_LootComplete:
 		// Server signals end of loot session (rarely sent by P1999/Titanium servers)
 		LOG_DEBUG(MOD_INVENTORY, "LootComplete received from server");
-		owner_.m_pending_loot_slots.clear();
+		owner_.Bridge().PendingLootSlots().clear();
 		break;
 	case HC_OP_ItemPacket:
 		// Item packets can be: vendor items (100), inventory items (103), or loot items
@@ -338,7 +338,7 @@ void eqt::zone::ZoneComponent::DispatchZonePacket(const EQ::Net::Packet & p)
 				item_packet_type = p.GetUInt32(2);
 			}
 			LOG_DEBUG(MOD_INVENTORY, "ItemPacket received, type={} m_game_state.player().lootingCorpseId()={} m_game_state.player().vendorNpcId()={} pending_slots={}",
-				item_packet_type, ctx_.game_state.player().lootingCorpseId(), ctx_.game_state.player().vendorNpcId(), owner_.m_pending_loot_slots.size());
+				item_packet_type, ctx_.game_state.player().lootingCorpseId(), ctx_.game_state.player().vendorNpcId(), owner_.Bridge().PendingLootSlots().size());
 			// Check if this is a vendor item (type 100)
 			if (item_packet_type == EQT::ITEM_PACKET_MERCHANT && ctx_.game_state.player().vendorNpcId() != 0) {
 				// Vendor item - add to vendor window via bridge
@@ -346,7 +346,7 @@ void eqt::zone::ZoneComponent::DispatchZonePacket(const EQ::Net::Packet & p)
 			} else if (ctx_.game_state.player().lootingCorpseId() != 0) {
 				// Looting (T268: every open path sets this). A pending slot means
 				// this is the item we asked for; otherwise it populates the window.
-				if (!owner_.m_pending_loot_slots.empty()) { owner_.Merchant().ZoneProcessLootedItemToInventory(p); }
+				if (!owner_.Bridge().PendingLootSlots().empty()) { owner_.Merchant().ZoneProcessLootedItemToInventory(p); }
 				else { owner_.Merchant().ZoneProcessLootItemToUI(p); }
 			} else {
 				// Check if this is a trade partner item.

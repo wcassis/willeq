@@ -61,10 +61,10 @@ it without taking that measurement first.
   tombstone. Prov: deferred item 4 (`eq_ucs.cpp` was already deleted by T326;
   this is the remaining half).
 
-- **B006** (B) the S2 leftovers — eight TUs include
+- **B006** (B) the S2 leftovers — two TUs include
   `include/client/graphics/irrlicht_renderer.h` and never name `IrrlichtRenderer`
-  (`eq_bridge_ui_audio`, `eq_bridge_intents`, `eq_player_info`, `_misc`,
-  `_social`, `_buffs`, `application_frame`, `application_config`);
+  (`application_frame`, `application_config`; K08 removed the four player
+  ones and K11 the two bridge ones);
   `EverQuest::InitGraphics` still takes an `IrrlichtRenderer*`; the asset loaders
   (`include/client/graphics/eq/pfs.h`, `include/client/graphics/eq/wld_loader.h`) still live in `EQT::Graphics`; and
   `door_manager.cpp` reaches for the static `EverQuest::GetDebugLevel()`. Closes
@@ -200,8 +200,8 @@ it without taking that measurement first.
   `RaceModelLoader::loadModelFromGlobalChrWithVariantsForAnimation` 815
   (`variant_loading.cpp`), `IrrlichtRenderer::updatePlayerMovement` 806
   (`renderer_player_physics.cpp`), `CommandProcessor::registerBuiltinCommands` 768
-  (`command_processor_registration.cpp`), `EverQuest::ProcessBridgeIntents` 580
-  (`eq_bridge.cpp`), `Application::initialize` 569 (`application.cpp`),
+  (`command_processor_registration.cpp`), `eqt::bridge::BridgeComponent::ProcessBridgeIntents` 580
+  (`src/client/bridge/bridge_component_intents.cpp`), `Application::initialize` 569 (`application.cpp`),
   `DetailManager::createDefaultConfig` 548 (`detail_manager.cpp`, a data table —
   leave it), `IrrlichtRenderer::processFrameRender` 546 (`renderer_frame.cpp`).
   Closes when: each is split or explicitly kept. Prov:

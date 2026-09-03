@@ -293,7 +293,7 @@ TEST(ReadBook, RequestBytesMatchTitaniumBookRequestStruct) {
     h.clearSent();
 
     ASSERT_TRUE(h.processor.processCommand("/read Tattered Note").success);
-    h.eq.ProcessBridgeIntents();
+    h.eq.Bridge().ProcessBridgeIntents();
 
     auto pkts = h.readBookPackets();
     ASSERT_EQ(pkts.size(), 1u) << "exactly one OP_ReadBook per /read";
@@ -423,7 +423,7 @@ TEST(ReadBook, RoundTripFromCommandToChat) {
     h.clearSent();
 
     ASSERT_TRUE(h.processor.processCommand("/read tattered").success);
-    h.eq.ProcessBridgeIntents();
+    h.eq.Bridge().ProcessBridgeIntents();
     ASSERT_EQ(h.readBookPackets().size(), 1u);
 
     // The server answers with the text for that txtfile.

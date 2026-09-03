@@ -230,10 +230,10 @@ TEST_P(SourceWrites, Pet_ButtonStateChanged_WritesSourceButton) {
     const auto& pet = eq.GetGameState().pet();
     ASSERT_FALSE(pet.getButtonState(static_cast<uint8_t>(EQT::PET_BUTTON_TAUNT)));
 
-    eq.OnPetButtonStateChanged(EQT::PET_BUTTON_TAUNT, true);
+    eq.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_TAUNT, true);
     EXPECT_TRUE(pet.getButtonState(static_cast<uint8_t>(EQT::PET_BUTTON_TAUNT)));
 
-    eq.OnPetButtonStateChanged(EQT::PET_BUTTON_TAUNT, false);
+    eq.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_TAUNT, false);
     EXPECT_FALSE(pet.getButtonState(static_cast<uint8_t>(EQT::PET_BUTTON_TAUNT)));
 }
 

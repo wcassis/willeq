@@ -249,6 +249,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_zone_component)
 
+# K11 (Batch K): the extracted eqt::bridge::BridgeComponent, driven directly --
+# the accessor identity, the FIVE sanctioned lifecycle forwarders that stayed
+# on EverQuest, the loot cluster and the inspect/config/audio state that moved.
+ADD_EXECUTABLE(test_bridge_component
+    test_bridge_component.cpp
+)
+TARGET_LINK_LIBRARIES(test_bridge_component GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_bridge_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_bridge_component)
+
 # T320 (Leg C): one chat-channel name table. eq_chat.cpp built the name twice
 # from two ternary chains forty lines apart and they had drifted -- auction
 # missing from the console chain, channel 14 (TellEcho) missing from both.

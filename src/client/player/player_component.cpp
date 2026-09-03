@@ -468,7 +468,7 @@ void eqt::player::PlayerComponent::SendInspectRequest(uint32_t target_id)
 void eqt::player::PlayerComponent::SendInspectAnswer(uint32_t requester_id)
 {
 	EQT::InspectResponse_Struct answer =  // non-const: PutData takes void*
-		EQT::MakeInspectAnswer(requester_id, owner_.MySpawnId(), owner_.m_inspect_message);
+		EQT::MakeInspectAnswer(requester_id, owner_.MySpawnId(), owner_.Bridge().GetInspectMessage());
 
 	// T170 test seam, same shape as T88's and T167's: capture the body before
 	// the connection gate so a test can assert on the real encoder output.

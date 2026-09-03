@@ -310,7 +310,7 @@ TEST_F(BuffCancelConsumer, IntentDoesNotRemoveTheBuffOptimistically) {
     ASSERT_NE(eq.GetBuffManager()->getPlayerBuffBySlot(2), nullptr);
 
     bridge.pushIntent(eqt::events::BuffCancelIntent{2});
-    eq.ProcessBridgeIntents();
+    eq.Bridge().ProcessBridgeIntents();
 
     EXPECT_NE(eq.GetBuffManager()->getPlayerBuffBySlot(2), nullptr)
         << "the buff must survive until the server confirms the drop";
@@ -325,7 +325,7 @@ TEST_F(BuffCancelConsumer, ServerConfirmationIsWhatRemovesTheBuff) {
     GiveBuff(eq, 2, 202, 100);
 
     bridge.pushIntent(eqt::events::BuffCancelIntent{2});
-    eq.ProcessBridgeIntents();
+    eq.Bridge().ProcessBridgeIntents();
     ASSERT_NE(eq.GetBuffManager()->getPlayerBuffBySlot(2), nullptr);
 
     // The server's answer: OP_Buff, bufffade == 1, same slot.

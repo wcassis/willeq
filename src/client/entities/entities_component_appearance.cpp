@@ -87,11 +87,11 @@ void eqt::entities::EntitiesComponent::ZoneProcessDeleteSpawn(const EQ::Net::Pac
 					ctx_.bridge->pushEvent(eqt::state::GameEvent(
 						eqt::state::GameEventType::LootWindowClosed, std::move(lwdata)));
 				}
-				owner_.m_loot_items.clear();
-				owner_.m_pending_loot_slots.clear();
+				owner_.Bridge().LootItems().clear();
+				owner_.Bridge().PendingLootSlots().clear();
 				ctx_.game_state.player().clearLootingCorpse();  // Phase 7.7 / T286
 				// Mark as ready for deletion
-				owner_.m_loot_complete_corpse_id = spawn_id;
+				owner_.Bridge().LootCompleteCorpseId() = spawn_id;
 				// T268: the loot policy machine leaves LOOTING with the window.
 				if (ctx_.combat_manager) {
 					ctx_.combat_manager->OnLootWindowClosed();
@@ -100,13 +100,13 @@ void eqt::entities::EntitiesComponent::ZoneProcessDeleteSpawn(const EQ::Net::Pac
 
 			// Only delete corpses we've completed looting
 			// This prevents corpses from being deleted when NPCs die (server sends DeleteSpawn(0))
-			if (owner_.m_loot_complete_corpse_id != spawn_id) {
+			if (owner_.Bridge().LootCompleteCorpseId() != spawn_id) {
 				LOG_TRACE(MOD_ENTITY, "Ignoring DeleteSpawn for corpse {} ({}) - not finished looting", spawn_id, it->second.name);
 				return;
 			}
 
 			LOG_DEBUG(MOD_ENTITY, "Corpse {} ({}) removed by server after looting", spawn_id, it->second.name);
-			owner_.m_loot_complete_corpse_id = 0;  // Clear the flag
+			owner_.Bridge().LootCompleteCorpseId() = 0;  // Clear the flag
 		}
 
 		LOG_DEBUG(MOD_ENTITY, "Entity {} ({}) despawned", spawn_id, it->second.name);
@@ -132,7 +132,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessDeleteSpawn(const EQ::Net::Pac
 			// OnPetCreated() above: a pure bridge publish (now also the
 			// source-side pet().clearPet()); gating it left the headless
 			// build's pet state set forever after a despawn.
-			owner_.OnPetRemoved();
+			owner_.Bridge().OnPetRemoved();
 		}
 
 		// Check if our combat target despawned - disable auto-attack
@@ -144,7 +144,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessDeleteSpawn(const EQ::Net::Pac
 		}
 
 #ifdef EQT_HAS_GRAPHICS
-		owner_.OnSpawnRemovedGraphics(spawn_id);
+		owner_.Bridge().OnSpawnRemovedGraphics(spawn_id);
 #endif
 
 		// Remove from both local map and EntityManager
@@ -300,7 +300,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessHPUpdate(const EQ::Net::Packet
 	// Left gated here, a headless build's equipment stats (weight, weapon
 	// skill types) never refreshed when player HP changed.
 	if (is_self) {
-		owner_.UpdateInventoryStats();
+		owner_.Bridge().UpdateInventoryStats();
 	}
 
 	// Publish PlayerStatsChanged when our own HP changes

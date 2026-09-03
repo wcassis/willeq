@@ -141,15 +141,15 @@ TEST(InspectAnswer, SendInspectAnswerBuildsTheBodyFromOurOwnSpawnId) {
 TEST(InspectMessageStore, SetTruncatesToTheServersLimit) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
 
-    eq.SetInspectMessage(std::string(1000, 'z'));
-    EXPECT_EQ(eq.GetInspectMessage().size(), EQT::INSPECT_MESSAGE_MAX_LEN)
+    eq.Bridge().SetInspectMessage(std::string(1000, 'z'));
+    EXPECT_EQ(eq.Bridge().GetInspectMessage().size(), EQT::INSPECT_MESSAGE_MAX_LEN)
         << "truncation happens on SET so the user is shown what will actually "
            "reach the server";
 }
 
 TEST(InspectMessageStore, StartsEmpty) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    EXPECT_TRUE(eq.GetInspectMessage().empty());
+    EXPECT_TRUE(eq.Bridge().GetInspectMessage().empty());
 }
 
 TEST(InspectMessageStore, SurvivesAConfigRoundTrip) {
@@ -160,16 +160,16 @@ TEST(InspectMessageStore, SurvivesAConfigRoundTrip) {
     const std::string msg = "Bard for hire, tips appreciated";
     {
         EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-        eq.SetConfigPath(path);
-        eq.SetInspectMessage(msg);
-        eq.SaveInspectMessage();
+        eq.Bridge().SetConfigPath(path);
+        eq.Bridge().SetInspectMessage(msg);
+        eq.Bridge().SaveInspectMessage();
     }
     {
         EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-        eq.SetConfigPath(path);
-        ASSERT_TRUE(eq.GetInspectMessage().empty());
-        eq.LoadInspectMessage();
-        EXPECT_EQ(eq.GetInspectMessage(), msg);
+        eq.Bridge().SetConfigPath(path);
+        ASSERT_TRUE(eq.Bridge().GetInspectMessage().empty());
+        eq.Bridge().LoadInspectMessage();
+        EXPECT_EQ(eq.Bridge().GetInspectMessage(), msg);
     }
     std::filesystem::remove(path);
 }
@@ -188,9 +188,9 @@ TEST(InspectMessageStore, SavingDoesNotDiscardOtherKeysInTheConfig) {
 
     {
         EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-        eq.SetConfigPath(path);
-        eq.SetInspectMessage("new");
-        eq.SaveInspectMessage();
+        eq.Bridge().SetConfigPath(path);
+        eq.Bridge().SetInspectMessage("new");
+        eq.Bridge().SaveInspectMessage();
     }
 
     std::ifstream in(path);
@@ -212,10 +212,10 @@ TEST(InspectMessageStore, LoadingFromAConfigWithoutTheKeyLeavesItEmpty) {
     }
 
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.SetConfigPath(path);
-    eq.SetInspectMessage("set before load");
-    eq.LoadInspectMessage();
-    EXPECT_EQ(eq.GetInspectMessage(), "set before load")
+    eq.Bridge().SetConfigPath(path);
+    eq.Bridge().SetInspectMessage("set before load");
+    eq.Bridge().LoadInspectMessage();
+    EXPECT_EQ(eq.Bridge().GetInspectMessage(), "set before load")
         << "a config with no inspectMessage must not clear what is already set";
     std::filesystem::remove(path);
 }
@@ -226,19 +226,19 @@ TEST(InspectMessageStore, HandlerSetsAndClearsTheStoredMessage) {
     eqt::EqActionHandler handler(eq);
 
     handler.setInspectMessage(std::string("Selling spells"));
-    EXPECT_EQ(eq.GetInspectMessage(), "Selling spells");
+    EXPECT_EQ(eq.Bridge().GetInspectMessage(), "Selling spells");
 
     handler.setInspectMessage(std::string());
-    EXPECT_TRUE(eq.GetInspectMessage().empty()) << "empty string clears";
+    EXPECT_TRUE(eq.Bridge().GetInspectMessage().empty()) << "empty string clears";
 }
 
 TEST(InspectMessageStore, HandlerShowDoesNotModify) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
     eqt::EqActionHandler handler(eq);
-    eq.SetInspectMessage("unchanged");
+    eq.Bridge().SetInspectMessage("unchanged");
 
     handler.setInspectMessage(std::nullopt);
-    EXPECT_EQ(eq.GetInspectMessage(), "unchanged")
+    EXPECT_EQ(eq.Bridge().GetInspectMessage(), "unchanged")
         << "the show path must never write -- it is the no-argument form of "
            "the command, i.e. the one typed by accident";
 }
@@ -248,9 +248,9 @@ TEST(InspectMessageStore, TheAnswerCarriesTheStoredMessage) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
     eq.Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(kMe);
-    eq.SetInspectMessage("Hail");
+    eq.Bridge().SetInspectMessage("Hail");
 
-    auto a = EQT::MakeInspectAnswer(kRequester, kMe, eq.GetInspectMessage());
+    auto a = EQT::MakeInspectAnswer(kRequester, kMe, eq.Bridge().GetInspectMessage());
     EXPECT_EQ(std::string(a.text), "Hail");
 }
 

@@ -56,7 +56,7 @@ void eqt::merchant::MerchantComponent::ZoneProcessCharInventory(const EQ::Net::P
 	}
 
 	// Update stats after inventory changes
-	owner_.UpdateInventoryStats();
+	owner_.Bridge().UpdateInventoryStats();
 }
 
 // P28: the rest of this file (ZoneProcessMoveItem through the tradeskill
@@ -76,7 +76,7 @@ void eqt::merchant::MerchantComponent::ZoneProcessMoveItem(const EQ::Net::Packet
 	}
 
 	// Update stats after item movement (may affect equipped items)
-	owner_.UpdateInventoryStats();
+	owner_.Bridge().UpdateInventoryStats();
 
 	// Publish InventorySlotChanged for both slots involved in the move (D18a: bridge-only)
 	// T221: the source-side occupancy write precedes the bridge guard.

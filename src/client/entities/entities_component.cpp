@@ -356,8 +356,8 @@ void eqt::entities::EntitiesComponent::ZoneProcessZoneSpawns(const EQ::Net::Pack
 				// build (known residual named in refactor/deferred.md's
 				// EQT_HAS_GRAPHICS pattern entry; T41's snapshot fix only
 				// covered a pet present at zone-in, not this delta path).
-				owner_.OnPetCreated(ent);
-				owner_.OnPetButtonStateChanged(EQT::PET_BUTTON_FOLLOW, true);
+				owner_.Bridge().OnPetCreated(ent);
+				owner_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_FOLLOW, true);
 				break;
 			}
 		}
@@ -390,7 +390,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessTimeOfDay(const EQ::Net::Packe
 
 #ifdef WITH_AUDIO
 	// Phase 13: Update day/night state for audio
-	owner_.UpdateDayNightState();
+	owner_.Bridge().UpdateDayNightState();
 #endif
 
 	LOG_DEBUG(MOD_ZONE, "Time of day: {:02d}:{:02d} {:02d}/{:02d}{}",

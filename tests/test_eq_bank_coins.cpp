@@ -231,7 +231,7 @@ TEST(BankCoinIntent, Deposit_SendsInventoryToBankMoveCoin_AndProjectsBothPools) 
 
     h.bridge.pushIntent(eqt::events::BankCurrencyMoveIntent{
         static_cast<uint8_t>(EQT::COINTYPE_PP), 5, /*fromBank=*/false});
-    h.eq.ProcessBridgeIntents();
+    h.eq.Bridge().ProcessBridgeIntents();
 
     auto mcs = h.sentMoveCoins();
     ASSERT_EQ(mcs.size(), 1u);
@@ -273,7 +273,7 @@ TEST(BankCoinIntent, Withdraw_SendsBankToInventoryMoveCoin) {
 
     h.bridge.pushIntent(eqt::events::BankCurrencyMoveIntent{
         static_cast<uint8_t>(EQT::COINTYPE_CP), 25, /*fromBank=*/true});
-    h.eq.ProcessBridgeIntents();
+    h.eq.Bridge().ProcessBridgeIntents();
 
     auto mcs = h.sentMoveCoins();
     ASSERT_EQ(mcs.size(), 1u);
@@ -297,7 +297,7 @@ TEST(BankCoinIntent, Deposit_PoolLacksCoins_SendsNothing_ProjectionUnchanged) {
 
     h.bridge.pushIntent(eqt::events::BankCurrencyMoveIntent{
         static_cast<uint8_t>(EQT::COINTYPE_PP), 5, /*fromBank=*/false});
-    h.eq.ProcessBridgeIntents();
+    h.eq.Bridge().ProcessBridgeIntents();
 
     EXPECT_TRUE(h.sentPackets().empty());
     EXPECT_EQ(h.eq.GetGameState().player().platinum(), 3u);
@@ -319,7 +319,7 @@ TEST(BankCoinIntent, Move_WindowClosed_SendsNothing) {
 
     h.bridge.pushIntent(eqt::events::BankCurrencyMoveIntent{
         static_cast<uint8_t>(EQT::COINTYPE_PP), 5, /*fromBank=*/false});
-    h.eq.ProcessBridgeIntents();
+    h.eq.Bridge().ProcessBridgeIntents();
 
     EXPECT_TRUE(h.sentPackets().empty());
     EXPECT_EQ(h.eq.GetGameState().player().platinum(), 10u);
@@ -335,7 +335,7 @@ TEST(BankCoinIntent, ConvertUp_SendsBankToBankWithBothCoinTypes_AndProjectsRatio
 
     h.bridge.pushIntent(eqt::events::BankCurrencyConvertIntent{
         static_cast<uint8_t>(EQT::COINTYPE_CP), static_cast<uint8_t>(EQT::COINTYPE_SP), 30});
-    h.eq.ProcessBridgeIntents();
+    h.eq.Bridge().ProcessBridgeIntents();
 
     auto mcs = h.sentMoveCoins();
     ASSERT_EQ(mcs.size(), 1u);
@@ -364,7 +364,7 @@ TEST(BankCoinIntent, ConvertDown_TwoStepsIsHundredToOne) {
 
     h.bridge.pushIntent(eqt::events::BankCurrencyConvertIntent{
         static_cast<uint8_t>(EQT::COINTYPE_PP), static_cast<uint8_t>(EQT::COINTYPE_SP), 2});
-    h.eq.ProcessBridgeIntents();
+    h.eq.Bridge().ProcessBridgeIntents();
 
     auto mcs = h.sentMoveCoins();
     ASSERT_EQ(mcs.size(), 1u);
@@ -387,7 +387,7 @@ TEST(BankCoinIntent, ConvertUp_NotAMultiple_SendsNothing) {
 
     h.bridge.pushIntent(eqt::events::BankCurrencyConvertIntent{
         static_cast<uint8_t>(EQT::COINTYPE_CP), static_cast<uint8_t>(EQT::COINTYPE_SP), 15});
-    h.eq.ProcessBridgeIntents();
+    h.eq.Bridge().ProcessBridgeIntents();
 
     EXPECT_TRUE(h.sentPackets().empty());
     EXPECT_EQ(h.eq.GetGameState().player().bankCopper(), 15u);
@@ -403,7 +403,7 @@ TEST(BankCoinIntent, Convert_PoolLacksCoins_SendsNothing) {
 
     h.bridge.pushIntent(eqt::events::BankCurrencyConvertIntent{
         static_cast<uint8_t>(EQT::COINTYPE_CP), static_cast<uint8_t>(EQT::COINTYPE_SP), 30});
-    h.eq.ProcessBridgeIntents();
+    h.eq.Bridge().ProcessBridgeIntents();
 
     EXPECT_TRUE(h.sentPackets().empty());
     EXPECT_EQ(h.eq.GetGameState().player().bankCopper(), 20u);
@@ -418,7 +418,7 @@ TEST(BankCoinIntent, Convert_SameCoinType_SendsNothing) {
 
     h.bridge.pushIntent(eqt::events::BankCurrencyConvertIntent{
         static_cast<uint8_t>(EQT::COINTYPE_CP), static_cast<uint8_t>(EQT::COINTYPE_CP), 10});
-    h.eq.ProcessBridgeIntents();
+    h.eq.Bridge().ProcessBridgeIntents();
 
     EXPECT_TRUE(h.sentPackets().empty());
     EXPECT_EQ(h.eq.GetGameState().player().bankCopper(), 20u);

@@ -297,7 +297,7 @@ void Application::loadZoneGraphics() {
 
     // Use snapshot (create if not already created by threaded path)
     if (m_zoneLoadSnapshot.zoneName.empty()) {
-        m_zoneLoadSnapshot = m_eqClient->CreateZoneLoadSnapshot();
+        m_zoneLoadSnapshot = m_eqClient->Bridge().CreateZoneLoadSnapshot();
     }
     const auto& snap = m_zoneLoadSnapshot;
 

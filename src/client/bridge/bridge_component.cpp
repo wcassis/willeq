@@ -1,4 +1,4 @@
-// eq_bridge.cpp
+// bridge_component.cpp
 //
 // EverQuest <-> renderer bridge marshaling layer, split out of eq.cpp (F10)
 // and split three ways by J13 (refactor/J13_eq_bridge_split.md).
@@ -106,14 +106,14 @@
 #ifdef EQT_HAS_GRAPHICS
 // Graphics renderer integration methods
 
-bool EverQuest::InitGraphics(int width, int height,
+bool eqt::bridge::BridgeComponent::InitGraphics(int width, int height,
                              EQT::Graphics::IrrlichtRenderer* renderer,
                              eqt::bridge::GameStateBridge* bridge) {
-	if (m_graphics_initialized) {
+	if (owner_.m_graphics_initialized) {
 		return true;
 	}
 
-	if (m_eq_client_path.empty()) {
+	if (owner_.m_eq_client_path.empty()) {
 		LOG_ERROR(MOD_GRAPHICS, "EQ client path not set. Call SetEQClientPath() first.");
 		return false;
 	}
@@ -127,37 +127,37 @@ bool EverQuest::InitGraphics(int width, int height,
 
 	// U07b: Wire hotbar model's save callback (bridge pointer itself is
 	// wired by wireBridgeToSubsystems() above).
-	if (m_hotbar_model) {
-		m_hotbar_model->setSaveCallback([this]() { SaveHotbarConfig(); });
+	if (owner_.m_hotbar_model) {
+		owner_.m_hotbar_model->setSaveCallback([this]() { SaveHotbarConfig(); });
 	}
 
 	EQT::Graphics::RendererConfig config;
 	config.width = width;
 	config.height = height;
-	config.eqClientPath = m_eq_client_path;
+	config.eqClientPath = owner_.m_eq_client_path;
 	config.regionMapsPath = m_region_maps_path;
-	config.windowTitle = "WillEQ - " + m_character;
+	config.windowTitle = "WillEQ - " + ctx_.character;
 	config.lighting = false;
-	config.constrainedPreset = m_constrained_preset;
-	if (m_constrained_config) {
+	config.constrainedPreset = owner_.m_constrained_preset;
+	if (owner_.m_constrained_config) {
 		config.constrainedPreset = EQT::Graphics::ConstrainedRenderingPreset::Custom;
-		config.constrainedConfig = *m_constrained_config;
+		config.constrainedConfig = *owner_.m_constrained_config;
 	}
 
 	if (!renderer->initLoadingScreen(config)) {
 		LOG_ERROR(MOD_GRAPHICS, "Failed to initialize renderer loading screen");
-		m_bridge = nullptr;
+		ctx_.bridge = nullptr;
 		return false;
 	}
 
 	// Pump network after Irrlicht device creation (can take 0.5-1s on ARM)
-	TickNetwork();
+	owner_.TickNetwork();
 
 	// Set collision map via bridge (shared_ptr copy, P35 — see eq.h)
-	if (m_zone_map && m_bridge) {
-		m_bridge->pushEvent(eqt::state::GameEvent(
+	if (owner_.m_zone_map && ctx_.bridge) {
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::CollisionMapChanged,
-			eqt::state::CollisionMapChangedData{m_zone_map}));
+			eqt::state::CollisionMapChangedData{owner_.m_zone_map}));
 	}
 
 	// One-time deferred renderer init (render distance, spell VFX)
@@ -166,16 +166,16 @@ bool EverQuest::InitGraphics(int width, int height,
 	}
 
 	// Setup window callbacks (all empty stubs since D20a/D20b1)
-	m_merchant->SetupLootCallbacks();
-	m_merchant->SetupVendorCallbacks();
-	m_merchant->SetupBankCallbacks();
-	m_merchant->SetupTrainerCallbacks();
-	m_merchant->SetupTradeWindowCallbacks();
-	m_merchant->SetupTradeskillCallbacks();
+	owner_.Merchant().SetupLootCallbacks();
+	owner_.Merchant().SetupVendorCallbacks();
+	owner_.Merchant().SetupBankCallbacks();
+	owner_.Merchant().SetupTrainerCallbacks();
+	owner_.Merchant().SetupTradeWindowCallbacks();
+	owner_.Merchant().SetupTradeskillCallbacks();
 
 	// S2: movement callback removed — position flows via PlayerPositionChanged intent only
 
-	m_graphics_initialized = true;
+	owner_.m_graphics_initialized = true;
 	LOG_INFO(MOD_GRAPHICS, "Renderer initialized successfully ({}x{})", width, height);
 
 #ifdef WITH_AUDIO
@@ -183,11 +183,11 @@ bool EverQuest::InitGraphics(int width, int height,
 #endif
 
 	// If zone is already fully connected when graphics init, set zone ready
-	if (IsFullyZonedIn() && m_bridge) {
-		m_bridge->pushEvent(eqt::state::GameEvent(
+	if (owner_.IsFullyZonedIn() && ctx_.bridge) {
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::NetworkReady,
-			eqt::state::NetworkReadyData{static_cast<uint32_t>(m_entities.size()), true}));
-		LOG_DEBUG(MOD_GRAPHICS, "Zone already ready, enabling rendering with {} entities", m_entities.size());
+			eqt::state::NetworkReadyData{static_cast<uint32_t>(ctx_.entities.size()), true}));
+		LOG_DEBUG(MOD_GRAPHICS, "Zone already ready, enabling rendering with {} entities", ctx_.entities.size());
 	}
 
 	return true;
@@ -196,12 +196,12 @@ bool EverQuest::InitGraphics(int width, int height,
 // SignalGraphicsLoadReady removed — loading thread starts directly from
 // Application::gameThreadLoop when ConsumeZoneLoadRequest fires.
 
-void EverQuest::ShutdownGraphics() {
+void eqt::bridge::BridgeComponent::ShutdownGraphics() {
 	// D20e2: Loading thread now owned by Application — it joins before calling this.
 
-	if (m_inventory_manager) {
-		m_inventory_manager->clearAll();
-		m_inventory_manager.reset();
+	if (ctx_.inventory_manager) {
+		ctx_.inventory_manager->clearAll();
+		ctx_.inventory_manager.reset();
 	}
 
 	// U07c3: Detach bridge — Application owns renderer lifecycle
@@ -213,8 +213,8 @@ void EverQuest::ShutdownGraphics() {
 	// would be harmless (idempotent, plain pointer assignment) but would
 	// leave two competing partial-clear paths -- one call site is the single
 	// source of truth for bridge-pointer clearing now.
-	m_loading_status_ptr = nullptr;
-	m_graphics_initialized = false;
+	owner_.m_loading_status_ptr = nullptr;
+	owner_.m_graphics_initialized = false;
 	LOG_DEBUG(MOD_GRAPHICS, "Graphics detached");
 }
 #endif // EQT_HAS_GRAPHICS
@@ -231,29 +231,29 @@ void EverQuest::ShutdownGraphics() {
 // conversion depends on) silently inert headless. Both call sites now route
 // through this single helper so the managers are wired whichever path sets
 // the bridge.
-void EverQuest::wireBridgeToSubsystems(eqt::bridge::GameStateBridge* bridge) {
-	m_bridge = bridge;
+void eqt::bridge::BridgeComponent::wireBridgeToSubsystems(eqt::bridge::GameStateBridge* bridge) {
+	ctx_.bridge = bridge;
 
 	// Plain pointer assignment on each manager's own setBridge() -- safe to
 	// call repeatedly (idempotent) and safe to call with bridge == nullptr
 	// (propagates the clear rather than silently dropping it), though
 	// nothing calls this with nullptr today (see deferred.md/T46 Review for
 	// the teardown-lifecycle finding).
-	if (m_inventory_manager) {
-		m_inventory_manager->setBridge(bridge);
+	if (ctx_.inventory_manager) {
+		ctx_.inventory_manager->setBridge(bridge);
 	}
-	if (m_spell_manager) {
-		m_spell_manager->setBridge(bridge);
+	if (ctx_.spell_manager) {
+		ctx_.spell_manager->setBridge(bridge);
 	}
-	if (m_skill_manager) {
-		m_skill_manager->setBridge(bridge);
+	if (ctx_.skill_manager) {
+		ctx_.skill_manager->setBridge(bridge);
 	}
-	if (m_hotbar_model) {
-		m_hotbar_model->setBridge(bridge);
+	if (owner_.m_hotbar_model) {
+		owner_.m_hotbar_model->setBridge(bridge);
 	}
 }
 
-void EverQuest::setBridge(eqt::bridge::GameStateBridge* bridge) {
+void eqt::bridge::BridgeComponent::setBridge(eqt::bridge::GameStateBridge* bridge) {
 	wireBridgeToSubsystems(bridge);
 }
 
@@ -267,7 +267,7 @@ void EverQuest::setBridge(eqt::bridge::GameStateBridge* bridge) {
 // renderer-lifetime-only.
 // D20c1: Pre-render game state tick — spell/buff managers + bridge
 // D21a: Game-side tick — runs on game thread (spell/buff updates + intent processing)
-void EverQuest::GameTick(float deltaTime) {
+void eqt::bridge::BridgeComponent::GameTick(float deltaTime) {
 #ifdef EQT_HAS_GRAPHICS
 	// T45: was `if (!m_graphics_initialized) return;`. m_graphics_initialized
 	// gates on the renderer subsystem existing, not on the game being ready,
@@ -278,17 +278,17 @@ void EverQuest::GameTick(float deltaTime) {
 	// OR's into its own call-site gate -- kept consistent with that
 	// condition here rather than removed, since Application's own comment
 	// notes GameTick() is deliberately gated twice.
-	if (!m_graphics_initialized && !IsGraphicsReady()) return;
+	if (!owner_.m_graphics_initialized && !owner_.IsGraphicsReady()) return;
 #endif
 
 	// Update spell manager (cooldowns, memorization progress, cast timeouts)
-	if (m_spell_manager) {
-		m_spell_manager->update(deltaTime);
+	if (ctx_.spell_manager) {
+		ctx_.spell_manager->update(deltaTime);
 	}
 
 	// Update buff manager (buff durations, expirations)
-	if (m_buff_manager) {
-		m_buff_manager->update(deltaTime);
+	if (ctx_.buff_manager) {
+		ctx_.buff_manager->update(deltaTime);
 	}
 
 	// Process intents from renderer's previous frame
@@ -303,9 +303,9 @@ void EverQuest::GameTick(float deltaTime) {
 // drain for headless runs (and single-threaded test harnesses).
 
 // D20c1: Post-render tick — audio sync, progressive loading check
-void EverQuest::PostRenderTick(float deltaTime) {
+void eqt::bridge::BridgeComponent::PostRenderTick(float deltaTime) {
 #ifdef EQT_HAS_GRAPHICS
-	if (!m_graphics_initialized) return;
+	if (!owner_.m_graphics_initialized) return;
 #endif
 
 #ifdef WITH_AUDIO
@@ -313,21 +313,21 @@ void EverQuest::PostRenderTick(float deltaTime) {
 	// The player's ears are at the player, not the camera. In third-person
 	// the camera can be far behind — placing audio there makes nearby
 	// NPCs sound distant. Player position is game state, no renderer query.
-	if (m_audio_manager) {
+	if (ctx_.audio_manager) {
 		// Convert EQ heading (0-512 clockwise from north) to forward vector
-		float headingRad = HeadingDeg() * (2.0f * static_cast<float>(M_PI)) / 512.0f;
+		float headingRad = owner_.HeadingDeg() * (2.0f * static_cast<float>(M_PI)) / 512.0f;
 		float forwardX = std::sin(headingRad);
 		float forwardY = -std::cos(headingRad);
 		float forwardZ = 0.0f;
 
-		m_audio_manager->setListenerPosition(
-			glm::vec3(PosX(), PosY(), PosZ()),
+		ctx_.audio_manager->setListenerPosition(
+			glm::vec3(owner_.PosX(), owner_.PosY(), owner_.PosZ()),
 			glm::vec3(forwardX, forwardY, forwardZ),
 			glm::vec3(0.0f, 0.0f, 1.0f)  // Up is +Z in EQ coordinates
 		);
 
-		if (m_zone_audio_manager && m_loading_phase == LoadingPhase::COMPLETE) {
-			m_zone_audio_manager->update(deltaTime, glm::vec3(PosX(), PosY(), PosZ()), m_is_daytime);
+		if (owner_.m_zone_audio_manager && owner_.m_loading_phase == LoadingPhase::COMPLETE) {
+			owner_.m_zone_audio_manager->update(deltaTime, glm::vec3(owner_.PosX(), owner_.PosY(), owner_.PosZ()), m_is_daytime);
 		}
 
 		// D20c2: Volume hotkeys handled via intents from renderer
@@ -341,44 +341,44 @@ void EverQuest::PostRenderTick(float deltaTime) {
 #ifdef EQT_HAS_GRAPHICS
 
 // D20c3: Create immutable snapshot of game state for zone loading thread
-eqt::ZoneLoadSnapshot EverQuest::CreateZoneLoadSnapshot() const {
+eqt::ZoneLoadSnapshot eqt::bridge::BridgeComponent::CreateZoneLoadSnapshot() const {
 	eqt::ZoneLoadSnapshot snap;
-	snap.zoneName = CurrentZoneName();
-	snap.zoneId = CurrentZoneId();
-	snap.playerX = PosX();
-	snap.playerY = PosY();
-	snap.playerZ = PosZ();
-	snap.playerHeading = HeadingDeg();
-	snap.playerSpawnId = MySpawnId();
-	snap.playerName = m_character;
-	snap.playerLevel = m_game_state.player().level();
-	snap.skyType = m_zone_sky_type;
-	snap.zoneType = m_zone_type;
+	snap.zoneName = owner_.CurrentZoneName();
+	snap.zoneId = owner_.CurrentZoneId();
+	snap.playerX = owner_.PosX();
+	snap.playerY = owner_.PosY();
+	snap.playerZ = owner_.PosZ();
+	snap.playerHeading = owner_.HeadingDeg();
+	snap.playerSpawnId = owner_.MySpawnId();
+	snap.playerName = ctx_.character;
+	snap.playerLevel = ctx_.game_state.player().level();
+	snap.skyType = owner_.m_zone_sky_type;
+	snap.zoneType = owner_.m_zone_type;
 	for (int i = 0; i < 4; i++) {
-		snap.fogRed[i] = m_zone_fog_red[i];
-		snap.fogGreen[i] = m_zone_fog_green[i];
-		snap.fogBlue[i] = m_zone_fog_blue[i];
-		snap.fogMinClip[i] = m_zone_fog_minclip[i];
-		snap.fogMaxClip[i] = m_zone_fog_maxclip[i];
+		snap.fogRed[i] = owner_.m_zone_fog_red[i];
+		snap.fogGreen[i] = owner_.m_zone_fog_green[i];
+		snap.fogBlue[i] = owner_.m_zone_fog_blue[i];
+		snap.fogMinClip[i] = owner_.m_zone_fog_minclip[i];
+		snap.fogMaxClip[i] = owner_.m_zone_fog_maxclip[i];
 	}
 	// Copy entities
-	snap.entities.reserve(m_entities.size());
-	for (const auto& [id, entity] : m_entities) {
+	snap.entities.reserve(ctx_.entities.size());
+	for (const auto& [id, entity] : ctx_.entities) {
 		snap.entities.push_back(entity);
 	}
 	// Copy doors
-	for (const auto& [id, door] : m_game_state.doors().getAllDoors()) {
+	for (const auto& [id, door] : ctx_.game_state.doors().getAllDoors()) {
 		snap.doors.push_back(door);
 	}
 	// Zone lines (expand geometry + extract bounding boxes)
-	if (m_zone->ZoneLinesPtr() && m_zone->ZoneLinesPtr()->hasZoneLines()) {
-		if (m_zone_map) {
-			m_zone->ZoneLinesPtr()->expandZoneLinesToGeometry(m_zone_map.get());
+	if (owner_.Zone().ZoneLinesPtr() && owner_.Zone().ZoneLinesPtr()->hasZoneLines()) {
+		if (owner_.m_zone_map) {
+			owner_.Zone().ZoneLinesPtr()->expandZoneLinesToGeometry(owner_.m_zone_map.get());
 		}
-		snap.zoneLineBBoxes = m_zone->ZoneLinesPtr()->getZoneLineBoundingBoxes();
+		snap.zoneLineBBoxes = owner_.Zone().ZoneLinesPtr()->getZoneLineBoundingBoxes();
 	}
-	snap.zoneMap = m_zone_map;
-	snap.eqClientPath = m_eq_client_path;
+	snap.zoneMap = owner_.m_zone_map;
+	snap.eqClientPath = owner_.m_eq_client_path;
 
 	// P04: zoneArchive/zoneWld snapshot fields removed (never read; see
 	// zone_load_snapshot.h) — LoadZoneSources now releases both right after
@@ -404,36 +404,36 @@ eqt::ZoneLoadSnapshot EverQuest::CreateZoneLoadSnapshot() const {
 	// playerBspRegion, and the renderer treats a SIZE_MAX camera region as
 	// "no PVS" everywhere. The former LOG_FATAL + std::exit(1) was the only
 	// effect the lookup ever had.
-	if (m_zone_bsp_tree && m_zone_bsp_tree_zone_name == CurrentZoneName()) {
-		snap.playerBspRegion = m_zone_bsp_tree->findRegionIndexForPoint(PosX(), PosY(), PosZ());
+	if (owner_.m_zone_bsp_tree && owner_.m_zone_bsp_tree_zone_name == owner_.CurrentZoneName()) {
+		snap.playerBspRegion = owner_.m_zone_bsp_tree->findRegionIndexForPoint(owner_.PosX(), owner_.PosY(), owner_.PosZ());
 		if (snap.playerBspRegion == SIZE_MAX) {
 			LOG_WARN(MOD_MAIN, "Snapshot: player BSP region is SIZE_MAX (start position outside every "
 			         "BSP region) pos=({:.2f},{:.2f},{:.2f}) zone={} -- continuing, nothing consumes it (T260)",
-			         PosX(), PosY(), PosZ(), CurrentZoneName());
+			         owner_.PosX(), owner_.PosY(), owner_.PosZ(), owner_.CurrentZoneName());
 		} else {
 			LOG_INFO(MOD_MAIN, "Snapshot: player BSP region={} pos=({:.2f},{:.2f},{:.2f}) zone={}",
-			         snap.playerBspRegion, PosX(), PosY(), PosZ(), CurrentZoneName());
+			         snap.playerBspRegion, owner_.PosX(), owner_.PosY(), owner_.PosZ(), owner_.CurrentZoneName());
 		}
-	} else if (m_zone_bsp_tree) {
+	} else if (owner_.m_zone_bsp_tree) {
 		LOG_WARN(MOD_MAIN, "Snapshot: m_zone_bsp_tree is stale (captured for '{}', current zone '{}') -- "
 		         "skipping region lookup, falling back to no-tree-yet (P17)",
-		         m_zone_bsp_tree_zone_name, CurrentZoneName());
+		         owner_.m_zone_bsp_tree_zone_name, owner_.CurrentZoneName());
 	}
 
 	return snap;
 }
 
-void EverQuest::SetZoneBspTree(std::shared_ptr<EQT::Graphics::BspTree> bsp, const std::string& builtForZone) {
-	if (bsp && builtForZone != CurrentZoneName()) {
+void eqt::bridge::BridgeComponent::SetZoneBspTree(std::shared_ptr<EQT::Graphics::BspTree> bsp, const std::string& builtForZone) {
+	if (bsp && builtForZone != owner_.CurrentZoneName()) {
 		// The finalization of a load for a zone we have already left. Keep
 		// whatever LoadZoneSources() built for the current zone (or nothing).
 		LOG_WARN(MOD_MAIN, "SetZoneBspTree: rejecting tree built for '{}' (current zone '{}') -- "
 		         "late finalization of a previous load, keeping the current zone's tree (T260)",
-		         builtForZone, CurrentZoneName());
+		         builtForZone, owner_.CurrentZoneName());
 		return;
 	}
-	m_zone_bsp_tree = std::move(bsp);
-	m_zone_bsp_tree_zone_name = m_zone_bsp_tree ? builtForZone : std::string();
+	owner_.m_zone_bsp_tree = std::move(bsp);
+	owner_.m_zone_bsp_tree_zone_name = owner_.m_zone_bsp_tree ? builtForZone : std::string();
 }
 
 // D20e2: StartLoadingThread, JoinLoadingThread moved to Application
@@ -446,8 +446,8 @@ void EverQuest::SetZoneBspTree(std::shared_ptr<EQT::Graphics::BspTree> bsp, cons
 // game state is ready. This ensures the progress bar shows during the entire
 // loading process from login to gameplay.
 
-void EverQuest::OnSpawnAddedGraphics(const Entity& entity) {
-	if (!m_bridge) {
+void eqt::bridge::BridgeComponent::OnSpawnAddedGraphics(const Entity& entity) {
+	if (!ctx_.bridge) {
 		return;
 	}
 
@@ -455,15 +455,15 @@ void EverQuest::OnSpawnAddedGraphics(const Entity& entity) {
 	// During initial zone load, entities are stored in m_entities and created
 	// in bulk by LoadZoneGraphics(). This function is for NEW spawns that
 	// appear after the zone is fully loaded (players zoning in, NPC respawns).
-	if (m_loading_phase != LoadingPhase::COMPLETE) {
+	if (owner_.m_loading_phase != LoadingPhase::COMPLETE) {
 		LOG_TRACE(MOD_ENTITY, "Skipping entity {} ({}) graphics - loading phase {} not complete",
-		          entity.spawn_id, entity.name, static_cast<int>(m_loading_phase));
+		          entity.spawn_id, entity.name, static_cast<int>(owner_.m_loading_phase));
 		return;
 	}
 
 	// Skip our own player - will be created in ZoneProcessGuildMOTD after fully connected
 	// This ensures all player data (inventory, appearance, etc.) has been received first
-	if (entity.name == m_character) {
+	if (entity.name == ctx_.character) {
 		LOG_DEBUG(MOD_ENTITY, "Skipping player entity {} ({}) in OnSpawnAddedGraphics - will create after fully connected",
 		          entity.spawn_id, entity.name);
 		return;
@@ -492,7 +492,7 @@ void EverQuest::OnSpawnAddedGraphics(const Entity& entity) {
 	data.gender = entity.gender;
 	data.npcType = entity.npc_type;
 	data.isCorpse = isCorpse;
-	data.isPlayer = (entity.spawn_id == MySpawnId());
+	data.isPlayer = (entity.spawn_id == owner_.MySpawnId());
 	data.serverSize = entity.size;
 	data.face = entity.face;
 	data.haircolor = entity.haircolor;
@@ -505,7 +505,7 @@ void EverQuest::OnSpawnAddedGraphics(const Entity& entity) {
 		data.equipment[i] = entity.equipment[i];
 		data.equipmentTint[i] = entity.equipment_tint[i];
 	}
-	m_bridge->pushEvent(eqt::state::GameEvent(
+	ctx_.bridge->pushEvent(eqt::state::GameEvent(
 		eqt::state::GameEventType::EntitySpawned, std::move(data)));
 
 	// Set entity light source if equipped
@@ -513,7 +513,7 @@ void EverQuest::OnSpawnAddedGraphics(const Entity& entity) {
 		eqt::state::EntityLightChangedData lightData;
 		lightData.spawnId = entity.spawn_id;
 		lightData.lightLevel = entity.light;
-		m_bridge->pushEvent(eqt::state::GameEvent(
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::EntityLightChanged, std::move(lightData)));
 	}
 
@@ -545,7 +545,7 @@ void EverQuest::OnSpawnAddedGraphics(const Entity& entity) {
 			eqt::state::EntityPoseStateChangedData poseData;
 			poseData.spawnId = entity.spawn_id;
 			poseData.poseState = poseState;
-			m_bridge->pushEvent(eqt::state::GameEvent(
+			ctx_.bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::EntityPoseStateChanged, std::move(poseData)));
 			eqt::state::EntityAnimationEventData animData;
 			animData.spawnId = entity.spawn_id;
@@ -553,7 +553,7 @@ void EverQuest::OnSpawnAddedGraphics(const Entity& entity) {
 			animData.animName = animCode;
 			animData.loop = true;
 			animData.playThrough = false;
-			m_bridge->pushEvent(eqt::state::GameEvent(
+			ctx_.bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::EntityAnimationEvent, std::move(animData)));
 			LOG_DEBUG(MOD_ENTITY, "Set initial pose for {} (ID: {}) to {} (anim={})",
 			          entity.name, entity.spawn_id, animCode, entity.animation);
@@ -561,156 +561,108 @@ void EverQuest::OnSpawnAddedGraphics(const Entity& entity) {
 	}
 }
 
-void EverQuest::OnPetCreated(const Entity& pet) {
+void eqt::bridge::BridgeComponent::OnPetCreated(const Entity& pet) {
 	LOG_DEBUG(MOD_MAIN, "Pet window: Pet created - {} (ID: {}) Level {}",
 	          pet.name, pet.spawn_id, pet.level);
 
 	// T221: source-side write (stage 2 of Option A) -- the READ model's
 	// PetCreated projection (GameStateSyncBridge) becomes redundant with this.
-	m_game_state.pet().setPet(pet.spawn_id, pet.name, pet.level);
+	ctx_.game_state.pet().setPet(pet.spawn_id, pet.name, pet.level);
 
 	// Publish PetCreated event to bridge (bridge handler opens pet window)
-	if (m_bridge) {
+	if (ctx_.bridge) {
 		eqt::state::PetCreatedData data;
 		data.spawnId = pet.spawn_id;
 		data.name = pet.name;
 		data.level = pet.level;
-		m_bridge->pushEvent(eqt::state::GameEvent(
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::PetCreated, std::move(data)));
 	}
 }
 
-void EverQuest::OnPetRemoved() {
+void eqt::bridge::BridgeComponent::OnPetRemoved() {
 	LOG_DEBUG(MOD_MAIN, "Pet window: Pet removed");
 
 	// T221: source-side write; PetRemoved projection redundant.
-	m_game_state.pet().clearPet();
+	ctx_.game_state.pet().clearPet();
 
 	// PetRemoved bridge event drives closePetWindow() via bridge handler
-	if (m_bridge) {
+	if (ctx_.bridge) {
 		eqt::state::PetRemovedData data;
-		data.spawnId = m_game_state.pet().petSpawnId();
+		data.spawnId = ctx_.game_state.pet().petSpawnId();
 		data.name = "";
-		m_bridge->pushEvent(eqt::state::GameEvent(
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::PetRemoved, std::move(data)));
 	}
 }
 
-void EverQuest::OnPetButtonStateChanged(EQT::PetButton button, bool state) {
+void eqt::bridge::BridgeComponent::OnPetButtonStateChanged(EQT::PetButton button, bool state) {
 	LOG_DEBUG(MOD_MAIN, "Pet button state changed: {} = {}",
 	          EQT::GetPetButtonName(button), state ? "ON" : "OFF");
 
 	// T221: source-side write; PetButtonStateChanged projection redundant.
-	m_game_state.pet().setButtonState(static_cast<uint8_t>(button), state);
+	ctx_.game_state.pet().setButtonState(static_cast<uint8_t>(button), state);
 
 	// Publish PetButtonStateChanged event to bridge
-	if (m_bridge) {
+	if (ctx_.bridge) {
 		eqt::state::PetButtonStateChangedData data;
 		data.button = static_cast<uint8_t>(button);
 		data.state = state;
-		m_bridge->pushEvent(eqt::state::GameEvent(
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::PetButtonStateChanged, std::move(data)));
 	}
 }
 
-void EverQuest::SaveEntityDataToFile(const std::string& filename) {
-	std::ofstream file(filename);
-	if (!file.is_open()) {
-		LOG_ERROR(MOD_MAIN, "Failed to open {} for writing", filename);
-		return;
-	}
-
-	file << "{\n  \"zone\": \"" << CurrentZoneName() << "\",\n  \"entities\": [\n";
-
-	bool first = true;
-	for (const auto& [spawn_id, entity] : m_entities) {
-		if (!first) file << ",\n";
-		first = false;
-
-		file << "    {\n";
-		file << "      \"spawn_id\": " << entity.spawn_id << ",\n";
-		file << "      \"name\": \"" << entity.name << "\",\n";
-		file << "      \"race_id\": " << entity.race_id << ",\n";
-		file << "      \"gender\": " << (int)entity.gender << ",\n";
-		file << "      \"face\": " << (int)entity.face << ",\n";
-		file << "      \"haircolor\": " << (int)entity.haircolor << ",\n";
-		file << "      \"hairstyle\": " << (int)entity.hairstyle << ",\n";
-		file << "      \"beardcolor\": " << (int)entity.beardcolor << ",\n";
-		file << "      \"beard\": " << (int)entity.beard << ",\n";
-		file << "      \"texture\": " << (int)entity.equip_chest2 << ",\n";
-		file << "      \"equipment\": [";
-		for (int i = 0; i < 9; i++) {
-			if (i > 0) file << ", ";
-			file << entity.equipment[i];
-		}
-		file << "],\n";
-		file << "      \"equipment_tint\": [";
-		for (int i = 0; i < 9; i++) {
-			if (i > 0) file << ", ";
-			file << entity.equipment_tint[i];
-		}
-		file << "],\n";
-		file << "      \"position\": [" << entity.x << ", " << entity.y << ", " << entity.z << "],\n";
-		file << "      \"heading\": " << entity.heading << "\n";
-		file << "    }";
-	}
-
-	file << "\n  ]\n}\n";
-	file.close();
-
-	LOG_INFO(MOD_ENTITY, "Saved {} entities to {}", m_entities.size(), filename);
-}
-
-void EverQuest::OnSpawnRemovedGraphics(uint16_t spawn_id) {
+void eqt::bridge::BridgeComponent::OnSpawnRemovedGraphics(uint16_t spawn_id) {
 	// Clear target if this entity was targeted (game state update)
-	if (m_game_state.combat().targetId() == spawn_id) {
+	if (ctx_.game_state.combat().targetId() == spawn_id) {
 		// T286: CombatState is the only store. Cleared unconditionally here
 		// (CombatManager::ClearTarget below clears it again, idempotently)
 		// so a build without a CombatManager still drops the target.
-		m_game_state.combat().clearTarget();
-		if (m_combat_manager) {
-			m_combat_manager->ClearTarget();
+		ctx_.game_state.combat().clearTarget();
+		if (ctx_.combat_manager) {
+			ctx_.combat_manager->ClearTarget();
 		}
 		// Publish TargetChanged (clear) event
-		if (m_bridge) {
+		if (ctx_.bridge) {
 			eqt::state::TargetChangedData tdata;  // spawnId=0 = target cleared
-			m_bridge->pushEvent(eqt::state::GameEvent(
+			ctx_.bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::TargetChanged, std::move(tdata)));
 		}
 	}
 
-	if (!m_bridge) {
+	if (!ctx_.bridge) {
 		return;
 	}
 
 	// Check if this is a corpse - corpses should fade out instead of vanishing instantly
-	auto it = m_entities.find(spawn_id);
-	if (it != m_entities.end() && it->second.is_corpse) {
+	auto it = ctx_.entities.find(spawn_id);
+	if (it != ctx_.entities.end() && it->second.is_corpse) {
 		eqt::state::CorpseDecayStartedData data;
 		data.spawnId = spawn_id;
-		m_bridge->pushEvent(eqt::state::GameEvent(
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::CorpseDecayStarted, std::move(data)));
 	}
 
 	// Publish EntityDespawned event (D17b: bridge is sole path to renderer)
 	eqt::state::EntityDespawnedData data;
 	data.spawnId = spawn_id;
-	if (it != m_entities.end()) {
+	if (it != ctx_.entities.end()) {
 		data.name = it->second.name;
 	}
-	m_bridge->pushEvent(eqt::state::GameEvent(
+	ctx_.bridge->pushEvent(eqt::state::GameEvent(
 		eqt::state::GameEventType::EntityDespawned, std::move(data)));
 }
 
-void EverQuest::OnSpawnMovedGraphics(uint16_t spawn_id, float x, float y, float z, float heading,
+void eqt::bridge::BridgeComponent::OnSpawnMovedGraphics(uint16_t spawn_id, float x, float y, float z, float heading,
                                       float dx, float dy, float dz, int32_t animation) {
-	if (!m_bridge) {
+	if (!ctx_.bridge) {
 		return;
 	}
 
 	// If this is our player entity, publish player position update
 	// so the camera follows the server-authoritative position
-	if (spawn_id == MySpawnId()) {
+	if (spawn_id == owner_.MySpawnId()) {
 		// Convert heading from degrees (0-360) to EQ format (0-512)
 		float heading_512 = heading * 512.0f / 360.0f;
 		eqt::state::PlayerMovedData pdata;
@@ -718,7 +670,7 @@ void EverQuest::OnSpawnMovedGraphics(uint16_t spawn_id, float x, float y, float 
 		pdata.heading = heading_512;
 		pdata.dx = dx; pdata.dy = dy; pdata.dz = dz;
 		pdata.isMoving = (dx != 0 || dy != 0 || dz != 0);
-		m_bridge->pushEvent(eqt::state::GameEvent(
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::PlayerMoved, std::move(pdata)));
 	}
 
@@ -733,15 +685,15 @@ void EverQuest::OnSpawnMovedGraphics(uint16_t spawn_id, float x, float y, float 
 	data.dy = dy;
 	data.dz = dz;
 	data.animation = static_cast<uint8_t>(animation);
-	m_bridge->pushEvent(eqt::state::GameEvent(
+	ctx_.bridge->pushEvent(eqt::state::GameEvent(
 		eqt::state::GameEventType::EntityMoved, std::move(data)));
 }
 
-void EverQuest::OnGraphicsMovement(const eqt::events::PlayerPositionChanged& update) {
+void eqt::bridge::BridgeComponent::OnGraphicsMovement(const eqt::events::PlayerPositionChanged& update) {
 	// Called by the renderer when the player moves in Player Mode
 	// This syncs the player's position with the server
 
-	if (!m_bridge) {
+	if (!ctx_.bridge) {
 		return;
 	}
 
@@ -758,19 +710,19 @@ void EverQuest::OnGraphicsMovement(const eqt::events::PlayerPositionChanged& upd
 	// would be a new per-frame event stream (see setPositionNoEvent).
 	// A z the RENDERER produced is definitively in the render frame, whatever
 	// state the self-spawn left behind (T311).
-	m_game_state.player().setZAwaitingFrameConversion(false);
-	SetPosLocal(update.x, update.y, update.z);  // node-origin (render-frame) Z from the renderer
+	ctx_.game_state.player().setZAwaitingFrameConversion(false);
+	owner_.SetPosLocal(update.x, update.y, update.z);  // node-origin (render-frame) Z from the renderer
 	// Convert heading from EQ format (0-512) to degrees (0-360) for internal use
-	SetHeadingLocal(update.heading * 360.0f / 512.0f);
+	owner_.SetHeadingLocal(update.heading * 360.0f / 512.0f);
 
 	// Check water state at new position
-	m_movement->UpdateWaterState();
+	owner_.Movement().UpdateWaterState();
 
 	// Derive movement state from velocity
 	float speed2D = std::sqrt(update.dx * update.dx + update.dy * update.dy);
 	float speed3D = std::sqrt(speed2D * speed2D + update.dz * update.dz);
-	bool isMoving = (m_water_state != WaterState::NotInWater) ? speed3D > 0.01f : speed2D > 0.01f;
-	m_game_state.player().setMoving(isMoving);
+	bool isMoving = (owner_.m_water_state != WaterState::NotInWater) ? speed3D > 0.01f : speed2D > 0.01f;
+	ctx_.game_state.player().setMoving(isMoving);
 
 	// Determine if moving backward by comparing velocity direction to heading
 	// Convert heading to radians and get unit vector in heading direction
@@ -784,45 +736,45 @@ void EverQuest::OnGraphicsMovement(const eqt::events::PlayerPositionChanged& upd
 	bool isMovingBackward = isMoving && dotProduct < -0.01f;
 
 	// Determine animation based on movement state
-	if (m_water_state != WaterState::NotInWater) {
+	if (owner_.m_water_state != WaterState::NotInWater) {
 		// Swimming animations
 		// Animation code 7 = swimming/treading, 6 = swim idle
 		if (isMoving) {
-			m_game_state.player().setAnimation(7);  // Swim treading (l09)
+			ctx_.game_state.player().setAnimation(7);  // Swim treading (l09)
 		} else {
-			m_game_state.player().setAnimation(6);  // Swim idle (p06)
+			ctx_.game_state.player().setAnimation(6);  // Swim idle (p06)
 		}
 	} else {
 		// Normal ground animations
 		// Negative animation = play in reverse (e.g., walking backward)
 		if (!isMoving) {
-			m_game_state.player().setAnimation(ANIM_STAND);
+			ctx_.game_state.player().setAnimation(ANIM_STAND);
 		} else if (speed2D > 5.0f) {  // Running threshold
-			m_game_state.player().setAnimation(isMovingBackward ? -ANIM_RUN : ANIM_RUN);
+			ctx_.game_state.player().setAnimation(isMovingBackward ? -ANIM_RUN : ANIM_RUN);
 		} else {
-			m_game_state.player().setAnimation(isMovingBackward ? -ANIM_WALK : ANIM_WALK);
+			ctx_.game_state.player().setAnimation(isMovingBackward ? -ANIM_WALK : ANIM_WALK);
 		}
 	}
 
-	if (s_debug_level >= 2) {
+	if (EverQuest::s_debug_level >= 2) {
 		LOG_DEBUG(MOD_MOVEMENT, "OnGraphicsMovement: pos=({:.2f},{:.2f},{:.2f}) heading={:.1f} vel=({:.2f},{:.2f},{:.2f}) anim={} water={}",
-			update.x, update.y, update.z, update.heading, update.dx, update.dy, update.dz, m_game_state.player().animation(),
-			static_cast<int>(m_water_state));
+			update.x, update.y, update.z, update.heading, update.dx, update.dy, update.dz, ctx_.game_state.player().animation(),
+			static_cast<int>(owner_.m_water_state));
 	}
 
 	// Check for zone line collision
-	m_zone->CheckZoneLine();
+	owner_.Zone().CheckZoneLine();
 
 	// SendPositionUpdate has internal 250ms throttling
-	m_movement->SendPositionUpdate();
+	owner_.Movement().SendPositionUpdate();
 }
 
 // ============================================================================
 // T269: bank-coin helpers, shared by the two Bank* intent arms below.
 // ============================================================================
 
-uint32_t EverQuest::BankCoinGet(uint8_t coinType, bool bank) const {
-	const auto& player = m_game_state.player();
+uint32_t eqt::bridge::BridgeComponent::BankCoinGet(uint8_t coinType, bool bank) const {
+	const auto& player = ctx_.game_state.player();
 	switch (coinType) {
 	case EQT::COINTYPE_CP: return bank ? player.bankCopper() : player.copper();
 	case EQT::COINTYPE_SP: return bank ? player.bankSilver() : player.silver();
@@ -832,8 +784,8 @@ uint32_t EverQuest::BankCoinGet(uint8_t coinType, bool bank) const {
 	}
 }
 
-void EverQuest::BankCoinSet(uint8_t coinType, bool bank, uint32_t value) {
-	auto& player = m_game_state.player();
+void eqt::bridge::BridgeComponent::BankCoinSet(uint8_t coinType, bool bank, uint32_t value) {
+	auto& player = ctx_.game_state.player();
 	switch (coinType) {
 	case EQT::COINTYPE_CP: bank ? player.setBankCopper(value) : player.setCopper(value); break;
 	case EQT::COINTYPE_SP: bank ? player.setBankSilver(value) : player.setSilver(value); break;
@@ -843,7 +795,7 @@ void EverQuest::BankCoinSet(uint8_t coinType, bool bank, uint32_t value) {
 	}
 }
 
-const char* EverQuest::BankCoinName(uint8_t coinType) {
+const char* eqt::bridge::BridgeComponent::BankCoinName(uint8_t coinType) {
 	switch (coinType) {
 	case EQT::COINTYPE_CP: return "copper";
 	case EQT::COINTYPE_SP: return "silver";
@@ -854,7 +806,7 @@ const char* EverQuest::BankCoinName(uint8_t coinType) {
 }
 
 // The server's own table (zone/client_process.cpp CoinTypeCoppers).
-int64_t EverQuest::BankCoinCoppers(uint8_t coinType) {
+int64_t eqt::bridge::BridgeComponent::BankCoinCoppers(uint8_t coinType) {
 	switch (coinType) {
 	case EQT::COINTYPE_PP: return 1000;
 	case EQT::COINTYPE_GP: return 100;
@@ -863,28 +815,28 @@ int64_t EverQuest::BankCoinCoppers(uint8_t coinType) {
 	}
 }
 
-void EverQuest::PublishBankCoinProjection(bool inventoryChanged) {
+void eqt::bridge::BridgeComponent::PublishBankCoinProjection(bool inventoryChanged) {
 	// T286: the counters ARE m_game_state.player()'s -- the mirror-into-
 	// GameState step this used to do here is gone with the duplicate.
-	if (!m_bridge) {
+	if (!ctx_.bridge) {
 		return;
 	}
 	if (inventoryChanged) {
 		eqt::state::CurrencyChangedData cdata;
-		cdata.platinum = static_cast<int32_t>(m_game_state.player().platinum());
-		cdata.gold = static_cast<int32_t>(m_game_state.player().gold());
-		cdata.silver = static_cast<int32_t>(m_game_state.player().silver());
-		cdata.copper = static_cast<int32_t>(m_game_state.player().copper());
-		m_bridge->pushEvent(eqt::state::GameEvent(
+		cdata.platinum = static_cast<int32_t>(ctx_.game_state.player().platinum());
+		cdata.gold = static_cast<int32_t>(ctx_.game_state.player().gold());
+		cdata.silver = static_cast<int32_t>(ctx_.game_state.player().silver());
+		cdata.copper = static_cast<int32_t>(ctx_.game_state.player().copper());
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::CurrencyChanged, std::move(cdata)));
 	}
 
 	eqt::state::BankCurrencyChangedData bdata;
-	bdata.platinum = static_cast<int32_t>(m_game_state.player().bankPlatinum());
-	bdata.gold = static_cast<int32_t>(m_game_state.player().bankGold());
-	bdata.silver = static_cast<int32_t>(m_game_state.player().bankSilver());
-	bdata.copper = static_cast<int32_t>(m_game_state.player().bankCopper());
-	m_bridge->pushEvent(eqt::state::GameEvent(
+	bdata.platinum = static_cast<int32_t>(ctx_.game_state.player().bankPlatinum());
+	bdata.gold = static_cast<int32_t>(ctx_.game_state.player().bankGold());
+	bdata.silver = static_cast<int32_t>(ctx_.game_state.player().bankSilver());
+	bdata.copper = static_cast<int32_t>(ctx_.game_state.player().bankCopper());
+	ctx_.bridge->pushEvent(eqt::state::GameEvent(
 		eqt::state::GameEventType::BankCurrencyChanged, std::move(bdata)));
 }
 

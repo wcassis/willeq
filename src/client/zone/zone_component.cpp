@@ -377,7 +377,7 @@ void eqt::zone::ZoneComponent::CleanupZone()
 		if (ctx_.buff_manager) {
 			ctx_.buff_manager->clearPetBuffs();
 		}
-		owner_.OnPetRemoved();
+		owner_.Bridge().OnPetRemoved();
 	}
 
 	// T320: group state must NOT be carried across a zone transition.

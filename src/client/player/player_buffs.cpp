@@ -202,7 +202,7 @@ void eqt::player::PlayerComponent::ZoneProcessManaChange(const EQ::Net::Packet &
 
 	// T43: was #ifdef EQT_HAS_GRAPHICS -- see the identical note in
 	// eq_entities.cpp's HP-change UpdateInventoryStats() call site.
-	owner_.UpdateInventoryStats();
+	owner_.Bridge().UpdateInventoryStats();
 
 	// Publish PlayerStatsChanged when mana/endurance changes
 	if (ctx_.bridge) {

@@ -203,7 +203,7 @@ protected:
                 // is gone; this single-threaded harness uses the single-
                 // stage drain directly.
                 float deltaTime = getDeltaTime();
-                eq_->ProcessBridgeEvents();
+                eq_->Bridge().ProcessBridgeEvents();
                 if (!renderer_->processFrame(deltaTime)) {
                     // Window was closed
                     std::cerr << "Graphics window closed unexpectedly" << std::endl;
@@ -229,7 +229,7 @@ protected:
                 eq_->Movement().UpdateMovement();
 #ifdef EQT_HAS_GRAPHICS
                 float deltaTime = getDeltaTime();
-                eq_->ProcessBridgeEvents();
+                eq_->Bridge().ProcessBridgeEvents();
                 renderer_->processFrame(deltaTime);
 #endif
             }
