@@ -18,7 +18,7 @@ class?) before deciding.
 
 ### Forwarders that stay (count them)
 
-`IOutputRenderer` virtual overrides: `setPlayerSpawnId`, `setPlayerPosition`
+Same-named methods that `IOutputRenderer`'s OTHER implementations carry (`IrrlichtRenderer` has NO base class — L03 correction 13; keep these as forwarders because of their bridge/application callers, not because of an interface): `setPlayerSpawnId`, `setPlayerPosition`
 (the hottest bridge call — `irrlicht_bridge.cpp`, `bridge_component.cpp`,
 `entities_component.cpp`, `zone_component.cpp`, `application_zone_loading.cpp`),
 `setCameraMode`, `cycleCameraMode`. Bridge/application callers:

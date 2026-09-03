@@ -134,6 +134,24 @@ declarations + inline accessors + members before dispatch.
    renderer members through `owner_` (axis 1); `RdpComponent` was the
    exception, not the rule.
 
+## L03 corrections (2026-09-03)
+
+13. **`class IrrlichtRenderer` has NO base class.** L01 correction 5's
+   "`IOutputRenderer` overrides" premise was false — `setCurrentTarget`,
+   `toggleHUD`, `setCameraMode` etc. are plain public methods that
+   `IOutputRenderer`'s other implementations happen to share by name.
+   Forwarders are still kept for bridge/application/`graphical_mode`
+   callers (the K11 rule), but the reason is the caller, not an interface.
+   Measure the base class before writing "override".
+14. Inline-accessor state (K04 f) again: three single-family members were
+   invisible to body counts (`loadingTitle_`, `navmesh_`, `headingDebugText_`).
+15. Member BLOCKS split across families are costed per member, not per
+   block.
+16. The 600 s ceiling kills builds mid-link; the truncation scan must
+   cover `build/lib` (`ar` temporaries `st*`) as well as `bin/`.
+17. A zero-caller SETTER whose member is read live (`setNavmesh`) is kept
+   and boarded — deleting it turns a one-line wiring fix into two files.
+
 ## Per-unit plan files
 
 `refactor/L01_rdp_component.md` … written after K13, from a re-measurement
