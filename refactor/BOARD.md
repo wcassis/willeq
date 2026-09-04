@@ -179,11 +179,31 @@ it without taking that measurement first.
   `.T347_ClearTargetDispatchesToTheHandler`. Prov: archived board, T39
   dead-state follow-ups.
 
-- **B013** (B) `src/client/graphics/slash/renderer_slash_commands.cpp` `/newskills` —
-  the only working skills-window toggle, registered in neither command registry,
-  so it is invisible to `/help` and to tab completion and reachable only by a user
-  who already knows the word. Closes when: it is registered, or renamed and
-  merged with `/skills`. Prov: archived board, T143.
+- ~~**B013** (B) `src/client/graphics/slash/renderer_slash_commands.cpp`
+  `/newskills` — the only working skills-window toggle, registered in neither
+  command registry, so it is invisible to `/help` and to tab completion and
+  reachable only by a user who already knows the word.~~ **CLOSED 2026-09-04 by
+  T347 as STALE — measured, no code change.** Three claims, checked:
+  (1) *invisible to `/help`* — FALSE since T223, which added registry 3's static
+  catalog: `src/client/help/renderer_command_catalog.cpp:62` carries
+  `{"newskills", {}, "Toggle the skills window"}`, and
+  `MergedHelpTest.T223_NewSkillsIsFoundByHelp` /
+  `.T223_OverviewListsGraphicsCategoryWithTag` pin that `/help newskills` and the
+  `/help` overview both find it.
+  (2) *invisible to tab completion* — a PHANTOM: `getCompletions()` has ZERO
+  production callers in either registry (`CommandProcessor::getCompletions`,
+  `CommandRegistry::getCompletions` — definitions and tests only), so nothing is
+  tab-completable today. Boarded separately below as B053.
+  (3) *unreachable except by a user who knows the word* — FALSE: `--script` and
+  piped stdin both run `Application::DispatchSlashCommand`, whose registry-3
+  stage is the renderer bridge (T29), so `/newskills` is scriptable.
+  What is LEFT is a naming/design choice, not hygiene, and is boarded as B054:
+  `/newskills` and stdin's bare `skills` keyword
+  (`console_input_handler.cpp:432` → `InputAction::ToggleSkills` →
+  `renderer_frame_input.cpp:222`) toggle the SAME `skillsPopupState_.isOpen` but
+  differ — `/newskills` also closes the spellbook and the inventory popup and
+  echoes to chat; the keyword does neither — and `/skills` WITH a slash is
+  unknown to every registry. Prov: archived board, T143; measured T347.
 
 - **B014** (B) `src/client/graphics/eq/race_model_loader.cpp`
   `RaceModelLoader::preloadModelData` — calls
@@ -962,3 +982,24 @@ it without taking that measurement first.
   binding and stays pinned by `tests/test_collision_debug_draw.cpp` only.
   Visual judgement is Will's; the claim made is only that the lines and the
   listed UI elements are present. Prov: T338 Review, `review/T338/README.md`.
+
+## Added 2026-09-04 by the T347 measurement (B013)
+
+- **B053** (B) `include/client/action/command_processor.h`
+  `CommandProcessor::getCompletions` and `include/client/graphics/ui/command_registry.h`
+  `CommandRegistry::getCompletions` — both implemented, both tested, and both
+  with ZERO production callers: no input path (chat box, console, script) ever
+  asks either registry to complete a partial command, so the "tab completion"
+  both `CLAUDE.md` files advertise does not exist. Closes when: an input path
+  calls one, or both are deleted with their tests. Prov: T347 (B013 measurement).
+
+- **B054** (C) `/skills` vs `/newskills` — a NAMING choice, not a defect.
+  `/newskills` (`renderer_slash_commands.cpp:422`) and the bare `skills` keyword
+  piped stdin recognises (`console_input_handler.cpp:432` →
+  `InputAction::ToggleSkills` → `renderer_frame_input.cpp:222`) toggle the same
+  `skillsPopupState_.isOpen`, but `/newskills` additionally closes the spellbook
+  and the inventory popup and echoes to chat, and `/skills` typed WITH a slash is
+  unknown to all three registries — so the real client's name for the window does
+  nothing. Closes when: Will rules on the name (rename `/newskills` to `/skills`
+  and keep one body, or keep both and say why). Do not merge them silently: the
+  two bodies are not equivalent. Prov: T347 (B013 measurement).
