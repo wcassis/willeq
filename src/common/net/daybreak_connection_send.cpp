@@ -46,6 +46,14 @@ bool EQ::Net::DaybreakConnection::ValidateCRC(Packet &p)
 			calculated = Crc32(data, (int)(p.Length() - (size_t)m_crc_bytes), m_encode_key);
 			break;
 		default:
+			// Reachable: m_crc_bytes is taken straight off the wire in
+			// daybreak_connection_decode.cpp's OP_SessionResponse arm
+			// (`m_crc_bytes = reply.crc_bytes;`, a uint8_t the server
+			// chooses), so a server negotiating anything but 2 or 4 makes
+			// every subsequent packet fail validation. Say so once per
+			// packet rather than dropping the session in silence.
+			LOG_WARN(MOD_NET, "Session [{}] rejecting packet: unsupported crc_bytes={} (only 2 and 4 are implemented)",
+				m_connect_code, m_crc_bytes);
 			return false;
 	}
 

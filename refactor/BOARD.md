@@ -133,11 +133,17 @@ it without taking that measurement first.
   found and loaded, or the fields and their branches are deleted. Do not invent
   values. Prov: deferred item 35.
 
-- **B008** (B) `src/common/net/daybreak_connection_send.cpp`
+- ~~**B008** (B) `src/common/net/daybreak_connection_send.cpp`
   `DaybreakConnection::ValidateCRC` — its `default:` arm returns false with no log
-  line, silently rejecting every packet for any `crc_bytes` other than 2 or 4.
-  Closes when: the arm logs, or the case is proven unreachable and asserted.
-  Prov: deferred item 41.
+  line, silently rejecting every packet for any `crc_bytes` other than 2 or 4.~~
+  **CLOSED 2026-09-04 by T347.** The arm is REACHABLE, not dead:
+  `daybreak_connection_decode.cpp`'s `OP_SessionResponse` handler assigns
+  `m_crc_bytes = reply.crc_bytes;` straight off the wire, so the server picks the
+  width. The arm now logs a `LOG_WARN` naming the value. Pinned by
+  `DaybreakCrcCaptureTest.UnsupportedCrcBytesIsLoggedNotSilent`
+  (`tests/test_daybreak_crc_capture.cpp`), which drives the real recorded
+  handshake, forces `crc_bytes = 3`, and asserts both that a supported width
+  stays quiet and that the rejection names `crc_bytes=3`. Prov: deferred item 41.
 
 - **B009** (B) `tests/test_daybreak_connection_pcap.cpp` — reads `connect_code`,
   `encode_key` and `max_packet_size` raw off the wire, which is exactly the bug

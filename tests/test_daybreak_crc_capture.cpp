@@ -26,8 +26,11 @@
 #include <cstring>
 #include <fstream>
 #include <memory>
+#include <chrono>
+#include <functional>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -39,6 +42,7 @@
 #undef private
 #undef protected
 
+#include "common/logging.h"
 #include "common/net/crc32.h"
 #include "fake_udp_transport.h"
 
@@ -342,6 +346,65 @@ TEST(DaybreakCrcAlgorithm, RecordedZoneFrameCrcIsReproducible) {
 		++checked;
 	}
 	EXPECT_GT(checked, 100);
+}
+
+// --- T347 / B008: the unsupported-crc_bytes arm must say so ---------------
+
+// Polls up to ~1.2s for the background log-drain thread (50ms cadence,
+// include/common/logging.h) to flush this thread's buffered lines to stdout
+// after FlushThreadLog() flips the active/inactive side.
+std::string CaptureLoggedOutput(const std::function<void()> &action) {
+	SetLogLevel(LOG_WARN);
+	testing::internal::CaptureStdout();
+	action();
+	FlushThreadLog();
+	for (int i = 0; i < 20; ++i) {
+		std::this_thread::sleep_for(std::chrono::milliseconds(60));
+	}
+	return testing::internal::GetCapturedStdout();
+}
+
+// B008: ValidateCRC()'s `default:` arm used to `return false` in silence, so a
+// server that negotiated any crc_bytes other than 2 or 4 (the value is read
+// raw off the wire in the OP_SessionResponse arm of
+// daybreak_connection_decode.cpp) made every packet on the session fail
+// validation with nothing in the log to say why. The arm now names the value.
+TEST_F(DaybreakCrcCaptureTest, UnsupportedCrcBytesIsLoggedNotSilent) {
+	auto recs = LoadCapture();
+	ASSERT_FALSE(recs.empty()) << "fixture missing: " << T321_CRC_CAPTURE;
+	const auto *sr = FirstOf(recs, "zone");
+	ASSERT_NE(sr, nullptr);
+	OpenSession(*sr);
+
+	const std::vector<uint8_t> *victim = nullptr;
+	for (const auto &r : recs) {
+		if (r.stream == "zone" && r.dir == 'S' && r.bytes.size() > 40 && ReachesValidateCRC(r.bytes)) {
+			victim = &r.bytes;
+			break;
+		}
+	}
+	ASSERT_NE(victim, nullptr);
+
+	// Control: at the negotiated crc_bytes the packet validates and says nothing.
+	{
+		std::vector<uint8_t> good(*victim);
+		std::string quiet = CaptureLoggedOutput([&]() {
+			StaticPacket p(good.data(), good.size());
+			EXPECT_TRUE(conn_->ValidateCRC(p));
+		});
+		EXPECT_EQ(quiet.find("crc_bytes"), std::string::npos)
+			<< "a supported crc_bytes must not warn; full capture:\n" << quiet;
+	}
+
+	// The gap: a width the switch does not implement.
+	conn_->m_crc_bytes = 3;
+	std::vector<uint8_t> bad(*victim);
+	std::string out = CaptureLoggedOutput([&]() {
+		StaticPacket p(bad.data(), bad.size());
+		EXPECT_FALSE(conn_->ValidateCRC(p)) << "crc_bytes=3 is not implemented; it must reject";
+	});
+	EXPECT_NE(out.find("crc_bytes=3"), std::string::npos)
+		<< "the rejection must name the unsupported width; full capture:\n" << out;
 }
 
 }  // namespace
