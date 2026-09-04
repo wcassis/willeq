@@ -93,6 +93,21 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_ui_hide_command)
 ENDIF()
 
+# T330 (B043): the four debug-hotkey switch arms in processCommonInput that had
+# never existed (wireframe / HUD / name tags / old models). Behavioural on a
+# device-less renderer for three of them; the HUD arm has no public reader and
+# is source-pinned, as are the receiver's four queue sites.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_debug_hotkey_arms
+        test_debug_hotkey_arms.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_debug_hotkey_arms PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_debug_hotkey_arms GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_debug_hotkey_arms PRIVATE
+        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+    GTEST_DISCOVER_TESTS(test_debug_hotkey_arms)
+ENDIF()
+
 # T267: race 330 (playable Froglok) resolves to and loads from the row's
 # globalpcfroglok_chr.s3d. Same EDT_NULL + willeq_core gate as
 # test_inventory_model_view; opens the shipped data/willeq.db as the race
