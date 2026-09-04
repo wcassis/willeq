@@ -96,7 +96,18 @@ ActionResult ActionDispatcher::faceEntity(const std::string& name) {
     if (!result.success) return result;
 
     auto& entities = m_state.entities();
-    auto* entity = entities.findEntityByName(name);
+    // T350 (B003): the RANKED resolver, the same one /target uses
+    // (CommandProcessor::cmdTarget -> findEntityByName(name, px, py, pz),
+    // T244). The unranked overload that stood here picked the LOWEST SPAWN
+    // ID among equal-tier name matches, so with two `a_fire_beetle`s in the
+    // zone /face turned to the far one while /target had targeted the near
+    // one -- measured live: /face faced spawn 68 at 550 units (client
+    // heading 138.92deg, matching that beetle's bearing to two decimals)
+    // while the target, spawn 277, was 3.5 units away at 269.96deg. eqemu
+    // then silently refuses every swing (Mob::IsFacingMob, +-80 of 511.5).
+    // See review/T350/README.md.
+    const auto& player = m_state.player();
+    auto* entity = entities.findEntityByName(name, player.x(), player.y(), player.z());
     if (!entity) {
         return ActionResult::Failure("Entity not found: " + name);
     }
