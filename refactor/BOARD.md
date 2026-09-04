@@ -788,6 +788,32 @@ it without taking that measurement first.
   `tests/test_navmesh_overlay_draw.cpp` — to draw and to leave the following 2D
   pass intact, or is deleted. Prov: T333 Review.
 
+  **T335 (2026-09-04):** the fix is now ONE shared RAII guard,
+  `EQT::Graphics::WorldLineBatch` in
+  `include/client/graphics/world_line_batch.h`, used by all three fixed sites
+  including the navmesh one, which was refactored onto it.
+  ~~`drawMapOverlay()` (Ctrl+M)~~ and
+  ~~`PlayerCameraComponent::drawCollisionDebugLines()`~~ are **STRUCK** — each
+  proven by a new pre-fix failing pixel test in
+  `test_navmesh_overlay_draw.cpp`'s shape (`tests/test_map_overlay_draw.cpp`,
+  `tests/test_collision_debug_draw.cpp`); both symptoms reproduced pre-fix,
+  4/4 after. Note the file for the collision lines is
+  `renderer_player_collision.cpp`, not `renderer_camera.cpp` (J33 moved it).
+  ~~The `frustumDebugDraw_` block in `renderer_frame_render.cpp`~~ is **STRUCK
+  by T335b**, which resolved the golden question T335 STOPped on: an order
+  golden pins a SEQUENCE and LEARNS a reviewed edit in place at the positions
+  it touches (batch-G correction 32) — it is not a freeze on the TU. The block
+  now uses the same guard; the edit is count-neutral (the guard replaces the
+  `setMaterial(debugMat)` it supersedes and its restore is a destructor), so
+  `tests/goldens/frame_render_order_g05.txt` changed by exactly one line at
+  entry 127 and is still 305 entries. `tests/test_frame_render_order.cpp` gained
+  a documented `kGoldenSize` naming that edit; both re-plants (drop the guard,
+  swap two pass calls) still fail the guard. Proven by
+  `tests/test_frustum_debug_draw.cpp` — pre-fix 3 of 4 cases fail, 4/4 after.
+  It also turned up a symptom nobody had predicted: the material setup sits
+  BEFORE the region loop, so Ctrl+V with an EMPTY box list drew no line and
+  still wiped the UI. Prov: T335 Review "Site 4", T335b Review.
+
 ## Added 2026-09-04 by the T334 Review (B045/B046)
 
 - ~~**B055** (A) `src/client/core/everquest.cpp` `InitializeSpellSystem` —
@@ -827,32 +853,6 @@ it without taking that measurement first.
   is not constructible in a unit test, so that half has no runtime seam).
   A live capture of the zone-light change is still owed if Will wants it.
   Prov: T339 Review.
-
-  **T335 (2026-09-04):** the fix is now ONE shared RAII guard,
-  `EQT::Graphics::WorldLineBatch` in
-  `include/client/graphics/world_line_batch.h`, used by all three fixed sites
-  including the navmesh one, which was refactored onto it.
-  ~~`drawMapOverlay()` (Ctrl+M)~~ and
-  ~~`PlayerCameraComponent::drawCollisionDebugLines()`~~ are **STRUCK** — each
-  proven by a new pre-fix failing pixel test in
-  `test_navmesh_overlay_draw.cpp`'s shape (`tests/test_map_overlay_draw.cpp`,
-  `tests/test_collision_debug_draw.cpp`); both symptoms reproduced pre-fix,
-  4/4 after. Note the file for the collision lines is
-  `renderer_player_collision.cpp`, not `renderer_camera.cpp` (J33 moved it).
-  ~~The `frustumDebugDraw_` block in `renderer_frame_render.cpp`~~ is **STRUCK
-  by T335b**, which resolved the golden question T335 STOPped on: an order
-  golden pins a SEQUENCE and LEARNS a reviewed edit in place at the positions
-  it touches (batch-G correction 32) — it is not a freeze on the TU. The block
-  now uses the same guard; the edit is count-neutral (the guard replaces the
-  `setMaterial(debugMat)` it supersedes and its restore is a destructor), so
-  `tests/goldens/frame_render_order_g05.txt` changed by exactly one line at
-  entry 127 and is still 305 entries. `tests/test_frame_render_order.cpp` gained
-  a documented `kGoldenSize` naming that edit; both re-plants (drop the guard,
-  swap two pass calls) still fail the guard. Proven by
-  `tests/test_frustum_debug_draw.cpp` — pre-fix 3 of 4 cases fail, 4/4 after.
-  It also turned up a symptom nobody had predicted: the material setup sits
-  BEFORE the region loop, so Ctrl+V with an EMPTY box list drew no line and
-  still wiped the UI. Prov: T335 Review "Site 4", T335b Review.
 
   **T338 (2026-09-04): the live pair is captured, and B054 needs nothing
   further.** `review/T338/` holds a baseline plus both keyed toggles at tip
