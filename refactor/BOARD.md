@@ -163,11 +163,21 @@ it without taking that measurement first.
   boat, so this is a documented limit, not a live defect. Closes when: both are
   recomputed, or the limit is asserted in a test. Prov: deferred item 38.
 
-- **B012** (B) `src/client/action/action_dispatcher.cpp`
+- ~~**B012** (B) `src/client/action/action_dispatcher.cpp`
   `ActionDispatcher::clearTarget` — reachable only from a keybinding; no command
   registration exists in `command_processor_registration.cpp`, so a `--script`
-  run cannot clear a target. Closes when: a command reaches it or it is proven
-  keybinding-only by design. Prov: archived board, T39 dead-state follow-ups.
+  run cannot clear a target.~~ **CLOSED 2026-09-04 by T347.** `/cleartarget`
+  (no alias, category Combat) registered in `registerCombatCommands()`
+  immediately after `/target`, routing through `cmdClearTarget` to the same
+  `ActionDispatcher::clearTarget()` the `ClearTarget` keybinding uses. G03's
+  order golden `tests/goldens/command_registration_order_g03.txt` learned the
+  insertion IN PLACE at entry 022 (count 142 → 143, recorded in the golden
+  header and in the test's size guard); both faults re-planted (drop the
+  registration → count clause fails 143→142; swap `registerCombatCommands()`
+  with `registerSocialCommands()` → position clause fails at 21). Tests:
+  `CommandProcessorTest.T347_ClearTargetIsRegisteredInTheCombatCategory` and
+  `.T347_ClearTargetDispatchesToTheHandler`. Prov: archived board, T39
+  dead-state follow-ups.
 
 - **B013** (B) `src/client/graphics/slash/renderer_slash_commands.cpp` `/newskills` —
   the only working skills-window toggle, registered in neither command registry,

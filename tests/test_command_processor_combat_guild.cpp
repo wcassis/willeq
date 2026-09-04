@@ -44,6 +44,37 @@ TEST_F(CommandProcessorTest, T102_SocialCommandsRegisteredWithSocialCategory) {
     }
 }
 
+// ---------- cleartarget (T347, B012) ----------
+
+// B012: ActionDispatcher::clearTarget() existed but had exactly one caller --
+// input_action_bridge.cpp's ClearTarget keybinding -- so a --script run (or
+// anything else without a keyboard) could acquire a target through /target
+// and never drop one. Pre-fix evidence: grep clearTarget over src/ returned
+// the definition, the handler, and the keybinding, and NOTHING in
+// command_processor_registration.cpp.
+TEST_F(CommandProcessorTest, T347_ClearTargetIsRegisteredInTheCombatCategory) {
+    auto info = processor->getCommandInfo("cleartarget");
+    ASSERT_TRUE(info.has_value()) << "/cleartarget is not registered";
+    EXPECT_EQ(info->category, "Combat");
+}
+
+TEST_F(CommandProcessorTest, T347_ClearTargetDispatchesToTheHandler) {
+    eqt::state::Entity e;
+    e.spawnId = 1234;
+    e.name = "a decrepit skeleton";
+    state.entities().addEntity(e);
+
+    ASSERT_TRUE(processor->processCommand("/target skeleton").success);
+    ASSERT_TRUE(handler.calledOnceWith("targetEntity(1234)"));
+    handler.clear();
+
+    auto result = processor->processCommand("/cleartarget");
+    EXPECT_TRUE(result.success);
+    EXPECT_TRUE(handler.calledOnceWith("clearTarget()"))
+        << "the command must reach ActionDispatcher::clearTarget(); saw: "
+        << handler.count() << " call(s)";
+}
+
 // ---------- target ----------
 
 TEST_F(CommandProcessorTest, Target_NoArgs_FailsCleanlyWithoutDispatching) {

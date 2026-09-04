@@ -433,6 +433,14 @@ ActionResult CommandProcessor::cmdTarget(const std::string& args) {
     return result;
 }
 
+ActionResult CommandProcessor::cmdClearTarget(const std::string& args) {
+    // T347 (B012). The dispatcher owns the "is there a handler" check and the
+    // message, exactly as it does for the keybinding route
+    // (input_action_bridge.cpp -> ActionDispatcher::clearTarget()); this is
+    // the same call, reachable from --script and from /help.
+    return m_dispatcher.clearTarget();
+}
+
 ActionResult CommandProcessor::cmdAttack(const std::string& args) {
     // Ported from game's attack.handler -- enableAutoAttack() already does
     // the "no target" check inside the handler (CombatManager), matching
