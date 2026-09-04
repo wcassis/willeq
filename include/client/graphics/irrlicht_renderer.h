@@ -56,6 +56,7 @@
 #include "client/graphics/diagnostics/diagnostics_component.h"
 #include "client/graphics/player/player_camera_component.h"
 #include "client/graphics/slash/slash_commands_component.h"
+#include "client/graphics/sim/sim_bridge_component.h"
 #ifdef WITH_RDP
 #include "client/graphics/rdp/rdp_server.h"
 #include "client/graphics/rdp/rdp_input_handler.h"
@@ -363,6 +364,11 @@ public:
     // what the component's tests bind against.
     PlayerCameraComponent& PlayerCamera() { return *playerCamera_; }
 
+    // L07 (Batch L): the SimulationWorker bridge. In-renderer callers reach
+    // the family through simBridge_->; this accessor is for the T116 lifetime
+    // fixtures and the component's own test.
+    SimBridgeComponent& SimBridge() { return *simBridge_; }
+
     // Get BSP tree for water region detection
     std::shared_ptr<EQT::Graphics::BspTree> getZoneBspTree() const { return zoneBspTree_; }
 
@@ -476,7 +482,6 @@ public:
     bool isStencilDebugDrawEnabled() const { return stencilDebugDraw_; }
     void setFrameTimingEnabled(bool enabled);  // Enable/disable frame timing profiler
     bool isFrameTimingEnabled() const { return frameTimingEnabled_; }
-    std::vector<std::string> getSimWorkerDebugInfo() const;  // /simworker debug command
     // L04 (Batch L): implemented by DiagnosticsComponent. These three stay as
     // one-line forwarders because irrlicht_bridge.cpp (dumpScene,
     // getMemoryReport) and application.cpp (runSceneProfile) call them and
@@ -739,34 +744,12 @@ private:
     void createSoftwareCursor();
     void setupCamera();
     void setupLighting();
-    // SimulationWorker helpers
-    void startSimulationWorkerEarly();     // Build core zone data (BSP/regions/objects/lights) and start worker
-    // registerSimulationWorkerTreeData() removed (P32): it fed
-    // AnimatedTreeManager's CPU-instancing tree buffers into the
-    // SimulationWorker, but was never called from anywhere in the tree —
-    // dead code, confirmed uncalled before deletion. Went with the class.
-    void registerSimulationWorkerVertexAnimData();  // Add vertex anim data after objects are installed
-    void stopSimulationWorker();     // Stop worker (zone transition)
-    void postSimulationInput(float deltaTime);  // Snapshot main thread state → worker input
-    // T116: applySimulationOutput()/bindFrameSimulationBuffers() are split by
-    // lifetime contract -- see the two functions' own comments
-    // (renderer_sim_bridge.cpp) and refactor/T116_simulationoutput_lifetime.md.
-    // applySimulationResults() (the runtime path, called every frame from a
-    // persistent SimulationWorker buffer) is the ONLY caller of the bind step;
-    // loadZoneSequential()'s Step12b (renderer_zone_load.cpp) calls
-    // applySimulationOutput() alone, with a local SimulationOutput, and must
-    // never be given a reason to call the bind step too.
-    void applySimulationResults();   // Apply worker output → scene graph, then bind frame pointers
-    void applySimulationOutput(const SimulationOutput& results);  // Value-only: no pointers stored. Safe with ANY lifetime, including a stack local.
-    // Stores pointers into `persistent`'s containers on four members (see
-    // their declarations below). `persistent` MUST outlive every frame the
-    // pointers are read on -- call this ONLY with a pointer into
-    // SimulationWorker's persistent, double-buffered output_[2]. Passing a
-    // stack-local SimulationOutput here reopens the exact dangling-pointer
-    // hazard T111 and T115 each patched (see the plan). This is why the
-    // load path (Step12b) does not call it.
-    void bindFrameSimulationBuffers(const SimulationOutput* persistent);
-    SimulationZoneData buildSimulationZoneData();  // Build zone data snapshot for SimulationWorker
+    // L07 (Batch L): the nine SimulationWorker bridge methods live on
+    // SimBridgeComponent -- including the T116 lifetime split between
+    // applySimulationOutput() (value-only) and bindFrameSimulationBuffers()
+    // (the only pointer-storing half), whose contract is stated in full in
+    // include/client/graphics/sim/sim_bridge_component.h. Nothing outside the
+    // renderer ever called any of them, so there is no forwarder.
 
     // loadZoneSequential() per-step helpers (G01 decomposition).
     // ZoneLoadContext is forward-declared here and defined in renderer_zone_load.cpp;
@@ -857,9 +840,8 @@ private:
     bool processOneGPUResult();   // Process 1 result (fence wait, register). GREEN-gated.
 #endif
 
-    // Particle I/O state for SimulationWorker
-    std::unordered_map<uint16_t, glm::vec3> pendingParticleEntityPositions_;   // Resolved positions for next frame
-    std::unordered_map<uint16_t, glm::vec3> pendingParticleEntityDirections_;  // Resolved directions for next frame
+    // L07: the particle I/O state for SimulationWorker moved to
+    // SimBridgeComponent (single-family).
     // T116: set ONLY by bindFrameSimulationBuffers() -- see that function's
     // comment. Points into SimulationOutput's persistent storage.
     const std::vector<Environment::UnifiedParticle>* particleRenderBuffer_ = nullptr;
@@ -1660,6 +1642,13 @@ private:
     // command if-chain. Ctor body, renderer_init.cpp; friendship on axis 1.
     friend class SlashCommandsComponent;
     std::unique_ptr<SlashCommandsComponent> slash_;
+    // L07 (Batch L): the SimulationWorker bridge. It reaches 28 members that
+    // are shared with other families but sit below the context's 5-family
+    // core threshold, plus three private methods, so it needs friendship on
+    // axis 1 of K13 correction (ii). simulationWorker_ itself stays here --
+    // L07 changed no thread ownership.
+    friend class SimBridgeComponent;
+    std::unique_ptr<SimBridgeComponent> simBridge_;
 };
 
 } // namespace Graphics

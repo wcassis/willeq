@@ -10,6 +10,13 @@
 // third instance was added directly beneath T111's comment warning about the
 // first two. A comment did not prevent recurrence.
 //
+// L07 (Batch L) moved both bodies onto EQT::Graphics::SimBridgeComponent, so
+// the two production calls now go through renderer.SimBridge(). Nothing else
+// here changed: all four pointer members and usePvsCulling_/particleManager_
+// stayed on IrrlichtRenderer, so the FRIEND_TEST lines below still grant the
+// access every assertion needs, and every assertion observes exactly what it
+// observed before.
+//
 // These tests call the REAL production functions (applySimulationOutput()
 // and the new bindFrameSimulationBuffers()) via FRIEND_TEST access -- not a
 // reimplementation or a hand-built fake of their logic. This codebase's
@@ -88,7 +95,7 @@ TEST_F(SimulationOutputLifetimeTest, ApplyOutputAloneLeavesAllFourPointersUntouc
         output.particleOutput.valid = true;
         output.particleOutput.renderBuffer.resize(2);
 
-        renderer.applySimulationOutput(output);
+        renderer.SimBridge().applySimulationOutput(output);
         // Still inside output's scope: even here, immediately after the
         // call, none of the four members should have moved.
         EXPECT_EQ(renderer.regionPvsDepthMap_, &sentinelDepthMap);
@@ -123,7 +130,7 @@ TEST_F(SimulationOutputLifetimeTest, ApplyOutputAloneLeavesAllFourPointersUntouc
     output.regionVisible = {1};  // non-empty, but usePvsCulling_ is false
     output.particleOutput.valid = false;
 
-    renderer.applySimulationOutput(output);
+    renderer.SimBridge().applySimulationOutput(output);
 
     EXPECT_EQ(renderer.regionPvsDepthMap_, &sentinelDepthMap);
     EXPECT_EQ(renderer.portalVisibleRegions_, &sentinelPortalSet);
@@ -151,7 +158,7 @@ TEST_F(SimulationOutputLifetimeTest, BindBindsAllFourFromThePassedPersistentPoin
     persistent.particleOutput.valid = true;
     persistent.particleOutput.renderBuffer.resize(5);
 
-    renderer.bindFrameSimulationBuffers(&persistent);
+    renderer.SimBridge().bindFrameSimulationBuffers(&persistent);
 
     EXPECT_EQ(renderer.currentFrameSimResults_, &persistent);
     EXPECT_EQ(renderer.regionPvsDepthMap_, &persistent.regionPvsDepth);
@@ -174,14 +181,14 @@ TEST_F(SimulationOutputLifetimeTest, BindOnlyBindsPvsMembersWhenPvsCullingCondit
     renderer.usePvsCulling_ = true;
     renderer.regionPvsDepthMap_ = &sentinelDepthMap;
     renderer.portalVisibleRegions_ = &sentinelPortalSet;
-    renderer.bindFrameSimulationBuffers(&persistent);
+    renderer.SimBridge().bindFrameSimulationBuffers(&persistent);
     EXPECT_EQ(renderer.regionPvsDepthMap_, &sentinelDepthMap)
         << "bind must not touch the PVS pointers when regionVisible is empty";
     EXPECT_EQ(renderer.portalVisibleRegions_, &sentinelPortalSet);
 
     persistent.regionVisible = {1};  // non-empty now, but culling off
     renderer.usePvsCulling_ = false;
-    renderer.bindFrameSimulationBuffers(&persistent);
+    renderer.SimBridge().bindFrameSimulationBuffers(&persistent);
     EXPECT_EQ(renderer.regionPvsDepthMap_, &sentinelDepthMap)
         << "bind must not touch the PVS pointers when usePvsCulling_ is false";
     EXPECT_EQ(renderer.portalVisibleRegions_, &sentinelPortalSet);
@@ -202,12 +209,12 @@ TEST_F(SimulationOutputLifetimeTest, BindOnlyBindsParticleBufferWhenParticleOutp
     // output" and "no particleManager_" reasons converge on the same
     // null-out, matching applySimulationOutput()'s original
     // `results->particleOutput.valid && particleManager_` gate.
-    renderer.bindFrameSimulationBuffers(&persistent);
+    renderer.SimBridge().bindFrameSimulationBuffers(&persistent);
     EXPECT_EQ(renderer.particleRenderBuffer_, nullptr);
 
     persistent.particleOutput.valid = true;
     persistent.particleOutput.renderBuffer.resize(4);
-    renderer.bindFrameSimulationBuffers(&persistent);
+    renderer.SimBridge().bindFrameSimulationBuffers(&persistent);
     // particleManager_ still null -- must still be null, not bound, proving
     // bind requires BOTH conditions like the original code did (the
     // both-true, actually-bound case is covered by
@@ -220,7 +227,7 @@ TEST_F(SimulationOutputLifetimeTest, BindOnlyBindsParticleBufferWhenParticleOutp
     renderer.particleManager_ = std::make_unique<Environment::ParticleManager>(nullptr, nullptr);
     persistent.particleOutput.valid = false;
     renderer.particleRenderBuffer_ = &sentinelParticles;
-    renderer.bindFrameSimulationBuffers(&persistent);
+    renderer.SimBridge().bindFrameSimulationBuffers(&persistent);
     EXPECT_EQ(renderer.particleRenderBuffer_, nullptr);
 }
 
@@ -243,7 +250,7 @@ TEST_F(SimulationOutputLifetimeTest, RepeatedApplyOutputWithFreshLocalsNeverDang
         SimulationOutput output;
         output.regionVisible = {1};
         output.regionPvsDepth = {{static_cast<size_t>(i), static_cast<uint8_t>(i)}};
-        renderer.applySimulationOutput(output);
+        renderer.SimBridge().applySimulationOutput(output);
     }
 
     EXPECT_EQ(renderer.regionPvsDepthMap_, &sentinelDepthMap);

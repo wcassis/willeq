@@ -175,6 +175,20 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_slash_commands_component)
 ENDIF()
 
+# L07 (Batch L, refactor/L07_sim_bridge_component.md): SimBridgeComponent
+# extracted from IrrlichtRenderer -- both binding paths (ctx_ and the owner_
+# transition handle) pinned by mutation, plus the worker-handle early-outs that
+# prove simulationWorker_ stayed on IrrlichtRenderer (no thread-ownership
+# change). Same bare, never-Init()'d IrrlichtRenderer idiom.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_sim_bridge_component
+        test_sim_bridge_component.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_sim_bridge_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_sim_bridge_component GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_sim_bridge_component)
+ENDIF()
+
 # T329 (B041): the NavmeshChanged bridge arm forwarding to
 # OverlaysComponent::setNavmesh. Same bare, never-Init()'d IrrlichtRenderer
 # idiom as test_overlays_component above, plus a real eqt::bridge::

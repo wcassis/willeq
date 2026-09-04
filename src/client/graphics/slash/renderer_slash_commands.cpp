@@ -373,7 +373,7 @@ void SlashCommandsComponent::processSlashCommand(const std::string& command) {
         owner_.Diagnostics().dumpScene();
         chat("Scene dump written to console log");
     } else if (cmd == "/simworker" || cmd == "/sw") {
-        auto info = owner_.getSimWorkerDebugInfo();
+        auto info = owner_.SimBridge().getSimWorkerDebugInfo();
         for (const auto& line : info) chat(line);
     }
     // T108: "/pmem" moved off this empty-MemoryReportInput{} path (runLoadDiagnostics

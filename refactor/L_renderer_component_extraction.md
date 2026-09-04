@@ -204,6 +204,17 @@ declarations + inline accessors + members before dispatch.
    correction 21's shape again; widened and re-proved with two planted
    breaks.
 
+## L07 corrections (2026-09-04)
+
+29. A friend fixture is only at risk if it names a member the unit MOVES —
+   intersect the fixture's member set with the move set in the plan.
+30. K04 (f) reads both ways: an inline accessor can make a SHARED member
+   look single-family (`loading_`).
+31. `owner_` is the answer to a thread-ownership STOP, not a workaround:
+   the worker handle stays on the renderer, the component reaches it.
+32. A killed `ar` DELETES the archive (protocol's absence case) — assert
+   expected artifacts exist before validating.
+
 ## Per-unit plan files
 
 `refactor/L01_rdp_component.md` … written after K13, from a re-measurement

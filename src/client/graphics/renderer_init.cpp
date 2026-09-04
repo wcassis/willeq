@@ -258,6 +258,8 @@ IrrlichtRenderer::IrrlichtRenderer()
     playerCamera_ = std::make_unique<PlayerCameraComponent>(ctx_, *this);
     // L06 (Batch L): the slash family -- registry 3.
     slash_ = std::make_unique<SlashCommandsComponent>(ctx_, *this);
+    // L07 (Batch L): the SimulationWorker bridge.
+    simBridge_ = std::make_unique<SimBridgeComponent>(ctx_, *this);
 }
 
 IrrlichtRenderer::~IrrlichtRenderer() {
@@ -772,11 +774,11 @@ void IrrlichtRenderer::hideLoadingScreen() {
     if (simulationWorker_ && !simulationWorker_->isRunning()) {
         simulationWorker_->start();
         LOG_INFO(MOD_GRAPHICS, "SimulationWorker thread started for runtime updates");
-        registerSimulationWorkerVertexAnimData();
+        simBridge_->registerSimulationWorkerVertexAnimData();
     } else if (!simulationWorker_) {
         // Fallback: loading thread didn't create worker (shouldn't happen)
         LOG_WARN(MOD_GRAPHICS, "SimulationWorker not created by loading thread, creating now");
-        startSimulationWorkerEarly();
+        simBridge_->startSimulationWorkerEarly();
     }
 
     // Release duplicate character data from zone source. RaceModelLoader independently

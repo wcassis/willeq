@@ -519,7 +519,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/renderer_zone_merge.cpp
         src/client/graphics/renderer_zone_stream.cpp
         src/client/graphics/eqe1/eqe1_archive_component.cpp
-        src/client/graphics/renderer_sim_bridge.cpp
+        src/client/graphics/sim/renderer_sim_bridge.cpp
         src/client/graphics/renderer_frame.cpp
         src/client/graphics/renderer_frame_input.cpp
         src/client/graphics/renderer_frame_render.cpp

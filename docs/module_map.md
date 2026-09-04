@@ -148,6 +148,7 @@ component below.
 | `EQT::Graphics::OverlaysComponent` | `include/client/graphics/overlays/overlays_component.h` | `src/client/graphics/overlays/overlays_component.cpp`, `src/client/graphics/overlays/overlays_hud_env.cpp` |
 | `EQT::Graphics::DiagnosticsComponent` | `include/client/graphics/diagnostics/diagnostics_component.h` | `src/client/graphics/diagnostics/diagnostics_component.cpp`, `src/client/graphics/diagnostics/diagnostics_debug.cpp` |
 | `EQT::Graphics::PlayerCameraComponent` | `include/client/graphics/player/player_camera_component.h` | `src/client/graphics/player/renderer_player_physics.cpp`, `src/client/graphics/player/renderer_player_collision.cpp`, `src/client/graphics/player/renderer_camera.cpp` |
+| `EQT::Graphics::SimBridgeComponent` | `include/client/graphics/sim/sim_bridge_component.h` | `src/client/graphics/sim/renderer_sim_bridge.cpp` |
 
 | TU | Lines | Contents |
 |---|---|---|
@@ -155,7 +156,7 @@ component below.
 | src/client/graphics/diagnostics/diagnostics_component.cpp | 1,160 | EQT::Graphics::DiagnosticsComponent -- dumpScene, scene-breakdown and frame-timing profiling, getMemoryReport/getMemoryReportBreakdown, EQE1 usage report (T207/T214). Extracted from IrrlichtRenderer by L04 (Batch L). Header include/client/graphics/diagnostics/diagnostics_component.h |
 | renderer_zone_draw.cpp | 1,155 | createZoneMesh, sorted/portal zone drawing, region meshes, VBO helpers |
 | renderer_zone_load_env.cpp | 1,139 | loadZoneStep10_Sky, 11_Env, 12_Lights, 12b_Simulation, 13_Cleanup (split from renderer_zone_load.cpp, T166) |
-| renderer_sim_bridge.cpp | 1,113 | SimulationWorker marshaling: buildSimulationZoneData, postSimulationInput, applySimulationOutput (split by lifetime contract, T116) |
+| src/client/graphics/sim/renderer_sim_bridge.cpp | 1,114 | `EQT::Graphics::SimBridgeComponent` — SimulationWorker marshaling: buildSimulationZoneData, worker start/stop, postSimulationInput, applySimulationResults, and applySimulationOutput/bindFrameSimulationBuffers (split by lifetime contract, T116). Extracted from IrrlichtRenderer by L07 (Batch L). Header `include/client/graphics/sim/sim_bridge_component.h`. SimulationWorker itself stays owned by IrrlichtRenderer — L07 changed no thread ownership |
 | src/client/graphics/overlays/overlays_component.cpp | 1,057 | `EQT::Graphics::OverlaysComponent` — map/navmesh overlays, target outline/selection, mouse targeting/LOS, zone-line overlay and bounding boxes, FPS counter. Extracted from IrrlichtRenderer by L03 (Batch L). Header `include/client/graphics/overlays/overlays_component.h` |
 | renderer_zone_load.cpp | 993 | loadZoneSequential driver + the remaining per-step methods with ZoneLoadContext (Batch G01; split T166) |
 | src/client/graphics/irrlicht_renderer.cpp | 908 | Core after J11: ctor/dtor, run(), saveScreenshot, sky/door/world-object façades, player/vision state, createEntityRenderer, diagnostics setters |

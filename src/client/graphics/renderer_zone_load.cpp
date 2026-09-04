@@ -883,7 +883,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
 
     LOG_DEBUG(MOD_GRAPHICS, "SEQ Setup: stopping simulation worker (running={})",
               simulationWorker_ ? simulationWorker_->isRunning() : false);
-    stopSimulationWorker();
+    simBridge_->stopSimulationWorker();
     LOG_DEBUG(MOD_GRAPHICS, "SEQ Setup: simulation worker stopped");
     progressiveLoadingActive_ = true;
     progressiveLoadStartTime_ = std::chrono::steady_clock::now();
