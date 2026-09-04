@@ -55,3 +55,17 @@ lifetime change; a pinned test's assertion would change.
    invented one), not in the golden.
 7. The text-reader check (TU filename AND method name across `tests/`,
    `scripts/`, `tools/`, docs) is per-unit; record it even when negative.
+
+## G03 corrections (2026-09-04)
+
+8. **A killed `ar` can leave the archive PRESENT and non-empty with ZERO
+   members**; the ~30 undefined-reference link errors that follow read as
+   a source defect. After any exit 143: `ar t build/lib/*.a | wc -l` per
+   archive, not a filename check. (Protocol amendment.)
+9. Check what the CONTAINER preserves before designing an order test —
+   `std::map` registries cannot witness registration order; parse the TU.
+10. The families are the file's own banners (21), not a planned count.
+11. One-registration banners fold into the preceding family rather than
+   becoming one-line functions.
+12. Plant the CALL-ORDER fault too (swap two family calls), not only a
+   registration swap.

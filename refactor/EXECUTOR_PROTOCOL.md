@@ -44,7 +44,10 @@ references this file; plans carry only unit-specific content.
   missing entirely** — a glob cannot match a file that is gone. **Assert the
   artifacts you EXPECT are present FIRST, then validate them.** Absence and
   corruption are different failures with the same trigger, and only the second
-  is caught by a scan over what you find.
+  is caught by a scan over what you find. ⚠ **A THIRD shape (G03, 2026-09-04): the
+  archive can be PRESENT and non-empty with ZERO members** — the link then fails with
+  dozens of undefined references that look like a source defect. Check
+  `ar t <archive> | wc -l` per archive, never just its presence or size.
   ⚠ Related but DIFFERENT: a `ctest` **discovery-stage** failure
   ("Process terminated due to timeout" while listing a test's cases, or exit 8
   in `GoogleTestAddTests.cmake`) can also be plain cold-cache contention with an
