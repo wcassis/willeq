@@ -78,7 +78,8 @@ TEST_F(ZoneLifecycleComponentTest, WeatherIsForwardedToTheContextController) {
 // --- The owner_ path: state that stayed on IrrlichtRenderer --------------
 
 TEST_F(ZoneLifecycleComponentTest, NetworkReadyIsTheRenderersOwnFlag) {
-    // networkReady_ stayed on IrrlichtRenderer (renderer_entities.cpp reads
+    // L13 moved networkReady_ onto this component (it is the only writer);
+    // it had stayed on IrrlichtRenderer (renderer_entities.cpp reads
     // it), so this pins that the component writes through owner_ and not into
     // a private copy: the write goes in through the component, the read comes
     // back out through the renderer's own accessor.

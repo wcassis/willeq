@@ -22,7 +22,7 @@ ZoneLifecycleComponent::~ZoneLifecycleComponent() = default;
 void ZoneLifecycleComponent::unloadZone() {
     if (owner_.isLoading()) return;
     ctx_.sequentialLoadComplete = false;
-    owner_.storedZoneEnvironment_.pending = false;
+    storedZoneEnvironment_.pending = false;
 
     // Stop simulation worker before zone cleanup
     ctx_.SimBridge().stopSimulationWorker();
@@ -37,10 +37,10 @@ void ZoneLifecycleComponent::unloadZone() {
     }
 
     // Reset entity loading state - we're starting a new zone
-    owner_.networkReady_ = false;
+    networkReady_ = false;
     entitiesLoaded_ = false;
     expectedEntityCount_ = 0;
-    owner_.loadedEntityCount_ = 0;
+    loadedEntityCount_ = 0;
     ctx_.zoneReady = false;
     ctx_.entityPrepReady = false;
     ctx_.entityPrepScanCounter = 0;
@@ -138,14 +138,14 @@ void ZoneLifecycleComponent::unloadZone() {
     // Now safe to remove zone collision data
     ctx_.regionWorldTriangles.clear();
     ctx_.objectWorldTriangles.clear();
-    owner_.doorCollisionData_.clear();
-    if (owner_.zoneTriangleSelector_) {
-        owner_.zoneTriangleSelector_->drop();
-        owner_.zoneTriangleSelector_ = nullptr;
+    ctx_.doorCollisionData.clear();
+    if (zoneTriangleSelector_) {
+        zoneTriangleSelector_->drop();
+        zoneTriangleSelector_ = nullptr;
     }
-    if (owner_.terrainOnlySelector_) {
-        owner_.terrainOnlySelector_->drop();
-        owner_.terrainOnlySelector_ = nullptr;
+    if (terrainOnlySelector_) {
+        terrainOnlySelector_->drop();
+        terrainOnlySelector_ = nullptr;
     }
 
     // Remove zone mesh
@@ -172,9 +172,9 @@ void ZoneLifecycleComponent::unloadZone() {
     }
 
     // Remove collision-only node (used in PVS mode)
-    if (owner_.zoneCollisionNode_) {
-        owner_.zoneCollisionNode_->remove();
-        owner_.zoneCollisionNode_ = nullptr;
+    if (zoneCollisionNode_) {
+        zoneCollisionNode_->remove();
+        zoneCollisionNode_ = nullptr;
     }
 
     // Reset PVS state
@@ -185,14 +185,14 @@ void ZoneLifecycleComponent::unloadZone() {
     // Reset manual zone draw state
     ctx_.manualZoneDrawEnabled = false;
     ctx_.sortedZoneDrawList.clear();
-    owner_.sortedDrawEntries_.clear();
+    sortedDrawEntries_.clear();
 
     // P10: reset cross-region zone draw merge state — the merge buffers are
     // scoped to a single zone visit's region set; destroy them and clear the
     // "disabled for this zone" latch so the next zone gets a fresh attempt.
-    if (owner_.zoneMergeBuffers_) owner_.zoneMergeBuffers_->destroy();
-    owner_.mergeZoneDrawsDisabledForZone_ = false;
-    owner_.mergeZoneDrawsBuildEvictionCount_ = 0;
+    if (zoneMergeBuffers_) zoneMergeBuffers_->destroy();
+    mergeZoneDrawsDisabledForZone_ = false;
+    mergeZoneDrawsBuildEvictionCount_ = 0;
     ctx_.portalSystem.reset();
     ctx_.portalOcclusionEnabled = false;
     ctx_.portalOcclusionEligible = false;
@@ -223,11 +223,11 @@ void ZoneLifecycleComponent::unloadZone() {
     // leaving them would be unsafe.
     ctx_.particleRenderBuffer = nullptr;
     owner_.currentFrameSimResults_ = nullptr;
-    owner_.pvsNeighborhood_.clear();
-    owner_.pvsNeighborhoodAnchor_ = SIZE_MAX;
+    ctx_.ZoneStream().pvsNeighborhood().clear();
+    ctx_.ZoneStream().pvsNeighborhoodAnchor() = SIZE_MAX;
     pendingTextureRegions_.clear();
-    owner_.textureRebuildQueue_.clear();
-    owner_.pendingTextureDoors_.clear();
+    textureRebuildQueue_.clear();
+    pendingTextureDoors_.clear();
     ctx_.doorTextureRebuildQueue.clear();
     ctx_.pendingTextureObjects.clear();
     ctx_.objectTextureRebuildQueue.clear();
@@ -242,8 +242,8 @@ void ZoneLifecycleComponent::unloadZone() {
     ctx_.occlusionCulledRegions.clear();
 
     // Reset zone clip plane so previous zone's cap doesn't linger
-    owner_.zoneMaxClip_ = 99999.0f;
-    owner_.setRenderDistance(owner_.userRenderDistance_);
+    zoneMaxClip_ = 99999.0f;
+    owner_.setRenderDistance(userRenderDistance_);
 
     // Clear BSP tree from entity renderer and door manager
     if (ctx_.entityRenderer) {
@@ -271,7 +271,7 @@ void ZoneLifecycleComponent::unloadZone() {
     ctx_.objectInSceneGraph.clear();
 
     // Clear zone light data (no scene nodes to remove)
-    owner_.zoneLightData_.clear();
+    ctx_.zoneLightData.clear();
     ctx_.zoneLightPositions.clear();
     // Clear entity renderer
     if (ctx_.entityRenderer) {
@@ -359,12 +359,12 @@ void ZoneLifecycleComponent::setZoneEnvironment(uint8_t skyType, uint8_t zoneTyp
 
     // Apply server-provided max clip plane as ceiling on render distance
     // fogMaxClip[0] is the primary clip distance for the zone
-    owner_.zoneMaxClip_ = (fogMaxClip[0] > 0.0f) ? fogMaxClip[0] : 99999.0f;
+    zoneMaxClip_ = (fogMaxClip[0] > 0.0f) ? fogMaxClip[0] : 99999.0f;
     // Re-apply render distance with the new zone cap
-    owner_.setRenderDistance(owner_.userRenderDistance_);
+    owner_.setRenderDistance(userRenderDistance_);
 
     LOG_INFO(MOD_GRAPHICS, "Zone max clip plane: {:.0f} (effective render distance: {:.0f}, user setting: {:.0f})",
-             owner_.zoneMaxClip_, ctx_.renderDistance, owner_.userRenderDistance_);
+             zoneMaxClip_, ctx_.renderDistance, userRenderDistance_);
 
     // Apply fog color from zone data
     if (ctx_.driver && ctx_.fogEnabled) {
@@ -559,7 +559,7 @@ void ZoneLifecycleComponent::buildZonePlaceholder(float playerIrrX, float player
 
     if (ctx_.zonePlaceholderNode) {
         ctx_.zonePlaceholderNode->setPosition(irr::core::vector3df(0, 0, 0));
-        owner_.lastPlaceholderBuildPos_ = irr::core::vector3df(playerIrrX, playerIrrY, playerIrrZ);
+        lastPlaceholderBuildPos_ = irr::core::vector3df(playerIrrX, playerIrrY, playerIrrZ);
         if (usePvsFilter) {
             LOG_INFO(MOD_GRAPHICS, "Zone placeholder: {} terrain triangles (PVS culled {}, clip {:.0f}, {} total, {:.1f} KB)",
                      triangles.size(), pvsCulledCount, clipDist, cachedPlaceholderTriangles_.size(),
@@ -635,9 +635,9 @@ void ZoneLifecycleComponent::setupHCMapCollision() {
     // Clean up all collision data
     ctx_.regionWorldTriangles.clear();
     ctx_.objectWorldTriangles.clear();
-    owner_.doorCollisionData_.clear();
-    if (owner_.zoneTriangleSelector_) { owner_.zoneTriangleSelector_->drop(); owner_.zoneTriangleSelector_ = nullptr; }
-    if (owner_.terrainOnlySelector_) { owner_.terrainOnlySelector_->drop(); owner_.terrainOnlySelector_ = nullptr; }
+    ctx_.doorCollisionData.clear();
+    if (zoneTriangleSelector_) { zoneTriangleSelector_->drop(); zoneTriangleSelector_ = nullptr; }
+    if (terrainOnlySelector_) { terrainOnlySelector_->drop(); terrainOnlySelector_ = nullptr; }
 
     irr::scene::IMetaTriangleSelector* metaSelector = ctx_.smgr->createMetaTriangleSelector();
     if (!metaSelector) return;
@@ -647,18 +647,18 @@ void ZoneLifecycleComponent::setupHCMapCollision() {
         if (sel) { metaSelector->addTriangleSelector(sel); sel->drop(); }
     }
 
-    owner_.zoneTriangleSelector_ = metaSelector;
+    zoneTriangleSelector_ = metaSelector;
 
-    owner_.terrainOnlySelector_ = ctx_.smgr->createMetaTriangleSelector();
-    if (owner_.terrainOnlySelector_ && ctx_.zonePlaceholderNode && ctx_.zonePlaceholderNode->getMesh()) {
-        auto* terrainMeta = static_cast<irr::scene::IMetaTriangleSelector*>(owner_.terrainOnlySelector_);
+    terrainOnlySelector_ = ctx_.smgr->createMetaTriangleSelector();
+    if (terrainOnlySelector_ && ctx_.zonePlaceholderNode && ctx_.zonePlaceholderNode->getMesh()) {
+        auto* terrainMeta = static_cast<irr::scene::IMetaTriangleSelector*>(terrainOnlySelector_);
         auto* sel = ctx_.smgr->createTriangleSelector(ctx_.zonePlaceholderNode->getMesh(), ctx_.zonePlaceholderNode);
         if (sel) { terrainMeta->addTriangleSelector(sel); sel->drop(); }
     }
 
     ctx_.collisionManager = ctx_.smgr->getSceneCollisionManager();
-    if (ctx_.cameraController && ctx_.collisionManager && owner_.zoneTriangleSelector_) {
-        ctx_.cameraController->setCollisionManager(ctx_.collisionManager, owner_.zoneTriangleSelector_);
+    if (ctx_.cameraController && ctx_.collisionManager && zoneTriangleSelector_) {
+        ctx_.cameraController->setCollisionManager(ctx_.collisionManager, zoneTriangleSelector_);
     }
 
     LOG_INFO(MOD_GRAPHICS, "HCMap collision setup complete");
@@ -667,26 +667,26 @@ void ZoneLifecycleComponent::setupHCMapCollision() {
 void ZoneLifecycleComponent::storeZoneEnvironment(uint8_t skyType, uint8_t zoneType,
                                               const uint8_t fogRed[4], const uint8_t fogGreen[4], const uint8_t fogBlue[4],
                                               const float fogMinClip[4], const float fogMaxClip[4]) {
-    owner_.storedZoneEnvironment_.skyType = skyType;
-    owner_.storedZoneEnvironment_.zoneType = zoneType;
+    storedZoneEnvironment_.skyType = skyType;
+    storedZoneEnvironment_.zoneType = zoneType;
     for (int i = 0; i < 4; ++i) {
-        owner_.storedZoneEnvironment_.fogR[i] = fogRed[i];
-        owner_.storedZoneEnvironment_.fogG[i] = fogGreen[i];
-        owner_.storedZoneEnvironment_.fogB[i] = fogBlue[i];
-        owner_.storedZoneEnvironment_.fogMinClip[i] = fogMinClip[i];
-        owner_.storedZoneEnvironment_.fogMaxClip[i] = fogMaxClip[i];
+        storedZoneEnvironment_.fogR[i] = fogRed[i];
+        storedZoneEnvironment_.fogG[i] = fogGreen[i];
+        storedZoneEnvironment_.fogB[i] = fogBlue[i];
+        storedZoneEnvironment_.fogMinClip[i] = fogMinClip[i];
+        storedZoneEnvironment_.fogMaxClip[i] = fogMaxClip[i];
     }
-    owner_.storedZoneEnvironment_.pending = true;
+    storedZoneEnvironment_.pending = true;
 }
 
 void ZoneLifecycleComponent::applyStoredZoneEnvironment() {
-    if (owner_.storedZoneEnvironment_.pending) {
-        setZoneEnvironment(owner_.storedZoneEnvironment_.skyType, owner_.storedZoneEnvironment_.zoneType,
-                           owner_.storedZoneEnvironment_.fogR, owner_.storedZoneEnvironment_.fogG, owner_.storedZoneEnvironment_.fogB,
-                           owner_.storedZoneEnvironment_.fogMinClip, owner_.storedZoneEnvironment_.fogMaxClip);
-        owner_.storedZoneEnvironment_.pending = false;
+    if (storedZoneEnvironment_.pending) {
+        setZoneEnvironment(storedZoneEnvironment_.skyType, storedZoneEnvironment_.zoneType,
+                           storedZoneEnvironment_.fogR, storedZoneEnvironment_.fogG, storedZoneEnvironment_.fogB,
+                           storedZoneEnvironment_.fogMinClip, storedZoneEnvironment_.fogMaxClip);
+        storedZoneEnvironment_.pending = false;
         LOG_INFO(MOD_GRAPHICS, "Applied stored zone environment (sky={}, ztype={})",
-                 owner_.storedZoneEnvironment_.skyType, owner_.storedZoneEnvironment_.zoneType);
+                 storedZoneEnvironment_.skyType, storedZoneEnvironment_.zoneType);
     }
 }
 
@@ -699,19 +699,19 @@ void ZoneLifecycleComponent::setExpectedEntityCount(size_t count) {
     expectedEntityCount_ = count;
     // Note: Entity count is tracked for informational purposes only.
     // Zone ready is triggered when the player entity is created (isPlayer=true in createEntity).
-    LOG_DEBUG(MOD_GRAPHICS, "Expected entity count: {}, already loaded: {}", count, owner_.loadedEntityCount_);
+    LOG_DEBUG(MOD_GRAPHICS, "Expected entity count: {}, already loaded: {}", count, loadedEntityCount_);
 }
 
 void ZoneLifecycleComponent::setNetworkReady(bool ready) {
     if (owner_.isLoading()) return;
-    owner_.networkReady_ = ready;
+    networkReady_ = ready;
     LOG_DEBUG(MOD_GRAPHICS, "Network ready: {}", ready);
 
     if (!ready) {
         // Network not ready means we're zoning, reset entity loading state
         entitiesLoaded_ = false;
         expectedEntityCount_ = 0;
-        owner_.loadedEntityCount_ = 0;
+        loadedEntityCount_ = 0;
         ctx_.zoneReady = false;
     }
     // Note: Zone ready is NOT set here. It will be set when the player entity

@@ -317,9 +317,13 @@ The client connects through three stages, each with its own connection manager:
 - `EQT::Graphics::RendererContext` (`include/client/graphics/renderer_context.h`)
   is the renderer's `ClientContext`: the shared members bound by reference plus
   a pointer to each sibling component (`ctx_.Frame()`, `ctx_.ZoneLoad()`, …).
-  A component reaches shared state as `ctx_.member` and anything still on the
-  class as `owner_.member_` — the transition handle, whose remaining 1,065 uses
-  are measured and boarded as **B050**
+  A component reaches shared state as `ctx_.member`, a member OWNED by another
+  component as `ctx_.<Owner>().<accessor>()` (L13's pairwise rule: a member two
+  components share moves to the one that writes it), and anything still on the
+  class as `owner_.member_`. L13 took that last handle from 1,065 uses to
+  **151** — 81 of them public methods and 70 in thirteen listed stays, none of
+  which may move because each crosses a thread boundary or backs a lifetime
+  contract. See the closed **B050**
 - Lifecycle entry points (`initLoadingScreen`, `initDeferredGraphics`,
   `processFrame`, `shutdown`, `run`) stay on `IrrlichtRenderer`: `Application`
   and `IrrlichtBridge` must not learn a component exists

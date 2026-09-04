@@ -21,7 +21,8 @@
  *     EntityRenderer (its constructor and the two toggles' callees only store
  *     pointers and walk empty caches) so the guard is satisfied.
  *   - Source-pinned: the HUD arm. toggleHUD() writes IrrlichtRenderer's
- *     private hudEnabled_, which has no public reader, so the arm is asserted
+ *     private hudEnabled_ (L13 moved it to DiagnosticsComponent), which has
+ *     no public reader, so the arm is asserted
  *     as text like this suite already does for other single-site invariants
  *     -- stated plainly rather than dressed up as behavioural coverage.
  *   - Source-pinned: the receiver still queues all four, so the arms cannot be

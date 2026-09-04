@@ -91,7 +91,7 @@ void DiagnosticsComponent::dumpScene() const {
 
     // --- Zone Lights ---
     LOG_INFO(MOD_GRAPHICS, "  ZONE LIGHTS: {} total (no scene nodes, data-only)",
-             owner_.zoneLightData_.size());
+             ctx_.zoneLightData.size());
 
     // --- Zone Meshes ---
     {
@@ -130,8 +130,8 @@ void DiagnosticsComponent::dumpScene() const {
     }
 
     // --- Zone Collision Node ---
-    bool collisionInGraph = owner_.zoneCollisionNode_ && owner_.zoneCollisionNode_->getParent();
-    if (owner_.zoneCollisionNode_) {
+    bool collisionInGraph = ctx_.ZoneLifecycle().zoneCollisionNode() && ctx_.ZoneLifecycle().zoneCollisionNode()->getParent();
+    if (ctx_.ZoneLifecycle().zoneCollisionNode()) {
         LOG_INFO(MOD_GRAPHICS, "  ZONE COLLISION NODE: in-graph={}", collisionInGraph);
     }
 
@@ -210,12 +210,12 @@ void DiagnosticsComponent::dumpScene() const {
     otherNodes -= weatherNodeCount;
     if (ctx_.weatherEffects) ctx_.weatherEffects->collectSceneNodes(knownNodes);
     // Subtract zone collision node
-    if (collisionInGraph) { otherNodes--; knownNodes.insert(owner_.zoneCollisionNode_); }
+    if (collisionInGraph) { otherNodes--; knownNodes.insert(ctx_.ZoneLifecycle().zoneCollisionNode()); }
     if (ctx_.fallbackMeshNode && ctx_.fallbackMeshNode->getParent()) { otherNodes--; knownNodes.insert(ctx_.fallbackMeshNode); }
     if (ctx_.zonePlaceholderNode) { otherNodes--; knownNodes.insert(ctx_.zonePlaceholderNode); }
     if (ctx_.camera) { otherNodes--; knownNodes.insert(ctx_.camera); }
-    if (owner_.sunLight_) { otherNodes--; knownNodes.insert(owner_.sunLight_); }
-    if (owner_.playerLightNode_) { otherNodes--; knownNodes.insert(owner_.playerLightNode_); }
+    if (sunLight_) { otherNodes--; knownNodes.insert(sunLight_); }
+    if (playerLightNode_) { otherNodes--; knownNodes.insert(playerLightNode_); }
     // P32: the animated-tree scene-node loop was removed along with
     // AnimatedTreeManager — animatedTrees_ (and this loop) was always empty
     // on GLES2, so it never inserted anything into knownNodes. treeInGraph
@@ -223,7 +223,7 @@ void DiagnosticsComponent::dumpScene() const {
     // arithmetic (a no-op).
     otherNodes -= static_cast<int>(treeInGraph);
     LOG_INFO(MOD_GRAPHICS, "  OTHER: camera={}, sunLight={}, playerLight={}, unaccounted={}",
-             ctx_.camera != nullptr, owner_.sunLight_ != nullptr, owner_.playerLightNode_ != nullptr, otherNodes);
+             ctx_.camera != nullptr, sunLight_ != nullptr, playerLightNode_ != nullptr, otherNodes);
 
     // Enumerate unaccounted nodes for diagnostics
     if (otherNodes != 0 && ctx_.smgr) {
@@ -277,7 +277,7 @@ void DiagnosticsComponent::dumpScene() const {
 #endif
         LOG_INFO(MOD_GRAPHICS, "  FIRE GLOW: lights={}, lightingEnabled={}, icospheresEnabled={}, "
                  "maxLights={}, fireEffectsEnabled={}, icosphereProgram={}",
-                 owner_.fireGlowLights_.size(), ctx_.fireGlowLightingEnabled, ctx_.fireGlowIcospheresEnabled,
+                 ctx_.fireGlowLights.size(), ctx_.fireGlowLightingEnabled, ctx_.fireGlowIcospheresEnabled,
                  ctx_.maxFireGlowLights, ctx_.fireEffectsEnabled, icoProgram);
     }
 
@@ -295,85 +295,85 @@ void DiagnosticsComponent::dumpScene() const {
         LOG_INFO(MOD_GRAPHICS, "  VISIBLE: regions={}/{}, objects={}/{}, lights={}, entities={}",
                  visRegions, ctx_.regionMeshNodes.size(),
                  visObjects, ctx_.objectNodes.size(),
-                 owner_.activeLightCount_, visEntities);
+                 ctx_.SimBridge().activeLightCount(), visEntities);
     }
 
     LOG_INFO(MOD_GRAPHICS, "=== END SCENE DUMP ===");
 }
 
 void DiagnosticsComponent::logFrameTimings() {
-    if (owner_.frameTimingsSampleCount_ == 0) return;
+    if (ctx_.Frame().timingsSampleCount() == 0) return;
 
-    float avgTotal = static_cast<float>(owner_.frameTimingsAccum_.totalFrame) / owner_.frameTimingsSampleCount_;
+    float avgTotal = static_cast<float>(ctx_.Frame().timingsAccum().totalFrame) / ctx_.Frame().timingsSampleCount();
     float fpsEstimate = avgTotal > 0 ? 1000000.0f / avgTotal : 0;
 
     // Calculate percentages
     auto pct = [&](int64_t val) -> float {
-        return owner_.frameTimingsAccum_.totalFrame > 0 ?
-            100.0f * static_cast<float>(val) / owner_.frameTimingsAccum_.totalFrame : 0;
+        return ctx_.Frame().timingsAccum().totalFrame > 0 ?
+            100.0f * static_cast<float>(val) / ctx_.Frame().timingsAccum().totalFrame : 0;
     };
 
     // Calculate averages in microseconds
     auto avg = [&](int64_t val) -> float {
-        return static_cast<float>(val) / owner_.frameTimingsSampleCount_;
+        return static_cast<float>(val) / ctx_.Frame().timingsSampleCount();
     };
 
     LOG_INFO(MOD_GRAPHICS, "=== FRAME TIMING BREAKDOWN ({} frames, {:.1f} fps estimate) ===",
-             owner_.frameTimingsSampleCount_, fpsEstimate);
-    LOG_INFO(MOD_GRAPHICS, "  Total Frame:        {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.totalFrame), 100.0f);
+             ctx_.Frame().timingsSampleCount(), fpsEstimate);
+    LOG_INFO(MOD_GRAPHICS, "  Total Frame:        {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().totalFrame), 100.0f);
     LOG_INFO(MOD_GRAPHICS, "  ----------------------------------------");
-    LOG_INFO(MOD_GRAPHICS, "  Input Handling:     {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.inputHandling), pct(owner_.frameTimingsAccum_.inputHandling));
-    LOG_INFO(MOD_GRAPHICS, "    Player Movement:  {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.playerMovement), pct(owner_.frameTimingsAccum_.playerMovement));
-    LOG_INFO(MOD_GRAPHICS, "  Camera Update:      {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.cameraUpdate), pct(owner_.frameTimingsAccum_.cameraUpdate));
-    LOG_INFO(MOD_GRAPHICS, "  Entity Update:      {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.entityUpdate), pct(owner_.frameTimingsAccum_.entityUpdate));
-    LOG_INFO(MOD_GRAPHICS, "  Door Update:        {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.doorUpdate), pct(owner_.frameTimingsAccum_.doorUpdate));
-    LOG_INFO(MOD_GRAPHICS, "  Spell VFX Update:   {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.spellVfxUpdate), pct(owner_.frameTimingsAccum_.spellVfxUpdate));
-    LOG_INFO(MOD_GRAPHICS, "  Animated Textures:  {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.animatedTextures), pct(owner_.frameTimingsAccum_.animatedTextures));
-    LOG_INFO(MOD_GRAPHICS, "  Vertex Animations:  {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.vertexAnimations), pct(owner_.frameTimingsAccum_.vertexAnimations));
-    LOG_INFO(MOD_GRAPHICS, "  Fire Flicker:       {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.fireFlicker), pct(owner_.frameTimingsAccum_.fireFlicker));
-    LOG_INFO(MOD_GRAPHICS, "  Object Visibility:  {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.objectVisibility), pct(owner_.frameTimingsAccum_.objectVisibility));
-    LOG_INFO(MOD_GRAPHICS, "  Zone Light Vis:     {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.zoneLightVisibility), pct(owner_.frameTimingsAccum_.zoneLightVisibility));
-    LOG_INFO(MOD_GRAPHICS, "  PVS Visibility:     {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.pvsVisibility), pct(owner_.frameTimingsAccum_.pvsVisibility));
-    LOG_INFO(MOD_GRAPHICS, "    Occlusion Cull:   {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.occlusionCulling), pct(owner_.frameTimingsAccum_.occlusionCulling));
+    LOG_INFO(MOD_GRAPHICS, "  Input Handling:     {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().inputHandling), pct(ctx_.Frame().timingsAccum().inputHandling));
+    LOG_INFO(MOD_GRAPHICS, "    Player Movement:  {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().playerMovement), pct(ctx_.Frame().timingsAccum().playerMovement));
+    LOG_INFO(MOD_GRAPHICS, "  Camera Update:      {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().cameraUpdate), pct(ctx_.Frame().timingsAccum().cameraUpdate));
+    LOG_INFO(MOD_GRAPHICS, "  Entity Update:      {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().entityUpdate), pct(ctx_.Frame().timingsAccum().entityUpdate));
+    LOG_INFO(MOD_GRAPHICS, "  Door Update:        {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().doorUpdate), pct(ctx_.Frame().timingsAccum().doorUpdate));
+    LOG_INFO(MOD_GRAPHICS, "  Spell VFX Update:   {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().spellVfxUpdate), pct(ctx_.Frame().timingsAccum().spellVfxUpdate));
+    LOG_INFO(MOD_GRAPHICS, "  Animated Textures:  {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().animatedTextures), pct(ctx_.Frame().timingsAccum().animatedTextures));
+    LOG_INFO(MOD_GRAPHICS, "  Vertex Animations:  {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().vertexAnimations), pct(ctx_.Frame().timingsAccum().vertexAnimations));
+    LOG_INFO(MOD_GRAPHICS, "  Fire Flicker:       {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().fireFlicker), pct(ctx_.Frame().timingsAccum().fireFlicker));
+    LOG_INFO(MOD_GRAPHICS, "  Object Visibility:  {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().objectVisibility), pct(ctx_.Frame().timingsAccum().objectVisibility));
+    LOG_INFO(MOD_GRAPHICS, "  Zone Light Vis:     {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().zoneLightVisibility), pct(ctx_.Frame().timingsAccum().zoneLightVisibility));
+    LOG_INFO(MOD_GRAPHICS, "  PVS Visibility:     {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().pvsVisibility), pct(ctx_.Frame().timingsAccum().pvsVisibility));
+    LOG_INFO(MOD_GRAPHICS, "    Occlusion Cull:   {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().occlusionCulling), pct(ctx_.Frame().timingsAccum().occlusionCulling));
     // "Mesh Loading" line removed T67 — was gated on constrainedMeshCache_,
     // never true (the cache was never constructed), so it never printed.
-    LOG_INFO(MOD_GRAPHICS, "  Object Lights:      {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.objectLights), pct(owner_.frameTimingsAccum_.objectLights));
-    LOG_INFO(MOD_GRAPHICS, "  Tier2 (Detail/Tree):{:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.tier2Update), pct(owner_.frameTimingsAccum_.tier2Update));
-    LOG_INFO(MOD_GRAPHICS, "  Weather System:     {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.weatherSystemUpdate), pct(owner_.frameTimingsAccum_.weatherSystemUpdate));
-    LOG_INFO(MOD_GRAPHICS, "  Tier3 (Env/Sky):    {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.tier3Update), pct(owner_.frameTimingsAccum_.tier3Update));
-    LOG_INFO(MOD_GRAPHICS, "  HUD Update:         {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.hudUpdate), pct(owner_.frameTimingsAccum_.hudUpdate));
+    LOG_INFO(MOD_GRAPHICS, "  Object Lights:      {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().objectLights), pct(ctx_.Frame().timingsAccum().objectLights));
+    LOG_INFO(MOD_GRAPHICS, "  Tier2 (Detail/Tree):{:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().tier2Update), pct(ctx_.Frame().timingsAccum().tier2Update));
+    LOG_INFO(MOD_GRAPHICS, "  Weather System:     {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().weatherSystemUpdate), pct(ctx_.Frame().timingsAccum().weatherSystemUpdate));
+    LOG_INFO(MOD_GRAPHICS, "  Tier3 (Env/Sky):    {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().tier3Update), pct(ctx_.Frame().timingsAccum().tier3Update));
+    LOG_INFO(MOD_GRAPHICS, "  HUD Update:         {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().hudUpdate), pct(ctx_.Frame().timingsAccum().hudUpdate));
     LOG_INFO(MOD_GRAPHICS, "  Scene Draw All:     {:>8.0f} us ({:>5.1f}%)  [{} nodes, {} polys]",
-             avg(owner_.frameTimingsAccum_.sceneDrawAll), pct(owner_.frameTimingsAccum_.sceneDrawAll),
-             owner_.frameTimingsSampleCount_ > 0 ? owner_.frameTimingsAccum_.sceneNodeCount / owner_.frameTimingsSampleCount_ : 0,
-             owner_.lastPolygonCount_);
-    LOG_INFO(MOD_GRAPHICS, "    Animate+Register: {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.sceneAnimate), pct(owner_.frameTimingsAccum_.sceneAnimate));
-    LOG_INFO(MOD_GRAPHICS, "    Solid Pass:       {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.sceneSolid), pct(owner_.frameTimingsAccum_.sceneSolid));
+             avg(ctx_.Frame().timingsAccum().sceneDrawAll), pct(ctx_.Frame().timingsAccum().sceneDrawAll),
+             ctx_.Frame().timingsSampleCount() > 0 ? ctx_.Frame().timingsAccum().sceneNodeCount / ctx_.Frame().timingsSampleCount() : 0,
+             ctx_.Frame().lastPolygonCount());
+    LOG_INFO(MOD_GRAPHICS, "    Animate+Register: {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().sceneAnimate), pct(ctx_.Frame().timingsAccum().sceneAnimate));
+    LOG_INFO(MOD_GRAPHICS, "    Solid Pass:       {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().sceneSolid), pct(ctx_.Frame().timingsAccum().sceneSolid));
     if (ctx_.manualZoneDrawEnabled) {
-        LOG_INFO(MOD_GRAPHICS, "    Manual Zone Draw: {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.manualZoneDraw), pct(owner_.frameTimingsAccum_.manualZoneDraw));
+        LOG_INFO(MOD_GRAPHICS, "    Manual Zone Draw: {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().manualZoneDraw), pct(ctx_.Frame().timingsAccum().manualZoneDraw));
     }
-    LOG_INFO(MOD_GRAPHICS, "    Transparent Pass: {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.sceneTransparent), pct(owner_.frameTimingsAccum_.sceneTransparent));
-    LOG_INFO(MOD_GRAPHICS, "    Skybox Pass:      {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.sceneSkybox), pct(owner_.frameTimingsAccum_.sceneSkybox));
-    LOG_INFO(MOD_GRAPHICS, "    Other Passes:     {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.sceneOther), pct(owner_.frameTimingsAccum_.sceneOther));
-    LOG_INFO(MOD_GRAPHICS, "  Target Box:         {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.targetBox), pct(owner_.frameTimingsAccum_.targetBox));
-    LOG_INFO(MOD_GRAPHICS, "  Particles:          {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.particles), pct(owner_.frameTimingsAccum_.particles));
-    LOG_INFO(MOD_GRAPHICS, "  Boids:              {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.boids), pct(owner_.frameTimingsAccum_.boids));
-    LOG_INFO(MOD_GRAPHICS, "  Weather Render:     {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.weatherRender), pct(owner_.frameTimingsAccum_.weatherRender));
-    LOG_INFO(MOD_GRAPHICS, "  Debug Overlays:     {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.debugOverlays), pct(owner_.frameTimingsAccum_.debugOverlays));
-    LOG_INFO(MOD_GRAPHICS, "  Casting Bars:       {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.castingBars), pct(owner_.frameTimingsAccum_.castingBars));
-    LOG_INFO(MOD_GRAPHICS, "  GUI Draw All:       {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.guiDrawAll), pct(owner_.frameTimingsAccum_.guiDrawAll));
-    LOG_INFO(MOD_GRAPHICS, "  Static UI:          {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.staticUI), pct(owner_.frameTimingsAccum_.staticUI));
-    LOG_INFO(MOD_GRAPHICS, "  Zone Line Overlay:  {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.zoneLineOverlay), pct(owner_.frameTimingsAccum_.zoneLineOverlay));
-    LOG_INFO(MOD_GRAPHICS, "  Footprint Render:   {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.footprintRender), pct(owner_.frameTimingsAccum_.footprintRender));
-    LOG_INFO(MOD_GRAPHICS, "  Post Render:        {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.postRender), pct(owner_.frameTimingsAccum_.postRender));
-    LOG_INFO(MOD_GRAPHICS, "  SimWorker Apply:    {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.simWorkerApply), pct(owner_.frameTimingsAccum_.simWorkerApply));
-    LOG_INFO(MOD_GRAPHICS, "  glFinish:           {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.glFinish), pct(owner_.frameTimingsAccum_.glFinish));
-    LOG_INFO(MOD_GRAPHICS, "  End Scene:          {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.endScene), pct(owner_.frameTimingsAccum_.endScene));
+    LOG_INFO(MOD_GRAPHICS, "    Transparent Pass: {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().sceneTransparent), pct(ctx_.Frame().timingsAccum().sceneTransparent));
+    LOG_INFO(MOD_GRAPHICS, "    Skybox Pass:      {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().sceneSkybox), pct(ctx_.Frame().timingsAccum().sceneSkybox));
+    LOG_INFO(MOD_GRAPHICS, "    Other Passes:     {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().sceneOther), pct(ctx_.Frame().timingsAccum().sceneOther));
+    LOG_INFO(MOD_GRAPHICS, "  Target Box:         {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().targetBox), pct(ctx_.Frame().timingsAccum().targetBox));
+    LOG_INFO(MOD_GRAPHICS, "  Particles:          {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().particles), pct(ctx_.Frame().timingsAccum().particles));
+    LOG_INFO(MOD_GRAPHICS, "  Boids:              {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().boids), pct(ctx_.Frame().timingsAccum().boids));
+    LOG_INFO(MOD_GRAPHICS, "  Weather Render:     {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().weatherRender), pct(ctx_.Frame().timingsAccum().weatherRender));
+    LOG_INFO(MOD_GRAPHICS, "  Debug Overlays:     {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().debugOverlays), pct(ctx_.Frame().timingsAccum().debugOverlays));
+    LOG_INFO(MOD_GRAPHICS, "  Casting Bars:       {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().castingBars), pct(ctx_.Frame().timingsAccum().castingBars));
+    LOG_INFO(MOD_GRAPHICS, "  GUI Draw All:       {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().guiDrawAll), pct(ctx_.Frame().timingsAccum().guiDrawAll));
+    LOG_INFO(MOD_GRAPHICS, "  Static UI:          {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().staticUI), pct(ctx_.Frame().timingsAccum().staticUI));
+    LOG_INFO(MOD_GRAPHICS, "  Zone Line Overlay:  {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().zoneLineOverlay), pct(ctx_.Frame().timingsAccum().zoneLineOverlay));
+    LOG_INFO(MOD_GRAPHICS, "  Footprint Render:   {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().footprintRender), pct(ctx_.Frame().timingsAccum().footprintRender));
+    LOG_INFO(MOD_GRAPHICS, "  Post Render:        {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().postRender), pct(ctx_.Frame().timingsAccum().postRender));
+    LOG_INFO(MOD_GRAPHICS, "  SimWorker Apply:    {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().simWorkerApply), pct(ctx_.Frame().timingsAccum().simWorkerApply));
+    LOG_INFO(MOD_GRAPHICS, "  glFinish:           {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().glFinish), pct(ctx_.Frame().timingsAccum().glFinish));
+    LOG_INFO(MOD_GRAPHICS, "  End Scene:          {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().endScene), pct(ctx_.Frame().timingsAccum().endScene));
     LOG_INFO(MOD_GRAPHICS, "  Manual Zone Draw:   {} regions avg, {} drawCalls avg",
-             owner_.frameTimingsAccum_.manualZoneRegionsDrawn / std::max(1, owner_.frameTimingsSampleCount_),
-             owner_.frameTimingsAccum_.manualZoneDrawCalls / std::max(1, owner_.frameTimingsSampleCount_));
+             ctx_.Frame().timingsAccum().manualZoneRegionsDrawn / std::max(1, ctx_.Frame().timingsSampleCount()),
+             ctx_.Frame().timingsAccum().manualZoneDrawCalls / std::max(1, ctx_.Frame().timingsSampleCount()));
     LOG_INFO(MOD_GRAPHICS, "  ----------------------------------------");
     LOG_INFO(MOD_GRAPHICS, "  Render EMA:         {:>8.0f} us | EssSim EMA: {:>6.0f} us",
-             owner_.renderCostAvgUs_, owner_.essentialSimCostAvgUs_);
+             ctx_.Frame().renderCostAvgUs(), ctx_.Frame().essentialSimCostAvgUs());
     if (ctx_.governor) {
         LOG_INFO(MOD_GRAPHICS, "  Governor: {} | avg {:.1f}ms | target {:.1f}ms | ratio {:.2f}{}",
                  ctx_.governor->getStateName(),
@@ -385,9 +385,9 @@ void DiagnosticsComponent::logFrameTimings() {
 }
 
 void DiagnosticsComponent::runSceneProfile() {
-    owner_.sceneProfileEnabled_ = true;
+    sceneProfileEnabled_ = true;
     // Wait 60 frames before profiling to allow constrained visibility to run
-    owner_.sceneProfileFrameCount_ = -60;
+    sceneProfileFrameCount_ = -60;
     LOG_INFO(MOD_GRAPHICS, "Scene profile scheduled - will run after 60 frames");
 }
 
@@ -418,8 +418,8 @@ void DiagnosticsComponent::profileSceneBreakdown() {
         }
         if (ctx_.doorManager) ctx_.doorManager->setAllDoorsVisible(false);
         // Zone lights have no scene nodes — nothing to hide
-        if (owner_.sunLight_) owner_.sunLight_->setVisible(false);
-        if (owner_.playerLightNode_) owner_.playerLightNode_->setVisible(false);
+        if (sunLight_) sunLight_->setVisible(false);
+        if (playerLightNode_) playerLightNode_->setVisible(false);
     };
 
     auto showAll = [this]() {
@@ -437,15 +437,15 @@ void DiagnosticsComponent::profileSceneBreakdown() {
         }
         if (ctx_.doorManager) ctx_.doorManager->setAllDoorsVisible(true);
         // Zone lights have no scene nodes — nothing to show
-        if (owner_.sunLight_) owner_.sunLight_->setVisible(true);
-        if (owner_.playerLightNode_) owner_.playerLightNode_->setVisible(true);
+        if (sunLight_) sunLight_->setVisible(true);
+        if (playerLightNode_) playerLightNode_->setVisible(true);
     };
 
     // Count nodes
     breakdown.entityCount = ctx_.entityRenderer ? static_cast<int>(ctx_.entityRenderer->getEntityCount()) : 0;
     breakdown.objectCount = static_cast<int>(ctx_.objectNodes.size());
     breakdown.doorCount = ctx_.doorManager ? static_cast<int>(ctx_.doorManager->getDoorCount()) : 0;
-    int lightCount = static_cast<int>(owner_.zoneLightData_.size()) + (owner_.sunLight_ ? 1 : 0) + (owner_.playerLightNode_ ? 1 : 0);
+    int lightCount = static_cast<int>(ctx_.zoneLightData.size()) + (sunLight_ ? 1 : 0) + (playerLightNode_ ? 1 : 0);
 
     // Count total scene nodes recursively
     std::function<int(irr::scene::ISceneNode*)> countNodes = [&](irr::scene::ISceneNode* node) -> int {
@@ -540,8 +540,8 @@ void DiagnosticsComponent::profileSceneBreakdown() {
     if (ctx_.doorManager) ctx_.doorManager->setAllDoorsVisible(false);
 
     // 6. Measure lights only (zone lights have no scene nodes, just sun + player light)
-    if (owner_.sunLight_) owner_.sunLight_->setVisible(true);
-    if (owner_.playerLightNode_) owner_.playerLightNode_->setVisible(true);
+    if (sunLight_) sunLight_->setVisible(true);
+    if (playerLightNode_) playerLightNode_->setVisible(true);
     int64_t lightSum = 0;
     for (int i = 0; i < numSamples; i++) {
         ctx_.driver->beginScene(true, true, irr::video::SColor(255, 50, 50, 80));
@@ -550,8 +550,8 @@ void DiagnosticsComponent::profileSceneBreakdown() {
         ctx_.driver->endScene();
     }
     int64_t lightTime = (lightSum / numSamples) - baseline;
-    if (owner_.sunLight_) owner_.sunLight_->setVisible(false);
-    if (owner_.playerLightNode_) owner_.playerLightNode_->setVisible(false);
+    if (sunLight_) sunLight_->setVisible(false);
+    if (playerLightNode_) playerLightNode_->setVisible(false);
 
     // 7. Measure full scene
     showAll();
@@ -598,7 +598,7 @@ void DiagnosticsComponent::profileSceneBreakdown() {
     LOG_INFO(MOD_GRAPHICS, "  Interaction:    {:>8} us ({:>5.1f}%)", breakdown.otherTime, pct(breakdown.otherTime));
     LOG_INFO(MOD_GRAPHICS, "=== END SCENE BREAKDOWN ===");
 
-    owner_.sceneProfileEnabled_ = false;
+    sceneProfileEnabled_ = false;
 }
 
 // ============================================================================
@@ -863,7 +863,7 @@ std::vector<std::string> DiagnosticsComponent::getMemoryReport(const MemoryRepor
     {
         size_t regionCount = ctx_.regionMeshNodes.size();
         size_t objectCount = ctx_.objectNodes.size();
-        size_t lightCount = owner_.zoneLightData_.size();
+        size_t lightCount = ctx_.zoneLightData.size();
         size_t objectLightCount = ctx_.objectLights.size();
 
         if (ctx_.usePvsCulling) {

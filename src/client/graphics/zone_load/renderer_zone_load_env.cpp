@@ -70,7 +70,7 @@ bool ZoneLoadComponent::loadZoneStep10_Sky(ZoneLoadContext& ctx) {
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: computations={}, skyRendering={}, skyDomeMode={}, "
                   "storedZoneEnv.pending={}, skyRenderer_={}, weatherSystem_={}",
                   (bool)computations, skyRendering, (int)skyDomeMode,
-                  owner_.storedZoneEnvironment_.pending, (bool)ctx_.skyRenderer, (bool)ctx_.weatherSystem);
+                  ctx_.ZoneLifecycle().storedZoneEnvironment().pending, (bool)ctx_.skyRenderer, (bool)ctx_.weatherSystem);
 
         // Names of sky textures loaded into constrained cache (used by upload step after skyLoader is moved)
         std::vector<std::string> loadedSkyTextureNames;
@@ -230,15 +230,15 @@ bool ZoneLoadComponent::loadZoneStep10_Sky(ZoneLoadContext& ctx) {
                       (bool)ctx_.skyRenderer, hasBgData);
         }
 
-        if (owner_.storedZoneEnvironment_.pending) {
+        if (ctx_.ZoneLifecycle().storedZoneEnvironment().pending) {
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: applying stored zone env: skyType={}, zoneType={}, "
                       "fogR={}, fogG={}, fogB={}, fogMaxClip={}",
-                      owner_.storedZoneEnvironment_.skyType, owner_.storedZoneEnvironment_.zoneType,
-                      owner_.storedZoneEnvironment_.fogR[0], owner_.storedZoneEnvironment_.fogG[0],
-                      owner_.storedZoneEnvironment_.fogB[0], owner_.storedZoneEnvironment_.fogMaxClip[0]);
+                      ctx_.ZoneLifecycle().storedZoneEnvironment().skyType, ctx_.ZoneLifecycle().storedZoneEnvironment().zoneType,
+                      ctx_.ZoneLifecycle().storedZoneEnvironment().fogR[0], ctx_.ZoneLifecycle().storedZoneEnvironment().fogG[0],
+                      ctx_.ZoneLifecycle().storedZoneEnvironment().fogB[0], ctx_.ZoneLifecycle().storedZoneEnvironment().fogMaxClip[0]);
             if (ctx_.skyRenderer && ctx_.skyRenderer->isInitialized()) {
-                ctx_.skyRenderer->prepareSkyType(owner_.storedZoneEnvironment_.skyType, ctx_.currentZoneName);
-                bool isDungeon = (owner_.storedZoneEnvironment_.zoneType == 2);
+                ctx_.skyRenderer->prepareSkyType(ctx_.ZoneLifecycle().storedZoneEnvironment().skyType, ctx_.currentZoneName);
+                bool isDungeon = (ctx_.ZoneLifecycle().storedZoneEnvironment().zoneType == 2);
                 ctx_.isIndoorZone = isDungeon;
                 bool skySettingEnabled = owner_.getDisplaySettings().skyEnabled;
                 ctx_.skyRenderer->setEnabled(!isDungeon && skySettingEnabled && ctx_.config.constrainedConfig.skyRendering);
@@ -248,13 +248,13 @@ bool ZoneLoadComponent::loadZoneStep10_Sky(ZoneLoadContext& ctx) {
                          (bool)ctx_.skyRenderer, ctx_.skyRenderer ? ctx_.skyRenderer->isInitialized() : false);
             }
 
-            owner_.zoneMaxClip_ = (owner_.storedZoneEnvironment_.fogMaxClip[0] > 0.0f)
-                ? owner_.storedZoneEnvironment_.fogMaxClip[0] : 99999.0f;
-            owner_.setRenderDistance(owner_.userRenderDistance_);
+            ctx_.ZoneLifecycle().zoneMaxClip() = (ctx_.ZoneLifecycle().storedZoneEnvironment().fogMaxClip[0] > 0.0f)
+                ? ctx_.ZoneLifecycle().storedZoneEnvironment().fogMaxClip[0] : 99999.0f;
+            owner_.setRenderDistance(ctx_.ZoneLifecycle().userRenderDistance());
 
             if (ctx_.driver && ctx_.fogEnabled) {
                 irr::video::SColor fogColor(255,
-                    owner_.storedZoneEnvironment_.fogR[0], owner_.storedZoneEnvironment_.fogG[0], owner_.storedZoneEnvironment_.fogB[0]);
+                    ctx_.ZoneLifecycle().storedZoneEnvironment().fogR[0], ctx_.ZoneLifecycle().storedZoneEnvironment().fogG[0], ctx_.ZoneLifecycle().storedZoneEnvironment().fogB[0]);
                 float fogEnd = ctx_.renderDistance;
                 float fogStart = std::max(0.0f, ctx_.renderDistance - ctx_.fogThickness);
                 ctx_.driver->setFog(fogColor, irr::video::EFT_FOG_LINEAR, fogStart, fogEnd, 0.0f, true, false);
@@ -325,7 +325,7 @@ bool ZoneLoadComponent::loadZoneStep10_Sky(ZoneLoadContext& ctx) {
             ctx_.skyRenderer->consumeSkyPrepared();
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: sky celestial bodies created, initial colors applied, sky consumed");
         }
-        if (owner_.storedZoneEnvironment_.pending) owner_.storedZoneEnvironment_.pending = false;
+        if (ctx_.ZoneLifecycle().storedZoneEnvironment().pending) ctx_.ZoneLifecycle().storedZoneEnvironment().pending = false;
         if (computations && computations->skyLoadData) computations->skyLoadData.reset();
         ctx_.Overlays().setupFog();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: complete, skyRenderer_={}, skyInit={}, skyEnabled={}, "
@@ -361,7 +361,7 @@ void ZoneLoadComponent::loadZoneStep11_Env(ZoneLoadContext& ctx) {
         // classification config needs (re)loading per zone.
         if (ctx_.currentZone && !ctx_.currentZone->objects.empty()) {
             ctx_.treeWindController.loadConfig("", ctx_.currentZoneName);
-            owner_.treeIdentifier_.loadZoneOverrides(ctx_.currentZoneName);
+            treeIdentifier_.loadZoneOverrides(ctx_.currentZoneName);
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: tree wind config loaded for zone '{}'", ctx_.currentZoneName);
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: GPU renderer path, trees handled as normal objects with wind shaders");
         } else {
@@ -511,7 +511,7 @@ void ZoneLoadComponent::loadZoneStep11_Env(ZoneLoadContext& ctx) {
 
             // Collect fire glow lights (same sources as fire particles)
             // Positions in fireSources are EQ coords (Z-up); convert to Irrlicht (Y-up)
-            owner_.fireGlowLights_.clear();
+            ctx_.fireGlowLights.clear();
             uint32_t rngState = 0x12345678u;
             for (size_t i = 0; i < fireSources.size(); ++i) {
                 IrrlichtRenderer::FireGlowLight e;
@@ -524,10 +524,10 @@ void ZoneLoadComponent::loadZoneStep11_Env(ZoneLoadContext& ctx) {
                 e.flickerPhase = static_cast<float>(rngState & 0xFFFF) / 65535.0f * 6.28f;
                 rngState ^= rngState << 13; rngState ^= rngState >> 17; rngState ^= rngState << 5;
                 e.flickerSpeed = 0.8f + static_cast<float>(rngState & 0xFFFF) / 65535.0f * 0.4f;
-                owner_.fireGlowLights_.push_back(e);
+                ctx_.fireGlowLights.push_back(e);
             }
-            LOG_INFO(MOD_GRAPHICS, "Collected {} fire glow lights for zone", owner_.fireGlowLights_.size());
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: fireGlowLights_ collected={}", owner_.fireGlowLights_.size());
+            LOG_INFO(MOD_GRAPHICS, "Collected {} fire glow lights for zone", ctx_.fireGlowLights.size());
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: fireGlowLights_ collected={}", ctx_.fireGlowLights.size());
         } else {
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: particleManager_ is NULL — skipping fire source collection entirely");
         }
@@ -576,16 +576,16 @@ void ZoneLoadComponent::loadZoneStep11_Env(ZoneLoadContext& ctx) {
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: icosphere check: fireEffectsEnabled_={}, "
                   "fireGlowIcospheresEnabled_={}, fireGlowLights_.size()={}, icosphereVertices_.empty()={}",
                   ctx_.fireEffectsEnabled, ctx_.fireGlowIcospheresEnabled,
-                  owner_.fireGlowLights_.size(), owner_.icosphereVertices_.empty());
+                  ctx_.fireGlowLights.size(), ctx_.Eqe1().icosphereVertices().empty());
 #ifdef EQT_HAS_DRM
-        if (ctx_.fireEffectsEnabled && ctx_.fireGlowIcospheresEnabled && !owner_.fireGlowLights_.empty() && owner_.icosphereVertices_.empty()) {
+        if (ctx_.fireEffectsEnabled && ctx_.fireGlowIcospheresEnabled && !ctx_.fireGlowLights.empty() && ctx_.Eqe1().icosphereVertices().empty()) {
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: building icosphere mesh + shader");
             ctx_.Eqe1().buildIcosphereMesh();
             ctx_.Eqe1().compileIcosphereShader();
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: icosphere build done: vertices={}, indices={}, "
                       "VBO={}, IBO={}, program={}",
-                      owner_.icosphereVertices_.size(), owner_.icosphereIndices_.size(),
-                      owner_.icosphereVBO_, owner_.icosphereIBO_, ctx_.icosphereProgram);
+                      ctx_.Eqe1().icosphereVertices().size(), ctx_.Eqe1().icosphereIndices().size(),
+                      ctx_.Eqe1().icosphereVBO(), ctx_.Eqe1().icosphereIBO(), ctx_.icosphereProgram);
         } else {
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: icosphere build SKIPPED");
         }
@@ -659,7 +659,7 @@ void ZoneLoadComponent::loadZoneStep11_Env(ZoneLoadContext& ctx) {
                     std::string primaryTexture;
                     if (!objInstance.geometry->textureNames().empty())
                         primaryTexture = objInstance.geometry->textureNames()[0];
-                    bool isTree = owner_.treeIdentifier_.isTreeMesh(objName, primaryTexture);
+                    bool isTree = treeIdentifier_.isTreeMesh(objName, primaryTexture);
                     if (isTree) {
                         ++treesFound;
                         irr::scene::IMesh* treeMesh = objNode->getMesh();
@@ -778,9 +778,9 @@ void ZoneLoadComponent::loadZoneStep12_Lights(ZoneLoadContext& ctx) {
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12: currentZone_={}, lights count={}",
                   (bool)ctx_.currentZone,
                   ctx_.currentZone ? ctx_.currentZone->lights.size() : 0);
-        owner_.zoneLightData_.clear();
+        ctx_.zoneLightData.clear();
         ctx_.zoneLightPositions.clear();
-        owner_.zoneLightRegions_.clear();
+        zoneLightRegions_.clear();
         if (ctx_.currentZone && !ctx_.currentZone->lights.empty()) {
             for (size_t i = 0; i < ctx_.currentZone->lights.size(); ++i) {
                 const auto& light = ctx_.currentZone->lights[i];
@@ -791,7 +791,7 @@ void ZoneLoadComponent::loadZoneStep12_Lights(ZoneLoadContext& ctx) {
                 zld.attLinear = 1.0f / zld.radius;
                 zld.attQuadratic = 1.0f / (zld.radius * zld.radius);
                 zld.baseDiffuseColor = irr::video::SColorf(light->r, light->g, light->b, 1.0f);
-                owner_.zoneLightData_.push_back(zld);
+                ctx_.zoneLightData.push_back(zld);
                 ctx_.zoneLightPositions.push_back(pos);
                 LOG_TRACE(MOD_GRAPHICS, "SEQ Step12: light[{}]: pos=({:.1f},{:.1f},{:.1f}) radius={:.1f} "
                           "color=({:.2f},{:.2f},{:.2f}) attLin={:.4f} attQuad={:.6f}",
@@ -805,26 +805,26 @@ void ZoneLoadComponent::loadZoneStep12_Lights(ZoneLoadContext& ctx) {
 
         // Install light BSP regions
         if (pendingZoneComputations_ && !pendingZoneComputations_->zoneLightRegions.empty()) {
-            owner_.zoneLightRegions_ = std::move(pendingZoneComputations_->zoneLightRegions);
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12: light BSP regions from precomputed (count={})", owner_.zoneLightRegions_.size());
+            zoneLightRegions_ = std::move(pendingZoneComputations_->zoneLightRegions);
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12: light BSP regions from precomputed (count={})", zoneLightRegions_.size());
         } else if (ctx_.zoneBspTree && !ctx_.zoneBspTree->regions.empty() && ctx_.currentZone) {
             for (size_t i = 0; i < ctx_.currentZone->lights.size(); ++i) {
                 const auto& light = ctx_.currentZone->lights[i];
                 size_t regionIdx = ctx_.zoneBspTree->findRegionIndexForPoint(light->x, light->y, light->z);
-                owner_.zoneLightRegions_.push_back(regionIdx);
+                zoneLightRegions_.push_back(regionIdx);
                 LOG_TRACE(MOD_GRAPHICS, "SEQ Step12: light[{}] BSP region={} pos=({:.1f},{:.1f},{:.1f})",
                           i, regionIdx == SIZE_MAX ? -1 : (int)regionIdx,
                           light->x, light->y, light->z);
             }
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12: light BSP regions computed via findRegionIndexForPoint (count={})", owner_.zoneLightRegions_.size());
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12: light BSP regions computed via findRegionIndexForPoint (count={})", zoneLightRegions_.size());
         } else {
-            owner_.zoneLightRegions_.resize(owner_.zoneLightData_.size(), SIZE_MAX);
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12: light BSP regions fallback SIZE_MAX (no BSP), count={}", owner_.zoneLightRegions_.size());
+            zoneLightRegions_.resize(ctx_.zoneLightData.size(), SIZE_MAX);
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12: light BSP regions fallback SIZE_MAX (no BSP), count={}", zoneLightRegions_.size());
         }
 
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12: zoneLightData_={}, zoneLightPositions_={}, zoneLightRegions_={}",
-                  owner_.zoneLightData_.size(), ctx_.zoneLightPositions.size(), owner_.zoneLightRegions_.size());
-        ctx_.ZoneStream().logAssetBuildTime("seq_lights", owner_.zoneLightData_.size(), stepStart);
+                  ctx_.zoneLightData.size(), ctx_.zoneLightPositions.size(), zoneLightRegions_.size());
+        ctx_.ZoneStream().logAssetBuildTime("seq_lights", ctx_.zoneLightData.size(), stepStart);
     }
     FlushThreadLog();
 }
@@ -924,7 +924,7 @@ void ZoneLoadComponent::loadZoneStep12b_Simulation(ZoneLoadContext& ctx) {
         input.timeOfDay = ctx_.currentHour + ctx_.currentMinute / 60.0f;
 
         // Player light
-        input.playerLightLevel = owner_.playerLightLevel_;
+        input.playerLightLevel = ctx_.SimBridge().playerLightLevel();
 
         // Vision and weather modifiers
         input.visionType = static_cast<uint8_t>(ctx_.currentVision);

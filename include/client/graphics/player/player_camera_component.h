@@ -162,6 +162,23 @@ public:
 	// projection cannot disagree. Kept and boarded.
 	float getFirstPersonVerticalFov() const;
 
+
+	// ------------------------------------------------------------------
+	// L13 (refactor/L13_pairwise_ownership.md): members that moved here from
+	// class IrrlichtRenderer because THIS component is their owner under the
+	// pairwise rule (Batch K Mechanism 3 applied to a two-component member: it
+	// moves to the component that WRITES it, or on a tie to the one with more
+	// uses). Every other reader reaches them through ctx_.PlayerCamera().<accessor>();
+	// the renderer's own init/teardown reaches them through PlayerCamera().
+	// Each accessor below is the SMALLEST the other side needs: a const getter
+	// where nothing outside this component writes, a mutable reference where
+	// something does.
+	// ------------------------------------------------------------------
+	CameraMode const& cameraMode() const { return cameraMode_; }
+	PlayerModeConfig& playerConfig() { return playerConfig_; }
+	PlayerModeConfig const& playerConfig() const { return playerConfig_; }
+	uint16_t const& playerSpawnId() const { return playerSpawnId_; }
+
 private:
 	// In-family callers only (K03 correction a) -- never called from outside
 	// these three TUs, so they need no public surface and are not §5 candidates.
@@ -199,6 +216,11 @@ private:
 		float timeRemaining;  // How long to display (seconds)
 	};
 	std::vector<CollisionDebugLine> collisionDebugLines_;
+
+	// L13: owned state, see the accessors above.
+	CameraMode cameraMode_ = CameraMode::Follow;  // Default to third-person follow camera
+	PlayerModeConfig playerConfig_;
+	uint16_t playerSpawnId_ = 0;  // Spawn ID of the player entity
 };
 
 } // namespace Graphics

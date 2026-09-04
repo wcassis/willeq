@@ -35,7 +35,8 @@ TEST_F(PlayerCameraComponentTest, AccessorReachesAConstructedComponent) {
 
 // --- The owner_ transition-handle path -----------------------------------
 //
-// cameraMode_ stayed on IrrlichtRenderer (it is read by renderer_entities.cpp
+// L13 moved cameraMode_ onto this component (it is the only writer). It had
+// stayed on IrrlichtRenderer (it is read by renderer_entities.cpp
 // and renderer_frame_input.cpp too), so setCameraMode() is the component
 // WRITING through owner_ and getCameraMode() is the renderer reading its own
 // member. One round trip across the handle.
@@ -66,7 +67,7 @@ TEST_F(PlayerCameraComponentTest, CycleCameraModeAdvancesFreeFollowFirstPersonTh
 }
 
 TEST_F(PlayerCameraComponentTest, CameraModeStringReadsTheOwnersMemberBackThroughTheForwarder) {
-    // Renderer forwarder -> component -> owner_.cameraMode_ -> string.
+    // Renderer forwarder -> component -> its own cameraMode_ -> string (L13).
     EXPECT_EQ(renderer.getCameraModeString(), "Follow");
     renderer.PlayerCamera().setCameraMode(IrrlichtRenderer::CameraMode::FirstPerson);
     EXPECT_EQ(renderer.getCameraModeString(), "First Person");
@@ -140,7 +141,7 @@ TEST_F(PlayerCameraComponentTest, VisionOnlyUpgradesAndResetsThroughTheComponent
 // --- The forwarders that stay, each reaching a live component -------------
 
 TEST_F(PlayerCameraComponentTest, BridgeAndApplicationForwardersReachTheComponent) {
-    // setPlayerSpawnId writes owner_.playerSpawnId_ (shared with the entities
+    // setPlayerSpawnId writes this component's playerSpawnId_ (L13; shared with the entities
     // family, so it stayed on the renderer). No public reader exists on
     // IrrlichtRenderer, so this pins reachability rather than a value: it must
     // not crash and must leave the camera state it also touches consistent.

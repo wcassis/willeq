@@ -154,6 +154,27 @@ public:
 	// IrrlichtRenderer and are reached through owner_.
 	void unregisterRemainingT124Guards();
 
+
+	// ------------------------------------------------------------------
+	// L13 (refactor/L13_pairwise_ownership.md): members that moved here from
+	// class IrrlichtRenderer because THIS component is their owner under the
+	// pairwise rule (Batch K Mechanism 3 applied to a two-component member: it
+	// moves to the component that WRITES it, or on a tie to the one with more
+	// uses). Every other reader reaches them through ctx_.ZoneStream().<accessor>();
+	// the renderer's own init/teardown reaches them through ZoneStream().
+	// Each accessor below is the SMALLEST the other side needs: a const getter
+	// where nothing outside this component writes, a mutable reference where
+	// something does.
+	// ------------------------------------------------------------------
+	std::unique_ptr<ObjectNodeTextureGuard>& objectNodeTextureGuard() { return objectNodeTextureGuard_; }
+	std::unique_ptr<ObjectNodeTextureGuard> const& objectNodeTextureGuard() const { return objectNodeTextureGuard_; }
+	size_t& pvsNeighborhoodAnchor() { return pvsNeighborhoodAnchor_; }
+	size_t const& pvsNeighborhoodAnchor() const { return pvsNeighborhoodAnchor_; }
+	std::unordered_set<size_t>& pvsNeighborhood() { return pvsNeighborhood_; }
+	std::unordered_set<size_t> const& pvsNeighborhood() const { return pvsNeighborhood_; }
+	std::unique_ptr<ForwardingTextureGuard>& spellVisualFXTextureGuard() { return spellVisualFXTextureGuard_; }
+	std::unique_ptr<ForwardingTextureGuard> const& spellVisualFXTextureGuard() const { return spellVisualFXTextureGuard_; }
+
 private:
 	RendererContext& ctx_;
 	IrrlichtRenderer& owner_;
@@ -167,6 +188,12 @@ private:
 	// renderer_init.cpp / renderer_entities.cpp and stay on IrrlichtRenderer.
 	std::unique_ptr<DoorTextureGuard> doorTextureGuard_;
 	std::unique_ptr<ForwardingTextureGuard> boidsTextureGuard_;
+
+	// L13: owned state, see the accessors above.
+	std::unique_ptr<ObjectNodeTextureGuard> objectNodeTextureGuard_;
+	size_t pvsNeighborhoodAnchor_ = SIZE_MAX;
+	std::unordered_set<size_t> pvsNeighborhood_;  // regions within K portal hops of anchor
+	std::unique_ptr<ForwardingTextureGuard> spellVisualFXTextureGuard_;
 };
 
 } // namespace Graphics

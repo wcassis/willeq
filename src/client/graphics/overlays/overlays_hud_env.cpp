@@ -206,7 +206,7 @@ void OverlaysComponent::drawLoadingScreen(float progress, const std::wstring& st
     }
 
     // Draw text using built-in font
-    irr::gui::IGUIFont* font = owner_.guienv_ ? owner_.guienv_->getBuiltInFont() : nullptr;
+    irr::gui::IGUIFont* font = guienv_ ? guienv_->getBuiltInFont() : nullptr;
     if (font) {
         // Dynamic title (e.g., "EverQuest", "Connecting...", "Loading Zone...")
         irr::core::dimension2d<irr::u32> titleSize = font->getDimension(loadingTitle_.c_str());
@@ -406,10 +406,10 @@ void OverlaysComponent::applyEnvironmentalDisplaySettings() {
 }
 
 void OverlaysComponent::setupHUD() {
-    if (!owner_.guienv_) return;
+    if (!guienv_) return;
 
     // Main HUD in upper left - made taller to show player + target info
-    owner_.hudText_ = owner_.guienv_->addStaticText(
+    hudText_ = guienv_->addStaticText(
         L"",
         irr::core::rect<irr::s32>(10, 10, 450, 500),
         false,
@@ -419,13 +419,13 @@ void OverlaysComponent::setupHUD() {
         false
     );
 
-    if (owner_.hudText_) {
-        owner_.hudText_->setOverrideColor(irr::video::SColor(255, 255, 255, 255));
+    if (hudText_) {
+        hudText_->setOverrideColor(irr::video::SColor(255, 255, 255, 255));
     }
 
     // Hotkey hints in upper right
     int screenWidth = ctx_.config.width;
-    owner_.hotkeysText_ = owner_.guienv_->addStaticText(
+    hotkeysText_ = guienv_->addStaticText(
         L"",
         irr::core::rect<irr::s32>(screenWidth - 400, 10, screenWidth - 10, 80),
         false,
@@ -435,14 +435,14 @@ void OverlaysComponent::setupHUD() {
         false
     );
 
-    if (owner_.hotkeysText_) {
-        owner_.hotkeysText_->setOverrideColor(irr::video::SColor(255, 200, 200, 200));  // Slightly dimmer
-        owner_.hotkeysText_->setTextAlignment(irr::gui::EGUIA_LOWERRIGHT, irr::gui::EGUIA_UPPERLEFT);
+    if (hotkeysText_) {
+        hotkeysText_->setOverrideColor(irr::video::SColor(255, 200, 200, 200));  // Slightly dimmer
+        hotkeysText_->setTextAlignment(irr::gui::EGUIA_LOWERRIGHT, irr::gui::EGUIA_UPPERLEFT);
     }
 
     // Heading debug info centered at top (for Player mode)
     int centerX = screenWidth / 2;
-    headingDebugText_ = owner_.guienv_->addStaticText(
+    headingDebugText_ = guienv_->addStaticText(
         L"",
         irr::core::rect<irr::s32>(centerX - 175, 10, centerX + 175, 150),
         false,
@@ -459,12 +459,12 @@ void OverlaysComponent::setupHUD() {
 }
 
 void OverlaysComponent::updateHUD() {
-    if (!owner_.hudText_ || !owner_.hudEnabled_) return;
+    if (!hudText_ || !ctx_.Diagnostics().hudEnabled()) return;
 
     // Performance optimization: check if HUD state has changed
     // Build current state snapshot for comparison
     HudCachedState currentState;
-    currentState.fps = owner_.currentFps_;
+    currentState.fps = ctx_.Frame().currentFps();
     currentState.playerX = static_cast<int>(ctx_.playerX);
     currentState.playerY = static_cast<int>(ctx_.playerY);
     currentState.playerZ = static_cast<int>(ctx_.playerZ);
@@ -472,7 +472,7 @@ void OverlaysComponent::updateHUD() {
         currentState.entityCount = ctx_.entityRenderer->getEntityCount();
         currentState.modeledEntityCount = ctx_.entityRenderer->getModeledEntityCount();
     }
-    currentState.targetId = owner_.currentTargetId_;
+    currentState.targetId = currentTargetId_;
     currentState.targetHpPercent = currentTargetHpPercent_;
     currentState.wireframeMode = ctx_.wireframeMode;
     currentState.oldModels = ctx_.Diagnostics().isUsingOldModels();
@@ -510,9 +510,9 @@ void OverlaysComponent::updateHUD() {
     {
         // === PLAYER MODE HUD ===
         // Show heading debug info for current target (on right side)
-        if (owner_.currentTargetId_ != 0 && ctx_.entityRenderer) {
+        if (currentTargetId_ != 0 && ctx_.entityRenderer) {
             const auto& entities = ctx_.entityRenderer->getEntities();
-            auto it = entities.find(owner_.currentTargetId_);
+            auto it = entities.find(currentTargetId_);
             if (it != entities.end()) {
                 const EntityVisual& visual = it->second;
                 headingDebug << L"--- TARGET HEADING DEBUG ---\n";
@@ -538,9 +538,9 @@ void OverlaysComponent::updateHUD() {
         }
     }
 
-    owner_.hudText_->setText(text.str().c_str());
-    if (owner_.hotkeysText_) {
-        owner_.hotkeysText_->setText(hotkeys.str().c_str());
+    hudText_->setText(text.str().c_str());
+    if (hotkeysText_) {
+        hotkeysText_->setText(hotkeys.str().c_str());
     }
     if (headingDebugText_) {
         headingDebugText_->setText(headingDebug.str().c_str());
@@ -552,11 +552,11 @@ void OverlaysComponent::updateHUD() {
 // ============================================================================
 
 void OverlaysComponent::markPaperdollDirty() {
-    if (owner_.characterModelView_) owner_.characterModelView_->markDirty();
+    if (characterModelView_) characterModelView_->markDirty();
 }
 
 void OverlaysComponent::ensurePaperdollInitialized() {
-    if (owner_.characterModelView_ || paperdollInitAttempted_) {
+    if (characterModelView_ || paperdollInitAttempted_) {
         return;
     }
     paperdollInitAttempted_ = true;
@@ -585,7 +585,7 @@ void OverlaysComponent::ensurePaperdollInitialized() {
     // fine: the doll's appearance comes from the player's live
     // EntityAppearance (updatePaperdollForFrame(), below), matching Step
     // 4 of the plan, not from inventory item materials.
-    owner_.characterModelView_ = std::move(doll);
+    characterModelView_ = std::move(doll);
     LOG_INFO(MOD_UI, "IrrlichtRenderer: paperdoll (CharacterModelView) constructed lazily on first popup open");
 }
 
@@ -607,7 +607,7 @@ bool appearanceEquals(const EQT::Graphics::EntityAppearance& a, const EQT::Graph
 
 void OverlaysComponent::updatePaperdollForFrame() {
     ensurePaperdollInitialized();
-    if (!owner_.characterModelView_ || !ctx_.entityRenderer) {
+    if (!characterModelView_ || !ctx_.entityRenderer) {
         return;
     }
 
@@ -638,15 +638,15 @@ void OverlaysComponent::updatePaperdollForFrame() {
         paperdollHasAppearance_ = true;
         // setCharacter() rebuilds the model and marks the doll dirty
         // internally — only call it when something actually changed.
-        owner_.characterModelView_->setCharacter(playerVisual->raceId, playerVisual->gender,
+        characterModelView_->setCharacter(playerVisual->raceId, playerVisual->gender,
                                            playerVisual->appearance);
     }
 
     // update()/renderToTexture() are cheap no-ops when not dirty — safe to
     // call every frame the popup is open; the RTT itself only re-renders
     // on markDirty() triggers (appearance change, popup open, drag-rotate).
-    owner_.characterModelView_->update(16.0f);  // Approximate frame delta for idle-anim throttling
-    owner_.characterModelView_->renderToTexture();
+    characterModelView_->update(16.0f);  // Approximate frame delta for idle-anim throttling
+    characterModelView_->renderToTexture();
 }
 
 } // namespace Graphics

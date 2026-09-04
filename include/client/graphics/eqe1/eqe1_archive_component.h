@@ -115,6 +115,25 @@ public:
 	void renderFireGlowIcospheres();
 	void updateFireGlowLighting();  // Select nearest N and set shader uniforms
 
+
+	// ------------------------------------------------------------------
+	// L13 (refactor/L13_pairwise_ownership.md): members that moved here from
+	// class IrrlichtRenderer because THIS component is their owner under the
+	// pairwise rule (Batch K Mechanism 3 applied to a two-component member: it
+	// moves to the component that WRITES it, or on a tie to the one with more
+	// uses). Every other reader reaches them through ctx_.Eqe1().<accessor>();
+	// the renderer's own init/teardown reaches them through Eqe1().
+	// Each accessor below is the SMALLEST the other side needs: a const getter
+	// where nothing outside this component writes, a mutable reference where
+	// something does.
+	// ------------------------------------------------------------------
+	EQE1TextureIndex& eqe1Index() { return eqe1Index_; }
+	EQE1TextureIndex const& eqe1Index() const { return eqe1Index_; }
+	uint32_t const& icosphereIBO() const { return icosphereIBO_; }
+	std::vector<uint16_t> const& icosphereIndices() const { return icosphereIndices_; }
+	uint32_t const& icosphereVBO() const { return icosphereVBO_; }
+	std::vector<float> const& icosphereVertices() const { return icosphereVertices_; }
+
 private:
 	// T284: getOrOpenEQE1's body, parameterised by directory. Exists so the
 	// composite-sheet fallback (openCompositeSheetEQE1) can open from a
@@ -151,6 +170,13 @@ private:
 	int32_t icoLocFogEnd_ = -1;
 	int32_t icoLocFogColor_ = -1;
 #endif
+
+	// L13: owned state, see the accessors above.
+	EQE1TextureIndex eqe1Index_;
+	uint32_t icosphereIBO_ = 0;
+	std::vector<uint16_t> icosphereIndices_;
+	uint32_t icosphereVBO_ = 0;
+	std::vector<float> icosphereVertices_;  // 3 floats per vertex (unit sphere positions)
 };
 
 } // namespace Graphics

@@ -263,6 +263,9 @@ IrrlichtRenderer::IrrlichtRenderer()
 #ifdef EQT_HAS_DRM
         icosphereProgram_,
 #endif
+        // L13 (Batch L): B050 cluster 3 -- the four members whose type was
+        // nested in this class. The types are hoisted; the members promote.
+        fireGlowLights_, zoneLightData_, renderPassTimer_, doorCollisionData_,
       } {
     // L04 (Batch L): the diagnostics family.
     diagnostics_ = std::make_unique<DiagnosticsComponent>(ctx_, *this);
@@ -439,10 +442,10 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     LOG_TRACE(MOD_GRAPHICS, "Acquiring driver, scene manager, GUI environment...");
     driver_ = device_->getVideoDriver();
     smgr_ = device_->getSceneManager();
-    guienv_ = device_->getGUIEnvironment();
-    if (!driver_ || !smgr_ || !guienv_) {
+    Overlays().guienv() = device_->getGUIEnvironment();
+    if (!driver_ || !smgr_ || !Overlays().guienv()) {
         LOG_FATAL(MOD_GRAPHICS, "Irrlicht device returned null subsystems: driver={} smgr={} guienv={}",
-                  (void*)driver_, (void*)smgr_, (void*)guienv_);
+                  (void*)driver_, (void*)smgr_, (void*)Overlays().guienv());
         return false;
     }
 
@@ -470,7 +473,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
 
     // U01: Initialize batched text renderer
     textBatch_ = std::make_unique<TextBatch>();
-    if (textBatch_->init(guienv_)) {
+    if (textBatch_->init(Overlays().guienv())) {
         LOG_INFO(MOD_GRAPHICS, "TextBatch initialized");
     } else {
         LOG_WARN(MOD_GRAPHICS, "TextBatch initialization failed — falling back to font->draw()");
@@ -544,8 +547,8 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         constrainedTextureCache_->addEvictionListener(softwareCursorTextureGuard_.get());
 
         // T123: guards detached objectNodes_ entries -- see renderer_zone_merge.h.
-        objectNodeTextureGuard_ = std::make_unique<ObjectNodeTextureGuard>(objectNodes_, constrainedTextureCache_->getPlaceholderTexture());
-        constrainedTextureCache_->addEvictionListener(objectNodeTextureGuard_.get());
+        ZoneStream().objectNodeTextureGuard() = std::make_unique<ObjectNodeTextureGuard>(objectNodes_, constrainedTextureCache_->getPlaceholderTexture());
+        constrainedTextureCache_->addEvictionListener(ZoneStream().objectNodeTextureGuard().get());
     }
 
     // Create event receiver
@@ -564,7 +567,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     // Apply initial settings from constrained config (must come BEFORE shader variant sync)
     wireframeMode_ = config_.constrainedConfig.wireframe;
     fogEnabled_ = config_.constrainedConfig.fog;
-    debugPlayerLightEnabled_ = config_.constrainedConfig.playerLight;
+    Diagnostics().debugPlayerLightEnabled() = config_.constrainedConfig.playerLight;
     lightingEnabled_ = config.lighting;
 
     // Initialize GLSL shader pipeline (if enabled and driver supports it).
@@ -579,7 +582,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
                 LOG_WARN(MOD_GRAPHICS, "GLSL shaders requested but compilation failed; using fixed-function fallback");
                 zoneShader_.reset();
             } else if (zoneShader_->isLightweightAvailable()) {
-                zoneShader_->setPerPixelPlayerLight(debugPlayerLightEnabled_);
+                zoneShader_->setPerPixelPlayerLight(Diagnostics().debugPlayerLightEnabled());
             }
         }
     }
@@ -731,7 +734,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
 
     initialized_ = true;
     loadingScreenVisible_ = true;  // Show loading screen by default
-    lastFpsTime_ = device_->getTimer()->getTime();
+    Frame().lastFpsTime() = device_->getTimer()->getTime();
 
     LOG_INFO(MOD_GRAPHICS, "IrrlichtRenderer loading screen initialized: {}x{}", config.width, config.height);
     return true;

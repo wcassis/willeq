@@ -12,6 +12,7 @@
 // Review.
 
 #include "client/graphics/overlays/overlays_component.h"
+#include "client/graphics/ui/character_model_view.h"  // L13: complete type for the out-of-line dtor
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/bridge/game_state_bridge.h"
 #include "client/state/event_bus.h"
@@ -28,11 +29,18 @@
 namespace EQT {
 namespace Graphics {
 
-void OverlaysComponent::toggleMapOverlay() {
-    owner_.showMapOverlay_ = !owner_.showMapOverlay_;
-    LOG_INFO(MOD_GRAPHICS, "Map overlay: {}", owner_.showMapOverlay_ ? "ON" : "OFF");
+// L13: out of line so this TU's complete eqt::ui::CharacterModelView (included
+// above) instantiates the unique_ptr deleter -- corrections 35 and 45.
+OverlaysComponent::OverlaysComponent(RendererContext& ctx, IrrlichtRenderer& owner)
+	: ctx_(ctx), owner_(owner) {}
 
-    if (!owner_.showMapOverlay_) {
+OverlaysComponent::~OverlaysComponent() = default;
+
+void OverlaysComponent::toggleMapOverlay() {
+    showMapOverlay_ = !showMapOverlay_;
+    LOG_INFO(MOD_GRAPHICS, "Map overlay: {}", showMapOverlay_ ? "ON" : "OFF");
+
+    if (!showMapOverlay_) {
         mapOverlayTriangles_.clear();
     } else {
         // Force update on next frame
@@ -41,7 +49,7 @@ void OverlaysComponent::toggleMapOverlay() {
 }
 
 void OverlaysComponent::updateMapOverlay(const glm::vec3& playerPos) {
-    if (!owner_.showMapOverlay_ || !ctx_.collisionMap) {
+    if (!showMapOverlay_ || !ctx_.collisionMap) {
         return;
     }
 
@@ -130,7 +138,7 @@ irr::video::SColor OverlaysComponent::getMapOverlayColor(float y, float minY, fl
 }
 
 void OverlaysComponent::drawMapOverlay() {
-    if (!owner_.showMapOverlay_ || !ctx_.driver || mapOverlayTriangles_.empty()) {
+    if (!showMapOverlay_ || !ctx_.driver || mapOverlayTriangles_.empty()) {
         return;
     }
 
@@ -150,7 +158,7 @@ void OverlaysComponent::drawMapOverlay() {
     placeableTransform.makeIdentity();
 
     // Apply X-axis mirror if enabled (scale X by -1)
-    if (owner_.mapOverlayMirrorX_) {
+    if (mapOverlayMirrorX_) {
         irr::core::matrix4 mirrorMatrix;
         mirrorMatrix.makeIdentity();
         mirrorMatrix.setScale(irr::core::vector3df(-1.0f, 1.0f, 1.0f));
@@ -158,9 +166,9 @@ void OverlaysComponent::drawMapOverlay() {
     }
 
     // Apply rotation if set
-    if (owner_.mapOverlayRotation_ != 0) {
+    if (mapOverlayRotation_ != 0) {
         irr::core::matrix4 rotMatrix;
-        rotMatrix.setRotationDegrees(irr::core::vector3df(0, owner_.mapOverlayRotation_ * 90.0f, 0));
+        rotMatrix.setRotationDegrees(irr::core::vector3df(0, mapOverlayRotation_ * 90.0f, 0));
         placeableTransform *= rotMatrix;
     }
 
@@ -194,10 +202,10 @@ void OverlaysComponent::setNavmesh(PathfinderNavmesh* navmesh) {
 }
 
 void OverlaysComponent::toggleNavmeshOverlay() {
-    owner_.showNavmeshOverlay_ = !owner_.showNavmeshOverlay_;
-    LOG_INFO(MOD_GRAPHICS, "Navmesh overlay: {}", owner_.showNavmeshOverlay_ ? "ON" : "OFF");
+    showNavmeshOverlay_ = !showNavmeshOverlay_;
+    LOG_INFO(MOD_GRAPHICS, "Navmesh overlay: {}", showNavmeshOverlay_ ? "ON" : "OFF");
 
-    if (!owner_.showNavmeshOverlay_) {
+    if (!showNavmeshOverlay_) {
         navmeshOverlayTriangles_.clear();
     } else {
         // Force update on next frame
@@ -206,7 +214,7 @@ void OverlaysComponent::toggleNavmeshOverlay() {
 }
 
 void OverlaysComponent::updateNavmeshOverlay(const glm::vec3& playerPos) {
-    if (!owner_.showNavmeshOverlay_ || !navmesh_) {
+    if (!showNavmeshOverlay_ || !navmesh_) {
         return;
     }
 
@@ -290,7 +298,7 @@ irr::video::SColor OverlaysComponent::getNavmeshAreaColor(uint8_t areaType) cons
 }
 
 void OverlaysComponent::drawNavmeshOverlay() {
-    if (!owner_.showNavmeshOverlay_ || !ctx_.driver || navmeshOverlayTriangles_.empty()) {
+    if (!showNavmeshOverlay_ || !ctx_.driver || navmeshOverlayTriangles_.empty()) {
         return;
     }
 
@@ -310,7 +318,7 @@ void OverlaysComponent::drawNavmeshOverlay() {
     navmeshTransform.makeIdentity();
 
     // Apply X-axis mirror if enabled (scale X by -1)
-    if (owner_.navmeshOverlayMirrorX_) {
+    if (navmeshOverlayMirrorX_) {
         irr::core::matrix4 mirrorMatrix;
         mirrorMatrix.makeIdentity();
         mirrorMatrix.setScale(irr::core::vector3df(-1.0f, 1.0f, 1.0f));
@@ -318,9 +326,9 @@ void OverlaysComponent::drawNavmeshOverlay() {
     }
 
     // Apply rotation if set
-    if (owner_.navmeshOverlayRotation_ != 0) {
+    if (navmeshOverlayRotation_ != 0) {
         irr::core::matrix4 rotMatrix;
-        rotMatrix.setRotationDegrees(irr::core::vector3df(0, owner_.navmeshOverlayRotation_ * 90.0f, 0));
+        rotMatrix.setRotationDegrees(irr::core::vector3df(0, navmeshOverlayRotation_ * 90.0f, 0));
         navmeshTransform *= rotMatrix;
     }
 
@@ -336,11 +344,11 @@ void OverlaysComponent::drawNavmeshOverlay() {
 
 #ifdef EQT_HAS_GLES2
 void OverlaysComponent::drawTargetOutline() {
-    if (owner_.currentTargetId_ == 0 || !ctx_.entityRenderer || !ctx_.driver) return;
-    if (!owner_.have3DTransforms_) return;  // Need captured 3D matrices
+    if (currentTargetId_ == 0 || !ctx_.entityRenderer || !ctx_.driver) return;
+    if (!ctx_.Frame().have3DTransforms()) return;  // Need captured 3D matrices
 
     const auto& entities = ctx_.entityRenderer->getEntities();
-    auto it = entities.find(owner_.currentTargetId_);
+    auto it = entities.find(currentTargetId_);
     if (it == entities.end()) return;
 
     const EntityVisual& visual = it->second;
@@ -471,13 +479,13 @@ void OverlaysComponent::drawTargetOutline() {
 #else
 void OverlaysComponent::drawTargetSelectionBox() {
     // Check if we have a target
-    if (owner_.currentTargetId_ == 0 || !ctx_.entityRenderer || !ctx_.driver) {
+    if (currentTargetId_ == 0 || !ctx_.entityRenderer || !ctx_.driver) {
         return;
     }
 
     // Find the targeted entity
     const auto& entities = ctx_.entityRenderer->getEntities();
-    auto it = entities.find(owner_.currentTargetId_);
+    auto it = entities.find(currentTargetId_);
     if (it == entities.end()) {
         return;
     }
@@ -540,8 +548,8 @@ void OverlaysComponent::drawTargetSelectionBox() {
 // --- Mouse Targeting Implementation ---
 
 void OverlaysComponent::setCurrentTarget(uint16_t spawnId, const std::string& name, uint8_t hpPercent, uint8_t level) {
-    owner_.currentTargetId_ = spawnId;
-    owner_.currentTargetName_ = name;
+    currentTargetId_ = spawnId;
+    currentTargetName_ = name;
     currentTargetHpPercent_ = hpPercent;
     currentTargetLevel_ = level;
     // Enable animation debugging for targeted entity
@@ -552,8 +560,8 @@ void OverlaysComponent::setCurrentTarget(uint16_t spawnId, const std::string& na
 
 void OverlaysComponent::clearCurrentTarget() {
     if (owner_.isLoading()) return;
-    owner_.currentTargetId_ = 0;
-    owner_.currentTargetName_.clear();
+    currentTargetId_ = 0;
+    currentTargetName_.clear();
     currentTargetHpPercent_ = 100;
     currentTargetLevel_ = 0;
     currentTargetInfo_ = TargetInfo();  // Reset to defaults
@@ -567,8 +575,8 @@ void OverlaysComponent::setCurrentTargetInfo(const TargetInfo& info) {
     if (owner_.isLoading()) return;
     currentTargetInfo_ = info;
     // Also update the legacy fields for backward compatibility
-    owner_.currentTargetId_ = info.spawnId;
-    owner_.currentTargetName_ = info.name;
+    currentTargetId_ = info.spawnId;
+    currentTargetName_ = info.name;
     currentTargetHpPercent_ = info.hpPercent;
     currentTargetLevel_ = info.level;
     // Enable animation debugging for targeted entity
@@ -766,8 +774,8 @@ void OverlaysComponent::drawZoneLineOverlay() {
     ctx_.driver->draw2DRectangle(pink, irr::core::rect<irr::s32>(screenSize.Width - borderWidth, borderWidth, screenSize.Width, screenSize.Height - borderWidth));
 
     // Draw zone line text using GUI environment's built-in font
-    if (owner_.guienv_) {
-        irr::gui::IGUIFont* font = owner_.guienv_->getBuiltInFont();
+    if (guienv_) {
+        irr::gui::IGUIFont* font = guienv_->getBuiltInFont();
         if (font) {
             std::wstring text = L"[ZONE LINE] Target Zone: " + std::to_wstring(zoneLineTargetZoneId_);
             irr::core::dimension2d<irr::u32> textSize = font->getDimension(text.c_str());
@@ -969,11 +977,11 @@ void OverlaysComponent::createZoneLineBoxMeshForNode(const EQT::ZoneLineBounding
 }
 
 void OverlaysComponent::drawZoneLineBoxLabels() {
-    if (!showZoneLineBoxes_ || !ctx_.driver || !owner_.guienv_ || !ctx_.camera) {
+    if (!showZoneLineBoxes_ || !ctx_.driver || !guienv_ || !ctx_.camera) {
         return;
     }
 
-    irr::gui::IGUIFont* font = owner_.guienv_->getBuiltInFont();
+    irr::gui::IGUIFont* font = guienv_->getBuiltInFont();
     if (!font) return;
 
     irr::core::dimension2d<irr::u32> screenSize = ctx_.driver->getScreenSize();
@@ -1021,17 +1029,17 @@ void OverlaysComponent::drawZoneLineBoxLabels() {
 }
 
 void OverlaysComponent::drawFPSCounter() {
-    if (!ctx_.driver || !owner_.guienv_) {
+    if (!ctx_.driver || !guienv_) {
         return;
     }
 
-    irr::gui::IGUIFont* font = owner_.guienv_->getBuiltInFont();
+    irr::gui::IGUIFont* font = guienv_->getBuiltInFont();
     if (!font) {
         return;
     }
 
     // Build FPS text
-    std::wstring fpsText = L"FPS: " + std::to_wstring(owner_.currentFps_);
+    std::wstring fpsText = L"FPS: " + std::to_wstring(ctx_.Frame().currentFps());
 
     // Get screen dimensions and text size for centering
     irr::core::dimension2d<irr::u32> screenSize = ctx_.driver->getScreenSize();

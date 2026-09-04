@@ -513,7 +513,7 @@ void ZoneLoadComponent::loadZoneStep7_Doors(ZoneLoadContext& ctx) {
                 const auto& missing = ctx_.doorManager->getLastMissingTextures();
                 if (!missing.empty()) {
                     for (const auto& texName : missing)
-                        owner_.pendingTextureDoors_[texName].insert(doorId);
+                        ctx_.ZoneLifecycle().pendingTextureDoors()[texName].insert(doorId);
                     LOG_WARN(MOD_GRAPHICS, "SEQ Step7: door {} has {} missing textures queued for later rebuild",
                              doorId, missing.size());
                     ++doorsWithMissingTex;
@@ -569,7 +569,7 @@ void ZoneLoadComponent::loadZoneStep9_Collision(ZoneLoadContext& ctx) {
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step9: collision setup complete, "
                   "regionWorldTriangles_={}, objectWorldTriangles_={}, doorCollisionData_={}, bspFiltered={}",
                   ctx_.regionWorldTriangles.size(), ctx_.objectWorldTriangles.size(),
-                  owner_.doorCollisionData_.size(), (bool)(ctx_.zoneBspTree && !ctx_.regionWorldTriangles.empty()));
+                  ctx_.doorCollisionData.size(), (bool)(ctx_.zoneBspTree && !ctx_.regionWorldTriangles.empty()));
         ctx_.ZoneStream().logAssetBuildTime("seq_collision", 0, stepStart);
     }
     FlushThreadLog();

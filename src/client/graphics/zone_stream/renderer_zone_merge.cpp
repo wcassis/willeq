@@ -542,9 +542,9 @@ ZoneStreamComponent::~ZoneStreamComponent() = default;
 // unit) and the four T124 guards. Defined here, not irrlicht_renderer.cpp
 // (which was at the check_file_sizes.sh budget when this was written).
 void ZoneStreamComponent::unregisterRemainingT124Guards() {
-    unregisterGuard(ctx_.constrainedTextureCache, owner_.objectNodeTextureGuard_);
+    unregisterGuard(ctx_.constrainedTextureCache, objectNodeTextureGuard_);
     unregisterGuard(ctx_.constrainedTextureCache, doorTextureGuard_);
-    unregisterGuard(ctx_.constrainedTextureCache, owner_.spellVisualFXTextureGuard_);
+    unregisterGuard(ctx_.constrainedTextureCache, spellVisualFXTextureGuard_);
     unregisterGuard(ctx_.constrainedTextureCache, boidsTextureGuard_);
 }
 

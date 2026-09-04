@@ -13,8 +13,8 @@
 // into the real setCameraMode()/cycleCameraMode()/getCameraModeString(), no
 // mocks or seams in that chain. It needs no Irrlicht device at all: reading
 // setCameraMode()/cycleCameraMode()/getCameraModeString() (irrlicht_renderer.cpp)
-// shows they only touch cameraMode_, the (null-guarded) entityRenderer_, and
-// playerConfig_.eyeHeight -- none of which require Init()/a GL context. A
+// shows they only touch cameraMode_ and playerConfig_.eyeHeight (L13 moved both
+// to PlayerCameraComponent), the (null-guarded) entityRenderer_, -- none of which require Init()/a GL context. A
 // default-constructed, never-Init()'d IrrlichtRenderer is safe to construct
 // and destroy (constructor is empty; shutdown(), called from the destructor,
 // null-guards every member it touches).
@@ -61,7 +61,8 @@ protected:
 // --- Default state ---
 
 TEST_F(CameraCommandTest, DefaultModeIsFollow) {
-    // irrlicht_renderer.h: cameraMode_ = CameraMode::Follow is the declared
+    // player_camera_component.h (L13; it was irrlicht_renderer.h):
+    // cameraMode_ = CameraMode::Follow is the declared
     // default -- asserted here so the round-trip tests below aren't the
     // first thing to notice if that default ever changes.
     EXPECT_EQ(renderer.getCameraMode(), IrrlichtRenderer::CameraMode::Follow);

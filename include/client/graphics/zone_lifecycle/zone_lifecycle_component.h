@@ -204,6 +204,76 @@ public:
 	bool isGPUUploadThreadEnabled() const { return false; }
 #endif
 
+
+	// ------------------------------------------------------------------
+	// L13: two IrrlichtRenderer-nested types travelled with the members they
+	// type (batch correction 10). They are PUBLIC here because
+	// renderer_gpu_upload.cpp names TextureRebuildEntry in a sort comparator.
+	//
+	// Why this component owns them (the pairwise rule):
+	//   textureRebuildQueue_  13 reaches -- this component is the only WRITER
+	//     (3 writes, 8 reads); ZoneStreamComponent's 2 reads come through
+	//     ctx_.ZoneLifecycle().textureRebuildQueue().
+	//   storedZoneEnvironment_  37 reaches, the second-largest two-component
+	//     member in the tree. Both families write it, so the tie-break is use
+	//     count: this component 20 (10W/10R) against zone_load's 17 (2W/15R).
+	//     zone_load reaches it as ctx_.ZoneLifecycle().storedZoneEnvironment().
+	// ------------------------------------------------------------------
+	// Regions queued for texture-ready rebuild (sorted: player region first, then by distance)
+	struct TextureRebuildEntry {
+		size_t regionIdx;
+		float distanceSq;
+	};
+	// Stored zone environment from NewZone packet (applied after global assets load)
+	struct StoredZoneEnvironment {
+		uint8_t skyType = 0;
+		uint8_t zoneType = 0;
+		uint8_t fogR[4] = {0}, fogG[4] = {0}, fogB[4] = {0};
+		float fogMinClip[4] = {0}, fogMaxClip[4] = {0};
+		bool pending = false;
+	};
+
+	std::vector<TextureRebuildEntry>& textureRebuildQueue() { return textureRebuildQueue_; }
+	std::vector<TextureRebuildEntry> const& textureRebuildQueue() const { return textureRebuildQueue_; }
+	StoredZoneEnvironment& storedZoneEnvironment() { return storedZoneEnvironment_; }
+	StoredZoneEnvironment const& storedZoneEnvironment() const { return storedZoneEnvironment_; }
+
+
+	// ------------------------------------------------------------------
+	// L13 (refactor/L13_pairwise_ownership.md): members that moved here from
+	// class IrrlichtRenderer because THIS component is their owner under the
+	// pairwise rule (Batch K Mechanism 3 applied to a two-component member: it
+	// moves to the component that WRITES it, or on a tie to the one with more
+	// uses). Every other reader reaches them through ctx_.ZoneLifecycle().<accessor>();
+	// the renderer's own init/teardown reaches them through ZoneLifecycle().
+	// Each accessor below is the SMALLEST the other side needs: a const getter
+	// where nothing outside this component writes, a mutable reference where
+	// something does.
+	// ------------------------------------------------------------------
+	irr::core::vector3df const& lastPlaceholderBuildPos() const { return lastPlaceholderBuildPos_; }
+	size_t& loadedEntityCount() { return loadedEntityCount_; }
+	size_t const& loadedEntityCount() const { return loadedEntityCount_; }
+	size_t& mergeZoneDrawsBuildEvictionCount() { return mergeZoneDrawsBuildEvictionCount_; }
+	size_t const& mergeZoneDrawsBuildEvictionCount() const { return mergeZoneDrawsBuildEvictionCount_; }
+	bool& mergeZoneDrawsDisabledForZone() { return mergeZoneDrawsDisabledForZone_; }
+	bool const& mergeZoneDrawsDisabledForZone() const { return mergeZoneDrawsDisabledForZone_; }
+	bool& networkReady() { return networkReady_; }
+	bool const& networkReady() const { return networkReady_; }
+	std::unordered_map<std::string, std::unordered_set<uint8_t>>& pendingTextureDoors() { return pendingTextureDoors_; }
+	std::unordered_map<std::string, std::unordered_set<uint8_t>> const& pendingTextureDoors() const { return pendingTextureDoors_; }
+	std::vector<ZoneDrawEntry>& sortedDrawEntries() { return sortedDrawEntries_; }
+	std::vector<ZoneDrawEntry> const& sortedDrawEntries() const { return sortedDrawEntries_; }
+	irr::scene::ITriangleSelector*& terrainOnlySelector() { return terrainOnlySelector_; }
+	irr::scene::ITriangleSelector* const& terrainOnlySelector() const { return terrainOnlySelector_; }
+	float& userRenderDistance() { return userRenderDistance_; }
+	float const& userRenderDistance() const { return userRenderDistance_; }
+	irr::scene::IMeshSceneNode* const& zoneCollisionNode() const { return zoneCollisionNode_; }
+	float& zoneMaxClip() { return zoneMaxClip_; }
+	float const& zoneMaxClip() const { return zoneMaxClip_; }
+	std::unique_ptr<ZoneMergeBuffers> const& zoneMergeBuffers() const { return zoneMergeBuffers_; }
+	irr::scene::ITriangleSelector*& zoneTriangleSelector() { return zoneTriangleSelector_; }
+	irr::scene::ITriangleSelector* const& zoneTriangleSelector() const { return zoneTriangleSelector_; }
+
 private:
 	RendererContext& ctx_;
 	IrrlichtRenderer& owner_;
@@ -233,6 +303,25 @@ private:
 	std::unordered_map<std::string, std::unordered_set<size_t>> pendingTextureRegions_;
 	bool entitiesLoaded_ = false;    // True when all entities have been loaded with models/textures
 	size_t expectedEntityCount_ = 0; // Expected number of entities from ZoneSpawns
+
+	// L13: owned state, see the accessors above.
+	std::vector<TextureRebuildEntry> textureRebuildQueue_;
+	StoredZoneEnvironment storedZoneEnvironment_;
+
+	// L13: owned state, see the accessors above.
+	irr::core::vector3df lastPlaceholderBuildPos_;  // Irrlicht coords of last placeholder build
+	size_t loadedEntityCount_ = 0;  // Number of entities fully loaded so far
+	size_t mergeZoneDrawsBuildEvictionCount_ = 0;
+	bool mergeZoneDrawsDisabledForZone_ = false;
+	bool networkReady_ = false;  // True when network packet exchange is complete
+	std::unordered_map<std::string, std::unordered_set<uint8_t>> pendingTextureDoors_;
+	std::vector<ZoneDrawEntry> sortedDrawEntries_;  // Material-sorted mesh buffer draw list
+	irr::scene::ITriangleSelector* terrainOnlySelector_ = nullptr;
+	float userRenderDistance_ = 300.0f;  // User's desired render distance (slider value)
+	irr::scene::IMeshSceneNode* zoneCollisionNode_ = nullptr;  // Hidden node for zone collision in PVS mode
+	float zoneMaxClip_ = 99999.0f;  // Server-provided max clip plane for current zone (0 = no limit)
+	std::unique_ptr<ZoneMergeBuffers> zoneMergeBuffers_;
+	irr::scene::ITriangleSelector* zoneTriangleSelector_ = nullptr;
 };
 
 } // namespace Graphics

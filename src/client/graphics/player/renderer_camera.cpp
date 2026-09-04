@@ -126,7 +126,7 @@ namespace Graphics {
 // T309, the value the eye uses (see kEyeForwardOffsetUnits).
 void PlayerCameraComponent::applyCameraProjectionForMode() {
     if (!ctx_.camera) return;
-    const bool firstPerson = (owner_.cameraMode_ == CameraMode::FirstPerson);
+    const bool firstPerson = (cameraMode_ == CameraMode::FirstPerson);
     // T300 (post-Leg-A): the NEAR PLANE IS THE SAME IN EVERY MODE. Leg A
     // measured the official client clipping nothing -- geometry draws at
     // point-blank range -- so first person must clip exactly as third person
@@ -168,7 +168,7 @@ void PlayerCameraComponent::applyCameraProjectionForMode() {
 // construction the angle that ADMITS the body's cone, not one that excludes
 // it) and do not pull it back under 90 in the belief that it hides anything.
 void PlayerCameraComponent::applyFirstPersonPitchClamp() {
-    if (!ctx_.camera || owner_.cameraMode_ != CameraMode::FirstPerson) return;
+    if (!ctx_.camera || cameraMode_ != CameraMode::FirstPerson) return;
 
     const float minLook = firstPersonMinLookPitchDegrees();
     // T310 Leg A: both limits read the runtime tunables (== the constants
@@ -213,7 +213,7 @@ std::vector<std::string> PlayerCameraComponent::buildFirstPersonCameraDumpLines(
     sample.aspect = ctx_.camera ? ctx_.camera->getAspectRatio() : 4.0f / 3.0f;
 
     const FirstPersonCameraPlacement p = computeFirstPersonCamera(
-        ctx_.playerX, ctx_.playerY, ctx_.playerZ, eye.irrY, owner_.playerConfig_.eyeHeight,
+        ctx_.playerX, ctx_.playerY, ctx_.playerZ, eye.irrY, playerConfig_.eyeHeight,
         ctx_.playerHeading, playerPitch_, 100.0f, eye.irrX, eye.irrZ);
     sample.eyeIrrX = p.posX;  sample.eyeIrrY = p.posY;  sample.eyeIrrZ = p.posZ;
     sample.targetIrrX = p.targetX; sample.targetIrrY = p.targetY; sample.targetIrrZ = p.targetZ;
@@ -241,7 +241,7 @@ std::vector<std::string> PlayerCameraComponent::buildFirstPersonCameraDumpLines(
 }
 
 void PlayerCameraComponent::repositionFirstPersonCamera() {
-    if (!ctx_.camera || owner_.cameraMode_ != CameraMode::FirstPerson) {
+    if (!ctx_.camera || cameraMode_ != CameraMode::FirstPerson) {
         return;
     }
     // The projection is part of the first-person camera, not a separate
@@ -271,7 +271,7 @@ void PlayerCameraComponent::repositionFirstPersonCamera() {
     // of this formula, so moving discarded the bias and standing still
     // discarded the mouse.
     const FirstPersonCameraPlacement placement = computeFirstPersonCamera(
-        ctx_.playerX, ctx_.playerY, ctx_.playerZ, eye.irrY, owner_.playerConfig_.eyeHeight,
+        ctx_.playerX, ctx_.playerY, ctx_.playerZ, eye.irrY, playerConfig_.eyeHeight,
         ctx_.playerHeading, playerPitch_, 100.0f, eye.irrX, eye.irrZ);
 
     ctx_.camera->setPosition(irr::core::vector3df(placement.posX, placement.posY, placement.posZ));
@@ -287,14 +287,14 @@ void PlayerCameraComponent::repositionFirstPersonCamera() {
     LOG_DEBUG(MOD_GRAPHICS, "[FP-CAMERA] eq=({:.4f},{:.4f},{:.4f}) nodeOriginZ={:.4f} eyeOffset=({:.4f},{:.4f},{:.4f}) fromHead={} adjust={:.2f} heading={:.4f} lookPitch={:.4f}deg fixedPitchDown={:.4f}deg maxDownPitch={:.2f}deg",
               placement.posX, placement.posZ, placement.posY, ctx_.playerZ,
               eye.irrX, eye.irrY, eye.irrZ, eye.derivedFromHead,
-              owner_.playerConfig_.eyeHeight, ctx_.playerHeading, playerPitch_,
+              playerConfig_.eyeHeight, ctx_.playerHeading, playerPitch_,
               kFirstPersonPitchDownDegrees,
               firstPersonMaxDownPitchDegrees());
 }
 
 void PlayerCameraComponent::setPlayerSpawnId(uint16_t spawnId) {
     if (owner_.isLoading()) return;
-    owner_.playerSpawnId_ = spawnId;
+    playerSpawnId_ = spawnId;
     LOG_INFO(MOD_GRAPHICS, "[IrrlichtRenderer] Player spawn ID set to: {}", spawnId);
 
     if (ctx_.entityRenderer) {
@@ -302,7 +302,7 @@ void PlayerCameraComponent::setPlayerSpawnId(uint16_t spawnId) {
 
         // T300: record the mode (name tag off in first person); the player
         // model itself draws normally either way.
-        bool firstPerson = (owner_.cameraMode_ == CameraMode::FirstPerson);
+        bool firstPerson = (cameraMode_ == CameraMode::FirstPerson);
         ctx_.entityRenderer->setPlayerFirstPersonMode(firstPerson);
 
         const EntityRenderer::FirstPersonEyeOffset eye =
@@ -396,12 +396,12 @@ void PlayerCameraComponent::setPlayerPosition(float x, float y, float z, float h
         }
     }
 
-    if (owner_.cameraMode_ == CameraMode::Follow && playerInBounds) {
+    if (cameraMode_ == CameraMode::Follow && playerInBounds) {
         LOG_DEBUG(MOD_GRAPHICS, "[ZONE-IN] Camera mode=Follow, calling setFollowPosition({:.2f},{:.2f},{:.2f},{:.2f})",
                  x, y, z, heading);
         ctx_.cameraController->enableZoneInLogging();  // Enable one-time detailed logging
         ctx_.cameraController->setFollowPosition(x, y, z, heading);
-    } else if (owner_.cameraMode_ == CameraMode::FirstPerson && ctx_.camera && playerInBounds) {
+    } else if (cameraMode_ == CameraMode::FirstPerson && ctx_.camera && playerInBounds) {
         // T75: this used to be a third independent copy of the first-person
         // camera placement formula (setCameraMode()/cycleCameraMode() and
         // setPlayerSpawnId() already call the shared repositionFirstPersonCamera()
@@ -416,7 +416,7 @@ void PlayerCameraComponent::setPlayerPosition(float x, float y, float z, float h
         repositionFirstPersonCamera();
     } else {
         LOG_INFO(MOD_GRAPHICS, "[ZONE-IN] Camera: mode={} playerInBounds={} camera={} (no camera update)",
-                 static_cast<int>(owner_.cameraMode_), playerInBounds, ctx_.camera != nullptr);
+                 static_cast<int>(cameraMode_), playerInBounds, ctx_.camera != nullptr);
     }
 
     // Force visibility recalculation on the next frame.
@@ -443,12 +443,12 @@ void PlayerCameraComponent::setSwimmingState(bool swimming, float swimSpeed, boo
 
 void PlayerCameraComponent::setCameraMode(CameraMode mode) {
     if (owner_.isLoading()) return;
-    owner_.cameraMode_ = mode;
+    cameraMode_ = mode;
 
     // T300: the player model draws normally in both modes; this only
     // records the mode and hides the floating name tag in first person.
     if (ctx_.entityRenderer) {
-        ctx_.entityRenderer->setPlayerFirstPersonMode(owner_.cameraMode_ == CameraMode::FirstPerson);
+        ctx_.entityRenderer->setPlayerFirstPersonMode(cameraMode_ == CameraMode::FirstPerson);
     }
     // T300: the near plane and FOV are part of the first-person camera and
     // must be restored on the way OUT as well, which repositionFirstPersonCamera()
@@ -462,34 +462,34 @@ void PlayerCameraComponent::setCameraMode(CameraMode mode) {
 }
 
 void PlayerCameraComponent::cycleCameraMode() {
-    switch (owner_.cameraMode_) {
+    switch (cameraMode_) {
         case CameraMode::Free:
-            owner_.cameraMode_ = CameraMode::Follow;
+            cameraMode_ = CameraMode::Follow;
             break;
         case CameraMode::Follow:
-            owner_.cameraMode_ = CameraMode::FirstPerson;
+            cameraMode_ = CameraMode::FirstPerson;
             break;
         case CameraMode::FirstPerson:
-            owner_.cameraMode_ = CameraMode::Free;
+            cameraMode_ = CameraMode::Free;
             break;
     }
 
     // T300: see setCameraMode() -- mode record + name tag only.
     if (ctx_.entityRenderer) {
-        ctx_.entityRenderer->setPlayerFirstPersonMode(owner_.cameraMode_ == CameraMode::FirstPerson);
+        ctx_.entityRenderer->setPlayerFirstPersonMode(cameraMode_ == CameraMode::FirstPerson);
     }
     applyCameraProjectionForMode();
 
     // Log eye height when entering first-person mode
-    if (owner_.cameraMode_ == CameraMode::FirstPerson) {
-        LOG_INFO(MOD_GRAPHICS, "First Person mode - Eye height: {:.1f} (Y to raise, Shift+Y to lower)", owner_.playerConfig_.eyeHeight);
+    if (cameraMode_ == CameraMode::FirstPerson) {
+        LOG_INFO(MOD_GRAPHICS, "First Person mode - Eye height: {:.1f} (Y to raise, Shift+Y to lower)", playerConfig_.eyeHeight);
         // T74: see setCameraMode()'s comment -- same stale-camera gap.
         repositionFirstPersonCamera();
     }
 }
 
 std::string PlayerCameraComponent::getCameraModeString() const {
-    switch (owner_.cameraMode_) {
+    switch (cameraMode_) {
         case CameraMode::Free: return "Free";
         case CameraMode::Follow: return "Follow";
         case CameraMode::FirstPerson: return "First Person";

@@ -169,7 +169,7 @@ void ZoneStreamComponent::buildDeferredObject(size_t idx) {
         if (!objInstance.geometry->textureNames().empty()) {
             primaryTexture = objInstance.geometry->textureNames()[0];
         }
-        if (owner_.treeIdentifier_.isTreeMesh(objName, primaryTexture)) {
+        if (ctx_.ZoneLoad().treeIdentifier().isTreeMesh(objName, primaryTexture)) {
             irr::core::aabbox3df meshBbox = mesh->getBoundingBox();
             float meshMinY = meshBbox.MinEdge.Y;
             float meshMaxY = meshBbox.MaxEdge.Y;
@@ -524,8 +524,8 @@ uint8_t ZoneStreamComponent::getRegionPvsDepth(size_t regionIdx) const {
 }
 
 void ZoneStreamComponent::rebuildPvsNeighborhood(size_t anchorRegion) {
-    owner_.pvsNeighborhood_.clear();
-    owner_.pvsNeighborhoodAnchor_ = anchorRegion;
+    pvsNeighborhood_.clear();
+    pvsNeighborhoodAnchor_ = anchorRegion;
     if (anchorRegion == SIZE_MAX || ctx_.regionNeighbors.empty()) return;
 
     const int K = ctx_.config.constrainedConfig.pvsNeighborhoodHops;
@@ -534,7 +534,7 @@ void ZoneStreamComponent::rebuildPvsNeighborhood(size_t anchorRegion) {
     struct Entry { size_t region; int depth; };
     std::vector<Entry> queue;
     queue.push_back({anchorRegion, 0});
-    owner_.pvsNeighborhood_.insert(anchorRegion);
+    pvsNeighborhood_.insert(anchorRegion);
 
     size_t head = 0;
     while (head < queue.size()) {
@@ -543,18 +543,18 @@ void ZoneStreamComponent::rebuildPvsNeighborhood(size_t anchorRegion) {
         auto it = ctx_.regionNeighbors.find(fromRegion);
         if (it == ctx_.regionNeighbors.end()) continue;
         for (size_t neighbor : it->second) {
-            if (owner_.pvsNeighborhood_.insert(neighbor).second) {
+            if (pvsNeighborhood_.insert(neighbor).second) {
                 queue.push_back({neighbor, depth + 1});
             }
         }
     }
     LOG_DEBUG(MOD_GRAPHICS, "PVS neighborhood rebuilt: anchor={}, {} regions (K={})",
-              anchorRegion, owner_.pvsNeighborhood_.size(), K);
+              anchorRegion, pvsNeighborhood_.size(), K);
 }
 
 bool ZoneStreamComponent::isInPvsNeighborhood(size_t regionIdx) const {
-    return owner_.pvsNeighborhoodAnchor_ != SIZE_MAX &&
-           owner_.pvsNeighborhood_.count(regionIdx) > 0;
+    return pvsNeighborhoodAnchor_ != SIZE_MAX &&
+           pvsNeighborhood_.count(regionIdx) > 0;
 }
 
 void ZoneStreamComponent::onPvsRegionChanged() {
@@ -610,11 +610,11 @@ void ZoneStreamComponent::queueEntityPrepRequests() {
         if (vis.entityPrepComplete) continue;
 
         // When player is outside all BSP regions (SIZE_MAX), only build the player entity
-        if (!pvsValid && spawnId != owner_.playerSpawnId_) continue;
+        if (!pvsValid && spawnId != ctx_.PlayerCamera().playerSpawnId()) continue;
 
         // PVS depth gate: queue entities within configured portal hop distance
         uint8_t depth = 255;
-        if (spawnId == owner_.playerSpawnId_) {
+        if (spawnId == ctx_.PlayerCamera().playerSpawnId()) {
             depth = 0;
         } else {
             depth = getRegionPvsDepth(vis.cachedBspRegion);
@@ -720,7 +720,7 @@ void ZoneStreamComponent::checkProgressiveLoadingComplete() {
         const bool pvsValid = (ctx_.currentPvsRegion != SIZE_MAX);
         const uint8_t maxPrepDepth = static_cast<uint8_t>(ctx_.config.constrainedConfig.entityPrepMaxPvsDepth);
         for (const auto& [id, vis] : ctx_.entityRenderer->getEntities()) {
-            const bool isPlayerEntity = (id == owner_.playerSpawnId_);
+            const bool isPlayerEntity = (id == ctx_.PlayerCamera().playerSpawnId());
             const uint8_t depth = isPlayerEntity ? 0 : getRegionPvsDepth(vis.cachedBspRegion);
             if (isEntityBlockingProgressiveLoad(vis.meshBuilt, vis.inSceneGraph, isPlayerEntity,
                                                  pvsValid, depth, maxPrepDepth)) {
@@ -752,7 +752,7 @@ void ZoneStreamComponent::checkProgressiveLoadingComplete() {
                  "| governor={} | progressive={}",
                  unbuiltEntities, unbuiltRegions,
                  pendingVBOs, pendingTextures,
-                 owner_.textureRebuildQueue_.size(), ctx_.objectTextureRebuildQueue.size(),
+                 ctx_.ZoneLifecycle().textureRebuildQueue().size(), ctx_.objectTextureRebuildQueue.size(),
                  ctx_.governor ? ctx_.governor->getStateName() : "N/A",
                  ctx_.progressiveLoadingActive);
     }
@@ -768,7 +768,7 @@ void ZoneStreamComponent::checkProgressiveLoadingComplete() {
 #endif
         if (ctx_.constrainedTextureCache && ctx_.constrainedTextureCache->hasPendingWork())
             gpuWorkPending = true;
-        if (!ctx_.objectTextureRebuildQueue.empty() || !owner_.textureRebuildQueue_.empty())
+        if (!ctx_.objectTextureRebuildQueue.empty() || !ctx_.ZoneLifecycle().textureRebuildQueue().empty())
             gpuWorkPending = true;
         if (gpuWorkPending) return;
 

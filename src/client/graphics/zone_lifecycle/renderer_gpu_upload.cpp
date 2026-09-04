@@ -151,7 +151,7 @@ void ZoneLifecycleComponent::processCompletedUploads() {
                             for (size_t regionIdx : pendIt->second) {
                                 // Deduplicate: only add if not already queued
                                 bool alreadyQueued = false;
-                                for (const auto& entry : owner_.textureRebuildQueue_) {
+                                for (const auto& entry : textureRebuildQueue_) {
                                     if (entry.regionIdx == regionIdx) {
                                         alreadyQueued = true;
                                         break;
@@ -168,7 +168,7 @@ void ZoneLifecycleComponent::processCompletedUploads() {
                                     }
                                     // Player's region gets priority (distSq = -1)
                                     if (regionIdx == ctx_.currentPvsRegion) distSq = -1.0f;
-                                    owner_.textureRebuildQueue_.push_back({regionIdx, distSq});
+                                    textureRebuildQueue_.push_back({regionIdx, distSq});
                                 }
                             }
                             LOG_INFO(MOD_GRAPHICS, "GPUUpload: texture '{}' arrived, queued {} regions for rebuild",
@@ -177,8 +177,8 @@ void ZoneLifecycleComponent::processCompletedUploads() {
                         }
 
                         // Doors waiting for this texture
-                        auto doorPendIt = owner_.pendingTextureDoors_.find(result.textureName);
-                        if (doorPendIt != owner_.pendingTextureDoors_.end()) {
+                        auto doorPendIt = pendingTextureDoors_.find(result.textureName);
+                        if (doorPendIt != pendingTextureDoors_.end()) {
                             for (uint8_t doorId : doorPendIt->second) {
                                 if (ctx_.doorManager) {
                                     const auto* dv = ctx_.doorManager->getDoor(doorId);
@@ -191,7 +191,7 @@ void ZoneLifecycleComponent::processCompletedUploads() {
                             }
                             LOG_INFO(MOD_GRAPHICS, "GPUUpload: texture '{}' arrived, queued {} doors for rebuild",
                                      result.textureName, doorPendIt->second.size());
-                            owner_.pendingTextureDoors_.erase(doorPendIt);
+                            pendingTextureDoors_.erase(doorPendIt);
                         }
 
                         // PVS objects waiting for this texture
@@ -241,9 +241,9 @@ void ZoneLifecycleComponent::processCompletedUploads() {
     }
 
     // Sort texture rebuild queue: player's region first (distSq=-1), then nearest
-    if (!owner_.textureRebuildQueue_.empty()) {
-        std::sort(owner_.textureRebuildQueue_.begin(), owner_.textureRebuildQueue_.end(),
-                  [](const IrrlichtRenderer::TextureRebuildEntry& a, const IrrlichtRenderer::TextureRebuildEntry& b) {
+    if (!textureRebuildQueue_.empty()) {
+        std::sort(textureRebuildQueue_.begin(), textureRebuildQueue_.end(),
+                  [](const TextureRebuildEntry& a, const TextureRebuildEntry& b) {
                       return a.distanceSq < b.distanceSq;
                   });
     }
@@ -330,7 +330,7 @@ bool ZoneLifecycleComponent::processOneGPUResult() {
                     if (pendIt != pendingTextureRegions_.end()) {
                         for (size_t regionIdx : pendIt->second) {
                             bool alreadyQueued = false;
-                            for (const auto& entry : owner_.textureRebuildQueue_) {
+                            for (const auto& entry : textureRebuildQueue_) {
                                 if (entry.regionIdx == regionIdx) {
                                     alreadyQueued = true;
                                     break;
@@ -346,7 +346,7 @@ bool ZoneLifecycleComponent::processOneGPUResult() {
                                     distSq = dx * dx + dy * dy;
                                 }
                                 if (regionIdx == ctx_.currentPvsRegion) distSq = -1.0f;
-                                owner_.textureRebuildQueue_.push_back({regionIdx, distSq});
+                                textureRebuildQueue_.push_back({regionIdx, distSq});
                             }
                         }
                         LOG_INFO(MOD_GRAPHICS, "GPUUpload processOne: texture '{}' arrived, queued {} regions for rebuild",
@@ -355,8 +355,8 @@ bool ZoneLifecycleComponent::processOneGPUResult() {
                     }
 
                     // Doors waiting for this texture
-                    auto doorPendIt = owner_.pendingTextureDoors_.find(result.textureName);
-                    if (doorPendIt != owner_.pendingTextureDoors_.end()) {
+                    auto doorPendIt = pendingTextureDoors_.find(result.textureName);
+                    if (doorPendIt != pendingTextureDoors_.end()) {
                         for (uint8_t doorId : doorPendIt->second) {
                             if (ctx_.doorManager) {
                                 const auto* dv = ctx_.doorManager->getDoor(doorId);
@@ -369,7 +369,7 @@ bool ZoneLifecycleComponent::processOneGPUResult() {
                         }
                         LOG_INFO(MOD_GRAPHICS, "GPUUpload processOne: texture '{}' arrived, queued {} doors for rebuild",
                                  result.textureName, doorPendIt->second.size());
-                        owner_.pendingTextureDoors_.erase(doorPendIt);
+                        pendingTextureDoors_.erase(doorPendIt);
                     }
 
                     // PVS objects waiting for this texture
@@ -417,9 +417,9 @@ bool ZoneLifecycleComponent::processOneGPUResult() {
     }
 
     // Sort texture rebuild queue: player's region first (distSq=-1), then nearest
-    if (!owner_.textureRebuildQueue_.empty()) {
-        std::sort(owner_.textureRebuildQueue_.begin(), owner_.textureRebuildQueue_.end(),
-                  [](const IrrlichtRenderer::TextureRebuildEntry& a, const IrrlichtRenderer::TextureRebuildEntry& b) {
+    if (!textureRebuildQueue_.empty()) {
+        std::sort(textureRebuildQueue_.begin(), textureRebuildQueue_.end(),
+                  [](const TextureRebuildEntry& a, const TextureRebuildEntry& b) {
                       return a.distanceSq < b.distanceSq;
                   });
     }

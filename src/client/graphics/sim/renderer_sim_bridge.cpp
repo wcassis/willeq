@@ -12,6 +12,13 @@
 namespace EQT {
 namespace Graphics {
 
+// L13: out of line so this TU's complete EQ::SpellVisualFX (included above)
+// instantiates the unique_ptr deleter -- corrections 35 and 45.
+SimBridgeComponent::SimBridgeComponent(RendererContext& ctx, IrrlichtRenderer& owner)
+	: ctx_(ctx), owner_(owner) {}
+
+SimBridgeComponent::~SimBridgeComponent() = default;
+
 // ============================================================================
 // SimulationWorker Integration
 // ============================================================================
@@ -85,30 +92,30 @@ SimulationZoneData SimBridgeComponent::buildSimulationZoneData() {
     }
 
     // Copy zone light data
-    zoneData.zoneLights.resize(owner_.zoneLightData_.size());
-    for (size_t i = 0; i < owner_.zoneLightData_.size(); ++i) {
+    zoneData.zoneLights.resize(ctx_.zoneLightData.size());
+    for (size_t i = 0; i < ctx_.zoneLightData.size(); ++i) {
         auto& zld = zoneData.zoneLights[i];
         if (i < ctx_.zoneLightPositions.size())
             zld.position = ctx_.zoneLightPositions[i];
-        zld.bspRegion = (i < owner_.zoneLightRegions_.size()) ? owner_.zoneLightRegions_[i] : SIZE_MAX;
+        zld.bspRegion = (i < ctx_.ZoneLoad().zoneLightRegions().size()) ? ctx_.ZoneLoad().zoneLightRegions()[i] : SIZE_MAX;
     }
 
     // Copy zone light node data for light selection (from zoneLightData_, no scene nodes)
-    zoneData.zoneLightNodes.resize(owner_.zoneLightData_.size());
-    for (size_t i = 0; i < owner_.zoneLightData_.size(); ++i) {
+    zoneData.zoneLightNodes.resize(ctx_.zoneLightData.size());
+    for (size_t i = 0; i < ctx_.zoneLightData.size(); ++i) {
         auto& zlnd = zoneData.zoneLightNodes[i];
         if (i < ctx_.zoneLightPositions.size())
             zlnd.position = ctx_.zoneLightPositions[i];
-        zlnd.diffuseColor = owner_.zoneLightData_[i].baseDiffuseColor;
-        zlnd.radius = owner_.zoneLightData_[i].radius;
-        zlnd.attConstant = owner_.zoneLightData_[i].attConstant;
-        zlnd.attLinear = owner_.zoneLightData_[i].attLinear;
-        zlnd.attQuadratic = owner_.zoneLightData_[i].attQuadratic;
+        zlnd.diffuseColor = ctx_.zoneLightData[i].baseDiffuseColor;
+        zlnd.radius = ctx_.zoneLightData[i].radius;
+        zlnd.attConstant = ctx_.zoneLightData[i].attConstant;
+        zlnd.attLinear = ctx_.zoneLightData[i].attLinear;
+        zlnd.attQuadratic = ctx_.zoneLightData[i].attQuadratic;
     }
 
     // Copy zone light animation data (animated torches from WLD)
     if (ctx_.currentZone) {
-        for (size_t i = 0; i < ctx_.currentZone->lights.size() && i < owner_.zoneLightData_.size(); ++i) {
+        for (size_t i = 0; i < ctx_.currentZone->lights.size() && i < ctx_.zoneLightData.size(); ++i) {
             const auto& light = ctx_.currentZone->lights[i];
             if (!light->isAnimated()) continue;
             SimulationZoneData::ZoneLightAnimData anim;
@@ -280,9 +287,9 @@ void SimBridgeComponent::postSimulationInput(float deltaTime) {
     input.timeOfDay = ctx_.currentHour + ctx_.currentMinute / 60.0f;
 
     // Player light
-    input.playerLightLevel = owner_.playerLightLevel_;
-    if (owner_.playerLightNode_ && owner_.playerLightLevel_ > 0) {
-        const auto& ld = owner_.playerLightNode_->getLightData();
+    input.playerLightLevel = playerLightLevel_;
+    if (ctx_.Diagnostics().playerLightNode() && playerLightLevel_ > 0) {
+        const auto& ld = ctx_.Diagnostics().playerLightNode()->getLightData();
         input.playerLightColor = ld.DiffuseColor;
         input.playerLightRadius = ld.Radius;
         input.playerLightAttConstant = ld.Attenuation.X;
@@ -457,12 +464,12 @@ void SimBridgeComponent::postSimulationInput(float deltaTime) {
             float colorBoost = 2.5f;
             glm::vec3 camIrr = pi.cameraPos;
 
-            for (size_t i = 0; i < owner_.zoneLightData_.size() && i < ctx_.zoneLightPositions.size(); ++i) {
+            for (size_t i = 0; i < ctx_.zoneLightData.size() && i < ctx_.zoneLightPositions.size(); ++i) {
                 const auto& pos = ctx_.zoneLightPositions[i];
                 float dx = pos.X - camIrr.x, dy = pos.Y - camIrr.y, dz = pos.Z - camIrr.z;
                 float distSq = dx*dx + dy*dy + dz*dz;
                 if (distSq < maxLightDistSq) {
-                    const auto& zld = owner_.zoneLightData_[i];
+                    const auto& zld = ctx_.zoneLightData[i];
                     float radius = zld.radius > 0 ? zld.radius : 30.0f;
                     pi.weatherLights.push_back({
                         glm::vec3(pos.X, pos.Y, pos.Z),
@@ -477,9 +484,9 @@ void SimBridgeComponent::postSimulationInput(float deltaTime) {
             }
 
             // Player light
-            if (owner_.playerLightNode_ && owner_.playerLightLevel_ > 0) {
-                auto pos = owner_.playerLightNode_->getPosition();
-                auto& ld = owner_.playerLightNode_->getLightData();
+            if (ctx_.Diagnostics().playerLightNode() && playerLightLevel_ > 0) {
+                auto pos = ctx_.Diagnostics().playerLightNode()->getPosition();
+                auto& ld = ctx_.Diagnostics().playerLightNode()->getLightData();
                 pi.weatherLights.push_back({
                     glm::vec3(pos.X, pos.Y, pos.Z),
                     ld.Radius,
@@ -524,10 +531,10 @@ void SimBridgeComponent::postSimulationInput(float deltaTime) {
     }
 
     // Spell VFX input (desktop GL worker-driven path)
-    if (owner_.spellVisualFX_ && owner_.spellVisualFX_->isWorkerDriven()) {
+    if (spellVisualFX_ && spellVisualFX_->isWorkerDriven()) {
         auto& svi = input.spellVfxInput;
         svi.deltaTime = deltaTime;
-        svi.commands = owner_.spellVisualFX_->drainCommands();
+        svi.commands = spellVisualFX_->drainCommands();
         svi.initialized = true;
     }
 
@@ -772,7 +779,7 @@ void SimBridgeComponent::applySimulationOutput(const SimulationOutput& resultsRe
         int effectiveLightCount = results->activeLightCount;
 
         // /plight off: zero player light in both VS (light[0]) and FS
-        if (!owner_.debugPlayerLightEnabled_) {
+        if (!ctx_.Diagnostics().debugPlayerLightEnabled()) {
             ctx_.zoneShader->setPointLight(0, 0,0,0, 0,0,0, 1,0,0);
             ctx_.zoneShader->setPlayerLightColor(0.0f, 0.0f, 0.0f);
             if (playerLightSet) effectiveLightCount--;
@@ -780,13 +787,13 @@ void SimBridgeComponent::applySimulationOutput(const SimulationOutput& resultsRe
         }
 
         // /olight off: zero all zone lights (indices 1-7) in VS
-        if (!owner_.debugObjectLightsEnabled_) {
+        if (!ctx_.Diagnostics().debugObjectLightsEnabled()) {
             for (int i = 1; i < ZoneShaderManager::MAX_POINT_LIGHTS; ++i)
                 ctx_.zoneShader->setPointLight(i, 0,0,0, 0,0,0, 1,0,0);
             effectiveLightCount = playerLightSet ? 1 : 0;
-        } else if (owner_.maxObjectLights_ < effectiveLightCount - (playerLightSet ? 1 : 0)) {
+        } else if (ctx_.Diagnostics().maxObjectLights() < effectiveLightCount - (playerLightSet ? 1 : 0)) {
             // L key: limit zone light count, zero excess slots
-            int maxZone = owner_.maxObjectLights_;
+            int maxZone = ctx_.Diagnostics().maxObjectLights();
             int startClear = (playerLightSet ? 1 : 0) + maxZone;
             for (int i = startClear; i < ZoneShaderManager::MAX_POINT_LIGHTS; ++i)
                 ctx_.zoneShader->setPointLight(i, 0,0,0, 0,0,0, 1,0,0);
@@ -794,7 +801,7 @@ void SimBridgeComponent::applySimulationOutput(const SimulationOutput& resultsRe
         }
 
         ctx_.zoneShader->setNumPointLights(effectiveLightCount);
-        owner_.activeLightCount_ = effectiveLightCount;
+        activeLightCount_ = effectiveLightCount;
     }
 
     // Apply object light PVS visibility (scene graph add/remove)
@@ -859,8 +866,8 @@ void SimBridgeComponent::applySimulationOutput(const SimulationOutput& resultsRe
     }
 
     // Update player light position (every frame, not gated)
-    if (owner_.playerLightNode_ && owner_.playerLightLevel_ > 0) {
-        owner_.playerLightNode_->setPosition(irr::core::vector3df(ctx_.playerX, ctx_.playerZ + 3.0f, ctx_.playerY));
+    if (ctx_.Diagnostics().playerLightNode() && playerLightLevel_ > 0) {
+        ctx_.Diagnostics().playerLightNode()->setPosition(irr::core::vector3df(ctx_.playerX, ctx_.playerZ + 3.0f, ctx_.playerY));
     }
 
     // P32: the tree wind shadow-vertex apply block was removed along with
@@ -871,8 +878,8 @@ void SimBridgeComponent::applySimulationOutput(const SimulationOutput& resultsRe
     // fully dead (its `!results->treeShadows.empty()` guard never passed).
 
     // Apply spell VFX results from worker (desktop GL path)
-    if (results->spellVfxOutput.valid && owner_.spellVisualFX_ && owner_.spellVisualFX_->isWorkerDriven()) {
-        owner_.spellVisualFX_->applyWorkerResults(*results);
+    if (results->spellVfxOutput.valid && spellVisualFX_ && spellVisualFX_->isWorkerDriven()) {
+        spellVisualFX_->applyWorkerResults(*results);
     }
 
     // Apply detail wind/disturbance shadow vertices

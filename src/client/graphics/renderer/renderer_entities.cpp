@@ -32,7 +32,7 @@ bool IrrlichtRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std
         // entity is (re)created while already in FirstPerson camera mode
         // (e.g. zoning in with first person already selected). The model
         // itself draws normally; the near plane hides it.
-        bool firstPerson = (cameraMode_ == CameraMode::FirstPerson);
+        bool firstPerson = (PlayerCamera().cameraMode() == CameraMode::FirstPerson);
         entityRenderer_->setPlayerFirstPersonMode(firstPerson);
         if (firstPerson) {
             playerCamera_->repositionFirstPersonCamera();
@@ -40,7 +40,7 @@ bool IrrlichtRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std
 
         // Player entity creation is the final step - mark zone as ready
         // This happens after all network packets are processed and other entities are loaded
-        if (networkReady_) {
+        if (ZoneLifecycle().networkReady()) {
             setLoadingProgress(1.0f, L"Zone ready!");
             zoneReady_ = true;
             LOG_INFO(MOD_GRAPHICS, "Zone ready - player entity created and camera initialized");
@@ -49,8 +49,8 @@ bool IrrlichtRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std
 
     // Track entity loading for loading screen progress
     if (result) {
-        loadedEntityCount_++;
-        LOG_TRACE(MOD_GRAPHICS, "Entity created: {} (ID: {}), loaded count: {}", name, spawnId, loadedEntityCount_);
+        ZoneLifecycle().loadedEntityCount()++;
+        LOG_TRACE(MOD_GRAPHICS, "Entity created: {} (ID: {}), loaded count: {}", name, spawnId, ZoneLifecycle().loadedEntityCount());
     }
 
     return result;
@@ -67,7 +67,7 @@ bool IrrlichtRenderer::registerEntity(uint16_t spawnId, uint16_t raceId, const s
     bool result = entityRenderer_->registerEntity(spawnId, raceId, name, x, y, z, heading, isPlayer, gender, appearance, isNPC, isCorpse, serverSize, entityLevel);
 
     if (result) {
-        loadedEntityCount_++;
+        ZoneLifecycle().loadedEntityCount()++;
         // Re-enable progressive loading so the multi-frame pipeline picks up
         // this entity (progressiveLoadingActive_ may have been set to false
         // after initial zone load completed all entity builds)
@@ -113,14 +113,14 @@ void IrrlichtRenderer::setEntitySize(uint16_t spawnId, float serverSize) {
 void IrrlichtRenderer::setEntityLight(uint16_t spawnId, uint8_t lightLevel) {
     if (isLoading()) return;
     // Handle player light specially - it's always highest priority in light pool
-    if (spawnId == playerSpawnId_ && playerSpawnId_ != 0) {
-        playerLightLevel_ = lightLevel;
+    if (spawnId == PlayerCamera().playerSpawnId() && PlayerCamera().playerSpawnId() != 0) {
+        SimBridge().playerLightLevel() = lightLevel;
 
         if (lightLevel == 0) {
             // Remove player light
-            if (playerLightNode_) {
-                playerLightNode_->remove();
-                playerLightNode_ = nullptr;
+            if (Diagnostics().playerLightNode()) {
+                Diagnostics().playerLightNode()->remove();
+                Diagnostics().playerLightNode() = nullptr;
                 LOG_DEBUG(MOD_GRAPHICS, "Removed player light");
             }
             return;
@@ -140,25 +140,25 @@ void IrrlichtRenderer::setEntityLight(uint16_t spawnId, uint8_t lightLevel) {
         // Position at player location (Irrlicht Y-up coordinates)
         irr::core::vector3df lightPos(playerX_, playerZ_ + 3.0f, playerY_);
 
-        if (playerLightNode_) {
+        if (Diagnostics().playerLightNode()) {
             // Update existing light
-            irr::video::SLight& lightData = playerLightNode_->getLightData();
+            irr::video::SLight& lightData = Diagnostics().playerLightNode()->getLightData();
             lightData.DiffuseColor = irr::video::SColorf(r * intensity, g * intensity, b * intensity, 1.0f);
             lightData.Radius = radius;
             float quad = 19.0f / (radius * radius);
             lightData.Attenuation = irr::core::vector3df(1.0f, 0.0f, quad);
-            playerLightNode_->setPosition(lightPos);
+            Diagnostics().playerLightNode()->setPosition(lightPos);
         } else if (smgr_) {
             // Create new light
-            playerLightNode_ = smgr_->addLightSceneNode(
+            Diagnostics().playerLightNode() = smgr_->addLightSceneNode(
                 nullptr,
                 lightPos,
                 irr::video::SColorf(r * intensity, g * intensity, b * intensity, 1.0f),
                 radius
             );
 
-            if (playerLightNode_) {
-                irr::video::SLight& lightData = playerLightNode_->getLightData();
+            if (Diagnostics().playerLightNode()) {
+                irr::video::SLight& lightData = Diagnostics().playerLightNode()->getLightData();
                 lightData.Type = irr::video::ELT_POINT;
                 // Attenuation: 1/(constant + quadratic*d²)
                 // Tuned so attenuation ≈ 5% at the light's radius, enabling an
@@ -167,7 +167,7 @@ void IrrlichtRenderer::setEntityLight(uint16_t spawnId, uint8_t lightLevel) {
                 float quad = 19.0f / (radius * radius);
                 lightData.Attenuation = irr::core::vector3df(1.0f, 0.0f, quad);
                 // Start hidden - updateObjectLights will enable it
-                playerLightNode_->setVisible(false);
+                Diagnostics().playerLightNode()->setVisible(false);
                 LOG_INFO(MOD_GRAPHICS, "Created player light: level={}, radius={:.1f}", lightLevel, radius);
             }
         }
@@ -234,12 +234,12 @@ void IrrlichtRenderer::initDeferredGraphics() {
     }
 
     // Create spell visual effects if not already created
-    if (!spellVisualFX_ && smgr_ && driver_) {
-        spellVisualFX_ = std::make_unique<EQ::SpellVisualFX>(smgr_, driver_, config_.eqClientPath);
-        spellVisualFX_->setConstrainedTextureCache(constrainedTextureCache_);
+    if (!SimBridge().spellVisualFX() && smgr_ && driver_) {
+        SimBridge().spellVisualFX() = std::make_unique<EQ::SpellVisualFX>(smgr_, driver_, config_.eqClientPath);
+        SimBridge().spellVisualFX()->setConstrainedTextureCache(constrainedTextureCache_);
 
         // Set up entity position callback for spell effects
-        spellVisualFX_->setEntityPositionCallback(
+        SimBridge().spellVisualFX()->setEntityPositionCallback(
             [this](uint16_t entity_id, irr::core::vector3df& out_pos) -> bool {
                 // Hand bone pseudo-entity IDs (bit 15 set)
                 if (EQ::SpellVisualFX::isHandBoneId(entity_id)) {
@@ -274,7 +274,7 @@ void IrrlichtRenderer::initDeferredGraphics() {
 
 #ifdef EQT_HAS_GLES2
         if (particleManager_) {
-            spellVisualFX_->setParticleManager(particleManager_.get());
+            SimBridge().spellVisualFX()->setParticleManager(particleManager_.get());
             particleManager_->setEntityPositionCallback(
                 [this](uint16_t entity_id, glm::vec3& out_pos) -> bool {
                     // Hand bone pseudo-entity IDs (bit 15 set)
@@ -335,7 +335,7 @@ void IrrlichtRenderer::initDeferredGraphics() {
 
         // Enable worker-driven mode for desktop GL path when SimulationWorker is running
         if (simulationWorker_ && simulationWorker_->isRunning()) {
-            spellVisualFX_->setWorkerDriven(true);
+            SimBridge().spellVisualFX()->setWorkerDriven(true);
             LOG_DEBUG(MOD_GRAPHICS, "SpellVisualFX: worker-driven mode enabled");
         }
 
@@ -346,13 +346,13 @@ void IrrlichtRenderer::initDeferredGraphics() {
         // also runs at most once. Placeholder resolved ONCE here, same
         // non-reentrancy constraint as every other guard.
         if (constrainedTextureCache_) {
-            EQ::SpellVisualFX* spellFX = spellVisualFX_.get();
-            spellVisualFXTextureGuard_ = std::make_unique<ForwardingTextureGuard>(
+            EQ::SpellVisualFX* spellFX = SimBridge().spellVisualFX().get();
+            ZoneStream().spellVisualFXTextureGuard() = std::make_unique<ForwardingTextureGuard>(
                 [spellFX](irr::video::ITexture* from, irr::video::ITexture* to) {
                     spellFX->swapEvictedTexture(from, to);
                 },
                 constrainedTextureCache_->getPlaceholderTexture());
-            constrainedTextureCache_->addEvictionListener(spellVisualFXTextureGuard_.get());
+            constrainedTextureCache_->addEvictionListener(ZoneStream().spellVisualFXTextureGuard().get());
         }
     }
 }
@@ -379,8 +379,8 @@ void IrrlichtRenderer::openInventory() {
     // appearance hasn't changed since it was last open (e.g. the RTT
     // texture is stale, or this is the first open of the session and
     // ensurePaperdollInitialized() hasn't run yet).
-    if (characterModelView_) {
-        characterModelView_->markDirty();
+    if (Overlays().characterModelView()) {
+        Overlays().characterModelView()->markDirty();
     }
     LOG_DEBUG(MOD_UI, "IrrlichtRenderer: inventory popup OPEN");
 }
