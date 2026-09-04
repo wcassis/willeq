@@ -192,6 +192,34 @@ public:
     std::shared_ptr<RaceModelData> getVariantModelData(uint16_t raceId, uint8_t gender,
                                                         uint8_t headVariant, uint8_t bodyVariant);
 
+    // T340 (B052): the read-only observation seam for
+    // loadModelFromGlobalChrWithVariantsForAnimation. That method searches an
+    // ORDERED candidate list -- the race row's own gendered code, then the
+    // row's fallback_code -- across an ordered source list (the row's
+    // s3d_file, the current zone, then global_chr.s3d), and its six
+    // "continue"s mean "try the next candidate", not "fail". Nothing it does
+    // is observable from outside except the model it leaves in
+    // variantModels_, and that cannot distinguish WHICH candidate won, nor a
+    // run that returned false from a run that never happened (the caller
+    // caches a null on false -- variant_loading.cpp:273-277 -- so the second
+    // call short-circuits). This struct records both. It is written ONLY by
+    // that loader and read ONLY by tests (tests/test_variant_loader_candidates.cpp);
+    // no production code consults it and no control flow depends on it.
+    // Guarded by variantModelsMutex_ -- the mutex the loader already takes at
+    // both of its success points -- because the loader also runs on
+    // EntityPrepWorker's background thread.
+    struct VariantLoadTrace {
+        size_t attempts = 0;            // times the loader actually ran
+        bool succeeded = false;         // outcome of the most recent run
+        std::string resolvedCode;       // the codeToTry that won ("" if none)
+        std::string resolvedCharacter;  // CharacterModel::name that won ("" if none)
+        std::string resolvedSource;     // "zone" (row s3d_file / current zone) or "global"
+    };
+    VariantLoadTrace variantLoadTrace() const {
+        std::lock_guard<std::mutex> lock(variantModelsMutex_);
+        return variantLoadTrace_;
+    }
+
     // Check if model data is available in either the main cache (loadedModels_)
     // or the staging cache (preparedModelData_). Thread-safe.
     // cacheKey = (raceId << 8) | gender
@@ -487,6 +515,9 @@ private:
     // render thread (getAnimatedMeshWithAppearance) — protected by variantModelsMutex_
     mutable std::mutex variantModelsMutex_;
     std::map<uint64_t, std::shared_ptr<RaceModelData>> variantModels_;
+
+    // T340 (B052): see variantLoadTrace() above. Guarded by variantModelsMutex_.
+    VariantLoadTrace variantLoadTrace_;
     std::map<uint64_t, irr::scene::IMesh*> variantMeshCache_;
 
     // Global character data loaded from global_chr.s3d
