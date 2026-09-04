@@ -23,6 +23,8 @@
 
 #include <irrlicht.h>
 #include <vector>
+#include <cstdio>
+#include <iostream>
 
 using namespace EQT::Graphics;
 
@@ -366,6 +368,117 @@ TEST_F(StaticUIInputTest, PaperdollRectDoesNotOverlapAnySlotRect) {
                         doll.UpperLeftCorner.Y < slot.LowerRightCorner.Y &&
                         doll.LowerRightCorner.Y > slot.UpperLeftCorner.Y;
         EXPECT_FALSE(overlap) << "paperdoll rect overlaps slot " << i;
+    }
+}
+
+// --- T351: the inventory popup frame measured at EVERY resolution (B004) ---
+//
+// B004 claimed centerPopup's hardcoded 400x350 leaves general and
+// equipment slots drawn outside the frame and unreachable by mouse. That
+// was true before T57 and is the reason T57 exists; this test is the
+// per-resolution table that pins it closed, because the tests above all
+// run at the fixture's single 800x600 layout and so could not have
+// distinguished "inside at 800x600" from "inside everywhere".
+//
+// The measurement prints the full resolution x slot table (rect,
+// inside-frame?, hit-testable?) to stdout, and asserts, for every
+// supported resolution:
+//   - the popup frame lies wholly on screen,
+//   - all 30 slot rects and the paperdoll rect lie wholly inside it,
+//   - the center of every slot rect hit-tests back to that slot.
+//
+// centerPopup's SIZE is resolution-independent by construction and
+// InventoryLayout's geometry is relative to the popup's own origin and
+// width, so containment cannot vary with resolution — the table proves
+// that rather than assuming it.
+namespace {
+
+struct ResCase { int w; int h; const char* note; };
+
+const ResCase kResolutions[] = {
+    {640,  480,  "below the documented minimum, checked for breadth"},
+    {800,  600,  "default (-r 800 600), also the orangepi preset's display"},
+    {1024, 768,  ""},
+    {1280, 1024, ""},
+    {1920, 1080, ""},
+};
+
+} // namespace
+
+TEST(InventoryPopupFrameT351, EverySlotIsInsideTheFrameAndHitTestableAtEveryResolution) {
+    for (const auto& rc : kResolutions) {
+        UILayout layout;
+        layout.computeLayout(rc.w, rc.h);
+        const auto& popup = layout.centerPopup;
+
+        std::cout << "\n=== " << rc.w << "x" << rc.h;
+        if (rc.note[0]) std::cout << "  (" << rc.note << ")";
+        std::cout << " ===\n";
+        std::cout << "frame centerPopup = {" << popup.UpperLeftCorner.X << ","
+                  << popup.UpperLeftCorner.Y << "," << popup.LowerRightCorner.X << ","
+                  << popup.LowerRightCorner.Y << "}  "
+                  << popup.getWidth() << "x" << popup.getHeight()
+                  << "  onScreen=" << ((popup.UpperLeftCorner.X >= 0 &&
+                                        popup.UpperLeftCorner.Y >= 0 &&
+                                        popup.LowerRightCorner.X <= rc.w &&
+                                        popup.LowerRightCorner.Y <= rc.h) ? "yes" : "NO")
+                  << "\n";
+
+        // The frame itself must be on screen, or nothing inside it is
+        // reachable however well it encloses its slots.
+        EXPECT_GE(popup.UpperLeftCorner.X, 0) << rc.w << "x" << rc.h;
+        EXPECT_GE(popup.UpperLeftCorner.Y, 0) << rc.w << "x" << rc.h;
+        EXPECT_LE(popup.LowerRightCorner.X, rc.w) << rc.w << "x" << rc.h;
+        EXPECT_LE(popup.LowerRightCorner.Y, rc.h) << rc.w << "x" << rc.h;
+
+        StaticUIInput input;
+        HotbarPanelState hotbar;
+        SpellGemPanelState gems;
+        InventoryPanelState inventory;
+        SpellbookPopupState spellbook;
+        SkillsPopupState skills;
+        BuffBarState buffs;
+        LootPanelState loot;
+        inventory.activePopup = PopupType::Inventory;
+
+        std::cout << "slot | rect                      | inside | hit\n";
+        for (int i = 0; i < InventoryLayout::TOTAL_SLOTS; ++i) {
+            irr::core::rect<irr::s32> r = InventoryLayout::slotRect(layout, i);
+            bool inside = r.UpperLeftCorner.X >= popup.UpperLeftCorner.X &&
+                          r.UpperLeftCorner.Y >= popup.UpperLeftCorner.Y &&
+                          r.LowerRightCorner.X <= popup.LowerRightCorner.X &&
+                          r.LowerRightCorner.Y <= popup.LowerRightCorner.Y;
+
+            int cx = (r.UpperLeftCorner.X + r.LowerRightCorner.X) / 2;
+            int cy = (r.UpperLeftCorner.Y + r.LowerRightCorner.Y) / 2;
+            inventory.hoveredSlot = -1;
+            bool consumed = input.processInput(cx, cy, false, layout, hotbar, gems,
+                                               inventory, spellbook, skills, buffs, loot);
+            bool hit = consumed && inventory.hoveredSlot == i;
+
+            char line[128];
+            std::snprintf(line, sizeof(line), "%4d | {%4d,%4d,%4d,%4d}       |  %-4s  | %s\n",
+                          i, r.UpperLeftCorner.X, r.UpperLeftCorner.Y,
+                          r.LowerRightCorner.X, r.LowerRightCorner.Y,
+                          inside ? "yes" : "NO", hit ? "yes" : "NO");
+            std::cout << line;
+
+            EXPECT_TRUE(inside) << rc.w << "x" << rc.h << " slot " << i;
+            EXPECT_TRUE(hit) << rc.w << "x" << rc.h << " slot " << i;
+        }
+
+        irr::core::rect<irr::s32> doll = InventoryLayout::paperdollRect(layout);
+        bool dollInside = doll.UpperLeftCorner.X >= popup.UpperLeftCorner.X &&
+                          doll.UpperLeftCorner.Y >= popup.UpperLeftCorner.Y &&
+                          doll.LowerRightCorner.X <= popup.LowerRightCorner.X &&
+                          doll.LowerRightCorner.Y <= popup.LowerRightCorner.Y;
+        char line[128];
+        std::snprintf(line, sizeof(line), "doll | {%4d,%4d,%4d,%4d}       |  %-4s  | n/a\n",
+                      doll.UpperLeftCorner.X, doll.UpperLeftCorner.Y,
+                      doll.LowerRightCorner.X, doll.LowerRightCorner.Y,
+                      dollInside ? "yes" : "NO");
+        std::cout << line;
+        EXPECT_TRUE(dollInside) << rc.w << "x" << rc.h << " paperdoll";
     }
 }
 
