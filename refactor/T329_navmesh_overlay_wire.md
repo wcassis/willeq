@@ -128,3 +128,43 @@ server is free.
 
 None from the plan besides the namespace fix above, which is a correction,
 not a scope change.
+
+---
+
+## Addendum 2026-09-04 — the owed live leg was captured by T328 Leg B
+
+The eqemu lock was free after T328 Leg A finished, so T328 Leg B took it and
+ran the live proof this unit owed. Deliverable:
+**`/mnt/projects/fable/review/T329/`** (two screenshots, both full client logs,
+the capture driver, and the input probe).
+
+**Result: this unit's wire is proven. The draw is not.**
+
+Confirmed in the client's own log, in a `qeynos2` session with
+`/mnt/projects/maps/nav/qeynos2.nav` loaded:
+
+```
+[INFO ] [MAP]      Loaded Navmesh V[2] file [/mnt/projects/maps/nav/qeynos2.nav]
+[DEBUG] [INPUT]    Key pressed: N (ctrl=true, ...), action=ToggleNavmeshOverlay
+[INFO ] [GRAPHICS] Navmesh overlay: ON
+[DEBUG] [GRAPHICS] Navmesh overlay: Updated with 112 triangles
+```
+
+That last line is the one that closes this unit: `updateNavmeshOverlay()`
+returns immediately when `navmesh_` is null — the exact null pointer B041 was
+about — and instead it reached `GetTrianglesInRadius()` and got 112 triangles.
+
+But the screenshot shows **no navmesh lines at all, and the entire 2D UI gone**
+(health/mana/stamina bars, FPS, chat panel, hotbar), against an identical
+overlay-OFF baseline in the same spot at the same forced daylight. Reproduced
+in two grabs from the same session. That is `drawNavmeshOverlay()`, not this
+unit's arm, and it is under `src/client/graphics` (L05's territory this wave),
+so it was **boarded as B045 and not touched**. B041's live-proof note is struck
+with that split recorded.
+
+Two input findings from the capture, written down so they are not rediscovered:
+`xdotool --window` (XSendEvent) delivers **nothing** to this client, and after
+the in-game chat sequence **no further keystroke reaches it at all** — so a
+capture needing a keypress must send it before `/say #set time 11 0`, and one
+overlay state per session. Both are measured, with the probe, in
+`review/T329/README.md`.

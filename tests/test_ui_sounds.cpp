@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cctype>
 #include <memory>
+#include <iterator>
 
 using namespace EQT::Audio;
 
@@ -121,6 +122,19 @@ TEST_F(UISoundsTest, SellItemReusesBuySound) {
               UISounds::getSoundId(UISoundType::BuyItem));
 }
 
+// T328 -- the two container/item sounds Leg A measured.
+TEST_F(UISoundsTest, ItemClothSound) {
+    EXPECT_EQ(UISounds::getSoundFile(UISoundType::ItemCloth), "itemclth.WAV");
+    EXPECT_TRUE(UISounds::getSoundId(UISoundType::ItemCloth).has_value());
+    EXPECT_EQ(UISounds::getSoundId(UISoundType::ItemCloth).value(), UISoundId::ITEM_CLOTH);
+}
+
+TEST_F(UISoundsTest, WearClothSound) {
+    EXPECT_EQ(UISounds::getSoundFile(UISoundType::WearCloth), "wearclth.WAV");
+    EXPECT_TRUE(UISounds::getSoundId(UISoundType::WearCloth).has_value());
+    EXPECT_EQ(UISounds::getSoundId(UISoundType::WearCloth).value(), UISoundId::WEAR_CLOTH);
+}
+
 TEST_F(UISoundsTest, ChestSounds) {
     EXPECT_EQ(UISounds::getSoundFile(UISoundType::ChestOpen), "Chest_Op.WAV");
     EXPECT_EQ(UISounds::getSoundFile(UISoundType::ChestClose), "Chest_Cl.WAV");
@@ -204,6 +218,42 @@ TEST_F(UISoundsTest, SoundIdConstants) {
     EXPECT_EQ(UISoundId::BUTTON_CLICK, 142u);
     EXPECT_EQ(UISoundId::TELEPORT, 137u);
     EXPECT_EQ(UISoundId::DRINK, 149u);
+    // T328: added, measured.
+    EXPECT_EQ(UISoundId::ITEM_CLOTH, 145u);
+    EXPECT_EQ(UISoundId::WEAR_CLOTH, 146u);
+}
+
+// T328 -- SoundBank (sound_assets.h) is the ONE id table, transcribed from
+// the official client's preload burst. This checks all 52 of its entries
+// against the client's own SoundAssets.txt, which is the file that burst was
+// ordered by. A single test over the whole table beats hand-written
+// per-constant assertions: the table cannot drift silently, and the assertion
+// is against the oracle rather than against a value someone typed twice.
+TEST_F(UISoundsTest, SoundBankIdsAreDistinctAndContiguous) {
+    const uint32_t ids[] = {
+        SoundBank::STEPCRCH, SoundBank::WATEROUT, SoundBank::WATERIN,
+        SoundBank::WATTRD_1, SoundBank::WATTRD_2, SoundBank::SPELL_1,
+        SoundBank::SPELL_2,  SoundBank::SPELL_3,  SoundBank::SPELL_4,
+        SoundBank::SPELL_5,  SoundBank::SPELCAST, SoundBank::SPELGDHT,
+        SoundBank::SPELHIT1, SoundBank::SPELHIT2, SoundBank::SPELHIT3,
+        SoundBank::SPELHIT4, SoundBank::JUMPLAND, SoundBank::FALL_HIT,
+        SoundBank::BOWDRAW,  SoundBank::ARROWHIT, SoundBank::SWING,
+        SoundBank::SWINGBIG, SoundBank::SWORDBLK, SoundBank::IMPALE,
+        SoundBank::STAB,     SoundBank::CLUB,     SoundBank::BASHSHLD,
+        SoundBank::SHLDBLK,  SoundBank::KICK1,    SoundBank::KICKHIT,
+        SoundBank::RNDKICK,  SoundBank::LEFTATK,  SoundBank::PUNCH1,
+        SoundBank::PUNCHHIT, SoundBank::STAFFBLK, SoundBank::CHEST_CL,
+        SoundBank::CHEST_OP, SoundBank::DOORWD_O, SoundBank::DOORWD_C,
+        SoundBank::TELEPORT, SoundBank::BUYITEM,  SoundBank::LEVELUP,
+        SoundBank::LEVDN,    SoundBank::ENDQUEST, SoundBank::BUTTON_1,
+        SoundBank::THUNDER1, SoundBank::THUNDER2, SoundBank::ITEMCLTH,
+        SoundBank::WEARCLTH, SoundBank::FLSHHIT1, SoundBank::FLSHHIT2,
+        SoundBank::DRINK,
+    };
+    ASSERT_EQ(std::size(ids), 52u);
+    for (size_t i = 0; i < std::size(ids); ++i) {
+        EXPECT_EQ(ids[i], 98u + i) << "SoundBank entry " << i << " is out of order";
+    }
 }
 
 // =============================================================================
@@ -250,6 +300,56 @@ TEST_F(UISoundsIntegrationTest, SoundIdsExistInSoundAssets) {
                 << "UISoundType::" << UISounds::getTypeName(type)
                 << " (ID " << soundId.value() << ") not found in SoundAssets.txt";
         }
+    }
+}
+
+// T328 -- the whole measured table, id by id, against the client's own
+// SoundAssets.txt. This is the assertion that makes SoundBank an oracle
+// transcript rather than a list of remembered numbers; it is what caught
+// sound_assets.h's BUY_ITEM = 145 (itemclth) and TELEPORT = 141 (endquest).
+TEST_F(UISoundsIntegrationTest, SoundBankMatchesSoundAssetsTxt) {
+    SkipIfNoAssets();
+    if (!assetsLoaded_) {
+        return;
+    }
+
+    struct Row { uint32_t id; const char* file; };
+    static const Row kBank[] = {
+        {SoundBank::STEPCRCH, "stepcrch.wav"}, {SoundBank::WATEROUT, "waterout.wav"},
+        {SoundBank::WATERIN,  "waterin.wav"},  {SoundBank::WATTRD_1, "wattrd_1.wav"},
+        {SoundBank::WATTRD_2, "wattrd_2.wav"}, {SoundBank::SPELL_1,  "spell_1.wav"},
+        {SoundBank::SPELL_2,  "spell_2.wav"},  {SoundBank::SPELL_3,  "spell_3.wav"},
+        {SoundBank::SPELL_4,  "spell_4.wav"},  {SoundBank::SPELL_5,  "spell_5.wav"},
+        {SoundBank::SPELCAST, "spelcast.wav"}, {SoundBank::SPELGDHT, "spelgdht.wav"},
+        {SoundBank::SPELHIT1, "spelhit1.wav"}, {SoundBank::SPELHIT2, "spelhit2.wav"},
+        {SoundBank::SPELHIT3, "spelhit3.wav"}, {SoundBank::SPELHIT4, "spelhit4.wav"},
+        {SoundBank::JUMPLAND, "jumpland.wav"}, {SoundBank::FALL_HIT, "fall_hit.wav"},
+        {SoundBank::BOWDRAW,  "bowdraw.wav"},  {SoundBank::ARROWHIT, "arrowhit.wav"},
+        {SoundBank::SWING,    "swing.wav"},    {SoundBank::SWINGBIG, "swingbig.wav"},
+        {SoundBank::SWORDBLK, "swordblk.wav"}, {SoundBank::IMPALE,   "impale.wav"},
+        {SoundBank::STAB,     "stab.wav"},     {SoundBank::CLUB,     "club.wav"},
+        {SoundBank::BASHSHLD, "bashshld.wav"}, {SoundBank::SHLDBLK,  "shldblk.wav"},
+        {SoundBank::KICK1,    "kick1.wav"},    {SoundBank::KICKHIT,  "kickhit.wav"},
+        {SoundBank::RNDKICK,  "rndkick.wav"},  {SoundBank::LEFTATK,  "leftatk.wav"},
+        {SoundBank::PUNCH1,   "punch1.wav"},   {SoundBank::PUNCHHIT, "punchhit.wav"},
+        {SoundBank::STAFFBLK, "staffblk.wav"}, {SoundBank::CHEST_CL, "chest_cl.wav"},
+        {SoundBank::CHEST_OP, "chest_op.wav"}, {SoundBank::DOORWD_O, "doorwd_o.wav"},
+        {SoundBank::DOORWD_C, "doorwd_c.wav"}, {SoundBank::TELEPORT, "teleport.wav"},
+        {SoundBank::BUYITEM,  "buyitem.wav"},  {SoundBank::LEVELUP,  "levelup.wav"},
+        {SoundBank::LEVDN,    "levdn.wav"},    {SoundBank::ENDQUEST, "endquest.wav"},
+        {SoundBank::BUTTON_1, "button_1.wav"}, {SoundBank::THUNDER1, "thunder1.wav"},
+        {SoundBank::THUNDER2, "thunder2.wav"}, {SoundBank::ITEMCLTH, "itemclth.wav"},
+        {SoundBank::WEARCLTH, "wearclth.wav"}, {SoundBank::FLSHHIT1, "flshhit1.wav"},
+        {SoundBank::FLSHHIT2, "flshhit2.wav"}, {SoundBank::DRINK,    "drink.wav"},
+    };
+
+    for (const Row& row : kBank) {
+        ASSERT_TRUE(assets_.hasSound(row.id))
+            << "SoundAssets.txt has no id " << row.id;
+        std::string actual = assets_.getFilename(row.id);
+        std::transform(actual.begin(), actual.end(), actual.begin(), ::tolower);
+        EXPECT_EQ(actual, row.file)
+            << "SoundBank id " << row.id << " names the wrong file";
     }
 }
 

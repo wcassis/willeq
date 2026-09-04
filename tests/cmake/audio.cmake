@@ -200,6 +200,23 @@ IF(WITH_AUDIO)
     GTEST_DISCOVER_TESTS(test_ui_sounds)
 ENDIF()
 
+# T328 Leg B: the UI sounds the official Titanium client was MEASURED to play,
+# asserted at the game-side publisher through the PlaySoundIntent seam --
+# container open/close (a real EverQuest replaying OP_ClickObjectAction) and
+# item drop / coin-to-cursor (a bare InventoryManager on a RecordingBridge).
+# Needs willeq_core for EverQuest + InventoryManager; no audio device, no EQ
+# client data, no eqemu.
+IF(WITH_AUDIO)
+    ADD_EXECUTABLE(test_ui_sound_events
+        test_ui_sound_events.cpp
+    )
+    TARGET_LINK_LIBRARIES(test_ui_sound_events GTest::gtest_main willeq_core)
+    IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+        TARGET_INCLUDE_DIRECTORIES(test_ui_sound_events PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    ENDIF()
+    GTEST_DISCOVER_TESTS(test_ui_sound_events)
+ENDIF()
+
 # Test door and object sounds (door/lever/trap sound type mappings, sound IDs, filenames)
 # These tests verify the DoorSounds utility class and door/object sound mappings
 IF(WITH_AUDIO)

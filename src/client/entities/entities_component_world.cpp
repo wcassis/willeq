@@ -43,6 +43,9 @@
 #include "client/bridge/irrlicht_bridge.h"
 #include "common/logging.h"
 #include "common/packet_structs.h"
+#ifdef WITH_AUDIO
+#include "client/audio/ui_sounds.h"
+#endif
 #include "common/name_utils.h"
 
 // P28: entity_pose_state.h is game-state-owned (S2 decoupling comment in the
@@ -372,6 +375,20 @@ void eqt::entities::EntitiesComponent::ZoneProcessClickObjectAction(const EQ::Ne
 			ctx_.inventory_manager->setWorldContainerOpen(true);
 		}
 
+		// T328 Leg B: the official Titanium client plays itemclth.WAV (145)
+		// when a container opens -- measured for an inventory bag AND for a
+		// tradeskill container, which are the same sound
+		// (review/T328/README.md rows 1 and 4). Chest_Op (134) is NOT it,
+		// despite UISoundId::CHEST_OPEN's name. Played here, on the SERVER's
+		// open confirmation, because that is the only point fable knows a
+		// container opened -- fable has no client-side bag window to open.
+#ifdef WITH_AUDIO
+		if (ctx_.bridge) {
+			ctx_.bridge->pushIntent(eqt::events::PlaySoundIntent{
+				EQT::Audio::UISoundId::ITEM_CLOTH});
+		}
+#endif
+
 		// Open tradeskill container via bridge
 		if (ctx_.bridge) {
 			eqt::state::TradeskillContainerOpenedEvent data;
@@ -391,6 +408,16 @@ void eqt::entities::EntitiesComponent::ZoneProcessClickObjectAction(const EQ::Ne
 		if (ctx_.inventory_manager) {
 			ctx_.inventory_manager->setWorldContainerOpen(false);
 		}
+
+		// T328 Leg B: close plays the SAME sound as open -- measured three
+		// ways (the container window's "Done" button, its "X" button, and a
+		// tradeskill container close; review/T328/README.md rows 2, 3, 5).
+#ifdef WITH_AUDIO
+		if (ctx_.bridge) {
+			ctx_.bridge->pushIntent(eqt::events::PlaySoundIntent{
+				EQT::Audio::UISoundId::ITEM_CLOTH});
+		}
+#endif
 
 		// Close tradeskill container via bridge
 		if (ctx_.bridge) {

@@ -318,7 +318,46 @@ it without taking that measurement first.
   buy, sell, combine success/fail. Leg B wires the measured rows.** Found on the way: `include/client/audio/ui_sounds.h`
   already catalogues UI sound IDs (`BUY_ITEM`, `BUTTON_CLICK`, `CHEST_OPEN`…)
   and NO production code plays any of them — the reachability pattern again.
-  Prov: K11 Review; Will's ruling.
+  **LEG B DONE 2026-09-04 — every MEASURED row is wired and tested**
+  (`refactor/T328_ui_sounds.md` § Review — Leg B). Through a new
+  `PlaySoundIntent` -> `BridgeComponent::PlaySound()`, the path movement
+  already used for `WaterIn`: container open AND close -> `ITEM_CLOTH` 145
+  (`EntitiesComponent::ZoneProcessClickObjectAction`, both arms — fable has NO
+  bag window, so the server's `OP_ClickObjectAction` is the only place it
+  learns a container opened); item dropped into a slot and stack-merge ->
+  `WEAR_CLOTH` 146 (`InventoryManager::placeItem` / `placeOnMatchingStack`,
+  on the LOCAL drop, matching the oracle's timing); coin onto the cursor ->
+  `BUY_ITEM` 138 (`InventoryManager::pickupMoney`). The four measured-SILENT
+  gestures are now PINNED silent by tests, so nothing can quietly add a sound
+  the oracle does not make. Id tables reconciled into ONE measured table,
+  `EQT::Audio::SoundBank` (98..149), checked in-test against the shipped
+  `SoundAssets.txt`; `SoundId::BUY_ITEM` 145->138 and `SoundId::TELEPORT`
+  141->137 corrected, and the invented `OPEN_WINDOW` (143 = thunder1),
+  `CLOSE_WINDOW` (144 = thunder2) and `SELL_ITEM` (146 = wearclth) deleted.
+  13 new tests in `tests/test_ui_sound_events.cpp`.
+  **THIS ENTRY STAYS OPEN on three things Leg B deliberately did not guess:**
+  (1) the FIVE UNMEASURED rows — coin pickup by denomination from a corpse,
+  buy, sell, combine success and combine failure. Leg A was blocked in-world,
+  not on method: the Titanium client **will not drop coin on the ground**, a
+  corpse could not be right-clicked because `#goto` lands the player on top of
+  it, `#goto` also puts the player *inside* a merchant so her model is occluded
+  by his own, and a tradeskill component would not stay in a container slot
+  (EQ moves items click-pickup/click-drop, and the drop into the grid did not
+  take). Closing them needs a camera/interaction helper for the oracle client;
+  the expensive parts (the real-time ALSA-loopback capture rig and the 2604-file
+  tone probe) are built and proven under `review/T328/scripts/`.
+  (2) `InventoryManager::pickupMoney()` has **NO production caller** — fable has
+  no money-slot UI, so the coin sound is wired at the right publisher but is
+  unreachable until that UI exists. (3) SIX `SoundId` names that do NOT describe
+  the file their id names, left at their old values because T328 measured UI
+  events only: `MELEE_HIT` (119 = SwingBig), `MELEE_MISS` (120 = SwordBlk),
+  `KICK` (121 = Impale), `PUNCH` (122 = Stab), `SPELL_FIZZLE`
+  (109 = SpelGdHt, not SpelFail) and — with a LIVE production caller at
+  `src/client/player/player_state.cpp:184` — **`DEATH` (140 = LevDn.WAV, a
+  level-DOWN sound, not a death cry)**, where `PlayerSounds::getSoundId(Death,
+  race, gender)` is the race-specific sound it probably wants. Each is
+  annotated in `sound_assets.h`. Closes when those three are settled.
+  Prov: K11 Review; Will's ruling; T328 Leg A + Leg B Reviews.
 
 - ~~**B037** (B) `include/client/bridge/bridge_component.h` `m_audio_config_use_3d_audio`
   — settable only by editing the header.~~ **CLOSED by K15 — WIRED, both ends.**
@@ -388,10 +427,16 @@ it without taking that measurement first.
   navmesh-enabled zone. Prov: L03 Review.~~ **STRUCK T329**: the arm now
   forwards `d.navmesh` to `renderer_->setNavmesh(...)` (both non-null on zone
   load and `nullptr` on zone leave), pinned by
-  `tests/test_navmesh_overlay_wire.cpp`. **The live screenshot proof (Ctrl+N
+  `tests/test_navmesh_overlay_wire.cpp`. ~~**The live screenshot proof (Ctrl+N
   drawing in a navmesh-enabled zone) is OWED** — the eqemu lock was held by
-  T328 for this unit's entire run. Prov: `refactor/T329_navmesh_overlay_wire.md`
-  Review.
+  T328 for this unit's entire run.~~ **LIVE LEG DONE 2026-09-04 by T328 Leg B
+  (`review/T329/`, two captures + both client logs): the WIRE is proven — Ctrl+N
+  reaches `ToggleNavmeshOverlay`, the navmesh pointer is non-null (B041's actual
+  bug) and the client builds 112 overlay triangles, all in its own log. But
+  NOTHING DRAWS, and switching the overlay on makes the entire 2D UI vanish.
+  B041's closure condition said "and Ctrl+N draws", so the DRAW half is now
+  B045; the wire half — this entry — is closed.**
+  Prov: `refactor/T329_navmesh_overlay_wire.md` Review; T328 Leg B Review.
 
 - **B042** (B) `src/client/graphics/overlays/overlays_component.cpp`
   `EQT::Graphics::OverlaysComponent::drawZoneLineOverlay` — **the zone-line debug
@@ -443,3 +488,25 @@ it without taking that measurement first.
   with an interface the class does not implement. Closes when: correction 5 is
   struck from L01's Review and `refactor/L_renderer_component_extraction.md`'s
   "L01 corrections" list. Prov: L04 Review.
+
+## Added 2026-09-04 by the T328 Leg B Review (UI sounds + T329's owed live leg)
+
+- **B045** (A) `src/client/graphics/overlays/overlays_component.cpp`
+  `OverlaysComponent::drawNavmeshOverlay()` — **the navmesh overlay draws
+  nothing, and turning it on wipes the entire 2D UI.** Measured live in
+  `qeynos2` (`review/T329/`, two screenshots plus both client logs): after
+  Ctrl+N the client logs `Navmesh overlay: ON` and
+  `Navmesh overlay: Updated with 112 triangles`, so the triangle list is
+  non-empty and `drawNavmeshOverlay()`'s early return is not taken — yet no
+  navmesh lines appear, and the health/mana/stamina bars, FPS counter, chat
+  panel and hotbar present in an identical overlay-OFF capture are all GONE.
+  Two grabs from the same session, so not one bad frame. Both symptoms are
+  consistent with a single cause in that function — it issues
+  `driver->draw3DLine()` three times per triangle after `setMaterial()`
+  (EMT_SOLID, `EAAM_LINE_SMOOTH`, thickness 2) and
+  `setTransform(ETS_WORLD, ...)`, and leaves both set — but that was NOT
+  isolated, and the file is L05's territory this wave. Invisible until T329
+  wired `setNavmesh`: the pointer was permanently null before, so the function
+  always returned early. Closes when: Ctrl+N draws navmesh triangles in a
+  navmesh-enabled zone AND the 2D UI is still there, proven by a live capture
+  pair. Prov: T328 Leg B Review.
