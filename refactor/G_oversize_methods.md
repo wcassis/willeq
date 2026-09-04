@@ -36,3 +36,22 @@ cut points), every text reader of the TU, the tests that pin behaviour.
 Predicted: the number of steps and their names. Proof: the call-graph
 multiset. STOP: a step needs a local the struct cannot carry without a
 lifetime change; a pinned test's assertion would change.
+
+## G01 corrections (2026-09-04) — the Batch G template
+
+1. Re-measure the arm/step classes MECHANICALLY at the tip (a parser, not a
+   grep); G01's plan said 101/68, the parse said 104 pure / 3 no-op / 38 logic.
+2. A "deliberate no-op" is a comment and a `break`, nothing else; an arm that
+   logs is a handler.
+3. A captureless lambda in the initialiser of a STATIC MEMBER FUNCTION gives
+   class scope: one function-pointer type covers in-family and sibling arms,
+   zero forwarders, and the table lives behind the accessor so the dispatcher
+   stays under 40 lines.
+4. Tell an arm-terminating `break;` from a loop `break;` (indentation) before
+   any `break`→`return` pass.
+5. The golden list is asserted non-empty and the right size in its own case
+   (the empty-file trap, K11 ee); store `<value> <label>`.
+6. Plant the fault in the CODE, both directions (delete a real entry; add an
+   invented one), not in the golden.
+7. The text-reader check (TU filename AND method name across `tests/`,
+   `scripts/`, `tools/`, docs) is per-unit; record it even when negative.
