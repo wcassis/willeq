@@ -109,3 +109,14 @@ lifetime change; a pinned test's assertion would change.
 23. **When the length is duplication, Batch G's proof does not apply** —
    de-duplication is a behaviour change and needs a test that drives the
    method first. Zero-coverage methods go to the board, not to a G unit.
+
+## G05 corrections (2026-09-04)
+
+24. **Cut at the timing brackets when brackets and banners disagree** — a
+   banner cut would have re-bucketed fire-glow from `boids` into
+   `particles`, invisible to both the multiset and the order golden.
+25. A locals table may show ZERO cross-cut locals (G04: 0 of 13; G05: 0 of
+   ~50) — design no struct until the table says so.
+26. A text guard whose block moves into a pass needs a REACHABILITY clause
+   (the enclosing definition must be invoked by the driver) — otherwise a
+   pass nothing calls still spells the guarded condition.
