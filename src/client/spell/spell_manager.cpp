@@ -486,6 +486,14 @@ CastResult SpellManager::validateCast(const SpellData& spell, uint16_t target_id
         return CastResult::NotEnoughMana;
     }
 
+    // T355: endurance, exactly beside mana. The server enforces this too
+    // (eqemu zone/effects.cpp:900 refuses on GetEndurance() < endurance_cost)
+    // and stays the backstop; this is the local refusal the official client
+    // gives first, with eqstr 5805.
+    if (!checkEndurance(spell)) {
+        return CastResult::NotEnoughEndurance;
+    }
+
     // Check range (if target required)
     if (spell.target_type != SpellTargetType::Self && target_id != 0) {
         if (!checkRange(spell, target_id)) {
@@ -538,6 +546,19 @@ bool SpellManager::checkMana(const SpellData& spell) const
     }
 
     return m_eq->GetCurrentMana() >= static_cast<uint32_t>(spell.mana_cost);
+}
+
+// T355. Mirrors checkMana() including the <= 0 early-out: spells_us.txt
+// carries 0 for every spell that costs no endurance (all of Classic through
+// Velious bar the disciplines), and a negative value would be an
+// endurance-returning spell, never a refusal.
+bool SpellManager::checkEndurance(const SpellData& spell) const
+{
+    if (spell.endurance_cost <= 0) {
+        return true;
+    }
+
+    return m_eq->GetCurrentEndurance() >= static_cast<uint32_t>(spell.endurance_cost);
 }
 
 bool SpellManager::checkRange(const SpellData& spell, uint16_t target_id) const

@@ -230,6 +230,9 @@ private:
 
     CastResult validateCast(const SpellData& spell, uint16_t target_id);
     bool checkMana(const SpellData& spell) const;
+    // T355: the mana check's sibling. SpellData::endurance_cost was loaded
+    // by nothing until T355, so every discipline read as free here.
+    bool checkEndurance(const SpellData& spell) const;
     bool checkRange(const SpellData& spell, uint16_t target_id) const;
     // T246: these three were `return true` stubs until T246, which made
     // T244's Stunned / Silenced / ComponentMissing / NoLineOfSight refusals

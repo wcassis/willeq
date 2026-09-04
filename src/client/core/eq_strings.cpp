@@ -402,6 +402,9 @@ std::string eqt::StringDb::GetStringMessage(uint32_t string_id) {
 		case 433: return "You are missing %1.";
 		case 275: return "You feel yourself starting to appear.";
 		case 12442: return "You are already casting a spell!";
+		// T355: the endurance counterpart of 199, emitted by the local
+		// endurance refusal (SpellManager::checkEndurance).
+		case 5805: return "Insufficient Endurance to activate this ability!";
 		case 303: return "You have slain %1!";
 		case 334: return "You gained experience!";
 		case 335: return "You gained raid experience!";

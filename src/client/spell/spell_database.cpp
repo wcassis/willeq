@@ -71,6 +71,9 @@ SpellData* SpellDatabase::queryAndCache(uint32_t spell_id) const {
     spell.duration_formula = info.durationFormula;
     spell.duration_cap = info.durationCap;
     spell.mana_cost = info.manaCost;
+    // T355: previously left at its 0 default at every call site, so every
+    // discipline looked free to the local endurance check that did not exist.
+    spell.endurance_cost = info.enduranceCost;
     spell.target_type = static_cast<SpellTargetType>(info.targetType);
     spell.range = info.range;
     spell.aoe_range = info.aoeRange;

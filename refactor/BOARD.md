@@ -1312,7 +1312,7 @@ it without taking that measurement first.
   that means "landed". Closes when it is wired to a real consumer (with the gate
   corrected) or deleted. Prov: T348 Review.
 
-- **B062** (B) `include/client/spell/spell_data.h:74` `SpellData::endurance_cost`
+- ~~**B062** (B) `include/client/spell/spell_data.h:74` `SpellData::endurance_cost`
   — the sibling shape T353 found one struct over and left alone as out of B007's
   territory. Declared `int32_t`, defaulted 0, and assigned at **zero** sites:
   `src/client/spell/spell_database.cpp` loads `mana_cost` (line 73) and nothing
@@ -1321,7 +1321,23 @@ it without taking that measurement first.
   this one IS enforced server-side — `/mnt/projects/akk-stack/code/zone/effects.cpp:900`
   refuses a spell for insufficient endurance — so the question is real: does the
   Titanium `SPDat` export fable reads carry the column? Closes when: the column
-  is found and loaded, or the field is deleted. Do not invent values. Prov: T353.
+  is found and loaded, or the field is deleted. Do not invent values. Prov: T353.~~
+  **CLOSED by T355** (`refactor/T355_spell_endurance_cost.md`): the export DOES
+  carry it — **spells_us.txt field 166**, established from eqemu's own positional
+  importer (`/mnt/projects/akk-stack/code/client_files/import/main.cpp`
+  `ImportSpells()` writes `split[i]` into `spells_new` column `i`, and `EndurCost`
+  is column 166 of that table per
+  `/mnt/projects/akk-stack/code/common/repositories/base/base_spells_new_repository.h`, which reads it back as
+  `row[166]`; the control is `mana` at 19, the index fable's builder already used).
+  Cross-checked against a live peq `spells_new` on 4520/4608/4614 (900/85/125) —
+  exact match to field 166 of the text file. Now loaded through the whole existing
+  pipeline (`willeq_db_builder` -> `spells.endurance_cost` -> `SpellInfo` ->
+  `SpellData`; `kWilleqDbExpectedVersion` 5 -> 6, `data/willeq.db` rebuilt,
+  263 of 8066 spells non-zero), and refused LOCALLY beside mana:
+  `SpellManager::checkEndurance()` + `CastResult::NotEnoughEndurance` + eqstr
+  **5805** "Insufficient Endurance to activate this ability!" in the shared
+  `castRefusalStringId()` table (so all three refusal sites emit it). Server stays
+  the backstop. 7 new tests, both RED shapes pasted in the Review.
 
   it in place. Prov: T346 Review.~~ **CLOSED by T349**
   (`refactor/T349_op_save_body.md`): `EQT::Save_Struct`

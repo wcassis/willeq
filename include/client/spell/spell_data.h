@@ -71,7 +71,10 @@ struct SpellData {
     // ========================================================================
 
     int32_t mana_cost = 0;        // Mana required (can be negative for mana gain)
-    int32_t endurance_cost = 0;   // Endurance required (post-Velious mostly)
+    // T355: spells_us.txt field 166 (= eqemu spells_new.EndurCost), loaded via
+    // willeq.db like mana_cost. 0 for all but the 263 discipline rows. Refused
+    // locally by SpellManager::checkEndurance(); the server enforces it too.
+    int32_t endurance_cost = 0;   // Endurance required (disciplines)
 
     // ========================================================================
     // Targeting
