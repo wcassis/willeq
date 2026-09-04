@@ -25,6 +25,9 @@
 
 #include <gtest/gtest.h>
 
+#include <cctype>
+#include <string>
+
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/bridge/game_state_bridge.h"
 #include "client/state/event_bus.h"
@@ -90,8 +93,36 @@ struct CameraModeCase {
     std::string expectedString;
 };
 
+// The name generator below fixes the ctest TEST NAME; this fixes the value
+// gtest prints beside it. Without it gtest falls back to hex-dumping the
+// struct's raw bytes -- padding, std::string internals and all -- so even
+// the listing's trailing "# GetParam() = ..." comment differed between two
+// runs of the same binary.
+inline void PrintTo(const CameraModeCase& c, std::ostream* os) {
+    *os << "{set=\"" << c.setArg << "\", expects=\"" << c.expectedString
+        << "\"}";
+}
+
 class CameraCommandRoundTripTest : public CameraCommandTest,
                                     public ::testing::WithParamInterface<CameraModeCase> {};
+
+// T356 (B010): stable, self-describing case names. Without a name generator
+// gtest names a struct-valued parameterised case by hex-dumping the value's
+// bytes, so `ctest -N` listed eight cases whose names embedded a pointer and
+// changed run to run -- unusable in a -R filter, in a golden, or in a CI
+// report diff. The name is derived from the case's OWN setArg, sanitised to
+// the identifier charset gtest requires ([A-Za-z0-9_]); the eight arguments
+// are unique within their instantiation, so the names are too.
+struct CameraModeCaseName {
+    std::string operator()(
+        const ::testing::TestParamInfo<CameraModeCase>& info) const {
+        std::string name;
+        for (char c : info.param.setArg) {
+            name += (std::isalnum(static_cast<unsigned char>(c)) ? c : '_');
+        }
+        return name.empty() ? std::string("empty") : name;
+    }
+};
 
 TEST_P(CameraCommandRoundTripTest, SetThenReadRoundTrips) {
     const auto& tc = GetParam();
@@ -120,7 +151,8 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::Values(
         CameraModeCase{"Free", IrrlichtRenderer::CameraMode::Free, "Free"},
         CameraModeCase{"Follow", IrrlichtRenderer::CameraMode::Follow, "Follow"},
-        CameraModeCase{"First Person", IrrlichtRenderer::CameraMode::FirstPerson, "First Person"}));
+        CameraModeCase{"First Person", IrrlichtRenderer::CameraMode::FirstPerson, "First Person"}),
+    CameraModeCaseName());
 
 // Compact/case-insensitive spellings a script might prefer over quoting a
 // two-word argument -- still round-trips against the canonical getter string.
@@ -131,7 +163,8 @@ INSTANTIATE_TEST_SUITE_P(
         CameraModeCase{"FOLLOW", IrrlichtRenderer::CameraMode::Follow, "Follow"},
         CameraModeCase{"firstperson", IrrlichtRenderer::CameraMode::FirstPerson, "First Person"},
         CameraModeCase{"fp", IrrlichtRenderer::CameraMode::FirstPerson, "First Person"},
-        CameraModeCase{"first-person", IrrlichtRenderer::CameraMode::FirstPerson, "First Person"}));
+        CameraModeCase{"first-person", IrrlichtRenderer::CameraMode::FirstPerson, "First Person"}),
+    CameraModeCaseName());
 
 // --- Cycling (additionally exposed since it was free, per the plan) ---
 
