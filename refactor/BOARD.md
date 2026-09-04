@@ -999,8 +999,8 @@ it without taking that measurement first.
   the player entity is created in each of them
   (`T105 ENTITY spawn=287 race=1 ... isNPC=false isPlayer=true`). Its only call
   site tree-wide is `IrrlichtRenderer::createEntity()`
-  (`graphics/renderer/renderer_entities.cpp:29`), while the live zone-load path
-  builds entities through `graphics/zone_load/renderer_zone_load_entities.cpp`.
+  (`src/client/src/client/graphics/renderer/renderer_entities.cpp:29`), while the live zone-load path
+  builds entities through `src/client/src/client/graphics/zone_load/renderer_zone_load_entities.cpp`.
   If that holds, `baseVision_` is never set from the player's race in a real
   session, so the racial vision floor (Dark Elf Ultravision, Dwarf/Troll/Ogre
   Infravision) is dead too — the same implemented-but-unreached shape as B002 and
