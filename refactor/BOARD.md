@@ -614,3 +614,9 @@ it without taking that measurement first.
   Closes when: a ruling on the promotion threshold (clusters 1+2), the three
   type hoists of cluster 3, and a re-measure. Clusters 4-6 are reasoned keeps
   and may simply stay. Prov: L12 Review.
+
+## Added 2026-09-04 by the G04 Review
+
+- **B051** (B) `src/client/application.cpp` `Application::initConstrainedRendererConfig`
+  — `customMemorySpec` is write-only (set in one preset arm, never read).
+  Closes when: read where the preset is applied, or deleted. Prov: G04 Review.

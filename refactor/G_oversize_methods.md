@@ -84,3 +84,17 @@ lifetime change; a pinned test's assertion would change.
    and show why the new one does not.
 17. A variant-backed coverage net needs no golden file — `variant_size` is
    the golden.
+
+## G04 corrections (2026-09-04)
+
+18. The plan's step list must come from the FILE's banners, not from a
+   mental model of init — logging/DB/audio/RDP had no banner and stayed
+   inside their enclosing steps.
+19. Enumerate every local by declaration line vs last-use line before
+   assuming a cross-step struct is needed (G04: none of 13 crossed).
+20. A composed-order test parses step calls RECURSIVELY into a statement
+   sequence; plant the "statement moved across a cut" fault too.
+21. **Post-143 sweep (completes 8):** archives can be intact while
+   `build/bin` holds ZERO-BYTE test binaries that ctest runs as instant
+   failures — `find build/bin build/lib -size 0 -type f -delete`, then
+   `ar t` counts, then validate.
