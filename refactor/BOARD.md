@@ -414,7 +414,7 @@ it without taking that measurement first.
   reached zero and dropped both it and its `friend` line. Closes when: each
   cluster is re-homed or the handle is declared permanent. Prov: K13 Review.
 
-- **B039** (P) **the `friend class` test is two-axis, not one.** K13 removed the
+- ~~**B039** (P)~~ **CLOSED 2026-09-04: the two-axis rule is stated at `refactor/K_component_extraction.md` §K13 corrections (ii) and applied by every L unit since.** (P) **the `friend class` test is two-axis, not one.** K13 removed the
   `friend` lines for merchant and commands on a zero-`owner_.m_` measurement and
   the build failed: a component also names `EverQuest`'s PRIVATE STATICS by
   qualification (`EverQuest::FormatPrice`, `EverQuest::DumpPacket`,
