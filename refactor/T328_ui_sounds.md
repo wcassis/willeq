@@ -268,3 +268,181 @@ the inventory/bridge/merchant call sites the events live in (call-site
 additions only), `tests/test_ui_sounds.cpp` + new tests + cmake,
 `refactor/BOARD.md`, `review/T329/`. Nothing under `src/client/graphics`
 (L05 owns it).
+
+---
+
+# Review — Leg B (slot2, `task/T328-legB-ui-sounds`, 2026-09-04)
+
+Base `0c2c2f6f`. Wired only the rows Leg A measured; the rows measured SILENT
+stay silent and are now pinned as silent; the five unmeasured rows were not
+guessed.
+
+## The seam
+
+`eqt::events::PlaySoundIntent{soundId}` (new, `renderer_intents.h`), consumed by
+exactly one arm in `bridge_component_intents.cpp` which calls
+`BridgeComponent::PlaySound()` -- the same function `movement_state.cpp` reaches
+for `WaterIn`, so the loading-phase gate is identical. The intent exists because
+`InventoryManager` holds only a `GameStateBridge` and has no route to
+`BridgeComponent`; giving it a second back-channel would have been worse. The
+side effect is that every wired sound is assertable with a `RecordingBridge`
+and no audio device, which is what the tests use.
+
+## Wired events
+
+| event | call site | id | test |
+|---|---|---|---|
+| container OPEN (bag / tradeskill) | `EntitiesComponent::ZoneProcessClickObjectAction`, `open == 1` arm (`src/client/entities/entities_component_world.cpp`) | `ITEM_CLOTH` 145 | `UISoundEvents.ContainerOpen_AsksForItemCloth` |
+| container CLOSE | same function, `open == 0` arm | `ITEM_CLOTH` 145 | `UISoundEvents.ContainerClose_AsksForTheSameItemCloth` |
+| item dropped into a slot | `InventoryManager::placeItem()`, one push before the single `return true` (covers both the empty-slot and the swap branch) | `WEAR_CLOTH` 146 | `UISoundEvents.ItemDroppedIntoEmptySlot_AsksForWearCloth`, `...OntoAnOccupiedSlot_AsksForWearClothOnce` |
+| stack merged into a matching stack | `InventoryManager::placeOnMatchingStack()`, the merge branch only (its three early returns delegate to `placeItem`, which plays it itself) | `WEAR_CLOTH` 146 | `UISoundEvents.StackDepositedOntoAMatchingStack_AsksForWearCloth` |
+| coin moved onto the cursor | `InventoryManager::pickupMoney()` | `BUY_ITEM` 138 | `UISoundEvents.CoinOntoCursor_AsksForBuyItem` |
+
+**LOCAL drop, not the server echo** (the plan asked which and why): the sound is
+played where the client changes its own cursor state. Two reasons. It matches
+the oracle's timing -- the official client owns its cursor and makes the sound
+on the click, not a round trip later. And there is nothing to hang it off on the
+server side: eqemu answers a successful `SwapItem` with silence, so
+`processMoveItemResponse()` never fires for the ordinary case.
+
+**Container open/close is played on the SERVER's confirmation**, which is the
+opposite choice, and deliberately: fable has no client-side bag window at all
+(nothing under `src/client/graphics/ui` mentions bags or containers), so
+`OP_ClickObjectAction` is the *only* point at which fable learns a container
+opened or closed. There is no earlier local event to prefer.
+
+### Not wired, because Leg A measured them SILENT
+
+Item pickup onto the cursor, coin returned from the cursor, inventory
+open/close, and every plain UI button click. Four of these are now pinned as
+silent by tests (`ItemPickedUpOntoCursorIsSilent`, `PartialStackPickupIsSilent`,
+`CoinReturnedFromCursorIsSilent`, `RefusedPlacementMakesNoSound`) so a later
+change cannot quietly add a sound the oracle does not make.
+`ButtonClickIsCataloguedButNeverWired` pins `BUTTON_CLICK` as catalogued-only.
+
+### Reachability note
+
+`InventoryManager::pickupMoney()` has **no production caller** -- fable has no
+money-slot UI. The sound is wired at the correct publisher so it fires the
+moment that UI exists, and the gap is boarded on B036 rather than papered over.
+The other four events are reachable today.
+
+## Header corrections
+
+The two headers disagreed with each other and with the oracle. There is now ONE
+id table, `EQT::Audio::SoundBank` in `sound_assets.h`, covering ids 98..149
+verbatim; `UISoundId` and `SoundId` are aliases into it.
+
+The table was transcribed from the official client's preload burst
+(`review/T328/opens_run1_stock_client.log`) and then **checked against the
+shipped `/mnt/projects/EverQuestP1999/SoundAssets.txt`, which reproduces all 52
+rows character for character** -- two sources derived independently, in complete
+agreement. `tests/test_ui_sounds.cpp` now asserts the whole table against that
+file (`UISoundsIntegrationTest.SoundBankMatchesSoundAssetsTxt`), so it cannot
+drift.
+
+**Values changed** (all in `sound_assets.h`'s `SoundId`; `ui_sounds.h`'s
+`UISoundId` was already correct everywhere the oracle covers it):
+
+| constant | old | new | the file the id really names |
+|---|---|---|---|
+| `SoundId::BUY_ITEM` | 145 | **138** | 145 is `itemclth.WAV`; `BuyItem.WAV` is 138 |
+| `SoundId::TELEPORT` | 141 | **137** | 141 is `EndQuest.WAV`; `Teleport.WAV` is 137 |
+
+**Constants deleted** (all three invented, all with zero production callers):
+`SoundId::OPEN_WINDOW` (143 = `thunder1.wav`), `SoundId::CLOSE_WINDOW`
+(144 = `thunder2.wav`), `SoundId::SELL_ITEM` (146 = `wearclth.WAV`). No "window"
+sound exists in the bank; deleting `SELL_ITEM` also removes a collision with the
+real `UISoundId::WEAR_CLOTH` this leg wires at 146.
+`tests/test_sound_effects.cpp`'s `UiSoundsHaveValidIds` was updated to match --
+the only test assertion changed for a reason other than a wired event.
+
+**Constants added**: `UISoundId::ITEM_CLOTH` = 145, `UISoundId::WEAR_CLOTH` =
+146, plus `UISoundType::ItemCloth` / `WearCloth` with their `getSoundFile` /
+`getSoundId` / `getTypeName` arms so they are first-class in the catalogue.
+
+**Values NOT changed, but now annotated as wrong-named** -- Leg A measured UI
+events only, so guessing here would be exactly what this unit exists to avoid.
+Each carries the file its id actually names, and B036 records them:
+`MELEE_HIT` (119 = `SwingBig.WAV`), `MELEE_MISS` (120 = `SwordBlk.WAV`),
+`KICK` (121 = `Impale.WAV`), `PUNCH` (122 = `Stab.WAV`),
+`SPELL_FIZZLE` (109 = `SpelGdHt.WAV`, not `SpelFail`), and
+**`DEATH` (140 = `LevDn.WAV`, not a death cry)** -- that last one has a live
+production caller (`src/client/player/player_state.cpp:184`) and
+`PlayerSounds::getSoundId(Death, race, gender)` is the race-specific sound it
+probably wants. `WATER_IN`/`WATER_OUT` (3/4) are also outside the burst and are
+not the water sounds the wired path uses (`WaterSoundIds::WaterIn` = 100).
+
+`BUTTON_CLICK` (142) keeps its value and is marked "preloaded, never played by
+the official client -- do not wire".
+
+## Verification
+
+- `cmake --build build -j24` -- **exit 0** (read from a per-run exit file, not
+  from the log; no timeout, so no exit-143 truncation risk). One fix cycle:
+  the first full run failed one pre-existing test, below.
+- `ctest --test-dir build -j6 --output-on-failure` -- **3660 / 3661 passed**;
+  the single failure is `AudioManagerTest.PreloadCommonSounds`, the known ALSA
+  host exception. The 13 new `UISoundEvents` tests and the 4 new
+  `UISoundsTest`/`UISoundsIntegrationTest` tests all pass.
+- `check_file_sizes.sh --all` -- **843 checked, 843 ok, 0 warn, 0 FAIL.**
+- gles2 / visual gate / ARM **skipped, per the contract**: no file under
+  `src/client/graphics` or `include/client/graphics` was touched. Evidence,
+  `git diff --name-only` (11 modified + 1 new file):
+  `include/client/audio/{sound_assets,ui_sounds}.h`,
+  `include/client/events/renderer_intents.h`, `src/client/audio/ui_sounds.cpp`,
+  `src/client/bridge/bridge_component_intents.cpp`,
+  `src/client/entities/entities_component_world.cpp`,
+  `src/client/inventory/inventory_cursor.cpp`, `tests/cmake/audio.cmake`,
+  `tests/test_{eq_commands_equip,sound_effects,ui_sounds}.cpp`,
+  `tests/test_ui_sound_events.cpp` (new), plus `refactor/BOARD.md` and this file.
+
+### The one pre-existing test that had to change
+
+`EqCommandsEquipTest.CursorToSecondary_PushesMoveItemIntent` asserted exactly 2
+intents and now sees 3. That arm is the only `/equip` path that goes through
+`InventoryManager::placeItem()`, and a cursor-source `/equip` IS an item dropped
+into a slot -- the measured `wearclth` event. The count was updated to 3 with
+that reasoning in the test; the slot-to-slot `/equip` arms do not reach
+`placeItem()` and their counts are unchanged.
+
+## T329's owed live leg -- DONE, and it found something
+
+Captured with the lock this leg held. Full write-up and both screenshots:
+**`/mnt/projects/fable/review/T329/`**.
+
+**T329's wire works; the draw does not.** Ctrl+N reaches
+`ToggleNavmeshOverlay`, the navmesh pointer is non-null (that was B041's bug),
+and the client builds **112 overlay triangles** -- all in the client's own log.
+But no navmesh lines appear on screen, and turning the overlay on **makes the
+entire 2D UI disappear** (health/mana bars, FPS, chat panel, hotbar), reproduced
+in two grabs from the same session against an identical overlay-OFF baseline.
+B041's closure condition was "Ctrl+N *draws*", so it is not met. Boarded as B048
+and NOT fixed here: the suspect is `draw3DLine` in
+`OverlaysComponent::drawNavmeshOverlay()`, which is under `src/client/graphics`
+-- L05's territory this wave.
+
+## Deviations
+
+- **The plan named `InventoryManager` bag open/close as the container event.
+  There is no such thing in fable** -- no bag window exists anywhere in the UI
+  layer. The container open/close event that does exist is the server's
+  `OP_ClickObjectAction`, which covers Leg A's tradeskill-container rows
+  directly and is the only place a bag window would hook in later. Wired there.
+- **The plan named `RequestBankCoinMove` for the coin event.** That is a
+  bank-window deposit/withdraw, not "coin onto the cursor".
+  `InventoryManager::pickupMoney()` is the actual publisher of the measured
+  gesture and is where the sound went; see the reachability note above.
+- **Header reconciliation went slightly wider than "the two headers disagree"**:
+  three invented `SoundId` constants were deleted and six more annotated, because
+  one of them (`SELL_ITEM` = 146) collided with the `WEAR_CLOTH` this leg wires.
+  No value was changed except the two the oracle settles.
+- **T329's live leg needed two client sessions, not one.** Measured: xdotool's
+  `--window` XSendEvent form delivers nothing to this client, and after the chat
+  sequence no further keystroke reaches it at all. Both are written up in
+  `review/T329/README.md` with the probe that measured them, so the next unit
+  does not spend five sessions rediscovering it.
+- `Testchar` was found at `z=11.8806` rather than the 3.751 it was left at, and
+  restored to 3.751. The drift is exactly `13 x 0.625` -- the T311 login z
+  compounding, one step per session. Recorded in `review/T329/README.md`; not
+  investigated, not claimed as a regression.

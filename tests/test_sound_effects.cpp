@@ -33,9 +33,11 @@ TEST(SoundIdConstantsTest, SpellSoundsHaveValidIds) {
 }
 
 TEST(SoundIdConstantsTest, UiSoundsHaveValidIds) {
+    // T328 deleted SoundId::OPEN_WINDOW (143) / CLOSE_WINDOW (144): those ids
+    // are thunder1.wav / thunder2.wav in the client's own SoundAssets.txt, no
+    // "window" sound exists in the bank, and neither constant had a caller.
     EXPECT_GT(SoundId::BUTTON_CLICK, 0u);
-    EXPECT_GT(SoundId::OPEN_WINDOW, 0u);
-    EXPECT_GT(SoundId::CLOSE_WINDOW, 0u);
+    EXPECT_EQ(SoundId::BUTTON_CLICK, SoundBank::BUTTON_1);
 }
 
 TEST(SoundIdConstantsTest, EnvironmentSoundsHaveValidIds) {

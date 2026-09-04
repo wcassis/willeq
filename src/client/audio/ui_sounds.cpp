@@ -31,6 +31,12 @@ std::string UISounds::getSoundFile(UISoundType type) {
         case UISoundType::ChestClose:
             return "Chest_Cl.WAV";
 
+        // T328-measured container/item sounds
+        case UISoundType::ItemCloth:
+            return "itemclth.WAV";
+        case UISoundType::WearCloth:
+            return "wearclth.WAV";
+
         // Wood door sounds
         case UISoundType::DoorWoodOpen:
             return "DoorWd_O.WAV";
@@ -103,6 +109,12 @@ std::optional<uint32_t> UISounds::getSoundId(UISoundType type) {
         case UISoundType::ChestClose:
             return UISoundId::CHEST_CLOSE;
 
+        // T328-measured container/item sounds
+        case UISoundType::ItemCloth:
+            return UISoundId::ITEM_CLOTH;
+        case UISoundType::WearCloth:
+            return UISoundId::WEAR_CLOTH;
+
         // Wood door sounds
         case UISoundType::DoorWoodOpen:
             return UISoundId::DOOR_WOOD_OPEN;
@@ -168,6 +180,10 @@ std::string UISounds::getTypeName(UISoundType type) {
             return "ChestOpen";
         case UISoundType::ChestClose:
             return "ChestClose";
+        case UISoundType::ItemCloth:
+            return "ItemCloth";
+        case UISoundType::WearCloth:
+            return "WearCloth";
         case UISoundType::DoorWoodOpen:
             return "DoorWoodOpen";
         case UISoundType::DoorWoodClose:

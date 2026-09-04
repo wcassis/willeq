@@ -256,7 +256,14 @@ TEST_F(EqCommandsEquipTest, CursorToSecondary_PushesMoveItemIntent) {
     // toSlot 14 (Secondary) is an equipment slot; this path goes through
     // InventoryManager::placeItem(), which already pairs MoveItemIntent with
     // EquipmentChangedIntent for drag/drop -- same pairing here now.
-    ASSERT_EQ(intents.size(), 2u);
+    //
+    // T328 Leg B: placeItem() now also pushes PlaySoundIntent{WEAR_CLOTH} --
+    // the official Titanium client plays wearclth.WAV whenever an item is
+    // dropped into a slot (review/T328/README.md row 6), and a cursor-source
+    // /equip IS that drop. Hence 3 intents, not 2. This is the ONLY /equip
+    // arm that reaches placeItem(); the slot-to-slot arms below still push
+    // MoveItemIntent alone and their counts are unchanged.
+    ASSERT_EQ(intents.size(), 3u);
     const auto* mi = FindMoveItemIntent(intents);
     ASSERT_NE(mi, nullptr);
     EXPECT_EQ(mi->fromSlot, CURSOR_SLOT);

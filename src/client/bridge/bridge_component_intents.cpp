@@ -657,6 +657,16 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 			else if constexpr (std::is_same_v<T, eqt::events::EquipmentChangedIntent>) {
 				ctx_.Entities().UpdatePlayerAppearanceFromInventory();
 			}
+			// Audio (T328 Leg B) -- the ONE consumer of PlaySoundIntent.
+			// Forwards to the same BridgeComponent::PlaySound() the water
+			// path uses, so the loading-phase gate applies identically. In a
+			// build without audio the intent is produced and dropped here,
+			// which keeps the producers unconditional and testable.
+			else if constexpr (std::is_same_v<T, eqt::events::PlaySoundIntent>) {
+#ifdef WITH_AUDIO
+				PlaySound(i.soundId);
+#endif
+			}
 			else if constexpr (std::is_same_v<T, eqt::events::MemorizeSpellIntent>) {
 				// T272: this arm had its ARGUMENTS SWAPPED --
 				// memorizeSpell(uint32_t spell_id, uint8_t gem_slot) was

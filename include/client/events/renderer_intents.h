@@ -239,6 +239,26 @@ struct EquipmentChangedIntent {
     int16_t slotId;
 };
 
+// --- Audio ---
+
+// T328 Leg B: "play this sound id now".
+//
+// The one existing audio path, BridgeComponent::PlaySound(), lives on the
+// bridge component -- reachable from a family component as
+// ctx_.Bridge().PlaySound() (movement_state.cpp does exactly that for
+// WaterIn) but NOT from InventoryManager, which holds only a GameStateBridge.
+// Rather than give InventoryManager a second back-channel, both producers push
+// this intent and ProcessBridgeIntents() forwards it to the same
+// BridgeComponent::PlaySound(). That also makes every wired UI sound
+// assertable in a unit test with no audio device: a RecordingBridge drains the
+// intent queue and the sound id is right there.
+//
+// Sound ids come from EQT::Audio::SoundBank / UISoundId (sound_assets.h),
+// which T328 Leg A measured against the official client.
+struct PlaySoundIntent {
+    uint32_t soundId;
+};
+
 // ============================================================================
 // Variant type for all renderer intents
 // ============================================================================
@@ -293,7 +313,9 @@ using RendererIntent = std::variant<
     // Inventory
     MoveItemIntent,
     DeleteItemIntent,
-    EquipmentChangedIntent
+    EquipmentChangedIntent,
+    // Audio (T328)
+    PlaySoundIntent
 >;
 
 } // namespace events

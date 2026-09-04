@@ -3,6 +3,9 @@
 #include "client/events/renderer_intents.h"
 #include "common/net/packet.h"
 #include "common/packet_structs.h"  // T282: EQT::ITEM_PACKET_WORLD_CONTAINER
+#ifdef WITH_AUDIO
+#include "client/audio/ui_sounds.h"   // T328: the measured UI sound ids
+#endif
 #include <iostream>
 #include "common/logging.h"
 #include <sstream>
@@ -176,6 +179,24 @@ bool InventoryManager::placeItem(int16_t targetSlot) {
         }
     }
 
+    // T328 Leg B: the official Titanium client plays wearclth.WAV (146) when
+    // an item is DROPPED into an inventory or bag slot
+    // (review/T328/README.md row 6). Picking an item UP onto the cursor is
+    // measured SILENT (row 7), so pickupItem() gets nothing.
+    //
+    // Played on the LOCAL drop rather than on the server's MoveItem echo, for
+    // two reasons: it matches the oracle's timing (the official client is
+    // authoritative over its own cursor and makes the sound on the click,
+    // not a round trip later), and the server sends no per-move reply to
+    // hang it off -- processMoveItemResponse() exists but eqemu answers a
+    // successful SwapItem with silence.
+#ifdef WITH_AUDIO
+    if (bridge_) {
+        bridge_->pushIntent(eqt::events::PlaySoundIntent{
+            EQT::Audio::UISoundId::WEAR_CLOTH});
+    }
+#endif
+
     return true;
 }
 
@@ -285,6 +306,18 @@ bool InventoryManager::placeOnMatchingStack(int16_t targetSlot) {
         }
     }
 
+    // T328 Leg B: same event, same sound -- Leg A measured a stack deposited
+    // into a bag as wearclth.WAV (review/T328/README.md row 6, capture
+    // E24_deposit_stack_in_bag.wav). The three early returns above delegate
+    // to placeItem(), which plays it itself; only this merge-into-a-stack
+    // branch needs its own.
+#ifdef WITH_AUDIO
+    if (bridge_) {
+        bridge_->pushIntent(eqt::events::PlaySoundIntent{
+            EQT::Audio::UISoundId::WEAR_CLOTH});
+    }
+#endif
+
     return true;
 }
 
@@ -329,6 +362,25 @@ void InventoryManager::pickupMoney(CursorMoneyType type, uint32_t amount) {
     cursorMoneyAmount_ = amount;
     LOG_DEBUG(MOD_UI, "InventoryManager picked up {} of money type {}",
               amount, static_cast<int>(type));
+
+    // T328 Leg B: BuyItem.WAV (138) is the generic COIN-MOVE sound, not a
+    // purchase sound -- Leg A measured it firing when 1pp moved from a money
+    // slot to the cursor with no merchant in the zone, while the same
+    // Quantity dialog for an ITEM stack was silent (review/T328/README.md
+    // row 8 and finding 3). The reverse gesture, coin returned from the
+    // cursor to a money slot, is measured SILENT (row 9), so
+    // returnCursorMoney() gets nothing.
+    //
+    // REACHABILITY: pickupMoney() has no production caller today -- fable has
+    // no money-slot UI (nothing under src/client/graphics/ui mentions money).
+    // The sound is wired at the correct publisher so it fires the moment that
+    // UI exists; boarded on B036.
+#ifdef WITH_AUDIO
+    if (bridge_) {
+        bridge_->pushIntent(eqt::events::PlaySoundIntent{
+            EQT::Audio::UISoundId::BUY_ITEM});
+    }
+#endif
 }
 
 void InventoryManager::clearCursorMoney() {
