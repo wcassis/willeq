@@ -1,6 +1,11 @@
-// IrrlichtRenderer diagnostics: scene dump, frame-timing profiling, memory report.
+// EQT::Graphics::DiagnosticsComponent: scene dump, frame-timing profiling,
+// memory report.
 // Split out of irrlicht_renderer.cpp (F14) — verbatim move, no behavior change.
+// Moved again, verbatim, from src/client/graphics/renderer_diagnostics.cpp by
+// L04 (refactor/L04_diagnostics_component.md). measureSection() went to
+// renderer_frame.cpp instead — it is frame-phase state, not diagnostics.
 
+#include "client/graphics/diagnostics/diagnostics_component.h"
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/frame_budget_governor.h"
 #include "client/graphics/weather_effects_controller.h"
@@ -22,9 +27,9 @@ extern size_t gles2GetGpuTextureMemoryUsage(void* driver);
 namespace EQT {
 namespace Graphics {
 
-void IrrlichtRenderer::dumpScene() const {
+void DiagnosticsComponent::dumpScene() const {
     LOG_INFO(MOD_GRAPHICS, "=== SCENE DUMP (dumpscene) ===");
-    LOG_INFO(MOD_GRAPHICS, "  currentPvsRegion_={}, usePvsCulling_={}", currentPvsRegion_, usePvsCulling_);
+    LOG_INFO(MOD_GRAPHICS, "  currentPvsRegion_={}, usePvsCulling_={}", ctx_.currentPvsRegion, ctx_.usePvsCulling);
 
     // Count Irrlicht scene graph nodes recursively
     std::function<int(irr::scene::ISceneNode*)> countNodes = [&](irr::scene::ISceneNode* node) -> int {
@@ -33,12 +38,12 @@ void IrrlichtRenderer::dumpScene() const {
         for (auto* child : node->getChildren()) count += countNodes(child);
         return count;
     };
-    int totalSceneNodes = smgr_ ? countNodes(smgr_->getRootSceneNode()) - 1 : 0;  // -1 for root itself
+    int totalSceneNodes = ctx_.smgr ? countNodes(ctx_.smgr->getRootSceneNode()) - 1 : 0;  // -1 for root itself
     LOG_INFO(MOD_GRAPHICS, "  Total Irrlicht scene graph nodes: {}", totalSceneNodes);
 
     // --- Entities ---
-    if (entityRenderer_) {
-        const auto& entities = entityRenderer_->getEntities();
+    if (ctx_.entityRenderer) {
+        const auto& entities = ctx_.entityRenderer->getEntities();
         size_t inGraph = 0, outGraph = 0;
         for (const auto& [id, ent] : entities) {
             if (ent.inSceneGraph) inGraph++; else outGraph++;
@@ -57,11 +62,11 @@ void IrrlichtRenderer::dumpScene() const {
     }
 
     // --- Doors ---
-    if (doorManager_) {
-        size_t inGraph = 0, outGraph = 0, total = doorManager_->getDoorCount();
+    if (ctx_.doorManager) {
+        size_t inGraph = 0, outGraph = 0, total = ctx_.doorManager->getDoorCount();
         // Iterate door IDs 0-255
         for (uint16_t i = 0; i < 256; ++i) {
-            const auto* door = doorManager_->getDoor(static_cast<uint8_t>(i));
+            const auto* door = ctx_.doorManager->getDoor(static_cast<uint8_t>(i));
             if (!door) continue;
             if (door->inSceneGraph) inGraph++; else outGraph++;
             LOG_INFO(MOD_GRAPHICS, "    [DOOR] id={} '{}' pos=({:.1f},{:.1f},{:.1f}) bspRegion={} inGraph={} meshBuilt={}",
@@ -75,28 +80,28 @@ void IrrlichtRenderer::dumpScene() const {
     // --- Objects ---
     {
         size_t inGraph = 0, outGraph = 0;
-        for (size_t i = 0; i < objectNodes_.size(); ++i) {
-            if (!objectNodes_[i]) continue;
-            bool ig = (i < objectInSceneGraph_.size()) ? objectInSceneGraph_[i] : true;
+        for (size_t i = 0; i < ctx_.objectNodes.size(); ++i) {
+            if (!ctx_.objectNodes[i]) continue;
+            bool ig = (i < ctx_.objectInSceneGraph.size()) ? ctx_.objectInSceneGraph[i] : true;
             if (ig) inGraph++; else outGraph++;
         }
         LOG_INFO(MOD_GRAPHICS, "  OBJECTS: {} total, {} in-graph, {} out-of-graph",
-                 objectNodes_.size(), inGraph, outGraph);
+                 ctx_.objectNodes.size(), inGraph, outGraph);
     }
 
     // --- Zone Lights ---
     LOG_INFO(MOD_GRAPHICS, "  ZONE LIGHTS: {} total (no scene nodes, data-only)",
-             zoneLightData_.size());
+             owner_.zoneLightData_.size());
 
     // --- Zone Meshes ---
     {
         size_t zmInGraph = 0, zmOutGraph = 0;
-        for (const auto& [regionIdx, node] : regionMeshNodes_) {
+        for (const auto& [regionIdx, node] : ctx_.regionMeshNodes) {
             if (!node) continue;
             if (node->getParent()) zmInGraph++; else zmOutGraph++;
         }
         LOG_INFO(MOD_GRAPHICS, "  ZONE MESHES: {} total, {} in-graph, {} out-of-graph | manualDraw={}",
-                 regionMeshNodes_.size(), zmInGraph, zmOutGraph, manualZoneDrawEnabled_);
+                 ctx_.regionMeshNodes.size(), zmInGraph, zmOutGraph, ctx_.manualZoneDrawEnabled);
     }
 
     // --- Animated Trees ---
@@ -111,29 +116,29 @@ void IrrlichtRenderer::dumpScene() const {
     // --- Object Lights ---
     {
         int olInGraph = 0;
-        for (const auto& ol : objectLights_) {
+        for (const auto& ol : ctx_.objectLights) {
             if (ol.node && ol.node->getParent()) olInGraph++;
         }
-        LOG_INFO(MOD_GRAPHICS, "  OBJECT LIGHTS: {} total, {} in-graph", objectLights_.size(), olInGraph);
+        LOG_INFO(MOD_GRAPHICS, "  OBJECT LIGHTS: {} total, {} in-graph", ctx_.objectLights.size(), olInGraph);
     }
 
     // --- Sky Renderer ---
     int skyNodeCount = 0;
-    if (skyRenderer_) {
-        skyNodeCount = skyRenderer_->getSceneNodeCount();
+    if (ctx_.skyRenderer) {
+        skyNodeCount = ctx_.skyRenderer->getSceneNodeCount();
         LOG_INFO(MOD_GRAPHICS, "  SKY NODES: {}", skyNodeCount);
     }
 
     // --- Zone Collision Node ---
-    bool collisionInGraph = zoneCollisionNode_ && zoneCollisionNode_->getParent();
-    if (zoneCollisionNode_) {
+    bool collisionInGraph = owner_.zoneCollisionNode_ && owner_.zoneCollisionNode_->getParent();
+    if (owner_.zoneCollisionNode_) {
         LOG_INFO(MOD_GRAPHICS, "  ZONE COLLISION NODE: in-graph={}", collisionInGraph);
     }
 
     // --- Weather Nodes ---
     int weatherNodeCount = 0;
-    if (weatherEffects_) {
-        weatherNodeCount = weatherEffects_->getSceneNodeCount();
+    if (ctx_.weatherEffects) {
+        weatherNodeCount = ctx_.weatherEffects->getSceneNodeCount();
         if (weatherNodeCount > 0) {
             LOG_INFO(MOD_GRAPHICS, "  WEATHER NODES: {}", weatherNodeCount);
         }
@@ -141,8 +146,8 @@ void IrrlichtRenderer::dumpScene() const {
 
     // --- Entity Lights ---
     int entityLightsInGraph = 0;
-    if (entityRenderer_) {
-        for (const auto& [id, ent] : entityRenderer_->getEntities()) {
+    if (ctx_.entityRenderer) {
+        for (const auto& [id, ent] : ctx_.entityRenderer->getEntities()) {
             if (ent.lightNode && ent.lightNode->getParent()) entityLightsInGraph++;
         }
         if (entityLightsInGraph > 0) {
@@ -155,8 +160,8 @@ void IrrlichtRenderer::dumpScene() const {
     std::set<irr::scene::ISceneNode*> knownNodes;
     int otherNodes = totalSceneNodes;
     // Subtract known categories
-    if (entityRenderer_) {
-        for (const auto& [id, ent] : entityRenderer_->getEntities()) {
+    if (ctx_.entityRenderer) {
+        for (const auto& [id, ent] : ctx_.entityRenderer->getEntities()) {
             if (ent.inSceneGraph && ent.sceneNode) {
                 otherNodes -= countNodes(ent.sceneNode);  // entity + all descendants (children, grandchildren, etc.)
                 knownNodes.insert(ent.sceneNode);
@@ -168,31 +173,31 @@ void IrrlichtRenderer::dumpScene() const {
             }
         }
     }
-    if (doorManager_) {
+    if (ctx_.doorManager) {
         for (uint16_t i = 0; i < 256; ++i) {
-            const auto* door = doorManager_->getDoor(static_cast<uint8_t>(i));
+            const auto* door = ctx_.doorManager->getDoor(static_cast<uint8_t>(i));
             if (door && door->inSceneGraph) {
                 otherNodes -= 2;  // pivot + mesh child
                 if (door->pivotNode) knownNodes.insert(door->pivotNode);
             }
         }
     }
-    for (size_t i = 0; i < objectNodes_.size(); ++i) {
-        if (objectNodes_[i] && i < objectInSceneGraph_.size() && objectInSceneGraph_[i]) {
+    for (size_t i = 0; i < ctx_.objectNodes.size(); ++i) {
+        if (ctx_.objectNodes[i] && i < ctx_.objectInSceneGraph.size() && ctx_.objectInSceneGraph[i]) {
             otherNodes--;
-            knownNodes.insert(objectNodes_[i]);
+            knownNodes.insert(ctx_.objectNodes[i]);
         }
     }
     // Zone lights have no scene nodes — nothing to subtract
     // Subtract zone mesh nodes that are in the scene graph
-    for (const auto& [regionIdx, node] : regionMeshNodes_) {
+    for (const auto& [regionIdx, node] : ctx_.regionMeshNodes) {
         if (node && node->getParent()) {
             otherNodes--;
             knownNodes.insert(node);
         }
     }
     // Subtract object light nodes
-    for (const auto& ol : objectLights_) {
+    for (const auto& ol : ctx_.objectLights) {
         if (ol.node && ol.node->getParent()) {
             otherNodes--;
             knownNodes.insert(ol.node);
@@ -200,17 +205,17 @@ void IrrlichtRenderer::dumpScene() const {
     }
     // Subtract sky renderer nodes and collect their pointers
     otherNodes -= skyNodeCount;
-    if (skyRenderer_) skyRenderer_->collectSceneNodes(knownNodes);
+    if (ctx_.skyRenderer) ctx_.skyRenderer->collectSceneNodes(knownNodes);
     // Subtract weather nodes and collect their pointers
     otherNodes -= weatherNodeCount;
-    if (weatherEffects_) weatherEffects_->collectSceneNodes(knownNodes);
+    if (ctx_.weatherEffects) ctx_.weatherEffects->collectSceneNodes(knownNodes);
     // Subtract zone collision node
-    if (collisionInGraph) { otherNodes--; knownNodes.insert(zoneCollisionNode_); }
-    if (fallbackMeshNode_ && fallbackMeshNode_->getParent()) { otherNodes--; knownNodes.insert(fallbackMeshNode_); }
-    if (zonePlaceholderNode_) { otherNodes--; knownNodes.insert(zonePlaceholderNode_); }
-    if (camera_) { otherNodes--; knownNodes.insert(camera_); }
-    if (sunLight_) { otherNodes--; knownNodes.insert(sunLight_); }
-    if (playerLightNode_) { otherNodes--; knownNodes.insert(playerLightNode_); }
+    if (collisionInGraph) { otherNodes--; knownNodes.insert(owner_.zoneCollisionNode_); }
+    if (owner_.fallbackMeshNode_ && owner_.fallbackMeshNode_->getParent()) { otherNodes--; knownNodes.insert(owner_.fallbackMeshNode_); }
+    if (owner_.zonePlaceholderNode_) { otherNodes--; knownNodes.insert(owner_.zonePlaceholderNode_); }
+    if (ctx_.camera) { otherNodes--; knownNodes.insert(ctx_.camera); }
+    if (owner_.sunLight_) { otherNodes--; knownNodes.insert(owner_.sunLight_); }
+    if (owner_.playerLightNode_) { otherNodes--; knownNodes.insert(owner_.playerLightNode_); }
     // P32: the animated-tree scene-node loop was removed along with
     // AnimatedTreeManager — animatedTrees_ (and this loop) was always empty
     // on GLES2, so it never inserted anything into knownNodes. treeInGraph
@@ -218,11 +223,11 @@ void IrrlichtRenderer::dumpScene() const {
     // arithmetic (a no-op).
     otherNodes -= static_cast<int>(treeInGraph);
     LOG_INFO(MOD_GRAPHICS, "  OTHER: camera={}, sunLight={}, playerLight={}, unaccounted={}",
-             camera_ != nullptr, sunLight_ != nullptr, playerLightNode_ != nullptr, otherNodes);
+             ctx_.camera != nullptr, owner_.sunLight_ != nullptr, owner_.playerLightNode_ != nullptr, otherNodes);
 
     // Enumerate unaccounted nodes for diagnostics
-    if (otherNodes != 0 && smgr_) {
-        auto* root = smgr_->getRootSceneNode();
+    if (otherNodes != 0 && ctx_.smgr) {
+        auto* root = ctx_.smgr->getRootSceneNode();
         int idx = 0;
         for (auto* child : root->getChildren()) {
             if (knownNodes.count(child) == 0) {
@@ -268,186 +273,179 @@ void IrrlichtRenderer::dumpScene() const {
     {
         unsigned int icoProgram = 0;
 #ifdef EQT_HAS_DRM
-        icoProgram = icosphereProgram_;
+        icoProgram = owner_.icosphereProgram_;
 #endif
         LOG_INFO(MOD_GRAPHICS, "  FIRE GLOW: lights={}, lightingEnabled={}, icospheresEnabled={}, "
                  "maxLights={}, fireEffectsEnabled={}, icosphereProgram={}",
-                 fireGlowLights_.size(), fireGlowLightingEnabled_, fireGlowIcospheresEnabled_,
-                 maxFireGlowLights_, fireEffectsEnabled_, icoProgram);
+                 owner_.fireGlowLights_.size(), owner_.fireGlowLightingEnabled_, owner_.fireGlowIcospheresEnabled_,
+                 owner_.maxFireGlowLights_, ctx_.fireEffectsEnabled, icoProgram);
     }
 
     // --- Visibility counts (from SimulationWorker output applied to scene) ---
     {
         size_t visRegions = 0, visObjects = 0;
-        for (const auto& [regionIdx, node] : regionMeshNodes_) {
+        for (const auto& [regionIdx, node] : ctx_.regionMeshNodes) {
             if (node && node->isVisible()) visRegions++;
         }
-        for (size_t i = 0; i < objectNodes_.size(); ++i) {
-            if (objectNodes_[i] && i < objectInSceneGraph_.size() && objectInSceneGraph_[i])
+        for (size_t i = 0; i < ctx_.objectNodes.size(); ++i) {
+            if (ctx_.objectNodes[i] && i < ctx_.objectInSceneGraph.size() && ctx_.objectInSceneGraph[i])
                 visObjects++;
         }
-        size_t visEntities = entityRenderer_ ? entityRenderer_->getVisibleEntityCount() : 0;
+        size_t visEntities = ctx_.entityRenderer ? ctx_.entityRenderer->getVisibleEntityCount() : 0;
         LOG_INFO(MOD_GRAPHICS, "  VISIBLE: regions={}/{}, objects={}/{}, lights={}, entities={}",
-                 visRegions, regionMeshNodes_.size(),
-                 visObjects, objectNodes_.size(),
-                 activeLightCount_, visEntities);
+                 visRegions, ctx_.regionMeshNodes.size(),
+                 visObjects, ctx_.objectNodes.size(),
+                 owner_.activeLightCount_, visEntities);
     }
 
     LOG_INFO(MOD_GRAPHICS, "=== END SCENE DUMP ===");
 }
 
-int64_t IrrlichtRenderer::measureSection() {
-    auto now = std::chrono::steady_clock::now();
-    auto us = std::chrono::duration_cast<std::chrono::microseconds>(now - sectionStart_).count();
-    sectionStart_ = now;
-    return us;
-}
+void DiagnosticsComponent::logFrameTimings() {
+    if (owner_.frameTimingsSampleCount_ == 0) return;
 
-void IrrlichtRenderer::logFrameTimings() {
-    if (frameTimingsSampleCount_ == 0) return;
-
-    float avgTotal = static_cast<float>(frameTimingsAccum_.totalFrame) / frameTimingsSampleCount_;
+    float avgTotal = static_cast<float>(owner_.frameTimingsAccum_.totalFrame) / owner_.frameTimingsSampleCount_;
     float fpsEstimate = avgTotal > 0 ? 1000000.0f / avgTotal : 0;
 
     // Calculate percentages
     auto pct = [&](int64_t val) -> float {
-        return frameTimingsAccum_.totalFrame > 0 ?
-            100.0f * static_cast<float>(val) / frameTimingsAccum_.totalFrame : 0;
+        return owner_.frameTimingsAccum_.totalFrame > 0 ?
+            100.0f * static_cast<float>(val) / owner_.frameTimingsAccum_.totalFrame : 0;
     };
 
     // Calculate averages in microseconds
     auto avg = [&](int64_t val) -> float {
-        return static_cast<float>(val) / frameTimingsSampleCount_;
+        return static_cast<float>(val) / owner_.frameTimingsSampleCount_;
     };
 
     LOG_INFO(MOD_GRAPHICS, "=== FRAME TIMING BREAKDOWN ({} frames, {:.1f} fps estimate) ===",
-             frameTimingsSampleCount_, fpsEstimate);
-    LOG_INFO(MOD_GRAPHICS, "  Total Frame:        {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.totalFrame), 100.0f);
+             owner_.frameTimingsSampleCount_, fpsEstimate);
+    LOG_INFO(MOD_GRAPHICS, "  Total Frame:        {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.totalFrame), 100.0f);
     LOG_INFO(MOD_GRAPHICS, "  ----------------------------------------");
-    LOG_INFO(MOD_GRAPHICS, "  Input Handling:     {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.inputHandling), pct(frameTimingsAccum_.inputHandling));
-    LOG_INFO(MOD_GRAPHICS, "    Player Movement:  {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.playerMovement), pct(frameTimingsAccum_.playerMovement));
-    LOG_INFO(MOD_GRAPHICS, "  Camera Update:      {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.cameraUpdate), pct(frameTimingsAccum_.cameraUpdate));
-    LOG_INFO(MOD_GRAPHICS, "  Entity Update:      {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.entityUpdate), pct(frameTimingsAccum_.entityUpdate));
-    LOG_INFO(MOD_GRAPHICS, "  Door Update:        {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.doorUpdate), pct(frameTimingsAccum_.doorUpdate));
-    LOG_INFO(MOD_GRAPHICS, "  Spell VFX Update:   {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.spellVfxUpdate), pct(frameTimingsAccum_.spellVfxUpdate));
-    LOG_INFO(MOD_GRAPHICS, "  Animated Textures:  {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.animatedTextures), pct(frameTimingsAccum_.animatedTextures));
-    LOG_INFO(MOD_GRAPHICS, "  Vertex Animations:  {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.vertexAnimations), pct(frameTimingsAccum_.vertexAnimations));
-    LOG_INFO(MOD_GRAPHICS, "  Fire Flicker:       {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.fireFlicker), pct(frameTimingsAccum_.fireFlicker));
-    LOG_INFO(MOD_GRAPHICS, "  Object Visibility:  {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.objectVisibility), pct(frameTimingsAccum_.objectVisibility));
-    LOG_INFO(MOD_GRAPHICS, "  Zone Light Vis:     {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.zoneLightVisibility), pct(frameTimingsAccum_.zoneLightVisibility));
-    LOG_INFO(MOD_GRAPHICS, "  PVS Visibility:     {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.pvsVisibility), pct(frameTimingsAccum_.pvsVisibility));
-    LOG_INFO(MOD_GRAPHICS, "    Occlusion Cull:   {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.occlusionCulling), pct(frameTimingsAccum_.occlusionCulling));
+    LOG_INFO(MOD_GRAPHICS, "  Input Handling:     {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.inputHandling), pct(owner_.frameTimingsAccum_.inputHandling));
+    LOG_INFO(MOD_GRAPHICS, "    Player Movement:  {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.playerMovement), pct(owner_.frameTimingsAccum_.playerMovement));
+    LOG_INFO(MOD_GRAPHICS, "  Camera Update:      {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.cameraUpdate), pct(owner_.frameTimingsAccum_.cameraUpdate));
+    LOG_INFO(MOD_GRAPHICS, "  Entity Update:      {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.entityUpdate), pct(owner_.frameTimingsAccum_.entityUpdate));
+    LOG_INFO(MOD_GRAPHICS, "  Door Update:        {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.doorUpdate), pct(owner_.frameTimingsAccum_.doorUpdate));
+    LOG_INFO(MOD_GRAPHICS, "  Spell VFX Update:   {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.spellVfxUpdate), pct(owner_.frameTimingsAccum_.spellVfxUpdate));
+    LOG_INFO(MOD_GRAPHICS, "  Animated Textures:  {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.animatedTextures), pct(owner_.frameTimingsAccum_.animatedTextures));
+    LOG_INFO(MOD_GRAPHICS, "  Vertex Animations:  {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.vertexAnimations), pct(owner_.frameTimingsAccum_.vertexAnimations));
+    LOG_INFO(MOD_GRAPHICS, "  Fire Flicker:       {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.fireFlicker), pct(owner_.frameTimingsAccum_.fireFlicker));
+    LOG_INFO(MOD_GRAPHICS, "  Object Visibility:  {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.objectVisibility), pct(owner_.frameTimingsAccum_.objectVisibility));
+    LOG_INFO(MOD_GRAPHICS, "  Zone Light Vis:     {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.zoneLightVisibility), pct(owner_.frameTimingsAccum_.zoneLightVisibility));
+    LOG_INFO(MOD_GRAPHICS, "  PVS Visibility:     {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.pvsVisibility), pct(owner_.frameTimingsAccum_.pvsVisibility));
+    LOG_INFO(MOD_GRAPHICS, "    Occlusion Cull:   {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.occlusionCulling), pct(owner_.frameTimingsAccum_.occlusionCulling));
     // "Mesh Loading" line removed T67 — was gated on constrainedMeshCache_,
     // never true (the cache was never constructed), so it never printed.
-    LOG_INFO(MOD_GRAPHICS, "  Object Lights:      {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.objectLights), pct(frameTimingsAccum_.objectLights));
-    LOG_INFO(MOD_GRAPHICS, "  Tier2 (Detail/Tree):{:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.tier2Update), pct(frameTimingsAccum_.tier2Update));
-    LOG_INFO(MOD_GRAPHICS, "  Weather System:     {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.weatherSystemUpdate), pct(frameTimingsAccum_.weatherSystemUpdate));
-    LOG_INFO(MOD_GRAPHICS, "  Tier3 (Env/Sky):    {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.tier3Update), pct(frameTimingsAccum_.tier3Update));
-    LOG_INFO(MOD_GRAPHICS, "  HUD Update:         {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.hudUpdate), pct(frameTimingsAccum_.hudUpdate));
+    LOG_INFO(MOD_GRAPHICS, "  Object Lights:      {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.objectLights), pct(owner_.frameTimingsAccum_.objectLights));
+    LOG_INFO(MOD_GRAPHICS, "  Tier2 (Detail/Tree):{:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.tier2Update), pct(owner_.frameTimingsAccum_.tier2Update));
+    LOG_INFO(MOD_GRAPHICS, "  Weather System:     {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.weatherSystemUpdate), pct(owner_.frameTimingsAccum_.weatherSystemUpdate));
+    LOG_INFO(MOD_GRAPHICS, "  Tier3 (Env/Sky):    {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.tier3Update), pct(owner_.frameTimingsAccum_.tier3Update));
+    LOG_INFO(MOD_GRAPHICS, "  HUD Update:         {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.hudUpdate), pct(owner_.frameTimingsAccum_.hudUpdate));
     LOG_INFO(MOD_GRAPHICS, "  Scene Draw All:     {:>8.0f} us ({:>5.1f}%)  [{} nodes, {} polys]",
-             avg(frameTimingsAccum_.sceneDrawAll), pct(frameTimingsAccum_.sceneDrawAll),
-             frameTimingsSampleCount_ > 0 ? frameTimingsAccum_.sceneNodeCount / frameTimingsSampleCount_ : 0,
-             lastPolygonCount_);
-    LOG_INFO(MOD_GRAPHICS, "    Animate+Register: {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.sceneAnimate), pct(frameTimingsAccum_.sceneAnimate));
-    LOG_INFO(MOD_GRAPHICS, "    Solid Pass:       {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.sceneSolid), pct(frameTimingsAccum_.sceneSolid));
-    if (manualZoneDrawEnabled_) {
-        LOG_INFO(MOD_GRAPHICS, "    Manual Zone Draw: {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.manualZoneDraw), pct(frameTimingsAccum_.manualZoneDraw));
+             avg(owner_.frameTimingsAccum_.sceneDrawAll), pct(owner_.frameTimingsAccum_.sceneDrawAll),
+             owner_.frameTimingsSampleCount_ > 0 ? owner_.frameTimingsAccum_.sceneNodeCount / owner_.frameTimingsSampleCount_ : 0,
+             owner_.lastPolygonCount_);
+    LOG_INFO(MOD_GRAPHICS, "    Animate+Register: {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.sceneAnimate), pct(owner_.frameTimingsAccum_.sceneAnimate));
+    LOG_INFO(MOD_GRAPHICS, "    Solid Pass:       {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.sceneSolid), pct(owner_.frameTimingsAccum_.sceneSolid));
+    if (ctx_.manualZoneDrawEnabled) {
+        LOG_INFO(MOD_GRAPHICS, "    Manual Zone Draw: {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.manualZoneDraw), pct(owner_.frameTimingsAccum_.manualZoneDraw));
     }
-    LOG_INFO(MOD_GRAPHICS, "    Transparent Pass: {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.sceneTransparent), pct(frameTimingsAccum_.sceneTransparent));
-    LOG_INFO(MOD_GRAPHICS, "    Skybox Pass:      {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.sceneSkybox), pct(frameTimingsAccum_.sceneSkybox));
-    LOG_INFO(MOD_GRAPHICS, "    Other Passes:     {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.sceneOther), pct(frameTimingsAccum_.sceneOther));
-    LOG_INFO(MOD_GRAPHICS, "  Target Box:         {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.targetBox), pct(frameTimingsAccum_.targetBox));
-    LOG_INFO(MOD_GRAPHICS, "  Particles:          {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.particles), pct(frameTimingsAccum_.particles));
-    LOG_INFO(MOD_GRAPHICS, "  Boids:              {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.boids), pct(frameTimingsAccum_.boids));
-    LOG_INFO(MOD_GRAPHICS, "  Weather Render:     {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.weatherRender), pct(frameTimingsAccum_.weatherRender));
-    LOG_INFO(MOD_GRAPHICS, "  Debug Overlays:     {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.debugOverlays), pct(frameTimingsAccum_.debugOverlays));
-    LOG_INFO(MOD_GRAPHICS, "  Casting Bars:       {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.castingBars), pct(frameTimingsAccum_.castingBars));
-    LOG_INFO(MOD_GRAPHICS, "  GUI Draw All:       {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.guiDrawAll), pct(frameTimingsAccum_.guiDrawAll));
-    LOG_INFO(MOD_GRAPHICS, "  Static UI:          {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.staticUI), pct(frameTimingsAccum_.staticUI));
-    LOG_INFO(MOD_GRAPHICS, "  Zone Line Overlay:  {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.zoneLineOverlay), pct(frameTimingsAccum_.zoneLineOverlay));
-    LOG_INFO(MOD_GRAPHICS, "  Footprint Render:   {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.footprintRender), pct(frameTimingsAccum_.footprintRender));
-    LOG_INFO(MOD_GRAPHICS, "  Post Render:        {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.postRender), pct(frameTimingsAccum_.postRender));
-    LOG_INFO(MOD_GRAPHICS, "  SimWorker Apply:    {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.simWorkerApply), pct(frameTimingsAccum_.simWorkerApply));
-    LOG_INFO(MOD_GRAPHICS, "  glFinish:           {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.glFinish), pct(frameTimingsAccum_.glFinish));
-    LOG_INFO(MOD_GRAPHICS, "  End Scene:          {:>8.0f} us ({:>5.1f}%)", avg(frameTimingsAccum_.endScene), pct(frameTimingsAccum_.endScene));
+    LOG_INFO(MOD_GRAPHICS, "    Transparent Pass: {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.sceneTransparent), pct(owner_.frameTimingsAccum_.sceneTransparent));
+    LOG_INFO(MOD_GRAPHICS, "    Skybox Pass:      {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.sceneSkybox), pct(owner_.frameTimingsAccum_.sceneSkybox));
+    LOG_INFO(MOD_GRAPHICS, "    Other Passes:     {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.sceneOther), pct(owner_.frameTimingsAccum_.sceneOther));
+    LOG_INFO(MOD_GRAPHICS, "  Target Box:         {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.targetBox), pct(owner_.frameTimingsAccum_.targetBox));
+    LOG_INFO(MOD_GRAPHICS, "  Particles:          {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.particles), pct(owner_.frameTimingsAccum_.particles));
+    LOG_INFO(MOD_GRAPHICS, "  Boids:              {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.boids), pct(owner_.frameTimingsAccum_.boids));
+    LOG_INFO(MOD_GRAPHICS, "  Weather Render:     {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.weatherRender), pct(owner_.frameTimingsAccum_.weatherRender));
+    LOG_INFO(MOD_GRAPHICS, "  Debug Overlays:     {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.debugOverlays), pct(owner_.frameTimingsAccum_.debugOverlays));
+    LOG_INFO(MOD_GRAPHICS, "  Casting Bars:       {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.castingBars), pct(owner_.frameTimingsAccum_.castingBars));
+    LOG_INFO(MOD_GRAPHICS, "  GUI Draw All:       {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.guiDrawAll), pct(owner_.frameTimingsAccum_.guiDrawAll));
+    LOG_INFO(MOD_GRAPHICS, "  Static UI:          {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.staticUI), pct(owner_.frameTimingsAccum_.staticUI));
+    LOG_INFO(MOD_GRAPHICS, "  Zone Line Overlay:  {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.zoneLineOverlay), pct(owner_.frameTimingsAccum_.zoneLineOverlay));
+    LOG_INFO(MOD_GRAPHICS, "  Footprint Render:   {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.footprintRender), pct(owner_.frameTimingsAccum_.footprintRender));
+    LOG_INFO(MOD_GRAPHICS, "  Post Render:        {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.postRender), pct(owner_.frameTimingsAccum_.postRender));
+    LOG_INFO(MOD_GRAPHICS, "  SimWorker Apply:    {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.simWorkerApply), pct(owner_.frameTimingsAccum_.simWorkerApply));
+    LOG_INFO(MOD_GRAPHICS, "  glFinish:           {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.glFinish), pct(owner_.frameTimingsAccum_.glFinish));
+    LOG_INFO(MOD_GRAPHICS, "  End Scene:          {:>8.0f} us ({:>5.1f}%)", avg(owner_.frameTimingsAccum_.endScene), pct(owner_.frameTimingsAccum_.endScene));
     LOG_INFO(MOD_GRAPHICS, "  Manual Zone Draw:   {} regions avg, {} drawCalls avg",
-             frameTimingsAccum_.manualZoneRegionsDrawn / std::max(1, frameTimingsSampleCount_),
-             frameTimingsAccum_.manualZoneDrawCalls / std::max(1, frameTimingsSampleCount_));
+             owner_.frameTimingsAccum_.manualZoneRegionsDrawn / std::max(1, owner_.frameTimingsSampleCount_),
+             owner_.frameTimingsAccum_.manualZoneDrawCalls / std::max(1, owner_.frameTimingsSampleCount_));
     LOG_INFO(MOD_GRAPHICS, "  ----------------------------------------");
     LOG_INFO(MOD_GRAPHICS, "  Render EMA:         {:>8.0f} us | EssSim EMA: {:>6.0f} us",
-             renderCostAvgUs_, essentialSimCostAvgUs_);
-    if (governor_) {
+             owner_.renderCostAvgUs_, owner_.essentialSimCostAvgUs_);
+    if (ctx_.governor) {
         LOG_INFO(MOD_GRAPHICS, "  Governor: {} | avg {:.1f}ms | target {:.1f}ms | ratio {:.2f}{}",
-                 governor_->getStateName(),
-                 governor_->getAverageFrameTimeMs(),
-                 governor_->getTargetFrameTimeMs(),
-                 governor_->getBudgetRatio(),
-                 governor_->isForced() ? " (FORCED)" : "");
+                 ctx_.governor->getStateName(),
+                 ctx_.governor->getAverageFrameTimeMs(),
+                 ctx_.governor->getTargetFrameTimeMs(),
+                 ctx_.governor->getBudgetRatio(),
+                 ctx_.governor->isForced() ? " (FORCED)" : "");
     }
 }
 
-void IrrlichtRenderer::runSceneProfile() {
-    sceneProfileEnabled_ = true;
+void DiagnosticsComponent::runSceneProfile() {
+    owner_.sceneProfileEnabled_ = true;
     // Wait 60 frames before profiling to allow constrained visibility to run
-    sceneProfileFrameCount_ = -60;
+    owner_.sceneProfileFrameCount_ = -60;
     LOG_INFO(MOD_GRAPHICS, "Scene profile scheduled - will run after 60 frames");
 }
 
-void IrrlichtRenderer::profileSceneBreakdown() {
-    if (!driver_ || !smgr_) return;
+void DiagnosticsComponent::profileSceneBreakdown() {
+    if (!ctx_.driver || !ctx_.smgr) return;
 
-    SceneBreakdown breakdown;
+    IrrlichtRenderer::SceneBreakdown breakdown;
     const int numSamples = 10;  // More samples for stability
 
     // Helper to draw scene and return (time_us, poly_count)
     auto timeAndPolyDrawAll = [this]() -> std::pair<int64_t, uint32_t> {
-        if (zoneShader_) zoneShader_->beginFrame();
+        if (ctx_.zoneShader) ctx_.zoneShader->beginFrame();
         auto start = std::chrono::steady_clock::now();
-        smgr_->drawAll();
+        ctx_.smgr->drawAll();
         auto end = std::chrono::steady_clock::now();
         int64_t time_us = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-        uint32_t polys = driver_->getPrimitiveCountDrawn();
+        uint32_t polys = ctx_.driver->getPrimitiveCountDrawn();
         return {time_us, polys};
     };
 
     // Helper to hide all scene content including lights
     auto hideAll = [this]() {
-        if (zoneMeshNode_) zoneMeshNode_->setVisible(false);
-        if (entityRenderer_) entityRenderer_->setAllEntitiesVisible(false);
+        if (owner_.zoneMeshNode_) owner_.zoneMeshNode_->setVisible(false);
+        if (ctx_.entityRenderer) ctx_.entityRenderer->setAllEntitiesVisible(false);
         // Hide objects (they may already be out of scene graph)
-        for (size_t i = 0; i < objectNodes_.size(); ++i) {
-            if (objectNodes_[i]) objectNodes_[i]->setVisible(false);
+        for (size_t i = 0; i < ctx_.objectNodes.size(); ++i) {
+            if (ctx_.objectNodes[i]) ctx_.objectNodes[i]->setVisible(false);
         }
-        if (doorManager_) doorManager_->setAllDoorsVisible(false);
+        if (ctx_.doorManager) ctx_.doorManager->setAllDoorsVisible(false);
         // Zone lights have no scene nodes — nothing to hide
-        if (sunLight_) sunLight_->setVisible(false);
-        if (playerLightNode_) playerLightNode_->setVisible(false);
+        if (owner_.sunLight_) owner_.sunLight_->setVisible(false);
+        if (owner_.playerLightNode_) owner_.playerLightNode_->setVisible(false);
     };
 
     auto showAll = [this]() {
-        if (zoneMeshNode_) zoneMeshNode_->setVisible(true);
-        if (entityRenderer_) entityRenderer_->setAllEntitiesVisible(true);
+        if (owner_.zoneMeshNode_) owner_.zoneMeshNode_->setVisible(true);
+        if (ctx_.entityRenderer) ctx_.entityRenderer->setAllEntitiesVisible(true);
         // Add objects back to scene graph and show
-        for (size_t i = 0; i < objectNodes_.size(); ++i) {
-            if (objectNodes_[i]) {
-                if (i < objectInSceneGraph_.size() && !objectInSceneGraph_[i]) {
-                    smgr_->getRootSceneNode()->addChild(objectNodes_[i]);
-                    objectInSceneGraph_[i] = true;
+        for (size_t i = 0; i < ctx_.objectNodes.size(); ++i) {
+            if (ctx_.objectNodes[i]) {
+                if (i < ctx_.objectInSceneGraph.size() && !ctx_.objectInSceneGraph[i]) {
+                    ctx_.smgr->getRootSceneNode()->addChild(ctx_.objectNodes[i]);
+                    ctx_.objectInSceneGraph[i] = true;
                 }
-                objectNodes_[i]->setVisible(true);
+                ctx_.objectNodes[i]->setVisible(true);
             }
         }
-        if (doorManager_) doorManager_->setAllDoorsVisible(true);
+        if (ctx_.doorManager) ctx_.doorManager->setAllDoorsVisible(true);
         // Zone lights have no scene nodes — nothing to show
-        if (sunLight_) sunLight_->setVisible(true);
-        if (playerLightNode_) playerLightNode_->setVisible(true);
+        if (owner_.sunLight_) owner_.sunLight_->setVisible(true);
+        if (owner_.playerLightNode_) owner_.playerLightNode_->setVisible(true);
     };
 
     // Count nodes
-    breakdown.entityCount = entityRenderer_ ? static_cast<int>(entityRenderer_->getEntityCount()) : 0;
-    breakdown.objectCount = static_cast<int>(objectNodes_.size());
-    breakdown.doorCount = doorManager_ ? static_cast<int>(doorManager_->getDoorCount()) : 0;
-    int lightCount = static_cast<int>(zoneLightData_.size()) + (sunLight_ ? 1 : 0) + (playerLightNode_ ? 1 : 0);
+    breakdown.entityCount = ctx_.entityRenderer ? static_cast<int>(ctx_.entityRenderer->getEntityCount()) : 0;
+    breakdown.objectCount = static_cast<int>(ctx_.objectNodes.size());
+    breakdown.doorCount = ctx_.doorManager ? static_cast<int>(ctx_.doorManager->getDoorCount()) : 0;
+    int lightCount = static_cast<int>(owner_.zoneLightData_.size()) + (owner_.sunLight_ ? 1 : 0) + (owner_.playerLightNode_ ? 1 : 0);
 
     // Count total scene nodes recursively
     std::function<int(irr::scene::ISceneNode*)> countNodes = [&](irr::scene::ISceneNode* node) -> int {
@@ -459,10 +457,10 @@ void IrrlichtRenderer::profileSceneBreakdown() {
         }
         return count;
     };
-    int totalSceneNodes = countNodes(smgr_->getRootSceneNode());
+    int totalSceneNodes = countNodes(ctx_.smgr->getRootSceneNode());
 
     LOG_INFO(MOD_GRAPHICS, "=== SCENE BREAKDOWN PROFILE ===");
-    LOG_INFO(MOD_GRAPHICS, "Zone mesh node: {}", zoneMeshNode_ ? "valid" : "NULL");
+    LOG_INFO(MOD_GRAPHICS, "Zone mesh node: {}", owner_.zoneMeshNode_ ? "valid" : "NULL");
     LOG_INFO(MOD_GRAPHICS, "Total scene nodes: {} (lights: {})", totalSceneNodes, lightCount);
     LOG_INFO(MOD_GRAPHICS, "Measuring each category in isolation ({} samples each)...", numSamples);
 
@@ -473,98 +471,98 @@ void IrrlichtRenderer::profileSceneBreakdown() {
     int64_t baselineSum = 0;
     uint32_t baselinePolys = 0;
     for (int i = 0; i < numSamples; i++) {
-        driver_->beginScene(true, true, irr::video::SColor(255, 50, 50, 80));
+        ctx_.driver->beginScene(true, true, irr::video::SColor(255, 50, 50, 80));
         auto [time, polys] = timeAndPolyDrawAll();
         baselineSum += time;
         baselinePolys = polys;  // Should be 0 or near 0
-        driver_->endScene();
+        ctx_.driver->endScene();
     }
     int64_t baseline = baselineSum / numSamples;
 
     // 2. Measure zone mesh only
-    if (zoneMeshNode_) zoneMeshNode_->setVisible(true);
+    if (owner_.zoneMeshNode_) owner_.zoneMeshNode_->setVisible(true);
     int64_t zoneSum = 0;
     uint32_t zonePolys = 0;
     for (int i = 0; i < numSamples; i++) {
-        driver_->beginScene(true, true, irr::video::SColor(255, 50, 50, 80));
+        ctx_.driver->beginScene(true, true, irr::video::SColor(255, 50, 50, 80));
         auto [time, polys] = timeAndPolyDrawAll();
         zoneSum += time;
         zonePolys = polys;  // Keep last sample's poly count
-        driver_->endScene();
+        ctx_.driver->endScene();
     }
     breakdown.zoneTime = (zoneSum / numSamples) - baseline;
     breakdown.zonePolys = static_cast<int>(zonePolys - baselinePolys);
-    if (zoneMeshNode_) zoneMeshNode_->setVisible(false);
+    if (owner_.zoneMeshNode_) owner_.zoneMeshNode_->setVisible(false);
 
     // 3. Measure entities only
-    if (entityRenderer_) entityRenderer_->setAllEntitiesVisible(true);
+    if (ctx_.entityRenderer) ctx_.entityRenderer->setAllEntitiesVisible(true);
     int64_t entitySum = 0;
     uint32_t entityPolys = 0;
     for (int i = 0; i < numSamples; i++) {
-        driver_->beginScene(true, true, irr::video::SColor(255, 50, 50, 80));
+        ctx_.driver->beginScene(true, true, irr::video::SColor(255, 50, 50, 80));
         auto [time, polys] = timeAndPolyDrawAll();
         entitySum += time;
         entityPolys = polys;
-        driver_->endScene();
+        ctx_.driver->endScene();
     }
     breakdown.entityTime = (entitySum / numSamples) - baseline;
     int entityPolyCount = static_cast<int>(entityPolys - baselinePolys);
-    if (entityRenderer_) entityRenderer_->setAllEntitiesVisible(false);
+    if (ctx_.entityRenderer) ctx_.entityRenderer->setAllEntitiesVisible(false);
 
     // 4. Measure objects only
-    for (auto* node : objectNodes_) if (node) node->setVisible(true);
+    for (auto* node : ctx_.objectNodes) if (node) node->setVisible(true);
     int64_t objectSum = 0;
     uint32_t objectPolys = 0;
     for (int i = 0; i < numSamples; i++) {
-        driver_->beginScene(true, true, irr::video::SColor(255, 50, 50, 80));
+        ctx_.driver->beginScene(true, true, irr::video::SColor(255, 50, 50, 80));
         auto [time, polys] = timeAndPolyDrawAll();
         objectSum += time;
         objectPolys = polys;
-        driver_->endScene();
+        ctx_.driver->endScene();
     }
     breakdown.objectTime = (objectSum / numSamples) - baseline;
     int objectPolyCount = static_cast<int>(objectPolys - baselinePolys);
-    for (auto* node : objectNodes_) if (node) node->setVisible(false);
+    for (auto* node : ctx_.objectNodes) if (node) node->setVisible(false);
 
     // 5. Measure doors only
-    if (doorManager_) doorManager_->setAllDoorsVisible(true);
+    if (ctx_.doorManager) ctx_.doorManager->setAllDoorsVisible(true);
     int64_t doorSum = 0;
     uint32_t doorPolys = 0;
     for (int i = 0; i < numSamples; i++) {
-        driver_->beginScene(true, true, irr::video::SColor(255, 50, 50, 80));
+        ctx_.driver->beginScene(true, true, irr::video::SColor(255, 50, 50, 80));
         auto [time, polys] = timeAndPolyDrawAll();
         doorSum += time;
         doorPolys = polys;
-        driver_->endScene();
+        ctx_.driver->endScene();
     }
     breakdown.doorTime = (doorSum / numSamples) - baseline;
     int doorPolyCount = static_cast<int>(doorPolys - baselinePolys);
-    if (doorManager_) doorManager_->setAllDoorsVisible(false);
+    if (ctx_.doorManager) ctx_.doorManager->setAllDoorsVisible(false);
 
     // 6. Measure lights only (zone lights have no scene nodes, just sun + player light)
-    if (sunLight_) sunLight_->setVisible(true);
-    if (playerLightNode_) playerLightNode_->setVisible(true);
+    if (owner_.sunLight_) owner_.sunLight_->setVisible(true);
+    if (owner_.playerLightNode_) owner_.playerLightNode_->setVisible(true);
     int64_t lightSum = 0;
     for (int i = 0; i < numSamples; i++) {
-        driver_->beginScene(true, true, irr::video::SColor(255, 50, 50, 80));
+        ctx_.driver->beginScene(true, true, irr::video::SColor(255, 50, 50, 80));
         auto [time, polys] = timeAndPolyDrawAll();
         lightSum += time;
-        driver_->endScene();
+        ctx_.driver->endScene();
     }
     int64_t lightTime = (lightSum / numSamples) - baseline;
-    if (sunLight_) sunLight_->setVisible(false);
-    if (playerLightNode_) playerLightNode_->setVisible(false);
+    if (owner_.sunLight_) owner_.sunLight_->setVisible(false);
+    if (owner_.playerLightNode_) owner_.playerLightNode_->setVisible(false);
 
     // 7. Measure full scene
     showAll();
     int64_t totalSum = 0;
     uint32_t totalPolys = 0;
     for (int i = 0; i < numSamples; i++) {
-        driver_->beginScene(true, true, irr::video::SColor(255, 50, 50, 80));
+        ctx_.driver->beginScene(true, true, irr::video::SColor(255, 50, 50, 80));
         auto [time, polys] = timeAndPolyDrawAll();
         totalSum += time;
         totalPolys = polys;
-        driver_->endScene();
+        ctx_.driver->endScene();
     }
     breakdown.totalDrawAll = totalSum / numSamples;
 
@@ -600,7 +598,7 @@ void IrrlichtRenderer::profileSceneBreakdown() {
     LOG_INFO(MOD_GRAPHICS, "  Interaction:    {:>8} us ({:>5.1f}%)", breakdown.otherTime, pct(breakdown.otherTime));
     LOG_INFO(MOD_GRAPHICS, "=== END SCENE BREAKDOWN ===");
 
-    sceneProfileEnabled_ = false;
+    owner_.sceneProfileEnabled_ = false;
 }
 
 // ============================================================================
@@ -615,17 +613,17 @@ static std::string formatBytes(size_t bytes) {
     return fmt::format("{} B", bytes);
 }
 
-MemoryReportBreakdown IrrlichtRenderer::getMemoryReportBreakdown(const MemoryReportInput& ext) const {
+MemoryReportBreakdown DiagnosticsComponent::getMemoryReportBreakdown(const MemoryReportInput& ext) const {
     MemoryReportBreakdown b;
 
     // --- Texture Cache ---
     // Note: texture cache textures are created via driver->addTexture() and already
     // counted in GPU Textures below — do NOT add to totalEstimate here.
-    if (constrainedTextureCache_) {
+    if (ctx_.constrainedTextureCache) {
         b.textureCacheActive = true;
-        b.textureCacheBytesUsed = constrainedTextureCache_->getCurrentUsage();
-        b.textureCacheBytesLimit = constrainedTextureCache_->getMemoryLimit();
-        b.textureCacheCount = constrainedTextureCache_->getTextureCount();
+        b.textureCacheBytesUsed = ctx_.constrainedTextureCache->getCurrentUsage();
+        b.textureCacheBytesLimit = ctx_.constrainedTextureCache->getMemoryLimit();
+        b.textureCacheCount = ctx_.constrainedTextureCache->getTextureCount();
     }
 
     // --- EQE1 Flat Packs (P04) ---
@@ -648,10 +646,10 @@ MemoryReportBreakdown IrrlichtRenderer::getMemoryReportBreakdown(const MemoryRep
     // inflated total produced). Reported on its own line below (mapped, not
     // resident -- callers reading this field must not treat it as RSS).
     {
-        b.eqe1MappedBytes = eqe1_->getEQE1MappedBytesTotal();
+        b.eqe1MappedBytes = owner_.Eqe1().getEQE1MappedBytesTotal();
         {
-            std::lock_guard<std::mutex> lock(eqe1Mutex_);
-            for (const auto& [name, loader] : eqe1Loaders_) {
+            std::lock_guard<std::mutex> lock(owner_.eqe1Mutex_);
+            for (const auto& [name, loader] : owner_.eqe1Loaders_) {
                 if (loader) ++b.eqe1ArchiveCount;
             }
         }
@@ -666,8 +664,8 @@ MemoryReportBreakdown IrrlichtRenderer::getMemoryReportBreakdown(const MemoryRep
     {
         // Estimate zone mesh memory from Irrlicht mesh buffers
         size_t zoneMeshBytes = 0;
-        if (zoneMeshNode_ && zoneMeshNode_->getMesh()) {
-            auto* mesh = zoneMeshNode_->getMesh();
+        if (owner_.zoneMeshNode_ && owner_.zoneMeshNode_->getMesh()) {
+            auto* mesh = owner_.zoneMeshNode_->getMesh();
             for (uint32_t i = 0; i < mesh->getMeshBufferCount(); ++i) {
                 auto* buf = mesh->getMeshBuffer(i);
                 zoneMeshBytes += buf->getVertexCount() * sizeof(irr::video::S3DVertex);
@@ -676,7 +674,7 @@ MemoryReportBreakdown IrrlichtRenderer::getMemoryReportBreakdown(const MemoryRep
         }
         // PVS region meshes
         size_t pvsBytes = 0;
-        for (const auto& [id, node] : regionMeshNodes_) {
+        for (const auto& [id, node] : ctx_.regionMeshNodes) {
             if (node && node->getMesh()) {
                 auto* mesh = node->getMesh();
                 for (uint32_t i = 0; i < mesh->getMeshBufferCount(); ++i) {
@@ -687,11 +685,11 @@ MemoryReportBreakdown IrrlichtRenderer::getMemoryReportBreakdown(const MemoryRep
             }
         }
 
-        b.zoneGeometryBytes = usePvsCulling_ ? pvsBytes : zoneMeshBytes;
+        b.zoneGeometryBytes = ctx_.usePvsCulling ? pvsBytes : zoneMeshBytes;
         b.totalEstimate += zoneMeshBytes + pvsBytes;
 
         // Placeable objects
-        for (auto* node : objectNodes_) {
+        for (auto* node : ctx_.objectNodes) {
             if (node && node->getMesh()) {
                 auto* mesh = node->getMesh();
                 for (uint32_t i = 0; i < mesh->getMeshBufferCount(); ++i) {
@@ -705,14 +703,14 @@ MemoryReportBreakdown IrrlichtRenderer::getMemoryReportBreakdown(const MemoryRep
     }
 
     // --- Entity Renderer (per-instance data) ---
-    if (entityRenderer_) {
-        b.entityInstanceBytes = entityRenderer_->getPerInstanceMemoryBytes();
+    if (ctx_.entityRenderer) {
+        b.entityInstanceBytes = ctx_.entityRenderer->getPerInstanceMemoryBytes();
         b.totalEstimate += b.entityInstanceBytes;
     }
 
     // --- Character Models ---
-    if (entityRenderer_) {
-        if (auto* rml = entityRenderer_->getRaceModelLoader()) {
+    if (ctx_.entityRenderer) {
+        if (auto* rml = ctx_.entityRenderer->getRaceModelLoader()) {
             auto stats = rml->getMemoryStats();
             size_t rmlTexTotal = stats.globalTextureBytes + stats.numberedTextureBytes
                             + stats.armorTextureBytes + stats.zoneTextureBytes
@@ -725,8 +723,8 @@ MemoryReportBreakdown IrrlichtRenderer::getMemoryReportBreakdown(const MemoryRep
     }
 
     // --- Equipment Models ---
-    if (entityRenderer_) {
-        if (auto* eml = entityRenderer_->getEquipmentModelLoader()) {
+    if (ctx_.entityRenderer) {
+        if (auto* eml = ctx_.entityRenderer->getEquipmentModelLoader()) {
             auto stats = eml->getMemoryStats();
             b.equipmentModelsBytes = stats.rawTextureBytes + stats.geometryBytes
                             + stats.irrlichtMeshBytes + stats.indexBytes;
@@ -735,41 +733,41 @@ MemoryReportBreakdown IrrlichtRenderer::getMemoryReportBreakdown(const MemoryRep
     }
 
     // --- S3D Zone Source Data (CPU-side geometry, BSP, animations kept for mesh rebuilds) ---
-    if (currentZone_) {
-        b.s3dZoneSourceBytes = currentZone_->getMemoryUsage();
+    if (ctx_.currentZone) {
+        b.s3dZoneSourceBytes = ctx_.currentZone->getMemoryUsage();
         b.totalEstimate += b.s3dZoneSourceBytes;
     }
 
     // --- GPU Texture Memory (actual GPU-side allocations in shared RAM) ---
 #ifdef EQT_HAS_GLES2
-    if (driver_) {
-        b.gpuTextureBytes = gles2GetGpuTextureMemoryUsage(driver_);
+    if (ctx_.driver) {
+        b.gpuTextureBytes = gles2GetGpuTextureMemoryUsage(ctx_.driver);
         b.totalEstimate += b.gpuTextureBytes;
     }
 #endif
 
     // --- HCMap / Collision ---
-    if (collisionMap_ && collisionMap_->IsLoaded()) {
-        auto mapStats = collisionMap_->GetMemoryStats();
+    if (ctx_.collisionMap && ctx_.collisionMap->IsLoaded()) {
+        auto mapStats = ctx_.collisionMap->GetMemoryStats();
         b.hcmapBytes = mapStats.totalBytes;
         b.totalEstimate += b.hcmapBytes;
     }
 
     // --- Framebuffer ---
-    b.framebufferBudgetBytes = config_.constrainedConfig.framebufferMemoryBytes;
-    if (driver_) {
-        auto screenSize = driver_->getScreenSize();
-        b.framebufferBytes = config_.constrainedConfig.calculateFramebufferUsage(
+    b.framebufferBudgetBytes = ctx_.config.constrainedConfig.framebufferMemoryBytes;
+    if (ctx_.driver) {
+        auto screenSize = ctx_.driver->getScreenSize();
+        b.framebufferBytes = ctx_.config.constrainedConfig.calculateFramebufferUsage(
             static_cast<int>(screenSize.Width), static_cast<int>(screenSize.Height));
         b.totalEstimate += b.framebufferBytes;
     }
 
     // --- VBO/EBO GPU Buffers ---
 #ifdef EQT_HAS_GLES2
-    if (driver_) {
-        size_t hwbCount = gles2GetHWBufferCount(driver_);
+    if (ctx_.driver) {
+        size_t hwbCount = gles2GetHWBufferCount(ctx_.driver);
         if (hwbCount > 0) {
-            b.vboEboBytes = gles2GetHWBufferMemoryUsage(driver_);
+            b.vboEboBytes = gles2GetHWBufferMemoryUsage(ctx_.driver);
             b.totalEstimate += b.vboEboBytes;
         }
     }
@@ -824,7 +822,7 @@ MemoryReportBreakdown IrrlichtRenderer::getMemoryReportBreakdown(const MemoryRep
     return b;
 }
 
-std::vector<std::string> IrrlichtRenderer::getMemoryReport(const MemoryReportInput& ext) const {
+std::vector<std::string> DiagnosticsComponent::getMemoryReport(const MemoryReportInput& ext) const {
     std::vector<std::string> lines;
     const MemoryReportBreakdown b = getMemoryReportBreakdown(ext);
 
@@ -839,16 +837,16 @@ std::vector<std::string> IrrlichtRenderer::getMemoryReport(const MemoryReportInp
         // Hit/miss/eviction counters are live cache diagnostics, not part of
         // the byte tally — read directly from the cache rather than
         // threading them through the struct.
-        if (constrainedTextureCache_) {
+        if (ctx_.constrainedTextureCache) {
             lines.push_back(fmt::format("  Hits: {}  Misses: {}  Hit rate: {:.1f}%  Evictions: {}",
-                constrainedTextureCache_->getCacheHits(),
-                constrainedTextureCache_->getCacheMisses(),
-                constrainedTextureCache_->getHitRate(),
-                constrainedTextureCache_->getEvictionCount()));
+                ctx_.constrainedTextureCache->getCacheHits(),
+                ctx_.constrainedTextureCache->getCacheMisses(),
+                ctx_.constrainedTextureCache->getHitRate(),
+                ctx_.constrainedTextureCache->getEvictionCount()));
         }
-    } else if (driver_) {
+    } else if (ctx_.driver) {
         // Non-constrained mode: count Irrlicht driver textures
-        int texCount = driver_->getTextureCount();
+        int texCount = ctx_.driver->getTextureCount();
         lines.push_back(fmt::format("[Textures] {} loaded (driver-managed, no budget)", texCount));
     }
 
@@ -863,14 +861,14 @@ std::vector<std::string> IrrlichtRenderer::getMemoryReport(const MemoryReportInp
 
     // --- Zone Geometry ---
     {
-        size_t regionCount = regionMeshNodes_.size();
-        size_t objectCount = objectNodes_.size();
-        size_t lightCount = zoneLightData_.size();
-        size_t objectLightCount = objectLights_.size();
+        size_t regionCount = ctx_.regionMeshNodes.size();
+        size_t objectCount = ctx_.objectNodes.size();
+        size_t lightCount = owner_.zoneLightData_.size();
+        size_t objectLightCount = ctx_.objectLights.size();
 
-        if (usePvsCulling_) {
+        if (ctx_.usePvsCulling) {
             uint32_t pvsVerts = 0, pvsIndices = 0;
-            for (const auto& [id, node] : regionMeshNodes_) {
+            for (const auto& [id, node] : ctx_.regionMeshNodes) {
                 if (node && node->getMesh()) {
                     auto* mesh = node->getMesh();
                     for (uint32_t i = 0; i < mesh->getMeshBufferCount(); ++i) {
@@ -881,8 +879,8 @@ std::vector<std::string> IrrlichtRenderer::getMemoryReport(const MemoryReportInp
             }
             lines.push_back(fmt::format("[Zone Geometry] {} ({} regions, {}V/{}I)",
                 formatBytes(b.zoneGeometryBytes), regionCount, pvsVerts, pvsIndices));
-        } else if (zoneMeshNode_) {
-            auto* mesh = zoneMeshNode_->getMesh();
+        } else if (owner_.zoneMeshNode_) {
+            auto* mesh = owner_.zoneMeshNode_->getMesh();
             uint32_t verts = 0, indices = 0;
             if (mesh) {
                 for (uint32_t i = 0; i < mesh->getMeshBufferCount(); ++i) {
@@ -904,19 +902,19 @@ std::vector<std::string> IrrlichtRenderer::getMemoryReport(const MemoryReportInp
     }
 
     // --- Entity Renderer ---
-    if (entityRenderer_) {
-        size_t entityCount = entityRenderer_->getEntityCount();
-        size_t modeledCount = entityRenderer_->getModeledEntityCount();
-        size_t visibleCount = entityRenderer_->getVisibleEntityCount();
-        auto* rml = entityRenderer_->getRaceModelLoader();
+    if (ctx_.entityRenderer) {
+        size_t entityCount = ctx_.entityRenderer->getEntityCount();
+        size_t modeledCount = ctx_.entityRenderer->getModeledEntityCount();
+        size_t visibleCount = ctx_.entityRenderer->getVisibleEntityCount();
+        auto* rml = ctx_.entityRenderer->getRaceModelLoader();
         size_t loadedModels = rml ? rml->getLoadedModelCount() : 0;
         lines.push_back(fmt::format("[Entities] {} total, {} modeled, {} visible, {} race models, {} instance data",
             entityCount, modeledCount, visibleCount, loadedModels, formatBytes(b.entityInstanceBytes)));
     }
 
     // --- Character Models ---
-    if (entityRenderer_) {
-        if (auto* rml = entityRenderer_->getRaceModelLoader()) {
+    if (ctx_.entityRenderer) {
+        if (auto* rml = ctx_.entityRenderer->getRaceModelLoader()) {
             auto stats = rml->getMemoryStats();
             size_t rmlTexTotal = stats.globalTextureBytes + stats.numberedTextureBytes
                             + stats.armorTextureBytes + stats.zoneTextureBytes
@@ -933,8 +931,8 @@ std::vector<std::string> IrrlichtRenderer::getMemoryReport(const MemoryReportInp
     }
 
     // --- Equipment Models ---
-    if (entityRenderer_) {
-        if (auto* eml = entityRenderer_->getEquipmentModelLoader()) {
+    if (ctx_.entityRenderer) {
+        if (auto* eml = ctx_.entityRenderer->getEquipmentModelLoader()) {
             auto stats = eml->getMemoryStats();
             lines.push_back(fmt::format("[Equipment Models] {} (tex {}, geom {}, mesh {}, idx {}; {}/{} loaded, {} mappings)",
                 formatBytes(b.equipmentModelsBytes),
@@ -947,55 +945,55 @@ std::vector<std::string> IrrlichtRenderer::getMemoryReport(const MemoryReportInp
     }
 
     // --- S3D Zone Source Data (CPU-side geometry, BSP, animations kept for mesh rebuilds) ---
-    if (currentZone_) {
-        size_t combinedGeomBytes = currentZone_->geometry ? currentZone_->geometry->getFullMemoryUsage() : 0;
-        size_t wldBytes = currentZone_->wldLoader ? currentZone_->wldLoader->getMemoryUsage() : 0;
+    if (ctx_.currentZone) {
+        size_t combinedGeomBytes = ctx_.currentZone->geometry ? ctx_.currentZone->geometry->getFullMemoryUsage() : 0;
+        size_t wldBytes = ctx_.currentZone->wldLoader ? ctx_.currentZone->wldLoader->getMemoryUsage() : 0;
         size_t objGeomBytes = 0;
-        for (const auto& [name, geom] : currentZone_->objectGeometries)
+        for (const auto& [name, geom] : ctx_.currentZone->objectGeometries)
             if (geom) objGeomBytes += geom->getFullMemoryUsage();
 
         lines.push_back(fmt::format("[S3D Zone Source Data] {} (combined geom {}, WLD {}, obj geom {})",
             formatBytes(b.s3dZoneSourceBytes), formatBytes(combinedGeomBytes),
             formatBytes(wldBytes), formatBytes(objGeomBytes)));
 
-        if (currentZone_->wldLoader) {
-            currentZone_->wldLoader->logMemoryBreakdown();
+        if (ctx_.currentZone->wldLoader) {
+            ctx_.currentZone->wldLoader->logMemoryBreakdown();
         }
     }
 
     // --- GPU Texture Memory (actual GPU-side allocations in shared RAM) ---
 #ifdef EQT_HAS_GLES2
-    if (driver_) {
-        int texCount = driver_->getTextureCount();
+    if (ctx_.driver) {
+        int texCount = ctx_.driver->getTextureCount();
         lines.push_back(fmt::format("[GPU Textures] {} ({} textures in shared RAM)",
             formatBytes(b.gpuTextureBytes), texCount));
     }
 #else
-    if (driver_) {
-        int texCount = driver_->getTextureCount();
+    if (ctx_.driver) {
+        int texCount = ctx_.driver->getTextureCount();
         lines.push_back(fmt::format("[Irrlicht Driver] {} textures (GPU-side, not tracked)", texCount));
     }
 #endif
 
     // --- HCMap / Collision ---
-    if (collisionMap_ && collisionMap_->IsLoaded()) {
-        auto mapStats = collisionMap_->GetMemoryStats();
+    if (ctx_.collisionMap && ctx_.collisionMap->IsLoaded()) {
+        auto mapStats = ctx_.collisionMap->GetMemoryStats();
         lines.push_back(fmt::format("[HCMap/Collision] {} ({} verts, {} faces)",
             formatBytes(b.hcmapBytes), mapStats.vertexCount, mapStats.faceCount));
     }
 
     // --- Framebuffer ---
-    if (driver_) {
-        auto screenSize = driver_->getScreenSize();
-        int colorBpp = (config_.constrainedConfig.colorDepthBits == 16) ? 16 : 32;
+    if (ctx_.driver) {
+        auto screenSize = ctx_.driver->getScreenSize();
+        int colorBpp = (ctx_.config.constrainedConfig.colorDepthBits == 16) ? 16 : 32;
         lines.push_back(fmt::format("[Framebuffer] {} ({}x{}, {}bpp color, D24S8)",
             formatBytes(b.framebufferBytes), screenSize.Width, screenSize.Height, colorBpp));
     }
 
     // --- VBO/EBO GPU Buffers ---
 #ifdef EQT_HAS_GLES2
-    if (driver_) {
-        size_t hwbCount = gles2GetHWBufferCount(driver_);
+    if (ctx_.driver) {
+        size_t hwbCount = gles2GetHWBufferCount(ctx_.driver);
         if (hwbCount > 0) {
             lines.push_back(fmt::format("[VBO/EBO GPU Buffers] {} ({} buffers)",
                 formatBytes(b.vboEboBytes), hwbCount));
@@ -1003,10 +1001,10 @@ std::vector<std::string> IrrlichtRenderer::getMemoryReport(const MemoryReportInp
     }
 
     // --- GPU Upload Thread ---
-    if (gpuUploadThread_ && gpuUploadThread_->isAvailable()) {
-        size_t pending = gpuUploadThread_->getPendingCount();
-        uint64_t completed = gpuUploadThread_->getTotalUploadsCompleted();
-        uint64_t totalUs = gpuUploadThread_->getTotalUploadTimeUs();
+    if (ctx_.gpuUploadThread && ctx_.gpuUploadThread->isAvailable()) {
+        size_t pending = ctx_.gpuUploadThread->getPendingCount();
+        uint64_t completed = ctx_.gpuUploadThread->getTotalUploadsCompleted();
+        uint64_t totalUs = ctx_.gpuUploadThread->getTotalUploadTimeUs();
         float avgUs = completed > 0 ? static_cast<float>(totalUs) / completed : 0.0f;
         lines.push_back(fmt::format("[GPU Upload Thread] {} pending, {} completed, avg {:.0f}us/upload",
             pending, completed, avgUs));

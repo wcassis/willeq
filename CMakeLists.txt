@@ -503,8 +503,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/renderer_zone_load_env.cpp
         src/client/graphics/renderer_entity_load_gate.cpp
         src/client/graphics/renderer_zone_lifecycle.cpp
-        src/client/graphics/renderer_diagnostics.cpp
-        src/client/graphics/renderer_debug.cpp
+        src/client/graphics/diagnostics/diagnostics_component.cpp
+        src/client/graphics/diagnostics/diagnostics_debug.cpp
         src/client/graphics/renderer_player_physics.cpp
         src/client/graphics/renderer_player_collision.cpp
         src/client/graphics/renderer_zone_draw.cpp

@@ -992,7 +992,7 @@ void IrrlichtRenderer::loadZoneSequential(const std::string& eqClientPath,
                                               currentZoneName_);
     }
 
-    dumpScene();
+    diagnostics_->dumpScene();
     FlushThreadLog();
 }
 

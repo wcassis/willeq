@@ -392,3 +392,40 @@ it without taking that measurement first.
   the overlay was equally unreachable before L03. Closes when: either the zone
   entry path sets the state (the feature is wanted) or the draw body and its
   three members go (it is not). Prov: L03 Review.
+
+## Added 2026-09-03 by the L04 Review (diagnostics extraction)
+
+- **B043** (A) **Four bound debug hotkeys have never done anything.**
+  `RendererEventReceiver::OnEvent` queues `RendererAction::ToggleWireframe`,
+  `ToggleHUD` and `ToggleNameTags`
+  (`src/client/graphics/renderer_event_receiver.cpp:181-183`), and
+  `ToggleOldModels` sits in the same enum
+  (`include/client/graphics/renderer_types.h:111-112`), but
+  `IrrlichtRenderer::processCommonInput()`'s switch
+  (`src/client/graphics/renderer_frame_input.cpp`) has **no arm for any of the
+  four** — they fall through its `default: break;`. The hotkeys are bound and
+  parsed (`src/client/input/hotkey_manager.cpp:111-113`,
+  `include/client/input/input_handler.h:63-65`). The second route is dead too:
+  `GraphicalMode::toggleWireframe/toggleHUD/toggleNameTags`
+  (`src/client/mode/graphical_mode.cpp:184-199`) call through an
+  `output::IOutputRenderer*`, and `class IrrlichtRenderer` **does not derive
+  from `IOutputRenderer`** — so those reach `output_renderer.h`'s empty
+  `virtual ... {}` defaults, not the renderer. The implementations are live and
+  correct; they are now `DiagnosticsComponent::toggleWireframe/toggleHUD/`
+  `toggleNameTags/toggleOldModels`, reachable as
+  `renderer.Diagnostics().toggleX()`. **Fix is four switch arms** in
+  `processCommonInput`, mirroring the `ToggleZoneLights` / `CycleObjectLights`
+  arms next to them. Not done in L04, which is structural. This is the
+  T313/T315 unwired-handler pattern for the fourth time. Prov: L04 Review.
+
+- **B044** (P) **`refactor/L01_rdp_component.md`'s correction 5 is factually
+  wrong and is being cited by every L plan.** It says `setCurrentTarget`,
+  `clearCurrentTarget`, `toggleHUD`, `toggleNameTags`, `toggleWireframe`,
+  `dumpScene` and `getMemoryReport` are "`IOutputRenderer` virtual overrides"
+  that must stay on `IrrlichtRenderer` as forwarders. `IrrlichtRenderer`
+  implements no interface (`include/client/graphics/irrlicht_renderer.h`,
+  `class IrrlichtRenderer {`). A forwarder is justified by its ACTUAL callers
+  — the bridge and `Application` (the K11 rule) — never by a name collision
+  with an interface the class does not implement. Closes when: correction 5 is
+  struck from L01's Review and `refactor/L_renderer_component_extraction.md`'s
+  "L01 corrections" list. Prov: L04 Review.

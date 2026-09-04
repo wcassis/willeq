@@ -165,10 +165,10 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
 
     // --- Visual rendering ---
     if (cmd == "/sort") {
-        toggleManualZoneDraw();
+        diagnostics_->toggleManualZoneDraw();
         chat(fmt::format("Front-to-back zone sorting: {}", isManualZoneDrawEnabled() ? "ENABLED" : "DISABLED"));
     } else if (cmd == "/mergedraws") {
-        toggleMergeZoneDraws();
+        diagnostics_->toggleMergeZoneDraws();
         chat(fmt::format("Zone draw merge: {}", isMergeZoneDrawsEnabled() ? "ENABLED" : "DISABLED"));
     } else if (cmd == "/screenshot") {
         // P10: smallest additive hook for the in-app A/B capture (no other
@@ -251,23 +251,23 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
         chat(fmt::format("GPU upload thread: {}", isGPUUploadThreadEnabled() ? "ENABLED" : "DISABLED"));
     } else if (cmd == "/portal") {
         if (args == "debug") {
-            togglePortalDebugDraw();
+            diagnostics_->togglePortalDebugDraw();
             chat(fmt::format("Portal debug overlay: {}", isPortalDebugDrawEnabled() ? "ENABLED" : "DISABLED"));
         } else {
-            togglePortalOcclusion();
+            diagnostics_->togglePortalOcclusion();
             chat(fmt::format("Portal occlusion: {}", isPortalOcclusionEnabled() ? "ENABLED" : "DISABLED"));
         }
     } else if (cmd == "/stencil") {
-        toggleStencilDebugDraw();
+        diagnostics_->toggleStencilDebugDraw();
         chat(fmt::format("Stencil debug overlay: {}", isStencilDebugDrawEnabled() ? "ENABLED" : "DISABLED"));
     } else if (cmd == "/plight") {
-        togglePlayerLight();
+        diagnostics_->togglePlayerLight();
         chat(fmt::format("Per-pixel player light: {}", isPlayerLightEnabled() ? "ENABLED" : "DISABLED"));
     } else if (cmd == "/olight") {
-        toggleObjectLights();
+        diagnostics_->toggleObjectLights();
         chat(fmt::format("Object lights: {}", isObjectLightsEnabled() ? "ENABLED" : "DISABLED"));
     } else if (cmd == "/zlight") {
-        toggleDirectionalLight();
+        diagnostics_->toggleDirectionalLight();
         chat(fmt::format("Directional light: {}", isDirectionalLightEnabled() ? "ENABLED" : "DISABLED"));
     } else if (cmd == "/lightmode") {
         if (zoneShader_) {
@@ -291,11 +291,11 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
             if (debugMat >= 0) {
                 if (mode > 0 && prevMode == 0) {
                     // Entering debug: swap all per-pixel materials to debug program
-                    swapToDebugShader(debugMat);
+                    diagnostics_->swapToDebugShader(debugMat);
                     LOG_INFO(MOD_SHADER, "Swapped all per-pixel materials to debug program {}", debugMat);
                 } else if (mode == 0 && prevMode > 0) {
                     // Leaving debug: restore production materials
-                    swapFromDebugShader(debugMat);
+                    diagnostics_->swapFromDebugShader(debugMat);
                     LOG_INFO(MOD_SHADER, "Restored production materials from debug program");
                 }
             }
@@ -366,10 +366,10 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
             chat("Frame timing profiler DISABLED");
         }
     } else if (cmd == "/sceneprofile" || cmd == "/sp" || cmd == "/scenebreak") {
-        runSceneProfile();
+        diagnostics_->runSceneProfile();
         chat("Scene profile running - check console for breakdown");
     } else if (cmd == "/dumpscene" || cmd == "/ds") {
-        dumpScene();
+        diagnostics_->dumpScene();
         chat("Scene dump written to console log");
     } else if (cmd == "/simworker" || cmd == "/sw") {
         auto info = getSimWorkerDebugInfo();
@@ -387,7 +387,7 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
     // the overlay; T300 Leg C had to record its 285-frame combat negative
     // with the chat box and hotbar opaque over the bottom of every frame.
     else if (cmd == "/hideui" || cmd == "/toggleui" || cmd == "/ui") {
-        toggleAllUI();
+        diagnostics_->toggleAllUI();
         chat(fmt::format("UI: {}", isAllUIHidden() ? "HIDDEN" : "VISIBLE"));
     }
     // T313: the scriptable half of the static-UI scroll, for the same

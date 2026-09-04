@@ -58,7 +58,7 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
         if (sceneProfileFrameCount_ < 0) {
             sceneProfileFrameCount_++;
         } else {
-            profileSceneBreakdown();
+            diagnostics_->profileSceneBreakdown();
         }
     }
 

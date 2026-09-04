@@ -117,7 +117,7 @@ void IrrlichtRenderer::processCommonInput(const std::vector<RendererEvent>& acti
     for (const auto& event : actions) {
         switch (event.action) {
             case RA::Screenshot: pendingScreenshot_ = true; break;
-            case RA::ToggleAllUI: toggleAllUI(); break;
+            case RA::ToggleAllUI: diagnostics_->toggleAllUI(); break;
             // T313: PageUp/PageDown. Same router as the wheel; a whole page
             // per press. Global-mode actions, so they work with a popup up.
             case RA::ScrollUIUp:
@@ -129,8 +129,8 @@ void IrrlichtRenderer::processCommonInput(const std::vector<RendererEvent>& acti
                         uiLayout_, chatPanelState_, skillsPopupState_, lootState_);
                 }
                 break;
-            case RA::ToggleZoneLights: toggleZoneLights(); break;
-            case RA::CycleObjectLights: cycleObjectLights(); break;
+            case RA::ToggleZoneLights: diagnostics_->toggleZoneLights(); break;
+            case RA::CycleObjectLights: diagnostics_->cycleObjectLights(); break;
             case RA::ToggleOptions:
                 // WindowManager removed — options window not available
                 break;

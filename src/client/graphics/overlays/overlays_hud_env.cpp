@@ -475,7 +475,7 @@ void OverlaysComponent::updateHUD() {
     currentState.targetId = owner_.currentTargetId_;
     currentState.targetHpPercent = currentTargetHpPercent_;
     currentState.wireframeMode = ctx_.wireframeMode;
-    currentState.oldModels = owner_.isUsingOldModels();
+    currentState.oldModels = owner_.Diagnostics().isUsingOldModels();
     currentState.cameraMode = owner_.getCameraModeString();
     currentState.zoneName = ctx_.currentZoneName;
 
