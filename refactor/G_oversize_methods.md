@@ -69,3 +69,18 @@ lifetime change; a pinned test's assertion would change.
    becoming one-line functions.
 12. Plant the CALL-ORDER fault too (swap two family calls), not only a
    registration swap.
+
+## G02 corrections (2026-09-04)
+
+13. Run the text-reader grep (correction 7) even when the plan's list looks
+   complete — G02's plan named 8 driving tests, the grep found 15.
+14. Prefer a COMPILER-ENFORCED shape (an `overloaded` visitor with no generic
+   fallback turns "new intent silently traces" into "does not compile"),
+   then test only the residual the compiler cannot see (a handler dispatched
+   by nothing).
+15. Add the trivial forwarder rather than carve an exception to "every arm
+   is a handler".
+16. A widening of a sweep must NAME the matcher that would have weakened it
+   and show why the new one does not.
+17. A variant-backed coverage net needs no golden file — `variant_size` is
+   the golden.
