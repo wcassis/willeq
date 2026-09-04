@@ -35,6 +35,7 @@
 // Split per refactor/J31_renderer_frame_split.md (move-only).
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/frame/frame_component.h"
+#include "client/graphics/world_line_batch.h"  // T335b: the shared post-drawAll() 3D-line guard
 #include "client/graphics/entity_prep_worker.h"
 #include "client/graphics/sky_renderer.h"
 #include "client/graphics/weather_effects_controller.h"
@@ -356,7 +357,15 @@ void FrameComponent::renderDebugOverlays(float deltaTime) {
         debugMat.ZWriteEnable = false;
         debugMat.AntiAliasing = false;
         debugMat.Thickness = 2.0f;
-        ctx_.driver->setMaterial(debugMat);
+        // T335b (B054): this batch runs after smgr->drawAll() with the GLES2
+        // driver latched in 2D mode, so a bare setMaterial() + world-space
+        // draw3DLine() drew nothing AND left back-face culling on, wiping the
+        // 2D UI for the rest of the frame. WorldLineBatch installs the
+        // captured 3D view/projection and hands the 2D-safe state back in its
+        // destructor, which runs at this if-block's closing brace -- after the
+        // last draw3DLine() below and before the map overlay. The statement it
+        // replaces is golden entry 127 (see tests/test_frame_render_order.cpp).
+        WorldLineBatch batch(ctx_, debugMat);
         ctx_.driver->setTransform(irr::video::ETS_WORLD, irr::core::matrix4());
 
         // Get current PVS region for occlusion check

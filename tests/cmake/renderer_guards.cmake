@@ -299,6 +299,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_collision_debug_draw)
 ENDIF()
 
+# T335b (B054): the last of the three siblings -- the Ctrl+V frustum debug
+# wireframe. It lives inside FrameComponent::renderDebugOverlays(), every
+# statement of which is pinned by tests/goldens/frame_render_order_g05.txt, so
+# the test drives the whole pass with every other overlay in it left OFF.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_frustum_debug_draw
+        test_frustum_debug_draw.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_frustum_debug_draw PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_frustum_debug_draw GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_frustum_debug_draw)
+ENDIF()
+
 # T310 Leg A: the first-person camera tunables (/fpcam, --fpcam). Same bare,
 # never-Init()'d IrrlichtRenderer idiom as test_irrlicht_camera_command above,
 # plus the catalog gate and Application::parseArguments -- so ONE binary covers

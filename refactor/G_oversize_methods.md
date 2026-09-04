@@ -164,3 +164,30 @@ golden proved with planted faults in the code. `createDefaultConfig`
 search loop whose length is duplication, zero test coverage). No behaviour
 change in any unit; the visual gate and the transform suites are the
 proof.
+
+## T335b correction 32
+
+**A statement-text golden learns a reviewed edit IN PLACE (positions named),
+never by regeneration.** T337's rule applied to the second golden of this
+batch, and generalised: an order golden pins a SEQUENCE, not the TU. When a
+deliberate, reviewed change alters the sequence, the golden is edited at
+exactly the positions the change touches and the change is NAMED there — in the
+guard's `kGoldenSize` comment, listing the unit and the entry range. It is never
+regenerated from the tip, because a regenerated golden accepts whatever the tip
+says, which is the one property the golden exists to deny.
+
+T335 read the golden the other way — as a freeze — and STOPped, boarding the
+whole TU as unfixable while the golden stood. That reading was wrong and cost a
+site. The correct test is not "does the golden change?" but "is the change
+reviewed, minimal, and recorded at its positions?". Two consequences worth
+carrying:
+
+* **Shape the edit to be minimal, then record it.** T335b's guard REPLACED the
+  `setMaterial(debugMat);` it supersedes rather than sitting beside it, and its
+  restore is a destructor — so the whole fix cost one entry's TEXT and the count
+  stayed 305. A fix that would have added statements is not thereby forbidden;
+  it just has to say so in the comment and move the count.
+* **Re-plant after every golden edit, both faults.** Teaching a golden an entry
+  can blunt it. Drop a statement → the count clause must fail; swap two pass
+  calls → the position clause must fail. T335b pasted both; the guard was
+  unblunted.

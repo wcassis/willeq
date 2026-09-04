@@ -39,6 +39,23 @@ const std::string kRoot = WILLEQ_REPO_ROOT;
 const std::string kTU = kRoot + "/src/client/graphics/frame/renderer_frame_render.cpp";
 const std::string kGolden = kRoot + "/tests/goldens/frame_render_order_g05.txt";
 
+// The golden's entry count. It is NOT a number to nudge until the suite goes
+// green: the golden is a record of the PRE-G05 draw sequence PLUS the
+// deliberate, reviewed edits listed here, each named by the POSITIONS it
+// touched. A change is taught to the golden IN PLACE at those positions and
+// this comment gains a line; it is NEVER regenerated from the tip, because a
+// regenerated golden accepts whatever the tip says, which is the one property
+// this golden exists to deny (T337's rule, batch-G correction 32).
+//
+//   * T335b: WorldLineBatch guard in the frustum block, entries 120-128.
+//     Entry 127 changed text -- `ctx_.driver->setMaterial(debugMat);` became
+//     `WorldLineBatch batch(ctx_, debugMat);` -- because the restore moved
+//     into that guard's destructor. The count is UNCHANGED at 305: the guard
+//     replaces the statement it supersedes rather than being added beside it,
+//     and its destructor costs no statement at all. Entries 120-126 and 128
+//     are byte-identical; nothing was reordered.
+const size_t kGoldenSize = 305u;
+
 std::vector<std::string> readLines(const std::string& path) {
     std::ifstream in(path);
     EXPECT_TRUE(in.good()) << "cannot open " << path;
@@ -147,9 +164,11 @@ std::vector<std::string> goldenEntries() {
 TEST(FrameRenderOrder, GoldenIsPresentAndTheRightSize) {
     const std::vector<std::string> golden = goldenEntries();
     ASSERT_FALSE(golden.empty()) << "the render-order golden is empty or missing: " << kGolden;
-    EXPECT_EQ(golden.size(), 305u)
+    EXPECT_EQ(golden.size(), kGoldenSize)
         << "the render-order golden changed size. It is a record of the PRE-G05 draw "
-           "sequence and is not re-blessed to accommodate a code change.";
+           "sequence plus the reviewed edits named above kGoldenSize, and it is never "
+           "REGENERATED from the tip -- a genuine change is taught to it IN PLACE at "
+           "the positions it touches, and named there.";
 }
 
 // Case 2: every pass is reached exactly once, and no pass is orphaned.
