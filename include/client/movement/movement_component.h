@@ -166,9 +166,6 @@ private:
 	// by RelocateWithinZone().
 	bool m_force_next_position_update = false;
 
-	// Z coordinate of water surface when swimming.
-	float m_water_surface_z = 0.0f;
-
 	// T88 test seam (see EverQuest::Test_SetBypassSendGuardForSeam /
 	// Test_GetLastComputedPositionUpdate above).
 	TestSentPositionUpdate m_test_last_sent_update;

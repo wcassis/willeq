@@ -20,7 +20,11 @@
 #include "client/movement/movement_component.h"
 #include "zone_stream_test_utils.h"
 
+#include <algorithm>
 #include <cmath>
+#include <fstream>
+#include <sstream>
+#include <string>
 
 using namespace zonetest;
 
@@ -87,6 +91,75 @@ TEST_F(MovementComponentTest, PositionUpdateSeamMovedWithItsStruct) {
 TEST_F(MovementComponentTest, StopMovementIsReachableThroughTheAccessor) {
     eq.Movement().StopMovement();
     EXPECT_FALSE(eq.IsMoving());
+}
+
+// ---------------------------------------------------------------------------
+// T347 (B029): the water-surface Z estimate is gone and must stay gone.
+//
+// UpdateWaterState() computed `waterSurfaceZ` in its OnSurface arm and stashed
+// it in MovementComponent::m_water_surface_z on every water-state change. The
+// member had ZERO readers tree-wide, and the SwimmingStateChanged event the
+// same function publishes carries only {isSwimming, swimSpeed, isLevitating},
+// so nothing downstream could observe the value either -- it was a write into
+// a hole. There is no runtime handle on a deleted member, so the net is a
+// source guard: reintroducing the field (or the local that fed it) without a
+// reader fails here, which is the review moment.
+// ---------------------------------------------------------------------------
+
+#ifndef WILLEQ_REPO_ROOT
+#error "WILLEQ_REPO_ROOT must be defined (tests/CMakeLists.txt)"
+#endif
+
+std::string ReadRepoFile(const char* relative) {
+    std::ifstream in(std::string(WILLEQ_REPO_ROOT) + "/" + relative);
+    EXPECT_TRUE(in.is_open()) << relative;
+    std::stringstream buf;
+    buf << in.rdbuf();
+    return buf.str();
+}
+
+TEST(MovementWaterStateGuard, NoUnreadWaterSurfaceHeightIsStored) {
+    const std::string header = ReadRepoFile("include/client/movement/movement_component.h");
+    ASSERT_GT(header.size(), 1000u) << "header unreadable -- the guard would pass vacuously";
+    EXPECT_EQ(header.find("m_water_surface_z"), std::string::npos)
+        << "MovementComponent declares a water-surface member again; B029 deleted "
+           "it because nothing read it. Add the reader (or an event field) first.";
+
+    const std::string tu = ReadRepoFile("src/client/movement/movement_state.cpp");
+    ASSERT_NE(tu.find("UpdateWaterState"), std::string::npos)
+        << "TU unreadable or renamed -- the guard would pass vacuously";
+    EXPECT_EQ(tu.find("waterSurfaceZ"), std::string::npos)
+        << "UpdateWaterState() computes a water-surface Z again; B029 deleted it "
+           "because the value reached no consumer.";
+}
+
+// The pushEvent payload is what B029 checked before deleting: this is the ONLY
+// channel by which UpdateWaterState() tells anyone about the water. If a
+// surface height is ever wanted, it belongs here, where a consumer can see it.
+TEST(MovementWaterStateGuard, SwimmingEventCarriesNoSurfaceHeight) {
+    eqt::state::SwimmingStateChangedData data;
+    data.isSwimming = true;
+    data.swimSpeed = 1.5f;
+    data.isLevitating = false;
+    EXPECT_TRUE(data.isSwimming);
+    EXPECT_FLOAT_EQ(data.swimSpeed, 1.5f);
+    EXPECT_FALSE(data.isLevitating);
+
+    // The field list itself, read from the header rather than guessed from
+    // sizeof() (which padding makes a lie): exactly three members, none of
+    // them a height.
+    const std::string bus = ReadRepoFile("include/client/state/event_bus.h");
+    const size_t at = bus.find("struct SwimmingStateChangedData {");
+    ASSERT_NE(at, std::string::npos) << "payload struct renamed -- guard is vacuous";
+    const size_t end = bus.find("};", at);
+    ASSERT_NE(end, std::string::npos);
+    const std::string body = bus.substr(at, end - at);
+    EXPECT_EQ(body.find("urface"), std::string::npos)
+        << "the swim event gained a surface field; B029's deletion can be revisited "
+           "-- with a reader this time. Body:\n" << body;
+    EXPECT_EQ(std::count(body.begin(), body.end(), ';'), 3)
+        << "the swim event's payload is no longer exactly {isSwimming, swimSpeed, "
+           "isLevitating}. Body:\n" << body;
 }
 
 }  // namespace

@@ -315,9 +315,20 @@ it without taking that measurement first.
 
 ## Added 2026-09-03 by the K07 Review (movement extraction)
 
-- **B029** (B) `src/client/movement/movement_state.cpp` `MovementComponent::m_water_surface_z`
+- ~~**B029** (B) `src/client/movement/movement_state.cpp` `MovementComponent::m_water_surface_z`
   — written on every water-state change and read by nothing; swim height has
-  no consumer. Closes when: a reader exists or the member is deleted. Prov: K07 Review.
+  no consumer.~~ **CLOSED 2026-09-04 by T347: deleted.** The member had four
+  occurrences tree-wide (its declaration, the local `waterSurfaceZ` that fed it,
+  that local's one assignment in `UpdateWaterState()`'s OnSurface arm, and the
+  store) and zero readers. `pushEvent` checked first, as the entry asked:
+  `SwimmingStateChangedData` (`include/client/state/event_bus.h:702`) carries
+  `{isSwimming, swimSpeed, isLevitating}` and no height, so the value reached no
+  consumer by that route either. Member, local and store deleted; the OnSurface
+  arm keeps a comment saying add a reader before adding the estimate back.
+  Pinned by `MovementWaterStateGuard.NoUnreadWaterSurfaceHeightIsStored` and
+  `.SwimmingEventCarriesNoSurfaceHeight` (`tests/test_movement_component.cpp`) --
+  source guards, since a deleted member has no runtime handle; planted fault
+  (re-declare the member) fails the first. Prov: K07 Review.
 
 - ~~**B030** (B) `include/client/eq.h` `EverQuest::m_swim_up` / `m_swim_down` with
   `SetSwimUp` / `SetSwimDown` — zero readers, zero setter callers.~~ **CLOSED by
