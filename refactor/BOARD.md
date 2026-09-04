@@ -349,16 +349,38 @@ it without taking that measurement first.
   `CLOSE_WINDOW` (144 = thunder2) and `SELL_ITEM` (146 = wearclth) deleted.
   13 new tests in `tests/test_ui_sound_events.cpp`.
   **THIS ENTRY STAYS OPEN on three things Leg B deliberately did not guess:**
-  (1) the FIVE UNMEASURED rows — coin pickup by denomination from a corpse,
-  buy, sell, combine success and combine failure. Leg A was blocked in-world,
-  not on method: the Titanium client **will not drop coin on the ground**, a
-  corpse could not be right-clicked because `#goto` lands the player on top of
-  it, `#goto` also puts the player *inside* a merchant so her model is occluded
-  by his own, and a tradeskill component would not stay in a container slot
-  (EQ moves items click-pickup/click-drop, and the drop into the grid did not
-  take). Closing them needs a camera/interaction helper for the oracle client;
-  the expensive parts (the real-time ALSA-loopback capture rig and the 2604-file
-  tone probe) are built and proven under `review/T328/scripts/`.
+  (1) ~~the FIVE UNMEASURED rows — coin pickup by denomination from a corpse,
+  buy, sell, combine success and combine failure.~~ **T342 MEASURED AND WIRED
+  FOUR OF THE FIVE, 2026-09-04** (`refactor/T342_unmeasured_sound_rows.md`
+  § Review, `review/T342/`), on the same tone probe — its `tonemap.json` came
+  out byte-identical to T328's, so the two units' rows are one measurement.
+  ~~coin pickup by denomination~~ — **all four denominations are the SAME
+  sound**, `BuyItem.WAV` 138, measured pp/gp/sp/cp from the inventory money
+  slots; `pickupMoney()` was already denomination-agnostic, so the measurement
+  closes it with no code change and a test pins it. ~~buy~~ — **TWO sounds
+  together**, `BuyItem.WAV` 138 + `wearclth.WAV` 146 (the coin, and the item
+  landing in a slot), wired at `MerchantComponent::ZoneProcessShopPlayerBuy`.
+  ~~sell~~ — **one sound**, `BuyItem.WAV` 138 only (the item *leaves* a slot,
+  and T328 row 7 measured that gesture silent), wired at
+  `ZoneProcessShopPlayerSell`. ~~combine success~~ and ~~combine failure~~ —
+  **both measured SILENT** (2 successes, 3 failures) and now PINNED silent;
+  `LevDn.WAV` sits in the bank and would have been a plausible guess for the
+  failure, and the oracle plays nothing. 7 new tests. **What REMAINS on this
+  clause is one row: coin out of a CORPSE'S LOOT WINDOW.** T342 spawned an NPC
+  with a cash loot table and killed it, but `#npctypespawn` drops it among North
+  Qeynos' training dummies and eight verified right-clicks reached a dummy's
+  Consider window instead of the corpse. It needs a zone with no NPC clutter at
+  the spawn point, not a new technique — T342 also recorded the three
+  interaction rules that unblocked everything else (a 3D-view click must carry
+  **no** pointer motion while a UI click needs 1 px; `#goto` an **offset** from
+  the NPC, never its own coordinates; every click needs a verified retry loop —
+  the merchant window took three identical right-clicks). Two server rules found
+  on the way, both of which invalidate the obvious recipe for a combine failure:
+  **a GM always succeeds** (`zone/tradeskills.cpp:1124`), and **Baking 300 can
+  never fail** — eqemu's `chance = skill − 0.75 × trivial + 51.5` (floor 5, cap
+  95) gives 95% success at skill 300 even against the highest-trivial Baking
+  recipe that exists, so a failure needs a low-skill character, not a
+  high-trivial recipe.
   (2) `InventoryManager::pickupMoney()` has **NO production caller** — fable has
   no money-slot UI, so the coin sound is wired at the right publisher but is
   unreachable until that UI exists. (3) SIX `SoundId` names that do NOT describe
