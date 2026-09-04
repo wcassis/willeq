@@ -20,9 +20,17 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <json/json.h>
+#include <cmath>
 
 namespace EQT {
 namespace Audio {
+
+// T334 (B045). See the declaration in audio_manager.h for the convention and
+// for what the single caller used to compute instead.
+glm::vec3 eqHeadingToListenerForward(float headingDeg) {
+    const float headingRad = headingDeg * static_cast<float>(M_PI) / 180.0f;
+    return glm::vec3(std::sin(headingRad), std::cos(headingRad), 0.0f);
+}
 
 AudioManager::AudioManager() = default;
 

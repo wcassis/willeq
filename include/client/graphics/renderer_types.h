@@ -247,8 +247,11 @@ enum class CameraMode {
     FirstPerson // First-person from player position
 };
 
-// Vision types affecting zone light visibility
-// Can be upgraded by race, items, or buffs (never downgraded)
+// Vision types affecting zone light visibility.
+// The race sets the base (PlayerCameraComponent::setPlayerRace -> baseVision_)
+// and buffs raise it above that base. T334 (B046): a buff value is APPLIED,
+// not accumulated -- the publisher recomputes the whole buff set on every fade
+// -- so vision does come back down, never below the racial base.
 enum class VisionType {
     Normal,      // Base vision (25% intensity) - Human, Barbarian, Erudite, Vah Shir, Froglok
     Infravision, // Heat vision (75% intensity, red-shifted) - Dwarf, Gnome, Half Elf, Ogre, Halfling

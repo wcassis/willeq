@@ -310,13 +310,15 @@ public:
     //   setPlayerPosition -- application_zone_loading.cpp:270,380;
     //                        bridge/irrlicht_bridge.cpp:24
     //   setSwimmingState  -- bridge/irrlicht_bridge.cpp:629
-    // setPlayerRace(), resetVisionToBase(), getBaseVision(), isSwimming(),
-    // setSwimUp(), setSwimDown() and setLevitating() got NO forwarder: each has
-    // zero callers on an IrrlichtRenderer receiver, and a forwarder for surface
-    // nothing calls is exactly what this batch removes. Reach them through
-    // PlayerCamera(). setSwimUp/setSwimDown are the sole writers of state
-    // updatePlayerMovement() reads live, and resetVisionToBase() is the only
-    // vision downgrade path -- both are boarded, not deleted.
+    // setPlayerRace(), resetVisionToBase(), getBaseVision() and isSwimming()
+    // got NO forwarder: each has zero callers on an IrrlichtRenderer receiver,
+    // and a forwarder for surface nothing calls is exactly what this batch
+    // removes. Reach them through PlayerCamera(). T334 (B046) DELETED
+    // setSwimUp(), setSwimDown() and setLevitating(): the first two were never
+    // the sole writers of playerMovement_.swimUp/.swimDown -- the G06 input
+    // poll assigns both every frame from the [ and ] bindings -- and the third
+    // duplicated setSwimmingState()'s levitating parameter. resetVisionToBase()
+    // is no longer a dead end either: setVisionType() calls it (B046).
     void setPlayerSpawnId(uint16_t spawnId) { playerCamera_->setPlayerSpawnId(spawnId); }
     void setVisionType(VisionType vision) { playerCamera_->setVisionType(vision); }
     void setPlayerPosition(float x, float y, float z, float heading) { playerCamera_->setPlayerPosition(x, y, z, heading); }
@@ -377,9 +379,10 @@ public:
     // and reaches output_renderer.h's empty default body -- IrrlichtRenderer
     // has NO base class (L03 correction 13). Its one real caller is
     // renderer_slash_commands.cpp, in the renderer, which reaches the
-    // component. getCameraTransform() is gone from this header for the same
-    // reason: zero callers anywhere, so the audio listener it was written for
-    // is never given the camera transform. Kept on the component and boarded.
+    // component. getCameraTransform() was gone from this header for the same
+    // reason and T334 (B045) deleted it outright: the audio listener it was
+    // written for has had a producer since D20c2, and that producer uses the
+    // PLAYER position by design (BridgeComponent::UpdateAudioListener).
     void setCameraMode(CameraMode mode) { playerCamera_->setCameraMode(mode); }
     CameraMode getCameraMode() const { return PlayerCamera().cameraMode(); }
     std::string getCameraModeString() const { return playerCamera_->getCameraModeString(); }

@@ -207,6 +207,11 @@ public:
 	// Day/night state for audio (calculated from game time); driven by the
 	// entities family's OP_TimeOfDay handler.
 	void UpdateDayNightState();
+	// T334 (board B045): the per-frame audio listener sync, called from
+	// PostRenderTick(). Lives in bridge_component_ui_audio.cpp with the rest
+	// of the audio family, not beside the tick, because the tick file owns no
+	// other audio logic.
+	void UpdateAudioListener(float deltaTime);
 	// Sound effect helper (client-triggered). K11 deleted PlaySoundAt,
 	// PlayCombatSound, PlaySpellSound and PlayUISound -- zero callers
 	// tree-wide (section Mechanism 5); boarded.

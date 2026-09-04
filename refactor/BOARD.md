@@ -448,7 +448,9 @@ it without taking that measurement first.
   bug) and the client builds 112 overlay triangles, all in its own log. But
   NOTHING DRAWS, and switching the overlay on makes the entire 2D UI vanish.
   B041's closure condition said "and Ctrl+N draws", so the DRAW half is now
-  B045; the wire half — this entry — is closed.**
+  B048 (T328 Leg B's own text said B045 here; B045 was already the audio
+  listener entry below, and the draw half was filed as B048 — corrected T334);
+  the wire half — this entry — is closed.**
   Prov: `refactor/T329_navmesh_overlay_wire.md` Review; T328 Leg B Review.
 
 - **B042** (B) `src/client/graphics/overlays/overlays_component.cpp`
@@ -502,36 +504,67 @@ it without taking that measurement first.
   struck from L01's Review and `refactor/L_renderer_component_extraction.md`'s
   "L01 corrections" list. Prov: L04 Review.
 
-- **B045** (A) `src/client/graphics/player/renderer_camera.cpp` —
-  **the audio listener is never given the camera transform.**
-  `getCameraTransform(posX..upZ)` carried the comment "Get camera position and
-  orientation for audio listener" on `IrrlichtRenderer` and has **zero callers
-  tree-wide**, in-family included (K03 correction a; comment- and
-  string-filtered, receiver-checked). Nothing in `src/client/audio/` ever asks
-  for it, so 3D audio positioning is wired at one end only — K15 correction
-  (qq)'s shape. The implementation is live and correct; L05 kept it and it is
-  now `PlayerCameraComponent::getCameraTransform`, reachable as
-  `renderer.PlayerCamera().getCameraTransform(...)`. **Fix is one call site**
-  in the audio update path. Not done in L05, which is structural. Prov: L05
-  Review.
+- ~~**B045**~~ **CLOSED 2026-09-04 by T334 — but the premise was WRONG and the
+  real defect was worse.** "3D audio positioning is wired at one end only" is
+  refuted: `AudioManager::setListenerPosition()` has had a producer since D20c2
+  — `BridgeComponent::PostRenderTick()`, every frame — and it deliberately uses
+  the PLAYER position rather than the camera's, because in third person the
+  camera can sit far behind and would make a nearby NPC sound distant. What was
+  broken is the ORIENTATION it passed: `HeadingDeg()` returns DEGREES, and the
+  conversion divided by 512 as though those were the 0-512 wire units AND
+  negated cos, so the listener faced a mirrored direction turning 1.42x too
+  fast. Every positioned sound panned to the wrong side at every heading but
+  due north (measured: heading 90 gave forward (0.893, -0.450) instead of
+  (1, 0); heading 360 gave (-0.957, 0.290) instead of (0, 1)). T334 moved the
+  block to `BridgeComponent::UpdateAudioListener()` in
+  `bridge_component_ui_audio.cpp` and routed the conversion through
+  `EQT::Audio::eqHeadingToListenerForward()`, which agrees with
+  `computeMovementVector()` and `HandlePlayerPositionUpdate()`: forward =
+  (sin h, cos h, 0), h in degrees. Pinned by
+  `tests/test_spatial_audio.cpp` (`ListenerForwardTest`, 2 tests, both failed
+  before). `PlayerCameraComponent::getCameraTransform()` — the zero-caller
+  accessor this entry was actually about — is DELETED (§5): the listener it was
+  written for exists and is placed by design. A camera-based listener would be
+  a listening measurement against the official client, not an argument from
+  this accessor's existence. ~~(A) `src/client/graphics/player/renderer_camera.cpp` —
+  **the audio listener is never given the camera transform.**~~ Prov: L05
+  Review; T334 Review.
 
-- **B046** (A) `src/client/graphics/player/renderer_camera.cpp` —
-  **vision never returns to the racial base, and vertical swim control has no
-  producer.** Two zero-caller knobs on the same family, both the sole enable
-  path of live state (L03 correction 17):
-  * `resetVisionToBase()` is the ONLY downgrade path for `currentVision_`.
-    `setVisionType()` is live (`src/client/bridge/irrlicht_bridge.cpp:582`) and
-    only ever UPGRADES, by design. Nothing calls the reset, so an Ultravision
-    or Infravision buff is **permanent for the session** — the comment
-    "call when vision buffs fade" describes a call that does not exist.
-  * `setSwimUp()` / `setSwimDown()` are the **sole writers** of
-    `playerMovement_.swimUp` / `.swimDown`, which `updatePlayerMovement()`
-    reads live every frame. No caller exists on either route, so a swimming
-    player cannot ascend or descend deliberately. `setLevitating()` is a third
-    zero-caller writer, harmlessly duplicated by `setSwimmingState()`'s
-    levitating parameter.
-  All four kept by L05 and reachable through `renderer.PlayerCamera()`.
-  Fixes are a buff-fade hook and two input-action arms. Prov: L05 Review.
+- ~~**B046**~~ **CLOSED 2026-09-04 by T334. One half was real and worse than
+  boarded; the other half was refuted.**
+  * **Vision — REAL, and the diagnosis was off by one hop.** The buff-fade hook
+    was not missing: `EverQuest::InitializeSpellSystem()` installs a
+    `BuffManager` fade callback (`src/client/core/everquest.cpp`) that, when an
+    UltraVision/InfraVision buff expires, RECOMPUTES the vision from every buff
+    still up and publishes the absolute result as a `VisionChanged` event. The
+    gap was at the CONSUMER: `irrlicht_bridge.cpp`'s arm called
+    `setVisionType()`, which only ever upgraded, so the recomputed value could
+    raise vision and never lower it — the fade publish was a no-op and an
+    Ultravision buff lasted the session. `setVisionType()` now applies the
+    payload absolutely (`resetVisionToBase()` first, then the buff value on
+    top), so the racial floor still holds and `resetVisionToBase()` has a
+    production caller. `renderer_types.h`'s "never downgraded" comment is
+    corrected. Pinned by `tests/test_vision_buff_fade_wire.cpp` (3 tests, all
+    failed before) and by the rewritten
+    `PlayerCameraComponentTest.VisionAppliesTheBuffValueOverTheRacialBase`.
+    **NOTE: the grant side is still missing — see B054.**
+  * **Swim — REFUTED, no arms added.** "`setSwimUp()`/`setSwimDown()` are the
+    sole writers … vertical swim control has no producer" (L03 correction 17)
+    is false. `readInputState()`
+    (`src/client/graphics/player/renderer_player_physics.cpp`, G06 phase 1)
+    polls `HotkeyAction::SwimUp`/`SwimDown` — bound to `[` and `]` in
+    `hotkey_manager.cpp` AND in `config/hotkeys.json` — and assigns
+    `playerMovement_.swimUp/.swimDown` every frame, exactly as it does for
+    WASD. It is pinned by the G06 golden
+    (`tests/goldens/movement_order_g06.txt` lines 23-24). Vertical swim control
+    has worked all along. Adding the boarded `RendererAction` arms would have
+    lost the race with the poll (overwritten the next frame, and nothing to
+    clear the flag on key-up), so T334 DELETED `setSwimUp()`, `setSwimDown()`
+    and `setLevitating()` under §5 instead; the third duplicated
+    `setSwimmingState()`'s live levitating parameter. None had a `pushEvent`.
+  ~~(A) `src/client/graphics/player/renderer_camera.cpp` — **vision never
+  returns to the racial base, and vertical swim control has no producer.**~~
+  Prov: L05 Review; T334 Review.
 
 - **B047** (B) `src/client/graphics/player/renderer_player_collision.cpp` —
   **the incremental collision-registration API has never run, and a comment
@@ -700,3 +733,21 @@ it without taking that measurement first.
   2026-09-04. **B024's closing sentence ("Both headers hold a no-grow allowlist
   entry that each K unit ratchets down") is superseded by this entry** — M00
   struck nothing per its contract; whoever closes B024 should drop it.
+
+## Added 2026-09-04 by the T334 Review (B045/B046)
+
+- **B054** (A) `src/client/core/everquest.cpp` `InitializeSpellSystem` —
+  **a vision buff LANDING still does nothing; only its fade is published.**
+  T334 fixed the consumer, so a `VisionChanged` event now applies correctly in
+  both directions — but the ONLY publisher of that event tree-wide is the
+  `BuffManager` FADE callback. `BuffManager::applyBuff()` has no apply-side
+  callback at all, so casting Ultravision or Infravision on yourself never
+  reaches the renderer: `currentVision_` stays at the racial base, and the
+  fade callback then publishes the same base again. The feature is therefore
+  still end-to-end dead, one hop earlier than B046 said. Not fixed in T334:
+  the fix needs an apply/refresh callback on `BuffManager` (or the same
+  recompute driven from wherever `applyBuff` is called), which is a
+  state-module change beyond a publish and T334's contract STOPped on exactly
+  that. Closes when: applying a vision buff raises vision, proven by a test on
+  the publisher (and ideally a live capture of the zone-light change).
+  Prov: T334 Review.
