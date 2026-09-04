@@ -251,11 +251,38 @@ it without taking that measurement first.
   records. Closes when: the swap is synchronised or the single-call-site
   precondition is asserted. Prov: archived board, T131.
 
-- **B016** (B) `src/client/graphics/eq/` `RaceModelLoader::ensureModelDataLoaded`
-  — ~20 unlocked `loadedModels_` reads across four TUs; a blanket lock
-  self-deadlocks, so it needs a recursive mutex or a restructure.
-  **Unconfirmed at this tip, needs a TSAN run** to show the warnings are still
-  raised. Prov: archived board, T114.
+- ~~**B016** (B) `src/client/graphics/eq/` `RaceModelLoader::ensureModelDataLoaded`
+  — ~20 unlocked `loadedModels_` reads across four TUs.~~ **CLOSED by T352**,
+  and the premise was half wrong. TSAN at `210a9128` reported **zero** races on
+  `loadedModels_`: the unlocked reads are 25, all in `ensureModelDataLoaded()`
+  alone (T113 had already locked every access in the three sibling TUs), and
+  every writer is main/loading-thread, so they never collide — a documentation
+  defect, not a threading one. The self-deadlock hazard is confirmed, which is
+  why they stay as they are. What TSAN *did* report, **3 of 4 runs with both
+  stacks**, is the neighbouring `RaceModelLoader::getMergedTextures()`
+  (`mesh_building.cpp`, no lock at all) racing `storeOtherChrCacheLocked()`
+  (`race_model_loader.cpp`) on the EntityPrepWorker thread — reached from
+  `ensureModelDataLoaded()`. Fixed with one `lock_guard` on the
+  `otherChrCacheMutex_` the writer already holds; 6 of 6 post-fix runs clean.
+  `review/T352/`. The residuals are B062 and B063. Prov: archived board, T114.
+
+- **B062** (B) `src/client/graphics/eq/mesh_building.cpp`
+  `RaceModelLoader::getMergedTextures` — T352's lock covers `otherChrCaches_`
+  and `mergedTexturesCacheValid_`, but the same function also reads
+  `globalTextures_`, `numberedGlobalTextures_`, `armorTextureCache_` and
+  `zoneTextures_`, which other loader paths mutate without
+  `otherChrCacheMutex_`. **Unconfirmed as a live race** — TSAN reported none of
+  them in any T352 run; the driver never mutated them concurrently. Confirming
+  needs a run that loads a zone (a `#zone` tour under TSAN) while the prep
+  worker is live. Closing it is a restructure, not a lock. Prov: T352 Review.
+
+- **B063** (B) `src/client/graphics/eq/model_loading_chr.cpp`
+  `RaceModelLoader::loadModelFromCachedChr` — writes
+  `otherChrCaches_[lowerFilename]` directly instead of through
+  `storeOtherChrCacheLocked()`, the LRU-accounting bypass T91 was written to
+  eliminate, surviving at this one site. Under `otherChrCacheMutex_`, so not a
+  race: the entry never enters `chrCacheLruOrder_` and can never be evicted,
+  while still counting against `maxChrCacheEntries_`. Prov: T352 Review.
 
 - ~~**B019** (B) `include/client/eq.h` `EverQuest::m_guild_name` — declared and
   default-initialised, **zero references anywhere**.~~ **CLOSED by K15**:

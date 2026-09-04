@@ -11,6 +11,33 @@ namespace EQT {
 namespace Graphics {
 
 std::map<std::string, std::shared_ptr<TextureInfo>> RaceModelLoader::getMergedTextures() {
+    // T352 (B016): otherChrCacheMutex_ over this WHOLE body.
+    //
+    // MEASURED under TSAN, 3 of 4 runs (review/T352/tsan_report.*): this
+    // function ran completely unsynchronised while EntityPrepWorker's
+    // background thread mutated the very state it reads. Both stacks:
+    //
+    //   worker : storeOtherChrCacheLocked (race_model_loader.cpp:650,
+    //            holding otherChrCacheMutex_) <- preloadModelData
+    //   render : getMergedTextures (this line) <- loadModelFromGlobalChr
+    //            <- ensureModelDataLoaded
+    //
+    // TSAN names the 1-byte mergedTexturesCacheValid_ flag because that is
+    // the first byte the two threads collide on, but the same window covers
+    // step 4 below, which ITERATES otherChrCaches_ while the writer inserts
+    // into it and LRU-EVICTS from it -- iterator invalidation, not a stale
+    // bool. The writer already holds otherChrCacheMutex_ at every mutation
+    // site, so taking the same mutex here closes the window with one lock.
+    //
+    // Deadlock-free by construction, checked at all 12 call sites: no caller
+    // holds otherChrCacheMutex_ when it calls this (model_loading_chr.cpp's
+    // T114 comment at line 336 makes releasing it first an explicit
+    // invariant, and model_loading.cpp:181's guard closes two lines later),
+    // and nothing this function calls -- loadNumberedGlobalModels(),
+    // loadArmorTextures() -- acquires it or any other loader mutex. No new
+    // lock-ordering edge is introduced.
+    std::lock_guard<std::mutex> chrCacheLock(otherChrCacheMutex_);
+
     // Performance optimization: return cached result if valid
     if (mergedTexturesCacheValid_) {
         return cachedMergedTextures_;
