@@ -87,12 +87,26 @@ it without taking that measurement first.
   or the test setup. Closes when: a live run shows a swing, or the defect is
   named. Prov: deferred item 27.
 
-- **B004** (A) `include/client/graphics/ui/ui_layout.h` `centerPopup` — `popW`/
+- ~~**B004** (A) `include/client/graphics/ui/ui_layout.h` `centerPopup` — `popW`/
   `popH` are hardcoded 400/350 at every resolution; the archive records general
-  and equipment slots drawn outside that frame and unreachable by mouse.
-  **Unconfirmed at this tip, needs a rendered inventory popup or a static-panel
-  hit-test.** Closes when: every drawn slot is inside the frame and clickable.
-  Prov: archived board, "static-panel UI surface still untested after T54".
+  and equipment slots drawn outside that frame and unreachable by mouse.~~
+  **REFUTED by T351**: measured at `5601a3ed` across 640x480, 800x600 (the
+  default and the orangepi preset's display), 1024x768, 1280x1024 and
+  1920x1080 — all 30 slot rects, plus the T60 paperdoll rect, lie wholly
+  inside the frame at every one, and the centre of every slot rect
+  hit-tests back to its own index through `StaticUIInput::processInput()`.
+  The frame itself is wholly on screen at all five. The archive's finding
+  was real but is the defect **T57 fixed**: both the renderer and the
+  hit-test now read `InventoryLayout::slotRect()`, whose geometry is
+  relative to the popup's own origin and width, so containment cannot vary
+  with resolution — the hardcoded 400x350 is not itself a defect. The
+  per-resolution table is now a test
+  (`InventoryPopupFrameT351.EverySlotIsInsideTheFrameAndHitTestableAtEveryResolution`
+  in `tests/test_static_ui_panels.cpp`), because every pre-existing
+  containment test ran only at the fixture's single 800x600 layout and so
+  could not tell "inside at 800x600" from "inside everywhere". No code
+  changed. Prov: archived board, "static-panel UI surface still untested
+  after T54"; `refactor/T351_inventory_popup_frame.md` Review.
 
 ## B — implemented-but-unreached, and hygiene needing a code change
 
