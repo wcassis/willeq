@@ -228,6 +228,20 @@ declarations + inline accessors + members before dispatch.
    TEARDOWN path (`pvsNeighborhood_`, `pvsNeighborhoodAnchor_`) — check
    `unloadZone`/`shutdown` readers before moving.
 
+## L09 corrections (2026-09-04)
+
+37. Since K16 `IrrlichtRenderer` DOES have a base class (`IZoneLoadSurface`,
+   two methods) — measure the base class AND what it declares; correction
+   13's conclusion (no interface forwarders) still holds.
+38. A nested type named inside a LAMBDA BODY needs the third substitution,
+   and that alone makes the friend line's axis 2 live — L12's census must
+   count nested-type references, not only `owner_.`.
+39. A teardown-only reader is not ownership (`pvsNeighborhood_`,
+   `regionNeighbors_`): they stay.
+40. **Write the component header first.** The same extraction measured +7
+   with the rationale in the god header and −23 with it in the component
+   header.
+
 ## Per-unit plan files
 
 `refactor/L01_rdp_component.md` … written after K13, from a re-measurement
