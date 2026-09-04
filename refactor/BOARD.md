@@ -319,7 +319,7 @@ it without taking that measurement first.
   `otherChrCacheMutex_` the writer already holds; 6 of 6 post-fix runs clean.
   `review/T352/`. The residuals are B062 and B063. Prov: archived board, T114.
 
-- **B062** (B) `src/client/graphics/eq/mesh_building.cpp`
+- **B064** (B) `src/client/graphics/eq/mesh_building.cpp`
   `RaceModelLoader::getMergedTextures` — T352's lock covers `otherChrCaches_`
   and `mergedTexturesCacheValid_`, but the same function also reads
   `globalTextures_`, `numberedGlobalTextures_`, `armorTextureCache_` and
@@ -329,7 +329,7 @@ it without taking that measurement first.
   needs a run that loads a zone (a `#zone` tour under TSAN) while the prep
   worker is live. Closing it is a restructure, not a lock. Prov: T352 Review.
 
-- **B063** (B) `src/client/graphics/eq/model_loading_chr.cpp`
+- **B065** (B) `src/client/graphics/eq/model_loading_chr.cpp`
   `RaceModelLoader::loadModelFromCachedChr` — writes
   `otherChrCaches_[lowerFilename]` directly instead of through
   `storeOtherChrCacheLocked()`, the LRU-accounting bypass T91 was written to

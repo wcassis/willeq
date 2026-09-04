@@ -129,7 +129,7 @@ Separately, `model_loading_chr.cpp:363-367` writes
 `otherChrCaches_[lowerFilename]` directly instead of through
 `storeOtherChrCacheLocked()` — the LRU-accounting bypass T91 was written to
 eliminate, surviving at one site. Under the mutex, so not a race; an
-untracked cache entry. Both are on the board (B062, B063).
+untracked cache entry. Both are on the board (B064, B065).
 
 ### Verification
 
