@@ -21,11 +21,11 @@ ZoneLifecycleComponent::~ZoneLifecycleComponent() = default;
 
 void ZoneLifecycleComponent::unloadZone() {
     if (owner_.isLoading()) return;
-    owner_.sequentialLoadComplete_ = false;
+    ctx_.sequentialLoadComplete = false;
     owner_.storedZoneEnvironment_.pending = false;
 
     // Stop simulation worker before zone cleanup
-    owner_.simBridge_->stopSimulationWorker();
+    ctx_.SimBridge().stopSimulationWorker();
 
     // Stop background entity prep worker before zone cleanup
     if (ctx_.entityPrepWorker) {
@@ -41,9 +41,9 @@ void ZoneLifecycleComponent::unloadZone() {
     entitiesLoaded_ = false;
     expectedEntityCount_ = 0;
     owner_.loadedEntityCount_ = 0;
-    owner_.zoneReady_ = false;
+    ctx_.zoneReady = false;
     ctx_.entityPrepReady = false;
-    owner_.entityPrepScanCounter_ = 0;
+    ctx_.entityPrepScanCounter = 0;
 
     // Log texture counts before cleanup
     if (ctx_.constrainedTextureCache) {
@@ -69,17 +69,17 @@ void ZoneLifecycleComponent::unloadZone() {
     }
     {
         std::lock_guard<std::mutex> lock(owner_.eqe1Mutex_);
-        for (auto it = owner_.eqe1Loaders_.begin(); it != owner_.eqe1Loaders_.end(); ) {
+        for (auto it = ctx_.eqe1Loaders.begin(); it != ctx_.eqe1Loaders.end(); ) {
             if (Eqe1ArchiveComponent::isPersistentEQE1Archive(it->first) && it->second) {
                 ++it;
             } else {
-                it = owner_.eqe1Loaders_.erase(it);
+                it = ctx_.eqe1Loaders.erase(it);
             }
         }
         // Re-register the survivors: clearEQE1Loaders() emptied the cache's
         // vector, and they must be searchable again before the next lookup.
         if (ctx_.constrainedTextureCache) {
-            for (const auto& [name, loader] : owner_.eqe1Loaders_) {
+            for (const auto& [name, loader] : ctx_.eqe1Loaders) {
                 ctx_.constrainedTextureCache->addEQE1Loader(loader.get());
             }
         }
@@ -87,9 +87,9 @@ void ZoneLifecycleComponent::unloadZone() {
     // P04: drop the lazy-open queue too so the next zone's Step0 starts fresh.
     {
         std::lock_guard<std::mutex> lock(owner_.eqe1CandidatesMutex_);
-        owner_.pendingGlobalEQE1Archives_.clear();
-        owner_.eqe1CandidateRaces_.clear();
-        owner_.eqe1LoadTimeCandidateCount_ = 0;
+        ctx_.pendingGlobalEQE1Archives.clear();
+        ctx_.eqe1CandidateRaces.clear();
+        ctx_.eqe1LoadTimeCandidateCount = 0;
     }
 
 #if defined(EQT_HAS_DRM) && !defined(EQT_HAS_GLES2)
@@ -136,8 +136,8 @@ void ZoneLifecycleComponent::unloadZone() {
     }
 
     // Now safe to remove zone collision data
-    owner_.regionWorldTriangles_.clear();
-    owner_.objectWorldTriangles_.clear();
+    ctx_.regionWorldTriangles.clear();
+    ctx_.objectWorldTriangles.clear();
     owner_.doorCollisionData_.clear();
     if (owner_.zoneTriangleSelector_) {
         owner_.zoneTriangleSelector_->drop();
@@ -149,10 +149,10 @@ void ZoneLifecycleComponent::unloadZone() {
     }
 
     // Remove zone mesh
-    if (owner_.zoneMeshNode_) {
-        deleteMeshHardwareBuffers(owner_.zoneMeshNode_);
-        owner_.zoneMeshNode_->remove();
-        owner_.zoneMeshNode_ = nullptr;
+    if (ctx_.zoneMeshNode) {
+        deleteMeshHardwareBuffers(ctx_.zoneMeshNode);
+        ctx_.zoneMeshNode->remove();
+        ctx_.zoneMeshNode = nullptr;
     }
 
     // Remove PVS region mesh nodes (delete VBOs before removing nodes)
@@ -165,10 +165,10 @@ void ZoneLifecycleComponent::unloadZone() {
     ctx_.regionMeshNodes.clear();
     ctx_.regionBoundingBoxes.clear();
 
-    if (owner_.fallbackMeshNode_) {
-        deleteMeshHardwareBuffers(owner_.fallbackMeshNode_);
-        if (owner_.fallbackMeshNode_->getParent()) owner_.fallbackMeshNode_->remove(); else owner_.fallbackMeshNode_->drop();
-        owner_.fallbackMeshNode_ = nullptr;
+    if (ctx_.fallbackMeshNode) {
+        deleteMeshHardwareBuffers(ctx_.fallbackMeshNode);
+        if (ctx_.fallbackMeshNode->getParent()) ctx_.fallbackMeshNode->remove(); else ctx_.fallbackMeshNode->drop();
+        ctx_.fallbackMeshNode = nullptr;
     }
 
     // Remove collision-only node (used in PVS mode)
@@ -184,7 +184,7 @@ void ZoneLifecycleComponent::unloadZone() {
 
     // Reset manual zone draw state
     ctx_.manualZoneDrawEnabled = false;
-    owner_.sortedZoneDrawList_.clear();
+    ctx_.sortedZoneDrawList.clear();
     owner_.sortedDrawEntries_.clear();
 
     // P10: reset cross-region zone draw merge state — the merge buffers are
@@ -196,8 +196,8 @@ void ZoneLifecycleComponent::unloadZone() {
     ctx_.portalSystem.reset();
     ctx_.portalOcclusionEnabled = false;
     ctx_.portalOcclusionEligible = false;
-    owner_.portalBuildPending_ = false;
-    owner_.regionNeighbors_.clear();
+    ctx_.portalBuildPending = false;
+    ctx_.regionNeighbors.clear();
 
     // ConstrainedMeshCache and its background-build state (BackgroundMeshResult
     // queue, material swap queue, meshLoadQueue_, etc.) removed T67 — the
@@ -208,7 +208,7 @@ void ZoneLifecycleComponent::unloadZone() {
     // remaining readers were permanent no-ops.
     owner_.portalVisibleRegions_ = nullptr;
     ctx_.indoorRegions.clear();
-    owner_.regionPvsDepthMap_ = nullptr;
+    ctx_.regionPvsDepthMap = nullptr;
     // T116: particleRenderBuffer_/currentFrameSimResults_ were the two
     // members of this same "pointer into SimulationOutput" class missing
     // from this block (found while scoping T116). Post-split, all four
@@ -221,16 +221,16 @@ void ZoneLifecycleComponent::unloadZone() {
     // zone's last particle buffer or occlusion-culled-region set. Nulled
     // here for the same reason the other two already were, not because
     // leaving them would be unsafe.
-    owner_.particleRenderBuffer_ = nullptr;
+    ctx_.particleRenderBuffer = nullptr;
     owner_.currentFrameSimResults_ = nullptr;
     owner_.pvsNeighborhood_.clear();
     owner_.pvsNeighborhoodAnchor_ = SIZE_MAX;
     pendingTextureRegions_.clear();
     owner_.textureRebuildQueue_.clear();
     owner_.pendingTextureDoors_.clear();
-    owner_.doorTextureRebuildQueue_.clear();
-    owner_.pendingTextureObjects_.clear();
-    owner_.objectTextureRebuildQueue_.clear();
+    ctx_.doorTextureRebuildQueue.clear();
+    ctx_.pendingTextureObjects.clear();
+    ctx_.objectTextureRebuildQueue.clear();
 #ifdef EQT_HAS_GLES2
     owner_.pendingGPUResults_.clear();
 #endif
@@ -239,7 +239,7 @@ void ZoneLifecycleComponent::unloadZone() {
     if (ctx_.occlusionCuller) {
         ctx_.occlusionCuller->clearOccluders();
     }
-    owner_.occlusionCulledRegions_.clear();
+    ctx_.occlusionCulledRegions.clear();
 
     // Reset zone clip plane so previous zone's cap doesn't linger
     owner_.zoneMaxClip_ = 99999.0f;
@@ -267,12 +267,12 @@ void ZoneLifecycleComponent::unloadZone() {
     }
     ctx_.objectNodes.clear();
     ctx_.objectPositions.clear();
-    owner_.objectBoundingBoxes_.clear();
+    ctx_.objectBoundingBoxes.clear();
     ctx_.objectInSceneGraph.clear();
 
     // Clear zone light data (no scene nodes to remove)
     owner_.zoneLightData_.clear();
-    owner_.zoneLightPositions_.clear();
+    ctx_.zoneLightPositions.clear();
     // Clear entity renderer
     if (ctx_.entityRenderer) {
         // Clear mesh caches first to force fresh mesh/texture rebuild on next zone-in.
@@ -302,7 +302,7 @@ void ZoneLifecycleComponent::unloadZone() {
     // Clear object lights (they reference freed zone data)
     for (size_t i = 0; i < ctx_.objectLights.size(); ++i) {
         if (ctx_.objectLights[i].node) {
-            bool isInScene = (i < owner_.objectLightInSceneGraph_.size()) ? owner_.objectLightInSceneGraph_[i] : false;
+            bool isInScene = (i < ctx_.objectLightInSceneGraph.size()) ? ctx_.objectLightInSceneGraph[i] : false;
             if (isInScene) {
                 ctx_.objectLights[i].node->remove();
             }
@@ -310,13 +310,13 @@ void ZoneLifecycleComponent::unloadZone() {
         }
     }
     ctx_.objectLights.clear();
-    owner_.objectLightInSceneGraph_.clear();
+    ctx_.objectLightInSceneGraph.clear();
 
     // Clear vertex animated meshes (they reference freed zone mesh buffers)
-    owner_.vertexAnimatedMeshes_.clear();
+    ctx_.vertexAnimatedMeshes.clear();
 
     // Clear zone line visualization boxes
-    owner_.overlays_->clearZoneLineBoundingBoxes();
+    ctx_.Overlays().clearZoneLineBoundingBoxes();
 
     // Clear constrained texture cache to free old zone textures from driver
     if (ctx_.constrainedTextureCache) {
@@ -328,8 +328,8 @@ void ZoneLifecycleComponent::unloadZone() {
 
     ctx_.currentZone.reset();
     ctx_.currentZoneName.clear();
-    owner_.isIndoorZone_ = false;
-    owner_.zoneBoundsValid_ = false;
+    ctx_.isIndoorZone = false;
+    ctx_.zoneBoundsValid = false;
 }
 
 void ZoneLifecycleComponent::setZoneEnvironment(uint8_t skyType, uint8_t zoneType,
@@ -343,7 +343,7 @@ void ZoneLifecycleComponent::setZoneEnvironment(uint8_t skyType, uint8_t zoneTyp
         // zoneType values from server: 1=Outdoors, 2=Dungeons, 255(0xFF)=Any/default
         // Only disable sky for explicit dungeon zones (type 2)
         bool isDungeon = (zoneType == 2);
-        owner_.isIndoorZone_ = isDungeon;
+        ctx_.isIndoorZone = isDungeon;
 
         // Check user setting and constrained config
         bool skySettingEnabled = owner_.getDisplaySettings().skyEnabled;
@@ -371,7 +371,7 @@ void ZoneLifecycleComponent::setZoneEnvironment(uint8_t skyType, uint8_t zoneTyp
         irr::video::SColor fogColor(255, fogRed[0], fogGreen[0], fogBlue[0]);
 
         float fogEnd = ctx_.renderDistance;
-        float fogStart = ctx_.renderDistance - owner_.fogThickness_;
+        float fogStart = ctx_.renderDistance - ctx_.fogThickness;
         fogStart = std::max(0.0f, fogStart);
 
         ctx_.driver->setFog(
@@ -393,9 +393,9 @@ void ZoneLifecycleComponent::buildZonePlaceholder(float playerIrrX, float player
     if (!ctx_.collisionMap || !ctx_.collisionMap->IsLoaded() || !ctx_.smgr || !ctx_.driver) return;
 
     // Destroy existing node for rebuild
-    if (owner_.zonePlaceholderNode_) {
-        owner_.zonePlaceholderNode_->remove();
-        owner_.zonePlaceholderNode_ = nullptr;
+    if (ctx_.zonePlaceholderNode) {
+        ctx_.zonePlaceholderNode->remove();
+        ctx_.zonePlaceholderNode = nullptr;
     }
 
     // Cache terrain triangles on first call (GetAllTerrainTriangles is expensive)
@@ -554,11 +554,11 @@ void ZoneLifecycleComponent::buildZonePlaceholder(float playerIrrX, float player
     buf->drop();
     mesh->recalculateBoundingBox();
 
-    owner_.zonePlaceholderNode_ = ctx_.smgr->addMeshSceneNode(mesh);
+    ctx_.zonePlaceholderNode = ctx_.smgr->addMeshSceneNode(mesh);
     mesh->drop();
 
-    if (owner_.zonePlaceholderNode_) {
-        owner_.zonePlaceholderNode_->setPosition(irr::core::vector3df(0, 0, 0));
+    if (ctx_.zonePlaceholderNode) {
+        ctx_.zonePlaceholderNode->setPosition(irr::core::vector3df(0, 0, 0));
         owner_.lastPlaceholderBuildPos_ = irr::core::vector3df(playerIrrX, playerIrrY, playerIrrZ);
         if (usePvsFilter) {
             LOG_INFO(MOD_GRAPHICS, "Zone placeholder: {} terrain triangles (PVS culled {}, clip {:.0f}, {} total, {:.1f} KB)",
@@ -573,9 +573,9 @@ void ZoneLifecycleComponent::buildZonePlaceholder(float playerIrrX, float player
 }
 
 void ZoneLifecycleComponent::destroyZonePlaceholder() {
-    if (owner_.zonePlaceholderNode_) {
-        owner_.zonePlaceholderNode_->remove();
-        owner_.zonePlaceholderNode_ = nullptr;
+    if (ctx_.zonePlaceholderNode) {
+        ctx_.zonePlaceholderNode->remove();
+        ctx_.zonePlaceholderNode = nullptr;
         LOG_INFO(MOD_GRAPHICS, "Zone placeholder removed");
     }
     // Free cached triangles — no longer needed once real geometry takes over
@@ -590,7 +590,7 @@ void ZoneLifecycleComponent::destroyZonePlaceholder() {
 
 void ZoneLifecycleComponent::setupInstantScene(const std::string& zoneName, float playerX, float playerY, float playerZ) {
     ctx_.currentZoneName = zoneName;
-    owner_.diagnostics_->loadIndoorRegionMap(zoneName);
+    ctx_.Diagnostics().loadIndoorRegionMap(zoneName);
 
     // S05: entityRenderer_ already created in initLoadingScreen()
 
@@ -615,7 +615,7 @@ void ZoneLifecycleComponent::setupInstantScene(const std::string& zoneName, floa
     setupHCMapCollision();
 
     // Set zone ready flags
-    owner_.zoneReady_ = true;
+    ctx_.zoneReady = true;
 
     // In automatic mode, asset loading is handled by the loading thread
     // via loadZoneSequential() after setupInstantScene() returns.
@@ -633,8 +633,8 @@ void ZoneLifecycleComponent::setupHCMapCollision() {
     if (!ctx_.smgr) return;
 
     // Clean up all collision data
-    owner_.regionWorldTriangles_.clear();
-    owner_.objectWorldTriangles_.clear();
+    ctx_.regionWorldTriangles.clear();
+    ctx_.objectWorldTriangles.clear();
     owner_.doorCollisionData_.clear();
     if (owner_.zoneTriangleSelector_) { owner_.zoneTriangleSelector_->drop(); owner_.zoneTriangleSelector_ = nullptr; }
     if (owner_.terrainOnlySelector_) { owner_.terrainOnlySelector_->drop(); owner_.terrainOnlySelector_ = nullptr; }
@@ -642,23 +642,23 @@ void ZoneLifecycleComponent::setupHCMapCollision() {
     irr::scene::IMetaTriangleSelector* metaSelector = ctx_.smgr->createMetaTriangleSelector();
     if (!metaSelector) return;
 
-    if (owner_.zonePlaceholderNode_ && owner_.zonePlaceholderNode_->getMesh()) {
-        auto* sel = ctx_.smgr->createTriangleSelector(owner_.zonePlaceholderNode_->getMesh(), owner_.zonePlaceholderNode_);
+    if (ctx_.zonePlaceholderNode && ctx_.zonePlaceholderNode->getMesh()) {
+        auto* sel = ctx_.smgr->createTriangleSelector(ctx_.zonePlaceholderNode->getMesh(), ctx_.zonePlaceholderNode);
         if (sel) { metaSelector->addTriangleSelector(sel); sel->drop(); }
     }
 
     owner_.zoneTriangleSelector_ = metaSelector;
 
     owner_.terrainOnlySelector_ = ctx_.smgr->createMetaTriangleSelector();
-    if (owner_.terrainOnlySelector_ && owner_.zonePlaceholderNode_ && owner_.zonePlaceholderNode_->getMesh()) {
+    if (owner_.terrainOnlySelector_ && ctx_.zonePlaceholderNode && ctx_.zonePlaceholderNode->getMesh()) {
         auto* terrainMeta = static_cast<irr::scene::IMetaTriangleSelector*>(owner_.terrainOnlySelector_);
-        auto* sel = ctx_.smgr->createTriangleSelector(owner_.zonePlaceholderNode_->getMesh(), owner_.zonePlaceholderNode_);
+        auto* sel = ctx_.smgr->createTriangleSelector(ctx_.zonePlaceholderNode->getMesh(), ctx_.zonePlaceholderNode);
         if (sel) { terrainMeta->addTriangleSelector(sel); sel->drop(); }
     }
 
-    owner_.collisionManager_ = ctx_.smgr->getSceneCollisionManager();
-    if (ctx_.cameraController && owner_.collisionManager_ && owner_.zoneTriangleSelector_) {
-        ctx_.cameraController->setCollisionManager(owner_.collisionManager_, owner_.zoneTriangleSelector_);
+    ctx_.collisionManager = ctx_.smgr->getSceneCollisionManager();
+    if (ctx_.cameraController && ctx_.collisionManager && owner_.zoneTriangleSelector_) {
+        ctx_.cameraController->setCollisionManager(ctx_.collisionManager, owner_.zoneTriangleSelector_);
     }
 
     LOG_INFO(MOD_GRAPHICS, "HCMap collision setup complete");
@@ -712,7 +712,7 @@ void ZoneLifecycleComponent::setNetworkReady(bool ready) {
         entitiesLoaded_ = false;
         expectedEntityCount_ = 0;
         owner_.loadedEntityCount_ = 0;
-        owner_.zoneReady_ = false;
+        ctx_.zoneReady = false;
     }
     // Note: Zone ready is NOT set here. It will be set when the player entity
     // is created in createEntity() with isPlayer=true. This ensures the loading

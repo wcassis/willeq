@@ -768,7 +768,7 @@ Software-mixed spatial audio using header-only libraries (no external deps):
 - **EverQuest** (`src/client/eq.cpp` + 18 `eq_*.cpp` domain TUs) - Protocol handling and game state; see `docs/module_map.md`
 - **GameStateBridge / IrrlichtBridge** (`include/client/bridge/`) - Thread-safe event/intent queues between game and renderer
 - **ActionDispatcher / CommandProcessor** (`src/client/action/`) - Unified action layer behind slash commands, hotbar, and console input
-- **IrrlichtRenderer** (`src/client/graphics/irrlicht_renderer.cpp` + `renderer_*.cpp`) - Scene management, zone load steps, visibility, lighting
+- **IrrlichtRenderer** (`src/client/graphics/renderer/irrlicht_renderer.cpp` + `renderer_*.cpp`) - Scene management, zone load steps, visibility, lighting
 - **EntityRenderer** - Character/NPC models with skeletal animation and equipment
 - **RaceModelLoader / EquipmentModelLoader** (`src/client/graphics/eq/`) - Model loading from S3D/WLD by race and item model
 - **EQE1Loader / EQE1TextureIndex** - mmap'd ETC1 flat packs and the name-to-archive index

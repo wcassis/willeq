@@ -11,9 +11,14 @@
 // RendererContext allows (driver_ -> ctx_.driver, device_ -> ctx_.device,
 // config_ -> ctx_.config, eventReceiver_ -> ctx_.eventReceiver). No method
 // that stayed on IrrlichtRenderer is called and no IrrlichtRenderer static,
-// nested type or constant is named, so this component needs no friendship --
-// but it keeps the IrrlichtRenderer& transition handle the batch mechanism
-// prescribes, unused so far, for the families that follow.
+// nested type or constant is named, so this component needs no friendship.
+//
+// L12 (Batch L close-out) REMOVED the IrrlichtRenderer& transition handle too.
+// The two-axis census (K13 correction (ii), applied to the renderer) measured
+// this component at ZERO owner_. reaches of any kind and ZERO
+// IrrlichtRenderer-scoped qualified names -- the only family that passes both
+// axes -- so the handle was dead weight and the ctor now takes the context
+// alone. It is the renderer's eqt::gm::GmComponent.
 //
 // The three lambda captures in initRDP() stay [this] and capture the
 // COMPONENT (K11 correction dd: a [this] capture is not an identity key).
@@ -30,12 +35,10 @@
 namespace EQT {
 namespace Graphics {
 
-class IrrlichtRenderer;
-
 class RdpComponent {
 public:
-	RdpComponent(RendererContext& ctx, IrrlichtRenderer& owner)
-		: ctx_(ctx), owner_(owner) {}
+	explicit RdpComponent(RendererContext& ctx)
+		: ctx_(ctx) {}
 
 	// The five IrrlichtRenderer declarations that survive as one-line
 	// forwarders on the renderer, because Application calls them and must not
@@ -56,7 +59,6 @@ private:
 	void handleRDPMouse(uint16_t flags, uint16_t x, uint16_t y);
 
 	RendererContext& ctx_;
-	IrrlichtRenderer& owner_;
 
 	// RDP server for native remote desktop streaming
 	std::unique_ptr<RDPServer> rdpServer_;

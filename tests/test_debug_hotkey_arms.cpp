@@ -131,11 +131,15 @@ TEST_F(DebugHotkeyArmsTest, EachArmTouchesOnlyItsOwnState) {
 TEST(DebugHotkeyArmSourceInvariants, AllFourArmsExistInProcessCommonInput) {
     // L11 (batch correction 21): processCommonInput() moved from
     // IrrlichtRenderer to FrameComponent and the diagnostics receiver moved
-    // with it (diagnostics_-> became owner_.Diagnostics().). Both spellings
-    // are accepted and exactly one must match per arm -- a guard that knows
-    // only the pre-extraction spelling would pass vacuously on the day the
-    // arm is deleted from moved code. The path moved to
-    // src/client/graphics/frame/; the basename is unchanged.
+    // with it (diagnostics_-> became owner_.Diagnostics().). L12 moved the
+    // receiver AGAIN -- the sibling-component pointers went onto
+    // RendererContext, so it is now ctx_.Diagnostics(). ALL THREE spellings
+    // are accepted and exactly one must match per arm; a guard that knows
+    // only the previous spelling passes vacuously on the day the arm is
+    // deleted from moved code, which is the whole failure this test exists to
+    // prevent (it caught L12's rewrite, third sighting of correction 21).
+    // The path moved to src/client/graphics/frame/; the basename is
+    // unchanged.
     const std::string src =
         readFile(kRoot / "src/client/graphics/frame/renderer_frame_input.cpp");
     const char* actions[] = {"ToggleWireframe", "ToggleHUD", "ToggleNameTags", "ToggleOldModels"};
@@ -145,8 +149,11 @@ TEST(DebugHotkeyArmSourceInvariants, AllFourArmsExistInProcessCommonInput) {
             std::string("case RA::") + actions[i] + ": diagnostics_->" + methods[i] + "(); break;";
         const std::string component = std::string("case RA::") + actions[i] +
                                       ": owner_.Diagnostics()." + methods[i] + "(); break;";
+        const std::string contextual = std::string("case RA::") + actions[i] +
+                                       ": ctx_.Diagnostics()." + methods[i] + "(); break;";
         int found = (src.find(owned) != std::string::npos ? 1 : 0) +
-                    (src.find(component) != std::string::npos ? 1 : 0);
+                    (src.find(component) != std::string::npos ? 1 : 0) +
+                    (src.find(contextual) != std::string::npos ? 1 : 0);
         EXPECT_EQ(found, 1)
             << "missing from processCommonInput's switch, so the hotkey does nothing: "
             << actions[i];
@@ -154,7 +161,7 @@ TEST(DebugHotkeyArmSourceInvariants, AllFourArmsExistInProcessCommonInput) {
 }
 
 TEST(DebugHotkeyArmSourceInvariants, TheReceiverStillQueuesAllFour) {
-    const std::string src = readFile(kRoot / "src/client/graphics/renderer_event_receiver.cpp");
+    const std::string src = readFile(kRoot / "src/client/graphics/renderer/renderer_event_receiver.cpp");
     for (const char* q : {"case HA::ToggleWireframe: actionQueue_.push_back({RA::ToggleWireframe});",
                           "case HA::ToggleHUD: actionQueue_.push_back({RA::ToggleHUD});",
                           "case HA::ToggleNameTags: actionQueue_.push_back({RA::ToggleNameTags});",

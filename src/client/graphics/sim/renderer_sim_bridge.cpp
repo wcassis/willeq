@@ -77,19 +77,19 @@ SimulationZoneData SimBridgeComponent::buildSimulationZoneData() {
     for (size_t i = 0; i < ctx_.objectNodes.size(); ++i) {
         auto& od = zoneData.objects[i];
         od.hasNode = (ctx_.objectNodes[i] != nullptr);
-        if (i < owner_.objectBoundingBoxes_.size())
-            od.boundingBox = owner_.objectBoundingBoxes_[i];
+        if (i < ctx_.objectBoundingBoxes.size())
+            od.boundingBox = ctx_.objectBoundingBoxes[i];
         if (i < ctx_.objectPositions.size())
             od.position = ctx_.objectPositions[i];
-        od.bspRegion = (i < owner_.objectRegions_.size()) ? owner_.objectRegions_[i] : SIZE_MAX;
+        od.bspRegion = (i < ctx_.objectRegions.size()) ? ctx_.objectRegions[i] : SIZE_MAX;
     }
 
     // Copy zone light data
     zoneData.zoneLights.resize(owner_.zoneLightData_.size());
     for (size_t i = 0; i < owner_.zoneLightData_.size(); ++i) {
         auto& zld = zoneData.zoneLights[i];
-        if (i < owner_.zoneLightPositions_.size())
-            zld.position = owner_.zoneLightPositions_[i];
+        if (i < ctx_.zoneLightPositions.size())
+            zld.position = ctx_.zoneLightPositions[i];
         zld.bspRegion = (i < owner_.zoneLightRegions_.size()) ? owner_.zoneLightRegions_[i] : SIZE_MAX;
     }
 
@@ -97,8 +97,8 @@ SimulationZoneData SimBridgeComponent::buildSimulationZoneData() {
     zoneData.zoneLightNodes.resize(owner_.zoneLightData_.size());
     for (size_t i = 0; i < owner_.zoneLightData_.size(); ++i) {
         auto& zlnd = zoneData.zoneLightNodes[i];
-        if (i < owner_.zoneLightPositions_.size())
-            zlnd.position = owner_.zoneLightPositions_[i];
+        if (i < ctx_.zoneLightPositions.size())
+            zlnd.position = ctx_.zoneLightPositions[i];
         zlnd.diffuseColor = owner_.zoneLightData_[i].baseDiffuseColor;
         zlnd.radius = owner_.zoneLightData_[i].radius;
         zlnd.attConstant = owner_.zoneLightData_[i].attConstant;
@@ -193,11 +193,11 @@ void SimBridgeComponent::startSimulationWorkerEarly() {
 
 void SimBridgeComponent::registerSimulationWorkerVertexAnimData() {
     if (!owner_.simulationWorker_ || !owner_.simulationWorker_->isRunning()) return;
-    if (owner_.vertexAnimatedMeshes_.empty()) return;
+    if (ctx_.vertexAnimatedMeshes.empty()) return;
 
-    std::vector<SimulationZoneData::VertexAnimData> vertAnims(owner_.vertexAnimatedMeshes_.size());
-    for (size_t i = 0; i < owner_.vertexAnimatedMeshes_.size(); ++i) {
-        const auto& vam = owner_.vertexAnimatedMeshes_[i];
+    std::vector<SimulationZoneData::VertexAnimData> vertAnims(ctx_.vertexAnimatedMeshes.size());
+    for (size_t i = 0; i < ctx_.vertexAnimatedMeshes.size(); ++i) {
+        const auto& vam = ctx_.vertexAnimatedMeshes[i];
         auto& vad = vertAnims[i];
         if (vam.animData && !vam.animData->frames.empty()) {
             vad.delayMs = vam.animData->delayMs;
@@ -220,7 +220,7 @@ void SimBridgeComponent::registerSimulationWorkerVertexAnimData() {
     }
 
     owner_.simulationWorker_->updateVertexAnimData(std::move(vertAnims));
-    LOG_INFO(MOD_GRAPHICS, "SimulationWorker: registered {} vertex animated meshes", owner_.vertexAnimatedMeshes_.size());
+    LOG_INFO(MOD_GRAPHICS, "SimulationWorker: registered {} vertex animated meshes", ctx_.vertexAnimatedMeshes.size());
 }
 
 void SimBridgeComponent::stopSimulationWorker() {
@@ -262,17 +262,17 @@ void SimBridgeComponent::postSimulationInput(float deltaTime) {
     }
 
     input.renderDistance = ctx_.renderDistance;
-    input.loadingActive = owner_.loadingScreenVisible_ || owner_.loading_.load(std::memory_order_relaxed);
+    input.loadingActive = ctx_.loadingScreenVisible || owner_.loading_.load(std::memory_order_relaxed);
 
     // Player (EQ Z-up)
     input.playerX = ctx_.playerX;
     input.playerY = ctx_.playerY;
     input.playerZ = ctx_.playerZ;
-    input.playerHeading = owner_.playerHeading_;
+    input.playerHeading = ctx_.playerHeading;
 
     // Timing
     input.deltaTime = deltaTime;
-    input.frameNumber = owner_.frameNumber_;
+    input.frameNumber = ctx_.frameNumber;
 
     // Environment
     input.currentHour = ctx_.currentHour;
@@ -291,7 +291,7 @@ void SimBridgeComponent::postSimulationInput(float deltaTime) {
     }
 
     // Vision and weather modifiers (for zone light animation colors)
-    input.visionType = static_cast<uint8_t>(owner_.currentVision_);
+    input.visionType = static_cast<uint8_t>(ctx_.currentVision);
     if (ctx_.weatherEffects && ctx_.weatherEffects->isEnabled()) {
         input.weatherAmbientModifier = ctx_.weatherEffects->getAmbientLightModifier();
     }
@@ -420,7 +420,7 @@ void SimBridgeComponent::postSimulationInput(float deltaTime) {
     input.vertAnimDeltaMs = deltaTime * 1000.0f;
 
     // Particle system input
-    if (ctx_.particleManager && owner_.zoneReady_) {
+    if (ctx_.particleManager && ctx_.zoneReady) {
         auto& pi = input.particleInput;
         pi.deltaTime = deltaTime;
         if (ctx_.camera) {
@@ -457,8 +457,8 @@ void SimBridgeComponent::postSimulationInput(float deltaTime) {
             float colorBoost = 2.5f;
             glm::vec3 camIrr = pi.cameraPos;
 
-            for (size_t i = 0; i < owner_.zoneLightData_.size() && i < owner_.zoneLightPositions_.size(); ++i) {
-                const auto& pos = owner_.zoneLightPositions_[i];
+            for (size_t i = 0; i < owner_.zoneLightData_.size() && i < ctx_.zoneLightPositions.size(); ++i) {
+                const auto& pos = ctx_.zoneLightPositions[i];
                 float dx = pos.X - camIrr.x, dy = pos.Y - camIrr.y, dz = pos.Z - camIrr.z;
                 float distSq = dx*dx + dy*dy + dz*dz;
                 if (distSq < maxLightDistSq) {
@@ -494,11 +494,11 @@ void SimBridgeComponent::postSimulationInput(float deltaTime) {
     }
 
     // Boids system input
-    if (ctx_.boidsManager && ctx_.boidsManager->isEnabled() && owner_.zoneReady_) {
+    if (ctx_.boidsManager && ctx_.boidsManager->isEnabled() && ctx_.zoneReady) {
         auto& bi = input.boidsInput;
         bi.deltaTime = deltaTime;
         bi.playerPosition = glm::vec3(ctx_.playerX, ctx_.playerY, ctx_.playerZ);
-        bi.playerHeading = owner_.playerHeading_;
+        bi.playerHeading = ctx_.playerHeading;
         bi.timeOfDay = ctx_.currentHour + ctx_.currentMinute / 60.0f;
         bi.windDirection = glm::vec3(1.0f, 0.0f, 0.0f);
         bi.commands = ctx_.boidsManager->drainCommands();
@@ -506,7 +506,7 @@ void SimBridgeComponent::postSimulationInput(float deltaTime) {
     }
 
     // Tumbleweed system input
-    if (ctx_.tumbleweedManager && ctx_.tumbleweedManager->isEnabled() && owner_.zoneReady_) {
+    if (ctx_.tumbleweedManager && ctx_.tumbleweedManager->isEnabled() && ctx_.zoneReady) {
         auto& ti = input.tumbleweedInput;
         ti.deltaTime = deltaTime;
         ti.playerPosition = glm::vec3(ctx_.playerX, ctx_.playerY, ctx_.playerZ);
@@ -516,10 +516,10 @@ void SimBridgeComponent::postSimulationInput(float deltaTime) {
     }
 
     // Weather system input
-    if (owner_.weatherSystem_) {
+    if (ctx_.weatherSystem) {
         auto& wi = input.weatherInput;
         wi.deltaTime = deltaTime;
-        wi.commands = owner_.weatherSystem_->drainCommands();
+        wi.commands = ctx_.weatherSystem->drainCommands();
         wi.initialized = true;
     }
 
@@ -532,7 +532,7 @@ void SimBridgeComponent::postSimulationInput(float deltaTime) {
     }
 
     // Detail wind/disturbance input
-    if (ctx_.detailManager && ctx_.detailManager->isEnabled() && owner_.zoneReady_) {
+    if (ctx_.detailManager && ctx_.detailManager->isEnabled() && ctx_.zoneReady) {
         auto& dti = input.detailInput;
         dti.deltaTime = deltaTime;
         // Wind params from detail manager's wind controller and zone config
@@ -651,9 +651,9 @@ void SimBridgeComponent::applySimulationOutput(const SimulationOutput& resultsRe
                 ctx_.cameraController->setBspPlayerRegion(ctx_.currentPvsRegion);
             }
             // Full re-prioritization only when leaving neighborhood
-            if (!owner_.ZoneStream().isInPvsNeighborhood(ctx_.currentPvsRegion)) {
-                owner_.ZoneStream().rebuildPvsNeighborhood(ctx_.currentPvsRegion);
-                owner_.ZoneStream().onPvsRegionChanged();
+            if (!ctx_.ZoneStream().isInPvsNeighborhood(ctx_.currentPvsRegion)) {
+                ctx_.ZoneStream().rebuildPvsNeighborhood(ctx_.currentPvsRegion);
+                ctx_.ZoneStream().onPvsRegionChanged();
             }
         }
 
@@ -699,12 +699,12 @@ void SimBridgeComponent::applySimulationOutput(const SimulationOutput& resultsRe
 
         // Apply sorted region draw list for front-to-back zone rendering
         if (ctx_.manualZoneDrawEnabled && !results->sortedRegions.empty()) {
-            owner_.sortedZoneDrawList_.clear();
-            owner_.sortedZoneDrawList_.reserve(results->sortedRegions.size());
+            ctx_.sortedZoneDrawList.clear();
+            ctx_.sortedZoneDrawList.reserve(results->sortedRegions.size());
             for (const auto& sr : results->sortedRegions) {
                 auto it = ctx_.regionMeshNodes.find(sr.regionIdx);
                 irr::scene::IMeshSceneNode* node = (it != ctx_.regionMeshNodes.end()) ? it->second : nullptr;
-                owner_.sortedZoneDrawList_.push_back({sr.regionIdx, sr.distanceSq, node});
+                ctx_.sortedZoneDrawList.push_back({sr.regionIdx, sr.distanceSq, node});
             }
         }
     }
@@ -803,15 +803,15 @@ void SimBridgeComponent::applySimulationOutput(const SimulationOutput& resultsRe
             auto* node = ctx_.objectLights[i].node;
             if (!node) continue;
             bool shouldBeVisible = results->objectLightVisible[i] != 0;
-            bool isInScene = (i < owner_.objectLightInSceneGraph_.size()) ? owner_.objectLightInSceneGraph_[i] : false;
+            bool isInScene = (i < ctx_.objectLightInSceneGraph.size()) ? ctx_.objectLightInSceneGraph[i] : false;
             if (shouldBeVisible && !isInScene) {
                 ctx_.smgr->getRootSceneNode()->addChild(node);
-                if (i < owner_.objectLightInSceneGraph_.size())
-                    owner_.objectLightInSceneGraph_[i] = true;
+                if (i < ctx_.objectLightInSceneGraph.size())
+                    ctx_.objectLightInSceneGraph[i] = true;
             } else if (!shouldBeVisible && isInScene) {
                 node->remove();
-                if (i < owner_.objectLightInSceneGraph_.size())
-                    owner_.objectLightInSceneGraph_[i] = false;
+                if (i < ctx_.objectLightInSceneGraph.size())
+                    ctx_.objectLightInSceneGraph[i] = false;
             }
         }
     }
@@ -839,9 +839,9 @@ void SimBridgeComponent::applySimulationOutput(const SimulationOutput& resultsRe
     }
 
     // Apply weather system state from worker (must fire listeners before weatherEffects apply)
-    if (results->weatherOutput.valid && owner_.weatherSystem_) {
+    if (results->weatherOutput.valid && ctx_.weatherSystem) {
         const auto& wo = results->weatherOutput;
-        owner_.weatherSystem_->applyWorkerResults(wo.currentWeather, wo.targetWeather,
+        ctx_.weatherSystem->applyWorkerResults(wo.currentWeather, wo.targetWeather,
                                            wo.transitionProgress, wo.windIntensity,
                                            wo.weatherChanged, wo.newWeatherType);
     }
@@ -881,10 +881,10 @@ void SimBridgeComponent::applySimulationOutput(const SimulationOutput& resultsRe
     }
 
     // Apply vertex animation results (frame index computed by worker)
-    if (!results->vertexAnims.empty() && !owner_.vertexAnimatedMeshes_.empty()) {
-        for (size_t i = 0; i < results->vertexAnims.size() && i < owner_.vertexAnimatedMeshes_.size(); ++i) {
+    if (!results->vertexAnims.empty() && !ctx_.vertexAnimatedMeshes.empty()) {
+        for (size_t i = 0; i < results->vertexAnims.size() && i < ctx_.vertexAnimatedMeshes.size(); ++i) {
             const auto& vr = results->vertexAnims[i];
-            auto& vam = owner_.vertexAnimatedMeshes_[i];
+            auto& vam = ctx_.vertexAnimatedMeshes[i];
             if (!vr.frameChanged) continue;
             if (!vam.mesh || !vam.animData || vam.animData->frames.empty()) continue;
 
@@ -947,7 +947,7 @@ void SimBridgeComponent::applySimulationOutput(const SimulationOutput& resultsRe
     }
 
     // Apply occlusion-culled regions from worker
-    owner_.occlusionCulledRegions_ = results->occlusionCulledRegions;
+    ctx_.occlusionCulledRegions = results->occlusionCulledRegions;
 
     // Apply entity interpolation and visibility results
     if (ctx_.entityRenderer && !results->entityResults.empty()) {
@@ -1063,7 +1063,7 @@ void SimBridgeComponent::bindFrameSimulationBuffers(const SimulationOutput* pers
     // run it (matches the pre-split behavior, which never nulled them here
     // either).
     if (ctx_.usePvsCulling && !persistent->regionVisible.empty()) {
-        owner_.regionPvsDepthMap_ = &persistent->regionPvsDepth;
+        ctx_.regionPvsDepthMap = &persistent->regionPvsDepth;
         owner_.portalVisibleRegions_ = &persistent->portalVisibleRegions;
     }
 
@@ -1072,9 +1072,9 @@ void SimBridgeComponent::bindFrameSimulationBuffers(const SimulationOutput* pers
     // the instant particle output stops being valid, so stale-frame data is
     // never read).
     if (persistent->particleOutput.valid && ctx_.particleManager) {
-        owner_.particleRenderBuffer_ = &persistent->particleOutput.renderBuffer;
+        ctx_.particleRenderBuffer = &persistent->particleOutput.renderBuffer;
     } else {
-        owner_.particleRenderBuffer_ = nullptr;
+        ctx_.particleRenderBuffer = nullptr;
     }
 }
 
@@ -1103,7 +1103,7 @@ std::vector<std::string> SimBridgeComponent::getSimWorkerDebugInfo() const {
     // count removed — it was always 0 on GLES2 already, since that path was
     // only reachable via the removed EDT_BURNINGSVIDEO branch).
     lines.push_back(fmt::format("  Trees: {}, VertAnims: {}",
-        0, owner_.vertexAnimatedMeshes_.size()));
+        0, ctx_.vertexAnimatedMeshes.size()));
     lines.push_back("  Offloaded: visibility, lighting, trees, vertex anims, fire flicker, boids, tumbleweeds");
     lines.push_back("  Ungated: detail wind, particles, sky, weather (30Hz)");
 

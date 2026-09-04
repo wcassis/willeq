@@ -222,39 +222,39 @@ void main() {
     }
 
     // Link
-    owner_.icosphereProgram_ = glCreateProgram();
-    glAttachShader(owner_.icosphereProgram_, vs);
-    glAttachShader(owner_.icosphereProgram_, fs);
-    glBindAttribLocation(owner_.icosphereProgram_, 0, "aPosition");
-    glLinkProgram(owner_.icosphereProgram_);
-    glGetProgramiv(owner_.icosphereProgram_, GL_LINK_STATUS, &ok);
+    ctx_.icosphereProgram = glCreateProgram();
+    glAttachShader(ctx_.icosphereProgram, vs);
+    glAttachShader(ctx_.icosphereProgram, fs);
+    glBindAttribLocation(ctx_.icosphereProgram, 0, "aPosition");
+    glLinkProgram(ctx_.icosphereProgram);
+    glGetProgramiv(ctx_.icosphereProgram, GL_LINK_STATUS, &ok);
     if (!ok) {
         char log[512];
-        glGetProgramInfoLog(owner_.icosphereProgram_, sizeof(log), nullptr, log);
+        glGetProgramInfoLog(ctx_.icosphereProgram, sizeof(log), nullptr, log);
         LOG_ERROR(MOD_GRAPHICS, "Icosphere program link error: {}", log);
-        glDeleteProgram(owner_.icosphereProgram_);
-        owner_.icosphereProgram_ = 0;
+        glDeleteProgram(ctx_.icosphereProgram);
+        ctx_.icosphereProgram = 0;
         glDeleteShader(vs);
         glDeleteShader(fs);
         return;
     }
-    glDetachShader(owner_.icosphereProgram_, vs);
-    glDetachShader(owner_.icosphereProgram_, fs);
+    glDetachShader(ctx_.icosphereProgram, vs);
+    glDetachShader(ctx_.icosphereProgram, fs);
     glDeleteShader(vs);
     glDeleteShader(fs);
 
     // Cache uniform locations
-    icoLocViewProj_ = glGetUniformLocation(owner_.icosphereProgram_, "uViewProj");
-    icoLocCenter_ = glGetUniformLocation(owner_.icosphereProgram_, "uCenter");
-    icoLocRadius_ = glGetUniformLocation(owner_.icosphereProgram_, "uRadius");
-    icoLocTime_ = glGetUniformLocation(owner_.icosphereProgram_, "uTime");
-    icoLocJitterAmt_ = glGetUniformLocation(owner_.icosphereProgram_, "uJitterAmount");
-    icoLocColor_ = glGetUniformLocation(owner_.icosphereProgram_, "uColor");
-    icoLocFogStart_ = glGetUniformLocation(owner_.icosphereProgram_, "uFogStart");
-    icoLocFogEnd_ = glGetUniformLocation(owner_.icosphereProgram_, "uFogEnd");
-    icoLocFogColor_ = glGetUniformLocation(owner_.icosphereProgram_, "uFogColor");
+    icoLocViewProj_ = glGetUniformLocation(ctx_.icosphereProgram, "uViewProj");
+    icoLocCenter_ = glGetUniformLocation(ctx_.icosphereProgram, "uCenter");
+    icoLocRadius_ = glGetUniformLocation(ctx_.icosphereProgram, "uRadius");
+    icoLocTime_ = glGetUniformLocation(ctx_.icosphereProgram, "uTime");
+    icoLocJitterAmt_ = glGetUniformLocation(ctx_.icosphereProgram, "uJitterAmount");
+    icoLocColor_ = glGetUniformLocation(ctx_.icosphereProgram, "uColor");
+    icoLocFogStart_ = glGetUniformLocation(ctx_.icosphereProgram, "uFogStart");
+    icoLocFogEnd_ = glGetUniformLocation(ctx_.icosphereProgram, "uFogEnd");
+    icoLocFogColor_ = glGetUniformLocation(ctx_.icosphereProgram, "uFogColor");
 
-    LOG_INFO(MOD_GRAPHICS, "Compiled icosphere shader program={}", owner_.icosphereProgram_);
+    LOG_INFO(MOD_GRAPHICS, "Compiled icosphere shader program={}", ctx_.icosphereProgram);
 }
 
 void Eqe1ArchiveComponent::updateFireGlowLighting() {
@@ -265,7 +265,7 @@ void Eqe1ArchiveComponent::updateFireGlowLighting() {
                                           : irr::core::vector3df(0, 0, 0);
 
     // Sort emitters by distance to camera, select nearest N
-    int maxN = std::min(owner_.maxFireGlowLights_,
+    int maxN = std::min(ctx_.maxFireGlowLights,
                         static_cast<int>(owner_.fireGlowLights_.size()));
     maxN = std::min(maxN, ZoneShaderManager::MAX_FIRE_GLOW_LIGHTS);
 
@@ -295,13 +295,13 @@ void Eqe1ArchiveComponent::updateFireGlowLighting() {
 }
 
 void Eqe1ArchiveComponent::renderFireGlowIcospheres() {
-    if (owner_.icosphereVBO_ == 0 || owner_.icosphereProgram_ == 0 || owner_.fireGlowLights_.empty()) return;
+    if (owner_.icosphereVBO_ == 0 || ctx_.icosphereProgram == 0 || owner_.fireGlowLights_.empty()) return;
 
     // Get camera position for nearest-N selection (reuse fire glow light selection)
     irr::core::vector3df camPos = ctx_.camera ? ctx_.camera->getAbsolutePosition()
                                           : irr::core::vector3df(0, 0, 0);
 
-    int maxN = std::min(owner_.maxFireGlowLights_,
+    int maxN = std::min(ctx_.maxFireGlowLights,
                         static_cast<int>(owner_.fireGlowLights_.size()));
 
     // Build distance-sorted indices
@@ -317,7 +317,7 @@ void Eqe1ArchiveComponent::renderFireGlowIcospheres() {
                       [](const EmitterDist& a, const EmitterDist& b) { return a.distSq < b.distSq; });
 
     // Build ViewProj matrix from captured 3D transforms
-    irr::core::matrix4 viewProj = owner_.captured3DProj_ * owner_.captured3DView_;
+    irr::core::matrix4 viewProj = ctx_.captured3DProj * ctx_.captured3DView;
     float vpMat[16];
     for (int i = 0; i < 16; i++) vpMat[i] = viewProj[i];
 
@@ -333,7 +333,7 @@ void Eqe1ArchiveComponent::renderFireGlowIcospheres() {
     GLboolean prevBlend = glIsEnabled(GL_BLEND);
 
     // Set render state: additive blend, depth test ON, depth write OFF, no cull
-    glUseProgram(owner_.icosphereProgram_);
+    glUseProgram(ctx_.icosphereProgram);
     glEnable(GL_BLEND);
     glBlendFunc(GL_ONE, GL_ONE);
     glDepthMask(GL_FALSE);
@@ -412,8 +412,8 @@ const EQE1Loader* Eqe1ArchiveComponent::getOrOpenEQE1FromDir(const std::string& 
     std::lock_guard<std::mutex> lock(owner_.eqe1Mutex_);
 
     // Already opened?
-    auto it = owner_.eqe1Loaders_.find(archiveBaseName);
-    if (it != owner_.eqe1Loaders_.end()) {
+    auto it = ctx_.eqe1Loaders.find(archiveBaseName);
+    if (it != ctx_.eqe1Loaders.end()) {
         return it->second.get();  // may be nullptr if previously failed
     }
 
@@ -422,7 +422,7 @@ const EQE1Loader* Eqe1ArchiveComponent::getOrOpenEQE1FromDir(const std::string& 
     auto loader = std::make_unique<EQE1Loader>();
     if (loader->open(path)) {
         const EQE1Loader* ptr = loader.get();
-        owner_.eqe1Loaders_[archiveBaseName] = std::move(loader);
+        ctx_.eqe1Loaders[archiveBaseName] = std::move(loader);
 
         // Register with cache (cache mutex is separate from eqe1Mutex_ — no deadlock)
         if (ctx_.constrainedTextureCache) {
@@ -433,7 +433,7 @@ const EQE1Loader* Eqe1ArchiveComponent::getOrOpenEQE1FromDir(const std::string& 
     }
 
     // Store nullptr to prevent repeated open attempts
-    owner_.eqe1Loaders_[archiveBaseName] = nullptr;
+    ctx_.eqe1Loaders[archiveBaseName] = nullptr;
     LOG_DEBUG(MOD_GRAPHICS, "EQE1: {} not found, S3D fallback", path);
     return nullptr;
 }
@@ -490,8 +490,8 @@ const EQE1Loader* Eqe1ArchiveComponent::openArchiveContaining(const std::string&
     size_t loadTimeCount = 0;
     {
         std::lock_guard<std::mutex> lock(owner_.eqe1CandidatesMutex_);
-        candidates = owner_.pendingGlobalEQE1Archives_;
-        loadTimeCount = owner_.eqe1LoadTimeCandidateCount_;
+        candidates = ctx_.pendingGlobalEQE1Archives;
+        loadTimeCount = ctx_.eqe1LoadTimeCandidateCount;
     }
 
     EQE1TextureIndex::Resolution r;
@@ -508,8 +508,8 @@ const EQE1Loader* Eqe1ArchiveComponent::openArchiveContaining(const std::string&
 
     const bool alreadyOpen = [&] {
         std::lock_guard<std::mutex> lock(owner_.eqe1Mutex_);
-        auto it = owner_.eqe1Loaders_.find(r.archive);
-        return it != owner_.eqe1Loaders_.end() && it->second != nullptr;
+        auto it = ctx_.eqe1Loaders.find(r.archive);
+        return it != ctx_.eqe1Loaders.end() && it->second != nullptr;
     }();
 
     const EQE1Loader* loader = getOrOpenEQE1(r.archive);
@@ -517,9 +517,9 @@ const EQE1Loader* Eqe1ArchiveComponent::openArchiveContaining(const std::string&
 
     if (r.lateOpen) {
         std::lock_guard<std::mutex> lock(owner_.eqe1CandidatesMutex_);
-        if (std::find(owner_.pendingGlobalEQE1Archives_.begin(), owner_.pendingGlobalEQE1Archives_.end(),
-                      r.archive) == owner_.pendingGlobalEQE1Archives_.end()) {
-            owner_.pendingGlobalEQE1Archives_.push_back(r.archive);
+        if (std::find(ctx_.pendingGlobalEQE1Archives.begin(), ctx_.pendingGlobalEQE1Archives.end(),
+                      r.archive) == ctx_.pendingGlobalEQE1Archives.end()) {
+            ctx_.pendingGlobalEQE1Archives.push_back(r.archive);
         }
     }
     if (late && !alreadyOpen) {
@@ -535,7 +535,7 @@ const EQE1Loader* Eqe1ArchiveComponent::openArchiveContaining(const std::string&
 
 bool Eqe1ArchiveComponent::addSpawnedRaceEQE1Candidate(uint16_t raceId) {
     std::lock_guard<std::mutex> lock(owner_.eqe1CandidatesMutex_);
-    if (!owner_.eqe1CandidateRaces_.insert(raceId).second) return false;
+    if (!ctx_.eqe1CandidateRaces.insert(raceId).second) return false;
     std::string s3d = EQT::Graphics::getRaceS3DFile(raceId);
     if (s3d.empty()) return false;
     // race_models stores "akanon_chr.s3d"; archives are keyed by stem.
@@ -545,11 +545,11 @@ bool Eqe1ArchiveComponent::addSpawnedRaceEQE1Candidate(uint16_t raceId) {
                    [](unsigned char c) { return std::tolower(c); });
     if (s3d.empty()) return false;
     // Already opened as a zone archive, or already queued.
-    if (std::find(owner_.pendingGlobalEQE1Archives_.begin(), owner_.pendingGlobalEQE1Archives_.end(), s3d)
-        != owner_.pendingGlobalEQE1Archives_.end()) {
+    if (std::find(ctx_.pendingGlobalEQE1Archives.begin(), ctx_.pendingGlobalEQE1Archives.end(), s3d)
+        != ctx_.pendingGlobalEQE1Archives.end()) {
         return false;
     }
-    owner_.pendingGlobalEQE1Archives_.push_back(s3d);
+    ctx_.pendingGlobalEQE1Archives.push_back(s3d);
     return true;
 }
 
@@ -557,7 +557,7 @@ void Eqe1ArchiveComponent::logEQE1ArchiveUsage() const {
     std::lock_guard<std::mutex> lock(owner_.eqe1Mutex_);
 
     std::vector<std::pair<std::string, const EQE1Loader*>> open;
-    for (const auto& [name, loader] : owner_.eqe1Loaders_) {
+    for (const auto& [name, loader] : ctx_.eqe1Loaders) {
         if (loader && loader->isOpen()) open.emplace_back(name, loader.get());
     }
     if (open.empty()) return;
@@ -621,7 +621,7 @@ void Eqe1ArchiveComponent::logEQE1ArchiveUsage() const {
 size_t Eqe1ArchiveComponent::getEQE1MappedBytesTotal() const {
     std::lock_guard<std::mutex> lock(owner_.eqe1Mutex_);
     size_t total = 0;
-    for (const auto& [name, loader] : owner_.eqe1Loaders_) {
+    for (const auto& [name, loader] : ctx_.eqe1Loaders) {
         if (loader) total += loader->getMappedBytes();
     }
     return total;

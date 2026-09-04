@@ -470,7 +470,7 @@ it without taking that measurement first.
   ~~(A) **Four bound debug hotkeys have never done anything.**~~
   `RendererEventReceiver::OnEvent` queues `RendererAction::ToggleWireframe`,
   `ToggleHUD` and `ToggleNameTags`
-  (`src/client/graphics/renderer_event_receiver.cpp:181-183`), and
+  (`src/client/graphics/renderer/renderer_event_receiver.cpp:181-183`), and
   `ToggleOldModels` sits in the same enum
   (`include/client/graphics/renderer_types.h:111-112`), but
   `IrrlichtRenderer::processCommonInput()`'s switch
@@ -583,3 +583,34 @@ it without taking that measurement first.
   login. Closes when: a login/logout cycle is measured twice in a row with
   the persisted z unchanged, and the writer is named. **Needs eqemu.** Prov:
   T328 Leg B Review; T311.
+
+## Added 2026-09-04 by the L12 Review (Batch L close-out)
+
+- **B050** (B) **The `owner_.` residue in the eleven renderer components:
+  1,065 uses, six ranked clusters — and it is over L12's own 300-use STOP
+  threshold, because the plan's promotion rule (`>= 3 components`) does not
+  reach the coupling the tree actually has. The STOP FIRED and is reported
+  here rather than worked around.** Measured with a comment- and
+  string-filtered census over `src/client/graphics/<family>/` +
+  `include/client/graphics/<family>/` for the eleven extracted components:
+  **1,796 at `1c9afba7`, 1,065 after L12 (-731, 40.7%).** The clusters,
+  ranked, with the one reason each is still there:
+
+  | # | cluster | uses | why it stayed |
+  |---|---|---|---|
+  | 1 | the frame-timing blob — `frameTimings_` 200, `frameTimingsAccum_` 135, `frameTimingsSampleCount_` 11, `lastPolygonCount_` 6, `currentFps_` 4, the two EMA cost members, the scene-profile pair, `frameCount_`, `lastFpsTime_`, `frameTimingEnabled_` | **374** | jointly owned by exactly TWO components — `frame` writes it, `diagnostics` reads and reports it — so it is below the `>= 3` promotion threshold L12 was given. It is the single largest coupling left in the renderer and one unit's whole work: either a `FrameTimings` service both components hold, or `frame` owns it and `diagnostics` reads it through `ctx_.Frame()` |
+  | 2 | two-family state, 55 members — `playerConfig_` 56 (player 46 / frame 10), `storedZoneEnvironment_` 37, `simulationWorker_` 26, `cameraMode_` 21, `playerLightNode_` 19, `guienv_` 14, `textureRebuildQueue_` 13, `zoneTriangleSelector_`/`terrainOnlySelector_` 12 each, `zoneMergeBuffers_` 12, `currentTargetId_` 12, `sortedDrawEntries_` 11, `chatInputFocused_` 11, … | **480** | same reason: exactly two components each. Sec.Mechanism 3's "the unit extracting the LAST family moves it" has no answer once every family is extracted and two of them still share the member — that is a per-member ownership call (dominant owner vs. context member), 55 of them, and L12's rule did not cover it. **Clusters 1+2 are 854 of the 1,065 and are entirely a `>= 3` vs `>= 2` threshold question** |
+  | 3 | members typed by an `IrrlichtRenderer`-NESTED type — `fireGlowLights_` 26, `zoneLightData_` 22, `renderPassTimer_` 14, `doorCollisionData_` 7 | **69** | all four clear the `>= 3` bar and were deliberately NOT promoted: `renderer_context.h` would have to name `IrrlichtRenderer::ZoneLightData` etc., which re-acquires the ~60-transitive include the context exists to avoid (batch correction 10). The fix is to hoist each struct to `renderer_types.h` with a `using` alias left in the class (batch correction 22's shape) — and `ZoneLightData` needs care: two OTHER structs of that name exist (`SimulationZoneData::ZoneLightData`, and one at namespace scope in `include/client/zone_object_data.h`) |
+  | 4 | the two EQE1 mutexes — `eqe1Mutex_` 6, `eqe1CandidatesMutex_` 6 | **12** | both clear the `>= 3` bar; both were left alone on purpose. Relocating the access path of a synchronisation primitive is what Batch L's second STOP condition forbids in a structural unit, so the four EQE1 members beside them were promoted and these two were not |
+  | 5 | single-component members still on the renderer, 16 names — `sunLight_` 16, `pendingGPUResults_` 6, `zoneLightsEnabled_` 5, `debugDirectionalLightEnabled_` 4, … | **49** | each is ALSO reached by `src/client/graphics/renderer/renderer_init.cpp` or its `irrlicht_renderer.cpp`, which are terminal owners: batch correction 10's "the last family moves it" never fires for a member shared only with init/core |
+  | 6 | `IrrlichtRenderer` methods that stayed — `isLoading` 25, `getDetailManager` 7, `setRenderDistance` 4, `isRegionPvsVisible` 4, `getCameraModeString` 4, and 31 more at 1-2 each | **81** | the renderer's PUBLIC API, called by `Application`, `IrrlichtBridge` and `graphical_mode` as well as by components (the K11 rule); 30 of the 36 are the one-use `/toggle`-and-query surface `SlashCommandsComponent` drives. Not a defect |
+  | | **total** | **1,065** | |
+
+  Per component after L12 — `rdp` **0** (`friend` line and `IrrlichtRenderer&`
+  both gone), `zone_stream` 19, `slash` 37 (`friend` line gone; all 37 are
+  public methods), `eqe1` 49, `sim` 59, `zone_load` 72, `overlays` 73,
+  `player` 84, `zone_lifecycle` 136, `diagnostics` 190, `frame` 346.
+
+  Closes when: a ruling on the promotion threshold (clusters 1+2), the three
+  type hoists of cluster 3, and a re-measure. Clusters 4-6 are reasoned keeps
+  and may simply stay. Prov: L12 Review.

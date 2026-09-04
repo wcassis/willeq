@@ -60,12 +60,12 @@ void FrameComponent::processFrameInput(float deltaTime) {
     processPlayerInput(actions);
 
     // ===== FRAME TIMING: Input Handling =====
-    owner_.frameTimings_.inputHandling = owner_.measureSection();
+    owner_.frameTimings_.inputHandling = measureSection();
 
     processInputDeltas(deltaTime);
 
     // ===== FRAME TIMING: Input Handling (accumulated) =====
-    owner_.frameTimings_.inputHandling += owner_.measureSection();
+    owner_.frameTimings_.inputHandling += measureSection();
 
     // Handle mouse state BEFORE camera/movement updates
     bool hadClick = ctx_.eventReceiver->wasLeftButtonClicked();
@@ -95,21 +95,21 @@ void FrameComponent::processFrameInput(float deltaTime) {
     }
 
     // Update camera and player movement
-    owner_.PlayerCamera().updatePlayerMovement(deltaTime);
-    owner_.frameTimings_.playerMovement = owner_.measureSection();
+    ctx_.PlayerCamera().updatePlayerMovement(deltaTime);
+    owner_.frameTimings_.playerMovement = measureSection();
     // Update sky position to follow camera
     if (ctx_.skyRenderer && ctx_.skyRenderer->isInitialized() && ctx_.camera) {
         ctx_.skyRenderer->setCameraPosition(ctx_.camera->getPosition());
     }
 
     // ===== FRAME TIMING: Camera Update =====
-    owner_.frameTimings_.cameraUpdate = owner_.measureSection();
+    owner_.frameTimings_.cameraUpdate = measureSection();
 
     processChatInput();
 
     // Handle mouse targeting
     if (hadClick) {
-        owner_.Overlays().handleMouseTargeting(clickX, clickY);
+        ctx_.Overlays().handleMouseTargeting(clickX, clickY);
     }
 }
 
@@ -118,7 +118,7 @@ void FrameComponent::processCommonInput(const std::vector<RendererEvent>& action
     for (const auto& event : actions) {
         switch (event.action) {
             case RA::Screenshot: pendingScreenshot_ = true; break;
-            case RA::ToggleAllUI: owner_.Diagnostics().toggleAllUI(); break;
+            case RA::ToggleAllUI: ctx_.Diagnostics().toggleAllUI(); break;
             // T313: PageUp/PageDown. Same router as the wheel; a whole page
             // per press. Global-mode actions, so they work with a popup up.
             case RA::ScrollUIUp:
@@ -130,23 +130,23 @@ void FrameComponent::processCommonInput(const std::vector<RendererEvent>& action
                         uiLayout_, chatPanelState_, skillsPopupState_, lootState_);
                 }
                 break;
-            case RA::ToggleZoneLights: owner_.Diagnostics().toggleZoneLights(); break;
-            case RA::CycleObjectLights: owner_.Diagnostics().cycleObjectLights(); break;
+            case RA::ToggleZoneLights: ctx_.Diagnostics().toggleZoneLights(); break;
+            case RA::CycleObjectLights: ctx_.Diagnostics().cycleObjectLights(); break;
             // T330 (B043): these four arms had never existed. The hotkeys were
             // bound (hotkey_manager.cpp) and the receiver queued the actions
             // (renderer_event_receiver.cpp), but they fell through the default
             // below and did nothing. Pinned by tests/test_debug_hotkey_arms.cpp.
-            case RA::ToggleWireframe: owner_.Diagnostics().toggleWireframe(); break;
-            case RA::ToggleHUD: owner_.Diagnostics().toggleHUD(); break;
-            case RA::ToggleNameTags: owner_.Diagnostics().toggleNameTags(); break;
-            case RA::ToggleOldModels: owner_.Diagnostics().toggleOldModels(); break;
+            case RA::ToggleWireframe: ctx_.Diagnostics().toggleWireframe(); break;
+            case RA::ToggleHUD: ctx_.Diagnostics().toggleHUD(); break;
+            case RA::ToggleNameTags: ctx_.Diagnostics().toggleNameTags(); break;
+            case RA::ToggleOldModels: ctx_.Diagnostics().toggleOldModels(); break;
             case RA::ToggleOptions:
                 // WindowManager removed — options window not available
                 break;
             case RA::ClearTarget:
                 if (owner_.currentTargetId_ != 0) {
                     LOG_INFO(MOD_GRAPHICS, "[TARGET] Cleared target: {}", owner_.currentTargetName_);
-                    owner_.Overlays().clearCurrentTarget();
+                    ctx_.Overlays().clearCurrentTarget();
                     SetTrackedTargetId(0);
                 }
                 break;
@@ -174,7 +174,7 @@ void FrameComponent::processPlayerInput(const std::vector<RendererEvent>& action
                 break;
             case RA::DoorInteract:
                 if (ctx_.doorManager) {
-                    uint8_t doorId = ctx_.doorManager->getNearestDoor(ctx_.playerX, ctx_.playerY, ctx_.playerZ, owner_.playerHeading_);
+                    uint8_t doorId = ctx_.doorManager->getNearestDoor(ctx_.playerX, ctx_.playerY, ctx_.playerZ, ctx_.playerHeading);
                     if (doorId != 0) {
                         LOG_INFO(MOD_GRAPHICS, "Door interaction: ID {}", doorId);
                         if (ctx_.bridge) ctx_.bridge->pushIntent(eqt::events::DoorInteractIntent{doorId});
@@ -222,8 +222,8 @@ void FrameComponent::processPlayerInput(const std::vector<RendererEvent>& action
                 break;  // Buff bar always visible when buffs exist
 
             // Debug overlays
-            case RA::ToggleZoneLineVisualization: owner_.Overlays().toggleZoneLineVisualization(); break;
-            case RA::ToggleMapOverlay: owner_.Overlays().toggleMapOverlay(); break;
+            case RA::ToggleZoneLineVisualization: ctx_.Overlays().toggleZoneLineVisualization(); break;
+            case RA::ToggleMapOverlay: ctx_.Overlays().toggleMapOverlay(); break;
             case RA::RotateMapOverlay:
                 owner_.mapOverlayRotation_ = (owner_.mapOverlayRotation_ + 1) % 4;
                 LOG_INFO(MOD_GRAPHICS, "Map overlay placeable rotation: {}° around Y axis (terrain unchanged)", owner_.mapOverlayRotation_ * 90);
@@ -232,7 +232,7 @@ void FrameComponent::processPlayerInput(const std::vector<RendererEvent>& action
                 owner_.mapOverlayMirrorX_ = !owner_.mapOverlayMirrorX_;
                 LOG_INFO(MOD_GRAPHICS, "Map overlay placeable X mirror: {} (terrain unchanged)", owner_.mapOverlayMirrorX_ ? "ON" : "OFF");
                 break;
-            case RA::ToggleNavmeshOverlay: owner_.Overlays().toggleNavmeshOverlay(); break;
+            case RA::ToggleNavmeshOverlay: ctx_.Overlays().toggleNavmeshOverlay(); break;
             case RA::RotateNavmeshOverlay:
                 owner_.navmeshOverlayRotation_ = (owner_.navmeshOverlayRotation_ + 1) % 4;
                 LOG_INFO(MOD_GRAPHICS, "Navmesh overlay rotation: {}° around Y axis", owner_.navmeshOverlayRotation_ * 90);
@@ -378,7 +378,7 @@ void FrameComponent::processInputDeltas(float deltaTime) {
         }
         if (zoomDelta != 0.0f && ctx_.cameraController && owner_.cameraMode_ == CameraMode::Follow) {
             ctx_.cameraController->adjustFollowDistance(zoomDelta);
-            ctx_.cameraController->setFollowPosition(ctx_.playerX, ctx_.playerY, ctx_.playerZ, owner_.playerHeading_, deltaTime);
+            ctx_.cameraController->setFollowPosition(ctx_.playerX, ctx_.playerY, ctx_.playerZ, ctx_.playerHeading, deltaTime);
             LOG_DEBUG(MOD_GRAPHICS, "Camera zoom distance: {:.1f}", ctx_.cameraController->getFollowDistance());
         }
     }
@@ -535,7 +535,7 @@ void FrameComponent::processChatInput() {
         }
         if (!popupConsumedEscape && owner_.currentTargetId_ != 0) {
             LOG_INFO(MOD_GRAPHICS, "[TARGET] Cleared target: {}", owner_.currentTargetName_);
-            owner_.Overlays().clearCurrentTarget();
+            ctx_.Overlays().clearCurrentTarget();
             SetTrackedTargetId(0);
             ctx_.eventReceiver->pushBridgeAction({RendererAction::ClearTarget});
         }
@@ -576,14 +576,14 @@ void FrameComponent::processFrameVisibility() {
 // ===== Phase 3: Simulation =====
 void FrameComponent::processFrameSimulation(float deltaTime) {
     // WindowManager removed — no old UI update
-    owner_.sectionStart_ = std::chrono::steady_clock::now();
+    sectionStart_ = std::chrono::steady_clock::now();
 
     // Entity update — worker handles interpolation + culling, main thread handles
     // animation side-effects, corpse fading, equipment transforms, casting bars
     if (ctx_.entityRenderer) {
         // Pass occlusion-culled regions to entity renderer for door manager etc.
         ctx_.entityRenderer->setOcclusionCulledRegions(
-            owner_.occlusionCulledRegions_.empty() ? nullptr : &owner_.occlusionCulledRegions_);
+            ctx_.occlusionCulledRegions.empty() ? nullptr : &ctx_.occlusionCulledRegions);
 
         // Pass camera BSP region to entity renderer
         if (ctx_.zoneBspTree && ctx_.currentPvsRegion != SIZE_MAX
@@ -620,41 +620,41 @@ void FrameComponent::processFrameSimulation(float deltaTime) {
                 ctx_.entityRenderer->getPlayerCollisionZOffset()});
         }
     }
-    owner_.frameTimings_.entityUpdate = owner_.measureSection();
+    owner_.frameTimings_.entityUpdate = measureSection();
 
     // Door update
     if (ctx_.doorManager) {
         ctx_.doorManager->setOcclusionCulledRegions(
-            owner_.occlusionCulledRegions_.empty() ? nullptr : &owner_.occlusionCulledRegions_);
+            ctx_.occlusionCulledRegions.empty() ? nullptr : &ctx_.occlusionCulledRegions);
         ctx_.doorManager->setPvsRegion(ctx_.currentPvsRegion);
         ctx_.doorManager->update(deltaTime);
     }
-    owner_.frameTimings_.doorUpdate = owner_.measureSection();
+    owner_.frameTimings_.doorUpdate = measureSection();
 
     // Spell VFX update
     if (owner_.spellVisualFX_) owner_.spellVisualFX_->update(deltaTime);
-    owner_.frameTimings_.spellVfxUpdate = owner_.measureSection();
+    owner_.frameTimings_.spellVfxUpdate = measureSection();
 
     // Animated textures
     if (ctx_.animatedTextureManager) ctx_.animatedTextureManager->update(deltaTime * 1000.0f);
-    owner_.frameTimings_.animatedTextures = owner_.measureSection();
+    owner_.frameTimings_.animatedTextures = measureSection();
 
     // Vertex animations and light animations handled by SimulationWorker
-    owner_.frameTimings_.vertexAnimations = owner_.measureSection();
+    owner_.frameTimings_.vertexAnimations = measureSection();
 
     // Reset timing section so zone load time isn't attributed to tier2Update
-    owner_.sectionStart_ = std::chrono::steady_clock::now();
+    sectionStart_ = std::chrono::steady_clock::now();
 
     // Rebuild HCMap placeholder as player moves (GREEN-gated)
     // Only active during placeholder phase — before real geometry replaces it
-    if (owner_.zonePlaceholderNode_ && ctx_.collisionMap && ctx_.collisionMap->IsLoaded()) {
+    if (ctx_.zonePlaceholderNode && ctx_.collisionMap && ctx_.collisionMap->IsLoaded()) {
         if (!ctx_.governor || ctx_.governor->getState() == BudgetState::Green) {
             irr::core::vector3df currentPos(ctx_.playerX, ctx_.playerZ, ctx_.playerY);  // EQ→Irrlicht
             float movedSq = currentPos.getDistanceFromSQ(owner_.lastPlaceholderBuildPos_);
             const float rebuildThresholdSq = 100.0f * 100.0f;  // 100 units
             if (movedSq > rebuildThresholdSq) {
-                owner_.ZoneLifecycle().buildZonePlaceholder(ctx_.playerX, ctx_.playerZ, ctx_.playerY);
-                owner_.ZoneLifecycle().setupHCMapCollision();
+                ctx_.ZoneLifecycle().buildZonePlaceholder(ctx_.playerX, ctx_.playerZ, ctx_.playerY);
+                ctx_.ZoneLifecycle().setupHCMapCollision();
             }
         }
     }
@@ -677,7 +677,7 @@ void FrameComponent::processFrameSimulation(float deltaTime) {
             lastPlayerY = ctx_.playerY;
             bool playerMoving = playerVelocity.getLengthSQ() > 0.1f;
             ctx_.detailManager->update(playerPosIrrlicht, deltaTime * 1000.0f,
-                                   playerPosIrrlicht, playerVelocity, owner_.playerHeading_, playerMoving);
+                                   playerPosIrrlicht, playerVelocity, ctx_.playerHeading, playerMoving);
         }
         // P33: TreeWindController::update(deltaTime) is now wired live
         // (Will's ruling: trees animate unless the tree-wind-animation
@@ -700,17 +700,17 @@ void FrameComponent::processFrameSimulation(float deltaTime) {
         }
     }
     } // tier2 detail+tree block
-    owner_.frameTimings_.tier2Update = owner_.measureSection();
+    owner_.frameTimings_.tier2Update = measureSection();
 
     // Fire light flickering handled by SimulationWorker
-    owner_.frameTimings_.fireFlicker = owner_.measureSection();
+    owner_.frameTimings_.fireFlicker = measureSection();
 
     // Player light position set in applySimulationResults() by SimulationWorker
 
     // Tier 3: Environmental simulation (~10Hz)
     {
         // Weather state machine runs on SimulationWorker, results applied in applySimulationResults()
-        owner_.frameTimings_.weatherSystemUpdate = owner_.measureSection();
+        owner_.frameTimings_.weatherSystemUpdate = measureSection();
 
         bool runEnvThisFrame = runTier3_;
 
@@ -724,8 +724,8 @@ void FrameComponent::processFrameSimulation(float deltaTime) {
 
             // Sky cloud scrolling computed by SimulationWorker, applied in applySimulationResults()
 
-            if (ctx_.particleManager && ctx_.particleManager->isEnabled() && owner_.zoneReady_) {
-                ctx_.particleManager->setPlayerPosition(glm::vec3(ctx_.playerX, ctx_.playerY, ctx_.playerZ), owner_.playerHeading_);
+            if (ctx_.particleManager && ctx_.particleManager->isEnabled() && ctx_.zoneReady) {
+                ctx_.particleManager->setPlayerPosition(glm::vec3(ctx_.playerX, ctx_.playerY, ctx_.playerZ), ctx_.playerHeading);
                 float timeOfDay = ctx_.currentHour + ctx_.currentMinute / 60.0f;
                 ctx_.particleManager->setTimeOfDay(timeOfDay);
                 ctx_.particleManager->update(accDelta);
@@ -735,7 +735,7 @@ void FrameComponent::processFrameSimulation(float deltaTime) {
             // Physics now runs in SimulationWorker. Weather light collection
             // and command posting happen in postSimulationInput().
             // updateUnified() is a no-op — kept for API compatibility.
-            if (ctx_.particleManager && owner_.zoneReady_) {
+            if (ctx_.particleManager && ctx_.zoneReady) {
                 ctx_.particleManager->updateUnified(0.0f);
             }
 
@@ -743,13 +743,13 @@ void FrameComponent::processFrameSimulation(float deltaTime) {
             // input posted in postSimulationInput(), results applied in applySimulationResults()
         }
     }
-    owner_.frameTimings_.tier3Update = owner_.measureSection();
+    owner_.frameTimings_.tier3Update = measureSection();
 
     // HUD
     hudAnimTimer_ += deltaTime;
     if (hudAnimTimer_ > 10000.0f) hudAnimTimer_ = 0.0f;
-    owner_.Overlays().updateHUD();
-    owner_.frameTimings_.hudUpdate = owner_.measureSection();
+    ctx_.Overlays().updateHUD();
+    owner_.frameTimings_.hudUpdate = measureSection();
 }
 
 } // namespace Graphics

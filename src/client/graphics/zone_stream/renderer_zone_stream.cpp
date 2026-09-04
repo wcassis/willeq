@@ -18,7 +18,7 @@ void ZoneStreamComponent::indexObjectMeshes() {
         return;
     }
 
-    owner_.deferredObjects_.clear();
+    ctx_.deferredObjects.clear();
 
     for (size_t i = 0; i < ctx_.currentZone->objects.size(); ++i) {
         const auto& objInstance = ctx_.currentZone->objects[i];
@@ -57,18 +57,18 @@ void ZoneStreamComponent::indexObjectMeshes() {
             x - halfW, z - halfH, y - halfW,
             x + halfW, z + halfH, y + halfW);
 
-        owner_.deferredObjects_.push_back(deferred);
+        ctx_.deferredObjects.push_back(deferred);
     }
 
-    LOG_DEBUG(MOD_GRAPHICS, "Indexed {} deferred objects", owner_.deferredObjects_.size());
+    LOG_DEBUG(MOD_GRAPHICS, "Indexed {} deferred objects", ctx_.deferredObjects.size());
 }
 
 void ZoneStreamComponent::buildDeferredObject(size_t idx) {
-    if (idx >= owner_.deferredObjects_.size() || !ctx_.currentZone || !ctx_.smgr) {
+    if (idx >= ctx_.deferredObjects.size() || !ctx_.currentZone || !ctx_.smgr) {
         return;
     }
 
-    DeferredObject& deferred = owner_.deferredObjects_[idx];
+    DeferredObject& deferred = ctx_.deferredObjects[idx];
     if (deferred.meshBuilt) {
         return;
     }
@@ -110,7 +110,7 @@ void ZoneStreamComponent::buildDeferredObject(size_t idx) {
     const auto& missingObjTex = builder.getMissingTextures();
     if (!missingObjTex.empty()) {
         for (const auto& texName : missingObjTex) {
-            owner_.pendingTextureObjects_[texName].insert(idx);
+            ctx_.pendingTextureObjects[texName].insert(idx);
         }
     }
 
@@ -226,12 +226,12 @@ void ZoneStreamComponent::buildDeferredObject(size_t idx) {
     ctx_.objectNodes.push_back(node);
     ctx_.objectPositions.push_back(irr::core::vector3df(x, z, y));
     if (ctx_.zoneBspTree) {
-        owner_.objectRegions_.push_back(ctx_.zoneBspTree->findRegionIndexForPoint(x, y, z));
+        ctx_.objectRegions.push_back(ctx_.zoneBspTree->findRegionIndexForPoint(x, y, z));
     } else {
-        owner_.objectRegions_.push_back(SIZE_MAX);
+        ctx_.objectRegions.push_back(SIZE_MAX);
     }
     node->updateAbsolutePosition();
-    owner_.objectBoundingBoxes_.push_back(node->getTransformedBoundingBox());
+    ctx_.objectBoundingBoxes.push_back(node->getTransformedBoundingBox());
 
     // Track deferred→node mapping for texture rebuild
     deferred.nodeIndex = newNodeIndex;
@@ -239,7 +239,7 @@ void ZoneStreamComponent::buildDeferredObject(size_t idx) {
     // PVS check at insertion — start hidden if not in visible region.
     // When manualZoneDrawEnabled_, objects are always out of scene graph
     // and rendered via drawZoneGeometrySorted() instead.
-    bool pvsVisible = owner_.isRegionPvsVisible(owner_.objectRegions_.back());
+    bool pvsVisible = owner_.isRegionPvsVisible(ctx_.objectRegions.back());
     if (!pvsVisible || ctx_.manualZoneDrawEnabled) {
         node->remove();  // Remove from scene graph (grab() keeps it alive)
     }
@@ -328,7 +328,7 @@ void ZoneStreamComponent::buildDeferredObject(size_t idx) {
             objLight.position = lightPos;
             objLight.objectName = objName;
             objLight.originalColor = lightColor;
-            objLight.bspRegion = owner_.objectRegions_.back();  // Same BSP region as parent object
+            objLight.bspRegion = ctx_.objectRegions.back();  // Same BSP region as parent object
 
             if (upperName.find("TORCH") != std::string::npos ||
                 upperName.find("FIRE") != std::string::npos ||
@@ -346,7 +346,7 @@ void ZoneStreamComponent::buildDeferredObject(size_t idx) {
             if (pvsVis) {
                 ctx_.smgr->getRootSceneNode()->addChild(lightNode);
             }
-            owner_.objectLightInSceneGraph_.push_back(pvsVis);
+            ctx_.objectLightInSceneGraph.push_back(pvsVis);
 
             ctx_.objectLights.push_back(objLight);
             LOG_DEBUG(MOD_GRAPHICS, "Deferred object light created: {} at ({:.1f},{:.1f},{:.1f}) region={}",
@@ -380,7 +380,7 @@ void ZoneStreamComponent::processFrameProgressiveLoad() {
     // Update loading screen progress during asset loading.
     // --- GREEN gate: exactly ONE non-critical step per frame when GREEN ---
     // Bypass when loading screen is visible (no scene to compete with).
-    if (ctx_.governor && !owner_.loadingScreenVisible_ && ctx_.governor->getState() != BudgetState::Green) {
+    if (ctx_.governor && !ctx_.loadingScreenVisible && ctx_.governor->getState() != BudgetState::Green) {
         static int progGovLog = 0;
         if (++progGovLog % 300 == 1) {
             LOG_DEBUG(MOD_GRAPHICS, "Progressive: GREEN gate blocked — governor={}",
@@ -388,7 +388,7 @@ void ZoneStreamComponent::processFrameProgressiveLoad() {
         }
         // Populate pending queue even when not GREEN (zero-cost, main-thread-only).
         // Do NOT dispatch — worker stays idle during non-GREEN frames.
-        if (++owner_.entityPrepScanCounter_ % 10 == 0) {
+        if (++ctx_.entityPrepScanCounter % 10 == 0) {
             queueEntityPrepRequests();
         }
         checkProgressiveLoadingComplete();
@@ -398,12 +398,12 @@ void ZoneStreamComponent::processFrameProgressiveLoad() {
     bool didWork = false;
     // During loading screen, never mark didWork so all priorities run each frame
     // (no scene rendering to compete with).
-    const bool canMarkWork = !owner_.loadingScreenVisible_;
+    const bool canMarkWork = !ctx_.loadingScreenVisible;
     auto stepStart = std::chrono::steady_clock::now();
 
     // Lightweight entity ops (always run under GREEN, no didWork cost):
     if (ctx_.entityPrepReady && ctx_.entityRenderer && !ctx_.config.constrainedConfig.skipEntityBuild) {
-        if (++owner_.entityPrepScanCounter_ % 10 == 0) {
+        if (++ctx_.entityPrepScanCounter % 10 == 0) {
             queueEntityPrepRequests();
         }
         if (ctx_.entityPrepWorker && ctx_.entityPrepWorker->isIdle()) {
@@ -449,23 +449,23 @@ void ZoneStreamComponent::processFrameProgressiveLoad() {
     // pointer.
 
     // Priority 1.6: Rebuild one door whose async textures have arrived
-    if (!didWork && !owner_.doorTextureRebuildQueue_.empty() && ctx_.doorManager) {
-        uint8_t doorId = owner_.doorTextureRebuildQueue_.front();
-        owner_.doorTextureRebuildQueue_.erase(owner_.doorTextureRebuildQueue_.begin());
+    if (!didWork && !ctx_.doorTextureRebuildQueue.empty() && ctx_.doorManager) {
+        uint8_t doorId = ctx_.doorTextureRebuildQueue.front();
+        ctx_.doorTextureRebuildQueue.erase(ctx_.doorTextureRebuildQueue.begin());
         ctx_.doorManager->rebuildSingleDoor(doorId);
         didWork = canMarkWork;
         logAssetBuildTime("door_tex_rebuild", doorId, stepStart);
         LOG_INFO(MOD_GRAPHICS, "Progressive P1.6: rebuilt door {} with textures (queue: {})",
-                 doorId, owner_.doorTextureRebuildQueue_.size());
+                 doorId, ctx_.doorTextureRebuildQueue.size());
     }
 
     // Priority 1.7: Rebuild one PVS object whose async textures have arrived
-    if (!didWork && !owner_.objectTextureRebuildQueue_.empty()) {
-        size_t objIdx = owner_.objectTextureRebuildQueue_.front();
-        owner_.objectTextureRebuildQueue_.erase(owner_.objectTextureRebuildQueue_.begin());
-        if (objIdx < owner_.deferredObjects_.size()) {
+    if (!didWork && !ctx_.objectTextureRebuildQueue.empty()) {
+        size_t objIdx = ctx_.objectTextureRebuildQueue.front();
+        ctx_.objectTextureRebuildQueue.erase(ctx_.objectTextureRebuildQueue.begin());
+        if (objIdx < ctx_.deferredObjects.size()) {
             // Find and remove the existing scene node for this deferred object
-            size_t nodeIdx = owner_.deferredObjects_[objIdx].nodeIndex;
+            size_t nodeIdx = ctx_.deferredObjects[objIdx].nodeIndex;
             if (nodeIdx != SIZE_MAX && nodeIdx < ctx_.objectNodes.size() && ctx_.objectNodes[nodeIdx]) {
                 auto* oldNode = ctx_.objectNodes[nodeIdx];
                 if (ctx_.animatedTextureManager)
@@ -475,12 +475,12 @@ void ZoneStreamComponent::processFrameProgressiveLoad() {
                 if (nodeIdx < ctx_.objectInSceneGraph.size())
                     ctx_.objectInSceneGraph[nodeIdx] = false;
             }
-            owner_.deferredObjects_[objIdx].meshBuilt = false;
+            ctx_.deferredObjects[objIdx].meshBuilt = false;
             buildDeferredObject(objIdx);
             didWork = canMarkWork;
             logAssetBuildTime("obj_tex_rebuild", objIdx, stepStart);
             LOG_INFO(MOD_GRAPHICS, "Progressive P1.7: rebuilt object {} with textures (queue: {})",
-                     objIdx, owner_.objectTextureRebuildQueue_.size());
+                     objIdx, ctx_.objectTextureRebuildQueue.size());
         }
     }
 
@@ -518,15 +518,15 @@ void ZoneStreamComponent::processFrameProgressiveLoad() {
 }
 
 uint8_t ZoneStreamComponent::getRegionPvsDepth(size_t regionIdx) const {
-    if (!owner_.regionPvsDepthMap_) return 255;
-    auto it = owner_.regionPvsDepthMap_->find(regionIdx);
-    return (it != owner_.regionPvsDepthMap_->end()) ? it->second : 255;
+    if (!ctx_.regionPvsDepthMap) return 255;
+    auto it = ctx_.regionPvsDepthMap->find(regionIdx);
+    return (it != ctx_.regionPvsDepthMap->end()) ? it->second : 255;
 }
 
 void ZoneStreamComponent::rebuildPvsNeighborhood(size_t anchorRegion) {
     owner_.pvsNeighborhood_.clear();
     owner_.pvsNeighborhoodAnchor_ = anchorRegion;
-    if (anchorRegion == SIZE_MAX || owner_.regionNeighbors_.empty()) return;
+    if (anchorRegion == SIZE_MAX || ctx_.regionNeighbors.empty()) return;
 
     const int K = ctx_.config.constrainedConfig.pvsNeighborhoodHops;
     if (K <= 0) return;  // Disabled: fire onPvsRegionChanged on every crossing
@@ -540,8 +540,8 @@ void ZoneStreamComponent::rebuildPvsNeighborhood(size_t anchorRegion) {
     while (head < queue.size()) {
         auto [fromRegion, depth] = queue[head++];
         if (depth >= K) continue;
-        auto it = owner_.regionNeighbors_.find(fromRegion);
-        if (it == owner_.regionNeighbors_.end()) continue;
+        auto it = ctx_.regionNeighbors.find(fromRegion);
+        if (it == ctx_.regionNeighbors.end()) continue;
         for (size_t neighbor : it->second) {
             if (owner_.pvsNeighborhood_.insert(neighbor).second) {
                 queue.push_back({neighbor, depth + 1});
@@ -625,7 +625,7 @@ void ZoneStreamComponent::queueEntityPrepRequests() {
         // GM/summoned NPC, illusion) gets its archive queued as an EQE1
         // candidate BEFORE its prep job can ask for a texture. Deduped per
         // race inside; a no-op for every race zone load already queued.
-        if (owner_.eqe1_->addSpawnedRaceEQE1Candidate(vis.raceId)) {
+        if (ctx_.Eqe1().addSpawnedRaceEQE1Candidate(vis.raceId)) {
             LOG_INFO(MOD_GRAPHICS, "EQE1: race {} spawned after zone load -> its archive "
                      "queued as a late candidate (spawn={})", vis.raceId, spawnId);
         }
@@ -711,7 +711,7 @@ void ZoneStreamComponent::checkProgressiveLoadingComplete() {
 
     // Phase pipeline must reach Complete before we can declare progressive loading done.
     // Otherwise zero counts just mean "nothing queued yet" (pre-zone-load).
-    if (!owner_.sequentialLoadComplete_) return;
+    if (!ctx_.sequentialLoadComplete) return;
 
     // Count unbuilt assets
     size_t unbuiltEntities = 0;
@@ -752,7 +752,7 @@ void ZoneStreamComponent::checkProgressiveLoadingComplete() {
                  "| governor={} | progressive={}",
                  unbuiltEntities, unbuiltRegions,
                  pendingVBOs, pendingTextures,
-                 owner_.textureRebuildQueue_.size(), owner_.objectTextureRebuildQueue_.size(),
+                 owner_.textureRebuildQueue_.size(), ctx_.objectTextureRebuildQueue.size(),
                  ctx_.governor ? ctx_.governor->getStateName() : "N/A",
                  ctx_.progressiveLoadingActive);
     }
@@ -768,7 +768,7 @@ void ZoneStreamComponent::checkProgressiveLoadingComplete() {
 #endif
         if (ctx_.constrainedTextureCache && ctx_.constrainedTextureCache->hasPendingWork())
             gpuWorkPending = true;
-        if (!owner_.objectTextureRebuildQueue_.empty() || !owner_.textureRebuildQueue_.empty())
+        if (!ctx_.objectTextureRebuildQueue.empty() || !owner_.textureRebuildQueue_.empty())
             gpuWorkPending = true;
         if (gpuWorkPending) return;
 
@@ -798,12 +798,12 @@ void ZoneStreamComponent::checkProgressiveLoadingComplete() {
         }
 
         // Remove zone placeholder mesh — real geometry is fully loaded
-        owner_.ZoneLifecycle().destroyZonePlaceholder();
+        ctx_.ZoneLifecycle().destroyZonePlaceholder();
 
         // Build portal system now that all geometry is loaded. Portal occlusion
         // is an optimization (~472ms build cost) — deferred from loadZone to avoid
         // poisoning the governor during progressive loading.
-        if (owner_.portalBuildPending_ && ctx_.zoneBspTree && !ctx_.regionBoundingBoxes.empty()) {
+        if (ctx_.portalBuildPending && ctx_.zoneBspTree && !ctx_.regionBoundingBoxes.empty()) {
             // Compute zone bounds from region bounding boxes (EQ coords)
             float zbMinX = std::numeric_limits<float>::max(), zbMinY = zbMinX, zbMinZ = zbMinX;
             float zbMaxX = std::numeric_limits<float>::lowest(), zbMaxY = zbMaxX, zbMaxZ = zbMaxX;
@@ -837,11 +837,11 @@ void ZoneStreamComponent::checkProgressiveLoadingComplete() {
                     }
                 }
             }
-            owner_.portalBuildPending_ = false;
+            ctx_.portalBuildPending = false;
         }
 
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - owner_.progressiveLoadStartTime_).count();
+            std::chrono::steady_clock::now() - ctx_.progressiveLoadStartTime).count();
         LOG_INFO(MOD_GRAPHICS, "Progressive loading complete: {}ms total streaming time", elapsed);
         sendLoadProgress(fmt::format("[Load] Complete ({:.1f}s)", elapsed / 1000.0f));
 

@@ -301,6 +301,30 @@ The client connects through three stages, each with its own connection manager:
 - All Titanium opcodes defined as enums: `TitaniumLoginOpcodes`, `TitaniumWorldOpcodes`, `TitaniumZoneOpcodes`
 - Zero graphics dependencies — communicates with renderer only via GameStateBridge
 
+**IrrlichtRenderer class** (`include/client/graphics/irrlicht_renderer.h`, `src/client/graphics/renderer/` + eleven component directories, Batch L)
+- The renderer. Its own four TUs (`irrlicht_renderer.cpp`, `renderer_init.cpp`,
+  `renderer_entities.cpp`, `renderer_event_receiver.cpp`) live in
+  `src/client/graphics/renderer/`; everything else was extracted into eleven
+  components, each `class EQT::Graphics::<Name>Component` with its own
+  directory under `src/client/graphics/` and `include/client/graphics/`:
+  **RdpComponent** (`rdp/`), **Eqe1ArchiveComponent** (`eqe1/`),
+  **OverlaysComponent** (`overlays/`), **DiagnosticsComponent**
+  (`diagnostics/`), **PlayerCameraComponent** (`player/`),
+  **SlashCommandsComponent** (`slash/`), **SimBridgeComponent** (`sim/`),
+  **ZoneStreamComponent** (`zone_stream/`), **ZoneLifecycleComponent**
+  (`zone_lifecycle/`), **ZoneLoadComponent** (`zone_load/`) and
+  **FrameComponent** (`frame/`)
+- `EQT::Graphics::RendererContext` (`include/client/graphics/renderer_context.h`)
+  is the renderer's `ClientContext`: the shared members bound by reference plus
+  a pointer to each sibling component (`ctx_.Frame()`, `ctx_.ZoneLoad()`, …).
+  A component reaches shared state as `ctx_.member` and anything still on the
+  class as `owner_.member_` — the transition handle, whose remaining 1,065 uses
+  are measured and boarded as **B050**
+- Lifecycle entry points (`initLoadingScreen`, `initDeferredGraphics`,
+  `processFrame`, `shutdown`, `run`) stay on `IrrlichtRenderer`: `Application`
+  and `IrrlichtBridge` must not learn a component exists
+- Consult `docs/module_map.md` for which TU holds which body
+
 **Network Stack** (`include/common/net/`, `src/common/net/`)
 - `DaybreakConnection` - UDP reliable protocol with sequencing, fragmentation, CRC, and compression
 - `Packet` - Base class with `StaticPacket` (fixed buffer) and `DynamicPacket` (resizable)

@@ -272,6 +272,43 @@ declarations + inline accessors + members before dispatch.
 **Hand-off to L12:** move `measureSection()`/`sectionStart_` into
 `FrameComponent` (single-family, L04's own prediction; L11 was told to
 leave it); `frameStart_` is write-only tree-wide — board or delete.
+**Both done in L12**: `measureSection()`/`sectionStart_` moved in one
+substitution pass (35 + 7 sites, body multiset-identical); `frameStart_`
+deleted (one tree-wide reference, and it was the write).
+
+## L12 corrections (2026-09-04) — the close-out
+
+49. **Enumerate the component directories from the TREE, not from this
+   doc's unit table.** L12's first census walked the ten directories the
+   table names and silently omitted `eqe1/` — `Eqe1ArchiveComponent` (L02)
+   is a component like any other, with 95 `owner_.` uses, and leaving it
+   out changed which members crossed the promotion threshold. Derive the
+   family list from `ls include/client/graphics/*/*_component.h`, print it,
+   and check the count against the accessors on the god class.
+50. **A promotion threshold expressed in COMPONENT COUNT must be checked
+   against the distribution before it goes in a plan.** L12's `>= 3` rule
+   was written expecting a ~39-member below-threshold set. Measured: **0
+   members at five or more components, 9 at four, 39 at three, and 55 at
+   two carrying 480 uses** — plus the 374-use frame-timing blob, which is
+   also two. The rule reached 30% of the handle and the residue STOP fired
+   at 1,065 against a threshold of 300 (B050). Carry the histogram.
+51. **Correction 21 fires on the close-out unit, on the spelling the
+   close-out itself invents.** `owner_.Diagnostics().` →
+   `ctx_.Diagnostics().` broke `test_debug_hotkey_arms`, a guard L11 had
+   already widened once for exactly this class of change. A guard matching
+   a receiver expression accumulates one accepted spelling per structural
+   unit: widen, re-prove with a planted break, and never drop the old
+   spellings — they are what makes "exactly one matches" an assertion.
+52. **A write-only member is deleted by the unit that censuses it.** L11
+   correctly declined to move dead state into a component; L12 re-measured
+   `frameStart_` (exactly one tree-wide reference, and it was the write; K12
+   (ff) governs zero-caller METHODS that publish an event and does not apply
+   to a data member at all) and deleted it in two lines.
+53. **The god header can GROW on a unit that deletes declarations**, if the
+   unit explains itself there. L12's first draft measured **+2** after
+   removing 16 declaration lines; moving the rationale into the component
+   headers made it **−11** with no code change. Correction 24/40, restated:
+   write the component header first and budget the prose THERE.
 
 ## Per-unit plan files
 

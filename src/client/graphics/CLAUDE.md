@@ -3,7 +3,37 @@
 ## Components
 
 **IrrlichtRenderer** (`include/client/graphics/`, `src/client/graphics/`)
-- `IrrlichtRenderer` - Main renderer, split across `irrlicht_renderer.cpp` (908 lines) + 27 `renderer_*.cpp` TUs (see `docs/module_map.md`); T166 split `renderer_zone_load.cpp` into `renderer_zone_load{,_entities,_env,_objects}.cpp` and J11 split the core into `renderer_{init,frame,camera,hud_env,slash_commands,event_receiver}.cpp`. Manages scene, visibility, lighting, UI
+- `IrrlichtRenderer` - Main renderer. Batch L
+  (`refactor/L_renderer_component_extraction.md`) extracted it into ELEVEN
+  components, each `class EQT::Graphics::<Name>Component` living in its own
+  directory under `src/client/graphics/` and `include/client/graphics/`; what
+  is left of the class itself is four TUs in `src/client/graphics/renderer/`
+  (`irrlicht_renderer.cpp`, `renderer_init.cpp`, `renderer_entities.cpp`,
+  `renderer_event_receiver.cpp`), moved there by L12. Consult
+  `docs/module_map.md` for which TU holds which body — do not scan.
+
+  | component | directory | what it owns |
+  |---|---|---|
+  | `RdpComponent` | `rdp/` | the `WITH_RDP` server, capture and input path (L01, the pilot) |
+  | `Eqe1ArchiveComponent` | `eqe1/` | EQE1 flat-pack open/resolve/index/report + the `EQT_HAS_DRM` fire-glow icospheres (L02) |
+  | `OverlaysComponent` | `overlays/` | map/navmesh overlays, target outline, mouse targeting/LOS, HUD, fog, loading screen, paperdoll (L03) |
+  | `DiagnosticsComponent` | `diagnostics/` | dumpScene, scene breakdown, frame-timing profiling, memory reports, the runtime debug toggles (L04) |
+  | `PlayerCameraComponent` | `player/` | `updatePlayerMovement()`, movement collision and ground height, and the ONE first-person camera formula (L05) |
+  | `SlashCommandsComponent` | `slash/` | `processSlashCommand()`, the registry-3 renderer command chain (L06) |
+  | `SimBridgeComponent` | `sim/` | `SimulationWorker` marshaling; the worker itself is still the renderer's (L07) |
+  | `ZoneStreamComponent` | `zone_stream/` | lazy/background mesh load, progressive load, PVS depth and neighbourhood (L08) |
+  | `ZoneLifecycleComponent` | `zone_lifecycle/` | unloadZone, zone environment, zone draw, GPU upload drain (L09) |
+  | `ZoneLoadComponent` | `zone_load/` | `loadZoneSequential()` and its twenty steps, plus the T109 entity load gate (L10, gate folded in by L12) |
+  | `FrameComponent` | `frame/` | `processFrame()` and its four phases, the input drain, the static UI panel state, `measureSection()` (L11, stopwatch handed over by L12) |
+
+  A component holds `RendererContext& ctx_` (shared renderer state bound by
+  reference, plus a pointer to every sibling: `ctx_.Frame()`,
+  `ctx_.ZoneLoad()`, …) and, except `RdpComponent`, an `IrrlichtRenderer&
+  owner_` for what has not moved yet. That handle's remaining 1,065 uses are
+  measured and boarded as **B050** — read it before assuming a member belongs
+  where you find it. `initLoadingScreen`, `initDeferredGraphics`,
+  `processFrame`, `shutdown` and `run` stay on `IrrlichtRenderer`:
+  `Application` and `IrrlichtBridge` must not learn a component exists.
 - `CameraController` - FPS-style camera with free/follow/first-person modes
 - `EntityRenderer` - Character/NPC 3D model rendering with GLSL shaders, split across `entity_renderer.cpp` + 12 `entity_*.cpp` TUs (J03)
 - `RaceModelLoader` - Loads character models from S3D archives by race ID

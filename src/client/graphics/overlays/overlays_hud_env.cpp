@@ -128,7 +128,7 @@ void OverlaysComponent::setupFog() {
     // - Everything beyond renderDistance_ is culled, nothing renders there
     // - Fog creates a smooth fade zone at the edge
     float fogEnd = ctx_.renderDistance;
-    float fogStart = ctx_.renderDistance - owner_.fogThickness_;
+    float fogStart = ctx_.renderDistance - ctx_.fogThickness;
     fogStart = std::max(0.0f, fogStart);  // Ensure non-negative
 
     // Get fog color from sky renderer if available, otherwise use default
@@ -157,7 +157,7 @@ void OverlaysComponent::setupFog() {
     }
 
     LOG_INFO(MOD_GRAPHICS, "Fog: start={:.0f}, end={:.0f} (renderDistance={:.0f}, fogThickness={:.0f})",
-        fogStart, fogEnd, ctx_.renderDistance, owner_.fogThickness_);
+        fogStart, fogEnd, ctx_.renderDistance, ctx_.fogThickness);
 }
 
 void OverlaysComponent::drawLoadingScreen(float progress, const std::wstring& stageText) {
@@ -260,8 +260,8 @@ void OverlaysComponent::applyEnvironmentalDisplaySettings() {
         if (!ctx_.weatherEffects->initialize(ctx_.config.eqClientPath)) {
             LOG_WARN(MOD_GRAPHICS, "Failed to initialize weather effects controller (lazy)");
         }
-        if (owner_.weatherSystem_) {
-            owner_.weatherSystem_->addListener(ctx_.weatherEffects.get());
+        if (ctx_.weatherSystem) {
+            ctx_.weatherSystem->addListener(ctx_.weatherEffects.get());
         }
         LOG_INFO(MOD_GRAPHICS, "Weather effects created (toggled on via settings)");
     }
@@ -308,13 +308,13 @@ void OverlaysComponent::applyEnvironmentalDisplaySettings() {
         } else {
             LOG_INFO(MOD_GRAPHICS, "Boids manager created (toggled on via settings)");
         }
-        owner_.ZoneStream().ensureBoidsTextureGuard();
+        ctx_.ZoneStream().ensureBoidsTextureGuard();
         if (zoneLoaded) {
             Environment::ZoneBiome biome = Environment::ZoneBiomeDetector::instance().getBiome(ctx_.currentZoneName);
-            if (owner_.zoneBoundsValid_) {
+            if (ctx_.zoneBoundsValid) {
                 ctx_.boidsManager->onZoneEnter(ctx_.currentZoneName, biome,
-                    glm::vec3(owner_.zoneBoundsMinX_, owner_.zoneBoundsMinY_, -1000.0f),
-                    glm::vec3(owner_.zoneBoundsMaxX_, owner_.zoneBoundsMaxY_, 1000.0f));
+                    glm::vec3(ctx_.zoneBoundsMinX, ctx_.zoneBoundsMinY, -1000.0f),
+                    glm::vec3(ctx_.zoneBoundsMaxX, ctx_.zoneBoundsMaxY, 1000.0f));
             } else {
                 ctx_.boidsManager->onZoneEnter(ctx_.currentZoneName, biome);
             }
@@ -385,10 +385,10 @@ void OverlaysComponent::applyEnvironmentalDisplaySettings() {
 
     // --- Sky Renderer: toggle based on setting + indoor zone state ---
     if (ctx_.skyRenderer) {
-        bool skyAllowed = !owner_.isIndoorZone_ && settings.skyEnabled;
+        bool skyAllowed = !ctx_.isIndoorZone && settings.skyEnabled;
         ctx_.skyRenderer->setEnabled(skyAllowed);
         LOG_DEBUG(MOD_GRAPHICS, "Applied sky settings: enabled={} (setting={}, indoor={})",
-                 skyAllowed, settings.skyEnabled, owner_.isIndoorZone_);
+                 skyAllowed, settings.skyEnabled, ctx_.isIndoorZone);
     }
 
     // --- Tree Wind Controller: toggle wind animation ---
@@ -397,10 +397,10 @@ void OverlaysComponent::applyEnvironmentalDisplaySettings() {
 
     // --- Fire Glow Lighting + Icospheres ---
     // fireEffects is the master gate for all fire-based effects
-    owner_.fireGlowLightingEnabled_ = settings.fireEffects && settings.enableFireGlowLighting;
-    owner_.fireGlowIcospheresEnabled_ = settings.fireEffects && settings.enableFireGlowIcospheres;
-    owner_.maxFireGlowLights_ = settings.maxFireGlowLights;
-    if (!owner_.fireGlowLightingEnabled_ && ctx_.zoneShader) {
+    ctx_.fireGlowLightingEnabled = settings.fireEffects && settings.enableFireGlowLighting;
+    ctx_.fireGlowIcospheresEnabled = settings.fireEffects && settings.enableFireGlowIcospheres;
+    ctx_.maxFireGlowLights = settings.maxFireGlowLights;
+    if (!ctx_.fireGlowLightingEnabled && ctx_.zoneShader) {
         ctx_.zoneShader->clearFireGlowLights();
     }
 }
@@ -475,7 +475,7 @@ void OverlaysComponent::updateHUD() {
     currentState.targetId = owner_.currentTargetId_;
     currentState.targetHpPercent = currentTargetHpPercent_;
     currentState.wireframeMode = ctx_.wireframeMode;
-    currentState.oldModels = owner_.Diagnostics().isUsingOldModels();
+    currentState.oldModels = ctx_.Diagnostics().isUsingOldModels();
     currentState.cameraMode = owner_.getCameraModeString();
     currentState.zoneName = ctx_.currentZoneName;
 

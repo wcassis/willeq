@@ -73,7 +73,7 @@ bool ZoneLoadComponent::loadZoneStep8_Entities(ZoneLoadContext& ctx) {
 
             ctx.modelLoader = ctx_.entityRenderer->getRaceModelLoader();
             ctx.equipLoader = ctx_.entityRenderer->getEquipmentModelLoader();
-            owner_.ensureEntityPrepWorkerStarted(ctx.modelLoader, ctx.equipLoader);  // T109
+            ensureEntityPrepWorkerStarted(ctx.modelLoader, ctx.equipLoader);  // T109
             const auto& entities = ctx_.entityRenderer->getEntities();
             ctx.totalEntities = entities.size();
             ctx.prepCount = 0;
@@ -118,8 +118,8 @@ bool ZoneLoadComponent::loadZoneStep8_Entities(ZoneLoadContext& ctx) {
                                         + "/" + std::to_string(ctx.totalEntities) + "]");
                 }
 
-                // T109 load-distance gate (renderer_entity_load_gate.cpp).
-                if (owner_.deferEntityForLoadGate(ctx.spawnId, ctx.vis->name, ctx.vis->raceId, ctx.vis->gender,
+                // T109 load-distance gate (zone_load/renderer_entity_load_gate.cpp).
+                if (deferEntityForLoadGate(ctx.spawnId, ctx.vis->name, ctx.vis->raceId, ctx.vis->gender,
                                            distFromPlayer, ctx.deferredCount, ctx.deferredRaceGenderPairs)) {
                     ++ctx.prepCount; continue;  // still "processed" for the progress bar
                 }
@@ -256,7 +256,7 @@ bool ZoneLoadComponent::loadZoneStep8_Entities(ZoneLoadContext& ctx) {
 
         ctx_.entityPrepReady = true;
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8: entityPrepReady_=true");
-        owner_.ZoneStream().logAssetBuildTime("seq_entities", 0, stepStart);
+        ctx_.ZoneStream().logAssetBuildTime("seq_entities", 0, stepStart);
         LOG_INFO(MOD_GRAPHICS, "SEQ Step8: about to exit scope");
     }
     LOG_INFO(MOD_GRAPHICS, "SEQ Step8: scope exited, flushing log...");

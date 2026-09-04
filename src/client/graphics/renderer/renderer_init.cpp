@@ -244,12 +244,32 @@ IrrlichtRenderer::IrrlichtRenderer()
         gpuUploadThread_,
 #endif
         tumbleweedManager_, entityPrepWorker_, occlusionCuller_, indoorRegions_,
-        treeWindController_, currentHour_, currentMinute_, objectPositions_
+        treeWindController_, currentHour_, currentMinute_, objectPositions_,
+        // L12 (Batch L close-out): the promoted shared set -- every member
+        // reached through owner_ by three or more of the ten components.
+        // Order below is renderer_context.h's declaration order (aggregate
+        // initialisation, so it must match exactly).
+        zoneMeshNode_, fallbackMeshNode_, regionWorldTriangles_, deferredObjects_, objectTextureRebuildQueue_,
+        zonePlaceholderNode_, doorTextureRebuildQueue_, playerHeading_, regionNeighbors_, objectRegions_,
+        zoneReady_, currentVision_, weatherSystem_, vertexAnimatedMeshes_, objectLightInSceneGraph_,
+        fireGlowIcospheresEnabled_, zoneLightPositions_, fireGlowLightingEnabled_, objectWorldTriangles_, pendingTextureObjects_,
+        maxFireGlowLights_, mergeZoneDrawsEnabled_, sortedZoneDrawList_, occlusionCulledRegions_, collisionManager_,
+        zoneBoundsMinX_, zoneBoundsMinY_, zoneBoundsMaxX_, zoneBoundsMaxY_, frameNumber_,
+        zoneBoundsValid_, isIndoorZone_, entityPrepScanCounter_, objectBoundingBoxes_, regionPvsDepthMap_,
+        portalBuildPending_, loadingScreenVisible_, captured3DView_, captured3DProj_, particleRenderBuffer_,
+        fogThickness_, progressiveLoadStartTime_, sequentialLoadComplete_,
+        eqe1Loaders_, pendingGlobalEQE1Archives_, eqe1LoadTimeCandidateCount_,
+        eqe1CandidateRaces_,
+#ifdef EQT_HAS_DRM
+        icosphereProgram_,
+#endif
       } {
     // L04 (Batch L): the diagnostics family.
     diagnostics_ = std::make_unique<DiagnosticsComponent>(ctx_, *this);
 #ifdef WITH_RDP
-    rdp_ = std::make_unique<RdpComponent>(ctx_, *this);
+    // L12: RdpComponent lost its IrrlichtRenderer& (zero owner_. reaches on
+    // both census axes) -- the context alone.
+    rdp_ = std::make_unique<RdpComponent>(ctx_);
 #endif
     eqe1_ = std::make_unique<Eqe1ArchiveComponent>(ctx_, *this);
     // L03 (Batch L): the overlays family.
@@ -266,6 +286,20 @@ IrrlichtRenderer::IrrlichtRenderer()
     // L10 (Batch L): the loading thread's zone build.
     zoneLoad_ = std::make_unique<ZoneLoadComponent>(ctx_, *this);
     frame_ = std::make_unique<FrameComponent>(ctx_, *this);
+    // L12 (Batch L close-out): the sibling-component pointers are LATE-BOUND.
+    // ctx_ is brace-initialised above, before any component exists, so the
+    // pointers cannot be references. Nothing above this line may reach a
+    // sibling through ctx_ (K13's rule, verbatim).
+    ctx_.SetComponents(frame_.get(), diagnostics_.get(), overlays_.get(),
+                       playerCamera_.get(), slash_.get(), simBridge_.get(),
+                       zoneStream_.get(), zoneLifecycle_.get(), zoneLoad_.get(),
+                       eqe1_.get(),
+#ifdef WITH_RDP
+                       rdp_.get()
+#else
+                       nullptr
+#endif
+                       );
 }
 
 IrrlichtRenderer::~IrrlichtRenderer() {

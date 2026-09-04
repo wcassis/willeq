@@ -53,7 +53,12 @@ FrameComponent::~FrameComponent() = default;
 // frame family's (renderer_frame.cpp, renderer_frame_input.cpp,
 // renderer_frame_render.cpp). It stays on IrrlichtRenderer and moves here, to
 // the family that owns it; L11 takes it with the rest of the frame family.
-int64_t IrrlichtRenderer::measureSection() {
+//
+// L12 (Batch L close-out) finished the move L04 predicted and L11 was told to
+// leave: the declaration and sectionStart_ are now FrameComponent's, so this
+// is FrameComponent::measureSection(). THE BODY IS UNCHANGED -- sectionStart_
+// keeps its spelling because the member kept its name.
+int64_t FrameComponent::measureSection() {
     auto now = std::chrono::steady_clock::now();
     auto us = std::chrono::duration_cast<std::chrono::microseconds>(now - sectionStart_).count();
     sectionStart_ = now;
@@ -62,8 +67,7 @@ int64_t IrrlichtRenderer::measureSection() {
 
 bool FrameComponent::processFrame(float deltaTime) {
     auto frameStart = std::chrono::steady_clock::now();
-    owner_.frameStart_ = frameStart;
-    owner_.sectionStart_ = frameStart;
+    sectionStart_ = frameStart;
 
     if (ctx_.governor) ctx_.governor->beginFrame();
 
@@ -98,59 +102,59 @@ bool FrameComponent::processFrame(float deltaTime) {
     }
 
     // Tiered update: increment frame counter and accumulate delta for Tier 3
-    owner_.frameNumber_++;
+    ctx_.frameNumber++;
     tier3DeltaAccum_ += deltaTime;
-    runTier2_ = (owner_.frameNumber_ % kTier2Interval == 0);
-    runTier3_ = (owner_.frameNumber_ % kTier3Interval == 0);
+    runTier2_ = (ctx_.frameNumber % kTier2Interval == 0);
+    runTier3_ = (ctx_.frameNumber % kTier3Interval == 0);
 
     // Safety: force Tier 2 at least once per second (~30 frames at 30fps)
-    if (owner_.frameNumber_ % 30 == 0) runTier2_ = true;
+    if (ctx_.frameNumber % 30 == 0) runTier2_ = true;
 
     // Phase 1: Input
     processFrameInput(deltaTime);
 
     // ─── Always: drain queues (cheap data moves, no GL) ───
-    owner_.sectionStart_ = std::chrono::steady_clock::now();
+    sectionStart_ = std::chrono::steady_clock::now();
 #ifdef EQT_HAS_GLES2
     if (ctx_.progressiveLoadingActive) {
         // Loading screen: batch process freely (§4.2: no governor restriction)
-        owner_.ZoneLifecycle().processCompletedUploads();
+        ctx_.ZoneLifecycle().processCompletedUploads();
     } else {
-        owner_.ZoneLifecycle().drainGPUResults();  // move to pendingGPUResults_ (no GL)
+        ctx_.ZoneLifecycle().drainGPUResults();  // move to pendingGPUResults_ (no GL)
     }
 #endif
 
     // T04: processUploadQueue/drainDecodedQueue removed. Textures uploaded via uploadTexture().
-    owner_.frameTimings_.drainQueues = owner_.measureSection();
+    owner_.frameTimings_.drainQueues = measureSection();
 
     // SimulationWorker: apply results from previous frame, then post new input
-    owner_.SimBridge().applySimulationResults();
-    owner_.frameTimings_.simWorkerApply = owner_.measureSection();
+    ctx_.SimBridge().applySimulationResults();
+    owner_.frameTimings_.simWorkerApply = measureSection();
 
     // Phase 2: Visibility
-    owner_.sectionStart_ = std::chrono::steady_clock::now();
+    sectionStart_ = std::chrono::steady_clock::now();
     processFrameVisibility();
-    owner_.frameTimings_.visibility = owner_.measureSection();
+    owner_.frameTimings_.visibility = measureSection();
 
     // SimulationWorker: post new input after frustum planes are updated
-    owner_.SimBridge().postSimulationInput(deltaTime);
-    owner_.frameTimings_.postSimInput = owner_.measureSection();
+    ctx_.SimBridge().postSimulationInput(deltaTime);
+    owner_.frameTimings_.postSimInput = measureSection();
 
     // ─── Progressive loading (loading screen showing, no governor restriction §4.2) ───
     if (ctx_.progressiveLoadingActive) {
-        owner_.ZoneStream().processFrameProgressiveLoad();
-        owner_.frameTimings_.meshLoading = owner_.measureSection();
+        ctx_.ZoneStream().processFrameProgressiveLoad();
+        owner_.frameTimings_.meshLoading = measureSection();
     }
 
     // ─── Post-loading: all work GREEN-gated, 1 unit per GREEN frame ───
-    owner_.sectionStart_ = std::chrono::steady_clock::now();
+    sectionStart_ = std::chrono::steady_clock::now();
     if (!ctx_.progressiveLoadingActive) {
         if (!ctx_.governor || ctx_.governor->getState() == BudgetState::Green) {
             bool didWork = false;
 
             // Priority 1: Complete in-flight GPU work (VBO/texture registration)
 #ifdef EQT_HAS_GLES2
-            if (!didWork) didWork = owner_.ZoneLifecycle().processOneGPUResult();
+            if (!didWork) didWork = ctx_.ZoneLifecycle().processOneGPUResult();
 #endif
 
             // T04: processOneUpload removed. Textures uploaded via uploadTexture().
@@ -182,21 +186,21 @@ bool FrameComponent::processFrame(float deltaTime) {
             // never ran in any shipped build either).
 
             // Priority 8: Door texture arrival
-            if (!didWork && !owner_.doorTextureRebuildQueue_.empty() && ctx_.doorManager) {
-                uint8_t doorId = owner_.doorTextureRebuildQueue_.front();
-                owner_.doorTextureRebuildQueue_.erase(owner_.doorTextureRebuildQueue_.begin());
+            if (!didWork && !ctx_.doorTextureRebuildQueue.empty() && ctx_.doorManager) {
+                uint8_t doorId = ctx_.doorTextureRebuildQueue.front();
+                ctx_.doorTextureRebuildQueue.erase(ctx_.doorTextureRebuildQueue.begin());
                 ctx_.doorManager->rebuildSingleDoor(doorId);
                 didWork = true;
                 LOG_INFO(MOD_GRAPHICS, "Post-progressive: rebuilt door {} with textures (queue: {})",
-                         doorId, owner_.doorTextureRebuildQueue_.size());
+                         doorId, ctx_.doorTextureRebuildQueue.size());
             }
 
             // Priority 9: Object texture arrival
-            if (!didWork && !owner_.objectTextureRebuildQueue_.empty()) {
-                size_t objIdx = owner_.objectTextureRebuildQueue_.front();
-                owner_.objectTextureRebuildQueue_.erase(owner_.objectTextureRebuildQueue_.begin());
-                if (objIdx < owner_.deferredObjects_.size()) {
-                    size_t nodeIdx = owner_.deferredObjects_[objIdx].nodeIndex;
+            if (!didWork && !ctx_.objectTextureRebuildQueue.empty()) {
+                size_t objIdx = ctx_.objectTextureRebuildQueue.front();
+                ctx_.objectTextureRebuildQueue.erase(ctx_.objectTextureRebuildQueue.begin());
+                if (objIdx < ctx_.deferredObjects.size()) {
+                    size_t nodeIdx = ctx_.deferredObjects[objIdx].nodeIndex;
                     if (nodeIdx != SIZE_MAX && nodeIdx < ctx_.objectNodes.size() && ctx_.objectNodes[nodeIdx]) {
                         auto* oldNode = ctx_.objectNodes[nodeIdx];
                         if (ctx_.animatedTextureManager)
@@ -206,11 +210,11 @@ bool FrameComponent::processFrame(float deltaTime) {
                         if (nodeIdx < ctx_.objectInSceneGraph.size())
                             ctx_.objectInSceneGraph[nodeIdx] = false;
                     }
-                    owner_.deferredObjects_[objIdx].meshBuilt = false;
-                    owner_.ZoneStream().buildDeferredObject(objIdx);
+                    ctx_.deferredObjects[objIdx].meshBuilt = false;
+                    ctx_.ZoneStream().buildDeferredObject(objIdx);
                     didWork = true;
                     LOG_INFO(MOD_GRAPHICS, "Post-progressive: rebuilt object {} with textures (queue: {})",
-                             objIdx, owner_.objectTextureRebuildQueue_.size());
+                             objIdx, ctx_.objectTextureRebuildQueue.size());
                 }
             }
 
@@ -220,19 +224,19 @@ bool FrameComponent::processFrame(float deltaTime) {
             // Priority 11: Lazy icon loading (disabled — WindowManager removed)
 
             if (didWork) {
-                owner_.frameTimings_.meshLoading = owner_.measureSection();
+                owner_.frameTimings_.meshLoading = measureSection();
             }
         }
 
         // Lightweight entity housekeeping (always runs, not didWork-gated):
         if (ctx_.entityPrepReady && ctx_.entityPrepWorker && ctx_.entityRenderer) {
             ctx_.entityRenderer->getRaceModelLoader()->promotePreparedModels();
-            if (++owner_.entityPrepScanCounter_ % 10 == 0) owner_.ZoneStream().queueEntityPrepRequests();
+            if (++ctx_.entityPrepScanCounter % 10 == 0) ctx_.ZoneStream().queueEntityPrepRequests();
             if (ctx_.entityPrepWorker->isIdle()) ctx_.entityPrepWorker->dispatchOne();
         }
-        owner_.frameTimings_.entityHousekeeping = owner_.measureSection();
+        owner_.frameTimings_.entityHousekeeping = measureSection();
     }
-    owner_.frameTimings_.postLoadWork = owner_.measureSection();
+    owner_.frameTimings_.postLoadWork = measureSection();
 
     // Phase 3: Simulation
     processFrameSimulation(deltaTime);
@@ -401,7 +405,7 @@ bool FrameComponent::processFrame(float deltaTime) {
                 LOG_WARN(MOD_GRAPHICS, "  RED SCENE: {} sceneNodes, {} polys | manualDraw: {} regions, {} drawCalls | sortedList: {}",
                          owner_.frameTimings_.sceneNodeCount, owner_.lastPolygonCount_,
                          owner_.frameTimings_.manualZoneRegionsDrawn, owner_.frameTimings_.manualZoneDrawCalls,
-                         owner_.sortedZoneDrawList_.size());
+                         ctx_.sortedZoneDrawList.size());
                 {
                     int totalNodes = 0, visibleNodes = 0;
                     std::function<void(irr::scene::ISceneNode*)> countNodes =
@@ -523,7 +527,7 @@ bool FrameComponent::processFrame(float deltaTime) {
 
         // Log every 60 frames (~2 seconds at 30fps)
         if (owner_.frameTimingsSampleCount_ >= 60) {
-            owner_.Diagnostics().logFrameTimings();
+            ctx_.Diagnostics().logFrameTimings();
             // Reset accumulators
             owner_.frameTimingsAccum_ = IrrlichtRenderer::FrameTimings();
             owner_.frameTimingsSampleCount_ = 0;

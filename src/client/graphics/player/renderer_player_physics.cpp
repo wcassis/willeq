@@ -97,7 +97,7 @@ void PlayerCameraComponent::updatePlayerMovement(float deltaTime) {
     }
 
     // Get current heading (EQ format: 0-512)
-    float heading = owner_.playerHeading_;
+    float heading = ctx_.playerHeading;
     float oldHeading = heading;
 
     // Handle turning (smooth)
@@ -243,12 +243,12 @@ void PlayerCameraComponent::updatePlayerMovement(float deltaTime) {
                   (isSwimMoving ? " [SWIMMING]" : ""));
         LOG_TRACE(MOD_MOVEMENT, "Collision: {}, Irrlicht: {}, Map: {}",
                   (owner_.playerConfig_.collisionEnabled ? "ENABLED" : "DISABLED"),
-                  (useIrrlichtCollision_ && !owner_.regionWorldTriangles_.empty() ? "YES" : "NO"),
+                  (useIrrlichtCollision_ && !ctx_.regionWorldTriangles.empty() ? "YES" : "NO"),
                   (ctx_.collisionMap ? "LOADED" : "NONE"));
 
         // Determine which collision system to use
         // BSP-filtered uses regionWorldTriangles_ directly, no meta selector needed
-        bool useIrrlicht = useIrrlichtCollision_ && !owner_.regionWorldTriangles_.empty();
+        bool useIrrlicht = useIrrlichtCollision_ && !ctx_.regionWorldTriangles.empty();
         bool useHCMap = ctx_.collisionMap != nullptr;
         bool hasCollision = owner_.playerConfig_.collisionEnabled && (useIrrlicht || useHCMap);
 
@@ -266,7 +266,7 @@ void PlayerCameraComponent::updatePlayerMovement(float deltaTime) {
             // --- Irrlicht-based collision (using actual zone geometry) ---
             // When BSP tree is available, use BSP-filtered collision (tests only source+dest
             // region selectors + doors/objects) instead of the full ~1900-region meta selector.
-            bool useBspFiltered = ctx_.zoneBspTree && !owner_.regionWorldTriangles_.empty();
+            bool useBspFiltered = ctx_.zoneBspTree && !ctx_.regionWorldTriangles.empty();
 
             // Check horizontal collision first
             // Convert EQ coords to Irrlicht: EQ(x,y,z) -> Irr(x,z,y)
@@ -711,23 +711,23 @@ void PlayerCameraComponent::updatePlayerMovement(float deltaTime) {
 
     // Always update heading if it changed (separate from position)
     if (headingChanged) {
-        owner_.playerHeading_ = heading;
+        ctx_.playerHeading = heading;
     }
 
     bool pitchChanged = (std::abs(playerPitch_ - oldPitch) > 0.001f);
 
     // Update camera and entity position if anything changed
     if (positionChanged || headingChanged) {
-        LOG_TRACE(MOD_MOVEMENT, "Position updated: ({}, {}, {}) heading={}", ctx_.playerX, ctx_.playerY, ctx_.playerZ, owner_.playerHeading_);
+        LOG_TRACE(MOD_MOVEMENT, "Position updated: ({}, {}, {}) heading={}", ctx_.playerX, ctx_.playerY, ctx_.playerZ, ctx_.playerHeading);
 
         // Update player entity position (for third-person view)
         if (ctx_.entityRenderer) {
-            ctx_.entityRenderer->updatePlayerEntityPosition(ctx_.playerX, ctx_.playerY, ctx_.playerZ, owner_.playerHeading_);
+            ctx_.entityRenderer->updatePlayerEntityPosition(ctx_.playerX, ctx_.playerY, ctx_.playerZ, ctx_.playerHeading);
         }
 
         if (owner_.cameraMode_ == CameraMode::Follow && ctx_.cameraController) {
             // Follow mode: third-person camera behind player
-            ctx_.cameraController->setFollowPosition(ctx_.playerX, ctx_.playerY, ctx_.playerZ, owner_.playerHeading_, deltaTime);
+            ctx_.cameraController->setFollowPosition(ctx_.playerX, ctx_.playerY, ctx_.playerZ, ctx_.playerHeading, deltaTime);
         }
     }
 
