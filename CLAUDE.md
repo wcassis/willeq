@@ -34,6 +34,12 @@ Additional context is in subdirectory CLAUDE.md files:
   orchestrator serializes merges onto `fable` (`docs/decisions.md`,
   2026-07-22 workspace layout). Do not execute unplanned work inline in
   `main`.
+- **Merge step (T337, 2026-09-04): before merging a branch, run the
+  order/coverage golden tests for every TU the branch touched** (the G
+  batch pinned `zone_dispatch`, `bridge_component_intents`,
+  `command_processor_registration`, `application`, `renderer_frame_render`,
+  `renderer_player_physics` with goldens). A branch cut before a golden's
+  unit merged is green on its own and fails on the tip.
 - **Batches J, K, L and G are complete; every source file is under 1,500 lines
   and ctest enforces it.** The last two exceptions are gone —
   `include/client/eq.h` fell to 899 lines and
