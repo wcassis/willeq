@@ -444,7 +444,7 @@ void CombatManager::ProcessCombatRound() {
 			} else {
 				// In range - first ensure we're facing the target
 				LOG_DEBUG(MOD_COMBAT, "ProcessCombatRound: In range, facing target");
-				m_eq->Movement().FaceEntity(entity.name);
+				m_eq->Movement().FaceEntity(m_current_target_id);
 
 				// Check attack timer
 				auto time_since_last = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_last_attack_time).count();

@@ -601,11 +601,15 @@ TEST(PlayerStateTest, MovementTargetLifecycle) {
 TEST(PlayerStateTest, FollowTargetLifecycle) {
     PlayerState ps;
     EXPECT_FALSE(ps.isFollowing());
-    ps.setFollowTarget("Bob");
+    // T359 (B003d): the spawn id is the identity, the name rides along.
+    ps.setFollowTarget(77, "Bob");
     EXPECT_TRUE(ps.isFollowing());
+    EXPECT_EQ(ps.followTargetId(), 77u);
     EXPECT_EQ(ps.followTarget(), "Bob");
     ps.clearFollowTarget();
     EXPECT_FALSE(ps.isFollowing());
+    EXPECT_EQ(ps.followTargetId(), 0u);
+    EXPECT_EQ(ps.followTarget(), "");
 }
 
 TEST(PlayerStateTest, CurrencyRoundTripAndTotalValue) {

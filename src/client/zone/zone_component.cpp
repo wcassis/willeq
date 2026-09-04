@@ -1047,7 +1047,8 @@ void eqt::zone::ZoneComponent::FixZ()
 		// Find the entity we're following to compare Z values
 		Entity* target = nullptr;
 		for (const auto& pair : ctx_.entities) {
-			if (pair.second.name == ctx_.game_state.player().followTarget()) {
+			// T359 (B003d): match the follow target by spawn id, not name.
+			if (pair.second.spawn_id == ctx_.game_state.player().followTargetId()) {
 				target = const_cast<Entity*>(&pair.second);
 				break;
 			}

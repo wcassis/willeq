@@ -442,18 +442,21 @@ TEST(CombatStateTest, AutoAttackTogglesOnChange) {
 TEST(CombatStateTest, CombatMovementTargetLifecycle) {
     CombatState cs;
     EXPECT_FALSE(cs.hasCombatTarget());
-    cs.setCombatTarget("Goblin");
+    // T359 (B003d): the spawn id is the identity, the name rides along.
+    cs.setCombatTarget(91, "Goblin");
     EXPECT_TRUE(cs.hasCombatTarget());
+    EXPECT_EQ(cs.combatTargetId(), 91u);
     EXPECT_EQ(cs.combatTarget(), "Goblin");
     cs.clearCombatTarget();
     EXPECT_FALSE(cs.hasCombatTarget());
+    EXPECT_EQ(cs.combatTargetId(), 0u);
 }
 
 TEST(CombatStateTest, ResetClearsAllState) {
     CombatState cs;
     cs.setTarget(1, "Foo", 50, 5);
     cs.setAutoAttacking(true);
-    cs.setCombatTarget("Foo");
+    cs.setCombatTarget(5, "Foo");
     cs.setLastSlainEntityName("Bar");
 
     cs.reset();
@@ -461,6 +464,7 @@ TEST(CombatStateTest, ResetClearsAllState) {
     EXPECT_FALSE(cs.hasTarget());
     EXPECT_FALSE(cs.isAutoAttacking());
     EXPECT_EQ(cs.combatTarget(), "");
+    EXPECT_EQ(cs.combatTargetId(), 0u);
     EXPECT_EQ(cs.lastSlainEntityName(), "");
 }
 

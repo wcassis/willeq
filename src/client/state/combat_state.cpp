@@ -54,6 +54,7 @@ void CombatState::setAutoAttacking(bool attacking) {
 void CombatState::reset() {
     clearTarget();
     m_autoAttacking = false;
+    m_combatTargetId = 0;
     m_combatTarget.clear();
     m_combatStopDistance = 0.0f;
     m_inCombatMovement = false;

@@ -134,17 +134,26 @@ it without taking that measurement first.
   `ActionDispatcherTest.MoveToAndFollow_PickTheNearestMatch_NotTheLowestSpawnId`,
   verified to fail on the unranked lookup (picked spawn 68, expected 277).
 
-- **B003d** (B) `src/client/entities/entities_component_appearance.cpp:326`
+- ~~**B003d** (B) `src/client/entities/entities_component_appearance.cpp:326`
   `EntitiesComponent::FindEntityByName` — the unranked case-insensitive PREFIX
   resolver T356 took out of moveTo/follow still backs `MoveToEntityWithinRange`,
   `StartCombatMovement(name)` and `UpdateCombatMovement`, so combat movement
   keeps the lowest-spawn-id pick; and `MovementComponent::Follow` stores its
   target as a NAME and re-matches it by exact string every tick
   (`src/client/movement/movement_update.cpp:183`), so following one of two
-  identically-named mobs is ambiguous per tick. Closes when: combat movement
-  resolves once through the ranked lookup and passes a spawn id (the T230/T356
-  rule), Follow tracks the spawn id, and the resolver has no callers left (then
-  delete it). Prov: T356 Review.
+  identically-named mobs is ambiguous per tick.~~ **CLOSED by T359 Leg A**
+  (`refactor/T359_combat_movement_spawn_id.md`). `CombatState` and `PlayerState`
+  now store a SPAWN ID as the target identity (the name rides along for the log
+  lines only): `UpdateCombatMovement` and the per-tick follow branch read the
+  entity map by id, `MoveToEntityWithinRange`/`FaceEntity` take a `uint16_t`,
+  and the name-taking `StartCombatMovement(const std::string&, float)` — which
+  had ZERO production callers — was deleted. Pinned by
+  `MovementComponentTest.{FollowTracksTheSpawnIdAcrossTicksNotTheNameMatch,
+  CombatMovementTracksTheSpawnIdAcrossTicksNotTheNameMatch}`, both verified to
+  fail on the name re-match (they latched the far beetle at x=100 instead of the
+  near one at x=30). **The resolver was NOT deleted**: `RequestWarp`
+  (`/warp <entity_name>`) still calls it with a genuinely user-typed name — see
+  the new **B070**. Prov: T356 Review.
 
 - ~~**B004** (A) `include/client/graphics/ui/ui_layout.h` `centerPopup` — `popW`/
   `popH` are hardcoded 400/350 at every resolution; the archive records general
@@ -1383,3 +1392,19 @@ it without taking that measurement first.
   of the body. `self_death_outbound_g07.txt` learned `C->S OP_Save` as its
   new first line in place; the body is pinned by a second golden,
   `tests/goldens/op_save_body_g08.txt`.
+
+## Added 2026-09-04 by T359 (B003d close-out)
+
+- **B070** (B) `src/client/commands/commands_movement.cpp`
+  `CommandsComponent::RequestWarp` — the LAST caller of the unranked
+  case-insensitive prefix resolver `EntitiesComponent::FindEntityByName`, and the
+  reason T359 could not delete it. `/warp <entity_name>` takes a genuinely
+  user-typed name, so it needs a resolution, but it uses the unranked one
+  (lowest spawn id wins) rather than `EntityManager::findEntityByName(name, x, y,
+  z)`, the T244 nearest-first ranked overload that `/target`, `/face`, `/moveto`
+  and `/follow` all use since T350/T356. Same defect shape as B003b/B003c, one
+  command later: with two same-named mobs `/warp` teleports to a different one
+  than `/target` picked. `/warp` is a GM/debug command, which is why this is B and
+  not A. Closes when: `RequestWarp` resolves through the ranked lookup (ideally at
+  the dispatcher, as T356 did) and `FindEntityByName` is deleted with its last
+  caller. Prov: T359 Leg A.

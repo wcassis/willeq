@@ -176,11 +176,18 @@ void eqt::movement::MovementComponent::UpdateMovement()
 	}
 	
 	// Check if we're following someone
-	if (!ctx_.game_state.player().followTarget().empty()) {
-		// Find the entity we're following
-		for (const auto& pair : ctx_.entities) {
-			const Entity& entity = pair.second;
-			if (entity.name == ctx_.game_state.player().followTarget()) {
+	//
+	// T359 (B003d): look the follow target up by SPAWN ID. This was a linear
+	// scan re-matching the stored NAME by exact string every tick, so with two
+	// identically-named mobs the tick latched whichever the map iterated to
+	// first (the lowest spawn id) rather than the one /follow resolved. A miss
+	// (despawned or zoned) falls through and does nothing, exactly as the
+	// no-match scan did.
+	if (ctx_.game_state.player().isFollowing()) {
+		auto follow_it = ctx_.entities.find(ctx_.game_state.player().followTargetId());
+		if (follow_it != ctx_.entities.end()) {
+			{
+				const Entity& entity = follow_it->second;
 				// Check if we're close enough
 				float dist = CalculateDistance2D(ctx_.self.PosX(), ctx_.self.PosY(), entity.x, entity.y);
 				float z_diff = std::abs(ctx_.self.PosZ() - entity.z);
@@ -247,7 +254,6 @@ void eqt::movement::MovementComponent::UpdateMovement()
 						}
 					}
 				}
-				break;
 			}
 		}
 	}

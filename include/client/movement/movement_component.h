@@ -50,12 +50,16 @@ public:
 	// a second, unranked, name resolution here could pick a different
 	// same-named entity.
 	void MoveToEntity(uint16_t spawn_id);
-	void MoveToEntityWithinRange(const std::string &name, float stop_distance);
-	void StartCombatMovement(const std::string &name, float stop_distance);
+	// T359 (B003d): the same rule one layer on. Every one of these had a
+	// caller that already HELD the spawn id and handed over a name, which a
+	// second unranked prefix match then re-resolved -- pure drift. The
+	// name-taking StartCombatMovement overload had no production caller at all
+	// and was deleted with the resolver call it made.
+	void MoveToEntityWithinRange(uint16_t spawn_id, float stop_distance);
 	void StartCombatMovement(uint16_t entity_id);
 	void Follow(uint16_t spawn_id);
 	void StopFollow();
-	void FaceEntity(const std::string &name);
+	void FaceEntity(uint16_t spawn_id);
 	void MoveTo(float x, float y, float z);
 	void StopMovement();
 

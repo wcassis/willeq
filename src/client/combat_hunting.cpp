@@ -692,7 +692,7 @@ void CombatManager::TickAwaitingCorpse(std::chrono::steady_clock::time_point now
 	if (it != entities.end() && IsCorpse(it->second)) {
 		LOG_DEBUG(MOD_COMBAT, "Found corpse: {} (ID: {}), initiating loot",
 			it->second.name, m_pending_corpse_id);
-		m_eq->Movement().MoveToEntityWithinRange(it->second.name, 10.0f);
+		m_eq->Movement().MoveToEntityWithinRange(m_pending_corpse_id, 10.0f);
 		BeginLootRequest(m_pending_corpse_id);
 		return;
 	}

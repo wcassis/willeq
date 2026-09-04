@@ -48,10 +48,19 @@ public:
 
     // ========== Combat Movement ==========
 
+    // T359 (board B003d): the SPAWN ID is the identity; the name is kept
+    // alongside it for the log/console lines only. UpdateCombatMovement used
+    // to re-resolve the stored NAME through the unranked prefix matcher every
+    // tick, so combat movement could chase a different mob than the one
+    // ProcessCombatRound started it on.
+    uint16_t combatTargetId() const { return m_combatTargetId; }
     const std::string& combatTarget() const { return m_combatTarget; }
-    void setCombatTarget(const std::string& name) { m_combatTarget = name; }
-    void clearCombatTarget() { m_combatTarget.clear(); }
-    bool hasCombatTarget() const { return !m_combatTarget.empty(); }
+    void setCombatTarget(uint16_t spawnId, const std::string& name) {
+        m_combatTargetId = spawnId;
+        m_combatTarget = name;
+    }
+    void clearCombatTarget() { m_combatTargetId = 0; m_combatTarget.clear(); }
+    bool hasCombatTarget() const { return m_combatTargetId != 0; }
 
     float combatStopDistance() const { return m_combatStopDistance; }
     void setCombatStopDistance(float distance) { m_combatStopDistance = distance; }
@@ -89,6 +98,7 @@ private:
     bool m_autoAttacking = false;
 
     // Combat movement
+    uint16_t m_combatTargetId = 0;
     std::string m_combatTarget;
     float m_combatStopDistance = 0.0f;
     bool m_inCombatMovement = false;
