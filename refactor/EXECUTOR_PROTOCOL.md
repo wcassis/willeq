@@ -174,6 +174,11 @@ references this file; plans carry only unit-specific content.
    `refactor/BOARD.md`, or simply run it. The only invariant is that the
    ALSA quirk above is the sole expected failure.**
 3. `bash <slot>/scripts/build-gles2-x86.sh`
+   ⚠ A `kWilleqDbExpectedVersion` bump (a rebuilt `data/willeq.db`) invalidates
+   EVERY build tree, not just `build/`: a stale `build-gles2` binary refuses the
+   new db silently and the gate fails with `characterModelsBytes mismatch`
+   (identical deficit in both zones — T304, T355). Rebuild `build-gles2` AND
+   `build-arm-noble` before reading the gate.
 4. Visual gate PASS, goldens untouched (unless the plan says a re-bless
    is expected — then STOP for Will, never self-bless)
 5. `bash <slot>/scripts/build-arm-noble.sh`
