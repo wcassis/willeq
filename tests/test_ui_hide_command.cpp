@@ -171,6 +171,33 @@ TEST(UIHideSourceInvariants, StaticUiBlockIsGatedOnAllUIHidden) {
     EXPECT_EQ(found, 1)
         << "the static UI panels are drawn without consulting allUIHidden_ -- /hideui and F11 "
            "will leave the chat box and hotbar over every frame of a visual gate again";
+
+    // G05 (batch correction 21, fourth sighting): the guarded block is no
+    // longer inside processFrameRender() itself -- G05 cut that 544-line body
+    // into sixteen private passes and the block moved, verbatim, into
+    // FrameComponent::renderStaticUI(). THE MATCHER ABOVE WOULD HAVE GONE
+    // BLIND TO THAT: it only proves the condition is SPELLED somewhere in the
+    // file, and a pass nothing calls still spells it. So the reachability half
+    // is asserted here -- the block must live in a function that
+    // processFrameRender() actually invokes.
+    //
+    // Both halves are needed and neither subsumes the other: delete the
+    // `&& !allUIHidden_` and the first EXPECT fails; delete the
+    // `renderStaticUI();` line from processFrameRender() and this one does.
+    const size_t guardAt = src.find(spellings[0]) != std::string::npos
+                               ? src.find(spellings[0])
+                               : src.find(spellings[1]);
+    ASSERT_NE(guardAt, std::string::npos);
+    const size_t defAt = src.rfind("void FrameComponent::", guardAt);
+    ASSERT_NE(defAt, std::string::npos)
+        << "the static-UI guard is not inside a FrameComponent method any more";
+    const size_t nameStart = defAt + std::string("void FrameComponent::").size();
+    const size_t nameEnd = src.find('(', nameStart);
+    ASSERT_NE(nameEnd, std::string::npos);
+    const std::string owner = src.substr(nameStart, nameEnd - nameStart);
+    EXPECT_NE(src.find("    " + owner + "();"), std::string::npos)
+        << "the static UI pass (" << owner << "()) is defined but never called from "
+           "processFrameRender() -- the /hideui guard above is guarding a block nothing draws";
 }
 
 }  // namespace
