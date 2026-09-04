@@ -58,6 +58,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -348,6 +349,51 @@ TEST(SelfDeathSequence, ZonePlayerToBind_RequestsTheBindZoneChange) {
            "C->S OP_ZoneChange";
     EXPECT_EQ(h.eq.Zone().Test_GetLastZoneChangeRequest().zone_id, 1u)
         << "bind_zone_id 1 from the capture (South Qeynos)";
+}
+
+// THE SAME-ZONE CASE, which is the whole reason step 3 exists as a step.
+// Three of the capture's four self-deaths happened in South Qeynos (zone 1)
+// with bind_zone_id 1 -- the zone the client was ALREADY IN -- and the client
+// still sent OP_ZoneChange and ran a full zone-in. That is the opposite of
+// what T231 established for OP_RequestClientZoneChange, where a request
+// naming our own zone must NOT be answered with OP_ZoneChange (eqemu's
+// SendZoneCancel teardown, T229). The two paths must not be "harmonised":
+// this one is pinned here so nobody carries the T231 suppression across.
+TEST(SelfDeathSequence, SameZoneDeath_StillRunsTheFullHandshake) {
+    DeathHarness h;
+    h.eq.GetGameState().world().setZoneId(1);  // we are IN South Qeynos
+    h.spawnSelf();
+    h.die();
+    h.clearSent();
+
+    h.zonePlayerToBind();  // ... and bind_zone_id is 1
+
+    EXPECT_EQ(h.countOpcode(HC_OP_ZoneChange), 1u)
+        << "a bind re-entry into our own zone is still a full handshake "
+           "(T311 Leg A, the three 20:20/20:22 windows)";
+}
+
+// And the server's approval arms the deferred transition -- the flag
+// ProcessDeferredZoneChange consumes on the next movement tick (K09/K10).
+// Same zone or not.
+TEST(SelfDeathSequence, ApprovedZoneChange_ArmsTheDeferredTransition) {
+    DeathHarness h;
+    h.eq.GetGameState().world().setZoneId(1);
+    h.spawnSelf();
+    h.die();
+    h.zonePlayerToBind();
+    ASSERT_FALSE(h.eq.GetGameState().world().zoneChangeApproved());
+
+    // S->C OP_ZoneChange, success = 1, for zone 1.
+    auto approval = BuildPayload(90, [](EQ::Net::DynamicPacket& pkt) {
+        std::memcpy(static_cast<char*>(pkt.Data()) + 2, "Oraclealpha", 11);
+        pkt.PutUInt16(66, 1);
+        pkt.PutInt32(86, 1);
+    });
+    ReplayZone(h.eq, HC_OP_ZoneChange, approval);
+
+    EXPECT_TRUE(h.eq.GetGameState().world().zoneChangeApproved())
+        << "the existing transition path takes it from here";
 }
 
 std::vector<std::string> ReadGolden() {
