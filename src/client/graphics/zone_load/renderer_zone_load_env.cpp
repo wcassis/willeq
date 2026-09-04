@@ -53,23 +53,24 @@
 #endif
 #include <EGL/egl.h>
 #endif
-#include "client/graphics/zone_load_context.h"
+#include "client/graphics/zone_load/zone_load_component.h"
+#include "client/graphics/zone_load/zone_load_context.h"
 
 namespace EQT {
 namespace Graphics {
 
-bool IrrlichtRenderer::loadZoneStep10_Sky(ZoneLoadContext& ctx) {
+bool ZoneLoadComponent::loadZoneStep10_Sky(ZoneLoadContext& ctx) {
     // ── Step 10: Sky — all sky, fog, weather ───────────────────────────────
     ctx.updateProgress(90, "Loading sky and weather...");
     {
         auto stepStart = std::chrono::steady_clock::now();
         auto* computations = pendingZoneComputations_.get();
-        bool skyRendering = config_.constrainedConfig.skyRendering;
-        auto skyDomeMode = config_.constrainedConfig.skyDomeMode;
+        bool skyRendering = ctx_.config.constrainedConfig.skyRendering;
+        auto skyDomeMode = ctx_.config.constrainedConfig.skyDomeMode;
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: computations={}, skyRendering={}, skyDomeMode={}, "
                   "storedZoneEnv.pending={}, skyRenderer_={}, weatherSystem_={}",
                   (bool)computations, skyRendering, (int)skyDomeMode,
-                  storedZoneEnvironment_.pending, (bool)skyRenderer_, (bool)weatherSystem_);
+                  owner_.storedZoneEnvironment_.pending, (bool)ctx_.skyRenderer, (bool)owner_.weatherSystem_);
 
         // Names of sky textures loaded into constrained cache (used by upload step after skyLoader is moved)
         std::vector<std::string> loadedSkyTextureNames;
@@ -104,7 +105,7 @@ bool IrrlichtRenderer::loadZoneStep10_Sky(ZoneLoadContext& ctx) {
                 if (skyData->skyLoader && skyData->skyLoader->getSkyData()) {
                     std::set<std::string> neededSet;
                     if (skyData->skyConfig && skyData->skyConfig->isLoaded()) {
-                        std::string weatherType = skyData->skyConfig->getWeatherTypeForZone(currentZoneName_);
+                        std::string weatherType = skyData->skyConfig->getWeatherTypeForZone(ctx_.currentZoneName);
                         int skyTypeId = skyData->skyConfig->getSkyTypeIdForWeather(weatherType);
                         auto neededTextures = skyData->skyLoader->getTextureNamesForSkyType(skyTypeId);
                         neededSet.insert(neededTextures.begin(), neededTextures.end());
@@ -122,7 +123,7 @@ bool IrrlichtRenderer::loadZoneStep10_Sky(ZoneLoadContext& ctx) {
                         std::string lowerName = texName;
                         std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
                                        [](unsigned char c) { return std::tolower(c); });
-                        constrainedTextureCache_->getOrLoad(lowerName, texInfo->data, "sky", "loadZoneStep10_Sky");
+                        ctx_.constrainedTextureCache->getOrLoad(lowerName, texInfo->data, "sky", "loadZoneStep10_Sky");
                         loadedSkyTextureNames.push_back(texName);  // Save for upload step after skyLoader is moved
                         ++skyTexLoaded;
                     }
@@ -137,7 +138,7 @@ bool IrrlichtRenderer::loadZoneStep10_Sky(ZoneLoadContext& ctx) {
                     skyData->skyLoader && skyData->skyLoader->isLoaded()) {
                     int skyTypeId = 0;
                     if (skyData->skyConfig && skyData->skyConfig->isLoaded()) {
-                        std::string weatherType = skyData->skyConfig->getWeatherTypeForZone(currentZoneName_);
+                        std::string weatherType = skyData->skyConfig->getWeatherTypeForZone(ctx_.currentZoneName);
                         skyTypeId = skyData->skyConfig->getSkyTypeIdForWeather(weatherType);
                     }
                     auto layers = skyData->skyLoader->getLayersForSkyType(skyTypeId);
@@ -202,16 +203,16 @@ bool IrrlichtRenderer::loadZoneStep10_Sky(ZoneLoadContext& ctx) {
             {
                 auto weatherData = std::make_unique<PendingZoneComputations::WeatherConfigData>();
                 ZoneWeatherConfig wconfig;
-                if (loadZoneWeatherConfig(currentZoneName_, wconfig)) {
+                if (loadZoneWeatherConfig(ctx_.currentZoneName, wconfig)) {
                     weatherData->config = wconfig;
                     weatherData->loaded = true;
-                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: loaded zone weather config for '{}'", currentZoneName_);
+                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: loaded zone weather config for '{}'", ctx_.currentZoneName);
                 } else {
-                    weatherData->config.zoneName = currentZoneName_;
+                    weatherData->config.zoneName = ctx_.currentZoneName;
                     weatherData->config.defaultWeather = WeatherType::Normal;
                     weatherData->config.enabled = true;
                     weatherData->loaded = true;
-                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: using default weather config for '{}'", currentZoneName_);
+                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: using default weather config for '{}'", ctx_.currentZoneName);
                 }
                 computations->weatherConfig = std::move(weatherData);
             }
@@ -219,56 +220,56 @@ bool IrrlichtRenderer::loadZoneStep10_Sky(ZoneLoadContext& ctx) {
 
         // S05: skyRenderer_ already created in initLoadingScreen() — apply zone-specific data
         bool hasBgData = computations && computations->skyLoadData && computations->skyLoadData->skyLoader;
-        if (skyRenderer_ && hasBgData) {
-            skyRenderer_->initializeFromPreloaded(
+        if (ctx_.skyRenderer && hasBgData) {
+            ctx_.skyRenderer->initializeFromPreloaded(
                 std::move(computations->skyLoadData->skyLoader),
                 std::move(computations->skyLoadData->skyConfig));
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: applied preloaded sky data");
         } else {
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: preloaded sky data not applied (skyRenderer_={}, hasBgData={})",
-                      (bool)skyRenderer_, hasBgData);
+                      (bool)ctx_.skyRenderer, hasBgData);
         }
 
-        if (storedZoneEnvironment_.pending) {
+        if (owner_.storedZoneEnvironment_.pending) {
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: applying stored zone env: skyType={}, zoneType={}, "
                       "fogR={}, fogG={}, fogB={}, fogMaxClip={}",
-                      storedZoneEnvironment_.skyType, storedZoneEnvironment_.zoneType,
-                      storedZoneEnvironment_.fogR[0], storedZoneEnvironment_.fogG[0],
-                      storedZoneEnvironment_.fogB[0], storedZoneEnvironment_.fogMaxClip[0]);
-            if (skyRenderer_ && skyRenderer_->isInitialized()) {
-                skyRenderer_->prepareSkyType(storedZoneEnvironment_.skyType, currentZoneName_);
-                bool isDungeon = (storedZoneEnvironment_.zoneType == 2);
-                isIndoorZone_ = isDungeon;
-                bool skySettingEnabled = getDisplaySettings().skyEnabled;
-                skyRenderer_->setEnabled(!isDungeon && skySettingEnabled && config_.constrainedConfig.skyRendering);
+                      owner_.storedZoneEnvironment_.skyType, owner_.storedZoneEnvironment_.zoneType,
+                      owner_.storedZoneEnvironment_.fogR[0], owner_.storedZoneEnvironment_.fogG[0],
+                      owner_.storedZoneEnvironment_.fogB[0], owner_.storedZoneEnvironment_.fogMaxClip[0]);
+            if (ctx_.skyRenderer && ctx_.skyRenderer->isInitialized()) {
+                ctx_.skyRenderer->prepareSkyType(owner_.storedZoneEnvironment_.skyType, ctx_.currentZoneName);
+                bool isDungeon = (owner_.storedZoneEnvironment_.zoneType == 2);
+                owner_.isIndoorZone_ = isDungeon;
+                bool skySettingEnabled = owner_.getDisplaySettings().skyEnabled;
+                ctx_.skyRenderer->setEnabled(!isDungeon && skySettingEnabled && ctx_.config.constrainedConfig.skyRendering);
             } else {
                 LOG_WARN(MOD_GRAPHICS, "SEQ Step10: stored zone env pending but skyRenderer not ready "
                          "(skyRenderer_={}, initialized={}) — sky type/dungeon detection skipped",
-                         (bool)skyRenderer_, skyRenderer_ ? skyRenderer_->isInitialized() : false);
+                         (bool)ctx_.skyRenderer, ctx_.skyRenderer ? ctx_.skyRenderer->isInitialized() : false);
             }
 
-            zoneMaxClip_ = (storedZoneEnvironment_.fogMaxClip[0] > 0.0f)
-                ? storedZoneEnvironment_.fogMaxClip[0] : 99999.0f;
-            setRenderDistance(userRenderDistance_);
+            owner_.zoneMaxClip_ = (owner_.storedZoneEnvironment_.fogMaxClip[0] > 0.0f)
+                ? owner_.storedZoneEnvironment_.fogMaxClip[0] : 99999.0f;
+            owner_.setRenderDistance(owner_.userRenderDistance_);
 
-            if (driver_ && fogEnabled_) {
+            if (ctx_.driver && ctx_.fogEnabled) {
                 irr::video::SColor fogColor(255,
-                    storedZoneEnvironment_.fogR[0], storedZoneEnvironment_.fogG[0], storedZoneEnvironment_.fogB[0]);
-                float fogEnd = renderDistance_;
-                float fogStart = std::max(0.0f, renderDistance_ - fogThickness_);
-                driver_->setFog(fogColor, irr::video::EFT_FOG_LINEAR, fogStart, fogEnd, 0.0f, true, false);
+                    owner_.storedZoneEnvironment_.fogR[0], owner_.storedZoneEnvironment_.fogG[0], owner_.storedZoneEnvironment_.fogB[0]);
+                float fogEnd = ctx_.renderDistance;
+                float fogStart = std::max(0.0f, ctx_.renderDistance - owner_.fogThickness_);
+                ctx_.driver->setFog(fogColor, irr::video::EFT_FOG_LINEAR, fogStart, fogEnd, 0.0f, true, false);
             }
 
-            if (weatherSystem_) {
+            if (owner_.weatherSystem_) {
                 if (computations && computations->weatherConfig && computations->weatherConfig->loaded) {
-                    weatherSystem_->setZoneConfig(computations->weatherConfig->config);
+                    owner_.weatherSystem_->setZoneConfig(computations->weatherConfig->config);
                     // P04: consumed (setZoneConfig copies) — free the wrapper
                     // now instead of at step 13 (skyLoadData precedent).
                     computations->weatherConfig.reset();
                     LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: weatherSystem zone config applied");
                 } else {
-                    weatherSystem_->setWeatherFromZone(currentZoneName_);
-                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: weatherSystem fallback to zone name '{}'", currentZoneName_);
+                    owner_.weatherSystem_->setWeatherFromZone(ctx_.currentZoneName);
+                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: weatherSystem fallback to zone name '{}'", ctx_.currentZoneName);
                 }
             }
         } else {
@@ -278,39 +279,39 @@ bool IrrlichtRenderer::loadZoneStep10_Sky(ZoneLoadContext& ctx) {
         // T08: Upload sky textures via constrained cache uploadTexture()
         // Sky textures were decoded by getOrLoad() above; now promote to GPU.
         // Uses loadedSkyTextureNames (collected before skyLoader was moved).
-        if (!config_.constrainedConfig.skipSkyTextureUpload && skyRenderer_ &&
-            constrainedTextureCache_ && !loadedSkyTextureNames.empty()) {
+        if (!ctx_.config.constrainedConfig.skipSkyTextureUpload && ctx_.skyRenderer &&
+            ctx_.constrainedTextureCache && !loadedSkyTextureNames.empty()) {
             size_t skyUploaded = 0;
             for (const auto& texName : loadedSkyTextureNames) {
                 std::string lowerName = texName;
                 std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
                                [](unsigned char c) { return std::tolower(c); });
-                irr::video::ITexture* tex = constrainedTextureCache_->uploadTexture(lowerName);
-                if (tex && skyRenderer_) {
-                    skyRenderer_->registerUploadedTexture(texName, tex);
+                irr::video::ITexture* tex = ctx_.constrainedTextureCache->uploadTexture(lowerName);
+                if (tex && ctx_.skyRenderer) {
+                    ctx_.skyRenderer->registerUploadedTexture(texName, tex);
                     ++skyUploaded;
                 }
             }
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: uploaded {} sky textures via constrained cache", skyUploaded);
         }
-        if (skyRenderer_ && skyRenderer_->isInitialized() && skyRenderer_->isSkyPrepared()) {
-            skyRenderer_->clearSkyForRebuild();
+        if (ctx_.skyRenderer && ctx_.skyRenderer->isInitialized() && ctx_.skyRenderer->isSkyPrepared()) {
+            ctx_.skyRenderer->clearSkyForRebuild();
             if (computations && computations->skyLoadData) {
                 auto& skyData = *computations->skyLoadData;
                 if (skyData.precomputedWldDome) {
-                    skyRenderer_->createSkyDomeFromWldGeometry(
+                    ctx_.skyRenderer->createSkyDomeFromWldGeometry(
                         skyData.precomputedWldDome->vertices, skyData.precomputedWldDome->indices);
                     LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: sky dome finalized from WLD geometry");
                 } else if (skyData.precomputedDome) {
-                    skyRenderer_->createSkyDomeFromPrecomputed(
+                    ctx_.skyRenderer->createSkyDomeFromPrecomputed(
                         skyData.precomputedDome->vertices, skyData.precomputedDome->indices);
                     LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: sky dome finalized from precomputed mesh");
                 } else {
-                    skyRenderer_->applySkyType();
+                    ctx_.skyRenderer->applySkyType();
                     LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: sky dome finalized via applySkyType (no precomputed data)");
                 }
             } else {
-                skyRenderer_->applySkyType();
+                ctx_.skyRenderer->applySkyType();
                 LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: sky dome finalized via applySkyType (no skyLoadData)");
             }
         }
@@ -318,59 +319,59 @@ bool IrrlichtRenderer::loadZoneStep10_Sky(ZoneLoadContext& ctx) {
             computations->skyLoadData->precomputedDome.reset();
             computations->skyLoadData->precomputedWldDome.reset();
         }
-        if (skyRenderer_ && skyRenderer_->isInitialized()) {
-            skyRenderer_->createCelestialBodiesOnly();
-            skyRenderer_->applyInitialColors();
-            skyRenderer_->consumeSkyPrepared();
+        if (ctx_.skyRenderer && ctx_.skyRenderer->isInitialized()) {
+            ctx_.skyRenderer->createCelestialBodiesOnly();
+            ctx_.skyRenderer->applyInitialColors();
+            ctx_.skyRenderer->consumeSkyPrepared();
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: sky celestial bodies created, initial colors applied, sky consumed");
         }
-        if (storedZoneEnvironment_.pending) storedZoneEnvironment_.pending = false;
+        if (owner_.storedZoneEnvironment_.pending) owner_.storedZoneEnvironment_.pending = false;
         if (computations && computations->skyLoadData) computations->skyLoadData.reset();
-        overlays_->setupFog();
+        owner_.Overlays().setupFog();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step10: complete, skyRenderer_={}, skyInit={}, skyEnabled={}, "
                   "isIndoorZone_={}, fogEnabled_={}, renderDistance_={:.0f}, weatherSystem_={}",
-                  (bool)skyRenderer_,
-                  skyRenderer_ ? skyRenderer_->isInitialized() : false,
-                  skyRenderer_ ? skyRenderer_->isEnabled() : false,
-                  isIndoorZone_, fogEnabled_, renderDistance_, (bool)weatherSystem_);
-        zoneStream_->logAssetBuildTime("seq_sky", 0, stepStart);
+                  (bool)ctx_.skyRenderer,
+                  ctx_.skyRenderer ? ctx_.skyRenderer->isInitialized() : false,
+                  ctx_.skyRenderer ? ctx_.skyRenderer->isEnabled() : false,
+                  owner_.isIndoorZone_, ctx_.fogEnabled, ctx_.renderDistance, (bool)owner_.weatherSystem_);
+        owner_.ZoneStream().logAssetBuildTime("seq_sky", 0, stepStart);
     }
     FlushThreadLog();
     return true;
 }
 
-void IrrlichtRenderer::loadZoneStep11_Env(ZoneLoadContext& ctx) {
+void ZoneLoadComponent::loadZoneStep11_Env(ZoneLoadContext& ctx) {
     // ── Step 11: Env — environment subsystems ──────────────────────────────
     ctx.updateProgress(93, "Initializing environment...");
     {
         auto stepStart = std::chrono::steady_clock::now();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: detailManager_={}, particleManager_={}, "
                   "boidsManager_={}, tumbleweedManager_={}, weatherEffects_={}",
-                  (bool)detailManager_, (bool)particleManager_,
-                  (bool)boidsManager_, (bool)tumbleweedManager_, (bool)weatherEffects_);
+                  (bool)ctx_.detailManager, (bool)ctx_.particleManager,
+                  (bool)ctx_.boidsManager, (bool)ctx_.tumbleweedManager, (bool)ctx_.weatherEffects);
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: PRE fire glow flags: lightingEnabled={}, icospheresEnabled={}, "
                   "maxLights={}, fireEffectsEnabled_={}",
-                  fireGlowLightingEnabled_, fireGlowIcospheresEnabled_,
-                  maxFireGlowLights_, fireEffectsEnabled_);
+                  owner_.fireGlowLightingEnabled_, owner_.fireGlowIcospheresEnabled_,
+                  owner_.maxFireGlowLights_, ctx_.fireEffectsEnabled);
 
         // Trees — always the GPU path now (P32: the EDT_BURNINGSVIDEO
         // CPU-instancing branch and AnimatedTreeManager were removed along
         // with RenderingBackend::Software). Trees are normal objects with
         // wind shaders applied in the fixup pass below; only the wind +
         // classification config needs (re)loading per zone.
-        if (currentZone_ && !currentZone_->objects.empty()) {
-            treeWindController_.loadConfig("", currentZoneName_);
-            treeIdentifier_.loadZoneOverrides(currentZoneName_);
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: tree wind config loaded for zone '{}'", currentZoneName_);
+        if (ctx_.currentZone && !ctx_.currentZone->objects.empty()) {
+            ctx_.treeWindController.loadConfig("", ctx_.currentZoneName);
+            owner_.treeIdentifier_.loadZoneOverrides(ctx_.currentZoneName);
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: tree wind config loaded for zone '{}'", ctx_.currentZoneName);
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: GPU renderer path, trees handled as normal objects with wind shaders");
         } else {
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: tree init SKIPPED: currentZone_={}, objects={}",
-                      (bool)currentZone_,
-                      currentZone_ ? currentZone_->objects.size() : 0);
+                      (bool)ctx_.currentZone,
+                      ctx_.currentZone ? ctx_.currentZone->objects.size() : 0);
         }
 
         // S05: detailManager_ already created in initLoadingScreen()
-        if (detailManager_ && zoneBspTree_ && !regionWorldTriangles_.empty()) {
+        if (ctx_.detailManager && ctx_.zoneBspTree && !owner_.regionWorldTriangles_.empty()) {
             // Create BSP-filtered ground raycast callback for detail/footprint systems
             // Uses pre-transformed world-space triangles with direct Möller–Trumbore intersection
             auto groundRaycast = [this](float x, float z, float startY,
@@ -378,7 +379,7 @@ void IrrlichtRenderer::loadZoneStep11_Env(ZoneLoadContext& ctx) {
                                         irr::core::triangle3df& outTriangle) -> bool {
                 // Find BSP region at query point (Irrlicht x,z → EQ x,y)
                 // startY is in Irrlicht Y-up coords = EQ Z
-                size_t queryRegion = zoneBspTree_->findRegionIndexForPoint(x, z, startY);
+                size_t queryRegion = ctx_.zoneBspTree->findRegionIndexForPoint(x, z, startY);
 
                 irr::core::vector3df rayStart(x, startY, z);
                 irr::core::vector3df rayDir(0.0f, -1.0f, 0.0f);  // Cast down
@@ -391,8 +392,8 @@ void IrrlichtRenderer::loadZoneStep11_Env(ZoneLoadContext& ctx) {
 
                 // Test query region world triangles (direct, no matrix math)
                 if (queryRegion != SIZE_MAX) {
-                    auto it = regionWorldTriangles_.find(queryRegion);
-                    if (it != regionWorldTriangles_.end()) {
+                    auto it = owner_.regionWorldTriangles_.find(queryRegion);
+                    if (it != owner_.regionWorldTriangles_.end()) {
                         float distSq;
                         if (PlayerCameraComponent::rayIntersectTriangles(rayStart, rayDir, rayLen, it->second, hitPoint, hitTri, distSq)) {
                             if (distSq < closestDistSq) {
@@ -412,7 +413,7 @@ void IrrlichtRenderer::loadZoneStep11_Env(ZoneLoadContext& ctx) {
                     irr::core::vector3df hp;
                     irr::core::triangle3df ht;
                     float distSq;
-                    if (playerCamera_->rayTestDoorsAndObjects(rayStart, rayDir, rayLen, queryRegion, hp, ht, distSq)) {
+                    if (owner_.PlayerCamera().rayTestDoorsAndObjects(rayStart, rayDir, rayLen, queryRegion, hp, ht, distSq)) {
                         if (distSq < closestDistSq) {
                             outY = hp.Y;
                             outNormal = ht.getNormal();
@@ -426,42 +427,42 @@ void IrrlichtRenderer::loadZoneStep11_Env(ZoneLoadContext& ctx) {
                 return hit;
             };
 
-            auto wldLoader = currentZone_ ? currentZone_->wldLoader : nullptr;
-            auto zoneGeom = currentZone_ ? currentZone_->geometry : nullptr;
-            detailManager_->onZoneEnter(currentZoneName_, groundRaycast,
-                                        zoneMeshNode_, wldLoader, zoneGeom);
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: detailManager_ onZoneEnter called for zone '{}'", currentZoneName_);
+            auto wldLoader = ctx_.currentZone ? ctx_.currentZone->wldLoader : nullptr;
+            auto zoneGeom = ctx_.currentZone ? ctx_.currentZone->geometry : nullptr;
+            ctx_.detailManager->onZoneEnter(ctx_.currentZoneName, groundRaycast,
+                                        owner_.zoneMeshNode_, wldLoader, zoneGeom);
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: detailManager_ onZoneEnter called for zone '{}'", ctx_.currentZoneName);
         } else {
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: detailManager_ onZoneEnter skipped (detailManager_={}, zoneBspTree_={}, regionWorldTriangles_={})",
-                      (bool)detailManager_, (bool)zoneBspTree_, regionWorldTriangles_.size());
+                      (bool)ctx_.detailManager, (bool)ctx_.zoneBspTree, owner_.regionWorldTriangles_.size());
         }
-        if (detailManager_ && !regionMeshNodes_.empty()) {
+        if (ctx_.detailManager && !ctx_.regionMeshNodes.empty()) {
             size_t nodesAdded = 0;
-            for (auto& [regionIdx, node] : regionMeshNodes_) {
+            for (auto& [regionIdx, node] : ctx_.regionMeshNodes) {
                 if (node && node->getMesh()) {
-                    detailManager_->addMeshNodeForTextureLookup(node);
+                    ctx_.detailManager->addMeshNodeForTextureLookup(node);
                     ++nodesAdded;
                 }
             }
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: added {} mesh nodes for detail texture lookup (of {} total)",
-                      nodesAdded, regionMeshNodes_.size());
+                      nodesAdded, ctx_.regionMeshNodes.size());
         }
 
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: detailManager_={}, regionWorldTriangles_={}, regionMeshNodes_={}",
-                  (bool)detailManager_, regionWorldTriangles_.size(), regionMeshNodes_.size());
+                  (bool)ctx_.detailManager, owner_.regionWorldTriangles_.size(), ctx_.regionMeshNodes.size());
 
         // Particles
-        if (particleManager_) {
-            auto biome = Environment::ZoneBiomeDetector::instance().getBiome(currentZoneName_);
-            particleManager_->onZoneEnter(currentZoneName_, biome);
+        if (ctx_.particleManager) {
+            auto biome = Environment::ZoneBiomeDetector::instance().getBiome(ctx_.currentZoneName);
+            ctx_.particleManager->onZoneEnter(ctx_.currentZoneName, biome);
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: particleManager_ onZoneEnter done, biome={}",
                       Environment::ZoneBiomeDetector::instance().getBiomeName(biome));
 
             // Fire sources
             std::vector<glm::vec3> fireSources;
             std::vector<float> fireRadii;
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: objectLights_ count={}", objectLights_.size());
-            for (const auto& objLight : objectLights_) {
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: objectLights_ count={}", ctx_.objectLights.size());
+            for (const auto& objLight : ctx_.objectLights) {
                 if (objLight.isFireSource) {
                     fireSources.emplace_back(objLight.position.X, objLight.position.Z, objLight.position.Y);
                     fireRadii.push_back(objLight.node ? objLight.node->getRadius() : 120.0f);
@@ -469,9 +470,9 @@ void IrrlichtRenderer::loadZoneStep11_Env(ZoneLoadContext& ctx) {
             }
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: fire sources from objectLights_: {} sources, {} radii",
                       fireSources.size(), fireRadii.size());
-            if (currentZone_) {
-                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: currentZone_->lights count={}", currentZone_->lights.size());
-                for (const auto& zl : currentZone_->lights) {
+            if (ctx_.currentZone) {
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: currentZone_->lights count={}", ctx_.currentZone->lights.size());
+                for (const auto& zl : ctx_.currentZone->lights) {
                     std::string upperName = zl->name;
                     std::transform(upperName.begin(), upperName.end(), upperName.begin(), ::toupper);
                     bool nameMatch = upperName.find("TORCH") != std::string::npos ||
@@ -489,31 +490,31 @@ void IrrlichtRenderer::loadZoneStep11_Env(ZoneLoadContext& ctx) {
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: total fireSources={} (objectLights + zone lights)",
                       fireSources.size());
             if (!fireSources.empty()) {
-                particleManager_->setFireSources(fireSources);
+                ctx_.particleManager->setFireSources(fireSources);
                 LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: particleManager_ setFireSources count={}", fireSources.size());
             }
-            if (detailManager_ && detailManager_->hasSurfaceMap()) {
-                particleManager_->setSurfaceMap(detailManager_->getSurfaceMap());
+            if (ctx_.detailManager && ctx_.detailManager->hasSurfaceMap()) {
+                ctx_.particleManager->setSurfaceMap(ctx_.detailManager->getSurfaceMap());
                 LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: particleManager_ setSurfaceMap from detailManager_");
             } else {
                 LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: particleManager_ no surface map (detailManager_={}, hasSurfaceMap={})",
-                          (bool)detailManager_, detailManager_ ? detailManager_->hasSurfaceMap() : false);
+                          (bool)ctx_.detailManager, ctx_.detailManager ? ctx_.detailManager->hasSurfaceMap() : false);
             }
 
-            particleManager_->initUnifiedRenderer();
+            ctx_.particleManager->initUnifiedRenderer();
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: particleManager_ initUnifiedRenderer complete");
             if (!fireSources.empty()) {
-                particleManager_->createFireEmitters(fireSources, fireRadii);
+                ctx_.particleManager->createFireEmitters(fireSources, fireRadii);
                 LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: particleManager_ createFireEmitters called, sources={}, radii={}",
                           fireSources.size(), fireRadii.size());
             }
 
             // Collect fire glow lights (same sources as fire particles)
             // Positions in fireSources are EQ coords (Z-up); convert to Irrlicht (Y-up)
-            fireGlowLights_.clear();
+            owner_.fireGlowLights_.clear();
             uint32_t rngState = 0x12345678u;
             for (size_t i = 0; i < fireSources.size(); ++i) {
-                FireGlowLight e;
+                IrrlichtRenderer::FireGlowLight e;
                 // EQ(x,y,z) -> Irrlicht(x,z,y)
                 e.position = irr::core::vector3df(fireSources[i].x, fireSources[i].z, fireSources[i].y);
                 e.r = 0.15f; e.g = 0.09f; e.b = 0.02f;  // warm fire color (subtle)
@@ -523,68 +524,68 @@ void IrrlichtRenderer::loadZoneStep11_Env(ZoneLoadContext& ctx) {
                 e.flickerPhase = static_cast<float>(rngState & 0xFFFF) / 65535.0f * 6.28f;
                 rngState ^= rngState << 13; rngState ^= rngState >> 17; rngState ^= rngState << 5;
                 e.flickerSpeed = 0.8f + static_cast<float>(rngState & 0xFFFF) / 65535.0f * 0.4f;
-                fireGlowLights_.push_back(e);
+                owner_.fireGlowLights_.push_back(e);
             }
-            LOG_INFO(MOD_GRAPHICS, "Collected {} fire glow lights for zone", fireGlowLights_.size());
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: fireGlowLights_ collected={}", fireGlowLights_.size());
+            LOG_INFO(MOD_GRAPHICS, "Collected {} fire glow lights for zone", owner_.fireGlowLights_.size());
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: fireGlowLights_ collected={}", owner_.fireGlowLights_.size());
         } else {
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: particleManager_ is NULL — skipping fire source collection entirely");
         }
 
         // Boids
-        if (boidsManager_) {
-            auto biome = Environment::ZoneBiomeDetector::instance().getBiome(currentZoneName_);
-            if (zoneBoundsValid_) {
-                boidsManager_->onZoneEnter(currentZoneName_, biome,
-                    glm::vec3(zoneBoundsMinX_, zoneBoundsMinY_, -1000.0f),
-                    glm::vec3(zoneBoundsMaxX_, zoneBoundsMaxY_, 1000.0f));
+        if (ctx_.boidsManager) {
+            auto biome = Environment::ZoneBiomeDetector::instance().getBiome(ctx_.currentZoneName);
+            if (owner_.zoneBoundsValid_) {
+                ctx_.boidsManager->onZoneEnter(ctx_.currentZoneName, biome,
+                    glm::vec3(owner_.zoneBoundsMinX_, owner_.zoneBoundsMinY_, -1000.0f),
+                    glm::vec3(owner_.zoneBoundsMaxX_, owner_.zoneBoundsMaxY_, 1000.0f));
                 LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: boidsManager_ onZoneEnter with bounds, biome={}",
                           Environment::ZoneBiomeDetector::instance().getBiomeName(biome));
             } else {
-                boidsManager_->onZoneEnter(currentZoneName_, biome);
+                ctx_.boidsManager->onZoneEnter(ctx_.currentZoneName, biome);
                 LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: boidsManager_ onZoneEnter without bounds, biome={}",
                           Environment::ZoneBiomeDetector::instance().getBiomeName(biome));
             }
         }
 
         // Tumbleweed
-        if (tumbleweedManager_) {
-            auto biome = Environment::ZoneBiomeDetector::instance().getBiome(currentZoneName_);
-            tumbleweedManager_->onZoneEnter(currentZoneName_, biome);
+        if (ctx_.tumbleweedManager) {
+            auto biome = Environment::ZoneBiomeDetector::instance().getBiome(ctx_.currentZoneName);
+            ctx_.tumbleweedManager->onZoneEnter(ctx_.currentZoneName, biome);
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: tumbleweedManager_ onZoneEnter, biome={}",
                       Environment::ZoneBiomeDetector::instance().getBiomeName(biome));
         }
 
         // Weather surface + display settings
-        if (weatherEffects_ && detailManager_ && detailManager_->hasSurfaceMap()) {
-            weatherEffects_->setSurfaceMap(detailManager_->getSurfaceMap());
+        if (ctx_.weatherEffects && ctx_.detailManager && ctx_.detailManager->hasSurfaceMap()) {
+            ctx_.weatherEffects->setSurfaceMap(ctx_.detailManager->getSurfaceMap());
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: weatherEffects_ setSurfaceMap from detailManager_");
         }
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: PRE applyEnvironmentalDisplaySettings");
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: PRE applyEnvSettings: fireGlowLightingEnabled_={}, "
                   "fireGlowIcospheresEnabled_={}, maxFireGlowLights_={}, fireEffectsEnabled_={}",
-                  fireGlowLightingEnabled_, fireGlowIcospheresEnabled_,
-                  maxFireGlowLights_, fireEffectsEnabled_);
-        overlays_->applyEnvironmentalDisplaySettings();
+                  owner_.fireGlowLightingEnabled_, owner_.fireGlowIcospheresEnabled_,
+                  owner_.maxFireGlowLights_, ctx_.fireEffectsEnabled);
+        owner_.Overlays().applyEnvironmentalDisplaySettings();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: POST applyEnvSettings: fireGlowLightingEnabled_={}, "
                   "fireGlowIcospheresEnabled_={}, maxFireGlowLights_={}, fireEffectsEnabled_={}",
-                  fireGlowLightingEnabled_, fireGlowIcospheresEnabled_,
-                  maxFireGlowLights_, fireEffectsEnabled_);
+                  owner_.fireGlowLightingEnabled_, owner_.fireGlowIcospheresEnabled_,
+                  owner_.maxFireGlowLights_, ctx_.fireEffectsEnabled);
 
         // Build icosphere mesh + shader for fire glow volumes
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: icosphere check: fireEffectsEnabled_={}, "
                   "fireGlowIcospheresEnabled_={}, fireGlowLights_.size()={}, icosphereVertices_.empty()={}",
-                  fireEffectsEnabled_, fireGlowIcospheresEnabled_,
-                  fireGlowLights_.size(), icosphereVertices_.empty());
+                  ctx_.fireEffectsEnabled, owner_.fireGlowIcospheresEnabled_,
+                  owner_.fireGlowLights_.size(), owner_.icosphereVertices_.empty());
 #ifdef EQT_HAS_DRM
-        if (fireEffectsEnabled_ && fireGlowIcospheresEnabled_ && !fireGlowLights_.empty() && icosphereVertices_.empty()) {
+        if (ctx_.fireEffectsEnabled && owner_.fireGlowIcospheresEnabled_ && !owner_.fireGlowLights_.empty() && owner_.icosphereVertices_.empty()) {
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: building icosphere mesh + shader");
-            eqe1_->buildIcosphereMesh();
-            eqe1_->compileIcosphereShader();
+            owner_.Eqe1().buildIcosphereMesh();
+            owner_.Eqe1().compileIcosphereShader();
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: icosphere build done: vertices={}, indices={}, "
                       "VBO={}, IBO={}, program={}",
-                      icosphereVertices_.size(), icosphereIndices_.size(),
-                      icosphereVBO_, icosphereIBO_, icosphereProgram_);
+                      owner_.icosphereVertices_.size(), owner_.icosphereIndices_.size(),
+                      owner_.icosphereVBO_, owner_.icosphereIBO_, owner_.icosphereProgram_);
         } else {
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: icosphere build SKIPPED");
         }
@@ -593,19 +594,19 @@ void IrrlichtRenderer::loadZoneStep11_Env(ZoneLoadContext& ctx) {
 #endif
 
         // Release combined zone geometry (if detail system disabled)
-        if (currentZone_ && currentZone_->geometry && !detailManager_) {
+        if (ctx_.currentZone && ctx_.currentZone->geometry && !ctx_.detailManager) {
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: releasing combined zone geometry (detailManager_ inactive), "
                       "vertices={}, triangles={}",
-                      currentZone_->geometry->vertices.size(), currentZone_->geometry->triangles.size());
-            currentZone_->geometry->vertices.clear();
-            currentZone_->geometry->vertices.shrink_to_fit();
-            currentZone_->geometry->triangles.clear();
-            currentZone_->geometry->triangles.shrink_to_fit();
+                      ctx_.currentZone->geometry->vertices.size(), ctx_.currentZone->geometry->triangles.size());
+            ctx_.currentZone->geometry->vertices.clear();
+            ctx_.currentZone->geometry->vertices.shrink_to_fit();
+            ctx_.currentZone->geometry->triangles.clear();
+            ctx_.currentZone->geometry->triangles.shrink_to_fit();
         }
 
         // Governor reset
-        if (governor_) {
-            governor_->requestReset();
+        if (ctx_.governor) {
+            ctx_.governor->requestReset();
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: governor_ reset requested");
         }
 
@@ -619,28 +620,28 @@ void IrrlichtRenderer::loadZoneStep11_Env(ZoneLoadContext& ctx) {
         {
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: fixup pass starting, deferredObjects_={}, "
                       "animatedTextureManager_={}, zoneShader_={}, windAvailable={}",
-                      deferredObjects_.size(), (bool)animatedTextureManager_,
-                      (bool)zoneShader_, zoneShader_ ? zoneShader_->isWindAvailable() : false);
+                      owner_.deferredObjects_.size(), (bool)ctx_.animatedTextureManager,
+                      (bool)ctx_.zoneShader, ctx_.zoneShader ? ctx_.zoneShader->isWindAvailable() : false);
             size_t fixupProcessed = 0, fixupSkipNotBuilt = 0, fixupSkipBadIndex = 0;
             size_t fixupSkipNullNode = 0, fixupSkipNoGeomPlaceable = 0;
             size_t treesFound = 0, treesWindApplied = 0, treesNullMesh = 0;
             size_t animatedApplied = 0;
-            bool windCheckEnabled = zoneShader_ && zoneShader_->isWindAvailable();
+            bool windCheckEnabled = ctx_.zoneShader && ctx_.zoneShader->isWindAvailable();
             if (!windCheckEnabled) {
                 LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: fixup wind shader check DISABLED: "
                           "zoneShader_={}, windAvailable={}",
-                          (bool)zoneShader_,
-                          zoneShader_ ? zoneShader_->isWindAvailable() : false);
+                          (bool)ctx_.zoneShader,
+                          ctx_.zoneShader ? ctx_.zoneShader->isWindAvailable() : false);
             }
-            for (size_t oi = 0; oi < deferredObjects_.size(); ++oi) {
-                const auto& deferred = deferredObjects_[oi];
+            for (size_t oi = 0; oi < owner_.deferredObjects_.size(); ++oi) {
+                const auto& deferred = owner_.deferredObjects_[oi];
                 if (!deferred.meshBuilt || deferred.nodeIndex == SIZE_MAX) { ++fixupSkipNotBuilt; continue; }
-                if (deferred.nodeIndex >= objectNodes_.size()) { ++fixupSkipBadIndex; continue; }
-                if (deferred.objectIndex >= currentZone_->objects.size()) { ++fixupSkipBadIndex; continue; }
+                if (deferred.nodeIndex >= ctx_.objectNodes.size()) { ++fixupSkipBadIndex; continue; }
+                if (deferred.objectIndex >= ctx_.currentZone->objects.size()) { ++fixupSkipBadIndex; continue; }
 
-                auto* objNode = objectNodes_[deferred.nodeIndex];
+                auto* objNode = ctx_.objectNodes[deferred.nodeIndex];
                 if (!objNode) { ++fixupSkipNullNode; continue; }
-                const auto& objInstance = currentZone_->objects[deferred.objectIndex];
+                const auto& objInstance = ctx_.currentZone->objects[deferred.objectIndex];
                 if (!objInstance.geometry || !objInstance.placeable) { ++fixupSkipNoGeomPlaceable; continue; }
 
                 ++fixupProcessed;
@@ -658,7 +659,7 @@ void IrrlichtRenderer::loadZoneStep11_Env(ZoneLoadContext& ctx) {
                     std::string primaryTexture;
                     if (!objInstance.geometry->textureNames().empty())
                         primaryTexture = objInstance.geometry->textureNames()[0];
-                    bool isTree = treeIdentifier_.isTreeMesh(objName, primaryTexture);
+                    bool isTree = owner_.treeIdentifier_.isTreeMesh(objName, primaryTexture);
                     if (isTree) {
                         ++treesFound;
                         irr::scene::IMesh* treeMesh = objNode->getMesh();
@@ -679,16 +680,16 @@ void IrrlichtRenderer::loadZoneStep11_Env(ZoneLoadContext& ctx) {
                                     }
                                 }
                                 if (!isMaskedMaterial) {
-                                    irr::s32 windSolidType = zoneShader_->getActiveWindSolid();
-                                    return windSolidType >= 0 ? windSolidType : zoneShader_->getActiveWindAlphaTest();
+                                    irr::s32 windSolidType = ctx_.zoneShader->getActiveWindSolid();
+                                    return windSolidType >= 0 ? windSolidType : ctx_.zoneShader->getActiveWindAlphaTest();
                                 }
-                                bool isETC1 = constrainedTextureCache_ && !texName.empty() &&
-                                    constrainedTextureCache_->isETC1Texture(texName);
+                                bool isETC1 = ctx_.constrainedTextureCache && !texName.empty() &&
+                                    ctx_.constrainedTextureCache->isETC1Texture(texName);
                                 if (isETC1) {
-                                    return zoneShader_->getActiveWindAlphaTest();
+                                    return ctx_.zoneShader->getActiveWindAlphaTest();
                                 }
-                                irr::s32 windRGBAType = zoneShader_->getActiveWindAlphaTestRGBA();
-                                return windRGBAType >= 0 ? windRGBAType : zoneShader_->getActiveWindAlphaTest();
+                                irr::s32 windRGBAType = ctx_.zoneShader->getActiveWindAlphaTestRGBA();
+                                return windRGBAType >= 0 ? windRGBAType : ctx_.zoneShader->getActiveWindAlphaTest();
                             };
                             // Update BOTH node materials AND mesh buffer materials.
                             // Node materials are used by Irrlicht's scene graph rendering.
@@ -703,9 +704,9 @@ void IrrlichtRenderer::loadZoneStep11_Env(ZoneLoadContext& ctx) {
                                 bufMat.MaterialTypeParam = meshBbox.MinEdge.Y;
                                 bufMat.MaterialTypeParam2 = meshBbox.MaxEdge.Y;
                                 bufMat.BackfaceCulling = false;
-                                if (constrainedTextureCache_ && bufMat.TextureLayer[0].Texture && !bufMat.TextureLayer[1].Texture) {
+                                if (ctx_.constrainedTextureCache && bufMat.TextureLayer[0].Texture && !bufMat.TextureLayer[1].Texture) {
                                     irr::core::stringc texNameStr = bufMat.TextureLayer[0].Texture->getName().getPath();
-                                    irr::video::ITexture* alphaTex = constrainedTextureCache_->getAlphaTexture(
+                                    irr::video::ITexture* alphaTex = ctx_.constrainedTextureCache->getAlphaTexture(
                                         std::string(texNameStr.c_str()));
                                     if (alphaTex) bufMat.setTexture(1, alphaTex);
                                 }
@@ -723,10 +724,10 @@ void IrrlichtRenderer::loadZoneStep11_Env(ZoneLoadContext& ctx) {
                                 mat.MaterialTypeParam2 = meshBbox.MaxEdge.Y;
                                 mat.BackfaceCulling = false;
                                 // Ensure ETC1 alpha companion is on layer 1 (may already be set by mesh builder)
-                                if (constrainedTextureCache_ && tex0 && !mat.TextureLayer[1].Texture) {
+                                if (ctx_.constrainedTextureCache && tex0 && !mat.TextureLayer[1].Texture) {
                                     // Look up alpha companion by texture name
                                     irr::core::stringc texNameStr = tex0->getName().getPath();
-                                    irr::video::ITexture* alphaTex = constrainedTextureCache_->getAlphaTexture(
+                                    irr::video::ITexture* alphaTex = ctx_.constrainedTextureCache->getAlphaTexture(
                                         std::string(texNameStr.c_str()));
                                     if (alphaTex) mat.setTexture(1, alphaTex);
                                 }
@@ -746,11 +747,11 @@ void IrrlichtRenderer::loadZoneStep11_Env(ZoneLoadContext& ctx) {
                 }
 
                 // Animated textures
-                if (animatedTextureManager_ && objInstance.geometry) {
+                if (ctx_.animatedTextureManager && objInstance.geometry) {
                     irr::scene::IMesh* objMesh = objNode->getMesh();
                     if (objMesh) {
-                        animatedTextureManager_->addMesh(*objInstance.geometry, currentZone_->objectTextures, objMesh);
-                        animatedTextureManager_->addSceneNode(objNode);
+                        ctx_.animatedTextureManager->addMesh(*objInstance.geometry, ctx_.currentZone->objectTextures, objMesh);
+                        ctx_.animatedTextureManager->addSceneNode(objNode);
                         ++animatedApplied;
                     }
                 }
@@ -758,40 +759,40 @@ void IrrlichtRenderer::loadZoneStep11_Env(ZoneLoadContext& ctx) {
             LOG_INFO(MOD_GRAPHICS, "Sequential: fixup pass: processed={}/{} objects, trees found={}, "
                      "wind applied={}, null mesh={}, animated={}, skipped: notBuilt={}, badIndex={}, "
                      "nullNode={}, noGeomPlaceable={}",
-                     fixupProcessed, deferredObjects_.size(), treesFound, treesWindApplied,
+                     fixupProcessed, owner_.deferredObjects_.size(), treesFound, treesWindApplied,
                      treesNullMesh, animatedApplied, fixupSkipNotBuilt, fixupSkipBadIndex,
                      fixupSkipNullNode, fixupSkipNoGeomPlaceable);
         }
 
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: complete");
-        zoneStream_->logAssetBuildTime("seq_env", 0, stepStart);
+        owner_.ZoneStream().logAssetBuildTime("seq_env", 0, stepStart);
     }
     FlushThreadLog();
 }
 
-void IrrlichtRenderer::loadZoneStep12_Lights(ZoneLoadContext& ctx) {
+void ZoneLoadComponent::loadZoneStep12_Lights(ZoneLoadContext& ctx) {
     // ── Step 12: Lights — zone lighting ────────────────────────────────────
     ctx.updateProgress(96, "Setting up lighting...");
     {
         auto stepStart = std::chrono::steady_clock::now();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12: currentZone_={}, lights count={}",
-                  (bool)currentZone_,
-                  currentZone_ ? currentZone_->lights.size() : 0);
-        zoneLightData_.clear();
-        zoneLightPositions_.clear();
-        zoneLightRegions_.clear();
-        if (currentZone_ && !currentZone_->lights.empty()) {
-            for (size_t i = 0; i < currentZone_->lights.size(); ++i) {
-                const auto& light = currentZone_->lights[i];
+                  (bool)ctx_.currentZone,
+                  ctx_.currentZone ? ctx_.currentZone->lights.size() : 0);
+        owner_.zoneLightData_.clear();
+        owner_.zoneLightPositions_.clear();
+        owner_.zoneLightRegions_.clear();
+        if (ctx_.currentZone && !ctx_.currentZone->lights.empty()) {
+            for (size_t i = 0; i < ctx_.currentZone->lights.size(); ++i) {
+                const auto& light = ctx_.currentZone->lights[i];
                 irr::core::vector3df pos(light->x, light->z, light->y);
-                ZoneLightData zld;
+                IrrlichtRenderer::ZoneLightData zld;
                 zld.radius = std::max(light->radius, 1.0f);
                 zld.attConstant = 1.0f;
                 zld.attLinear = 1.0f / zld.radius;
                 zld.attQuadratic = 1.0f / (zld.radius * zld.radius);
                 zld.baseDiffuseColor = irr::video::SColorf(light->r, light->g, light->b, 1.0f);
-                zoneLightData_.push_back(zld);
-                zoneLightPositions_.push_back(pos);
+                owner_.zoneLightData_.push_back(zld);
+                owner_.zoneLightPositions_.push_back(pos);
                 LOG_TRACE(MOD_GRAPHICS, "SEQ Step12: light[{}]: pos=({:.1f},{:.1f},{:.1f}) radius={:.1f} "
                           "color=({:.2f},{:.2f},{:.2f}) attLin={:.4f} attQuad={:.6f}",
                           i, light->x, light->y, light->z, zld.radius,
@@ -799,36 +800,36 @@ void IrrlichtRenderer::loadZoneStep12_Lights(ZoneLoadContext& ctx) {
             }
         } else {
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12: no lights to process (currentZone_={}, lights={})",
-                      (bool)currentZone_, currentZone_ ? currentZone_->lights.size() : 0);
+                      (bool)ctx_.currentZone, ctx_.currentZone ? ctx_.currentZone->lights.size() : 0);
         }
 
         // Install light BSP regions
         if (pendingZoneComputations_ && !pendingZoneComputations_->zoneLightRegions.empty()) {
-            zoneLightRegions_ = std::move(pendingZoneComputations_->zoneLightRegions);
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12: light BSP regions from precomputed (count={})", zoneLightRegions_.size());
-        } else if (zoneBspTree_ && !zoneBspTree_->regions.empty() && currentZone_) {
-            for (size_t i = 0; i < currentZone_->lights.size(); ++i) {
-                const auto& light = currentZone_->lights[i];
-                size_t regionIdx = zoneBspTree_->findRegionIndexForPoint(light->x, light->y, light->z);
-                zoneLightRegions_.push_back(regionIdx);
+            owner_.zoneLightRegions_ = std::move(pendingZoneComputations_->zoneLightRegions);
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12: light BSP regions from precomputed (count={})", owner_.zoneLightRegions_.size());
+        } else if (ctx_.zoneBspTree && !ctx_.zoneBspTree->regions.empty() && ctx_.currentZone) {
+            for (size_t i = 0; i < ctx_.currentZone->lights.size(); ++i) {
+                const auto& light = ctx_.currentZone->lights[i];
+                size_t regionIdx = ctx_.zoneBspTree->findRegionIndexForPoint(light->x, light->y, light->z);
+                owner_.zoneLightRegions_.push_back(regionIdx);
                 LOG_TRACE(MOD_GRAPHICS, "SEQ Step12: light[{}] BSP region={} pos=({:.1f},{:.1f},{:.1f})",
                           i, regionIdx == SIZE_MAX ? -1 : (int)regionIdx,
                           light->x, light->y, light->z);
             }
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12: light BSP regions computed via findRegionIndexForPoint (count={})", zoneLightRegions_.size());
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12: light BSP regions computed via findRegionIndexForPoint (count={})", owner_.zoneLightRegions_.size());
         } else {
-            zoneLightRegions_.resize(zoneLightData_.size(), SIZE_MAX);
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12: light BSP regions fallback SIZE_MAX (no BSP), count={}", zoneLightRegions_.size());
+            owner_.zoneLightRegions_.resize(owner_.zoneLightData_.size(), SIZE_MAX);
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12: light BSP regions fallback SIZE_MAX (no BSP), count={}", owner_.zoneLightRegions_.size());
         }
 
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12: zoneLightData_={}, zoneLightPositions_={}, zoneLightRegions_={}",
-                  zoneLightData_.size(), zoneLightPositions_.size(), zoneLightRegions_.size());
-        zoneStream_->logAssetBuildTime("seq_lights", zoneLightData_.size(), stepStart);
+                  owner_.zoneLightData_.size(), owner_.zoneLightPositions_.size(), owner_.zoneLightRegions_.size());
+        owner_.ZoneStream().logAssetBuildTime("seq_lights", owner_.zoneLightData_.size(), stepStart);
     }
     FlushThreadLog();
 }
 
-void IrrlichtRenderer::loadZoneStep12b_Simulation(ZoneLoadContext& ctx) {
+void ZoneLoadComponent::loadZoneStep12b_Simulation(ZoneLoadContext& ctx) {
     // ── Step 12b: SimulationWorker first-frame computation ──────────────────
     // Create SimulationWorker, set zone data, and run one synchronous computation
     // so the first rendered frame after loading has full PVS culling, sorted draw
@@ -837,50 +838,50 @@ void IrrlichtRenderer::loadZoneStep12b_Simulation(ZoneLoadContext& ctx) {
     {
         auto stepStart = std::chrono::steady_clock::now();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12b: simulationWorker_={}, frustumCuller_={}, camera_={}",
-                  (bool)simulationWorker_, (bool)frustumCuller_, (bool)camera_);
+                  (bool)owner_.simulationWorker_, (bool)ctx_.frustumCuller, (bool)ctx_.camera);
 
         // S05: simulationWorker_ already created in initLoadingScreen()
 
         // Build and register zone data
-        SimulationZoneData zoneData = simBridge_->buildSimulationZoneData();
+        SimulationZoneData zoneData = owner_.SimBridge().buildSimulationZoneData();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12b: buildSimulationZoneData: regions={}, objects={}, zoneLights={}",
                   zoneData.regionBounds.size(), zoneData.objects.size(), zoneData.zoneLights.size());
-        simulationWorker_->setZoneData(zoneData);
+        owner_.simulationWorker_->setZoneData(zoneData);
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12b: setZoneData installed on SimulationWorker");
 
         // Update frustum culler with current camera so frustum planes are valid
-        if (frustumCuller_ && camera_) {
-            irr::core::vector3df irrFwd = (camera_->getTarget() - camera_->getPosition());
+        if (ctx_.frustumCuller && ctx_.camera) {
+            irr::core::vector3df irrFwd = (ctx_.camera->getTarget() - ctx_.camera->getPosition());
             float eqFwdX = irrFwd.X;
             float eqFwdY = irrFwd.Z;
             float eqFwdZ = irrFwd.Y;
-            float fovV = camera_->getFOV();
-            auto screenSize = driver_->getScreenSize();
+            float fovV = ctx_.camera->getFOV();
+            auto screenSize = ctx_.driver->getScreenSize();
             float aspect = (float)screenSize.Width / (float)screenSize.Height;
             float camX, camY, camZ;
-            cameraController_->getPositionEQ(camX, camY, camZ);
-            frustumCuller_->update(camX, camY, camZ, eqFwdX, eqFwdY, eqFwdZ,
-                fovV, aspect, 1.0f, renderDistance_);
+            ctx_.cameraController->getPositionEQ(camX, camY, camZ);
+            ctx_.frustumCuller->update(camX, camY, camZ, eqFwdX, eqFwdY, eqFwdZ,
+                fovV, aspect, 1.0f, ctx_.renderDistance);
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12b: frustumCuller updated, fov={:.2f}, aspect={:.2f}, renderDist={:.0f}",
-                      fovV, aspect, renderDistance_);
+                      fovV, aspect, ctx_.renderDistance);
         }
 
         // Build SimulationInput from current state
         SimulationInput input;
 
         // Camera (Irrlicht Y-up)
-        if (camera_) {
-            input.cameraPos = camera_->getPosition();
-            input.cameraTarget = camera_->getTarget();
+        if (ctx_.camera) {
+            input.cameraPos = ctx_.camera->getPosition();
+            input.cameraTarget = ctx_.camera->getTarget();
         }
-        if (cameraController_) {
-            cameraController_->getPositionEQ(input.camEqX, input.camEqY, input.camEqZ);
+        if (ctx_.cameraController) {
+            ctx_.cameraController->getPositionEQ(input.camEqX, input.camEqY, input.camEqZ);
         }
 
         // Frustum planes (EQ Z-up)
-        if (frustumCuller_ && frustumCuller_->isEnabled()) {
+        if (ctx_.frustumCuller && ctx_.frustumCuller->isEnabled()) {
             for (int i = 0; i < 6; ++i) {
-                const float* plane = frustumCuller_->getPlane(i);
+                const float* plane = ctx_.frustumCuller->getPlane(i);
                 input.frustumPlanes[i][0] = plane[0];
                 input.frustumPlanes[i][1] = plane[1];
                 input.frustumPlanes[i][2] = plane[2];
@@ -890,50 +891,50 @@ void IrrlichtRenderer::loadZoneStep12b_Simulation(ZoneLoadContext& ctx) {
 
             // Occlusion camera
             auto& oc = input.occlusionCamera;
-            oc.fwdX = frustumCuller_->getFwdX();
-            oc.fwdY = frustumCuller_->getFwdY();
-            oc.fwdZ = frustumCuller_->getFwdZ();
-            oc.rightX = frustumCuller_->getRightX();
-            oc.rightY = frustumCuller_->getRightY();
+            oc.fwdX = ctx_.frustumCuller->getFwdX();
+            oc.fwdY = ctx_.frustumCuller->getFwdY();
+            oc.fwdZ = ctx_.frustumCuller->getFwdZ();
+            oc.rightX = ctx_.frustumCuller->getRightX();
+            oc.rightY = ctx_.frustumCuller->getRightY();
             oc.rightZ = 0;
-            oc.upX = frustumCuller_->getUpX();
-            oc.upY = frustumCuller_->getUpY();
-            oc.upZ = frustumCuller_->getUpZ();
-            oc.fovRadV = frustumCuller_->getFov();
-            oc.aspect = frustumCuller_->getAspect();
+            oc.upX = ctx_.frustumCuller->getUpX();
+            oc.upY = ctx_.frustumCuller->getUpY();
+            oc.upZ = ctx_.frustumCuller->getUpZ();
+            oc.fovRadV = ctx_.frustumCuller->getFov();
+            oc.aspect = ctx_.frustumCuller->getAspect();
             oc.enabled = true;
         }
 
-        input.renderDistance = renderDistance_;
+        input.renderDistance = ctx_.renderDistance;
         input.loadingActive = false;  // Full culling, not loading-mode
 
         // Player (EQ Z-up)
-        input.playerX = playerX_;
-        input.playerY = playerY_;
-        input.playerZ = playerZ_;
-        input.playerHeading = playerHeading_;
+        input.playerX = ctx_.playerX;
+        input.playerY = ctx_.playerY;
+        input.playerZ = ctx_.playerZ;
+        input.playerHeading = owner_.playerHeading_;
 
         // Timing (first frame)
         input.deltaTime = 1.0f / 30.0f;
-        input.frameNumber = frameNumber_;
+        input.frameNumber = owner_.frameNumber_;
 
         // Environment
-        input.currentHour = currentHour_;
-        input.currentMinute = currentMinute_;
-        input.timeOfDay = currentHour_ + currentMinute_ / 60.0f;
+        input.currentHour = ctx_.currentHour;
+        input.currentMinute = ctx_.currentMinute;
+        input.timeOfDay = ctx_.currentHour + ctx_.currentMinute / 60.0f;
 
         // Player light
-        input.playerLightLevel = playerLightLevel_;
+        input.playerLightLevel = owner_.playerLightLevel_;
 
         // Vision and weather modifiers
-        input.visionType = static_cast<uint8_t>(currentVision_);
-        if (weatherEffects_ && weatherEffects_->isEnabled()) {
-            input.weatherAmbientModifier = weatherEffects_->getAmbientLightModifier();
+        input.visionType = static_cast<uint8_t>(owner_.currentVision_);
+        if (ctx_.weatherEffects && ctx_.weatherEffects->isEnabled()) {
+            input.weatherAmbientModifier = ctx_.weatherEffects->getAmbientLightModifier();
         }
 
         // Entity snapshots
-        if (entityRenderer_) {
-            const auto& entities = entityRenderer_->getEntities();
+        if (ctx_.entityRenderer) {
+            const auto& entities = ctx_.entityRenderer->getEntities();
             input.entitySnapshots.reserve(entities.size());
             for (const auto& [spawnId, visual] : entities) {
                 if (!visual.sceneNode) continue;
@@ -962,52 +963,52 @@ void IrrlichtRenderer::loadZoneStep12b_Simulation(ZoneLoadContext& ctx) {
                 snap.hasVelocity = false;
                 input.entitySnapshots.push_back(snap);
             }
-            input.entityRenderDistance = config_.constrainedConfig.entityRenderDistance;
-            input.maxVisibleEntities = config_.constrainedConfig.maxVisibleEntities;
+            input.entityRenderDistance = ctx_.config.constrainedConfig.entityRenderDistance;
+            input.maxVisibleEntities = ctx_.config.constrainedConfig.maxVisibleEntities;
             input.entityCullingEnabled = true;
-            input.nameTagDistance = entityRenderer_->getNameTagDistance();
-            input.nameTagsVisible = entityRenderer_->areNameTagsVisible();
+            input.nameTagDistance = ctx_.entityRenderer->getNameTagDistance();
+            input.nameTagsVisible = ctx_.entityRenderer->areNameTagsVisible();
         }
 
         // Sky state
-        if (skyRenderer_ && skyRenderer_->isInitialized() && skyRenderer_->isEnabled()) {
+        if (ctx_.skyRenderer && ctx_.skyRenderer->isInitialized() && ctx_.skyRenderer->isEnabled()) {
             input.skyEnabled = true;
             input.skyInitialized = true;
-            input.skyCloudScrollOffset = skyRenderer_->getCloudScrollOffset();
+            input.skyCloudScrollOffset = ctx_.skyRenderer->getCloudScrollOffset();
         }
 
         // Weather effects state
-        if (weatherEffects_ && weatherEffects_->isEnabled()) {
+        if (ctx_.weatherEffects && ctx_.weatherEffects->isEnabled()) {
             input.weatherEnabled = true;
-            input.weatherTransitionProgress = weatherEffects_->getTransitionProgress();
-            input.weatherTransitionDuration = weatherEffects_->getTransitionDuration();
-            input.weatherCurrentDarkening = weatherEffects_->getCurrentDarkening();
-            input.weatherTargetDarkening = weatherEffects_->getTargetDarkening();
-            input.weatherLightningFlashTimer = weatherEffects_->getLightningFlashTimer();
-            input.weatherLightningBoltTimer = weatherEffects_->getLightningBoltTimer();
-            input.weatherLightningTimer = weatherEffects_->getLightningTimer();
-            input.weatherLightningActive = weatherEffects_->isLightningActive();
-            input.weatherLightningEnabled = weatherEffects_->isLightningEnabled();
-            input.weatherType = weatherEffects_->getCurrentType();
-            input.weatherIntensity = weatherEffects_->getCurrentIntensity();
+            input.weatherTransitionProgress = ctx_.weatherEffects->getTransitionProgress();
+            input.weatherTransitionDuration = ctx_.weatherEffects->getTransitionDuration();
+            input.weatherCurrentDarkening = ctx_.weatherEffects->getCurrentDarkening();
+            input.weatherTargetDarkening = ctx_.weatherEffects->getTargetDarkening();
+            input.weatherLightningFlashTimer = ctx_.weatherEffects->getLightningFlashTimer();
+            input.weatherLightningBoltTimer = ctx_.weatherEffects->getLightningBoltTimer();
+            input.weatherLightningTimer = ctx_.weatherEffects->getLightningTimer();
+            input.weatherLightningActive = ctx_.weatherEffects->isLightningActive();
+            input.weatherLightningEnabled = ctx_.weatherEffects->isLightningEnabled();
+            input.weatherType = ctx_.weatherEffects->getCurrentType();
+            input.weatherIntensity = ctx_.weatherEffects->getCurrentIntensity();
         }
 
         // Particle system input
-        if (particleManager_) {
+        if (ctx_.particleManager) {
             auto& pi = input.particleInput;
             pi.deltaTime = input.deltaTime;
-            if (camera_) {
-                auto cp = camera_->getAbsolutePosition();
+            if (ctx_.camera) {
+                auto cp = ctx_.camera->getAbsolutePosition();
                 pi.cameraPos = glm::vec3(cp.X, cp.Y, cp.Z);
             }
-            if (zoneShader_) {
-                const float* amb = zoneShader_->ambientColor();
+            if (ctx_.zoneShader) {
+                const float* amb = ctx_.zoneShader->ambientColor();
                 pi.ambientColor = glm::vec3(amb[0], amb[1], amb[2]);
             }
-            pi.windDirection = particleManager_->getWindDirection();
-            pi.windStrength = particleManager_->getWindStrength();
-            pi.fireEnabled = particleManager_->isUnifiedFireEnabled();
-            pi.commands = particleManager_->drainCommands();
+            pi.windDirection = ctx_.particleManager->getWindDirection();
+            pi.windStrength = ctx_.particleManager->getWindStrength();
+            pi.fireEnabled = ctx_.particleManager->isUnifiedFireEnabled();
+            pi.commands = ctx_.particleManager->drainCommands();
             pi.unifiedRendererInitialized = true;
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12b: particleInput assembled: fireEnabled={}, "
                       "unifiedRendererInitialized={}, commands={}, windStrength={:.2f}",
@@ -1016,47 +1017,47 @@ void IrrlichtRenderer::loadZoneStep12b_Simulation(ZoneLoadContext& ctx) {
         }
 
         // Boids system input
-        if (boidsManager_ && boidsManager_->isEnabled()) {
+        if (ctx_.boidsManager && ctx_.boidsManager->isEnabled()) {
             auto& bi = input.boidsInput;
             bi.deltaTime = input.deltaTime;
-            bi.playerPosition = glm::vec3(playerX_, playerY_, playerZ_);
-            bi.playerHeading = playerHeading_;
+            bi.playerPosition = glm::vec3(ctx_.playerX, ctx_.playerY, ctx_.playerZ);
+            bi.playerHeading = owner_.playerHeading_;
             bi.timeOfDay = input.timeOfDay;
             bi.windDirection = glm::vec3(1.0f, 0.0f, 0.0f);
             bi.initialized = true;
         }
 
         // Tumbleweed system input
-        if (tumbleweedManager_ && tumbleweedManager_->isEnabled()) {
+        if (ctx_.tumbleweedManager && ctx_.tumbleweedManager->isEnabled()) {
             auto& ti = input.tumbleweedInput;
             ti.deltaTime = input.deltaTime;
-            ti.playerPosition = glm::vec3(playerX_, playerY_, playerZ_);
+            ti.playerPosition = glm::vec3(ctx_.playerX, ctx_.playerY, ctx_.playerZ);
             ti.windDirection = glm::vec3(1.0f, 0.0f, 0.0f);
             ti.initialized = true;
         }
 
         // Weather system input
-        if (weatherSystem_) {
+        if (owner_.weatherSystem_) {
             auto& wi = input.weatherInput;
             wi.deltaTime = input.deltaTime;
             wi.initialized = true;
         }
 
         // Detail wind/disturbance input
-        if (detailManager_ && detailManager_->isEnabled()) {
+        if (ctx_.detailManager && ctx_.detailManager->isEnabled()) {
             auto& dti = input.detailInput;
             dti.deltaTime = input.deltaTime;
-            const auto& wc = detailManager_->getWindController();
+            const auto& wc = ctx_.detailManager->getWindController();
             const auto& wcParams = wc.getParams();
-            dti.windStrength = detailManager_->getZoneConfig().windStrength;
+            dti.windStrength = ctx_.detailManager->getZoneConfig().windStrength;
             dti.windFrequency = wcParams.frequency;
             dti.gustFrequency = wcParams.gustFrequency;
             dti.gustStrength = wcParams.gustStrength;
             dti.windDirX = wcParams.direction.X;
             dti.windDirY = wcParams.direction.Y;
-            dti.playerPosX = playerX_;
-            dti.playerPosY = playerZ_;
-            dti.playerPosZ = playerY_;
+            dti.playerPosX = ctx_.playerX;
+            dti.playerPosY = ctx_.playerZ;
+            dti.playerPosZ = ctx_.playerY;
             dti.initialized = true;
         }
 
@@ -1067,7 +1068,7 @@ void IrrlichtRenderer::loadZoneStep12b_Simulation(ZoneLoadContext& ctx) {
                   input.particleInput.fireEnabled, input.skyEnabled,
                   input.weatherEnabled, input.renderDistance);
         SimulationOutput output;
-        simulationWorker_->computeOnce(input, output);
+        owner_.simulationWorker_->computeOnce(input, output);
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12b: SimulationOutput: regions={}, objects={}, lights={}, entities={}",
                   output.regionVisible.size(), output.objectVisible.size(),
                   output.lightVisible.size(), output.entityResults.size());
@@ -1076,61 +1077,61 @@ void IrrlichtRenderer::loadZoneStep12b_Simulation(ZoneLoadContext& ctx) {
         // pointers into `output`, a local about to go out of scope. The
         // T111/T115 nulling lines formerly here are gone: bindFrameSimulationBuffers()
         // (the pointer-storing half) is reachable only from the runtime path.
-        simBridge_->applySimulationOutput(output);
-        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12b: applySimulationOutput applied, currentPvsRegion_={}", currentPvsRegion_);
+        owner_.SimBridge().applySimulationOutput(output);
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12b: applySimulationOutput applied, currentPvsRegion_={}", ctx_.currentPvsRegion);
 
         // Update door PVS visibility now that currentPvsRegion_ is set
-        if (doorManager_) {
-            doorManager_->setPvsRegion(currentPvsRegion_);
-            doorManager_->update(0.0f);
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12b: doorManager_ PVS region set to {}, initial update done", currentPvsRegion_);
+        if (ctx_.doorManager) {
+            ctx_.doorManager->setPvsRegion(ctx_.currentPvsRegion);
+            ctx_.doorManager->update(0.0f);
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12b: doorManager_ PVS region set to {}, initial update done", ctx_.currentPvsRegion);
         }
 
         LOG_INFO(MOD_GRAPHICS, "Sequential: SimulationWorker first-frame computed and applied "
                  "(regions={}, objects={}, lights={}, entities={})",
                  output.regionVisible.size(), output.objectVisible.size(),
                  output.lightVisible.size(), output.entityResults.size());
-        zoneStream_->logAssetBuildTime("seq_simulation", 0, stepStart);
+        owner_.ZoneStream().logAssetBuildTime("seq_simulation", 0, stepStart);
         FlushThreadLog();
 
         // Set up BSP-based camera collision now that PVS region is known
-        if (cameraController_ && zoneBspTree_) {
-            cameraController_->setBspCollision(zoneBspTree_.get(), &regionBoundingBoxes_);
-            cameraController_->setBspPlayerRegion(currentPvsRegion_);
-            LOG_INFO(MOD_GRAPHICS, "Camera BSP collision initialized for region {}", currentPvsRegion_);
+        if (ctx_.cameraController && ctx_.zoneBspTree) {
+            ctx_.cameraController->setBspCollision(ctx_.zoneBspTree.get(), &ctx_.regionBoundingBoxes);
+            ctx_.cameraController->setBspPlayerRegion(ctx_.currentPvsRegion);
+            LOG_INFO(MOD_GRAPHICS, "Camera BSP collision initialized for region {}", ctx_.currentPvsRegion);
         }
     }
 }
 
-void IrrlichtRenderer::loadZoneStep13_Cleanup(ZoneLoadContext& ctx) {
+void ZoneLoadComponent::loadZoneStep13_Cleanup(ZoneLoadContext& ctx) {
     // ── Step 13: Cleanup ───────────────────────────────────────────────────
     ctx.updateProgress(100, "Finalizing...");
     {
         auto stepStart = std::chrono::steady_clock::now();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step13: releaseTextureDataAfterUpload={}, currentZone_={}, "
                   "pendingZoneComputations_={}",
-                  config_.constrainedConfig.releaseTextureDataAfterUpload,
-                  (bool)currentZone_, (bool)pendingZoneComputations_);
-        if (config_.constrainedConfig.releaseTextureDataAfterUpload && currentZone_) {
-            size_t freed = currentZone_->releaseTexturePixelData();
+                  ctx_.config.constrainedConfig.releaseTextureDataAfterUpload,
+                  (bool)ctx_.currentZone, (bool)pendingZoneComputations_);
+        if (ctx_.config.constrainedConfig.releaseTextureDataAfterUpload && ctx_.currentZone) {
+            size_t freed = ctx_.currentZone->releaseTexturePixelData();
             LOG_INFO(MOD_GRAPHICS, "Sequential: released {:.1f}MB texture pixel data", freed / (1024.0f * 1024.0f));
         } else {
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step13: texture pixel data retained (releaseTextureDataAfterUpload={}, currentZone_={})",
-                      config_.constrainedConfig.releaseTextureDataAfterUpload, (bool)currentZone_);
+                      ctx_.config.constrainedConfig.releaseTextureDataAfterUpload, (bool)ctx_.currentZone);
         }
-        if (currentZone_) {
-            currentZone_->clearCharacterData();
+        if (ctx_.currentZone) {
+            ctx_.currentZone->clearCharacterData();
             LOG_INFO(MOD_GRAPHICS, "Sequential: released zone character data");
         }
-        if (currentZone_ && currentZone_->wldLoader) {
-            currentZone_->wldLoader->releasePostLoadData();
+        if (ctx_.currentZone && ctx_.currentZone->wldLoader) {
+            ctx_.currentZone->wldLoader->releasePostLoadData();
             LOG_INFO(MOD_GRAPHICS, "Sequential: released WLD post-load data");
-        } else if (currentZone_ && !currentZone_->wldLoader) {
+        } else if (ctx_.currentZone && !ctx_.currentZone->wldLoader) {
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step13: wldLoader is null, skipping releasePostLoadData");
         }
         pendingZoneComputations_.reset();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step13: pendingZoneComputations_ released");
-        zoneStream_->logAssetBuildTime("seq_cleanup", 0, stepStart);
+        owner_.ZoneStream().logAssetBuildTime("seq_cleanup", 0, stepStart);
     }
     FlushThreadLog();
 }

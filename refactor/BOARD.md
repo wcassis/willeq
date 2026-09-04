@@ -542,7 +542,7 @@ it without taking that measurement first.
   that "Collision detection is set up progressively via
   setupMinimalZoneCollision() and addRegionToCollision() during the background
   zone loading phases" — only `setupMinimalZoneCollision()` is actually called
-  (`src/client/graphics/renderer_zone_load_objects.cpp:544`), once, so
+  (`src/client/graphics/zone_load/renderer_zone_load_objects.cpp:545`), once, so
   collision for regions/doors/objects streamed in AFTER that call is never
   registered. Whether that is a live gap or dead ambition needs a measurement,
   not a deletion: L05 kept all five on `PlayerCameraComponent` rather than

@@ -5,8 +5,14 @@
 // definition when every step method lived in one 2996-line translation unit;
 // splitting that file across four TUs means all four need the complete type,
 // so it becomes a private header rather than staying a file-local detail.
-// The header still only forward-declares it (irrlicht_renderer.h:1316) --
-// nothing outside the zone-load TUs may include this.
+// The component header still only forward-declares it -- nothing outside the
+// zone-load TUs may include this.
+//
+// L10 (Batch L): ZoneLoadContext moved with the family into
+// ZoneLoadComponent. It is the parameter type of all twenty step methods, so
+// under batch correction 10 a nested type named in a moving SIGNATURE follows
+// those signatures; leaving it on IrrlichtRenderer would force
+// zone_load_component.h to name IrrlichtRenderer::ZoneLoadContext.
 
 #pragma once
 
@@ -31,7 +37,7 @@ namespace Graphics {
 // decomposition). Defined here (not in the header) since it is purely an
 // implementation detail of the step methods; the header only forward-declares
 // it so the private step-method declarations can take it by reference.
-struct IrrlichtRenderer::ZoneLoadContext {
+struct ZoneLoadComponent::ZoneLoadContext {
     // Setup-scope locals used across many steps.
     std::string eqPath;
     std::chrono::steady_clock::time_point totalStart;

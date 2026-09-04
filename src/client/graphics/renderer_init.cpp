@@ -263,6 +263,8 @@ IrrlichtRenderer::IrrlichtRenderer()
     // L08 (Batch L): the zone streaming family.
     zoneStream_ = std::make_unique<ZoneStreamComponent>(ctx_, *this);
     zoneLifecycle_ = std::make_unique<ZoneLifecycleComponent>(ctx_, *this);
+    // L10 (Batch L): the loading thread's zone build.
+    zoneLoad_ = std::make_unique<ZoneLoadComponent>(ctx_, *this);
 }
 
 IrrlichtRenderer::~IrrlichtRenderer() {
