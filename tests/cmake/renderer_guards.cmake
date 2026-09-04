@@ -260,7 +260,12 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         test_vision_buff_fade_wire.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(test_vision_buff_fade_wire PRIVATE ${IRRLICHT_INCLUDE_DIR})
-    TARGET_LINK_LIBRARIES(test_vision_buff_fade_wire GTest::gtest_main willeq_core)
+    # T339 (B055): the landing half drives a real BuffManager over the real
+    # spell DB and reads src/client/core/everquest.cpp, so it owns its main()
+    # (GTest::gtest, not gtest_main) and needs the DB path.
+    TARGET_COMPILE_DEFINITIONS(test_vision_buff_fade_wire PRIVATE
+        WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    TARGET_LINK_LIBRARIES(test_vision_buff_fade_wire GTest::gtest willeq_core)
     GTEST_DISCOVER_TESTS(test_vision_buff_fade_wire)
 ENDIF()
 

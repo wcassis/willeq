@@ -305,31 +305,50 @@ bool EverQuest::InitializeSpellSystem(const std::string& eqClientPath)
 	m_buff_manager = std::make_unique<EQ::BuffManager>(&m_spell_manager->getDatabase());
 	LOG_DEBUG(MOD_SPELL, "Buff manager initialized");
 
-	// D20b2: Buff fade callback for vision buff expiration (game-state handler, not renderer)
-	m_buff_manager->setBuffFadeCallback([this](uint16_t entity_id, uint32_t spell_id) {
+	// D20b2 / T339 (board B055): vision buffs publish on LANDING as well as on
+	// fade. Both hooks share ONE body, and that body's recompute is the single
+	// BuffManager::computeVisionType() -- so a landing and a fade can never
+	// disagree about how vision is derived from the buff list. The event
+	// carries the ABSOLUTE buff vision; the racial base is the consumer's
+	// (PlayerCameraComponent's) floor, applied there and never here.
+	//
+	// This is a game-state handler, not a renderer one.
+	auto publishVisionForBuffChange = [this](uint16_t entity_id, uint32_t spell_id,
+	                                         uint32_t exclude_spell_id) {
 		if (entity_id != 0) return;  // Only handle player buffs
-		if (!m_spell_manager || !m_bridge) return;
+		if (!m_spell_manager || !m_buff_manager || !m_bridge) return;
 
 		const EQ::SpellData* spell = m_spell_manager->getSpell(spell_id);
 		if (!spell) return;
 
-		bool hadVisionEffect = spell->hasEffect(EQ::SpellEffect::UltraVision) ||
+		bool hasVisionEffect = spell->hasEffect(EQ::SpellEffect::UltraVision) ||
 		                       spell->hasEffect(EQ::SpellEffect::InfraVision);
-		if (!hadVisionEffect) return;
+		if (!hasVisionEffect) return;
 
-		LOG_DEBUG(MOD_SPELL, "Vision buff faded (spell {}), recalculating vision", spell_id);
-		uint8_t finalVisionType = 0;
-		for (const auto& buff : m_buff_manager->getPlayerBuffs()) {
-			const EQ::SpellData* buffSpell = m_spell_manager->getSpell(buff.spell_id);
-			if (!buffSpell) continue;
-			if (buffSpell->hasEffect(EQ::SpellEffect::UltraVision)) { finalVisionType = 2; break; }
-			else if (buffSpell->hasEffect(EQ::SpellEffect::InfraVision)) { finalVisionType = 1; }
-		}
+		uint8_t finalVisionType = m_buff_manager->computeVisionType(exclude_spell_id);
+		LOG_DEBUG(MOD_SPELL, "Vision buff changed (spell {}), recomputed vision = {}",
+		          spell_id, finalVisionType);
+
 		eqt::state::VisionChangedData vdata;
 		vdata.visionType = finalVisionType;
 		m_bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::VisionChanged, std::move(vdata)));
-	});
+	};
+
+	// T339: the landing hook. applyBuff()/setPlayerBuff() fire this AFTER the
+	// buff is in the list, so nothing is excluded.
+	m_buff_manager->setBuffApplyCallback(
+		[publishVisionForBuffChange](uint16_t entity_id, uint32_t spell_id) {
+			publishVisionForBuffChange(entity_id, spell_id,
+			                           EQ::BuffManager::NO_EXCLUDED_SPELL);
+		});
+
+	// The fade hook. Three of the four fade paths notify BEFORE erasing, so the
+	// departing spell must be excluded or it would count itself as still up.
+	m_buff_manager->setBuffFadeCallback(
+		[publishVisionForBuffChange](uint16_t entity_id, uint32_t spell_id) {
+			publishVisionForBuffChange(entity_id, spell_id, spell_id);
+		});
 
 	// ========================================================================
 	// TOMBSTONE: the client-side spell RESOLUTION stack used to be built here.

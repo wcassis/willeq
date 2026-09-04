@@ -214,6 +214,32 @@ public:
     SpellDatabase* getSpellDatabase() const { return m_spell_db; }
 
     // ========================================================================
+    // Vision (T339, board B055)
+    // ========================================================================
+
+    // Sentinel for computeVisionType()'s exclude_spell_id: exclude nothing.
+    static constexpr uint32_t NO_EXCLUDED_SPELL = 0xFFFFFFFFu;
+
+    // T339: THE vision recompute. Both the apply and the fade hook installed by
+    // EverQuest::InitializeSpellSystem() call this one function, so a landing
+    // and a fade always publish the same absolute value computed the same way.
+    //
+    // Precedence is BEST VISION WINS -- Ultravision (2) beats Infravision (1)
+    // beats no vision buff (0). The official client's precedence is NOT
+    // recorded anywhere under docs/ (grepped in T339), so this is the stated
+    // rule, and it is the rule the pre-existing fade loop already used.
+    //
+    // The return value is "vision from BUFFS", not final vision: 0 means "no
+    // vision buff up", and the racial base is applied by the consumer
+    // (PlayerCameraComponent), never here.
+    //
+    // exclude_spell_id drops one spell from the tally. The fade callbacks fire
+    // while the fading buff is STILL in the list (checkBuffExpiration(),
+    // removeBuff() and removeBuffBySlot() all notify before erasing), so the
+    // fade hook must exclude the spell that is going away.
+    uint8_t computeVisionType(uint32_t exclude_spell_id = NO_EXCLUDED_SPELL) const;
+
+    // ========================================================================
     // Constants
     // ========================================================================
 
