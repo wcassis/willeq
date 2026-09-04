@@ -55,6 +55,7 @@
 #include "client/graphics/overlays/overlays_component.h"
 #include "client/graphics/diagnostics/diagnostics_component.h"
 #include "client/graphics/player/player_camera_component.h"
+#include "client/graphics/slash/slash_commands_component.h"
 #ifdef WITH_RDP
 #include "client/graphics/rdp/rdp_server.h"
 #include "client/graphics/rdp/rdp_input_handler.h"
@@ -137,8 +138,9 @@ public:
     void hideLoadingScreen();
     bool isLoadingScreenVisible() const { return loadingScreenVisible_; }
 
-    // D20d: Process renderer-specific slash commands forwarded from game thread
-    void processSlashCommand(const std::string& command);
+    // D20d: renderer-specific slash commands forwarded from the game thread.
+    // L06: SlashCommandsComponent implements it; forwarder kept for the bridge.
+    void processSlashCommand(const std::string& command) { slash_->processSlashCommand(command); }
 
     // Shutdown the renderer
     void shutdown();
@@ -1651,6 +1653,11 @@ private:
     // axes of K13 correction (ii).
     friend class PlayerCameraComponent;
     std::unique_ptr<PlayerCameraComponent> playerCamera_;
+
+    // L06 (Batch L): the slash family -- registry 3, the renderer's slash-
+    // command if-chain. Ctor body, renderer_init.cpp; friendship on axis 1.
+    friend class SlashCommandsComponent;
+    std::unique_ptr<SlashCommandsComponent> slash_;
 };
 
 } // namespace Graphics

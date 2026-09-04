@@ -125,7 +125,7 @@ it without taking that measurement first.
   run cannot clear a target. Closes when: a command reaches it or it is proven
   keybinding-only by design. Prov: archived board, T39 dead-state follow-ups.
 
-- **B013** (B) `src/client/graphics/renderer_slash_commands.cpp` `/newskills` —
+- **B013** (B) `src/client/graphics/slash/renderer_slash_commands.cpp` `/newskills` —
   the only working skills-window toggle, registered in neither command registry,
   so it is invisible to `/help` and to tab completion and reachable only by a user
   who already knows the word. Closes when: it is registered, or renamed and

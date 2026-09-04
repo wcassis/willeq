@@ -1,4 +1,5 @@
 #include "client/graphics/irrlicht_renderer.h"
+#include "client/graphics/slash/slash_commands_component.h"
 #include "client/graphics/renderer_zone_merge.h"  // ZoneMergeBuffers complete type (unique_ptr member destruction)
 #include "client/willeq_database.h"
 #include "client/graphics/loading_thread.h"
@@ -133,7 +134,7 @@ bool ParseCameraModeName(const std::string& args, EQT::Graphics::IrrlichtRendere
 } // namespace
 
 // D20d: Handle renderer-specific slash commands forwarded from game thread
-void IrrlichtRenderer::processSlashCommand(const std::string& command) {
+void SlashCommandsComponent::processSlashCommand(const std::string& command) {
     // Parse command name and args
     std::string cmd, args;
     size_t spacePos = command.find(' ');
@@ -152,12 +153,12 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
     // Same module and shape as the game-registry echo so "[MAIN] <reply>"
     // greps work identically for both registries.
     auto chat = [this](const std::string& msg) {
-        if (bridge_) {
+        if (ctx_.bridge) {
             eqt::state::ChatMessageData data;
             data.message = msg;
             data.channelType = 0;
             data.channelName = "system";
-            bridge_->pushEvent(eqt::state::GameEvent(
+            ctx_.bridge->pushEvent(eqt::state::GameEvent(
                 eqt::state::GameEventType::SystemMessage, std::move(data)));
         }
         LOG_INFO(MOD_MAIN, "{}", msg);
@@ -165,11 +166,11 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
 
     // --- Visual rendering ---
     if (cmd == "/sort") {
-        diagnostics_->toggleManualZoneDraw();
-        chat(fmt::format("Front-to-back zone sorting: {}", isManualZoneDrawEnabled() ? "ENABLED" : "DISABLED"));
+        owner_.Diagnostics().toggleManualZoneDraw();
+        chat(fmt::format("Front-to-back zone sorting: {}", owner_.isManualZoneDrawEnabled() ? "ENABLED" : "DISABLED"));
     } else if (cmd == "/mergedraws") {
-        diagnostics_->toggleMergeZoneDraws();
-        chat(fmt::format("Zone draw merge: {}", isMergeZoneDrawsEnabled() ? "ENABLED" : "DISABLED"));
+        owner_.Diagnostics().toggleMergeZoneDraws();
+        chat(fmt::format("Zone draw merge: {}", owner_.isMergeZoneDrawsEnabled() ? "ENABLED" : "DISABLED"));
     } else if (cmd == "/screenshot") {
         // P10: smallest additive hook for the in-app A/B capture (no other
         // scriptable screenshot command existed — F12 is a raw key event,
@@ -177,7 +178,7 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
         // filename arg so a tour script can capture deterministic
         // before/after pairs at a fixed pose.
         std::string path = args.empty() ? "screenshot.png" : args;
-        bool ok = saveScreenshot(path);
+        bool ok = owner_.saveScreenshot(path);
         chat(fmt::format("Screenshot {}: {}", path, ok ? "saved" : "FAILED"));
     } else if (cmd == "/camera") {
         // T66 -- instance 7 of "reachable only through a UI gesture, invisible
@@ -194,15 +195,15 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
         // blind and count (T51 documented exactly that trap for /attack).
         // Cycling is additionally exposed via "cycle" since it was free.
         if (args.empty()) {
-            chat(fmt::format("Camera mode: {}", getCameraModeString()));
+            chat(fmt::format("Camera mode: {}", owner_.getCameraModeString()));
         } else if (args == "cycle") {
-            playerCamera_->cycleCameraMode();
-            chat(fmt::format("Camera mode: {}", getCameraModeString()));
+            owner_.PlayerCamera().cycleCameraMode();
+            chat(fmt::format("Camera mode: {}", owner_.getCameraModeString()));
         } else {
             CameraMode mode;
             if (ParseCameraModeName(args, mode)) {
-                setCameraMode(mode);
-                chat(fmt::format("Camera mode: {}", getCameraModeString()));
+                owner_.setCameraMode(mode);
+                chat(fmt::format("Camera mode: {}", owner_.getCameraModeString()));
             } else {
                 chat(fmt::format(
                     "Unknown camera mode '{}'. Valid: Free, Follow, \"First Person\" "
@@ -234,7 +235,7 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
         }
         for (char& c : sub) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         if (sub == "dump") {
-            for (const auto& line : playerCamera_->buildFirstPersonCameraDumpLines()) chat(line);
+            for (const auto& line : owner_.PlayerCamera().buildFirstPersonCameraDumpLines()) chat(line);
         } else {
             for (const auto& line : EQT::Graphics::FirstPersonTunablesCommandLines(args)) {
                 chat(line);
@@ -242,60 +243,60 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
             // A set/reset must take effect on the CURRENT frame, not on the
             // next time something else happens to move the player.
             if (sub == "set" || sub == "reset") {
-                playerCamera_->applyCameraProjectionForMode();
-                playerCamera_->repositionFirstPersonCamera();
+                owner_.PlayerCamera().applyCameraProjectionForMode();
+                owner_.PlayerCamera().repositionFirstPersonCamera();
             }
         }
     } else if (cmd == "/upload") {
-        toggleGPUUploadThread();
-        chat(fmt::format("GPU upload thread: {}", isGPUUploadThreadEnabled() ? "ENABLED" : "DISABLED"));
+        owner_.toggleGPUUploadThread();
+        chat(fmt::format("GPU upload thread: {}", owner_.isGPUUploadThreadEnabled() ? "ENABLED" : "DISABLED"));
     } else if (cmd == "/portal") {
         if (args == "debug") {
-            diagnostics_->togglePortalDebugDraw();
-            chat(fmt::format("Portal debug overlay: {}", isPortalDebugDrawEnabled() ? "ENABLED" : "DISABLED"));
+            owner_.Diagnostics().togglePortalDebugDraw();
+            chat(fmt::format("Portal debug overlay: {}", owner_.isPortalDebugDrawEnabled() ? "ENABLED" : "DISABLED"));
         } else {
-            diagnostics_->togglePortalOcclusion();
-            chat(fmt::format("Portal occlusion: {}", isPortalOcclusionEnabled() ? "ENABLED" : "DISABLED"));
+            owner_.Diagnostics().togglePortalOcclusion();
+            chat(fmt::format("Portal occlusion: {}", owner_.isPortalOcclusionEnabled() ? "ENABLED" : "DISABLED"));
         }
     } else if (cmd == "/stencil") {
-        diagnostics_->toggleStencilDebugDraw();
-        chat(fmt::format("Stencil debug overlay: {}", isStencilDebugDrawEnabled() ? "ENABLED" : "DISABLED"));
+        owner_.Diagnostics().toggleStencilDebugDraw();
+        chat(fmt::format("Stencil debug overlay: {}", owner_.isStencilDebugDrawEnabled() ? "ENABLED" : "DISABLED"));
     } else if (cmd == "/plight") {
-        diagnostics_->togglePlayerLight();
-        chat(fmt::format("Per-pixel player light: {}", isPlayerLightEnabled() ? "ENABLED" : "DISABLED"));
+        owner_.Diagnostics().togglePlayerLight();
+        chat(fmt::format("Per-pixel player light: {}", owner_.isPlayerLightEnabled() ? "ENABLED" : "DISABLED"));
     } else if (cmd == "/olight") {
-        diagnostics_->toggleObjectLights();
-        chat(fmt::format("Object lights: {}", isObjectLightsEnabled() ? "ENABLED" : "DISABLED"));
+        owner_.Diagnostics().toggleObjectLights();
+        chat(fmt::format("Object lights: {}", owner_.isObjectLightsEnabled() ? "ENABLED" : "DISABLED"));
     } else if (cmd == "/zlight") {
-        diagnostics_->toggleDirectionalLight();
-        chat(fmt::format("Directional light: {}", isDirectionalLightEnabled() ? "ENABLED" : "DISABLED"));
+        owner_.Diagnostics().toggleDirectionalLight();
+        chat(fmt::format("Directional light: {}", owner_.isDirectionalLightEnabled() ? "ENABLED" : "DISABLED"));
     } else if (cmd == "/lightmode") {
-        if (zoneShader_) {
-            bool unified = !zoneShader_->unifiedLighting();
-            zoneShader_->setUnifiedLighting(unified);
+        if (ctx_.zoneShader) {
+            bool unified = !ctx_.zoneShader->unifiedLighting();
+            ctx_.zoneShader->setUnifiedLighting(unified);
             chat(fmt::format("Lighting mode: {}", unified ? "UNIFIED (pointLight * aColor)" : "ADDITIVE (pointLight + base*aColor)"));
             LOG_INFO(MOD_SHADER, "Lighting mode toggled to {}", unified ? "unified" : "additive");
         }
     } else if (cmd == "/shaderdebug" || cmd == "/sd") {
-        if (zoneShader_) {
+        if (ctx_.zoneShader) {
             int mode = 0;
             if (!args.empty()) {
                 if (args == "off") mode = 0;
                 else mode = std::atoi(args.c_str());
             }
-            int prevMode = zoneShader_->shaderDebug();
-            zoneShader_->setShaderDebug(mode);
+            int prevMode = ctx_.zoneShader->shaderDebug();
+            ctx_.zoneShader->setShaderDebug(mode);
 
             // Swap materials to/from debug program
-            irr::s32 debugMat = zoneShader_->getDebugMaterialType();
+            irr::s32 debugMat = ctx_.zoneShader->getDebugMaterialType();
             if (debugMat >= 0) {
                 if (mode > 0 && prevMode == 0) {
                     // Entering debug: swap all per-pixel materials to debug program
-                    diagnostics_->swapToDebugShader(debugMat);
+                    owner_.Diagnostics().swapToDebugShader(debugMat);
                     LOG_INFO(MOD_SHADER, "Swapped all per-pixel materials to debug program {}", debugMat);
                 } else if (mode == 0 && prevMode > 0) {
                     // Leaving debug: restore production materials
-                    diagnostics_->swapFromDebugShader(debugMat);
+                    owner_.Diagnostics().swapFromDebugShader(debugMat);
                     LOG_INFO(MOD_SHADER, "Restored production materials from debug program");
                 }
             }
@@ -308,17 +309,17 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
             LOG_INFO(MOD_SHADER, "Shader debug mode set to {} ({})", mode, name);
         }
     } else if (cmd == "/fire") {
-        if (auto* pm = getParticleManager()) {
+        if (auto* pm = owner_.getParticleManager()) {
             pm->toggleUnifiedFire();
             chat("Fire particles toggled");
         }
     } else if (cmd == "/sky") {
-        toggleSky();
-        chat(fmt::format("Sky rendering: {}", isSkyEnabled() ? "ENABLED" : "DISABLED"));
+        owner_.toggleSky();
+        chat(fmt::format("Sky rendering: {}", owner_.isSkyEnabled() ? "ENABLED" : "DISABLED"));
     } else if (cmd == "/skytype") {
         if (!args.empty()) {
             int type = std::atoi(args.c_str());
-            forceSkyType(static_cast<uint8_t>(type));
+            owner_.forceSkyType(static_cast<uint8_t>(type));
             chat(fmt::format("Sky type forced to {}", type));
         } else {
             chat("Usage: /skytype <0-255>");
@@ -336,21 +337,21 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
         if (!args.empty()) {
             float dist = std::atof(args.c_str());
             if (dist >= 50.0f && dist <= 10000.0f) {
-                setRenderDistance(dist);
+                owner_.setRenderDistance(dist);
                 chat(fmt::format("Render distance: {:.0f}", dist));
             } else {
                 chat("Render distance must be between 50 and 10000");
             }
         } else {
-            chat(fmt::format("Render distance: {:.0f}", getRenderDistance()));
+            chat(fmt::format("Render distance: {:.0f}", owner_.getRenderDistance()));
         }
     } else if (cmd == "/clipdist" || cmd == "/clip" || cmd == "/farplane") {
         if (!args.empty()) {
             float dist = std::atof(args.c_str());
-            setClipDistance(dist);
+            owner_.setClipDistance(dist);
             chat(fmt::format("Clip distance: {:.0f}", dist));
         } else {
-            chat(fmt::format("Clip distance: {:.0f}", getClipDistance()));
+            chat(fmt::format("Clip distance: {:.0f}", owner_.getClipDistance()));
         }
     }
     // --- Profiling/debug ---
@@ -358,21 +359,21 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
     // (eq_commands_movement.cpp, deleted) resolved only there -- added here
     // for the same reason as the renderdist/clipdist aliases above.
     else if (cmd == "/frametiming" || cmd == "/frametime" || cmd == "/ft") {
-        bool newState = !isFrameTimingEnabled();
-        setFrameTimingEnabled(newState);
+        bool newState = !owner_.isFrameTimingEnabled();
+        owner_.setFrameTimingEnabled(newState);
         if (newState) {
             chat("Frame timing profiler ENABLED - check console for breakdown every ~2 seconds");
         } else {
             chat("Frame timing profiler DISABLED");
         }
     } else if (cmd == "/sceneprofile" || cmd == "/sp" || cmd == "/scenebreak") {
-        diagnostics_->runSceneProfile();
+        owner_.Diagnostics().runSceneProfile();
         chat("Scene profile running - check console for breakdown");
     } else if (cmd == "/dumpscene" || cmd == "/ds") {
-        diagnostics_->dumpScene();
+        owner_.Diagnostics().dumpScene();
         chat("Scene dump written to console log");
     } else if (cmd == "/simworker" || cmd == "/sw") {
-        auto info = getSimWorkerDebugInfo();
+        auto info = owner_.getSimWorkerDebugInfo();
         for (const auto& line : info) chat(line);
     }
     // T108: "/pmem" moved off this empty-MemoryReportInput{} path (runLoadDiagnostics
@@ -387,8 +388,8 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
     // the overlay; T300 Leg C had to record its 285-frame combat negative
     // with the chat box and hotbar opaque over the bottom of every frame.
     else if (cmd == "/hideui" || cmd == "/toggleui" || cmd == "/ui") {
-        diagnostics_->toggleAllUI();
-        chat(fmt::format("UI: {}", isAllUIHidden() ? "HIDDEN" : "VISIBLE"));
+        owner_.Diagnostics().toggleAllUI();
+        chat(fmt::format("UI: {}", owner_.isAllUIHidden() ? "HIDDEN" : "VISIBLE"));
     }
     // T313: the scriptable half of the static-UI scroll, for the same
     // reason /hideui exists (T301 Leg D) -- a --script run or a headless
@@ -401,37 +402,37 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
     else if (cmd == "/scroll") {
         chat(EQT::Graphics::StaticUIInput::runScrollCommand(
             args,
-            eventReceiver_ ? eventReceiver_->getMouseX() : 0,
-            eventReceiver_ ? eventReceiver_->getMouseY() : 0,
-            uiLayout_, chatPanelState_, skillsPopupState_, lootState_));
+            ctx_.eventReceiver ? ctx_.eventReceiver->getMouseX() : 0,
+            ctx_.eventReceiver ? ctx_.eventReceiver->getMouseY() : 0,
+            owner_.uiLayout_, owner_.chatPanelState_, owner_.skillsPopupState_, owner_.lootState_));
     }
     else if (cmd == "/newui") {
-        newUIEnabled_ = !newUIEnabled_;
-        chat(fmt::format("New static UI: {}", newUIEnabled_ ? "ENABLED" : "DISABLED"));
+        owner_.newUIEnabled_ = !owner_.newUIEnabled_;
+        chat(fmt::format("New static UI: {}", owner_.newUIEnabled_ ? "ENABLED" : "DISABLED"));
     } else if (cmd == "/newbook") {
-        spellbookState_.isOpen = !spellbookState_.isOpen;
-        if (spellbookState_.isOpen) {
-            inventoryState_.activePopup = PopupType::None;  // Close other popups
+        owner_.spellbookState_.isOpen = !owner_.spellbookState_.isOpen;
+        if (owner_.spellbookState_.isOpen) {
+            owner_.inventoryState_.activePopup = PopupType::None;  // Close other popups
         }
-        chat(fmt::format("New UI spellbook: {}", spellbookState_.isOpen ? "OPEN" : "CLOSED"));
+        chat(fmt::format("New UI spellbook: {}", owner_.spellbookState_.isOpen ? "OPEN" : "CLOSED"));
     } else if (cmd == "/newbookprev") {
-        if (spellbookState_.currentPage > 0) spellbookState_.currentPage--;
+        if (owner_.spellbookState_.currentPage > 0) owner_.spellbookState_.currentPage--;
     } else if (cmd == "/newbooknext") {
-        if (spellbookState_.currentPage < spellbookState_.pageCount() - 1) spellbookState_.currentPage++;
+        if (owner_.spellbookState_.currentPage < owner_.spellbookState_.pageCount() - 1) owner_.spellbookState_.currentPage++;
     } else if (cmd == "/newskills") {
-        skillsPopupState_.isOpen = !skillsPopupState_.isOpen;
-        if (skillsPopupState_.isOpen) {
-            inventoryState_.activePopup = PopupType::None;
-            spellbookState_.isOpen = false;
+        owner_.skillsPopupState_.isOpen = !owner_.skillsPopupState_.isOpen;
+        if (owner_.skillsPopupState_.isOpen) {
+            owner_.inventoryState_.activePopup = PopupType::None;
+            owner_.spellbookState_.isOpen = false;
         }
-        chat(fmt::format("New UI skills: {}", skillsPopupState_.isOpen ? "OPEN" : "CLOSED"));
+        chat(fmt::format("New UI skills: {}", owner_.skillsPopupState_.isOpen ? "OPEN" : "CLOSED"));
     } else if (cmd == "/newinv") {
         // T294: ONE body, shared with the `I` keybind — the toggle used to
         // be written out here and IrrlichtRenderer::toggleInventory() (what
         // `I` actually reaches) was an empty stub, so the key did nothing.
-        toggleInventory();
+        owner_.toggleInventory();
         chat(fmt::format("New UI inventory: {}",
-            isInventoryOpen() ? "OPEN" : "CLOSED"));
+            owner_.isInventoryOpen() ? "OPEN" : "CLOSED"));
     } else if (cmd == "/timestamp" || cmd == "/timestamps" || cmd == "/ts") {
         // T139: dead stub on both ends (confirmed T138) -- "ts" alias added
         // for consistency with the other aliases in this unit even though
@@ -444,14 +445,14 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
     } else if (cmd == "/filter") {
         chat("Filter command not available (WindowManager removed)");
     } else if (cmd == "/reloadeffects" || cmd == "/particlereload" || cmd == "/reloadfx" || cmd == "/reloadparticles") {
-        if (auto* pm = getParticleManager()) {
+        if (auto* pm = owner_.getParticleManager()) {
             pm->reloadSettings();
             chat("Environment effects settings reloaded");
         } else {
             chat("Particle system not available");
         }
     } else if (cmd == "/reloadweather" || cmd == "/weatherreload" || cmd == "/weather_reload") {
-        if (auto* we = getWeatherEffects()) {
+        if (auto* we = owner_.getWeatherEffects()) {
             if (we->reloadConfig()) {
                 chat("Weather effects settings reloaded");
             } else {
@@ -496,7 +497,7 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
     // T139: detaildensity/grass were game-registry aliases (eq_commands_
     // spells.cpp, deleted) resolved only there.
     else if (cmd == "/detail" || cmd == "/detaildensity" || cmd == "/grass") {
-        if (auto* dm = getDetailManager()) {
+        if (auto* dm = owner_.getDetailManager()) {
             if (!args.empty()) {
                 float density = std::atof(args.c_str()) / 100.0f;
                 dm->setDensity(std::max(0.0f, std::min(1.0f, density)));
@@ -506,31 +507,31 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
             }
         }
     } else if (cmd == "/togglegrass") {
-        if (auto* dm = getDetailManager()) {
+        if (auto* dm = owner_.getDetailManager()) {
             using DC = Detail::DetailCategory;
             dm->setCategoryEnabled(DC::Grass, !dm->isCategoryEnabled(DC::Grass));
             chat(fmt::format("Grass: {}", dm->isCategoryEnabled(DC::Grass) ? "ON" : "OFF"));
         }
     } else if (cmd == "/toggleplants") {
-        if (auto* dm = getDetailManager()) {
+        if (auto* dm = owner_.getDetailManager()) {
             using DC = Detail::DetailCategory;
             dm->setCategoryEnabled(DC::Plants, !dm->isCategoryEnabled(DC::Plants));
             chat(fmt::format("Plants: {}", dm->isCategoryEnabled(DC::Plants) ? "ON" : "OFF"));
         }
     } else if (cmd == "/togglerocks") {
-        if (auto* dm = getDetailManager()) {
+        if (auto* dm = owner_.getDetailManager()) {
             using DC = Detail::DetailCategory;
             dm->setCategoryEnabled(DC::Rocks, !dm->isCategoryEnabled(DC::Rocks));
             chat(fmt::format("Rocks: {}", dm->isCategoryEnabled(DC::Rocks) ? "ON" : "OFF"));
         }
     } else if (cmd == "/toggledebris") {
-        if (auto* dm = getDetailManager()) {
+        if (auto* dm = owner_.getDetailManager()) {
             using DC = Detail::DetailCategory;
             dm->setCategoryEnabled(DC::Debris, !dm->isCategoryEnabled(DC::Debris));
             chat(fmt::format("Debris: {}", dm->isCategoryEnabled(DC::Debris) ? "ON" : "OFF"));
         }
     } else if (cmd == "/season") {
-        if (auto* dm = getDetailManager()) {
+        if (auto* dm = owner_.getDetailManager()) {
             if (!args.empty()) {
                 Detail::Season season = Detail::Season::Default;
                 if (args == "snow" || args == "winter") season = Detail::Season::Snow;
@@ -544,7 +545,7 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
             }
         }
     } else if (cmd == "/detailinfo") {
-        if (auto* dm = getDetailManager()) {
+        if (auto* dm = owner_.getDetailManager()) {
             chat(dm->getDebugInfo());
         }
     }
@@ -552,7 +553,7 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
     // T139: gov/budget were game-registry aliases (eq_commands_movement.cpp,
     // deleted) resolved only there.
     else if (cmd == "/governor" || cmd == "/gov" || cmd == "/budget") {
-        auto* gov = getGovernor();
+        auto* gov = owner_.getGovernor();
         if (!gov) { chat("Governor not available"); return; }
         if (args.empty() || args == "status") {
             chat(fmt::format("Governor: {} | avg {:.1f}ms | target {:.1f}ms ({:.0f} fps) | ratio {:.2f}{}",
@@ -579,7 +580,7 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
             chat("Usage: /governor [status|fps <N>|force green|yellow|red|auto]");
         }
     } else if (cmd == "/placeholder") {
-        if (getGovernor()) {
+        if (owner_.getGovernor()) {
             chat("Zone placeholder is managed automatically during progressive loading");
         }
     }

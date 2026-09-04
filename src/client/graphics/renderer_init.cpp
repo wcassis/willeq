@@ -256,6 +256,8 @@ IrrlichtRenderer::IrrlichtRenderer()
     overlays_ = std::make_unique<OverlaysComponent>(ctx_, *this);
     // L05 (Batch L): the player family -- movement, collision, camera.
     playerCamera_ = std::make_unique<PlayerCameraComponent>(ctx_, *this);
+    // L06 (Batch L): the slash family -- registry 3.
+    slash_ = std::make_unique<SlashCommandsComponent>(ctx_, *this);
 }
 
 IrrlichtRenderer::~IrrlichtRenderer() {
