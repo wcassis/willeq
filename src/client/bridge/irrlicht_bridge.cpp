@@ -578,6 +578,12 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         break;
     case state::GameEventType::VisionChanged:
         if (renderer_) {
+            // T334 (board B046): the payload is the buff set RECOMPUTED by
+            // EverQuest's BuffManager fade callback (core/everquest.cpp), so
+            // it is absolute -- 0 means "no vision buffs left", and
+            // setVisionType() now applies it over the racial base instead of
+            // refusing every decrease. Pinned by
+            // tests/test_vision_buff_fade_wire.cpp.
             auto& d = std::get<state::VisionChangedData>(event.data);
             renderer_->setVisionType(
                 static_cast<EQT::Graphics::VisionType>(d.visionType));

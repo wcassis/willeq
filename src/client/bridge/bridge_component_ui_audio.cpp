@@ -618,6 +618,42 @@ void eqt::bridge::BridgeComponent::UpdateDayNightState() {
 	}
 }
 
+// T334 (board B045): the per-frame listener sync, moved here verbatim from
+// PostRenderTick() apart from the forward vector.
+//
+// D20c2's choice of the PLAYER position over the camera position stands and is
+// deliberate: the player's ears are at the player, and in third person the
+// camera can sit far behind, which would make a nearby NPC sound distant.
+// (That is why PlayerCameraComponent::getCameraTransform(), written "for the
+// audio listener" and never called, was deleted by this unit rather than
+// wired -- see refactor/T334_camera_audio_and_vision.md. Should a camera-based
+// listener ever be wanted, it is a listening measurement against the official
+// client, not an argument.)
+//
+// What WAS broken is the orientation. HeadingDeg() returns DEGREES, and the
+// old inline conversion divided by 512 as though it were wire units and then
+// negated cos, so the listener faced a mirrored direction turning 1.42x too
+// fast and every positioned sound panned to the wrong side. The convention now
+// comes from one shared helper, pinned by tests/test_spatial_audio.cpp.
+void eqt::bridge::BridgeComponent::UpdateAudioListener(float deltaTime) {
+	if (!ctx_.audio_manager) return;
+
+	const glm::vec3 listenerPos(ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ());
+
+	ctx_.audio_manager->setListenerPosition(
+		listenerPos,
+		EQT::Audio::eqHeadingToListenerForward(ctx_.self.HeadingDeg()),
+		glm::vec3(0.0f, 0.0f, 1.0f)  // Up is +Z in EQ coordinates
+	);
+
+	if (ctx_.zone_audio_manager && owner_.m_loading_phase == LoadingPhase::COMPLETE) {
+		ctx_.zone_audio_manager->update(deltaTime, listenerPos, m_is_daytime);
+	}
+
+	// D20c2: Volume hotkeys handled via intents from renderer
+	// (MusicVolumeChangeIntent / EffectsVolumeChangeIntent in ProcessBridgeIntents)
+}
+
 void eqt::bridge::BridgeComponent::PlaySound(uint32_t soundId) {
 	// Don't play sounds during zone loading
 	if (ctx_.audio_manager && owner_.m_loading_phase == LoadingPhase::COMPLETE) {

@@ -348,9 +348,23 @@ void PlayerCameraComponent::setPlayerRace(uint16_t raceId) {
     // Zone light colors updated by SimulationWorker via visionType in SimulationInput
 }
 
+// T334 (board B046): APPLY, not upgrade.
+//
+// The one production caller is the VisionChanged bridge arm
+// (bridge/irrlicht_bridge.cpp), and the one publisher is EverQuest's
+// BuffManager fade callback (core/everquest.cpp), which RECOMPUTES the vision
+// from every buff still up and publishes the absolute result. Under the old
+// "only upgrade, never downgrade" rule that publish could only ever raise
+// vision, so a fade -- the very thing the callback exists to report -- was a
+// no-op and an Ultravision buff lasted the whole session.
+//
+// The racial floor is not lost: it lives in baseVision_ (setPlayerRace), and
+// resetVisionToBase() restores it here before the buff value is applied on
+// top. A published Normal means "no vision BUFFS left", never "no vision".
 void PlayerCameraComponent::setVisionType(VisionType vision) {
     if (owner_.isLoading()) return;
-    // Only upgrade vision, never downgrade below base
+    resetVisionToBase();
+    // Buffs raise vision above the racial base; they never lower it below.
     if (vision > ctx_.currentVision) {
         ctx_.currentVision = vision;
         LOG_INFO(MOD_GRAPHICS, "Vision upgraded to: {}",
@@ -502,37 +516,6 @@ std::string PlayerCameraComponent::getCameraModeString() const {
     }
 }
 
-void PlayerCameraComponent::getCameraTransform(float& posX, float& posY, float& posZ,
-                                           float& forwardX, float& forwardY, float& forwardZ,
-                                           float& upX, float& upY, float& upZ) const {
-    if (!ctx_.camera) {
-        // Default values if camera not available
-        posX = posY = posZ = 0.0f;
-        forwardX = 0.0f; forwardY = 0.0f; forwardZ = -1.0f;
-        upX = 0.0f; upY = 1.0f; upZ = 0.0f;
-        return;
-    }
-
-    // Get camera position (already in EQ coordinates: x, y, z where z is up)
-    irr::core::vector3df pos = ctx_.camera->getPosition();
-    posX = pos.X;
-    posY = pos.Y;
-    posZ = pos.Z;
-
-    // Get camera target to compute forward direction
-    irr::core::vector3df target = ctx_.camera->getTarget();
-    irr::core::vector3df forward = target - pos;
-    forward.normalize();
-    forwardX = forward.X;
-    forwardY = forward.Y;
-    forwardZ = forward.Z;
-
-    // Get camera up vector
-    irr::core::vector3df up = ctx_.camera->getUpVector();
-    upX = up.X;
-    upY = up.Y;
-    upZ = up.Z;
-}
 
 
 } // namespace Graphics

@@ -313,30 +313,10 @@ void eqt::bridge::BridgeComponent::PostRenderTick(float deltaTime) {
 #endif
 
 #ifdef WITH_AUDIO
-	// D20c2: Audio listener at player position, not camera position.
-	// The player's ears are at the player, not the camera. In third-person
-	// the camera can be far behind — placing audio there makes nearby
-	// NPCs sound distant. Player position is game state, no renderer query.
-	if (ctx_.audio_manager) {
-		// Convert EQ heading (0-512 clockwise from north) to forward vector
-		float headingRad = ctx_.self.HeadingDeg() * (2.0f * static_cast<float>(M_PI)) / 512.0f;
-		float forwardX = std::sin(headingRad);
-		float forwardY = -std::cos(headingRad);
-		float forwardZ = 0.0f;
-
-		ctx_.audio_manager->setListenerPosition(
-			glm::vec3(ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ()),
-			glm::vec3(forwardX, forwardY, forwardZ),
-			glm::vec3(0.0f, 0.0f, 1.0f)  // Up is +Z in EQ coordinates
-		);
-
-		if (ctx_.zone_audio_manager && owner_.m_loading_phase == LoadingPhase::COMPLETE) {
-			ctx_.zone_audio_manager->update(deltaTime, glm::vec3(ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ()), m_is_daytime);
-		}
-
-		// D20c2: Volume hotkeys handled via intents from renderer
-		// (MusicVolumeChangeIntent / EffectsVolumeChangeIntent in ProcessBridgeIntents)
-	}
+	// T334 (B045): body moved to UpdateAudioListener() in
+	// bridge_component_ui_audio.cpp, with D20c2's player-position rationale,
+	// and its heading->forward conversion corrected there.
+	UpdateAudioListener(deltaTime);
 #else
 	(void)deltaTime;
 #endif

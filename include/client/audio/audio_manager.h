@@ -21,6 +21,19 @@ class PfsArchive;  // Forward declaration
 
 namespace Audio {
 
+// T334 (board B045): the audio listener's forward vector, derived from the
+// player's heading. EQ world axes are +X east, +Y north, +Z up, and a heading
+// of 0 faces north, so forward is (sin h, cos h, 0) -- the same convention as
+// PlayerCameraComponent::computeMovementVector() and
+// BridgeComponent::HandlePlayerPositionUpdate()'s backward-motion test.
+//
+// headingDeg is DEGREES (what EverQuest's PlayerInfo facade stores and what
+// HeadingDeg() returns), NOT the 0-512 wire units. Before T334 the one caller
+// converted degrees with the 0-512 divisor AND negated cos, so the listener
+// faced a mirrored direction turning 1.42x too fast; the stereo pan of every
+// positioned sound was wrong at every heading but due north.
+glm::vec3 eqHeadingToListenerForward(float headingDeg);
+
 // Forward declarations
 class SoundBuffer;
 class MusicPlayer;

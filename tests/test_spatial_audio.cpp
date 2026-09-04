@@ -19,6 +19,82 @@ static std::string getEqClientPath() {
 static const std::string EQ_PATH = getEqClientPath();
 
 // =============================================================================
+// T334 (board B045): the listener's forward vector
+//
+// PostRenderTick feeds AudioManager::setListenerPosition() a forward vector
+// derived from the player's heading, and SfxManager::playSpatial() pans every
+// positioned sound by it. Before T334 that derivation treated HeadingDeg()'s
+// DEGREES as 0-512 wire units and negated cos, so the listener faced a
+// mirrored direction that turned 1.42x too fast. These pin the convention the
+// rest of the client uses -- +X east, +Y north, heading 0 = north, so
+// forward = (sin h, cos h, 0) -- against the shared helper both now use.
+// No audio device needed.
+// =============================================================================
+
+TEST(ListenerForwardTest, HeadingDegreesMapToTheClientsForwardConvention) {
+    // Due north: +Y, the vector every SpatialAudioTest below hand-writes.
+    glm::vec3 north = eqHeadingToListenerForward(0.0f);
+    EXPECT_NEAR(north.x, 0.0f, 1e-4f);
+    EXPECT_NEAR(north.y, 1.0f, 1e-4f);
+    EXPECT_NEAR(north.z, 0.0f, 1e-4f);
+
+    // Due east: +X. This is the one the 0-512 divisor got most wrong -- it
+    // read 90 degrees as 63 degrees of arc and then mirrored it.
+    glm::vec3 east = eqHeadingToListenerForward(90.0f);
+    EXPECT_NEAR(east.x, 1.0f, 1e-4f);
+    EXPECT_NEAR(east.y, 0.0f, 1e-4f);
+
+    // Due south: -Y.
+    glm::vec3 south = eqHeadingToListenerForward(180.0f);
+    EXPECT_NEAR(south.x, 0.0f, 1e-4f);
+    EXPECT_NEAR(south.y, -1.0f, 1e-4f);
+
+    // Due west: -X.
+    glm::vec3 west = eqHeadingToListenerForward(270.0f);
+    EXPECT_NEAR(west.x, -1.0f, 1e-4f);
+    EXPECT_NEAR(west.y, 0.0f, 1e-4f);
+
+    // Degrees, not wire units: a full 360 comes back to north. Under the old
+    // divisor 360 landed at 253 degrees of arc instead.
+    glm::vec3 wrapped = eqHeadingToListenerForward(360.0f);
+    EXPECT_NEAR(wrapped.x, 0.0f, 1e-4f);
+    EXPECT_NEAR(wrapped.y, 1.0f, 1e-4f);
+}
+
+TEST(ListenerForwardTest, PanningTurnsWithTheListener) {
+    // SfxManager::playSpatial() pans by the 2D cross product
+    //   pan = fwd.x * dy/len - fwd.y * dx/len
+    // so pan is a function of the sound's bearing RELATIVE to the facing. This
+    // asserts that relationship, not which ear is which (that is a listening
+    // measurement, not a unit test): a sound 90 degrees clockwise of the
+    // facing must give the same pan whatever the facing is, and swapping the
+    // side must flip the sign. The old mirrored formula broke both -- it
+    // reversed the sign at heading 0 and, because of the 0-512 divisor, did
+    // not even agree with itself between two headings 90 degrees apart.
+    auto panFor = [](float headingDeg, float dx, float dy) {
+        glm::vec3 fwd = eqHeadingToListenerForward(headingDeg);
+        float len = std::sqrt(dx * dx + dy * dy);
+        return fwd.x * (dy / len) - fwd.y * (dx / len);
+    };
+
+    // Facing north, sound due east; facing east, sound due south; facing
+    // south, sound due west -- the same relative bearing three times.
+    const float a = panFor(0.0f, 50.0f, 0.0f);
+    const float b = panFor(90.0f, 0.0f, -50.0f);
+    const float c = panFor(180.0f, -50.0f, 0.0f);
+    EXPECT_NEAR(a, -1.0f, 1e-4f);
+    EXPECT_NEAR(b, -1.0f, 1e-4f);
+    EXPECT_NEAR(c, -1.0f, 1e-4f);
+
+    // The opposite side flips the sign.
+    EXPECT_NEAR(panFor(0.0f, -50.0f, 0.0f), 1.0f, 1e-4f);
+
+    // Dead ahead and dead astern are both centred.
+    EXPECT_NEAR(panFor(0.0f, 0.0f, 50.0f), 0.0f, 1e-4f);
+    EXPECT_NEAR(panFor(0.0f, 0.0f, -50.0f), 0.0f, 1e-4f);
+}
+
+// =============================================================================
 // Distance Model Tests (don't require audio device for basic checks)
 // =============================================================================
 

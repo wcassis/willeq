@@ -118,24 +118,36 @@ TEST_F(PlayerCameraComponentTest, SwimmingStateRoundTripsOnTheComponentsOwnMembe
     EXPECT_FALSE(renderer.PlayerCamera().isSwimming());
 }
 
-TEST_F(PlayerCameraComponentTest, VisionOnlyUpgradesAndResetsThroughTheComponent) {
+TEST_F(PlayerCameraComponentTest, VisionAppliesTheBuffValueOverTheRacialBase) {
     // baseVision_ moved into the component; currentVision_ stayed on the
     // renderer (renderer_sim_bridge.cpp reads it). setVisionType() is the
-    // bridge forwarder; resetVisionToBase() has zero callers in production and
-    // is reachable ONLY here -- which is the boarded finding: vision can be
-    // upgraded by a buff and never comes back down on its own.
+    // bridge forwarder for the VisionChanged arm.
+    //
+    // T334 (B046): the value it carries is the buff set RECOMPUTED by
+    // EverQuest's fade callback, so it is applied absolutely -- over the
+    // racial base, not over whatever vision happens to be current. The old
+    // "only upgrade, never downgrade" rule made the fade publish a no-op;
+    // see tests/test_vision_buff_fade_wire.cpp for the wire itself.
+    // resetVisionToBase() is no longer a zero-caller knob: setVisionType()
+    // calls it, and it is still reachable here on its own.
     EXPECT_EQ(renderer.getVisionType(), VisionType::Normal);
     EXPECT_EQ(renderer.PlayerCamera().getBaseVision(), VisionType::Normal);
 
     renderer.setVisionType(VisionType::Ultravision);
     EXPECT_EQ(renderer.getVisionType(), VisionType::Ultravision);
 
-    // Downgrade attempts are ignored -- the documented "only upgrade" rule.
+    // A lesser buff value now takes effect -- it is the whole recomputed
+    // answer, not a second buff landing on top of the first.
     renderer.setVisionType(VisionType::Infravision);
-    EXPECT_EQ(renderer.getVisionType(), VisionType::Ultravision);
+    EXPECT_EQ(renderer.getVisionType(), VisionType::Infravision);
+
+    // ...but never below the race's own base.
+    renderer.PlayerCamera().setPlayerRace(8);  // Dwarf -- base Infravision
+    renderer.setVisionType(VisionType::Normal);
+    EXPECT_EQ(renderer.getVisionType(), VisionType::Infravision);
 
     renderer.PlayerCamera().resetVisionToBase();
-    EXPECT_EQ(renderer.getVisionType(), VisionType::Normal);
+    EXPECT_EQ(renderer.getVisionType(), VisionType::Infravision);
 }
 
 // --- The forwarders that stay, each reaching a live component -------------

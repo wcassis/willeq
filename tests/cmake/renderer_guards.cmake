@@ -255,6 +255,13 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_navmesh_overlay_wire PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_navmesh_overlay_wire GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_navmesh_overlay_wire)
+
+    ADD_EXECUTABLE(test_vision_buff_fade_wire
+        test_vision_buff_fade_wire.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_vision_buff_fade_wire PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_vision_buff_fade_wire GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_vision_buff_fade_wire)
 ENDIF()
 
 # T333 (B048): the navmesh overlay's DRAW -- it drew nothing and wiped the 2D

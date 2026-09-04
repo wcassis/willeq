@@ -140,28 +140,33 @@ public:
 	void cycleCameraMode();
 	std::string getCameraModeString() const;
 
-	// Swim/levitate knobs and the vision reset, moved with their members.
-	// ⚠ ALL FOUR OF THESE HAVE ZERO CALLERS, and two of them matter:
-	//   * setSwimUp()/setSwimDown() are the SOLE WRITERS of
-	//     playerMovement_.swimUp/.swimDown, which updatePlayerMovement() reads
-	//     live -- vertical swim control has no producer (L03 correction 17).
-	//   * resetVisionToBase() is the ONLY downgrade path for vision.
-	//     setVisionType() is live (irrlicht_bridge.cpp:582) and only ever
-	//     upgrades, so an Ultravision buff is permanent for the session.
-	// Kept and boarded, not deleted.
+	// T334 (board B046) DELETED setSwimUp(), setSwimDown() and
+	// setLevitating(). L03 correction 17 called the first two "the sole
+	// writers" of playerMovement_.swimUp/.swimDown and concluded vertical swim
+	// control had no producer. It has one, and always did: readInputState()
+	// (renderer_player_physics.cpp, G06 phase 1) polls HotkeyAction::SwimUp /
+	// SwimDown -- bound to [ and ] in hotkey_manager.cpp and in
+	// config/hotkeys.json -- and assigns both flags every frame, exactly as it
+	// does for WASD. Adding an event-driven setter beside a per-frame poll
+	// could only lose the race: the poll overwrites it the next frame, and a
+	// key-DOWN action has nothing to clear the flag on key-up. setLevitating()
+	// was the same shape, duplicated by setSwimmingState()'s levitating
+	// parameter (live, irrlicht_bridge.cpp:629). None had a pushEvent.
+	//
+	// resetVisionToBase() is no longer zero-caller either: setVisionType()
+	// calls it, so a recomputed buff set applies over the racial base
+	// (T334, B046).
 	bool isSwimming() const { return playerMovement_.isSwimming; }
-	void setSwimUp(bool up) { playerMovement_.swimUp = up; }
-	void setSwimDown(bool down) { playerMovement_.swimDown = down; }
-	void setLevitating(bool levitating) { playerMovement_.isLevitating = levitating; }
 	void resetVisionToBase();
 	VisionType getBaseVision() const { return baseVision_; }
 
-	// ⚠ Zero callers. The declaration's own comment on IrrlichtRenderer said
-	// "for audio listener" -- nothing ever asks for it, so the audio listener
-	// is never given the camera transform. Kept and boarded.
-	void getCameraTransform(float& posX, float& posY, float& posZ,
-	                        float& forwardX, float& forwardY, float& forwardZ,
-	                        float& upX, float& upY, float& upZ) const;
+	// T334 (board B045) DELETED getCameraTransform(). Its comment said "for
+	// audio listener", but the audio listener has had a producer since D20c2
+	// and it deliberately uses the PLAYER position, not the camera's: in third
+	// person the camera can sit far behind, which would make a nearby NPC
+	// sound distant. See BridgeComponent::UpdateAudioListener()
+	// (bridge_component_ui_audio.cpp). A camera-based listener would be a
+	// listening measurement against the official client, not this accessor.
 	// ⚠ Zero callers. The vertical FOV the first-person camera is actually
 	// using, in radians -- one answer, so the clamp derivation and the
 	// projection cannot disagree. Kept and boarded.
