@@ -918,9 +918,10 @@ it without taking that measurement first.
 
 - ~~**B055** (A) `src/client/core/everquest.cpp` `InitializeSpellSystem` —
   **a vision buff LANDING still does nothing; only its fade is published.**~~
-  **STRUCK by T339 (2026-09-04) — then PARTLY REOPENED by T345's live run: the
-  hook is registered and correct, but nothing in a live session can reach it.
-  See the T345 note at the end of this item.**
+  ~~**STRUCK by T339 (2026-09-04) — then PARTLY REOPENED by T345's live run: the
+  hook is registered and correct, but nothing in a live session can reach it.**~~
+  **CLOSED by T348 (2026-09-04): the producer exists. See the T348 note at the
+  end of this item.**
   T334 fixed the consumer, so a `VisionChanged` event now applies correctly in
   both directions — but the ONLY publisher of that event tree-wide is the
   `BuffManager` FADE callback. `BuffManager::applyBuff()` has no apply-side
@@ -954,8 +955,8 @@ it without taking that measurement first.
   pin on the registration (pre-fix failing run in the T339 Review; `EverQuest`
   is not constructible in a unit test, so that half has no runtime seam).
   ~~A live capture of the zone-light change is still owed if Will wants it.~~
-  **⚠ T345 (2026-09-04): THE LIVE CAPTURE WAS ATTEMPTED AND FAILED — THE HOOK
-  IS UNREACHABLE LIVE. This half of B055 REOPENS.** `review/T345/`: at forced
+  ~~**⚠ T345 (2026-09-04): THE LIVE CAPTURE WAS ATTEMPTED AND FAILED — THE HOOK
+  IS UNREACHABLE LIVE. This half of B055 REOPENS.**~~ **Fixed by T348 below.** `review/T345/`: at forced
   22:00 night, `#castspell 46` lands (both `SpellAction` packets, `effect_flag=0`
   then `4`), and across six frames — before, twice after, after a re-cast, after
   a `#zone`, after `#nukebuffs` — the zone light never changes and neither
@@ -977,6 +978,33 @@ it without taking that measurement first.
   account is flagged `invulnerable=1` and an invulnerable client REFUSES its own
   `#castspell` — `/say #set invulnerable off` first, and restore it.
   Prov: T339 Review, T345 Review, `review/T345/README.md`.
+
+  **T348 (2026-09-04): CLOSED in code; the live pixel proof is owed and BLOCKED.**
+  The landing sequence was MEASURED from `review/T345/logs/live_session_vision.log`
+  before a line was written. A self-cast that lands produces `ManaChange`, then
+  `SpellAction effect_flag=0`, then `SpellAction effect_flag=4` — and on a re-cast
+  the server slips two `fade=1` `OP_Buff` packets (the old copy, then the 0xFFFFFFFF
+  slot clear) BETWEEN the two. **There is no `OP_Buff` with `fade=0` anywhere in
+  any of the five sessions**, confirming T345: `MakeBuffFadePacket` is the only
+  `OP_Buff` eqemu sends a Titanium client. So the buff list was never updated on
+  landing at all — `setPlayerBuffs()` (plural, the PlayerProfile) is a later,
+  separate delivery, not the landing. The producer therefore went on the
+  **`OP_Action` arm**: `CommandsComponent::ZoneProcessAction` calls the new
+  `PlayerComponent::NoteBuffLandedOnPlayer()` (`player_buffs.cpp`) when
+  `type == 231 && effect_flag == 4 && target == MySpawnId()`. It uses
+  `BuffManager::applyBuff()` — existing public API, **no state-module change** —
+  because the Action packet carries no slot; the duration is computed with
+  `SpellData::calculateDuration(caster_level)` for the same reason. Gated on
+  `isBuffSpell()` (beneficial AND with a duration): `effect_flag == 4` is sent for
+  a RESISTED detrimental spell too, so admitting those would post debuffs that
+  never landed. `tests/test_buff_landing_producer.cpp` (7 tests) replays the
+  measured packets through a real `EverQuest` and asserts on the `VisionChanged`
+  event T339's REAL registered hook publishes into a recording bridge — the whole
+  chain, wire to renderer. Pre-fix: 3 of 7 failed, pasted in the T348 Review.
+  **Still owed: the live capture.** The eqemu lock was held by T350
+  (`/mnt/projects/fable/.eqemu-lock` = `T350 2026-09-04`) for the whole unit, so
+  no session was run and `review/T348/` does not exist. The rig notes above are
+  unchanged and still apply. Prov: T348 Review.
 
   **T338 (2026-09-04): the live pair is captured, and B054 needs nothing
   further.** `review/T338/` holds a baseline plus both keyed toggles at tip
@@ -1009,3 +1037,55 @@ it without taking that measurement first.
   is moved onto the path that actually creates the player entity and a live
   capture shows a Dark Elf seeing in the dark. Prov: T345 Review,
   `review/T345/README.md`.
+
+  **T348 (2026-09-04): PROVEN and FIXED in code; the live capture is owed and
+  BLOCKED.** The lead held, and harder than stated: `IrrlichtRenderer::createEntity()`
+  has **ZERO production callers tree-wide** — every `createEntity` reference in
+  `src/`/`include/`/`tests/` is to the unrelated `EntityRenderer::createEntity`.
+  The live zone load registers every entity through `IrrlichtRenderer::registerEntity()`
+  (`application_zone_loading.cpp:242` threaded, `:352` inline) and post-load spawns
+  arrive on the `EntitySpawned` bridge arm (`irrlicht_bridge.cpp:64`), which calls
+  the same. That is why `[ZONE-IN] setPlayerSpawnId` — set from the same `isPlayer`
+  arm at both sites — is in all five T345 logs and `Player race N -> base vision`
+  is in none. Fix: one call, `playerCamera_->setPlayerRace(raceId)` under
+  `if (result && isPlayer && playerCamera_)` in `registerEntity()`
+  (`renderer_entities.cpp`), the shape `createEntity()` already had. **Territory
+  deviation, stated:** the plan named `zone_load/renderer_zone_load_entities.cpp`;
+  that file preps and builds meshes for entities already registered, never creates
+  one and never sees `isPlayer` — it was not modified. Three tests appended to
+  `tests/test_vision_buff_fade_wire.cpp`: the floor at runtime (Dark Elf ->
+  Ultravision, Human -> Normal, an untold renderer -> Normal, which is why the
+  miss was invisible) plus a source-reader pin on the call being inside
+  `registerEntity()` and on the two live sites still using it. Pre-fix failure in
+  the T348 Review. **Still owed: a live Dark Elf zone-in capture** — the eqemu
+  lock was held by T350 all unit. Prov: T348 Review.
+
+## Added 2026-09-04 by T348 (B055/B056)
+
+- **B057** (C) `src/client/graphics/player/renderer_camera.cpp`
+  `PlayerCameraComponent::setPlayerRace` — **the racial vision table has no
+  oracle, and it disagrees with B056's own board text.** The table puts Wood Elf
+  (4), High Elf (5), Dark Elf (6), Troll (9) and Iksar (128) on Ultravision, and
+  Half Elf (7), Dwarf (8), Ogre (10), Halfling (11), Gnome (12) on Infravision.
+  B056's entry above describes the intent as "Dark Elf Ultravision, Dwarf/Troll/
+  Ogre Infravision" — Troll and Ogre are on the other side in both directions.
+  `grep -rni 'ultravision|infravision' docs/` returns NOTHING, so nothing under
+  `docs/` records the official client's table either way. T348 wired the floor
+  onto the live path (B056) but did NOT touch the table: picking values by
+  argument is exactly the smell `match-the-oracle-dont-infer-it` warns about, and
+  the contract said "the race table only if wrong" without saying what right is.
+  Closes when the table is settled against the official client (a night capture
+  per race is cheap once the eqemu lock is free — one zone-in each, the floor is
+  visible with no buff up) or Will rules on it. Prov: T348 Review.
+
+- **B058** (B) `include/client/spell/spell_manager.h:193`
+  `SpellManager::setOnSpellLand()` — **zero production callers.** The
+  `SpellLandCallback` typedef, the setter and the member all exist;
+  `m_on_spell_land` is invoked at `spell_manager.cpp:1027` and nothing tree-wide
+  ever sets it, so the invocation fires into a permanently-null `std::function`
+  — the exact shape T339 found on `setBuffApplyCallback` (B055). Noticed while
+  siting T348's producer; NOT used for it, because the invocation sits OUTSIDE
+  the `is_success_packet` gate and so fires on the animation packet
+  (`effect_flag == 0`) as well as the landing, which is wrong for any consumer
+  that means "landed". Closes when it is wired to a real consumer (with the gate
+  corrected) or deleted. Prov: T348 Review.

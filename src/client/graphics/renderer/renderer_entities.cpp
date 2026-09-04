@@ -66,6 +66,19 @@ bool IrrlichtRenderer::registerEntity(uint16_t spawnId, uint16_t raceId, const s
     }
     bool result = entityRenderer_->registerEntity(spawnId, raceId, name, x, y, z, heading, isPlayer, gender, appearance, isNPC, isCorpse, serverSize, entityLevel);
 
+    // T348 (board B056): the RACIAL VISION FLOOR, on the path that actually
+    // runs. createEntity() above sets it too, but createEntity() has ZERO
+    // production callers -- grepped tree-wide in T348: the live zone load
+    // registers every entity through registerEntity() (application_zone_loading.cpp,
+    // twice) and post-load spawns come through the EntitySpawned bridge arm
+    // (bridge/irrlicht_bridge.cpp), both of which land here. That is why
+    // "Player race N -> base vision" appears in none of T345's five live
+    // session logs although the player entity is created in every one, and
+    // why a Dark Elf saw exactly as well in the dark as a Human.
+    if (result && isPlayer && playerCamera_) {
+        playerCamera_->setPlayerRace(raceId);
+    }
+
     if (result) {
         ZoneLifecycle().loadedEntityCount()++;
         // Re-enable progressive loading so the multi-frame pipeline picks up
