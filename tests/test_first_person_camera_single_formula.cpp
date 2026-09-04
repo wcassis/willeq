@@ -104,6 +104,63 @@ std::string stripLineComment(const std::string& line) {
     return pos == std::string::npos ? line : line.substr(0, pos);
 }
 
+// G06: resolve the PlayerCameraComponent body that spells the down-pitch floor
+// accessor in the accumulator's TU, and prove something calls it. Returns
+// silently only when both halves hold.
+void assertFloorReaderIsReachable() {
+    const fs::path accumulatorTU = kGraphicsDir / "player" / "renderer_player_physics.cpp";
+    const auto lines = splitLines(readFile(accumulatorTU));
+    const std::string kFloorAccessor = "firstPersonMinLookPitchDegrees";
+
+    // Every enclosing definition of a line that reads the accessor.
+    std::vector<std::string> enclosing;
+    for (size_t i = 0; i < lines.size(); ++i) {
+        if (stripLineComment(lines[i]).find(kFloorAccessor) == std::string::npos) continue;
+        std::string owner;
+        // Walk back to the nearest definition at column 0.
+        const std::string marker = "PlayerCameraComponent::";
+        for (size_t j = i + 1; j-- > 0;) {
+            const std::string& l = lines[j];
+            if (l.rfind("void ", 0) != 0 && l.rfind("bool ", 0) != 0) continue;
+            const auto at = l.find(marker);
+            if (at == std::string::npos) continue;
+            const size_t nameStart = at + marker.size();
+            const size_t paren = l.find('(', nameStart);
+            if (paren == std::string::npos) continue;
+            owner = l.substr(nameStart, paren - nameStart);
+            break;
+        }
+        EXPECT_FALSE(owner.empty())
+            << accumulatorTU << ":" << (i + 1) << " reads " << kFloorAccessor
+            << " but is not inside a PlayerCameraComponent body -- the reachability "
+               "clause cannot resolve an owner, so it cannot guard it.";
+        if (!owner.empty()) enclosing.push_back(owner);
+    }
+
+    ASSERT_FALSE(enclosing.empty())
+        << kFloorAccessor << " is no longer read anywhere in " << accumulatorTU
+        << ". The STORED mouse-look pitch has lost its floor: the control develops an "
+           "invisible dead zone that must be dragged back through before the view moves.";
+
+    for (const auto& owner : enclosing) {
+        // Something else in this TU must call it -- updatePlayerMovement() is
+        // the root, and G06's own order test proves the tree hangs off it.
+        bool called = false;
+        for (size_t i = 0; i < lines.size() && !called; ++i) {
+            const std::string code = stripLineComment(lines[i]);
+            if (code.find("PlayerCameraComponent::" + owner) != std::string::npos) continue;
+            size_t a = code.find_first_not_of(" \t");
+            if (a == std::string::npos) continue;
+            if (code.compare(a, owner.size() + 1, owner + "(") == 0) called = true;
+        }
+        EXPECT_TRUE(called)
+            << owner << "() applies the first-person down-pitch floor in " << accumulatorTU
+            << " but NOTHING IN THAT FILE CALLS IT. The spelling is still there, so the\n"
+               "file-level matcher above is still green -- and vertical mouse-look has "
+               "lost its floor anyway. This is Batch G correction 26.";
+    }
+}
+
 }  // namespace
 
 // Part 1: only the helper's TU may touch camera_ inside a first-person branch.
@@ -193,6 +250,21 @@ TEST(FirstPersonCameraSingleFormula, TunablesAreReferencedFromOneTUOnly) {
             ASSERT_LE(files.size(), 2u) << tunable << " is read by " << files.size()
                 << " translation units; at most the camera formula's TU and the pitch "
                    "accumulator's TU may.";
+            // G06 (Batch G correction 26 -- THE REACHABILITY HALF).
+            //
+            // The matcher above asks only WHICH FILE spells the accessor. That
+            // was sufficient while the accumulator was one 806-line function:
+            // the spelling and the function were the same thing. G06 cut that
+            // function into phases, and the floor clamp now lives inside one of
+            // them -- so the old matcher would go green over a phase that
+            // updatePlayerMovement() no longer calls, i.e. over vertical
+            // mouse-look silently losing its floor, which is exactly the class
+            // of defect this whole file exists to stop. Name the matcher that
+            // would have weakened it (G02 correction 16): "the accessor is
+            // spelled somewhere in renderer_player_physics.cpp". It is replaced
+            // by: the accessor is spelled inside a PlayerCameraComponent body
+            // that some other body in the same TU calls.
+            assertFloorReaderIsReachable();
             continue;
         }
         ASSERT_LE(files.size(), 1u)
