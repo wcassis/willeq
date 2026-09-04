@@ -277,29 +277,28 @@
 276 renderXPBar(*uiRenderer_, uiLayout_, xpBarState_);
 277 uiRenderer_->endFrame();
 278 frameTimings_.staticUI = measureSection();
-279 ctx_.Overlays().drawZoneLineOverlay();
-280 ctx_.Overlays().drawZoneLineBoxLabels();
-281 frameTimings_.zoneLineOverlay = measureSection();
-282 eqtGPUPhaseEnd(2 /* GPUSyncPhase::ParticlesUI */);
-283 ctx_.Rdp().captureFrameForRDP();
-284 if (owner_.softwareCursorTexture_) {
-285 auto* cursor = ctx_.device->getCursorControl();
-286 if (cursor && cursor->isVisible()) {
-287 auto pos = cursor->getPosition();
-288 irr::core::position2di destPos(pos.X, pos.Y);
-289 irr::core::rect<irr::s32> srcRect(0, 0, 8, 10);
-290 ctx_.driver->draw2DImage(owner_.softwareCursorTexture_, destPos, srcRect,
-291 nullptr, irr::video::SColor(255, 255, 255, 255), true);
-292 if (pendingScreenshot_) {
-293 pendingScreenshot_ = false;
-294 owner_.saveScreenshot("screenshot.png");
-295 frameTimings_.postRender = measureSection();
-296 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 11: endScene");
-297 eqtGPUPhaseBegin(3 /* GPUSyncPhase::Swap */);
-298 ctx_.driver->endScene();
-299 eqtGPUPhaseEnd(3 /* GPUSyncPhase::Swap */);
-300 eqtGPUPhaseCollectResults();
-301 frameTimings_.endScene = measureSection();
-302 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 12: frame complete");
-303 FlushThreadLog();
-304 return true;
+279 ctx_.Overlays().drawZoneLineBoxLabels();
+280 frameTimings_.zoneLineOverlay = measureSection();
+281 eqtGPUPhaseEnd(2 /* GPUSyncPhase::ParticlesUI */);
+282 ctx_.Rdp().captureFrameForRDP();
+283 if (owner_.softwareCursorTexture_) {
+284 auto* cursor = ctx_.device->getCursorControl();
+285 if (cursor && cursor->isVisible()) {
+286 auto pos = cursor->getPosition();
+287 irr::core::position2di destPos(pos.X, pos.Y);
+288 irr::core::rect<irr::s32> srcRect(0, 0, 8, 10);
+289 ctx_.driver->draw2DImage(owner_.softwareCursorTexture_, destPos, srcRect,
+290 nullptr, irr::video::SColor(255, 255, 255, 255), true);
+291 if (pendingScreenshot_) {
+292 pendingScreenshot_ = false;
+293 owner_.saveScreenshot("screenshot.png");
+294 frameTimings_.postRender = measureSection();
+295 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 11: endScene");
+296 eqtGPUPhaseBegin(3 /* GPUSyncPhase::Swap */);
+297 ctx_.driver->endScene();
+298 eqtGPUPhaseEnd(3 /* GPUSyncPhase::Swap */);
+299 eqtGPUPhaseCollectResults();
+300 frameTimings_.endScene = measureSection();
+301 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 12: frame complete");
+302 FlushThreadLog();
+303 return true;

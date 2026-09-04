@@ -111,7 +111,7 @@
 //                          updateMapOverlay/drawMapOverlay,
 //                          updateNavmeshOverlay/drawNavmeshOverlay,
 //                          drawFPSCounter, updatePaperdollForFrame,
-//                          drawZoneLineOverlay, drawZoneLineBoxLabels
+//                          drawZoneLineBoxLabels
 //   owner_.Diagnostics()   toggleAllUI, toggleZoneLights, cycleObjectLights,
 //                          toggleWireframe, toggleHUD, toggleNameTags,
 //                          toggleOldModels, logFrameTimings,

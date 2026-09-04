@@ -255,7 +255,7 @@ void FrameComponent::renderParticleEffects() {
               ctx_.particleManager ? ctx_.particleManager->isEnabled() : false,
               ctx_.zoneReady);
     // P52: GPU-sync characterization -- particles+UI phase begins here and
-    // ends after drawZoneLineOverlay() below (checkpoint 10), bracketing
+    // ends after drawZoneLineBoxLabels() below (checkpoint 10), bracketing
     // everything from particle rendering through 2D/UI draw calls. This is
     // a coarser bucket than "particles" and "UI" individually (it also
     // covers the target box/casting bar/debug overlays that run in
@@ -620,8 +620,8 @@ void FrameComponent::renderStaticUI() {
 }
 
 void FrameComponent::renderZoneLineOverlays() {
-    // Draw zone line overlay
-    ctx_.Overlays().drawZoneLineOverlay();
+    // T354 (B042): drawZoneLineOverlay() was called here every frame and
+    // deleted -- its gate member had no writer left, so it drew nothing.
     ctx_.Overlays().drawZoneLineBoxLabels();
     frameTimings_.zoneLineOverlay = measureSection();
 }

@@ -92,22 +92,16 @@ public:
 		irr::scene::ISceneManager* smgr, irr::scene::IMeshSceneNode* node);
 	void drawCollisionDebugLines(float deltaTime);
 
-	// ⚠ L05 measured these five as having ZERO callers tree-wide, in-family
-	// included (K03 correction a), and they are NOT dead code -- they are the
-	// incremental collision-registration API that
-	// src/client/graphics/renderer_zone_draw.cpp:197-198 asserts in a comment
-	// is used "during the background zone loading phases". Only
-	// setupMinimalZoneCollision() is actually called
-	// (renderer_zone_load_objects.cpp:544). Deleting them under §5 would turn a
-	// findable defect into an invisible one (L03 correction 5), so they are
-	// kept, made reachable through PlayerCamera(), and BOARDED. No forwarder:
-	// writing one would keep irrlicht_renderer.h as the API surface for
-	// surface nothing calls, which is what Batch L exists to remove.
-	void addRegionToCollision(size_t regionIdx);
-	void addDoorToCollision(uint8_t doorId);
-	void addObjectToCollision(size_t objIdx);
-	size_t findBspRegionForPoint(float x, float y, float z);
-	void clearCollisionDebugLines();
+	// T354 (B042/B047 batch): the incremental collision-registration API
+	// (addRegionToCollision, addDoorToCollision, addObjectToCollision,
+	// findBspRegionForPoint, clearCollisionDebugLines) is GONE. L05 measured
+	// zero callers tree-wide and kept the five so the decision could be taken
+	// with evidence (B047); T354 re-measured zero and deleted them. Collision
+	// is built ONCE, in setupMinimalZoneCollision() at load step 9 -- the
+	// "progressive" comment in renderer_zone_draw.cpp that motivated keeping
+	// them was false and is now corrected. Nothing streamed in after that step
+	// registers collision; that gap is real and stays on the board.
+
 
 	// T335 test seam. drawCollisionDebugLines()'s only production filler is
 	// addCollisionDebugLine(), which is private and is called from the movement
