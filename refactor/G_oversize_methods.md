@@ -120,3 +120,30 @@ lifetime change; a pinned test's assertion would change.
 26. A text guard whose block moves into a pass needs a REACHABILITY clause
    (the enclosing definition must be invoked by the driver) — otherwise a
    pass nothing calls still spells the guarded condition.
+
+## G06 corrections (2026-09-04)
+
+27. Re-bind cross-phase locals by REFERENCE under their original names
+   (`auto& x = frame.x;`) rather than rewriting bodies to `frame.x` —
+   bodies stay byte-identical and the multiset delta is a table.
+28. Tell the golden normalisation narrowly about the ONE text change the
+   refactor makes (the field list parsed from the header, never
+   hard-coded).
+29. A body-parsing text guard starts collecting only after brace depth goes
+   positive — a multi-line signature otherwise inflates the statement
+   count.
+30. Seams may be blank lines between top-level regions when a file has
+   neither timing brackets nor banners; a struct is warranted only when
+   the locals table shows crossers (G06: 17 of ~60, the first).
+
+## CLOSE-OUT (2026-09-04)
+
+Six of the eight decomposed: `DispatchZonePacket` 880 → 15,
+`ProcessBridgeIntents` 590 → 47, `registerBuiltinCommands` 769 → 23,
+`Application::initialize` 587 → 26, `processFrameRender` 546 → 28,
+`updatePlayerMovement` 806 → 14 — every one pinned by an order/coverage
+golden proved with planted faults in the code. `createDefaultConfig`
+(a data table) left by ruling; the variant loader parked as B052 (a
+search loop whose length is duplication, zero test coverage). No behaviour
+change in any unit; the visual gate and the transform suites are the
+proof.
