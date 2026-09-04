@@ -97,7 +97,7 @@ void eqt::movement::MovementComponent::MoveToEntity(const std::string &name)
 {
 	Entity* entity = ctx_.Entities().FindEntityByName(name);
 	if (entity) {
-		if (EverQuest::s_debug_level >= 1) {
+		if (EverQuest::GetDebugLevel() >= 1) {
 			std::cout << fmt::format("Found entity '{}' at ({:.2f}, {:.2f}, {:.2f})", 
 				entity->name, entity->x, entity->y, entity->z) << std::endl;
 		}
@@ -113,7 +113,7 @@ void eqt::movement::MovementComponent::MoveToEntityWithinRange(const std::string
 {
 	Entity* entity = ctx_.Entities().FindEntityByName(name);
 	if (entity) {
-		if (EverQuest::s_debug_level >= 1) {
+		if (EverQuest::GetDebugLevel() >= 1) {
 			std::cout << fmt::format("Found entity '{}' at ({:.2f}, {:.2f}, {:.2f}), stopping within {:.1f} units", 
 				entity->name, entity->x, entity->y, entity->z, stop_distance) << std::endl;
 		}
@@ -126,7 +126,7 @@ void eqt::movement::MovementComponent::MoveToEntityWithinRange(const std::string
 		
 		// If we're already within range, don't move
 		if (dist <= stop_distance) {
-			if (EverQuest::s_debug_level >= 1) {
+			if (EverQuest::GetDebugLevel() >= 1) {
 				std::cout << fmt::format("Already within range ({:.1f} <= {:.1f})", dist, stop_distance) << std::endl;
 			}
 			return;
@@ -158,7 +158,7 @@ void eqt::movement::MovementComponent::MoveToEntityWithinRange(const std::string
 		float target_y = ctx_.self.PosY() + dy * move_ratio;
 		float target_z = ctx_.self.PosZ() + dz * move_ratio;
 		
-		if (EverQuest::s_debug_level >= 2) {
+		if (EverQuest::GetDebugLevel() >= 2) {
 			LOG_DEBUG(MOD_MAIN, "Predictive targeting: entity at ({:.1f},{:.1f},{:.1f}), velocity ({:.1f},{:.1f},{:.1f})", entity->x, entity->y, entity->z, entity->delta_x, entity->delta_y, entity->delta_z);
 			LOG_DEBUG(MOD_MAIN, "Predicted position in {:.1f}s: ({:.1f},{:.1f},{:.1f})", time_to_reach, predicted_x, predicted_y, predicted_z);
 		}
@@ -173,7 +173,7 @@ void eqt::movement::MovementComponent::MoveToEntityWithinRange(const std::string
 			ctx_.game_state.player().setMoving(true);
 			ctx_.self.SetHeadingLocal(CalculateHeading(ctx_.self.PosX(), ctx_.self.PosY(), predicted_x, predicted_y));
 			
-			if (EverQuest::s_debug_level >= 1) {
+			if (EverQuest::GetDebugLevel() >= 1) {
 				LOG_DEBUG(MOD_MAIN, "Non-blocking combat movement initiated");
 			}
 		} else {
@@ -245,7 +245,7 @@ void eqt::movement::MovementComponent::StartCombatMovement(const std::string &na
 		ctx_.game_state.combat().setInCombatMovement(true);
 		ctx_.game_state.combat().setLastCombatMovementUpdate(std::chrono::steady_clock::now());
 
-		if (EverQuest::s_debug_level >= 1) {
+		if (EverQuest::GetDebugLevel() >= 1) {
 			std::cout << fmt::format("Starting combat movement to '{}' with stop distance {:.1f}",
 				entity->name, stop_distance) << std::endl;
 		}
@@ -263,7 +263,7 @@ void eqt::movement::MovementComponent::StartCombatMovement(uint16_t entity_id)
 	// Find the entity
 	auto it = ctx_.entities.find(entity_id);
 	if (it == ctx_.entities.end()) {
-		if (EverQuest::s_debug_level >= 1) {
+		if (EverQuest::GetDebugLevel() >= 1) {
 			LOG_DEBUG(MOD_MAIN, "StartCombatMovement: Entity {} not found", entity_id);
 		}
 		return;
@@ -278,7 +278,7 @@ void eqt::movement::MovementComponent::StartCombatMovement(uint16_t entity_id)
 	ctx_.game_state.combat().setCombatTarget(entity.name);
 	ctx_.game_state.combat().setInCombatMovement(true);
 
-	if (EverQuest::s_debug_level >= 1) {
+	if (EverQuest::GetDebugLevel() >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Starting combat movement to {} (ID: {})", entity.name, entity_id);
 	}
 
@@ -416,7 +416,7 @@ void eqt::movement::MovementComponent::Face(float x, float y, float z)
 	// Calculate heading to face the given position
 	float new_heading = CalculateHeading(ctx_.self.PosX(), ctx_.self.PosY(), x, y);
 	
-	if (EverQuest::s_debug_level >= 2) {
+	if (EverQuest::GetDebugLevel() >= 2) {
 		LOG_DEBUG(MOD_MAIN, "Face: current pos ({:.1f},{:.1f}), target ({:.1f},{:.1f}), old heading {:.1f}°, new heading {:.1f}°", ctx_.self.PosX(), ctx_.self.PosY(), x, y, ctx_.self.HeadingDeg(), new_heading);
 	}
 	
@@ -430,7 +430,7 @@ void eqt::movement::MovementComponent::FaceEntity(const std::string &name)
 {
 	Entity* entity = ctx_.Entities().FindEntityByName(name);
 	if (entity) {
-		if (EverQuest::s_debug_level >= 2) {
+		if (EverQuest::GetDebugLevel() >= 2) {
 			std::cout << fmt::format("Facing entity '{}'", entity->name) << std::endl;
 		}
 		Face(entity->x, entity->y, entity->z);
@@ -442,7 +442,7 @@ void eqt::movement::MovementComponent::FaceEntity(const std::string &name)
 void eqt::movement::MovementComponent::MoveTo(float x, float y, float z)
 {
 	// Trace who's calling MoveTo
-	if (EverQuest::s_debug_level >= 1 && std::abs(x - ctx_.self.PosX()) < 0.1f && std::abs(y - ctx_.self.PosY()) < 0.1f) {
+	if (EverQuest::GetDebugLevel() >= 1 && std::abs(x - ctx_.self.PosX()) < 0.1f && std::abs(y - ctx_.self.PosY()) < 0.1f) {
 		LOG_DEBUG(MOD_MAIN, "WARNING: MoveTo called with current position! target=({:.2f},{:.2f},{:.2f}) current=({:.2f},{:.2f},{:.2f})", x, y, z, ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ());
 	}
 	
@@ -455,7 +455,7 @@ void eqt::movement::MovementComponent::MoveTo(float x, float y, float z)
 	// Send immediate position update to show the heading change
 	SendPositionUpdate();
 	
-	if (EverQuest::s_debug_level >= 1) {
+	if (EverQuest::GetDebugLevel() >= 1) {
 		LOG_DEBUG(MOD_MAIN, "MoveTo: Setting target=({:.2f}, {:.2f}, {:.2f}) from current=({:.2f}, {:.2f}, {:.2f}), heading={:.1f}, m_game_state.player().isMoving()={}", 
 			x, y, z, ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ(), ctx_.self.HeadingDeg(), ctx_.game_state.player().isMoving());
 	}
@@ -484,7 +484,7 @@ void eqt::movement::MovementComponent::StopMovement()
 
 		SendPositionUpdate();
 
-		if (EverQuest::s_debug_level >= 1) {
+		if (EverQuest::GetDebugLevel() >= 1) {
 			std::cout << "Movement stopped" << std::endl;
 		}
 	}

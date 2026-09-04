@@ -12,15 +12,15 @@
 // (m_x -> ctx_.x / owner_.m_x, Foo() -> owner_.Foo(), an EverQuest static ->
 // EverQuest::Static).
 //
-// `owner_` is the TRANSITION handle: the moved code still reaches EverQuest
-// members and methods that have not been extracted yet -- the loot cluster
-// (m_loot_items, m_pending_loot_slots, whose owner K11 decides), the
-// m_pending_scribe_* trio (written here,
-// read by the OP_MemorizeSpell arm of DispatchZonePacket, which is K09's), and
-// the output/accessor primitives AddChatSystemMessage(), QueuePacket(),
-// UpdateInventoryStats(), GetLevel()/GetClass()/GetPlatinum()/... EverQuest
-// declares `friend class eqt::merchant::MerchantComponent` for exactly that.
-// K-final removes both the handle and the friendship.
+// T341: the `owner_` TRANSITION handle and the
+// `friend class eqt::merchant::MerchantComponent` line are BOTH GONE. K13
+// took this family to zero owner_.m_ reaches; its last two handle uses were
+// the PUBLIC string lookups, now ctx_.strings, and its last EverQuest-scoped
+// private name was s_debug_level, now the public EverQuest::GetDebugLevel()
+// (the K13 (jj) substitution). Both axes of the K13 (ii) friend test are
+// empty. The loot cluster lives in eqt::bridge::BridgeComponent (K11) and the
+// m_pending_scribe_* trio in eqt::zone::ZoneComponent (K09), reached through
+// ctx_.Bridge()/ctx_.Zone().
 //
 // What DID move as state: m_trainer_skill_caps (T280). It is referenced by
 // this family only -- the one hit elsewhere is a comment in
@@ -54,7 +54,11 @@ namespace merchant {
 
 class MerchantComponent {
 public:
-	MerchantComponent(ClientContext& ctx, EverQuest& owner) : ctx_(ctx), owner_(owner) {}
+	// T341: the EverQuest& transition handle is GONE -- this family reaches
+	// zero EverQuest private members and names no EverQuest-scoped private
+	// name (the two-axis rule, K13 correction (ii) / B039). It is the
+	// second component to pass both axes, after eqt::gm::GmComponent.
+	explicit MerchantComponent(ClientContext& ctx) : ctx_(ctx) {}
 
 	// ---- Inventory packet handlers and senders (were private on EverQuest)
 	void ZoneProcessCharInventory(const EQ::Net::Packet &p);
@@ -154,7 +158,6 @@ public:
 
 private:
 	ClientContext& ctx_;
-	EverQuest& owner_;
 
 	// Trainer state, moved out of EverQuest: referenced by this family only.
 	// T280: the per-skill CAPS the server sent in its OP_GMTraining reply

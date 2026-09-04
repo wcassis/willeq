@@ -15,11 +15,12 @@
 // become ClientContext services. That is why eq_chat.cpp was split rather
 // than moved whole.
 //
-// `owner_` is the TRANSITION handle: the moved code still reaches EverQuest
-// members and methods that have not been extracted yet (m_last_tell_sender,
-// m_string_db, AddChatSystemMessage(), GetStringMessage()). EverQuest
-// declares `friend class eqt::chat::ChatComponent` for exactly that.
-// K-final removes both the handle and the friendship.
+// T341 (B038 cluster 4): the `owner_` TRANSITION handle and the
+// `friend class eqt::chat::ChatComponent` line are BOTH GONE.
+// m_last_tell_sender moved here (EverQuest's GetLastTellSender() forwards);
+// the m_string_db reads became ctx_.strings.Db()/ctx_.strings.GetString*()
+// over the K14 service; AddChatSystemMessage() had already become
+// ctx_.out.System() at K13. Both axes of the K13 (ii) friend test are empty.
 
 #include "client/client_context.h"
 #include "client/eq_enums.h"
@@ -40,7 +41,11 @@ namespace chat {
 
 class ChatComponent {
 public:
-	ChatComponent(ClientContext& ctx, EverQuest& owner) : ctx_(ctx), owner_(owner) {}
+	// T341: the EverQuest& transition handle is GONE -- this family reaches
+	// zero EverQuest private members and names no EverQuest-scoped private
+	// name (the two-axis rule, K13 correction (ii) / B039). It is the
+	// second component to pass both axes, after eqt::gm::GmComponent.
+	explicit ChatComponent(ClientContext& ctx) : ctx_(ctx) {}
 
 	// Public chat interface. Were public on EverQuest; K03 deleted those
 	// declarations and retargeted the callers.
@@ -82,9 +87,18 @@ public:
 	void ZoneProcessFormattedMessage(const EQ::Net::Packet &p);
 	void ZoneProcessSimpleMessage(const EQ::Net::Packet &p);
 
+	// T341 (B038 cluster 4): m_last_tell_sender moved here from EverQuest --
+	// this family is its only writer. EverQuest keeps GetLastTellSender() as
+	// a forwarder for the 3 action-handler and 7 test call sites that read it
+	// on that receiver (T18: EqActionHandler::getLastTellSender()).
+	const std::string& GetLastTellSender() const { return m_last_tell_sender; }
+
 private:
 	ClientContext& ctx_;
-	EverQuest& owner_;
+
+	// T341: last tell sender, for /reply. Written by
+	// ZoneProcessChannelMessage, read through EverQuest's forwarder.
+	std::string m_last_tell_sender;
 
 	// Chat state, moved out of EverQuest: referenced by this family only.
 	// T29: see SetUnrecognizedCommandFallback() above.

@@ -24,6 +24,11 @@
 // m_entities itself is the map, and STAYS a core member (ctx_.entities) --
 // this component owns the handlers that mutate it, not the storage. See the
 // K06 Review.
+//
+// T341 (board B038): the "stay on EverQuest" clauses above are HISTORY, not
+// the current shape. This family now reaches EverQuest not at all -- the
+// `owner_` handle and the `friend class` line are both gone; see the T341
+// note in this family's component header.
 
 #include "client/eq.h"
 #include "client/entities/entities_component.h"
@@ -60,12 +65,12 @@
 
 void eqt::entities::EntitiesComponent::ZoneProcessZoneSpawns(const EQ::Net::Packet &p)
 {
-	owner_.SetLoadingPhase(LoadingPhase::ZONE_RECEIVING_SPAWNS);
+	ctx_.Bridge().SetLoadingPhase(LoadingPhase::ZONE_RECEIVING_SPAWNS);
 
 	// ZoneSpawns contains multiple Spawn_Struct entries
 	// Based on titanium_structs.h, Spawn_Struct is 385 bytes
 
-	if (EverQuest::s_debug_level >= 2) {
+	if (EverQuest::GetDebugLevel() >= 2) {
 		LOG_DEBUG(MOD_ENTITY, "Received zone spawns packet, size: {} bytes", p.Length());
 	}
 	
@@ -155,7 +160,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessZoneSpawns(const EQ::Net::Pack
 		if (entity.heading >= 360.0f) entity.heading -= 360.0f;
 
 		// Debug logging for current player at level 1+
-		if (EverQuest::s_debug_level >= 1 && entity.name == ctx_.character) {
+		if (EverQuest::GetDebugLevel() >= 1 && entity.name == ctx_.character) {
 			LOG_DEBUG(MOD_MOVEMENT, "POS S->C ZoneSpawns [SELF] spawn_id={} name='{}'", entity.spawn_id, entity.name);
 			LOG_DEBUG(MOD_MOVEMENT, "POS S->C ZoneSpawns [SELF] raw_heading={} -> server_heading={:.2f}deg -> entity.heading={:.2f}deg (isNPC={})",
 				raw_heading, server_heading, entity.heading, isNPC);
@@ -231,7 +236,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessZoneSpawns(const EQ::Net::Pack
 				}
 
 				// Debug: Zone-in position tracking at level 1
-				if (EverQuest::s_debug_level >= 1) {
+				if (EverQuest::GetDebugLevel() >= 1) {
 					LOG_INFO(MOD_ZONE, "[ZONE-IN] Found our spawn in ZoneSpawns: ID={} Name='{}'", ctx_.self.MySpawnId(), ctx_.character);
 					LOG_INFO(MOD_ZONE, "[ZONE-IN] Spawn entity: pos=({:.2f},{:.2f},{:.2f}) heading={:.2f} size={:.2f}",
 					         entity.x, entity.y, entity.z, entity.heading, entity.size);
@@ -239,7 +244,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessZoneSpawns(const EQ::Net::Pack
 					         ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ(), ctx_.self.HeadingDeg());
 				}
 
-				if (EverQuest::s_debug_level >= 2) {
+				if (EverQuest::GetDebugLevel() >= 2) {
 					LOG_DEBUG(MOD_ENTITY, "=== FOUND OUR CHARACTER ===");
 					LOG_DEBUG(MOD_ENTITY, "Name: '{}' Spawn ID: {}", ctx_.character, ctx_.self.MySpawnId());
 					LOG_DEBUG(MOD_ENTITY, "Position: x={:.2f} y={:.2f} z={:.2f} heading={:.2f}",
@@ -252,7 +257,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessZoneSpawns(const EQ::Net::Pack
 #ifdef EQT_HAS_GRAPHICS
 				// Notify bridge of player spawn ID (D17b: bridge is sole path to renderer)
 				if (ctx_.bridge) {
-					if (EverQuest::s_debug_level >= 1) {
+					if (EverQuest::GetDebugLevel() >= 1) {
 						LOG_INFO(MOD_ZONE, "[ZONE-IN] Publishing PlayerSpawnIdSet({}) from ZoneSpawns", ctx_.self.MySpawnId());
 					}
 					ctx_.bridge->pushEvent(eqt::state::GameEvent(
@@ -294,7 +299,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessZoneSpawns(const EQ::Net::Pack
 					ctx_.game_state.player().collisionZOffset() <= 0.0f);
 				// Don't update heading from spawn data as it may be scaled differently
 
-				if (EverQuest::s_debug_level >= 1) {
+				if (EverQuest::GetDebugLevel() >= 1) {
 					LOG_INFO(MOD_ZONE, "[ZONE-IN] Updated client pos from spawn: ({:.2f},{:.2f},{:.2f}) (render/node-origin Z, wire Z was {:.2f}) heading unchanged={:.2f}",
 					         ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ(), entity.z, ctx_.self.HeadingDeg());
 				}
@@ -514,7 +519,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessSendZonepoints(const EQ::Net::
 
 			zonePoints.push_back(zp);
 
-			if (EverQuest::s_debug_level >= 3) {
+			if (EverQuest::GetDebugLevel() >= 3) {
 				LOG_TRACE(MOD_ZONE, "  Zone point {}: zone={} pos=({},{},{}) heading={}",
 					zp.number, zp.targetZoneId, zp.targetX, zp.targetY, zp.targetZ, zp.heading);
 			}
@@ -813,7 +818,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessSpawnAppearance(const EQ::Net:
 				it->second.guild_id = normalized;
 			}
 			if (spawn_id == ctx_.self.MySpawnId()) {
-				owner_.m_guild_id = normalized;
+				ctx_.Guild().SetGuildID(normalized);
 				LOG_INFO(MOD_ENTITY, "Our guild id changed to {} via SpawnAppearance", normalized);
 			}
 		}

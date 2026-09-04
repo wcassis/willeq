@@ -121,7 +121,7 @@ void eqt::zone::ZoneComponent::ZoneProcessNewZone(const EQ::Net::Packet &p)
 				}
 			}
 
-			if (EverQuest::s_debug_level >= 3) {
+			if (EverQuest::GetDebugLevel() >= 3) {
 				LOG_DEBUG(MOD_MAIN, "Zone environment: ztype={}, sky={}, fog RGB=({},{},{}), clip={}-{}",
 					m_zone_type, m_zone_sky_type,
 					m_zone_fog_red[0], m_zone_fog_green[0], m_zone_fog_blue[0],
@@ -165,7 +165,7 @@ void eqt::zone::ZoneComponent::ZoneProcessNewZone(const EQ::Net::Packet &p)
 				eqt::state::GameEventType::ZoneChanged, std::move(data)));
 		}
 
-		if (EverQuest::s_debug_level >= 2) {
+		if (EverQuest::GetDebugLevel() >= 2) {
 			LOG_DEBUG(MOD_MAIN, "Received new zone data for: {} (zone_id={})",
 				ctx_.self.CurrentZoneName(), ctx_.self.CurrentZoneId());
 		}
@@ -194,7 +194,7 @@ void eqt::zone::ZoneComponent::ZoneProcessNewZone(const EQ::Net::Packet &p)
 		}
 #endif
 	} else {
-		if (EverQuest::s_debug_level >= 2) {
+		if (EverQuest::GetDebugLevel() >= 2) {
 			LOG_DEBUG(MOD_MAIN, "Received new zone data");
 		}
 	}
@@ -239,9 +239,9 @@ void eqt::zone::ZoneComponent::ZoneProcessNewZone(const EQ::Net::Packet &p)
 
 void eqt::zone::ZoneComponent::ZoneProcessPlayerProfile(const EQ::Net::Packet &p)
 {
-	owner_.SetLoadingPhase(LoadingPhase::ZONE_RECEIVING_PROFILE);
+	ctx_.Bridge().SetLoadingPhase(LoadingPhase::ZONE_RECEIVING_PROFILE);
 
-	if (EverQuest::s_debug_level >= 2) {
+	if (EverQuest::GetDebugLevel() >= 2) {
 		LOG_DEBUG(MOD_MAIN, "PlayerProfile received, size={} bytes", p.Length());
 	}
 
@@ -276,7 +276,7 @@ void eqt::zone::ZoneComponent::ZoneProcessPlayerProfile(const EQ::Net::Packet &p
 	// read by nothing; the result is now STORED, same once-per-profile shape
 	// as m_guild_id (T133) and m_gm_mode (T148) below. Offsets and the full
 	// rationale live in client/player/profile_appearance.h, where a test pins them.
-	owner_.m_profile_appearance = EQT::ParseProfileAppearance(p, base);
+	m_profile_appearance = EQT::ParseProfileAppearance(p, base);
 
 	// Experience points
 	uint32_t exp = p.GetUInt32(base + 2268);     // offset 2268
@@ -410,7 +410,7 @@ void eqt::zone::ZoneComponent::ZoneProcessPlayerProfile(const EQ::Net::Packet &p
 	ctx_.self.SetHeading(new_heading);
 
 	// Debug: Zone-in position tracking
-	if (EverQuest::s_debug_level >= 1) {
+	if (EverQuest::GetDebugLevel() >= 1) {
 		LOG_INFO(MOD_ZONE, "[ZONE-IN] PlayerProfile position: server=({:.2f},{:.2f},{:.2f}) heading={:.2f} -> client=({:.2f},{:.2f},{:.2f}) heading={:.2f}",
 		         server_x, server_y, z, heading, ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ(), ctx_.self.HeadingDeg());
 		// Additional logging in consistent format for position debugging
@@ -423,7 +423,7 @@ void eqt::zone::ZoneComponent::ZoneProcessPlayerProfile(const EQ::Net::Packet &p
 	// Sync initial position to bridge (important for Player mode)
 	if (ctx_.bridge) {
 		float heading512 = ctx_.self.HeadingDeg() * 512.0f / 360.0f;
-		if (EverQuest::s_debug_level >= 1) {
+		if (EverQuest::GetDebugLevel() >= 1) {
 			LOG_INFO(MOD_ZONE, "[ZONE-IN] Publishing PlayerMoved from PlayerProfile: ({:.2f},{:.2f},{:.2f}) heading={:.2f}deg -> {:.2f} (512 fmt)",
 			         ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ(), ctx_.self.HeadingDeg(), heading512);
 		}
@@ -454,9 +454,9 @@ void eqt::zone::ZoneComponent::ZoneProcessPlayerProfile(const EQ::Net::Packet &p
 	// describes the player, so no spawn-id matching or ordering hazard
 	// applies. See refactor/T133_guild_id_population.md Review for the
 	// live-log evidence this is the correct, and only necessary, hook.
-	owner_.m_guild_id = guild_id;
+	ctx_.Guild().SetGuildID(guild_id);
 	// T317: same once-per-login shape as m_guild_id above.
-	owner_.m_guild_rank = guild_rank;
+	ctx_.Guild().SetGuildRank(guild_rank);
 	// T148: the login-time GM-mode gate. Same shape as m_guild_id above --
 	// parsed from the player's own profile packet, assigned once, no spawn-id
 	// matching. This is the ONLY place m_gm_mode is written: the check is
@@ -497,7 +497,7 @@ void eqt::zone::ZoneComponent::ZoneProcessPlayerProfile(const EQ::Net::Packet &p
 				skills[i] = p.GetUInt32(base + skill_offset + (i * 4));
 				if (skills[i] > 0) {
 					nonzero_count++;
-					if (EverQuest::s_debug_level >= 2) {
+					if (EverQuest::GetDebugLevel() >= 2) {
 						LOG_DEBUG(MOD_MAIN, "Skill[{}] = {}", i, skills[i]);
 					}
 				}
@@ -548,7 +548,7 @@ void eqt::zone::ZoneComponent::ZoneProcessPlayerProfile(const EQ::Net::Packet &p
 	// It's not in the standard PlayerProfile_Struct, so we'll use default
 	float size = 6.0f;  // Default player size
 	
-	if (EverQuest::s_debug_level >= 2) {
+	if (EverQuest::GetDebugLevel() >= 2) {
 		LOG_DEBUG(MOD_MAIN, "=== CHARACTER DATA ===");
 		LOG_DEBUG(MOD_MAIN, "Name: {} {} (Level {} {} {})",
 			name, last_name, level, eqt::strings::GetClassName(class_), eqt::strings::GetRaceName(race));
@@ -608,7 +608,7 @@ void eqt::zone::ZoneComponent::ZoneProcessPlayerProfile(const EQ::Net::Packet &p
 	ctx_.entities[ctx_.self.MySpawnId()] = self_entity;
 	ctx_.Player().SyncEntityToGameState(self_entity);
 
-	if (EverQuest::s_debug_level >= 1) {
+	if (EverQuest::GetDebugLevel() >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Added self to entity list: {} (ID: {})", self_entity.name, ctx_.self.MySpawnId());
 	}
 
@@ -635,7 +635,7 @@ void eqt::zone::ZoneComponent::ZoneProcessPlayerProfile(const EQ::Net::Packet &p
 					scribed_count++;
 				}
 			}
-			if (EverQuest::s_debug_level >= 1) {
+			if (EverQuest::GetDebugLevel() >= 1) {
 				LOG_DEBUG(MOD_SPELL, "Loaded {} spells from spellbook", scribed_count);
 			}
 		}
@@ -648,7 +648,7 @@ void eqt::zone::ZoneComponent::ZoneProcessPlayerProfile(const EQ::Net::Packet &p
 			}
 			ctx_.spell_manager->setSpellGems(mem_spells.data(), SPELL_GEM_COUNT);
 
-			if (EverQuest::s_debug_level >= 1) {
+			if (EverQuest::GetDebugLevel() >= 1) {
 				LOG_DEBUG(MOD_SPELL, "Memorized spells:");
 				for (size_t i = 0; i < SPELL_GEM_COUNT; ++i) {
 					if (mem_spells[i] != 0xFFFFFFFF && mem_spells[i] != 0) {
@@ -688,7 +688,7 @@ void eqt::zone::ZoneComponent::ZoneProcessPlayerProfile(const EQ::Net::Packet &p
 			// sends OP_Buff for a buff that is merely still running.
 			ctx_.Player().PublishPlayerBuffs(buffs.data(), BUFF_COUNT);
 
-			if (EverQuest::s_debug_level >= 1) {
+			if (EverQuest::GetDebugLevel() >= 1) {
 				size_t active_count = 0;
 				for (size_t i = 0; i < BUFF_COUNT; ++i) {
 					if (buffs[i].spellid != 0 && buffs[i].spellid != 0xFFFFFFFF && buffs[i].effect_type != 0) {
@@ -742,7 +742,7 @@ void eqt::zone::ZoneComponent::ZoneProcessAnimation(const EQ::Net::Packet &p)
 	uint8_t anim_speed = p.GetUInt8(4);
 	uint8_t anim_id = p.GetUInt8(5);
 
-	if (EverQuest::s_debug_level >= 2 || IsTrackedTarget(spawn_id)) {
+	if (EverQuest::GetDebugLevel() >= 2 || IsTrackedTarget(spawn_id)) {
 		LOG_DEBUG(MOD_ENTITY, "[EMOTE] spawn_id={}, speed={}, anim_id={}", spawn_id, anim_speed, anim_id);
 	}
 
@@ -1008,7 +1008,7 @@ void eqt::zone::ZoneComponent::ZoneProcessAnimation(const EQ::Net::Packet &p)
 			data.playThrough = playThrough;
 			ctx_.bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::EntityAnimationEvent, std::move(data)));
-			if (EverQuest::s_debug_level >= 2 || IsTrackedTarget(spawn_id)) {
+			if (EverQuest::GetDebugLevel() >= 2 || IsTrackedTarget(spawn_id)) {
 				LOG_DEBUG(MOD_ENTITY, "[EMOTE] Set animation '{}' on spawn_id={} (anim_id={}, weaponSkill={})",
 					animCode, spawn_id, anim_id, primaryWeaponSkill);
 			}
@@ -1034,7 +1034,7 @@ void eqt::zone::ZoneComponent::ZoneProcessGuildMOTD(const EQ::Net::Packet &p)
 	}
 
 	if (!ctx_.game_state.world().isClientReady()) {
-		owner_.SetLoadingPhase(LoadingPhase::ZONE_PLAYER_READY, "Finalizing connection...");
+		ctx_.Bridge().SetLoadingPhase(LoadingPhase::ZONE_PLAYER_READY, "Finalizing connection...");
 		ZoneSendClientReady();
 		ctx_.game_state.world().setClientReady(true);  // T286: only store
 
@@ -1066,7 +1066,7 @@ void eqt::zone::ZoneComponent::CheckZoneRequestPhaseComplete()
 	    m_guild_tribute_count > 0 &&
 	    !m_req_client_spawn_sent) {
 
-		owner_.SetLoadingPhase(LoadingPhase::ZONE_REQUEST_PHASE);
+		ctx_.Bridge().SetLoadingPhase(LoadingPhase::ZONE_REQUEST_PHASE);
 		LOG_INFO(MOD_ZONE, "Zone Request phase complete, sending ReqClientSpawn");
 
 		// Move to Player Spawn Request phase

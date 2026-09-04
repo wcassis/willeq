@@ -43,6 +43,7 @@
 // touch zone state that now lives here. Transition scaffolding too.
 
 #include "client/client_context.h"
+#include "client/player/profile_appearance.h"  // T341: m_profile_appearance
 #include "client/zone_lines.h"
 #include "common/net/daybreak_connection.h"
 
@@ -70,6 +71,14 @@ namespace zone {
 class ZoneComponent {
 public:
 	ZoneComponent(ClientContext& ctx, EverQuest& owner) : ctx_(ctx), owner_(owner) {}
+
+	// T341 (B038 cluster 4): the player's own PlayerProfile appearance.
+	// ZoneProcessPlayerProfile is the only writer; EverQuest forwards
+	// GetProfileAppearance()/SetProfileAppearance() here for the action layer
+	// and the tests. CHECK .valid BEFORE USE (T167).
+	const EQT::ProfileAppearance& GetProfileAppearance() const { return m_profile_appearance; }
+	void SetProfileAppearance(const EQT::ProfileAppearance& appearance) { m_profile_appearance = appearance; }
+
 
 	// Movement history for anti-cheat. Built by the movement family
 	// (MovementComponent::UpdateMovement) and seeded by ZoneSendZoneEntry.
@@ -447,6 +456,16 @@ private:
 	// GetGMMode() for the full contract (login-time only, deliberately
 	// stale, NOT an account-privilege flag).
 	bool m_gm_mode = false;
+
+	// T341 (B038 cluster 4): m_profile_appearance moved here from EverQuest.
+	// ZoneProcessPlayerProfile (zone_entry.cpp) is its ONLY writer; EverQuest
+	// keeps GetProfileAppearance()/SetProfileAppearance() as forwarders for
+	// eq_action_handler_spells_trade.cpp's /appearance round trip and the
+	// six test sites in tests/test_profile_appearance.cpp.
+	// T167: the seven PlayerProfile appearance fields. CHECK .valid BEFORE
+	// USE -- zero is a legal value for every field, so it is the only thing
+	// separating an unknown appearance from a real all-zero one.
+	EQT::ProfileAppearance m_profile_appearance;
 
 	std::deque<MovementHistoryEntry> m_movement_history;
 	uint32_t m_last_movement_history_send = 0;

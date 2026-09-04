@@ -29,11 +29,13 @@
 // m_zone_server_port (read by EverQuest::ConnectToZone, the zone family) and
 // m_zone_to_zone_in_progress / m_replay_suppressed_sends (shared; K09 decides).
 //
-// `owner_` is the TRANSITION handle for those and for the EverQuest primitives
-// the moved bodies still call -- SetLoadingPhase(), SetPosition(),
-// SetHeading(), DisconnectFromZone(), ConnectToZone(). EverQuest declares
-// `friend class eqt::login_world::LoginWorldComponent` for exactly that;
-// K-final removes both.
+// T341: the `owner_` TRANSITION handle and the
+// `friend class eqt::login_world::LoginWorldComponent` line are BOTH GONE.
+// SetLoadingPhase() became ctx_.Bridge().SetLoadingPhase() (B038 cluster 2),
+// ConnectToZone() became ctx_.lifecycle.ConnectToZone() (cluster 3), and
+// m_zone_server_host/m_zone_server_port moved here (cluster 4), with
+// EverQuest's two T09 getters forwarding. Both axes of the K13 (ii) friend
+// test are empty.
 //
 // The reference-returning getters below (LoginManager(), WorldConnection(),
 // WorldServerHost(), ...) are the mirror image: EverQuest::TickNetwork(),
@@ -57,7 +59,11 @@ namespace login_world {
 
 class LoginWorldComponent {
 public:
-	LoginWorldComponent(ClientContext& ctx, EverQuest& owner) : ctx_(ctx), owner_(owner) {}
+	// T341: the EverQuest& transition handle is GONE -- this family reaches
+	// zero EverQuest private members and names no EverQuest-scoped private
+	// name (the two-axis rule, K13 correction (ii) / B039). It is the
+	// second component to pass both axes, after eqt::gm::GmComponent.
+	explicit LoginWorldComponent(ClientContext& ctx) : ctx_(ctx) {}
 
 	// Initiate login server connection (call after graphics init to avoid timeout during slow startup)
 	void ConnectToLogin();
@@ -69,6 +75,12 @@ public:
 
 	// Read-only observers of login/world state (T09). Trivial inline
 	// returns of existing members -- no new storage, no logic.
+	// T341 (B038 cluster 4): the zone server address this family parsed out
+	// of OP_ZoneServerInfo. EverQuest's GetZoneServerHost()/GetZoneServerPort()
+	// (T09) forward here, and so does EverQuest::ConnectToZone().
+	const std::string& GetZoneServerHost() const { return m_zone_server_host; }
+	uint16_t GetZoneServerPort() const { return m_zone_server_port; }
+
 	uint32_t GetAccountId() const { return m_dbid; }
 	const std::string& GetSessionKey() const { return m_key; }
 	bool IsWorldReady() const { return m_world_ready; }
@@ -172,6 +184,13 @@ private:
 	bool m_world_ready = false;
 	bool m_enter_world_sent = false;
 
+	// T341 (B038 cluster 4): m_zone_server_host/m_zone_server_port moved here
+	// from EverQuest. This family's ZoneServerInfo handler is their only
+	// writer; EverQuest::ConnectToZone() and the two T09 read-only accessors
+	// (4 test sites) read them back through the getters above.
+	std::string m_zone_server_host;
+	uint16_t m_zone_server_port = 0;
+
 	// World server state for reconnection
 	std::string m_world_server_host;
 
@@ -190,7 +209,6 @@ private:
 	char m_ucs_connection_type = 0;
 
 	ClientContext& ctx_;
-	EverQuest& owner_;
 };
 
 }  // namespace login_world

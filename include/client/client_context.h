@@ -28,6 +28,9 @@
 #include "client/player_facade.h"
 // K14: the fourth context service -- the eqstr lookup surface.
 #include "client/eq_strings.h"
+// T341: the fifth context service -- the session lifecycle entry points and
+// the three lifecycle flags (B038 cluster 3).
+#include "client/lifecycle_facade.h"
 
 #include <cstdint>
 #include <map>
@@ -139,6 +142,12 @@ struct ClientContext {
 	// LoadStringFiles over EverQuest's own m_string_db (was 4 owner_. uses:
 	// commands 2, merchant 1, chat 1).
 	eqt::StringDb& strings;
+	// T341 (B038 cluster 3): the fifth context service -- RequestQuit,
+	// TickNetwork, Start/StopUpdateLoop, OnGameStateComplete, ConnectToZone,
+	// SetSneak and the three lifecycle flags (m_update_running,
+	// m_pending_logout_disconnect, m_zone_session_established). Was 20
+	// owner_. uses across five families.
+	eqt::LifecycleFacade& lifecycle;
 
 	// K13: four more shared members promoted out of the owner_.m_* residue.
 	// Each was reached through the transition handle by two or three families

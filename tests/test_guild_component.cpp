@@ -114,10 +114,11 @@ TEST_F(GuildComponentTest, SendersRefuseOnTheComponentWhenNotInAGuild) {
     EXPECT_TRUE(AnyContains(DrainSystemMessages(bridge), "You are not in a guild."));
 }
 
-TEST_F(GuildComponentTest, ComponentReadsGuildIdAndRankThroughTheOwnerHandle) {
-    // m_guild_id/m_guild_rank stay on EverQuest and are written by the zone
-    // family. The moved bodies reach them as owner_.m_guild_id -- so a profile
-    // replayed into EverQuest must unblock the component's guards.
+TEST_F(GuildComponentTest, ComponentReadsGuildIdAndRankWrittenByTheZoneFamily) {
+    // T341: m_guild_id/m_guild_rank are this component's own members now; the
+    // zone family writes them through ctx_.Guild().SetGuildID()/SetGuildRank()
+    // and EverQuest's GetGuildID()/GetGuildRank() forward here. A profile
+    // replayed into EverQuest must still unblock the component's guards.
     LoadProfile(eq, /*guild_id=*/77, /*guild_rank=*/EQ::guild::kRankOfficer);
     ASSERT_EQ(eq.GetGuildID(), 77u);
     ASSERT_EQ(eq.GetGuildRank(), EQ::guild::kRankOfficer);

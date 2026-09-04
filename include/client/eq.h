@@ -277,13 +277,17 @@ public:
 	bool IsFullyZonedIn() const { return m_player_facade.IsFullyZonedIn(); }
 	bool IsZoneChangeApproved() const { return m_game_state.world().zoneChangeApproved(); }
 
-	// Loading phase tracking (covers entire pre-gameplay process)
-	LoadingPhase GetLoadingPhase() const { return m_loading_phase; }
-	void SetLoadingPhase(LoadingPhase phase, const char* statusText = nullptr);
-	float GetLoadingProgress() const;
-	const char* GetLoadingStatusText() const;
-	bool IsGameStateReady() const { return static_cast<int>(m_loading_phase) >= static_cast<int>(LoadingPhase::ZONE_AWAITING_CONFIRM); }
-	bool IsGraphicsReady() const { return m_loading_phase == LoadingPhase::COMPLETE; }
+	// Loading phase tracking (covers entire pre-gameplay process).
+	// T341 (B038 cluster 2): the state machine and its store are
+	// eqt::bridge::BridgeComponent's -- it signals the loading thread and
+	// publishes ZoneLoading. These six FORWARD: Application drives the
+	// loading screen through them and ~90 test sites read this receiver.
+	LoadingPhase GetLoadingPhase() const { return m_bridge_component->GetLoadingPhase(); }
+	void SetLoadingPhase(LoadingPhase phase, const char* statusText = nullptr) { m_bridge_component->SetLoadingPhase(phase, statusText); }
+	float GetLoadingProgress() const { return m_bridge_component->GetLoadingProgress(); }
+	// GetLoadingStatusText() kept NO forwarder: zero callers here (Mechanism 5).
+	bool IsGameStateReady() const { return m_bridge_component->IsGameStateReady(); }
+	bool IsGraphicsReady() const { return m_bridge_component->IsGraphicsReady(); }
 	void OnGameStateComplete();  // Called when game state setup finishes, triggers graphics loading
 	void OnGraphicsComplete();   // Called when graphics loading finishes, enables gameplay
 	void DumpEntityAppearance(uint16_t spawn_id) const;
@@ -311,7 +315,9 @@ public:
 	// D20c4: Quit signaling — Application checks this flag
 	bool IsQuitRequested() const { return m_quit_requested; }
 	void RequestQuit() { m_quit_requested = true; }
-	const std::string& GetLastTellSender() const { return m_last_tell_sender; }
+	// T341: m_last_tell_sender is eqt::chat::ChatComponent's (its only
+	// writer); forwarder for the action layer (T18) and the tests.
+	const std::string& GetLastTellSender() const { return m_chat->GetLastTellSender(); }
 	void QueuePacket(uint16_t opcode, EQ::Net::DynamicPacket* packet);
 	// K13: m_world_objects moved into eqt::entities::EntitiesComponent --
 	// read it as eq.Entities().GetWorldObjects().
@@ -327,8 +333,10 @@ public:
 
 	// Read-only observers of login/world state (T09). Trivial inline
 	// returns of existing members -- no new storage, no logic.
-	const std::string& GetZoneServerHost() const { return m_zone_server_host; }
-	uint16_t GetZoneServerPort() const { return m_zone_server_port; }
+	// T341: both are eqt::login_world::LoginWorldComponent's (its
+	// ZoneServerInfo handler is their only writer); forwarders.
+	const std::string& GetZoneServerHost() const { return m_login_world->GetZoneServerHost(); }
+	uint16_t GetZoneServerPort() const { return m_login_world->GetZoneServerPort(); }
 
 	// Pending group invite handling (Phase 7.5: read from GameState)
 	bool HasPendingGroupInvite() const;
@@ -435,7 +443,8 @@ public:
 	// T133: populated from the player's own PlayerProfile packet
 	// (ZoneProcessPlayerProfile, eq_zone_entry.cpp). 0 means "not in a guild" -- every
 	// SendGuild*() sender in eq_guild.cpp guards on that, correctly.
-	uint32_t GetGuildID() const { return m_guild_id; }
+	// T341: m_guild_id is eqt::guild::GuildComponent's; forwarder (~14 sites).
+	uint32_t GetGuildID() const { return m_guild->GetGuildID(); }
 
 	// T317: the player's own guild rank, in the TITANIUM encoding the wire and
 	// the profile use -- 0 = member, 1 = officer, 2 = leader, 9
@@ -446,7 +455,8 @@ public:
 	// common/patches/titanium.cpp:1494 -- a Titanium client cannot see any
 	// finer rank than that. See client/guild_packet_bodies.h for what the
 	// guild opcodes actually do with a rank byte.
-	uint8_t GetGuildRank() const { return m_guild_rank; }
+	// T341: m_guild_rank is eqt::guild::GuildComponent's; forwarder (7 sites).
+	uint8_t GetGuildRank() const { return m_guild->GetGuildRank(); }
 
 	// T167: the player's own appearance, from the SAME parse site as
 	// m_guild_id and m_gm_mode above. CHECK .valid BEFORE USE -- zero is a
@@ -456,8 +466,10 @@ public:
 	// Unlike GetGMMode() this is NOT deliberately stale: it is re-set after a
 	// /appearance send, because eqemu applies the whole body and Save()s, so
 	// what we sent IS what the profile holds. See client/player/profile_appearance.h.
-	const EQT::ProfileAppearance& GetProfileAppearance() const { return m_profile_appearance; }
-	void SetProfileAppearance(const EQT::ProfileAppearance& appearance) { m_profile_appearance = appearance; }
+	// T341: m_profile_appearance is eqt::zone::ZoneComponent's
+	// (ZoneProcessPlayerProfile is its only writer); forwarders.
+	const EQT::ProfileAppearance& GetProfileAppearance() const { return m_zone->GetProfileAppearance(); }
+	void SetProfileAppearance(const EQT::ProfileAppearance& appearance) { m_zone->SetProfileAppearance(appearance); }
 
 	// Game state access (new state management system)
 	eqt::state::GameState& GetGameState() { return m_game_state; }
@@ -503,37 +515,35 @@ public:
 
 	// Keyboard state
 
-	// Friend classes for system access. K13: eqt::gm::GmComponent is GONE from
-	// this list -- it is the first component to reach ZERO owner_. uses of any
-	// kind and zero EverQuest-scoped private names, and it dropped the
-	// EverQuest& ctor parameter with the friendship.
+	// Friend classes for system access.
 	//
-	// K13 correction: friendship is NOT tested by the owner_. count alone.
-	// merchant and commands both reach zero owner_.m_ (their only handle uses
-	// are the two PUBLIC string-DB lookups) yet still need the friend line for
-	// the PRIVATE STATIC EverQuest::s_debug_level, which every component
-	// names by qualification, not through owner_. (K14 moved FormatPrice and
-	// DumpPacket, the two other statics this note used to cite, out to
-	// eqt::strings -- s_debug_level alone still justifies the line, and
-	// still does for every other component here.) The residue table in
-	// refactor/K13_context_services.md records both axes.
+	// The friend test is TWO-AXIS (K13 correction (ii), board B039): a
+	// component needs friendship if it reaches an EverQuest PRIVATE member
+	// through the handle (`owner_.m_x`) OR names an EverQuest-scoped private
+	// name by QUALIFICATION (`EverQuest::s_debug_level`, a private static or
+	// nested type) -- the second is invisible to any `owner_.` census.
+	//
+	// T341 censused both axes for all twelve components and removed EIGHT
+	// lines (guild, chat, merchant, entities, login_world, player, commands,
+	// bridge; gm went at K13). The 134 `EverQuest::s_debug_level`
+	// qualifications inside the families became the PUBLIC
+	// `EverQuest::GetDebugLevel()` -- same static, the K13 (jj) substitution
+	// -- which is what emptied axis 2. THREE lines remain, each for a named
+	// reason: group and movement read the private m_test_bypass_send_guard
+	// (the T88 seam, B038's last cluster), and zone binds the PRIVATE
+	// &EverQuest::ZoneOnStatusChangeReconnectDisabled in two std::binds.
+	// eqt::bridge::BridgeComponent lost its friendship but KEEPS its
+	// `EverQuest& owner_`: it passes it by reference to
+	// EQ::castRefusalMessage(EverQuest&, ...), which needs no private access.
 	friend class CombatManager;
 	friend class TradeManager;
-	friend class eqt::guild::GuildComponent;  // K01 transition; K-final removes it
-	friend class eqt::chat::ChatComponent;    // K03 transition; K-final removes it
-	friend class eqt::group::GroupComponent;  // K04 transition; K-final removes it
-	friend class eqt::merchant::MerchantComponent;  // K05 transition; K-final removes it
-	friend class eqt::entities::EntitiesComponent;  // K06 transition; K-final removes it
-	friend class eqt::movement::MovementComponent;  // K07 transition; K-final removes it
-	friend class eqt::login_world::LoginWorldComponent;  // K10 transition; K-final removes it
-	friend class eqt::player::PlayerComponent;  // K08 transition; K-final removes it
-	friend class eqt::zone::ZoneComponent;  // K09 transition; K-final removes it
-	friend class eqt::bridge::BridgeComponent;  // K11 transition; K-final removes it
-	friend class eqt::commands::CommandsComponent;  // K12 transition; K-final removes it
+	friend class eqt::group::GroupComponent;  // T88 seam: m_test_bypass_send_guard
+	friend class eqt::movement::MovementComponent;  // T88 seam: m_test_bypass_send_guard
+	friend class eqt::zone::ZoneComponent;  // private ZoneOnStatusChangeReconnectDisabled
 
-	// String database for EQ message lookups (works in all modes). K14:
-	// LoadStringFiles moved to eqt::StringDb -- see Strings().
-	const EQT::StringDatabase& GetStringDatabase() const { return m_string_db; }
+	// String database (all modes). K14: LoadStringFiles moved to eqt::StringDb
+	// -- see Strings(). T341: GetStringDatabase() DELETED, zero callers
+	// tree-wide (Mechanism 5); its two readers go through Strings().Db().
 
 	// S04: Pre-allocate spell system at startup (spell DB, buff manager, spell effects, spell type processor)
 	// Must be called after SetEQClientPath(). Returns false if spell DB fails to load.
@@ -568,10 +578,12 @@ public:
 	                  EQT::Graphics::IZoneLoadSurface* renderer,
 	                  eqt::bridge::GameStateBridge* bridge);
 	void ShutdownGraphics();
-	void SetConstrainedConfig(const EQT::Graphics::ConstrainedRendererConfig& config);
+	// T341 (cluster 1): both bodies moved with the renderer-lifetime state
+	// they write; forwarders for Application, their only caller.
+	void SetConstrainedConfig(const EQT::Graphics::ConstrainedRendererConfig& config) { m_bridge_component->SetConstrainedConfig(config); }
 	// D20e3: GetRenderer() removed — EverQuest no longer holds a renderer pointer
 	// D20e2: Application owns loading status; EverQuest signals it via this pointer
-	void SetLoadingStatus(EQT::Graphics::LoadingStatus* status) { m_loading_status_ptr = status; }
+	void SetLoadingStatus(EQT::Graphics::LoadingStatus* status) { m_bridge_component->SetLoadingStatus(status); }
 	// D20e2: Flag for Application to detect re-zone loading requests
 	bool ConsumeZoneLoadRequest() { bool v = m_zone_load_requested; m_zone_load_requested = false; return v; }
 	// U07c3: SetWindowManager removed — old UI deleted
@@ -614,10 +626,9 @@ private:
 	// Debug level
 	static int s_debug_level;
 
-	// Zone server state (written by LoginWorldComponent's ZoneServerInfo
-	// handler, read by ConnectToZone below)
-	std::string m_zone_server_host;
-	uint16_t m_zone_server_port = 0;
+	// T341: m_zone_server_host/m_zone_server_port moved into
+	// eqt::login_world::LoginWorldComponent, the handler that writes them;
+	// ConnectToZone() below reads them back through its getters.
 
 	// Zone server connection
 	void ConnectToZone();
@@ -643,9 +654,8 @@ private:
 	// MovementComponent::Test_GetLastComputedPositionUpdate).
 	bool m_test_bypass_send_guard = false;
 
-	// Loading phase tracking (covers entire pre-gameplay process)
-	LoadingPhase m_loading_phase = LoadingPhase::DISCONNECTED;
-	const char* m_loading_status_text = "";
+	// T341: m_loading_phase/m_loading_status_text moved into
+	// eqt::bridge::BridgeComponent with their state machine.
 
 	// Zone state
 	bool m_zone_session_established = false;
@@ -733,15 +743,8 @@ private:
 
 	// Pending group invite
 
-	// Chat state - for reply to tell
-	std::string m_last_tell_sender;
-
 
 	// Movement and position state
-
-	// T167: the seven PlayerProfile appearance fields. See
-	// GetProfileAppearance().
-	EQT::ProfileAppearance m_profile_appearance;
 
 	// T170/T171: what we send as our inspect message. eqemu never tells a
 	// Titanium client its own stored message, so this client keeps its own --
@@ -749,14 +752,10 @@ private:
 	std::string m_inspect_message;
 
 	// Guild state. K01: the pending-invite trio moved into GuildComponent.
-	// m_guild_id/m_guild_rank STAY -- written by the zone family
-	// (eq_zone_entry.cpp, eq_entities.cpp), read by the public getters.
-	// K15 (B019): m_guild_name DELETED -- zero references tree-wide. Restore
-	// only alongside BOTH a wire source and a reader.
-	uint32_t m_guild_id = 0;
-	// T317: Titanium rank encoding (0 member / 1 officer / 2 leader / 9 none).
-	// 9 == GUILD_RANK_NONE_TI is the correct "not in a guild" default.
-	uint8_t m_guild_rank = 9;
+	// T341 (B038 cluster 4): m_guild_id/m_guild_rank followed them there --
+	// GetGuildID()/GetGuildRank() above forward. K15 (B019): m_guild_name
+	// DELETED -- zero references tree-wide. Restore only alongside BOTH a
+	// wire source and a reader.
 
 
 	// P28: the bulk of this block (eq client/config paths, quit flag, hotbar
@@ -846,15 +845,11 @@ public:
 
 private:
 #ifdef EQT_HAS_GRAPHICS
-	// Genuinely renderer-lifetime-only state: raw pointers Application wires
-	// up around InitGraphics/ShutdownGraphics, the constrained-rendering
-	// (NxNxN) startup preset/config, the loading-thread progress signal, and
-	// the re-zone handshake flag consumed only from the graphics render loop.
-	bool m_graphics_initialized = false;
-	EQT::Graphics::ConstrainedRenderingPreset m_constrained_preset = EQT::Graphics::ConstrainedRenderingPreset::OrangePi;  // Constrained rendering preset (startup-only)
-	std::optional<EQT::Graphics::ConstrainedRendererConfig> m_constrained_config;  // Custom constrained config (from NxNxN spec)
-	// D20e2: Loading thread owned by Application; EverQuest holds pointer to signal it
-	EQT::Graphics::LoadingStatus* m_loading_status_ptr = nullptr;
+	// T341 (cluster 1): m_graphics_initialized, m_constrained_preset,
+	// m_constrained_config and m_loading_status_ptr moved into
+	// eqt::bridge::BridgeComponent, their only reader and writer (16 owner_.
+	// uses). m_zone_load_requested stays: the re-zone handshake flag consumed
+	// only from the graphics render loop, via ConsumeZoneLoadRequest() above.
 	bool m_zone_load_requested = false;  // Set by re-zone, consumed by Application
 #endif
 
@@ -882,6 +877,11 @@ private:
 	eqt::PacketSender m_packet_sender;
 	// K14: the fourth context service, over m_string_db (declared above).
 	eqt::StringDb m_strings;
+	// T341 (B038 cluster 3): the fifth context service -- bound calls to the
+	// seven lifecycle entry points and references to the three lifecycle
+	// flags. include/client/lifecycle_facade.h says why it binds rather than
+	// holds.
+	eqt::LifecycleFacade m_lifecycle;
 	// K01: declared last -- every member m_ctx references is declared above.
 	eqt::ClientContext m_ctx;
 	std::unique_ptr<eqt::guild::GuildComponent> m_guild;

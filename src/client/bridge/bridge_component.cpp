@@ -113,7 +113,7 @@
 bool eqt::bridge::BridgeComponent::InitGraphics(int width, int height,
                              EQT::Graphics::IZoneLoadSurface* renderer,
                              eqt::bridge::GameStateBridge* bridge) {
-	if (owner_.m_graphics_initialized) {
+	if (m_graphics_initialized) {
 		return true;
 	}
 
@@ -142,10 +142,10 @@ bool eqt::bridge::BridgeComponent::InitGraphics(int width, int height,
 	config.regionMapsPath = m_region_maps_path;
 	config.windowTitle = "WillEQ - " + ctx_.character;
 	config.lighting = false;
-	config.constrainedPreset = owner_.m_constrained_preset;
-	if (owner_.m_constrained_config) {
+	config.constrainedPreset = m_constrained_preset;
+	if (m_constrained_config) {
 		config.constrainedPreset = EQT::Graphics::ConstrainedRenderingPreset::Custom;
-		config.constrainedConfig = *owner_.m_constrained_config;
+		config.constrainedConfig = *m_constrained_config;
 	}
 
 	if (!renderer->initLoadingScreen(config)) {
@@ -155,7 +155,7 @@ bool eqt::bridge::BridgeComponent::InitGraphics(int width, int height,
 	}
 
 	// Pump network after Irrlicht device creation (can take 0.5-1s on ARM)
-	owner_.TickNetwork();
+	ctx_.lifecycle.TickNetwork();
 
 	// Set collision map via bridge (shared_ptr copy, P35 — see eq.h)
 	if (ctx_.Zone().ZoneMap() && ctx_.bridge) {
@@ -179,7 +179,7 @@ bool eqt::bridge::BridgeComponent::InitGraphics(int width, int height,
 
 	// S2: movement callback removed — position flows via PlayerPositionChanged intent only
 
-	owner_.m_graphics_initialized = true;
+	m_graphics_initialized = true;
 	LOG_INFO(MOD_GRAPHICS, "Renderer initialized successfully ({}x{})", width, height);
 
 #ifdef WITH_AUDIO
@@ -217,9 +217,16 @@ void eqt::bridge::BridgeComponent::ShutdownGraphics() {
 	// would be harmless (idempotent, plain pointer assignment) but would
 	// leave two competing partial-clear paths -- one call site is the single
 	// source of truth for bridge-pointer clearing now.
-	owner_.m_loading_status_ptr = nullptr;
-	owner_.m_graphics_initialized = false;
+	m_loading_status_ptr = nullptr;
+	m_graphics_initialized = false;
 	LOG_DEBUG(MOD_GRAPHICS, "Graphics detached");
+}
+
+// T341 (B038 cluster 1): moved verbatim from EverQuest
+// (src/client/core/everquest.cpp) with the two members it writes.
+void eqt::bridge::BridgeComponent::SetConstrainedConfig(const EQT::Graphics::ConstrainedRendererConfig& config) {
+	m_constrained_config = config;
+	m_constrained_preset = EQT::Graphics::ConstrainedRenderingPreset::Custom;
 }
 #endif // EQT_HAS_GRAPHICS
 
@@ -282,7 +289,7 @@ void eqt::bridge::BridgeComponent::GameTick(float deltaTime) {
 	// OR's into its own call-site gate -- kept consistent with that
 	// condition here rather than removed, since Application's own comment
 	// notes GameTick() is deliberately gated twice.
-	if (!owner_.m_graphics_initialized && !owner_.IsGraphicsReady()) return;
+	if (!m_graphics_initialized && !IsGraphicsReady()) return;
 #endif
 
 	// Update spell manager (cooldowns, memorization progress, cast timeouts)
@@ -309,7 +316,7 @@ void eqt::bridge::BridgeComponent::GameTick(float deltaTime) {
 // D20c1: Post-render tick — audio sync, progressive loading check
 void eqt::bridge::BridgeComponent::PostRenderTick(float deltaTime) {
 #ifdef EQT_HAS_GRAPHICS
-	if (!owner_.m_graphics_initialized) return;
+	if (!m_graphics_initialized) return;
 #endif
 
 #ifdef WITH_AUDIO
@@ -439,9 +446,9 @@ void eqt::bridge::BridgeComponent::OnSpawnAddedGraphics(const Entity& entity) {
 	// During initial zone load, entities are stored in m_entities and created
 	// in bulk by LoadZoneGraphics(). This function is for NEW spawns that
 	// appear after the zone is fully loaded (players zoning in, NPC respawns).
-	if (owner_.m_loading_phase != LoadingPhase::COMPLETE) {
+	if (m_loading_phase != LoadingPhase::COMPLETE) {
 		LOG_TRACE(MOD_ENTITY, "Skipping entity {} ({}) graphics - loading phase {} not complete",
-		          entity.spawn_id, entity.name, static_cast<int>(owner_.m_loading_phase));
+		          entity.spawn_id, entity.name, static_cast<int>(m_loading_phase));
 		return;
 	}
 
@@ -762,7 +769,7 @@ void eqt::bridge::BridgeComponent::OnGraphicsMovement(const eqt::events::PlayerP
 		}
 	}
 
-	if (EverQuest::s_debug_level >= 2) {
+	if (EverQuest::GetDebugLevel() >= 2) {
 		LOG_DEBUG(MOD_MOVEMENT, "OnGraphicsMovement: pos=({:.2f},{:.2f},{:.2f}) heading={:.1f} vel=({:.2f},{:.2f},{:.2f}) anim={} water={}",
 			update.x, update.y, update.z, update.heading, update.dx, update.dy, update.dz, ctx_.game_state.player().animation(),
 			static_cast<int>(ctx_.Movement().GetWaterState()));
@@ -846,3 +853,95 @@ void eqt::bridge::BridgeComponent::PublishBankCoinProjection(bool inventoryChang
 		eqt::state::GameEventType::BankCurrencyChanged, std::move(bdata)));
 }
 
+// ---------------------------------------------------------------------------
+// T341 (B038 cluster 2): the loading-phase state machine, moved verbatim from
+// EverQuest (src/client/core/everquest.cpp). It writes m_loading_phase and
+// m_loading_status_text, signals the graphics-guarded m_loading_status_ptr
+// (T341 cluster 1, now this component's too) and publishes ZoneLoading -- all
+// three of those now live here, which is why the machine does. EverQuest keeps
+// six one-line forwarders (eq.h) for Application and the tests.
+//
+// Substitutions, and nothing else: m_bridge -> ctx_.bridge,
+// m_player_facade -> ctx_.self.
+void eqt::bridge::BridgeComponent::SetLoadingPhase(LoadingPhase phase, const char* statusText) {
+	if (m_loading_phase == phase) {
+		return;  // No change
+	}
+
+	m_loading_phase = phase;
+	if (statusText) {
+		m_loading_status_text = statusText;
+	} else {
+		m_loading_status_text = GetLoadingStatusText();
+	}
+
+	int phaseNum = static_cast<int>(phase);
+	float progress = GetLoadingProgress();
+	LOG_INFO(MOD_MAIN, "[LOADING][Phase {}/15] ({:.0f}%) {}",
+	         phaseNum, progress * 100.0f, m_loading_status_text);
+
+	// Write to LoadingStatus for the loading thread's passive display loop
+#ifdef EQT_HAS_GRAPHICS
+	if (m_loading_status_ptr) {
+		m_loading_status_ptr->setProgress(static_cast<int>(progress * 100.0f), m_loading_status_text);
+	}
+#endif
+
+	// Publish ZoneLoading event to bridge (also drives loading screen progress via bridge handler)
+	if (ctx_.bridge) {
+		eqt::state::ZoneLoadingData data;
+		data.zoneName = ctx_.self.CurrentZoneName();
+		data.zoneId = ctx_.self.CurrentZoneId();
+		data.progress = progress;
+		data.statusMessage = m_loading_status_text ? m_loading_status_text : "";
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::ZoneLoading, std::move(data)));
+	}
+}
+
+float eqt::bridge::BridgeComponent::GetLoadingProgress() const {
+	switch (m_loading_phase) {
+		// Connection phases: 0% -> 25%
+		case LoadingPhase::DISCONNECTED:             return 0.00f;
+		case LoadingPhase::LOGIN_CONNECTING:         return 0.02f;
+		case LoadingPhase::LOGIN_AUTHENTICATING:     return 0.05f;
+		case LoadingPhase::WORLD_CONNECTING:         return 0.10f;
+		case LoadingPhase::WORLD_CHARACTER_SELECT:   return 0.15f;
+		case LoadingPhase::ZONE_CONNECTING:          return 0.20f;
+		// Game state phases: 25% -> 50%
+		case LoadingPhase::ZONE_RECEIVING_PROFILE:   return 0.25f;
+		case LoadingPhase::ZONE_RECEIVING_SPAWNS:    return 0.30f;
+		case LoadingPhase::ZONE_REQUEST_PHASE:       return 0.35f;
+		case LoadingPhase::ZONE_PLAYER_READY:        return 0.40f;
+		case LoadingPhase::ZONE_AWAITING_CONFIRM:    return 0.45f;
+		// Graphics loading phases: 50% -> 100%
+		case LoadingPhase::GRAPHICS_LOADING_ZONE:    return 0.50f;
+		case LoadingPhase::GRAPHICS_LOADING_MODELS:  return 0.65f;
+		case LoadingPhase::GRAPHICS_CREATING_ENTITIES: return 0.80f;
+		case LoadingPhase::GRAPHICS_FINALIZING:      return 0.95f;
+		case LoadingPhase::COMPLETE:                 return 1.00f;
+	}
+	return 0.0f;
+}
+
+const char* eqt::bridge::BridgeComponent::GetLoadingStatusText() const {
+	switch (m_loading_phase) {
+		case LoadingPhase::DISCONNECTED:             return "";
+		case LoadingPhase::LOGIN_CONNECTING:         return "Connecting to login server...";
+		case LoadingPhase::LOGIN_AUTHENTICATING:     return "Authenticating...";
+		case LoadingPhase::WORLD_CONNECTING:         return "Connecting to world server...";
+		case LoadingPhase::WORLD_CHARACTER_SELECT:   return "Loading characters...";
+		case LoadingPhase::ZONE_CONNECTING:          return "Connecting to zone...";
+		case LoadingPhase::ZONE_RECEIVING_PROFILE:   return "Receiving player data...";
+		case LoadingPhase::ZONE_RECEIVING_SPAWNS:    return "Receiving zone data...";
+		case LoadingPhase::ZONE_REQUEST_PHASE:       return "Synchronizing...";
+		case LoadingPhase::ZONE_PLAYER_READY:        return "Finalizing connection...";
+		case LoadingPhase::ZONE_AWAITING_CONFIRM:    return "Waiting for confirmation...";
+		case LoadingPhase::GRAPHICS_LOADING_ZONE:    return "Loading zone geometry...";
+		case LoadingPhase::GRAPHICS_LOADING_MODELS:  return "Loading character models...";
+		case LoadingPhase::GRAPHICS_CREATING_ENTITIES: return "Creating entities...";
+		case LoadingPhase::GRAPHICS_FINALIZING:      return "Preparing world...";
+		case LoadingPhase::COMPLETE:                 return "Ready!";
+	}
+	return "";
+}

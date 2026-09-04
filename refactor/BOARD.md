@@ -386,33 +386,34 @@ it without taking that measurement first.
 
 ## Added 2026-09-03 by the K13 Review (context services)
 
-- **B038** (B) `include/client/eq.h` — **the `EverQuest&` transition-handle
-  residue, measured.** K13 took the twelve components' `owner_.` count from
-  **1,425 to 83** (94.2% removed) by turning the four target groups into the
-  three context services and the twelve component pointers. What is left is
-  eleven distinct members and nine methods, in five clusters, and each cluster
-  is a separate small decision rather than one sweep:
-  (1) **renderer-lifetime state** — `m_constrained_config` (8),
-  `m_graphics_initialized` (5), `m_constrained_preset` (2),
-  `m_loading_status_ptr` (1), all `bridge`-only, read by four `src/client/core/everquest.cpp`
-  bodies `Application` drives around the K11 forwarders;
-  (2) **the loading-phase state machine** — `EverQuest::SetLoadingPhase` (12) +
-  `m_loading_phase` (5) + `IsGraphicsReady` (1); not player state, so K13 did
-  not fold it into `eqt::PlayerFacade`;
-  (3) **lifecycle entry points** — `RequestQuit` (7), `TickNetwork` (3),
-  `StartUpdateLoop`/`StopUpdateLoop`/`OnGameStateComplete`/`ConnectToZone`/
-  `SetSneak` (1 each) + `m_update_running` (1), `m_pending_logout_disconnect` (3),
-  `m_zone_session_established` (1);
-  (4) **members with a public `EverQuest` accessor carrying external callers** —
-  `m_guild_id` (8) + `m_guild_rank` (2) (`GetGuildID`/`GetGuildRank`, ~20 test
-  sites), `m_last_tell_sender` (2) (`GetLastTellSender`, 3 action-handler + 6
-  test sites), `m_string_db` (2) via `GetStringMessage` (4) /
-  `GetFormattedStringMessage` (3), `m_profile_appearance` (1),
-  `m_zone_server_host`/`m_zone_server_port` (1 each);
-  (5) **the send-guard test seam** — `m_test_bypass_send_guard` (5).
-  Ten of the twelve components still take the handle; only `eqt::gm::GmComponent`
-  reached zero and dropped both it and its `friend` line. Closes when: each
-  cluster is re-homed or the handle is declared permanent. Prov: K13 Review.
+- **B038** (B) **the `EverQuest&` transition-handle residue — 83 -> 5.**
+  T341 retired clusters 1-4 and censused both friend axes for all twelve
+  components. What is LEFT, measured at T341's tip:
+  (1) **`EverQuest::m_test_bypass_send_guard`, 5 `owner_.` uses** — movement 3
+  (`movement_update.cpp` 573/596, `movement_state.cpp` 191), group 2
+  (`group_component.cpp` 84/112). The T88 test seam gating the movement and
+  group send guards, set by `EverQuest::Test_SetBypassSendGuardForSeam`. It is
+  a TEST seam on a PRODUCTION guard, so re-homing it is a design question
+  (where does a send-guard bypass live once the families own their guards?),
+  not a mechanical move — which is why T341 left it;
+  (2) **22 `&owner_` identity keys in `eqt::movement::MovementComponent`** —
+  the function-static `std::map<EverQuest*, …>` throttle tables (K06/K07
+  correction (n)). Not private access; they need the handle, not the
+  friendship;
+  (3) **2 `std::bind(&EverQuest::ZoneOnStatusChangeReconnectDisabled, &owner_, …)`
+  in `eqt::zone::ZoneComponent`** (`zone_component.cpp` 534/585) — a PRIVATE
+  member function taken by address. This is the only remaining axis-2 use
+  tree-wide and the only reason zone is still a friend;
+  (4) **2 `EQ::castRefusalMessage(owner_, result)` in
+  `eqt::bridge::BridgeComponent`** (`bridge_component_intents.cpp` 423/644) —
+  `owner_` passed BY REFERENCE to a free function. Needs the handle, needs no
+  friendship: bridge is the first component to lose its `friend` line while
+  KEEPING the handle.
+  Three `friend` lines survive (group, movement, zone) and four handles
+  (group, movement, zone, bridge); eight of each went at T341, gm's at K13.
+  Closes when: `m_test_bypass_send_guard` is re-homed or ruled permanent, and
+  (2)-(4) are ruled the permanent shape or removed. Prov: K13 Review, T341
+  Review.
 
 - ~~**B039** (P)~~ **CLOSED 2026-09-04: the two-axis rule is stated at `refactor/K_component_extraction.md` §K13 corrections (ii) and applied by every L unit since.** (P) **the `friend class` test is two-axis, not one.** K13 removed the
   `friend` lines for merchant and commands on a zero-`owner_.m_` measurement and

@@ -12,6 +12,11 @@
 // owner_.*), plus one qualification the batch method did not anticipate:
 // s_debug_level is EverQuest's private static, reached through the friendship
 // as EverQuest::s_debug_level. See the K01 Review.
+//
+// T341 (board B038): the "stay on EverQuest" clauses above are HISTORY, not
+// the current shape. This family now reaches EverQuest not at all -- the
+// `owner_` handle and the `friend class` line are both gone; see the T341
+// note in this family's component header.
 
 #include "client/eq.h"
 #include "client/guild/guild_component.h"
@@ -52,7 +57,7 @@
 
 void eqt::guild::GuildComponent::SendGuildInvite(const std::string& player_name)
 {
-	if (owner_.m_guild_id == 0) {
+	if (m_guild_id == 0) {
 		ctx_.out.System("You are not in a guild.");
 		return;
 	}
@@ -66,7 +71,7 @@ void eqt::guild::GuildComponent::SendGuildInvite(const std::string& player_name)
 	// invite grants GUILD_MEMBER_TI. Full handler trace in
 	// client/guild_packet_bodies.h.
 	EQT::GuildCommand_Struct invite =
-		EQ::guild::BuildGuildInvite(player_name, ctx_.character, owner_.m_guild_id);
+		EQ::guild::BuildGuildInvite(player_name, ctx_.character, m_guild_id);
 
 	EQ::Net::DynamicPacket packet;
 	packet.Resize(sizeof(EQT::GuildCommand_Struct));
@@ -109,7 +114,7 @@ void eqt::guild::GuildComponent::SendGuildInviteAccept(bool accept)
 
 void eqt::guild::GuildComponent::SendGuildRemove(const std::string& player_name)
 {
-	if (owner_.m_guild_id == 0) {
+	if (m_guild_id == 0) {
 		ctx_.out.System("You are not in a guild.");
 		return;
 	}
@@ -121,7 +126,7 @@ void eqt::guild::GuildComponent::SendGuildRemove(const std::string& player_name)
 	// real rank (PlayerProfile offset 13055) changes nothing on the server --
 	// it just stops the client asserting something it had not checked.
 	EQT::GuildRemove_Struct remove =
-		EQ::guild::BuildGuildRemove(player_name, ctx_.character, owner_.m_guild_rank);
+		EQ::guild::BuildGuildRemove(player_name, ctx_.character, m_guild_rank);
 
 	EQ::Net::DynamicPacket packet;
 	packet.Resize(sizeof(EQT::GuildRemove_Struct));
@@ -133,7 +138,7 @@ void eqt::guild::GuildComponent::SendGuildRemove(const std::string& player_name)
 
 void eqt::guild::GuildComponent::SendGuildDemote(const std::string& player_name)
 {
-	if (owner_.m_guild_id == 0) {
+	if (m_guild_id == 0) {
 		ctx_.out.System("You are not in a guild.");
 		return;
 	}
@@ -153,7 +158,7 @@ void eqt::guild::GuildComponent::SendGuildDemote(const std::string& player_name)
 
 void eqt::guild::GuildComponent::SendGuildLeader(const std::string& player_name)
 {
-	if (owner_.m_guild_id == 0) {
+	if (m_guild_id == 0) {
 		ctx_.out.System("You are not in a guild.");
 		return;
 	}
@@ -182,7 +187,7 @@ void eqt::guild::GuildComponent::SendGetGuildMOTD()
 
 void eqt::guild::GuildComponent::SendSetGuildMOTD(const std::string& motd)
 {
-	if (owner_.m_guild_id == 0) {
+	if (m_guild_id == 0) {
 		ctx_.out.System("You are not in a guild.");
 		return;
 	}
@@ -253,7 +258,7 @@ void eqt::guild::GuildComponent::ZoneProcessGuildMemberUpdate(const EQ::Net::Pac
 
 	std::string member_name(update->member_name, strnlen(update->member_name, 64));
 
-	if (EverQuest::s_debug_level >= 2) {
+	if (EverQuest::GetDebugLevel() >= 2) {
 		LOG_DEBUG(MOD_MAIN, "Guild member {} changed zone to {}", member_name, update->zone_id);
 	}
 }

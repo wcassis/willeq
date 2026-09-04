@@ -71,8 +71,8 @@ void eqt::movement::MovementComponent::UpdateMovement()
 	// context — see the comment on m_pending_logout_disconnect and
 	// ZoneProcessLogoutReply() for why this can't happen synchronously in the
 	// packet handler.
-	if (owner_.m_pending_logout_disconnect) {
-		owner_.m_pending_logout_disconnect = false;
+	if (ctx_.lifecycle.m_pending_logout_disconnect) {
+		ctx_.lifecycle.m_pending_logout_disconnect = false;
 		LOG_DEBUG(MOD_ZONE, "Processing deferred post-logout disconnect...");
 		ctx_.Zone().DisconnectFromZone();
 		LOG_DEBUG(MOD_ZONE, "Deferred post-logout disconnect processed");
@@ -195,7 +195,7 @@ void eqt::movement::MovementComponent::UpdateMovement()
 				auto now_follow = std::chrono::steady_clock::now();
 				auto elapsed_follow = std::chrono::duration_cast<std::chrono::milliseconds>(now_follow - last_follow_log);
 				
-				if (elapsed_follow.count() >= 1000 && EverQuest::s_debug_level >= 1) {
+				if (elapsed_follow.count() >= 1000 && EverQuest::GetDebugLevel() >= 1) {
 					LOG_DEBUG(MOD_MAIN, "Following {}: Distance={:.1f} (stop at {:.1f}), Z-diff={:.1f}, Speed={:.1f}", ctx_.game_state.player().followTarget(), dist, ctx_.game_state.player().followDistance(), z_diff, ctx_.game_state.player().moveSpeed());
 					last_follow_log = now_follow;
 				}
@@ -203,7 +203,7 @@ void eqt::movement::MovementComponent::UpdateMovement()
 				if (dist < ctx_.game_state.player().followDistance()) {
 					// We're close enough, stop if we were moving
 					if (ctx_.game_state.player().isMoving()) {
-						if (EverQuest::s_debug_level >= 1) {
+						if (EverQuest::GetDebugLevel() >= 1) {
 							LOG_DEBUG(MOD_MAIN, "Reached follow distance ({:.1f}), stopping", dist);
 						}
 						StopMovement();
@@ -462,7 +462,7 @@ void eqt::movement::MovementComponent::UpdateMovement()
 	
 	// Debug output for combat movement
 	static auto last_move_debug = std::chrono::steady_clock::now();
-	if (EverQuest::s_debug_level >= 1 && ctx_.game_state.combat().inCombatMovement() && 
+	if (EverQuest::GetDebugLevel() >= 1 && ctx_.game_state.combat().inCombatMovement() && 
 	    std::chrono::duration_cast<std::chrono::seconds>(now_movement - last_move_debug).count() >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Movement update: pos=({:.1f},{:.1f},{:.1f}) target=({:.1f},{:.1f},{:.1f}) dist={:.1f} speed={:.1f} step={:.1f}", ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ(), ctx_.game_state.player().targetX(), ctx_.game_state.player().targetY(), ctx_.game_state.player().targetZ(), distance, current_speed, step);
 		last_move_debug = now_movement;
@@ -475,7 +475,7 @@ void eqt::movement::MovementComponent::UpdateMovement()
 	ctx_.self.SetPosLocal(ctx_.self.PosX() + dx * factor, ctx_.self.PosY() + dy * factor, ctx_.self.PosZ() + dz * factor);
 	
 	// Debug: verify position actually changed
-	if (EverQuest::s_debug_level >= 1 && ctx_.game_state.combat().inCombatMovement()) {
+	if (EverQuest::GetDebugLevel() >= 1 && ctx_.game_state.combat().inCombatMovement()) {
 		LOG_DEBUG(MOD_MAIN, "Position update: ({:.1f},{:.1f}) -> ({:.1f},{:.1f}) delta=({:.3f},{:.3f})", old_x, old_y, ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosX() - old_x, ctx_.self.PosY() - old_y);
 	}
 	
@@ -639,7 +639,7 @@ void eqt::movement::MovementComponent::SendPositionUpdate()
 	// FloatToEQ12 does modulo 2048, so values wrap
 	uint16_t heading_scaled = heading_raw % 2048;
 	
-	if (EverQuest::s_debug_level >= 2) {
+	if (EverQuest::GetDebugLevel() >= 2) {
 		LOG_DEBUG(MOD_MOVEMENT, "POS C->S [SELF] heading={:.2f}deg -> server_heading={:.2f}deg -> heading_scaled={} (12-bit)",
 			ctx_.self.HeadingDeg(), server_heading, heading_scaled);
 	}
@@ -737,14 +737,14 @@ void eqt::movement::MovementComponent::SendPositionUpdate()
 	memcpy((char*)p.Data() + 2, &update, sizeof(update));
 	
 	// Debug: Verify what's in the packet
-	if (EverQuest::s_debug_level >= 1) {
+	if (EverQuest::GetDebugLevel() >= 1) {
 		uint16_t packet_spawn_id = p.GetUInt16(2); // spawn_id is first field after opcode
 		// LOG_DEBUG(MOD_MAIN, "ClientUpdate packet: spawn_id in struct = {}, spawn_id in packet = {}", 
 		// 	update.spawn_id, packet_spawn_id);
 	}
 	
 	// Log C->S position updates at debug level 2+
-	if (EverQuest::s_debug_level >= 2) {
+	if (EverQuest::GetDebugLevel() >= 2) {
 		// Log server coordinates (x_pos, y_pos) = (client y, client x) due to coordinate swap
 		LOG_DEBUG(MOD_MOVEMENT, "POS C->S spawn_id={} server_pos=({:.2f}, {:.2f}, {:.2f}) heading={:.1f} anim={} server_delta=({:.2f}, {:.2f}, {:.2f})",
 			ctx_.self.MySpawnId(), update.x_pos, update.y_pos, update.z_pos, ctx_.self.HeadingDeg(), ctx_.game_state.player().animation(), update.delta_x, update.delta_y, update.delta_z);
@@ -825,7 +825,7 @@ float eqt::movement::MovementComponent::CalculateHeading(float x1, float y1, flo
 	// (converted from raw values 14, 1567, 1018, 521)
 	
 	// Debug output with more detail
-	if (EverQuest::s_debug_level >= 2) {
+	if (EverQuest::GetDebugLevel() >= 2) {
 		LOG_DEBUG(MOD_MAIN, "CalculateHeading: from ({:.1f},{:.1f}) to ({:.1f},{:.1f}), dx={:.1f}, dy={:.1f}, raw angle={:.1f}°, adjusted={:.1f}°", 
 			x1, y1, x2, y2, dx, dy, angle * 180.0f / M_PI, degrees);
 	}

@@ -339,9 +339,9 @@ void eqt::zone::ZoneComponent::CleanupZone()
 
 	// Stop the update loop first - this must happen before zone transition
 	// so that ZoneProcessClientUpdate() can restart it for the new zone
-	owner_.StopUpdateLoop();
+	ctx_.lifecycle.StopUpdateLoop();
 
-	owner_.SetLoadingPhase(LoadingPhase::DISCONNECTED, "Leaving zone...");
+	ctx_.Bridge().SetLoadingPhase(LoadingPhase::DISCONNECTED, "Leaving zone...");
 
 #ifdef EQT_HAS_GRAPHICS
 	// D20e1: Zone is no longer ready - show loading screen via bridge
@@ -448,7 +448,7 @@ void eqt::zone::ZoneComponent::CleanupZone()
 
 	// Reset zone connection state flags
 	ctx_.game_state.world().setZoneConnected(false);  // T286: only store
-	owner_.m_zone_session_established = false;
+	ctx_.lifecycle.m_zone_session_established = false;
 	m_zone_entry_sent = false;
 	m_weather_received = false;
 	m_req_new_zone_sent = false;
@@ -640,7 +640,7 @@ void eqt::zone::ZoneComponent::ProcessDeferredZoneChange()
 	if (!ctx_.LoginWorld().WorldServerHost().empty()) {
 		LOG_TRACE(MOD_ZONE, "Step 2: Creating new world connection manager");
 
-		owner_.SetLoadingPhase(LoadingPhase::WORLD_CONNECTING);
+		ctx_.Bridge().SetLoadingPhase(LoadingPhase::WORLD_CONNECTING);
 
 		// Reset world connection state flags so we go through the full handshake again
 		ctx_.LoginWorld().WorldReady() = false;
@@ -770,13 +770,13 @@ void eqt::zone::ZoneComponent::LoadZoneSources(const std::string& zone_name)
 {
 	if (zone_name.empty()) {
 		LOG_FATAL(MOD_MAIN, "LoadZoneSources: Zone name is empty");
-		owner_.RequestQuit();
+		ctx_.lifecycle.RequestQuit();
 		return;
 	}
 
 	if (ctx_.eq_client_path.empty()) {
 		LOG_FATAL(MOD_MAIN, "LoadZoneSources: EQ client path is empty");
-		owner_.RequestQuit();
+		ctx_.lifecycle.RequestQuit();
 		return;
 	}
 
@@ -798,7 +798,7 @@ void eqt::zone::ZoneComponent::LoadZoneSources(const std::string& zone_name)
 	if (!m_zone_archive->open(archivePath)) {
 		LOG_FATAL(MOD_MAIN, "LoadZoneSources: Failed to open zone archive: {}", archivePath);
 		m_zone_archive.reset();
-		owner_.RequestQuit();
+		ctx_.lifecycle.RequestQuit();
 		return;
 	}
 
@@ -822,7 +822,7 @@ void eqt::zone::ZoneComponent::LoadZoneSources(const std::string& zone_name)
 	if (mainWld.empty()) {
 		LOG_FATAL(MOD_MAIN, "LoadZoneSources: No WLD file found in archive: {}", archivePath);
 		m_zone_archive.reset();
-		owner_.RequestQuit();
+		ctx_.lifecycle.RequestQuit();
 		return;
 	}
 
@@ -832,7 +832,7 @@ void eqt::zone::ZoneComponent::LoadZoneSources(const std::string& zone_name)
 		LOG_FATAL(MOD_MAIN, "LoadZoneSources: Failed to parse WLD '{}' from archive: {}", mainWld, archivePath);
 		m_zone_wld.reset();
 		m_zone_archive.reset();
-		owner_.RequestQuit();
+		ctx_.lifecycle.RequestQuit();
 		return;
 	}
 
@@ -844,7 +844,7 @@ void eqt::zone::ZoneComponent::LoadZoneSources(const std::string& zone_name)
 		m_zone_bsp_tree_zone_name.clear();
 		m_zone_wld.reset();
 		m_zone_archive.reset();
-		owner_.RequestQuit();
+		ctx_.lifecycle.RequestQuit();
 		return;
 	}
 
@@ -1043,7 +1043,7 @@ void eqt::zone::ZoneComponent::FixZ()
 	float abs_diff = std::abs(z_diff);
 
 	// Always log Z-height info when following for debugging
-	if (!ctx_.game_state.player().followTarget().empty() && EverQuest::s_debug_level >= 1) {
+	if (!ctx_.game_state.player().followTarget().empty() && EverQuest::GetDebugLevel() >= 1) {
 		// Find the entity we're following to compare Z values
 		Entity* target = nullptr;
 		for (const auto& pair : ctx_.entities) {
@@ -1077,13 +1077,13 @@ void eqt::zone::ZoneComponent::FixZ()
 			}
 		}
 
-		if (EverQuest::s_debug_level >= 1) {
+		if (EverQuest::GetDebugLevel() >= 1) {
 			LOG_DEBUG(MOD_MAIN, "FixZ: Adjusting Z from {:.2f} to {:.2f} (adjustment: {:.2f}, diff was: {:.2f})",
 				ctx_.self.PosZ(), ctx_.self.PosZ() + adjustment, adjustment, z_diff);
 		}
 
 		ctx_.self.SetPosLocal(ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ() + adjustment);
-	} else if (EverQuest::s_debug_level >= 2 && abs_diff > 0.01f) {
+	} else if (EverQuest::GetDebugLevel() >= 2 && abs_diff > 0.01f) {
 		LOG_DEBUG(MOD_MAIN, "FixZ: Z difference too small to adjust: {:.2f} (current: {:.2f}, best: {:.2f})",
 			z_diff, ctx_.self.PosZ(), new_z);
 	}

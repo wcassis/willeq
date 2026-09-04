@@ -93,6 +93,20 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 	  // K14: the fourth context service, over EverQuest's own m_string_db
 	  // (declared well above this point, so it is already constructed).
 	  m_strings{m_string_db},
+	  // T341 (B038 cluster 3): the fifth context service. The seven calls are
+	  // bound to EverQuest's own bodies; the three flags are bound by
+	  // reference under their own names. Nothing is invoked during
+	  // construction.
+	  m_lifecycle{[this] { RequestQuit(); },
+	              [this] { TickNetwork(); },
+	              [this] { StartUpdateLoop(); },
+	              [this] { StopUpdateLoop(); },
+	              [this] { OnGameStateComplete(); },
+	              [this] { ConnectToZone(); },
+	              [this](bool sneak) { SetSneak(sneak); },
+	              m_update_running,
+	              m_pending_logout_disconnect,
+	              m_zone_session_established},
 	  m_ctx{m_game_state,
 	        m_bridge,
 	        m_zone_connection,
@@ -117,6 +131,7 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 	        m_player_facade,
 	        m_packet_sender,
 	        m_strings,
+	        m_lifecycle,
 	        m_hotbar_model,
 	        m_eq_client_path,
 	        m_session_recorder
@@ -127,24 +142,24 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 {
 	// K01: the guild family. Constructed first so nothing below can reach a
 	// null m_guild.
-	m_guild = std::make_unique<eqt::guild::GuildComponent>(m_ctx, *this);
+	m_guild = std::make_unique<eqt::guild::GuildComponent>(m_ctx);
 	// K02: the gm family, same shape.
 	m_gm = std::make_unique<eqt::gm::GmComponent>(m_ctx);
 	// K03: the chat family, same shape.
-	m_chat = std::make_unique<eqt::chat::ChatComponent>(m_ctx, *this);
+	m_chat = std::make_unique<eqt::chat::ChatComponent>(m_ctx);
 	// K04: the group family (group, raid, pet). Same rule.
 	m_group = std::make_unique<eqt::group::GroupComponent>(m_ctx, *this);
 	// K05: the merchant family, same shape.
-	m_merchant = std::make_unique<eqt::merchant::MerchantComponent>(m_ctx, *this);
+	m_merchant = std::make_unique<eqt::merchant::MerchantComponent>(m_ctx);
 	// K06: the entities family, same shape.
-	m_entities_component = std::make_unique<eqt::entities::EntitiesComponent>(m_ctx, *this);
+	m_entities_component = std::make_unique<eqt::entities::EntitiesComponent>(m_ctx);
 	// K07: the movement family. Same rule.
 	m_movement = std::make_unique<eqt::movement::MovementComponent>(m_ctx, *this);
 	// K10: the login_world family. It owns the login/world connection managers,
 	// so it must exist before SetCredentials below.
-	m_login_world = std::make_unique<eqt::login_world::LoginWorldComponent>(m_ctx, *this);
+	m_login_world = std::make_unique<eqt::login_world::LoginWorldComponent>(m_ctx);
 	// K08: the player family. The player-state facade stays on EverQuest.
-	m_player = std::make_unique<eqt::player::PlayerComponent>(m_ctx, *this);
+	m_player = std::make_unique<eqt::player::PlayerComponent>(m_ctx);
 	// K09: the zone family -- handshake, entry, DispatchZonePacket, lifecycle.
 	m_zone = std::make_unique<eqt::zone::ZoneComponent>(m_ctx, *this);
 	// K11: the bridge family -- graphics lifecycle, the intent/event pumps,
@@ -154,7 +169,7 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 	// other components) even though m_command_registry itself is not
 	// allocated until RegisterCommands() is called below -- ctx_.command_registry
 	// is a reference to the member, not the pointee, so this is safe.
-	m_commands = std::make_unique<eqt::commands::CommandsComponent>(m_ctx, *this);
+	m_commands = std::make_unique<eqt::commands::CommandsComponent>(m_ctx);
 
 	// K13: every component now exists, so the context can carry a pointer to
 	// each one. A component reaches a sibling as ctx_.Zone()/ctx_.Bridge()/...
@@ -465,96 +480,19 @@ EverQuest::~EverQuest()
 	m_zone->MovementHistory().clear();
 }
 
-// Loading phase tracking implementation
-void EverQuest::SetLoadingPhase(LoadingPhase phase, const char* statusText) {
-	if (m_loading_phase == phase) {
-		return;  // No change
-	}
-
-	m_loading_phase = phase;
-	if (statusText) {
-		m_loading_status_text = statusText;
-	} else {
-		m_loading_status_text = GetLoadingStatusText();
-	}
-
-	int phaseNum = static_cast<int>(phase);
-	float progress = GetLoadingProgress();
-	LOG_INFO(MOD_MAIN, "[LOADING][Phase {}/15] ({:.0f}%) {}",
-	         phaseNum, progress * 100.0f, m_loading_status_text);
-
-	// Write to LoadingStatus for the loading thread's passive display loop
-#ifdef EQT_HAS_GRAPHICS
-	if (m_loading_status_ptr) {
-		m_loading_status_ptr->setProgress(static_cast<int>(progress * 100.0f), m_loading_status_text);
-	}
-#endif
-
-	// Publish ZoneLoading event to bridge (also drives loading screen progress via bridge handler)
-	if (m_bridge) {
-		eqt::state::ZoneLoadingData data;
-		data.zoneName = m_player_facade.CurrentZoneName();
-		data.zoneId = m_player_facade.CurrentZoneId();
-		data.progress = progress;
-		data.statusMessage = m_loading_status_text ? m_loading_status_text : "";
-		m_bridge->pushEvent(eqt::state::GameEvent(
-			eqt::state::GameEventType::ZoneLoading, std::move(data)));
-	}
-}
-
-float EverQuest::GetLoadingProgress() const {
-	switch (m_loading_phase) {
-		// Connection phases: 0% -> 25%
-		case LoadingPhase::DISCONNECTED:             return 0.00f;
-		case LoadingPhase::LOGIN_CONNECTING:         return 0.02f;
-		case LoadingPhase::LOGIN_AUTHENTICATING:     return 0.05f;
-		case LoadingPhase::WORLD_CONNECTING:         return 0.10f;
-		case LoadingPhase::WORLD_CHARACTER_SELECT:   return 0.15f;
-		case LoadingPhase::ZONE_CONNECTING:          return 0.20f;
-		// Game state phases: 25% -> 50%
-		case LoadingPhase::ZONE_RECEIVING_PROFILE:   return 0.25f;
-		case LoadingPhase::ZONE_RECEIVING_SPAWNS:    return 0.30f;
-		case LoadingPhase::ZONE_REQUEST_PHASE:       return 0.35f;
-		case LoadingPhase::ZONE_PLAYER_READY:        return 0.40f;
-		case LoadingPhase::ZONE_AWAITING_CONFIRM:    return 0.45f;
-		// Graphics loading phases: 50% -> 100%
-		case LoadingPhase::GRAPHICS_LOADING_ZONE:    return 0.50f;
-		case LoadingPhase::GRAPHICS_LOADING_MODELS:  return 0.65f;
-		case LoadingPhase::GRAPHICS_CREATING_ENTITIES: return 0.80f;
-		case LoadingPhase::GRAPHICS_FINALIZING:      return 0.95f;
-		case LoadingPhase::COMPLETE:                 return 1.00f;
-	}
-	return 0.0f;
-}
-
-const char* EverQuest::GetLoadingStatusText() const {
-	switch (m_loading_phase) {
-		case LoadingPhase::DISCONNECTED:             return "";
-		case LoadingPhase::LOGIN_CONNECTING:         return "Connecting to login server...";
-		case LoadingPhase::LOGIN_AUTHENTICATING:     return "Authenticating...";
-		case LoadingPhase::WORLD_CONNECTING:         return "Connecting to world server...";
-		case LoadingPhase::WORLD_CHARACTER_SELECT:   return "Loading characters...";
-		case LoadingPhase::ZONE_CONNECTING:          return "Connecting to zone...";
-		case LoadingPhase::ZONE_RECEIVING_PROFILE:   return "Receiving player data...";
-		case LoadingPhase::ZONE_RECEIVING_SPAWNS:    return "Receiving zone data...";
-		case LoadingPhase::ZONE_REQUEST_PHASE:       return "Synchronizing...";
-		case LoadingPhase::ZONE_PLAYER_READY:        return "Finalizing connection...";
-		case LoadingPhase::ZONE_AWAITING_CONFIRM:    return "Waiting for confirmation...";
-		case LoadingPhase::GRAPHICS_LOADING_ZONE:    return "Loading zone geometry...";
-		case LoadingPhase::GRAPHICS_LOADING_MODELS:  return "Loading character models...";
-		case LoadingPhase::GRAPHICS_CREATING_ENTITIES: return "Creating entities...";
-		case LoadingPhase::GRAPHICS_FINALIZING:      return "Preparing world...";
-		case LoadingPhase::COMPLETE:                 return "Ready!";
-	}
-	return "";
-}
+// T341 (B038 cluster 2): the loading-phase STATE MACHINE -- SetLoadingPhase,
+// GetLoadingProgress and GetLoadingStatusText, over m_loading_phase and
+// m_loading_status_text -- moved verbatim into
+// eqt::bridge::BridgeComponent (src/client/bridge/bridge_component.cpp).
+// EverQuest keeps six one-line forwarders in eq.h for Application and the
+// tests; see the T341 Review.
 
 void EverQuest::OnGameStateComplete() {
 	LOG_INFO(MOD_MAIN, "[LOADING] Game state setup complete. Spawn ID: {}, Zone: {}",
 	         m_player_facade.MySpawnId(), m_player_facade.CurrentZoneName());
 
 #ifdef EQT_HAS_GRAPHICS
-	if (m_graphics_initialized) {
+	if (m_bridge_component->IsGraphicsInitialized()) {
 		SetLoadingPhase(LoadingPhase::GRAPHICS_LOADING_ZONE, "Entering world...");
 
 		// Signal Application to create snapshot and start zone loading.
@@ -821,7 +759,7 @@ void EverQuest::PublishFullStateSnapshot() {
 // Zone server connection functions
 void EverQuest::ConnectToZone()
 {
-	LOG_DEBUG(MOD_ZONE, "Connecting to zone server at {}:{}", m_zone_server_host, m_zone_server_port);
+	LOG_DEBUG(MOD_ZONE, "Connecting to zone server at {}:{}", m_login_world->GetZoneServerHost(), m_login_world->GetZoneServerPort());
 
 	SetLoadingPhase(LoadingPhase::ZONE_CONNECTING);
 
@@ -834,7 +772,7 @@ void EverQuest::ConnectToZone()
 	m_zone_connection_manager->OnNewConnection(std::bind(&EverQuest::ZoneOnNewConnection, this, std::placeholders::_1));
 	m_zone_connection_manager->OnConnectionStateChange(std::bind(&EverQuest::ZoneOnStatusChangeReconnectEnabled, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
 	m_zone_connection_manager->OnPacketRecv(std::bind(&EverQuest::ZoneOnPacketRecv, this, std::placeholders::_1, std::placeholders::_2));
-	m_zone_connection_manager->Connect(m_zone_server_host, m_zone_server_port);
+	m_zone_connection_manager->Connect(m_login_world->GetZoneServerHost(), m_login_world->GetZoneServerPort());
 }
 
 void EverQuest::ZoneOnNewConnection(std::shared_ptr<EQ::Net::DaybreakConnection> connection)
@@ -870,7 +808,7 @@ void EverQuest::ZoneOnStatusChangeReconnectEnabled(std::shared_ptr<EQ::Net::Dayb
 		m_zone->ZoneEntrySent() = false;
 		m_zone_connection.reset();
 		SetLoadingPhase(LoadingPhase::ZONE_CONNECTING);
-		m_zone_connection_manager->Connect(m_zone_server_host, m_zone_server_port);
+		m_zone_connection_manager->Connect(m_login_world->GetZoneServerHost(), m_login_world->GetZoneServerPort());
 	}
 }
 
@@ -1037,12 +975,9 @@ void EverQuest::SetEQClientPath(const std::string& path) {
 	m_strings.LoadStringFiles(path);
 }
 
-#ifdef EQT_HAS_GRAPHICS
-void EverQuest::SetConstrainedConfig(const EQT::Graphics::ConstrainedRendererConfig& config) {
-	m_constrained_config = config;
-	m_constrained_preset = EQT::Graphics::ConstrainedRenderingPreset::Custom;
-}
-#endif // EQT_HAS_GRAPHICS
+// T341 (B038 cluster 1): SetConstrainedConfig's body moved verbatim into
+// eqt::bridge::BridgeComponent with the renderer-lifetime state it writes;
+// EverQuest keeps the forwarder in eq.h for Application::init().
 
 // K11 (Batch K, refactor/K11_bridge_component.md): the FIVE sanctioned
 // forwarders of this batch. Every other moved method is reached through

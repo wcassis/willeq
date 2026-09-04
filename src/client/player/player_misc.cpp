@@ -163,7 +163,7 @@ void eqt::player::PlayerComponent::ZoneProcessLFGAppearance(const EQ::Net::Packe
 	auto it = ctx_.entities.find(static_cast<uint16_t>(lfg->spawn_id));
 	if (it != ctx_.entities.end()) {
 		// If we had an LFG flag on Entity, we'd update it here
-		if (EverQuest::s_debug_level >= 2) {
+		if (EverQuest::GetDebugLevel() >= 2) {
 			LOG_DEBUG(MOD_MAIN, "Entity {} LFG status: {}", lfg->spawn_id, lfg->lfg);
 		}
 	}
@@ -249,7 +249,7 @@ void eqt::player::PlayerComponent::ZoneProcessDisciplineUpdate(const EQ::Net::Pa
 		}
 	}
 
-	if (EverQuest::s_debug_level >= 2) {
+	if (EverQuest::GetDebugLevel() >= 2) {
 		LOG_DEBUG(MOD_MAIN, "You know {} disciplines", count);
 	}
 }
@@ -263,7 +263,7 @@ void eqt::player::PlayerComponent::ZoneProcessDisciplineTimer(const EQ::Net::Pac
 	const EQT::DisciplineTimer_Struct* timer = reinterpret_cast<const EQT::DisciplineTimer_Struct*>(
 		static_cast<const uint8_t*>(p.Data()) + 2);
 
-	if (EverQuest::s_debug_level >= 2) {
+	if (EverQuest::GetDebugLevel() >= 2) {
 		LOG_DEBUG(MOD_MAIN, "Discipline timer {}: {} seconds remaining",
 			timer->timer_id, timer->timer_value);
 	}
@@ -735,7 +735,7 @@ void eqt::player::PlayerComponent::ZoneProcessSound(const EQ::Net::Packet &p)
 
 #ifdef WITH_AUDIO
 	// Don't play sounds during zone loading
-	if (ctx_.audio_manager && owner_.m_loading_phase == LoadingPhase::COMPLETE) {
+	if (ctx_.audio_manager && ctx_.Bridge().GetLoadingPhase() == LoadingPhase::COMPLETE) {
 		if (hasPosition) {
 			ctx_.audio_manager->playSound(soundId, glm::vec3(x, y, z));
 		} else {

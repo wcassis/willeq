@@ -101,7 +101,7 @@ void eqt::player::PlayerComponent::ZoneProcessPlayerStateAdd(const EQ::Net::Pack
 	
 	// The exact structure depends on the state being added (buff/debuff/state change)
 	// Parse what we can from the packet
-	if (EverQuest::s_debug_level >= 2 && p.Length() >= 6) {
+	if (EverQuest::GetDebugLevel() >= 2 && p.Length() >= 6) {
 		uint16_t stateType = p.GetUInt16(2);
 		uint16_t stateValue = p.GetUInt16(4);
 		LOG_DEBUG(MOD_ZONE, "[PlayerStateAdd] State added: type={:#06x}, value={:#06x}, size={} bytes",
@@ -195,7 +195,7 @@ void eqt::player::PlayerComponent::ZoneProcessDeath(const EQ::Net::Packet &p)
 		}
 	}
 
-	if (EverQuest::s_debug_level >= 1) {
+	if (EverQuest::GetDebugLevel() >= 1) {
 		// spell_id of 0, 0xFFFF (65535), or 0xFFFFFFFF means no spell was used
 		bool hasValidSpell = spell_id > 0 && spell_id != 0xFFFF && spell_id != 0xFFFFFFFF;
 		if (hasValidSpell) {
@@ -289,7 +289,7 @@ void eqt::player::PlayerComponent::ZoneProcessPlayerStateRemove(const EQ::Net::P
 	
 	// The exact structure depends on the state being removed (buff/debuff/state change)
 	// Parse what we can from the packet
-	if (EverQuest::s_debug_level >= 2 && p.Length() >= 6) {
+	if (EverQuest::GetDebugLevel() >= 2 && p.Length() >= 6) {
 		uint16_t stateType = p.GetUInt16(2);
 		uint16_t stateValue = p.GetUInt16(4);
 		LOG_DEBUG(MOD_ZONE, "[PlayerStateRemove] State removed: type={:#06x}, value={:#06x}, size={} bytes",

@@ -16,6 +16,11 @@
 // that stay behind -> owner_.Foo(), and EverQuest's statics s_debug_level,
 // DumpPacket and FormatPrice qualified as EverQuest:: -- friendship grants
 // access, not scope). See the K05 Review.
+//
+// T341 (board B038): the "stay on EverQuest" clauses above are HISTORY, not
+// the current shape. This family now reaches EverQuest not at all -- the
+// `owner_` handle and the `friend class` line are both gone; see the T341
+// note in this family's component header.
 
 #include "client/merchant/merchant_component.h"
 
@@ -237,10 +242,10 @@ std::string eqt::merchant::MerchantComponent::ScribeRefusalMessage(uint32_t spel
 	// written only by the PlayerProfile handler.
 	const uint8_t reqLevel = spellData->getClassLevel(static_cast<EQ::PlayerClass>(ctx_.self.GetClass()));
 	if (reqLevel == 255) {
-		return owner_.Strings().GetStringMessage(181);
+		return ctx_.strings.GetStringMessage(181);
 	}
 	if (ctx_.self.GetLevel() < reqLevel) {
-		return owner_.Strings().GetFormattedStringMessage(12048, {std::to_string(reqLevel), spellData->name});
+		return ctx_.strings.GetFormattedStringMessage(12048, {std::to_string(reqLevel), spellData->name});
 	}
 
 	return "";

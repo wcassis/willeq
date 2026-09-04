@@ -19,6 +19,11 @@
 // EverQuest::s_debug_level. IsTrackedTarget() is a free function
 // (common/logging.h), not an EverQuest member -- left bare. See the K06
 // Review.
+//
+// T341 (board B038): the "stay on EverQuest" clauses above are HISTORY, not
+// the current shape. This family now reaches EverQuest not at all -- the
+// `owner_` handle and the `friend class` line are both gone; see the T341
+// note in this family's component header.
 
 #include "client/eq.h"
 #include "client/entities/entities_component.h"
@@ -68,7 +73,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessDeleteSpawn(const EQ::Net::Pac
 	// Special case: spawn_id 0 might mean "delete current target"
 	if (spawn_id == 0 && ctx_.combat_manager && ctx_.combat_manager->HasTarget()) {
 		spawn_id = ctx_.combat_manager->GetTargetId();
-		if (EverQuest::s_debug_level >= 1) {
+		if (EverQuest::GetDebugLevel() >= 1) {
 			LOG_DEBUG(MOD_MAIN, "DeleteSpawn with ID 0 interpreted as current target: {}", spawn_id);
 		}
 	}
@@ -172,7 +177,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessMobHealth(const EQ::Net::Packe
 	if (it != ctx_.entities.end()) {
 		uint8_t old_hp = it->second.hp_percent;
 		it->second.hp_percent = hp_percent;
-		if (EverQuest::s_debug_level >= 2 || IsTrackedTarget(spawn_id)) {
+		if (EverQuest::GetDebugLevel() >= 2 || IsTrackedTarget(spawn_id)) {
 			LOG_DEBUG(MOD_ENTITY, "[HP] Entity {} ({}) health: {}% -> {}%", spawn_id, it->second.name, old_hp, hp_percent);
 		}
 		// T221: source-side writes, hoisted out of the bridge guard below.
