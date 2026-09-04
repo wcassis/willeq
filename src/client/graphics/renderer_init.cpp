@@ -265,6 +265,7 @@ IrrlichtRenderer::IrrlichtRenderer()
     zoneLifecycle_ = std::make_unique<ZoneLifecycleComponent>(ctx_, *this);
     // L10 (Batch L): the loading thread's zone build.
     zoneLoad_ = std::make_unique<ZoneLoadComponent>(ctx_, *this);
+    frame_ = std::make_unique<FrameComponent>(ctx_, *this);
 }
 
 IrrlichtRenderer::~IrrlichtRenderer() {
@@ -458,15 +459,15 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
 
     // U03: Initialize static layout UI renderer
     LOG_TRACE(MOD_GRAPHICS, "Initializing UI renderer...");
-    uiRenderer_ = std::make_unique<UIRenderer>();
-    uiRenderer_->init(driver_, uiAtlas_.get(), textBatch_.get());
-    uiLayout_.computeLayout(config.width, config.height);
+    frame_->uiRenderer_ = std::make_unique<UIRenderer>();
+    frame_->uiRenderer_->init(driver_, uiAtlas_.get(), textBatch_.get());
+    frame_->uiLayout_.computeLayout(config.width, config.height);
     // U04: Create chat message buffer for new UI
-    newUIChatBuffer_ = std::make_unique<eqt::ui::ChatMessageBuffer>(500);
-    chatPanelState_.messageBuffer = newUIChatBuffer_.get();
+    frame_->newUIChatBuffer_ = std::make_unique<eqt::ui::ChatMessageBuffer>(500);
+    frame_->chatPanelState_.messageBuffer = frame_->newUIChatBuffer_.get();
     // U06j: Initialize static UI input handler
-    staticUIInput_ = std::make_unique<StaticUIInput>();
-    staticUIInput_->init(bridge_);
+    frame_->staticUIInput_ = std::make_unique<StaticUIInput>();
+    frame_->staticUIInput_->init(bridge_);
     LOG_INFO(MOD_GRAPHICS, "UIRenderer initialized (newui=off, toggle with /newui)");
 
     // Configure mipmap generation based on constrained config

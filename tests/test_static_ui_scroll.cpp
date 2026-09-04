@@ -693,9 +693,21 @@ TEST(ScrollSourceInvariants, OnEventAccumulatesTheMouseWheel) {
     EXPECT_NE(src.find("mouseWheelDelta_ += event.MouseInput.Wheel;"), std::string::npos);
 }
 
+// L11 (batch correction 21): the three bodies these two guards parse moved
+// from IrrlichtRenderer to FrameComponent. The basename is deliberately
+// unchanged; only the directory moved (src/client/graphics/frame/). The
+// RECEIVER of each call could have changed with the extraction, so both
+// spellings are accepted below and exactly one must match -- a guard that
+// knows only the pre-extraction spelling passes vacuously the day the code
+// moves, which is the failure mode correction 21 exists to prevent.
+const fs::path kFrameInput = "src/client/graphics/frame/renderer_frame_input.cpp";
+
 TEST(ScrollSourceInvariants, NothingElseConsumesTheWheelAccumulator) {
     // One consumer, so a UI-consumed notch can never also drive the camera.
-    const std::string frame = readFile(kRoot / "src/client/graphics/renderer_frame_input.cpp");
+    // The receiver spelling is irrelevant here (eventReceiver_-> became
+    // ctx_.eventReceiver->), which is exactly why this one counts the method
+    // name and not the expression around it.
+    const std::string frame = readFile(kRoot / kFrameInput);
     size_t n = 0, at = 0;
     while ((at = frame.find("getMouseWheelDelta()", at)) != std::string::npos) { ++n; ++at; }
     EXPECT_EQ(n, 2u) << "expected exactly the UI read and the no-UI drain in "
@@ -703,10 +715,19 @@ TEST(ScrollSourceInvariants, NothingElseConsumesTheWheelAccumulator) {
 }
 
 TEST(ScrollSourceInvariants, TheFrameRoutesTheWheelIntoTheStaticUI) {
-    const std::string frame = readFile(kRoot / "src/client/graphics/renderer_frame_input.cpp");
-    EXPECT_NE(frame.find("staticUIInput_->processWheel("), std::string::npos)
+    const std::string frame = readFile(kRoot / kFrameInput);
+    auto exactlyOne = [&frame](const std::vector<std::string>& spellings) {
+        int found = 0;
+        for (const auto& sp : spellings) if (frame.find(sp) != std::string::npos) ++found;
+        return found;
+    };
+    EXPECT_EQ(exactlyOne({"staticUIInput_->processWheel(",        // component-owned
+                          "ctx_.staticUIInput->processWheel("}),  // context-owned
+              1)
         << "the wheel never reaches the static UI -- every panel is pinned to page one again";
-    EXPECT_NE(frame.find("staticUIInput_->processScrollKey("), std::string::npos)
+    EXPECT_EQ(exactlyOne({"staticUIInput_->processScrollKey(",
+                          "ctx_.staticUIInput->processScrollKey("}),
+              1)
         << "PageUp/PageDown never reach the static UI";
 }
 

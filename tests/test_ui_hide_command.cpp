@@ -134,9 +134,9 @@ TEST_F(UIHideCommandTest, RendererActionFromThatKeyTogglesTheUI) {
     // The queue entry the key-event switch pushes, drained by the exact
     // production consumer (processCommonInput()).
     const std::vector<RendererEvent> actions{RendererEvent(RendererAction::ToggleAllUI)};
-    renderer.processCommonInput(actions);
+    renderer.Frame().processCommonInput(actions);
     EXPECT_TRUE(renderer.isAllUIHidden());
-    renderer.processCommonInput(actions);
+    renderer.Frame().processCommonInput(actions);
     EXPECT_FALSE(renderer.isAllUIHidden());
 }
 
@@ -153,8 +153,22 @@ TEST(UIHideSourceInvariants, StaticUiBlockIsGatedOnAllUIHidden) {
     // THE DEFECT THIS LEG FIXED. Before T301 this read
     // `if (newUIEnabled_ && uiRenderer_)`, so hiding the UI left the chat
     // panel and the hotbar painted over every captured frame.
-    const std::string src = readFile(kRoot / "src/client/graphics/renderer_frame_render.cpp");
-    EXPECT_NE(src.find("if (newUIEnabled_ && uiRenderer_ && !allUIHidden_)"), std::string::npos)
+    //
+    // L11 (batch correction 21): the body moved from IrrlichtRenderer to
+    // FrameComponent, so the three members it names could have acquired an
+    // owner_ prefix. They did not -- all three moved WITH the body -- but a
+    // guard that knows only one spelling goes blind the day they do not, so
+    // both are accepted and exactly one must match. The path moved to
+    // src/client/graphics/frame/; the basename is deliberately unchanged.
+    const std::string src =
+        readFile(kRoot / "src/client/graphics/frame/renderer_frame_render.cpp");
+    const std::vector<std::string> spellings{
+        "if (newUIEnabled_ && uiRenderer_ && !allUIHidden_)",             // component-owned
+        "if (owner_.newUIEnabled_ && owner_.uiRenderer_ && !owner_.allUIHidden_)",  // owner-owned
+    };
+    int found = 0;
+    for (const auto& sp : spellings) if (src.find(sp) != std::string::npos) ++found;
+    EXPECT_EQ(found, 1)
         << "the static UI panels are drawn without consulting allUIHidden_ -- /hideui and F11 "
            "will leave the chat box and hotbar over every frame of a visual gate again";
 }

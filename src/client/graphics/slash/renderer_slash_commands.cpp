@@ -404,28 +404,28 @@ void SlashCommandsComponent::processSlashCommand(const std::string& command) {
             args,
             ctx_.eventReceiver ? ctx_.eventReceiver->getMouseX() : 0,
             ctx_.eventReceiver ? ctx_.eventReceiver->getMouseY() : 0,
-            owner_.uiLayout_, owner_.chatPanelState_, owner_.skillsPopupState_, owner_.lootState_));
+            owner_.Frame().uiLayout_, owner_.Frame().chatPanelState_, owner_.Frame().skillsPopupState_, owner_.Frame().lootState_));
     }
     else if (cmd == "/newui") {
-        owner_.newUIEnabled_ = !owner_.newUIEnabled_;
-        chat(fmt::format("New static UI: {}", owner_.newUIEnabled_ ? "ENABLED" : "DISABLED"));
+        owner_.Frame().newUIEnabled_ = !owner_.Frame().newUIEnabled_;
+        chat(fmt::format("New static UI: {}", owner_.Frame().newUIEnabled_ ? "ENABLED" : "DISABLED"));
     } else if (cmd == "/newbook") {
-        owner_.spellbookState_.isOpen = !owner_.spellbookState_.isOpen;
-        if (owner_.spellbookState_.isOpen) {
-            owner_.inventoryState_.activePopup = PopupType::None;  // Close other popups
+        owner_.Frame().spellbookState_.isOpen = !owner_.Frame().spellbookState_.isOpen;
+        if (owner_.Frame().spellbookState_.isOpen) {
+            owner_.Frame().inventoryState_.activePopup = PopupType::None;  // Close other popups
         }
-        chat(fmt::format("New UI spellbook: {}", owner_.spellbookState_.isOpen ? "OPEN" : "CLOSED"));
+        chat(fmt::format("New UI spellbook: {}", owner_.Frame().spellbookState_.isOpen ? "OPEN" : "CLOSED"));
     } else if (cmd == "/newbookprev") {
-        if (owner_.spellbookState_.currentPage > 0) owner_.spellbookState_.currentPage--;
+        if (owner_.Frame().spellbookState_.currentPage > 0) owner_.Frame().spellbookState_.currentPage--;
     } else if (cmd == "/newbooknext") {
-        if (owner_.spellbookState_.currentPage < owner_.spellbookState_.pageCount() - 1) owner_.spellbookState_.currentPage++;
+        if (owner_.Frame().spellbookState_.currentPage < owner_.Frame().spellbookState_.pageCount() - 1) owner_.Frame().spellbookState_.currentPage++;
     } else if (cmd == "/newskills") {
-        owner_.skillsPopupState_.isOpen = !owner_.skillsPopupState_.isOpen;
-        if (owner_.skillsPopupState_.isOpen) {
-            owner_.inventoryState_.activePopup = PopupType::None;
-            owner_.spellbookState_.isOpen = false;
+        owner_.Frame().skillsPopupState_.isOpen = !owner_.Frame().skillsPopupState_.isOpen;
+        if (owner_.Frame().skillsPopupState_.isOpen) {
+            owner_.Frame().inventoryState_.activePopup = PopupType::None;
+            owner_.Frame().spellbookState_.isOpen = false;
         }
-        chat(fmt::format("New UI skills: {}", owner_.skillsPopupState_.isOpen ? "OPEN" : "CLOSED"));
+        chat(fmt::format("New UI skills: {}", owner_.Frame().skillsPopupState_.isOpen ? "OPEN" : "CLOSED"));
     } else if (cmd == "/newinv") {
         // T294: ONE body, shared with the `I` keybind — the toggle used to
         // be written out here and IrrlichtRenderer::toggleInventory() (what

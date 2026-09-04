@@ -520,9 +520,9 @@ IF(EQT_GRAPHICS)
         src/client/graphics/zone_stream/renderer_zone_stream.cpp
         src/client/graphics/eqe1/eqe1_archive_component.cpp
         src/client/graphics/sim/renderer_sim_bridge.cpp
-        src/client/graphics/renderer_frame.cpp
-        src/client/graphics/renderer_frame_input.cpp
-        src/client/graphics/renderer_frame_render.cpp
+        src/client/graphics/frame/renderer_frame.cpp
+        src/client/graphics/frame/renderer_frame_input.cpp
+        src/client/graphics/frame/renderer_frame_render.cpp
         src/client/graphics/zone_lifecycle/renderer_gpu_upload.cpp
         src/client/graphics/renderer_entities.cpp
         src/client/graphics/zone_shader.cpp

@@ -229,6 +229,20 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_zone_load_component)
 ENDIF()
 
+# L11 (refactor/L11_frame_component.md): FrameComponent -- the per-frame loop,
+# the input drain and the static UI panel state, extracted from
+# IrrlichtRenderer. Same bare, never-Init()'d IrrlichtRenderer idiom as
+# test_zone_load_component above; every phase this test drives null-guards the
+# device it would otherwise need.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_frame_component
+        test_frame_component.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_frame_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_frame_component GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_frame_component)
+ENDIF()
+
 # T329 (B041): the NavmeshChanged bridge arm forwarding to
 # OverlaysComponent::setNavmesh. Same bare, never-Init()'d IrrlichtRenderer
 # idiom as test_overlays_component above, plus a real eqt::bridge::

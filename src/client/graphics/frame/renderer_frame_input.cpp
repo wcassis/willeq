@@ -16,6 +16,7 @@
 // satisfy the guard on its own.
 // Split per refactor/J31_renderer_frame_split.md (move-only).
 #include "client/graphics/irrlicht_renderer.h"
+#include "client/graphics/frame/frame_component.h"
 #include "client/graphics/entity_prep_worker.h"
 #include "client/graphics/sky_renderer.h"
 #include "client/graphics/weather_effects_controller.h"
@@ -46,37 +47,37 @@ extern void gles2Draw3DLinesBatch(void* driver, const float* vertices, unsigned 
 namespace EQT {
 namespace Graphics {
 // ===== Phase 1: Input =====
-void IrrlichtRenderer::processFrameInput(float deltaTime) {
+void FrameComponent::processFrameInput(float deltaTime) {
     // chatInputFocused_ is managed by processChatInput() — don't reset it here
 
     // Drain action queue and dispatch
-    auto actions = eventReceiver_->drainActions();
+    auto actions = ctx_.eventReceiver->drainActions();
     if (!actions.empty()) {
         LOG_DEBUG(MOD_INPUT, "[INPUT-TRACE] processFrameInput: chatFocused={}, drained {} actions from actionQueue, bridgeQueue size={}",
-            chatInputFocused_, actions.size(), eventReceiver_->getBridgeQueueSize());
+            owner_.chatInputFocused_, actions.size(), ctx_.eventReceiver->getBridgeQueueSize());
     }
     processCommonInput(actions);
     processPlayerInput(actions);
 
     // ===== FRAME TIMING: Input Handling =====
-    frameTimings_.inputHandling = measureSection();
+    owner_.frameTimings_.inputHandling = owner_.measureSection();
 
     processInputDeltas(deltaTime);
 
     // ===== FRAME TIMING: Input Handling (accumulated) =====
-    frameTimings_.inputHandling += measureSection();
+    owner_.frameTimings_.inputHandling += owner_.measureSection();
 
     // Handle mouse state BEFORE camera/movement updates
-    bool hadClick = eventReceiver_->wasLeftButtonClicked();
-    bool hadRelease = eventReceiver_->wasLeftButtonReleased();
-    int clickX = eventReceiver_->getClickMouseX();
-    int clickY = eventReceiver_->getClickMouseY();
+    bool hadClick = ctx_.eventReceiver->wasLeftButtonClicked();
+    bool hadRelease = ctx_.eventReceiver->wasLeftButtonReleased();
+    int clickX = ctx_.eventReceiver->getClickMouseX();
+    int clickY = ctx_.eventReceiver->getClickMouseY();
     pendingUIClick_ = hadClick;  // Preserved for UI input processing in render phase
 
     // Update chat panel mouse hover state
     {
-        int mx = eventReceiver_->getMouseX();
-        int my = eventReceiver_->getMouseY();
+        int mx = ctx_.eventReceiver->getMouseX();
+        int my = ctx_.eventReceiver->getMouseY();
         chatPanelState_.mouseHover = uiLayout_.chatPanel.isPointInside(
             irr::core::position2d<irr::s32>(mx, my));
 
@@ -86,66 +87,66 @@ void IrrlichtRenderer::processFrameInput(float deltaTime) {
         // wheel before this unit (camera zoom is the CameraZoomIn/Out
         // hotkeys, not the wheel), so a UI-consumed notch cannot also zoom.
         if (newUIEnabled_ && staticUIInput_) {
-            staticUIInput_->processWheel(mx, my, eventReceiver_->getMouseWheelDelta(),
+            staticUIInput_->processWheel(mx, my, ctx_.eventReceiver->getMouseWheelDelta(),
                 uiLayout_, chatPanelState_, skillsPopupState_, lootState_);
         } else {
-            eventReceiver_->getMouseWheelDelta();  // drain, never accumulate
+            ctx_.eventReceiver->getMouseWheelDelta();  // drain, never accumulate
         }
     }
 
     // Update camera and player movement
-    playerCamera_->updatePlayerMovement(deltaTime);
-    frameTimings_.playerMovement = measureSection();
+    owner_.PlayerCamera().updatePlayerMovement(deltaTime);
+    owner_.frameTimings_.playerMovement = owner_.measureSection();
     // Update sky position to follow camera
-    if (skyRenderer_ && skyRenderer_->isInitialized() && camera_) {
-        skyRenderer_->setCameraPosition(camera_->getPosition());
+    if (ctx_.skyRenderer && ctx_.skyRenderer->isInitialized() && ctx_.camera) {
+        ctx_.skyRenderer->setCameraPosition(ctx_.camera->getPosition());
     }
 
     // ===== FRAME TIMING: Camera Update =====
-    frameTimings_.cameraUpdate = measureSection();
+    owner_.frameTimings_.cameraUpdate = owner_.measureSection();
 
     processChatInput();
 
     // Handle mouse targeting
     if (hadClick) {
-        overlays_->handleMouseTargeting(clickX, clickY);
+        owner_.Overlays().handleMouseTargeting(clickX, clickY);
     }
 }
 
-void IrrlichtRenderer::processCommonInput(const std::vector<RendererEvent>& actions) {
+void FrameComponent::processCommonInput(const std::vector<RendererEvent>& actions) {
     using RA = RendererAction;
     for (const auto& event : actions) {
         switch (event.action) {
             case RA::Screenshot: pendingScreenshot_ = true; break;
-            case RA::ToggleAllUI: diagnostics_->toggleAllUI(); break;
+            case RA::ToggleAllUI: owner_.Diagnostics().toggleAllUI(); break;
             // T313: PageUp/PageDown. Same router as the wheel; a whole page
             // per press. Global-mode actions, so they work with a popup up.
             case RA::ScrollUIUp:
             case RA::ScrollUIDown:
-                if (newUIEnabled_ && staticUIInput_ && eventReceiver_) {
+                if (newUIEnabled_ && staticUIInput_ && ctx_.eventReceiver) {
                     staticUIInput_->processScrollKey(
                         event.action == RA::ScrollUIUp,
-                        eventReceiver_->getMouseX(), eventReceiver_->getMouseY(),
+                        ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
                         uiLayout_, chatPanelState_, skillsPopupState_, lootState_);
                 }
                 break;
-            case RA::ToggleZoneLights: diagnostics_->toggleZoneLights(); break;
-            case RA::CycleObjectLights: diagnostics_->cycleObjectLights(); break;
+            case RA::ToggleZoneLights: owner_.Diagnostics().toggleZoneLights(); break;
+            case RA::CycleObjectLights: owner_.Diagnostics().cycleObjectLights(); break;
             // T330 (B043): these four arms had never existed. The hotkeys were
             // bound (hotkey_manager.cpp) and the receiver queued the actions
             // (renderer_event_receiver.cpp), but they fell through the default
             // below and did nothing. Pinned by tests/test_debug_hotkey_arms.cpp.
-            case RA::ToggleWireframe: diagnostics_->toggleWireframe(); break;
-            case RA::ToggleHUD: diagnostics_->toggleHUD(); break;
-            case RA::ToggleNameTags: diagnostics_->toggleNameTags(); break;
-            case RA::ToggleOldModels: diagnostics_->toggleOldModels(); break;
+            case RA::ToggleWireframe: owner_.Diagnostics().toggleWireframe(); break;
+            case RA::ToggleHUD: owner_.Diagnostics().toggleHUD(); break;
+            case RA::ToggleNameTags: owner_.Diagnostics().toggleNameTags(); break;
+            case RA::ToggleOldModels: owner_.Diagnostics().toggleOldModels(); break;
             case RA::ToggleOptions:
                 // WindowManager removed — options window not available
                 break;
             case RA::ClearTarget:
-                if (currentTargetId_ != 0) {
-                    LOG_INFO(MOD_GRAPHICS, "[TARGET] Cleared target: {}", currentTargetName_);
-                    overlays_->clearCurrentTarget();
+                if (owner_.currentTargetId_ != 0) {
+                    LOG_INFO(MOD_GRAPHICS, "[TARGET] Cleared target: {}", owner_.currentTargetName_);
+                    owner_.Overlays().clearCurrentTarget();
                     SetTrackedTargetId(0);
                 }
                 break;
@@ -154,57 +155,57 @@ void IrrlichtRenderer::processCommonInput(const std::vector<RendererEvent>& acti
     }
 }
 
-void IrrlichtRenderer::processPlayerInput(const std::vector<RendererEvent>& actions) {
+void FrameComponent::processPlayerInput(const std::vector<RendererEvent>& actions) {
     using RA = RendererAction;
     for (const auto& event : actions) {
         // Note: Targeting, combat (autorun, autoattack, hail, consider), and clear target
         // actions are now routed through bridgeQueue_ → GraphicsInputHandler → InputActionBridge.
         // They no longer appear in actionQueue_, so only renderer-local actions remain here.
-        if (chatInputFocused_) {
+        if (owner_.chatInputFocused_) {
             // No renderer-local actions work when chat is focused
             continue;
         }
         switch (event.action) {
             case RA::ToggleVendor:
-                if (bridge_) bridge_->pushIntent(eqt::events::VendorToggleIntent{});
+                if (ctx_.bridge) ctx_.bridge->pushIntent(eqt::events::VendorToggleIntent{});
                 break;
             case RA::ToggleTrainer:
-                if (bridge_) bridge_->pushIntent(eqt::events::TrainerToggleIntent{});
+                if (ctx_.bridge) ctx_.bridge->pushIntent(eqt::events::TrainerToggleIntent{});
                 break;
             case RA::DoorInteract:
-                if (doorManager_) {
-                    uint8_t doorId = doorManager_->getNearestDoor(playerX_, playerY_, playerZ_, playerHeading_);
+                if (ctx_.doorManager) {
+                    uint8_t doorId = ctx_.doorManager->getNearestDoor(ctx_.playerX, ctx_.playerY, ctx_.playerZ, owner_.playerHeading_);
                     if (doorId != 0) {
                         LOG_INFO(MOD_GRAPHICS, "Door interaction: ID {}", doorId);
-                        if (bridge_) bridge_->pushIntent(eqt::events::DoorInteractIntent{doorId});
+                        if (ctx_.bridge) ctx_.bridge->pushIntent(eqt::events::DoorInteractIntent{doorId});
                     }
                 }
                 break;
             case RA::WorldObjectInteract: {
-                    uint32_t objectId = getNearestWorldObject(playerX_, playerY_, playerZ_);
+                    uint32_t objectId = owner_.getNearestWorldObject(ctx_.playerX, ctx_.playerY, ctx_.playerZ);
                     if (objectId != 0) {
                         LOG_INFO(MOD_GRAPHICS, "World object interaction: dropId {}", objectId);
-                        if (bridge_) bridge_->pushIntent(eqt::events::WorldObjectInteractIntent{objectId});
+                        if (ctx_.bridge) ctx_.bridge->pushIntent(eqt::events::WorldObjectInteractIntent{objectId});
                     }
                 }
                 break;
 
             // Collision
             case RA::ToggleCollision:
-                playerConfig_.collisionEnabled = !playerConfig_.collisionEnabled;
-                LOG_INFO(MOD_GRAPHICS, "Collision: {}", (playerConfig_.collisionEnabled ? "ENABLED" : "DISABLED"));
+                owner_.playerConfig_.collisionEnabled = !owner_.playerConfig_.collisionEnabled;
+                LOG_INFO(MOD_GRAPHICS, "Collision: {}", (owner_.playerConfig_.collisionEnabled ? "ENABLED" : "DISABLED"));
                 break;
             case RA::ToggleCollisionDebug:
-                playerConfig_.collisionDebug = !playerConfig_.collisionDebug;
-                LOG_INFO(MOD_GRAPHICS, "Collision Debug: {}", (playerConfig_.collisionDebug ? "ON" : "OFF"));
-                if (playerConfig_.collisionDebug) {
-                    LOG_INFO(MOD_GRAPHICS, "  Collision Height: {}", playerConfig_.collisionCheckHeight);
-                    LOG_INFO(MOD_GRAPHICS, "  Step Height: {}", playerConfig_.collisionStepHeight);
+                owner_.playerConfig_.collisionDebug = !owner_.playerConfig_.collisionDebug;
+                LOG_INFO(MOD_GRAPHICS, "Collision Debug: {}", (owner_.playerConfig_.collisionDebug ? "ON" : "OFF"));
+                if (owner_.playerConfig_.collisionDebug) {
+                    LOG_INFO(MOD_GRAPHICS, "  Collision Height: {}", owner_.playerConfig_.collisionCheckHeight);
+                    LOG_INFO(MOD_GRAPHICS, "  Step Height: {}", owner_.playerConfig_.collisionStepHeight);
                 }
                 break;
 
             // UI Windows
-            case RA::ToggleInventory: toggleInventory(); break;
+            case RA::ToggleInventory: owner_.toggleInventory(); break;
             case RA::ToggleGroup:
                 break;  // Group panel visibility is driven by inGroup state
             case RA::ToggleSkills:
@@ -221,66 +222,66 @@ void IrrlichtRenderer::processPlayerInput(const std::vector<RendererEvent>& acti
                 break;  // Buff bar always visible when buffs exist
 
             // Debug overlays
-            case RA::ToggleZoneLineVisualization: overlays_->toggleZoneLineVisualization(); break;
-            case RA::ToggleMapOverlay: overlays_->toggleMapOverlay(); break;
+            case RA::ToggleZoneLineVisualization: owner_.Overlays().toggleZoneLineVisualization(); break;
+            case RA::ToggleMapOverlay: owner_.Overlays().toggleMapOverlay(); break;
             case RA::RotateMapOverlay:
-                mapOverlayRotation_ = (mapOverlayRotation_ + 1) % 4;
-                LOG_INFO(MOD_GRAPHICS, "Map overlay placeable rotation: {}° around Y axis (terrain unchanged)", mapOverlayRotation_ * 90);
+                owner_.mapOverlayRotation_ = (owner_.mapOverlayRotation_ + 1) % 4;
+                LOG_INFO(MOD_GRAPHICS, "Map overlay placeable rotation: {}° around Y axis (terrain unchanged)", owner_.mapOverlayRotation_ * 90);
                 break;
             case RA::MirrorXMapOverlay:
-                mapOverlayMirrorX_ = !mapOverlayMirrorX_;
-                LOG_INFO(MOD_GRAPHICS, "Map overlay placeable X mirror: {} (terrain unchanged)", mapOverlayMirrorX_ ? "ON" : "OFF");
+                owner_.mapOverlayMirrorX_ = !owner_.mapOverlayMirrorX_;
+                LOG_INFO(MOD_GRAPHICS, "Map overlay placeable X mirror: {} (terrain unchanged)", owner_.mapOverlayMirrorX_ ? "ON" : "OFF");
                 break;
-            case RA::ToggleNavmeshOverlay: overlays_->toggleNavmeshOverlay(); break;
+            case RA::ToggleNavmeshOverlay: owner_.Overlays().toggleNavmeshOverlay(); break;
             case RA::RotateNavmeshOverlay:
-                navmeshOverlayRotation_ = (navmeshOverlayRotation_ + 1) % 4;
-                LOG_INFO(MOD_GRAPHICS, "Navmesh overlay rotation: {}° around Y axis", navmeshOverlayRotation_ * 90);
+                owner_.navmeshOverlayRotation_ = (owner_.navmeshOverlayRotation_ + 1) % 4;
+                LOG_INFO(MOD_GRAPHICS, "Navmesh overlay rotation: {}° around Y axis", owner_.navmeshOverlayRotation_ * 90);
                 break;
             case RA::MirrorXNavmeshOverlay:
-                navmeshOverlayMirrorX_ = !navmeshOverlayMirrorX_;
-                LOG_INFO(MOD_GRAPHICS, "Navmesh overlay X mirror: {}", navmeshOverlayMirrorX_ ? "ON" : "OFF");
+                owner_.navmeshOverlayMirrorX_ = !owner_.navmeshOverlayMirrorX_;
+                LOG_INFO(MOD_GRAPHICS, "Navmesh overlay X mirror: {}", owner_.navmeshOverlayMirrorX_ ? "ON" : "OFF");
                 break;
 
             case RA::ToggleFrustumCulling:
-                if (frustumCuller_) {
+                if (ctx_.frustumCuller) {
                     // Cycle: ON → ON+DEBUG → OFF → ON ...
-                    if (frustumCuller_->isEnabled() && !frustumDebugDraw_) {
+                    if (ctx_.frustumCuller->isEnabled() && !frustumDebugDraw_) {
                         frustumDebugDraw_ = true;
                         LOG_INFO(MOD_GRAPHICS, "Frustum culling: ON + DEBUG DRAW (Ctrl+V to cycle)");
-                    } else if (frustumCuller_->isEnabled() && frustumDebugDraw_) {
-                        frustumCuller_->setEnabled(false);
+                    } else if (ctx_.frustumCuller->isEnabled() && frustumDebugDraw_) {
+                        ctx_.frustumCuller->setEnabled(false);
                         frustumDebugDraw_ = false;
                         LOG_INFO(MOD_GRAPHICS, "Frustum culling: OFF (Ctrl+V to cycle)");
                     } else {
-                        frustumCuller_->setEnabled(true);
+                        ctx_.frustumCuller->setEnabled(true);
                         frustumDebugDraw_ = false;
                         LOG_INFO(MOD_GRAPHICS, "Frustum culling: ON (Ctrl+V to cycle)");
                     }
 
                     // Diagnostic: log camera direction and nearby region bboxes
-                    if (camera_ && cameraController_) {
-                        irr::core::vector3df irrFwd = (camera_->getTarget() - camera_->getPosition());
+                    if (ctx_.camera && ctx_.cameraController) {
+                        irr::core::vector3df irrFwd = (ctx_.camera->getTarget() - ctx_.camera->getPosition());
                         float camX, camY, camZ;
-                        cameraController_->getPositionEQ(camX, camY, camZ);
+                        ctx_.cameraController->getPositionEQ(camX, camY, camZ);
                         float eqFwdX = irrFwd.X, eqFwdY = irrFwd.Z, eqFwdZ = irrFwd.Y;
                         float fwdLen = std::sqrt(eqFwdX*eqFwdX + eqFwdY*eqFwdY + eqFwdZ*eqFwdZ);
                         if (fwdLen > 0.001f) { eqFwdX /= fwdLen; eqFwdY /= fwdLen; eqFwdZ /= fwdLen; }
                         LOG_INFO(MOD_GRAPHICS, "FRUSTUM DIAG: cam EQ=({:.1f},{:.1f},{:.1f}) fwd EQ=({:.3f},{:.3f},{:.3f})",
                             camX, camY, camZ, eqFwdX, eqFwdY, eqFwdZ);
                         LOG_INFO(MOD_GRAPHICS, "FRUSTUM DIAG: Irrlicht cam=({:.1f},{:.1f},{:.1f}) target=({:.1f},{:.1f},{:.1f})",
-                            camera_->getPosition().X, camera_->getPosition().Y, camera_->getPosition().Z,
-                            camera_->getTarget().X, camera_->getTarget().Y, camera_->getTarget().Z);
+                            ctx_.camera->getPosition().X, ctx_.camera->getPosition().Y, ctx_.camera->getPosition().Z,
+                            ctx_.camera->getTarget().X, ctx_.camera->getTarget().Y, ctx_.camera->getTarget().Z);
 
                         // Log 10 closest region bboxes with sizes and frustum results
                         struct RegionDiag { size_t idx; float dist; float sizeX, sizeY, sizeZ; bool frustum; };
                         std::vector<RegionDiag> diags;
-                        for (auto& [regionIdx, bbox] : regionBoundingBoxes_) {
+                        for (auto& [regionIdx, bbox] : ctx_.regionBoundingBoxes) {
                             float cx = (bbox.MinEdge.X + bbox.MaxEdge.X) * 0.5f;
                             float cy = (bbox.MinEdge.Y + bbox.MaxEdge.Y) * 0.5f;
                             float cz = (bbox.MinEdge.Z + bbox.MaxEdge.Z) * 0.5f;
                             float dx = camX - cx, dy = camY - cy, dz = camZ - cz;
                             float dist = std::sqrt(dx*dx + dy*dy + dz*dz);
-                            bool inFrustum = !frustumCuller_->isEnabled() || frustumCuller_->testAABB(
+                            bool inFrustum = !ctx_.frustumCuller->isEnabled() || ctx_.frustumCuller->testAABB(
                                 bbox.MinEdge.X, bbox.MinEdge.Y, bbox.MinEdge.Z,
                                 bbox.MaxEdge.X, bbox.MaxEdge.Y, bbox.MaxEdge.Z);
                             diags.push_back({regionIdx, dist,
@@ -291,7 +292,7 @@ void IrrlichtRenderer::processPlayerInput(const std::vector<RendererEvent>& acti
                         std::sort(diags.begin(), diags.end(), [](const RegionDiag& a, const RegionDiag& b) { return a.dist < b.dist; });
                         for (int i = 0; i < 15 && i < (int)diags.size(); ++i) {
                             auto& d = diags[i];
-                            auto& bbox = regionBoundingBoxes_[d.idx];
+                            auto& bbox = ctx_.regionBoundingBoxes[d.idx];
                             LOG_INFO(MOD_GRAPHICS, "FRUSTUM DIAG: region {} dist={:.0f} size=({:.1f},{:.1f},{:.1f}) "
                                 "bbox=({:.1f},{:.1f},{:.1f})->({:.1f},{:.1f},{:.1f}) {}",
                                 d.idx, d.dist, d.sizeX, d.sizeY, d.sizeZ,
@@ -302,8 +303,8 @@ void IrrlichtRenderer::processPlayerInput(const std::vector<RendererEvent>& acti
                     }
 
                     // Log occlusion culler stats if available
-                    if (occlusionCuller_ && occlusionCuller_->isEnabled()) {
-                        const auto& occStats = occlusionCuller_->getStats();
+                    if (ctx_.occlusionCuller && ctx_.occlusionCuller->isEnabled()) {
+                        const auto& occStats = ctx_.occlusionCuller->getStats();
                         int fillPct = occStats.depthBufferTotalPixels > 0
                             ? (occStats.depthBufferFilledPixels * 100 / occStats.depthBufferTotalPixels) : 0;
                         LOG_INFO(MOD_GRAPHICS, "OCCLUSION: {} rasterized ({} tris, {} clipped), buf {}/{} px ({}%), "
@@ -313,27 +314,27 @@ void IrrlichtRenderer::processPlayerInput(const std::vector<RendererEvent>& acti
                             occStats.regionsTested, occStats.regionsCulled,
                             occStats.rejectedBehindCamera, occStats.rejectedOffScreen,
                             occStats.rejectedScreenTooLarge, occStats.rejectedLowCoverage);
-                        occlusionCuller_->dumpDepthBufferPGM("occlusion_depth.pgm");
+                        ctx_.occlusionCuller->dumpDepthBufferPGM("occlusion_depth.pgm");
                         LOG_INFO(MOD_GRAPHICS, "OCCLUSION: depth buffer dumped to occlusion_depth.pgm");
 
                         // Detailed per-region occluder diagnostic (use camera position)
-                        float occDiagX = playerX_, occDiagY = playerY_, occDiagZ = playerZ_;
-                        if (cameraController_) {
-                            cameraController_->getPositionEQ(occDiagX, occDiagY, occDiagZ);
+                        float occDiagX = ctx_.playerX, occDiagY = ctx_.playerY, occDiagZ = ctx_.playerZ;
+                        if (ctx_.cameraController) {
+                            ctx_.cameraController->getPositionEQ(occDiagX, occDiagY, occDiagZ);
                         }
                         struct OccDiag { size_t regionIdx; float dist; size_t triCount; };
                         std::vector<OccDiag> occDiags;
-                        for (auto& [regionIdx, node] : regionMeshNodes_) {
+                        for (auto& [regionIdx, node] : ctx_.regionMeshNodes) {
                             if (!node || !node->isVisible()) continue;
-                            auto bboxIt = regionBoundingBoxes_.find(regionIdx);
-                            if (bboxIt == regionBoundingBoxes_.end()) continue;
+                            auto bboxIt = ctx_.regionBoundingBoxes.find(regionIdx);
+                            if (bboxIt == ctx_.regionBoundingBoxes.end()) continue;
                             const auto& bbox = bboxIt->second;
                             float closestX = std::max(bbox.MinEdge.X, std::min(occDiagX, bbox.MaxEdge.X));
                             float closestY = std::max(bbox.MinEdge.Y, std::min(occDiagY, bbox.MaxEdge.Y));
                             float closestZ = std::max(bbox.MinEdge.Z, std::min(occDiagZ, bbox.MaxEdge.Z));
                             float ddx = occDiagX - closestX, ddy = occDiagY - closestY, ddz = occDiagZ - closestZ;
                             float dist = std::sqrt(ddx*ddx + ddy*ddy + ddz*ddz);
-                            const auto& occ = occlusionCuller_->getRegionOccluders(regionIdx);
+                            const auto& occ = ctx_.occlusionCuller->getRegionOccluders(regionIdx);
                             occDiags.push_back({regionIdx, dist, occ.size()});
                         }
                         std::sort(occDiags.begin(), occDiags.end(),
@@ -341,7 +342,7 @@ void IrrlichtRenderer::processPlayerInput(const std::vector<RendererEvent>& acti
                         LOG_INFO(MOD_GRAPHICS, "OCCL REGIONS (closest 20 visible):");
                         for (int i = 0; i < 20 && i < (int)occDiags.size(); ++i) {
                             auto& d = occDiags[i];
-                            const auto& occ = occlusionCuller_->getRegionOccluders(d.regionIdx);
+                            const auto& occ = ctx_.occlusionCuller->getRegionOccluders(d.regionIdx);
                             if (occ.empty()) {
                                 LOG_INFO(MOD_GRAPHICS, "  region {} dist={:.1f} NO occluders", d.regionIdx, d.dist);
                             } else {
@@ -357,7 +358,7 @@ void IrrlichtRenderer::processPlayerInput(const std::vector<RendererEvent>& acti
                     }
 
                     // Force visibility rebuild
-                    forcePvsUpdate_ = true;
+                    owner_.forcePvsUpdate_ = true;
                 }
                 break;
 
@@ -366,36 +367,36 @@ void IrrlichtRenderer::processPlayerInput(const std::vector<RendererEvent>& acti
     }
 }
 
-void IrrlichtRenderer::processInputDeltas(float deltaTime) {
+void FrameComponent::processInputDeltas(float deltaTime) {
     // Camera zoom with Follow camera
-    if (!chatInputFocused_) {
-        float zoomDelta = eventReceiver_->getCameraZoomDelta();
+    if (!owner_.chatInputFocused_) {
+        float zoomDelta = ctx_.eventReceiver->getCameraZoomDelta();
         if (zoomDelta != 0.0f) {
             LOG_DEBUG(MOD_INPUT, "[INPUT-TRACE] processInputDeltas: zoomDelta={}, cameraController={}, cameraMode={}(Follow={})",
-                zoomDelta, (cameraController_ != nullptr),
-                static_cast<int>(cameraMode_), static_cast<int>(CameraMode::Follow));
+                zoomDelta, (ctx_.cameraController != nullptr),
+                static_cast<int>(owner_.cameraMode_), static_cast<int>(CameraMode::Follow));
         }
-        if (zoomDelta != 0.0f && cameraController_ && cameraMode_ == CameraMode::Follow) {
-            cameraController_->adjustFollowDistance(zoomDelta);
-            cameraController_->setFollowPosition(playerX_, playerY_, playerZ_, playerHeading_, deltaTime);
-            LOG_DEBUG(MOD_GRAPHICS, "Camera zoom distance: {:.1f}", cameraController_->getFollowDistance());
+        if (zoomDelta != 0.0f && ctx_.cameraController && owner_.cameraMode_ == CameraMode::Follow) {
+            ctx_.cameraController->adjustFollowDistance(zoomDelta);
+            ctx_.cameraController->setFollowPosition(ctx_.playerX, ctx_.playerY, ctx_.playerZ, owner_.playerHeading_, deltaTime);
+            LOG_DEBUG(MOD_GRAPHICS, "Camera zoom distance: {:.1f}", ctx_.cameraController->getFollowDistance());
         }
     }
 
     // D20c2: Push volume hotkey changes as intents via bridge
-    if (bridge_) {
-        float musicDelta = eventReceiver_->getMusicVolumeDelta();
+    if (ctx_.bridge) {
+        float musicDelta = ctx_.eventReceiver->getMusicVolumeDelta();
         if (musicDelta != 0.0f) {
-            bridge_->pushIntent(eqt::events::MusicVolumeChangeIntent{musicDelta});
+            ctx_.bridge->pushIntent(eqt::events::MusicVolumeChangeIntent{musicDelta});
         }
-        float effectsDelta = eventReceiver_->getEffectsVolumeDelta();
+        float effectsDelta = ctx_.eventReceiver->getEffectsVolumeDelta();
         if (effectsDelta != 0.0f) {
-            bridge_->pushIntent(eqt::events::EffectsVolumeChangeIntent{effectsDelta});
+            ctx_.bridge->pushIntent(eqt::events::EffectsVolumeChangeIntent{effectsDelta});
         }
     }
 }
 
-void IrrlichtRenderer::processChatInput() {
+void FrameComponent::processChatInput() {
     // T235: the spell-gem key request (Alt+1..8) is NOT consumed here any
     // more either. This used to call getSpellGemCastRequest() -- an
     // exchange(-1) -- every frame and hand the value to
@@ -434,56 +435,56 @@ void IrrlichtRenderer::processChatInput() {
     // It runs before the Enter/slash checks and regardless of current
     // focus: dropping the text when chat happens to be focused would lose
     // it silently, which is the whole failure class this unit is closing.
-    if (auto prefill = takeChatPrefill()) {
-        chatInputFocused_ = true;
+    if (auto prefill = owner_.takeChatPrefill()) {
+        owner_.chatInputFocused_ = true;
         chatPanelState_.inputActive = true;
         chatPanelState_.inputText = *prefill;
         chatPanelState_.cursorPos = static_cast<int>(prefill->size());
-        eventReceiver_->setChatInputFocused(true);
-        eventReceiver_->clearPendingKeyEvents();
+        ctx_.eventReceiver->setChatInputFocused(true);
+        ctx_.eventReceiver->clearPendingKeyEvents();
         return;
     }
 
     // Open chat input on Enter or / key
-    if (!chatInputFocused_) {
-        if (eventReceiver_->enterKeyPressed()) {
-            chatInputFocused_ = true;
+    if (!owner_.chatInputFocused_) {
+        if (ctx_.eventReceiver->enterKeyPressed()) {
+            owner_.chatInputFocused_ = true;
             chatPanelState_.inputActive = true;
             chatPanelState_.inputText.clear();
             chatPanelState_.cursorPos = 0;
-            eventReceiver_->setChatInputFocused(true);
-            eventReceiver_->clearPendingKeyEvents();
+            ctx_.eventReceiver->setChatInputFocused(true);
+            ctx_.eventReceiver->clearPendingKeyEvents();
             return;
         }
-        if (eventReceiver_->slashKeyPressed()) {
-            chatInputFocused_ = true;
+        if (ctx_.eventReceiver->slashKeyPressed()) {
+            owner_.chatInputFocused_ = true;
             chatPanelState_.inputActive = true;
             chatPanelState_.inputText = "/";
             chatPanelState_.cursorPos = 1;
-            eventReceiver_->setChatInputFocused(true);
-            eventReceiver_->clearPendingKeyEvents();
+            ctx_.eventReceiver->setChatInputFocused(true);
+            ctx_.eventReceiver->clearPendingKeyEvents();
             return;
         }
     }
 
     // Process typed characters when chat is focused
-    if (chatInputFocused_) {
-        while (eventReceiver_->hasPendingKeyEvents()) {
-            auto ke = eventReceiver_->popKeyEvent();
+    if (owner_.chatInputFocused_) {
+        while (ctx_.eventReceiver->hasPendingKeyEvents()) {
+            auto ke = ctx_.eventReceiver->popKeyEvent();
 
             if (ke.key == irr::KEY_RETURN) {
                 // Submit chat text
                 if (!chatPanelState_.inputText.empty()) {
                     LOG_INFO(MOD_GRAPHICS, "Chat submit: '{}'", chatPanelState_.inputText);
-                    if (bridge_) {
-                        bridge_->pushIntent(eqt::events::ChatSubmitIntent{chatPanelState_.inputText});
+                    if (ctx_.bridge) {
+                        ctx_.bridge->pushIntent(eqt::events::ChatSubmitIntent{chatPanelState_.inputText});
                     }
                 }
                 chatPanelState_.inputText.clear();
                 chatPanelState_.cursorPos = 0;
                 chatPanelState_.inputActive = false;
-                chatInputFocused_ = false;
-                eventReceiver_->setChatInputFocused(false);
+                owner_.chatInputFocused_ = false;
+                ctx_.eventReceiver->setChatInputFocused(false);
                 return;
             }
 
@@ -492,8 +493,8 @@ void IrrlichtRenderer::processChatInput() {
                 chatPanelState_.inputText.clear();
                 chatPanelState_.cursorPos = 0;
                 chatPanelState_.inputActive = false;
-                chatInputFocused_ = false;
-                eventReceiver_->setChatInputFocused(false);
+                owner_.chatInputFocused_ = false;
+                ctx_.eventReceiver->setChatInputFocused(false);
                 return;
             }
 
@@ -516,8 +517,8 @@ void IrrlichtRenderer::processChatInput() {
     }
 
     // Not in chat — clear pending keys and handle escape for target clearing
-    eventReceiver_->clearPendingKeyEvents();
-    if (eventReceiver_->escapeKeyPressed()) {
+    ctx_.eventReceiver->clearPendingKeyEvents();
+    if (ctx_.eventReceiver->escapeKeyPressed()) {
         // T290: StaticUIInput::processKey() -- the static UI's ESC handler --
         // had NO production caller at all; it was reached only from
         // tests/test_static_ui_panels.cpp (the T48 implemented-but-unreached
@@ -532,75 +533,75 @@ void IrrlichtRenderer::processChatInput() {
                 irr::KEY_ESCAPE, /*pressed=*/true, /*shift=*/false, /*ctrl=*/false,
                 inventoryState_, spellbookState_, skillsPopupState_, lootState_);
         }
-        if (!popupConsumedEscape && currentTargetId_ != 0) {
-            LOG_INFO(MOD_GRAPHICS, "[TARGET] Cleared target: {}", currentTargetName_);
-            overlays_->clearCurrentTarget();
+        if (!popupConsumedEscape && owner_.currentTargetId_ != 0) {
+            LOG_INFO(MOD_GRAPHICS, "[TARGET] Cleared target: {}", owner_.currentTargetName_);
+            owner_.Overlays().clearCurrentTarget();
             SetTrackedTargetId(0);
-            eventReceiver_->pushBridgeAction({RendererAction::ClearTarget});
+            ctx_.eventReceiver->pushBridgeAction({RendererAction::ClearTarget});
         }
     }
 }
 
 // ===== Phase 2: Visibility =====
-void IrrlichtRenderer::processFrameVisibility() {
+void FrameComponent::processFrameVisibility() {
     // Update frustum planes every frame from actual Irrlicht camera direction.
     // We derive the direction from camera target - position (not CameraController yaw/pitch,
     // which can be stale or represent player facing rather than camera view in follow mode).
     // Update frustum planes every frame (needed by SimulationWorker for next frame's input)
-    if (frustumCuller_ && camera_) {
-        irr::core::vector3df irrFwd = (camera_->getTarget() - camera_->getPosition());
+    if (ctx_.frustumCuller && ctx_.camera) {
+        irr::core::vector3df irrFwd = (ctx_.camera->getTarget() - ctx_.camera->getPosition());
         float eqFwdX = irrFwd.X;
         float eqFwdY = irrFwd.Z;
         float eqFwdZ = irrFwd.Y;
 
-        float fovV = camera_->getFOV();
-        auto screenSize = driver_->getScreenSize();
+        float fovV = ctx_.camera->getFOV();
+        auto screenSize = ctx_.driver->getScreenSize();
         float aspect = (float)screenSize.Width / (float)screenSize.Height;
         float camX, camY, camZ;
-        cameraController_->getPositionEQ(camX, camY, camZ);
+        ctx_.cameraController->getPositionEQ(camX, camY, camZ);
 
-        frustumCuller_->update(camX, camY, camZ, eqFwdX, eqFwdY, eqFwdZ,
-            fovV, aspect, 1.0f, renderDistance_);
+        ctx_.frustumCuller->update(camX, camY, camZ, eqFwdX, eqFwdY, eqFwdZ,
+            fovV, aspect, 1.0f, ctx_.renderDistance);
     }
 
     // Visibility/lighting handled by SimulationWorker — results applied in applySimulationResults()
 
     // Update camera position for atlas per-pixel lighting
-    if (zoneShader_ && zoneShader_->isAtlasAvailable() && camera_) {
-        irr::core::vector3df camPos = camera_->getPosition();
-        zoneShader_->setCameraPos(camPos.X, camPos.Y, camPos.Z);
+    if (ctx_.zoneShader && ctx_.zoneShader->isAtlasAvailable() && ctx_.camera) {
+        irr::core::vector3df camPos = ctx_.camera->getPosition();
+        ctx_.zoneShader->setCameraPos(camPos.X, camPos.Y, camPos.Z);
     }
 }
 
 // ===== Phase 3: Simulation =====
-void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
+void FrameComponent::processFrameSimulation(float deltaTime) {
     // WindowManager removed — no old UI update
-    sectionStart_ = std::chrono::steady_clock::now();
+    owner_.sectionStart_ = std::chrono::steady_clock::now();
 
     // Entity update — worker handles interpolation + culling, main thread handles
     // animation side-effects, corpse fading, equipment transforms, casting bars
-    if (entityRenderer_) {
+    if (ctx_.entityRenderer) {
         // Pass occlusion-culled regions to entity renderer for door manager etc.
-        entityRenderer_->setOcclusionCulledRegions(
-            occlusionCulledRegions_.empty() ? nullptr : &occlusionCulledRegions_);
+        ctx_.entityRenderer->setOcclusionCulledRegions(
+            owner_.occlusionCulledRegions_.empty() ? nullptr : &owner_.occlusionCulledRegions_);
 
         // Pass camera BSP region to entity renderer
-        if (zoneBspTree_ && currentPvsRegion_ != SIZE_MAX
-            && currentPvsRegion_ < zoneBspTree_->regions.size()) {
-            entityRenderer_->setCameraRegion(currentPvsRegion_, zoneBspTree_->regions[currentPvsRegion_]);
+        if (ctx_.zoneBspTree && ctx_.currentPvsRegion != SIZE_MAX
+            && ctx_.currentPvsRegion < ctx_.zoneBspTree->regions.size()) {
+            ctx_.entityRenderer->setCameraRegion(ctx_.currentPvsRegion, ctx_.zoneBspTree->regions[ctx_.currentPvsRegion]);
         } else {
-            entityRenderer_->setCameraRegion(SIZE_MAX, nullptr);
+            ctx_.entityRenderer->setCameraRegion(SIZE_MAX, nullptr);
         }
 
         // Flush pending updates for animation processing only
         // (position/velocity math was already drained for the worker in postSimulationInput)
-        entityRenderer_->flushPendingUpdatesForAnimations();
+        ctx_.entityRenderer->flushPendingUpdatesForAnimations();
 
         // Main-thread entity state: corpse fading, equipment transforms, animation timing
-        entityRenderer_->updateMainThreadEntityState(deltaTime);
+        ctx_.entityRenderer->updateMainThreadEntityState(deltaTime);
 
-        entityRenderer_->updateEntityCastingBars(deltaTime, camera_);
-        entityRenderer_->processExpiredCombatBuffers();
+        ctx_.entityRenderer->updateEntityCastingBars(deltaTime, ctx_.camera);
+        ctx_.entityRenderer->processExpiredCombatBuffers();
 
         // T311: publish the player model's measured origin-to-feet distance to
         // the game thread. It is a property of the SHIPPED MESH -- only the
@@ -614,46 +615,46 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
         // published" would need a new IrrlichtRenderer member, and
         // GameStateBridge::coalesceIntents already collapses these to the latest
         // one per drain, so the queue cannot grow.
-        if (bridge_) {
-            bridge_->pushIntent(eqt::events::PlayerModelGeometryChanged{
-                entityRenderer_->getPlayerCollisionZOffset()});
+        if (ctx_.bridge) {
+            ctx_.bridge->pushIntent(eqt::events::PlayerModelGeometryChanged{
+                ctx_.entityRenderer->getPlayerCollisionZOffset()});
         }
     }
-    frameTimings_.entityUpdate = measureSection();
+    owner_.frameTimings_.entityUpdate = owner_.measureSection();
 
     // Door update
-    if (doorManager_) {
-        doorManager_->setOcclusionCulledRegions(
-            occlusionCulledRegions_.empty() ? nullptr : &occlusionCulledRegions_);
-        doorManager_->setPvsRegion(currentPvsRegion_);
-        doorManager_->update(deltaTime);
+    if (ctx_.doorManager) {
+        ctx_.doorManager->setOcclusionCulledRegions(
+            owner_.occlusionCulledRegions_.empty() ? nullptr : &owner_.occlusionCulledRegions_);
+        ctx_.doorManager->setPvsRegion(ctx_.currentPvsRegion);
+        ctx_.doorManager->update(deltaTime);
     }
-    frameTimings_.doorUpdate = measureSection();
+    owner_.frameTimings_.doorUpdate = owner_.measureSection();
 
     // Spell VFX update
-    if (spellVisualFX_) spellVisualFX_->update(deltaTime);
-    frameTimings_.spellVfxUpdate = measureSection();
+    if (owner_.spellVisualFX_) owner_.spellVisualFX_->update(deltaTime);
+    owner_.frameTimings_.spellVfxUpdate = owner_.measureSection();
 
     // Animated textures
-    if (animatedTextureManager_) animatedTextureManager_->update(deltaTime * 1000.0f);
-    frameTimings_.animatedTextures = measureSection();
+    if (ctx_.animatedTextureManager) ctx_.animatedTextureManager->update(deltaTime * 1000.0f);
+    owner_.frameTimings_.animatedTextures = owner_.measureSection();
 
     // Vertex animations and light animations handled by SimulationWorker
-    frameTimings_.vertexAnimations = measureSection();
+    owner_.frameTimings_.vertexAnimations = owner_.measureSection();
 
     // Reset timing section so zone load time isn't attributed to tier2Update
-    sectionStart_ = std::chrono::steady_clock::now();
+    owner_.sectionStart_ = std::chrono::steady_clock::now();
 
     // Rebuild HCMap placeholder as player moves (GREEN-gated)
     // Only active during placeholder phase — before real geometry replaces it
-    if (zonePlaceholderNode_ && collisionMap_ && collisionMap_->IsLoaded()) {
-        if (!governor_ || governor_->getState() == BudgetState::Green) {
-            irr::core::vector3df currentPos(playerX_, playerZ_, playerY_);  // EQ→Irrlicht
-            float movedSq = currentPos.getDistanceFromSQ(lastPlaceholderBuildPos_);
+    if (owner_.zonePlaceholderNode_ && ctx_.collisionMap && ctx_.collisionMap->IsLoaded()) {
+        if (!ctx_.governor || ctx_.governor->getState() == BudgetState::Green) {
+            irr::core::vector3df currentPos(ctx_.playerX, ctx_.playerZ, ctx_.playerY);  // EQ→Irrlicht
+            float movedSq = currentPos.getDistanceFromSQ(owner_.lastPlaceholderBuildPos_);
             const float rebuildThresholdSq = 100.0f * 100.0f;  // 100 units
             if (movedSq > rebuildThresholdSq) {
-                zoneLifecycle_->buildZonePlaceholder(playerX_, playerZ_, playerY_);
-                zoneLifecycle_->setupHCMapCollision();
+                owner_.ZoneLifecycle().buildZonePlaceholder(ctx_.playerX, ctx_.playerZ, ctx_.playerY);
+                owner_.ZoneLifecycle().setupHCMapCollision();
             }
         }
     }
@@ -663,20 +664,20 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
     {
     bool runDetailTreeThisFrame = runTier2_;
     if (runDetailTreeThisFrame) {
-        if (detailManager_ && detailManager_->isEnabled()) {
-            irr::core::vector3df playerPosIrrlicht(playerX_, playerZ_, playerY_);
-            static float lastPlayerX = playerX_, lastPlayerY = playerY_;
+        if (ctx_.detailManager && ctx_.detailManager->isEnabled()) {
+            irr::core::vector3df playerPosIrrlicht(ctx_.playerX, ctx_.playerZ, ctx_.playerY);
+            static float lastPlayerX = ctx_.playerX, lastPlayerY = ctx_.playerY;
             irr::core::vector3df playerVelocity(0, 0, 0);
             if (deltaTime > 0.001f) {
-                float velX = (playerX_ - lastPlayerX) / deltaTime;
-                float velZ = (playerY_ - lastPlayerY) / deltaTime;
+                float velX = (ctx_.playerX - lastPlayerX) / deltaTime;
+                float velZ = (ctx_.playerY - lastPlayerY) / deltaTime;
                 playerVelocity = irr::core::vector3df(velX, 0, velZ);
             }
-            lastPlayerX = playerX_;
-            lastPlayerY = playerY_;
+            lastPlayerX = ctx_.playerX;
+            lastPlayerY = ctx_.playerY;
             bool playerMoving = playerVelocity.getLengthSQ() > 0.1f;
-            detailManager_->update(playerPosIrrlicht, deltaTime * 1000.0f,
-                                   playerPosIrrlicht, playerVelocity, playerHeading_, playerMoving);
+            ctx_.detailManager->update(playerPosIrrlicht, deltaTime * 1000.0f,
+                                   playerPosIrrlicht, playerVelocity, owner_.playerHeading_, playerMoving);
         }
         // P33: TreeWindController::update(deltaTime) is now wired live
         // (Will's ruling: trees animate unless the tree-wind-animation
@@ -694,22 +695,22 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
         // setWindTime/setWindParams, so windTime_ there is permanently 0
         // regardless of anything in this file; goldens are unaffected by
         // this change (see refactor/P33_tree_wind_enable.md Review).
-        if (treeWindController_.isEnabled()) {
-            treeWindController_.update(deltaTime);
+        if (ctx_.treeWindController.isEnabled()) {
+            ctx_.treeWindController.update(deltaTime);
         }
     }
     } // tier2 detail+tree block
-    frameTimings_.tier2Update = measureSection();
+    owner_.frameTimings_.tier2Update = owner_.measureSection();
 
     // Fire light flickering handled by SimulationWorker
-    frameTimings_.fireFlicker = measureSection();
+    owner_.frameTimings_.fireFlicker = owner_.measureSection();
 
     // Player light position set in applySimulationResults() by SimulationWorker
 
     // Tier 3: Environmental simulation (~10Hz)
     {
         // Weather state machine runs on SimulationWorker, results applied in applySimulationResults()
-        frameTimings_.weatherSystemUpdate = measureSection();
+        owner_.frameTimings_.weatherSystemUpdate = owner_.measureSection();
 
         bool runEnvThisFrame = runTier3_;
 
@@ -719,36 +720,36 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
 
             // Weather effects: render-only update (rain/snow overlays, cloud layer)
             // Timer/darkening/lightning state computed by SimulationWorker, applied in applySimulationResults()
-            if (weatherEffects_) weatherEffects_->updateRenderOnly(accDelta);
+            if (ctx_.weatherEffects) ctx_.weatherEffects->updateRenderOnly(accDelta);
 
             // Sky cloud scrolling computed by SimulationWorker, applied in applySimulationResults()
 
-            if (particleManager_ && particleManager_->isEnabled() && zoneReady_) {
-                particleManager_->setPlayerPosition(glm::vec3(playerX_, playerY_, playerZ_), playerHeading_);
-                float timeOfDay = currentHour_ + currentMinute_ / 60.0f;
-                particleManager_->setTimeOfDay(timeOfDay);
-                particleManager_->update(accDelta);
+            if (ctx_.particleManager && ctx_.particleManager->isEnabled() && owner_.zoneReady_) {
+                ctx_.particleManager->setPlayerPosition(glm::vec3(ctx_.playerX, ctx_.playerY, ctx_.playerZ), owner_.playerHeading_);
+                float timeOfDay = ctx_.currentHour + ctx_.currentMinute / 60.0f;
+                ctx_.particleManager->setTimeOfDay(timeOfDay);
+                ctx_.particleManager->update(accDelta);
             }
 
             // Unified particles (fire + weather + spell effects):
             // Physics now runs in SimulationWorker. Weather light collection
             // and command posting happen in postSimulationInput().
             // updateUnified() is a no-op — kept for API compatibility.
-            if (particleManager_ && zoneReady_) {
-                particleManager_->updateUnified(0.0f);
+            if (ctx_.particleManager && owner_.zoneReady_) {
+                ctx_.particleManager->updateUnified(0.0f);
             }
 
             // Boids and tumbleweeds now run in SimulationWorker —
             // input posted in postSimulationInput(), results applied in applySimulationResults()
         }
     }
-    frameTimings_.tier3Update = measureSection();
+    owner_.frameTimings_.tier3Update = owner_.measureSection();
 
     // HUD
     hudAnimTimer_ += deltaTime;
     if (hudAnimTimer_ > 10000.0f) hudAnimTimer_ = 0.0f;
-    overlays_->updateHUD();
-    frameTimings_.hudUpdate = measureSection();
+    owner_.Overlays().updateHUD();
+    owner_.frameTimings_.hudUpdate = owner_.measureSection();
 }
 
 } // namespace Graphics

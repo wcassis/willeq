@@ -74,7 +74,7 @@ TEST_F(SpellGemKeyRaceTest, GemKeySurvivesRenderFrameForGameThread) {
     PressAltDigit(*receiver, irr::KEY_KEY_1, L'1');
 
     // Render thread: one frame's worth of processChatInput().
-    renderer.processChatInput();
+    renderer.Frame().processChatInput();
 
     // Game thread: InputActionBridge::processSpellCasts() polls this.
     eqt::input::GraphicsInputHandler handler(receiver);
@@ -98,7 +98,7 @@ TEST_F(SpellGemKeyRaceTest, RenderFrameWithChatUnfocusedLeavesRequestUntouched) 
     for (int gem = 0; gem < 8; ++gem) {
         PressAltDigit(*receiver, keys[gem], static_cast<wchar_t>(L'1' + gem));
         for (int frame = 0; frame < 5; ++frame) {
-            renderer.processChatInput();
+            renderer.Frame().processChatInput();
         }
         auto req = handler.consumeSpellCastRequest();
         ASSERT_TRUE(req.has_value()) << "gem " << gem + 1 << " swallowed by the render thread";

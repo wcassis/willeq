@@ -60,6 +60,7 @@
 #include "client/graphics/zone_stream/zone_stream_component.h"
 #include "client/graphics/zone_lifecycle/zone_lifecycle_component.h"
 #include "client/graphics/zone_load/zone_load_component.h"
+#include "client/graphics/frame/frame_component.h"
 #ifdef WITH_RDP
 #include "client/graphics/rdp/rdp_server.h"
 #include "client/graphics/rdp/rdp_input_handler.h"
@@ -345,6 +346,12 @@ public:
     // L10 (Batch L): loadZoneSequential() and its twenty step methods.
     ZoneLoadComponent& ZoneLoad() { return *zoneLoad_; }
 
+    // L11 (Batch L): the per-frame loop, the input drain and the static UI
+    // panel state. Reached by the input tests, by the bridge (the UI panel
+    // members are public on the component, as they were here) and by the
+    // sibling components that toggle UI state.
+    FrameComponent& Frame() { return *frame_; }
+
     // Get BSP tree for water region detection
     std::shared_ptr<EQT::Graphics::BspTree> getZoneBspTree() const { return zoneBspTree_; }
 
@@ -376,19 +383,12 @@ public:
     CameraMode getCameraMode() const { return cameraMode_; }
     std::string getCameraModeString() const { return playerCamera_->getCameraModeString(); }
 
-    // Process input and render a single frame
-    // Returns false if the renderer should stop
-    bool processFrame(float deltaTime);
-
-    // Frame phase methods (called by processFrame)
-    void processFrameInput(float deltaTime);
-    void processFrameVisibility();
-    void processFrameSimulation(float deltaTime);
-    bool processFrameRender(float deltaTime);  // Returns false for loading screen early-return
-    void processCommonInput(const std::vector<RendererEvent>& actions);
-    void processPlayerInput(const std::vector<RendererEvent>& actions);
-    void processInputDeltas(float deltaTime);
-    void processChatInput();
+    // Process input and render a single frame; false means stop.
+    // L11 (Batch L): FrameComponent owns the loop and all four phases. This
+    // forwarder stays for application_frame.cpp:181, run() below and two
+    // integration tests -- Application must not learn a component exists
+    // (the K11 rule). The phase methods are reached through Frame().
+    bool processFrame(float deltaTime) { return frame_->processFrame(deltaTime); }
 
     // ---- T319: chat-input prefill (game thread -> render thread) ----
     // The R key (HotkeyAction::ReplyToTell) decodes on the render thread,
@@ -428,7 +428,7 @@ public:
     // state accessors stay here -- they read members other families share.
     // T301 Leg D: readable so /hideui can echo the resulting state and so the
     // toggle can be asserted headlessly (tests/test_ui_hide_command.cpp).
-    bool isAllUIHidden() const { return allUIHidden_; }
+    bool isAllUIHidden() const { return frame_->allUIHidden_; }
 
     // Front-to-back sorting and portal occlusion controls
     bool isManualZoneDrawEnabled() const { return manualZoneDrawEnabled_; }
@@ -647,9 +647,9 @@ public:
     UIAtlas* getUIAtlas() { return uiAtlas_.get(); }
 
     // U03: Static layout UI
-    UIRenderer* getUIRenderer() { return uiRenderer_.get(); }
-    bool isNewUIEnabled() const { return newUIEnabled_; }
-    void setNewUIEnabled(bool v) { newUIEnabled_ = v; }
+    UIRenderer* getUIRenderer() { return frame_->uiRenderer_.get(); }
+    bool isNewUIEnabled() const { return frame_->newUIEnabled_; }
+    void setNewUIEnabled(bool v) { frame_->newUIEnabled_ = v; }
 
     // Constrained texture cache — owned by Application, set before initLoadingScreen()
     void setConstrainedTextureCache(ConstrainedTextureCache* cache) { constrainedTextureCache_ = cache; }
@@ -753,7 +753,6 @@ private:
     // K15 (B034): the occlusion camera-movement gating members
     // (lastOccCam{X,Y,Z}, lastOccFwd{X,Y,Z}) had zero references tree-wide --
     // the gate was never implemented. Deleted.
-    bool frustumDebugDraw_ = false;  // Draw region bboxes colored by frustum result
     std::unique_ptr<EntityRenderer> entityRenderer_;
     std::unique_ptr<class EntityPrepWorker> entityPrepWorker_;  // Background entity model preparation
     bool entityPrepReady_ = false;  // True after global archives loaded, safe to queue entity prep
@@ -1107,16 +1106,10 @@ private:
     std::chrono::steady_clock::time_point frameStart_;  // Start of current frame (for lazy load budgeting)
     int64_t measureSection();
     bool chatInputFocused_ = false;
-    bool pendingUIClick_ = false;  // Click consumed in Phase 1, applied to UI in render phase
-    bool runTier2_ = true;
-    bool runTier3_ = true;
-
-    // Tiered update frequencies
+    // L11: pendingUIClick_, runTier2_/runTier3_, the two tier intervals,
+    // tier3DeltaAccum_ and windTime_ are on FrameComponent. frameNumber_ stays
+    // (renderer_sim_bridge.cpp and renderer_zone_load_env.cpp read it).
     uint32_t frameNumber_ = 0;
-    static constexpr uint32_t kTier2Interval = 3;   // ~20Hz at 60fps
-    static constexpr uint32_t kTier3Interval = 6;   // ~10Hz at 60fps
-    float tier3DeltaAccum_ = 0.0f;  // Accumulated delta for Tier 3 simulation
-    float windTime_ = 0.0f;  // Monotonic wind time for GPU wind shader (seconds)
 
     // Frame budget governor (Green/Yellow/Red state machine for load throttling)
     std::unique_ptr<FrameBudgetGovernor> governor_;
@@ -1144,9 +1137,7 @@ private:
     float loadingProgress_ = 0.0f;  // Loading progress for zone transitions (0.0 - 1.0)
     std::wstring loadingText_ = L"Initializing...";  // Loading stage text
     bool wireframeMode_ = false;
-    bool pendingScreenshot_ = false;  // Deferred to after render, before swap
     bool hudEnabled_ = true;
-    bool allUIHidden_ = false;
     bool fogEnabled_ = true;
     bool lightingEnabled_ = true;   // Lighting enabled by default
     bool zoneLightsEnabled_ = false; // Zone lights off by default
@@ -1203,7 +1194,6 @@ private:
     // HUD elements
     irr::gui::IGUIStaticText* hudText_ = nullptr;
     irr::gui::IGUIStaticText* hotkeysText_ = nullptr;  // Hotkey hints in upper right
-    float hudAnimTimer_ = 0.0f;  // Timer for HUD animations (auto attack indicator)
 
     // Performance: HUD dirty tracking to avoid rebuilding every frame
     // K15 (B034): cachedHudText_ / cachedHotkeysText_ / cachedHeadingDebugText_
@@ -1216,9 +1206,8 @@ private:
     irr::u32 lastFpsTime_ = 0;
 
     // Polygon count tracking (for constrained mode)
-    uint32_t lastPolygonCount_ = 0;
-    int polygonBudgetExceededFrames_ = 0;  // Throttle warnings
-    int constrainedStatsLogCounter_ = 0;   // Periodic stats logging
+    uint32_t lastPolygonCount_ = 0;  // DiagnosticsComponent reads it; the two
+    // throttle counters that sat here are on FrameComponent (L11).
 
     // L05: playerMovement_ moved to PlayerCameraComponent with its four inline
     // accessors. playerConfig_ stays -- renderer_frame_input.cpp and
@@ -1286,9 +1275,7 @@ private:
     std::unique_ptr<EQ::SpellVisualFX> spellVisualFX_;
     std::unique_ptr<TextBatch> textBatch_;  // U01
     std::unique_ptr<UIAtlas> uiAtlas_;     // U02
-    std::unique_ptr<UIRenderer> uiRenderer_;  // U03b
-    UILayout uiLayout_;                       // U03a
-    bool newUIEnabled_ = true;                // U07c1: new UI on by default
+    // L11: uiRenderer_, uiLayout_ and newUIEnabled_ are on FrameComponent.
 
     // T60: inventory paperdoll. Constructed lazily on first popup open
     // (ensurePaperdollInitialized()) — never at renderer init, so a
@@ -1308,27 +1295,9 @@ private:
     mutable std::mutex chatPrefillMutex_;
     std::optional<std::string> pendingChatPrefill_;
 public:
-    // U03d+: Cached data from bridge events for new static UI panels.
-    // Public so IrrlichtBridge can update them directly.
-    PlayerStatsData cachedPlayerStats_;
-    TargetInfoData cachedTargetInfo_;
-    ChatPanelState chatPanelState_;        // U04
-    std::unique_ptr<eqt::ui::ChatMessageBuffer> newUIChatBuffer_;  // U04
-    InventoryPanelState inventoryState_;  // U05
-    HotbarPanelState hotbarState_;       // U06a
-    SpellGemPanelState spellGemState_;  // U06b
-    BuffBarState buffBarState_;         // U06c
-    CastingBarState castingBarState_;  // U06d
-    GroupPanelState groupPanelState_;  // U06e
-    PetPanelState petPanelState_;       // U06f
-    SpellbookPopupState spellbookState_; // U06g
-    SkillsPopupState skillsPopupState_; // U06h
-    // T290: renderer-side corpse contents, restored. Fed only by the four
-    // loot bridge arms (applyLoot*), read by renderLootPopup() and
-    // StaticUIInput's row/button hit tests.
-    LootPanelState lootState_;          // T290
-    XPBarState xpBarState_;             // U06i
-    std::unique_ptr<StaticUIInput> staticUIInput_;  // U06j
+    // L11: the sixteen static-UI panel members that used to sit here are on
+    // FrameComponent, still public and still written directly by
+    // IrrlichtBridge -- reached now as Frame().cachedPlayerStats_ and so on.
 
     // T60: called by IrrlichtBridge on InventorySlotChanged (equip slots
     // 0-21) — an equip-slot display change usually means the entity's
@@ -1582,6 +1551,14 @@ private:
     // of K13 (ii); no thread ownership moved -- see zone_load_component.h.
     friend class ZoneLoadComponent;
     std::unique_ptr<ZoneLoadComponent> zoneLoad_;
+
+    // L11 (Batch L): FrameComponent needs friendship on both axes of K13
+    // correction (ii) -- it reaches ~60 private members through owner_
+    // (frameTimings_ above all) and names IrrlichtRenderer::FrameTimings when
+    // it resets the accumulator. Thread ownership is unchanged: see the
+    // threading note in frame/frame_component.h.
+    friend class FrameComponent;
+    std::unique_ptr<FrameComponent> frame_;
 };
 
 } // namespace Graphics

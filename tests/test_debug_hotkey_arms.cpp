@@ -84,10 +84,10 @@ protected:
 
 TEST_F(DebugHotkeyArmsTest, ToggleWireframeFlipsWireframeMode) {
     ASSERT_FALSE(renderer.Context().wireframeMode);
-    renderer.processCommonInput(One(RendererAction::ToggleWireframe));
+    renderer.Frame().processCommonInput(One(RendererAction::ToggleWireframe));
     EXPECT_TRUE(renderer.Context().wireframeMode)
         << "the wireframe hotkey fell through processCommonInput's default again (B043)";
-    renderer.processCommonInput(One(RendererAction::ToggleWireframe));
+    renderer.Frame().processCommonInput(One(RendererAction::ToggleWireframe));
     EXPECT_FALSE(renderer.Context().wireframeMode);
 }
 
@@ -96,10 +96,10 @@ TEST_F(DebugHotkeyArmsTest, ToggleWireframeFlipsWireframeMode) {
 TEST_F(DebugHotkeyArmsTest, ToggleNameTagsFlipsTheNameTagFlag) {
     installEntityRenderer();
     ASSERT_TRUE(renderer.Context().config.constrainedConfig.nameTagsEnabled);
-    renderer.processCommonInput(One(RendererAction::ToggleNameTags));
+    renderer.Frame().processCommonInput(One(RendererAction::ToggleNameTags));
     EXPECT_FALSE(renderer.Context().config.constrainedConfig.nameTagsEnabled)
         << "the name-tag hotkey fell through processCommonInput's default again (B043)";
-    renderer.processCommonInput(One(RendererAction::ToggleNameTags));
+    renderer.Frame().processCommonInput(One(RendererAction::ToggleNameTags));
     EXPECT_TRUE(renderer.Context().config.constrainedConfig.nameTagsEnabled);
 }
 
@@ -108,10 +108,10 @@ TEST_F(DebugHotkeyArmsTest, ToggleNameTagsFlipsTheNameTagFlag) {
 TEST_F(DebugHotkeyArmsTest, ToggleOldModelsFlipsTheModelEra) {
     installEntityRenderer();
     ASSERT_TRUE(renderer.Diagnostics().isUsingOldModels());
-    renderer.processCommonInput(One(RendererAction::ToggleOldModels));
+    renderer.Frame().processCommonInput(One(RendererAction::ToggleOldModels));
     EXPECT_FALSE(renderer.Diagnostics().isUsingOldModels())
         << "the old-models hotkey fell through processCommonInput's default again (B043)";
-    renderer.processCommonInput(One(RendererAction::ToggleOldModels));
+    renderer.Frame().processCommonInput(One(RendererAction::ToggleOldModels));
     EXPECT_TRUE(renderer.Diagnostics().isUsingOldModels());
 }
 
@@ -119,7 +119,7 @@ TEST_F(DebugHotkeyArmsTest, ToggleOldModelsFlipsTheModelEra) {
 // are four separate cases, not one fallthrough.
 TEST_F(DebugHotkeyArmsTest, EachArmTouchesOnlyItsOwnState) {
     installEntityRenderer();
-    renderer.processCommonInput(One(RendererAction::ToggleWireframe));
+    renderer.Frame().processCommonInput(One(RendererAction::ToggleWireframe));
     EXPECT_TRUE(renderer.Context().wireframeMode);
     EXPECT_TRUE(renderer.Context().config.constrainedConfig.nameTagsEnabled);
     EXPECT_TRUE(renderer.Diagnostics().isUsingOldModels());
@@ -129,13 +129,27 @@ TEST_F(DebugHotkeyArmsTest, EachArmTouchesOnlyItsOwnState) {
 // --- The arms, as text (the HUD one has no public reader) ---
 
 TEST(DebugHotkeyArmSourceInvariants, AllFourArmsExistInProcessCommonInput) {
-    const std::string src = readFile(kRoot / "src/client/graphics/renderer_frame_input.cpp");
-    for (const char* arm : {"case RA::ToggleWireframe: diagnostics_->toggleWireframe(); break;",
-                            "case RA::ToggleHUD: diagnostics_->toggleHUD(); break;",
-                            "case RA::ToggleNameTags: diagnostics_->toggleNameTags(); break;",
-                            "case RA::ToggleOldModels: diagnostics_->toggleOldModels(); break;"}) {
-        EXPECT_NE(src.find(arm), std::string::npos)
-            << "missing from processCommonInput's switch, so the hotkey does nothing: " << arm;
+    // L11 (batch correction 21): processCommonInput() moved from
+    // IrrlichtRenderer to FrameComponent and the diagnostics receiver moved
+    // with it (diagnostics_-> became owner_.Diagnostics().). Both spellings
+    // are accepted and exactly one must match per arm -- a guard that knows
+    // only the pre-extraction spelling would pass vacuously on the day the
+    // arm is deleted from moved code. The path moved to
+    // src/client/graphics/frame/; the basename is unchanged.
+    const std::string src =
+        readFile(kRoot / "src/client/graphics/frame/renderer_frame_input.cpp");
+    const char* actions[] = {"ToggleWireframe", "ToggleHUD", "ToggleNameTags", "ToggleOldModels"};
+    const char* methods[] = {"toggleWireframe", "toggleHUD", "toggleNameTags", "toggleOldModels"};
+    for (int i = 0; i < 4; ++i) {
+        const std::string owned =
+            std::string("case RA::") + actions[i] + ": diagnostics_->" + methods[i] + "(); break;";
+        const std::string component = std::string("case RA::") + actions[i] +
+                                      ": owner_.Diagnostics()." + methods[i] + "(); break;";
+        int found = (src.find(owned) != std::string::npos ? 1 : 0) +
+                    (src.find(component) != std::string::npos ? 1 : 0);
+        EXPECT_EQ(found, 1)
+            << "missing from processCommonInput's switch, so the hotkey does nothing: "
+            << actions[i];
     }
 }
 

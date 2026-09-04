@@ -97,7 +97,7 @@ protected:
     // One game tick followed by one render-thread frame step.
     void tick() {
         bridge->update(0.016f);
-        renderer.processChatInput();
+        renderer.Frame().processChatInput();
     }
 
     eqt::state::GameState state;
@@ -122,9 +122,9 @@ TEST_F(ReplyToTellKeyTest, RKeyOpensChatPrefilledWithTheLastTellSender) {
 
     tick();
 
-    EXPECT_TRUE(renderer.chatPanelState_.inputActive);
-    EXPECT_EQ(renderer.chatPanelState_.inputText, "/tell Grimjaw ");
-    EXPECT_EQ(renderer.chatPanelState_.cursorPos,
+    EXPECT_TRUE(renderer.Frame().chatPanelState_.inputActive);
+    EXPECT_EQ(renderer.Frame().chatPanelState_.inputText, "/tell Grimjaw ");
+    EXPECT_EQ(renderer.Frame().chatPanelState_.cursorPos,
               static_cast<int>(std::string("/tell Grimjaw ").size()))
         << "cursor must sit after the trailing space, ready for the message";
     EXPECT_TRUE(receiver->isChatInputFocused())
@@ -139,8 +139,8 @@ TEST_F(ReplyToTellKeyTest, NoTellReceived_OpensNothing) {
     receiver->OnEvent(KeyDownEvent(irr::KEY_KEY_R, L'r'));
     tick();
 
-    EXPECT_FALSE(renderer.chatPanelState_.inputActive);
-    EXPECT_TRUE(renderer.chatPanelState_.inputText.empty());
+    EXPECT_FALSE(renderer.Frame().chatPanelState_.inputActive);
+    EXPECT_TRUE(renderer.Frame().chatPanelState_.inputText.empty());
     EXPECT_FALSE(receiver->isChatInputFocused());
 }
 
@@ -151,12 +151,12 @@ TEST_F(ReplyToTellKeyTest, PrefillIsTakenExactlyOnce) {
 
     receiver->OnEvent(KeyDownEvent(irr::KEY_KEY_R, L'r'));
     tick();
-    ASSERT_EQ(renderer.chatPanelState_.inputText, "/tell Grimjaw ");
+    ASSERT_EQ(renderer.Frame().chatPanelState_.inputText, "/tell Grimjaw ");
 
     // User types; further frames must leave the text alone.
-    renderer.chatPanelState_.inputText = "/tell Grimjaw hello";
-    for (int i = 0; i < 5; ++i) renderer.processChatInput();
-    EXPECT_EQ(renderer.chatPanelState_.inputText, "/tell Grimjaw hello");
+    renderer.Frame().chatPanelState_.inputText = "/tell Grimjaw hello";
+    for (int i = 0; i < 5; ++i) renderer.Frame().processChatInput();
+    EXPECT_EQ(renderer.Frame().chatPanelState_.inputText, "/tell Grimjaw hello");
 }
 
 // Once chat is focused, R is a typed character -- OnEvent must not decode
@@ -175,17 +175,17 @@ TEST_F(ReplyToTellKeyTest, PrefillFollowsTheMostRecentSender) {
     handler.lastTellSender = "Grimjaw";
     receiver->OnEvent(KeyDownEvent(irr::KEY_KEY_R, L'r'));
     tick();
-    ASSERT_EQ(renderer.chatPanelState_.inputText, "/tell Grimjaw ");
+    ASSERT_EQ(renderer.Frame().chatPanelState_.inputText, "/tell Grimjaw ");
 
     // Close the box the way ESC/submit does, then a new tell arrives.
-    renderer.chatPanelState_.inputText.clear();
-    renderer.chatPanelState_.inputActive = false;
+    renderer.Frame().chatPanelState_.inputText.clear();
+    renderer.Frame().chatPanelState_.inputActive = false;
     receiver->setChatInputFocused(false);
     handler.lastTellSender = "Slyvia";
 
     receiver->OnEvent(KeyDownEvent(irr::KEY_KEY_R, L'r'));
     tick();
-    EXPECT_EQ(renderer.chatPanelState_.inputText, "/tell Slyvia ");
+    EXPECT_EQ(renderer.Frame().chatPanelState_.inputText, "/tell Slyvia ");
 }
 
 }  // namespace Graphics
