@@ -588,9 +588,9 @@ it without taking that measurement first.
 
 - ~~**B048** (A) `src/client/graphics/overlays/overlays_component.cpp`
   `OverlaysComponent::drawNavmeshOverlay()` — **the navmesh overlay draws
-  nothing, and turning it on wipes the entire 2D UI.**~~ **CODE FIXED by T333
-  (2026-09-04); the live capture pair is OWED** (T332 held the eqemu lock for
-  this unit's whole run). Cause, measured headlessly on a real GLES2 device and
+  nothing, and turning it on wipes the entire 2D UI.**~~ **CLOSED 2026-09-04: code fixed by
+  T333, and the owed live ON/OFF pair captured by T336** (T332 had held the
+  eqemu lock for T333's whole run). Cause, measured headlessly on a real GLES2 device and
   not guessed: by the debug-overlay pass the driver is already latched in
   `Is2DMode` (2D drawing happens during and just after `smgr->drawAll()`), and
   `COpenGLES2Driver::setOrthoProjection()` early-returns while that latch is
@@ -607,8 +607,13 @@ it without taking that measurement first.
   reordering (the G05 golden is untouched). Pinned by
   `tests/test_navmesh_overlay_draw.cpp` (real headless GLES2 + framebuffer
   readback): all three edge probes and the UI probe read `0,0,0` before the fix.
-  **Closes fully when the live ON/OFF pair in a navmesh-enabled zone is captured
-  into `review/T333/`.** Prov: T328 Leg B Review, T333 Review.
+  **The live pair is in `review/T336/`**: same character, same qeynos2 spot, one
+  Ctrl+N apart. The ON frame draws green navmesh lines across the ground AND
+  keeps the health/mana/stamina bars, FPS counter, chat panel, hotbar and A1-A8
+  bar - both halves of the defect gone on a real device, with the client's own
+  log showing `Navmesh overlay: ON` and the same 112 triangles T329 measured.
+  Compare `review/T329/` for the pre-fix pair. Nothing is owed on this entry.
+  Prov: T328 Leg B Review, T333 Review, T336 Review.
 
 ## Added 2026-09-04 by the T328 Leg B live session
 
