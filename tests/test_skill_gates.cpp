@@ -479,36 +479,20 @@ TEST_F(SkillGateTest, AnUnknownTargetDoesNotProduceAFacingComplaint) {
     }
 }
 
-// ---- B3. The T159 case: endurance must not be blamed on facing ----------
-
-TEST_F(SkillGateTest, T159_ABackstabShortOfEnduranceBlamesEnduranceNotFacing) {
-    // T159 deleted a message that said "You must be behind your target" for a
-    // failure that was actually a resource failure, and left the instruction
-    // that the check and the message go back in TOGETHER. They now have --
-    // and this is the case that proves the message did not come back as the
-    // same lie. The player is FACING THE TARGET (so facing really is wrong)
-    // and also out of endurance; endurance wins.
-    const Offsets off = FindOffsets(0.0f);
-    ASSERT_NE(off.front_x + off.front_y, 0);
-
-    auto& skills = Skills(kRogue);
-    TargetNpc(-off.front_x, -off.front_y, 0.0f);
-    EngageCombat();
-
-    // endurance_cost is 0 for every skill in initializeSkillData() today, so
-    // the resource gate can never fire from shipped data -- itself worth
-    // knowing. Set it through the public mutable accessor to reach the branch.
-    auto* data = skills.getSkill(kBackstab);
-    ASSERT_NE(data, nullptr);
-    data->endurance_cost = 1000000;
-    ASSERT_LT(eq.GetCurrentEndurance(), 1000000u);
-
-    EXPECT_EQ(skills.getSkillUseError(kBackstab), "Not enough endurance")
-        << "T159's exact defect: an endurance failure reported as a facing failure";
-
-    // And with endurance restored, the facing complaint is the true one.
-    data->endurance_cost = 0;
-    EXPECT_EQ(skills.getSkillUseError(kBackstab), "You must be behind your target");
-}
+// ---- B3. T159's endurance-vs-facing case: DELETED by T353 -------------------
+//
+// This section held T159_ABackstabShortOfEnduranceBlamesEnduranceNotFacing,
+// which forced SkillData::endurance_cost to 1,000,000 through the mutable
+// accessor to reach a branch no shipped data could reach, and asserted
+// getSkillUseError(kBackstab) == "Not enough endurance".
+//
+// T353 measured the wire: no eqemu handler for any opcode fable sends for a
+// skill reads or spends endurance or mana, and there is no client-side
+// skill-cost table. Both fields, both refusal branches and
+// checkResourceRequirement() are deleted, so the assertion above is asserting
+// on a message that no longer exists. Its surviving half -- that facing IS
+// reported when facing is the reason -- is fully covered by
+// NEGATIVE_BackstabIsRefusedFromTheFrontOfTheTarget above. See
+// refactor/T353_skill_costs.md.
 
 }  // namespace

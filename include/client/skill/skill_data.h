@@ -52,9 +52,14 @@ struct SkillData {
     bool requires_combat = false;
     bool requires_behind = false;       // Must be behind target (Backstab)
 
-    // Costs
-    uint32_t endurance_cost = 0;        // Stamina cost (for combat skills)
-    uint32_t mana_cost = 0;             // Mana cost (for hybrid skills)
+    // T353: there is NO endurance_cost / mana_cost here any more, and adding
+    // one back needs a measured source, not a guess. Skill activation costs no
+    // resource in this era on either side: not one handler in
+    // /mnt/projects/akk-stack/code/zone/client_packet.cpp for any opcode fable
+    // sends for a skill reads or spends endurance or mana (endurance is spent
+    // only by OP_Jump, by spell endurance_cost, and by a damage-absorb bonus),
+    // and no client-side skill-cost table exists to load from. Spells DO have
+    // costs -- that is SpellData::mana_cost, a different struct.
 
     // Timing
     uint32_t recast_time_ms = 0;        // Recast timer in milliseconds

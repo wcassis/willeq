@@ -233,11 +233,6 @@ bool SkillManager::canUseSkill(uint8_t skill_id) const {
         return false;
     }
 
-    // Check resource requirements
-    if (!checkResourceRequirement(skill_id)) {
-        return false;
-    }
-
     return true;
 }
 
@@ -283,7 +278,9 @@ std::string SkillManager::getSkillUseError(uint8_t skill_id) const {
     //
     // T325: no SHIPPED skill sets requires_combat any more (Will's ruling --
     // see skill_data.h's initializeSkillData()), so this message is dormant in
-    // production, the same way board item 35's "Not enough endurance" is. It is
+    // production, the way board item 35's "Not enough endurance" also was --
+    // though that one is now DELETED, not dormant: T353 measured that skill
+    // activation has no resource cost on either side of the wire. It is
     // NOT the T159 defect class: T159's message LIED, blaming facing for an
     // endurance failure. This one still says exactly what refused, and it can
     // only be reached when the predicate really did refuse -- it is left paired
@@ -305,20 +302,14 @@ std::string SkillManager::getSkillUseError(uint8_t skill_id) const {
     // T317 honours it. checkPositionRequirement() now implements eqemu's
     // Mob::BehindMob (client/skill/behind_target.h) and canUseSkill() calls
     // it, so this message is produced only when facing really is the reason.
-    // The resource predicate is repeated here on purpose: it keeps the T159
-    // case correct, so a Backstab short of endurance still says endurance.
-    if (skill.requires_behind && checkResourceRequirement(skill_id) &&
-        !checkPositionRequirement(skill_id, target_id)) {
+    //
+    // T353: the resource predicate that used to be ANDed in here (so that a
+    // Backstab short of endurance said endurance rather than facing) is gone
+    // with the costs themselves -- there is no resource failure left for it to
+    // out-rank. Facing is now the only reason this branch can fire, which is
+    // exactly what T159 asked for. See refactor/T353_skill_costs.md.
+    if (skill.requires_behind && !checkPositionRequirement(skill_id, target_id)) {
         return "You must be behind your target";
-    }
-
-    if (!checkResourceRequirement(skill_id)) {
-        if (skill.endurance_cost > 0) {
-            return "Not enough endurance";
-        }
-        if (skill.mana_cost > 0) {
-            return "Not enough mana";
-        }
     }
 
     return "";  // No error
@@ -846,30 +837,6 @@ bool SkillManager::checkPositionRequirement(uint8_t skill_id, uint16_t target_id
                                       /*target_heading_deg=*/target.heading,
                                       /*attacker_server_x=*/me.y,
                                       /*attacker_server_y=*/me.x);
-}
-
-bool SkillManager::checkResourceRequirement(uint8_t skill_id) const {
-    const SkillData& skill = m_skills[skill_id];
-
-    if (!m_eq) {
-        return true;  // Can't check without EQ reference
-    }
-
-    // Check endurance
-    if (skill.endurance_cost > 0) {
-        if (m_eq->GetCurrentEndurance() < skill.endurance_cost) {
-            return false;
-        }
-    }
-
-    // Check mana
-    if (skill.mana_cost > 0) {
-        if (m_eq->GetCurrentMana() < skill.mana_cost) {
-            return false;
-        }
-    }
-
-    return true;
 }
 
 } // namespace EQ
