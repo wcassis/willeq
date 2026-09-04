@@ -148,6 +148,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_diagnostics_component)
 ENDIF()
 
+# L05 (Batch L, refactor/L05_player_camera_component.md): PlayerCameraComponent
+# extracted from IrrlichtRenderer -- both binding paths (ctx_ and the owner_
+# transition handle) pinned by mutation, plus the six surviving forwarders.
+# Same bare, never-Init()'d IrrlichtRenderer idiom.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_player_camera_component
+        test_player_camera_component.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_player_camera_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_player_camera_component GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_player_camera_component)
+ENDIF()
+
 # T329 (B041): the NavmeshChanged bridge arm forwarding to
 # OverlaysComponent::setNavmesh. Same bare, never-Init()'d IrrlichtRenderer
 # idiom as test_overlays_component above, plus a real eqt::bridge::

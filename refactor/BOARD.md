@@ -437,3 +437,52 @@ it without taking that measurement first.
   with an interface the class does not implement. Closes when: correction 5 is
   struck from L01's Review and `refactor/L_renderer_component_extraction.md`'s
   "L01 corrections" list. Prov: L04 Review.
+
+- **B045** (A) `src/client/graphics/player/renderer_camera.cpp` —
+  **the audio listener is never given the camera transform.**
+  `getCameraTransform(posX..upZ)` carried the comment "Get camera position and
+  orientation for audio listener" on `IrrlichtRenderer` and has **zero callers
+  tree-wide**, in-family included (K03 correction a; comment- and
+  string-filtered, receiver-checked). Nothing in `src/client/audio/` ever asks
+  for it, so 3D audio positioning is wired at one end only — K15 correction
+  (qq)'s shape. The implementation is live and correct; L05 kept it and it is
+  now `PlayerCameraComponent::getCameraTransform`, reachable as
+  `renderer.PlayerCamera().getCameraTransform(...)`. **Fix is one call site**
+  in the audio update path. Not done in L05, which is structural. Prov: L05
+  Review.
+
+- **B046** (A) `src/client/graphics/player/renderer_camera.cpp` —
+  **vision never returns to the racial base, and vertical swim control has no
+  producer.** Two zero-caller knobs on the same family, both the sole enable
+  path of live state (L03 correction 17):
+  * `resetVisionToBase()` is the ONLY downgrade path for `currentVision_`.
+    `setVisionType()` is live (`src/client/bridge/irrlicht_bridge.cpp:582`) and
+    only ever UPGRADES, by design. Nothing calls the reset, so an Ultravision
+    or Infravision buff is **permanent for the session** — the comment
+    "call when vision buffs fade" describes a call that does not exist.
+  * `setSwimUp()` / `setSwimDown()` are the **sole writers** of
+    `playerMovement_.swimUp` / `.swimDown`, which `updatePlayerMovement()`
+    reads live every frame. No caller exists on either route, so a swimming
+    player cannot ascend or descend deliberately. `setLevitating()` is a third
+    zero-caller writer, harmlessly duplicated by `setSwimmingState()`'s
+    levitating parameter.
+  All four kept by L05 and reachable through `renderer.PlayerCamera()`.
+  Fixes are a buff-fade hook and two input-action arms. Prov: L05 Review.
+
+- **B047** (B) `src/client/graphics/player/renderer_player_collision.cpp` —
+  **the incremental collision-registration API has never run, and a comment
+  claims it does.** `addRegionToCollision()`, `addDoorToCollision()`,
+  `addObjectToCollision()`, `findBspRegionForPoint()` and
+  `clearCollisionDebugLines()` have **zero callers tree-wide**.
+  `src/client/graphics/renderer_zone_draw.cpp:197-198` asserts in a comment
+  that "Collision detection is set up progressively via
+  setupMinimalZoneCollision() and addRegionToCollision() during the background
+  zone loading phases" — only `setupMinimalZoneCollision()` is actually called
+  (`src/client/graphics/renderer_zone_load_objects.cpp:544`), once, so
+  collision for regions/doors/objects streamed in AFTER that call is never
+  registered. Whether that is a live gap or dead ambition needs a measurement,
+  not a deletion: L05 kept all five on `PlayerCameraComponent` rather than
+  take them under §5, because a silent delete converts a findable defect into
+  an invisible one (L03 correction 5). `getFirstPersonVerticalFov()` is a
+  sixth zero-caller body, kept for the same reason and harmless. Prov: L05
+  Review.

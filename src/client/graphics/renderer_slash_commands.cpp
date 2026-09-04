@@ -196,7 +196,7 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
         if (args.empty()) {
             chat(fmt::format("Camera mode: {}", getCameraModeString()));
         } else if (args == "cycle") {
-            cycleCameraMode();
+            playerCamera_->cycleCameraMode();
             chat(fmt::format("Camera mode: {}", getCameraModeString()));
         } else {
             CameraMode mode;
@@ -234,7 +234,7 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
         }
         for (char& c : sub) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         if (sub == "dump") {
-            for (const auto& line : buildFirstPersonCameraDumpLines()) chat(line);
+            for (const auto& line : playerCamera_->buildFirstPersonCameraDumpLines()) chat(line);
         } else {
             for (const auto& line : EQT::Graphics::FirstPersonTunablesCommandLines(args)) {
                 chat(line);
@@ -242,8 +242,8 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
             // A set/reset must take effect on the CURRENT frame, not on the
             // next time something else happens to move the player.
             if (sub == "set" || sub == "reset") {
-                applyCameraProjectionForMode();
-                repositionFirstPersonCamera();
+                playerCamera_->applyCameraProjectionForMode();
+                playerCamera_->repositionFirstPersonCamera();
             }
         }
     } else if (cmd == "/upload") {

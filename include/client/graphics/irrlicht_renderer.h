@@ -54,6 +54,7 @@
 #include "client/graphics/eqe1/eqe1_archive_component.h"
 #include "client/graphics/overlays/overlays_component.h"
 #include "client/graphics/diagnostics/diagnostics_component.h"
+#include "client/graphics/player/player_camera_component.h"
 #ifdef WITH_RDP
 #include "client/graphics/rdp/rdp_server.h"
 #include "client/graphics/rdp/rdp_input_handler.h"
@@ -219,8 +220,6 @@ public:
     void indexObjectMeshes();
     // Build a single deferred object mesh by index
     void buildDeferredObject(size_t idx);
-    // Minimal collision using only player's region mesh + HCMap fallback
-    void setupMinimalZoneCollision();
     // Progressive per-frame asset building (priority-ordered, GREEN-only single-step)
     void processFrameProgressiveLoad();
 
@@ -272,12 +271,6 @@ public:
     void logAssetBuildTime(const char* type, size_t id, std::chrono::steady_clock::time_point start);
     // Send loading progress message to chat window
     void sendLoadProgress(const std::string& msg);
-    // Incremental collision helpers
-    void addRegionToCollision(size_t regionIdx);
-    void addDoorToCollision(uint8_t doorId);
-    void addObjectToCollision(size_t objIdx);
-    // Find BSP region for a point (EQ coordinates)
-    size_t findBspRegionForPoint(float x, float y, float z);
     // Check if progressive loading is active
     bool isProgressiveLoadingActive() const { return progressiveLoadingActive_; }
     // Sequential zone loading — executes all 13 steps inline on the calling thread.
@@ -334,37 +327,37 @@ public:
     // Check if in first-person mode
     bool isFirstPersonMode() const { return cameraMode_ == CameraMode::FirstPerson; }
 
-    // Set the player's spawn ID (marks that entity as the player and handles visibility)
-    void setPlayerSpawnId(uint16_t spawnId);
-
-    // Set player's race (determines base vision type)
-    void setPlayerRace(uint16_t raceId);
-
-    // Set vision type (for buffs/items that upgrade vision)
-    // Only upgrades vision - cannot downgrade below base race vision
-    void setVisionType(VisionType vision);
-
-    // Reset vision to base race vision (call when vision buffs fade)
-    void resetVisionToBase();
+    // L05 (Batch L): the player family -- movement, collision, ground height
+    // and the camera -- lives in PlayerCameraComponent. The four methods below
+    // stay as one-line forwarders ONLY because these callers hold an
+    // IrrlichtRenderer and must not learn a component exists (the K11 rule):
+    //   setPlayerSpawnId  -- application_zone_loading.cpp:249,359;
+    //                        bridge/irrlicht_bridge.cpp:69,173
+    //   setVisionType     -- bridge/irrlicht_bridge.cpp:582
+    //   setPlayerPosition -- application_zone_loading.cpp:270,380;
+    //                        bridge/irrlicht_bridge.cpp:24
+    //   setSwimmingState  -- bridge/irrlicht_bridge.cpp:629
+    // setPlayerRace(), resetVisionToBase(), getBaseVision(), isSwimming(),
+    // setSwimUp(), setSwimDown() and setLevitating() got NO forwarder: each has
+    // zero callers on an IrrlichtRenderer receiver, and a forwarder for surface
+    // nothing calls is exactly what this batch removes. Reach them through
+    // PlayerCamera(). setSwimUp/setSwimDown are the sole writers of state
+    // updatePlayerMovement() reads live, and resetVisionToBase() is the only
+    // vision downgrade path -- both are boarded, not deleted.
+    void setPlayerSpawnId(uint16_t spawnId) { playerCamera_->setPlayerSpawnId(spawnId); }
+    void setVisionType(VisionType vision) { playerCamera_->setVisionType(vision); }
+    void setPlayerPosition(float x, float y, float z, float heading) { playerCamera_->setPlayerPosition(x, y, z, heading); }
+    void setSwimmingState(bool swimming, float swimSpeed = 20.0f, bool levitating = false) { playerCamera_->setSwimmingState(swimming, swimSpeed, levitating); }
 
     // Get current vision type
     VisionType getVisionType() const { return currentVision_; }
 
-    // Get base vision type (from race)
-    VisionType getBaseVision() const { return baseVision_; }
-
-    // Set player position for camera following
-    void setPlayerPosition(float x, float y, float z, float heading);
-
     // Get player's current Z (may differ from set value if snapped to ground)
     float getPlayerZ() const { return playerZ_; }
 
-    // Swimming state
-    void setSwimmingState(bool swimming, float swimSpeed = 20.0f, bool levitating = false);
-    bool isSwimming() const { return playerMovement_.isSwimming; }
-    void setSwimUp(bool up) { playerMovement_.swimUp = up; }
-    void setSwimDown(bool down) { playerMovement_.swimDown = down; }
-    void setLevitating(bool levitating) { playerMovement_.isLevitating = levitating; }
+    // The player family is otherwise reached through this accessor; it is also
+    // what the component's tests bind against.
+    PlayerCameraComponent& PlayerCamera() { return *playerCamera_; }
 
     // Get BSP tree for water region detection
     std::shared_ptr<EQT::Graphics::BspTree> getZoneBspTree() const { return zoneBspTree_; }
@@ -372,21 +365,30 @@ public:
     // Update time of day lighting (hour 0-23, minute 0-59)
     void updateTimeOfDay(uint8_t hour, uint8_t minute);
 
-    // Camera control modes
-    enum class CameraMode {
-        Free,       // Free-fly camera
-        Follow,     // Follow player character
-        FirstPerson // First-person from player position
-    };
-    void setCameraMode(CameraMode mode);
-    void cycleCameraMode();
+    // Camera control modes.
+    // L05 (Batch L): the enum was nested here. PlayerCameraComponent's
+    // setCameraMode(CameraMode) needs it, and the component header cannot
+    // include this one, so the enum moved to client/graphics/renderer_types.h
+    // beside VisionType. This alias keeps every existing spelling working --
+    // EQT::Graphics::IrrlichtRenderer::CameraMode::Follow in
+    // application_zone_loading.cpp:268,378, renderer_slash_commands.cpp:126-130
+    // and tests/test_irrlicht_camera_command.cpp still resolve, unchanged.
+    using CameraMode = EQT::Graphics::CameraMode;
+    // Forwarders, each with a real caller on an IrrlichtRenderer receiver:
+    //   setCameraMode       -- application_zone_loading.cpp:268,378;
+    //                          tests/test_zoning_graphics_integration.cpp:729
+    //   getCameraModeString -- tests/test_irrlicht_camera_command.cpp:68,106
+    // cycleCameraMode() is NOT here: L05 measured zero callers on this class.
+    // GraphicalMode calls it through std::unique_ptr<output::IOutputRenderer>
+    // and reaches output_renderer.h's empty default body -- IrrlichtRenderer
+    // has NO base class (L03 correction 13). Its one real caller is
+    // renderer_slash_commands.cpp, in the renderer, which reaches the
+    // component. getCameraTransform() is gone from this header for the same
+    // reason: zero callers anywhere, so the audio listener it was written for
+    // is never given the camera transform. Kept on the component and boarded.
+    void setCameraMode(CameraMode mode) { playerCamera_->setCameraMode(mode); }
     CameraMode getCameraMode() const { return cameraMode_; }
-    std::string getCameraModeString() const;
-
-    // Get camera position and orientation for audio listener
-    void getCameraTransform(float& posX, float& posY, float& posZ,
-                            float& forwardX, float& forwardY, float& forwardZ,
-                            float& upX, float& upY, float& upZ) const;
+    std::string getCameraModeString() const { return playerCamera_->getCameraModeString(); }
 
     // Process input and render a single frame
     // Returns false if the renderer should stop
@@ -805,11 +807,6 @@ private:
     // updateZoneLightColors() removed — vision/weather modifiers now applied in SimulationWorker
     void updateObjectLightColors(float deltaTime = 0.0f);  // Update object light colors based on weather + fire flicker
 
-    // Player mode movement and collision
-    void updatePlayerMovement(float deltaTime);
-    bool checkMovementCollision(float fromX, float fromY, float fromZ,
-                                float toX, float toY, float toZ);
-    float findGroundZ(float x, float y, float currentZ);
     // PVS visibility check for a BSP region (used at insertion time for objects/lights)
     bool isRegionPvsVisible(size_t regionIdx) const;
     irr::IrrlichtDevice* device_ = nullptr;
@@ -1253,7 +1250,10 @@ private:
     bool fogEnabled_ = true;
     bool lightingEnabled_ = true;   // Lighting enabled by default
     bool zoneLightsEnabled_ = false; // Zone lights off by default
-    VisionType baseVision_ = VisionType::Normal;    // Base vision from race
+    // L05: baseVision_ moved to PlayerCameraComponent (single-family; its only
+    // other user was the inline getBaseVision(), which moved with it).
+    // currentVision_ stays -- renderer_sim_bridge.cpp and
+    // renderer_zone_load_env.cpp read it.
     VisionType currentVision_ = VisionType::Normal; // Current vision (may be upgraded by items/buffs)
     int maxObjectLights_ = 8;  // Max object lights to display (1-8), cycles with L key
     bool debugPlayerLightEnabled_ = true;    // /plight toggle
@@ -1293,7 +1293,7 @@ private:
 
     // Player position (for Follow and FirstPerson modes)
     float playerX_ = 0, playerY_ = 0, playerZ_ = 0, playerHeading_ = 0;
-    float playerPitch_ = 0;  // Vertical look angle in degrees (-89 to 89)
+    // L05: playerPitch_ moved to PlayerCameraComponent (single-family).
     uint16_t playerSpawnId_ = 0;  // Spawn ID of the player entity
 
     // Player light source (lantern, lightstone, etc.) - always highest priority in light pool
@@ -1320,7 +1320,9 @@ private:
     int polygonBudgetExceededFrames_ = 0;  // Throttle warnings
     int constrainedStatsLogCounter_ = 0;   // Periodic stats logging
 
-    PlayerMovementState playerMovement_;
+    // L05: playerMovement_ moved to PlayerCameraComponent with its four inline
+    // accessors. playerConfig_ stays -- renderer_frame_input.cpp and
+    // renderer_frame_render.cpp read it.
     PlayerModeConfig playerConfig_;
     eqt::bridge::GameStateBridge* bridge_ = nullptr;  // For pushing intents (D14+)
 
@@ -1357,46 +1359,13 @@ private:
         bool hasCollision = true;  // false for invisible, teleporter, spinning, lifts, hazardous
     };
     std::map<uint8_t, DoorCollisionData> doorCollisionData_;
-    bool useIrrlichtCollision_ = true;  // Use zone mesh for collision instead of HCMap
 
-    // Irrlicht collision methods (full meta selector — cold path: LOS, detail)
-    bool checkCollisionIrrlicht(const irr::core::vector3df& start, const irr::core::vector3df& end,
-                                 irr::core::vector3df& hitPoint, irr::core::triangle3df& hitTriangle);
-    // Find ground Z at position. currentZ is the node origin (server Z); modelYOffset is the origin-to-feet distance.
-    float findGroundZIrrlicht(float x, float y, float currentZ, float modelYOffset);
-
-    // BSP-filtered collision methods (hot path: movement) — tests only source+dest region + doors/objects
-    bool checkCollisionBspFiltered(const irr::core::vector3df& start, const irr::core::vector3df& end,
-                                   irr::core::vector3df& hitPoint, irr::core::triangle3df& hitTriangle);
-    float findGroundZBspFiltered(float x, float y, float currentZ, float modelYOffset);
-    // Direct ray-triangle intersection on pre-transformed world-space triangles (no matrix math)
-    static bool rayIntersectTriangles(const irr::core::vector3df& rayOrigin,
-                                      const irr::core::vector3df& rayDir, float rayLen,
-                                      const std::vector<irr::core::triangle3df>& triangles,
-                                      irr::core::vector3df& hitPoint, irr::core::triangle3df& hitTriangle,
-                                      float& hitDistSq);
-    // Helper: test ray against all doors+objects in a BSP region (direct Möller–Trumbore)
-    bool rayTestDoorsAndObjects(const irr::core::vector3df& rayOrigin,
-                                const irr::core::vector3df& rayDir, float rayLen,
-                                size_t bspRegion,
-                                irr::core::vector3df& hitPoint, irr::core::triangle3df& hitTriangle,
-                                float& hitDistSq);
-    // Helper: extract world-space triangles from a mesh node (called once at build time)
-    static std::vector<irr::core::triangle3df> extractWorldTriangles(
-        irr::scene::ISceneManager* smgr, irr::scene::IMeshSceneNode* node);
-
-    // Debug visualization for collision rays
-    struct CollisionDebugLine {
-        irr::core::vector3df start;
-        irr::core::vector3df end;
-        irr::video::SColor color;
-        float timeRemaining;  // How long to display (seconds)
-    };
-    std::vector<CollisionDebugLine> collisionDebugLines_;
-    void addCollisionDebugLine(const irr::core::vector3df& start, const irr::core::vector3df& end,
-                               const irr::video::SColor& color, float duration = 0.5f);
-    void drawCollisionDebugLines(float deltaTime);
-    void clearCollisionDebugLines();
+    // L05 (Batch L): the whole collision/raycast/ground-height layer, the
+    // collision debug lines and their nested CollisionDebugLine type, and
+    // useIrrlichtCollision_, moved to PlayerCameraComponent. doorCollisionData_
+    // and its DoorCollisionData type stay -- renderer_zone_lifecycle.cpp and
+    // renderer_zone_load_objects.cpp touch them, so the component names the
+    // type as IrrlichtRenderer::DoorCollisionData (K05 j).
 
     // L03 (Batch L): the target highlight, the zone-line debug/bounding-box
     // visualization, the map overlay and the navmesh overlay -- their draw
@@ -1470,56 +1439,12 @@ public:
     void markPaperdollDirty() { overlays_->markPaperdollDirty(); }
 private:
 
-    // T74: snap camera_ to the player's own eye position/facing. The only
-    // thing that makes a camera transform actually "first person" --
-    // setCameraMode()/cycleCameraMode() previously only flipped cameraMode_
-    // and left the camera transform wherever the Follow camera last put it
-    // (T74 stage-1 diagnostic finding: a stationary player toggling into
-    // first person kept looking through the stale ~20-unit-back Follow
-    // shot until the next server position update happened to call
-    // setPlayerPosition(), which is the only other place this math lived).
-    // No-op if camera_ is null or the player model isn't loaded yet
-    // (eyeHeight <= 0); safe to call unconditionally on entering
-    // FirstPerson mode.
-    void repositionFirstPersonCamera();
-
-    // T300: first person is the ORDINARY player model seen from the eyes,
-    // hidden by a large near clip plane -- not a separate pass. This applies
-    // the projection that mechanism needs (near plane + the official client's
-    // horizontal FOV) on entering first person, and restores the world
-    // defaults on leaving it. Safe to call unconditionally; reads
-    // cameraMode_.
-    void applyCameraProjectionForMode();
-
-    // T300: THE HIDING SEAM. Everything that hides the player's own body in
-    // first person is in this one body. It clamps the stored mouse-look pitch
-    // so the frustum's lower edge never passes the nadir -- the body hangs
-    // directly below the eye, so a view that cannot look past straight down
-    // cannot contain it. The clamp angle is DERIVED from the camera's vertical
-    // FOV (90 - vFOV/2), which makes it scale-, race- and shrink/grow-
-    // invariant with no size term of any kind.
-    //
-    // Called every frame before the scene draw, and on mode changes (entering
-    // first person from a third-person view that was pitched further down than
-    // the clamp allows has to be corrected immediately). A no-op outside first
-    // person, and a no-op in first person unless the pitch was out of range.
-    //
-    // Leg A REFUTED the near-plane hypothesis this seam previously held: the
-    // official client clips nothing, and the size sweep killed both the fixed
-    // and the size-derived plane. If the mechanism moves again, this body and
-    // firstPersonMaxDownPitchDegrees() are what get replaced.
-    void applyFirstPersonPitchClamp();
-
-    // The vertical FOV the first-person camera is actually using, in radians.
-    // One answer, so the clamp derivation and the projection cannot disagree.
-    float getFirstPersonVerticalFov() const;
-
-    // T310 Leg A: `/fpcam dump` -- the RESOLVED first-person pose as parseable
-    // [FPCAM-DUMP] key=value lines, each stating its units and frame. This is
-    // what Leg C's sweep driver reads back; it must never be asserted on via
-    // the dispatcher's `outcome=`, which registry 3 always reports as
-    // "queued".
-    std::vector<std::string> buildFirstPersonCameraDumpLines() const;
+    // L05 (Batch L): repositionFirstPersonCamera(),
+    // applyCameraProjectionForMode(), applyFirstPersonPitchClamp(),
+    // getFirstPersonVerticalFov() and buildFirstPersonCameraDumpLines() moved
+    // to PlayerCameraComponent, keeping their comments and their TU basename
+    // (src/client/graphics/player/renderer_camera.cpp -- the basename is a
+    // string literal in tests/test_first_person_camera_single_formula.cpp).
 
     // World objects for click detection (tradeskill containers, etc.)
     struct WorldObjectVisual {
@@ -1716,6 +1641,16 @@ private:
     // overlays, mouse targeting, the loading screen, fog and the paperdoll.
     // Constructed in the IrrlichtRenderer ctor body; see renderer_init.cpp.
     std::unique_ptr<OverlaysComponent> overlays_;
+
+    // L05 (Batch L): the player family -- player-mode movement, the collision
+    // and raycast layer, ground-height queries, the collision debug lines and
+    // the camera. Constructed in the IrrlichtRenderer ctor body; see
+    // renderer_init.cpp. It reaches 20 members that are shared with other
+    // families but sit below the context's 5-family core threshold, plus the
+    // private nested type DoorCollisionData, so it needs friendship on both
+    // axes of K13 correction (ii).
+    friend class PlayerCameraComponent;
+    std::unique_ptr<PlayerCameraComponent> playerCamera_;
 };
 
 } // namespace Graphics

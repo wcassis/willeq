@@ -728,7 +728,7 @@ bool OverlaysComponent::checkEntityLOS(const irr::core::vector3df& cameraPos, co
     irr::core::vector3df hitPoint;
     irr::core::triangle3df hitTriangle;
 
-    bool hit = owner_.checkCollisionBspFiltered(cameraPos, entityPos, hitPoint, hitTriangle);
+    bool hit = owner_.PlayerCamera().checkCollisionBspFiltered(cameraPos, entityPos, hitPoint, hitTriangle);
 
     if (!hit) {
         return true;  // No obstruction

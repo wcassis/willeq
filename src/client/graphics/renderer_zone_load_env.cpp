@@ -394,7 +394,7 @@ void IrrlichtRenderer::loadZoneStep11_Env(ZoneLoadContext& ctx) {
                     auto it = regionWorldTriangles_.find(queryRegion);
                     if (it != regionWorldTriangles_.end()) {
                         float distSq;
-                        if (rayIntersectTriangles(rayStart, rayDir, rayLen, it->second, hitPoint, hitTri, distSq)) {
+                        if (PlayerCameraComponent::rayIntersectTriangles(rayStart, rayDir, rayLen, it->second, hitPoint, hitTri, distSq)) {
                             if (distSq < closestDistSq) {
                                 closestDistSq = distSq;
                                 outY = hitPoint.Y;
@@ -412,7 +412,7 @@ void IrrlichtRenderer::loadZoneStep11_Env(ZoneLoadContext& ctx) {
                     irr::core::vector3df hp;
                     irr::core::triangle3df ht;
                     float distSq;
-                    if (rayTestDoorsAndObjects(rayStart, rayDir, rayLen, queryRegion, hp, ht, distSq)) {
+                    if (playerCamera_->rayTestDoorsAndObjects(rayStart, rayDir, rayLen, queryRegion, hp, ht, distSq)) {
                         if (distSq < closestDistSq) {
                             outY = hp.Y;
                             outNormal = ht.getNormal();

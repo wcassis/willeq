@@ -49,7 +49,20 @@ const fs::path kRoot = WILLEQ_REPO_ROOT;
 const fs::path kGraphicsDir = kRoot / "src" / "client" / "graphics";
 // The one sanctioned home of the formula.
 const std::string kHelperTU = "renderer_camera.cpp";  // J11: was irrlicht_renderer.cpp
+// L05 (Batch L): the TU kept its basename and moved into player/. Every
+// comparison below is on the BASENAME, so only this one path join changed.
+const fs::path kHelperTUPath = kGraphicsDir / "player" / kHelperTU;
 const std::string kHelperName = "repositionFirstPersonCamera";
+// L05 (Batch L, correction 21): a text-matching guard must learn the component
+// spelling or it silently stops guarding. The formula's body moved from
+// class IrrlichtRenderer to class PlayerCameraComponent, and the mechanism's
+// core substitution rewrote camera_ to ctx_.camera. The INVARIANT is unchanged
+// -- exactly one first-person camera formula, applying both tunables and the
+// user's mouse-look pitch -- so the assertions accept either spelling and
+// require EXACTLY ONE of each pair to be present. Accepting both spellings at
+// once would let a body that mixes them through.
+const std::string kOwnerSpellings[2] = {"IrrlichtRenderer", "PlayerCameraComponent"};
+const std::string kCameraSpellings[2] = {"camera_->", "ctx_.camera->"};
 
 std::string readFile(const fs::path& p) {
     std::ifstream in(p);
@@ -113,8 +126,13 @@ TEST(FirstPersonCameraSingleFormula, OnlyTheHelperTUDrivesTheCameraInFirstPerson
             if (code.find("CameraMode::FirstPerson") != std::string::npos) {
                 mentionsFirstPerson = true;
             }
+            // L05: match the component spelling too. A re-duplicated formula
+            // written as ctx_.camera->setPosition(...) inside a Batch L
+            // component was invisible to this detector before.
             if (code.find("camera_->setPosition(") != std::string::npos ||
-                code.find("camera_->setTarget(") != std::string::npos) {
+                code.find("camera_->setTarget(") != std::string::npos ||
+                code.find("ctx_.camera->setPosition(") != std::string::npos ||
+                code.find("ctx_.camera->setTarget(") != std::string::npos) {
                 if (!writesCamera) firstWriteLine = static_cast<int>(i) + 1;
                 writesCamera = true;
             }
@@ -191,16 +209,26 @@ TEST(FirstPersonCameraSingleFormula, TunablesAreReferencedFromOneTUOnly) {
 // Part 3: the single body still applies both tunables and the mouse-look
 // pitch. Parts 1 and 2 would still pass if the helper stopped using them.
 TEST(FirstPersonCameraSingleFormula, TheOneBodyAppliesBothTunablesAndMouseLookPitch) {
-    const auto lines = splitLines(readFile(kGraphicsDir / kHelperTU));
+    const auto lines = splitLines(readFile(kHelperTUPath));
 
-    // Find the helper body by brace depth from its definition line.
+    // Find the helper body by brace depth from its definition line. L05: the
+    // body may be owned by IrrlichtRenderer or by PlayerCameraComponent, but
+    // EXACTLY ONE definition must exist -- two would be the duplication this
+    // whole test exists to stop.
     size_t start = lines.size();
-    for (size_t i = 0; i < lines.size(); ++i) {
-        if (lines[i].find("void IrrlichtRenderer::" + kHelperName + "()") != std::string::npos) {
-            start = i;
-            break;
+    int definitionsFound = 0;
+    for (const auto& owner : kOwnerSpellings) {
+        for (size_t i = 0; i < lines.size(); ++i) {
+            if (lines[i].find("void " + owner + "::" + kHelperName + "()") != std::string::npos) {
+                if (definitionsFound == 0) start = i;
+                ++definitionsFound;
+            }
         }
     }
+    ASSERT_EQ(definitionsFound, 1)
+        << kHelperName << "() must be defined exactly once in " << kHelperTU
+        << ", on IrrlichtRenderer or on PlayerCameraComponent; found "
+        << definitionsFound << ".";
     ASSERT_LT(start, lines.size()) << kHelperName << "() definition not found in " << kHelperTU;
 
     std::string body;
@@ -233,8 +261,21 @@ TEST(FirstPersonCameraSingleFormula, TheOneBodyAppliesBothTunablesAndMouseLookPi
         << kHelperName << "() no longer applies the user's mouse-look pitch. Before T295 the\n"
            "only code that read playerPitch_ was the duplicate formula in\n"
            "renderer_player_physics.cpp; dropping it here silently disables vertical mouse-look.";
-    EXPECT_NE(body.find("camera_->setPosition("), std::string::npos);
-    EXPECT_NE(body.find("camera_->setTarget("), std::string::npos);
+    // L05: the camera is reached as camera_-> on IrrlichtRenderer and as
+    // ctx_.camera-> from a component. Exactly one spelling per call -- a body
+    // that mixes them is reaching the camera two ways and is a defect.
+    // (Note "ctx_.camera->setPosition(" contains "camera_->setPosition(" is
+    // FALSE -- ctx_.camera has no trailing underscore -- so these counts are
+    // genuinely disjoint.)
+    for (const char* call : {"setPosition(", "setTarget("}) {
+        int spellingsPresent = 0;
+        for (const auto& spelling : kCameraSpellings) {
+            if (body.find(spelling + std::string(call)) != std::string::npos) ++spellingsPresent;
+        }
+        EXPECT_EQ(spellingsPresent, 1)
+            << kHelperName << "() must drive the camera with exactly one spelling of "
+            << call << " (camera_-> or ctx_.camera->); found " << spellingsPresent << ".";
+    }
 }
 
 // Guard the deletions this unit made: reachability pattern #9's last two

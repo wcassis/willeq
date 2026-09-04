@@ -94,7 +94,7 @@ void IrrlichtRenderer::processFrameInput(float deltaTime) {
     }
 
     // Update camera and player movement
-    updatePlayerMovement(deltaTime);
+    playerCamera_->updatePlayerMovement(deltaTime);
     frameTimings_.playerMovement = measureSection();
     // Update sky position to follow camera
     if (skyRenderer_ && skyRenderer_->isInitialized() && camera_) {
