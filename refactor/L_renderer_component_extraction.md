@@ -164,6 +164,24 @@ declarations + inline accessors + members before dispatch.
    toggles had NO callers on either route (B043). Every "stays as a
    forwarder" claim must name a real caller.
 
+## L05 corrections (2026-09-04)
+
+21. **Text-matching guards must learn the component spelling, and be
+   re-proved with a deliberate break.** `test_first_person_camera_single_formula`
+   locates the camera body by `IrrlichtRenderer::` and asserts on
+   `camera_->` — both break under extraction, and its duplicate-formula
+   detector goes BLIND to component-style code (`ctx_.camera->`) across the
+   whole batch. Ruling: widen the inputs to both spellings, assert exactly
+   one matches, and prove the detector still fires by planting a
+   component-style duplicate before committing. Same shape as
+   `ReachabilitySweep` (K05 k) and `DuplicateStateStores` (K09 aa).
+22. A shared enum named in a moving signature (`CameraMode`) is hoisted to
+   `renderer_types.h` with a `using` alias left in the class — every
+   existing spelling compiles untouched.
+23. Third consecutive unit where a "forwarder" premise was a same-named
+   `IOutputRenderer` default body (`cycleCameraMode`): the renderer
+   implements no interface; name the real caller or it is not a forwarder.
+
 ## Per-unit plan files
 
 `refactor/L01_rdp_component.md` … written after K13, from a re-measurement
