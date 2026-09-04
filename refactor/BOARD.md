@@ -1101,3 +1101,15 @@ it without taking that measurement first.
   nothing. Closes when: Will rules on the name (rename `/newskills` to `/skills`
   and keep one body, or keep both and say why). Do not merge them silently: the
   two bodies are not equivalent. Prov: T347 (B013 measurement).
+
+## Added 2026-09-04 by the T346 Review (self-death sequence)
+
+- **B059** (A) `src/client/player/player_misc.cpp` `PlayerComponent::SendSave`
+  — queues a bare 2-byte `OP_Save`; the official client's `OP_Save` is 192
+  bytes and it sends one on EVERY self death as the first packet of the
+  burst (T311 capture, all four deaths), fable sends none from the death
+  path. Closes when: the 192-byte body is decoded from the capture
+  (`review/T311/legA/decode/`), fable's `SendSave` fills it, and
+  `ZoneProcessDeath` sends it before the Lying appearance — the
+  self-death golden (`tests/goldens/self_death_outbound_g07.txt`) learns
+  it in place. Prov: T346 Review.
