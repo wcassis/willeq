@@ -194,12 +194,30 @@ it without taking that measurement first.
   behavioural or structural gain. Not reopened without a reason beyond the name.
   Prov: the S2 residue.
 
-- **B007** (B) `include/client/skill/skill_data.h` `SkillData::endurance_cost` /
+- ~~**B007** (B) `include/client/skill/skill_data.h` `SkillData::endurance_cost` /
   `mana_cost` — declared, defaulted 0, and assigned nowhere in the tree, so both
   of `SkillManager::getSkillUseError()`'s resource refusals are unreachable and a
-  skill that should fail for endurance proceeds. Closes when: the source data is
-  found and loaded, or the fields and their branches are deleted. Do not invent
-  values. Prov: deferred item 35.
+  skill that should fail for endurance proceeds.~~ **CLOSED 2026-09-04 by T353,
+  by DELETION.** The premise "a skill that should fail for endurance" is false:
+  **no skill has a resource cost in this era, on either side of the wire.** Every
+  eqemu handler for every opcode fable sends for a skill was read
+  (`/mnt/projects/akk-stack/code/zone/client_packet.cpp`, plus
+  `special_attacks.cpp:325` `Client::OPCombatAbility` for the `OP_CombatAbility`
+  family) — not one reads or spends endurance or mana; their only refusals are
+  timers, range and zone rules. Server-wide, endurance is spent at exactly one
+  opcode handler (`client_packet.cpp:9765`, `Handle_OP_Jump`), by **spell**
+  `endurance_cost` (`effects.cpp:900`) and by a damage-absorb bonus
+  (`attack.cpp:3829`). No client-side skill-cost table exists to load from, so
+  the official client cannot refuse locally either and no class C is owed.
+  Deleted: both fields, both refusal branches, `canUseSkill()`'s resource gate,
+  the `requires_behind` conjunct that ranked endurance above facing, and
+  `SkillManager::checkResourceRequirement()` with its declaration — plus
+  `SkillGateTest.T159_ABackstabShortOfEnduranceBlamesEnduranceNotFacing`, which
+  reached the branch only by writing 1,000,000 through the mutable accessor.
+  Facing is now the sole producer of "You must be behind your target", pinned by
+  `SkillGateTest.NEGATIVE_BackstabIsRefusedFromTheFrontOfTheTarget`
+  (`tests/test_skill_gates.cpp:405`). Full enforcement table with absolute-path
+  citations: `refactor/T353_skill_costs.md` § Review. Prov: deferred item 35.
 
 - ~~**B008** (B) `src/common/net/daybreak_connection_send.cpp`
   `DaybreakConnection::ValidateCRC` — its `default:` arm returns false with no log
@@ -1242,6 +1260,17 @@ it without taking that measurement first.
   (`effect_flag == 0`) as well as the landing, which is wrong for any consumer
   that means "landed". Closes when it is wired to a real consumer (with the gate
   corrected) or deleted. Prov: T348 Review.
+
+- **B062** (B) `include/client/spell/spell_data.h:74` `SpellData::endurance_cost`
+  — the sibling shape T353 found one struct over and left alone as out of B007's
+  territory. Declared `int32_t`, defaulted 0, and assigned at **zero** sites:
+  `src/client/spell/spell_database.cpp` loads `mana_cost` (line 73) and nothing
+  else resource-shaped, and no `endurance` string exists anywhere else under
+  `src/client/spell/` or `tools/willeq_db_builder.cpp`. Unlike the skill case
+  this one IS enforced server-side — `/mnt/projects/akk-stack/code/zone/effects.cpp:900`
+  refuses a spell for insufficient endurance — so the question is real: does the
+  Titanium `SPDat` export fable reads carry the column? Closes when: the column
+  is found and loaded, or the field is deleted. Do not invent values. Prov: T353.
 
   it in place. Prov: T346 Review.~~ **CLOSED by T349**
   (`refactor/T349_op_save_body.md`): `EQT::Save_Struct`

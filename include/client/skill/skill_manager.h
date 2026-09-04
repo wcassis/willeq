@@ -180,8 +180,13 @@ private:
     // Check position requirements (behind target, etc.)
     bool checkPositionRequirement(uint8_t skill_id, uint16_t target_id) const;
 
-    // Check resource costs (endurance, mana)
-    bool checkResourceRequirement(uint8_t skill_id) const;
+    // T353: checkResourceRequirement() and the SkillData::endurance_cost /
+    // mana_cost it read are DELETED. Skill activation has no resource cost in
+    // this era on either side of the wire: no handler in
+    // /mnt/projects/akk-stack/code/zone/client_packet.cpp for any opcode fable
+    // sends for a skill reads or spends endurance or mana, and there is no
+    // client-side skill-cost table to load one from. See the enforcement table
+    // in refactor/T353_skill_costs.md before adding one back.
 };
 
 } // namespace EQ
