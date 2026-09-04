@@ -376,7 +376,7 @@ it without taking that measurement first.
   the NPC, never its own coordinates; every click needs a verified retry loop —
   the merchant window took three identical right-clicks). Two server rules found
   on the way, both of which invalidate the obvious recipe for a combine failure:
-  **a GM always succeeds** (`zone/tradeskills.cpp:1124`), and **Baking 300 can
+  **a GM always succeeds** (`/mnt/projects/akk-stack/code/zone/tradeskills.cpp:1124`), and **Baking 300 can
   never fail** — eqemu's `chance = skill − 0.75 × trivial + 51.5` (floor 5, cap
   95) gives 95% success at skill 300 even against the highest-trivial Baking
   recipe that exists, so a failure needs a low-skill character, not a
