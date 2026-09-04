@@ -134,6 +134,18 @@ it without taking that measurement first.
   `ActionDispatcherTest.MoveToAndFollow_PickTheNearestMatch_NotTheLowestSpawnId`,
   verified to fail on the unranked lookup (picked spawn 68, expected 277).
 
+- **B003d** (B) `src/client/entities/entities_component_appearance.cpp:326`
+  `EntitiesComponent::FindEntityByName` — the unranked case-insensitive PREFIX
+  resolver T356 took out of moveTo/follow still backs `MoveToEntityWithinRange`,
+  `StartCombatMovement(name)` and `UpdateCombatMovement`, so combat movement
+  keeps the lowest-spawn-id pick; and `MovementComponent::Follow` stores its
+  target as a NAME and re-matches it by exact string every tick
+  (`src/client/movement/movement_update.cpp:183`), so following one of two
+  identically-named mobs is ambiguous per tick. Closes when: combat movement
+  resolves once through the ranked lookup and passes a spawn id (the T230/T356
+  rule), Follow tracks the spawn id, and the resolver has no callers left (then
+  delete it). Prov: T356 Review.
+
 - ~~**B004** (A) `include/client/graphics/ui/ui_layout.h` `centerPopup` — `popW`/
   `popH` are hardcoded 400/350 at every resolution; the archive records general
   and equipment slots drawn outside that frame and unreachable by mouse.~~
