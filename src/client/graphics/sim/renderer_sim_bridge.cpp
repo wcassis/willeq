@@ -1,4 +1,5 @@
 #include "client/graphics/irrlicht_renderer.h"
+#include "client/graphics/sim/sim_bridge_component.h"
 #include "client/graphics/weather_effects_controller.h"
 #include "client/graphics/spell_visual_fx.h"
 #include "client/graphics/sky_renderer.h"
@@ -15,13 +16,13 @@ namespace Graphics {
 // SimulationWorker Integration
 // ============================================================================
 
-SimulationZoneData IrrlichtRenderer::buildSimulationZoneData() {
+SimulationZoneData SimBridgeComponent::buildSimulationZoneData() {
     SimulationZoneData zoneData;
-    zoneData.bspTree = zoneBspTree_;
-    zoneData.usePvsCulling = usePvsCulling_;
+    zoneData.bspTree = ctx_.zoneBspTree;
+    zoneData.usePvsCulling = ctx_.usePvsCulling;
 
     // Copy region bounding boxes (EQ Z-up coordinates)
-    for (const auto& [regionIdx, bbox] : regionBoundingBoxes_) {
+    for (const auto& [regionIdx, bbox] : ctx_.regionBoundingBoxes) {
         SimulationZoneData::RegionBounds rb;
         rb.regionIdx = regionIdx;
         rb.minX = bbox.MinEdge.X;
@@ -72,43 +73,43 @@ SimulationZoneData IrrlichtRenderer::buildSimulationZoneData() {
     }
 
     // Copy object data
-    zoneData.objects.resize(objectNodes_.size());
-    for (size_t i = 0; i < objectNodes_.size(); ++i) {
+    zoneData.objects.resize(ctx_.objectNodes.size());
+    for (size_t i = 0; i < ctx_.objectNodes.size(); ++i) {
         auto& od = zoneData.objects[i];
-        od.hasNode = (objectNodes_[i] != nullptr);
-        if (i < objectBoundingBoxes_.size())
-            od.boundingBox = objectBoundingBoxes_[i];
-        if (i < objectPositions_.size())
-            od.position = objectPositions_[i];
-        od.bspRegion = (i < objectRegions_.size()) ? objectRegions_[i] : SIZE_MAX;
+        od.hasNode = (ctx_.objectNodes[i] != nullptr);
+        if (i < owner_.objectBoundingBoxes_.size())
+            od.boundingBox = owner_.objectBoundingBoxes_[i];
+        if (i < ctx_.objectPositions.size())
+            od.position = ctx_.objectPositions[i];
+        od.bspRegion = (i < owner_.objectRegions_.size()) ? owner_.objectRegions_[i] : SIZE_MAX;
     }
 
     // Copy zone light data
-    zoneData.zoneLights.resize(zoneLightData_.size());
-    for (size_t i = 0; i < zoneLightData_.size(); ++i) {
+    zoneData.zoneLights.resize(owner_.zoneLightData_.size());
+    for (size_t i = 0; i < owner_.zoneLightData_.size(); ++i) {
         auto& zld = zoneData.zoneLights[i];
-        if (i < zoneLightPositions_.size())
-            zld.position = zoneLightPositions_[i];
-        zld.bspRegion = (i < zoneLightRegions_.size()) ? zoneLightRegions_[i] : SIZE_MAX;
+        if (i < owner_.zoneLightPositions_.size())
+            zld.position = owner_.zoneLightPositions_[i];
+        zld.bspRegion = (i < owner_.zoneLightRegions_.size()) ? owner_.zoneLightRegions_[i] : SIZE_MAX;
     }
 
     // Copy zone light node data for light selection (from zoneLightData_, no scene nodes)
-    zoneData.zoneLightNodes.resize(zoneLightData_.size());
-    for (size_t i = 0; i < zoneLightData_.size(); ++i) {
+    zoneData.zoneLightNodes.resize(owner_.zoneLightData_.size());
+    for (size_t i = 0; i < owner_.zoneLightData_.size(); ++i) {
         auto& zlnd = zoneData.zoneLightNodes[i];
-        if (i < zoneLightPositions_.size())
-            zlnd.position = zoneLightPositions_[i];
-        zlnd.diffuseColor = zoneLightData_[i].baseDiffuseColor;
-        zlnd.radius = zoneLightData_[i].radius;
-        zlnd.attConstant = zoneLightData_[i].attConstant;
-        zlnd.attLinear = zoneLightData_[i].attLinear;
-        zlnd.attQuadratic = zoneLightData_[i].attQuadratic;
+        if (i < owner_.zoneLightPositions_.size())
+            zlnd.position = owner_.zoneLightPositions_[i];
+        zlnd.diffuseColor = owner_.zoneLightData_[i].baseDiffuseColor;
+        zlnd.radius = owner_.zoneLightData_[i].radius;
+        zlnd.attConstant = owner_.zoneLightData_[i].attConstant;
+        zlnd.attLinear = owner_.zoneLightData_[i].attLinear;
+        zlnd.attQuadratic = owner_.zoneLightData_[i].attQuadratic;
     }
 
     // Copy zone light animation data (animated torches from WLD)
-    if (currentZone_) {
-        for (size_t i = 0; i < currentZone_->lights.size() && i < zoneLightData_.size(); ++i) {
-            const auto& light = currentZone_->lights[i];
+    if (ctx_.currentZone) {
+        for (size_t i = 0; i < ctx_.currentZone->lights.size() && i < owner_.zoneLightData_.size(); ++i) {
+            const auto& light = ctx_.currentZone->lights[i];
             if (!light->isAnimated()) continue;
             SimulationZoneData::ZoneLightAnimData anim;
             anim.lightIndex = i;
@@ -128,17 +129,17 @@ SimulationZoneData IrrlichtRenderer::buildSimulationZoneData() {
     }
 
     // Copy object light data
-    zoneData.objectLights.resize(objectLights_.size());
-    for (size_t i = 0; i < objectLights_.size(); ++i) {
+    zoneData.objectLights.resize(ctx_.objectLights.size());
+    for (size_t i = 0; i < ctx_.objectLights.size(); ++i) {
         auto& old = zoneData.objectLights[i];
-        old.position = objectLights_[i].position;
-        old.originalColor = objectLights_[i].originalColor;
-        old.isFireSource = objectLights_[i].isFireSource;
-        old.flickerSpeed = objectLights_[i].flickerSpeed;
-        old.objectName = objectLights_[i].objectName;
-        old.bspRegion = objectLights_[i].bspRegion;
-        if (objectLights_[i].node) {
-            const auto& ld = objectLights_[i].node->getLightData();
+        old.position = ctx_.objectLights[i].position;
+        old.originalColor = ctx_.objectLights[i].originalColor;
+        old.isFireSource = ctx_.objectLights[i].isFireSource;
+        old.flickerSpeed = ctx_.objectLights[i].flickerSpeed;
+        old.objectName = ctx_.objectLights[i].objectName;
+        old.bspRegion = ctx_.objectLights[i].bspRegion;
+        if (ctx_.objectLights[i].node) {
+            const auto& ld = ctx_.objectLights[i].node->getLightData();
             old.radius = ld.Radius;
             old.attConstant = ld.Attenuation.X;
             old.attLinear = ld.Attenuation.Y;
@@ -147,24 +148,24 @@ SimulationZoneData IrrlichtRenderer::buildSimulationZoneData() {
     }
 
     // Portal system (non-owning const pointer, immutable after zone load)
-    if (portalSystem_) {
-        zoneData.portalSystem = portalSystem_.get();
+    if (ctx_.portalSystem) {
+        zoneData.portalSystem = ctx_.portalSystem.get();
     }
 
     // Portal visibility config
-    zoneData.enablePortalVis = config_.constrainedConfig.portalOcclusion;
-    zoneData.enableStencilBuffer = config_.constrainedConfig.enableStencilBuffer;
-    zoneData.indoorRegions = indoorRegions_;
+    zoneData.enablePortalVis = ctx_.config.constrainedConfig.portalOcclusion;
+    zoneData.enableStencilBuffer = ctx_.config.constrainedConfig.enableStencilBuffer;
+    zoneData.indoorRegions = ctx_.indoorRegions;
 
     // Collision map for entity ground snapping (immutable after zone load)
-    if (collisionMap_ && collisionMap_->IsLoaded()) {
-        zoneData.hcMap = collisionMap_;
+    if (ctx_.collisionMap && ctx_.collisionMap->IsLoaded()) {
+        zoneData.hcMap = ctx_.collisionMap;
     }
 
     // Copy occluder data from renderer's occlusion culler (if it has occluders)
-    if (occlusionCuller_ && occlusionCuller_->hasOccluders()) {
-        zoneData.regionOccluders = occlusionCuller_->getRegionOccludersMap();
-        zoneData.occlusionConfig = occlusionCuller_->getConfig();
+    if (ctx_.occlusionCuller && ctx_.occlusionCuller->hasOccluders()) {
+        zoneData.regionOccluders = ctx_.occlusionCuller->getRegionOccludersMap();
+        zoneData.occlusionConfig = ctx_.occlusionCuller->getConfig();
         LOG_INFO(MOD_GRAPHICS, "SimulationWorker: copying {} region occluder sets to worker",
                  zoneData.regionOccluders.size());
     }
@@ -172,16 +173,16 @@ SimulationZoneData IrrlichtRenderer::buildSimulationZoneData() {
     return zoneData;
 }
 
-void IrrlichtRenderer::startSimulationWorkerEarly() {
+void SimBridgeComponent::startSimulationWorkerEarly() {
     // S05: simulationWorker_ already created in initLoadingScreen()
-    if (!simulationWorker_ || simulationWorker_->isRunning()) return;
+    if (!owner_.simulationWorker_ || owner_.simulationWorker_->isRunning()) return;
 
     SimulationZoneData zoneData = buildSimulationZoneData();
-    simulationWorker_->setZoneData(zoneData);
-    simulationWorker_->start();
+    owner_.simulationWorker_->setZoneData(zoneData);
+    owner_.simulationWorker_->start();
 
     LOG_INFO(MOD_GRAPHICS, "SimulationWorker started early for zone '{}' (BSP/regions/objects/lights)",
-             currentZoneName_);
+             ctx_.currentZoneName);
 }
 
 // registerSimulationWorkerTreeData() removed (P32): it fed
@@ -190,13 +191,13 @@ void IrrlichtRenderer::startSimulationWorkerEarly() {
 // Confirmed uncalled anywhere in the tree before deletion — dead code, went
 // with the class.
 
-void IrrlichtRenderer::registerSimulationWorkerVertexAnimData() {
-    if (!simulationWorker_ || !simulationWorker_->isRunning()) return;
-    if (vertexAnimatedMeshes_.empty()) return;
+void SimBridgeComponent::registerSimulationWorkerVertexAnimData() {
+    if (!owner_.simulationWorker_ || !owner_.simulationWorker_->isRunning()) return;
+    if (owner_.vertexAnimatedMeshes_.empty()) return;
 
-    std::vector<SimulationZoneData::VertexAnimData> vertAnims(vertexAnimatedMeshes_.size());
-    for (size_t i = 0; i < vertexAnimatedMeshes_.size(); ++i) {
-        const auto& vam = vertexAnimatedMeshes_[i];
+    std::vector<SimulationZoneData::VertexAnimData> vertAnims(owner_.vertexAnimatedMeshes_.size());
+    for (size_t i = 0; i < owner_.vertexAnimatedMeshes_.size(); ++i) {
+        const auto& vam = owner_.vertexAnimatedMeshes_[i];
         auto& vad = vertAnims[i];
         if (vam.animData && !vam.animData->frames.empty()) {
             vad.delayMs = vam.animData->delayMs;
@@ -218,38 +219,38 @@ void IrrlichtRenderer::registerSimulationWorkerVertexAnimData() {
         }
     }
 
-    simulationWorker_->updateVertexAnimData(std::move(vertAnims));
-    LOG_INFO(MOD_GRAPHICS, "SimulationWorker: registered {} vertex animated meshes", vertexAnimatedMeshes_.size());
+    owner_.simulationWorker_->updateVertexAnimData(std::move(vertAnims));
+    LOG_INFO(MOD_GRAPHICS, "SimulationWorker: registered {} vertex animated meshes", owner_.vertexAnimatedMeshes_.size());
 }
 
-void IrrlichtRenderer::stopSimulationWorker() {
-    if (simulationWorker_ && simulationWorker_->isRunning()) {
-        simulationWorker_->stop();
-        simulationWorker_->clearZoneData();
+void SimBridgeComponent::stopSimulationWorker() {
+    if (owner_.simulationWorker_ && owner_.simulationWorker_->isRunning()) {
+        owner_.simulationWorker_->stop();
+        owner_.simulationWorker_->clearZoneData();
         LOG_INFO(MOD_GRAPHICS, "SimulationWorker stopped for zone transition");
     }
 }
 
-void IrrlichtRenderer::postSimulationInput(float deltaTime) {
-    if (!simulationWorker_ || !simulationWorker_->isRunning()) return;
+void SimBridgeComponent::postSimulationInput(float deltaTime) {
+    if (!owner_.simulationWorker_ || !owner_.simulationWorker_->isRunning()) return;
 
     SimulationInput input;
 
     // Camera (Irrlicht Y-up)
-    if (camera_) {
-        input.cameraPos = camera_->getPosition();
-        input.cameraTarget = camera_->getTarget();
+    if (ctx_.camera) {
+        input.cameraPos = ctx_.camera->getPosition();
+        input.cameraTarget = ctx_.camera->getTarget();
     }
 
     // Camera position in EQ Z-up
-    if (cameraController_) {
-        cameraController_->getPositionEQ(input.camEqX, input.camEqY, input.camEqZ);
+    if (ctx_.cameraController) {
+        ctx_.cameraController->getPositionEQ(input.camEqX, input.camEqY, input.camEqZ);
     }
 
     // Frustum planes (EQ Z-up)
-    if (frustumCuller_ && frustumCuller_->isEnabled()) {
+    if (ctx_.frustumCuller && ctx_.frustumCuller->isEnabled()) {
         for (int i = 0; i < 6; ++i) {
-            const float* plane = frustumCuller_->getPlane(i);
+            const float* plane = ctx_.frustumCuller->getPlane(i);
             input.frustumPlanes[i][0] = plane[0];
             input.frustumPlanes[i][1] = plane[1];
             input.frustumPlanes[i][2] = plane[2];
@@ -260,28 +261,28 @@ void IrrlichtRenderer::postSimulationInput(float deltaTime) {
         input.frustumValid = false;
     }
 
-    input.renderDistance = renderDistance_;
-    input.loadingActive = loadingScreenVisible_ || loading_.load(std::memory_order_relaxed);
+    input.renderDistance = ctx_.renderDistance;
+    input.loadingActive = owner_.loadingScreenVisible_ || owner_.loading_.load(std::memory_order_relaxed);
 
     // Player (EQ Z-up)
-    input.playerX = playerX_;
-    input.playerY = playerY_;
-    input.playerZ = playerZ_;
-    input.playerHeading = playerHeading_;
+    input.playerX = ctx_.playerX;
+    input.playerY = ctx_.playerY;
+    input.playerZ = ctx_.playerZ;
+    input.playerHeading = owner_.playerHeading_;
 
     // Timing
     input.deltaTime = deltaTime;
-    input.frameNumber = frameNumber_;
+    input.frameNumber = owner_.frameNumber_;
 
     // Environment
-    input.currentHour = currentHour_;
-    input.currentMinute = currentMinute_;
-    input.timeOfDay = currentHour_ + currentMinute_ / 60.0f;
+    input.currentHour = ctx_.currentHour;
+    input.currentMinute = ctx_.currentMinute;
+    input.timeOfDay = ctx_.currentHour + ctx_.currentMinute / 60.0f;
 
     // Player light
-    input.playerLightLevel = playerLightLevel_;
-    if (playerLightNode_ && playerLightLevel_ > 0) {
-        const auto& ld = playerLightNode_->getLightData();
+    input.playerLightLevel = owner_.playerLightLevel_;
+    if (owner_.playerLightNode_ && owner_.playerLightLevel_ > 0) {
+        const auto& ld = owner_.playerLightNode_->getLightData();
         input.playerLightColor = ld.DiffuseColor;
         input.playerLightRadius = ld.Radius;
         input.playerLightAttConstant = ld.Attenuation.X;
@@ -290,14 +291,14 @@ void IrrlichtRenderer::postSimulationInput(float deltaTime) {
     }
 
     // Vision and weather modifiers (for zone light animation colors)
-    input.visionType = static_cast<uint8_t>(currentVision_);
-    if (weatherEffects_ && weatherEffects_->isEnabled()) {
-        input.weatherAmbientModifier = weatherEffects_->getAmbientLightModifier();
+    input.visionType = static_cast<uint8_t>(owner_.currentVision_);
+    if (ctx_.weatherEffects && ctx_.weatherEffects->isEnabled()) {
+        input.weatherAmbientModifier = ctx_.weatherEffects->getAmbientLightModifier();
     }
 
     // Tree wind state snapshot
-    if (treeWindController_.isEnabled()) {
-        const auto& wc = treeWindController_;
+    if (ctx_.treeWindController.isEnabled()) {
+        const auto& wc = ctx_.treeWindController;
         const auto& cfg = wc.getConfig();
         input.treeWind.enabled = cfg.enabled;
         input.treeWind.time = wc.getTime();
@@ -315,49 +316,49 @@ void IrrlichtRenderer::postSimulationInput(float deltaTime) {
     }
 
     // Sky state snapshot
-    if (skyRenderer_ && skyRenderer_->isInitialized() && skyRenderer_->isEnabled()) {
+    if (ctx_.skyRenderer && ctx_.skyRenderer->isInitialized() && ctx_.skyRenderer->isEnabled()) {
         input.skyEnabled = true;
         input.skyInitialized = true;
-        input.skyCloudScrollOffset = skyRenderer_->getCloudScrollOffset();
+        input.skyCloudScrollOffset = ctx_.skyRenderer->getCloudScrollOffset();
     }
 
     // Weather effects state snapshot
-    if (weatherEffects_ && weatherEffects_->isEnabled()) {
+    if (ctx_.weatherEffects && ctx_.weatherEffects->isEnabled()) {
         input.weatherEnabled = true;
-        input.weatherTransitionProgress = weatherEffects_->getTransitionProgress();
-        input.weatherTransitionDuration = weatherEffects_->getTransitionDuration();
-        input.weatherCurrentDarkening = weatherEffects_->getCurrentDarkening();
-        input.weatherTargetDarkening = weatherEffects_->getTargetDarkening();
-        input.weatherLightningFlashTimer = weatherEffects_->getLightningFlashTimer();
-        input.weatherLightningBoltTimer = weatherEffects_->getLightningBoltTimer();
-        input.weatherLightningTimer = weatherEffects_->getLightningTimer();
-        input.weatherLightningActive = weatherEffects_->isLightningActive();
-        input.weatherLightningEnabled = weatherEffects_->isLightningEnabled();
-        input.weatherType = weatherEffects_->getCurrentType();
-        input.weatherIntensity = weatherEffects_->getCurrentIntensity();
+        input.weatherTransitionProgress = ctx_.weatherEffects->getTransitionProgress();
+        input.weatherTransitionDuration = ctx_.weatherEffects->getTransitionDuration();
+        input.weatherCurrentDarkening = ctx_.weatherEffects->getCurrentDarkening();
+        input.weatherTargetDarkening = ctx_.weatherEffects->getTargetDarkening();
+        input.weatherLightningFlashTimer = ctx_.weatherEffects->getLightningFlashTimer();
+        input.weatherLightningBoltTimer = ctx_.weatherEffects->getLightningBoltTimer();
+        input.weatherLightningTimer = ctx_.weatherEffects->getLightningTimer();
+        input.weatherLightningActive = ctx_.weatherEffects->isLightningActive();
+        input.weatherLightningEnabled = ctx_.weatherEffects->isLightningEnabled();
+        input.weatherType = ctx_.weatherEffects->getCurrentType();
+        input.weatherIntensity = ctx_.weatherEffects->getCurrentIntensity();
     }
 
     // Occlusion camera state
-    if (frustumCuller_ && frustumCuller_->isEnabled()) {
+    if (ctx_.frustumCuller && ctx_.frustumCuller->isEnabled()) {
         auto& oc = input.occlusionCamera;
-        oc.fwdX = frustumCuller_->getFwdX();
-        oc.fwdY = frustumCuller_->getFwdY();
-        oc.fwdZ = frustumCuller_->getFwdZ();
-        oc.rightX = frustumCuller_->getRightX();
-        oc.rightY = frustumCuller_->getRightY();
+        oc.fwdX = ctx_.frustumCuller->getFwdX();
+        oc.fwdY = ctx_.frustumCuller->getFwdY();
+        oc.fwdZ = ctx_.frustumCuller->getFwdZ();
+        oc.rightX = ctx_.frustumCuller->getRightX();
+        oc.rightY = ctx_.frustumCuller->getRightY();
         oc.rightZ = 0;  // Right vector is horizontal in EQ Z-up
-        oc.upX = frustumCuller_->getUpX();
-        oc.upY = frustumCuller_->getUpY();
-        oc.upZ = frustumCuller_->getUpZ();
-        oc.fovRadV = frustumCuller_->getFov();
-        oc.aspect = frustumCuller_->getAspect();
+        oc.upX = ctx_.frustumCuller->getUpX();
+        oc.upY = ctx_.frustumCuller->getUpY();
+        oc.upZ = ctx_.frustumCuller->getUpZ();
+        oc.fovRadV = ctx_.frustumCuller->getFov();
+        oc.aspect = ctx_.frustumCuller->getAspect();
         oc.enabled = true;
     }
 
     // Entity snapshots for worker interpolation
-    if (entityRenderer_) {
+    if (ctx_.entityRenderer) {
         // Drain pending updates for worker
-        auto drained = entityRenderer_->drainPendingUpdates();
+        auto drained = ctx_.entityRenderer->drainPendingUpdates();
         input.entityPendingUpdates.reserve(drained.size());
         for (const auto& d : drained) {
             SimulationInput::EntityPendingUpdate epu;
@@ -370,7 +371,7 @@ void IrrlichtRenderer::postSimulationInput(float deltaTime) {
         }
 
         // Build entity snapshots
-        const auto& entities = entityRenderer_->getEntities();
+        const auto& entities = ctx_.entityRenderer->getEntities();
         input.entitySnapshots.reserve(entities.size());
         for (const auto& [spawnId, visual] : entities) {
             if (!visual.sceneNode) continue;
@@ -406,62 +407,62 @@ void IrrlichtRenderer::postSimulationInput(float deltaTime) {
         }
 
         // Entity culling config (always active)
-        input.entityRenderDistance = config_.constrainedConfig.entityRenderDistance;
-        input.maxVisibleEntities = config_.constrainedConfig.maxVisibleEntities;
+        input.entityRenderDistance = ctx_.config.constrainedConfig.entityRenderDistance;
+        input.maxVisibleEntities = ctx_.config.constrainedConfig.maxVisibleEntities;
         input.entityCullingEnabled = true;
 
         // Name tag visibility config
-        input.nameTagDistance = entityRenderer_->getNameTagDistance();
-        input.nameTagsVisible = entityRenderer_->areNameTagsVisible();
+        input.nameTagDistance = ctx_.entityRenderer->getNameTagDistance();
+        input.nameTagsVisible = ctx_.entityRenderer->areNameTagsVisible();
     }
 
     // Vertex animation timing
     input.vertAnimDeltaMs = deltaTime * 1000.0f;
 
     // Particle system input
-    if (particleManager_ && zoneReady_) {
+    if (ctx_.particleManager && owner_.zoneReady_) {
         auto& pi = input.particleInput;
         pi.deltaTime = deltaTime;
-        if (camera_) {
-            auto cp = camera_->getAbsolutePosition();
+        if (ctx_.camera) {
+            auto cp = ctx_.camera->getAbsolutePosition();
             pi.cameraPos = glm::vec3(cp.X, cp.Y, cp.Z);
         }
 
         // Ambient color from zone shader
-        if (zoneShader_) {
-            const float* amb = zoneShader_->ambientColor();
+        if (ctx_.zoneShader) {
+            const float* amb = ctx_.zoneShader->ambientColor();
             pi.ambientColor = glm::vec3(amb[0], amb[1], amb[2]);
         }
 
         // Wind from particle manager's env state
-        pi.windDirection = particleManager_->getWindDirection();
-        pi.windStrength = particleManager_->getWindStrength();
+        pi.windDirection = ctx_.particleManager->getWindDirection();
+        pi.windStrength = ctx_.particleManager->getWindStrength();
 
         // Entity positions/directions resolved last frame
         pi.entityPositions = std::move(pendingParticleEntityPositions_);
         pi.entityDirections = std::move(pendingParticleEntityDirections_);
 
         // Commands from particle manager
-        pi.commands = particleManager_->drainCommands();
+        pi.commands = ctx_.particleManager->drainCommands();
 
         // State flags
-        pi.fireEnabled = particleManager_->isUnifiedFireEnabled();
+        pi.fireEnabled = ctx_.particleManager->isUnifiedFireEnabled();
         pi.unifiedRendererInitialized = true;  // If we got here, it's initialized
         pi.poolSize = 0;  // Worker determines pool size from config
 
         // Weather lights: collect nearby lights for per-particle illumination
-        if (particleManager_->isWeatherParticlesActive()) {
+        if (ctx_.particleManager->isWeatherParticlesActive()) {
             float maxLightDist = 150.0f;
             float maxLightDistSq = maxLightDist * maxLightDist;
             float colorBoost = 2.5f;
             glm::vec3 camIrr = pi.cameraPos;
 
-            for (size_t i = 0; i < zoneLightData_.size() && i < zoneLightPositions_.size(); ++i) {
-                const auto& pos = zoneLightPositions_[i];
+            for (size_t i = 0; i < owner_.zoneLightData_.size() && i < owner_.zoneLightPositions_.size(); ++i) {
+                const auto& pos = owner_.zoneLightPositions_[i];
                 float dx = pos.X - camIrr.x, dy = pos.Y - camIrr.y, dz = pos.Z - camIrr.z;
                 float distSq = dx*dx + dy*dy + dz*dz;
                 if (distSq < maxLightDistSq) {
-                    const auto& zld = zoneLightData_[i];
+                    const auto& zld = owner_.zoneLightData_[i];
                     float radius = zld.radius > 0 ? zld.radius : 30.0f;
                     pi.weatherLights.push_back({
                         glm::vec3(pos.X, pos.Y, pos.Z),
@@ -476,9 +477,9 @@ void IrrlichtRenderer::postSimulationInput(float deltaTime) {
             }
 
             // Player light
-            if (playerLightNode_ && playerLightLevel_ > 0) {
-                auto pos = playerLightNode_->getPosition();
-                auto& ld = playerLightNode_->getLightData();
+            if (owner_.playerLightNode_ && owner_.playerLightLevel_ > 0) {
+                auto pos = owner_.playerLightNode_->getPosition();
+                auto& ld = owner_.playerLightNode_->getLightData();
                 pi.weatherLights.push_back({
                     glm::vec3(pos.X, pos.Y, pos.Z),
                     ld.Radius,
@@ -493,58 +494,58 @@ void IrrlichtRenderer::postSimulationInput(float deltaTime) {
     }
 
     // Boids system input
-    if (boidsManager_ && boidsManager_->isEnabled() && zoneReady_) {
+    if (ctx_.boidsManager && ctx_.boidsManager->isEnabled() && owner_.zoneReady_) {
         auto& bi = input.boidsInput;
         bi.deltaTime = deltaTime;
-        bi.playerPosition = glm::vec3(playerX_, playerY_, playerZ_);
-        bi.playerHeading = playerHeading_;
-        bi.timeOfDay = currentHour_ + currentMinute_ / 60.0f;
+        bi.playerPosition = glm::vec3(ctx_.playerX, ctx_.playerY, ctx_.playerZ);
+        bi.playerHeading = owner_.playerHeading_;
+        bi.timeOfDay = ctx_.currentHour + ctx_.currentMinute / 60.0f;
         bi.windDirection = glm::vec3(1.0f, 0.0f, 0.0f);
-        bi.commands = boidsManager_->drainCommands();
+        bi.commands = ctx_.boidsManager->drainCommands();
         bi.initialized = true;
     }
 
     // Tumbleweed system input
-    if (tumbleweedManager_ && tumbleweedManager_->isEnabled() && zoneReady_) {
+    if (ctx_.tumbleweedManager && ctx_.tumbleweedManager->isEnabled() && owner_.zoneReady_) {
         auto& ti = input.tumbleweedInput;
         ti.deltaTime = deltaTime;
-        ti.playerPosition = glm::vec3(playerX_, playerY_, playerZ_);
+        ti.playerPosition = glm::vec3(ctx_.playerX, ctx_.playerY, ctx_.playerZ);
         ti.windDirection = glm::vec3(1.0f, 0.0f, 0.0f);
-        ti.commands = tumbleweedManager_->drainCommands();
+        ti.commands = ctx_.tumbleweedManager->drainCommands();
         ti.initialized = true;
     }
 
     // Weather system input
-    if (weatherSystem_) {
+    if (owner_.weatherSystem_) {
         auto& wi = input.weatherInput;
         wi.deltaTime = deltaTime;
-        wi.commands = weatherSystem_->drainCommands();
+        wi.commands = owner_.weatherSystem_->drainCommands();
         wi.initialized = true;
     }
 
     // Spell VFX input (desktop GL worker-driven path)
-    if (spellVisualFX_ && spellVisualFX_->isWorkerDriven()) {
+    if (owner_.spellVisualFX_ && owner_.spellVisualFX_->isWorkerDriven()) {
         auto& svi = input.spellVfxInput;
         svi.deltaTime = deltaTime;
-        svi.commands = spellVisualFX_->drainCommands();
+        svi.commands = owner_.spellVisualFX_->drainCommands();
         svi.initialized = true;
     }
 
     // Detail wind/disturbance input
-    if (detailManager_ && detailManager_->isEnabled() && zoneReady_) {
+    if (ctx_.detailManager && ctx_.detailManager->isEnabled() && owner_.zoneReady_) {
         auto& dti = input.detailInput;
         dti.deltaTime = deltaTime;
         // Wind params from detail manager's wind controller and zone config
-        const auto& wc = detailManager_->getWindController();
+        const auto& wc = ctx_.detailManager->getWindController();
         const auto& wcParams = wc.getParams();
-        dti.windStrength = detailManager_->getZoneConfig().windStrength;
+        dti.windStrength = ctx_.detailManager->getZoneConfig().windStrength;
         dti.windFrequency = wcParams.frequency;
         dti.gustFrequency = wcParams.gustFrequency;
         dti.gustStrength = wcParams.gustStrength;
         dti.windDirX = wcParams.direction.X;
         dti.windDirY = wcParams.direction.Y;
         // Disturbance params
-        const auto& dc = detailManager_->getFoliageDisturbanceConfig();
+        const auto& dc = ctx_.detailManager->getFoliageDisturbanceConfig();
         dti.disturbanceEnabled = dc.enabled;
         dti.playerRadius = dc.playerRadius;
         dti.playerStrength = dc.playerStrength;
@@ -554,29 +555,29 @@ void IrrlichtRenderer::postSimulationInput(float deltaTime) {
         dti.heightExponent = dc.heightExponent;
         dti.recoveryRate = dc.recoveryRate;
         // Player state (Irrlicht Y-up coords)
-        dti.playerPosX = playerX_;
-        dti.playerPosY = playerZ_;  // EQ Z → Irrlicht Y
-        dti.playerPosZ = playerY_;  // EQ Y → Irrlicht Z
+        dti.playerPosX = ctx_.playerX;
+        dti.playerPosY = ctx_.playerZ;  // EQ Z → Irrlicht Y
+        dti.playerPosZ = ctx_.playerY;  // EQ Y → Irrlicht Z
         // Compute velocity for disturbance
-        static float lastDetailPX = playerX_, lastDetailPY = playerY_;
+        static float lastDetailPX = ctx_.playerX, lastDetailPY = ctx_.playerY;
         if (deltaTime > 0.001f) {
-            dti.playerVelX = (playerX_ - lastDetailPX) / deltaTime;
-            dti.playerVelZ = (playerY_ - lastDetailPY) / deltaTime;
+            dti.playerVelX = (ctx_.playerX - lastDetailPX) / deltaTime;
+            dti.playerVelZ = (ctx_.playerY - lastDetailPY) / deltaTime;
         }
-        lastDetailPX = playerX_;
-        lastDetailPY = playerY_;
+        lastDetailPX = ctx_.playerX;
+        lastDetailPY = ctx_.playerY;
         dti.playerMoving = (dti.playerVelX * dti.playerVelX + dti.playerVelZ * dti.playerVelZ) > 0.1f;
-        dti.commands = detailManager_->drainCommands();
+        dti.commands = ctx_.detailManager->drainCommands();
         dti.initialized = true;
     }
 
-    simulationWorker_->postInput(input);
+    owner_.simulationWorker_->postInput(input);
 }
 
-void IrrlichtRenderer::applySimulationResults() {
-    if (!simulationWorker_ || !simulationWorker_->isRunning()) return;
+void SimBridgeComponent::applySimulationResults() {
+    if (!owner_.simulationWorker_ || !owner_.simulationWorker_->isRunning()) return;
 
-    const SimulationOutput* results = simulationWorker_->swapAndGetResults();
+    const SimulationOutput* results = owner_.simulationWorker_->swapAndGetResults();
     if (!results) return;
 
     // Bind the frame-scoped pointers FIRST, then apply values -- this
@@ -613,15 +614,15 @@ void IrrlichtRenderer::applySimulationResults() {
 // member that stores a pointer/reference into `results`, it does NOT belong
 // in this function -- it belongs in bindFrameSimulationBuffers() below,
 // which only the runtime path (applySimulationResults()) may call.
-void IrrlichtRenderer::applySimulationOutput(const SimulationOutput& resultsRef) {
+void SimBridgeComponent::applySimulationOutput(const SimulationOutput& resultsRef) {
     const SimulationOutput* results = &resultsRef;
 
     // Apply PVS region visibility
-    if (usePvsCulling_ && !results->regionVisible.empty()) {
+    if (ctx_.usePvsCulling && !results->regionVisible.empty()) {
         // Build a lookup: index in regionBounds → regionIdx
         // We need to map worker output indices back to actual regionMeshNodes_
         size_t idx = 0;
-        for (const auto& [regionIdx, node] : regionMeshNodes_) {
+        for (const auto& [regionIdx, node] : ctx_.regionMeshNodes) {
             if (!node) { idx++; continue; }
             // Find matching index in worker output
             // Worker output is indexed by position in zoneData_.regionBounds vector
@@ -634,8 +635,8 @@ void IrrlichtRenderer::applySimulationOutput(const SimulationOutput& resultsRef)
             idx++;
         }
 
-        size_t prevPvsRegion = currentPvsRegion_;
-        currentPvsRegion_ = results->currentPvsRegion;
+        size_t prevPvsRegion = ctx_.currentPvsRegion;
+        ctx_.currentPvsRegion = results->currentPvsRegion;
 
         // T116: regionPvsDepthMap_ used to be pointed at results->regionPvsDepth
         // here. That store moved to bindFrameSimulationBuffers() -- see this
@@ -644,24 +645,24 @@ void IrrlichtRenderer::applySimulationOutput(const SimulationOutput& resultsRef)
         // Re-prioritize pending queues only when leaving the PVS neighborhood.
         // Small region crossings within the neighborhood are suppressed to avoid
         // expensive re-prioritization cascades on every boundary crossing.
-        if (currentPvsRegion_ != prevPvsRegion && prevPvsRegion != SIZE_MAX) {
+        if (ctx_.currentPvsRegion != prevPvsRegion && prevPvsRegion != SIZE_MAX) {
             // Camera collision update is cheap and always needed
-            if (cameraController_) {
-                cameraController_->setBspPlayerRegion(currentPvsRegion_);
+            if (ctx_.cameraController) {
+                ctx_.cameraController->setBspPlayerRegion(ctx_.currentPvsRegion);
             }
             // Full re-prioritization only when leaving neighborhood
-            if (!isInPvsNeighborhood(currentPvsRegion_)) {
-                rebuildPvsNeighborhood(currentPvsRegion_);
-                onPvsRegionChanged();
+            if (!owner_.isInPvsNeighborhood(ctx_.currentPvsRegion)) {
+                owner_.rebuildPvsNeighborhood(ctx_.currentPvsRegion);
+                owner_.onPvsRegionChanged();
             }
         }
 
         // Always log PVS state from worker (throttled to every 30 frames)
         static int simWorkerPvsLogCounter = 0;
-        if (++simWorkerPvsLogCounter % 30 == 1 || currentPvsRegion_ != prevPvsRegion) {
+        if (++simWorkerPvsLogCounter % 30 == 1 || ctx_.currentPvsRegion != prevPvsRegion) {
             LOG_DEBUG(MOD_GRAPHICS, "SimWorker apply: PVS={}{} meshLoadQ={} regionVis={}",
-                      currentPvsRegion_,
-                      (currentPvsRegion_ != prevPvsRegion ? fmt::format(" (was {})", prevPvsRegion) : ""),
+                      ctx_.currentPvsRegion,
+                      (ctx_.currentPvsRegion != prevPvsRegion ? fmt::format(" (was {})", prevPvsRegion) : ""),
                       results->meshLoadQueue.size(),
                       results->regionVisible.size());
         }
@@ -673,14 +674,14 @@ void IrrlichtRenderer::applySimulationOutput(const SimulationOutput& resultsRef)
         // Per-region portal occlusion: enable/disable based on camera's indoor status
         // When indoor region map is loaded, dynamically toggle portal occlusion as
         // the player moves between indoor and outdoor regions within the same zone.
-        if (portalOcclusionEligible_ && config_.constrainedConfig.portalOcclusion &&
-            config_.constrainedConfig.enableStencilBuffer && !indoorRegions_.empty()) {
-            bool wasEnabled = portalOcclusionEnabled_;
-            portalOcclusionEnabled_ = results->cameraInIndoorRegion;
-            if (portalOcclusionEnabled_ != wasEnabled) {
+        if (ctx_.portalOcclusionEligible && ctx_.config.constrainedConfig.portalOcclusion &&
+            ctx_.config.constrainedConfig.enableStencilBuffer && !ctx_.indoorRegions.empty()) {
+            bool wasEnabled = ctx_.portalOcclusionEnabled;
+            ctx_.portalOcclusionEnabled = results->cameraInIndoorRegion;
+            if (ctx_.portalOcclusionEnabled != wasEnabled) {
                 LOG_DEBUG(MOD_GRAPHICS, "Portal occlusion {} (camera region {} is {})",
-                          portalOcclusionEnabled_ ? "ON" : "OFF",
-                          currentPvsRegion_,
+                          ctx_.portalOcclusionEnabled ? "ON" : "OFF",
+                          ctx_.currentPvsRegion,
                           results->cameraInIndoorRegion ? "indoor" : "outdoor");
             }
         }
@@ -697,13 +698,13 @@ void IrrlichtRenderer::applySimulationOutput(const SimulationOutput& resultsRef)
         // the reference pointer.
 
         // Apply sorted region draw list for front-to-back zone rendering
-        if (manualZoneDrawEnabled_ && !results->sortedRegions.empty()) {
-            sortedZoneDrawList_.clear();
-            sortedZoneDrawList_.reserve(results->sortedRegions.size());
+        if (ctx_.manualZoneDrawEnabled && !results->sortedRegions.empty()) {
+            owner_.sortedZoneDrawList_.clear();
+            owner_.sortedZoneDrawList_.reserve(results->sortedRegions.size());
             for (const auto& sr : results->sortedRegions) {
-                auto it = regionMeshNodes_.find(sr.regionIdx);
-                irr::scene::IMeshSceneNode* node = (it != regionMeshNodes_.end()) ? it->second : nullptr;
-                sortedZoneDrawList_.push_back({sr.regionIdx, sr.distanceSq, node});
+                auto it = ctx_.regionMeshNodes.find(sr.regionIdx);
+                irr::scene::IMeshSceneNode* node = (it != ctx_.regionMeshNodes.end()) ? it->second : nullptr;
+                owner_.sortedZoneDrawList_.push_back({sr.regionIdx, sr.distanceSq, node});
             }
         }
     }
@@ -712,23 +713,23 @@ void IrrlichtRenderer::applySimulationOutput(const SimulationOutput& resultsRef)
     // When manualZoneDrawEnabled_, objects are drawn via drawZoneGeometrySorted()
     // alongside zone geometry for material sorting. Keep them out of the scene graph
     // to avoid double-rendering by drawAll().
-    if (!results->objectVisible.empty() && !manualZoneDrawEnabled_) {
-        for (size_t i = 0; i < results->objectVisible.size() && i < objectNodes_.size(); ++i) {
-            auto* node = objectNodes_[i];
+    if (!results->objectVisible.empty() && !ctx_.manualZoneDrawEnabled) {
+        for (size_t i = 0; i < results->objectVisible.size() && i < ctx_.objectNodes.size(); ++i) {
+            auto* node = ctx_.objectNodes[i];
             if (!node) continue;
 
             bool shouldBeVisible = results->objectVisible[i] != 0;
-            bool isInScene = (i < objectInSceneGraph_.size()) ? objectInSceneGraph_[i] : false;
+            bool isInScene = (i < ctx_.objectInSceneGraph.size()) ? ctx_.objectInSceneGraph[i] : false;
 
             if (shouldBeVisible && !isInScene) {
-                smgr_->getRootSceneNode()->addChild(node);
+                ctx_.smgr->getRootSceneNode()->addChild(node);
                 node->setVisible(true);
-                if (i < objectInSceneGraph_.size())
-                    objectInSceneGraph_[i] = true;
+                if (i < ctx_.objectInSceneGraph.size())
+                    ctx_.objectInSceneGraph[i] = true;
             } else if (!shouldBeVisible && isInScene) {
                 node->remove();
-                if (i < objectInSceneGraph_.size())
-                    objectInSceneGraph_[i] = false;
+                if (i < ctx_.objectInSceneGraph.size())
+                    ctx_.objectInSceneGraph[i] = false;
             }
         }
     }
@@ -737,14 +738,14 @@ void IrrlichtRenderer::applySimulationOutput(const SimulationOutput& resultsRef)
     // Worker uses lightVisible output internally for light selection filtering.
 
     // Apply light selection to shader
-    if (results->activeLightCount > 0 && zoneShader_ && zoneShader_->isAvailable()) {
+    if (results->activeLightCount > 0 && ctx_.zoneShader && ctx_.zoneShader->isAvailable()) {
         bool playerLightSet = false;
         for (int i = 0; i < results->activeLightCount; ++i) {
             const auto& sl = results->selectedLights[i];
             if (!sl.valid) continue;
 
             float boost = (i == 0 && sl.isPlayerLight) ? 3.0f : 1.0f;
-            zoneShader_->setPointLight(i,
+            ctx_.zoneShader->setPointLight(i,
                 sl.position.X, sl.position.Y, sl.position.Z,
                 sl.diffuseColor.r * boost,
                 sl.diffuseColor.g * boost,
@@ -753,72 +754,72 @@ void IrrlichtRenderer::applySimulationOutput(const SimulationOutput& resultsRef)
 
             // Set per-pixel player light FS uniforms (GLES2: computed in fragment shader)
             if (i == 0 && sl.isPlayerLight) {
-                zoneShader_->setPlayerLightPos(sl.position.X, sl.position.Y, sl.position.Z);
-                zoneShader_->setPlayerLightColor(
+                ctx_.zoneShader->setPlayerLightPos(sl.position.X, sl.position.Y, sl.position.Z);
+                ctx_.zoneShader->setPlayerLightColor(
                     sl.diffuseColor.r * boost,
                     sl.diffuseColor.g * boost,
                     sl.diffuseColor.b * boost);
-                zoneShader_->setPlayerLightAtten(sl.attConstant, sl.attLinear, sl.attQuadratic);
+                ctx_.zoneShader->setPlayerLightAtten(sl.attConstant, sl.attLinear, sl.attQuadratic);
                 playerLightSet = true;
             }
         }
         // Clear player light FS uniforms if no player light active
         if (!playerLightSet) {
-            zoneShader_->setPlayerLightColor(0.0f, 0.0f, 0.0f);
+            ctx_.zoneShader->setPlayerLightColor(0.0f, 0.0f, 0.0f);
         }
 
         // Apply debug toggles (/plight, /olight, L key)
         int effectiveLightCount = results->activeLightCount;
 
         // /plight off: zero player light in both VS (light[0]) and FS
-        if (!debugPlayerLightEnabled_) {
-            zoneShader_->setPointLight(0, 0,0,0, 0,0,0, 1,0,0);
-            zoneShader_->setPlayerLightColor(0.0f, 0.0f, 0.0f);
+        if (!owner_.debugPlayerLightEnabled_) {
+            ctx_.zoneShader->setPointLight(0, 0,0,0, 0,0,0, 1,0,0);
+            ctx_.zoneShader->setPlayerLightColor(0.0f, 0.0f, 0.0f);
             if (playerLightSet) effectiveLightCount--;
             playerLightSet = false;
         }
 
         // /olight off: zero all zone lights (indices 1-7) in VS
-        if (!debugObjectLightsEnabled_) {
+        if (!owner_.debugObjectLightsEnabled_) {
             for (int i = 1; i < ZoneShaderManager::MAX_POINT_LIGHTS; ++i)
-                zoneShader_->setPointLight(i, 0,0,0, 0,0,0, 1,0,0);
+                ctx_.zoneShader->setPointLight(i, 0,0,0, 0,0,0, 1,0,0);
             effectiveLightCount = playerLightSet ? 1 : 0;
-        } else if (maxObjectLights_ < effectiveLightCount - (playerLightSet ? 1 : 0)) {
+        } else if (owner_.maxObjectLights_ < effectiveLightCount - (playerLightSet ? 1 : 0)) {
             // L key: limit zone light count, zero excess slots
-            int maxZone = maxObjectLights_;
+            int maxZone = owner_.maxObjectLights_;
             int startClear = (playerLightSet ? 1 : 0) + maxZone;
             for (int i = startClear; i < ZoneShaderManager::MAX_POINT_LIGHTS; ++i)
-                zoneShader_->setPointLight(i, 0,0,0, 0,0,0, 1,0,0);
+                ctx_.zoneShader->setPointLight(i, 0,0,0, 0,0,0, 1,0,0);
             effectiveLightCount = (playerLightSet ? 1 : 0) + maxZone;
         }
 
-        zoneShader_->setNumPointLights(effectiveLightCount);
-        activeLightCount_ = effectiveLightCount;
+        ctx_.zoneShader->setNumPointLights(effectiveLightCount);
+        owner_.activeLightCount_ = effectiveLightCount;
     }
 
     // Apply object light PVS visibility (scene graph add/remove)
     if (!results->objectLightVisible.empty()) {
-        for (size_t i = 0; i < results->objectLightVisible.size() && i < objectLights_.size(); ++i) {
-            auto* node = objectLights_[i].node;
+        for (size_t i = 0; i < results->objectLightVisible.size() && i < ctx_.objectLights.size(); ++i) {
+            auto* node = ctx_.objectLights[i].node;
             if (!node) continue;
             bool shouldBeVisible = results->objectLightVisible[i] != 0;
-            bool isInScene = (i < objectLightInSceneGraph_.size()) ? objectLightInSceneGraph_[i] : false;
+            bool isInScene = (i < owner_.objectLightInSceneGraph_.size()) ? owner_.objectLightInSceneGraph_[i] : false;
             if (shouldBeVisible && !isInScene) {
-                smgr_->getRootSceneNode()->addChild(node);
-                if (i < objectLightInSceneGraph_.size())
-                    objectLightInSceneGraph_[i] = true;
+                ctx_.smgr->getRootSceneNode()->addChild(node);
+                if (i < owner_.objectLightInSceneGraph_.size())
+                    owner_.objectLightInSceneGraph_[i] = true;
             } else if (!shouldBeVisible && isInScene) {
                 node->remove();
-                if (i < objectLightInSceneGraph_.size())
-                    objectLightInSceneGraph_[i] = false;
+                if (i < owner_.objectLightInSceneGraph_.size())
+                    owner_.objectLightInSceneGraph_[i] = false;
             }
         }
     }
 
     // Apply fire flicker colors to object lights (for other systems that read them)
     if (!results->objectLightColors.empty()) {
-        for (size_t i = 0; i < results->objectLightColors.size() && i < objectLights_.size(); ++i) {
-            auto* node = objectLights_[i].node;
+        for (size_t i = 0; i < results->objectLightColors.size() && i < ctx_.objectLights.size(); ++i) {
+            auto* node = ctx_.objectLights[i].node;
             if (!node) continue;
             auto& ld = node->getLightData();
             ld.DiffuseColor.r = results->objectLightColors[i].r;
@@ -831,22 +832,22 @@ void IrrlichtRenderer::applySimulationOutput(const SimulationOutput& resultsRef)
     // No scene nodes to update on main thread.
 
     // Apply sky state from worker
-    if (results->skyState.valid && skyRenderer_ && skyRenderer_->isInitialized() && skyRenderer_->isEnabled()) {
+    if (results->skyState.valid && ctx_.skyRenderer && ctx_.skyRenderer->isInitialized() && ctx_.skyRenderer->isEnabled()) {
         SkyRenderer::SkyState skyState;
         skyState.cloudScrollOffset = results->skyState.cloudScrollOffset;
-        skyRenderer_->applyState(skyState);
+        ctx_.skyRenderer->applyState(skyState);
     }
 
     // Apply weather system state from worker (must fire listeners before weatherEffects apply)
-    if (results->weatherOutput.valid && weatherSystem_) {
+    if (results->weatherOutput.valid && owner_.weatherSystem_) {
         const auto& wo = results->weatherOutput;
-        weatherSystem_->applyWorkerResults(wo.currentWeather, wo.targetWeather,
+        owner_.weatherSystem_->applyWorkerResults(wo.currentWeather, wo.targetWeather,
                                            wo.transitionProgress, wo.windIntensity,
                                            wo.weatherChanged, wo.newWeatherType);
     }
 
     // Apply weather effects state from worker
-    if (results->weatherEffectsState.valid && weatherEffects_ && weatherEffects_->isEnabled()) {
+    if (results->weatherEffectsState.valid && ctx_.weatherEffects && ctx_.weatherEffects->isEnabled()) {
         WeatherEffectsController::WeatherEffectsState wes;
         wes.transitionProgress = results->weatherEffectsState.transitionProgress;
         wes.currentDarkening = results->weatherEffectsState.currentDarkening;
@@ -854,12 +855,12 @@ void IrrlichtRenderer::applySimulationOutput(const SimulationOutput& resultsRef)
         wes.lightningBoltTimer = results->weatherEffectsState.lightningBoltTimer;
         wes.lightningActive = results->weatherEffectsState.lightningActive;
         wes.triggerLightningFlash = results->weatherEffectsState.triggerLightningFlash;
-        weatherEffects_->applyState(wes);
+        ctx_.weatherEffects->applyState(wes);
     }
 
     // Update player light position (every frame, not gated)
-    if (playerLightNode_ && playerLightLevel_ > 0) {
-        playerLightNode_->setPosition(irr::core::vector3df(playerX_, playerZ_ + 3.0f, playerY_));
+    if (owner_.playerLightNode_ && owner_.playerLightLevel_ > 0) {
+        owner_.playerLightNode_->setPosition(irr::core::vector3df(ctx_.playerX, ctx_.playerZ + 3.0f, ctx_.playerY));
     }
 
     // P32: the tree wind shadow-vertex apply block was removed along with
@@ -870,20 +871,20 @@ void IrrlichtRenderer::applySimulationOutput(const SimulationOutput& resultsRef)
     // fully dead (its `!results->treeShadows.empty()` guard never passed).
 
     // Apply spell VFX results from worker (desktop GL path)
-    if (results->spellVfxOutput.valid && spellVisualFX_ && spellVisualFX_->isWorkerDriven()) {
-        spellVisualFX_->applyWorkerResults(*results);
+    if (results->spellVfxOutput.valid && owner_.spellVisualFX_ && owner_.spellVisualFX_->isWorkerDriven()) {
+        owner_.spellVisualFX_->applyWorkerResults(*results);
     }
 
     // Apply detail wind/disturbance shadow vertices
-    if (detailManager_ && detailManager_->isEnabled() && results->detailOutput.valid) {
-        detailManager_->applyWorkerResults(results->detailOutput);
+    if (ctx_.detailManager && ctx_.detailManager->isEnabled() && results->detailOutput.valid) {
+        ctx_.detailManager->applyWorkerResults(results->detailOutput);
     }
 
     // Apply vertex animation results (frame index computed by worker)
-    if (!results->vertexAnims.empty() && !vertexAnimatedMeshes_.empty()) {
-        for (size_t i = 0; i < results->vertexAnims.size() && i < vertexAnimatedMeshes_.size(); ++i) {
+    if (!results->vertexAnims.empty() && !owner_.vertexAnimatedMeshes_.empty()) {
+        for (size_t i = 0; i < results->vertexAnims.size() && i < owner_.vertexAnimatedMeshes_.size(); ++i) {
             const auto& vr = results->vertexAnims[i];
-            auto& vam = vertexAnimatedMeshes_[i];
+            auto& vam = owner_.vertexAnimatedMeshes_[i];
             if (!vr.frameChanged) continue;
             if (!vam.mesh || !vam.animData || vam.animData->frames.empty()) continue;
 
@@ -919,9 +920,9 @@ void IrrlichtRenderer::applySimulationOutput(const SimulationOutput& resultsRef)
     // be pointed/nulled here; that store moved to bindFrameSimulationBuffers()
     // -- see this function's header comment. Everything else in this block
     // (active count, position resolution) is value application and stays.
-    if (results->particleOutput.valid && particleManager_) {
+    if (results->particleOutput.valid && ctx_.particleManager) {
         // Update particle manager's active count from worker
-        particleManager_->setWorkerActiveCount(results->particleOutput.activeCount);
+        ctx_.particleManager->setWorkerActiveCount(results->particleOutput.activeCount);
 
         // Resolve entity positions for the next frame's particle input
         pendingParticleEntityPositions_.clear();
@@ -929,28 +930,28 @@ void IrrlichtRenderer::applySimulationOutput(const SimulationOutput& resultsRef)
 
         for (uint16_t entityID : results->particleOutput.positionRequestEntities) {
             glm::vec3 pos;
-            if (particleManager_->resolveEntityPosition(entityID, pos)) {
+            if (ctx_.particleManager->resolveEntityPosition(entityID, pos)) {
                 pendingParticleEntityPositions_[entityID] = pos;
             }
         }
     }
 
     // Apply boids output from worker
-    if (results->boidsOutput.valid && boidsManager_) {
-        boidsManager_->applyWorkerResults(results->boidsOutput);
+    if (results->boidsOutput.valid && ctx_.boidsManager) {
+        ctx_.boidsManager->applyWorkerResults(results->boidsOutput);
     }
 
     // Apply tumbleweed output from worker
-    if (results->tumbleweedOutput.valid && tumbleweedManager_) {
-        tumbleweedManager_->applyWorkerResults(results->tumbleweedOutput);
+    if (results->tumbleweedOutput.valid && ctx_.tumbleweedManager) {
+        ctx_.tumbleweedManager->applyWorkerResults(results->tumbleweedOutput);
     }
 
     // Apply occlusion-culled regions from worker
-    occlusionCulledRegions_ = results->occlusionCulledRegions;
+    owner_.occlusionCulledRegions_ = results->occlusionCulledRegions;
 
     // Apply entity interpolation and visibility results
-    if (entityRenderer_ && !results->entityResults.empty()) {
-        auto& entities = const_cast<std::map<uint16_t, EntityVisual>&>(entityRenderer_->getEntities());
+    if (ctx_.entityRenderer && !results->entityResults.empty()) {
+        auto& entities = const_cast<std::map<uint16_t, EntityVisual>&>(ctx_.entityRenderer->getEntities());
 
         for (const auto& er : results->entityResults) {
             auto it = entities.find(er.spawnId);
@@ -971,8 +972,8 @@ void IrrlichtRenderer::applySimulationOutput(const SimulationOutput& resultsRef)
                         er.posX, er.posZ + visual.modelYOffset + 3.0f, er.posY));
                 }
                 // Boat collision fixup — only checked when boats exist in zone
-                if (entityRenderer_->hasBoatsInZone()) {
-                    float boatZ = entityRenderer_->findBoatDeckZ(er.posX, er.posY, er.posZ);
+                if (ctx_.entityRenderer->hasBoatsInZone()) {
+                    float boatZ = ctx_.entityRenderer->findBoatDeckZ(er.posX, er.posY, er.posZ);
                     if (boatZ > -999000.0f) {
                         float targetZ = boatZ;
                         if (std::abs(targetZ - er.posZ) < 20.0f) {
@@ -993,11 +994,11 @@ void IrrlichtRenderer::applySimulationOutput(const SimulationOutput& resultsRef)
             // Apply entity visibility (culling results)
             if (visual.sceneNode) {
                 if (er.shouldBeVisible && !visual.inSceneGraph) {
-                    smgr_->getRootSceneNode()->addChild(visual.sceneNode);
+                    ctx_.smgr->getRootSceneNode()->addChild(visual.sceneNode);
                     visual.sceneNode->setVisible(true);
                     visual.inSceneGraph = true;
                     if (visual.lightNode) {
-                        smgr_->getRootSceneNode()->addChild(visual.lightNode);
+                        ctx_.smgr->getRootSceneNode()->addChild(visual.lightNode);
                     }
                     // T111: checkProgressiveLoadingComplete()/queueEntityPrepRequests()
                     // only ever consider entities with inSceneGraph==true (this has
@@ -1017,8 +1018,8 @@ void IrrlichtRenderer::applySimulationOutput(const SimulationOutput& resultsRef)
                     // walking toward deferred entities never picked them up because
                     // progressiveLoadingActive_ had already gone false long before
                     // they entered view.
-                    if (!visual.meshBuilt && !progressiveLoadingActive_ && entityPrepReady_) {
-                        progressiveLoadingActive_ = true;
+                    if (!visual.meshBuilt && !ctx_.progressiveLoadingActive && ctx_.entityPrepReady) {
+                        ctx_.progressiveLoadingActive = true;
                         LOG_DEBUG(MOD_GRAPHICS, "Progressive loading re-enabled: entity {} ({}) "
                                   "became visible while still unbuilt", visual.spawnId, visual.name);
                     }
@@ -1034,7 +1035,7 @@ void IrrlichtRenderer::applySimulationOutput(const SimulationOutput& resultsRef)
                 visual.nameNode->setVisible(er.nameTagVisible);
             }
         }
-        entityRenderer_->setVisibleEntityCount(results->entityVisibleCount);
+        ctx_.entityRenderer->setVisibleEntityCount(results->entityVisibleCount);
     }
 }
 
@@ -1052,8 +1053,8 @@ void IrrlichtRenderer::applySimulationOutput(const SimulationOutput& resultsRef)
 // pointer bugs (T111 x2, T115 x1) made in this exact spot, each patched
 // after the fact by nulling the member again on the loading thread -- see
 // the plan for why a fourth nulling line was rejected in favor of this split.
-void IrrlichtRenderer::bindFrameSimulationBuffers(const SimulationOutput* persistent) {
-    currentFrameSimResults_ = persistent;
+void SimBridgeComponent::bindFrameSimulationBuffers(const SimulationOutput* persistent) {
+    owner_.currentFrameSimResults_ = persistent;
 
     // Mirrors applySimulationOutput()'s own regionPvsDepthMap_/
     // portalVisibleRegions_ value-application gate exactly (usePvsCulling_ &&
@@ -1061,34 +1062,34 @@ void IrrlichtRenderer::bindFrameSimulationBuffers(const SimulationOutput* persis
     // pointers keep whatever they were bound to on the last frame that DID
     // run it (matches the pre-split behavior, which never nulled them here
     // either).
-    if (usePvsCulling_ && !persistent->regionVisible.empty()) {
-        regionPvsDepthMap_ = &persistent->regionPvsDepth;
-        portalVisibleRegions_ = &persistent->portalVisibleRegions;
+    if (ctx_.usePvsCulling && !persistent->regionVisible.empty()) {
+        owner_.regionPvsDepthMap_ = &persistent->regionPvsDepth;
+        owner_.portalVisibleRegions_ = &persistent->portalVisibleRegions;
     }
 
     // Mirrors applySimulationOutput()'s particleOutput.valid && particleManager_
     // gate exactly, including the null-on-else (pre-split behavior: goes null
     // the instant particle output stops being valid, so stale-frame data is
     // never read).
-    if (persistent->particleOutput.valid && particleManager_) {
-        particleRenderBuffer_ = &persistent->particleOutput.renderBuffer;
+    if (persistent->particleOutput.valid && ctx_.particleManager) {
+        owner_.particleRenderBuffer_ = &persistent->particleOutput.renderBuffer;
     } else {
-        particleRenderBuffer_ = nullptr;
+        owner_.particleRenderBuffer_ = nullptr;
     }
 }
 
-std::vector<std::string> IrrlichtRenderer::getSimWorkerDebugInfo() const {
+std::vector<std::string> SimBridgeComponent::getSimWorkerDebugInfo() const {
     std::vector<std::string> lines;
 
-    if (!simulationWorker_) {
+    if (!owner_.simulationWorker_) {
         lines.push_back("SimulationWorker: not created");
         return lines;
     }
 
-    auto info = simulationWorker_->getDebugInfo();
+    auto info = owner_.simulationWorker_->getDebugInfo();
 
     lines.push_back(fmt::format("SimulationWorker: {}",
-        simulationWorker_->isRunning() ? "RUNNING" : "STOPPED"));
+        owner_.simulationWorker_->isRunning() ? "RUNNING" : "STOPPED"));
     lines.push_back(fmt::format("  Frames computed: {}", info.framesComputed));
     lines.push_back(fmt::format("  Frames skipped: {} ({:.1f}%)",
         info.framesSkipped,
@@ -1102,7 +1103,7 @@ std::vector<std::string> IrrlichtRenderer::getSimWorkerDebugInfo() const {
     // count removed — it was always 0 on GLES2 already, since that path was
     // only reachable via the removed EDT_BURNINGSVIDEO branch).
     lines.push_back(fmt::format("  Trees: {}, VertAnims: {}",
-        0, vertexAnimatedMeshes_.size()));
+        0, owner_.vertexAnimatedMeshes_.size()));
     lines.push_back("  Offloaded: visibility, lighting, trees, vertex anims, fire flicker, boids, tumbleweeds");
     lines.push_back("  Ungated: detail wind, particles, sky, weather (30Hz)");
 

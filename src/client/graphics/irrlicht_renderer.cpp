@@ -139,7 +139,7 @@ void IrrlichtRenderer::shutdown() {
 #endif
 
     // Stop simulation worker before any other cleanup
-    stopSimulationWorker();
+    simBridge_->stopSimulationWorker();
 
     // Stop background entity prep worker before any other cleanup
     if (entityPrepWorker_) {

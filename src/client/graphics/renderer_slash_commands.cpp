@@ -372,7 +372,7 @@ void IrrlichtRenderer::processSlashCommand(const std::string& command) {
         diagnostics_->dumpScene();
         chat("Scene dump written to console log");
     } else if (cmd == "/simworker" || cmd == "/sw") {
-        auto info = getSimWorkerDebugInfo();
+        auto info = simBridge_->getSimWorkerDebugInfo();
         for (const auto& line : info) chat(line);
     }
     // T108: "/pmem" moved off this empty-MemoryReportInput{} path (runLoadDiagnostics

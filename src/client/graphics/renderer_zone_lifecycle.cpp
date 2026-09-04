@@ -19,7 +19,7 @@ void IrrlichtRenderer::unloadZone() {
     storedZoneEnvironment_.pending = false;
 
     // Stop simulation worker before zone cleanup
-    stopSimulationWorker();
+    simBridge_->stopSimulationWorker();
 
     // Stop background entity prep worker before zone cleanup
     if (entityPrepWorker_) {

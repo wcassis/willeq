@@ -114,7 +114,7 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     frameTimings_.drainQueues = measureSection();
 
     // SimulationWorker: apply results from previous frame, then post new input
-    applySimulationResults();
+    simBridge_->applySimulationResults();
     frameTimings_.simWorkerApply = measureSection();
 
     // Phase 2: Visibility
@@ -123,7 +123,7 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
     frameTimings_.visibility = measureSection();
 
     // SimulationWorker: post new input after frustum planes are updated
-    postSimulationInput(deltaTime);
+    simBridge_->postSimulationInput(deltaTime);
     frameTimings_.postSimInput = measureSection();
 
     // ─── Progressive loading (loading screen showing, no governor restriction §4.2) ───
