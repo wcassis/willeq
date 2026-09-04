@@ -192,7 +192,13 @@ void eqt::entities::EntitiesComponent::SendSpawnAppearance(uint16_t type, uint32
 	p.PutUInt16(4, type);            // type
 	p.PutUInt32(6, value);           // parameter
 	// Removed the extra 4 bytes that were at offset 10
-	
+
+	// T346: this sender bypasses PacketSender entirely (see T344), so the
+	// T268 seam has to be told about it explicitly or an appearance is
+	// invisible to any ordered-sequence test. No-op unless armed.
+	ctx_.net.Test_RecordQueuedPacket(HC_OP_SpawnAppearance,
+		static_cast<const uint8_t*>(p.Data()) + 2, 8);
+
 	ctx_.zone_connection->QueuePacket(p);
 	
 	if (EverQuest::GetDebugLevel() >= 1) {

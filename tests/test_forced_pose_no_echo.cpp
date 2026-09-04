@@ -266,7 +266,14 @@ const uint8_t kT311SelfDeathBody[32] = {
     0xa0, 0x86, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 
-TEST(ForcedPoseNoEcho, T311SelfDeathCapture_SetsDeadAndSendsNoAppearance) {
+// T346 UPDATED THE SECOND ASSERTION HERE, deliberately. T344 wrote it as
+// "no appearance at all goes out from the death path IN THIS UNIT; the
+// oracle's Lying + OP_ZoneChange re-entry is a separate unit" -- T346 is that
+// unit, and the oracle's answer to its own OP_Death is exactly one
+// AT_ANIMATION 115. What T344 was really pinning is that AT_DIE never goes
+// out, and that is still asserted, here and in UserDeadState_NeverSendsAtDie.
+// The full sequence lives in tests/test_self_death_sequence.cpp.
+TEST(ForcedPoseNoEcho, T311SelfDeathCapture_SetsDeadAndSendsLyingNotAtDie) {
     PoseHarness h;
     h.spawnSelf();
     h.clearSent();
@@ -275,9 +282,10 @@ TEST(ForcedPoseNoEcho, T311SelfDeathCapture_SetsDeadAndSendsNoAppearance) {
 
     EXPECT_EQ(h.eq.GetGameState().player().positionState(), eqt::state::PositionState::Dead)
         << "OP_Death for our own spawn id is what drives self's positionState";
-    EXPECT_TRUE(h.sentAppearances().empty())
-        << "no appearance at all goes out from the death path in this unit; "
-           "the oracle's Lying + OP_ZoneChange re-entry is a separate unit";
+    auto appearances = h.sentAppearances();
+    ASSERT_EQ(appearances.size(), 1u) << "the oracle answers with exactly one";
+    EXPECT_EQ(appearances[0].first, static_cast<uint16_t>(AT_ANIMATION));
+    EXPECT_EQ(appearances[0].second, 115u) << "Animation::Lying, never AT_DIE";
 }
 
 // The Lying appearance that follows a death must not downgrade Dead to
