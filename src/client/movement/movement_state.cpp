@@ -585,7 +585,6 @@ void eqt::movement::MovementComponent::UpdateWaterState()
 	}
 
 	WaterState newState = WaterState::NotInWater;
-	float waterSurfaceZ = 0.0f;
 
 	// Fully underwater zones - these don't have BSP water regions
 	// The entire zone is submerged so we hardcode them here
@@ -647,8 +646,15 @@ void eqt::movement::MovementComponent::UpdateWaterState()
 						newState = WaterState::Submerged;
 					} else {
 						newState = WaterState::OnSurface;
-						// Estimate water surface Z (head is above water, feet are in)
-						waterSurfaceZ = ctx_.self.PosZ() + (HEAD_HEIGHT_OFFSET / 2.0f);
+						// T347 (B029): the water-surface Z estimate that used to
+						// be computed here (PosZ + HEAD_HEIGHT_OFFSET/2) and
+						// stashed in m_water_surface_z is gone. The member had
+						// ZERO readers tree-wide, and the SwimmingStateChanged
+						// event this function publishes carries only
+						// {isSwimming, swimSpeed, isLevitating} -- no surface
+						// height -- so nothing downstream could see it either.
+						// Swim height has no consumer; add one before adding
+						// the estimate back.
 					}
 				}
 			}
@@ -659,7 +665,6 @@ void eqt::movement::MovementComponent::UpdateWaterState()
 	if (newState != m_water_state) {
 		WaterState oldState = m_water_state;
 		m_water_state = newState;
-		m_water_surface_z = waterSurfaceZ;
 
 		if (oldState == WaterState::NotInWater && newState != WaterState::NotInWater) {
 			OnEnterWater();

@@ -207,6 +207,16 @@ void CommandProcessor::registerCombatCommands() {
         "target", {"tar"}, "/target <name>", "Target entity by name", "Combat", false
     }, [this](const std::string& args) { return cmdTarget(args); });
 
+    // T347 (B012): the counterpart to /target. ActionDispatcher::clearTarget()
+    // existed but was reachable only from the ClearTarget keybinding
+    // (input_action_bridge.cpp), so a --script run could acquire a target and
+    // never drop one. Registered here, next to /target, so the golden's edit
+    // is one insertion at position 22. No alias: "ct" is unclaimed but short
+    // aliases are what T097/T098's shadowing audit was about.
+    registerCommand({
+        "cleartarget", {}, "/cleartarget", "Clear your current target", "Combat", false
+    }, [this](const std::string& args) { return cmdClearTarget(args); });
+
     registerCommand({
         "attack", {"att"}, "/attack", "Begin auto-attack", "Combat", false
     }, [this](const std::string& args) { return cmdAttack(args); });

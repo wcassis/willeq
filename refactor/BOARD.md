@@ -139,11 +139,17 @@ it without taking that measurement first.
   found and loaded, or the fields and their branches are deleted. Do not invent
   values. Prov: deferred item 35.
 
-- **B008** (B) `src/common/net/daybreak_connection_send.cpp`
+- ~~**B008** (B) `src/common/net/daybreak_connection_send.cpp`
   `DaybreakConnection::ValidateCRC` — its `default:` arm returns false with no log
-  line, silently rejecting every packet for any `crc_bytes` other than 2 or 4.
-  Closes when: the arm logs, or the case is proven unreachable and asserted.
-  Prov: deferred item 41.
+  line, silently rejecting every packet for any `crc_bytes` other than 2 or 4.~~
+  **CLOSED 2026-09-04 by T347.** The arm is REACHABLE, not dead:
+  `daybreak_connection_decode.cpp`'s `OP_SessionResponse` handler assigns
+  `m_crc_bytes = reply.crc_bytes;` straight off the wire, so the server picks the
+  width. The arm now logs a `LOG_WARN` naming the value. Pinned by
+  `DaybreakCrcCaptureTest.UnsupportedCrcBytesIsLoggedNotSilent`
+  (`tests/test_daybreak_crc_capture.cpp`), which drives the real recorded
+  handshake, forces `crc_bytes = 3`, and asserts both that a supported width
+  stays quiet and that the rejection names `crc_bytes=3`. Prov: deferred item 41.
 
 - **B009** (B) `tests/test_daybreak_connection_pcap.cpp` — reads `connect_code`,
   `encode_key` and `max_packet_size` raw off the wire, which is exactly the bug
@@ -163,17 +169,47 @@ it without taking that measurement first.
   boat, so this is a documented limit, not a live defect. Closes when: both are
   recomputed, or the limit is asserted in a test. Prov: deferred item 38.
 
-- **B012** (B) `src/client/action/action_dispatcher.cpp`
+- ~~**B012** (B) `src/client/action/action_dispatcher.cpp`
   `ActionDispatcher::clearTarget` — reachable only from a keybinding; no command
   registration exists in `command_processor_registration.cpp`, so a `--script`
-  run cannot clear a target. Closes when: a command reaches it or it is proven
-  keybinding-only by design. Prov: archived board, T39 dead-state follow-ups.
+  run cannot clear a target.~~ **CLOSED 2026-09-04 by T347.** `/cleartarget`
+  (no alias, category Combat) registered in `registerCombatCommands()`
+  immediately after `/target`, routing through `cmdClearTarget` to the same
+  `ActionDispatcher::clearTarget()` the `ClearTarget` keybinding uses. G03's
+  order golden `tests/goldens/command_registration_order_g03.txt` learned the
+  insertion IN PLACE at entry 022 (count 142 → 143, recorded in the golden
+  header and in the test's size guard); both faults re-planted (drop the
+  registration → count clause fails 143→142; swap `registerCombatCommands()`
+  with `registerSocialCommands()` → position clause fails at 21). Tests:
+  `CommandProcessorTest.T347_ClearTargetIsRegisteredInTheCombatCategory` and
+  `.T347_ClearTargetDispatchesToTheHandler`. Prov: archived board, T39
+  dead-state follow-ups.
 
-- **B013** (B) `src/client/graphics/slash/renderer_slash_commands.cpp` `/newskills` —
-  the only working skills-window toggle, registered in neither command registry,
-  so it is invisible to `/help` and to tab completion and reachable only by a user
-  who already knows the word. Closes when: it is registered, or renamed and
-  merged with `/skills`. Prov: archived board, T143.
+- ~~**B013** (B) `src/client/graphics/slash/renderer_slash_commands.cpp`
+  `/newskills` — the only working skills-window toggle, registered in neither
+  command registry, so it is invisible to `/help` and to tab completion and
+  reachable only by a user who already knows the word.~~ **CLOSED 2026-09-04 by
+  T347 as STALE — measured, no code change.** Three claims, checked:
+  (1) *invisible to `/help`* — FALSE since T223, which added registry 3's static
+  catalog: `src/client/help/renderer_command_catalog.cpp:62` carries
+  `{"newskills", {}, "Toggle the skills window"}`, and
+  `MergedHelpTest.T223_NewSkillsIsFoundByHelp` /
+  `.T223_OverviewListsGraphicsCategoryWithTag` pin that `/help newskills` and the
+  `/help` overview both find it.
+  (2) *invisible to tab completion* — a PHANTOM: `getCompletions()` has ZERO
+  production callers in either registry (`CommandProcessor::getCompletions`,
+  `CommandRegistry::getCompletions` — definitions and tests only), so nothing is
+  tab-completable today. Boarded separately below as B053.
+  (3) *unreachable except by a user who knows the word* — FALSE: `--script` and
+  piped stdin both run `Application::DispatchSlashCommand`, whose registry-3
+  stage is the renderer bridge (T29), so `/newskills` is scriptable.
+  What is LEFT is a naming/design choice, not hygiene, and is boarded as B058:
+  `/newskills` and stdin's bare `skills` keyword
+  (`console_input_handler.cpp:432` → `InputAction::ToggleSkills` →
+  `renderer_frame_input.cpp:222`) toggle the SAME `skillsPopupState_.isOpen` but
+  differ — `/newskills` also closes the spellbook and the inventory popup and
+  echoes to chat; the keyword does neither — and `/skills` WITH a slash is
+  unknown to every registry. Prov: archived board, T143; measured T347.
 
 - **B014** (B) `src/client/graphics/eq/race_model_loader.cpp`
   `RaceModelLoader::preloadModelData` — calls
@@ -285,9 +321,20 @@ it without taking that measurement first.
 
 ## Added 2026-09-03 by the K07 Review (movement extraction)
 
-- **B029** (B) `src/client/movement/movement_state.cpp` `MovementComponent::m_water_surface_z`
+- ~~**B029** (B) `src/client/movement/movement_state.cpp` `MovementComponent::m_water_surface_z`
   — written on every water-state change and read by nothing; swim height has
-  no consumer. Closes when: a reader exists or the member is deleted. Prov: K07 Review.
+  no consumer.~~ **CLOSED 2026-09-04 by T347: deleted.** The member had four
+  occurrences tree-wide (its declaration, the local `waterSurfaceZ` that fed it,
+  that local's one assignment in `UpdateWaterState()`'s OnSurface arm, and the
+  store) and zero readers. `pushEvent` checked first, as the entry asked:
+  `SwimmingStateChangedData` (`include/client/state/event_bus.h:702`) carries
+  `{isSwimming, swimSpeed, isLevitating}` and no height, so the value reached no
+  consumer by that route either. Member, local and store deleted; the OnSurface
+  arm keeps a comment saying add a reader before adding the estimate back.
+  Pinned by `MovementWaterStateGuard.NoUnreadWaterSurfaceHeightIsStored` and
+  `.SwimmingEventCarriesNoSurfaceHeight` (`tests/test_movement_component.cpp`) --
+  source guards, since a deleted member has no runtime handle; planted fault
+  (re-declare the member) fails the first. Prov: K07 Review.
 
 - ~~**B030** (B) `include/client/eq.h` `EverQuest::m_swim_up` / `m_swim_down` with
   `SetSwimUp` / `SetSwimDown` — zero readers, zero setter callers.~~ **CLOSED by
@@ -805,9 +852,20 @@ it without taking that measurement first.
 
 ## Added 2026-09-04 by the G04 Review
 
-- **B051** (B) `src/client/application.cpp` `Application::initConstrainedRendererConfig`
-  — `customMemorySpec` is write-only (set in one preset arm, never read).
-  Closes when: read where the preset is applied, or deleted. Prov: G04 Review.
+- ~~**B051** (B) `src/client/application.cpp` `Application::initConstrainedRendererConfig`
+  — `customMemorySpec` is write-only (set in one preset arm, never read).~~
+  **CLOSED 2026-09-04 by T347: deleted.** Two occurrences tree-wide (the
+  declaration and the one `= true`), zero reads. Deleted rather than read,
+  because there is no downstream decision for it to make: BOTH arms of the
+  enclosing if/else call `builtConfig.loadJsonOverrides(config.constrainedPreset,
+  "config/constrained_presets.json")` identically afterwards, and each arm
+  already logs which path it took. G04's order golden
+  `tests/goldens/application_init_order_g04.txt` learned the deletion IN PLACE
+  at entries 163 and 166 (count 316 → 314, recorded in the golden header and in
+  the test's size guard); both faults re-planted (drop
+  `m_graphicsInitialized = false;` → count clause fails 314→313; swap
+  `initConstrainedRendererConfig` with `initRendererAndGraphics` → position
+  clause fails at statement 162). Prov: G04 Review.
 
 ## Added 2026-09-04 by the G07 STOP
 
@@ -1009,3 +1067,24 @@ it without taking that measurement first.
   is moved onto the path that actually creates the player entity and a live
   capture shows a Dark Elf seeing in the dark. Prov: T345 Review,
   `review/T345/README.md`.
+
+## Added 2026-09-04 by the T347 measurement (B013)
+
+- **B057** (B) `include/client/action/command_processor.h`
+  `CommandProcessor::getCompletions` and `include/client/graphics/ui/command_registry.h`
+  `CommandRegistry::getCompletions` — both implemented, both tested, and both
+  with ZERO production callers: no input path (chat box, console, script) ever
+  asks either registry to complete a partial command, so the "tab completion"
+  both `CLAUDE.md` files advertise does not exist. Closes when: an input path
+  calls one, or both are deleted with their tests. Prov: T347 (B013 measurement).
+
+- **B058** (C) `/skills` vs `/newskills` — a NAMING choice, not a defect.
+  `/newskills` (`renderer_slash_commands.cpp:422`) and the bare `skills` keyword
+  piped stdin recognises (`console_input_handler.cpp:432` →
+  `InputAction::ToggleSkills` → `renderer_frame_input.cpp:222`) toggle the same
+  `skillsPopupState_.isOpen`, but `/newskills` additionally closes the spellbook
+  and the inventory popup and echoes to chat, and `/skills` typed WITH a slash is
+  unknown to all three registries — so the real client's name for the window does
+  nothing. Closes when: Will rules on the name (rename `/newskills` to `/skills`
+  and keep one body, or keep both and say why). Do not merge them silently: the
+  two bodies are not equivalent. Prov: T347 (B013 measurement).

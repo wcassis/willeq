@@ -351,6 +351,10 @@ private:
     // `who`. Registrations removed from both game-registry files in the
     // same change. See refactor/T102_migrate_combat_social.md.
     ActionResult cmdTarget(const std::string& args);
+    // T347 (B012): /cleartarget -- ActionDispatcher::clearTarget() was
+    // reachable only from the ClearTarget keybinding, so a --script run
+    // could set a target but never drop one.
+    ActionResult cmdClearTarget(const std::string& args);
     ActionResult cmdAttack(const std::string& args);
     ActionResult cmdStopAttack(const std::string& args);
     ActionResult cmdAA(const std::string& args);

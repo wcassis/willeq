@@ -3,6 +3,14 @@
 # at e00e17bb, BEFORE the split. Format: <ordinal> <normalised source line>.
 # Normalisation (mirrored exactly in tests/test_application_init_order.cpp):
 #   strip whitespace; drop blank, //-comment, preprocessor, and brace-only lines.
+#
+# LEARNED EDITS (correction 32: an order golden learns a reviewed change IN
+# PLACE at its positions, named here; it is never regenerated from the tip):
+#   T347 (B051): entries 163 `bool customMemorySpec = false;` and 166
+#     `customMemorySpec = true;` DELETED -- the flag was write-only, and both
+#     arms of the enclosing if/else call loadJsonOverrides() identically, so
+#     it distinguished nothing. Entries 164-316 renumbered to 163-314
+#     (166 excepted). Count 316 -> 314.
 1 m_config = config;
 2 LOG_INFO(MOD_MAIN, "Initializing application...");
 3 for (const std::string& spec : config.fpCamOverrides) {
@@ -165,157 +173,155 @@
 160 m_graphicsInitialized = false;
 161 if (config.graphicsEnabled && config.operatingMode == mode::OperatingMode::GraphicalInteractive) {
 162 EQT::Graphics::ConstrainedRendererConfig builtConfig;
-163 bool customMemorySpec = false;
-164 if (!config.constrainedPreset.empty()) {
-165 if (EQT::Graphics::ConstrainedRendererConfig::parseMemorySpec(config.constrainedPreset, builtConfig)) {
-166 customMemorySpec = true;
-167 LOG_DEBUG(MOD_GRAPHICS, "Parsed memory spec '{}': total={}MB, tex={}MB, fb={}MB",
-168 config.constrainedPreset,
-169 builtConfig.totalMemoryBudgetBytes / (1024*1024),
-170 builtConfig.textureMemoryBytes / (1024*1024),
-171 builtConfig.framebufferMemoryBytes / (1024*1024));
-172 LOG_TRACE(MOD_GRAPHICS, "Loading JSON overrides for memory spec...");
-173 builtConfig.loadJsonOverrides(config.constrainedPreset, "config/constrained_presets.json");
-174 } else {
-175 auto preset = EQT::Graphics::ConstrainedRendererConfig::parsePreset(config.constrainedPreset);
-176 LOG_DEBUG(MOD_GRAPHICS, "Using named preset '{}' -> {}",
-177 config.constrainedPreset,
-178 EQT::Graphics::ConstrainedRendererConfig::presetName(preset));
-179 builtConfig = EQT::Graphics::ConstrainedRendererConfig::fromPreset(preset);
-180 LOG_TRACE(MOD_GRAPHICS, "Loading JSON overrides for named preset...");
-181 builtConfig.loadJsonOverrides(config.constrainedPreset, "config/constrained_presets.json");
-182 } else {
-183 LOG_DEBUG(MOD_GRAPHICS, "No preset specified, defaulting to OrangePi");
-184 builtConfig = EQT::Graphics::ConstrainedRendererConfig::fromPreset(
-185 EQT::Graphics::ConstrainedRenderingPreset::OrangePi);
-186 LOG_TRACE(MOD_GRAPHICS, "Loading JSON overrides for default preset...");
-187 builtConfig.loadJsonOverrides("orangepi", "config/constrained_presets.json");
-188 if (config.rendererGles2Requested) {
-189 LOG_DEBUG(MOD_GRAPHICS, "CLI override: renderer backend -> {}",
-190 EQT::Graphics::backendName(builtConfig.renderingBackend));
-191 if (config.useDRM) {
-192 builtConfig.useDRM = true;
-193 LOG_DEBUG(MOD_GRAPHICS, "CLI override: DRM mode enabled");
-194 if (config.useEglX11) {
-195 builtConfig.useEglX11 = true;
-196 LOG_DEBUG(MOD_GRAPHICS, "CLI override: X11-windowed EGL backend enabled");
-197 if (!config.eqe1Path.empty()) {
-198 builtConfig.eqe1Path = config.eqe1Path;
-199 LOG_DEBUG(MOD_GRAPHICS, "CLI override: eqe1 path -> '{}'", config.eqe1Path);
-200 if (config.loadMemAudit) {
-201 builtConfig.loadMemAudit = true;
-202 LOG_DEBUG(MOD_GRAPHICS, "CLI override: load-mem-audit enabled");
-203 if (!config.textureUploadLedgerPath.empty()) {
-204 builtConfig.textureUploadLedgerPath = config.textureUploadLedgerPath;
-205 LOG_DEBUG(MOD_GRAPHICS, "CLI override: texture-ledger -> '{}'", config.textureUploadLedgerPath);
-206 if (!config.compositeEntityPath.empty()) {
-207 builtConfig.enableCompositeEntities = true;
-208 builtConfig.compositeEntityPath = config.compositeEntityPath;
-209 LOG_DEBUG(MOD_GRAPHICS, "CLI override: composite entity path -> '{}'", config.compositeEntityPath);
-210 if (config.backgroundThreadCount > 0) {
-211 builtConfig.backgroundThreadCount = config.backgroundThreadCount;
-212 LOG_DEBUG(MOD_GRAPHICS, "CLI override: background threads -> {}", config.backgroundThreadCount);
-213 if (config.zoneLoadMode >= 0) {
-214 builtConfig.deferredAssetLoading = (config.zoneLoadMode == 1);
-215 LOG_DEBUG(MOD_GRAPHICS, "CLI override: deferred asset loading -> {}",
-216 builtConfig.deferredAssetLoading ? "automatic" : "manual");
-217 LOG_TRACE(MOD_GRAPHICS, "Loading debug overrides...");
-218 builtConfig.loadDebugOverrides("config/debug.json");
-219 std::string presetErrors;
-220 if (!builtConfig.validate(presetErrors)) {
-221 LOG_FATAL(MOD_GRAPHICS, "Invalid constrained renderer config:\n{}", presetErrors);
-222 return false;
-223 if (!builtConfig.eqe1Path.empty()) {
-224 if (!std::filesystem::is_directory(builtConfig.eqe1Path)) {
-225 LOG_FATAL(MOD_GRAPHICS, "EQE1 path does not exist or is not a directory: '{}'", builtConfig.eqe1Path);
-226 return false;
-227 int eqe1Count = 0;
-228 for (const auto& entry : std::filesystem::directory_iterator(builtConfig.eqe1Path)) {
-229 if (entry.is_regular_file() && entry.path().extension() == ".eqe1")
-230 eqe1Count++;
-231 LOG_INFO(MOD_GRAPHICS, "EQE1 texture path: '{}' ({} .eqe1 files)", builtConfig.eqe1Path, eqe1Count);
-232 std::string fbError;
-233 if (!builtConfig.validateResolution(config.displayWidth, config.displayHeight, fbError)) {
-234 LOG_FATAL(MOD_GRAPHICS, "Framebuffer budget exceeded: {}", fbError);
-235 return false;
-236 LOG_DEBUG(MOD_GRAPHICS, "S02: Preset and resolution validation passed");
-237 m_eqClient->SetConstrainedConfig(builtConfig);
-238 m_config.rendererGles2Requested = true;
-239 LOG_INFO(MOD_GRAPHICS, "Rendering config: backend={}, DRM={}",
-240 EQT::Graphics::backendName(builtConfig.renderingBackend),
-241 builtConfig.useDRM ? "yes" : "no");
-242 LOG_TRACE(MOD_GRAPHICS, "Allocating ConstrainedTextureCache ({}MB budget)...",
-243 builtConfig.textureMemoryBytes / (1024 * 1024));
-244 m_constrainedCache = std::make_unique<EQT::Graphics::ConstrainedTextureCache>(builtConfig);
-245 LOG_INFO(MOD_GRAPHICS, "Constrained cache created ({}MB budget)",
-246 builtConfig.textureMemoryBytes / (1024 * 1024));
-247 LOG_DEBUG(MOD_GRAPHICS, "Initializing graphics...");
-248 EQT::PerformanceMetrics::instance().startTimer("Graphics Init", EQT::MetricCategory::Startup);
-249 LOG_TRACE(MOD_GRAPHICS, "Allocating IrrlichtRenderer...");
-250 m_renderer = std::make_unique<EQT::Graphics::IrrlichtRenderer>();
-251 m_renderer->setConstrainedTextureCache(m_constrainedCache.get());
-252 LOG_TRACE(MOD_GRAPHICS, "Allocating IrrlichtBridge...");
-253 m_irrlichtBridge = std::make_unique<eqt::bridge::IrrlichtBridge>();
-254 m_irrlichtBridge->setRenderer(m_renderer.get());
-255 m_stateSyncBridge = std::make_unique<eqt::bridge::GameStateSyncBridge>(
-256 *m_irrlichtBridge);
-257 m_renderer->setBridge(m_stateSyncBridge.get());
-258 m_bridge = m_stateSyncBridge.get();
-259 LOG_DEBUG(MOD_GRAPHICS, "Renderer and bridge created");
-260 LOG_TRACE(MOD_GRAPHICS, "Entering InitGraphics({}x{})...", config.displayWidth, config.displayHeight);
-261 if (m_eqClient->InitGraphics(config.displayWidth, config.displayHeight,
-262 m_renderer.get(), m_bridge)) {
-263 m_graphicsInitialized = true;
-264 LOG_INFO(MOD_GRAPHICS, "Graphics initialized");
-265 auto* eqRenderer = m_renderer.get();
-266 if (eqRenderer) {
-267 eqRenderer->setLoadingTitle(L"EverQuest");
-268 eqRenderer->setLoadingProgress(0.0f, L"Connecting to login server...");
-269 if (eqRenderer->getGUIEnvironment())
-270 m_loadingScreenFont = eqRenderer->getGUIEnvironment()->getBuiltInFont();
-271 if (config.frameTimingEnabled) {
-272 eqRenderer->setFrameTimingEnabled(true);
-273 if (config.sceneProfileEnabled) {
-274 eqRenderer->runSceneProfile();
-275 auto* eventReceiver = eqRenderer->getEventReceiver();
-276 if (eventReceiver && m_inputBridge) {
-277 m_graphicsInputHandler = std::make_unique<input::GraphicsInputHandler>(eventReceiver);
-278 m_inputBridge->setInputHandler(m_graphicsInputHandler.get());
-279 LOG_INFO(MOD_GRAPHICS, "Graphics input handler connected to bridge");
-280 m_inputBridge->setActionCallback(
-281 [eqRenderer](const std::string& name,
-282 const action::ActionResult& result) {
-283 eqRenderer->handleActionResult(name, result.success, result.message);
-284 });
-285 m_loadingStatus.setTitle(L"EverQuest");
-286 m_loadingStatus.setProgress(0, "Connecting to login server...");
-287 m_eqClient->SetLoadingStatus(&m_loadingStatus);
-288 if (config.rdpEnabled) {
-289 LOG_INFO(MOD_GRAPHICS, "Initializing RDP server on port {}...", config.rdpPort);
-290 if (eqRenderer->initRDP(config.rdpPort)) {
-291 if (eqRenderer->startRDPServer()) {
-292 LOG_INFO(MOD_GRAPHICS, "RDP server started on port {}", config.rdpPort);
-293 setupRDPAudio(eqRenderer->getRDPServer());
+163 if (!config.constrainedPreset.empty()) {
+164 if (EQT::Graphics::ConstrainedRendererConfig::parseMemorySpec(config.constrainedPreset, builtConfig)) {
+165 LOG_DEBUG(MOD_GRAPHICS, "Parsed memory spec '{}': total={}MB, tex={}MB, fb={}MB",
+166 config.constrainedPreset,
+167 builtConfig.totalMemoryBudgetBytes / (1024*1024),
+168 builtConfig.textureMemoryBytes / (1024*1024),
+169 builtConfig.framebufferMemoryBytes / (1024*1024));
+170 LOG_TRACE(MOD_GRAPHICS, "Loading JSON overrides for memory spec...");
+171 builtConfig.loadJsonOverrides(config.constrainedPreset, "config/constrained_presets.json");
+172 } else {
+173 auto preset = EQT::Graphics::ConstrainedRendererConfig::parsePreset(config.constrainedPreset);
+174 LOG_DEBUG(MOD_GRAPHICS, "Using named preset '{}' -> {}",
+175 config.constrainedPreset,
+176 EQT::Graphics::ConstrainedRendererConfig::presetName(preset));
+177 builtConfig = EQT::Graphics::ConstrainedRendererConfig::fromPreset(preset);
+178 LOG_TRACE(MOD_GRAPHICS, "Loading JSON overrides for named preset...");
+179 builtConfig.loadJsonOverrides(config.constrainedPreset, "config/constrained_presets.json");
+180 } else {
+181 LOG_DEBUG(MOD_GRAPHICS, "No preset specified, defaulting to OrangePi");
+182 builtConfig = EQT::Graphics::ConstrainedRendererConfig::fromPreset(
+183 EQT::Graphics::ConstrainedRenderingPreset::OrangePi);
+184 LOG_TRACE(MOD_GRAPHICS, "Loading JSON overrides for default preset...");
+185 builtConfig.loadJsonOverrides("orangepi", "config/constrained_presets.json");
+186 if (config.rendererGles2Requested) {
+187 LOG_DEBUG(MOD_GRAPHICS, "CLI override: renderer backend -> {}",
+188 EQT::Graphics::backendName(builtConfig.renderingBackend));
+189 if (config.useDRM) {
+190 builtConfig.useDRM = true;
+191 LOG_DEBUG(MOD_GRAPHICS, "CLI override: DRM mode enabled");
+192 if (config.useEglX11) {
+193 builtConfig.useEglX11 = true;
+194 LOG_DEBUG(MOD_GRAPHICS, "CLI override: X11-windowed EGL backend enabled");
+195 if (!config.eqe1Path.empty()) {
+196 builtConfig.eqe1Path = config.eqe1Path;
+197 LOG_DEBUG(MOD_GRAPHICS, "CLI override: eqe1 path -> '{}'", config.eqe1Path);
+198 if (config.loadMemAudit) {
+199 builtConfig.loadMemAudit = true;
+200 LOG_DEBUG(MOD_GRAPHICS, "CLI override: load-mem-audit enabled");
+201 if (!config.textureUploadLedgerPath.empty()) {
+202 builtConfig.textureUploadLedgerPath = config.textureUploadLedgerPath;
+203 LOG_DEBUG(MOD_GRAPHICS, "CLI override: texture-ledger -> '{}'", config.textureUploadLedgerPath);
+204 if (!config.compositeEntityPath.empty()) {
+205 builtConfig.enableCompositeEntities = true;
+206 builtConfig.compositeEntityPath = config.compositeEntityPath;
+207 LOG_DEBUG(MOD_GRAPHICS, "CLI override: composite entity path -> '{}'", config.compositeEntityPath);
+208 if (config.backgroundThreadCount > 0) {
+209 builtConfig.backgroundThreadCount = config.backgroundThreadCount;
+210 LOG_DEBUG(MOD_GRAPHICS, "CLI override: background threads -> {}", config.backgroundThreadCount);
+211 if (config.zoneLoadMode >= 0) {
+212 builtConfig.deferredAssetLoading = (config.zoneLoadMode == 1);
+213 LOG_DEBUG(MOD_GRAPHICS, "CLI override: deferred asset loading -> {}",
+214 builtConfig.deferredAssetLoading ? "automatic" : "manual");
+215 LOG_TRACE(MOD_GRAPHICS, "Loading debug overrides...");
+216 builtConfig.loadDebugOverrides("config/debug.json");
+217 std::string presetErrors;
+218 if (!builtConfig.validate(presetErrors)) {
+219 LOG_FATAL(MOD_GRAPHICS, "Invalid constrained renderer config:\n{}", presetErrors);
+220 return false;
+221 if (!builtConfig.eqe1Path.empty()) {
+222 if (!std::filesystem::is_directory(builtConfig.eqe1Path)) {
+223 LOG_FATAL(MOD_GRAPHICS, "EQE1 path does not exist or is not a directory: '{}'", builtConfig.eqe1Path);
+224 return false;
+225 int eqe1Count = 0;
+226 for (const auto& entry : std::filesystem::directory_iterator(builtConfig.eqe1Path)) {
+227 if (entry.is_regular_file() && entry.path().extension() == ".eqe1")
+228 eqe1Count++;
+229 LOG_INFO(MOD_GRAPHICS, "EQE1 texture path: '{}' ({} .eqe1 files)", builtConfig.eqe1Path, eqe1Count);
+230 std::string fbError;
+231 if (!builtConfig.validateResolution(config.displayWidth, config.displayHeight, fbError)) {
+232 LOG_FATAL(MOD_GRAPHICS, "Framebuffer budget exceeded: {}", fbError);
+233 return false;
+234 LOG_DEBUG(MOD_GRAPHICS, "S02: Preset and resolution validation passed");
+235 m_eqClient->SetConstrainedConfig(builtConfig);
+236 m_config.rendererGles2Requested = true;
+237 LOG_INFO(MOD_GRAPHICS, "Rendering config: backend={}, DRM={}",
+238 EQT::Graphics::backendName(builtConfig.renderingBackend),
+239 builtConfig.useDRM ? "yes" : "no");
+240 LOG_TRACE(MOD_GRAPHICS, "Allocating ConstrainedTextureCache ({}MB budget)...",
+241 builtConfig.textureMemoryBytes / (1024 * 1024));
+242 m_constrainedCache = std::make_unique<EQT::Graphics::ConstrainedTextureCache>(builtConfig);
+243 LOG_INFO(MOD_GRAPHICS, "Constrained cache created ({}MB budget)",
+244 builtConfig.textureMemoryBytes / (1024 * 1024));
+245 LOG_DEBUG(MOD_GRAPHICS, "Initializing graphics...");
+246 EQT::PerformanceMetrics::instance().startTimer("Graphics Init", EQT::MetricCategory::Startup);
+247 LOG_TRACE(MOD_GRAPHICS, "Allocating IrrlichtRenderer...");
+248 m_renderer = std::make_unique<EQT::Graphics::IrrlichtRenderer>();
+249 m_renderer->setConstrainedTextureCache(m_constrainedCache.get());
+250 LOG_TRACE(MOD_GRAPHICS, "Allocating IrrlichtBridge...");
+251 m_irrlichtBridge = std::make_unique<eqt::bridge::IrrlichtBridge>();
+252 m_irrlichtBridge->setRenderer(m_renderer.get());
+253 m_stateSyncBridge = std::make_unique<eqt::bridge::GameStateSyncBridge>(
+254 *m_irrlichtBridge);
+255 m_renderer->setBridge(m_stateSyncBridge.get());
+256 m_bridge = m_stateSyncBridge.get();
+257 LOG_DEBUG(MOD_GRAPHICS, "Renderer and bridge created");
+258 LOG_TRACE(MOD_GRAPHICS, "Entering InitGraphics({}x{})...", config.displayWidth, config.displayHeight);
+259 if (m_eqClient->InitGraphics(config.displayWidth, config.displayHeight,
+260 m_renderer.get(), m_bridge)) {
+261 m_graphicsInitialized = true;
+262 LOG_INFO(MOD_GRAPHICS, "Graphics initialized");
+263 auto* eqRenderer = m_renderer.get();
+264 if (eqRenderer) {
+265 eqRenderer->setLoadingTitle(L"EverQuest");
+266 eqRenderer->setLoadingProgress(0.0f, L"Connecting to login server...");
+267 if (eqRenderer->getGUIEnvironment())
+268 m_loadingScreenFont = eqRenderer->getGUIEnvironment()->getBuiltInFont();
+269 if (config.frameTimingEnabled) {
+270 eqRenderer->setFrameTimingEnabled(true);
+271 if (config.sceneProfileEnabled) {
+272 eqRenderer->runSceneProfile();
+273 auto* eventReceiver = eqRenderer->getEventReceiver();
+274 if (eventReceiver && m_inputBridge) {
+275 m_graphicsInputHandler = std::make_unique<input::GraphicsInputHandler>(eventReceiver);
+276 m_inputBridge->setInputHandler(m_graphicsInputHandler.get());
+277 LOG_INFO(MOD_GRAPHICS, "Graphics input handler connected to bridge");
+278 m_inputBridge->setActionCallback(
+279 [eqRenderer](const std::string& name,
+280 const action::ActionResult& result) {
+281 eqRenderer->handleActionResult(name, result.success, result.message);
+282 });
+283 m_loadingStatus.setTitle(L"EverQuest");
+284 m_loadingStatus.setProgress(0, "Connecting to login server...");
+285 m_eqClient->SetLoadingStatus(&m_loadingStatus);
+286 if (config.rdpEnabled) {
+287 LOG_INFO(MOD_GRAPHICS, "Initializing RDP server on port {}...", config.rdpPort);
+288 if (eqRenderer->initRDP(config.rdpPort)) {
+289 if (eqRenderer->startRDPServer()) {
+290 LOG_INFO(MOD_GRAPHICS, "RDP server started on port {}", config.rdpPort);
+291 setupRDPAudio(eqRenderer->getRDPServer());
+292 } else {
+293 LOG_WARN(MOD_GRAPHICS, "Failed to start RDP server");
 294 } else {
-295 LOG_WARN(MOD_GRAPHICS, "Failed to start RDP server");
+295 LOG_WARN(MOD_GRAPHICS, "Failed to initialize RDP server");
 296 } else {
-297 LOG_WARN(MOD_GRAPHICS, "Failed to initialize RDP server");
-298 } else {
-299 EQT::PerformanceMetrics::instance().stopTimer("Graphics Init");
-300 LOG_FATAL(MOD_GRAPHICS, "Failed to initialize graphics");
-301 return false;
-302 EQT::PerformanceMetrics::instance().stopTimer("Graphics Init");
-303 if (!m_graphicsInitialized && !m_bridge) {
-304 m_consoleBridge = std::make_unique<bridge::ConsoleBridge>();
-305 m_stateSyncBridge = std::make_unique<eqt::bridge::GameStateSyncBridge>(
-306 *m_consoleBridge);
-307 m_bridge = m_stateSyncBridge.get();
-308 m_eqClient->setBridge(m_bridge);
-309 LOG_INFO(MOD_MAIN, "Console bridge attached (headless mode)");
-310 LOG_INFO(MOD_MAIN, "Connecting to login server ({}:{})...", config.host, config.port);
-311 m_eqClient->LoginWorld().ConnectToLogin();
-312 m_running.store(true);
-313 m_lastUpdate = std::chrono::steady_clock::now();
-314 m_lastGraphicsUpdate = std::chrono::steady_clock::now();
-315 LOG_INFO(MOD_MAIN, "Application initialized successfully");
-316 return true;
+297 EQT::PerformanceMetrics::instance().stopTimer("Graphics Init");
+298 LOG_FATAL(MOD_GRAPHICS, "Failed to initialize graphics");
+299 return false;
+300 EQT::PerformanceMetrics::instance().stopTimer("Graphics Init");
+301 if (!m_graphicsInitialized && !m_bridge) {
+302 m_consoleBridge = std::make_unique<bridge::ConsoleBridge>();
+303 m_stateSyncBridge = std::make_unique<eqt::bridge::GameStateSyncBridge>(
+304 *m_consoleBridge);
+305 m_bridge = m_stateSyncBridge.get();
+306 m_eqClient->setBridge(m_bridge);
+307 LOG_INFO(MOD_MAIN, "Console bridge attached (headless mode)");
+308 LOG_INFO(MOD_MAIN, "Connecting to login server ({}:{})...", config.host, config.port);
+309 m_eqClient->LoginWorld().ConnectToLogin();
+310 m_running.store(true);
+311 m_lastUpdate = std::chrono::steady_clock::now();
+312 m_lastGraphicsUpdate = std::chrono::steady_clock::now();
+313 LOG_INFO(MOD_MAIN, "Application initialized successfully");
+314 return true;

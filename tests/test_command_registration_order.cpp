@@ -162,8 +162,12 @@ std::string Join(const std::vector<std::string>& v, size_t from, size_t count) {
 TEST(CommandRegistrationOrderTest, GoldenIsPresentAndTheRightSize) {
     const auto golden = LoadGolden();
     ASSERT_FALSE(golden.empty()) << "golden is empty or unreadable: " << GoldenPath();
-    EXPECT_EQ(golden.size(), 142u)
-        << "the pre-G03 source registered 142 commands; the golden has "
+    // kGoldenSize: 142 at G03 (the pre-G03 source's count), then
+    // +1 by T347 (B012), which INSERTED entry 022 `cleartarget` after 021
+    // `target` and renumbered 022-142 to 023-143. Correction 32: an order
+    // golden learns a reviewed edit in place, at its positions, named here.
+    EXPECT_EQ(golden.size(), 143u)
+        << "142 commands at G03, +1 for T347's /cleartarget; the golden has "
         << golden.size();
     for (const auto& n : golden) {
         EXPECT_FALSE(n.empty());
