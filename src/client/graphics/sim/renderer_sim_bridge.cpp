@@ -651,9 +651,9 @@ void SimBridgeComponent::applySimulationOutput(const SimulationOutput& resultsRe
                 ctx_.cameraController->setBspPlayerRegion(ctx_.currentPvsRegion);
             }
             // Full re-prioritization only when leaving neighborhood
-            if (!owner_.isInPvsNeighborhood(ctx_.currentPvsRegion)) {
-                owner_.rebuildPvsNeighborhood(ctx_.currentPvsRegion);
-                owner_.onPvsRegionChanged();
+            if (!owner_.ZoneStream().isInPvsNeighborhood(ctx_.currentPvsRegion)) {
+                owner_.ZoneStream().rebuildPvsNeighborhood(ctx_.currentPvsRegion);
+                owner_.ZoneStream().onPvsRegionChanged();
             }
         }
 

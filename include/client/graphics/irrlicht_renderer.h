@@ -57,6 +57,7 @@
 #include "client/graphics/player/player_camera_component.h"
 #include "client/graphics/slash/slash_commands_component.h"
 #include "client/graphics/sim/sim_bridge_component.h"
+#include "client/graphics/zone_stream/zone_stream_component.h"
 #ifdef WITH_RDP
 #include "client/graphics/rdp/rdp_server.h"
 #include "client/graphics/rdp/rdp_input_handler.h"
@@ -220,26 +221,15 @@ public:
     void setDoorState(uint8_t doorId, bool open, bool userInitiated = false);
     void clearDoors();
 
-    // Deferred/progressive asset loading
-    // Index objects without building meshes (deferred mode)
-    void indexObjectMeshes();
-    // Build a single deferred object mesh by index
-    void buildDeferredObject(size_t idx);
-    // Progressive per-frame asset building (priority-ordered, GREEN-only single-step)
-    void processFrameProgressiveLoad();
+    // L08 (Batch L): deferred/progressive asset loading lives on
+    // ZoneStreamComponent -- reach it through zoneStream_-> in the renderer,
+    // owner_.ZoneStream() from another component.
 
     // Create and configure EntityRenderer (idempotent — skips if already created)
     void createEntityRenderer();
 
-    // T124: idempotent guard-registration helpers, defined in
-    // renderer_zone_merge.cpp (not here -- irrlicht_renderer.cpp was at the
-    // check_file_sizes.sh budget when this was written). ensureBoidsTextureGuard() is safe to
-    // call from either of boidsManager_'s two lazy-construction sites. See
-    // DoorTextureGuard/BoidsManager::swapEvictedTexture()'s doc comments
-    // for the gaps these close.
-    void ensureDoorTextureGuard();
-    void ensureBoidsTextureGuard();
-    void unregisterRemainingT124Guards();
+    // L08 (Batch L): the three T124 guard-registration helpers live on
+    // ZoneStreamComponent.
 
     // Background zone loading — instant scene + deferred S3D
     // Build HCMap placeholder + collision for immediate gameplay (<5ms)
@@ -252,30 +242,11 @@ public:
                               const float fogMinClip[4], const float fogMaxClip[4]);
     // Apply stored zone environment (called when sky renderer is ready)
     void applyStoredZoneEnvironment();
-    // Check if all deferred assets are built
-    void checkProgressiveLoadingComplete();
-    // T111: pure predicate for whether one entity blocks progressive-load
-    // completion. Extracted out of checkProgressiveLoadingComplete() so it's
-    // unit-testable without a scene graph/device, and so it can be kept
-    // deliberately symmetric with queueEntityPrepRequests()'s own gate
-    // (entityPrepMaxPvsDepth) rather than the currentPvsRegion_-equality
-    // check T109 shipped, which is why deferred entities outside the
-    // player's landing region were never picked up (see
-    // refactor/T111_progressive_loading_rearm.md's Review). An entity this
-    // predicate says blocks MUST be one queueEntityPrepRequests() will
-    // actually queue, or completion would wait forever; one it excludes
-    // must not silently vanish from the count either, or the T109 bug
-    // recurs.
-    static bool isEntityBlockingProgressiveLoad(bool meshBuilt, bool inSceneGraph,
-                                                 bool isPlayerEntity, bool pvsValid,
-                                                 uint8_t regionPvsDepth,
-                                                 uint8_t entityPrepMaxPvsDepth);
-    // Queue background prep requests for unbuilt entities
-    void queueEntityPrepRequests();
-    // Log build time and warn if over budget
-    void logAssetBuildTime(const char* type, size_t id, std::chrono::steady_clock::time_point start);
-    // Send loading progress message to chat window
-    void sendLoadProgress(const std::string& msg);
+    // L08 (Batch L): progressive-load completion, the T111 blocking
+    // predicate, the entity-prep request queue and the load timing/progress
+    // reporting all live on ZoneStreamComponent. The T111 predicate stays a
+    // public static there, and tests/test_progressive_load_rearm.cpp calls it
+    // as ZoneStreamComponent::isEntityBlockingProgressiveLoad(...).
     // Check if progressive loading is active
     bool isProgressiveLoadingActive() const { return progressiveLoadingActive_; }
     // Sequential zone loading — executes all 13 steps inline on the calling thread.
@@ -368,6 +339,10 @@ public:
     // the family through simBridge_->; this accessor is for the T116 lifetime
     // fixtures and the component's own test.
     SimBridgeComponent& SimBridge() { return *simBridge_; }
+
+    // L08 (Batch L): zone streaming -- progressive load, PVS neighbourhood,
+    // deferred objects and the T124 texture guards.
+    ZoneStreamComponent& ZoneStream() { return *zoneStream_; }
 
     // Get BSP tree for water region detection
     std::shared_ptr<EQT::Graphics::BspTree> getZoneBspTree() const { return zoneBspTree_; }
@@ -971,16 +946,7 @@ private:
     // renderer_zone_merge.h's ObjectNodeTextureGuard doc comment.
     std::unique_ptr<ObjectNodeTextureGuard> objectNodeTextureGuard_;
 
-    // T124: doors_ sibling of objectNodeTextureGuard_ above -- closes the
-    // identical detached-pivotNode gap for doors (DoorManager's PVS-driven
-    // visibility remove()/addChild() cycle, same shape as
-    // applySimulationOutput()'s objectNodes_ handling). Constructed once in
-    // initLoadingScreen() alongside the placeholder-resolving guards above
-    // ONLY if doorManager_ already exists at that point; otherwise
-    // constructed lazily the first time doorManager_ itself is (see
-    // renderer_init.cpp and renderer_zone_load_objects.cpp, both sites). See renderer_zone_merge.h's
-    // DoorTextureGuard doc comment.
-    std::unique_ptr<DoorTextureGuard> doorTextureGuard_;
+    // L08: doorTextureGuard_ moved to ZoneStreamComponent (single-family).
 
     // T124: forwarding guards for the singleton-subsystem holders that
     // actually need one -- SpellVisualFX and BoidsManager (see their own
@@ -997,8 +963,8 @@ private:
     // covered by the ordinary scene-graph scan (pool nodes are hidden via
     // setVisible(false), never detached -- see the Review for the full
     // argument); it needs no guard either.
+    // L08: boidsTextureGuard_ moved to ZoneStreamComponent (single-family).
     std::unique_ptr<ForwardingTextureGuard> spellVisualFXTextureGuard_;
-    std::unique_ptr<ForwardingTextureGuard> boidsTextureGuard_;
 
     // Hardware buffer (VBO/EBO) helpers for static zone geometry
     void uploadMeshHardwareBuffers(irr::scene::IMeshSceneNode* node);
@@ -1023,8 +989,7 @@ private:
     // PVS depth map — pointer to SimulationOutput front buffer (no copy).
     // T116: set ONLY by bindFrameSimulationBuffers().
     const std::unordered_map<size_t, uint8_t>* regionPvsDepthMap_ = nullptr;
-    uint8_t getRegionPvsDepth(size_t regionIdx) const;
-    void onPvsRegionChanged();
+    // L08: getRegionPvsDepth()/onPvsRegionChanged() are on ZoneStreamComponent.
 
     // T116 (refactor/T116_simulationoutput_lifetime.md): test-only access to
     // applySimulationOutput()/bindFrameSimulationBuffers() and the four
@@ -1078,8 +1043,9 @@ private:
     // a cluster of adjacent regions. Only fire when leaving the neighborhood.
     std::unordered_set<size_t> pvsNeighborhood_;  // regions within K portal hops of anchor
     size_t pvsNeighborhoodAnchor_ = SIZE_MAX;
-    void rebuildPvsNeighborhood(size_t anchorRegion);
-    bool isInPvsNeighborhood(size_t regionIdx) const;
+    // L08: rebuildPvsNeighborhood()/isInPvsNeighborhood() are on
+    // ZoneStreamComponent; the two members above stay here (zone_lifecycle
+    // clears them on unload).
 
     void drawZoneGeometryWithPortals();
     void drawRegionMesh(size_t regionIdx);
@@ -1649,6 +1615,14 @@ private:
     // L07 changed no thread ownership.
     friend class SimBridgeComponent;
     std::unique_ptr<SimBridgeComponent> simBridge_;
+
+    // L08 (Batch L): the zone streaming family. It reaches 23 members that are
+    // shared with other families but sit below the context's 5-family core
+    // threshold, plus two private methods, so it needs friendship on axis 1 of
+    // K13 correction (ii). No thread ownership moved -- see
+    // include/client/graphics/zone_stream/zone_stream_component.h.
+    friend class ZoneStreamComponent;
+    std::unique_ptr<ZoneStreamComponent> zoneStream_;
 };
 
 } // namespace Graphics

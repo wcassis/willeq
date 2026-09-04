@@ -516,8 +516,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/player/renderer_player_collision.cpp
         src/client/graphics/player/renderer_camera.cpp
         src/client/graphics/renderer_zone_draw.cpp
-        src/client/graphics/renderer_zone_merge.cpp
-        src/client/graphics/renderer_zone_stream.cpp
+        src/client/graphics/zone_stream/renderer_zone_merge.cpp
+        src/client/graphics/zone_stream/renderer_zone_stream.cpp
         src/client/graphics/eqe1/eqe1_archive_component.cpp
         src/client/graphics/sim/renderer_sim_bridge.cpp
         src/client/graphics/renderer_frame.cpp

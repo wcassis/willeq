@@ -149,6 +149,7 @@ component below.
 | `EQT::Graphics::DiagnosticsComponent` | `include/client/graphics/diagnostics/diagnostics_component.h` | `src/client/graphics/diagnostics/diagnostics_component.cpp`, `src/client/graphics/diagnostics/diagnostics_debug.cpp` |
 | `EQT::Graphics::PlayerCameraComponent` | `include/client/graphics/player/player_camera_component.h` | `src/client/graphics/player/renderer_player_physics.cpp`, `src/client/graphics/player/renderer_player_collision.cpp`, `src/client/graphics/player/renderer_camera.cpp` |
 | `EQT::Graphics::SimBridgeComponent` | `include/client/graphics/sim/sim_bridge_component.h` | `src/client/graphics/sim/renderer_sim_bridge.cpp` |
+| `EQT::Graphics::ZoneStreamComponent` | `include/client/graphics/zone_stream/zone_stream_component.h` | `src/client/graphics/zone_stream/renderer_zone_stream.cpp`, `src/client/graphics/zone_stream/renderer_zone_merge.cpp` |
 
 | TU | Lines | Contents |
 |---|---|---|
@@ -160,7 +161,7 @@ component below.
 | src/client/graphics/overlays/overlays_component.cpp | 1,057 | `EQT::Graphics::OverlaysComponent` — map/navmesh overlays, target outline/selection, mouse targeting/LOS, zone-line overlay and bounding boxes, FPS counter. Extracted from IrrlichtRenderer by L03 (Batch L). Header `include/client/graphics/overlays/overlays_component.h` |
 | renderer_zone_load.cpp | 993 | loadZoneSequential driver + the remaining per-step methods with ZoneLoadContext (Batch G01; split T166) |
 | src/client/graphics/irrlicht_renderer.cpp | 908 | Core after J11: ctor/dtor, run(), saveScreenshot, sky/door/world-object façades, player/vision state, createEntityRenderer, diagnostics setters |
-| renderer_zone_stream.cpp | 873 | Lazy/background mesh load pipeline, progressive load, PVS neighborhood, deferred-entity pickup (T111/T210) |
+| src/client/graphics/zone_stream/renderer_zone_stream.cpp | 874 | `EQT::Graphics::ZoneStreamComponent` — lazy/background mesh load pipeline, progressive load, PVS depth and neighbourhood bookkeeping, entity-prep request queue, deferred-entity pickup (T111/T210). Extracted from IrrlichtRenderer by L08 (Batch L). Header `include/client/graphics/zone_stream/zone_stream_component.h` |
 | renderer_init.cpp | 757 | J11: init/shutdown, loading screen (initLoadingScreen, loadGlobalAssets, show/hideLoadingScreen) |
 | renderer_zone_lifecycle.cpp | 739 | unloadZone (retains persistent EQE1 archives, T214), setZoneEnvironment, placeholder build/destroy, instant scene, zone-ready state |
 | src/client/graphics/overlays/overlays_hud_env.cpp | 653 | `EQT::Graphics::OverlaysComponent` (second TU) — fog setup, loading-screen draw, environmental display settings, HUD setup/update, inventory paperdoll |
@@ -169,7 +170,7 @@ component below.
 | src/client/graphics/diagnostics/diagnostics_debug.cpp | 577 | EQT::Graphics::DiagnosticsComponent -- runtime debug toggles/cycles, debug shader swaps, indoor region map load. Same header |
 | src/client/graphics/player/renderer_camera.cpp | 534 | `EQT::Graphics::PlayerCameraComponent` (third TU) — camera/projection per mode, `repositionFirstPersonCamera()` (THE one first-person formula), first-person pitch clamp and vFOV, `/fpcam` dump, camera mode cycling, player position/vision/swimming state. The basename is a string literal in `tests/test_first_person_camera_single_formula.cpp` — do not rename |
 | src/client/graphics/player/renderer_player_collision.cpp | 743 | `EQT::Graphics::PlayerCameraComponent` (second TU) — movement collision, world-triangle raycasts, ground-height queries, the incremental collision-registration API and the collision debug lines. Same header |
-| renderer_zone_merge.cpp | 566 | ZoneMergeBuffers (build/destroy/renderMerged) + the texture-eviction guards: RegionMeshTextureGuard, EntityMeshTextureGuard, ObjectNodeTextureGuard (T123), DoorTextureGuard/boids (T124) |
+| src/client/graphics/zone_stream/renderer_zone_merge.cpp | 576 | ZoneMergeBuffers (build/destroy/renderMerged) + the texture-eviction guards: RegionMeshTextureGuard, EntityMeshTextureGuard, ObjectNodeTextureGuard (T123), DoorTextureGuard/boids (T124), plus `EQT::Graphics::ZoneStreamComponent`'s three guard-registration bodies. Extracted from IrrlichtRenderer by L08 (Batch L). Its header `include/client/graphics/renderer_zone_merge.h` did NOT move — it declares namespace-scope classes and free functions, and twelve TUs plus three guard tests include it by that path |
 | renderer_zone_load_entities.cpp | 551 | loadZoneStep8_Entities + 8a_BaseModelPrep, 8b_VariantModelPrep, 8c_VariantTextures, 8d_EquipmentPrep, 8e_DistributePrepResults, 8f_BuildEntityMesh (split from renderer_zone_load.cpp, T166) |
 | renderer_frame.cpp | 527 | processFrame + input/visibility/simulation/render sub-passes, and measureSection() (moved here from the diagnostics family by L04 -- it is frame-phase state) |
 | renderer_entities.cpp | 502 | Entity/inventory/combat-anim façades (thin forwards) |

@@ -128,7 +128,7 @@ void IrrlichtRenderer::shutdown() {
         constrainedTextureCache_->removeEvictionListener(entityMeshTextureGuard_.get());
     }
     entityMeshTextureGuard_.reset();
-    unregisterRemainingT124Guards();  // T124, see Review
+    zoneStream_->unregisterRemainingT124Guards();  // T124, see Review
 
     // Stop GPU upload thread before any other cleanup (must stop before EGL context destroyed)
 #ifdef EQT_HAS_GLES2

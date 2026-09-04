@@ -260,6 +260,8 @@ IrrlichtRenderer::IrrlichtRenderer()
     slash_ = std::make_unique<SlashCommandsComponent>(ctx_, *this);
     // L07 (Batch L): the SimulationWorker bridge.
     simBridge_ = std::make_unique<SimBridgeComponent>(ctx_, *this);
+    // L08 (Batch L): the zone streaming family.
+    zoneStream_ = std::make_unique<ZoneStreamComponent>(ctx_, *this);
 }
 
 IrrlichtRenderer::~IrrlichtRenderer() {
@@ -651,7 +653,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         boidsManager_ = std::make_unique<Environment::BoidsManager>(smgr_, driver_);
         boidsManager_->setConstrainedTextureCache(constrainedTextureCache_);
         if (!boidsManager_->init(config_.eqClientPath)) LOG_WARN(MOD_GRAPHICS, "Failed to initialize boids manager");
-        ensureBoidsTextureGuard();
+        zoneStream_->ensureBoidsTextureGuard();
         LOG_INFO(MOD_GRAPHICS, "Boids manager initialized (ambient creatures enabled in settings)");
     } else if (!boidsManager_) {
         LOG_INFO(MOD_GRAPHICS, "Boids manager skipped (ambient creatures disabled in settings)");
@@ -733,7 +735,7 @@ bool IrrlichtRenderer::loadGlobalAssets() {
                                                  zoneShader_->getActiveAlphaTest(),
                                                  zoneShader_->getActiveAlphaTestRGBA());
         }
-        ensureDoorTextureGuard();  // T124
+        zoneStream_->ensureDoorTextureGuard();  // T124
     }
 
     // S05: skyRenderer_ and detailManager_ already created in initLoadingScreen()

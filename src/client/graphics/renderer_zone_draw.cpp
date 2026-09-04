@@ -1108,7 +1108,7 @@ bool IrrlichtRenderer::rebuildRegionMesh(size_t regionIdx) {
                 // Encode regionIdx (low 48 bits) + buffer index (high 16 bits)
                 req.callbackKey = (static_cast<uint64_t>(i) << 48) |
                                   (static_cast<uint64_t>(regionIdx) & 0xFFFFFFFFFFFFULL);
-                req.priority = WorkPriorityKey::make(getRegionPvsDepth(regionIdx), AssetType::ZoneMesh).value;
+                req.priority = WorkPriorityKey::make(zoneStream_->getRegionPvsDepth(regionIdx), AssetType::ZoneMesh).value;
 
                 gpuUploadThread_->submit(std::move(req));
             }
