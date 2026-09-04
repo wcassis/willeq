@@ -81,11 +81,46 @@ it without taking that measurement first.
   stream dead at 17:56:05.006 (351 lines) and it stayed dead for 16 s. Five PNGs.
   Prov: deferred item 10, T343 Review, T345 Review.
 
-- **B003** (A) auto-attack — 12 live runs with `/target` and `/attack` both
-  confirmed in the log produced no swing. **Unconfirmed at this tip, needs a live
-  eqemu session**; it may be the draw predicate, the animation, the attack timer
-  or the test setup. Closes when: a live run shows a swing, or the defect is
-  named. Prov: deferred item 27.
+- ~~**B003** (A) auto-attack — 12 live runs with `/target` and `/attack` both
+  confirmed in the log produced no swing.~~ **CLOSED by T350, NOT FABLE.**
+  Measured live at `920280dd` (qeynos2, Testchar, `a_fire_beetle` 2024, three
+  phases, `review/T350/`). The client DOES send `OP_AutoAttack`(on); eqemu
+  refuses the swing because the player is not FACING the target, in the one
+  branch of `Client::Process` that sends nothing at all — no packet, no
+  message, no log (`zone/client_process.cpp:430`, `else if (!los_status ||
+  !los_status_facing) { }`; the gate is `Mob::IsFacingMob`, `zone/mob.cpp:7599`,
+  ±80 of 511.5 ≈ ±56°). Nothing in fable's `/target`/`/attack` path faces the
+  target, and the official client does not face for you either, so there is no
+  divergence. **The decisive measurement**: auto-attack held ON, target held,
+  heading swept through 8 points with `/face <x> <y> <z>` — 17 `OP_Damage`
+  packets and 17 queued melee animations arrived in the two windows pointing at
+  the mob (server heading 135.02° and 180.04°; the mob was at 180.04°), zero in
+  the other six. The archived runs failed because `#npctypespawn` drops the mob
+  ON the invoker: at 0.04 units the bearing is 255.75 against a stored heading
+  of 160. **The heading pipeline is CORRECT and is refuted as a suspect**:
+  `character_data.heading=160` → client `337.50deg` → `heading_scaled=640` →
+  eqemu `EQ12toFloat(640)=160`, exact, every sample; the transform is
+  `server_deg = (450 − client_deg) mod 360`.
+
+- ~~**B003b** (A) `ActionDispatcher::faceEntity` — `/face <name>` resolved a
+  DIFFERENT entity than `/target <name>`.~~ **CLOSED by T350** (found while
+  measuring B003). `action_dispatcher.cpp:99` used the unranked
+  `EntityManager::findEntityByName(name)`, which ties on the LOWEST SPAWN ID,
+  while `/target` uses T244's ranked overload, which ties on DISTANCE. Measured:
+  with two `a_fire_beetle`s in qeynos2, `/target` took spawn 277 at 3.5 units
+  and `/face` took spawn 68 at 550 units, turning the player 131° away from the
+  target (client heading 138.92°, matching spawn 68's bearing to two decimals) —
+  after which the server silently refuses every swing. Fixed with the ranked
+  overload + `ActionDispatcherTest.FaceEntity_PicksTheNearestMatch_NotTheLowestSpawnId`,
+  verified to fail on the unpatched source.
+
+- **B003c** (B) `ActionDispatcher::moveToEntity` / `followEntity`
+  (`src/client/action/action_dispatcher.cpp:154,167`) call the same unranked
+  `findEntityByName(name)` T350 fixed in `faceEntity`, but only as an existence
+  check before passing the NAME to the handler — so the tie-break is not
+  observable *there*, and the question is what the handler does with the name.
+  Closes when: the handler's own resolution is read and either shown to rank by
+  distance too, or made to. Prov: T350.
 
 - **B004** (A) `include/client/graphics/ui/ui_layout.h` `centerPopup` — `popW`/
   `popH` are hardcoded 400/350 at every resolution; the archive records general

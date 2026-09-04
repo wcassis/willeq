@@ -106,6 +106,38 @@ TEST_F(ActionDispatcherTest, FaceEntity_Found_CallsSetHeading) {
     ASSERT_TRUE(handler.calledOnceWith("setHeading(0)"));
 }
 
+// T350 (B003). /face <name> must resolve the SAME entity /target <name>
+// does -- the T244 nearest-first ranked overload -- not the unranked one,
+// which ties on lowest spawn id. Measured live in review/T350: with two
+// `a_fire_beetle`s in qeynos2, /target took the one 3.5 units away while
+// /face turned to the one 550 units away, and eqemu then refused every
+// auto-attack swing (Mob::IsFacingMob, +-80 of 511.5 heading units).
+TEST_F(ActionDispatcherTest, FaceEntity_PicksTheNearestMatch_NotTheLowestSpawnId) {
+    connectHandler();
+    connectZone();
+
+    // Player at the origin. The FAR beetle has the lower spawn id, so the
+    // unranked resolver picks it; the near one is due north (heading 0).
+    eqt::state::Entity far;
+    far.spawnId = 68;
+    far.name = "a_fire_beetle000";
+    far.x = 100.0f;
+    far.y = 0.0f;   // due east of the player -> heading 90
+    far.z = 0.0f;
+    state.entities().addEntity(far);
+
+    eqt::state::Entity near;
+    near.spawnId = 277;
+    near.name = "a_fire_beetle005";
+    near.x = 0.0f;
+    near.y = 10.0f; // due north of the player -> heading 0
+    near.z = 0.0f;
+    state.entities().addEntity(near);
+
+    ASSERT_TRUE(dispatcher->faceEntity("a_fire_beetle").success);
+    ASSERT_TRUE(handler.calledOnceWith("setHeading(0)"));
+}
+
 TEST_F(ActionDispatcherTest, MoveToFamily_RequiresEntityAndRoutesCorrectly) {
     connectHandler();
     connectZone();
