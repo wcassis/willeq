@@ -712,10 +712,32 @@ void eqt::bridge::BridgeComponent::OnGraphicsMovement(const eqt::events::PlayerP
 	// T288: one store, and no PlayerMoved on the state bus -- this is the
 	// renderer's own movement arriving, echoing it back as a state event
 	// would be a new per-frame event stream (see setPositionNoEvent).
-	// A z the RENDERER produced is definitively in the render frame, whatever
+	// A z the RENDERER PRODUCED is definitively in the render frame, whatever
 	// state the self-spawn left behind (T311).
-	ctx_.game_state.player().setZAwaitingFrameConversion(false);
-	ctx_.self.SetPosLocal(update.x, update.y, update.z);  // node-origin (render-frame) Z from the renderer
+	//
+	// T332 (B049), MEASURED LIVE by T331: that premise is about PROVENANCE, and
+	// this code used to apply it to every intent. At zone-in the renderer does
+	// not produce our z -- it is SEEDED with it (setPlayerPosition, from the
+	// zone-load snapshot, which carries the raw WIRE z straight off
+	// OP_PlayerProfile) and echoes it straight back. Relabelling that echo
+	// "render frame" cleared the pending conversion without performing it, so
+	// SendPositionUpdate then added 0.625*size to a z that already contained
+	// it -- and because the server persists what we send and hands it back on
+	// the next login, the error COMPOUNDED 0.625 every login (Testchar:
+	// 3.75 -> 4.38 -> 5.01 -> 5.63, against the official client's steady 3.751).
+	// Headless there is no renderer and so no echo, which is why T311's
+	// three-login test was green and wrong.
+	//
+	// So: an echo is not information. Do not store it (we already hold exactly
+	// what we handed over), and take it as the cue to run the deferred
+	// conversion instead -- which is a no-op until the mesh offset is
+	// measurable, leaving the flag set for onPlayerModelGeometryChanged.
+	if (update.seededPosition) {
+		ConvertSelfZToRenderFrame(ctx_.game_state.player().collisionZOffset());
+	} else {
+		ctx_.game_state.player().setZAwaitingFrameConversion(false);
+		ctx_.self.SetPosLocal(update.x, update.y, update.z);  // node-origin (render-frame) Z from the renderer
+	}
 	// Convert heading from EQ format (0-512) to degrees (0-360) for internal use
 	ctx_.self.SetHeadingLocal(update.heading * 360.0f / 512.0f);
 

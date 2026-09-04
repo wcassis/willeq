@@ -25,6 +25,15 @@ struct PlayerPositionChanged {
     float x, y, z;
     float heading;
     float dx, dy, dz;  // Velocity/delta (animation derived on game thread from velocity + water state)
+    // T332 (B049): PROVENANCE of x/y/z. False means the renderer DERIVED this
+    // position itself (its movement integrator wrote it). True means the
+    // renderer is echoing back a position it was HANDED through
+    // setPlayerPosition() -- the zone-load snapshot seed, or a PlayerMoved
+    // relocation -- and has not moved since. An echo carries no information the
+    // game thread does not already hold, and at zone-in the thing it echoes is
+    // a raw WIRE z, so the game thread must not relabel it as render frame.
+    // See BridgeComponent::OnGraphicsMovement and position_frames.h.
+    bool seededPosition = false;
 };
 
 // T311: the player model's own measured origin-to-feet distance, published by

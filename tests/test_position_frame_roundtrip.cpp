@@ -421,6 +421,13 @@ TEST(WireZ, TheConstantIsThreePointOneTwoFive_NotEQEmusPerRaceTable) {
 // login, which is how it was identified: 3.75 - the measured mesh offset.)
 //
 // PlayerState::zAwaitingFrameConversion is the fix, and this is its pin.
+//
+// T332: this is the HEADLESS ARM, and it is not sufficient on its own. With no
+// renderer nothing raises PlayerPositionChanged, so OnGraphicsMovement never
+// runs and the flag is never touched -- which is why these two tests stayed
+// green while T331 measured the graphical client still compounding 0.625 per
+// login (B049). The renderer arm is tests/test_zone_in_z_conversion.cpp; keep
+// both, they fail on different halves.
 // ---------------------------------------------------------------------------
 
 TEST(WireZ, SelfSpawnBeforeModelLoads_DoesNotDoubleConvert) {

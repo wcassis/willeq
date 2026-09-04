@@ -13,6 +13,7 @@
 #include "client/spell/buff_manager.h"
 #include "client/skill/skill_manager.h"
 #include "client/zone_lines.h"
+#include "client/position_frames.h"  // T332: the wire<->render z conversion
 #include "client/formatted_message.h"
 #include "common/logging.h"
 #include "common/packet_structs.h"
@@ -384,7 +385,28 @@ void eqt::zone::ZoneComponent::ZoneProcessPlayerProfile(const EQ::Net::Packet &p
 	// refactor/T58_playerprofile_propagation.md Review's trace table). The
 	// hand-rolled bridge push below is unchanged and remains the only thing
 	// that reaches the renderer.
-	ctx_.self.SetPosition(server_y, server_x, z);
+	// T332 (B049), MEASURED LIVE: this z is the WIRE frame -- groundZ +
+	// 0.625*size, exactly like a spawn packet's -- and GameState's player z is
+	// the RENDER frame (include/client/position_frames.h). It was stored raw
+	// and, unlike the two self-SPAWN edges T311 fixed, was never marked as
+	// owing the conversion. On a real graphical zone-in NEITHER spawn edge runs
+	// (T332 instrumented a live login: no ZoneSpawns-self and no NewSpawn-self
+	// branch is ever taken for our own character -- the spawn id comes from
+	// here), so the flag stayed false for the whole session, the deferred
+	// conversion never fired, and SendPositionUpdate added 0.625*size to a z
+	// that already contained it. The server persists what we send, so it
+	// COMPOUNDED 0.625 every login: 3.75 -> 4.38 -> 5.01 -> 5.63 against the
+	// official client's steady 3.751 (T331's table).
+	//
+	// Same two lines as the spawn edges: convert if we can, and if we cannot
+	// (no model yet -- the usual case here, this packet is the first thing that
+	// arrives) say so, so onPlayerModelGeometryChanged converts it exactly once
+	// when the mesh offset becomes measurable.
+	ctx_.self.SetPosition(server_y, server_x,
+	            eqt::wireZToRenderZ(z, ctx_.game_state.player().collisionZOffset(),
+	                                ctx_.game_state.player().size()));
+	ctx_.game_state.player().setZAwaitingFrameConversion(
+		ctx_.game_state.player().collisionZOffset() <= 0.0f);
 	ctx_.self.SetHeading(new_heading);
 
 	// Debug: Zone-in position tracking
