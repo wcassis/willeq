@@ -6,6 +6,7 @@
 // guard in tests/test_first_person_camera_single_formula.cpp requires it.
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/player/player_camera_component.h"
+#include "client/graphics/world_line_batch.h"  // T335: the shared post-drawAll() 3D-line guard
 #include "client/bridge/game_state_bridge.h"
 #include "client/state/event_bus.h"
 #include "client/events/renderer_intents.h"
@@ -702,6 +703,14 @@ void PlayerCameraComponent::addCollisionDebugLine(const irr::core::vector3df& st
     collisionDebugLines_.push_back(line);
 }
 
+// T335 test seam -- see the declaration in player_camera_component.h.
+void PlayerCameraComponent::seedCollisionDebugLineForTest(const irr::core::vector3df& start,
+                                                          const irr::core::vector3df& end,
+                                                          const irr::video::SColor& color,
+                                                          float duration) {
+    addCollisionDebugLine(start, end, color, duration);
+}
+
 void PlayerCameraComponent::drawCollisionDebugLines(float deltaTime) {
     if (!ctx_.driver || collisionDebugLines_.empty()) {
         return;
@@ -715,7 +724,13 @@ void PlayerCameraComponent::drawCollisionDebugLines(float deltaTime) {
     lineMaterial.MaterialType = irr::video::EMT_SOLID;
     lineMaterial.ZBuffer = irr::video::ECFN_ALWAYS;  // Always draw on top
     lineMaterial.ZWriteEnable = false;
-    ctx_.driver->setMaterial(lineMaterial);
+    // T335 (B054): these lines are drawn in the debug-overlay pass, after
+    // smgr->drawAll(), with the GLES2 driver latched in 2D mode -- B048's
+    // defect verbatim. Without the batch the world-space segments are
+    // multiplied by the 2D ortho matrix (nothing draws) and the 3D material is
+    // left installed (the UI drawn afterwards is back-face culled away). See
+    // client/graphics/world_line_batch.h.
+    WorldLineBatch batch(ctx_, lineMaterial);
     ctx_.driver->setTransform(irr::video::ETS_WORLD, irr::core::matrix4());
 
     // Draw all lines and update their timers
