@@ -101,7 +101,7 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
     // person from a steeply-pitched third-person view has to be corrected.
     // A no-op outside first person, and a no-op in first person unless the
     // pitch is out of range. Must run BEFORE the draw.
-    applyFirstPersonPitchClamp();
+    playerCamera_->applyFirstPersonPitchClamp();
 
     smgr_->drawAll();
     frameTimings_.sceneDrawAll = measureSection();
@@ -280,7 +280,7 @@ bool IrrlichtRenderer::processFrameRender(float deltaTime) {
     frameTimings_.weatherRender = measureSection();
 
     // Draw collision debug lines
-    if (playerConfig_.collisionDebug) drawCollisionDebugLines(deltaTime);
+    if (playerConfig_.collisionDebug) playerCamera_->drawCollisionDebugLines(deltaTime);
 
     // Culling debug: draw region bounding boxes as wireframe
     // Green = rendered (passes PVS + distance + frustum)

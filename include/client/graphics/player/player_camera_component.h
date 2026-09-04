@@ -1,0 +1,206 @@
+#ifndef EQT_GRAPHICS_PLAYER_PLAYER_CAMERA_COMPONENT_H
+#define EQT_GRAPHICS_PLAYER_PLAYER_CAMERA_COMPONENT_H
+
+// Batch L (refactor/L_renderer_component_extraction.md), unit L05 -- the
+// player family, lifted out of class IrrlichtRenderer: player-mode movement
+// and its collision, the world-triangle raycast layer, ground-height queries,
+// the collision debug lines, and the camera (mode, projection, first-person
+// placement and pitch clamp, player position/vision/swimming state).
+//
+// Every body in src/client/graphics/player/ is the body that used to live in
+// src/client/graphics/renderer_player_physics.cpp,
+// src/client/graphics/renderer_player_collision.cpp and
+// src/client/graphics/renderer_camera.cpp, moved verbatim. THE THREE BASENAMES
+// ARE LOAD-BEARING: tests/test_first_person_camera_single_formula.cpp names
+// renderer_camera.cpp and renderer_player_physics.cpp as string literals and
+// pins the single-first-person-formula invariant across them. Only the
+// directory moved.
+//
+// The only edits inside a body are the mechanism's substitutions: a core
+// member becomes ctx_.member, a non-core IrrlichtRenderer member becomes
+// owner_.member_, and a method that stayed behind becomes owner_.Method()
+// (there are exactly two: isLoading() and rebuildRegionMesh()).
+//
+// updatePlayerMovement() is 806 lines and moved WHOLE -- Batch G decides its
+// decomposition, not this unit. It needed no substitution beyond the standard
+// ones: it uses no `this` as an identity key and captures nothing in a lambda.
+//
+// CameraMode was a nested type of IrrlichtRenderer. It could move neither with
+// the family (cameraMode_ is shared with the entities and frame families and
+// stayed behind) nor stay nested (this header cannot include
+// irrlicht_renderer.h, which includes this one). L05 hoisted it to
+// client/graphics/renderer_types.h beside VisionType; IrrlichtRenderer keeps a
+// `using` alias, so IrrlichtRenderer::CameraMode::Follow still resolves for
+// application_zone_loading.cpp, renderer_slash_commands.cpp and the tests.
+//
+// updateObjectLightColors() was in renderer_camera.cpp but is NOT this
+// family's: it reads objectLights_, weatherEffects_ and fireEffectsEnabled_
+// and nothing else, all RendererContext core, and its one caller is
+// irrlicht_renderer.cpp. Its body moved sideways to that TU and its
+// declaration stayed on IrrlichtRenderer (L04 correction 5, the measureSection
+// case). L09 decides where the lighting family finally puts it.
+//
+// The component needs friendship on BOTH axes of K13 correction (ii): it
+// reaches 20 private IrrlichtRenderer members through owner_, and it names the
+// private nested type IrrlichtRenderer::DoorCollisionData.
+
+#include "client/graphics/renderer_context.h"
+
+#include <cstdint>
+#include <string>
+#include <vector>
+
+namespace EQT {
+namespace Graphics {
+
+class IrrlichtRenderer;
+
+class PlayerCameraComponent {
+public:
+	PlayerCameraComponent(RendererContext& ctx, IrrlichtRenderer& owner)
+		: ctx_(ctx), owner_(owner) {}
+
+	// --- Player-mode movement (was renderer_player_physics.cpp) ---
+	// 806 lines; the per-frame local movement path. Called from
+	// IrrlichtRenderer::processFrameInput() on the render thread.
+	void updatePlayerMovement(float deltaTime);
+
+	// --- Collision and ground height (was renderer_player_collision.cpp) ---
+	void setupMinimalZoneCollision();
+	float findGroundZ(float x, float y, float currentZ);
+	bool checkCollisionBspFiltered(const irr::core::vector3df& start, const irr::core::vector3df& end,
+	                               irr::core::vector3df& hitPoint, irr::core::triangle3df& hitTriangle);
+	bool rayTestDoorsAndObjects(const irr::core::vector3df& rayOrigin,
+	                            const irr::core::vector3df& rayDir, float rayLen,
+	                            size_t bspRegion,
+	                            irr::core::vector3df& hitPoint, irr::core::triangle3df& hitTriangle,
+	                            float& hitDistSq);
+	// Direct ray-triangle intersection on pre-transformed world-space triangles (no matrix math)
+	static bool rayIntersectTriangles(const irr::core::vector3df& rayOrigin,
+	                                  const irr::core::vector3df& rayDir, float rayLen,
+	                                  const std::vector<irr::core::triangle3df>& triangles,
+	                                  irr::core::vector3df& hitPoint, irr::core::triangle3df& hitTriangle,
+	                                  float& hitDistSq);
+	// Extract world-space triangles from a mesh node (called once at build time)
+	static std::vector<irr::core::triangle3df> extractWorldTriangles(
+		irr::scene::ISceneManager* smgr, irr::scene::IMeshSceneNode* node);
+	void drawCollisionDebugLines(float deltaTime);
+
+	// ⚠ L05 measured these five as having ZERO callers tree-wide, in-family
+	// included (K03 correction a), and they are NOT dead code -- they are the
+	// incremental collision-registration API that
+	// src/client/graphics/renderer_zone_draw.cpp:197-198 asserts in a comment
+	// is used "during the background zone loading phases". Only
+	// setupMinimalZoneCollision() is actually called
+	// (renderer_zone_load_objects.cpp:544). Deleting them under §5 would turn a
+	// findable defect into an invisible one (L03 correction 5), so they are
+	// kept, made reachable through PlayerCamera(), and BOARDED. No forwarder:
+	// writing one would keep irrlicht_renderer.h as the API surface for
+	// surface nothing calls, which is what Batch L exists to remove.
+	void addRegionToCollision(size_t regionIdx);
+	void addDoorToCollision(uint8_t doorId);
+	void addObjectToCollision(size_t objIdx);
+	size_t findBspRegionForPoint(float x, float y, float z);
+	void clearCollisionDebugLines();
+
+	// --- Camera (was renderer_camera.cpp) ---
+	void applyCameraProjectionForMode();
+	void applyFirstPersonPitchClamp();
+	// T74/T300: snap the camera to the player's own eye position and facing.
+	// THE ONE first-person camera formula -- see
+	// tests/test_first_person_camera_single_formula.cpp, which parses this
+	// body by name and asserts it still applies both tunables and the stored
+	// mouse-look pitch.
+	void repositionFirstPersonCamera();
+	// T310 Leg A: `/fpcam dump` -- the RESOLVED first-person pose as parseable
+	// [FPCAM-DUMP] key=value lines.
+	std::vector<std::string> buildFirstPersonCameraDumpLines() const;
+
+	// setPlayerSpawnId, setPlayerPosition, setCameraMode, getCameraModeString,
+	// setSwimmingState and setVisionType ALSO survive as one-line forwarders on
+	// IrrlichtRenderer, because irrlicht_bridge.cpp, application_zone_loading.cpp
+	// and two tests call them on an IrrlichtRenderer receiver and must not learn
+	// a component exists (the K11 rule). Each forwarder names its caller in
+	// irrlicht_renderer.h. cycleCameraMode() is NOT one of them: L05 measured
+	// zero callers on an IrrlichtRenderer receiver -- graphical_mode.cpp reaches
+	// IOutputRenderer's empty default body, because IrrlichtRenderer has no base
+	// class (L03 correction 13, L04 correction 2).
+	void setPlayerSpawnId(uint16_t spawnId);
+	void setPlayerRace(uint16_t raceId);
+	void setVisionType(VisionType vision);
+	void setPlayerPosition(float x, float y, float z, float heading);
+	void setSwimmingState(bool swimming, float swimSpeed = 20.0f, bool levitating = false);
+	void setCameraMode(CameraMode mode);
+	void cycleCameraMode();
+	std::string getCameraModeString() const;
+
+	// Swim/levitate knobs and the vision reset, moved with their members.
+	// ⚠ ALL FOUR OF THESE HAVE ZERO CALLERS, and two of them matter:
+	//   * setSwimUp()/setSwimDown() are the SOLE WRITERS of
+	//     playerMovement_.swimUp/.swimDown, which updatePlayerMovement() reads
+	//     live -- vertical swim control has no producer (L03 correction 17).
+	//   * resetVisionToBase() is the ONLY downgrade path for vision.
+	//     setVisionType() is live (irrlicht_bridge.cpp:582) and only ever
+	//     upgrades, so an Ultravision buff is permanent for the session.
+	// Kept and boarded, not deleted.
+	bool isSwimming() const { return playerMovement_.isSwimming; }
+	void setSwimUp(bool up) { playerMovement_.swimUp = up; }
+	void setSwimDown(bool down) { playerMovement_.swimDown = down; }
+	void setLevitating(bool levitating) { playerMovement_.isLevitating = levitating; }
+	void resetVisionToBase();
+	VisionType getBaseVision() const { return baseVision_; }
+
+	// ⚠ Zero callers. The declaration's own comment on IrrlichtRenderer said
+	// "for audio listener" -- nothing ever asks for it, so the audio listener
+	// is never given the camera transform. Kept and boarded.
+	void getCameraTransform(float& posX, float& posY, float& posZ,
+	                        float& forwardX, float& forwardY, float& forwardZ,
+	                        float& upX, float& upY, float& upZ) const;
+	// ⚠ Zero callers. The vertical FOV the first-person camera is actually
+	// using, in radians -- one answer, so the clamp derivation and the
+	// projection cannot disagree. Kept and boarded.
+	float getFirstPersonVerticalFov() const;
+
+private:
+	// In-family callers only (K03 correction a) -- never called from outside
+	// these three TUs, so they need no public surface and are not §5 candidates.
+	bool checkMovementCollision(float fromX, float fromY, float fromZ,
+	                            float toX, float toY, float toZ);
+	// Legacy meta-selector path -- cold, HCMap fallback/debug only.
+	bool checkCollisionIrrlicht(const irr::core::vector3df& start, const irr::core::vector3df& end,
+	                            irr::core::vector3df& hitPoint, irr::core::triangle3df& hitTriangle);
+	// Find ground Z at position. currentZ is the node origin (server Z);
+	// modelYOffset is the origin-to-feet distance.
+	float findGroundZIrrlicht(float x, float y, float currentZ, float modelYOffset);
+	float findGroundZBspFiltered(float x, float y, float currentZ, float modelYOffset);
+	void addCollisionDebugLine(const irr::core::vector3df& start, const irr::core::vector3df& end,
+	                           const irr::video::SColor& color, float duration = 0.5f);
+
+	RendererContext& ctx_;
+	IrrlichtRenderer& owner_;
+
+	// The family's five single-family members. Two of them
+	// (playerMovement_, baseVision_) are invisible to any "count
+	// IrrlichtRenderer:: bodies" measurement -- their only other users were
+	// inline accessors in irrlicht_renderer.h, which moved with them
+	// (K04 correction f / L03 correction 2, now the third L unit in a row).
+	PlayerMovementState playerMovement_;
+	float playerPitch_ = 0;  // Vertical look angle in degrees (-89 to 89)
+	VisionType baseVision_ = VisionType::Normal;    // Base vision from race
+	bool useIrrlichtCollision_ = true;  // Use zone mesh for collision instead of HCMap
+
+	// Debug visualization for collision rays. The nested type moved with the
+	// member: nothing outside this family ever named either (K05 j).
+	struct CollisionDebugLine {
+		irr::core::vector3df start;
+		irr::core::vector3df end;
+		irr::video::SColor color;
+		float timeRemaining;  // How long to display (seconds)
+	};
+	std::vector<CollisionDebugLine> collisionDebugLines_;
+};
+
+} // namespace Graphics
+} // namespace EQT
+
+#endif // EQT_GRAPHICS_PLAYER_PLAYER_CAMERA_COMPONENT_H

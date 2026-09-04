@@ -230,6 +230,22 @@ struct PendingZoneComputations {
     std::unique_ptr<EquipmentIndexData> equipmentIndex;
 };
 
+// Camera control modes.
+//
+// L05 (Batch L, refactor/L_renderer_component_extraction.md): this enum was a
+// nested type of class IrrlichtRenderer. PlayerCameraComponent's moved
+// setCameraMode(CameraMode) signature needs it, and a component header cannot
+// include irrlicht_renderer.h (that header includes the component's). So the
+// enum lives here, beside VisionType, and IrrlichtRenderer keeps
+// `using CameraMode = EQT::Graphics::CameraMode;` -- every existing spelling,
+// including EQT::Graphics::IrrlichtRenderer::CameraMode::Follow in
+// application_zone_loading.cpp and the tests, still resolves unchanged.
+enum class CameraMode {
+    Free,       // Free-fly camera
+    Follow,     // Follow player character
+    FirstPerson // First-person from player position
+};
+
 // Vision types affecting zone light visibility
 // Can be upgraded by race, items, or buffs (never downgraded)
 enum class VisionType {

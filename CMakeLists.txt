@@ -494,7 +494,6 @@ IF(EQT_GRAPHICS)
         src/client/graphics/overlays/overlays_hud_env.cpp
         src/client/graphics/renderer_init.cpp  # J11
         src/client/graphics/renderer_slash_commands.cpp  # J11
-        src/client/graphics/renderer_camera.cpp  # J11
         # T166: the loadZoneSequential() step sequence, split out of one
         # 2996-line TU. Driver + geometry steps here, the rest alongside.
         src/client/graphics/renderer_zone_load.cpp
@@ -505,8 +504,13 @@ IF(EQT_GRAPHICS)
         src/client/graphics/renderer_zone_lifecycle.cpp
         src/client/graphics/diagnostics/diagnostics_component.cpp
         src/client/graphics/diagnostics/diagnostics_debug.cpp
-        src/client/graphics/renderer_player_physics.cpp
-        src/client/graphics/renderer_player_collision.cpp
+        # L05 (Batch L): the player family -- movement, collision and camera.
+        # THE BASENAMES ARE LOAD-BEARING: tests/test_first_person_camera_single_formula.cpp
+        # names renderer_camera.cpp and renderer_player_physics.cpp as string
+        # literals. Only the directory moved.
+        src/client/graphics/player/renderer_player_physics.cpp
+        src/client/graphics/player/renderer_player_collision.cpp
+        src/client/graphics/player/renderer_camera.cpp
         src/client/graphics/renderer_zone_draw.cpp
         src/client/graphics/renderer_zone_merge.cpp
         src/client/graphics/renderer_zone_stream.cpp

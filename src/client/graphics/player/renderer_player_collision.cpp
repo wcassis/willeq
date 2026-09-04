@@ -5,6 +5,7 @@
 // updatePlayerMovement() stays in renderer_player_physics.cpp: a filename-keyed
 // guard in tests/test_first_person_camera_single_formula.cpp requires it.
 #include "client/graphics/irrlicht_renderer.h"
+#include "client/graphics/player/player_camera_component.h"
 #include "client/bridge/game_state_bridge.h"
 #include "client/state/event_bus.h"
 #include "client/events/renderer_intents.h"
@@ -19,23 +20,23 @@
 
 namespace EQT {
 namespace Graphics {
-bool IrrlichtRenderer::checkMovementCollision(float fromX, float fromY, float fromZ,
+bool PlayerCameraComponent::checkMovementCollision(float fromX, float fromY, float fromZ,
                                                float toX, float toY, float toZ) {
-    if (!collisionMap_) {
+    if (!ctx_.collisionMap) {
         return true;  // No collision map = allow movement
     }
 
     // Check line of sight from current position to new position
     // Use configurable check height for collision detection
-    float checkHeight = playerConfig_.collisionCheckHeight;
+    float checkHeight = owner_.playerConfig_.collisionCheckHeight;
     glm::vec3 from(fromX, fromY, fromZ + checkHeight);
     glm::vec3 to(toX, toY, toZ + checkHeight);
 
     glm::vec3 hitLocation;
-    bool clear = collisionMap_->CheckLOSWithHit(from, to, &hitLocation);
+    bool clear = ctx_.collisionMap->CheckLOSWithHit(from, to, &hitLocation);
 
     // Add debug visualization if enabled
-    if (playerConfig_.collisionDebug) {
+    if (owner_.playerConfig_.collisionDebug) {
         // Convert EQ coords (x, y, z) to Irrlicht coords (x, z, y)
         irr::core::vector3df irrFrom(from.x, from.z, from.y);
         irr::core::vector3df irrTo(to.x, to.z, to.y);
@@ -68,27 +69,27 @@ bool IrrlichtRenderer::checkMovementCollision(float fromX, float fromY, float fr
     return clear;
 }
 
-float IrrlichtRenderer::findGroundZ(float x, float y, float currentZ) {
-    if (!collisionMap_) {
+float PlayerCameraComponent::findGroundZ(float x, float y, float currentZ) {
+    if (!ctx_.collisionMap) {
         return currentZ;
     }
 
-    float maxStepUp = playerConfig_.collisionStepHeight;
-    float maxStepDown = playerConfig_.collisionStepHeight * 2.0f;
+    float maxStepUp = owner_.playerConfig_.collisionStepHeight;
+    float maxStepDown = owner_.playerConfig_.collisionStepHeight * 2.0f;
 
     // PHASE 1: Short raycast to find ground near current level
     // This prevents falling through mesh gaps by looking for nearby ground first
     // Start from max step-up above current position
     glm::vec3 nearPos(x, y, currentZ + maxStepUp);
     glm::vec3 nearResult;
-    float nearGroundZ = collisionMap_->FindBestZ(nearPos, &nearResult);
+    float nearGroundZ = ctx_.collisionMap->FindBestZ(nearPos, &nearResult);
 
     // Check if we found ground within the nearby range (max step-up to max step-down)
     if (nearGroundZ != BEST_Z_INVALID) {
         float heightDiff = nearGroundZ - currentZ;
         if (heightDiff >= -maxStepDown && heightDiff <= maxStepUp) {
             // Found nearby ground - use it
-            if (playerConfig_.collisionDebug) {
+            if (owner_.playerConfig_.collisionDebug) {
                 // Green line showing nearby ground hit (preferred)
                 irr::core::vector3df irrFrom(x, currentZ + maxStepUp, y);
                 irr::core::vector3df irrTo(x, nearGroundZ, y);
@@ -107,10 +108,10 @@ float IrrlichtRenderer::findGroundZ(float x, float y, float currentZ) {
     // This handles cases like jumping off ledges, falling, etc.
     glm::vec3 pos(x, y, currentZ + 10.0f);  // Start slightly above
     glm::vec3 result;
-    float groundZ = collisionMap_->FindBestZ(pos, &result);
+    float groundZ = ctx_.collisionMap->FindBestZ(pos, &result);
 
     // Add debug visualization if enabled
-    if (playerConfig_.collisionDebug) {
+    if (owner_.playerConfig_.collisionDebug) {
         // Convert EQ coords (x, y, z) to Irrlicht coords (x, z, y)
         irr::core::vector3df irrFrom(x, currentZ + 10.0f, y);
 
@@ -137,11 +138,11 @@ float IrrlichtRenderer::findGroundZ(float x, float y, float currentZ) {
     }
 
     // Check for boat collision — only when boats exist in zone
-    if (entityRenderer_ && entityRenderer_->hasBoatsInZone()) {
-        float boatDeckZ = entityRenderer_->findBoatDeckZ(x, y, currentZ);
+    if (ctx_.entityRenderer && ctx_.entityRenderer->hasBoatsInZone()) {
+        float boatDeckZ = ctx_.entityRenderer->findBoatDeckZ(x, y, currentZ);
         if (boatDeckZ != BEST_Z_INVALID) {
             if (groundZ == BEST_Z_INVALID || boatDeckZ > groundZ) {
-                if (playerConfig_.collisionDebug) {
+                if (owner_.playerConfig_.collisionDebug) {
                     // Yellow line showing boat deck hit
                     irr::core::vector3df irrFrom(x, currentZ, y);
                     irr::core::vector3df irrTo(x, boatDeckZ, y);
@@ -161,32 +162,32 @@ float IrrlichtRenderer::findGroundZ(float x, float y, float currentZ) {
 
 // --- Irrlicht-based Collision Detection (using zone mesh) ---
 
-void IrrlichtRenderer::setupMinimalZoneCollision() {
+void PlayerCameraComponent::setupMinimalZoneCollision() {
     // Clean up old collision data
-    regionWorldTriangles_.clear();
-    objectWorldTriangles_.clear();
-    doorCollisionData_.clear();
+    owner_.regionWorldTriangles_.clear();
+    owner_.objectWorldTriangles_.clear();
+    owner_.doorCollisionData_.clear();
     // Legacy meta selectors (only used by HCMap fallback path now)
-    if (zoneTriangleSelector_) {
-        zoneTriangleSelector_->drop();
-        zoneTriangleSelector_ = nullptr;
+    if (owner_.zoneTriangleSelector_) {
+        owner_.zoneTriangleSelector_->drop();
+        owner_.zoneTriangleSelector_ = nullptr;
     }
-    if (terrainOnlySelector_) {
-        terrainOnlySelector_->drop();
-        terrainOnlySelector_ = nullptr;
+    if (owner_.terrainOnlySelector_) {
+        owner_.terrainOnlySelector_->drop();
+        owner_.terrainOnlySelector_ = nullptr;
     }
 
-    if (!smgr_) {
+    if (!ctx_.smgr) {
         return;
     }
 
     // Build player's BSP region mesh synchronously (only if not already loaded)
     size_t playerRegion = SIZE_MAX;
-    if (zoneBspTree_) {
-        playerRegion = zoneBspTree_->findRegionIndexForPoint(playerX_, playerY_, playerZ_);
-        bool alreadyBuilt = regionMeshNodes_.count(playerRegion) && regionMeshNodes_[playerRegion];
+    if (ctx_.zoneBspTree) {
+        playerRegion = ctx_.zoneBspTree->findRegionIndexForPoint(ctx_.playerX, ctx_.playerY, ctx_.playerZ);
+        bool alreadyBuilt = ctx_.regionMeshNodes.count(playerRegion) && ctx_.regionMeshNodes[playerRegion];
         if (playerRegion != SIZE_MAX && !alreadyBuilt) {
-            rebuildRegionMesh(playerRegion);
+            owner_.rebuildRegionMesh(playerRegion);
             LOG_INFO(MOD_GRAPHICS, "Built player BSP region {} synchronously for deferred loading", playerRegion);
         }
     }
@@ -196,26 +197,26 @@ void IrrlichtRenderer::setupMinimalZoneCollision() {
     // Direct Möller–Trumbore ray-triangle intersection — no matrix math per query
     size_t regionsAdded = 0;
     size_t totalRegionTriangles = 0;
-    for (const auto& [regionIdx, node] : regionMeshNodes_) {
+    for (const auto& [regionIdx, node] : ctx_.regionMeshNodes) {
         if (!node || !node->getMesh()) continue;
-        auto triangles = extractWorldTriangles(smgr_, node);
+        auto triangles = extractWorldTriangles(ctx_.smgr, node);
         if (!triangles.empty()) {
             totalRegionTriangles += triangles.size();
             regionsAdded++;
-            regionWorldTriangles_[regionIdx] = std::move(triangles);
+            owner_.regionWorldTriangles_[regionIdx] = std::move(triangles);
         }
     }
 
     LOG_INFO(MOD_GRAPHICS, "Collision setup: {} regions (total {} world-space triangles)",
              regionsAdded, totalRegionTriangles);
 
-    collisionManager_ = smgr_->getSceneCollisionManager();
+    owner_.collisionManager_ = ctx_.smgr->getSceneCollisionManager();
 
     // Camera collision uses BSP directly (no triangle selectors)
 
     // Activate progressive loading
-    progressiveLoadingActive_ = true;
-    progressiveLoadStartTime_ = std::chrono::steady_clock::now();
+    ctx_.progressiveLoadingActive = true;
+    owner_.progressiveLoadStartTime_ = std::chrono::steady_clock::now();
 
     // NOTE: EntityPrepWorker is NOT created here — it is created during the
     // P08_Entities phase (beginZoneAssetLoad) which runs after P09_Collision.
@@ -224,32 +225,32 @@ void IrrlichtRenderer::setupMinimalZoneCollision() {
     LOG_INFO(MOD_GRAPHICS, "Minimal collision setup complete, progressive loading activated");
 }
 
-size_t IrrlichtRenderer::findBspRegionForPoint(float x, float y, float z) {
-    if (zoneBspTree_) {
-        return zoneBspTree_->findRegionIndexForPoint(x, y, z);
+size_t PlayerCameraComponent::findBspRegionForPoint(float x, float y, float z) {
+    if (ctx_.zoneBspTree) {
+        return ctx_.zoneBspTree->findRegionIndexForPoint(x, y, z);
     }
     return SIZE_MAX;
 }
 
-void IrrlichtRenderer::addRegionToCollision(size_t regionIdx) {
-    if (!smgr_) return;
+void PlayerCameraComponent::addRegionToCollision(size_t regionIdx) {
+    if (!ctx_.smgr) return;
 
-    auto regionIt = regionMeshNodes_.find(regionIdx);
-    if (regionIt == regionMeshNodes_.end() || !regionIt->second || !regionIt->second->getMesh()) return;
+    auto regionIt = ctx_.regionMeshNodes.find(regionIdx);
+    if (regionIt == ctx_.regionMeshNodes.end() || !regionIt->second || !regionIt->second->getMesh()) return;
 
-    auto triangles = extractWorldTriangles(smgr_, regionIt->second);
+    auto triangles = extractWorldTriangles(ctx_.smgr, regionIt->second);
     if (!triangles.empty()) {
-        regionWorldTriangles_[regionIdx] = std::move(triangles);
+        owner_.regionWorldTriangles_[regionIdx] = std::move(triangles);
     }
 }
 
-void IrrlichtRenderer::addDoorToCollision(uint8_t doorId) {
-    if (!smgr_ || !doorManager_) return;
+void PlayerCameraComponent::addDoorToCollision(uint8_t doorId) {
+    if (!ctx_.smgr || !ctx_.doorManager) return;
 
-    const auto* door = doorManager_->getDoor(doorId);
+    const auto* door = ctx_.doorManager->getDoor(doorId);
     if (!door || !door->sceneNode || !door->sceneNode->getMesh() || !door->pivotNode) return;
 
-    DoorCollisionData data;
+    IrrlichtRenderer::DoorCollisionData data;
     data.bspRegion = door->bspRegion;
 
     // Classify door type — skip collision for spinning, lifts, hazardous, invisible, teleporters
@@ -260,7 +261,7 @@ void IrrlichtRenderer::addDoorToCollision(uint8_t doorId) {
     bool isInvisible = (ot == 50 || ot == 53 || ot == 54 || ot == 57);
     if (isSpinning || isLift || isHazardous || isInvisible) {
         data.hasCollision = false;
-        doorCollisionData_[doorId] = std::move(data);
+        owner_.doorCollisionData_[doorId] = std::move(data);
         LOG_DEBUG(MOD_GRAPHICS, "Door {} opentype={}: no collision ({})",
                   doorId, ot, isSpinning ? "spinning" : isLift ? "lift" : isHazardous ? "hazardous" : "invisible");
         return;
@@ -274,14 +275,14 @@ void IrrlichtRenderer::addDoorToCollision(uint8_t doorId) {
     door->pivotNode->setRotation(irr::core::vector3df(0, closedIrrRot, 0));
     door->pivotNode->updateAbsolutePosition();
     door->sceneNode->updateAbsolutePosition();
-    data.closedTriangles = extractWorldTriangles(smgr_, door->sceneNode);
+    data.closedTriangles = extractWorldTriangles(ctx_.smgr, door->sceneNode);
 
     // Extract OPEN state triangles
     float openIrrRot = -door->closedHeading * 360.0f / 512.0f + 90.0f;
     door->pivotNode->setRotation(irr::core::vector3df(0, openIrrRot, 0));
     door->pivotNode->updateAbsolutePosition();
     door->sceneNode->updateAbsolutePosition();
-    data.openTriangles = extractWorldTriangles(smgr_, door->sceneNode);
+    data.openTriangles = extractWorldTriangles(ctx_.smgr, door->sceneNode);
 
     // Restore original rotation
     door->pivotNode->setRotation(savedRotation);
@@ -291,31 +292,31 @@ void IrrlichtRenderer::addDoorToCollision(uint8_t doorId) {
     LOG_DEBUG(MOD_GRAPHICS, "Door {} opentype={} region={}: {} closed tris, {} open tris",
               doorId, ot, data.bspRegion, data.closedTriangles.size(), data.openTriangles.size());
 
-    doorCollisionData_[doorId] = std::move(data);
+    owner_.doorCollisionData_[doorId] = std::move(data);
 }
 
-void IrrlichtRenderer::addObjectToCollision(size_t objIdx) {
-    if (!smgr_) return;
-    if (objIdx >= objectNodes_.size()) return;
+void PlayerCameraComponent::addObjectToCollision(size_t objIdx) {
+    if (!ctx_.smgr) return;
+    if (objIdx >= ctx_.objectNodes.size()) return;
 
-    auto* node = objectNodes_[objIdx];
+    auto* node = ctx_.objectNodes[objIdx];
     if (!node || !node->getMesh()) return;
 
-    auto triangles = extractWorldTriangles(smgr_, node);
+    auto triangles = extractWorldTriangles(ctx_.smgr, node);
     if (triangles.empty()) return;
 
     // Determine BSP region for this object
     size_t region = SIZE_MAX;
-    if (objIdx < objectRegions_.size()) {
-        region = objectRegions_[objIdx];
+    if (objIdx < owner_.objectRegions_.size()) {
+        region = owner_.objectRegions_[objIdx];
     }
 
     // Append to per-region object triangles
-    auto& regionTris = objectWorldTriangles_[region];
+    auto& regionTris = owner_.objectWorldTriangles_[region];
     regionTris.insert(regionTris.end(), triangles.begin(), triangles.end());
 }
 
-bool IrrlichtRenderer::checkCollisionIrrlicht(const irr::core::vector3df& start,
+bool PlayerCameraComponent::checkCollisionIrrlicht(const irr::core::vector3df& start,
                                                const irr::core::vector3df& end,
                                                irr::core::vector3df& hitPoint,
                                                irr::core::triangle3df& hitTriangle) {
@@ -327,7 +328,7 @@ bool IrrlichtRenderer::checkCollisionIrrlicht(const irr::core::vector3df& start,
     return false;
 }
 
-float IrrlichtRenderer::findGroundZIrrlicht(float x, float y, float currentZ, float modelYOffset) {
+float PlayerCameraComponent::findGroundZIrrlicht(float x, float y, float currentZ, float modelYOffset) {
     // DIAGNOSTIC: This should NOT be called on the hot path anymore.
     // BSP-filtered collision should be used instead for movement.
     LOG_WARN(MOD_GRAPHICS, "findGroundZIrrlicht CALLED — old meta selector path! "
@@ -341,7 +342,7 @@ float IrrlichtRenderer::findGroundZIrrlicht(float x, float y, float currentZ, fl
 // Uses pre-transformed world-space triangles per region — no matrix math.
 // Door/object selector still uses Irrlicht (few triangles, dynamic transforms).
 
-std::vector<irr::core::triangle3df> IrrlichtRenderer::extractWorldTriangles(
+std::vector<irr::core::triangle3df> PlayerCameraComponent::extractWorldTriangles(
     irr::scene::ISceneManager* smgr, irr::scene::IMeshSceneNode* node) {
     std::vector<irr::core::triangle3df> result;
     if (!smgr || !node || !node->getMesh()) return result;
@@ -361,7 +362,7 @@ std::vector<irr::core::triangle3df> IrrlichtRenderer::extractWorldTriangles(
     return result;
 }
 
-bool IrrlichtRenderer::rayIntersectTriangles(const irr::core::vector3df& rayOrigin,
+bool PlayerCameraComponent::rayIntersectTriangles(const irr::core::vector3df& rayOrigin,
                                               const irr::core::vector3df& rayDir, float rayLen,
                                               const std::vector<irr::core::triangle3df>& triangles,
                                               irr::core::vector3df& hitPoint,
@@ -405,7 +406,7 @@ bool IrrlichtRenderer::rayIntersectTriangles(const irr::core::vector3df& rayOrig
     return anyHit;
 }
 
-bool IrrlichtRenderer::rayTestDoorsAndObjects(const irr::core::vector3df& rayOrigin,
+bool PlayerCameraComponent::rayTestDoorsAndObjects(const irr::core::vector3df& rayOrigin,
                                                 const irr::core::vector3df& rayDir, float rayLen,
                                                 size_t bspRegion,
                                                 irr::core::vector3df& hitPoint,
@@ -414,20 +415,20 @@ bool IrrlichtRenderer::rayTestDoorsAndObjects(const irr::core::vector3df& rayOri
     bool anyHit = false;
 
     // Test objects in this BSP region
-    auto objIt = objectWorldTriangles_.find(bspRegion);
-    if (objIt != objectWorldTriangles_.end()) {
+    auto objIt = owner_.objectWorldTriangles_.find(bspRegion);
+    if (objIt != owner_.objectWorldTriangles_.end()) {
         if (rayIntersectTriangles(rayOrigin, rayDir, rayLen, objIt->second, hitPoint, hitTriangle, hitDistSq)) {
             anyHit = true;
         }
     }
 
     // Test doors in this BSP region (skip animating doors — walk-through during animation)
-    for (const auto& [doorId, doorData] : doorCollisionData_) {
+    for (const auto& [doorId, doorData] : owner_.doorCollisionData_) {
         if (!doorData.hasCollision) continue;
         if (doorData.bspRegion != bspRegion) continue;
 
         // Get current door state from door manager
-        const auto* door = doorManager_ ? doorManager_->getDoor(doorId) : nullptr;
+        const auto* door = ctx_.doorManager ? ctx_.doorManager->getDoor(doorId) : nullptr;
         if (!door) continue;
         if (door->isAnimating) continue;  // Walk-through during animation (original EQ behavior)
 
@@ -450,11 +451,11 @@ bool IrrlichtRenderer::rayTestDoorsAndObjects(const irr::core::vector3df& rayOri
     return anyHit;
 }
 
-bool IrrlichtRenderer::checkCollisionBspFiltered(const irr::core::vector3df& start,
+bool PlayerCameraComponent::checkCollisionBspFiltered(const irr::core::vector3df& start,
                                                   const irr::core::vector3df& end,
                                                   irr::core::vector3df& hitPoint,
                                                   irr::core::triangle3df& hitTriangle) {
-    if (!zoneBspTree_) return false;
+    if (!ctx_.zoneBspTree) return false;
 
     irr::core::vector3df rayDir = end - start;
     float rayLen = rayDir.getLength();
@@ -468,13 +469,13 @@ bool IrrlichtRenderer::checkCollisionBspFiltered(const irr::core::vector3df& sta
 
     // Find source and destination BSP regions
     // Irrlicht coords (x, z, y) -> EQ coords (x, y, z): eqX=irrX, eqY=irrZ, eqZ=irrY
-    size_t srcRegion = zoneBspTree_->findRegionIndexForPoint(start.X, start.Z, start.Y);
-    size_t dstRegion = zoneBspTree_->findRegionIndexForPoint(end.X, end.Z, end.Y);
+    size_t srcRegion = ctx_.zoneBspTree->findRegionIndexForPoint(start.X, start.Z, start.Y);
+    size_t dstRegion = ctx_.zoneBspTree->findRegionIndexForPoint(end.X, end.Z, end.Y);
 
     // Test source region triangles (direct, no matrix math)
     if (srcRegion != SIZE_MAX) {
-        auto it = regionWorldTriangles_.find(srcRegion);
-        if (it != regionWorldTriangles_.end()) {
+        auto it = owner_.regionWorldTriangles_.find(srcRegion);
+        if (it != owner_.regionWorldTriangles_.end()) {
             irr::core::vector3df hp;
             irr::core::triangle3df ht;
             float distSq;
@@ -491,8 +492,8 @@ bool IrrlichtRenderer::checkCollisionBspFiltered(const irr::core::vector3df& sta
 
     // Test destination region triangles (if different from source)
     if (dstRegion != SIZE_MAX && dstRegion != srcRegion) {
-        auto it = regionWorldTriangles_.find(dstRegion);
-        if (it != regionWorldTriangles_.end()) {
+        auto it = owner_.regionWorldTriangles_.find(dstRegion);
+        if (it != owner_.regionWorldTriangles_.end()) {
             irr::core::vector3df hp;
             irr::core::triangle3df ht;
             float distSq;
@@ -544,18 +545,18 @@ bool IrrlichtRenderer::checkCollisionBspFiltered(const irr::core::vector3df& sta
     return anyHit;
 }
 
-float IrrlichtRenderer::findGroundZBspFiltered(float x, float y, float currentZ, float modelYOffset) {
-    if (!zoneBspTree_) {
+float PlayerCameraComponent::findGroundZBspFiltered(float x, float y, float currentZ, float modelYOffset) {
+    if (!ctx_.zoneBspTree) {
         return currentZ - modelYOffset;  // Return current feet position
     }
 
     float feetZ = currentZ - modelYOffset;
     float headZ = currentZ + modelYOffset;
-    float maxStepUp = playerConfig_.collisionStepHeight;
-    float maxStepDown = playerConfig_.collisionStepHeight * 2.0f;
+    float maxStepUp = owner_.playerConfig_.collisionStepHeight;
+    float maxStepDown = owner_.playerConfig_.collisionStepHeight * 2.0f;
 
     // Find BSP region at query point
-    size_t queryRegion = zoneBspTree_->findRegionIndexForPoint(x, y, currentZ);
+    size_t queryRegion = ctx_.zoneBspTree->findRegionIndexForPoint(x, y, currentZ);
 
     // PHASE 1: Short raycast near current level
     irr::core::vector3df nearStart(x, feetZ + maxStepUp, y);
@@ -570,8 +571,8 @@ float IrrlichtRenderer::findGroundZBspFiltered(float x, float y, float currentZ,
 
     // Test query region world triangles (direct, no matrix math)
     if (queryRegion != SIZE_MAX) {
-        auto it = regionWorldTriangles_.find(queryRegion);
-        if (it != regionWorldTriangles_.end()) {
+        auto it = owner_.regionWorldTriangles_.find(queryRegion);
+        if (it != owner_.regionWorldTriangles_.end()) {
             float distSq;
             if (rayIntersectTriangles(nearStart, rayDir, nearRayLen, it->second, hitPoint, hitTriangle, distSq)) {
                 if (distSq < closestDistSq) {
@@ -600,7 +601,7 @@ float IrrlichtRenderer::findGroundZBspFiltered(float x, float y, float currentZ,
     if (nearHit) {
         float floorZ = bestHit.Y;
         if (floorZ <= feetZ + maxStepUp + 0.1f) {
-            if (playerConfig_.collisionDebug) {
+            if (owner_.playerConfig_.collisionDebug) {
                 addCollisionDebugLine(nearStart, bestHit, irr::video::SColor(255, 0, 255, 128), 0.2f);
             }
             return floorZ;
@@ -617,8 +618,8 @@ float IrrlichtRenderer::findGroundZBspFiltered(float x, float y, float currentZ,
     bestHit = irr::core::vector3df();
 
     if (queryRegion != SIZE_MAX) {
-        auto it = regionWorldTriangles_.find(queryRegion);
-        if (it != regionWorldTriangles_.end()) {
+        auto it = owner_.regionWorldTriangles_.find(queryRegion);
+        if (it != owner_.regionWorldTriangles_.end()) {
             float distSq;
             if (rayIntersectTriangles(rayStart, rayDir, fullRayLen, it->second, hitPoint, hitTriangle, distSq)) {
                 if (distSq < closestDistSq) {
@@ -644,7 +645,7 @@ float IrrlichtRenderer::findGroundZBspFiltered(float x, float y, float currentZ,
     }
 
     // Debug visualization
-    if (playerConfig_.collisionDebug) {
+    if (owner_.playerConfig_.collisionDebug) {
         if (hit) {
             float floorZ = bestHit.Y;
             bool validFloor = (floorZ <= feetZ + maxStepUp + 0.1f);
@@ -670,11 +671,11 @@ float IrrlichtRenderer::findGroundZBspFiltered(float x, float y, float currentZ,
     }
 
     // Check for boat collision — only when boats exist in zone
-    if (entityRenderer_ && entityRenderer_->hasBoatsInZone()) {
-        float boatDeckZ = entityRenderer_->findBoatDeckZ(x, y, feetZ);
+    if (ctx_.entityRenderer && ctx_.entityRenderer->hasBoatsInZone()) {
+        float boatDeckZ = ctx_.entityRenderer->findBoatDeckZ(x, y, feetZ);
         if (boatDeckZ != BEST_Z_INVALID) {
             if (boatDeckZ > groundZ) {
-                if (playerConfig_.collisionDebug) {
+                if (owner_.playerConfig_.collisionDebug) {
                     irr::core::vector3df irrFrom(x, feetZ, y);
                     irr::core::vector3df irrTo(x, boatDeckZ, y);
                     addCollisionDebugLine(irrFrom, irrTo, irr::video::SColor(255, 255, 255, 0), 0.3f);
@@ -689,7 +690,7 @@ float IrrlichtRenderer::findGroundZBspFiltered(float x, float y, float currentZ,
 
 // --- Collision Debug Visualization ---
 
-void IrrlichtRenderer::addCollisionDebugLine(const irr::core::vector3df& start,
+void PlayerCameraComponent::addCollisionDebugLine(const irr::core::vector3df& start,
                                               const irr::core::vector3df& end,
                                               const irr::video::SColor& color,
                                               float duration) {
@@ -701,8 +702,8 @@ void IrrlichtRenderer::addCollisionDebugLine(const irr::core::vector3df& start,
     collisionDebugLines_.push_back(line);
 }
 
-void IrrlichtRenderer::drawCollisionDebugLines(float deltaTime) {
-    if (!driver_ || collisionDebugLines_.empty()) {
+void PlayerCameraComponent::drawCollisionDebugLines(float deltaTime) {
+    if (!ctx_.driver || collisionDebugLines_.empty()) {
         return;
     }
 
@@ -714,13 +715,13 @@ void IrrlichtRenderer::drawCollisionDebugLines(float deltaTime) {
     lineMaterial.MaterialType = irr::video::EMT_SOLID;
     lineMaterial.ZBuffer = irr::video::ECFN_ALWAYS;  // Always draw on top
     lineMaterial.ZWriteEnable = false;
-    driver_->setMaterial(lineMaterial);
-    driver_->setTransform(irr::video::ETS_WORLD, irr::core::matrix4());
+    ctx_.driver->setMaterial(lineMaterial);
+    ctx_.driver->setTransform(irr::video::ETS_WORLD, irr::core::matrix4());
 
     // Draw all lines and update their timers
     auto it = collisionDebugLines_.begin();
     while (it != collisionDebugLines_.end()) {
-        driver_->draw3DLine(it->start, it->end, it->color);
+        ctx_.driver->draw3DLine(it->start, it->end, it->color);
 
         // Update timer
         it->timeRemaining -= deltaTime;
@@ -732,7 +733,7 @@ void IrrlichtRenderer::drawCollisionDebugLines(float deltaTime) {
     }
 }
 
-void IrrlichtRenderer::clearCollisionDebugLines() {
+void PlayerCameraComponent::clearCollisionDebugLines() {
     collisionDebugLines_.clear();
 }
 

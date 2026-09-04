@@ -254,6 +254,8 @@ IrrlichtRenderer::IrrlichtRenderer()
     eqe1_ = std::make_unique<Eqe1ArchiveComponent>(ctx_, *this);
     // L03 (Batch L): the overlays family.
     overlays_ = std::make_unique<OverlaysComponent>(ctx_, *this);
+    // L05 (Batch L): the player family -- movement, collision, camera.
+    playerCamera_ = std::make_unique<PlayerCameraComponent>(ctx_, *this);
 }
 
 IrrlichtRenderer::~IrrlichtRenderer() {

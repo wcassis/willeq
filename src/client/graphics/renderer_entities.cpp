@@ -26,7 +26,7 @@ bool IrrlichtRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std
     // If this is the player entity, handle visibility based on current mode
     if (result && isPlayer) {
         // Set player race for vision-based lighting
-        setPlayerRace(raceId);
+        playerCamera_->setPlayerRace(raceId);
 
         // T300: re-apply first-person bookkeeping (name tag) if the player
         // entity is (re)created while already in FirstPerson camera mode
@@ -35,7 +35,7 @@ bool IrrlichtRenderer::createEntity(uint16_t spawnId, uint16_t raceId, const std
         bool firstPerson = (cameraMode_ == CameraMode::FirstPerson);
         entityRenderer_->setPlayerFirstPersonMode(firstPerson);
         if (firstPerson) {
-            repositionFirstPersonCamera();
+            playerCamera_->repositionFirstPersonCamera();
         }
 
         // Player entity creation is the final step - mark zone as ready

@@ -481,6 +481,53 @@ void IrrlichtRenderer::updateTimeOfDay(uint8_t hour, uint8_t minute) {
     }
 }
 
+// L05 (Batch L, refactor/L_renderer_component_extraction.md): this body was
+// in renderer_camera.cpp, which L05 moved into PlayerCameraComponent. It did
+// NOT go with it. It reads objectLights_, weatherEffects_ and
+// fireEffectsEnabled_ and nothing else -- all three are RendererContext core,
+// none is player or camera state -- and its ONE caller is updateTimeOfDay()
+// directly above. It sat in the camera TU by accident of the J11 split.
+// So it moved SIDEWAYS, verbatim, to the TU of its caller, and its
+// declaration stayed on IrrlichtRenderer: zero call sites changed. This is
+// L04 correction 5 (the measureSection case) for the second time. L09 decides
+// whether the lighting family finally takes it.
+// updateZoneLightColors() removed -- vision/weather modifiers now applied in SimulationWorker
+void IrrlichtRenderer::updateObjectLightColors(float deltaTime) {
+    if (objectLights_.empty()) {
+        return;
+    }
+
+    // Get weather modifier (darker during storms)
+    float weatherMod = 1.0f;
+    if (weatherEffects_ && weatherEffects_->isEnabled()) {
+        weatherMod = weatherEffects_->getAmbientLightModifier();
+    }
+
+    // Update all object light colors
+    for (auto& objLight : objectLights_) {
+        if (objLight.node) {
+            // Apply weather modifier to original color
+            float r = objLight.originalColor.r * weatherMod;
+            float g = objLight.originalColor.g * weatherMod;
+            float b = objLight.originalColor.b * weatherMod;
+
+            // Fire flickering: modulate intensity with layered sine waves
+            if (objLight.isFireSource && fireEffectsEnabled_) {
+                objLight.flickerPhase += objLight.flickerSpeed * deltaTime;
+                float flicker = 0.70f + 0.10f * std::sin(objLight.flickerPhase * 6.7f)
+                                      + 0.05f * std::sin(objLight.flickerPhase * 13.1f);
+                r *= flicker;
+                g *= flicker;
+                b *= flicker;
+            }
+
+            irr::video::SLight& lightData = objLight.node->getLightData();
+            lightData.DiffuseColor = irr::video::SColorf(r, g, b, 1.0f);
+        }
+    }
+
+}
+
 bool IrrlichtRenderer::isRegionPvsVisible(size_t regionIdx) const {
     if (!usePvsCulling_ || regionIdx == SIZE_MAX || currentPvsRegion_ == SIZE_MAX)
         return true;  // No PVS data — assume visible
@@ -566,7 +613,7 @@ void IrrlichtRenderer::createEntityRenderer() {
         entityRenderer_->getRaceModelLoader()->setMaxChrCacheEntries(config_.constrainedConfig.chrCacheMaxEntries);
     }
     entityRenderer_->setGroundFinderCallback([this](float x, float y, float currentZ) {
-        return this->findGroundZ(x, y, currentZ);
+        return playerCamera_->findGroundZ(x, y, currentZ);
     });
     if (zoneBspTree_) {
         entityRenderer_->setBspTree(zoneBspTree_);

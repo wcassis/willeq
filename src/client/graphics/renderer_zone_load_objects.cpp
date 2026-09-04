@@ -541,7 +541,7 @@ void IrrlichtRenderer::loadZoneStep9_Collision(ZoneLoadContext& ctx) {
         auto stepStart = std::chrono::steady_clock::now();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step9: smgr_={}, regionWorldTriangles_={}, objectNodes_={}, zoneBspTree_={}",
                   (bool)smgr_, regionWorldTriangles_.size(), objectNodes_.size(), (bool)zoneBspTree_);
-        setupMinimalZoneCollision();
+        playerCamera_->setupMinimalZoneCollision();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step9: setupMinimalZoneCollision complete, regionWorldTriangles_={}",
                   regionWorldTriangles_.size());
 
@@ -552,7 +552,7 @@ void IrrlichtRenderer::loadZoneStep9_Collision(ZoneLoadContext& ctx) {
             for (size_t oi = 0; oi < objectNodes_.size(); ++oi) {
                 auto* node = objectNodes_[oi];
                 if (node && node->getMesh()) {
-                    auto triangles = extractWorldTriangles(smgr_, node);
+                    auto triangles = PlayerCameraComponent::extractWorldTriangles(smgr_, node);
                     if (!triangles.empty()) {
                         size_t region = (oi < objectRegions_.size()) ? objectRegions_[oi] : SIZE_MAX;
                         auto& regionTris = objectWorldTriangles_[region];

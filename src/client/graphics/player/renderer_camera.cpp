@@ -1,4 +1,5 @@
 #include "client/graphics/irrlicht_renderer.h"
+#include "client/graphics/player/player_camera_component.h"
 #include "client/graphics/renderer_zone_merge.h"  // ZoneMergeBuffers complete type (unique_ptr member destruction)
 #include "client/willeq_database.h"
 #include "client/graphics/loading_thread.h"
@@ -123,9 +124,9 @@ namespace Graphics {
 // separate pass, it pointed the wrong way for a real eye, and T298 measured
 // the official client's forward offset at 0.00 +/- 0.4 -- which is, since
 // T309, the value the eye uses (see kEyeForwardOffsetUnits).
-void IrrlichtRenderer::applyCameraProjectionForMode() {
-    if (!camera_) return;
-    const bool firstPerson = (cameraMode_ == CameraMode::FirstPerson);
+void PlayerCameraComponent::applyCameraProjectionForMode() {
+    if (!ctx_.camera) return;
+    const bool firstPerson = (owner_.cameraMode_ == CameraMode::FirstPerson);
     // T300 (post-Leg-A): the NEAR PLANE IS THE SAME IN EVERY MODE. Leg A
     // measured the official client clipping nothing -- geometry draws at
     // point-blank range -- so first person must clip exactly as third person
@@ -136,8 +137,8 @@ void IrrlichtRenderer::applyCameraProjectionForMode() {
     // and the visual gate's goldens hold.
     // T310 Leg A: the RUNTIME near plane, == kWorldNearPlaneUnits unless
     // /fpcam or --fpcam overrode it. Still applied in EVERY mode.
-    camera_->setNearValue(fpTunable(FpTunable::NearPlaneUnits));
-    camera_->setFOV(firstPerson ? firstPersonVerticalFovRadians(camera_->getAspectRatio())
+    ctx_.camera->setNearValue(fpTunable(FpTunable::NearPlaneUnits));
+    ctx_.camera->setFOV(firstPerson ? firstPersonVerticalFovRadians(ctx_.camera->getAspectRatio())
                                 : kWorldVerticalFovRadians);
     if (firstPerson) {
         applyFirstPersonPitchClamp();
@@ -145,12 +146,12 @@ void IrrlichtRenderer::applyCameraProjectionForMode() {
         // Leaving first person must put the up vector back, or third person
         // inherits whatever roll the last first-person pitch left behind --
         // the visual gate's goldens are third-person renders.
-        camera_->setUpVector(irr::core::vector3df(0.0f, 1.0f, 0.0f));
+        ctx_.camera->setUpVector(irr::core::vector3df(0.0f, 1.0f, 0.0f));
     }
     LOG_DEBUG(MOD_GRAPHICS,
               "[FP-PROJ] firstPerson={} near={:.3f} fovY={:.4f}rad aspect={:.4f}",
-              firstPerson, camera_->getNearValue(), camera_->getFOV(),
-              camera_->getAspectRatio());
+              firstPerson, ctx_.camera->getNearValue(), ctx_.camera->getFOV(),
+              ctx_.camera->getAspectRatio());
 }
 
 // T309: THIS IS NOT THE HIDING SEAM. T300 introduced it as one -- "the body
@@ -166,8 +167,8 @@ void IrrlichtRenderer::applyCameraProjectionForMode() {
 // client lets you look. Do not re-derive it from the FOV (90 - vFOV/2 is by
 // construction the angle that ADMITS the body's cone, not one that excludes
 // it) and do not pull it back under 90 in the belief that it hides anything.
-void IrrlichtRenderer::applyFirstPersonPitchClamp() {
-    if (!camera_ || cameraMode_ != CameraMode::FirstPerson) return;
+void PlayerCameraComponent::applyFirstPersonPitchClamp() {
+    if (!ctx_.camera || owner_.cameraMode_ != CameraMode::FirstPerson) return;
 
     const float minLook = firstPersonMinLookPitchDegrees();
     // T310 Leg A: both limits read the runtime tunables (== the constants
@@ -186,8 +187,8 @@ void IrrlichtRenderer::applyFirstPersonPitchClamp() {
 
 // One place that answers "what vertical FOV is the first-person camera using",
 // so the clamp derivation and the projection cannot disagree.
-float IrrlichtRenderer::getFirstPersonVerticalFov() const {
-    return firstPersonVerticalFovRadians(camera_ ? camera_->getAspectRatio() : 4.0f / 3.0f);
+float PlayerCameraComponent::getFirstPersonVerticalFov() const {
+    return firstPersonVerticalFovRadians(ctx_.camera ? ctx_.camera->getAspectRatio() : 4.0f / 3.0f);
 }
 
 // T310 Leg A -- `/fpcam dump`: gather the RESOLVED first-person pose. Only the
@@ -196,34 +197,34 @@ float IrrlichtRenderer::getFirstPersonVerticalFov() const {
 // (tests/test_first_person_camera_single_formula.cpp); the FORMATTING is
 // FormatFirstPersonPoseDump() in first_person_tunables.cpp, which is what
 // Leg C's sweep driver parses and which is therefore testable on its own.
-std::vector<std::string> IrrlichtRenderer::buildFirstPersonCameraDumpLines() const {
+std::vector<std::string> PlayerCameraComponent::buildFirstPersonCameraDumpLines() const {
     FirstPersonPoseSample sample;
 
     EntityRenderer::FirstPersonEyeOffset eye;
-    if (entityRenderer_) {
-        eye = entityRenderer_->getPlayerFirstPersonEyeOffset();
-        sample.collisionZOffset = entityRenderer_->getPlayerCollisionZOffset();
+    if (ctx_.entityRenderer) {
+        eye = ctx_.entityRenderer->getPlayerFirstPersonEyeOffset();
+        sample.collisionZOffset = ctx_.entityRenderer->getPlayerCollisionZOffset();
     }
     if (eye.irrY <= 0.0f) eye.irrY = 3.65f;
 
     sample.modeName = getCameraModeString();
-    sample.cameraNodePresent = (camera_ != nullptr);
+    sample.cameraNodePresent = (ctx_.camera != nullptr);
     sample.eyeFromHeadBone = eye.derivedFromHead;
-    sample.aspect = camera_ ? camera_->getAspectRatio() : 4.0f / 3.0f;
+    sample.aspect = ctx_.camera ? ctx_.camera->getAspectRatio() : 4.0f / 3.0f;
 
     const FirstPersonCameraPlacement p = computeFirstPersonCamera(
-        playerX_, playerY_, playerZ_, eye.irrY, playerConfig_.eyeHeight,
-        playerHeading_, playerPitch_, 100.0f, eye.irrX, eye.irrZ);
+        ctx_.playerX, ctx_.playerY, ctx_.playerZ, eye.irrY, owner_.playerConfig_.eyeHeight,
+        owner_.playerHeading_, playerPitch_, 100.0f, eye.irrX, eye.irrZ);
     sample.eyeIrrX = p.posX;  sample.eyeIrrY = p.posY;  sample.eyeIrrZ = p.posZ;
     sample.targetIrrX = p.targetX; sample.targetIrrY = p.targetY; sample.targetIrrZ = p.targetZ;
     sample.upX = p.upX; sample.upY = p.upY; sample.upZ = p.upZ;
 
-    sample.nodeOriginEqZ = playerZ_;
+    sample.nodeOriginEqZ = ctx_.playerZ;
     sample.eyeOffsetIrrX = eye.irrX;
     sample.eyeOffsetIrrY = eye.irrY;
     sample.eyeOffsetIrrZ = eye.irrZ;
 
-    sample.headingEqUnits = playerHeading_;
+    sample.headingEqUnits = owner_.playerHeading_;
     sample.lookPitchDeg = playerPitch_;
     sample.fixedPitchDownDeg = fpTunable(FpTunable::PitchDownDegrees);
     sample.maxDownPitchDeg = firstPersonMaxDownPitchDegrees();
@@ -234,13 +235,13 @@ std::vector<std::string> IrrlichtRenderer::buildFirstPersonCameraDumpLines() con
 
     sample.hfovDeg = fpTunable(FpTunable::HorizontalFovDegrees);
     sample.vfovDeg = firstPersonVerticalFovRadians(sample.aspect) * 180.0f / kFirstPersonPi;
-    sample.nearPlane = camera_ ? camera_->getNearValue() : fpTunable(FpTunable::NearPlaneUnits);
+    sample.nearPlane = ctx_.camera ? ctx_.camera->getNearValue() : fpTunable(FpTunable::NearPlaneUnits);
 
     return FormatFirstPersonPoseDump(sample);
 }
 
-void IrrlichtRenderer::repositionFirstPersonCamera() {
-    if (!camera_ || cameraMode_ != CameraMode::FirstPerson) {
+void PlayerCameraComponent::repositionFirstPersonCamera() {
+    if (!ctx_.camera || owner_.cameraMode_ != CameraMode::FirstPerson) {
         return;
     }
     // The projection is part of the first-person camera, not a separate
@@ -253,8 +254,8 @@ void IrrlichtRenderer::repositionFirstPersonCamera() {
     // whole-body bbox crown T300 used. getPlayerFirstPersonEyeOffset() falls
     // back to that crown only for a model with no head anchor, and says so.
     EntityRenderer::FirstPersonEyeOffset eye;
-    if (entityRenderer_) {
-        eye = entityRenderer_->getPlayerFirstPersonEyeOffset();
+    if (ctx_.entityRenderer) {
+        eye = ctx_.entityRenderer->getPlayerFirstPersonEyeOffset();
     } else {
         eye.irrY = 3.65f;
     }
@@ -270,42 +271,42 @@ void IrrlichtRenderer::repositionFirstPersonCamera() {
     // of this formula, so moving discarded the bias and standing still
     // discarded the mouse.
     const FirstPersonCameraPlacement placement = computeFirstPersonCamera(
-        playerX_, playerY_, playerZ_, eye.irrY, playerConfig_.eyeHeight,
-        playerHeading_, playerPitch_, 100.0f, eye.irrX, eye.irrZ);
+        ctx_.playerX, ctx_.playerY, ctx_.playerZ, eye.irrY, owner_.playerConfig_.eyeHeight,
+        owner_.playerHeading_, playerPitch_, 100.0f, eye.irrX, eye.irrZ);
 
-    camera_->setPosition(irr::core::vector3df(placement.posX, placement.posY, placement.posZ));
-    camera_->setTarget(irr::core::vector3df(placement.targetX, placement.targetY, placement.targetZ));
+    ctx_.camera->setPosition(irr::core::vector3df(placement.posX, placement.posY, placement.posZ));
+    ctx_.camera->setTarget(irr::core::vector3df(placement.targetX, placement.targetY, placement.targetZ));
     // REQUIRED, not cosmetic: Leg A's measured 94.9-degree clamp reaches past
     // the nadir, where the default (0,1,0) up vector degenerates and flips.
-    camera_->setUpVector(irr::core::vector3df(placement.upX, placement.upY, placement.upZ));
+    ctx_.camera->setUpVector(irr::core::vector3df(placement.upX, placement.upY, placement.upZ));
 
     // T295: DEBUG, not INFO -- this now runs on every frame in which the
     // player moves, turns or looks. The FP-CAMERA tag is the evidence
     // emitter the unit's still-vs-moving proof diffs. T300: playerZ_ is the
     // node origin (== server Z, model CENTRE), not the feet.
     LOG_DEBUG(MOD_GRAPHICS, "[FP-CAMERA] eq=({:.4f},{:.4f},{:.4f}) nodeOriginZ={:.4f} eyeOffset=({:.4f},{:.4f},{:.4f}) fromHead={} adjust={:.2f} heading={:.4f} lookPitch={:.4f}deg fixedPitchDown={:.4f}deg maxDownPitch={:.2f}deg",
-              placement.posX, placement.posZ, placement.posY, playerZ_,
+              placement.posX, placement.posZ, placement.posY, ctx_.playerZ,
               eye.irrX, eye.irrY, eye.irrZ, eye.derivedFromHead,
-              playerConfig_.eyeHeight, playerHeading_, playerPitch_,
+              owner_.playerConfig_.eyeHeight, owner_.playerHeading_, playerPitch_,
               kFirstPersonPitchDownDegrees,
               firstPersonMaxDownPitchDegrees());
 }
 
-void IrrlichtRenderer::setPlayerSpawnId(uint16_t spawnId) {
-    if (isLoading()) return;
-    playerSpawnId_ = spawnId;
+void PlayerCameraComponent::setPlayerSpawnId(uint16_t spawnId) {
+    if (owner_.isLoading()) return;
+    owner_.playerSpawnId_ = spawnId;
     LOG_INFO(MOD_GRAPHICS, "[IrrlichtRenderer] Player spawn ID set to: {}", spawnId);
 
-    if (entityRenderer_) {
-        entityRenderer_->setPlayerSpawnId(spawnId);
+    if (ctx_.entityRenderer) {
+        ctx_.entityRenderer->setPlayerSpawnId(spawnId);
 
         // T300: record the mode (name tag off in first person); the player
         // model itself draws normally either way.
-        bool firstPerson = (cameraMode_ == CameraMode::FirstPerson);
-        entityRenderer_->setPlayerFirstPersonMode(firstPerson);
+        bool firstPerson = (owner_.cameraMode_ == CameraMode::FirstPerson);
+        ctx_.entityRenderer->setPlayerFirstPersonMode(firstPerson);
 
         const EntityRenderer::FirstPersonEyeOffset eye =
-            entityRenderer_->getPlayerFirstPersonEyeOffset();
+            ctx_.entityRenderer->getPlayerFirstPersonEyeOffset();
         LOG_INFO(MOD_GRAPHICS, "[ZONE-IN] setPlayerSpawnId: eyeOffset=({:.2f},{:.2f},{:.2f}) fromHead={} firstPerson={}",
                  eye.irrX, eye.irrY, eye.irrZ, eye.derivedFromHead, firstPerson);
 
@@ -316,7 +317,7 @@ void IrrlichtRenderer::setPlayerSpawnId(uint16_t spawnId) {
     }
 }
 
-void IrrlichtRenderer::setPlayerRace(uint16_t raceId) {
+void PlayerCameraComponent::setPlayerRace(uint16_t raceId) {
     // Determine base vision from race
     // Ultravision: Dark Elf (6), High Elf (5), Wood Elf (4), Troll (9), Iksar (128)
     // Infravision: Dwarf (8), Gnome (12), Half Elf (7), Ogre (10), Halfling (11)
@@ -340,80 +341,42 @@ void IrrlichtRenderer::setPlayerRace(uint16_t raceId) {
             baseVision_ = VisionType::Normal;
             break;
     }
-    currentVision_ = baseVision_;
+    owner_.currentVision_ = baseVision_;
     LOG_INFO(MOD_GRAPHICS, "Player race {} -> base vision: {}",
-             raceId, currentVision_ == VisionType::Ultravision ? "Ultravision" :
-                     currentVision_ == VisionType::Infravision ? "Infravision" : "Normal");
+             raceId, owner_.currentVision_ == VisionType::Ultravision ? "Ultravision" :
+                     owner_.currentVision_ == VisionType::Infravision ? "Infravision" : "Normal");
     // Zone light colors updated by SimulationWorker via visionType in SimulationInput
 }
 
-void IrrlichtRenderer::setVisionType(VisionType vision) {
-    if (isLoading()) return;
+void PlayerCameraComponent::setVisionType(VisionType vision) {
+    if (owner_.isLoading()) return;
     // Only upgrade vision, never downgrade below base
-    if (vision > currentVision_) {
-        currentVision_ = vision;
+    if (vision > owner_.currentVision_) {
+        owner_.currentVision_ = vision;
         LOG_INFO(MOD_GRAPHICS, "Vision upgraded to: {}",
-                 currentVision_ == VisionType::Ultravision ? "Ultravision" :
-                 currentVision_ == VisionType::Infravision ? "Infravision" : "Normal");
+                 owner_.currentVision_ == VisionType::Ultravision ? "Ultravision" :
+                 owner_.currentVision_ == VisionType::Infravision ? "Infravision" : "Normal");
         // Zone light colors updated by SimulationWorker via visionType in SimulationInput
     }
 }
 
-void IrrlichtRenderer::resetVisionToBase() {
-    if (isLoading()) return;
-    if (currentVision_ != baseVision_) {
-        currentVision_ = baseVision_;
+void PlayerCameraComponent::resetVisionToBase() {
+    if (owner_.isLoading()) return;
+    if (owner_.currentVision_ != baseVision_) {
+        owner_.currentVision_ = baseVision_;
         LOG_INFO(MOD_GRAPHICS, "Vision reset to base: {}",
-                 currentVision_ == VisionType::Ultravision ? "Ultravision" :
-                 currentVision_ == VisionType::Infravision ? "Infravision" : "Normal");
+                 owner_.currentVision_ == VisionType::Ultravision ? "Ultravision" :
+                 owner_.currentVision_ == VisionType::Infravision ? "Infravision" : "Normal");
         // Zone light colors updated by SimulationWorker via visionType in SimulationInput
     }
 }
 
-// updateZoneLightColors() removed — vision/weather modifiers now applied in SimulationWorker
-
-void IrrlichtRenderer::updateObjectLightColors(float deltaTime) {
-    if (objectLights_.empty()) {
-        return;
-    }
-
-    // Get weather modifier (darker during storms)
-    float weatherMod = 1.0f;
-    if (weatherEffects_ && weatherEffects_->isEnabled()) {
-        weatherMod = weatherEffects_->getAmbientLightModifier();
-    }
-
-    // Update all object light colors
-    for (auto& objLight : objectLights_) {
-        if (objLight.node) {
-            // Apply weather modifier to original color
-            float r = objLight.originalColor.r * weatherMod;
-            float g = objLight.originalColor.g * weatherMod;
-            float b = objLight.originalColor.b * weatherMod;
-
-            // Fire flickering: modulate intensity with layered sine waves
-            if (objLight.isFireSource && fireEffectsEnabled_) {
-                objLight.flickerPhase += objLight.flickerSpeed * deltaTime;
-                float flicker = 0.70f + 0.10f * std::sin(objLight.flickerPhase * 6.7f)
-                                      + 0.05f * std::sin(objLight.flickerPhase * 13.1f);
-                r *= flicker;
-                g *= flicker;
-                b *= flicker;
-            }
-
-            irr::video::SLight& lightData = objLight.node->getLightData();
-            lightData.DiffuseColor = irr::video::SColorf(r, g, b, 1.0f);
-        }
-    }
-
-}
-
-void IrrlichtRenderer::setPlayerPosition(float x, float y, float z, float heading) {
-    if (isLoading()) return;
-    playerX_ = x;
-    playerY_ = y;
-    playerZ_ = z;
-    playerHeading_ = heading;
+void PlayerCameraComponent::setPlayerPosition(float x, float y, float z, float heading) {
+    if (owner_.isLoading()) return;
+    ctx_.playerX = x;
+    ctx_.playerY = y;
+    ctx_.playerZ = z;
+    owner_.playerHeading_ = heading;
 
     LOG_DEBUG(MOD_GRAPHICS, "[ZONE-IN] setPlayerPosition: pos=({:.2f},{:.2f},{:.2f}) heading={:.2f} (EQ units, EQ heading 0-512)",
              x, y, z, heading);
@@ -425,20 +388,20 @@ void IrrlichtRenderer::setPlayerPosition(float x, float y, float z, float headin
     // Check if player is within zone geometry bounds before following
     // Uses cached bounds — geometry vectors may have been released after zone load
     bool playerInBounds = true;
-    if (zoneBoundsValid_) {
+    if (owner_.zoneBoundsValid_) {
         float margin = 500.0f;
-        if (x < zoneBoundsMinX_ - margin || x > zoneBoundsMaxX_ + margin ||
-            y < zoneBoundsMinY_ - margin || y > zoneBoundsMaxY_ + margin) {
+        if (x < owner_.zoneBoundsMinX_ - margin || x > owner_.zoneBoundsMaxX_ + margin ||
+            y < owner_.zoneBoundsMinY_ - margin || y > owner_.zoneBoundsMaxY_ + margin) {
             playerInBounds = false;
         }
     }
 
-    if (cameraMode_ == CameraMode::Follow && playerInBounds) {
+    if (owner_.cameraMode_ == CameraMode::Follow && playerInBounds) {
         LOG_DEBUG(MOD_GRAPHICS, "[ZONE-IN] Camera mode=Follow, calling setFollowPosition({:.2f},{:.2f},{:.2f},{:.2f})",
                  x, y, z, heading);
-        cameraController_->enableZoneInLogging();  // Enable one-time detailed logging
-        cameraController_->setFollowPosition(x, y, z, heading);
-    } else if (cameraMode_ == CameraMode::FirstPerson && camera_ && playerInBounds) {
+        ctx_.cameraController->enableZoneInLogging();  // Enable one-time detailed logging
+        ctx_.cameraController->setFollowPosition(x, y, z, heading);
+    } else if (owner_.cameraMode_ == CameraMode::FirstPerson && ctx_.camera && playerInBounds) {
         // T75: this used to be a third independent copy of the first-person
         // camera placement formula (setCameraMode()/cycleCameraMode() and
         // setPlayerSpawnId() already call the shared repositionFirstPersonCamera()
@@ -453,15 +416,15 @@ void IrrlichtRenderer::setPlayerPosition(float x, float y, float z, float headin
         repositionFirstPersonCamera();
     } else {
         LOG_INFO(MOD_GRAPHICS, "[ZONE-IN] Camera: mode={} playerInBounds={} camera={} (no camera update)",
-                 static_cast<int>(cameraMode_), playerInBounds, camera_ != nullptr);
+                 static_cast<int>(owner_.cameraMode_), playerInBounds, ctx_.camera != nullptr);
     }
 
     // Force visibility recalculation on the next frame.
-    forcePvsUpdate_ = true;
+    owner_.forcePvsUpdate_ = true;
 }
 
-void IrrlichtRenderer::setSwimmingState(bool swimming, float swimSpeed, bool levitating) {
-    if (isLoading()) return;
+void PlayerCameraComponent::setSwimmingState(bool swimming, float swimSpeed, bool levitating) {
+    if (owner_.isLoading()) return;
     if (playerMovement_.isSwimming != swimming) {
         LOG_INFO(MOD_GRAPHICS, "[Swimming] {} water (swimSpeed={}, levitating={})",
                  swimming ? "Entering" : "Exiting", swimSpeed, levitating);
@@ -478,14 +441,14 @@ void IrrlichtRenderer::setSwimmingState(bool swimming, float swimSpeed, bool lev
     playerMovement_.isLevitating = levitating;
 }
 
-void IrrlichtRenderer::setCameraMode(CameraMode mode) {
-    if (isLoading()) return;
-    cameraMode_ = mode;
+void PlayerCameraComponent::setCameraMode(CameraMode mode) {
+    if (owner_.isLoading()) return;
+    owner_.cameraMode_ = mode;
 
     // T300: the player model draws normally in both modes; this only
     // records the mode and hides the floating name tag in first person.
-    if (entityRenderer_) {
-        entityRenderer_->setPlayerFirstPersonMode(cameraMode_ == CameraMode::FirstPerson);
+    if (ctx_.entityRenderer) {
+        ctx_.entityRenderer->setPlayerFirstPersonMode(owner_.cameraMode_ == CameraMode::FirstPerson);
     }
     // T300: the near plane and FOV are part of the first-person camera and
     // must be restored on the way OUT as well, which repositionFirstPersonCamera()
@@ -498,35 +461,35 @@ void IrrlichtRenderer::setCameraMode(CameraMode mode) {
     repositionFirstPersonCamera();
 }
 
-void IrrlichtRenderer::cycleCameraMode() {
-    switch (cameraMode_) {
+void PlayerCameraComponent::cycleCameraMode() {
+    switch (owner_.cameraMode_) {
         case CameraMode::Free:
-            cameraMode_ = CameraMode::Follow;
+            owner_.cameraMode_ = CameraMode::Follow;
             break;
         case CameraMode::Follow:
-            cameraMode_ = CameraMode::FirstPerson;
+            owner_.cameraMode_ = CameraMode::FirstPerson;
             break;
         case CameraMode::FirstPerson:
-            cameraMode_ = CameraMode::Free;
+            owner_.cameraMode_ = CameraMode::Free;
             break;
     }
 
     // T300: see setCameraMode() -- mode record + name tag only.
-    if (entityRenderer_) {
-        entityRenderer_->setPlayerFirstPersonMode(cameraMode_ == CameraMode::FirstPerson);
+    if (ctx_.entityRenderer) {
+        ctx_.entityRenderer->setPlayerFirstPersonMode(owner_.cameraMode_ == CameraMode::FirstPerson);
     }
     applyCameraProjectionForMode();
 
     // Log eye height when entering first-person mode
-    if (cameraMode_ == CameraMode::FirstPerson) {
-        LOG_INFO(MOD_GRAPHICS, "First Person mode - Eye height: {:.1f} (Y to raise, Shift+Y to lower)", playerConfig_.eyeHeight);
+    if (owner_.cameraMode_ == CameraMode::FirstPerson) {
+        LOG_INFO(MOD_GRAPHICS, "First Person mode - Eye height: {:.1f} (Y to raise, Shift+Y to lower)", owner_.playerConfig_.eyeHeight);
         // T74: see setCameraMode()'s comment -- same stale-camera gap.
         repositionFirstPersonCamera();
     }
 }
 
-std::string IrrlichtRenderer::getCameraModeString() const {
-    switch (cameraMode_) {
+std::string PlayerCameraComponent::getCameraModeString() const {
+    switch (owner_.cameraMode_) {
         case CameraMode::Free: return "Free";
         case CameraMode::Follow: return "Follow";
         case CameraMode::FirstPerson: return "First Person";
@@ -534,10 +497,10 @@ std::string IrrlichtRenderer::getCameraModeString() const {
     }
 }
 
-void IrrlichtRenderer::getCameraTransform(float& posX, float& posY, float& posZ,
+void PlayerCameraComponent::getCameraTransform(float& posX, float& posY, float& posZ,
                                            float& forwardX, float& forwardY, float& forwardZ,
                                            float& upX, float& upY, float& upZ) const {
-    if (!camera_) {
+    if (!ctx_.camera) {
         // Default values if camera not available
         posX = posY = posZ = 0.0f;
         forwardX = 0.0f; forwardY = 0.0f; forwardZ = -1.0f;
@@ -546,13 +509,13 @@ void IrrlichtRenderer::getCameraTransform(float& posX, float& posY, float& posZ,
     }
 
     // Get camera position (already in EQ coordinates: x, y, z where z is up)
-    irr::core::vector3df pos = camera_->getPosition();
+    irr::core::vector3df pos = ctx_.camera->getPosition();
     posX = pos.X;
     posY = pos.Y;
     posZ = pos.Z;
 
     // Get camera target to compute forward direction
-    irr::core::vector3df target = camera_->getTarget();
+    irr::core::vector3df target = ctx_.camera->getTarget();
     irr::core::vector3df forward = target - pos;
     forward.normalize();
     forwardX = forward.X;
@@ -560,7 +523,7 @@ void IrrlichtRenderer::getCameraTransform(float& posX, float& posY, float& posZ,
     forwardZ = forward.Z;
 
     // Get camera up vector
-    irr::core::vector3df up = camera_->getUpVector();
+    irr::core::vector3df up = ctx_.camera->getUpVector();
     upX = up.X;
     upY = up.Y;
     upZ = up.Z;
