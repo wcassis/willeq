@@ -575,14 +575,45 @@ it without taking that measurement first.
 
 ## Added 2026-09-04 by the T328 Leg B live session
 
-- **B049** (A) `Testchar` was found at `z=11.8806` after being left at
-  `z=3.751` — a drift of exactly **13 × 0.625**, one T311 login z-compounding
-  step per session. T311 Leg B (2026-09-02) matched the official client's
-  wire z (`groundZ + 0.625*size`) and reported the compounding closed; this
-  measurement says it is not, or that a second writer re-adds the offset on
-  login. Closes when: a login/logout cycle is measured twice in a row with
-  the persisted z unchanged, and the writer is named. **Needs eqemu.** Prov:
-  T328 Leg B Review; T311.
+- **B049** (A) **RE-MEASURED AND CONFIRMED LIVE by T331 (2026-09-04) — the
+  writer is NAMED and it is fable, not the server. Ready for a fix unit.**
+  `Testchar` was found at `z=11.8806` after being left at `z=3.751` — exactly
+  **13 × 0.625**. T311 Leg B (2026-09-02) matched the official client's wire z
+  (`groundZ + 0.625*size`) and reported the compounding closed. **It is not
+  closed on the graphical path.** T331 measured, on `Testchar` (Human male,
+  size 6) standing still at the canonical qeynos2 spot `(-74, 428)`:
+
+  | cycle | fable `--no-graphics` | fable **with graphics** | official Titanium client |
+  |---|---|---|---|
+  | 1 | 3.75 | **4.38063** | **3.751** |
+  | 2 | 3.75 | **5.00563** | **3.751** |
+  | 3 | 3.75 | **5.63063** | **3.751** |
+  | step | 0 | **+0.625/login** | **0** |
+
+  The oracle is steady to the last digit across three login/camp cycles, so the
+  **server applies no transform and is not the writer**.
+
+  **Named writer: `BridgeComponent::OnGraphicsMovement`,
+  `src/client/bridge/bridge_component.cpp:717`** — it clears
+  `zAwaitingFrameConversion` **without** the paired conversion, on the premise
+  (stated in its own comment) that "a z the RENDERER produced is definitively in
+  the render frame". False at zone-in: the renderer was *seeded* with the raw
+  wire z and echoes it straight back. The `[ZONE-IN] setPlayerPosition`
+  zone-load snapshot re-seeds it a second time **after** the model has loaded,
+  which is the half T311 did not cover. Discriminator: the correct deferred
+  conversion would have produced a render z of `3.12`; **no `3.12` appears
+  anywhere in the run log**, and both `setPlayerPosition` and `client_pos` hold
+  exactly one distinct value all session.
+
+  ⚠ **The `--no-graphics` path CANNOT exercise this defect** — no renderer means
+  no `PlayerPositionChanged`, so the flag is never cleared and the send passes
+  through verbatim, accidentally correct. That is why T311's three-login
+  regression test is green today. **Any fix must be pinned with a renderer
+  present, or by replaying the zone-load snapshot.**
+
+  Closes when: a fix lands and a **graphical** login/camp cycle is measured
+  twice in a row with the persisted z unchanged at 3.751. **Needs eqemu.**
+  Prov: **T331 Review + `review/T331/README.md`**; T328 Leg B Review; T311.
 
 ## Added 2026-09-04 by the L12 Review (Batch L close-out)
 
