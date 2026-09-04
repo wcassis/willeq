@@ -185,6 +185,20 @@ void eqt::commands::CommandsComponent::ZoneProcessAction(const EQ::Net::Packet &
 		ctx_.spell_manager->handleAction(spellAction);
 	}
 
+	// T348 (board B055): a buff LANDING on us arrives here and nowhere else.
+	// effect_flag == 4 is the second of the pair and means the spell took
+	// effect; type 231 (0xE7) is the spell-effect action. eqemu never sends a
+	// Titanium client an "applied" OP_Buff, so without this the buff list --
+	// and every hook hanging off it, including T339's vision publish -- never
+	// hears about a cast that landed until the next zone-in's PlayerProfile.
+	// Measured wire order and the reasoning: PlayerComponent::NoteBuffLandedOnPlayer
+	// in player/player_buffs.cpp.
+	if (action->type == 231 && action->effect_flag == 4 &&
+	    action->target == ctx_.self.MySpawnId()) {
+		ctx_.Player().NoteBuffLandedOnPlayer(action->spell, action->source,
+			static_cast<uint8_t>(action->level));
+	}
+
 	// Note: Attack animations are NOT triggered here - they come from animation updates
 	// when the entity initiates an attack. The Action packet is for spell/ability effects.
 }

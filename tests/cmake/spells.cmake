@@ -81,3 +81,22 @@ ADD_EXECUTABLE(test_buff_manager
 TARGET_COMPILE_DEFINITIONS(test_buff_manager PRIVATE WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
 TARGET_LINK_LIBRARIES(test_buff_manager GTest::gtest_main ${FMT_LIB} dl)
 GTEST_DISCOVER_TESTS(test_buff_manager)
+
+# T348 (board B055): the buff-LANDING producer. eqemu never sends a Titanium
+# client an "applied" OP_Buff, so ZoneProcessBuff()'s apply branch -- the only
+# production caller of setPlayerBuff(), and therefore of T339's vision apply
+# hook -- is dead on the wire. The landing arrives as the second OP_Action of
+# the pair (effect_flag == 4); these tests replay the packets T345 measured
+# live (review/T345/logs/live_session_vision.log) through a real EverQuest.
+# Owns its main() so it can open data/willeq.db once for the binary, hence
+# GTest::gtest rather than gtest_main.
+ADD_EXECUTABLE(test_buff_landing_producer
+    test_buff_landing_producer.cpp
+)
+TARGET_COMPILE_DEFINITIONS(test_buff_landing_producer PRIVATE
+    WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+TARGET_LINK_LIBRARIES(test_buff_landing_producer GTest::gtest willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_buff_landing_producer PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_buff_landing_producer)

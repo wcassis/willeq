@@ -321,6 +321,83 @@ TEST(VisionBuffLandingWireTest, InitializeSpellSystemRegistersBothHooksOnOneReco
            "both hooks";
 }
 
+// ===========================================================================
+// T348 (refactor/T348_buff_landing_producer.md, board B056): THE RACIAL FLOOR
+// ON THE PATH THAT ACTUALLY RUNS.
+//
+// The tests above all set the racial base by calling
+// PlayerCameraComponent::setPlayerRace() directly. T345 then found that
+// "Player race N -> base vision: X" -- the INFO line setPlayerRace logs on
+// every call -- appears in NONE of five live session logs, although the player
+// entity is created in each one. Measured in T348: setPlayerRace()'s only call
+// site was IrrlichtRenderer::createEntity(), and createEntity() has ZERO
+// production callers tree-wide. The live zone load registers every entity
+// through IrrlichtRenderer::registerEntity() (application_zone_loading.cpp,
+// twice -- the threaded and the inline load) and post-load spawns arrive on
+// the EntitySpawned bridge arm (bridge/irrlicht_bridge.cpp), which also calls
+// registerEntity(). So baseVision_ stayed at its Normal default all session and
+// a Dark Elf saw exactly as well in the dark as a Human.
+//
+// The runtime half below pins the floor itself. The reachability half has no
+// runtime seam here -- IrrlichtRenderer::registerEntity() returns early without
+// an entityRenderer_, which needs an Irrlicht device -- so it is pinned by
+// reading the source, the same idiom as
+// InitializeSpellSystemRegistersBothHooksOnOneRecompute above and
+// test_command_registration_order.cpp. That is what actually regressed.
+// ===========================================================================
+
+TEST(RacialVisionFloorTest, TheFloorIsTheRaceAndBuffsOnlyRaiseIt) {
+    IrrlichtRenderer darkElf;
+    darkElf.PlayerCamera().setPlayerRace(6);
+    EXPECT_EQ(darkElf.PlayerCamera().getBaseVision(), VisionType::Ultravision);
+    EXPECT_EQ(darkElf.getVisionType(), VisionType::Ultravision)
+        << "a Dark Elf sees in the dark before any buff";
+
+    IrrlichtRenderer human;
+    human.PlayerCamera().setPlayerRace(1);
+    EXPECT_EQ(human.PlayerCamera().getBaseVision(), VisionType::Normal);
+    EXPECT_EQ(human.getVisionType(), VisionType::Normal);
+
+    // The defect's shape: without setPlayerRace the Dark Elf is a Human.
+    IrrlichtRenderer neverTold;
+    EXPECT_EQ(neverTold.PlayerCamera().getBaseVision(), VisionType::Normal)
+        << "the default is Normal, which is why the miss was invisible";
+}
+
+TEST(RacialVisionFloorTest, RegisterEntitySetsTheRaceBecauseCreateEntityIsNeverCalled) {
+    const std::string path = std::string(WILLEQ_REPO_ROOT) +
+        "/src/client/graphics/renderer/renderer_entities.cpp";
+    std::ifstream in(path);
+    ASSERT_TRUE(in.good()) << "cannot read " << path;
+    const std::string src((std::istreambuf_iterator<char>(in)),
+                          std::istreambuf_iterator<char>());
+
+    const size_t reg = src.find("IrrlichtRenderer::registerEntity(");
+    ASSERT_NE(reg, std::string::npos);
+    const size_t upd = src.find("IrrlichtRenderer::updateEntity(", reg);
+    ASSERT_NE(upd, std::string::npos) << "registerEntity's body ends before updateEntity";
+
+    EXPECT_NE(src.find("setPlayerRace", reg), std::string::npos);
+    EXPECT_LT(src.find("setPlayerRace", reg), upd)
+        << "B056: the racial vision floor must be set in registerEntity(), the "
+           "only entity-creation entry point the live zone load reaches";
+}
+
+TEST(RacialVisionFloorTest, TheLiveZoneLoadStillGoesThroughRegisterEntity) {
+    // If this ever flips to createEntity(), the call above moves with it.
+    for (const char* rel : {"/src/client/application_zone_loading.cpp",
+                            "/src/client/bridge/irrlicht_bridge.cpp"}) {
+        const std::string path = std::string(WILLEQ_REPO_ROOT) + rel;
+        std::ifstream in(path);
+        ASSERT_TRUE(in.good()) << "cannot read " << path;
+        const std::string src((std::istreambuf_iterator<char>(in)),
+                              std::istreambuf_iterator<char>());
+        EXPECT_NE(src.find("registerEntity("), std::string::npos) << rel;
+        EXPECT_EQ(src.find("->createEntity("), std::string::npos)
+            << rel << ": createEntity() has no production caller (T348)";
+    }
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
 

@@ -195,6 +195,13 @@ public:
 	// buffs, which previously reached BuffManager and stopped there.
 	void PublishPlayerBuffUpdated(uint8_t slot, const EQT::SpellBuff_Struct& buff);
 	void PublishPlayerBuffs(const EQT::SpellBuff_Struct* buffs, size_t count);
+	// T348 (board B055): THE BUFF-LANDING PRODUCER. eqemu never sends a
+	// Titanium client an "applied" OP_Buff, so ZoneProcessBuff()'s apply
+	// branch is dead on the wire; a buff landing on us arrives as the SECOND
+	// OP_Action of the pair (effect_flag == 4). Called from
+	// CommandsComponent::ZoneProcessAction. See player_buffs.cpp.
+	void NoteBuffLandedOnPlayer(uint32_t spell_id, uint16_t caster_id,
+	                            uint8_t caster_level);
 	void ZoneProcessPetBuffWindow(const EQ::Net::Packet &p);
 	// Skill-specific packet sends
 	void SendApplyPoison(uint32_t inventory_slot);

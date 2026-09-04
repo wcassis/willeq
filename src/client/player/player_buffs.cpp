@@ -283,6 +283,84 @@ void eqt::player::PlayerComponent::ZoneProcessBuff(const EQ::Net::Packet &p)
 	}
 }
 
+// ===========================================================================
+// T348 (refactor/T348_buff_landing_producer.md, board B055): THE PRODUCER.
+//
+// MEASURED from T345's live session log (review/T345/logs/live_session_vision.log),
+// a self-cast of Ultravision (#castspell 46) on eqemu, in wire order:
+//
+//     [SPELL] ManaChange: mana=0, stamina=243, spell=0
+//     [SPELL] SpellAction: caster=287, target=287, spell='Ultravision' (46), effect_flag=0
+//     [SPELL] SpellAction: caster=287, target=287, spell='Ultravision' (46), effect_flag=4
+//
+// and on a RE-cast, the server first fades the copy already up:
+//
+//     [SPELL] SpellAction: ... effect_flag=0
+//     [SPELL] Buff: entity=287, spell=46,         slot=0, duration=0, fade=1, effect_type=2
+//     [SPELL] Buff: entity=287, spell=4294967295, slot=0, duration=0, fade=1, effect_type=2
+//     [SPELL] SpellAction: ... effect_flag=4
+//
+// There is NO OP_Buff with fade=0 anywhere in the session: every OP_Buff eqemu
+// sends a Titanium client is a FADE (MakeBuffFadePacket), because the only
+// sender of bufffade=0 (Client::SendBuffDurationPacket) is gated on
+// zone->BuffTimersSuspended(). So ZoneProcessBuff()'s apply branch above --
+// the only production caller of setPlayerBuff(), and therefore of
+// BuffManager's apply hook -- is unreachable on this server, and T339's
+// correctly-registered vision hook never fired in a live session.
+//
+// The landing is carried by the SECOND OP_Action of the pair, effect_flag == 4.
+// That is where the buff list has to change, and that is where this fires --
+// matching the official client, which shows the icon the moment the cast lands.
+//
+// applyBuff() (not setPlayerBuff()) is the entry used because the Action packet
+// carries no slot: applyBuff picks a free one, drops any earlier copy of the
+// same spell, derives the effect type from the spell data, and fires the apply
+// hook. Nothing in BuffManager changes.
+//
+// Gated on isBuffSpell() -- BENEFICIAL and with a duration. effect_flag == 4 is
+// sent for a RESISTED detrimental spell too (resists come on a separate message
+// packet, see SpellManager::handleAction), so admitting detrimental spells here
+// would post debuffs that never landed. A detrimental landing is still cleaned
+// up correctly if it arrives: its fade packet's removeBuffBySlot() is a no-op.
+// ===========================================================================
+void eqt::player::PlayerComponent::NoteBuffLandedOnPlayer(uint32_t spell_id,
+	uint16_t caster_id, uint8_t caster_level)
+{
+	if (!ctx_.buff_manager || !ctx_.spell_manager) {
+		return;
+	}
+	const EQ::SpellData* spell = ctx_.spell_manager->getSpell(spell_id);
+	if (!spell || !spell->isBuffSpell()) {
+		return;
+	}
+
+	// The Action packet has no duration either; the client computes it the
+	// same way the server did, from the formula and the caster's level.
+	const uint32_t ticks = spell->calculateDuration(caster_level);
+
+	ctx_.buff_manager->applyBuff(/*target=player*/ 0, spell_id, caster_id,
+		caster_level, ticks);
+
+	// applyBuff() chose the slot; read it back so the buff bar and the model
+	// agree, then publish through the same body ZoneProcessBuff() uses.
+	const EQ::ActiveBuff* landed = ctx_.buff_manager->getPlayerBuff(spell_id);
+	if (!landed || landed->slot < 0) {
+		return;  // blocked by stacking, or no free slot
+	}
+
+	LOG_DEBUG(MOD_SPELL, "Buff landed (OP_Action): spell={} caster={} level={} ticks={} slot={}",
+		spell_id, caster_id, caster_level, ticks, static_cast<int>(landed->slot));
+
+	EQT::SpellBuff_Struct wire{};
+	wire.effect_type = static_cast<uint8_t>(EQ::BuffEffectType::Buff);
+	wire.level = caster_level;
+	wire.spellid = spell_id;
+	wire.duration = static_cast<int32_t>(ticks == 0xFFFFFFFFu ? -1 : static_cast<int32_t>(ticks));
+	wire.counters = 0;
+	wire.player_id = caster_id;
+	PublishPlayerBuffUpdated(static_cast<uint8_t>(landed->slot), wire);
+}
+
 // T277: game -> renderer for ONE player buff slot. Extracted from
 // ZoneProcessBuff()'s apply branch so the PlayerProfile's zone-in buffs
 // (ZoneProcessPlayerProfile, eq_zone_entry.cpp) can publish the same event
