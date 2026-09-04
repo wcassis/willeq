@@ -486,13 +486,13 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/animated_mesh_scene_node.cpp
         src/client/graphics/eq/animated_mesh_eye.cpp
         src/client/graphics/first_person_eye.cpp
-        src/client/graphics/irrlicht_renderer.cpp
-        src/client/graphics/renderer_event_receiver.cpp  # J11
+        src/client/graphics/renderer/irrlicht_renderer.cpp
+        src/client/graphics/renderer/renderer_event_receiver.cpp  # J11
         # L03 (Batch L): the overlays family, was renderer_overlays.cpp +
         # renderer_hud_env.cpp.
         src/client/graphics/overlays/overlays_component.cpp
         src/client/graphics/overlays/overlays_hud_env.cpp
-        src/client/graphics/renderer_init.cpp  # J11
+        src/client/graphics/renderer/renderer_init.cpp  # J11
         # L06 (Batch L): the slash family -- the registry-3 renderer
         # command if-chain. The basename is unchanged; only the
         # directory moved (tests/cmake/commands.cmake reads this TU as
@@ -504,7 +504,9 @@ IF(EQT_GRAPHICS)
         src/client/graphics/zone_load/renderer_zone_load_objects.cpp
         src/client/graphics/zone_load/renderer_zone_load_entities.cpp
         src/client/graphics/zone_load/renderer_zone_load_env.cpp
-        src/client/graphics/renderer_entity_load_gate.cpp
+        # L12 (Batch L): the T109 load gate folded into ZoneLoadComponent;
+        # only the directory moved.
+        src/client/graphics/zone_load/renderer_entity_load_gate.cpp
         src/client/graphics/zone_lifecycle/renderer_zone_lifecycle.cpp
         src/client/graphics/diagnostics/diagnostics_component.cpp
         src/client/graphics/diagnostics/diagnostics_debug.cpp
@@ -524,7 +526,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/frame/renderer_frame_input.cpp
         src/client/graphics/frame/renderer_frame_render.cpp
         src/client/graphics/zone_lifecycle/renderer_gpu_upload.cpp
-        src/client/graphics/renderer_entities.cpp
+        src/client/graphics/renderer/renderer_entities.cpp
         src/client/graphics/zone_shader.cpp
         src/client/graphics/portal_system.cpp
         src/client/graphics/frustum_culler.cpp

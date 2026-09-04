@@ -150,9 +150,9 @@ void ZoneLifecycleComponent::createZoneMesh() {
         return;
     }
 
-    if (owner_.zoneMeshNode_) {
-        owner_.zoneMeshNode_->remove();
-        owner_.zoneMeshNode_ = nullptr;
+    if (ctx_.zoneMeshNode) {
+        ctx_.zoneMeshNode->remove();
+        ctx_.zoneMeshNode = nullptr;
     }
 
     ZoneMeshBuilder builder(ctx_.smgr, ctx_.driver, ctx_.device->getFileSystem());
@@ -180,19 +180,19 @@ void ZoneLifecycleComponent::createZoneMesh() {
         // Use octree scene node for automatic frustum culling of zone geometry
         // minimalPolysPerNode=256 controls octree subdivision granularity
         // This helps with OpenGL/llvmpipe but not with Irrlicht's software renderer
-        owner_.zoneMeshNode_ = ctx_.smgr->addOctreeSceneNode(mesh, nullptr, -1, 256);
-        if (owner_.zoneMeshNode_) {
+        ctx_.zoneMeshNode = ctx_.smgr->addOctreeSceneNode(mesh, nullptr, -1, 256);
+        if (ctx_.zoneMeshNode) {
             LOG_INFO(MOD_GRAPHICS, "Zone mesh created as octree node (polys per node: 256)");
-            for (irr::u32 i = 0; i < owner_.zoneMeshNode_->getMaterialCount(); ++i) {
-                owner_.zoneMeshNode_->getMaterial(i).Lighting = ctx_.lightingEnabled;
-                owner_.zoneMeshNode_->getMaterial(i).BackfaceCulling = false;
-                owner_.zoneMeshNode_->getMaterial(i).GouraudShading = true;
-                owner_.zoneMeshNode_->getMaterial(i).FogEnable = ctx_.fogEnabled;
-                owner_.zoneMeshNode_->getMaterial(i).Wireframe = ctx_.wireframeMode;
-                owner_.zoneMeshNode_->getMaterial(i).NormalizeNormals = true;
+            for (irr::u32 i = 0; i < ctx_.zoneMeshNode->getMaterialCount(); ++i) {
+                ctx_.zoneMeshNode->getMaterial(i).Lighting = ctx_.lightingEnabled;
+                ctx_.zoneMeshNode->getMaterial(i).BackfaceCulling = false;
+                ctx_.zoneMeshNode->getMaterial(i).GouraudShading = true;
+                ctx_.zoneMeshNode->getMaterial(i).FogEnable = ctx_.fogEnabled;
+                ctx_.zoneMeshNode->getMaterial(i).Wireframe = ctx_.wireframeMode;
+                ctx_.zoneMeshNode->getMaterial(i).NormalizeNormals = true;
                 // Set material colors for proper lighting response
-                owner_.zoneMeshNode_->getMaterial(i).AmbientColor = irr::video::SColor(255, 255, 255, 255);
-                owner_.zoneMeshNode_->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
+                ctx_.zoneMeshNode->getMaterial(i).AmbientColor = irr::video::SColor(255, 255, 255, 255);
+                ctx_.zoneMeshNode->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
             }
 
             // NOTE: Collision detection is set up progressively via setupMinimalZoneCollision()
@@ -215,7 +215,7 @@ void ZoneLifecycleComponent::createZoneMesh() {
                 LOG_DEBUG(MOD_GRAPHICS, "Initialized {} animated zone textures ({} water auto-detected)",
                           animCount, waterAnimCount);
                 // Register the zone scene node for animated texture updates
-                ctx_.animatedTextureManager->addSceneNode(owner_.zoneMeshNode_);
+                ctx_.animatedTextureManager->addSceneNode(ctx_.zoneMeshNode);
             }
         }
         mesh->drop();
@@ -314,7 +314,7 @@ void ZoneLifecycleComponent::deleteMeshHardwareBuffers(irr::scene::IMeshSceneNod
 // glBindTexture, glUniform*). Distance sorting within each material group
 // preserves front-to-back order for early-Z rejection on tile-based GPUs.
 void ZoneLifecycleComponent::drawZoneGeometrySorted() {
-    if (owner_.sortedZoneDrawList_.empty() && !owner_.fallbackMeshNode_) return;
+    if (ctx_.sortedZoneDrawList.empty() && !ctx_.fallbackMeshNode) return;
 
     // Collect all visible mesh buffers into a flat draw list
     owner_.sortedDrawEntries_.clear();
@@ -405,7 +405,7 @@ void ZoneLifecycleComponent::drawZoneGeometrySorted() {
     float cumulativeRegionArea = 0.0f;
     const int areaPPFloor = ctx_.config.constrainedConfig.adaptiveLightingAreaPPFloor;
     if (areaBudgetMode) {
-        zoneViewProj = owner_.captured3DProj_ * owner_.captured3DView_;
+        zoneViewProj = ctx_.captured3DProj * ctx_.captured3DView;
         irr::core::dimension2du screenSize = ctx_.driver->getScreenSize();
         screenAreaW = static_cast<float>(screenSize.Width);
         screenAreaH = static_cast<float>(screenSize.Height);
@@ -451,7 +451,7 @@ void ZoneLifecycleComponent::drawZoneGeometrySorted() {
     int regionsDrawn = 0;
     int portalCulled = 0;
     int occlusionCulledCount = 0;
-    for (const auto& entry : owner_.sortedZoneDrawList_) {
+    for (const auto& entry : ctx_.sortedZoneDrawList) {
         if (!entry.node) continue;
 
         // BFS portal culling: skip regions not reachable through portal walk
@@ -592,8 +592,8 @@ void ZoneLifecycleComponent::drawZoneGeometrySorted() {
     }
 
     // Add fallback mesh buffers (always drawn last — use max distance)
-    if (owner_.fallbackMeshNode_) {
-        collectMeshBuffers(owner_.fallbackMeshNode_, 1e18f);
+    if (ctx_.fallbackMeshNode) {
+        collectMeshBuffers(ctx_.fallbackMeshNode, 1e18f);
     }
 
     // Sort by material key (primary), distance (secondary)
@@ -626,7 +626,7 @@ void ZoneLifecycleComponent::drawZoneGeometrySorted() {
     // src/client/graphics/CLAUDE.md for the reference pointer). Only the
     // texture cache's real, live eviction count remains.
     bool mergeActive = false;
-    if (owner_.mergeZoneDrawsEnabled_ && !owner_.mergeZoneDrawsDisabledForZone_) {
+    if (ctx_.mergeZoneDrawsEnabled && !owner_.mergeZoneDrawsDisabledForZone_) {
         if (!owner_.zoneMergeBuffers_) owner_.zoneMergeBuffers_ = std::make_unique<ZoneMergeBuffers>();
 
         const size_t evictionCount = ctx_.constrainedTextureCache ? ctx_.constrainedTextureCache->getEvictionCount() : 0;
@@ -713,7 +713,7 @@ void ZoneLifecycleComponent::drawRegionMesh(size_t regionIdx) {
     irr::scene::IMeshSceneNode* node = nullptr;
 
     if (regionIdx == SIZE_MAX) {
-        node = owner_.fallbackMeshNode_;
+        node = ctx_.fallbackMeshNode;
     } else {
         auto it = ctx_.regionMeshNodes.find(regionIdx);
         if (it == ctx_.regionMeshNodes.end() || !it->second) return;
@@ -794,19 +794,19 @@ void ZoneLifecycleComponent::drawPortalQuad(const Portal& portal) {
 // Only regions reachable through portal openings that face the camera
 // and intersect the view frustum are added.  Depth limit 3.
 void ZoneLifecycleComponent::buildRegionNeighborMap() {
-    owner_.regionNeighbors_.clear();
+    ctx_.regionNeighbors.clear();
     if (!ctx_.portalSystem || !ctx_.portalSystem->hasPortals()) return;
 
     const auto& portalData = ctx_.portalSystem->getData();
     for (const auto& [regionIdx, portalIndices] : portalData.regionPortals) {
-        auto& neighbors = owner_.regionNeighbors_[regionIdx];
+        auto& neighbors = ctx_.regionNeighbors[regionIdx];
         for (size_t pi : portalIndices) {
             size_t other = ctx_.portalSystem->getOtherRegion(pi, regionIdx);
             if (other != SIZE_MAX) neighbors.push_back(other);
         }
     }
     LOG_DEBUG(MOD_GRAPHICS, "Built region neighbor map: {} regions with portal neighbors",
-              owner_.regionNeighbors_.size());
+              ctx_.regionNeighbors.size());
 }
 
 // ======== drawZoneGeometryWithPortals ========
@@ -834,7 +834,7 @@ void ZoneLifecycleComponent::drawZoneGeometryWithPortals() {
     glDepthMask(GL_TRUE);
 
     // Draw fallback mesh (geometry not in any BSP region)
-    if (owner_.fallbackMeshNode_) {
+    if (ctx_.fallbackMeshNode) {
         drawRegionMesh(SIZE_MAX);
     }
 #else
@@ -1109,7 +1109,7 @@ bool ZoneLifecycleComponent::rebuildRegionMesh(size_t regionIdx) {
                 // Encode regionIdx (low 48 bits) + buffer index (high 16 bits)
                 req.callbackKey = (static_cast<uint64_t>(i) << 48) |
                                   (static_cast<uint64_t>(regionIdx) & 0xFFFFFFFFFFFFULL);
-                req.priority = WorkPriorityKey::make(owner_.ZoneStream().getRegionPvsDepth(regionIdx), AssetType::ZoneMesh).value;
+                req.priority = WorkPriorityKey::make(ctx_.ZoneStream().getRegionPvsDepth(regionIdx), AssetType::ZoneMesh).value;
 
                 ctx_.gpuUploadThread->submit(std::move(req));
             }

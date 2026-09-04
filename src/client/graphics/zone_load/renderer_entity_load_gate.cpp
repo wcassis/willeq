@@ -1,3 +1,4 @@
+#include "client/graphics/zone_load/zone_load_component.h"
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/entity_prep_worker.h"
 #include "common/logging.h"
@@ -10,30 +11,39 @@
 // queueEntityPrepRequests()/processFrameProgressiveLoad() in
 // renderer_zone_stream.cpp) was fully implemented and wired into the
 // post-load streaming path, but had exactly zero construction sites in the
-// whole codebase — entityPrepWorker_ was permanently null, so deferred
+// whole codebase — ctx_.entityPrepWorker was permanently null, so deferred
 // entities would never have been picked back up. See
 // refactor/T109_entity_load_distance_gate.md's Review for the full finding
 // and verification.
+//
+// L12 (Batch L close-out) folded both bodies into ZoneLoadComponent and moved
+// the TU into zone_load/ -- L10 deviation 1, closed. They were single-family
+// by every measurement (their only callers are loadZoneStep8_Entities in
+// zone_load/renderer_zone_load_entities.cpp); L10 left them behind only
+// because this TU was outside that unit's territory. The bodies are verbatim:
+// the only edits are the mechanism's substitutions (ctx_.config -> ctx_.config,
+// ctx_.entityPrepWorker -> ctx_.entityPrepWorker, ctx_.entityRenderer ->
+// ctx_.entityRenderer, owner_.backgroundThreadPool_ -> owner_.backgroundThreadPool_).
 
 namespace EQT {
 namespace Graphics {
 
-void IrrlichtRenderer::ensureEntityPrepWorkerStarted(RaceModelLoader* modelLoader,
+void ZoneLoadComponent::ensureEntityPrepWorkerStarted(RaceModelLoader* modelLoader,
                                                        EquipmentModelLoader* equipLoader) {
     // unloadZone() (renderer_zone_lifecycle.cpp) tears this down —
     // entityPrepWorker_.reset() + entityRenderer_->setEntityPrepWorker(nullptr)
     // — on every zone transition, so it must be rebuilt here on every zone
     // load. Idempotent within a load: only the first Step 8 entity triggers
     // real construction.
-    if (entityPrepWorker_) return;
+    if (ctx_.entityPrepWorker) return;
 
-    entityPrepWorker_ = std::make_unique<EntityPrepWorker>(modelLoader, equipLoader);
-    if (backgroundThreadPool_) {
-        entityPrepWorker_->setBackgroundThreadPool(backgroundThreadPool_.get());
+    ctx_.entityPrepWorker = std::make_unique<EntityPrepWorker>(modelLoader, equipLoader);
+    if (owner_.backgroundThreadPool_) {
+        ctx_.entityPrepWorker->setBackgroundThreadPool(owner_.backgroundThreadPool_.get());
     }
-    entityPrepWorker_->start();
-    if (entityRenderer_) {
-        entityRenderer_->setEntityPrepWorker(entityPrepWorker_.get());
+    ctx_.entityPrepWorker->start();
+    if (ctx_.entityRenderer) {
+        ctx_.entityRenderer->setEntityPrepWorker(ctx_.entityPrepWorker.get());
     }
     LOG_INFO(MOD_GRAPHICS, "SEQ Step8: EntityPrepWorker constructed and started "
              "(background prep for entities deferred by the T109 load-distance gate)");
@@ -51,11 +61,11 @@ void IrrlichtRenderer::ensureEntityPrepWorkerStarted(RaceModelLoader* modelLoade
 // constrained_renderer_config.h's entityLoadRadius comment) — which is why
 // entityLoadRadius ships at an inert default and this function currently
 // never returns true in any shipped configuration.
-bool IrrlichtRenderer::deferEntityForLoadGate(uint16_t spawnId, const std::string& name,
+bool ZoneLoadComponent::deferEntityForLoadGate(uint16_t spawnId, const std::string& name,
                                                uint16_t raceId, uint8_t gender, float distFromPlayer,
                                                size_t& deferredCount,
                                                std::set<std::pair<uint16_t, uint8_t>>& deferredPairs) const {
-    float radius = config_.constrainedConfig.entityLoadRadius;
+    float radius = ctx_.config.constrainedConfig.entityLoadRadius;
     if (distFromPlayer <= radius) return false;
     ++deferredCount;
     deferredPairs.insert({raceId, gender});

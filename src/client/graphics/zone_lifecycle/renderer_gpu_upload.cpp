@@ -184,9 +184,9 @@ void ZoneLifecycleComponent::processCompletedUploads() {
                                     const auto* dv = ctx_.doorManager->getDoor(doorId);
                                     if (dv) ctx_.doorManager->invalidateMeshCache(dv->modelName);
                                 }
-                                if (std::find(owner_.doorTextureRebuildQueue_.begin(),
-                                              owner_.doorTextureRebuildQueue_.end(), doorId) == owner_.doorTextureRebuildQueue_.end()) {
-                                    owner_.doorTextureRebuildQueue_.push_back(doorId);
+                                if (std::find(ctx_.doorTextureRebuildQueue.begin(),
+                                              ctx_.doorTextureRebuildQueue.end(), doorId) == ctx_.doorTextureRebuildQueue.end()) {
+                                    ctx_.doorTextureRebuildQueue.push_back(doorId);
                                 }
                             }
                             LOG_INFO(MOD_GRAPHICS, "GPUUpload: texture '{}' arrived, queued {} doors for rebuild",
@@ -195,17 +195,17 @@ void ZoneLifecycleComponent::processCompletedUploads() {
                         }
 
                         // PVS objects waiting for this texture
-                        auto objPendIt = owner_.pendingTextureObjects_.find(result.textureName);
-                        if (objPendIt != owner_.pendingTextureObjects_.end()) {
+                        auto objPendIt = ctx_.pendingTextureObjects.find(result.textureName);
+                        if (objPendIt != ctx_.pendingTextureObjects.end()) {
                             for (size_t objIdx : objPendIt->second) {
-                                if (std::find(owner_.objectTextureRebuildQueue_.begin(),
-                                              owner_.objectTextureRebuildQueue_.end(), objIdx) == owner_.objectTextureRebuildQueue_.end()) {
-                                    owner_.objectTextureRebuildQueue_.push_back(objIdx);
+                                if (std::find(ctx_.objectTextureRebuildQueue.begin(),
+                                              ctx_.objectTextureRebuildQueue.end(), objIdx) == ctx_.objectTextureRebuildQueue.end()) {
+                                    ctx_.objectTextureRebuildQueue.push_back(objIdx);
                                 }
                             }
                             LOG_INFO(MOD_GRAPHICS, "GPUUpload: texture '{}' arrived, queued {} objects for rebuild",
                                      result.textureName, objPendIt->second.size());
-                            owner_.pendingTextureObjects_.erase(objPendIt);
+                            ctx_.pendingTextureObjects.erase(objPendIt);
                         }
                     }
                 } else if (sourceType == 4) {
@@ -362,9 +362,9 @@ bool ZoneLifecycleComponent::processOneGPUResult() {
                                 const auto* dv = ctx_.doorManager->getDoor(doorId);
                                 if (dv) ctx_.doorManager->invalidateMeshCache(dv->modelName);
                             }
-                            if (std::find(owner_.doorTextureRebuildQueue_.begin(),
-                                          owner_.doorTextureRebuildQueue_.end(), doorId) == owner_.doorTextureRebuildQueue_.end()) {
-                                owner_.doorTextureRebuildQueue_.push_back(doorId);
+                            if (std::find(ctx_.doorTextureRebuildQueue.begin(),
+                                          ctx_.doorTextureRebuildQueue.end(), doorId) == ctx_.doorTextureRebuildQueue.end()) {
+                                ctx_.doorTextureRebuildQueue.push_back(doorId);
                             }
                         }
                         LOG_INFO(MOD_GRAPHICS, "GPUUpload processOne: texture '{}' arrived, queued {} doors for rebuild",
@@ -373,17 +373,17 @@ bool ZoneLifecycleComponent::processOneGPUResult() {
                     }
 
                     // PVS objects waiting for this texture
-                    auto objPendIt = owner_.pendingTextureObjects_.find(result.textureName);
-                    if (objPendIt != owner_.pendingTextureObjects_.end()) {
+                    auto objPendIt = ctx_.pendingTextureObjects.find(result.textureName);
+                    if (objPendIt != ctx_.pendingTextureObjects.end()) {
                         for (size_t objIdx : objPendIt->second) {
-                            if (std::find(owner_.objectTextureRebuildQueue_.begin(),
-                                          owner_.objectTextureRebuildQueue_.end(), objIdx) == owner_.objectTextureRebuildQueue_.end()) {
-                                owner_.objectTextureRebuildQueue_.push_back(objIdx);
+                            if (std::find(ctx_.objectTextureRebuildQueue.begin(),
+                                          ctx_.objectTextureRebuildQueue.end(), objIdx) == ctx_.objectTextureRebuildQueue.end()) {
+                                ctx_.objectTextureRebuildQueue.push_back(objIdx);
                             }
                         }
                         LOG_INFO(MOD_GRAPHICS, "GPUUpload processOne: texture '{}' arrived, queued {} objects for rebuild",
                                  result.textureName, objPendIt->second.size());
-                        owner_.pendingTextureObjects_.erase(objPendIt);
+                        ctx_.pendingTextureObjects.erase(objPendIt);
                     }
                 }
             } else if (sourceType == 4) {

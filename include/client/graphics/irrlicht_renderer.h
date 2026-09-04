@@ -719,18 +719,8 @@ private:
     // include/client/graphics/sim/sim_bridge_component.h. Nothing outside the
     // renderer ever called any of them, so there is no forwarder.
 
-    // L10 (Batch L): the twenty step helpers and ZoneLoadContext moved to
-    // ZoneLoadComponent; these two stayed (a TU outside L10's territory).
-    // T109 load-distance gate — out-of-line in renderer_entity_load_gate.cpp
-    // (keeps renderer_zone_load.cpp under the file-size gate; see that file
-    // for why ensureEntityPrepWorkerStarted needs to exist at all).
-    void ensureEntityPrepWorkerStarted(class RaceModelLoader* modelLoader, class EquipmentModelLoader* equipLoader);
-    // Returns true (and records the deferral) if distFromPlayer exceeds
-    // entityLoadRadius — the caller should skip the entity's prep+build
-    // chain and let background streaming pick it up post-load.
-    bool deferEntityForLoadGate(uint16_t spawnId, const std::string& name, uint16_t raceId, uint8_t gender,
-                                 float distFromPlayer, size_t& deferredCount,
-                                 std::set<std::pair<uint16_t, uint8_t>>& deferredPairs) const;
+    // L10 (Batch L): the step helpers and ZoneLoadContext moved to
+    // ZoneLoadComponent; L12 folded in the T109 load gate too (L10 dev 1).
 
     // advanceDeferredInit() folded into P11_Env_* phases of advanceBackgroundZoneLoad()
     // L09 (Batch L): createZoneMesh()/rebuildRegionMesh() moved.
@@ -1101,10 +1091,8 @@ private:
     uint8_t currentHour_ = 12;
     uint8_t currentMinute_ = 0;
 
-    // Frame phase shared state
-    std::chrono::steady_clock::time_point sectionStart_;
-    std::chrono::steady_clock::time_point frameStart_;  // Start of current frame (for lazy load budgeting)
-    int64_t measureSection();
+    // Frame phase shared state -- L12 moved measureSection()/sectionStart_ to
+    // FrameComponent and deleted the write-only frameStart_ (see that header).
     bool chatInputFocused_ = false;
     // L11: pendingUIClick_, runTier2_/runTier3_, the two tier intervals,
     // tier3DeltaAccum_ and windTime_ are on FrameComponent. frameNumber_ stays
@@ -1523,7 +1511,8 @@ private:
 
     // L06 (Batch L): the slash family -- registry 3, the renderer's slash-
     // command if-chain. Ctor body, renderer_init.cpp; friendship on axis 1.
-    friend class SlashCommandsComponent;
+    // L12: no friend line -- SlashCommandsComponent is private-clean on both
+    // census axes (see slash/slash_commands_component.h).
     std::unique_ptr<SlashCommandsComponent> slash_;
     // L07 (Batch L): the SimulationWorker bridge. It reaches 28 members that
     // are shared with other families but sit below the context's 5-family

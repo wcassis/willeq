@@ -164,8 +164,8 @@ float PlayerCameraComponent::findGroundZ(float x, float y, float currentZ) {
 
 void PlayerCameraComponent::setupMinimalZoneCollision() {
     // Clean up old collision data
-    owner_.regionWorldTriangles_.clear();
-    owner_.objectWorldTriangles_.clear();
+    ctx_.regionWorldTriangles.clear();
+    ctx_.objectWorldTriangles.clear();
     owner_.doorCollisionData_.clear();
     // Legacy meta selectors (only used by HCMap fallback path now)
     if (owner_.zoneTriangleSelector_) {
@@ -187,7 +187,7 @@ void PlayerCameraComponent::setupMinimalZoneCollision() {
         playerRegion = ctx_.zoneBspTree->findRegionIndexForPoint(ctx_.playerX, ctx_.playerY, ctx_.playerZ);
         bool alreadyBuilt = ctx_.regionMeshNodes.count(playerRegion) && ctx_.regionMeshNodes[playerRegion];
         if (playerRegion != SIZE_MAX && !alreadyBuilt) {
-            owner_.ZoneLifecycle().rebuildRegionMesh(playerRegion);
+            ctx_.ZoneLifecycle().rebuildRegionMesh(playerRegion);
             LOG_INFO(MOD_GRAPHICS, "Built player BSP region {} synchronously for deferred loading", playerRegion);
         }
     }
@@ -203,20 +203,20 @@ void PlayerCameraComponent::setupMinimalZoneCollision() {
         if (!triangles.empty()) {
             totalRegionTriangles += triangles.size();
             regionsAdded++;
-            owner_.regionWorldTriangles_[regionIdx] = std::move(triangles);
+            ctx_.regionWorldTriangles[regionIdx] = std::move(triangles);
         }
     }
 
     LOG_INFO(MOD_GRAPHICS, "Collision setup: {} regions (total {} world-space triangles)",
              regionsAdded, totalRegionTriangles);
 
-    owner_.collisionManager_ = ctx_.smgr->getSceneCollisionManager();
+    ctx_.collisionManager = ctx_.smgr->getSceneCollisionManager();
 
     // Camera collision uses BSP directly (no triangle selectors)
 
     // Activate progressive loading
     ctx_.progressiveLoadingActive = true;
-    owner_.progressiveLoadStartTime_ = std::chrono::steady_clock::now();
+    ctx_.progressiveLoadStartTime = std::chrono::steady_clock::now();
 
     // NOTE: EntityPrepWorker is NOT created here — it is created during the
     // P08_Entities phase (beginZoneAssetLoad) which runs after P09_Collision.
@@ -240,7 +240,7 @@ void PlayerCameraComponent::addRegionToCollision(size_t regionIdx) {
 
     auto triangles = extractWorldTriangles(ctx_.smgr, regionIt->second);
     if (!triangles.empty()) {
-        owner_.regionWorldTriangles_[regionIdx] = std::move(triangles);
+        ctx_.regionWorldTriangles[regionIdx] = std::move(triangles);
     }
 }
 
@@ -307,12 +307,12 @@ void PlayerCameraComponent::addObjectToCollision(size_t objIdx) {
 
     // Determine BSP region for this object
     size_t region = SIZE_MAX;
-    if (objIdx < owner_.objectRegions_.size()) {
-        region = owner_.objectRegions_[objIdx];
+    if (objIdx < ctx_.objectRegions.size()) {
+        region = ctx_.objectRegions[objIdx];
     }
 
     // Append to per-region object triangles
-    auto& regionTris = owner_.objectWorldTriangles_[region];
+    auto& regionTris = ctx_.objectWorldTriangles[region];
     regionTris.insert(regionTris.end(), triangles.begin(), triangles.end());
 }
 
@@ -415,8 +415,8 @@ bool PlayerCameraComponent::rayTestDoorsAndObjects(const irr::core::vector3df& r
     bool anyHit = false;
 
     // Test objects in this BSP region
-    auto objIt = owner_.objectWorldTriangles_.find(bspRegion);
-    if (objIt != owner_.objectWorldTriangles_.end()) {
+    auto objIt = ctx_.objectWorldTriangles.find(bspRegion);
+    if (objIt != ctx_.objectWorldTriangles.end()) {
         if (rayIntersectTriangles(rayOrigin, rayDir, rayLen, objIt->second, hitPoint, hitTriangle, hitDistSq)) {
             anyHit = true;
         }
@@ -474,8 +474,8 @@ bool PlayerCameraComponent::checkCollisionBspFiltered(const irr::core::vector3df
 
     // Test source region triangles (direct, no matrix math)
     if (srcRegion != SIZE_MAX) {
-        auto it = owner_.regionWorldTriangles_.find(srcRegion);
-        if (it != owner_.regionWorldTriangles_.end()) {
+        auto it = ctx_.regionWorldTriangles.find(srcRegion);
+        if (it != ctx_.regionWorldTriangles.end()) {
             irr::core::vector3df hp;
             irr::core::triangle3df ht;
             float distSq;
@@ -492,8 +492,8 @@ bool PlayerCameraComponent::checkCollisionBspFiltered(const irr::core::vector3df
 
     // Test destination region triangles (if different from source)
     if (dstRegion != SIZE_MAX && dstRegion != srcRegion) {
-        auto it = owner_.regionWorldTriangles_.find(dstRegion);
-        if (it != owner_.regionWorldTriangles_.end()) {
+        auto it = ctx_.regionWorldTriangles.find(dstRegion);
+        if (it != ctx_.regionWorldTriangles.end()) {
             irr::core::vector3df hp;
             irr::core::triangle3df ht;
             float distSq;
@@ -571,8 +571,8 @@ float PlayerCameraComponent::findGroundZBspFiltered(float x, float y, float curr
 
     // Test query region world triangles (direct, no matrix math)
     if (queryRegion != SIZE_MAX) {
-        auto it = owner_.regionWorldTriangles_.find(queryRegion);
-        if (it != owner_.regionWorldTriangles_.end()) {
+        auto it = ctx_.regionWorldTriangles.find(queryRegion);
+        if (it != ctx_.regionWorldTriangles.end()) {
             float distSq;
             if (rayIntersectTriangles(nearStart, rayDir, nearRayLen, it->second, hitPoint, hitTriangle, distSq)) {
                 if (distSq < closestDistSq) {
@@ -618,8 +618,8 @@ float PlayerCameraComponent::findGroundZBspFiltered(float x, float y, float curr
     bestHit = irr::core::vector3df();
 
     if (queryRegion != SIZE_MAX) {
-        auto it = owner_.regionWorldTriangles_.find(queryRegion);
-        if (it != owner_.regionWorldTriangles_.end()) {
+        auto it = ctx_.regionWorldTriangles.find(queryRegion);
+        if (it != ctx_.regionWorldTriangles.end()) {
             float distSq;
             if (rayIntersectTriangles(rayStart, rayDir, fullRayLen, it->second, hitPoint, hitTriangle, distSq)) {
                 if (distSq < closestDistSq) {

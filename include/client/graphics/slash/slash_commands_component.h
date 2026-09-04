@@ -47,6 +47,19 @@
 
 #include <string>
 
+// L12 (Batch L close-out): THIS COMPONENT NEEDS NO friend class LINE, and
+// IrrlichtRenderer no longer declares one. K13 correction (ii)'s two-axis
+// census, applied to the renderer at 1c9afba7: axis 1 (owner_. reaches of a
+// PRIVATE IrrlichtRenderer member) is EMPTY -- all 37 owner_. uses are public
+// methods, the /toggle-and-query command surface (isSkyEnabled, toggleSky,
+// setCameraMode, getRenderDistance, setClipDistance, isFrameTimingEnabled,
+// getDetailManager, getParticleManager, getGovernor, saveScreenshot, ...);
+// axis 2 (an IrrlichtRenderer-scoped qualified name) is EMPTY too -- the four
+// IrrlichtRenderer::CameraMode uses resolve through the PUBLIC using-alias
+// batch correction 22 put in the class. The IrrlichtRenderer& handle STAYS:
+// zero PRIVATE reaches is the friend test, zero reaches of ANY kind is the
+// ctor-parameter test, and only RdpComponent passes that one.
+//
 namespace EQT {
 namespace Graphics {
 

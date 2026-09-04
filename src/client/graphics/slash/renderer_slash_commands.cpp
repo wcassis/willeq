@@ -166,10 +166,10 @@ void SlashCommandsComponent::processSlashCommand(const std::string& command) {
 
     // --- Visual rendering ---
     if (cmd == "/sort") {
-        owner_.Diagnostics().toggleManualZoneDraw();
+        ctx_.Diagnostics().toggleManualZoneDraw();
         chat(fmt::format("Front-to-back zone sorting: {}", owner_.isManualZoneDrawEnabled() ? "ENABLED" : "DISABLED"));
     } else if (cmd == "/mergedraws") {
-        owner_.Diagnostics().toggleMergeZoneDraws();
+        ctx_.Diagnostics().toggleMergeZoneDraws();
         chat(fmt::format("Zone draw merge: {}", owner_.isMergeZoneDrawsEnabled() ? "ENABLED" : "DISABLED"));
     } else if (cmd == "/screenshot") {
         // P10: smallest additive hook for the in-app A/B capture (no other
@@ -197,7 +197,7 @@ void SlashCommandsComponent::processSlashCommand(const std::string& command) {
         if (args.empty()) {
             chat(fmt::format("Camera mode: {}", owner_.getCameraModeString()));
         } else if (args == "cycle") {
-            owner_.PlayerCamera().cycleCameraMode();
+            ctx_.PlayerCamera().cycleCameraMode();
             chat(fmt::format("Camera mode: {}", owner_.getCameraModeString()));
         } else {
             CameraMode mode;
@@ -235,7 +235,7 @@ void SlashCommandsComponent::processSlashCommand(const std::string& command) {
         }
         for (char& c : sub) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         if (sub == "dump") {
-            for (const auto& line : owner_.PlayerCamera().buildFirstPersonCameraDumpLines()) chat(line);
+            for (const auto& line : ctx_.PlayerCamera().buildFirstPersonCameraDumpLines()) chat(line);
         } else {
             for (const auto& line : EQT::Graphics::FirstPersonTunablesCommandLines(args)) {
                 chat(line);
@@ -243,32 +243,32 @@ void SlashCommandsComponent::processSlashCommand(const std::string& command) {
             // A set/reset must take effect on the CURRENT frame, not on the
             // next time something else happens to move the player.
             if (sub == "set" || sub == "reset") {
-                owner_.PlayerCamera().applyCameraProjectionForMode();
-                owner_.PlayerCamera().repositionFirstPersonCamera();
+                ctx_.PlayerCamera().applyCameraProjectionForMode();
+                ctx_.PlayerCamera().repositionFirstPersonCamera();
             }
         }
     } else if (cmd == "/upload") {
-        owner_.ZoneLifecycle().toggleGPUUploadThread();
-        chat(fmt::format("GPU upload thread: {}", owner_.ZoneLifecycle().isGPUUploadThreadEnabled() ? "ENABLED" : "DISABLED"));
+        ctx_.ZoneLifecycle().toggleGPUUploadThread();
+        chat(fmt::format("GPU upload thread: {}", ctx_.ZoneLifecycle().isGPUUploadThreadEnabled() ? "ENABLED" : "DISABLED"));
     } else if (cmd == "/portal") {
         if (args == "debug") {
-            owner_.Diagnostics().togglePortalDebugDraw();
+            ctx_.Diagnostics().togglePortalDebugDraw();
             chat(fmt::format("Portal debug overlay: {}", owner_.isPortalDebugDrawEnabled() ? "ENABLED" : "DISABLED"));
         } else {
-            owner_.Diagnostics().togglePortalOcclusion();
+            ctx_.Diagnostics().togglePortalOcclusion();
             chat(fmt::format("Portal occlusion: {}", owner_.isPortalOcclusionEnabled() ? "ENABLED" : "DISABLED"));
         }
     } else if (cmd == "/stencil") {
-        owner_.Diagnostics().toggleStencilDebugDraw();
+        ctx_.Diagnostics().toggleStencilDebugDraw();
         chat(fmt::format("Stencil debug overlay: {}", owner_.isStencilDebugDrawEnabled() ? "ENABLED" : "DISABLED"));
     } else if (cmd == "/plight") {
-        owner_.Diagnostics().togglePlayerLight();
+        ctx_.Diagnostics().togglePlayerLight();
         chat(fmt::format("Per-pixel player light: {}", owner_.isPlayerLightEnabled() ? "ENABLED" : "DISABLED"));
     } else if (cmd == "/olight") {
-        owner_.Diagnostics().toggleObjectLights();
+        ctx_.Diagnostics().toggleObjectLights();
         chat(fmt::format("Object lights: {}", owner_.isObjectLightsEnabled() ? "ENABLED" : "DISABLED"));
     } else if (cmd == "/zlight") {
-        owner_.Diagnostics().toggleDirectionalLight();
+        ctx_.Diagnostics().toggleDirectionalLight();
         chat(fmt::format("Directional light: {}", owner_.isDirectionalLightEnabled() ? "ENABLED" : "DISABLED"));
     } else if (cmd == "/lightmode") {
         if (ctx_.zoneShader) {
@@ -292,11 +292,11 @@ void SlashCommandsComponent::processSlashCommand(const std::string& command) {
             if (debugMat >= 0) {
                 if (mode > 0 && prevMode == 0) {
                     // Entering debug: swap all per-pixel materials to debug program
-                    owner_.Diagnostics().swapToDebugShader(debugMat);
+                    ctx_.Diagnostics().swapToDebugShader(debugMat);
                     LOG_INFO(MOD_SHADER, "Swapped all per-pixel materials to debug program {}", debugMat);
                 } else if (mode == 0 && prevMode > 0) {
                     // Leaving debug: restore production materials
-                    owner_.Diagnostics().swapFromDebugShader(debugMat);
+                    ctx_.Diagnostics().swapFromDebugShader(debugMat);
                     LOG_INFO(MOD_SHADER, "Restored production materials from debug program");
                 }
             }
@@ -367,13 +367,13 @@ void SlashCommandsComponent::processSlashCommand(const std::string& command) {
             chat("Frame timing profiler DISABLED");
         }
     } else if (cmd == "/sceneprofile" || cmd == "/sp" || cmd == "/scenebreak") {
-        owner_.Diagnostics().runSceneProfile();
+        ctx_.Diagnostics().runSceneProfile();
         chat("Scene profile running - check console for breakdown");
     } else if (cmd == "/dumpscene" || cmd == "/ds") {
-        owner_.Diagnostics().dumpScene();
+        ctx_.Diagnostics().dumpScene();
         chat("Scene dump written to console log");
     } else if (cmd == "/simworker" || cmd == "/sw") {
-        auto info = owner_.SimBridge().getSimWorkerDebugInfo();
+        auto info = ctx_.SimBridge().getSimWorkerDebugInfo();
         for (const auto& line : info) chat(line);
     }
     // T108: "/pmem" moved off this empty-MemoryReportInput{} path (runLoadDiagnostics
@@ -388,7 +388,7 @@ void SlashCommandsComponent::processSlashCommand(const std::string& command) {
     // the overlay; T300 Leg C had to record its 285-frame combat negative
     // with the chat box and hotbar opaque over the bottom of every frame.
     else if (cmd == "/hideui" || cmd == "/toggleui" || cmd == "/ui") {
-        owner_.Diagnostics().toggleAllUI();
+        ctx_.Diagnostics().toggleAllUI();
         chat(fmt::format("UI: {}", owner_.isAllUIHidden() ? "HIDDEN" : "VISIBLE"));
     }
     // T313: the scriptable half of the static-UI scroll, for the same
@@ -404,28 +404,28 @@ void SlashCommandsComponent::processSlashCommand(const std::string& command) {
             args,
             ctx_.eventReceiver ? ctx_.eventReceiver->getMouseX() : 0,
             ctx_.eventReceiver ? ctx_.eventReceiver->getMouseY() : 0,
-            owner_.Frame().uiLayout_, owner_.Frame().chatPanelState_, owner_.Frame().skillsPopupState_, owner_.Frame().lootState_));
+            ctx_.Frame().uiLayout_, ctx_.Frame().chatPanelState_, ctx_.Frame().skillsPopupState_, ctx_.Frame().lootState_));
     }
     else if (cmd == "/newui") {
-        owner_.Frame().newUIEnabled_ = !owner_.Frame().newUIEnabled_;
-        chat(fmt::format("New static UI: {}", owner_.Frame().newUIEnabled_ ? "ENABLED" : "DISABLED"));
+        ctx_.Frame().newUIEnabled_ = !ctx_.Frame().newUIEnabled_;
+        chat(fmt::format("New static UI: {}", ctx_.Frame().newUIEnabled_ ? "ENABLED" : "DISABLED"));
     } else if (cmd == "/newbook") {
-        owner_.Frame().spellbookState_.isOpen = !owner_.Frame().spellbookState_.isOpen;
-        if (owner_.Frame().spellbookState_.isOpen) {
-            owner_.Frame().inventoryState_.activePopup = PopupType::None;  // Close other popups
+        ctx_.Frame().spellbookState_.isOpen = !ctx_.Frame().spellbookState_.isOpen;
+        if (ctx_.Frame().spellbookState_.isOpen) {
+            ctx_.Frame().inventoryState_.activePopup = PopupType::None;  // Close other popups
         }
-        chat(fmt::format("New UI spellbook: {}", owner_.Frame().spellbookState_.isOpen ? "OPEN" : "CLOSED"));
+        chat(fmt::format("New UI spellbook: {}", ctx_.Frame().spellbookState_.isOpen ? "OPEN" : "CLOSED"));
     } else if (cmd == "/newbookprev") {
-        if (owner_.Frame().spellbookState_.currentPage > 0) owner_.Frame().spellbookState_.currentPage--;
+        if (ctx_.Frame().spellbookState_.currentPage > 0) ctx_.Frame().spellbookState_.currentPage--;
     } else if (cmd == "/newbooknext") {
-        if (owner_.Frame().spellbookState_.currentPage < owner_.Frame().spellbookState_.pageCount() - 1) owner_.Frame().spellbookState_.currentPage++;
+        if (ctx_.Frame().spellbookState_.currentPage < ctx_.Frame().spellbookState_.pageCount() - 1) ctx_.Frame().spellbookState_.currentPage++;
     } else if (cmd == "/newskills") {
-        owner_.Frame().skillsPopupState_.isOpen = !owner_.Frame().skillsPopupState_.isOpen;
-        if (owner_.Frame().skillsPopupState_.isOpen) {
-            owner_.Frame().inventoryState_.activePopup = PopupType::None;
-            owner_.Frame().spellbookState_.isOpen = false;
+        ctx_.Frame().skillsPopupState_.isOpen = !ctx_.Frame().skillsPopupState_.isOpen;
+        if (ctx_.Frame().skillsPopupState_.isOpen) {
+            ctx_.Frame().inventoryState_.activePopup = PopupType::None;
+            ctx_.Frame().spellbookState_.isOpen = false;
         }
-        chat(fmt::format("New UI skills: {}", owner_.Frame().skillsPopupState_.isOpen ? "OPEN" : "CLOSED"));
+        chat(fmt::format("New UI skills: {}", ctx_.Frame().skillsPopupState_.isOpen ? "OPEN" : "CLOSED"));
     } else if (cmd == "/newinv") {
         // T294: ONE body, shared with the `I` keybind — the toggle used to
         // be written out here and IrrlichtRenderer::toggleInventory() (what

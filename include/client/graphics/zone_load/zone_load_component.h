@@ -91,14 +91,15 @@
 // currentPvsRegion_) is jointly owned by six families and stays on the
 // context; zoneShader_, constrainedTextureCache_ and doorManager_ likewise.
 //
-// TWO PRIVATE IrrlichtRenderer METHODS STAYED and are reached as owner_.X():
-// ensureEntityPrepWorkerStarted() and deferEntityForLoadGate(), both defined
-// in src/client/graphics/renderer_entity_load_gate.cpp -- a TU this unit's
-// territory does not include. Their only callers are in
-// renderer_zone_load_entities.cpp, so they are single-family by reference
-// count and a later unit may fold that TU in here; neither touches a member
-// this unit moved. Three more stay for the ordinary reason (other families
-// call them too): getDisplaySettings(), isRegionPvsVisible(),
+// L12 (Batch L close-out) folded in the T109 LOAD GATE that L10 left behind:
+// ensureEntityPrepWorkerStarted() and deferEntityForLoadGate() are this
+// component's own methods now, defined in
+// src/client/graphics/zone_load/renderer_entity_load_gate.cpp (the TU moved
+// with them, basename unchanged). They were always single-family -- their
+// only callers are in renderer_zone_load_entities.cpp -- and L10 left them
+// only because that TU was outside its territory. L10 deviation 1, closed.
+// Three IrrlichtRenderer methods still stay for the ordinary reason (other
+// families call them too): getDisplaySettings(), isRegionPvsVisible(),
 // setRenderDistance().
 //
 // SIBLING COMPONENTS reached across the boundary through IrrlichtRenderer's
@@ -130,6 +131,7 @@
 #include "client/graphics/renderer_context.h"
 
 #include <memory>
+#include <set>
 #include <string>
 
 namespace EQT {
@@ -153,6 +155,19 @@ public:
 	bool hasLoadFailed() const { return loadFailed_; }
 
 private:
+
+	// L12: the T109 entity load-distance gate, folded in from
+	// src/client/graphics/renderer_entity_load_gate.cpp (now
+	// zone_load/renderer_entity_load_gate.cpp). Callers: loadZoneStep8_Entities
+	// and loadZoneStep8a_BaseModelPrep in renderer_zone_load_entities.cpp.
+	void ensureEntityPrepWorkerStarted(class RaceModelLoader* modelLoader,
+	                                   class EquipmentModelLoader* equipLoader);
+	// Returns true (and records the deferral) if distFromPlayer exceeds
+	// entityLoadRadius -- the caller should skip the entity's prep+build
+	// chain and let background streaming pick it up post-load.
+	bool deferEntityForLoadGate(uint16_t spawnId, const std::string& name, uint16_t raceId, uint8_t gender,
+	                            float distFromPlayer, size_t& deferredCount,
+	                            std::set<std::pair<uint16_t, uint8_t>>& deferredPairs) const;
 	RendererContext& ctx_;
 	IrrlichtRenderer& owner_;
 

@@ -131,19 +131,25 @@ RendererConfig&)` and `initDeferredGraphics()`. That is the whole of what
 `EverQuest::InitGraphics` / `BridgeComponent::InitGraphics` take the interface
 and the game side names no renderer class. It is the class's only base.
 
-`irrlicht_renderer.cpp` + 18 `renderer_*.cpp` TUs (J11 split the core), plus
-the components Batch L extracts.
+`src/client/graphics/renderer/` (the class's own four TUs, moved there by L12)
+plus the eleven components Batch L extracted, each in its own directory.
 
 Batch L (`refactor/L_renderer_component_extraction.md`) is doing to
 `IrrlichtRenderer` what Batch K did to `EverQuest`. L01 created
-`include/client/graphics/renderer_context.h` (137 lines) —
-`EQT::Graphics::RendererContext`, the 54 core members bound by reference, the
-renderer's counterpart to `include/client/client_context.h` — and the first
-component below.
+`include/client/graphics/renderer_context.h` (261 lines) —
+`EQT::Graphics::RendererContext`, the renderer's counterpart to
+`include/client/client_context.h`. L12 (the close-out) widened it to **54 core
+members + 44 promoted shared members + 11 sibling-component pointers**: the
+promoted set is every `IrrlichtRenderer` member the census measured at three or
+more components, and the pointers are what `owner_.<Family>()` became
+(`ctx_.<Family>()`, set by `SetComponents()` after the last `make_unique`).
+L12 also removed `RdpComponent`'s `IrrlichtRenderer&` (zero reaches on both
+census axes) and `SlashCommandsComponent`'s `friend` line. The residue is
+boarded as **B050**.
 
 | Component | Header | TU |
 |---|---|---|
-| `EQT::Graphics::RdpComponent` | `include/client/graphics/rdp/rdp_component.h` | `src/client/graphics/rdp/rdp_component.cpp` |
+| `EQT::Graphics::RdpComponent` (no `friend` line, and no `IrrlichtRenderer&` since L12) | `include/client/graphics/rdp/rdp_component.h` | `src/client/graphics/rdp/rdp_component.cpp` |
 | `EQT::Graphics::Eqe1ArchiveComponent` | `include/client/graphics/eqe1/eqe1_archive_component.h` | `src/client/graphics/eqe1/eqe1_archive_component.cpp` |
 | `EQT::Graphics::OverlaysComponent` | `include/client/graphics/overlays/overlays_component.h` | `src/client/graphics/overlays/overlays_component.cpp`, `src/client/graphics/overlays/overlays_hud_env.cpp` |
 | `EQT::Graphics::DiagnosticsComponent` | `include/client/graphics/diagnostics/diagnostics_component.h` | `src/client/graphics/diagnostics/diagnostics_component.cpp`, `src/client/graphics/diagnostics/diagnostics_debug.cpp` |
@@ -151,7 +157,7 @@ component below.
 | `EQT::Graphics::SimBridgeComponent` | `include/client/graphics/sim/sim_bridge_component.h` | `src/client/graphics/sim/renderer_sim_bridge.cpp` |
 | `EQT::Graphics::ZoneStreamComponent` | `include/client/graphics/zone_stream/zone_stream_component.h` | `src/client/graphics/zone_stream/renderer_zone_stream.cpp`, `src/client/graphics/zone_stream/renderer_zone_merge.cpp` |
 | `EQT::Graphics::ZoneLifecycleComponent` | `include/client/graphics/zone_lifecycle/zone_lifecycle_component.h` | `src/client/graphics/zone_lifecycle/renderer_zone_lifecycle.cpp`, `src/client/graphics/zone_lifecycle/renderer_zone_draw.cpp`, `src/client/graphics/zone_lifecycle/renderer_gpu_upload.cpp` |
-| `EQT::Graphics::ZoneLoadComponent` | `include/client/graphics/zone_load/zone_load_component.h` (with the private `include/client/graphics/zone_load/zone_load_context.h`) | `src/client/graphics/zone_load/renderer_zone_load.cpp`, `src/client/graphics/zone_load/renderer_zone_load_objects.cpp`, `src/client/graphics/zone_load/renderer_zone_load_entities.cpp`, `src/client/graphics/zone_load/renderer_zone_load_env.cpp` |
+| `EQT::Graphics::ZoneLoadComponent` | `include/client/graphics/zone_load/zone_load_component.h` (with the private `include/client/graphics/zone_load/zone_load_context.h`) | `src/client/graphics/zone_load/renderer_zone_load.cpp`, `src/client/graphics/zone_load/renderer_entity_load_gate.cpp`, `src/client/graphics/zone_load/renderer_zone_load_objects.cpp`, `src/client/graphics/zone_load/renderer_zone_load_entities.cpp`, `src/client/graphics/zone_load/renderer_zone_load_env.cpp` |
 | `EQT::Graphics::FrameComponent` | `include/client/graphics/frame/frame_component.h` | `src/client/graphics/frame/renderer_frame.cpp`, `src/client/graphics/frame/renderer_frame_input.cpp`, `src/client/graphics/frame/renderer_frame_render.cpp` |
 
 | TU | Lines | Contents |
@@ -163,9 +169,9 @@ component below.
 | src/client/graphics/sim/renderer_sim_bridge.cpp | 1,114 | `EQT::Graphics::SimBridgeComponent` — SimulationWorker marshaling: buildSimulationZoneData, worker start/stop, postSimulationInput, applySimulationResults, and applySimulationOutput/bindFrameSimulationBuffers (split by lifetime contract, T116). Extracted from IrrlichtRenderer by L07 (Batch L). Header `include/client/graphics/sim/sim_bridge_component.h`. SimulationWorker itself stays owned by IrrlichtRenderer — L07 changed no thread ownership |
 | src/client/graphics/overlays/overlays_component.cpp | 1,057 | `EQT::Graphics::OverlaysComponent` — map/navmesh overlays, target outline/selection, mouse targeting/LOS, zone-line overlay and bounding boxes, FPS counter. Extracted from IrrlichtRenderer by L03 (Batch L). Header `include/client/graphics/overlays/overlays_component.h` |
 | src/client/graphics/zone_load/renderer_zone_load.cpp | 1,009 | `EQT::Graphics::ZoneLoadComponent` — the loadZoneSequential() driver (the loading thread's entry) + steps 0_EQE1, 1_S3D, 2_BSP, 4_Regions, 5_Assets, with ZoneLoadContext (Batch G01; split T166). Extracted from IrrlichtRenderer by L10 (Batch L). Header `include/client/graphics/zone_load/zone_load_component.h`; the private ZoneLoadContext definition is `include/client/graphics/zone_load/zone_load_context.h` |
-| src/client/graphics/irrlicht_renderer.cpp | 908 | Core after J11: ctor/dtor, run(), saveScreenshot, sky/door/world-object façades, player/vision state, createEntityRenderer, diagnostics setters |
+| src/client/graphics/renderer/irrlicht_renderer.cpp | 955 | Core after J11: ctor/dtor, run(), saveScreenshot, sky/door/world-object façades, player/vision state, createEntityRenderer, diagnostics setters |
 | src/client/graphics/zone_stream/renderer_zone_stream.cpp | 874 | `EQT::Graphics::ZoneStreamComponent` — lazy/background mesh load pipeline, progressive load, PVS depth and neighbourhood bookkeeping, entity-prep request queue, deferred-entity pickup (T111/T210). Extracted from IrrlichtRenderer by L08 (Batch L). Header `include/client/graphics/zone_stream/zone_stream_component.h` |
-| renderer_init.cpp | 757 | J11: init/shutdown, loading screen (initLoadingScreen, loadGlobalAssets, show/hideLoadingScreen) |
+| src/client/graphics/renderer/renderer_init.cpp | 831 | J11: init/shutdown, loading screen (initLoadingScreen, loadGlobalAssets, show/hideLoadingScreen), plus the `RendererContext` aggregate initialiser, the eleven component constructions and `ctx_.SetComponents()`. Moved into `renderer/` by L12 |
 | src/client/graphics/zone_lifecycle/renderer_zone_lifecycle.cpp | 732 | `EQT::Graphics::ZoneLifecycleComponent` — unloadZone (retains persistent EQE1 archives, T214), setZoneEnvironment, placeholder build/destroy, instant scene, zone-ready state. Extracted from IrrlichtRenderer by L09 (Batch L) |
 | src/client/graphics/overlays/overlays_hud_env.cpp | 653 | `EQT::Graphics::OverlaysComponent` (second TU) — fog setup, loading-screen draw, environmental display settings, HUD setup/update, inventory paperdoll |
 | src/client/graphics/slash/renderer_slash_commands.cpp | 594 | `EQT::Graphics::SlashCommandsComponent` — `processSlashCommand()`, the registry-3 renderer slash-command if-chain (593 lines, moved whole; a Batch G decomposition candidate). Extracted from IrrlichtRenderer by L06 (Batch L). Header `include/client/graphics/slash/slash_commands_component.h`. The basename is compiled into `tests/test_merged_help.cpp` as `RENDERER_COMMAND_SOURCE` and parsed there — do not rename |
@@ -174,16 +180,16 @@ component below.
 | src/client/graphics/player/renderer_camera.cpp | 534 | `EQT::Graphics::PlayerCameraComponent` (third TU) — camera/projection per mode, `repositionFirstPersonCamera()` (THE one first-person formula), first-person pitch clamp and vFOV, `/fpcam` dump, camera mode cycling, player position/vision/swimming state. The basename is a string literal in `tests/test_first_person_camera_single_formula.cpp` — do not rename |
 | src/client/graphics/player/renderer_player_collision.cpp | 743 | `EQT::Graphics::PlayerCameraComponent` (second TU) — movement collision, world-triangle raycasts, ground-height queries, the incremental collision-registration API and the collision debug lines. Same header |
 | src/client/graphics/zone_stream/renderer_zone_merge.cpp | 576 | ZoneMergeBuffers (build/destroy/renderMerged) + the texture-eviction guards: RegionMeshTextureGuard, EntityMeshTextureGuard, ObjectNodeTextureGuard (T123), DoorTextureGuard/boids (T124), plus `EQT::Graphics::ZoneStreamComponent`'s three guard-registration bodies. Extracted from IrrlichtRenderer by L08 (Batch L). Its header `include/client/graphics/renderer_zone_merge.h` did NOT move — it declares namespace-scope classes and free functions, and twelve TUs plus three guard tests include it by that path |
-| src/client/graphics/zone_load/renderer_zone_load_entities.cpp | 552 | `EQT::Graphics::ZoneLoadComponent` — loadZoneStep8_Entities + 8a_BaseModelPrep, 8b_VariantModelPrep, 8c_VariantTextures, 8d_EquipmentPrep, 8e_DistributePrepResults, 8f_BuildEntityMesh. Extracted from IrrlichtRenderer by L10 (Batch L). The T109 load gate (ensureEntityPrepWorkerStarted, deferEntityForLoadGate) stayed on IrrlichtRenderer in src/client/graphics/renderer_entity_load_gate.cpp |
+| src/client/graphics/zone_load/renderer_zone_load_entities.cpp | 552 | `EQT::Graphics::ZoneLoadComponent` — loadZoneStep8_Entities + 8a_BaseModelPrep, 8b_VariantModelPrep, 8c_VariantTextures, 8d_EquipmentPrep, 8e_DistributePrepResults, 8f_BuildEntityMesh. Extracted from IrrlichtRenderer by L10 (Batch L). The T109 load gate (ensureEntityPrepWorkerStarted, deferEntityForLoadGate) is ZoneLoadComponent's own since L12, in src/client/graphics/zone_load/renderer_entity_load_gate.cpp |
 | src/client/graphics/frame/renderer_frame_input.cpp | 756 | `EQT::Graphics::FrameComponent` — frame phases 1-3: processFrameInput, processCommonInput, processPlayerInput, processInputDeltas, processChatInput, processFrameVisibility, processFrameSimulation. Extracted from IrrlichtRenderer by L11 (Batch L). Header `include/client/graphics/frame/frame_component.h`. Read AS TEXT by `tests/test_static_ui_scroll.cpp` and `tests/test_debug_hotkey_arms.cpp` — do not rename |
 | src/client/graphics/frame/renderer_frame_render.cpp | 598 | `EQT::Graphics::FrameComponent` — frame phase 4: processFrameRender, the 546-line draw pass (a recorded Batch-G decomposition candidate; it moved whole). Extracted from IrrlichtRenderer by L11 (Batch L). Same header. Read AS TEXT by `tests/test_ui_hide_command.cpp` — do not rename |
-| src/client/graphics/frame/renderer_frame.cpp | 537 | `EQT::Graphics::FrameComponent` — processFrame, the four-phase orchestrator, plus the frame-timing accumulation and the spike/RED/budget diagnostics. Extracted from IrrlichtRenderer by L11 (Batch L). Same header, plus the component's out-of-line ctor/dtor. Also hosts `IrrlichtRenderer::measureSection()`, which did NOT move (L04 recorded it as frame-phase state whose body was relocated without moving its ownership; sectionStart_ stays on IrrlichtRenderer) |
-| renderer_entities.cpp | 502 | Entity/inventory/combat-anim façades (thin forwards) |
+| src/client/graphics/frame/renderer_frame.cpp | 537 | `EQT::Graphics::FrameComponent` — processFrame, the four-phase orchestrator, plus the frame-timing accumulation and the spike/RED/budget diagnostics. Extracted from IrrlichtRenderer by L11 (Batch L). Same header, plus the component's out-of-line ctor/dtor. Also hosts `FrameComponent::measureSection()` — L12 finished the move L04 predicted and L11 was told to leave, so the declaration and `sectionStart_` are the component's now; the write-only `frameStart_` was deleted in the same unit |
+| src/client/graphics/renderer/renderer_entities.cpp | 502 | Entity/inventory/combat-anim façades (thin forwards). Moved into `renderer/` by L12 |
 | src/client/graphics/zone_lifecycle/renderer_gpu_upload.cpp | 447 | `EQT::Graphics::ZoneLifecycleComponent` — GPU upload thread init/drain/apply. GPUUploadThread still owns its own thread; the handle stays on RendererContext. Extracted from IrrlichtRenderer by L09 (Batch L) |
-| renderer_event_receiver.cpp | 385 | J11: `RendererEventReceiver::OnEvent` and the key/mouse query surface |
+| src/client/graphics/renderer/renderer_event_receiver.cpp | 385 | J11: `RendererEventReceiver::OnEvent` and the key/mouse query surface. Moved into `renderer/` by L12 — **read AS TEXT by `tests/test_ui_hide_command.cpp`, `tests/test_static_ui_scroll.cpp` and `tests/test_debug_hotkey_arms.cpp`, all three repointed in the same unit** |
 | src/client/graphics/eqe1/eqe1_archive_component.cpp | 726 | EQT::Graphics::Eqe1ArchiveComponent -- EQE1 flat-pack archive open/resolve/index/report plus the fire-glow icosphere renderer (EQT_HAS_DRM), extracted from IrrlichtRenderer by L02 (Batch L). Header include/client/graphics/eqe1/eqe1_archive_component.h |
 | src/client/graphics/rdp/rdp_component.cpp | 233 | EQT::Graphics::RdpComponent -- RDP server integration (WITH_RDP guard), extracted from IrrlichtRenderer by L01 (Batch L). Header include/client/graphics/rdp/rdp_component.h |
-| renderer_entity_load_gate.cpp | 68 | ensureEntityPrepWorkerStarted, deferEntityForLoadGate — the entity load distance gate (T109/T111) |
+| src/client/graphics/zone_load/renderer_entity_load_gate.cpp | 78 | `EQT::Graphics::ZoneLoadComponent` — ensureEntityPrepWorkerStarted, deferEntityForLoadGate, the entity load distance gate (T109/T111). Folded into the component and moved into `zone_load/` by L12 (L10 deviation 1, closed) |
 
 ## Zone shader — split by J09
 

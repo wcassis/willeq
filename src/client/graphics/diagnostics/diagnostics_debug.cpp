@@ -14,9 +14,9 @@ namespace Graphics {
 void DiagnosticsComponent::toggleWireframe() {
     ctx_.wireframeMode = !ctx_.wireframeMode;
 
-    if (owner_.zoneMeshNode_) {
-        for (irr::u32 i = 0; i < owner_.zoneMeshNode_->getMaterialCount(); ++i) {
-            owner_.zoneMeshNode_->getMaterial(i).Wireframe = ctx_.wireframeMode;
+    if (ctx_.zoneMeshNode) {
+        for (irr::u32 i = 0; i < ctx_.zoneMeshNode->getMaterialCount(); ++i) {
+            ctx_.zoneMeshNode->getMaterial(i).Wireframe = ctx_.wireframeMode;
         }
     }
 
@@ -43,8 +43,8 @@ void DiagnosticsComponent::toggleHUD() {
 }
 
 void DiagnosticsComponent::toggleAllUI() {
-    owner_.Frame().allUIHidden_ = !owner_.Frame().allUIHidden_;
-    LOG_INFO(MOD_GRAPHICS, "All UI: {}", (owner_.Frame().allUIHidden_ ? "HIDDEN" : "VISIBLE"));
+    ctx_.Frame().allUIHidden_ = !ctx_.Frame().allUIHidden_;
+    LOG_INFO(MOD_GRAPHICS, "All UI: {}", (ctx_.Frame().allUIHidden_ ? "HIDDEN" : "VISIBLE"));
 }
 
 void DiagnosticsComponent::toggleNameTags() {
@@ -59,9 +59,9 @@ void DiagnosticsComponent::toggleNameTags() {
 void DiagnosticsComponent::toggleFog() {
     ctx_.fogEnabled = !ctx_.fogEnabled;
 
-    if (owner_.zoneMeshNode_) {
-        for (irr::u32 i = 0; i < owner_.zoneMeshNode_->getMaterialCount(); ++i) {
-            owner_.zoneMeshNode_->getMaterial(i).FogEnable = ctx_.fogEnabled;
+    if (ctx_.zoneMeshNode) {
+        for (irr::u32 i = 0; i < ctx_.zoneMeshNode->getMaterialCount(); ++i) {
+            ctx_.zoneMeshNode->getMaterial(i).FogEnable = ctx_.fogEnabled;
         }
     }
 
@@ -97,9 +97,9 @@ void DiagnosticsComponent::toggleZoneLights() {
         owner_.zoneLightsEnabled_ = false;
         ctx_.lightingEnabled = false;
         // Update materials to disable lighting
-        if (owner_.zoneMeshNode_) {
-            for (irr::u32 i = 0; i < owner_.zoneMeshNode_->getMaterialCount(); ++i) {
-                owner_.zoneMeshNode_->getMaterial(i).Lighting = false;
+        if (ctx_.zoneMeshNode) {
+            for (irr::u32 i = 0; i < ctx_.zoneMeshNode->getMaterialCount(); ++i) {
+                ctx_.zoneMeshNode->getMaterial(i).Lighting = false;
             }
         }
         // Update PVS region mesh nodes
@@ -128,12 +128,12 @@ void DiagnosticsComponent::toggleZoneLights() {
         ctx_.lightingEnabled = true;
         owner_.zoneLightsEnabled_ = false;
         // Update materials to enable lighting
-        if (owner_.zoneMeshNode_) {
-            for (irr::u32 i = 0; i < owner_.zoneMeshNode_->getMaterialCount(); ++i) {
-                owner_.zoneMeshNode_->getMaterial(i).Lighting = true;
-                owner_.zoneMeshNode_->getMaterial(i).NormalizeNormals = true;
-                owner_.zoneMeshNode_->getMaterial(i).AmbientColor = irr::video::SColor(255, 255, 255, 255);
-                owner_.zoneMeshNode_->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
+        if (ctx_.zoneMeshNode) {
+            for (irr::u32 i = 0; i < ctx_.zoneMeshNode->getMaterialCount(); ++i) {
+                ctx_.zoneMeshNode->getMaterial(i).Lighting = true;
+                ctx_.zoneMeshNode->getMaterial(i).NormalizeNormals = true;
+                ctx_.zoneMeshNode->getMaterial(i).AmbientColor = irr::video::SColor(255, 255, 255, 255);
+                ctx_.zoneMeshNode->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
             }
         }
         // Update PVS region mesh nodes
@@ -261,7 +261,7 @@ void DiagnosticsComponent::swapZoneMeshMaterials() {
     };
 
     // Swap zone mesh node (non-PVS single mesh)
-    swapNode(owner_.zoneMeshNode_);
+    swapNode(ctx_.zoneMeshNode);
 
     // Swap PVS region mesh nodes
     for (auto& [regionIdx, node] : ctx_.regionMeshNodes) {
@@ -269,7 +269,7 @@ void DiagnosticsComponent::swapZoneMeshMaterials() {
     }
 
     // Swap fallback mesh node
-    swapNode(owner_.fallbackMeshNode_);
+    swapNode(ctx_.fallbackMeshNode);
 
     // Swap object nodes (trees use wind material)
     for (auto* node : ctx_.objectNodes) {
@@ -293,8 +293,8 @@ void DiagnosticsComponent::swapZoneMeshMaterials() {
 
     LOG_INFO(MOD_GRAPHICS, "swapZoneMeshMaterials: swapped {}/{} mesh buffers (zone={} regions={} fallback={} objects={} doors={})",
         swapChanged, swapTotal,
-        owner_.zoneMeshNode_ != nullptr, ctx_.regionMeshNodes.size(),
-        owner_.fallbackMeshNode_ != nullptr, ctx_.objectNodes.size(), doorSwapped);
+        ctx_.zoneMeshNode != nullptr, ctx_.regionMeshNodes.size(),
+        ctx_.fallbackMeshNode != nullptr, ctx_.objectNodes.size(), doorSwapped);
 
     // Rebuild sorted draw list if manual zone draw is active (material keys changed)
     if (ctx_.manualZoneDrawEnabled) {
@@ -344,9 +344,9 @@ void DiagnosticsComponent::swapToDebugShader(irr::s32 debugMat) {
         }
     };
 
-    if (owner_.zoneMeshNode_) swapNodeToDebug(owner_.zoneMeshNode_);
+    if (ctx_.zoneMeshNode) swapNodeToDebug(ctx_.zoneMeshNode);
     for (auto& [idx, node] : ctx_.regionMeshNodes) swapNodeToDebug(node);
-    if (owner_.fallbackMeshNode_) swapNodeToDebug(owner_.fallbackMeshNode_);
+    if (ctx_.fallbackMeshNode) swapNodeToDebug(ctx_.fallbackMeshNode);
     for (auto* node : ctx_.objectNodes) swapNodeToDebug(node);
 }
 
@@ -441,8 +441,8 @@ void DiagnosticsComponent::toggleManualZoneDraw() {
         for (auto& [regionIdx, node] : ctx_.regionMeshNodes) {
             if (node && node->getParent()) { node->grab(); node->remove(); }
         }
-        if (owner_.fallbackMeshNode_ && owner_.fallbackMeshNode_->getParent()) {
-            owner_.fallbackMeshNode_->grab(); owner_.fallbackMeshNode_->remove();
+        if (ctx_.fallbackMeshNode && ctx_.fallbackMeshNode->getParent()) {
+            ctx_.fallbackMeshNode->grab(); ctx_.fallbackMeshNode->remove();
         }
         // Remove object nodes from scene graph — drawn via sorted draw list
         for (size_t i = 0; i < ctx_.objectNodes.size(); ++i) {
@@ -460,9 +460,9 @@ void DiagnosticsComponent::toggleManualZoneDraw() {
                 node->drop();
             }
         }
-        if (owner_.fallbackMeshNode_ && !owner_.fallbackMeshNode_->getParent()) {
-            ctx_.smgr->getRootSceneNode()->addChild(owner_.fallbackMeshNode_);
-            owner_.fallbackMeshNode_->drop();
+        if (ctx_.fallbackMeshNode && !ctx_.fallbackMeshNode->getParent()) {
+            ctx_.smgr->getRootSceneNode()->addChild(ctx_.fallbackMeshNode);
+            ctx_.fallbackMeshNode->drop();
         }
         // Re-add visible object nodes to scene graph
         for (size_t i = 0; i < ctx_.objectNodes.size(); ++i) {
@@ -485,8 +485,8 @@ void DiagnosticsComponent::toggleManualZoneDraw() {
 // branch, toggling on lets the next eligible frame attempt a build.
 void DiagnosticsComponent::toggleMergeZoneDraws() {
     if (owner_.isLoading()) return;
-    owner_.mergeZoneDrawsEnabled_ = !owner_.mergeZoneDrawsEnabled_;
-    if (!owner_.mergeZoneDrawsEnabled_ && owner_.zoneMergeBuffers_) {
+    ctx_.mergeZoneDrawsEnabled = !ctx_.mergeZoneDrawsEnabled;
+    if (!ctx_.mergeZoneDrawsEnabled && owner_.zoneMergeBuffers_) {
         // Free the merge buffers immediately when turned off — no reason to
         // hold the duplicated vertex/index memory while unused.
         owner_.zoneMergeBuffers_->destroy();
@@ -495,7 +495,7 @@ void DiagnosticsComponent::toggleMergeZoneDraws() {
     // so a user flipping /mergedraws off/on after an eviction-triggered
     // auto-disable gets a fresh attempt (at the cost of possibly hitting the
     // same eviction-driven fallback again — that's expected, not a bug).
-    if (owner_.mergeZoneDrawsEnabled_) {
+    if (ctx_.mergeZoneDrawsEnabled) {
         owner_.mergeZoneDrawsDisabledForZone_ = false;
         // T67: was `constrainedMeshCache_ ? ...->getEvictionCount() : 0`,
         // always 0 (the cache was never constructed). Pre-existing note:
@@ -507,7 +507,7 @@ void DiagnosticsComponent::toggleMergeZoneDraws() {
         owner_.mergeZoneDrawsBuildEvictionCount_ = 0;
     }
     LOG_INFO(MOD_GRAPHICS, "Zone draw merge (/mergedraws): {}",
-             owner_.mergeZoneDrawsEnabled_ ? "ENABLED" : "DISABLED");
+             ctx_.mergeZoneDrawsEnabled ? "ENABLED" : "DISABLED");
 }
 
 bool DiagnosticsComponent::loadIndoorRegionMap(const std::string& zoneName) {

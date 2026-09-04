@@ -214,7 +214,7 @@ std::vector<std::string> PlayerCameraComponent::buildFirstPersonCameraDumpLines(
 
     const FirstPersonCameraPlacement p = computeFirstPersonCamera(
         ctx_.playerX, ctx_.playerY, ctx_.playerZ, eye.irrY, owner_.playerConfig_.eyeHeight,
-        owner_.playerHeading_, playerPitch_, 100.0f, eye.irrX, eye.irrZ);
+        ctx_.playerHeading, playerPitch_, 100.0f, eye.irrX, eye.irrZ);
     sample.eyeIrrX = p.posX;  sample.eyeIrrY = p.posY;  sample.eyeIrrZ = p.posZ;
     sample.targetIrrX = p.targetX; sample.targetIrrY = p.targetY; sample.targetIrrZ = p.targetZ;
     sample.upX = p.upX; sample.upY = p.upY; sample.upZ = p.upZ;
@@ -224,7 +224,7 @@ std::vector<std::string> PlayerCameraComponent::buildFirstPersonCameraDumpLines(
     sample.eyeOffsetIrrY = eye.irrY;
     sample.eyeOffsetIrrZ = eye.irrZ;
 
-    sample.headingEqUnits = owner_.playerHeading_;
+    sample.headingEqUnits = ctx_.playerHeading;
     sample.lookPitchDeg = playerPitch_;
     sample.fixedPitchDownDeg = fpTunable(FpTunable::PitchDownDegrees);
     sample.maxDownPitchDeg = firstPersonMaxDownPitchDegrees();
@@ -272,7 +272,7 @@ void PlayerCameraComponent::repositionFirstPersonCamera() {
     // discarded the mouse.
     const FirstPersonCameraPlacement placement = computeFirstPersonCamera(
         ctx_.playerX, ctx_.playerY, ctx_.playerZ, eye.irrY, owner_.playerConfig_.eyeHeight,
-        owner_.playerHeading_, playerPitch_, 100.0f, eye.irrX, eye.irrZ);
+        ctx_.playerHeading, playerPitch_, 100.0f, eye.irrX, eye.irrZ);
 
     ctx_.camera->setPosition(irr::core::vector3df(placement.posX, placement.posY, placement.posZ));
     ctx_.camera->setTarget(irr::core::vector3df(placement.targetX, placement.targetY, placement.targetZ));
@@ -287,7 +287,7 @@ void PlayerCameraComponent::repositionFirstPersonCamera() {
     LOG_DEBUG(MOD_GRAPHICS, "[FP-CAMERA] eq=({:.4f},{:.4f},{:.4f}) nodeOriginZ={:.4f} eyeOffset=({:.4f},{:.4f},{:.4f}) fromHead={} adjust={:.2f} heading={:.4f} lookPitch={:.4f}deg fixedPitchDown={:.4f}deg maxDownPitch={:.2f}deg",
               placement.posX, placement.posZ, placement.posY, ctx_.playerZ,
               eye.irrX, eye.irrY, eye.irrZ, eye.derivedFromHead,
-              owner_.playerConfig_.eyeHeight, owner_.playerHeading_, playerPitch_,
+              owner_.playerConfig_.eyeHeight, ctx_.playerHeading, playerPitch_,
               kFirstPersonPitchDownDegrees,
               firstPersonMaxDownPitchDegrees());
 }
@@ -341,32 +341,32 @@ void PlayerCameraComponent::setPlayerRace(uint16_t raceId) {
             baseVision_ = VisionType::Normal;
             break;
     }
-    owner_.currentVision_ = baseVision_;
+    ctx_.currentVision = baseVision_;
     LOG_INFO(MOD_GRAPHICS, "Player race {} -> base vision: {}",
-             raceId, owner_.currentVision_ == VisionType::Ultravision ? "Ultravision" :
-                     owner_.currentVision_ == VisionType::Infravision ? "Infravision" : "Normal");
+             raceId, ctx_.currentVision == VisionType::Ultravision ? "Ultravision" :
+                     ctx_.currentVision == VisionType::Infravision ? "Infravision" : "Normal");
     // Zone light colors updated by SimulationWorker via visionType in SimulationInput
 }
 
 void PlayerCameraComponent::setVisionType(VisionType vision) {
     if (owner_.isLoading()) return;
     // Only upgrade vision, never downgrade below base
-    if (vision > owner_.currentVision_) {
-        owner_.currentVision_ = vision;
+    if (vision > ctx_.currentVision) {
+        ctx_.currentVision = vision;
         LOG_INFO(MOD_GRAPHICS, "Vision upgraded to: {}",
-                 owner_.currentVision_ == VisionType::Ultravision ? "Ultravision" :
-                 owner_.currentVision_ == VisionType::Infravision ? "Infravision" : "Normal");
+                 ctx_.currentVision == VisionType::Ultravision ? "Ultravision" :
+                 ctx_.currentVision == VisionType::Infravision ? "Infravision" : "Normal");
         // Zone light colors updated by SimulationWorker via visionType in SimulationInput
     }
 }
 
 void PlayerCameraComponent::resetVisionToBase() {
     if (owner_.isLoading()) return;
-    if (owner_.currentVision_ != baseVision_) {
-        owner_.currentVision_ = baseVision_;
+    if (ctx_.currentVision != baseVision_) {
+        ctx_.currentVision = baseVision_;
         LOG_INFO(MOD_GRAPHICS, "Vision reset to base: {}",
-                 owner_.currentVision_ == VisionType::Ultravision ? "Ultravision" :
-                 owner_.currentVision_ == VisionType::Infravision ? "Infravision" : "Normal");
+                 ctx_.currentVision == VisionType::Ultravision ? "Ultravision" :
+                 ctx_.currentVision == VisionType::Infravision ? "Infravision" : "Normal");
         // Zone light colors updated by SimulationWorker via visionType in SimulationInput
     }
 }
@@ -376,7 +376,7 @@ void PlayerCameraComponent::setPlayerPosition(float x, float y, float z, float h
     ctx_.playerX = x;
     ctx_.playerY = y;
     ctx_.playerZ = z;
-    owner_.playerHeading_ = heading;
+    ctx_.playerHeading = heading;
 
     LOG_DEBUG(MOD_GRAPHICS, "[ZONE-IN] setPlayerPosition: pos=({:.2f},{:.2f},{:.2f}) heading={:.2f} (EQ units, EQ heading 0-512)",
              x, y, z, heading);
@@ -388,10 +388,10 @@ void PlayerCameraComponent::setPlayerPosition(float x, float y, float z, float h
     // Check if player is within zone geometry bounds before following
     // Uses cached bounds — geometry vectors may have been released after zone load
     bool playerInBounds = true;
-    if (owner_.zoneBoundsValid_) {
+    if (ctx_.zoneBoundsValid) {
         float margin = 500.0f;
-        if (x < owner_.zoneBoundsMinX_ - margin || x > owner_.zoneBoundsMaxX_ + margin ||
-            y < owner_.zoneBoundsMinY_ - margin || y > owner_.zoneBoundsMaxY_ + margin) {
+        if (x < ctx_.zoneBoundsMinX - margin || x > ctx_.zoneBoundsMaxX + margin ||
+            y < ctx_.zoneBoundsMinY - margin || y > ctx_.zoneBoundsMaxY + margin) {
             playerInBounds = false;
         }
     }

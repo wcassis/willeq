@@ -355,8 +355,8 @@ void OverlaysComponent::drawTargetOutline() {
     // Restore 3D camera matrices — after drawAll(), ETS_VIEW and ETS_PROJECTION
     // may have been overwritten by 2D rendering (billboards, GUI nodes, overlays).
     // The correct 3D matrices were captured during the ESNRP_SOLID render pass.
-    ctx_.driver->setTransform(irr::video::ETS_VIEW, owner_.captured3DView_);
-    ctx_.driver->setTransform(irr::video::ETS_PROJECTION, owner_.captured3DProj_);
+    ctx_.driver->setTransform(irr::video::ETS_VIEW, ctx_.captured3DView);
+    ctx_.driver->setTransform(irr::video::ETS_PROJECTION, ctx_.captured3DProj);
 
     // Stencil reference value above portal range (portals use 1-4)
     const GLint STENCIL_REF = 128;
@@ -621,7 +621,7 @@ void OverlaysComponent::handleMouseTargeting(int clickX, int clickY) {
         // No entity found - check for door click
         bool handledClick = false;
         if (ctx_.doorManager) {
-            uint8_t doorId = ctx_.doorManager->getDoorAtScreenPos(clickX, clickY, ctx_.camera, owner_.collisionManager_);
+            uint8_t doorId = ctx_.doorManager->getDoorAtScreenPos(clickX, clickY, ctx_.camera, ctx_.collisionManager);
             if (doorId != 0) {
                 LOG_INFO(MOD_GRAPHICS, "Door clicked: ID {}", doorId);
                 if (ctx_.bridge) ctx_.bridge->pushIntent(eqt::events::DoorInteractIntent{doorId});
@@ -641,12 +641,12 @@ void OverlaysComponent::handleMouseTargeting(int clickX, int clickY) {
 }
 
 uint16_t OverlaysComponent::getEntityAtScreenPos(int screenX, int screenY) {
-    if (!owner_.collisionManager_ || !ctx_.camera || !ctx_.entityRenderer || !ctx_.driver) {
+    if (!ctx_.collisionManager || !ctx_.camera || !ctx_.entityRenderer || !ctx_.driver) {
         return 0;
     }
 
     // Get ray from camera through screen position
-    irr::core::line3df ray = owner_.collisionManager_->getRayFromScreenCoordinates(
+    irr::core::line3df ray = ctx_.collisionManager->getRayFromScreenCoordinates(
         irr::core::position2di(screenX, screenY), ctx_.camera);
 
     // Check each entity for intersection
@@ -728,7 +728,7 @@ bool OverlaysComponent::checkEntityLOS(const irr::core::vector3df& cameraPos, co
     irr::core::vector3df hitPoint;
     irr::core::triangle3df hitTriangle;
 
-    bool hit = owner_.PlayerCamera().checkCollisionBspFiltered(cameraPos, entityPos, hitPoint, hitTriangle);
+    bool hit = ctx_.PlayerCamera().checkCollisionBspFiltered(cameraPos, entityPos, hitPoint, hitTriangle);
 
     if (!hit) {
         return true;  // No obstruction

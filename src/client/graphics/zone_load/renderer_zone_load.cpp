@@ -86,15 +86,15 @@ void ZoneLoadComponent::loadZoneStep0_EQE1(ZoneLoadContext& ctx) {
         // they're queued and opened lazily, one at a time, only when
         // ConstrainedTextureCache actually misses a lookup against what's
         // already open. Most zones only ever touch a handful of them.
-        auto archiveList = owner_.Eqe1().resolveEQE1Archives(ctx_.currentZoneName);
+        auto archiveList = ctx_.Eqe1().resolveEQE1Archives(ctx_.currentZoneName);
         for (const auto& name : archiveList.zoneArchives) {
-            owner_.Eqe1().getOrOpenEQE1(name);
+            ctx_.Eqe1().getOrOpenEQE1(name);
         }
         {
             std::lock_guard<std::mutex> lock(owner_.eqe1CandidatesMutex_);
-            owner_.pendingGlobalEQE1Archives_ = archiveList.globalArchives;
-            owner_.eqe1CandidateRaces_.clear();
-            owner_.eqe1LoadTimeCandidateCount_ = 0;
+            ctx_.pendingGlobalEQE1Archives = archiveList.globalArchives;
+            ctx_.eqe1CandidateRaces.clear();
+            ctx_.eqe1LoadTimeCandidateCount = 0;
         }
 
         // T199: ADD THE ARCHIVES THE ZONE'S ACTUAL SPAWNS NEED.
@@ -134,14 +134,14 @@ void ZoneLoadComponent::loadZoneStep0_EQE1(ZoneLoadContext& ctx) {
             }
             size_t added = 0;
             for (uint16_t raceId : spawnedRaces) {
-                if (owner_.Eqe1().addSpawnedRaceEQE1Candidate(raceId)) ++added;
+                if (ctx_.Eqe1().addSpawnedRaceEQE1Candidate(raceId)) ++added;
             }
             LOG_INFO(MOD_GRAPHICS, "EQE1: {} distinct spawned races -> {} archive(s) queued "
                      "beyond the static list", spawnedRaces.size(), added);
         }
         {
             std::lock_guard<std::mutex> lock(owner_.eqe1CandidatesMutex_);
-            owner_.eqe1LoadTimeCandidateCount_ = owner_.pendingGlobalEQE1Archives_.size();
+            ctx_.eqe1LoadTimeCandidateCount = ctx_.pendingGlobalEQE1Archives.size();
         }
 
         // T207: the name -> archive index turns a lookup miss into at most one
@@ -159,7 +159,7 @@ void ZoneLoadComponent::loadZoneStep0_EQE1(ZoneLoadContext& ctx) {
         }
         if (ctx_.constrainedTextureCache) {
             ctx_.constrainedTextureCache->setEQE1ArchiveResolver(
-                [this](const std::string& n) { return owner_.Eqe1().openArchiveContaining(n); });
+                [this](const std::string& n) { return ctx_.Eqe1().openArchiveContaining(n); });
         }
 
         // T284: composite entity sheets are NOT bulk-opened.
@@ -226,7 +226,7 @@ bool ZoneLoadComponent::loadZoneStep1_S3D(ZoneLoadContext& ctx) {
                   ctx_.currentZone ? ctx_.currentZone->textures.size() : 0,
                   ctx_.currentZone ? (bool)ctx_.currentZone->wldLoader : false,
                   ctx_.currentZone ? (bool)ctx_.currentZone->geometry : false);
-        owner_.ZoneStream().logAssetBuildTime("seq_s3d_parse", 0, stepStart);
+        ctx_.ZoneStream().logAssetBuildTime("seq_s3d_parse", 0, stepStart);
     }
     FlushThreadLog();
 
@@ -386,7 +386,7 @@ void ZoneLoadComponent::loadZoneStep2_BSP(ZoneLoadContext& ctx) {
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2: BSP compute skipped (zone={}, wldLoader={})",
                       (bool)zone, zone ? (bool)zone->wldLoader : false);
         }
-        owner_.ZoneStream().logAssetBuildTime("seq_bsp_compute", 0, stepStart);
+        ctx_.ZoneStream().logAssetBuildTime("seq_bsp_compute", 0, stepStart);
     }
     FlushThreadLog();
 
@@ -395,9 +395,9 @@ void ZoneLoadComponent::loadZoneStep2_BSP(ZoneLoadContext& ctx) {
         auto stepStart = std::chrono::steady_clock::now();
         if (!ctx_.currentZone || !ctx_.currentZone->wldLoader) {
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: no wldLoader, fallback to single zone mesh");
-            owner_.ZoneLifecycle().createZoneMesh();
+            ctx_.ZoneLifecycle().createZoneMesh();
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: createZoneMesh() complete (no-wldLoader fallback), zoneMeshNode_={}",
-                      (bool)owner_.zoneMeshNode_);
+                      (bool)ctx_.zoneMeshNode);
         } else {
             auto wldLoader = ctx_.currentZone->wldLoader;
             auto bspTree = wldLoader->getBspTree();
@@ -408,21 +408,21 @@ void ZoneLoadComponent::loadZoneStep2_BSP(ZoneLoadContext& ctx) {
                           (bool)bspTree, bspTree ? bspTree->regions.size() : 0, wldLoader->hasPvsData());
                 if (ctx_.currentZone && !ctx_.currentZone->geometry && ctx_.currentZone->wldLoader)
                     ctx_.currentZone->geometry = ctx_.currentZone->wldLoader->getCombinedGeometry();
-                owner_.ZoneLifecycle().createZoneMesh();
+                ctx_.ZoneLifecycle().createZoneMesh();
                 LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: createZoneMesh() complete (no-BSP/PVS fallback), zoneMeshNode_={}",
-                          (bool)owner_.zoneMeshNode_);
+                          (bool)ctx_.zoneMeshNode);
             } else {
                 // Clean up existing mesh nodes
                 size_t oldRegionNodes = ctx_.regionMeshNodes.size();
-                if (owner_.zoneMeshNode_) { owner_.zoneMeshNode_->remove(); owner_.zoneMeshNode_ = nullptr; }
+                if (ctx_.zoneMeshNode) { ctx_.zoneMeshNode->remove(); ctx_.zoneMeshNode = nullptr; }
                 for (auto& [regionIdx, node] : ctx_.regionMeshNodes) {
                     if (node) { if (node->getParent()) node->remove(); else node->drop(); }
                 }
                 ctx_.regionMeshNodes.clear();
                 ctx_.regionBoundingBoxes.clear();
-                if (owner_.fallbackMeshNode_) {
-                    if (owner_.fallbackMeshNode_->getParent()) owner_.fallbackMeshNode_->remove(); else owner_.fallbackMeshNode_->drop();
-                    owner_.fallbackMeshNode_ = nullptr;
+                if (ctx_.fallbackMeshNode) {
+                    if (ctx_.fallbackMeshNode->getParent()) ctx_.fallbackMeshNode->remove(); else ctx_.fallbackMeshNode->drop();
+                    ctx_.fallbackMeshNode = nullptr;
                 }
                 LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: cleaned up existing mesh nodes "
                           "(zoneMeshNode removed, {} region nodes removed, fallback removed)",
@@ -464,7 +464,7 @@ void ZoneLoadComponent::loadZoneStep2_BSP(ZoneLoadContext& ctx) {
         if (!ctx_.portalSystem && pendingZoneComputations_ && pendingZoneComputations_->portalSystem) {
             ctx_.portalSystem = std::move(pendingZoneComputations_->portalSystem);
             ctx_.portalOcclusionEligible = pendingZoneComputations_->portalOcclusionEligible;
-            owner_.portalBuildPending_ = false;
+            ctx_.portalBuildPending = false;
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: portal system installed, occlusionEligible={}",
                       ctx_.portalOcclusionEligible);
 
@@ -495,24 +495,24 @@ void ZoneLoadComponent::loadZoneStep2_BSP(ZoneLoadContext& ctx) {
                 }
             }
         } else if (ctx_.zoneBspTree && !ctx_.regionBoundingBoxes.empty() && !ctx_.portalSystem) {
-            owner_.portalBuildPending_ = true;
+            ctx_.portalBuildPending = true;
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: portal system deferred (portalBuildPending=true)");
         }
-        if (owner_.regionNeighbors_.empty()) {
-            owner_.ZoneLifecycle().buildRegionNeighborMap();
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: built region neighbor map, {} entries", owner_.regionNeighbors_.size());
+        if (ctx_.regionNeighbors.empty()) {
+            ctx_.ZoneLifecycle().buildRegionNeighborMap();
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: built region neighbor map, {} entries", ctx_.regionNeighbors.size());
         }
         if (ctx_.doorManager) {
-            ctx_.doorManager->setRegionNeighbors(owner_.regionNeighbors_.empty() ? nullptr : &owner_.regionNeighbors_);
+            ctx_.doorManager->setRegionNeighbors(ctx_.regionNeighbors.empty() ? nullptr : &ctx_.regionNeighbors);
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: doorManager region neighbors set ({})",
-                      owner_.regionNeighbors_.empty() ? "null" : std::to_string(owner_.regionNeighbors_.size()));
+                      ctx_.regionNeighbors.empty() ? "null" : std::to_string(ctx_.regionNeighbors.size()));
         }
 
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: zoneBspTree_={}, usePvsCulling_={}, "
                   "regionBoundingBoxes_={}, portalSystem_={}, portalOcclusionEligible_={}, regionNeighbors_={}",
                   (bool)ctx_.zoneBspTree, ctx_.usePvsCulling, ctx_.regionBoundingBoxes.size(),
-                  (bool)ctx_.portalSystem, ctx_.portalOcclusionEligible, owner_.regionNeighbors_.size());
-        owner_.ZoneStream().logAssetBuildTime("seq_bsp_install", 0, stepStart);
+                  (bool)ctx_.portalSystem, ctx_.portalOcclusionEligible, ctx_.regionNeighbors.size());
+        ctx_.ZoneStream().logAssetBuildTime("seq_bsp_install", 0, stepStart);
     }
     FlushThreadLog();
 }
@@ -585,7 +585,7 @@ void ZoneLoadComponent::loadZoneStep4_Regions(ZoneLoadContext& ctx) {
                         node->getMaterial(m).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
                     }
                     ctx_.regionMeshNodes[i] = node;
-                    owner_.ZoneLifecycle().uploadMeshHardwareBuffers(node);
+                    ctx_.ZoneLifecycle().uploadMeshHardwareBuffers(node);
                     if (ctx_.regionBoundingBoxes.find(i) == ctx_.regionBoundingBoxes.end())
                         ctx_.regionBoundingBoxes[i] = node->getTransformedBoundingBox();
                 } else {
@@ -734,7 +734,7 @@ void ZoneLoadComponent::loadZoneStep4_Regions(ZoneLoadContext& ctx) {
         // this initial value). renderer_zone_lifecycle.cpp resets this +
         // destroys any built merge buffers on zone teardown, so each zone
         // visit starts from the config default again.
-        owner_.mergeZoneDrawsEnabled_ = ctx_.config.constrainedConfig.mergeZoneDraws;
+        ctx_.mergeZoneDrawsEnabled = ctx_.config.constrainedConfig.mergeZoneDraws;
 
         // Setup front-to-back sorting
         if (ctx_.usePvsCulling && !ctx_.regionMeshNodes.empty() && !ctx_.config.constrainedConfig.skipManualZoneDraw) {
@@ -751,8 +751,8 @@ void ZoneLoadComponent::loadZoneStep4_Regions(ZoneLoadContext& ctx) {
                 for (auto& [regionIdx, node] : ctx_.regionMeshNodes) {
                     if (node && node->getParent()) { node->grab(); node->remove(); }
                 }
-                if (owner_.fallbackMeshNode_ && owner_.fallbackMeshNode_->getParent()) {
-                    owner_.fallbackMeshNode_->grab(); owner_.fallbackMeshNode_->remove();
+                if (ctx_.fallbackMeshNode && ctx_.fallbackMeshNode->getParent()) {
+                    ctx_.fallbackMeshNode->grab(); ctx_.fallbackMeshNode->remove();
                 }
                 LOG_INFO(MOD_GRAPHICS, "Sequential: front-to-back sorting enabled ({} regions)",
                          ctx_.regionMeshNodes.size());
@@ -763,7 +763,7 @@ void ZoneLoadComponent::loadZoneStep4_Regions(ZoneLoadContext& ctx) {
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step4: front-to-back sorting skipped (usePvsCulling_={}, regionMeshNodes_={}, skipManualZoneDraw={})",
                       ctx_.usePvsCulling, ctx_.regionMeshNodes.size(), ctx_.config.constrainedConfig.skipManualZoneDraw);
         }
-        owner_.ZoneStream().logAssetBuildTime("seq_regions", ctx_.regionMeshNodes.size(), stepStart);
+        ctx_.ZoneStream().logAssetBuildTime("seq_regions", ctx_.regionMeshNodes.size(), stepStart);
     }
     FlushThreadLog();
 }
@@ -854,7 +854,7 @@ void ZoneLoadComponent::loadZoneStep5_Assets(ZoneLoadContext& ctx) {
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step5: RaceModelLoader zone set to '{}'", ctx_.currentZoneName);
         }
 
-        owner_.ZoneStream().logAssetBuildTime("seq_assets", 0, stepStart);
+        ctx_.ZoneStream().logAssetBuildTime("seq_assets", 0, stepStart);
     }
     FlushThreadLog();
 }
@@ -871,7 +871,7 @@ void ZoneLoadComponent::loadZoneSequential(const std::string& eqClientPath,
         LOG_INFO(MOD_GRAPHICS, "loadZoneSequential: [{}%] {}", percent, text);
         // Render a loading frame so the progress bar updates visually
         std::wstring wtext(text.begin(), text.end());
-        owner_.Overlays().drawLoadingScreen(percent / 100.0f, wtext);
+        ctx_.Overlays().drawLoadingScreen(percent / 100.0f, wtext);
     };
 
     // ── Setup ────────────────────────────────────────────────────────────────
@@ -882,8 +882,8 @@ void ZoneLoadComponent::loadZoneSequential(const std::string& eqClientPath,
               (bool)owner_.simulationWorker_, (bool)ctx_.entityRenderer, (bool)ctx_.doorManager);
     LOG_DEBUG(MOD_GRAPHICS, "SEQ Setup: fireGlowLightingEnabled_={}, fireGlowIcospheresEnabled_={}, "
               "maxFireGlowLights_={}, fireEffectsEnabled_={}, fireGlowLights_.size={}",
-              owner_.fireGlowLightingEnabled_, owner_.fireGlowIcospheresEnabled_,
-              owner_.maxFireGlowLights_, ctx_.fireEffectsEnabled, owner_.fireGlowLights_.size());
+              ctx_.fireGlowLightingEnabled, ctx_.fireGlowIcospheresEnabled,
+              ctx_.maxFireGlowLights, ctx_.fireEffectsEnabled, owner_.fireGlowLights_.size());
     LOG_DEBUG(MOD_GRAPHICS, "SEQ Setup: constrainedConfig: skipObjectBuild={}, "
               "eqe1Path='{}', deferredAssetLoading={}",
               ctx_.config.constrainedConfig.skipObjectBuild,
@@ -892,12 +892,12 @@ void ZoneLoadComponent::loadZoneSequential(const std::string& eqClientPath,
 
     LOG_DEBUG(MOD_GRAPHICS, "SEQ Setup: stopping simulation worker (running={})",
               owner_.simulationWorker_ ? owner_.simulationWorker_->isRunning() : false);
-    owner_.SimBridge().stopSimulationWorker();
+    ctx_.SimBridge().stopSimulationWorker();
     LOG_DEBUG(MOD_GRAPHICS, "SEQ Setup: simulation worker stopped");
     ctx_.progressiveLoadingActive = true;
-    owner_.progressiveLoadStartTime_ = std::chrono::steady_clock::now();
+    ctx_.progressiveLoadStartTime = std::chrono::steady_clock::now();
     ctx_.entityPrepReady = false;
-    owner_.entityPrepScanCounter_ = 0;
+    ctx_.entityPrepScanCounter = 0;
     pendingZoneComputations_ = std::make_unique<PendingZoneComputations>();
 
     ctx.eqPath = eqClientPath;
@@ -916,7 +916,7 @@ void ZoneLoadComponent::loadZoneSequential(const std::string& eqClientPath,
         // meshBytes was constrainedMeshCache_'s usage, always 0 (T67: cache
         // removed, was never constructed in any shipped build).
         constexpr size_t meshBytes = 0;
-        logLoadMemAuditStep(stepName, owner_.Eqe1().getEQE1MappedBytesTotal(), texBytes, meshBytes, 0);
+        logLoadMemAuditStep(stepName, ctx_.Eqe1().getEQE1MappedBytesTotal(), texBytes, meshBytes, 0);
     };
 
     sampleStep("00_start");
@@ -967,11 +967,11 @@ void ZoneLoadComponent::loadZoneSequential(const std::string& eqClientPath,
     loadZoneStep13_Cleanup(ctx);
     sampleStep("13_Cleanup");
 
-    owner_.sequentialLoadComplete_ = true;
+    ctx_.sequentialLoadComplete = true;
     LOG_DEBUG(MOD_GRAPHICS, "SEQ DONE: sequentialLoadComplete_=true, fireGlowLights_={}, "
               "fireGlowLightingEnabled_={}, fireGlowIcospheresEnabled_={}, maxFireGlowLights_={}",
-              owner_.fireGlowLights_.size(), owner_.fireGlowLightingEnabled_,
-              owner_.fireGlowIcospheresEnabled_, owner_.maxFireGlowLights_);
+              owner_.fireGlowLights_.size(), ctx_.fireGlowLightingEnabled,
+              ctx_.fireGlowIcospheresEnabled, ctx_.maxFireGlowLights);
     auto totalMs = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - ctx.totalStart).count();
     LOG_INFO(MOD_GRAPHICS, "loadZoneSequential: complete for zone '{}' in {}ms", ctx_.currentZoneName, totalMs);
@@ -979,7 +979,7 @@ void ZoneLoadComponent::loadZoneSequential(const std::string& eqClientPath,
     // T207: report which EQE1 archives actually served a lookup. Always on --
     // it is a handful of INFO lines once per zone-in, and the whole point is
     // that the waste was invisible until it was counted.
-    owner_.Eqe1().logEQE1ArchiveUsage();
+    ctx_.Eqe1().logEQE1ArchiveUsage();
 
     // T214: dump the COMPLETE per-name EQE1 request list for this zone load.
     // logEQE1ArchiveUsage() above says which archives went unused; this says
@@ -1001,7 +1001,7 @@ void ZoneLoadComponent::loadZoneSequential(const std::string& eqClientPath,
                                               ctx_.currentZoneName);
     }
 
-    owner_.Diagnostics().dumpScene();
+    ctx_.Diagnostics().dumpScene();
     FlushThreadLog();
 }
 

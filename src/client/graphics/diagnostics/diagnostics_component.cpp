@@ -211,8 +211,8 @@ void DiagnosticsComponent::dumpScene() const {
     if (ctx_.weatherEffects) ctx_.weatherEffects->collectSceneNodes(knownNodes);
     // Subtract zone collision node
     if (collisionInGraph) { otherNodes--; knownNodes.insert(owner_.zoneCollisionNode_); }
-    if (owner_.fallbackMeshNode_ && owner_.fallbackMeshNode_->getParent()) { otherNodes--; knownNodes.insert(owner_.fallbackMeshNode_); }
-    if (owner_.zonePlaceholderNode_) { otherNodes--; knownNodes.insert(owner_.zonePlaceholderNode_); }
+    if (ctx_.fallbackMeshNode && ctx_.fallbackMeshNode->getParent()) { otherNodes--; knownNodes.insert(ctx_.fallbackMeshNode); }
+    if (ctx_.zonePlaceholderNode) { otherNodes--; knownNodes.insert(ctx_.zonePlaceholderNode); }
     if (ctx_.camera) { otherNodes--; knownNodes.insert(ctx_.camera); }
     if (owner_.sunLight_) { otherNodes--; knownNodes.insert(owner_.sunLight_); }
     if (owner_.playerLightNode_) { otherNodes--; knownNodes.insert(owner_.playerLightNode_); }
@@ -273,12 +273,12 @@ void DiagnosticsComponent::dumpScene() const {
     {
         unsigned int icoProgram = 0;
 #ifdef EQT_HAS_DRM
-        icoProgram = owner_.icosphereProgram_;
+        icoProgram = ctx_.icosphereProgram;
 #endif
         LOG_INFO(MOD_GRAPHICS, "  FIRE GLOW: lights={}, lightingEnabled={}, icospheresEnabled={}, "
                  "maxLights={}, fireEffectsEnabled={}, icosphereProgram={}",
-                 owner_.fireGlowLights_.size(), owner_.fireGlowLightingEnabled_, owner_.fireGlowIcospheresEnabled_,
-                 owner_.maxFireGlowLights_, ctx_.fireEffectsEnabled, icoProgram);
+                 owner_.fireGlowLights_.size(), ctx_.fireGlowLightingEnabled, ctx_.fireGlowIcospheresEnabled,
+                 ctx_.maxFireGlowLights, ctx_.fireEffectsEnabled, icoProgram);
     }
 
     // --- Visibility counts (from SimulationWorker output applied to scene) ---
@@ -410,7 +410,7 @@ void DiagnosticsComponent::profileSceneBreakdown() {
 
     // Helper to hide all scene content including lights
     auto hideAll = [this]() {
-        if (owner_.zoneMeshNode_) owner_.zoneMeshNode_->setVisible(false);
+        if (ctx_.zoneMeshNode) ctx_.zoneMeshNode->setVisible(false);
         if (ctx_.entityRenderer) ctx_.entityRenderer->setAllEntitiesVisible(false);
         // Hide objects (they may already be out of scene graph)
         for (size_t i = 0; i < ctx_.objectNodes.size(); ++i) {
@@ -423,7 +423,7 @@ void DiagnosticsComponent::profileSceneBreakdown() {
     };
 
     auto showAll = [this]() {
-        if (owner_.zoneMeshNode_) owner_.zoneMeshNode_->setVisible(true);
+        if (ctx_.zoneMeshNode) ctx_.zoneMeshNode->setVisible(true);
         if (ctx_.entityRenderer) ctx_.entityRenderer->setAllEntitiesVisible(true);
         // Add objects back to scene graph and show
         for (size_t i = 0; i < ctx_.objectNodes.size(); ++i) {
@@ -460,7 +460,7 @@ void DiagnosticsComponent::profileSceneBreakdown() {
     int totalSceneNodes = countNodes(ctx_.smgr->getRootSceneNode());
 
     LOG_INFO(MOD_GRAPHICS, "=== SCENE BREAKDOWN PROFILE ===");
-    LOG_INFO(MOD_GRAPHICS, "Zone mesh node: {}", owner_.zoneMeshNode_ ? "valid" : "NULL");
+    LOG_INFO(MOD_GRAPHICS, "Zone mesh node: {}", ctx_.zoneMeshNode ? "valid" : "NULL");
     LOG_INFO(MOD_GRAPHICS, "Total scene nodes: {} (lights: {})", totalSceneNodes, lightCount);
     LOG_INFO(MOD_GRAPHICS, "Measuring each category in isolation ({} samples each)...", numSamples);
 
@@ -480,7 +480,7 @@ void DiagnosticsComponent::profileSceneBreakdown() {
     int64_t baseline = baselineSum / numSamples;
 
     // 2. Measure zone mesh only
-    if (owner_.zoneMeshNode_) owner_.zoneMeshNode_->setVisible(true);
+    if (ctx_.zoneMeshNode) ctx_.zoneMeshNode->setVisible(true);
     int64_t zoneSum = 0;
     uint32_t zonePolys = 0;
     for (int i = 0; i < numSamples; i++) {
@@ -492,7 +492,7 @@ void DiagnosticsComponent::profileSceneBreakdown() {
     }
     breakdown.zoneTime = (zoneSum / numSamples) - baseline;
     breakdown.zonePolys = static_cast<int>(zonePolys - baselinePolys);
-    if (owner_.zoneMeshNode_) owner_.zoneMeshNode_->setVisible(false);
+    if (ctx_.zoneMeshNode) ctx_.zoneMeshNode->setVisible(false);
 
     // 3. Measure entities only
     if (ctx_.entityRenderer) ctx_.entityRenderer->setAllEntitiesVisible(true);
@@ -646,10 +646,10 @@ MemoryReportBreakdown DiagnosticsComponent::getMemoryReportBreakdown(const Memor
     // inflated total produced). Reported on its own line below (mapped, not
     // resident -- callers reading this field must not treat it as RSS).
     {
-        b.eqe1MappedBytes = owner_.Eqe1().getEQE1MappedBytesTotal();
+        b.eqe1MappedBytes = ctx_.Eqe1().getEQE1MappedBytesTotal();
         {
             std::lock_guard<std::mutex> lock(owner_.eqe1Mutex_);
-            for (const auto& [name, loader] : owner_.eqe1Loaders_) {
+            for (const auto& [name, loader] : ctx_.eqe1Loaders) {
                 if (loader) ++b.eqe1ArchiveCount;
             }
         }
@@ -664,8 +664,8 @@ MemoryReportBreakdown DiagnosticsComponent::getMemoryReportBreakdown(const Memor
     {
         // Estimate zone mesh memory from Irrlicht mesh buffers
         size_t zoneMeshBytes = 0;
-        if (owner_.zoneMeshNode_ && owner_.zoneMeshNode_->getMesh()) {
-            auto* mesh = owner_.zoneMeshNode_->getMesh();
+        if (ctx_.zoneMeshNode && ctx_.zoneMeshNode->getMesh()) {
+            auto* mesh = ctx_.zoneMeshNode->getMesh();
             for (uint32_t i = 0; i < mesh->getMeshBufferCount(); ++i) {
                 auto* buf = mesh->getMeshBuffer(i);
                 zoneMeshBytes += buf->getVertexCount() * sizeof(irr::video::S3DVertex);
@@ -879,8 +879,8 @@ std::vector<std::string> DiagnosticsComponent::getMemoryReport(const MemoryRepor
             }
             lines.push_back(fmt::format("[Zone Geometry] {} ({} regions, {}V/{}I)",
                 formatBytes(b.zoneGeometryBytes), regionCount, pvsVerts, pvsIndices));
-        } else if (owner_.zoneMeshNode_) {
-            auto* mesh = owner_.zoneMeshNode_->getMesh();
+        } else if (ctx_.zoneMeshNode) {
+            auto* mesh = ctx_.zoneMeshNode->getMesh();
             uint32_t verts = 0, indices = 0;
             if (mesh) {
                 for (uint32_t i = 0; i < mesh->getMeshBufferCount(); ++i) {

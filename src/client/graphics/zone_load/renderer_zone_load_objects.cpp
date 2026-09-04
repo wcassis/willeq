@@ -68,11 +68,11 @@ void ZoneLoadComponent::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
     {
         auto stepStart = std::chrono::steady_clock::now();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: objectLights_ before={}", ctx_.objectLights.size());
-        owner_.deferredObjects_.clear();
+        ctx_.deferredObjects.clear();
 
         if (pendingZoneComputations_ && !pendingZoneComputations_->prebuiltDeferredObjects.empty()) {
-            owner_.deferredObjects_ = std::move(pendingZoneComputations_->prebuiltDeferredObjects);
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: using prebuilt deferred objects, count={}", owner_.deferredObjects_.size());
+            ctx_.deferredObjects = std::move(pendingZoneComputations_->prebuiltDeferredObjects);
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: using prebuilt deferred objects, count={}", ctx_.deferredObjects.size());
         } else if (pendingZoneComputations_ && !pendingZoneComputations_->deferredObjectEntries.empty() && ctx_.currentZone) {
             for (auto& [objIdx, bspRegion] : pendingZoneComputations_->deferredObjectEntries) {
                 if (objIdx >= ctx_.currentZone->objects.size()) continue;
@@ -96,23 +96,23 @@ void ZoneLoadComponent::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
                 deferred.worldBounds = irr::core::aabbox3df(
                     x - halfW, z - halfH, y - halfW,
                     x + halfW, z + halfH, y + halfW);
-                owner_.deferredObjects_.push_back(deferred);
+                ctx_.deferredObjects.push_back(deferred);
             }
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: built deferred objects from entries, count={}", owner_.deferredObjects_.size());
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: built deferred objects from entries, count={}", ctx_.deferredObjects.size());
         } else {
-            owner_.ZoneStream().indexObjectMeshes();
+            ctx_.ZoneStream().indexObjectMeshes();
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: used indexObjectMeshes() fallback");
         }
 
         // Zone bounds
         if (ctx_.currentZone && ctx_.currentZone->geometry) {
-            owner_.zoneBoundsMinX_ = ctx_.currentZone->geometry->minX;
-            owner_.zoneBoundsMaxX_ = ctx_.currentZone->geometry->maxX;
-            owner_.zoneBoundsMinY_ = ctx_.currentZone->geometry->minY;
-            owner_.zoneBoundsMaxY_ = ctx_.currentZone->geometry->maxY;
-            owner_.zoneBoundsValid_ = true;
+            ctx_.zoneBoundsMinX = ctx_.currentZone->geometry->minX;
+            ctx_.zoneBoundsMaxX = ctx_.currentZone->geometry->maxX;
+            ctx_.zoneBoundsMinY = ctx_.currentZone->geometry->minY;
+            ctx_.zoneBoundsMaxY = ctx_.currentZone->geometry->maxY;
+            ctx_.zoneBoundsValid = true;
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: zone bounds from geometry: X=[{:.1f},{:.1f}] Y=[{:.1f},{:.1f}]",
-                      owner_.zoneBoundsMinX_, owner_.zoneBoundsMaxX_, owner_.zoneBoundsMinY_, owner_.zoneBoundsMaxY_);
+                      ctx_.zoneBoundsMinX, ctx_.zoneBoundsMaxX, ctx_.zoneBoundsMinY, ctx_.zoneBoundsMaxY);
         } else if (!ctx_.regionBoundingBoxes.empty()) {
             float rMinX = std::numeric_limits<float>::max(), rMaxX = std::numeric_limits<float>::lowest();
             float rMinY = std::numeric_limits<float>::max(), rMaxY = std::numeric_limits<float>::lowest();
@@ -120,11 +120,11 @@ void ZoneLoadComponent::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
                 rMinX = std::min(rMinX, bb.MinEdge.X); rMaxX = std::max(rMaxX, bb.MaxEdge.X);
                 rMinY = std::min(rMinY, bb.MinEdge.Y); rMaxY = std::max(rMaxY, bb.MaxEdge.Y);
             }
-            owner_.zoneBoundsMinX_ = rMinX; owner_.zoneBoundsMaxX_ = rMaxX;
-            owner_.zoneBoundsMinY_ = rMinY; owner_.zoneBoundsMaxY_ = rMaxY;
-            owner_.zoneBoundsValid_ = true;
+            ctx_.zoneBoundsMinX = rMinX; ctx_.zoneBoundsMaxX = rMaxX;
+            ctx_.zoneBoundsMinY = rMinY; ctx_.zoneBoundsMaxY = rMaxY;
+            ctx_.zoneBoundsValid = true;
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: zone bounds from regionBoundingBoxes: X=[{:.1f},{:.1f}] Y=[{:.1f},{:.1f}]",
-                      owner_.zoneBoundsMinX_, owner_.zoneBoundsMaxX_, owner_.zoneBoundsMinY_, owner_.zoneBoundsMaxY_);
+                      ctx_.zoneBoundsMinX, ctx_.zoneBoundsMaxX, ctx_.zoneBoundsMinY, ctx_.zoneBoundsMaxY);
         } else {
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: zone bounds not available (no combined geometry and no region bounding boxes)");
         }
@@ -148,14 +148,14 @@ void ZoneLoadComponent::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
                 LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: obj builder atlas shader materials set (solid={}, alpha={})",
                           ctx_.zoneShader->getActiveAtlasSolid(), ctx_.zoneShader->getActiveAtlasAlpha());
             }
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: totalObjects={}", owner_.deferredObjects_.size());
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: totalObjects={}", ctx_.deferredObjects.size());
 
-            size_t totalObjects = owner_.deferredObjects_.size();
+            size_t totalObjects = ctx_.deferredObjects.size();
             size_t objectsBuilt = 0;
 
             for (size_t oi = 0; oi < totalObjects; ++oi) {
             
-                DeferredObject& deferred = owner_.deferredObjects_[oi];
+                DeferredObject& deferred = ctx_.deferredObjects[oi];
                 if (deferred.meshBuilt) { ++objectsBuilt; continue; }
                 if (deferred.objectIndex >= ctx_.currentZone->objects.size()) {
                     deferred.meshBuilt = true; ++objectsBuilt; continue;
@@ -183,7 +183,7 @@ void ZoneLoadComponent::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
                 const auto& missingObjTex = objBuilder.getMissingTextures();
                 if (!missingObjTex.empty()) {
                     for (const auto& texName : missingObjTex)
-                        owner_.pendingTextureObjects_[texName].insert(oi);
+                        ctx_.pendingTextureObjects[texName].insert(oi);
                     LOG_WARN(MOD_GRAPHICS, "SEQ Step6: obj[{}] '{}' has {} missing textures queued for later rebuild",
                              oi, objName, missingObjTex.size());
                 }
@@ -297,7 +297,7 @@ void ZoneLoadComponent::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
                             }
                         }
 
-                        owner_.vertexAnimatedMeshes_.push_back(std::move(vam));
+                        ctx_.vertexAnimatedMeshes.push_back(std::move(vam));
                         LOG_INFO(MOD_GRAPHICS, "SEQ Step6: obj[{}] '{}' registered as vertex-animated "
                                  "({} frames, {}ms delay, {} mapped/{} total verts)",
                                  oi, objName, animData->frames.size(), animData->delayMs,
@@ -311,22 +311,22 @@ void ZoneLoadComponent::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
                 ctx_.objectNodes.push_back(objNode);
                 ctx_.objectPositions.push_back(irr::core::vector3df(ox, oz, oy));
                 if (ctx_.zoneBspTree)
-                    owner_.objectRegions_.push_back(ctx_.zoneBspTree->findRegionIndexForPoint(ox, oy, oz));
+                    ctx_.objectRegions.push_back(ctx_.zoneBspTree->findRegionIndexForPoint(ox, oy, oz));
                 else
-                    owner_.objectRegions_.push_back(SIZE_MAX);
+                    ctx_.objectRegions.push_back(SIZE_MAX);
                 objNode->updateAbsolutePosition();
-                owner_.objectBoundingBoxes_.push_back(objNode->getTransformedBoundingBox());
+                ctx_.objectBoundingBoxes.push_back(objNode->getTransformedBoundingBox());
                 deferred.nodeIndex = newNodeIndex;
 
                 // PVS visibility (no SimWorker yet, so all visible).
                 // When manualZoneDrawEnabled_, objects are always out of scene graph
                 // and rendered via drawZoneGeometrySorted() instead.
-                bool pvsVisible = owner_.isRegionPvsVisible(owner_.objectRegions_.back());
+                bool pvsVisible = owner_.isRegionPvsVisible(ctx_.objectRegions.back());
                 if (!pvsVisible || ctx_.manualZoneDrawEnabled) {
                     objNode->remove();
                     if (!pvsVisible) {
                         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: obj[{}] '{}' removed from scene graph (PVS hidden, region={})",
-                                  oi, objName, owner_.objectRegions_.back());
+                                  oi, objName, ctx_.objectRegions.back());
                     }
                 }
                 ctx_.objectInSceneGraph.push_back(pvsVisible && !ctx_.manualZoneDrawEnabled);
@@ -410,7 +410,7 @@ void ZoneLoadComponent::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
                         objLight.position = lightPos;
                         objLight.objectName = objName;
                         objLight.originalColor = lightColor;
-                        objLight.bspRegion = owner_.objectRegions_.back();
+                        objLight.bspRegion = ctx_.objectRegions.back();
 
                         if (upperName.find("TORCH") != std::string::npos ||
                             upperName.find("FIRE") != std::string::npos ||
@@ -426,7 +426,7 @@ void ZoneLoadComponent::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
                         bool lightPvsVis = owner_.isRegionPvsVisible(objLight.bspRegion);
                         if (lightPvsVis)
                             ctx_.smgr->getRootSceneNode()->addChild(lightNode);
-                        owner_.objectLightInSceneGraph_.push_back(lightPvsVis);
+                        ctx_.objectLightInSceneGraph.push_back(lightPvsVis);
 
                         ctx_.objectLights.push_back(objLight);
                         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: obj[{}] '{}' light created: pos=({:.1f},{:.1f},{:.1f}) "
@@ -456,7 +456,7 @@ void ZoneLoadComponent::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: objectLights_ after={}, fire sources from objects={}",
                       ctx_.objectLights.size(), fireSrcCount);
         }
-        owner_.ZoneStream().logAssetBuildTime("seq_objects", owner_.deferredObjects_.size(), stepStart);
+        ctx_.ZoneStream().logAssetBuildTime("seq_objects", ctx_.deferredObjects.size(), stepStart);
     }
     FlushThreadLog();
 }
@@ -475,14 +475,14 @@ void ZoneLoadComponent::loadZoneStep7_Doors(ZoneLoadContext& ctx) {
             if (ctx_.zoneBspTree) ctx_.doorManager->setBspTree(ctx_.zoneBspTree.get());
             ctx_.doorManager->setPvsRegion(ctx_.currentPvsRegion);
             if (ctx_.frustumCuller) ctx_.doorManager->setFrustumCuller(ctx_.frustumCuller.get());
-            ctx_.doorManager->setRegionNeighbors(owner_.regionNeighbors_.empty() ? nullptr : &owner_.regionNeighbors_);
+            ctx_.doorManager->setRegionNeighbors(ctx_.regionNeighbors.empty() ? nullptr : &ctx_.regionNeighbors);
             if (ctx_.zoneShader && ctx_.zoneShader->isAvailable())
                 ctx_.doorManager->setShaderMaterialTypes(ctx_.zoneShader->getActiveSolid(),
                                                      ctx_.zoneShader->getActiveAlphaTest(),
                                                      ctx_.zoneShader->getActiveAlphaTestRGBA());
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step7: created DoorManager (zone={}, bsp={}, frustum={}, neighbors={}, shader={})",
                       (bool)ctx_.currentZone, (bool)ctx_.zoneBspTree, (bool)ctx_.frustumCuller,
-                      !owner_.regionNeighbors_.empty(), ctx_.zoneShader && ctx_.zoneShader->isAvailable());
+                      !ctx_.regionNeighbors.empty(), ctx_.zoneShader && ctx_.zoneShader->isAvailable());
         }
 
         // Rebuild all doors at once
@@ -530,7 +530,7 @@ void ZoneLoadComponent::loadZoneStep7_Doors(ZoneLoadContext& ctx) {
                      totalDoors, doorsFailed, doorsWithMissingTex);
         }
         // Constrained cache was set at creation above — no separate runtime set needed.
-        owner_.ZoneStream().logAssetBuildTime("seq_doors", 0, stepStart);
+        ctx_.ZoneStream().logAssetBuildTime("seq_doors", 0, stepStart);
     }
     FlushThreadLog();
 }
@@ -541,10 +541,10 @@ void ZoneLoadComponent::loadZoneStep9_Collision(ZoneLoadContext& ctx) {
     {
         auto stepStart = std::chrono::steady_clock::now();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step9: smgr_={}, regionWorldTriangles_={}, objectNodes_={}, zoneBspTree_={}",
-                  (bool)ctx_.smgr, owner_.regionWorldTriangles_.size(), ctx_.objectNodes.size(), (bool)ctx_.zoneBspTree);
-        owner_.PlayerCamera().setupMinimalZoneCollision();
+                  (bool)ctx_.smgr, ctx_.regionWorldTriangles.size(), ctx_.objectNodes.size(), (bool)ctx_.zoneBspTree);
+        ctx_.PlayerCamera().setupMinimalZoneCollision();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step9: setupMinimalZoneCollision complete, regionWorldTriangles_={}",
-                  owner_.regionWorldTriangles_.size());
+                  ctx_.regionWorldTriangles.size());
 
         // Add eagerly-built objects as pre-transformed world-space triangles per BSP region
         size_t objectsAdded = 0;
@@ -555,8 +555,8 @@ void ZoneLoadComponent::loadZoneStep9_Collision(ZoneLoadContext& ctx) {
                 if (node && node->getMesh()) {
                     auto triangles = PlayerCameraComponent::extractWorldTriangles(ctx_.smgr, node);
                     if (!triangles.empty()) {
-                        size_t region = (oi < owner_.objectRegions_.size()) ? owner_.objectRegions_[oi] : SIZE_MAX;
-                        auto& regionTris = owner_.objectWorldTriangles_[region];
+                        size_t region = (oi < ctx_.objectRegions.size()) ? ctx_.objectRegions[oi] : SIZE_MAX;
+                        auto& regionTris = ctx_.objectWorldTriangles[region];
                         totalObjectTriangles += triangles.size();
                         regionTris.insert(regionTris.end(), triangles.begin(), triangles.end());
                         objectsAdded++;
@@ -564,13 +564,13 @@ void ZoneLoadComponent::loadZoneStep9_Collision(ZoneLoadContext& ctx) {
                 }
             }
             LOG_INFO(MOD_GRAPHICS, "Sequential: {} objects -> {} world-space triangles across {} regions",
-                     objectsAdded, totalObjectTriangles, owner_.objectWorldTriangles_.size());
+                     objectsAdded, totalObjectTriangles, ctx_.objectWorldTriangles.size());
         }
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step9: collision setup complete, "
                   "regionWorldTriangles_={}, objectWorldTriangles_={}, doorCollisionData_={}, bspFiltered={}",
-                  owner_.regionWorldTriangles_.size(), owner_.objectWorldTriangles_.size(),
-                  owner_.doorCollisionData_.size(), (bool)(ctx_.zoneBspTree && !owner_.regionWorldTriangles_.empty()));
-        owner_.ZoneStream().logAssetBuildTime("seq_collision", 0, stepStart);
+                  ctx_.regionWorldTriangles.size(), ctx_.objectWorldTriangles.size(),
+                  owner_.doorCollisionData_.size(), (bool)(ctx_.zoneBspTree && !ctx_.regionWorldTriangles.empty()));
+        ctx_.ZoneStream().logAssetBuildTime("seq_collision", 0, stepStart);
     }
     FlushThreadLog();
 }

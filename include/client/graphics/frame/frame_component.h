@@ -80,7 +80,7 @@
 // initDeferredGraphics(), neither of them in this move set):
 //
 //   processFrame()        src/client/application_frame.cpp:181,
-//                         src/client/graphics/irrlicht_renderer.cpp (run()),
+//                         src/client/graphics/renderer/irrlicht_renderer.cpp (run()),
 //                         tests/test_zoning_graphics_integration.cpp (4),
 //                         tests/test_beneficial_spell_casting.cpp (2)
 //   isAllUIHidden()       inline accessor on a MOVING member (K03 (d) /
@@ -222,6 +222,17 @@ private:
 	void processFrameSimulation(float deltaTime);
 	bool processFrameRender(float deltaTime);  // Returns false for loading screen early-return
 	void processInputDeltas(float deltaTime);
+
+	// L12 (Batch L close-out, L11's hand-off): the frame-phase stopwatch.
+	// L04 put the body in this family's TU but left the declaration and
+	// sectionStart_ on IrrlichtRenderer, and L11 was told to leave it there;
+	// the measurement was single-family in both units (35 call sites, all in
+	// renderer_frame{,_input,_render}.cpp; zero readers of sectionStart_
+	// outside them). Both come here now, in one substitution pass -- the body
+	// in frame/renderer_frame.cpp is unchanged apart from its qualifier,
+	// because sectionStart_ keeps its spelling.
+	int64_t measureSection();
+	std::chrono::steady_clock::time_point sectionStart_;
 
 	// Frame-loop state referenced by no TU outside this family.
 	bool pendingUIClick_ = false;  // Click consumed in Phase 1, applied to UI in render phase

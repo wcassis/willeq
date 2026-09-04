@@ -23,10 +23,12 @@
 // members), which is what we want: there is exactly one per IrrlichtRenderer.
 
 #include "client/graphics/renderer_types.h"   // RendererConfig, ObjectLight, S3DZone, irr, std containers
+#include "client/graphics/renderer_draw_types.h"  // L12: SortedRegionEntry (sortedZoneDrawList)
 
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -57,6 +59,21 @@ class GPUUploadThread;
 class SoftwareOcclusionCuller;
 class TreeWindController;
 class EntityPrepWorker;
+
+// L12: the eleven extracted components, reached through the accessors below.
+// Pointers only -- no component header is included here, so renderer_context.h
+// stays free of the transitive include set irrlicht_renderer.h drags in.
+class FrameComponent;
+class DiagnosticsComponent;
+class OverlaysComponent;
+class PlayerCameraComponent;
+class SlashCommandsComponent;
+class SimBridgeComponent;
+class ZoneStreamComponent;
+class ZoneLifecycleComponent;
+class ZoneLoadComponent;
+class Eqe1ArchiveComponent;
+class RdpComponent;
 namespace Environment {
 class ParticleManager;
 class BoidsManager;
@@ -131,6 +148,122 @@ struct RendererContext {
 	uint8_t& currentHour;
 	uint8_t& currentMinute;
 	std::vector<irr::core::vector3df>& objectPositions;
+
+	// ------------------------------------------------------------------
+	// L12 (Batch L close-out): the SHARED-BUT-BELOW-THRESHOLD set, promoted.
+	// Measured at 1c9afba7 across the ten extracted component directories:
+	// every IrrlichtRenderer member reached through owner_ by THREE OR MORE
+	// components. Same rule and same binding as the core above -- a reference
+	// to the IrrlichtRenderer member of the same type, named without the
+	// trailing underscore -- so a moved body's owner_.zoneMeshNode_ becomes
+	// ctx_.zoneMeshNode and nothing else changes.
+	// ------------------------------------------------------------------
+	irr::scene::IMeshSceneNode*& zoneMeshNode;  // 58: diagnostics 33,zone_lifecycle 19,zone_load 6
+	irr::scene::IMeshSceneNode*& fallbackMeshNode;  // 35: diagnostics 15,zone_lifecycle 11,zone_load 9
+	std::map<size_t, std::vector<irr::core::triangle3df>>& regionWorldTriangles;  // 25: player 14,zone_load 9,zone_lifecycle 2
+	std::vector<DeferredObject>& deferredObjects;  // 24: zone_load 13,zone_stream 8,frame 3
+	std::vector<size_t>& objectTextureRebuildQueue;  // 21: zone_lifecycle 9,zone_stream 7,frame 5
+	irr::scene::IMeshSceneNode*& zonePlaceholderNode;  // 20: zone_lifecycle 17,diagnostics 2,frame 1
+	std::vector<uint8_t>& doorTextureRebuildQueue;  // 19: zone_lifecycle 9,frame 5,zone_stream 5
+	float& playerHeading;  // 18: player 10,frame 4,sim 2,zone_load 2
+	std::unordered_map<size_t, std::vector<size_t>>& regionNeighbors;  // 17: zone_load 10,zone_lifecycle 4,zone_stream 3
+	std::vector<size_t>& objectRegions;  // 15: zone_load 7,zone_stream 4,player 2,sim 2
+	bool& zoneReady;  // 14: frame 7,sim 4,zone_lifecycle 3
+	VisionType& currentVision;  // 13: player 11,sim 1,zone_load 1
+	std::unique_ptr<WeatherSystem>& weatherSystem;  // 12: zone_load 6,sim 4,overlays 2
+	std::vector<VertexAnimatedMesh>& vertexAnimatedMeshes;  // 11: sim 9,zone_lifecycle 1,zone_load 1
+	std::vector<bool>& objectLightInSceneGraph;  // 11: sim 6,zone_lifecycle 3,zone_load 1,zone_stream 1
+	bool& fireGlowIcospheresEnabled;  // 10: zone_load 7,diagnostics 1,frame 1,overlays 1
+	std::vector<irr::core::vector3df>& zoneLightPositions;  // 10: sim 6,zone_load 3,zone_lifecycle 1
+	bool& fireGlowLightingEnabled;  // 9: zone_load 5,overlays 2,diagnostics 1,frame 1
+	std::map<size_t, std::vector<irr::core::triangle3df>>& objectWorldTriangles;  // 9: player 4,zone_load 3,zone_lifecycle 2
+	std::unordered_map<std::string, std::unordered_set<size_t>>& pendingTextureObjects;  // 9: zone_lifecycle 7,zone_load 1,zone_stream 1
+	int& maxFireGlowLights;  // 7: zone_load 5,diagnostics 1,overlays 1
+	bool& mergeZoneDrawsEnabled;  // 7: diagnostics 5,zone_lifecycle 1,zone_load 1
+	std::vector<SortedRegionEntry>& sortedZoneDrawList;  // 7: sim 3,zone_lifecycle 3,frame 1
+	std::unordered_set<size_t>& occlusionCulledRegions;  // 7: frame 5,sim 1,zone_lifecycle 1
+	irr::scene::ISceneCollisionManager*& collisionManager;  // 7: overlays 3,zone_lifecycle 3,player 1
+	float& zoneBoundsMinX;  // 7: zone_load 5,overlays 1,player 1
+	float& zoneBoundsMinY;  // 7: zone_load 5,overlays 1,player 1
+	float& zoneBoundsMaxX;  // 7: zone_load 5,overlays 1,player 1
+	float& zoneBoundsMaxY;  // 7: zone_load 5,overlays 1,player 1
+	uint32_t& frameNumber;  // 6: frame 4,sim 1,zone_load 1
+	bool& zoneBoundsValid;  // 6: zone_load 3,overlays 1,player 1,zone_lifecycle 1
+	bool& isIndoorZone;  // 6: overlays 2,zone_lifecycle 2,zone_load 2
+	int& entityPrepScanCounter;  // 5: zone_stream 2,frame 1,zone_lifecycle 1,zone_load 1
+	std::vector<irr::core::aabbox3df>& objectBoundingBoxes;  // 5: sim 2,zone_lifecycle 1,zone_load 1,zone_stream 1
+	const std::unordered_map<size_t, uint8_t>*& regionPvsDepthMap;  // 5: zone_stream 3,sim 1,zone_lifecycle 1
+	bool& portalBuildPending;  // 5: zone_load 2,zone_stream 2,zone_lifecycle 1
+	bool& loadingScreenVisible;  // 4: zone_stream 2,frame 1,sim 1
+	irr::core::matrix4& captured3DView;  // 4: frame 2,overlays 1,zone_lifecycle 1
+	irr::core::matrix4& captured3DProj;  // 4: frame 2,overlays 1,zone_lifecycle 1
+	const std::vector<Environment::UnifiedParticle>*& particleRenderBuffer;  // 4: sim 2,frame 1,zone_lifecycle 1
+	float& fogThickness;  // 4: overlays 2,zone_lifecycle 1,zone_load 1
+	std::chrono::steady_clock::time_point& progressiveLoadStartTime;  // 3: player 1,zone_load 1,zone_stream 1
+	bool& sequentialLoadComplete;
+	// The EQE1 archive set -- eqe1/ is the eleventh component directory and was
+	// missed by this unit's first census (L12 correction 49); these four cross
+	// the >= 3 threshold once it is counted. The two eqe1 MUTEXES deliberately
+	// did NOT come with them: relocating the access path of a synchronisation
+	// primitive is exactly what Batch L's second STOP condition forbids in a
+	// structural unit, so they stay as owner_.eqe1Mutex_ / owner_.eqe1CandidatesMutex_.
+	std::unordered_map<std::string, std::unique_ptr<EQE1Loader>>& eqe1Loaders;  // 13: eqe1 8,zone_lifecycle 4,diagnostics 1
+	std::vector<std::string>& pendingGlobalEQE1Archives;  // 12: eqe1 9,zone_load 2,zone_lifecycle 1
+	size_t& eqe1LoadTimeCandidateCount;  // 4: zone_load 2,zone_lifecycle 1,eqe1 1
+	std::set<uint16_t>& eqe1CandidateRaces;  // 3: zone_lifecycle 1,zone_load 1,eqe1 1  // 3: zone_lifecycle 1,zone_load 1,zone_stream 1
+#ifdef EQT_HAS_DRM
+	uint32_t& icosphereProgram;  // 3: diagnostics 1,frame 1,zone_load 1
+#endif
+
+	// ------------------------------------------------------------------
+	// L12: the SIBLING-COMPONENT pointers (K13's third target group).
+	// A component used to reach a sibling as owner_.<Family>(); it now reaches
+	// it as ctx_.<Family>(). The pointers are RAW and LATE-BOUND: ctx_ is
+	// brace-initialised in IrrlichtRenderer's ctor initialiser list, before any
+	// component exists, so a reference member could not be bound. They are
+	// public because RendererContext must stay an AGGREGATE (K13 deviation 9:
+	// an aggregate may not have private data members) -- only SetComponents()
+	// writes them and only the accessors below read them.
+	// IrrlichtRenderer's ctor calls SetComponents() immediately after the last
+	// make_unique; nothing above that line may reach a sibling.
+	// ------------------------------------------------------------------
+	FrameComponent* frameComponent = nullptr;
+	DiagnosticsComponent* diagnosticsComponent = nullptr;
+	OverlaysComponent* overlaysComponent = nullptr;
+	PlayerCameraComponent* playerCameraComponent = nullptr;
+	SlashCommandsComponent* slashComponent = nullptr;
+	SimBridgeComponent* simBridgeComponent = nullptr;
+	ZoneStreamComponent* zoneStreamComponent = nullptr;
+	ZoneLifecycleComponent* zoneLifecycleComponent = nullptr;
+	ZoneLoadComponent* zoneLoadComponent = nullptr;
+	Eqe1ArchiveComponent* eqe1Component = nullptr;
+	RdpComponent* rdpComponent = nullptr;
+
+	void SetComponents(FrameComponent* frame, DiagnosticsComponent* diagnostics, OverlaysComponent* overlays, PlayerCameraComponent* playerCamera, SlashCommandsComponent* slash, SimBridgeComponent* simBridge, ZoneStreamComponent* zoneStream, ZoneLifecycleComponent* zoneLifecycle, ZoneLoadComponent* zoneLoad, Eqe1ArchiveComponent* eqe1, RdpComponent* rdp) {
+		frameComponent = frame;
+		diagnosticsComponent = diagnostics;
+		overlaysComponent = overlays;
+		playerCameraComponent = playerCamera;
+		slashComponent = slash;
+		simBridgeComponent = simBridge;
+		zoneStreamComponent = zoneStream;
+		zoneLifecycleComponent = zoneLifecycle;
+		zoneLoadComponent = zoneLoad;
+		eqe1Component = eqe1;
+		rdpComponent = rdp;
+	}
+
+	FrameComponent& Frame() { return *frameComponent; }
+	DiagnosticsComponent& Diagnostics() { return *diagnosticsComponent; }
+	OverlaysComponent& Overlays() { return *overlaysComponent; }
+	PlayerCameraComponent& PlayerCamera() { return *playerCameraComponent; }
+	SlashCommandsComponent& Slash() { return *slashComponent; }
+	SimBridgeComponent& SimBridge() { return *simBridgeComponent; }
+	ZoneStreamComponent& ZoneStream() { return *zoneStreamComponent; }
+	ZoneLifecycleComponent& ZoneLifecycle() { return *zoneLifecycleComponent; }
+	ZoneLoadComponent& ZoneLoad() { return *zoneLoadComponent; }
+	Eqe1ArchiveComponent& Eqe1() { return *eqe1Component; }
+	RdpComponent& Rdp() { return *rdpComponent; }
 };
 
 } // namespace Graphics
