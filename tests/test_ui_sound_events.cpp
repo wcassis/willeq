@@ -25,8 +25,10 @@
 #include "client/inventory/inventory_manager.h"
 #include "client/inventory/item_instance.h"
 #include "common/packet_structs.h"
+#include "zone_stream_test_utils.h"
 
 #include <cstring>
+#include <algorithm>
 #include <vector>
 
 using namespace EQT::Audio;
@@ -88,6 +90,45 @@ void ReplayClickObjectAction(EverQuest& eq, uint32_t dropId, uint32_t open) {
     std::vector<uint8_t> body(sizeof(action));
     memcpy(body.data(), &action, sizeof(action));
     eq.ReplayZonePacket(HC_OP_ClickObjectAction, body.data(), body.size());
+}
+
+
+// T342: the SERVER's confirmation of a completed purchase. eqemu queues
+// OP_ShopPlayerBuy only after the sale succeeds -- every failure path in
+// Handle_OP_ShopPlayerBuy deletes the outgoing packet and returns -- so
+// arriving here IS the purchase. Payload is Merchant_Sell_Struct: npc_id,
+// player_id, itemslot, unknown12, quantity, action.
+void ReplayShopPlayerBuy(EverQuest& eq, uint32_t itemslot, uint32_t quantity) {
+    uint32_t body[6] = {1234u, 1u, itemslot, 0u, quantity, 1u};
+    eq.ReplayZonePacket(HC_OP_ShopPlayerBuy,
+                        reinterpret_cast<const uint8_t*>(body), sizeof(body));
+}
+
+// T342: the SERVER's confirmation of a completed sale
+// (EQT::Merchant_Sell_Response_Struct).
+void ReplayShopPlayerSell(EverQuest& eq, uint32_t itemslot, uint32_t quantity,
+                          uint32_t price) {
+    EQT::Merchant_Sell_Response_Struct resp;
+    memset(&resp, 0, sizeof(resp));
+    resp.npc_id = 1234u;
+    resp.itemslot = itemslot;
+    resp.quantity = quantity;
+    resp.price = price;
+    eq.ReplayZonePacket(HC_OP_ShopPlayerSell,
+                        reinterpret_cast<const uint8_t*>(&resp), sizeof(resp));
+}
+
+// T342: the auto-combine reply. reply_code 0 is a successful combine,
+// 0xfffff5 the "you lacked the skills" failure.
+void ReplayRecipeAutoCombine(EverQuest& eq, uint32_t recipeId, uint32_t replyCode) {
+    EQT::RecipeAutoCombine_Struct combine;
+    memset(&combine, 0, sizeof(combine));
+    combine.object_type = 17u;
+    combine.some_id = 190u;
+    combine.recipe_id = recipeId;
+    combine.reply_code = replyCode;
+    eq.ReplayZonePacket(HC_OP_RecipeAutoCombine,
+                        reinterpret_cast<const uint8_t*>(&combine), sizeof(combine));
 }
 
 }  // namespace
@@ -286,6 +327,139 @@ TEST(UISoundEvents, CoinReturnedFromCursorIsSilent) {
 TEST(UISoundEvents, ButtonClickIsCataloguedButNeverWired) {
     EXPECT_EQ(UISoundId::BUTTON_CLICK, SoundBank::BUTTON_1);
     EXPECT_EQ(SoundId::BUTTON_CLICK, UISoundId::BUTTON_CLICK);
+}
+
+// ===========================================================================
+// T342 -- the five rows T328 Leg A could not reach, measured 2026-09-04
+// against the official Titanium client (review/T342/README.md).
+// ===========================================================================
+
+// Rows "coin pickup, pp / gp / sp / cp". T328 measured ONE denomination (1pp)
+// and left the other three open in case the client picked a different sound
+// per coin. T342 measured all four in one session and they are the SAME sound:
+// BuyItem.WAV (138) every time, with the money-slot click that opens the
+// Quantity dialog silent before it and the return to the slot silent after it
+// (audio/E11, E14, E17, E20b). pickupMoney() is already denomination-agnostic;
+// this pins that it stays that way, so nobody "improves" it into a switch.
+TEST(UISoundEvents, CoinOntoCursor_EveryDenominationAsksForTheSameBuyItem) {
+    const InventoryManager::CursorMoneyType denominations[] = {
+        InventoryManager::CursorMoneyType::Platinum,
+        InventoryManager::CursorMoneyType::Gold,
+        InventoryManager::CursorMoneyType::Silver,
+        InventoryManager::CursorMoneyType::Copper,
+    };
+
+    for (auto denomination : denominations) {
+        InventoryManager inv;
+        RecordingBridge bridge;
+        inv.setBridge(&bridge);
+
+        inv.pickupMoney(denomination, 1);
+        ASSERT_TRUE(inv.hasCursorMoney());
+
+        EXPECT_EQ(DrainSoundIds(bridge), std::vector<uint32_t>{UISoundId::BUY_ITEM})
+            << "denomination " << static_cast<int>(denomination)
+            << " must ask for the same sound the oracle plays for every coin";
+    }
+}
+
+// Row "buy". MEASURED: a purchase plays TWO sounds together, with the same
+// onset -- BuyItem.WAV (the coin) and wearclth.WAV (the item landing in a
+// slot). Reproduced across two purchases; neither chord is in the control
+// windows recorded either side (audio/E42_buy_torch.wav, E43_buy_torch_2.wav).
+TEST(UISoundEvents, MerchantBuy_AsksForBuyItemAndWearCloth) {
+    EverQuest eq = zonetest::MakeEq();
+    RecordingBridge bridge;
+    eq.setBridge(&bridge);
+    bridge.drainIntents();
+
+    ReplayShopPlayerBuy(eq, /*itemslot=*/3, /*quantity=*/1);
+
+    const std::vector<uint32_t> expected{UISoundId::BUY_ITEM, UISoundId::WEAR_CLOTH};
+    EXPECT_EQ(DrainSoundIds(bridge), expected);
+    eq.setBridge(nullptr);
+}
+
+// A stack purchase is still ONE purchase, so it is still one pair of sounds --
+// the oracle does not repeat the sound per item bought.
+TEST(UISoundEvents, MerchantBuy_OfAStackStillAsksOnce) {
+    EverQuest eq = zonetest::MakeEq();
+    RecordingBridge bridge;
+    eq.setBridge(&bridge);
+    bridge.drainIntents();
+
+    ReplayShopPlayerBuy(eq, /*itemslot=*/3, /*quantity=*/20);
+
+    const std::vector<uint32_t> expected{UISoundId::BUY_ITEM, UISoundId::WEAR_CLOTH};
+    EXPECT_EQ(DrainSoundIds(bridge), expected);
+    eq.setBridge(nullptr);
+}
+
+// Row "sell". MEASURED: a sale plays ONE sound, BuyItem.WAV. The asymmetry
+// with the buy above is the oracle's: the item LEAVES a slot, and T328 Leg A
+// row 7 already measured "item picked up from a slot" as silent. Reproduced
+// across two sales (audio/E45_sell_curskin.wav, E47_sell_curskin_2.wav).
+TEST(UISoundEvents, MerchantSell_AsksForBuyItemAndNotWearCloth) {
+    EverQuest eq = zonetest::MakeEq();
+    RecordingBridge bridge;
+    eq.setBridge(&bridge);
+    bridge.drainIntents();
+
+    ReplayShopPlayerSell(eq, /*itemslot=*/23, /*quantity=*/1, /*price=*/8);
+
+    const auto ids = DrainSoundIds(bridge);
+    EXPECT_EQ(ids, std::vector<uint32_t>{UISoundId::BUY_ITEM});
+    EXPECT_EQ(std::count(ids.begin(), ids.end(),
+                         static_cast<uint32_t>(UISoundId::WEAR_CLOTH)), 0)
+        << "the oracle plays no item-into-slot sound when the item leaves";
+    eq.setBridge(nullptr);
+}
+
+// Rows "combine success" and "combine fail" -- BOTH MEASURED SILENT, and so
+// PINNED silent. Two successful combines (a nofail Celestial Essence, twice)
+// and three failures ("You lacked the skills to fashion the items together")
+// produced no chord from the tone probe at all; the only sound in those
+// windows was a door in the shop, which is in the control windows too.
+// This is exactly the kind of row that invites a plausible invention --
+// levelup.WAV for the success, LevDn.WAV for the failure -- and the oracle
+// makes neither.
+TEST(UISoundEvents, TradeskillCombineSuccessIsSilent) {
+    EverQuest eq = zonetest::MakeEq();
+    RecordingBridge bridge;
+    eq.setBridge(&bridge);
+    bridge.drainIntents();
+
+    ReplayRecipeAutoCombine(eq, /*recipeId=*/1709, /*replyCode=*/0);
+
+    EXPECT_TRUE(DrainSoundIds(bridge).empty());
+    eq.setBridge(nullptr);
+}
+
+TEST(UISoundEvents, TradeskillCombineFailureIsSilent) {
+    EverQuest eq = zonetest::MakeEq();
+    RecordingBridge bridge;
+    eq.setBridge(&bridge);
+    bridge.drainIntents();
+
+    ReplayRecipeAutoCombine(eq, /*recipeId=*/1417, /*replyCode=*/0xfffff5u);
+
+    EXPECT_TRUE(DrainSoundIds(bridge).empty());
+    eq.setBridge(nullptr);
+}
+
+// The manual "put items in the grid and hit Combine" path answers on a
+// different opcode (an empty OP_TradeSkillCombine acknowledgement). Same
+// measurement, same silence -- pinned on both paths so neither can drift.
+TEST(UISoundEvents, TradeskillCombineAcknowledgementIsSilent) {
+    EverQuest eq = zonetest::MakeEq();
+    RecordingBridge bridge;
+    eq.setBridge(&bridge);
+    bridge.drainIntents();
+
+    eq.ReplayZonePacket(HC_OP_TradeSkillCombine, nullptr, 0);
+
+    EXPECT_TRUE(DrainSoundIds(bridge).empty());
+    eq.setBridge(nullptr);
 }
 
 #else

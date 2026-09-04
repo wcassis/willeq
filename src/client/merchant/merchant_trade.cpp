@@ -42,6 +42,8 @@
 
 #ifdef WITH_AUDIO
 #include "client/audio/audio_manager.h"
+#include "client/audio/ui_sounds.h"       // T328/T342: the measured UI sound ids
+#include "client/events/renderer_intents.h"  // T328: PlaySoundIntent
 #endif
 
 #include <cstring>
@@ -557,6 +559,31 @@ void eqt::merchant::MerchantComponent::ZoneProcessShopPlayerBuy(const EQ::Net::P
 	LOG_DEBUG(MOD_INVENTORY, "ShopPlayerBuy: npc_id={} player_id={} slot={} qty={} action={}",
 		npc_id, player_id, itemslot, quantity, action);
 
+	// T342 Leg A (review/T342/README.md, rows "buy"): a purchase in the
+	// official Titanium client makes TWO sounds, together, with the same
+	// onset -- BuyItem.WAV (138), the generic coin-move sound, and
+	// wearclth.WAV (146), the sound of an item landing in an inventory slot.
+	// Measured twice against Sneed Galliway in North Qeynos
+	// (audio/E42_buy_torch.wav, audio/E43_buy_torch_2.wav); neither chord
+	// appears in the control windows recorded either side of them.
+	//
+	// Why HERE and not where the item actually lands: eqemu queues this reply
+	// ONLY on a completed purchase (Handle_OP_ShopPlayerBuy deletes the
+	// outgoing packet and returns on every failure path), so arriving here IS
+	// the purchase. The item itself arrives separately as an OP_ItemPacket ->
+	// InventoryManager::setItem(), which is also the zone-in inventory sync
+	// path and must stay silent; hanging wearclth off setItem() would make
+	// every zone-in play 20 sounds. The oracle's two sounds are simultaneous,
+	// so emitting both at this one edge matches its timing.
+#ifdef WITH_AUDIO
+	if (ctx_.bridge) {
+		ctx_.bridge->pushIntent(eqt::events::PlaySoundIntent{
+			EQT::Audio::UISoundId::BUY_ITEM});
+		ctx_.bridge->pushIntent(eqt::events::PlaySoundIntent{
+			EQT::Audio::UISoundId::WEAR_CLOTH});
+	}
+#endif
+
 	// Display purchase confirmation and update money (D18a: uses game-side vendor items)
 	auto vendorIt = ctx_.Commands().VendorItems().find(itemslot);
 	if (vendorIt != ctx_.Commands().VendorItems().end()) {
@@ -606,6 +633,21 @@ void eqt::merchant::MerchantComponent::ZoneProcessShopPlayerSell(const EQ::Net::
 
 	LOG_INFO(MOD_INVENTORY, "Sold {} items from slot {} for {} copper",
 		resp->quantity, resp->itemslot, resp->price);
+
+	// T342 Leg A (review/T342/README.md, row "sell"): a sale makes exactly ONE
+	// sound -- BuyItem.WAV (138), the coin arriving. There is deliberately no
+	// wearclth here: the item LEAVES a slot, and Leg A of T328 already
+	// measured "item picked up from a slot" as silent, so the asymmetry
+	// between buy (two sounds) and sell (one) is the oracle's, not an
+	// oversight. Measured twice (audio/E45_sell_curskin.wav,
+	// audio/E47_sell_curskin_2.wav). As with the buy reply, eqemu sends this
+	// packet only on a completed sale.
+#ifdef WITH_AUDIO
+	if (ctx_.bridge) {
+		ctx_.bridge->pushIntent(eqt::events::PlaySoundIntent{
+			EQT::Audio::UISoundId::BUY_ITEM});
+	}
+#endif
 
 	// Display sale confirmation and update inventory (D18a: no renderer dependency)
 	{
