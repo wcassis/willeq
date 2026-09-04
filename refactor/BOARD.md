@@ -2,7 +2,7 @@
 
 - **Tree confirmed at:** `3808ebe9` (branch `task/K00-legA-board`, base `fable`).
 - **Date:** 2026-09-03. Built by K00 Leg A (`refactor/K00_truth_reset.md`).
-- **Suite:** 3497 of 3498 passing, per `refactor/J16_eq_header_type_extraction.md`'s
+- **Suite:** 3,759 of 3,760 passing at `661cb078` (2026-09-04, main verification run). The sole expected failure is the ALSA host
   Review (the last merged code unit). The sole expected failure is the ALSA host
   quirk `AudioManagerTest.PreloadCommonSounds`. The count grows; run it.
 - **Items are confirmed against the tree at the tip above; nothing here is quoted
@@ -217,12 +217,12 @@ it without taking that measurement first.
 
 ## P — process and documentation
 
-- **B024** (P) Component extraction of `class EverQuest` (2,025-line header, 685
+- ~~**B024** (P)~~ **CLOSED 2026-09-04 (M00 merge): the structural programme is complete.** Batch K (K00–K16: `eq.h` 2,025 → 899, twelve components + four context services, the transition handle measured down to 83 uses = B038), Batch L (L01–L13: `irrlicht_renderer.h` 1,914 → 1,343, eleven components, residue 151 = B050 closed), Batch G (six of eight oversize methods decomposed and golden-pinned; `createDefaultConfig` ruled out; the variant loader parked as B052), M00 (no allowlist; the 1,500 ceiling enforced tree-wide by ctest). Original text: Component extraction of `class EverQuest` (2,025-line header, 685
   member functions, 178 data members, 37 flat `src/client/eq_*.cpp` TUs) and of
   `class IrrlichtRenderer` is the open structural programme —
   `refactor/K_component_extraction.md`, K01..K13, then Batch L. Both headers hold
   a no-grow allowlist entry that each K unit ratchets down. Prov: the J tracker's
-  "WILL'S RULING", 2026-09-02.
+  "WILL'S RULING", 2026-09-02."
 
 - **B025** (P) Eight methods dominate their TUs and were left out of Batch J
   deliberately: `eqt::zone::ZoneComponent::DispatchZonePacket` 880
