@@ -214,6 +214,21 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_zone_lifecycle_component)
 ENDIF()
 
+# L10 (Batch L): ZoneLoadComponent -- loadZoneSequential() and the twenty
+# per-step methods that build a zone, extracted from IrrlichtRenderer. Same
+# bare, never-Init()'d IrrlichtRenderer idiom as test_zone_lifecycle_component
+# above; the test drives the real loading-thread entry point end to end on a
+# renderer with no zone, which is the cheapest whole-substitution-set proof
+# available without a device.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_zone_load_component
+        test_zone_load_component.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_zone_load_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_zone_load_component GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_zone_load_component)
+ENDIF()
+
 # T329 (B041): the NavmeshChanged bridge arm forwarding to
 # OverlaysComponent::setNavmesh. Same bare, never-Init()'d IrrlichtRenderer
 # idiom as test_overlays_component above, plus a real eqt::bridge::

@@ -54,26 +54,27 @@
 #endif
 #include <EGL/egl.h>
 #endif
-#include "client/graphics/zone_load_context.h"
+#include "client/graphics/zone_load/zone_load_component.h"
+#include "client/graphics/zone_load/zone_load_context.h"
 
 namespace EQT {
 namespace Graphics {
 
-bool IrrlichtRenderer::loadZoneStep8_Entities(ZoneLoadContext& ctx) {
+bool ZoneLoadComponent::loadZoneStep8_Entities(ZoneLoadContext& ctx) {
     // ── Step 8: Entities — inline prep + build (no background threads) ────
     ctx.updateProgress(80, "Preparing entity models...");
     {
         auto stepStart = std::chrono::steady_clock::now();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8: entityRenderer_={}, skipEntityBuild={}",
-                  (bool)entityRenderer_, config_.constrainedConfig.skipEntityBuild);
+                  (bool)ctx_.entityRenderer, ctx_.config.constrainedConfig.skipEntityBuild);
 
-        if (entityRenderer_ && entityRenderer_->getRaceModelLoader()
-            && !config_.constrainedConfig.skipEntityBuild) {
+        if (ctx_.entityRenderer && ctx_.entityRenderer->getRaceModelLoader()
+            && !ctx_.config.constrainedConfig.skipEntityBuild) {
 
-            ctx.modelLoader = entityRenderer_->getRaceModelLoader();
-            ctx.equipLoader = entityRenderer_->getEquipmentModelLoader();
-            ensureEntityPrepWorkerStarted(ctx.modelLoader, ctx.equipLoader);  // T109
-            const auto& entities = entityRenderer_->getEntities();
+            ctx.modelLoader = ctx_.entityRenderer->getRaceModelLoader();
+            ctx.equipLoader = ctx_.entityRenderer->getEquipmentModelLoader();
+            owner_.ensureEntityPrepWorkerStarted(ctx.modelLoader, ctx.equipLoader);  // T109
+            const auto& entities = ctx_.entityRenderer->getEntities();
             ctx.totalEntities = entities.size();
             ctx.prepCount = 0;
             ctx.buildCount = 0;
@@ -81,7 +82,7 @@ bool IrrlichtRenderer::loadZoneStep8_Entities(ZoneLoadContext& ctx) {
             ctx.modelDiskLoads = 0;
 
             LOG_INFO(MOD_GRAPHICS, "Sequential: preparing {} entities inline (chrCacheMaxEntries={})",
-                     ctx.totalEntities, config_.constrainedConfig.chrCacheMaxEntries);
+                     ctx.totalEntities, ctx_.config.constrainedConfig.chrCacheMaxEntries);
 
             // Collect spawn IDs (iterate copy since we modify visuals)
             std::vector<uint16_t> spawnIds;
@@ -92,7 +93,7 @@ bool IrrlichtRenderer::loadZoneStep8_Entities(ZoneLoadContext& ctx) {
 
             for (uint16_t spawnId : spawnIds) {
 
-                const auto& entities2 = entityRenderer_->getEntities();
+                const auto& entities2 = ctx_.entityRenderer->getEntities();
                 auto it = entities2.find(spawnId);
                 if (it == entities2.end()) continue;
                 ctx.spawnId = spawnId;
@@ -100,7 +101,7 @@ bool IrrlichtRenderer::loadZoneStep8_Entities(ZoneLoadContext& ctx) {
 
                 // T105: per-entity working-set snapshot (LOG_DEBUG only, default-off);
                 // distFromPlayer is also T109's gate input below.
-                float dx = ctx.vis->lastX - playerX_, dy = ctx.vis->lastY - playerY_, dz = ctx.vis->lastZ - playerZ_;
+                float dx = ctx.vis->lastX - ctx_.playerX, dy = ctx.vis->lastY - ctx_.playerY, dz = ctx.vis->lastZ - ctx_.playerZ;
                 float distFromPlayer = std::sqrt(dx * dx + dy * dy + dz * dz);
                 LOG_DEBUG(MOD_GRAPHICS, "T105 ENTITY spawn={} race={} gender={} dist={:.1f} "
                           "texture={} helm={} chestMat={} equip7={} equip8={} isNPC={} isPlayer={}",
@@ -118,7 +119,7 @@ bool IrrlichtRenderer::loadZoneStep8_Entities(ZoneLoadContext& ctx) {
                 }
 
                 // T109 load-distance gate (renderer_entity_load_gate.cpp).
-                if (deferEntityForLoadGate(ctx.spawnId, ctx.vis->name, ctx.vis->raceId, ctx.vis->gender,
+                if (owner_.deferEntityForLoadGate(ctx.spawnId, ctx.vis->name, ctx.vis->raceId, ctx.vis->gender,
                                            distFromPlayer, ctx.deferredCount, ctx.deferredRaceGenderPairs)) {
                     ++ctx.prepCount; continue;  // still "processed" for the progress bar
                 }
@@ -172,8 +173,8 @@ bool IrrlichtRenderer::loadZoneStep8_Entities(ZoneLoadContext& ctx) {
 
                 // Upload all pending textures (including composite EQE1 entries queued in Step 8a)
                 // so they're available as GPU textures when buildEntityMesh builds composite meshes.
-                if (constrainedTextureCache_) {
-                    constrainedTextureCache_->uploadAllPending();
+                if (ctx_.constrainedTextureCache) {
+                    ctx_.constrainedTextureCache->uploadAllPending();
                 }
                 ctx.msUpload += t209lap();
 
@@ -203,7 +204,7 @@ bool IrrlichtRenderer::loadZoneStep8_Entities(ZoneLoadContext& ctx) {
                      t209rpTotal, t209total,
                      t209total > 0 ? (int)(t209rpTotal * 100 / t209total) : 0);
 
-            bool hasBoats = entityRenderer_->hasBoatsInZone();
+            bool hasBoats = ctx_.entityRenderer->hasBoatsInZone();
             LOG_INFO(MOD_GRAPHICS, "Sequential: prepped {} entities, built {} meshes (model cache hits={}, disk loads={}, hasBoats={})",
                      ctx.prepCount, ctx.buildCount, ctx.modelCacheHits, ctx.modelDiskLoads, hasBoats);
             // T109: unconditional, same discipline as entitiesSkipped below.
@@ -211,7 +212,7 @@ bool IrrlichtRenderer::loadZoneStep8_Entities(ZoneLoadContext& ctx) {
             // T109 entry: deferred entities are NOT reliably rebuilt today.
             LOG_INFO(MOD_GRAPHICS, "T109: load-distance gate radius={:.1f} — {} in-radius ({} distinct "
                      "race/gender), {} deferred ({} distinct race/gender)",
-                     config_.constrainedConfig.entityLoadRadius,
+                     ctx_.config.constrainedConfig.entityLoadRadius,
                      ctx.prepCount - ctx.deferredCount, ctx.preppedRaceGenderPairs.size(),
                      ctx.deferredCount, ctx.deferredRaceGenderPairs.size());
             if (hasBoats) {
@@ -242,20 +243,20 @@ bool IrrlichtRenderer::loadZoneStep8_Entities(ZoneLoadContext& ctx) {
             }
         } else {
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8: entity prep skipped (entityRenderer_={}, raceModelLoader={}, skipEntityBuild={})",
-                      (bool)entityRenderer_,
-                      entityRenderer_ ? (bool)entityRenderer_->getRaceModelLoader() : false,
-                      config_.constrainedConfig.skipEntityBuild);
+                      (bool)ctx_.entityRenderer,
+                      ctx_.entityRenderer ? (bool)ctx_.entityRenderer->getRaceModelLoader() : false,
+                      ctx_.config.constrainedConfig.skipEntityBuild);
         }
         // T09: Upload all decoded textures from Steps 8a-8d to GPU.
         // getOrLoad() decoded them; uploadAllPending() promotes DecodedEntry → CachedTexture.
-        if (constrainedTextureCache_) {
-            int uploaded = constrainedTextureCache_->uploadAllPending();
+        if (ctx_.constrainedTextureCache) {
+            int uploaded = ctx_.constrainedTextureCache->uploadAllPending();
             LOG_INFO(MOD_GRAPHICS, "SEQ Step8: uploadAllPending uploaded {} entity textures", uploaded);
         }
 
-        entityPrepReady_ = true;
+        ctx_.entityPrepReady = true;
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8: entityPrepReady_=true");
-        zoneStream_->logAssetBuildTime("seq_entities", 0, stepStart);
+        owner_.ZoneStream().logAssetBuildTime("seq_entities", 0, stepStart);
         LOG_INFO(MOD_GRAPHICS, "SEQ Step8: about to exit scope");
     }
     LOG_INFO(MOD_GRAPHICS, "SEQ Step8: scope exited, flushing log...");
@@ -265,7 +266,7 @@ bool IrrlichtRenderer::loadZoneStep8_Entities(ZoneLoadContext& ctx) {
     return true;
 }
 
-bool IrrlichtRenderer::loadZoneStep8a_BaseModelPrep(ZoneLoadContext& ctx) {
+bool ZoneLoadComponent::loadZoneStep8a_BaseModelPrep(ZoneLoadContext& ctx) {
     // Step 8a: Base race model prep (S3D load, WLD parse, animation merge)
     uint32_t key = (static_cast<uint32_t>(ctx.vis->raceId) << 8) | ctx.vis->gender;
     bool alreadyCached = ctx.modelLoader->isModelDataCached(key);
@@ -328,7 +329,7 @@ bool IrrlichtRenderer::loadZoneStep8a_BaseModelPrep(ZoneLoadContext& ctx) {
     return true;
 }
 
-void IrrlichtRenderer::loadZoneStep8b_VariantModelPrep(ZoneLoadContext& ctx) {
+void ZoneLoadComponent::loadZoneStep8b_VariantModelPrep(ZoneLoadContext& ctx) {
     // Step 8b: Variant model prep (zone-specific S3D for head/body variants)
     if (ctx.entitySuccess) {
         uint8_t headVariant = ctx.vis->appearance.helm;
@@ -346,7 +347,7 @@ void IrrlichtRenderer::loadZoneStep8b_VariantModelPrep(ZoneLoadContext& ctx) {
     }
 }
 
-void IrrlichtRenderer::loadZoneStep8c_VariantTextures(ZoneLoadContext& ctx) {
+void ZoneLoadComponent::loadZoneStep8c_VariantTextures(ZoneLoadContext& ctx) {
     // Step 8c: Load variant textures via constrained cache
     // T06: Replaced inline DDS/BMP decoder with getOrLoad() calls.
     ctx.variantTextureCount = 0;
@@ -367,7 +368,7 @@ void IrrlichtRenderer::loadZoneStep8c_VariantTextures(ZoneLoadContext& ctx) {
                 std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
                                [](unsigned char c) { return std::tolower(c); });
                 if (loadedNames.count(lowerName) > 0) return;
-                constrainedTextureCache_->getOrLoad(lowerName, texInfo->data,
+                ctx_.constrainedTextureCache->getOrLoad(lowerName, texInfo->data,
                                                      "entity_perpart", "loadZoneStep8c_VariantTextures");
                 loadedNames.insert(lowerName);
                 ++ctx.variantTextureCount;
@@ -430,7 +431,7 @@ void IrrlichtRenderer::loadZoneStep8c_VariantTextures(ZoneLoadContext& ctx) {
               ctx.spawnId, ctx.vis->name, ctx.variantTextureCount);
 }
 
-bool IrrlichtRenderer::loadZoneStep8d_EquipmentPrep(ZoneLoadContext& ctx) {
+bool ZoneLoadComponent::loadZoneStep8d_EquipmentPrep(ZoneLoadContext& ctx) {
     // Step 8d: Equipment model extraction + texture decode via constrained cache
     // T07: Replaced inline DDS decoder with getOrLoad() calls.
     using EquipPrepData = ZoneLoadContext::EquipPrepData;
@@ -487,7 +488,7 @@ bool IrrlichtRenderer::loadZoneStep8d_EquipmentPrep(ZoneLoadContext& ctx) {
                 const auto& texInfo = texIt->second;
                 if (texInfo->data.empty()) continue;
 
-                constrainedTextureCache_->getOrLoad(ln, texInfo->data,
+                ctx_.constrainedTextureCache->getOrLoad(ln, texInfo->data,
                                                      "entity_perpart", "loadZoneStep8d_EquipmentPrep");
             }
             ctx.equipmentData.push_back(std::move(prepData));
@@ -507,12 +508,12 @@ bool IrrlichtRenderer::loadZoneStep8d_EquipmentPrep(ZoneLoadContext& ctx) {
     return true;
 }
 
-void IrrlichtRenderer::loadZoneStep8e_DistributePrepResults(ZoneLoadContext& ctx) {
+void ZoneLoadComponent::loadZoneStep8e_DistributePrepResults(ZoneLoadContext& ctx) {
     // Step 8e: Distribute prep results to EntityVisual
     // (equivalent to pollAndDistributePrepResults inline)
     {
         // We need a mutable reference — use const_cast since we own the renderer
-        auto& mutableEntities = const_cast<std::map<uint16_t, EntityVisual>&>(entityRenderer_->getEntities());
+        auto& mutableEntities = const_cast<std::map<uint16_t, EntityVisual>&>(ctx_.entityRenderer->getEntities());
         auto visIt = mutableEntities.find(ctx.spawnId);
         if (visIt == mutableEntities.end()) {
             LOG_WARN(MOD_GRAPHICS, "SEQ Step8e: entity {} ({}) vanished before distribution — prep work discarded "
@@ -540,9 +541,9 @@ void IrrlichtRenderer::loadZoneStep8e_DistributePrepResults(ZoneLoadContext& ctx
     }
 }
 
-void IrrlichtRenderer::loadZoneStep8f_BuildEntityMesh(ZoneLoadContext& ctx) {
+void ZoneLoadComponent::loadZoneStep8f_BuildEntityMesh(ZoneLoadContext& ctx) {
     // Step 8f: Build entity mesh (GL work — scene node, materials, name tag)
-    bool meshBuilt = entityRenderer_->buildEntityMesh(ctx.spawnId);
+    bool meshBuilt = ctx_.entityRenderer->buildEntityMesh(ctx.spawnId);
     if (meshBuilt) ++ctx.buildCount;
     LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8f: entity {} ({}) buildEntityMesh result={}", ctx.spawnId, ctx.vis->name, meshBuilt);
 }

@@ -59,6 +59,7 @@
 #include "client/graphics/sim/sim_bridge_component.h"
 #include "client/graphics/zone_stream/zone_stream_component.h"
 #include "client/graphics/zone_lifecycle/zone_lifecycle_component.h"
+#include "client/graphics/zone_load/zone_load_component.h"
 #ifdef WITH_RDP
 #include "client/graphics/rdp/rdp_server.h"
 #include "client/graphics/rdp/rdp_input_handler.h"
@@ -244,11 +245,10 @@ public:
     // as ZoneStreamComponent::isEntityBlockingProgressiveLoad(...).
     // Check if progressive loading is active
     bool isProgressiveLoadingActive() const { return progressiveLoadingActive_; }
-    // Sequential zone loading — executes all 13 steps inline on the calling thread.
-    // Called from the loading thread (L05/L06).
-    // Updates status.percent/text between steps, checks status.quitRequested.
-    void loadZoneSequential(const std::string& eqClientPath, struct LoadingStatus& status);
-    bool hasLoadFailed() const { return loadFailed_; }
+    // L10 (Batch L): the zone-load step sequence lives on ZoneLoadComponent;
+    // these two forward for application_zone_loading.cpp:275,277 (K11 rule).
+    void loadZoneSequential(const std::string& p, LoadingStatus& s) { zoneLoad_->loadZoneSequential(p, s); }
+    bool hasLoadFailed() const { return zoneLoad_->hasLoadFailed(); }
 
     // T241: door / world-object interaction callbacks deleted (no setter
     // caller anywhere); DoorInteractIntent / WorldObjectInteractIntent are
@@ -341,6 +341,9 @@ public:
 
     // L09 (Batch L): unload/environment/ready state, zone draw, GPU upload.
     ZoneLifecycleComponent& ZoneLifecycle() { return *zoneLifecycle_; }
+
+    // L10 (Batch L): loadZoneSequential() and its twenty step methods.
+    ZoneLoadComponent& ZoneLoad() { return *zoneLoad_; }
 
     // Get BSP tree for water region detection
     std::shared_ptr<EQT::Graphics::BspTree> getZoneBspTree() const { return zoneBspTree_; }
@@ -716,20 +719,8 @@ private:
     // include/client/graphics/sim/sim_bridge_component.h. Nothing outside the
     // renderer ever called any of them, so there is no forwarder.
 
-    // loadZoneSequential() per-step helpers (G01 decomposition).
-    // ZoneLoadContext is forward-declared here and defined in renderer_zone_load.cpp;
-    // it holds every local that crosses a step boundary. Steps that can hit an
-    // unrecoverable error return false; the driver stops and returns immediately,
-    // matching the original early-return control flow.
-    struct ZoneLoadContext;
-    void loadZoneStep0_EQE1(ZoneLoadContext& ctx);
-    bool loadZoneStep1_S3D(ZoneLoadContext& ctx);
-    void loadZoneStep2_BSP(ZoneLoadContext& ctx);
-    void loadZoneStep4_Regions(ZoneLoadContext& ctx);
-    void loadZoneStep5_Assets(ZoneLoadContext& ctx);
-    void loadZoneStep6_Objects(ZoneLoadContext& ctx);
-    void loadZoneStep7_Doors(ZoneLoadContext& ctx);
-    bool loadZoneStep8_Entities(ZoneLoadContext& ctx);
+    // L10 (Batch L): the twenty step helpers and ZoneLoadContext moved to
+    // ZoneLoadComponent; these two stayed (a TU outside L10's territory).
     // T109 load-distance gate — out-of-line in renderer_entity_load_gate.cpp
     // (keeps renderer_zone_load.cpp under the file-size gate; see that file
     // for why ensureEntityPrepWorkerStarted needs to exist at all).
@@ -740,18 +731,6 @@ private:
     bool deferEntityForLoadGate(uint16_t spawnId, const std::string& name, uint16_t raceId, uint8_t gender,
                                  float distFromPlayer, size_t& deferredCount,
                                  std::set<std::pair<uint16_t, uint8_t>>& deferredPairs) const;
-    bool loadZoneStep8a_BaseModelPrep(ZoneLoadContext& ctx);
-    void loadZoneStep8b_VariantModelPrep(ZoneLoadContext& ctx);
-    void loadZoneStep8c_VariantTextures(ZoneLoadContext& ctx);
-    bool loadZoneStep8d_EquipmentPrep(ZoneLoadContext& ctx);
-    void loadZoneStep8e_DistributePrepResults(ZoneLoadContext& ctx);
-    void loadZoneStep8f_BuildEntityMesh(ZoneLoadContext& ctx);
-    void loadZoneStep9_Collision(ZoneLoadContext& ctx);
-    bool loadZoneStep10_Sky(ZoneLoadContext& ctx);
-    void loadZoneStep11_Env(ZoneLoadContext& ctx);
-    void loadZoneStep12_Lights(ZoneLoadContext& ctx);
-    void loadZoneStep12b_Simulation(ZoneLoadContext& ctx);
-    void loadZoneStep13_Cleanup(ZoneLoadContext& ctx);
 
     // advanceDeferredInit() folded into P11_Env_* phases of advanceBackgroundZoneLoad()
     // L09 (Batch L): createZoneMesh()/rebuildRegionMesh() moved.
@@ -1075,10 +1054,8 @@ private:
     // Shared background thread pool (replaces per-queue dedicated threads)
     std::unique_ptr<BackgroundThreadPool> backgroundThreadPool_;
 
-    // Zone loading computations (used by loadZoneSequential)
-    std::unique_ptr<PendingZoneComputations> pendingZoneComputations_;
+    // L10 (Batch L): pendingZoneComputations_ and loadFailed_ moved.
     bool sequentialLoadComplete_ = false;  // True after loadZoneSequential() finishes
-    bool loadFailed_ = false;              // True if loadZoneSequential() hit a FATAL error
 
     // Stored zone environment from NewZone packet (applied after global assets load)
     struct StoredZoneEnvironment {
@@ -1600,6 +1577,11 @@ private:
     // include/client/graphics/zone_lifecycle/zone_lifecycle_component.h.
     friend class ZoneLifecycleComponent;
     std::unique_ptr<ZoneLifecycleComponent> zoneLifecycle_;
+
+    // L10 (Batch L): the loading thread's zone build. Friendship on BOTH axes
+    // of K13 (ii); no thread ownership moved -- see zone_load_component.h.
+    friend class ZoneLoadComponent;
+    std::unique_ptr<ZoneLoadComponent> zoneLoad_;
 };
 
 } // namespace Graphics

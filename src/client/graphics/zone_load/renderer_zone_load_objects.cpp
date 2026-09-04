@@ -56,26 +56,27 @@
 #endif
 #include <EGL/egl.h>
 #endif
-#include "client/graphics/zone_load_context.h"
+#include "client/graphics/zone_load/zone_load_component.h"
+#include "client/graphics/zone_load/zone_load_context.h"
 
 namespace EQT {
 namespace Graphics {
 
-void IrrlichtRenderer::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
+void ZoneLoadComponent::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
     // ── Step 6: Objects — zone objects ──────────────────────────────────────
     ctx.updateProgress(75, "Installing zone objects...");
     {
         auto stepStart = std::chrono::steady_clock::now();
-        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: objectLights_ before={}", objectLights_.size());
-        deferredObjects_.clear();
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: objectLights_ before={}", ctx_.objectLights.size());
+        owner_.deferredObjects_.clear();
 
         if (pendingZoneComputations_ && !pendingZoneComputations_->prebuiltDeferredObjects.empty()) {
-            deferredObjects_ = std::move(pendingZoneComputations_->prebuiltDeferredObjects);
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: using prebuilt deferred objects, count={}", deferredObjects_.size());
-        } else if (pendingZoneComputations_ && !pendingZoneComputations_->deferredObjectEntries.empty() && currentZone_) {
+            owner_.deferredObjects_ = std::move(pendingZoneComputations_->prebuiltDeferredObjects);
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: using prebuilt deferred objects, count={}", owner_.deferredObjects_.size());
+        } else if (pendingZoneComputations_ && !pendingZoneComputations_->deferredObjectEntries.empty() && ctx_.currentZone) {
             for (auto& [objIdx, bspRegion] : pendingZoneComputations_->deferredObjectEntries) {
-                if (objIdx >= currentZone_->objects.size()) continue;
-                const auto& objInstance = currentZone_->objects[objIdx];
+                if (objIdx >= ctx_.currentZone->objects.size()) continue;
+                const auto& objInstance = ctx_.currentZone->objects[objIdx];
                 if (!objInstance.geometry || !objInstance.placeable) continue;
 
                 DeferredObject deferred;
@@ -95,72 +96,72 @@ void IrrlichtRenderer::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
                 deferred.worldBounds = irr::core::aabbox3df(
                     x - halfW, z - halfH, y - halfW,
                     x + halfW, z + halfH, y + halfW);
-                deferredObjects_.push_back(deferred);
+                owner_.deferredObjects_.push_back(deferred);
             }
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: built deferred objects from entries, count={}", deferredObjects_.size());
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: built deferred objects from entries, count={}", owner_.deferredObjects_.size());
         } else {
-            zoneStream_->indexObjectMeshes();
+            owner_.ZoneStream().indexObjectMeshes();
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: used indexObjectMeshes() fallback");
         }
 
         // Zone bounds
-        if (currentZone_ && currentZone_->geometry) {
-            zoneBoundsMinX_ = currentZone_->geometry->minX;
-            zoneBoundsMaxX_ = currentZone_->geometry->maxX;
-            zoneBoundsMinY_ = currentZone_->geometry->minY;
-            zoneBoundsMaxY_ = currentZone_->geometry->maxY;
-            zoneBoundsValid_ = true;
+        if (ctx_.currentZone && ctx_.currentZone->geometry) {
+            owner_.zoneBoundsMinX_ = ctx_.currentZone->geometry->minX;
+            owner_.zoneBoundsMaxX_ = ctx_.currentZone->geometry->maxX;
+            owner_.zoneBoundsMinY_ = ctx_.currentZone->geometry->minY;
+            owner_.zoneBoundsMaxY_ = ctx_.currentZone->geometry->maxY;
+            owner_.zoneBoundsValid_ = true;
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: zone bounds from geometry: X=[{:.1f},{:.1f}] Y=[{:.1f},{:.1f}]",
-                      zoneBoundsMinX_, zoneBoundsMaxX_, zoneBoundsMinY_, zoneBoundsMaxY_);
-        } else if (!regionBoundingBoxes_.empty()) {
+                      owner_.zoneBoundsMinX_, owner_.zoneBoundsMaxX_, owner_.zoneBoundsMinY_, owner_.zoneBoundsMaxY_);
+        } else if (!ctx_.regionBoundingBoxes.empty()) {
             float rMinX = std::numeric_limits<float>::max(), rMaxX = std::numeric_limits<float>::lowest();
             float rMinY = std::numeric_limits<float>::max(), rMaxY = std::numeric_limits<float>::lowest();
-            for (const auto& [idx, bb] : regionBoundingBoxes_) {
+            for (const auto& [idx, bb] : ctx_.regionBoundingBoxes) {
                 rMinX = std::min(rMinX, bb.MinEdge.X); rMaxX = std::max(rMaxX, bb.MaxEdge.X);
                 rMinY = std::min(rMinY, bb.MinEdge.Y); rMaxY = std::max(rMaxY, bb.MaxEdge.Y);
             }
-            zoneBoundsMinX_ = rMinX; zoneBoundsMaxX_ = rMaxX;
-            zoneBoundsMinY_ = rMinY; zoneBoundsMaxY_ = rMaxY;
-            zoneBoundsValid_ = true;
+            owner_.zoneBoundsMinX_ = rMinX; owner_.zoneBoundsMaxX_ = rMaxX;
+            owner_.zoneBoundsMinY_ = rMinY; owner_.zoneBoundsMaxY_ = rMaxY;
+            owner_.zoneBoundsValid_ = true;
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: zone bounds from regionBoundingBoxes: X=[{:.1f},{:.1f}] Y=[{:.1f},{:.1f}]",
-                      zoneBoundsMinX_, zoneBoundsMaxX_, zoneBoundsMinY_, zoneBoundsMaxY_);
+                      owner_.zoneBoundsMinX_, owner_.zoneBoundsMaxX_, owner_.zoneBoundsMinY_, owner_.zoneBoundsMaxY_);
         } else {
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: zone bounds not available (no combined geometry and no region bounding boxes)");
         }
 
         // Build all object meshes eagerly inline (no deferred/PVS-gated build at runtime)
         {
-            ZoneMeshBuilder objBuilder(smgr_, driver_, device_->getFileSystem());
+            ZoneMeshBuilder objBuilder(ctx_.smgr, ctx_.driver, ctx_.device->getFileSystem());
             objBuilder.setUploadCategory("object");  // P13
-            if (constrainedTextureCache_)
-                objBuilder.setConstrainedTextureCache(constrainedTextureCache_);
-            if (zoneShader_ && zoneShader_->isAvailable()) {
-                objBuilder.setShaderMaterialTypes(zoneShader_->getActiveSolid(),
-                                                   zoneShader_->getActiveAlphaTest(),
-                                                   zoneShader_->getActiveAlphaTestRGBA());
+            if (ctx_.constrainedTextureCache)
+                objBuilder.setConstrainedTextureCache(ctx_.constrainedTextureCache);
+            if (ctx_.zoneShader && ctx_.zoneShader->isAvailable()) {
+                objBuilder.setShaderMaterialTypes(ctx_.zoneShader->getActiveSolid(),
+                                                   ctx_.zoneShader->getActiveAlphaTest(),
+                                                   ctx_.zoneShader->getActiveAlphaTestRGBA());
                 LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: obj builder shader materials set (solid={}, alphaTest={})",
-                          zoneShader_->getActiveSolid(), zoneShader_->getActiveAlphaTest());
+                          ctx_.zoneShader->getActiveSolid(), ctx_.zoneShader->getActiveAlphaTest());
             }
-            if (zoneShader_ && zoneShader_->isAtlasAvailable()) {
-                objBuilder.setAtlasShaderMaterialTypes(zoneShader_->getActiveAtlasSolid(),
-                                                         zoneShader_->getActiveAtlasAlpha());
+            if (ctx_.zoneShader && ctx_.zoneShader->isAtlasAvailable()) {
+                objBuilder.setAtlasShaderMaterialTypes(ctx_.zoneShader->getActiveAtlasSolid(),
+                                                         ctx_.zoneShader->getActiveAtlasAlpha());
                 LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: obj builder atlas shader materials set (solid={}, alpha={})",
-                          zoneShader_->getActiveAtlasSolid(), zoneShader_->getActiveAtlasAlpha());
+                          ctx_.zoneShader->getActiveAtlasSolid(), ctx_.zoneShader->getActiveAtlasAlpha());
             }
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: totalObjects={}", deferredObjects_.size());
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: totalObjects={}", owner_.deferredObjects_.size());
 
-            size_t totalObjects = deferredObjects_.size();
+            size_t totalObjects = owner_.deferredObjects_.size();
             size_t objectsBuilt = 0;
 
             for (size_t oi = 0; oi < totalObjects; ++oi) {
             
-                DeferredObject& deferred = deferredObjects_[oi];
+                DeferredObject& deferred = owner_.deferredObjects_[oi];
                 if (deferred.meshBuilt) { ++objectsBuilt; continue; }
-                if (deferred.objectIndex >= currentZone_->objects.size()) {
+                if (deferred.objectIndex >= ctx_.currentZone->objects.size()) {
                     deferred.meshBuilt = true; ++objectsBuilt; continue;
                 }
 
-                const auto& objInstance = currentZone_->objects[deferred.objectIndex];
+                const auto& objInstance = ctx_.currentZone->objects[deferred.objectIndex];
                 if (!objInstance.geometry || !objInstance.placeable) {
                     deferred.meshBuilt = true; ++objectsBuilt; continue;
                 }
@@ -169,8 +170,8 @@ void IrrlichtRenderer::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
 
                 // Build mesh
                 irr::scene::IMesh* objMesh = nullptr;
-                if (!currentZone_->objectTextures.empty() && !objInstance.geometry->textureNames().empty()) {
-                    objMesh = objBuilder.buildTexturedMesh(*objInstance.geometry, currentZone_->objectTextures);
+                if (!ctx_.currentZone->objectTextures.empty() && !objInstance.geometry->textureNames().empty()) {
+                    objMesh = objBuilder.buildTexturedMesh(*objInstance.geometry, ctx_.currentZone->objectTextures);
                     LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: obj[{}] '{}' built textured mesh, texNames={}",
                               oi, objName, objInstance.geometry->textureNames().size());
                 } else {
@@ -182,7 +183,7 @@ void IrrlichtRenderer::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
                 const auto& missingObjTex = objBuilder.getMissingTextures();
                 if (!missingObjTex.empty()) {
                     for (const auto& texName : missingObjTex)
-                        pendingTextureObjects_[texName].insert(oi);
+                        owner_.pendingTextureObjects_[texName].insert(oi);
                     LOG_WARN(MOD_GRAPHICS, "SEQ Step6: obj[{}] '{}' has {} missing textures queued for later rebuild",
                              oi, objName, missingObjTex.size());
                 }
@@ -192,7 +193,7 @@ void IrrlichtRenderer::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
                     deferred.meshBuilt = true; ++objectsBuilt; continue;
                 }
 
-                irr::scene::IMeshSceneNode* objNode = smgr_->addMeshSceneNode(objMesh);
+                irr::scene::IMeshSceneNode* objNode = ctx_.smgr->addMeshSceneNode(objMesh);
                 if (!objNode) {
                     LOG_WARN(MOD_GRAPHICS, "SEQ Step6: obj[{}] '{}' addMeshSceneNode failed — mesh dropped", oi, objName);
                     objMesh->drop(); deferred.meshBuilt = true; ++objectsBuilt; continue;
@@ -215,11 +216,11 @@ void IrrlichtRenderer::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
 
                 // Materials
                 for (irr::u32 mi = 0; mi < objNode->getMaterialCount(); ++mi) {
-                    objNode->getMaterial(mi).Lighting = lightingEnabled_;
+                    objNode->getMaterial(mi).Lighting = ctx_.lightingEnabled;
                     objNode->getMaterial(mi).BackfaceCulling = false;
                     objNode->getMaterial(mi).GouraudShading = true;
-                    objNode->getMaterial(mi).FogEnable = fogEnabled_;
-                    objNode->getMaterial(mi).Wireframe = wireframeMode_;
+                    objNode->getMaterial(mi).FogEnable = ctx_.fogEnabled;
+                    objNode->getMaterial(mi).Wireframe = ctx_.wireframeMode;
                     objNode->getMaterial(mi).NormalizeNormals = true;
                     objNode->getMaterial(mi).AmbientColor = irr::video::SColor(255, 255, 255, 255);
                     objNode->getMaterial(mi).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
@@ -296,7 +297,7 @@ void IrrlichtRenderer::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
                             }
                         }
 
-                        vertexAnimatedMeshes_.push_back(std::move(vam));
+                        owner_.vertexAnimatedMeshes_.push_back(std::move(vam));
                         LOG_INFO(MOD_GRAPHICS, "SEQ Step6: obj[{}] '{}' registered as vertex-animated "
                                  "({} frames, {}ms delay, {} mapped/{} total verts)",
                                  oi, objName, animData->frames.size(), animData->delayMs,
@@ -306,29 +307,29 @@ void IrrlichtRenderer::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
 
                 objNode->setName(objName.c_str());
                 objNode->grab();
-                size_t newNodeIndex = objectNodes_.size();
-                objectNodes_.push_back(objNode);
-                objectPositions_.push_back(irr::core::vector3df(ox, oz, oy));
-                if (zoneBspTree_)
-                    objectRegions_.push_back(zoneBspTree_->findRegionIndexForPoint(ox, oy, oz));
+                size_t newNodeIndex = ctx_.objectNodes.size();
+                ctx_.objectNodes.push_back(objNode);
+                ctx_.objectPositions.push_back(irr::core::vector3df(ox, oz, oy));
+                if (ctx_.zoneBspTree)
+                    owner_.objectRegions_.push_back(ctx_.zoneBspTree->findRegionIndexForPoint(ox, oy, oz));
                 else
-                    objectRegions_.push_back(SIZE_MAX);
+                    owner_.objectRegions_.push_back(SIZE_MAX);
                 objNode->updateAbsolutePosition();
-                objectBoundingBoxes_.push_back(objNode->getTransformedBoundingBox());
+                owner_.objectBoundingBoxes_.push_back(objNode->getTransformedBoundingBox());
                 deferred.nodeIndex = newNodeIndex;
 
                 // PVS visibility (no SimWorker yet, so all visible).
                 // When manualZoneDrawEnabled_, objects are always out of scene graph
                 // and rendered via drawZoneGeometrySorted() instead.
-                bool pvsVisible = isRegionPvsVisible(objectRegions_.back());
-                if (!pvsVisible || manualZoneDrawEnabled_) {
+                bool pvsVisible = owner_.isRegionPvsVisible(owner_.objectRegions_.back());
+                if (!pvsVisible || ctx_.manualZoneDrawEnabled) {
                     objNode->remove();
                     if (!pvsVisible) {
                         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: obj[{}] '{}' removed from scene graph (PVS hidden, region={})",
-                                  oi, objName, objectRegions_.back());
+                                  oi, objName, owner_.objectRegions_.back());
                     }
                 }
-                objectInSceneGraph_.push_back(pvsVisible && !manualZoneDrawEnabled_);
+                ctx_.objectInSceneGraph.push_back(pvsVisible && !ctx_.manualZoneDrawEnabled);
 
                 // Object lights (torch, lantern, fire, candle, etc.)
                 std::string upperName = objName;
@@ -380,9 +381,9 @@ void IrrlichtRenderer::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
                     irr::core::vector3df lightPos(ox, oz, oy);
 
                     // Find nearby zone light with elevated position
-                    if (currentZone_ && !currentZone_->lights.empty()) {
+                    if (ctx_.currentZone && !ctx_.currentZone->lights.empty()) {
                         float bestDist = 50.0f;
-                        for (const auto& zoneLight : currentZone_->lights) {
+                        for (const auto& zoneLight : ctx_.currentZone->lights) {
                             float dx = zoneLight->x - ox;
                             float dy = zoneLight->y - oy;
                             float hDist = std::sqrt(dx * dx + dy * dy);
@@ -393,7 +394,7 @@ void IrrlichtRenderer::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
                         }
                     }
 
-                    irr::scene::ILightSceneNode* lightNode = smgr_->addLightSceneNode(
+                    irr::scene::ILightSceneNode* lightNode = ctx_.smgr->addLightSceneNode(
                         nullptr, lightPos, lightColor, lightRadius * 1.5f);
 
                     if (lightNode) {
@@ -409,7 +410,7 @@ void IrrlichtRenderer::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
                         objLight.position = lightPos;
                         objLight.objectName = objName;
                         objLight.originalColor = lightColor;
-                        objLight.bspRegion = objectRegions_.back();
+                        objLight.bspRegion = owner_.objectRegions_.back();
 
                         if (upperName.find("TORCH") != std::string::npos ||
                             upperName.find("FIRE") != std::string::npos ||
@@ -422,12 +423,12 @@ void IrrlichtRenderer::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
                             objLight.flickerSpeed = 0.8f + static_cast<float>(rand()) / RAND_MAX * 0.4f;
                         }
 
-                        bool lightPvsVis = isRegionPvsVisible(objLight.bspRegion);
+                        bool lightPvsVis = owner_.isRegionPvsVisible(objLight.bspRegion);
                         if (lightPvsVis)
-                            smgr_->getRootSceneNode()->addChild(lightNode);
-                        objectLightInSceneGraph_.push_back(lightPvsVis);
+                            ctx_.smgr->getRootSceneNode()->addChild(lightNode);
+                        owner_.objectLightInSceneGraph_.push_back(lightPvsVis);
 
-                        objectLights_.push_back(objLight);
+                        ctx_.objectLights.push_back(objLight);
                         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: obj[{}] '{}' light created: pos=({:.1f},{:.1f},{:.1f}) "
                                   "radius={:.0f} fire={} pvsVisible={} region={}",
                                   oi, objName, lightPos.X, lightPos.Y, lightPos.Z,
@@ -451,47 +452,47 @@ void IrrlichtRenderer::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
         }
         {
             int fireSrcCount = 0;
-            for (const auto& ol : objectLights_) { if (ol.isFireSource) ++fireSrcCount; }
+            for (const auto& ol : ctx_.objectLights) { if (ol.isFireSource) ++fireSrcCount; }
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: objectLights_ after={}, fire sources from objects={}",
-                      objectLights_.size(), fireSrcCount);
+                      ctx_.objectLights.size(), fireSrcCount);
         }
-        zoneStream_->logAssetBuildTime("seq_objects", deferredObjects_.size(), stepStart);
+        owner_.ZoneStream().logAssetBuildTime("seq_objects", owner_.deferredObjects_.size(), stepStart);
     }
     FlushThreadLog();
 }
 
-void IrrlichtRenderer::loadZoneStep7_Doors(ZoneLoadContext& ctx) {
+void ZoneLoadComponent::loadZoneStep7_Doors(ZoneLoadContext& ctx) {
     // ── Step 7: Doors — door meshes ────────────────────────────────────────
     ctx.updateProgress(78, "Building door meshes...");
     {
         auto stepStart = std::chrono::steady_clock::now();
-        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step7: doorManager_={}", (bool)doorManager_);
-        if (!doorManager_) {
-            doorManager_ = std::make_unique<DoorManager>(smgr_, driver_);
-            if (constrainedTextureCache_)
-                doorManager_->setConstrainedTextureCache(constrainedTextureCache_);
-            if (currentZone_) doorManager_->setZone(currentZone_);
-            if (zoneBspTree_) doorManager_->setBspTree(zoneBspTree_.get());
-            doorManager_->setPvsRegion(currentPvsRegion_);
-            if (frustumCuller_) doorManager_->setFrustumCuller(frustumCuller_.get());
-            doorManager_->setRegionNeighbors(regionNeighbors_.empty() ? nullptr : &regionNeighbors_);
-            if (zoneShader_ && zoneShader_->isAvailable())
-                doorManager_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),
-                                                     zoneShader_->getActiveAlphaTest(),
-                                                     zoneShader_->getActiveAlphaTestRGBA());
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step7: doorManager_={}", (bool)ctx_.doorManager);
+        if (!ctx_.doorManager) {
+            ctx_.doorManager = std::make_unique<DoorManager>(ctx_.smgr, ctx_.driver);
+            if (ctx_.constrainedTextureCache)
+                ctx_.doorManager->setConstrainedTextureCache(ctx_.constrainedTextureCache);
+            if (ctx_.currentZone) ctx_.doorManager->setZone(ctx_.currentZone);
+            if (ctx_.zoneBspTree) ctx_.doorManager->setBspTree(ctx_.zoneBspTree.get());
+            ctx_.doorManager->setPvsRegion(ctx_.currentPvsRegion);
+            if (ctx_.frustumCuller) ctx_.doorManager->setFrustumCuller(ctx_.frustumCuller.get());
+            ctx_.doorManager->setRegionNeighbors(owner_.regionNeighbors_.empty() ? nullptr : &owner_.regionNeighbors_);
+            if (ctx_.zoneShader && ctx_.zoneShader->isAvailable())
+                ctx_.doorManager->setShaderMaterialTypes(ctx_.zoneShader->getActiveSolid(),
+                                                     ctx_.zoneShader->getActiveAlphaTest(),
+                                                     ctx_.zoneShader->getActiveAlphaTestRGBA());
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step7: created DoorManager (zone={}, bsp={}, frustum={}, neighbors={}, shader={})",
-                      (bool)currentZone_, (bool)zoneBspTree_, (bool)frustumCuller_,
-                      !regionNeighbors_.empty(), zoneShader_ && zoneShader_->isAvailable());
+                      (bool)ctx_.currentZone, (bool)ctx_.zoneBspTree, (bool)ctx_.frustumCuller,
+                      !owner_.regionNeighbors_.empty(), ctx_.zoneShader && ctx_.zoneShader->isAvailable());
         }
 
         // Rebuild all doors at once
-        if (doorManager_) {
+        if (ctx_.doorManager) {
             std::vector<uint8_t> doorList;
-            doorManager_->getUnbuiltDoors(doorList);
+            ctx_.doorManager->getUnbuiltDoors(doorList);
             size_t unbuiltCount = doorList.size();
             size_t placeholderCount = 0;
             for (uint8_t id = 0; id < 255; ++id) {
-                const auto* door = doorManager_->getDoor(id);
+                const auto* door = ctx_.doorManager->getDoor(id);
                 if (door && door->meshBuilt && door->usePlaceholder) {
                     doorList.push_back(id);
                     ++placeholderCount;
@@ -504,15 +505,15 @@ void IrrlichtRenderer::loadZoneStep7_Doors(ZoneLoadContext& ctx) {
             size_t doorsFailed = 0;
             size_t doorsWithMissingTex = 0;
             for (uint8_t doorId : doorList) {
-                bool rebuilt = doorManager_->rebuildSingleDoor(doorId);
+                bool rebuilt = ctx_.doorManager->rebuildSingleDoor(doorId);
                 if (!rebuilt) {
                     LOG_WARN(MOD_GRAPHICS, "SEQ Step7: door {} rebuildSingleDoor failed", doorId);
                     ++doorsFailed;
                 }
-                const auto& missing = doorManager_->getLastMissingTextures();
+                const auto& missing = ctx_.doorManager->getLastMissingTextures();
                 if (!missing.empty()) {
                     for (const auto& texName : missing)
-                        pendingTextureDoors_[texName].insert(doorId);
+                        owner_.pendingTextureDoors_[texName].insert(doorId);
                     LOG_WARN(MOD_GRAPHICS, "SEQ Step7: door {} has {} missing textures queued for later rebuild",
                              doorId, missing.size());
                     ++doorsWithMissingTex;
@@ -529,33 +530,33 @@ void IrrlichtRenderer::loadZoneStep7_Doors(ZoneLoadContext& ctx) {
                      totalDoors, doorsFailed, doorsWithMissingTex);
         }
         // Constrained cache was set at creation above — no separate runtime set needed.
-        zoneStream_->logAssetBuildTime("seq_doors", 0, stepStart);
+        owner_.ZoneStream().logAssetBuildTime("seq_doors", 0, stepStart);
     }
     FlushThreadLog();
 }
 
-void IrrlichtRenderer::loadZoneStep9_Collision(ZoneLoadContext& ctx) {
+void ZoneLoadComponent::loadZoneStep9_Collision(ZoneLoadContext& ctx) {
     // ── Step 9: Collision ──────────────────────────────────────────────────
     ctx.updateProgress(88, "Setting up collision...");
     {
         auto stepStart = std::chrono::steady_clock::now();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step9: smgr_={}, regionWorldTriangles_={}, objectNodes_={}, zoneBspTree_={}",
-                  (bool)smgr_, regionWorldTriangles_.size(), objectNodes_.size(), (bool)zoneBspTree_);
-        playerCamera_->setupMinimalZoneCollision();
+                  (bool)ctx_.smgr, owner_.regionWorldTriangles_.size(), ctx_.objectNodes.size(), (bool)ctx_.zoneBspTree);
+        owner_.PlayerCamera().setupMinimalZoneCollision();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step9: setupMinimalZoneCollision complete, regionWorldTriangles_={}",
-                  regionWorldTriangles_.size());
+                  owner_.regionWorldTriangles_.size());
 
         // Add eagerly-built objects as pre-transformed world-space triangles per BSP region
         size_t objectsAdded = 0;
         size_t totalObjectTriangles = 0;
-        if (smgr_) {
-            for (size_t oi = 0; oi < objectNodes_.size(); ++oi) {
-                auto* node = objectNodes_[oi];
+        if (ctx_.smgr) {
+            for (size_t oi = 0; oi < ctx_.objectNodes.size(); ++oi) {
+                auto* node = ctx_.objectNodes[oi];
                 if (node && node->getMesh()) {
-                    auto triangles = PlayerCameraComponent::extractWorldTriangles(smgr_, node);
+                    auto triangles = PlayerCameraComponent::extractWorldTriangles(ctx_.smgr, node);
                     if (!triangles.empty()) {
-                        size_t region = (oi < objectRegions_.size()) ? objectRegions_[oi] : SIZE_MAX;
-                        auto& regionTris = objectWorldTriangles_[region];
+                        size_t region = (oi < owner_.objectRegions_.size()) ? owner_.objectRegions_[oi] : SIZE_MAX;
+                        auto& regionTris = owner_.objectWorldTriangles_[region];
                         totalObjectTriangles += triangles.size();
                         regionTris.insert(regionTris.end(), triangles.begin(), triangles.end());
                         objectsAdded++;
@@ -563,13 +564,13 @@ void IrrlichtRenderer::loadZoneStep9_Collision(ZoneLoadContext& ctx) {
                 }
             }
             LOG_INFO(MOD_GRAPHICS, "Sequential: {} objects -> {} world-space triangles across {} regions",
-                     objectsAdded, totalObjectTriangles, objectWorldTriangles_.size());
+                     objectsAdded, totalObjectTriangles, owner_.objectWorldTriangles_.size());
         }
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step9: collision setup complete, "
                   "regionWorldTriangles_={}, objectWorldTriangles_={}, doorCollisionData_={}, bspFiltered={}",
-                  regionWorldTriangles_.size(), objectWorldTriangles_.size(),
-                  doorCollisionData_.size(), (bool)(zoneBspTree_ && !regionWorldTriangles_.empty()));
-        zoneStream_->logAssetBuildTime("seq_collision", 0, stepStart);
+                  owner_.regionWorldTriangles_.size(), owner_.objectWorldTriangles_.size(),
+                  owner_.doorCollisionData_.size(), (bool)(ctx_.zoneBspTree && !owner_.regionWorldTriangles_.empty()));
+        owner_.ZoneStream().logAssetBuildTime("seq_collision", 0, stepStart);
     }
     FlushThreadLog();
 }
