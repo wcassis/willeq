@@ -398,3 +398,70 @@ TEST_F(PacketStructsTest, GroundSpawn_RejectsBodyTooShortForObjectType) {
     EXPECT_EQ(obj.object_type, 17u);
     EXPECT_FALSE(eqt::ParseGroundSpawn(nullptr, 200, obj));
 }
+
+// ---------------------------------------------------------------------------
+// T349 (BOARD B059) -- OP_Save's 192-byte body.
+//
+// eqemu declares the payload as uint8[192] and Handle_OP_Save
+// (/mnt/projects/akk-stack/code/zone/client_packet.cpp:13661) reads none of
+// it, so there is no eqemu field list to derive offsets from. These offsets
+// come from the T311 Leg A capture instead -- four self-deaths of a real
+// Titanium client, dumped server-side -- and the one group that DECODES is
+// the position triple, which is byte-for-byte the last OP_ClientUpdate's
+// y/x/z in all four. offsetof, not just sizeof: a 192-byte struct whose
+// fields have drifted would still pass a size assert (the T145 lesson), and
+// the position is the only part of this body that has to be right.
+// ---------------------------------------------------------------------------
+TEST_F(PacketStructsTest, Save_Struct_Layout) {
+    EXPECT_EQ(sizeof(EQT::Save_Struct), 192u);
+    EXPECT_EQ(offsetof(EQT::Save_Struct, unknown000), 0u);
+    EXPECT_EQ(offsetof(EQT::Save_Struct, unknown004), 4u);
+    EXPECT_EQ(offsetof(EQT::Save_Struct, y), 5u);
+    EXPECT_EQ(offsetof(EQT::Save_Struct, x), 9u);
+    EXPECT_EQ(offsetof(EQT::Save_Struct, z), 13u);
+    EXPECT_EQ(offsetof(EQT::Save_Struct, unknown017), 17u);
+    EXPECT_EQ(offsetof(EQT::Save_Struct, unknown019), 19u);
+    EXPECT_EQ(offsetof(EQT::Save_Struct, unknown049), 49u);
+    EXPECT_EQ(offsetof(EQT::Save_Struct, unknown053), 53u);
+    EXPECT_EQ(offsetof(EQT::Save_Struct, unknown057), 57u);
+    EXPECT_EQ(offsetof(EQT::Save_Struct, unknown110), 110u);
+    EXPECT_EQ(offsetof(EQT::Save_Struct, unknown175), 175u);
+    EXPECT_EQ(offsetof(EQT::Save_Struct, unknown177), 177u);
+    EXPECT_EQ(offsetof(EQT::Save_Struct, unknown181), 181u);
+    EXPECT_EQ(offsetof(EQT::Save_Struct, unknown185), 185u);
+    EXPECT_EQ(offsetof(EQT::Save_Struct, unknown189), 189u);
+}
+
+// The 09-01-2026 20:12:31 body, verbatim from
+// review/T311/legA/zonelogs/qeynos2_zone_packetlog.log ("Size [194]" = 2
+// opcode + 192). Read through the struct, the position must come out as the
+// same y/x/z the last C->S OP_ClientUpdate carried (server x -160.0627,
+// y 634.4550, wire z 3.750999 = 0x40701060).
+TEST_F(PacketStructsTest, Save_Struct_DecodesTheCapturedPosition) {
+    static const uint8_t kCaptured[192] = {
+        0x3F,0x05,0x4D,0x1B,0x15,0x1E,0x9D,0x1E,0x44,0x0F,0x10,0x20,0xC3,0x60,0x10,0x70,
+        0x40,0xE0,0x01,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+        0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+        0x00,0x99,0x29,0x00,0x00,0x30,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+        0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+        0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+        0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x4D,0xD8,
+        0x01,0x38,0x00,0x00,0x00,0xFF,0x7F,0x9B,0x1A,0x98,0x29,0x83,0x1C,0x00,0x00,0x00,
+        0x00,0x50,0x36,0xF5,0x1A,0x30,0xC9,0x30,0x00,0x0B,0x06,0xF3,0x01,0xFF,0xFF,0xFF,
+        0xFF,0x78,0x89,0xD8,0x01,0xDE,0x89,0xD8,0x01,0x70,0xA1,0x6F,0x24,0x30,0xFE,0x5B,
+        0x1A,0x98,0x29,0x83,0x1C,0x90,0x8A,0xDD,0x03,0xC0,0x1F,0x83,0x1C,0xE3,0x55,0x00,
+        0x00,0x99,0x29,0x00,0x00,0x30,0x00,0x00,0x00,0x37,0x00,0x00,0x00,0x00,0x00,0x00,
+    };
+    EQT::Save_Struct s;
+    std::memcpy(&s, kCaptured, sizeof(s));
+    EXPECT_FLOAT_EQ(s.y, 634.4550f);
+    EXPECT_FLOAT_EQ(s.x, -160.0627f);
+    EXPECT_FLOAT_EQ(s.z, 3.750999f);
+    // And the constants the sender reproduces.
+    EXPECT_EQ(s.unknown004, EQT::kSaveUnknown004);
+    EXPECT_EQ(s.unknown049, EQT::kSaveUnknown049);
+    EXPECT_EQ(s.unknown053, EQT::kSaveUnknown053);
+    EXPECT_EQ(s.unknown177, EQT::kSaveUnknown177);
+    EXPECT_EQ(s.unknown181, EQT::kSaveUnknown181);
+    EXPECT_EQ(s.unknown185, EQT::kSaveUnknown185);
+}

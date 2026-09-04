@@ -252,6 +252,22 @@ void eqt::player::PlayerComponent::ZoneProcessDeath(const EQ::Net::Packet &p)
 	if (victim_id == ctx_.self.MySpawnId()) {
 		std::cout << "YOU HAVE BEEN SLAIN!" << std::endl;
 
+		// T349 (BOARD B059). OP_Save is the FIRST C->S packet of the official
+		// client's self-death burst -- before the Lying appearance, before the
+		// bind OP_ZoneChange -- in all four of T311 Leg A's deaths, and it
+		// appears at those four moments and NOWHERE ELSE in the whole capture.
+		// It is a death step, not housekeeping.
+		//
+		// It must be sent BEFORE ApplyPositionState(POS_DEAD) as well as
+		// before the appearance: the body carries our current position, and
+		// the oracle's carries the position we DIED at (death 1's OP_Save
+		// holds the last OP_ClientUpdate's y/x/z byte for byte, not the bind
+		// point the server had just named).
+		//
+		// announce=false: the burst prints nothing. "Saving character..." is
+		// for the /save command.
+		SendSave(/*announce=*/false);
+
 		// T344 (B001): OP_Death for our own spawn id is the authoritative
 		// signal that WE are dead, and until now nothing wrote it to
 		// game_state.player().positionState() -- the only path that could

@@ -1,0 +1,40 @@
+# T349 golden -- the official client's 192-byte OP_Save body (B059).
+# Extracted by scripts/refactor/t349_op_save_golden.py from
+# review/T311/legA/zonelogs/*_packetlog.log (T311 Leg A: a real
+# Titanium client against a real eqemu, four self-deaths, dumped
+# server-side as "Size [194]" = 2 opcode bytes + 192 body bytes).
+#
+# One cell per body byte, 16 per line, offset in the left column.
+#   hex  -- identical in all 4 captured bodies; COMPARED verbatim.
+#   yy/xx/zz -- the position triple at offsets 5/9/13, byte-for-byte
+#           the y/x/z of the last C->S OP_ClientUpdate before that
+#           death (all 4, z bit pattern included). The test supplies
+#           the position and COMPARES these.
+#   ..   -- NOT compared. Offsets 110..174 are uninitialized client
+#           memory (32-bit heap pointers; the 4th death does not even
+#           share the other three's field shape), masked as a whole
+#           region -- four bytes inside it agree across the four
+#           samples and are stale stack, not fields. The rest simply
+#           vary with nothing in the capture to explain them.
+#
+# eqemu reads NONE of this body: Handle_OP_Save
+# (/mnt/projects/akk-stack/code/zone/client_packet.cpp:13661) just
+# calls Save(), and Save_Struct is declared uint8[192]. So the size
+# and the position are the whole of the semantics; the constants are
+# matched because matching the oracle is free, not because anything
+# reads them. All 4 samples are from ONE client process, so a
+# "constant" here may be process-stable stack content.
+#
+# Never re-blessed. If a cell here changes, the capture was re-read.
+000: .. .. .. .. 15 yy yy yy yy xx xx xx xx zz zz zz
+016: zz .. .. 00 00 00 00 00 00 00 00 00 00 00 00 00
+032: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+048: 00 99 29 00 00 30 00 00 00 00 00 00 00 00 00 00
+064: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+080: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+096: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 .. ..
+112: .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. ..
+128: .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. ..
+144: .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. ..
+160: .. .. .. .. .. .. .. .. .. .. .. .. .. .. .. 00
+176: 00 99 29 00 00 30 00 00 00 37 00 00 00 00 00 00

@@ -1104,7 +1104,7 @@ it without taking that measurement first.
 
 ## Added 2026-09-04 by the T346 Review (self-death sequence)
 
-- **B059** (A) `src/client/player/player_misc.cpp` `PlayerComponent::SendSave`
+- ~~**B059** (A) `src/client/player/player_misc.cpp` `PlayerComponent::SendSave`
   — queues a bare 2-byte `OP_Save`; the official client's `OP_Save` is 192
   bytes and it sends one on EVERY self death as the first packet of the
   burst (T311 capture, all four deaths), fable sends none from the death
@@ -1112,4 +1112,17 @@ it without taking that measurement first.
   (`review/T311/legA/decode/`), fable's `SendSave` fills it, and
   `ZoneProcessDeath` sends it before the Lying appearance — the
   self-death golden (`tests/goldens/self_death_outbound_g07.txt`) learns
-  it in place. Prov: T346 Review.
+  it in place. Prov: T346 Review.~~ **CLOSED by T349**
+  (`refactor/T349_op_save_body.md`): `EQT::Save_Struct`
+  (`include/common/packets/character.h`, `static_assert`ed to 192) and a
+  `SendSave` that fills it; `ZoneProcessDeath`'s self branch sends it
+  first, before `ApplyPositionState(POS_DEAD)` and the Lying appearance.
+  The decode came out of the SERVER-SIDE packetlogs, not the timeline TSV
+  (which keeps only 32 of the 192 bytes): the floats at offsets 5/9/13 are
+  byte-for-byte the last `OP_ClientUpdate`'s y/x/z in all four deaths, z
+  bit pattern included, and offsets 110..174 are uninitialized client
+  memory. eqemu's `Handle_OP_Save`
+  (`/mnt/projects/akk-stack/code/zone/client_packet.cpp:13661`) reads NONE
+  of the body. `self_death_outbound_g07.txt` learned `C->S OP_Save` as its
+  new first line in place; the body is pinned by a second golden,
+  `tests/goldens/op_save_body_g08.txt`.
