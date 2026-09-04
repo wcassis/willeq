@@ -136,6 +136,23 @@ lifetime change; a pinned test's assertion would change.
    neither timing brackets nor banners; a struct is warranted only when
    the locals table shows crossers (G06: 17 of ~60, the first).
 
+## T337 correction (2026-09-04)
+
+31. **An order golden is a MERGE-TIME hazard.** Any branch that edits a
+   golden-pinned TU and was cut before the golden's unit merged will fail
+   on the tip, even though both changes are correct and neither conflicts
+   textually — git merges the code cleanly and the golden, which lives in
+   another file, silently no longer describes it. T332 (B049) added two
+   statements to `renderer_player_physics.cpp` from a branch cut before
+   G06 landed; the tip failed at statement 410 with no conflict marker
+   anywhere. **The merge step must run the golden tests for every TU the
+   incoming branch touched**, not just the branch's own tests — a green
+   pre-merge branch proves nothing about a golden it never saw. And the
+   repair is an INSERTION at the statement's position, named in the
+   golden's guard, never a regeneration from the tip: a regenerated
+   golden accepts whatever the tip happens to say, which is exactly the
+   property the golden exists to deny.
+
 ## CLOSE-OUT (2026-09-04)
 
 Six of the eight decomposed: `DispatchZonePacket` 880 → 15,

@@ -222,7 +222,20 @@ std::vector<std::string> goldenOrder() {
     return out;
 }
 
-constexpr size_t kGoldenSize = 471;
+// 471 entries as extracted from the pre-G06 body, plus the ONE reviewed
+// insertion below. The golden is never regenerated from the tip; a statement
+// enters it only by being named here.
+//
+// T337: T332 (B049) insertion, two statements, at 410 and 440.
+//   410 `playerPositionIsSeed_ = false;`      -- publishPositionAndCamera(),
+//       inside `if (positionChanged)`, immediately after `ctx_.playerZ = newZ;`
+//   440 `intent.seededPosition = playerPositionIsSeed_;` -- in
+//       sendPositionUpdateToServer(), immediately after `intent.heading = ...`
+// T332 branched before G06 merged, so its two lines were absent from the
+// golden and this case failed on the tip at statement 410. Both changes are
+// correct; the golden learned the insertion (see
+// refactor/T337_movement_golden_learns_t332.md).
+constexpr size_t kGoldenSize = 473;
 
 }  // namespace
 
@@ -235,7 +248,8 @@ TEST(MovementOrder, GoldenIsPresentAndTheRightSize) {
         << "the movement-order golden changed size. It was extracted from the PRE-G06\n"
            "body and is not to be regenerated to match a change: if a movement statement\n"
            "was genuinely added or removed, that is a BEHAVIOUR change and belongs in a\n"
-           "unit that says so.";
+           "unit that says so -- and is INSERTED into the golden at its position, named in\n"
+           "the comment above kGoldenSize, never regenerated from the tip.";
 }
 
 TEST(MovementOrder, EveryPhaseIsCalledExactlyOnceAndNoneIsOrphaned) {
