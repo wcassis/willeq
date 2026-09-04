@@ -212,3 +212,59 @@ with exactly one non-ambient chord.
   charge was consumed by the incidental drink). **Deviation:** its original
   general slot was not recorded before the session, so it was returned to slot 23.
 - `~/.asoundrc` deleted, `snd-aloop` unloaded, `~/eq-oracle/client-t328` deleted.
+
+## Leg B — wire what Leg A measured (plan, 2026-09-04)
+
+Runs in slot2 alongside L05 (renderer; disjoint territory). Source of
+truth: `review/T328/README.md` and `opens.log` (the official client's
+preload order is the authoritative ID → `.WAV` map).
+
+### Steps
+
+1. **Reconcile the catalogues.** `include/client/audio/ui_sounds.h` and
+   `include/client/audio/sound_assets.h` disagree with each other and with
+   the measurement (`sound_assets.h` says `BUY_ITEM = 145`; the official
+   client's preload order says 145 = `itemclth.WAV`, 138 = `BuyItem.WAV`).
+   Rebuild the UI-bank ID table (116–149) from `opens.log` verbatim, in ONE
+   place; the other header includes or aliases it. Add `ITEM_CLOTH = 145`
+   (`itemclth.WAV`) and `WEAR_CLOTH = 146` (`wearclth.WAV`). Correct
+   `BUY_ITEM`'s comment: it is the generic coin-move sound. Mark
+   `BUTTON_CLICK` as "preloaded, never played by the official client — do
+   not wire" (measured). `test_ui_sounds.cpp` and any test asserting the
+   old IDs are updated to the measured values (assertions change ONLY where
+   the old value was wrong against the oracle — cite the row).
+2. **Wire, through `Bridge().PlaySound(id)`** (the path movement already
+   uses for `WaterIn`):
+   - bag open and bag close → `ITEM_CLOTH`. The game-side event is the
+     inventory container open/close (find the intent/handler in
+     `InventoryManager` / `bridge_component_intents.cpp` — `OpenContainer`
+     / `SendCloseContainer` shape); tradeskill container open/close → the
+     same sound.
+   - item dropped into an inventory or bag slot → `WEAR_CLOTH` (the
+     `SendMoveItem`-completed / `ZoneProcessMoveItem` path — play on the
+     LOCAL drop, not the server echo, to match the oracle's timing; record
+     which you chose and why).
+   - coin moved from the money slot to the cursor → `BUY_ITEM` (the
+     `RequestBankCoinMove` / coin-to-cursor intent).
+   - measured SILENT, so NOT wired: item pickup to cursor, coin returned to
+     slot, inventory open/close, all button clicks.
+3. Tests: one per wired event asserting the sound ID is requested (read
+   how `test_water_sounds`/`player_sounds.h` seam the audio manager;
+   `Bridge().PlaySound` may need a recording seam — add the smallest one).
+4. The five unmeasured rows (coin pickup pp/gp/sp/cp from a corpse, buy,
+   sell, combine success/fail) stay on B036 as "unmeasured — needs a
+   corpse-loot or merchant session" with Leg A's blockers quoted; do NOT
+   guess a sound for them.
+5. **T329's owed live leg** (the lock is free now): one `fable` session in
+   a navmesh-enabled zone, Ctrl+N, screenshot to `review/T329/` with a
+   README — protocol eqemu rules, force daylight, `--eqe1-path`. Then
+   strike the "owed" note on B041.
+6. BOARD: update B036 with what is wired and what remains.
+
+### Territory
+
+`include/client/audio/ui_sounds.h`, `include/client/audio/sound_assets.h`,
+the inventory/bridge/merchant call sites the events live in (call-site
+additions only), `tests/test_ui_sounds.cpp` + new tests + cmake,
+`refactor/BOARD.md`, `review/T329/`. Nothing under `src/client/graphics`
+(L05 owns it).

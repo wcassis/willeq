@@ -309,7 +309,13 @@ it without taking that measurement first.
   per `match-the-oracle`), and fable plays the same sounds at the same
   events (`InventoryManager` bag open/close, `ZoneProcessMoneyUpdate`
   deltas, `ZoneProcessRecipeAutoCombine`/combine reply). **Plan:
-  `refactor/T328_ui_sounds.md`.** Found on the way: `include/client/audio/ui_sounds.h`
+  `refactor/T328_ui_sounds.md`. Leg A MEASURED 2026-09-04 (`review/T328/`):
+  bag open/close and tradeskill container = `itemclth.WAV` (145); item
+  dropped into a slot = `wearclth.WAV` (146); coin to cursor = `BuyItem.WAV`
+  (138, the generic coin-move sound); inventory open/close, item pickup,
+  coin return and EVERY button click are SILENT in the official client.
+  Unmeasured (blocked in-world): coin pickup by denomination from a corpse,
+  buy, sell, combine success/fail. Leg B wires the measured rows.** Found on the way: `include/client/audio/ui_sounds.h`
   already catalogues UI sound IDs (`BUY_ITEM`, `BUTTON_CLICK`, `CHEST_OPEN`…)
   and NO production code plays any of them — the reachability pattern again.
   Prov: K11 Review; Will's ruling.
