@@ -63,6 +63,7 @@
 #include <cstdio>
 #include <thread>
 #include <chrono>
+#include <unordered_map>
 #include <map>
 #include <tuple>
 #include <fstream>
@@ -75,884 +76,819 @@
 #endif
 
 
+// G01 (refactor/G01_dispatch_zone_packet_table.md): DispatchZonePacket's
+// 145-arm opcode switch is now a table lookup. Every arm that carried local
+// logic became one of the named handlers below -- body VERBATIM, the arm's
+// terminating `break;` dropped and (in OnMemorizeSpell, the one arm that used
+// `break` as an early exit) rewritten as `return;`. Every arm that was a
+// single call is a table entry. The three deliberate no-op arms are entries in
+// kIgnoredOpcodes carrying their comment as the reason. The old `default:` arm
+// is the table-miss path at the bottom of this file.
+//
+// tests/test_zone_dispatch_table.cpp holds the regression net: the golden list
+// of every case label the switch had (tests/goldens/zone_opcodes_g01.txt) must
+// equal the table's keys plus the ignored set, in both directions.
+
+void eqt::zone::ZoneComponent::OnSessionReady(const EQ::Net::Packet & p)
+{
+	LOG_DEBUG(MOD_ZONE, "Zone session established, sending ack and zone entry");
+	// Send ack packet
+	ZoneSendAckPacket();
+	// Send zone entry
+	ZoneSendZoneEntry();
+}
+
+void eqt::zone::ZoneComponent::OnZoneEntry(const EQ::Net::Packet & p)
+{
+	// Server echoes our zone entry back with ServerZoneEntry_Struct
+	LOG_DEBUG(MOD_MAIN, "Zone entry response, size: {}", p.Length());
+	
+	// ServerZoneEntry_Struct contains NewSpawn_Struct which contains Spawn_Struct
+	// Let's check for spawn ID at various offsets
+	if (p.Length() > 10) {
+		// Try to find spawn ID - it might be early in the spawn struct
+		LOG_DEBUG(MOD_MAIN, "Potential spawn IDs in ZoneEntry response:");
+		LOG_DEBUG(MOD_MAIN, "  uint16 at offset 2: {}", p.GetUInt16(2));
+		LOG_DEBUG(MOD_MAIN, "  uint16 at offset 4: {}", p.GetUInt16(4));
+		LOG_DEBUG(MOD_MAIN, "  uint32 at offset 2: {}", p.GetUInt32(2));
+		LOG_DEBUG(MOD_MAIN, "  uint32 at offset 6: {}", p.GetUInt32(6));
+		
+		// The spawn struct has name at offset 7, let's check before that
+		if (p.Length() > 71) {
+			auto spawn_name = p.GetCString(9); // offset 2 + 7
+			LOG_DEBUG(MOD_MAIN, "  Spawn name at offset 7: '{}'", spawn_name);
+		}
+	}
+}
+
+void eqt::zone::ZoneComponent::OnTaskDescription(const EQ::Net::Packet & p)
+{
+	// Task description data - not used in P1999
+	LOG_DEBUG(MOD_ZONE, "Received TaskDescription ({} bytes)", p.Length());
+}
+
+void eqt::zone::ZoneComponent::OnTaskActivity(const EQ::Net::Packet & p)
+{
+	// Task activity update - not used in P1999
+	LOG_DEBUG(MOD_ZONE, "Received TaskActivity ({} bytes)", p.Length());
+}
+
+void eqt::zone::ZoneComponent::OnClearLeadershipAbilities(const EQ::Net::Packet & p)
+{
+	// Clear leadership AA on zone-in
+	LOG_DEBUG(MOD_ZONE, "Received ClearLeadershipAbilities");
+}
+
+void eqt::zone::ZoneComponent::OnClearAA(const EQ::Net::Packet & p)
+{
+	// Clear AA on zone-in (resets client state)
+	LOG_DEBUG(MOD_ZONE, "Received ClearAA");
+}
+
+void eqt::zone::ZoneComponent::OnAAExpUpdate(const EQ::Net::Packet & p)
+{
+	// AA experience update
+	LOG_DEBUG(MOD_ZONE, "Received AAExpUpdate ({} bytes)", p.Length());
+}
+
+void eqt::zone::ZoneComponent::OnLootRequest(const EQ::Net::Packet & p)
+{
+	// Server responds to our loot request - confirms we can loot the corpse
+	// The actual loot items come via ItemPacket (type 102) BEFORE this response
+	if (p.Length() >= 6) {
+		uint32_t corpse_id = p.GetUInt32(2);
+		LOG_DEBUG(MOD_INVENTORY, "LootRequest response: corpseId={}", corpse_id);
+
+		// Check if loot window is empty (no items to loot)
+		// If empty, auto-complete the loot session immediately
+		if (ctx_.game_state.player().lootingCorpseId() != 0 && ctx_.Bridge().LootItems().empty()) {
+			LOG_DEBUG(MOD_INVENTORY, "LootRequest response: No items on corpse, auto-completing loot");
+			ctx_.Bridge().CloseLootWindow(static_cast<uint16_t>(corpse_id));
+		}
+	}
+}
+
+void eqt::zone::ZoneComponent::OnLootItem(const EQ::Net::Packet & p)
+{
+	// Server echoes OP_LootItem back as acknowledgment
+	if (p.Length() >= 16) {
+		uint32_t lootee = p.GetUInt32(2);
+		uint32_t looter = p.GetUInt32(6);
+		uint16_t slot_id = p.GetUInt16(10);
+		int32_t auto_loot = static_cast<int32_t>(p.GetUInt32(12));
+		LOG_DEBUG(MOD_INVENTORY, "LootItem ACK: lootee={} looter={} slot={} auto_loot={}",
+			lootee, looter, slot_id, auto_loot);
+		// auto_loot == -1 means the loot was denied
+		if (auto_loot == -1) {
+			LOG_WARN(MOD_INVENTORY, "Loot DENIED by server!");
+			// Remove from pending slots
+			auto it = std::find(ctx_.Bridge().PendingLootSlots().begin(), ctx_.Bridge().PendingLootSlots().end(), slot_id);
+			if (it != ctx_.Bridge().PendingLootSlots().end()) {
+				ctx_.Bridge().PendingLootSlots().erase(it);
+			}
+		}
+	} else {
+		LOG_DEBUG(MOD_INVENTORY, "LootItem ACK: short packet, len={}", p.Length());
+	}
+}
+
+void eqt::zone::ZoneComponent::OnLootComplete(const EQ::Net::Packet & p)
+{
+	// Server signals end of loot session (rarely sent by P1999/Titanium servers)
+	LOG_DEBUG(MOD_INVENTORY, "LootComplete received from server");
+	ctx_.Bridge().PendingLootSlots().clear();
+}
+
+void eqt::zone::ZoneComponent::OnItemPacket(const EQ::Net::Packet & p)
+{
+	// Item packets can be: vendor items (100), inventory items (103), or loot items
+	// Check the packet type in the first 4 bytes after the header
+	{
+		uint32_t item_packet_type = 0;
+		if (p.Length() >= 6) {
+			item_packet_type = p.GetUInt32(2);
+		}
+		LOG_DEBUG(MOD_INVENTORY, "ItemPacket received, type={} m_game_state.player().lootingCorpseId()={} m_game_state.player().vendorNpcId()={} pending_slots={}",
+			item_packet_type, ctx_.game_state.player().lootingCorpseId(), ctx_.game_state.player().vendorNpcId(), ctx_.Bridge().PendingLootSlots().size());
+		// Check if this is a vendor item (type 100)
+		if (item_packet_type == EQT::ITEM_PACKET_MERCHANT && ctx_.game_state.player().vendorNpcId() != 0) {
+			// Vendor item - add to vendor window via bridge
+			ctx_.Merchant().ZoneProcessVendorItemToUI(p);
+		} else if (ctx_.game_state.player().lootingCorpseId() != 0) {
+			// Looting (T268: every open path sets this). A pending slot means
+			// this is the item we asked for; otherwise it populates the window.
+			if (!ctx_.Bridge().PendingLootSlots().empty()) { ctx_.Merchant().ZoneProcessLootedItemToInventory(p); }
+			else { ctx_.Merchant().ZoneProcessLootItemToUI(p); }
+		} else {
+			// Check if this is a trade partner item.
+			// T42: was #ifdef EQT_HAS_GRAPHICS -- TradeManager and
+			// InventoryManager are both renderer-free (P28/this file's
+			// own header comment), so an EQT_GRAPHICS=OFF build was
+			// dropping regular inventory item packets (vendor buy, bank
+			// window population) entirely. Un-guarded; no genuine
+			// graphics dependency found.
+			bool handled_as_trade = false;
+			if (ctx_.trade_manager && ctx_.trade_manager->isTrading()) {
+				handled_as_trade = ctx_.Merchant().ZoneProcessTradePartnerItem(p);
+			}
+			if (!handled_as_trade) {
+				// Regular inventory item packet - pass to inventory manager.
+				// This is the single choke point for vendor-buy item
+				// placement and bank-window population (T41's Review
+				// traced both here) -- publish InventorySlotChanged here
+				// so both get the UI update, not just the game-side model.
+				if (ctx_.inventory_manager) {
+					int16_t changedSlot = ctx_.inventory_manager->processItemPacket(p);
+					if (changedSlot != eqt::inventory::SLOT_INVALID) {
+						const auto* item = ctx_.inventory_manager->getItem(changedSlot);
+						ctx_.Merchant().SyncInventorySlotToGameState(changedSlot,
+							item != nullptr && item->itemId != 0);  // T221
+					}
+					if (ctx_.bridge && changedSlot != eqt::inventory::SLOT_INVALID) {
+						eqt::state::InventorySlotChangedData data;
+						data.slotId = changedSlot;
+						const auto* item = ctx_.inventory_manager->getItem(changedSlot);
+						data.hasItem = (item != nullptr && item->itemId != 0);
+						data.itemId = data.hasItem ? item->itemId : 0;
+						data.itemName = data.hasItem ? item->name : "";
+						data.iconId = data.hasItem ? item->icon : 0;
+						data.quantity = data.hasItem ? item->quantity : 0;
+						LOG_DEBUG(MOD_INVENTORY, "Publishing InventorySlotChanged (generic ItemPacket fallback): slot={} hasItem={} itemId={} name='{}' qty={}",
+							data.slotId, data.hasItem, data.itemId, data.itemName, data.quantity);
+						ctx_.bridge->pushEvent(eqt::state::GameEvent(
+							eqt::state::GameEventType::InventorySlotChanged, std::move(data)));
+					}
+				}
+			}
+			if (EverQuest::s_debug_level >= 2) {
+				LOG_DEBUG(MOD_MAIN, "Received ItemPacket type={} while not looting/trading", item_packet_type);
+			}
+		}
+	}
+}
+
+void eqt::zone::ZoneComponent::OnTargetCommandResponse(const EQ::Net::Packet & p)
+{
+	// Server may reject our target
+	if (p.Length() >= 4) {
+		uint16_t result = p.GetUInt16(2);
+		if (result != 0 && EverQuest::s_debug_level >= 1) {
+			LOG_DEBUG(MOD_MAIN, "Target rejected: {}", result);
+		}
+	}
+}
+
+void eqt::zone::ZoneComponent::OnBecomeCorpse(const EQ::Net::Packet & p)
+{
+	// Someone died and became a corpse
+	if (EverQuest::s_debug_level >= 2) {
+		LOG_DEBUG(MOD_MAIN, "Received BecomeCorpse packet");
+	}
+}
+
+void eqt::zone::ZoneComponent::OnTargetHoTT(const EQ::Net::Packet & p)
+{
+	// Target's target information
+	if (p.Length() >= 6) {
+		uint16_t target_id = p.GetUInt16(2);
+		uint16_t hott_id = p.GetUInt16(4);
+		if (EverQuest::s_debug_level >= 2) {
+			LOG_DEBUG(MOD_MAIN, "Target {} has target {}", target_id, hott_id);
+		}
+	}
+}
+
+void eqt::zone::ZoneComponent::OnSkillUpdate(const EQ::Net::Packet & p)
+{
+	// Skill level update
+	// SkillUpdate_Struct: skillId (uint32) + value (uint32) = 8 bytes + 2 byte header
+	if (p.Length() >= 10) {
+		uint32_t skill_id_32 = p.GetUInt32(2);  // 4-byte skillId at offset 2
+		uint32_t value = p.GetUInt32(6);        // 4-byte value at offset 6
+		uint8_t skill_id = static_cast<uint8_t>(skill_id_32);  // Cast to uint8_t for skill manager
+
+		// Update skill manager
+		if (ctx_.skill_manager) {
+			ctx_.skill_manager->updateSkill(skill_id, value);
+		}
+
+		// Decrement practice points if trainer window is open (training
+		// succeeded). PlayerState is the ONE store (T283) and
+		// decrementPracticePoints() already floors at zero.
+		if (ctx_.game_state.player().trainerNpcId() != 0) {
+			ctx_.game_state.player().decrementPracticePoints();
+		}
+
+		// Publish SkillValueChanged event to bridge
+		if (ctx_.bridge) {
+			eqt::state::SkillValueChangedData sdata;
+			sdata.skillId = static_cast<uint16_t>(skill_id);
+			sdata.value = static_cast<uint16_t>(value);
+			ctx_.bridge->pushEvent(eqt::state::GameEvent(
+				eqt::state::GameEventType::SkillValueChanged, std::move(sdata)));
+		}
+
+		if (EverQuest::s_debug_level >= 2) {
+			LOG_DEBUG(MOD_MAIN, "Skill {} updated to {}", static_cast<int>(skill_id), value);
+		}
+	}
+}
+
+void eqt::zone::ZoneComponent::OnCancelTrade(const EQ::Net::Packet & p)
+{
+	// Trade cancelled
+	if (p.Length() >= 2 + sizeof(EQT::CancelTrade_Struct)) {
+		const EQT::CancelTrade_Struct* cancel = reinterpret_cast<const EQT::CancelTrade_Struct*>(p.Data() + 2);
+		if (ctx_.trade_manager) {
+			ctx_.trade_manager->handleCancelTrade(*cancel);
+		}
+		if (EverQuest::s_debug_level >= 2) {
+			LOG_DEBUG(MOD_MAIN, "Trade cancelled by spawn {}", cancel->spawn_id);
+		}
+	}
+}
+
+void eqt::zone::ZoneComponent::OnTradeRequest(const EQ::Net::Packet & p)
+{
+	// Trade request from another player
+	if (p.Length() >= 2 + sizeof(EQT::TradeRequest_Struct)) {
+		const EQT::TradeRequest_Struct* req = reinterpret_cast<const EQT::TradeRequest_Struct*>(p.Data() + 2);
+		if (ctx_.trade_manager) {
+			// Look up the name of the requesting player
+			std::string from_name = "Unknown";
+			auto it = ctx_.entities.find(static_cast<uint16_t>(req->from_spawn_id));
+			if (it != ctx_.entities.end()) {
+				from_name = it->second.name;
+			}
+			ctx_.trade_manager->handleTradeRequest(*req, from_name);
+		}
+		if (EverQuest::s_debug_level >= 2) {
+			LOG_DEBUG(MOD_MAIN, "Trade request from spawn {} to spawn {}",
+			         req->from_spawn_id, req->target_spawn_id);
+		}
+	}
+}
+
+void eqt::zone::ZoneComponent::OnTradeRequestAck(const EQ::Net::Packet & p)
+{
+	// Trade request accepted
+	if (p.Length() >= 2 + sizeof(EQT::TradeRequestAck_Struct)) {
+		const EQT::TradeRequestAck_Struct* ack = reinterpret_cast<const EQT::TradeRequestAck_Struct*>(p.Data() + 2);
+		if (ctx_.trade_manager) {
+			ctx_.trade_manager->handleTradeRequestAck(*ack);
+		}
+		if (EverQuest::s_debug_level >= 2) {
+			LOG_DEBUG(MOD_MAIN, "Trade request ack from spawn {} to spawn {}",
+			         ack->from_spawn_id, ack->target_spawn_id);
+		}
+	}
+}
+
+void eqt::zone::ZoneComponent::OnTradeCoins(const EQ::Net::Packet & p)
+{
+	// Trade partner changed money
+	if (p.Length() >= 2 + sizeof(EQT::TradeCoins_Struct)) {
+		const EQT::TradeCoins_Struct* coins = reinterpret_cast<const EQT::TradeCoins_Struct*>(p.Data() + 2);
+		if (ctx_.trade_manager) {
+			ctx_.trade_manager->handleTradeCoins(*coins);
+		}
+		if (EverQuest::s_debug_level >= 2) {
+			LOG_DEBUG(MOD_MAIN, "Trade coins from spawn {}: slot {} amount {}",
+			         coins->spawn_id, coins->slot, coins->amount);
+		}
+	}
+}
+
+void eqt::zone::ZoneComponent::OnTradeAcceptClick(const EQ::Net::Packet & p)
+{
+	// Trade partner clicked accept
+	if (p.Length() >= 2 + sizeof(EQT::TradeAcceptClick_Struct)) {
+		const EQT::TradeAcceptClick_Struct* accept = reinterpret_cast<const EQT::TradeAcceptClick_Struct*>(p.Data() + 2);
+		if (ctx_.trade_manager) {
+			ctx_.trade_manager->handleTradeAcceptClick(*accept);
+		}
+		if (EverQuest::s_debug_level >= 2) {
+			LOG_DEBUG(MOD_MAIN, "Trade accept click from spawn {}: accepted={}",
+			         accept->spawn_id, accept->accepted);
+		}
+	}
+}
+
+void eqt::zone::ZoneComponent::OnFinishTrade(const EQ::Net::Packet & p)
+{
+	// Trade completed. OP_FinishTrade has a ZERO-LENGTH payload -- eqemu
+	// sends `new EQApplicationPacket(OP_FinishTrade, 0)`
+	// (zone/client_packet.cpp:15358). The 2 "unknown" bytes the old
+	// EQT::FinishTrade_Struct declared were fictional; T147 deleted it.
+	// Nothing changes behaviourally: the old code already fell back to a
+	// zeroed struct when the length guard failed, which it always did.
+	if (ctx_.trade_manager) {
+		ctx_.trade_manager->handleFinishTrade();
+	}
+	LOG_INFO(MOD_MAIN, "Trade finished");
+}
+
+void eqt::zone::ZoneComponent::OnPreLogoutReply(const EQ::Net::Packet & p)
+{
+	// Pre-logout confirmation (server acknowledges camp request)
+	if (EverQuest::s_debug_level >= 2) {
+		LOG_DEBUG(MOD_MAIN, "Pre-logout reply received (camp acknowledged)");
+	}
+}
+
+void eqt::zone::ZoneComponent::OnMobRename(const EQ::Net::Packet & p)
+{
+	// Mob name change - typically when mob becomes corpse
+	// The packet contains 3 name fields (each 64 bytes)
+	if (p.Length() >= 4) {  // Need at least opcode + 2 bytes for parsing
+		// Parse the packet to find the entity ID
+		// From the log, we see the mob name appears multiple times with "'s_corpse" appended
+		const char* data = (const char*)p.Data() + 2;  // Skip opcode
+		int data_len = p.Length() - 2;
+		
+		// Extract the new name from the first occurrence
+		char new_name[65] = {0};
+		if (data_len >= 64) {
+			memcpy(new_name, data, 64);
+			new_name[64] = '\0';
+		}
+		
+		// The mob ID isn't directly in the packet, but the corpse name ends
+		// in the corpse's own entity id, and failing that we can match the
+		// base name. T160: ParseCorpseName (combat.h) is the single shared
+		// test -- this used to carry its own copy of the "'s_corpse"
+		// literal, which meant the space form eqemu uses for PLAYER corpses
+		// was never recognised here either.
+		std::string name_str(new_name);
+		std::string base_name;
+		uint32_t parsed_corpse_id = 0;
+		if (ParseCorpseName(name_str, &base_name, &parsed_corpse_id)) {
+			uint16_t entity_id = static_cast<uint16_t>(parsed_corpse_id);
+			if (ctx_.entities.find(entity_id) == ctx_.entities.end()) {
+				// Id in the name doesn't resolve (truncated name, or a
+				// server that numbers corpses differently) -- fall back to
+				// matching the base name.
+				for (auto& [id, entity] : ctx_.entities) {
+					if (entity.name == base_name + "001" || entity.name == base_name) {
+						entity_id = id;
+						break;
+					}
+				}
+			}
+
+			// Entity id 0 is never a real spawn here (it is the
+			// unset/self sentinel); unchanged from the pre-T160 guard.
+			auto it = entity_id > 0 ? ctx_.entities.find(entity_id) : ctx_.entities.end();
+			if (it != ctx_.entities.end()) {
+				std::string old_name = it->second.name;
+				it->second.name = new_name;
+				it->second.is_corpse = true;
+				// T268: GameState kept the LIVING name + isCorpse=false forever
+				// (markAsCorpse had no caller) -- /target and /loot missed it.
+				ctx_.Player().SyncEntityToGameState(it->second);
+				if (EverQuest::s_debug_level >= 1) {
+					LOG_INFO(MOD_ENTITY, "Entity {} became corpse: '{}' -> '{}'",
+						entity_id, old_name, new_name);
+				}
+			}
+		}
+	}
+}
+
+void eqt::zone::ZoneComponent::OnStun(const EQ::Net::Packet & p)
+{
+	// T247. eqemu Stun_Struct is 4 bytes: uint32 duration in MILLISECONDS
+	// (Client::Stun -> stunned_timer.Start(duration)); Client::UnStun sends
+	// duration 0. It is only ever sent to the stunned client itself, so
+	// there is no target field -- the pre-T247 code read a target/duration
+	// pair out of the low/high halves of the duration and stored nothing.
+	if (p.Length() >= 6) {
+		ctx_.Commands().ZoneProcessStun(p.GetUInt32(2));
+	}
+}
+
+void eqt::zone::ZoneComponent::OnMemorizeSpell(const EQ::Net::Packet & p)
+{
+	{
+		// MemorizeSpell_Struct: slot(4), spell_id(4), scribing(4), unknown0(4)
+		// Total: 16 bytes after opcode (2 bytes)
+		if (p.Length() < 18) {
+			LOG_WARN(MOD_SPELL, "MemorizeSpell packet too short: {} bytes", p.Length());
+			return;
+		}
+
+		uint32_t slot = p.GetUInt32(2);
+		uint32_t spell_id = p.GetUInt32(6);
+		uint32_t scribing = p.GetUInt32(10);
+
+		LOG_DEBUG(MOD_SPELL, "MemorizeSpell response: slot={} spell_id={} scribing={}",
+			slot, spell_id, scribing);
+
+		// Check if this is a scribe confirmation (scribing flag cleared to 0)
+		if (m_pending_scribe_spell_id != 0 &&
+			m_pending_scribe_spell_id == spell_id &&
+			scribing == 0) {
+
+			// Add spell to spellbook
+			if (ctx_.spell_manager->scribeSpell(spell_id, static_cast<uint16_t>(slot))) {
+				// Get spell name for message
+				const EQ::SpellData* spellData = ctx_.spell_manager->getSpell(spell_id);
+				std::string spellName = spellData ? spellData->name : "spell";
+
+				ctx_.out.System(fmt::format("You have learned {}!", spellName));
+				LOG_INFO(MOD_SPELL, "Successfully scribed spell {} ({}) to slot {}",
+					spellName, spell_id, slot);
+
+				// Refresh spellbook UI via bridge
+				if (ctx_.bridge) {
+					eqt::state::SpellScribeCompletedData sdata;
+					sdata.spellId = spell_id;
+					sdata.slot = static_cast<uint16_t>(slot);
+					sdata.spellName = spellName;
+					sdata.iconId = spellData ? spellData->spell_icon : 0;
+					ctx_.bridge->pushEvent(eqt::state::GameEvent(
+						eqt::state::GameEventType::SpellScribeCompleted, std::move(sdata)));
+				}
+			} else {
+				LOG_WARN(MOD_SPELL, "Failed to add spell {} to spellbook slot {}",
+					spell_id, slot);
+			}
+
+			// T276: the server ate the scroll off the cursor
+			// (Client::OPMemorizeSpell -> DeleteItemInInventory(
+			// slotCursor, 1, true)) and confirms with OP_DeleteItem,
+			// which processDeleteItemResponse() does not act on. Drop
+			// our own copy locally, or the spent scroll stays on the
+			// cursor and blocks the next /scribe.
+			if (ctx_.inventory_manager) {
+				ctx_.inventory_manager->consumeScribedScroll();
+			}
+
+			// Clear pending scribe state
+			m_pending_scribe_spell_id = 0;
+			m_pending_scribe_book_slot = 0;
+			m_pending_scribe_source_slot = -1;
+		}
+		// Handle gem slot memorization confirmations (slot < MAX_SPELL_GEMS)
+		else if (slot < EQ::MAX_SPELL_GEMS && scribing == 0) {
+			// Existing gem memorization - SpellManager handles this via other mechanisms
+			LOG_DEBUG(MOD_SPELL, "Gem memorization confirmation: gem={} spell={}", slot, spell_id);
+		}
+	}
+}
+
+void eqt::zone::ZoneComponent::OnSpecialMesg(const EQ::Net::Packet & p)
+{
+	{
+		// Special messages (trade notifications, skill-ups, etc.)
+		// Format: 2 bytes opcode + 24 bytes header + null-terminated message
+		constexpr size_t HEADER_SIZE = 24;
+		constexpr size_t MSG_OFFSET = 2 + HEADER_SIZE;  // After opcode and header
+
+		if (p.Length() > MSG_OFFSET) {
+			const char* msgStart = reinterpret_cast<const char*>(p.Data()) + MSG_OFFSET;
+			size_t maxLen = p.Length() - MSG_OFFSET;
+			std::string message(msgStart, strnlen(msgStart, maxLen));
+
+			if (!message.empty()) {
+				ctx_.out.System(message);
+			}
+		}
+	}
+}
+
+void eqt::zone::ZoneComponent::OnBegging(const EQ::Net::Packet & p)
+{
+	// Begging response - BeggingResponse_Struct (20 bytes after opcode)
+	if (p.Length() >= 22) {
+		uint32_t result = p.GetUInt32(14);  // offset 12 in struct + 2 for opcode
+		uint32_t amount = p.GetUInt32(18);  // offset 16 in struct + 2 for opcode
+		// Result: 0=Fail, 1=Plat, 2=Gold, 3=Silver, 4=Copper
+		if (result == 0) {
+			ctx_.out.System("You have been unable to convince your target to give you money.");
+		} else {
+			const char* coin_types[] = {"", "platinum", "gold", "silver", "copper"};
+			if (result <= 4) {
+				ctx_.out.System(fmt::format("You receive {} {}.", amount, coin_types[result]));
+			}
+		}
+	}
+}
+
+void eqt::zone::ZoneComponent::OnHide(const EQ::Net::Packet & p)
+{
+	// Hide skill response - typically no data, success indicated by SpawnAppearance
+	LOG_DEBUG(MOD_MAIN, "Hide response received: {} bytes", p.Length());
+}
+
+void eqt::zone::ZoneComponent::OnSneak(const EQ::Net::Packet & p)
+{
+	// Sneak skill response
+	LOG_DEBUG(MOD_MAIN, "Sneak response received: {} bytes", p.Length());
+}
+
+void eqt::zone::ZoneComponent::OnSenseHeading(const EQ::Net::Packet & p)
+{
+	// Sense Heading response - may contain heading info
+	LOG_DEBUG(MOD_MAIN, "SenseHeading response received: {} bytes", p.Length());
+}
+
+void eqt::zone::ZoneComponent::OnForage(const EQ::Net::Packet & p)
+{
+	// Forage response - contains item found or failure
+	LOG_DEBUG(MOD_MAIN, "Forage response received: {} bytes", p.Length());
+}
+
+void eqt::zone::ZoneComponent::OnFishing(const EQ::Net::Packet & p)
+{
+	// Fishing response
+	LOG_DEBUG(MOD_MAIN, "Fishing response received: {} bytes", p.Length());
+}
+
+void eqt::zone::ZoneComponent::OnMend(const EQ::Net::Packet & p)
+{
+	// Mend response
+	LOG_DEBUG(MOD_MAIN, "Mend response received: {} bytes", p.Length());
+}
+
+void eqt::zone::ZoneComponent::OnFeignDeath(const EQ::Net::Packet & p)
+{
+	// Feign Death response
+	LOG_DEBUG(MOD_MAIN, "FeignDeath response received: {} bytes", p.Length());
+}
+
+void eqt::zone::ZoneComponent::OnPickPocket(const EQ::Net::Packet & p)
+{
+	// Pick Pocket response
+	LOG_DEBUG(MOD_MAIN, "PickPocket response received: {} bytes", p.Length());
+}
+
+void eqt::zone::ZoneComponent::OnSenseTraps(const EQ::Net::Packet & p)
+{
+	// Sense Traps response
+	LOG_DEBUG(MOD_MAIN, "SenseTraps response received: {} bytes", p.Length());
+}
+
+void eqt::zone::ZoneComponent::OnDisarmTraps(const EQ::Net::Packet & p)
+{
+	// Disarm Traps response
+	LOG_DEBUG(MOD_MAIN, "DisarmTraps response received: {} bytes", p.Length());
+}
+
+void eqt::zone::ZoneComponent::OnInstillDoubt(const EQ::Net::Packet & p)
+{
+	// Intimidation response
+	LOG_DEBUG(MOD_MAIN, "InstillDoubt response received: {} bytes", p.Length());
+}
+
+const std::unordered_map<uint16_t, eqt::zone::ZoneComponent::ZoneArmHandler>&
+eqt::zone::ZoneComponent::ZoneOpcodeTable()
+{
+	static const std::unordered_map<uint16_t, ZoneArmHandler> kZoneOpcodeTable = {
+		{HC_OP_SessionReady, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnSessionReady(p); }},
+		{HC_OP_PlayerProfile, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ZoneProcessPlayerProfile(p); }},
+		{HC_OP_ZoneEntry, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnZoneEntry(p); }},
+		{HC_OP_ZoneSpawns, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Entities().ZoneProcessZoneSpawns(p); }},
+		{HC_OP_TimeOfDay, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Entities().ZoneProcessTimeOfDay(p); }},
+		{HC_OP_TributeUpdate, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessTributeUpdate(p); }},
+		{HC_OP_TributeTimer, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessTributeTimer(p); }},
+		{HC_OP_CharInventory, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Merchant().ZoneProcessCharInventory(p); }},
+		{HC_OP_Weather, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Entities().ZoneProcessWeather(p); }},
+		{HC_OP_NewZone, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ZoneProcessNewZone(p); }},
+		{HC_OP_SendAATable, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessSendAATable(p); }},
+		{HC_OP_RespondAA, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessRespondAA(p); }},
+		{HC_OP_TributeInfo, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessTributeInfo(p); }},
+		{HC_OP_SendGuildTributes, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessSendGuildTributes(p); }},
+		{HC_OP_SpawnDoor, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Entities().ZoneProcessSpawnDoor(p); }},
+		{HC_OP_GroundSpawn, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Entities().ZoneProcessGroundSpawn(p); }},
+		{HC_OP_ClickObjectAction, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Entities().ZoneProcessClickObjectAction(p); }},
+		{HC_OP_TradeSkillCombine, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessTradeSkillCombine(p); }},
+		{HC_OP_SendZonepoints, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Entities().ZoneProcessSendZonepoints(p); }},
+		{HC_OP_SendAAStats, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessSendAAStats(p); }},
+		{HC_OP_SendExpZonein, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessSendExpZonein(p); }},
+		{HC_OP_WorldObjectsSent, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessWorldObjectsSent(p); }},
+		{HC_OP_SpawnAppearance, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Entities().ZoneProcessSpawnAppearance(p); }},
+		{HC_OP_ExpUpdate, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Entities().ZoneProcessExpUpdate(p); }},
+		{HC_OP_RaidUpdate, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Group().ZoneProcessRaidUpdate(p); }},
+		{HC_OP_GuildMOTD, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ZoneProcessGuildMOTD(p); }},
+		{HC_OP_NewSpawn, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Entities().ZoneProcessNewSpawn(p); }},
+		{HC_OP_ClientUpdate, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Entities().ZoneProcessClientUpdate(p); }},
+		{HC_OP_DeleteSpawn, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Entities().ZoneProcessDeleteSpawn(p); }},
+		{HC_OP_MobHealth, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Entities().ZoneProcessMobHealth(p); }},
+		{HC_OP_HPUpdate, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Entities().ZoneProcessHPUpdate(p); }},
+		{HC_OP_ChannelMessage, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Chat().ZoneProcessChannelMessage(p); }},
+		{HC_OP_WearChange, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Entities().ZoneProcessWearChange(p); }},
+		{HC_OP_Illusion, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Entities().ZoneProcessIllusion(p); }},
+		{HC_OP_MoveDoor, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Entities().ZoneProcessMoveDoor(p); }},
+		{HC_OP_CompletedTasks, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessCompletedTasks(p); }},
+		{HC_OP_TaskDescription, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnTaskDescription(p); }},
+		{HC_OP_TaskActivity, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnTaskActivity(p); }},
+		{HC_OP_ClearLeadershipAbilities, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnClearLeadershipAbilities(p); }},
+		{HC_OP_ClearAA, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnClearAA(p); }},
+		{HC_OP_AAExpUpdate, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnAAExpUpdate(p); }},
+		{HC_OP_DzCompass, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessDzCompass(p); }},
+		{HC_OP_DzExpeditionLockoutTimers, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessDzExpeditionLockoutTimers(p); }},
+		{HC_OP_BeginCast, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessBeginCast(p); }},
+		{HC_OP_ManaChange, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessManaChange(p); }},
+		{HC_OP_Buff, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessBuff(p); }},
+		{HC_OP_ColoredText, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Chat().ZoneProcessColoredText(p); }},
+		{HC_OP_FormattedMessage, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Chat().ZoneProcessFormattedMessage(p); }},
+		{HC_OP_PlayerStateAdd, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessPlayerStateAdd(p); }},
+		{HC_OP_Death, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessDeath(p); }},
+		{HC_OP_PlayerStateRemove, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessPlayerStateRemove(p); }},
+		{HC_OP_Stamina, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessStamina(p); }},
+		// Animation packet - applies to all entities (not just self)
+		// This is used for combat animations, social animations (/wave), and
+		// other action animations
+		{HC_OP_Animation, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ZoneProcessAnimation(p); }},
+		// T243: text emote broadcast ("Testchar waves at ...")
+		{HC_OP_Emote, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Chat().ZoneProcessEmote(p); }},
+
+		// Combat-related opcodes
+		{0x65ca, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Commands().ZoneProcessConsider(p); }},  // OP_Consider response
+		{HC_OP_Action, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Commands().ZoneProcessAction(p); }},  // OP_Action (combat/spell actions)
+		{HC_OP_Damage, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Commands().ZoneProcessDamage(p); }},
+		{HC_OP_MoneyOnCorpse, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Commands().ZoneProcessMoneyOnCorpse(p); }},
+		{HC_OP_LootRequest, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnLootRequest(p); }},
+		{HC_OP_LootItem, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnLootItem(p); }},
+		{HC_OP_LootComplete, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnLootComplete(p); }},
+		{HC_OP_ItemPacket, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnItemPacket(p); }},
+		// T42: this whole block was #ifdef EQT_HAS_GRAPHICS. eq_merchant.cpp's own
+		// header comment (P28) documents that ZoneProcessMoveItem/DeleteItem/
+		// ShopRequest/ShopPlayerBuy/ShopPlayerSell/ShopEndConfirm/MoneyUpdate/
+		// GMTraining are all "plain Player mode bridge-driven ... logic with no
+		// Irrlicht/renderer usage anywhere in it" -- confirmed by reading each;
+		// none touch a renderer. Left gated here, an EQT_GRAPHICS=OFF build never
+		// dispatched vendor buy/sell, bank-adjacent move/delete, or money-update
+		// packets at all, regardless of any publish fix inside them. Un-guarded;
+		// no genuine graphics dependency found.
+		{HC_OP_MoveItem, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Merchant().ZoneProcessMoveItem(p); }},
+		{HC_OP_DeleteItem, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Merchant().ZoneProcessDeleteItem(p); }},
+		{HC_OP_ShopRequest, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Merchant().ZoneProcessShopRequest(p); }},
+		{HC_OP_ShopPlayerBuy, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Merchant().ZoneProcessShopPlayerBuy(p); }},
+		{HC_OP_ShopPlayerSell, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Merchant().ZoneProcessShopPlayerSell(p); }},
+		{HC_OP_ShopEndConfirm, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Merchant().ZoneProcessShopEndConfirm(p); }},
+		{HC_OP_MoneyUpdate, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Merchant().ZoneProcessMoneyUpdate(p); }},
+		{HC_OP_GMTraining, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Merchant().ZoneProcessGMTraining(p); }},
+		{0x61f9, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnTargetCommandResponse(p); }},  // OP_TargetCommand response
+
+		// Additional opcodes
+		{HC_OP_BecomeCorpse, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnBecomeCorpse(p); }},
+		{HC_OP_ZonePlayerToBind, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessZonePlayerToBind(p); }},
+		{HC_OP_LevelUpdate, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessLevelUpdate(p); }},
+		{HC_OP_ZoneChange, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ZoneProcessZoneChange(p); }},
+		{HC_OP_RequestClientZoneChange, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ZoneProcessRequestClientZoneChange(p); }},
+		{HC_OP_SimpleMessage, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Chat().ZoneProcessSimpleMessage(p); }},
+		{HC_OP_TargetHoTT, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnTargetHoTT(p); }},
+		{HC_OP_SkillUpdate, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnSkillUpdate(p); }},
+		{HC_OP_CancelTrade, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnCancelTrade(p); }},
+		{HC_OP_TradeRequest, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnTradeRequest(p); }},
+		{HC_OP_TradeRequestAck, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnTradeRequestAck(p); }},
+		{HC_OP_TradeCoins, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnTradeCoins(p); }},
+		{HC_OP_TradeAcceptClick, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnTradeAcceptClick(p); }},
+		{HC_OP_FinishTrade, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnFinishTrade(p); }},
+		{HC_OP_PreLogoutReply, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnPreLogoutReply(p); }},
+		{HC_OP_LogoutReply, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessLogoutReply(p); }},
+		{HC_OP_RezzRequest, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessRezzRequest(p); }},
+		{HC_OP_RezzComplete, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessRezzComplete(p); }},
+		{HC_OP_WhoAllResponse, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessWhoAllResponse(p); }},
+		{HC_OP_InspectRequest, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessInspectRequest(p); }},
+		{HC_OP_InspectAnswer, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessInspectAnswer(p); }},
+		{HC_OP_GuildInvite, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Guild().ZoneProcessGuildInvite(p); }},
+		{HC_OP_GetGuildMOTDReply, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Guild().ZoneProcessGuildMOTDReply(p); }},
+		{HC_OP_GuildMemberUpdate, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Guild().ZoneProcessGuildMemberUpdate(p); }},
+		{HC_OP_GuildMemberAdd, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Guild().ZoneProcessGuildMemberAdd(p); }},
+		// Phase 3 packet handlers
+		{HC_OP_ConsentResponse, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessConsentResponse(p); }},
+		{HC_OP_DenyResponse, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessDenyResponse(p); }},
+		{HC_OP_EnvDamage, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessEnvDamage(p); }},
+		{HC_OP_DisciplineUpdate, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessDisciplineUpdate(p); }},
+		{HC_OP_DisciplineTimer, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessDisciplineTimer(p); }},
+		{HC_OP_BankerChange, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessBankerChange(p); }},
+		{HC_OP_ClearObject, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessClearObject(p); }},
+		{HC_OP_LFGAppearance, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessLFGAppearance(p); }},
+		// Phase 4 packet handlers
+		{HC_OP_RequestDuel, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessDuelRequest(p); }},
+		{HC_OP_RecipeReply, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Merchant().ZoneProcessRecipeReply(p); }},
+		{HC_OP_RecipeAutoCombine, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Merchant().ZoneProcessRecipeAutoCombine(p); }},
+		{HC_OP_RandomReply, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessRandomReply(p); }},
+		{HC_OP_FindPersonReply, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessFindPersonReply(p); }},
+		{HC_OP_CameraEffect, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessCameraEffect(p); }},
+		{HC_OP_PlayMP3, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessPlayMP3(p); }},
+		{HC_OP_Sound, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessSound(p); }},
+		{HC_OP_GMZoneRequest, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Gm().ZoneProcessGMZoneRequest(p); }},
+		{HC_OP_GMFind, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Gm().ZoneProcessGMFind(p); }},
+		{HC_OP_GMSummon, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Gm().ZoneProcessGMSummon(p); }},
+		{HC_OP_MobRename, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnMobRename(p); }},
+		{HC_OP_Stun, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnStun(p); }},
+
+		// Group packet handlers
+		{HC_OP_GroupInvite, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Group().ZoneProcessGroupInvite(p); }},
+		// Alternate invite opcode - same handler
+		{HC_OP_GroupInvite2, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Group().ZoneProcessGroupInvite(p); }},
+		{HC_OP_GroupFollow, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Group().ZoneProcessGroupFollow(p); }},
+		{HC_OP_GroupUpdate, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Group().ZoneProcessGroupUpdate(p); }},
+		{HC_OP_GroupDisband, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Group().ZoneProcessGroupDisband(p); }},
+		{HC_OP_GroupCancelInvite, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Group().ZoneProcessGroupCancelInvite(p); }},
+		// Note: HC_OP_LFGAppearance handled earlier with ZoneProcessLFGAppearance
+		{HC_OP_MemorizeSpell, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnMemorizeSpell(p); }},
+		{HC_OP_SpecialMesg, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnSpecialMesg(p); }},
+
+		// ========================================================================
+		// Skill Response Handlers
+		// ========================================================================
+		{HC_OP_Begging, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnBegging(p); }},
+		{HC_OP_Hide, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnHide(p); }},
+		{HC_OP_Sneak, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnSneak(p); }},
+		{HC_OP_SenseHeading, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnSenseHeading(p); }},
+		{HC_OP_Forage, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnForage(p); }},
+		{HC_OP_Fishing, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnFishing(p); }},
+		{HC_OP_Mend, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnMend(p); }},
+		{HC_OP_FeignDeath, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnFeignDeath(p); }},
+		// Track response - contains list of trackable entities
+		{HC_OP_Track, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessTrack(p); }},
+		// Apply Poison response - success/failure from server
+		{HC_OP_ApplyPoison, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessApplyPoison(p); }},
+		{HC_OP_PickPocket, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnPickPocket(p); }},
+		// Bind Wound reply: `type` carries the outcome (done / no target /
+		// target gone / no bandage). T177 -- before this the player saw
+		// nothing 10s after starting a bandage.
+		{HC_OP_BindWound, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessBindWound(p); }},
+		{HC_OP_SenseTraps, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnSenseTraps(p); }},
+		{HC_OP_DisarmTraps, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnDisarmTraps(p); }},
+		{HC_OP_InstillDoubt, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnInstillDoubt(p); }},
+		{HC_OP_ReadBook, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Merchant().ZoneProcessReadBook(p); }},
+		{HC_OP_PetBuffWindow, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Player().ZoneProcessPetBuffWindow(p); }},
+	};
+	return kZoneOpcodeTable;
+}
+
+// Opcodes the client deliberately does nothing with. Each reason is the
+// comment its former switch arm carried, verbatim. Being here (rather than
+// absent) is what keeps them off the unhandled-opcode WARN.
+const std::unordered_map<uint16_t, const char*>&
+eqt::zone::ZoneComponent::IgnoredZoneOpcodes()
+{
+	static const std::unordered_map<uint16_t, const char*> kIgnoredOpcodes = {
+		{HC_OP_SetGroupTarget, "Group target indicator - ignore for now"},
+		{HC_OP_LinkedReuse, "Linked spell reuse timer - ignore for now"},
+		{HC_OP_InterruptCast, "Cast interrupted - spell manager handles this via other packets"},
+	};
+	return kIgnoredOpcodes;
+}
+
 void eqt::zone::ZoneComponent::DispatchZonePacket(const EQ::Net::Packet & p)
 {
 	auto opcode = p.GetUInt16(0);
 
-	switch (opcode) {
-	case HC_OP_SessionReady:
-		LOG_DEBUG(MOD_ZONE, "Zone session established, sending ack and zone entry");
-		// Send ack packet
-		ZoneSendAckPacket();
-		// Send zone entry
-		ZoneSendZoneEntry();
-		break;
-	case HC_OP_PlayerProfile:
-		ZoneProcessPlayerProfile(p);
-		break;
-	case HC_OP_ZoneEntry:
-		// Server echoes our zone entry back with ServerZoneEntry_Struct
-		LOG_DEBUG(MOD_MAIN, "Zone entry response, size: {}", p.Length());
-		
-		// ServerZoneEntry_Struct contains NewSpawn_Struct which contains Spawn_Struct
-		// Let's check for spawn ID at various offsets
-		if (p.Length() > 10) {
-			// Try to find spawn ID - it might be early in the spawn struct
-			LOG_DEBUG(MOD_MAIN, "Potential spawn IDs in ZoneEntry response:");
-			LOG_DEBUG(MOD_MAIN, "  uint16 at offset 2: {}", p.GetUInt16(2));
-			LOG_DEBUG(MOD_MAIN, "  uint16 at offset 4: {}", p.GetUInt16(4));
-			LOG_DEBUG(MOD_MAIN, "  uint32 at offset 2: {}", p.GetUInt32(2));
-			LOG_DEBUG(MOD_MAIN, "  uint32 at offset 6: {}", p.GetUInt32(6));
-			
-			// The spawn struct has name at offset 7, let's check before that
-			if (p.Length() > 71) {
-				auto spawn_name = p.GetCString(9); // offset 2 + 7
-				LOG_DEBUG(MOD_MAIN, "  Spawn name at offset 7: '{}'", spawn_name);
-			}
-		}
-		break;
-	case HC_OP_ZoneSpawns:
-		ctx_.Entities().ZoneProcessZoneSpawns(p);
-		break;
-	case HC_OP_TimeOfDay:
-		ctx_.Entities().ZoneProcessTimeOfDay(p);
-		break;
-	case HC_OP_TributeUpdate:
-		ctx_.Player().ZoneProcessTributeUpdate(p);
-		break;
-	case HC_OP_TributeTimer:
-		ctx_.Player().ZoneProcessTributeTimer(p);
-		break;
-	case HC_OP_CharInventory:
-		ctx_.Merchant().ZoneProcessCharInventory(p);
-		break;
-	case HC_OP_Weather:
-		ctx_.Entities().ZoneProcessWeather(p);
-		break;
-	case HC_OP_NewZone:
-		ZoneProcessNewZone(p);
-		break;
-	case HC_OP_SendAATable:
-		ctx_.Player().ZoneProcessSendAATable(p);
-		break;
-	case HC_OP_RespondAA:
-		ctx_.Player().ZoneProcessRespondAA(p);
-		break;
-	case HC_OP_TributeInfo:
-		ctx_.Player().ZoneProcessTributeInfo(p);
-		break;
-	case HC_OP_SendGuildTributes:
-		ctx_.Player().ZoneProcessSendGuildTributes(p);
-		break;
-	case HC_OP_SpawnDoor:
-		ctx_.Entities().ZoneProcessSpawnDoor(p);
-		break;
-	case HC_OP_GroundSpawn:
-		ctx_.Entities().ZoneProcessGroundSpawn(p);
-		break;
-	case HC_OP_ClickObjectAction:
-		ctx_.Entities().ZoneProcessClickObjectAction(p);
-		break;
-	case HC_OP_TradeSkillCombine:
-		ctx_.Player().ZoneProcessTradeSkillCombine(p);
-		break;
-	case HC_OP_SendZonepoints:
-		ctx_.Entities().ZoneProcessSendZonepoints(p);
-		break;
-	case HC_OP_SendAAStats:
-		ctx_.Player().ZoneProcessSendAAStats(p);
-		break;
-	case HC_OP_SendExpZonein:
-		ctx_.Player().ZoneProcessSendExpZonein(p);
-		break;
-	case HC_OP_WorldObjectsSent:
-		ctx_.Player().ZoneProcessWorldObjectsSent(p);
-		break;
-	case HC_OP_SpawnAppearance:
-		ctx_.Entities().ZoneProcessSpawnAppearance(p);
-		break;
-	case HC_OP_ExpUpdate:
-		ctx_.Entities().ZoneProcessExpUpdate(p);
-		break;
-	case HC_OP_RaidUpdate:
-		ctx_.Group().ZoneProcessRaidUpdate(p);
-		break;
-	case HC_OP_GuildMOTD:
-		ZoneProcessGuildMOTD(p);
-		break;
-	case HC_OP_NewSpawn:
-		ctx_.Entities().ZoneProcessNewSpawn(p);
-		break;
-	case HC_OP_ClientUpdate:
-		ctx_.Entities().ZoneProcessClientUpdate(p);
-		break;
-	case HC_OP_DeleteSpawn:
-		ctx_.Entities().ZoneProcessDeleteSpawn(p);
-		break;
-	case HC_OP_MobHealth:
-		ctx_.Entities().ZoneProcessMobHealth(p);
-		break;
-	case HC_OP_HPUpdate:
-		ctx_.Entities().ZoneProcessHPUpdate(p);
-		break;
-	case HC_OP_ChannelMessage:
-		ctx_.Chat().ZoneProcessChannelMessage(p);
-		break;
-	case HC_OP_WearChange:
-		ctx_.Entities().ZoneProcessWearChange(p);
-		break;
-	case HC_OP_Illusion:
-		ctx_.Entities().ZoneProcessIllusion(p);
-		break;
-	case HC_OP_MoveDoor:
-		ctx_.Entities().ZoneProcessMoveDoor(p);
-		break;
-	case HC_OP_CompletedTasks:
-		ctx_.Player().ZoneProcessCompletedTasks(p);
-		break;
-	case HC_OP_TaskDescription:
-		// Task description data - not used in P1999
-		LOG_DEBUG(MOD_ZONE, "Received TaskDescription ({} bytes)", p.Length());
-		break;
-	case HC_OP_TaskActivity:
-		// Task activity update - not used in P1999
-		LOG_DEBUG(MOD_ZONE, "Received TaskActivity ({} bytes)", p.Length());
-		break;
-	case HC_OP_ClearLeadershipAbilities:
-		// Clear leadership AA on zone-in
-		LOG_DEBUG(MOD_ZONE, "Received ClearLeadershipAbilities");
-		break;
-	case HC_OP_ClearAA:
-		// Clear AA on zone-in (resets client state)
-		LOG_DEBUG(MOD_ZONE, "Received ClearAA");
-		break;
-	case HC_OP_AAExpUpdate:
-		// AA experience update
-		LOG_DEBUG(MOD_ZONE, "Received AAExpUpdate ({} bytes)", p.Length());
-		break;
-	case HC_OP_DzCompass:
-		ctx_.Player().ZoneProcessDzCompass(p);
-		break;
-	case HC_OP_DzExpeditionLockoutTimers:
-		ctx_.Player().ZoneProcessDzExpeditionLockoutTimers(p);
-		break;
-	case HC_OP_BeginCast:
-		ctx_.Player().ZoneProcessBeginCast(p);
-		break;
-	case HC_OP_ManaChange:
-		ctx_.Player().ZoneProcessManaChange(p);
-		break;
-	case HC_OP_Buff:
-		ctx_.Player().ZoneProcessBuff(p);
-		break;
-	case HC_OP_ColoredText:
-		ctx_.Chat().ZoneProcessColoredText(p);
-		break;
-	case HC_OP_FormattedMessage:
-		ctx_.Chat().ZoneProcessFormattedMessage(p);
-		break;
-	case HC_OP_PlayerStateAdd:
-		ctx_.Player().ZoneProcessPlayerStateAdd(p);
-		break;
-	case HC_OP_Death:
-		ctx_.Player().ZoneProcessDeath(p);
-		break;
-	case HC_OP_PlayerStateRemove:
-		ctx_.Player().ZoneProcessPlayerStateRemove(p);
-		break;
-	case HC_OP_Stamina:
-		ctx_.Player().ZoneProcessStamina(p);
-		break;
-	case HC_OP_Animation:
-		// Animation packet - applies to all entities (not just self)
-		// This is used for combat animations, social animations (/wave), and
-		// other action animations
-		ZoneProcessAnimation(p);
-		break;
-	case HC_OP_Emote:
-		// T243: text emote broadcast ("Testchar waves at ...")
-		ctx_.Chat().ZoneProcessEmote(p);
-		break;
-	
-	// Combat-related opcodes
-	case 0x65ca: // OP_Consider response
-		ctx_.Commands().ZoneProcessConsider(p);
-		break;
-	case HC_OP_Action: // OP_Action (combat/spell actions)
-		ctx_.Commands().ZoneProcessAction(p);
-		break;
-	case HC_OP_Damage:
-		ctx_.Commands().ZoneProcessDamage(p);
-		break;
-	case HC_OP_MoneyOnCorpse:
-		ctx_.Commands().ZoneProcessMoneyOnCorpse(p);
-		break;
-	case HC_OP_LootRequest:
-		// Server responds to our loot request - confirms we can loot the corpse
-		// The actual loot items come via ItemPacket (type 102) BEFORE this response
-		if (p.Length() >= 6) {
-			uint32_t corpse_id = p.GetUInt32(2);
-			LOG_DEBUG(MOD_INVENTORY, "LootRequest response: corpseId={}", corpse_id);
-
-			// Check if loot window is empty (no items to loot)
-			// If empty, auto-complete the loot session immediately
-			if (ctx_.game_state.player().lootingCorpseId() != 0 && ctx_.Bridge().LootItems().empty()) {
-				LOG_DEBUG(MOD_INVENTORY, "LootRequest response: No items on corpse, auto-completing loot");
-				ctx_.Bridge().CloseLootWindow(static_cast<uint16_t>(corpse_id));
-			}
-		}
-		break;
-	case HC_OP_LootItem:
-		// Server echoes OP_LootItem back as acknowledgment
-		if (p.Length() >= 16) {
-			uint32_t lootee = p.GetUInt32(2);
-			uint32_t looter = p.GetUInt32(6);
-			uint16_t slot_id = p.GetUInt16(10);
-			int32_t auto_loot = static_cast<int32_t>(p.GetUInt32(12));
-			LOG_DEBUG(MOD_INVENTORY, "LootItem ACK: lootee={} looter={} slot={} auto_loot={}",
-				lootee, looter, slot_id, auto_loot);
-			// auto_loot == -1 means the loot was denied
-			if (auto_loot == -1) {
-				LOG_WARN(MOD_INVENTORY, "Loot DENIED by server!");
-				// Remove from pending slots
-				auto it = std::find(ctx_.Bridge().PendingLootSlots().begin(), ctx_.Bridge().PendingLootSlots().end(), slot_id);
-				if (it != ctx_.Bridge().PendingLootSlots().end()) {
-					ctx_.Bridge().PendingLootSlots().erase(it);
-				}
-			}
-		} else {
-			LOG_DEBUG(MOD_INVENTORY, "LootItem ACK: short packet, len={}", p.Length());
-		}
-		break;
-	case HC_OP_LootComplete:
-		// Server signals end of loot session (rarely sent by P1999/Titanium servers)
-		LOG_DEBUG(MOD_INVENTORY, "LootComplete received from server");
-		ctx_.Bridge().PendingLootSlots().clear();
-		break;
-	case HC_OP_ItemPacket:
-		// Item packets can be: vendor items (100), inventory items (103), or loot items
-		// Check the packet type in the first 4 bytes after the header
-		{
-			uint32_t item_packet_type = 0;
-			if (p.Length() >= 6) {
-				item_packet_type = p.GetUInt32(2);
-			}
-			LOG_DEBUG(MOD_INVENTORY, "ItemPacket received, type={} m_game_state.player().lootingCorpseId()={} m_game_state.player().vendorNpcId()={} pending_slots={}",
-				item_packet_type, ctx_.game_state.player().lootingCorpseId(), ctx_.game_state.player().vendorNpcId(), ctx_.Bridge().PendingLootSlots().size());
-			// Check if this is a vendor item (type 100)
-			if (item_packet_type == EQT::ITEM_PACKET_MERCHANT && ctx_.game_state.player().vendorNpcId() != 0) {
-				// Vendor item - add to vendor window via bridge
-				ctx_.Merchant().ZoneProcessVendorItemToUI(p);
-			} else if (ctx_.game_state.player().lootingCorpseId() != 0) {
-				// Looting (T268: every open path sets this). A pending slot means
-				// this is the item we asked for; otherwise it populates the window.
-				if (!ctx_.Bridge().PendingLootSlots().empty()) { ctx_.Merchant().ZoneProcessLootedItemToInventory(p); }
-				else { ctx_.Merchant().ZoneProcessLootItemToUI(p); }
-			} else {
-				// Check if this is a trade partner item.
-				// T42: was #ifdef EQT_HAS_GRAPHICS -- TradeManager and
-				// InventoryManager are both renderer-free (P28/this file's
-				// own header comment), so an EQT_GRAPHICS=OFF build was
-				// dropping regular inventory item packets (vendor buy, bank
-				// window population) entirely. Un-guarded; no genuine
-				// graphics dependency found.
-				bool handled_as_trade = false;
-				if (ctx_.trade_manager && ctx_.trade_manager->isTrading()) {
-					handled_as_trade = ctx_.Merchant().ZoneProcessTradePartnerItem(p);
-				}
-				if (!handled_as_trade) {
-					// Regular inventory item packet - pass to inventory manager.
-					// This is the single choke point for vendor-buy item
-					// placement and bank-window population (T41's Review
-					// traced both here) -- publish InventorySlotChanged here
-					// so both get the UI update, not just the game-side model.
-					if (ctx_.inventory_manager) {
-						int16_t changedSlot = ctx_.inventory_manager->processItemPacket(p);
-						if (changedSlot != eqt::inventory::SLOT_INVALID) {
-							const auto* item = ctx_.inventory_manager->getItem(changedSlot);
-							ctx_.Merchant().SyncInventorySlotToGameState(changedSlot,
-								item != nullptr && item->itemId != 0);  // T221
-						}
-						if (ctx_.bridge && changedSlot != eqt::inventory::SLOT_INVALID) {
-							eqt::state::InventorySlotChangedData data;
-							data.slotId = changedSlot;
-							const auto* item = ctx_.inventory_manager->getItem(changedSlot);
-							data.hasItem = (item != nullptr && item->itemId != 0);
-							data.itemId = data.hasItem ? item->itemId : 0;
-							data.itemName = data.hasItem ? item->name : "";
-							data.iconId = data.hasItem ? item->icon : 0;
-							data.quantity = data.hasItem ? item->quantity : 0;
-							LOG_DEBUG(MOD_INVENTORY, "Publishing InventorySlotChanged (generic ItemPacket fallback): slot={} hasItem={} itemId={} name='{}' qty={}",
-								data.slotId, data.hasItem, data.itemId, data.itemName, data.quantity);
-							ctx_.bridge->pushEvent(eqt::state::GameEvent(
-								eqt::state::GameEventType::InventorySlotChanged, std::move(data)));
-						}
-					}
-				}
-				if (EverQuest::s_debug_level >= 2) {
-					LOG_DEBUG(MOD_MAIN, "Received ItemPacket type={} while not looting/trading", item_packet_type);
-				}
-			}
-		}
-		break;
-	// T42: this whole block was #ifdef EQT_HAS_GRAPHICS. eq_merchant.cpp's own
-	// header comment (P28) documents that ZoneProcessMoveItem/DeleteItem/
-	// ShopRequest/ShopPlayerBuy/ShopPlayerSell/ShopEndConfirm/MoneyUpdate/
-	// GMTraining are all "plain Player mode bridge-driven ... logic with no
-	// Irrlicht/renderer usage anywhere in it" -- confirmed by reading each;
-	// none touch a renderer. Left gated here, an EQT_GRAPHICS=OFF build never
-	// dispatched vendor buy/sell, bank-adjacent move/delete, or money-update
-	// packets at all, regardless of any publish fix inside them. Un-guarded;
-	// no genuine graphics dependency found.
-	case HC_OP_MoveItem:
-		ctx_.Merchant().ZoneProcessMoveItem(p);
-		break;
-	case HC_OP_DeleteItem:
-		ctx_.Merchant().ZoneProcessDeleteItem(p);
-		break;
-	case HC_OP_ShopRequest:
-		ctx_.Merchant().ZoneProcessShopRequest(p);
-		break;
-	case HC_OP_ShopPlayerBuy:
-		ctx_.Merchant().ZoneProcessShopPlayerBuy(p);
-		break;
-	case HC_OP_ShopPlayerSell:
-		ctx_.Merchant().ZoneProcessShopPlayerSell(p);
-		break;
-	case HC_OP_ShopEndConfirm:
-		ctx_.Merchant().ZoneProcessShopEndConfirm(p);
-		break;
-	case HC_OP_MoneyUpdate:
-		ctx_.Merchant().ZoneProcessMoneyUpdate(p);
-		break;
-	case HC_OP_GMTraining:
-		ctx_.Merchant().ZoneProcessGMTraining(p);
-		break;
-	case 0x61f9: // OP_TargetCommand response
-		// Server may reject our target
-		if (p.Length() >= 4) {
-			uint16_t result = p.GetUInt16(2);
-			if (result != 0 && EverQuest::s_debug_level >= 1) {
-				LOG_DEBUG(MOD_MAIN, "Target rejected: {}", result);
-			}
-		}
-		break;
-	
-	// Additional opcodes
-	case HC_OP_BecomeCorpse:
-		// Someone died and became a corpse
-		if (EverQuest::s_debug_level >= 2) {
-			LOG_DEBUG(MOD_MAIN, "Received BecomeCorpse packet");
-		}
-		break;
-	case HC_OP_ZonePlayerToBind:
-		ctx_.Player().ZoneProcessZonePlayerToBind(p);
-		break;
-	case HC_OP_LevelUpdate:
-		ctx_.Player().ZoneProcessLevelUpdate(p);
-		break;
-	case HC_OP_ZoneChange:
-		ZoneProcessZoneChange(p);
-		break;
-	case HC_OP_RequestClientZoneChange:
-		ZoneProcessRequestClientZoneChange(p);
-		break;
-	case HC_OP_SimpleMessage:
-		ctx_.Chat().ZoneProcessSimpleMessage(p);
-		break;
-	case HC_OP_TargetHoTT:
-		// Target's target information
-		if (p.Length() >= 6) {
-			uint16_t target_id = p.GetUInt16(2);
-			uint16_t hott_id = p.GetUInt16(4);
-			if (EverQuest::s_debug_level >= 2) {
-				LOG_DEBUG(MOD_MAIN, "Target {} has target {}", target_id, hott_id);
-			}
-		}
-		break;
-	case HC_OP_SkillUpdate:
-		// Skill level update
-		// SkillUpdate_Struct: skillId (uint32) + value (uint32) = 8 bytes + 2 byte header
-		if (p.Length() >= 10) {
-			uint32_t skill_id_32 = p.GetUInt32(2);  // 4-byte skillId at offset 2
-			uint32_t value = p.GetUInt32(6);        // 4-byte value at offset 6
-			uint8_t skill_id = static_cast<uint8_t>(skill_id_32);  // Cast to uint8_t for skill manager
-
-			// Update skill manager
-			if (ctx_.skill_manager) {
-				ctx_.skill_manager->updateSkill(skill_id, value);
-			}
-
-			// Decrement practice points if trainer window is open (training
-			// succeeded). PlayerState is the ONE store (T283) and
-			// decrementPracticePoints() already floors at zero.
-			if (ctx_.game_state.player().trainerNpcId() != 0) {
-				ctx_.game_state.player().decrementPracticePoints();
-			}
-
-			// Publish SkillValueChanged event to bridge
-			if (ctx_.bridge) {
-				eqt::state::SkillValueChangedData sdata;
-				sdata.skillId = static_cast<uint16_t>(skill_id);
-				sdata.value = static_cast<uint16_t>(value);
-				ctx_.bridge->pushEvent(eqt::state::GameEvent(
-					eqt::state::GameEventType::SkillValueChanged, std::move(sdata)));
-			}
-
-			if (EverQuest::s_debug_level >= 2) {
-				LOG_DEBUG(MOD_MAIN, "Skill {} updated to {}", static_cast<int>(skill_id), value);
-			}
-		}
-		break;
-	case HC_OP_CancelTrade:
-		// Trade cancelled
-		if (p.Length() >= 2 + sizeof(EQT::CancelTrade_Struct)) {
-			const EQT::CancelTrade_Struct* cancel = reinterpret_cast<const EQT::CancelTrade_Struct*>(p.Data() + 2);
-			if (ctx_.trade_manager) {
-				ctx_.trade_manager->handleCancelTrade(*cancel);
-			}
-			if (EverQuest::s_debug_level >= 2) {
-				LOG_DEBUG(MOD_MAIN, "Trade cancelled by spawn {}", cancel->spawn_id);
-			}
-		}
-		break;
-	case HC_OP_TradeRequest:
-		// Trade request from another player
-		if (p.Length() >= 2 + sizeof(EQT::TradeRequest_Struct)) {
-			const EQT::TradeRequest_Struct* req = reinterpret_cast<const EQT::TradeRequest_Struct*>(p.Data() + 2);
-			if (ctx_.trade_manager) {
-				// Look up the name of the requesting player
-				std::string from_name = "Unknown";
-				auto it = ctx_.entities.find(static_cast<uint16_t>(req->from_spawn_id));
-				if (it != ctx_.entities.end()) {
-					from_name = it->second.name;
-				}
-				ctx_.trade_manager->handleTradeRequest(*req, from_name);
-			}
-			if (EverQuest::s_debug_level >= 2) {
-				LOG_DEBUG(MOD_MAIN, "Trade request from spawn {} to spawn {}",
-				         req->from_spawn_id, req->target_spawn_id);
-			}
-		}
-		break;
-	case HC_OP_TradeRequestAck:
-		// Trade request accepted
-		if (p.Length() >= 2 + sizeof(EQT::TradeRequestAck_Struct)) {
-			const EQT::TradeRequestAck_Struct* ack = reinterpret_cast<const EQT::TradeRequestAck_Struct*>(p.Data() + 2);
-			if (ctx_.trade_manager) {
-				ctx_.trade_manager->handleTradeRequestAck(*ack);
-			}
-			if (EverQuest::s_debug_level >= 2) {
-				LOG_DEBUG(MOD_MAIN, "Trade request ack from spawn {} to spawn {}",
-				         ack->from_spawn_id, ack->target_spawn_id);
-			}
-		}
-		break;
-	case HC_OP_TradeCoins:
-		// Trade partner changed money
-		if (p.Length() >= 2 + sizeof(EQT::TradeCoins_Struct)) {
-			const EQT::TradeCoins_Struct* coins = reinterpret_cast<const EQT::TradeCoins_Struct*>(p.Data() + 2);
-			if (ctx_.trade_manager) {
-				ctx_.trade_manager->handleTradeCoins(*coins);
-			}
-			if (EverQuest::s_debug_level >= 2) {
-				LOG_DEBUG(MOD_MAIN, "Trade coins from spawn {}: slot {} amount {}",
-				         coins->spawn_id, coins->slot, coins->amount);
-			}
-		}
-		break;
-	case HC_OP_TradeAcceptClick:
-		// Trade partner clicked accept
-		if (p.Length() >= 2 + sizeof(EQT::TradeAcceptClick_Struct)) {
-			const EQT::TradeAcceptClick_Struct* accept = reinterpret_cast<const EQT::TradeAcceptClick_Struct*>(p.Data() + 2);
-			if (ctx_.trade_manager) {
-				ctx_.trade_manager->handleTradeAcceptClick(*accept);
-			}
-			if (EverQuest::s_debug_level >= 2) {
-				LOG_DEBUG(MOD_MAIN, "Trade accept click from spawn {}: accepted={}",
-				         accept->spawn_id, accept->accepted);
-			}
-		}
-		break;
-	case HC_OP_FinishTrade:
-		// Trade completed. OP_FinishTrade has a ZERO-LENGTH payload -- eqemu
-		// sends `new EQApplicationPacket(OP_FinishTrade, 0)`
-		// (zone/client_packet.cpp:15358). The 2 "unknown" bytes the old
-		// EQT::FinishTrade_Struct declared were fictional; T147 deleted it.
-		// Nothing changes behaviourally: the old code already fell back to a
-		// zeroed struct when the length guard failed, which it always did.
-		if (ctx_.trade_manager) {
-			ctx_.trade_manager->handleFinishTrade();
-		}
-		LOG_INFO(MOD_MAIN, "Trade finished");
-		break;
-	case HC_OP_PreLogoutReply:
-		// Pre-logout confirmation (server acknowledges camp request)
-		if (EverQuest::s_debug_level >= 2) {
-			LOG_DEBUG(MOD_MAIN, "Pre-logout reply received (camp acknowledged)");
-		}
-		break;
-	case HC_OP_LogoutReply:
-		ctx_.Player().ZoneProcessLogoutReply(p);
-		break;
-	case HC_OP_RezzRequest:
-		ctx_.Player().ZoneProcessRezzRequest(p);
-		break;
-	case HC_OP_RezzComplete:
-		ctx_.Player().ZoneProcessRezzComplete(p);
-		break;
-	case HC_OP_WhoAllResponse:
-		ctx_.Player().ZoneProcessWhoAllResponse(p);
-		break;
-	case HC_OP_InspectRequest:
-		ctx_.Player().ZoneProcessInspectRequest(p);
-		break;
-	case HC_OP_InspectAnswer:
-		ctx_.Player().ZoneProcessInspectAnswer(p);
-		break;
-	case HC_OP_GuildInvite:
-		ctx_.Guild().ZoneProcessGuildInvite(p);
-		break;
-	case HC_OP_GetGuildMOTDReply:
-		ctx_.Guild().ZoneProcessGuildMOTDReply(p);
-		break;
-	case HC_OP_GuildMemberUpdate:
-		ctx_.Guild().ZoneProcessGuildMemberUpdate(p);
-		break;
-	case HC_OP_GuildMemberAdd:
-		ctx_.Guild().ZoneProcessGuildMemberAdd(p);
-		break;
-	// Phase 3 packet handlers
-	case HC_OP_ConsentResponse:
-		ctx_.Player().ZoneProcessConsentResponse(p);
-		break;
-	case HC_OP_DenyResponse:
-		ctx_.Player().ZoneProcessDenyResponse(p);
-		break;
-	case HC_OP_EnvDamage:
-		ctx_.Player().ZoneProcessEnvDamage(p);
-		break;
-	case HC_OP_DisciplineUpdate:
-		ctx_.Player().ZoneProcessDisciplineUpdate(p);
-		break;
-	case HC_OP_DisciplineTimer:
-		ctx_.Player().ZoneProcessDisciplineTimer(p);
-		break;
-	case HC_OP_BankerChange:
-		ctx_.Player().ZoneProcessBankerChange(p);
-		break;
-	case HC_OP_ClearObject:
-		ctx_.Player().ZoneProcessClearObject(p);
-		break;
-	case HC_OP_LFGAppearance:
-		ctx_.Player().ZoneProcessLFGAppearance(p);
-		break;
-	// Phase 4 packet handlers
-	case HC_OP_RequestDuel:
-		ctx_.Player().ZoneProcessDuelRequest(p);
-		break;
-	case HC_OP_RecipeReply:
-		ctx_.Merchant().ZoneProcessRecipeReply(p);
-		break;
-	case HC_OP_RecipeAutoCombine:
-		ctx_.Merchant().ZoneProcessRecipeAutoCombine(p);
-		break;
-	case HC_OP_RandomReply:
-		ctx_.Player().ZoneProcessRandomReply(p);
-		break;
-	case HC_OP_FindPersonReply:
-		ctx_.Player().ZoneProcessFindPersonReply(p);
-		break;
-	case HC_OP_CameraEffect:
-		ctx_.Player().ZoneProcessCameraEffect(p);
-		break;
-	case HC_OP_PlayMP3:
-		ctx_.Player().ZoneProcessPlayMP3(p);
-		break;
-	case HC_OP_Sound:
-		ctx_.Player().ZoneProcessSound(p);
-		break;
-	case HC_OP_GMZoneRequest:
-		ctx_.Gm().ZoneProcessGMZoneRequest(p);
-		break;
-	case HC_OP_GMFind:
-		ctx_.Gm().ZoneProcessGMFind(p);
-		break;
-	case HC_OP_GMSummon:
-		ctx_.Gm().ZoneProcessGMSummon(p);
-		break;
-	case HC_OP_MobRename:
-		// Mob name change - typically when mob becomes corpse
-		// The packet contains 3 name fields (each 64 bytes)
-		if (p.Length() >= 4) {  // Need at least opcode + 2 bytes for parsing
-			// Parse the packet to find the entity ID
-			// From the log, we see the mob name appears multiple times with "'s_corpse" appended
-			const char* data = (const char*)p.Data() + 2;  // Skip opcode
-			int data_len = p.Length() - 2;
-			
-			// Extract the new name from the first occurrence
-			char new_name[65] = {0};
-			if (data_len >= 64) {
-				memcpy(new_name, data, 64);
-				new_name[64] = '\0';
-			}
-			
-			// The mob ID isn't directly in the packet, but the corpse name ends
-			// in the corpse's own entity id, and failing that we can match the
-			// base name. T160: ParseCorpseName (combat.h) is the single shared
-			// test -- this used to carry its own copy of the "'s_corpse"
-			// literal, which meant the space form eqemu uses for PLAYER corpses
-			// was never recognised here either.
-			std::string name_str(new_name);
-			std::string base_name;
-			uint32_t parsed_corpse_id = 0;
-			if (ParseCorpseName(name_str, &base_name, &parsed_corpse_id)) {
-				uint16_t entity_id = static_cast<uint16_t>(parsed_corpse_id);
-				if (ctx_.entities.find(entity_id) == ctx_.entities.end()) {
-					// Id in the name doesn't resolve (truncated name, or a
-					// server that numbers corpses differently) -- fall back to
-					// matching the base name.
-					for (auto& [id, entity] : ctx_.entities) {
-						if (entity.name == base_name + "001" || entity.name == base_name) {
-							entity_id = id;
-							break;
-						}
-					}
-				}
-
-				// Entity id 0 is never a real spawn here (it is the
-				// unset/self sentinel); unchanged from the pre-T160 guard.
-				auto it = entity_id > 0 ? ctx_.entities.find(entity_id) : ctx_.entities.end();
-				if (it != ctx_.entities.end()) {
-					std::string old_name = it->second.name;
-					it->second.name = new_name;
-					it->second.is_corpse = true;
-					// T268: GameState kept the LIVING name + isCorpse=false forever
-					// (markAsCorpse had no caller) -- /target and /loot missed it.
-					ctx_.Player().SyncEntityToGameState(it->second);
-					if (EverQuest::s_debug_level >= 1) {
-						LOG_INFO(MOD_ENTITY, "Entity {} became corpse: '{}' -> '{}'",
-							entity_id, old_name, new_name);
-					}
-				}
-			}
-		}
-		break;
-	case HC_OP_Stun:
-		// T247. eqemu Stun_Struct is 4 bytes: uint32 duration in MILLISECONDS
-		// (Client::Stun -> stunned_timer.Start(duration)); Client::UnStun sends
-		// duration 0. It is only ever sent to the stunned client itself, so
-		// there is no target field -- the pre-T247 code read a target/duration
-		// pair out of the low/high halves of the duration and stored nothing.
-		if (p.Length() >= 6) {
-			ctx_.Commands().ZoneProcessStun(p.GetUInt32(2));
-		}
-		break;
-
-	// Group packet handlers
-	case HC_OP_GroupInvite:
-		ctx_.Group().ZoneProcessGroupInvite(p);
-		break;
-	case HC_OP_GroupInvite2:
-		// Alternate invite opcode - same handler
-		ctx_.Group().ZoneProcessGroupInvite(p);
-		break;
-	case HC_OP_GroupFollow:
-		ctx_.Group().ZoneProcessGroupFollow(p);
-		break;
-	case HC_OP_GroupUpdate:
-		ctx_.Group().ZoneProcessGroupUpdate(p);
-		break;
-	case HC_OP_GroupDisband:
-		ctx_.Group().ZoneProcessGroupDisband(p);
-		break;
-	case HC_OP_GroupCancelInvite:
-		ctx_.Group().ZoneProcessGroupCancelInvite(p);
-		break;
-	case HC_OP_SetGroupTarget:
-		// Group target indicator - ignore for now
-		break;
-	// Note: HC_OP_LFGAppearance handled earlier with ZoneProcessLFGAppearance
-	case HC_OP_LinkedReuse:
-		// Linked spell reuse timer - ignore for now
-		break;
-	case HC_OP_MemorizeSpell:
-		{
-			// MemorizeSpell_Struct: slot(4), spell_id(4), scribing(4), unknown0(4)
-			// Total: 16 bytes after opcode (2 bytes)
-			if (p.Length() < 18) {
-				LOG_WARN(MOD_SPELL, "MemorizeSpell packet too short: {} bytes", p.Length());
-				break;
-			}
-
-			uint32_t slot = p.GetUInt32(2);
-			uint32_t spell_id = p.GetUInt32(6);
-			uint32_t scribing = p.GetUInt32(10);
-
-			LOG_DEBUG(MOD_SPELL, "MemorizeSpell response: slot={} spell_id={} scribing={}",
-				slot, spell_id, scribing);
-
-			// Check if this is a scribe confirmation (scribing flag cleared to 0)
-			if (m_pending_scribe_spell_id != 0 &&
-				m_pending_scribe_spell_id == spell_id &&
-				scribing == 0) {
-
-				// Add spell to spellbook
-				if (ctx_.spell_manager->scribeSpell(spell_id, static_cast<uint16_t>(slot))) {
-					// Get spell name for message
-					const EQ::SpellData* spellData = ctx_.spell_manager->getSpell(spell_id);
-					std::string spellName = spellData ? spellData->name : "spell";
-
-					ctx_.out.System(fmt::format("You have learned {}!", spellName));
-					LOG_INFO(MOD_SPELL, "Successfully scribed spell {} ({}) to slot {}",
-						spellName, spell_id, slot);
-
-					// Refresh spellbook UI via bridge
-					if (ctx_.bridge) {
-						eqt::state::SpellScribeCompletedData sdata;
-						sdata.spellId = spell_id;
-						sdata.slot = static_cast<uint16_t>(slot);
-						sdata.spellName = spellName;
-						sdata.iconId = spellData ? spellData->spell_icon : 0;
-						ctx_.bridge->pushEvent(eqt::state::GameEvent(
-							eqt::state::GameEventType::SpellScribeCompleted, std::move(sdata)));
-					}
-				} else {
-					LOG_WARN(MOD_SPELL, "Failed to add spell {} to spellbook slot {}",
-						spell_id, slot);
-				}
-
-				// T276: the server ate the scroll off the cursor
-				// (Client::OPMemorizeSpell -> DeleteItemInInventory(
-				// slotCursor, 1, true)) and confirms with OP_DeleteItem,
-				// which processDeleteItemResponse() does not act on. Drop
-				// our own copy locally, or the spent scroll stays on the
-				// cursor and blocks the next /scribe.
-				if (ctx_.inventory_manager) {
-					ctx_.inventory_manager->consumeScribedScroll();
-				}
-
-				// Clear pending scribe state
-				m_pending_scribe_spell_id = 0;
-				m_pending_scribe_book_slot = 0;
-				m_pending_scribe_source_slot = -1;
-			}
-			// Handle gem slot memorization confirmations (slot < MAX_SPELL_GEMS)
-			else if (slot < EQ::MAX_SPELL_GEMS && scribing == 0) {
-				// Existing gem memorization - SpellManager handles this via other mechanisms
-				LOG_DEBUG(MOD_SPELL, "Gem memorization confirmation: gem={} spell={}", slot, spell_id);
-			}
-		}
-		break;
-	case HC_OP_SpecialMesg:
-		{
-			// Special messages (trade notifications, skill-ups, etc.)
-			// Format: 2 bytes opcode + 24 bytes header + null-terminated message
-			constexpr size_t HEADER_SIZE = 24;
-			constexpr size_t MSG_OFFSET = 2 + HEADER_SIZE;  // After opcode and header
-
-			if (p.Length() > MSG_OFFSET) {
-				const char* msgStart = reinterpret_cast<const char*>(p.Data()) + MSG_OFFSET;
-				size_t maxLen = p.Length() - MSG_OFFSET;
-				std::string message(msgStart, strnlen(msgStart, maxLen));
-
-				if (!message.empty()) {
-					ctx_.out.System(message);
-				}
-			}
-		}
-		break;
-	case HC_OP_InterruptCast:
-		// Cast interrupted - spell manager handles this via other packets
-		break;
-
-	// ========================================================================
-	// Skill Response Handlers
-	// ========================================================================
-	case HC_OP_Begging:
-		// Begging response - BeggingResponse_Struct (20 bytes after opcode)
-		if (p.Length() >= 22) {
-			uint32_t result = p.GetUInt32(14);  // offset 12 in struct + 2 for opcode
-			uint32_t amount = p.GetUInt32(18);  // offset 16 in struct + 2 for opcode
-			// Result: 0=Fail, 1=Plat, 2=Gold, 3=Silver, 4=Copper
-			if (result == 0) {
-				ctx_.out.System("You have been unable to convince your target to give you money.");
-			} else {
-				const char* coin_types[] = {"", "platinum", "gold", "silver", "copper"};
-				if (result <= 4) {
-					ctx_.out.System(fmt::format("You receive {} {}.", amount, coin_types[result]));
-				}
-			}
-		}
-		break;
-	case HC_OP_Hide:
-		// Hide skill response - typically no data, success indicated by SpawnAppearance
-		LOG_DEBUG(MOD_MAIN, "Hide response received: {} bytes", p.Length());
-		break;
-	case HC_OP_Sneak:
-		// Sneak skill response
-		LOG_DEBUG(MOD_MAIN, "Sneak response received: {} bytes", p.Length());
-		break;
-	case HC_OP_SenseHeading:
-		// Sense Heading response - may contain heading info
-		LOG_DEBUG(MOD_MAIN, "SenseHeading response received: {} bytes", p.Length());
-		break;
-	case HC_OP_Forage:
-		// Forage response - contains item found or failure
-		LOG_DEBUG(MOD_MAIN, "Forage response received: {} bytes", p.Length());
-		break;
-	case HC_OP_Fishing:
-		// Fishing response
-		LOG_DEBUG(MOD_MAIN, "Fishing response received: {} bytes", p.Length());
-		break;
-	case HC_OP_Mend:
-		// Mend response
-		LOG_DEBUG(MOD_MAIN, "Mend response received: {} bytes", p.Length());
-		break;
-	case HC_OP_FeignDeath:
-		// Feign Death response
-		LOG_DEBUG(MOD_MAIN, "FeignDeath response received: {} bytes", p.Length());
-		break;
-	case HC_OP_Track:
-		// Track response - contains list of trackable entities
-		ctx_.Player().ZoneProcessTrack(p);
-		break;
-	case HC_OP_ApplyPoison:
-		// Apply Poison response - success/failure from server
-		ctx_.Player().ZoneProcessApplyPoison(p);
-		break;
-	case HC_OP_PickPocket:
-		// Pick Pocket response
-		LOG_DEBUG(MOD_MAIN, "PickPocket response received: {} bytes", p.Length());
-		break;
-	case HC_OP_BindWound:
-		// Bind Wound reply: `type` carries the outcome (done / no target /
-		// target gone / no bandage). T177 -- before this the player saw
-		// nothing 10s after starting a bandage.
-		ctx_.Player().ZoneProcessBindWound(p);
-		break;
-	case HC_OP_SenseTraps:
-		// Sense Traps response
-		LOG_DEBUG(MOD_MAIN, "SenseTraps response received: {} bytes", p.Length());
-		break;
-	case HC_OP_DisarmTraps:
-		// Disarm Traps response
-		LOG_DEBUG(MOD_MAIN, "DisarmTraps response received: {} bytes", p.Length());
-		break;
-	case HC_OP_InstillDoubt:
-		// Intimidation response
-		LOG_DEBUG(MOD_MAIN, "InstillDoubt response received: {} bytes", p.Length());
-		break;
-	case HC_OP_ReadBook:
-		ctx_.Merchant().ZoneProcessReadBook(p);
-		break;
-	case HC_OP_PetBuffWindow:
-		ctx_.Player().ZoneProcessPetBuffWindow(p);
-		break;
-
-	default:
-		LOG_WARN(MOD_ZONE, "Unhandled zone opcode: {}", eqt::strings::GetOpcodeName(opcode));
-		break;
+	const auto& table = ZoneOpcodeTable();
+	auto it = table.find(opcode);
+	if (it != table.end()) {
+		it->second(*this, p);
+		return;
 	}
+	if (IgnoredZoneOpcodes().count(opcode) != 0) {
+		return;
+	}
+	LOG_WARN(MOD_ZONE, "Unhandled zone opcode: {}", eqt::strings::GetOpcodeName(opcode));
 }
-

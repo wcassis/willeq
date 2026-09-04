@@ -249,6 +249,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_zone_component)
 
+# G01 (Batch G): the opcode-coverage net for the DispatchZonePacket table --
+# the golden list of every case label the pre-G01 switch had, asserted against
+# ZoneOpcodeTable() + IgnoredZoneOpcodes() in both directions.
+ADD_EXECUTABLE(test_zone_dispatch_table
+    test_zone_dispatch_table.cpp
+)
+TARGET_LINK_LIBRARIES(test_zone_dispatch_table GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_zone_dispatch_table PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_zone_dispatch_table)
+
 # K11 (Batch K): the extracted eqt::bridge::BridgeComponent, driven directly --
 # the accessor identity, the FIVE sanctioned lifecycle forwarders that stayed
 # on EverQuest, the loot cluster and the inspect/config/audio state that moved.

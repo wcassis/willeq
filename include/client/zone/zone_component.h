@@ -51,6 +51,7 @@
 #include <deque>
 #include <memory>
 #include <string>
+#include <unordered_map>
 
 class EverQuest;
 class HCMap;
@@ -87,6 +88,20 @@ public:
 	// Opcode switch shared by EverQuest::ZoneOnPacketRecv and the
 	// EverQuest::ReplayZonePacket test seam (both in eq.cpp).
 	void DispatchZonePacket(const EQ::Net::Packet &p);
+
+	// G01 (refactor/G01_dispatch_zone_packet_table.md): the opcode table
+	// DispatchZonePacket dispatches through, and the deliberate no-ops.
+	//
+	// A captureless lambda per arm, so ONE handler type covers both the
+	// in-family handlers below and the sibling components' ZoneProcess*
+	// entry points, with no per-sibling forwarder in this header. Both are
+	// public so tests/test_zone_dispatch_table.cpp can assert the coverage
+	// invariant: every case label the pre-G01 switch had is a key of exactly
+	// one of these two maps, and neither map has a key that was not a label.
+	using ZoneArmHandler = void (*)(ZoneComponent&, const EQ::Net::Packet&);
+	static const std::unordered_map<uint16_t, ZoneArmHandler>& ZoneOpcodeTable();
+	// opcode -> the reason its former arm gave for doing nothing.
+	static const std::unordered_map<uint16_t, const char*>& IgnoredZoneOpcodes();
 
 	// Driven by EverQuest::ZoneOnNewConnection / ZoneOnStatusChangeReconnectEnabled
 	// (eq.cpp), which own the zone socket.
@@ -259,6 +274,49 @@ private:
 	void ZoneProcessGuildMOTD(const EQ::Net::Packet &p);
 	void ZoneProcessZoneChange(const EQ::Net::Packet &p);
 	void ZoneProcessRequestClientZoneChange(const EQ::Net::Packet &p);
+
+
+	// G01: one named handler per former switch arm that carried local logic
+	// (the arms that were a single call go straight into the table). Bodies are
+	// the arm bodies verbatim; reached only through ZoneOpcodeTable().
+	void OnSessionReady(const EQ::Net::Packet &p);
+	void OnZoneEntry(const EQ::Net::Packet &p);
+	void OnTaskDescription(const EQ::Net::Packet &p);
+	void OnTaskActivity(const EQ::Net::Packet &p);
+	void OnClearLeadershipAbilities(const EQ::Net::Packet &p);
+	void OnClearAA(const EQ::Net::Packet &p);
+	void OnAAExpUpdate(const EQ::Net::Packet &p);
+	void OnLootRequest(const EQ::Net::Packet &p);
+	void OnLootItem(const EQ::Net::Packet &p);
+	void OnLootComplete(const EQ::Net::Packet &p);
+	void OnItemPacket(const EQ::Net::Packet &p);
+	void OnTargetCommandResponse(const EQ::Net::Packet &p);  // case 0x61f9 // OP_TargetCommand response
+	void OnBecomeCorpse(const EQ::Net::Packet &p);
+	void OnTargetHoTT(const EQ::Net::Packet &p);
+	void OnSkillUpdate(const EQ::Net::Packet &p);
+	void OnCancelTrade(const EQ::Net::Packet &p);
+	void OnTradeRequest(const EQ::Net::Packet &p);
+	void OnTradeRequestAck(const EQ::Net::Packet &p);
+	void OnTradeCoins(const EQ::Net::Packet &p);
+	void OnTradeAcceptClick(const EQ::Net::Packet &p);
+	void OnFinishTrade(const EQ::Net::Packet &p);
+	void OnPreLogoutReply(const EQ::Net::Packet &p);
+	void OnMobRename(const EQ::Net::Packet &p);
+	void OnStun(const EQ::Net::Packet &p);
+	void OnMemorizeSpell(const EQ::Net::Packet &p);
+	void OnSpecialMesg(const EQ::Net::Packet &p);
+	void OnBegging(const EQ::Net::Packet &p);
+	void OnHide(const EQ::Net::Packet &p);
+	void OnSneak(const EQ::Net::Packet &p);
+	void OnSenseHeading(const EQ::Net::Packet &p);
+	void OnForage(const EQ::Net::Packet &p);
+	void OnFishing(const EQ::Net::Packet &p);
+	void OnMend(const EQ::Net::Packet &p);
+	void OnFeignDeath(const EQ::Net::Packet &p);
+	void OnPickPocket(const EQ::Net::Packet &p);
+	void OnSenseTraps(const EQ::Net::Packet &p);
+	void OnDisarmTraps(const EQ::Net::Packet &p);
+	void OnInstillDoubt(const EQ::Net::Packet &p);
 
 	// T231: same-zone OP_RequestClientZoneChange -- apply the destination
 	// locally (state + renderer + one forced OP_ClientUpdate), no zone cycle.
