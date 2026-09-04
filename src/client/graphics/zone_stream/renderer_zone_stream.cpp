@@ -798,7 +798,7 @@ void ZoneStreamComponent::checkProgressiveLoadingComplete() {
         }
 
         // Remove zone placeholder mesh — real geometry is fully loaded
-        owner_.destroyZonePlaceholder();
+        owner_.ZoneLifecycle().destroyZonePlaceholder();
 
         // Build portal system now that all geometry is loaded. Portal occlusion
         // is an optimization (~472ms build cost) — deferred from loadZone to avoid

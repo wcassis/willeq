@@ -104,9 +104,9 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
 #ifdef EQT_HAS_GLES2
     if (progressiveLoadingActive_) {
         // Loading screen: batch process freely (§4.2: no governor restriction)
-        processCompletedUploads();
+        zoneLifecycle_->processCompletedUploads();
     } else {
-        drainGPUResults();  // move to pendingGPUResults_ (no GL)
+        zoneLifecycle_->drainGPUResults();  // move to pendingGPUResults_ (no GL)
     }
 #endif
 
@@ -140,7 +140,7 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
 
             // Priority 1: Complete in-flight GPU work (VBO/texture registration)
 #ifdef EQT_HAS_GLES2
-            if (!didWork) didWork = processOneGPUResult();
+            if (!didWork) didWork = zoneLifecycle_->processOneGPUResult();
 #endif
 
             // T04: processOneUpload removed. Textures uploaded via uploadTexture().

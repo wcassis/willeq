@@ -187,7 +187,7 @@ void PlayerCameraComponent::setupMinimalZoneCollision() {
         playerRegion = ctx_.zoneBspTree->findRegionIndexForPoint(ctx_.playerX, ctx_.playerY, ctx_.playerZ);
         bool alreadyBuilt = ctx_.regionMeshNodes.count(playerRegion) && ctx_.regionMeshNodes[playerRegion];
         if (playerRegion != SIZE_MAX && !alreadyBuilt) {
-            owner_.rebuildRegionMesh(playerRegion);
+            owner_.ZoneLifecycle().rebuildRegionMesh(playerRegion);
             LOG_INFO(MOD_GRAPHICS, "Built player BSP region {} synchronously for deferred loading", playerRegion);
         }
     }

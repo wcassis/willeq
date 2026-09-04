@@ -505,7 +505,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/renderer_zone_load_entities.cpp
         src/client/graphics/renderer_zone_load_env.cpp
         src/client/graphics/renderer_entity_load_gate.cpp
-        src/client/graphics/renderer_zone_lifecycle.cpp
+        src/client/graphics/zone_lifecycle/renderer_zone_lifecycle.cpp
         src/client/graphics/diagnostics/diagnostics_component.cpp
         src/client/graphics/diagnostics/diagnostics_debug.cpp
         # L05 (Batch L): the player family -- movement, collision and camera.
@@ -515,7 +515,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/player/renderer_player_physics.cpp
         src/client/graphics/player/renderer_player_collision.cpp
         src/client/graphics/player/renderer_camera.cpp
-        src/client/graphics/renderer_zone_draw.cpp
+        src/client/graphics/zone_lifecycle/renderer_zone_draw.cpp
         src/client/graphics/zone_stream/renderer_zone_merge.cpp
         src/client/graphics/zone_stream/renderer_zone_stream.cpp
         src/client/graphics/eqe1/eqe1_archive_component.cpp
@@ -523,7 +523,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/renderer_frame.cpp
         src/client/graphics/renderer_frame_input.cpp
         src/client/graphics/renderer_frame_render.cpp
-        src/client/graphics/renderer_gpu_upload.cpp
+        src/client/graphics/zone_lifecycle/renderer_gpu_upload.cpp
         src/client/graphics/renderer_entities.cpp
         src/client/graphics/zone_shader.cpp
         src/client/graphics/portal_system.cpp

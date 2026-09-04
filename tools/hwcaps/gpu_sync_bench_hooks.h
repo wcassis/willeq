@@ -25,7 +25,7 @@ namespace ZoneBench {
 // (collectDrawEntries/renderDrawEntries), not via IrrlichtRenderer's manual-
 // zone-draw/RenderPassTimer machinery, so it cannot reproduce the production
 // zone-pass/entity-pass split (that split only exists in
-// src/client/graphics/renderer_zone_draw.cpp, exercised only by the real
+// src/client/graphics/zone_lifecycle/renderer_zone_draw.cpp, exercised only by the real
 // `willeq` render loop). What this CAN do -- and what the x86 sanity check
 // uses it for -- is prove the GPU timer query mechanics (capability probe,
 // begin/end, double-buffered non-blocking readback) round-trip correctly on

@@ -262,6 +262,7 @@ IrrlichtRenderer::IrrlichtRenderer()
     simBridge_ = std::make_unique<SimBridgeComponent>(ctx_, *this);
     // L08 (Batch L): the zone streaming family.
     zoneStream_ = std::make_unique<ZoneStreamComponent>(ctx_, *this);
+    zoneLifecycle_ = std::make_unique<ZoneLifecycleComponent>(ctx_, *this);
 }
 
 IrrlichtRenderer::~IrrlichtRenderer() {
@@ -549,7 +550,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     // Initialize GPU upload thread (shared EGL context for async texture/VBO uploads)
 #ifdef EQT_HAS_GLES2
     LOG_TRACE(MOD_GRAPHICS, "Initializing GPU upload thread (shared EGL context)...");
-    initGPUUploadThread();
+    zoneLifecycle_->initGPUUploadThread();
 #endif
 
     // Setup HUD (needed for loading screen text)
