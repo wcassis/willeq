@@ -1,4 +1,4 @@
-// T111 -- coverage for IrrlichtRenderer::isEntityBlockingProgressiveLoad(),
+// T111 -- coverage for ZoneStreamComponent::isEntityBlockingProgressiveLoad(),
 // the predicate extracted from checkProgressiveLoadingComplete() to fix the
 // bug T109 found and shipped inert around: deferred entities outside the
 // player's landing BSP region were invisible to the old
@@ -28,7 +28,11 @@
 
 #include "client/graphics/irrlicht_renderer.h"
 
+// L08 (Batch L): the predicate moved to ZoneStreamComponent with the rest of
+// the zone streaming family. Receiver only -- every assertion below is
+// unchanged, and it is still a pure static needing no renderer instance.
 using EQT::Graphics::IrrlichtRenderer;
+using EQT::Graphics::ZoneStreamComponent;
 
 namespace {
 
@@ -46,18 +50,18 @@ constexpr bool kPvsUnknown = false;
 // --- Built entities never block, regardless of anything else ---
 
 TEST(ProgressiveLoadRearmTest, BuiltEntityNeverBlocks) {
-    EXPECT_FALSE(IrrlichtRenderer::isEntityBlockingProgressiveLoad(
+    EXPECT_FALSE(ZoneStreamComponent::isEntityBlockingProgressiveLoad(
         kMeshBuilt, kInScene, kNotPlayer, kPvsValid, /*depth=*/0, /*maxDepth=*/255));
     // Even "obviously blocking" inputs otherwise (deep in the zone, no PVS,
     // is the player) -- meshBuilt short-circuits everything.
-    EXPECT_FALSE(IrrlichtRenderer::isEntityBlockingProgressiveLoad(
+    EXPECT_FALSE(ZoneStreamComponent::isEntityBlockingProgressiveLoad(
         kMeshBuilt, kInScene, kIsPlayer, kPvsUnknown, /*depth=*/255, /*maxDepth=*/0));
 }
 
 // --- Entities not in the scene graph never block ---
 
 TEST(ProgressiveLoadRearmTest, NotInSceneGraphNeverBlocks) {
-    EXPECT_FALSE(IrrlichtRenderer::isEntityBlockingProgressiveLoad(
+    EXPECT_FALSE(ZoneStreamComponent::isEntityBlockingProgressiveLoad(
         kNotBuilt, kNotInScene, kNotPlayer, kPvsValid, /*depth=*/0, /*maxDepth=*/255));
 }
 
@@ -66,9 +70,9 @@ TEST(ProgressiveLoadRearmTest, NotInSceneGraphNeverBlocks) {
 //     "always prioritize the player entity" rule) ---
 
 TEST(ProgressiveLoadRearmTest, UnbuiltPlayerEntityAlwaysBlocks) {
-    EXPECT_TRUE(IrrlichtRenderer::isEntityBlockingProgressiveLoad(
+    EXPECT_TRUE(ZoneStreamComponent::isEntityBlockingProgressiveLoad(
         kNotBuilt, kInScene, kIsPlayer, kPvsValid, /*depth=*/0, /*maxDepth=*/255));
-    EXPECT_TRUE(IrrlichtRenderer::isEntityBlockingProgressiveLoad(
+    EXPECT_TRUE(ZoneStreamComponent::isEntityBlockingProgressiveLoad(
         kNotBuilt, kInScene, kIsPlayer, kPvsUnknown, /*depth=*/255, /*maxDepth=*/0));
 }
 
@@ -85,12 +89,12 @@ TEST(ProgressiveLoadRearmTest, UnbuiltPlayerEntityAlwaysBlocks) {
 //     backwards; this test pins the corrected direction. ---
 
 TEST(ProgressiveLoadRearmTest, NonPlayerEntityStillBlocksWhenPvsUnknown) {
-    EXPECT_TRUE(IrrlichtRenderer::isEntityBlockingProgressiveLoad(
+    EXPECT_TRUE(ZoneStreamComponent::isEntityBlockingProgressiveLoad(
         kNotBuilt, kInScene, kNotPlayer, kPvsUnknown, /*depth=*/0, /*maxDepth=*/255));
     // Depth is irrelevant while PVS is unknown -- must still block even at
     // depth 255 vs maxDepth 0 (the "obviously excluded once PVS resolves"
     // shape), because we can't yet tell.
-    EXPECT_TRUE(IrrlichtRenderer::isEntityBlockingProgressiveLoad(
+    EXPECT_TRUE(ZoneStreamComponent::isEntityBlockingProgressiveLoad(
         kNotBuilt, kInScene, kNotPlayer, kPvsUnknown, /*depth=*/255, /*maxDepth=*/0));
 }
 
@@ -108,7 +112,7 @@ TEST(ProgressiveLoadRearmTest, OutOfRegionEntityWithinPrepDepthStillBlocks) {
     // must still block. This is exactly what the old code got wrong: it
     // keyed off region EQUALITY, not depth, so this entity was invisible to
     // the completion count no matter what entityPrepMaxPvsDepth said.
-    EXPECT_TRUE(IrrlichtRenderer::isEntityBlockingProgressiveLoad(
+    EXPECT_TRUE(ZoneStreamComponent::isEntityBlockingProgressiveLoad(
         kNotBuilt, kInScene, kNotPlayer, kPvsValid, /*depth=*/3, /*maxDepth=*/255));
 }
 
@@ -119,7 +123,7 @@ TEST(ProgressiveLoadRearmTest, OutOfRegionEntityWithinPrepDepthStillBlocks) {
 //     overcorrect into that trap. ---
 
 TEST(ProgressiveLoadRearmTest, EntityBeyondPrepMaxDepthDoesNotBlock) {
-    EXPECT_FALSE(IrrlichtRenderer::isEntityBlockingProgressiveLoad(
+    EXPECT_FALSE(ZoneStreamComponent::isEntityBlockingProgressiveLoad(
         kNotBuilt, kInScene, kNotPlayer, kPvsValid, /*depth=*/5, /*maxDepth=*/2));
 }
 
@@ -128,13 +132,13 @@ TEST(ProgressiveLoadRearmTest, EntityBeyondPrepMaxDepthDoesNotBlock) {
 //     mirrored here as `<=`) ---
 
 TEST(ProgressiveLoadRearmTest, EntityExactlyAtPrepMaxDepthBlocks) {
-    EXPECT_TRUE(IrrlichtRenderer::isEntityBlockingProgressiveLoad(
+    EXPECT_TRUE(ZoneStreamComponent::isEntityBlockingProgressiveLoad(
         kNotBuilt, kInScene, kNotPlayer, kPvsValid, /*depth=*/2, /*maxDepth=*/2));
 }
 
 // --- One past the cap does not ---
 
 TEST(ProgressiveLoadRearmTest, EntityOnePastPrepMaxDepthDoesNotBlock) {
-    EXPECT_FALSE(IrrlichtRenderer::isEntityBlockingProgressiveLoad(
+    EXPECT_FALSE(ZoneStreamComponent::isEntityBlockingProgressiveLoad(
         kNotBuilt, kInScene, kNotPlayer, kPvsValid, /*depth=*/3, /*maxDepth=*/2));
 }

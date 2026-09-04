@@ -255,7 +255,7 @@ bool IrrlichtRenderer::loadZoneStep8_Entities(ZoneLoadContext& ctx) {
 
         entityPrepReady_ = true;
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step8: entityPrepReady_=true");
-        logAssetBuildTime("seq_entities", 0, stepStart);
+        zoneStream_->logAssetBuildTime("seq_entities", 0, stepStart);
         LOG_INFO(MOD_GRAPHICS, "SEQ Step8: about to exit scope");
     }
     LOG_INFO(MOD_GRAPHICS, "SEQ Step8: scope exited, flushing log...");

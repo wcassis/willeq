@@ -333,7 +333,7 @@ bool IrrlichtRenderer::loadZoneStep10_Sky(ZoneLoadContext& ctx) {
                   skyRenderer_ ? skyRenderer_->isInitialized() : false,
                   skyRenderer_ ? skyRenderer_->isEnabled() : false,
                   isIndoorZone_, fogEnabled_, renderDistance_, (bool)weatherSystem_);
-        logAssetBuildTime("seq_sky", 0, stepStart);
+        zoneStream_->logAssetBuildTime("seq_sky", 0, stepStart);
     }
     FlushThreadLog();
     return true;
@@ -764,7 +764,7 @@ void IrrlichtRenderer::loadZoneStep11_Env(ZoneLoadContext& ctx) {
         }
 
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: complete");
-        logAssetBuildTime("seq_env", 0, stepStart);
+        zoneStream_->logAssetBuildTime("seq_env", 0, stepStart);
     }
     FlushThreadLog();
 }
@@ -823,7 +823,7 @@ void IrrlichtRenderer::loadZoneStep12_Lights(ZoneLoadContext& ctx) {
 
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12: zoneLightData_={}, zoneLightPositions_={}, zoneLightRegions_={}",
                   zoneLightData_.size(), zoneLightPositions_.size(), zoneLightRegions_.size());
-        logAssetBuildTime("seq_lights", zoneLightData_.size(), stepStart);
+        zoneStream_->logAssetBuildTime("seq_lights", zoneLightData_.size(), stepStart);
     }
     FlushThreadLog();
 }
@@ -1090,7 +1090,7 @@ void IrrlichtRenderer::loadZoneStep12b_Simulation(ZoneLoadContext& ctx) {
                  "(regions={}, objects={}, lights={}, entities={})",
                  output.regionVisible.size(), output.objectVisible.size(),
                  output.lightVisible.size(), output.entityResults.size());
-        logAssetBuildTime("seq_simulation", 0, stepStart);
+        zoneStream_->logAssetBuildTime("seq_simulation", 0, stepStart);
         FlushThreadLog();
 
         // Set up BSP-based camera collision now that PVS region is known
@@ -1130,7 +1130,7 @@ void IrrlichtRenderer::loadZoneStep13_Cleanup(ZoneLoadContext& ctx) {
         }
         pendingZoneComputations_.reset();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step13: pendingZoneComputations_ released");
-        logAssetBuildTime("seq_cleanup", 0, stepStart);
+        zoneStream_->logAssetBuildTime("seq_cleanup", 0, stepStart);
     }
     FlushThreadLog();
 }

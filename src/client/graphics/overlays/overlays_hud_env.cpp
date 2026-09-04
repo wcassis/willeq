@@ -308,7 +308,7 @@ void OverlaysComponent::applyEnvironmentalDisplaySettings() {
         } else {
             LOG_INFO(MOD_GRAPHICS, "Boids manager created (toggled on via settings)");
         }
-        owner_.ensureBoidsTextureGuard();
+        owner_.ZoneStream().ensureBoidsTextureGuard();
         if (zoneLoaded) {
             Environment::ZoneBiome biome = Environment::ZoneBiomeDetector::instance().getBiome(ctx_.currentZoneName);
             if (owner_.zoneBoundsValid_) {

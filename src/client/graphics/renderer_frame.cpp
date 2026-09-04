@@ -128,7 +128,7 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
 
     // ─── Progressive loading (loading screen showing, no governor restriction §4.2) ───
     if (progressiveLoadingActive_) {
-        processFrameProgressiveLoad();
+        zoneStream_->processFrameProgressiveLoad();
         frameTimings_.meshLoading = measureSection();
     }
 
@@ -197,7 +197,7 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
                             objectInSceneGraph_[nodeIdx] = false;
                     }
                     deferredObjects_[objIdx].meshBuilt = false;
-                    buildDeferredObject(objIdx);
+                    zoneStream_->buildDeferredObject(objIdx);
                     didWork = true;
                     LOG_INFO(MOD_GRAPHICS, "Post-progressive: rebuilt object {} with textures (queue: {})",
                              objIdx, objectTextureRebuildQueue_.size());
@@ -217,7 +217,7 @@ bool IrrlichtRenderer::processFrame(float deltaTime) {
         // Lightweight entity housekeeping (always runs, not didWork-gated):
         if (entityPrepReady_ && entityPrepWorker_ && entityRenderer_) {
             entityRenderer_->getRaceModelLoader()->promotePreparedModels();
-            if (++entityPrepScanCounter_ % 10 == 0) queueEntityPrepRequests();
+            if (++entityPrepScanCounter_ % 10 == 0) zoneStream_->queueEntityPrepRequests();
             if (entityPrepWorker_->isIdle()) entityPrepWorker_->dispatchOne();
         }
         frameTimings_.entityHousekeeping = measureSection();

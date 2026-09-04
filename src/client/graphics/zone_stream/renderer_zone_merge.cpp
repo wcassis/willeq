@@ -1,4 +1,5 @@
 #include "client/graphics/renderer_zone_merge.h"
+#include "client/graphics/zone_stream/zone_stream_component.h"
 #include "client/graphics/irrlicht_renderer.h"  // ZoneDrawEntry
 #include "client/graphics/entity_renderer.h"    // EntityVisual, EQAnimatedMeshSceneNode
 #include "client/graphics/door_manager.h"       // DoorVisual
@@ -528,15 +529,23 @@ void DoorTextureGuard::onTextureEvicted(const std::string& /*name*/,
     }
 }
 
+// L08: out-of-line so DoorTextureGuard/ForwardingTextureGuard are complete
+// here rather than in every consumer of irrlicht_renderer.h (see the component
+// header's forward-declaration note).
+ZoneStreamComponent::ZoneStreamComponent(RendererContext& ctx, IrrlichtRenderer& owner)
+    : ctx_(ctx), owner_(owner) {}
+
+ZoneStreamComponent::~ZoneStreamComponent() = default;
+
 // T124: shutdown()-time unregister for objectNodeTextureGuard_ (T123 --
 // registered in initLoadingScreen() but never unregistered before this
 // unit) and the four T124 guards. Defined here, not irrlicht_renderer.cpp
 // (which was at the check_file_sizes.sh budget when this was written).
-void IrrlichtRenderer::unregisterRemainingT124Guards() {
-    unregisterGuard(constrainedTextureCache_, objectNodeTextureGuard_);
-    unregisterGuard(constrainedTextureCache_, doorTextureGuard_);
-    unregisterGuard(constrainedTextureCache_, spellVisualFXTextureGuard_);
-    unregisterGuard(constrainedTextureCache_, boidsTextureGuard_);
+void ZoneStreamComponent::unregisterRemainingT124Guards() {
+    unregisterGuard(ctx_.constrainedTextureCache, owner_.objectNodeTextureGuard_);
+    unregisterGuard(ctx_.constrainedTextureCache, doorTextureGuard_);
+    unregisterGuard(ctx_.constrainedTextureCache, owner_.spellVisualFXTextureGuard_);
+    unregisterGuard(ctx_.constrainedTextureCache, boidsTextureGuard_);
 }
 
 // T124: defined here (not irrlicht_renderer.cpp, which was at the
@@ -544,23 +553,23 @@ void IrrlichtRenderer::unregisterRemainingT124Guards() {
 // loadGlobalAssets() (renderer_init.cpp) right
 // after doorManager_'s own lazy construction. See DoorTextureGuard's doc
 // comment (header) for the gap closed.
-void IrrlichtRenderer::ensureDoorTextureGuard() {
-    if (doorTextureGuard_ || !constrainedTextureCache_ || !doorManager_) return;
+void ZoneStreamComponent::ensureDoorTextureGuard() {
+    if (doorTextureGuard_ || !ctx_.constrainedTextureCache || !ctx_.doorManager) return;
     doorTextureGuard_ = std::make_unique<DoorTextureGuard>(
-        doorManager_->getDoors(), constrainedTextureCache_->getPlaceholderTexture());
-    constrainedTextureCache_->addEvictionListener(doorTextureGuard_.get());
+        ctx_.doorManager->getDoors(), ctx_.constrainedTextureCache->getPlaceholderTexture());
+    ctx_.constrainedTextureCache->addEvictionListener(doorTextureGuard_.get());
 }
 
 // T124: idempotent, safe to call from either of boidsManager_'s two
 // lazy-construction sites (renderer_init.cpp, renderer_hud_env.cpp). See BoidsManager::
 // swapEvictedTexture()'s doc comment for the gap closed.
-void IrrlichtRenderer::ensureBoidsTextureGuard() {
-    if (boidsTextureGuard_ || !constrainedTextureCache_ || !boidsManager_) return;
-    Environment::BoidsManager* boids = boidsManager_.get();
+void ZoneStreamComponent::ensureBoidsTextureGuard() {
+    if (boidsTextureGuard_ || !ctx_.constrainedTextureCache || !ctx_.boidsManager) return;
+    Environment::BoidsManager* boids = ctx_.boidsManager.get();
     boidsTextureGuard_ = std::make_unique<ForwardingTextureGuard>(
         [boids](irr::video::ITexture* from, irr::video::ITexture* to) { boids->swapEvictedTexture(from, to); },
-        constrainedTextureCache_->getPlaceholderTexture());
-    constrainedTextureCache_->addEvictionListener(boidsTextureGuard_.get());
+        ctx_.constrainedTextureCache->getPlaceholderTexture());
+    ctx_.constrainedTextureCache->addEvictionListener(boidsTextureGuard_.get());
 }
 
 } // namespace Graphics

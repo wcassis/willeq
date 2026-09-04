@@ -99,7 +99,7 @@ void IrrlichtRenderer::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
             }
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: built deferred objects from entries, count={}", deferredObjects_.size());
         } else {
-            indexObjectMeshes();
+            zoneStream_->indexObjectMeshes();
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: used indexObjectMeshes() fallback");
         }
 
@@ -455,7 +455,7 @@ void IrrlichtRenderer::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: objectLights_ after={}, fire sources from objects={}",
                       objectLights_.size(), fireSrcCount);
         }
-        logAssetBuildTime("seq_objects", deferredObjects_.size(), stepStart);
+        zoneStream_->logAssetBuildTime("seq_objects", deferredObjects_.size(), stepStart);
     }
     FlushThreadLog();
 }
@@ -529,7 +529,7 @@ void IrrlichtRenderer::loadZoneStep7_Doors(ZoneLoadContext& ctx) {
                      totalDoors, doorsFailed, doorsWithMissingTex);
         }
         // Constrained cache was set at creation above — no separate runtime set needed.
-        logAssetBuildTime("seq_doors", 0, stepStart);
+        zoneStream_->logAssetBuildTime("seq_doors", 0, stepStart);
     }
     FlushThreadLog();
 }
@@ -569,7 +569,7 @@ void IrrlichtRenderer::loadZoneStep9_Collision(ZoneLoadContext& ctx) {
                   "regionWorldTriangles_={}, objectWorldTriangles_={}, doorCollisionData_={}, bspFiltered={}",
                   regionWorldTriangles_.size(), objectWorldTriangles_.size(),
                   doorCollisionData_.size(), (bool)(zoneBspTree_ && !regionWorldTriangles_.empty()));
-        logAssetBuildTime("seq_collision", 0, stepStart);
+        zoneStream_->logAssetBuildTime("seq_collision", 0, stepStart);
     }
     FlushThreadLog();
 }

@@ -217,7 +217,7 @@ bool IrrlichtRenderer::loadZoneStep1_S3D(ZoneLoadContext& ctx) {
                   currentZone_ ? currentZone_->textures.size() : 0,
                   currentZone_ ? (bool)currentZone_->wldLoader : false,
                   currentZone_ ? (bool)currentZone_->geometry : false);
-        logAssetBuildTime("seq_s3d_parse", 0, stepStart);
+        zoneStream_->logAssetBuildTime("seq_s3d_parse", 0, stepStart);
     }
     FlushThreadLog();
 
@@ -377,7 +377,7 @@ void IrrlichtRenderer::loadZoneStep2_BSP(ZoneLoadContext& ctx) {
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2: BSP compute skipped (zone={}, wldLoader={})",
                       (bool)zone, zone ? (bool)zone->wldLoader : false);
         }
-        logAssetBuildTime("seq_bsp_compute", 0, stepStart);
+        zoneStream_->logAssetBuildTime("seq_bsp_compute", 0, stepStart);
     }
     FlushThreadLog();
 
@@ -503,7 +503,7 @@ void IrrlichtRenderer::loadZoneStep2_BSP(ZoneLoadContext& ctx) {
                   "regionBoundingBoxes_={}, portalSystem_={}, portalOcclusionEligible_={}, regionNeighbors_={}",
                   (bool)zoneBspTree_, usePvsCulling_, regionBoundingBoxes_.size(),
                   (bool)portalSystem_, portalOcclusionEligible_, regionNeighbors_.size());
-        logAssetBuildTime("seq_bsp_install", 0, stepStart);
+        zoneStream_->logAssetBuildTime("seq_bsp_install", 0, stepStart);
     }
     FlushThreadLog();
 }
@@ -754,7 +754,7 @@ void IrrlichtRenderer::loadZoneStep4_Regions(ZoneLoadContext& ctx) {
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step4: front-to-back sorting skipped (usePvsCulling_={}, regionMeshNodes_={}, skipManualZoneDraw={})",
                       usePvsCulling_, regionMeshNodes_.size(), config_.constrainedConfig.skipManualZoneDraw);
         }
-        logAssetBuildTime("seq_regions", regionMeshNodes_.size(), stepStart);
+        zoneStream_->logAssetBuildTime("seq_regions", regionMeshNodes_.size(), stepStart);
     }
     FlushThreadLog();
 }
@@ -845,7 +845,7 @@ void IrrlichtRenderer::loadZoneStep5_Assets(ZoneLoadContext& ctx) {
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step5: RaceModelLoader zone set to '{}'", currentZoneName_);
         }
 
-        logAssetBuildTime("seq_assets", 0, stepStart);
+        zoneStream_->logAssetBuildTime("seq_assets", 0, stepStart);
     }
     FlushThreadLog();
 }

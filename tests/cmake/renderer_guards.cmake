@@ -189,6 +189,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_sim_bridge_component)
 ENDIF()
 
+# L08 (Batch L): ZoneStreamComponent -- progressive load, PVS neighbourhood,
+# deferred objects and the T124 texture guards. Same bare, never-Init()'d
+# IrrlichtRenderer idiom as test_sim_bridge_component above.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_zone_stream_component
+        test_zone_stream_component.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_zone_stream_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_zone_stream_component GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_zone_stream_component)
+ENDIF()
+
 # T329 (B041): the NavmeshChanged bridge arm forwarding to
 # OverlaysComponent::setNavmesh. Same bare, never-Init()'d IrrlichtRenderer
 # idiom as test_overlays_component above, plus a real eqt::bridge::
