@@ -707,6 +707,9 @@ void PlayerCameraComponent::updatePlayerMovement(float deltaTime) {
         ctx_.playerX = newX;
         ctx_.playerY = newY;
         ctx_.playerZ = newZ;
+        // T332 (B049): the integrator produced this one, so it really is in the
+        // render frame and it is no longer an echo of what we were handed.
+        playerPositionIsSeed_ = false;
     }
 
     // Always update heading if it changed (separate from position)
@@ -780,6 +783,8 @@ void PlayerCameraComponent::updatePlayerMovement(float deltaTime) {
         intent.y = ctx_.playerY;
         intent.z = ctx_.playerZ;
         intent.heading = heading;  // EQ format (0-512)
+        // T332 (B049): provenance, not a value -- see renderer_intents.h.
+        intent.seededPosition = playerPositionIsSeed_;
 
         // When player stops, send zero deltas to ensure server knows we've stopped
         // This triggers anim=0 in OnGraphicsMovement

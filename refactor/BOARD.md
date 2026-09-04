@@ -575,7 +575,7 @@ it without taking that measurement first.
 
 ## Added 2026-09-04 by the T328 Leg B live session
 
-- **B049** (A) **RE-MEASURED AND CONFIRMED LIVE by T331 (2026-09-04) — the
+- ~~**B049** (A) **RE-MEASURED AND CONFIRMED LIVE by T331 (2026-09-04) — the
   writer is NAMED and it is fable, not the server. Ready for a fix unit.**
   `Testchar` was found at `z=11.8806` after being left at `z=3.751` — exactly
   **13 × 0.625**. T311 Leg B (2026-09-02) matched the official client's wire z
@@ -613,7 +613,32 @@ it without taking that measurement first.
 
   Closes when: a fix lands and a **graphical** login/camp cycle is measured
   twice in a row with the persisted z unchanged at 3.751. **Needs eqemu.**
-  Prov: **T331 Review + `review/T331/README.md`**; T328 Leg B Review; T311.
+  Prov: **T331 Review + `review/T331/README.md`**; T328 Leg B Review; T311.~~
+
+  **CLOSED by T332 (2026-09-04), proven live.** Three graphical login/camp
+  cycles of `Testchar`, same spot, same method as T331:
+
+  | cycle | z before | z after | delta | T331's same cycle |
+  |---|---|---|---|---|
+  | 1 | 3.751 | **3.75** | −0.001 (1/8 spawn quantisation) | 3.75 -> **4.38063** |
+  | 2 | 3.75 | **3.75** | **0** | 4.38063 -> **5.00563** |
+  | 3 | 3.75 | **3.75** | **0** | 5.00563 -> **5.63063** |
+
+  ⚠ **The writer T331 named was a real hole but NOT the one that fired.** With
+  `OnGraphicsMovement` fixed alone the live run still persisted 4.38063. T332
+  instrumented the run: `awaiting=false` on the FIRST self position update — the
+  pending-conversion flag was never set at all, because on a real graphical
+  zone-in NEITHER self-SPAWN edge (the two T311 marked) is ever taken for our own
+  character; the spawn id arrives with the PlayerProfile. **The writer is
+  `ZoneProcessPlayerProfile` (`src/client/zone/zone_entry.cpp`)**, which stored
+  the server's WIRE z raw and never marked the conversion owed. Fixed at all
+  inbound self-position edges, with the conversion factored into one function
+  (`BridgeComponent::ConvertSelfZToRenderFrame`) that also publishes the
+  corrected z onto the bridge — `SetPosition`'s `PlayerMoved` goes to the state
+  layer's own EventBus and never reaches the renderer, so the renderer had been
+  keeping the seeded wire z. Pinned by `tests/test_zone_in_z_conversion.cpp`
+  (7 tests, renderer present — the headless arm structurally cannot fail on
+  this). Prov: **T332 Review + `review/T332/README.md`**.
 
 ## Added 2026-09-04 by the L12 Review (Batch L close-out)
 

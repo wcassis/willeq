@@ -239,6 +239,15 @@ private:
 	// plain bridge-intent handler). Reached only from ProcessBridgeIntents.
 	void OnGraphicsMovement(const eqt::events::PlayerPositionChanged& update);
 
+	// T311/T332: THE ONE deferred wire->render conversion of our OWN stored z,
+	// called from both places that can discover the conversion is still owed --
+	// onPlayerModelGeometryChanged (the mesh offset just became measurable) and
+	// OnGraphicsMovement (the renderer echoed the seed back at us). No-op, and
+	// leaves the flag set, unless a mesh offset is known AND the conversion is
+	// still pending; returns whether it converted. Defined in
+	// bridge_component_intents.cpp next to its first caller.
+	bool ConvertSelfZToRenderFrame(float collisionZOffset);
+
 	// ---- G02: the renderer intent handlers ----
 	// One per RendererIntent alternative, listed in the variant's own order.
 	// ProcessBridgeIntents is a std::visit overload set that does nothing but

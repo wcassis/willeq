@@ -171,6 +171,20 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_position_frame_roundtrip)
 
+# T332 (B049): the same zone-in z conversion WITH A RENDERER PRESENT -- the arm
+# test_position_frame_roundtrip structurally cannot cover, because headless
+# there is no renderer echo and the defect is invisible (T331 measured it live).
+# Bare, never-Init()'d IrrlichtRenderer, so it needs graphics but no device and
+# no GL context; same idiom as test_player_camera_component.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_zone_in_z_conversion
+        test_zone_in_z_conversion.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_zone_in_z_conversion PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_zone_in_z_conversion GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_zone_in_z_conversion)
+ENDIF()
+
 # T90: EqActionHandler::setHeading() double-conversion regression tests
 # (degrees -> EQ 512-units conversion applied on top of a value that was
 # then stored raw by EverQuest::SetHeading(), which every other site reads

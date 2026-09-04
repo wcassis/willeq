@@ -377,6 +377,11 @@ void PlayerCameraComponent::setPlayerPosition(float x, float y, float z, float h
     ctx_.playerY = y;
     ctx_.playerZ = z;
     ctx_.playerHeading = heading;
+    // T332 (B049): this position was HANDED to us -- it is not a position this
+    // renderer derived, and at zone-in it is the raw WIRE z straight out of the
+    // zone-load snapshot. Mark it so the echo the movement integrator sends
+    // back on the next PlayerPositionChanged intent is recognisable as an echo.
+    playerPositionIsSeed_ = true;
 
     LOG_DEBUG(MOD_GRAPHICS, "[ZONE-IN] setPlayerPosition: pos=({:.2f},{:.2f},{:.2f}) heading={:.2f} (EQ units, EQ heading 0-512)",
              x, y, z, heading);

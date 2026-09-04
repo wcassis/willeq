@@ -136,14 +136,44 @@ void eqt::bridge::BridgeComponent::onPlayerModelGeometryChanged(const eqt::event
 	// the mesh offset is measurable, convert it into the render frame
 	// exactly once. Without this the send path would treat a wire
 	// value as a render value and add the offset a second time.
-	if (i.collisionZOffset > 0.0f && previous <= 0.0f
-	    && player.zAwaitingFrameConversion()) {
-		player.setZAwaitingFrameConversion(false);
-		// SetPosition (not SetPosLocal): the renderer was handed the
-		// unconverted z at zone-in and needs the corrected one.
-		ctx_.self.SetPosition(ctx_.self.PosX(), ctx_.self.PosY(),
-		            eqt::wireZToRenderZ(ctx_.self.PosZ(), i.collisionZOffset, player.size()));
+	if (previous <= 0.0f) {
+		ConvertSelfZToRenderFrame(i.collisionZOffset);
 	}
+}
+
+// T311/T332: the conversion itself, in ONE place. It used to be inline above,
+// which is why the second discoverer of a pending conversion
+// (OnGraphicsMovement, when the renderer echoes the zone-in seed back) had no
+// way to run it and cleared the flag instead -- B049, 0.625 per login.
+bool eqt::bridge::BridgeComponent::ConvertSelfZToRenderFrame(float collisionZOffset) {
+	auto& player = ctx_.game_state.player();
+	if (collisionZOffset <= 0.0f || !player.zAwaitingFrameConversion()) {
+		// No measured mesh yet, or nothing owed. Leave the flag ALONE: with no
+		// offset there is nothing to convert through, and the send path already
+		// passes an unconverted wire z out verbatim (position_frames.h).
+		return false;
+	}
+	player.setZAwaitingFrameConversion(false);
+	// SetPosition (not SetPosLocal): the renderer was handed the unconverted z
+	// at zone-in and needs the corrected one handed back.
+	ctx_.self.SetPosition(ctx_.self.PosX(), ctx_.self.PosY(),
+	            eqt::wireZToRenderZ(ctx_.self.PosZ(), collisionZOffset, player.size()));
+	// T332: and it really does have to be handed back. SetPosition fires
+	// PlayerMoved on the STATE LAYER's own EventBus, which has no production
+	// listener and never reaches the bridge (zone_entry.cpp says so at the
+	// PlayerProfile push, and zone_component.cpp hand-rolls this same event for
+	// the same reason). Without this the renderer keeps the raw wire z it was
+	// seeded with and draws us 0.625*size - collisionZOffset off the ground.
+	if (ctx_.bridge) {
+		eqt::state::PlayerMovedData data;
+		data.x = ctx_.self.PosX(); data.y = ctx_.self.PosY(); data.z = ctx_.self.PosZ();
+		data.heading = ctx_.self.HeadingDeg() * 512.0f / 360.0f;
+		data.dx = 0; data.dy = 0; data.dz = 0;
+		data.isMoving = false;
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::PlayerMoved, std::move(data)));
+	}
+	return true;
 }
 
 // ================================================================

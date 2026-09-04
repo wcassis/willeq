@@ -179,6 +179,13 @@ public:
 	PlayerModeConfig const& playerConfig() const { return playerConfig_; }
 	uint16_t const& playerSpawnId() const { return playerSpawnId_; }
 
+	// T332 (B049): true while ctx_.playerX/Y/Z still hold a position this
+	// component was HANDED (setPlayerPosition -- the zone-load snapshot seed or
+	// a PlayerMoved relocation) rather than one the movement integrator
+	// produced. It rides out on every PlayerPositionChanged intent as
+	// seededPosition so the game thread can tell an echo from a real move.
+	bool playerPositionIsSeed() const { return playerPositionIsSeed_; }
+
 private:
 	// In-family callers only (K03 correction a) -- never called from outside
 	// these three TUs, so they need no public surface and are not §5 candidates.
@@ -206,6 +213,10 @@ private:
 	float playerPitch_ = 0;  // Vertical look angle in degrees (-89 to 89)
 	VisionType baseVision_ = VisionType::Normal;    // Base vision from race
 	bool useIrrlichtCollision_ = true;  // Use zone mesh for collision instead of HCMap
+	// T332: set by setPlayerPosition() (the only external writer of
+	// ctx_.playerX/Y/Z), cleared by updatePlayerMovement() the moment the
+	// integrator writes them itself. See playerPositionIsSeed() above.
+	bool playerPositionIsSeed_ = false;
 
 	// Debug visualization for collision rays. The nested type moved with the
 	// member: nothing outside this family ever named either (K05 j).

@@ -589,7 +589,16 @@ void eqt::entities::EntitiesComponent::ZoneProcessClientUpdate(const EQ::Net::Pa
 		// copy only, so PlayerState (and therefore GetHeading(),
 		// clickNearestDoor(), getNearestPlayer(), GameState::playerPosition())
 		// never moved off the zone-in value.
-		ctx_.self.SetPosLocal(x, y, z);
+		// T332 (B049): the server's echo of our own position is a WIRE z, the
+		// same as every other inbound self-position edge -- convert it, and
+		// mark the conversion owed when no mesh offset is measurable yet. It
+		// used to be stored raw, so an echo arriving after the model had loaded
+		// re-planted a wire value in the render-frame store.
+		ctx_.self.SetPosLocal(x, y,
+		            eqt::wireZToRenderZ(z, ctx_.game_state.player().collisionZOffset(),
+		                                ctx_.game_state.player().size()));
+		ctx_.game_state.player().setZAwaitingFrameConversion(
+			ctx_.game_state.player().collisionZOffset() <= 0.0f);
 		// S->C transformation for our player: inverse of C->S
 		// (server_heading = 90 - client heading). LOAD-BEARING and PLAYER-ONLY:
 		// NPC headings a few lines above take server_h verbatim. Do not
