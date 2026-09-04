@@ -562,6 +562,32 @@ void eqt::movement::MovementComponent::UpdateMovement()
 
 void eqt::movement::MovementComponent::SendPositionUpdate()
 {
+	// T346 step 2 (BOARD B001 remainder): a dead client is SILENT.
+	//
+	// Measured, not assumed. In T311 Leg A's capture of a real Titanium
+	// client (review/T311/legA/decode/T311A_table2_opcode_timeline.tsv)
+	// there is not one C->S OP_ClientUpdate between an OP_Death for our own
+	// spawn id and the zone teardown that follows it, in any of the four
+	// self-death windows -- against 1522 of them across the session. fable
+	// kept pumping them, including the one ApplyPositionState(POS_DEAD)'s
+	// StopMovement() fires on the way down (T344 recorded that hazard).
+	//
+	// The gate is HERE and not in renderer_player_physics.cpp's
+	// sendPositionUpdateToServer(): that phase only pushes a
+	// PlayerPositionChanged intent onto the bridge, and every path that ends
+	// in a C->S OP_ClientUpdate -- the bridge's intent drain, StopMovement,
+	// the teleport/relocate senders, the /loc-style commands -- funnels
+	// through this one function. Gating the renderer would have missed all
+	// but one of them, and would have made G06's order golden learn a
+	// network rule.
+	//
+	// Released on the far side of the bind re-entry, in
+	// ZoneProcessPlayerProfile: without that, a respawned character never
+	// sends its position again.
+	if (ctx_.game_state.player().positionState() == eqt::state::PositionState::Dead) {
+		return;
+	}
+
 	// T88 test seam: m_test_bypass_send_guard skips this guard (and the
 	// throttle below) so a headless test can reach the encoder logic
 	// without a live m_zone_connection. See Test_SetBypassSendGuardForSeam.

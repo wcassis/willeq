@@ -274,6 +274,13 @@ TEST(SelfDeathSequence, WhileDead_NoClientUpdateEverGoesOut) {
     h.spawnSelf();
     h.clearSent();
 
+    // Dying WHILE MOVING is the case T344 recorded as owed:
+    // ApplyPositionState(POS_DEAD) takes its StopMovement() arm, and
+    // StopMovement() ends in a SendPositionUpdate() of its own. The gate has
+    // to be inside SendPositionUpdate for that one to be caught too -- which
+    // is why ApplyPositionState writes positionState BEFORE the switch.
+    h.eq.GetGameState().player().setMoving(true);
+
     h.die();
     // N ticks of the one choke point every C->S OP_ClientUpdate funnels
     // through (the graphics path only pushes an intent; bridge_component
@@ -315,9 +322,14 @@ TEST(SelfDeathSequence, AfterZoneInPlayerProfile_ClientUpdateResumes) {
     EXPECT_NE(h.eq.GetGameState().player().positionState(), eqt::state::PositionState::Dead)
         << "zoning in clears Dead; otherwise the death gate is permanent";
 
+    // The all-zero profile above also zeroes our spawn id, which
+    // SendMovementUpdate refuses to send with. That is the fixture's doing,
+    // not the gate's; restore it so the assertion is about the gate.
+    h.eq.Test_SetMySpawnIdForSeam(kSelfId);
     h.clearSent();
     h.eq.Movement().SendPositionUpdate();
-    EXPECT_GE(h.countOpcode(HC_OP_ClientUpdate), 1u);
+    EXPECT_GE(h.countOpcode(HC_OP_ClientUpdate), 1u)
+        << "the death gate must lift when the bind re-entry completes";
 }
 
 // ------------------------------------------------------------------

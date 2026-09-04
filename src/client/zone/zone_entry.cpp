@@ -1,4 +1,5 @@
 #include "client/eq.h"
+#include "client/movement/movement_component.h"  // T346: ApplyPositionState
 #include "client/willeq_database.h"
 #include "client/pathfinder_interface.h"
 #ifdef EQT_HAS_NAVMESH
@@ -256,6 +257,19 @@ void eqt::zone::ZoneComponent::ZoneProcessPlayerProfile(const EQ::Net::Packet &p
 		return;
 	}
 	
+	// T346 step 2: a PlayerProfile is the authoritative "you are in a zone
+	// now" statement, and it is what closes the death round-trip -- the bind
+	// re-entry ends here. Releasing SendPositionUpdate's POS_DEAD gate at
+	// this point (and only here) is what keeps that gate from being
+	// permanent: nothing else in the client ever cleared POS_DEAD, so a
+	// respawned character would have stopped transmitting its position for
+	// the rest of the session. ApplyPositionState(), not SetPositionState():
+	// the server is telling us, so there is nothing to tell it back (T344).
+	if (ctx_.game_state.player().positionState() == eqt::state::PositionState::Dead) {
+		LOG_DEBUG(MOD_ZONE, "PlayerProfile: clearing Dead position state (bind re-entry complete)");
+		ctx_.Movement().ApplyPositionState(POS_STANDING);
+	}
+
 	// Basic attributes (offsets from struct)
 	uint32_t gender = p.GetUInt32(base + 4);     // offset 4
 	uint32_t race = p.GetUInt32(base + 8);       // offset 8
