@@ -140,6 +140,17 @@ void FrameComponent::processCommonInput(const std::vector<RendererEvent>& action
             case RA::ToggleHUD: ctx_.Diagnostics().toggleHUD(); break;
             case RA::ToggleNameTags: ctx_.Diagnostics().toggleNameTags(); break;
             case RA::ToggleOldModels: ctx_.Diagnostics().toggleOldModels(); break;
+            // T343 (B002): autorun. The hotkeys were bound and the receiver
+            // queued the action, but it went to the game thread and died in a
+            // LOG_DEBUG stub; the renderer flag the movement phase reads had
+            // no writer at all. Global-mode arm like the T330 four: the
+            // receiver already swallows non-function keys while chat is
+            // focused, so no extra guard here. Pinned by
+            // tests/test_autorun_arm.cpp.
+            case RA::ToggleAutorun:
+                ctx_.PlayerCamera().toggleAutorun();
+                LOG_INFO(MOD_GRAPHICS, "Autorun {}", ctx_.PlayerCamera().autorun() ? "ON" : "OFF");
+                break;
             case RA::ToggleOptions:
                 // WindowManager removed — options window not available
                 break;

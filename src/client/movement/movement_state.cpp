@@ -8,8 +8,8 @@
 //    UpdateJump.
 //  - Water state: UpdateWaterState, OnEnterWater, OnExitWater, GetSwimSpeed.
 //  - Speed: GetMovementSpeed.
-//  - Keyboard control: StartMove*/StopMove*/StartTurn*/StopTurn* and
-//    UpdateKeyboardMovement.
+//  - Keyboard control: DELETED by T343 (board B032) -- see the note at the
+//    end of this file.
 //
 // Split out of a 2,139-line eq_movement.cpp by J23
 // (refactor/J23_eq_movement_split.md), which itself came out of eq.cpp in
@@ -706,191 +706,29 @@ float eqt::movement::MovementComponent::GetMovementSpeed() const
 	return ctx_.game_state.player().moveSpeed();
 }
 
-// Keyboard control methods
+// T343 (board B032): THE GAME-SIDE KEYBOARD-MOVEMENT ROUTE WAS DELETED HERE.
 //
-// T319 -- KEPT DELIBERATELY, and the reason matters.
+// Deleted: StartMoveForward/StartMoveBackward/StartTurnLeft/StartTurnRight,
+// StopMoveForward/StopMoveBackward/StopTurnLeft/StopTurnRight, and
+// UpdateKeyboardMovement() together with the four PlayerState flags they were
+// the only writers of (moveForward/moveBackward/turnLeft/turnRight) and the
+// UpdateMovement() branch that was their only reader.
 //
-// The four Start* below have ZERO callers; only the Stop* half is reached
-// (EqActionHandler::stopAllMovement()). So the game-side keyboard-movement
-// system can be switched off but never on. That is not four stray
-// functions: Start* -> the four PlayerState flags -> UpdateMovement()'s
-// keyboard branch (eq_movement.cpp, the "Update keyboard-based movement
-// first" block) -> UpdateKeyboardMovement() -> SetPosLocal + FixZ +
-// CheckZoneLine + SendPositionUpdate is a complete, working movement path.
-// Everything downstream of the flags is live and exercised; the only thing
-// missing is a writer for the flags. Deleting the Start* half deletes the
-// path, keeps a Stop* half that then switches off something nothing can
-// switch on, and buys four functions' worth of lines.
+// T319's keep note argued these were "the only game-side mover the client
+// has". T343 MEASURED the other end and that premise does not hold. Phase 1 of
+// the renderer's per-frame movement pipeline (readMovementInput(),
+// renderer_player_physics.cpp) polls HotkeyManager for MoveForward,
+// MoveBackward, TurnLeft, TurnRight, StrafeLeft, StrafeRight, Jump, SwimUp and
+// SwimDown every single frame and writes the whole of PlayerMovementState from
+// them. Forward, backward and turning are driven by that poll exactly the way
+// swim is -- which is the finding T334 recorded when it refuted the "vertical
+// swim has no producer" board item. So this half was never the switch that was
+// missing an on position; it was a SECOND, parallel input route, and the only
+// mode that could have produced its key-down/key-up pairs is the graphical
+// one, which does not use it. The console handler is line-based and has no
+// continuous movement keys to bind, so no producer was ever possible.
 //
-// WHAT WOULD WIRE IT. Two callers, in this order:
-//   1. IActionHandler gains startMoveForward()/startMoveBackward()/
-//      startTurnLeft()/startTurnRight() next to the existing
-//      stopAllMovement(), EqActionHandler forwards them here, and
-//      ActionDispatcher exposes them; InputActionBridge then drives them
-//      from the continuous movement keys the way it drives the discrete
-//      actions today. That is the headless/scripted movement route -- the
-//      graphical client does NOT need it, because
-//      renderer_player_physics.cpp polls the same HotkeyManager bindings
-//      on the render thread and moves the player through the
-//      PlayerPositionChanged intent instead.
-//   2. Whoever does that must also decide what the renderer sees.
-//      UpdateKeyboardMovement() moves the player with SetPosLocal(), which
-//      deliberately publishes no PlayerMoved -- that is the same wall T316
-//      hit for autorun. A game-side mover has to publish the position
-//      itself or the renderer will show a stationary player walking.
-//
-// AUTORUN IS NOT THE REASON THESE STAY. Autorun is a separate open item and
-// T316 established that a handler-side implementation cannot work as long
-// as (2) holds. These stay because the keyboard-movement path is the only
-// game-side mover the client has, not because autorun might one day use it.
-void eqt::movement::MovementComponent::StartMoveForward()
-{
-	if (!ctx_.self.IsFullyZonedIn()) return;
-
-	// Clear any console-based movement (moveto, follow) when user takes manual control
-	if (!m_current_path.empty() || ctx_.game_state.player().targetX() != 0.0f || ctx_.game_state.player().targetY() != 0.0f || ctx_.game_state.player().targetZ() != 0.0f) {
-		m_current_path.clear();
-		m_current_path_index = 0;
-		ctx_.game_state.player().clearMovementTarget();
-		ctx_.game_state.player().clearFollowTarget();
-		LOG_DEBUG(MOD_MAIN, "Cleared pathfinding state due to manual movement");
-	}
-
-	ctx_.game_state.player().setMoveForward(true);
-	if (EverQuest::GetDebugLevel() >= 2) {
-		LOG_DEBUG(MOD_MAIN, "Starting forward movement");
-	}
-}
-
-void eqt::movement::MovementComponent::StartMoveBackward()
-{
-	if (!ctx_.self.IsFullyZonedIn()) return;
-	ctx_.game_state.player().setMoveBackward(true);
-	if (EverQuest::GetDebugLevel() >= 2) {
-		LOG_DEBUG(MOD_MAIN, "Starting backward movement");
-	}
-}
-
-void eqt::movement::MovementComponent::StartTurnLeft()
-{
-	if (!ctx_.self.IsFullyZonedIn()) return;
-	ctx_.game_state.player().setTurnLeft(true);
-	if (EverQuest::GetDebugLevel() >= 2) {
-		LOG_DEBUG(MOD_MAIN, "Starting left turn");
-	}
-}
-
-void eqt::movement::MovementComponent::StartTurnRight()
-{
-	if (!ctx_.self.IsFullyZonedIn()) return;
-	ctx_.game_state.player().setTurnRight(true);
-	if (EverQuest::GetDebugLevel() >= 2) {
-		LOG_DEBUG(MOD_MAIN, "Starting right turn");
-	}
-}
-
-void eqt::movement::MovementComponent::StopMoveForward()
-{
-	ctx_.game_state.player().setMoveForward(false);
-	if (!ctx_.game_state.player().moveBackward() && !ctx_.game_state.player().turnLeft() && !ctx_.game_state.player().turnRight()) {
-		ctx_.game_state.player().setMoving(false);
-		ctx_.game_state.player().setAnimation(ANIM_STAND);
-		SendPositionUpdate();  // Send immediate update when stopping
-		if (EverQuest::GetDebugLevel() >= 2) {
-			LOG_DEBUG(MOD_MAIN, "Stopping all movement");
-		}
-	}
-}
-
-void eqt::movement::MovementComponent::StopMoveBackward()
-{
-	ctx_.game_state.player().setMoveBackward(false);
-	if (!ctx_.game_state.player().moveForward() && !ctx_.game_state.player().turnLeft() && !ctx_.game_state.player().turnRight()) {
-		ctx_.game_state.player().setMoving(false);
-		ctx_.game_state.player().setAnimation(ANIM_STAND);
-		SendPositionUpdate();  // Send immediate update when stopping
-		if (EverQuest::GetDebugLevel() >= 2) {
-			LOG_DEBUG(MOD_MAIN, "Stopping all movement");
-		}
-	}
-}
-
-void eqt::movement::MovementComponent::StopTurnLeft()
-{
-	ctx_.game_state.player().setTurnLeft(false);
-	if (!ctx_.game_state.player().moveForward() && !ctx_.game_state.player().moveBackward() && !ctx_.game_state.player().turnRight()) {
-		ctx_.game_state.player().setMoving(false);
-		ctx_.game_state.player().setAnimation(ANIM_STAND);
-		SendPositionUpdate();  // Send immediate update when stopping
-	}
-}
-
-void eqt::movement::MovementComponent::StopTurnRight()
-{
-	ctx_.game_state.player().setTurnRight(false);
-	if (!ctx_.game_state.player().moveForward() && !ctx_.game_state.player().moveBackward() && !ctx_.game_state.player().turnLeft()) {
-		ctx_.game_state.player().setMoving(false);
-		ctx_.game_state.player().setAnimation(ANIM_STAND);
-		SendPositionUpdate();  // Send immediate update when stopping
-	}
-}
-
-void eqt::movement::MovementComponent::UpdateKeyboardMovement()
-{
-	if (!ctx_.self.IsFullyZonedIn()) return;
-	
-	// Handle turning
-	const float turn_speed = 90.0f; // degrees per second (4 seconds for full rotation)
-	float delta_heading = 0.0f;
-	
-	if (ctx_.game_state.player().turnLeft() && !ctx_.game_state.player().turnRight()) {
-		delta_heading = -turn_speed * 0.5f; // 500ms tick rate
-	} else if (ctx_.game_state.player().turnRight() && !ctx_.game_state.player().turnLeft()) {
-		delta_heading = turn_speed * 0.5f;
-	}
-	
-	if (delta_heading != 0.0f) {
-		float h = ctx_.self.HeadingDeg() + delta_heading;
-		// Normalize heading to 0-360
-		while (h < 0.0f) h += 360.0f;
-		while (h >= 360.0f) h -= 360.0f;
-		ctx_.self.SetHeadingLocal(h);
-	}
-	
-	// Handle forward/backward movement
-	float move_distance = 0.0f;
-	
-	if (ctx_.game_state.player().moveForward() && !ctx_.game_state.player().moveBackward()) {
-		move_distance = GetMovementSpeed() * 0.5f; // 500ms tick rate
-		ctx_.game_state.player().setMoving(true);
-		ctx_.game_state.player().setAnimation((ctx_.game_state.player().moveSpeed() >= WALK_SPEED_THRESHOLD) ? ANIM_RUN : ANIM_WALK);
-	} else if (ctx_.game_state.player().moveBackward() && !ctx_.game_state.player().moveForward()) {
-		move_distance = -DEFAULT_WALK_SPEED * 0.5f; // Backward uses walk speed, 500ms tick
-		ctx_.game_state.player().setMoving(true);
-		ctx_.game_state.player().setAnimation(ANIM_WALK); // Always walk when moving backward
-	} else if (!ctx_.game_state.player().moveForward() && !ctx_.game_state.player().moveBackward() && !ctx_.game_state.player().turnLeft() && !ctx_.game_state.player().turnRight()) {
-		// Not moving
-		if (ctx_.game_state.player().isMoving()) {
-			ctx_.game_state.player().setMoving(false);
-			ctx_.game_state.player().setAnimation(ANIM_STAND);
-		}
-	}
-	
-	// Apply movement
-	if (move_distance != 0.0f) {
-		// Convert heading to radians for calculations
-		float heading_rad = ctx_.self.HeadingDeg() * M_PI / 180.0f;
-
-		// Calculate new position
-		// In EQ coordinates: +X = East, +Y = North
-		// Heading 0 = North, 90 = East, 180 = South, 270 = West
-		float new_x = ctx_.self.PosX() + move_distance * sin(heading_rad);
-		float new_y = ctx_.self.PosY() + move_distance * cos(heading_rad);
-
-		// Update position
-		ctx_.self.SetPosLocal(new_x, new_y, ctx_.self.PosZ());
-
-		// Fix Z position if we have map data
-		ctx_.Zone().FixZ();
-	}
-}
+// The Stop* half was reachable, from EqActionHandler::stopAllMovement(), and
+// that call site is STRICTLY BETTER off: it now calls StopMovement(), which
+// clears the path and the movement target as well, so /stop stops a MoveTo or
+// a Follow instead of leaving the next UpdateMovement() tick to resume it.

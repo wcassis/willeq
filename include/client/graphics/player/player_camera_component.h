@@ -169,6 +169,19 @@ public:
 	// calls it, so a recomputed buff set applies over the racial base
 	// (T334, B046).
 	bool isSwimming() const { return playerMovement_.isSwimming; }
+
+	// T343 (board B002): AUTORUN. readMovementInput() (G06 phase 1) has always
+	// computed `playerMovement_.moveForward = forward || playerMovement_.autorun`,
+	// but nothing in the tree ever wrote that flag, so the three bound keys
+	// (grave, numpad +, Num Lock) travelled the whole action chain to
+	// EqActionHandler::toggleAutorun()'s LOG_DEBUG stub and the player never
+	// moved. The flag is RENDERER-OWNED for exactly the reason T334 recorded
+	// for swimUp/swimDown: phase 1 polls the movement bindings every frame, so
+	// a game-side writer would be overwritten the next frame, and there is no
+	// key-up to clear it on. The toggle is the only writer besides phase 1's
+	// cancel-on-movement-key.
+	void toggleAutorun() { playerMovement_.autorun = !playerMovement_.autorun; }
+	bool autorun() const { return playerMovement_.autorun; }
 	void resetVisionToBase();
 	VisionType getBaseVision() const { return baseVision_; }
 

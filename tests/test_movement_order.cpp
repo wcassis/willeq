@@ -235,7 +235,16 @@ std::vector<std::string> goldenOrder() {
 // golden and this case failed on the tip at statement 410. Both changes are
 // correct; the golden learned the insertion (see
 // refactor/T337_movement_golden_learns_t332.md).
-constexpr size_t kGoldenSize = 473;
+//
+// T343: B002 (autorun) insertion, two statements, at 27 and 28, in
+// readMovementInput() immediately BEFORE
+// `playerMovement_.moveForward = forward || playerMovement_.autorun;`
+//   27 `if (playerMovement_.autorun && (forward || backward || strafeLeft || strafeRight)) {`
+//   28 `playerMovement_.autorun = false;`
+// The autorun flag had no writer at all until T343 wired the hotkey arm; this
+// is its cancel half, and it is a BEHAVIOUR change stated here, not a
+// regeneration from the tip.
+constexpr size_t kGoldenSize = 475;
 
 }  // namespace
 

@@ -24,450 +24,452 @@
 24 bool swimDownPressed = isActionHeld(eqt::input::HotkeyAction::SwimDown);
 25 playerMovement_.swimUp = swimUpPressed;
 26 playerMovement_.swimDown = swimDownPressed;
-27 playerMovement_.moveForward = forward || playerMovement_.autorun;
-28 playerMovement_.moveBackward = backward;
-29 playerMovement_.strafeLeft = playerMovement_.isSwimming ? false : strafeLeft;
-30 playerMovement_.strafeRight = playerMovement_.isSwimming ? false : strafeRight;
-31 playerMovement_.turnLeft = turnLeft;
-32 playerMovement_.turnRight = turnRight;
-33 if (playerMovement_.isSwimming) {
-34 } else {
-35 if (jumpPressed && !playerMovement_.isJumping) {
-36 playerMovement_.isJumping = true;
-37 playerMovement_.verticalVelocity = playerMovement_.jumpVelocity;
-38 if (playerConfig_.collisionDebug) {
-39 LOG_INFO(MOD_GRAPHICS, "[Jump] Started jump with velocity {}", playerMovement_.verticalVelocity);
-40 heading = ctx_.playerHeading;
-41 oldHeading = heading;
-42 if (turnLeft && !turnRight) {
-43 heading -= playerMovement_.turnSpeed * deltaTime * (512.0f / 360.0f);
-44 } else if (turnRight && !turnLeft) {
-45 heading += playerMovement_.turnSpeed * deltaTime * (512.0f / 360.0f);
-46 bool ctrlHeld = ctx_.eventReceiver->isKeyDown(irr::KEY_LCONTROL) || ctx_.eventReceiver->isKeyDown(irr::KEY_RCONTROL);
-47 bool mouseLookActive = (ctx_.eventReceiver->isLeftButtonDown() ||
-48 ctx_.eventReceiver->isRightButtonDown() ||
-49 (ctrlHeld && ctx_.eventReceiver->isLeftButtonDown()));
-50 oldPitch = playerPitch_;
-51 if (mouseLookActive) {
-52 int mouseDeltaX = ctx_.eventReceiver->getMouseDeltaX();
-53 int mouseDeltaY = ctx_.eventReceiver->getMouseDeltaY();
-54 heading += mouseDeltaX * 0.5f;
-55 playerPitch_ -= mouseDeltaY * 0.3f;
-56 if (playerPitch_ > kFirstPersonMaxUpPitchDegrees) playerPitch_ = kFirstPersonMaxUpPitchDegrees;
-57 if (playerPitch_ < -kFirstPersonMaxUpPitchDegrees) playerPitch_ = -kFirstPersonMaxUpPitchDegrees;
-58 if (cameraMode_ == CameraMode::FirstPerson) {
-59 const float minLook = firstPersonMinLookPitchDegrees();
-60 if (playerPitch_ < minLook) playerPitch_ = minLook;
-61 while (heading < 0.0f) heading += 512.0f;
-62 while (heading >= 512.0f) heading -= 512.0f;
-63 headingRad = heading / 512.0f * 2.0f * static_cast<float>(M_PI);
-64 moveX = 0.0f, moveY = 0.0f, moveZ = 0.0f;
-65 if (playerMovement_.isSwimming) {
-66 if (playerMovement_.moveForward) {
-67 float speed = playerMovement_.swimSpeed;
-68 moveX += std::sin(headingRad) * speed;
-69 moveY += std::cos(headingRad) * speed;
-70 if (playerMovement_.moveBackward) {
-71 float speed = playerMovement_.swimBackwardSpeed;
-72 moveX -= std::sin(headingRad) * speed;
-73 moveY -= std::cos(headingRad) * speed;
-74 if (playerMovement_.swimUp) {
-75 moveZ += playerMovement_.swimVerticalSpeed;
-76 if (playerMovement_.swimDown) {
-77 moveZ -= playerMovement_.swimVerticalSpeed;
-78 bool hasHorizontalMovement = playerMovement_.moveForward || playerMovement_.moveBackward;
-79 bool hasVerticalInput = playerMovement_.swimUp || playerMovement_.swimDown;
-80 if (!hasHorizontalMovement && !hasVerticalInput && !playerMovement_.isLevitating) {
-81 moveZ -= playerMovement_.sinkRate;
-82 } else {
-83 if (playerMovement_.moveForward) {
-84 float speed = playerMovement_.isRunning ? playerMovement_.runSpeed : playerMovement_.walkSpeed;
-85 moveX += std::sin(headingRad) * speed;
-86 moveY += std::cos(headingRad) * speed;
-87 if (playerMovement_.moveBackward) {
-88 float speed = playerMovement_.backwardSpeed;
-89 moveX -= std::sin(headingRad) * speed;
-90 moveY -= std::cos(headingRad) * speed;
-91 if (playerMovement_.strafeLeft) {
-92 float strafeRad = headingRad - static_cast<float>(M_PI) / 2.0f;
-93 moveX += std::sin(strafeRad) * playerMovement_.strafeSpeed;
-94 moveY += std::cos(strafeRad) * playerMovement_.strafeSpeed;
-95 if (playerMovement_.strafeRight) {
-96 float strafeRad = headingRad + static_cast<float>(M_PI) / 2.0f;
-97 moveX += std::sin(strafeRad) * playerMovement_.strafeSpeed;
-98 moveY += std::cos(strafeRad) * playerMovement_.strafeSpeed;
-99 newX = ctx_.playerX + moveX * deltaTime;
-100 newY = ctx_.playerY + moveY * deltaTime;
-101 newZ = ctx_.playerZ + moveZ * deltaTime;
-102 if (!playerMovement_.isSwimming && playerMovement_.isJumping) {
-103 playerMovement_.verticalVelocity -= playerMovement_.gravity * deltaTime;
-104 newZ += playerMovement_.verticalVelocity * deltaTime;
-105 LOG_TRACE(MOD_MOVEMENT, "Jump velocity={}, newZ={}", playerMovement_.verticalVelocity, newZ);
-106 positionChanged = false;
-107 bool isMoving = (moveX != 0.0f || moveY != 0.0f || moveZ != 0.0f);
-108 bool isJumpMoving = playerMovement_.isJumping && !playerMovement_.isSwimming;
-109 bool isSwimMoving = playerMovement_.isSwimming && (moveX != 0.0f || moveY != 0.0f || moveZ != 0.0f);
-110 if (isMoving || isJumpMoving || isSwimMoving) {
-111 LOG_TRACE(MOD_MOVEMENT, "Attempting move: delta=({}, {}, {}) from ({}, {}, {}){}{}",
-112 moveX * deltaTime, moveY * deltaTime, moveZ * deltaTime, ctx_.playerX, ctx_.playerY, ctx_.playerZ,
-113 (isJumpMoving ? " [JUMPING]" : ""),
-114 (isSwimMoving ? " [SWIMMING]" : ""));
-115 LOG_TRACE(MOD_MOVEMENT, "Collision: {}, Irrlicht: {}, Map: {}",
-116 (playerConfig_.collisionEnabled ? "ENABLED" : "DISABLED"),
-117 (useIrrlichtCollision_ && !ctx_.regionWorldTriangles.empty() ? "YES" : "NO"),
-118 (ctx_.collisionMap ? "LOADED" : "NONE"));
-119 bool useIrrlicht = useIrrlichtCollision_ && !ctx_.regionWorldTriangles.empty();
-120 bool useHCMap = ctx_.collisionMap != nullptr;
-121 bool hasCollision = playerConfig_.collisionEnabled && (useIrrlicht || useHCMap);
-122 modelYOffset = 0.0f;
-123 if (ctx_.entityRenderer) {
-124 modelYOffset = ctx_.entityRenderer->getPlayerCollisionZOffset();
-125 if (hasCollision && useIrrlicht) {
-126 bool useBspFiltered = ctx_.zoneBspTree && !ctx_.regionWorldTriangles.empty();
-127 float checkHeight = playerConfig_.collisionCheckHeight;
-128 irr::core::vector3df rayStart(ctx_.playerX, ctx_.playerZ + checkHeight, ctx_.playerY);
-129 irr::core::vector3df rayEnd(newX, ctx_.playerZ + checkHeight, newY);
-130 irr::core::vector3df hitPoint;
-131 irr::core::triangle3df hitTriangle;
-132 bool blocked = useBspFiltered
-133 ? checkCollisionBspFiltered(rayStart, rayEnd, hitPoint, hitTriangle)
-134 : checkCollisionIrrlicht(rayStart, rayEnd, hitPoint, hitTriangle);
-135 if (playerConfig_.collisionDebug) {
-136 irr::core::vector3df direction = rayEnd - rayStart;
-137 float len = direction.getLength();
-138 if (len > 0.001f) {
-139 direction.normalize();
-140 irr::core::vector3df extendedEnd = rayStart + direction * std::max(len, 10.0f);
-141 if (blocked) {
-142 addCollisionDebugLine(rayStart, hitPoint, irr::video::SColor(255, 255, 0, 0), 0.5f);
-143 float ms = 2.0f;
-144 addCollisionDebugLine(irr::core::vector3df(hitPoint.X-ms, hitPoint.Y, hitPoint.Z),
-145 irr::core::vector3df(hitPoint.X+ms, hitPoint.Y, hitPoint.Z),
-146 irr::video::SColor(255, 255, 255, 0), 0.5f);
-147 addCollisionDebugLine(irr::core::vector3df(hitPoint.X, hitPoint.Y-ms, hitPoint.Z),
-148 irr::core::vector3df(hitPoint.X, hitPoint.Y+ms, hitPoint.Z),
-149 irr::video::SColor(255, 255, 255, 0), 0.5f);
-150 addCollisionDebugLine(irr::core::vector3df(hitPoint.X, hitPoint.Y, hitPoint.Z-ms),
-151 irr::core::vector3df(hitPoint.X, hitPoint.Y, hitPoint.Z+ms),
-152 irr::video::SColor(255, 255, 255, 0), 0.5f);
-153 LOG_TRACE(MOD_MOVEMENT, "Horizontal BLOCKED at ({}, {}, {})", hitPoint.X, hitPoint.Y, hitPoint.Z);
-154 } else {
-155 addCollisionDebugLine(rayStart, extendedEnd, irr::video::SColor(255, 0, 255, 0), 0.3f);
-156 if (!blocked) {
-157 float groundZ = useBspFiltered
-158 ? findGroundZBspFiltered(newX, newY, newZ, modelYOffset)
-159 : findGroundZIrrlicht(newX, newY, newZ, modelYOffset);
-160 LOG_TRACE(MOD_MOVEMENT, "Ground at target: {}, playerZ: {}, newZ: {}", groundZ, ctx_.playerZ, newZ);
-161 if (playerMovement_.isJumping) {
-162 float feetZ = newZ - modelYOffset;
-163 if (feetZ <= groundZ && playerMovement_.verticalVelocity <= 0) {
-164 newZ = groundZ + modelYOffset;
-165 playerMovement_.isJumping = false;
-166 playerMovement_.verticalVelocity = 0.0f;
-167 if (playerConfig_.collisionDebug) {
-168 LOG_INFO(MOD_GRAPHICS, "[Jump] Landed at groundZ={}, serverZ={}", groundZ, newZ);
-169 positionChanged = true;
-170 } else if (playerMovement_.isSwimming) {
-171 if (newZ > ctx_.playerZ) {
-172 float headHeight = modelYOffset;
-173 irr::core::vector3df headStart(ctx_.playerX, ctx_.playerZ + headHeight, ctx_.playerY);
-174 irr::core::vector3df headEnd(newX, newZ + headHeight, newY);
-175 irr::core::vector3df ceilingHit;
-176 irr::core::triangle3df ceilingTri;
-177 float deltaZ = newZ - ctx_.playerZ;
-178 LOG_DEBUG(MOD_MOVEMENT, "[Swim] Ceiling check: from Z={} to Z={} (delta={}), ray ({},{},{}) -> ({},{},{})",
-179 ctx_.playerZ, newZ, deltaZ, headStart.X, headStart.Y, headStart.Z, headEnd.X, headEnd.Y, headEnd.Z);
-180 if ((useBspFiltered ? checkCollisionBspFiltered(headStart, headEnd, ceilingHit, ceilingTri)
-181 : checkCollisionIrrlicht(headStart, headEnd, ceilingHit, ceilingTri))) {
-182 float maxZ = ceilingHit.Y - headHeight - 0.1f;  // Small buffer
-183 LOG_INFO(MOD_GRAPHICS, "[Swim] Hit ceiling at {}, clamping newZ from {} to {}", ceilingHit.Y, newZ, maxZ);
-184 if (newZ > maxZ) {
-185 newZ = maxZ;
-186 } else {
-187 LOG_DEBUG(MOD_MOVEMENT, "[Swim] Ceiling check: no collision detected");
-188 float feetZ = newZ - modelYOffset;
-189 float maxReasonableGround = ctx_.playerZ + 100.0f;  // Ground can't reasonably be 100+ units above current position
-190 if (groundZ < maxReasonableGround && feetZ < groundZ) {
-191 newZ = groundZ + modelYOffset;
-192 if (playerConfig_.collisionDebug) {
-193 LOG_INFO(MOD_GRAPHICS, "[Swim] Hit bottom at groundZ={}, serverZ={}", groundZ, newZ);
-194 positionChanged = true;
-195 } else {
-196 float currentFeetZ = ctx_.playerZ - modelYOffset;
-197 float stepHeight = groundZ - currentFeetZ;
-198 float maxStepDown = playerConfig_.collisionStepHeight * 2.0f;  // Allow stepping down ~2x step height
-199 if (stepHeight <= playerConfig_.collisionStepHeight && stepHeight >= -maxStepDown) {
-200 newZ = groundZ + modelYOffset;
-201 positionChanged = true;
-202 } else if (stepHeight < -maxStepDown) {
-203 playerMovement_.isJumping = true;
-204 playerMovement_.verticalVelocity = 0.0f;  // Start with 0 velocity (just walked off edge)
-205 positionChanged = true;
-206 if (playerConfig_.collisionDebug) {
-207 LOG_INFO(MOD_GRAPHICS, "[Irrlicht] Walked off edge, drop={}, starting fall", -stepHeight);
-208 } else if (playerConfig_.collisionDebug) {
-209 LOG_INFO(MOD_GRAPHICS, "[Irrlicht] Step up too high: {}", stepHeight);
-210 } else {
-211 if (playerMovement_.isJumping) {
-212 float groundZ = useBspFiltered
-213 ? findGroundZBspFiltered(ctx_.playerX, ctx_.playerY, newZ, modelYOffset)
-214 : findGroundZIrrlicht(ctx_.playerX, ctx_.playerY, newZ, modelYOffset);
-215 float feetZ = newZ - modelYOffset;
-216 if (feetZ <= groundZ && playerMovement_.verticalVelocity <= 0) {
-217 newZ = groundZ + modelYOffset;
-218 playerMovement_.isJumping = false;
-219 playerMovement_.verticalVelocity = 0.0f;
-220 if (playerConfig_.collisionDebug) {
-221 LOG_INFO(MOD_GRAPHICS, "[Jump] Landed (blocked horizontal) at groundZ={}, serverZ={}", groundZ, newZ);
-222 newX = ctx_.playerX;
-223 newY = ctx_.playerY;
-224 positionChanged = true;
-225 } else if (playerMovement_.isSwimming) {
-226 newX = ctx_.playerX;
-227 newY = ctx_.playerY;
-228 if (newZ > ctx_.playerZ) {
-229 float headHeight = modelYOffset;
-230 irr::core::vector3df headStart(ctx_.playerX, ctx_.playerZ + headHeight, ctx_.playerY);
-231 irr::core::vector3df headEnd(ctx_.playerX, newZ + headHeight, ctx_.playerY);
-232 irr::core::vector3df ceilingHit;
-233 irr::core::triangle3df ceilingTri;
-234 if ((useBspFiltered ? checkCollisionBspFiltered(headStart, headEnd, ceilingHit, ceilingTri)
-235 : checkCollisionIrrlicht(headStart, headEnd, ceilingHit, ceilingTri))) {
-236 float maxZ = ceilingHit.Y - headHeight - 0.1f;
-237 if (newZ > maxZ) {
-238 newZ = maxZ;
-239 if (playerConfig_.collisionDebug) {
-240 LOG_INFO(MOD_GRAPHICS, "[Swim] Hit ceiling (blocked horiz) at {}, clamped to serverZ={}", ceilingHit.Y, newZ);
-241 float groundZ = useBspFiltered
-242 ? findGroundZBspFiltered(ctx_.playerX, ctx_.playerY, newZ, modelYOffset)
-243 : findGroundZIrrlicht(ctx_.playerX, ctx_.playerY, newZ, modelYOffset);
-244 float feetZ = newZ - modelYOffset;
-245 float maxReasonableGround = ctx_.playerZ + 100.0f;
-246 if (groundZ < maxReasonableGround && feetZ < groundZ) {
-247 newZ = groundZ + modelYOffset;
-248 if (playerConfig_.collisionDebug) {
-249 LOG_INFO(MOD_GRAPHICS, "[Swim] Hit bottom (blocked horiz) at groundZ={}, serverZ={}", groundZ, newZ);
-250 positionChanged = true;
-251 } else {
-252 irr::core::vector3df rayEndX(newX, ctx_.playerZ + checkHeight, ctx_.playerY);
-253 if (!(useBspFiltered ? checkCollisionBspFiltered(rayStart, rayEndX, hitPoint, hitTriangle)
-254 : checkCollisionIrrlicht(rayStart, rayEndX, hitPoint, hitTriangle))) {
-255 float groundZ = useBspFiltered
-256 ? findGroundZBspFiltered(newX, ctx_.playerY, ctx_.playerZ, modelYOffset)
-257 : findGroundZIrrlicht(newX, ctx_.playerY, ctx_.playerZ, modelYOffset);
-258 float currentFeetZ = ctx_.playerZ - modelYOffset;
-259 float stepHeight = groundZ - currentFeetZ;
-260 if (stepHeight <= playerConfig_.collisionStepHeight) {
-261 newY = ctx_.playerY;
-262 newZ = groundZ + modelYOffset;
-263 positionChanged = true;
-264 LOG_TRACE(MOD_MOVEMENT, "Wall slide X");
-265 if (!positionChanged) {
-266 irr::core::vector3df rayEndY(ctx_.playerX, ctx_.playerZ + checkHeight, newY);
-267 if (!(useBspFiltered ? checkCollisionBspFiltered(rayStart, rayEndY, hitPoint, hitTriangle)
-268 : checkCollisionIrrlicht(rayStart, rayEndY, hitPoint, hitTriangle))) {
-269 float groundZ = useBspFiltered
-270 ? findGroundZBspFiltered(ctx_.playerX, newY, ctx_.playerZ, modelYOffset)
-271 : findGroundZIrrlicht(ctx_.playerX, newY, ctx_.playerZ, modelYOffset);
-272 float currentFeetZ = ctx_.playerZ - modelYOffset;
-273 float stepHeight = groundZ - currentFeetZ;
-274 if (stepHeight <= playerConfig_.collisionStepHeight) {
-275 newX = ctx_.playerX;
-276 newZ = groundZ + modelYOffset;
-277 positionChanged = true;
-278 LOG_TRACE(MOD_MOVEMENT, "Wall slide Y");
-279 if (!positionChanged && playerConfig_.collisionDebug) {
-280 LOG_TRACE(MOD_MOVEMENT, "BLOCKED - no movement");
-281 } else if (hasCollision && useHCMap) {
-282 float targetGroundZ = findGroundZ(newX, newY, newZ);
-283 LOG_TRACE(MOD_MOVEMENT, "HCMap Move from ({}, {}, {}) to ({}, {}), groundZ={}", ctx_.playerX, ctx_.playerY, ctx_.playerZ, newX, newY, targetGroundZ);
-284 if (playerMovement_.isJumping) {
-285 bool losCheck = checkMovementCollision(ctx_.playerX, ctx_.playerY, ctx_.playerZ, newX, newY, newZ);
-286 if (losCheck) {
-287 float feetZ = newZ - modelYOffset;
-288 if (targetGroundZ != BEST_Z_INVALID && feetZ <= targetGroundZ && playerMovement_.verticalVelocity <= 0) {
-289 newZ = targetGroundZ + modelYOffset;
-290 playerMovement_.isJumping = false;
-291 playerMovement_.verticalVelocity = 0.0f;
-292 if (playerConfig_.collisionDebug) {
-293 LOG_INFO(MOD_GRAPHICS, "[Jump] Landed (HCMap) at groundZ={}, serverZ={}", targetGroundZ, newZ);
-294 positionChanged = true;
-295 } else {
-296 newX = ctx_.playerX;
-297 newY = ctx_.playerY;
-298 float currentGroundZ = findGroundZ(ctx_.playerX, ctx_.playerY, newZ);
-299 float feetZ = newZ - modelYOffset;
-300 if (currentGroundZ != BEST_Z_INVALID && feetZ <= currentGroundZ && playerMovement_.verticalVelocity <= 0) {
-301 newZ = currentGroundZ + modelYOffset;
-302 playerMovement_.isJumping = false;
-303 playerMovement_.verticalVelocity = 0.0f;
-304 if (playerConfig_.collisionDebug) {
-305 LOG_INFO(MOD_GRAPHICS, "[Jump] Landed (HCMap, blocked) at groundZ={}, serverZ={}", currentGroundZ, newZ);
-306 positionChanged = true;
-307 } else if (playerMovement_.isSwimming) {
-308 bool losCheck = checkMovementCollision(ctx_.playerX, ctx_.playerY, ctx_.playerZ, newX, newY, newZ);
-309 if (losCheck) {
-310 if (newZ > ctx_.playerZ && ctx_.collisionMap) {
-311 float headHeight = modelYOffset;
-312 glm::vec3 headStart(ctx_.playerX, ctx_.playerY, ctx_.playerZ + headHeight);
-313 glm::vec3 headEnd(newX, newY, newZ + headHeight);
-314 glm::vec3 ceilingHit;
-315 if (!ctx_.collisionMap->CheckLOSWithHit(headStart, headEnd, &ceilingHit)) {
-316 float maxZ = ceilingHit.z - headHeight - 0.1f;  // Small buffer
-317 if (newZ > maxZ) {
-318 newZ = maxZ;
-319 if (playerConfig_.collisionDebug) {
-320 LOG_INFO(MOD_GRAPHICS, "[Swim] Hit ceiling (HCMap) at {}, clamped to serverZ={}", ceilingHit.z, newZ);
-321 float feetZ = newZ - modelYOffset;
-322 if (targetGroundZ != BEST_Z_INVALID && feetZ < targetGroundZ) {
-323 newZ = targetGroundZ + modelYOffset;
-324 if (playerConfig_.collisionDebug) {
-325 LOG_INFO(MOD_GRAPHICS, "[Swim] Hit bottom (HCMap) at groundZ={}, serverZ={}", targetGroundZ, newZ);
-326 positionChanged = true;
-327 } else {
-328 newX = ctx_.playerX;
-329 newY = ctx_.playerY;
-330 if (newZ > ctx_.playerZ && ctx_.collisionMap) {
-331 float headHeight = modelYOffset;
-332 glm::vec3 headStart(ctx_.playerX, ctx_.playerY, ctx_.playerZ + headHeight);
-333 glm::vec3 headEnd(ctx_.playerX, ctx_.playerY, newZ + headHeight);
-334 glm::vec3 ceilingHit;
-335 if (!ctx_.collisionMap->CheckLOSWithHit(headStart, headEnd, &ceilingHit)) {
-336 float maxZ = ceilingHit.z - headHeight - 0.1f;
-337 if (newZ > maxZ) {
-338 newZ = maxZ;
-339 if (playerConfig_.collisionDebug) {
-340 LOG_INFO(MOD_GRAPHICS, "[Swim] Hit ceiling (HCMap, blocked horiz) at {}, clamped to serverZ={}", ceilingHit.z, newZ);
-341 float currentGroundZ = findGroundZ(ctx_.playerX, ctx_.playerY, newZ);
-342 float feetZ = newZ - modelYOffset;
-343 if (currentGroundZ != BEST_Z_INVALID && feetZ < currentGroundZ) {
-344 newZ = currentGroundZ + modelYOffset;
-345 positionChanged = true;
-346 } else if (targetGroundZ != BEST_Z_INVALID) {
-347 float currentFeetZ = ctx_.playerZ - modelYOffset;
-348 float stepHeight = targetGroundZ - currentFeetZ;
-349 LOG_TRACE(MOD_MOVEMENT, "HCMap Step height: {} (max up: {})", stepHeight, playerConfig_.collisionStepHeight);
-350 float maxStepDown = playerConfig_.collisionStepHeight * 2.0f;
-351 if (stepHeight <= playerConfig_.collisionStepHeight && stepHeight >= -maxStepDown) {
-352 bool losCheck = checkMovementCollision(ctx_.playerX, ctx_.playerY, ctx_.playerZ, newX, newY, targetGroundZ);
-353 LOG_TRACE(MOD_MOVEMENT, "HCMap LOS check: {}", (losCheck ? "CLEAR" : "BLOCKED"));
-354 if (losCheck) {
-355 newZ = targetGroundZ + modelYOffset;
-356 positionChanged = true;
-357 } else {
-358 float xGroundZ = findGroundZ(newX, ctx_.playerY, ctx_.playerZ);
-359 float xStepHeight = xGroundZ - currentFeetZ;
-360 if (xGroundZ != BEST_Z_INVALID &&
-361 xStepHeight <= playerConfig_.collisionStepHeight && xStepHeight >= -maxStepDown &&
-362 checkMovementCollision(ctx_.playerX, ctx_.playerY, ctx_.playerZ, newX, ctx_.playerY, xGroundZ)) {
-363 newY = ctx_.playerY;
-364 newZ = xGroundZ + modelYOffset;
-365 positionChanged = true;
-366 } else {
-367 float yGroundZ = findGroundZ(ctx_.playerX, newY, ctx_.playerZ);
-368 float yStepHeight = yGroundZ - currentFeetZ;
-369 if (yGroundZ != BEST_Z_INVALID &&
-370 yStepHeight <= playerConfig_.collisionStepHeight && yStepHeight >= -maxStepDown &&
-371 checkMovementCollision(ctx_.playerX, ctx_.playerY, ctx_.playerZ, ctx_.playerX, newY, yGroundZ)) {
-372 newX = ctx_.playerX;
-373 newZ = yGroundZ + modelYOffset;
-374 positionChanged = true;
-375 } else if (stepHeight < -maxStepDown) {
-376 playerMovement_.isJumping = true;
-377 playerMovement_.verticalVelocity = 0.0f;
-378 positionChanged = true;
-379 if (playerConfig_.collisionDebug) {
-380 LOG_INFO(MOD_GRAPHICS, "[HCMap] Walked off edge, drop={}, starting fall", -stepHeight);
-381 } else {
-382 LOG_TRACE(MOD_MOVEMENT, "HCMap Step up too high ({}) - blocked", stepHeight);
+27 if (playerMovement_.autorun && (forward || backward || strafeLeft || strafeRight)) {
+28 playerMovement_.autorun = false;
+29 playerMovement_.moveForward = forward || playerMovement_.autorun;
+30 playerMovement_.moveBackward = backward;
+31 playerMovement_.strafeLeft = playerMovement_.isSwimming ? false : strafeLeft;
+32 playerMovement_.strafeRight = playerMovement_.isSwimming ? false : strafeRight;
+33 playerMovement_.turnLeft = turnLeft;
+34 playerMovement_.turnRight = turnRight;
+35 if (playerMovement_.isSwimming) {
+36 } else {
+37 if (jumpPressed && !playerMovement_.isJumping) {
+38 playerMovement_.isJumping = true;
+39 playerMovement_.verticalVelocity = playerMovement_.jumpVelocity;
+40 if (playerConfig_.collisionDebug) {
+41 LOG_INFO(MOD_GRAPHICS, "[Jump] Started jump with velocity {}", playerMovement_.verticalVelocity);
+42 heading = ctx_.playerHeading;
+43 oldHeading = heading;
+44 if (turnLeft && !turnRight) {
+45 heading -= playerMovement_.turnSpeed * deltaTime * (512.0f / 360.0f);
+46 } else if (turnRight && !turnLeft) {
+47 heading += playerMovement_.turnSpeed * deltaTime * (512.0f / 360.0f);
+48 bool ctrlHeld = ctx_.eventReceiver->isKeyDown(irr::KEY_LCONTROL) || ctx_.eventReceiver->isKeyDown(irr::KEY_RCONTROL);
+49 bool mouseLookActive = (ctx_.eventReceiver->isLeftButtonDown() ||
+50 ctx_.eventReceiver->isRightButtonDown() ||
+51 (ctrlHeld && ctx_.eventReceiver->isLeftButtonDown()));
+52 oldPitch = playerPitch_;
+53 if (mouseLookActive) {
+54 int mouseDeltaX = ctx_.eventReceiver->getMouseDeltaX();
+55 int mouseDeltaY = ctx_.eventReceiver->getMouseDeltaY();
+56 heading += mouseDeltaX * 0.5f;
+57 playerPitch_ -= mouseDeltaY * 0.3f;
+58 if (playerPitch_ > kFirstPersonMaxUpPitchDegrees) playerPitch_ = kFirstPersonMaxUpPitchDegrees;
+59 if (playerPitch_ < -kFirstPersonMaxUpPitchDegrees) playerPitch_ = -kFirstPersonMaxUpPitchDegrees;
+60 if (cameraMode_ == CameraMode::FirstPerson) {
+61 const float minLook = firstPersonMinLookPitchDegrees();
+62 if (playerPitch_ < minLook) playerPitch_ = minLook;
+63 while (heading < 0.0f) heading += 512.0f;
+64 while (heading >= 512.0f) heading -= 512.0f;
+65 headingRad = heading / 512.0f * 2.0f * static_cast<float>(M_PI);
+66 moveX = 0.0f, moveY = 0.0f, moveZ = 0.0f;
+67 if (playerMovement_.isSwimming) {
+68 if (playerMovement_.moveForward) {
+69 float speed = playerMovement_.swimSpeed;
+70 moveX += std::sin(headingRad) * speed;
+71 moveY += std::cos(headingRad) * speed;
+72 if (playerMovement_.moveBackward) {
+73 float speed = playerMovement_.swimBackwardSpeed;
+74 moveX -= std::sin(headingRad) * speed;
+75 moveY -= std::cos(headingRad) * speed;
+76 if (playerMovement_.swimUp) {
+77 moveZ += playerMovement_.swimVerticalSpeed;
+78 if (playerMovement_.swimDown) {
+79 moveZ -= playerMovement_.swimVerticalSpeed;
+80 bool hasHorizontalMovement = playerMovement_.moveForward || playerMovement_.moveBackward;
+81 bool hasVerticalInput = playerMovement_.swimUp || playerMovement_.swimDown;
+82 if (!hasHorizontalMovement && !hasVerticalInput && !playerMovement_.isLevitating) {
+83 moveZ -= playerMovement_.sinkRate;
+84 } else {
+85 if (playerMovement_.moveForward) {
+86 float speed = playerMovement_.isRunning ? playerMovement_.runSpeed : playerMovement_.walkSpeed;
+87 moveX += std::sin(headingRad) * speed;
+88 moveY += std::cos(headingRad) * speed;
+89 if (playerMovement_.moveBackward) {
+90 float speed = playerMovement_.backwardSpeed;
+91 moveX -= std::sin(headingRad) * speed;
+92 moveY -= std::cos(headingRad) * speed;
+93 if (playerMovement_.strafeLeft) {
+94 float strafeRad = headingRad - static_cast<float>(M_PI) / 2.0f;
+95 moveX += std::sin(strafeRad) * playerMovement_.strafeSpeed;
+96 moveY += std::cos(strafeRad) * playerMovement_.strafeSpeed;
+97 if (playerMovement_.strafeRight) {
+98 float strafeRad = headingRad + static_cast<float>(M_PI) / 2.0f;
+99 moveX += std::sin(strafeRad) * playerMovement_.strafeSpeed;
+100 moveY += std::cos(strafeRad) * playerMovement_.strafeSpeed;
+101 newX = ctx_.playerX + moveX * deltaTime;
+102 newY = ctx_.playerY + moveY * deltaTime;
+103 newZ = ctx_.playerZ + moveZ * deltaTime;
+104 if (!playerMovement_.isSwimming && playerMovement_.isJumping) {
+105 playerMovement_.verticalVelocity -= playerMovement_.gravity * deltaTime;
+106 newZ += playerMovement_.verticalVelocity * deltaTime;
+107 LOG_TRACE(MOD_MOVEMENT, "Jump velocity={}, newZ={}", playerMovement_.verticalVelocity, newZ);
+108 positionChanged = false;
+109 bool isMoving = (moveX != 0.0f || moveY != 0.0f || moveZ != 0.0f);
+110 bool isJumpMoving = playerMovement_.isJumping && !playerMovement_.isSwimming;
+111 bool isSwimMoving = playerMovement_.isSwimming && (moveX != 0.0f || moveY != 0.0f || moveZ != 0.0f);
+112 if (isMoving || isJumpMoving || isSwimMoving) {
+113 LOG_TRACE(MOD_MOVEMENT, "Attempting move: delta=({}, {}, {}) from ({}, {}, {}){}{}",
+114 moveX * deltaTime, moveY * deltaTime, moveZ * deltaTime, ctx_.playerX, ctx_.playerY, ctx_.playerZ,
+115 (isJumpMoving ? " [JUMPING]" : ""),
+116 (isSwimMoving ? " [SWIMMING]" : ""));
+117 LOG_TRACE(MOD_MOVEMENT, "Collision: {}, Irrlicht: {}, Map: {}",
+118 (playerConfig_.collisionEnabled ? "ENABLED" : "DISABLED"),
+119 (useIrrlichtCollision_ && !ctx_.regionWorldTriangles.empty() ? "YES" : "NO"),
+120 (ctx_.collisionMap ? "LOADED" : "NONE"));
+121 bool useIrrlicht = useIrrlichtCollision_ && !ctx_.regionWorldTriangles.empty();
+122 bool useHCMap = ctx_.collisionMap != nullptr;
+123 bool hasCollision = playerConfig_.collisionEnabled && (useIrrlicht || useHCMap);
+124 modelYOffset = 0.0f;
+125 if (ctx_.entityRenderer) {
+126 modelYOffset = ctx_.entityRenderer->getPlayerCollisionZOffset();
+127 if (hasCollision && useIrrlicht) {
+128 bool useBspFiltered = ctx_.zoneBspTree && !ctx_.regionWorldTriangles.empty();
+129 float checkHeight = playerConfig_.collisionCheckHeight;
+130 irr::core::vector3df rayStart(ctx_.playerX, ctx_.playerZ + checkHeight, ctx_.playerY);
+131 irr::core::vector3df rayEnd(newX, ctx_.playerZ + checkHeight, newY);
+132 irr::core::vector3df hitPoint;
+133 irr::core::triangle3df hitTriangle;
+134 bool blocked = useBspFiltered
+135 ? checkCollisionBspFiltered(rayStart, rayEnd, hitPoint, hitTriangle)
+136 : checkCollisionIrrlicht(rayStart, rayEnd, hitPoint, hitTriangle);
+137 if (playerConfig_.collisionDebug) {
+138 irr::core::vector3df direction = rayEnd - rayStart;
+139 float len = direction.getLength();
+140 if (len > 0.001f) {
+141 direction.normalize();
+142 irr::core::vector3df extendedEnd = rayStart + direction * std::max(len, 10.0f);
+143 if (blocked) {
+144 addCollisionDebugLine(rayStart, hitPoint, irr::video::SColor(255, 255, 0, 0), 0.5f);
+145 float ms = 2.0f;
+146 addCollisionDebugLine(irr::core::vector3df(hitPoint.X-ms, hitPoint.Y, hitPoint.Z),
+147 irr::core::vector3df(hitPoint.X+ms, hitPoint.Y, hitPoint.Z),
+148 irr::video::SColor(255, 255, 255, 0), 0.5f);
+149 addCollisionDebugLine(irr::core::vector3df(hitPoint.X, hitPoint.Y-ms, hitPoint.Z),
+150 irr::core::vector3df(hitPoint.X, hitPoint.Y+ms, hitPoint.Z),
+151 irr::video::SColor(255, 255, 255, 0), 0.5f);
+152 addCollisionDebugLine(irr::core::vector3df(hitPoint.X, hitPoint.Y, hitPoint.Z-ms),
+153 irr::core::vector3df(hitPoint.X, hitPoint.Y, hitPoint.Z+ms),
+154 irr::video::SColor(255, 255, 255, 0), 0.5f);
+155 LOG_TRACE(MOD_MOVEMENT, "Horizontal BLOCKED at ({}, {}, {})", hitPoint.X, hitPoint.Y, hitPoint.Z);
+156 } else {
+157 addCollisionDebugLine(rayStart, extendedEnd, irr::video::SColor(255, 0, 255, 0), 0.3f);
+158 if (!blocked) {
+159 float groundZ = useBspFiltered
+160 ? findGroundZBspFiltered(newX, newY, newZ, modelYOffset)
+161 : findGroundZIrrlicht(newX, newY, newZ, modelYOffset);
+162 LOG_TRACE(MOD_MOVEMENT, "Ground at target: {}, playerZ: {}, newZ: {}", groundZ, ctx_.playerZ, newZ);
+163 if (playerMovement_.isJumping) {
+164 float feetZ = newZ - modelYOffset;
+165 if (feetZ <= groundZ && playerMovement_.verticalVelocity <= 0) {
+166 newZ = groundZ + modelYOffset;
+167 playerMovement_.isJumping = false;
+168 playerMovement_.verticalVelocity = 0.0f;
+169 if (playerConfig_.collisionDebug) {
+170 LOG_INFO(MOD_GRAPHICS, "[Jump] Landed at groundZ={}, serverZ={}", groundZ, newZ);
+171 positionChanged = true;
+172 } else if (playerMovement_.isSwimming) {
+173 if (newZ > ctx_.playerZ) {
+174 float headHeight = modelYOffset;
+175 irr::core::vector3df headStart(ctx_.playerX, ctx_.playerZ + headHeight, ctx_.playerY);
+176 irr::core::vector3df headEnd(newX, newZ + headHeight, newY);
+177 irr::core::vector3df ceilingHit;
+178 irr::core::triangle3df ceilingTri;
+179 float deltaZ = newZ - ctx_.playerZ;
+180 LOG_DEBUG(MOD_MOVEMENT, "[Swim] Ceiling check: from Z={} to Z={} (delta={}), ray ({},{},{}) -> ({},{},{})",
+181 ctx_.playerZ, newZ, deltaZ, headStart.X, headStart.Y, headStart.Z, headEnd.X, headEnd.Y, headEnd.Z);
+182 if ((useBspFiltered ? checkCollisionBspFiltered(headStart, headEnd, ceilingHit, ceilingTri)
+183 : checkCollisionIrrlicht(headStart, headEnd, ceilingHit, ceilingTri))) {
+184 float maxZ = ceilingHit.Y - headHeight - 0.1f;  // Small buffer
+185 LOG_INFO(MOD_GRAPHICS, "[Swim] Hit ceiling at {}, clamping newZ from {} to {}", ceilingHit.Y, newZ, maxZ);
+186 if (newZ > maxZ) {
+187 newZ = maxZ;
+188 } else {
+189 LOG_DEBUG(MOD_MOVEMENT, "[Swim] Ceiling check: no collision detected");
+190 float feetZ = newZ - modelYOffset;
+191 float maxReasonableGround = ctx_.playerZ + 100.0f;  // Ground can't reasonably be 100+ units above current position
+192 if (groundZ < maxReasonableGround && feetZ < groundZ) {
+193 newZ = groundZ + modelYOffset;
+194 if (playerConfig_.collisionDebug) {
+195 LOG_INFO(MOD_GRAPHICS, "[Swim] Hit bottom at groundZ={}, serverZ={}", groundZ, newZ);
+196 positionChanged = true;
+197 } else {
+198 float currentFeetZ = ctx_.playerZ - modelYOffset;
+199 float stepHeight = groundZ - currentFeetZ;
+200 float maxStepDown = playerConfig_.collisionStepHeight * 2.0f;  // Allow stepping down ~2x step height
+201 if (stepHeight <= playerConfig_.collisionStepHeight && stepHeight >= -maxStepDown) {
+202 newZ = groundZ + modelYOffset;
+203 positionChanged = true;
+204 } else if (stepHeight < -maxStepDown) {
+205 playerMovement_.isJumping = true;
+206 playerMovement_.verticalVelocity = 0.0f;  // Start with 0 velocity (just walked off edge)
+207 positionChanged = true;
+208 if (playerConfig_.collisionDebug) {
+209 LOG_INFO(MOD_GRAPHICS, "[Irrlicht] Walked off edge, drop={}, starting fall", -stepHeight);
+210 } else if (playerConfig_.collisionDebug) {
+211 LOG_INFO(MOD_GRAPHICS, "[Irrlicht] Step up too high: {}", stepHeight);
+212 } else {
+213 if (playerMovement_.isJumping) {
+214 float groundZ = useBspFiltered
+215 ? findGroundZBspFiltered(ctx_.playerX, ctx_.playerY, newZ, modelYOffset)
+216 : findGroundZIrrlicht(ctx_.playerX, ctx_.playerY, newZ, modelYOffset);
+217 float feetZ = newZ - modelYOffset;
+218 if (feetZ <= groundZ && playerMovement_.verticalVelocity <= 0) {
+219 newZ = groundZ + modelYOffset;
+220 playerMovement_.isJumping = false;
+221 playerMovement_.verticalVelocity = 0.0f;
+222 if (playerConfig_.collisionDebug) {
+223 LOG_INFO(MOD_GRAPHICS, "[Jump] Landed (blocked horizontal) at groundZ={}, serverZ={}", groundZ, newZ);
+224 newX = ctx_.playerX;
+225 newY = ctx_.playerY;
+226 positionChanged = true;
+227 } else if (playerMovement_.isSwimming) {
+228 newX = ctx_.playerX;
+229 newY = ctx_.playerY;
+230 if (newZ > ctx_.playerZ) {
+231 float headHeight = modelYOffset;
+232 irr::core::vector3df headStart(ctx_.playerX, ctx_.playerZ + headHeight, ctx_.playerY);
+233 irr::core::vector3df headEnd(ctx_.playerX, newZ + headHeight, ctx_.playerY);
+234 irr::core::vector3df ceilingHit;
+235 irr::core::triangle3df ceilingTri;
+236 if ((useBspFiltered ? checkCollisionBspFiltered(headStart, headEnd, ceilingHit, ceilingTri)
+237 : checkCollisionIrrlicht(headStart, headEnd, ceilingHit, ceilingTri))) {
+238 float maxZ = ceilingHit.Y - headHeight - 0.1f;
+239 if (newZ > maxZ) {
+240 newZ = maxZ;
+241 if (playerConfig_.collisionDebug) {
+242 LOG_INFO(MOD_GRAPHICS, "[Swim] Hit ceiling (blocked horiz) at {}, clamped to serverZ={}", ceilingHit.Y, newZ);
+243 float groundZ = useBspFiltered
+244 ? findGroundZBspFiltered(ctx_.playerX, ctx_.playerY, newZ, modelYOffset)
+245 : findGroundZIrrlicht(ctx_.playerX, ctx_.playerY, newZ, modelYOffset);
+246 float feetZ = newZ - modelYOffset;
+247 float maxReasonableGround = ctx_.playerZ + 100.0f;
+248 if (groundZ < maxReasonableGround && feetZ < groundZ) {
+249 newZ = groundZ + modelYOffset;
+250 if (playerConfig_.collisionDebug) {
+251 LOG_INFO(MOD_GRAPHICS, "[Swim] Hit bottom (blocked horiz) at groundZ={}, serverZ={}", groundZ, newZ);
+252 positionChanged = true;
+253 } else {
+254 irr::core::vector3df rayEndX(newX, ctx_.playerZ + checkHeight, ctx_.playerY);
+255 if (!(useBspFiltered ? checkCollisionBspFiltered(rayStart, rayEndX, hitPoint, hitTriangle)
+256 : checkCollisionIrrlicht(rayStart, rayEndX, hitPoint, hitTriangle))) {
+257 float groundZ = useBspFiltered
+258 ? findGroundZBspFiltered(newX, ctx_.playerY, ctx_.playerZ, modelYOffset)
+259 : findGroundZIrrlicht(newX, ctx_.playerY, ctx_.playerZ, modelYOffset);
+260 float currentFeetZ = ctx_.playerZ - modelYOffset;
+261 float stepHeight = groundZ - currentFeetZ;
+262 if (stepHeight <= playerConfig_.collisionStepHeight) {
+263 newY = ctx_.playerY;
+264 newZ = groundZ + modelYOffset;
+265 positionChanged = true;
+266 LOG_TRACE(MOD_MOVEMENT, "Wall slide X");
+267 if (!positionChanged) {
+268 irr::core::vector3df rayEndY(ctx_.playerX, ctx_.playerZ + checkHeight, newY);
+269 if (!(useBspFiltered ? checkCollisionBspFiltered(rayStart, rayEndY, hitPoint, hitTriangle)
+270 : checkCollisionIrrlicht(rayStart, rayEndY, hitPoint, hitTriangle))) {
+271 float groundZ = useBspFiltered
+272 ? findGroundZBspFiltered(ctx_.playerX, newY, ctx_.playerZ, modelYOffset)
+273 : findGroundZIrrlicht(ctx_.playerX, newY, ctx_.playerZ, modelYOffset);
+274 float currentFeetZ = ctx_.playerZ - modelYOffset;
+275 float stepHeight = groundZ - currentFeetZ;
+276 if (stepHeight <= playerConfig_.collisionStepHeight) {
+277 newX = ctx_.playerX;
+278 newZ = groundZ + modelYOffset;
+279 positionChanged = true;
+280 LOG_TRACE(MOD_MOVEMENT, "Wall slide Y");
+281 if (!positionChanged && playerConfig_.collisionDebug) {
+282 LOG_TRACE(MOD_MOVEMENT, "BLOCKED - no movement");
+283 } else if (hasCollision && useHCMap) {
+284 float targetGroundZ = findGroundZ(newX, newY, newZ);
+285 LOG_TRACE(MOD_MOVEMENT, "HCMap Move from ({}, {}, {}) to ({}, {}), groundZ={}", ctx_.playerX, ctx_.playerY, ctx_.playerZ, newX, newY, targetGroundZ);
+286 if (playerMovement_.isJumping) {
+287 bool losCheck = checkMovementCollision(ctx_.playerX, ctx_.playerY, ctx_.playerZ, newX, newY, newZ);
+288 if (losCheck) {
+289 float feetZ = newZ - modelYOffset;
+290 if (targetGroundZ != BEST_Z_INVALID && feetZ <= targetGroundZ && playerMovement_.verticalVelocity <= 0) {
+291 newZ = targetGroundZ + modelYOffset;
+292 playerMovement_.isJumping = false;
+293 playerMovement_.verticalVelocity = 0.0f;
+294 if (playerConfig_.collisionDebug) {
+295 LOG_INFO(MOD_GRAPHICS, "[Jump] Landed (HCMap) at groundZ={}, serverZ={}", targetGroundZ, newZ);
+296 positionChanged = true;
+297 } else {
+298 newX = ctx_.playerX;
+299 newY = ctx_.playerY;
+300 float currentGroundZ = findGroundZ(ctx_.playerX, ctx_.playerY, newZ);
+301 float feetZ = newZ - modelYOffset;
+302 if (currentGroundZ != BEST_Z_INVALID && feetZ <= currentGroundZ && playerMovement_.verticalVelocity <= 0) {
+303 newZ = currentGroundZ + modelYOffset;
+304 playerMovement_.isJumping = false;
+305 playerMovement_.verticalVelocity = 0.0f;
+306 if (playerConfig_.collisionDebug) {
+307 LOG_INFO(MOD_GRAPHICS, "[Jump] Landed (HCMap, blocked) at groundZ={}, serverZ={}", currentGroundZ, newZ);
+308 positionChanged = true;
+309 } else if (playerMovement_.isSwimming) {
+310 bool losCheck = checkMovementCollision(ctx_.playerX, ctx_.playerY, ctx_.playerZ, newX, newY, newZ);
+311 if (losCheck) {
+312 if (newZ > ctx_.playerZ && ctx_.collisionMap) {
+313 float headHeight = modelYOffset;
+314 glm::vec3 headStart(ctx_.playerX, ctx_.playerY, ctx_.playerZ + headHeight);
+315 glm::vec3 headEnd(newX, newY, newZ + headHeight);
+316 glm::vec3 ceilingHit;
+317 if (!ctx_.collisionMap->CheckLOSWithHit(headStart, headEnd, &ceilingHit)) {
+318 float maxZ = ceilingHit.z - headHeight - 0.1f;  // Small buffer
+319 if (newZ > maxZ) {
+320 newZ = maxZ;
+321 if (playerConfig_.collisionDebug) {
+322 LOG_INFO(MOD_GRAPHICS, "[Swim] Hit ceiling (HCMap) at {}, clamped to serverZ={}", ceilingHit.z, newZ);
+323 float feetZ = newZ - modelYOffset;
+324 if (targetGroundZ != BEST_Z_INVALID && feetZ < targetGroundZ) {
+325 newZ = targetGroundZ + modelYOffset;
+326 if (playerConfig_.collisionDebug) {
+327 LOG_INFO(MOD_GRAPHICS, "[Swim] Hit bottom (HCMap) at groundZ={}, serverZ={}", targetGroundZ, newZ);
+328 positionChanged = true;
+329 } else {
+330 newX = ctx_.playerX;
+331 newY = ctx_.playerY;
+332 if (newZ > ctx_.playerZ && ctx_.collisionMap) {
+333 float headHeight = modelYOffset;
+334 glm::vec3 headStart(ctx_.playerX, ctx_.playerY, ctx_.playerZ + headHeight);
+335 glm::vec3 headEnd(ctx_.playerX, ctx_.playerY, newZ + headHeight);
+336 glm::vec3 ceilingHit;
+337 if (!ctx_.collisionMap->CheckLOSWithHit(headStart, headEnd, &ceilingHit)) {
+338 float maxZ = ceilingHit.z - headHeight - 0.1f;
+339 if (newZ > maxZ) {
+340 newZ = maxZ;
+341 if (playerConfig_.collisionDebug) {
+342 LOG_INFO(MOD_GRAPHICS, "[Swim] Hit ceiling (HCMap, blocked horiz) at {}, clamped to serverZ={}", ceilingHit.z, newZ);
+343 float currentGroundZ = findGroundZ(ctx_.playerX, ctx_.playerY, newZ);
+344 float feetZ = newZ - modelYOffset;
+345 if (currentGroundZ != BEST_Z_INVALID && feetZ < currentGroundZ) {
+346 newZ = currentGroundZ + modelYOffset;
+347 positionChanged = true;
+348 } else if (targetGroundZ != BEST_Z_INVALID) {
+349 float currentFeetZ = ctx_.playerZ - modelYOffset;
+350 float stepHeight = targetGroundZ - currentFeetZ;
+351 LOG_TRACE(MOD_MOVEMENT, "HCMap Step height: {} (max up: {})", stepHeight, playerConfig_.collisionStepHeight);
+352 float maxStepDown = playerConfig_.collisionStepHeight * 2.0f;
+353 if (stepHeight <= playerConfig_.collisionStepHeight && stepHeight >= -maxStepDown) {
+354 bool losCheck = checkMovementCollision(ctx_.playerX, ctx_.playerY, ctx_.playerZ, newX, newY, targetGroundZ);
+355 LOG_TRACE(MOD_MOVEMENT, "HCMap LOS check: {}", (losCheck ? "CLEAR" : "BLOCKED"));
+356 if (losCheck) {
+357 newZ = targetGroundZ + modelYOffset;
+358 positionChanged = true;
+359 } else {
+360 float xGroundZ = findGroundZ(newX, ctx_.playerY, ctx_.playerZ);
+361 float xStepHeight = xGroundZ - currentFeetZ;
+362 if (xGroundZ != BEST_Z_INVALID &&
+363 xStepHeight <= playerConfig_.collisionStepHeight && xStepHeight >= -maxStepDown &&
+364 checkMovementCollision(ctx_.playerX, ctx_.playerY, ctx_.playerZ, newX, ctx_.playerY, xGroundZ)) {
+365 newY = ctx_.playerY;
+366 newZ = xGroundZ + modelYOffset;
+367 positionChanged = true;
+368 } else {
+369 float yGroundZ = findGroundZ(ctx_.playerX, newY, ctx_.playerZ);
+370 float yStepHeight = yGroundZ - currentFeetZ;
+371 if (yGroundZ != BEST_Z_INVALID &&
+372 yStepHeight <= playerConfig_.collisionStepHeight && yStepHeight >= -maxStepDown &&
+373 checkMovementCollision(ctx_.playerX, ctx_.playerY, ctx_.playerZ, ctx_.playerX, newY, yGroundZ)) {
+374 newX = ctx_.playerX;
+375 newZ = yGroundZ + modelYOffset;
+376 positionChanged = true;
+377 } else if (stepHeight < -maxStepDown) {
+378 playerMovement_.isJumping = true;
+379 playerMovement_.verticalVelocity = 0.0f;
+380 positionChanged = true;
+381 if (playerConfig_.collisionDebug) {
+382 LOG_INFO(MOD_GRAPHICS, "[HCMap] Walked off edge, drop={}, starting fall", -stepHeight);
 383 } else {
-384 bool losCheck = checkMovementCollision(ctx_.playerX, ctx_.playerY, ctx_.playerZ, newX, newY, ctx_.playerZ);
-385 if (losCheck) {
-386 positionChanged = true;
-387 } else {
+384 LOG_TRACE(MOD_MOVEMENT, "HCMap Step up too high ({}) - blocked", stepHeight);
+385 } else {
+386 bool losCheck = checkMovementCollision(ctx_.playerX, ctx_.playerY, ctx_.playerZ, newX, newY, ctx_.playerZ);
+387 if (losCheck) {
 388 positionChanged = true;
-389 if (playerMovement_.isJumping && playerMovement_.verticalVelocity <= 0) {
-390 float minGroundZ = -1000.0f;  // Reasonable minimum
-391 if (newZ <= ctx_.playerZ || newZ <= minGroundZ) {
-392 newZ = std::max(ctx_.playerZ, minGroundZ);
-393 playerMovement_.isJumping = false;
-394 playerMovement_.verticalVelocity = 0.0f;
-395 if (playerConfig_.collisionDebug) {
-396 LOG_INFO(MOD_GRAPHICS, "[Jump] Landed (no collision) at Z={}", newZ);
+389 } else {
+390 positionChanged = true;
+391 if (playerMovement_.isJumping && playerMovement_.verticalVelocity <= 0) {
+392 float minGroundZ = -1000.0f;  // Reasonable minimum
+393 if (newZ <= ctx_.playerZ || newZ <= minGroundZ) {
+394 newZ = std::max(ctx_.playerZ, minGroundZ);
+395 playerMovement_.isJumping = false;
+396 playerMovement_.verticalVelocity = 0.0f;
 397 if (playerConfig_.collisionDebug) {
-398 if (!ctx_.collisionMap) {
-399 LOG_TRACE(MOD_MOVEMENT, "No collision map - movement allowed");
-400 } else {
-401 LOG_TRACE(MOD_MOVEMENT, "Collision DISABLED - movement allowed");
-402 irr::core::vector3df irrFrom(ctx_.playerX, ctx_.playerZ + 3.0f, ctx_.playerY);
-403 irr::core::vector3df irrTo(newX, newZ + 3.0f, newY);
-404 addCollisionDebugLine(irrFrom, irrTo, irr::video::SColor(255, 255, 255, 255), 0.2f);
-405 headingChanged = (std::abs(heading - oldHeading) > 0.001f);
-406 if (positionChanged) {
-407 ctx_.playerX = newX;
-408 ctx_.playerY = newY;
-409 ctx_.playerZ = newZ;
-410 playerPositionIsSeed_ = false;
-411 if (headingChanged) {
-412 ctx_.playerHeading = heading;
-413 bool pitchChanged = (std::abs(playerPitch_ - oldPitch) > 0.001f);
-414 if (positionChanged || headingChanged) {
-415 LOG_TRACE(MOD_MOVEMENT, "Position updated: ({}, {}, {}) heading={}", ctx_.playerX, ctx_.playerY, ctx_.playerZ, ctx_.playerHeading);
-416 if (ctx_.entityRenderer) {
-417 ctx_.entityRenderer->updatePlayerEntityPosition(ctx_.playerX, ctx_.playerY, ctx_.playerZ, ctx_.playerHeading);
-418 if (cameraMode_ == CameraMode::Follow && ctx_.cameraController) {
-419 ctx_.cameraController->setFollowPosition(ctx_.playerX, ctx_.playerY, ctx_.playerZ, ctx_.playerHeading, deltaTime);
-420 if (cameraMode_ == CameraMode::FirstPerson && (positionChanged || headingChanged || pitchChanged)) {
-421 repositionFirstPersonCamera();
-422 hasMovementInput = playerMovement_.moveForward || playerMovement_.moveBackward ||
-423 playerMovement_.strafeLeft || playerMovement_.strafeRight;
-424 static bool hadMovementInput = false;
-425 bool stoppedMoving = hadMovementInput && !hasMovementInput;
-426 hadMovementInput = hasMovementInput;
-427 static float prevX = ctx_.playerX, prevY = ctx_.playerY, prevZ = ctx_.playerZ;
-428 static auto lastCallbackTime = std::chrono::steady_clock::now();
-429 auto now = std::chrono::steady_clock::now();
-430 auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastCallbackTime);
-431 bool shouldCallback = ctx_.bridge &&
-432 (positionChanged || headingChanged || stoppedMoving) &&
-433 (stoppedMoving || elapsed.count() >= 250);
-434 if (shouldCallback) {
-435 eqt::events::PlayerPositionChanged intent;
-436 intent.x = ctx_.playerX;
-437 intent.y = ctx_.playerY;
-438 intent.z = ctx_.playerZ;
-439 intent.heading = heading;  // EQ format (0-512)
-440 intent.seededPosition = playerPositionIsSeed_;
-441 if (stoppedMoving) {
-442 intent.dx = 0.0f;
-443 intent.dy = 0.0f;
-444 intent.dz = 0.0f;
-445 } else {
-446 intent.dx = ctx_.playerX - prevX;
-447 intent.dy = ctx_.playerY - prevY;
-448 intent.dz = ctx_.playerZ - prevZ;
-449 ctx_.bridge->pushIntent(std::move(intent));
-450 lastCallbackTime = now;
-451 prevX = ctx_.playerX;
-452 prevY = ctx_.playerY;
-453 prevZ = ctx_.playerZ;
-454 if (ctx_.entityRenderer) {
-455 if (playerMovement_.isJumping && playerMovement_.verticalVelocity > 0 && !playerMovement_.isSwimming) {
-456 if (hasMovementInput) {
-457 ctx_.entityRenderer->setPlayerEntityAnimation("l03", false, 0.0f, true);  // Running jump
-458 } else {
-459 ctx_.entityRenderer->setPlayerEntityAnimation("l04", false, 0.0f, true);  // Standing jump
-460 } else if (playerMovement_.isSwimming) {
-461 bool hasSwimMovement = hasMovementInput || playerMovement_.swimUp || playerMovement_.swimDown;
-462 if (hasSwimMovement) {
-463 ctx_.entityRenderer->setPlayerEntityAnimation("l09", true, playerMovement_.swimSpeed);  // Swim treading/moving
-464 } else {
-465 ctx_.entityRenderer->setPlayerEntityAnimation("p06", true);  // Swim idle
-466 } else if (hasMovementInput) {
-467 float speed = playerMovement_.isRunning ? playerMovement_.runSpeed : playerMovement_.walkSpeed;
-468 if (playerMovement_.moveForward && playerMovement_.isRunning) {
-469 ctx_.entityRenderer->setPlayerEntityAnimation("l02", true, speed);  // Run
-470 } else {
-471 ctx_.entityRenderer->setPlayerEntityAnimation("l01", true, speed);  // Walk
+398 LOG_INFO(MOD_GRAPHICS, "[Jump] Landed (no collision) at Z={}", newZ);
+399 if (playerConfig_.collisionDebug) {
+400 if (!ctx_.collisionMap) {
+401 LOG_TRACE(MOD_MOVEMENT, "No collision map - movement allowed");
+402 } else {
+403 LOG_TRACE(MOD_MOVEMENT, "Collision DISABLED - movement allowed");
+404 irr::core::vector3df irrFrom(ctx_.playerX, ctx_.playerZ + 3.0f, ctx_.playerY);
+405 irr::core::vector3df irrTo(newX, newZ + 3.0f, newY);
+406 addCollisionDebugLine(irrFrom, irrTo, irr::video::SColor(255, 255, 255, 255), 0.2f);
+407 headingChanged = (std::abs(heading - oldHeading) > 0.001f);
+408 if (positionChanged) {
+409 ctx_.playerX = newX;
+410 ctx_.playerY = newY;
+411 ctx_.playerZ = newZ;
+412 playerPositionIsSeed_ = false;
+413 if (headingChanged) {
+414 ctx_.playerHeading = heading;
+415 bool pitchChanged = (std::abs(playerPitch_ - oldPitch) > 0.001f);
+416 if (positionChanged || headingChanged) {
+417 LOG_TRACE(MOD_MOVEMENT, "Position updated: ({}, {}, {}) heading={}", ctx_.playerX, ctx_.playerY, ctx_.playerZ, ctx_.playerHeading);
+418 if (ctx_.entityRenderer) {
+419 ctx_.entityRenderer->updatePlayerEntityPosition(ctx_.playerX, ctx_.playerY, ctx_.playerZ, ctx_.playerHeading);
+420 if (cameraMode_ == CameraMode::Follow && ctx_.cameraController) {
+421 ctx_.cameraController->setFollowPosition(ctx_.playerX, ctx_.playerY, ctx_.playerZ, ctx_.playerHeading, deltaTime);
+422 if (cameraMode_ == CameraMode::FirstPerson && (positionChanged || headingChanged || pitchChanged)) {
+423 repositionFirstPersonCamera();
+424 hasMovementInput = playerMovement_.moveForward || playerMovement_.moveBackward ||
+425 playerMovement_.strafeLeft || playerMovement_.strafeRight;
+426 static bool hadMovementInput = false;
+427 bool stoppedMoving = hadMovementInput && !hasMovementInput;
+428 hadMovementInput = hasMovementInput;
+429 static float prevX = ctx_.playerX, prevY = ctx_.playerY, prevZ = ctx_.playerZ;
+430 static auto lastCallbackTime = std::chrono::steady_clock::now();
+431 auto now = std::chrono::steady_clock::now();
+432 auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastCallbackTime);
+433 bool shouldCallback = ctx_.bridge &&
+434 (positionChanged || headingChanged || stoppedMoving) &&
+435 (stoppedMoving || elapsed.count() >= 250);
+436 if (shouldCallback) {
+437 eqt::events::PlayerPositionChanged intent;
+438 intent.x = ctx_.playerX;
+439 intent.y = ctx_.playerY;
+440 intent.z = ctx_.playerZ;
+441 intent.heading = heading;  // EQ format (0-512)
+442 intent.seededPosition = playerPositionIsSeed_;
+443 if (stoppedMoving) {
+444 intent.dx = 0.0f;
+445 intent.dy = 0.0f;
+446 intent.dz = 0.0f;
+447 } else {
+448 intent.dx = ctx_.playerX - prevX;
+449 intent.dy = ctx_.playerY - prevY;
+450 intent.dz = ctx_.playerZ - prevZ;
+451 ctx_.bridge->pushIntent(std::move(intent));
+452 lastCallbackTime = now;
+453 prevX = ctx_.playerX;
+454 prevY = ctx_.playerY;
+455 prevZ = ctx_.playerZ;
+456 if (ctx_.entityRenderer) {
+457 if (playerMovement_.isJumping && playerMovement_.verticalVelocity > 0 && !playerMovement_.isSwimming) {
+458 if (hasMovementInput) {
+459 ctx_.entityRenderer->setPlayerEntityAnimation("l03", false, 0.0f, true);  // Running jump
+460 } else {
+461 ctx_.entityRenderer->setPlayerEntityAnimation("l04", false, 0.0f, true);  // Standing jump
+462 } else if (playerMovement_.isSwimming) {
+463 bool hasSwimMovement = hasMovementInput || playerMovement_.swimUp || playerMovement_.swimDown;
+464 if (hasSwimMovement) {
+465 ctx_.entityRenderer->setPlayerEntityAnimation("l09", true, playerMovement_.swimSpeed);  // Swim treading/moving
+466 } else {
+467 ctx_.entityRenderer->setPlayerEntityAnimation("p06", true);  // Swim idle
+468 } else if (hasMovementInput) {
+469 float speed = playerMovement_.isRunning ? playerMovement_.runSpeed : playerMovement_.walkSpeed;
+470 if (playerMovement_.moveForward && playerMovement_.isRunning) {
+471 ctx_.entityRenderer->setPlayerEntityAnimation("l02", true, speed);  // Run
 472 } else {
-473 ctx_.entityRenderer->setPlayerEntityAnimation("p01", true);  // Idle
+473 ctx_.entityRenderer->setPlayerEntityAnimation("l01", true, speed);  // Walk
+474 } else {
+475 ctx_.entityRenderer->setPlayerEntityAnimation("p01", true);  // Idle

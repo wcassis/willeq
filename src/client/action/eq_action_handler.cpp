@@ -141,18 +141,27 @@ void EqActionHandler::stand() {
     m_eq.Movement().SetPositionState(POS_STANDING);
 }
 
+// T343 (B002): autorun is NOT implemented here and deliberately so. The flag
+// it toggles is PlayerMovementState::autorun, which lives in the renderer's
+// PlayerCameraComponent and is consumed by the per-frame movement phase; the
+// graphical client's hotkeys now reach it directly through
+// RendererAction::ToggleAutorun (renderer_frame_input.cpp), and a game-thread
+// writer could not reach it at all -- that is what T316 hit and what T334
+// recorded for the identical swim case. This arm survives only for the console
+// input handler's /autorun, and console mode has no continuous-movement path
+// to autorun (T343 deleted the last one, board B032), so it stays a no-op with
+// an honest reason instead of a "not yet implemented" that invites a rewrite.
 void EqActionHandler::toggleAutorun() {
-    // EverQuest doesn't have native autorun yet
-    // This would need to be implemented in EverQuest class
-    LOG_DEBUG(MOD_INPUT, "Autorun toggle not yet implemented in EverQuest class");
+    LOG_DEBUG(MOD_INPUT, "Autorun is renderer-owned (see the note above); console mode has no runner to toggle");
 }
 
 void EqActionHandler::stopAllMovement() {
-    m_eq.Movement().StopMoveForward();
-    m_eq.Movement().StopMoveBackward();
-    m_eq.Movement().StopTurnLeft();
-    m_eq.Movement().StopTurnRight();
-    // Note: StopMovement() is private - the above calls handle keyboard movement
+    // T343 (B032): was four StopMove*/StopTurn* calls whose flags no writer
+    // could set, and whose comment claimed StopMovement() was private -- it is
+    // public, and it is what /stop actually needs: it clears the active path
+    // AND the movement target, so a MoveTo/Follow in flight really stops
+    // instead of being resumed by the next UpdateMovement() tick.
+    m_eq.Movement().StopMovement();
 }
 
 // T88: FRAME CONTRACT -- x, y, z are CLIENT frame (same as EverQuest::Move(),

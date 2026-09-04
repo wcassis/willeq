@@ -144,15 +144,11 @@ public:
     float followDistance() const { return m_followDistance; }
     void setFollowDistance(float dist) { m_followDistance = dist; }
 
-    // Keyboard movement state
-    bool moveForward() const { return m_moveForward; }
-    bool moveBackward() const { return m_moveBackward; }
-    bool turnLeft() const { return m_turnLeft; }
-    bool turnRight() const { return m_turnRight; }
-    void setMoveForward(bool val) { m_moveForward = val; }
-    void setMoveBackward(bool val) { m_moveBackward = val; }
-    void setTurnLeft(bool val) { m_turnLeft = val; }
-    void setTurnRight(bool val) { m_turnRight = val; }
+    // T343 (board B032): the four keyboard-movement flags and their eight
+    // accessors were deleted here with the game-side route that was their only
+    // writer. The graphical client's movement flags live in
+    // PlayerMovementState (renderer_types.h), written every frame by
+    // readMovementInput(); see the note at the end of movement_state.cpp.
 
     // Jump state
     bool isJumping() const { return m_isJumping; }
@@ -394,12 +390,6 @@ private:
     // Follow target
     std::string m_followTarget;
     float m_followDistance = 10.0f;
-
-    // Keyboard state
-    bool m_moveForward = false;
-    bool m_moveBackward = false;
-    bool m_turnLeft = false;
-    bool m_turnRight = false;
 
     // Jump state
     bool m_isJumping = false;

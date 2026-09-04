@@ -216,6 +216,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_movement_component)
 
+# T343 (B032): EqActionHandler::stopAllMovement() after the game-side
+# keyboard-movement cluster was deleted -- /stop must clear the movement target
+# and the path, which the four Stop* calls it used to make never did.
+ADD_EXECUTABLE(test_stop_all_movement
+    test_stop_all_movement.cpp
+)
+TARGET_LINK_LIBRARIES(test_stop_all_movement GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_stop_all_movement PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_stop_all_movement)
+
 # K10 (Batch K): the extracted eqt::login_world::LoginWorldComponent, driven
 # directly through EverQuest::LoginWorld().
 ADD_EXECUTABLE(test_login_world_component
