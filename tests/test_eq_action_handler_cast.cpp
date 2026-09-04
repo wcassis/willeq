@@ -384,6 +384,8 @@ TEST(EqActionHandlerCast, CastRefusalStringIds_MatchEqstr) {
     EXPECT_EQ(EQ::castRefusalStringId(CastResult::NoPet), 255u);
     EXPECT_EQ(EQ::castRefusalStringId(CastResult::ComponentMissing), 272u);
     EXPECT_EQ(EQ::castRefusalStringId(CastResult::AlreadyCasting), 12442u);
+    // T355: eqstr 5805 "Insufficient Endurance to activate this ability!"
+    EXPECT_EQ(EQ::castRefusalStringId(CastResult::NotEnoughEndurance), 5805u);
     EXPECT_EQ(EQ::castRefusalStringId(CastResult::Success), 0u);
     EXPECT_EQ(EQ::castRefusalStringId(CastResult::NotMemorized), 0u);
     EXPECT_EQ(EQ::castRefusalStringId(CastResult::SpellNotReady), 0u);
@@ -406,6 +408,9 @@ TEST(EqActionHandlerCast, CastRefusalStrings_ResolveWithoutStringDb) {
     // T251: exact eqstr text (T246's row said "spell components").
     EXPECT_EQ(h.eq.Strings().GetStringMessage(272), "You are missing some required components.");
     EXPECT_EQ(h.eq.Strings().GetStringMessage(12442), "You are already casting a spell!");
+    // T355
+    EXPECT_EQ(h.eq.Strings().GetStringMessage(5805),
+              "Insufficient Endurance to activate this ability!");
 }
 
 // T251: 433 "You are missing %1." is the named form of 272; the fallback

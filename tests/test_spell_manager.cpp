@@ -542,6 +542,60 @@ TEST(SpellManagerValidate, EnoughManaPasses) {
     EXPECT_TRUE(mgr->checkMana(spell));
 }
 
+// ---- T355: endurance, the mana check's sibling. SpellData::endurance_cost
+// was loaded from nothing before T355 (spell_database.cpp assigned mana_cost
+// and skipped it), so every discipline read as free here and the client sent
+// a cast the server then refused one round trip later
+// (eqemu zone/effects.cpp:900).
+
+TEST(SpellManagerValidate, NotEnoughEnduranceBlocksCast) {
+    EverQuest eq = MakeEq();
+    auto* mgr = eq.GetSpellManager();
+    eq.GetGameState().player().setMana(1000, 1000);
+    eq.GetGameState().player().setEndurance(50, 1000);
+
+    SpellData spell = MakeSpell(SpellTargetType::Self);
+    spell.endurance_cost = 900;  // Unholy Aura Discipline (4520)
+    EXPECT_EQ(mgr->validateCast(spell, 0), CastResult::NotEnoughEndurance);
+}
+
+TEST(SpellManagerValidate, ZeroOrNegativeEnduranceCostAlwaysPassesEnduranceCheck) {
+    EverQuest eq = MakeEq();
+    auto* mgr = eq.GetSpellManager();
+    eq.GetGameState().player().setEndurance(0, 0);
+
+    SpellData spell = MakeSpell(SpellTargetType::Self);
+    spell.endurance_cost = 0;
+    EXPECT_TRUE(mgr->checkEndurance(spell));
+    SpellData refunding = MakeSpell(SpellTargetType::Self);
+    refunding.endurance_cost = -10;
+    EXPECT_TRUE(mgr->checkEndurance(refunding));
+}
+
+TEST(SpellManagerValidate, EnoughEndurancePasses) {
+    EverQuest eq = MakeEq();
+    auto* mgr = eq.GetSpellManager();
+    eq.GetGameState().player().setEndurance(900, 1000);
+
+    SpellData spell = MakeSpell(SpellTargetType::Self);
+    spell.endurance_cost = 900;
+    EXPECT_TRUE(mgr->checkEndurance(spell));
+    EXPECT_EQ(mgr->validateCast(spell, 0), CastResult::Success);
+}
+
+// Mana is checked first, so a spell short on both names mana -- pinning the
+// order rather than leaving it to whichever branch happens to run first.
+TEST(SpellManagerValidate, ManaIsCheckedBeforeEndurance) {
+    EverQuest eq = MakeEq();
+    auto* mgr = eq.GetSpellManager();
+    eq.GetGameState().player().setMana(0, 100);
+    eq.GetGameState().player().setEndurance(0, 1000);
+
+    SpellData spell = MakeSpell(SpellTargetType::Self, /*mana_cost=*/50);
+    spell.endurance_cost = 900;
+    EXPECT_EQ(mgr->validateCast(spell, 0), CastResult::NotEnoughMana);
+}
+
 TEST(SpellManagerValidate, OutOfRangeBlocksCast) {
     EverQuest eq = MakeEq();
     ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn,

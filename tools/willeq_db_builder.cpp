@@ -125,7 +125,8 @@ static int loadSpells(sqlite3* db, const std::string& filepath) {
             spell_affect_index INTEGER,
             reagent_id_1 INTEGER, reagent_id_2 INTEGER, reagent_id_3 INTEGER, reagent_id_4 INTEGER,
             reagent_count_1 INTEGER, reagent_count_2 INTEGER, reagent_count_3 INTEGER, reagent_count_4 INTEGER,
-            noexpend_reagent_1 INTEGER, noexpend_reagent_2 INTEGER, noexpend_reagent_3 INTEGER, noexpend_reagent_4 INTEGER
+            noexpend_reagent_1 INTEGER, noexpend_reagent_2 INTEGER, noexpend_reagent_3 INTEGER, noexpend_reagent_4 INTEGER,
+            endurance_cost INTEGER
         )
     )");
 
@@ -151,7 +152,8 @@ static int loadSpells(sqlite3* db, const std::string& filepath) {
         "spell_affect_index, "
         "reagent_id_1, reagent_id_2, reagent_id_3, reagent_id_4, "
         "reagent_count_1, reagent_count_2, reagent_count_3, reagent_count_4, "
-        "noexpend_reagent_1, noexpend_reagent_2, noexpend_reagent_3, noexpend_reagent_4) "
+        "noexpend_reagent_1, noexpend_reagent_2, noexpend_reagent_3, noexpend_reagent_4, "
+        "endurance_cost) "
         "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,"
         "?,?,?,?,?,?,?,?,?,?,?,?,"
         "?,?,?,?,?,?,?,?,?,?,?,?,"
@@ -159,7 +161,8 @@ static int loadSpells(sqlite3* db, const std::string& filepath) {
         "?,?,?,?,?,?,?,?,?,?,?,?,"
         "?,?,?,?,?,?,?,?,?,?,?,?,"
         "?,"
-        "?,?,?,?,?,?,?,?,?,?,?,?)",
+        "?,?,?,?,?,?,?,?,?,?,?,?,"
+        "?)",
         -1, &stmt, nullptr);
 
     std::string line;
@@ -257,6 +260,11 @@ static int loadSpells(sqlite3* db, const std::string& filepath) {
         for (int slot = 0; slot < EQ::MAX_SPELL_REAGENTS; ++slot) {
             sqlite3_bind_int(stmt, bindIdx++, safeInt(EQ::SpellField::NoExpendReagent1 + slot));
         }
+
+        // T355: endurance cost, spells_us.txt field 166 (= eqemu
+        // spells_new.EndurCost -- that table is a positional import of this
+        // same file). Verbatim: 0 means the spell costs no endurance.
+        sqlite3_bind_int(stmt, bindIdx++, safeInt(EQ::SpellField::EnduranceCost));
 
         sqlite3_step(stmt);
         count++;

@@ -19,7 +19,7 @@ namespace EQT {
 // the client compares against it in WilleqDatabase::open() (T56). Bump this
 // AND the builder's setMeta() call together, in the same commit, whenever
 // the schema changes — they must never drift independently again.
-inline constexpr int kWilleqDbExpectedVersion = 5;  // T304: race_models.color added (T246 added spell reagents at 4, T68 effect slots at 3)
+inline constexpr int kWilleqDbExpectedVersion = 6;  // T355: spells.endurance_cost added (T304 race_models.color at 5, T246 spell reagents at 4, T68 effect slots at 3)
 
 // Runtime query stats for /pmem and /ft diagnostics
 struct DatabaseStats {
@@ -92,6 +92,9 @@ struct SpellInfo {
     uint8_t durationFormula = 0;
     uint32_t durationCap = 0;
     int32_t manaCost = 0;
+    // T355: spells_us.txt field 166 (eqemu spells_new.EndurCost). Verbatim;
+    // 0 for every pre-Velious spell, non-zero for the discipline rows.
+    int32_t enduranceCost = 0;
     int32_t targetType = 0;
     float range = 0;
     float aoeRange = 0;

@@ -47,6 +47,7 @@ enum CastRefusalStringId : uint32_t {
     STR_NO_PET                  = 255,    // You do not have a pet.
     STR_MISSING_COMPONENTS      = 272,    // You are missing some required components.
     STR_MISSING_NAMED_COMPONENT = 433,    // You are missing %1.   (T251)
+    STR_INSUFFICIENT_ENDURANCE  = 5805,   // Insufficient Endurance to activate this ability!  (T355)
     STR_ALREADY_CASTING         = 12442,  // You are already casting a spell!
 };
 
@@ -63,6 +64,7 @@ inline uint32_t castRefusalStringId(CastResult result) {
     switch (result) {
         case CastResult::Fizzle:            return STR_SPELL_FIZZLES;
         case CastResult::NotEnoughMana:     return STR_INSUFFICIENT_MANA;
+        case CastResult::NotEnoughEndurance: return STR_INSUFFICIENT_ENDURANCE;
         case CastResult::OutOfRange:        return STR_TARGET_OUT_OF_RANGE;
         case CastResult::InvalidTarget:     return STR_CANNOT_AFFECT_NPC;
         case CastResult::ComponentMissing:  return STR_MISSING_COMPONENTS;

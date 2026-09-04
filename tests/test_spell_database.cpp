@@ -655,3 +655,46 @@ TEST_F(SpellDatabaseTest, ZeroCountComponentAndNoexpendCarriedVerbatim) {
     EXPECT_EQ(spell->noexpend_reagent_id[0], 10307u);
     EXPECT_FALSE(spell->requiresReagents());
 }
+
+// T355: endurance cost (spells_us.txt field 166) reaches SpellData. Before
+// T355 willeq.db had no endurance_cost column at all, so
+// SpellData::endurance_cost was left at its 0 default for every spell and
+// the field had zero assigning sites (RED: all three EXPECT_EQ below read 0).
+//
+// The column index is not a guess. eqemu imports spells_us.txt into
+// `spells_new` POSITIONALLY -- /mnt/projects/akk-stack/code/client_files/
+// import/main.cpp ImportSpells() splits the caret line and writes split[i]
+// into column i -- and `EndurCost` is column 166 of that table
+// (/mnt/projects/akk-stack/code/common/repositories/base/
+// base_spells_new_repository.h, which reads it back as row[166]). These three
+// ids were SELECTed out of a live peq `spells_new` (EndurCost > 0) and the
+// same numbers were then read out of field 166 of the text file.
+TEST_F(SpellDatabaseTest, EnduranceCostRoundTripsForMeasuredDisciplines) {
+    if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
+
+    struct Row { uint32_t id; const char* name; int32_t endurance; };
+    const Row kMeasured[] = {
+        {4520, "Unholy Aura Discipline", 900},
+        {4608, "Provoke",                 85},
+        {4614, "Phantom Zephyr",         125},
+    };
+
+    for (const Row& r : kMeasured) {
+        const SpellData* spell = db.getSpell(r.id);
+        ASSERT_NE(spell, nullptr) << "spell " << r.id;
+        EXPECT_EQ(spell->name, r.name) << "spell " << r.id;
+        EXPECT_EQ(spell->endurance_cost, r.endurance) << "spell " << r.id;
+        // All three are disciplines: no mana, endurance only.
+        EXPECT_EQ(spell->mana_cost, 0) << "spell " << r.id;
+    }
+}
+
+// The control: a Classic spell costs no endurance, so the new column must
+// not turn every spell into a discipline.
+TEST_F(SpellDatabaseTest, EnduranceCostIsZeroForAClassicSpell) {
+    if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
+    const SpellData* spell = db.getSpell(5);
+    ASSERT_NE(spell, nullptr);
+    EXPECT_EQ(spell->name, "Cloak");
+    EXPECT_EQ(spell->endurance_cost, 0);
+}

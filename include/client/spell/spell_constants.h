@@ -336,6 +336,7 @@ enum class CastResult : uint8_t {
     SpellNotReady       = 14,  // Spell not ready
     InvalidSpell        = 15,  // Spell doesn't exist
     NoPet               = 16,  // T244: pet-only spell, no pet (was folded into InvalidTarget)
+    NotEnoughEndurance  = 17,  // T355: insufficient endurance (disciplines)
 };
 
 // ============================================================================
@@ -550,6 +551,18 @@ namespace SpellField {
     constexpr int NewIcon           = 144;
     constexpr int SpellIcon         = 143;
     constexpr int NoBuffBlock       = 161;
+
+    // T355: endurance cost. spells_us.txt is imported into eqemu's
+    // `spells_new` POSITIONALLY -- client_files/import/main.cpp's
+    // ImportSpells() splits the caret line and writes split[i] into column i
+    // -- so the ordinal of a column in that table IS the field index in the
+    // text file. `EndurCost` is column 166 of spells_new
+    // (common/repositories/base/base_spells_new_repository.h, which also
+    // reads it back as row[166]), and `mana` is column 19, matching the
+    // ManaCost index above. Verified against three spells: see
+    // refactor/T355_spell_endurance_cost.md.
+    constexpr int EnduranceCost     = 166;
+
     constexpr int Dispellable       = 175;
 
     constexpr int SpellGroup        = 207;

@@ -243,6 +243,10 @@ private:
 // effect id, 100 for formula) are NOT interpreted here; that happens at the
 // consumer boundary (SpellDatabase::queryAndCache), per SpellInfo's contract.
 // `firstCol` is the sqlite3_column index of effect_id_1 (the first of the 61).
+// The positional tail of the spells SELECT, shared by getSpell() and
+// getSpellByName() so the two column runs cannot drift apart. Everything it
+// reads is verbatim spells_us.txt -- markers are interpreted at the consumer
+// boundary (SpellDatabase::queryAndCache), never here.
 static void readSpellEffectColumns(sqlite3_stmt* stmt, int firstCol, SpellInfo& info) {
     int col = firstCol;
     for (int i = 0; i < 12; ++i) info.effectId[i]   = static_cast<int16_t>(sqlite3_column_int(stmt, col++));
@@ -255,6 +259,9 @@ static void readSpellEffectColumns(sqlite3_stmt* stmt, int firstCol, SpellInfo& 
     for (int i = 0; i < 4; ++i) info.reagentId[i]         = sqlite3_column_int(stmt, col++);
     for (int i = 0; i < 4; ++i) info.reagentCount[i]      = sqlite3_column_int(stmt, col++);
     for (int i = 0; i < 4; ++i) info.noexpendReagentId[i] = sqlite3_column_int(stmt, col++);
+    // T355: endurance_cost is the LAST column of both spell SELECTs -- it was
+    // appended rather than placed next to mana_cost so no existing index moved.
+    info.enduranceCost = sqlite3_column_int(stmt, col++);
 }
 
 SpellInfo WilleqDatabase::getSpell(uint32_t spellId) {
@@ -282,7 +289,8 @@ SpellInfo WilleqDatabase::getSpell(uint32_t spellId) {
         "spell_affect_index, "
         "reagent_id_1, reagent_id_2, reagent_id_3, reagent_id_4, "
         "reagent_count_1, reagent_count_2, reagent_count_3, reagent_count_4, "
-        "noexpend_reagent_1, noexpend_reagent_2, noexpend_reagent_3, noexpend_reagent_4 "
+        "noexpend_reagent_1, noexpend_reagent_2, noexpend_reagent_3, noexpend_reagent_4, "
+        "endurance_cost "
         "FROM spells WHERE id=?",
         stmtGetSpell_);
     if (!stmt) return info;
@@ -356,7 +364,8 @@ SpellInfo WilleqDatabase::getSpellByName(const std::string& name) {
         "spell_affect_index, "
         "reagent_id_1, reagent_id_2, reagent_id_3, reagent_id_4, "
         "reagent_count_1, reagent_count_2, reagent_count_3, reagent_count_4, "
-        "noexpend_reagent_1, noexpend_reagent_2, noexpend_reagent_3, noexpend_reagent_4 "
+        "noexpend_reagent_1, noexpend_reagent_2, noexpend_reagent_3, noexpend_reagent_4, "
+        "endurance_cost "
         "FROM spells WHERE name=?",
         stmtGetSpellByName_);
     if (!stmt) return info;
