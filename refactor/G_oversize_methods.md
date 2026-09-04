@@ -12,7 +12,7 @@ signatures (K-batch multiset with a different normalisation).
 
 | method | where now | lines | shape | decomposition |
 |---|---|---|---|---|
-| `ZoneComponent::DispatchZonePacket` | `src/client/zone/zone_component.cpp` | ~880 | one `switch` over opcodes, ~100 arms | **a table**: `static const std::unordered_map<uint16_t, void (ZoneComponent::*)(const Packet&)>`; arms with logic beyond a call become named private handlers first. Batch G's pilot — it is the most mechanical |
+| `ZoneComponent::DispatchZonePacket` | `src/client/zone/zone_dispatch.cpp` | ~880 | one `switch` over opcodes, ~100 arms | **a table**: `static const std::unordered_map<uint16_t, void (ZoneComponent::*)(const Packet&)>`; arms with logic beyond a call become named private handlers first. Batch G's pilot — it is the most mechanical |
 | `PlayerCameraComponent::updatePlayerMovement` | `src/client/graphics/player/renderer_player_physics.cpp` | ~806 | sequential phases (input → intent → collision → water → ground → send) | one private method per phase, a `MovementFrame` struct carrying the locals that cross phases; ⚠ `test_first_person_camera_single_formula` and `test_first_person_body_draw_rule` pin behaviour and read the TU as text — correction 21 |
 | `CommandProcessor::registerBuiltinCommands` | `src/client/action/command_processor_registration.cpp` | ~768 | a list of `registry.add(...)` calls | **registration ORDER is load-bearing** (J04): split into per-family `registerXCommands()` called in the SAME order; a test pins the order by diffing the registry's listing before/after |
 | `Application::initialize` | `src/client/application.cpp` | ~569 | sequential init steps with early returns | one private step per subsystem returning `bool`; the top-level becomes a list |
