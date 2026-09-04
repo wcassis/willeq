@@ -108,21 +108,23 @@ namespace EQT { namespace Graphics { class ConstrainedTextureCache; } }
 // three sibling headers, included here so that every existing includer of this
 // header sees exactly the same declarations, in the same order, as before.
 #include "client/graphics/renderer_types.h"
+#include "client/graphics/zone_load_surface.h"
 #include "client/graphics/renderer_event_receiver.h"
 #include "client/graphics/renderer_draw_types.h"
 
 namespace EQT {
 namespace Graphics {
 
-// Main Irrlicht renderer class
-class IrrlichtRenderer {
+// Main Irrlicht renderer class. K16 (B006): implements IZoneLoadSurface, the
+// two-method zone-load surface the game side calls through.
+class IrrlichtRenderer : public IZoneLoadSurface {
 public:
     IrrlichtRenderer();
     ~IrrlichtRenderer();
 
     // Initialize the renderer (window, GPU, subsystems, background thread pool).
     // Use this at startup for early progress display, then call loadGlobalAssets() later.
-    bool initLoadingScreen(const RendererConfig& config);
+    bool initLoadingScreen(const RendererConfig& config) override;
 
     // Load global assets (character models, equipment) - call after initLoadingScreen()
     // This is the heavy loading that was previously done in init()
@@ -588,7 +590,7 @@ public:
 
     // Deferred graphics init (render distance, spell VFX) — S2: was setInventoryManager(InventoryManager*),
     // renamed; the stored pointer was dead and no game-thread object crosses the boundary now
-    void initDeferredGraphics();
+    void initDeferredGraphics() override;
     void toggleInventory();
     void openInventory();
     void closeInventory();

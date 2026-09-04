@@ -67,7 +67,7 @@ namespace Json { class Value; }
 namespace EQT {
 namespace Graphics {
 struct BspTree;
-class IrrlichtRenderer;
+class IZoneLoadSurface;  // K16 (B006): the two-method zone-load surface
 }
 }
 
@@ -99,7 +99,7 @@ public:
 	void PostRenderTick(float deltaTime);  // audio sync
 #ifdef EQT_HAS_GRAPHICS
 	bool InitGraphics(int width, int height,
-	                  EQT::Graphics::IrrlichtRenderer* renderer,
+	                  EQT::Graphics::IZoneLoadSurface* renderer,
 	                  eqt::bridge::GameStateBridge* bridge);
 	void ShutdownGraphics();
 #endif

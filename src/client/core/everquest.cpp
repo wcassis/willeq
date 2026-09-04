@@ -1046,7 +1046,7 @@ void EverQuest::PostRenderTick(float deltaTime) {
 
 #ifdef EQT_HAS_GRAPHICS
 bool EverQuest::InitGraphics(int width, int height,
-                             EQT::Graphics::IrrlichtRenderer* renderer,
+                             EQT::Graphics::IZoneLoadSurface* renderer,
                              eqt::bridge::GameStateBridge* bridge) {
 	return m_bridge_component->InitGraphics(width, height, renderer, bridge);
 }
