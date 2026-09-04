@@ -297,10 +297,60 @@ irr::video::SColor OverlaysComponent::getNavmeshAreaColor(uint8_t areaType) cons
     }
 }
 
+// T333 test seam -- see the declaration in overlays_component.h.
+void OverlaysComponent::seedNavmeshOverlayTriangleForTest(const irr::core::vector3df& v1,
+                                                          const irr::core::vector3df& v2,
+                                                          const irr::core::vector3df& v3,
+                                                          irr::video::SColor color) {
+    NavmeshOverlayTriangle tri;
+    tri.v1 = v1;
+    tri.v2 = v2;
+    tri.v3 = v3;
+    tri.color = color;
+    navmeshOverlayTriangles_.push_back(tri);
+}
+
 void OverlaysComponent::drawNavmeshOverlay() {
     if (!showNavmeshOverlay_ || !ctx_.driver || navmeshOverlayTriangles_.empty()) {
         return;
     }
+
+    // T333 (B048). Both symptoms measured live in review/T329/ -- no navmesh
+    // lines drawn AND the whole 2D UI gone for the rest of the frame -- have a
+    // single cause, and it is driver state, not the triangle list.
+    //
+    // By the time the debug-overlay pass reaches here, 2D drawing has already
+    // happened this frame (billboards, GUI nodes and the target box, during and
+    // just after smgr->drawAll() -- the same fact drawTargetOutline() documents
+    // above). COpenGLES2Driver LATCHES that: setOrthoProjection() sets
+    // Is2DMode, overwrites Matrices[ETS_VIEW]/[ETS_PROJECTION] with an ortho
+    // screen matrix, and then early-returns on every later call while the latch
+    // is set. Two consequences, one each:
+    //
+    //   * world-space lines drawn without re-setting ETS_VIEW/ETS_PROJECTION are
+    //     multiplied by that ortho matrix, so they land far outside the screen
+    //     box -- "nothing draws"; and
+    //   * setMaterial() below re-enables back-face culling (SMaterial's default)
+    //     and the depth test, and the 2D pass that follows CANNOT undo it,
+    //     because setOrthoProjection() is the only caller of setCull(false) /
+    //     setDepthTest(false) and it early-returns. Every UI quad is then
+    //     back-face culled away -- "the 2D UI vanishes". Measured: flipping
+    //     BackfaceCulling alone brings the UI back.
+    //
+    // So this borrows the driver's transforms for one line batch and hands back
+    // exactly what it found, the way the two post-drawAll 3D draws that DO work
+    // already do it: drawTargetOutline() above and the portal wireframe batch in
+    // renderer_frame_render.cpp both re-set ETS_VIEW/ETS_PROJECTION from the
+    // transforms captured during the ESNRP_SOLID pass. The pass order is
+    // untouched (it is pinned by tests/goldens/frame_render_order_g05.txt).
+    //
+    // NOTE: OverlaysComponent::drawMapOverlay() and
+    // PlayerCameraComponent::drawCollisionDebugLines() carry the identical
+    // defect and are deliberately NOT changed here -- neither has live
+    // evidence and both are off by default. Boarded separately.
+    const irr::core::matrix4 savedView = ctx_.driver->getTransform(irr::video::ETS_VIEW);
+    const irr::core::matrix4 savedProj = ctx_.driver->getTransform(irr::video::ETS_PROJECTION);
+    const irr::core::matrix4 savedWorld = ctx_.driver->getTransform(irr::video::ETS_WORLD);
 
     // Set up material for wireframe line drawing
     irr::video::SMaterial lineMaterial;
@@ -332,7 +382,14 @@ void OverlaysComponent::drawNavmeshOverlay() {
         navmeshTransform *= rotMatrix;
     }
 
-    // Set transform and draw all triangles as wireframe
+    // Set transforms and draw all triangles as wireframe. The view/projection
+    // pair is the one captured during the ESNRP_SOLID pass -- see the T333 note
+    // at the top of this function for why the driver's current pair cannot be
+    // trusted here.
+    if (ctx_.Frame().have3DTransforms()) {
+        ctx_.driver->setTransform(irr::video::ETS_VIEW, ctx_.captured3DView);
+        ctx_.driver->setTransform(irr::video::ETS_PROJECTION, ctx_.captured3DProj);
+    }
     ctx_.driver->setTransform(irr::video::ETS_WORLD, navmeshTransform);
 
     for (const auto& tri : navmeshOverlayTriangles_) {
@@ -340,6 +397,28 @@ void OverlaysComponent::drawNavmeshOverlay() {
         ctx_.driver->draw3DLine(tri.v2, tri.v3, tri.color);
         ctx_.driver->draw3DLine(tri.v3, tri.v1, tri.color);
     }
+
+    // Hand the driver back what it had. The transforms restore literally; the
+    // render state has to be spelled as a material, because setMaterial() is the
+    // only public door to setCull()/setDepthTest()/setDepthWrite(). This one
+    // reproduces setOrthoProjection()'s 2D state exactly: no culling, no depth
+    // test (ECFN_NEVER), no depth write. The depth write comes from the material
+    // TYPE -- COpenGLES2Driver::applyMaterialRenderState() switches on
+    // MaterialType and ignores ZWriteEnable -- which is why the type here is
+    // EMT_TRANSPARENT_ALPHA_CHANNEL (its branch is the depth-write-off one) and
+    // not EMT_SOLID. Blending is set explicitly by every 2D draw call, so it
+    // does not matter which way this leaves it.
+    ctx_.driver->setTransform(irr::video::ETS_WORLD, savedWorld);
+    ctx_.driver->setTransform(irr::video::ETS_VIEW, savedView);
+    ctx_.driver->setTransform(irr::video::ETS_PROJECTION, savedProj);
+
+    irr::video::SMaterial restore2D;
+    restore2D.Lighting = false;
+    restore2D.BackfaceCulling = false;
+    restore2D.ZBuffer = irr::video::ECFN_NEVER;
+    restore2D.ZWriteEnable = false;
+    restore2D.MaterialType = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL;
+    ctx_.driver->setMaterial(restore2D);
 }
 
 #ifdef EQT_HAS_GLES2
