@@ -101,7 +101,7 @@ This table and that plan must agree; change both together.
 | TU | Lines | Contents |
 |---|---|---|
 | command_processor_social.cpp | 798 | Chat, target/attack, group/raid, duel, trade, who/inspect, guild |
-| command_processor_registration.cpp | 791 | `registerBuiltinCommands()` — 142 `registerCommand({…})` calls, the whole registry-2 vocabulary |
+| command_processor_registration.cpp | 891 | G03: `registerBuiltinCommands()` is now 22 lines — the ORDERED list of 21 per-family `registerXCommands()` calls that hold the same 142 `registerCommand({…})` calls, the whole registry-2 vocabulary. Order is load-bearing (a later registration shadows an earlier name/alias, J04/T097) and is pinned by `tests/test_command_registration_order.cpp` against `tests/goldens/command_registration_order_g03.txt` |
 | command_processor_spells_gm.cpp | 713 | Cast/mem/gems/buffs/spellbook, pet, stance and movement modes, logging controls, track/find, the GM family, /appearance |
 | command_processor_world.cpp | 490 | Corpse/consent, world objects, tradeskill recipes, vendor/buy/sell, equip/read/scribe, loc/sit/stand/move/warp/follow, quit/camp, debug/perf/time |
 | src/client/action/command_processor.cpp | 284 | Core: processCommand/processInput, registerCommand, lookup/completion/category queries, parsing helpers, message sinks |
