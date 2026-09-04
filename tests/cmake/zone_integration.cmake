@@ -229,3 +229,20 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_forced_pose_no_echo PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
 GTEST_DISCOVER_TESTS(test_forced_pose_no_echo)
+
+# T346 (BOARD B001 remainder): the self-death sequence matches the official
+# client. Replays the T311 Leg A capture's OP_Death + OP_ZonePlayerToBind
+# bytes verbatim and compares fable's outbound opcode sequence to a golden
+# extracted from the capture's opcode timeline
+# (scripts/refactor/t311_death_golden.py). Same DaybreakConnection-over-
+# FakeUdpTransport seam as test_forced_pose_no_echo: SendSpawnAppearance and
+# PacketSender::SafeQueueZone both bottom out there, so it is the one place
+# that sees the whole sequence in order. No network, no graphics, no eqemu.
+ADD_EXECUTABLE(test_self_death_sequence
+    test_self_death_sequence.cpp
+)
+TARGET_LINK_LIBRARIES(test_self_death_sequence GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_self_death_sequence PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_self_death_sequence)

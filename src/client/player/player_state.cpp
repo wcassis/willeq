@@ -1,5 +1,6 @@
 #include "client/player/player_component.h"
 #include "client/movement/movement_component.h"  // T344: ApplyPositionState
+#include "client/entities/entities_component.h"  // T346: SendSpawnAppearance
 #include "client/eq.h"
 #include "client/willeq_database.h"
 #include "client/pathfinder_interface.h"
@@ -260,12 +261,24 @@ void eqt::player::PlayerComponent::ZoneProcessDeath(const EQ::Net::Packet &p)
 		// ApplyPositionState(), never SetPositionState(): the server told
 		// us, so there is nothing to tell it back.
 		//
-		// NOT the whole oracle death sequence. T311 Leg A measured the
-		// official client answering its own OP_Death with C->S
-		// OP_SpawnAppearance AT_ANIMATION param 115 (Lying) and then a full
-		// OP_ZoneChange re-entry; that re-entry is a separate, larger unit
-		// (see the T344 Review). This writes the state only.
+		// T346 closes what T344 left owed: the Lying appearance below and
+		// the OP_ClientUpdate silence that follows it.
 		ctx_.Movement().ApplyPositionState(POS_DEAD);
+
+		// T346 step 1 (BOARD B001 remainder). T311 Leg A captured a real
+		// Titanium client dying four times; every one of the four windows
+		// answers its own OP_Death with exactly one C->S OP_SpawnAppearance,
+		// type 0x0e (AT_ANIMATION), param 0x73 (115, Animation::Lying), and
+		// never AT_DIE. See tests/goldens/self_death_outbound_g07.txt.
+		//
+		// A DEDICATED call here, not SetPositionState's POS_DEAD arm, and
+		// that is deliberate: the arm is also reachable from the debug
+		// setPositionState(4) action, where we are not actually dead and
+		// telling the server we are lying down would be a lie. T344 pinned
+		// that arm as sending nothing (ForcedPoseNoEcho.
+		// UserDeadState_NeverSendsAtDie) and it still sends nothing. Only a
+		// real OP_Death for our own spawn id produces this packet.
+		ctx_.Entities().SendSpawnAppearance(AT_ANIMATION, ANIM_LYING);
 		// Close vendor window if open (can't shop while dead)
 		if (ctx_.self.IsVendorWindowOpen()) {
 			LOG_DEBUG(MOD_INVENTORY, "Closed vendor window due to player death");

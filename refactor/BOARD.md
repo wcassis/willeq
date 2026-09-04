@@ -40,10 +40,23 @@ it without taking that measurement first.
   because `POS_DEAD` is reachable from both new paths. Pinned by
   `tests/test_forced_pose_no_echo.cpp` (8 tests; 4 failed pre-fix, including
   the `AT_DIE` echo), which replays the T311 self-death `OP_Death` bytes
-  verbatim. Still owed, and NOT this unit: the official client's full death
+  verbatim. ~~Still owed, and NOT this unit: the official client's full death
   sequence — C→S Lying appearance, no further `OP_ClientUpdate` while dead,
-  then an `OP_ZoneChange` re-entry (shape in the T344 Review). Prov: deferred
-  item 15.
+  then an `OP_ZoneChange` re-entry (shape in the T344 Review).~~ **REMAINDER
+  CLOSED by T346** (`refactor/T346_self_death_sequence.md`): the Lying
+  appearance is a dedicated `SendSpawnAppearance(AT_ANIMATION, ANIM_LYING)` in
+  `ZoneProcessDeath`'s self branch (`SetPositionState`'s `POS_DEAD` arm stays
+  empty — it is also the debug action's path, where we are not dead); the
+  silence is a `POS_DEAD` gate at the top of
+  `MovementComponent::SendPositionUpdate()`, the one function every C→S
+  `OP_ClientUpdate` funnels through, released in `ZoneProcessPlayerProfile`
+  so a respawned character talks again; the bind re-entry needed NO change —
+  `ZoneProcessZonePlayerToBind` already called `RequestZoneChange`
+  unconditionally, same zone included, which the replayed capture confirmed
+  before any edit. Pinned by `tests/test_self_death_sequence.cpp` (9 tests)
+  against `tests/goldens/self_death_outbound_g07.txt`, extracted from the
+  T311 capture by `scripts/refactor/t311_death_golden.py`. Live proof still
+  owed. Prov: deferred item 15.
 
 - ~~**B002** (A) `src/client/action/eq_action_handler.cpp` `EqActionHandler::toggleAutorun`
   — a `LOG_DEBUG` stub, and the only live consumer

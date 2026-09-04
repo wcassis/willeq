@@ -30,6 +30,19 @@
 
 bool eqt::PacketSender::SafeQueueZone(EQ::Net::Packet &p, int stream, bool reliable)
 {
+	// T346: the T268 seam covers this sender too. Queue() alone was not
+	// enough to pin an ORDERED outbound sequence: OP_ClientUpdate goes out
+	// through here unreliable (SendPositionUpdate's SafeQueueZone(p, 0,
+	// false)), and an unreliable packet never lands in the connection's
+	// sent_packets resend map, so the DaybreakConnection seam T344 used
+	// cannot see it at all. Recorded before the gates, exactly as Queue()
+	// does, so the seam means "the client decided to send this". No-op
+	// unless armed.
+	if (p.Length() >= 2) {
+		Test_RecordQueuedPacket(p.GetUInt16(0), static_cast<const uint8_t*>(p.Data()) + 2,
+			p.Length() - 2);
+	}
+
 	if (!m_zone_connection) {
 		LOG_WARN(MOD_ZONE, "Attempted to send packet with null zone connection");
 		return false;
