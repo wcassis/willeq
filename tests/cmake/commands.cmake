@@ -164,6 +164,17 @@ ADD_EXECUTABLE(test_reachability_sweep
 TARGET_LINK_LIBRARIES(test_reachability_sweep GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_reachability_sweep)
 
+# G02: the intent-dispatch coverage net. Parses renderer_intents.h,
+# bridge_component.h and bridge_component_intents.cpp (WILLEQ_REPO_ROOT) and
+# asserts every RendererIntent alternative has exactly one canonical dispatch
+# line, one declaration and one definition -- and no handler exists without an
+# alternative. Anchored on std::variant_size_v, so there is no golden file.
+ADD_EXECUTABLE(test_bridge_intent_table
+    test_bridge_intent_table.cpp
+)
+TARGET_LINK_LIBRARIES(test_bridge_intent_table GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_bridge_intent_table)
+
 # T295: parses src/client/graphics and pins the first-person camera to ONE
 # formula (repositionFirstPersonCamera()), the tunables to one TU, and the
 # two unreachable first-person helpers T295 deleted to staying deleted.

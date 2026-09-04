@@ -8,9 +8,10 @@
 // irrlicht_renderer.cpp:
 //
 //   1. every RendererIntent variant member has a consumer arm in
-//      eq_bridge.cpp, and every member NOT on the documented blocked list
-//      has at least one production producer (pushIntent(...) outside
-//      eq_bridge.cpp);
+//      src/client/bridge/bridge_component_intents.cpp (G02: one canonical
+//      std::visit dispatch line per member, see intentArm() below), and
+//      every member NOT on the documented blocked list has at least one
+//      production producer (pushIntent(...) outside that TU);
 //   2. every GameEventType enumerator has at least one publisher outside the
 //      consumer TUs and at least one case/subscription inside them;
 //   3. every IActionHandler pure virtual is reached through some
@@ -215,13 +216,33 @@ const std::set<std::string> kBlockedIntents = {
     // (/train, /trainclose).
 };
 
+// G02 widened the arm matcher. ProcessBridgeIntents was a chain of
+// `if constexpr (std::is_same_v<T, eqt::events::X>)` arms; it is now a
+// std::visit overload set whose arm for X is the single canonical line
+//
+//     [this](const eqt::events::X& i) { onX(i); },
+//
+// The matcher below is that line, minus the trailing comma. This is NOT a
+// weakening: the old substring appeared only inside the visitor, and so does
+// this one -- the handler's own signature reads
+// `void eqt::bridge::BridgeComponent::onX(const eqt::events::X& i)`, which
+// does not contain "[this](", so a handler that exists but is never
+// dispatched still fails. Matching the bare type name, or the handler
+// signature, WOULD have weakened it, which is why neither is used.
+// tests/test_bridge_intent_table.cpp holds the same canonical form from the
+// other three directions (declaration, definition, exactly-one).
+std::string intentArm(const std::string& n) {
+    return "[this](const eqt::events::" + n + "& i) { on" + n + "(i); }";
+}
+
 TEST(ReachabilitySweep, EveryIntentHasAConsumerArm) {
     auto members = variantMembers();
     ASSERT_GT(members.size(), 20u) << "variant parse failed";
     std::string bridge = readFile(kRoot / "src/client/bridge/bridge_component_intents.cpp");
     for (const auto& n : members) {
-        EXPECT_NE(bridge.find("is_same_v<T, eqt::events::" + n + ">"), std::string::npos)
-            << "RendererIntent member " << n << " has no arm in bridge_component_intents.cpp ProcessBridgeIntents";
+        EXPECT_NE(bridge.find(intentArm(n)), std::string::npos)
+            << "RendererIntent member " << n << " has no arm in bridge_component_intents.cpp ProcessBridgeIntents"
+            << "\n  -> expected the canonical dispatch line: " << intentArm(n) << ",";
     }
 }
 
@@ -258,7 +279,7 @@ TEST(ReachabilitySweep, ProducerlessIntentsAreExactlyTheBlockedList) {
     // without being delisted).
     std::string bridge = readFile(kRoot / "src/client/bridge/bridge_component_intents.cpp");
     for (const auto& n : kBlockedIntents) {
-        EXPECT_NE(bridge.find("is_same_v<T, eqt::events::" + n + ">"), std::string::npos)
+        EXPECT_NE(bridge.find(intentArm(n)), std::string::npos)
             << "blocked intent " << n << " lost its consumer arm";
     }
 }

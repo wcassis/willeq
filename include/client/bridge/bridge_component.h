@@ -16,8 +16,9 @@
 // owner_.m_x, Foo() -> owner_.Foo() or owner_.<Family>().Foo(), and an
 // EverQuest-scoped name -> EverQuest::Name).
 //
-// ProcessBridgeIntents moves WHOLE (580 lines, Batch G decides its
-// decomposition, not this unit).
+// ProcessBridgeIntents moved WHOLE in K11 (580 lines); G02
+// (refactor/G02_process_bridge_intents.md) then decomposed it into the 36
+// private onX handlers below, leaving the pump as pure dispatch.
 //
 // FIVE SANCTIONED FORWARDERS. setBridge(), InitGraphics(),
 // ShutdownGraphics(), GameTick() and PostRenderTick() are EverQuest's
@@ -53,6 +54,10 @@
 #include "client/pet_constants.h"
 #include "client/hotbar/hotbar_slot_type.h"
 #include "client/zone_load_snapshot.h"
+// G02: the intent handlers below take one alternative of RendererIntent each,
+// by const reference. Dependency-free header (cstdint/string/variant + the
+// hotbar slot-type enum), so this costs nothing the component did not pay.
+#include "client/events/renderer_intents.h"
 
 #include <cstdint>
 #include <map>
@@ -72,9 +77,6 @@ class IZoneLoadSurface;  // K16 (B006): the two-method zone-load surface
 }
 
 namespace eqt {
-namespace events {
-struct PlayerPositionChanged;
-}
 namespace bridge {
 
 class GameStateBridge;
@@ -236,6 +238,54 @@ private:
 	// S2: takes the movement intent directly (name predates this being a
 	// plain bridge-intent handler). Reached only from ProcessBridgeIntents.
 	void OnGraphicsMovement(const eqt::events::PlayerPositionChanged& update);
+
+	// ---- G02: the renderer intent handlers ----
+	// One per RendererIntent alternative, listed in the variant's own order.
+	// ProcessBridgeIntents is a std::visit overload set that does nothing but
+	// call these, one line each; each body is the is_same_v arm it replaced,
+	// verbatim. ONE RULE, no exceptions -- onPlayerPositionChanged is a
+	// one-line forward to OnGraphicsMovement above rather than a hole in the
+	// table. Reached only from ProcessBridgeIntents.
+	// Pinned by tests/test_bridge_intent_table.cpp (arm <-> declaration <->
+	// definition, all three directions) and by the fact that the overload set
+	// has no generic fallback: a new alternative without a handler here is a
+	// COMPILE ERROR.
+	void onPlayerPositionChanged(const eqt::events::PlayerPositionChanged& i);
+	void onPlayerModelGeometryChanged(const eqt::events::PlayerModelGeometryChanged& i);
+	void onTargetIntent(const eqt::events::TargetIntent& i);
+	void onChatSubmitIntent(const eqt::events::ChatSubmitIntent& i);
+	void onDoorInteractIntent(const eqt::events::DoorInteractIntent& i);
+	void onLootCorpseIntent(const eqt::events::LootCorpseIntent& i);
+	void onLootItemIntent(const eqt::events::LootItemIntent& i);
+	void onLootAllIntent(const eqt::events::LootAllIntent& i);
+	void onCloseLootIntent(const eqt::events::CloseLootIntent& i);
+	void onWorldObjectInteractIntent(const eqt::events::WorldObjectInteractIntent& i);
+	void onZoningEnabledIntent(const eqt::events::ZoningEnabledIntent& i);
+	void onReadItemIntent(const eqt::events::ReadItemIntent& i);
+	void onVendorToggleIntent(const eqt::events::VendorToggleIntent& i);
+	void onVendorBuyIntent(const eqt::events::VendorBuyIntent& i);
+	void onVendorSellIntent(const eqt::events::VendorSellIntent& i);
+	void onBankerInteractIntent(const eqt::events::BankerInteractIntent& i);
+	void onBankCurrencyMoveIntent(const eqt::events::BankCurrencyMoveIntent& i);
+	void onBankCurrencyConvertIntent(const eqt::events::BankCurrencyConvertIntent& i);
+	void onTrainerToggleIntent(const eqt::events::TrainerToggleIntent& i);
+	void onCastSpellIntent(const eqt::events::CastSpellIntent& i);
+	void onMemorizeSpellIntent(const eqt::events::MemorizeSpellIntent& i);
+	void onScribeSpellIntent(const eqt::events::ScribeSpellIntent& i);
+	void onSpellbookStateIntent(const eqt::events::SpellbookStateIntent& i);
+	void onBuffCancelIntent(const eqt::events::BuffCancelIntent& i);
+	void onSkillActivateIntent(const eqt::events::SkillActivateIntent& i);
+	void onMusicVolumeChangeIntent(const eqt::events::MusicVolumeChangeIntent& i);
+	void onEffectsVolumeChangeIntent(const eqt::events::EffectsVolumeChangeIntent& i);
+	void onHotbarActivateIntent(const eqt::events::HotbarActivateIntent& i);
+	void onTradeskillCombineIntent(const eqt::events::TradeskillCombineIntent& i);
+	void onTradeskillCloseIntent(const eqt::events::TradeskillCloseIntent& i);
+	void onTrainSkillIntent(const eqt::events::TrainSkillIntent& i);
+	void onCloseTrainerIntent(const eqt::events::CloseTrainerIntent& i);
+	void onMoveItemIntent(const eqt::events::MoveItemIntent& i);
+	void onDeleteItemIntent(const eqt::events::DeleteItemIntent& i);
+	void onEquipmentChangedIntent(const eqt::events::EquipmentChangedIntent& i);
+	void onPlaySoundIntent(const eqt::events::PlaySoundIntent& i);
 
 	// T171: shared resolution of the per-client config node. See the
 	// definitions in bridge_component_ui_audio.cpp for why read and write
