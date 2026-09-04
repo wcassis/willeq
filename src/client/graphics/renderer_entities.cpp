@@ -374,7 +374,7 @@ void IrrlichtRenderer::toggleInventory() {
 }
 
 void IrrlichtRenderer::openInventory() {
-    inventoryState_.activePopup = PopupType::Inventory;
+    frame_->inventoryState_.activePopup = PopupType::Inventory;
     // T60: popup opened — mark the doll dirty so it re-renders even if the
     // appearance hasn't changed since it was last open (e.g. the RTT
     // texture is stale, or this is the first open of the session and
@@ -386,8 +386,8 @@ void IrrlichtRenderer::openInventory() {
 }
 
 void IrrlichtRenderer::closeInventory() {
-    if (inventoryState_.activePopup == PopupType::Inventory) {
-        inventoryState_.activePopup = PopupType::None;
+    if (frame_->inventoryState_.activePopup == PopupType::Inventory) {
+        frame_->inventoryState_.activePopup = PopupType::None;
     }
     LOG_DEBUG(MOD_UI, "IrrlichtRenderer: inventory popup CLOSED");
 }
@@ -398,7 +398,7 @@ void IrrlichtRenderer::showNoteWindow(const std::string& text, uint8_t type) {
 }
 
 bool IrrlichtRenderer::isInventoryOpen() const {
-    return inventoryState_.activePopup == PopupType::Inventory;
+    return frame_->inventoryState_.activePopup == PopupType::Inventory;
 }
 
 void IrrlichtRenderer::setCharacterInfo(const std::wstring& name, int level, const std::wstring& className) {

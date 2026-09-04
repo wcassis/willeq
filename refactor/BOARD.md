@@ -474,7 +474,7 @@ it without taking that measurement first.
   `ToggleOldModels` sits in the same enum
   (`include/client/graphics/renderer_types.h:111-112`), but
   `IrrlichtRenderer::processCommonInput()`'s switch
-  (`src/client/graphics/renderer_frame_input.cpp`) has **no arm for any of the
+  (`src/client/graphics/frame/renderer_frame_input.cpp`) has **no arm for any of the
   four** — they fall through its `default: break;`. The hotkeys are bound and
   parsed (`src/client/input/hotkey_manager.cpp:111-113`,
   `include/client/input/input_handler.h:63-65`). The second route is dead too:

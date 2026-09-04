@@ -28,7 +28,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         if (renderer_) {
             auto& d = std::get<state::PlayerStatsChangedData>(event.data);
             // U03d: Cache for new static UI
-            auto& cached = renderer_->cachedPlayerStats_;
+            auto& cached = renderer_->Frame().cachedPlayerStats_;
             cached.curHP = d.curHP; cached.maxHP = d.maxHP;
             cached.curMana = d.curMana; cached.maxMana = d.maxMana;
             cached.curEndurance = d.curEndurance; cached.maxEndurance = d.maxEndurance;
@@ -230,8 +230,8 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             msg.timestamp = static_cast<uint32_t>(std::time(nullptr));
             msg.color = eqt::ui::getChannelColor(msg.channel);
             // U04: Feed new UI
-            if (renderer_->newUIChatBuffer_) {
-                renderer_->newUIChatBuffer_->addMessage(std::move(msg));
+            if (renderer_->Frame().newUIChatBuffer_) {
+                renderer_->Frame().newUIChatBuffer_->addMessage(std::move(msg));
             }
         }
         break;
@@ -239,8 +239,8 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         if (renderer_) {
             auto& d = std::get<state::ChatMessageData>(event.data);
             // U04: Feed new UI
-            if (renderer_->newUIChatBuffer_) {
-                renderer_->newUIChatBuffer_->addSystemMessage(d.message);
+            if (renderer_->Frame().newUIChatBuffer_) {
+                renderer_->Frame().newUIChatBuffer_->addSystemMessage(d.message);
             }
         }
         break;
@@ -272,7 +272,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 renderer_->setCurrentTargetInfo(info);
             }
             // U03d: Cache for new static UI
-            auto& ct = renderer_->cachedTargetInfo_;
+            auto& ct = renderer_->Frame().cachedTargetInfo_;
             ct.spawnId = d.spawnId;
             ct.name = d.name;
             ct.level = d.level;
@@ -301,13 +301,13 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         if (renderer_) {
             auto& d = std::get<state::GroupChangedData>(event.data);
             // U06e: New UI
-            renderer_->groupPanelState_.inGroup = d.inGroup;
-            renderer_->groupPanelState_.isLeader = d.isLeader;
-            renderer_->groupPanelState_.leaderName = d.leaderName;
-            renderer_->groupPanelState_.memberCount = d.memberCount;
+            renderer_->Frame().groupPanelState_.inGroup = d.inGroup;
+            renderer_->Frame().groupPanelState_.isLeader = d.isLeader;
+            renderer_->Frame().groupPanelState_.leaderName = d.leaderName;
+            renderer_->Frame().groupPanelState_.memberCount = d.memberCount;
             if (!d.inGroup) {
                 for (int i = 0; i < EQT::Graphics::GroupPanelState::MAX_MEMBERS; ++i)
-                    renderer_->groupPanelState_.members[i] = {};
+                    renderer_->Frame().groupPanelState_.members[i] = {};
             }
         }
         break;
@@ -316,7 +316,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             auto& d = std::get<state::GroupMemberUpdatedData>(event.data);
             // U06e: New UI
             if (d.memberIndex >= 0 && d.memberIndex < EQT::Graphics::GroupPanelState::MAX_MEMBERS) {
-                auto& m = renderer_->groupPanelState_.members[d.memberIndex];
+                auto& m = renderer_->Frame().groupPanelState_.members[d.memberIndex];
                 m.name = d.name;
                 m.hpPercent = d.hpPercent;
                 m.manaPercent = d.manaPercent;
@@ -341,25 +341,25 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         if (renderer_) {
             auto& d = std::get<state::PetCreatedData>(event.data);
             // U06f: New UI
-            renderer_->petPanelState_.hasPet = true;
-            renderer_->petPanelState_.name = d.name;
-            renderer_->petPanelState_.level = d.level;
-            renderer_->petPanelState_.hpPercent = 100;
-            std::fill(std::begin(renderer_->petPanelState_.buttonStates),
-                      std::end(renderer_->petPanelState_.buttonStates), false);
+            renderer_->Frame().petPanelState_.hasPet = true;
+            renderer_->Frame().petPanelState_.name = d.name;
+            renderer_->Frame().petPanelState_.level = d.level;
+            renderer_->Frame().petPanelState_.hpPercent = 100;
+            std::fill(std::begin(renderer_->Frame().petPanelState_.buttonStates),
+                      std::end(renderer_->Frame().petPanelState_.buttonStates), false);
         }
         break;
     case state::GameEventType::PetRemoved:
         if (renderer_) {
             // U06f: New UI
-            renderer_->petPanelState_ = {};
+            renderer_->Frame().petPanelState_ = {};
         }
         break;
     case state::GameEventType::PetStatsChanged:
         if (renderer_) {
             auto& d = std::get<state::PetStatsChangedData>(event.data);
             // U06f: New UI
-            renderer_->petPanelState_.hpPercent = d.hpPercent;
+            renderer_->Frame().petPanelState_.hpPercent = d.hpPercent;
         }
         break;
     case state::GameEventType::PetButtonStateChanged:
@@ -367,7 +367,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             auto& d = std::get<state::PetButtonStateChangedData>(event.data);
             // U06f: New UI
             if (d.button < EQT::Graphics::PetPanelState::BUTTON_COUNT) {
-                renderer_->petPanelState_.buttonStates[d.button] = d.state;
+                renderer_->Frame().petPanelState_.buttonStates[d.button] = d.state;
             }
         }
         break;
@@ -410,7 +410,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             auto& d = std::get<state::InventorySlotChangedData>(event.data);
             // Equipment slots: 0-21, General inventory: 22-29 (mapped to slots 22-29)
             if (d.slotId >= 0 && d.slotId < EQT::Graphics::InventoryPanelState::EQUIP_SLOTS) {
-                auto& slot = renderer_->inventoryState_.equipSlots[d.slotId];
+                auto& slot = renderer_->Frame().inventoryState_.equipSlots[d.slotId];
                 slot.hasItem = d.hasItem;
                 slot.itemName = d.hasItem ? d.itemName : "";
                 slot.iconId = d.hasItem ? d.iconId : 0;
@@ -421,7 +421,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 renderer_->markPaperdollDirty();
             } else if (d.slotId >= 22 && d.slotId < 30) {
                 int idx = d.slotId - 22;
-                auto& slot = renderer_->inventoryState_.generalSlots[idx];
+                auto& slot = renderer_->Frame().inventoryState_.generalSlots[idx];
                 slot.hasItem = d.hasItem;
                 slot.itemName = d.hasItem ? d.itemName : "";
                 slot.iconId = d.hasItem ? d.iconId : 0;
@@ -470,20 +470,20 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             auto& d = std::get<state::LootWindowOpenedData>(event.data);
             LOG_DEBUG(MOD_GRAPHICS, "Bridge: LootWindowOpened corpse={} '{}'",
                 d.corpseId, d.corpseName);
-            EQT::Graphics::applyLootWindowOpened(renderer_->lootState_, d);
+            EQT::Graphics::applyLootWindowOpened(renderer_->Frame().lootState_, d);
             // One center popup at a time — the same mutual exclusion
             // /newbook and /newskills already apply.
-            renderer_->inventoryState_.activePopup =
+            renderer_->Frame().inventoryState_.activePopup =
                 EQT::Graphics::PopupType::None;
-            renderer_->spellbookState_.isOpen = false;
-            renderer_->skillsPopupState_.isOpen = false;
+            renderer_->Frame().spellbookState_.isOpen = false;
+            renderer_->Frame().skillsPopupState_.isOpen = false;
         }
         break;
     case state::GameEventType::LootWindowClosed:
         if (renderer_) {
             auto& d = std::get<state::LootWindowClosedData>(event.data);
             LOG_DEBUG(MOD_GRAPHICS, "Bridge: LootWindowClosed corpse={}", d.corpseId);
-            EQT::Graphics::applyLootWindowClosed(renderer_->lootState_, d);
+            EQT::Graphics::applyLootWindowClosed(renderer_->Frame().lootState_, d);
         }
         break;
     case state::GameEventType::LootItemAdded:
@@ -491,7 +491,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             auto& d = std::get<state::LootItemAddedData>(event.data);
             LOG_DEBUG(MOD_GRAPHICS, "Bridge: LootItemAdded corpse={} slot={} '{}'",
                 d.corpseId, d.slot, d.itemName);
-            EQT::Graphics::applyLootItemAdded(renderer_->lootState_, d);
+            EQT::Graphics::applyLootItemAdded(renderer_->Frame().lootState_, d);
         }
         break;
     case state::GameEventType::LootItemRemoved:
@@ -499,7 +499,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             auto& d = std::get<state::LootItemRemovedData>(event.data);
             LOG_DEBUG(MOD_GRAPHICS, "Bridge: LootItemRemoved corpse={} slot={}",
                 d.corpseId, d.slot);
-            EQT::Graphics::applyLootItemRemoved(renderer_->lootState_, d);
+            EQT::Graphics::applyLootItemRemoved(renderer_->Frame().lootState_, d);
         }
         break;
 
@@ -531,7 +531,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         if (renderer_) {
             auto& d = std::get<state::SpellGemChangedData>(event.data);
             if (d.gemSlot < EQT::Graphics::SpellGemPanelState::GEM_COUNT) {
-                auto& gem = renderer_->spellGemState_.gems[d.gemSlot];
+                auto& gem = renderer_->Frame().spellGemState_.gems[d.gemSlot];
                 gem.spellId = d.spellId;
                 gem.gemState = d.gemState;
                 gem.spellName = d.spellName;
@@ -559,7 +559,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         if (renderer_) {
             auto& d = std::get<state::BuffUpdatedData>(event.data);
             if (d.slot < EQT::Graphics::BuffBarState::MAX_BUFFS) {
-                auto& buff = renderer_->buffBarState_.buffs[d.slot];
+                auto& buff = renderer_->Frame().buffBarState_.buffs[d.slot];
                 buff.spellId = d.spellId;
                 buff.spellName = d.spellName;
                 buff.iconId = d.iconId;
@@ -572,7 +572,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         if (renderer_) {
             auto& d = std::get<state::BuffRemovedData>(event.data);
             if (d.slot < EQT::Graphics::BuffBarState::MAX_BUFFS) {
-                renderer_->buffBarState_.buffs[d.slot] = {};
+                renderer_->Frame().buffBarState_.buffs[d.slot] = {};
             }
         }
         break;
@@ -589,7 +589,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         if (renderer_) {
             auto& d = std::get<state::SkillValueChangedData>(event.data);
             // Update cached skill value in new UI
-            for (auto& s : renderer_->skillsPopupState_.skills) {
+            for (auto& s : renderer_->Frame().skillsPopupState_.skills) {
                 if (s.skillId == static_cast<uint8_t>(d.skillId)) {
                     s.value = d.value;
                     break;
@@ -603,15 +603,15 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
     case state::GameEventType::SkillsSnapshot:
         if (renderer_) {
             auto& d = std::get<state::SkillsSnapshotData>(event.data);
-            renderer_->skillsPopupState_.skills.clear();
-            renderer_->skillsPopupState_.scrollOffset = 0;
+            renderer_->Frame().skillsPopupState_.skills.clear();
+            renderer_->Frame().skillsPopupState_.scrollOffset = 0;
             for (const auto& s : d.skills) {
                 EQT::Graphics::SkillDisplayItem item;
                 item.skillId = s.skillId;
                 item.name = s.name;
                 item.value = s.value;
                 item.maxValue = s.maxValue;
-                renderer_->skillsPopupState_.skills.push_back(std::move(item));
+                renderer_->Frame().skillsPopupState_.skills.push_back(std::move(item));
             }
         }
         break;
@@ -649,7 +649,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             auto& d = std::get<state::ExpProgressChangedData>(event.data);
             renderer_->setExpProgress(d.progress);
             // U06i: New UI
-            renderer_->xpBarState_.progress = d.progress;
+            renderer_->Frame().xpBarState_.progress = d.progress;
         }
         break;
     case state::GameEventType::CharacterInfoChanged:
@@ -661,8 +661,8 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             renderer_->setCharacterInfo(wname, d.level, wclass);
             renderer_->setCharacterDeity(wdeity);
             // U03d: Cache for new static UI
-            renderer_->cachedPlayerStats_.name = d.name;
-            renderer_->cachedPlayerStats_.level = d.level;
+            renderer_->Frame().cachedPlayerStats_.name = d.name;
+            renderer_->Frame().cachedPlayerStats_.level = d.level;
         }
         break;
     case state::GameEventType::WorldObjectSpawned:
@@ -689,14 +689,14 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             entry.spellId = d.spellId;
             entry.name = d.spellName;
             entry.iconId = d.iconId;
-            renderer_->spellbookState_.spells.push_back(std::move(entry));
+            renderer_->Frame().spellbookState_.spells.push_back(std::move(entry));
         }
         break;
     case state::GameEventType::SpellbookSnapshot:
         if (renderer_) {
             auto& d = std::get<state::SpellbookSnapshotData>(event.data);
-            renderer_->spellbookState_.spells.clear();
-            renderer_->spellbookState_.currentPage = 0;
+            renderer_->Frame().spellbookState_.spells.clear();
+            renderer_->Frame().spellbookState_.currentPage = 0;
             for (const auto& s : d.spells) {
                 EQT::Graphics::SpellbookDisplayEntry entry;
                 entry.slot = s.slot;
@@ -704,7 +704,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 entry.name = s.name;
                 entry.iconId = s.iconId;
                 entry.level = s.level;
-                renderer_->spellbookState_.spells.push_back(std::move(entry));
+                renderer_->Frame().spellbookState_.spells.push_back(std::move(entry));
             }
         }
         break;
@@ -713,7 +713,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             // T156: one shared transform (static_panels.cpp), so the tests
             // that drive HotbarModel -> StaticUIInput exercise this exact hop.
             EQT::Graphics::applyHotbarSlotAssigned(
-                renderer_->hotbarState_,
+                renderer_->Frame().hotbarState_,
                 std::get<state::HotbarSlotAssignedData>(event.data));
         }
         break;
@@ -722,7 +722,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             auto& d = std::get<state::HotbarCooldownStartedData>(event.data);
             // U06a: New UI
             if (d.index >= 0 && d.index < EQT::Graphics::HotbarPanelState::SLOT_COUNT) {
-                auto& slot = renderer_->hotbarState_.slots[d.index];
+                auto& slot = renderer_->Frame().hotbarState_.slots[d.index];
                 slot.cooldownDurationMs = d.durationMs;
                 slot.cooldownEndTime = std::chrono::steady_clock::now()
                     + std::chrono::milliseconds(d.durationMs);
@@ -756,10 +756,10 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             }
             if (d.isPlayerCast) {
                 // U06d: New UI casting bar
-                renderer_->castingBarState_.isCasting = true;
-                renderer_->castingBarState_.spellName = d.spellName;
-                renderer_->castingBarState_.castTimeMs = d.castTimeMs;
-                renderer_->castingBarState_.castStartTime = std::chrono::steady_clock::now();
+                renderer_->Frame().castingBarState_.isCasting = true;
+                renderer_->Frame().castingBarState_.spellName = d.spellName;
+                renderer_->Frame().castingBarState_.castTimeMs = d.castTimeMs;
+                renderer_->Frame().castingBarState_.castStartTime = std::chrono::steady_clock::now();
             } else {
                 // Start entity casting bar (shows above the entity's head)
                 if (renderer_->getEntityRenderer()) {
@@ -795,7 +795,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             // Complete player's casting bar
             if (d.isPlayerCast) {
                 // U06d: New UI
-                renderer_->castingBarState_.isCasting = false;
+                renderer_->Frame().castingBarState_.isCasting = false;
             }
         }
         break;
@@ -814,7 +814,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             // Cancel player's casting bar
             if (d.isPlayerCast) {
                 // U06d: New UI
-                renderer_->castingBarState_.isCasting = false;
+                renderer_->Frame().castingBarState_.isCasting = false;
             }
         }
         break;
@@ -897,8 +897,8 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 // "/pmem" handler this replaced did both LOG_INFO and chat;
                 // preserve that visibility now that the real (non-empty)
                 // report reaches players via this path instead.
-                if (renderer_->newUIChatBuffer_) {
-                    renderer_->newUIChatBuffer_->addSystemMessage(line);
+                if (renderer_->Frame().newUIChatBuffer_) {
+                    renderer_->Frame().newUIChatBuffer_->addSystemMessage(line);
                 }
             }
         }

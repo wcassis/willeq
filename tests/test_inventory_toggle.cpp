@@ -57,7 +57,7 @@ protected:
     // render-thread step under test (drainActions() -> processPlayerInput())
     // is exactly this hand-off, so nothing private is needed.
     void pumpFrame() {
-        renderer.processPlayerInput(receiver.drainActions());
+        renderer.Frame().processPlayerInput(receiver.drainActions());
     }
 
     IrrlichtRenderer renderer;

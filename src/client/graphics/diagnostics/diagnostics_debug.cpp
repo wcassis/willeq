@@ -43,8 +43,8 @@ void DiagnosticsComponent::toggleHUD() {
 }
 
 void DiagnosticsComponent::toggleAllUI() {
-    owner_.allUIHidden_ = !owner_.allUIHidden_;
-    LOG_INFO(MOD_GRAPHICS, "All UI: {}", (owner_.allUIHidden_ ? "HIDDEN" : "VISIBLE"));
+    owner_.Frame().allUIHidden_ = !owner_.Frame().allUIHidden_;
+    LOG_INFO(MOD_GRAPHICS, "All UI: {}", (owner_.Frame().allUIHidden_ ? "HIDDEN" : "VISIBLE"));
 }
 
 void DiagnosticsComponent::toggleNameTags() {
