@@ -676,3 +676,27 @@ it without taking that measurement first.
   candidate loop keeps its shape (`buildCodesToTry` / `selectVariantParts` /
   `tryBuildVariantFrom` as the G07 Review lays out, 815 → ~250). Prov: G07
   Review (`refactor/G07_variant_loader.md`).
+
+## Added 2026-09-04 by M00 (`refactor/M00_ceiling_closed.md`)
+
+- ~~**B053** (P) The 1,500-line ceiling was a *soft* limit: `--all` printed WARN
+  above it and only the 3,000-line hard cap could fail a run, because two
+  single-class headers could not meet 1,500 and were carried on a no-grow
+  allowlist (K00 Leg B).~~ **CLOSED IN PLACE by M00 — the milestone, with the
+  numbers.** `include/client/eq.h` 2,025 -> **899** (Batch K,
+  `refactor/K_component_extraction.md`);
+  `include/client/graphics/irrlicht_renderer.h` 1,914 -> **1,343** (Batch L,
+  `refactor/L_renderer_component_extraction.md`); Batch J
+  (`refactor/J_file_size_reclamation.md`) and Batch G
+  (`refactor/G_oversize_methods.md`) took the `.cpp` side. Measured at
+  `668801ab`: **866 files, 0 fail, 0 warn — nothing in the tree is over 1,500.**
+  `scripts/refactor/file_size_allowlist.txt` is now EMPTY (kept, comment-only,
+  so `--all` still parses it) and an unlisted file over 1,500 is a **FAIL** in
+  the `FileSizeCeiling` ctest test. Largest survivors:
+  `tests/test_eq_commands_equip.cpp` 1,492 (8 lines of headroom — the next file
+  to trip the gate), `src/client/graphics/door_manager.cpp` 1,394,
+  `tests/test_zone_connection_flow.cpp` 1,367,
+  `src/client/spell/spell_manager.cpp` 1,360. See `docs/decisions.md`,
+  2026-09-04. **B024's closing sentence ("Both headers hold a no-grow allowlist
+  entry that each K unit ratchets down") is superseded by this entry** — M00
+  struck nothing per its contract; whoever closes B024 should drop it.

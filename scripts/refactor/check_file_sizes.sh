@@ -1,8 +1,18 @@
 #!/usr/bin/env bash
-# Check C++ file sizes against the Batch F ceilings (docs/decisions.md):
-# warn > 1500 lines, fail > 3000 lines. Applies to files changed vs a base
-# revision (default: fable). Legacy files are exempt until their split unit
-# lands — pass explicit paths to check only those.
+# Check C++ file sizes against the ceilings in docs/decisions.md.
+#
+# M00 (2026-09-04): 1500 is now the ENFORCED ceiling, not a soft warning.
+# Batches J, K, L and G brought every *.cpp/*.h/*.hpp under src/, include/ and
+# tests/ below it, so under --all a file over 1500 that is not allowlisted is a
+# FAIL. The 3000-line hard cap stays as a second line of defence (it also
+# applies to allowlisted files). The allowlist
+# (scripts/refactor/file_size_allowlist.txt) is now EMPTY; an entry is how a
+# future single-class file that must exceed 1500 is permitted, with a reason
+# and a no-grow max.
+#
+# In the diff/--files modes the allowlist is not consulted, so a file over 1500
+# is reported as WARN there — the tree-wide --all run wired into ctest
+# (FileSizeCeiling) is what turns it into a FAIL.
 #
 # Usage:
 #   check_file_sizes.sh [BASE_REV]              # check files changed since BASE_REV
@@ -13,10 +23,10 @@
 #                                                # src/, include/, tests/ (excludes
 #                                                # third_party/, build*/), tree-wide,
 #                                                # not just what changed vs a base rev
-#                                                # (K00). Consults the allowlist at
+#                                                # (K00). Over 1500 is a FAIL unless the
+#                                                # file is listed in
 #                                                # scripts/refactor/file_size_allowlist.txt
-#                                                # for files permitted over WARN with a
-#                                                # per-file no-grow ceiling.
+#                                                # with a per-file no-grow ceiling (M00).
 #
 # T79: this script used to resolve repo_root against the ambient cwd
 # (`git rev-parse --show-toplevel` with no -C), so running it exactly as the
@@ -95,9 +105,10 @@ if [ "${#files[@]}" -eq 0 ]; then
 fi
 
 # K00: --all consults the no-grow allowlist. Format: path<TAB>max_lines<TAB>reason,
-# path relative to repo_root. A listed file is permitted over WARN but FAILs if it
-# exceeds its own recorded max_lines (ratchet: a K unit lowers the number, it never
-# rises) — this is on top of, not instead of, the universal FAIL-over-3000 rule.
+# path relative to repo_root. A listed file is permitted over the 1500 ceiling but
+# FAILs if it exceeds its own recorded max_lines (ratchet: a split unit lowers the
+# number, it never rises) — this is on top of, not instead of, the universal
+# FAIL-over-3000 rule. M00 emptied the list; an unlisted file over 1500 now FAILs.
 allowlist_file="$script_dir/file_size_allowlist.txt"
 declare -A allow_max
 declare -A allow_reason
@@ -146,8 +157,14 @@ for f in "${files[@]}"; do
             echo "ok    $rel: $lines lines (allowlisted, max $max; ${allow_reason[$rel]})"
             n_ok=$((n_ok + 1))
         fi
+    elif [ "$all_mode" -eq 1 ] && [ "$lines" -gt "$WARN" ]; then
+        # M00: tree-wide, 1500 is the enforced ceiling. Split the file, or add an
+        # allowlist entry with a reason and a no-grow max if it genuinely cannot be.
+        echo "FAIL  $rel: $lines lines (> $WARN — the enforced ceiling; split it, or add an entry to scripts/refactor/file_size_allowlist.txt with a reason and a no-grow max)"
+        status=1
+        n_fail=$((n_fail + 1))
     elif [ "$lines" -gt "$WARN" ]; then
-        echo "WARN  $rel: $lines lines (> $WARN)"
+        echo "WARN  $rel: $lines lines (> $WARN — a FAIL under --all, which is what ctest runs)"
         n_warn=$((n_warn + 1))
     else
         echo "ok    $rel: $lines lines"
