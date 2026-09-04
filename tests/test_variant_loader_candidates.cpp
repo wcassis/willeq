@@ -28,6 +28,12 @@
  *                                               "return false" + the caller's
  *                                               negative cache
  *   NoRaceCodeAtAllAbandonsImmediately       -> the "codesToTry empty" "return false"
+ *   MatchedGlobalCharacterWithNoUsableMeshIsSkipped -> T340 Leg B: the
+ *                                               GLOBAL-path twin of case 3's
+ *                                               skip (G07 exit 640), the exit
+ *                                               that sits inside one of the two
+ *                                               near-duplicate character blocks
+ *                                               tryBuildVariantFrom() absorbs
  *
  * Observation seam: RaceModelLoader::variantLoadTrace() (T340, read-only --
  * see race_model_loader.h). variantModels_ alone cannot say WHICH candidate
@@ -252,6 +258,10 @@ TEST_F(VariantLoaderCandidatesTest, MatchedCharacterWithNoUsableMeshIsSkipped) {
     EXPECT_EQ(trace.resolvedCharacter, "SKE_HS_DEF");
     EXPECT_EQ(trace.resolvedSource, "global")
         << "the zone copy of SKE_HS_DEF has no usable mesh; the global one must win";
+    EXPECT_EQ(trace.zoneSkips, 1u)
+        << "the global6 SKE_HS_DEF must have been matched by name and then skipped";
+    EXPECT_EQ(trace.globalSkips, 0u)
+        << "the global_chr.s3d SKE_HS_DEF is usable; nothing should be skipped there";
 
     auto model = loader_->getVariantModelData(60, 0, 0, 0);
     ASSERT_NE(model, nullptr);
@@ -302,6 +312,58 @@ TEST_F(VariantLoaderCandidatesTest, NoRaceCodeAtAllAbandonsImmediately) {
     EXPECT_TRUE(trace.resolvedCode.empty());
     EXPECT_TRUE(trace.resolvedCharacter.empty());
     EXPECT_EQ(loader_->getVariantModelData(kNoSuchRace, 0, 0, 0), nullptr);
+}
+
+// Case 6 (T340 Leg B) -- G07 exit 640, the GLOBAL-path twin of case 3's exit
+// 280: a character in global_chr.s3d matches the race code by name but carries
+// no usable variant meshes, so the character loop skips it and keeps scanning.
+// Leg A left this exit untested and flagged it: 640 lives inside the second of
+// the two 0.906-similar character blocks that Leg B merges into one
+// tryBuildVariantFrom(), so merging with only the zone block under test would
+// have been under-netted.
+//
+// Fixture: the real global6_chr.s3d symlinked INTO the fixture directory UNDER
+// THE NAME global_chr.s3d, which is the only name loadGlobalModels() opens. Its
+// SKE_HS_DEF has one mesh, SKEMESH_DMSPRITEDEF -- neither SKE_DMSPRITEDEF nor
+// SKEHE00_DMSPRITEDEF -- so it is matched and then skipped. No zone is loaded,
+// so the global path is the only path. Race 60's own row names global_chr.s3d,
+// whose zone name starts with "global", so the JSON-s3d_file source branch is
+// skipped by the loader's own guard and does not muddy the case.
+//
+// The outcome is a null, exactly as in case 4 -- what separates the two is
+// trace.globalSkips: case 4 never matches a character at all (0), this case
+// matches one and skips it (1). "640 then a success" is NOT reachable with
+// shipped data -- see the Review in refactor/T340_variant_loader_behaviour_test.md
+// (all 2,609 character models in the 378 shipped *_chr.s3d archives were
+// enumerated: no archive holds an unusable-then-usable pair for any race code,
+// and no fallback_code race's primary code is ever unusable), which is why the
+// skip count, not the return value, is what pins this exit.
+TEST_F(VariantLoaderCandidatesTest, MatchedGlobalCharacterWithNoUsableMeshIsSkipped) {
+    ASSERT_EQ(EQT::Graphics::getRaceCode(60), "SKE");
+    ASSERT_TRUE(EQT::Graphics::getFallbackRaceCode(60, 0).empty())
+        << "this case must turn on the global character loop, not on a second candidate";
+
+    // global6_chr.s3d masquerading as global_chr.s3d: the only archive name
+    // loadGlobalModels() will open.
+    {
+        std::error_code ec;
+        fs::create_symlink(fs::path(clientPath() + kGlobal6Archive),
+                           fixtureRoot_ / kGlobalArchive, ec);
+        ASSERT_FALSE(ec) << "symlink global_chr.s3d -> global6: " << ec.message();
+    }
+    loader_->setClientPath(fixtureRoot_.string() + "/");
+
+    driveLoader(60, 0);
+
+    auto trace = loader_->variantLoadTrace();
+    EXPECT_EQ(trace.attempts, 1u);
+    EXPECT_FALSE(trace.succeeded) << "there is no usable SKE anywhere in this fixture";
+    EXPECT_EQ(trace.zoneSkips, 0u) << "no zone source is loaded in this case";
+    EXPECT_EQ(trace.globalSkips, 1u)
+        << "the global SKE_HS_DEF must be matched by name and then SKIPPED -- if this "
+           "is 0 the global character loop never reached the missing-variant-parts "
+           "guard (G07 exit 640)";
+    EXPECT_EQ(loader_->getVariantModelData(60, 0, 0, 0), nullptr);
 }
 
 #endif  // EQT_HAS_GRAPHICS

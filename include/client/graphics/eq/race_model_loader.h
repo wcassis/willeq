@@ -214,6 +214,13 @@ public:
         std::string resolvedCode;       // the codeToTry that won ("" if none)
         std::string resolvedCharacter;  // CharacterModel::name that won ("" if none)
         std::string resolvedSource;     // "zone" (row s3d_file / current zone) or "global"
+        // T340 Leg B: characters that matched the race code by name but carried
+        // no usable variant meshes, so the character loop skipped them (G07's
+        // exits 280 and 640). Counted per path, because 640 is the global-path
+        // twin that Leg A left untested -- merging the zone and global blocks
+        // with only the zone one under test would have been under-netted.
+        size_t zoneSkips = 0;
+        size_t globalSkips = 0;
     };
     VariantLoadTrace variantLoadTrace() const {
         std::lock_guard<std::mutex> lock(variantModelsMutex_);

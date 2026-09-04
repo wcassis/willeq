@@ -42,6 +42,8 @@ bool RaceModelLoader::loadModelFromGlobalChrWithVariantsForAnimation(uint16_t ra
         variantLoadTrace_.resolvedCode.clear();
         variantLoadTrace_.resolvedCharacter.clear();
         variantLoadTrace_.resolvedSource.clear();
+        variantLoadTrace_.zoneSkips = 0;
+        variantLoadTrace_.globalSkips = 0;
     }
 
     // NOTE: We defer loading global models until we confirm zone models don't have what we need.
@@ -290,6 +292,10 @@ bool RaceModelLoader::loadModelFromGlobalChrWithVariantsForAnimation(uint16_t ra
                 // If we didn't find variant parts, continue to next code to try
                 if (selectedSkinnedParts.empty() || selectedRawParts.empty()) {
                     LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Could not find variant meshes '{}' or '{}' for animation in {}", bodyMeshName, headMeshName, codeToTry);
+                    {
+                        std::lock_guard<std::mutex> traceLock(variantModelsMutex_);
+                        ++variantLoadTrace_.zoneSkips;  // T340 (B052)
+                    }
                     continue;
                 }
 
@@ -655,6 +661,10 @@ bool RaceModelLoader::loadModelFromGlobalChrWithVariantsForAnimation(uint16_t ra
                 if (selectedSkinnedParts.empty() || selectedRawParts.empty()) {
                     LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Found {} but missing variant parts (skinned={}, raw={})",
                               charName, selectedSkinnedParts.size(), selectedRawParts.size());
+                    {
+                        std::lock_guard<std::mutex> traceLock(variantModelsMutex_);
+                        ++variantLoadTrace_.globalSkips;  // T340 (B052)
+                    }
                     continue;
                 }
 
