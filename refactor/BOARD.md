@@ -418,7 +418,7 @@ it without taking that measurement first.
   arms next to them. Not done in L04, which is structural. This is the
   T313/T315 unwired-handler pattern for the fourth time. Prov: L04 Review.
 
-- **B044** (P) **`refactor/L01_rdp_component.md`'s correction 5 is factually
+- ~~**B044** (P)~~ **CLOSED 2026-09-03 at the L04 merge — correction 5 struck in `refactor/L_renderer_component_extraction.md`.** (P) **`refactor/L01_rdp_component.md`'s correction 5 is factually
   wrong and is being cited by every L plan.** It says `setCurrentTarget`,
   `clearCurrentTarget`, `toggleHUD`, `toggleNameTags`, `toggleWireframe`,
   `dumpScene` and `getMemoryReport` are "`IOutputRenderer` virtual overrides"

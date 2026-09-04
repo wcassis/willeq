@@ -104,11 +104,11 @@ declarations + inline accessors + members before dispatch.
 4. Dropping `irrlicht_renderer.h` from a moved TU drops ~60 transitive
    includes; expect "incomplete type" errors and add the direct includes
    (renderer version of K03 e).
-5. `IOutputRenderer` virtual overrides (`setCurrentTarget`,
-   `clearCurrentTarget`, `toggleHUD`, `toggleNameTags`, `toggleWireframe`,
-   `dumpScene`, `getMemoryReport`…) MUST stay on `IrrlichtRenderer` as
-   forwarders — the interface is the sanctioned surface, like K11's
-   `Application` entry points. Count them per unit.
+5. ~~`IOutputRenderer` virtual overrides … MUST stay as forwarders~~ **STRUCK
+   (L03/L04, B044): `class IrrlichtRenderer` implements NO interface.** A
+   forwarder is justified only by its ACTUAL callers — the bridge,
+   `Application`, `graphical_mode` (the K11 rule). Measure callers; never
+   cite an interface.
 6. Tests bind the context by MUTATION through public accessors, not by
    address equality on private members.
 7. A component that names no `IrrlichtRenderer` private static/nested
@@ -151,6 +151,18 @@ declarations + inline accessors + members before dispatch.
    cover `build/lib` (`ar` temporaries `st*`) as well as `bin/`.
 17. A zero-caller SETTER whose member is read live (`setNavmesh`) is kept
    and boarded — deleting it turns a one-line wiring fix into two files.
+
+## L04 corrections (2026-09-03)
+
+18. The context carried the breadth test: 30 of 54 members via `ctx_`
+   (329 uses) and 39 more via `owner_` (254 uses) — do not widen the
+   context per unit; the L12 census decides.
+19. Frame-phase state (`measureSection`/`sectionStart_`) stays with the
+   frame family even when its body sits in another family's TU — relocate
+   the body, not the ownership.
+20. A "forwarder premise" that is false hides defects: the four debug
+   toggles had NO callers on either route (B043). Every "stays as a
+   forwarder" claim must name a real caller.
 
 ## Per-unit plan files
 
