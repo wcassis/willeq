@@ -55,3 +55,76 @@ standalone.
 
 Build, full ctest -j6 (ALSA quirk only), `check_file_sizes.sh --all`; visual
 gate + ARM only if a graphics header changed.
+
+## Review
+
+Measured against `7e929876`.
+
+### Diff
+
+- `src/client/bridge/irrlicht_bridge.cpp`, `IrrlichtBridge::applyEvent`,
+  `case state::GameEventType::NavmeshChanged:` — now, guarded on
+  `renderer_`, reads `d.navmesh` off `state::NavmeshChangedData` via
+  `std::get<...>(event.data)` (same pattern as the neighbouring
+  `SpellCastVisualInterrupted` arm) and calls
+  `renderer_->setNavmesh(d.navmesh)`. The `LOG_TRACE` line is kept. A
+  null payload (zone leave) passes straight through — `setNavmesh` is a
+  plain store, only guarded on `IrrlichtRenderer::isLoading()`.
+- `include/client/graphics/overlays/overlays_component.h` — added
+  `const PathfinderNavmesh* navmesh() const { return navmesh_; }` next to
+  `setNavmesh`, the one-line getter the contract allowed since nothing
+  else could observe the stored pointer.
+- `tests/test_navmesh_overlay_wire.cpp` (new) — `NavmeshOverlayWireTest.
+  NavmeshChangedForwardsThePointerToTheOverlaysComponent`: a bare,
+  never-`Init()`'d `IrrlichtRenderer` (same headless idiom as
+  `test_overlays_component.cpp`) plus a real `eqt::bridge::IrrlichtBridge`
+  wired to it via `setRenderer`. Pushes a `NavmeshChanged` event carrying a
+  sentinel `PathfinderNavmesh*` (`reinterpret_cast<PathfinderNavmesh*>(0x1)`
+  — never dereferenced along this path, same idiom as
+  `test_rdp_component.cpp`'s `ConstrainedTextureCache*` sentinel, so no
+  real Detour-backed navmesh needed) through `applyEvent`, asserts
+  `renderer.Overlays().navmesh()` is that pointer, then pushes `{nullptr}`
+  and asserts it clears.
+- `tests/cmake/renderer_guards.cmake` — registered `test_navmesh_overlay_wire`
+  next to `test_overlays_component` (same `IF(EQT_GRAPHICS AND
+  IRRLICHT_LIBRARY)` guard, links `willeq_core` for `irrlicht_bridge.cpp` +
+  `overlays_component.cpp`).
+- `tests/test_reachability_sweep.cpp` — checked; it does not list
+  `NavmeshChanged` (or any per-arm LOG_TRACE classification) at all, so
+  there was nothing to strike there.
+
+### Verification
+
+- `cmake --build build -j24` — **exit 0** (one fix cycle: the first attempt
+  used bare `state::` in the new test instead of `eqt::state::` — the
+  namespace `IrrlichtBridge` itself sits inside, `eqt::bridge`, resolves
+  `state::` implicitly via the enclosing `eqt` namespace, but a free
+  function outside it needs the qualified `eqt::state::` name. Fixed and
+  rebuilt clean.)
+- `ctest --test-dir build -j6 --output-on-failure` — **3629/3630 passed.**
+  First run also failed `HeadlessShutdownTest.
+  NonLifecycleCommandIsHeldNotDroppedOrApplied`; re-ran it standalone
+  (`--gtest_repeat=5`) and it passed all 5 times at a steady ~5.05s each —
+  a `-j6` contention flake on a timing-sensitive test, not a regression
+  from this change. A second full-suite re-run reproduced only the
+  expected `AudioManagerTest.PreloadCommonSounds` (ALSA) failure.
+  `test_navmesh_overlay_wire` itself passes standalone and in the suite.
+- `check_file_sizes.sh --all` — **839 checked, 0 warn, 0 fail.**
+- Header changed under `include/client/graphics`, so per the contract:
+  - `scripts/build-gles2-x86.sh` — exit 0.
+  - `scripts/ci/visual_gate.sh` — **PASS**, no goldens touched.
+  - `scripts/build-arm-noble.sh` — exit 0.
+
+### Live leg — OWED
+
+The eqemu lock was held by T328 for this unit's entire run
+(`/mnt/projects/fable/.eqemu-lock` → `T328 2026-09-03`, checked before and
+after all other work). No live screenshot of Ctrl+N in a navmesh-enabled
+zone was captured. `review/T329/` was not created. This leg is left open
+on the board (see BOARD.md strike below) for a follow-up unit once the
+server is free.
+
+### Deviations
+
+None from the plan besides the namespace fix above, which is a correction,
+not a scope change.

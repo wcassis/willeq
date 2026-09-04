@@ -53,6 +53,7 @@ public:
 	void setCurrentTargetInfo(const TargetInfo& info);
 	void clearCurrentTarget();
 	void setNavmesh(PathfinderNavmesh* navmesh);
+	const PathfinderNavmesh* navmesh() const { return navmesh_; }
 	void setLoadingTitle(const std::wstring& title) { loadingTitle_ = title; }
 	void setZoneLineBoundingBoxes(const std::vector<EQT::ZoneLineBoundingBox>& boxes);
 	void markPaperdollDirty();
