@@ -187,6 +187,23 @@ declarations + inline accessors + members before dispatch.
 25. (L05) Drop the "forwarders that stay" column from L plans; list
    callers, and let the executor derive forwarders from real callers only.
 
+## L06 corrections (2026-09-04)
+
+26. **A family that owns NO state costs the god header +3..+7 lines** (the
+   include, friend, member, accessor) and there is nothing to delete to
+   fund it. The "may not grow" ratchet is a property of the BATCH — the
+   header must be lower after every wave than before it — not of every
+   unit. Ratified for L06 (+7). `zone_draw` and `gpu_upload` (0
+   single-family members) will hit the same; fold them into a
+   state-owning neighbour's unit (L09 does) rather than dispatching them
+   alone.
+27. `DocCitations` is a text reader of SOURCE PATHS: the K03 (c) grep for a
+   moved filename must cover `docs/`, `refactor/BOARD.md` and every
+   `CLAUDE.md`, not only `tests/`.
+28. `test_merged_help` located `processSlashCommand` by owner spelling —
+   correction 21's shape again; widened and re-proved with two planted
+   breaks.
+
 ## Per-unit plan files
 
 `refactor/L01_rdp_component.md` … written after K13, from a re-measurement
