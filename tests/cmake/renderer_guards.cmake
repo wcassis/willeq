@@ -257,6 +257,20 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_navmesh_overlay_wire)
 ENDIF()
 
+# T333 (B048): the navmesh overlay's DRAW -- it drew nothing and wiped the 2D
+# UI. Driver-state defect, so this one needs a real headless GLES2 device
+# (surfaceless EGL / llvmpipe) and a framebuffer readback, the same harness as
+# test_ui_atlas_pixels.cpp; it self-skips when that device is unavailable. No
+# EQE1 asset and no server -- the triangle list is seeded through a test seam.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_navmesh_overlay_draw
+        test_navmesh_overlay_draw.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_navmesh_overlay_draw PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_navmesh_overlay_draw GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_navmesh_overlay_draw)
+ENDIF()
+
 # T310 Leg A: the first-person camera tunables (/fpcam, --fpcam). Same bare,
 # never-Init()'d IrrlichtRenderer idiom as test_irrlicht_camera_command above,
 # plus the catalog gate and Application::parseArguments -- so ONE binary covers

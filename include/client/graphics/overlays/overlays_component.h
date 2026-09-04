@@ -122,6 +122,17 @@ public:
 	bool& showNavmeshOverlay() { return showNavmeshOverlay_; }
 	bool const& showNavmeshOverlay() const { return showNavmeshOverlay_; }
 
+	// T333 test seam. drawNavmeshOverlay()'s only production filler is
+	// updateNavmeshOverlay(), which needs a live Detour-backed
+	// PathfinderNavmesh; the pixel test (tests/test_navmesh_overlay_draw.cpp)
+	// has a real GLES2 device but no navmesh, so it seeds the triangle list
+	// directly. Production code must keep using updateNavmeshOverlay().
+	void seedNavmeshOverlayTriangleForTest(const irr::core::vector3df& v1,
+	                                       const irr::core::vector3df& v2,
+	                                       const irr::core::vector3df& v3,
+	                                       irr::video::SColor color);
+	size_t navmeshOverlayTriangleCount() const { return navmeshOverlayTriangles_.size(); }
+
 private:
 	// In-family only (K03 correction a: every one of these has a caller
 	// inside the two TUs above).

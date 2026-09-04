@@ -553,25 +553,29 @@ it without taking that measurement first.
 
 ## Added 2026-09-04 by the T328 Leg B Review (UI sounds + T329's owed live leg)
 
-- **B048** (A) `src/client/graphics/overlays/overlays_component.cpp`
+- ~~**B048** (A) `src/client/graphics/overlays/overlays_component.cpp`
   `OverlaysComponent::drawNavmeshOverlay()` — **the navmesh overlay draws
-  nothing, and turning it on wipes the entire 2D UI.** Measured live in
-  `qeynos2` (`review/T329/`, two screenshots plus both client logs): after
-  Ctrl+N the client logs `Navmesh overlay: ON` and
-  `Navmesh overlay: Updated with 112 triangles`, so the triangle list is
-  non-empty and `drawNavmeshOverlay()`'s early return is not taken — yet no
-  navmesh lines appear, and the health/mana/stamina bars, FPS counter, chat
-  panel and hotbar present in an identical overlay-OFF capture are all GONE.
-  Two grabs from the same session, so not one bad frame. Both symptoms are
-  consistent with a single cause in that function — it issues
-  `driver->draw3DLine()` three times per triangle after `setMaterial()`
-  (EMT_SOLID, `EAAM_LINE_SMOOTH`, thickness 2) and
-  `setTransform(ETS_WORLD, ...)`, and leaves both set — but that was NOT
-  isolated, and the file is L05's territory this wave. Invisible until T329
-  wired `setNavmesh`: the pointer was permanently null before, so the function
-  always returned early. Closes when: Ctrl+N draws navmesh triangles in a
-  navmesh-enabled zone AND the 2D UI is still there, proven by a live capture
-  pair. Prov: T328 Leg B Review.
+  nothing, and turning it on wipes the entire 2D UI.**~~ **CODE FIXED by T333
+  (2026-09-04); the live capture pair is OWED** (T332 held the eqemu lock for
+  this unit's whole run). Cause, measured headlessly on a real GLES2 device and
+  not guessed: by the debug-overlay pass the driver is already latched in
+  `Is2DMode` (2D drawing happens during and just after `smgr->drawAll()`), and
+  `COpenGLES2Driver::setOrthoProjection()` early-returns while that latch is
+  set. So (1) the world-space line batch was multiplied by the leftover ORTHO
+  matrix in `Matrices[ETS_VIEW]/[ETS_PROJECTION]` and landed off screen —
+  "nothing draws"; and (2) `setMaterial()` re-enabled back-face culling
+  (`SMaterial`'s default) and the depth test, and the static-UI pass could not
+  undo it because `setOrthoProjection()` is the only caller of
+  `setCull(false)`/`setDepthTest(false)` — so every UI quad was culled away.
+  Flipping `BackfaceCulling` alone was measured to bring the UI back, which
+  names the wipe exactly. Fixed by borrowing the captured 3D transforms for the
+  batch and handing the driver back the state it was found in — the shape
+  `drawTargetOutline()` and the portal wireframe batch already use. No pass
+  reordering (the G05 golden is untouched). Pinned by
+  `tests/test_navmesh_overlay_draw.cpp` (real headless GLES2 + framebuffer
+  readback): all three edge probes and the UI probe read `0,0,0` before the fix.
+  **Closes fully when the live ON/OFF pair in a navmesh-enabled zone is captured
+  into `review/T333/`.** Prov: T328 Leg B Review, T333 Review.
 
 ## Added 2026-09-04 by the T328 Leg B live session
 
@@ -700,3 +704,23 @@ it without taking that measurement first.
   2026-09-04. **B024's closing sentence ("Both headers hold a no-grow allowlist
   entry that each K unit ratchets down") is superseded by this entry** — M00
   struck nothing per its contract; whoever closes B024 should drop it.
+
+## Added 2026-09-04 by T333
+
+- **B054** (B) `src/client/graphics/overlays/overlays_component.cpp`
+  `OverlaysComponent::drawMapOverlay()`, `renderer_frame_render.cpp`'s
+  `frustumDebugDraw_` block, and
+  `src/client/graphics/player/renderer_player_collision.cpp`
+  `PlayerCameraComponent::drawCollisionDebugLines()` — **all three carry
+  B048's defect verbatim** and were deliberately left alone by T333 (the
+  contract said no behaviour change to any other overlay, and none of the
+  three has live evidence). Each runs in the same post-`drawAll()`
+  debug-overlay pass, each calls `setMaterial()` with a 3D material and then
+  `draw3DLine()` in world space, and none re-sets `ETS_VIEW`/`ETS_PROJECTION`
+  from `ctx_.captured3DView`/`captured3DProj` or restores 2D-safe render state
+  afterwards. So Ctrl+M (map overlay), `collisionDebug`, and the frustum debug
+  draw should each draw nothing AND wipe the 2D UI for the rest of the frame,
+  exactly as Ctrl+N did. All three are off by default, which is why nobody has
+  reported it. Closes when: each is proven — a test in the shape of
+  `tests/test_navmesh_overlay_draw.cpp` — to draw and to leave the following 2D
+  pass intact, or is deleted. Prov: T333 Review.
