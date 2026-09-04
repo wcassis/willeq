@@ -25,6 +25,8 @@ The renderer's K13. **Runs ALONE after L11.** Method: K13's, verbatim
    §"Core Components" and `src/client/graphics/CLAUDE.md` updated to name
    the components.
 
+Also: move `measureSection()`/`sectionStart_` into `FrameComponent` (L11 hand-off, 35 sites, one substitution pass); `frameStart_` (write-only) deleted or boarded; `renderer_entity_load_gate.cpp`'s two single-family methods folded into `ZoneLoadComponent` as a pure `git mv` (L10 deviation 1).
+
 STOP: the residue after step 1 exceeds 300; any thread/sync change.
 
 Territory: everything under `src/client/graphics/` and

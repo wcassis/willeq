@@ -256,6 +256,23 @@ declarations + inline accessors + members before dispatch.
    assumed from a sibling unit's experience (`gles2_zone_benchmark`
    compiles none of the zone-load TUs).
 
+## L11 corrections (2026-09-04)
+
+45. Correction 35 is not sufficient: the TU holding the out-of-line
+   ctor/dtor must see the COMPLETE type of every moved `unique_ptr` member
+   (the deleter instantiates there).
+46. Intersect the fixture member set with the move set FIRST — the flagged
+   risk usually collapses (SimulationOutputLifetime: empty).
+47. When a layer already reads the moving members directly (`IrrlichtBridge`
+   writes UI state), retargeting its receivers is the honest move; the K11
+   rule protects `Application`, not every caller.
+48. "Smallest public surface" for a state-bag component means PUBLIC
+   MEMBERS, not accessors, when the members were public before.
+
+**Hand-off to L12:** move `measureSection()`/`sectionStart_` into
+`FrameComponent` (single-family, L04's own prediction; L11 was told to
+leave it); `frameStart_` is write-only tree-wide — board or delete.
+
 ## Per-unit plan files
 
 `refactor/L01_rdp_component.md` … written after K13, from a re-measurement
