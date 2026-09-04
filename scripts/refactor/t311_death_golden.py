@@ -13,9 +13,11 @@ A "self death" is detected by what only OUR death can cause: the server
 answers it with S->C OP_ZonePlayerToBind. (spawn_id == killer_id is not the
 discriminator -- two of the four self-deaths in this capture were killed by
 another spawn.) The window runs from that OP_Death to the next C->S
-OP_ZoneEntry (the re-entry), and the COMPARED projection keeps only the three
-opcodes this unit is about: OP_SpawnAppearance, OP_ClientUpdate,
-OP_ZoneChange.
+OP_ZoneEntry (the re-entry), and the COMPARED projection keeps only the four
+opcodes these units are about: OP_Save, OP_SpawnAppearance, OP_ClientUpdate,
+OP_ZoneChange. (T349 added OP_Save: the oracle sends one at each of the four
+deaths and at no other point in the capture, so it is a death step, and fable
+now sends it too -- with a 192-byte body, not a bare opcode.)
 
 The TSV records only the first 32 payload bytes, so the OP_ZoneChange's
 zone_id (at payload offset 64) is NOT in the capture and is NOT put in the
@@ -26,7 +28,7 @@ bytes, which fit in 32 -- see SelfDeathSequence.ZonePlayerToBind_*.
 import sys
 from collections import Counter
 
-COMPARED = {"OP_SpawnAppearance", "OP_ClientUpdate", "OP_ZoneChange"}
+COMPARED = {"OP_Save", "OP_SpawnAppearance", "OP_ClientUpdate", "OP_ZoneChange"}
 
 
 def le(hexbytes, off, n):
@@ -80,7 +82,8 @@ def main(path):
     print("# a real Titanium client against a real eqemu). All %d self-death" % n)
     print("# windows in that capture produce this identical sequence.")
     print("#")
-    print("# COMPARED opcodes: OP_SpawnAppearance, OP_ClientUpdate, OP_ZoneChange.")
+    print("# COMPARED opcodes: OP_Save, OP_SpawnAppearance, OP_ClientUpdate,")
+    print("# OP_ZoneChange.")
     print("# The absence of an OP_ClientUpdate line is the whole of step 2: the")
     print("# official client goes silent the instant it dies.")
     print("#")
@@ -88,9 +91,9 @@ def main(path):
     print("#   OP_FloatListThing -- a heartbeat, not a death step (1291 sends")
     print("#     across the capture vs OP_ClientUpdate's 1522; present on both")
     print("#     sides of every death and everywhere else).")
-    print("#   OP_Save -- the oracle DOES send one on every self death, but its")
-    print("#     is 192 bytes of character payload and fable's SendSave() is a")
-    print("#     bare 2-byte opcode. A real gap; a separate item, not this unit.")
+    print("#   the OP_Save BODY -- compared separately. This TSV keeps only the")
+    print("#     first 32 payload bytes; the full 192 are pinned against the")
+    print("#     server-side packetlog dump by tests/goldens/op_save_body_g08.txt.")
     print("#   OP_DeleteSpawn -- sent after the server APPROVES the zone change,")
     print("#     from the zone teardown (fable: CleanupZone), which needs the")
     print("#     full handshake this headless test does not run.")

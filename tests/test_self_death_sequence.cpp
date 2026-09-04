@@ -8,8 +8,11 @@
 //
 //     S->C OP_Death (our own spawn id)
 //     S->C OP_ZonePlayerToBind
-//     C->S OP_Save              (192 bytes -- see the golden's note; NOT
-//                                compared, fable's SendSave is opcode-only)
+//     C->S OP_Save              (192 bytes; T349 made fable send it, and its
+//                                POSITION in the burst is now compared. Its
+//                                BODY is compared against a second golden,
+//                                op_save_body_g08.txt, because the timeline
+//                                TSV keeps only 32 of the 192 bytes)
 //     C->S OP_SpawnAppearance   type 0x0e AT_ANIMATION, param 0x73 = 115 Lying
 //     C->S OP_ZoneChange        the bind re-entry, even into the same zone
 //     S->C OP_ZoneChange        (approval)
@@ -78,6 +81,30 @@ constexpr uint16_t kSelfId = 0x0111;
 
 const fs::path kGolden =
     fs::path(WILLEQ_REPO_ROOT) / "tests" / "goldens" / "self_death_outbound_g07.txt";
+
+// T349: the OP_Save body golden, one cell per byte (hex = compared verbatim,
+// yy/xx/zz = the position triple, .. = varies in the capture, not compared).
+const fs::path kSaveBodyGolden =
+    fs::path(WILLEQ_REPO_ROOT) / "tests" / "goldens" / "op_save_body_g08.txt";
+
+// The 09-01-2026 20:12:31 death: the client's last transmitted position, in
+// SERVER axes. Taken as BYTES, not as decimal literals -- the oracle's OP_Save
+// carried the last OP_ClientUpdate's y/x/z with the bit patterns intact, and a
+// hand-typed 634.4550f rounds to a different u32 than the wire's 0x441e9d1e.
+// Our internal x holds the server's y and vice versa, so PosX/PosY are swapped
+// on the way in -- the same swap SendMovementUpdate and SendSave undo on the
+// way out.
+const uint8_t kT311Death1PositionBytes[12] = {
+    0x1e, 0x9d, 0x1e, 0x44,  // y  634.4550
+    0x0f, 0x10, 0x20, 0xc3,  // x -160.0627
+    0x60, 0x10, 0x70, 0x40,  // z    3.750999 (the WIRE frame)
+};
+
+float CapturedFloat(size_t byte_offset) {
+    float f = 0.0f;
+    std::memcpy(&f, kT311Death1PositionBytes + byte_offset, sizeof(f));
+    return f;
+}
 
 // ------------------------------------------------------------------
 // The T311 Leg A capture bytes, verbatim.
@@ -178,6 +205,12 @@ public:
             case HC_OP_ClientUpdate:
                 out.push_back("C->S OP_ClientUpdate");
                 break;
+            case HC_OP_Save:
+                // T349: the body is compared separately, against
+                // op_save_body_g08.txt -- the timeline TSV this golden comes
+                // from keeps only the first 32 of its 192 bytes.
+                out.push_back("C->S OP_Save");
+                break;
             case HC_OP_ZoneChange:
                 // No zone_id: the capture's TSV keeps only the first 32
                 // payload bytes and the field lives at offset 64. The bind
@@ -265,6 +298,112 @@ TEST(SelfDeathSequence, OtherSpawnDeath_SendsNoAppearance) {
 
     EXPECT_TRUE(h.sentAppearances().empty());
     EXPECT_NE(h.eq.GetGameState().player().positionState(), eqt::state::PositionState::Dead);
+}
+
+// ------------------------------------------------------------------
+// T349 (BOARD B059) -- the 192-byte OP_Save, first in the burst.
+// ------------------------------------------------------------------
+
+// Read op_save_body_g08.txt into per-byte cells. "yy"/"xx"/"zz" are the
+// position triple (compared -- the test supplies the position), ".." is a
+// byte that varies across the capture's four bodies with nothing to explain
+// it (not compared), anything else is a hex literal compared verbatim.
+std::vector<std::string> ReadSaveBodyGolden() {
+    std::vector<std::string> cells;
+    std::ifstream in(kSaveBodyGolden);
+    EXPECT_TRUE(in.is_open()) << "missing golden: " << kSaveBodyGolden.string();
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.empty() || line[0] == '#') continue;
+        auto colon = line.find(':');
+        if (colon == std::string::npos) continue;
+        std::istringstream row(line.substr(colon + 1));
+        std::string cell;
+        while (row >> cell) cells.push_back(cell);
+    }
+    return cells;
+}
+
+TEST(SelfDeathSequence, SelfDeath_SendsThe192ByteSaveFirst) {
+    DeathHarness h;
+    h.spawnSelf();
+    h.clearSent();
+
+    h.die();
+
+    ASSERT_FALSE(h.sentPackets().empty()) << "the death burst sends nothing at all";
+    EXPECT_EQ(h.sentPackets()[0].opcode, static_cast<uint16_t>(HC_OP_Save))
+        << "OP_Save is the FIRST C->S packet of the oracle's self-death burst "
+           "(T311 Leg A, all four windows), before the Lying appearance";
+    EXPECT_EQ(h.sentPackets()[0].bytes.size(), 192u)
+        << "the oracle's OP_Save is 192 body bytes (server-side dump "
+           "\"Size [194]\"); a bare 2-byte opcode is the B059 defect";
+    EXPECT_EQ(h.countOpcode(HC_OP_Save), 1u) << "exactly one per death";
+}
+
+// A death that is not ours must not save.
+TEST(SelfDeathSequence, OtherSpawnDeath_SendsNoSave) {
+    DeathHarness h;
+    h.spawnSelf();
+    ReplayZone(h.eq, HC_OP_NewSpawn, NewSpawnPayloadAt(500, "Guard_Hezlan000", 0, 12, 0));
+    h.clearSent();
+
+    uint8_t body[32] = {0};
+    body[0] = 0xf4; body[1] = 0x01;  // victim 500
+    body[4] = 0x11; body[5] = 0x01;  // killer = us
+    h.eq.ReplayZonePacket(HC_OP_Death, body, sizeof(body));
+
+    EXPECT_EQ(h.countOpcode(HC_OP_Save), 0u);
+}
+
+// The body itself, against the capture. The position is put in from the
+// 20:12:31 death and must come back out of the packet byte for byte -- the
+// oracle's OP_Save carried the last OP_ClientUpdate's y/x/z with the z BIT
+// PATTERN intact, so an off-by-a-frame conversion here would show up.
+TEST(SelfDeathSequence, SaveBody_MatchesTheCaptureGolden) {
+    auto golden = ReadSaveBodyGolden();
+    ASSERT_EQ(golden.size(), 192u)
+        << "the golden is one cell per body byte. If this changed, the capture "
+           "was re-read -- say so in the unit, do not re-bless.";
+
+    DeathHarness h;
+    h.spawnSelf();
+    // Internal x holds the server's y, internal y the server's x. With no
+    // measured mesh offset (collisionZOffset 0) renderZToWireZ is the
+    // identity, so PosZ IS the wire z -- see include/client/position_frames.h.
+    h.eq.GetGameState().player().setPosition(CapturedFloat(0), CapturedFloat(4),
+                                             CapturedFloat(8));
+    h.clearSent();
+
+    h.eq.Player().SendSave(/*announce=*/false);
+
+    ASSERT_EQ(h.countOpcode(HC_OP_Save), 1u);
+    const auto& body = h.sentPackets()[0].bytes;
+    ASSERT_EQ(body.size(), 192u);
+
+    // The floats, decoded, before the byte comparison -- a float mismatch is
+    // far easier to read as a number than as two hex cells.
+    float y = 0.0f, x = 0.0f, z = 0.0f;
+    std::memcpy(&y, body.data() + 5, 4);
+    std::memcpy(&x, body.data() + 9, 4);
+    std::memcpy(&z, body.data() + 13, 4);
+    EXPECT_FLOAT_EQ(y, 634.4550f) << "offset 5 is the server's y";
+    EXPECT_FLOAT_EQ(x, -160.0627f) << "offset 9 is the server's x";
+    EXPECT_FLOAT_EQ(z, 3.750999f) << "offset 13 is the WIRE-frame z";
+
+    for (size_t i = 0; i < golden.size(); ++i) {
+        if (golden[i] == "..") continue;  // varies in the capture; not compared
+        unsigned expected = 0;
+        if (golden[i] == "yy" || golden[i] == "xx" || golden[i] == "zz") {
+            // The captured death-1 bytes for the triple, which is exactly
+            // what the position above must serialize back to.
+            expected = kT311Death1PositionBytes[i - 5];
+        } else {
+            expected = std::stoul(golden[i], nullptr, 16);
+        }
+        EXPECT_EQ(static_cast<unsigned>(body[i]), expected)
+            << "OP_Save body byte " << i << " diverges from the oracle";
+    }
 }
 
 // ------------------------------------------------------------------
@@ -411,11 +550,12 @@ std::vector<std::string> ReadGolden() {
 
 TEST(SelfDeathSequence, T311Capture_OutboundSequenceMatchesTheOracle) {
     auto expected = ReadGolden();
-    ASSERT_EQ(expected.size(), 2u)
-        << "the golden is the oracle's compared death projection: exactly the "
-           "Lying appearance and the bind OP_ZoneChange, and no OP_ClientUpdate "
-           "between them. If this size changed, the capture was re-read -- "
-           "say so in the unit, do not re-bless.";
+    ASSERT_EQ(expected.size(), 3u)
+        << "the golden is the oracle's compared death projection: the 192-byte "
+           "OP_Save, then the Lying appearance, then the bind OP_ZoneChange, "
+           "and no OP_ClientUpdate anywhere between them. If this size "
+           "changed, the capture was re-read -- say so in the unit, do not "
+           "re-bless.";
 
     DeathHarness h;
     h.spawnSelf();

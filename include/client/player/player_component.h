@@ -119,7 +119,10 @@ public:
 	void ZoneProcessDisciplineTimer(const EQ::Net::Packet &p);
 	void ZoneProcessBankerChange(const EQ::Net::Packet &p);
 	// Phase 3: Misc
-	void SendSave();
+	// T349 (B059): a 192-byte body, not a bare opcode. `announce` is false on
+	// the death path -- the official client sends OP_Save as the first packet
+	// of its self-death burst and prints nothing while doing it.
+	void SendSave(bool announce = true);
 	void ZoneProcessClearObject(const EQ::Net::Packet &p);
 	// Phase 4: Dueling
 	void SendDuelRequest(uint32_t target_id);

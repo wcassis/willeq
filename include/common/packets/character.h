@@ -167,6 +167,84 @@ struct ManaChange_Struct {
 };
 static_assert(sizeof(ManaChange_Struct) == 16, "ManaChange_Struct must be 16 bytes");  // eqemu titanium_structs.h:443 (ENCODE(OP_ManaChange) exists, so Titanium wins over the 20-byte base struct)
 
+/*
+ * Save structure -- OP_Save (C->S), 192 bytes.
+ *
+ * GROUND TRUTH, and how much of it there is.
+ *
+ * eqemu declares this payload as `struct Save_Struct { uint8 unknown00[192]; }`
+ * (/mnt/projects/akk-stack/code/common/eq_packet_structs.h:5039, and the
+ * identical Titanium copy at common/patches/titanium_structs.h:3203), and
+ * `Client::Handle_OP_Save` (/mnt/projects/akk-stack/code/zone/client_packet.cpp
+ * :13661) reads NOTHING out of it:
+ *
+ *     void Client::Handle_OP_Save(const EQApplicationPacket *app)
+ *     {
+ *         // The payload is 192 bytes - Not sure what is contained in payload
+ *         Save();
+ *     }
+ *
+ * There is no titanium.cpp DECODE for OP_Save either, so the bytes go on the
+ * wire raw and no size check ever fires. The SERVER-VISIBLE contract is
+ * therefore just "the opcode, with 192 bytes behind it".
+ *
+ * The field names below come from the T311 Leg A capture, not from eqemu:
+ * four self-deaths of a real Titanium client, dumped server-side
+ * (review/T311/legA/zonelogs/*_packetlog.log, "Size [194]" = 2 opcode + 192).
+ * Diffing the four bodies byte by byte (T349) gives exactly one decodable
+ * field group and a lot of noise:
+ *
+ *   [005..016]  three floats that are BYTE-IDENTICAL to the y/x/z of the last
+ *               C->S OP_ClientUpdate before the death, in every one of the
+ *               four -- including the z BIT PATTERN (0x40701060 = 3.750999 in
+ *               the qeynos2 death, 0x41fe0622 = 31.752995 in the first qeynos
+ *               death). Same y,x,z order as BecomeCorpse_Struct. So this is
+ *               the client's current position in the WIRE frame; see
+ *               include/client/position_frames.h.
+ *   [110..174]  varies with no pattern and reads as uninitialized client
+ *               memory: 32-bit heap pointers (0x1c832998, 0x1c556920, ...),
+ *               and the fourth death does not even share the field SHAPE of
+ *               the other three. Not reproducible, and nothing reads it.
+ *   [000..003], [017..018]  vary per send, uncorrelated with anything in the
+ *               capture.
+ *   everything else  identical in all four bodies, across two zones. Emitted
+ *               verbatim so our packet matches the oracle's bytes wherever the
+ *               oracle is self-consistent. CAVEAT, recorded rather than
+ *               hidden: all four samples come from ONE client process, so a
+ *               "constant" here may be process-lifetime-stable stack content
+ *               rather than a real field. The server reads none of it, so the
+ *               distinction costs nothing either way.
+ */
+struct Save_Struct {
+/*000*/ uint8_t  unknown000[4];   // varies every send; we zero it
+/*004*/ uint8_t  unknown004;      // 0x15 in all four captures
+/*005*/ float    y;               // server y  (== our internal PosX)
+/*009*/ float    x;               // server x  (== our internal PosY)
+/*013*/ float    z;               // WIRE-frame z, as in OP_ClientUpdate
+/*017*/ uint8_t  unknown017[2];   // varies every send; we zero it
+/*019*/ uint8_t  unknown019[30];  // zero in all four
+/*049*/ uint32_t unknown049;      // 0x00002999 in all four
+/*053*/ uint32_t unknown053;      // 0x00000030 in all four
+/*057*/ uint8_t  unknown057[53];  // zero in all four
+/*110*/ uint8_t  unknown110[65];  // uninitialized client memory; we zero it
+/*175*/ uint8_t  unknown175[2];   // zero in all four
+/*177*/ uint32_t unknown177;      // 0x00002999 in all four
+/*181*/ uint32_t unknown181;      // 0x00000030 in all four
+/*185*/ uint32_t unknown185;      // 0x00000037 in all four
+/*189*/ uint8_t  unknown189[3];   // zero in all four
+/*192*/
+};
+static_assert(sizeof(Save_Struct) == 192, "Save_Struct must be 192 bytes");  // eqemu eq_packet_structs.h:5039 declares it uint8[192] and Handle_OP_Save reads none of it
+
+// The observed-constant bytes, so the sender and the layout test name them
+// once. See the Save_Struct comment for where each number comes from.
+inline constexpr uint8_t  kSaveUnknown004 = 0x15;
+inline constexpr uint32_t kSaveUnknown049 = 0x00002999u;
+inline constexpr uint32_t kSaveUnknown053 = 0x00000030u;
+inline constexpr uint32_t kSaveUnknown177 = 0x00002999u;
+inline constexpr uint32_t kSaveUnknown181 = 0x00000030u;
+inline constexpr uint32_t kSaveUnknown185 = 0x00000037u;
+
 
 #pragma pack(pop)
 

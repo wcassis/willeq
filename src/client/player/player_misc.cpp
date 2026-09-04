@@ -20,6 +20,7 @@
 #include "common/logging.h"
 #include "common/packet_structs.h"
 #include "common/name_utils.h"
+#include "client/position_frames.h"  // T349: the wire<->render z conversion
 
 #ifdef WITH_AUDIO
 #include "client/audio/audio_manager.h"
@@ -296,15 +297,59 @@ void eqt::player::PlayerComponent::ZoneProcessBankerChange(const EQ::Net::Packet
 // Cluster 10: Save/Popup/ClearObject/Duel/BindWound/Track
 // ============================================================================
 
-void eqt::player::PlayerComponent::SendSave()
+// T349 (BOARD B059). This used to queue a BARE 2-BYTE OP_Save. The official
+// Titanium client's OP_Save carries 192 bytes, and it sends one as the FIRST
+// C->S packet of every self-death burst (T311 Leg A, four deaths for four --
+// review/T311/legA/zonelogs/, "Size [194]" = 2 opcode + 192 body).
+//
+// eqemu reads none of the body (Handle_OP_Save just calls Save(), see the
+// Save_Struct comment in include/common/packets/character.h for the file:line
+// and the full decode), so the only field that has to be RIGHT is the one the
+// capture actually decodes -- the position triple. The rest is filled to match
+// the oracle's bytes wherever the oracle's own four samples agree, and zeroed
+// where they do not.
+void eqt::player::PlayerComponent::SendSave(bool announce)
 {
+	EQT::Save_Struct body{};
+	body.unknown004 = EQT::kSaveUnknown004;
+
+	// Same axis swap and same wire-frame z as SendMovementUpdate
+	// (src/client/movement/movement_update.cpp): our internal x holds the
+	// server's y and vice versa, and PosZ() is the RENDER frame, which has to
+	// be converted at the packet edge -- except while zAwaitingFrameConversion
+	// says PosZ() is still the raw wire value the self-spawn delivered, in
+	// which case converting it would add the offset a SECOND time and the
+	// error would COMPOUND once per login (T311). See
+	// include/client/position_frames.h.
+	body.y = ctx_.self.PosX();
+	body.x = ctx_.self.PosY();
+	body.z = ctx_.game_state.player().zAwaitingFrameConversion()
+		? ctx_.self.PosZ()
+		: eqt::renderZToWireZ(ctx_.self.PosZ(),
+		                      ctx_.game_state.player().collisionZOffset(),
+		                      ctx_.game_state.player().size());
+
+	body.unknown049 = EQT::kSaveUnknown049;
+	body.unknown053 = EQT::kSaveUnknown053;
+	body.unknown177 = EQT::kSaveUnknown177;
+	body.unknown181 = EQT::kSaveUnknown181;
+	body.unknown185 = EQT::kSaveUnknown185;
+
 	EQ::Net::DynamicPacket packet;
+	packet.Resize(sizeof(body) + 2);
 	packet.PutUInt16(0, HC_OP_Save);
+	std::memcpy(static_cast<char*>(packet.Data()) + 2, &body, sizeof(body));
 
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
-		ctx_.zone_connection->QueuePacket(packet);
+		// SafeQueueZone, not zone_connection->QueuePacket: it is the sender
+		// the T268/T346 ordered capture seam and the session recorder both
+		// watch, and the self-death golden compares OP_Save's POSITION in the
+		// burst. A direct QueuePacket is invisible to both.
+		ctx_.net.SafeQueueZone(packet);
 		LOG_INFO(MOD_MAIN, "Character save requested");
-		ctx_.out.System("Saving character...");
+		if (announce) {
+			ctx_.out.System("Saving character...");
+		}
 	}
 }
 

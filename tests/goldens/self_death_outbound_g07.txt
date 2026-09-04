@@ -4,7 +4,8 @@
 # a real Titanium client against a real eqemu). All 4 self-death
 # windows in that capture produce this identical sequence.
 #
-# COMPARED opcodes: OP_SpawnAppearance, OP_ClientUpdate, OP_ZoneChange.
+# COMPARED opcodes: OP_Save, OP_SpawnAppearance, OP_ClientUpdate,
+# OP_ZoneChange.
 # The absence of an OP_ClientUpdate line is the whole of step 2: the
 # official client goes silent the instant it dies.
 #
@@ -12,13 +13,14 @@
 #   OP_FloatListThing -- a heartbeat, not a death step (1291 sends
 #     across the capture vs OP_ClientUpdate's 1522; present on both
 #     sides of every death and everywhere else).
-#   OP_Save -- the oracle DOES send one on every self death, but its
-#     is 192 bytes of character payload and fable's SendSave() is a
-#     bare 2-byte opcode. A real gap; a separate item, not this unit.
+#   the OP_Save BODY -- compared separately. This TSV keeps only the
+#     first 32 payload bytes; the full 192 are pinned against the
+#     server-side packetlog dump by tests/goldens/op_save_body_g08.txt.
 #   OP_DeleteSpawn -- sent after the server APPROVES the zone change,
 #     from the zone teardown (fable: CleanupZone), which needs the
 #     full handshake this headless test does not run.
 #
 # Never re-blessed. If a line here changes, the capture was re-read.
+C->S OP_Save
 C->S OP_SpawnAppearance type=14 param=115
 C->S OP_ZoneChange
