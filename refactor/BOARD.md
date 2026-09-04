@@ -1091,7 +1091,7 @@ it without taking that measurement first.
 
 ## Added 2026-09-04 by T345 (owed live proofs)
 
-- **B056** (A) `src/client/graphics/player/renderer_camera.cpp`
+- ~~**B056** (A)~~ **CLOSED by T348 (merged 8bad5632): `createEntity()` had zero production callers; `setPlayerRace` is now called from `IrrlichtRenderer::registerEntity()` on the live path and pinned by test; the race table itself is B060.** (A) `src/client/graphics/player/renderer_camera.cpp`
   `PlayerCameraComponent::setPlayerRace` — **lead, not yet a proven zero-caller.**
   The method logs `Player race {} -> base vision: {}` at INFO on every call, and
   that line appears **nowhere** in any of T345's five live session logs, although
@@ -1154,7 +1154,7 @@ it without taking that measurement first.
   is in none. Fix: one call, `playerCamera_->setPlayerRace(raceId)` under
   `if (result && isPlayer && playerCamera_)` in `registerEntity()`
   (`renderer_entities.cpp`), the shape `createEntity()` already had. **Territory
-  deviation, stated:** the plan named `zone_load/renderer_zone_load_entities.cpp`;
+  deviation, stated:** the plan named `src/client/graphics/zone_load/renderer_zone_load_entities.cpp`;
   that file preps and builds meshes for entities already registered, never creates
   one and never sees `isPlayer` — it was not modified. Three tests appended to
   `tests/test_vision_buff_fade_wire.cpp`: the floor at runtime (Dark Elf ->
