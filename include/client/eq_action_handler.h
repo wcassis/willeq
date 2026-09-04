@@ -35,8 +35,8 @@ public:
     void stopAllMovement() override;
 
     void moveToLocation(float x, float y, float z) override;
-    void moveToEntity(const std::string& name) override;
-    void followEntity(const std::string& name) override;
+    void moveToEntity(uint16_t spawnId) override;
+    void followEntity(uint16_t spawnId) override;
     void stopFollow() override;
 
     // ========== Combat ==========

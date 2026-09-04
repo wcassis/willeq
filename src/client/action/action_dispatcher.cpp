@@ -161,12 +161,23 @@ ActionResult ActionDispatcher::moveToEntity(const std::string& name) {
     auto result = checkZoneConnection();
     if (!result.success) return result;
 
+    // T356 (B003c): resolve ONCE, with the nearest-first ranked overload
+    // (T244), and hand the handler the winner's SPAWN ID. This used to be an
+    // existence check with the unranked overload followed by passing the
+    // NAME down, and the game side re-resolved that name with a third,
+    // different resolver (EntitiesComponent::FindEntityByName -- unranked
+    // prefix match, lowest spawn id wins). With two same-named mobs in the
+    // zone that walked the player to a different one than /target had
+    // picked. Same defect shape as T350's /face; see faceEntity above.
     auto& entities = m_state.entities();
-    if (!entities.findEntityByName(name)) {
+    const auto& player = m_state.player();
+    const auto* entity =
+        entities.findEntityByName(name, player.x(), player.y(), player.z());
+    if (!entity) {
         return ActionResult::Failure("Entity not found: " + name);
     }
 
-    m_handler->moveToEntity(name);
+    m_handler->moveToEntity(entity->spawnId);
     return ActionResult::Success("Moving to " + name);
 }
 
@@ -174,12 +185,17 @@ ActionResult ActionDispatcher::followEntity(const std::string& name) {
     auto result = checkZoneConnection();
     if (!result.success) return result;
 
+    // T356 (B003c): resolved once with the ranked overload -- see
+    // moveToEntity above for the full note.
     auto& entities = m_state.entities();
-    if (!entities.findEntityByName(name)) {
+    const auto& player = m_state.player();
+    const auto* entity =
+        entities.findEntityByName(name, player.x(), player.y(), player.z());
+    if (!entity) {
         return ActionResult::Failure("Entity not found: " + name);
     }
 
-    m_handler->followEntity(name);
+    m_handler->followEntity(entity->spawnId);
     return ActionResult::Success("Following " + name);
 }
 

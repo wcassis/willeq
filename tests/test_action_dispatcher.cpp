@@ -138,6 +138,45 @@ TEST_F(ActionDispatcherTest, FaceEntity_PicksTheNearestMatch_NotTheLowestSpawnId
     ASSERT_TRUE(handler.calledOnceWith("setHeading(0)"));
 }
 
+// T356 (B003c). The same defect T350 fixed for /face, one layer down:
+// /moveto and /follow used the UNRANKED findEntityByName(name) purely as an
+// existence check and then passed the NAME to the handler, which re-resolved
+// it game-side with a THIRD resolver (EntitiesComponent::FindEntityByName --
+// unranked case-insensitive prefix match, lowest spawn id wins). With two
+// same-named mobs the player walked to / followed a different one than
+// /target and /face had picked. The dispatcher now resolves once with the
+// T244 nearest-first overload and hands the handler a spawn id.
+//
+// The near beetle spawns SECOND and carries the HIGHER spawn id, so an
+// unranked first-match picks the far one.
+TEST_F(ActionDispatcherTest, MoveToAndFollow_PickTheNearestMatch_NotTheLowestSpawnId) {
+    connectHandler();
+    connectZone();
+
+    eqt::state::Entity far;
+    far.spawnId = 68;
+    far.name = "a_fire_beetle000";
+    far.x = 100.0f;
+    far.y = 0.0f;
+    far.z = 0.0f;
+    state.entities().addEntity(far);
+
+    eqt::state::Entity near;
+    near.spawnId = 277;
+    near.name = "a_fire_beetle005";
+    near.x = 0.0f;
+    near.y = 10.0f;
+    near.z = 0.0f;
+    state.entities().addEntity(near);
+
+    ASSERT_TRUE(dispatcher->moveToEntity("a_fire_beetle").success);
+    ASSERT_TRUE(dispatcher->followEntity("a_fire_beetle").success);
+
+    ASSERT_EQ(handler.count(), 2u);
+    EXPECT_EQ(handler.calls[0], "moveToEntity(277)");
+    EXPECT_EQ(handler.calls[1], "followEntity(277)");
+}
+
 TEST_F(ActionDispatcherTest, MoveToFamily_RequiresEntityAndRoutesCorrectly) {
     connectHandler();
     connectZone();
@@ -159,8 +198,8 @@ TEST_F(ActionDispatcherTest, MoveToFamily_RequiresEntityAndRoutesCorrectly) {
 
     ASSERT_EQ(handler.count(), 4u);
     EXPECT_EQ(handler.calls[0], "moveToLocation(1, 2, 3)");
-    EXPECT_EQ(handler.calls[1], "moveToEntity(\"Target\")");
-    EXPECT_EQ(handler.calls[2], "followEntity(\"Target\")");
+    EXPECT_EQ(handler.calls[1], "moveToEntity(7)");
+    EXPECT_EQ(handler.calls[2], "followEntity(7)");
     EXPECT_EQ(handler.calls[3], "stopFollow()");
 }
 

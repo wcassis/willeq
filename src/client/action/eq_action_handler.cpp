@@ -174,12 +174,13 @@ void EqActionHandler::moveToLocation(float x, float y, float z) {
     m_eq.Movement().Move(x, y, z);
 }
 
-void EqActionHandler::moveToEntity(const std::string& name) {
-    m_eq.Movement().MoveToEntity(name);
+// T356 (B003c): spawn id, not name -- see IActionHandler's comment.
+void EqActionHandler::moveToEntity(uint16_t spawnId) {
+    m_eq.Movement().MoveToEntity(spawnId);
 }
 
-void EqActionHandler::followEntity(const std::string& name) {
-    m_eq.Movement().Follow(name);
+void EqActionHandler::followEntity(uint16_t spawnId) {
+    m_eq.Movement().Follow(spawnId);
 }
 
 void EqActionHandler::stopFollow() {

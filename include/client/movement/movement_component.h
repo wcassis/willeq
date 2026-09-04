@@ -45,11 +45,15 @@ public:
 
 	// Commanded movement API (was src/client/eq_movement.cpp).
 	void Move(float x, float y, float z);
-	void MoveToEntity(const std::string &name);
+	// T356 (B003c): id-keyed, because the caller (ActionDispatcher) has
+	// already resolved the name with the nearest-first ranked resolver and
+	// a second, unranked, name resolution here could pick a different
+	// same-named entity.
+	void MoveToEntity(uint16_t spawn_id);
 	void MoveToEntityWithinRange(const std::string &name, float stop_distance);
 	void StartCombatMovement(const std::string &name, float stop_distance);
 	void StartCombatMovement(uint16_t entity_id);
-	void Follow(const std::string &name);
+	void Follow(uint16_t spawn_id);
 	void StopFollow();
 	void FaceEntity(const std::string &name);
 	void MoveTo(float x, float y, float z);
