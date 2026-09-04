@@ -99,6 +99,11 @@ references this file; plans carry only unit-specific content.
   can silently take another agent's uncommitted work.** To stage a
   revert-and-prove step, export a patch (`git diff > /tmp/.../x.patch`,
   `git apply -R`, `git apply`) or write your own patch script — never the stash.
+  ⚠ **A FOURTH shape (T353, 2026-09-04): a binary can be NON-EMPTY yet truncated
+  non-ELF, newer than its inputs, so the incremental rebuild keeps it and ctest
+  aborts at gtest DISCOVERY with a shell syntax error.** The zero-byte sweep does
+  not see it. After any exit 143 scan `build/bin` for the ELF magic (`head -c4 |
+  od`; anything not `7f 45 4c 46` is deleted and rebuilt).
 
 - Honor STOP conditions exactly; report narrowed evidence, don't thrash.
 - Evidence discipline: garbled/invalid renders void any claim built on
