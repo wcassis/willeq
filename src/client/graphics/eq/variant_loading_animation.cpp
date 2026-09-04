@@ -31,6 +31,19 @@ namespace EQT {
 namespace Graphics {
 bool RaceModelLoader::loadModelFromGlobalChrWithVariantsForAnimation(uint16_t raceId, uint8_t gender,
                                                                       uint8_t headVariant, uint8_t bodyVariant) {
+    // T340 (B052): read-only observation seam -- see VariantLoadTrace in
+    // race_model_loader.h. Records that this loader RAN (the caller caches a
+    // null on false, so a second call never reaches here) and clears the
+    // previous run's verdict. No control flow reads any of it.
+    {
+        std::lock_guard<std::mutex> traceLock(variantModelsMutex_);
+        ++variantLoadTrace_.attempts;
+        variantLoadTrace_.succeeded = false;
+        variantLoadTrace_.resolvedCode.clear();
+        variantLoadTrace_.resolvedCharacter.clear();
+        variantLoadTrace_.resolvedSource.clear();
+    }
+
     // NOTE: We defer loading global models until we confirm zone models don't have what we need.
     // This prevents the expensive loading of ALL race skeletons when only a zone-specific race is needed.
 
@@ -498,6 +511,11 @@ bool RaceModelLoader::loadModelFromGlobalChrWithVariantsForAnimation(uint16_t ra
                 {
                     std::lock_guard<std::mutex> lock(variantModelsMutex_);
                     variantModels_[key] = modelData;
+                    // T340 (B052): which candidate and which character won.
+                    variantLoadTrace_.succeeded = true;
+                    variantLoadTrace_.resolvedCode = codeToTry;
+                    variantLoadTrace_.resolvedCharacter = character->name;
+                    variantLoadTrace_.resolvedSource = "zone";
                 }
 
                 LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loaded race {} ({}) variant (head={}, body={}) for animation ({} parts, {} vertices)",
@@ -833,6 +851,11 @@ bool RaceModelLoader::loadModelFromGlobalChrWithVariantsForAnimation(uint16_t ra
                 {
                     std::lock_guard<std::mutex> lock(variantModelsMutex_);
                     variantModels_[key] = modelData;
+                    // T340 (B052): which candidate and which character won.
+                    variantLoadTrace_.succeeded = true;
+                    variantLoadTrace_.resolvedCode = codeToTry;
+                    variantLoadTrace_.resolvedCharacter = character->name;
+                    variantLoadTrace_.resolvedSource = "global";
                 }
 
                 LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loaded race {} ({}) variant from global ({} parts)",

@@ -123,6 +123,22 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_race_330_loader)
 ENDIF()
 
+# T340 Leg A (B052): drives RaceModelLoader's variant/animation loader through
+# every exit G07 enumerated -- primary hit, primary-miss/fallback-hit, an
+# unusable matched character, all candidates exhausted, and an empty candidate
+# list. Same EDT_NULL + willeq_core gate as test_race_330_loader; opens the
+# shipped data/willeq.db and the real client tree and skips without either.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_variant_loader_candidates
+        test_variant_loader_candidates.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_variant_loader_candidates PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_variant_loader_candidates GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_variant_loader_candidates PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    GTEST_DISCOVER_TESTS(test_variant_loader_candidates)
+ENDIF()
+
 # T285: pins the two applyPaletteMask plumbing sites (P46d Part B / P50) --
 # mesh_building.cpp's on-demand texture fallback and animated_mesh_creation.cpp's
 # equipment texture-variant swap. Same EDT_NULL + willeq_core gate as
