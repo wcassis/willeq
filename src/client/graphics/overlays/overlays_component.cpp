@@ -12,6 +12,7 @@
 // Review.
 
 #include "client/graphics/overlays/overlays_component.h"
+#include "client/graphics/world_line_batch.h"  // T335: the shared post-drawAll() 3D-line guard
 #include "client/graphics/ui/character_model_view.h"  // L13: complete type for the out-of-line dtor
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/bridge/game_state_bridge.h"
@@ -137,6 +138,21 @@ irr::video::SColor OverlaysComponent::getMapOverlayColor(float y, float minY, fl
     return irr::video::SColor(200, r, g, b);  // Slightly transparent
 }
 
+// T335 test seam -- see the declaration in overlays_component.h.
+void OverlaysComponent::seedMapOverlayTriangleForTest(const irr::core::vector3df& v1,
+                                                      const irr::core::vector3df& v2,
+                                                      const irr::core::vector3df& v3,
+                                                      irr::video::SColor color,
+                                                      bool isPlaceable) {
+    MapOverlayTriangle tri;
+    tri.v1 = v1;
+    tri.v2 = v2;
+    tri.v3 = v3;
+    tri.color = color;
+    tri.isPlaceable = isPlaceable;
+    mapOverlayTriangles_.push_back(tri);
+}
+
 void OverlaysComponent::drawMapOverlay() {
     if (!showMapOverlay_ || !ctx_.driver || mapOverlayTriangles_.empty()) {
         return;
@@ -150,7 +166,13 @@ void OverlaysComponent::drawMapOverlay() {
     lineMaterial.MaterialType = irr::video::EMT_SOLID;
     lineMaterial.ZBuffer = irr::video::ECFN_LESSEQUAL;  // Respect depth
     lineMaterial.ZWriteEnable = false;
-    ctx_.driver->setMaterial(lineMaterial);
+    // T335 (B054): this ran in the same post-drawAll(), latched-2D window as
+    // drawNavmeshOverlay() and carried B048's defect verbatim -- world-space
+    // lines multiplied by the 2D ortho matrix (Ctrl+M drew nothing) and a 3D
+    // material left installed (the UI wiped for the rest of the frame). The
+    // batch borrows and returns the driver's transforms and render state; see
+    // client/graphics/world_line_batch.h for the measurement.
+    WorldLineBatch batch(ctx_, lineMaterial);
 
     // Build transform for placeables (rotation and/or mirroring)
     // These transforms are around the world origin to test coordinate alignment
@@ -344,14 +366,11 @@ void OverlaysComponent::drawNavmeshOverlay() {
     // transforms captured during the ESNRP_SOLID pass. The pass order is
     // untouched (it is pinned by tests/goldens/frame_render_order_g05.txt).
     //
-    // NOTE: OverlaysComponent::drawMapOverlay() and
-    // PlayerCameraComponent::drawCollisionDebugLines() carry the identical
-    // defect and are deliberately NOT changed here -- neither has live
-    // evidence and both are off by default. Boarded separately.
-    const irr::core::matrix4 savedView = ctx_.driver->getTransform(irr::video::ETS_VIEW);
-    const irr::core::matrix4 savedProj = ctx_.driver->getTransform(irr::video::ETS_PROJECTION);
-    const irr::core::matrix4 savedWorld = ctx_.driver->getTransform(irr::video::ETS_WORLD);
-
+    // T335 (B054): the save/restore that used to be spelled out here is now
+    // WorldLineBatch, shared with drawMapOverlay() and
+    // PlayerCameraComponent::drawCollisionDebugLines(), which carried the
+    // identical defect. The full measurement lives in that header.
+    //
     // Set up material for wireframe line drawing
     irr::video::SMaterial lineMaterial;
     lineMaterial.Lighting = false;
@@ -360,7 +379,7 @@ void OverlaysComponent::drawNavmeshOverlay() {
     lineMaterial.MaterialType = irr::video::EMT_SOLID;
     lineMaterial.ZBuffer = irr::video::ECFN_LESSEQUAL;  // Respect depth
     lineMaterial.ZWriteEnable = false;
-    ctx_.driver->setMaterial(lineMaterial);
+    WorldLineBatch batch(ctx_, lineMaterial);
 
     // Build transform matrix for rotation and/or mirroring
     // These transforms are around the world origin to test coordinate alignment
@@ -382,14 +401,8 @@ void OverlaysComponent::drawNavmeshOverlay() {
         navmeshTransform *= rotMatrix;
     }
 
-    // Set transforms and draw all triangles as wireframe. The view/projection
-    // pair is the one captured during the ESNRP_SOLID pass -- see the T333 note
-    // at the top of this function for why the driver's current pair cannot be
-    // trusted here.
-    if (ctx_.Frame().have3DTransforms()) {
-        ctx_.driver->setTransform(irr::video::ETS_VIEW, ctx_.captured3DView);
-        ctx_.driver->setTransform(irr::video::ETS_PROJECTION, ctx_.captured3DProj);
-    }
+    // Draw all triangles as wireframe. The view/projection pair is already the
+    // one captured during the ESNRP_SOLID pass -- WorldLineBatch installed it.
     ctx_.driver->setTransform(irr::video::ETS_WORLD, navmeshTransform);
 
     for (const auto& tri : navmeshOverlayTriangles_) {
@@ -398,27 +411,6 @@ void OverlaysComponent::drawNavmeshOverlay() {
         ctx_.driver->draw3DLine(tri.v3, tri.v1, tri.color);
     }
 
-    // Hand the driver back what it had. The transforms restore literally; the
-    // render state has to be spelled as a material, because setMaterial() is the
-    // only public door to setCull()/setDepthTest()/setDepthWrite(). This one
-    // reproduces setOrthoProjection()'s 2D state exactly: no culling, no depth
-    // test (ECFN_NEVER), no depth write. The depth write comes from the material
-    // TYPE -- COpenGLES2Driver::applyMaterialRenderState() switches on
-    // MaterialType and ignores ZWriteEnable -- which is why the type here is
-    // EMT_TRANSPARENT_ALPHA_CHANNEL (its branch is the depth-write-off one) and
-    // not EMT_SOLID. Blending is set explicitly by every 2D draw call, so it
-    // does not matter which way this leaves it.
-    ctx_.driver->setTransform(irr::video::ETS_WORLD, savedWorld);
-    ctx_.driver->setTransform(irr::video::ETS_VIEW, savedView);
-    ctx_.driver->setTransform(irr::video::ETS_PROJECTION, savedProj);
-
-    irr::video::SMaterial restore2D;
-    restore2D.Lighting = false;
-    restore2D.BackfaceCulling = false;
-    restore2D.ZBuffer = irr::video::ECFN_NEVER;
-    restore2D.ZWriteEnable = false;
-    restore2D.MaterialType = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL;
-    ctx_.driver->setMaterial(restore2D);
 }
 
 #ifdef EQT_HAS_GLES2

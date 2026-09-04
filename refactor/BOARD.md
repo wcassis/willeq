@@ -770,7 +770,8 @@ it without taking that measurement first.
 
 ## Added 2026-09-04 by T333
 
-- **B054** (B) `src/client/graphics/overlays/overlays_component.cpp`
+- ~~**B054**~~ (B) **TWO OF THREE STRUCK by T335; the frustum site stays OPEN**
+  — see the tail of this entry. `src/client/graphics/overlays/overlays_component.cpp`
   `OverlaysComponent::drawMapOverlay()`, `renderer_frame_render.cpp`'s
   `frustumDebugDraw_` block, and
   `src/client/graphics/player/renderer_player_collision.cpp`
@@ -805,3 +806,25 @@ it without taking that measurement first.
   that. Closes when: applying a vision buff raises vision, proven by a test on
   the publisher (and ideally a live capture of the zone-light change).
   Prov: T334 Review.
+
+  **T335 (2026-09-04):** the fix is now ONE shared RAII guard,
+  `EQT::Graphics::WorldLineBatch` in
+  `include/client/graphics/world_line_batch.h`, used by all three fixed sites
+  including the navmesh one, which was refactored onto it.
+  ~~`drawMapOverlay()` (Ctrl+M)~~ and
+  ~~`PlayerCameraComponent::drawCollisionDebugLines()`~~ are **STRUCK** — each
+  proven by a new pre-fix failing pixel test in
+  `test_navmesh_overlay_draw.cpp`'s shape (`tests/test_map_overlay_draw.cpp`,
+  `tests/test_collision_debug_draw.cpp`); both symptoms reproduced pre-fix,
+  4/4 after. Note the file for the collision lines is
+  `renderer_player_collision.cpp`, not `renderer_camera.cpp` (J33 moved it).
+  **The `frustumDebugDraw_` block in `renderer_frame_render.cpp` REMAINS OPEN
+  and is BLOCKED, not deferred.** `tests/goldens/frame_render_order_g05.txt`
+  pins every normalised STATEMENT of that TU by exact text and count (305
+  entries, 16 passes), so adding a guard changes the count, replacing a
+  statement changes the text, a new FrameComponent method changes the pass
+  count, and moving the block to another TU deletes its statements. No fix to
+  ANY code in that TU is possible while the golden is spelled that way — which
+  is the larger finding. Closes when Will rules: re-bless the golden (its own
+  failure message forbids that), or narrow it to pin the pass ORDER rather than
+  the statement text. Prov: T335 Review, "Site 4".

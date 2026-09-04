@@ -133,6 +133,17 @@ public:
 	                                       irr::video::SColor color);
 	size_t navmeshOverlayTriangleCount() const { return navmeshOverlayTriangles_.size(); }
 
+	// T335 test seam, the same shape and for the same reason:
+	// drawMapOverlay()'s only production filler is updateMapOverlay(), which
+	// needs a loaded zone's collision mesh. tests/test_map_overlay_draw.cpp
+	// has a real GLES2 device but no zone.
+	void seedMapOverlayTriangleForTest(const irr::core::vector3df& v1,
+	                                   const irr::core::vector3df& v2,
+	                                   const irr::core::vector3df& v3,
+	                                   irr::video::SColor color,
+	                                   bool isPlaceable);
+	size_t mapOverlayTriangleCount() const { return mapOverlayTriangles_.size(); }
+
 private:
 	// In-family only (K03 correction a: every one of these has a caller
 	// inside the two TUs above).

@@ -109,6 +109,18 @@ public:
 	size_t findBspRegionForPoint(float x, float y, float z);
 	void clearCollisionDebugLines();
 
+	// T335 test seam. drawCollisionDebugLines()'s only production filler is
+	// addCollisionDebugLine(), which is private and is called from the movement
+	// collision path -- that needs a loaded zone's collision map.
+	// tests/test_collision_debug_draw.cpp has a real GLES2 device but no zone,
+	// so it seeds the line list directly. Production code keeps using the
+	// private filler.
+	void seedCollisionDebugLineForTest(const irr::core::vector3df& start,
+	                                   const irr::core::vector3df& end,
+	                                   const irr::video::SColor& color,
+	                                   float duration);
+	size_t collisionDebugLineCount() const { return collisionDebugLines_.size(); }
+
 	// --- Camera (was renderer_camera.cpp) ---
 	void applyCameraProjectionForMode();
 	void applyFirstPersonPitchClamp();

@@ -278,6 +278,27 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_navmesh_overlay_draw)
 ENDIF()
 
+# T335 (B054): the same defect and the same proof shape for the two siblings
+# that share the debug-overlay pass -- the Ctrl+M map overlay and the
+# collisionDebug lines. Both now go through WorldLineBatch
+# (include/client/graphics/world_line_batch.h). Real headless GLES2 device;
+# they self-skip when it is unavailable, and need no EQE1 asset and no server.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_map_overlay_draw
+        test_map_overlay_draw.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_map_overlay_draw PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_map_overlay_draw GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_map_overlay_draw)
+
+    ADD_EXECUTABLE(test_collision_debug_draw
+        test_collision_debug_draw.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_collision_debug_draw PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_collision_debug_draw GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_collision_debug_draw)
+ENDIF()
+
 # T310 Leg A: the first-person camera tunables (/fpcam, --fpcam). Same bare,
 # never-Init()'d IrrlichtRenderer idiom as test_irrlicht_camera_command above,
 # plus the catalog gate and Application::parseArguments -- so ONE binary covers
