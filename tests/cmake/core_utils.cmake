@@ -86,3 +86,17 @@ ADD_EXECUTABLE(test_logging
 )
 TARGET_LINK_LIBRARIES(test_logging GTest::gtest_main ${FMT_LIB})
 GTEST_DISCOVER_TESTS(test_logging)
+
+# G04: the startup-ORDER net for Application::initialize().
+# Pure text parse of src/client/application.cpp (WILLEQ_REPO_ROOT, set
+# globally in tests/CMakeLists.txt) against
+# tests/goldens/application_init_order_g04.txt -- initialize() brings up the
+# whole client and cannot be run in a unit test, so the TU is the only record
+# of the order, and the order is load-bearing (client before every holder of
+# its GameState; renderer/bridge before InitGraphics; console bridge only if
+# graphics did not attach one; login connection last). No link deps.
+ADD_EXECUTABLE(test_application_init_order
+    test_application_init_order.cpp
+)
+TARGET_LINK_LIBRARIES(test_application_init_order GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_application_init_order)

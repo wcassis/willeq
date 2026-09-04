@@ -355,6 +355,34 @@ private:
     friend struct ApplicationScriptTestPeer;  // T238
     friend struct ApplicationCommandOutputTestPeer;  // T308
 
+    // ========== G04: initialize() subsystem steps ==========
+    //
+    // initialize() is the ordered list of these; each is a verbatim slice of
+    // the pre-G04 body cut at the banner it already carried, and each returns
+    // false exactly where the original returned false. THE ORDER IS
+    // LOAD-BEARING -- see the banner above the definitions in
+    // src/client/application.cpp -- and is pinned against a golden extracted
+    // from the pre-G04 source by tests/test_application_init_order.cpp.
+    // initGraphics() is a no-op returning true in an EQT_GRAPHICS=OFF build.
+
+    bool initFpCamOverrides(const ApplicationConfig& config);
+    bool initConfigValidation(const ApplicationConfig& config);
+    bool initFrameDumpDirectory(const ApplicationConfig& config);
+    bool initRequiredFileValidation(const ApplicationConfig& config);
+    bool initSignalHandlers(const ApplicationConfig& config);
+    bool initEverQuestClient(const ApplicationConfig& config);
+    bool initSpellSystem(const ApplicationConfig& config);
+    bool initActionLayer(const ApplicationConfig& config);
+    bool initScriptedCommandTour(const ApplicationConfig& config);
+    bool initGameMode(const ApplicationConfig& config);
+    bool initInputBridge(const ApplicationConfig& config);
+    bool initCommandOutputRouting(const ApplicationConfig& config);
+    bool initGraphics(const ApplicationConfig& config);
+    bool initConstrainedRendererConfig(const ApplicationConfig& config);
+    bool initRendererAndGraphics(const ApplicationConfig& config);
+    bool initConsoleBridge(const ApplicationConfig& config);
+    bool initLoginConnection(const ApplicationConfig& config);
+
     // ========== Main Loop Stages ==========
 
     void mainLoop();          // Render thread (main) — render loop

@@ -90,7 +90,7 @@ This table and that plan must agree; change both together.
 
 | TU | Lines | Contents |
 |---|---|---|
-| src/client/application.cpp | 948 | Core: initialize, run, shutdown, requestQuit, gameThreadLoop, mainLoop |
+| src/client/application.cpp | 1040 | Core: initialize, run, shutdown, requestQuit, gameThreadLoop, mainLoop. **G04**: `initialize()` is a 26-line ordered list of 17 `bool initX(const ApplicationConfig&)` subsystem steps (fp-cam overrides, config validation, frame-dump dir, required files, signal handlers, EverQuest client, spell system, action layer, scripted tour, game mode, input bridge, command-output routing, graphics [constrained config + renderer/InitGraphics], console bridge, login connection). The order is load-bearing and pinned by `tests/test_application_init_order.cpp` against `tests/goldens/application_init_order_g04.txt` |
 | application_commands.cpp | 552 | processNetworkEvents/processInput, processPreConnectionLifecycleCommands, loadScriptFile/updateScript, dispatchToActionOrRenderer (the renderer-catalog gate), printCommandResult, wireUnifiedCommandDispatch, `Application::DispatchSlashCommand` |
 | application_zone_loading.cpp | 458 | start/joinLoadingThread, checkLoadingComplete, loadZoneGraphicsOnThread (registers snapshot entities into the EntityRenderer), loadZoneGraphics, setupRDPAudio, updateLoadingProgress |
 | application_config.cpp | 434 | parseArguments, loadConfigFile |
