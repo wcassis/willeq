@@ -538,7 +538,7 @@ it without taking that measurement first.
   claims it does.** `addRegionToCollision()`, `addDoorToCollision()`,
   `addObjectToCollision()`, `findBspRegionForPoint()` and
   `clearCollisionDebugLines()` have **zero callers tree-wide**.
-  `src/client/graphics/renderer_zone_draw.cpp:197-198` asserts in a comment
+  `src/client/graphics/zone_lifecycle/renderer_zone_draw.cpp:198-199` asserts in a comment
   that "Collision detection is set up progressively via
   setupMinimalZoneCollision() and addRegionToCollision() during the background
   zone loading phases" — only `setupMinimalZoneCollision()` is actually called

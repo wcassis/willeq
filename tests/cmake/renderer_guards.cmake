@@ -201,6 +201,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_zone_stream_component)
 ENDIF()
 
+# L09 (Batch L): ZoneLifecycleComponent -- zone teardown/environment/ready
+# state, the manual + portal zone draw, and the GPU upload thread's
+# renderer-side driver. Same bare, never-Init()'d IrrlichtRenderer idiom as
+# test_zone_stream_component above.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_zone_lifecycle_component
+        test_zone_lifecycle_component.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_zone_lifecycle_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_zone_lifecycle_component GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_zone_lifecycle_component)
+ENDIF()
+
 # T329 (B041): the NavmeshChanged bridge arm forwarding to
 # OverlaysComponent::setNavmesh. Same bare, never-Init()'d IrrlichtRenderer
 # idiom as test_overlays_component above, plus a real eqt::bridge::

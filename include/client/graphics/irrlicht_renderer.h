@@ -58,6 +58,7 @@
 #include "client/graphics/slash/slash_commands_component.h"
 #include "client/graphics/sim/sim_bridge_component.h"
 #include "client/graphics/zone_stream/zone_stream_component.h"
+#include "client/graphics/zone_lifecycle/zone_lifecycle_component.h"
 #ifdef WITH_RDP
 #include "client/graphics/rdp/rdp_server.h"
 #include "client/graphics/rdp/rdp_input_handler.h"
@@ -155,18 +156,21 @@ public:
     // Request the renderer to quit (for /q, /quit commands)
     void requestQuit();
 
-    // Unload current zone
-    void unloadZone();
-
-    // Set zone environment parameters (sky type, fog colors) from server data
-    // Call after zone loading to apply zone-specific rendering settings
-    // skyType: sky type from NewZone_Struct (0-255)
-    // zoneType: zone type (0=outdoor, 1=dungeon, etc. - indoor zones disable sky)
-    // fogRed/Green/Blue: fog color arrays (4 values for different fog ranges)
-    // fogMinClip/MaxClip: fog distance arrays (4 values)
-    void setZoneEnvironment(uint8_t skyType, uint8_t zoneType,
-                            const uint8_t fogRed[4], const uint8_t fogGreen[4], const uint8_t fogBlue[4],
-                            const float fogMinClip[4], const float fogMaxClip[4]);
+    // L09 (Batch L): zone lifecycle/draw/upload live on
+    // ZoneLifecycleComponent. These six stay as forwarders, each justified by
+    // a NAMED caller listed in zone_lifecycle_component.h (the K11 rule).
+    void unloadZone() { zoneLifecycle_->unloadZone(); }
+    void setupInstantScene(const std::string& zoneName, float playerX = 0, float playerY = 0, float playerZ = 0) {
+        zoneLifecycle_->setupInstantScene(zoneName, playerX, playerY, playerZ);
+    }
+    void storeZoneEnvironment(uint8_t skyType, uint8_t zoneType,
+                              const uint8_t fogRed[4], const uint8_t fogGreen[4], const uint8_t fogBlue[4],
+                              const float fogMinClip[4], const float fogMaxClip[4]) {
+        zoneLifecycle_->storeZoneEnvironment(skyType, zoneType, fogRed, fogGreen, fogBlue, fogMinClip, fogMaxClip);
+    }
+    void setExpectedEntityCount(size_t count) { zoneLifecycle_->setExpectedEntityCount(count); }
+    void setNetworkReady(bool ready) { zoneLifecycle_->setNetworkReady(ready); }
+    void setWeather(uint8_t type, uint8_t intensity) { zoneLifecycle_->setWeather(type, intensity); }
 
     // Get current zone name
     const std::string& getCurrentZoneName() const { return currentZoneName_; }
@@ -231,17 +235,8 @@ public:
     // L08 (Batch L): the three T124 guard-registration helpers live on
     // ZoneStreamComponent.
 
-    // Background zone loading — instant scene + deferred S3D
-    // Build HCMap placeholder + collision for immediate gameplay (<5ms)
-    void setupInstantScene(const std::string& zoneName, float playerX = 0, float playerY = 0, float playerZ = 0);
-    // Create collision from HCMap data only (no S3D mesh needed)
-    void setupHCMapCollision();
-    // Store zone environment data for deferred application (after sky renderer init)
-    void storeZoneEnvironment(uint8_t skyType, uint8_t zoneType,
-                              const uint8_t fogRed[4], const uint8_t fogGreen[4], const uint8_t fogBlue[4],
-                              const float fogMinClip[4], const float fogMaxClip[4]);
-    // Apply stored zone environment (called when sky renderer is ready)
-    void applyStoredZoneEnvironment();
+    // L09 (Batch L): instant-scene bring-up and the zone-environment trio are
+    // on ZoneLifecycleComponent; two of them forward from above.
     // L08 (Batch L): progressive-load completion, the T111 blocking
     // predicate, the entity-prep request queue and the load timing/progress
     // reporting all live on ZoneStreamComponent. The T111 predicate stays a
@@ -344,6 +339,9 @@ public:
     // deferred objects and the T124 texture guards.
     ZoneStreamComponent& ZoneStream() { return *zoneStream_; }
 
+    // L09 (Batch L): unload/environment/ready state, zone draw, GPU upload.
+    ZoneLifecycleComponent& ZoneLifecycle() { return *zoneLifecycle_; }
+
     // Get BSP tree for water region detection
     std::shared_ptr<EQT::Graphics::BspTree> getZoneBspTree() const { return zoneBspTree_; }
 
@@ -438,13 +436,8 @@ public:
     // at zone load.
     bool isMergeZoneDrawsEnabled() const { return mergeZoneDrawsEnabled_; }
 
-    // Toggle GPU upload thread on/off at runtime (for A/B frame timing comparison)
-    void toggleGPUUploadThread();
-#ifdef EQT_HAS_GLES2
-    bool isGPUUploadThreadEnabled() const { return gpuUploadEnabled_; }
-#else
-    bool isGPUUploadThreadEnabled() const { return false; }
-#endif
+    // L09 (Batch L): the GPU upload thread's renderer-side driver is on
+    // ZoneLifecycleComponent; SlashCommandsComponent is its only caller.
 
     // Debug lighting toggles (for isolating performance regressions) --
     // the toggles themselves are on DiagnosticsComponent (L04); these read
@@ -586,12 +579,10 @@ public:
     bool isZoneReady() const { return zoneReady_; }
 
     // Entity loading state - tracks when all entities have been fully loaded
-    void setExpectedEntityCount(size_t count);  // Set expected number of entities from ZoneSpawns
-    void notifyEntityLoaded();  // Called when an entity has finished loading (model/texture/animation)
-    bool areEntitiesLoaded() const { return entitiesLoaded_; }
-    void setNetworkReady(bool ready);  // Called when network packet exchange is complete
+    // L09 (Batch L): on ZoneLifecycleComponent, forwarded above.
+    // notifyEntityLoaded(), checkAndSetZoneReady() and areEntitiesLoaded() had
+    // ZERO callers and were deleted (§Mechanism 5) -- see the component header.
     bool isNetworkReady() const { return networkReady_; }
-    void checkAndSetZoneReady();  // Check if both network and graphics are ready
 
     // Loading progress for zone transitions
     void setLoadingProgress(float progress, const std::wstring& text) {
@@ -692,8 +683,7 @@ public:
         return diagnostics_->getMemoryReport(ext);
     }
 
-    // Set weather from server packet (type: 0=none, 1=rain, 2=snow; intensity: 1-10)
-    void setWeather(uint8_t type, uint8_t intensity);
+    // L09 (Batch L): setWeather() is on ZoneLifecycleComponent, forwarded above.
 
 #ifdef WITH_RDP
     // RDP server support (alternative to Xvfb+x11vnc). L01 (Batch L) moved
@@ -764,8 +754,7 @@ private:
     void loadZoneStep13_Cleanup(ZoneLoadContext& ctx);
 
     // advanceDeferredInit() folded into P11_Env_* phases of advanceBackgroundZoneLoad()
-    void createZoneMesh();
-    bool rebuildRegionMesh(size_t regionIdx);  // Build mesh for a single region
+    // L09 (Batch L): createZoneMesh()/rebuildRegionMesh() moved.
     // updateZoneLightColors() removed — vision/weather modifiers now applied in SimulationWorker
     void updateObjectLightColors(float deltaTime = 0.0f);  // Update object light colors based on weather + fire flicker
 
@@ -805,14 +794,9 @@ private:
 #ifdef EQT_HAS_GLES2
     std::unique_ptr<GPUUploadThread> gpuUploadThread_;   // Async GPU upload thread (shared EGL context)
     std::unordered_set<size_t> pendingVBOUploads_;       // Region indices with VBO uploads in flight
-    bool gpuUploadEnabled_ = true;                       // Runtime toggle for /upload command
-    void initGPUUploadThread();
-    void processCompletedUploads();   // Batch mode (loading screen)
-
+    // L09 (Batch L): gpuUploadEnabled_ + the four driver methods moved.
     // Split drain/process-one for GREEN-gated post-loading work
     std::vector<UploadResult> pendingGPUResults_;  // Drained from GPU upload thread
-    void drainGPUResults();       // Cheap queue drain, no GL
-    bool processOneGPUResult();   // Process 1 result (fence wait, register). GREEN-gated.
 #endif
 
     // L07: the particle I/O state for SimulationWorker moved to
@@ -871,9 +855,7 @@ private:
     // not name) and is tagged as such in the request log.
     size_t eqe1LoadTimeCandidateCount_ = 0;
 
-#if defined(EQT_HAS_DRM) && !defined(EQT_HAS_GLES2)
-    std::unique_ptr<GLES2EGLHelper> gles2Helper_;  // GLES2 context for ETC1 EGL image sharing
-#endif
+    // L09 (Batch L): gles2Helper_ moved to ZoneLifecycleComponent.
     std::unique_ptr<Environment::BoidsManager> boidsManager_;  // Ambient creatures (boids)
     std::unique_ptr<Environment::TumbleweedManager> tumbleweedManager_;  // Tumbleweeds (desert/plains)
     std::unique_ptr<GraphicsArchiveIndex> graphicsArchiveIndex_;  // Race-to-archive index for deferred loading
@@ -895,7 +877,7 @@ private:
     bool manualZoneDrawEnabled_ = false;
     std::vector<SortedRegionEntry> sortedZoneDrawList_;
     std::vector<ZoneDrawEntry> sortedDrawEntries_;  // Material-sorted mesh buffer draw list
-    void drawZoneGeometrySorted();
+    // L09 (Batch L): drawZoneGeometrySorted() is on ZoneLifecycleComponent.
 
     // P10: cross-region zone draw merge state (see renderer_zone_merge.h).
     // mergeZoneDrawsEnabled_ is initialized from config_.constrainedConfig.mergeZoneDraws
@@ -966,9 +948,7 @@ private:
     // L08: boidsTextureGuard_ moved to ZoneStreamComponent (single-family).
     std::unique_ptr<ForwardingTextureGuard> spellVisualFXTextureGuard_;
 
-    // Hardware buffer (VBO/EBO) helpers for static zone geometry
-    void uploadMeshHardwareBuffers(irr::scene::IMeshSceneNode* node);
-    void deleteMeshHardwareBuffers(irr::scene::IMeshSceneNode* node);
+    // L09 (Batch L): the VBO/EBO helpers moved.
 
     // Portal occlusion system
     std::unique_ptr<PortalSystem> portalSystem_;
@@ -980,7 +960,7 @@ private:
 
     // Region neighbor map (built from portal system for 1-depth PVS expansion)
     std::unordered_map<size_t, std::vector<size_t>> regionNeighbors_;
-    void buildRegionNeighborMap();
+    // L09 (Batch L): buildRegionNeighborMap() is on ZoneLifecycleComponent.
 
     // Portal-based entity culling — pointer to SimulationOutput front buffer
     // (no copy). T116: set ONLY by bindFrameSimulationBuffers().
@@ -1047,11 +1027,7 @@ private:
     // ZoneStreamComponent; the two members above stay here (zone_lifecycle
     // clears them on unload).
 
-    void drawZoneGeometryWithPortals();
-    void drawRegionMesh(size_t regionIdx);
-    void drawPortalQuad(const Portal& portal);
-    void drawPortalRecursive(size_t fromRegion, int stencilLevel, int maxDepth,
-                             std::unordered_set<size_t>& drawn);
+    // L09 (Batch L): the portal/stencil draw recursion moved.
 
     // Debug visualization for portals/stencil
     bool portalDebugDraw_ = false;
@@ -1059,10 +1035,8 @@ private:
 
     // Zone placeholder mesh (HCMap collision mesh as visual context during loading)
     irr::scene::IMeshSceneNode* zonePlaceholderNode_ = nullptr;
-    std::vector<HCMap::Triangle> cachedPlaceholderTriangles_;  // Cached terrain triangles for rebuild
     irr::core::vector3df lastPlaceholderBuildPos_;  // Irrlicht coords of last placeholder build
-    void buildZonePlaceholder(float playerIrrX = 0, float playerIrrY = 0, float playerIrrZ = 0);
-    void destroyZonePlaceholder();
+    // L09 (Batch L): the placeholder build/destroy pair + its cache moved.
 
     // T292 (2026-08-26): protectedRegions_ removed. It was the
     // ConstrainedMeshCache's eviction-protection bitvector; T67 deleted the
@@ -1073,9 +1047,7 @@ private:
     // section for the removed cache's reference pointer.
     irr::scene::IMeshSceneNode* zoneCollisionNode_ = nullptr;  // Hidden node for zone collision in PVS mode
 
-    // Regions waiting for async fallback textures to complete GPU upload.
-    // Maps texture name → set of region indices that were built without that texture.
-    std::unordered_map<std::string, std::unordered_set<size_t>> pendingTextureRegions_;
+    // L09 (Batch L): pendingTextureRegions_ is on ZoneLifecycleComponent.
 
     // Regions queued for texture-ready rebuild (sorted: player region first, then by distance)
     struct TextureRebuildEntry {
@@ -1190,8 +1162,7 @@ private:
     bool loadingScreenVisible_ = true;  // True when loading screen is showing (default: show at start)
     bool zoneReady_ = false;  // True when zone is fully loaded and ready for player input
     bool networkReady_ = false;  // True when network packet exchange is complete
-    bool entitiesLoaded_ = false;  // True when all entities have been loaded with models/textures
-    size_t expectedEntityCount_ = 0;  // Expected number of entities from ZoneSpawns
+    // L09 (Batch L): entitiesLoaded_/expectedEntityCount_ moved out.
     size_t loadedEntityCount_ = 0;  // Number of entities fully loaded so far
     float loadingProgress_ = 0.0f;  // Loading progress for zone transitions (0.0 - 1.0)
     std::wstring loadingText_ = L"Initializing...";  // Loading stage text
@@ -1623,6 +1594,12 @@ private:
     // include/client/graphics/zone_stream/zone_stream_component.h.
     friend class ZoneStreamComponent;
     std::unique_ptr<ZoneStreamComponent> zoneStream_;
+
+    // L09 (Batch L): three families in one component (batch correction 26).
+    // Friendship on axis 1 of K13 (ii); no thread ownership moved -- see
+    // include/client/graphics/zone_lifecycle/zone_lifecycle_component.h.
+    friend class ZoneLifecycleComponent;
+    std::unique_ptr<ZoneLifecycleComponent> zoneLifecycle_;
 };
 
 } // namespace Graphics

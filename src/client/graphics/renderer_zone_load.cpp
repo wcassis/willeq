@@ -386,7 +386,7 @@ void IrrlichtRenderer::loadZoneStep2_BSP(ZoneLoadContext& ctx) {
         auto stepStart = std::chrono::steady_clock::now();
         if (!currentZone_ || !currentZone_->wldLoader) {
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: no wldLoader, fallback to single zone mesh");
-            createZoneMesh();
+            zoneLifecycle_->createZoneMesh();
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: createZoneMesh() complete (no-wldLoader fallback), zoneMeshNode_={}",
                       (bool)zoneMeshNode_);
         } else {
@@ -399,7 +399,7 @@ void IrrlichtRenderer::loadZoneStep2_BSP(ZoneLoadContext& ctx) {
                           (bool)bspTree, bspTree ? bspTree->regions.size() : 0, wldLoader->hasPvsData());
                 if (currentZone_ && !currentZone_->geometry && currentZone_->wldLoader)
                     currentZone_->geometry = currentZone_->wldLoader->getCombinedGeometry();
-                createZoneMesh();
+                zoneLifecycle_->createZoneMesh();
                 LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: createZoneMesh() complete (no-BSP/PVS fallback), zoneMeshNode_={}",
                           (bool)zoneMeshNode_);
             } else {
@@ -490,7 +490,7 @@ void IrrlichtRenderer::loadZoneStep2_BSP(ZoneLoadContext& ctx) {
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: portal system deferred (portalBuildPending=true)");
         }
         if (regionNeighbors_.empty()) {
-            buildRegionNeighborMap();
+            zoneLifecycle_->buildRegionNeighborMap();
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: built region neighbor map, {} entries", regionNeighbors_.size());
         }
         if (doorManager_) {
@@ -576,7 +576,7 @@ void IrrlichtRenderer::loadZoneStep4_Regions(ZoneLoadContext& ctx) {
                         node->getMaterial(m).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
                     }
                     regionMeshNodes_[i] = node;
-                    uploadMeshHardwareBuffers(node);
+                    zoneLifecycle_->uploadMeshHardwareBuffers(node);
                     if (regionBoundingBoxes_.find(i) == regionBoundingBoxes_.end())
                         regionBoundingBoxes_[i] = node->getTransformedBoundingBox();
                 } else {

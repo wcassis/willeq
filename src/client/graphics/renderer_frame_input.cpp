@@ -652,8 +652,8 @@ void IrrlichtRenderer::processFrameSimulation(float deltaTime) {
             float movedSq = currentPos.getDistanceFromSQ(lastPlaceholderBuildPos_);
             const float rebuildThresholdSq = 100.0f * 100.0f;  // 100 units
             if (movedSq > rebuildThresholdSq) {
-                buildZonePlaceholder(playerX_, playerZ_, playerY_);
-                setupHCMapCollision();
+                zoneLifecycle_->buildZonePlaceholder(playerX_, playerZ_, playerY_);
+                zoneLifecycle_->setupHCMapCollision();
             }
         }
     }

@@ -983,7 +983,7 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
 // exact-match bar (1-33 differing pixels between identical invocations,
 // only reproducible across processes). An FNV-1a hash of the texture NAME
 // is just as good a grouping key and is stable across runs.
-// Q02 applied this same fix to production (renderer_zone_draw.cpp has a
+// Q02 applied this same fix to production (zone_lifecycle/renderer_zone_draw.cpp has a
 // byte-identical copy of this helper) -- keep the two copies in sync.
 static uint32_t textureGroupId(const irr::video::SMaterial& mat) {
     if (!mat.getTexture(0)) return 0;
@@ -1008,7 +1008,7 @@ static irr::s32 debugMaterialOverride(const ZoneBench::ZoneBenchData& data, irr:
 }
 
 // P06: mirrors IrrlichtRenderer's (anonymous-namespace) estimateRegionScreenArea
-// in src/client/graphics/renderer_zone_draw.cpp -- same method (project 8
+// in src/client/graphics/zone_lifecycle/renderer_zone_draw.cpp -- same method (project 8
 // world-space AABB corners with the current view-projection, clamped
 // screen-space bounding-rect area; any corner at/behind the near plane ->
 // conservative full-screen area) so benchmark area-mode numbers predict
@@ -1053,7 +1053,7 @@ static float estimateRegionScreenAreaBench(const irr::core::aabbox3df& worldBox,
 }
 
 // P07d: mirrors IrrlichtRenderer's (anonymous-namespace) computeLightEffectiveRadius
-// in src/client/graphics/renderer_zone_draw.cpp -- same attenuation solve
+// in src/client/graphics/zone_lifecycle/renderer_zone_draw.cpp -- same attenuation solve
 // (1/(c + l*d + q*d^2) < 1/255, saturating NdotL/wrap-lighting at 1.0,
 // conservative) so benchmark radius-mode numbers predict production behavior.
 static float computeLightEffectiveRadiusBench(const float atten[3], float margin) {

@@ -1,4 +1,5 @@
 #include "client/graphics/irrlicht_renderer.h"
+#include "client/graphics/zone_lifecycle/zone_lifecycle_component.h"
 #include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/renderer_zone_merge.h"
 #include "common/logging.h"
@@ -144,77 +145,77 @@ static uint32_t textureGroupId(const irr::video::SMaterial& mat) {
 
 } // namespace
 
-void IrrlichtRenderer::createZoneMesh() {
-    if (!currentZone_ || !currentZone_->geometry) {
+void ZoneLifecycleComponent::createZoneMesh() {
+    if (!ctx_.currentZone || !ctx_.currentZone->geometry) {
         return;
     }
 
-    if (zoneMeshNode_) {
-        zoneMeshNode_->remove();
-        zoneMeshNode_ = nullptr;
+    if (owner_.zoneMeshNode_) {
+        owner_.zoneMeshNode_->remove();
+        owner_.zoneMeshNode_ = nullptr;
     }
 
-    ZoneMeshBuilder builder(smgr_, driver_, device_->getFileSystem());
+    ZoneMeshBuilder builder(ctx_.smgr, ctx_.driver, ctx_.device->getFileSystem());
 
     // Pass constrained texture cache if in constrained mode
-    if (constrainedTextureCache_) {
-        builder.setConstrainedTextureCache(constrainedTextureCache_);
+    if (ctx_.constrainedTextureCache) {
+        builder.setConstrainedTextureCache(ctx_.constrainedTextureCache);
     }
     // Pass GLSL shader material types if available
-    if (zoneShader_ && zoneShader_->isAvailable()) {
-        builder.setShaderMaterialTypes(zoneShader_->getActiveSolid(),
-                                       zoneShader_->getActiveAlphaTest(),
-                                       zoneShader_->getActiveAlphaTestRGBA());
+    if (ctx_.zoneShader && ctx_.zoneShader->isAvailable()) {
+        builder.setShaderMaterialTypes(ctx_.zoneShader->getActiveSolid(),
+                                       ctx_.zoneShader->getActiveAlphaTest(),
+                                       ctx_.zoneShader->getActiveAlphaTestRGBA());
     }
 
     irr::scene::IMesh* mesh = nullptr;
 
-    if (!currentZone_->textures.empty() && !currentZone_->geometry->textureNames().empty()) {
-        mesh = builder.buildTexturedMesh(*currentZone_->geometry, currentZone_->textures);
+    if (!ctx_.currentZone->textures.empty() && !ctx_.currentZone->geometry->textureNames().empty()) {
+        mesh = builder.buildTexturedMesh(*ctx_.currentZone->geometry, ctx_.currentZone->textures);
     } else {
-        mesh = builder.buildColoredMesh(*currentZone_->geometry);
+        mesh = builder.buildColoredMesh(*ctx_.currentZone->geometry);
     }
 
     if (mesh) {
         // Use octree scene node for automatic frustum culling of zone geometry
         // minimalPolysPerNode=256 controls octree subdivision granularity
         // This helps with OpenGL/llvmpipe but not with Irrlicht's software renderer
-        zoneMeshNode_ = smgr_->addOctreeSceneNode(mesh, nullptr, -1, 256);
-        if (zoneMeshNode_) {
+        owner_.zoneMeshNode_ = ctx_.smgr->addOctreeSceneNode(mesh, nullptr, -1, 256);
+        if (owner_.zoneMeshNode_) {
             LOG_INFO(MOD_GRAPHICS, "Zone mesh created as octree node (polys per node: 256)");
-            for (irr::u32 i = 0; i < zoneMeshNode_->getMaterialCount(); ++i) {
-                zoneMeshNode_->getMaterial(i).Lighting = lightingEnabled_;
-                zoneMeshNode_->getMaterial(i).BackfaceCulling = false;
-                zoneMeshNode_->getMaterial(i).GouraudShading = true;
-                zoneMeshNode_->getMaterial(i).FogEnable = fogEnabled_;
-                zoneMeshNode_->getMaterial(i).Wireframe = wireframeMode_;
-                zoneMeshNode_->getMaterial(i).NormalizeNormals = true;
+            for (irr::u32 i = 0; i < owner_.zoneMeshNode_->getMaterialCount(); ++i) {
+                owner_.zoneMeshNode_->getMaterial(i).Lighting = ctx_.lightingEnabled;
+                owner_.zoneMeshNode_->getMaterial(i).BackfaceCulling = false;
+                owner_.zoneMeshNode_->getMaterial(i).GouraudShading = true;
+                owner_.zoneMeshNode_->getMaterial(i).FogEnable = ctx_.fogEnabled;
+                owner_.zoneMeshNode_->getMaterial(i).Wireframe = ctx_.wireframeMode;
+                owner_.zoneMeshNode_->getMaterial(i).NormalizeNormals = true;
                 // Set material colors for proper lighting response
-                zoneMeshNode_->getMaterial(i).AmbientColor = irr::video::SColor(255, 255, 255, 255);
-                zoneMeshNode_->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
+                owner_.zoneMeshNode_->getMaterial(i).AmbientColor = irr::video::SColor(255, 255, 255, 255);
+                owner_.zoneMeshNode_->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
             }
 
             // NOTE: Collision detection is set up progressively via setupMinimalZoneCollision()
             // and addRegionToCollision() during the background zone loading phases.
 
             // Initialize animated texture manager for zone textures
-            animatedTextureManager_ = std::make_unique<AnimatedTextureManager>(driver_, device_->getFileSystem());
-            if (constrainedTextureCache_) {
-                animatedTextureManager_->setConstrainedTextureCache(constrainedTextureCache_);
+            ctx_.animatedTextureManager = std::make_unique<AnimatedTextureManager>(ctx_.driver, ctx_.device->getFileSystem());
+            if (ctx_.constrainedTextureCache) {
+                ctx_.animatedTextureManager->setConstrainedTextureCache(ctx_.constrainedTextureCache);
             }
-            int animCount = animatedTextureManager_->initialize(
-                *currentZone_->geometry, currentZone_->textures, mesh);
+            int animCount = ctx_.animatedTextureManager->initialize(
+                *ctx_.currentZone->geometry, ctx_.currentZone->textures, mesh);
 
             // Auto-detect water texture animations by naming pattern (water01, water02, etc.)
-            int waterAnimCount = animatedTextureManager_->detectWaterAnimations(
-                currentZone_->textures, mesh);
+            int waterAnimCount = ctx_.animatedTextureManager->detectWaterAnimations(
+                ctx_.currentZone->textures, mesh);
             animCount += waterAnimCount;
 
             if (animCount > 0) {
                 LOG_DEBUG(MOD_GRAPHICS, "Initialized {} animated zone textures ({} water auto-detected)",
                           animCount, waterAnimCount);
                 // Register the zone scene node for animated texture updates
-                animatedTextureManager_->addSceneNode(zoneMeshNode_);
+                ctx_.animatedTextureManager->addSceneNode(owner_.zoneMeshNode_);
             }
         }
         mesh->drop();
@@ -255,9 +256,9 @@ void IrrlichtRenderer::RenderPassTimer::OnRenderPassPreRender(irr::scene::E_SCEN
         // docker/irrlicht-drm/gpu_sync_probe.h).
         eqtGPUPhaseBegin(0 /* GPUSyncPhase::ZonePass */);
         if (renderer_->portalOcclusionEnabled_ && renderer_->portalOcclusionEligible_) {
-            renderer_->drawZoneGeometryWithPortals();
+            renderer_->ZoneLifecycle().drawZoneGeometryWithPortals();
         } else {
-            renderer_->drawZoneGeometrySorted();
+            renderer_->ZoneLifecycle().drawZoneGeometrySorted();
         }
         eqtGPUPhaseEnd(0 /* GPUSyncPhase::ZonePass */);
         renderer_->frameTimings_.manualZoneDraw = std::chrono::duration_cast<std::chrono::microseconds>(
@@ -273,9 +274,9 @@ void IrrlichtRenderer::RenderPassTimer::OnRenderPassPreRender(irr::scene::E_SCEN
 
 // ======== uploadMeshHardwareBuffers ========
 // Uploads VBOs/EBOs for all mesh buffers in a mesh node (GLES2 only).
-void IrrlichtRenderer::uploadMeshHardwareBuffers(irr::scene::IMeshSceneNode* node) {
+void ZoneLifecycleComponent::uploadMeshHardwareBuffers(irr::scene::IMeshSceneNode* node) {
 #ifdef EQT_HAS_GLES2
-    if (!node || !driver_ || driver_->getDriverType() != irr::video::EDT_OGLES2)
+    if (!node || !ctx_.driver || ctx_.driver->getDriverType() != irr::video::EDT_OGLES2)
         return;
 
     irr::scene::IMesh* mesh = node->getMesh();
@@ -284,16 +285,16 @@ void IrrlichtRenderer::uploadMeshHardwareBuffers(irr::scene::IMeshSceneNode* nod
     for (irr::u32 i = 0; i < mesh->getMeshBufferCount(); ++i) {
         irr::scene::IMeshBuffer* buf = mesh->getMeshBuffer(i);
         if (buf && buf->getVertexCount() > 0)
-            gles2CreateStaticHWBuffer(driver_, buf);
+            gles2CreateStaticHWBuffer(ctx_.driver, buf);
     }
 #endif
 }
 
 // ======== deleteMeshHardwareBuffers ========
 // Deletes VBOs/EBOs for all mesh buffers in a mesh node (GLES2 only).
-void IrrlichtRenderer::deleteMeshHardwareBuffers(irr::scene::IMeshSceneNode* node) {
+void ZoneLifecycleComponent::deleteMeshHardwareBuffers(irr::scene::IMeshSceneNode* node) {
 #ifdef EQT_HAS_GLES2
-    if (!node || !driver_ || driver_->getDriverType() != irr::video::EDT_OGLES2)
+    if (!node || !ctx_.driver || ctx_.driver->getDriverType() != irr::video::EDT_OGLES2)
         return;
 
     irr::scene::IMesh* mesh = node->getMesh();
@@ -302,7 +303,7 @@ void IrrlichtRenderer::deleteMeshHardwareBuffers(irr::scene::IMeshSceneNode* nod
     for (irr::u32 i = 0; i < mesh->getMeshBufferCount(); ++i) {
         irr::scene::IMeshBuffer* buf = mesh->getMeshBuffer(i);
         if (buf)
-            gles2DeleteStaticHWBuffer(driver_, buf);
+            gles2DeleteStaticHWBuffer(ctx_.driver, buf);
     }
 #endif
 }
@@ -312,37 +313,37 @@ void IrrlichtRenderer::deleteMeshHardwareBuffers(irr::scene::IMeshSceneNode* nod
 // Material sorting minimizes expensive setMaterial() state changes (glUseProgram,
 // glBindTexture, glUniform*). Distance sorting within each material group
 // preserves front-to-back order for early-Z rejection on tile-based GPUs.
-void IrrlichtRenderer::drawZoneGeometrySorted() {
-    if (sortedZoneDrawList_.empty() && !fallbackMeshNode_) return;
+void ZoneLifecycleComponent::drawZoneGeometrySorted() {
+    if (owner_.sortedZoneDrawList_.empty() && !owner_.fallbackMeshNode_) return;
 
     // Collect all visible mesh buffers into a flat draw list
-    sortedDrawEntries_.clear();
+    owner_.sortedDrawEntries_.clear();
 
     // Adaptive lighting: if /plight is on and budget > 0, nearest N regions
     // get per-pixel lighting; the rest get lightweight per-vertex shaders.
-    const bool adaptiveLight = zoneShader_ && zoneShader_->isPerPixelPlayerLight() &&
-                                config_.constrainedConfig.adaptiveLightingZoneBudget > 0;
-    const int zonePPBudget = config_.constrainedConfig.adaptiveLightingZoneBudget;
-    const int objectPPBudget = config_.constrainedConfig.adaptiveLightingObjectBudget;
-    const irr::s32 ppSolid = zoneShader_ ? zoneShader_->getMaterialTypeSolid() : -1;
-    const irr::s32 ppAlpha = zoneShader_ ? zoneShader_->getMaterialTypeAlphaTest() : -1;
-    const irr::s32 lwSolid = zoneShader_ ? zoneShader_->getMaterialTypeLWSolid() : -1;
-    const irr::s32 lwAlpha = zoneShader_ ? zoneShader_->getMaterialTypeLWAlphaTest() : -1;
+    const bool adaptiveLight = ctx_.zoneShader && ctx_.zoneShader->isPerPixelPlayerLight() &&
+                                ctx_.config.constrainedConfig.adaptiveLightingZoneBudget > 0;
+    const int zonePPBudget = ctx_.config.constrainedConfig.adaptiveLightingZoneBudget;
+    const int objectPPBudget = ctx_.config.constrainedConfig.adaptiveLightingObjectBudget;
+    const irr::s32 ppSolid = ctx_.zoneShader ? ctx_.zoneShader->getMaterialTypeSolid() : -1;
+    const irr::s32 ppAlpha = ctx_.zoneShader ? ctx_.zoneShader->getMaterialTypeAlphaTest() : -1;
+    const irr::s32 lwSolid = ctx_.zoneShader ? ctx_.zoneShader->getMaterialTypeLWSolid() : -1;
+    const irr::s32 lwAlpha = ctx_.zoneShader ? ctx_.zoneShader->getMaterialTypeLWAlphaTest() : -1;
 
     // Compute lightweight material override for a buffer beyond the per-pixel budget.
     // Returns -1 if no override needed (keep original material).
-    const irr::s32 ppWind = zoneShader_ ? zoneShader_->getMaterialTypeWindAlphaTest() : -1;
-    const irr::s32 lwWind = zoneShader_ ? zoneShader_->getMaterialTypeLWWindAlphaTest() : -1;
+    const irr::s32 ppWind = ctx_.zoneShader ? ctx_.zoneShader->getMaterialTypeWindAlphaTest() : -1;
+    const irr::s32 lwWind = ctx_.zoneShader ? ctx_.zoneShader->getMaterialTypeLWWindAlphaTest() : -1;
 
     static bool adaptiveLightLogOnce = false;
     if (!adaptiveLightLogOnce) {
         LOG_INFO(MOD_GRAPHICS, "[ADAPTIVE] adaptiveLight={} ppSolid={} ppAlpha={} ppWind={} lwSolid={} lwAlpha={} lwWind={} zoneBudget={} objBudget={} zoneBudgetMode={} areaFactor={}",
                  adaptiveLight, ppSolid, ppAlpha, ppWind, lwSolid, lwAlpha, lwWind, zonePPBudget, objectPPBudget,
-                 (config_.constrainedConfig.adaptiveLightingBudgetMode ==
+                 (ctx_.config.constrainedConfig.adaptiveLightingBudgetMode ==
                       ConstrainedRendererConfig::AdaptiveLightingBudgetMode::Area) ? "area" :
-                 (config_.constrainedConfig.adaptiveLightingBudgetMode ==
+                 (ctx_.config.constrainedConfig.adaptiveLightingBudgetMode ==
                       ConstrainedRendererConfig::AdaptiveLightingBudgetMode::Radius) ? "radius" : "count",
-                 config_.constrainedConfig.adaptiveLightingAreaBudgetFactor);
+                 ctx_.config.constrainedConfig.adaptiveLightingAreaBudgetFactor);
         adaptiveLightLogOnce = true;
     }
 
@@ -377,19 +378,19 @@ void IrrlichtRenderer::drawZoneGeometrySorted() {
             irr::s32 effectiveType = (matOverride >= 0) ? matOverride : mat.MaterialType;
             uint32_t matKey = (static_cast<uint32_t>(effectiveType) << 16) | texId;
 
-            sortedDrawEntries_.push_back({matKey, distSq, buf, worldMat, matOverride});
+            owner_.sortedDrawEntries_.push_back({matKey, distSq, buf, worldMat, matOverride});
         }
     };
 
     // When portal vis is enabled via BFS (no stencil), filter to portal-visible regions
-    const bool useBfsPortalCulling = portalVisibleRegions_ && !portalVisibleRegions_->empty() &&
-                                     config_.constrainedConfig.portalOcclusion &&
-                                     !config_.constrainedConfig.enableStencilBuffer;
+    const bool useBfsPortalCulling = owner_.portalVisibleRegions_ && !owner_.portalVisibleRegions_->empty() &&
+                                     ctx_.config.constrainedConfig.portalOcclusion &&
+                                     !ctx_.config.constrainedConfig.enableStencilBuffer;
 
     // Occlusion-culled regions set (from SimWorker's software occlusion pass)
     const std::unordered_set<size_t>* occlusionCulled = nullptr;
-    if (currentFrameSimResults_ && !currentFrameSimResults_->occlusionCulledRegions.empty()) {
-        occlusionCulled = &currentFrameSimResults_->occlusionCulledRegions;
+    if (owner_.currentFrameSimResults_ && !owner_.currentFrameSimResults_->occlusionCulledRegions.empty()) {
+        occlusionCulled = &owner_.currentFrameSimResults_->occlusionCulledRegions;
     }
 
     // P06: area-mode budget setup. sortedZoneDrawList_ is already nearest-first
@@ -397,18 +398,18 @@ void IrrlichtRenderer::drawZoneGeometrySorted() {
     // the existing draw loop below can accumulate cumulative screen area in
     // order without a separate distance pre-pass.
     const bool areaBudgetMode = adaptiveLight &&
-        config_.constrainedConfig.adaptiveLightingBudgetMode ==
+        ctx_.config.constrainedConfig.adaptiveLightingBudgetMode ==
             ConstrainedRendererConfig::AdaptiveLightingBudgetMode::Area;
     irr::core::matrix4 zoneViewProj;
     float screenAreaW = 0.0f, screenAreaH = 0.0f, areaBudgetLimit = 0.0f;
     float cumulativeRegionArea = 0.0f;
-    const int areaPPFloor = config_.constrainedConfig.adaptiveLightingAreaPPFloor;
+    const int areaPPFloor = ctx_.config.constrainedConfig.adaptiveLightingAreaPPFloor;
     if (areaBudgetMode) {
-        zoneViewProj = captured3DProj_ * captured3DView_;
-        irr::core::dimension2du screenSize = driver_->getScreenSize();
+        zoneViewProj = owner_.captured3DProj_ * owner_.captured3DView_;
+        irr::core::dimension2du screenSize = ctx_.driver->getScreenSize();
         screenAreaW = static_cast<float>(screenSize.Width);
         screenAreaH = static_cast<float>(screenSize.Height);
-        areaBudgetLimit = config_.constrainedConfig.adaptiveLightingAreaBudgetFactor *
+        areaBudgetLimit = ctx_.config.constrainedConfig.adaptiveLightingAreaBudgetFactor *
                           screenAreaW * screenAreaH;
     }
 
@@ -420,8 +421,8 @@ void IrrlichtRenderer::drawZoneGeometrySorted() {
     // matters). regionsDemotedRadius/regionsConsideredRadius are informational
     // only (see refactor/P07d_radius_demotion.md Review for how they're
     // surfaced via the benchmark tool's per-frame CSV).
-    const bool radiusBudgetMode = adaptiveLight && zoneShader_ &&
-        config_.constrainedConfig.adaptiveLightingBudgetMode ==
+    const bool radiusBudgetMode = adaptiveLight && ctx_.zoneShader &&
+        ctx_.config.constrainedConfig.adaptiveLightingBudgetMode ==
             ConstrainedRendererConfig::AdaptiveLightingBudgetMode::Radius;
     irr::core::vector3df lightPos;
     float lightRangeSq = 0.0f;
@@ -429,11 +430,11 @@ void IrrlichtRenderer::drawZoneGeometrySorted() {
     int regionsDemotedRadius = 0;
     int regionsConsideredRadius = 0;
     if (radiusBudgetMode) {
-        const float* pos = zoneShader_->playerLightPos();
+        const float* pos = ctx_.zoneShader->playerLightPos();
         lightPos = irr::core::vector3df(pos[0], pos[1], pos[2]);
         lightRange = computeLightEffectiveRadius(
-            zoneShader_->playerLightAtten(),
-            config_.constrainedConfig.adaptiveLightingRadiusMargin);
+            ctx_.zoneShader->playerLightAtten(),
+            ctx_.config.constrainedConfig.adaptiveLightingRadiusMargin);
         lightRangeSq = (lightRange >= std::numeric_limits<float>::max())
                            ? std::numeric_limits<float>::max()
                            : lightRange * lightRange;
@@ -443,18 +444,18 @@ void IrrlichtRenderer::drawZoneGeometrySorted() {
     if (radiusBudgetMode && !radiusLogOnce) {
         LOG_INFO(MOD_GRAPHICS, "[ADAPTIVE][P07d] radius mode: lightPos=({},{},{}) R={} margin={}",
                  lightPos.X, lightPos.Y, lightPos.Z, lightRange,
-                 config_.constrainedConfig.adaptiveLightingRadiusMargin);
+                 ctx_.config.constrainedConfig.adaptiveLightingRadiusMargin);
         radiusLogOnce = true;
     }
 
     int regionsDrawn = 0;
     int portalCulled = 0;
     int occlusionCulledCount = 0;
-    for (const auto& entry : sortedZoneDrawList_) {
+    for (const auto& entry : owner_.sortedZoneDrawList_) {
         if (!entry.node) continue;
 
         // BFS portal culling: skip regions not reachable through portal walk
-        if (useBfsPortalCulling && portalVisibleRegions_->count(entry.regionIdx) == 0) {
+        if (useBfsPortalCulling && owner_.portalVisibleRegions_->count(entry.regionIdx) == 0) {
             portalCulled++;
             continue;
         }
@@ -465,8 +466,8 @@ void IrrlichtRenderer::drawZoneGeometrySorted() {
             continue;
         }
 
-        auto it = regionMeshNodes_.find(entry.regionIdx);
-        if (it == regionMeshNodes_.end() || !it->second) continue;
+        auto it = ctx_.regionMeshNodes.find(entry.regionIdx);
+        if (it == ctx_.regionMeshNodes.end() || !it->second) continue;
 
         bool regionUseLW;
         if (!adaptiveLight) {
@@ -539,25 +540,25 @@ void IrrlichtRenderer::drawZoneGeometrySorted() {
     }
 
     // Add visible object mesh buffers (sorted alongside zone geometry)
-    if (!objectNodes_.empty() && currentFrameSimResults_) {
-        const auto* results = currentFrameSimResults_;
+    if (!ctx_.objectNodes.empty() && owner_.currentFrameSimResults_) {
+        const auto* results = owner_.currentFrameSimResults_;
 
         // Get camera position for distance sorting
         irr::core::vector3df camPos(0, 0, 0);
-        if (smgr_ && smgr_->getActiveCamera()) {
-            camPos = smgr_->getActiveCamera()->getAbsolutePosition();
+        if (ctx_.smgr && ctx_.smgr->getActiveCamera()) {
+            camPos = ctx_.smgr->getActiveCamera()->getAbsolutePosition();
         }
 
         int objectsDrawn = 0;
-        for (size_t i = 0; i < objectNodes_.size() && i < results->objectVisible.size(); ++i) {
+        for (size_t i = 0; i < ctx_.objectNodes.size() && i < results->objectVisible.size(); ++i) {
             if (!results->objectVisible[i]) continue;
-            auto* node = objectNodes_[i];
+            auto* node = ctx_.objectNodes[i];
             if (!node || !node->getMesh()) continue;
 
             // Distance from stored object position (Irrlicht coords)
             float distSq = 0.0f;
-            if (i < objectPositions_.size()) {
-                irr::core::vector3df diff = objectPositions_[i] - camPos;
+            if (i < ctx_.objectPositions.size()) {
+                irr::core::vector3df diff = ctx_.objectPositions[i] - camPos;
                 distSq = diff.getLengthSQ();
             }
 
@@ -584,19 +585,19 @@ void IrrlichtRenderer::drawZoneGeometrySorted() {
                 irr::s32 effectiveType = (matOverride >= 0) ? matOverride : mat.MaterialType;
                 uint32_t matKey = (static_cast<uint32_t>(effectiveType) << 16) | texId;
 
-                sortedDrawEntries_.push_back({matKey, distSq, buf, worldMat, matOverride});
+                owner_.sortedDrawEntries_.push_back({matKey, distSq, buf, worldMat, matOverride});
             }
             objectsDrawn++;
         }
     }
 
     // Add fallback mesh buffers (always drawn last — use max distance)
-    if (fallbackMeshNode_) {
-        collectMeshBuffers(fallbackMeshNode_, 1e18f);
+    if (owner_.fallbackMeshNode_) {
+        collectMeshBuffers(owner_.fallbackMeshNode_, 1e18f);
     }
 
     // Sort by material key (primary), distance (secondary)
-    std::sort(sortedDrawEntries_.begin(), sortedDrawEntries_.end(),
+    std::sort(owner_.sortedDrawEntries_.begin(), owner_.sortedDrawEntries_.end(),
         [](const ZoneDrawEntry& a, const ZoneDrawEntry& b) {
             if (a.materialKey != b.materialKey)
                 return a.materialKey < b.materialKey;
@@ -625,12 +626,12 @@ void IrrlichtRenderer::drawZoneGeometrySorted() {
     // src/client/graphics/CLAUDE.md for the reference pointer). Only the
     // texture cache's real, live eviction count remains.
     bool mergeActive = false;
-    if (mergeZoneDrawsEnabled_ && !mergeZoneDrawsDisabledForZone_) {
-        if (!zoneMergeBuffers_) zoneMergeBuffers_ = std::make_unique<ZoneMergeBuffers>();
+    if (owner_.mergeZoneDrawsEnabled_ && !owner_.mergeZoneDrawsDisabledForZone_) {
+        if (!owner_.zoneMergeBuffers_) owner_.zoneMergeBuffers_ = std::make_unique<ZoneMergeBuffers>();
 
-        const size_t evictionCount = constrainedTextureCache_ ? constrainedTextureCache_->getEvictionCount() : 0;
+        const size_t evictionCount = ctx_.constrainedTextureCache ? ctx_.constrainedTextureCache->getEvictionCount() : 0;
 
-        if (zoneMergeBuffers_->isBuilt() && evictionCount > mergeZoneDrawsBuildEvictionCount_) {
+        if (owner_.zoneMergeBuffers_->isBuilt() && evictionCount > owner_.mergeZoneDrawsBuildEvictionCount_) {
             // A region's texture evicted after we built the merge -- the
             // merge buffers may reference textures that are no longer
             // resident/valid. Bail permanently for this zone visit rather
@@ -640,9 +641,9 @@ void IrrlichtRenderer::drawZoneGeometrySorted() {
             LOG_WARN(MOD_GRAPHICS, "[mergedraws] texture cache eviction after merge build ({} evictions) "
                      "-- disabling merge for the rest of this zone visit (falls back to "
                      "the unmerged path)", evictionCount);
-            zoneMergeBuffers_->destroy();
-            mergeZoneDrawsDisabledForZone_ = true;
-        } else if (!zoneMergeBuffers_->isBuilt() && !isLoading() && !regionMeshNodes_.empty() &&
+            owner_.zoneMergeBuffers_->destroy();
+            owner_.mergeZoneDrawsDisabledForZone_ = true;
+        } else if (!owner_.zoneMergeBuffers_->isBuilt() && !owner_.isLoading() && !ctx_.regionMeshNodes.empty() &&
                    evictionCount == 0) {
             // "Fully resident": regions are always built eagerly at zone
             // load (loadZoneStep4_Regions()) -- there is no streaming
@@ -653,38 +654,38 @@ void IrrlichtRenderer::drawZoneGeometrySorted() {
             // renderer_zone_merge.h's build() doc comment) -- defense in
             // depth so a stale/dangling texture pointer, however it got
             // there, is skipped rather than dereferenced.
-            auto isTextureLive = constrainedTextureCache_
+            auto isTextureLive = ctx_.constrainedTextureCache
                 ? std::function<bool(irr::video::ITexture*)>(
-                      [this](irr::video::ITexture* tex) { return constrainedTextureCache_->isLiveTexture(tex); })
+                      [this](irr::video::ITexture* tex) { return ctx_.constrainedTextureCache->isLiveTexture(tex); })
                 : std::function<bool(irr::video::ITexture*)>();
-            zoneMergeBuffers_->build(regionMeshNodes_, isTextureLive);
-            mergeZoneDrawsBuildEvictionCount_ = evictionCount;
+            owner_.zoneMergeBuffers_->build(ctx_.regionMeshNodes, isTextureLive);
+            owner_.mergeZoneDrawsBuildEvictionCount_ = evictionCount;
         }
 
-        mergeActive = zoneMergeBuffers_->isBuilt();
+        mergeActive = owner_.zoneMergeBuffers_->isBuilt();
     }
 
     int drawCalls = 0;
     if (mergeActive) {
-        drawCalls = zoneMergeBuffers_->renderMerged(driver_, sortedDrawEntries_);
+        drawCalls = owner_.zoneMergeBuffers_->renderMerged(ctx_.driver, owner_.sortedDrawEntries_);
     } else {
         // Draw — setMaterial() is called every time because custom shader callbacks
         // need the current world matrix. However, sorting by material ensures the
         // driver's state tracking (SOGLES2State) skips redundant GL calls for
         // blend/depth/cull/texture/program when consecutive draws share the same material.
-        for (const auto& de : sortedDrawEntries_) {
-            driver_->setTransform(irr::video::ETS_WORLD, de.worldMat);
+        for (const auto& de : owner_.sortedDrawEntries_) {
+            ctx_.driver->setTransform(irr::video::ETS_WORLD, de.worldMat);
             if (de.materialOverride >= 0) {
                 // Adaptive lighting: override material type (per-pixel → lightweight)
                 irr::video::SMaterial mat = de.buffer->getMaterial();
                 mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(de.materialOverride);
-                driver_->setMaterial(mat);
+                ctx_.driver->setMaterial(mat);
             } else {
-                driver_->setMaterial(de.buffer->getMaterial());
+                ctx_.driver->setMaterial(de.buffer->getMaterial());
             }
-            driver_->drawMeshBuffer(de.buffer);
+            ctx_.driver->drawMeshBuffer(de.buffer);
         }
-        drawCalls = static_cast<int>(sortedDrawEntries_.size());
+        drawCalls = static_cast<int>(owner_.sortedDrawEntries_.size());
     }
 
     // P08d-style adoption-line: unmerged-would-be draws vs actual (merged or
@@ -694,28 +695,28 @@ void IrrlichtRenderer::drawZoneGeometrySorted() {
     static int mergeSampleCounter = 0;
     if (++mergeSampleCounter >= 120) {
         mergeSampleCounter = 0;
-        const int unmergedWouldBe = static_cast<int>(sortedDrawEntries_.size());
+        const int unmergedWouldBe = static_cast<int>(owner_.sortedDrawEntries_.size());
         const float reductionPct = unmergedWouldBe > 0
             ? 100.0f * (1.0f - static_cast<float>(drawCalls) / static_cast<float>(unmergedWouldBe))
             : 0.0f;
         LOG_INFO(MOD_GRAPHICS, "[mergedraws] zone={} merge={} unmerged_would_be_draws={} actual_draws={} reduction={:.1f}%",
-                 currentZoneName_, mergeActive ? "ON" : "off", unmergedWouldBe, drawCalls, reductionPct);
+                 ctx_.currentZoneName, mergeActive ? "ON" : "off", unmergedWouldBe, drawCalls, reductionPct);
     }
 
-    frameTimings_.manualZoneRegionsDrawn = regionsDrawn;
-    frameTimings_.manualZoneDrawCalls = drawCalls;
+    owner_.frameTimings_.manualZoneRegionsDrawn = regionsDrawn;
+    owner_.frameTimings_.manualZoneDrawCalls = drawCalls;
 }
 
 // ======== drawRegionMesh ========
 // Draws a single region's mesh buffers with proper world transform.
-void IrrlichtRenderer::drawRegionMesh(size_t regionIdx) {
+void ZoneLifecycleComponent::drawRegionMesh(size_t regionIdx) {
     irr::scene::IMeshSceneNode* node = nullptr;
 
     if (regionIdx == SIZE_MAX) {
-        node = fallbackMeshNode_;
+        node = owner_.fallbackMeshNode_;
     } else {
-        auto it = regionMeshNodes_.find(regionIdx);
-        if (it == regionMeshNodes_.end() || !it->second) return;
+        auto it = ctx_.regionMeshNodes.find(regionIdx);
+        if (it == ctx_.regionMeshNodes.end() || !it->second) return;
         node = it->second;
     }
 
@@ -730,21 +731,21 @@ void IrrlichtRenderer::drawRegionMesh(size_t regionIdx) {
     // Zone mesh nodes are direct children of the root scene node, so relative == absolute.
     irr::core::matrix4 worldMat;
     worldMat.setTranslation(node->getPosition());
-    driver_->setTransform(irr::video::ETS_WORLD, worldMat);
+    ctx_.driver->setTransform(irr::video::ETS_WORLD, worldMat);
 
     // Draw each mesh buffer
     for (irr::u32 i = 0; i < mesh->getMeshBufferCount(); ++i) {
         irr::scene::IMeshBuffer* buf = mesh->getMeshBuffer(i);
         if (!buf || buf->getVertexCount() == 0) continue;
-        driver_->setMaterial(buf->getMaterial());
-        driver_->drawMeshBuffer(buf);
+        ctx_.driver->setMaterial(buf->getMaterial());
+        ctx_.driver->drawMeshBuffer(buf);
     }
 }
 
 // ======== drawPortalQuad ========
 // Draws a portal polygon as a triangle fan (for stencil write/clear).
 // Portal vertices are in EQ Z-up coords, converted to Irrlicht Y-up: (x,y,z) -> (x,z,y)
-void IrrlichtRenderer::drawPortalQuad(const Portal& portal) {
+void ZoneLifecycleComponent::drawPortalQuad(const Portal& portal) {
     size_t n = portal.vertexCount();
     if (n < 3) return;
 
@@ -772,7 +773,7 @@ void IrrlichtRenderer::drawPortalQuad(const Portal& portal) {
 
     // Identity world transform
     irr::core::matrix4 identity;
-    driver_->setTransform(irr::video::ETS_WORLD, identity);
+    ctx_.driver->setTransform(irr::video::ETS_WORLD, identity);
 
     // Material: no texture, no lighting, depth test but no depth write
     irr::video::SMaterial mat;
@@ -781,9 +782,9 @@ void IrrlichtRenderer::drawPortalQuad(const Portal& portal) {
     mat.ZWriteEnable = false;
     mat.BackfaceCulling = false;
     mat.MaterialType = irr::video::EMT_SOLID;
-    driver_->setMaterial(mat);
+    ctx_.driver->setMaterial(mat);
 
-    driver_->drawVertexPrimitiveList(verts.data(), static_cast<irr::u32>(n),
+    ctx_.driver->drawVertexPrimitiveList(verts.data(), static_cast<irr::u32>(n),
         indices.data(), static_cast<irr::u32>(n - 2),
         irr::video::EVT_STANDARD, irr::scene::EPT_TRIANGLES, irr::video::EIT_16BIT);
 }
@@ -792,27 +793,27 @@ void IrrlichtRenderer::drawPortalQuad(const Portal& portal) {
 // Walk the portal graph from the camera's BSP region via BFS.
 // Only regions reachable through portal openings that face the camera
 // and intersect the view frustum are added.  Depth limit 3.
-void IrrlichtRenderer::buildRegionNeighborMap() {
-    regionNeighbors_.clear();
-    if (!portalSystem_ || !portalSystem_->hasPortals()) return;
+void ZoneLifecycleComponent::buildRegionNeighborMap() {
+    owner_.regionNeighbors_.clear();
+    if (!ctx_.portalSystem || !ctx_.portalSystem->hasPortals()) return;
 
-    const auto& portalData = portalSystem_->getData();
+    const auto& portalData = ctx_.portalSystem->getData();
     for (const auto& [regionIdx, portalIndices] : portalData.regionPortals) {
-        auto& neighbors = regionNeighbors_[regionIdx];
+        auto& neighbors = owner_.regionNeighbors_[regionIdx];
         for (size_t pi : portalIndices) {
-            size_t other = portalSystem_->getOtherRegion(pi, regionIdx);
+            size_t other = ctx_.portalSystem->getOtherRegion(pi, regionIdx);
             if (other != SIZE_MAX) neighbors.push_back(other);
         }
     }
     LOG_DEBUG(MOD_GRAPHICS, "Built region neighbor map: {} regions with portal neighbors",
-              regionNeighbors_.size());
+              owner_.regionNeighbors_.size());
 }
 
 // ======== drawZoneGeometryWithPortals ========
 // Uses stencil-based portal occlusion to render only visible rooms.
-void IrrlichtRenderer::drawZoneGeometryWithPortals() {
+void ZoneLifecycleComponent::drawZoneGeometryWithPortals() {
 #ifdef EQT_HAS_GLES2
-    if (!portalSystem_ || currentPvsRegion_ == SIZE_MAX) {
+    if (!ctx_.portalSystem || ctx_.currentPvsRegion == SIZE_MAX) {
         // Fallback: just do front-to-back sorted draw
         drawZoneGeometrySorted();
         return;
@@ -820,11 +821,11 @@ void IrrlichtRenderer::drawZoneGeometryWithPortals() {
 
     // Draw current room with no stencil masking
     std::unordered_set<size_t> drawnRegions;
-    drawRegionMesh(currentPvsRegion_);
-    drawnRegions.insert(currentPvsRegion_);
+    drawRegionMesh(ctx_.currentPvsRegion);
+    drawnRegions.insert(ctx_.currentPvsRegion);
 
     // Recursively draw visible rooms through portals using stencil
-    drawPortalRecursive(currentPvsRegion_, 0, 3, drawnRegions);
+    drawPortalRecursive(ctx_.currentPvsRegion, 0, 3, drawnRegions);
 
     // Disable stencil, restore color mask and depth write to defaults
     // (matches SOGLES2State::reset() defaults so driver cache stays in sync)
@@ -833,7 +834,7 @@ void IrrlichtRenderer::drawZoneGeometryWithPortals() {
     glDepthMask(GL_TRUE);
 
     // Draw fallback mesh (geometry not in any BSP region)
-    if (fallbackMeshNode_) {
+    if (owner_.fallbackMeshNode_) {
         drawRegionMesh(SIZE_MAX);
     }
 #else
@@ -843,38 +844,38 @@ void IrrlichtRenderer::drawZoneGeometryWithPortals() {
 
 // ======== drawPortalRecursive ========
 // Recursively draws rooms visible through portals using nested stencil masking.
-void IrrlichtRenderer::drawPortalRecursive(size_t fromRegion, int stencilLevel,
+void ZoneLifecycleComponent::drawPortalRecursive(size_t fromRegion, int stencilLevel,
                                             int maxDepth,
                                             std::unordered_set<size_t>& drawn) {
 #ifdef EQT_HAS_GLES2
-    if (!portalSystem_ || maxDepth <= 0) return;
+    if (!ctx_.portalSystem || maxDepth <= 0) return;
 
-    const auto& portalIndices = portalSystem_->getPortalsForRegion(fromRegion);
+    const auto& portalIndices = ctx_.portalSystem->getPortalsForRegion(fromRegion);
 
     for (size_t portalIdx : portalIndices) {
-        size_t otherRegion = portalSystem_->getOtherRegion(portalIdx, fromRegion);
+        size_t otherRegion = ctx_.portalSystem->getOtherRegion(portalIdx, fromRegion);
         if (otherRegion == SIZE_MAX) continue;
         if (drawn.count(otherRegion)) continue;
 
         // Check PVS: is otherRegion visible from current region?
-        if (currentPvsRegion_ != SIZE_MAX && currentPvsRegion_ < zoneBspTree_->regions.size()) {
-            const auto& currentRegionData = zoneBspTree_->regions[currentPvsRegion_];
+        if (ctx_.currentPvsRegion != SIZE_MAX && ctx_.currentPvsRegion < ctx_.zoneBspTree->regions.size()) {
+            const auto& currentRegionData = ctx_.zoneBspTree->regions[ctx_.currentPvsRegion];
             if (currentRegionData && otherRegion < currentRegionData->visibleRegions.size()) {
                 if (!currentRegionData->visibleRegions[otherRegion]) continue;
             }
         }
 
         // Check if the other region has a mesh
-        auto nodeIt = regionMeshNodes_.find(otherRegion);
-        if (nodeIt == regionMeshNodes_.end() || !nodeIt->second) continue;
+        auto nodeIt = ctx_.regionMeshNodes.find(otherRegion);
+        if (nodeIt == ctx_.regionMeshNodes.end() || !nodeIt->second) continue;
 
         // Frustum cull the portal center (quick reject)
-        if (frustumCuller_ && frustumCuller_->isEnabled()) {
-            const Portal& portal = portalSystem_->getData().portals[portalIdx];
-            auto bboxIt = regionBoundingBoxes_.find(otherRegion);
-            if (bboxIt != regionBoundingBoxes_.end()) {
+        if (ctx_.frustumCuller && ctx_.frustumCuller->isEnabled()) {
+            const Portal& portal = ctx_.portalSystem->getData().portals[portalIdx];
+            auto bboxIt = ctx_.regionBoundingBoxes.find(otherRegion);
+            if (bboxIt != ctx_.regionBoundingBoxes.end()) {
                 const auto& bbox = bboxIt->second;
-                if (!frustumCuller_->testAABB(
+                if (!ctx_.frustumCuller->testAABB(
                         bbox.MinEdge.X, bbox.MinEdge.Y, bbox.MinEdge.Z,
                         bbox.MaxEdge.X, bbox.MaxEdge.Y, bbox.MaxEdge.Z)) {
                     continue;
@@ -882,7 +883,7 @@ void IrrlichtRenderer::drawPortalRecursive(size_t fromRegion, int stencilLevel,
             }
         }
 
-        const Portal& portal = portalSystem_->getData().portals[portalIdx];
+        const Portal& portal = ctx_.portalSystem->getData().portals[portalIdx];
 
         // Step 1: Stencil write — draw portal quad, increment stencil where depth passes
         glEnable(GL_STENCIL_TEST);
@@ -917,36 +918,36 @@ void IrrlichtRenderer::drawPortalRecursive(size_t fromRegion, int stencilLevel,
 #endif
 }
 
-bool IrrlichtRenderer::rebuildRegionMesh(size_t regionIdx) {
+bool ZoneLifecycleComponent::rebuildRegionMesh(size_t regionIdx) {
     auto rebuildStart = std::chrono::steady_clock::now();
-    LOG_INFO(MOD_GRAPHICS, "rebuildRegionMesh: BEGIN region {} | currentZone_={} wldLoader={} "
-             "regionMeshNodes_.count={}",
+    LOG_INFO(MOD_GRAPHICS, "rebuildRegionMesh: BEGIN region {} | ctx_.currentZone={} wldLoader={} "
+             "ctx_.regionMeshNodes.count={}",
              regionIdx,
-             currentZone_ != nullptr,
-             (currentZone_ && currentZone_->wldLoader) ? true : false,
-             regionMeshNodes_.count(regionIdx));
+             ctx_.currentZone != nullptr,
+             (ctx_.currentZone && ctx_.currentZone->wldLoader) ? true : false,
+             ctx_.regionMeshNodes.count(regionIdx));
 
-    if (!currentZone_ || !currentZone_->wldLoader) {
-        LOG_WARN(MOD_GRAPHICS, "rebuildRegionMesh: ABORT region {} — currentZone_={} wldLoader={}",
-                 regionIdx, currentZone_ != nullptr,
-                 (currentZone_ ? (currentZone_->wldLoader != nullptr) : false));
+    if (!ctx_.currentZone || !ctx_.currentZone->wldLoader) {
+        LOG_WARN(MOD_GRAPHICS, "rebuildRegionMesh: ABORT region {} — ctx_.currentZone={} wldLoader={}",
+                 regionIdx, ctx_.currentZone != nullptr,
+                 (ctx_.currentZone ? (ctx_.currentZone->wldLoader != nullptr) : false));
         return false;
     }
 
     // Clean up existing node if rebuilding (prevents scene node leak)
-    auto existingIt = regionMeshNodes_.find(regionIdx);
-    if (existingIt != regionMeshNodes_.end() && existingIt->second) {
+    auto existingIt = ctx_.regionMeshNodes.find(regionIdx);
+    if (existingIt != ctx_.regionMeshNodes.end() && existingIt->second) {
         LOG_WARN(MOD_GRAPHICS, "rebuildRegionMesh: region {} already has node (parent={}), cleaning up",
                  regionIdx, existingIt->second->getParent() != nullptr);
         auto* oldNode = existingIt->second;
         deleteMeshHardwareBuffers(oldNode);
-        if (animatedTextureManager_)
-            animatedTextureManager_->removeSceneNode(oldNode);
+        if (ctx_.animatedTextureManager)
+            ctx_.animatedTextureManager->removeSceneNode(oldNode);
         if (oldNode->getParent()) oldNode->remove(); else oldNode->drop();
         existingIt->second = nullptr;
     }
 
-    auto geom = currentZone_->wldLoader->getGeometryForRegion(regionIdx);
+    auto geom = ctx_.currentZone->wldLoader->getGeometryForRegion(regionIdx);
     if (!geom || geom->vertices.empty()) {
         LOG_WARN(MOD_GRAPHICS, "rebuildRegionMesh: ABORT region {} — getGeometryForRegion returned {} "
                  "(vertices={})",
@@ -961,33 +962,33 @@ bool IrrlichtRenderer::rebuildRegionMesh(size_t regionIdx) {
              geom->textureNames().size(),
              geom->centerX, geom->centerY, geom->centerZ);
 
-    ZoneMeshBuilder builder(smgr_, driver_, device_->getFileSystem());
+    ZoneMeshBuilder builder(ctx_.smgr, ctx_.driver, ctx_.device->getFileSystem());
     // Only use constrained cache at runtime — during sequential loading, the cache's
     // async background decode submits to bgThreadPool_ which may not be initialized,
     // causing pthread_mutex_lock(NULL) crashes.
-    if (constrainedTextureCache_ && !isLoading())
-        builder.setConstrainedTextureCache(constrainedTextureCache_);
+    if (ctx_.constrainedTextureCache && !owner_.isLoading())
+        builder.setConstrainedTextureCache(ctx_.constrainedTextureCache);
 
-    bool shaderAvail = zoneShader_ && zoneShader_->isAvailable();
-    bool atlasAvail = zoneShader_ && zoneShader_->isAtlasAvailable();
+    bool shaderAvail = ctx_.zoneShader && ctx_.zoneShader->isAvailable();
+    bool atlasAvail = ctx_.zoneShader && ctx_.zoneShader->isAtlasAvailable();
     if (shaderAvail)
-        builder.setShaderMaterialTypes(zoneShader_->getActiveSolid(),
-                                       zoneShader_->getActiveAlphaTest(),
-                                       zoneShader_->getActiveAlphaTestRGBA());
+        builder.setShaderMaterialTypes(ctx_.zoneShader->getActiveSolid(),
+                                       ctx_.zoneShader->getActiveAlphaTest(),
+                                       ctx_.zoneShader->getActiveAlphaTestRGBA());
     if (atlasAvail)
-        builder.setAtlasShaderMaterialTypes(zoneShader_->getActiveAtlasSolid(),
-                                             zoneShader_->getActiveAtlasAlpha());
+        builder.setAtlasShaderMaterialTypes(ctx_.zoneShader->getActiveAtlasSolid(),
+                                             ctx_.zoneShader->getActiveAtlasAlpha());
 
-    bool hasTextures = !currentZone_->textures.empty();
+    bool hasTextures = !ctx_.currentZone->textures.empty();
     bool hasTexNames = !geom->textureNames().empty();
 
     LOG_INFO(MOD_GRAPHICS, "rebuildRegionMesh: region {} build config — shader={} "
              "hasTextures={} (count={}) hasTexNames={} activeSolid={} activeAlpha={}",
              regionIdx, shaderAvail,
-             hasTextures, currentZone_->textures.size(),
+             hasTextures, ctx_.currentZone->textures.size(),
              hasTexNames,
-             shaderAvail ? zoneShader_->getActiveSolid() : -1,
-             shaderAvail ? zoneShader_->getActiveAlphaTest() : -1);
+             shaderAvail ? ctx_.zoneShader->getActiveSolid() : -1,
+             shaderAvail ? ctx_.zoneShader->getActiveAlphaTest() : -1);
 
     irr::scene::IMesh* mesh = nullptr;
     const char* buildPath = "none";
@@ -995,7 +996,7 @@ bool IrrlichtRenderer::rebuildRegionMesh(size_t regionIdx) {
 
     if (hasTextures && hasTexNames) {
         buildPath = "buildTexturedMesh";
-        mesh = builder.buildTexturedMesh(*geom, currentZone_->textures);
+        mesh = builder.buildTexturedMesh(*geom, ctx_.currentZone->textures);
     } else {
         buildPath = "buildColoredMesh";
         mesh = builder.buildColoredMesh(*geom);
@@ -1009,7 +1010,7 @@ bool IrrlichtRenderer::rebuildRegionMesh(size_t regionIdx) {
         LOG_ERROR(MOD_GRAPHICS, "rebuildRegionMesh: FAILED region {} — {} returned null "
                   "(took {:.1f}ms) | textures.size={} texNames.size={}",
                   regionIdx, buildPath, meshBuildMs,
-                  currentZone_->textures.size(), geom->textureNames().size());
+                  ctx_.currentZone->textures.size(), geom->textureNames().size());
         return false;
     }
 
@@ -1027,7 +1028,7 @@ bool IrrlichtRenderer::rebuildRegionMesh(size_t regionIdx) {
                  "will rebuild when uploads complete", regionIdx, missing.size());
     }
 
-    auto* node = smgr_->addMeshSceneNode(mesh);
+    auto* node = ctx_.smgr->addMeshSceneNode(mesh);
     if (!node) {
         LOG_ERROR(MOD_GRAPHICS, "rebuildRegionMesh: FAILED region {} — addMeshSceneNode returned null",
                   regionIdx);
@@ -1038,11 +1039,11 @@ bool IrrlichtRenderer::rebuildRegionMesh(size_t regionIdx) {
     // Apply standard zone region materials
     node->setPosition(irr::core::vector3df(geom->centerX, geom->centerZ, geom->centerY));
     for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
-        node->getMaterial(i).Lighting = lightingEnabled_;
+        node->getMaterial(i).Lighting = ctx_.lightingEnabled;
         node->getMaterial(i).BackfaceCulling = false;
         node->getMaterial(i).GouraudShading = true;
-        node->getMaterial(i).FogEnable = fogEnabled_;
-        node->getMaterial(i).Wireframe = wireframeMode_;
+        node->getMaterial(i).FogEnable = ctx_.fogEnabled;
+        node->getMaterial(i).Wireframe = ctx_.wireframeMode;
         node->getMaterial(i).NormalizeNormals = true;
         node->getMaterial(i).AmbientColor = irr::video::SColor(255, 255, 255, 255);
         node->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
@@ -1064,18 +1065,18 @@ bool IrrlichtRenderer::rebuildRegionMesh(size_t regionIdx) {
 
     // When manual draw is active, remove from scene graph entirely — the manual draw
     // path accesses nodes directly via regionMeshNodes_ map using getPosition()/getMesh().
-    if (manualZoneDrawEnabled_) {
+    if (ctx_.manualZoneDrawEnabled) {
         node->grab();
         node->remove();
     }
 
     // Update renderer state
-    regionMeshNodes_[regionIdx] = node;
+    ctx_.regionMeshNodes[regionIdx] = node;
 
     // Upload static VBOs for zone geometry (GLES2 only)
-    if (!config_.constrainedConfig.skipVBOUpload) {
+    if (!ctx_.config.constrainedConfig.skipVBOUpload) {
 #ifdef EQT_HAS_GLES2
-        if (gpuUploadThread_ && gpuUploadEnabled_ && gpuUploadThread_->isAvailable() &&
+        if (ctx_.gpuUploadThread && gpuUploadEnabled_ && ctx_.gpuUploadThread->isAvailable() &&
             node->getMesh() && node->getMesh()->getMeshBufferCount() > 0) {
             // Submit VBO uploads asynchronously — mesh renders via software vertex
             // path (client-side arrays) until each buffer's upload completes.
@@ -1108,11 +1109,11 @@ bool IrrlichtRenderer::rebuildRegionMesh(size_t regionIdx) {
                 // Encode regionIdx (low 48 bits) + buffer index (high 16 bits)
                 req.callbackKey = (static_cast<uint64_t>(i) << 48) |
                                   (static_cast<uint64_t>(regionIdx) & 0xFFFFFFFFFFFFULL);
-                req.priority = WorkPriorityKey::make(zoneStream_->getRegionPvsDepth(regionIdx), AssetType::ZoneMesh).value;
+                req.priority = WorkPriorityKey::make(owner_.ZoneStream().getRegionPvsDepth(regionIdx), AssetType::ZoneMesh).value;
 
-                gpuUploadThread_->submit(std::move(req));
+                ctx_.gpuUploadThread->submit(std::move(req));
             }
-            pendingVBOUploads_.insert(regionIdx);
+            owner_.pendingVBOUploads_.insert(regionIdx);
         } else {
             uploadMeshHardwareBuffers(node);
         }
@@ -1122,10 +1123,10 @@ bool IrrlichtRenderer::rebuildRegionMesh(size_t regionIdx) {
     }
 
     // Register with animated texture manager (buffer materials only — manual draw path)
-    if (animatedTextureManager_) {
-        auto geom = currentZone_->wldLoader->getGeometryForRegion(regionIdx);
+    if (ctx_.animatedTextureManager) {
+        auto geom = ctx_.currentZone->wldLoader->getGeometryForRegion(regionIdx);
         if (geom) {
-            animatedTextureManager_->addMesh(*geom, currentZone_->textures, node->getMesh());
+            ctx_.animatedTextureManager->addMesh(*geom, ctx_.currentZone->textures, node->getMesh());
             LOG_TRACE(MOD_GRAPHICS, "rebuildRegionMesh: region {} addMesh registered", regionIdx);
         }
     }

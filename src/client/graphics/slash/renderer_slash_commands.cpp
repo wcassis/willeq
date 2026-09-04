@@ -248,8 +248,8 @@ void SlashCommandsComponent::processSlashCommand(const std::string& command) {
             }
         }
     } else if (cmd == "/upload") {
-        owner_.toggleGPUUploadThread();
-        chat(fmt::format("GPU upload thread: {}", owner_.isGPUUploadThreadEnabled() ? "ENABLED" : "DISABLED"));
+        owner_.ZoneLifecycle().toggleGPUUploadThread();
+        chat(fmt::format("GPU upload thread: {}", owner_.ZoneLifecycle().isGPUUploadThreadEnabled() ? "ENABLED" : "DISABLED"));
     } else if (cmd == "/portal") {
         if (args == "debug") {
             owner_.Diagnostics().togglePortalDebugDraw();

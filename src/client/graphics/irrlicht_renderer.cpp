@@ -147,7 +147,7 @@ void IrrlichtRenderer::shutdown() {
         entityPrepWorker_.reset();
     }
 
-    unloadZone();
+    zoneLifecycle_->unloadZone();
 
     // Shutdown shared thread pool (all queue users already stopped above)
     if (backgroundThreadPool_) {

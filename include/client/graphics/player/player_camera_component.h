@@ -19,7 +19,8 @@
 // The only edits inside a body are the mechanism's substitutions: a core
 // member becomes ctx_.member, a non-core IrrlichtRenderer member becomes
 // owner_.member_, and a method that stayed behind becomes owner_.Method()
-// (there are exactly two: isLoading() and rebuildRegionMesh()).
+// (there are exactly two: isLoading(), and rebuildRegionMesh() -- which L09
+// moved, so it is now reached as owner_.ZoneLifecycle().rebuildRegionMesh()).
 //
 // updatePlayerMovement() is 806 lines and moved WHOLE -- Batch G decides its
 // decomposition, not this unit. It needed no substitution beyond the standard

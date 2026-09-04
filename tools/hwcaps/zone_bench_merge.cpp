@@ -22,7 +22,7 @@ namespace {
 
 // H02b: byte-identical copy of zone_bench_loader.cpp's textureGroupId (kept
 // private/anonymous there) -- same duplication convention already used by
-// production's renderer_zone_draw.cpp (see that function's header comment).
+// production's zone_lifecycle/renderer_zone_draw.cpp (see that function's header comment).
 // Keep in sync with zone_bench_loader.cpp's copy if the hash ever changes.
 uint32_t textureGroupId(const irr::video::SMaterial& mat) {
     if (!mat.getTexture(0)) return 0;
