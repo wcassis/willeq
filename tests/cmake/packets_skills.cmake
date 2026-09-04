@@ -261,6 +261,22 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_bridge_component)
 
+# K16 (board B006): EverQuest::InitGraphics takes EQT::Graphics::IZoneLoadSurface*,
+# the two-method zone-load surface, instead of a concrete IrrlichtRenderer*.
+# The test drives the real InitGraphics body with a stub that implements only
+# those two methods -- which is only possible if the narrowing is complete.
+# Graphics-gated: InitGraphics itself is behind EQT_HAS_GRAPHICS, and
+# zone_load_surface.h pulls RendererConfig (and so irrlicht.h) from
+# renderer_types.h.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_zone_load_surface
+        test_zone_load_surface.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_zone_load_surface PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_zone_load_surface GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_zone_load_surface)
+ENDIF()
+
 # T320 (Leg C): one chat-channel name table. eq_chat.cpp built the name twice
 # from two ternary chains forty lines apart and they had drifted -- auction
 # missing from the console chain, channel 14 (TellEcho) missing from both.

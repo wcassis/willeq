@@ -23,7 +23,7 @@ review section under `refactor/F*.md` and `refactor/J*.md`.
 | src/client/core/everquest.cpp | 1,152 | K14: moved from the old flat `eq.cpp` (git mv, no line change) plus `DumpEntityAppearance` (moved in from `eq_strings.cpp` -- it reads `m_entities`, not a pure lookup). Core after J02: ctor/lifecycle, session recording, DB/spell-system init, ConnectToLogin/World/Zone, TickNetwork, loading-phase state, PublishFullStateSnapshot, zone connection callbacks, ZoneOnPacketRecv, ReplayZonePacket, SafeQueueZonePacket, QueuePacket, Start/StopUpdateLoop, SetEQClientPath/SetConstrainedConfig |
 | src/client/action/eq_action_handler.cpp | 783 | K14: moved from the old flat `eq_action_handler.cpp` (git mv, no content change). `action::EqActionHandler` — the `IActionHandler` implementation wrapping `EverQuest` for `ActionDispatcher`/`CommandProcessor` (action-layer migration T99–T143; raid guards T179–T184; skill gate T159/T162) |
 | src/client/movement/movement_component.cpp | 492 | K07: eqt::movement::MovementComponent -- Move/MoveTo/MoveToEntity, Follow/StopFollow, StartCombatMovement, Face/FaceEntity, StopMovement |
-| src/client/bridge/bridge_component.cpp | 842 | K11: `eqt::bridge::BridgeComponent` — graphics lifecycle, the game-thread ticks, zone-load snapshot, BSP-tree install, the spawn/pet/movement bridge marshalling and the T269 bank-coin projection helpers |
+| src/client/bridge/bridge_component.cpp | 846 | K11: `eqt::bridge::BridgeComponent` — graphics lifecycle, the game-thread ticks, zone-load snapshot, BSP-tree install, the spawn/pet/movement bridge marshalling and the T269 bank-coin projection helpers |
 | src/client/merchant/merchant.cpp | 689 | K05: `eqt::merchant::MerchantComponent` — inventory item movement, ScribeSpellFromScroll, the trade request/coin/accept/cancel senders, ReadBook and ZoneProcessTradePartnerItem, moved out of `class EverQuest` (was `eq_merchant.cpp`) |
 | src/client/commands/commands_component.cpp | 1,123 | K12: `eqt::commands::CommandsComponent` — RegisterCommands driver + the game-registry remainder after T139 deleted 34 redundant commands (registry 1 of `docs/decisions.md` 2026-08-03), moved out of `class EverQuest` (was `eq_commands.cpp`) |
 | src/client/zone/zone_component.cpp | 1,092 | K09: `eqt::zone::ZoneComponent` — zone change/teardown, CleanupZone, DisconnectFromZone, ProcessDeferredZoneChange, BeginGracefulZoneOut (T322), LoadZoneMap/Lines/Sources, CheckZoneLine, GetBestZ/FixZ, in-zone teleport (T231) |
@@ -123,12 +123,20 @@ This table and that plan must agree; change both together.
 
 ## Renderer — IrrlichtRenderer class (`include/client/graphics/irrlicht_renderer.h`)
 
+K16 (board B006): `IrrlichtRenderer` now implements
+`EQT::Graphics::IZoneLoadSurface` (`include/client/graphics/zone_load_surface.h`,
+37 lines) — the two-method zone-load surface, `initLoadingScreen(const
+RendererConfig&)` and `initDeferredGraphics()`. That is the whole of what
+`BridgeComponent::InitGraphics` ever did with the renderer pointer, so
+`EverQuest::InitGraphics` / `BridgeComponent::InitGraphics` take the interface
+and the game side names no renderer class. It is the class's only base.
+
 `irrlicht_renderer.cpp` + 18 `renderer_*.cpp` TUs (J11 split the core), plus
 the components Batch L extracts.
 
 Batch L (`refactor/L_renderer_component_extraction.md`) is doing to
 `IrrlichtRenderer` what Batch K did to `EverQuest`. L01 created
-`include/client/graphics/renderer_context.h` (139 lines) —
+`include/client/graphics/renderer_context.h` (137 lines) —
 `EQT::Graphics::RendererContext`, the 54 core members bound by reference, the
 renderer's counterpart to `include/client/client_context.h` — and the first
 component below.

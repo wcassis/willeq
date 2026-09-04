@@ -1,2 +1,2 @@
 include/client/eq.h	899	single class; shrinks under refactor/K_component_extraction.md; may not grow
-include/client/graphics/irrlicht_renderer.h	1666	single class; shrinks under refactor/L_renderer_component_extraction.md; L06 paid +7 of scaffolding for a family that owns ZERO members (see its Review) -- may not grow again
+include/client/graphics/irrlicht_renderer.h	1668	single class; shrinks under refactor/L_renderer_component_extraction.md; may not grow

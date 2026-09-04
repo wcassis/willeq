@@ -49,6 +49,10 @@
 #include "client/hotbar/hotbar_model.h"
 #include "common/util/json_config.h"
 #ifdef EQT_HAS_GRAPHICS
+// K16 (B006): InitGraphics drives the renderer through this two-method
+// surface; the umbrella renderer header below is still needed by the rest of
+// this TU.
+#include "client/graphics/zone_load_surface.h"
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/loading_thread.h"
 #include "client/graphics/constrained_renderer_config.h"
@@ -107,7 +111,7 @@
 // Graphics renderer integration methods
 
 bool eqt::bridge::BridgeComponent::InitGraphics(int width, int height,
-                             EQT::Graphics::IrrlichtRenderer* renderer,
+                             EQT::Graphics::IZoneLoadSurface* renderer,
                              eqt::bridge::GameStateBridge* bridge) {
 	if (owner_.m_graphics_initialized) {
 		return true;

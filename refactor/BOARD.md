@@ -65,7 +65,7 @@ it without taking that measurement first.
   assertions in `test_login_world_flow.cpp` / `test_login_world_component.cpp`
   read them through public accessors. Prov: deferred item 4.
 
-- **B006** (B) the S2 leftovers — **PARTLY CLOSED by K15**, two halves left.
+- ~~**B006** (B) the S2 leftovers~~ **CLOSED by K16** (the K15 halves below stand as the record).
   ~~`application_config.cpp`'s `irrlicht_renderer.h` include~~ **deleted** —
   re-measured at `7c125b28` and confirmed by the compiler. **The survey's claim
   was FALSE for `application_frame.cpp`**: it names no `IrrlichtRenderer` token,
@@ -78,15 +78,28 @@ it without taking that measurement first.
   **replaced**: the gate is now the logging module's own level query
   (`ShouldLog` behind `LOG_DEBUG`/`LOG_TRACE` — user-initiated at DEBUG, every
   other door at TRACE) and the `include/client/eq.h` include is gone from that
-  renderer TU. **STILL OPEN — WILL RULED 2026-09-03: the two-method interface is APPROVED; executor-ready as unit K16 after L05 merges.** (1) `EverQuest::InitGraphics` still takes an
+  renderer TU. ~~(1) `EverQuest::InitGraphics` still takes an
   `IrrlichtRenderer*` — K15 read it and hit the plan's STOP condition: inside
   `BridgeComponent::InitGraphics` the pointer reaches exactly two calls,
   `initLoadingScreen(const RendererConfig&)` and `initDeferredGraphics()`, and
-  narrowing needs an interface that DOES NOT EXIST. The shape it would take is
-  recorded in `refactor/K15_leftovers_and_dead_members.md`'s Review; do not
-  invent it without a ruling. (2) the asset loaders
+  narrowing needs an interface that DOES NOT EXIST.~~ **DONE — K16**: Will
+  approved the two-method interface on 2026-09-03 and K16 built it.
+  `include/client/graphics/zone_load_surface.h` declares
+  `EQT::Graphics::IZoneLoadSurface` (virtual dtor,
+  `initLoadingScreen(const RendererConfig&)`, `initDeferredGraphics()`);
+  `IrrlichtRenderer` implements it (its only base class); both `InitGraphics`
+  signatures take it, and the `IrrlichtRenderer` forward declaration LEFT
+  `include/client/eq.h` and `include/client/bridge/bridge_component.h` — the
+  compiler confirms nothing else in either header needed the name. Pinned by
+  `tests/test_zone_load_surface.cpp`, which drives the real InitGraphics body
+  with a stub implementing only those two methods.
+  ~~(2) the asset loaders
   (`include/client/graphics/eq/pfs.h`, `include/client/graphics/eq/wld_loader.h`)
-  still live in `EQT::Graphics`. Prov: the S2 residue.
+  still live in `EQT::Graphics`~~ — **NAMING ONLY, LEFT DELIBERATELY.** They are
+  graphics-side loaders reached from graphics-side code; the namespace is a
+  label, not a dependency, and moving it renames every use site for no
+  behavioural or structural gain. Not reopened without a reason beyond the name.
+  Prov: the S2 residue.
 
 - **B007** (B) `include/client/skill/skill_data.h` `SkillData::endurance_cost` /
   `mana_cost` — declared, defaulted 0, and assigned nowhere in the tree, so both

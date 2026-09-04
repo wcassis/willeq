@@ -79,7 +79,7 @@ namespace Audio {
 #ifdef EQT_HAS_GRAPHICS
 namespace EQT {
 namespace Graphics {
-    class IrrlichtRenderer;
+    class IZoneLoadSurface;  // K16 (B006): what InitGraphics takes now
     enum class ConstrainedRenderingPreset;
     enum class ZoneLoadStep : uint8_t;
 }
@@ -565,7 +565,7 @@ public:
 	// Graphics renderer methods — genuinely require the renderer/loading-thread
 	// lifecycle and stay gated.
 	bool InitGraphics(int width, int height,
-	                  EQT::Graphics::IrrlichtRenderer* renderer,
+	                  EQT::Graphics::IZoneLoadSurface* renderer,
 	                  eqt::bridge::GameStateBridge* bridge);
 	void ShutdownGraphics();
 	void SetConstrainedConfig(const EQT::Graphics::ConstrainedRendererConfig& config);
