@@ -87,8 +87,8 @@ it without taking that measurement first.
   phases, `review/T350/`). The client DOES send `OP_AutoAttack`(on); eqemu
   refuses the swing because the player is not FACING the target, in the one
   branch of `Client::Process` that sends nothing at all — no packet, no
-  message, no log (`zone/client_process.cpp:430`, `else if (!los_status ||
-  !los_status_facing) { }`; the gate is `Mob::IsFacingMob`, `zone/mob.cpp:7599`,
+  message, no log (`/mnt/projects/akk-stack/code/zone/client_process.cpp:430`, `else if (!los_status ||
+  !los_status_facing) { }`; the gate is `Mob::IsFacingMob`, `/mnt/projects/akk-stack/code/zone/mob.cpp:7599`,
   ±80 of 511.5 ≈ ±56°). Nothing in fable's `/target`/`/attack` path faces the
   target, and the official client does not face for you either, so there is no
   divergence. **The decisive measurement**: auto-attack held ON, target held,

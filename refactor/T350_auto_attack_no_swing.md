@@ -42,7 +42,7 @@ else if (!los_status || !los_status_facing) { }   // no packet, no message, no l
 else if (... IsAttackAllowed(t))            DoAttackRounds(t, slotPrimary);
 ```
 
-`los_status_facing` is `Mob::IsFacingMob` (`zone/mob.cpp:7599`), tolerance
+`los_status_facing` is `Mob::IsFacingMob` (`/mnt/projects/akk-stack/code/zone/mob.cpp:7599`), tolerance
 +-80 of 511.5 heading units == +-56 degrees. Nothing in fable's `/target`
 or `/attack` path sets the heading, and correctly so: the official client
 does not face for you either, so there is no divergence to fix. The
