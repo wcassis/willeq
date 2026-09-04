@@ -199,8 +199,22 @@ void MidiPlayer::selectSoundFont(SoundFontType type) {
 // write (published by play()'s seq_cst playing_=true), so the T131 caveat
 // about raw-pointer visibility stands for any caller that does not go
 // through play() afterwards.
+// T359 (board B015): the precondition above is now ENFORCED, not just
+// documented. Refuse before loading anything -- a caller that gets here with
+// the audio thread up has a bug, and half-doing the work would only make the
+// race harder to see.
 bool MidiPlayer::loadSoundFont(const std::string& path) {
     if (!initialized_) return false;
+
+    if (audioThreadRunning_.load(std::memory_order_seq_cst)) {
+        LOG_ERROR(MOD_AUDIO,
+                  "MidiPlayer::loadSoundFont refused ({}): the audio backend is running. "
+                  "The GM SoundFont swap is not synchronised against the audio callback "
+                  "thread and would risk a use-after-free on the instance it replaces; "
+                  "it may only run before the backend is created.",
+                  path);
+        return false;
+    }
 
     tsf* newSf = tsf_load_filename(path.c_str());
     if (!newSf) {

@@ -32,8 +32,30 @@ public:
     // Initialize with dual SoundFonts (GM + custom orchestral)
     bool init(const std::string& gmPath, const std::string& customPath, uint32_t sampleRate);
 
-    // Replace the GM SoundFont slot
+    // Replace the GM SoundFont slot.
+    //
+    // PRECONDITION (T359, board B015): the audio backend must NOT be running.
+    // The swap writes impl_->soundFont, a raw pointer the audio callback thread
+    // reads with no atomic and no mutex, and then frees the instance it
+    // replaced -- a use-after-free waiting for a second caller. The one
+    // production call site (AudioManager::initialize) runs BEFORE the backend
+    // is created, which is what makes it safe; that was recorded only in a
+    // comment, so the precondition is now ENFORCED: called with the audio
+    // thread up, this logs an error and returns false without touching
+    // anything. Synchronising the swap instead would mean locking inside the
+    // audio callback, which is not acceptable on the realtime thread.
     bool loadSoundFont(const std::string& path);
+
+    // T359 (B015): AudioManager tells the player when the backend that drives
+    // render() from the audio callback thread starts and stops. Nothing else
+    // may call this; it is the precondition flag loadSoundFont() checks, not a
+    // playback control.
+    void setAudioThreadRunning(bool running) {
+        audioThreadRunning_.store(running, std::memory_order_seq_cst);
+    }
+    bool isAudioThreadRunning() const {
+        return audioThreadRunning_.load(std::memory_order_seq_cst);
+    }
 
     // Switch between loaded SoundFonts
     void selectSoundFont(SoundFontType type);
@@ -99,6 +121,10 @@ private:
     RenderBarrier renderBarrier_;
 
     bool initialized_ = false;
+    // T359 (B015): set by AudioManager around the backend's lifetime; read by
+    // loadSoundFont() as its precondition. Atomic because the two writers
+    // (initialize/shutdown) and the reader are not guaranteed to be one thread.
+    std::atomic<bool> audioThreadRunning_{false};
     std::atomic<bool> playing_{false};
     std::atomic<float> volume_{1.0f};
     bool looping_ = false;

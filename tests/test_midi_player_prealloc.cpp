@@ -102,3 +102,52 @@ TEST_F(MidiPlayerPreallocTest, NoActiveSoundFontReadsZero) {
     EXPECT_EQ(player.getConfiguredMaxVoices(), 0);
     EXPECT_EQ(player.getPreallocatedChannelCount(), 0);
 }
+
+// =====================================================================
+// T359 (board B015) — loadSoundFont's precondition is ENFORCED.
+//
+// The GM-slot swap writes impl_->soundFont (a raw pointer the audio callback
+// thread reads with no atomic and no mutex) and then frees the instance it
+// replaced. Its one production call site runs before the audio backend exists,
+// which is what makes it safe — a fact that lived only in a source comment, so
+// a second caller added later (a "/soundfont reload" command, say) would have
+// raced the audio thread and risked a use-after-free with nothing to stop it.
+//
+// AudioManager now calls setAudioThreadRunning(true) the moment the backend is
+// started and (false) when it is torn down; loadSoundFont refuses and logs
+// while that flag is set. No lock is taken on the realtime callback path.
+// =====================================================================
+
+TEST_F(MidiPlayerPreallocTest, LoadSoundFontRefusedWhileTheAudioThreadIsRunning) {
+    MidiPlayer player;
+    ASSERT_TRUE(player.init(testSoundFontPath(), 22050));
+    EXPECT_FALSE(player.isAudioThreadRunning());
+
+    // BEFORE the backend exists — the production ordering — it is accepted.
+    ASSERT_TRUE(player.loadSoundFont(testSoundFontPath()));
+
+    // AFTER the backend starts, the same call must be refused outright.
+    player.setAudioThreadRunning(true);
+    EXPECT_TRUE(player.isAudioThreadRunning());
+    EXPECT_FALSE(player.loadSoundFont(testSoundFontPath()))
+        << "the unsynchronised tsf* swap was allowed while the audio callback "
+           "thread could be reading impl_->soundFont";
+
+    // A refusal must leave a usable player, not a half-swapped one.
+    EXPECT_EQ(player.getConfiguredMaxVoices(), MidiPlayer::kMaxVoices);
+    EXPECT_EQ(player.getPreallocatedChannelCount(), 16);
+
+    // And it must be reversible: after the backend is torn down it works again.
+    player.setAudioThreadRunning(false);
+    EXPECT_TRUE(player.loadSoundFont(testSoundFontPath()));
+}
+
+// A bad path is still rejected for being a bad path, and must not flip the
+// precondition flag on its way out.
+TEST_F(MidiPlayerPreallocTest, LoadSoundFontRefusalDoesNotDisturbTheAudioThreadFlag) {
+    MidiPlayer player;
+    ASSERT_TRUE(player.init(testSoundFontPath(), 22050));
+    EXPECT_FALSE(player.loadSoundFont("/nonexistent/definitely-not-a.sf2"));
+    EXPECT_FALSE(player.isAudioThreadRunning());
+    EXPECT_TRUE(player.loadSoundFont(testSoundFontPath()));
+}

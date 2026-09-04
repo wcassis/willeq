@@ -337,11 +337,20 @@ it without taking that measurement first.
   per composite name. Closes when: the call is gated on EQE1 being configured.
   Prov: archived board, T92.
 
-- **B015** (B) `src/client/audio/midi_player.cpp` `MidiPlayer::loadSoundFont` —
+- ~~**B015** (B) `src/client/audio/midi_player.cpp` `MidiPlayer::loadSoundFont` —
   swaps a raw `tsf*` with no atomic or mutex; safe today only because its single
   call site runs before the audio thread exists, which the file's own comment
-  records. Closes when: the swap is synchronised or the single-call-site
-  precondition is asserted. Prov: archived board, T131.
+  records.~~ **CLOSED by T359 Leg B** — the precondition is ASSERTED, not
+  synchronised (a mutex in the realtime audio callback was explicitly rejected).
+  `MidiPlayer::setAudioThreadRunning(bool)` is called by `AudioManager` at the
+  one point every backend branch converges on (`initialize`, right after the
+  started backend) and again in `shutdown` after `backend_->stop()`;
+  `loadSoundFont` refuses with a `LOG_ERROR` naming the hazard and returns false
+  while that flag is set, before loading anything. Pinned by
+  `MidiPlayerPreallocTest.{LoadSoundFontRefusedWhileTheAudioThreadIsRunning,
+  LoadSoundFontRefusalDoesNotDisturbTheAudioThreadFlag}`; the first was verified
+  to fail with the check disabled (the swap was accepted). Prov: archived board,
+  T131.
 
 - ~~**B016** (B) `src/client/graphics/eq/` `RaceModelLoader::ensureModelDataLoaded`
   — ~20 unlocked `loadedModels_` reads across four TUs.~~ **CLOSED by T352**,

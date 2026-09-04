@@ -162,6 +162,14 @@ bool AudioManager::initialize(const std::string& eqPath, bool forceLoopback,
         }
     }
 
+    // T359 (board B015): from here on the audio callback thread reads
+    // MidiPlayer's synth pointers, so the unsynchronised GM-SoundFont swap in
+    // MidiPlayer::loadSoundFont() must refuse. Every backend branch above ends
+    // with a started backend, so one arm-point covers all three.
+    if (midiPlayer_) {
+        midiPlayer_->setAudioThreadRunning(true);
+    }
+
     LOG_DEBUG(MOD_AUDIO, "Audio backend initialized (loopback={})", loopbackMode_);
 
     // Load sound asset mapping
@@ -189,6 +197,11 @@ void AudioManager::shutdown() {
     if (backend_) {
         backend_->stop();
         backend_.reset();
+    }
+
+    // T359 (B015): the callback thread is gone with the backend.
+    if (midiPlayer_) {
+        midiPlayer_->setAudioThreadRunning(false);
     }
 
     // Stop music
