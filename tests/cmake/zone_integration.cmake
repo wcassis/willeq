@@ -212,3 +212,20 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_zone_out_handshake PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
 GTEST_DISCOVER_TESTS(test_zone_out_handshake)
+
+# T344 (BOARD B001): the split of MovementComponent::SetPositionState into a
+# user-initiated setter (state + OP_SpawnAppearance) and a server-forced one
+# (ApplyPositionState, state only), plus the deletion of the AT_DIE echo that
+# T311 Leg A measured never appearing in either direction of a real
+# official-client session. Asserts on the real outbound bytes via a
+# DaybreakConnection over FakeUdpTransport -- SendSpawnAppearance bypasses
+# PacketSender, so the T268 capture seam cannot see it. No network, no
+# graphics, no eqemu.
+ADD_EXECUTABLE(test_forced_pose_no_echo
+    test_forced_pose_no_echo.cpp
+)
+TARGET_LINK_LIBRARIES(test_forced_pose_no_echo GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_forced_pose_no_echo PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_forced_pose_no_echo)

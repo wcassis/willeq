@@ -65,7 +65,14 @@ public:
 	// State and dependencies (was eq_movement_state.cpp).
 	void LoadPathfinder(const std::string& zone_name);
 	void SetMovementMode(MovementMode mode);
+	// T344 (B001): SetPositionState is the USER-INITIATED pose change --
+	// it writes the state AND tells the server (OP_SpawnAppearance).
+	// ApplyPositionState is the same write with NO send, for a pose the
+	// SERVER forced on us (our own OP_SpawnAppearance echo, our own
+	// OP_Death): re-sending a pose we were just told about is wrong, and
+	// T311 Leg A measured the official client never doing it.
 	void SetPositionState(PositionState state);
+	void ApplyPositionState(PositionState state);
 	void Jump();
 	void UpdateWaterState();           // Check BSP region and update water state
 

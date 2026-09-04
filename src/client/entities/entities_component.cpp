@@ -32,6 +32,7 @@
 
 #include "client/eq.h"
 #include "client/entities/entities_component.h"
+#include "client/movement/movement_component.h"  // T344: ApplyPositionState
 #include "client/world_object.h"
 #include "client/combat.h"
 #include "client/trade_manager.h"
@@ -576,6 +577,41 @@ void eqt::entities::EntitiesComponent::ZoneProcessSpawnAppearance(const EQ::Net:
 			auto it = ctx_.entities.find(spawn_id);
 			if (it != ctx_.entities.end()) {
 				it->second.animation = static_cast<uint8_t>(parameter);
+			}
+
+			// T344 (B001): a pose the SERVER forces on US (root/mez
+			// knockdown, a GM #kill/#summon, anything that makes eqemu
+			// SendAppearancePacket(AT_Anim) for our own spawn id) has to
+			// reach the player's positionState -- until now nothing did,
+			// so game_state.player().positionState() stayed Standing
+			// through every server-forced pose. It goes through
+			// ApplyPositionState(), NOT SetPositionState(): echoing back a
+			// pose we were just told about is wrong, and T311 Leg A's
+			// capture has the official client never doing it.
+			//
+			// ANIM_LYING maps to POS_FEIGN_DEATH because that is the state
+			// whose outbound pose IS ANIM_LYING (see SetPositionState) --
+			// the wire cannot tell feign from lying-dead. If we already
+			// know we are POS_DEAD (our own OP_Death set it, see
+			// ZoneProcessDeath) the Lying appearance is that same death and
+			// must not downgrade the state.
+			if (spawn_id != 0 && spawn_id == ctx_.self.MySpawnId()) {
+				bool haveState = true;
+				PositionState selfState = POS_STANDING;
+				switch (parameter) {
+				case ANIM_STAND:
+				case ANIM_STANDING: selfState = POS_STANDING;   break;
+				case ANIM_SITTING:  selfState = POS_SITTING;    break;
+				case ANIM_CROUCHING:selfState = POS_CROUCHING;  break;
+				case ANIM_LYING:    selfState = POS_FEIGN_DEATH; break;
+				default:            haveState = false;          break;
+				}
+				if (haveState &&
+				    !(selfState == POS_FEIGN_DEATH &&
+				      ctx_.game_state.player().positionState() ==
+				          eqt::state::PositionState::Dead)) {
+					ctx_.Movement().ApplyPositionState(selfState);
+				}
 			}
 
 			// Publish animation events via bridge (D17b: bridge is sole path to renderer)
