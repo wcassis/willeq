@@ -540,3 +540,15 @@ GTEST_DISCOVER_TESTS(test_video_capture_flags)
 # equivalent coverage now lives in test_command_processor.cpp's T102
 # section (FakeActionHandler-based, matching every other migrated family).
 # See refactor/T102_migrate_combat_social.md.
+
+# G03: the registration-ORDER net for CommandProcessor::registerBuiltinCommands().
+# Pure text parse of src/client/action/command_processor_registration.cpp
+# (WILLEQ_REPO_ROOT, set globally in tests/CMakeLists.txt) against
+# tests/goldens/command_registration_order_g03.txt -- the registry stores
+# commands in a std::map, so no runtime enumeration can witness registration
+# order, and order is what decides shadowing (J04, T097/T098). No link deps.
+ADD_EXECUTABLE(test_command_registration_order
+    test_command_registration_order.cpp
+)
+TARGET_LINK_LIBRARIES(test_command_registration_order GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_command_registration_order)

@@ -240,8 +240,42 @@ private:
     std::map<std::string, RegisteredCommand> m_commands;
     std::map<std::string, std::string> m_aliases;  // alias -> primary name
 
-    // Register built-in commands
+    // Register built-in commands.
+    //
+    // G03: the 142 registrations are sliced at the banners that were already
+    // in command_processor_registration.cpp into the per-family helpers
+    // below; registerBuiltinCommands() is the ORDERED list of calls to them
+    // and nothing else. The order is load-bearing -- registerCommand()
+    // overwrites m_commands[name] and m_aliases[alias], so a later
+    // registration shadows an earlier one (J04; T097/T098 audited the
+    // shadowing this caused). tests/test_command_registration_order.cpp pins
+    // the resulting order against tests/goldens/command_registration_order_g03.txt.
+    // Add a new command inside the family it belongs to; do NOT reorder the
+    // calls below or move a registration between families without updating
+    // the golden -- that edit is the review moment.
     void registerBuiltinCommands();
+
+    void registerChatCommands();
+    void registerInteractionCommands();
+    void registerGroupCommands();
+    void registerCombatCommands();
+    void registerSocialCommands();
+    void registerGuildCommands();
+    void registerCorpseCommands();
+    void registerTradeskillCommands();
+    void registerUtilityCommands();
+    void registerCommerceCommands();
+    void registerInventoryCommands();
+    void registerMovementAndUtilityCommands();
+    void registerSpellAndPetCommands();
+    void registerExtendedMovementCommands();
+    void registerEntityQueryCommands();
+    void registerExtendedCombatCommands();
+    void registerPathfindingCommands();
+    void registerEmoteShortcutCommands();
+    void registerLoggingFilterCommands();
+    void registerFindCommands();
+    void registerGMCommands();
 
     // Built-in command handlers
     // T98 deleted cmdSay/cmdOOC/cmdAuction/cmdTell/cmdReply/cmdGroupSay/

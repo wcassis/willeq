@@ -17,8 +17,47 @@ namespace eqt {
 namespace action {
 
 // ========== Register Built-in Commands ==========
+//
+// G03 (refactor/G03_register_builtin_commands.md): what used to be one
+// 768-line registerBuiltinCommands() is now the ordered list of per-family
+// registerXCommands() calls below, cut at the banners that were already in
+// this file. Each family is a VERBATIM slice -- no registration moved
+// relative to any other.
+//
+// ORDER IS LOAD-BEARING. registerCommand() does m_commands[name] = ... and
+// m_aliases[alias] = name, so the LAST registration of a name or alias wins
+// (J04; T097/T098 audited the shadowing that caused). The order is pinned by
+// tests/test_command_registration_order.cpp against
+// tests/goldens/command_registration_order_g03.txt, extracted from the
+// pre-G03 source. Reordering these calls, or moving a registration from one
+// family to another, fails that test on purpose.
 
 void CommandProcessor::registerBuiltinCommands() {
+    registerChatCommands();
+    registerInteractionCommands();
+    registerGroupCommands();
+    registerCombatCommands();
+    registerSocialCommands();
+    registerGuildCommands();
+    registerCorpseCommands();
+    registerTradeskillCommands();
+    registerUtilityCommands();
+    registerCommerceCommands();
+    registerInventoryCommands();
+    registerMovementAndUtilityCommands();
+    registerSpellAndPetCommands();
+    registerExtendedMovementCommands();
+    registerEntityQueryCommands();
+    registerExtendedCombatCommands();
+    registerPathfindingCommands();
+    registerEmoteShortcutCommands();
+    registerLoggingFilterCommands();
+    registerFindCommands();
+    registerGMCommands();
+}
+
+// Chat (T100)
+void CommandProcessor::registerChatCommands() {
     // T98 deleted say/ooc/auction/tell/reply/gsay/gu/emote as shadowed dead
     // code (game's registry always won the dispatch collision for these
     // primary names; see refactor/T97_command_registry_shadowing_audit.md).
@@ -68,7 +107,10 @@ void CommandProcessor::registerBuiltinCommands() {
     registerCommand({
         "reply", {"r"}, "/reply <message>", "Reply to last tell", "Chat", false
     }, [this](const std::string& args) { return cmdReply(args); });
+}
 
+// Face / consider / appearance / inspect message / hail / npcstate
+void CommandProcessor::registerInteractionCommands() {
     // T98: loc/sit/stand/camp/move/moveto/follow/stopfollow registrations
     // removed -- shadowed dead code. face stays: no game "face" command
     // exists at all, so it was never shadowed.
@@ -117,7 +159,10 @@ void CommandProcessor::registerBuiltinCommands() {
     registerCommand({
         "npcstate", {}, "/npcstate", "Show current vendor/banker/trainer interaction state", "Utility", false
     }, [this](const std::string& args) { return cmdNpcState(args); });
+}
 
+// Group + raid (T99, T179-T184)
+void CommandProcessor::registerGroupCommands() {
     // T99: invite/disband/decline migrated here from EverQuest::
     // m_command_registry (removed from eq_commands.cpp in the same change).
     // groupaccept is new -- see cmdGroupAccept and
@@ -143,7 +188,10 @@ void CommandProcessor::registerBuiltinCommands() {
         "raid", {}, "/raid [status|list|invite|accept|leave|remove|leader|loot|looter|lock|unlock|group]",
         "Raid status and commands", "Group", false
     }, [this](const std::string& args) { return cmdRaid(args); });
+}
 
+// Combat (T102) + /useskill (T156)
+void CommandProcessor::registerCombatCommands() {
     // T98: who/help/quit/q/debug/timestamp registrations removed -- shadowed
     // dead code (who/help/quit/q/debug/timestamp; "q" was shadowed via
     // game's alias table, not a game primary name -- see T97's Review).
@@ -211,7 +259,10 @@ void CommandProcessor::registerBuiltinCommands() {
     registerCommand({
         "dueldecline", {}, "/dueldecline", "Decline a duel challenge", "Combat", false
     }, [this](const std::string& args) { return cmdDuelDecline(args); });
+}
 
+// Social (T102)
+void CommandProcessor::registerSocialCommands() {
     // T102: Social (10 distinct names / 11 game-registry registrations --
     // `who` is duplicated, see cmdWho below), migrated from
     // eq_commands.cpp's RegisterSocialCommands() (trade/accept/
@@ -257,7 +308,10 @@ void CommandProcessor::registerBuiltinCommands() {
     registerCommand({
         "yell", {}, "/yell", "Yell for help", "Social", false
     }, [this](const std::string& args) { return cmdYell(args); });
+}
 
+// Guild (T132)
+void CommandProcessor::registerGuildCommands() {
     // T132: Guild (7), migrated from eq_commands.cpp's Guild block --
     // action::CommandProcessor had zero guild registrations before this
     // unit (net-new plumbing over the existing EverQuest::SendGuild*()
@@ -291,7 +345,10 @@ void CommandProcessor::registerBuiltinCommands() {
     registerCommand({
         "guildmotd", {"gmotd"}, "/guildmotd [message]", "View or set guild MOTD", "Guild", false
     }, [this](const std::string& args) { return cmdGuildMotd(args); });
+}
 
+// Corpse + resurrection (T134)
+void CommandProcessor::registerCorpseCommands() {
     // T134: Corpse (4) + Resurrection (2). Aliases ported verbatim from
     // eq_commands.cpp's Corpse/Resurrection blocks.
     registerCommand({
@@ -317,7 +374,10 @@ void CommandProcessor::registerBuiltinCommands() {
     registerCommand({
         "rezdecline", {"declinerez"}, "/rezdecline", "Decline pending resurrection offer", "Utility", false
     }, [this](const std::string& args) { return cmdRezDecline(args); });
+}
 
+// World object click (T144) + tradeskill recipes (T149, T278)
+void CommandProcessor::registerTradeskillCommands() {
     // T144
     registerCommand({
         "clickobject", {"clickobj"}, "/clickobject <drop_id>",
@@ -362,7 +422,10 @@ void CommandProcessor::registerBuiltinCommands() {
         "closecontainer", {"containerclose"}, "/closecontainer",
         "Close the open world tradeskill container", "Tradeskill", false
     }, [this](const std::string& args) { return cmdCloseContainer(args); });
+}
 
+// Utility (T135)
+void CommandProcessor::registerUtilityCommands() {
     // T135: Utility (6) -- categories ported verbatim from eq_commands.cpp's
     // per-command category, not unified, since the plan explicitly treats
     // these as six independent migrations that happen to share a unit.
@@ -389,7 +452,10 @@ void CommandProcessor::registerBuiltinCommands() {
     registerCommand({
         "petition", {}, "/petition <text>", "Submit a petition", "Utility", false
     }, [this](const std::string& args) { return cmdPetition(args); });
+}
 
+// Merchant / commerce (T136)
+void CommandProcessor::registerCommerceCommands() {
     // T136: Merchant (vendor/vendorlist/buy/sell) -- category ported
     // verbatim from eq_commands.cpp ("Commerce"), matching this unit's
     // question-1 decision to keep these four together for discoverability
@@ -410,7 +476,10 @@ void CommandProcessor::registerBuiltinCommands() {
     registerCommand({
         "sell", {}, "/sell <slot> [quantity]", "Sell an item from your inventory to the open vendor", "Commerce", false
     }, [this](const std::string& args) { return cmdSell(args); });
+}
 
+// Inventory: equip (T141), read (T273), scribe (T276)
+void CommandProcessor::registerInventoryCommands() {
     // T141: equip -- the one command T136 explicitly excluded from the
     // Merchant family (different mechanism, different category) and the
     // last row of the whole game-registry migration programme. Category
@@ -440,7 +509,10 @@ void CommandProcessor::registerBuiltinCommands() {
         "Scribe a spell scroll you are carrying into your spellbook (e.g. /scribe Spell: Minor Healing)",
         "Inventory", false
     }, [this](const std::string& args) { return cmdScribe(args); });
+}
 
+// The final sixteen of the game-registry migration (T140) + /trainclose (T280)
+void CommandProcessor::registerMovementAndUtilityCommands() {
     // T140: final 16 of the game-registry migration programme (equip
     // excluded). Registrations removed from eq_commands_movement.cpp/
     // eq_commands_spells.cpp in the same change -- see
@@ -533,7 +605,10 @@ void CommandProcessor::registerBuiltinCommands() {
     registerCommand({
         "anon", {}, "/anon", "Toggle anonymous status", "Utility", false
     }, [this](const std::string& args) { return cmdAnon(args); });
+}
 
+// Spells + pet (T101) + /removebuff (T277)
+void CommandProcessor::registerSpellAndPetCommands() {
     // T101: gems/mem/forget/cast/interrupt/spellbook migrated here from
     // EverQuest::m_command_registry's Spells category (removed from
     // eq_commands_spells.cpp in the same change -- see
@@ -583,7 +658,10 @@ void CommandProcessor::registerBuiltinCommands() {
         "Issue commands to your pet (attack, back, follow, guard, sit, taunt, hold, focus, health, dismiss)",
         "Pet", false
     }, [this](const std::string& args) { return cmdPet(args); });
+}
 
+// Extended movement
+void CommandProcessor::registerExtendedMovementCommands() {
     // T98: filter registration removed -- shadowed dead code.
 
     // Extended movement commands
@@ -614,7 +692,10 @@ void CommandProcessor::registerBuiltinCommands() {
     registerCommand({
         "turn", {}, "/turn <degrees>", "Turn to heading (0=N, 90=E, 180=S, 270=W)", "Movement", true
     }, [this](const std::string& args) { return cmdTurn(args); });
+}
 
+// Entity query
+void CommandProcessor::registerEntityQueryCommands() {
     // Entity query commands
     registerCommand({
         "list", {}, "/list [search]", "List nearby entities", "Utility", false
@@ -623,7 +704,10 @@ void CommandProcessor::registerBuiltinCommands() {
     registerCommand({
         "dump", {}, "/dump <name>", "Dump entity appearance/equipment info", "Utility", true
     }, [this](const std::string& args) { return cmdDump(args); });
+}
 
+// Extended combat + loot window (T268)
+void CommandProcessor::registerExtendedCombatCommands() {
     // Extended combat commands
     registerCommand({
         "hunt", {}, "/hunt [on|off]", "Toggle auto-hunting mode", "Combat", false
@@ -650,7 +734,10 @@ void CommandProcessor::registerBuiltinCommands() {
     registerCommand({
         "lootclose", {"closeloot"}, "/lootclose", "Close the open loot window", "Combat", false
     }, [this](const std::string& args) { return cmdLootClose(args); });
+}
 
+// Pathfinding and roleplay
+void CommandProcessor::registerPathfindingCommands() {
     // Pathfinding and roleplay
     registerCommand({
         "pathfinding", {}, "/pathfinding [on|off]", "Toggle pathfinding", "Utility", false
@@ -659,7 +746,10 @@ void CommandProcessor::registerBuiltinCommands() {
     registerCommand({
         "roleplay", {"rp"}, "/roleplay [on|off]", "Toggle roleplay status", "Utility", false
     }, [this](const std::string& args) { return cmdRoleplay(args); });
+}
 
+// Emote shortcuts
+void CommandProcessor::registerEmoteShortcutCommands() {
     // Emote shortcut commands
     registerCommand({
         "wave", {}, "/wave", "Wave", "Chat", false
@@ -676,7 +766,10 @@ void CommandProcessor::registerBuiltinCommands() {
     registerCommand({
         "laugh", {}, "/laugh", "Laugh", "Chat", false
     }, [this](const std::string& args) { return cmdLaugh(args); });
+}
 
+// Logging filters
+void CommandProcessor::registerLoggingFilterCommands() {
     // Logging filter commands
     registerCommand({
         "logonly", {}, "/logonly [MOD1,MOD2,...]", "Whitelist log modules (suppress all others)", "Utility", false
@@ -693,7 +786,10 @@ void CommandProcessor::registerBuiltinCommands() {
     registerCommand({
         "logclear", {}, "/logclear", "Clear all module log filters", "Utility", false
     }, [this](const std::string& args) { return cmdLogClear(args); });
+}
 
+// Social / find family (T150)
+void CommandProcessor::registerFindCommands() {
     // ===== T150: Social / Find family =====
     // Four net-new registrations over four senders that had zero production
     // callers (refactor/T150_social_find_family.md). APPENDED, per the
@@ -734,7 +830,10 @@ void CommandProcessor::registerBuiltinCommands() {
         "friendswho", {"friends"}, "/friendswho <name>[,<name>...]",
         "Ask who from a comma-delimited name list is online", "Social", true
     }, [this](const std::string& args) { return cmdFriendsWho(args); });
+}
 
+// GM (T148)
+void CommandProcessor::registerGMCommands() {
     // T148: GM (9), APPENDED (T149/T150 append their own blocks below this
     // one; nothing above was reordered or reflowed).
     //
