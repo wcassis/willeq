@@ -9,7 +9,8 @@
 //      application_zone_loading.cpp call them, so they must not learn a
 //      component exists -- the K11 rule) really reach that component.
 //   3. The owner_ handle BINDS: setCurrentTarget() writes
-//      IrrlichtRenderer::currentTargetId_/currentTargetName_, which stayed on
+//      currentTargetId_/currentTargetName_, which L13 moved onto
+//      OverlaysComponent; they had stayed on
 //      the renderer because the frame family reads them, and the write is
 //      visible through the renderer's own public getter. Every assertion that
 //      can be written as a mutation is (L01 correction 9) -- value equality

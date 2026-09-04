@@ -117,6 +117,7 @@ namespace EQT { namespace Graphics { class ConstrainedTextureCache; } }
 #include "client/graphics/zone_load_surface.h"
 #include "client/graphics/renderer_event_receiver.h"
 #include "client/graphics/renderer_draw_types.h"
+#include "client/graphics/render_pass_timer.h"  // L13: RenderPassTimer, hoisted out of this class
 
 namespace EQT {
 namespace Graphics {
@@ -297,7 +298,7 @@ public:
 
     // First-person mode methods
     // Check if in first-person mode
-    bool isFirstPersonMode() const { return cameraMode_ == CameraMode::FirstPerson; }
+    bool isFirstPersonMode() const { return PlayerCamera().cameraMode() == CameraMode::FirstPerson; }
 
     // L05 (Batch L): the player family -- movement, collision, ground height
     // and the camera -- lives in PlayerCameraComponent. The four methods below
@@ -329,28 +330,28 @@ public:
 
     // The player family is otherwise reached through this accessor; it is also
     // what the component's tests bind against.
-    PlayerCameraComponent& PlayerCamera() { return *playerCamera_; }
+    PlayerCameraComponent& PlayerCamera() const { return *playerCamera_; }
 
     // L07 (Batch L): the SimulationWorker bridge. In-renderer callers reach
     // the family through simBridge_->; this accessor is for the T116 lifetime
     // fixtures and the component's own test.
-    SimBridgeComponent& SimBridge() { return *simBridge_; }
+    SimBridgeComponent& SimBridge() const { return *simBridge_; }
 
     // L08 (Batch L): zone streaming -- progressive load, PVS neighbourhood,
     // deferred objects and the T124 texture guards.
-    ZoneStreamComponent& ZoneStream() { return *zoneStream_; }
+    ZoneStreamComponent& ZoneStream() const { return *zoneStream_; }
 
     // L09 (Batch L): unload/environment/ready state, zone draw, GPU upload.
-    ZoneLifecycleComponent& ZoneLifecycle() { return *zoneLifecycle_; }
+    ZoneLifecycleComponent& ZoneLifecycle() const { return *zoneLifecycle_; }
 
     // L10 (Batch L): loadZoneSequential() and its twenty step methods.
-    ZoneLoadComponent& ZoneLoad() { return *zoneLoad_; }
+    ZoneLoadComponent& ZoneLoad() const { return *zoneLoad_; }
 
     // L11 (Batch L): the per-frame loop, the input drain and the static UI
     // panel state. Reached by the input tests, by the bridge (the UI panel
     // members are public on the component, as they were here) and by the
     // sibling components that toggle UI state.
-    FrameComponent& Frame() { return *frame_; }
+    FrameComponent& Frame() const { return *frame_; }
 
     // Get BSP tree for water region detection
     std::shared_ptr<EQT::Graphics::BspTree> getZoneBspTree() const { return zoneBspTree_; }
@@ -380,7 +381,7 @@ public:
     // reason: zero callers anywhere, so the audio listener it was written for
     // is never given the camera transform. Kept on the component and boarded.
     void setCameraMode(CameraMode mode) { playerCamera_->setCameraMode(mode); }
-    CameraMode getCameraMode() const { return cameraMode_; }
+    CameraMode getCameraMode() const { return PlayerCamera().cameraMode(); }
     std::string getCameraModeString() const { return playerCamera_->getCameraModeString(); }
 
     // Process input and render a single frame; false means stop.
@@ -445,21 +446,21 @@ public:
     // Debug lighting toggles (for isolating performance regressions) --
     // the toggles themselves are on DiagnosticsComponent (L04); these read
     // the resulting state.
-    bool isPlayerLightEnabled() const { return debugPlayerLightEnabled_; }
-    bool isObjectLightsEnabled() const { return debugObjectLightsEnabled_; }
-    bool isDirectionalLightEnabled() const { return debugDirectionalLightEnabled_; }
+    bool isPlayerLightEnabled() const { return Diagnostics().debugPlayerLightEnabled(); }
+    bool isObjectLightsEnabled() const { return Diagnostics().debugObjectLightsEnabled(); }
+    bool isDirectionalLightEnabled() const { return Diagnostics().debugDirectionalLightEnabled(); }
     bool isPortalOcclusionEnabled() const { return portalOcclusionEnabled_; }
-    bool isPortalDebugDrawEnabled() const { return portalDebugDraw_; }
-    bool isStencilDebugDrawEnabled() const { return stencilDebugDraw_; }
+    bool isPortalDebugDrawEnabled() const { return Diagnostics().portalDebugDraw(); }
+    bool isStencilDebugDrawEnabled() const { return Diagnostics().stencilDebugDraw(); }
     void setFrameTimingEnabled(bool enabled);  // Enable/disable frame timing profiler
-    bool isFrameTimingEnabled() const { return frameTimingEnabled_; }
+    bool isFrameTimingEnabled() const { return Frame().frameTimingEnabled(); }
     // L04 (Batch L): implemented by DiagnosticsComponent. These three stay as
     // one-line forwarders because irrlicht_bridge.cpp (dumpScene,
     // getMemoryReport) and application.cpp (runSceneProfile) call them and
     // must not learn a component exists -- the K11 rule.
     void dumpScene() const { diagnostics_->dumpScene(); }  // /dumpscene debug command
     void runSceneProfile() { diagnostics_->runSceneProfile(); }  // Run scene breakdown profiler (profiles next frame)
-    DiagnosticsComponent& Diagnostics() { return *diagnostics_; }
+    DiagnosticsComponent& Diagnostics() const { return *diagnostics_; }
     // K15 (B033): resetCoordOffsets / adjustOffset{X,Y,Z} / getOffset{X,Y,Z} /
     // adjustRotation{X,Y,Z} / getRotation{X,Y,Z} and stepToString (above) were
     // 14 declarations with no definition anywhere -- the real offset/rotation
@@ -469,13 +470,13 @@ public:
     // The camera far plane must be larger to include the sky dome
     void setRenderDistance(float distance) {
         if (isLoading()) return;
-        userRenderDistance_ = distance;
+        ZoneLifecycle().userRenderDistance() = distance;
         // Cap effective render distance by constrained preset's clip distance
         if (config_.constrainedConfig.clipDistance > 0.0f) {
             distance = std::min(distance, config_.constrainedConfig.clipDistance);
         }
         // Cap effective render distance by server-provided zone max clip plane
-        renderDistance_ = (zoneMaxClip_ > 0.0f) ? std::min(distance, zoneMaxClip_) : distance;
+        renderDistance_ = (ZoneLifecycle().zoneMaxClip() > 0.0f) ? std::min(distance, ZoneLifecycle().zoneMaxClip()) : distance;
         // Sync camera far plane to render distance (must be at least render distance)
         if (camera_) {
             camera_->setFarValue(std::max(renderDistance_, SKY_FAR_PLANE));
@@ -515,8 +516,8 @@ public:
 
     // L03 (Batch L): the overlays component. In-renderer callers reach the
     // family through overlays_->; this accessor is for tests.
-    OverlaysComponent& Overlays() { return *overlays_; }
-    irr::gui::IGUIEnvironment* getGUIEnvironment() { return guienv_; }
+    OverlaysComponent& Overlays() const { return *overlays_; }
+    irr::gui::IGUIEnvironment* getGUIEnvironment() { return Overlays().guienv(); }
 
     // Get entity renderer
     EntityRenderer* getEntityRenderer() { return entityRenderer_.get(); }
@@ -550,7 +551,7 @@ public:
     void setCurrentTarget(uint16_t spawnId, const std::string& name, uint8_t hpPercent = 100, uint8_t level = 0) { overlays_->setCurrentTarget(spawnId, name, hpPercent, level); }
     void setCurrentTargetInfo(const TargetInfo& info) { overlays_->setCurrentTargetInfo(info); }
     void clearCurrentTarget() { overlays_->clearCurrentTarget(); }
-    uint16_t getCurrentTargetId() const { return currentTargetId_; }
+    uint16_t getCurrentTargetId() const { return Overlays().currentTargetId(); }
 
     // Collision map for player mode movement. shared_ptr<const HCMap>
     // (P35): shares ownership with the game thread's m_zone_map and
@@ -585,13 +586,13 @@ public:
     // L09 (Batch L): on ZoneLifecycleComponent, forwarded above.
     // notifyEntityLoaded(), checkAndSetZoneReady() and areEntitiesLoaded() had
     // ZERO callers and were deleted (§Mechanism 5) -- see the component header.
-    bool isNetworkReady() const { return networkReady_; }
+    bool isNetworkReady() const { return ZoneLifecycle().networkReady(); }
 
     // Loading progress for zone transitions
     void setLoadingProgress(float progress, const std::wstring& text) {
         if (isLoading()) return;
-        loadingProgress_ = progress;
-        loadingText_ = text;
+        Frame().loadingProgress() = progress;
+        Frame().loadingText() = text;
         // Immediately redraw loading screen so progress updates are visible
         // during blocking operations like LoadZoneGraphics()
         if (loadingScreenVisible_) {
@@ -638,7 +639,7 @@ public:
     // U07c3: getWindowManager() removed — old UI deleted
 
     // Spell visual effects access
-    EQ::SpellVisualFX* getSpellVisualFX() { return spellVisualFX_.get(); }
+    EQ::SpellVisualFX* getSpellVisualFX() { return SimBridge().spellVisualFX().get(); }
 
     // U01: Batched text renderer
     TextBatch* getTextBatch() { return textBatch_.get(); }
@@ -694,7 +695,7 @@ public:
     // forwarders because Application calls them and must not learn a
     // component exists (the K11 rule). getRDPClientCount() had zero callers
     // tree-wide and was deleted.
-    RdpComponent& Rdp() { return *rdp_; }
+    RdpComponent& Rdp() const { return *rdp_; }
     bool initRDP(uint16_t port = 3389) { return rdp_->initRDP(port); }
     bool startRDPServer() { return rdp_->startRDPServer(); }
     void stopRDPServer() { rdp_->stopRDPServer(); }
@@ -706,7 +707,7 @@ public:
     // fire-glow icospheres live in Eqe1ArchiveComponent. Nothing outside
     // IrrlichtRenderer ever called any of them, so there are no forwarders --
     // every call site was retargeted to eqe1_-> (Mechanism 5).
-    Eqe1ArchiveComponent& Eqe1() { return *eqe1_; }
+    Eqe1ArchiveComponent& Eqe1() const { return *eqe1_; }
 
 private:
     void createSoftwareCursor();
@@ -732,9 +733,7 @@ private:
     irr::IrrlichtDevice* device_ = nullptr;
     irr::video::IVideoDriver* driver_ = nullptr;
     irr::scene::ISceneManager* smgr_ = nullptr;
-    irr::gui::IGUIEnvironment* guienv_ = nullptr;
     irr::scene::ICameraSceneNode* camera_ = nullptr;
-    irr::video::ITexture* softwareCursorTexture_ = nullptr;  // DRM mode software cursor
 
     std::unique_ptr<CameraController> cameraController_;
     std::unique_ptr<FrustumCuller> frustumCuller_;
@@ -758,6 +757,13 @@ private:
     // both read sites guard on !empty()). The split doesn't change those
     // coincidences, but see renderer_zone_lifecycle.cpp for where it's now
     // also nulled at zone teardown, for consistency with its three siblings.
+    // L13: portalVisibleRegions_ STAYS. ZoneLifecycleComponent has 4 of its 5
+    // reaches and the pairwise rule would move it, but it is one of the FOUR
+    // SimulationWorker-output pointers whose shared cross-thread lifetime
+    // invariant tests/test_simulation_output_lifetime.cpp guards as a group
+    // (T115/T116) -- the other three are context members or stay here, and
+    // splitting the group is exactly what that fixture exists to catch.
+    const std::unordered_set<size_t>* portalVisibleRegions_ = nullptr;
     const SimulationOutput* currentFrameSimResults_ = nullptr;
 #ifdef EQT_HAS_GLES2
     std::unique_ptr<GPUUploadThread> gpuUploadThread_;   // Async GPU upload thread (shared EGL context)
@@ -784,7 +790,6 @@ private:
     // now live directly here via TreeWindController + TreeIdentifier (both
     // were already separate TUs; AnimatedTreeManager was just a wrapper).
     TreeWindController treeWindController_;  // Wind config, weather multiplier
-    TreeIdentifier treeIdentifier_;          // Tree mesh classification (isTreeMesh)
     std::unique_ptr<WeatherSystem> weatherSystem_;  // Weather state management
     std::unique_ptr<Environment::ParticleManager> particleManager_;  // Environmental particles
     std::unique_ptr<WeatherEffectsController> weatherEffects_;  // Weather visual effects (rain, snow, lightning)
@@ -797,7 +802,6 @@ private:
     mutable std::mutex eqe1Mutex_;
     // T207: name -> owning-archive index (data/eqe1_texture_index.json). Loaded
     // once and reused across zones; the candidate set is per-zone, not this.
-    EQE1TextureIndex eqe1Index_;
 
     // P04: global archives resolved for the current zone but not yet opened.
     // loadZoneStep0_EQE1 populates this (instead of eagerly opening every
@@ -826,7 +830,6 @@ private:
     // L09 (Batch L): gles2Helper_ moved to ZoneLifecycleComponent.
     std::unique_ptr<Environment::BoidsManager> boidsManager_;  // Ambient creatures (boids)
     std::unique_ptr<Environment::TumbleweedManager> tumbleweedManager_;  // Tumbleweeds (desert/plains)
-    std::unique_ptr<GraphicsArchiveIndex> graphicsArchiveIndex_;  // Race-to-archive index for deferred loading
 
     std::shared_ptr<S3DZone> currentZone_;
     std::string currentZoneName_;
@@ -844,7 +847,6 @@ private:
     // Manual zone draw (front-to-back sorting and portal occlusion)
     bool manualZoneDrawEnabled_ = false;
     std::vector<SortedRegionEntry> sortedZoneDrawList_;
-    std::vector<ZoneDrawEntry> sortedDrawEntries_;  // Material-sorted mesh buffer draw list
     // L09 (Batch L): drawZoneGeometrySorted() is on ZoneLifecycleComponent.
 
     // P10: cross-region zone draw merge state (see renderer_zone_merge.h).
@@ -856,9 +858,6 @@ private:
     // (mergeZoneDrawsDisabledForZone_) -- see renderer_zone_merge.h's header
     // comment for the reduced-landing rationale.
     bool mergeZoneDrawsEnabled_ = false;
-    bool mergeZoneDrawsDisabledForZone_ = false;
-    size_t mergeZoneDrawsBuildEvictionCount_ = 0;
-    std::unique_ptr<ZoneMergeBuffers> zoneMergeBuffers_;
 
     // P10b: root-cause fix for the qeynos2 mergeZoneDraws SIGSEGV -- keeps
     // regionMeshNodes_'s materials (including nodes detached from the scene
@@ -874,6 +873,13 @@ private:
     // class of dangling-pointer bug -- see renderer_zone_merge.h's
     // SingleTexturePointerGuard doc comment for the full story (found while
     // verifying P10b's own fix, pre-existing, unrelated to mergeZoneDraws).
+    // L13: softwareCursorTexture_ STAYS. FrameComponent reads it twice, but
+    // IrrlichtRenderer::createSoftwareCursor() creates it and the guard below
+    // binds a REFERENCE to it that the texture cache holds as an eviction
+    // listener -- moving the referent into a component would make its lifetime
+    // depend on component teardown order. Correction 10's init/core terminal
+    // owner, and a lifetime question a structural unit must not open.
+    irr::video::ITexture* softwareCursorTexture_ = nullptr;  // DRM mode software cursor
     std::unique_ptr<SingleTexturePointerGuard> softwareCursorTextureGuard_;
 
     // P17: entity-mesh sibling of regionMeshTextureGuard_ above -- closes
@@ -894,7 +900,6 @@ private:
     // (objectNodes_ is a persistent member, safe to bind a reference to for
     // the renderer's lifetime) and registered the same way. See
     // renderer_zone_merge.h's ObjectNodeTextureGuard doc comment.
-    std::unique_ptr<ObjectNodeTextureGuard> objectNodeTextureGuard_;
 
     // L08: doorTextureGuard_ moved to ZoneStreamComponent (single-family).
 
@@ -914,7 +919,6 @@ private:
     // setVisible(false), never detached -- see the Review for the full
     // argument); it needs no guard either.
     // L08: boidsTextureGuard_ moved to ZoneStreamComponent (single-family).
-    std::unique_ptr<ForwardingTextureGuard> spellVisualFXTextureGuard_;
 
     // L09 (Batch L): the VBO/EBO helpers moved.
 
@@ -932,7 +936,6 @@ private:
 
     // Portal-based entity culling — pointer to SimulationOutput front buffer
     // (no copy). T116: set ONLY by bindFrameSimulationBuffers().
-    const std::unordered_set<size_t>* portalVisibleRegions_ = nullptr;
 
     // PVS depth map — pointer to SimulationOutput front buffer (no copy).
     // T116: set ONLY by bindFrameSimulationBuffers().
@@ -989,8 +992,6 @@ private:
 
     // PVS neighborhood cache: suppress onPvsRegionChanged() when moving within
     // a cluster of adjacent regions. Only fire when leaving the neighborhood.
-    std::unordered_set<size_t> pvsNeighborhood_;  // regions within K portal hops of anchor
-    size_t pvsNeighborhoodAnchor_ = SIZE_MAX;
     // L08: rebuildPvsNeighborhood()/isInPvsNeighborhood() are on
     // ZoneStreamComponent; the two members above stay here (zone_lifecycle
     // clears them on unload).
@@ -998,12 +999,9 @@ private:
     // L09 (Batch L): the portal/stencil draw recursion moved.
 
     // Debug visualization for portals/stencil
-    bool portalDebugDraw_ = false;
-    bool stencilDebugDraw_ = false;
 
     // Zone placeholder mesh (HCMap collision mesh as visual context during loading)
     irr::scene::IMeshSceneNode* zonePlaceholderNode_ = nullptr;
-    irr::core::vector3df lastPlaceholderBuildPos_;  // Irrlicht coords of last placeholder build
     // L09 (Batch L): the placeholder build/destroy pair + its cache moved.
 
     // T292 (2026-08-26): protectedRegions_ removed. It was the
@@ -1013,20 +1011,12 @@ private:
     // it were therefore permanently no-ops. See
     // src/client/graphics/CLAUDE.md's "Constrained Memory Management"
     // section for the removed cache's reference pointer.
-    irr::scene::IMeshSceneNode* zoneCollisionNode_ = nullptr;  // Hidden node for zone collision in PVS mode
 
     // L09 (Batch L): pendingTextureRegions_ is on ZoneLifecycleComponent.
 
-    // Regions queued for texture-ready rebuild (sorted: player region first, then by distance)
-    struct TextureRebuildEntry {
-        size_t regionIdx;
-        float distanceSq;
-    };
-    std::vector<TextureRebuildEntry> textureRebuildQueue_;
 
     // Doors waiting for async textures to complete GPU upload.
     // Maps texture name → set of door IDs that were built without that texture.
-    std::unordered_map<std::string, std::unordered_set<uint8_t>> pendingTextureDoors_;
     std::vector<uint8_t> doorTextureRebuildQueue_;
 
     // PVS objects waiting for async textures to complete GPU upload.
@@ -1046,14 +1036,6 @@ private:
     // L10 (Batch L): pendingZoneComputations_ and loadFailed_ moved.
     bool sequentialLoadComplete_ = false;  // True after loadZoneSequential() finishes
 
-    // Stored zone environment from NewZone packet (applied after global assets load)
-    struct StoredZoneEnvironment {
-        uint8_t skyType = 0;
-        uint8_t zoneType = 0;
-        uint8_t fogR[4] = {0}, fogG[4] = {0}, fogB[4] = {0};
-        float fogMinClip[4] = {0}, fogMaxClip[4] = {0};
-        bool pending = false;
-    } storedZoneEnvironment_;
 
     std::vector<irr::scene::IMeshSceneNode*> objectNodes_;
 
@@ -1067,24 +1049,22 @@ private:
     // It is capped by zoneMaxClip_ (server-provided maximum for the current zone)
     // fogEnd = renderDistance_, fogStart = renderDistance_ - fogThickness_
     float renderDistance_ = 300.0f;    // Effective render limit (sphere around player)
-    float userRenderDistance_ = 300.0f; // User's desired render distance (slider value)
-    float zoneMaxClip_ = 99999.0f;     // Server-provided max clip plane for current zone (0 = no limit)
     float fogThickness_ = 50.0f;       // Thickness of fog fade zone at edge
     bool forcePvsUpdate_ = false;  // Force PVS visibility recalculation (set when render distance changes)
-    // Zone light data — no scene nodes, just base data for worker
-    struct ZoneLightData {
-        float radius;
-        float attConstant, attLinear, attQuadratic;
-        irr::video::SColorf baseDiffuseColor;  // Original color from WLD
-    };
+    // L13: these five types were nested here; they now live at namespace scope
+    // (renderer_types.h; render_pass_timer.h for the timer class) so the
+    // context and the component headers can name them. See those headers.
+    using ZoneLightData = ::EQT::Graphics::RendererZoneLightData;
+    using FireGlowLight = ::EQT::Graphics::FireGlowLight;
+    using DoorCollisionData = ::EQT::Graphics::DoorCollisionData;
+    using FrameTimings = ::EQT::Graphics::FrameTimings;
+    using RenderPassTimer = ::EQT::Graphics::RenderPassTimer;
+    friend class ::EQT::Graphics::RenderPassTimer;  // was nested; kept its access
     std::vector<ZoneLightData> zoneLightData_;
     std::vector<irr::core::vector3df> zoneLightPositions_;  // Cached positions for distance culling
-    std::vector<size_t> zoneLightRegions_;  // Cached BSP region index for each light (SIZE_MAX = no region)
     std::vector<ObjectLight> objectLights_;  // Light-emitting objects (torches, lanterns)
     std::vector<bool> objectLightInSceneGraph_;  // Track which object lights are in scene graph
-    int activeLightCount_ = 0;  // Number of active shader lights from last SimulationOutput
     std::vector<VertexAnimatedMesh> vertexAnimatedMeshes_;  // Meshes with vertex animation (flags, banners)
-    irr::scene::ILightSceneNode* sunLight_ = nullptr;  // Directional sun light
     float ambientMultiplier_ = 1.0f;  // User-adjustable ambient light multiplier (Page Up/Down)
 
     // Time of day
@@ -1093,7 +1073,6 @@ private:
 
     // Frame phase shared state -- L12 moved measureSection()/sectionStart_ to
     // FrameComponent and deleted the write-only frameStart_ (see that header).
-    bool chatInputFocused_ = false;
     // L11: pendingUIClick_, runTier2_/runTier3_, the two tier intervals,
     // tier3DeltaAccum_ and windTime_ are on FrameComponent. frameNumber_ stays
     // (renderer_sim_bridge.cpp and renderer_zone_load_env.cpp read it).
@@ -1101,8 +1080,6 @@ private:
 
     // Frame budget governor (Green/Yellow/Red state machine for load throttling)
     std::unique_ptr<FrameBudgetGovernor> governor_;
-    float renderCostAvgUs_ = 15000.0f;  // EMA of render phase cost (us), init ~15ms
-    float essentialSimCostAvgUs_ = 3000.0f;  // EMA of essential sim cost (us), init ~3ms
 
     RendererConfig config_;
 
@@ -1119,51 +1096,27 @@ private:
     std::atomic<bool> loading_{false};   // True while loading thread owns GL context
     bool loadingScreenVisible_ = true;  // True when loading screen is showing (default: show at start)
     bool zoneReady_ = false;  // True when zone is fully loaded and ready for player input
-    bool networkReady_ = false;  // True when network packet exchange is complete
     // L09 (Batch L): entitiesLoaded_/expectedEntityCount_ moved out.
-    size_t loadedEntityCount_ = 0;  // Number of entities fully loaded so far
-    float loadingProgress_ = 0.0f;  // Loading progress for zone transitions (0.0 - 1.0)
-    std::wstring loadingText_ = L"Initializing...";  // Loading stage text
     bool wireframeMode_ = false;
-    bool hudEnabled_ = true;
     bool fogEnabled_ = true;
     bool lightingEnabled_ = true;   // Lighting enabled by default
-    bool zoneLightsEnabled_ = false; // Zone lights off by default
     // L05: baseVision_ moved to PlayerCameraComponent (single-family; its only
     // other user was the inline getBaseVision(), which moved with it).
     // currentVision_ stays -- renderer_sim_bridge.cpp and
     // renderer_zone_load_env.cpp read it.
     VisionType currentVision_ = VisionType::Normal; // Current vision (may be upgraded by items/buffs)
-    int maxObjectLights_ = 8;  // Max object lights to display (1-8), cycles with L key
-    bool debugPlayerLightEnabled_ = true;    // /plight toggle
-    bool debugObjectLightsEnabled_ = true;   // /olight toggle
-    bool debugDirectionalLightEnabled_ = true; // /zlight toggle
     bool fireEffectsEnabled_ = true;      // Fire light flickering and ember/smoke particles
     bool fireGlowLightingEnabled_ = true;  // Fire glow lighting (per-vertex warm glow on zone geometry)
     bool fireGlowIcospheresEnabled_ = false; // Fire glow icospheres (animated translucent volumes)
     int maxFireGlowLights_ = 4;            // Max active fire glow lights (1-8, from config)
 
-    // Fire glow light data (collected during zone load)
-    struct FireGlowLight {
-        irr::core::vector3df position;  // Irrlicht Y-up
-        float r, g, b;                 // Fire color
-        float radius;                  // Glow radius
-        float flickerPhase;            // Random phase offset for animation
-        float flickerSpeed;            // Random speed multiplier
-    };
     std::vector<FireGlowLight> fireGlowLights_;
-    float fireGlowTime_ = 0.0f;       // Animation time accumulator
 
     // Icosphere rendering (animated fire glow volumes)
-    std::vector<float> icosphereVertices_;   // 3 floats per vertex (unit sphere positions)
-    std::vector<uint16_t> icosphereIndices_;
 #ifdef EQT_HAS_DRM
-    uint32_t icosphereVBO_ = 0;
-    uint32_t icosphereIBO_ = 0;
     uint32_t icosphereProgram_ = 0;
 #endif
 
-    CameraMode cameraMode_ = CameraMode::Follow;  // Default to third-person follow camera
 
     // Zone geometry bounds cache (survives geometry vector release)
     float zoneBoundsMinX_ = 0, zoneBoundsMaxX_ = 0;
@@ -1173,34 +1126,16 @@ private:
     // Player position (for Follow and FirstPerson modes)
     float playerX_ = 0, playerY_ = 0, playerZ_ = 0, playerHeading_ = 0;
     // L05: playerPitch_ moved to PlayerCameraComponent (single-family).
-    uint16_t playerSpawnId_ = 0;  // Spawn ID of the player entity
 
-    // Player light source (lantern, lightstone, etc.) - always highest priority in light pool
-    irr::scene::ILightSceneNode* playerLightNode_ = nullptr;
-    uint8_t playerLightLevel_ = 0;
 
-    // HUD elements
-    irr::gui::IGUIStaticText* hudText_ = nullptr;
-    irr::gui::IGUIStaticText* hotkeysText_ = nullptr;  // Hotkey hints in upper right
 
     // Performance: HUD dirty tracking to avoid rebuilding every frame
     // K15 (B034): cachedHudText_ / cachedHotkeysText_ / cachedHeadingDebugText_
     // deleted -- zero references; the dirty tracking below is what is live.
     // L03: HudCachedState and hudCachedState_ moved to OverlaysComponent.
 
-    // FPS tracking
-    int currentFps_ = 0;
-    int frameCount_ = 0;
-    irr::u32 lastFpsTime_ = 0;
 
-    // Polygon count tracking (for constrained mode)
-    uint32_t lastPolygonCount_ = 0;  // DiagnosticsComponent reads it; the two
-    // throttle counters that sat here are on FrameComponent (L11).
 
-    // L05: playerMovement_ moved to PlayerCameraComponent with its four inline
-    // accessors. playerConfig_ stays -- renderer_frame_input.cpp and
-    // renderer_frame_render.cpp read it.
-    PlayerModeConfig playerConfig_;
     eqt::bridge::GameStateBridge* bridge_ = nullptr;  // For pushing intents (D14+)
 
     // Collision detection for player mode (shared ownership — P35)
@@ -1212,14 +1147,9 @@ private:
     // ctor initialiser list (renderer_init.cpp). See renderer_context.h.
     RendererContext ctx_;
 
-    // Target selection
-    uint16_t currentTargetId_ = 0;
-    std::string currentTargetName_;
 
     // Irrlicht-based collision (using zone geometry directly)
     // Legacy meta selectors — only used by HCMap fallback/debug path (no BSP)
-    irr::scene::ITriangleSelector* zoneTriangleSelector_ = nullptr;
-    irr::scene::ITriangleSelector* terrainOnlySelector_ = nullptr;
     irr::scene::ISceneCollisionManager* collisionManager_ = nullptr;
 
     // BSP-filtered collision: pre-transformed world-space triangles — no matrix math per query
@@ -1229,12 +1159,8 @@ private:
 
     // Pre-baked door collision: open + closed world-space triangles per door
     // During animation (opening/closing), door has no collision (walk-through, matching original EQ behavior)
-    struct DoorCollisionData {
-        std::vector<irr::core::triangle3df> closedTriangles;
-        std::vector<irr::core::triangle3df> openTriangles;
-        size_t bspRegion = SIZE_MAX;
-        bool hasCollision = true;  // false for invisible, teleporter, spinning, lifts, hazardous
-    };
+    // L13: the DoorCollisionData type is now at namespace scope (renderer_types.h);
+    // the alias above keeps IrrlichtRenderer::DoorCollisionData spelling valid.
     std::map<uint8_t, DoorCollisionData> doorCollisionData_;
 
     // L05 (Batch L): the whole collision/raycast/ground-height layer, the
@@ -1250,17 +1176,10 @@ private:
     // -- moved to OverlaysComponent. Only the members the frame family also
     // touches stayed here (Batch K Mechanism 3); the overlay TUs reach them
     // as owner_.X_.
-    bool showMapOverlay_ = false;
-    int mapOverlayRotation_ = 0;       // Rotation index: 0=0°, 1=90°, 2=180°, 3=270° around Y axis
-    bool mapOverlayMirrorX_ = false;   // Mirror placeables across YZ plane (negate X)
-    bool showNavmeshOverlay_ = false;
-    int navmeshOverlayRotation_ = 0;   // Rotation index: 0=0°, 1=90°, 2=180°, 3=270° around Y axis
-    bool navmeshOverlayMirrorX_ = false;   // Mirror across YZ plane (negate X)
 
     // U07c3: WindowManager deleted — inventoryManager remains for bridge data access
 
     // Spell visual effects
-    std::unique_ptr<EQ::SpellVisualFX> spellVisualFX_;
     std::unique_ptr<TextBatch> textBatch_;  // U01
     std::unique_ptr<UIAtlas> uiAtlas_;     // U02
     // L11: uiRenderer_, uiLayout_ and newUIEnabled_ are on FrameComponent.
@@ -1275,7 +1194,6 @@ private:
     // L03: the doll itself stays (renderer_entities and the frame family
     // reach it); its bookkeeping members and both methods moved to
     // OverlaysComponent.
-    std::unique_ptr<eqt::ui::CharacterModelView> characterModelView_;
 
     // T319: see handleActionResult()/requestChatPrefill()/takeChatPrefill()
     // above. Written on the game thread, read on the render thread; every
@@ -1315,141 +1233,12 @@ private:
     uint32_t getWorldObjectAtScreenPos(int screenX, int screenY) const;
     uint32_t getNearestWorldObject(float playerX, float playerY, float playerZ, float maxDistance = 50.0f) const;
 
-    // Frame timing profiler for performance analysis
-    struct FrameTimings {
-        int64_t inputHandling = 0;
-        int64_t cameraUpdate = 0;
-        int64_t entityUpdate = 0;
-        int64_t doorUpdate = 0;
-        int64_t spellVfxUpdate = 0;
-        int64_t animatedTextures = 0;
-        int64_t vertexAnimations = 0;
-        int64_t fireFlicker = 0;
-        int64_t objectVisibility = 0;
-        int64_t pvsVisibility = 0;
-        int64_t meshLoading = 0;
-        int64_t objectLights = 0;
-        int64_t tier2Update = 0;     // Detail objects, trees
-        int64_t tier3Update = 0;     // Weather, sky, particles, boids
-        int64_t hudUpdate = 0;
-        int64_t sceneDrawAll = 0;
-        // Scene Draw All sub-timings (from render pass timer)
-        int64_t sceneAnimate = 0;       // OnAnimate + OnRegisterSceneNode
-        int64_t sceneSolid = 0;         // ESNRP_SOLID pass
-        int64_t sceneTransparent = 0;   // ESNRP_TRANSPARENT + TRANSPARENT_EFFECT passes
-        int64_t sceneSkybox = 0;        // ESNRP_SKY_BOX pass
-        int64_t sceneOther = 0;         // Camera + light + shadow passes
-        int sceneNodeCount = 0;         // Nodes rendered in drawAll
-        int64_t manualZoneDraw = 0;
-        int64_t targetBox = 0;
-        int64_t particles = 0;
-        int64_t boids = 0;
-        int64_t weatherRender = 0;
-        int64_t debugOverlays = 0;
-        int64_t castingBars = 0;
-        int64_t guiDrawAll = 0;
-        int64_t staticUI = 0;           // Static UI panels (player status, chat, hotbar, etc.)
-        int64_t zoneLineOverlay = 0;
-        int64_t glFinish = 0;            // glFinish() before endScene (GPU pipeline drain)
-        int64_t endScene = 0;
-        int64_t totalFrame = 0;
-        int manualZoneRegionsDrawn = 0;  // Regions actually drawn in manual zone draw
-        int manualZoneDrawCalls = 0;     // Individual drawMeshBuffer calls
-        // Fine-grained fields (Phase 2 timing gaps)
-        int64_t playerMovement = 0;      // updatePlayerMovement() - collision during movement
-        int64_t occlusionCulling = 0;    // Software occlusion rasterize + test (inside PVS)
-        int64_t zoneLightVisibility = 0; // updateZoneLightVisibility() (split from objectVisibility)
-        // U07c3: windowManagerUpdate removed
-        int64_t weatherSystemUpdate = 0; // weatherSystem_->update() (every frame, outside Tier 3)
-        int64_t footprintRender = 0;     // detailManager_->renderFootprints()
-        int64_t postRender = 0;          // RDP capture + cursor + screenshot
-        int64_t simWorkerApply = 0;      // SimulationWorker result application
-        int64_t drainQueues = 0;         // GLES2 upload drain + texture cache drain
-        int64_t visibility = 0;          // processFrameVisibility() - frustum update
-        int64_t postSimInput = 0;        // postSimulationInput() - worker input posting
-        int64_t postLoadWork = 0;        // Post-loading priority work (GREEN-gated)
-        int64_t entityHousekeeping = 0;  // Entity prep promote/scan/dispatch
-    };
-    FrameTimings frameTimings_;
-    FrameTimings frameTimingsAccum_;  // Accumulated over multiple frames
-    int frameTimingsSampleCount_ = 0;
-    bool frameTimingEnabled_ = false;  // Enable with /frametiming command
 
-    // Render pass timer - hooks into Irrlicht's ILightManager to time individual render passes
-    class RenderPassTimer : public irr::scene::ILightManager {
-    public:
-        // Per-pass accumulated times (reset each frame via reset())
-        int64_t solidTime = 0;
-        int64_t transparentTime = 0;  // TRANSPARENT + TRANSPARENT_EFFECT
-        int64_t skyboxTime = 0;
-        int64_t otherTime = 0;        // CAMERA + LIGHT + SHADOW
-        int nodeCount = 0;
-
-        void reset() {
-            solidTime = 0; transparentTime = 0; skyboxTime = 0; otherTime = 0;
-            nodeCount = 0; firstPassSeen_ = false;
-        }
-
-        void OnPreRender(irr::core::array<irr::scene::ISceneNode*>& lightList) override {
-            preRenderTime_ = std::chrono::steady_clock::now();
-        }
-        void OnPostRender() override {}
-        void OnRenderPassPreRender(irr::scene::E_SCENE_NODE_RENDER_PASS renderPass) override;
-        // Implementation in renderer_zone_draw.cpp (needs access to IrrlichtRenderer)
-        void OnRenderPassPostRender(irr::scene::E_SCENE_NODE_RENDER_PASS renderPass) override {
-            auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
-                std::chrono::steady_clock::now() - passStart_).count();
-            switch (renderPass) {
-                case irr::scene::ESNRP_SOLID:
-                    solidTime += elapsed;
-                    // P52: close the entity-pass GPU query if OnRenderPassPreRender opened
-                    // one (only happens when manualZoneDrawEnabled_ split zone from entity
-                    // draw this frame — see OnRenderPassPreRender in renderer_zone_draw.cpp).
-                    if (entityGPUQueryActive_) {
-                        eqtGPUPhaseEnd(1 /* GPUSyncPhase::EntityPass */);
-                        entityGPUQueryActive_ = false;
-                    }
-                    break;
-                case irr::scene::ESNRP_TRANSPARENT:
-                case irr::scene::ESNRP_TRANSPARENT_EFFECT:
-                    transparentTime += elapsed; break;
-                case irr::scene::ESNRP_SKY_BOX:
-                    skyboxTime += elapsed; break;
-                default:
-                    otherTime += elapsed; break;
-            }
-        }
-        void OnNodePreRender(irr::scene::ISceneNode* node) override { nodeCount++; }
-        void OnNodePostRender(irr::scene::ISceneNode* node) override {}
-
-        // Time between OnPreRender and first pass = animate+register overhead
-        int64_t getAnimateTime() const {
-            if (!firstPassSeen_) return 0;
-            return std::chrono::duration_cast<std::chrono::microseconds>(
-                firstPassStart_ - preRenderTime_).count();
-        }
-
-        // Set renderer for manual zone draw hook
-        void setRenderer(IrrlichtRenderer* r) { renderer_ = r; }
-
-    private:
-        IrrlichtRenderer* renderer_ = nullptr;
-        std::chrono::steady_clock::time_point passStart_;
-        std::chrono::steady_clock::time_point firstPassStart_;
-        std::chrono::steady_clock::time_point preRenderTime_;
-        bool firstPassSeen_ = false;
-        irr::scene::E_SCENE_NODE_RENDER_PASS currentPass_ = irr::scene::ESNRP_NONE;
-        // P52: tracks whether a GPU timer query for the entity pass (GPUSyncPhase::EntityPass)
-        // was opened this SOLID pass, so OnRenderPassPostRender only closes it when it was
-        // actually opened (manualZoneDrawEnabled_ gates whether zone/entity are split at all).
-        bool entityGPUQueryActive_ = false;
-    };
     RenderPassTimer* renderPassTimer_ = nullptr;  // Owned by Irrlicht (ref counted)
 
     // 3D camera transforms captured during SOLID pass (before any 2D drawing overwrites them)
     irr::core::matrix4 captured3DView_;
     irr::core::matrix4 captured3DProj_;
-    bool have3DTransforms_ = false;
 
     // Scene breakdown profiler - profiles drawAll() by node category
     struct SceneBreakdown {
@@ -1470,8 +1259,6 @@ private:
         int objectCount = 0;
         int doorCount = 0;
     };
-    bool sceneProfileEnabled_ = false;
-    int sceneProfileFrameCount_ = 0;
 
     // L04 (Batch L): the diagnostics family -- scene dump, profiling, memory
     // report and the runtime debug toggles -- now lives in

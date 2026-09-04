@@ -174,7 +174,7 @@ void IrrlichtRenderer::shutdown() {
     // reset needed, they hold no Irrlicht scene-graph resources.
     detailManager_.reset();
     // constrainedTextureCache_ is owned by Application, not reset here
-    spellVisualFX_.reset();
+    SimBridge().spellVisualFX().reset();
 
     if (device_) {
         device_->drop();
@@ -183,10 +183,10 @@ void IrrlichtRenderer::shutdown() {
 
     driver_ = nullptr;
     smgr_ = nullptr;
-    guienv_ = nullptr;
+    Overlays().guienv() = nullptr;
     camera_ = nullptr;
-    hudText_ = nullptr;
-    hotkeysText_ = nullptr;
+    Overlays().hudText() = nullptr;
+    Overlays().hotkeysText() = nullptr;
     initialized_ = false;
     loadingScreenVisible_ = true;
 
@@ -280,19 +280,19 @@ void IrrlichtRenderer::setupLighting() {
     smgr_->setAmbientLight(irr::video::SColorf(0.005f, 0.005f, 0.008f, 1.0f));
 
     // Add a directional light (sun) - store reference for time of day updates
-    sunLight_ = smgr_->addLightSceneNode(
+    Diagnostics().sunLight() = smgr_->addLightSceneNode(
         nullptr,
         irr::core::vector3df(0, 1000, 0),
         irr::video::SColorf(1.0f, 1.0f, 0.9f, 1.0f),
         10000.0f
     );
 
-    if (sunLight_) {
-        irr::video::SLight& lightData = sunLight_->getLightData();
+    if (Diagnostics().sunLight()) {
+        irr::video::SLight& lightData = Diagnostics().sunLight()->getLightData();
         lightData.Type = irr::video::ELT_DIRECTIONAL;
         lightData.Direction = irr::core::vector3df(0.5f, -1.0f, 0.5f);
         // Start with sun hidden (dark mode - only object lights)
-        sunLight_->setVisible(false);
+        Diagnostics().sunLight()->setVisible(false);
     }
 }
 
@@ -305,7 +305,7 @@ void IrrlichtRenderer::updateTimeOfDay(uint8_t hour, uint8_t minute) {
 
     // Don't update ambient/sun if we're in dark mode (zone lights OFF)
     // In dark mode, only object lights illuminate the scene
-    if (lightingEnabled_ && !zoneLightsEnabled_) {
+    if (lightingEnabled_ && !Diagnostics().zoneLightsEnabled()) {
         return;
     }
 
@@ -363,8 +363,8 @@ void IrrlichtRenderer::updateTimeOfDay(uint8_t hour, uint8_t minute) {
     smgr_->setAmbientLight(irr::video::SColorf(r, g, b, 1.0f));
 
     // Update sun light intensity
-    if (sunLight_) {
-        irr::video::SLight& lightData = sunLight_->getLightData();
+    if (Diagnostics().sunLight()) {
+        irr::video::SLight& lightData = Diagnostics().sunLight()->getLightData();
         lightData.DiffuseColor = irr::video::SColorf(sunIntensity, sunIntensity, sunIntensity * 0.9f, 1.0f);
     }
 
@@ -449,7 +449,7 @@ void IrrlichtRenderer::updateTimeOfDay(uint8_t hour, uint8_t minute) {
 
     // Update shader uniforms with current lighting state
     if (zoneShader_ && zoneShader_->isAvailable()) {
-        if (!debugDirectionalLightEnabled_) {
+        if (!Diagnostics().debugDirectionalLightEnabled()) {
             // Fullbright: override ambient/sun/tint for debug isolation
             zoneShader_->setAmbientColor(1.0f, 1.0f, 1.0f);
             zoneShader_->setSunColor(0.0f, 0.0f, 0.0f);
@@ -898,12 +898,12 @@ bool IrrlichtRenderer::saveScreenshot(const std::string& filename) {
 
 void IrrlichtRenderer::setFrameTimingEnabled(bool enabled) {
     if (isLoading()) return;
-    frameTimingEnabled_ = enabled;
+    Frame().frameTimingEnabled() = enabled;
     if (enabled) {
         // Reset accumulators when starting
-        frameTimings_ = FrameTimings();
-        frameTimingsAccum_ = FrameTimings();
-        frameTimingsSampleCount_ = 0;
+        Frame().timings() = FrameTimings();
+        Frame().timingsAccum() = FrameTimings();
+        Frame().timingsSampleCount() = 0;
         // S05: renderPassTimer_ already created in initLoadingScreen() — just install
         if (smgr_ && renderPassTimer_) {
             smgr_->setLightManager(renderPassTimer_);

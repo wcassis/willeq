@@ -32,14 +32,14 @@ void DiagnosticsComponent::toggleWireframe() {
 }
 
 void DiagnosticsComponent::toggleHUD() {
-    owner_.hudEnabled_ = !owner_.hudEnabled_;
-    if (owner_.hudText_) {
-        owner_.hudText_->setVisible(owner_.hudEnabled_);
+    hudEnabled_ = !hudEnabled_;
+    if (ctx_.Overlays().hudText()) {
+        ctx_.Overlays().hudText()->setVisible(hudEnabled_);
     }
-    if (owner_.hotkeysText_) {
-        owner_.hotkeysText_->setVisible(owner_.hudEnabled_);
+    if (ctx_.Overlays().hotkeysText()) {
+        ctx_.Overlays().hotkeysText()->setVisible(hudEnabled_);
     }
-    LOG_INFO(MOD_GRAPHICS, "HUD: {}", (owner_.hudEnabled_ ? "ON" : "OFF"));
+    LOG_INFO(MOD_GRAPHICS, "HUD: {}", (hudEnabled_ ? "ON" : "OFF"));
 }
 
 void DiagnosticsComponent::toggleAllUI() {
@@ -83,18 +83,18 @@ void DiagnosticsComponent::toggleZoneLights() {
     // State 3: Lighting OFF, Zone lights OFF - no lighting effects
     // Then back to State 1
 
-    if (ctx_.lightingEnabled && !owner_.zoneLightsEnabled_) {
+    if (ctx_.lightingEnabled && !zoneLightsEnabled_) {
         // State 1 -> State 2: Turn zone lights ON, restore normal ambient/sun
-        owner_.zoneLightsEnabled_ = true;
+        zoneLightsEnabled_ = true;
         // Restore normal ambient and sun based on time of day
         owner_.updateTimeOfDay(ctx_.currentHour, ctx_.currentMinute);
-        if (owner_.sunLight_) {
-            owner_.sunLight_->setVisible(true);
+        if (sunLight_) {
+            sunLight_->setVisible(true);
         }
-        LOG_INFO(MOD_GRAPHICS, "Lighting: ON, Zone lights: ON ({} lights)", owner_.zoneLightData_.size());
-    } else if (ctx_.lightingEnabled && owner_.zoneLightsEnabled_) {
+        LOG_INFO(MOD_GRAPHICS, "Lighting: ON, Zone lights: ON ({} lights)", ctx_.zoneLightData.size());
+    } else if (ctx_.lightingEnabled && zoneLightsEnabled_) {
         // State 2 -> State 3: Turn both OFF
-        owner_.zoneLightsEnabled_ = false;
+        zoneLightsEnabled_ = false;
         ctx_.lightingEnabled = false;
         // Update materials to disable lighting
         if (ctx_.zoneMeshNode) {
@@ -126,7 +126,7 @@ void DiagnosticsComponent::toggleZoneLights() {
         // State 3 -> State 1: Turn lighting ON, keep zone lights OFF
         // Dark scene - only object lights provide illumination
         ctx_.lightingEnabled = true;
-        owner_.zoneLightsEnabled_ = false;
+        zoneLightsEnabled_ = false;
         // Update materials to enable lighting
         if (ctx_.zoneMeshNode) {
             for (irr::u32 i = 0; i < ctx_.zoneMeshNode->getMaterialCount(); ++i) {
@@ -159,8 +159,8 @@ void DiagnosticsComponent::toggleZoneLights() {
         }
         // Set dark ambient and disable sun - only object lights illuminate
         ctx_.smgr->setAmbientLight(irr::video::SColorf(0.005f, 0.005f, 0.008f, 1.0f));
-        if (owner_.sunLight_) {
-            owner_.sunLight_->setVisible(false);
+        if (sunLight_) {
+            sunLight_->setVisible(false);
         }
         // Update entity materials
         if (ctx_.entityRenderer) {
@@ -172,10 +172,10 @@ void DiagnosticsComponent::toggleZoneLights() {
 
 void DiagnosticsComponent::togglePlayerLight() {
     if (owner_.isLoading()) return;
-    owner_.debugPlayerLightEnabled_ = !owner_.debugPlayerLightEnabled_;
+    debugPlayerLightEnabled_ = !debugPlayerLightEnabled_;
     // Toggle shader variant (GLES2 only — lightweight vs per-pixel player light)
     if (ctx_.zoneShader && ctx_.zoneShader->isLightweightAvailable()) {
-        ctx_.zoneShader->setPerPixelPlayerLight(owner_.debugPlayerLightEnabled_);
+        ctx_.zoneShader->setPerPixelPlayerLight(debugPlayerLightEnabled_);
         LOG_INFO(MOD_GRAPHICS, "plight toggle: pp solid={} alpha={} atlasSolid={} atlasAlpha={}",
             ctx_.zoneShader->getMaterialTypeSolid(), ctx_.zoneShader->getMaterialTypeAlphaTest(),
             ctx_.zoneShader->getMaterialTypeAtlasSolid(), ctx_.zoneShader->getMaterialTypeAtlasAlpha());
@@ -187,7 +187,7 @@ void DiagnosticsComponent::togglePlayerLight() {
             ctx_.zoneShader->getActiveAtlasSolid(), ctx_.zoneShader->getActiveAtlasAlpha());
         swapZoneMeshMaterials();
     }
-    LOG_INFO(MOD_GRAPHICS, "Debug: Player light {}", owner_.debugPlayerLightEnabled_ ? "ENABLED" : "DISABLED");
+    LOG_INFO(MOD_GRAPHICS, "Debug: Player light {}", debugPlayerLightEnabled_ ? "ENABLED" : "DISABLED");
 }
 
 void DiagnosticsComponent::swapZoneMeshMaterials() {
@@ -298,7 +298,7 @@ void DiagnosticsComponent::swapZoneMeshMaterials() {
 
     // Rebuild sorted draw list if manual zone draw is active (material keys changed)
     if (ctx_.manualZoneDrawEnabled) {
-        owner_.sortedDrawEntries_.clear();
+        ctx_.ZoneLifecycle().sortedDrawEntries().clear();
     }
 
     // Swap existing entity mesh materials and update future entity material types
@@ -363,15 +363,15 @@ void DiagnosticsComponent::swapFromDebugShader(irr::s32 debugMat) {
 
 void DiagnosticsComponent::toggleObjectLights() {
     if (owner_.isLoading()) return;
-    owner_.debugObjectLightsEnabled_ = !owner_.debugObjectLightsEnabled_;
-    LOG_INFO(MOD_GRAPHICS, "Debug: Object lights {}", owner_.debugObjectLightsEnabled_ ? "ENABLED" : "DISABLED");
+    debugObjectLightsEnabled_ = !debugObjectLightsEnabled_;
+    LOG_INFO(MOD_GRAPHICS, "Debug: Object lights {}", debugObjectLightsEnabled_ ? "ENABLED" : "DISABLED");
 }
 
 void DiagnosticsComponent::toggleDirectionalLight() {
     if (owner_.isLoading()) return;
-    owner_.debugDirectionalLightEnabled_ = !owner_.debugDirectionalLightEnabled_;
+    debugDirectionalLightEnabled_ = !debugDirectionalLightEnabled_;
     if (ctx_.zoneShader && ctx_.zoneShader->isAvailable()) {
-        if (!owner_.debugDirectionalLightEnabled_) {
+        if (!debugDirectionalLightEnabled_) {
             // Fullbright: ambient=1, sun=0, tint=1
             ctx_.zoneShader->setAmbientColor(1.0f, 1.0f, 1.0f);
             ctx_.zoneShader->setSunColor(0.0f, 0.0f, 0.0f);
@@ -381,18 +381,18 @@ void DiagnosticsComponent::toggleDirectionalLight() {
             owner_.updateTimeOfDay(ctx_.currentHour, ctx_.currentMinute);
         }
     }
-    LOG_INFO(MOD_GRAPHICS, "Debug: Directional/ambient light {}", owner_.debugDirectionalLightEnabled_ ? "ENABLED" : "DISABLED");
+    LOG_INFO(MOD_GRAPHICS, "Debug: Directional/ambient light {}", debugDirectionalLightEnabled_ ? "ENABLED" : "DISABLED");
 }
 
 void DiagnosticsComponent::cycleObjectLights() {
     // Cycle: 0 -> 1 -> 2 -> 3 -> ... -> 8 -> 0 -> ...
-    if (owner_.maxObjectLights_ >= 8) {
-        owner_.maxObjectLights_ = 0;
+    if (maxObjectLights_ >= 8) {
+        maxObjectLights_ = 0;
     } else {
-        owner_.maxObjectLights_++;
+        maxObjectLights_++;
     }
 
-    LOG_INFO(MOD_GRAPHICS, "Object lights: {} max", owner_.maxObjectLights_);
+    LOG_INFO(MOD_GRAPHICS, "Object lights: {} max", maxObjectLights_);
 }
 
 void DiagnosticsComponent::toggleOldModels() {
@@ -434,8 +434,8 @@ void DiagnosticsComponent::toggleManualZoneDraw() {
     ctx_.manualZoneDrawEnabled = !ctx_.manualZoneDrawEnabled;
     if (ctx_.manualZoneDrawEnabled) {
         // S05: renderPassTimer_ already created in initLoadingScreen() — just install
-        if (ctx_.smgr && owner_.renderPassTimer_) {
-            ctx_.smgr->setLightManager(owner_.renderPassTimer_);
+        if (ctx_.smgr && ctx_.renderPassTimer) {
+            ctx_.smgr->setLightManager(ctx_.renderPassTimer);
         }
         // Remove zone mesh nodes from scene graph — manual draw accesses them directly
         for (auto& [regionIdx, node] : ctx_.regionMeshNodes) {
@@ -486,17 +486,17 @@ void DiagnosticsComponent::toggleManualZoneDraw() {
 void DiagnosticsComponent::toggleMergeZoneDraws() {
     if (owner_.isLoading()) return;
     ctx_.mergeZoneDrawsEnabled = !ctx_.mergeZoneDrawsEnabled;
-    if (!ctx_.mergeZoneDrawsEnabled && owner_.zoneMergeBuffers_) {
+    if (!ctx_.mergeZoneDrawsEnabled && ctx_.ZoneLifecycle().zoneMergeBuffers()) {
         // Free the merge buffers immediately when turned off — no reason to
         // hold the duplicated vertex/index memory while unused.
-        owner_.zoneMergeBuffers_->destroy();
+        ctx_.ZoneLifecycle().zoneMergeBuffers()->destroy();
     }
     // Re-arm the "disabled for this zone" latch when explicitly re-enabled,
     // so a user flipping /mergedraws off/on after an eviction-triggered
     // auto-disable gets a fresh attempt (at the cost of possibly hitting the
     // same eviction-driven fallback again — that's expected, not a bug).
     if (ctx_.mergeZoneDrawsEnabled) {
-        owner_.mergeZoneDrawsDisabledForZone_ = false;
+        ctx_.ZoneLifecycle().mergeZoneDrawsDisabledForZone() = false;
         // T67: was `constrainedMeshCache_ ? ...->getEvictionCount() : 0`,
         // always 0 (the cache was never constructed). Pre-existing note:
         // unlike drawZoneGeometrySorted()'s own gate (renderer_zone_draw.cpp),
@@ -504,7 +504,7 @@ void DiagnosticsComponent::toggleMergeZoneDraws() {
         // either, so re-enabling immediately after a texture-eviction-triggered
         // auto-disable could under-count and attempt a merge build one
         // eviction "early" -- not introduced here, not fixed here.
-        owner_.mergeZoneDrawsBuildEvictionCount_ = 0;
+        ctx_.ZoneLifecycle().mergeZoneDrawsBuildEvictionCount() = 0;
     }
     LOG_INFO(MOD_GRAPHICS, "Zone draw merge (/mergedraws): {}",
              ctx_.mergeZoneDrawsEnabled ? "ENABLED" : "DISABLED");
@@ -561,16 +561,16 @@ void DiagnosticsComponent::togglePortalOcclusion() {
 
 void DiagnosticsComponent::togglePortalDebugDraw() {
     if (owner_.isLoading()) return;
-    owner_.portalDebugDraw_ = !owner_.portalDebugDraw_;
+    portalDebugDraw_ = !portalDebugDraw_;
     LOG_INFO(MOD_GRAPHICS, "Portal debug draw: {}",
-             owner_.portalDebugDraw_ ? "ENABLED" : "DISABLED");
+             portalDebugDraw_ ? "ENABLED" : "DISABLED");
 }
 
 void DiagnosticsComponent::toggleStencilDebugDraw() {
     if (owner_.isLoading()) return;
-    owner_.stencilDebugDraw_ = !owner_.stencilDebugDraw_;
+    stencilDebugDraw_ = !stencilDebugDraw_;
     LOG_INFO(MOD_GRAPHICS, "Stencil debug draw: {}",
-             owner_.stencilDebugDraw_ ? "ENABLED" : "DISABLED");
+             stencilDebugDraw_ ? "ENABLED" : "DISABLED");
 }
 
 } // namespace Graphics

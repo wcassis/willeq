@@ -117,36 +117,36 @@ void Eqe1ArchiveComponent::buildIcosphereMesh() {
     }
 
     // Store vertices (position only — normal == position for unit sphere)
-    owner_.icosphereVertices_.clear();
-    owner_.icosphereVertices_ = std::move(pts);
+    icosphereVertices_.clear();
+    icosphereVertices_ = std::move(pts);
 
-    owner_.icosphereIndices_.clear();
+    icosphereIndices_.clear();
     for (const auto& tri : tris) {
-        owner_.icosphereIndices_.push_back(static_cast<uint16_t>(tri.i0));
-        owner_.icosphereIndices_.push_back(static_cast<uint16_t>(tri.i1));
-        owner_.icosphereIndices_.push_back(static_cast<uint16_t>(tri.i2));
+        icosphereIndices_.push_back(static_cast<uint16_t>(tri.i0));
+        icosphereIndices_.push_back(static_cast<uint16_t>(tri.i1));
+        icosphereIndices_.push_back(static_cast<uint16_t>(tri.i2));
     }
 
     // Upload to GPU
-    glGenBuffers(1, &owner_.icosphereVBO_);
-    glBindBuffer(GL_ARRAY_BUFFER, owner_.icosphereVBO_);
+    glGenBuffers(1, &icosphereVBO_);
+    glBindBuffer(GL_ARRAY_BUFFER, icosphereVBO_);
     glBufferData(GL_ARRAY_BUFFER,
-                 owner_.icosphereVertices_.size() * sizeof(float),
-                 owner_.icosphereVertices_.data(), GL_STATIC_DRAW);
+                 icosphereVertices_.size() * sizeof(float),
+                 icosphereVertices_.data(), GL_STATIC_DRAW);
 
-    glGenBuffers(1, &owner_.icosphereIBO_);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, owner_.icosphereIBO_);
+    glGenBuffers(1, &icosphereIBO_);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, icosphereIBO_);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER,
-                 owner_.icosphereIndices_.size() * sizeof(uint16_t),
-                 owner_.icosphereIndices_.data(), GL_STATIC_DRAW);
+                 icosphereIndices_.size() * sizeof(uint16_t),
+                 icosphereIndices_.data(), GL_STATIC_DRAW);
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
     LOG_INFO(MOD_GRAPHICS, "Built icosphere mesh: {} verts, {} tris, VBO={}, IBO={}",
-             static_cast<int>(owner_.icosphereVertices_.size()) / 3,
-             static_cast<int>(owner_.icosphereIndices_.size()) / 3,
-             owner_.icosphereVBO_, owner_.icosphereIBO_);
+             static_cast<int>(icosphereVertices_.size()) / 3,
+             static_cast<int>(icosphereIndices_.size()) / 3,
+             icosphereVBO_, icosphereIBO_);
 }
 
 void Eqe1ArchiveComponent::compileIcosphereShader() {
@@ -258,7 +258,7 @@ void main() {
 }
 
 void Eqe1ArchiveComponent::updateFireGlowLighting() {
-    if (!ctx_.zoneShader || owner_.fireGlowLights_.empty()) return;
+    if (!ctx_.zoneShader || ctx_.fireGlowLights.empty()) return;
 
     // Get camera position in Irrlicht coords (Y-up)
     irr::core::vector3df camPos = ctx_.camera ? ctx_.camera->getAbsolutePosition()
@@ -266,16 +266,16 @@ void Eqe1ArchiveComponent::updateFireGlowLighting() {
 
     // Sort emitters by distance to camera, select nearest N
     int maxN = std::min(ctx_.maxFireGlowLights,
-                        static_cast<int>(owner_.fireGlowLights_.size()));
+                        static_cast<int>(ctx_.fireGlowLights.size()));
     maxN = std::min(maxN, ZoneShaderManager::MAX_FIRE_GLOW_LIGHTS);
 
     // Build index + distance array for partial sort
     struct EmitterDist { int index; float distSq; };
-    std::vector<EmitterDist> dists(owner_.fireGlowLights_.size());
-    for (size_t i = 0; i < owner_.fireGlowLights_.size(); ++i) {
-        float dx = owner_.fireGlowLights_[i].position.X - camPos.X;
-        float dy = owner_.fireGlowLights_[i].position.Y - camPos.Y;
-        float dz = owner_.fireGlowLights_[i].position.Z - camPos.Z;
+    std::vector<EmitterDist> dists(ctx_.fireGlowLights.size());
+    for (size_t i = 0; i < ctx_.fireGlowLights.size(); ++i) {
+        float dx = ctx_.fireGlowLights[i].position.X - camPos.X;
+        float dy = ctx_.fireGlowLights[i].position.Y - camPos.Y;
+        float dz = ctx_.fireGlowLights[i].position.Z - camPos.Z;
         dists[i] = { static_cast<int>(i), dx*dx + dy*dy + dz*dz };
     }
     std::partial_sort(dists.begin(), dists.begin() + maxN, dists.end(),
@@ -285,7 +285,7 @@ void Eqe1ArchiveComponent::updateFireGlowLighting() {
     ctx_.zoneShader->setNumFireGlowLights(maxN);
 
     for (int i = 0; i < maxN; ++i) {
-        const auto& e = owner_.fireGlowLights_[dists[i].index];
+        const auto& e = ctx_.fireGlowLights[dists[i].index];
         // Fire glow light uniforms are in Irrlicht coords (Y-up) — matches zone VS worldPos
         ctx_.zoneShader->setFireGlowLight(i,
             e.position.X, e.position.Y, e.position.Z,
@@ -295,22 +295,22 @@ void Eqe1ArchiveComponent::updateFireGlowLighting() {
 }
 
 void Eqe1ArchiveComponent::renderFireGlowIcospheres() {
-    if (owner_.icosphereVBO_ == 0 || ctx_.icosphereProgram == 0 || owner_.fireGlowLights_.empty()) return;
+    if (icosphereVBO_ == 0 || ctx_.icosphereProgram == 0 || ctx_.fireGlowLights.empty()) return;
 
     // Get camera position for nearest-N selection (reuse fire glow light selection)
     irr::core::vector3df camPos = ctx_.camera ? ctx_.camera->getAbsolutePosition()
                                           : irr::core::vector3df(0, 0, 0);
 
     int maxN = std::min(ctx_.maxFireGlowLights,
-                        static_cast<int>(owner_.fireGlowLights_.size()));
+                        static_cast<int>(ctx_.fireGlowLights.size()));
 
     // Build distance-sorted indices
     struct EmitterDist { int index; float distSq; };
-    std::vector<EmitterDist> dists(owner_.fireGlowLights_.size());
-    for (size_t i = 0; i < owner_.fireGlowLights_.size(); ++i) {
-        float dx = owner_.fireGlowLights_[i].position.X - camPos.X;
-        float dy = owner_.fireGlowLights_[i].position.Y - camPos.Y;
-        float dz = owner_.fireGlowLights_[i].position.Z - camPos.Z;
+    std::vector<EmitterDist> dists(ctx_.fireGlowLights.size());
+    for (size_t i = 0; i < ctx_.fireGlowLights.size(); ++i) {
+        float dx = ctx_.fireGlowLights[i].position.X - camPos.X;
+        float dy = ctx_.fireGlowLights[i].position.Y - camPos.Y;
+        float dz = ctx_.fireGlowLights[i].position.Z - camPos.Z;
         dists[i] = { static_cast<int>(i), dx*dx + dy*dy + dz*dz };
     }
     std::partial_sort(dists.begin(), dists.begin() + maxN, dists.end(),
@@ -342,7 +342,7 @@ void Eqe1ArchiveComponent::renderFireGlowIcospheres() {
 
     // Set shared uniforms
     glUniformMatrix4fv(icoLocViewProj_, 1, GL_FALSE, vpMat);
-    glUniform1f(icoLocTime_, owner_.fireGlowTime_);
+    glUniform1f(icoLocTime_, ctx_.Frame().fireGlowTime());
     glUniform1f(icoLocJitterAmt_, 0.08f);
 
     float fogStart = ctx_.zoneShader ? ctx_.zoneShader->fogStart() : 999999.0f;
@@ -354,8 +354,8 @@ void Eqe1ArchiveComponent::renderFireGlowIcospheres() {
     else glUniform4f(icoLocFogColor_, 0.0f, 0.0f, 0.0f, 0.0f);
 
     // Bind icosphere VBO/IBO
-    glBindBuffer(GL_ARRAY_BUFFER, owner_.icosphereVBO_);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, owner_.icosphereIBO_);
+    glBindBuffer(GL_ARRAY_BUFFER, icosphereVBO_);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, icosphereIBO_);
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
     // Disable other attribs that zone shaders may have left enabled
@@ -364,13 +364,13 @@ void Eqe1ArchiveComponent::renderFireGlowIcospheres() {
     glDisableVertexAttribArray(3);
     glDisableVertexAttribArray(4);
 
-    int indexCount = static_cast<int>(owner_.icosphereIndices_.size());
+    int indexCount = static_cast<int>(icosphereIndices_.size());
 
     // xorshift RNG for per-emitter color flicker (deterministic per frame from time)
-    uint32_t flickerRng = static_cast<uint32_t>(owner_.fireGlowTime_ * 1000.0f) ^ 0xDEADBEEF;
+    uint32_t flickerRng = static_cast<uint32_t>(ctx_.Frame().fireGlowTime() * 1000.0f) ^ 0xDEADBEEF;
 
     for (int i = 0; i < maxN; ++i) {
-        const auto& e = owner_.fireGlowLights_[dists[i].index];
+        const auto& e = ctx_.fireGlowLights[dists[i].index];
 
         // Color flicker: random intensity variation per light per frame
         flickerRng ^= flickerRng << 13; flickerRng ^= flickerRng >> 17; flickerRng ^= flickerRng << 5;
@@ -484,7 +484,7 @@ const EQE1Loader* Eqe1ArchiveComponent::openArchiveContaining(const std::string&
     //      none queued), and the same happens for any roamer/pet/summon of a
     //      race absent at zone load. The archive is appended to the candidate
     //      set so its sibling names take path 2 from then on.
-    if (!owner_.eqe1Index_.isLoaded()) return openCompositeSheetEQE1(name);
+    if (!eqe1Index_.isLoaded()) return openCompositeSheetEQE1(name);
 
     std::vector<std::string> candidates;
     size_t loadTimeCount = 0;
@@ -495,7 +495,7 @@ const EQE1Loader* Eqe1ArchiveComponent::openArchiveContaining(const std::string&
     }
 
     EQE1TextureIndex::Resolution r;
-    if (!owner_.eqe1Index_.resolve(name, candidates, r)) return openCompositeSheetEQE1(name);
+    if (!eqe1Index_.resolve(name, candidates, r)) return openCompositeSheetEQE1(name);
 
     bool late = r.lateOpen;
     if (!late) {

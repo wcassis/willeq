@@ -44,8 +44,12 @@ class IrrlichtRenderer;
 
 class OverlaysComponent {
 public:
-	OverlaysComponent(RendererContext& ctx, IrrlichtRenderer& owner)
-		: ctx_(ctx), owner_(owner) {}
+	// L13: the ctor and dtor are OUT OF LINE (batch corrections 35 and 45).
+	// characterModelView_ moved here as a std::unique_ptr to a forward-declared
+	// type, and both the destructor and the ctor's unwind path instantiate the
+	// deleter -- so the TU holding them must see the complete type.
+	OverlaysComponent(RendererContext& ctx, IrrlichtRenderer& owner);
+	~OverlaysComponent();
 
 	// --- Forwarded from IrrlichtRenderer (the K11 rule: Application and
 	// IrrlichtBridge must not learn a component exists) -------------------
@@ -82,6 +86,41 @@ public:
 	void drawZoneLineBoxLabels();
 	void drawFPSCounter();
 	void updatePaperdollForFrame();
+
+
+	// ------------------------------------------------------------------
+	// L13 (refactor/L13_pairwise_ownership.md): members that moved here from
+	// class IrrlichtRenderer because THIS component is their owner under the
+	// pairwise rule (Batch K Mechanism 3 applied to a two-component member: it
+	// moves to the component that WRITES it, or on a tie to the one with more
+	// uses). Every other reader reaches them through ctx_.Overlays().<accessor>();
+	// the renderer's own init/teardown reaches them through Overlays().
+	// Each accessor below is the SMALLEST the other side needs: a const getter
+	// where nothing outside this component writes, a mutable reference where
+	// something does.
+	// ------------------------------------------------------------------
+	std::unique_ptr<eqt::ui::CharacterModelView> const& characterModelView() const { return characterModelView_; }
+	uint16_t& currentTargetId() { return currentTargetId_; }
+	uint16_t const& currentTargetId() const { return currentTargetId_; }
+	std::string const& currentTargetName() const { return currentTargetName_; }
+	irr::gui::IGUIEnvironment*& guienv() { return guienv_; }
+	irr::gui::IGUIEnvironment* const& guienv() const { return guienv_; }
+	irr::gui::IGUIStaticText*& hotkeysText() { return hotkeysText_; }
+	irr::gui::IGUIStaticText* const& hotkeysText() const { return hotkeysText_; }
+	irr::gui::IGUIStaticText*& hudText() { return hudText_; }
+	irr::gui::IGUIStaticText* const& hudText() const { return hudText_; }
+	bool& mapOverlayMirrorX() { return mapOverlayMirrorX_; }
+	bool const& mapOverlayMirrorX() const { return mapOverlayMirrorX_; }
+	int& mapOverlayRotation() { return mapOverlayRotation_; }
+	int const& mapOverlayRotation() const { return mapOverlayRotation_; }
+	bool& navmeshOverlayMirrorX() { return navmeshOverlayMirrorX_; }
+	bool const& navmeshOverlayMirrorX() const { return navmeshOverlayMirrorX_; }
+	int& navmeshOverlayRotation() { return navmeshOverlayRotation_; }
+	int const& navmeshOverlayRotation() const { return navmeshOverlayRotation_; }
+	bool& showMapOverlay() { return showMapOverlay_; }
+	bool const& showMapOverlay() const { return showMapOverlay_; }
+	bool& showNavmeshOverlay() { return showNavmeshOverlay_; }
+	bool const& showNavmeshOverlay() const { return showNavmeshOverlay_; }
 
 private:
 	// In-family only (K03 correction a: every one of these has a caller
@@ -182,6 +221,20 @@ private:
 	uint8_t paperdollLastGender_ = 0;
 	EQT::Graphics::EntityAppearance paperdollLastAppearance_{};
 	bool paperdollHasAppearance_ = false;
+
+	// L13: owned state, see the accessors above.
+	std::unique_ptr<eqt::ui::CharacterModelView> characterModelView_;
+	uint16_t currentTargetId_ = 0;
+	std::string currentTargetName_;
+	irr::gui::IGUIEnvironment* guienv_ = nullptr;
+	irr::gui::IGUIStaticText* hotkeysText_ = nullptr;  // Hotkey hints in upper right
+	irr::gui::IGUIStaticText* hudText_ = nullptr;
+	bool mapOverlayMirrorX_ = false;  // Mirror placeables across YZ plane (negate X)
+	int mapOverlayRotation_ = 0;  // Rotation index: 0=0°, 1=90°, 2=180°, 3=270° around Y axis
+	bool navmeshOverlayMirrorX_ = false;  // Mirror across YZ plane (negate X)
+	int navmeshOverlayRotation_ = 0;  // Rotation index: 0=0°, 1=90°, 2=180°, 3=270° around Y axis
+	bool showMapOverlay_ = false;
+	bool showNavmeshOverlay_ = false;
 };
 
 } // namespace Graphics

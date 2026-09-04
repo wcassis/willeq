@@ -10,6 +10,7 @@
 
 
 #include <irrlicht.h>
+#include <cstdint>
 #include <atomic>
 #include <chrono>
 #include <string>
@@ -369,6 +370,108 @@ struct RendererConfig {
     // Constrained rendering config (always active, default OrangePi preset)
     ConstrainedRenderingPreset constrainedPreset = ConstrainedRenderingPreset::OrangePi;
     ConstrainedRendererConfig constrainedConfig;
+};
+
+
+// ----------------------------------------------------------------------
+// L13 (refactor/L13_pairwise_ownership.md): four types hoisted out of
+// class IrrlichtRenderer. They typed members that three or more components
+// reach, so those members could not be promoted while renderer_context.h
+// would have had to name IrrlichtRenderer::<Type> and re-acquire the ~60
+// transitive includes the context exists to avoid (batch correction 10).
+// Each keeps a `using` alias in class IrrlichtRenderer (correction 22's
+// shape), so every existing spelling still compiles.
+//
+// RendererZoneLightData is DELIBERATELY not named ZoneLightData: two other
+// structs of that name exist (EQT::ZoneLightData in client/zone_object_data.h
+// and the nested SimulationZoneData::ZoneLightData in simulation_worker.h).
+// A namespace-scope EQT::Graphics::ZoneLightData would not be ambiguous --
+// it would SHADOW EQT::ZoneLightData for every unqualified use inside
+// namespace EQT::Graphics, which is worse than ambiguity because it is
+// silent. The rename removes the question; IrrlichtRenderer::ZoneLightData
+// still resolves through the alias.
+// ----------------------------------------------------------------------
+
+// Zone light data -- no scene nodes, just base data for worker
+struct RendererZoneLightData {
+    float radius;
+    float attConstant, attLinear, attQuadratic;
+    irr::video::SColorf baseDiffuseColor;  // Original color from WLD
+};
+
+// Fire glow light data (collected during zone load)
+struct FireGlowLight {
+    irr::core::vector3df position;  // Irrlicht Y-up
+    float r, g, b;                 // Fire color
+    float radius;                  // Glow radius
+    float flickerPhase;            // Random phase offset for animation
+    float flickerSpeed;            // Random speed multiplier
+};
+
+// Pre-baked door collision: open + closed world-space triangles per door
+// During animation (opening/closing), door has no collision (walk-through,
+// matching original EQ behavior)
+struct DoorCollisionData {
+    std::vector<irr::core::triangle3df> closedTriangles;
+    std::vector<irr::core::triangle3df> openTriangles;
+    size_t bspRegion = SIZE_MAX;
+    bool hasCollision = true;  // false for invisible, teleporter, spinning, lifts, hazardous
+};
+
+// Frame timing profiler for performance analysis
+struct FrameTimings {
+    int64_t inputHandling = 0;
+    int64_t cameraUpdate = 0;
+    int64_t entityUpdate = 0;
+    int64_t doorUpdate = 0;
+    int64_t spellVfxUpdate = 0;
+    int64_t animatedTextures = 0;
+    int64_t vertexAnimations = 0;
+    int64_t fireFlicker = 0;
+    int64_t objectVisibility = 0;
+    int64_t pvsVisibility = 0;
+    int64_t meshLoading = 0;
+    int64_t objectLights = 0;
+    int64_t tier2Update = 0;     // Detail objects, trees
+    int64_t tier3Update = 0;     // Weather, sky, particles, boids
+    int64_t hudUpdate = 0;
+    int64_t sceneDrawAll = 0;
+    // Scene Draw All sub-timings (from render pass timer)
+    int64_t sceneAnimate = 0;       // OnAnimate + OnRegisterSceneNode
+    int64_t sceneSolid = 0;         // ESNRP_SOLID pass
+    int64_t sceneTransparent = 0;   // ESNRP_TRANSPARENT + TRANSPARENT_EFFECT passes
+    int64_t sceneSkybox = 0;        // ESNRP_SKY_BOX pass
+    int64_t sceneOther = 0;         // Camera + light + shadow passes
+    int sceneNodeCount = 0;         // Nodes rendered in drawAll
+    int64_t manualZoneDraw = 0;
+    int64_t targetBox = 0;
+    int64_t particles = 0;
+    int64_t boids = 0;
+    int64_t weatherRender = 0;
+    int64_t debugOverlays = 0;
+    int64_t castingBars = 0;
+    int64_t guiDrawAll = 0;
+    int64_t staticUI = 0;           // Static UI panels (player status, chat, hotbar, etc.)
+    int64_t zoneLineOverlay = 0;
+    int64_t glFinish = 0;            // glFinish() before endScene (GPU pipeline drain)
+    int64_t endScene = 0;
+    int64_t totalFrame = 0;
+    int manualZoneRegionsDrawn = 0;  // Regions actually drawn in manual zone draw
+    int manualZoneDrawCalls = 0;     // Individual drawMeshBuffer calls
+    // Fine-grained fields (Phase 2 timing gaps)
+    int64_t playerMovement = 0;      // updatePlayerMovement() - collision during movement
+    int64_t occlusionCulling = 0;    // Software occlusion rasterize + test (inside PVS)
+    int64_t zoneLightVisibility = 0; // updateZoneLightVisibility() (split from objectVisibility)
+    // U07c3: windowManagerUpdate removed
+    int64_t weatherSystemUpdate = 0; // weatherSystem_->update() (every frame, outside Tier 3)
+    int64_t footprintRender = 0;     // detailManager_->renderFootprints()
+    int64_t postRender = 0;          // RDP capture + cursor + screenshot
+    int64_t simWorkerApply = 0;      // SimulationWorker result application
+    int64_t drainQueues = 0;         // GLES2 upload drain + texture cache drain
+    int64_t visibility = 0;          // processFrameVisibility() - frustum update
+    int64_t postSimInput = 0;        // postSimulationInput() - worker input posting
+    int64_t postLoadWork = 0;        // Post-loading priority work (GREEN-gated)
+    int64_t entityHousekeeping = 0;  // Entity prep promote/scan/dispatch
 };
 
 } // namespace Graphics

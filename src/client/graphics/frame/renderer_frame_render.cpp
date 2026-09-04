@@ -50,14 +50,14 @@ namespace Graphics {
 bool FrameComponent::processFrameRender(float deltaTime) {
     // If loading screen is visible, show it instead of rendering zone
     if (ctx_.loadingScreenVisible) {
-        ctx_.Overlays().drawLoadingScreen(owner_.loadingProgress_, owner_.loadingText_);
+        ctx_.Overlays().drawLoadingScreen(loadingProgress_, loadingText_);
         return false;  // Signal loading screen was shown
     }
 
     // Run scene breakdown profile if scheduled
-    if (owner_.sceneProfileEnabled_) {
-        if (owner_.sceneProfileFrameCount_ < 0) {
-            owner_.sceneProfileFrameCount_++;
+    if (ctx_.Diagnostics().sceneProfileEnabled()) {
+        if (ctx_.Diagnostics().sceneProfileFrameCount() < 0) {
+            ctx_.Diagnostics().sceneProfileFrameCount()++;
         } else {
             ctx_.Diagnostics().profileSceneBreakdown();
         }
@@ -71,7 +71,7 @@ bool FrameComponent::processFrameRender(float deltaTime) {
     LOG_TRACE(MOD_GRAPHICS, "PRE-DRAW checkpoint 0: beginScene");
     ctx_.driver->beginScene(true, true, clearColor);
     sectionStart_ = std::chrono::steady_clock::now();
-    if (owner_.renderPassTimer_) owner_.renderPassTimer_->reset();
+    if (ctx_.renderPassTimer) ctx_.renderPassTimer->reset();
     if (ctx_.zoneShader) {
         // Update wind shader uniforms each frame
         windTime_ += deltaTime;
@@ -105,37 +105,37 @@ bool FrameComponent::processFrameRender(float deltaTime) {
     ctx_.PlayerCamera().applyFirstPersonPitchClamp();
 
     ctx_.smgr->drawAll();
-    owner_.frameTimings_.sceneDrawAll = measureSection();
+    frameTimings_.sceneDrawAll = measureSection();
 
     // 3D camera transforms are captured during the SOLID render pass in
     // OnRenderPassPreRender — see captured3DView_/captured3DProj_.
-    if (owner_.renderPassTimer_) {
-        owner_.frameTimings_.sceneAnimate = owner_.renderPassTimer_->getAnimateTime();
-        owner_.frameTimings_.sceneSolid = owner_.renderPassTimer_->solidTime;
-        owner_.frameTimings_.sceneTransparent = owner_.renderPassTimer_->transparentTime;
-        owner_.frameTimings_.sceneSkybox = owner_.renderPassTimer_->skyboxTime;
-        owner_.frameTimings_.sceneOther = owner_.renderPassTimer_->otherTime;
-        owner_.frameTimings_.sceneNodeCount = owner_.renderPassTimer_->nodeCount;
+    if (ctx_.renderPassTimer) {
+        frameTimings_.sceneAnimate = ctx_.renderPassTimer->getAnimateTime();
+        frameTimings_.sceneSolid = ctx_.renderPassTimer->solidTime;
+        frameTimings_.sceneTransparent = ctx_.renderPassTimer->transparentTime;
+        frameTimings_.sceneSkybox = ctx_.renderPassTimer->skyboxTime;
+        frameTimings_.sceneOther = ctx_.renderPassTimer->otherTime;
+        frameTimings_.sceneNodeCount = ctx_.renderPassTimer->nodeCount;
     }
-    if (owner_.frameTimings_.sceneDrawAll > 50000) {
-        LOG_WARN(MOD_GRAPHICS, "PERF: smgr->drawAll() took {} ms", owner_.frameTimings_.sceneDrawAll / 1000);
+    if (frameTimings_.sceneDrawAll > 50000) {
+        LOG_WARN(MOD_GRAPHICS, "PERF: smgr->drawAll() took {} ms", frameTimings_.sceneDrawAll / 1000);
     }
 
     LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 1: getPrimitiveCountDrawn");
     // Track polygon count for constrained mode budget
-    owner_.lastPolygonCount_ = ctx_.driver->getPrimitiveCountDrawn();
+    lastPolygonCount_ = ctx_.driver->getPrimitiveCountDrawn();
 
     LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 2: footprints (detail={})", ctx_.detailManager != nullptr);
     // Render footprints (after terrain, before UI)
     if (ctx_.detailManager && ctx_.detailManager->isFootprintEnabled()) {
         ctx_.detailManager->renderFootprints();
     }
-    owner_.frameTimings_.footprintRender = measureSection();
+    frameTimings_.footprintRender = measureSection();
 
-    if (owner_.lastPolygonCount_ > static_cast<uint32_t>(ctx_.config.constrainedConfig.maxPolygonsPerFrame)) {
+    if (lastPolygonCount_ > static_cast<uint32_t>(ctx_.config.constrainedConfig.maxPolygonsPerFrame)) {
         if (++polygonBudgetExceededFrames_ >= 60) {
             LOG_WARN(MOD_GRAPHICS, "Polygon budget exceeded: {} > {} (limit)",
-                     owner_.lastPolygonCount_, ctx_.config.constrainedConfig.maxPolygonsPerFrame);
+                     lastPolygonCount_, ctx_.config.constrainedConfig.maxPolygonsPerFrame);
             polygonBudgetExceededFrames_ = 0;
         }
     } else {
@@ -165,10 +165,10 @@ bool FrameComponent::processFrameRender(float deltaTime) {
         LOG_INFO(MOD_GRAPHICS, "  Textures: TMU {:.1f}MB/{:.1f}MB | Hit: {:.0f}% | Evictions: {}",
                  tmuUsed / (1024.0f * 1024.0f), tmuLimit / (1024.0f * 1024.0f), hitRate, evictions);
         LOG_INFO(MOD_GRAPHICS, "  Geometry: Polys {}/{} | Entities {}/{} (max {}) | Clip {:.0f}",
-                 owner_.lastPolygonCount_, ctx_.config.constrainedConfig.maxPolygonsPerFrame,
+                 lastPolygonCount_, ctx_.config.constrainedConfig.maxPolygonsPerFrame,
                  visibleEntities, totalEntities, ctx_.config.constrainedConfig.maxVisibleEntities,
                  ctx_.config.constrainedConfig.clipDistance);
-        LOG_INFO(MOD_GRAPHICS, "  FPS: {}", owner_.currentFps_);
+        LOG_INFO(MOD_GRAPHICS, "  FPS: {}", currentFps_);
 #ifdef __linux__
         {
             // Governor exception: procfs is memory-mapped kernel data, not disk I/O (~1μs)
@@ -193,7 +193,7 @@ bool FrameComponent::processFrameRender(float deltaTime) {
 #else
     ctx_.Overlays().drawTargetSelectionBox();
 #endif
-    owner_.frameTimings_.targetBox = measureSection();
+    frameTimings_.targetBox = measureSection();
 
     LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 4: particles (mgr={}, enabled={}, zoneReady={})",
               ctx_.particleManager != nullptr,
@@ -212,7 +212,7 @@ bool FrameComponent::processFrameRender(float deltaTime) {
     // Render environmental particles (render every frame, update at Tier 3)
     if (ctx_.particleManager && ctx_.particleManager->isEnabled() && ctx_.zoneReady) ctx_.particleManager->render();
 
-    LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 5: unified particles (have3D={})", owner_.have3DTransforms_);
+    LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 5: unified particles (have3D={})", have3DTransforms_);
     // Unified particle system (fire point sprites, GLES2 only)
     //
     // P10b (history): gated this call on particleManager_->isEnabled() as a
@@ -241,7 +241,7 @@ bool FrameComponent::processFrameRender(float deltaTime) {
     // still gated on isEnabled() -- that one IS the atmospheric particle
     // system it's named for.
 #ifdef EQT_HAS_GLES2
-    if (ctx_.particleManager && ctx_.zoneReady && owner_.have3DTransforms_) {
+    if (ctx_.particleManager && ctx_.zoneReady && have3DTransforms_) {
         // Pass View and Projection separately — captured during ESNRP_SOLID pass
         // before any 2D drawing overwrites the driver's transform state.
         // The shader multiplies them in GLSL (same as built-in COGLES2 shaders).
@@ -255,12 +255,12 @@ bool FrameComponent::processFrameRender(float deltaTime) {
                                         ctx_.particleRenderBuffer);
     }
 #endif
-    owner_.frameTimings_.particles = measureSection();
+    frameTimings_.particles = measureSection();
 
     // Fire glow: update per-vertex lighting uniforms + render icospheres
 #ifdef EQT_HAS_DRM
-    if (ctx_.fireEffectsEnabled && !owner_.fireGlowLights_.empty() && ctx_.zoneReady && owner_.have3DTransforms_) {
-        owner_.fireGlowTime_ += deltaTime;
+    if (ctx_.fireEffectsEnabled && !ctx_.fireGlowLights.empty() && ctx_.zoneReady && have3DTransforms_) {
+        fireGlowTime_ += deltaTime;
         if (ctx_.fireGlowLightingEnabled) {
             ctx_.Eqe1().updateFireGlowLighting();
         }
@@ -273,15 +273,15 @@ bool FrameComponent::processFrameRender(float deltaTime) {
     LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 6: boids");
     // Render ambient creatures (render every frame, update at Tier 3)
     if (ctx_.boidsManager && ctx_.boidsManager->isEnabled() && ctx_.zoneReady) ctx_.boidsManager->render();
-    owner_.frameTimings_.boids = measureSection();
+    frameTimings_.boids = measureSection();
 
     LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 7: weather");
     // Render weather effects
     if (ctx_.weatherEffects && ctx_.weatherEffects->isEnabled()) ctx_.weatherEffects->render();
-    owner_.frameTimings_.weatherRender = measureSection();
+    frameTimings_.weatherRender = measureSection();
 
     // Draw collision debug lines
-    if (owner_.playerConfig_.collisionDebug) ctx_.PlayerCamera().drawCollisionDebugLines(deltaTime);
+    if (ctx_.PlayerCamera().playerConfig().collisionDebug) ctx_.PlayerCamera().drawCollisionDebugLines(deltaTime);
 
     // Culling debug: draw region bounding boxes as wireframe
     // Green = rendered (passes PVS + distance + frustum)
@@ -380,20 +380,20 @@ bool FrameComponent::processFrameRender(float deltaTime) {
     }
 
     // Map overlay
-    if (owner_.showMapOverlay_) {
+    if (ctx_.Overlays().showMapOverlay()) {
         ctx_.Overlays().updateMapOverlay(glm::vec3(ctx_.playerX, ctx_.playerZ, ctx_.playerY));
         ctx_.Overlays().drawMapOverlay();
     }
 
     // Navmesh overlay
-    if (owner_.showNavmeshOverlay_) {
+    if (ctx_.Overlays().showNavmeshOverlay()) {
         ctx_.Overlays().updateNavmeshOverlay(glm::vec3(ctx_.playerX, ctx_.playerZ, ctx_.playerY));
         ctx_.Overlays().drawNavmeshOverlay();
     }
 
     // Portal wireframe debug overlay — batched into a single GL_LINES draw call.
     // Draws all portals within distance of camera (not limited to current region).
-    if (owner_.portalDebugDraw_ && ctx_.portalSystem && ctx_.portalSystem->hasPortals() && owner_.have3DTransforms_) {
+    if (ctx_.Diagnostics().portalDebugDraw() && ctx_.portalSystem && ctx_.portalSystem->hasPortals() && have3DTransforms_) {
 #ifdef EQT_HAS_GLES2
         const auto& portalData = ctx_.portalSystem->getData();
 
@@ -456,7 +456,7 @@ bool FrameComponent::processFrameRender(float deltaTime) {
     // Stencil buffer debug overlay (show stencil levels as colored fullscreen rects)
     // Only available on GLES2 with portal occlusion active
 #ifdef EQT_HAS_GLES2
-    if (owner_.stencilDebugDraw_ && ctx_.portalOcclusionEnabled) {
+    if (ctx_.Diagnostics().stencilDebugDraw() && ctx_.portalOcclusionEnabled) {
         irr::video::SColor levelColors[4] = {
             irr::video::SColor(80, 0, 255, 0),     // Level 1: green
             irr::video::SColor(80, 0, 0, 255),     // Level 2: blue
@@ -478,21 +478,21 @@ bool FrameComponent::processFrameRender(float deltaTime) {
     }
 #endif
 
-    owner_.frameTimings_.debugOverlays = measureSection();
+    frameTimings_.debugOverlays = measureSection();
 
     LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 8: casting bars (entityRenderer={})", ctx_.entityRenderer != nullptr);
     // Draw entity casting bars
-    if (!allUIHidden_ && ctx_.entityRenderer) ctx_.entityRenderer->renderEntityCastingBars(ctx_.driver, owner_.guienv_, ctx_.camera);
-    owner_.frameTimings_.castingBars = measureSection();
+    if (!allUIHidden_ && ctx_.entityRenderer) ctx_.entityRenderer->renderEntityCastingBars(ctx_.driver, ctx_.Overlays().guienv(), ctx_.camera);
+    frameTimings_.castingBars = measureSection();
 
     LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 9: GUI drawAll");
     if (!allUIHidden_ && !newUIEnabled_) {
-        owner_.guienv_->drawAll();
+        ctx_.Overlays().guienv()->drawAll();
     }
     if (!allUIHidden_) {
         ctx_.Overlays().drawFPSCounter();
     }
-    owner_.frameTimings_.guiDrawAll = measureSection();
+    frameTimings_.guiDrawAll = measureSection();
 
     // U06j: Process new UI input before rendering
     if (newUIEnabled_ && staticUIInput_ && ctx_.eventReceiver) {
@@ -510,7 +510,7 @@ bool FrameComponent::processFrameRender(float deltaTime) {
     if (newUIEnabled_ && inventoryState_.activePopup == PopupType::Inventory) {
         ctx_.Overlays().updatePaperdollForFrame();
     }
-    inventoryState_.paperdollTexture = owner_.characterModelView_ ? owner_.characterModelView_->getTexture() : nullptr;
+    inventoryState_.paperdollTexture = ctx_.Overlays().characterModelView() ? ctx_.Overlays().characterModelView()->getTexture() : nullptr;
 
     // U03c: Render new static UI when enabled.
     // T301 Leg D: ...and NOT when the UI is hidden. `allUIHidden_` (F11 /
@@ -541,12 +541,12 @@ bool FrameComponent::processFrameRender(float deltaTime) {
         renderXPBar(*uiRenderer_, uiLayout_, xpBarState_);
         uiRenderer_->endFrame();
     }
-    owner_.frameTimings_.staticUI = measureSection();
+    frameTimings_.staticUI = measureSection();
 
     // Draw zone line overlay
     ctx_.Overlays().drawZoneLineOverlay();
     ctx_.Overlays().drawZoneLineBoxLabels();
-    owner_.frameTimings_.zoneLineOverlay = measureSection();
+    frameTimings_.zoneLineOverlay = measureSection();
     eqtGPUPhaseEnd(2 /* GPUSyncPhase::ParticlesUI */);
 
 #ifdef WITH_RDP
@@ -570,7 +570,7 @@ bool FrameComponent::processFrameRender(float deltaTime) {
         pendingScreenshot_ = false;
         owner_.saveScreenshot("screenshot.png");
     }
-    owner_.frameTimings_.postRender = measureSection();
+    frameTimings_.postRender = measureSection();
 
     LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 11: endScene");
     // P52: Swap phase. endScene() -> Device->present() -> eglSwapBuffers() /
@@ -587,7 +587,7 @@ bool FrameComponent::processFrameRender(float deltaTime) {
     // non-blocking) and flip the write buffer for next frame. Must be
     // called exactly once per frame, after the last eqtGPUPhaseEnd() above.
     eqtGPUPhaseCollectResults();
-    owner_.frameTimings_.endScene = measureSection();
+    frameTimings_.endScene = measureSection();
 
     LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 12: frame complete");
     FlushThreadLog();

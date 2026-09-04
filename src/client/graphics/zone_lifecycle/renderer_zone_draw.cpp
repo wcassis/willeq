@@ -240,7 +240,7 @@ void IrrlichtRenderer::RenderPassTimer::OnRenderPassPreRender(irr::scene::E_SCEN
     if (renderPass == irr::scene::ESNRP_SOLID && renderer_) {
         renderer_->captured3DView_ = renderer_->driver_->getTransform(irr::video::ETS_VIEW);
         renderer_->captured3DProj_ = renderer_->driver_->getTransform(irr::video::ETS_PROJECTION);
-        renderer_->have3DTransforms_ = true;
+        renderer_->Frame().have3DTransforms() = true;
     }
 
     // Hook: draw zone geometry manually before Irrlicht's SOLID pass
@@ -261,7 +261,7 @@ void IrrlichtRenderer::RenderPassTimer::OnRenderPassPreRender(irr::scene::E_SCEN
             renderer_->ZoneLifecycle().drawZoneGeometrySorted();
         }
         eqtGPUPhaseEnd(0 /* GPUSyncPhase::ZonePass */);
-        renderer_->frameTimings_.manualZoneDraw = std::chrono::duration_cast<std::chrono::microseconds>(
+        renderer_->Frame().timings().manualZoneDraw = std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now() - drawStart).count();
 
         // Open the entity-pass query now; Irrlicht's own SOLID pass (entities,
@@ -317,7 +317,7 @@ void ZoneLifecycleComponent::drawZoneGeometrySorted() {
     if (ctx_.sortedZoneDrawList.empty() && !ctx_.fallbackMeshNode) return;
 
     // Collect all visible mesh buffers into a flat draw list
-    owner_.sortedDrawEntries_.clear();
+    sortedDrawEntries_.clear();
 
     // Adaptive lighting: if /plight is on and budget > 0, nearest N regions
     // get per-pixel lighting; the rest get lightweight per-vertex shaders.
@@ -378,7 +378,7 @@ void ZoneLifecycleComponent::drawZoneGeometrySorted() {
             irr::s32 effectiveType = (matOverride >= 0) ? matOverride : mat.MaterialType;
             uint32_t matKey = (static_cast<uint32_t>(effectiveType) << 16) | texId;
 
-            owner_.sortedDrawEntries_.push_back({matKey, distSq, buf, worldMat, matOverride});
+            sortedDrawEntries_.push_back({matKey, distSq, buf, worldMat, matOverride});
         }
     };
 
@@ -585,7 +585,7 @@ void ZoneLifecycleComponent::drawZoneGeometrySorted() {
                 irr::s32 effectiveType = (matOverride >= 0) ? matOverride : mat.MaterialType;
                 uint32_t matKey = (static_cast<uint32_t>(effectiveType) << 16) | texId;
 
-                owner_.sortedDrawEntries_.push_back({matKey, distSq, buf, worldMat, matOverride});
+                sortedDrawEntries_.push_back({matKey, distSq, buf, worldMat, matOverride});
             }
             objectsDrawn++;
         }
@@ -597,7 +597,7 @@ void ZoneLifecycleComponent::drawZoneGeometrySorted() {
     }
 
     // Sort by material key (primary), distance (secondary)
-    std::sort(owner_.sortedDrawEntries_.begin(), owner_.sortedDrawEntries_.end(),
+    std::sort(sortedDrawEntries_.begin(), sortedDrawEntries_.end(),
         [](const ZoneDrawEntry& a, const ZoneDrawEntry& b) {
             if (a.materialKey != b.materialKey)
                 return a.materialKey < b.materialKey;
@@ -626,12 +626,12 @@ void ZoneLifecycleComponent::drawZoneGeometrySorted() {
     // src/client/graphics/CLAUDE.md for the reference pointer). Only the
     // texture cache's real, live eviction count remains.
     bool mergeActive = false;
-    if (ctx_.mergeZoneDrawsEnabled && !owner_.mergeZoneDrawsDisabledForZone_) {
-        if (!owner_.zoneMergeBuffers_) owner_.zoneMergeBuffers_ = std::make_unique<ZoneMergeBuffers>();
+    if (ctx_.mergeZoneDrawsEnabled && !mergeZoneDrawsDisabledForZone_) {
+        if (!zoneMergeBuffers_) zoneMergeBuffers_ = std::make_unique<ZoneMergeBuffers>();
 
         const size_t evictionCount = ctx_.constrainedTextureCache ? ctx_.constrainedTextureCache->getEvictionCount() : 0;
 
-        if (owner_.zoneMergeBuffers_->isBuilt() && evictionCount > owner_.mergeZoneDrawsBuildEvictionCount_) {
+        if (zoneMergeBuffers_->isBuilt() && evictionCount > mergeZoneDrawsBuildEvictionCount_) {
             // A region's texture evicted after we built the merge -- the
             // merge buffers may reference textures that are no longer
             // resident/valid. Bail permanently for this zone visit rather
@@ -641,9 +641,9 @@ void ZoneLifecycleComponent::drawZoneGeometrySorted() {
             LOG_WARN(MOD_GRAPHICS, "[mergedraws] texture cache eviction after merge build ({} evictions) "
                      "-- disabling merge for the rest of this zone visit (falls back to "
                      "the unmerged path)", evictionCount);
-            owner_.zoneMergeBuffers_->destroy();
-            owner_.mergeZoneDrawsDisabledForZone_ = true;
-        } else if (!owner_.zoneMergeBuffers_->isBuilt() && !owner_.isLoading() && !ctx_.regionMeshNodes.empty() &&
+            zoneMergeBuffers_->destroy();
+            mergeZoneDrawsDisabledForZone_ = true;
+        } else if (!zoneMergeBuffers_->isBuilt() && !owner_.isLoading() && !ctx_.regionMeshNodes.empty() &&
                    evictionCount == 0) {
             // "Fully resident": regions are always built eagerly at zone
             // load (loadZoneStep4_Regions()) -- there is no streaming
@@ -658,22 +658,22 @@ void ZoneLifecycleComponent::drawZoneGeometrySorted() {
                 ? std::function<bool(irr::video::ITexture*)>(
                       [this](irr::video::ITexture* tex) { return ctx_.constrainedTextureCache->isLiveTexture(tex); })
                 : std::function<bool(irr::video::ITexture*)>();
-            owner_.zoneMergeBuffers_->build(ctx_.regionMeshNodes, isTextureLive);
-            owner_.mergeZoneDrawsBuildEvictionCount_ = evictionCount;
+            zoneMergeBuffers_->build(ctx_.regionMeshNodes, isTextureLive);
+            mergeZoneDrawsBuildEvictionCount_ = evictionCount;
         }
 
-        mergeActive = owner_.zoneMergeBuffers_->isBuilt();
+        mergeActive = zoneMergeBuffers_->isBuilt();
     }
 
     int drawCalls = 0;
     if (mergeActive) {
-        drawCalls = owner_.zoneMergeBuffers_->renderMerged(ctx_.driver, owner_.sortedDrawEntries_);
+        drawCalls = zoneMergeBuffers_->renderMerged(ctx_.driver, sortedDrawEntries_);
     } else {
         // Draw — setMaterial() is called every time because custom shader callbacks
         // need the current world matrix. However, sorting by material ensures the
         // driver's state tracking (SOGLES2State) skips redundant GL calls for
         // blend/depth/cull/texture/program when consecutive draws share the same material.
-        for (const auto& de : owner_.sortedDrawEntries_) {
+        for (const auto& de : sortedDrawEntries_) {
             ctx_.driver->setTransform(irr::video::ETS_WORLD, de.worldMat);
             if (de.materialOverride >= 0) {
                 // Adaptive lighting: override material type (per-pixel → lightweight)
@@ -685,7 +685,7 @@ void ZoneLifecycleComponent::drawZoneGeometrySorted() {
             }
             ctx_.driver->drawMeshBuffer(de.buffer);
         }
-        drawCalls = static_cast<int>(owner_.sortedDrawEntries_.size());
+        drawCalls = static_cast<int>(sortedDrawEntries_.size());
     }
 
     // P08d-style adoption-line: unmerged-would-be draws vs actual (merged or
@@ -695,7 +695,7 @@ void ZoneLifecycleComponent::drawZoneGeometrySorted() {
     static int mergeSampleCounter = 0;
     if (++mergeSampleCounter >= 120) {
         mergeSampleCounter = 0;
-        const int unmergedWouldBe = static_cast<int>(owner_.sortedDrawEntries_.size());
+        const int unmergedWouldBe = static_cast<int>(sortedDrawEntries_.size());
         const float reductionPct = unmergedWouldBe > 0
             ? 100.0f * (1.0f - static_cast<float>(drawCalls) / static_cast<float>(unmergedWouldBe))
             : 0.0f;
@@ -703,8 +703,8 @@ void ZoneLifecycleComponent::drawZoneGeometrySorted() {
                  ctx_.currentZoneName, mergeActive ? "ON" : "off", unmergedWouldBe, drawCalls, reductionPct);
     }
 
-    owner_.frameTimings_.manualZoneRegionsDrawn = regionsDrawn;
-    owner_.frameTimings_.manualZoneDrawCalls = drawCalls;
+    ctx_.Frame().timings().manualZoneRegionsDrawn = regionsDrawn;
+    ctx_.Frame().timings().manualZoneDrawCalls = drawCalls;
 }
 
 // ======== drawRegionMesh ========

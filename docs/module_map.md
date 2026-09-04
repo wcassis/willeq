@@ -136,7 +136,7 @@ plus the eleven components Batch L extracted, each in its own directory.
 
 Batch L (`refactor/L_renderer_component_extraction.md`) is doing to
 `IrrlichtRenderer` what Batch K did to `EverQuest`. L01 created
-`include/client/graphics/renderer_context.h` (261 lines) —
+`include/client/graphics/renderer_context.h` (286 lines) —
 `EQT::Graphics::RendererContext`, the renderer's counterpart to
 `include/client/client_context.h`. L12 (the close-out) widened it to **54 core
 members + 44 promoted shared members + 11 sibling-component pointers**: the
@@ -144,8 +144,42 @@ promoted set is every `IrrlichtRenderer` member the census measured at three or
 more components, and the pointers are what `owner_.<Family>()` became
 (`ctx_.<Family>()`, set by `SetComponents()` after the last `make_unique`).
 L12 also removed `RdpComponent`'s `IrrlichtRenderer&` (zero reaches on both
-census axes) and `SlashCommandsComponent`'s `friend` line. The residue is
+census axes) and `SlashCommandsComponent`'s `friend` line. The residue was
 boarded as **B050**.
+
+**L13 (`refactor/L13_pairwise_ownership.md`) closed B050's clusters 1, 2, 3 and
+5.** The `owner_.` residue across the eleven components fell **1,065 -> 151
+(-86%)** and `irrlicht_renderer.h` fell **1,556 -> 1,343**. Three mechanisms:
+
+1. **Four nested types were hoisted out of the class** so the members they type
+   could finally be promoted — `FireGlowLight`, `RendererZoneLightData` (renamed
+   from `ZoneLightData`: two other structs of that name exist, so a namespace-
+   scope `EQT::Graphics::ZoneLightData` would silently SHADOW `EQT::ZoneLightData`
+   for unqualified uses inside `EQT::Graphics`), `DoorCollisionData` and
+   `FrameTimings` went to `renderer_types.h`; `RenderPassTimer`, a class with a
+   virtual base, went to its own `include/client/graphics/render_pass_timer.h`
+   and `IrrlichtRenderer` gained `friend class RenderPassTimer` (as a nested
+   class it had that access implicitly). `class IrrlichtRenderer` keeps a
+   `using` alias for each, so every existing spelling still compiles. The four
+   members then promoted into `RendererContext` on L12's unchanged `>= 3` rule:
+   `fireGlowLights`, `zoneLightData`, `renderPassTimer`, `doorCollisionData`.
+   `RendererContext` is now **54 + 48 promoted + 11 pointers**.
+2. **Pairwise ownership.** Batch K Mechanism 3's "the last family moves it" was
+   applied to two-component members: a member moves to the component that
+   WRITES it, or on a tie to the one with more uses, and the other side reaches
+   it through `ctx_.<Owner>().<accessor>()` — a `const T&` getter where nothing
+   outside the owner writes, a `T&` where something does. **69 members moved
+   into nine component headers**, `frameTimings_`/`frameTimingsAccum_` (335
+   reaches between them) among them.
+3. **Reasoned stays, listed in the L13 Review.** Nothing crossing a thread
+   boundary moved: `simulationWorker_`, `loading_` (the `std::atomic<bool>` the
+   loading thread sets), the two EQE1 mutexes, the GPU-upload handshake
+   (`pendingGPUResults_`, `pendingVBOUploads_`), `backgroundThreadPool_`, and
+   the four SimulationWorker-output pointers `test_simulation_output_lifetime.cpp`
+   guards as a group (T115/T116).
+
+The 151 that remain are 81 uses of `IrrlichtRenderer`'s **public methods** (the
+renderer's external API, B050 cluster 6 — not a defect) and 70 in those stays.
 
 | Component | Header | TU |
 |---|---|---|
@@ -164,7 +198,7 @@ boarded as **B050**.
 |---|---|---|
 | src/client/graphics/player/renderer_player_physics.cpp | 840 | `EQT::Graphics::PlayerCameraComponent` — `updatePlayerMovement()`, the 806-line per-frame local movement path (a Batch G decomposition candidate; it moved whole). Extracted from IrrlichtRenderer by L05 (Batch L). Header `include/client/graphics/player/player_camera_component.h`. The basename is a string literal in `tests/test_first_person_camera_single_formula.cpp` — do not rename |
 | src/client/graphics/diagnostics/diagnostics_component.cpp | 1,160 | EQT::Graphics::DiagnosticsComponent -- dumpScene, scene-breakdown and frame-timing profiling, getMemoryReport/getMemoryReportBreakdown, EQE1 usage report (T207/T214). Extracted from IrrlichtRenderer by L04 (Batch L). Header include/client/graphics/diagnostics/diagnostics_component.h |
-| src/client/graphics/zone_lifecycle/renderer_zone_draw.cpp | 1,156 | `EQT::Graphics::ZoneLifecycleComponent` — createZoneMesh, sorted/portal zone drawing, region meshes, VBO helpers. Also hosts `IrrlichtRenderer::RenderPassTimer::OnRenderPassPreRender`, which did NOT move. Extracted from IrrlichtRenderer by L09 (Batch L). Header `include/client/graphics/zone_lifecycle/zone_lifecycle_component.h` |
+| src/client/graphics/zone_lifecycle/renderer_zone_draw.cpp | 1,156 | `EQT::Graphics::ZoneLifecycleComponent` — createZoneMesh, sorted/portal zone drawing, region meshes, VBO helpers. Also hosts `RenderPassTimer::OnRenderPassPreRender`; the class itself moved to `include/client/graphics/render_pass_timer.h` in L13, its body did not. Extracted from IrrlichtRenderer by L09 (Batch L). Header `include/client/graphics/zone_lifecycle/zone_lifecycle_component.h` |
 | src/client/graphics/zone_load/renderer_zone_load_env.cpp | 1,140 | `EQT::Graphics::ZoneLoadComponent` — loadZoneStep10_Sky, 11_Env, 12_Lights, 12b_Simulation, 13_Cleanup. Extracted from IrrlichtRenderer by L10 (Batch L). Header `include/client/graphics/zone_load/zone_load_component.h` |
 | src/client/graphics/sim/renderer_sim_bridge.cpp | 1,114 | `EQT::Graphics::SimBridgeComponent` — SimulationWorker marshaling: buildSimulationZoneData, worker start/stop, postSimulationInput, applySimulationResults, and applySimulationOutput/bindFrameSimulationBuffers (split by lifetime contract, T116). Extracted from IrrlichtRenderer by L07 (Batch L). Header `include/client/graphics/sim/sim_bridge_component.h`. SimulationWorker itself stays owned by IrrlichtRenderer — L07 changed no thread ownership |
 | src/client/graphics/overlays/overlays_component.cpp | 1,057 | `EQT::Graphics::OverlaysComponent` — map/navmesh overlays, target outline/selection, mouse targeting/LOS, zone-line overlay and bounding boxes, FPS counter. Extracted from IrrlichtRenderer by L03 (Batch L). Header `include/client/graphics/overlays/overlays_component.h` |

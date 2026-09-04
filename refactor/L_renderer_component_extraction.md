@@ -310,6 +310,25 @@ deleted (one tree-wide reference, and it was the write).
    headers made it **−11** with no code change. Correction 24/40, restated:
    write the component header first and budget the prose THERE.
 
+## L13 corrections (2026-09-04) — B050 closed at 151 (81 public-method uses + 70 listed stays)
+
+54. The pairwise owner is decided by USES with writes as a tiebreak
+   (`playerConfig_`: player 46/56 though frame "writes" via toggles).
+55. Apply the rule per BLOCK when a block's members would otherwise split
+   across owners by one or two uses.
+56. **Rewriting a bare member name across the renderer's own TUs can hit a
+   SAME-NAMED member of another class on another thread**
+   (`chatInputFocused_` on `RendererEventReceiver`) — read every bare-name
+   rewrite site individually; a compile error is luck, not a guard.
+57. A namespace-scope hoist that SHADOWS a same-named type elsewhere is
+   worse than ambiguity — rename (`RendererZoneLightData`).
+58. A move that splits a pointer group a lifetime test guards (T115/T116's
+   four) is reverted, not argued.
+59. A planted break that lands on a detector's exemption proves nothing —
+   plant where the detector looks.
+60. `git checkout --` on an uncommitted branch is as dangerous as
+   `git stash`; export a patch first.
+
 ## Per-unit plan files
 
 `refactor/L01_rdp_component.md` … written after K13, from a re-measurement

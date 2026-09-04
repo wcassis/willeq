@@ -72,8 +72,10 @@ TEST(DiagnosticsComponentTest, WireframeToggleWritesTheRenderersOwnMember) {
 
 TEST(DiagnosticsComponentTest, PortalDebugDrawToggleWritesThroughTheOwnerHandle) {
     IrrlichtRenderer renderer;
-    // portalDebugDraw_ is BELOW the context's 5-family core threshold, so the
-    // moved body reaches it as owner_.portalDebugDraw_. IrrlichtRenderer's own
+    // portalDebugDraw_ was below the context's 5-family core threshold; L13
+    // moved it ONTO DiagnosticsComponent under the pairwise rule (diagnostics
+    // writes it, frame reads it as ctx_.Diagnostics().portalDebugDraw()).
+    // IrrlichtRenderer's own
     // reader must see the flip.
     ASSERT_FALSE(renderer.isPortalDebugDrawEnabled());
     renderer.Diagnostics().togglePortalDebugDraw();

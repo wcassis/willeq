@@ -94,11 +94,11 @@ bool FrameComponent::processFrame(float deltaTime) {
 
     // Update FPS
     irr::u32 currentTime = ctx_.device->getTimer()->getTime();
-    owner_.frameCount_++;
-    if (currentTime - owner_.lastFpsTime_ >= 1000) {
-        owner_.currentFps_ = owner_.frameCount_;
-        owner_.frameCount_ = 0;
-        owner_.lastFpsTime_ = currentTime;
+    frameCount_++;
+    if (currentTime - lastFpsTime_ >= 1000) {
+        currentFps_ = frameCount_;
+        frameCount_ = 0;
+        lastFpsTime_ = currentTime;
     }
 
     // Tiered update: increment frame counter and accumulate delta for Tier 3
@@ -125,25 +125,25 @@ bool FrameComponent::processFrame(float deltaTime) {
 #endif
 
     // T04: processUploadQueue/drainDecodedQueue removed. Textures uploaded via uploadTexture().
-    owner_.frameTimings_.drainQueues = measureSection();
+    frameTimings_.drainQueues = measureSection();
 
     // SimulationWorker: apply results from previous frame, then post new input
     ctx_.SimBridge().applySimulationResults();
-    owner_.frameTimings_.simWorkerApply = measureSection();
+    frameTimings_.simWorkerApply = measureSection();
 
     // Phase 2: Visibility
     sectionStart_ = std::chrono::steady_clock::now();
     processFrameVisibility();
-    owner_.frameTimings_.visibility = measureSection();
+    frameTimings_.visibility = measureSection();
 
     // SimulationWorker: post new input after frustum planes are updated
     ctx_.SimBridge().postSimulationInput(deltaTime);
-    owner_.frameTimings_.postSimInput = measureSection();
+    frameTimings_.postSimInput = measureSection();
 
     // ─── Progressive loading (loading screen showing, no governor restriction §4.2) ───
     if (ctx_.progressiveLoadingActive) {
         ctx_.ZoneStream().processFrameProgressiveLoad();
-        owner_.frameTimings_.meshLoading = measureSection();
+        frameTimings_.meshLoading = measureSection();
     }
 
     // ─── Post-loading: all work GREEN-gated, 1 unit per GREEN frame ───
@@ -224,7 +224,7 @@ bool FrameComponent::processFrame(float deltaTime) {
             // Priority 11: Lazy icon loading (disabled — WindowManager removed)
 
             if (didWork) {
-                owner_.frameTimings_.meshLoading = measureSection();
+                frameTimings_.meshLoading = measureSection();
             }
         }
 
@@ -234,9 +234,9 @@ bool FrameComponent::processFrame(float deltaTime) {
             if (++ctx_.entityPrepScanCounter % 10 == 0) ctx_.ZoneStream().queueEntityPrepRequests();
             if (ctx_.entityPrepWorker->isIdle()) ctx_.entityPrepWorker->dispatchOne();
         }
-        owner_.frameTimings_.entityHousekeeping = measureSection();
+        frameTimings_.entityHousekeeping = measureSection();
     }
-    owner_.frameTimings_.postLoadWork = measureSection();
+    frameTimings_.postLoadWork = measureSection();
 
     // Phase 3: Simulation
     processFrameSimulation(deltaTime);
@@ -250,24 +250,24 @@ bool FrameComponent::processFrame(float deltaTime) {
     // ===== FRAME TIMING: Total Frame (always-on) =====
     {
         auto frameEnd = std::chrono::steady_clock::now();
-        owner_.frameTimings_.totalFrame = std::chrono::duration_cast<std::chrono::microseconds>(
+        frameTimings_.totalFrame = std::chrono::duration_cast<std::chrono::microseconds>(
             frameEnd - frameStart).count();
 
         // Update render cost EMA (alpha = 0.1 for smooth tracking)
-        int64_t renderUs = owner_.frameTimings_.sceneDrawAll + owner_.frameTimings_.targetBox +
-                           owner_.frameTimings_.particles + owner_.frameTimings_.boids +
-                           owner_.frameTimings_.weatherRender + owner_.frameTimings_.debugOverlays +
-                           owner_.frameTimings_.castingBars + owner_.frameTimings_.guiDrawAll +
-                           owner_.frameTimings_.staticUI + owner_.frameTimings_.zoneLineOverlay +
-                           owner_.frameTimings_.endScene + owner_.frameTimings_.footprintRender +
-                           owner_.frameTimings_.postRender;
-        owner_.renderCostAvgUs_ = owner_.renderCostAvgUs_ * 0.9f + static_cast<float>(renderUs) * 0.1f;
+        int64_t renderUs = frameTimings_.sceneDrawAll + frameTimings_.targetBox +
+                           frameTimings_.particles + frameTimings_.boids +
+                           frameTimings_.weatherRender + frameTimings_.debugOverlays +
+                           frameTimings_.castingBars + frameTimings_.guiDrawAll +
+                           frameTimings_.staticUI + frameTimings_.zoneLineOverlay +
+                           frameTimings_.endScene + frameTimings_.footprintRender +
+                           frameTimings_.postRender;
+        renderCostAvgUs_ = renderCostAvgUs_ * 0.9f + static_cast<float>(renderUs) * 0.1f;
 
         // Update essential simulation cost EMA
-        int64_t essSimUs = owner_.frameTimings_.entityUpdate + owner_.frameTimings_.doorUpdate +
-                           owner_.frameTimings_.spellVfxUpdate + owner_.frameTimings_.animatedTextures +
-                           owner_.frameTimings_.vertexAnimations + owner_.frameTimings_.hudUpdate;
-        owner_.essentialSimCostAvgUs_ = owner_.essentialSimCostAvgUs_ * 0.9f + static_cast<float>(essSimUs) * 0.1f;
+        int64_t essSimUs = frameTimings_.entityUpdate + frameTimings_.doorUpdate +
+                           frameTimings_.spellVfxUpdate + frameTimings_.animatedTextures +
+                           frameTimings_.vertexAnimations + frameTimings_.hudUpdate;
+        essentialSimCostAvgUs_ = essentialSimCostAvgUs_ * 0.9f + static_cast<float>(essSimUs) * 0.1f;
 
         // Record frame in governor and log budget violations.
         // endScene is passed for diagnostics but NOT subtracted — full wall-clock
@@ -279,10 +279,10 @@ bool FrameComponent::processFrame(float deltaTime) {
             // was gated on constrainedMeshCache_, never true (the cache was
             // never constructed), so hasPendingWork here was always exactly
             // progressiveLoadingActive_ in every shipped build.
-            ctx_.governor->endFrame(static_cast<float>(owner_.frameTimings_.endScene), hasPendingWork);
+            ctx_.governor->endFrame(static_cast<float>(frameTimings_.endScene), hasPendingWork);
         }
 
-        float totalFrameMs = owner_.frameTimings_.totalFrame / 1000.0f;
+        float totalFrameMs = frameTimings_.totalFrame / 1000.0f;
         float budgetMs = ctx_.governor ? ctx_.governor->getTargetFrameTimeMs() : 33.3f;
 
         // ===== SPIKE DETECTOR: unconditional, fires on any frame >50ms =====
@@ -290,37 +290,37 @@ bool FrameComponent::processFrame(float deltaTime) {
         if (totalFrameMs > 50.0f) {
             struct SectionCost { const char* name; int64_t us; };
             SectionCost spikeSections[] = {
-                {"inputHandling",      owner_.frameTimings_.inputHandling},
-                {"playerMovement",     owner_.frameTimings_.playerMovement},
-                {"cameraUpdate",       owner_.frameTimings_.cameraUpdate},
-                {"drainQueues",        owner_.frameTimings_.drainQueues},
-                {"simWorkerApply",     owner_.frameTimings_.simWorkerApply},
-                {"visibility",         owner_.frameTimings_.visibility},
-                {"postSimInput",       owner_.frameTimings_.postSimInput},
-                {"meshLoading",        owner_.frameTimings_.meshLoading},
-                {"postLoadWork",       owner_.frameTimings_.postLoadWork},
-                {"entityHousekeeping", owner_.frameTimings_.entityHousekeeping},
-                {"entityUpdate",       owner_.frameTimings_.entityUpdate},
-                {"doorUpdate",         owner_.frameTimings_.doorUpdate},
-                {"spellVfxUpdate",     owner_.frameTimings_.spellVfxUpdate},
-                {"animatedTextures",   owner_.frameTimings_.animatedTextures},
-                {"vertexAnimations",   owner_.frameTimings_.vertexAnimations},
-                {"tier2Update",        owner_.frameTimings_.tier2Update},
-                {"tier3Update",        owner_.frameTimings_.tier3Update},
-                {"hudUpdate",          owner_.frameTimings_.hudUpdate},
-                {"sceneDrawAll",       owner_.frameTimings_.sceneDrawAll},
-                {"footprintRender",    owner_.frameTimings_.footprintRender},
-                {"targetBox",          owner_.frameTimings_.targetBox},
-                {"particles",          owner_.frameTimings_.particles},
-                {"boids",              owner_.frameTimings_.boids},
-                {"weatherRender",      owner_.frameTimings_.weatherRender},
-                {"debugOverlays",      owner_.frameTimings_.debugOverlays},
-                {"castingBars",        owner_.frameTimings_.castingBars},
-                {"guiDrawAll",         owner_.frameTimings_.guiDrawAll},
-                {"staticUI",           owner_.frameTimings_.staticUI},
-                {"zoneLineOverlay",    owner_.frameTimings_.zoneLineOverlay},
-                {"endScene",           owner_.frameTimings_.endScene},
-                {"postRender",         owner_.frameTimings_.postRender},
+                {"inputHandling",      frameTimings_.inputHandling},
+                {"playerMovement",     frameTimings_.playerMovement},
+                {"cameraUpdate",       frameTimings_.cameraUpdate},
+                {"drainQueues",        frameTimings_.drainQueues},
+                {"simWorkerApply",     frameTimings_.simWorkerApply},
+                {"visibility",         frameTimings_.visibility},
+                {"postSimInput",       frameTimings_.postSimInput},
+                {"meshLoading",        frameTimings_.meshLoading},
+                {"postLoadWork",       frameTimings_.postLoadWork},
+                {"entityHousekeeping", frameTimings_.entityHousekeeping},
+                {"entityUpdate",       frameTimings_.entityUpdate},
+                {"doorUpdate",         frameTimings_.doorUpdate},
+                {"spellVfxUpdate",     frameTimings_.spellVfxUpdate},
+                {"animatedTextures",   frameTimings_.animatedTextures},
+                {"vertexAnimations",   frameTimings_.vertexAnimations},
+                {"tier2Update",        frameTimings_.tier2Update},
+                {"tier3Update",        frameTimings_.tier3Update},
+                {"hudUpdate",          frameTimings_.hudUpdate},
+                {"sceneDrawAll",       frameTimings_.sceneDrawAll},
+                {"footprintRender",    frameTimings_.footprintRender},
+                {"targetBox",          frameTimings_.targetBox},
+                {"particles",          frameTimings_.particles},
+                {"boids",              frameTimings_.boids},
+                {"weatherRender",      frameTimings_.weatherRender},
+                {"debugOverlays",      frameTimings_.debugOverlays},
+                {"castingBars",        frameTimings_.castingBars},
+                {"guiDrawAll",         frameTimings_.guiDrawAll},
+                {"staticUI",           frameTimings_.staticUI},
+                {"zoneLineOverlay",    frameTimings_.zoneLineOverlay},
+                {"endScene",           frameTimings_.endScene},
+                {"postRender",         frameTimings_.postRender},
             };
             std::sort(std::begin(spikeSections), std::end(spikeSections),
                       [](const auto& a, const auto& b) { return a.us > b.us; });
@@ -328,7 +328,7 @@ bool FrameComponent::processFrame(float deltaTime) {
             // Sum all measured sections to find unaccounted time
             int64_t accountedUs = 0;
             for (const auto& s : spikeSections) accountedUs += s.us;
-            int64_t unaccountedUs = owner_.frameTimings_.totalFrame - accountedUs;
+            int64_t unaccountedUs = frameTimings_.totalFrame - accountedUs;
 
             LOG_WARN(MOD_GRAPHICS, "SPIKE: {:.1f}ms frame (unaccounted: {:.1f}ms):",
                      totalFrameMs, unaccountedUs / 1000.0f);
@@ -345,40 +345,40 @@ bool FrameComponent::processFrame(float deltaTime) {
             ctx_.governor->getState() == BudgetState::Red) {
             struct SectionCost { const char* name; int64_t us; };
             SectionCost sections[] = {
-                {"inputHandling",    owner_.frameTimings_.inputHandling},
-                {"playerMovement",   owner_.frameTimings_.playerMovement},
-                {"cameraUpdate",     owner_.frameTimings_.cameraUpdate},
-                {"pvsVisibility",    owner_.frameTimings_.pvsVisibility},
-                {"occlusionCulling", owner_.frameTimings_.occlusionCulling},
-                {"zoneLightVis",     owner_.frameTimings_.zoneLightVisibility},
-                {"objectVisibility", owner_.frameTimings_.objectVisibility},
-                {"meshLoading",      owner_.frameTimings_.meshLoading},
-                {"objectLights",     owner_.frameTimings_.objectLights},
-                {"entityUpdate",     owner_.frameTimings_.entityUpdate},
-                {"doorUpdate",       owner_.frameTimings_.doorUpdate},
-                {"spellVfxUpdate",   owner_.frameTimings_.spellVfxUpdate},
-                {"animatedTextures", owner_.frameTimings_.animatedTextures},
-                {"vertexAnimations", owner_.frameTimings_.vertexAnimations},
-                {"fireFlicker",      owner_.frameTimings_.fireFlicker},
-                {"tier2Update",      owner_.frameTimings_.tier2Update},
-                {"tier3Update",      owner_.frameTimings_.tier3Update},
-                {"hudUpdate",        owner_.frameTimings_.hudUpdate},
-                {"sceneDrawAll",     owner_.frameTimings_.sceneDrawAll},
-                {"sceneAnimate",     owner_.frameTimings_.sceneAnimate},
-                {"sceneSolid",       owner_.frameTimings_.sceneSolid},
-                {"sceneTransparent", owner_.frameTimings_.sceneTransparent},
-                {"manualZoneDraw",   owner_.frameTimings_.manualZoneDraw},
-                {"footprintRender",  owner_.frameTimings_.footprintRender},
-                {"targetBox",        owner_.frameTimings_.targetBox},
-                {"particles",        owner_.frameTimings_.particles},
-                {"weatherRender",    owner_.frameTimings_.weatherRender},
-                {"castingBars",      owner_.frameTimings_.castingBars},
-                {"guiDrawAll",       owner_.frameTimings_.guiDrawAll},
-                {"staticUI",         owner_.frameTimings_.staticUI},
-                {"glFinish",         owner_.frameTimings_.glFinish},
-                {"endScene",         owner_.frameTimings_.endScene},
-                {"postRender",       owner_.frameTimings_.postRender},
-                {"simWorkerApply",   owner_.frameTimings_.simWorkerApply},
+                {"inputHandling",    frameTimings_.inputHandling},
+                {"playerMovement",   frameTimings_.playerMovement},
+                {"cameraUpdate",     frameTimings_.cameraUpdate},
+                {"pvsVisibility",    frameTimings_.pvsVisibility},
+                {"occlusionCulling", frameTimings_.occlusionCulling},
+                {"zoneLightVis",     frameTimings_.zoneLightVisibility},
+                {"objectVisibility", frameTimings_.objectVisibility},
+                {"meshLoading",      frameTimings_.meshLoading},
+                {"objectLights",     frameTimings_.objectLights},
+                {"entityUpdate",     frameTimings_.entityUpdate},
+                {"doorUpdate",       frameTimings_.doorUpdate},
+                {"spellVfxUpdate",   frameTimings_.spellVfxUpdate},
+                {"animatedTextures", frameTimings_.animatedTextures},
+                {"vertexAnimations", frameTimings_.vertexAnimations},
+                {"fireFlicker",      frameTimings_.fireFlicker},
+                {"tier2Update",      frameTimings_.tier2Update},
+                {"tier3Update",      frameTimings_.tier3Update},
+                {"hudUpdate",        frameTimings_.hudUpdate},
+                {"sceneDrawAll",     frameTimings_.sceneDrawAll},
+                {"sceneAnimate",     frameTimings_.sceneAnimate},
+                {"sceneSolid",       frameTimings_.sceneSolid},
+                {"sceneTransparent", frameTimings_.sceneTransparent},
+                {"manualZoneDraw",   frameTimings_.manualZoneDraw},
+                {"footprintRender",  frameTimings_.footprintRender},
+                {"targetBox",        frameTimings_.targetBox},
+                {"particles",        frameTimings_.particles},
+                {"weatherRender",    frameTimings_.weatherRender},
+                {"castingBars",      frameTimings_.castingBars},
+                {"guiDrawAll",       frameTimings_.guiDrawAll},
+                {"staticUI",         frameTimings_.staticUI},
+                {"glFinish",         frameTimings_.glFinish},
+                {"endScene",         frameTimings_.endScene},
+                {"postRender",       frameTimings_.postRender},
+                {"simWorkerApply",   frameTimings_.simWorkerApply},
             };
             std::sort(std::begin(sections), std::end(sections),
                       [](const auto& a, const auto& b) { return a.us > b.us; });
@@ -403,8 +403,8 @@ bool FrameComponent::processFrame(float deltaTime) {
                          FrameBudgetGovernor::kStallThreshold,
                          redFramesSinceWarn);
                 LOG_WARN(MOD_GRAPHICS, "  RED SCENE: {} sceneNodes, {} polys | manualDraw: {} regions, {} drawCalls | sortedList: {}",
-                         owner_.frameTimings_.sceneNodeCount, owner_.lastPolygonCount_,
-                         owner_.frameTimings_.manualZoneRegionsDrawn, owner_.frameTimings_.manualZoneDrawCalls,
+                         frameTimings_.sceneNodeCount, lastPolygonCount_,
+                         frameTimings_.manualZoneRegionsDrawn, frameTimings_.manualZoneDrawCalls,
                          ctx_.sortedZoneDrawList.size());
                 {
                     int totalNodes = 0, visibleNodes = 0;
@@ -439,21 +439,21 @@ bool FrameComponent::processFrame(float deltaTime) {
             if (std::chrono::duration_cast<std::chrono::milliseconds>(budgetNow - lastBudgetWarnTime).count() >= 1000) {
                 struct SectionCost { const char* name; int64_t us; };
                 SectionCost sections[] = {
-                    {"playerMovement", owner_.frameTimings_.playerMovement},
-                    {"pvsVisibility", owner_.frameTimings_.pvsVisibility},
-                    {"occlusionCulling", owner_.frameTimings_.occlusionCulling},
-                    {"meshLoading", owner_.frameTimings_.meshLoading},
-                    {"entityUpdate", owner_.frameTimings_.entityUpdate},
-                    {"tier2Update", owner_.frameTimings_.tier2Update},
-                    {"tier3Update", owner_.frameTimings_.tier3Update},
-                    {"sceneDrawAll", owner_.frameTimings_.sceneDrawAll},
-                    {"staticUI", owner_.frameTimings_.staticUI},
-                    {"endScene", owner_.frameTimings_.endScene},
-                    {"particles", owner_.frameTimings_.particles},
-                    {"simWorkerApply", owner_.frameTimings_.simWorkerApply},
-                    {"targetBox", owner_.frameTimings_.targetBox},
-                    {"guiDrawAll", owner_.frameTimings_.guiDrawAll},
-                    {"footprintRender", owner_.frameTimings_.footprintRender},
+                    {"playerMovement", frameTimings_.playerMovement},
+                    {"pvsVisibility", frameTimings_.pvsVisibility},
+                    {"occlusionCulling", frameTimings_.occlusionCulling},
+                    {"meshLoading", frameTimings_.meshLoading},
+                    {"entityUpdate", frameTimings_.entityUpdate},
+                    {"tier2Update", frameTimings_.tier2Update},
+                    {"tier3Update", frameTimings_.tier3Update},
+                    {"sceneDrawAll", frameTimings_.sceneDrawAll},
+                    {"staticUI", frameTimings_.staticUI},
+                    {"endScene", frameTimings_.endScene},
+                    {"particles", frameTimings_.particles},
+                    {"simWorkerApply", frameTimings_.simWorkerApply},
+                    {"targetBox", frameTimings_.targetBox},
+                    {"guiDrawAll", frameTimings_.guiDrawAll},
+                    {"footprintRender", frameTimings_.footprintRender},
                 };
                 std::sort(std::begin(sections), std::end(sections),
                           [](const auto& a, const auto& b) { return a.us > b.us; });
@@ -472,65 +472,65 @@ bool FrameComponent::processFrame(float deltaTime) {
     }
 
     // Accumulate and periodically log (gated behind /frametiming command)
-    if (owner_.frameTimingEnabled_) {
-        owner_.frameTimingsAccum_.inputHandling += owner_.frameTimings_.inputHandling;
-        owner_.frameTimingsAccum_.cameraUpdate += owner_.frameTimings_.cameraUpdate;
-        owner_.frameTimingsAccum_.entityUpdate += owner_.frameTimings_.entityUpdate;
-        owner_.frameTimingsAccum_.doorUpdate += owner_.frameTimings_.doorUpdate;
-        owner_.frameTimingsAccum_.spellVfxUpdate += owner_.frameTimings_.spellVfxUpdate;
-        owner_.frameTimingsAccum_.animatedTextures += owner_.frameTimings_.animatedTextures;
-        owner_.frameTimingsAccum_.vertexAnimations += owner_.frameTimings_.vertexAnimations;
-        owner_.frameTimingsAccum_.fireFlicker += owner_.frameTimings_.fireFlicker;
-        owner_.frameTimingsAccum_.objectVisibility += owner_.frameTimings_.objectVisibility;
-        owner_.frameTimingsAccum_.pvsVisibility += owner_.frameTimings_.pvsVisibility;
-        owner_.frameTimingsAccum_.meshLoading += owner_.frameTimings_.meshLoading;
-        owner_.frameTimingsAccum_.objectLights += owner_.frameTimings_.objectLights;
-        owner_.frameTimingsAccum_.tier2Update += owner_.frameTimings_.tier2Update;
-        owner_.frameTimingsAccum_.tier3Update += owner_.frameTimings_.tier3Update;
-        owner_.frameTimingsAccum_.hudUpdate += owner_.frameTimings_.hudUpdate;
-        owner_.frameTimingsAccum_.sceneDrawAll += owner_.frameTimings_.sceneDrawAll;
-        owner_.frameTimingsAccum_.sceneAnimate += owner_.frameTimings_.sceneAnimate;
-        owner_.frameTimingsAccum_.sceneSolid += owner_.frameTimings_.sceneSolid;
-        owner_.frameTimingsAccum_.sceneTransparent += owner_.frameTimings_.sceneTransparent;
-        owner_.frameTimingsAccum_.sceneSkybox += owner_.frameTimings_.sceneSkybox;
-        owner_.frameTimingsAccum_.sceneOther += owner_.frameTimings_.sceneOther;
-        owner_.frameTimingsAccum_.sceneNodeCount += owner_.frameTimings_.sceneNodeCount;
-        owner_.frameTimingsAccum_.manualZoneDraw += owner_.frameTimings_.manualZoneDraw;
-        owner_.frameTimingsAccum_.targetBox += owner_.frameTimings_.targetBox;
-        owner_.frameTimingsAccum_.particles += owner_.frameTimings_.particles;
-        owner_.frameTimingsAccum_.boids += owner_.frameTimings_.boids;
-        owner_.frameTimingsAccum_.weatherRender += owner_.frameTimings_.weatherRender;
-        owner_.frameTimingsAccum_.debugOverlays += owner_.frameTimings_.debugOverlays;
-        owner_.frameTimingsAccum_.castingBars += owner_.frameTimings_.castingBars;
-        owner_.frameTimingsAccum_.guiDrawAll += owner_.frameTimings_.guiDrawAll;
-        owner_.frameTimingsAccum_.staticUI += owner_.frameTimings_.staticUI;
-        owner_.frameTimingsAccum_.zoneLineOverlay += owner_.frameTimings_.zoneLineOverlay;
-        owner_.frameTimingsAccum_.glFinish += owner_.frameTimings_.glFinish;
-        owner_.frameTimingsAccum_.endScene += owner_.frameTimings_.endScene;
-        owner_.frameTimingsAccum_.manualZoneRegionsDrawn += owner_.frameTimings_.manualZoneRegionsDrawn;
-        owner_.frameTimingsAccum_.manualZoneDrawCalls += owner_.frameTimings_.manualZoneDrawCalls;
-        owner_.frameTimingsAccum_.totalFrame += owner_.frameTimings_.totalFrame;
+    if (frameTimingEnabled_) {
+        frameTimingsAccum_.inputHandling += frameTimings_.inputHandling;
+        frameTimingsAccum_.cameraUpdate += frameTimings_.cameraUpdate;
+        frameTimingsAccum_.entityUpdate += frameTimings_.entityUpdate;
+        frameTimingsAccum_.doorUpdate += frameTimings_.doorUpdate;
+        frameTimingsAccum_.spellVfxUpdate += frameTimings_.spellVfxUpdate;
+        frameTimingsAccum_.animatedTextures += frameTimings_.animatedTextures;
+        frameTimingsAccum_.vertexAnimations += frameTimings_.vertexAnimations;
+        frameTimingsAccum_.fireFlicker += frameTimings_.fireFlicker;
+        frameTimingsAccum_.objectVisibility += frameTimings_.objectVisibility;
+        frameTimingsAccum_.pvsVisibility += frameTimings_.pvsVisibility;
+        frameTimingsAccum_.meshLoading += frameTimings_.meshLoading;
+        frameTimingsAccum_.objectLights += frameTimings_.objectLights;
+        frameTimingsAccum_.tier2Update += frameTimings_.tier2Update;
+        frameTimingsAccum_.tier3Update += frameTimings_.tier3Update;
+        frameTimingsAccum_.hudUpdate += frameTimings_.hudUpdate;
+        frameTimingsAccum_.sceneDrawAll += frameTimings_.sceneDrawAll;
+        frameTimingsAccum_.sceneAnimate += frameTimings_.sceneAnimate;
+        frameTimingsAccum_.sceneSolid += frameTimings_.sceneSolid;
+        frameTimingsAccum_.sceneTransparent += frameTimings_.sceneTransparent;
+        frameTimingsAccum_.sceneSkybox += frameTimings_.sceneSkybox;
+        frameTimingsAccum_.sceneOther += frameTimings_.sceneOther;
+        frameTimingsAccum_.sceneNodeCount += frameTimings_.sceneNodeCount;
+        frameTimingsAccum_.manualZoneDraw += frameTimings_.manualZoneDraw;
+        frameTimingsAccum_.targetBox += frameTimings_.targetBox;
+        frameTimingsAccum_.particles += frameTimings_.particles;
+        frameTimingsAccum_.boids += frameTimings_.boids;
+        frameTimingsAccum_.weatherRender += frameTimings_.weatherRender;
+        frameTimingsAccum_.debugOverlays += frameTimings_.debugOverlays;
+        frameTimingsAccum_.castingBars += frameTimings_.castingBars;
+        frameTimingsAccum_.guiDrawAll += frameTimings_.guiDrawAll;
+        frameTimingsAccum_.staticUI += frameTimings_.staticUI;
+        frameTimingsAccum_.zoneLineOverlay += frameTimings_.zoneLineOverlay;
+        frameTimingsAccum_.glFinish += frameTimings_.glFinish;
+        frameTimingsAccum_.endScene += frameTimings_.endScene;
+        frameTimingsAccum_.manualZoneRegionsDrawn += frameTimings_.manualZoneRegionsDrawn;
+        frameTimingsAccum_.manualZoneDrawCalls += frameTimings_.manualZoneDrawCalls;
+        frameTimingsAccum_.totalFrame += frameTimings_.totalFrame;
         // New fine-grained fields
-        owner_.frameTimingsAccum_.playerMovement += owner_.frameTimings_.playerMovement;
-        owner_.frameTimingsAccum_.occlusionCulling += owner_.frameTimings_.occlusionCulling;
-        owner_.frameTimingsAccum_.zoneLightVisibility += owner_.frameTimings_.zoneLightVisibility;
-        owner_.frameTimingsAccum_.weatherSystemUpdate += owner_.frameTimings_.weatherSystemUpdate;
-        owner_.frameTimingsAccum_.footprintRender += owner_.frameTimings_.footprintRender;
-        owner_.frameTimingsAccum_.postRender += owner_.frameTimings_.postRender;
-        owner_.frameTimingsAccum_.simWorkerApply += owner_.frameTimings_.simWorkerApply;
-        owner_.frameTimingsAccum_.drainQueues += owner_.frameTimings_.drainQueues;
-        owner_.frameTimingsAccum_.visibility += owner_.frameTimings_.visibility;
-        owner_.frameTimingsAccum_.postSimInput += owner_.frameTimings_.postSimInput;
-        owner_.frameTimingsAccum_.postLoadWork += owner_.frameTimings_.postLoadWork;
-        owner_.frameTimingsAccum_.entityHousekeeping += owner_.frameTimings_.entityHousekeeping;
-        owner_.frameTimingsSampleCount_++;
+        frameTimingsAccum_.playerMovement += frameTimings_.playerMovement;
+        frameTimingsAccum_.occlusionCulling += frameTimings_.occlusionCulling;
+        frameTimingsAccum_.zoneLightVisibility += frameTimings_.zoneLightVisibility;
+        frameTimingsAccum_.weatherSystemUpdate += frameTimings_.weatherSystemUpdate;
+        frameTimingsAccum_.footprintRender += frameTimings_.footprintRender;
+        frameTimingsAccum_.postRender += frameTimings_.postRender;
+        frameTimingsAccum_.simWorkerApply += frameTimings_.simWorkerApply;
+        frameTimingsAccum_.drainQueues += frameTimings_.drainQueues;
+        frameTimingsAccum_.visibility += frameTimings_.visibility;
+        frameTimingsAccum_.postSimInput += frameTimings_.postSimInput;
+        frameTimingsAccum_.postLoadWork += frameTimings_.postLoadWork;
+        frameTimingsAccum_.entityHousekeeping += frameTimings_.entityHousekeeping;
+        frameTimingsSampleCount_++;
 
         // Log every 60 frames (~2 seconds at 30fps)
-        if (owner_.frameTimingsSampleCount_ >= 60) {
+        if (frameTimingsSampleCount_ >= 60) {
             ctx_.Diagnostics().logFrameTimings();
             // Reset accumulators
-            owner_.frameTimingsAccum_ = IrrlichtRenderer::FrameTimings();
-            owner_.frameTimingsSampleCount_ = 0;
+            frameTimingsAccum_ = IrrlichtRenderer::FrameTimings();
+            frameTimingsSampleCount_ = 0;
         }
     }
 

@@ -154,6 +154,21 @@ public:
 	void loadZoneSequential(const std::string& eqClientPath, LoadingStatus& status);
 	bool hasLoadFailed() const { return loadFailed_; }
 
+
+	// ------------------------------------------------------------------
+	// L13 (refactor/L13_pairwise_ownership.md): members that moved here from
+	// class IrrlichtRenderer because THIS component is their owner under the
+	// pairwise rule (Batch K Mechanism 3 applied to a two-component member: it
+	// moves to the component that WRITES it, or on a tie to the one with more
+	// uses). Every other reader reaches them through ctx_.ZoneLoad().<accessor>();
+	// the renderer's own init/teardown reaches them through ZoneLoad().
+	// Each accessor below is the SMALLEST the other side needs: a const getter
+	// where nothing outside this component writes, a mutable reference where
+	// something does.
+	// ------------------------------------------------------------------
+	TreeIdentifier const& treeIdentifier() const { return treeIdentifier_; }
+	std::vector<size_t> const& zoneLightRegions() const { return zoneLightRegions_; }
+
 private:
 
 	// L12: the T109 entity load-distance gate, folded in from
@@ -206,6 +221,11 @@ private:
 	// needs the complete type just as the destructor does).
 	std::unique_ptr<PendingZoneComputations> pendingZoneComputations_;
 	bool loadFailed_ = false;   // True if loadZoneSequential() hit a FATAL error
+
+	// L13: owned state, see the accessors above.
+	std::unique_ptr<GraphicsArchiveIndex> graphicsArchiveIndex_;  // Race-to-archive index for deferred loading
+	TreeIdentifier treeIdentifier_;  // Tree mesh classification (isTreeMesh)
+	std::vector<size_t> zoneLightRegions_;  // Cached BSP region index for each light (SIZE_MAX = no region)
 };
 
 } // namespace Graphics

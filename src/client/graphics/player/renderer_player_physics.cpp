@@ -31,7 +31,7 @@ namespace Graphics {
 
 void PlayerCameraComponent::updatePlayerMovement(float deltaTime) {
     // Check if chat has focus - skip movement keys if so
-    bool chatHasFocus = owner_.chatInputFocused_;
+    bool chatHasFocus = ctx_.Frame().chatInputFocused();
 
     // Read keyboard state for EQ-style movement (disabled when chat has focus)
     // Use HotkeyManager to check configured movement bindings
@@ -90,7 +90,7 @@ void PlayerCameraComponent::updatePlayerMovement(float deltaTime) {
         if (jumpPressed && !playerMovement_.isJumping) {
             playerMovement_.isJumping = true;
             playerMovement_.verticalVelocity = playerMovement_.jumpVelocity;
-            if (owner_.playerConfig_.collisionDebug) {
+            if (playerConfig_.collisionDebug) {
                 LOG_INFO(MOD_GRAPHICS, "[Jump] Started jump with velocity {}", playerMovement_.verticalVelocity);
             }
         }
@@ -144,7 +144,7 @@ void PlayerCameraComponent::updatePlayerMovement(float deltaTime) {
         // further out of frame; the +/-89 above is a gimbal guard for the
         // look-at target, not part of the hiding, and Leg A measured only the
         // down side.
-        if (owner_.cameraMode_ == CameraMode::FirstPerson) {
+        if (cameraMode_ == CameraMode::FirstPerson) {
             const float minLook = firstPersonMinLookPitchDegrees();
             if (playerPitch_ < minLook) playerPitch_ = minLook;
         }
@@ -242,7 +242,7 @@ void PlayerCameraComponent::updatePlayerMovement(float deltaTime) {
                   (isJumpMoving ? " [JUMPING]" : ""),
                   (isSwimMoving ? " [SWIMMING]" : ""));
         LOG_TRACE(MOD_MOVEMENT, "Collision: {}, Irrlicht: {}, Map: {}",
-                  (owner_.playerConfig_.collisionEnabled ? "ENABLED" : "DISABLED"),
+                  (playerConfig_.collisionEnabled ? "ENABLED" : "DISABLED"),
                   (useIrrlichtCollision_ && !ctx_.regionWorldTriangles.empty() ? "YES" : "NO"),
                   (ctx_.collisionMap ? "LOADED" : "NONE"));
 
@@ -250,7 +250,7 @@ void PlayerCameraComponent::updatePlayerMovement(float deltaTime) {
         // BSP-filtered uses regionWorldTriangles_ directly, no meta selector needed
         bool useIrrlicht = useIrrlichtCollision_ && !ctx_.regionWorldTriangles.empty();
         bool useHCMap = ctx_.collisionMap != nullptr;
-        bool hasCollision = owner_.playerConfig_.collisionEnabled && (useIrrlicht || useHCMap);
+        bool hasCollision = playerConfig_.collisionEnabled && (useIrrlicht || useHCMap);
 
         // Get the player's collision Z offset for ground snapping.
         // playerZ_ is the server Z, which is where the model's node ORIGIN sits;
@@ -270,7 +270,7 @@ void PlayerCameraComponent::updatePlayerMovement(float deltaTime) {
 
             // Check horizontal collision first
             // Convert EQ coords to Irrlicht: EQ(x,y,z) -> Irr(x,z,y)
-            float checkHeight = owner_.playerConfig_.collisionCheckHeight;
+            float checkHeight = playerConfig_.collisionCheckHeight;
             irr::core::vector3df rayStart(ctx_.playerX, ctx_.playerZ + checkHeight, ctx_.playerY);
             irr::core::vector3df rayEnd(newX, ctx_.playerZ + checkHeight, newY);
 
@@ -280,7 +280,7 @@ void PlayerCameraComponent::updatePlayerMovement(float deltaTime) {
                 ? checkCollisionBspFiltered(rayStart, rayEnd, hitPoint, hitTriangle)
                 : checkCollisionIrrlicht(rayStart, rayEnd, hitPoint, hitTriangle);
 
-            if (owner_.playerConfig_.collisionDebug) {
+            if (playerConfig_.collisionDebug) {
                 // Extend the ray visually so it's easier to see (movement per frame is tiny)
                 irr::core::vector3df direction = rayEnd - rayStart;
                 float len = direction.getLength();
@@ -328,7 +328,7 @@ void PlayerCameraComponent::updatePlayerMovement(float deltaTime) {
                         newZ = groundZ + modelYOffset;
                         playerMovement_.isJumping = false;
                         playerMovement_.verticalVelocity = 0.0f;
-                        if (owner_.playerConfig_.collisionDebug) {
+                        if (playerConfig_.collisionDebug) {
                             LOG_INFO(MOD_GRAPHICS, "[Jump] Landed at groundZ={}, serverZ={}", groundZ, newZ);
                         }
                     }
@@ -376,7 +376,7 @@ void PlayerCameraComponent::updatePlayerMovement(float deltaTime) {
                     if (groundZ < maxReasonableGround && feetZ < groundZ) {
                         // Would sink below ground - stop at ground level
                         newZ = groundZ + modelYOffset;
-                        if (owner_.playerConfig_.collisionDebug) {
+                        if (playerConfig_.collisionDebug) {
                             LOG_INFO(MOD_GRAPHICS, "[Swim] Hit bottom at groundZ={}, serverZ={}", groundZ, newZ);
                         }
                     }
@@ -389,8 +389,8 @@ void PlayerCameraComponent::updatePlayerMovement(float deltaTime) {
 
                     // Limit both stepping UP and stepping DOWN
                     // Small steps down (e.g., stairs) are OK, but large drops should trigger falling
-                    float maxStepDown = owner_.playerConfig_.collisionStepHeight * 2.0f;  // Allow stepping down ~2x step height
-                    if (stepHeight <= owner_.playerConfig_.collisionStepHeight && stepHeight >= -maxStepDown) {
+                    float maxStepDown = playerConfig_.collisionStepHeight * 2.0f;  // Allow stepping down ~2x step height
+                    if (stepHeight <= playerConfig_.collisionStepHeight && stepHeight >= -maxStepDown) {
                         // Snap center to be modelYOffset above ground
                         newZ = groundZ + modelYOffset;
                         positionChanged = true;
@@ -399,10 +399,10 @@ void PlayerCameraComponent::updatePlayerMovement(float deltaTime) {
                         playerMovement_.isJumping = true;
                         playerMovement_.verticalVelocity = 0.0f;  // Start with 0 velocity (just walked off edge)
                         positionChanged = true;
-                        if (owner_.playerConfig_.collisionDebug) {
+                        if (playerConfig_.collisionDebug) {
                             LOG_INFO(MOD_GRAPHICS, "[Irrlicht] Walked off edge, drop={}, starting fall", -stepHeight);
                         }
-                    } else if (owner_.playerConfig_.collisionDebug) {
+                    } else if (playerConfig_.collisionDebug) {
                         LOG_INFO(MOD_GRAPHICS, "[Irrlicht] Step up too high: {}", stepHeight);
                     }
                 }
@@ -419,7 +419,7 @@ void PlayerCameraComponent::updatePlayerMovement(float deltaTime) {
                         newZ = groundZ + modelYOffset;
                         playerMovement_.isJumping = false;
                         playerMovement_.verticalVelocity = 0.0f;
-                        if (owner_.playerConfig_.collisionDebug) {
+                        if (playerConfig_.collisionDebug) {
                             LOG_INFO(MOD_GRAPHICS, "[Jump] Landed (blocked horizontal) at groundZ={}, serverZ={}", groundZ, newZ);
                         }
                     }
@@ -445,7 +445,7 @@ void PlayerCameraComponent::updatePlayerMovement(float deltaTime) {
                             float maxZ = ceilingHit.Y - headHeight - 0.1f;
                             if (newZ > maxZ) {
                                 newZ = maxZ;
-                                if (owner_.playerConfig_.collisionDebug) {
+                                if (playerConfig_.collisionDebug) {
                                     LOG_INFO(MOD_GRAPHICS, "[Swim] Hit ceiling (blocked horiz) at {}, clamped to serverZ={}", ceilingHit.Y, newZ);
                                 }
                             }
@@ -461,7 +461,7 @@ void PlayerCameraComponent::updatePlayerMovement(float deltaTime) {
                     float maxReasonableGround = ctx_.playerZ + 100.0f;
                     if (groundZ < maxReasonableGround && feetZ < groundZ) {
                         newZ = groundZ + modelYOffset;
-                        if (owner_.playerConfig_.collisionDebug) {
+                        if (playerConfig_.collisionDebug) {
                             LOG_INFO(MOD_GRAPHICS, "[Swim] Hit bottom (blocked horiz) at groundZ={}, serverZ={}", groundZ, newZ);
                         }
                     }
@@ -477,7 +477,7 @@ void PlayerCameraComponent::updatePlayerMovement(float deltaTime) {
                         float currentFeetZ = ctx_.playerZ - modelYOffset;
                         float stepHeight = groundZ - currentFeetZ;
                         // Only limit stepping UP - can always step down
-                        if (stepHeight <= owner_.playerConfig_.collisionStepHeight) {
+                        if (stepHeight <= playerConfig_.collisionStepHeight) {
                             newY = ctx_.playerY;
                             newZ = groundZ + modelYOffset;
                             positionChanged = true;
@@ -495,7 +495,7 @@ void PlayerCameraComponent::updatePlayerMovement(float deltaTime) {
                             float currentFeetZ = ctx_.playerZ - modelYOffset;
                             float stepHeight = groundZ - currentFeetZ;
                             // Only limit stepping UP - can always step down
-                            if (stepHeight <= owner_.playerConfig_.collisionStepHeight) {
+                            if (stepHeight <= playerConfig_.collisionStepHeight) {
                                 newX = ctx_.playerX;
                                 newZ = groundZ + modelYOffset;
                                 positionChanged = true;
@@ -504,7 +504,7 @@ void PlayerCameraComponent::updatePlayerMovement(float deltaTime) {
                         }
                     }
                 }
-                if (!positionChanged && owner_.playerConfig_.collisionDebug) {
+                if (!positionChanged && playerConfig_.collisionDebug) {
                     LOG_TRACE(MOD_MOVEMENT, "BLOCKED - no movement");
                 }
             }
@@ -524,7 +524,7 @@ void PlayerCameraComponent::updatePlayerMovement(float deltaTime) {
                         newZ = targetGroundZ + modelYOffset;
                         playerMovement_.isJumping = false;
                         playerMovement_.verticalVelocity = 0.0f;
-                        if (owner_.playerConfig_.collisionDebug) {
+                        if (playerConfig_.collisionDebug) {
                             LOG_INFO(MOD_GRAPHICS, "[Jump] Landed (HCMap) at groundZ={}, serverZ={}", targetGroundZ, newZ);
                         }
                     }
@@ -539,7 +539,7 @@ void PlayerCameraComponent::updatePlayerMovement(float deltaTime) {
                         newZ = currentGroundZ + modelYOffset;
                         playerMovement_.isJumping = false;
                         playerMovement_.verticalVelocity = 0.0f;
-                        if (owner_.playerConfig_.collisionDebug) {
+                        if (playerConfig_.collisionDebug) {
                             LOG_INFO(MOD_GRAPHICS, "[Jump] Landed (HCMap, blocked) at groundZ={}, serverZ={}", currentGroundZ, newZ);
                         }
                     }
@@ -562,7 +562,7 @@ void PlayerCameraComponent::updatePlayerMovement(float deltaTime) {
                             float maxZ = ceilingHit.z - headHeight - 0.1f;  // Small buffer
                             if (newZ > maxZ) {
                                 newZ = maxZ;
-                                if (owner_.playerConfig_.collisionDebug) {
+                                if (playerConfig_.collisionDebug) {
                                     LOG_INFO(MOD_GRAPHICS, "[Swim] Hit ceiling (HCMap) at {}, clamped to serverZ={}", ceilingHit.z, newZ);
                                 }
                             }
@@ -573,7 +573,7 @@ void PlayerCameraComponent::updatePlayerMovement(float deltaTime) {
                     if (targetGroundZ != BEST_Z_INVALID && feetZ < targetGroundZ) {
                         // Would sink below ground - stop at ground level
                         newZ = targetGroundZ + modelYOffset;
-                        if (owner_.playerConfig_.collisionDebug) {
+                        if (playerConfig_.collisionDebug) {
                             LOG_INFO(MOD_GRAPHICS, "[Swim] Hit bottom (HCMap) at groundZ={}, serverZ={}", targetGroundZ, newZ);
                         }
                     }
@@ -594,7 +594,7 @@ void PlayerCameraComponent::updatePlayerMovement(float deltaTime) {
                             float maxZ = ceilingHit.z - headHeight - 0.1f;
                             if (newZ > maxZ) {
                                 newZ = maxZ;
-                                if (owner_.playerConfig_.collisionDebug) {
+                                if (playerConfig_.collisionDebug) {
                                     LOG_INFO(MOD_GRAPHICS, "[Swim] Hit ceiling (HCMap, blocked horiz) at {}, clamped to serverZ={}", ceilingHit.z, newZ);
                                 }
                             }
@@ -613,11 +613,11 @@ void PlayerCameraComponent::updatePlayerMovement(float deltaTime) {
                 float currentFeetZ = ctx_.playerZ - modelYOffset;
                 float stepHeight = targetGroundZ - currentFeetZ;
 
-                LOG_TRACE(MOD_MOVEMENT, "HCMap Step height: {} (max up: {})", stepHeight, owner_.playerConfig_.collisionStepHeight);
+                LOG_TRACE(MOD_MOVEMENT, "HCMap Step height: {} (max up: {})", stepHeight, playerConfig_.collisionStepHeight);
 
                 // Limit both stepping UP and stepping DOWN
-                float maxStepDown = owner_.playerConfig_.collisionStepHeight * 2.0f;
-                if (stepHeight <= owner_.playerConfig_.collisionStepHeight && stepHeight >= -maxStepDown) {
+                float maxStepDown = playerConfig_.collisionStepHeight * 2.0f;
+                if (stepHeight <= playerConfig_.collisionStepHeight && stepHeight >= -maxStepDown) {
                     bool losCheck = checkMovementCollision(ctx_.playerX, ctx_.playerY, ctx_.playerZ, newX, newY, targetGroundZ);
 
                     LOG_TRACE(MOD_MOVEMENT, "HCMap LOS check: {}", (losCheck ? "CLEAR" : "BLOCKED"));
@@ -630,7 +630,7 @@ void PlayerCameraComponent::updatePlayerMovement(float deltaTime) {
                         float xGroundZ = findGroundZ(newX, ctx_.playerY, ctx_.playerZ);
                         float xStepHeight = xGroundZ - currentFeetZ;
                         if (xGroundZ != BEST_Z_INVALID &&
-                            xStepHeight <= owner_.playerConfig_.collisionStepHeight && xStepHeight >= -maxStepDown &&
+                            xStepHeight <= playerConfig_.collisionStepHeight && xStepHeight >= -maxStepDown &&
                             checkMovementCollision(ctx_.playerX, ctx_.playerY, ctx_.playerZ, newX, ctx_.playerY, xGroundZ)) {
                             newY = ctx_.playerY;
                             newZ = xGroundZ + modelYOffset;
@@ -639,7 +639,7 @@ void PlayerCameraComponent::updatePlayerMovement(float deltaTime) {
                             float yGroundZ = findGroundZ(ctx_.playerX, newY, ctx_.playerZ);
                             float yStepHeight = yGroundZ - currentFeetZ;
                             if (yGroundZ != BEST_Z_INVALID &&
-                                yStepHeight <= owner_.playerConfig_.collisionStepHeight && yStepHeight >= -maxStepDown &&
+                                yStepHeight <= playerConfig_.collisionStepHeight && yStepHeight >= -maxStepDown &&
                                 checkMovementCollision(ctx_.playerX, ctx_.playerY, ctx_.playerZ, ctx_.playerX, newY, yGroundZ)) {
                                 newX = ctx_.playerX;
                                 newZ = yGroundZ + modelYOffset;
@@ -652,7 +652,7 @@ void PlayerCameraComponent::updatePlayerMovement(float deltaTime) {
                     playerMovement_.isJumping = true;
                     playerMovement_.verticalVelocity = 0.0f;
                     positionChanged = true;
-                    if (owner_.playerConfig_.collisionDebug) {
+                    if (playerConfig_.collisionDebug) {
                         LOG_INFO(MOD_GRAPHICS, "[HCMap] Walked off edge, drop={}, starting fall", -stepHeight);
                     }
                 } else {
@@ -679,13 +679,13 @@ void PlayerCameraComponent::updatePlayerMovement(float deltaTime) {
                     newZ = std::max(ctx_.playerZ, minGroundZ);
                     playerMovement_.isJumping = false;
                     playerMovement_.verticalVelocity = 0.0f;
-                    if (owner_.playerConfig_.collisionDebug) {
+                    if (playerConfig_.collisionDebug) {
                         LOG_INFO(MOD_GRAPHICS, "[Jump] Landed (no collision) at Z={}", newZ);
                     }
                 }
             }
 
-            if (owner_.playerConfig_.collisionDebug) {
+            if (playerConfig_.collisionDebug) {
                 if (!ctx_.collisionMap) {
                     LOG_TRACE(MOD_MOVEMENT, "No collision map - movement allowed");
                 } else {
@@ -725,7 +725,7 @@ void PlayerCameraComponent::updatePlayerMovement(float deltaTime) {
             ctx_.entityRenderer->updatePlayerEntityPosition(ctx_.playerX, ctx_.playerY, ctx_.playerZ, ctx_.playerHeading);
         }
 
-        if (owner_.cameraMode_ == CameraMode::Follow && ctx_.cameraController) {
+        if (cameraMode_ == CameraMode::Follow && ctx_.cameraController) {
             // Follow mode: third-person camera behind player
             ctx_.cameraController->setFollowPosition(ctx_.playerX, ctx_.playerY, ctx_.playerZ, ctx_.playerHeading, deltaTime);
         }
@@ -741,7 +741,7 @@ void PlayerCameraComponent::updatePlayerMovement(float deltaTime) {
     // is 3.65 degrees) and moved the formula into
     // include/client/graphics/first_person_camera.h; the reason this path
     // must keep delegating is unchanged.
-    if (owner_.cameraMode_ == CameraMode::FirstPerson && (positionChanged || headingChanged || pitchChanged)) {
+    if (cameraMode_ == CameraMode::FirstPerson && (positionChanged || headingChanged || pitchChanged)) {
         repositionFirstPersonCamera();
     }
 

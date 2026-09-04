@@ -29,8 +29,10 @@
   A component holds `RendererContext& ctx_` (shared renderer state bound by
   reference, plus a pointer to every sibling: `ctx_.Frame()`,
   `ctx_.ZoneLoad()`, …) and, except `RdpComponent`, an `IrrlichtRenderer&
-  owner_` for what has not moved yet. That handle's remaining 1,065 uses are
-  measured and boarded as **B050** — read it before assuming a member belongs
+  owner_` for what has not moved yet. L13 closed that handle down to **151**
+  uses (81 public methods + 70 in thirteen thread- or lifetime-bound stays);
+  a member owned by another component is reached as
+  `ctx_.<Owner>().<accessor>()`. See the closed **B050** — read it before assuming a member belongs
   where you find it. `initLoadingScreen`, `initDeferredGraphics`,
   `processFrame`, `shutdown` and `run` stay on `IrrlichtRenderer`:
   `Application` and `IrrlichtBridge` must not learn a component exists.

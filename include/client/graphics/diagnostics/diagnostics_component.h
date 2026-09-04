@@ -97,6 +97,38 @@ public:
 	// Per-region indoor classification (loaded from data/region_maps/<zone>.json)
 	bool loadIndoorRegionMap(const std::string& zoneName);
 
+
+	// ------------------------------------------------------------------
+	// L13 (refactor/L13_pairwise_ownership.md): members that moved here from
+	// class IrrlichtRenderer because THIS component is their owner under the
+	// pairwise rule (Batch K Mechanism 3 applied to a two-component member: it
+	// moves to the component that WRITES it, or on a tie to the one with more
+	// uses). Every other reader reaches them through ctx_.Diagnostics().<accessor>();
+	// the renderer's own init/teardown reaches them through Diagnostics().
+	// Each accessor below is the SMALLEST the other side needs: a const getter
+	// where nothing outside this component writes, a mutable reference where
+	// something does.
+	// ------------------------------------------------------------------
+	bool& debugDirectionalLightEnabled() { return debugDirectionalLightEnabled_; }
+	bool const& debugDirectionalLightEnabled() const { return debugDirectionalLightEnabled_; }
+	bool& debugObjectLightsEnabled() { return debugObjectLightsEnabled_; }
+	bool const& debugObjectLightsEnabled() const { return debugObjectLightsEnabled_; }
+	bool& debugPlayerLightEnabled() { return debugPlayerLightEnabled_; }
+	bool const& debugPlayerLightEnabled() const { return debugPlayerLightEnabled_; }
+	bool const& hudEnabled() const { return hudEnabled_; }
+	int const& maxObjectLights() const { return maxObjectLights_; }
+	irr::scene::ILightSceneNode*& playerLightNode() { return playerLightNode_; }
+	irr::scene::ILightSceneNode* const& playerLightNode() const { return playerLightNode_; }
+	bool const& portalDebugDraw() const { return portalDebugDraw_; }
+	bool const& sceneProfileEnabled() const { return sceneProfileEnabled_; }
+	int& sceneProfileFrameCount() { return sceneProfileFrameCount_; }
+	int const& sceneProfileFrameCount() const { return sceneProfileFrameCount_; }
+	bool const& stencilDebugDraw() const { return stencilDebugDraw_; }
+	irr::scene::ILightSceneNode*& sunLight() { return sunLight_; }
+	irr::scene::ILightSceneNode* const& sunLight() const { return sunLight_; }
+	bool& zoneLightsEnabled() { return zoneLightsEnabled_; }
+	bool const& zoneLightsEnabled() const { return zoneLightsEnabled_; }
+
 private:
 	// Walk zone meshes and swap material types after shader variant change.
 	// One caller, in-family (toggleZoneLights) -- K03 correction (a).
@@ -114,6 +146,20 @@ private:
 		irr::s32 originalType;
 	};
 	std::vector<DebugMaterialEntry> debugOriginalMaterials_;
+
+	// L13: owned state, see the accessors above.
+	bool debugDirectionalLightEnabled_ = true;  // /zlight toggle
+	bool debugObjectLightsEnabled_ = true;  // /olight toggle
+	bool debugPlayerLightEnabled_ = true;  // /plight toggle
+	bool hudEnabled_ = true;
+	int maxObjectLights_ = 8;  // Max object lights to display (1-8), cycles with L key
+	irr::scene::ILightSceneNode* playerLightNode_ = nullptr;
+	bool portalDebugDraw_ = false;
+	bool sceneProfileEnabled_ = false;
+	int sceneProfileFrameCount_ = 0;
+	bool stencilDebugDraw_ = false;
+	irr::scene::ILightSceneNode* sunLight_ = nullptr;  // Directional sun light
+	bool zoneLightsEnabled_ = false;  // Zone lights off by default
 };
 
 } // namespace Graphics

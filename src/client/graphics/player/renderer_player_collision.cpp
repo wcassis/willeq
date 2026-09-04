@@ -28,7 +28,7 @@ bool PlayerCameraComponent::checkMovementCollision(float fromX, float fromY, flo
 
     // Check line of sight from current position to new position
     // Use configurable check height for collision detection
-    float checkHeight = owner_.playerConfig_.collisionCheckHeight;
+    float checkHeight = playerConfig_.collisionCheckHeight;
     glm::vec3 from(fromX, fromY, fromZ + checkHeight);
     glm::vec3 to(toX, toY, toZ + checkHeight);
 
@@ -36,7 +36,7 @@ bool PlayerCameraComponent::checkMovementCollision(float fromX, float fromY, flo
     bool clear = ctx_.collisionMap->CheckLOSWithHit(from, to, &hitLocation);
 
     // Add debug visualization if enabled
-    if (owner_.playerConfig_.collisionDebug) {
+    if (playerConfig_.collisionDebug) {
         // Convert EQ coords (x, y, z) to Irrlicht coords (x, z, y)
         irr::core::vector3df irrFrom(from.x, from.z, from.y);
         irr::core::vector3df irrTo(to.x, to.z, to.y);
@@ -74,8 +74,8 @@ float PlayerCameraComponent::findGroundZ(float x, float y, float currentZ) {
         return currentZ;
     }
 
-    float maxStepUp = owner_.playerConfig_.collisionStepHeight;
-    float maxStepDown = owner_.playerConfig_.collisionStepHeight * 2.0f;
+    float maxStepUp = playerConfig_.collisionStepHeight;
+    float maxStepDown = playerConfig_.collisionStepHeight * 2.0f;
 
     // PHASE 1: Short raycast to find ground near current level
     // This prevents falling through mesh gaps by looking for nearby ground first
@@ -89,7 +89,7 @@ float PlayerCameraComponent::findGroundZ(float x, float y, float currentZ) {
         float heightDiff = nearGroundZ - currentZ;
         if (heightDiff >= -maxStepDown && heightDiff <= maxStepUp) {
             // Found nearby ground - use it
-            if (owner_.playerConfig_.collisionDebug) {
+            if (playerConfig_.collisionDebug) {
                 // Green line showing nearby ground hit (preferred)
                 irr::core::vector3df irrFrom(x, currentZ + maxStepUp, y);
                 irr::core::vector3df irrTo(x, nearGroundZ, y);
@@ -111,7 +111,7 @@ float PlayerCameraComponent::findGroundZ(float x, float y, float currentZ) {
     float groundZ = ctx_.collisionMap->FindBestZ(pos, &result);
 
     // Add debug visualization if enabled
-    if (owner_.playerConfig_.collisionDebug) {
+    if (playerConfig_.collisionDebug) {
         // Convert EQ coords (x, y, z) to Irrlicht coords (x, z, y)
         irr::core::vector3df irrFrom(x, currentZ + 10.0f, y);
 
@@ -142,7 +142,7 @@ float PlayerCameraComponent::findGroundZ(float x, float y, float currentZ) {
         float boatDeckZ = ctx_.entityRenderer->findBoatDeckZ(x, y, currentZ);
         if (boatDeckZ != BEST_Z_INVALID) {
             if (groundZ == BEST_Z_INVALID || boatDeckZ > groundZ) {
-                if (owner_.playerConfig_.collisionDebug) {
+                if (playerConfig_.collisionDebug) {
                     // Yellow line showing boat deck hit
                     irr::core::vector3df irrFrom(x, currentZ, y);
                     irr::core::vector3df irrTo(x, boatDeckZ, y);
@@ -166,15 +166,15 @@ void PlayerCameraComponent::setupMinimalZoneCollision() {
     // Clean up old collision data
     ctx_.regionWorldTriangles.clear();
     ctx_.objectWorldTriangles.clear();
-    owner_.doorCollisionData_.clear();
+    ctx_.doorCollisionData.clear();
     // Legacy meta selectors (only used by HCMap fallback path now)
-    if (owner_.zoneTriangleSelector_) {
-        owner_.zoneTriangleSelector_->drop();
-        owner_.zoneTriangleSelector_ = nullptr;
+    if (ctx_.ZoneLifecycle().zoneTriangleSelector()) {
+        ctx_.ZoneLifecycle().zoneTriangleSelector()->drop();
+        ctx_.ZoneLifecycle().zoneTriangleSelector() = nullptr;
     }
-    if (owner_.terrainOnlySelector_) {
-        owner_.terrainOnlySelector_->drop();
-        owner_.terrainOnlySelector_ = nullptr;
+    if (ctx_.ZoneLifecycle().terrainOnlySelector()) {
+        ctx_.ZoneLifecycle().terrainOnlySelector()->drop();
+        ctx_.ZoneLifecycle().terrainOnlySelector() = nullptr;
     }
 
     if (!ctx_.smgr) {
@@ -261,7 +261,7 @@ void PlayerCameraComponent::addDoorToCollision(uint8_t doorId) {
     bool isInvisible = (ot == 50 || ot == 53 || ot == 54 || ot == 57);
     if (isSpinning || isLift || isHazardous || isInvisible) {
         data.hasCollision = false;
-        owner_.doorCollisionData_[doorId] = std::move(data);
+        ctx_.doorCollisionData[doorId] = std::move(data);
         LOG_DEBUG(MOD_GRAPHICS, "Door {} opentype={}: no collision ({})",
                   doorId, ot, isSpinning ? "spinning" : isLift ? "lift" : isHazardous ? "hazardous" : "invisible");
         return;
@@ -292,7 +292,7 @@ void PlayerCameraComponent::addDoorToCollision(uint8_t doorId) {
     LOG_DEBUG(MOD_GRAPHICS, "Door {} opentype={} region={}: {} closed tris, {} open tris",
               doorId, ot, data.bspRegion, data.closedTriangles.size(), data.openTriangles.size());
 
-    owner_.doorCollisionData_[doorId] = std::move(data);
+    ctx_.doorCollisionData[doorId] = std::move(data);
 }
 
 void PlayerCameraComponent::addObjectToCollision(size_t objIdx) {
@@ -423,7 +423,7 @@ bool PlayerCameraComponent::rayTestDoorsAndObjects(const irr::core::vector3df& r
     }
 
     // Test doors in this BSP region (skip animating doors — walk-through during animation)
-    for (const auto& [doorId, doorData] : owner_.doorCollisionData_) {
+    for (const auto& [doorId, doorData] : ctx_.doorCollisionData) {
         if (!doorData.hasCollision) continue;
         if (doorData.bspRegion != bspRegion) continue;
 
@@ -552,8 +552,8 @@ float PlayerCameraComponent::findGroundZBspFiltered(float x, float y, float curr
 
     float feetZ = currentZ - modelYOffset;
     float headZ = currentZ + modelYOffset;
-    float maxStepUp = owner_.playerConfig_.collisionStepHeight;
-    float maxStepDown = owner_.playerConfig_.collisionStepHeight * 2.0f;
+    float maxStepUp = playerConfig_.collisionStepHeight;
+    float maxStepDown = playerConfig_.collisionStepHeight * 2.0f;
 
     // Find BSP region at query point
     size_t queryRegion = ctx_.zoneBspTree->findRegionIndexForPoint(x, y, currentZ);
@@ -601,7 +601,7 @@ float PlayerCameraComponent::findGroundZBspFiltered(float x, float y, float curr
     if (nearHit) {
         float floorZ = bestHit.Y;
         if (floorZ <= feetZ + maxStepUp + 0.1f) {
-            if (owner_.playerConfig_.collisionDebug) {
+            if (playerConfig_.collisionDebug) {
                 addCollisionDebugLine(nearStart, bestHit, irr::video::SColor(255, 0, 255, 128), 0.2f);
             }
             return floorZ;
@@ -645,7 +645,7 @@ float PlayerCameraComponent::findGroundZBspFiltered(float x, float y, float curr
     }
 
     // Debug visualization
-    if (owner_.playerConfig_.collisionDebug) {
+    if (playerConfig_.collisionDebug) {
         if (hit) {
             float floorZ = bestHit.Y;
             bool validFloor = (floorZ <= feetZ + maxStepUp + 0.1f);
@@ -675,7 +675,7 @@ float PlayerCameraComponent::findGroundZBspFiltered(float x, float y, float curr
         float boatDeckZ = ctx_.entityRenderer->findBoatDeckZ(x, y, feetZ);
         if (boatDeckZ != BEST_Z_INVALID) {
             if (boatDeckZ > groundZ) {
-                if (owner_.playerConfig_.collisionDebug) {
+                if (playerConfig_.collisionDebug) {
                     irr::core::vector3df irrFrom(x, feetZ, y);
                     irr::core::vector3df irrTo(x, boatDeckZ, y);
                     addCollisionDebugLine(irrFrom, irrTo, irr::video::SColor(255, 255, 255, 0), 0.3f);

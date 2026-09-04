@@ -105,9 +105,11 @@ TEST_F(FrameComponentTest, PlayerInputTogglesAMovedPanelMember) {
 }
 
 TEST_F(FrameComponentTest, PlayerInputIsIgnoredWhileChatIsFocusedThroughOwner) {
-    // chatInputFocused_ STAYED on IrrlichtRenderer (renderer_event_receiver
-    // and renderer_player_physics read it), so the early-continue at the top
-    // of processPlayerInput() is an owner_ read. Driving it through
+    // L13 moved chatInputFocused_ ONTO FrameComponent (it is the only writer;
+    // renderer_player_physics reads it as ctx_.Frame().chatInputFocused()).
+    // RendererEventReceiver's same-named std::atomic<bool> is a DIFFERENT
+    // member and is untouched. The early-continue at the top of
+    // processPlayerInput() now reads this component's own member. Driving it through
     // processChatInput() is the production way to set it -- no device needed.
     renderer.requestChatPrefill("/tell Grimjaw ");
     renderer.Frame().processChatInput();
@@ -118,8 +120,8 @@ TEST_F(FrameComponentTest, PlayerInputIsIgnoredWhileChatIsFocusedThroughOwner) {
     // With chat focused, a renderer-local action must do nothing at all.
     renderer.Frame().processPlayerInput(One(RendererAction::ToggleSkills));
     EXPECT_FALSE(renderer.Frame().skillsPopupState_.isOpen)
-        << "processPlayerInput ran its switch while chat was focused -- the owner_ "
-           "read of chatInputFocused_ is not seeing the renderer's member";
+        << "processPlayerInput ran its switch while chat was focused -- the "
+           "read of chatInputFocused_ is not seeing the component's member";
 }
 
 // --- ctx_: the component reads the context the renderer wrote through -----

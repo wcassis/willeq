@@ -212,6 +212,42 @@ public:
 	bool newUIEnabled_ = true;                // U07c1: new UI on by default
 	bool allUIHidden_ = false;
 
+
+	// ------------------------------------------------------------------
+	// L13 (refactor/L13_pairwise_ownership.md): members that moved here from
+	// class IrrlichtRenderer because THIS component is their owner under the
+	// pairwise rule (Batch K Mechanism 3 applied to a two-component member: it
+	// moves to the component that WRITES it, or on a tie to the one with more
+	// uses). Every other reader reaches them through ctx_.Frame().<accessor>();
+	// the renderer's own init/teardown reaches them through Frame().
+	// Each accessor below is the SMALLEST the other side needs: a const getter
+	// where nothing outside this component writes, a mutable reference where
+	// something does.
+	// ------------------------------------------------------------------
+	bool const& chatInputFocused() const { return chatInputFocused_; }
+	int const& currentFps() const { return currentFps_; }
+	float const& essentialSimCostAvgUs() const { return essentialSimCostAvgUs_; }
+	float const& fireGlowTime() const { return fireGlowTime_; }
+	bool& frameTimingEnabled() { return frameTimingEnabled_; }
+	bool const& frameTimingEnabled() const { return frameTimingEnabled_; }
+	FrameTimings& timingsAccum() { return frameTimingsAccum_; }
+	FrameTimings const& timingsAccum() const { return frameTimingsAccum_; }
+	int& timingsSampleCount() { return frameTimingsSampleCount_; }
+	int const& timingsSampleCount() const { return frameTimingsSampleCount_; }
+	FrameTimings& timings() { return frameTimings_; }
+	FrameTimings const& timings() const { return frameTimings_; }
+	bool& have3DTransforms() { return have3DTransforms_; }
+	bool const& have3DTransforms() const { return have3DTransforms_; }
+	irr::u32& lastFpsTime() { return lastFpsTime_; }
+	irr::u32 const& lastFpsTime() const { return lastFpsTime_; }
+	uint32_t& lastPolygonCount() { return lastPolygonCount_; }
+	uint32_t const& lastPolygonCount() const { return lastPolygonCount_; }
+	float& loadingProgress() { return loadingProgress_; }
+	float const& loadingProgress() const { return loadingProgress_; }
+	std::wstring& loadingText() { return loadingText_; }
+	std::wstring const& loadingText() const { return loadingText_; }
+	float const& renderCostAvgUs() const { return renderCostAvgUs_; }
+
 private:
 	RendererContext& ctx_;
 	IrrlichtRenderer& owner_;
@@ -247,6 +283,23 @@ private:
 	int polygonBudgetExceededFrames_ = 0;  // Throttle warnings
 	int constrainedStatsLogCounter_ = 0;   // Periodic stats logging
 	bool frustumDebugDraw_ = false;  // Draw region bboxes colored by frustum result
+
+	// L13: owned state, see the accessors above.
+	bool chatInputFocused_ = false;
+	int currentFps_ = 0;
+	float essentialSimCostAvgUs_ = 3000.0f;  // EMA of essential sim cost (us), init ~3ms
+	float fireGlowTime_ = 0.0f;  // Animation time accumulator
+	int frameCount_ = 0;
+	bool frameTimingEnabled_ = false;  // Enable with /frametiming command
+	FrameTimings frameTimingsAccum_;  // Accumulated over multiple frames
+	int frameTimingsSampleCount_ = 0;
+	FrameTimings frameTimings_;
+	bool have3DTransforms_ = false;
+	irr::u32 lastFpsTime_ = 0;
+	uint32_t lastPolygonCount_ = 0;  // DiagnosticsComponent reads it; the two
+	float loadingProgress_ = 0.0f;  // Loading progress for zone transitions (0.0 - 1.0)
+	std::wstring loadingText_ = L"Initializing...";  // Loading stage text
+	float renderCostAvgUs_ = 15000.0f;  // EMA of render phase cost (us), init ~15ms
 };
 
 } // namespace Graphics

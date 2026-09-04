@@ -59,6 +59,7 @@ class GPUUploadThread;
 class SoftwareOcclusionCuller;
 class TreeWindController;
 class EntityPrepWorker;
+class RenderPassTimer;  // L13: hoisted out of IrrlichtRenderer (render_pass_timer.h)
 
 // L12: the eleven extracted components, reached through the accessors below.
 // Pointers only -- no component header is included here, so renderer_context.h
@@ -214,6 +215,19 @@ struct RendererContext {
 #ifdef EQT_HAS_DRM
 	uint32_t& icosphereProgram;  // 3: diagnostics 1,frame 1,zone_load 1
 #endif
+
+	// ------------------------------------------------------------------
+	// L13 (refactor/L13_pairwise_ownership.md): B050 cluster 3. All four
+	// clear L12's >= 3 threshold and were excluded ONLY because their type
+	// was nested in IrrlichtRenderer, which would have forced this header to
+	// include irrlicht_renderer.h. L13 hoisted the four types to
+	// renderer_types.h / render_pass_timer.h, so the members promote on the
+	// unchanged L12 rule.
+	// ------------------------------------------------------------------
+	std::vector<FireGlowLight>& fireGlowLights;  // 26: eqe1 16,zone_load 8,diagnostics 1,frame 1
+	std::vector<RendererZoneLightData>& zoneLightData;  // 22: sim 12,zone_load 5,diagnostics 4,zone_lifecycle 1
+	RenderPassTimer*& renderPassTimer;  // 14: frame 9,zone_load 3,diagnostics 2
+	std::map<uint8_t, DoorCollisionData>& doorCollisionData;  // 7: player 4,zone_lifecycle 2,zone_load 1
 
 	// ------------------------------------------------------------------
 	// L12: the SIBLING-COMPONENT pointers (K13's third target group).

@@ -148,8 +148,8 @@ void ZoneLoadComponent::loadZoneStep0_EQE1(ZoneLoadContext& ctx) {
         // open (and a genuinely absent name into zero), replacing the probe that
         // walked this whole list. Loaded once; the candidate set above is what
         // varies per zone.
-        if (!owner_.eqe1Index_.isLoaded()) {
-            if (!owner_.eqe1Index_.load("data/eqe1_texture_index.json")) {
+        if (!ctx_.Eqe1().eqe1Index().isLoaded()) {
+            if (!ctx_.Eqe1().eqe1Index().load("data/eqe1_texture_index.json")) {
                 LOG_ERROR(MOD_GRAPHICS,
                           "EQE1: no data/eqe1_texture_index.json -- EQE1 lookups "
                           "will resolve nothing. Rebuild it with "
@@ -743,9 +743,9 @@ void ZoneLoadComponent::loadZoneStep4_Regions(ZoneLoadContext& ctx) {
             ctx_.manualZoneDrawEnabled = true;
             if (ctx_.manualZoneDrawEnabled) {
                 // S05: renderPassTimer_ already created in initLoadingScreen()
-                if (ctx_.smgr && owner_.renderPassTimer_) {
-                    owner_.renderPassTimer_->setRenderer(&owner_);
-                    ctx_.smgr->setLightManager(owner_.renderPassTimer_);
+                if (ctx_.smgr && ctx_.renderPassTimer) {
+                    ctx_.renderPassTimer->setRenderer(&owner_);
+                    ctx_.smgr->setLightManager(ctx_.renderPassTimer);
                     LOG_DEBUG(MOD_GRAPHICS, "SEQ Step4: installed RenderPassTimer as light manager");
                 }
                 for (auto& [regionIdx, node] : ctx_.regionMeshNodes) {
@@ -813,10 +813,10 @@ void ZoneLoadComponent::loadZoneStep5_Assets(ZoneLoadContext& ctx) {
 
         // Install archive index
         if (computations && computations->archiveIndex) {
-            owner_.graphicsArchiveIndex_ = std::move(computations->archiveIndex);
+            graphicsArchiveIndex_ = std::move(computations->archiveIndex);
             bool setOnRml = false;
             if (ctx_.entityRenderer && ctx_.entityRenderer->getRaceModelLoader()) {
-                ctx_.entityRenderer->getRaceModelLoader()->setGraphicsArchiveIndex(owner_.graphicsArchiveIndex_.get());
+                ctx_.entityRenderer->getRaceModelLoader()->setGraphicsArchiveIndex(graphicsArchiveIndex_.get());
                 setOnRml = true;
             }
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step5: archive index installed, setOnRaceModelLoader={}", setOnRml);
@@ -883,7 +883,7 @@ void ZoneLoadComponent::loadZoneSequential(const std::string& eqClientPath,
     LOG_DEBUG(MOD_GRAPHICS, "SEQ Setup: fireGlowLightingEnabled_={}, fireGlowIcospheresEnabled_={}, "
               "maxFireGlowLights_={}, fireEffectsEnabled_={}, fireGlowLights_.size={}",
               ctx_.fireGlowLightingEnabled, ctx_.fireGlowIcospheresEnabled,
-              ctx_.maxFireGlowLights, ctx_.fireEffectsEnabled, owner_.fireGlowLights_.size());
+              ctx_.maxFireGlowLights, ctx_.fireEffectsEnabled, ctx_.fireGlowLights.size());
     LOG_DEBUG(MOD_GRAPHICS, "SEQ Setup: constrainedConfig: skipObjectBuild={}, "
               "eqe1Path='{}', deferredAssetLoading={}",
               ctx_.config.constrainedConfig.skipObjectBuild,
@@ -970,7 +970,7 @@ void ZoneLoadComponent::loadZoneSequential(const std::string& eqClientPath,
     ctx_.sequentialLoadComplete = true;
     LOG_DEBUG(MOD_GRAPHICS, "SEQ DONE: sequentialLoadComplete_=true, fireGlowLights_={}, "
               "fireGlowLightingEnabled_={}, fireGlowIcospheresEnabled_={}, maxFireGlowLights_={}",
-              owner_.fireGlowLights_.size(), ctx_.fireGlowLightingEnabled,
+              ctx_.fireGlowLights.size(), ctx_.fireGlowLightingEnabled,
               ctx_.fireGlowIcospheresEnabled, ctx_.maxFireGlowLights);
     auto totalMs = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - ctx.totalStart).count();
