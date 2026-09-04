@@ -291,7 +291,15 @@ void eqt::movement::MovementComponent::SetMovementMode(MovementMode mode)
 	}
 }
 
-void eqt::movement::MovementComponent::SetPositionState(PositionState state)
+// T344 (B001): the STATE half of the old SetPositionState -- everything it
+// did except the SendSpawnAppearance. A pose the SERVER forces on us (an
+// OP_SpawnAppearance for our own spawn id, our own OP_Death) must land here:
+// echoing it back is both wrong and unlike the official client, which
+// T311 Leg A measured never sending an appearance it was just told about.
+// Everything below is the pre-split body verbatim minus the five send
+// lines; SetPositionState() re-adds four of them (AT_DIE is gone for good,
+// see the POS_DEAD arm there).
+void eqt::movement::MovementComponent::ApplyPositionState(PositionState state)
 {
 	if (static_cast<PositionState>(ctx_.game_state.player().positionState()) == state) {
 		return;
@@ -310,7 +318,6 @@ void eqt::movement::MovementComponent::SetPositionState(PositionState state)
 
 	switch (state) {
 		case POS_STANDING:
-			ctx_.Entities().SendSpawnAppearance(AT_ANIMATION, 100);  // Animation::Standing
 			if (ctx_.game_state.player().isMoving()) {
 				StopMovement();
 			}
@@ -320,31 +327,70 @@ void eqt::movement::MovementComponent::SetPositionState(PositionState state)
 			}
 			break;
 		case POS_SITTING:
-			ctx_.Entities().SendSpawnAppearance(AT_ANIMATION, 110);  // Animation::Sitting
 			if (ctx_.game_state.player().isMoving()) {
 				StopMovement();
 			}
+			break;
+		case POS_CROUCHING:
+			break;
+		case POS_FEIGN_DEATH:
+			if (ctx_.game_state.player().isMoving()) {
+				StopMovement();
+			}
+			break;
+		case POS_DEAD:
+			if (ctx_.game_state.player().isMoving()) {
+				StopMovement();
+			}
+			break;
+	}
+
+	if (EverQuest::GetDebugLevel() >= 1) {
+		const char* state_names[] = {"STANDING", "SITTING", "CROUCHING", "FEIGN_DEATH", "DEAD"};
+		LOG_DEBUG(MOD_MAIN, "Position state changed to {}", state_names[state]);
+	}
+}
+
+// The USER-INITIATED half: /sit, /stand, the camp sit-down, the feign key,
+// the setPositionState action. Identical to ApplyPositionState plus the one
+// OP_SpawnAppearance that tells the server about the pose WE chose.
+//
+// T344: the guard is repeated here so a no-op change (already in `state`)
+// still sends nothing, exactly as before the split. The one ordering
+// difference the split introduces: when the new pose also stops movement,
+// StopMovement()'s OP_ClientUpdate now precedes this appearance instead of
+// following it. The multiset of packets is unchanged and neither eqemu
+// handler reads the other's state.
+void eqt::movement::MovementComponent::SetPositionState(PositionState state)
+{
+	if (static_cast<PositionState>(ctx_.game_state.player().positionState()) == state) {
+		return;
+	}
+
+	ApplyPositionState(state);
+
+	switch (state) {
+		case POS_STANDING:
+			ctx_.Entities().SendSpawnAppearance(AT_ANIMATION, 100);  // Animation::Standing
+			break;
+		case POS_SITTING:
+			ctx_.Entities().SendSpawnAppearance(AT_ANIMATION, 110);  // Animation::Sitting
 			break;
 		case POS_CROUCHING:
 			ctx_.Entities().SendSpawnAppearance(AT_ANIMATION, 111);  // Animation::Crouching
 			break;
 		case POS_FEIGN_DEATH:
 			ctx_.Entities().SendSpawnAppearance(AT_ANIMATION, ANIM_LYING);  // Use lying animation for feign death
-			if (ctx_.game_state.player().isMoving()) {
-				StopMovement();
-			}
 			break;
 		case POS_DEAD:
-			ctx_.Entities().SendSpawnAppearance(AT_DIE, 0);  // Use AT_DIE for actual death
-			if (ctx_.game_state.player().isMoving()) {
-				StopMovement();
-			}
+			// T344 (B001): the AT_DIE send is DELETED. T311 Leg A's capture
+			// of the official client has AT_DIE (type 0) appearing zero
+			// times in either direction; a dying official client sends
+			// AT_ANIMATION param 115 (Lying) and then OP_ZoneChange. The arm
+			// is KEPT because POS_DEAD is still reachable -- through the
+			// setPositionState(4) action -- and ApplyPositionState() above
+			// still does the state write and the movement stop for it.
 			break;
-	}
-	
-	if (EverQuest::GetDebugLevel() >= 1) {
-		const char* state_names[] = {"STANDING", "SITTING", "CROUCHING", "FEIGN_DEATH", "DEAD"};
-		LOG_DEBUG(MOD_MAIN, "Position state changed to {}", state_names[state]);
 	}
 }
 

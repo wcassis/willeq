@@ -1,4 +1,5 @@
 #include "client/player/player_component.h"
+#include "client/movement/movement_component.h"  // T344: ApplyPositionState
 #include "client/eq.h"
 #include "client/willeq_database.h"
 #include "client/pathfinder_interface.h"
@@ -249,6 +250,22 @@ void eqt::player::PlayerComponent::ZoneProcessDeath(const EQ::Net::Packet &p)
 	// If we died, log it prominently
 	if (victim_id == ctx_.self.MySpawnId()) {
 		std::cout << "YOU HAVE BEEN SLAIN!" << std::endl;
+
+		// T344 (B001): OP_Death for our own spawn id is the authoritative
+		// signal that WE are dead, and until now nothing wrote it to
+		// game_state.player().positionState() -- the only path that could
+		// reach POS_DEAD was the debug setPositionState(4) action, and it
+		// sent an AT_DIE appearance that T311 Leg A measured appearing zero
+		// times in either direction of a real official-client session.
+		// ApplyPositionState(), never SetPositionState(): the server told
+		// us, so there is nothing to tell it back.
+		//
+		// NOT the whole oracle death sequence. T311 Leg A measured the
+		// official client answering its own OP_Death with C->S
+		// OP_SpawnAppearance AT_ANIMATION param 115 (Lying) and then a full
+		// OP_ZoneChange re-entry; that re-entry is a separate, larger unit
+		// (see the T344 Review). This writes the state only.
+		ctx_.Movement().ApplyPositionState(POS_DEAD);
 		// Close vendor window if open (can't shop while dead)
 		if (ctx_.self.IsVendorWindowOpen()) {
 			LOG_DEBUG(MOD_INVENTORY, "Closed vendor window due to player death");

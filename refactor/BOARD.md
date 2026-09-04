@@ -22,13 +22,28 @@ it without taking that measurement first.
 
 ## A — live defects
 
-- **B001** (A) `src/client/movement/movement_state.cpp`
+- ~~**B001** (A) `src/client/movement/movement_state.cpp`
   `eqt::movement::MovementComponent::SetPositionState` (K07 moved it) —
   every arm ends in `SendSpawnAppearance`, so a server-forced pose cannot be
   applied without echoing it back, and its `AT_DIE` arm encodes a pose self never
-  receives. Closes when: a non-sending internal setter exists and the death path
-  (`OP_Death`/`OP_BecomeCorpse` for self), not the `AT_DIE` arm, drives self's
-  `positionState`. Prov: deferred item 15.
+  receives.~~ **CLOSED by T344** (`refactor/T344_forced_pose_setter.md`):
+  `ApplyPositionState()` is the non-sending setter (the pre-split body minus
+  the five sends); `SetPositionState()` is it plus four of them, for the five
+  user-initiated call sites (`/sit`, `/stand`, `/camp`, the
+  `setPositionState(int)` action, auto-hunting's sit-to-med). The two
+  server-forced paths now use `ApplyPositionState` — `ZoneProcessSpawnAppearance`'s
+  `AT_ANIMATION` arm when `spawn_id == MySpawnId()`, and `ZoneProcessDeath`
+  for self, which is what drives `positionState` to Dead. Both were holes,
+  not echoes: nothing wrote `player().positionState()` from the zone stream
+  at all. The `AT_DIE` send is DELETED (T311 Leg A: type 0 appears zero times
+  in either direction of a real official-client session); the arm is kept
+  because `POS_DEAD` is reachable from both new paths. Pinned by
+  `tests/test_forced_pose_no_echo.cpp` (8 tests; 4 failed pre-fix, including
+  the `AT_DIE` echo), which replays the T311 self-death `OP_Death` bytes
+  verbatim. Still owed, and NOT this unit: the official client's full death
+  sequence — C→S Lying appearance, no further `OP_ClientUpdate` while dead,
+  then an `OP_ZoneChange` re-entry (shape in the T344 Review). Prov: deferred
+  item 15.
 
 - ~~**B002** (A) `src/client/action/eq_action_handler.cpp` `EqActionHandler::toggleAutorun`
   — a `LOG_DEBUG` stub, and the only live consumer
