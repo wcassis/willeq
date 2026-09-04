@@ -395,7 +395,9 @@ it without taking that measurement first.
 
 ## Added 2026-09-03 by the L04 Review (diagnostics extraction)
 
-- **B043** (A) **Four bound debug hotkeys have never done anything.**
+- ~~**B043**~~ **CLOSED 2026-09-04 by T330** — the four arms (`ToggleWireframe`/`ToggleHUD`/`ToggleNameTags`/`ToggleOldModels`) are in `processCommonInput`'s switch and pinned by `tests/test_debug_hotkey_arms.cpp`.
+  **STILL OPEN (B, split out): the `GraphicalMode` route.** `GraphicalMode::toggleWireframe/toggleHUD/toggleNameTags` still dispatch through an `output::IOutputRenderer*` that `IrrlichtRenderer` does not implement, so they reach `output_renderer.h`'s empty virtual defaults — wire or delete that interface route.
+  ~~(A) **Four bound debug hotkeys have never done anything.**~~
   `RendererEventReceiver::OnEvent` queues `RendererAction::ToggleWireframe`,
   `ToggleHUD` and `ToggleNameTags`
   (`src/client/graphics/renderer_event_receiver.cpp:181-183`), and

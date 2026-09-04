@@ -131,6 +131,14 @@ void IrrlichtRenderer::processCommonInput(const std::vector<RendererEvent>& acti
                 break;
             case RA::ToggleZoneLights: diagnostics_->toggleZoneLights(); break;
             case RA::CycleObjectLights: diagnostics_->cycleObjectLights(); break;
+            // T330 (B043): these four arms had never existed. The hotkeys were
+            // bound (hotkey_manager.cpp) and the receiver queued the actions
+            // (renderer_event_receiver.cpp), but they fell through the default
+            // below and did nothing. Pinned by tests/test_debug_hotkey_arms.cpp.
+            case RA::ToggleWireframe: diagnostics_->toggleWireframe(); break;
+            case RA::ToggleHUD: diagnostics_->toggleHUD(); break;
+            case RA::ToggleNameTags: diagnostics_->toggleNameTags(); break;
+            case RA::ToggleOldModels: diagnostics_->toggleOldModels(); break;
             case RA::ToggleOptions:
                 // WindowManager removed — options window not available
                 break;
