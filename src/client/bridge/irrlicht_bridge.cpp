@@ -838,7 +838,10 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         break;
 
     case state::GameEventType::NavmeshChanged:
-        // Handled by renderer if navmesh visualization is active
+        if (renderer_) {
+            auto& d = std::get<state::NavmeshChangedData>(event.data);
+            renderer_->setNavmesh(d.navmesh);
+        }
         LOG_TRACE(MOD_GRAPHICS, "Bridge: NavmeshChanged");
         break;
 

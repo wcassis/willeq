@@ -366,7 +366,7 @@ it without taking that measurement first.
 
 ## Added 2026-09-03 by the L03 Review (overlays extraction)
 
-- **B041** (A) `src/client/bridge/irrlicht_bridge.cpp` `IrrlichtBridge::applyEvent`,
+- ~~**B041** (A) `src/client/bridge/irrlicht_bridge.cpp` `IrrlichtBridge::applyEvent`,
   `state::GameEventType::NavmeshChanged` arm — **the navmesh overlay (Ctrl+N) can
   never draw anything.** The arm's whole body is a `LOG_TRACE` under the comment
   "Handled by renderer if navmesh visualization is active", which is false: the
@@ -379,7 +379,13 @@ it without taking that measurement first.
   `NavmeshChangedData`. L03 kept `setNavmesh` rather than applying Mechanism 5 to
   it precisely so this stays a one-line fix. Closes when: the arm calls
   `renderer_->setNavmesh(...)` with the event's payload and Ctrl+N draws in a
-  navmesh-enabled zone. Prov: L03 Review.
+  navmesh-enabled zone. Prov: L03 Review.~~ **STRUCK T329**: the arm now
+  forwards `d.navmesh` to `renderer_->setNavmesh(...)` (both non-null on zone
+  load and `nullptr` on zone leave), pinned by
+  `tests/test_navmesh_overlay_wire.cpp`. **The live screenshot proof (Ctrl+N
+  drawing in a navmesh-enabled zone) is OWED** — the eqemu lock was held by
+  T328 for this unit's entire run. Prov: `refactor/T329_navmesh_overlay_wire.md`
+  Review.
 
 - **B042** (B) `src/client/graphics/overlays/overlays_component.cpp`
   `EQT::Graphics::OverlaysComponent::drawZoneLineOverlay` — **the zone-line debug

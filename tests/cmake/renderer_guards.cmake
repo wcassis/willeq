@@ -148,6 +148,20 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_diagnostics_component)
 ENDIF()
 
+# T329 (B041): the NavmeshChanged bridge arm forwarding to
+# OverlaysComponent::setNavmesh. Same bare, never-Init()'d IrrlichtRenderer
+# idiom as test_overlays_component above, plus a real eqt::bridge::
+# IrrlichtBridge -- willeq_core already carries irrlicht_bridge.cpp under
+# EQT_GRAPHICS.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_navmesh_overlay_wire
+        test_navmesh_overlay_wire.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_navmesh_overlay_wire PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_navmesh_overlay_wire GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_navmesh_overlay_wire)
+ENDIF()
+
 # T310 Leg A: the first-person camera tunables (/fpcam, --fpcam). Same bare,
 # never-Init()'d IrrlichtRenderer idiom as test_irrlicht_camera_command above,
 # plus the catalog gate and Application::parseArguments -- so ONE binary covers
