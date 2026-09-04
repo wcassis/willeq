@@ -500,11 +500,15 @@ bool Application::initConstrainedRendererConfig(const ApplicationConfig& config)
         // Build constrained config: preset → JSON overrides → CLI overrides
         {
             EQT::Graphics::ConstrainedRendererConfig builtConfig;
-            bool customMemorySpec = false;
+            // T347 (B051): `bool customMemorySpec` lived here, set true in the
+            // parseMemorySpec() arm below and read NOWHERE. Both arms of that
+            // if/else call loadJsonOverrides() identically afterwards, so the
+            // flag distinguished nothing; the LOG_DEBUG in each arm already
+            // says which path was taken. Deleted rather than read: there is no
+            // downstream decision for it to make.
 
             if (!config.constrainedPreset.empty()) {
                 if (EQT::Graphics::ConstrainedRendererConfig::parseMemorySpec(config.constrainedPreset, builtConfig)) {
-                    customMemorySpec = true;
                     LOG_DEBUG(MOD_GRAPHICS, "Parsed memory spec '{}': total={}MB, tex={}MB, fb={}MB",
                               config.constrainedPreset,
                               builtConfig.totalMemoryBudgetBytes / (1024*1024),

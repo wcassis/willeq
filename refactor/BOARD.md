@@ -833,9 +833,20 @@ it without taking that measurement first.
 
 ## Added 2026-09-04 by the G04 Review
 
-- **B051** (B) `src/client/application.cpp` `Application::initConstrainedRendererConfig`
-  — `customMemorySpec` is write-only (set in one preset arm, never read).
-  Closes when: read where the preset is applied, or deleted. Prov: G04 Review.
+- ~~**B051** (B) `src/client/application.cpp` `Application::initConstrainedRendererConfig`
+  — `customMemorySpec` is write-only (set in one preset arm, never read).~~
+  **CLOSED 2026-09-04 by T347: deleted.** Two occurrences tree-wide (the
+  declaration and the one `= true`), zero reads. Deleted rather than read,
+  because there is no downstream decision for it to make: BOTH arms of the
+  enclosing if/else call `builtConfig.loadJsonOverrides(config.constrainedPreset,
+  "config/constrained_presets.json")` identically afterwards, and each arm
+  already logs which path it took. G04's order golden
+  `tests/goldens/application_init_order_g04.txt` learned the deletion IN PLACE
+  at entries 163 and 166 (count 316 → 314, recorded in the golden header and in
+  the test's size guard); both faults re-planted (drop
+  `m_graphicsInitialized = false;` → count clause fails 314→313; swap
+  `initConstrainedRendererConfig` with `initRendererAndGraphics` → position
+  clause fails at statement 162). Prov: G04 Review.
 
 ## Added 2026-09-04 by the G07 STOP
 

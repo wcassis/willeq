@@ -192,9 +192,15 @@ TEST(ApplicationInitOrderTest, GoldenIsPresentAndTheRightSize) {
     const auto golden = LoadGolden();
     ASSERT_FALSE(golden.empty())
         << "golden is empty or unreadable: " << GoldenPath();
-    EXPECT_EQ(golden.size(), 316u)
-        << "the pre-G04 Application::initialize() body normalised to 316 "
-           "statement lines; the golden has " << golden.size();
+    // kGoldenSize: 316 at G04 (the pre-G04 body's normalised line count), then
+    // -2 by T347 (B051), which DELETED entries 163 `bool customMemorySpec =
+    // false;` and 166 `customMemorySpec = true;` -- a write-only flag whose
+    // enclosing if/else calls loadJsonOverrides() identically in both arms.
+    // Correction 32: an order golden learns a reviewed edit in place, at its
+    // positions, named here; it is never regenerated from the tip.
+    EXPECT_EQ(golden.size(), 314u)
+        << "316 statement lines at G04, -2 for T347's write-only "
+           "customMemorySpec; the golden has " << golden.size();
     for (const auto& e : golden) EXPECT_FALSE(e.empty());
 }
 
