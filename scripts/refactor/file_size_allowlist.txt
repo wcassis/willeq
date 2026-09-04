@@ -1,2 +1,17 @@
-include/client/eq.h	899	single class; shrinks under refactor/K_component_extraction.md; may not grow
-include/client/graphics/irrlicht_renderer.h	1343	single class; shrinks under refactor/L_renderer_component_extraction.md; may not grow
+# File-size allowlist for check_file_sizes.sh --all.
+#
+# Format: path<TAB>max_lines<TAB>reason   (path relative to the repo root)
+#
+# A listed file is permitted over the 1,500-line ceiling but FAILs if it
+# exceeds its own recorded max_lines (a no-grow ratchet: a split unit lowers
+# the number, it never rises). The universal FAIL-over-3,000 rule applies to
+# listed files too.
+#
+# M00 (2026-09-04): EMPTY, deliberately. The two entries this file was created
+# for (K00 Leg B) are gone -- include/client/eq.h fell 2,025 -> 899 under
+# Batch K and include/client/graphics/irrlicht_renderer.h fell 1,914 -> 1,343
+# under Batch L -- so every *.cpp/*.h/*.hpp under src/, include/ and tests/ is
+# now under 1,500 and the ceiling is ENFORCED, not advisory. Keep this file
+# present so --all still parses it; add an entry only for a future
+# single-class file that genuinely must exceed the ceiling, with a reason and
+# a no-grow max, exactly as before.

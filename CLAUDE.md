@@ -34,12 +34,18 @@ Additional context is in subdirectory CLAUDE.md files:
   orchestrator serializes merges onto `fable` (`docs/decisions.md`,
   2026-07-22 workspace layout). Do not execute unplanned work inline in
   `main`.
-- **Batch J is complete.** Every `.cpp` and `.h` under `src/`, `include/` and
-  `tests/` is under 1,500 lines except two single-class headers,
-  `include/client/eq.h` and `include/client/graphics/irrlicht_renderer.h`. Those
-  two carry a no-grow allowlist entry pending
-  `refactor/K_component_extraction.md`, which ratchets each one down as it
-  extracts a component. Nothing is over the 3,000-line hard cap.
+- **Batches J, K, L and G are complete; every source file is under 1,500 lines
+  and ctest enforces it.** The last two exceptions are gone —
+  `include/client/eq.h` fell to 899 lines and
+  `include/client/graphics/irrlicht_renderer.h` to 1,343 — so
+  `scripts/refactor/file_size_allowlist.txt` is EMPTY and a file over 1,500
+  under `src/`, `include/` or `tests/` is a **FAIL** in the `FileSizeCeiling`
+  ctest test, not a warning (M00, `docs/decisions.md` 2026-09-04). Put
+  substantial new code in new TUs; a file that genuinely must exceed the
+  ceiling needs an allowlist entry with a reason and a no-grow max. Close-outs:
+  `refactor/J_file_size_reclamation.md`, `refactor/K_component_extraction.md`,
+  `refactor/L_renderer_component_extraction.md`,
+  `refactor/G_oversize_methods.md`.
 
 ## Project Overview
 

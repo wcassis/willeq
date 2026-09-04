@@ -6,6 +6,31 @@ Newest entries first. Each entry: decision, rationale, implications.
 
 ---
 
+## 2026-09-04 — The 1,500-line ceiling is ENFORCED, and the allowlist is empty (M00)
+
+**Decision:** 1,500 lines is the enforced ceiling for every `*.cpp`, `*.h` and
+`*.hpp` under `src/`, `include/` and `tests/`. Under
+`scripts/refactor/check_file_sizes.sh --all` — which ctest runs as
+`FileSizeCeiling` — a file over 1,500 that is not allowlisted is a **FAIL**,
+no longer a WARN. The 3,000-line hard cap stays as a second line of defence.
+
+**Rationale:** the soft limit existed because two single-class headers could
+not meet it. Both now do: `include/client/eq.h` fell 2,025 -> 899 under
+`refactor/K_component_extraction.md` and
+`include/client/graphics/irrlicht_renderer.h` fell 1,914 -> 1,343 under
+`refactor/L_renderer_component_extraction.md`. With Batches J and G also
+complete, all 866 files in the tree are under the ceiling, so nothing is left
+for a warning to carry — a WARN nobody has to act on decays into noise.
+
+**Implications:** `scripts/refactor/file_size_allowlist.txt` is now EMPTY (kept
+present, comment-only, so `--all` still parses it). A future single-class file
+that genuinely must exceed 1,500 gets an allowlist entry with a reason and a
+no-grow maximum, exactly as before — the K00 ratchet is unchanged, and the
+entry is the deliberate, reviewable act that permits the exception. The
+diff/`--files` modes still print WARN over 1,500 (they do not consult the
+allowlist); the tree-wide `--all` run is what turns it into a failure, so an
+executor who sees that WARN should expect ctest to fail.
+
 ## 2026-09-03 — File-size ceiling and doc citations are enforced tree-wide by ctest (K00)
 
 **Decision:** `scripts/refactor/check_file_sizes.sh --all` and
