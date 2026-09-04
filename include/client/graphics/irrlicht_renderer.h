@@ -611,7 +611,8 @@ public:
     // application_zone_loading.cpp calls it (the K11 rule). The renderer's
     // own callers of clearZoneLineBoundingBoxes()/toggleZoneLineVisualization()
     // were retargeted to overlays_->. setZoneLineDebug(), isInZoneLine() and
-    // isZoneLineVisualizationEnabled() had zero callers tree-wide (Mechanism 5).
+    // isZoneLineVisualizationEnabled() had zero callers tree-wide (Mechanism 5);
+    // T354 then deleted the debug border those wrote for (B042).
     void setZoneLineBoundingBoxes(const std::vector<EQT::ZoneLineBoundingBox>& boxes) { overlays_->setZoneLineBoundingBoxes(boxes); }
     bool isInventoryOpen() const;
     void setCharacterInfo(const std::wstring& name, int level, const std::wstring& className);

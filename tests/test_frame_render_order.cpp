@@ -54,7 +54,15 @@ const std::string kGolden = kRoot + "/tests/goldens/frame_render_order_g05.txt";
 //     replaces the statement it supersedes rather than being added beside it,
 //     and its destructor costs no statement at all. Entries 120-126 and 128
 //     are byte-identical; nothing was reordered.
-const size_t kGoldenSize = 305u;
+//   * T354 (B042): the zone-line debug border deleted, entry 279. That entry
+//     was `ctx_.Overlays().drawZoneLineOverlay();`; the draw body could never
+//     turn on (L03 had deleted setZoneLineDebug(), the sole writer of the
+//     `inZoneLine_` gate) and it is a developer aid with no official-client
+//     oracle, so the call, the body and the three members went together. The
+//     count DROPS by one, 305 -> 304: a statement was removed and nothing
+//     replaced it. Entries 0-278 are byte-identical; entries 280-304 became
+//     279-303 with their text byte-identical; nothing was reordered.
+const size_t kGoldenSize = 304u;
 
 std::vector<std::string> readLines(const std::string& path) {
     std::ifstream in(path);

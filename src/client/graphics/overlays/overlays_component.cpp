@@ -9,7 +9,10 @@
 // IrrlichtRenderer becomes owner_.Foo(), and IrrlichtRenderer:: becomes
 // OverlaysComponent::. setZoneLineDebug() had zero callers tree-wide and
 // published no event; it was deleted per Batch K's Mechanism 5. See the L03
-// Review.
+// Review. T354 (B042) then deleted drawZoneLineOverlay() and the three
+// members it read: with its sole writer gone the zone-line debug border
+// could never turn on, and it is a developer aid with no oracle in the
+// official client.
 
 #include "client/graphics/overlays/overlays_component.h"
 #include "client/graphics/world_line_batch.h"  // T335: the shared post-drawAll() 3D-line guard
@@ -819,53 +822,6 @@ bool OverlaysComponent::checkEntityLOS(const irr::core::vector3df& cameraPos, co
 
     // Add a small margin to account for bounding box size
     return hitDist > (entityDist - 10.0f);
-}
-
-void OverlaysComponent::drawZoneLineOverlay() {
-    if (!inZoneLine_ || !ctx_.driver) {
-        return;
-    }
-
-    // Draw a semi-transparent pink overlay on the screen edges
-    irr::core::dimension2d<irr::u32> screenSize = ctx_.driver->getScreenSize();
-
-    // Pink color with alpha
-    irr::video::SColor pink(100, 255, 50, 150);  // Semi-transparent pink
-
-    // Draw border rectangles (top, bottom, left, right)
-    int borderWidth = 15;
-
-    // Top border
-    ctx_.driver->draw2DRectangle(pink, irr::core::rect<irr::s32>(0, 0, screenSize.Width, borderWidth));
-    // Bottom border
-    ctx_.driver->draw2DRectangle(pink, irr::core::rect<irr::s32>(0, screenSize.Height - borderWidth, screenSize.Width, screenSize.Height));
-    // Left border
-    ctx_.driver->draw2DRectangle(pink, irr::core::rect<irr::s32>(0, borderWidth, borderWidth, screenSize.Height - borderWidth));
-    // Right border
-    ctx_.driver->draw2DRectangle(pink, irr::core::rect<irr::s32>(screenSize.Width - borderWidth, borderWidth, screenSize.Width, screenSize.Height - borderWidth));
-
-    // Draw zone line text using GUI environment's built-in font
-    if (guienv_) {
-        irr::gui::IGUIFont* font = guienv_->getBuiltInFont();
-        if (font) {
-            std::wstring text = L"[ZONE LINE] Target Zone: " + std::to_wstring(zoneLineTargetZoneId_);
-            irr::core::dimension2d<irr::u32> textSize = font->getDimension(text.c_str());
-            int textX = (screenSize.Width - textSize.Width) / 2;
-            int textY = borderWidth + 5;
-            font->draw(text.c_str(), irr::core::rect<irr::s32>(textX, textY, textX + textSize.Width, textY + textSize.Height),
-                       irr::video::SColor(255, 255, 100, 200));  // Bright pink text
-
-            // Draw debug text if available
-            if (!zoneLineDebugText_.empty()) {
-                std::wstring debugWStr(zoneLineDebugText_.begin(), zoneLineDebugText_.end());
-                irr::core::dimension2d<irr::u32> debugSize = font->getDimension(debugWStr.c_str());
-                int debugX = (screenSize.Width - debugSize.Width) / 2;
-                int debugY = textY + textSize.Height + 5;
-                font->draw(debugWStr.c_str(), irr::core::rect<irr::s32>(debugX, debugY, debugX + debugSize.Width, debugY + debugSize.Height),
-                           irr::video::SColor(255, 255, 200, 255));  // Light pink text
-            }
-        }
-    }
 }
 
 void OverlaysComponent::setZoneLineBoundingBoxes(const std::vector<EQT::ZoneLineBoundingBox>& boxes) {

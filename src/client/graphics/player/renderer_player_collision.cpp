@@ -226,97 +226,6 @@ void PlayerCameraComponent::setupMinimalZoneCollision() {
     LOG_INFO(MOD_GRAPHICS, "Minimal collision setup complete, progressive loading activated");
 }
 
-size_t PlayerCameraComponent::findBspRegionForPoint(float x, float y, float z) {
-    if (ctx_.zoneBspTree) {
-        return ctx_.zoneBspTree->findRegionIndexForPoint(x, y, z);
-    }
-    return SIZE_MAX;
-}
-
-void PlayerCameraComponent::addRegionToCollision(size_t regionIdx) {
-    if (!ctx_.smgr) return;
-
-    auto regionIt = ctx_.regionMeshNodes.find(regionIdx);
-    if (regionIt == ctx_.regionMeshNodes.end() || !regionIt->second || !regionIt->second->getMesh()) return;
-
-    auto triangles = extractWorldTriangles(ctx_.smgr, regionIt->second);
-    if (!triangles.empty()) {
-        ctx_.regionWorldTriangles[regionIdx] = std::move(triangles);
-    }
-}
-
-void PlayerCameraComponent::addDoorToCollision(uint8_t doorId) {
-    if (!ctx_.smgr || !ctx_.doorManager) return;
-
-    const auto* door = ctx_.doorManager->getDoor(doorId);
-    if (!door || !door->sceneNode || !door->sceneNode->getMesh() || !door->pivotNode) return;
-
-    IrrlichtRenderer::DoorCollisionData data;
-    data.bspRegion = door->bspRegion;
-
-    // Classify door type — skip collision for spinning, lifts, hazardous, invisible, teleporters
-    uint8_t ot = door->opentype;
-    bool isSpinning = (ot >= 30 && ot <= 44) || (ot >= 100 && ot <= 107);
-    bool isLift = (ot == 59 || ot == 60);
-    bool isHazardous = (ot >= 115 && ot <= 152);
-    bool isInvisible = (ot == 50 || ot == 53 || ot == 54 || ot == 57);
-    if (isSpinning || isLift || isHazardous || isInvisible) {
-        data.hasCollision = false;
-        ctx_.doorCollisionData[doorId] = std::move(data);
-        LOG_DEBUG(MOD_GRAPHICS, "Door {} opentype={}: no collision ({})",
-                  doorId, ot, isSpinning ? "spinning" : isLift ? "lift" : isHazardous ? "hazardous" : "invisible");
-        return;
-    }
-
-    // Save current pivot rotation
-    irr::core::vector3df savedRotation = door->pivotNode->getRotation();
-
-    // Extract CLOSED state triangles
-    float closedIrrRot = -door->openHeading * 360.0f / 512.0f + 90.0f;
-    door->pivotNode->setRotation(irr::core::vector3df(0, closedIrrRot, 0));
-    door->pivotNode->updateAbsolutePosition();
-    door->sceneNode->updateAbsolutePosition();
-    data.closedTriangles = extractWorldTriangles(ctx_.smgr, door->sceneNode);
-
-    // Extract OPEN state triangles
-    float openIrrRot = -door->closedHeading * 360.0f / 512.0f + 90.0f;
-    door->pivotNode->setRotation(irr::core::vector3df(0, openIrrRot, 0));
-    door->pivotNode->updateAbsolutePosition();
-    door->sceneNode->updateAbsolutePosition();
-    data.openTriangles = extractWorldTriangles(ctx_.smgr, door->sceneNode);
-
-    // Restore original rotation
-    door->pivotNode->setRotation(savedRotation);
-    door->pivotNode->updateAbsolutePosition();
-    door->sceneNode->updateAbsolutePosition();
-
-    LOG_DEBUG(MOD_GRAPHICS, "Door {} opentype={} region={}: {} closed tris, {} open tris",
-              doorId, ot, data.bspRegion, data.closedTriangles.size(), data.openTriangles.size());
-
-    ctx_.doorCollisionData[doorId] = std::move(data);
-}
-
-void PlayerCameraComponent::addObjectToCollision(size_t objIdx) {
-    if (!ctx_.smgr) return;
-    if (objIdx >= ctx_.objectNodes.size()) return;
-
-    auto* node = ctx_.objectNodes[objIdx];
-    if (!node || !node->getMesh()) return;
-
-    auto triangles = extractWorldTriangles(ctx_.smgr, node);
-    if (triangles.empty()) return;
-
-    // Determine BSP region for this object
-    size_t region = SIZE_MAX;
-    if (objIdx < ctx_.objectRegions.size()) {
-        region = ctx_.objectRegions[objIdx];
-    }
-
-    // Append to per-region object triangles
-    auto& regionTris = ctx_.objectWorldTriangles[region];
-    regionTris.insert(regionTris.end(), triangles.begin(), triangles.end());
-}
-
 bool PlayerCameraComponent::checkCollisionIrrlicht(const irr::core::vector3df& start,
                                                const irr::core::vector3df& end,
                                                irr::core::vector3df& hitPoint,
@@ -747,12 +656,6 @@ void PlayerCameraComponent::drawCollisionDebugLines(float deltaTime) {
         }
     }
 }
-
-void PlayerCameraComponent::clearCollisionDebugLines() {
-    collisionDebugLines_.clear();
-}
-
-
 
 } // namespace Graphics
 } // namespace EQT

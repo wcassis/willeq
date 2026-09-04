@@ -82,7 +82,6 @@ public:
 #else
 	void drawTargetSelectionBox();  // Wireframe bounding box (desktop GL)
 #endif
-	void drawZoneLineOverlay();
 	void drawZoneLineBoxLabels();
 	void drawFPSCounter();
 	void updatePaperdollForFrame();
@@ -185,13 +184,13 @@ private:
 	TargetInfo currentTargetInfo_;  // Extended target info for HUD display
 
 	// --- Zone line debugging ----------------------------------------------
-	// L03: setZoneLineDebug() was the sole writer of these three and had zero
-	// callers tree-wide, so it went under Mechanism 5. They are kept because
-	// drawZoneLineOverlay() (live, called every frame) reads them; the
-	// overlay simply never turns on. See the L03 Review and the BOARD entry.
-	bool inZoneLine_ = false;
-	uint16_t zoneLineTargetZoneId_ = 0;
-	std::string zoneLineDebugText_;
+	// GONE. L03 deleted setZoneLineDebug(), the sole writer of inZoneLine_,
+	// zoneLineTargetZoneId_ and zoneLineDebugText_, under Mechanism 5; the
+	// three members and their reader drawZoneLineOverlay() were kept so the
+	// decision could be taken with evidence (B042). T354 measured zero
+	// callers again and deleted all four: the debug border could never turn
+	// on, and it is a developer aid with no official-client oracle. The zone
+	// line BOUNDING BOX visualization below is live and unrelated.
 
 	// --- Zone line bounding box visualization -----------------------------
 	struct ZoneLineBoxNode {

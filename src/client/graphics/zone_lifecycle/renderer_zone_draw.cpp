@@ -195,8 +195,13 @@ void ZoneLifecycleComponent::createZoneMesh() {
                 ctx_.zoneMeshNode->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
             }
 
-            // NOTE: Collision detection is set up progressively via setupMinimalZoneCollision()
-            // and addRegionToCollision() during the background zone loading phases.
+            // NOTE: collision is NOT set up here, and NOT progressively. It is built
+            // once, by setupMinimalZoneCollision() at load step 9
+            // (renderer_zone_load_objects.cpp), which walks ctx_.regionMeshNodes in a
+            // single pass; that same step then adds the eagerly-built objects inline.
+            // T354 (B047) deleted the incremental registration API this comment used to
+            // name -- it had never had a caller. Anything streamed in after step 9 still
+            // gets no collision; that gap is on the board, not fixed here.
 
             // Initialize animated texture manager for zone textures
             ctx_.animatedTextureManager = std::make_unique<AnimatedTextureManager>(ctx_.driver, ctx_.device->getFileSystem());
@@ -1053,9 +1058,10 @@ bool ZoneLifecycleComponent::rebuildRegionMesh(size_t regionIdx) {
     // Force AbsoluteTransformation update after setPosition — Irrlicht only updates
     // this in OnAnimate() for visible nodes. Since we immediately set the node invisible
     // (below), OnAnimate() will skip it and the AbsoluteTransformation would remain at
-    // identity (from the constructor). Triangle selectors created by addRegionToCollision()
-    // use getAbsoluteTransformation() to transform collision triangles, so a stale identity
-    // transform would place them at center-relative positions instead of world-space.
+    // identity (from the constructor). extractWorldTriangles(), which
+    // setupMinimalZoneCollision() runs over these nodes, uses getAbsoluteTransformation()
+    // to transform collision triangles, so a stale identity transform would place them at
+    // center-relative positions instead of world-space.
     node->updateAbsolutePosition();
 
     // Start invisible — PVS will make it visible on the next Tier2 frame if appropriate.

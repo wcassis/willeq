@@ -663,9 +663,18 @@ it without taking that measurement first.
   the wire half — this entry — is closed.**
   Prov: `refactor/T329_navmesh_overlay_wire.md` Review; T328 Leg B Review.
 
-- **B042** (B) `src/client/graphics/overlays/overlays_component.cpp`
-  `EQT::Graphics::OverlaysComponent::drawZoneLineOverlay` — **the zone-line debug
-  border can never turn on.** It is called every frame from
+- ~~**B042**~~ **CLOSED 2026-09-04 by T354 — DELETED.** Re-measured zero callers
+  two ways (comment-filtered grep; declarations and definitions removed, full
+  build exit 0) and no `pushEvent` in the body (K12 ff). The draw body, its
+  declaration, the three members `inZoneLine_`/`zoneLineTargetZoneId_`/
+  `zoneLineDebugText_` and the per-frame call all went; the G05 order golden
+  learned the deletion IN PLACE at entry 279 with `kGoldenSize` 305 -> 304 and
+  both faults re-planted. `renderZoneLineOverlays()` survives for the live
+  bounding-box labels. The closure condition below was "the draw body and its
+  three members go (it is not wanted)" — that arm is the one taken: a developer
+  aid with no official-client oracle. Prov: `refactor/T354_dead_renderer_paths.md` Review.
+  ~~(B) `EQT::Graphics::OverlaysComponent::drawZoneLineOverlay` — **the zone-line debug
+  border can never turn on.**~~ It is called every frame from
   `renderer_frame_render.cpp` and gates on `inZoneLine_`, whose only writer was
   `IrrlichtRenderer::setZoneLineDebug()`. That method had zero callers tree-wide
   and no `pushEvent`, so L03 deleted it under Mechanism 5; the three members it
@@ -776,9 +785,24 @@ it without taking that measurement first.
   returns to the racial base, and vertical swim control has no producer.**~~
   Prov: L05 Review; T334 Review.
 
-- **B047** (B) `src/client/graphics/player/renderer_player_collision.cpp` —
-  **the incremental collision-registration API has never run, and a comment
-  claims it does.** `addRegionToCollision()`, `addDoorToCollision()`,
+- ~~**B047**~~ **CLOSED 2026-09-04 by T354 — DELETED, and the comment corrected.**
+  The measurement L05 asked for, taken twice: a comment-filtered grep put every
+  one of the five at exactly two non-comment hits (its own declaration and its own
+  definition), and deleting both, then building, gave exit 0 with zero errors —
+  no compile error on a declaration, no link error on a definition. No `pushEvent`
+  in any body (K12 ff). So all five are gone, 97 lines. The T335 pixel-test seam
+  is untouched (`test_collision_debug_draw.cpp` uses
+  `seedCollisionDebugLineForTest()`/`collisionDebugLineCount()`, never
+  `clearCollisionDebugLines()`), and `extractWorldTriangles()` stays — it still has
+  two live callers. **The gap is NOT erased with the API:** the false comment now
+  states that collision is built ONCE, by `setupMinimalZoneCollision()` at load
+  step 9 walking `ctx_.regionMeshNodes` in a single pass with objects added inline
+  in the same step, and that anything streamed in after step 9 still gets no
+  collision. A second stale comment in the same file (why `updateAbsolutePosition()`
+  is needed) now names `extractWorldTriangles()` instead. `getFirstPersonVerticalFov()`
+  was NOT in scope and is untouched. Prov: `refactor/T354_dead_renderer_paths.md` Review.
+  ~~(B) **the incremental collision-registration API has never run, and a comment
+  claims it does.**~~ `addRegionToCollision()`, `addDoorToCollision()`,
   `addObjectToCollision()`, `findBspRegionForPoint()` and
   `clearCollisionDebugLines()` have **zero callers tree-wide**.
   `src/client/graphics/zone_lifecycle/renderer_zone_draw.cpp:198-199` asserts in a comment
