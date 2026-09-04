@@ -115,3 +115,17 @@ ADD_EXECUTABLE(test_frame_render_order
 )
 TARGET_LINK_LIBRARIES(test_frame_render_order GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_frame_render_order)
+
+# G06: the same idiom for the player's per-frame movement order. A pure text
+# parse of src/client/graphics/player/renderer_player_physics.cpp against
+# tests/goldens/movement_order_g06.txt (extracted from the PRE-G06 body), plus
+# include/client/graphics/player/player_camera_component.h for the
+# MovementFrame field list. updatePlayerMovement() cannot be driven in a unit
+# test -- it needs a live device, an event receiver, zone collision geometry, an
+# entity renderer and a bridge -- so the TU is the record of the order. No link
+# deps, no graphics guard.
+ADD_EXECUTABLE(test_movement_order
+    test_movement_order.cpp
+)
+TARGET_LINK_LIBRARIES(test_movement_order GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_movement_order)

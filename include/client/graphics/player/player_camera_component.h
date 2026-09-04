@@ -62,8 +62,13 @@ public:
 		: ctx_(ctx), owner_(owner) {}
 
 	// --- Player-mode movement (was renderer_player_physics.cpp) ---
-	// 806 lines; the per-frame local movement path. Called from
+	// The per-frame local movement path. Called from
 	// IrrlichtRenderer::processFrameInput() on the render thread.
+	// G06 (refactor/G06_update_player_movement.md): the body was 806 lines and
+	// is now the ordered list of the eight phases declared in the private
+	// section below. Its exit census found ZERO exits belonging to the method
+	// (all four returns/continues are inside the isActionHeld lambda), so no
+	// phase needed a bool result and no early return had to be reproduced.
 	void updatePlayerMovement(float deltaTime);
 
 	// --- Collision and ground height (was renderer_player_collision.cpp) ---
@@ -180,6 +185,66 @@ public:
 	uint16_t const& playerSpawnId() const { return playerSpawnId_; }
 
 private:
+	// ------------------------------------------------------------------
+	// G06: the per-frame movement phases.
+	//
+	// MovementFrame carries EXACTLY the locals of the old 806-line body that
+	// crossed one of the cuts -- measured by declaration line vs last-use line
+	// before the struct was designed (Batch G correction 19/25). Nothing else
+	// moved: every other local stayed inside the phase that declares it, so no
+	// lifetime changed. Each phase re-binds its fields by reference under the
+	// original names, which is why the sliced code is byte-identical to the
+	// pre-G06 body (the line-multiset proof in the unit's Review).
+	//
+	// Nested and private: nothing outside this family ever names it (K05 j),
+	// exactly like CollisionDebugLine below.
+	struct MovementFrame {
+		float deltaTime = 0.0f;
+		// Phase 1 -> 2
+		bool turnLeft = false;
+		bool turnRight = false;
+		// Phase 2 -> 3/6/7
+		float heading = 0.0f;
+		float oldHeading = 0.0f;
+		float oldPitch = 0.0f;
+		float headingRad = 0.0f;
+		// Phase 3 -> 4/5
+		float moveX = 0.0f;
+		float moveY = 0.0f;
+		float moveZ = 0.0f;
+		// Phase 4 -> 5/6
+		float newX = 0.0f;
+		float newY = 0.0f;
+		float newZ = 0.0f;
+		// Phase 5 -> 6/7, and 5 -> its own arms
+		bool positionChanged = false;
+		float modelYOffset = 0.0f;
+		// Phase 6 -> 7
+		bool headingChanged = false;
+		// Phase 7 -> 8
+		bool hasMovementInput = false;
+	};
+
+	// The ordered phases, in call order. updatePlayerMovement() is the list.
+	void readMovementInput(MovementFrame& frame);
+	void updateHeadingAndPitch(MovementFrame& frame);
+	void computeMovementVector(MovementFrame& frame);
+	void applyProposedPositionAndJumpPhysics(MovementFrame& frame);
+	void resolveMovementCollision(MovementFrame& frame);
+	// Phase 5's three collision systems -- this file's own `else if` seams.
+	void resolveIrrlichtCollision(MovementFrame& frame);
+	void resolveIrrlichtClearPath(MovementFrame& frame, bool useBspFiltered);
+	void resolveIrrlichtBlockedPath(MovementFrame& frame, bool useBspFiltered, float checkHeight,
+	                                const irr::core::vector3df& rayStart,
+	                                irr::core::vector3df& hitPoint,
+	                                irr::core::triangle3df& hitTriangle);
+	void resolveHCMapCollision(MovementFrame& frame);
+	void resolveUncollidedMovement(MovementFrame& frame);
+	void publishPositionAndCamera(MovementFrame& frame);
+	void sendPositionUpdateToServer(MovementFrame& frame);
+	void updatePlayerMovementAnimation(MovementFrame& frame);
+	// ------------------------------------------------------------------
+
 	// In-family callers only (K03 correction a) -- never called from outside
 	// these three TUs, so they need no public surface and are not §5 candidates.
 	bool checkMovementCollision(float fromX, float fromY, float fromZ,
