@@ -69,20 +69,15 @@ public:
 	void Jump();
 	void UpdateWaterState();           // Check BSP region and update water state
 
-	// Keyboard control. The four Start* have NO caller anywhere and are kept
-	// deliberately: the note above StartMoveForward() in movement_state.cpp
-	// records why (they are the only game-side mover the client has, and the
-	// Stop* half that IS called would otherwise switch off something nothing
-	// can switch on). Public because the wiring named in that note lands on
-	// EqActionHandler, outside this component.
-	void StartMoveForward();
-	void StartMoveBackward();
-	void StartTurnLeft();
-	void StartTurnRight();
-	void StopMoveForward();
-	void StopMoveBackward();
-	void StopTurnLeft();
-	void StopTurnRight();
+	// T343 (board B032) DELETED the keyboard-control cluster that stood here:
+	// StartMove*/StartTurn*, StopMove*/StopTurn* and UpdateKeyboardMovement().
+	// T319 kept them as "the only game-side mover the client has"; T343
+	// measured the renderer's per-frame input poll (readMovementInput(),
+	// renderer_player_physics.cpp) and found forward/backward/turn driven from
+	// there every frame, exactly like swim -- so this was a second, producerless
+	// route, not a switch missing its on position. The end of
+	// movement_state.cpp carries the full note. stopAllMovement() now calls
+	// StopMovement(), which is what /stop always needed.
 
 	// Pathfinding toggle. Was inline on EverQuest (SetPathfinding /
 	// IsPathfindingEnabled); moved with m_use_pathfinding (K04 correction f).
@@ -143,7 +138,6 @@ private:
 	void OnExitWater();                // Called when exiting water
 	float GetSwimSpeed() const;        // Get swim speed based on skill
 	float GetMovementSpeed() const;
-	void UpdateKeyboardMovement();
 
 	ClientContext& ctx_;
 	EverQuest& owner_;

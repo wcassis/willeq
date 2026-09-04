@@ -95,11 +95,14 @@ void GraphicsInputHandler::updateFromEventReceiver() {
                 m_pendingActions[static_cast<size_t>(InputAction::CycleTargetsReverse)] = true; break;
 
             // Non-targeting actions are gated by chat focus
-            case RA::ToggleAutorun:
-                if (!chatFocused) { m_pendingActions[static_cast<size_t>(InputAction::ToggleAutorun)] = true;
-                    LOG_DEBUG(MOD_INPUT, "[INPUT-TRACE] GraphicsInputHandler: ToggleAutorun -> pendingAction set");
-                } else { LOG_DEBUG(MOD_INPUT, "[INPUT-TRACE] GraphicsInputHandler: ToggleAutorun BLOCKED by chatFocused"); }
-                break;
+            // T343 (B002): the RA::ToggleAutorun arm was DELETED here. Nothing
+            // pushes that action onto the bridge queue any more -- autorun is
+            // renderer-local movement state (PlayerMovementState::autorun,
+            // read by the renderer's per-frame movement phase), so the
+            // receiver queues it on actionQueue_ and processCommonInput()
+            // toggles it directly. An arm here could only have set a pending
+            // InputAction that ends in EqActionHandler::toggleAutorun(), which
+            // cannot reach the flag from the game thread.
             case RA::ToggleAutoAttack:
                 if (!chatFocused) { m_pendingActions[static_cast<size_t>(InputAction::ToggleAutoAttack)] = true;
                     LOG_DEBUG(MOD_INPUT, "[INPUT-TRACE] GraphicsInputHandler: ToggleAutoAttack -> pendingAction set");

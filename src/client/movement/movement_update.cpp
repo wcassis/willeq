@@ -164,17 +164,12 @@ void eqt::movement::MovementComponent::UpdateMovement()
 		last_update_debug = now;
 	}
 	
-	// Update keyboard-based movement first
-	if (ctx_.game_state.player().moveForward() || ctx_.game_state.player().moveBackward() || ctx_.game_state.player().turnLeft() || ctx_.game_state.player().turnRight()) {
-		UpdateKeyboardMovement();
-		// Check for zone line collision
-		ctx_.Zone().CheckZoneLine();
-		// SendPositionUpdate has internal 250ms throttling
-		SendPositionUpdate();
-		// Don't process other movement if using keyboard
-		return;
-	}
-	
+	// T343 (board B032): the keyboard-movement branch that stood here was
+	// deleted with the cluster it gated. Its four PlayerState flags had exactly
+	// one set of writers -- MovementComponent::StartMove*/StopMove* -- and the
+	// Start* half had no caller in the tree, so this condition could never be
+	// true. The graphical client moves the player from the renderer's per-frame
+	// input poll instead; see the note at the end of movement_state.cpp.
 	// Update combat movement if active
 	if (ctx_.game_state.combat().inCombatMovement()) {
 		UpdateCombatMovement();

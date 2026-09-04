@@ -30,12 +30,22 @@ it without taking that measurement first.
   (`OP_Death`/`OP_BecomeCorpse` for self), not the `AT_DIE` arm, drives self's
   `positionState`. Prov: deferred item 15.
 
-- **B002** (A) `src/client/action/eq_action_handler.cpp` `EqActionHandler::toggleAutorun`
+- ~~**B002** (A) `src/client/action/eq_action_handler.cpp` `EqActionHandler::toggleAutorun`
   — a `LOG_DEBUG` stub, and the only live consumer
   (`renderer_player_physics.cpp`'s `playerMovement_.autorun`) has zero writers, so
-  three bound keys report success and do nothing. Closes when: a renderer-side
-  setter is driven from the game side and a live keypress moves the player.
-  Prov: deferred item 10.
+  three bound keys report success and do nothing.~~ **CLOSED by T343**: the route
+  is RENDERER-side, not game-side — phase 1 (`readMovementInput`) rewrites the
+  movement flags every frame, so a game-thread writer loses the race and a
+  key-DOWN action has no key-up to clear it (T334's swim finding, B046). The
+  receiver now queues `RA::ToggleAutorun` on `actionQueue_` instead of the bridge
+  queue, `processCommonInput()` has an arm that flips
+  `PlayerCameraComponent::toggleAutorun()`, and phase 1 cancels it on a
+  translational movement key (turning deliberately does not cancel — steering is
+  the point). The game-side `toggleAutorun()` survives for the console handler
+  alone with an honest comment; `GraphicsInputHandler`'s now-unreachable arm was
+  deleted. Pinned by `tests/test_autorun_arm.cpp` (3 of its 4 cases failed before
+  the fix) and golden statements 27-28. **⚠ LIVE PROOF OWED** — T342 held the
+  eqemu lock. Prov: deferred item 10, T343 Review.
 
 - **B003** (A) auto-attack — 12 live runs with `/target` and `/attack` both
   confirmed in the log produced no swing. **Unconfirmed at this tip, needs a live
@@ -267,12 +277,27 @@ it without taking that measurement first.
   references tree-wide.~~ **CLOSED by K15**: re-measured at `7c125b28`, still
   zero; deleted. Prov: K07 Review.
 
-- **B032** (A) `src/client/movement/movement_component.cpp` `MovementComponent::StartMoveForward`
+- ~~**B032** (A) `src/client/movement/movement_component.cpp` `MovementComponent::StartMoveForward`
   / `StartMoveBackward` / `StartTurnLeft` / `StartTurnRight` — the keyboard
   movement START half has zero callers while the STOP half is called (T316
-  recorded the keep; the switch has no on position). Closes when: the input
-  path calls the Start* methods and a live keypress moves the player, or the
-  cluster is deleted together with its Stop* half. Prov: K07 Review, T316.
+  recorded the keep; the switch has no on position).~~ **CLOSED by T343 —
+  REFUTED and deleted.** The poll table measured at `849db7a2`: G06 phase 1
+  (`readMovementInput`, `renderer_player_physics.cpp`) polls nine
+  `HotkeyAction`s — MoveForward/MoveBackward/TurnLeft/TurnRight/StrafeLeft/
+  StrafeRight/Jump/SwimUp/SwimDown — every frame and writes the whole of
+  `PlayerMovementState`. Forward/back/turn are the renderer's per-frame poll,
+  exactly like swim, so this was a SECOND, parallel route, not a switch missing
+  its on position; and T319's "only game-side mover" premise fails too, because
+  the route needs key-down/key-up pairs and the console handler is line-based.
+  Deleted as one closed cluster: the eight Start*/Stop* methods,
+  `UpdateKeyboardMovement()`, the four `PlayerState` flags they were the only
+  writers of, and the `UpdateMovement()` branch that was their only reader.
+  Its one reachable call site, `EqActionHandler::stopAllMovement()`, was BROKEN
+  and is now fixed: it called four Stop* that never cleared the movement target,
+  so `/stop` during a MoveTo/Follow resumed on the next tick; it now calls
+  `StopMovement()` (public all along, despite the comment that claimed
+  otherwise). Pinned by `tests/test_stop_all_movement.cpp` (failed before the
+  fix on all three target assertions). Prov: K07 Review, T316, T319, T343 Review.
 
 ## Added 2026-09-03 by the Batch L survey (`refactor/L_renderer_component_extraction.md`)
 

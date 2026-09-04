@@ -190,7 +190,14 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
 
                     // === Player Mode Actions ===
                     // Game actions → bridgeQueue (routed through InputActionBridge)
-                    case HA::ToggleAutorun: pushBridgeAction({RA::ToggleAutorun}); break;
+                    // T343 (B002): autorun left the bridge queue. It is not a
+                    // game action -- the flag it toggles lives in
+                    // PlayerMovementState and is read by the renderer's own
+                    // per-frame movement phase, so routing it to the game
+                    // thread only reached a stub that could not have written
+                    // it (T334's swim finding, same shape). It is now a
+                    // renderer action with an arm in processCommonInput().
+                    case HA::ToggleAutorun: actionQueue_.push_back({RA::ToggleAutorun}); break;
                     case HA::ToggleAutoAttack: pushBridgeAction({RA::ToggleAutoAttack}); break;
                     case HA::ToggleInventory: actionQueue_.push_back({RA::ToggleInventory}); break;
                     case HA::ToggleSkills: actionQueue_.push_back({RA::ToggleSkills}); break;

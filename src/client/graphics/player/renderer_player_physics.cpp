@@ -101,6 +101,16 @@ void PlayerCameraComponent::readMovementInput(MovementFrame& frame) {
     playerMovement_.swimUp = swimUpPressed;
     playerMovement_.swimDown = swimDownPressed;
 
+    // T343 (B002): autorun's cancel half. The toggle arm in
+    // processCommonInput() is the only other writer of this flag; here a
+    // TRANSLATIONAL movement key drops it, so autorun is "forward held until
+    // any movement key or the toggle again". Turning is deliberately excluded:
+    // steering while autorunning is the whole point of the feature, and the
+    // official client keeps running through a turn.
+    if (playerMovement_.autorun && (forward || backward || strafeLeft || strafeRight)) {
+        playerMovement_.autorun = false;
+    }
+
     // Update movement state
     playerMovement_.moveForward = forward || playerMovement_.autorun;
     playerMovement_.moveBackward = backward;
