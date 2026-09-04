@@ -215,6 +215,19 @@ declarations + inline accessors + members before dispatch.
 32. A killed `ar` DELETES the archive (protocol's absence case) — assert
    expected artifacts exist before validating.
 
+## L08 corrections (2026-09-04)
+
+33. A family's HEADER need not travel with its TU when it declares nothing
+   of the class (`renderer_zone_merge.h`: namespace-scope guards and free
+   functions) — leave it and its includers alone.
+34. In a multi-class TU, "code lines only" means the MOVING class's lines.
+35. A component header that forward-declares its member types needs the
+   ctor out-of-line as well as the dtor — the ctor's unwind path destroys
+   already-initialised members.
+36. A member can look single-family to a body count and be shared by a
+   TEARDOWN path (`pvsNeighborhood_`, `pvsNeighborhoodAnchor_`) — check
+   `unloadZone`/`shutdown` readers before moving.
+
 ## Per-unit plan files
 
 `refactor/L01_rdp_component.md` … written after K13, from a re-measurement
