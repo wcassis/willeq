@@ -44,8 +44,14 @@ it without taking that measurement first.
   the point). The game-side `toggleAutorun()` survives for the console handler
   alone with an honest comment; `GraphicsInputHandler`'s now-unreachable arm was
   deleted. Pinned by `tests/test_autorun_arm.cpp` (3 of its 4 cases failed before
-  the fix) and golden statements 27-28. **⚠ LIVE PROOF OWED** — T342 held the
-  eqemu lock. Prov: deferred item 10, T343 Review.
+  the fix) and golden statements 27-28. ~~**⚠ LIVE PROOF OWED** — T342 held the
+  eqemu lock.~~ **LIVE PROOF DONE (T345, 2026-09-04, `review/T345/`):** one Num
+  Lock tap, nothing held — `action=ToggleAutorun -> actionQ=1, bridgeQ=0` then
+  `Autorun ON` in the client's own log, and the renderer's per-frame position
+  line (emitted only on a real change) went 0 -> 164 -> 347 lines while the
+  player walked `(306.1, 223.0)` -> `(171.9, 403.7)`. A single W tap stopped the
+  stream dead at 17:56:05.006 (351 lines) and it stayed dead for 16 s. Five PNGs.
+  Prov: deferred item 10, T343 Review, T345 Review.
 
 - **B003** (A) auto-attack — 12 live runs with `/target` and `/attack` both
   confirmed in the log produced no swing. **Unconfirmed at this tip, needs a live
@@ -297,7 +303,20 @@ it without taking that measurement first.
   so `/stop` during a MoveTo/Follow resumed on the next tick; it now calls
   `StopMovement()` (public all along, despite the comment that claimed
   otherwise). Pinned by `tests/test_stop_all_movement.cpp` (failed before the
-  fix on all three target assertions). Prov: K07 Review, T316, T319, T343 Review.
+  fix on all three target assertions).
+  **T345 (2026-09-04) — live proof done, and one T343 wording correction.**
+  `review/T345/`: `/move 728 226 3.12`, then `/stop` typed 12 ms after the last
+  `[MOVEMENT]` line, at waypoint 32 of 43 — and no `[MOVEMENT]` line for the
+  next 58 s. Three `/loc`s spread over 44 s all read `642.4, 141.8, 5.1` against
+  a destination of `728, 226`; they are legible in the chat panel of
+  `T345_stop_stop_settled_1024x768.png`. **Correction:** T343's Review calls
+  `stopAllMovement()` "the `/stop` command". It is not — `/stop` is an ALIAS of
+  `stopfollow` (`command_processor_registration.cpp:556`) and runs
+  `cmdStopFollow` -> `stopFollow()` -> `StopFollow()` -> `StopMovement()`;
+  `stopAllMovement()` is reached only from `console_input_handler.cpp:412`, and
+  `--script`/piped stdin hit the alias too. Both routes end at `StopMovement()`,
+  so the captured behaviour is the behaviour T343 describes.
+  Prov: K07 Review, T316, T319, T343 Review, T345 Review.
 
 ## Added 2026-09-03 by the Batch L survey (`refactor/L_renderer_component_extraction.md`)
 
@@ -883,7 +902,9 @@ it without taking that measurement first.
 
 - ~~**B055** (A) `src/client/core/everquest.cpp` `InitializeSpellSystem` —
   **a vision buff LANDING still does nothing; only its fade is published.**~~
-  **STRUCK by T339 (2026-09-04).**
+  **STRUCK by T339 (2026-09-04) — then PARTLY REOPENED by T345's live run: the
+  hook is registered and correct, but nothing in a live session can reach it.
+  See the T345 note at the end of this item.**
   T334 fixed the consumer, so a `VisionChanged` event now applies correctly in
   both directions — but the ONLY publisher of that event tree-wide is the
   `BuffManager` FADE callback. `BuffManager::applyBuff()` has no apply-side
@@ -916,8 +937,30 @@ it without taking that measurement first.
   `BuffManager` over the real spell DB into the renderer, plus a source-reader
   pin on the registration (pre-fix failing run in the T339 Review; `EverQuest`
   is not constructible in a unit test, so that half has no runtime seam).
-  A live capture of the zone-light change is still owed if Will wants it.
-  Prov: T339 Review.
+  ~~A live capture of the zone-light change is still owed if Will wants it.~~
+  **⚠ T345 (2026-09-04): THE LIVE CAPTURE WAS ATTEMPTED AND FAILED — THE HOOK
+  IS UNREACHABLE LIVE. This half of B055 REOPENS.** `review/T345/`: at forced
+  22:00 night, `#castspell 46` lands (both `SpellAction` packets, `effect_flag=0`
+  then `4`), and across six frames — before, twice after, after a re-cast, after
+  a `#zone`, after `#nukebuffs` — the zone light never changes and neither
+  `Vision buff changed` nor `Vision upgraded to:` is ever logged. Measured cause,
+  one hop upstream of T339's fix: `PlayerComponent::ZoneProcessBuff`
+  (`player_buffs.cpp:257`) calls `BuffManager::setPlayerBuff()` — the only
+  production caller that fires the apply callback — ONLY on an `OP_Buff` with
+  `effect_type == 2 && fade != 1`, and **eqemu never sends one**: every
+  `[SPELL] Buff:` line in the session carries `fade=1`, and server-side the only
+  sender of `bufffade = 0` (`Client::SendBuffDurationPacket`) is gated on
+  `zone->BuffTimersSuspended()` (`spell_effects.cpp:3866`). The one route that
+  DOES deliver a landed buff — the PlayerProfile at zone-in, `zone_entry.cpp:684`
+  -> `BuffManager::setPlayerBuffs()` (plural) — fills `m_player_buffs` directly
+  (`buff_manager.cpp:93`) and does NOT fire the callback, so a re-log with the
+  buff up publishes nothing either. T339's registration and tests are correct;
+  what is missing is a PRODUCER. Closes when a vision buff landing in a LIVE
+  session changes the zone light. Rig notes for whoever takes it: `#castspell 46`
+  needs no class/level/gem (`AccountStatus::Guide`, self-target), but Testchar's
+  account is flagged `invulnerable=1` and an invulnerable client REFUSES its own
+  `#castspell` — `/say #set invulnerable off` first, and restore it.
+  Prov: T339 Review, T345 Review, `review/T345/README.md`.
 
   **T338 (2026-09-04): the live pair is captured, and B054 needs nothing
   further.** `review/T338/` holds a baseline plus both keyed toggles at tip
@@ -930,3 +973,23 @@ it without taking that measurement first.
   binding and stays pinned by `tests/test_collision_debug_draw.cpp` only.
   Visual judgement is Will's; the claim made is only that the lines and the
   listed UI elements are present. Prov: T338 Review, `review/T338/README.md`.
+
+## Added 2026-09-04 by T345 (owed live proofs)
+
+- **B056** (A) `src/client/graphics/player/renderer_camera.cpp`
+  `PlayerCameraComponent::setPlayerRace` — **lead, not yet a proven zero-caller.**
+  The method logs `Player race {} -> base vision: {}` at INFO on every call, and
+  that line appears **nowhere** in any of T345's five live session logs, although
+  the player entity is created in each of them
+  (`T105 ENTITY spawn=287 race=1 ... isNPC=false isPlayer=true`). Its only call
+  site tree-wide is `IrrlichtRenderer::createEntity()`
+  (`graphics/renderer/renderer_entities.cpp:29`), while the live zone-load path
+  builds entities through `graphics/zone_load/renderer_zone_load_entities.cpp`.
+  If that holds, `baseVision_` is never set from the player's race in a real
+  session, so the racial vision floor (Dark Elf Ultravision, Dwarf/Troll/Ogre
+  Infravision) is dead too — the same implemented-but-unreached shape as B002 and
+  B055, and a second reason the vision feature shows nothing live. Closes when
+  either a live log carries the `Player race N -> base vision` line, or the call
+  is moved onto the path that actually creates the player entity and a live
+  capture shows a Dark Elf seeing in the dark. Prov: T345 Review,
+  `review/T345/README.md`.
