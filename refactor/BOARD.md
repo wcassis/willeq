@@ -227,8 +227,9 @@ it without taking that measurement first.
 - **B025** (P) Eight methods dominate their TUs and were left out of Batch J
   deliberately: `eqt::zone::ZoneComponent::DispatchZonePacket` 880
   (`src/client/zone/zone_dispatch.cpp`, K09),
-  `RaceModelLoader::loadModelFromGlobalChrWithVariantsForAnimation` 815
-  (`variant_loading.cpp`), `IrrlichtRenderer::updatePlayerMovement` 806
+  ~~`RaceModelLoader::loadModelFromGlobalChrWithVariantsForAnimation` 815
+  (`variant_loading_animation.cpp`)~~ **done, T340 Leg B: 132 lines of
+  candidate loop plus four functions, see the closed B052**, `IrrlichtRenderer::updatePlayerMovement` 806
   (`renderer_player_physics.cpp`), `CommandProcessor::registerBuiltinCommands` 768
   (`command_processor_registration.cpp`), `eqt::bridge::BridgeComponent::ProcessBridgeIntents` 580
   (`src/client/bridge/bridge_component_intents.cpp`), `Application::initialize` 569 (`application.cpp`),
@@ -728,38 +729,38 @@ it without taking that measurement first.
 
 ## Added 2026-09-04 by the G07 STOP
 
-- **B052** (B) `src/client/graphics/eq/variant_loading_animation.cpp`
-  `loadModelFromGlobalChrWithVariantsForAnimation` — 815 lines that are NOT
-  phases: one `for (codeToTry …)` candidate loop whose six `continue`s mean
-  "next candidate" and whose successes `return` from three loops deep. The
-  length is duplication — the animation-merge body appears FOUR times
+- ~~**B052** (B) `src/client/graphics/eq/variant_loading_animation.cpp`
+  `loadModelFromGlobalChrWithVariantsForAnimation` — 815 lines that were NOT
+  phases but DUPLICATION.~~ **CLOSED 2026-09-04 by T340 (Legs A and B,
+  `refactor/T340_variant_loader_behaviour_test.md`).** (1) The behaviour test:
+  `tests/test_variant_loader_candidates.cpp`, six cases on real shipped S3D
+  archives, driving seven of the eleven semantic exits -- primary hit,
+  **primary-miss/fallback-hit through the outer `continue`** (race 139
+  ICM -> IKM, Will's all-or-nothing case), an unusable matched character
+  skipped on the zone path AND on the global path (exit 640, Leg B), all
+  candidates exhausted + the caller's negative cache proved not to re-scan,
+  and an empty candidate list. Seam: the loader's own public
+  `setClientPath()`/`loadZoneModels()` control the candidate source (a fixture
+  client directory symlinking only the archives a case may see), plus the
+  read-only `variantLoadTrace()` getter. (2) The de-duplication:
+  **815 -> 132 lines of candidate loop plus four functions** --
+  `buildCodesToTry` 26, `selectVariantParts` 68, `mergeAnimationsFrom` 36
+  (the four copies, which were byte-identical once normalised, so nothing
+  needed parameterising), `tryBuildVariantFrom` 226 (the character body,
+  shared by both paths, `fromGlobal` selecting only log wording and the
+  trace's source label); TU 882 -> 576. The exit census is identical
+  before and after -- same eleven semantic exits, same exits per test case --
+  and a planted `continue` -> `return false` at the candidate loop still
+  fails the fallback case alone. Measured while there, and recorded in the
+  Leg B Review: G07's exits 155/525 are unreachable with shipped data, and
+  so is "exit 640 then a success" (no archive holds an unusable-then-usable
+  pair for any race code, and no `fallback_code` race's primary code is ever
+  unusable), which is why exit 640 is pinned by a skip COUNT rather than by
+  a return value. Original text: "one `for (codeToTry …)` candidate loop
+  whose six `continue`s mean 'next candidate' and whose successes `return`
+  from three loops deep; the animation-merge body appears FOUR times
   (0.92–0.96 similar) and the zone/global character blocks are 0.91 similar.
-  **No test drives this method** (zero hits in `tests/`); the EQE1 crash
-  matrix does not reach it. A verbatim-slice decomposition (Batch G's proof)
-  cannot apply. Closes when: (1) a behaviour test drives the loader through
-  the primary-miss/fallback-hit and all-candidates-exhausted paths (a race
-  whose fallback code hits must LOAD, not cache null — Will's all-or-nothing
-  rule), then (2) `mergeAnimationsFrom()` replaces the four copies and the
-  candidate loop keeps its shape (`buildCodesToTry` / `selectVariantParts` /
-  `tryBuildVariantFrom` as the G07 Review lays out, 815 → ~250). Prov: G07
-  Review (`refactor/G07_variant_loader.md`).
-  **T340 Leg A done, Leg B open** (`refactor/T340_variant_loader_behaviour_test.md`).
-  (1) is CLOSED: `tests/test_variant_loader_candidates.cpp` drives the method
-  through six of its eleven semantic exits using real shipped S3D archives --
-  primary hit, **primary-miss/fallback-hit through the outer `continue`**
-  (race 139 ICM -> IKM, Will's all-or-nothing case), an unusable matched
-  character skipped, all candidates exhausted + the caller's negative cache
-  proved not to re-scan, and an empty candidate list. Seam: the loader's own
-  public `setClientPath()`/`loadZoneModels()` control the candidate source
-  (a fixture client directory symlinking only the archives a case may see),
-  plus one read-only `variantLoadTrace()` getter -- the whole production edit,
-  additive, written under the mutex the success blocks already take. Both
-  planted `continue` -> `return false` faults were caught, each by exactly one
-  case. Measured while there: G07's exits 155/525 are **unreachable with
-  shipped data** (no character model in any of the 378 `*_chr.s3d` archives has
-  zero parts), and exit 640 -- the global-path twin of the tested 280 -- should
-  be added in Leg B before the zone and global blocks are merged. (2) remains
-  open.
+  No test drives this method. Prov: G07 Review."
 
 ## Added 2026-09-04 by M00 (`refactor/M00_ceiling_closed.md`)
 

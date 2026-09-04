@@ -281,6 +281,18 @@ retired by P30/P32 and no supported build parsed it.
 | wld_fragments_material.cpp | 159 | 0x03/0x04/0x05 texture, 0x30/0x31 material |
 | wld_internal.h | 18 | J05 private header shared by the seven TUs |
 
+## Race model / variant loader — RaceModelLoader (`include/client/graphics/eq/race_model_loader.h`)
+
+Character model loading from S3D archives. `variant_loading.cpp` resolves a
+race/appearance to a mesh and owns the variant cache's negative entry;
+`variant_loading_preload.cpp` holds the cache and preloader;
+`variant_loading_animation.cpp` holds the animation-aware variant loader
+(split out by J35, de-duplicated by T340 Leg B).
+
+| TU | Lines | Contents |
+|---|---|---|
+| variant_loading_animation.cpp | 576 | `loadModelFromGlobalChrWithVariantsForAnimation` and the four functions T340 Leg B (B052) cut out of it. The method was 815 lines because it was DUPLICATED — the animation-merge body written out four times (byte-identical once normalised) and the whole match-select-combine-register character body written out twice, 0.906 similar (`refactor/G07_variant_loader.md`). Now: `buildCodesToTry` (the candidate list + the animation source code), `selectVariantParts` (this variant's meshes out of one character, with the variant-0 fallbacks), `mergeAnimationsFrom` (the four copies, once) and `tryBuildVariantFrom` (the character body, shared by the zone and global paths, parameterised by `fromGlobal`), plus the candidate loop itself. **The loop is a SEARCH, not a pipeline**: its `continue`s mean "try the next candidate", and returning false makes the caller write a permanent negative cache entry — so a race whose primary code misses but whose `fallback_code` hits must still LOAD (Will's EQE1 all-or-nothing rule). Pinned by `tests/test_variant_loader_candidates.cpp` (T340, six cases, real shipped S3D archives, seven of the eleven semantic exits driven) through the read-only `variantLoadTrace()` seam |
+
 ## Test build — tests/CMakeLists.txt (split by J20)
 
 `tests/CMakeLists.txt` (135 lines) is now a driver that `include()`s 18

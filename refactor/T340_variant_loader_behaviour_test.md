@@ -242,3 +242,198 @@ which is a configure-staleness result, not a build failure.
   edit than "the smallest read-only observation seam". If Leg B wants the
   before/after exit census as a standing proof, that is the moment to decide
   whether the tags become permanent.
+
+## Review — Leg B
+
+**Done, no STOP.** Branch `task/T340-legB-variant-loader-dedup`, forked from
+`fable` at `9bd577e8`. Two commits: the exit-640 case, then the de-duplication.
+
+`src/client/graphics/eq/variant_loading_animation.cpp` **882 -> 576 lines**;
+the method **848 -> 132** (the candidate loop) plus four member functions and
+three file-local helpers. The header gains the four declarations and one
+`VariantRequest` struct.
+
+### (a) The exit-640 case, and what it cost to make it real
+
+Leg A left exit 640 -- the global-path twin of case 3's 280 -- untested, and
+said so: it sits inside the second of the two 0.906-similar character blocks
+`tryBuildVariantFrom()` absorbs, so merging with only the zone block under
+test is under-netted.
+
+The fixture is the one Leg A predicted: the real `global6_chr.s3d` symlinked
+into the fixture directory **under the name `global_chr.s3d`**, which is the
+only name `loadGlobalModels()` opens. Its `SKE_HS_DEF` carries one mesh,
+`SKEMESH_DMSPRITEDEF`, so race 60 (SKE, no fallback) matches it by name and
+must skip it. No zone is loaded, and race 60's own row names
+`global_chr.s3d`, whose zone name starts with `global`, so the loader's own
+guard keeps the JSON-`s3d_file` branch out of the case.
+
+**The return value cannot pin this exit, and that was measured, not assumed.**
+`s3d_dump` was temporarily instrumented to print each character model's
+skinned and raw mesh-part names, and every `*_chr.s3d` under
+`/mnt/projects/EverQuestP1999` was scanned -- **2,609 character models**. Then:
+
+- **No archive holds an unusable-then-usable pair for any race code.** For
+  every archive and every code any `race_models` row resolves to (gendered),
+  there is no case where a code matches two or more characters, the first
+  carrying neither `{CODE}_DMSPRITEDEF` nor `{CODE}HE00_DMSPRITEDEF` and a
+  later one carrying one. 0 hits.
+- **No `fallback_code` race's primary code is ever unusable.** All eleven rows
+  with a `fallback_code` (FPM, HHM, QCM, NGM, EGM, RIM, HLM, GRM, OKM, KAM,
+  ICM and their female codes) were checked against every character in every
+  archive: not one is matched-but-unusable anywhere. 0 hits.
+
+So "exit 640, then a later character or a later candidate succeeds" is
+**unreachable with shipped data** -- the same class of finding as Leg A's
+155/525, reached the same way. A skip on the global path is always followed by
+exhaustion, and the method returns false either way. The exit is therefore
+pinned by a **count**, not by a return value: `VariantLoadTrace` gains
+`zoneSkips` and `globalSkips`, incremented at the two missing-variant-parts
+`continue`s under the mutex the trace already uses. Additive, read-only, no
+control flow reads them -- the same class of edit Leg A's seam already was.
+Case 3 now also asserts `zoneSkips == 1` and `globalSkips == 0`.
+
+`s3d_dump.cpp` was restored from a pre-edit copy (`cmp` clean) before the
+commit; the scan left no trace in the tree.
+
+Planted faults for the new case (each built, run, then reverted from a
+pre-edit copy, `cmp` clean):
+
+| fault | result |
+|---|---|
+| the global missing-parts guard `\|\|` -> `&&` | **not caught** -- the fixture character has BOTH lists empty, so the mutant is equivalent here. Recorded, then replaced. |
+| the global missing-parts guard polarity inverted (`!a && !b`) | **cases 3 and 6 FAIL**, case 6 on `trace.globalSkips` (1 -> 0). This is the slip the Leg B cut actually risks, because that guard becomes `selectVariantParts()`'s return value. |
+| the 640 `continue` -> `return false` | **nothing fails**, exactly as the archive scan predicts. Recorded, not hidden. |
+
+### (b) The four-copy diff — verdict: no differences, nothing to parameterise
+
+The four animation-merge copies were extracted (lines 366-405, 439-479,
+727-766, 787-826 of the pre-Leg-B file: `auto& ourSkel = ...` through the end
+of the bone loop, excluding each copy's trailing `LOG_DEBUG`), normalised
+(comments stripped, leading/trailing whitespace stripped, blank lines
+dropped) and diffed pairwise.
+
+| pair | normalised lines | diff |
+|---|---|---|
+| A (zone path, zone-S3D source) vs B (zone path, global source) | 33 vs 33 | **empty** |
+| A vs C (global path, zone-S3D source) | 33 vs 33 | **empty** |
+| A vs D (global path, global source) | 33 vs 33 | **empty** |
+
+All four are the same 33 lines. **Nothing became a parameter and nothing
+STOPped the unit**; `mergeAnimationsFrom()` takes only what each call site
+needs back for its own log line (`addedAnimations`, `mappedBones`), so the
+four differing log lines stay verbatim at their four call sites.
+
+The two character blocks (270 normalised lines each) differ in exactly
+**four** places that are not log text:
+
+| difference | disposition |
+|---|---|
+| the container iterated (`*characters` vs `globalCharacters_`) | the function's first parameter |
+| the trace's `resolvedSource` ("zone" vs "global") | `fromGlobal ? "global" : "zone"` |
+| zone only: `if (!foundSource) LOG_WARN("... not found in {} for race {}")` after the zone-S3D animation-source search | guarded `if (!foundSource && !fromGlobal)` |
+| zone only: `if (!globalModelsLoaded_) { LOG; loadGlobalModels(); }` before searching `globalCharacters_` for the animation source | **kept unconditionally, and that is provably not a behaviour change**: the global path is only reached through the loop's own `if (!globalModelsLoaded_) { if (!loadGlobalModels()) continue; }` gate, and `loadGlobalModels()` returns true only after setting `globalModelsLoaded_ = true`, so the guard's condition is always false there and neither the call nor its log line can fire. This is the point Leg A flagged: `loadGlobalModels()` is idempotent on `clientPath_`, so *where* it is called changes which candidates can succeed -- and it is called at exactly the same point in the candidate order as before. |
+
+Everything else that differed was `LOG_DEBUG`/`LOG_WARN` wording (the global
+path's "Global fallback - " phrasing, eleven lines in all). Every one is
+preserved byte-for-byte behind `if (fromGlobal)` rather than unified, which is
+most of the reason the result is 576 lines and not the ~250 G07 predicted. A
+runtime-selected format string is not an option -- `fmt` wants a literal --
+and rewording debug output is not something a de-duplication unit should do
+silently.
+
+Two further shape notes, neither behavioural:
+
+- The zone block's `foundInZone` local was dead (assigned `false`, never read).
+  Dropped.
+- The character-name mismatch used to be the implicit end of the loop body
+  (`if (charName.find(code) != npos) { ...everything... }`); it is now an
+  explicit `continue`. Same successor, one less level of nesting.
+
+### (c)/(d) The cut, and line counts
+
+| function | before | after |
+|---|---|---|
+| `loadModelFromGlobalChrWithVariantsForAnimation` | **848** | **132** (the candidate loop, the per-candidate mesh names, the JSON-`s3d_file` source block) |
+| `buildCodesToTry` | — | 26 |
+| `selectVariantParts` | — | 68 |
+| `mergeAnimationsFrom` | — | 36 |
+| `tryBuildVariantFrom` | — | 226 |
+| file-local `toUpper` / `toLower` / `findPartNamed` | — | 4 / 4 / 10 |
+| **TU total** | **882** | **576** |
+
+`selectVariantParts` collapses the fourfold mesh search (skinned/raw ×
+requested/fallback) into a two-element `Pass` table plus a `findPartNamed`
+helper; only the skinned pass logs its fallbacks, as before.
+`tryBuildVariantFrom` is still large because it carries the whole
+animation-source resolution and eleven paired log lines; it is one body now
+instead of two.
+
+### (e) The exit census — identical before and after
+
+Measured the same way both times: temporary `fprintf` tags at all eleven
+semantic exits (after the cut, the tags that collapsed onto one site print
+the zone or global name according to `fromGlobal`, so the census stays
+comparable exit-for-exit), each test run alone, then the file restored from a
+pre-edit copy (`cmp` clean).
+
+| case | before | after |
+|---|---|---|
+| `PrimaryCodeHitsInTheRowsOwnArchive` | 505 | **505** |
+| `FallbackCodeLoadsAfterThePrimaryMisses` | 515, 505 | **515, 505** |
+| `MatchedCharacterWithNoUsableMeshIsSkipped` | 280, 840 | **280, 840** |
+| `AllCandidatesExhaustedCachesNullAndDoesNotRescan` | 845 | **845** |
+| `NoRaceCodeAtAllAbandonsImmediately` | 69 | **69** |
+| `MatchedGlobalCharacterWithNoUsableMeshIsSkipped` | 640, 845 | **640, 845** |
+
+Same semantic exits, same depths, same counts. Which exits **collapsed** onto
+one site by de-duplication (six sites where there were eleven):
+
+| G07 exits | now |
+|---|---|
+| 155 + 525 (null/partless character) | one `continue` in `tryBuildVariantFrom` |
+| 280 + 640 (no usable variant meshes) | one `continue` in `tryBuildVariantFrom` |
+| 287 + 646 (geometry combine returned null) | one `continue` in `tryBuildVariantFrom` |
+| 505 + 840 (success) | one `return true` in `tryBuildVariantFrom` |
+| 69 | `buildCodesToTry` returning false, reported by the loop's `return false` |
+| 515, 845 | unchanged, still in the loop |
+
+### The planted fault in the unified path
+
+| fault | result |
+|---|---|
+| the candidate loop's `continue; // Failed to load globals, try next code` -> `return false` | **case 2 alone FAILS**, on its own message ("a race whose primary code misses but whose fallback_code hits must LOAD (EQE1 all-or-nothing) -- got a null instead"). Unchanged from Leg A: this exit was not touched by the cut. |
+| `selectVariantParts` returns its negation | **cases 1, 2, 3 and 6 FAIL.** The polarity of that return IS G07 exits 280/640 now, and four of the six cases feel it. |
+| the unified missing-parts `continue` -> `return false` | **nothing fails** — and this is a real finding, not a gap. In the old shape that `continue` was inside the method, so `return false` abandoned the whole load and case 3 caught it (Leg A fault 2). In the new shape it is inside `tryBuildVariantFrom`, where false means "nothing in THIS source" and the loop goes on to the next source and the next candidate. **The de-duplication narrowed the blast radius of exits 280/640** — the slip that used to be fatal is now contained. Cases 3 and 6 still pin the exit itself, through `zoneSkips`/`globalSkips` and through the fault above. |
+
+**No behaviour change to the all-or-nothing outcome.** Case 2 -- the race
+whose primary code misses and whose `fallback_code` hits -- loads before and
+after, through the same exit at the same depth, and the mutant that would
+break it still breaks it.
+
+### Verification
+
+All from `/mnt/projects/fable/wt/slot1`, classified by exit status.
+
+| step | result |
+|---|---|
+| `cmake --build build -j24` | **exit 0** |
+| `ctest --test-dir build -j6 --output-on-failure` | **3,802 tests, 1 failed** — `AudioManagerTest.PreloadCommonSounds` (the standing ALSA host exception) and nothing else. All six variant-loader cases pass. |
+| `scripts/build-gles2-x86.sh` | **exit 0** |
+| `scripts/ci/visual_gate.sh` | **PASS**, no golden touched |
+| `scripts/build-arm-noble.sh` | **exit 0** |
+| `scripts/refactor/check_file_sizes.sh --all` | **0 FAIL** |
+| `model_viewer`, `gles2_zone_benchmark` | build (in the full build and the GLES2 tree respectively) |
+
+### Deviations
+
+- The predicted ~250 lines came out at 576. The gap is entirely the eleven
+  paired log lines kept byte-identical behind `fromGlobal`, plus
+  `tryBuildVariantFrom` carrying the animation-source resolution rather than a
+  fifth function. Unifying the log wording would take it to roughly the
+  predicted size; that is a wording change, and it was not this unit's to make.
+- The exit-640 case ends in a null, not a load, because "640 then a success" is
+  unreachable with shipped data (measured above). It is pinned by a skip count
+  instead, which needed two additive fields on the existing read-only trace.
+- The `|| -> &&` mutant at exit 640 turned out to be equivalent for the only
+  fixture that reaches that exit. Recorded above rather than quietly replaced.

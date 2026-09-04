@@ -420,6 +420,64 @@ private:
     bool loadModelFromGlobalChrWithVariantsForAnimation(uint16_t raceId, uint8_t gender,
                                                          uint8_t headVariant, uint8_t bodyVariant);
 
+    // ---- T340 Leg B (B052): the four pieces that method was built out of ----
+    // It was 815 lines because it was DUPLICATED, not because it had phases:
+    // one animation-merge body written out four times (byte-identical once
+    // normalised) and one match-select-combine-register character body written
+    // out twice, 0.906 similar. See refactor/T340_variant_loader_behaviour_test.md
+    // and refactor/G07_variant_loader.md. The candidate loop keeps its shape:
+    // "continue" there still means TRY THE NEXT CANDIDATE, never "abandon", and
+    // returning false from the whole method still makes the caller cache a
+    // permanent null (Will's EQE1 all-or-nothing rule, docs/decisions.md).
+
+    // One candidate: the race code being tried plus everything derived from it
+    // that every helper below needs. Built once per iteration of the loop.
+    struct VariantRequest {
+        uint16_t raceId = 0;
+        uint8_t gender = 0;
+        uint8_t headVariant = 0;
+        uint8_t bodyVariant = 0;
+        std::string codeToTry;            // the candidate race code, uppercase
+        std::string animationSourceCode;  // ELM/ELF/... , uppercase, may be empty
+        std::string bodyMeshName;         // "{CODE}_DMSPRITEDEF" or "{CODE}{NN}_DMSPRITEDEF"
+        std::string headMeshName;         // "{CODE}HE{NN}_DMSPRITEDEF"
+    };
+
+    // The candidate list, in order: the row's own gendered code, then the row's
+    // fallback_code. Also resolves the animation source code. False = there is
+    // no candidate at all, the one exit of this method that really is "abandon"
+    // (G07 exit 69).
+    bool buildCodesToTry(uint16_t raceId, uint8_t gender,
+                         std::vector<std::string>& codesToTry,
+                         std::string& animationSourceCode);
+
+    // Pick this variant's body and head meshes out of ONE character, skinned and
+    // raw, falling back to variant 0 when the requested variant is absent.
+    // False = this character carries nothing usable, so the caller must try the
+    // NEXT character (G07 exits 280 and 640). NOT "abandon the load".
+    bool selectVariantParts(const CharacterModel& character, const VariantRequest& req,
+                            std::vector<CharacterPart>& selectedSkinnedParts,
+                            std::vector<CharacterPart>& selectedRawParts);
+
+    // Copy into ourSkel every animation and per-bone animation track it is
+    // MISSING from sourceSkel, mapping bone names by race-code substitution
+    // (qcmpe -> elmpe). Model-specific animations are NEVER overwritten -- the
+    // EQSage rule. This body appeared four times; the copies were identical, so
+    // nothing here is parameterised except the two counts each call site logs.
+    void mergeAnimationsFrom(CharacterSkeleton& ourSkel, const CharacterSkeleton& sourceSkel,
+                             const std::string& codeToTry, const std::string& animationSourceCode,
+                             int& addedAnimations, int& mappedBones);
+
+    // Search ONE character source for a character carrying this candidate's
+    // variant meshes; on the first that does, build, register and cache the
+    // RaceModelData and return true (the loader's two success exits). False =
+    // nothing in THIS source matched, so the caller tries the next source, then
+    // the global source, then the next candidate. fromGlobal selects the
+    // global-path log wording and the trace's resolvedSource; it changes no
+    // control flow.
+    bool tryBuildVariantFrom(const std::vector<std::shared_ptr<CharacterModel>>& characters,
+                             bool fromGlobal, const VariantRequest& req);
+
     // Build a merged texture map from all sources (global + numbered globals + zone)
     // Order: global_chr.s3d -> global2-7_chr.s3d (new only) -> zone_chr.s3d (overrides)
     std::map<std::string, std::shared_ptr<TextureInfo>> getMergedTextures();
