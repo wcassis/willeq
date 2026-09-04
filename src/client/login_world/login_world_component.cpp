@@ -70,7 +70,7 @@ void LoginWorldComponent::ConnectToLogin()
 	m_login_connection_manager->OnConnectionStateChange(std::bind(&LoginWorldComponent::LoginOnStatusChangeReconnectEnabled, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
 	m_login_connection_manager->OnPacketRecv(std::bind(&LoginWorldComponent::LoginOnPacketRecv, this, std::placeholders::_1, std::placeholders::_2));
 
-	owner_.SetLoadingPhase(LoadingPhase::LOGIN_CONNECTING);
+	ctx_.Bridge().SetLoadingPhase(LoadingPhase::LOGIN_CONNECTING);
 	m_login_connection_manager->Connect(m_host, m_port);
 }
 
@@ -78,7 +78,7 @@ void LoginWorldComponent::ConnectToWorld(const std::string& world_address)
 {
 	LOG_DEBUG(MOD_WORLD, "Creating new world connection manager for {}:9000", world_address);
 
-	owner_.SetLoadingPhase(LoadingPhase::WORLD_CONNECTING);
+	ctx_.Bridge().SetLoadingPhase(LoadingPhase::WORLD_CONNECTING);
 
 	// Store the world server address for reconnection
 	m_world_server_host = world_address;
@@ -110,7 +110,7 @@ void LoginWorldComponent::LoginOnStatusChangeReconnectEnabled(std::shared_ptr<EQ
 		m_key.clear();
 		m_dbid = 0;
 		m_login_connection.reset();
-		owner_.SetLoadingPhase(LoadingPhase::LOGIN_CONNECTING);
+		ctx_.Bridge().SetLoadingPhase(LoadingPhase::LOGIN_CONNECTING);
 		m_login_connection_manager->Connect(m_host, m_port);
 	}
 }
@@ -195,7 +195,7 @@ void LoginWorldComponent::LoginSendSessionReady()
 
 void LoginWorldComponent::LoginSendLogin()
 {
-	owner_.SetLoadingPhase(LoadingPhase::LOGIN_AUTHENTICATING);
+	ctx_.Bridge().SetLoadingPhase(LoadingPhase::LOGIN_AUTHENTICATING);
 	size_t buffer_len = m_user.length() + m_pass.length() + 2;
 	std::unique_ptr<char[]> buffer(new char[buffer_len]);
 	memset(buffer.get(), 0, buffer_len);
@@ -613,7 +613,7 @@ void LoginWorldComponent::WorldSendEnterWorld(const std::string &character)
 
 void LoginWorldComponent::WorldProcessCharacterSelect(const EQ::Net::Packet &p)
 {
-	owner_.SetLoadingPhase(LoadingPhase::WORLD_CHARACTER_SELECT);
+	ctx_.Bridge().SetLoadingPhase(LoadingPhase::WORLD_CHARACTER_SELECT);
 
 	// For Titanium client, the packet is just the raw CharacterSelect_Struct
 	// Let's verify packet size
@@ -849,7 +849,7 @@ void LoginWorldComponent::WorldProcessSetChatServer(const EQ::Net::Packet &p)
 	// shape, so it never populated anything and warned on every packet.
 	std::string chat_info = p.GetCString(2);
 
-	if (EverQuest::s_debug_level >= 2) {
+	if (EverQuest::GetDebugLevel() >= 2) {
 		LOG_DEBUG(MOD_NET, "Received chat server info: {}", chat_info);
 	}
 
@@ -982,8 +982,8 @@ void LoginWorldComponent::WorldProcessZoneServerInfo(const EQ::Net::Packet &p)
 	}
 
 	// Store new zone server info
-	owner_.m_zone_server_host = new_zone_host;
-	owner_.m_zone_server_port = new_zone_port;
+	m_zone_server_host = new_zone_host;
+	m_zone_server_port = new_zone_port;
 
 	// Clear pending zone info (T286: WorldState is the only store; this
 	// clear had no WorldState counterpart before, so the GameState copy
@@ -994,7 +994,7 @@ void LoginWorldComponent::WorldProcessZoneServerInfo(const EQ::Net::Packet &p)
 	WorldSendWorldComplete();
 
 	// Connect to the zone server
-	owner_.ConnectToZone();
+	ctx_.lifecycle.ConnectToZone();
 }
 
 }  // namespace login_world

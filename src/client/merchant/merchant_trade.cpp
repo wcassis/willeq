@@ -16,6 +16,11 @@
 // that stay behind -> owner_.Foo(), and EverQuest's statics s_debug_level,
 // DumpPacket and FormatPrice qualified as EverQuest:: -- friendship grants
 // access, not scope). See the K05 Review.
+//
+// T341 (board B038): the "stay on EverQuest" clauses above are HISTORY, not
+// the current shape. This family now reaches EverQuest not at all -- the
+// `owner_` handle and the `friend class` line are both gone; see the T341
+// note in this family's component header.
 
 #include "client/merchant/merchant_component.h"
 
@@ -287,7 +292,7 @@ void eqt::merchant::MerchantComponent::ZoneProcessLootItemToUI(const EQ::Net::Pa
 
 	std::string item_data(data, data_len);
 
-	if (EverQuest::s_debug_level >= 3) {
+	if (EverQuest::GetDebugLevel() >= 3) {
 		LOG_TRACE(MOD_INVENTORY, "Item data length={}", item_data.length());
 		LOG_TRACE(MOD_INVENTORY, "Item data preview: {}", item_data.substr(0, std::min(size_t(200), item_data.length())));
 	}
@@ -300,7 +305,7 @@ void eqt::merchant::MerchantComponent::ZoneProcessLootItemToUI(const EQ::Net::Pa
 		fields.push_back(field);
 	}
 
-	if (EverQuest::s_debug_level >= 3) {
+	if (EverQuest::GetDebugLevel() >= 3) {
 		LOG_TRACE(MOD_INVENTORY, "Parsed {} fields", fields.size());
 		for (size_t i = 0; i < fields.size() && i < 20; i++) {
 			LOG_TRACE(MOD_INVENTORY, "  field[{}] = '{}'", i, fields[i].substr(0, 50));

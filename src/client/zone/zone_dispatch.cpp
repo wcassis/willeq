@@ -260,7 +260,7 @@ void eqt::zone::ZoneComponent::OnItemPacket(const EQ::Net::Packet & p)
 					}
 				}
 			}
-			if (EverQuest::s_debug_level >= 2) {
+			if (EverQuest::GetDebugLevel() >= 2) {
 				LOG_DEBUG(MOD_MAIN, "Received ItemPacket type={} while not looting/trading", item_packet_type);
 			}
 		}
@@ -272,7 +272,7 @@ void eqt::zone::ZoneComponent::OnTargetCommandResponse(const EQ::Net::Packet & p
 	// Server may reject our target
 	if (p.Length() >= 4) {
 		uint16_t result = p.GetUInt16(2);
-		if (result != 0 && EverQuest::s_debug_level >= 1) {
+		if (result != 0 && EverQuest::GetDebugLevel() >= 1) {
 			LOG_DEBUG(MOD_MAIN, "Target rejected: {}", result);
 		}
 	}
@@ -281,7 +281,7 @@ void eqt::zone::ZoneComponent::OnTargetCommandResponse(const EQ::Net::Packet & p
 void eqt::zone::ZoneComponent::OnBecomeCorpse(const EQ::Net::Packet & p)
 {
 	// Someone died and became a corpse
-	if (EverQuest::s_debug_level >= 2) {
+	if (EverQuest::GetDebugLevel() >= 2) {
 		LOG_DEBUG(MOD_MAIN, "Received BecomeCorpse packet");
 	}
 }
@@ -292,7 +292,7 @@ void eqt::zone::ZoneComponent::OnTargetHoTT(const EQ::Net::Packet & p)
 	if (p.Length() >= 6) {
 		uint16_t target_id = p.GetUInt16(2);
 		uint16_t hott_id = p.GetUInt16(4);
-		if (EverQuest::s_debug_level >= 2) {
+		if (EverQuest::GetDebugLevel() >= 2) {
 			LOG_DEBUG(MOD_MAIN, "Target {} has target {}", target_id, hott_id);
 		}
 	}
@@ -328,7 +328,7 @@ void eqt::zone::ZoneComponent::OnSkillUpdate(const EQ::Net::Packet & p)
 				eqt::state::GameEventType::SkillValueChanged, std::move(sdata)));
 		}
 
-		if (EverQuest::s_debug_level >= 2) {
+		if (EverQuest::GetDebugLevel() >= 2) {
 			LOG_DEBUG(MOD_MAIN, "Skill {} updated to {}", static_cast<int>(skill_id), value);
 		}
 	}
@@ -342,7 +342,7 @@ void eqt::zone::ZoneComponent::OnCancelTrade(const EQ::Net::Packet & p)
 		if (ctx_.trade_manager) {
 			ctx_.trade_manager->handleCancelTrade(*cancel);
 		}
-		if (EverQuest::s_debug_level >= 2) {
+		if (EverQuest::GetDebugLevel() >= 2) {
 			LOG_DEBUG(MOD_MAIN, "Trade cancelled by spawn {}", cancel->spawn_id);
 		}
 	}
@@ -362,7 +362,7 @@ void eqt::zone::ZoneComponent::OnTradeRequest(const EQ::Net::Packet & p)
 			}
 			ctx_.trade_manager->handleTradeRequest(*req, from_name);
 		}
-		if (EverQuest::s_debug_level >= 2) {
+		if (EverQuest::GetDebugLevel() >= 2) {
 			LOG_DEBUG(MOD_MAIN, "Trade request from spawn {} to spawn {}",
 			         req->from_spawn_id, req->target_spawn_id);
 		}
@@ -377,7 +377,7 @@ void eqt::zone::ZoneComponent::OnTradeRequestAck(const EQ::Net::Packet & p)
 		if (ctx_.trade_manager) {
 			ctx_.trade_manager->handleTradeRequestAck(*ack);
 		}
-		if (EverQuest::s_debug_level >= 2) {
+		if (EverQuest::GetDebugLevel() >= 2) {
 			LOG_DEBUG(MOD_MAIN, "Trade request ack from spawn {} to spawn {}",
 			         ack->from_spawn_id, ack->target_spawn_id);
 		}
@@ -392,7 +392,7 @@ void eqt::zone::ZoneComponent::OnTradeCoins(const EQ::Net::Packet & p)
 		if (ctx_.trade_manager) {
 			ctx_.trade_manager->handleTradeCoins(*coins);
 		}
-		if (EverQuest::s_debug_level >= 2) {
+		if (EverQuest::GetDebugLevel() >= 2) {
 			LOG_DEBUG(MOD_MAIN, "Trade coins from spawn {}: slot {} amount {}",
 			         coins->spawn_id, coins->slot, coins->amount);
 		}
@@ -407,7 +407,7 @@ void eqt::zone::ZoneComponent::OnTradeAcceptClick(const EQ::Net::Packet & p)
 		if (ctx_.trade_manager) {
 			ctx_.trade_manager->handleTradeAcceptClick(*accept);
 		}
-		if (EverQuest::s_debug_level >= 2) {
+		if (EverQuest::GetDebugLevel() >= 2) {
 			LOG_DEBUG(MOD_MAIN, "Trade accept click from spawn {}: accepted={}",
 			         accept->spawn_id, accept->accepted);
 		}
@@ -431,7 +431,7 @@ void eqt::zone::ZoneComponent::OnFinishTrade(const EQ::Net::Packet & p)
 void eqt::zone::ZoneComponent::OnPreLogoutReply(const EQ::Net::Packet & p)
 {
 	// Pre-logout confirmation (server acknowledges camp request)
-	if (EverQuest::s_debug_level >= 2) {
+	if (EverQuest::GetDebugLevel() >= 2) {
 		LOG_DEBUG(MOD_MAIN, "Pre-logout reply received (camp acknowledged)");
 	}
 }
@@ -486,7 +486,7 @@ void eqt::zone::ZoneComponent::OnMobRename(const EQ::Net::Packet & p)
 				// T268: GameState kept the LIVING name + isCorpse=false forever
 				// (markAsCorpse had no caller) -- /target and /loot missed it.
 				ctx_.Player().SyncEntityToGameState(it->second);
-				if (EverQuest::s_debug_level >= 1) {
+				if (EverQuest::GetDebugLevel() >= 1) {
 					LOG_INFO(MOD_ENTITY, "Entity {} became corpse: '{}' -> '{}'",
 						entity_id, old_name, new_name);
 				}

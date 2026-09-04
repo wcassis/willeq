@@ -269,7 +269,7 @@ bool eqt::bridge::BridgeComponent::LootItemFromCorpse(uint16_t corpseId, int16_t
 	li->auto_loot = autoLoot ? 1 : 0;
 
 	// Debug: print packet bytes (only at high debug level)
-	if (EverQuest::s_debug_level >= 3) {
+	if (EverQuest::GetDebugLevel() >= 3) {
 		std::string hex_str;
 		const uint8_t* data = (const uint8_t*)packet.Data();
 		for (size_t i = 0; i < packet.Length(); i++) {
@@ -526,7 +526,7 @@ void eqt::bridge::BridgeComponent::InitializeAudio() {
 
 	// Pass event loop pump as tick callback so network stays alive during slow audio init
 	auto networkTick = [this]() {
-		owner_.TickNetwork();
+		ctx_.lifecycle.TickNetwork();
 	};
 
 	if (!ctx_.audio_manager->initialize(eqPath, false, m_audio_config_soundfont, networkTick)) {
@@ -540,15 +540,15 @@ void eqt::bridge::BridgeComponent::InitializeAudio() {
 	// state (no meaning without a renderer to constrain); skip when graphics
 	// is compiled out rather than guessing at a headless equivalent.
 #ifdef EQT_HAS_GRAPHICS
-	if (owner_.m_constrained_config && owner_.m_constrained_config->totalMemoryBudgetBytes > 0) {
+	if (m_constrained_config && m_constrained_config->totalMemoryBudgetBytes > 0) {
 		ctx_.audio_manager->setMemoryConstraints(
-			owner_.m_constrained_config->soundBufferCacheBytes,
-			owner_.m_constrained_config->lazyPfsLoading);
+			m_constrained_config->soundBufferCacheBytes,
+			m_constrained_config->lazyPfsLoading);
 		LOG_INFO(MOD_AUDIO, "Audio memory constraints: soundCache={}KB, lazyPfs={}",
-			owner_.m_constrained_config->soundBufferCacheBytes / 1024,
-			owner_.m_constrained_config->lazyPfsLoading ? "yes" : "no");
+			m_constrained_config->soundBufferCacheBytes / 1024,
+			m_constrained_config->lazyPfsLoading ? "yes" : "no");
 	} else {
-		auto cfg = EQT::Graphics::ConstrainedRendererConfig::fromPreset(owner_.m_constrained_preset);
+		auto cfg = EQT::Graphics::ConstrainedRendererConfig::fromPreset(m_constrained_preset);
 		if (cfg.totalMemoryBudgetBytes > 0) {
 			ctx_.audio_manager->setMemoryConstraints(cfg.soundBufferCacheBytes, cfg.lazyPfsLoading);
 			LOG_INFO(MOD_AUDIO, "Audio memory constraints (from preset): soundCache={}KB, lazyPfs={}",
@@ -574,7 +574,7 @@ void eqt::bridge::BridgeComponent::InitializeAudio() {
 		m_audio_config_effects_volume * 100.0f);
 
 	// Pump network before sound preloading
-	owner_.TickNetwork();
+	ctx_.lifecycle.TickNetwork();
 
 	// Preload common sounds for faster playback
 	ctx_.audio_manager->preloadCommonSounds();
@@ -646,7 +646,7 @@ void eqt::bridge::BridgeComponent::UpdateAudioListener(float deltaTime) {
 		glm::vec3(0.0f, 0.0f, 1.0f)  // Up is +Z in EQ coordinates
 	);
 
-	if (ctx_.zone_audio_manager && owner_.m_loading_phase == LoadingPhase::COMPLETE) {
+	if (ctx_.zone_audio_manager && m_loading_phase == LoadingPhase::COMPLETE) {
 		ctx_.zone_audio_manager->update(deltaTime, listenerPos, m_is_daytime);
 	}
 
@@ -656,7 +656,7 @@ void eqt::bridge::BridgeComponent::UpdateAudioListener(float deltaTime) {
 
 void eqt::bridge::BridgeComponent::PlaySound(uint32_t soundId) {
 	// Don't play sounds during zone loading
-	if (ctx_.audio_manager && owner_.m_loading_phase == LoadingPhase::COMPLETE) {
+	if (ctx_.audio_manager && m_loading_phase == LoadingPhase::COMPLETE) {
 		ctx_.audio_manager->playSound(soundId);
 	}
 }

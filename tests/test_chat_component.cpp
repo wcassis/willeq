@@ -135,12 +135,12 @@ TEST_F(ChatComponentTest, EmptyInputIsANoOp) {
 }
 
 // ===================================================================
-// 3. Members that STAYED on EverQuest, reached through owner_
+// 3. Members the chat family owns, read back through EverQuest's forwarder
 // ===================================================================
 
-TEST_F(ChatComponentTest, ComponentWritesLastTellSenderThroughTheOwnerHandle) {
-    // m_last_tell_sender stays on EverQuest (action/ still reads it via
-    // GetLastTellSender()); the moved body reaches it as owner_.m_last_tell_sender.
+TEST_F(ChatComponentTest, ComponentWritesLastTellSenderReadBackThroughEverQuest) {
+    // T341: m_last_tell_sender is this component's own member now; action/
+    // still reads it via EverQuest::GetLastTellSender(), which forwards here.
     EXPECT_TRUE(eq.GetLastTellSender().empty());
     ReplayZone(eq, HC_OP_ChannelMessage,
                BuildInboundChannelMessage("Friend", CHAT_CHANNEL_TELL, "hello there", "Testchar"));

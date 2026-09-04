@@ -24,6 +24,11 @@
 // EverQuest::s_debug_level. IsTrackedTarget() is a free function
 // (common/logging.h), not an EverQuest member -- left bare. See the K06
 // Review.
+//
+// T341 (board B038): the "stay on EverQuest" clauses above are HISTORY, not
+// the current shape. This family now reaches EverQuest not at all -- the
+// `owner_` handle and the `friend class` line are both gone; see the T341
+// note in this family's component header.
 
 #include "client/eq.h"
 #include "client/entities/entities_component.h"
@@ -308,7 +313,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessNewSpawn(const EQ::Net::Packet
 	if (entity.heading >= 360.0f) entity.heading -= 360.0f;
 
 	// Debug logging for current player at level 1+
-	if (EverQuest::s_debug_level >= 1 && entity.name == ctx_.character) {
+	if (EverQuest::GetDebugLevel() >= 1 && entity.name == ctx_.character) {
 		LOG_DEBUG(MOD_MOVEMENT, "POS S->C NewSpawn [SELF] spawn_id={} name='{}'", entity.spawn_id, entity.name);
 		LOG_DEBUG(MOD_MOVEMENT, "POS S->C NewSpawn [SELF] raw_heading={} -> server_heading={:.2f}deg -> entity.heading={:.2f}deg (isNPC={})",
 			raw_heading, server_heading, entity.heading, isNPC);
@@ -375,7 +380,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessNewSpawn(const EQ::Net::Packet
 			if (ctx_.trade_manager) {
 				ctx_.trade_manager->setMySpawnId(ctx_.self.MySpawnId());
 			}
-			if (EverQuest::s_debug_level >= 1) {
+			if (EverQuest::GetDebugLevel() >= 1) {
 				LOG_DEBUG(MOD_MAIN, "Found our own spawn in NewSpawn! Name: {}, Spawn ID: {}, server pos=({:.2f}, {:.2f}, {:.2f}) size={:.2f}",
 					entity.name, ctx_.self.MySpawnId(), entity.x, entity.y, entity.z, entity.size);
 			}
@@ -390,7 +395,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessNewSpawn(const EQ::Net::Packet
 			ctx_.game_state.player().setZAwaitingFrameConversion(
 				ctx_.game_state.player().collisionZOffset() <= 0.0f);
 
-			if (EverQuest::s_debug_level >= 1) {
+			if (EverQuest::GetDebugLevel() >= 1) {
 				LOG_INFO(MOD_ZONE, "[ZONE-IN] Updated client pos from NewSpawn: ({:.2f},{:.2f},{:.2f}) (render/node-origin Z, wire Z was {:.2f})",
 					ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ(), entity.z);
 			}
@@ -443,7 +448,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessNewSpawn(const EQ::Net::Packet
 			ctx_.Bridge().OnPetButtonStateChanged(EQT::PET_BUTTON_FOLLOW, true);
 		}
 
-		if (EverQuest::s_debug_level >= 2) {
+		if (EverQuest::GetDebugLevel() >= 2) {
 			LOG_DEBUG(MOD_ENTITY, "New spawn: {} (ID: {}) Level {} {} Race {} at ({:.2f}, {:.2f}, {:.2f})",
 				entity.name, entity.spawn_id, entity.level,
 				entity.class_id, entity.race_id, entity.x, entity.y, entity.z);
@@ -568,14 +573,14 @@ void eqt::entities::EntitiesComponent::ZoneProcessClientUpdate(const EQ::Net::Pa
 	// Level 2+: all entities
 	uint16_t currentTargetId = ctx_.combat_manager ? ctx_.combat_manager->GetTargetId() : 0;
 	bool isCurrentPlayer = (spawn_id == ctx_.self.MySpawnId());
-	bool shouldLogPosition = (EverQuest::s_debug_level >= 2) ||
-	                         (EverQuest::s_debug_level >= 1 && (isCurrentPlayer || spawn_id == currentTargetId || IsTrackedTarget(spawn_id)));
+	bool shouldLogPosition = (EverQuest::GetDebugLevel() >= 2) ||
+	                         (EverQuest::GetDebugLevel() >= 1 && (isCurrentPlayer || spawn_id == currentTargetId || IsTrackedTarget(spawn_id)));
 	if (shouldLogPosition) {
 		LOG_DEBUG(MOD_MOVEMENT, "POS S->C spawn_id={} pos=({:.2f}, {:.2f}, {:.2f}) heading={:.1f} anim={} delta=({:.2f}, {:.2f}, {:.2f}) (my_id={})",
 			spawn_id, x, y, z, server_h, animation, dx, dy, dz, ctx_.self.MySpawnId());
 	}
 	// Additional detailed logging for current player at debug level 1+
-	if (EverQuest::s_debug_level >= 1 && isCurrentPlayer) {
+	if (EverQuest::GetDebugLevel() >= 1 && isCurrentPlayer) {
 		LOG_DEBUG(MOD_MOVEMENT, "POS S->C [SELF] raw_heading={} (12-bit field={}) -> server_h={:.2f}deg -> h_player={:.2f}deg",
 			raw_heading, heading, server_h, h_player);
 		LOG_DEBUG(MOD_MOVEMENT, "POS S->C [SELF] server_pos=({:.2f},{:.2f},{:.2f}) -> client_pos=({:.2f},{:.2f},{:.2f})",
@@ -708,8 +713,8 @@ void eqt::entities::EntitiesComponent::ZoneProcessClientUpdate(const EQ::Net::Pa
 
 		// Start the update loop when we first receive our ClientUpdate
 		// This indicates we're fully in the game world
-		if (!owner_.m_update_running) {
-			owner_.SetLoadingPhase(LoadingPhase::ZONE_AWAITING_CONFIRM, "Player confirmed...");
+		if (!ctx_.lifecycle.m_update_running) {
+			ctx_.Bridge().SetLoadingPhase(LoadingPhase::ZONE_AWAITING_CONFIRM, "Player confirmed...");
 			LOG_INFO(MOD_ZONE, "Zone connection complete! Player position confirmed (spawn_id={}).", ctx_.self.MySpawnId());
 			// T286: this setZoneConnected(true) is GONE. With one store,
 			// keeping it here would make "zone connected" true on a
@@ -728,9 +733,9 @@ void eqt::entities::EntitiesComponent::ZoneProcessClientUpdate(const EQ::Net::Pa
 				LOG_DEBUG(MOD_GRAPHICS, "Expected entity count: {}, network ready: true", ctx_.entities.size());
 			}
 
-			owner_.StartUpdateLoop();
+			ctx_.lifecycle.StartUpdateLoop();
 			// Game state is now complete - trigger graphics loading if graphics mode
-			owner_.OnGameStateComplete();
+			ctx_.lifecycle.OnGameStateComplete();
 		}
 		
 		// Update our entity in the entity list

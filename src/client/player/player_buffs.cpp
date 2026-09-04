@@ -45,7 +45,7 @@ void eqt::player::PlayerComponent::ZoneProcessCompletedTasks(const EQ::Net::Pack
 	// CompletedTasks sends the list of completed tasks
 	// This is informational - we can track it if needed
 	
-	if (EverQuest::s_debug_level >= 2) {
+	if (EverQuest::GetDebugLevel() >= 2) {
 		LOG_DEBUG(MOD_MAIN, "Received completed tasks list ({} bytes)", p.Length());
 	}
 }
@@ -55,7 +55,7 @@ void eqt::player::PlayerComponent::ZoneProcessDzCompass(const EQ::Net::Packet &p
 	// DzCompass updates the expedition/DZ compass direction
 	// Format: heading (4 bytes float), x (4 bytes float), y (4 bytes float), z (4 bytes float)
 	
-	if (EverQuest::s_debug_level >= 2) {
+	if (EverQuest::GetDebugLevel() >= 2) {
 		if (p.Length() >= 18) {
 			float heading = p.GetFloat(2);
 			float x = p.GetFloat(6);
@@ -72,7 +72,7 @@ void eqt::player::PlayerComponent::ZoneProcessDzExpeditionLockoutTimers(const EQ
 	// DzExpeditionLockoutTimers sends lockout timer information
 	// This is informational for expeditions/DZs
 	
-	if (EverQuest::s_debug_level >= 2) {
+	if (EverQuest::GetDebugLevel() >= 2) {
 		LOG_DEBUG(MOD_MAIN, "Received DZ expedition lockout timers ({} bytes)", p.Length());
 	}
 }
@@ -172,7 +172,7 @@ void eqt::player::PlayerComponent::ZoneProcessManaChange(const EQ::Net::Packet &
 		}
 	}
 
-	if (EverQuest::s_debug_level >= 2) {
+	if (EverQuest::GetDebugLevel() >= 2) {
 		LOG_DEBUG(MOD_SPELL, "ManaChange: mana={}, stamina={}, spell_id={}, keepcasting={}",
 			new_mana, stamina, spell_id, keepcasting);
 	}

@@ -16,6 +16,11 @@
 // that stay behind -> owner_.Foo(), and EverQuest's statics s_debug_level,
 // DumpPacket and FormatPrice qualified as EverQuest:: -- friendship grants
 // access, not scope). See the K05 Review.
+//
+// T341 (board B038): the "stay on EverQuest" clauses above are HISTORY, not
+// the current shape. This family now reaches EverQuest not at all -- the
+// `owner_` handle and the `friend class` line are both gone; see the T341
+// note in this family's component header.
 
 #include "client/merchant/merchant_component.h"
 
@@ -409,7 +414,7 @@ void eqt::merchant::MerchantComponent::ZoneProcessGMTraining(const EQ::Net::Pack
 		skill.cost = cost;
 		trainerData.skills.push_back(std::move(skill));
 
-		if (EverQuest::s_debug_level >= 2) {
+		if (EverQuest::GetDebugLevel() >= 2) {
 			LOG_DEBUG(MOD_MAIN, "  Skill {}: {} cur={} max={} cost={}",
 				skill_id, skill_name, current_value, max_trainable, cost);
 		}

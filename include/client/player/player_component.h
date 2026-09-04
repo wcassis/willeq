@@ -23,11 +23,14 @@
 // ctx_.x / owner_.m_x, Foo() -> owner_.Foo() or owner_.<Family>().Foo() for an
 // already-extracted family, EverQuest statics and nested types qualified).
 //
-// `owner_` is the TRANSITION handle: the moved code still reaches EverQuest
-// members and methods that have not been extracted yet (QueuePacket(),
-// SafeQueueZonePacket(), MySpawnId(), the zone flags, m_inspect_message, ...).
-// EverQuest declares `friend class eqt::player::PlayerComponent` for exactly
-// that. K-final removes both the handle and the friendship.
+// T341: the `owner_` TRANSITION handle and the
+// `friend class eqt::player::PlayerComponent` line are BOTH GONE. The send
+// path and the player-state reads became ctx_.net/ctx_.self at K13,
+// m_inspect_message went to eqt::bridge::BridgeComponent at K11, and T341
+// turned the last four reaches into ctx_.lifecycle (RequestQuit,
+// m_pending_logout_disconnect), ctx_.Bridge() (the loading phase) and
+// ctx_.strings.Db() (the /who eqstr hook). Both axes of the K13 (ii) friend
+// test are empty.
 
 #include "client/client_context.h"
 #include "client/player/profile_appearance.h"
@@ -51,7 +54,11 @@ namespace player {
 
 class PlayerComponent {
 public:
-	PlayerComponent(ClientContext& ctx, EverQuest& owner) : ctx_(ctx), owner_(owner) {}
+	// T341: the EverQuest& transition handle is GONE -- this family reaches
+	// zero EverQuest private members and names no EverQuest-scoped private
+	// name (the two-axis rule, K13 correction (ii) / B039). It is the
+	// second component to pass both axes, after eqt::gm::GmComponent.
+	explicit PlayerComponent(ClientContext& ctx) : ctx_(ctx) {}
 
 	// Social, camp/logout, resurrection, /who, /inspect, corpse, consent
 	// (was eq_player_social.cpp).
@@ -233,7 +240,6 @@ public:
 
 private:
 	ClientContext& ctx_;
-	EverQuest& owner_;
 
 	// Camp timer
 	static constexpr int CAMP_TIMER_SECONDS = 30;

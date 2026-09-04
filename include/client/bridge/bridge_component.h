@@ -35,22 +35,28 @@
 // step and is K13-or-later; this unit is the mechanical extraction that
 // makes it delegable.
 //
-// `owner_` is the TRANSITION handle for the zone environment that stays with
-// EverQuest for the zone family (m_zone_map, m_zone_bsp_tree*, the fog and
-// sky/zone-type fields, m_eq_client_path, m_zone_audio_manager), for the
-// renderer-lifetime state Application wires (m_graphics_initialized, the
-// constrained-rendering preset/config, m_loading_status_ptr,
-// m_zone_load_requested, m_hotbar_model) and for the EverQuest primitives the
-// moved bodies still call (PosX/PosY/PosZ, MySpawnId, QueuePacket,
-// AddChatSystemMessage, ...). EverQuest declares
-// `friend class eqt::bridge::BridgeComponent` for exactly that; K-final
-// removes both.
+// T341 (B038 clusters 1-3): the `friend class eqt::bridge::BridgeComponent`
+// line is GONE. The renderer-lifetime state Application wires
+// (m_graphics_initialized, the constrained-rendering preset/config,
+// m_loading_status_ptr) and the whole loading-phase state machine are now
+// MEMBERS of this component; the zone environment went to
+// eqt::zone::ZoneComponent and ClientContext at K13; TickNetwork became
+// ctx_.lifecycle.TickNetwork(). Both axes of the K13 (ii) friend test are
+// empty.
+//
+// `owner_` SURVIVES, and only for this: two intent arms pass it, by
+// reference, to EQ::castRefusalMessage(EverQuest&, CastResult) -- an
+// EverQuest& parameter on a free function, which needs no private access and
+// therefore no friendship. That is the last EverQuest coupling in this
+// component. m_zone_load_requested stays on EverQuest; Application consumes it
+// through ConsumeZoneLoadRequest() and no component reaches it.
 //
 // The reference-returning loot getters below are the mirror image: the
 // merchant, entities and zone components still touch loot-window state that
 // now lives here. Transition scaffolding too.
 
 #include "client/client_context.h"
+#include "client/eq_enums.h"   // T341: LoadingPhase, this component's state now
 #include "client/pet_constants.h"
 #include "client/hotbar/hotbar_slot_type.h"
 #include "client/zone_load_snapshot.h"
@@ -58,8 +64,14 @@
 // by const reference. Dependency-free header (cstdint/string/variant + the
 // hotbar slot-type enum), so this costs nothing the component did not pay.
 #include "client/events/renderer_intents.h"
+#ifdef EQT_HAS_GRAPHICS
+// T341 (B038 cluster 1): the constrained-rendering preset/config members
+// below are held by value, so this component needs the complete types.
+#include "client/graphics/constrained_renderer_config.h"
+#endif
 
 #include <cstdint>
+#include <optional>
 #include <map>
 #include <memory>
 #include <string>
@@ -73,6 +85,7 @@ namespace EQT {
 namespace Graphics {
 struct BspTree;
 class IZoneLoadSurface;  // K16 (B006): the two-method zone-load surface
+struct LoadingStatus;    // T341: Application owns it; this component signals it
 }
 }
 
@@ -104,6 +117,44 @@ public:
 	                  EQT::Graphics::IZoneLoadSurface* renderer,
 	                  eqt::bridge::GameStateBridge* bridge);
 	void ShutdownGraphics();
+#endif
+
+	// ------------------------------------------------------------------
+	// T341 (B038 cluster 2): the LOADING-PHASE STATE MACHINE.
+	//
+	// Was EverQuest's (m_loading_phase + m_loading_status_text +
+	// SetLoadingPhase/GetLoadingProgress/GetLoadingStatusText/IsGameStateReady/
+	// IsGraphicsReady), reached by four families through the transition handle
+	// (18 owner_. uses). K13 declined to fold it into eqt::PlayerFacade
+	// because it is not player state; it is the GRAPHICS LIFECYCLE, which is
+	// this component's whole job -- SetLoadingPhase signals
+	// m_loading_status_ptr and publishes ZoneLoading, both of which now live
+	// here.
+	//
+	// EverQuest keeps a one-line forwarder for FIVE of the six: Application
+	// drives the loading screen through GetLoadingPhase / GetLoadingProgress /
+	// IsGraphicsReady / SetLoadingPhase, and ~80 test sites read them on the
+	// EverQuest receiver. GetLoadingStatusText() got no forwarder -- zero
+	// callers on that receiver (Mechanism 5). See the T341 Review.
+	LoadingPhase GetLoadingPhase() const { return m_loading_phase; }
+	void SetLoadingPhase(LoadingPhase phase, const char* statusText = nullptr);
+	float GetLoadingProgress() const;
+	const char* GetLoadingStatusText() const;
+	bool IsGameStateReady() const { return static_cast<int>(m_loading_phase) >= static_cast<int>(LoadingPhase::ZONE_AWAITING_CONFIRM); }
+	bool IsGraphicsReady() const { return m_loading_phase == LoadingPhase::COMPLETE; }
+
+#ifdef EQT_HAS_GRAPHICS
+	// ------------------------------------------------------------------
+	// T341 (B038 cluster 1): RENDERER-LIFETIME STATE. K11 recorded the
+	// standing that these four are "renderer-lifetime state Application
+	// wires"; they are read and written by this component and by nothing
+	// else, so they are its members now. EverQuest keeps SetLoadingStatus()
+	// and SetConstrainedConfig() as forwarders (Application calls both) and
+	// OnGameStateComplete() reads IsGraphicsInitialized().
+	bool IsGraphicsInitialized() const { return m_graphics_initialized; }
+	// D20e2: Application owns the loading status; this signals it.
+	void SetLoadingStatus(EQT::Graphics::LoadingStatus* status) { m_loading_status_ptr = status; }
+	void SetConstrainedConfig(const EQT::Graphics::ConstrainedRendererConfig& config);
 #endif
 
 	// ---- bridge pumps ----
@@ -322,6 +373,24 @@ private:
 	// BankCurrencyChanged. T286: no mirroring step -- the counters are
 	// GameState's own.
 	void PublishBankCoinProjection(bool inventoryChanged);
+
+	// T341 (B038 cluster 2): the loading-phase store, moved verbatim from
+	// include/client/eq.h with its comment.
+	// Loading phase tracking (covers entire pre-gameplay process)
+	LoadingPhase m_loading_phase = LoadingPhase::DISCONNECTED;
+	const char* m_loading_status_text = "";
+
+#ifdef EQT_HAS_GRAPHICS
+	// T341 (B038 cluster 1): moved verbatim from include/client/eq.h's
+	// EQT_HAS_GRAPHICS private block. m_zone_load_requested stayed on
+	// EverQuest -- Application consumes it through ConsumeZoneLoadRequest()
+	// and no component ever reached it.
+	bool m_graphics_initialized = false;
+	EQT::Graphics::ConstrainedRenderingPreset m_constrained_preset = EQT::Graphics::ConstrainedRenderingPreset::OrangePi;  // Constrained rendering preset (startup-only)
+	std::optional<EQT::Graphics::ConstrainedRendererConfig> m_constrained_config;  // Custom constrained config (from NxNxN spec)
+	// D20e2: Loading thread owned by Application; EverQuest holds pointer to signal it
+	EQT::Graphics::LoadingStatus* m_loading_status_ptr = nullptr;
+#endif
 
 	std::string m_region_maps_path = "data/region_maps";
 	std::string m_config_path;  // Path to per-character config file

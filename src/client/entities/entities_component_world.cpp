@@ -29,6 +29,11 @@
 // EverQuest; s_debug_level -> EverQuest::s_debug_level. m_pending_door_clicks
 // moved WITH this family, so its reference needs no prefix at all. See the
 // K06 Review.
+//
+// T341 (board B038): the "stay on EverQuest" clauses above are HISTORY, not
+// the current shape. This family now reaches EverQuest not at all -- the
+// `owner_` handle and the `friend class` line are both gone; see the T341
+// note in this family's component header.
 
 #include "client/eq.h"
 #include "client/entities/entities_component.h"
@@ -134,7 +139,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessMoveDoor(const EQ::Net::Packet
 		bool user_initiated = (m_pending_door_clicks.erase(door_id) > 0);
 
 		// Log at debug level 2+ for all doors, or level 1+ for user-initiated
-		if (EverQuest::s_debug_level >= 2 || (user_initiated && EverQuest::s_debug_level >= 1)) {
+		if (EverQuest::GetDebugLevel() >= 2 || (user_initiated && EverQuest::GetDebugLevel() >= 1)) {
 			LOG_DEBUG(MOD_ENTITY, "Door {} {}{}", door_id,
 			          is_open ? "opened" : "closed",
 			          user_initiated ? " (user)" : "");
@@ -167,7 +172,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessMoveDoor(const EQ::Net::Packet
 				eqt::state::GameEventType::DoorStateChanged, std::move(data)));
 		}
 	} else {
-		if (EverQuest::s_debug_level >= 2) {
+		if (EverQuest::GetDebugLevel() >= 2) {
 			LOG_DEBUG(MOD_ENTITY, "MoveDoor for unknown door {}", door_id);
 		}
 	}
@@ -190,7 +195,7 @@ void eqt::entities::EntitiesComponent::SendSpawnAppearance(uint16_t type, uint32
 	
 	ctx_.zone_connection->QueuePacket(p);
 	
-	if (EverQuest::s_debug_level >= 1) {
+	if (EverQuest::GetDebugLevel() >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Sent SpawnAppearance: spawn_id={}, type={}, value={}", 
 			ctx_.self.MySpawnId(), type, value);
 	}
@@ -212,7 +217,7 @@ void eqt::entities::EntitiesComponent::SendAnimation(uint8_t animation_id, uint8
 	
 	ctx_.zone_connection->QueuePacket(p, 0, false);  // Send unreliable
 	
-	if (EverQuest::s_debug_level >= 1) {
+	if (EverQuest::GetDebugLevel() >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Sent Animation: spawn_id={}, speed={}, animation_id={}",
 			ctx_.self.MySpawnId(), animation_speed, animation_id);
 	}

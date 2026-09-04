@@ -90,7 +90,7 @@ void eqt::movement::MovementComponent::LoadPathfinder(const std::string& zone_na
 			auto test_path = m_pathfinder->FindPath(
 				glm::vec3(0, 0, 0), glm::vec3(1, 1, 1), partial, stuck, test_opts);
 
-			if (EverQuest::s_debug_level >= 2) {
+			if (EverQuest::GetDebugLevel() >= 2) {
 				LOG_DEBUG(MOD_MAIN, "Loaded pathfinder for zone: {} (type: {})",
 					zone_name, test_path.empty() ? "NavMesh" : "Null");
 			}
@@ -105,12 +105,12 @@ void eqt::movement::MovementComponent::LoadPathfinder(const std::string& zone_na
 			}
 #endif
 		} else {
-			if (EverQuest::s_debug_level >= 1) {
+			if (EverQuest::GetDebugLevel() >= 1) {
 				LOG_DEBUG(MOD_MAIN, "No navigation mesh available for zone: {}", zone_name);
 			}
 		}
 	} catch (const std::exception& e) {
-		if (EverQuest::s_debug_level >= 1) {
+		if (EverQuest::GetDebugLevel() >= 1) {
 			LOG_DEBUG(MOD_MAIN, "Failed to load navigation mesh for {}: {}", zone_name, e.what());
 		}
 	}
@@ -236,7 +236,7 @@ void eqt::movement::MovementComponent::FollowPath()
 			break;
 		} else {
 			// Skip this waypoint, it's too close
-			if (EverQuest::s_debug_level >= 2) {
+			if (EverQuest::GetDebugLevel() >= 2) {
 				LOG_DEBUG(MOD_MAIN, "Skipping waypoint {} at ({:.1f},{:.1f},{:.1f}) - too close (dist={:.1f})", m_current_path_index, waypoint.x, waypoint.y, waypoint.z, dist);
 			}
 			m_current_path_index++;
@@ -280,11 +280,11 @@ void eqt::movement::MovementComponent::SetMovementMode(MovementMode mode)
 			break;
 		case MOVE_MODE_SNEAK:
 			ctx_.game_state.player().setMoveSpeed(DEFAULT_WALK_SPEED * 0.6f);  // Sneak is 60% of walk speed
-			owner_.SetSneak(true);
+			ctx_.lifecycle.SetSneak(true);
 			break;
 	}
 	
-	if (EverQuest::s_debug_level >= 1) {
+	if (EverQuest::GetDebugLevel() >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Movement mode changed to {} (speed: {:.1f})", 
 			mode == MOVE_MODE_RUN ? "RUN" : mode == MOVE_MODE_WALK ? "WALK" : "SNEAK", 
 			ctx_.game_state.player().moveSpeed());
@@ -342,7 +342,7 @@ void eqt::movement::MovementComponent::SetPositionState(PositionState state)
 			break;
 	}
 	
-	if (EverQuest::s_debug_level >= 1) {
+	if (EverQuest::GetDebugLevel() >= 1) {
 		const char* state_names[] = {"STANDING", "SITTING", "CROUCHING", "FEIGN_DEATH", "DEAD"};
 		LOG_DEBUG(MOD_MAIN, "Position state changed to {}", state_names[state]);
 	}
@@ -361,7 +361,7 @@ void eqt::movement::MovementComponent::SendJump()
 	
 	ctx_.zone_connection->QueuePacket(p, 0, false);
 	
-	if (EverQuest::s_debug_level >= 1) {
+	if (EverQuest::GetDebugLevel() >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Sent OP_Jump packet (2 bytes)");
 	}
 }
@@ -422,7 +422,7 @@ void eqt::movement::MovementComponent::SendMovementHistory()
 			offset += 17;
 		}
 
-		if (EverQuest::s_debug_level >= 2) {
+		if (EverQuest::GetDebugLevel() >= 2) {
 			LOG_DEBUG(MOD_ZONE, "About to queue OP_FloatListThing as reliable packet");
 		}
 
@@ -445,7 +445,7 @@ void eqt::movement::MovementComponent::SendMovementHistory()
 void eqt::movement::MovementComponent::Jump()
 {
 	if (ctx_.game_state.player().isJumping()) {
-		if (EverQuest::s_debug_level >= 1) {
+		if (EverQuest::GetDebugLevel() >= 1) {
 			LOG_DEBUG(MOD_MAIN, "Jump blocked - already jumping");
 		}
 		return;  // Can't jump while already jumping
@@ -477,7 +477,7 @@ void eqt::movement::MovementComponent::Jump()
 	
 	// Don't set animation to jump - real clients keep animation at 0 in ClientUpdate
 	
-	if (EverQuest::s_debug_level >= 1) {
+	if (EverQuest::GetDebugLevel() >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Jump initiated from z={}", ctx_.self.PosZ());
 	}
 	
@@ -512,7 +512,7 @@ void eqt::movement::MovementComponent::UpdateJump()
 			ctx_.game_state.player().setAnimation(ANIM_STAND);
 		}
 		
-		if (EverQuest::s_debug_level >= 1) {
+		if (EverQuest::GetDebugLevel() >= 1) {
 			LOG_DEBUG(MOD_MAIN, "Jump completed");
 		}
 	} else {
@@ -521,7 +521,7 @@ void eqt::movement::MovementComponent::UpdateJump()
 		float height = 4.0f * jump_height * t * (1.0f - t);  // Parabola peaking at t=0.5
 		ctx_.self.SetPosLocal(ctx_.self.PosX(), ctx_.self.PosY(), ctx_.game_state.player().jumpStartZ() + height);
 		
-		if (EverQuest::s_debug_level >= 2) {
+		if (EverQuest::GetDebugLevel() >= 2) {
 			static int jump_frame = 0;
 			if (jump_frame % 10 == 0) {  // Log every 10th frame
 				LOG_DEBUG(MOD_MAIN, "Jump progress: t={:.2f}, height={:.2f}, z={:.2f}", 
@@ -642,7 +642,7 @@ void eqt::movement::MovementComponent::UpdateWaterState()
 
 void eqt::movement::MovementComponent::OnEnterWater()
 {
-	if (EverQuest::s_debug_level >= 1) {
+	if (EverQuest::GetDebugLevel() >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Entering water at ({:.2f}, {:.2f}, {:.2f})", ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ());
 	}
 
@@ -662,7 +662,7 @@ void eqt::movement::MovementComponent::OnEnterWater()
 
 void eqt::movement::MovementComponent::OnExitWater()
 {
-	if (EverQuest::s_debug_level >= 1) {
+	if (EverQuest::GetDebugLevel() >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Exiting water at ({:.2f}, {:.2f}, {:.2f})", ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ());
 	}
 
@@ -757,7 +757,7 @@ void eqt::movement::MovementComponent::StartMoveForward()
 	}
 
 	ctx_.game_state.player().setMoveForward(true);
-	if (EverQuest::s_debug_level >= 2) {
+	if (EverQuest::GetDebugLevel() >= 2) {
 		LOG_DEBUG(MOD_MAIN, "Starting forward movement");
 	}
 }
@@ -766,7 +766,7 @@ void eqt::movement::MovementComponent::StartMoveBackward()
 {
 	if (!ctx_.self.IsFullyZonedIn()) return;
 	ctx_.game_state.player().setMoveBackward(true);
-	if (EverQuest::s_debug_level >= 2) {
+	if (EverQuest::GetDebugLevel() >= 2) {
 		LOG_DEBUG(MOD_MAIN, "Starting backward movement");
 	}
 }
@@ -775,7 +775,7 @@ void eqt::movement::MovementComponent::StartTurnLeft()
 {
 	if (!ctx_.self.IsFullyZonedIn()) return;
 	ctx_.game_state.player().setTurnLeft(true);
-	if (EverQuest::s_debug_level >= 2) {
+	if (EverQuest::GetDebugLevel() >= 2) {
 		LOG_DEBUG(MOD_MAIN, "Starting left turn");
 	}
 }
@@ -784,7 +784,7 @@ void eqt::movement::MovementComponent::StartTurnRight()
 {
 	if (!ctx_.self.IsFullyZonedIn()) return;
 	ctx_.game_state.player().setTurnRight(true);
-	if (EverQuest::s_debug_level >= 2) {
+	if (EverQuest::GetDebugLevel() >= 2) {
 		LOG_DEBUG(MOD_MAIN, "Starting right turn");
 	}
 }
@@ -796,7 +796,7 @@ void eqt::movement::MovementComponent::StopMoveForward()
 		ctx_.game_state.player().setMoving(false);
 		ctx_.game_state.player().setAnimation(ANIM_STAND);
 		SendPositionUpdate();  // Send immediate update when stopping
-		if (EverQuest::s_debug_level >= 2) {
+		if (EverQuest::GetDebugLevel() >= 2) {
 			LOG_DEBUG(MOD_MAIN, "Stopping all movement");
 		}
 	}
@@ -809,7 +809,7 @@ void eqt::movement::MovementComponent::StopMoveBackward()
 		ctx_.game_state.player().setMoving(false);
 		ctx_.game_state.player().setAnimation(ANIM_STAND);
 		SendPositionUpdate();  // Send immediate update when stopping
-		if (EverQuest::s_debug_level >= 2) {
+		if (EverQuest::GetDebugLevel() >= 2) {
 			LOG_DEBUG(MOD_MAIN, "Stopping all movement");
 		}
 	}

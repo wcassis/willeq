@@ -61,7 +61,7 @@ void eqt::commands::CommandsComponent::ZoneProcessConsider(const EQ::Net::Packet
 		uint8_t  unknown3[3];
 	} *con = (Consider_Struct*)((uint8_t*)p.Data() + 2);
 
-	if (EverQuest::s_debug_level >= 1) {
+	if (EverQuest::GetDebugLevel() >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Consider: target={}, faction={}, level={}, hp={}/{}",
 			con->targetid, con->faction, con->level, con->cur_hp, con->max_hp);
 	}
@@ -150,7 +150,7 @@ void eqt::commands::CommandsComponent::ZoneProcessAction(const EQ::Net::Packet &
 
 	const ActionPacket_Struct* action = (const ActionPacket_Struct*)((uint8_t*)p.Data() + 2);
 
-	if (EverQuest::s_debug_level >= 1) {
+	if (EverQuest::GetDebugLevel() >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Action: source={} -> target={}, type={}, spell={}", action->source, action->target, action->type, action->spell);
 	}
 
@@ -270,7 +270,7 @@ void eqt::commands::CommandsComponent::ZoneProcessDamage(const EQ::Net::Packet &
 		ctx_.out.System("Trade cancelled - you entered combat");
 	}
 
-	if (EverQuest::s_debug_level >= 3) {
+	if (EverQuest::GetDebugLevel() >= 3) {
 		const uint8_t* data = static_cast<const uint8_t*>(p.Data()) + 2;
 		std::string hexBytes;
 		for (int i = 0; i < 12 && i < static_cast<int>(p.Length()) - 2; ++i) {
@@ -293,7 +293,7 @@ void eqt::commands::CommandsComponent::ZoneProcessDamage(const EQ::Net::Packet &
 		source_name = EQT::toDisplayName(source_it->second.name);
 	}
 
-	if (EverQuest::s_debug_level >= 2 || IsTrackedTarget(target_id) || IsTrackedTarget(source_id)) {
+	if (EverQuest::GetDebugLevel() >= 2 || IsTrackedTarget(target_id) || IsTrackedTarget(source_id)) {
 		LOG_DEBUG(MOD_COMBAT, "{} -> {} for {} damage (type {})",
 			source_name.empty() ? std::to_string(source_id) : source_name,
 			target_name.empty() ? std::to_string(target_id) : target_name,
@@ -420,7 +420,7 @@ void eqt::commands::CommandsComponent::ZoneProcessDamage(const EQ::Net::Packet &
 			ctx_.bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::CombatAnimation, std::move(data)));
 
-			if (EverQuest::s_debug_level >= 2 || IsTrackedTarget(target_id) || IsTrackedTarget(source_id)) {
+			if (EverQuest::GetDebugLevel() >= 2 || IsTrackedTarget(target_id) || IsTrackedTarget(source_id)) {
 				LOG_DEBUG(MOD_COMBAT, "Queued melee anim: source={} target={} skill={} dmg={} pct={:.1f}%",
 					source_id, target_id, damage_type, damage_amount, damagePercent);
 			}
@@ -447,7 +447,7 @@ void eqt::commands::CommandsComponent::ZoneProcessDamage(const EQ::Net::Packet &
 			data.playThrough = true;
 			ctx_.bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::EntityAnimationEvent, std::move(data)));
-			if (EverQuest::s_debug_level >= 2 || IsTrackedTarget(target_id)) {
+			if (EverQuest::GetDebugLevel() >= 2 || IsTrackedTarget(target_id)) {
 				LOG_DEBUG(MOD_COMBAT, "Damage reaction '{}' on target={} (dmg={}, pct={:.1f}%, type={})",
 					damageAnim, target_id, damage_amount, damagePercent, damage_type);
 			}
@@ -462,7 +462,7 @@ void eqt::commands::CommandsComponent::ZoneProcessDamage(const EQ::Net::Packet &
 			if (ctx_.combat_manager && ctx_.combat_manager->IsAutoAttackEnabled() &&
 				target_id == ctx_.combat_manager->GetTargetId()) {
 				// Our target died
-				if (EverQuest::s_debug_level >= 2 || IsTrackedTarget(target_id)) {
+				if (EverQuest::GetDebugLevel() >= 2 || IsTrackedTarget(target_id)) {
 					LOG_DEBUG(MOD_COMBAT, "Target {} ({}) died", target_id, it->second.name);
 				}
 			}
@@ -493,7 +493,7 @@ void eqt::commands::CommandsComponent::ZoneProcessMoneyOnCorpse(const EQ::Net::P
 	uint32_t silver = money->silver;
 	uint32_t copper = money->copper;
 
-	if (EverQuest::s_debug_level >= 1) {
+	if (EverQuest::GetDebugLevel() >= 1) {
 		LOG_DEBUG(MOD_MAIN, "MoneyOnCorpse: {} platinum, {} gold, {} silver, {} copper\n", plat, gold, silver, copper);
 	}
 
@@ -510,7 +510,7 @@ void eqt::commands::CommandsComponent::ZoneProcessStun(uint32_t duration_ms)
 	auto now = std::chrono::steady_clock::now();
 	if (duration_ms == 0) {
 		if (IsStunned()) {
-			ctx_.out.System(owner_.Strings().GetStringMessage(12480));  // You are no longer stunned.
+			ctx_.out.System(ctx_.strings.GetStringMessage(12480));  // You are no longer stunned.
 		}
 		m_stunned_until = {};
 		LOG_INFO(MOD_COMBAT, "OP_Stun: unstunned");
@@ -522,7 +522,7 @@ void eqt::commands::CommandsComponent::ZoneProcessStun(uint32_t duration_ms)
 		m_stunned_until = until;
 	}
 	if (!was_stunned) {
-		ctx_.out.System(owner_.Strings().GetStringMessage(12479));  // You are stunned!
+		ctx_.out.System(ctx_.strings.GetStringMessage(12479));  // You are stunned!
 	}
 	LOG_INFO(MOD_COMBAT, "OP_Stun: stunned for {} ms", duration_ms);
 }

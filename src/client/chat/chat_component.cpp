@@ -16,6 +16,11 @@
 // ChatChannelName() (T320's single channel-name table, declared in
 // eq_enums.h) came with the bodies that call it; it is a free function and
 // changed not at all.
+//
+// T341 (board B038): the "stay on EverQuest" clauses above are HISTORY, not
+// the current shape. This family now reaches EverQuest not at all -- the
+// `owner_` handle and the `friend class` line are both gone; see the T341
+// note in this family's component header.
 
 #include "client/chat/chat_component.h"
 
@@ -115,7 +120,7 @@ void eqt::chat::ChatComponent::ZoneSendChannelMessage(const std::string &message
 	// Message - copy only the characters, null terminator already set
 	memcpy((char*)p.Data() + 150, message.c_str(), message_len);
 
-	if (EverQuest::s_debug_level >= 1) {
+	if (EverQuest::GetDebugLevel() >= 1) {
 		// T320: this was a THIRD copy of the channel-name table, on the SEND
 		// side, and drifted differently again from the two receive-side
 		// chains -- it had auction but no emote, petition, gmsay, raid or
@@ -152,11 +157,11 @@ void eqt::chat::ChatComponent::ZoneProcessChannelMessage(const EQ::Net::Packet &
 
 	// Track last tell sender for /reply command
 	if (channel == CHAT_CHANNEL_TELL && !sender.empty() && sender != ctx_.character) {
-		owner_.m_last_tell_sender = sender;
-		LOG_DEBUG(MOD_MAIN, "Last tell sender updated to: {}", owner_.m_last_tell_sender);
+		m_last_tell_sender = sender;
+		LOG_DEBUG(MOD_MAIN, "Last tell sender updated to: {}", m_last_tell_sender);
 	}
 
-	if (EverQuest::s_debug_level >= 1) {
+	if (EverQuest::GetDebugLevel() >= 1) {
 		std::cout << fmt::format("[CHAT] {} ({}): {}",
 			sender,
 			ChatChannelName(channel),   // T320: one table, see top of file
@@ -267,7 +272,7 @@ void eqt::chat::ChatComponent::ZoneSendEmote(const std::string &message)
 	size_t message_len = std::min(wire.length(), sizeof(EQT::Emote_Struct::message) - 1);
 	memcpy((char*)p.Data() + 6, wire.c_str(), message_len);
 
-	if (EverQuest::s_debug_level >= 1) {
+	if (EverQuest::GetDebugLevel() >= 1) {
 		std::cout << fmt::format("Sending emote: '{}'", message) << std::endl;
 	}
 
@@ -303,7 +308,7 @@ void eqt::chat::ChatComponent::ZoneProcessEmote(const EQ::Net::Packet &p)
 	uint32_t type = p.GetUInt32(2);
 	std::string message = p.GetCString(6);
 
-	if (EverQuest::s_debug_level >= 1) {
+	if (EverQuest::GetDebugLevel() >= 1) {
 		std::cout << fmt::format("[CHAT] (emote type {}) {}", type, message) << std::endl;
 	}
 
@@ -404,7 +409,7 @@ void eqt::chat::ChatComponent::ZoneProcessColoredText(const EQ::Net::Packet &p)
 			ctx_.bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::SystemMessage, std::move(data)));
 		}
-		if (EverQuest::s_debug_level >= 1) {
+		if (EverQuest::GetDebugLevel() >= 1) {
 			std::cout << message << std::endl;
 		}
 	}
@@ -449,12 +454,12 @@ void eqt::chat::ChatComponent::ZoneProcessFormattedMessage(const EQ::Net::Packet
 	}
 
 	// Look up the format template from StringDatabase
-	std::string tmpl = owner_.m_string_db.getString(string_id);
+	std::string tmpl = ctx_.strings.Db().getString(string_id);
 
 	// Format the message using the template and arguments
 	std::string formatted_text;
 	if (!tmpl.empty()) {
-		formatted_text = owner_.Strings().GetFormattedStringMessage(string_id, args);
+		formatted_text = ctx_.strings.GetFormattedStringMessage(string_id, args);
 		LOG_DEBUG(MOD_ZONE, "[FormattedMessage] template='{}', formatted='{}'", tmpl, formatted_text);
 	} else {
 		// Fallback: join args with spaces if template not found
@@ -539,7 +544,7 @@ void eqt::chat::ChatComponent::ZoneProcessSimpleMessage(const EQ::Net::Packet &p
 	uint32_t color_type = p.GetUInt32(6);   // color at offset 4
 
 	// Get the message template for this string ID
-	std::string tmpl = owner_.Strings().GetStringMessage(string_id);
+	std::string tmpl = ctx_.strings.GetStringMessage(string_id);
 
 	LOG_DEBUG(MOD_ZONE, "[SimpleMessage] color_type={}, string_id={}, template='{}'",
 		color_type, string_id, tmpl);
@@ -573,7 +578,7 @@ void eqt::chat::ChatComponent::ZoneProcessSimpleMessage(const EQ::Net::Packet &p
 	// Format the message with arguments
 	std::string message_text;
 	if (!args.empty()) {
-		message_text = owner_.Strings().GetFormattedStringMessage(string_id, args);
+		message_text = ctx_.strings.GetFormattedStringMessage(string_id, args);
 	} else {
 		message_text = tmpl;
 	}

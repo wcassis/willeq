@@ -78,6 +78,15 @@ public:
 	std::string GetFormattedStringMessage(uint32_t string_id, const std::vector<std::string>& args);
 	bool LoadStringFiles(const std::string& eqClientPath);
 
+	// T341 (B038 cluster 4): the raw lookup table, for the two callers that
+	// need getString()'s "" on a miss rather than GetStringMessage()'s
+	// built-in fallback -- ChatComponent::ZoneProcessFormattedMessage (which
+	// branches on the template being empty) and PlayerComponent's /who eqstr
+	// hook (which falls back to EQT::whoDefaultString). They reached it as
+	// owner_.m_string_db before this unit. EverQuest::GetStringDatabase(),
+	// which had ZERO callers tree-wide, was deleted with them (Mechanism 5).
+	const EQT::StringDatabase& Db() const { return m_string_db; }
+
 private:
 	// Reference to EverQuest's own m_string_db, spelled the same (K13
 	// correction (kk)) -- the service owns nothing, GetStringDatabase()

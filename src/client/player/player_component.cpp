@@ -56,7 +56,7 @@ void eqt::player::PlayerComponent::PerformEmote(uint32_t animation)
 		}
 	}
 	
-	if (EverQuest::s_debug_level >= 1) {
+	if (EverQuest::GetDebugLevel() >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Performing emote animation {}", animation);
 	}
 }
@@ -70,7 +70,7 @@ void eqt::player::PlayerComponent::SetAFK(bool afk)
 	ctx_.game_state.player().setAFK(afk);  // Phase 7.8 / T286: only store
 	ctx_.Entities().SendSpawnAppearance(AT_AFK, afk ? 1 : 0);
 
-	if (EverQuest::s_debug_level >= 1) {
+	if (EverQuest::GetDebugLevel() >= 1) {
 		LOG_DEBUG(MOD_MAIN, "AFK status: {}", afk ? "ON" : "OFF");
 	}
 }
@@ -84,7 +84,7 @@ void eqt::player::PlayerComponent::SetAnonymous(bool anon)
 	ctx_.game_state.player().setAnonymous(anon);  // Phase 7.8 / T286: only store
 	ctx_.Entities().SendSpawnAppearance(AT_ANONYMOUS, anon ? 1 : 0);
 
-	if (EverQuest::s_debug_level >= 1) {
+	if (EverQuest::GetDebugLevel() >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Anonymous status: {}", anon ? "ON" : "OFF");
 	}
 }
@@ -98,7 +98,7 @@ void eqt::player::PlayerComponent::SetRoleplay(bool rp)
 	ctx_.game_state.player().setRoleplay(rp);  // Phase 7.8 / T286: only store
 	ctx_.Entities().SendSpawnAppearance(AT_ANONYMOUS, rp ? 2 : 0);  // 2 = roleplay
 
-	if (EverQuest::s_debug_level >= 1) {
+	if (EverQuest::GetDebugLevel() >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Roleplay status: {}", rp ? "ON" : "OFF");
 	}
 }
@@ -116,7 +116,7 @@ void eqt::player::PlayerComponent::StartCampTimer()
 	// Send OP_Camp to server to notify we're camping
 	SendCamp();
 
-	if (EverQuest::s_debug_level >= 1) {
+	if (EverQuest::GetDebugLevel() >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Camp timer started, will log out in {} seconds", CAMP_TIMER_SECONDS);
 	}
 }
@@ -130,7 +130,7 @@ void eqt::player::PlayerComponent::CancelCamp()
 	ctx_.game_state.player().setCamping(false);  // Phase 7.8 / T286: only store
 	ctx_.out.System("You are no longer camping.");
 
-	if (EverQuest::s_debug_level >= 1) {
+	if (EverQuest::GetDebugLevel() >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Camp timer cancelled");
 	}
 }
@@ -152,7 +152,7 @@ void eqt::player::PlayerComponent::UpdateCampTimer()
 		// Send OP_Logout to server - server will respond with OP_LogoutReply
 		SendLogout();
 
-		if (EverQuest::s_debug_level >= 1) {
+		if (EverQuest::GetDebugLevel() >= 1) {
 			LOG_DEBUG(MOD_MAIN, "Camp timer complete, sending logout request");
 		}
 	}
@@ -166,7 +166,7 @@ void eqt::player::PlayerComponent::SendCamp()
 	EQ::Net::DynamicPacket packet;
 	ctx_.net.Queue(HC_OP_Camp, &packet);
 
-	if (EverQuest::s_debug_level >= 2) {
+	if (EverQuest::GetDebugLevel() >= 2) {
 		LOG_DEBUG(MOD_MAIN, "Sent OP_Camp to server");
 	}
 }
@@ -177,7 +177,7 @@ void eqt::player::PlayerComponent::SendLogout()
 	EQ::Net::DynamicPacket packet;
 	ctx_.net.Queue(HC_OP_Logout, &packet);
 
-	if (EverQuest::s_debug_level >= 2) {
+	if (EverQuest::GetDebugLevel() >= 2) {
 		LOG_DEBUG(MOD_MAIN, "Sent OP_Logout to server");
 	}
 }
@@ -206,7 +206,7 @@ void eqt::player::PlayerComponent::ZoneProcessLogoutReply(const EQ::Net::Packet 
 	ctx_.Zone().ZoneToZoneInProgress() = false;
 
 	// D20c4: Signal quit via flag — Application checks and exits
-	owner_.RequestQuit();
+	ctx_.lifecycle.RequestQuit();
 
 	// H03: Don't call DisconnectFromZone() here — this handler runs from inside
 	// DaybreakConnectionManager::Tick()'s packet-processing loop (Tick -> ProcessPacket
@@ -216,7 +216,7 @@ void eqt::player::PlayerComponent::ZoneProcessLogoutReply(const EQ::Net::Packet 
 	// (use-after-free crash — reproduced via GM fast-camp, which triggers an
 	// almost-immediate OP_LogoutReply). Defer to UpdateMovement(), which — like the
 	// existing m_game_state.world().zoneChangeApproved() deferral — runs outside any callback context.
-	owner_.m_pending_logout_disconnect = true;
+	ctx_.lifecycle.m_pending_logout_disconnect = true;
 }
 
 // ============================================================================
@@ -248,7 +248,7 @@ void eqt::player::PlayerComponent::ZoneProcessRezzRequest(const EQ::Net::Packet 
 	ctx_.out.System(fmt::format("{} is offering to resurrect you.", rezzer_name));
 	ctx_.out.System("Type /accept to accept or /decline to decline the resurrection.");
 
-	if (EverQuest::s_debug_level >= 2) {
+	if (EverQuest::GetDebugLevel() >= 2) {
 		LOG_DEBUG(MOD_MAIN, "Rez location: zone={}, instance={}, pos=({}, {}, {})",
 			rez->zone_id, rez->instance_id, rez->x, rez->y, rez->z);
 	}
@@ -327,7 +327,7 @@ void eqt::player::PlayerComponent::SendWhoAllRequest(const std::string& name, in
 	packet.PutData(0, &who, sizeof(EQT::Who_All_Struct));
 	ctx_.net.Queue(HC_OP_WhoAllRequest, &packet);
 
-	if (EverQuest::s_debug_level >= 2) {
+	if (EverQuest::GetDebugLevel() >= 2) {
 		LOG_DEBUG(MOD_MAIN, "Sent OP_WhoAllRequest: name='{}', race={}, class={}, lvl={}-{}",
 			name, race, class_, lvllow, lvlhigh);
 	}
@@ -351,7 +351,7 @@ void eqt::player::PlayerComponent::ZoneProcessWhoAllResponse(const EQ::Net::Pack
 	const uint32_t player_count = header->playercount;
 	LOG_INFO(MOD_MAIN, "Who response: {} player(s)", player_count);
 
-	if (EverQuest::s_debug_level >= 2) {
+	if (EverQuest::GetDebugLevel() >= 2) {
 		LOG_DEBUG(MOD_MAIN, "Who header: id={}, playerineqstring={}, playersinzonestring={}, playercount={}",
 			header->id, header->playerineqstring, header->playersinzonestring, header->playercount);
 	}
@@ -360,7 +360,7 @@ void eqt::player::PlayerComponent::ZoneProcessWhoAllResponse(const EQ::Net::Pack
 	// of the who strings when it has no entry (unloaded db, headless tests).
 	EQT::WhoFormatContext ctx;
 	ctx.eqstr = [this](uint32_t id) {
-		std::string s = owner_.m_string_db.getString(id);
+		std::string s = ctx_.strings.Db().getString(id);
 		return s.empty() ? EQT::whoDefaultString(id) : s;
 	};
 	ctx.className = [](uint32_t c) { return eqt::strings::GetClassName(c); };
@@ -440,7 +440,7 @@ void eqt::player::PlayerComponent::SendInspectRequest(uint32_t target_id)
 	packet.PutData(0, &inspect, sizeof(EQT::Inspect_Struct));
 	ctx_.net.Queue(HC_OP_InspectRequest, &packet);
 
-	if (EverQuest::s_debug_level >= 2) {
+	if (EverQuest::GetDebugLevel() >= 2) {
 		LOG_DEBUG(MOD_MAIN, "Sent OP_InspectRequest for target {}", target_id);
 	}
 }

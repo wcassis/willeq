@@ -17,11 +17,12 @@
 // packet processing, door and world-object interaction, and the entity
 // lookup helpers -- not the map storage itself.
 //
-// `owner_` is the TRANSITION handle: the moved code still reaches EverQuest
-// members and methods that have not been extracted yet (m_exp, m_guild_id,
-// m_world_objects, AddChatSystemMessage(), ...). EverQuest declares
-// `friend class eqt::entities::EntitiesComponent` for exactly that. K-final
-// removes both the handle and the friendship.
+// T341: the `owner_` TRANSITION handle and the
+// `friend class eqt::entities::EntitiesComponent` line are BOTH GONE.
+// m_world_objects came here at K13; m_guild_id went to
+// eqt::guild::GuildComponent at T341 (reached as ctx_.Guild().SetGuildID());
+// the loading-phase and update-loop reaches became ctx_.Bridge() and
+// ctx_.lifecycle. Both axes of the K13 (ii) friend test are empty.
 
 #include "client/client_context.h"
 // K13: m_world_objects is a std::map BY VALUE -- WorldObject must be complete.
@@ -53,7 +54,11 @@ namespace entities {
 
 class EntitiesComponent {
 public:
-	EntitiesComponent(ClientContext& ctx, EverQuest& owner) : ctx_(ctx), owner_(owner) {}
+	// T341: the EverQuest& transition handle is GONE -- this family reaches
+	// zero EverQuest private members and names no EverQuest-scoped private
+	// name (the two-axis rule, K13 correction (ii) / B039). It is the
+	// second component to pass both axes, after eqt::gm::GmComponent.
+	explicit EntitiesComponent(ClientContext& ctx) : ctx_(ctx) {}
 
 	// eq_entities.cpp: zone spawns, time of day, spawn doors, zonepoints,
 	// spawn appearance.
@@ -105,7 +110,6 @@ public:
 
 private:
 	ClientContext& ctx_;
-	EverQuest& owner_;
 
 	// Doors clicked by user, awaiting server response. Single-family; moved
 	// with SendClickDoor()/ZoneProcessSpawnDoor() (eq_entities_world.cpp).
