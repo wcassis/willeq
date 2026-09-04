@@ -547,7 +547,7 @@ it without taking that measurement first.
     corrected. Pinned by `tests/test_vision_buff_fade_wire.cpp` (3 tests, all
     failed before) and by the rewritten
     `PlayerCameraComponentTest.VisionAppliesTheBuffValueOverTheRacialBase`.
-    **NOTE: the grant side is still missing — see B055** (corrected by T335b: this read "B054", which is the debug-overlay item, now closed; the vision-grant gap is B055).
+    ~~**NOTE: the grant side is still missing — see B055**~~ (corrected by T335b: this read "B054", which is the debug-overlay item, now closed; the vision-grant gap is B055). **Closed by T339 (2026-09-04): the grant side now publishes, sharing one recompute with the fade side.**
   * **Swim — REFUTED, no arms added.** "`setSwimUp()`/`setSwimDown()` are the
     sole writers … vertical swim control has no producer" (L03 correction 17)
     is false. `readInputState()`
@@ -790,8 +790,9 @@ it without taking that measurement first.
 
 ## Added 2026-09-04 by the T334 Review (B045/B046)
 
-- **B055** (A) `src/client/core/everquest.cpp` `InitializeSpellSystem` —
-  **a vision buff LANDING still does nothing; only its fade is published.**
+- ~~**B055** (A) `src/client/core/everquest.cpp` `InitializeSpellSystem` —
+  **a vision buff LANDING still does nothing; only its fade is published.**~~
+  **STRUCK by T339 (2026-09-04).**
   T334 fixed the consumer, so a `VisionChanged` event now applies correctly in
   both directions — but the ONLY publisher of that event tree-wide is the
   `BuffManager` FADE callback. `BuffManager::applyBuff()` has no apply-side
@@ -805,6 +806,27 @@ it without taking that measurement first.
   that. Closes when: applying a vision buff raises vision, proven by a test on
   the publisher (and ideally a live capture of the zone-light change).
   Prov: T334 Review.
+
+  **T339 (2026-09-04):** half-refuted and fixed. `BuffManager` already HAD the
+  apply-side callback — a `BuffApplyCallback` typedef, `setBuffApplyCallback()`,
+  and four live invocations including one at the end of `applyBuff()`. What was
+  missing was the REGISTRATION: `InitializeSpellSystem()` called only
+  `setBuffFadeCallback()`, so the apply hook fired into a permanently-null
+  `std::function` and its only callers tree-wide were in
+  `tests/test_buff_manager.cpp`. No state-module change was needed after all.
+  Both hooks now share ONE body over ONE recompute,
+  `BuffManager::computeVisionType(exclude_spell_id)` (the old inline fade loop,
+  moved onto the class it already read). Precedence is BEST VISION WINS
+  (Ultravision > Infravision > none) and is OURS, not the oracle's — `docs/`
+  records nothing about it; stated in the header comment. A second defect fell
+  out: three of the four fade paths notify BEFORE erasing, so the old fade loop
+  counted the departing buff as still up — hence the exclusion parameter.
+  `tests/test_vision_buff_fade_wire.cpp` 3 -> 11 tests, driving a real
+  `BuffManager` over the real spell DB into the renderer, plus a source-reader
+  pin on the registration (pre-fix failing run in the T339 Review; `EverQuest`
+  is not constructible in a unit test, so that half has no runtime seam).
+  A live capture of the zone-light change is still owed if Will wants it.
+  Prov: T339 Review.
 
   **T335 (2026-09-04):** the fix is now ONE shared RAII guard,
   `EQT::Graphics::WorldLineBatch` in

@@ -506,6 +506,38 @@ int32_t BuffManager::getStatModFromBuff(const ActiveBuff& buff, SpellEffect stat
 }
 
 // ============================================================================
+// Vision (T339, board B055)
+// ============================================================================
+
+uint8_t BuffManager::computeVisionType(uint32_t exclude_spell_id) const
+{
+    if (!m_spell_db) {
+        return 0;
+    }
+
+    // Best vision wins: Ultravision short-circuits, Infravision is remembered
+    // in case nothing better turns up. See the header for why this is the
+    // stated rule and why a spell can be excluded.
+    uint8_t best = 0;
+    for (const auto& buff : m_player_buffs) {
+        if (buff.spell_id == exclude_spell_id) {
+            continue;
+        }
+        const SpellData* spell = m_spell_db->getSpell(buff.spell_id);
+        if (!spell) {
+            continue;
+        }
+        if (spell->hasEffect(SpellEffect::UltraVision)) {
+            return 2;
+        }
+        if (spell->hasEffect(SpellEffect::InfraVision)) {
+            best = 1;
+        }
+    }
+    return best;
+}
+
+// ============================================================================
 // Spell Classification
 // ============================================================================
 
