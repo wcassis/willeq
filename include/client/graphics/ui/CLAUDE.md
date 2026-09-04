@@ -116,8 +116,9 @@ migration); `Application::DispatchSlashCommand` tries them in order:
    slash vocabulary, listed below by its own category strings. Derived from
    the `registerCommand({...})` calls — regenerate from the source, do not
    hand-edit.
-3. **Registry 3 — renderer if-chain** (`IrrlichtRenderer::processSlashCommand()`
-   in `src/client/graphics/renderer_slash_commands.cpp` since J11,
+3. **Registry 3 — renderer if-chain** (`SlashCommandsComponent::processSlashCommand()`,
+   reached through the one-line `IrrlichtRenderer::processSlashCommand()`
+   forwarder, in `src/client/graphics/slash/renderer_slash_commands.cpp` (L06),
    reached via the `RendererCommand` bridge queue): ~70 debug/graphics
    toggles (`/sort`, `/portal`, `/plight`, `/detail`, `/screenshot`,
    `/dumpscene`, `/hideui` (aliases `/toggleui`, `/ui` — the scriptable half

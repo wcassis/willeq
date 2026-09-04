@@ -493,7 +493,11 @@ IF(EQT_GRAPHICS)
         src/client/graphics/overlays/overlays_component.cpp
         src/client/graphics/overlays/overlays_hud_env.cpp
         src/client/graphics/renderer_init.cpp  # J11
-        src/client/graphics/renderer_slash_commands.cpp  # J11
+        # L06 (Batch L): the slash family -- the registry-3 renderer
+        # command if-chain. The basename is unchanged; only the
+        # directory moved (tests/cmake/commands.cmake reads this TU as
+        # text via RENDERER_COMMAND_SOURCE).
+        src/client/graphics/slash/renderer_slash_commands.cpp
         # T166: the loadZoneSequential() step sequence, split out of one
         # 2996-line TU. Driver + geometry steps here, the rest alongside.
         src/client/graphics/renderer_zone_load.cpp

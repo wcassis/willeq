@@ -161,6 +161,20 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_player_camera_component)
 ENDIF()
 
+# L06 (Batch L, refactor/L06_slash_commands_component.md): SlashCommandsComponent
+# extracted from IrrlichtRenderer -- the surviving forwarder must reach the
+# component, and all four routes the moved body uses (owner_.member_,
+# owner_.Method(), ctx_ and the two sibling components) must land on the
+# renderer's own storage. Same bare, never-Init()'d IrrlichtRenderer idiom.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_slash_commands_component
+        test_slash_commands_component.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_slash_commands_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_slash_commands_component GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_slash_commands_component)
+ENDIF()
+
 # T329 (B041): the NavmeshChanged bridge arm forwarding to
 # OverlaysComponent::setNavmesh. Same bare, never-Init()'d IrrlichtRenderer
 # idiom as test_overlays_component above, plus a real eqt::bridge::

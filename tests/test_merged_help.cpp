@@ -352,12 +352,33 @@ TEST(RendererCommandCatalogTest, MatchesRendererIfChainExactly) {
     std::stringstream buf;
     buf << in.rdbuf();
     const std::string src = buf.str();
-    const size_t fnStart = src.find("IrrlichtRenderer::processSlashCommand(");
+    // L06 (Batch L, L05 correction 21): the body's OWNER changed when the
+    // slash family became SlashCommandsComponent, so this matcher accepts
+    // either spelling and requires EXACTLY ONE definition -- two would be the
+    // duplication this guard exists to stop, and a matcher that silently found
+    // none would pass vacuously once the ASSERT below is the only thing left.
+    static const char* const kOwners[] = {
+        "IrrlichtRenderer::processSlashCommand(",
+        "SlashCommandsComponent::processSlashCommand(",
+    };
+    size_t fnStart = std::string::npos;
+    int definitionsFound = 0;
+    for (const char* owner : kOwners) {
+        const size_t at = src.find(owner);
+        if (at != std::string::npos) { ++definitionsFound; fnStart = at; }
+    }
+    ASSERT_EQ(definitionsFound, 1)
+        << "expected exactly one processSlashCommand() definition in "
+        << RENDERER_COMMAND_SOURCE << ", found " << definitionsFound;
     ASSERT_NE(fnStart, std::string::npos);
     // The chain ends at the next member definition after the function, or at
     // end of file: since J11 processSlashCommand() is the last definition in
     // renderer_slash_commands.cpp, so there is no following member.
-    size_t fnEnd = src.find("\nvoid IrrlichtRenderer::", fnStart + 1);
+    size_t fnEnd = std::string::npos;
+    for (const char* next : {"\nvoid IrrlichtRenderer::", "\nvoid SlashCommandsComponent::"}) {
+        const size_t at = src.find(next, fnStart + 1);
+        if (at != std::string::npos && (fnEnd == std::string::npos || at < fnEnd)) fnEnd = at;
+    }
     if (fnEnd == std::string::npos) fnEnd = src.size();
     const std::string body = src.substr(fnStart, fnEnd - fnStart);
 
