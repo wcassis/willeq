@@ -776,8 +776,8 @@ it without taking that measurement first.
   `src/client/graphics/player/renderer_player_collision.cpp`
   `PlayerCameraComponent::drawCollisionDebugLines()` — **all three carry
   B048's defect verbatim** and were deliberately left alone by T333 (the
-  contract said no behaviour change to any other overlay, and none of the
-  three has live evidence). Each runs in the same post-`drawAll()`
+  contract said no behaviour change to any other overlay, and ~~none of the
+  three has live evidence~~ — **two of the three now do, see T338 below**). Each runs in the same post-`drawAll()`
   debug-overlay pass, each calls `setMaterial()` with a 3D material and then
   `draw3DLine()` in world space, and none re-sets `ETS_VIEW`/`ETS_PROJECTION`
   from `ctx_.captured3DView`/`captured3DProj` or restores 2D-safe render state
@@ -831,3 +831,15 @@ it without taking that measurement first.
   It also turned up a symptom nobody had predicted: the material setup sits
   BEFORE the region loop, so Ctrl+V with an EMPTY box list drew no line and
   still wiped the UI. Prov: T335 Review "Site 4", T335b Review.
+
+  **T338 (2026-09-04): the live pair is captured, and B054 needs nothing
+  further.** `review/T338/` holds a baseline plus both keyed toggles at tip
+  `03239def` (T335 + T335b on it), same character, same qeynos2 spot, same
+  forced 11:00 daylight, one keypress apart. **Ctrl+M**: `Map overlay: ON` then
+  `Map overlay: Updated with 151 triangles` in the client's own log, magenta
+  map-overlay wireframe drawn, and the whole 2D UI still present (bars, FPS,
+  chat, hotbar, A1-A8). **Ctrl+V**: `Frustum culling: ON + DEBUG DRAW`, green /
+  blue / yellow region boxes drawn, same UI intact. `collisionDebug` has no key
+  binding and stays pinned by `tests/test_collision_debug_draw.cpp` only.
+  Visual judgement is Will's; the claim made is only that the lines and the
+  listed UI elements are present. Prov: T338 Review, `review/T338/README.md`.
