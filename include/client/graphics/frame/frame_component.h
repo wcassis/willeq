@@ -259,6 +259,34 @@ private:
 	bool processFrameRender(float deltaTime);  // Returns false for loading screen early-return
 	void processInputDeltas(float deltaTime);
 
+	// G05 (refactor/G05_process_frame_render.md): the sixteen render passes
+	// processFrameRender() calls, in this order. Each is a verbatim slice of
+	// the pre-G05 body INCLUDING its measureSection() bracket, so the
+	// frameTimings_ categories are unchanged; the ORDER is load-bearing and is
+	// pinned by tests/test_frame_render_order.cpp against
+	// tests/goldens/frame_render_order_g05.txt. No local of the original body
+	// crossed a cut, so there is no cross-pass state object: everything these
+	// share is already a member or reached through ctx_. Nothing about the
+	// render/game thread boundary changed -- all sixteen run on the render
+	// thread, in the same order, exactly as the single body did.
+	// Callers: processFrameRender() and nothing else.
+	void runSceneProfileIfScheduled();
+	void beginSceneAndDrawWorld(float deltaTime);
+	void collectScenePassTimings();
+	void renderFootprints();
+	void checkFrameBudgetsAndLogStats();
+	void renderTargetIndicator();
+	void renderParticleEffects();
+	void renderFireGlowAndBoids(float deltaTime);
+	void renderWeatherEffects();
+	void renderDebugOverlays(float deltaTime);
+	void renderEntityCastingBars();
+	void renderLegacyGui();
+	void renderStaticUI();
+	void renderZoneLineOverlays();
+	void renderFrameTail();
+	void endSceneAndSwap();
+
 	// L12 (Batch L close-out, L11's hand-off): the frame-phase stopwatch.
 	// L04 put the body in this family's TU but left the declaration and
 	// sectionStart_ on IrrlichtRenderer, and L11 was told to leave it there;

@@ -4,16 +4,34 @@
 // renderer_frame_input.cpp; the orchestrator processFrame() stays in
 // renderer_frame.cpp.
 //
-// processFrameRender is 546 lines and is a recorded Batch-G decomposition
-// candidate that J31 deliberately did NOT touch (move-only). All nine of this
-// file's conditional regions (__linux__, EQT_HAS_GLES2, EQT_HAS_DRM,
-// WITH_RDP) live wholly inside it.
+// G05 (refactor/G05_process_frame_render.md): processFrameRender was a
+// single 544-line body. It is now the ORDERED LIST of the sixteen private
+// render passes defined below it, each a verbatim slice of that body
+// INCLUDING its measureSection() bracket -- so every frameTimings_ category
+// still spans exactly the code it spanned before, and the timing buckets are
+// unchanged. Nothing was reordered, nothing crosses a cut: not one local of
+// the original body outlived the pass it was declared in, so there is no
+// cross-pass state object and no lifetime changed.
+//
+// THE ORDER IS LOAD-BEARING (depth, blending, overlay-on-top, and the swap
+// last of all). It is pinned by tests/test_frame_render_order.cpp against
+// tests/goldens/frame_render_order_g05.txt, a golden extracted from the
+// pre-G05 body. That test composes processFrameRender by expanding each pass
+// call recursively, so moving a statement from one pass to another, swapping
+// two pass calls, or dropping one, all fail it.
+//
+// All nine of this file's conditional regions (__linux__, EQT_HAS_GLES2,
+// EQT_HAS_DRM, WITH_RDP) still live wholly inside a single pass; none
+// straddles a cut.
 //
 // WARNING: tests/test_ui_hide_command.cpp reads THIS FILE as text and
 // requires that the static-UI draw block's guard, which ands the new-UI flag
 // and the UI renderer against the negated all-UI-hidden flag, appear here
 // verbatim. The literal condition is spelled out in that test, deliberately
-// not here: a comment naming it would satisfy the guard on its own.
+// not here: a comment naming it would satisfy the guard on its own. Since
+// G05 that block lives in renderStaticUI(), and the same test also requires
+// that renderStaticUI() be CALLED from processFrameRender() -- the guard
+// would otherwise pass over a pass nothing invokes.
 // Split per refactor/J31_renderer_frame_split.md (move-only).
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/frame/frame_component.h"
@@ -47,6 +65,7 @@ extern void gles2Draw3DLinesBatch(void* driver, const float* vertices, unsigned 
 namespace EQT {
 namespace Graphics {
 // ===== Phase 4: Render =====
+// The ordered list. See the pass definitions below.
 bool FrameComponent::processFrameRender(float deltaTime) {
     // If loading screen is visible, show it instead of rendering zone
     if (ctx_.loadingScreenVisible) {
@@ -54,6 +73,29 @@ bool FrameComponent::processFrameRender(float deltaTime) {
         return false;  // Signal loading screen was shown
     }
 
+    runSceneProfileIfScheduled();
+    beginSceneAndDrawWorld(deltaTime);
+    collectScenePassTimings();
+    renderFootprints();
+    checkFrameBudgetsAndLogStats();
+    renderTargetIndicator();
+    renderParticleEffects();
+    renderFireGlowAndBoids(deltaTime);
+    renderWeatherEffects();
+    renderDebugOverlays(deltaTime);
+    renderEntityCastingBars();
+    renderLegacyGui();
+    renderStaticUI();
+    renderZoneLineOverlays();
+    renderFrameTail();
+    endSceneAndSwap();
+
+    LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 12: frame complete");
+    FlushThreadLog();
+    return true;
+}
+
+void FrameComponent::runSceneProfileIfScheduled() {
     // Run scene breakdown profile if scheduled
     if (ctx_.Diagnostics().sceneProfileEnabled()) {
         if (ctx_.Diagnostics().sceneProfileFrameCount() < 0) {
@@ -62,7 +104,9 @@ bool FrameComponent::processFrameRender(float deltaTime) {
             ctx_.Diagnostics().profileSceneBreakdown();
         }
     }
+}
 
+void FrameComponent::beginSceneAndDrawWorld(float deltaTime) {
     // Render - use sky renderer's clear color for day/night effect
     irr::video::SColor clearColor(255, 50, 50, 80);
     if (ctx_.skyRenderer && ctx_.skyRenderer->isEnabled() && ctx_.skyRenderer->isInitialized()) {
@@ -106,7 +150,9 @@ bool FrameComponent::processFrameRender(float deltaTime) {
 
     ctx_.smgr->drawAll();
     frameTimings_.sceneDrawAll = measureSection();
+}
 
+void FrameComponent::collectScenePassTimings() {
     // 3D camera transforms are captured during the SOLID render pass in
     // OnRenderPassPreRender — see captured3DView_/captured3DProj_.
     if (ctx_.renderPassTimer) {
@@ -120,7 +166,9 @@ bool FrameComponent::processFrameRender(float deltaTime) {
     if (frameTimings_.sceneDrawAll > 50000) {
         LOG_WARN(MOD_GRAPHICS, "PERF: smgr->drawAll() took {} ms", frameTimings_.sceneDrawAll / 1000);
     }
+}
 
+void FrameComponent::renderFootprints() {
     LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 1: getPrimitiveCountDrawn");
     // Track polygon count for constrained mode budget
     lastPolygonCount_ = ctx_.driver->getPrimitiveCountDrawn();
@@ -131,7 +179,9 @@ bool FrameComponent::processFrameRender(float deltaTime) {
         ctx_.detailManager->renderFootprints();
     }
     frameTimings_.footprintRender = measureSection();
+}
 
+void FrameComponent::checkFrameBudgetsAndLogStats() {
     if (lastPolygonCount_ > static_cast<uint32_t>(ctx_.config.constrainedConfig.maxPolygonsPerFrame)) {
         if (++polygonBudgetExceededFrames_ >= 60) {
             LOG_WARN(MOD_GRAPHICS, "Polygon budget exceeded: {} > {} (limit)",
@@ -185,7 +235,9 @@ bool FrameComponent::processFrameRender(float deltaTime) {
         }
 #endif
     }
+}
 
+void FrameComponent::renderTargetIndicator() {
     LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 3: target outline");
     // Draw selection indicator around targeted entity
 #ifdef EQT_HAS_GLES2
@@ -194,7 +246,9 @@ bool FrameComponent::processFrameRender(float deltaTime) {
     ctx_.Overlays().drawTargetSelectionBox();
 #endif
     frameTimings_.targetBox = measureSection();
+}
 
+void FrameComponent::renderParticleEffects() {
     LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 4: particles (mgr={}, enabled={}, zoneReady={})",
               ctx_.particleManager != nullptr,
               ctx_.particleManager ? ctx_.particleManager->isEnabled() : false,
@@ -256,7 +310,9 @@ bool FrameComponent::processFrameRender(float deltaTime) {
     }
 #endif
     frameTimings_.particles = measureSection();
+}
 
+void FrameComponent::renderFireGlowAndBoids(float deltaTime) {
     // Fire glow: update per-vertex lighting uniforms + render icospheres
 #ifdef EQT_HAS_DRM
     if (ctx_.fireEffectsEnabled && !ctx_.fireGlowLights.empty() && ctx_.zoneReady && have3DTransforms_) {
@@ -274,12 +330,16 @@ bool FrameComponent::processFrameRender(float deltaTime) {
     // Render ambient creatures (render every frame, update at Tier 3)
     if (ctx_.boidsManager && ctx_.boidsManager->isEnabled() && ctx_.zoneReady) ctx_.boidsManager->render();
     frameTimings_.boids = measureSection();
+}
 
+void FrameComponent::renderWeatherEffects() {
     LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 7: weather");
     // Render weather effects
     if (ctx_.weatherEffects && ctx_.weatherEffects->isEnabled()) ctx_.weatherEffects->render();
     frameTimings_.weatherRender = measureSection();
+}
 
+void FrameComponent::renderDebugOverlays(float deltaTime) {
     // Draw collision debug lines
     if (ctx_.PlayerCamera().playerConfig().collisionDebug) ctx_.PlayerCamera().drawCollisionDebugLines(deltaTime);
 
@@ -479,12 +539,16 @@ bool FrameComponent::processFrameRender(float deltaTime) {
 #endif
 
     frameTimings_.debugOverlays = measureSection();
+}
 
+void FrameComponent::renderEntityCastingBars() {
     LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 8: casting bars (entityRenderer={})", ctx_.entityRenderer != nullptr);
     // Draw entity casting bars
     if (!allUIHidden_ && ctx_.entityRenderer) ctx_.entityRenderer->renderEntityCastingBars(ctx_.driver, ctx_.Overlays().guienv(), ctx_.camera);
     frameTimings_.castingBars = measureSection();
+}
 
+void FrameComponent::renderLegacyGui() {
     LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 9: GUI drawAll");
     if (!allUIHidden_ && !newUIEnabled_) {
         ctx_.Overlays().guienv()->drawAll();
@@ -493,7 +557,9 @@ bool FrameComponent::processFrameRender(float deltaTime) {
         ctx_.Overlays().drawFPSCounter();
     }
     frameTimings_.guiDrawAll = measureSection();
+}
 
+void FrameComponent::renderStaticUI() {
     // U06j: Process new UI input before rendering
     if (newUIEnabled_ && staticUIInput_ && ctx_.eventReceiver) {
         staticUIInput_->processInput(
@@ -542,11 +608,16 @@ bool FrameComponent::processFrameRender(float deltaTime) {
         uiRenderer_->endFrame();
     }
     frameTimings_.staticUI = measureSection();
+}
 
+void FrameComponent::renderZoneLineOverlays() {
     // Draw zone line overlay
     ctx_.Overlays().drawZoneLineOverlay();
     ctx_.Overlays().drawZoneLineBoxLabels();
     frameTimings_.zoneLineOverlay = measureSection();
+}
+
+void FrameComponent::renderFrameTail() {
     eqtGPUPhaseEnd(2 /* GPUSyncPhase::ParticlesUI */);
 
 #ifdef WITH_RDP
@@ -571,7 +642,9 @@ bool FrameComponent::processFrameRender(float deltaTime) {
         owner_.saveScreenshot("screenshot.png");
     }
     frameTimings_.postRender = measureSection();
+}
 
+void FrameComponent::endSceneAndSwap() {
     LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 11: endScene");
     // P52: Swap phase. endScene() -> Device->present() -> eglSwapBuffers() /
     // drmPageFlip() (docker/irrlicht-drm/COpenGLES2Driver.cpp,
@@ -588,10 +661,6 @@ bool FrameComponent::processFrameRender(float deltaTime) {
     // called exactly once per frame, after the last eqtGPUPhaseEnd() above.
     eqtGPUPhaseCollectResults();
     frameTimings_.endScene = measureSection();
-
-    LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 12: frame complete");
-    FlushThreadLog();
-    return true;
 }
 
 } // namespace Graphics

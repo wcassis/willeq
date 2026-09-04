@@ -100,3 +100,18 @@ ADD_EXECUTABLE(test_application_init_order
 )
 TARGET_LINK_LIBRARIES(test_application_init_order GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_application_init_order)
+
+# G05: the render-PASS-ORDER net for FrameComponent::processFrameRender().
+# Pure text parse of src/client/graphics/frame/renderer_frame_render.cpp
+# (WILLEQ_REPO_ROOT, set globally in tests/CMakeLists.txt) against
+# tests/goldens/frame_render_order_g05.txt -- processFrameRender() needs a live
+# device, a GL context and a loaded zone, so it cannot be run in a unit test and
+# the TU is the only record of the draw order. That order is load-bearing
+# (depth/blending state, overlays on top of the geometry they annotate, UI on
+# top of that, the swap last). No link deps, no graphics guard: it reads the
+# file as text.
+ADD_EXECUTABLE(test_frame_render_order
+    test_frame_render_order.cpp
+)
+TARGET_LINK_LIBRARIES(test_frame_render_order GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_frame_render_order)
