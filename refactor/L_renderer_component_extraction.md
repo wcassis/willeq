@@ -242,6 +242,20 @@ declarations + inline accessors + members before dispatch.
    with the rationale in the god header and −23 with it in the component
    header.
 
+## L10 corrections (2026-09-04)
+
+41. Correction 38's nested-type substitution is not confined to lambdas —
+   plain local declarations (`FireGlowLight e;`) need it too, and each
+   makes the friend line's axis 2 live.
+42. Both halves of the `this` rule fire in one file: `setRenderer(this)`
+   → `&owner_` (an identity/back-pointer), lambda captures stay.
+43. A family whose external surface is ONE ENTRY POINT retargets nothing
+   outside its TUs (`loadZoneSequential` + one accessor) — the plan's
+   caller table was fully internal.
+44. "Benchmark add-sites" are checked from the TARGET's source list, not
+   assumed from a sibling unit's experience (`gles2_zone_benchmark`
+   compiles none of the zone-load TUs).
+
 ## Per-unit plan files
 
 `refactor/L01_rdp_component.md` … written after K13, from a re-measurement
