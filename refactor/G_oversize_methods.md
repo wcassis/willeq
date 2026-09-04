@@ -18,7 +18,7 @@ signatures (K-batch multiset with a different normalisation).
 | `Application::initialize` | `src/client/application.cpp` | ~569 | sequential init steps with early returns | one private step per subsystem returning `bool`; the top-level becomes a list |
 | `BridgeComponent::ProcessBridgeIntents` | `src/client/bridge/bridge_component_intents.cpp` | ~580 | a `std::visit` visitor with one arm per intent | one private `onXIntent(const XIntent&)` per arm; the visitor becomes a dispatch; `test_reachability_sweep` scans intent arms by text — widen (21) |
 | `IrrlichtRenderer::processFrameRender` (→ `FrameComponent` after L11) | `src/client/graphics/frame/renderer_frame_render.cpp` | ~546 | sequential render passes | one private pass per method; `test_ui_hide_command` / `test_static_ui_scroll` read the TU by text — widen (21) |
-| `loadModelFromGlobalChrWithVariantsForAnimation` | `src/client/graphics/eq/variant_loading_animation.cpp` | ~815 | asset loading pipeline | phases: resolve → load → variants → animation attach; ⚠ EQE1 all-or-nothing rule (Will's standing decision) must survive unchanged |
+| `loadModelFromGlobalChrWithVariantsForAnimation` | `src/client/graphics/eq/variant_loading_animation.cpp` | ~815 | **NOT a pipeline — a candidate-search loop with 4× duplicated blocks (G07 STOP, BOARD B052)** | phases: resolve → load → variants → animation attach; ⚠ EQE1 all-or-nothing rule (Will's standing decision) must survive unchanged |
 | `createDefaultConfig` | `src/client/graphics/detail/detail_zone_configs.cpp` | ~548 | a data table | **leave** (J tracker's ruling); optionally move the table to a data file in a later, non-G unit |
 
 ## Order
@@ -98,3 +98,14 @@ lifetime change; a pinned test's assertion would change.
    `build/bin` holds ZERO-BYTE test binaries that ctest runs as instant
    failures — `find build/bin build/lib -size 0 -type f -delete`, then
    `ar t` counts, then validate.
+
+## G07 (2026-09-04) — STOPPED, parked as B052
+
+22. **Measure the exit structure before choosing "phases":** enumerate every
+   `return`/`continue`/`break` with its loop depth. A body whose exits are
+   `continue`s in a candidate loop and `return`s from nested loops is a
+   SEARCH, and a bool phase list changes its outcome. G07 found this
+   mechanically before touching code.
+23. **When the length is duplication, Batch G's proof does not apply** —
+   de-duplication is a behaviour change and needs a test that drives the
+   method first. Zero-coverage methods go to the board, not to a G unit.

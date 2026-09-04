@@ -620,3 +620,21 @@ it without taking that measurement first.
 - **B051** (B) `src/client/application.cpp` `Application::initConstrainedRendererConfig`
   — `customMemorySpec` is write-only (set in one preset arm, never read).
   Closes when: read where the preset is applied, or deleted. Prov: G04 Review.
+
+## Added 2026-09-04 by the G07 STOP
+
+- **B052** (B) `src/client/graphics/eq/variant_loading_animation.cpp`
+  `loadModelFromGlobalChrWithVariantsForAnimation` — 815 lines that are NOT
+  phases: one `for (codeToTry …)` candidate loop whose six `continue`s mean
+  "next candidate" and whose successes `return` from three loops deep. The
+  length is duplication — the animation-merge body appears FOUR times
+  (0.92–0.96 similar) and the zone/global character blocks are 0.91 similar.
+  **No test drives this method** (zero hits in `tests/`); the EQE1 crash
+  matrix does not reach it. A verbatim-slice decomposition (Batch G's proof)
+  cannot apply. Closes when: (1) a behaviour test drives the loader through
+  the primary-miss/fallback-hit and all-candidates-exhausted paths (a race
+  whose fallback code hits must LOAD, not cache null — Will's all-or-nothing
+  rule), then (2) `mergeAnimationsFrom()` replaces the four copies and the
+  candidate loop keeps its shape (`buildCodesToTry` / `selectVariantParts` /
+  `tryBuildVariantFrom` as the G07 Review lays out, 815 → ~250). Prov: G07
+  Review (`refactor/G07_variant_loader.md`).
