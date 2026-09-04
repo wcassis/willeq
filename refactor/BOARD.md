@@ -547,7 +547,7 @@ it without taking that measurement first.
     corrected. Pinned by `tests/test_vision_buff_fade_wire.cpp` (3 tests, all
     failed before) and by the rewritten
     `PlayerCameraComponentTest.VisionAppliesTheBuffValueOverTheRacialBase`.
-    **NOTE: the grant side is still missing — see B054.**
+    **NOTE: the grant side is still missing — see B055** (corrected by T335b: this read "B054", which is the debug-overlay item, now closed; the vision-grant gap is B055).
   * **Swim — REFUTED, no arms added.** "`setSwimUp()`/`setSwimDown()` are the
     sole writers … vertical swim control has no producer" (L03 correction 17)
     is false. `readInputState()`
@@ -770,8 +770,7 @@ it without taking that measurement first.
 
 ## Added 2026-09-04 by T333
 
-- ~~**B054**~~ (B) **TWO OF THREE STRUCK by T335; the frustum site stays OPEN**
-  — see the tail of this entry. `src/client/graphics/overlays/overlays_component.cpp`
+- ~~**B054**~~ (B) **CLOSED — all three struck (T335 + T335b).** `src/client/graphics/overlays/overlays_component.cpp`
   `OverlaysComponent::drawMapOverlay()`, `renderer_frame_render.cpp`'s
   `frustumDebugDraw_` block, and
   `src/client/graphics/player/renderer_player_collision.cpp`
@@ -818,13 +817,17 @@ it without taking that measurement first.
   `tests/test_collision_debug_draw.cpp`); both symptoms reproduced pre-fix,
   4/4 after. Note the file for the collision lines is
   `renderer_player_collision.cpp`, not `renderer_camera.cpp` (J33 moved it).
-  **The `frustumDebugDraw_` block in `renderer_frame_render.cpp` REMAINS OPEN
-  and is BLOCKED, not deferred.** `tests/goldens/frame_render_order_g05.txt`
-  pins every normalised STATEMENT of that TU by exact text and count (305
-  entries, 16 passes), so adding a guard changes the count, replacing a
-  statement changes the text, a new FrameComponent method changes the pass
-  count, and moving the block to another TU deletes its statements. No fix to
-  ANY code in that TU is possible while the golden is spelled that way — which
-  is the larger finding. Closes when Will rules: re-bless the golden (its own
-  failure message forbids that), or narrow it to pin the pass ORDER rather than
-  the statement text. Prov: T335 Review, "Site 4".
+  ~~The `frustumDebugDraw_` block in `renderer_frame_render.cpp`~~ is **STRUCK
+  by T335b**, which resolved the golden question T335 STOPped on: an order
+  golden pins a SEQUENCE and LEARNS a reviewed edit in place at the positions
+  it touches (batch-G correction 32) — it is not a freeze on the TU. The block
+  now uses the same guard; the edit is count-neutral (the guard replaces the
+  `setMaterial(debugMat)` it supersedes and its restore is a destructor), so
+  `tests/goldens/frame_render_order_g05.txt` changed by exactly one line at
+  entry 127 and is still 305 entries. `tests/test_frame_render_order.cpp` gained
+  a documented `kGoldenSize` naming that edit; both re-plants (drop the guard,
+  swap two pass calls) still fail the guard. Proven by
+  `tests/test_frustum_debug_draw.cpp` — pre-fix 3 of 4 cases fail, 4/4 after.
+  It also turned up a symptom nobody had predicted: the material setup sits
+  BEFORE the region loop, so Ctrl+V with an EMPTY box list drew no line and
+  still wiped the UI. Prov: T335 Review "Site 4", T335b Review.

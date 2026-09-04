@@ -248,6 +248,22 @@ public:
 	std::wstring const& loadingText() const { return loadingText_; }
 	float const& renderCostAvgUs() const { return renderCostAvgUs_; }
 
+	// T335b test seam (B054). The frustum debug wireframe lives INSIDE
+	// renderDebugOverlays(), whose every statement is pinned by
+	// tests/goldens/frame_render_order_g05.txt, so it cannot be factored into a
+	// callable of its own; the pixel test drives the whole pass instead, with
+	// every other overlay in it left at its default OFF. These three are inline
+	// on purpose: a definition in renderer_frame_render.cpp would be parsed as a
+	// FrameComponent body by test_frame_render_order.cpp and reported as an
+	// orphaned pass. Production code toggles frustumDebugDraw_ from
+	// renderer_frame_input.cpp and fills regionBoundingBoxes during zone load.
+	bool& frustumDebugDraw() { return frustumDebugDraw_; }
+	void seedFrustumDebugBoxForTest(size_t regionIdx, const irr::core::aabbox3df& eqBbox) {
+		ctx_.regionBoundingBoxes[regionIdx] = eqBbox;
+	}
+	size_t frustumDebugBoxCount() const { return ctx_.regionBoundingBoxes.size(); }
+	void renderDebugOverlaysForTest(float deltaTime) { renderDebugOverlays(deltaTime); }
+
 private:
 	RendererContext& ctx_;
 	IrrlichtRenderer& owner_;

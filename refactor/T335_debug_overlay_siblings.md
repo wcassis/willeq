@@ -238,3 +238,155 @@ STOPs: **one fired** — the `frustumDebugDraw_` site, blocked by
 `frame_render_order_g05.txt` (above). No pass reorder was attempted. No site
 was found to run outside the latched-2D window: all four are in
 `FrameComponent::renderDebugOverlays()`, after `smgr->drawAll()`.
+
+## Review — T335b
+
+Branch `task/T335b-frustum-site`, from `fable` at `6c70490a` (T335's branch
+merged). This closes the site T335 STOPped on, under the orchestrator's ruling
+that the G05 golden pins a SEQUENCE and learns a reviewed edit **in place at the
+positions it touches**, exactly as T337 taught the movement golden T332's
+insertion. Never regenerated from the tip; no pixel golden re-blessed (none
+changes).
+
+### The production edit — one statement, count-neutral
+
+`src/client/graphics/frame/renderer_frame_render.cpp`, inside the existing
+`frustumDebugDraw_` block in `FrameComponent::renderDebugOverlays()`. No new
+pass, no pass moved, no statement moved between passes:
+
+```
+-        ctx_.driver->setMaterial(debugMat);
++        WorldLineBatch batch(ctx_, debugMat);
+         ctx_.driver->setTransform(irr::video::ETS_WORLD, irr::core::matrix4());
+```
+
+Plus the `#include` (a preprocessor line — `keep()` drops it) and an in-place
+comment (dropped too). That is the whole cost: the guard **replaces** the
+statement it supersedes rather than sitting beside it, and its restore is a
+destructor, which costs no statement at all. So the composed statement list
+changes by **one entry's text and nothing else** — count still 305, order
+untouched.
+
+The guard is declared in the `if` block's scope, so its destructor runs at that
+block's closing brace: after the last `draw3DLine()` of the last region box and
+before the map overlay two statements later. `debugMat` is unchanged
+(`ZBuffer = ECFN_ALWAYS`, `ZWriteEnable = false`, thickness 2) — the batch
+applies exactly the material the block always asked for, then hands the 2D-safe
+state back.
+
+### The golden learns it IN PLACE
+
+`tests/goldens/frame_render_order_g05.txt`, **one line changed**, at its
+position:
+
+```
+-127 ctx_.driver->setMaterial(debugMat);
++127 WorldLineBatch batch(ctx_, debugMat);
+```
+
+Entries 120–126 and 128 (the rest of the block) are byte-identical, every other
+entry is byte-identical, and the file is still 305 lines. `git diff --stat` on
+the golden is `1 +, 1 -`.
+
+`tests/test_frame_render_order.cpp`: the bare `305u` literal became a named
+`kGoldenSize` carrying the T337 documentation shape — a comment block that says
+the golden is the pre-G05 sequence PLUS the reviewed edits listed beneath it,
+each named by position, and that it is never regenerated. The first (and so far
+only) entry reads *"T335b: WorldLineBatch guard in the frustum block, entries
+120–128"*, and records that entry 127 changed text while the count stayed 305
+and why. `GoldenIsPresentAndTheRightSize`'s failure message was rewritten to
+match: it no longer says "is not re-blessed", it says a genuine change is taught
+IN PLACE at the positions it touches and named there, and is never REGENERATED
+from the tip. The parser, the normaliser and all four cases are otherwise
+untouched.
+
+### Re-plant — both faults still caught
+
+The TU was copied aside first; after both restores `diff` against the copy
+reports **IDENTICAL** and `git status --porcelain` lists the TU only for this
+unit's intended edit. No `git checkout --`, no stash.
+
+| plant | outcome |
+|---|---|
+| **drop the guard line** — delete `WorldLineBatch batch(ctx_, debugMat);`, which is the real regression this unit exists to prevent (the overlay goes back to drawing nothing and wiping the UI) | **FAILS**, exit 1: `draw statement count changed: 305 -> 304` (`composed.size()` 304 vs `golden.size()` 305). 3 passed, 1 failed |
+| **swap two pass calls** — `renderWeatherEffects();` ⇄ `renderDebugOverlays(deltaTime);` in `processFrameRender()`, no pass body edited | **FAILS**, exit 1: `draw order diverges at statement 116 — want: LOG_TRACE(... "POST-DRAW checkpoint 7: weather"); got: if (ctx_.PlayerCamera().playerConfig().collisionDebug) ...` — the debug-overlay pass now sits where weather did. 3 passed, 1 failed |
+| restore both | **4/4 PASSED** |
+
+So teaching the golden one entry did not blunt it: the count clause catches a
+dropped statement and the position clause catches a reordered pass.
+
+### The pixel test — `tests/test_frustum_debug_draw.cpp`
+
+Same harness and frame shape as the other three (real headless GLES2 device,
+framebuffer readback, `beginScene -> a 2D draw -> the pass -> the 2D UI ->
+endScene`), four cases: the two symptoms, the transform-restore contract, and
+the guards-are-unchanged no-op case.
+
+**The seam is three inline methods on `FrameComponent`**, and inline is
+deliberate: the frustum block is not a function and cannot be made one (the
+golden pins its statements), so the test drives the whole pass — and a seam
+DEFINED in `renderer_frame_render.cpp` would be parsed as a `FrameComponent`
+body by `test_frame_render_order.cpp` and reported as an orphaned pass. So
+`frustumDebugDraw()`, `seedFrustumDebugBoxForTest(regionIdx, eqBbox)`,
+`frustumDebugBoxCount()` and `renderDebugOverlaysForTest(deltaTime)` all live in
+the header. Every other overlay in the pass is left at its default OFF
+(`collisionDebug`, `showMapOverlay`, `showNavmeshOverlay`, `stencilDebugDraw`),
+so the only geometry that can reach the framebuffer is the frustum wireframe.
+
+One region box, EQ `(-0.8,-0.8,-0.8)..(0.8,0.8,0.8)`, with identity captured
+transforms; the block's `EQ(x,y,z) -> Irr(x,z,y)` mapping puts its two drawn
+faces on one screen-space square with edges at x=80/720 and y=60/540. A
+default-constructed `FrustumCuller` holds six zeroed planes, so `testAABB()`
+reports the box inside and it takes the GREEN "rendered" branch — the branch a
+live Ctrl+V session shows most of.
+
+Pre-fix run (`WorldLineBatch` neutered to `setMaterial()`-only with an empty
+destructor, which is the pre-T333 code shape), exit 1 — **3 of 4 fail**:
+
+```
+[ RUN      ] FrustumDebugDrawTest.RegionBoundingBoxEdgesReachTheFramebuffer
+tests/test_frustum_debug_draw.cpp:153: Failure
+Expected: ((int)c.getGreen()) > (100), actual: 0 vs 100
+bottom edge of the frustum debug box drew nothing at (400,540) -- got 0,0,0
+... left edge (80,300) -- got 0,0,0
+... right edge (720,300) -- got 0,0,0
+[  FAILED  ] FrustumDebugDrawTest.RegionBoundingBoxEdgesReachTheFramebuffer (177 ms)
+[ RUN      ] FrustumDebugDrawTest.TheTwoDUIDrawnAfterTheOverlayStillAppears
+tests/test_frustum_debug_draw.cpp:169: Failure
+Expected: ((int)c.getRed()) > (200), actual: 0 vs 200
+the 2D UI drawn after the frustum debug block was wiped -- got 0,0,0
+[  FAILED  ] FrustumDebugDrawTest.TheTwoDUIDrawnAfterTheOverlayStillAppears (68 ms)
+[ RUN      ] FrustumDebugDrawTest.TheToggleAndTheEmptyBoxListAreStillNoOps
+tests/test_frustum_debug_draw.cpp:232: Failure
+Expected: ((int)c.getRed()) > (200), actual: 0 vs 200
+[  FAILED  ] FrustumDebugDrawTest.TheToggleAndTheEmptyBoxListAreStillNoOps (60 ms)
+```
+
+That third failure was **not predicted and is worth recording**: the material
+setup sits BEFORE the `for` loop over `regionBoundingBoxes`, so with the toggle
+on and an EMPTY box list the block drew no line yet still installed a 3D
+material — and pre-fix that alone wiped the UI. A live user who pressed Ctrl+V
+outside a loaded zone lost the UI and saw nothing appear, with no way to
+connect the two. The test comment now says so.
+
+Post-fix: **4/4 pass**. Registered in `tests/cmake/renderer_guards.cmake` beside
+its three siblings; self-skips without a usable GLES2 device; needs no EQE1
+asset and no server.
+
+### Step results
+
+| step | result |
+|---|---|
+| `cmake --build build -j24` | exit **0**. One earlier build hit **exit 143** (the 10-minute tool ceiling, not a compiler fault); the protocol sweep ran — 9 zero-byte files under `build/bin` deleted, `ar t` gave `libwilleq_core.a` 321 members and `libEtcLib.a` 15, both intact — and the resumed foreground build finished exit 0 |
+| `ctest --test-dir build -j6 --output-on-failure` | exit 8 — **3787/3788**, sole failure `AudioManagerTest.PreloadCommonSounds` (the sanctioned ALSA one). +16 cases over T335's 3772: the four new frustum cases and the discovery split |
+| `test_frame_render_order` | **4/4**; both re-plants fail as required, restore returns 4/4 |
+| `test_frustum_debug_draw` (new) | pre-fix **3 of 4 FAIL**; post-fix **4/4** |
+| `test_navmesh_overlay_draw` / `test_map_overlay_draw` / `test_collision_debug_draw` | **4/4 each**, unchanged |
+| `scripts/build-gles2-x86.sh` | exit **0** |
+| `scripts/ci/visual_gate.sh` standalone | **PASS**. The only golden in `git status --porcelain` is `frame_render_order_g05.txt` — this unit's deliberate one-line, in-place edit. **No pixel golden touched**: all four overlays are off in the gate |
+| `scripts/build-arm-noble.sh` | exit **0** |
+| `scripts/refactor/check_file_sizes.sh --all` | exit 0 — 873 files, **873 ok, 0 warn, 0 fail** |
+
+STOPs: **none fired.** No pass was reordered and no pass was added; the
+statement sequence changed by exactly one entry's text, which the golden now
+records at its position. B054 is fully closed.

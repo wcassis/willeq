@@ -125,7 +125,7 @@
 124 debugMat.ZWriteEnable = false;
 125 debugMat.AntiAliasing = false;
 126 debugMat.Thickness = 2.0f;
-127 ctx_.driver->setMaterial(debugMat);
+127 WorldLineBatch batch(ctx_, debugMat);
 128 ctx_.driver->setTransform(irr::video::ETS_WORLD, irr::core::matrix4());
 129 std::shared_ptr<EQT::Graphics::BspRegion> pvsRegion;
 130 if (ctx_.usePvsCulling && ctx_.zoneBspTree && ctx_.currentPvsRegion != SIZE_MAX
