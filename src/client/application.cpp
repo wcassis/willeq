@@ -107,6 +107,44 @@ bool Application::initialize(const ApplicationConfig& config) {
 
     LOG_INFO(MOD_MAIN, "Initializing application...");
 
+    // G04: the ordered list. See the step banner below -- the order is
+    // load-bearing and pinned by tests/test_application_init_order.cpp.
+    if (!initFpCamOverrides(config)) return false;
+    if (!initConfigValidation(config)) return false;
+    if (!initFrameDumpDirectory(config)) return false;
+    if (!initRequiredFileValidation(config)) return false;
+    if (!initSignalHandlers(config)) return false;
+    if (!initEverQuestClient(config)) return false;
+    if (!initSpellSystem(config)) return false;
+    if (!initActionLayer(config)) return false;
+    if (!initScriptedCommandTour(config)) return false;
+    if (!initGameMode(config)) return false;
+    if (!initInputBridge(config)) return false;
+    if (!initCommandOutputRouting(config)) return false;
+    if (!initGraphics(config)) return false;
+    if (!initConsoleBridge(config)) return false;
+    if (!initLoginConnection(config)) return false;
+
+    LOG_INFO(MOD_MAIN, "Application initialized successfully");
+    return true;
+}
+
+// ========== G04: Application::initialize() subsystem steps ==========
+//
+// Each function below is a VERBATIM slice of the pre-G04 initialize() body,
+// cut at the banners the file already carried; every early `return false`
+// stayed inside the step it belonged to. initialize() is now the ordered
+// list of those steps, and THE ORDER IS LOAD-BEARING: the EverQuest client
+// must exist before the spell system, the action layer, the game mode and
+// the input bridge that all take m_eqClient->GetGameState(); the renderer
+// and bridge must exist before InitGraphics(); the console bridge only
+// attaches when the graphics step did not; and the login connection is
+// started LAST, after graphics init, so a slow DRM/EGL bring-up cannot time
+// the login server out. tests/test_application_init_order.cpp pins the
+// resulting statement order against a golden extracted from the pre-G04
+// source (tests/goldens/application_init_order_g04.txt).
+
+bool Application::initFpCamOverrides(const ApplicationConfig& config) {
     // T310 Leg A: apply --fpcam overrides BEFORE anything reads a camera
     // number. A bad name or value is reported and the run continues with that
     // parameter at its default -- a sweep that silently rendered the default
@@ -120,7 +158,10 @@ bool Application::initialize(const ApplicationConfig& config) {
                       spec, err);
         }
     }
+    return true;
+}
 
+bool Application::initConfigValidation(const ApplicationConfig& config) {
     // S01: Mandatory config validation — fail fast on missing settings
     {
         std::string errors;
@@ -154,7 +195,10 @@ bool Application::initialize(const ApplicationConfig& config) {
         }
     }
     LOG_DEBUG(MOD_MAIN, "S01: Config validation passed");
+    return true;
+}
 
+bool Application::initFrameDumpDirectory(const ApplicationConfig& /*config*/) {
     // T64: video-capture evidence tool (--dump-frames-dir) — ensure the
     // output directory exists up front so render()'s per-frame
     // saveScreenshot() calls don't silently fail. Additive, no-op when the
@@ -170,7 +214,10 @@ bool Application::initialize(const ApplicationConfig& config) {
                 m_config.dumpFramesDir, m_config.dumpFramesEvery, m_config.dumpFramesMaxCount);
         }
     }
+    return true;
+}
 
+bool Application::initRequiredFileValidation(const ApplicationConfig& config) {
     // S03: Global file validation — verify all required files exist before proceeding
 #ifdef EQT_HAS_GRAPHICS
     if (config.graphicsEnabled) {
@@ -198,7 +245,10 @@ bool Application::initialize(const ApplicationConfig& config) {
 
     LOG_INFO(MOD_MAIN, "Config: host={}, server={}, character={}",
         config.host, config.server, config.character);
+    return true;
+}
 
+bool Application::initSignalHandlers(const ApplicationConfig& /*config*/) {
     // Register signal handlers
 #ifndef _WIN32
     signal(SIGUSR1, HandleSigUsr1);
@@ -209,7 +259,10 @@ bool Application::initialize(const ApplicationConfig& config) {
 #endif
     LOG_DEBUG(MOD_MAIN, "Signal handlers registered (SIGUSR1=log+, SIGUSR2=log-, SIGTERM=clean shutdown, SIGHUP=hotkey reload)");
 #endif
+    return true;
+}
 
+bool Application::initEverQuestClient(const ApplicationConfig& config) {
     // T227: there is ONE state::GameState per run -- EverQuest::m_game_state,
     // created with the client below. Every holder after it takes
     // m_eqClient->GetGameState(); the projected copy Application used to own
@@ -286,7 +339,10 @@ bool Application::initialize(const ApplicationConfig& config) {
         return false;
     }
     EQT::PerformanceMetrics::instance().stopTimer("Client Creation");
+    return true;
+}
 
+bool Application::initSpellSystem(const ApplicationConfig& config) {
     // S04: Initialize spell system at startup (spell DB, buff manager, spell effects, spell type processor)
     // Must happen after SetEQClientPath() and before any gameplay packets arrive.
     // Spell file was validated in S03, so failure here is FATAL.
@@ -297,7 +353,10 @@ bool Application::initialize(const ApplicationConfig& config) {
             return false;
         }
     }
+    return true;
+}
 
+bool Application::initActionLayer(const ApplicationConfig& /*config*/) {
     // Create action handler adapter
     LOG_TRACE(MOD_MAIN, "Allocating EqActionHandler...");
     m_actionHandler = std::make_unique<EqActionHandler>(*m_eqClient);
@@ -313,7 +372,10 @@ bool Application::initialize(const ApplicationConfig& config) {
     LOG_TRACE(MOD_MAIN, "Allocating CommandProcessor...");
     m_commandProcessor = std::make_unique<action::CommandProcessor>(m_eqClient->GetGameState(), *m_dispatcher);
     LOG_DEBUG(MOD_MAIN, "Command processor created");
+    return true;
+}
 
+bool Application::initScriptedCommandTour(const ApplicationConfig& config) {
     // H03: Scripted command tour (--script <file>)
     if (!config.scriptPath.empty()) {
         if (loadScriptFile(config.scriptPath)) {
@@ -322,7 +384,10 @@ bool Application::initialize(const ApplicationConfig& config) {
             LOG_ERROR(MOD_MAIN, "Failed to load script file: {}", config.scriptPath);
         }
     }
+    return true;
+}
 
+bool Application::initGameMode(const ApplicationConfig& config) {
     // Create game mode
     mode::ModeConfig modeConfig;
     modeConfig.width = config.displayWidth;
@@ -354,7 +419,10 @@ bool Application::initialize(const ApplicationConfig& config) {
     LOG_DEBUG(MOD_MAIN, "Game mode initialized: {}",
         config.operatingMode == mode::OperatingMode::GraphicalInteractive ? "graphical" :
         config.operatingMode == mode::OperatingMode::HeadlessInteractive ? "headless" : "automated");
+    return true;
+}
 
+bool Application::initInputBridge(const ApplicationConfig& /*config*/) {
     // Create input action bridge
     LOG_TRACE(MOD_MAIN, "Allocating InputActionBridge...");
     m_inputBridge = std::make_unique<action::InputActionBridge>(m_eqClient->GetGameState(), *m_dispatcher);
@@ -396,7 +464,10 @@ bool Application::initialize(const ApplicationConfig& config) {
         printCommandResult(DispatchSlashCommand(rawLine));
     });
     wireUnifiedCommandDispatch();
+    return true;
+}
 
+bool Application::initCommandOutputRouting(const ApplicationConfig& /*config*/) {
     // Connect command processor output to renderer
     auto* renderer = m_gameMode->getRenderer();
     if (renderer) {
@@ -408,11 +479,23 @@ bool Application::initialize(const ApplicationConfig& config) {
     // output::GraphicalRenderer, so its dynamic_cast always failed and it
     // never set a callback; every route it mirrored is a bridge intent
     // (TargetIntent, DoorInteractIntent, ChatSubmitIntent, ...).
+    return true;
+}
 
+bool Application::initGraphics(const ApplicationConfig& config) {
 #ifdef EQT_HAS_GRAPHICS
     // Initialize graphics if graphical mode
     m_graphicsInitialized = false;
     if (config.graphicsEnabled && config.operatingMode == mode::OperatingMode::GraphicalInteractive) {
+        if (!initConstrainedRendererConfig(config)) return false;
+        if (!initRendererAndGraphics(config)) return false;
+    }
+#endif
+    return true;
+}
+
+bool Application::initConstrainedRendererConfig(const ApplicationConfig& config) {
+#ifdef EQT_HAS_GRAPHICS
         // eqClientPath already validated in S01 block above
         // Build constrained config: preset → JSON overrides → CLI overrides
         {
@@ -558,7 +641,12 @@ bool Application::initialize(const ApplicationConfig& config) {
             LOG_INFO(MOD_GRAPHICS, "Constrained cache created ({}MB budget)",
                      builtConfig.textureMemoryBytes / (1024 * 1024));
         }
+#endif
+    return true;
+}
 
+bool Application::initRendererAndGraphics(const ApplicationConfig& config) {
+#ifdef EQT_HAS_GRAPHICS
         LOG_DEBUG(MOD_GRAPHICS, "Initializing graphics...");
         EQT::PerformanceMetrics::instance().startTimer("Graphics Init", EQT::MetricCategory::Startup);
 
@@ -662,9 +750,11 @@ bool Application::initialize(const ApplicationConfig& config) {
             return false;
         }
         EQT::PerformanceMetrics::instance().stopTimer("Graphics Init");
-    }
 #endif
+    return true;
+}
 
+bool Application::initConsoleBridge(const ApplicationConfig& /*config*/) {
     // D25: Attach console bridge in headless mode for event logging
     if (!m_graphicsInitialized && !m_bridge) {
         m_consoleBridge = std::make_unique<bridge::ConsoleBridge>();
@@ -675,7 +765,10 @@ bool Application::initialize(const ApplicationConfig& config) {
         m_eqClient->setBridge(m_bridge);
         LOG_INFO(MOD_MAIN, "Console bridge attached (headless mode)");
     }
+    return true;
+}
 
+bool Application::initLoginConnection(const ApplicationConfig& config) {
     // Start login connection AFTER graphics init to avoid timeout on slow devices.
     // DRM/EGL initialization can take 4-5 seconds on first run (Orange Pi), and the
     // login server will disconnect if no network pumping occurs during that window.
@@ -685,8 +778,6 @@ bool Application::initialize(const ApplicationConfig& config) {
     m_running.store(true);
     m_lastUpdate = std::chrono::steady_clock::now();
     m_lastGraphicsUpdate = std::chrono::steady_clock::now();
-
-    LOG_INFO(MOD_MAIN, "Application initialized successfully");
     return true;
 }
 
