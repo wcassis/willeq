@@ -182,6 +182,11 @@ declarations + inline accessors + members before dispatch.
    `IOutputRenderer` default body (`cycleCameraMode`): the renderer
    implements no interface; name the real caller or it is not a forwarder.
 
+24. (L05) Findings' comment cost goes in the COMPONENT header, not the
+   god header — budget it there; L05 predicted −40 and landed −65.
+25. (L05) Drop the "forwarders that stay" column from L plans; list
+   callers, and let the executor derive forwarders from real callers only.
+
 ## Per-unit plan files
 
 `refactor/L01_rdp_component.md` … written after K13, from a re-measurement
