@@ -45,8 +45,15 @@ public:
 
     // Pathfinding movement
     virtual void moveToLocation(float x, float y, float z) = 0;
-    virtual void moveToEntity(const std::string& name) = 0;
-    virtual void followEntity(const std::string& name) = 0;
+    // T356 (B003c): these take a RESOLVED spawn id, not a name -- the same
+    // rule T230 already applied to targetEntity(). Name resolution is the
+    // dispatcher's job (EntityManager::findEntityByName, nearest-first
+    // ranked overload); a handler that re-resolved the name would use the
+    // game-side EntitiesComponent::FindEntityByName, an unranked
+    // lowest-spawn-id prefix match, and could move to / follow a DIFFERENT
+    // same-named entity than the one the dispatcher validated.
+    virtual void moveToEntity(uint16_t spawnId) = 0;
+    virtual void followEntity(uint16_t spawnId) = 0;
     virtual void stopFollow() = 0;
 
     // ========== Combat ==========

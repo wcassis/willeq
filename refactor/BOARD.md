@@ -114,13 +114,25 @@ it without taking that measurement first.
   overload + `ActionDispatcherTest.FaceEntity_PicksTheNearestMatch_NotTheLowestSpawnId`,
   verified to fail on the unpatched source.
 
-- **B003c** (B) `ActionDispatcher::moveToEntity` / `followEntity`
+- ~~**B003c** (B) `ActionDispatcher::moveToEntity` / `followEntity`
   (`src/client/action/action_dispatcher.cpp:154,167`) call the same unranked
   `findEntityByName(name)` T350 fixed in `faceEntity`, but only as an existence
   check before passing the NAME to the handler — so the tie-break is not
   observable *there*, and the question is what the handler does with the name.
   Closes when: the handler's own resolution is read and either shown to rank by
-  distance too, or made to. Prov: T350.
+  distance too, or made to. Prov: T350.~~ **CLOSED by T356 `287ecbb7`.** The
+  handler does NOT rank: `EqActionHandler::moveToEntity/followEntity` forward
+  the name to `MovementComponent::MoveToEntity/Follow`, which resolved it with
+  a THIRD resolver — `EntitiesComponent::FindEntityByName`
+  (`src/client/entities/entities_component_appearance.cpp:326`), an unranked
+  case-insensitive PREFIX match over the spawn-id-keyed map, so the lowest
+  spawn id among matches wins. So the defect was live and worse than /face's:
+  three resolvers, two of them unranked. Fixed by resolving ONCE in the
+  dispatcher with the ranked overload and passing the winner's SPAWN ID down
+  (`IActionHandler::moveToEntity/followEntity` now take `uint16_t`, the T230
+  rule). Pinned by
+  `ActionDispatcherTest.MoveToAndFollow_PickTheNearestMatch_NotTheLowestSpawnId`,
+  verified to fail on the unranked lookup (picked spawn 68, expected 277).
 
 - ~~**B004** (A) `include/client/graphics/ui/ui_layout.h` `centerPopup` — `popW`/
   `popH` are hardcoded 400/350 at every resolution; the archive records general
@@ -237,11 +249,17 @@ it without taking that measurement first.
   only because eqemu's key is a byte-swap palindrome. Closes when: the test reads
   through the production path. Prov: deferred item 40.
 
-- **B010** (B) `tests/test_irrlicht_camera_command.cpp`
+- ~~**B010** (B) `tests/test_irrlicht_camera_command.cpp`
   `CameraCommandRoundTripTest` — no `PrintTo` for the parameter type, so gtest
   names each case by hex-dumping an ASLR-randomised pointer and the eight ctest
   names are not stable identifiers. Closes when: a `PrintTo` or name generator
-  gives stable names. Prov: deferred item 42.
+  gives stable names. Prov: deferred item 42.~~ **CLOSED by T356 `fe812e8d`**:
+  a `CameraModeCaseName` generator (4th `INSTANTIATE_TEST_SUITE_P` argument,
+  derived from the case's own `setArg`) plus a `PrintTo`. The eight names are
+  now `.../SetThenReadRoundTrips/{Free,Follow,First_Person}` and
+  `.../{free,FOLLOW,firstperson,fp,first_person}`, and two
+  `--gtest_list_tests` runs of the built binary are byte-identical (they
+  differed on all eight lines before).
 
 - **B011** (B) `src/client/graphics/entity_size.cpp`
   `EntityRenderer::setEntitySize` — updates neither `collisionHeight` nor `deckZ`,

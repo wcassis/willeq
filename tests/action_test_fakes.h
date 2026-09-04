@@ -75,11 +75,11 @@ public:
     void moveToLocation(float x, float y, float z) override {
         record("moveToLocation", x, y, z);
     }
-    void moveToEntity(const std::string& name) override {
-        record("moveToEntity", name);
+    void moveToEntity(uint16_t spawnId) override {
+        record("moveToEntity", spawnId);
     }
-    void followEntity(const std::string& name) override {
-        record("followEntity", name);
+    void followEntity(uint16_t spawnId) override {
+        record("followEntity", spawnId);
     }
     void stopFollow() override { record("stopFollow"); }
 

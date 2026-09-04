@@ -484,7 +484,8 @@ TEST_F(CommandProcessorTest, MoveTo_DispatchesMoveToEntity_WithOriginalAckWordin
 
     auto result = processor->processCommand("/moveto a_goblin");
     EXPECT_TRUE(result.success);
-    ASSERT_TRUE(handler.calledOnceWith("moveToEntity(\"a_goblin\")"));
+    // T356: the handler receives the RESOLVED spawn id, never the name.
+    ASSERT_TRUE(handler.calledOnceWith("moveToEntity(42)"));
     EXPECT_EQ(result.message, "Moving to entity: a_goblin");
 }
 
@@ -533,7 +534,7 @@ TEST_F(CommandProcessorTest, Follow_DispatchesFollowEntity_WithOriginalAckWordin
 
     auto result = processor->processCommand("/follow a_ranger");
     EXPECT_TRUE(result.success);
-    ASSERT_TRUE(handler.calledOnceWith("followEntity(\"a_ranger\")"));
+    ASSERT_TRUE(handler.calledOnceWith("followEntity(43)"));
     EXPECT_EQ(result.message, "Following: a_ranger");
 }
 

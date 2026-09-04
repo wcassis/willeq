@@ -93,19 +93,28 @@ void eqt::movement::MovementComponent::Move(float x, float y, float z)
 	// Non-blocking - movement will be handled by the update system
 }
 
-void eqt::movement::MovementComponent::MoveToEntity(const std::string &name)
+// T356 (B003c): keyed by spawn id. ActionDispatcher::moveToEntity resolved
+// the name with EntityManager::findEntityByName(name, px, py, pz) -- the
+// T244 nearest-first ranked overload -- and passes the winner's id here.
+// The old body re-resolved the NAME through
+// EntitiesComponent::FindEntityByName, an unranked case-insensitive prefix
+// match that returns the LOWEST SPAWN ID among matches, so with two
+// same-named mobs /moveto walked to a different one than /target had
+// targeted (the T350 /face defect, one layer down).
+void eqt::movement::MovementComponent::MoveToEntity(uint16_t spawn_id)
 {
-	Entity* entity = ctx_.Entities().FindEntityByName(name);
-	if (entity) {
+	auto it = ctx_.entities.find(spawn_id);
+	if (it != ctx_.entities.end()) {
+		const Entity& entity = it->second;
 		if (EverQuest::GetDebugLevel() >= 1) {
 			std::cout << fmt::format("Found entity '{}' at ({:.2f}, {:.2f}, {:.2f})", 
-				entity->name, entity->x, entity->y, entity->z) << std::endl;
+				entity.name, entity.x, entity.y, entity.z) << std::endl;
 		}
 		LOG_DEBUG(MOD_MAIN, "MoveToEntity: Moving to {} at ({:.2f}, {:.2f}, {:.2f})", 
-			entity->name, entity->x, entity->y, entity->z);
-		Move(entity->x, entity->y, entity->z);  // This will block until complete
+			entity.name, entity.x, entity.y, entity.z);
+		Move(entity.x, entity.y, entity.z);  // This will block until complete
 	} else {
-		std::cout << fmt::format("Entity '{}' not found", name) << std::endl;
+		std::cout << fmt::format("Entity {} not found", spawn_id) << std::endl;
 	}
 }
 
@@ -184,9 +193,11 @@ void eqt::movement::MovementComponent::MoveToEntityWithinRange(const std::string
 	}
 }
 
-void eqt::movement::MovementComponent::Follow(const std::string &name)
+// T356 (B003c): keyed by spawn id, for the same reason as MoveToEntity above.
+void eqt::movement::MovementComponent::Follow(uint16_t spawn_id)
 {
-	Entity* entity = ctx_.Entities().FindEntityByName(name);
+	auto it = ctx_.entities.find(spawn_id);
+	Entity* entity = (it != ctx_.entities.end()) ? &it->second : nullptr;
 	if (entity) {
 		ctx_.game_state.player().setFollowTarget(entity->name);  // Store the actual entity name
 		std::cout << fmt::format("Following {}", entity->name) << std::endl;
@@ -222,7 +233,7 @@ void eqt::movement::MovementComponent::Follow(const std::string &name)
 			LOG_DEBUG(MOD_MAIN, "Follow: Pathfinding disabled (m_use_pathfinding={}, m_pathfinder={})", m_use_pathfinding, m_pathfinder ? "valid" : "null");
 		}
 	} else {
-		std::cout << fmt::format("Entity '{}' not found", name) << std::endl;
+		std::cout << fmt::format("Entity {} not found", spawn_id) << std::endl;
 	}
 }
 
