@@ -1064,6 +1064,11 @@ IF(EQT_GRAPHICS)
     # Entity Composite Texture Builder (offline composite sheet generation for single-draw entity rendering)
     ADD_EXECUTABLE(entity_composite_builder
         tools/entity_composite_builder.cpp
+        # T385 (board B167): this tool was 1,861 lines in one TU, over the
+        # 1,500 ceiling that check_file_sizes.sh did not apply to tools/.
+        tools/entity_composite/composite_texture_io.cpp
+        tools/entity_composite/composite_model.cpp
+        tools/entity_composite/composite_archives.cpp
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp
         src/client/graphics/eq/wld_fragments_material.cpp
@@ -1091,6 +1096,8 @@ IF(EQT_GRAPHICS)
         TARGET_SOURCES(entity_composite_builder PRIVATE src/client/graphics/gpu_upload_thread.cpp)
     ENDIF()
     TARGET_INCLUDE_DIRECTORIES(entity_composite_builder PRIVATE
+        # T385: tools/entity_composite/*.cpp include "entity_composite/..."
+        ${CMAKE_SOURCE_DIR}/tools
         ${CMAKE_SOURCE_DIR}/include
         ${CMAKE_SOURCE_DIR}/src
         ${ZLIB_INCLUDE_DIRS}
