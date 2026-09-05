@@ -2905,7 +2905,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   pins the constants that did it, and the fit is closed against a measurement
   rather than extrapolated. Prov: T386 Review §4; B171; B067.
 
-  **T394 (`REVERTHASH`) REVERTED T383's six constants and its redShift** —
+  **T394 (`7cd6c124`) REVERTED T383's six constants and its redShift** —
   `include/client/graphics/vision_ambient.h`, `include/client/graphics/vision_type.h`
   and `src/client/graphics/vision_ambient.cpp` are byte-identical to the
   pre-T383 tree again (Ultravision gain **0.1521** x tint **(1.009, 0.848,
@@ -3034,7 +3034,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   character, while `Alt+P`, `G` and `P` were typed into the chat box. Send
   `Escape` before each key.
 
-- **B171** — its provisional strike **is reversed by T394 (`REVERTHASH`)**:
+- **B171** — its provisional strike **is reversed by T394 (`7cd6c124`)**:
   T383's constants are gone from the tree and the defect B171 names (the
   per-channel gains are wrong against the oracle) is live again, tracked as
   **B203**. Do not re-strike it from a desk fit.
