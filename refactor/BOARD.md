@@ -550,14 +550,18 @@ it without taking that measurement first.
   Prov: archived board, T70.
   **T380 (2026-09-05) surveyed this and put numbers on it — the ruling is still
   open, but it is now correctly scoped as LOW priority, and a bigger defect was
-  found underneath it (B160).** Census script:
+  found underneath it (B160, since CLOSED by T381 — the resist/school
+  vocabulary and `SpellVisualSource::Resolved` are reachable now, so B022 is
+  once again only about the sprite-name/padding ruling).** Census script:
   `scripts/refactor/t380_spell_visual_census.py`; full tables in
   `refactor/T380_spell_visuals_survey.md` Review.
   - The reader DOES have a production caller — `SpellVisualFX::loadSpellsEff()`
     in the constructor built by
     `src/client/graphics/renderer/renderer_entities.cpp` — but its result is
-    consumed only by `resolveVisual()`, which per **B160** can never see a
-    non-`-1` index. Loaded, correct, and inert.
+    consumed only by `resolveVisual()`, which per **B160** could never see a
+    non-`-1` index. Loaded, correct, and inert. **T381 fixed that**: the index
+    arrives on the `SpellCastVisual*` payload and the reader is live. What is
+    still inert is what the resolution is USED for — see B165.
   - 8,066 spells: **7,105 Resolved / 163 EmptyRecord / 798 NoAffectIndex / 0
     OutOfRange**. `data/willeq.db` matches `spells_us.txt` on
     `spell_affect_index` for all 8,066 rows.
@@ -611,7 +615,28 @@ it without taking that measurement first.
   reached. Fixing it is a command-shape decision, not a mechanical patch. Prov:
   archived board, T146.
 
-- **B160** (A) `include/client/graphics/spell_visual_fx.h` —
+- ~~**B160** (A)~~ **CLOSED 2026-09-05 by T381 (`fb98dc7c`).** The three facts
+  the renderer needs — resist type, casting school, `spell_affect_index` — now
+  cross the bridge BY VALUE on `SpellCastVisualStartedData` /
+  `SpellCastVisualCompleteData` (`EQ::SpellVisualVocabulary`,
+  `include/client/spell/spell_visual_vocabulary.h`, +8 bytes per payload,
+  `EventData` unchanged at 280 bytes because a larger alternative dominates
+  the variant). `SpellManager::handleBeginCast` / `handleAction` / the
+  cast-timeout path in `update()` fill it from the game thread's own
+  `SpellDatabase`; `src/client/bridge/irrlicht_bridge.cpp` calls the new
+  `SpellVisualFX::noteSpellVocabulary()` before `createCastGlow()` /
+  `removeCastGlow()`. `setSpellDatabase()`, `m_spell_db`, the
+  `getSpellColor(const SpellData*)` overload and the four `if (m_spell_db)`
+  null branches are DELETED, and with them `spell_database.h` disappears from
+  `src/client/graphics/`. The six resist colours, the five school colours,
+  `isSprayCastStyle()`'s spray path and `SpellVisualSource::Resolved` are all
+  reachable. Pinned by `tests/test_spell_visual_vocabulary.cpp` (6 tests, 4 red
+  pre-fix). **The pointer had ONE caller after all** — `tools/model_viewer.cpp`
+  (T380's census grepped `src/`, `include/`, `tests/` only); it now plays the
+  game thread's part with `noteSpellVocabulary()`. See B165, B166. **A live
+  two-client pair showing a fire cast and a frost cast side by side is OWED**
+  — the eqemu lock was held by T377 during T381. Original text:
+  `include/client/graphics/spell_visual_fx.h` —
   `SpellVisualFX::setSpellDatabase()` has **ZERO callers tree-wide**
   (`src/`, `include/`, `tests/`), so `m_spell_db` is always `nullptr` in
   production and every consumer takes its null branch: `getSpellColor()` and
@@ -637,7 +662,12 @@ it without taking that measurement first.
   resist types must produce different particle colours. Found by T380.
 
 - **B161** (B) `include/client/graphics/spell_visual_fx.h` — seven public
-  methods with **zero callers tree-wide**: `createProjectile`,
+  methods with **zero callers in `src/`/`include/`** (T381: `tools/` was never
+  grepped for these either — re-run the census including it before deleting
+  anything, see B166; `model_viewer.cpp` calls `createProjectile`,
+  `createImpact`, `createImpactAtPosition`, `createRainEffect`,
+  `createGroundCircle` and `createBuffAura` from its spell-test mode, so this
+  is a "no CLIENT caller" item, not a no-caller item): `createProjectile`,
   `createImpactAtPosition`, `createBuffAura`, `createRainEffect`,
   `createGroundCircle`, `removeBuffAura`, `removeAllForEntity`. Their bodies
   live in `src/client/graphics/spell_visual_fx.cpp`; with them the node
@@ -690,6 +720,36 @@ it without taking that measurement first.
   only field that says a spell should have a travel stage. Adding them bumps
   `kWilleqDbExpectedVersion`, which invalidates EVERY build tree (T304/T355),
   so it must be its own leg. Found by T380.
+
+- **B165** (B) The three T72 stage-suppression gates
+  (`!visual.isFallback() && !visual.hasXStage()` in
+  `SpellVisualFX::createCastGlow` / `createProjectile` / `createImpact` /
+  `createImpactAtPosition`, `src/client/graphics/spell_visual_fx.cpp`) became
+  *reachable* at T381, but measured against the shipped data only ONE of them
+  has a population. Of the 7,105 spells whose `spell_affect_index` resolves to
+  a populated `spells.eff` record, **every** referenced record carries a Source
+  stage and a Target stage — so the cast-glow gate and both impact gates can
+  still never fire — while **6,250** reference a record with no Middle stage,
+  which is the travel gate's population. Two consequences: (a) the only gate
+  with anything to suppress guards `createProjectile()`, which is one of B161's
+  seven zero-caller methods, so it fires only in a test today; (b) all four
+  gates sit INSIDE the `if (m_particle_manager)` branch, and T124 recorded that
+  `m_particle_manager` is null in production because `setParticleManager()`
+  runs before `particleManager_` is constructed — re-measure that before
+  scoping anything on the gates. Counts derived in the T381 Review from
+  `spells.eff` + `data/willeq.db`; reproduce with
+  `scripts/refactor/t380_spell_visual_census.py`. Found by T381.
+
+- **B166** (P) A reachability census that greps only `src/`, `include/` and
+  `tests/` is not "tree-wide". T380 boarded B160 as "`setSpellDatabase()` has
+  ZERO callers tree-wide"; T381 found the call in
+  `tools/model_viewer.cpp:2750`, i.e. the ONE place a developer actually
+  exercises the spell FX layer by hand, which is exactly why the defect
+  survived — the tool looked right and the game did not. `tools/` holds
+  `model_viewer`, `willeq_db_builder`, the zone/atlas builders and the audit
+  binaries, all of which call production APIs. Every future zero-caller claim
+  must state the directories it grepped and include `tools/` (and `docker/`,
+  `benchmarks/` where relevant) or say why not. Found by T381.
 
 - **B142** (C) `/bug <description>` (registered in
   `src/client/action/command_processor_registration.cpp` with the alias
