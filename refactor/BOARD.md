@@ -291,12 +291,25 @@ it without taking that measurement first.
   echoes to chat; the keyword does neither — and `/skills` WITH a slash is
   unknown to every registry. Prov: archived board, T143; measured T347.
 
-- **B014** (B) `src/client/graphics/eq/race_model_loader.cpp`
+- ~~**B014** (B) `src/client/graphics/eq/race_model_loader.cpp`
   `RaceModelLoader::preloadModelData` — calls
   `ConstrainedTextureCache::getOrLoad()` with an empty buffer whenever a JSON
   manifest exists but no EQE1 archive is configured: one guaranteed-to-fail call
-  per composite name. Closes when: the call is gated on EQE1 being configured.
-  Prov: archived board, T92.
+  per composite name.~~ **CLOSED by T357 Leg C**
+  (`refactor/T357_tab_completion_spell_land_eqe1_gate.md`, commit `200180ba`):
+  the call is gated on `constrainedTextureCache_->getConfig().eqe1Path.empty()`
+  — the SAME predicate every other EQE1 site in the tree reads
+  (`renderer_zone_load.cpp`'s "Step 0: EQE1 … (if configured)",
+  `renderer_init.cpp`, `eqe1_archive_component.cpp`), reached through the
+  cache's own config copy, so no new plumbing and no second predicate. It is
+  deliberately NOT gated on the loader set being non-empty: T284/T207 open packs
+  lazily and a composite sheet's pack is meant to still be closed here — the
+  miss is what drives `eqe1ArchiveResolver_` → `openArchiveContaining()`.
+  Pinned by `Eqe1PreloadGate.CompositeSheetLookupIsGatedOnEqe1BeingConfigured`
+  (`tests/test_constrained_texture_cache.cpp`), a source-reader pin next to
+  T92's diagnostic test — reaching the composite branch needs a real S3D model,
+  a real manifest and the shipped EQ tree, so a counted assertion would
+  `GTEST_SKIP` on this host. Prov: archived board, T92.
 
 - **B015** (B) `src/client/audio/midi_player.cpp` `MidiPlayer::loadSoundFont` —
   swaps a raw `tsf*` with no atomic or mutex; safe today only because its single
@@ -1229,13 +1242,31 @@ it without taking that measurement first.
 
 ## Added 2026-09-04 by the T347 measurement (B013)
 
-- **B057** (B) `include/client/action/command_processor.h`
+- ~~**B057** (B) `include/client/action/command_processor.h`
   `CommandProcessor::getCompletions` and `include/client/graphics/ui/command_registry.h`
   `CommandRegistry::getCompletions` — both implemented, both tested, and both
   with ZERO production callers: no input path (chat box, console, script) ever
   asks either registry to complete a partial command, so the "tab completion"
-  both `CLAUDE.md` files advertise does not exist. Closes when: an input path
-  calls one, or both are deleted with their tests. Prov: T347 (B013 measurement).
+  both `CLAUDE.md` files advertise does not exist.~~ **CLOSED by T357 Leg A**
+  (`refactor/T357_tab_completion_spell_land_eqe1_gate.md`, commit `d7f8de70`):
+  BOTH are now called. The chat box is a hand-rolled string in
+  `ChatPanelState`, not an Irrlicht `IGUIEditBox` (there is none in the tree),
+  drained by `FrameComponent::processChatInput()` on the RENDER thread; its new
+  `KEY_TAB` arm calls `FrameComponent::applyCommandCompletion()`
+  (`src/client/graphics/frame/renderer_frame_input.cpp`), which asks the
+  provider `Application::initRendererAndGraphics()` installs. That provider is
+  `Application::commandCompletions()`, which MERGES registry 1
+  (`eqt::ui::CommandRegistry`, the registry the submit path's `ChatSubmitIntent`
+  reaches via `ChatComponent::DispatchSlashCommand`) with registry 2
+  (`action::CommandProcessor`, reached by the unrecognized-command fallback) —
+  the same pair `eqt::help::BuildHelpResponse()` merges, so Tab and `/help` can
+  never list different commands. One match replaces the partial and appends a
+  space; several print on one System-channel chat line; none does nothing. Both
+  `CLAUDE.md` sentences now name the caller. Pinned by
+  `ChatTabCompletionTest.*` (7 cases, `tests/test_frame_component.cpp`) for the
+  behaviour and by `tests/goldens/application_init_order_g04.txt` entry 256 for
+  the reachability. See the new **B066** for the duplication the plan asked to
+  record rather than merge. Prov: T347 (B013 measurement).
 
 - **B058** (C) `/skills` vs `/newskills` — a NAMING choice, not a defect.
   `/newskills` (`renderer_slash_commands.cpp:422`) and the bare `skills` keyword
@@ -1300,7 +1331,7 @@ it without taking that measurement first.
   per race is cheap once the eqemu lock is free — one zone-in each, the floor is
   visible with no buff up) or Will rules on it. Prov: T348 Review.
 
-- **B061** (B) `include/client/spell/spell_manager.h:193`
+- ~~**B061** (B) `include/client/spell/spell_manager.h:193`
   `SpellManager::setOnSpellLand()` — **zero production callers.** The
   `SpellLandCallback` typedef, the setter and the member all exist;
   `m_on_spell_land` is invoked at `spell_manager.cpp:1027` and nothing tree-wide
@@ -1309,8 +1340,21 @@ it without taking that measurement first.
   siting T348's producer; NOT used for it, because the invocation sits OUTSIDE
   the `is_success_packet` gate and so fires on the animation packet
   (`effect_flag == 0`) as well as the landing, which is wrong for any consumer
-  that means "landed". Closes when it is wired to a real consumer (with the gate
-  corrected) or deleted. Prov: T348 Review.
+  that means "landed".~~ **CLOSED by T357 Leg B (DELETED)**
+  (`refactor/T357_tab_completion_spell_land_eqe1_gate.md`, commit `16529e54`):
+  typedef, setter, member and invocation are gone, and so is
+  `SpellManagerCallbacks.OnSpellLandReceivesSpellCasterTarget`, the test that
+  only exercised the setter (the mixed
+  `HandleActionSuccessPacketCompletesOwnCastAndFiresCallback` kept its
+  `setOnCastComplete` half). Not re-wired: landing is OP_Action `effect_flag`
+  4 and T348 already built that producer, so a second, wrong-shaped hook has no
+  consumer to serve. K12 `pushEvent` check: none of the removed lines carried
+  one — the nearest (`spell_manager.cpp:1012`, the
+  `SpellCastVisualComplete` push) is twelve lines above and untouched. The
+  sibling `setOnSpellFade` is deliberately LEFT: its own test documents that it
+  too has no invoker, and that is a separate question. Absence pinned by
+  `SpellLandHookIsGone.NoTypedefSetterMemberOrInvocationRemains`. Prov: T348
+  Review.
 
 - **B062** (B) `include/client/spell/spell_data.h:74` `SpellData::endurance_cost`
   — the sibling shape T353 found one struct over and left alone as out of B007's
@@ -1337,3 +1381,22 @@ it without taking that measurement first.
   of the body. `self_death_outbound_g07.txt` learned `C->S OP_Save` as its
   new first line in place; the body is pinned by a second golden,
   `tests/goldens/op_save_body_g08.txt`.
+
+## Added 2026-09-04 by T357 Leg A (B057)
+
+- **B066** (B) `src/client/action/command_processor.cpp`
+  `CommandProcessor::getCompletions` and
+  `src/client/graphics/ui/command_registry.cpp` `CommandRegistry::getCompletions`
+  — duplicated-then-drifted. Two independent implementations over two different
+  command maps; neither delegates. Both share the same
+  `name.find(lowerPartial) == 0` prefix idiom over primary names then aliases,
+  both use their class's own private `toLower`, and both sort. The drift is ONE
+  line: `CommandProcessor` de-duplicates (`std::unique` after the sort),
+  `CommandRegistry` does not — so a `CommandRegistry` command whose name is also
+  registered as its own alias is returned twice. T357 Leg A did not merge them
+  (the plan said to record, not merge); it hid the drift instead, because
+  `Application::commandCompletions()` sorts and de-duplicates the union.
+  A `CommandRegistry` caller that is not that one still sees the duplicate.
+  Closes when: the prefix-match is one shared helper both call, or
+  `CommandRegistry::getCompletions` de-duplicates like its twin. Prov: T357 Leg
+  A (step 1 measurement).
