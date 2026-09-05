@@ -4,6 +4,8 @@
 #include <iostream>
 #include <limits>
 #include <cmath>
+#include <cctype>
+#include <filesystem>
 #include <functional>
 #include <map>
 #include <set>
@@ -668,24 +670,36 @@ void S3DLoader::flattenSkeleton(const std::shared_ptr<SkeletonBone>& bone,
     }
 }
 
+// T369 (B105). See the declaration in s3d_loader.h for why this operates on
+// the filename component only.
+std::string S3DLoader::deriveChrArchivePath(const std::string& archivePath) {
+    namespace fs = std::filesystem;
+
+    const fs::path input(archivePath);
+    std::string stem = input.stem().string();  // filename minus the extension
+
+    // Strip a TRAILING "_chr" (optionally with a numeric variant: "_chr2").
+    // Anything earlier in the stem, and every directory component, is left
+    // alone -- that is the whole of the fix.
+    size_t end = stem.size();
+    while (end > 0 && std::isdigit(static_cast<unsigned char>(stem[end - 1]))) {
+        --end;
+    }
+    const std::string kChr = "_chr";
+    if (end >= kChr.size() && stem.compare(end - kChr.size(), kChr.size(), kChr) == 0) {
+        stem.erase(end - kChr.size());
+    }
+
+    const fs::path parent = input.parent_path();
+    const std::string chrName = stem + "_chr.s3d";
+    return parent.empty() ? chrName : (parent / chrName).string();
+}
+
 bool S3DLoader::loadCharacters(const std::string& archivePath) {
     // Character loading from _chr.s3d files
     // These contain skeleton tracks (0x10) with bone hierarchies
 
-    // Build path for character file
-    std::string basePath = archivePath;
-    size_t dotPos = basePath.find_last_of('.');
-    if (dotPos != std::string::npos) {
-        basePath = basePath.substr(0, dotPos);
-    }
-
-    // Remove _chr suffix if present (we want the base zone name)
-    size_t chrSuffix = basePath.find("_chr");
-    if (chrSuffix != std::string::npos) {
-        basePath = basePath.substr(0, chrSuffix);
-    }
-
-    std::string chrArchivePath = basePath + "_chr.s3d";
+    std::string chrArchivePath = deriveChrArchivePath(archivePath);
     LOG_DEBUG(MOD_GRAPHICS, "S3DLoader::loadCharacters: archivePath='{}' -> chrArchivePath='{}'", archivePath, chrArchivePath);
 
     // Open the character archive

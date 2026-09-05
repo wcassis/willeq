@@ -154,6 +154,22 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_chr_cache_lru)
 ENDIF()
 
+# T369 (B105): the character archive is derived from the FILENAME, never from
+# the whole path -- a directory component containing `_chr` used to truncate
+# the path and silently zero every character load. Same EDT_NULL +
+# willeq_core gate as test_chr_cache_lru; uses the real client tree, and the
+# shipped data/willeq.db for the WARN case. Skips without either.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_chr_path_derivation
+        test_chr_path_derivation.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_chr_path_derivation PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_chr_path_derivation GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_chr_path_derivation PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    GTEST_DISCOVER_TESTS(test_chr_path_derivation)
+ENDIF()
+
 # T340 Leg A (B052): drives RaceModelLoader's variant/animation loader through
 # every exit G07 enumerated -- primary hit, primary-miss/fallback-hit, an
 # unusable matched character, all candidates exhausted, and an empty candidate

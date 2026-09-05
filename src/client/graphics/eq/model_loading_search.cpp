@@ -247,6 +247,12 @@ bool RaceModelLoader::searchZoneChrFilesForModel(uint16_t raceId, uint8_t gender
             // against maxChrCacheEntries_ (the T91 bypass), and the third insert
             // used to open-code the helper's push/evict inline.
             if (!loader.loadZone(fullPath)) {
+                // T369 (B105) -- see the sibling warning below.
+                LOG_WARN(MOD_GRAPHICS,
+                         "RaceModelLoader: '{}' is a _chr.s3d archive that yielded "
+                         "NO characters (the archive failed to load: {}) -- caching "
+                         "the miss",
+                         fullPath, loader.getError());
                 // Cache an empty entry so we don't try again
                 storeOtherChrCacheLocked(lowerFilename, {}, {});
                 continue;
@@ -254,6 +260,21 @@ bool RaceModelLoader::searchZoneChrFilesForModel(uint16_t raceId, uint8_t gender
 
             auto zone = loader.getZone();
             if (!zone || zone->characters.empty()) {
+                // T369 (B105): an archive that EXISTS on disk and is named
+                // `*_chr.s3d` yet produces no characters is a defect signal,
+                // not a routine miss -- it is exactly what the whole-path
+                // `_chr` derivation produced for every archive in a client
+                // directory whose own name contained `_chr`, and the client
+                // printed nothing at all about it. Both negative-cache
+                // branches warn. Logged once per path: the negative cache
+                // entry below stops the scan ever reaching this line again for
+                // the same file. The caching behaviour is deliberately
+                // unchanged.
+                LOG_WARN(MOD_GRAPHICS,
+                         "RaceModelLoader: '{}' is a _chr.s3d archive that yielded "
+                         "NO characters (it loaded, but holds none) -- caching the "
+                         "miss",
+                         fullPath);
                 // Cache an empty entry so we don't try again
                 storeOtherChrCacheLocked(lowerFilename, {}, {});
                 continue;

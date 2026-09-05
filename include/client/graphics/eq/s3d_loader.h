@@ -294,6 +294,21 @@ public:
     // Load placeable objects from _obj.s3d (public for deferred loading)
     bool loadObjects(const std::string& archivePath);
 
+    // T369 (B105): the character archive that pairs with a zone archive.
+    // The `_chr` marker belongs to the FILENAME's stem, never to the path.
+    // The old derivation searched the WHOLE path for the first "_chr" and
+    // truncated there, so a client directory whose name contained `_chr`
+    // collapsed every archive to one bogus path (measured T366:
+    // /tmp/willeq_chrscan_<pid>/arena_chr.s3d -> /tmp/willeq_chr.s3d) and
+    // every character load silently returned zero. Public and static so the
+    // derivation is testable on its own.
+    //
+    // `<dir>/<stem>.s3d` -> `<dir>/<stem-without-trailing-_chr[N]>_chr.s3d`.
+    // The trailing-digits allowance keeps the `<zone>_chr2.s3d` archives
+    // (acrylia, bothunder, cazicthule, ...) resolving to `<zone>_chr.s3d`
+    // exactly as before.
+    static std::string deriveChrArchivePath(const std::string& archivePath);
+
 private:
     bool loadTextures(PfsArchive& archive);
     bool loadObjectTextures(PfsArchive& archive);

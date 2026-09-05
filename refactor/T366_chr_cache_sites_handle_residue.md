@@ -182,7 +182,7 @@ goldens do not quote any line this branch changed.
 
 - **B095 struck** with `a2b83e28` and the per-path measurement.
 - **B038 struck** with `7ac4efe6` and the final census.
-- **B105 added** (B): `S3DLoader::loadCharacters` matches `_chr` against the
+- **B105 added** (B) — **closed by T369**: `S3DLoader::loadCharacters` matches `_chr` against the
   whole path.
 - `refactor/K_component_extraction.md` §CLOSE-OUT gains "The handle reached
   ZERO", with the four-cluster table and the census.
