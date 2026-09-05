@@ -30,6 +30,7 @@
 #include <vector>
 #include <cstring>
 #include <functional>
+#include <string>
 
 #ifdef EQT_HAS_GRAPHICS
 #include "client/graphics/constrained_texture_cache.h"
@@ -351,6 +352,69 @@ TEST_F(ConstrainedTextureCacheTest, EmptyInputReportedDistinctlyFromDecodeFailur
     EXPECT_EQ(garbageOutput.find("empty input"), std::string::npos)
         << "a genuine decode failure must NOT be reported as empty input; full capture:\n"
         << garbageOutput;
+}
+
+// ---------------------------------------------------------------------------
+// T357 (B014): the caller the test above DIAGNOSED is now GATED.
+//
+// T92 pinned that an empty buffer is reported distinctly from a decode
+// failure. It did not stop the call being made: RaceModelLoader::
+// preloadModelData() fired getOrLoad() with a deliberately empty buffer --
+// EQE1 is the only thing that can supply the bytes -- once per composite name
+// on every run with a JSON manifest and no EQE1 tree, and each one was a
+// guaranteed failure plus a warn.
+//
+// This is a source-reader pin rather than a call count because reaching the
+// composite branch of preloadModelData() needs a real S3D model, a real
+// composite manifest and an EDT_NULL device (tests/test_palette_mask_
+// plumbing.cpp does exactly that and GTEST_SKIPs without the shipped EQ
+// tree), so a counted assertion would not run on this host. What is
+// deterministic, and what actually regressed, is whether the call sits
+// inside the gate.
+//
+// Red before the fix: the guard read `if (constrainedTextureCache_) {` and
+// nothing else.
+TEST(Eqe1PreloadGate, CompositeSheetLookupIsGatedOnEqe1BeingConfigured) {
+    const std::string path =
+        std::string(WILLEQ_REPO_ROOT) + "/src/client/graphics/eq/race_model_loader.cpp";
+    std::ifstream in(path);
+    ASSERT_TRUE(in.is_open()) << "cannot open: " << path;
+    std::vector<std::string> lines;
+    for (std::string line; std::getline(in, line);) lines.push_back(line);
+
+    // Locate the one composite-sheet lookup.
+    size_t call = lines.size();
+    for (size_t i = 0; i < lines.size(); ++i) {
+        if (lines[i].find("getOrLoad(compositeBaseName") != std::string::npos) {
+            EXPECT_EQ(call, lines.size()) << "more than one composite-sheet lookup; "
+                                             "this pin only guards the first";
+            call = i;
+        }
+    }
+    ASSERT_LT(call, lines.size())
+        << "the composite-sheet getOrLoad() call was not found -- if it was renamed or "
+           "removed, update this pin rather than deleting it";
+
+    // Walk back to its enclosing `if (constrainedTextureCache_` and require
+    // that the SAME condition also tests the EQE1 configuration. eqe1Path is
+    // the predicate every other EQE1 gate in the tree reads
+    // (renderer_zone_load.cpp, renderer_init.cpp, eqe1_archive_component.cpp);
+    // a second, invented predicate here would be the defect B014 warned about.
+    bool gated = false;
+    for (size_t i = call; i-- > 0;) {
+        if (lines[i].find("if (constrainedTextureCache_") == std::string::npos) continue;
+        std::string condition;
+        for (size_t j = i; j <= call; ++j) {
+            condition += lines[j];
+            if (lines[j].find(") {") != std::string::npos) break;
+        }
+        gated = condition.find("eqe1Path.empty()") != std::string::npos;
+        break;
+    }
+    EXPECT_TRUE(gated)
+        << "RaceModelLoader::preloadModelData() calls getOrLoad() with an EMPTY buffer "
+           "outside any EQE1 check -- with no EQE1 tree configured that is one "
+           "guaranteed-to-fail call and one warn per composite name (B014).";
 }
 
 #else  // !EQT_HAS_GRAPHICS

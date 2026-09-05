@@ -991,7 +991,25 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int text
 
                 // Trigger EQE1 lookup so the composite texture gets queued for GPU upload.
                 // getOrLoad() will find it via findCompressedEntry() in the composite EQE1 loader.
-                if (constrainedTextureCache_) {
+                // T357 (B014): the EQE1 path is the ONLY thing that can supply
+                // bytes for this name -- the buffer below is deliberately
+                // empty -- so with no EQE1 tree configured the call is
+                // guaranteed to fail, once per composite name, and lands in
+                // ConstrainedTextureCache's "empty input data" warn (the T92
+                // diagnostic that named this exact caller). Gate it on the
+                // same predicate every other EQE1 site in the tree uses:
+                // renderer_zone_load.cpp's "Step 0: EQE1 ... (if configured)",
+                // renderer_init.cpp and eqe1_archive_component.cpp all read
+                // constrainedConfig.eqe1Path. This is the cache's own copy of
+                // that config, so no new plumbing and no second predicate.
+                //
+                // NOT gated on the loader set being non-empty: T284/T207 open
+                // packs lazily, and a composite sheet's pack is deliberately
+                // still closed here -- the miss is what drives
+                // eqe1ArchiveResolver_ -> openArchiveContaining(). "Configured"
+                // is the question; "already open" is not.
+                if (constrainedTextureCache_ &&
+                    !constrainedTextureCache_->getConfig().eqe1Path.empty()) {
                     std::vector<char> emptyData;  // No raw data — EQE1 lookup provides the data
                     // P13: tagged "composite_sheet" — see the T05 loop just below, which
                     // (confirmed during the P13 audit) unconditionally ALSO queues every
