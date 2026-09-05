@@ -67,7 +67,7 @@ void eqt::group::GroupComponent::SendGroupInvite(const std::string& target_name)
 	p.PutUInt16(0, HC_OP_GroupInvite);
 	p.PutData(2, &packet, sizeof(packet));
 
-	ctx_.zone_connection->QueuePacket(p, 0, true);
+	ctx_.net.SafeQueueZone(p, 0, true);
 	LOG_INFO(MOD_MAIN, "Sent group invite to {}", target_name);
 }
 
@@ -97,9 +97,7 @@ void eqt::group::GroupComponent::SendGroupFollow(const std::string& inviter_name
 	p.PutUInt16(0, HC_OP_GroupFollow);
 	p.PutData(2, &packet, sizeof(packet));
 
-	if (ctx_.zone_connection) {
-		ctx_.zone_connection->QueuePacket(p, 0, true);
-	}
+	ctx_.net.SafeQueueZone(p, 0, true);
 
 	ctx_.game_state.group().clearPendingInvite();  // T286: only store
 
@@ -126,9 +124,7 @@ void eqt::group::GroupComponent::SendGroupDecline(const std::string& inviter_nam
 	p.PutUInt16(0, HC_OP_GroupCancelInvite);
 	p.PutData(2, &packet, sizeof(packet));
 
-	if (ctx_.zone_connection) {
-		ctx_.zone_connection->QueuePacket(p, 0, true);
-	}
+	ctx_.net.SafeQueueZone(p, 0, true);
 
 	ctx_.game_state.group().clearPendingInvite();  // T286: only store
 
@@ -151,7 +147,7 @@ void eqt::group::GroupComponent::SendGroupDisband()
 	p.PutUInt16(0, HC_OP_GroupDisband);
 	p.PutData(2, &packet, sizeof(packet));
 
-	ctx_.zone_connection->QueuePacket(p, 0, true);
+	ctx_.net.SafeQueueZone(p, 0, true);
 	LOG_INFO(MOD_MAIN, "Sent group disband");
 }
 
@@ -245,7 +241,7 @@ void eqt::group::GroupComponent::SendPetCommand(EQT::PetCommand command, uint16_
 	p.PutUInt16(0, HC_OP_PetCommands);
 	p.PutData(2, &packet, sizeof(packet));
 
-	ctx_.zone_connection->QueuePacket(p, 0, true);
+	ctx_.net.SafeQueueZone(p, 0, true);
 	LOG_DEBUG(MOD_MAIN, "Sent pet command: {} (target={})", EQT::GetPetCommandName(command), target_id);
 
 	// Optimistically update button states based on command sent.
@@ -953,7 +949,7 @@ void eqt::group::GroupComponent::SendRaidCommand(uint32_t action, const std::str
 	EQ::Net::DynamicPacket p;
 	p.PutUInt16(0, HC_OP_RaidInvite);
 	p.PutData(2, const_cast<uint8_t*>(body.data()), body.size());
-	ctx_.zone_connection->QueuePacket(p, 0, true);
+	ctx_.net.SafeQueueZone(p, 0, true);
 
 	LOG_INFO(MOD_ZONE, "Sent OP_RaidCommand action={} player='{}' leader='{}'",
 	         action, player_name, leader_name);

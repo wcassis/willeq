@@ -108,25 +108,32 @@ size_t CountOpcode(const std::vector<RecordedPacket>& v, uint16_t opcode) {
 class SenderHarness {
 public:
     explicit SenderHarness(bool withConnection) : eq(MakeEq()) {
+        // The connection MANAGER is installed either way. Several senders
+        // (the whole group family) gate on `ctx_.zone_connection_manager`
+        // rather than on `ctx_.zone_connection`, so a harness without one
+        // never reaches the send and the (a) cases below would be green
+        // pre-fix for the wrong reason. A live manager with a dropped
+        // connection is also the real shape of the bug.
+        EQ::Net::DaybreakConnectionManagerOptions opts;
+        opts.crc_length = 2;
+        opts.encode_passes[0] = EQ::Net::EncodeNone;
+        opts.encode_passes[1] = EQ::Net::EncodeNone;
+        opts.connect_delay_ms = 0;
+        opts.keepalive_delay_ms = 0;
+        auto mgr = std::make_unique<EQ::Net::DaybreakConnectionManager>(
+            opts, std::make_unique<EQ::Test::FakeUdpTransport>(&c2s, &s2c));
+        mgr->OnNewConnection(
+            [this](std::shared_ptr<EQ::Net::DaybreakConnection> c) { conn = c; });
+        mgr->Connect("peer", 12345);
+        EXPECT_NE(conn, nullptr);
+        // SafeQueueZone refuses a connection whose stats are all zero
+        // ("appears invalid"); a FakeUdpTransport connection that has never
+        // round-tripped looks exactly like that (T360's note, re-found by
+        // T376).
+        conn->m_stats.sent_packets = 1;
+        eq.m_zone_connection_manager = std::move(mgr);  // private: T17 idiom
         if (withConnection) {
-            EQ::Net::DaybreakConnectionManagerOptions opts;
-            opts.crc_length = 2;
-            opts.encode_passes[0] = EQ::Net::EncodeNone;
-            opts.encode_passes[1] = EQ::Net::EncodeNone;
-            opts.connect_delay_ms = 0;
-            opts.keepalive_delay_ms = 0;
-            manager = std::make_unique<EQ::Net::DaybreakConnectionManager>(
-                opts, std::make_unique<EQ::Test::FakeUdpTransport>(&c2s, &s2c));
-            manager->OnNewConnection(
-                [this](std::shared_ptr<EQ::Net::DaybreakConnection> c) { conn = c; });
-            manager->Connect("peer", 12345);
-            EXPECT_NE(conn, nullptr);
-            eq.m_zone_connection = conn;  // private: T17 idiom
-            // SafeQueueZone refuses a connection whose stats are all zero
-            // ("appears invalid"); a FakeUdpTransport connection that has
-            // never round-tripped looks exactly like that (T360's note,
-            // re-found by T376).
-            conn->m_stats.sent_packets = 1;
+            eq.m_zone_connection = conn;
         }
 
         eq.setBridge(&bridge);
@@ -140,6 +147,16 @@ public:
         eq.setBridge(nullptr);
     }
 
+    // SendGroupDisband refuses when not grouped and SendPetCommand refuses
+    // without a pet; both must reach their send for the (a) case to mean
+    // anything.
+    void InGroup() {
+        eq.GetGameState().group().setInGroup(true);
+    }
+    void WithPet() {
+        eq.GetGameState().pet().setPet(42, "Gob", 1);
+    }
+
     void StartRecording(const fs::path& path) {
         eq.m_session_recorder = std::make_unique<EQT::Net::SessionRecorder>();
         ASSERT_TRUE(eq.m_session_recorder->open(path.string(), "Testchar", "qeynos"))
@@ -151,7 +168,6 @@ public:
     }
 
     EQ::Test::FakeChannel c2s, s2c;
-    std::unique_ptr<EQ::Net::DaybreakConnectionManager> manager;
     std::shared_ptr<EQ::Net::DaybreakConnection> conn;
     TestBridge bridge;
     EverQuest eq;
@@ -205,6 +221,46 @@ TEST(DirectSendersPacketSender, RecordedSession_Chat) {
                    "is invisible to it (BOARD B145)";
             EXPECT_EQ(CountOpcode(recorded, HC_OP_Emote), 1u)
                 << "ZoneSendEmote, same bypass, same fix";
+        });
+}
+
+// =====================================================================
+// group -- GroupComponent::SendGroupInvite / SendGroupFollow /
+// SendGroupDecline / SendGroupDisband / SendPetCommand / SendRaidCommand
+// Invite, Disband and PetCommand are the B140 crash shape: their guards test
+// ctx_.zone_connection_manager and IsFullyZonedIn() and never the connection
+// itself. Follow and Decline each wrapped the send in a bare
+// `if (ctx_.zone_connection)` that guarded nothing else, so the wrapper goes
+// with the routing; SendRaidCommand keeps its early return, which also tests
+// isZoneConnected() and logs.
+// =====================================================================
+
+TEST(DirectSendersPacketSender, NoZoneConnection_Group) {
+    SenderHarness h(/*withConnection=*/false);
+    ASSERT_EQ(h.eq.m_zone_connection, nullptr);
+    ASSERT_NE(h.eq.m_zone_connection_manager, nullptr);
+    h.InGroup();
+    h.WithPet();
+
+    h.eq.Group().SendGroupInvite("Someone");
+    h.eq.Group().SendGroupFollow("Someone");
+    h.eq.Group().SendGroupDecline("Someone");
+    h.eq.Group().SendGroupDisband();
+    h.eq.Group().SendPetCommand(EQT::PET_ATTACK, 0);
+    h.eq.Group().SendRaidCommand(0, "Someone", "Someone", 0);
+
+    SUCCEED() << "the group senders survived a null zone connection";
+}
+
+TEST(DirectSendersPacketSender, RecordedSession_Group) {
+    WithRecordedSession(
+        "t378_group_recorded.sleq",
+        [](SenderHarness& h) { h.eq.Group().SendGroupInvite("Someone"); },
+        [](const std::vector<RecordedPacket>& recorded) {
+            EXPECT_EQ(CountOpcode(recorded, HC_OP_GroupInvite), 1u)
+                << "SendGroupInvite must reach the session recorder; a sender "
+                   "that calls zone_connection->QueuePacket() directly is "
+                   "invisible to it (BOARD B145)";
         });
 }
 
