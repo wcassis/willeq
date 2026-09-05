@@ -449,10 +449,19 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         LOG_TRACE(MOD_GRAPHICS, "Bridge: EquipmentStatsChanged (deferred — monolithic renderer API)");
         break;
     case state::GameEventType::CurrencyChanged:
-        // Currency display is context-dependent (vendor window, inventory window).
-        // The monolithic updateCharacterStats() includes currency. Deferred with
-        // EquipmentStatsChanged above.
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: CurrencyChanged (deferred — monolithic renderer API)");
+        // T393 (board B201): this was the LOG_TRACE above -- "deferred,
+        // monolithic renderer API" -- which is why the player's purse was
+        // never drawn anywhere and T386 could not watch it move after a
+        // corpse loot. The four counts now land on the inventory popup's
+        // panel state through the same free-function applier the loot arms
+        // use, so no monolithic stats call is needed to display them.
+        if (renderer_) {
+            auto& d = std::get<state::CurrencyChangedData>(event.data);
+            LOG_DEBUG(MOD_GRAPHICS, "Bridge: CurrencyChanged {}p {}g {}s {}c",
+                d.platinum, d.gold, d.silver, d.copper);
+            EQT::Graphics::applyCurrencyChanged(
+                renderer_->Frame().inventoryState_, d);
+        }
         break;
     case state::GameEventType::BankCurrencyChanged:
         LOG_TRACE(MOD_GRAPHICS, "Bridge: BankCurrencyChanged");

@@ -28,6 +28,9 @@ struct LootWindowOpenedData;
 struct LootWindowClosedData;
 struct LootItemAddedData;
 struct LootItemRemovedData;
+// T393 (board B201): the purse. The CurrencyChanged arm was a LOG_TRACE that
+// discarded its payload, so no coin count ever reached a panel.
+struct CurrencyChangedData;
 } }
 
 namespace EQT {
@@ -128,11 +131,39 @@ struct InventoryPanelState {
     // doll hasn't been constructed yet (e.g. RTT unavailable) or has no
     // texture this frame; renderInventoryPopup() must handle null.
     irr::video::ITexture* paperdollTexture = nullptr;
+
+    // T393 (board B201): the player's purse, in the oracle's own
+    // denomination order (IW_Money0..3 = platinum/gold/silver/copper).
+    // Fed by applyCurrencyChanged() below from the CurrencyChanged bridge
+    // event; drawn by renderInventoryPopup() into
+    // InventoryLayout::coinRect(). Absolute counts, not deltas -- every
+    // one of the five publishers sends the player's whole purse.
+    int32_t coins[4] = {0, 0, 0, 0};
 };
 
 /** Render inventory popup (equipment + general slots). Only when activePopup == Inventory. */
 void renderInventoryPopup(UIRenderer& ui, const UILayout& layout,
                           const InventoryPanelState& inv);
+
+/**
+ * T393 (board B201): the CurrencyChanged bridge arm, as a free function.
+ *
+ * Same idiom as applyLootWindowOpened() and applyHotbarSlotAssigned() -- the
+ * arm in IrrlichtBridge was a LOG_TRACE that discarded its payload, and a
+ * free function lets a test drive the real publisher's data struct through
+ * the real applier with no Irrlicht device.
+ */
+void applyCurrencyChanged(InventoryPanelState& state,
+                          const eqt::state::CurrencyChangedData& data);
+
+/**
+ * The text the popup prints in coin row `denom` (0=platinum .. 3=copper):
+ * the count, decimal, no separators -- the oracle's IW_Money buttons carry a
+ * bare number as their <Text> (the shipped placeholder is "9999"). Exposed so
+ * the static-panel tests can assert the drawn string without a device;
+ * renderInventoryPopup() formats coin text nowhere else.
+ */
+std::string coinRowText(const InventoryPanelState& state, int denom);
 
 // Cached hotbar slot state
 struct HotbarSlotState {

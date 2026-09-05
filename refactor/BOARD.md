@@ -2873,7 +2873,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   (no server this unit; the archives on disk were the oracle) -- one T328
   tone-probe row for id 138 on the next lock unit, see B036/B172.
 
-- **B201** (A) `src/client/bridge/irrlicht_bridge.cpp`
+- ~~**B201** (A) `src/client/bridge/irrlicht_bridge.cpp`
   `GameEventType::CurrencyChanged` arm / `renderer_entities.cpp`
   `updateCharacterStats` — **the player's purse is never drawn anywhere, so
   "watch the purse move" is not a thing a fable player can do.** The bridge arm
@@ -2887,7 +2887,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   while `character_currency` moved by exactly the amount the chat line named.
   So B172's own close-out wording is unmeasurable as written, and every future
   coin row has no on-screen consumer. Closes when the coin counts reach a panel
-  and a test pins the projection. Prov: T386 Review §1c; B172.
+  and a test pins the projection. Prov: T386 Review §1c; B172.~~ **STRUCK T393 (`f13b9979`)**: the purse is drawn. `InventoryLayout::coinRect()`/`coinDecalRect()` put four coin rows in the inventory popup at the OFFICIAL client's own placement -- `/mnt/projects/EverQuestP1999/uifiles/default/EQUI_Inventory.xml`, `IW_Money0..3` at Location X=303, Y=121/147/171/197, Size 70x24, decals A_PlatinumCoin/A_GoldCoin/A_SilverCoin/A_CopperCoin at DecalOffset 1,3 DecalSize 18x18, inside a 428x460 `InventoryWindow` -- mapped proportionally onto the fixed 400x350 `centerPopup` (283,92 / 283,111 / 283,130 / 283,149, 65x18, identical at all five resolutions T351 measured). The `CurrencyChanged` bridge arm is no longer a payload-discarding `LOG_TRACE`: it calls the free function `applyCurrencyChanged()` (the `applyLootWindowOpened()` idiom) onto `InventoryPanelState::coins`, so ALL FIVE publishers -- `OP_MoneyUpdate` (`core/everquest.cpp`), the corpse-coin grant (`commands/combat_actions.cpp`), the merchant (`merchant/merchant_trade.cpp`) and the two stat pushes in `bridge/` -- reach the panel. `updateCharacterStats`'s four `(void)` discards are gone too, though that function still has ZERO callers tree-wide (grepped `src/ include/ tests/ tools/ benchmarks/ docker/`) -- the reaching path is the bridge arm. 12 tests in `tests/test_static_ui_panels.cpp` (`PurseT393*`), **7 of them fail pre-fix**, including a device-backed render pin (`TheInventoryPopupEmitsTwoTextEntriesPerCoinRow`: 24 text entries before, 32 after). **The live screenshot pair (fable vs oracle inventory with coins) is still OWED** -- T393 held no eqemu lock. Two consequences boarded: **B218** (fable's UI atlas has no coin sprite, so the decal box gets a letter) and **B219** (fable's paperdoll rect spans the whole inter-column gap, so the oracle-scaled coin column overlays its right margin). Prov: T393 Review; B172.
 
 - **B202** (A) `src/client/graphics/sim/` `SimBridgeComponent::applySimulationOutput`
   — **SIGSEGV on the render thread whenever a second player is in the zone.**
@@ -3069,6 +3069,31 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   auditing which tables T392's CRLF fix changed. Closes when the loader and the
   table are deleted (and the builder's `--data-path` docs say so), or a consumer
   is named. Prov: T392 Review.
+
+- **B218** (B) `src/client/graphics/ui/static_panels.cpp` `renderInventoryPopup`
+  / `assets/ui_atlas` — **there is no coin sprite in fable's UI atlas.** The
+  oracle's four `IW_Money` buttons each blit a decal
+  (`A_PlatinumCoin` / `A_GoldCoin` / `A_SilverCoin` / `A_CopperCoin`) into an
+  18x18 box at DecalOffset 1,3, and T393 reproduced that BOX
+  (`InventoryLayout::coinDecalRect()`) but had nothing to put in it, so it draws
+  the denomination letter `p`/`g`/`s`/`c` in the coin's colour instead. The
+  `UISprite` enum has no coin entry and the atlas generator emits none. Closes
+  when the four coin sprites are in the atlas, `coinDecalRect()` gets a
+  `drawSprite`, and `tests/test_ui_atlas_pixels.cpp` pins them. Prov: T393 Review.
+
+- **B219** (C) `include/client/graphics/ui/inventory_layout.h` `paperdollRect`
+  — **fable's paperdoll rect is proportionally far wider than the oracle's
+  character view, so the oracle-placed purse sits ON it.** The oracle's
+  `IW_CharacterView` is 85x168 at (166,57) inside a 428x460 window — 20% of the
+  width — and its coin column at X=303 clears it entirely. fable's
+  `paperdollRect()` fills the whole gap between the two equipment columns (x
+  48..352 of a 400-wide popup, 76%), so the oracle-scaled coin rows (x 283..348)
+  land over its right-hand margin. T393 drew them AFTER the paperdoll blit so
+  they are on top (UIRenderer submission order is draw order, T294) and the
+  character model is centred in the rect, but nobody has looked at the two
+  together on screen. Needs Will's eye on the owed live pair before anything
+  moves: either the doll narrows to the oracle's proportion or the purse does
+  not follow the oracle here. Prov: T393 Review.
 
 ### Struck / amended by T386
 
