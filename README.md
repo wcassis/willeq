@@ -703,7 +703,7 @@ Commands are dispatched through three registries in order: the game registry (au
 /grass, /detail, /detailinfo, /togglegrass, /toggleplants, /togglerocks, /toggledebris
 /reloadfx, /reloadspellfx, /reloadweather, /weatherpreset (/wq)
 /shaderdebug (/sd), /simworker (/sw), /placeholder, /upload
-/newui, /newinv, /newbook, /newskills   Static-panel UI toggles
+/newui, /newinv, /newbook, /skills     Static-panel UI toggles
 ```
 
 ## Architecture

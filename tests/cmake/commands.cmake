@@ -136,6 +136,10 @@ GTEST_DISCOVER_TESTS(test_merged_help)
 ADD_EXECUTABLE(test_headless_command_refusal
     test_headless_command_refusal.cpp
 )
+# T363: the same test file also reads console_input_handler.cpp as text, to
+# pin that the dead `skills` -> InputAction::ToggleSkills interception is gone.
+TARGET_COMPILE_DEFINITIONS(test_headless_command_refusal PRIVATE
+    CONSOLE_INPUT_SOURCE="${CMAKE_SOURCE_DIR}/src/client/input/console_input_handler.cpp")
 TARGET_LINK_LIBRARIES(test_headless_command_refusal GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_headless_command_refusal PRIVATE ${IRRLICHT_INCLUDE_DIR})

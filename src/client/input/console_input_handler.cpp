@@ -429,10 +429,14 @@ void ConsoleInputHandler::processCommand(const std::string& cmd) {
         m_pendingActions[static_cast<size_t>(InputAction::ToggleInventory)] = true;
         return;
     }
-    if (command == "skills") {
-        m_pendingActions[static_cast<size_t>(InputAction::ToggleSkills)] = true;
-        return;
-    }
+    // T363 (B058): the `skills` keyword used to be intercepted here into
+    // the ToggleSkills one-shot -- an action NOTHING consumes
+    // (InputActionBridge::processDiscreteActions has no arm for it), so the
+    // word did nothing at all. Deleted: it now falls through to
+    // m_rawCommands, which Application's unified dispatcher hands verbatim to
+    // DispatchSlashCommand, reaching registry 3's `/skills` -- the one body
+    // in FrameComponent::toggleSkillsWindow(). ToggleInventory and ToggleGroup
+    // just below/above are dead in exactly the same way; boarded as B090.
     if (command == "group") {
         m_pendingActions[static_cast<size_t>(InputAction::ToggleGroup)] = true;
         return;

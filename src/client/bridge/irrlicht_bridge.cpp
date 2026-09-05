@@ -472,7 +472,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 d.corpseId, d.corpseName);
             EQT::Graphics::applyLootWindowOpened(renderer_->Frame().lootState_, d);
             // One center popup at a time — the same mutual exclusion
-            // /newbook and /newskills already apply.
+            // /newbook and /skills already apply.
             renderer_->Frame().inventoryState_.activePopup =
                 EQT::Graphics::PopupType::None;
             renderer_->Frame().spellbookState_.isOpen = false;

@@ -419,13 +419,14 @@ void SlashCommandsComponent::processSlashCommand(const std::string& command) {
         if (ctx_.Frame().spellbookState_.currentPage > 0) ctx_.Frame().spellbookState_.currentPage--;
     } else if (cmd == "/newbooknext") {
         if (ctx_.Frame().spellbookState_.currentPage < ctx_.Frame().spellbookState_.pageCount() - 1) ctx_.Frame().spellbookState_.currentPage++;
-    } else if (cmd == "/newskills") {
-        ctx_.Frame().skillsPopupState_.isOpen = !ctx_.Frame().skillsPopupState_.isOpen;
-        if (ctx_.Frame().skillsPopupState_.isOpen) {
-            ctx_.Frame().inventoryState_.activePopup = PopupType::None;
-            ctx_.Frame().spellbookState_.isOpen = false;
-        }
-        chat(fmt::format("New UI skills: {}", ctx_.Frame().skillsPopupState_.isOpen ? "OPEN" : "CLOSED"));
+    } else if (cmd == "/skills") {
+        // T363 (B058, Will's ruling 2026-09-05): renamed from /newskills, no
+        // alias -- the real client's name for the window now works. The body
+        // moved to FrameComponent::toggleSkillsWindow() so the K keybind
+        // reaches THIS behaviour (popup mutual exclusion included) and the two
+        // cannot drift again; same shape as T294's /newinv.
+        chat(fmt::format("New UI skills: {}",
+            ctx_.Frame().toggleSkillsWindow() ? "OPEN" : "CLOSED"));
     } else if (cmd == "/newinv") {
         // T294: ONE body, shared with the `I` keybind — the toggle used to
         // be written out here and IrrlichtRenderer::toggleInventory() (what

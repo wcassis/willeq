@@ -282,14 +282,43 @@ TEST_F(MergedHelpTest, CoverageWithNullRegistriesIsZero) {
 // T223: registry 3 (renderer if/else chain) via its static catalog
 // ===================================================================
 
-// The T143 defect: /newskills -- the only working skills-window toggle --
-// was in NO registry, so "/help newskills" said "Unknown command".
-TEST_F(MergedHelpTest, T223_NewSkillsIsFoundByHelp) {
-    HelpResponse r = BuildHelpResponse("help newskills", &game, processor.get());
+// The T143 defect: the skills-window toggle -- then spelled /newskills, and
+// the only working one -- was in NO registry, so "/help newskills" said
+// "Unknown command". T363 (B058) renamed it to /skills with NO alias, so the
+// old spelling must now genuinely be unknown.
+TEST_F(MergedHelpTest, T363_SkillsIsListedByHelpUnderGraphics) {
+    HelpResponse r = BuildHelpResponse("help graphics", &game, processor.get());
     ASSERT_TRUE(r.handled);
     EXPECT_FALSE(ContainsSubstring(r.lines, "Unknown command"));
-    EXPECT_TRUE(ContainsSubstring(r.lines, "=== newskills ==="));
-    EXPECT_TRUE(ContainsSubstring(r.lines, "Registry: renderer (graphics)"));
+    EXPECT_TRUE(ContainsSubstring(r.lines, "/skills"))
+        << "the renamed command is not in the Graphics category listing";
+    EXPECT_FALSE(ContainsSubstring(r.lines, "/newskills"));
+}
+
+// T363, MEASURED, not assumed: the new name COLLIDES with registry 2's
+// "Skills" CATEGORY (bandage/train/trainclose/track), and BuildHelpResponse
+// resolves a bare argument as a category BEFORE a command name. So
+// `/help skills` prints the Skills category, and the command's own detail
+// block ("=== skills ===", "Registry: renderer (graphics)") is unreachable by
+// that name -- which `/help newskills` used to reach. The command itself is
+// unaffected; only its help topic is shadowed. Boarded as B090 rather than
+// changed here: flipping the resolution order would shadow every category
+// that shares a name with a command, a strictly wider behaviour change than
+// this unit is scoped for.
+TEST_F(MergedHelpTest, T363_HelpSkillsResolvesToTheSkillsCategoryNotTheCommand) {
+    HelpResponse r = BuildHelpResponse("help skills", &game, processor.get());
+    ASSERT_TRUE(r.handled);
+    EXPECT_FALSE(ContainsSubstring(r.lines, "Unknown command"));
+    EXPECT_TRUE(ContainsSubstring(r.lines, "=== Skills ==="));
+    EXPECT_TRUE(ContainsSubstring(r.lines, "/bandage"));
+    EXPECT_FALSE(ContainsSubstring(r.lines, "Registry: renderer (graphics)"));
+}
+
+TEST_F(MergedHelpTest, T363_NewSkillsIsUnknownToHelp) {
+    HelpResponse r = BuildHelpResponse("help newskills", &game, processor.get());
+    ASSERT_TRUE(r.handled);
+    EXPECT_TRUE(ContainsSubstring(r.lines, "Unknown command"))
+        << "the old spelling is still in a registry -- the alias was not removed";
 }
 
 TEST_F(MergedHelpTest, T223_RendererAliasIsFoundByHelp) {
@@ -303,7 +332,9 @@ TEST_F(MergedHelpTest, T223_OverviewListsGraphicsCategoryWithTag) {
     HelpResponse r = BuildHelpResponse("help", &game, processor.get());
     ASSERT_TRUE(r.handled);
     EXPECT_TRUE(ContainsSubstring(r.lines, "Graphics (graphics):"));
-    EXPECT_TRUE(ContainsSubstring(r.lines, "newskills"));
+    EXPECT_TRUE(ContainsSubstring(r.lines, "skills"));
+    EXPECT_FALSE(ContainsSubstring(r.lines, "newskills"))
+        << "the overview still lists the old spelling";
 }
 
 TEST_F(MergedHelpTest, T223_GraphicsCategoryDetailTagsEveryLine) {
@@ -318,9 +349,11 @@ TEST_F(MergedHelpTest, T223_GraphicsCategoryDetailTagsEveryLine) {
 }
 
 TEST(RendererCommandCatalogTest, LookupIsCaseInsensitiveAndSlashTolerant) {
-    ASSERT_NE(FindRendererCommand("newskills"), nullptr);
-    ASSERT_NE(FindRendererCommand("/NewSkills"), nullptr);
-    EXPECT_EQ(FindRendererCommand("/NewSkills")->name, "newskills");
+    ASSERT_NE(FindRendererCommand("skills"), nullptr);
+    ASSERT_NE(FindRendererCommand("/Skills"), nullptr);
+    EXPECT_EQ(FindRendererCommand("/Skills")->name, "skills");
+    // T363: no alias was kept for the old spelling.
+    EXPECT_EQ(FindRendererCommand("newskills"), nullptr);
     EXPECT_EQ(FindRendererCommand("WQ")->name, "weatherquality");
     EXPECT_EQ(FindRendererCommand("nosuchcommand"), nullptr);
     EXPECT_EQ(FindRendererCommand(""), nullptr);

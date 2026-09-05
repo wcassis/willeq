@@ -166,6 +166,21 @@ void FrameComponent::processCommonInput(const std::vector<RendererEvent>& action
     }
 }
 
+// T363 (B058): THE skills-window toggle. See the doc comment in
+// frame_component.h. The mutual exclusion (one centre popup at a time) is the
+// same rule /newbook and the LootWindowOpened bridge arm apply, and it is
+// guarded on the OPEN branch only -- closing the skills window must not close
+// anything else.
+bool FrameComponent::toggleSkillsWindow() {
+    skillsPopupState_.isOpen = !skillsPopupState_.isOpen;
+    if (skillsPopupState_.isOpen) {
+        inventoryState_.activePopup = PopupType::None;
+        spellbookState_.isOpen = false;
+    }
+    LOG_INFO(MOD_GRAPHICS, "Skills window {}", skillsPopupState_.isOpen ? "opened" : "closed");
+    return skillsPopupState_.isOpen;
+}
+
 void FrameComponent::processPlayerInput(const std::vector<RendererEvent>& actions) {
     using RA = RendererAction;
     for (const auto& event : actions) {
@@ -219,10 +234,8 @@ void FrameComponent::processPlayerInput(const std::vector<RendererEvent>& action
             case RA::ToggleInventory: owner_.toggleInventory(); break;
             case RA::ToggleGroup:
                 break;  // Group panel visibility is driven by inGroup state
-            case RA::ToggleSkills:
-                skillsPopupState_.isOpen = !skillsPopupState_.isOpen;
-                LOG_INFO(MOD_GRAPHICS, "Skills window {}", skillsPopupState_.isOpen ? "opened" : "closed");
-                break;
+            // T363 (B058): one body, shared with /skills.
+            case RA::ToggleSkills: toggleSkillsWindow(); break;
             case RA::TogglePet:
                 break;  // Pet panel visibility is driven by hasPet state
             case RA::ToggleSpellbook:

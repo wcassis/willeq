@@ -124,7 +124,7 @@ migration); `Application::DispatchSlashCommand` tries them in order:
    `/dumpscene`, `/hideui` (aliases `/toggleui`, `/ui` — the scriptable half
    of F11, T301), `/scroll [chat|skills|loot] [up|down|top|bottom] [lines]`
    (the scriptable half of the wheel and PageUp/PageDown, T313 — a `--script`
-   run cannot generate either), `/newskills`, `/newinv`, `/newbook`,
+   run cannot generate either), `/skills`, `/newinv`, `/newbook`,
    `/weatherpreset`, …)
    — see `src/client/graphics/CLAUDE.md`. Not queryable by `/help` (T143).
 
@@ -187,8 +187,12 @@ before you can click it (T268).
 `/forget <gem#>`, `/gems`, `/interrupt` (`/ducking`), `/spellbook` (`/book`).
 
 **Skills:** `/bandage` (`/bindwound`; inbound reply parsed since T177),
-`/train`, `/track [name]`. The skills window toggle is `/newskills`
-(registry 3); the old `/skills` was a dead stub and was deleted (T138/T139).
+`/train`, `/track [name]`. The skills window toggle is `/skills`
+(registry 3), renamed from `/newskills` with NO alias on Will's ruling
+(T363, B058); the ORIGINAL `/skills` was a dead stub deleted by T138/T139, so
+the name was free. Its body is `FrameComponent::toggleSkillsWindow()` --
+the K keybind (`HotkeyAction::ToggleSkills`) and piped stdin's bare `skills`
+word reach the same one, popup mutual exclusion included.
 
 **Pet:** `/pet <command> [target]` (attack, back, follow, guard, sit, taunt,
 hold, focus, health, dismiss).

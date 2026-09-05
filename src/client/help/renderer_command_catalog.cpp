@@ -59,7 +59,7 @@ const std::vector<RendererCommandInfo> kCatalog = {
     {"newbook", {}, "Toggle the spellbook window"},
     {"newbookprev", {}, "Spellbook: previous page"},
     {"newbooknext", {}, "Spellbook: next page"},
-    {"newskills", {}, "Toggle the skills window"},
+    {"skills", {}, "Toggle the skills window"},  // T363: was newskills (B058)
     {"newinv", {}, "Toggle the inventory window"},
     {"timestamp", {"timestamps", "ts"}, "Chat timestamps (not available: WindowManager removed)"},
     {"filter", {}, "Chat filter (not available: WindowManager removed)"},
