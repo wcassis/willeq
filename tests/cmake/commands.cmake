@@ -585,3 +585,18 @@ ADD_EXECUTABLE(test_command_registration_order
 )
 TARGET_LINK_LIBRARIES(test_command_registration_order GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_command_registration_order)
+
+# T375 (board B023): /bug (alias /report) must send the body eqemu's
+# Client::Handle_OP_Report actually parses -- "<reported>|<reporter>|<text>\0",
+# no struct and no size check on the server side. The test transcribes that
+# handler's loop and runs it over the bytes the T268 capture seam saw, and
+# replays the command through PacketSender into a real SessionRecorder (the
+# T360/B068 second observer). No network, no graphics, no eqemu.
+ADD_EXECUTABLE(test_op_report_shape
+    test_op_report_shape.cpp
+)
+TARGET_LINK_LIBRARIES(test_op_report_shape GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_op_report_shape PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_op_report_shape)

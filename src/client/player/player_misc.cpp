@@ -670,17 +670,50 @@ void eqt::player::PlayerComponent::SendYellForHelp()
 	}
 }
 
+// T375 (board B023): the wire shape is eqemu's, and eqemu's OP_Report is NOT
+// a struct. Client::Handle_OP_Report (zone/client_packet.cpp, ~13442) performs
+// NO size check and casts to nothing; it walks the payload byte by byte with a
+// three-state parser:
+//
+//     mode 0: every byte up to the FIRST  '|'  ->  reported
+//     mode 1: every byte up to the SECOND '|'  ->  reporter
+//     mode 2: the rest, with 0x0a translated to '\n' and 0x00 TERMINATING
+//                                              ->  the report text
+//
+// then calls database.AddReport(reporter, reported, current_string). Database::
+// AddReport(who, against, lines) (common/database.cpp:1117) files the row as
+// name = reporter, reported = the accused, reported_text = the text. So the
+// body is exactly:  "<reported>|<reporter>|<text>\0".
+//
+// The previous body wrote a 4-byte "category_id" of 0 and then the text with no
+// terminator. No such category field exists anywhere in the handler: those four
+// NUL bytes were simply the first four characters of `reported`, no '|' was ever
+// found, `mode` never left 0, and the row that landed had an empty reporter and
+// an EMPTY reported_text -- the text the player typed was discarded.
+//
+// fable's only caller is /bug (alias /report) <description>, which reports a
+// defect and not a player, so there is no accused character and `reported` is
+// sent EMPTY. That is a payload beginning with '|', which is precisely what the
+// parser expects for an empty first field -- it is the one value the handler
+// treats as "no one is being reported, this is the plain-text report". The
+// reporter is our own character name, which is the field eqemu files the row
+// under.
 void eqt::player::PlayerComponent::SendReport(const std::string& report_text)
 {
-	// Simplified report - just send the text
+	const std::string body = "|" + ctx_.character + "|" + report_text;
+
 	EQ::Net::DynamicPacket packet;
 	packet.PutUInt16(0, HC_OP_Report);
-	packet.PutUInt32(2, 0);  // category_id
-	// For simplicity, we'll just send minimal data
-	packet.PutString(6, report_text);
+	// PutCString, not PutString: the handler's mode-2 loop ends on the 0x00 and
+	// nothing else does, so the terminator is load-bearing (Packet::PutString
+	// does not write one). Same reason as SendFriendsWho below.
+	packet.PutCString(2, body.c_str());
 
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
-		ctx_.zone_connection->QueuePacket(packet);
+		// SafeQueueZone, not zone_connection->QueuePacket: it is the sender the
+		// T268/T346 ordered-capture seam and the session recorder both watch
+		// (T360 / board B068). A direct QueuePacket is invisible to both.
+		ctx_.net.SafeQueueZone(packet);
 		LOG_INFO(MOD_MAIN, "Report submitted");
 		ctx_.out.System("Your report has been submitted.");
 	}
