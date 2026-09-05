@@ -292,7 +292,7 @@ TEST_F(ChatTabCompletionTest, ABareRendererWithNoProviderTreatsTabAsANoOp) {
 
 // --- T368 (B101): the three keys that used to reach empty arms ------------
 //
-// RA::ToggleGroup (G, and the Alt+P alternate), RA::TogglePet (P) and
+// RA::ToggleGroup (Alt+P), RA::TogglePet (Alt+F1, T382/B170) and
 // RA::ToggleBuffWindow (Alt+B) each hit a bare `break;`. Pressing them did
 // NOTHING -- not "nothing visible", nothing at all. Each now flips the
 // isOpen its panel's visibility predicate reads.

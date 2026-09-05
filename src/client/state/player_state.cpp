@@ -136,6 +136,10 @@ void PlayerState::setCurrency(uint32_t plat, uint32_t gold, uint32_t silver, uin
     m_copper = copper;
 }
 
+void PlayerState::addCurrency(uint32_t plat, uint32_t gold, uint32_t silver, uint32_t copper) {
+    setCurrency(m_platinum + plat, m_gold + gold, m_silver + silver, m_copper + copper);
+}
+
 uint64_t PlayerState::totalCopperValue() const {
     return static_cast<uint64_t>(m_platinum) * 1000 +
            static_cast<uint64_t>(m_gold) * 100 +

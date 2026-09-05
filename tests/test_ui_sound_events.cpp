@@ -131,6 +131,25 @@ void ReplayRecipeAutoCombine(EverQuest& eq, uint32_t recipeId, uint32_t replyCod
                         reinterpret_cast<const uint8_t*>(&combine), sizeof(combine));
 }
 
+
+// T382 (B172): the corpse-coin grant. eqemu's Corpse::MakeLootRequestPackets
+// credits the player and sends this 20-byte moneyOnCorpseStruct in the same
+// breath, so arriving here with a non-zero count IS the grant.
+void ReplayMoneyOnCorpse(EverQuest& eq, uint32_t plat, uint32_t gold,
+                         uint32_t silver, uint32_t copper) {
+    EQT::MoneyOnCorpse_Struct s;
+    memset(&s, 0, sizeof(s));
+    s.response = 1;  // LootResponse::Normal
+    s.platinum = plat;
+    s.gold = gold;
+    s.silver = silver;
+    s.copper = copper;
+
+    std::vector<uint8_t> payload(sizeof(s));
+    memcpy(payload.data(), &s, sizeof(s));
+    zonetest::ReplayZone(eq, HC_OP_MoneyOnCorpse, payload);
+}
+
 }  // namespace
 
 // ===========================================================================
@@ -412,6 +431,62 @@ TEST(UISoundEvents, MerchantSell_AsksForBuyItemAndNotWearCloth) {
     EXPECT_EQ(std::count(ids.begin(), ids.end(),
                          static_cast<uint32_t>(UISoundId::WEAR_CLOTH)), 0)
         << "the oracle plays no item-into-slot sound when the item leaves";
+    eq.setBridge(nullptr);
+}
+
+// Row "coin from a CORPSE'S loot window" -- the LAST unmeasured row on B036
+// clause 1, MEASURED T377 (review/T377/ section 3) on the same tone probe
+// T328 and T342 used (its tonemap.json came out byte-identical to both, so
+// all three units' rows are one measurement). BuyItem.WAV, the same generic
+// coin sound as every other coin row.
+//
+// The GESTURE is not what T342 assumed: there is no "click the coin". The
+// official client's own Looting Tip says "Coins on the corpse are taken
+// automatically by the first person to loot the corpse", and the chat line
+// appears the instant the loot window opens -- so OP_MoneyOnCorpse, not any
+// later click, is the publisher.
+TEST(UISoundEvents, CorpseCoinGrant_AsksForBuyItem) {
+    EverQuest eq = zonetest::MakeEq();
+    RecordingBridge bridge;
+    eq.setBridge(&bridge);
+    bridge.drainIntents();
+
+    ReplayMoneyOnCorpse(eq, 1, 8, 3, 4);
+
+    EXPECT_EQ(DrainSoundIds(bridge), std::vector<uint32_t>{UISoundId::BUY_ITEM});
+    eq.setBridge(nullptr);
+}
+
+// The window's OPENING is silent: itemclth.wav's chord is absent from the one
+// good capture window, so the coin sound is the ONLY sound this gesture makes.
+// One id, not two.
+TEST(UISoundEvents, CorpseCoinGrant_MakesExactlyOneSound) {
+    EverQuest eq = zonetest::MakeEq();
+    RecordingBridge bridge;
+    eq.setBridge(&bridge);
+    bridge.drainIntents();
+
+    ReplayMoneyOnCorpse(eq, 1, 8, 3, 4);
+
+    const auto ids = DrainSoundIds(bridge);
+    EXPECT_EQ(ids.size(), 1u)
+        << "the loot window's opening was measured silent -- no container sound";
+    EXPECT_EQ(std::count(ids.begin(), ids.end(),
+                         static_cast<uint32_t>(UISoundId::ITEM_CLOTH)), 0);
+    eq.setBridge(nullptr);
+}
+
+// A corpse with no money, a refused loot and the autosplit path all arrive as
+// four zeros. No coin moved, so no coin sound.
+TEST(UISoundEvents, CorpseWithNoCoinIsSilent) {
+    EverQuest eq = zonetest::MakeEq();
+    RecordingBridge bridge;
+    eq.setBridge(&bridge);
+    bridge.drainIntents();
+
+    ReplayMoneyOnCorpse(eq, 0, 0, 0, 0);
+
+    EXPECT_TRUE(DrainSoundIds(bridge).empty());
     eq.setBridge(nullptr);
 }
 

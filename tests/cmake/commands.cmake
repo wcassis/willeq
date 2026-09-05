@@ -600,3 +600,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_op_report_shape PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
 GTEST_DISCOVER_TESTS(test_op_report_shape)
+
+# T382 Leg A (board B172): the corpse-coin grant --
+# CommandsComponent::ZoneProcessMoneyOnCorpse must bank the four denominations,
+# publish CurrencyChanged and print the MEASURED oracle line (T377, eqstr
+# 12072). Replays the 20-byte moneyOnCorpseStruct into a real EverQuest on a
+# RecordingBridge; the sound half of the same gesture is pinned in
+# tests/test_ui_sound_events.cpp with the rest of B036's measured table. No
+# audio device, no EQ client data, no eqemu.
+ADD_EXECUTABLE(test_corpse_coin
+    test_corpse_coin.cpp
+)
+TARGET_LINK_LIBRARIES(test_corpse_coin GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_corpse_coin PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_corpse_coin)

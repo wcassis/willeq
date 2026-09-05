@@ -506,8 +506,8 @@ Bindings are configurable in `config/hotkeys.json` (or a `hotkeys` object in the
 |-----|--------|
 | I | Inventory |
 | K | Skills |
-| G / Alt+P | Group |
-| P | Pet |
+| Alt+P | Group |
+| Alt+F1 | Pet |
 | Ctrl+B | Spellbook |
 | Alt+B | Buff bar |
 | Enter | Open chat |

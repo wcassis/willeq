@@ -246,6 +246,15 @@ public:
 
     void setCurrency(uint32_t plat, uint32_t gold, uint32_t silver, uint32_t copper);
 
+    // T382 (B172): credit a delta onto the on-hand purse. This is NOT a second
+    // purse writer -- it reads the four counters and hands the sums to
+    // setCurrency(), which stays the only function that assigns them. Added
+    // for OP_MoneyOnCorpse, whose packet carries what the corpse GAVE rather
+    // than the new totals OP_MoneyUpdate carries. Per-denomination addition,
+    // no carry into the next denomination: the official client's purse holds
+    // 8 gold as 8 gold, and the server is authoritative for any normalisation.
+    void addCurrency(uint32_t plat, uint32_t gold, uint32_t silver, uint32_t copper);
+
     // Total currency in copper
     uint64_t totalCopperValue() const;
 

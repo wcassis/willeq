@@ -303,7 +303,8 @@ struct GroupMemberDisplay {
 };
 
 struct GroupPanelState {
-    // T368 (B101): the G / Alt+P key's toggle, default OPEN (see the note on
+    // T368 (B101): the Alt+P key's toggle (T382/B170: the oracle's own key),
+    // default OPEN (see the note on
     // BuffBarState::isOpen; a real character's UI_*.ini persists
     // `[GroupWindow] Show=1`).
     bool isOpen = true;
@@ -318,16 +319,31 @@ struct GroupPanelState {
 /**
  * T368 (B101): does the group panel draw this frame?
  *
- * The toggle alone -- an OPEN group window with no group draws its empty
- * frame (title bar, no member rows), which is why this does not consult
+ * The toggle alone -- an OPEN group window with no group still draws (as its
+ * bare title bar, see groupPanelFrameRect), which is why this does not consult
  * `inGroup`. Joining a group does not reopen a window you closed.
  *
- * UNVERIFIED against the oracle's pixels: the official client's files record
- * that the group window is shown by default (no `Show=0` under [GroupWindow]
- * in defaults.ini) but not what it paints with no group. A screenshot of an
- * empty official group window is owed -- board B115.
+ * T382 (B170): VERIFIED against the oracle's pixels. T377 screenshotted an
+ * official client with the group window open and no group
+ * (`review/T377/oracle/`): it is shown, and it paints only its title bar.
  */
 bool groupPanelIsVisible(const GroupPanelState& state);
+
+/**
+ * T382 (B170): the rect renderGroupPanel paints.
+ *
+ * MEASURED at the oracle (T377, `review/T377/oracle/`): with NO group the
+ * official client paints ONLY a title strip reading `Group` -- no member rows,
+ * no empty body, no reserved height. With a group it paints the full panel.
+ * The collapsed height is `BAR_HEIGHT + MARGIN`, the title band the panel's
+ * own layout already reserves before the first member row, so the two shapes
+ * share an origin and a width.
+ *
+ * Exposed for the static-panel tests: the shape is assertable with no
+ * Irrlicht device.
+ */
+irr::core::rect<irr::s32> groupPanelFrameRect(const UILayout& layout,
+                                              const GroupPanelState& state);
 
 /** Render group panel (left side below player status). */
 void renderGroupPanel(UIRenderer& ui, const UILayout& layout,

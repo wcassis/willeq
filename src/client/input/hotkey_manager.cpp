@@ -483,9 +483,17 @@ void HotkeyManager::setupDefaults() {
     addBinding(HotkeyAction::ToggleAutorun, HotkeyMode::Player, irr::KEY_NUMLOCK);
     addBinding(HotkeyAction::ToggleInventory, HotkeyMode::Player, irr::KEY_KEY_I);
     addBinding(HotkeyAction::ToggleSkills, HotkeyMode::Player, irr::KEY_KEY_K);
-    addBinding(HotkeyAction::ToggleGroup, HotkeyMode::Player, irr::KEY_KEY_G);
-    addBinding(HotkeyAction::ToggleGroup, HotkeyMode::Player, irr::KEY_KEY_P, ModifierFlags::Alt);  // Alternate EQ binding
-    addBinding(HotkeyAction::TogglePetWindow, HotkeyMode::Player, irr::KEY_KEY_P);
+    // T382 (B170). MEASURED at the official client's Options > Keys > UI page,
+    // T377 (review/T377/oracle/T377_oracle_options_keys_UI_page1..4.png):
+    // Toggle party window = Alt P, Toggle buff window = Alt B, Toggle pet info
+    // window = Alt F1 -- every one of them with an EMPTY Alternate column.
+    // fable's old G (group) was an invention (G is bound to nothing in the UI
+    // or Commands category; Alt G is Guild Management), and its old plain P
+    // (pet) was the official key for Toggle Customer Service Win, so a player
+    // who learned the real client pressed P expecting the petition window and
+    // got a pet window. Both are gone; only the measured primaries remain.
+    addBinding(HotkeyAction::ToggleGroup, HotkeyMode::Player, irr::KEY_KEY_P, ModifierFlags::Alt);
+    addBinding(HotkeyAction::TogglePetWindow, HotkeyMode::Player, irr::KEY_F1, ModifierFlags::Alt);
     addBinding(HotkeyAction::ToggleVendor, HotkeyMode::Player, irr::KEY_KEY_V);
     addBinding(HotkeyAction::ToggleTrainer, HotkeyMode::Player, irr::KEY_KEY_T);
     addBinding(HotkeyAction::ToggleSpellbook, HotkeyMode::Player, irr::KEY_KEY_B, ModifierFlags::Ctrl);
