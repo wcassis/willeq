@@ -64,7 +64,7 @@ real behavior are the deliverable, not coverage theater.
   (precedent: `tools/particle_race_stress.cpp`), not ctest.
 - No new flaky tests: 3 consecutive full-suite green runs before a
   unit merges (known documented exceptions excepted:
-  AudioManagerTest.PreloadCommonSounds [host ALSA]). A test you can't
+  none since T392 retired the last one, board B215). A test you can't
   make deterministic gets redesigned or dropped, not retried in CI.
   (T35, 2026-08-03: `RDPServerFrameTest.* [parallel-run flake family]`
   waiver RETIRED — it was covering a real use-after-free in

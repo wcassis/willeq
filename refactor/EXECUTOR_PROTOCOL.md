@@ -173,8 +173,12 @@ only the targets you build; build the tools too.
    (system `libirrlicht-dev`/X11-GLX) is no longer a supported configure —
    there is no fallback.
 2. `ctest --test-dir <slot>/build --output-on-failure` (same GLES2-config
-   tree as step 1) — known host exceptions:
-   AudioManagerTest.PreloadCommonSounds. (T35, 2026-08-03: the
+   tree as step 1) — **there are NO known host exceptions any more.** T392
+   (2026-09-05, board B215) retired the last one: the "ALSA quirk" waiver on
+   `AudioManagerTest.PreloadCommonSounds` was a misdiagnosis (the binary never
+   opened `willeq.db`, so every sound id resolved to nothing; ALSA failing over
+   to the loopback backend was a red herring the other twenty tests in that
+   same binary disproved for years). Every red is now a real red. (T35, 2026-08-03: the
    `RDPServerFrameTest.UpdateFrameMultipleTimes` "intermittent" waiver is
    RETIRED — it was masking a real use-after-free in `RDPServer::stop()`
    [`Close()` before `join()`; T03b root-caused it, 12 kernel GP faults at
