@@ -574,8 +574,8 @@ it without taking that measurement first.
   superseded (76 decomposition → Batches J/K/L/G, 180 Codex process
   scaffolding → `EXECUTOR_PROTOCOL.md` + this board, 9 a second x86 GLES2
   code path `fable` deliberately does not have), **(c) 24** still relevant —
-  now B130, B131 and B132. Both branches are recommended for DELETION (B's
-  immediately; A's once B130/B131 are worked and B132 is ruled on); a merge was
+  now B136, B137 and B138. Both branches are recommended for DELETION (B's
+  immediately; A's once B136/B137 are worked and B138 is ruled on); a merge was
   measured non-viable at ~25,000 lines inside conflict regions. Prov: deferred
   item 22.
 
