@@ -99,6 +99,31 @@ Center popups (inventory, spellbook, skills, vendor, bank, loot, trade) share th
 
 Key bindings are configurable via `config/hotkeys.json` and managed by `HotkeyManager` (see `src/client/input/CLAUDE.md`).
 
+**T368 (B101): the group, pet and buff rows above were STALE until T368.** All
+three reached empty `case` arms in `renderer_frame_input.cpp` -- "visibility is
+driven by inGroup state", and so on -- so G, Alt+P, P and Alt+B did nothing
+whatsoever. Each now flips a `bool isOpen` on its panel state
+(`FrameComponent::toggleGroupWindow()` / `togglePetWindow()` /
+`toggleBuffWindow()`, the `toggleSkillsWindow()` shape), and each panel's
+render function early-returns on a free predicate
+(`groupPanelIsVisible()` / `petPanelIsVisible()` / `buffBarIsVisible()` in
+`static_panels.h`) that composes the toggle with the auto-driven state:
+
+| Panel | Draws when |
+|---|---|
+| Group | `isOpen` alone -- an open window with no group draws its empty titled frame; joining a group never reopens a closed one |
+| Pet | `isOpen && hasPet` |
+| Buff bar | `isOpen && at least one buff` (the bar has no frame of its own) |
+
+`isOpen` defaults to **true** for all three, which is the official client's
+default: its `defaults.ini` writes a `Show=0` key only under a section whose
+window ships closed (`[SelectorWindow]`, `[HotButtonWnd3]`, `[HotButtonWnd4]`)
+and writes none under `[GroupWindow]`, `[PetInfoWindow]` or `[BuffWindow]`. The
+official ACTION names are `TOGGLE_PARTYWIN`, `TOGGLE_PETINFOWIN` and
+`TOGGLE_BUFFWIN` (`KEYMAPPING_` suffixes in `eqgame.exe`); the official default
+KEYS are not recorded in any file on disk, so fable's G / Alt+P / P / Alt+B are
+unchanged -- see B115.
+
 ## Slash Commands
 
 Three vocabularies exist (`docs/decisions.md` 2026-08-03 ruling; T97–T143

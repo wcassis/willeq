@@ -286,6 +286,10 @@ ADD_EXECUTABLE(test_input_action_bridge
     ${ACTION_LAYER_STATE_SOURCES}
 )
 TARGET_LINK_LIBRARIES(test_input_action_bridge GTest::gtest_main ${FMT_LIB} ${JSONCPP_LIBRARIES})  # T174: hotbar_model.cpp reads/writes jsoncpp
+# T368 (B100): the enum's own header, read as text so the "no UI toggles in
+# InputAction" rule is asserted rather than left to a reviewer's memory.
+TARGET_COMPILE_DEFINITIONS(test_input_action_bridge PRIVATE
+    INPUT_ACTION_HEADER="${CMAKE_SOURCE_DIR}/include/client/input/input_handler.h")
 GTEST_DISCOVER_TESTS(test_input_action_bridge)
 
 # T40/T227: GameStateSyncBridge tests -- since T227 the decorator projects

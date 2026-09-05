@@ -290,4 +290,68 @@ TEST_F(ChatTabCompletionTest, ABareRendererWithNoProviderTreatsTabAsANoOp) {
     EXPECT_EQ(bare.Frame().chatPanelState_.inputText, "/gu");
 }
 
+// --- T368 (B101): the three keys that used to reach empty arms ------------
+//
+// RA::ToggleGroup (G, and the Alt+P alternate), RA::TogglePet (P) and
+// RA::ToggleBuffWindow (Alt+B) each hit a bare `break;`. Pressing them did
+// NOTHING -- not "nothing visible", nothing at all. Each now flips the
+// isOpen its panel's visibility predicate reads.
+
+TEST_F(FrameComponentTest, T368_GroupKeyFlipsTheGroupWindowOpenState) {
+    EXPECT_TRUE(renderer.Frame().groupPanelState_.isOpen);
+    renderer.Frame().processPlayerInput(One(RendererAction::ToggleGroup));
+    EXPECT_FALSE(renderer.Frame().groupPanelState_.isOpen)
+        << "RA::ToggleGroup is still an empty arm";
+    renderer.Frame().processPlayerInput(One(RendererAction::ToggleGroup));
+    EXPECT_TRUE(renderer.Frame().groupPanelState_.isOpen);
+}
+
+TEST_F(FrameComponentTest, T368_PetKeyFlipsThePetWindowOpenState) {
+    EXPECT_TRUE(renderer.Frame().petPanelState_.isOpen);
+    renderer.Frame().processPlayerInput(One(RendererAction::TogglePet));
+    EXPECT_FALSE(renderer.Frame().petPanelState_.isOpen)
+        << "RA::TogglePet is still an empty arm";
+    renderer.Frame().processPlayerInput(One(RendererAction::TogglePet));
+    EXPECT_TRUE(renderer.Frame().petPanelState_.isOpen);
+}
+
+TEST_F(FrameComponentTest, T368_BuffKeyFlipsTheBuffBarOpenState) {
+    EXPECT_TRUE(renderer.Frame().buffBarState_.isOpen);
+    renderer.Frame().processPlayerInput(One(RendererAction::ToggleBuffWindow));
+    EXPECT_FALSE(renderer.Frame().buffBarState_.isOpen)
+        << "RA::ToggleBuffWindow is still an empty arm";
+    renderer.Frame().processPlayerInput(One(RendererAction::ToggleBuffWindow));
+    EXPECT_TRUE(renderer.Frame().buffBarState_.isOpen);
+}
+
+TEST_F(FrameComponentTest, T368_ClosingAPanelHonoursTheDrawGateItsRendererReads) {
+    // The toggle and the draw must be the same fact. Drive the key, then ask
+    // the predicate the render function's early return calls.
+    renderer.Frame().groupPanelState_.inGroup = true;
+    EXPECT_TRUE(groupPanelIsVisible(renderer.Frame().groupPanelState_));
+    renderer.Frame().processPlayerInput(One(RendererAction::ToggleGroup));
+    EXPECT_FALSE(groupPanelIsVisible(renderer.Frame().groupPanelState_));
+
+    renderer.Frame().petPanelState_.hasPet = true;
+    EXPECT_TRUE(petPanelIsVisible(renderer.Frame().petPanelState_));
+    renderer.Frame().processPlayerInput(One(RendererAction::TogglePet));
+    EXPECT_FALSE(petPanelIsVisible(renderer.Frame().petPanelState_));
+
+    renderer.Frame().buffBarState_.buffs[2].spellId = 42;
+    EXPECT_TRUE(buffBarIsVisible(renderer.Frame().buffBarState_));
+    renderer.Frame().processPlayerInput(One(RendererAction::ToggleBuffWindow));
+    EXPECT_FALSE(buffBarIsVisible(renderer.Frame().buffBarState_));
+}
+
+TEST_F(FrameComponentTest, T368_TheThreeTogglesDoNotCloseTheCentrePopups) {
+    // toggleSkillsWindow() clears the other centre popups on its OPEN branch;
+    // these are HUD panels and must not touch them either way.
+    renderer.Frame().processPlayerInput(One(RendererAction::ToggleSkills));
+    ASSERT_TRUE(renderer.Frame().skillsPopupState_.isOpen);
+    renderer.Frame().processPlayerInput(One(RendererAction::ToggleGroup));
+    renderer.Frame().processPlayerInput(One(RendererAction::TogglePet));
+    renderer.Frame().processPlayerInput(One(RendererAction::ToggleBuffWindow));
+    EXPECT_TRUE(renderer.Frame().skillsPopupState_.isOpen);
+}
+
 }  // namespace

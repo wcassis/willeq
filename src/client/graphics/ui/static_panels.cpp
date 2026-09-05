@@ -547,9 +547,16 @@ bool buffBarHasContent(const BuffBarState& state) {
 }
 }  // namespace
 
+// T368 (B101): the Alt+B toggle ANDed with the content gate. One body for
+// the renderer and the hit-test, so a closed bar is unclickable for the same
+// reason it is invisible.
+bool buffBarIsVisible(const BuffBarState& state) {
+    return state.isOpen && buffBarHasContent(state);
+}
+
 int hitTestBuffBar(const UILayout& layout, const BuffBarState& state,
                    int mouseX, int mouseY) {
-    if (!buffBarHasContent(state)) return -1;
+    if (!buffBarIsVisible(state)) return -1;
 
     irr::s32 x = layout.buffBar.UpperLeftCorner.X + kBuffPad;
     irr::s32 y = layout.buffBar.UpperLeftCorner.Y + kBuffPad;
@@ -573,7 +580,7 @@ void renderBuffBar(UIRenderer& ui, const UILayout& layout,
     constexpr irr::s32 ICON = kBuffIcon;
     constexpr irr::s32 PAD = kBuffPad;
 
-    if (!buffBarHasContent(state)) return;
+    if (!buffBarIsVisible(state)) return;
 
     // Background
     ui.drawSprite(layout.buffBar, static_cast<uint8_t>(UISprite::PanelBackground));
@@ -660,9 +667,14 @@ void renderCastingBar(UIRenderer& ui, const UILayout& layout,
     }
 }
 
+// T368 (B101): the G / Alt+P toggle is the whole gate -- see the header.
+bool groupPanelIsVisible(const GroupPanelState& state) {
+    return state.isOpen;
+}
+
 void renderGroupPanel(UIRenderer& ui, const UILayout& layout,
                       const GroupPanelState& state) {
-    if (!state.inGroup) return;
+    if (!groupPanelIsVisible(state)) return;
 
     auto* tb = ui.getTextBatch();
     constexpr irr::s32 BAR_H = UILayout::BAR_HEIGHT;
@@ -679,6 +691,11 @@ void renderGroupPanel(UIRenderer& ui, const UILayout& layout,
     irr::s32 x = layout.groupPanel.UpperLeftCorner.X + 4;
     irr::s32 y = layout.groupPanel.UpperLeftCorner.Y + BAR_H + PAD;
     irr::s32 barW = layout.groupPanel.getWidth() - 8;
+
+    // T368: with no group the frame and its title are all that draws. The
+    // member array is not consulted at all -- a disband leaves stale rows in
+    // it until the next GroupUpdate, and an open window must not show them.
+    if (!state.inGroup) return;
 
     for (int i = 0; i < GroupPanelState::MAX_MEMBERS; ++i) {
         const auto& m = state.members[i];
@@ -710,9 +727,14 @@ void renderGroupPanel(UIRenderer& ui, const UILayout& layout,
     }
 }
 
+// T368 (B101): the P toggle ANDed with the auto-driven hasPet gate.
+bool petPanelIsVisible(const PetPanelState& state) {
+    return state.isOpen && state.hasPet;
+}
+
 void renderPetPanel(UIRenderer& ui, const UILayout& layout,
                     const PetPanelState& state) {
-    if (!state.hasPet) return;
+    if (!petPanelIsVisible(state)) return;
 
     auto* tb = ui.getTextBatch();
     constexpr irr::s32 BAR_H = UILayout::BAR_HEIGHT;

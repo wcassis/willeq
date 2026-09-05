@@ -30,6 +30,12 @@
 #include "client/state/game_state.h"
 #include <gtest/gtest.h>
 
+#include <cstring>
+#include <fstream>
+#include <vector>
+#include <iterator>
+#include <string>
+
 using namespace eqt::action;
 using namespace eqt::action::test;
 using namespace eqt::input;
@@ -200,15 +206,20 @@ TEST_F(InputActionBridgeTest, DiscreteAction_FiresOnceThenStaysQuiet) {
     EXPECT_EQ(handler.count(), 1u);
 }
 
-TEST_F(InputActionBridgeTest, UIToggleActions_AreNotBridgeTerritory) {
-    // The UI/graphics toggles are handled elsewhere (GraphicsInputHandler /
-    // renderer); the bridge must leave them pending, not consume-and-drop.
-    // T365 (B090): ToggleInventory was the first entry here until its
-    // enumerator was deleted -- nothing produced it and nothing consumed it.
-    // ToggleVendor stands in: same UI-toggle family, still declared.
+TEST_F(InputActionBridgeTest, GraphicsToggleActions_AreNotBridgeTerritory) {
+    // The graphics toggles are handled elsewhere -- GraphicalMode drains them
+    // with consumeAction() (src/client/mode/graphical_mode.cpp) -- so the
+    // bridge must leave them PENDING, not consume-and-drop.
+    //
+    // T368 (B100): this case was UIToggleActions_AreNotBridgeTerritory and
+    // stood on ToggleVendor/ToggleSpellbook, the last two consumer-less UI
+    // toggles in the enum. With all seven deleted the UI half has no subject
+    // left, but the case itself does: the four below are REAL actions with a
+    // real consumer that is not this bridge, which is a stronger subject than
+    // the dead enumerators ever were. Restated rather than deleted.
     input.pendingActions = {
-        InputAction::ToggleVendor, InputAction::ToggleSpellbook,
         InputAction::ToggleWireframe, InputAction::ToggleHUD,
+        InputAction::ToggleNameTags, InputAction::ToggleZoneLights,
     };
 
     update();
@@ -216,6 +227,45 @@ TEST_F(InputActionBridgeTest, UIToggleActions_AreNotBridgeTerritory) {
     EXPECT_EQ(input.pendingActions.size(), 4u);
     EXPECT_TRUE(handler.empty());
     EXPECT_TRUE(reported.empty());
+}
+
+// T368 (B100): the four residual consumer-less UI toggles are GONE from
+// eqt::input::InputAction -- ToggleVendor, TogglePetWindow, ToggleTrainer,
+// ToggleSpellbook, the last of the seven T365 started on. None had a
+// producer (no InputHandler set them) and none had a consumer
+// (processDiscreteActions has no arm for any). The real toggles live in
+// HotkeyAction + RendererAction, which are untouched.
+//
+// The enumerators cannot be named here any more, so this reads the header as
+// text -- the same source-text idiom test_headless_command_refusal.cpp uses
+// for a claim about a file rather than about a value. It fails loudly if any
+// of the four is reintroduced.
+TEST(InputActionEnumTest, T368_NoConsumerlessUITogglesRemain) {
+    std::ifstream in(INPUT_ACTION_HEADER);
+    ASSERT_TRUE(in.is_open()) << INPUT_ACTION_HEADER;
+
+    // An enumerator is a line that is nothing but the name and a comma (the
+    // enum is one-per-line throughout). The names still appear in the
+    // tombstone comment above, which is the point of keeping them there --
+    // matching whole LINES is what tells the two apart.
+    std::vector<std::string> found;
+    std::string line;
+    while (std::getline(in, line)) {
+        const auto b = line.find_first_not_of(" \t");
+        if (b == std::string::npos) continue;
+        auto e = line.find_last_not_of(" \t");
+        std::string trimmed = line.substr(b, e - b + 1);
+        for (const char* dead : {"ToggleVendor", "TogglePetWindow",
+                                 "ToggleTrainer", "ToggleSpellbook"}) {
+            if (trimmed == std::string(dead) + ",") found.push_back(dead);
+        }
+    }
+
+    EXPECT_TRUE(found.empty())
+        << found.size() << " consumer-less UI toggle(s) are enumerators of "
+           "eqt::input::InputAction again (first: " 
+        << (found.empty() ? std::string("-") : found.front())
+        << "); UI toggles belong in HotkeyAction/RendererAction (B100)";
 }
 
 // ===================================================================

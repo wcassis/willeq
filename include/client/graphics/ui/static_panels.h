@@ -234,9 +234,25 @@ struct BuffSlotState {
 };
 
 struct BuffBarState {
+    // T368 (B101): the Alt+B key's toggle. Default OPEN because the official
+    // client's defaults.ini has no `Show=0` under [BuffWindow] (it writes that
+    // key only for a window whose default is closed -- SelectorWindow,
+    // HotButtonWnd3/4), so the buff window ships shown.
+    bool isOpen = true;
     static constexpr int MAX_BUFFS = 25;
     BuffSlotState buffs[25];
 };
+
+/**
+ * T368 (B101): does the buff bar draw this frame?
+ *
+ * Composes the Alt+B toggle with the auto-driven content gate the bar has
+ * always had: an empty bar draws nothing at all (no background, no icons --
+ * see hitTestBuffBar, which returns -1 for exactly that reason), and a
+ * closed bar draws nothing whatever it holds. A free predicate so the
+ * renderer and a test read the same body without an Irrlicht device.
+ */
+bool buffBarIsVisible(const BuffBarState& state);
 
 /** Render buff bar (icon row above chat). */
 void renderBuffBar(UIRenderer& ui, const UILayout& layout,
@@ -287,6 +303,10 @@ struct GroupMemberDisplay {
 };
 
 struct GroupPanelState {
+    // T368 (B101): the G / Alt+P key's toggle, default OPEN (see the note on
+    // BuffBarState::isOpen; a real character's UI_*.ini persists
+    // `[GroupWindow] Show=1`).
+    bool isOpen = true;
     bool inGroup = false;
     bool isLeader = false;
     std::string leaderName;
@@ -295,12 +315,30 @@ struct GroupPanelState {
     GroupMemberDisplay members[5];
 };
 
+/**
+ * T368 (B101): does the group panel draw this frame?
+ *
+ * The toggle alone -- an OPEN group window with no group draws its empty
+ * frame (title bar, no member rows), which is why this does not consult
+ * `inGroup`. Joining a group does not reopen a window you closed.
+ *
+ * UNVERIFIED against the oracle's pixels: the official client's files record
+ * that the group window is shown by default (no `Show=0` under [GroupWindow]
+ * in defaults.ini) but not what it paints with no group. A screenshot of an
+ * empty official group window is owed -- board B115.
+ */
+bool groupPanelIsVisible(const GroupPanelState& state);
+
 /** Render group panel (left side below player status). */
 void renderGroupPanel(UIRenderer& ui, const UILayout& layout,
                       const GroupPanelState& state);
 
 // Cached pet state
 struct PetPanelState {
+    // T368 (B101): the P key's toggle, default OPEN. A real character's
+    // UI_*.ini persists `[PetInfoWindow] Show=0`, so the official pet window
+    // is a user-toggled flag independent of whether a pet exists.
+    bool isOpen = true;
     bool hasPet = false;
     std::string name;
     uint8_t level = 0;
@@ -308,6 +346,16 @@ struct PetPanelState {
     static constexpr int BUTTON_COUNT = 10;
     bool buttonStates[10] = {};  // PetButton toggle states
 };
+
+/**
+ * T368 (B101): does the pet panel draw this frame?
+ *
+ * Composes the P toggle with the auto-driven `hasPet` gate: with no pet there
+ * is no name, no health and no button row, and unlike the group panel the
+ * panel has no title of its own to draw, so an empty frame would be a blank
+ * box. Closed hides it whether or not a pet exists.
+ */
+bool petPanelIsVisible(const PetPanelState& state);
 
 /** Render pet panel (below group panel). */
 void renderPetPanel(UIRenderer& ui, const UILayout& layout,
