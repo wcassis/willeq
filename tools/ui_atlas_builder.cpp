@@ -22,6 +22,7 @@
  */
 
 #include "tga_reader.h"
+#include "bmp32_writer.h"
 
 #include <cstdio>
 #include <cstdint>
@@ -190,66 +191,11 @@ static bool writeJson(const std::string& path) {
     return f.good();
 }
 
+// T400: the 32-bit-with-alpha BMP encoder moved to tools/bmp32_writer.h so
+// particle_atlas_builder cannot drift from it (board B225). Byte-for-byte
+// the same output -- PackReproducible proves it.
 static bool writeBMP(const std::string& path) {
-    // BMP with 32-bit RGBA (BITMAPV4HEADER for alpha channel support)
-    const int w = ATLAS_W;
-    const int h = ATLAS_H;
-    const int rowBytes = w * 4;
-    const int imageSize = rowBytes * h;
-    const int headerSize = 14 + 108; // file header + BITMAPV4HEADER
-    const int fileSize = headerSize + imageSize;
-
-    std::ofstream f(path, std::ios::binary);
-    if (!f.is_open()) return false;
-
-    // BMP file header (14 bytes)
-    uint8_t fileHeader[14] = {};
-    fileHeader[0] = 'B'; fileHeader[1] = 'M';
-    fileHeader[2] = fileSize & 0xFF;
-    fileHeader[3] = (fileSize >> 8) & 0xFF;
-    fileHeader[4] = (fileSize >> 16) & 0xFF;
-    fileHeader[5] = (fileSize >> 24) & 0xFF;
-    fileHeader[10] = headerSize & 0xFF;
-    fileHeader[11] = (headerSize >> 8) & 0xFF;
-    f.write(reinterpret_cast<char*>(fileHeader), 14);
-
-    // BITMAPV4HEADER (108 bytes)
-    uint8_t dibHeader[108] = {};
-    auto write32 = [&](int offset, uint32_t val) {
-        dibHeader[offset] = val & 0xFF;
-        dibHeader[offset+1] = (val >> 8) & 0xFF;
-        dibHeader[offset+2] = (val >> 16) & 0xFF;
-        dibHeader[offset+3] = (val >> 24) & 0xFF;
-    };
-    write32(0, 108);             // header size
-    write32(4, w);               // width
-    write32(8, -h);              // height (negative = top-down)
-    dibHeader[12] = 1; dibHeader[13] = 0;  // planes
-    dibHeader[14] = 32; dibHeader[15] = 0; // bits per pixel
-    write32(16, 3);              // compression = BI_BITFIELDS
-    write32(20, imageSize);      // image size
-    // Channel masks: R, G, B, A
-    write32(40, 0x00FF0000);     // red mask
-    write32(44, 0x0000FF00);     // green mask
-    write32(48, 0x000000FF);     // blue mask
-    write32(52, 0xFF000000);     // alpha mask
-    f.write(reinterpret_cast<char*>(dibHeader), 108);
-
-    // Pixel data: convert RGBA to BGRA (BMP byte order)
-    std::vector<uint8_t> row(rowBytes);
-    for (int y = 0; y < h; ++y) {
-        for (int x = 0; x < w; ++x) {
-            int srcIdx = (y * w + x) * 4;
-            int dstIdx = x * 4;
-            row[dstIdx + 0] = pixels[srcIdx + 2]; // B
-            row[dstIdx + 1] = pixels[srcIdx + 1]; // G
-            row[dstIdx + 2] = pixels[srcIdx + 0]; // R
-            row[dstIdx + 3] = pixels[srcIdx + 3]; // A
-        }
-        f.write(reinterpret_cast<char*>(row.data()), rowBytes);
-    }
-
-    return f.good();
+    return willeq_tools::writeBMP32(path, pixels.data(), ATLAS_W, ATLAS_H);
 }
 
 int main(int argc, char* argv[]) {

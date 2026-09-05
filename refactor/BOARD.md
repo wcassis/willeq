@@ -3474,7 +3474,21 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   per-zone memory block. **T398 did not touch it.** Closes when Will blesses
   the three numbers above and someone edits them by hand (lines 171/180/189).
   Until then `visual_gate` is the one red in a 4,105-test suite. Prov: T398
-  Review Leg B; B230; B218.
+  Review Leg B; B230; B218. **T400 ADDS A SECOND, LARGER DELTA TO THE SAME
+  BLESS (this commit)**: rebuilding the pack for B225 moved `willeq.eqe1` again,
+  2,811,102 -> 2,830,206 bytes (**+19,104**), so `eqe1MappedBytes` is now stale
+  by **+19,343** per zone, not +239. T400 did NOT bless it either -- same rule,
+  Will blesses, someone edits lines 171/180/189 by hand:
+
+  | zone     | manifest    | measured after T400 | delta from manifest |
+  |----------|------------:|--------------------:|--------------------:|
+  | qeynos2  | 119,944,431 |         119,963,774 |            +19,343  |
+  | gfaydark | 118,610,523 |         118,629,866 |            +19,343  |
+  | befallen | 113,095,019 |         113,114,362 |            +19,343  |
+
+  No image golden moved and no CPU p95 ceiling was missed in T400's gate run
+  either. The cause is the same one this entry already records (a rebuilt
+  `willeq.eqe1`) and the +239 and +19,104 are the same bless, not two.
 
 - **B241** (B) `scripts/build_willeq_pack.sh` / `tools/ui_atlas_builder.cpp`
   -- **`willeq.eqe1` is reproducible from the tree PLUS the official client
@@ -3669,9 +3683,63 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   B-dominant (.213/.284/.315) on the official client, so the two colours are
   real there. Take the observer pair after B226.
 
+### Added by T400 (2026-09-05)
+
+- **B247** (B) `src/client/graphics/texture_generators.cpp` /
+  `data/textures/` -- **the 926-line TU that DEFINES every procedural texture
+  the client ships was in no CMake target at all, and 63 of its 64 outputs
+  still have no build recipe.** Found by T400 while fixing B225: a
+  tree-wide grep for `texture_generators` in every `CMakeLists.txt`/`*.cmake`
+  returned NOTHING. P26 retired the `generate_textures` tool (its only
+  consumer) on the recorded rationale "no found consumer of its output
+  anywhere in the tree or docs" -- and `tools/retired/README.md` still says
+  that. **That rationale is now known false**: T398 established that the 64
+  BMPs in `data/textures/` are exactly two thirds of `willeq.eqe1`'s 67
+  entries, so the generator's output is a shipped asset read by every zone
+  load. The consequence was B225 -- nobody could regenerate the particle
+  atlas, so the alpha-less file kept shipping for a year with the code that
+  proves it wrong compiling nowhere. T400 gave the TU ONE consumer
+  (`tools/particle_atlas_builder`) and one pinned output (the particle
+  atlas, `test_particle_atlas_alpha` asserts the shipped file matches
+  `generateParticleAtlas()` texel for texel). The other 63 BMPs
+  (`creature_atlas`, `detail_atlas`, the rain/snow/storm sets,
+  `software_cursor`, `tumbleweed`, ...) are still checked-in binaries with
+  no proof they match their generator and no way to rebuild them. Closes
+  when either (a) the retired tool is restored as a target and its full
+  output is shown to reproduce `data/textures/` byte-for-byte (then the
+  directory is derived, not hand-carried), or (b) each remaining generator
+  is deleted as dead code on a deliberate ruling that the BMPs are the
+  source of truth. Do NOT half-do it: a generator that compiles but whose
+  output nobody compares is exactly the state that produced B225. The
+  `tools/retired/README.md` paragraph needs correcting whichever way it
+  goes. Prov: T400 Review.
+
+- **B248** (B) `tools/eqe1_builder.cpp` / `docker/irrlicht-drm/COGLES2Shaders.cpp`
+  -- **the ETC1 `_alpha` companion is INVISIBLE to any shader with a single
+  sampler, and nothing warns you.** The default ETC1 encode stores a
+  texture's alpha in a separate `<name>_alpha` pack entry, uploaded to
+  texture unit 1 and sampled only by the alpha-TEST variants
+  (`ATLAS_ALPHA3D_FS` / `ALPHA3D_FS`, which `discard` below a threshold).
+  Every other built-in shader -- `SOLID3D_FS`, and every hand-rolled GLES2
+  program such as `UnifiedParticleRenderer`'s point sprite -- reads
+  `texture2D(uTexture, uv).a`, which for an ETC1 (RGB-only) texture is
+  **1.0 everywhere**. So a texture can be `hasAlpha=1` in the pack, have a
+  perfectly good companion, and still draw fully opaque, with no log line
+  and no failing test. That is half of B225 and it cost T400 the larger
+  half of its investigation. T400 fixed the one texture it owned
+  (`--rgba8888-texture particle_atlas`) but added no general guard. Closes
+  when either the builder refuses/warns for a texture whose consumers are
+  single-sampler, or -- better and cheap -- a ctest asserts the invariant
+  the other way round: for each pack entry with `hasAlpha=1` and an ETC1
+  payload, SOME material in the tree binds its companion to unit 1. Related
+  and NOT the same thing: an alpha-blend material with a companion has no
+  shader at all (there is no blended dual-sampler variant), so "bind the
+  companion" is not a fix for a blended draw -- in-band alpha is. Prov:
+  T400 Review.
+
 ### Added by T389 (2026-09-05)
 
-- **B225** (A) `data/textures/particle_atlas.bmp` -- **the shipped particle
+- ~~**B225** (A) `data/textures/particle_atlas.bmp` -- **the shipped particle
   atlas has NO alpha channel, so every particle in the game is drawn as a
   flat, fully opaque coloured square.** The file is a 24-bit `BMP3`, 64x64,
   and every one of the 256 pixels in tile 0 is `255,255,255` (checked with
@@ -3691,7 +3759,39 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   that carries alpha (PNG, or a BMP32/`ECF_A8R8G8B8` writer) and a test
   asserts a non-trivial alpha histogram for at least two tiles. Not fixed by
   T389: it is a texture-pipeline change with a golden-image blast radius, not
-  part of a measurement unit. Prov: T389 Review S6.
+  part of a measurement unit. Prov: T389 Review S6.~~ **STRUCK T400 (this commit)**: closed on both halves, and
+  the second half was NOT in this entry. (a) The file. `data/textures/particle_atlas.bmp`
+  is now a 32-bit BMP (BITMAPV4HEADER, BI_BITFIELDS, top-down; 12,342 -> 16,506 bytes)
+  written by the new `tools/particle_atlas_builder`, which calls
+  `generateParticleAtlas()` on an `EDT_NULL` device and encodes through the new
+  shared `tools/bmp32_writer.h` -- the same layout `ui_atlas_builder` has always
+  used, and the reason `ui_atlas` had alpha in the pack while `particle_atlas` did
+  not. The retired tool's `writeImageToFile(img, "*.bmp")` was the whole defect:
+  Irrlicht's `CImageWriterBMP` emits 24 bpp and drops alpha silently. RGB is
+  UNCHANGED and stays straight (non-premultiplied) -- the material alpha-BLENDS
+  (`EMT_TRANSPARENT_ALPHA_CHANNEL` -> `glBlendFunc(GL_SRC_ALPHA,
+  GL_ONE_MINUS_SRC_ALPHA)`), not adds, and a constant per-tile RGB is what
+  survives bilinear/mip interpolation without darkening its own edges.
+  (b) **The pack, which this entry did not mention and which alone would have
+  left every particle opaque anyway.** In `willeq.eqe1` the entry was ETC1, and
+  ETC1 is RGB-ONLY: `eqe1_builder` puts the alpha in a separate
+  `<name>_alpha` companion that ONLY the alpha-TEST shader variants sample
+  (`ATLAS_ALPHA3D_FS`, texture unit 1). Both particle draw paths sample ONE
+  texture and read `texColor.a` from it -- `ParticleManager`'s
+  `EMT_TRANSPARENT_ALPHA_CHANNEL` material is routed to `SOLID3D_FS`, and
+  `UnifiedParticleRenderer`'s point-sprite shader has a single `uTexture` --
+  so a companion could never have been read. Fixed by a per-entry payload
+  override the format was already designed for (`eqe1_format.h`: "v2 packs may
+  mix payload formats per-entry"): `eqe1_builder --rgba8888-texture
+  particle_atlas`, wired into `scripts/build_willeq_pack.sh`. Measured pack
+  delta: 2,811,102 -> 2,830,206 B (+19,104); **exactly ONE of the 67 entries
+  changed** (`particle_atlas`, payload 0->3, hasAlpha 0->1, 2,744 -> 21,844 B),
+  the other 66 byte-identical; the file version moved 1 -> 2 and no companion
+  entry was added. `data/willeq.eqe1.sha256` updated in the same commit;
+  `PackReproducible` PASSES on the new pack. Pinned by
+  `test_particle_atlas_alpha` (5 cases: 4 RED before, all GREEN after).
+  Consequence for B162/B226: a sprite-name -> tile mapping can now change the
+  SHAPE on screen, not only the tint. Prov: T400 Review.
 
 - **B226** (B) `config/spell_effects.json` `styles.impact` /
   `styles.spellComplete` -- **fable's impact burst is two orders of magnitude
@@ -3711,7 +3811,17 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   `review/T389/fable/T389_fable_54_impact_crop4x.png` versus
   `review/T389/oracle/T389_oracle_54_self_full_1024x768.png`. This is the
   live half of **B204**'s proof and the reason **B160**'s observer pair is
-  still not worth taking. Prov: T389 Review S7.
+  still not worth taking. Prov: T389 Review S7. **ANNOTATED T400
+  (this commit)**: the blocking precondition is gone. B225 is struck -- the
+  atlas now carries its alpha on BOTH the raw-BMP and the EQE1 paths -- so an
+  impact burst can finally draw sixteen distinguishable SHAPES instead of
+  sixteen identical opaque squares. That does NOT resize the burst: this entry
+  is still open on its own numbers (36 particles of 0.05-0.15 world units for
+  0.4-0.8 s, against the oracle's hundreds of sprites over a third of the
+  screen for 2-3 s). T400 deliberately did NOT retune `styles.impact` --
+  changing the sizes and the sprite shapes in one unit would make the next
+  capture pair unattributable. Retune it in its own unit, then take the
+  capture; that unit now has a real atlas under it.
 
 - **B227** (B) the projectile question (does the official client draw a Frost
   Bolt travelling between caster and target, and over how many frames) is
