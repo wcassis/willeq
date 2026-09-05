@@ -195,17 +195,64 @@ void eqt::commands::CommandsComponent::RegisterMovementCommands()
 
 }
 
-// T140: warp's ~80-line teleport body, carried verbatim into a thin
-// EverQuest wrapper (same recipe as T136's RequestVendorToggle) --
-// action::EqActionHandler has no access to m_combat_manager/m_entities/
-// m_bridge, all private. No behavior change: still writes the client position and
-// the entity list directly (no pathfinding, no server round trip for the
-// teleport itself), still calls SendPositionUpdate() (real network send)
-// and pushes PlayerMovedData afterward, exactly as before.
+// T140: warp's ~80-line teleport body, carried into a thin EverQuest wrapper
+// (same recipe as T136's RequestVendorToggle) -- action::EqActionHandler has
+// no access to m_combat_manager/m_entities/m_bridge, all private. T362 split
+// the destination resolution from the teleport itself; see below.
+namespace {
+
+// T362 (B070): the shared tail of both /warp forms. Everything below the
+// destination resolution is identical for coordinates, a resolved entity and
+// the current target, so it lives once.
+//
+// Unchanged from the pre-T362 body: still writes the client position and the
+// entity list directly (no pathfinding, no server round trip for the teleport
+// itself), still calls SendPositionUpdate() (real network send) and pushes
+// PlayerMovedData afterward, exactly as before.
+void WarpToPosition(eqt::ClientContext& ctx, float x, float y, float z)
+{
+	// Instantly set position. T288: one store; the hand-rolled bridge
+	// publish below is still the only thing the renderer sees, so this
+	// write stays event-free exactly as the raw members were.
+	ctx.self.SetPosLocal(x, y, z);
+
+	// Update our entity in the entity list
+	auto it = ctx.entities.find(ctx.self.MySpawnId());
+	if (it != ctx.entities.end()) {
+		it->second.x = x;
+		it->second.y = y;
+		it->second.z = z;
+	}
+
+	// Send position update to server
+	ctx.Movement().SendPositionUpdate();
+
+	if (ctx.bridge) {
+		eqt::state::PlayerMovedData pdata;
+		pdata.x = x; pdata.y = y; pdata.z = z;
+		pdata.heading = ctx.self.HeadingDeg();
+		pdata.dx = 0; pdata.dy = 0; pdata.dz = 0;
+		pdata.isMoving = false;
+		ctx.bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::PlayerMoved, std::move(pdata)));
+	}
+
+	ctx.out.System(fmt::format("Warped to ({:.1f}, {:.1f}, {:.1f})", x, y, z));
+}
+
+}  // namespace
+
+// T362 (B070): this NO LONGER RESOLVES A NAME. `/warp <entity_name>` is
+// resolved by ActionDispatcher::warp() with the T244 nearest-first ranked
+// lookup and arrives at RequestWarpToEntity() below as a spawn id; the
+// unranked EntitiesComponent::FindEntityByName this used to call (lowest
+// spawn id wins, so it could teleport to a different mob than /target had
+// picked) is deleted with its last caller. What is left here is the empty
+// form (use the current target) and the literal-coordinate form. A name that
+// still reaches this method is by definition unresolvable, and says so.
 void eqt::commands::CommandsComponent::RequestWarp(const std::string& args)
 {
 	float x, y, z;
-	bool found_destination = false;
 
 	std::string trimmed = args;
 	while (!trimmed.empty() && trimmed[0] == ' ') {
@@ -218,67 +265,38 @@ void eqt::commands::CommandsComponent::RequestWarp(const std::string& args)
 			uint16_t target_id = ctx_.combat_manager->GetTargetId();
 			auto it = ctx_.entities.find(target_id);
 			if (it != ctx_.entities.end()) {
-				x = it->second.x;
-				y = it->second.y;
-				z = it->second.z;
-				found_destination = true;
 				ctx_.out.System(fmt::format("Warping to target: {}", it->second.name));
-			}
-		}
-		if (!found_destination) {
-			ctx_.out.System("Usage: /warp [x y z | entity_name] (or target an entity first)");
-			return;
-		}
-	} else {
-		// Try to parse as coordinates first
-		std::istringstream iss(trimmed);
-		if (iss >> x >> y >> z) {
-			found_destination = true;
-		} else {
-			// Try to find entity by name
-			Entity* entity = ctx_.Entities().FindEntityByName(trimmed);
-			if (entity) {
-				x = entity->x;
-				y = entity->y;
-				z = entity->z;
-				found_destination = true;
-				ctx_.out.System(fmt::format("Warping to entity: {}", entity->name));
-			} else {
-				ctx_.out.System(fmt::format("Entity '{}' not found", trimmed));
+				WarpToPosition(ctx_, it->second.x, it->second.y, it->second.z);
 				return;
 			}
 		}
+		ctx_.out.System("Usage: /warp [x y z | entity_name] (or target an entity first)");
+		return;
 	}
 
-	if (found_destination) {
-		// Instantly set position. T288: one store; the hand-rolled bridge
-		// publish below is still the only thing the renderer sees, so this
-		// write stays event-free exactly as the raw members were.
-		ctx_.self.SetPosLocal(x, y, z);
-
-		// Update our entity in the entity list
-		auto it = ctx_.entities.find(ctx_.self.MySpawnId());
-		if (it != ctx_.entities.end()) {
-			it->second.x = x;
-			it->second.y = y;
-			it->second.z = z;
-		}
-
-		// Send position update to server
-		ctx_.Movement().SendPositionUpdate();
-
-		if (ctx_.bridge) {
-			eqt::state::PlayerMovedData pdata;
-			pdata.x = x; pdata.y = y; pdata.z = z;
-			pdata.heading = ctx_.self.HeadingDeg();
-			pdata.dx = 0; pdata.dy = 0; pdata.dz = 0;
-			pdata.isMoving = false;
-			ctx_.bridge->pushEvent(eqt::state::GameEvent(
-				eqt::state::GameEventType::PlayerMoved, std::move(pdata)));
-		}
-
-		ctx_.out.System(fmt::format("Warped to ({:.1f}, {:.1f}, {:.1f})", x, y, z));
+	std::istringstream iss(trimmed);
+	if (iss >> x >> y >> z) {
+		WarpToPosition(ctx_, x, y, z);
+		return;
 	}
+
+	ctx_.out.System(fmt::format("Entity '{}' not found", trimmed));
+}
+
+// T362 (B070): the entity form of /warp. The spawn id was resolved once, at
+// the dispatcher, with the same ranked lookup /target uses -- so /warp and
+// /target can no longer disagree about which of two same-named mobs is meant.
+void eqt::commands::CommandsComponent::RequestWarpToEntity(uint16_t spawn_id)
+{
+	auto it = ctx_.entities.find(spawn_id);
+	if (it == ctx_.entities.end()) {
+		// Despawned between the dispatcher's resolution and here.
+		ctx_.out.System("Entity not found");
+		return;
+	}
+
+	ctx_.out.System(fmt::format("Warping to entity: {}", it->second.name));
+	WarpToPosition(ctx_, it->second.x, it->second.y, it->second.z);
 }
 
 // T140: time's show/set body, carried verbatim into a thin EverQuest

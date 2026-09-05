@@ -208,17 +208,22 @@ TwoSameNamedBeetles SpawnTwoBeetles(EverQuest& eq) {
 
 }  // namespace
 
-// The pre-condition every assertion below rests on: the unranked prefix
-// resolver really does return the FAR beetle, so tracking the near one cannot
-// be a coincidence of iteration order.
-TEST_F(MovementComponentTest, TheNameResolverStillPicksTheFarBeetle) {
+// The pre-condition every assertion below rests on: a first-match-wins name
+// resolver picks the FAR beetle, so tracking the near one cannot be a
+// coincidence of iteration order. T359 asserted this by calling
+// EntitiesComponent::FindEntityByName directly; T362 (B070) deleted that
+// resolver with its last caller, so the pre-condition is now stated over the
+// fixture it was always really about -- the far beetle carries the LOWER
+// spawn id and so sorts first in the entity map.
+TEST_F(MovementComponentTest, TheFarBeetleIsTheOneAFirstMatchResolverWouldPick) {
     TwoSameNamedBeetles b = SpawnTwoBeetles(eq);
     ASSERT_NE(b.near_beetle, nullptr);
     ASSERT_NE(b.far_beetle, nullptr);
     EXPECT_LT(std::abs(b.near_beetle->x), std::abs(b.far_beetle->x));
-    Entity* by_name = eq.Entities().FindEntityByName("a_fire_beetle");
-    ASSERT_NE(by_name, nullptr);
-    EXPECT_EQ(by_name->spawn_id, 10u);
+    EXPECT_EQ(b.far_beetle->spawn_id, 10u);
+    EXPECT_EQ(b.near_beetle->spawn_id, 20u);
+    EXPECT_LT(b.far_beetle->spawn_id, b.near_beetle->spawn_id);
+    EXPECT_EQ(eq.GetEntities().begin()->second.spawn_id, 10u);
 }
 
 TEST_F(MovementComponentTest, FollowTracksTheSpawnIdAcrossTicksNotTheNameMatch) {

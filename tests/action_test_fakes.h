@@ -402,6 +402,10 @@ public:
     // ========== Movement / Utility / Skills (T140) ==========
     void showLocation() override { record("showLocation"); }
     void warp(const std::string& args) override { record("warp", args); }
+    // T362 (B070): the entity form arrives pre-resolved as a spawn id.
+    void warpToEntity(uint16_t spawnId) override {
+        record("warpToEntity", static_cast<uint32_t>(spawnId));
+    }
     void showOrSetZoning(const std::string& args) override { record("showOrSetZoning", args); }
     void requestQuit() override { record("requestQuit"); }
     void campNow() override { record("campNow"); }

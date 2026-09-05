@@ -45,24 +45,16 @@ TEST_F(EntitiesComponentTest, ContextEntitiesIsTheSameMapAsGetEntities) {
 }
 
 // ===================================================================
-// 2. FindEntityByName / ListEntities -- the entity-lookup helpers, now on
-//    the component, still read the one shared m_entities map.
+// 2. ListEntities -- the entity-lookup helper, now on the component, still
+//    reads the one shared m_entities map.
+//
+//    T362 (B070) DELETED the component's other lookup, FindEntityByName --
+//    an unranked case-insensitive prefix match where the first hit in
+//    spawn-id order won. Its two cases lived here. Every name a user types
+//    now resolves through EntityManager::findEntityByName (the T244
+//    nearest-first ranked lookup, covered in test_state_modules.cpp); the
+//    last caller, /warp, was retyped to a spawn id in the same unit.
 // ===================================================================
-
-TEST_F(EntitiesComponentTest, FindEntityByNameReturnsNullptrWhenNoSpawnMatches) {
-    EXPECT_EQ(eq.Entities().FindEntityByName("NoSuchMob"), nullptr);
-}
-
-TEST_F(EntitiesComponentTest, FindEntityByNameFindsASpawnInjectedViaZoneProcessNewSpawn) {
-    auto payload = NewSpawnPayloadAt(1234, "A_Test_Mob", 100, 200, 5);
-    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn, payload));
-
-    Entity* found = eq.Entities().FindEntityByName("A_Test_Mob");
-    ASSERT_NE(found, nullptr);
-    EXPECT_EQ(found->spawn_id, 1234u);
-    // The lookup is case-insensitive and treats spaces/underscores alike.
-    EXPECT_EQ(eq.Entities().FindEntityByName("a_test_mob"), found);
-}
 
 TEST_F(EntitiesComponentTest, ListEntitiesDoesNotThrowOnAnEmptyOrPopulatedTable) {
     EXPECT_NO_THROW(eq.Entities().ListEntities());

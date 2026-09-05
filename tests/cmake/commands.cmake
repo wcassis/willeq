@@ -98,6 +98,17 @@ ADD_EXECUTABLE(test_appearance_command
 TARGET_LINK_LIBRARIES(test_appearance_command GTest::gtest_main fmt::fmt)
 GTEST_DISCOVER_TESTS(test_appearance_command)
 
+# T362 (B069): the shared slash-command completion helper
+# (include/client/command_completion.h) and the registry half that used to
+# drift from it. Header-only helper + one TU -- no action layer, no
+# EverQuest, no Irrlicht.
+ADD_EXECUTABLE(test_command_completion
+    test_command_completion.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/graphics/ui/command_registry.cpp
+)
+TARGET_LINK_LIBRARIES(test_command_completion GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_command_completion)
+
 # T143: registry-aware /help. Merges registry 1's CommandRegistry (game,
 # graphics/ui) and registry 2's CommandProcessor (action) catalogs -- needs
 # both, plus the same ACTION_LAYER_STATE_SOURCES dependency set as

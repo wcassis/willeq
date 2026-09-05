@@ -72,7 +72,6 @@ public:
 	void ZoneProcessDeleteSpawn(const EQ::Net::Packet &p);
 	void ZoneProcessMobHealth(const EQ::Net::Packet &p);
 	void ZoneProcessHPUpdate(const EQ::Net::Packet &p);
-	Entity* FindEntityByName(const std::string& name);
 	void ListEntities(const std::string& search = "") const;
 	void ZoneProcessWearChange(const EQ::Net::Packet &p);
 	void ApplyAppearanceToGameState(const eqt::state::EntityAppearanceChangedData& data);

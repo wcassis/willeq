@@ -1,4 +1,5 @@
 #include "client/action/command_processor.h"
+#include "client/command_completion.h"  // T362 (B069): the shared prefix idiom
 #include "client/state/game_state.h"
 #include "client/output/output_renderer.h"
 #include "client/skill/skill_constants.h"  // T156: /useskill id/name resolution
@@ -175,25 +176,15 @@ std::vector<std::string> CommandProcessor::getCategories() const {
     return result;
 }
 
+// T362 (B069): the prefix idiom, the sort and the de-duplication all moved to
+// the one shared helper this and ui::CommandRegistry::getCompletions() now
+// call. Behaviour here is unchanged -- this was already the de-duplicating
+// half of the drifted pair.
 std::vector<std::string> CommandProcessor::getCompletions(const std::string& partial) const {
-    std::vector<std::string> result;
-    std::string lowerPartial = toLower(partial);
-
-    for (const auto& [name, cmd] : m_commands) {
-        if (name.find(lowerPartial) == 0) {
-            result.push_back(cmd.info.name);
-        }
-    }
-
-    for (const auto& [alias, primary] : m_aliases) {
-        if (alias.find(lowerPartial) == 0) {
-            result.push_back(alias);
-        }
-    }
-
-    std::sort(result.begin(), result.end());
-    result.erase(std::unique(result.begin(), result.end()), result.end());
-    return result;
+    return eqt::completion::PrefixCompletions(
+        partial, m_commands,
+        [](const RegisteredCommand& cmd) { return cmd.info.name; },
+        m_aliases);
 }
 
 std::vector<std::string> CommandProcessor::getAllCommandNames() const {
@@ -212,11 +203,9 @@ std::vector<std::string> CommandProcessor::getAllCommandNames() const {
 
 // ========== Helper Methods ==========
 
+// T362 (B069): one implementation, shared with ui::CommandRegistry::toLower.
 std::string CommandProcessor::toLower(const std::string& str) {
-    std::string result = str;
-    std::transform(result.begin(), result.end(), result.begin(),
-                   [](unsigned char c) { return std::tolower(c); });
-    return result;
+    return eqt::completion::ToLower(str);
 }
 
 std::pair<std::string, std::string> CommandProcessor::parseCommandLine(const std::string& input) {

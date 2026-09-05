@@ -1,4 +1,5 @@
 #include "client/graphics/ui/command_registry.h"
+#include "client/command_completion.h"  // T362 (B069): the shared prefix idiom
 #include <algorithm>
 #include <cctype>
 
@@ -123,28 +124,16 @@ std::vector<std::string> CommandRegistry::getCategories() const {
     return result;
 }
 
+// T362 (B069): this was the DRIFTED half -- the same prefix idiom over the
+// same two map shapes as action::CommandProcessor::getCompletions(), sorted
+// but never de-duplicated, so a command registered with its own name as an
+// alias came back twice. Both now call the one shared helper, which
+// de-duplicates.
 std::vector<std::string> CommandRegistry::getCompletions(const std::string& partial) const {
-    std::vector<std::string> result;
-    std::string lowerPartial = toLower(partial);
-
-    // Check primary command names
-    for (const auto& [name, cmd] : commands_) {
-        if (name.find(lowerPartial) == 0) {
-            result.push_back(cmd.name);  // Return original case
-        }
-    }
-
-    // Check aliases
-    for (const auto& [alias, primaryName] : aliasMap_) {
-        if (alias.find(lowerPartial) == 0) {
-            result.push_back(alias);
-        }
-    }
-
-    // Sort alphabetically
-    std::sort(result.begin(), result.end());
-
-    return result;
+    return eqt::completion::PrefixCompletions(
+        partial, commands_,
+        [](const Command& cmd) { return cmd.name; },  // original case
+        aliasMap_);
 }
 
 std::vector<std::string> CommandRegistry::getAllCommandNames() const {
@@ -164,11 +153,10 @@ std::vector<std::string> CommandRegistry::getAllCommandNames() const {
     return result;
 }
 
+// T362 (B069): one implementation, shared with
+// action::CommandProcessor::toLower.
 std::string CommandRegistry::toLower(const std::string& str) {
-    std::string result = str;
-    std::transform(result.begin(), result.end(), result.begin(),
-                   [](unsigned char c) { return std::tolower(c); });
-    return result;
+    return eqt::completion::ToLower(str);
 }
 
 std::pair<std::string, std::string> CommandRegistry::parseInput(const std::string& input) {

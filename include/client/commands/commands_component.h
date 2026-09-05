@@ -111,6 +111,9 @@ public:
 
 	// T140: warp/time-of-day thin wrappers.
 	void RequestWarp(const std::string& args);
+	// T362 (B070): the entity form of /warp, already resolved to a spawn id
+	// by ActionDispatcher::warp() with the ranked nearest-first lookup.
+	void RequestWarpToEntity(uint16_t spawn_id);
 	void RequestTimeOfDay(const std::string& args);
 
 	// T140: bank/train thin wrappers.

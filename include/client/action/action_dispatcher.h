@@ -863,10 +863,15 @@ public:
     ActionResult showLocation();
 
     /**
-     * Instantly teleport to coordinates, entity, or current target (raw
-     * arg string, parsed inside EverQuest::RequestWarp() -- see that
-     * method for why). No server round trip for the teleport itself;
-     * SendPositionUpdate() is still called afterward, unchanged.
+     * Instantly teleport to coordinates, an entity, or the current target.
+     * No server round trip for the teleport itself; SendPositionUpdate() is
+     * still called afterward, unchanged.
+     *
+     * T362 (B070): the ENTITY form is resolved here, with the T244
+     * nearest-first ranked overload (the resolver /target, /face, /moveto and
+     * /follow use), and reaches the handler as a spawn id via
+     * warpToEntity(). The empty and coordinate forms still go down as the raw
+     * arg string to warp(), parsed inside CommandsComponent::RequestWarp().
      */
     ActionResult warp(const std::string& args);
 

@@ -48,10 +48,13 @@ public:
     // T356 (B003c): these take a RESOLVED spawn id, not a name -- the same
     // rule T230 already applied to targetEntity(). Name resolution is the
     // dispatcher's job (EntityManager::findEntityByName, nearest-first
-    // ranked overload); a handler that re-resolved the name would use the
-    // game-side EntitiesComponent::FindEntityByName, an unranked
+    // ranked overload); a handler that re-resolved the name used to reach
+    // the game-side EntitiesComponent::FindEntityByName, an unranked
     // lowest-spawn-id prefix match, and could move to / follow a DIFFERENT
-    // same-named entity than the one the dispatcher validated.
+    // same-named entity than the one the dispatcher validated. T362 deleted
+    // that resolver with its last caller, so there is nothing left to
+    // re-resolve WITH -- but the rule stands: ids down, names at the
+    // dispatcher.
     virtual void moveToEntity(uint16_t spawnId) = 0;
     virtual void followEntity(uint16_t spawnId) = 0;
     virtual void stopFollow() = 0;
@@ -440,6 +443,13 @@ public:
     // /move /moveto /follow /stopfollow.
     virtual void showLocation() = 0;
     virtual void warp(const std::string& args) = 0;
+    // T362 (B070): /warp <entity_name> no longer ships the NAME down.
+    // ActionDispatcher::warp() resolves it ONCE with the T244 ranked
+    // nearest-first overload -- the same resolver /target, /face, /moveto
+    // and /follow use -- and hands the winner's spawn id to this method.
+    // warp(args) above now only carries coordinates or the empty
+    // (use-current-target) form.
+    virtual void warpToEntity(uint16_t spawnId) = 0;
     virtual void showOrSetZoning(const std::string& args) = 0;
     virtual void requestQuit() = 0;
     virtual void campNow() = 0;

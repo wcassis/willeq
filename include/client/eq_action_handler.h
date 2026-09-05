@@ -257,6 +257,7 @@ public:
     // ========== Movement / Utility / Skills (T140) ==========
     void showLocation() override;
     void warp(const std::string& args) override;
+    void warpToEntity(uint16_t spawnId) override;  // T362 (B070)
     void showOrSetZoning(const std::string& args) override;
     void requestQuit() override;
     void campNow() override;

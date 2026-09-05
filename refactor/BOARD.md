@@ -151,9 +151,10 @@ it without taking that measurement first.
   `MovementComponentTest.{FollowTracksTheSpawnIdAcrossTicksNotTheNameMatch,
   CombatMovementTracksTheSpawnIdAcrossTicksNotTheNameMatch}`, both verified to
   fail on the name re-match (they latched the far beetle at x=100 instead of the
-  near one at x=30). **The resolver was NOT deleted**: `RequestWarp`
-  (`/warp <entity_name>`) still calls it with a genuinely user-typed name — see
-  the new **B070**. Prov: T356 Review.
+  near one at x=30). **The resolver was NOT deleted by T359**: `RequestWarp`
+  (`/warp <entity_name>`) still called it with a genuinely user-typed name — see
+  the new **B070**, which **T362 Leg A (`4a06d2e2`) closed by deleting it**
+  along with that last caller. Prov: T356 Review.
 
 - ~~**B004** (A) `include/client/graphics/ui/ui_layout.h` `centerPopup` — `popW`/
   `popH` are hardcoded 400/350 at every resolution; the archive records general
@@ -1591,7 +1592,7 @@ it without taking that measurement first.
 
 ## Added 2026-09-04 by T357 Leg A (B057)
 
-- **B069** (B) `src/client/action/command_processor.cpp`
+- ~~**B069** (B) `src/client/action/command_processor.cpp`
   `CommandProcessor::getCompletions` and
   `src/client/graphics/ui/command_registry.cpp` `CommandRegistry::getCompletions`
   — duplicated-then-drifted. Two independent implementations over two different
@@ -1606,10 +1607,19 @@ it without taking that measurement first.
   A `CommandRegistry` caller that is not that one still sees the duplicate.
   Closes when: the prefix-match is one shared helper both call, or
   `CommandRegistry::getCompletions` de-duplicates like its twin. Prov: T357 Leg
-  A (step 1 measurement).
+  A (step 1 measurement).~~ **CLOSED by T362 Leg B (`465429b2`)**: both call
+  `eqt::completion::PrefixCompletions` (`include/client/command_completion.h`),
+  which sorts AND de-duplicates, and both `toLower` bodies call
+  `eqt::completion::ToLower`. The header sits at the client include root, not
+  under `action/` or `graphics/ui/`, so neither registry gains an include edge
+  on the other's layer; it is header-only and templated on the two maps'
+  different mapped types, so it adds no link dependency and no CMake change.
+  Pinned by the new `tests/test_command_completion.cpp` —
+  `CommandRegistryCompletionTest.ACommandRegisteredWithItsOwnNameAsAnAliasCompletesOnce`
+  offered `consider` twice pre-fix, once post-fix.
 ## Added 2026-09-04 by T359 (B003d close-out)
 
-- **B070** (B) `src/client/commands/commands_movement.cpp`
+- ~~**B070** (B) `src/client/commands/commands_movement.cpp`
   `CommandsComponent::RequestWarp` — the LAST caller of the unranked
   case-insensitive prefix resolver `EntitiesComponent::FindEntityByName`, and the
   reason T359 could not delete it. `/warp <entity_name>` takes a genuinely
@@ -1621,4 +1631,18 @@ it without taking that measurement first.
   than `/target` picked. `/warp` is a GM/debug command, which is why this is B and
   not A. Closes when: `RequestWarp` resolves through the ranked lookup (ideally at
   the dispatcher, as T356 did) and `FindEntityByName` is deleted with its last
-  caller. Prov: T359 Leg A (`310725a4`).
+  caller. Prov: T359 Leg A (`310725a4`).~~ **CLOSED by T362 Leg A
+  (`4a06d2e2`)**: `/warp` does pass through `ActionDispatcher`, so the resolution
+  moved there. `ActionDispatcher::warp()` parses its own arg string — empty and
+  three-float forms still go down as the raw string to `IActionHandler::warp()`;
+  a name resolves ONCE through `EntityManager::findEntityByName(name, px, py,
+  pz)` and goes down as a spawn id via the new `IActionHandler::warpToEntity()`
+  (game side: `CommandsComponent::RequestWarpToEntity`). An unresolvable name
+  fails at the dispatcher and never reaches the handler.
+  `EntitiesComponent::FindEntityByName` is **DELETED**, header and body, leaving
+  one name resolver in the client; the deleted body carried no `pushEvent`
+  (K12). Flagged narrowing: the deleted resolver substituted underscores for
+  spaces in the search term and the ranked one does not — the same narrowing
+  T350/T356 accepted for `/face`, `/moveto` and `/follow`. Pinned by
+  `ActionDispatcherTest.Warp_ByName_PicksTheNearestMatch_NotTheLowestSpawnId`
+  plus two siblings.

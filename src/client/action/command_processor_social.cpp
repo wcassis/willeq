@@ -572,8 +572,9 @@ ActionResult CommandProcessor::cmdAutofire(const std::string& args) {
 
 ActionResult CommandProcessor::cmdAssist(const std::string& args) {
     // Ported from game's assist_cmd: explicit name wins (resolved here via
-    // EntityManager, matching FindEntityByName's game-side substring
-    // search), else falls back to the current combat target.
+    // EntityManager, whose substring search matched the game-side
+    // FindEntityByName the port replaced -- T362 deleted that one), else
+    // falls back to the current combat target.
     std::string error;
     uint16_t targetId = resolveCombatTarget(args, &error);
     if (targetId == 0) {
