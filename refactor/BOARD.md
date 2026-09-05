@@ -3598,7 +3598,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   T399 routed the literal through `ResolveDataPath()` rather than change
   behaviour mid-unit. Found by T399.
 
-- ~~**B247** (P) `tests/goldens/manifest.json` / `scripts/ci/visual_gate.sh` —
+- ~~**B260** (P) `tests/goldens/manifest.json` / `scripts/ci/visual_gate.sh` —
   **the visual gate is RED on the `fable` tip itself: T398 Leg B grew the
   shared `willeq.eqe1` by 239 bytes and the Will-blessed `eqe1MappedBytes`
   baselines were not re-blessed.** Measured by T399 (2026-09-05) standalone on
@@ -3614,7 +3614,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   the T80 memory-coverage baselines (Will)"). **Only Will re-blesses**, so
   T399 did not. Until then every unit that touches graphics will report this
   same gate FAIL and have to re-derive the attribution. Found by T399.~~ **DUPLICATE of B240 (T398 boarded the same 239-byte delta first) — struck at the T399 merge; the bless request stands under B240.**
-- **B248** (B) `config/snd_index_cache.json`, `config/gfx_index_cache.json` —
+- **B261** (B) `config/snd_index_cache.json`, `config/gfx_index_cache.json` —
   **two generated caches are git-tracked, and every client run rewrites them,
   so a plain `willeq` run dirties the working tree.** T399 measured it: a 40 s
   headless run (`--no-graphics`) left `config/snd_index_cache.json` modified
@@ -3685,7 +3685,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
 
 ### Added by T400 (2026-09-05)
 
-- **B247** (B) `src/client/graphics/texture_generators.cpp` /
+- **B260** (B) `src/client/graphics/texture_generators.cpp` /
   `data/textures/` -- **the 926-line TU that DEFINES every procedural texture
   the client ships was in no CMake target at all, and 63 of its 64 outputs
   still have no build recipe.** Found by T400 while fixing B225: a
@@ -3714,7 +3714,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   `tools/retired/README.md` paragraph needs correcting whichever way it
   goes. Prov: T400 Review.
 
-- **B248** (B) `tools/eqe1_builder.cpp` / `docker/irrlicht-drm/COGLES2Shaders.cpp`
+- **B261** (B) `tools/eqe1_builder.cpp` / `docker/irrlicht-drm/COGLES2Shaders.cpp`
   -- **the ETC1 `_alpha` companion is INVISIBLE to any shader with a single
   sampler, and nothing warns you.** The default ETC1 encode stores a
   texture's alpha in a separate `<name>_alpha` pack entry, uploaded to

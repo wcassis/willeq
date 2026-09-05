@@ -127,7 +127,7 @@ the material type in both directions and that unit 1 is never bound.
   `configureParticleMaterial()` so the blend mode is pinnable without a
   device. No behaviour change.
 - **`tests/test_particle_atlas_alpha.cpp`** (new, 5 cases).
-- **`tools/retired/README.md`**: corrected — see B247.
+- **`tools/retired/README.md`**: corrected — see B260.
 
 ### 5. Proof
 
@@ -176,11 +176,11 @@ only consumer. P26's recorded rationale was "no found consumer of its output
 anywhere in the tree or docs" — and T398 has since proven that the 64 BMPs it
 wrote are 64 of the pack's 67 entries. **B225 is the direct consequence**: the
 code that proves the shipped file wrong could not be run, so the wrong file
-kept shipping. Boarded as **B247** (the other 63 BMPs still have no build
+kept shipping. Boarded as **B260** (the other 63 BMPs still have no build
 recipe and no proof they match their generator; `tools/retired/README.md`
 corrected). The general trap — an ETC1 `_alpha` companion is invisible to any
 single-sampler shader, silently, with `hasAlpha=1` in the pack — is boarded as
-**B248**.
+**B261**.
 
 ### 7. Deviations from the plan
 
