@@ -1,3 +1,18 @@
+// T379 (BOARD B146): every outbound send in this TU now goes through
+// eqt::PacketSender -- ctx_.net.QueueLogin(p) on the login stream and
+// ctx_.net.QueueWorld(p) on the world stream. Twelve sites (4 login, 8 world)
+// each replaced the same five lines:
+//
+//     if (m_login_connection) { m_login_connection->QueuePacket(p); }
+//     else { ctx_.net.NoteSuppressedSend(); }
+//
+// The null guard and the suppressed-send bump live inside the entry point now,
+// so behaviour is unchanged; what is NEW is that the R01 session recorder sees
+// the ClientToServer side of both streams (EQT::Net::SessionStream::Login /
+// ::World, which the recorder has always had but nothing ever wrote) and the
+// T268 ordered-capture seam sees the handshake. Before this unit a
+// --record-session .sleq of a fresh login carried the SERVER's half only.
+//
 // F03: Login-server and world-server connection clusters, split out of eq.cpp.
 // Pure move — see refactor/F03_login_world.md for scope and verification.
 //
@@ -186,11 +201,7 @@ void LoginWorldComponent::LoginSendSessionReady()
 	p.PutUInt32(10, 2048);  // max length
 
 	eqt::strings::DumpPacket("C->S", HC_OP_SessionReady, p);
-	if (m_login_connection) {
-		m_login_connection->QueuePacket(p);
-	} else {
-		ctx_.net.NoteSuppressedSend();
-	}
+	ctx_.net.QueueLogin(p);
 }
 
 void LoginWorldComponent::LoginSendLogin()
@@ -220,11 +231,7 @@ void LoginWorldComponent::LoginSendLogin()
 	eqcrypt_block(&buffer[0], buffer_len, (char*)p.Data() + 12, true);
 
 	eqt::strings::DumpPacket("C->S", HC_OP_Login, p);
-	if (m_login_connection) {
-		m_login_connection->QueuePacket(p);
-	} else {
-		ctx_.net.NoteSuppressedSend();
-	}
+	ctx_.net.QueueLogin(p);
 }
 
 void LoginWorldComponent::LoginSendServerRequest()
@@ -237,11 +244,7 @@ void LoginWorldComponent::LoginSendServerRequest()
 	p.PutUInt16(10, 0);  // unknown
 
 	eqt::strings::DumpPacket("C->S", HC_OP_ServerListRequest, p);
-	if (m_login_connection) {
-		m_login_connection->QueuePacket(p);
-	} else {
-		ctx_.net.NoteSuppressedSend();
-	}
+	ctx_.net.QueueLogin(p);
 }
 
 void LoginWorldComponent::LoginSendPlayRequest(uint32_t id)
@@ -255,11 +258,7 @@ void LoginWorldComponent::LoginSendPlayRequest(uint32_t id)
 	p.PutUInt32(12, id);  // server id
 
 	eqt::strings::DumpPacket("C->S", HC_OP_PlayEverquestRequest, p);
-	if (m_login_connection) {
-		m_login_connection->QueuePacket(p);
-	} else {
-		ctx_.net.NoteSuppressedSend();
-	}
+	ctx_.net.QueueLogin(p);
 }
 
 void LoginWorldComponent::LoginProcessLoginResponse(const EQ::Net::Packet & p)
@@ -574,11 +573,7 @@ void LoginWorldComponent::WorldSendClientAuth()
 	LOG_INFO(MOD_WORLD, "Sending login info: dbid={}, key={}, zoning={}", dbid_str, m_key, zoning_flag);
 
 	eqt::strings::DumpPacket("C->S", HC_OP_SendLoginInfo, p);
-	if (m_world_connection) {
-		m_world_connection->QueuePacket(p);
-	} else {
-		ctx_.net.NoteSuppressedSend();
-	}
+	ctx_.net.QueueWorld(p);
 }
 
 void LoginWorldComponent::WorldSendEnterWorld(const std::string &character)
@@ -603,11 +598,7 @@ void LoginWorldComponent::WorldSendEnterWorld(const std::string &character)
 	p.PutUInt32(70, 0);  // unknown
 
 	eqt::strings::DumpPacket("C->S", HC_OP_EnterWorld, p);
-	if (m_world_connection) {
-		m_world_connection->QueuePacket(p);
-	} else {
-		ctx_.net.NoteSuppressedSend();
-	}
+	ctx_.net.QueueWorld(p);
 	m_enter_world_sent = true;
 }
 
@@ -685,11 +676,7 @@ void LoginWorldComponent::WorldSendApproveWorld()
 	// The rest is character-specific data which we'll leave as zeros for now
 
 	eqt::strings::DumpPacket("C->S", HC_OP_ApproveWorld, p);
-	if (m_world_connection) {
-		m_world_connection->QueuePacket(p);
-	} else {
-		ctx_.net.NoteSuppressedSend();
-	}
+	ctx_.net.QueueWorld(p);
 }
 
 void LoginWorldComponent::WorldSendWorldClientCRC()
@@ -705,20 +692,12 @@ void LoginWorldComponent::WorldSendWorldClientCRC()
 	}
 
 	eqt::strings::DumpPacket("C->S", HC_OP_World_Client_CRC1, p);
-	if (m_world_connection) {
-		m_world_connection->QueuePacket(p);
-	} else {
-		ctx_.net.NoteSuppressedSend();
-	}
+	ctx_.net.QueueWorld(p);
 
 	// Send CRC2
 	p.PutUInt16(0, HC_OP_World_Client_CRC2);
 	eqt::strings::DumpPacket("C->S", HC_OP_World_Client_CRC2, p);
-	if (m_world_connection) {
-		m_world_connection->QueuePacket(p);
-	} else {
-		ctx_.net.NoteSuppressedSend();
-	}
+	ctx_.net.QueueWorld(p);
 }
 
 void LoginWorldComponent::WorldSendWorldClientReady()
@@ -729,11 +708,7 @@ void LoginWorldComponent::WorldSendWorldClientReady()
 	p.PutUInt16(0, HC_OP_WorldClientReady);
 
 	eqt::strings::DumpPacket("C->S", HC_OP_WorldClientReady, p);
-	if (m_world_connection) {
-		m_world_connection->QueuePacket(p);
-	} else {
-		ctx_.net.NoteSuppressedSend();
-	}
+	ctx_.net.QueueWorld(p);
 	m_world_ready = true;
 }
 
@@ -745,11 +720,7 @@ void LoginWorldComponent::WorldSendWorldComplete()
 	p.PutUInt16(0, HC_OP_WorldComplete);
 
 	eqt::strings::DumpPacket("C->S", HC_OP_WorldComplete, p);
-	if (m_world_connection) {
-		m_world_connection->QueuePacket(p);
-	} else {
-		ctx_.net.NoteSuppressedSend();
-	}
+	ctx_.net.QueueWorld(p);
 }
 
 void LoginWorldComponent::WorldProcessGuildsList(const EQ::Net::Packet &p)
@@ -807,11 +778,7 @@ void LoginWorldComponent::WorldProcessExpansionInfo(const EQ::Net::Packet &p)
 		ack.PutUInt16(0, HC_OP_AckPacket);
 		ack.PutUInt32(2, 0);  // sequence or something
 		eqt::strings::DumpPacket("C->S", HC_OP_AckPacket, ack);
-		if (m_world_connection) {
-			m_world_connection->QueuePacket(ack);
-		} else {
-			ctx_.net.NoteSuppressedSend();
-		}
+		ctx_.net.QueueWorld(ack);
 
 		// Then send WorldClientReady
 		WorldSendWorldClientReady();
