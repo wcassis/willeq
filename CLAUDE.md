@@ -333,9 +333,11 @@ The client connects through three stages, each with its own connection manager:
   component as `ctx_.<Owner>().<accessor>()` (L13's pairwise rule: a member two
   components share moves to the one that writes it), and anything still on the
   class as `owner_.member_`. L13 took that last handle from 1,065 uses to
-  **151** — 81 of them public methods and 70 in thirteen listed stays, none of
+  151 — 81 of them public methods and 70 in thirteen listed stays, none of
   which may move because each crosses a thread boundary or backs a lifetime
-  contract. See the closed **B050**
+  contract. That number drifts with normal work: T366's census read 163 and a
+  comment-filtered count at this tip reads **165** (T371) — re-measure, do not
+  quote it. See the closed **B050**
 - Lifecycle entry points (`initLoadingScreen`, `initDeferredGraphics`,
   `processFrame`, `shutdown`, `run`) stay on `IrrlichtRenderer`: `Application`
   and `IrrlichtBridge` must not learn a component exists

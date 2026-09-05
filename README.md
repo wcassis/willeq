@@ -306,11 +306,12 @@ The executable is output to `./build/bin/willeq`. Configuring `EQT_GRAPHICS=ON` 
 
 ### Tests
 
-The default suite (`ctest`) has 2746 registered tests across 123 test executables; none need a server, a display, or EQ client files (a few skip when a packet capture is absent). Live/integration tests that need a running eqemu server, a display, and client files are built but only registered under an opt-in flag:
+The default suite (`ctest`) registered **3,949 tests across 232 test executables** when this line was written (T371, 2026-09-05); the suite grows every unit, so run `ctest --test-dir build -N | tail -1` for the current number rather than trusting this one. None of them need a server, a display, or EQ client files (a few skip when a packet capture is absent); the sole expected failure is the ALSA host quirk `AudioManagerTest.PreloadCommonSounds`. Live/integration tests that need a running eqemu server, a display, and client files are built but only registered under an opt-in flag:
 
 ```bash
 cmake -S . -B build -DEQT_LIVE_TESTS=ON
-ctest --test-dir build -L live      # 19 tests across 3 binaries
+ctest --test-dir build -L live      # 3 binaries: test_zoning_graphics_integration,
+                                    # test_zoning_integration, test_beneficial_spell_casting
 ```
 
 ### CMake Options
@@ -473,7 +474,7 @@ Bindings are configurable in `config/hotkeys.json` (or a `hotkeys` object in the
 | A / Left | Turn left |
 | D / Right | Turn right |
 | Ctrl+A / End | Strafe left |
-| Ctrl+D / PageDown | Strafe right |
+| Ctrl+D / Home | Strafe right |
 | Space | Jump |
 | ` / Numpad+ / NumLock | Toggle autorun |
 | [ | Swim up |
@@ -532,9 +533,8 @@ Bindings are configurable in `config/hotkeys.json` (or a `hotkeys` object in the
 | Ctrl+M | Toggle map overlay |
 | Ctrl+N | Toggle navmesh overlay |
 | Ctrl+V | Toggle frustum culling |
-| Ctrl+L | Lock/unlock UI |
-| Ctrl+S | Save UI layout |
-| Ctrl+Shift+R | Reset UI defaults |
+| PageUp / PageDown | Scroll the static-UI panel under the cursor (T313) |
+| Mouse wheel | Scroll that same panel (T313) |
 | Shift+Escape | Quit |
 
 ### Slash Commands

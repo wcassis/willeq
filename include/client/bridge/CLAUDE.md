@@ -42,7 +42,7 @@ EverQuest::tick()                    processFrame()
 
 Defined in `include/client/state/event_bus.h`. See `include/client/state/CLAUDE.md` for the full categorization.
 
-## Intent Types (35)
+## Intent Types (36)
 
 Defined in `include/client/events/renderer_intents.h`. `RendererIntent` is a `std::variant` holding all intent structs:
 
@@ -56,7 +56,7 @@ Defined in `include/client/events/renderer_intents.h`. `RendererIntent` is a `st
 - **Hotbar**: `HotbarActivateIntent`
 - **Inventory**: `MoveItemIntent`, `DeleteItemIntent`, `EquipmentChangedIntent`
 - **Chat**: `ChatSubmitIntent`
-- **Audio**: `MusicVolumeChangeIntent`, `EffectsVolumeChangeIntent`
+- **Audio**: `MusicVolumeChangeIntent`, `EffectsVolumeChangeIntent`, `PlaySoundIntent` (T328 Leg B: the measured UI sounds — itemclth, wearclth, BuyItem)
 - **Trainer**: `TrainerToggleIntent`, `TrainSkillIntent`, `CloseTrainerIntent`
 - **Tradeskill**: `TradeskillCombineIntent`, `TradeskillCloseIntent`
 - **Model**: `PlayerModelGeometryChanged`

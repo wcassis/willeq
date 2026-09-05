@@ -816,7 +816,7 @@ failure this guards against).
 
 ## 2026-09-05 - three rulings from Will
 
-- **B058 `/skills`:** rename `/newskills` to `/skills` and remove `/newskills`
+- **B058 `/skills`:** rename `/newskills` to `/skills` and remove `/newskills` <!-- RETIRED-OK: the ruling that retired the name -->
   outright (no alias). One body survives: the fuller one (closes the spellbook
   and inventory popups and echoes to chat). The bare `skills` stdin keyword
   keeps toggling the same window. Unit T363.

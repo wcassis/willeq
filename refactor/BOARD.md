@@ -2,9 +2,15 @@
 
 - **Tree confirmed at:** `3808ebe9` (branch `task/K00-legA-board`, base `fable`).
 - **Date:** 2026-09-03. Built by K00 Leg A (`refactor/K00_truth_reset.md`).
-- **Suite:** 3,759 of 3,760 passing at `661cb078` (2026-09-04, main verification run). The sole expected failure is the ALSA host
-  Review (the last merged code unit). The sole expected failure is the ALSA host
-  quirk `AudioManagerTest.PreloadCommonSounds`. The count grows; run it.
+- **Suite:** DO NOT QUOTE A NUMBER FROM THIS LINE. The suite grows with every
+  unit -- it went 3,760 -> 3,949 across T352-T370 alone -- so a count written
+  here is stale within a day. Get the current one with
+  `ctest --test-dir <slot>/build -N | tail -1`, and the current pass/fail with
+  `ctest --test-dir <slot>/build -j6`. The only invariant is that the ALSA host
+  quirk `AudioManagerTest.PreloadCommonSounds` is the SOLE expected failure
+  (ctest still exits 8 with only it failing -- read the summary line, not the
+  exit status). Last measured: **3,948 of 3,949** at `a7e760dc` + T371's doc
+  sweep, 2026-09-05, slot2.
 - **Items are confirmed against the tree at the tip above; nothing here is quoted
   from an older board.**
 
@@ -2010,3 +2016,39 @@ it without taking that measurement first.
   `defaults.ini` proves it is SHOWN by default (no `Show=0` under
   `[GroupWindow]`) but not what is inside it; fable draws the titled frame with
   no member rows. Prov: T368 Leg A.
+
+---
+
+## Added 2026-09-05 by T371 (documentation truth sweep, T352-T370)
+
+- **B130** (P) The orientation docs carry hand-maintained COUNTS with no
+  regression net, and T371 found every one of them wrong at `a7e760dc`:
+  `src/client/input/CLAUDE.md`'s `InputAction` enum (said 40, measured 33 —
+  T365 and T368 deleted seven consumer-less enumerators) and `HotkeyAction`
+  enum (said 80, measured 94); the `registerCommand({...})` count in
+  `src/client/input/CLAUDE.md` and `include/client/graphics/ui/CLAUDE.md`
+  (said 142, measured 143 — T347's `/cleartarget`);
+  `include/client/bridge/CLAUDE.md`'s intent-variant count (said 35, measured
+  36 — T328 Leg B's `PlaySoundIntent`, which the list also omitted);
+  the `owner_` handle count in `CLAUDE.md` and
+  `src/client/graphics/CLAUDE.md` (said 151, measured 165); `README.md`'s
+  registered-test/executable counts (said 2746/123, measured 3949/232). Each
+  was written with a "counted <date>" or a commit hash, so the staleness is
+  invisible without re-counting. `DocClaims` (T371) is a NAME table and
+  catches none of this. Closes when either the counts are generated from the
+  tree at build time, or a test asserts the doc numbers against the tree the
+  way `command_registration_order_g03.txt` asserts the registration count.
+  T371 corrected all of them in place and, where the number is inherently
+  drifty (the suite total, the `owner_` census), replaced it with the command
+  that measures it. Prov: T371.
+
+- **B131** (P) `refactor/BOARD.md` and the batch close-outs (`refactor/K_*.md`)
+  are inside `DocCitations`' live-doc set but deliberately OUTSIDE `DocClaims`'
+  scan (T371 measured 39 retired-name hits in them, every one legitimate
+  struck-item ledger text — `/newskills`, `setOnSpellLand`,
+  `EntitiesComponent::FindEntityByName`, the five T354 collision functions, and
+  so on). The consequence: if a FUTURE board entry describes LIVE code using a
+  name that has since been retired, nothing catches it, and the board is the
+  first thing a new agent reads. Closes when either the ledger text is
+  distinguishable from live description (a per-entry struck marker the scanner
+  can honour) or someone rules that board drift is acceptable. Prov: T371.
