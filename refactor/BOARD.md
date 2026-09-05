@@ -2312,16 +2312,26 @@ branches can be deleted independently of these items.
   every zone-stream sender goes through `PacketSender` (the ten unguarded ones
   first — they are the ones that segfault). Prov: T376.
 
-- **B146** (B) The login and world streams have no `PacketSender` equivalent:
+- ~~**B146** (B) The login and world streams have no `PacketSender` equivalent:
   `src/client/login_world/login_world_component.cpp` holds **12 direct sends**
   (4 on `m_login_connection`, 8 on `m_world_connection`), none of which the R01
   session recorder sees on the ClientToServer side of those streams, even
-  though `EQT::Net::SessionStream` has `Login` and `World` members. These are
-  explicitly NOT B145: they run before the zone connection exists, so
-  `SafeQueueZone` is the wrong destination for them — they need their own
-  sender, or `PacketSender` needs a per-stream entry point. A `.sleq` of a
-  fresh login therefore records the server's side of the handshake and not the
-  client's. Boarded rather than routed under T376's STOP condition. Prov: T376.
+  though `EQT::Net::SessionStream` has `Login` and `World` members.~~
+  **CLOSED (T379, `e9ee0220` + `f08369db`).** `eqt::PacketSender` gained the
+  per-stream entry points the board's second option named — `QueueLogin()` and
+  `QueueWorld()`, `SafeQueueZone`'s three-step body (T268 seam, R01 recorder
+  with this stream's `SessionStream`, then the queue) with the zone-only
+  machinery dropped: no stream/reliable arguments, no async hop, no zero-stats
+  guard (it reads `isZoneConnected()`, false for the whole handshake by
+  definition) and no catch-and-reset. Both are null-safe on two axes, unbound
+  and bound-but-down, each logging and bumping the replay-suppression counter
+  exactly as the twelve call sites' own else branch did. The connections are
+  `LoginWorldComponent`'s and it is constructed in `EverQuest`'s BODY, so they
+  are bound as pointers by `BindLoginWorldStreams` from the constructor rather
+  than as references in the initialiser list. All 12 sends routed; zero
+  `->QueuePacket(` left in the TU, pinned by a census case.
+  `tests/test_login_world_senders_packet_sender.cpp`, 7 cases (3 red -> green
+  on the two observers, plus the census pin). Prov: T376, T379.
 
 - ~~**B125** (A) `include/client/audio/audio_mixer.h` `MixChannel::volume` —
   a plain `float` written by the GAME thread and read by the miniaudio AUDIO
