@@ -22,6 +22,7 @@
 #include "client/graphics/environment/spell_particle_types.h"
 #endif
 #include <algorithm>
+#include <vector>
 #include <fstream>
 
 namespace EQ {
@@ -591,6 +592,16 @@ void SpellVisualFX::createImpact(uint16_t target_id, uint32_t spell_id)
         glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f,
                      scolor.getBlue() / 255.0f, 1.0f);
         auto def = EQT::Graphics::Environment::SpellPresets::Impact(c, spell_id);
+        // T389 (board B162, T380 Leg B2): the impact burst draws the tiles
+        // the spell's spells.eff Target stage names, not the style default.
+        // Frost Bolt (54) names GEND10_SPRITE + GENU10_SPRITE x2 there.
+        if (visual.hasTargetStage()) {
+            EQT::Graphics::Environment::SpellPresets::applyStageSpriteNames(
+                def,
+                std::vector<std::string>(visual.target_stage.sprite_names.begin(),
+                                         visual.target_stage.sprite_names.end()),
+                spell_id);
+        }
         m_particle_manager->createSpellEffect(def, 0, target_id);
         return;
     }
@@ -632,6 +643,16 @@ void SpellVisualFX::createImpactAtPosition(const irr::core::vector3df& pos, uint
         glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f,
                      scolor.getBlue() / 255.0f, 1.0f);
         auto def = EQT::Graphics::Environment::SpellPresets::Impact(c, spell_id);
+        // T389 (board B162, T380 Leg B2): the impact burst draws the tiles
+        // the spell's spells.eff Target stage names, not the style default.
+        // Frost Bolt (54) names GEND10_SPRITE + GENU10_SPRITE x2 there.
+        if (visual.hasTargetStage()) {
+            EQT::Graphics::Environment::SpellPresets::applyStageSpriteNames(
+                def,
+                std::vector<std::string>(visual.target_stage.sprite_names.begin(),
+                                         visual.target_stage.sprite_names.end()),
+                spell_id);
+        }
         glm::vec3 worldPos(pos.X, pos.Y, pos.Z);
         m_particle_manager->createSpellEffectAtPosition(def, worldPos);
         return;

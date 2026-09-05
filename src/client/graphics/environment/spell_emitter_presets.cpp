@@ -146,6 +146,29 @@ SpellEffectDef Impact(glm::vec4 color, uint32_t spellId) {
     return def;
 }
 
+void applyStageSpriteNames(SpellEffectDef& def,
+                           const std::vector<std::string>& spriteNames,
+                           uint32_t spellId) {
+    (void)spellId;
+    const auto& cfg = SpellEffectsConfig::instance();
+
+    uint8_t regions[4] = {0, 0, 0, 0};
+    uint8_t count = 0;
+    for (const auto& name : spriteNames) {
+        if (name.empty()) continue;
+        if (count >= 4) break;
+        regions[count++] = cfg.getTextureIndex(name);
+    }
+    if (count == 0) return;
+
+    for (auto& ed : def.emitters) {
+        ed.config.textureRegionCount = count;
+        for (uint8_t i = 0; i < 4; ++i) {
+            ed.config.textureRegions[i] = (i < count) ? regions[i] : regions[0];
+        }
+    }
+}
+
 SpellEffectDef BuffAura(glm::vec4 color, uint32_t spellId) {
     auto s = SpellEffectsConfig::instance().getStyleSettings("buffAura", spellId);
 

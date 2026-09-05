@@ -140,3 +140,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_spell_effect_removal PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
 GTEST_DISCOVER_TESTS(test_spell_effect_removal)
+
+# T389 Leg B (board B162): the spells.eff sprite name -> particle-atlas tile
+# mapping measured against the official client, and the routing of a resolved
+# Target stage into an impact effect's EmitterConfig::textureRegions[].
+# Pure logic -- two Environment TUs, no renderer, no Irrlicht device.
+ADD_EXECUTABLE(test_spell_target_stage_textures
+    test_spell_target_stage_textures.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/graphics/environment/spell_effects_config.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/graphics/environment/spell_emitter_presets.cpp
+)
+TARGET_LINK_LIBRARIES(test_spell_target_stage_textures GTest::gtest_main ${FMT_LIB} ${JSONCPP_LIBRARIES} dl)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_spell_target_stage_textures PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_spell_target_stage_textures)
