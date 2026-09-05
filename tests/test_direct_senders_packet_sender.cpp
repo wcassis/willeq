@@ -363,4 +363,74 @@ TEST(DirectSendersPacketSender, RecordedSession_Player) {
         });
 }
 
+// =====================================================================
+// zone handshake -- ZoneComponent, 12 senders:
+//   ZoneSendZoneEntry ZoneSendReqClientSpawn ZoneSendClientReady
+//   ZoneSendSetServerFilter ZoneSendStreamIdentify ZoneSendAckPacket
+//   ZoneSendReqNewZone ZoneSendSendAATable ZoneSendUpdateAA
+//   ZoneSendSendTributes ZoneSendRequestGuildTributes ZoneSendSendExpZonein
+// ZoneSendStreamIdentify is the B140 crash shape -- the only one of the
+// twelve with no connection test at all. The other eleven keep their
+// if/else, because the else arm bumps the replay-suppressed-send counter,
+// which SafeQueueZone does NOT do: that wrapper guards something else.
+// =====================================================================
+
+TEST(DirectSendersPacketSender, NoZoneConnection_ZoneHandshake) {
+    SenderHarness h(/*withConnection=*/false);
+    ASSERT_EQ(h.eq.m_zone_connection, nullptr);
+
+    auto& z = h.eq.Zone();
+    z.ZoneSendStreamIdentify();
+    z.ZoneSendAckPacket();
+    z.ZoneSendZoneEntry();
+    z.ZoneSendReqClientSpawn();
+    z.ZoneSendClientReady();
+    z.ZoneSendSetServerFilter();
+    z.ZoneSendReqNewZone();
+    z.ZoneSendSendAATable();
+    z.ZoneSendUpdateAA();
+    z.ZoneSendSendTributes();
+    z.ZoneSendRequestGuildTributes();
+    z.ZoneSendSendExpZonein();
+
+    SUCCEED() << "the 12 zone-handshake senders survived a null zone connection";
+}
+
+// The eleven guarded senders must still bump the suppressed-send counter when
+// there is no connection -- routing must not silently retire that count.
+TEST(DirectSendersPacketSender, NoZoneConnection_ZoneHandshakeStillCountsSuppressedSends) {
+    SenderHarness h(/*withConnection=*/false);
+    const uint64_t before = h.eq.Net().ReplaySuppressedSendCount();
+
+    h.eq.Zone().ZoneSendClientReady();
+    h.eq.Zone().ZoneSendReqNewZone();
+
+    EXPECT_EQ(h.eq.Net().ReplaySuppressedSendCount(), before + 2)
+        << "the else arm of the zone-handshake send guard is the only writer "
+           "of the replay-suppressed-send counter; SafeQueueZone's own null "
+           "guard does not bump it, so that wrapper must survive the routing";
+}
+
+TEST(DirectSendersPacketSender, RecordedSession_ZoneHandshake) {
+    WithRecordedSession(
+        "t378_zone_recorded.sleq",
+        [](SenderHarness& h) {
+            h.eq.Zone().ZoneSendStreamIdentify();
+            h.eq.Zone().ZoneSendClientReady();
+            h.eq.Zone().ZoneSendReqNewZone();
+        },
+        [](const std::vector<RecordedPacket>& recorded) {
+            EXPECT_EQ(CountOpcode(recorded, HC_OP_ClientReady), 1u)
+                << "ZoneSendClientReady must reach the session recorder; a "
+                   "sender that calls zone_connection->QueuePacket() directly "
+                   "is invisible to it (BOARD B145)";
+            EXPECT_EQ(CountOpcode(recorded, HC_OP_ReqNewZone), 1u)
+                << "ZoneSendReqNewZone, same bypass, same fix";
+            // ZoneSendStreamIdentify sends the ZoneEntry opcode with an empty
+            // body -- it is the crash-shape one of the twelve.
+            EXPECT_EQ(CountOpcode(recorded, HC_OP_ZoneEntry), 1u)
+                << "ZoneSendStreamIdentify, the unguarded one, same fix";
+        });
+}
+
 }  // namespace
