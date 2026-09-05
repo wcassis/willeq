@@ -306,7 +306,7 @@ The executable is output to `./build/bin/willeq`. Configuring `EQT_GRAPHICS=ON` 
 
 ### Tests
 
-The default suite (`ctest`) registered **3,949 tests across 232 test executables** when this line was written (T371, 2026-09-05); the suite grows every unit, so run `ctest --test-dir build -N | tail -1` for the current number rather than trusting this one. None of them need a server, a display, or EQ client files (a few skip when a packet capture is absent); the sole expected failure is the ALSA host quirk `AudioManagerTest.PreloadCommonSounds`. Live/integration tests that need a running eqemu server, a display, and client files are built but only registered under an opt-in flag:
+The default suite (`ctest`) registered **3,949 tests across 232 test executables** when this line was written (T371, 2026-09-05); the suite grows every unit, so run `ctest --test-dir build -N | tail -1` for the current number rather than trusting this one. None of them need a server, a display, or EQ client files (a few skip when a packet capture is absent), and since T392 (2026-09-05, board B215) there is no expected failure at all — the old ALSA waiver on `AudioManagerTest.PreloadCommonSounds` was a misdiagnosis and the test is green. Live/integration tests that need a running eqemu server, a display, and client files are built but only registered under an opt-in flag:
 
 ```bash
 cmake -S . -B build -DEQT_LIVE_TESTS=ON

@@ -101,7 +101,8 @@ IF(WITH_AUDIO)
         test_sound_assets.cpp
         ${AUDIO_COMMON_TEST_SOURCES}
     )
-    TARGET_COMPILE_DEFINITIONS(test_sound_assets PRIVATE WITH_AUDIO)
+    TARGET_COMPILE_DEFINITIONS(test_sound_assets PRIVATE WITH_AUDIO
+        WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
     TARGET_LINK_LIBRARIES(test_sound_assets ${AUDIO_COMMON_TEST_LIBS})
     GTEST_DISCOVER_TESTS(test_sound_assets)
 ENDIF()
@@ -263,4 +264,17 @@ IF(WITH_AUDIO)
     TARGET_COMPILE_DEFINITIONS(test_music_loopback_compare PRIVATE WITH_AUDIO)
     TARGET_LINK_LIBRARIES(test_music_loopback_compare GTest::gtest ${AUDIO_COMMON_TEST_LIBS})
     # Note: Not using GTEST_DISCOVER_TESTS as this is a manual command-line tool
+ENDIF()
+
+# T392 (board B200): the snd*.pfs sound-load path, against the real client
+# archives. No audio device (forceLoopback), no eqemu, no graphics.
+IF(WITH_AUDIO)
+    ADD_EXECUTABLE(test_pfs_sound_load
+        test_pfs_sound_load.cpp
+        ${AUDIO_COMMON_TEST_SOURCES}
+    )
+    TARGET_COMPILE_DEFINITIONS(test_pfs_sound_load PRIVATE WITH_AUDIO
+        WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    TARGET_LINK_LIBRARIES(test_pfs_sound_load ${AUDIO_COMMON_TEST_LIBS})
+    GTEST_DISCOVER_TESTS(test_pfs_sound_load)
 ENDIF()

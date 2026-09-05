@@ -6,11 +6,15 @@
   unit -- it went 3,760 -> 3,949 across T352-T370 alone -- so a count written
   here is stale within a day. Get the current one with
   `ctest --test-dir <slot>/build -N | tail -1`, and the current pass/fail with
-  `ctest --test-dir <slot>/build -j6`. The only invariant is that the ALSA host
-  quirk `AudioManagerTest.PreloadCommonSounds` is the SOLE expected failure
-  (ctest still exits 8 with only it failing -- read the summary line, not the
-  exit status). Last measured: **3,948 of 3,949** at `a7e760dc` + T371's doc
-  sweep, 2026-09-05, slot2.
+  `ctest --test-dir <slot>/build -j6`. **T392 (2026-09-05, B215) RETIRED the
+  last expected failure: the suite is now ALL GREEN and any red is a real red.**
+  The `AudioManagerTest.PreloadCommonSounds` "ALSA quirk" waiver was a
+  misdiagnosis -- the binary never opened `willeq.db`. Last measured:
+  **4,056 of 4,056** at `1311b50a` (T392, slot2 -- 4,055 under `ctest -j6` plus
+  `visual_gate`, which misses its gfaydark CPU-p95 ceiling under that load and
+  passes standalone). `visual_gate` also needs `build-gles2` rebuilt from the
+  same tip, or it fails with an identical `characterModelsBytes` deficit in all
+  three zones -- that shape is a stale tree, never a defect.
 - **Items are confirmed against the tree at the tip above; nothing here is quoted
   from an older board.**
 
@@ -1022,6 +1026,15 @@ it without taking that measurement first.
   141->137 corrected, and the invented `OPEN_WINDOW` (143 = thunder1),
   `CLOSE_WINDOW` (144 = thunder2) and `SELL_ITEM` (146 = wearclth) deleted.
   13 new tests in `tests/test_ui_sound_events.cpp`.
+  **T392 NOTE (2026-09-05, `1311b50a`):** every sound this entry wired --
+  145, 146, 138 -- was INAUDIBLE on fable until T392, and for a reason that
+  had nothing to do with the wiring: `willeq.db` returned each filename with
+  a trailing carriage return, so the PFS lookup missed silently (B200,
+  struck). The tests were green throughout because they assert on the
+  `PlaySoundIntent`, which is the correct seam and did fire. **A live ear on
+  id 138 is OWED before this entry can rest on "fable plays the same
+  sounds".**
+
   **THIS ENTRY STAYS OPEN on three things Leg B deliberately did not guess:**
   (1) ~~the FIVE UNMEASURED rows — coin pickup by denomination from a corpse,
   buy, sell, combine success and combine failure.~~ **T342 MEASURED AND WIRED
@@ -2811,7 +2824,7 @@ branches can be deleted independently of these items.
 Full evidence for every entry below: **`review/T386/README.md`** (measurement
 only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
 
-- **B200** (A) `src/client/audio/audio_manager.cpp` `AudioManager::loadSoundDataFromPfs`
+- ~~**B200** (A) `src/client/audio/audio_manager.cpp` `AudioManager::loadSoundDataFromPfs`
   / `loadSound` — **every sound that lives in a `snd*.pfs` archive fails to load
   at runtime, so fable is silent for the whole UI/combat sound set.** MEASURED
   T386 (`review/T386/` §1b) in one live `arena` session: **31** `Failed to load
@@ -2834,7 +2847,31 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   those lines appears**, which leaves the silent `pfsFileIndex_.find() == end()`
   return as the only reachable exit. Closes when a live session plays a PFS
   sound and a test pins the id-138 lookup against the shipped index.
-  Prov: T386 Review §1b; B172; B036.
+  Prov: T386 Review §1b; B172; B036.~~ **STRUCK T392 (`1311b50a`)**: it is NOT an audio-path defect --
+  `AudioManager`, the PFS reader and the shipped index were all correct.
+  **`data/willeq.db` held `BuyItem.WAV` followed by a CARRIAGE RETURN; all
+  2,165 `sound_assets.filename` rows carried one**, because
+  `tools/willeq_db_builder.cpp` read Titanium's CRLF `*.txt` files with a bare
+  `std::getline` on newline, leaving the CR inside the LAST field of every
+  record. `playSound(138)` therefore looked up `buyitem.wav<CR>`,
+  `pfsFileIndex_.find()` missed, and the one exit that does not log returned --
+  exactly the exit T386 narrowed to. **The CR is also why the cause stayed
+  invisible: the failure log line ENDS in it, so a terminal renders
+  `Failed to load sound: BuyItem.WAV` with the name looking perfect.** Four
+  more tables carried the same taint -- `eqstrings` (5,901), `dbstrings`
+  (8,305), `race_data` (475), `login_strings` (470) -- and are fixed by the
+  same change. Fix: a `readLine()` helper used at all eight file loops in the
+  builder, plus a `split()` that keeps a trailing empty token (the old
+  istringstream form dropped `dbstr_us.txt`'s 19 deliberately-blank strings the
+  moment the CR stopped padding them), and `data/willeq.db` rebuilt --
+  **schema and version unchanged (still 7), the other seven tables
+  bit-identical, every difference in the five CR-only**. Pinned by
+  `tests/test_pfs_sound_load.cpp` (15 tests, 7 red pre-fix) against the real
+  archives: `BuyItem.WAV`/138 plus SwordBlk/120, Swing/118, Spell_1/103,
+  LevelUp/139, WaterIn/100 by name AND by id, an all-2,165-row
+  control-character sweep, and two negatives. **The LIVE ear is still OWED**
+  (no server this unit; the archives on disk were the oracle) -- one T328
+  tone-probe row for id 138 on the next lock unit, see B036/B172.
 
 - **B201** (A) `src/client/bridge/irrlicht_bridge.cpp`
   `GameEventType::CurrencyChanged` arm / `renderer_entities.cpp`
@@ -3002,6 +3039,37 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   `Your spell Burst of Flame has failed to land …` and a test pins it.
   Prov: T386 Review §3.
 
+### Added / struck by T392 (2026-09-05)
+
+- ~~**B215** (A) `tests/test_sound_assets.cpp` `AudioManagerTest.PreloadCommonSounds`
+  -- the ONE standing suite waiver ("ALSA host quirk, expected-fail") was a
+  MISDIAGNOSIS and had been quoted as fact in `CLAUDE.md`, `README.md`,
+  `refactor/EXECUTOR_PROTOCOL.md`, `refactor/TESTING_CHARTER.md`,
+  `refactor/test_baseline.txt` and the BOARD header since 2026-07-22.~~
+  **STRUCK T392 (`1311b50a`)**: the host's missing ALSA card is real and noisy,
+  but `AudioManager::initialize()` falls back to the RDP loopback backend and
+  SUCCEEDS -- which the other twenty `AudioManagerTest` cases in the same binary
+  had been proving all along. The failure was `0 vs 0`:
+  `preloadCommonSounds()` resolves every sound id through
+  `WilleqDatabase::globalInstance()`, and `test_sound_assets` never opened the
+  database, so no id resolved to a filename. Fixed by adding the
+  `WilleqDbEnvironment` the audio tests already use elsewhere plus the
+  `WILLEQ_DB_PATH` define; it needed B200's `willeq.db` fix as well -- with the
+  CR-tainted db and the environment in place it still returns `0 vs 0`, MEASURED
+  both ways. **The suite now has NO expected failures**; every doc above was
+  struck in the same commit. Prov: T392 Review.
+
+- **B216** (B) `tools/willeq_db_builder.cpp` `loadRaceData` / the `race_data`
+  table -- **475 rows built into every `willeq.db` and read by nothing.** A grep
+  for `race_data` and `getRaceData` across `src/ include/ tests/ tools/
+  benchmarks/ docker/ scripts/` returns only the builder itself (the four
+  `tool_race_db` hits are about opening the database, not this table); the
+  schema is `(race_id, gender, raw_fields)` where `raw_fields` is the whole
+  `RaceData.txt` line stored verbatim, i.e. nothing ever parsed it. Found while
+  auditing which tables T392's CRLF fix changed. Closes when the loader and the
+  table are deleted (and the builder's `--data-path` docs say so), or a consumer
+  is named. Prov: T392 Review.
+
 ### Struck / amended by T386
 
 - **B172** — its owed live proof is **TAKEN and SPLIT**. The banking and the
@@ -3010,7 +3078,9 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   `character_currency` 4/6/1/8 -> 5/15/3/11, and
   `You receive 3 platinum, 3 gold, 5 silver and 5 copper from the corpse.` with
   5/15/3/11 -> 8/18/8/16 — both deltas exactly the four printed counts. The
-  SOUND half is **NOT** proven and is now **B200**; "watch the purse move" turns
+  SOUND half is **NOT** proven and is now **B200** (**root-caused and fixed
+  T392 `1311b50a` -- a trailing CR on every `sound_assets` filename in
+  `willeq.db`; the LIVE EAR for id 138 is still OWED**); "watch the purse move" turns
   out to be impossible on fable's screen and is now **B201**. The official
   client's **zero-denomination** form is **still UNMEASURED**: T386's oracle
   attempt is recorded in `review/T386/` §1d together with the method that will

@@ -4,9 +4,14 @@
 # Known flake (rare, load-dependent): RDPServerFrameTest.UpdateFrameMultipleTimes
 # segfaults ~once per many runs, pre-existing, unrelated to Batch F. Re-run to confirm.
 #
-# Environment-dependent failure (documented 2026-07-22 during F02/F14):
-# AudioManagerTest.PreloadCommonSounds — ALSA cannot resolve default card 0 on
-# this host ("cannot find card '0'" despite /dev/snd/controlC0 existing).
-# Fails consistently in isolation; confirmed pre-existing on unmodified fable
-# by two independent stash-bisections (F02 and F14 reviews). Unrelated to
-# Batch F. Treat as expected-fail until the host ALSA config is fixed.
+# RETIRED 2026-09-05 (T392, 1311b50a), board B215. For three years the line here
+# read: "AudioManagerTest.PreloadCommonSounds — ALSA cannot resolve default
+# card 0 on this host; treat as expected-fail." That diagnosis was WRONG. The
+# host's missing ALSA card is real and noisy, but AudioManager falls back to
+# the RDP loopback backend and initialize() SUCCEEDS -- which is why the other
+# twenty AudioManagerTests in the same binary always passed. The test failed
+# 0-vs-0 because preloadCommonSounds() resolves every sound id through
+# WilleqDatabase::globalInstance() and test_sound_assets never opened the
+# database, so nothing resolved. It now opens it (and needed T392's willeq.db
+# CRLF fix as well, or every filename came back with a trailing carriage
+# return). THE SUITE HAS NO EXPECTED FAILURES. A red test is a red test.

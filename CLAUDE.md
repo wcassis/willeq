@@ -85,8 +85,10 @@ bash scripts/build-gles2-x86.sh --irrlicht-only
 
 ```bash
 # Configure (from project root) — the GLES2-config tree is now the primary
-# dev/test tree (tests on, full ctest suite). Run it; the sole expected
-# failure is the ALSA quirk (AudioManagerTest.PreloadCommonSounds).
+# dev/test tree (tests on, full ctest suite). Run it; since T392 (2026-09-05,
+# board B215) the suite has NO expected failures — the long-standing
+# "ALSA quirk" waiver on AudioManagerTest.PreloadCommonSounds was a
+# misdiagnosis and the test is green. A red test is a real red.
 mkdir -p build && cmake -S . -B build \
     -DEQT_GRAPHICS=ON \
     -DEQT_GLES2=ON \

@@ -5,9 +5,41 @@
 #include "client/audio/sound_buffer.h"
 #include "client/audio/audio_manager.h"
 
+#include "client/willeq_database.h"
+
 #include <filesystem>
+#include <fstream>
 
 using namespace EQT::Audio;
+
+// T392: AudioManagerTest.PreloadCommonSounds was waived for years as "the ALSA
+// quirk". It is not. Initialization succeeds on this host (it falls back to the
+// RDP loopback backend, which is why the other twenty AudioManagerTests pass);
+// the test failed 0-vs-0 because `preloadCommonSounds()` resolves every id
+// through `WilleqDatabase::globalInstance()` and this binary never opened the
+// database, so the pointer was null and no id resolved to a filename. Opening
+// it -- the pattern test_eff_loader already used -- is the whole fix.
+namespace {
+EQT::WilleqDatabase g_willeq_db;
+
+class WilleqDbEnvironment : public ::testing::Environment {
+public:
+    void SetUp() override {
+        const char* env_path = std::getenv("WILLEQ_DB_PATH");
+        std::string db_path = env_path ? env_path : WILLEQ_DB_PATH;
+        std::ifstream probe(db_path);
+        if (probe.good()) {
+            probe.close();
+            if (g_willeq_db.open(db_path)) {
+                EQT::WilleqDatabase::setGlobalInstance(&g_willeq_db);
+            }
+        }
+    }
+};
+
+::testing::Environment* const g_willeq_db_env =
+    ::testing::AddGlobalTestEnvironment(new WilleqDbEnvironment);
+} // namespace
 
 // Path to EQ client files for testing
 static std::string getEqClientPath() {
