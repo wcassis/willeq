@@ -312,15 +312,47 @@ C->S OP_ZoneChange
   `tests/goldens/self_death_outbound_g07.txt`,
   `tests/test_forced_pose_no_echo.cpp`, `tests/test_self_death_sequence.cpp`.
 
-### Live proof — OWED, and the lock is ambiguous
+### Live proof — ~~OWED, and the lock is ambiguous~~ RUN BY T358 (2026-09-05), `review/T358/`
 
-Not run. `/mnt/projects/fable/.eqemu-lock` **does not exist** and no
+~~Not run. `/mnt/projects/fable/.eqemu-lock` **does not exist** and no
 `zone`/`world` process is running, but this unit was dispatched with slot2
 described as holding that lock for a live measurement. Rather than take a
 server another slot's in-flight unit may be about to bring up, the live run
 is left owed: die once (`#kill` on self or a GM-summoned mob), watch the
 client send Lying, go silent, and respawn at bind through a full zone-in;
-`review/T346/`. **This is the THIRD time this week the lock has been found
+`review/T346/`.~~
+
+Done, and all three steps are asserted on the SERVER's receive log, not on the
+client's self-report (`review/T358/logs/death_burst_server_cs.txt`):
+
+1. **Lying appearance:** `C->S OP_SpawnAppearance Size [10]`,
+   `0F 01 0E 00 73 00 00 00` = spawn 271 (ours), type 14 `AT_ANIMATION`, param
+   115 `Lying` — the oracle's packet but for the spawn id. Sent exactly once;
+   every other C->S appearance in the session is the routine `64` (100,
+   Standing).
+2. **No client updates while dead:** zero C->S `OP_ClientUpdate` between the
+   death and the new zone's `OP_ClientReady`, a ~4 s gap. The client-side
+   `--record-session` log agrees (last one at t=65.380 s, `OP_Death` at
+   t=65.444 s).
+3. **Bind re-entry through a FULL zone-in:** `OP_ZoneChange` (90 B, bind zone 1)
+   then the complete handshake (`OP_ZoneEntry` -> `OP_ReqNewZone` ->
+   `OP_ReqClientSpawn` -> `OP_ClientReady`) and a NEW spawn id. This death was
+   **same-zone** (qeynos -> qeynos) and the full handshake ran anyway, exactly as
+   T311 Leg A recorded of the official client.
+
+The frame dump also shows the pose: 384 ms after `OP_Death` the player model is
+prone and stripped (`T358_death_f062_death_moment_1024x768.png`).
+
+**Two things T358 had to work out and that belong here:** bare `#kill` needs a
+target (it only prints its usage), and `account.invulnerable = 1` makes eqemu
+refuse the kill exactly as T345 found it refuses `#castspell`.
+
+**A measurement-instrument gap found doing this, boarded as B068:**
+`SendSpawnAppearance` calls `zone_connection->QueuePacket()` directly, bypassing
+`PacketSender`, where the session recorder lives — so a `--record-session`
+capture of a death that definitely ran step 1 contains ZERO C->S
+`OP_SpawnAppearance`. A false negative, and the reason this proof had to use the
+server's log. **This is the THIRD time this week the lock has been found
 absent or stale while a slot was said to hold it** (memory records two
 earlier); worth a look at whether the protocol is actually being followed.
 

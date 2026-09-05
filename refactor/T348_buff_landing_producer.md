@@ -226,15 +226,25 @@ Post-fix: 14/14 in that binary.
 Per the protocol that means another session owns the server: STOP, never
 overwrite. No live session was run and `review/T348/` was not created.
 
-What is owed: a night session (`#zone` to a dark spot or forced 22:00),
+~~What is owed: a night session (`#zone` to a dark spot or forced 22:00),
 `/say #set invulnerable off` first (T345: an invulnerable account refuses its own
 `#castspell`) and restored after, `#castspell 46`, before/after frames showing
 the zone light change; plus a Dark Elf zone-in showing the racial floor with no
-buff up. The rig notes on B055 still apply unchanged.
+buff up.~~ **RUN BY T358 (2026-09-05), `review/T358/` -- both halves PASS.**
 
 The two fixes are proven correct end-to-end in a test that drives the real
-production chain from the wire packet to the `VisionChanged` event, so what
-remains owed is the pixel confirmation, not the mechanism.
+production chain from the wire packet to the `VisionChanged` event, and now also
+live: `Buff landed (OP_Action): spell=46 caster=282 level=20 ticks=360 slot=0`
+-> `recomputed vision = 2` -> `Vision upgraded to: Ultravision`, with the zone
+light stepping +4.9% at that frame and back on the fade (the STILLS could not
+resolve it -- the video had to be stepped). `Player race 6 -> base vision:
+Ultravision` / `race 1 -> Normal` at every zone-in, no `#race` write needed
+(Testcaster is a real Dark Elf on the same account). T358 also measured two new
+defects out of the same session: **B066** (the vision->light switch in
+`sim_animation.cpp` is SWAPPED against `VisionType`, so an Ultravision landing
+applies Infravision's 0.75 + red shift -- measured as R +5.5% against B +0.4%)
+and **B067** (vision scales only the 218 data-only zone point lights, never the
+global ambient).
 
 ### Open question, recorded not decided
 

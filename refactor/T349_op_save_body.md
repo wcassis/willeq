@@ -264,13 +264,34 @@ struct whose fields drifted would still be caught.
   `tests/test_packet_structs.cpp`, `tests/test_self_death_sequence.cpp`,
   plus the two documents (`refactor/BOARD.md`, `refactor/T349_op_save_body.md`).
 
-### Live proof -- owed
+### Live proof -- ~~owed~~ RUN BY T358 (2026-09-05), `review/T358/`
 
-Not run; no eqemu lock was held by this unit and slot3 was described as
+~~Not run; no eqemu lock was held by this unit and slot3 was described as
 running a live measurement. Owed, and cheap: die once against a real server
 and confirm the zone log shows `[Packet C->S] [OP_Save] [0x736b] Size [194]`
 followed by `Save for [<char>] took [...]` -- the server-side line that proves
-it was accepted -- immediately before the Lying `OP_SpawnAppearance`.
+it was accepted -- immediately before the Lying `OP_SpawnAppearance`.~~
+
+Done, and the prediction held to the letter, from the qeynos zone process' own
+packet log (`review/T358/logs/server_qeynos_zone_packetlog.log`):
+
+    18:57:12  C->S  OP_SpawnAppearance  Size [10]    0F 01 0E 00 73 00 00 00
+    18:57:12  C->S  OP_Save             Size [194]   00 00 00 00 15 F6 28 64 42 00 00 FF C3 0F 5C 12 42 ...
+              [Zone] [Info] Save for [Testchar] took [0.01101253]
+
+`Size [194]` = 2 opcode + 192 body; `unknown004 = 0x15` as decoded here; the
+floats are `F6 28 64 42` = 57.04 (server y) and `00 00 FF C3` = -510.0 (server
+x), **byte-for-byte the last pre-death C->S `OP_ClientUpdate`'s y/x**, which is
+the oracle property this unit established.
+
+**ONE DEVIATION, stated:** this Review says `OP_Save` is the FIRST C->S packet of
+the burst. Live, the server receives the **Lying appearance first** and `OP_Save`
+second. The client's own log puts them in the intended order in the same
+millisecond (`Character save requested` then `Sent SpawnAppearance`), so the
+reversal is on the wire: `SendSave` goes through `PacketSender::SafeQueueZone`,
+which defers to `QueuePacketAsync` off the main thread, while
+`SendSpawnAppearance` queues synchronously and overtakes it. Boarded as **B068**
+together with the recorder gap that hid the appearance from `--record-session`.
 
 ### For the board / next unit
 

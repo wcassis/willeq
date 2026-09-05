@@ -1190,10 +1190,27 @@ it without taking that measurement first.
   measured packets through a real `EverQuest` and asserts on the `VisionChanged`
   event T339's REAL registered hook publishes into a recording bridge — the whole
   chain, wire to renderer. Pre-fix: 3 of 7 failed, pasted in the T348 Review.
-  **Still owed: the live capture.** The eqemu lock was held by T350
+  ~~**Still owed: the live capture.** The eqemu lock was held by T350
   (`/mnt/projects/fable/.eqemu-lock` = `T350 2026-09-04`) for the whole unit, so
-  no session was run and `review/T348/` does not exist. The rig notes above are
-  unchanged and still apply. Prov: T348 Review.
+  no session was run and `review/T348/` does not exist.~~ **LIVE-PROVEN by T358
+  (2026-09-05), `review/T358/`.** At forced 22:00 in qeynos2 a `#castspell 46`
+  produces the whole chain in one millisecond -- `SpellAction effect_flag=4` ->
+  `Buff landed (OP_Action): spell=46 caster=282 level=20 ticks=360 slot=0`
+  (T348's new producer line) -> `Vision buff changed (spell 46), recomputed
+  vision = 2` -> `Vision upgraded to: Ultravision` -- and `#nukebuffs` produces
+  the mirror (`recomputed vision = 0`, `Vision reset to base: Normal`). The buff
+  reaches the buff bar too (`35m` box on screen, matching the 360 ticks).
+  **The zone light changes, and only the VIDEO proves it**: four stills spread
+  2-3% against a 1.3% still-to-still noise floor and said "no change", while the
+  260-frame capture stepped frame by frame gives 0.017618 (59 frames before) ->
+  0.018485 (84 frames buffed, +4.9%) -> 0.017392 (77 frames after the fade), both
+  edges landing on the log lines to within one frame. Two defects fell out of the
+  same measurement and are B066 (the vision->light switch is SWAPPED: the landing
+  applies Infravision's 0.75 + red shift, measured as R +5.5% / B +0.4%) and
+  B067 (vision reaches only 218 data-only point lights, never the global
+  ambient -- which is why full Ultravision is worth 5% and the day/night cycle
+  is worth 4x). Neither blocks B055: the producer works and is reached.
+  Prov: T348 Review, T358 Review, `review/T358/README.md`.
 
   **T338 (2026-09-04): the live pair is captured, and B054 needs nothing
   further.** `review/T338/` holds a baseline plus both keyed toggles at tip
@@ -1279,8 +1296,19 @@ it without taking that measurement first.
   Ultravision, Human -> Normal, an untold renderer -> Normal, which is why the
   miss was invisible) plus a source-reader pin on the call being inside
   `registerEntity()` and on the two live sites still using it. Pre-fix failure in
-  the T348 Review. **Still owed: a live Dark Elf zone-in capture** — the eqemu
-  lock was held by T350 all unit. Prov: T348 Review.
+  the T348 Review. ~~**Still owed: a live Dark Elf zone-in capture** — the eqemu
+  lock was held by T350 all unit.~~ **LIVE-PROVEN by T358 (2026-09-05),
+  `review/T358/`.** No `#race` write was needed: `Testcaster` (character 67) is a
+  Dark Elf, race 6, and `Testchar` (65) a Human, race 1, both on account
+  `willeq_test`, so the proof is two logins. At every zone-in, with no buff up,
+  the client logs `Player race 6 -> base vision: Ultravision` (twice, two
+  sessions) and `Player race 1 -> base vision: Normal` (four times, four
+  sessions) — the line T345 recorded as appearing in NONE of its five logs. A
+  like-for-like pixel A/B was attempted (both characters `#zone befallen` to the
+  same safe point) and is CONFOUNDED — the camera settles facing differently in
+  each frame, so the pair is reported as a failed measurement, not as evidence;
+  B067 also explains why a racial floor moves so little on screen.
+  Prov: T348 Review, T358 Review.
 
 ## Added 2026-09-04 by T348 (B055/B056)
 
@@ -1353,3 +1381,69 @@ it without taking that measurement first.
   of the body. `self_death_outbound_g07.txt` learned `C->S OP_Save` as its
   new first line in place; the body is pinned by a second golden,
   `tests/goldens/op_save_body_g08.txt`.
+
+## Added 2026-09-05 by T358 (the owed live proofs 3)
+
+- **B066** (A) `src/client/graphics/sim_animation.cpp`
+  `SimulationWorker::applyVisionWeatherToZoneLights` and
+  `SimulationWorker::computeLightAnimations` — **the vision-type switch is
+  SWAPPED against the enum it switches on.** Both read
+  `case 1: // Ultravision -> intensity 1.0` and
+  `case 2: // Infravision -> intensity 0.75, redShift 0.3`, while
+  `EQT::Graphics::VisionType` (`include/client/graphics/renderer_types.h`) and
+  `EQ::BuffManager::computeVisionType` (`src/client/spell/buff_manager.cpp`) are
+  both **Normal = 0, Infravision = 1, Ultravision = 2** — and `computeVisionType`
+  literally `return 2;` for an Ultravision effect. So an Ultravision landing gets
+  Infravision's treatment and vice versa. The wrong mapping is also written into
+  the comment on `SimulationInput::visionType`
+  (`include/client/graphics/simulation_worker.h`), which is presumably where it
+  came from. **MEASURED LIVE, T358:** across a `#castspell 46` landing, the
+  400x300 world crop's R rises 5.5% and G 5.2% while **B rises 0.4%** (R/B
+  1.3618 -> 1.4303) — a red shift, which only the Infravision arm produces.
+  Closes when the two switches use `VisionType` (or its underlying values)
+  instead of hand-written cases, the header comment is corrected, and a test pins
+  Ultravision -> intensity 1.0 / redShift 0 and Infravision -> 0.75 / 0.3.
+  Prov: T358 Review, `review/T358/logs/frame_rgb_visionvid.txt`.
+
+- **B067** (A) `src/client/graphics/sim_animation.cpp` /
+  `src/client/graphics/zone_shader.cpp` — **vision type never reaches the global
+  ambient; it only scales the zone's point lights, so Ultravision is nearly
+  invisible.** `visionType` has exactly two consumers tree-wide
+  (`applyVisionWeatherToZoneLights` and `computeLightAnimations`), both of which
+  multiply `zoneData_.zoneLightNodes[i].diffuseColor`. In qeynos2 that is 218
+  lights the client's own log calls `ZONE LIGHTS: 218 total (no scene nodes,
+  data-only)`. `ZoneShader::setAmbientColor` is never called from anything vision
+  related. **MEASURED LIVE, T358:** at forced 22:00, the day/night cycle is worth
+  **4x** on the same crop and camera (0.0457 midday -> 0.0176 at 22:00) while a
+  full Ultravision buff is worth **+4.9%** (0.017618 -> 0.018485, 143 frames).
+  A player cannot see in the dark with Ultravision up. Note this is measured
+  THROUGH B066's swap, so the true figure at 1.0 intensity would be somewhat
+  larger — but the ceiling is still "218 lamps brighter", not "the world is
+  lit". Closes when vision raises the zone shader's ambient (or whatever the
+  official client's Ultravision actually does — that is B060's oracle question)
+  and a night frame with the buff up is measurably, obviously brighter.
+  Prov: T358 Review, `review/T358/logs/frame_brightness_visionvid.txt`.
+
+- **B068** (B) `src/client/entities/entities_component_world.cpp`
+  `EntitiesComponent::SendSpawnAppearance` / `SendAnimation` — **these two
+  senders bypass `PacketSender`, so the session recorder (`--record-session`,
+  R01) cannot see them, and a `.sleq` is a FALSE NEGATIVE for every appearance
+  and animation the client sends.** The recorder is hooked into
+  `PacketSender::SafeQueueZone`/`Queue` (`src/client/packet_sender.cpp`); both
+  senders call `ctx_.zone_connection->QueuePacket(p)` directly. T348/T346 already
+  knew about the bypass — the code carries an explicit
+  `ctx_.net.Test_RecordQueuedPacket(...)` line to keep the T268 ordered-capture
+  seam working — but the SESSION RECORDER was not given the same treatment.
+  **MEASURED, T358:** a `--record-session` capture of a self-death that
+  definitely ran T346 step 1 contains **zero C->S `OP_SpawnAppearance`**; the
+  proof had to be taken from the server's own zone packet log instead. This also
+  degrades the Batch R replay oracle, which replays what the recorder saw.
+  **Second half, same site:** the bypass reorders the death burst. T349 asserts
+  `OP_Save` is the first C->S packet of the burst and the client's log emits them
+  in that order in one millisecond, but the server RECEIVES the Lying appearance
+  first, because `SendSave` goes through `SafeQueueZone` -> `QueuePacketAsync`
+  when called off the main thread while `SendSpawnAppearance` queues
+  synchronously. Closes when both senders go through `PacketSender` (which also
+  makes the ordering match the oracle) and a test asserts a recorded session
+  contains the appearance. Prov: T358 Review,
+  `review/T358/logs/death_burst_server_cs.txt`.
