@@ -1700,6 +1700,7 @@ ENDIF()
 IF(EQT_GRAPHICS)
     ADD_EXECUTABLE(gles2_zone_benchmark
         tools/hwcaps/gles2_zone_benchmark.cpp
+        tools/hwcaps/zone_bench_options.cpp
         tools/hwcaps/zone_bench_memory.cpp
         tools/hwcaps/zone_bench_loader.cpp
         tools/hwcaps/zone_bench_draw.cpp
