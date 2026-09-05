@@ -548,6 +548,43 @@ it without taking that measurement first.
   in place of the hardcoded resist/school vocabulary, and the spells whose
   `spell_affect_index` hits an empty padding record need a rendering ruling.
   Prov: archived board, T70.
+  **T380 (2026-09-05) surveyed this and put numbers on it — the ruling is still
+  open, but it is now correctly scoped as LOW priority, and a bigger defect was
+  found underneath it (B160).** Census script:
+  `scripts/refactor/t380_spell_visual_census.py`; full tables in
+  `refactor/T380_spell_visuals_survey.md` Review.
+  - The reader DOES have a production caller — `SpellVisualFX::loadSpellsEff()`
+    in the constructor built by
+    `src/client/graphics/renderer/renderer_entities.cpp` — but its result is
+    consumed only by `resolveVisual()`, which per **B160** can never see a
+    non-`-1` index. Loaded, correct, and inert.
+  - 8,066 spells: **7,105 Resolved / 163 EmptyRecord / 798 NoAffectIndex / 0
+    OutOfRange**. `data/willeq.db` matches `spells_us.txt` on
+    `spell_affect_index` for all 8,066 rows.
+  - `spells.eff`: 256 records, **90 carry sprite names**, 166 do not; of the 90,
+    53 have a Source stage, **9** a Middle stage, 89 a Target stage.
+  - **T70's "5 empty-padding indices (70, 71, 80, 84, 88), 148 spells" is
+    WRONG — it is 6 indices and 163 spells; index 60 (15 spells) was missed.**
+    Counts: 60→15, 70→109, 71→1, 80→6, 84→5, 88→27. The stale figure is also
+    written into `tests/test_spell_visual_selection.cpp`'s comment (its
+    `EXPECT_GE(emptyRecord, 148u)` still passes).
+  - **"Padding" is the wrong word.** No record is zero-filled; every one has
+    non-zero bytes in the 800-byte-per-emitter region `SpellsEffReader` reads
+    into `unknown_bytes` and never interprets. 164 of the 166 sprite-less
+    records are BYTE-IDENTICAL (a default template at indices 37..255); the two
+    exceptions are index 36 (unreferenced) and index 60. Also: `header_a` is 1
+    for only 32 of 256 records and 58 of the 90 sprite-bearing records have
+    `header_a == 0` — it is NOT the enabled flag, do not rule on it.
+  - **The ruling is NPC-only.** All 163 padding-hit spells have every one of
+    the 16 class-level fields at 255 — NPC breath/rot/mist attacks, the
+    Heated/Burning/Blazing/Flaming Blade proc line (index 84) and the
+    `Xalirilan's`/`Iony's` augury family (index 88). Of the **2,584**
+    player-castable spells: 2,548 Resolved, **0 EmptyRecord**, 36
+    NoAffectIndex. A player never casts a padding-hit spell.
+  - Oracle spells that settle it (capture recipe in the T380 Review; needs the
+    eqemu lock): **Frost Bolt 54** (index 23, Wizard 1, `travel_type == 3`),
+    **Flame Jet 1494** (index 71, its sole referent), **GM Cleansing 6594**
+    (index −1, all classes, no reagent).
 
 - ~~**B023** (B)~~ **CLOSED 2026-09-05 by T375 (`src/client/player/player_misc.cpp`).**
   `SendReport` now builds the body eqemu's `Client::Handle_OP_Report` actually
@@ -573,6 +610,86 @@ it without taking that measurement first.
   message versus a 4-byte category plus raw text), so `AddReport()` is never
   reached. Fixing it is a command-shape decision, not a mechanical patch. Prov:
   archived board, T146.
+
+- **B160** (A) `include/client/graphics/spell_visual_fx.h` —
+  `SpellVisualFX::setSpellDatabase()` has **ZERO callers tree-wide**
+  (`src/`, `include/`, `tests/`), so `m_spell_db` is always `nullptr` in
+  production and every consumer takes its null branch: `getSpellColor()` and
+  `getSpellColor(const SpellData*)` in
+  `src/client/graphics/spell_visual_fx_nodes.cpp` always return the default
+  `SColor(255,150,180,255)` (the six resist colours and five school colours are
+  dead code); `isSprayCastStyle()` always returns `false` (the spray cast style
+  never plays); `getTextureForSpell()` always returns `m_particle_texture`; and
+  `resolveVisual()` in `src/client/graphics/spell_visual_fx.cpp` always leaves
+  `affect_index` at `kSpellsEffNoEffectIndex`, so the T70/T72 `spells.eff`
+  layer can never reach `Resolved` and its three suppression gates can never
+  fire. **Net user-visible effect: every spell in the game renders one
+  identical lavender-blue orbital glow.** The renderer has no route to a
+  `SpellDatabase` today — the only instance is `SpellManager::m_spell_db`
+  (`include/client/spell/spell_manager.h`), game-thread-owned, and
+  `SpellDatabase`'s LRU (`include/client/spell/spell_database.h`) has no mutex,
+  so that pointer must NOT simply be handed across the bridge. Fix shape
+  (T380 Review, Leg B1): enrich `SpellCastVisualStartedData` /
+  `SpellCastVisualCompleteData` with `resistType`, `school`,
+  `spellAffectIndex`, `travelType` on the game thread — the
+  `InventorySlotChanged` precedent — or give the renderer its own
+  `SpellDatabase` instance. Pre-fix-failing test: two spells of different
+  resist types must produce different particle colours. Found by T380.
+
+- **B161** (B) `include/client/graphics/spell_visual_fx.h` — seven public
+  methods with **zero callers tree-wide**: `createProjectile`,
+  `createImpactAtPosition`, `createBuffAura`, `createRainEffect`,
+  `createGroundCircle`, `removeBuffAura`, `removeAllForEntity`. Their bodies
+  live in `src/client/graphics/spell_visual_fx.cpp`; with them the node
+  builders `createProjectileNode`, `createAuraNode`, `createRainNode`,
+  `createGroundCircleNode` in
+  `src/client/graphics/spell_visual_fx_nodes.cpp`, the `ProjectileTravel` and
+  `AuraPersistent` branches of `SpellVisualFX::update()`, and the
+  `pendingImpacts` deferred-creation dance are unreachable.
+  `createProjectileNode`/`createAuraNode` are also called from
+  `applyWorkerResults()`, but only for worker `createEvents` produced from
+  commands that `createProjectile`/`createBuffAura` would have pushed — so that
+  route is dead too. No buff aura and no spell projectile is ever created in
+  production; `src/client/bridge/irrlicht_bridge.cpp` calls only
+  `createCastGlow`, `removeCastGlow`, `createSpellComplete` and `createImpact`.
+  Decide per T380 Leg B4: wire projectiles (85 spells carry
+  `spells_us.txt` `TravelType == 3`, and 9 `spells.eff` records carry a Middle
+  stage) or delete the seven. Not both in one unit. Found by T380.
+
+- **B162** (C) `src/client/spell/spells_eff_reader.cpp`
+  `SpellsEffReader::effectNameToTexture()` maps only **18 of the 40** distinct
+  sprite names in `spells.eff` — 16 of those exist in
+  `/mnt/projects/EverQuestP1999/SpellEffects/` — which is **157 of 301 sprite
+  slots (52%)**. The 22 it rejects are the commonest names (`GENI00_SPRITE`
+  ×32, `GENN00_SPRITE` ×15, `GENG00_SPRITE` ×12) plus `GEN_Z_SPB`,
+  `I_SNOWFLAKESPRITE`, `I_TFIRE_SPB`, `I_TSMOKE_SPB`; the function excludes
+  digit `'0'` deliberately ("never resolves"). One alternative reading — the
+  digit is **0-based**, so `GENx0 -> spelx1` — maps 36 of 40 names, 34 on disk,
+  **272 of 301 slots (90%)**. That is a HYPOTHESIS, not a finding: settle it by
+  capturing which texture the official client draws for **Frost Bolt (54)** or
+  **Burst of Flame (93)**, not by argument (`match-the-oracle-dont-infer-it`).
+  Separately, no mapping helps until there is a path to draw the file at all:
+  the GLES2 spell path draws point sprites from a single 4x4, 16-tile
+  PROCEDURAL atlas (`data/textures/particle_atlas.bmp`, `ParticleAtlas` in
+  `include/client/graphics/environment/particle_types.h`) with exactly one
+  spell tile (`SpellSparkle = 8`). The seam is
+  `EmitterConfig::textureRegions[]` filled by
+  `SpellEffectsConfig::getTextureIndex()`
+  (`src/client/graphics/environment/spell_effects_config.cpp`), which maps a
+  NAME to a tile index and falls back to `SoftCircle`. Found by T380.
+
+- **B163** (B) `tools/willeq_db_builder.cpp` `loadSpells()` binds
+  `SpellField::CastAnim` (120) but not `TargetAnim` (121) or `TravelType`
+  (122), both of which `include/client/spell/spell_constants.h` defines; the
+  `spells` table has `cast_anim` and no `target_anim` / `travel_type` column
+  (`PRAGMA table_info`, verified by
+  `scripts/refactor/t380_spell_visual_census.py --db data/willeq.db`). Both
+  carry signal a data-driven visual layer needs: `target_anim` is non-zero for
+  **3,608 of 8,066** spells (27 distinct values) and `travel_type == 3` for
+  exactly **85** spells — that 85 IS the projectile population, and it is the
+  only field that says a spell should have a travel stage. Adding them bumps
+  `kWilleqDbExpectedVersion`, which invalidates EVERY build tree (T304/T355),
+  so it must be its own leg. Found by T380.
 
 - **B142** (C) `/bug <description>` (registered in
   `src/client/action/command_processor_registration.cpp` with the alias
