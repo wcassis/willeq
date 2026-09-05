@@ -34,22 +34,12 @@
 // already above every floor here) while dominating at night (fable's night
 // ambient is 0.08/0.08/0.15), which is how EQ's vision buffs read.
 //
-// THE NUMBERS (T383, board B171 -- these SUPERSEDE T361's). T361 left only the
-// two SCALAR gains free and took the chromaticities from its own near-wall
-// added-light deltas. T377 then measured BOTH clients in one session -- same
-// spot, same crop, video-stepped on both sides -- and the per-channel shape
-// came out wrong even where the scalar was close:
-//
-//                       oracle R / G / B          fable R / G / B  (T377)
-//     Ultravision   x1.4581  x1.4633  x1.8507   x1.4609 x1.2814 x1.6629
-//     Infravision   x1.3284  x1.2111  x1.2079   x1.6002 x1.1264 x0.8209
-//
-// fable's Ultravision green lagged its red by 12.5 points (a magenta cast
-// where the oracle's lift is near-neutral with blue on top), and fable's
-// Infravision drove BLUE DOWN -- the only channel in either table that moved
-// the wrong way. T383 re-solves all SIX floor channels against that oracle
-// table instead of two scalars against two grey ratios. See the plan's
-// Review for the fit and its residuals (all six within 0.11%).
+// THE NUMBERS. The two chromaticities are the oracle's own measured
+// added-light colours (the per-channel linear deltas across the landing on
+// the near-wall crop, each normalised to unit mean), and the relative
+// magnitude 0.480 is the ratio of the two total deltas. Only ONE scalar --
+// kVisionAmbientGain -- was left free, and it was solved by A/B against the
+// oracle ratio, not chosen by argument. See the plan's Review for the search.
 
 #include <cstdint>
 
@@ -65,71 +55,33 @@ struct AmbientRGB {
     float b = 0.0f;
 };
 
-// THE SIX SOLVED PARAMETERS (T383). Each vision's floor is written as a gain
-// (the floor's channel mean) times a tint (the floor normalised to unit mean),
-// purely to keep T361's shape -- but unlike T361 the tint is NOT a measured
-// chromaticity any more: all three channels of each floor were solved.
-//
-// THE SOLVE. Invert the power law below, per channel, for the oracle's
-// per-channel frame ratio against fable's night ambient (0.08/0.08/0.15):
-//
-//     floor_c = night_c * (oracle_ratio_c) ^ (1 / 1.1405)
-//
-//   Ultravision  required ambient ratio 1.3919 / 1.3963 / 1.7156
-//                floor                  0.1113 / 0.1118 / 0.2573
-//   Infravision  required ambient ratio 1.2827 / 1.1829 / 1.1801
-//                floor                  0.1027 / 0.0947 / 0.1771
-//
-// Forward-checked with the rounded constants below, the predicted per-channel
-// ratios land within 0.11% of every one of the six oracle numbers, and the
-// whole-frame grey ratios they imply on fable's own measured night channels
-// come out 1.5561 / 1.2581 against the oracle's 1.5612 / 1.2555 (-0.33% /
-// +0.21%) -- so the channels and the scalar are reproduced TOGETHER.
-//
-// WHY THE FLOORS ARE BLUE-HEAVY WHERE THE ORACLE'S ADDED LIGHT IS NOT. The
-// target is the oracle's per-channel frame RATIO, and a ratio is measured
-// against each client's own base. fable's night ambient is blue-dominant
-// (0.08/0.08/0.15) while the oracle's night frame is red-dominant
-// (0.0385/0.0354/0.0257), so reaching the same ratios from a blue-dominant
-// base needs proportionally more blue in the floor. Ratios are the only
-// composition-invariant quantity across the two clients (T367's rule) and
-// they are what B171 asks to match.
-//
-// Units are "ambient light level", the same units as the day/night ambient in
-// IrrlichtRenderer::updateTimeOfDay() (night 0.08/0.08/0.15, day 0.5/0.5/0.5).
-// Every floor is still below daylight, so a vision buff is still invisible at
-// noon.
-inline constexpr float kUltravisionAmbientGain = 0.1601f;
-inline constexpr float kInfravisionAmbientGain = 0.1248f;
+// THE TWO SOLVED PARAMETERS. Everything else here is measured; these two are
+// what the A/B search solved. Probe 1 put both floors at gain 0.400 and
+// measured fable's own night frame at the same spot; the frame's linear-light
+// response to the mean ambient turned out to be a clean power law, and the
+// two probe points (Ultravision and Infravision, different chromaticities and
+// different magnitudes) independently give the SAME exponent -- 1.1402 and
+// 1.1409. Inverting it for the oracle's two frame ratios gives the gains
+// below. Units are "ambient light level", the same units as the day/night
+// ambient in IrrlichtRenderer::updateTimeOfDay() (night is 0.08/0.08/0.15,
+// day 0.5/0.5/0.5).
+inline constexpr float kUltravisionAmbientGain = 0.1521f;
+inline constexpr float kInfravisionAmbientGain = 0.0956f;
 
-inline constexpr float kUltravisionTint[3] = {0.695f, 0.698f, 1.607f};
-inline constexpr float kInfravisionTint[3] = {0.823f, 0.759f, 1.419f};
+// Oracle-measured added-light chromaticities, each normalised to unit mean:
+// the per-channel linear deltas across each landing on the near-wall crop.
+// Ultravision's added light is near-neutral, very slightly blue -- the
+// official client's own flavour text is "'s eyes glow violet". Infravision's
+// is strongly red ("'s eyes glow red"), R/B = 2.49 as measured.
+inline constexpr float kUltravisionTint[3] = {1.009f, 0.848f, 1.143f};
+inline constexpr float kInfravisionTint[3] = {1.539f, 0.843f, 0.617f};
 
-// NOT SOLVED HERE, and NOT the cause of fable's B x0.821. The second place
-// vision reaches the frame is the zone-light arm
-// (visionLightModifiers(), client/graphics/vision_type.h). Its Infravision
-// redShift was 0.3, a 1.857:1 red-to-blue spread on every lamp against the
-// oracle's measured 1.0998; T383 re-solved it to 0.0508 from the same oracle
-// row. It could never have DARKENED blue, though: Infravision's blue
-// multiplier is 0.75*(1-s), above Normal's flat 0.25 for every s < 0.667.
-// Nothing in the tree can lower a channel under a vision buff, so fable's
-// measured B x0.821 is unexplained by the code and the live re-measure owed
-// to the next lock unit has to account for it.
-
-// THE RESPONSE MODEL (T361 probe 1, re-used by T383). fable's linear-light
-// frame value responds to the ambient as a power law; the two T361 probe
-// points gave the exponent independently as 1.1402 and 1.1409. It is the one
-// measured quantity that lets a floor be solved against an ORACLE FRAME
-// RATIO, and T383 applies it per channel.
-inline constexpr float kVisionFrameExponent = 1.1405f;
-
-// The per-channel frame ratio this mapping predicts against `base` -- i.e.
-// what a buffed frame is worth over an unbuffed one, per channel, under the
-// power law above. This is the quantity the oracle table is expressed in
-// (review/T377/README.md section 2) and the quantity tests/test_vision_ambient.cpp
-// pins. Not used in production rendering: it is the model the constants were
-// solved from, written down so it can be checked.
-AmbientRGB visionFrameRatios(VisionType vision, AmbientRGB base);
+// NOTE on why the two gains are not in the oracle's 0.480 added-light ratio.
+// Under a FLOOR, a channel already above the floor keeps its night value, so
+// Infravision -- whose floor is red-heavy -- only actually raises R, and needs
+// a proportionally larger gain (0.629 of Ultravision's, not 0.480) to move the
+// whole frame by the oracle's x1.253. The 0.480 is the ratio of the ADDED
+// LIGHT; 0.629 is the ratio of the gains that reproduce the oracle's FRAMES.
 
 // The ambient floor a vision type imposes. Normal imposes none.
 AmbientRGB visionAmbientFloor(VisionType vision);
