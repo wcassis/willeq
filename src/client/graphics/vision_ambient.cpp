@@ -1,6 +1,7 @@
 #include "client/graphics/vision_ambient.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace EQT {
 namespace Graphics {
@@ -40,6 +41,16 @@ VisionType racialBaseVision(uint16_t raceId) {
                   // Normal; Froglok (330) measured a fourth level, see B060
             return VisionType::Normal;
     }
+}
+
+AmbientRGB visionFrameRatios(VisionType vision, AmbientRGB base) {
+    const AmbientRGB lit = applyVisionAmbientFloor(vision, base);
+    const auto ratio = [](float top, float bottom) {
+        if (bottom <= 0.0f) return 1.0f;
+        return std::pow(top / bottom, kVisionFrameExponent);
+    };
+    return AmbientRGB{ratio(lit.r, base.r), ratio(lit.g, base.g),
+                      ratio(lit.b, base.b)};
 }
 
 AmbientRGB applyVisionAmbientFloor(VisionType vision, AmbientRGB base) {

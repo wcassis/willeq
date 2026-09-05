@@ -27,6 +27,7 @@
 #include <gtest/gtest.h>
 
 #include "client/graphics/renderer_types.h"   // EQT::Graphics::VisionType
+#include "client/graphics/vision_type.h"      // visionLightModifiers()
 #include "client/graphics/simulation_worker.h"
 
 namespace EQT {
@@ -123,23 +124,46 @@ TEST_F(VisionZoneLightsTest, UltravisionIsFullIntensityWithNoRedShift) {
     EXPECT_NEAR(a.b, 1.0f, 1e-4f);
 }
 
-// --- Infravision (VisionType::Infravision == 1): 0.75 intensity, 0.3 red
-//     shift. Pre-fix this arm ran Ultravision's 1.0 / 0.0.
+// --- Infravision (VisionType::Infravision == 1): 0.75 intensity, red-shifted.
+//     Pre-fix (T360) this arm ran Ultravision's 1.0 / 0.0.
+//
+//     T383 (board B171) re-solved the redShift from 0.3 to 0.0508 against the
+//     oracle: T377 measured the official client's Infravision raising ALL
+//     THREE channels (R x1.3284 / G x1.2111 / B x1.2079), a red-to-blue spread
+//     of 1.0998 where 0.3 spreads the lamps 1.857. This case therefore reads
+//     the shift from visionLightModifiers() rather than restating a literal --
+//     what it pins is the FORMULA the two consumers apply and the fact that
+//     every channel still lands above Normal's flat 0.25, which is the part
+//     T360's swap got wrong. The value itself is pinned, with its oracle
+//     residuals, by VisionLightTintTest in tests/test_vision_ambient.cpp.
 
 TEST_F(VisionZoneLightsTest, InfravisionIsThreeQuarterIntensityRedShifted) {
     SimulationOutput out = run(static_cast<uint8_t>(VisionType::Infravision));
 
-    // intensity 0.75, redShift 0.3 -> r 0.75 * 1.3, g 0.75 * 0.85, b 0.75 * 0.7
+    const auto mods = EQT::Graphics::visionLightModifiers(VisionType::Infravision);
+    ASSERT_NEAR(mods.intensity, 0.75f, 1e-6f);
+    ASSERT_GT(mods.redShift, 0.0f);
+    const float s = mods.redShift;
+    const float expR = mods.intensity * (1.0f + s);
+    const float expG = mods.intensity * (1.0f - 0.5f * s);
+    const float expB = mods.intensity * (1.0f - s);
+
+    // Red-shifted: red above green above blue, and all three above Normal's
+    // flat 0.25 -- Infravision brightens every channel, it never darkens one.
+    EXPECT_GT(expR, expG);
+    EXPECT_GT(expG, expB);
+    EXPECT_GT(expB, kNormalIntensity);
+
     const irr::video::SColorf c = staticLightColor(out);
-    EXPECT_NEAR(c.r, 0.975f, 1e-4f);
-    EXPECT_NEAR(c.g, 0.6375f, 1e-4f);
-    EXPECT_NEAR(c.b, 0.525f, 1e-4f);
+    EXPECT_NEAR(c.r, expR, 1e-4f);
+    EXPECT_NEAR(c.g, expG, 1e-4f);
+    EXPECT_NEAR(c.b, expB, 1e-4f);
 
     ASSERT_EQ(out.zoneLightAnimColors.size(), 1u);
     const auto& a = out.zoneLightAnimColors[0];
-    EXPECT_NEAR(a.r, 0.975f, 1e-4f);
-    EXPECT_NEAR(a.g, 0.6375f, 1e-4f);
-    EXPECT_NEAR(a.b, 0.525f, 1e-4f);
+    EXPECT_NEAR(a.r, expR, 1e-4f);
+    EXPECT_NEAR(a.g, expG, 1e-4f);
+    EXPECT_NEAR(a.b, expB, 1e-4f);
 }
 
 // --- Normal (VisionType::Normal == 0): the untouched 0.25 default. This arm
