@@ -182,6 +182,23 @@ def count_family_components(repo, family):
     return len(found)
 
 
+def count_test_cmake_fragments(repo):
+    """The per-domain fragments tests/CMakeLists.txt include()s.
+
+    T371 added hygiene.cmake (FileSizeCeiling, DocCitations, DocClaims) and
+    T373 put DocCounts in it; the module map still listed the pre-T371
+    eighteen and omitted hygiene by name, so the count and the list were
+    both wrong (T388).
+    """
+    root = os.path.join(repo, "tests", "cmake")
+    if not os.path.isdir(root):
+        raise SourceError("no such directory: tests/cmake")
+    frags = [n for n in os.listdir(root) if n.endswith(".cmake")]
+    if not frags:
+        raise SourceError("no *.cmake under tests/cmake")
+    return len(frags)
+
+
 # --- the table ------------------------------------------------------------
 # (label, measurer, why-it-drifts, [(doc, regex with ONE capture group), ...])
 #
@@ -251,6 +268,12 @@ ROWS = [
      "Batch K extracted them one family at a time",
      [("docs/module_map.md",
        r"Batch K extracted\s+(\w+)\s+components")]),
+
+    ("tests/cmake per-domain fragments",
+     count_test_cmake_fragments,
+     "T371/T373 added hygiene.cmake; a new test domain adds another",
+     [("docs/module_map.md",
+       r"`include\(\)`s \*\*(\w+)\*\* per-domain")]),
 ]
 
 # Counts that MUST NOT be pinned to a number: they change with ordinary work.
@@ -265,6 +288,20 @@ NAMED_COMMAND = [
      "the owner_ census in the IrrlichtRenderer section"),
     ("src/client/graphics/CLAUDE.md", "re-measure rather than",
      "the owner_ census in the Batch L component table"),
+]
+
+
+# Patterns that must NOT appear. A not-a-number assertion only proves the
+# measuring command is still SOMEWHERE in the file; T388 found README.md
+# carrying the measuring command in its Tests section while a stale "2746
+# registered tests" sat in its Building block twelve lines earlier, and
+# DocCounts was green throughout. A doc that has been told to name the
+# command must not also restate the number.
+FORBIDDEN = [
+    ("README.md",
+     r"\(\s*[\d][\d,]{2,}\s+registered tests\s*\)",
+     "the registered-test total was replaced by its measuring command "
+     "(T371); this is a second site restating it as a literal (T388)"),
 ]
 
 
@@ -351,10 +388,24 @@ def main():
                 "doc must name the measuring command instead of a number."
                 % (rel, phrase, why))
 
+    for rel, pattern, why in FORBIDDEN:
+        docs.add(rel)
+        try:
+            text = read(repo, rel)
+        except SourceError as exc:
+            failures.append("MISSING  %s" % exc)
+            continue
+        sites += 1
+        for m in re.finditer(pattern, text):
+            failures.append(
+                "FAIL  %s:%d restates a count that must not be pinned: "
+                "'%s' -- %s. Replace it with the measuring command."
+                % (rel, line_of(text, m.start()), m.group(0).strip(), why))
+
     print("DocCounts: %d counts netted over %d doc sites in %d docs, "
-          "%d not-a-number assertions"
-          % (len(ROWS), sites - len(NAMED_COMMAND), len(docs),
-             len(NAMED_COMMAND)))
+          "%d not-a-number assertions, %d forbidden-restatement assertions"
+          % (len(ROWS), sites - len(NAMED_COMMAND) - len(FORBIDDEN),
+             len(docs), len(NAMED_COMMAND), len(FORBIDDEN)))
 
     for label, value in measured:
         print("  measured %-58s %d" % (label, value))

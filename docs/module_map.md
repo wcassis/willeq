@@ -10,10 +10,16 @@ test) fails any file over it that is not in
 `scripts/refactor/file_size_allowlist.txt`, and M00 emptied that list
 (`docs/decisions.md` 2026-09-04). 3,000 stays as a second line of defence.
 Only the diff/`--files` modes still report >1,500 as a WARN, which is what
-`docs/decisions.md`'s 2026-07-22 entry describes. **Every file in the tree is
-under 1,500** — the grandfathered pair this map used to name
-(`irrlicht_renderer.cpp`, `entity_renderer.cpp`) were split by J11 and J03,
-and `eq.h` (899) and `irrlicht_renderer.h` (1,343) fell to Batches K and L. The pre-split cluster analysis this map replaced is preserved in git
+`docs/decisions.md`'s 2026-07-22 entry describes. T385 (2026-09-05) widened
+`--all` to `tools/` and `benchmarks/` as well, so the scan is genuinely
+tree-wide; **every file under `src/`, `include/` and `tests/` is under 1,500**
+— the grandfathered pair this map used to name (`irrlicht_renderer.cpp`,
+`entity_renderer.cpp`) were split by J11 and J03, and `eq.h` (899) and
+`irrlicht_renderer.h` (1,343) fell to Batches K and L. **`tools/` is NOT clean
+yet**: `tools/hwcaps/zone_bench_loader.cpp` (3,280) and
+`tools/hwcaps/gles2_zone_benchmark.cpp` (3,060) are still over the 3,000 hard
+cap and `FileSizeCeiling` is RED on them — board **B185**, owned by T387. Run
+the checker, do not quote this paragraph. The pre-split cluster analysis this map replaced is preserved in git
 history (docs/module_map.md @ commit a0c02cd..93a3c2a era) and in each unit's
 review section under `refactor/F*.md` and `refactor/J*.md`.
 
@@ -110,7 +116,7 @@ and have no such header. The count is netted by the `DocCounts` test (T373).
 | TU | Lines | Contents |
 |---|---|---|
 | command_processor_social.cpp | 798 | Chat, target/attack, group/raid, duel, trade, who/inspect, guild |
-| command_processor_registration.cpp | 891 | G03: `registerBuiltinCommands()` is now 22 lines — the ORDERED list of 21 per-family `registerXCommands()` calls that hold the same 142 `registerCommand({…})` calls, the whole registry-2 vocabulary. Order is load-bearing (a later registration shadows an earlier name/alias, J04/T097) and is pinned by `tests/test_command_registration_order.cpp` against `tests/goldens/command_registration_order_g03.txt` |
+| command_processor_registration.cpp | 891 | G03: `registerBuiltinCommands()` is now 22 lines — the ORDERED list of 21 per-family `registerXCommands()` calls that hold the same **143** `registerCommand({…})` calls (T347 inserted `/cleartarget`), the whole registry-2 vocabulary. Order is load-bearing (a later registration shadows an earlier name/alias, J04/T097) and is pinned by `tests/test_command_registration_order.cpp` against `tests/goldens/command_registration_order_g03.txt` |
 | command_processor_spells_gm.cpp | 713 | Cast/mem/gems/buffs/spellbook, pet, stance and movement modes, logging controls, track/find, the GM family, /appearance |
 | command_processor_world.cpp | 490 | Corpse/consent, world objects, tradeskill recipes, vendor/buy/sell, equip/read/scribe, loc/sit/stand/move/warp/follow, quit/camp, debug/perf/time |
 | src/client/action/command_processor.cpp | 284 | Core: processCommand/processInput, registerCommand, lookup/completion/category queries, parsing helpers, message sinks |
@@ -187,8 +193,11 @@ boarded as **B050**.
    the four SimulationWorker-output pointers `test_simulation_output_lifetime.cpp`
    guards as a group (T115/T116).
 
-The 151 that remain are 81 uses of `IrrlichtRenderer`'s **public methods** (the
+The 151 L13 left were 81 uses of `IrrlichtRenderer`'s **public methods** (the
 renderer's external API, B050 cluster 6 — not a defect) and 70 in those stays.
+**That number drifts with ordinary work and is not current**: T366 read 163,
+T371 read 165, and a comment-filtered count at this tip (T388) reads **174**.
+Re-measure; do not quote a number from this paragraph.
 
 | Component | Header | TU |
 |---|---|---|
@@ -304,10 +313,11 @@ race/appearance to a mesh and owns the variant cache's negative entry;
 
 ## Test build — tests/CMakeLists.txt (split by J20)
 
-`tests/CMakeLists.txt` (135 lines) is now a driver that `include()`s 18
-per-domain fragments from `tests/cmake/`: `action_handlers`, `archives`,
-`audio`, `commands`, `core_utils`, `data_formats`, `database`, `eqe1`,
-`graphics`, `midi`, `network`, `packets_skills`, `renderer_guards`,
+`tests/CMakeLists.txt` is now a driver that `include()`s **19** per-domain
+fragments from `tests/cmake/`: `action_handlers`, `archives`, `audio`,
+`commands`, `core_utils`, `data_formats`, `database`, `eqe1`, `graphics`,
+`hygiene` (T371/T373: `FileSizeCeiling`, `DocCitations`, `DocClaims`,
+`DocCounts`), `midi`, `network`, `packets_skills`, `renderer_guards`,
 `spells`, `state`, `ui_rendering`, `world_geometry`, `zone_integration`.
 Add a new test to the fragment for its domain, not to the driver.
 
@@ -319,8 +329,12 @@ Add a new test to the fragment for its domain, not to the driver.
   TUs re-open `namespace EQT { namespace Graphics }`, add full includes for
   types the class header only forward-declares, and file-local static
   helpers live with their sole callers.
-- File-size ceilings: warn >1,500, fail >3,000
-  (`scripts/refactor/check_file_sizes.sh`; policy in docs/decisions.md).
+- File-size ceiling: **1,500 is a FAIL** under
+  `scripts/refactor/check_file_sizes.sh --all` (the `FileSizeCeiling` ctest
+  test), which since T385 scans `src/`, `include/`, `tests/`, `tools/` and
+  `benchmarks/`; 3,000 is the second-line hard cap. The allowlist is empty
+  (M00, `docs/decisions.md` 2026-09-04 and 2026-09-05). Only the diff and
+  `--files` modes still report >1,500 as a WARN.
 - Behavior-preserving moves are verified with
   `scripts/refactor/verify_move_only.py BASE..HEAD`.
 - **Cite a function or symbol, not a line number.** Every Batch J split

@@ -689,6 +689,31 @@ it without taking that measurement first.
   Decide per T380 Leg B4: wire projectiles (85 spells carry
   `spells_us.txt` `TravelType == 3`, and 9 `spells.eff` records carry a Middle
   stage) or delete the seven. Not both in one unit. Found by T380.
+  **T388 re-took the census under the B166 rule, naming the directories:
+  `src/`, `include/`, `tests/`, `tools/`, `benchmarks/` and `docker/`** (the
+  last two hold no C++ caller of any of these). It splits the seven in two,
+  and it does NOT match the shape T388's own plan assumed:
+  - **FIVE have exactly one caller, `tools/model_viewer/model_viewer_spell_test.cpp`**
+    (T385 split `model_viewer.cpp`; the spell-test wiring moved there):
+    `createProjectile` (two call sites, plus
+    `tests/test_spell_visual_vocabulary.cpp` drives it for T381's travel-gate
+    case), `createImpactAtPosition`, `createBuffAura`, `createRainEffect`,
+    `createGroundCircle`. **Kept.** The tool is the manual FX harness -- the
+    one place a developer exercises this layer by hand, and the reason B160
+    survived T70/T72 -- so deleting the method deletes the harness's feature.
+    The class header now says so at the Effect Creation block.
+    **`createProjectile` is NOT callerless**, which is what T388's plan
+    asserted; B161's own text was right and the plan's paraphrase was not.
+  - **TWO have ZERO callers in any of the six directories**: `removeBuffAura`
+    and `removeAllForEntity`. Not even `model_viewer` calls them -- it creates
+    auras and never removes them, and nothing calls `removeAllForEntity` on
+    despawn. Boarded separately as **B195**; nothing was deleted here, per the
+    plan's "strike nothing".
+  So the decision B161 is waiting on is narrower than "wire or delete the
+  seven": it is the PROJECTILE question, and that is **B165**, whose answer
+  waits on **B162**'s oracle capture. T384 has already made the data
+  available (`SpellVisualVocabulary::travelType`, 85 spells with
+  `travel_type == 3`); nothing consumes it. Census by T388.
 
 - **B162** (C) `src/client/spell/spells_eff_reader.cpp`
   `SpellsEffReader::effectNameToTexture()` maps only **18 of the 40** distinct
@@ -754,8 +779,21 @@ it without taking that measurement first.
   `spells.eff` + `data/willeq.db`; reproduce with
   `scripts/refactor/t380_spell_visual_census.py`. Found by T381.
 
+- **B195** (B) `include/client/graphics/spell_visual_fx.h`
+  `SpellVisualFX::removeBuffAura(entity_id, spell_id)` and
+  `SpellVisualFX::removeAllForEntity(entity_id)` have **ZERO callers** in
+  `src/`, `include/`, `tests/`, `tools/`, `benchmarks/` or `docker/` (T388
+  census, the B166 rule). They are the removal half of B161's creation half,
+  and unlike the other five they are not even reached by the
+  `tools/model_viewer` FX harness: the harness calls `createBuffAura` and
+  never removes the aura it made. Their bodies are in
+  `src/client/graphics/spell_visual_fx_nodes.cpp`. **Do not delete them
+  independently of B161/B165** -- if the projectile/aura path is wired, an
+  aura that is created and never removed is a leak and these are the fix; if
+  it is deleted, these go with it. Sequenced behind B165. Found by T388.
+
 - **B166** (P) A reachability census that greps only `src/`, `include/` and
-  `tests/` is not "tree-wide". T380 boarded B160 as "`setSpellDatabase()` has
+  `tests/` is not "tree-wide". T380 boarded B160 as "`setSpellDatabase()` has <!-- RETIRED-OK: B166 quotes the claim that was wrong; T381 deleted the method -->
   ZERO callers tree-wide"; T381 found the call in `tools/model_viewer.cpp`
   (line 2750 of the 3,246-line TU as it then stood; T385 decomposed that file,
   and the spell-test wiring now lives in

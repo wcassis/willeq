@@ -139,7 +139,9 @@ Three vocabularies exist (`docs/decisions.md` 2026-08-03 ruling; T97–T143
 migration); `Application::DispatchSlashCommand` tries them in order:
 
 1. **Registry 1 — game registry** (`EverQuest::m_command_registry`,
-   `src/client/eq_commands*.cpp`): after T139 deleted 34 redundant copies
+   registered by `eqt::commands::CommandsComponent::RegisterCommands()` in
+   `src/client/commands/` — K12 moved it off the old flat `eq_commands*.cpp`):
+   after T139 deleted 34 redundant copies
    and T141 migrated `/equip`, only seven remain: `/hotkeys`, `/pmem`
    (aliases `/memory`, `/mem_report`), `/music`, `/sound`, `/volume`
    (`/vol`), `/musicvolume` (`/mvol`), `/effectsvolume` (`/evol`, `/sfxvol`).

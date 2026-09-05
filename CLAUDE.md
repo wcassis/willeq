@@ -40,8 +40,9 @@ Additional context is in subdirectory CLAUDE.md files:
   `command_processor_registration`, `application`, `renderer_frame_render`,
   `renderer_player_physics` with goldens). A branch cut before a golden's
   unit merged is green on its own and fails on the tip.
-- **Batches J, K, L and G are complete; every source file is under 1,500 lines
-  and ctest enforces it.** The last two exceptions are gone —
+- **Batches J, K, L and G are complete; every file under `src/`, `include/`
+  and `tests/` is under 1,500 lines and ctest enforces it.** The last two
+  exceptions there are gone —
   `include/client/eq.h` fell to 899 lines and
   `include/client/graphics/irrlicht_renderer.h` to 1,343 — so
   `scripts/refactor/file_size_allowlist.txt` is EMPTY and a file over 1,500
@@ -49,7 +50,11 @@ Additional context is in subdirectory CLAUDE.md files:
   in the `FileSizeCeiling` ctest test, not a warning (M00,
   `docs/decisions.md` 2026-09-04; T385 added the last two directories, board
   B167 — `--all` had never scanned `tools/`, and six files there were over the
-  ceiling while the checker reported a clean tree). Put
+  ceiling while the checker reported a clean tree). **`tools/` is not clean
+  yet and `FileSizeCeiling` is RED at this tip**: T385 split four of the six,
+  leaving `tools/hwcaps/zone_bench_loader.cpp` (3,280) and
+  `tools/hwcaps/gles2_zone_benchmark.cpp` (3,060) over the 3,000 hard cap —
+  board **B185**, owned by T387. Put
   substantial new code in new TUs; a file that genuinely must exceed the
   ceiling needs an allowlist entry with a reason and a no-grow max. Close-outs:
   `refactor/J_file_size_reclamation.md`, `refactor/K_component_extraction.md`,
@@ -338,9 +343,8 @@ The client connects through three stages, each with its own connection manager:
   class as `owner_.member_`. L13 took that last handle from 1,065 uses to
   151 — 81 of them public methods and 70 in thirteen listed stays, none of
   which may move because each crosses a thread boundary or backs a lifetime
-  contract. That number drifts with normal work: T366's census read 163 and a
-  comment-filtered count at this tip reads **165** (T371) — re-measure, do not
-  quote it. See the closed **B050**
+  contract. That number drifts with normal work: T366's census read 163, T371's
+  read 165 and T388's reads **174** — re-measure, do not quote it. See the closed **B050**
 - Lifecycle entry points (`initLoadingScreen`, `initDeferredGraphics`,
   `processFrame`, `shutdown`, `run`) stay on `IrrlichtRenderer`: `Application`
   and `IrrlichtBridge` must not learn a component exists
@@ -424,7 +428,15 @@ Audio tests and graphics integration tests are documented in their respective CL
 - Zone connection requires specific packet sequencing - see `CheckZoneRequestPhaseComplete()` and the various `m_*_sent` / `m_*_received` flags
 - Movement updates require `SendPositionUpdate()` to sync with server
 - Entities tracked in `m_entities` map keyed by spawn_id
-- Doors tracked in `m_doors` map keyed by door_id
+- Doors are tracked by `DoorStateManager`
+  (`include/client/door_state_manager.h`, reached as
+  `GameState::doors()`) — `doors_`, a `std::map<uint8_t, DoorState>` keyed by
+  door id. There is no `m_doors` member on `EverQuest`. <!-- RETIRED-OK: naming the member that is gone is the point of this sentence --> Since T376 (B141) the
+  same manager also owns the pending-click set (`pendingClicks_`,
+  `addPendingClick()` / `isClickPending()`); the duplicate
+  `EntitiesComponent::m_pending_door_clicks` and `ClearPendingDoorClicks()` <!-- RETIRED-OK: tombstone for the two names T376 deleted -->
+  were deleted. `ZoneProcessMoveDoor` must ask `isClickPending()` BEFORE
+  `setDoorState()` consumes the entry
 - Friend class pattern: `CombatManager` and `TradeManager` are friends of
   `EverQuest` for internal access. **They are the only two** (T366, 2026-09-05,
   board B038 CLOSED): no extracted component is a friend and none holds an
