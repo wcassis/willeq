@@ -2075,7 +2075,7 @@ another route. Full classification and evidence:
 entry is described here in enough detail to work WITHOUT the branch, so the
 branches can be deleted independently of these items.
 
-- **B136** (A) `eqt::entities::EntitiesComponent::m_pending_door_clicks`
+- ~~**B136** (A) `eqt::entities::EntitiesComponent::m_pending_door_clicks`
   (`include/client/entities/entities_component.h`) is never cleared at zone
   change. Door IDs are `uint8_t` and are reissued by each zone's `SpawnDoor`,
   so a `ClickDoor` sent just before zoning leaves a stale entry that flags the
@@ -2087,7 +2087,14 @@ branches can be deleted independently of these items.
   in the `MoveDoor` handler, same file; one comment) and none of them is a
   clear-on-zone-change. Closes when: the set is cleared on the same zone-cleanup
   path that clears the door state manager, with a test. Prov: T372, branch
-  commit `ec7f14da`.
+  commit `ec7f14da`.~~ **CLOSED by T374 Leg A** (`7fb8ab0f`):
+  `EntitiesComponent::ClearPendingDoorClicks()` is called from
+  `ZoneComponent::CleanupZone()` one line after `game_state.doors().clear()` --
+  the one cleanup site, no second one added. Pinned by
+  `tests/test_door_click_zone_reset.cpp`
+  (`DoorClickZoneReset.PendingClickDoesNotSurviveAZoneChange`, RED pre-fix:
+  `userInitiated` was `true`; plus the preservation case
+  `ClickThenMoveDoorInTheSameZoneIsUserInitiated`, green both sides).
 
 - **B137** (B) `HC_OP_TargetCommandReply` is registered in `kZoneOpcodeTable`
   (`src/client/zone/zone_dispatch.cpp`, the `OnTargetCommandResponse` entry) as

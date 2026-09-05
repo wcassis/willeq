@@ -368,6 +368,12 @@ void eqt::zone::ZoneComponent::CleanupZone()
 
 	// Clear door data (T219: doors live in the write-model GameState)
 	ctx_.game_state.doors().clear();
+	// T374 (BOARD B136): and the entities family's own set of clicks still
+	// awaiting an OP_MoveDoor. Door ids are uint8_t reissued per zone, so a
+	// survivor here flags the next zone's door of the same number as
+	// user-initiated (DoorStateChanged.userInitiated) for a door the player
+	// never touched. Same cleanup site, one line apart -- there is no second.
+	ctx_.Entities().ClearPendingDoorClicks();
 
 	// Clear pet state (pet won't exist in new zone)
 	if (ctx_.game_state.pet().hasPet()) {

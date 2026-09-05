@@ -96,6 +96,13 @@ public:
 	void SendCloseContainer(uint32_t drop_id);
 	const eqt::WorldObject* GetWorldObject(uint32_t drop_id) const;
 	void ClearWorldObjects();
+	// T374 (BOARD B136): drop every door click still awaiting a server
+	// confirmation. Door ids are uint8_t and are reissued per zone, so a
+	// click that never got its OP_MoveDoor before the transition would
+	// otherwise be credited to the NEXT zone's door of the same number.
+	// Called only from ZoneComponent::CleanupZone, beside the door-state
+	// manager's own clear.
+	void ClearPendingDoorClicks();
 	void ZoneProcessClickObjectAction(const EQ::Net::Packet &p);
 
 	// K13 (Batch K): the world-object map (forges, looms, groundspawns, ...),

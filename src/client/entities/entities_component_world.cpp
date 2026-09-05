@@ -365,6 +365,17 @@ void eqt::entities::EntitiesComponent::ClearWorldObjects()
 	}
 }
 
+void eqt::entities::EntitiesComponent::ClearPendingDoorClicks()
+{
+	// T374 (BOARD B136). Zone change: the ids in this set name doors in the
+	// zone being left, and the new zone renumbers from its own door list.
+	if (!m_pending_door_clicks.empty()) {
+		LOG_DEBUG(MOD_ENTITY, "Dropping {} unconfirmed door click(s) at zone change",
+			m_pending_door_clicks.size());
+	}
+	m_pending_door_clicks.clear();
+}
+
 void eqt::entities::EntitiesComponent::ZoneProcessClickObjectAction(const EQ::Net::Packet &p)
 {
 	// Parse ClickObjectAction_Struct from packet (skip 2-byte opcode)

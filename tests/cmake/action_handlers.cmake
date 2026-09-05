@@ -119,6 +119,16 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_entities_component)
 
+# T374 Leg A (BOARD B136): pending door clicks cleared at zone change.
+ADD_EXECUTABLE(test_door_click_zone_reset
+    test_door_click_zone_reset.cpp
+)
+TARGET_LINK_LIBRARIES(test_door_click_zone_reset GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_door_click_zone_reset PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_door_click_zone_reset)
+
 # T169: OP_RaidUpdate decoding -- the action codes against eqemu's
 # common/raid.h and the per-action body shapes (actions 8, 10, 14 and 30 do
 # NOT have `parameter` where the general body does). Links willeq_core for
