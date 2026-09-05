@@ -3584,7 +3584,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   T399 routed the literal through `ResolveDataPath()` rather than change
   behaviour mid-unit. Found by T399.
 
-- **B247** (P) `tests/goldens/manifest.json` / `scripts/ci/visual_gate.sh` —
+- ~~**B247** (P) `tests/goldens/manifest.json` / `scripts/ci/visual_gate.sh` —
   **the visual gate is RED on the `fable` tip itself: T398 Leg B grew the
   shared `willeq.eqe1` by 239 bytes and the Will-blessed `eqe1MappedBytes`
   baselines were not re-blessed.** Measured by T399 (2026-09-05) standalone on
@@ -3599,8 +3599,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   `tests/goldens/manifest.json` has not changed since T303 (`a32600a4`, "bless
   the T80 memory-coverage baselines (Will)"). **Only Will re-blesses**, so
   T399 did not. Until then every unit that touches graphics will report this
-  same gate FAIL and have to re-derive the attribution. Found by T399.
-
+  same gate FAIL and have to re-derive the attribution. Found by T399.~~ **DUPLICATE of B240 (T398 boarded the same 239-byte delta first) — struck at the T399 merge; the bless request stands under B240.**
 - **B248** (B) `config/snd_index_cache.json`, `config/gfx_index_cache.json` —
   **two generated caches are git-tracked, and every client run rewrites them,
   so a plain `willeq` run dirties the working tree.** T399 measured it: a 40 s
