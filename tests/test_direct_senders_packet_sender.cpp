@@ -493,4 +493,49 @@ TEST(DirectSendersPacketSender, RecordedSession_Merchant) {
         });
 }
 
+// =====================================================================
+// gm -- GmComponent, 9 senders:
+//   SendGMZoneRequest SendGMSummon SendGMGoto SendGMFind SendGMKick
+//   SendGMKill SendGMHideMe SendGMEmoteZone SendGMLastName
+// All nine sit inside an if (ctx_.zone_connection && isZoneConnected()) that
+// also gates their log line, so none is a crash-shape site and all nine
+// wrappers stay; only the send moves. The recorder was blind to every GM
+// command the client sent.
+// =====================================================================
+
+TEST(DirectSendersPacketSender, NoZoneConnection_Gm) {
+    SenderHarness h(/*withConnection=*/false);
+    ASSERT_EQ(h.eq.m_zone_connection, nullptr);
+
+    auto& g = h.eq.Gm();
+    g.SendGMZoneRequest("Someone", 1);
+    g.SendGMSummon("Someone");
+    g.SendGMGoto("Someone");
+    g.SendGMFind("Someone");
+    g.SendGMKick("Someone");
+    g.SendGMKill("Someone");
+    g.SendGMHideMe(true);
+    g.SendGMEmoteZone("hello");
+    g.SendGMLastName("Someone", "Thegm");
+
+    SUCCEED() << "the 9 GM senders survived a null zone connection";
+}
+
+TEST(DirectSendersPacketSender, RecordedSession_Gm) {
+    WithRecordedSession(
+        "t378_gm_recorded.sleq",
+        [](SenderHarness& h) {
+            h.eq.Gm().SendGMSummon("Someone");
+            h.eq.Gm().SendGMHideMe(true);
+        },
+        [](const std::vector<RecordedPacket>& recorded) {
+            EXPECT_EQ(CountOpcode(recorded, HC_OP_GMSummon), 1u)
+                << "SendGMSummon must reach the session recorder; a sender "
+                   "that calls zone_connection->QueuePacket() directly is "
+                   "invisible to it (BOARD B145)";
+            EXPECT_EQ(CountOpcode(recorded, HC_OP_GMHideMe), 1u)
+                << "SendGMHideMe, same bypass, same fix";
+        });
+}
+
 }  // namespace

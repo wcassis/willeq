@@ -32,7 +32,7 @@ void eqt::gm::GmComponent::SendGMZoneRequest(const std::string& charname, uint16
 	packet.PutData(2, &gm, sizeof(gm));
 
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
-		ctx_.zone_connection->QueuePacket(packet);
+		ctx_.net.SafeQueueZone(packet);
 		LOG_INFO(MOD_MAIN, "GM zone request: {} to zone {}", charname, zone_id);
 	}
 }
@@ -76,7 +76,7 @@ void eqt::gm::GmComponent::SendGMSummon(const std::string& charname)
 		static_cast<const uint8_t*>(packet.Data()) + packet.Length());
 
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
-		ctx_.zone_connection->QueuePacket(packet);
+		ctx_.net.SafeQueueZone(packet);
 		LOG_INFO(MOD_MAIN, "GM summon: {} to ({:.1f}, {:.1f}, {:.1f})", charname, ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ());
 	}
 }
@@ -93,7 +93,7 @@ void eqt::gm::GmComponent::SendGMGoto(const std::string& charname)
 	packet.PutData(2, &gm, sizeof(gm));
 
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
-		ctx_.zone_connection->QueuePacket(packet);
+		ctx_.net.SafeQueueZone(packet);
 		LOG_INFO(MOD_MAIN, "GM goto: {}", charname);
 	}
 }
@@ -110,7 +110,7 @@ void eqt::gm::GmComponent::SendGMFind(const std::string& charname)
 	packet.PutData(2, &gm, sizeof(gm));
 
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
-		ctx_.zone_connection->QueuePacket(packet);
+		ctx_.net.SafeQueueZone(packet);
 		LOG_DEBUG(MOD_MAIN, "GM find: {}", charname);
 	}
 }
@@ -120,9 +120,10 @@ void eqt::gm::GmComponent::SendGMFind(const std::string& charname)
 // an invented `padding[3]` -- and `Handle_OP_GMKick`
 // (zone/client_packet.cpp:6729) does a BARE `return` on a size mismatch with
 // no log line, so /kick left zero server-side trace while logging local
-// success here. These two senders use the correct 1-arg
-// `m_zone_connection->QueuePacket(packet)` convention (the packet carries its
-// own opcode); they needed no change beyond the struct fix.
+// success here. These two senders use the correct 1-arg send convention (the
+// packet carries its own opcode); they needed no change beyond the struct fix.
+// T378 moved the send itself from ctx_.zone_connection->QueuePacket() to
+// ctx_.net.SafeQueueZone(), which is what the recorder and the T268 seam see.
 void eqt::gm::GmComponent::SendGMKick(const std::string& charname)
 {
 	EQ::Net::DynamicPacket packet;
@@ -135,7 +136,7 @@ void eqt::gm::GmComponent::SendGMKick(const std::string& charname)
 	packet.PutData(2, &gm, sizeof(gm));
 
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
-		ctx_.zone_connection->QueuePacket(packet);
+		ctx_.net.SafeQueueZone(packet);
 		LOG_INFO(MOD_MAIN, "GM kick: {}", charname);
 	}
 }
@@ -152,7 +153,7 @@ void eqt::gm::GmComponent::SendGMKill(const std::string& charname)
 	packet.PutData(2, &gm, sizeof(gm));
 
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
-		ctx_.zone_connection->QueuePacket(packet);
+		ctx_.net.SafeQueueZone(packet);
 		LOG_INFO(MOD_MAIN, "GM kill: {}", charname);
 	}
 }
@@ -190,7 +191,7 @@ void eqt::gm::GmComponent::SendGMHideMe(bool hide)
 		static_cast<const uint8_t*>(packet.Data()) + packet.Length());
 
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
-		ctx_.zone_connection->QueuePacket(packet);
+		ctx_.net.SafeQueueZone(packet);
 		LOG_INFO(MOD_MAIN, "GM hide: {}", hide ? "ON" : "OFF");
 	}
 }
@@ -225,7 +226,7 @@ void eqt::gm::GmComponent::SendGMEmoteZone(const std::string& text)
 	packet.PutData(2, body, sizeof(body));
 
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
-		ctx_.zone_connection->QueuePacket(packet);
+		ctx_.net.SafeQueueZone(packet);
 		LOG_INFO(MOD_MAIN, "GM zone emote: {}", text);
 	}
 }
@@ -243,7 +244,7 @@ void eqt::gm::GmComponent::SendGMLastName(const std::string& charname, const std
 	packet.PutData(2, &gm, sizeof(gm));
 
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
-		ctx_.zone_connection->QueuePacket(packet);
+		ctx_.net.SafeQueueZone(packet);
 		LOG_INFO(MOD_MAIN, "GM set lastname for {}: {}", charname, lastname);
 	}
 }
