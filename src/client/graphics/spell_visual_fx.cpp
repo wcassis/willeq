@@ -15,7 +15,6 @@
 #include "client/graphics/simulation_worker.h"
 #include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/eq/dds_decoder.h"
-#include "client/spell/spell_database.h"
 #include "client/spell/spell_constants.h"
 #include "common/logging.h"
 #ifdef EQT_HAS_GLES2
@@ -66,13 +65,26 @@ void SpellVisualFX::loadSpellsEff()
     }
 }
 
+void SpellVisualFX::noteSpellVocabulary(uint32_t spell_id, const SpellVisualVocabulary& vocab)
+{
+    if (!vocab.known) return;  // nothing to learn; keep any earlier entry
+    m_spell_vocab[spell_id] = vocab;
+}
+
+SpellVisualVocabulary SpellVisualFX::spellVocabulary(uint32_t spell_id) const
+{
+    auto it = m_spell_vocab.find(spell_id);
+    return it == m_spell_vocab.end() ? SpellVisualVocabulary{} : it->second;
+}
+
 SpellVisualResolution SpellVisualFX::resolveVisual(uint32_t spell_id) const
 {
-    int32_t affect_index = kSpellsEffNoEffectIndex;
-    if (m_spell_db) {
-        const SpellData* spell = m_spell_db->getSpell(spell_id);
-        if (spell) affect_index = spell->spell_affect_index;
-    }
+    static_assert(kNoSpellAffectIndex == kSpellsEffNoEffectIndex,
+                  "spell_visual_vocabulary.h's sentinel must equal the reader's");
+
+    // T381 (B160): the index comes from the event payload the game thread
+    // filled, not from a SpellDatabase pointer the renderer never had.
+    const int32_t affect_index = spellVocabulary(spell_id).spellAffectIndex;
 
     SpellVisualSelector selector(m_spells_eff_loaded ? &m_spells_eff : nullptr);
     SpellVisualResolution res = selector.resolve(affect_index);
@@ -260,31 +272,29 @@ void SpellVisualFX::loadFallbackTexture()
 
 irr::video::ITexture* SpellVisualFX::getTextureForSpell(uint32_t spell_id) const
 {
-    // Get appropriate texture based on spell's resist type
-    if (m_spell_db) {
-        const SpellData* spell = m_spell_db->getSpell(spell_id);
-        if (spell) {
-            switch (spell->resist_type) {
-                case ResistType::Fire:
-                    return m_fire_texture;
-                case ResistType::Cold:
-                    return m_frost_texture;
-                case ResistType::Magic:
-                    return m_magic_texture;
-                case ResistType::Poison:
-                    return m_poison_texture;
-                case ResistType::Disease:
-                    return m_disease_texture;
-                case ResistType::Chromatic:
-                case ResistType::Prismatic:
-                    return m_chromatic_texture;
-                case ResistType::Corruption:
-                    return m_corruption_texture;
-                case ResistType::None:
-                case ResistType::Physical:
-                default:
-                    break;
-            }
+    // Get appropriate texture based on the spell's noted resist type (T381)
+    const SpellVisualVocabulary vocab = spellVocabulary(spell_id);
+    if (vocab.known) {
+        switch (vocab.resistType) {
+            case ResistType::Fire:
+                return m_fire_texture;
+            case ResistType::Cold:
+                return m_frost_texture;
+            case ResistType::Magic:
+                return m_magic_texture;
+            case ResistType::Poison:
+                return m_poison_texture;
+            case ResistType::Disease:
+                return m_disease_texture;
+            case ResistType::Chromatic:
+            case ResistType::Prismatic:
+                return m_chromatic_texture;
+            case ResistType::Corruption:
+                return m_corruption_texture;
+            case ResistType::None:
+            case ResistType::Physical:
+            default:
+                break;
         }
     }
     return m_particle_texture;
@@ -349,14 +359,10 @@ void SpellVisualFX::update(float delta_time)
 //   Smolder = Evocation, Conjuration, Divination (offensive/summoning — orbital glow)
 bool SpellVisualFX::isSprayCastStyle(uint32_t spell_id) const
 {
-    if (m_spell_db) {
-        const SpellData* spell = m_spell_db->getSpell(spell_id);
-        if (spell) {
-            SpellSchool school = spell->getSchool();
-            return school == SpellSchool::Alteration || school == SpellSchool::Abjuration;
-        }
-    }
-    return false;
+    const SpellVisualVocabulary vocab = spellVocabulary(spell_id);
+    if (!vocab.known) return false;  // unknown spell id: pre-T381 fallback
+    return vocab.school == SpellSchool::Alteration ||
+           vocab.school == SpellSchool::Abjuration;
 }
 
 uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, uint32_t duration_ms)

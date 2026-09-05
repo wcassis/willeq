@@ -529,6 +529,9 @@ void triggerSpellTestCast() {
 
     const auto* spell = spellTestSpellList[spellTestSpellIndex];
     spellTestCurrentSpell = spell;
+    // T381 (B160): SpellVisualFX holds no SpellDatabase* any more; feed it the
+    // vocabulary the way the client does (off the SpellCastVisual* payload).
+    spellVisualFX->noteSpellVocabulary(spell->id, spell->visualVocabulary());
     spellTestCastDuration = spell->cast_time_ms / 1000.0f;
     if (spellTestCastDuration < 0.5f) spellTestCastDuration = 0.5f;  // Min 0.5s for visual
     spellTestCastElapsed = 0;
@@ -2747,7 +2750,6 @@ int main(int argc, char* argv[]) {
 
         // Create SpellVisualFX
         spellVisualFX = std::make_unique<EQ::SpellVisualFX>(smgr, driver, clientPath);
-        spellVisualFX->setSpellDatabase(spellDatabase.get());
 
         // Set up entity position callback (handles real + virtual hand entity IDs)
         spellVisualFX->setEntityPositionCallback(
@@ -3175,6 +3177,8 @@ int main(int argc, char* argv[]) {
                     std::string schoolLabel = "?";
                     if (!spellTestSpellList.empty() && spellTestSpellIndex < static_cast<int>(spellTestSpellList.size()) && spellVisualFX) {
                         const auto* curSpell = spellTestSpellList[spellTestSpellIndex];
+                        // T381: the highlighted spell may not have been cast yet.
+                        spellVisualFX->noteSpellVocabulary(curSpell->id, curSpell->visualVocabulary());
                         bool spray = spellVisualFX->isSprayCastStyle(curSpell->id);
                         styleLabel = spray ? "SPRAY" : "SMOLDER";
                         switch (curSpell->getSchool()) {

@@ -115,6 +115,12 @@ void SpellManager::update(float delta_time)
                 d.isSuccess = true;
                 d.isPlayerCast = true;
                 d.isTargetCast = false;
+                // T381 (B160): the timeout path publishes the same completion
+                // event the server's success packet does, so it must carry the
+                // same vocabulary or the impact burst loses its colour.
+                if (const SpellData* timed_out = m_spell_db.getSpell(m_current_spell_id)) {
+                    d.spellVisual = timed_out->visualVocabulary();
+                }
                 m_bridge->pushEvent(eqt::state::GameEvent(
                     eqt::state::GameEventType::SpellCastVisualComplete, std::move(d)));
             }
@@ -932,6 +938,10 @@ void SpellManager::handleBeginCast(uint16_t caster_id, uint16_t spell_id, uint32
             d.casterName = "";
             d.isPlayerCast = true;
             d.isTargetCast = false;
+            // T381 (B160): the renderer has no SpellDatabase and must not be
+            // handed this one (game-thread-owned, unsynchronised LRU), so the
+            // visual vocabulary is copied by value here.
+            if (spell) d.spellVisual = spell->visualVocabulary();
             m_bridge->pushEvent(eqt::state::GameEvent(
                 eqt::state::GameEventType::SpellCastVisualStarted, std::move(d)));
         }
@@ -969,6 +979,7 @@ void SpellManager::handleBeginCast(uint16_t caster_id, uint16_t spell_id, uint32
             d.casterName = caster_name;
             d.isPlayerCast = false;
             d.isTargetCast = isTargetCast;
+            if (spell) d.spellVisual = spell->visualVocabulary();  // T381 (B160)
             m_bridge->pushEvent(eqt::state::GameEvent(
                 eqt::state::GameEventType::SpellCastVisualStarted, std::move(d)));
         }
@@ -1030,6 +1041,7 @@ void SpellManager::handleAction(const EQT::SpellActionInfo& action)
         d.isPlayerCast = isPlayerCast;
         d.isTargetCast = isTargetCast;
         d.completionAnim = completion_anim;
+        if (spell) d.spellVisual = spell->visualVocabulary();  // T381 (B160)
         m_bridge->pushEvent(eqt::state::GameEvent(
             eqt::state::GameEventType::SpellCastVisualComplete, std::move(d)));
     }

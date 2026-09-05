@@ -16,7 +16,10 @@
 #include <utility>
 #include <string>
 
+#include <unordered_map>
+
 #include "client/spell/spells_eff_reader.h"
+#include "client/spell/spell_visual_vocabulary.h"
 #include "client/graphics/spell_visual_selection.h"
 
 namespace EQT { namespace Graphics { class ConstrainedTextureCache; }}
@@ -33,9 +36,6 @@ namespace EQT { namespace Graphics {
 
 namespace EQ {
 
-// Forward declarations
-class SpellDatabase;
-struct SpellData;
 
 // Visual effect types
 enum class SpellFXType : uint8_t {
@@ -93,8 +93,25 @@ public:
     void setConstrainedTextureCache(EQT::Graphics::ConstrainedTextureCache* cache) { m_constrained_cache = cache; }
     ~SpellVisualFX();
 
-    // Set spell database for spell info lookup
-    void setSpellDatabase(SpellDatabase* spell_db) { m_spell_db = spell_db; }
+    // T381 (B160): record the per-spell render vocabulary (resist type,
+    // school, spell_affect_index) carried by the SpellCastVisual* bridge
+    // events. This REPLACES the old setSpellDatabase()/m_spell_db pointer,
+    // which nothing in the client ever called -- so every colour, the spray
+    // cast style and the whole spells.eff resolution were unreachable and
+    // every spell drew one identical lavender-blue glow.
+    //
+    // Call it before the create*() call for that spell id; the bridge does
+    // exactly that on SpellCastVisualStarted / SpellCastVisualComplete. An
+    // id never noted keeps the pre-T381 fallback behaviour, which is what a
+    // spell the game thread could not find in its database must do.
+    //
+    // Bound: one entry per distinct spell id seen this session, worst case
+    // the 8,066 spells in willeq.db (~16 bytes each). Renderer thread only.
+    void noteSpellVocabulary(uint32_t spell_id, const SpellVisualVocabulary& vocab);
+
+    // Test/diagnostic read-back of the above (never null-returning: an
+    // unknown id yields a default-constructed, `known == false` vocabulary).
+    SpellVisualVocabulary spellVocabulary(uint32_t spell_id) const;
 
     // Set callback for getting entity positions
     void setEntityPositionCallback(EntityPositionCallback callback) {
@@ -239,10 +256,26 @@ public:
     // declaration or a test-only accessor. Behavior unchanged.
     irr::video::ITexture* getTextureForSpell(uint32_t spell_id) const;
 
+    // spell_id -> noted spell_affect_index -> spells.eff record ->
+    // resolved per-stage visual. Also logs, at DEBUG, which of the two
+    // fallback populations (no index vs. index resolves to empty padding)
+    // a spell landed in, or that it resolved to a real record with N/3
+    // stages populated -- see the T72 Review for why this distinction
+    // exists in logs.
+    //
+    // T381: public (was private). It is a pure query over noted vocabulary
+    // plus the loaded spells.eff, and it is the only observation point for
+    // the three T72 stage-suppression gates in a headless test -- the gates
+    // themselves live inside the ParticleManager branch of createCastGlow /
+    // createProjectile / createImpact.
+    SpellVisualResolution resolveVisual(uint32_t spell_id) const;
+
 private:
-    // Get spell color based on resist type/school
+    // Get spell color based on the noted resist type/school for this id.
+    // T381: the `const SpellData*` overload is gone with m_spell_db -- the
+    // renderer no longer names SpellData at all.
     irr::video::SColor getSpellColor(uint32_t spell_id) const;
-    irr::video::SColor getSpellColor(const SpellData* spell) const;
+    static irr::video::SColor colorForVocabulary(const SpellVisualVocabulary& vocab);
 
     // Remove and clean up an effect
     void removeEffect(size_t index);
@@ -264,8 +297,11 @@ private:
 
     irr::scene::ISceneManager* m_smgr;
     irr::video::IVideoDriver* m_driver;
-    SpellDatabase* m_spell_db = nullptr;
     EntityPositionCallback m_entity_pos_callback;
+
+    // T381 (B160): spell id -> render vocabulary, fed by the bridge from the
+    // SpellCastVisual* event payloads. Replaces the never-set SpellDatabase*.
+    std::unordered_map<uint32_t, SpellVisualVocabulary> m_spell_vocab;
 
     std::vector<SpellFXInstance> m_effects;
     uint32_t m_next_effect_id = 1;
@@ -300,13 +336,6 @@ private:
     // effects system.
     void loadSpellsEff();
 
-    // spell_id -> SpellData::spell_affect_index -> spells.eff record ->
-    // resolved per-stage visual. Also logs, at DEBUG, which of the two
-    // fallback populations (no index vs. index resolves to empty padding)
-    // a spell landed in, or that it resolved to a real record with N/3
-    // stages populated -- see the T72 Review for why this distinction
-    // exists in logs.
-    SpellVisualResolution resolveVisual(uint32_t spell_id) const;
 
     SpellsEffReader m_spells_eff;
     bool m_spells_eff_loaded = false;
