@@ -2664,7 +2664,7 @@ branches can be deleted independently of these items.
   `include/` and `tests/` only, so M00's "1,500 ceiling enforced tree-wide" is
   FALSE for `tools/`: `tools/model_viewer.cpp` is **3,246 lines** at `d5b4bdaf`
   (the file `ctest` never sees), and T381 measured it growing (+4) with no
-  guard. `tools/` holds production-API callers (B166), so the same structural
+  guard. Census at `3bea8022` (`wc -l` over `tools/`): `tools/hwcaps/zone_bench_loader.cpp` 3,280, `tools/model_viewer.cpp` 3,246, `tools/hwcaps/gles2_zone_benchmark.cpp` 3,060, `tools/model_viewer_spell_bar.h` 1,965, `tools/entity_composite_builder.cpp` 1,861 — five files over the ceiling, not one. `tools/` holds production-API callers (B166), so the same structural
   rule applies. Closes when: `--all` covers `tools/` (and `benchmarks/` if it
   holds C++), every file over 1,500 there is decomposed by the K/L/G mechanism
   (`model_viewer.cpp` first), and the M00 close-out and `CLAUDE.md` say
