@@ -115,3 +115,15 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_spell_impact_visual PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
 GTEST_DISCOVER_TESTS(test_spell_impact_visual)
+
+# T395 Leg B (board B205): eqemu say-links in server chat text. The helper
+# plus the two consumers that print server-authored lines (OP_SpecialMesg and
+# OP_ChannelMessage).
+ADD_EXECUTABLE(test_say_link_text
+    test_say_link_text.cpp
+)
+TARGET_LINK_LIBRARIES(test_say_link_text GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_say_link_text PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_say_link_text)
