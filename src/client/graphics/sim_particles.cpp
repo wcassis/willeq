@@ -229,26 +229,10 @@ void SimulationWorker::computeParticles(const SimulationInput& input, Simulation
                 }
                 break;
             }
-            case ParticleCommand::RemoveSpellEffect: {
-                for (auto it = particleSpellEffects_.begin(); it != particleSpellEffects_.end(); ++it) {
-                    if (it->effectID == cmd.effectID) {
-                        for (auto& es : it->emitterStates) {
-                            if (es.activeEmitterID != 0) {
-                                for (auto& p : particlePool_) {
-                                    if (p.isAlive() && p.emitterID == es.activeEmitterID) {
-                                        int idx = static_cast<int>(&p - particlePool_.data());
-                                        freeParticle(idx);
-                                    }
-                                }
-                                particleEmitters_.erase(es.activeEmitterID);
-                            }
-                        }
-                        particleSpellEffects_.erase(it);
-                        break;
-                    }
-                }
-                break;
-            }
+            // T397 Leg B (board B220): the RemoveSpellEffect (by effect id) arm
+            // was deleted here along with its command and its producer. It
+            // matched cmd.effectID, which no producer ever set. Recover with:
+            // git show 8382268d:src/client/graphics/sim_particles.cpp
             case ParticleCommand::RemoveSpellEffectsEntity: {
                 for (auto it = particleSpellEffects_.begin(); it != particleSpellEffects_.end(); ) {
                     if (it->casterEntityID == cmd.entityID || it->targetEntityID == cmd.entityID) {

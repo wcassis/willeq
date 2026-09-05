@@ -331,13 +331,16 @@ public:
                                           const glm::vec3& worldPos,
                                           float duration = 0.0f);
 
-    /**
-     * Remove a specific spell effect by ID.
-     */
-    void removeSpellEffect(uint32_t effectID);
+    // T397 Leg B (board B220): removeSpellEffect(uint32_t) was DELETED here.
+    // Zero callers tree-wide, nothing kept the id, and it wrote
+    // preAssignedEffectID while the worker matched effectID, so it could
+    // never have removed anything. Recover with:
+    // git show 8382268d:include/client/graphics/environment/particle_manager.h
 
     /**
      * Remove all spell effects attached to an entity (caster or target).
+     * The entity id lands in ParticleCommandData::entityID, which is the
+     * field SimulationWorker's RemoveSpellEffectsEntity arm matches on.
      */
     void removeSpellEffectsForEntity(uint16_t entityID);
 

@@ -127,3 +127,16 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_say_link_text PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
 GTEST_DISCOVER_TESTS(test_say_link_text)
+
+# T397 Leg B (board B220): removal of spell particle effects by entity. The
+# command under test is drained from a real ParticleManager and fed to a real
+# SimulationWorker, so both halves of the producer/consumer field contract are
+# in the test.
+ADD_EXECUTABLE(test_spell_effect_removal
+    test_spell_effect_removal.cpp
+)
+TARGET_LINK_LIBRARIES(test_spell_effect_removal GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_spell_effect_removal PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_spell_effect_removal)

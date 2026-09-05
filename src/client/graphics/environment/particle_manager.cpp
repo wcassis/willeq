@@ -855,17 +855,21 @@ uint32_t ParticleManager::createSpellEffectAtPosition(const SpellEffectDef& def,
     return effectID;
 }
 
-void ParticleManager::removeSpellEffect(uint32_t effectID) {
-    ParticleCommandData cmd;
-    cmd.type = ParticleCommand::RemoveSpellEffect;
-    cmd.preAssignedEffectID = effectID;
-    pendingCommands_.push_back(std::move(cmd));
-}
-
+// T397 Leg B, board B220: removeSpellEffect(uint32_t) was deleted from here.
+// See particle_manager.h for why.
+//
+// The same wrong-field bug lived in the survivor below, and there it was NOT
+// harmless. It wrote `targetID`, leaving `entityID` at its default 0, and the
+// worker's RemoveSpellEffectsEntity arm matches
+// `casterEntityID == cmd.entityID || targetEntityID == cmd.entityID`. Every
+// cast glow is created as createSpellEffect(def, caster, 0) and every impact
+// as createSpellEffect(def, 0, target), so 0 matched ALL of them: any call --
+// and SpellVisualFX::createCastGlow() makes three before every single cast --
+// behaved as clearAllSpellEffects() while removing nothing it was asked to.
 void ParticleManager::removeSpellEffectsForEntity(uint16_t entityID) {
     ParticleCommandData cmd;
     cmd.type = ParticleCommand::RemoveSpellEffectsEntity;
-    cmd.targetID = entityID;
+    cmd.entityID = entityID;
     pendingCommands_.push_back(std::move(cmd));
 }
 

@@ -3139,7 +3139,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
 
 ### Added by T395 (2026-09-05)
 
-- **B220** (B) `src/client/graphics/environment/particle_manager.cpp`
+- ~~**B220** (B) `src/client/graphics/environment/particle_manager.cpp`
   `ParticleManager::removeSpellEffect(effectID)` **cannot remove anything**:
   it writes the id into `cmd.preAssignedEffectID`, while the worker's
   `ParticleCommand::RemoveSpellEffect` arm (`src/client/graphics/sim_particles.cpp`)
@@ -3149,7 +3149,33 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   rule), so nothing is broken today; it is a wired-wrong method waiting for its
   first caller. Either fix the field and give it a caller, or delete it with
   the rest of B161's unreached creation half. Same family as B195. Found by
-  T395 while tracing B204.
+  T395 while tracing B204.~~ **CLOSED by T397 Leg B**
+  (`refactor/T397_spell_effects_config_path.md`). **DELETED**, with its
+  command enum member, its worker arm and the `ParticleCommandData::effectID`
+  field: re-confirmed zero callers across `src/ include/ tests/ tools/
+  benchmarks/ docker/`, and no caller anywhere keeps the id
+  `createSpellEffect()` returns, so by-id removal has no consumer to wire.
+  Removal is by entity and always was. Recover with
+  `git show 8382268d:src/client/graphics/environment/particle_manager.cpp`.
+
+  **AND TRACING IT FOUND A LIVE CLASS-A DEFECT, FIXED IN THE SAME COMMIT.**
+  `ParticleManager::removeSpellEffectsForEntity()` -- the removal every real
+  caller uses (`SpellVisualFX::removeCastGlow` / `removeBuffAura` /
+  `removeAllForEntity`) -- had the identical wrong-field bug, and there it was
+  not harmless. It wrote `cmd.targetID`, leaving `cmd.entityID` at 0, while
+  the worker matches `casterEntityID == cmd.entityID || targetEntityID ==
+  cmd.entityID`. Every cast glow is `createSpellEffect(def, caster, 0)` and
+  every impact is `createSpellEffect(def, 0, target)`, so one of those two
+  fields is ALWAYS 0 and an `entityID` of 0 matched **every spell effect alive
+  in the zone**. The call behaved as `clearAllSpellEffects()` while removing
+  nothing it was asked to -- and `createCastGlow()` issues three of them
+  before every single cast, so any player starting a cast wiped every other
+  player's impacts and glows. This is a plausible contributor to B160's owed
+  observer pair (T389) and to B204's "nothing was drawn": a second client
+  casting anywhere nearby deleted the impact under test. Pinned by
+  `tests/test_spell_effect_removal.cpp`, 3 tests, 2 red pre-fix, driving a
+  real `ParticleManager::drainCommands()` into a real
+  `SimulationWorker::computeOnce()`.
 
 - ~~**B221** (B) `src/client/graphics/environment/particle_manager.cpp`
   `ParticleManager::ParticleManager()` loads `config/spell_effects.json` by a
