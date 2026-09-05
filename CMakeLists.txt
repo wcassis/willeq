@@ -1634,8 +1634,13 @@ ELSE()
     TARGET_LINK_LIBRARIES(gles2_program_switch_benchmark EGL GLESv2)
 ENDIF()
 
-ADD_EXECUTABLE(gles2_fog_volume_benchmark tools/hwcaps/gles2_fog_volume_benchmark.cpp)
-TARGET_INCLUDE_DIRECTORIES(gles2_fog_volume_benchmark PRIVATE ${CMAKE_SOURCE_DIR}/include)
+# T385 (board B167): the shader sources moved out -- the benchmark TU was
+# 1,711 lines, over the 1,500 ceiling that now covers tools/.
+ADD_EXECUTABLE(gles2_fog_volume_benchmark
+    tools/hwcaps/gles2_fog_volume_benchmark.cpp
+    tools/hwcaps/fog_volume/fog_volume_shaders.cpp)
+TARGET_INCLUDE_DIRECTORIES(gles2_fog_volume_benchmark PRIVATE ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/tools/hwcaps)
 IF(EQT_DRM)
     TARGET_COMPILE_DEFINITIONS(gles2_fog_volume_benchmark PRIVATE EQT_HAS_DRM)
     IF(LIBDRM_INCLUDE_DIR)
