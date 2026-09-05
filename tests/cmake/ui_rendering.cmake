@@ -138,6 +138,22 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_race_330_loader)
 ENDIF()
 
+# T364 Leg B (B065): the _chr.s3d cache's LRU accounting -- every cached entry
+# must be registered in chrCacheLruOrder_ and the maxChrCacheEntries_ cap must
+# actually evict. Same EDT_NULL + willeq_core gate as test_race_330_loader;
+# opens the shipped data/willeq.db and the real client tree and skips without
+# either.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_chr_cache_lru
+        test_chr_cache_lru.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_chr_cache_lru PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_chr_cache_lru GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_chr_cache_lru PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    GTEST_DISCOVER_TESTS(test_chr_cache_lru)
+ENDIF()
+
 # T340 Leg A (B052): drives RaceModelLoader's variant/animation loader through
 # every exit G07 enumerated -- primary hit, primary-miss/fallback-hit, an
 # unusable matched character, all candidates exhausted, and an empty candidate

@@ -125,42 +125,50 @@ protected:
         manager_->m_connections[std::make_pair(endpoint, port)] = connection_;
     }
 
-    // Process a SessionResponse to set up the connection properly
+    // Drive a captured OP_SessionResponse through the PRODUCTION handshake.
+    //
+    // T364/B009: this used to memcpy connect_code / encode_key /
+    // max_packet_size straight off the wire into the connection's private
+    // members -- i.e. it re-implemented, in host byte order, exactly the bug
+    // T21 fixed in `daybreak_connection_decode.cpp`'s OP_SessionResponse arm.
+    // A regression of that fix could not fail this test. It now feeds the
+    // recorded bytes through `DaybreakConnection::ProcessPacket()`, so the
+    // production parse is the thing under test; the only value the test
+    // supplies is our own connect code, which the live client picks at random
+    // and the recorded server echoes back.
+    //
+    // OP_SessionResponse is exempt from `PacketCanBeEncoded()`, so it reaches
+    // the handshake arm without CRC or decompression.
     void processSessionResponse(const CapturedPacket& pkt, bool bypass_crc = false) {
-        if (pkt.data.size() < 2) return;
-        if (pkt.data[0] != 0x00 || pkt.data[1] != OP_SessionResponse) return;
+        ASSERT_GE(pkt.data.size(), DaybreakConnectReply::size());
+        ASSERT_EQ(pkt.data[0], 0);
+        ASSERT_EQ(pkt.data[1], OP_SessionResponse);
 
-        // Parse session response manually to set up connection
-        if (pkt.data.size() >= 15) {
-            // DaybreakConnectReply structure:
-            // zero(1) + opcode(1) + connect_code(4) + encode_key(4) + crc_bytes(1) + encode_pass1(1) + encode_pass2(1) + max_packet_size(4)
-            uint32_t connect_code = *(uint32_t*)&pkt.data[2];
-            uint32_t encode_key = *(uint32_t*)&pkt.data[6];
-            uint8_t crc_bytes = pkt.data[10];
-            uint8_t encode_pass1 = pkt.data[11];
-            uint8_t encode_pass2 = pkt.data[12];
-            uint32_t max_packet_size = *(uint32_t*)&pkt.data[13];
+        uint32_t wire_code = 0;
+        memcpy(&wire_code, &pkt.data[2], 4);
+        connection_->m_connect_code = NetworkToHost(wire_code);
+        connection_->m_status = StatusConnecting;
 
-            std::cout << "SessionResponse: connect_code=0x" << std::hex << connect_code
-                      << " encode_key=0x" << encode_key
-                      << " crc_bytes=" << std::dec << (int)crc_bytes
-                      << " encode_pass1=" << (int)encode_pass1
-                      << " encode_pass2=" << (int)encode_pass2
-                      << " max_packet_size=" << max_packet_size << std::endl;
+        std::vector<uint8_t> buf(pkt.data);
+        StaticPacket p(buf.data(), buf.size());
+        connection_->ProcessPacket(p);
 
-            // Set up the connection with these parameters
-            connection_->m_connect_code = connect_code;
-            connection_->m_encode_key = encode_key;
-            // If bypassing CRC, set crc_bytes to 0 so ValidateCRC always returns true
-            connection_->m_crc_bytes = bypass_crc ? 0 : crc_bytes;
-            connection_->m_encode_passes[0] = (DaybreakEncodeType)encode_pass1;
-            connection_->m_encode_passes[1] = (DaybreakEncodeType)encode_pass2;
-            connection_->m_max_packet_size = max_packet_size;
-            connection_->m_status = StatusConnected;
+        ASSERT_EQ(connection_->m_status, StatusConnected)
+            << "recorded OP_SessionResponse was rejected by the production handshake";
 
-            if (bypass_crc) {
-                std::cout << "  ** CRC BYPASSED for testing **" << std::endl;
-            }
+        std::cout << "SessionResponse (via production parse): connect_code=0x" << std::hex
+                  << connection_->m_connect_code
+                  << " encode_key=0x" << connection_->m_encode_key
+                  << " crc_bytes=" << std::dec << connection_->m_crc_bytes
+                  << " encode_pass1=" << (int)connection_->m_encode_passes[0]
+                  << " encode_pass2=" << (int)connection_->m_encode_passes[1]
+                  << " max_packet_size=" << connection_->m_max_packet_size << std::endl;
+
+        // Only after the production parse: zeroing crc_bytes makes ValidateCRC
+        // a no-op so the CRC-bypass replay can feed CRC-stripped payloads.
+        if (bypass_crc) {
+            connection_->m_crc_bytes = 0;
+            std::cout << "  ** CRC BYPASSED for testing **" << std::endl;
         }
     }
 
@@ -202,7 +210,7 @@ TEST_F(DaybreakConnectionPcapTest, ReplayZoneServerPackets) {
     for (const auto& pkt : pcap_packets_) {
         if (pkt.data.size() >= 2 && pkt.data[0] == 0x00 && pkt.data[1] == OP_SessionResponse) {
             std::cout << "Processing SessionResponse from frame " << pkt.frame_number << std::endl;
-            processSessionResponse(pkt);
+            ASSERT_NO_FATAL_FAILURE(processSessionResponse(pkt));
             session_established = true;
             break;
         }
@@ -304,7 +312,7 @@ TEST_F(DaybreakConnectionPcapTest, DetailedFragmentTracking) {
     // Find and process SessionResponse
     for (const auto& pkt : pcap_packets_) {
         if (pkt.data.size() >= 2 && pkt.data[0] == 0x00 && pkt.data[1] == OP_SessionResponse) {
-            processSessionResponse(pkt);
+            ASSERT_NO_FATAL_FAILURE(processSessionResponse(pkt));
             break;
         }
     }
@@ -395,7 +403,7 @@ TEST_F(DaybreakConnectionPcapTest, SingleCompressedFragmentDebug) {
     // Find and process SessionResponse
     for (const auto& pkt : pcap_packets_) {
         if (pkt.data.size() >= 2 && pkt.data[0] == 0x00 && pkt.data[1] == OP_SessionResponse) {
-            processSessionResponse(pkt);
+            ASSERT_NO_FATAL_FAILURE(processSessionResponse(pkt));
             break;
         }
     }
@@ -471,7 +479,7 @@ TEST_F(DaybreakConnectionPcapTest, ReplayWithCRCBypassed) {
     // Find and process SessionResponse with CRC bypass
     for (const auto& pkt : pcap_packets_) {
         if (pkt.data.size() >= 2 && pkt.data[0] == 0x00 && pkt.data[1] == OP_SessionResponse) {
-            processSessionResponse(pkt, true);  // bypass_crc = true
+            ASSERT_NO_FATAL_FAILURE(processSessionResponse(pkt, true));  // bypass_crc = true
             break;
         }
     }
@@ -574,6 +582,94 @@ TEST_F(DaybreakConnectionPcapTest, ReplayWithCRCBypassed) {
     // We should have received many app packets with CRC bypassed
     EXPECT_GT(received_app_packets_.size(), 100u)
         << "Expected to receive >100 app packets with CRC bypassed";
+}
+
+// --- B009: the handshake fields are byte-swapped by PRODUCTION ------------
+//
+// T21 fixed `DaybreakConnection`'s OP_SessionResponse arm to read
+// connect_code / encode_key / max_packet_size through `NetworkToHost()`.
+// Nothing could catch a regression of that fix, because this file parsed the
+// same three fields itself, raw, and every OP_SessionResponse in the recorded
+// capture carries a byte-swap PALINDROME for two of them: eqemu's connect_code
+// is 0x00000000 or 0xFFFFFFFF and its encode_key 0x00000000 or 0xFFFFFFFF
+// (T21's own finding -- the RNG had collapsed to those two values). Only
+// max_packet_size differs raw vs swapped in the capture: network-order 512
+// reads as 131072 raw.
+//
+// So the recorded capture can bite on ONE of the three fields, and the other
+// two need synthesised bytes. Both are covered below.
+
+// Capture-driven: the one field the recorded handshake can discriminate.
+TEST_F(DaybreakConnectionPcapTest, RecordedHandshakeYieldsNetworkOrderMaxPacketSize) {
+    if (!hasPcapData()) {
+        GTEST_SKIP() << "no capture at " << TEST_PCAP_FILE;
+    }
+
+    createTestManager();
+    createTestConnection(getTestZoneIp(), getTestZonePort());
+
+    const CapturedPacket* session_response = nullptr;
+    for (const auto& pkt : pcap_packets_) {
+        if (pkt.data.size() >= 2 && pkt.data[0] == 0x00 && pkt.data[1] == OP_SessionResponse) {
+            session_response = &pkt;
+            break;
+        }
+    }
+    ASSERT_NE(session_response, nullptr) << "No SessionResponse found in pcap";
+
+    ASSERT_NO_FATAL_FAILURE(processSessionResponse(*session_response));
+
+    // eqemu sends max_packet_size in network order. Read raw (the pre-T21
+    // production bug, and what this test file used to do itself) the same
+    // four bytes are 131072 -- 256x the real limit.
+    EXPECT_EQ(connection_->m_max_packet_size, 512u)
+        << "max_packet_size was not byte-swapped by the production handshake";
+    EXPECT_EQ(connection_->m_crc_bytes, 2u);
+    EXPECT_EQ(connection_->m_encode_passes[0], EncodeCompression);
+    EXPECT_EQ(connection_->m_encode_passes[1], EncodeNone);
+}
+
+// Synthesised: non-palindromic connect_code and encode_key, which no recorded
+// eqemu handshake provides. The wire bytes are written out big-endian BY HAND
+// so the expectation does not depend on the same endian helper the production
+// code uses.
+TEST_F(DaybreakConnectionPcapTest, SynthesisedHandshakeByteSwapsAllThreeFields) {
+    createTestManager();
+    createTestConnection("10.0.0.1", 7000);
+
+    // zero, opcode, connect_code(4 BE), encode_key(4 BE), crc_bytes,
+    // encode_pass1, encode_pass2, max_packet_size(4 BE)
+    const std::vector<uint8_t> wire = {
+        0x00, OP_SessionResponse,
+        0x11, 0x22, 0x33, 0x44,   // connect_code  -> host 0x11223344
+        0xA1, 0xB2, 0xC3, 0xD4,   // encode_key    -> host 0xA1B2C3D4
+        0x02,                     // crc_bytes
+        0x01,                     // encode_pass1 (EncodeCompression)
+        0x00,                     // encode_pass2 (EncodeNone)
+        0x00, 0x00, 0x02, 0x00,   // max_packet_size -> host 512
+    };
+    ASSERT_EQ(wire.size(), DaybreakConnectReply::size());
+
+    // What SendConnect() would have picked for us, in host order.
+    connection_->m_connect_code = 0x11223344u;
+    connection_->m_status = StatusConnecting;
+
+    std::vector<uint8_t> buf(wire);
+    StaticPacket p(buf.data(), buf.size());
+    connection_->ProcessPacket(p);
+
+    // The connect_code compare itself is a byte-swap: read raw it is
+    // 0x44332211, which does not match, and the handshake is silently ignored.
+    ASSERT_EQ(connection_->m_status, StatusConnected)
+        << "handshake rejected: connect_code was not compared in host order";
+
+    EXPECT_EQ(connection_->m_encode_key, 0xA1B2C3D4u)
+        << "encode_key was not byte-swapped (raw would be 0xD4C3B2A1)";
+    EXPECT_EQ(connection_->m_max_packet_size, 512u)
+        << "max_packet_size was not byte-swapped (raw would be 131072)";
+    EXPECT_EQ(connection_->m_crc_bytes, 2u);
+    EXPECT_EQ(connection_->m_encode_passes[0], EncodeCompression);
+    EXPECT_EQ(connection_->m_encode_passes[1], EncodeNone);
 }
 
 int main(int argc, char** argv) {

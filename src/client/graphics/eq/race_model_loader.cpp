@@ -661,6 +661,22 @@ void RaceModelLoader::storeOtherChrCacheLocked(const std::string& lowerFilename,
     }
 }
 
+RaceModelLoader::ChrCacheAccounting RaceModelLoader::getChrCacheAccountingForTest() const {
+    ChrCacheAccounting out;
+    std::lock_guard<std::mutex> lock(otherChrCacheMutex_);
+    out.entries = otherChrCaches_.size();
+    out.lruOrder = chrCacheLruOrder_.size();
+    out.maxEntries = maxChrCacheEntries_;
+    for (const auto& [filename, cache] : otherChrCaches_) {
+        (void)cache;
+        if (std::find(chrCacheLruOrder_.begin(), chrCacheLruOrder_.end(), filename) ==
+            chrCacheLruOrder_.end()) {
+            ++out.untracked;
+        }
+    }
+    return out;
+}
+
 bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int textureVariant) {
     uint32_t key = makeCacheKey(raceId, gender);
 

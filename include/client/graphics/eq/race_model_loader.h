@@ -328,6 +328,22 @@ public:
     // Set maximum cached _chr.s3d entries (0 = unlimited)
     void setMaxChrCacheEntries(size_t max) { maxChrCacheEntries_ = max; }
 
+    // T364 (B065): the chr-cache LRU accounting has no other observable
+    // surface -- otherChrCaches_, chrCacheLruOrder_ and maxChrCacheEntries_
+    // are all private and getMemoryStats() reports only texture bytes. The
+    // invariant a bypassed insert breaks (T91, and B065 at the one surviving
+    // site) is `untracked == 0`: an entry that never entered
+    // chrCacheLruOrder_ counts against maxChrCacheEntries_ forever and can
+    // never be evicted, so `entries` climbs past `maxEntries` and the
+    // legitimately tracked entries thrash instead.
+    struct ChrCacheAccounting {
+        size_t entries = 0;    // otherChrCaches_.size()
+        size_t lruOrder = 0;   // chrCacheLruOrder_.size()
+        size_t untracked = 0;  // cache keys absent from chrCacheLruOrder_
+        size_t maxEntries = 0; // maxChrCacheEntries_ (0 = unlimited)
+    };
+    ChrCacheAccounting getChrCacheAccountingForTest() const;
+
     // Old models mode - when true, only load from global_chr.s3d (classic models)
     // When false, prefer race-specific S3D files (Luclin+ models)
     void setUseOldModels(bool useOld);

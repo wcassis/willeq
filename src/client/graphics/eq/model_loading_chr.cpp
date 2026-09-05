@@ -351,25 +351,27 @@ bool RaceModelLoader::loadModelFromCachedChr(const std::string& chrFilename, uin
             std::string fullPath = clientPath_ + chrFilename;
             S3DLoader loader;
             if (!loader.loadZone(fullPath)) {
-                // Cache empty entry to avoid repeated load attempts
-                otherChrCaches_[lowerFilename] = OtherChrCache{};
+                // Cache empty entry to avoid repeated load attempts.
+                // T364 (B065): through the store helper -- a raw
+                // otherChrCaches_[key] = ... never enters chrCacheLruOrder_,
+                // so it can never be evicted while still counting against
+                // maxChrCacheEntries_ (the T91 bypass).
+                storeOtherChrCacheLocked(lowerFilename, {}, {});
                 return false;
             }
 
             auto zone = loader.getZone();
             if (!zone || zone->characters.empty()) {
-                otherChrCaches_[lowerFilename] = OtherChrCache{};
+                storeOtherChrCacheLocked(lowerFilename, {}, {});
                 return false;
             }
 
-            OtherChrCache& cache = otherChrCaches_[lowerFilename];
-            cache.characters = zone->characters;
-            cache.textures = zone->characterTextures;
-            // Invalidate merged textures cache since we added new textures
-            mergedTexturesCacheValid_ = false;
-
-            LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Cached {} characters from {}", cache.characters.size(), chrFilename);
+            storeOtherChrCacheLocked(lowerFilename, zone->characters, zone->characterTextures);
             cacheIt = otherChrCaches_.find(lowerFilename);
+
+            LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Cached {} characters from {}",
+                      cacheIt != otherChrCaches_.end() ? cacheIt->second.characters.size() : 0,
+                      chrFilename);
         }
 
         // Check if cache entry exists and has characters
@@ -534,12 +536,12 @@ bool RaceModelLoader::loadModelFromCachedChr(const std::string& chrFilename, uin
                                 if (loader.loadZone(fullPath)) {
                                     auto zone = loader.getZone();
                                     if (zone && !zone->characters.empty()) {
-                                        OtherChrCache& cache = otherChrCaches_[lowerAnimS3d];
-                                        cache.characters = zone->characters;
-                                        cache.textures = zone->characterTextures;
-                                        mergedTexturesCacheValid_ = false;
+                                        // T364 (B065): via the store helper so
+                                        // the entry is LRU-tracked and evictable.
+                                        size_t loaded = zone->characters.size();
+                                        storeOtherChrCacheLocked(lowerAnimS3d, zone->characters, zone->characterTextures);
                                         LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loaded animation source file {} with {} characters",
-                                                  animSourceS3d, cache.characters.size());
+                                                  animSourceS3d, loaded);
                                     }
                                 }
                             }
