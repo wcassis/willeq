@@ -13,12 +13,19 @@ the live-doc set, ctest fails and names the file, line and replacement.
 
 The set scanned is the ORIENTATION docs -- the ones a new agent reads to
 learn what the tree IS: the root CLAUDE.md, every */CLAUDE.md, README.md and
-docs/*.md (not docs/reference/). It is deliberately NARROWER than
-check_doc_citations.py's live-doc set: refactor/BOARD.md and the batch
-close-outs are ledgers of struck work, so they name deleted symbols on
-purpose and by the hundred; the T/J/P/K unit plans and refactor/completed/
-are historical records for the same reason. Scanning those would make this
-test noise.
+docs/*.md (not docs/reference/) -- plus refactor/BOARD.md, which is the
+FIRST thing a new agent reads.
+
+T371 left the board out because running the table over it produced 39 hits,
+every one legitimate: a struck entry names the thing it retired, on purpose.
+T373 (board B131) replaced that exemption with a RULE. The board is scanned
+one BULLET at a time, and only LIVE bullets count -- a top-level bullet whose
+text begins "~~" is a struck ledger entry and is skipped along with every
+continuation line under it, up to the next top-level bullet or heading. What
+is left is exactly the text that describes live code, which is what the table
+is for. The batch close-outs (refactor/K_*.md and the other Batch ledgers),
+the T/J/P unit plans and refactor/completed/ stay out entirely: they are
+historical records end to end, with no live half to separate.
 
 A doc may still discuss a retired name deliberately (a tombstone: "renamed
 from /newskills", "setOnSpellLand is gone"). Such a line must carry the
@@ -99,6 +106,42 @@ RETIRED = [
 
 PRUNE_DIRS = {"third_party", ".git"}
 
+# The board is scanned by the live-entry rule below, not whole.
+BOARD_REL = os.path.join("refactor", "BOARD.md")
+
+
+def board_live_lines(lines):
+    """(lineno, text) for the LIVE parts of refactor/BOARD.md.
+
+    The board is a bullet list of one entry each. A top-level bullet ("- " at
+    column 0) opens an entry and owns every following line until the next
+    top-level bullet or a markdown heading; an entry whose text starts "~~"
+    is struck (closed) and is skipped whole, because struck text names the
+    thing it retired on purpose. Prose that belongs to no bullet -- the
+    class/rules preamble, section headings, the horizontal rules -- is not an
+    entry and is not scanned.
+
+    Returns (kept_lines, live_entry_count).
+    """
+    kept = []
+    live = 0
+    in_entry = False
+    entry_is_live = False
+    for n, line in enumerate(lines, 1):
+        if line.startswith("#"):
+            in_entry = False
+            entry_is_live = False
+            continue
+        if line.startswith("- "):
+            in_entry = True
+            body = line[2:].lstrip()
+            entry_is_live = not body.startswith("~~")
+            if entry_is_live:
+                live += 1
+        if in_entry and entry_is_live:
+            kept.append((n, line))
+    return kept, live
+
 
 def find_orientation_docs(repo_root):
     """Root CLAUDE.md + every */CLAUDE.md + README.md + docs/*.md."""
@@ -117,6 +160,9 @@ def find_orientation_docs(repo_root):
             full = os.path.join(docs_dir, name)
             if os.path.isfile(full) and name.endswith(".md"):
                 found.append(full)
+    board = os.path.join(repo_root, BOARD_REL)
+    if os.path.isfile(board):
+        found.append(board)
     seen = set()
     deduped = []
     for d in sorted(found):
@@ -146,6 +192,7 @@ def main():
     failures = []
     scanned = 0
     exempted = 0
+    board_live = 0
     for doc in docs:
         rel = os.path.relpath(doc, repo)
         try:
@@ -156,7 +203,11 @@ def main():
             failures.append(rel)
             continue
         scanned += 1
-        for n, line in enumerate(lines, 1):
+        if rel == BOARD_REL:
+            numbered, board_live = board_live_lines(lines)
+        else:
+            numbered = list(enumerate(lines, 1))
+        for n, line in numbered:
             for phrase, truth, unit, rx in patterns:
                 if not rx.search(line):
                     continue
@@ -165,9 +216,11 @@ def main():
                     continue
                 failures.append((rel, n, phrase, truth, unit))
 
-    print("DocClaims: %d orientation docs scanned, %d retired names in the table, "
+    print("DocClaims: %d orientation docs scanned (including %s's %d LIVE "
+          "entries; struck entries skipped), %d retired names in the table, "
           "%d exempted line hits (%s)"
-          % (scanned, len(RETIRED), exempted, EXEMPT_MARKER))
+          % (scanned, BOARD_REL, board_live, len(RETIRED), exempted,
+             EXEMPT_MARKER))
 
     if not failures:
         print("OK: no live doc names a retired symbol.")

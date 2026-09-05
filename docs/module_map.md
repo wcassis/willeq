@@ -73,7 +73,10 @@ review section under `refactor/F*.md` and `refactor/J*.md`.
 ### Family grouping (source: `refactor/K_component_extraction.md` §Families)
 
 The flat `eq_*.cpp` split names families that Batch K extracts into components.
-This table and that plan must agree; change both together.
+This table and that plan must agree; change both together. Batch K extracted
+twelve components, one `include/client/<family>/<family>_component.h` header
+each; the last two rows below (`core` and `action_handler`) are NOT components
+and have no such header. The count is netted by the `DocCounts` test (T373).
 
 | family | TUs | `EverQuest::` defs | single-family members | K unit |
 |---|---|---|---|---|

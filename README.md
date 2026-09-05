@@ -807,7 +807,7 @@ src/
   common/
     net/                     # Daybreak protocol, packets
 include/                     # Headers matching src layout
-tests/                       # 123 test executables (gtest)
+tests/                       # gtest executables, one per suite (for the count: ctest --test-dir build -N | tail -1)
 config/                      # User settings and data-driven configs
 data/                        # willeq.db, eqe1_texture_index.json, model/zone JSON, UI atlases
 docker/

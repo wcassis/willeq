@@ -24,3 +24,16 @@ ADD_TEST(NAME DocClaims
     COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/refactor/check_doc_claims.py
             --repo ${CMAKE_SOURCE_DIR})
 SET_TESTS_PROPERTIES(DocClaims PROPERTIES LABELS "hygiene")
+
+# T373 (2026-09-05, board B130): DocClaims is a NAME table and is blind to the
+# NUMBERS the orientation docs state by hand -- T371 found every one of the six
+# it checked had drifted. This nets each count against a measuring function
+# over the tree (enum bodies, the std::variant, registerCommand call sites,
+# loadZoneStep* functions, *_component.h headers per family), and asserts that
+# the two counts that MUST NOT be pinned (the suite total, the owner_ census)
+# still name their measuring command instead of a number. Same
+# no-artefact/no-server/no-display shape, same "hygiene" label.
+ADD_TEST(NAME DocCounts
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/refactor/check_doc_counts.py
+            --repo ${CMAKE_SOURCE_DIR})
+SET_TESTS_PROPERTIES(DocCounts PROPERTIES LABELS "hygiene")
