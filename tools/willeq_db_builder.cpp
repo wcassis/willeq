@@ -45,12 +45,40 @@ static std::string trim(const std::string& s) {
     return s.substr(start, end - start + 1);
 }
 
+// T392 (board B200): every Titanium *.txt data file is CRLF-terminated, and
+// std::getline() splitting on '\n' leaves the '\r' attached to the end of the
+// line -- so it lands inside the LAST field of every record. That is how
+// sound_assets.filename came to hold "BuyItem.WAV\r": AudioManager lowercased
+// it, missed in the snd*.pfs index, and returned the one failure exit that
+// does not log, while the log line it did print ended in a CR and rendered as
+// a clean "BuyItem.WAV" -- which is why T386 measured 31 silent sounds and
+// could not see the cause. Four other tables carried the same taint
+// (eqstrings, dbstrings, race_data, login_strings). Read lines through this,
+// never std::getline() directly, for any file that comes from the client.
+static bool readLine(std::istream& in, std::string& line) {
+    if (!std::getline(in, line)) return false;
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    return true;
+}
+
+// Splits on delim and KEEPS empty tokens, including a trailing one. The
+// istringstream/getline form this replaced silently dropped the last field
+// when it was empty, so dbstr_us.txt's 19 deliberately-blank strings
+// ("142^12^") came out as 2 fields and were skipped by every `fields.size()
+// < N` guard. That was invisible before T392 only because the CRLF bug left
+// a "\r" sitting in the field and made it look non-empty.
 static std::vector<std::string> split(const std::string& s, char delim) {
     std::vector<std::string> tokens;
-    std::istringstream stream(s);
-    std::string token;
-    while (std::getline(stream, token, delim))
-        tokens.push_back(token);
+    size_t start = 0;
+    for (;;) {
+        size_t pos = s.find(delim, start);
+        if (pos == std::string::npos) {
+            tokens.push_back(s.substr(start));
+            break;
+        }
+        tokens.push_back(s.substr(start, pos - start));
+        start = pos + 1;
+    }
     return tokens;
 }
 
@@ -169,7 +197,7 @@ static int loadSpells(sqlite3* db, const std::string& filepath) {
 
     std::string line;
     int count = 0;
-    while (std::getline(file, line)) {
+    while (readLine(file, line)) {
         if (line.empty() || line[0] == '#') continue;
 
         auto fields = split(line, '^');
@@ -317,7 +345,7 @@ static int loadEqStrings(sqlite3* db, const std::string& filepath) {
 
     std::string line;
     int count = 0;
-    while (std::getline(file, line)) {
+    while (readLine(file, line)) {
         if (line.empty()) continue;
 
         // Format: "id text_content" (space separated, first token is ID)
@@ -370,7 +398,7 @@ static int loadDbStrings(sqlite3* db, const std::string& filepath) {
 
     std::string line;
     int count = 0;
-    while (std::getline(file, line)) {
+    while (readLine(file, line)) {
         if (line.empty()) continue;
 
         auto fields = split(line, '^');
@@ -833,7 +861,7 @@ static int loadSoundAssets(sqlite3* db, const std::string& filepath) {
 
     std::string line;
     int count = 0;
-    while (std::getline(file, line)) {
+    while (readLine(file, line)) {
         if (line.empty()) continue;
         auto fields = split(line, '^');
         if (fields.size() < 2) continue;
@@ -880,7 +908,7 @@ static int loadAnimationSounds(sqlite3* db, const std::string& filepath) {
 
     std::string line;
     int count = 0;
-    while (std::getline(file, line)) {
+    while (readLine(file, line)) {
         if (line.empty()) continue;
         auto fields = split(line, '^');
         if (fields.size() < 2) continue;
@@ -928,7 +956,7 @@ static int loadRaceData(sqlite3* db, const std::string& filepath) {
 
     std::string line;
     int count = 0;
-    while (std::getline(file, line)) {
+    while (readLine(file, line)) {
         if (line.empty()) continue;
         auto fields = split(line, '^');
         if (fields.size() < 4) continue;
@@ -976,7 +1004,7 @@ static int loadMusicIndex(sqlite3* db, const std::string& filepath) {
 
     std::string line;
     int count = 0;
-    while (std::getline(file, line)) {
+    while (readLine(file, line)) {
         line = trim(line);
         if (line.empty()) continue;
 
@@ -1021,7 +1049,7 @@ static int loadLoginStrings(sqlite3* db, const std::string& filepath) {
     int count = 0;
     // First line is header (EQST0002), skip it
     bool headerSkipped = false;
-    while (std::getline(file, line)) {
+    while (readLine(file, line)) {
         if (line.empty()) continue;
         if (!headerSkipped && line.find("EQST") != std::string::npos) {
             headerSkipped = true;
