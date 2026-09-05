@@ -22,8 +22,21 @@ enum class MixChannelType : uint8_t {
 // A single channel in the software mixer
 struct MixChannel {
     MixChannelType type = MixChannelType::SFX;
-    float volume = 1.0f;       // Per-channel volume (0.0 - 1.0)
-    float pan = 0.0f;          // -1.0 (left) to 1.0 (right), 0.0 = center
+    // T370: MEASURED under TSAN, 3 of 3 zone tours (review/T370/run{1,2,3}/
+    // tsan_report.*) -- volume is written by the GAME thread
+    // (MusicPlayer::setVolume, music_player.cpp:213, reached from
+    // ZoneAudioManager::update on every zone's music change) and read by the
+    // miniaudio AUDIO thread inside render() below. Plain floats, no
+    // synchronisation, one report per run, byte-identical stacks.
+    // atomic<float> (relaxed by the implicit operator=/operator float, which
+    // is seq_cst -- kept, the cost is one uncontended atomic load per channel
+    // per audio callback) closes it with NO lock, so render() stays lock-free
+    // and no lock-ordering edge is created. pan is the identical field with
+    // the identical writers (sfx_manager.cpp:65, music_player.cpp:415) and
+    // the identical audio-thread reader; TSAN happened to report only volume,
+    // so pan is fixed by the same argument, not by a measurement.
+    std::atomic<float> volume{1.0f};  // Per-channel volume (0.0 - 1.0)
+    std::atomic<float> pan{0.0f};     // -1.0 (left) to 1.0 (right), 0.0 = center
     const float* samples = nullptr;  // Source sample data (interleaved stereo or mono)
     uint32_t sampleRate = 22050;
     uint8_t channels = 1;      // 1 = mono, 2 = stereo
