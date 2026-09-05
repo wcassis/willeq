@@ -52,7 +52,14 @@ enum class ParticleCommand : uint8_t {
     DeactivateWeather,         // remove weather emitter
     CreateSpellEffect,         // SpellEffectDef + caster/target/duration
     CreateSpellEffectAtPos,    // SpellEffectDef + world position + duration
-    RemoveSpellEffect,         // by effectID
+    // T397 Leg B (board B220): RemoveSpellEffect (by effect id) was DELETED
+    // here. It had zero callers in src/ include/ tests/ tools/ benchmarks/
+    // docker/, no caller ever stored the id createSpellEffect() returns, and
+    // ParticleManager::removeSpellEffect() wrote the wrong field so the
+    // worker's arm could not have matched anyway. Removal is by entity, which
+    // is what every live caller (SpellVisualFX::removeCastGlow /
+    // removeBuffAura / removeAllForEntity) actually asks for. Recover with:
+    // git show 8382268d:include/client/graphics/simulation_worker.h
     RemoveSpellEffectsEntity,  // by entityID
     ClearAllSpellEffects,
     ToggleFire,
@@ -88,10 +95,12 @@ struct ParticleCommandData {
     uint32_t preAssignedEffectID = 0;       // Pre-assigned by main thread
     glm::vec3 worldPos{0.0f};               // For CreateSpellEffectAtPos
 
-    // RemoveSpellEffect
-    uint32_t effectID = 0;
-
-    // RemoveSpellEffectsEntity
+    // RemoveSpellEffectsEntity. THIS is the field the worker matches on, and
+    // T397 Leg B is the unit that made ParticleManager write it: it was
+    // setting `targetID` instead, leaving `entityID` at 0 -- and 0 matches
+    // every cast glow (created with targetEntityID 0) and every impact
+    // (created with casterEntityID 0), so one removeSpellEffectsForEntity()
+    // call wiped every spell effect in the zone.
     uint16_t entityID = 0;
 
     // SetZoneEnter

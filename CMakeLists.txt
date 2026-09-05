@@ -288,6 +288,8 @@ SET(CLIENT_CORE_SOURCES
     src/client/commands/commands_train.cpp
     src/client/core/eq_strings.cpp
     src/client/core/say_link_text.cpp
+    # T397 (board B221): the one shipped-data path resolution.
+    src/client/core/data_paths.cpp
     src/client/login_world/login_world_component.cpp
     src/client/guild/guild_component.cpp
     src/client/gm/gm_component.cpp
@@ -896,6 +898,8 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         src/client/graphics/first_person_eye.cpp
         src/client/graphics/graphics_archive_index.cpp
         src/common/performance_metrics.cpp
+        # T397 (board B221): spell_effects_config.cpp resolves its path through this.
+        src/client/core/data_paths.cpp
         # SQLite database (required by spell_database, race_codes, equipment_model_loader)
         src/client/willeq_database.cpp
         third_party/sqlite3.c

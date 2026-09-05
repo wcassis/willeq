@@ -1,5 +1,6 @@
 #include "client/graphics/environment/spell_effects_config.h"
 #include "client/graphics/environment/particle_types.h"
+#include "client/data_paths.h"
 #include "common/logging.h"
 #include <json/json.h>
 #include <fstream>
@@ -43,15 +44,39 @@ uint8_t SpellEffectsConfig::getTextureIndex(const std::string& name) const {
     return ParticleAtlas::SoftCircle;
 }
 
+// T397, board B221. Two defects lived in the four lines below.
+//
+// (1) THE PATH. ParticleManager::init() calls this with the literal
+//     "config/spell_effects.json", which is resolved against the CURRENT
+//     WORKING DIRECTORY. Started from anywhere but the repo root the open
+//     fails. eqt::ResolveDataPath() is the fix and it tries the CWD-relative
+//     path FIRST, so a run from the repo root is byte-for-byte unchanged; the
+//     executable-relative fallback is what makes a run from elsewhere work.
+//     configPath_ keeps the RESOLVED path so /reloadspellfx reloads the same
+//     file the client actually read.
+//
+// (2) THE SILENCE. A miss logged at WARN, said "using defaults", and returned
+//     TRUE -- so every caller was told the config had loaded. It had not: the
+//     built-in table below is a DIFFERENT effect, not a degraded one. Its
+//     `impact` burst is 12 particles against the shipped file's 36, and a
+//     preset built with no load() call at all gets EmitterConfig's own struct
+//     defaults -- spawnRate 10/s with burstCount 0, i.e. a permanent emitter
+//     where the shipped effect is a 0.1 s one-shot. A missing shipped data
+//     file is an ERROR, and the return value now says so.
 bool SpellEffectsConfig::load(const std::string& path) {
-    configPath_ = path;
+    const std::string resolved = eqt::ResolveDataPath(path);
+    configPath_ = resolved;
 
-    std::ifstream file(path);
+    std::ifstream file(resolved);
     if (!file.is_open()) {
-        LOG_WARN(MOD_GRAPHICS, "SpellEffectsConfig: Could not open '{}', using defaults", path);
+        LOG_ERROR(MOD_GRAPHICS,
+                  "SpellEffectsConfig: could not open '{}' (resolved from '{}') -- falling back "
+                  "to the built-in style table, which is a DIFFERENT effect, not a degraded one "
+                  "(built-in impact burst 12, shipped 36)",
+                  resolved, path);
         setDefaults();
         loaded_ = true;
-        return true;
+        return false;
     }
 
     Json::Value root;
@@ -59,7 +84,7 @@ bool SpellEffectsConfig::load(const std::string& path) {
     std::string errors;
 
     if (!Json::parseFromStream(builder, file, &root, &errors)) {
-        LOG_ERROR(MOD_GRAPHICS, "SpellEffectsConfig: Failed to parse '{}': {}", path, errors);
+        LOG_ERROR(MOD_GRAPHICS, "SpellEffectsConfig: Failed to parse '{}': {}", resolved, errors);
         setDefaults();
         loaded_ = true;
         return false;
@@ -105,7 +130,7 @@ bool SpellEffectsConfig::load(const std::string& path) {
     }
 
     loaded_ = true;
-    LOG_INFO(MOD_GRAPHICS, "SpellEffectsConfig: Loaded settings from '{}'", path);
+    LOG_INFO(MOD_GRAPHICS, "SpellEffectsConfig: Loaded settings from '{}'", resolved);
     return true;
 }
 

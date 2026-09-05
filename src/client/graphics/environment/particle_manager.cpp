@@ -135,11 +135,21 @@ bool ParticleManager::init(const std::string& eqClientPath) {
         return true;
     }
 
-    // Load environment effects config
+    // T397 / board B221: both literals below are CWD-relative, as ~40 shipped
+    // data paths across src/client are (the census is board B235).
+    // SpellEffectsConfig::load() now resolves its argument through
+    // eqt::ResolveDataPath() and returns false -- loudly -- when the file is
+    // missing, so this call works from any working directory.
+    // EnvironmentEffectsConfig is the same shape and is NOT fixed here: its
+    // loader is weather/ambient territory owned by a parallel unit. It is
+    // boarded, not forgotten.
     EnvironmentEffectsConfig::instance().load("config/environment_effects.json");
 
-    // Load spell effects config
-    SpellEffectsConfig::instance().load("config/spell_effects.json");
+    if (!SpellEffectsConfig::instance().load("config/spell_effects.json")) {
+        LOG_ERROR(MOD_GRAPHICS,
+                  "ParticleManager: spell effect presets are the built-in fallback table, "
+                  "not the shipped config -- spell visuals will differ from the shipped effect");
+    }
 
     // Load particle atlas texture via constrained cache
     std::string atlasPath = kAtlasTexturePath;
@@ -845,17 +855,21 @@ uint32_t ParticleManager::createSpellEffectAtPosition(const SpellEffectDef& def,
     return effectID;
 }
 
-void ParticleManager::removeSpellEffect(uint32_t effectID) {
-    ParticleCommandData cmd;
-    cmd.type = ParticleCommand::RemoveSpellEffect;
-    cmd.preAssignedEffectID = effectID;
-    pendingCommands_.push_back(std::move(cmd));
-}
-
+// T397 Leg B, board B220: removeSpellEffect(uint32_t) was deleted from here.
+// See particle_manager.h for why.
+//
+// The same wrong-field bug lived in the survivor below, and there it was NOT
+// harmless. It wrote `targetID`, leaving `entityID` at its default 0, and the
+// worker's RemoveSpellEffectsEntity arm matches
+// `casterEntityID == cmd.entityID || targetEntityID == cmd.entityID`. Every
+// cast glow is created as createSpellEffect(def, caster, 0) and every impact
+// as createSpellEffect(def, 0, target), so 0 matched ALL of them: any call --
+// and SpellVisualFX::createCastGlow() makes three before every single cast --
+// behaved as clearAllSpellEffects() while removing nothing it was asked to.
 void ParticleManager::removeSpellEffectsForEntity(uint16_t entityID) {
     ParticleCommandData cmd;
     cmd.type = ParticleCommand::RemoveSpellEffectsEntity;
-    cmd.targetID = entityID;
+    cmd.entityID = entityID;
     pendingCommands_.push_back(std::move(cmd));
 }
 

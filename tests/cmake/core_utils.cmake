@@ -129,3 +129,18 @@ ADD_EXECUTABLE(test_movement_order
 )
 TARGET_LINK_LIBRARIES(test_movement_order GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_movement_order)
+
+# T397 Leg A (board B221): eqt::ResolveDataPath() plus the consumer that made
+# it necessary -- SpellEffectsConfig::load("config/spell_effects.json"), whose
+# CWD-relative literal silently produced a DIFFERENT spell effect from any
+# working directory but the repo root. The consumer half needs the Irrlicht
+# headers when graphics are on (spell_particle_types.h reaches EmitterConfig);
+# the resolver half is guard-free.
+ADD_EXECUTABLE(test_data_paths
+    test_data_paths.cpp
+)
+TARGET_LINK_LIBRARIES(test_data_paths GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_data_paths PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_data_paths)
