@@ -842,6 +842,18 @@ ENDIF()
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(model_viewer
         tools/model_viewer.cpp
+        # T385 (board B167): model_viewer.cpp was 3,246 lines -- over the
+        # 3,000-line hard cap -- and check_file_sizes.sh did not scan tools/,
+        # so nothing caught it. Decomposed by function; main() is all that is
+        # left in the original TU.
+        tools/model_viewer/model_viewer_state.cpp
+        tools/model_viewer/model_viewer_startup.cpp
+        tools/model_viewer/model_viewer_loop.cpp
+        tools/model_viewer/model_viewer_input.cpp
+        tools/model_viewer/model_viewer_mesh.cpp
+        tools/model_viewer/model_viewer_entity.cpp
+        tools/model_viewer/model_viewer_equipment.cpp
+        tools/model_viewer/model_viewer_spell_test.cpp
         tools/tool_race_db.cpp
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp
@@ -919,6 +931,9 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(model_viewer PRIVATE
         ${CMAKE_SOURCE_DIR}/include
         ${CMAKE_SOURCE_DIR}/src
+        # T385: tools/model_viewer/*.cpp include "model_viewer_spell_bar.h" and
+        # "tool_race_db.h", which used to resolve relative to tools/.
+        ${CMAKE_SOURCE_DIR}/tools
         ${CMAKE_SOURCE_DIR}/third_party
         ${IRRLICHT_INCLUDE_DIR}
         ${ZLIB_INCLUDE_DIRS}
