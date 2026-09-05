@@ -418,16 +418,14 @@ void SimulationWorker::applyVisionWeatherToZoneLights(uint8_t visionType, float 
 
     if (zoneLightBaseColors_.size() != zoneData_.zoneLightNodes.size()) return;
 
-    // Compute vision-based intensity and red shift (same logic as old updateZoneLightColors)
-    float intensity = 0.25f;
-    float redShift = 0.0f;
-    switch (visionType) {
-        case 1: // Ultravision
-            intensity = 1.0f; break;
-        case 2: // Infravision
-            intensity = 0.75f; redShift = 0.3f; break;
-        default: break;
-    }
+    // Vision-based intensity and red shift. T360 (B066): this was a
+    // hand-written switch whose `case 1:` was labelled Ultravision and
+    // `case 2:` Infravision -- the two arms swapped against VisionType. The
+    // mapping now lives once, in visionLightModifiers()
+    // (client/graphics/vision_type.h), and switches on the enum.
+    const VisionLightModifiers vision = visionLightModifiers(visionType);
+    float intensity = vision.intensity;
+    const float redShift = vision.redShift;
     intensity *= weatherAmbientModifier;
 
     // Build set of animated light indices (skip those — computeLightAnimations handles them)
@@ -466,16 +464,12 @@ void SimulationWorker::computeLightAnimations(const SimulationInput& input, Simu
     }
     output.zoneLightAnimColors.resize(animCount);
 
-    // Compute vision/weather modifiers
-    float intensity = 0.25f;
-    float redShift = 0.0f;
-    switch (input.visionType) {
-        case 1: // Ultravision
-            intensity = 1.0f; break;
-        case 2: // Infravision
-            intensity = 0.75f; redShift = 0.3f; break;
-        default: break;
-    }
+    // Vision/weather modifiers -- the SAME mapping applyVisionWeatherToZoneLights
+    // uses, from the same function (T360, B066: it was the same swapped switch,
+    // written out a second time).
+    const VisionLightModifiers vision = visionLightModifiers(input.visionType);
+    float intensity = vision.intensity;
+    const float redShift = vision.redShift;
     intensity *= input.weatherAmbientModifier;
 
     float deltaMs = input.deltaTime * 1000.0f;

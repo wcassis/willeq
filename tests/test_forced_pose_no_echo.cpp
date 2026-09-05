@@ -90,6 +90,15 @@ public:
         eq.m_update_running = true;
         eq.Test_SetBypassSendGuardForSeam(true);
         eq.Test_SetMySpawnIdForSeam(kSelfId);
+        // T360 (BOARD B068): SendSpawnAppearance now goes out through
+        // PacketSender::SafeQueueZone rather than straight onto the zone
+        // connection, and SafeQueueZone refuses to send over a connection
+        // whose stats are all zero ("appears invalid"). A FakeUdpTransport
+        // connection that has never round-tripped looks exactly like that, so
+        // declare it live -- otherwise every appearance in this file dies in
+        // that guard instead of in the code under test. Same line, same
+        // reason, as DeathHarness in test_self_death_sequence.cpp.
+        conn->m_stats.sent_packets = 1;
     }
 
     ~PoseHarness() {

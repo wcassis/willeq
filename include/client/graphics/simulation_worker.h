@@ -21,6 +21,7 @@
 #include "client/graphics/environment/boids_types.h"
 #include "client/graphics/environment/particle_types.h"
 #include "client/graphics/software_occlusion_culler.h"
+#include "client/graphics/vision_type.h"
 #include "client/graphics/weather_system.h"
 
 // Forward declaration (global namespace)
@@ -239,7 +240,12 @@ struct SimulationInput {
     float playerLightAttQuadratic = 0;
 
     // Vision and weather modifiers (for zone light animation colors)
-    uint8_t visionType = 0;               // 0=Normal, 1=Ultravision, 2=Infravision
+    // VisionType's underlying value: 0 = Normal, 1 = Infravision,
+    // 2 = Ultravision. T360 (B066): this comment used to say
+    // "1=Ultravision, 2=Infravision", which is where the two swapped switches
+    // in sim_animation.cpp came from. Read it through
+    // visionLightModifiers() (client/graphics/vision_type.h), never by hand.
+    uint8_t visionType = 0;
     float weatherAmbientModifier = 1.0f;  // From WeatherEffectsController
 
     // Tree wind controller state (snapshotted from AnimatedTreeManager)

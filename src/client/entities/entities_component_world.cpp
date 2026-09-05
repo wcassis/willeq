@@ -193,13 +193,17 @@ void eqt::entities::EntitiesComponent::SendSpawnAppearance(uint16_t type, uint32
 	p.PutUInt32(6, value);           // parameter
 	// Removed the extra 4 bytes that were at offset 10
 
-	// T346: this sender bypasses PacketSender entirely (see T344), so the
-	// T268 seam has to be told about it explicitly or an appearance is
-	// invisible to any ordered-sequence test. No-op unless armed.
-	ctx_.net.Test_RecordQueuedPacket(HC_OP_SpawnAppearance,
-		static_cast<const uint8_t*>(p.Data()) + 2, 8);
-
-	ctx_.zone_connection->QueuePacket(p);
+	// T360 (BOARD B068): SafeQueueZone, not zone_connection->QueuePacket.
+	// This sender used to bypass PacketSender entirely and feed the T268
+	// ordered-capture seam by hand (the deleted Test_RecordQueuedPacket call
+	// T346 added) -- which left the R01 SESSION RECORDER blind to it, so a
+	// --record-session .sleq was a false negative for every appearance the
+	// client ever sent, and the Batch R replay oracle replayed a session that
+	// never contained one (T358 measured exactly that on a live self-death).
+	// SafeQueueZone feeds BOTH observers from one place, and takes the same
+	// off-main-thread QueuePacketAsync path SendSave does, so the death
+	// burst reaches the server in the order T349's oracle states.
+	ctx_.net.SafeQueueZone(p);
 	
 	if (EverQuest::GetDebugLevel() >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Sent SpawnAppearance: spawn_id={}, type={}, value={}", 
@@ -221,7 +225,9 @@ void eqt::entities::EntitiesComponent::SendAnimation(uint8_t animation_id, uint8
 	p.PutUInt8(4, animation_speed);       // animation speed (usually 10)
 	p.PutUInt8(5, animation_id);          // animation ID
 	
-	ctx_.zone_connection->QueuePacket(p, 0, false);  // Send unreliable
+	// T360 (BOARD B068): same bypass, same fix -- through PacketSender so the
+	// session recorder and the T268 seam both see it. Still unreliable.
+	ctx_.net.SafeQueueZone(p, 0, false);
 	
 	if (EverQuest::GetDebugLevel() >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Sent Animation: spawn_id={}, speed={}, animation_id={}",

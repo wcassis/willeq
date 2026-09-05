@@ -1279,7 +1279,8 @@ it without taking that measurement first.
   0.018485 (84 frames buffed, +4.9%) -> 0.017392 (77 frames after the fade), both
   edges landing on the log lines to within one frame. Two defects fell out of the
   same measurement and are B066 (the vision->light switch is SWAPPED: the landing
-  applies Infravision's 0.75 + red shift, measured as R +5.5% / B +0.4%) and
+  applies Infravision's 0.75 + red shift, measured as R +5.5% / B +0.4% --
+  **CLOSED by T360 Leg A**, `3bca791c`) and
   B067 (vision reaches only 218 data-only point lights, never the global
   ambient -- which is why full Ultravision is worth 5% and the day/night cycle
   is worth 4x). Neither blocks B055: the producer works and is reached.
@@ -1492,7 +1493,7 @@ it without taking that measurement first.
 
 ## Added 2026-09-05 by T358 (the owed live proofs 3)
 
-- **B066** (A) `src/client/graphics/sim_animation.cpp`
+- ~~**B066** (A) `src/client/graphics/sim_animation.cpp`
   `SimulationWorker::applyVisionWeatherToZoneLights` and
   `SimulationWorker::computeLightAnimations` — **the vision-type switch is
   SWAPPED against the enum it switches on.** Both read
@@ -1511,7 +1512,21 @@ it without taking that measurement first.
   Closes when the two switches use `VisionType` (or its underlying values)
   instead of hand-written cases, the header comment is corrected, and a test pins
   Ultravision -> intensity 1.0 / redShift 0 and Infravision -> 0.75 / 0.3.
-  Prov: T358 Review, `review/T358/logs/frame_rgb_visionvid.txt`.
+  Prov: T358 Review, `review/T358/logs/frame_rgb_visionvid.txt`.~~ **CLOSED by T360 Leg A**
+  (`3bca791c`, `refactor/T360_vision_swap_packet_sender.md`): the mapping now
+  lives once, in `visionLightModifiers()`
+  (`include/client/graphics/vision_type.h`), and switches on `VisionType`
+  rather than on an int -- neither call site in `sim_animation.cpp` writes a
+  magic number, and the uint8_t the worker boundary carries is cast to the
+  enum in exactly one place. `VisionType` moved out of `renderer_types.h` into
+  that new leaf header because `renderer_types.h` INCLUDES
+  `simulation_worker.h`, so the dependency could not run the other way; every
+  existing spelling resolves unchanged. The comment on
+  `SimulationInput::visionType` is corrected. The intensity NUMBERS are
+  untouched -- that is B067. Pinned by `tests/test_vision_zone_lights.cpp`,
+  which drives both real functions through `computeOnce()` (light 0 through
+  `output.selectedLights`, the animated light 1 through
+  `output.zoneLightAnimColors`): 2 of 4 failed pre-fix, 4 of 4 pass after.
 
 - **B067** (A) `src/client/graphics/sim_animation.cpp` /
   `src/client/graphics/zone_shader.cpp` — **vision type never reaches the global
@@ -1532,7 +1547,7 @@ it without taking that measurement first.
   and a night frame with the buff up is measurably, obviously brighter.
   Prov: T358 Review, `review/T358/logs/frame_brightness_visionvid.txt`.
 
-- **B068** (B) `src/client/entities/entities_component_world.cpp`
+- ~~**B068** (B) `src/client/entities/entities_component_world.cpp`
   `EntitiesComponent::SendSpawnAppearance` / `SendAnimation` — **these two
   senders bypass `PacketSender`, so the session recorder (`--record-session`,
   R01) cannot see them, and a `.sleq` is a FALSE NEGATIVE for every appearance
@@ -1554,7 +1569,26 @@ it without taking that measurement first.
   synchronously. Closes when both senders go through `PacketSender` (which also
   makes the ordering match the oracle) and a test asserts a recorded session
   contains the appearance. Prov: T358 Review,
-  `review/T358/logs/death_burst_server_cs.txt`.
+  `review/T358/logs/death_burst_server_cs.txt`.~~ **CLOSED by T360 Leg B**
+  (`140acbd7`, `refactor/T360_vision_swap_packet_sender.md`): both senders now
+  call `ctx_.net.SafeQueueZone` -- the same call `SendSave` uses -- which feeds
+  the T268 ordered-capture seam BEFORE its gates and the session recorder after
+  them, so the hand-written `Test_RecordQueuedPacket` line T346 added is
+  deleted and one call site feeds both observers. `SendAnimation` keeps its
+  unreliable stream-0 send. Pinned by two new tests in
+  `tests/test_self_death_sequence.cpp`: one opens a real `SessionRecorder` onto
+  a temp `.sleq` and reads the appearance and the animation back out of the
+  file; the other replays the whole T311 death burst and projects the RECORDED
+  C->S zone stream through the same projection as the T268 seam, against the
+  same `self_death_outbound_g07.txt`. Pre-fix the recorder saw zero
+  appearances and the recorded burst was two lines where the oracle has three.
+  The golden's three compared lines are UNCHANGED; its header learned the
+  second observer in place. Fixture consequence, not a defect:
+  `test_forced_pose_no_echo`'s `PoseHarness` reads the DaybreakConnection
+  resend map and had to set `conn->m_stats.sent_packets = 1`, because
+  `SafeQueueZone` refuses a connection whose stats are all zero -- the same
+  line `DeathHarness` has carried since T346.
+
 ## Added 2026-09-04 by T357 Leg A (B057)
 
 - **B069** (B) `src/client/action/command_processor.cpp`
