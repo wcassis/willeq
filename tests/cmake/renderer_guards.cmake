@@ -488,3 +488,16 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         GTEST_DISCOVER_TESTS(test_beneficial_spell_casting PROPERTIES LABELS "live")
     ENDIF()
 ENDIF()
+
+# T361 (B067): the vision type -> global ambient floor. Pure logic over
+# VisionType (include/client/graphics/vision_ambient.h) -- no device, no
+# server, no assets -- but VisionType lives in renderer_types.h, so it needs
+# the Irrlicht include path like its neighbours here.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_vision_ambient
+        test_vision_ambient.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_vision_ambient PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_vision_ambient GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_vision_ambient)
+ENDIF()

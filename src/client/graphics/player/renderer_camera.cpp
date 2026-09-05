@@ -1,3 +1,4 @@
+#include "client/graphics/vision_ambient.h"
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/player/player_camera_component.h"
 #include "client/graphics/renderer_zone_merge.h"  // ZoneMergeBuffers complete type (unique_ptr member destruction)
@@ -317,35 +318,48 @@ void PlayerCameraComponent::setPlayerSpawnId(uint16_t spawnId) {
     }
 }
 
+// T361 (board B067): the GLOBAL ambient now carries the vision floor
+// (IrrlichtRenderer::updateTimeOfDay -> applyVisionAmbientFloor). That
+// function only runs when the server sends a time update, which is minutes
+// apart, so a vision change has to re-run it or the buff would not show until
+// the next tick. The three sites that write ctx_.currentVision all call this.
+void PlayerCameraComponent::refreshVisionLighting() {
+    if (owner_.isLoading()) return;
+    owner_.updateTimeOfDay(ctx_.currentHour, ctx_.currentMinute);
+}
+
 void PlayerCameraComponent::setPlayerRace(uint16_t raceId) {
-    // Determine base vision from race
-    // Ultravision: Dark Elf (6), High Elf (5), Wood Elf (4), Troll (9), Iksar (128)
-    // Infravision: Dwarf (8), Gnome (12), Half Elf (7), Ogre (10), Halfling (11)
-    // Normal: Human (1), Barbarian (2), Erudite (3), Vah Shir (130), Froglok (330)
-    switch (raceId) {
-        case 4:   // Wood Elf
-        case 5:   // High Elf
-        case 6:   // Dark Elf
-        case 9:   // Troll
-        case 128: // Iksar
-            baseVision_ = VisionType::Ultravision;
-            break;
-        case 7:   // Half Elf
-        case 8:   // Dwarf
-        case 10:  // Ogre
-        case 11:  // Halfling
-        case 12:  // Gnome
-            baseVision_ = VisionType::Infravision;
-            break;
-        default:  // Human (1), Barbarian (2), Erudite (3), Vah Shir (130), Froglok (330), etc.
-            baseVision_ = VisionType::Normal;
-            break;
-    }
+    // T361 (board B060): this table is MEASURED against the official Titanium
+    // client, not inferred. The old table put Wood Elf (4), High Elf (5),
+    // Troll (9) and Iksar (128) on Ultravision; the oracle puts all four on
+    // Infravision and gives Ultravision to the DARK ELF ALONE. Vah Shir (130)
+    // was on Normal by omission and is Infravision.
+    //
+    // Method (review/T361/README.md, "the racial sweep"): two logins as
+    // Oraclealpha in qeynos2 at forced 22:00, camera never touched, race
+    // changed in-game with `#race N`, and the 700x420 world crop read from the
+    // session VIDEO -- not from stills, one of which was a bad grab that would
+    // have put race 6 in a class of its own. Each session carried its own
+    // positive control (a real `#castspell 46` Ultravision landing at the same
+    // camera). Three levels, each window flat to +/-0.14 of luma against a
+    // 4.8-luma separation:
+    //
+    //   luma 54.42  Normal        races 1, 2, 3
+    //   luma 60.18  Infravision   races 4, 5, 7, 8, 9, 10, 11, 12, 128, 130
+    //   luma 65.00  Ultravision   race  6      (= the cast-Ultravision control,
+    //                                           65.004 and 65.006, twice)
+    //
+    // ONE ROW IS NOT SETTLED: Froglok (330) measures 63.49 -- a distinct
+    // FOURTH level that this three-valued enum cannot express. It is left on
+    // the Normal default here rather than rounded to a neighbour by argument;
+    // the measurement is on board entry B060 for Will.
+    baseVision_ = racialBaseVision(raceId);
     ctx_.currentVision = baseVision_;
     LOG_INFO(MOD_GRAPHICS, "Player race {} -> base vision: {}",
              raceId, ctx_.currentVision == VisionType::Ultravision ? "Ultravision" :
                      ctx_.currentVision == VisionType::Infravision ? "Infravision" : "Normal");
     // Zone light colors updated by SimulationWorker via visionType in SimulationInput
+    refreshVisionLighting();
 }
 
 // T334 (board B046): APPLY, not upgrade.
@@ -371,6 +385,7 @@ void PlayerCameraComponent::setVisionType(VisionType vision) {
                  ctx_.currentVision == VisionType::Ultravision ? "Ultravision" :
                  ctx_.currentVision == VisionType::Infravision ? "Infravision" : "Normal");
         // Zone light colors updated by SimulationWorker via visionType in SimulationInput
+        refreshVisionLighting();
     }
 }
 
@@ -382,6 +397,7 @@ void PlayerCameraComponent::resetVisionToBase() {
                  ctx_.currentVision == VisionType::Ultravision ? "Ultravision" :
                  ctx_.currentVision == VisionType::Infravision ? "Infravision" : "Normal");
         // Zone light colors updated by SimulationWorker via visionType in SimulationInput
+        refreshVisionLighting();
     }
 }
 

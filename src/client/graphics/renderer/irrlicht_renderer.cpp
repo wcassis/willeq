@@ -1,4 +1,5 @@
 #include "client/graphics/irrlicht_renderer.h"
+#include "client/graphics/vision_ambient.h"
 #include "client/graphics/renderer_zone_merge.h"  // ZoneMergeBuffers complete type (unique_ptr member destruction)
 #include "client/willeq_database.h"
 #include "client/graphics/loading_thread.h"
@@ -359,6 +360,23 @@ void IrrlichtRenderer::updateTimeOfDay(uint8_t hour, uint8_t minute) {
         g *= weatherMod;
         b *= weatherMod;
         sunIntensity *= weatherMod;
+    }
+
+    // T361 (board B067): vision type reaches the GLOBAL ambient here, and
+    // this is its only production site. Before T361 it reached nothing but
+    // the zone's data-only point lights, so a full Ultravision buff was worth
+    // +4.9% at night while the day/night cycle was worth 4x. The floor is
+    // measured against the official client -- see
+    // include/client/graphics/vision_ambient.h. It is applied AFTER the
+    // day/night curve, the user ambient multiplier and weather, so it is a
+    // true floor: nothing can darken the world below what the buff grants,
+    // and daylight (0.5 on every channel) is already above it.
+    {
+        const AmbientRGB lit =
+            applyVisionAmbientFloor(currentVision_, AmbientRGB{r, g, b});
+        r = lit.r;
+        g = lit.g;
+        b = lit.b;
     }
 
     smgr_->setAmbientLight(irr::video::SColorf(r, g, b, 1.0f));
