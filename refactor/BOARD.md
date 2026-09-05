@@ -2235,7 +2235,7 @@ branches can be deleted independently of these items.
   Prov: T372 (flagged incidentally by T305 at `9bb156ea`, still true at
   `3964d100`).
 
-- **B140** (B) `EntitiesComponent::SendClickDoor` and `SendClickObject`
+- ~~**B140** (B) `EntitiesComponent::SendClickDoor` and `SendClickObject`
   (`src/client/entities/entities_component_world.cpp`) end in
   `ctx_.zone_connection->QueuePacket(p, 0, true)` — a raw dereference of a
   `std::shared_ptr` with no null check, and the last two senders in the family
@@ -2251,9 +2251,18 @@ branches can be deleted independently of these items.
   DaybreakConnection-over-FakeUdpTransport it otherwise would not need.
   `IsFullyZonedIn()` makes the null case unlikely in production, so this is B,
   not A. Closes when: both senders go through `ctx_.net.SafeQueueZone`, with
-  the click visible in `Test_GetQueuedPackets()`. Prov: T374.
+  the click visible in `Test_GetQueuedPackets()`. Prov: T374.~~ **CLOSED by
+  T376 Leg A** (`89a908c9`): all THREE direct senders in
+  `src/client/entities/entities_component_world.cpp` now call
+  `ctx_.net.SafeQueueZone(p, 0, true)` -- `SendClickDoor`, `SendClickObject`
+  and `SendCloseContainer`, the third one the board text did not name but
+  which is the same shape in the same TU.
+  `tests/test_click_senders_packet_sender.cpp` pins both halves: three no-connection cases (pre-fix the binary
+  died with exit 139 on the first one, taking every other case with it) and
+  two observer cases, the T268 ordered-capture seam and a real `.sleq` read
+  back off disk, both of which read ZERO pre-fix.
 
-- **B141** (B) `EQT::DoorStateManager` (`include/client/door_state_manager.h`)
+- ~~**B141** (B) `EQT::DoorStateManager` (`include/client/door_state_manager.h`)
   carries a COMPLETE, correct, and entirely unreached duplicate of the pending-
   door-click set that T374 just fixed: `pendingClicks_` plus
   `addPendingClick`/`removePendingClick`/`isClickPending`/`clearPendingClicks`,
@@ -2266,7 +2275,53 @@ branches can be deleted independently of these items.
   is gone — either `m_pending_door_clicks` moves onto the DoorStateManager
   (which needs the `isClickPending` read to happen BEFORE `setDoorState`, since
   that method erases it) or the manager's four methods and `pendingClicks_` are
-  deleted. Prov: T374.
+  deleted. Prov: T374.~~ **CLOSED by T376 Leg B** (`8962be28`): decided by
+  ownership -- the manager owns door state, so the manager's set is the one
+  copy. `SendClickDoor` calls `addPendingClick`, `ZoneProcessMoveDoor` reads
+  `isClickPending` BEFORE `setDoorState` (which consumes the entry), and
+  `ZoneComponent::CleanupZone`'s second call is gone because
+  `DoorStateManager::clear()` already clears `doors_` and `pendingClicks_`
+  together. `EntitiesComponent::m_pending_door_clicks`,
+  `ClearPendingDoorClicks()` and the now-unused `<set>` include are deleted.
+  T374's two `DoorClickZoneReset` cases are unedited and green; three new
+  `DoorPendingClickOwnership` cases pin WHICH set through the manager's public
+  accessors and were all red pre-fix.
+
+- **B145** (B) The T376 census of direct zone-stream senders: **70 sites in 13
+  files** still call `ctx_.zone_connection->QueuePacket(...)` (or, in
+  `src/client/core/everquest.cpp`'s `SendZoneChange`, `m_zone_connection->`)
+  instead of `eqt::PacketSender::SafeQueueZone`, so the R01 session recorder
+  and the T268 ordered-capture seam do not see any of them. Measured
+  comment-filtered at `e580ce97` + T376 Leg A, by file, all under
+  `src/client/`: player_misc.cpp 18, zone_handshake.cpp 12, merchant.cpp 9,
+  gm_component.cpp 9, group_component.cpp 6, player_component.cpp 5,
+  merchant_vendor_bank.cpp 4, player_buffs.cpp 2, chat_component.cpp 2,
+  player_state.cpp 1, movement_state.cpp 1, everquest.cpp 1. **TEN of the 70
+  are the B140 crash shape** — an unguarded `shared_ptr` deref with no
+  `ctx_.zone_connection` test anywhere in the enclosing function:
+  chat_component.cpp x2 (`SendChannelMessage`, `SendTell`),
+  group_component.cpp x4, movement_state.cpp (`SendJump`),
+  player_buffs.cpp (`SendApplyPoison`), player_state.cpp
+  (`SendTradeSkillCombine`), zone_handshake.cpp (`ZoneSendStreamIdentify`).
+  The other 60 sit inside an `if (ctx_.zone_connection && ...)` and are
+  recorder-blind only. Routing them is mechanical but wide: T376 measured that
+  the switch is not free — a harness that observes the outbound stream BELOW
+  `SafeQueueZone` (the `DaybreakConnection` resend map) goes red on
+  `SafeQueueZone`'s zero-stats "connection appears invalid" guard and needs
+  `conn->m_stats.sent_packets = 1`, exactly as T346/T360 found. Closes when
+  every zone-stream sender goes through `PacketSender` (the ten unguarded ones
+  first — they are the ones that segfault). Prov: T376.
+
+- **B146** (B) The login and world streams have no `PacketSender` equivalent:
+  `src/client/login_world/login_world_component.cpp` holds **12 direct sends**
+  (4 on `m_login_connection`, 8 on `m_world_connection`), none of which the R01
+  session recorder sees on the ClientToServer side of those streams, even
+  though `EQT::Net::SessionStream` has `Login` and `World` members. These are
+  explicitly NOT B145: they run before the zone connection exists, so
+  `SafeQueueZone` is the wrong destination for them — they need their own
+  sender, or `PacketSender` needs a per-stream entry point. A `.sleq` of a
+  fresh login therefore records the server's side of the handshake and not the
+  client's. Boarded rather than routed under T376's STOP condition. Prov: T376.
 
 - ~~**B125** (A) `include/client/audio/audio_mixer.h` `MixChannel::volume` —
   a plain `float` written by the GAME thread and read by the miniaudio AUDIO

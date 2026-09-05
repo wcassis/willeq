@@ -129,6 +129,17 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_door_click_zone_reset)
 
+# T376 Leg A (BOARD B140): the door / world-object click senders go out
+# through eqt::PacketSender (null-guard, T268 seam, session recorder).
+ADD_EXECUTABLE(test_click_senders_packet_sender
+    test_click_senders_packet_sender.cpp
+)
+TARGET_LINK_LIBRARIES(test_click_senders_packet_sender GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_click_senders_packet_sender PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_click_senders_packet_sender)
+
 # T169: OP_RaidUpdate decoding -- the action codes against eqemu's
 # common/raid.h and the per-action body shapes (actions 8, 10, 14 and 30 do
 # NOT have `parameter` where the general body does). Links willeq_core for
