@@ -321,6 +321,28 @@ void SimulationWorker::computeParticles(const SimulationInput& input, Simulation
         bool isWeather = (emitter.config.motionType == MotionType::CAMERA_RELATIVE);
         if (!isWeather && !particleFireEnabled_) continue;
 
+        // T395 (board B204): refresh an entity-attached emitter's position
+        // BEFORE the lifetime check, the frustum test and the burst.
+        //
+        // The lifecycle phase below also does this, but it runs AFTER this
+        // one, and pi.entityPositions is always one frame behind the effect
+        // that asked for it (the renderer resolves only what the previous
+        // frame's positionRequestEntities named). So an emitter attached to a
+        // target was created at (0,0,0) and was still at (0,0,0) on its first
+        // spawn frame: with culling off it fired its whole one-shot burst at
+        // the world origin and latched isBurstSpawned -- MEASURED at 1,020
+        // units from the target in tests/test_spell_impact_visual.cpp -- and
+        // with culling on (the shipped configuration) it was culled there
+        // instead, losing a frame out of the impact preset's 0.1 s emitter
+        // lifetime. Projectiles keep their own path below; this is only the
+        // attached case.
+        if (!isWeather && !emitter.isProjectile && emitter.attachEntityID != 0) {
+            auto posIt = pi.entityPositions.find(emitter.attachEntityID);
+            if (posIt != pi.entityPositions.end()) {
+                emitter.position = posIt->second;
+            }
+        }
+
         // Check emitter lifetime
         if (emitter.config.emitterLifetime > 0.0f) {
             emitter.emitterAge += deltaTime;

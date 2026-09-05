@@ -820,6 +820,15 @@ struct SpellCastVisualCompleteData {
     uint32_t spellId;
     std::string spellName;
     bool isSuccess;             // effect_flag == 4
+    // T395 (board B204): effect_flag == 0 -- the CAST-ANIMATION action packet.
+    // eqemu broadcasts that one to every client in range
+    // (Mob::SpellOnTarget, QueueCloseClients, "this causes the caster
+    // animation and the particles around the target"); the effect_flag == 4
+    // repeat that follows a landing is queued ONLY to the caster and the
+    // target, so an observing client never receives it. Gating the impact
+    // visual on isSuccess made a bystander's spell FX unreachable by
+    // construction.
+    bool isCastAnimation = false;
     bool isPlayerCast;
     bool isTargetCast;
     std::string completionAnim; // Animation to play on caster (e.g. "c03", "c04")

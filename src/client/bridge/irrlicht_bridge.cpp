@@ -805,8 +805,13 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             if (renderer_->getEntityRenderer()) {
                 renderer_->getEntityRenderer()->completeEntityCast(d.casterId);
             }
-            // Spell completion visual effects (only on success packet)
-            if (d.isSuccess && renderer_->getSpellVisualFX()) {
+            // Spell completion visual effects.
+            // T395 (board B204): armed by the CAST-ANIMATION packet
+            // (effect_flag == 0), not the success repeat. The success packet
+            // reaches only the caster and the target, so gating here on
+            // isSuccess meant no observing client ever drew an impact -- and
+            // the caster, which receives both, would have drawn it twice.
+            if (d.isCastAnimation && renderer_->getSpellVisualFX()) {
                 renderer_->getSpellVisualFX()->createSpellComplete(d.casterId, d.spellId);
                 renderer_->getSpellVisualFX()->createImpact(d.targetId, d.spellId);
             }

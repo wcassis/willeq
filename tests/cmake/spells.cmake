@@ -100,3 +100,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_buff_landing_producer PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
 GTEST_DISCOVER_TESTS(test_buff_landing_producer)
+
+# T395 Leg A (board B204): the spell impact visual, wire to particle. The
+# producer half needs a real EverQuest + dispatch (willeq_core); the worker
+# half drives SimulationWorker::computeOnce() directly, so it needs the
+# Irrlicht headers when graphics are on.
+ADD_EXECUTABLE(test_spell_impact_visual
+    test_spell_impact_visual.cpp
+)
+TARGET_COMPILE_DEFINITIONS(test_spell_impact_visual PRIVATE
+    WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+TARGET_LINK_LIBRARIES(test_spell_impact_visual GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_spell_impact_visual PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_spell_impact_visual)
