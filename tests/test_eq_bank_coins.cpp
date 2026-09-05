@@ -80,6 +80,14 @@ public:
         eq.Net().Test_SetBypassSendGuardForSeam(true);
         eq.Test_SetZoneConnectedForSeam(true);
         eq.m_zone_connection = conn;
+        // T378: this harness observes the outbound stream one layer BELOW
+        // SafeQueueZone (the DaybreakConnection resend map), and
+        // SafeQueueZone refuses a connection whose stats are all zero
+        // ("appears invalid") -- which is exactly what a FakeUdpTransport
+        // connection that has never round-tripped looks like. Same line,
+        // same reason, as DeathHarness (T346), PoseHarness (T360) and
+        // CombineHarness (T376) carry. No assertion is weakened.
+        conn->m_stats.sent_packets = 1;
     }
 
     ~BankCoinHarness() {
