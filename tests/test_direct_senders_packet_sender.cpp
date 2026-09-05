@@ -1,0 +1,211 @@
+// T378 (BOARD B145): the zone-stream direct senders go out through
+// eqt::PacketSender::SafeQueueZone, not through a raw
+// ctx_.zone_connection->QueuePacket() deref.
+//
+// T376's census found 70 such sites in twelve files (69 at this tip -- T375
+// routed one of player_misc.cpp's on its way past). Each one has the two
+// consequences T360 (B068) and T376 (B140) already fixed for their own
+// handful of senders:
+//
+//   1. TEN of them are an UNGUARDED shared_ptr dereference -- there is no
+//      `ctx_.zone_connection` test anywhere in the enclosing function -- so a
+//      null zone connection is a segfault, not a logged refusal;
+//   2. all of them are invisible to the R01 session recorder and to the T268
+//      ordered-capture seam, both of which live INSIDE PacketSender. A
+//      --record-session .sleq is therefore a false negative for every chat
+//      line, group invite, jump, merchant move, GM command, zone-handshake
+//      step and petition the client sends.
+//
+// This file pins both halves, one case pair per family:
+//   (a) NoZoneConnection_<Family> calls every routed sender in that family
+//       with m_zone_connection null and must not crash;
+//   (b) RecordedSession_<Family> opens a real SessionRecorder onto a temp
+//       .sleq, sends the family's most user-visible packet, closes, and reads
+//       the file back off disk. Pre-fix that count is ZERO.
+//
+// No network, no graphics, no eqemu. Several senders gate on
+// IsFullyZonedIn(), whose third term (EverQuest::m_update_running) has no
+// public setter, and several of the zone-handshake senders are private, so
+// this file uses the T17 `#define private public` idiom its sibling
+// sender tests use.
+
+#include <gtest/gtest.h>
+
+#define private public
+#define protected public
+#include "client/eq.h"
+#undef private
+#undef protected
+
+#include "client/bridge/game_state_bridge.h"
+#include "client/chat/chat_component.h"
+#include "client/gm/gm_component.h"
+#include "client/group/group_component.h"
+#include "client/merchant/merchant_component.h"
+#include "client/movement/movement_component.h"
+#include "client/player/player_component.h"
+#include "client/zone/zone_component.h"
+#include "common/net/daybreak_connection.h"
+#include "common/net/session_log.h"
+#include "common/net/session_recorder.h"
+#include "fake_udp_transport.h"
+#include "zone_stream_test_utils.h"
+
+#include <cstdint>
+#include <filesystem>
+#include <functional>
+#include <fstream>
+#include <memory>
+#include <string>
+#include <vector>
+
+using namespace zonetest;
+
+namespace fs = std::filesystem;
+
+namespace {
+
+struct RecordedPacket {
+    uint16_t opcode = 0;
+    std::vector<uint8_t> bytes;  // body only (no opcode prefix)
+};
+
+// Reads a .sleq back and returns its C->S ZONE records in file order.
+// Same reader as T376's ClickSendersPacketSender / T360's DeathHarness.
+std::vector<RecordedPacket> RecordedClientToServer(const fs::path& path) {
+    std::vector<RecordedPacket> out;
+    std::ifstream in(path, std::ios::binary);
+    EXPECT_TRUE(in.is_open()) << "no session log at " << path.string();
+    EQT::Net::SessionLogFileHeader fh{};
+    in.read(reinterpret_cast<char*>(&fh), sizeof(fh));
+    EXPECT_EQ(fh.magic, EQT::Net::SESSION_LOG_MAGIC);
+    while (in) {
+        EQT::Net::SessionLogRecordHeader rec{};
+        in.read(reinterpret_cast<char*>(&rec), sizeof(rec));
+        if (!in) break;
+        std::vector<uint8_t> body(rec.size);
+        if (rec.size) in.read(reinterpret_cast<char*>(body.data()), rec.size);
+        if (!in && rec.size) break;
+        if (rec.stream != static_cast<uint8_t>(EQT::Net::SessionStream::Zone)) continue;
+        if (rec.direction != static_cast<uint8_t>(EQT::Net::SessionDirection::ClientToServer))
+            continue;
+        out.push_back(RecordedPacket{rec.opcode, std::move(body)});
+    }
+    return out;
+}
+
+size_t CountOpcode(const std::vector<RecordedPacket>& v, uint16_t opcode) {
+    size_t n = 0;
+    for (const auto& p : v) {
+        if (p.opcode == opcode) ++n;
+    }
+    return n;
+}
+
+// A fully-zoned-in client. `withConnection` chooses whether a real
+// DaybreakConnection over FakeUdpTransport is installed as m_zone_connection
+// -- the point of the (a) cases is that there is NOT one.
+class SenderHarness {
+public:
+    explicit SenderHarness(bool withConnection) : eq(MakeEq()) {
+        if (withConnection) {
+            EQ::Net::DaybreakConnectionManagerOptions opts;
+            opts.crc_length = 2;
+            opts.encode_passes[0] = EQ::Net::EncodeNone;
+            opts.encode_passes[1] = EQ::Net::EncodeNone;
+            opts.connect_delay_ms = 0;
+            opts.keepalive_delay_ms = 0;
+            manager = std::make_unique<EQ::Net::DaybreakConnectionManager>(
+                opts, std::make_unique<EQ::Test::FakeUdpTransport>(&c2s, &s2c));
+            manager->OnNewConnection(
+                [this](std::shared_ptr<EQ::Net::DaybreakConnection> c) { conn = c; });
+            manager->Connect("peer", 12345);
+            EXPECT_NE(conn, nullptr);
+            eq.m_zone_connection = conn;  // private: T17 idiom
+            // SafeQueueZone refuses a connection whose stats are all zero
+            // ("appears invalid"); a FakeUdpTransport connection that has
+            // never round-tripped looks exactly like that (T360's note,
+            // re-found by T376).
+            conn->m_stats.sent_packets = 1;
+        }
+
+        eq.setBridge(&bridge);
+        eq.GetGameState().world().setZoneConnected(true);
+        eq.GetGameState().world().setClientReady(true);
+        eq.m_update_running = true;
+    }
+
+    ~SenderHarness() {
+        eq.m_zone_connection.reset();
+        eq.setBridge(nullptr);
+    }
+
+    void StartRecording(const fs::path& path) {
+        eq.m_session_recorder = std::make_unique<EQT::Net::SessionRecorder>();
+        ASSERT_TRUE(eq.m_session_recorder->open(path.string(), "Testchar", "qeynos"))
+            << "could not open " << path.string();
+    }
+
+    void StopRecording() {
+        if (eq.m_session_recorder) eq.m_session_recorder->close();
+    }
+
+    EQ::Test::FakeChannel c2s, s2c;
+    std::unique_ptr<EQ::Net::DaybreakConnectionManager> manager;
+    std::shared_ptr<EQ::Net::DaybreakConnection> conn;
+    TestBridge bridge;
+    EverQuest eq;
+};
+
+// Runs `body` against a recorder writing to `name`, then hands the recorded
+// C->S zone stream to `check`. Keeps every family's (b) case to two lines.
+void WithRecordedSession(const char* name,
+                         const std::function<void(SenderHarness&)>& body,
+                         const std::function<void(const std::vector<RecordedPacket>&)>& check) {
+    const fs::path log = fs::temp_directory_path() / name;
+    fs::remove(log);
+    {
+        SenderHarness h(/*withConnection=*/true);
+        h.StartRecording(log);
+        body(h);
+        h.StopRecording();
+    }
+    check(RecordedClientToServer(log));
+    fs::remove(log);
+}
+
+// =====================================================================
+// chat -- ChatComponent::ZoneSendChannelMessage / ZoneSendEmote
+// Both are the B140 crash shape: no ctx_.zone_connection test anywhere in
+// either function (the null test lives in the higher-level SendChatMessage,
+// which the action layer is not the only caller of).
+// =====================================================================
+
+TEST(DirectSendersPacketSender, NoZoneConnection_Chat) {
+    SenderHarness h(/*withConnection=*/false);
+    ASSERT_EQ(h.eq.m_zone_connection, nullptr);
+
+    h.eq.Chat().ZoneSendChannelMessage("hello", CHAT_CHANNEL_SAY, "");
+    h.eq.Chat().ZoneSendEmote("waves");
+
+    SUCCEED() << "the chat senders survived a null zone connection";
+}
+
+TEST(DirectSendersPacketSender, RecordedSession_Chat) {
+    WithRecordedSession(
+        "t378_chat_recorded.sleq",
+        [](SenderHarness& h) {
+            h.eq.Chat().ZoneSendChannelMessage("hello", CHAT_CHANNEL_SAY, "");
+            h.eq.Chat().ZoneSendEmote("waves");
+        },
+        [](const std::vector<RecordedPacket>& recorded) {
+            EXPECT_EQ(CountOpcode(recorded, HC_OP_ChannelMessage), 1u)
+                << "ZoneSendChannelMessage must reach the session recorder; a "
+                   "sender that calls zone_connection->QueuePacket() directly "
+                   "is invisible to it (BOARD B145)";
+            EXPECT_EQ(CountOpcode(recorded, HC_OP_Emote), 1u)
+                << "ZoneSendEmote, same bypass, same fix";
+        });
+}
+
+}  // namespace
