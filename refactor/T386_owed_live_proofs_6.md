@@ -136,6 +136,16 @@ New: **B200** (A, PFS sounds never load), **B201** (A, purse never drawn),
 spell-refusal eqstr). Amended in place: **B170** proven live, **B171**'s
 provisional strike reversed, **B172**'s owed proof taken and split.
 
+> **Later (T391, `e332162f`, 2026-09-05): B202 is CLOSED, and it was never a
+> race.** It is a use-after-free of `EntityVisual::lightNode`, freed by the
+> simulation worker's cull arm inside `applySimulationOutput()` and
+> re-`addChild()`ed the next frame. The "second player" shape in item 3 above
+> is the other player's lantern: this session built exactly ONE entity light
+> node out of 206 entities, for Testbuddy (`items.light = 11`), which is why
+> the single-client runs were clean. See `refactor/T391_two_client_segv.md`
+> and `review/T391/`. Item 3 (B160 fire vs frost) is still owed, but no longer
+> blocked by the crash.
+
 ### Server state
 
 `review/T386/logs/server_snapshot_before.tsv` and `…_after.tsv` are

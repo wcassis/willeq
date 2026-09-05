@@ -531,3 +531,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_vision_ambient GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_vision_ambient)
 ENDIF()
+
+# T391 (B202): EntityVisual::lightNode ownership -- the render-thread
+# use-after-free a second player in the zone triggered. Drives the real
+# SimBridgeComponent::applySimulationOutput() cull/un-cull seam over a real
+# EDT_NULL scene graph; the entity half skips without the shipped db or the
+# client tree, the same gate as test_entity_size_change.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_entity_light_node_lifetime
+        test_entity_light_node_lifetime.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_entity_light_node_lifetime PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_entity_light_node_lifetime GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_entity_light_node_lifetime PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    GTEST_DISCOVER_TESTS(test_entity_light_node_lifetime)
+ENDIF()

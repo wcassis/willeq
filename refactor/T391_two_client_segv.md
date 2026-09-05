@@ -182,3 +182,77 @@ The three release tests (`removeEntity`, `clearEntities`,
 `setEntityLight(0)`) pass in both runs — pre-fix vacuously (there was nothing
 to release), post-fix as real no-leak assertions on the new `drop()`s.
 
+### 5. Live — two-client, five minutes, both zones
+
+Same ASAN binary and same rig throughout; a pre-fix run leaves an
+`..._asan.<pid>` report in `review/T391/logs/` and its observer log stops
+mid-`unloadZone`, a post-fix run leaves no report and runs through to
+`Audio system shut down`.
+
+| run | build | zone | second player's lightNode | outcome |
+|---|---|---|---|---|
+| `t391_prefix_asan` | pre-fix | befallen | none (wizard, no light source) | survived 407 s — **negative control** |
+| `t391_prefix3_asan` | pre-fix | qeynos2 | **built** (entity 282, level 11) | **ASAN heap-buffer-overflow**, shutdown aborted |
+| `t391_postfix_qeynos2_asan` | post-fix | qeynos2 | **built** (entity 287, level 11) | **SURVIVED 331 s**, ASAN clean, clean shutdown |
+| `t391_postfix_arena_asan` | post-fix | arena | — | **VOID**: the partner never left qeynos2 |
+| `t391_postfix_arena2_asan` | post-fix | arena | — | **VOID**: same, `#zone arena` did not take |
+| `t391_postfix_arena3_asan` | post-fix | arena | none built | **SURVIVED 330 s**, ASAN clean |
+
+**Deviation, flagged not absorbed.** The three arena runs never built an entity
+light node — Testbuddy's spawn reached the observer there without its `light`
+field set, and this unit did not chase why. Arena therefore proves *"a
+two-client session survives five minutes"* and nothing more; the defect's own
+before/after pair is the qeynos2 pair. Two of the three arena attempts were
+void outright: a hard-killed client leaves a linkdead session the server
+re-attaches to on the next login, which overrides the `character_data` row, so
+the partner kept re-entering `qeynos2`. The fix was a full
+`down.sh` / `up.sh` cycle before `arena3`; it is worth knowing for any future
+two-client unit that **positions written to `character_data` do not take while
+a linkdead session for that character is still open.**
+
+**Item 4's second half (B160 fire vs frost on the observing client) was NOT
+taken.** The time budget went into the three void arena attempts and the
+server restart. B160's owed proof is unblocked by this fix but still owed.
+
+### 6. Verification bar
+
+| step | result |
+|---|---|
+| `cmake --build build -j` (GLES2-config tree) | **exit 0** |
+| `ctest --test-dir build -j6` | **4045 / 4046**, sole failure `AudioManagerTest.PreloadCommonSounds` (the ALSA quirk; this branch is based on `e3c80278`, before T392 retired that waiver) |
+| `scripts/build-gles2-x86.sh` tree | **exit 0** |
+| `scripts/ci/visual_gate.sh` | **PASS**, goldens untouched (`git status` clean apart from this unit's four files) |
+| `scripts/build-arm-noble.sh` | **exit 0**, `build-arm-noble/bin/willeq` = ELF 32-bit ARM |
+| `scripts/refactor/check_file_sizes.sh fable` | 7 checked, **7 ok, 0 warn, 0 fail** |
+| new test pre-fix | **exit 1**, 2 failed |
+| new test post-fix | **exit 0**, 5 passed |
+
+### 7. Server state changed, and restored
+
+| value | snapshot at unit start | restored, verified by SELECT |
+|---|---|---|
+| `character_data` Testbuddy zone/pos | 36, 0 / 0 / 3, h=0 | same |
+| `character_data` Testcaster zone/pos | 36, -259 / -1201 / -5.75, h=0 | same |
+| `character_data` Testchar / Testmelee / Oraclealpha / Oraclerogue | unchanged | unchanged |
+| `character_currency` (all six) | unchanged | unchanged |
+| Testbuddy `inventory` (incl. the Gloomingdeep Lantern, slot 14) | unchanged | unchanged |
+| `eqtime` world clock | minute 26, hour 24, day 6, month 4, year 4004, realtime 1788601087 | same (restored with the world DOWN) |
+| `character_corpses` | ids 18-39 | id 41 (Testbuddy, arena) deleted; 18-39 untouched |
+
+`logs/server_snapshot_before.txt` and `logs/server_snapshot_after.txt` are the
+record. Testbuddy died once in `arena` (a PvP zone) and was bind-rezzed to zone
+189; at level 1 it kept its items, verified by SELECT before the corpse was
+deleted. The restore was applied with the world server **DOWN** and only
+mariadb up (T377/T386's lesson), then verified by `SELECT`.
+`scripts/eqemu/down.sh` exit 0, `docker ps` empty,
+`/mnt/projects/fable/.eqemu-lock` deleted.
+
+### 8. Deviations
+
+1. **The Review's sections 1-4 were written into `/mnt/projects/fable/main`'s
+   copy of this plan by mistake, and the orchestrator's commit `719c8a0f`
+   swept them onto `fable`.** The task branch carries the complete Review; the
+   file will therefore conflict on merge and the branch's version is the one to
+   keep. Flagged, not hidden.
+2. The three arena runs did not exercise the defect (§5).
+3. T386 item 3 (B160 fire vs frost, observing client) not taken (§5).
