@@ -2087,7 +2087,7 @@ branches can be deleted independently of these items.
   in the `MoveDoor` handler, same file; one comment) and none of them is a
   clear-on-zone-change. Closes when: the set is cleared on the same zone-cleanup
   path that clears the door state manager, with a test. Prov: T372, branch
-  commit `ec7f14da`.~~ **CLOSED by T374 Leg A** (`7fb8ab0f`):
+  commit `ec7f14da`.~~ **CLOSED by T374 Leg A** (`3ef7826c`):
   `EntitiesComponent::ClearPendingDoorClicks()` is called from
   `ZoneComponent::CleanupZone()` one line after `game_state.doors().clear()` --
   the one cleanup site, no second one added. Pinned by
@@ -2096,14 +2096,26 @@ branches can be deleted independently of these items.
   `userInitiated` was `true`; plus the preservation case
   `ClickThenMoveDoorInTheSameZoneIsUserInitiated`, green both sides).
 
-- **B137** (B) `HC_OP_TargetCommandReply` is registered in `kZoneOpcodeTable`
+- ~~**B137** (B) `HC_OP_TargetCommandReply` is registered in `kZoneOpcodeTable`
   (`src/client/zone/zone_dispatch.cpp`, the `OnTargetCommandResponse` entry) as
   the bare literal `0x61f9` with only a trailing comment, while every sibling
   entry uses an `HC_OP_*` enumerator and `eq_strings.cpp` can name it. Closes
   when: the enumerator exists in `include/client/eq_opcodes.h` beside
   `HC_OP_TargetCommand`, the table and `src/client/core/eq_strings.cpp` use it,
   and (optionally, as the branch did) a self-check asserts every registered
-  opcode resolves to a name. Prov: T372, branch commit `6c082a4f`.
+  opcode resolves to a name. Prov: T372, branch commit `6c082a4f`.~~
+  **CLOSED by T374 Leg B** (`LEGB_HASH`). `HC_OP_TargetCommandReply = 0x61f9`
+  is in `include/client/eq_opcodes.h` beside `HC_OP_TargetCommand`; the table
+  and `GetOpcodeName` use it. A SECOND bare literal was found in the same
+  table and fixed with it: `0x65ca`, whose `HC_OP_Consider` enumerator already
+  existed and simply was not used. The optional self-check was taken and
+  measured 23 dispatched opcodes with NO `GetOpcodeName` entry (every
+  unhandled-opcode WARN and DumpPacket header for them read
+  `OP_Unknown_0x....`); all 23 already had enumerators and all 23 cases were
+  added. Pinned by `tests/test_zone_opcode_literals.cpp` (source reader over
+  `zone_dispatch.cpp` + the two runtime checks); RED pre-fix on two keys, green
+  after. The G01 golden `tests/goldens/zone_opcodes_g01.txt` is byte-identical
+  and `test_zone_dispatch_table` passes unedited (6/6).
 
 - **B138** (C) `fable` has no live-server scenario lane and no exit-code
   contract at all: `src/client/main.cpp` ends `return 0;` unconditionally, so
@@ -2136,3 +2148,36 @@ branches can be deleted independently of these items.
   with the mode's command queue. Closes when: it has a caller or it is gone.
   Prov: T372 (flagged incidentally by T305 at `9bb156ea`, still true at
   `3964d100`).
+
+- **B140** (B) `EntitiesComponent::SendClickDoor` and `SendClickObject`
+  (`src/client/entities/entities_component_world.cpp`) end in
+  `ctx_.zone_connection->QueuePacket(p, 0, true)` — a raw dereference of a
+  `std::shared_ptr` with no null check, and the last two senders in the family
+  that bypass `eqt::PacketSender::SafeQueueZone`. Two consequences, the same
+  pair T360 fixed for `SendSpawnAppearance`/`SendAnimation` (B068): the R01
+  session recorder and the T268 ordered-capture seam are both BLIND to every
+  door and world-object click the client sends, so a `--record-session .sleq`
+  is a false negative for them and the Batch R replay oracle can never assert
+  on one; and a null `m_zone_connection` is a segfault rather than a logged
+  refusal. MEASURED in T374: a harness that set all three `IsFullyZonedIn()`
+  terms but installed no connection crashed here (exit 139) — which is why
+  `tests/test_door_click_zone_reset.cpp` carries a real
+  DaybreakConnection-over-FakeUdpTransport it otherwise would not need.
+  `IsFullyZonedIn()` makes the null case unlikely in production, so this is B,
+  not A. Closes when: both senders go through `ctx_.net.SafeQueueZone`, with
+  the click visible in `Test_GetQueuedPackets()`. Prov: T374.
+
+- **B141** (B) `EQT::DoorStateManager` (`include/client/door_state_manager.h`)
+  carries a COMPLETE, correct, and entirely unreached duplicate of the pending-
+  door-click set that T374 just fixed: `pendingClicks_` plus
+  `addPendingClick`/`removePendingClick`/`isClickPending`/`clearPendingClicks`,
+  with `setDoorState()` erasing the id and `clear()` clearing the set — i.e. it
+  already had both halves of the B136 defect handled. All four accessors have
+  ZERO callers tree-wide (measured at `672e3c3a`), because the live set is
+  `EntitiesComponent::m_pending_door_clicks`. The duplicated-then-drifted
+  pattern, and the reason B136 existed at all: the copy that was reached lacked
+  the zone clear the copy that was not reached had. Closes when: one of the two
+  is gone — either `m_pending_door_clicks` moves onto the DoorStateManager
+  (which needs the `isClickPending` read to happen BEFORE `setDoorState`, since
+  that method erases it) or the manager's four methods and `pendingClicks_` are
+  deleted. Prov: T374.

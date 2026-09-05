@@ -230,6 +230,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_forced_pose_no_echo)
 
+# T374 Leg B (BOARD B137): the zone opcode table names its keys with HC_OP_*
+# enumerators, never bare hex. A source reader over zone_dispatch.cpp plus two
+# runtime checks; no network, no graphics, no eqemu.
+ADD_EXECUTABLE(test_zone_opcode_literals
+    test_zone_opcode_literals.cpp
+)
+TARGET_LINK_LIBRARIES(test_zone_opcode_literals GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_zone_opcode_literals PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_zone_opcode_literals)
+
 # T346 (BOARD B001 remainder): the self-death sequence matches the official
 # client. Replays the T311 Leg A capture's OP_Death + OP_ZonePlayerToBind
 # bytes verbatim and compares fable's outbound opcode sequence to a golden

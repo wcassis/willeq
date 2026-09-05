@@ -255,6 +255,35 @@ std::string eqt::strings::GetOpcodeName(uint16_t opcode) {
 		case HC_OP_Stun: return "HC_OP_Stun";
 		case HC_OP_Consider: return "HC_OP_Consider";
 		case HC_OP_TargetMouse: return "HC_OP_TargetMouse";
+		case HC_OP_TargetCommand: return "HC_OP_TargetCommand";
+		case HC_OP_TargetCommandReply: return "HC_OP_TargetCommandReply";
+		// T374 (BOARD B137): the 23 opcodes kZoneOpcodeTable dispatches that
+		// GetOpcodeName could not name -- every unhandled-opcode WARN and
+		// every DumpPacket header for them read OP_Unknown_0x.... Pinned by
+		// ZoneOpcodeLiterals.EveryDispatchedOpcodeResolvesToAName.
+		case HC_OP_DisarmTraps: return "HC_OP_DisarmTraps";
+		case HC_OP_GroupInvite2: return "HC_OP_GroupInvite2";
+		case HC_OP_Begging: return "HC_OP_Begging";
+		case HC_OP_ReadBook: return "HC_OP_ReadBook";
+		case HC_OP_Mend: return "HC_OP_Mend";
+		case HC_OP_GroupInvite: return "HC_OP_GroupInvite";
+		case HC_OP_GroupCancelInvite: return "HC_OP_GroupCancelInvite";
+		case HC_OP_PickPocket: return "HC_OP_PickPocket";
+		case HC_OP_GroupUpdate: return "HC_OP_GroupUpdate";
+		case HC_OP_InstillDoubt: return "HC_OP_InstillDoubt";
+		case HC_OP_Hide: return "HC_OP_Hide";
+		case HC_OP_Forage: return "HC_OP_Forage";
+		case HC_OP_Action: return "HC_OP_Action";
+		case HC_OP_PetBuffWindow: return "HC_OP_PetBuffWindow";
+		case HC_OP_SenseTraps: return "HC_OP_SenseTraps";
+		case HC_OP_SenseHeading: return "HC_OP_SenseHeading";
+		case HC_OP_Track: return "HC_OP_Track";
+		case HC_OP_FeignDeath: return "HC_OP_FeignDeath";
+		case HC_OP_Sneak: return "HC_OP_Sneak";
+		case HC_OP_GroupFollow: return "HC_OP_GroupFollow";
+		case HC_OP_Fishing: return "HC_OP_Fishing";
+		case HC_OP_ApplyPoison: return "HC_OP_ApplyPoison";
+		case HC_OP_GroupDisband: return "HC_OP_GroupDisband";
 		case HC_OP_AutoAttack: return "HC_OP_AutoAttack";
 		case HC_OP_AutoAttack2: return "HC_OP_AutoAttack2";
 		case HC_OP_CastSpell: return "HC_OP_CastSpell";

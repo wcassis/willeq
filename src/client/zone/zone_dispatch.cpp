@@ -745,7 +745,7 @@ eqt::zone::ZoneComponent::ZoneOpcodeTable()
 		{HC_OP_Emote, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Chat().ZoneProcessEmote(p); }},
 
 		// Combat-related opcodes
-		{0x65ca, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Commands().ZoneProcessConsider(p); }},  // OP_Consider response
+		{HC_OP_Consider, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Commands().ZoneProcessConsider(p); }},  // OP_Consider response
 		{HC_OP_Action, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Commands().ZoneProcessAction(p); }},  // OP_Action (combat/spell actions)
 		{HC_OP_Damage, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Commands().ZoneProcessDamage(p); }},
 		{HC_OP_MoneyOnCorpse, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Commands().ZoneProcessMoneyOnCorpse(p); }},
@@ -770,7 +770,7 @@ eqt::zone::ZoneComponent::ZoneOpcodeTable()
 		{HC_OP_ShopEndConfirm, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Merchant().ZoneProcessShopEndConfirm(p); }},
 		{HC_OP_MoneyUpdate, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Merchant().ZoneProcessMoneyUpdate(p); }},
 		{HC_OP_GMTraining, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Merchant().ZoneProcessGMTraining(p); }},
-		{0x61f9, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnTargetCommandResponse(p); }},  // OP_TargetCommand response
+		{HC_OP_TargetCommandReply, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnTargetCommandResponse(p); }},  // OP_TargetCommand response
 
 		// Additional opcodes
 		{HC_OP_BecomeCorpse, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnBecomeCorpse(p); }},
