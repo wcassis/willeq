@@ -3547,7 +3547,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   (`#scribespells N`, `#memspell <spell> <gem>`, `/cast <gem>`); (2) a hostile
   target closes to melee within seconds and melee **interrupts** a gem cast;
   (3) a heading written to `character_data` does not take on zone-in -- use
-  eqemu's `#goto [x y z] [h]` (`zone/gm_commands/goto.cpp`), and note the
+  eqemu's `#goto [x y z] [h]` (`/mnt/projects/akk-stack/code/zone/gm_commands/goto.cpp`), and note the
   convention T389 derived and confirmed: **`world_angle_atan2 =
   heading * (360/512) + 90`, +X north, +Y east**, so `h=128` faces -X (south)
   and `h=384` faces +X (north); (4) backpedalling to make distance walked the
