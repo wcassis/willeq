@@ -712,18 +712,28 @@ it without taking that measurement first.
   (`src/client/graphics/environment/spell_effects_config.cpp`), which maps a
   NAME to a tile index and falls back to `SoftCircle`. Found by T380.
 
-- **B163** (B) `tools/willeq_db_builder.cpp` `loadSpells()` binds
-  `SpellField::CastAnim` (120) but not `TargetAnim` (121) or `TravelType`
-  (122), both of which `include/client/spell/spell_constants.h` defines; the
-  `spells` table has `cast_anim` and no `target_anim` / `travel_type` column
-  (`PRAGMA table_info`, verified by
-  `scripts/refactor/t380_spell_visual_census.py --db data/willeq.db`). Both
-  carry signal a data-driven visual layer needs: `target_anim` is non-zero for
-  **3,608 of 8,066** spells (27 distinct values) and `travel_type == 3` for
-  exactly **85** spells — that 85 IS the projectile population, and it is the
-  only field that says a spell should have a travel stage. Adding them bumps
-  `kWilleqDbExpectedVersion`, which invalidates EVERY build tree (T304/T355),
-  so it must be its own leg. Found by T380.
+- ~~**B163** (B)~~ **CLOSED 2026-09-05 by T384 (`57258eea`).**
+  `tools/willeq_db_builder.cpp` `loadSpells()` now binds `TargetAnim` (121)
+  and `TravelType` (122) beside the `CastAnim` (120) it already bound, and the
+  `spells` table carries `target_anim` and `travel_type` as its last two
+  columns (99 -> 101). The indices were verified against eqemu's own positional
+  import: `Columns()` in
+  `/mnt/projects/akk-stack/code/common/repositories/base/base_spells_new_repository.h`
+  has `CastingAnim` at 120, `TargetAnim` at 121 and `TravelType` at 122, so the
+  STOP did not fire. `kWilleqDbExpectedVersion` 6 -> 7; all three build trees
+  rebuilt. The rebuilt db reproduces T380's census exactly -- `target_anim`
+  non-zero for **3,608 of 8,066** rows, `travel_type == 3` for exactly **85**,
+  8,066 rows and 13 tables both sides, every shared column byte-identical
+  except `metadata` (`version`, `build_date`). `SpellData` gains `target_anim`
+  (declared since forever, never assigned) and `travel_type`, and
+  `EQ::SpellVisualVocabulary` gains `travelType` -- the slot T381 deliberately
+  left empty -- packed into the padding byte after `school`, so the struct is
+  still **8 bytes** and neither bridge payload grew. Pinned by
+  `SpellDatabaseTest.SpellVisualColumnsRoundTripForMeasuredSpells` /
+  `...AreZeroForANonProjectileSpell` and
+  `SpellVisualVocabularyTest.VocabularyCarriesTravelType`. **This unit only
+  makes the data AVAILABLE -- nothing consumes `travel_type` yet; the
+  projectile question is still B165, whose decision waits on B162's oracle.**
 
 - **B165** (B) The three T72 stage-suppression gates
   (`!visual.isFallback() && !visual.hasXStage()` in
