@@ -531,11 +531,11 @@ it without taking that measurement first.
   `spell_affect_index` hits an empty padding record need a rendering ruling.
   Prov: archived board, T70.
 
-- **B023** (C) `src/client/player/player_misc.cpp` `eqt::player::PlayerComponent::SendReport` — the wire
+- **B023** (B) `src/client/player/player_misc.cpp` `eqt::player::PlayerComponent::SendReport` — the wire
   shape does not match eqemu's `OP_Report` (pipe-delimited reported/reporter/
   message versus a 4-byte category plus raw text), so `AddReport()` is never
   reached. Fixing it is a command-shape decision, not a mechanical patch. Prov:
-  archived board, T146.
+  archived board, T146. **RECLASSIFIED B 2026-09-05:** the shape is not a design call — eqemu's `Handle_OP_Report` defines it (match the oracle). → T375.
 
 ## P — process and documentation
 
@@ -546,7 +546,7 @@ it without taking that measurement first.
   a no-grow allowlist entry that each K unit ratchets down. Prov: the J tracker's
   "WILL'S RULING", 2026-09-02."
 
-- **B025** (P) Eight methods dominate their TUs and were left out of Batch J
+- ~~**B025** (P) Eight methods dominate their TUs and were left out of Batch J
   deliberately: `eqt::zone::ZoneComponent::DispatchZonePacket` 880
   (`src/client/zone/zone_dispatch.cpp`, K09),
   ~~`RaceModelLoader::loadModelFromGlobalChrWithVariantsForAnimation` 815
@@ -558,7 +558,7 @@ it without taking that measurement first.
   `DetailManager::createDefaultConfig` 548 (`detail_manager.cpp`, a data table —
   leave it), `IrrlichtRenderer::processFrameRender` 546 (`renderer_frame.cpp`).
   Closes when: each is split or explicitly kept. Prov:
-  `refactor/J_file_size_reclamation.md`, "Optional, NOT part of this batch".
+  `refactor/J_file_size_reclamation.md`, "Optional, NOT part of this batch".~~ **STALE — CLOSED by Batch G (2026-09-04):** G01 `DispatchZonePacket` (opcode table), G02 `ProcessBridgeIntents`, G03 `registerBuiltinCommands`, G04 `Application::initialize`, G05 `processFrameRender`, G06 `updatePlayerMovement`, T340 the variant loader; `createDefaultConfig` explicitly KEPT as a data table (`refactor/G_oversize_methods.md` §CLOSE-OUT). Re-measured 2026-09-05: `zone_dispatch.cpp` is 894 lines of table + handlers under the 1,500 ceiling.
 
 - ~~**B026** (P) Two unmerged branches have never been audited —
   `task/eqcpp-zoneprocess-track-b-remaining` and
