@@ -416,7 +416,7 @@ it without taking that measurement first.
   them in any T352 run; the driver never mutated them concurrently. Confirming
   needs a run that loads a zone (a `#zone` tour under TSAN) while the prep
   worker is live. Closing it is a restructure, not a lock. Prov: T352 Review.~~
-  **CLOSED by T370 as NOT a live race — the measurement T352 could not take is
+  **CLOSED by T370 `373cea89` as NOT a live race — the measurement T352 could not take is
   now taken.** The T120/T121 amplified zone tour (login, six `#zone` crossings
   Befallen<->Qeynos2, `/camp`) was run three times against a live eqemu under
   ThreadSanitizer with the EntityPrepWorker doing real background prep
@@ -2029,5 +2029,5 @@ it without taking that measurement first.
   `render()` stays lock-free and no lock-ordering edge is added; the struct was
   already non-copyable (`std::atomic<bool> active`) and every touch site is a
   plain assignment or an implicit load. **3 of 3 post-fix tours clean, exit 0.**
-  `review/T370/run{1,2,3}/tsan_report.*` (pre-fix, verbatim),
+  `review/T370/run{1,2,3}/tsan_report.*` (pre-fix, verbatim; fixed in `373cea89`),
   `review/T370/runpostfix{1,2,3}/` (post-fix). Prov: T370 Review.
