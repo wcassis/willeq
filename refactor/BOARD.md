@@ -531,11 +531,47 @@ it without taking that measurement first.
   `spell_affect_index` hits an empty padding record need a rendering ruling.
   Prov: archived board, T70.
 
-- **B023** (B) `src/client/player/player_misc.cpp` `eqt::player::PlayerComponent::SendReport` — the wire
+- ~~**B023** (B)~~ **CLOSED 2026-09-05 by T375 (`src/client/player/player_misc.cpp`).**
+  `SendReport` now builds the body eqemu's `Client::Handle_OP_Report` actually
+  parses: `"<reported>|<reporter>|<text>\0"`. The handler casts to NO struct and
+  performs NO size check — it walks the payload with a three-state parser (bytes
+  before the first `|` are `reported`, before the second `|` are `reporter`, the
+  rest is the text with `0x0a` -> `\n` and `0x00` terminating) and then calls
+  `database.AddReport(reporter, reported, text)`. The old body wrote a 4-byte
+  zero "category_id" (no such field exists in the handler) and an unterminated
+  string, so no `|` was ever found, `mode` never left 0, and the row eqemu filed
+  had an empty reporter and an EMPTY `reported_text`. `/bug` reports a defect and
+  not a player, so `reported` is sent empty (a leading `|`). The sender also
+  moved from `zone_connection->QueuePacket()` to `ctx_.net.SafeQueueZone()` so the
+  T268 seam and the session recorder both see it (the T360/B068 shape). Pinned by
+  `tests/test_op_report_shape.cpp` (6 tests; 5 red pre-fix), which transcribes
+  eqemu's parse loop as its oracle. **LIVE PROOF IS OWED**: a `/report` landing as
+  a row in eqemu's `reports` table (`name` = the character, `reported_text` = the
+  description) has NOT been observed — the eqemu lock was held by T370 during
+  T375. The next lock unit takes it. Note when doing so that
+  `Handle_OP_Report`'s first statement is `if (!CanUseReport)`, so a client gets
+  exactly ONE report per zone session. Original text: the wire
   shape does not match eqemu's `OP_Report` (pipe-delimited reported/reporter/
   message versus a 4-byte category plus raw text), so `AddReport()` is never
   reached. Fixing it is a command-shape decision, not a mechanical patch. Prov:
-  archived board, T146. **RECLASSIFIED B 2026-09-05:** the shape is not a design call — eqemu's `Handle_OP_Report` defines it (match the oracle). → T375.
+  archived board, T146.
+
+- **B142** (C) `/bug <description>` (registered in
+  `src/client/action/command_processor_registration.cpp` with the alias
+  `report`) sends `HC_OP_Report`, which is eqemu's PLAYER-report channel, not
+  its bug channel. Titanium has a separate `OP_Bug` (0x7ac2, `patch_Titanium.conf`)
+  whose `Handle_OP_Bug` (`zone/client_packet.cpp:4253`) requires
+  `app->size == sizeof(BugReport_Struct)` — an **8,736-byte** Titanium struct
+  (`common/patches/titanium_structs.h:2604`) carrying `category_name[64]`,
+  `character_name[64]`, `ui_path[128]`, position, heading, `time_played`,
+  `target_id`, `target_name[64]`, `optional_info_mask`, `bug_report[2050]` and
+  `system_info[4098]`. fable has no `HC_OP_Bug` at all. T375 made `/bug` correct
+  ON THE CHANNEL IT USES (`AddReport` now files a real row), so nothing is
+  broken; what needs Will's call is the product shape: (a) should `/bug` move to
+  `OP_Bug` and gain a category table, and (b) should `/report` split off as
+  `/report <player>` — the accused-player field the report channel actually has,
+  which fable currently sends empty because its only caller reports a defect.
+  Discovered by T375 while reading the two handlers side by side.
 
 ## P — process and documentation
 
