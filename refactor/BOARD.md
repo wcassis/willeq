@@ -759,10 +759,10 @@ it without taking that measurement first.
   issued `#gm`, and T323 captured it before starting any client.~~ **STRUCK by
   T377, 2026-09-05 — THE PREMISE IS REFUTED: nothing sets it, the value is simply
   PERSISTED** (`review/T377/` §5). Source: `character_data.gm` has exactly ONE
-  writer tree-wide, `Client::SetGM(bool)` (`zone/client.cpp:2659`), whose callers
+  writer tree-wide, `Client::SetGM(bool)` (`/mnt/projects/akk-stack/code/zone/client.cpp:2659`), whose callers
   are the `#set gm [on|off]` handler, `Lua_Client::SetGM`, `Perl_Client_SetGM`
   and the `OP_GMBecomeNPC` arm that only ever sets it FALSE; load and save are a
-  pure round trip (`pp->gm = e.gm` / `e.gm = pp->gm`, `zone/zonedb.cpp:501`
+  pure round trip (`pp->gm = e.gm` / `e.gm = pp->gm`, `/mnt/projects/akk-stack/code/zone/zonedb.cpp:501`
   and `:1096`), nothing derives it from account status, `world/` has no writer,
   and the only quest script that touches it (`quests/lua_modules/commands/don.lua`)
   *restores* an existing GM state around `#don`. Live: the flag was set to **0**
@@ -947,7 +947,7 @@ it without taking that measurement first.
   appears the instant the loot window opens. **fable plays NOTHING here and does
   not bank the coin either** — `CommandsComponent::ZoneProcessMoneyOnCorpse`
   (`src/client/commands/combat_actions.cpp:487`) logs and returns, with the
-  comment `// For now, just log it`. That gap is **B147**. The recipe that worked,
+  comment `// For now, just log it`. That gap is **B172**. The recipe that worked,
   for the next unit: zone **`arena`** (no clutter), `#npctypespawn 113423`
   (`Gargalek_Daemado`, loottable 13487, 1144–7572 copper, a GIANT so the corpse is
   big), `/target Gargalek`, **`#damage 100000` not `#kill`** (`#kill` calls
@@ -1925,7 +1925,7 @@ it without taking that measurement first.
   Ultravision is near-neutral with a blue lift (R x1.458 / G x1.463 / B x1.851)
   while fable's green lags (R x1.461 / **G x1.281** / B x1.663), and the oracle's
   Infravision raises all three channels (R x1.328 / G x1.211 / B x1.208) while
-  fable's **drives blue DOWN to x0.821** at R x1.600. That is **B146**. See B110 for the term that does separate the two clients.** Pinned by
+  fable's **drives blue DOWN to x0.821** at R x1.600. That is **B171**. See B110 for the term that does separate the two clients.** Pinned by
   `tests/test_vision_ambient.cpp` (3 of 6 cases fail against the pre-T361
   behaviour). Prov: T361 Review, `review/T361/README.md`. `visionType` has exactly two consumers tree-wide
   (`applyVisionWeatherToZoneLights` and `computeLightAnimations`), both of which
@@ -2270,7 +2270,7 @@ it without taking that measurement first.
   window). **The empty group window paints ONLY ITS TITLE BAR** — a single strip
   reading `Group`, no member rows, no empty body, no reserved height — visible in
   every `review/T377/oracle/*.png`; fable draws a titled *frame*. The rebinding
-  and the empty-window shape are **B145**. Prov: T368 Leg A; T377 Review.
+  and the empty-window shape are **B170**. Prov: T368 Leg A; T377 Review.
 
 ---
 
@@ -2543,7 +2543,7 @@ branches can be deleted independently of these items.
 
 ## Added 2026-09-05 by T377 (owed live proofs 5)
 
-- **B145** (A) `src/client/input/hotkey_manager.cpp` `HotkeyManager::registerDefaultBindings`
+- **B170** (A) `src/client/input/hotkey_manager.cpp` `HotkeyManager::registerDefaultBindings`
   — **two of fable's three window keys do not match the official client, and one
   of them collides with an official binding.** MEASURED T377 against the oracle's
   own Options > Keys > **UI** page (`review/T377/oracle/T377_oracle_options_keys_UI_page1..4.png`),
@@ -2564,7 +2564,7 @@ branches can be deleted independently of these items.
   body, no reserved height — while fable draws the titled *frame* T368 gave it
   (`FrameComponent::groupPanelIsVisible`, `static_panels.h`). Prov: B115; T377 Review.
 
-- **B146** (A) `src/client/graphics/vision_ambient.cpp` /
+- **B171** (A) `src/client/graphics/vision_ambient.cpp` /
   `IrrlichtRenderer::updateTimeOfDay` — **the vision floor's per-channel gains
   are wrong against the oracle, even where the scalar ratio is right.** MEASURED
   T377 (`review/T377/` §2), both clients in one session, same spot, same crop,
@@ -2580,7 +2580,7 @@ branches can be deleted independently of these items.
   channel gains are solved against the oracle table the same way the scalar was,
   and `tests/test_vision_ambient.cpp` pins them. Prov: T377 Review; B067.
 
-- **B147** (A) `src/client/commands/combat_actions.cpp`
+- **B172** (A) `src/client/commands/combat_actions.cpp`
   `eqt::commands::CommandsComponent::ZoneProcessMoneyOnCorpse` — **corpse coin is
   parsed, logged and DROPPED: no sound, and no credit to the player's purse.**
   The body ends `// For now, just log it - money is auto-looted when we loot any

@@ -12,7 +12,7 @@ the slot at the current tip.
    and buff windows; record the default keys and compare with
    `hotkey_manager.cpp` (G / Alt+P, P, Alt+B). Also capture the empty group
    window (no group, window open) — T368 left its content UNVERIFIED. If
-   the defaults differ: board it (B145+), do not rebind here.
+   the defaults differ: board it (B170+), do not rebind here.
 2. **T361 vision residuals re-measured.** With T367's light-culling fix in
    the binary, repeat T361's table (oracle night no-buff / Ultravision /
    Infravision vs fable, same spot, same crop, video stepped). Record the
@@ -49,9 +49,9 @@ with `scripts/eqemu/up.sh --launcher`, and both released at the end.
 
 | # | item | verdict | headline |
 |---|---|---|---|
-| 1 | B115 official key bindings | **FAIL** | group `Alt P`, buff `Alt B`, pet **`Alt F1`**; fable's `G` and `P` are wrong, and `P` is the oracle's Customer Service key -> **B145** |
-| 2 | B067 vision residuals re-measured | **PASS on the ratio** | oracle reproduces to 0.4% (1.560 / 1.252); fable **1.449 / 1.237**; T367 moved UV slightly DOWN. Per-channel gains are wrong -> **B146** |
-| 3 | B036 corpse-loot coin | **PASS (1 trial)** | `BuyItem.WAV` 138; the loot window's opening is silent; fable plays nothing and drops the coin -> **B147** |
+| 1 | B115 official key bindings | **FAIL** | group `Alt P`, buff `Alt B`, pet **`Alt F1`**; fable's `G` and `P` are wrong, and `P` is the oracle's Customer Service key -> **B170** |
+| 2 | B067 vision residuals re-measured | **PASS on the ratio** | oracle reproduces to 0.4% (1.560 / 1.252); fable **1.449 / 1.237**; T367 moved UV slightly DOWN. Per-channel gains are wrong -> **B171** |
+| 3 | B036 corpse-loot coin | **PASS (1 trial)** | `BuyItem.WAV` 138; the loot window's opening is silent; fable plays nothing and drops the coin -> **B172** |
 | 4 | B023 `/report` live row | **PASS** | `name=Testchar`, `reported=''`, `reported_text='test T377'` |
 | 5 | B027 gm flag | **PASS — premise REFUTED** | one writer (`Client::SetGM`), pure DB round trip; set to 0 and it stayed 0 through login/save/zone/camp. B027 STRUCK |
 
@@ -64,7 +64,7 @@ Options > Keys > category **UI**, paged to the end, Oraclealpha under Wine/Xvfb.
 `G` + `Alt+P`, pet to `P`, buff to `Alt+B`. Buff matches; group's primary `G` is
 an invention; pet's `P` is wrong AND collides. `Alt+P` verified live (hides and
 re-shows the Group window). **The empty group window paints only its title bar**
-— T368's other unverified half, now answered. Boarded **B145**; no rebinding done.
+— T368's other unverified half, now answered. Boarded **B170**; no rebinding done.
 
 **Rig note worth keeping:** the client's window sits at `-1,+30` on this Xvfb, so
 a coordinate read off an `import -window <WID>` capture must be shifted before
@@ -81,7 +81,7 @@ Ultravision is at 93% and T367's light-culling fix moved it *down* from T361's
 1.473. Absolute levels are deliberately NOT compared (T367's composition rule).
 The new finding is per-channel: the oracle's Ultravision is near-neutral with a
 blue lift while fable's green lags 12.5 points, and the oracle's Infravision
-raises all three channels while fable's drives blue to **x0.821**. Boarded **B146**.
+raises all three channels while fable's drives blue to **x0.821**. Boarded **B171**.
 
 An instrument note: the oracle's `#castspell` OCR verification FAILED all three
 attempts while the buff landed anyway — the video's luma steps at t=88.2 s,
@@ -98,7 +98,7 @@ resolve silent. The loot window's own opening is silent (`itemclth.wav`'s chord
 absent). **The gesture is not "click the coin"** — the client's own tip says
 coins are taken automatically by the first looter, and the `You receive …` line
 fires when the window opens. **fable plays nothing and banks nothing**:
-`ZoneProcessMoneyOnCorpse` logs and returns -> **B147**.
+`ZoneProcessMoneyOnCorpse` logs and returns -> **B172**.
 
 Deviation, flagged: **one trial, not two.** Nine further right-clicks on two
 later corpses never reopened the loot window (the ui-lib RULE 1 intermittency),
