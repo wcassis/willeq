@@ -1663,7 +1663,7 @@ it without taking that measurement first.
 
 ## Added 2026-09-05 by T363 (B058 close-out)
 
-- **B090** (A) `src/client/input/console_input_handler.cpp`
+- ~~**B090** (A) `src/client/input/console_input_handler.cpp`
   `ConsoleInputHandler::processCommand` — the `inventory`/`inv` and `group`
   keywords on piped stdin set `InputAction::ToggleInventory` /
   `InputAction::ToggleGroup`, and **nothing consumes either**:
@@ -1679,9 +1679,29 @@ it without taking that measurement first.
   word to BE a catalog name, or an explicit rewrite to `newinv`), and `group`
   either gets a consumer or is deleted with its dead action. Note the asymmetry:
   `skills` worked as a fall-through only because T363 gave registry 3 a command
-  of exactly that name. Prov: T363 (B058 close-out measurement).
+  of exactly that name. Prov: T363 (B058 close-out measurement).~~
+  **CLOSED by T365 Leg A** (`4cb806f5`, branch
+  `task/T365-stdin-keywords-help-completion` off `8fd539ed`). `/newinv` is
+  renamed **`/inventory`** in registry 3 (catalog row + if/else chain, no
+  alias, Will's B058 shape), so the bare `inventory` keyword falls through to
+  `m_rawCommands` and reaches the one body. **`inv` could NOT fall through**
+  and the entry did not anticipate why: registry 2 registers `inv` as an
+  ALIAS OF `/invite` and is tried before registry 3, so the word would have
+  invited a group member. It is rewritten to `inventory` in
+  `ConsoleInputHandler` — the only place that knows which window was meant —
+  and `/inventory` deliberately has no `inv` alias. **`group` had no consumer
+  to route to:** `RendererAction::ToggleGroup` (the G keybind's enum, not the
+  `InputAction` one) is an EMPTY arm in `renderer_frame_input.cpp` —
+  "Group panel visibility is driven by inGroup state" — so there is no
+  group-window toggle anywhere in the tree; the keyword is deleted and the
+  word is now honestly unrecognized. `InputAction::ToggleInventory`,
+  `ToggleSkills` and `ToggleGroup` are all deleted. Pinned by 6 new tests
+  (4 `HeadlessCommandRefusalTest`, 2 `MergedHelpTest`), all failing before.
+  Residue: `InputAction::ToggleVendor`, `TogglePetWindow`, `ToggleTrainer`
+  and `ToggleSpellbook` are consumer-less in the same way but have no
+  producer either — declared and unreachable → **B100**.
 
-- **B092** (B) `src/client/help/merged_help.cpp` `BuildHelpResponse` —
+- ~~**B092** (B) `src/client/help/merged_help.cpp` `BuildHelpResponse` —
   a bare `/help <arg>` resolves `<arg>` as a CATEGORY before it tries a command
   name, so a command whose name equals a category name has no reachable help
   entry. T363 hit this immediately: registry 2 has a `"Skills"` category
@@ -1693,9 +1713,20 @@ it without taking that measurement first.
   so (e.g. prints the command detail followed by "…is also a category"), or the
   order is inverted with the reverse collision handled. Pinned as it stands by
   `MergedHelpTest.T363_HelpSkillsResolvesToTheSkillsCategoryNotTheCommand`.
-  Prov: T363.
+  Prov: T363.~~
+  **CLOSED by T365 Leg B** (`d7ea0ef4`). `BuildHelpResponse` now resolves the
+  argument as a COMMAND NAME first and, when the same word is also a category,
+  appends the category after a one-line `"X" is also a category:` note — both
+  reachable in one response, nothing that used to print is lost. Command-first
+  was chosen because the official Titanium client's `/help <x>` takes a command
+  name and has no merged categories, so there is no oracle for the collision
+  itself but there is one for the un-collided case.
+  `T363_HelpSkillsResolvesToTheSkillsCategoryNotTheCommand` is renamed
+  `T365_HelpSkillsPrintsTheCommandFirstThenTheCategory` and rewritten to the
+  new truth; `/inventory` vs the "Inventory" category and a category that is
+  NOT also a command name are pinned alongside it.
 
-- **B091** (P) `refactor/T357_tab_completion_spell_land_eqe1_gate.md` §Review and
+- ~~**B091** (P) `refactor/T357_tab_completion_spell_land_eqe1_gate.md` §Review and
   the two `CLAUDE.md` sentences it added
   (`include/client/graphics/ui/CLAUDE.md`, `src/client/input/CLAUDE.md`) claim
   that because Tab and `/help` share the same merged pair, "Tab and `/help` can
@@ -1708,4 +1739,47 @@ it without taking that measurement first.
   `CommandProcessor::getCompletions` and `commandCompletions`; the rename changed
   nothing here). Closes when: either the completion provider also offers the
   static catalog's names, or all three claims are corrected to say Tab covers
-  registries 1+2 only. Prov: T363 (plan step 3 check).
+  registries 1+2 only. Prov: T363 (plan step 3 check).~~
+  **CLOSED by T365 Leg C** (`c70501c8`) — BOTH halves, not just the doc one.
+  Registry 3 got a completion source: `eqt::help::RendererCommandCompletions`
+  (`src/client/help/renderer_command_catalog.cpp`), built on T362's shared
+  helper `eqt::completion::PrefixCompletions`, so all three registries run the
+  one prefix idiom. `Application::commandCompletions()` unions it last and is
+  now **public** so the union is asserted end-to-end rather than pinned as
+  source text. `/ski<Tab>` completes to `/skills`. The three claims are
+  corrected in place: the T357 Review paragraph plus its deviation note,
+  `include/client/graphics/ui/CLAUDE.md` and `src/client/input/CLAUDE.md`.
+  Pinned by 2 `HeadlessCommandRefusalTest` cases (failing before) and 6
+  `RendererCommandCompletionTest` cases.
+
+## Added 2026-09-05 by T365
+
+- **B100** (B) `include/client/input/input_handler.h` `eqt::input::InputAction`
+  — `ToggleVendor`, `TogglePetWindow`, `ToggleTrainer` and `ToggleSpellbook`
+  are declared, have **no producer** (`ConsoleInputHandler` never sets them and
+  no other InputHandler does) and **no consumer**
+  (`InputActionBridge::processDiscreteActions` has no arm for any of them).
+  T365 deleted the three that at least had a producer
+  (`ToggleInventory`/`ToggleSkills`/`ToggleGroup`); these four are the residue
+  and were out of that unit's territory. Note `test_input_action_bridge.cpp`'s
+  `UIToggleActions_AreNotBridgeTerritory` now uses `ToggleVendor` as its
+  stand-in, so deleting them means restating that case over a surviving
+  enumerator (or deleting it — with all seven gone, "not bridge territory" has
+  no subject left). Closes when: each is either produced-and-consumed or
+  deleted, and the compiler confirms no reader remains. Prov: T365 Leg A.
+
+- **B101** (B) `src/client/graphics/frame/renderer_frame_input.cpp`
+  `case RA::ToggleGroup:` — the G keybind (and the Alt+P alternate binding,
+  `hotkey_manager.cpp`) reaches an EMPTY arm: "Group panel visibility is driven
+  by inGroup state". So **G does nothing** — pressing it in a live session
+  neither opens nor closes anything, which is not what a key bound to
+  "ToggleGroup" promises. `RA::TogglePet` and `RA::ToggleBuffWindow` are empty
+  for the same stated reason. T365 measured this while looking for a consumer
+  for the `group` stdin keyword and found none, which is why that keyword was
+  deleted rather than routed. Closes when: either the three keys get real
+  toggles (a `groupPanelState_.isOpen` the panel honours, the shape
+  `FrameComponent::toggleSkillsWindow()` has) or the bindings are removed so no
+  key advertises a behaviour the tree does not have. Class C if Will wants the
+  panels to stay auto-driven. Prov: T365 Leg A.
+
+
