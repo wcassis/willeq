@@ -82,8 +82,8 @@ Center popups (inventory, spellbook, skills, vendor, bank, loot, trade) share th
 | R | Reply to last tell |
 | I | Toggle inventory |
 | K | Toggle skills window |
-| G / Alt+P | Toggle group window |
-| P | Toggle pet window |
+| Alt+P | Toggle group window |
+| Alt+F1 | Toggle pet window |
 | Ctrl+B | Toggle spellbook |
 | Alt+B | Toggle buff window |
 | U | Interact (nearest door/object) |
@@ -101,8 +101,8 @@ Key bindings are configurable via `config/hotkeys.json` and managed by `HotkeyMa
 
 **T368 (B101): the group, pet and buff rows above were STALE until T368.** All
 three reached empty `case` arms in `renderer_frame_input.cpp` -- "visibility is
-driven by inGroup state", and so on -- so G, Alt+P, P and Alt+B did nothing
-whatsoever. Each now flips a `bool isOpen` on its panel state
+driven by inGroup state", and so on -- so the group, pet and buff keys did
+nothing whatsoever. Each now flips a `bool isOpen` on its panel state
 (`FrameComponent::toggleGroupWindow()` / `togglePetWindow()` /
 `toggleBuffWindow()`, the `toggleSkillsWindow()` shape), and each panel's
 render function early-returns on a free predicate
@@ -111,7 +111,7 @@ render function early-returns on a free predicate
 
 | Panel | Draws when |
 |---|---|
-| Group | `isOpen` alone -- an open window with no group draws its empty titled frame; joining a group never reopens a closed one |
+| Group | `isOpen` alone -- an open window with no group draws its bare title bar (T382); joining a group never reopens a closed one |
 | Pet | `isOpen && hasPet` |
 | Buff bar | `isOpen && at least one buff` (the bar has no frame of its own) |
 
@@ -120,9 +120,18 @@ default: its `defaults.ini` writes a `Show=0` key only under a section whose
 window ships closed (`[SelectorWindow]`, `[HotButtonWnd3]`, `[HotButtonWnd4]`)
 and writes none under `[GroupWindow]`, `[PetInfoWindow]` or `[BuffWindow]`. The
 official ACTION names are `TOGGLE_PARTYWIN`, `TOGGLE_PETINFOWIN` and
-`TOGGLE_BUFFWIN` (`KEYMAPPING_` suffixes in `eqgame.exe`); the official default
-KEYS are not recorded in any file on disk, so fable's G / Alt+P / P / Alt+B are
-unchanged -- see B115.
+`TOGGLE_BUFFWIN` (`KEYMAPPING_` suffixes in `eqgame.exe`).
+
+**T382 (B170/B115): the three KEYS are now the oracle's own.** They are
+recorded in no file on disk, so T377 screenshotted the official client's
+Options > Keys > **UI** page instead
+(`review/T377/oracle/T377_oracle_options_keys_UI_page1..4.png`): party window
+**`Alt P`**, buff window **`Alt B`**, pet info window **`Alt F1`**, each with an
+EMPTY Alternate column. fable's `G` (group) was an invention and its `P` (pet)
+was the official key for **Toggle Customer Service Win**; both are gone.
+`Alt+B` was already right. The empty group window's SHAPE was measured in the
+same session -- the oracle paints only its title bar, which is what
+`groupPanelFrameRect()` now returns with no group.
 
 ## Slash Commands
 

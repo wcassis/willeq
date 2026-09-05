@@ -847,3 +847,93 @@ TEST_F(HotkeyGetBindingsTest, ReturnsEmptyForUnboundAction) {
     auto bindings = HotkeyManager::instance().getBindingsForAction(HotkeyAction::Count);
     EXPECT_EQ(bindings.size(), 0u);
 }
+
+// =============================================================================
+// T382 Leg B (board B170/B115): the three window keys, against the ORACLE
+// =============================================================================
+//
+// B115 could not settle these from files: eqgame.exe holds the 247-entry
+// KEYMAPPING_ action-name table but no parallel default-scancode array, and an
+// eqclient.ini records a KEYMAPPING_ line only for a binding the user CHANGED.
+// T377 got them off the running client instead, by screenshotting its
+// Options > Keys > category UI page
+// (review/T377/oracle/T377_oracle_options_keys_UI_page1..4.png):
+//
+//     Toggle party window     Alt P      Alternate -------
+//     Toggle buff window      Alt B      Alternate -------
+//     Toggle pet info window  Alt F1     Alternate -------
+//     Toggle Customer Service Win   P
+//
+// fable had group on G with Alt+P as a mere alternate, and pet on plain P --
+// which is the official Customer Service key, so a player who learned the real
+// client pressed P for the petition window and got a pet window. This fixture
+// pins the measured row so neither can drift back.
+
+class HotkeyOracleWindowKeysTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        HotkeyManager::instance().resetToDefaults();
+    }
+    // getAction(key, ctrl, shift, alt, mode)
+    static std::optional<HotkeyAction> Alt(irr::EKEY_CODE k) {
+        return HotkeyManager::instance().getAction(k, false, false, true,
+                                                   HotkeyMode::Player);
+    }
+    static std::optional<HotkeyAction> Bare(irr::EKEY_CODE k) {
+        return HotkeyManager::instance().getAction(k, false, false, false,
+                                                   HotkeyMode::Player);
+    }
+};
+
+TEST_F(HotkeyOracleWindowKeysTest, AltPTogglesTheGroupWindow) {
+    auto action = Alt(irr::KEY_KEY_P);
+    ASSERT_TRUE(action.has_value());
+    EXPECT_EQ(*action, HotkeyAction::ToggleGroup);
+}
+
+TEST_F(HotkeyOracleWindowKeysTest, AltF1TogglesThePetWindow) {
+    auto action = Alt(irr::KEY_F1);
+    ASSERT_TRUE(action.has_value())
+        << "Alt+F1 is the official Toggle pet info window key (T377)";
+    EXPECT_EQ(*action, HotkeyAction::TogglePetWindow);
+}
+
+TEST_F(HotkeyOracleWindowKeysTest, AltBTogglesTheBuffWindow) {
+    auto action = Alt(irr::KEY_KEY_B);
+    ASSERT_TRUE(action.has_value());
+    EXPECT_EQ(*action, HotkeyAction::ToggleBuffWindow);
+}
+
+// G is bound to nothing in the oracle's UI or Commands category (Alt+G is
+// Guild Management), so fable's G was an invention.
+TEST_F(HotkeyOracleWindowKeysTest, BareGIsBoundToNothing) {
+    EXPECT_FALSE(Bare(irr::KEY_KEY_G).has_value())
+        << "G was fable's invented group key -- the oracle binds it to nothing";
+}
+
+// P is the oracle's Toggle Customer Service Win. fable has no petition window,
+// so the right answer is that P does nothing -- NOT that it opens a pet
+// window a real-client player never asked for.
+TEST_F(HotkeyOracleWindowKeysTest, BarePIsBoundToNothing) {
+    EXPECT_FALSE(Bare(irr::KEY_KEY_P).has_value())
+        << "P is the official Customer Service key, not the pet window";
+}
+
+// The oracle's Alternate column is EMPTY for all three rows: one key each.
+TEST_F(HotkeyOracleWindowKeysTest, TheThreeWindowActionsHaveOneBindingEach) {
+    const auto& mgr = HotkeyManager::instance();
+    for (auto action : {HotkeyAction::ToggleGroup,
+                        HotkeyAction::TogglePetWindow,
+                        HotkeyAction::ToggleBuffWindow}) {
+        EXPECT_EQ(mgr.getBindingsForAction(action).size(), 1u)
+            << "the oracle's Alternate column is empty for "
+            << HotkeyManager::actionEnumToName(action);
+    }
+}
+
+// F1 alone stays Target Self -- adding Alt+F1 must not shadow it.
+TEST_F(HotkeyOracleWindowKeysTest, BareF1StillTargetsSelf) {
+    auto action = Bare(irr::KEY_F1);
+    ASSERT_TRUE(action.has_value());
+    EXPECT_EQ(*action, HotkeyAction::TargetSelf);
+}

@@ -677,3 +677,96 @@ TEST(T368PanelVisibility, AClosedBuffBarIsUnclickableAsWellAsInvisible) {
 }
 
 } // namespace
+
+// =============================================================================
+// T382 Leg B (board B170): the EMPTY group window's shape, against the ORACLE
+// =============================================================================
+//
+// MEASURED T377 (review/T377/oracle/): with the group window open and NO
+// group, the official client paints ONLY its title bar -- a single strip
+// reading "Group", no member rows, no empty body, no reserved height. T368
+// gave fable the full titled FRAME, five member rows tall and empty, because
+// what the oracle painted was unknown at the time (B115's second half).
+//
+// groupPanelFrameRect() is the seam: it returns the rect renderGroupPanel
+// actually paints, so the shape is assertable with no Irrlicht device.
+class GroupPanelShapeTest : public ::testing::Test {
+protected:
+    UILayout layout;
+    GroupPanelState group;
+
+    void SetUp() override {
+        layout.computeLayout(800, 600);
+    }
+};
+
+TEST_F(GroupPanelShapeTest, WithNoGroupOnlyTheTitleBarIsPainted) {
+    group.isOpen = true;
+    group.inGroup = false;
+
+    const auto frame = groupPanelFrameRect(layout, group);
+
+    EXPECT_EQ(frame.getHeight(), UILayout::BAR_HEIGHT + UILayout::MARGIN)
+        << "the oracle paints a title strip, not a five-row frame";
+    EXPECT_LT(frame.getHeight(), layout.groupPanel.getHeight())
+        << "the empty window must be SHORTER than the full panel";
+}
+
+TEST_F(GroupPanelShapeTest, WithAGroupTheFullPanelIsPainted) {
+    group.isOpen = true;
+    group.inGroup = true;
+
+    EXPECT_EQ(groupPanelFrameRect(layout, group), layout.groupPanel);
+}
+
+// The strip and the full panel share an origin and a width -- joining a group
+// grows the frame downward and moves nothing.
+TEST_F(GroupPanelShapeTest, TheStripSharesTheFullPanelsOriginAndWidth) {
+    group.isOpen = true;
+    group.inGroup = false;
+    const auto strip = groupPanelFrameRect(layout, group);
+
+    EXPECT_EQ(strip.UpperLeftCorner, layout.groupPanel.UpperLeftCorner);
+    EXPECT_EQ(strip.getWidth(), layout.groupPanel.getWidth());
+}
+
+// The title is drawn at the panel's origin + 2, so the strip must be tall
+// enough to contain the text row it exists for.
+TEST_F(GroupPanelShapeTest, TheStripContainsTheTitleTextRow) {
+    group.isOpen = true;
+    group.inGroup = false;
+    const auto strip = groupPanelFrameRect(layout, group);
+
+    const irr::s32 titleTop = layout.groupPanel.UpperLeftCorner.Y + 2;
+    EXPECT_GE(titleTop + UILayout::BAR_HEIGHT, strip.UpperLeftCorner.Y);
+    EXPECT_LE(titleTop, strip.LowerRightCorner.Y);
+}
+
+// The window is still SHOWN with no group -- the oracle's defaults.ini writes
+// no Show=0 under [GroupWindow], and T377 saw it open. Only its body is gone.
+TEST_F(GroupPanelShapeTest, AnEmptyGroupWindowIsStillVisible) {
+    group.isOpen = true;
+    group.inGroup = false;
+    EXPECT_TRUE(groupPanelIsVisible(group));
+
+    group.isOpen = false;
+    EXPECT_FALSE(groupPanelIsVisible(group));
+}
+
+// Shape at the other resolutions the layout is computed for.
+TEST(GroupPanelShapeAtEveryResolution, TheEmptyWindowIsOneTitleStripEverywhere) {
+    const int kRes[][2] = {{640, 480}, {800, 600}, {1024, 768}, {1280, 1024}};
+    for (const auto& r : kRes) {
+        UILayout layout;
+        layout.computeLayout(r[0], r[1]);
+        GroupPanelState group;
+        group.isOpen = true;
+        group.inGroup = false;
+
+        const auto frame = groupPanelFrameRect(layout, group);
+        EXPECT_EQ(frame.getHeight(), UILayout::BAR_HEIGHT + UILayout::MARGIN)
+            << r[0] << "x" << r[1];
+        EXPECT_EQ(frame.getWidth(), layout.groupPanel.getWidth())
+            << r[0] << "x" << r[1];
+    }
+}

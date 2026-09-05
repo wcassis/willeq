@@ -191,7 +191,8 @@ public:
 	bool toggleSkillsWindow();
 
 	// ---- T368 (B101): the three keys that used to reach empty arms ----
-	// G (and the Alt+P alternate), P and Alt+B each reached a `break;` with
+	// The group, pet and buff keys (Alt+P / Alt+F1 / Alt+B since T382's B170
+	// re-measure) each reached a `break;` with
 	// the comment "visibility is driven by <auto> state", so the key did
 	// nothing at all -- a bound key that advertises a behaviour the tree does
 	// not have. Each now flips an `isOpen` its panel honours, exactly the
@@ -203,12 +204,15 @@ public:
 	// (defaults.ini writes `Show=0` only for a window whose default is
 	// closed). They do NOT record the default KEY for any of the three -- an
 	// eqclient.ini carries a KEYMAPPING_ line only for a binding the user
-	// changed -- so fable's G / P / Alt+B are left as they were rather than
-	// re-picked by argument. See B115.
+	// changed. T377 got them off the running client instead, by screenshotting
+	// its Options > Keys > UI page (review/T377/oracle/): Alt+P, Alt+F1 and
+	// Alt+B, which T382 wrote into registerDefaultBindings. B115 and B170 are
+	// closed.
 	//
 	// Composition with the auto-driven state (see static_panels.h):
-	//   group  -- toggle only; an open window with no group draws its empty
-	//             frame, and joining a group does not reopen a closed one
+	//   group  -- toggle only; an open window with no group draws its bare
+	//             title bar (T382, measured), and joining a group does not
+	//             reopen a closed one
 	//   pet    -- toggle AND hasPet
 	//   buffs  -- toggle AND the bar having at least one buff
 	bool toggleGroupWindow();

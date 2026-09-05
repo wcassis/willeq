@@ -667,9 +667,35 @@ void renderCastingBar(UIRenderer& ui, const UILayout& layout,
     }
 }
 
-// T368 (B101): the G / Alt+P toggle is the whole gate -- see the header.
+// T368 (B101): the Alt+P toggle is the whole gate -- see the header. (T382
+// re-measured the key itself against the oracle; B170.)
 bool groupPanelIsVisible(const GroupPanelState& state) {
     return state.isOpen;
+}
+
+// T382 (B170): the rect renderGroupPanel actually paints.
+//
+// MEASURED at the oracle, T377: with NO group the official client paints ONLY
+// its title bar -- a single strip reading "Group", no member rows, no empty
+// body, no reserved height (visible in every review/T377/oracle/*.png; the
+// clearest is T377_oracle_group_window_nogroup_open_1024x768.png). T368 gave
+// fable the full titled FRAME instead, five member rows tall and empty.
+//
+// The collapsed height is the title band the panel's own layout already
+// reserves -- BAR_HEIGHT + MARGIN is exactly where renderGroupPanel puts the
+// first member row -- so the strip and the full panel share one origin and
+// one width, and a group joining simply grows the frame downward.
+//
+// Split out as a free function because it is the static-panel test seam: the
+// shape is assertable with no Irrlicht device.
+irr::core::rect<irr::s32> groupPanelFrameRect(const UILayout& layout,
+                                              const GroupPanelState& state) {
+    irr::core::rect<irr::s32> frame = layout.groupPanel;
+    if (!state.inGroup) {
+        frame.LowerRightCorner.Y = frame.UpperLeftCorner.Y
+            + UILayout::BAR_HEIGHT + UILayout::MARGIN;
+    }
+    return frame;
 }
 
 void renderGroupPanel(UIRenderer& ui, const UILayout& layout,
@@ -680,7 +706,7 @@ void renderGroupPanel(UIRenderer& ui, const UILayout& layout,
     constexpr irr::s32 BAR_H = UILayout::BAR_HEIGHT;
     constexpr irr::s32 PAD = UILayout::MARGIN;
 
-    ui.drawPanel(layout.groupPanel);
+    ui.drawPanel(groupPanelFrameRect(layout, state));
 
     if (tb) {
         tb->addText("Group", layout.groupPanel.UpperLeftCorner.X + 4,
@@ -692,9 +718,10 @@ void renderGroupPanel(UIRenderer& ui, const UILayout& layout,
     irr::s32 y = layout.groupPanel.UpperLeftCorner.Y + BAR_H + PAD;
     irr::s32 barW = layout.groupPanel.getWidth() - 8;
 
-    // T368: with no group the frame and its title are all that draws. The
-    // member array is not consulted at all -- a disband leaves stale rows in
-    // it until the next GroupUpdate, and an open window must not show them.
+    // T382 (B170): with no group the TITLE BAR and its title are all that
+    // draws -- the frame above was already collapsed to that strip. The member
+    // array is not consulted at all: a disband leaves stale rows in it until
+    // the next GroupUpdate, and an open window must not show them.
     if (!state.inGroup) return;
 
     for (int i = 0; i < GroupPanelState::MAX_MEMBERS; ++i) {

@@ -354,8 +354,8 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             // U06f: New UI
             // T368 (B101): clear the pet, KEEP the window's open flag. A
             // wholesale `= {}` reset isOpen back to its default true, so a
-            // player who closed the pet window with P had it silently
-            // reopened by the next charm break.
+            // player who closed the pet window (Alt+F1 since T382) had it
+            // silently reopened by the next charm break.
             const bool wasOpen = renderer_->Frame().petPanelState_.isOpen;
             renderer_->Frame().petPanelState_ = {};
             renderer_->Frame().petPanelState_.isOpen = wasOpen;
