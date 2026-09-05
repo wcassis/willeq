@@ -554,11 +554,24 @@ it without taking that measurement first.
   Closes when: each is split or explicitly kept. Prov:
   `refactor/J_file_size_reclamation.md`, "Optional, NOT part of this batch".
 
-- **B026** (P) Two unmerged branches have never been audited —
+- ~~**B026** (P) Two unmerged branches have never been audited —
   `task/eqcpp-zoneprocess-track-b-remaining` and
   `task/eqemu-zone-line-transition-scenario`, both measured 300 commits ahead of
-  `fable` at this tip, both pre-dating the lettered programme. Closes when: a
-  survey unit reports what is in them. Prov: deferred item 22.
+  `fable` at this tip, both pre-dating the lettered programme.~~ **CLOSED
+  2026-09-05 by T372** (`refactor/T372_unmerged_branch_survey.md` §Review),
+  completing the survey `refactor/T305_branch_audit.md` began. The two branches
+  are ONE branch with two three-commit tips: `merge-base(A,B)` is `4b5f2c8d`,
+  **297 of each branch's 300 commits are shared**, and branch B's own three
+  commits are two markdown files with ZERO lines of code. Every commit is
+  classified: **(a) 8** already on `fable` by another route (T306's Daybreak +
+  RDP ports, H03/T322's logout deferral, K09's `kZoneOpcodeTable`), **(b) 265**
+  superseded (76 decomposition → Batches J/K/L/G, 180 Codex process
+  scaffolding → `EXECUTOR_PROTOCOL.md` + this board, 9 a second x86 GLES2
+  code path `fable` deliberately does not have), **(c) 24** still relevant —
+  now B130, B131 and B132. Both branches are recommended for DELETION (B's
+  immediately; A's once B130/B131 are worked and B132 is ruled on); a merge was
+  measured non-viable at ~25,000 lines inside conflict regions. Prov: deferred
+  item 22.
 
 - **B027** (P) Something on the eqemu server sets `Oraclerogue`'s persisted `gm`
   flag to 1 — four consecutive live units (T297, T320, T322, T323) saw it, none
@@ -2010,3 +2023,67 @@ it without taking that measurement first.
   `defaults.ini` proves it is SHOWN by default (no `Show=0` under
   `[GroupWindow]`) but not what is inside it; fable draws the titled frame with
   no member rows. Prov: T368 Leg A.
+
+## Added 2026-09-05 by T372 (the two never-audited branches, B026 closed)
+
+Every item below is the (c) residue of `task/eqcpp-zoneprocess-track-b-remaining`
+— the only content of either branch that `fable` does not already have by
+another route. Full classification and evidence:
+`refactor/T372_unmerged_branch_survey.md` §Review. Nothing was ported; each
+entry is described here in enough detail to work WITHOUT the branch, so the
+branches can be deleted independently of these items.
+
+- **B130** (A) `eqt::entities::EntitiesComponent::m_pending_door_clicks`
+  (`include/client/entities/entities_component.h`) is never cleared at zone
+  change. Door IDs are `uint8_t` and are reissued by each zone's `SpawnDoor`,
+  so a `ClickDoor` sent just before zoning leaves a stale entry that flags the
+  NEXT zone's first matching `OP_MoveDoor` with the same numeric id as
+  user-initiated — which changes the `userInitiated` field of the
+  `DoorStateChanged` event the renderer consumes, plus the debug log line. The
+  member has exactly four occurrences tree-wide (declaration; `insert` in
+  `SendClickDoor`, `src/client/entities/entities_component_world.cpp`; `erase`
+  in the `MoveDoor` handler, same file; one comment) and none of them is a
+  clear-on-zone-change. Closes when: the set is cleared on the same zone-cleanup
+  path that clears the door state manager, with a test. Prov: T372, branch
+  commit `ec7f14da`.
+
+- **B131** (B) `HC_OP_TargetCommandReply` is registered in `kZoneOpcodeTable`
+  (`src/client/zone/zone_dispatch.cpp`, the `OnTargetCommandResponse` entry) as
+  the bare literal `0x61f9` with only a trailing comment, while every sibling
+  entry uses an `HC_OP_*` enumerator and `eq_strings.cpp` can name it. Closes
+  when: the enumerator exists in `include/client/eq_opcodes.h` beside
+  `HC_OP_TargetCommand`, the table and `src/client/core/eq_strings.cpp` use it,
+  and (optionally, as the branch did) a self-check asserts every registered
+  opcode resolves to a name. Prov: T372, branch commit `6c082a4f`.
+
+- **B132** (C) `fable` has no live-server scenario lane and no exit-code
+  contract at all: `src/client/main.cpp` ends `return 0;` unconditionally, so
+  every live verification on this board finishes with a human reading a
+  transcript. The audited branch built one — a `--scenario <name> --timeout <n>`
+  client mode over a `ScenarioRunner` + `IScenario` registry; a taxonomy shared
+  verbatim between the client and the scripts (0 pass / 2 operator error /
+  3 stale session refused / 4 kick failed / 10 assertion failed / 11 timeout /
+  12 stack failure) with a guard so an external quit mid-run cannot masquerade
+  as success; a `MOD_SCENARIO` log module pinned above `--log-level` so pass/fail
+  survives quiet logging; one real scenario (`arena-idle`, a four-stage C→S→C
+  position-acceptance oracle asserting zone-in, a nudge, the throttled send, and
+  the server echo within 1.5 units); and `test/harness/`
+  (`precheck`→`reset`→`seed`→`normalize`→`run-scenario` over SQL fixtures, with
+  a world-telnet stale-session kick that `fable`'s `.eqemu-lock` convention
+  cannot see). `fable` has the half the branch lacks — `scripts/eqemu/up.sh` /
+  `down.sh` / `status.sh`. Both T305 and T372 recommend REBUILDING this against
+  `fable`'s architecture (~500 lines of C++ plus bash), not porting it; T305
+  sized it at 1–2 units. **Needs Will: this is new capability, not a defect
+  fix.** Closes when: Will rules build or drop. Prov: T372, the 22-commit
+  scenario cluster on `task/eqcpp-zoneprocess-track-b-remaining`.
+
+- **B133** (B) `AutomatedMode::setAutomationCallback`
+  (`include/client/mode/automated_mode.h`) has ZERO callers in `src/`,
+  `include/`, `tests/` or `benchmarks/` — the callback is invoked in
+  `src/client/mode/automated_mode.cpp` but nothing ever registers one, so
+  automated mode's per-tick hook is an unreached seam (the implemented-but-
+  unreached pattern again). It is also exactly the seam B132's scenario lane
+  would plug into, so the two should be ruled on together: wire it, or delete it
+  with the mode's command queue. Closes when: it has a caller or it is gone.
+  Prov: T372 (flagged incidentally by T305 at `9bb156ea`, still true at
+  `3964d100`).
