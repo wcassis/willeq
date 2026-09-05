@@ -22,11 +22,15 @@
  * off the payload. This struct is trivially copyable by construction; keep
  * it that way.
  *
- * NOT carried here: travel_type. tools/willeq_db_builder.cpp does not bind
- * spells_us.txt field 122, so the `spells` table has no travel_type column
- * and there is no value to copy (board B163). A field that is always zero
- * is exactly the kind of dead vocabulary this unit is removing; it is added
- * when B163 adds the column, not before.
+ * T384 (board B163, closed) added the fourth fact: travelType, spells_us.txt
+ * field 122 (eqemu spells_new.TravelType). T381 deliberately left it out
+ * because the `spells` table had no travel_type column and an always-zero
+ * field is exactly the dead vocabulary T381 was removing; the column exists
+ * now (willeq.db version 7), so the value is real -- 3 for the 85 spells
+ * with a projectile travel stage, 0 for the other 7,981. It is packed into
+ * the padding byte after `school`, so the struct is still 8 bytes
+ * (static_assert'd below) and the bridge event payloads did not grow.
+ * Carrying it does NOT wire projectiles: nothing consumes it yet (B165).
  */
 
 #ifndef EQT_SPELL_VISUAL_VOCABULARY_H
@@ -51,8 +55,19 @@ struct SpellVisualVocabulary {
 
     ResistType  resistType = ResistType::None;
     SpellSchool school     = SpellSchool::Alteration;
+
+    // spells_us.txt field 122, verbatim. Only two values occur in the
+    // shipped data: 0 (no travel stage) and 3 (projectile).
+    uint8_t     travelType = 0;
+
     int32_t     spellAffectIndex = kNoSpellAffectIndex;
 };
+
+// The struct is carried by value inside two bridge event payloads; T381
+// measured that it costs nothing there because it fits the variant's slack.
+// Keep it 8 bytes -- travelType went into the padding byte after `school`.
+static_assert(sizeof(SpellVisualVocabulary) == 8,
+              "SpellVisualVocabulary must stay 8 bytes (T381/T384)");
 
 }  // namespace EQ
 

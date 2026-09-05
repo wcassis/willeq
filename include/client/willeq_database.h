@@ -19,7 +19,7 @@ namespace EQT {
 // the client compares against it in WilleqDatabase::open() (T56). Bump this
 // AND the builder's setMeta() call together, in the same commit, whenever
 // the schema changes — they must never drift independently again.
-inline constexpr int kWilleqDbExpectedVersion = 6;  // T355: spells.endurance_cost added (T304 race_models.color at 5, T246 spell reagents at 4, T68 effect slots at 3)
+inline constexpr int kWilleqDbExpectedVersion = 7;  // T384: spells.target_anim + spells.travel_type added (T355 endurance_cost at 6, T304 race_models.color at 5, T246 spell reagents at 4, T68 effect slots at 3)
 
 // Runtime query stats for /pmem and /ft diagnostics
 struct DatabaseStats {
@@ -105,6 +105,11 @@ struct SpellInfo {
     uint16_t spellIcon = 0;
     uint16_t gemIcon = 0;
     uint16_t castAnim = 0;
+    // T384: spells_us.txt fields 121/122 (eqemu spells_new.TargetAnim /
+    // .TravelType). Verbatim. target_anim is the impact animation id;
+    // travel_type == 3 is the projectile population (85 spells).
+    uint16_t targetAnim = 0;
+    int32_t travelType = 0;
     uint8_t zoneType = 0;
     // Minimum level per class (16 classes, PlayerClass enum order:
     // Warrior..Berserker). 255 = class cannot use the spell.

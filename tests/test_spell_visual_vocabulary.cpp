@@ -181,6 +181,41 @@ TEST_F(SpellVisualVocabularyTest, EventPayloadCarriesResistSchoolAndAffectIndex)
 }
 
 // ---------------------------------------------------------------------------
+// T384 (board B163): the fourth fact, travelType, rides the same payload.
+// T381 left the slot empty because the `spells` table had no travel_type
+// column; willeq.db version 7 adds it.
+// ---------------------------------------------------------------------------
+
+TEST_F(SpellVisualVocabularyTest, VocabularyCarriesTravelType) {
+    // The struct is copied by value into two bridge event payloads; T381
+    // measured that it costs nothing there only because it fits the variant's
+    // slack. travelType went into the padding byte after `school`.
+    EXPECT_EQ(sizeof(SpellVisualVocabulary), 8u);
+
+    const SpellData* frost = spellDb_.getSpell(kFrostBolt);
+    ASSERT_NE(frost, nullptr);
+    const SpellData* flame = spellDb_.getSpell(kBurstOfFlame);
+    ASSERT_NE(flame, nullptr);
+
+    // Frost Bolt is one of the 85 travel_type == 3 spells; Burst of Flame is
+    // not, so a stuck-at-zero (the pre-T384 state) or a stuck-at-three read
+    // both fail.
+    eqt::state::SpellCastVisualStartedData started;
+    started.spellVisual = frost->visualVocabulary();
+    EXPECT_TRUE(started.spellVisual.known);
+    EXPECT_EQ(started.spellVisual.travelType, 3);
+
+    eqt::state::SpellCastVisualCompleteData complete;
+    complete.spellVisual = flame->visualVocabulary();
+    EXPECT_EQ(complete.spellVisual.travelType, 0);
+
+    // An id the game thread could not resolve carries no travel stage.
+    eqt::state::SpellCastVisualCompleteData unknown;
+    EXPECT_FALSE(unknown.spellVisual.known);
+    EXPECT_EQ(unknown.spellVisual.travelType, 0);
+}
+
+// ---------------------------------------------------------------------------
 // The B160 headline: two resist types, two colours.
 // ---------------------------------------------------------------------------
 

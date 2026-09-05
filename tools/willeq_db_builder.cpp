@@ -126,7 +126,9 @@ static int loadSpells(sqlite3* db, const std::string& filepath) {
             reagent_id_1 INTEGER, reagent_id_2 INTEGER, reagent_id_3 INTEGER, reagent_id_4 INTEGER,
             reagent_count_1 INTEGER, reagent_count_2 INTEGER, reagent_count_3 INTEGER, reagent_count_4 INTEGER,
             noexpend_reagent_1 INTEGER, noexpend_reagent_2 INTEGER, noexpend_reagent_3 INTEGER, noexpend_reagent_4 INTEGER,
-            endurance_cost INTEGER
+            endurance_cost INTEGER,
+            target_anim INTEGER,
+            travel_type INTEGER
         )
     )");
 
@@ -153,7 +155,7 @@ static int loadSpells(sqlite3* db, const std::string& filepath) {
         "reagent_id_1, reagent_id_2, reagent_id_3, reagent_id_4, "
         "reagent_count_1, reagent_count_2, reagent_count_3, reagent_count_4, "
         "noexpend_reagent_1, noexpend_reagent_2, noexpend_reagent_3, noexpend_reagent_4, "
-        "endurance_cost) "
+        "endurance_cost, target_anim, travel_type) "
         "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,"
         "?,?,?,?,?,?,?,?,?,?,?,?,"
         "?,?,?,?,?,?,?,?,?,?,?,?,"
@@ -162,7 +164,7 @@ static int loadSpells(sqlite3* db, const std::string& filepath) {
         "?,?,?,?,?,?,?,?,?,?,?,?,"
         "?,"
         "?,?,?,?,?,?,?,?,?,?,?,?,"
-        "?)",
+        "?,?,?)",
         -1, &stmt, nullptr);
 
     std::string line;
@@ -265,6 +267,18 @@ static int loadSpells(sqlite3* db, const std::string& filepath) {
         // spells_new.EndurCost -- that table is a positional import of this
         // same file). Verbatim: 0 means the spell costs no endurance.
         sqlite3_bind_int(stmt, bindIdx++, safeInt(EQ::SpellField::EnduranceCost));
+
+        // T384: the two remaining per-spell VISUAL fields, spells_us.txt
+        // fields 121 and 122 (= eqemu spells_new.TargetAnim / .TravelType at
+        // the same ordinals -- Columns()[121] and [122] in
+        // /mnt/projects/akk-stack/code/common/repositories/base/base_spells_new_repository.h;
+        // CastingAnim at [120] is the cast_anim already bound
+        // above). Verbatim, like every other spell column: target_anim is
+        // the impact animation id (non-zero for 3,608 of 8,066 spells) and
+        // travel_type == 3 marks the 85 spells with a projectile travel
+        // stage. Board B163.
+        sqlite3_bind_int(stmt, bindIdx++, safeInt(EQ::SpellField::TargetAnim));
+        sqlite3_bind_int(stmt, bindIdx++, safeInt(EQ::SpellField::TravelType));
 
         sqlite3_step(stmt);
         count++;
