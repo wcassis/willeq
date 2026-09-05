@@ -10,6 +10,8 @@ IF(EQT_GRAPHICS)
         test_constrained_renderer.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/constrained_renderer_config.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/dds_decoder.cpp
+        # T399 (board B235): every routed loader calls eqt::ResolveDataPath().
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
     )
     TARGET_LINK_LIBRARIES(test_constrained_renderer GTest::gtest_main ${FMT_LIB} ${JSONCPP_LIBRARIES})
     GTEST_DISCOVER_TESTS(test_constrained_renderer)
@@ -58,6 +60,8 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/graphics_archive_index.cpp
         ${CMAKE_SOURCE_DIR}/src/client/willeq_database.cpp
         ${CMAKE_SOURCE_DIR}/third_party/sqlite3.c
+        # T399 (board B235): every routed loader calls eqt::ResolveDataPath().
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
     )
     # P26: GPU upload thread (GLES2 only — needed by constrained_texture_cache)
     IF(EQT_GLES2)
@@ -92,6 +96,8 @@ IF(EQT_GRAPHICS)
     ADD_EXECUTABLE(test_hotkey_manager
         test_hotkey_manager.cpp
         ${CMAKE_SOURCE_DIR}/src/client/input/hotkey_manager.cpp
+        # T399 (board B235): every routed loader calls eqt::ResolveDataPath().
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(test_hotkey_manager PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_hotkey_manager GTest::gtest_main ${FMT_LIB} ${JSONCPP_LIBRARIES})
@@ -143,6 +149,8 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/graphics_archive_index.cpp
         ${CMAKE_SOURCE_DIR}/src/client/willeq_database.cpp
         ${CMAKE_SOURCE_DIR}/third_party/sqlite3.c
+        # T399 (board B235): every routed loader calls eqt::ResolveDataPath().
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
     )
     # P26: GPU upload thread (GLES2 only — needed by constrained_texture_cache)
     IF(EQT_GLES2)

@@ -7,6 +7,7 @@
 
 #include "client/skill/skill_cap_table.h"
 #include "common/logging.h"
+#include "client/data_paths.h"
 #include "common/packet_structs.h"
 
 #include <json/json.h>
@@ -31,9 +32,10 @@ bool SkillCapTable::load(const std::string& path) {
     m_load_attempted = true;
     m_loaded = false;
     m_entries.clear();
-    m_path = path;
+    // T399 (board B235): shipped data resolves through the one path rule.
+    m_path = eqt::ResolveDataPath(path);
 
-    std::ifstream file(path);
+    std::ifstream file(m_path);
     if (!file.is_open()) {
         // Loud on purpose: this is the "data regression" case. The skill
         // system stays permissive (pre-T159 behaviour) rather than refusing

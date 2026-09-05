@@ -71,6 +71,8 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/texture_upload_ledger.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eqe1_loader.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/background_thread_pool.cpp
+        # T399 (board B235): every routed loader calls eqt::ResolveDataPath().
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
     )
     # P26: GPU upload thread (GLES2 only — needed by constrained_texture_cache)
     IF(EQT_GLES2)
