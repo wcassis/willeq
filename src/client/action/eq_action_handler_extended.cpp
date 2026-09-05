@@ -719,6 +719,13 @@ void EqActionHandler::warp(const std::string& args) {
     m_eq.Commands().RequestWarp(args);
 }
 
+// T362 (B070): the entity form of /warp, already resolved to a spawn id by
+// ActionDispatcher::warp(). Thin-forwards like warp() above; the game side
+// no longer owns a name resolver at all.
+void EqActionHandler::warpToEntity(uint16_t spawnId) {
+    m_eq.Commands().RequestWarpToEntity(spawnId);
+}
+
 // Ported verbatim from eq_commands_movement.cpp's old zoning_cmd lambda --
 // SetZoningEnabled()/IsZoningEnabled() (eq.h) were already public, so no
 // new EverQuest surface was needed here (unlike warp/timeOfDay/bankToggle/

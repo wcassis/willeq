@@ -323,26 +323,13 @@ void eqt::entities::EntitiesComponent::ZoneProcessHPUpdate(const EQ::Net::Packet
 	}
 }
 
-Entity* eqt::entities::EntitiesComponent::FindEntityByName(const std::string& name)
-{
-	// Find entity by name (case-insensitive prefix match)
-	// Replace spaces with underscores in search term
-	std::string name_lower = name;
-	std::transform(name_lower.begin(), name_lower.end(), name_lower.begin(), ::tolower);
-	std::replace(name_lower.begin(), name_lower.end(), ' ', '_');
-	
-	for (auto& pair : ctx_.entities) {
-		Entity& entity = pair.second;
-		std::string entity_name_lower = entity.name;
-		std::transform(entity_name_lower.begin(), entity_name_lower.end(), entity_name_lower.begin(), ::tolower);
-		
-		if (entity_name_lower.find(name_lower) == 0) {  // Starts with
-			return &entity;
-		}
-	}
-	
-	return nullptr;
-}
+// T362 (B070): FindEntityByName() -- the unranked case-insensitive prefix
+// resolver, first match in spawn-id order wins -- is DELETED here. Its last
+// caller was /warp, which now resolves at ActionDispatcher::warp() with
+// EntityManager::findEntityByName(name, px, py, pz), the T244 nearest-first
+// ranked lookup /target, /face, /moveto and /follow already used. There is
+// one name resolver left in the client. See T359 for the four callers that
+// never needed a name at all (they already held the spawn id).
 
 void eqt::entities::EntitiesComponent::ListEntities(const std::string& search) const
 {

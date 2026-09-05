@@ -17,6 +17,8 @@
 #include "client/pet_constants.h"
 #include <cmath>
 #include <limits>
+#include <sstream>  // T362: /warp parses its own coordinate form
+#include <string>
 
 namespace eqt {
 namespace action {
@@ -355,12 +357,48 @@ ActionResult ActionDispatcher::showLocation() {
     return ActionResult::Success();
 }
 
+// T362 (B070). /warp took a user-typed name and shipped it to the game side,
+// which resolved it with EntitiesComponent::FindEntityByName -- an unranked
+// case-insensitive prefix match where the LOWEST SPAWN ID wins. With two
+// same-named mobs in the zone that teleported the player to a different one
+// than /target had picked. Same defect shape as T350's /face and T356's
+// /moveto and /follow, one command later, and the last caller of that
+// resolver (now deleted).
+//
+// The arg string is still parsed HERE rather than pushed down, because only
+// the name form needs resolving: an empty arg means "use the current target"
+// and three floats mean literal coordinates, and both of those stay the
+// handler's warp(args) exactly as before.
 ActionResult ActionDispatcher::warp(const std::string& args) {
     auto result = checkZoneConnection();
     if (!result.success) return result;
 
-    m_handler->warp(args);
-    return ActionResult::Success();
+    std::string trimmed = args;
+    while (!trimmed.empty() && trimmed[0] == ' ') {
+        trimmed = trimmed.substr(1);
+    }
+
+    float x, y, z;
+    std::istringstream coords(trimmed);
+    const bool is_coordinates = static_cast<bool>(coords >> x >> y >> z);
+
+    if (trimmed.empty() || is_coordinates) {
+        m_handler->warp(args);
+        return ActionResult::Success();
+    }
+
+    // Resolve ONCE, with the T244 nearest-first ranked overload -- see
+    // moveToEntity() in action_dispatcher.cpp for the full note.
+    auto& entities = m_state.entities();
+    const auto& player = m_state.player();
+    const auto* entity =
+        entities.findEntityByName(trimmed, player.x(), player.y(), player.z());
+    if (!entity) {
+        return ActionResult::Failure("Entity not found: " + trimmed);
+    }
+
+    m_handler->warpToEntity(entity->spawnId);
+    return ActionResult::Success("Warping to " + entity->name);
 }
 
 ActionResult ActionDispatcher::showOrSetZoning(const std::string& args) {

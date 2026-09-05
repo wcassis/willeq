@@ -177,6 +177,65 @@ TEST_F(ActionDispatcherTest, MoveToAndFollow_PickTheNearestMatch_NotTheLowestSpa
     EXPECT_EQ(handler.calls[1], "followEntity(277)");
 }
 
+// T362 (B070). The same defect, one command later: /warp shipped the raw
+// user-typed name to the game side, which resolved it with a THIRD resolver
+// (EntitiesComponent::FindEntityByName -- unranked prefix match, lowest spawn
+// id wins), so with two same-named mobs /warp teleported to a different one
+// than /target had picked. The dispatcher now resolves the ENTITY form once,
+// ranked nearest-first, and hands the handler a spawn id via warpToEntity();
+// the empty and coordinate forms still go down as the raw arg string.
+//
+// Same fixture as MoveToAndFollow above: the near beetle spawns SECOND and
+// carries the HIGHER spawn id, so an unranked first-match picks the far one.
+TEST_F(ActionDispatcherTest, Warp_ByName_PicksTheNearestMatch_NotTheLowestSpawnId) {
+    connectHandler();
+    connectZone();
+
+    eqt::state::Entity far;
+    far.spawnId = 68;
+    far.name = "a_fire_beetle000";
+    far.x = 100.0f;
+    far.y = 0.0f;
+    far.z = 0.0f;
+    state.entities().addEntity(far);
+
+    eqt::state::Entity near;
+    near.spawnId = 277;
+    near.name = "a_fire_beetle005";
+    near.x = 0.0f;
+    near.y = 10.0f;
+    near.z = 0.0f;
+    state.entities().addEntity(near);
+
+    ASSERT_TRUE(dispatcher->warp("a_fire_beetle").success);
+    ASSERT_EQ(handler.count(), 1u);
+    EXPECT_EQ(handler.calls[0], "warpToEntity(277)");
+}
+
+// The other two forms must NOT be name-resolved: they still reach the handler
+// as the raw arg string, parsed by CommandsComponent::RequestWarp().
+TEST_F(ActionDispatcherTest, Warp_CoordinatesAndEmptyStillGoDownAsTheRawArgString) {
+    connectHandler();
+    connectZone();
+
+    EXPECT_TRUE(dispatcher->warp("100 200 300").success);
+    EXPECT_TRUE(dispatcher->warp("").success);
+
+    ASSERT_EQ(handler.count(), 2u);
+    EXPECT_EQ(handler.calls[0], "warp(\"100 200 300\")");
+    EXPECT_EQ(handler.calls[1], "warp(\"\")");
+}
+
+// An unresolvable name fails at the dispatcher and never touches the handler
+// -- the same shape as moveToEntity/followEntity above.
+TEST_F(ActionDispatcherTest, Warp_UnknownName_FailsWithoutTouchingTheHandler) {
+    connectHandler();
+    connectZone();
+
+    EXPECT_FALSE(dispatcher->warp("no_such_entity").success);
+    EXPECT_TRUE(handler.empty());
+}
+
 TEST_F(ActionDispatcherTest, MoveToFamily_RequiresEntityAndRoutesCorrectly) {
     connectHandler();
     connectZone();

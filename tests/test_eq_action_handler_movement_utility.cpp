@@ -8,8 +8,13 @@
 // RecordingActionHandler) instead. What this file covers is what's new:
 //   - showLocation(): pure read + format of EverQuest::GetPosition().
 //   - warp(): EqActionHandler thin-forwards to EverQuest::RequestWarp(),
-//     which does all three destination-resolution forms (coords / entity
-//     name / current target) plus the no-destination usage message.
+//     which does the coordinate and current-target forms plus the
+//     no-destination usage message. T362 (B070) moved the ENTITY form out:
+//     ActionDispatcher::warp() resolves the name with the ranked
+//     nearest-first lookup and calls warpToEntity(spawnId) instead, so a name
+//     reaching RequestWarp() is by definition unresolvable and says so (see
+//     Warp_UnknownEntityName_PrintsNotFound below, and
+//     ActionDispatcherTest.Warp_ByName_* for the resolution itself).
 //   - showOrSetZoning(): read/set via the already-public
 //     SetZoningEnabled()/IsZoningEnabled().
 //   - campNow(): sit + ack + StartCampTimer(), verified via
@@ -70,10 +75,9 @@ TEST_F(EqActionHandlerMovementUtilityTest, ShowLocation_ReportsCurrentPosition) 
 }
 
 // ---------------------------------------------------------------------------
-// warp() -- forwards to EverQuest::RequestWarp(), which does all the
-// destination resolution. Full coverage of the three forms lives in the
-// plan's live leg; these confirm the forwarding path and the no-destination
-// usage message (the one path fully local to this method).
+// warp() -- forwards to EverQuest::RequestWarp(). These confirm the
+// forwarding path, the no-destination usage message and the not-found message
+// for a name (the paths fully local to this method after T362).
 // ---------------------------------------------------------------------------
 
 TEST_F(EqActionHandlerMovementUtilityTest, Warp_ToCoordinates_SetsPositionAndAcks) {

@@ -19,10 +19,11 @@
 // file's preamble now live in include/client/eq_movement_internal.h, which
 // all three TUs include.
 //
-// NOTE (carried from the pre-split header, still true): FindEntityByName /
-// ListEntities, SafeQueueZonePacket, StartUpdateLoop / StopUpdateLoop and
-// QueuePacket all sit between movement methods in eq.cpp and were
-// deliberately left there by F08 -- none of them is movement-exclusive.
+// NOTE (carried from the pre-split header): ListEntities,
+// SafeQueueZonePacket, StartUpdateLoop / StopUpdateLoop and QueuePacket all
+// sit between movement methods in eq.cpp and were deliberately left there by
+// F08 -- none of them is movement-exclusive. (FindEntityByName was in that
+// list until T362 deleted it with its last caller, /warp.)
 // NOTE: StartCombatMovement(uint16_t) was co-located here from eq.cpp by G03.
 //
 // K07 (Batch K, refactor/K_component_extraction.md): moved again, from
