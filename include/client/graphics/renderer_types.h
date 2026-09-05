@@ -25,6 +25,7 @@
 #include <utility>
 #include <optional>
 #include <glm/glm.hpp>
+#include "client/graphics/vision_type.h"
 #include "client/state/entity_pose_state.h"
 #include "client/graphics/eq/s3d_loader.h"
 #include "client/graphics/eq/zone_geometry.h"
@@ -247,16 +248,11 @@ enum class CameraMode {
     FirstPerson // First-person from player position
 };
 
-// Vision types affecting zone light visibility.
-// The race sets the base (PlayerCameraComponent::setPlayerRace -> baseVision_)
-// and buffs raise it above that base. T334 (B046): a buff value is APPLIED,
-// not accumulated -- the publisher recomputes the whole buff set on every fade
-// -- so vision does come back down, never below the racial base.
-enum class VisionType {
-    Normal,      // Base vision (25% intensity) - Human, Barbarian, Erudite, Vah Shir, Froglok
-    Infravision, // Heat vision (75% intensity, red-shifted) - Dwarf, Gnome, Half Elf, Ogre, Halfling
-    Ultravision  // Full dark vision (100% intensity) - Dark Elf, High Elf, Wood Elf, Troll, Iksar
-};
+// VisionType moved to client/graphics/vision_type.h (T360, BOARD B066) so
+// simulation_worker.h -- which this header INCLUDES, so the dependency cannot
+// run the other way -- can name it and use the single visionLightModifiers()
+// mapping instead of a hand-written, swapped switch. The spelling
+// EQT::Graphics::VisionType is unchanged; the include below re-exports it.
 
 // Extended target information for HUD display
 struct TargetInfo {

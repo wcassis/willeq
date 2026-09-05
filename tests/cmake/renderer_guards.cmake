@@ -453,6 +453,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_simulation_output_lifetime)
 ENDIF()
 
+# T360 Leg A (B066): the vision-type -> zone-light mapping. Drives the two real
+# production functions (applyVisionWeatherToZoneLights, computeLightAnimations)
+# through SimulationWorker::computeOnce() -- no Irrlicht device, no thread.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_vision_zone_lights
+        test_vision_zone_lights.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_vision_zone_lights PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_vision_zone_lights GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_vision_zone_lights)
+ENDIF()
+
 # Integration test: Beneficial Spell Casting (connects to real EQEmu server with graphics enabled)
 # This test verifies beneficial spell casting works correctly - casting buffs on self and verifying
 # they land properly. Tests casting multiple spells in series and buff refresh behavior.
