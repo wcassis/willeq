@@ -3614,7 +3614,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   the T80 memory-coverage baselines (Will)"). **Only Will re-blesses**, so
   T399 did not. Until then every unit that touches graphics will report this
   same gate FAIL and have to re-derive the attribution. Found by T399.~~ **DUPLICATE of B240 (T398 boarded the same 239-byte delta first) — struck at the T399 merge; the bless request stands under B240.**
-- **B261** (B) `config/snd_index_cache.json`, `config/gfx_index_cache.json` —
+- **B248** (B) `config/snd_index_cache.json`, `config/gfx_index_cache.json` —
   **two generated caches are git-tracked, and every client run rewrites them,
   so a plain `willeq` run dirties the working tree.** T399 measured it: a 40 s
   headless run (`--no-graphics`) left `config/snd_index_cache.json` modified
