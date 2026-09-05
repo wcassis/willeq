@@ -7,7 +7,7 @@
 // toggleInventory() was left an empty no-op stub when U07c2 (0f25cb57)
 // deleted WindowManager, and was never re-pointed at the static-panel
 // popup that replaced it. So `I` did nothing and the popup was reachable
-// only through the /newinv slash command, which had its own open-coded copy
+// only through the /inventory slash command, which had its own open-coded copy
 // of the toggle.
 //
 // This drives the REAL receiver (a KEY_KEY_I key-down, exactly as the
@@ -87,10 +87,10 @@ TEST_F(InventoryToggleTest, IKeyQueuesToggleInventoryAction) {
     EXPECT_EQ(actions[0].action, RendererAction::ToggleInventory);
 }
 
-// /newinv and I must be the SAME body -- that is why the toggle moved out
+// /inventory and I must be the SAME body -- that is why the toggle moved out
 // of the command handler. Drive them alternately and check they agree.
 TEST_F(InventoryToggleTest, SlashNewinvAndTheKeybindShareOneState) {
-    renderer.processSlashCommand("/newinv");
+    renderer.processSlashCommand("/inventory");
     EXPECT_TRUE(renderer.isInventoryOpen());
 
     // The keybind closes what the slash command opened.
@@ -102,7 +102,7 @@ TEST_F(InventoryToggleTest, SlashNewinvAndTheKeybindShareOneState) {
     receiver.OnEvent(KeyDown(irr::KEY_KEY_I, L'i'));
     pumpFrame();
     EXPECT_TRUE(renderer.isInventoryOpen());
-    renderer.processSlashCommand("/newinv");
+    renderer.processSlashCommand("/inventory");
     EXPECT_FALSE(renderer.isInventoryOpen());
 }
 

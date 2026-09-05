@@ -305,13 +305,68 @@ TEST_F(MergedHelpTest, T363_SkillsIsListedByHelpUnderGraphics) {
 // changed here: flipping the resolution order would shadow every category
 // that shares a name with a command, a strictly wider behaviour change than
 // this unit is scoped for.
-TEST_F(MergedHelpTest, T363_HelpSkillsResolvesToTheSkillsCategoryNotTheCommand) {
+// T365 (B092), renamed from T363_HelpSkillsResolvesToTheSkillsCategoryNotThe-
+// Command. `skills` is BOTH a registry-3 command (T363's rename) and a
+// registry-2 category, and the category used to win outright, leaving the
+// command's own detail block unreachable by name. Resolution is now
+// command-first, with the category appended after a note -- so both are in
+// the one response.
+TEST_F(MergedHelpTest, T365_HelpSkillsPrintsTheCommandFirstThenTheCategory) {
     HelpResponse r = BuildHelpResponse("help skills", &game, processor.get());
     ASSERT_TRUE(r.handled);
     EXPECT_FALSE(ContainsSubstring(r.lines, "Unknown command"));
+    // The command detail, which B092 made unreachable.
+    EXPECT_TRUE(ContainsSubstring(r.lines, "=== skills ==="));
+    EXPECT_TRUE(ContainsSubstring(r.lines, "Registry: renderer (graphics)"));
+    // The category, still printed, after the note.
+    EXPECT_TRUE(ContainsSubstring(r.lines, "\"Skills\" is also a category:"));
     EXPECT_TRUE(ContainsSubstring(r.lines, "=== Skills ==="));
     EXPECT_TRUE(ContainsSubstring(r.lines, "/bandage"));
-    EXPECT_FALSE(ContainsSubstring(r.lines, "Registry: renderer (graphics)"));
+    // Order: the command block precedes the note.
+    size_t cmdAt = r.lines.size(), noteAt = r.lines.size();
+    for (size_t i = 0; i < r.lines.size(); ++i) {
+        if (cmdAt == r.lines.size() && r.lines[i].find("Registry: renderer") != std::string::npos) cmdAt = i;
+        if (noteAt == r.lines.size() && r.lines[i].find("is also a category") != std::string::npos) noteAt = i;
+    }
+    EXPECT_LT(cmdAt, noteAt);
+}
+
+// T365: the same collision one command over -- `/inventory` (renamed from
+// `/newinv` by this unit) against registry 2's "Inventory" category.
+TEST_F(MergedHelpTest, T365_HelpInventoryPrintsTheCommandFirstThenTheCategory) {
+    HelpResponse r = BuildHelpResponse("help inventory", &game, processor.get());
+    ASSERT_TRUE(r.handled);
+    EXPECT_TRUE(ContainsSubstring(r.lines, "=== inventory ==="));
+    EXPECT_TRUE(ContainsSubstring(r.lines, "Registry: renderer (graphics)"));
+    EXPECT_TRUE(ContainsSubstring(r.lines, "\"Inventory\" is also a category:"));
+}
+
+// T365: a category that is NOT also a command name must be unchanged -- no
+// note, no "Unknown command", just the category block.
+TEST_F(MergedHelpTest, T365_ACategoryThatIsNotACommandStillResolvesToTheCategory) {
+    HelpResponse r = BuildHelpResponse("help Movement", &game, processor.get());
+    ASSERT_TRUE(r.handled);
+    EXPECT_FALSE(ContainsSubstring(r.lines, "Unknown command"));
+    EXPECT_FALSE(ContainsSubstring(r.lines, "is also a category"));
+    EXPECT_TRUE(ContainsSubstring(r.lines, "=== Movement ==="));
+}
+
+// T365 (B090): the registry-2 half of the `inv` collision. It is /invite's
+// alias, and registry 2 is tried before registry 3 -- which is why
+// ConsoleInputHandler rewrites the bare `inv` keyword to `inventory` instead
+// of letting it fall through, and why `/inventory` has no `inv` alias.
+TEST_F(MergedHelpTest, T365_InvIsInvitesAliasNotInventorys) {
+    HelpResponse r = BuildHelpResponse("help inv", &game, processor.get());
+    ASSERT_TRUE(r.handled);
+    EXPECT_TRUE(ContainsSubstring(r.lines, "=== invite ==="));
+    EXPECT_FALSE(ContainsSubstring(r.lines, "=== inventory ==="));
+}
+
+// T365: the old `/newinv` spelling is gone from every registry.
+TEST_F(MergedHelpTest, T365_NewInvIsUnknownToHelp) {
+    HelpResponse r = BuildHelpResponse("help newinv", &game, processor.get());
+    ASSERT_TRUE(r.handled);
+    EXPECT_TRUE(ContainsSubstring(r.lines, "Unknown command"));
 }
 
 TEST_F(MergedHelpTest, T363_NewSkillsIsUnknownToHelp) {

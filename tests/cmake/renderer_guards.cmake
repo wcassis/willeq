@@ -345,7 +345,7 @@ ENDIF()
 
 # T294: the `I` keybind must reach a working IrrlichtRenderer::toggleInventory()
 # (it was an empty stub left by U07c2, so the inventory popup was reachable
-# only via /newinv). Drives the real RendererEventReceiver + drainActions() +
+# only via /inventory). Drives the real RendererEventReceiver + drainActions() +
 # processPlayerInput() on a bare, never-Init()'d IrrlichtRenderer -- same
 # no-device idiom as test_spell_gem_key_race below.
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)

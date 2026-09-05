@@ -87,6 +87,16 @@ its own — so the provider merges both. **Flagged as a deliberate widening of t
 plan's step 1**, which named one registry. Registry 3 has no `getCompletions()`
 to ask.
 
+> **CORRECTED by T365 (B091), 2026-09-05.** The last sentence was true and the
+> conclusion drawn from it was not. `/help` does NOT merge "exactly those two":
+> `BuildCategoryOverview` also appends registry 3's whole Graphics category from
+> `AllRendererCommands()`. So `/help` listed THREE registries while Tab offered
+> two, and the ~70 renderer commands were not tab-completable at all — the exact
+> divergence this paragraph says was designed out. T365 gave the static catalog
+> a completion source (`eqt::help::RendererCommandCompletions`, the same shared
+> helper) and `Application::commandCompletions()` unions all three. The claim
+> holds now; it did not when it was written.
+
 Both dead functions are now called: `Application::commandCompletions()` unions
 `CommandRegistry::getCompletions()` with `CommandProcessor::getCompletions()`,
 sorts and de-duplicates.
@@ -242,6 +252,8 @@ wiring statement is ever dropped, this golden fails.
    consumed while chat is focused. The arm is eight lines.
 2. **Completing from two registries, not one** — argued above. Widens the
    plan's step 1 deliberately, to keep Tab and `/help` in agreement.
+   *(T365/B091: two was still one short — `/help` lists three. All three are
+   unioned now; see the correction above.)*
 3. **`build/CMakeCache.txt` pointed `EQT_GLES2_IRRLICHT_DIR` at
    `/mnt/projects/fable/main/third_party/irrlicht-gles2-x86`, not slot1's own.**
    Mid-unit, a build failed with `ld: cannot find

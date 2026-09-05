@@ -425,22 +425,34 @@ void ConsoleInputHandler::processCommand(const std::string& cmd) {
     }
 
     // UI commands
-    if (command == "inventory" || command == "inv") {
-        m_pendingActions[static_cast<size_t>(InputAction::ToggleInventory)] = true;
+    //
+    // T363 (B058) deleted the `skills` interception here; T365 (B090) deleted
+    // the other two. All three set an InputAction -- ToggleSkills,
+    // ToggleInventory, ToggleGroup -- that NOTHING consumed
+    // (InputActionBridge::processDiscreteActions has no arm for any of them),
+    // so the words did nothing whatsoever. The enumerators are gone too.
+    //
+    // `inventory` now falls through to m_rawCommands, which Application's
+    // unified dispatcher hands VERBATIM (no leading slash) to
+    // DispatchSlashCommand, reaching registry 3's `/inventory` -- renamed
+    // from `/newinv` by this unit so the word IS a catalog name, the same
+    // shape T363 gave `skills`.
+    //
+    // `inv` cannot simply fall through: registry 2 registers it as an ALIAS
+    // OF `/invite`, and registry 2 is tried before registry 3, so a bare
+    // `inv` line would invite a group member instead of opening the bag.
+    // It is rewritten to the primary name here, which is the only place that
+    // knows the user meant the inventory window.
+    if (command == "inv") {
+        m_rawCommands.push("inventory");
         return;
     }
-    // T363 (B058): the `skills` keyword used to be intercepted here into
-    // the ToggleSkills one-shot -- an action NOTHING consumes
-    // (InputActionBridge::processDiscreteActions has no arm for it), so the
-    // word did nothing at all. Deleted: it now falls through to
-    // m_rawCommands, which Application's unified dispatcher hands verbatim to
-    // DispatchSlashCommand, reaching registry 3's `/skills` -- the one body
-    // in FrameComponent::toggleSkillsWindow(). ToggleInventory and ToggleGroup
-    // just below/above are dead in exactly the same way; boarded as B090.
-    if (command == "group") {
-        m_pendingActions[static_cast<size_t>(InputAction::ToggleGroup)] = true;
-        return;
-    }
+    // `group` had no consumer to route to either: RendererAction::ToggleGroup
+    // (a different enum, reached by the G keybind) is an EMPTY arm in
+    // renderer_frame_input.cpp -- "Group panel visibility is driven by inGroup
+    // state" -- so there is no group-window toggle anywhere in the tree to
+    // send the word to. The keyword is deleted rather than routed to nothing;
+    // it now falls through and is reported unrecognized, which is the truth.
 
     // Spell casting (cast 1-8)
     if (command == "cast") {

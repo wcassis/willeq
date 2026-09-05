@@ -424,13 +424,18 @@ void SlashCommandsComponent::processSlashCommand(const std::string& command) {
         // alias -- the real client's name for the window now works. The body
         // moved to FrameComponent::toggleSkillsWindow() so the K keybind
         // reaches THIS behaviour (popup mutual exclusion included) and the two
-        // cannot drift again; same shape as T294's /newinv.
+        // cannot drift again; same shape as T294's /inventory.
         chat(fmt::format("New UI skills: {}",
             ctx_.Frame().toggleSkillsWindow() ? "OPEN" : "CLOSED"));
-    } else if (cmd == "/newinv") {
+    } else if (cmd == "/inventory") {
         // T294: ONE body, shared with the `I` keybind — the toggle used to
         // be written out here and IrrlichtRenderer::toggleInventory() (what
         // `I` actually reaches) was an empty stub, so the key did nothing.
+        // T365 (B090): renamed from /newinv, no alias -- the same `new*`
+        // naming Will ruled against for /skills in B058, and it is what lets
+        // the bare `inventory` keyword on piped stdin reach this body. `inv`
+        // is deliberately NOT an alias: registry 2 already owns it for
+        // /invite and would win the dispatch.
         owner_.toggleInventory();
         chat(fmt::format("New UI inventory: {}",
             owner_.isInventoryOpen() ? "OPEN" : "CLOSED"));

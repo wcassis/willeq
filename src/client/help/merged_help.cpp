@@ -171,10 +171,14 @@ std::vector<std::string> BuildCategoryDetail(const std::string& category,
     return lines;
 }
 
+// `found` reports whether ANY registry knew the name; the caller needs that to
+// decide between the command detail and a same-named category (T365/B092).
 std::vector<std::string> BuildCommandDetail(const std::string& name,
                                              const ui::CommandRegistry* game,
-                                             const action::CommandProcessor* action) {
+                                             const action::CommandProcessor* action,
+                                             bool* found = nullptr) {
     std::vector<std::string> lines;
+    if (found) *found = true;
 
     // Registry 1 is tried first, matching the real dispatch order -- see
     // Application::dispatchToActionOrRenderer's own doc comment. A name (or
@@ -218,6 +222,7 @@ std::vector<std::string> BuildCommandDetail(const std::string& name,
         return lines;
     }
 
+    if (found) *found = false;
     lines.push_back(fmt::format("Unknown command: {}", name));
     return lines;
 }
@@ -278,18 +283,52 @@ HelpResponse BuildHelpResponse(const std::string& cmdBody,
     // supported this before T143 -- there was nothing to merge a category
     // query across) or a command/alias (the pre-existing behaviour,
     // preserved and simply extended across both registries).
+    //
+    // T365 (B092): it may name BOTH, and until this unit the category won
+    // outright, which made the COMMAND's own detail block unreachable by
+    // name. T363 hit it the moment `/newskills` became `/skills` (registry 2
+    // has a "Skills" category), and `/inventory` collides with registry 2's
+    // "Inventory" category the same way.
+    //
+    // The order is COMMAND FIRST, then the category appended after a note.
+    // Reason: the argument of `/help <x>` is a command name in the official
+    // Titanium client -- it has no merged categories at all, so there is no
+    // oracle behaviour to match for the collision itself, but there IS one
+    // for the un-collided case, and command-first is the reading that keeps
+    // every command's detail reachable by its own name. Nothing is lost the
+    // other way either: the category still prints, below.
+    std::string matchedCategory;
     for (const auto& cat : MergedCategories(game, action)) {
         if (EqualsIgnoreCase(cat, args)) {
-            response.lines = BuildCategoryDetail(cat, game, action);
-            return response;
+            matchedCategory = cat;
+            break;
         }
     }
-    if (EqualsIgnoreCase(RendererCommandCategory(), args)) {
-        response.lines = BuildCategoryDetail(RendererCommandCategory(), game, action);
+    if (matchedCategory.empty() && EqualsIgnoreCase(RendererCommandCategory(), args)) {
+        matchedCategory = RendererCommandCategory();
+    }
+
+    bool commandFound = false;
+    std::vector<std::string> commandLines = BuildCommandDetail(args, game, action, &commandFound);
+
+    if (commandFound) {
+        response.lines = std::move(commandLines);
+        if (!matchedCategory.empty()) {
+            response.lines.push_back(
+                fmt::format("\"{}\" is also a category:", matchedCategory));
+            for (auto& line : BuildCategoryDetail(matchedCategory, game, action)) {
+                response.lines.push_back(std::move(line));
+            }
+        }
         return response;
     }
 
-    response.lines = BuildCommandDetail(args, game, action);
+    if (!matchedCategory.empty()) {
+        response.lines = BuildCategoryDetail(matchedCategory, game, action);
+        return response;
+    }
+
+    response.lines = std::move(commandLines);  // "Unknown command: <args>"
     return response;
 }
 
