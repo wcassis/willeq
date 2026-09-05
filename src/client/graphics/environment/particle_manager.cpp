@@ -135,11 +135,21 @@ bool ParticleManager::init(const std::string& eqClientPath) {
         return true;
     }
 
-    // Load environment effects config
+    // T397 / board B221: both literals below are CWD-relative, as ~40 shipped
+    // data paths across src/client are (the census is board B235).
+    // SpellEffectsConfig::load() now resolves its argument through
+    // eqt::ResolveDataPath() and returns false -- loudly -- when the file is
+    // missing, so this call works from any working directory.
+    // EnvironmentEffectsConfig is the same shape and is NOT fixed here: its
+    // loader is weather/ambient territory owned by a parallel unit. It is
+    // boarded, not forgotten.
     EnvironmentEffectsConfig::instance().load("config/environment_effects.json");
 
-    // Load spell effects config
-    SpellEffectsConfig::instance().load("config/spell_effects.json");
+    if (!SpellEffectsConfig::instance().load("config/spell_effects.json")) {
+        LOG_ERROR(MOD_GRAPHICS,
+                  "ParticleManager: spell effect presets are the built-in fallback table, "
+                  "not the shipped config -- spell visuals will differ from the shipped effect");
+    }
 
     // Load particle atlas texture via constrained cache
     std::string atlasPath = kAtlasTexturePath;

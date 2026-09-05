@@ -3151,7 +3151,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   the rest of B161's unreached creation half. Same family as B195. Found by
   T395 while tracing B204.
 
-- **B221** (B) `src/client/graphics/environment/particle_manager.cpp`
+- ~~**B221** (B) `src/client/graphics/environment/particle_manager.cpp`
   `ParticleManager::ParticleManager()` loads `config/spell_effects.json` by a
   **CWD-relative path**, and every spell preset reads it through
   `SpellEffectsConfig::instance()`. Started from anywhere but the repo root the
@@ -3163,7 +3163,26 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   frames until it loaded the config the way the renderer does. No other data
   file is reached this way (`willeq.db` and the EQ tree are both configured
   paths). Closes when the path is resolved against the config directory the
-  client was given. Found by T395.
+  client was given. Found by T395.~~ **CLOSED by T397 Leg A**
+  (`refactor/T397_spell_effects_config_path.md`). `SpellEffectsConfig::load()`
+  resolves its argument through the new `eqt::ResolveDataPath()`
+  (`include/client/data_paths.h`, `src/client/core/data_paths.cpp`), which
+  tries the CWD-relative path FIRST -- so a run from the repo root, the visual
+  gate included, reads exactly the bytes it read before -- then
+  `$WILLEQ_DATA_ROOT`, then the running executable's directory and its
+  parents. Pinned by `tests/test_data_paths.cpp`, 7 tests, 2 red pre-fix.
+  **THREE CORRECTIONS to the text above, all measured.** (a) The load is in
+  `ParticleManager::init()`, not the constructor. (b) The fallback on a
+  MISSING FILE is `SpellEffectsConfig::setDefaults()`'s built-in style table,
+  whose `impact` is a 12-particle burst -- still wrong, but not a permanent
+  emitter. `EmitterConfig`'s struct defaults (the permanent 10/s emitter) are
+  what you get when `load()` is **never called at all**, which is the harness
+  state T395 measured, not the production miss. (c) "No other data file is
+  reached this way" is FALSE and was the unit's biggest surprise: `willeq.db`
+  is `"data/willeq.db"` in `application.cpp`, `willeq.json` itself defaults to
+  a bare relative name, and the census found ~40 such literals under
+  `src/client`. That census is **B235**; there was no existing resolution to
+  reuse, so `ResolveDataPath()` is the first one.
 
 - **B218** (B) `src/client/graphics/ui/static_panels.cpp` `renderInventoryPopup`
   / `assets/ui_atlas` — **there is no coin sprite in fable's UI atlas.** The
@@ -3189,6 +3208,35 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   together on screen. Needs Will's eye on the owed live pair before anything
   moves: either the doll narrows to the oracle's proportion or the purse does
   not follow the oracle here. Prov: T393 Review.
+
+### Added by T397 (2026-09-05)
+
+- **B235** (B) `src/client/**` — **~40 shipped data files are named by
+  CWD-relative literals; the client only works because everything starts it
+  from the repo root.** B221 was filed as a one-off; the T397 census shows it
+  is the tree-wide convention. Measured with
+  `grep -rnE '"(config|data|assets)/[^"]*"' src/client`: `data/willeq.db`
+  (`application.cpp`), `config/constrained_presets.json`,
+  `config/race_models.json`, `config/debug.json`, `config/hotkeys.json`,
+  `config/display_settings.json`, `config/eqe1_archives.json`,
+  `config/environment_effects.json`, `config/weather_effects.json`,
+  `config/detail_objects.json`, `config/tree_wind.json`,
+  `config/music_events.json`, `config/snd_index_cache.json`,
+  `config/gfx_index_cache.json`, `config/zones/<zone>/{weather,tree_wind,tree_overrides}.json`,
+  `data/item_models.json`, `data/eqe1_texture_index.json`, `data/zone_lines*.json`,
+  `data/region_maps`, `data/detail/zones`, and eight `data/textures/*.bmp`
+  loads (particle/detail/boids/tumbleweed/storm/rain/snow overlays, the
+  software cursor, the spell-particle fallback). `willeq.json` itself defaults
+  to the bare name `"willeq.json"` (`include/client/application.h`), so there
+  is no configured root to resolve against either. T397 added the one
+  resolution -- `eqt::ResolveDataPath()`, `include/client/data_paths.h` -- and
+  routed **only** `config/spell_effects.json` through it (B221's closing
+  condition). Closes when every literal above goes through it, or a deliberate
+  decision records that the client is repo-root-only and the doc says so.
+  **Two of these are another unit's territory today**:
+  `config/environment_effects.json` and `config/weather_effects.json` sit in
+  the weather/ambient files T396 owns, which is why T397 left them. Found by
+  T397 Leg A.
 
 ### Struck / amended by T386
 
