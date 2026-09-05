@@ -1680,7 +1680,14 @@ it without taking that measurement first.
   frame's response to mean ambient is a power law whose exponent two independent
   probe points give as 1.1402 and 1.1409), not chosen. fable now measures
   **x1.473** on the search crop and **x1.780** combined against the oracle's
-  x1.554 — see **B080** for why the residual is not smaller. Pinned by
+  x1.554. ~~see **B080** for why the residual is not smaller.~~ **T367 (2026-09-05)
+  re-checked that attribution and it is WRONG: B080's 35x night gap does not
+  reproduce — at T361's own spot fable's night is 1.30x BRIGHTER than the
+  oracle's, not 35x darker (T367 Leg A table). T361's residual therefore has
+  some other cause and is still unexplained. T367 did not re-measure the vision
+  ratios themselves (its change moves the night baseline at that spot by +7.2%,
+  one distant light now surviving), so a re-measurement against the oracle table
+  is OWED. See B110 for the term that does separate the two clients.** Pinned by
   `tests/test_vision_ambient.cpp` (3 of 6 cases fail against the pre-T361
   behaviour). Prov: T361 Review, `review/T361/README.md`. `visionType` has exactly two consumers tree-wide
   (`applyVisionWeatherToZoneLights` and `computeLightAnimations`), both of which
@@ -1700,26 +1707,37 @@ it without taking that measurement first.
 
 ## Added 2026-09-05 by T361 (the Ultravision oracle)
 
-- **B080** (A) `src/client/graphics/renderer/irrlicht_renderer.cpp`
+- ~~**B080** (A) `src/client/graphics/renderer/irrlicht_renderer.cpp`
   `IrrlichtRenderer::updateTimeOfDay` / the zone lighting as a whole —
-  **fable's night is ~35x darker than the official client's on near geometry,
-  and that gap is what stops T361's vision match from closing.** Measured at
-  the same spot, same zone, same forced 22:00, same 300x300 near-wall crop:
-  the oracle reads **0.0643** linear grey and fable **0.0018**. On a whole
-  700x420 world crop the oracle reads 0.0332 and fable 0.0019 — a factor of
-  17. The consequence is not cosmetic: because fable's night baseline is so
-  much lower, the SAME ambient raise is a much larger *fraction* of it, so no
-  single ambient parameter can reproduce both the oracle's near-wall ratio
-  (x1.325) and its whole-frame ratio (x1.554). T361 solved for the whole-frame
-  ratio and lands at x1.473 / x1.780 (crop-dependent) with the near wall
-  over-lifting at x2.07. The suspected cause is that fable's zone point lights
-  do not reach the near wall at all at this spot while the oracle's lamps
-  plainly do (fable's own log: `ZONE LIGHTS: 218 total (no scene nodes,
-  data-only)` — they scale colours but light nothing), but that is a LEAD, not
-  a finding. Closes when fable's unbuffed night frame is within a small factor
-  of the oracle's at the same spot, measured the same way, and T361's residual
-  is re-checked against the oracle table. Prov: T361 Review,
-  `review/T361/README.md`.
+  **fable's night is ~35x darker than the official client's on near geometry.**~~
+  **STRUCK by T367 (`b572846f`, branch `task/T367-night-brightness-oracle`): the
+  35x DOES NOT REPRODUCE, and the lead underneath it DOES.** T367 ran the same
+  four-state sequence on both clients — two qeynos2 coordinates x forced 11:00 /
+  22:00, camera untouched inside each client — and read every state off a flat
+  window of a video or a frame dump, never a single still.
+  **The 35x was two different views, not two brightnesses.** `#goto` leaves the
+  official client at heading 0.00 (its own `#loc` says so) while fable keeps its
+  camera yaw, so the two frames at one coordinate show different geometry;
+  T361's cross-client crop was measuring composition. Measured properly at a
+  **lamp-free** spot at 22:00, fable reads **0.005502** linear grey and the
+  oracle **0.004245** — fable is **1.30x BRIGHTER**, not 35x darker. **fable's
+  night ambient floor is not the defect**, and neither is gamma (no sRGB
+  framebuffer in either client, and the two agree to 1.34x at noon, where a 2.2
+  exponent would also have shown).
+  **The lead was right:** fable's own census read `ZoneLightVis: 0/218 visible`
+  on EVERY frame of a whole session — including 6 units from a radius-40 lamp,
+  where 54 lights were inside the render distance and all 54 were thrown away by
+  the PVS or frustum test. The lights were never "data-only"; they were 100%
+  CULLED before selection, so `uLightPos[1..7]` were never fed. **Fixed** in
+  `SimulationWorker::computeLightVisibility` / `computeObjectLightVisibility`
+  (`src/client/graphics/sim_visibility.cpp`): a light whose own influence sphere
+  contains the camera survives PVS and frustum culling; a light outside its own
+  radius is culled exactly as before. Census after: `1/218` and `5/218` zone,
+  `3/107` and `14/107` object. Worth **+7.2%** on the night frame and −0.2% by
+  day. Pinned by `tests/test_zone_light_culling.cpp` (3 of 4 fail pre-fix).
+  **The residual is NOT this and is boarded separately as B110**: the official
+  client lights zone geometry from the WLD's baked per-vertex colours and fable
+  discards them. Prov: T367 Review, `review/T367/README.md`.
 
 - ~~**B068** (B) `src/client/entities/entities_component_world.cpp`
   `EntitiesComponent::SendSpawnAppearance` / `SendAnimation` — **these two
@@ -1942,3 +1960,38 @@ it without taking that measurement first.
   panels to stay auto-driven. Prov: T365 Leg A.
 
 
+
+## Added 2026-09-05 by T367 (the night oracle)
+
+- **B110** (C) `src/client/graphics/eq/wld_fragments_mesh.cpp`
+  `WldLoader::parseFragment36` / `src/client/graphics/eq/zone_geometry.cpp` /
+  `src/client/graphics/zone_shader_sources_gles2.h` — **fable throws away the
+  zone's baked per-vertex lighting, which is what the official client uses to
+  light geometry at night.** `parseFragment36` reads `header.colorCount` and
+  then `ptr += sizeof(uint32_t) * header.colorCount;` under the comment
+  `// Skip colors`; the mesh builders then write `SColor(255,255,255,255)` into
+  every textured zone vertex, so `aColor` in the zone shader is a constant.
+  **MEASURED, T367** (temporary instrumentation on `parseFragment36`, one
+  qeynos2 load, reverted before commit — `review/T367/logs/qeynos2_baked_vertex_colours.txt`):
+  all **3,830** `R<n>_DMSPRITEDEF` region meshes carry `colorCount ==
+  vertexCount`, **72,436** zone vertices carry a colour, the vertex-weighted
+  mean byte is **44.2/255 (0.173)** with per-mesh minima at 0 and maxima at 255
+  — a real baked light distribution, not a constant. The consequence, measured
+  live at one coordinate 6 units from a lamp: the official client's night sits
+  only **17.1x** below its own day there while fable's sits **47.5x** below, so
+  a lamp is worth **2.8x** of night light that fable does not have. T367's
+  culling fix (see B080) restores the point-light path and is worth 1.07x of
+  that 2.8x; the rest is the baked colours plus the fact that fable evaluates
+  zone point lights PER VERTEX on large zone triangles (only the player light is
+  per pixel), which smears a lamp instead of making a pool.
+  **This is class C, not A, because it cannot be done without Will**: the
+  colours have no field on `ZoneGeometry::vertices` (loader + both mesh builders
+  + the atlased builder change), and the shader currently computes
+  `vColor = baseLighting * uTintColor * aColor`, under which multiplying EQ's
+  baked light by a 0.08 night ambient makes the world DARKER, not brighter —
+  EQ's model is that the baked colour IS the light. Changing the zone lighting
+  equation moves every pixel golden, so a deliberate re-bless with the gate's
+  contact sheet is unavoidable and may not be self-blessed. Closes when the
+  baked colours are loaded, the lighting equation matches the oracle, and the
+  lamp-spot day/night ratio lands near the oracle's 17.1x.
+  Prov: T367 Review, `review/T367/README.md`.

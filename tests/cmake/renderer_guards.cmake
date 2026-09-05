@@ -465,6 +465,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_vision_zone_lights)
 ENDIF()
 
+# T367 (B080): zone/object lights whose influence sphere contains the camera
+# must survive PVS and frustum culling. Drives computeLightVisibility,
+# computeObjectLightVisibility and computeLightSelection through
+# SimulationWorker::computeOnce() -- no Irrlicht device, no server, no assets.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_zone_light_culling
+        test_zone_light_culling.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_zone_light_culling PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_zone_light_culling GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_zone_light_culling)
+ENDIF()
+
 # Integration test: Beneficial Spell Casting (connects to real EQEmu server with graphics enabled)
 # This test verifies beneficial spell casting works correctly - casting buffs on self and verifying
 # they land properly. Tests casting multiple spells in series and buff refresh behavior.

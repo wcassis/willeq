@@ -810,6 +810,10 @@ private:
     void computeVisibility(const SimulationInput& input, SimulationOutput& output);
     void computeObjectVisibility(const SimulationInput& input, SimulationOutput& output);
     void computeLightVisibility(const SimulationInput& input, SimulationOutput& output);
+    // T367 (B080): true when the zone light at lightIndex has the camera
+    // inside its own influence radius, in which case neither PVS nor frustum
+    // culling may remove it. See sim_visibility.cpp.
+    bool lightRadiusReachesCamera(size_t lightIndex, float distSq) const;
     void computeObjectLightVisibility(const SimulationInput& input, SimulationOutput& output);
     void computeLightSelection(const SimulationInput& input, SimulationOutput& output);
     void computeFireFlicker(const SimulationInput& input, SimulationOutput& output);
