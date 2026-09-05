@@ -570,7 +570,7 @@ it without taking that measurement first.
   the offset/rotation pair really does live on `EntityRenderer`) and deleted.
   Prov: Batch L survey.
 
-- **B034** (B) `include/client/graphics/irrlicht_renderer.h` — **SIX of the
+- ~~**B034** (B)~~ `include/client/graphics/irrlicht_renderer.h` — **SIX of the
   eight CLOSED by K15, and the survey's claim was FALSE for the other two.**
   Deleted: ~~`lastOccCamX_`~~ (with its `lastOccCamY_/Z_` and the whole
   `lastOccFwd{X,Y,Z}` line — the occlusion camera-movement gate was never
@@ -1019,7 +1019,7 @@ it without taking that measurement first.
 
 ## Added 2026-09-04 by the L12 Review (Batch L close-out)
 
-- **B050** (B) **CLOSED by L13 (2026-09-04): the `owner_.` residue in the
+- ~~**B050** (B)~~ **CLOSED by L13 (2026-09-04): the `owner_.` residue in the
   eleven renderer components is 1,065 -> 151 (-85.8%), and every one of the 151
   is accounted for.** L12 measured 1,065 against its own 300-use STOP and
   boarded the distribution rather than widening the rule on an executor's
