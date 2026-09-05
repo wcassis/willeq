@@ -947,7 +947,17 @@ it without taking that measurement first.
   appears the instant the loot window opens. **fable plays NOTHING here and does
   not bank the coin either** — `CommandsComponent::ZoneProcessMoneyOnCorpse`
   (`src/client/commands/combat_actions.cpp:487`) logs and returns, with the
-  comment `// For now, just log it`. That gap is **B172**. The recipe that worked,
+  comment `// For now, just log it`. That gap is **B172**, **CLOSED T382 Leg A (`0d7751fe`)**: the handler now
+banks the four denominations through `PlayerState::addCurrency`, publishes
+`CurrencyChanged`, pushes `PlaySoundIntent{BUY_ITEM}` (138) and prints eqstr
+12072 `You receive %1 from the corpse.` with the counts -- so **THIS CLAUSE'S
+LAST ROW IS WIRED AND TESTED, and clause 1 is CLOSED**: every measured coin,
+container, buy, sell and combine row is now either wired or pinned silent. What
+is still UNMEASURED is narrower than a row: what the official client prints
+when ONE denomination is zero (T377's single capture had all four non-zero).
+fable prints all four; a corpse with, say, no silver would settle it in one
+line of a future live session. The LIVE proof of the corpse row itself (hear
+138, watch the purse move on fable) is OWED. The recipe that worked,
   for the next unit: zone **`arena`** (no clutter), `#npctypespawn 113423`
   (`Gargalek_Daemado`, loottable 13487, 1144–7572 copper, a GIANT so the corpse is
   big), `/target Gargalek`, **`#damage 100000` not `#kill`** (`#kill` calls
@@ -970,7 +980,11 @@ it without taking that measurement first.
   high-trivial recipe.
   (2) `InventoryManager::pickupMoney()` has **NO production caller** — fable has
   no money-slot UI, so the coin sound is wired at the right publisher but is
-  unreachable until that UI exists. (3) SIX `SoundId` names that do NOT describe
+  unreachable until that UI exists. **RE-CONFIRMED T382 Leg A (`0d7751fe`)**:
+  still zero production callers, and deliberately left alone — the corpse grant
+  is a different gesture with a different publisher
+  (`CommandsComponent::ZoneProcessMoneyOnCorpse`), so wiring one did not reach
+  the other. (3) SIX `SoundId` names that do NOT describe
   the file their id names, left at their old values because T328 measured UI
   events only: `MELEE_HIT` (119 = SwingBig), `MELEE_MISS` (120 = SwordBlk),
   `KICK` (121 = Impale), `PUNCH` (122 = Stab), `SPELL_FIZZLE`
@@ -2235,7 +2249,7 @@ it without taking that measurement first.
   Prov: T367 Review, `review/T367/README.md`.
 ## Added 2026-09-05 by T368
 
-- **B115** (B) The official client's DEFAULT KEYS for the group, pet and buff
+- ~~**B115** (B) The official client's DEFAULT KEYS for the group, pet and buff
   windows are not recorded in any file on disk, so fable's `G` / `Alt+P` (group),
   `P` (pet) and `Alt+B` (buff) in `src/client/input/hotkey_manager.cpp` are
   UNVERIFIED against the oracle. Measured by T368, without the server:
@@ -2270,7 +2284,7 @@ it without taking that measurement first.
   window). **The empty group window paints ONLY ITS TITLE BAR** — a single strip
   reading `Group`, no member rows, no empty body, no reserved height — visible in
   every `review/T377/oracle/*.png`; fable draws a titled *frame*. The rebinding
-  and the empty-window shape are **B170**. Prov: T368 Leg A; T377 Review.
+  and the empty-window shape are **B170**. Prov: T368 Leg A; T377 Review.~~ **STRUCK T382 (`0d7751fe`, `7f6128f8`)**: the screenshot B115 asked for exists -- `review/T377/oracle/T377_oracle_options_keys_UI_page1..4.png` -- and both halves of the entry were acted on by T382 Leg B. The three primaries are now `Alt+P` / `Alt+F1` / `Alt+B` with no alternates, `G` and `P` are bound to nothing, and the empty group window paints only its title bar. See B170.
 
 ---
 
@@ -2543,7 +2557,7 @@ branches can be deleted independently of these items.
 
 ## Added 2026-09-05 by T377 (owed live proofs 5)
 
-- **B170** (A) `src/client/input/hotkey_manager.cpp` `HotkeyManager::registerDefaultBindings`
+- ~~**B170** (A) `src/client/input/hotkey_manager.cpp` `HotkeyManager::registerDefaultBindings`
   — **two of fable's three window keys do not match the official client, and one
   of them collides with an official binding.** MEASURED T377 against the oracle's
   own Options > Keys > **UI** page (`review/T377/oracle/T377_oracle_options_keys_UI_page1..4.png`),
@@ -2562,7 +2576,7 @@ branches can be deleted independently of these items.
   row. **A second, cheaper half:** the oracle's group window with NO group paints
   **only its title bar** — a single strip reading `Group`, no member rows, no
   body, no reserved height — while fable draws the titled *frame* T368 gave it
-  (`FrameComponent::groupPanelIsVisible`, `static_panels.h`). Prov: B115; T377 Review.
+  (`FrameComponent::groupPanelIsVisible`, `static_panels.h`). Prov: B115; T377 Review.~~ **STRUCK T382 Leg B (`7f6128f8`)**: `registerDefaultBindings` binds group to `Alt+P` alone (the `G` primary deleted), pet to `Alt+F1` (the `P` binding deleted), buff unchanged -- one binding each, matching the oracle's empty Alternate column. `config/hotkeys.json`, `README.md` and the two CLAUDE.md key tables follow, as do the stale `G`/`P` mentions in `frame_component.h`, `static_panels.{h,cpp}`, `irrlicht_bridge.cpp` and `test_frame_component.cpp`. The `HotkeyAction` enum is untouched, so `DocCounts` nets the same count. The second half too: `renderGroupPanel` paints the new free function `groupPanelFrameRect()`, which collapses the frame to the title band the layout already reserves (`BAR_HEIGHT + MARGIN`) when there is no group, sharing the full panel's origin and width. 13 tests (7 in `test_hotkey_manager.cpp`, 6 in `test_static_ui_panels.cpp`); 6 of them fail pre-fix.
 
 - **B171** (A) `src/client/graphics/vision_ambient.cpp` /
   `IrrlichtRenderer::updateTimeOfDay` — **the vision floor's per-channel gains
@@ -2580,7 +2594,7 @@ branches can be deleted independently of these items.
   channel gains are solved against the oracle table the same way the scalar was,
   and `tests/test_vision_ambient.cpp` pins them. Prov: T377 Review; B067.
 
-- **B172** (A) `src/client/commands/combat_actions.cpp`
+- ~~**B172** (A) `src/client/commands/combat_actions.cpp`
   `eqt::commands::CommandsComponent::ZoneProcessMoneyOnCorpse` — **corpse coin is
   parsed, logged and DROPPED: no sound, and no credit to the player's purse.**
   The body ends `// For now, just log it - money is auto-looted when we loot any
@@ -2593,4 +2607,4 @@ branches can be deleted independently of these items.
   `BUY_ITEM` at `InventoryManager::pickupMoney()`, which is a different gesture
   and still has NO production caller — see B036 clause 2.) Closes when the
   handler pushes `PlaySoundIntent{BUY_ITEM}`, banks the four denominations, and a
-  test pins both. Prov: T377 Review; B036.
+  test pins both. Prov: T377 Review; B036.~~ **STRUCK T382 Leg A (`0d7751fe`)**: `ZoneProcessMoneyOnCorpse` banks the four denominations through `PlayerState::addCurrency` (a thin delta wrapper over `setCurrency`, still the tree's ONE purse writer and the function `OP_MoneyUpdate` credits through), publishes the same `CurrencyChanged` projection `OP_MoneyUpdate` publishes, pushes `PlaySoundIntent{BUY_ITEM}` and prints eqstr 12072 with the counts. Two judgement calls, both recorded in the code: the list is spelled WITHOUT the Oxford comma eqstr 13108 carries, because that is what the oracle's pixels show (13108 is deliberately not used); and "all four denominations zero" is the guard that keeps the sound and the line off every non-grant shape -- eqemu's six `SendLootReqErrorPacket` responses, a corpse with no money, and the autosplit path all carry four zeros. A zero in ONE denomination is still printed; the official client's zero form is UNMEASURED (T377's single capture had all four non-zero) and the test says so. 11 tests (`tests/test_corpse_coin.cpp` + 3 in `tests/test_ui_sound_events.cpp`); 7 of them fail pre-fix. **The LIVE proof -- loot a corpse on fable, hear 138, watch the purse move -- is OWED to the next unit that holds the eqemu lock.**
