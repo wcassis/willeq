@@ -113,6 +113,11 @@ void SpellManager::update(float delta_time)
                 d.targetId = m_current_target_id;
                 d.spellId = m_current_spell_id;
                 d.isSuccess = true;
+                // T395 (board B204): no OP_Action ever arrived on this path --
+                // that is what "timed out" means -- so this synthetic
+                // completion is the only chance to paint the cast. Arm the FX
+                // here the animation packet would have.
+                d.isCastAnimation = true;
                 d.isPlayerCast = true;
                 d.isTargetCast = false;
                 // T381 (B160): the timeout path publishes the same completion
@@ -1038,6 +1043,15 @@ void SpellManager::handleAction(const EQT::SpellActionInfo& action)
         d.spellId = spell_id;
         d.spellName = spell_name;
         d.isSuccess = is_success_packet;
+        // T395 (board B204): the CAST-ANIMATION packet is what paints the
+        // spell. eqemu queues effect_flag == 0 to the target, the caster AND
+        // every client in range (Mob::SpellOnTarget: "this causes the caster
+        // animation and the particles around the target"), then repeats the
+        // packet with effect_flag == 4 -- to the caster and target ONLY --
+        // once the spell lands, purely so a buff icon appears. Gating the
+        // impact FX on isSuccess therefore made a bystander's spell visual
+        // unreachable by construction, which is exactly what T386 measured.
+        d.isCastAnimation = (action.effect_flag == 0);
         d.isPlayerCast = isPlayerCast;
         d.isTargetCast = isTargetCast;
         d.completionAnim = completion_anim;

@@ -53,7 +53,8 @@ static std::string trim(const std::string& s) {
 // does not log, while the log line it did print ended in a CR and rendered as
 // a clean "BuyItem.WAV" -- which is why T386 measured 31 silent sounds and
 // could not see the cause. Four other tables carried the same taint
-// (eqstrings, dbstrings, race_data, login_strings). Read lines through this,
+// (eqstrings, dbstrings, login_strings, and the race_data T395 later
+// deleted). Read lines through this,
 // never std::getline() directly, for any file that comes from the client.
 static bool readLine(std::istream& in, std::string& line) {
     if (!std::getline(in, line)) return false;
@@ -926,56 +927,19 @@ static int loadAnimationSounds(sqlite3* db, const std::string& filepath) {
 }
 
 // ============================================================================
-// Race data loader (RaceData.txt)
+// Race data loader (RaceData.txt) -- DELETED (T395, board B216)
 // ============================================================================
-
-static int loadRaceData(sqlite3* db, const std::string& filepath) {
-    std::ifstream file(filepath);
-    if (!file.is_open()) {
-        fprintf(stderr, "WARNING: cannot open %s\n", filepath.c_str());
-        return 0;
-    }
-
-    // RaceData.txt: race_id ^ gender ^ unknown ^ unknown ^ anim_ids...
-    // Store as race_id -> full raw field data for flexibility
-    execSQL(db, R"(
-        CREATE TABLE IF NOT EXISTS race_data (
-            race_id INTEGER NOT NULL,
-            gender INTEGER NOT NULL,
-            raw_fields TEXT NOT NULL,
-            PRIMARY KEY (race_id, gender)
-        )
-    )");
-
-    execSQL(db, "BEGIN TRANSACTION");
-
-    sqlite3_stmt* stmt;
-    sqlite3_prepare_v2(db,
-        "INSERT OR REPLACE INTO race_data (race_id, gender, raw_fields) VALUES (?,?,?)",
-        -1, &stmt, nullptr);
-
-    std::string line;
-    int count = 0;
-    while (readLine(file, line)) {
-        if (line.empty()) continue;
-        auto fields = split(line, '^');
-        if (fields.size() < 4) continue;
-
-        int raceId = std::atoi(fields[0].c_str());
-        int gender = std::atoi(fields[1].c_str());
-
-        sqlite3_reset(stmt);
-        sqlite3_bind_int(stmt, 1, raceId);
-        sqlite3_bind_int(stmt, 2, gender);
-        sqlite3_bind_text(stmt, 3, line.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_step(stmt);
-        count++;
-    }
-
-    sqlite3_finalize(stmt);
-    execSQL(db, "COMMIT");
-    return count;
-}
+//
+// loadRaceData() built a `race_data` table of 475 (race_id, gender,
+// raw_fields) rows into every willeq.db, where raw_fields was the whole
+// RaceData.txt line stored verbatim. Nothing ever read it: a grep for
+// `race_data` and `getRaceData` across src/ include/ tests/ tools/
+// benchmarks/ docker/ scripts/ found only this file, and because the line was
+// never parsed there was no consumer to preserve either. Removed with the
+// table; WilleqDatabase::open() validates metadata.version and never a table
+// list, so this was content-only and kWilleqDbExpectedVersion did not move.
+// Pinned by WilleqDatabaseShippedContentTest.RaceDataTableIsGone. Do not
+// rebuild it without a named reader.
 
 // ============================================================================
 // Music index loader (mp3index.txt)
@@ -1410,16 +1374,6 @@ int main(int argc, char** argv) {
         auto elapsed = std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - start).count();
         printf("  anim_sounds:  %6d entries (%.0f ms)\n", n, elapsed);
-        totalEntries += n;
-    }
-
-    // ── Race Data ──
-    {
-        auto start = std::chrono::steady_clock::now();
-        int n = loadRaceData(db, eqPath + "/RaceData.txt");
-        auto elapsed = std::chrono::duration<double, std::milli>(
-            std::chrono::steady_clock::now() - start).count();
-        printf("  race_data:    %6d entries (%.0f ms)\n", n, elapsed);
         totalEntries += n;
     }
 

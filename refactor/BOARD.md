@@ -3019,39 +3019,82 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   fixed in T394** — T394 was a revert and holds no server lock. B210 is left
   free for T391. Prov: T394 Review; B203.
 
-- **B204** (B) `src/client/graphics/spell_visual_fx_nodes.cpp` /
-  `SpellVisualFX` — **no spell impact visual is drawn at all, on the observing
-  client or anywhere, so T381's Fire/Cold colours have no consumer that reaches
-  a frame.** MEASURED T386 (`review/T386/` §3): Testcaster cast Burst of Flame
-  (93) and Frost Bolt (54) on itself with GM invulnerability OFF (both landed,
-  `effect_flag=4`); the observing client 15 units away with the caster in frame
-  logged both `SpellAction` packets and its pixels did not move — a 150x120 crop
-  centred on the caster holds mean channels 0.2766/0.3571/0.4349 before the fire
-  cast and 0.2768/0.3571/0.4349 at the impact (fourth decimal = idle
-  animation). This is consistent with T381's own review (all four visual gates
-  sit inside `if (m_particle_manager)`, and `createProjectile()` — the one gate
-  with a population — has no client caller), but it **removes the standing
-  explanation**: the particle manager is NOT null in production (`ParticleManager
-  initialized`, `SimulationWorker: Particle pool initialized (size=1024)` are
-  both in the observing client's log). Closes when a landed spell paints
-  something an observing client can see and the two vocabulary colours differ on
-  screen. Prov: T386 Review §3; B160; B161; B165.
+- ~~**B204** (B) `src/client/graphics/spell_visual_fx_nodes.cpp` /
+  `SpellVisualFX` — no spell impact visual is drawn at all, on the observing
+  client or anywhere.~~ **STRUCK T395 (`4537d40f`)**: the chain is NOT intact,
+  and the two broken links found are both upstream of the atlas, so B162/B165
+  are untouched.
+  1. **THE GATE, and it made the visual unreachable by construction.**
+     `SpellManager::handleSpellAction` set `isSuccess = (effect_flag == 4)` and
+     `irrlicht_bridge.cpp` gated `createSpellComplete()` + `createImpact()` on
+     it. eqemu sends TWO OP_Action packets per cast (`Mob::SpellOnTarget`,
+     `/mnt/projects/akk-stack/code/zone/spells.cpp`): `effect_flag = 0` --
+     whose own comment reads *"Actual cast action - this causes the caster
+     animation and the particles around the target"* -- goes to the target,
+     the caster AND `entity_list.QueueCloseClients(...)`, i.e. everyone in
+     range; the `effect_flag = 0x04` repeat, *"what causes the buff icon to
+     appear"*, is queued **only to the target client and the caster client**.
+     So the impact was gated on the one packet a bystander never receives.
+     T386's own logs say so and nobody read them that way: the observer
+     (`review/T386/logs/fable_session_spells13_observer.log:952,1161`) records
+     `effect_flag=0` twice and `effect_flag=4` **never**, while the caster's
+     log records the 4. Fixed by carrying `isCastAnimation = (effect_flag == 0)`
+     on `SpellCastVisualCompleteData` and gating the FX on that; `isSuccess`
+     keeps meaning "landed" for the chat lines, the buff icon and
+     `completeCast()`. The cast-timeout path arms it too (no OP_Action ever
+     arrives there).
+  2. **THE ORIGIN BURST.** `SimulationWorker::computeParticles` runs its SPAWN
+     phase **before** its spell-effect LIFECYCLE phase, and only the lifecycle
+     phase refreshed an entity-attached emitter's position from
+     `pi.entityPositions` -- which is always one frame behind, because the
+     renderer resolves only what the PREVIOUS frame's `positionRequestEntities`
+     named. So an impact emitter was created at `(0,0,0)` and was still there
+     on its first spawn frame: with culling off it fired its whole one-shot
+     burst at the world origin and latched `isBurstSpawned` (**measured: every
+     particle 1,020.76 units from the target**), and with culling on -- the
+     shipped configuration -- it was culled there instead, spending a frame out
+     of the impact preset's 0.1 s `emitterLifetime` (below ~20 fps it is dead
+     before its position ever arrives). Fixed by refreshing an attached
+     emitter's position in the spawn phase, before the lifetime check and the
+     frustum test.
+  Pinned by `tests/test_spell_impact_visual.cpp` (5 tests, **4 red pre-fix**).
+  **The live pixel proof is OWED to T389** — this unit held no server lock, so
+  "a landed spell paints something an observing client can see, and the two
+  vocabulary colours differ on screen" is still unmeasured. Note for whoever
+  takes it: **`#castspell` is the wrong driver for the cast-glow half.** eqemu
+  broadcasts `OP_BeginCast` to close clients (`Mob::SendBeginCast`,
+  `QueueCloseClients`), but T386's observer log carries no BeginCast at all
+  because a GM `#castspell` never sends one — use a real gem cast.
+  Prov: T386 Review §3; B160; B161; B165.
 
-- **B205** (B) the eqstr for "your spell failed to land … invulnerable" —
-  **fable prints a 45-character hex blob in front of the spell name in a line
-  the player sees.** MEASURED T386, twice in one session
-  (`review/T386/logs/fable_session_selfcast.log`, screenshot
-  `review/T386/fable/T386_fable_selfcast_invulnerable_refusal_800x600.png`):
-
-      Your spell 0FFFFF000000004F00000000000000000000000000000Burst of Flame has failed to land on yourself because you are invulnerable.
-      Your spell 0FFFFF00000000500000000000000000000000000000Frost Bolt has failed to land on yourself because you are invulnerable.
-
-  The blob looks like a colour/format prefix the message assembler passes
-  through as literal text instead of consuming (`0FFFFF` reads as a colour
-  code; the differing `…4F…` / `…50…` bytes are sequential and are NOT the two
-  spell ids, so what they are is unidentified and this entry does not guess).
-  Closes when the line reads
-  `Your spell Burst of Flame has failed to land …` and a test pins it.
+- ~~**B205** (B) the eqstr for "your spell failed to land … invulnerable" —
+  fable prints a 45-character hex blob in front of the spell name in a line the
+  player sees.~~ **STRUCK T395 (`54643545`)**. It is **not an eqstr and not a
+  colour code**: it is an eqemu **SAY-LINK**, and `0FFFFF` is not `0F` + `FFFF`
+  but `action_id = 0` followed by `item_id = 0xFFFFF` (`SAYLINK_ITEM_ID`).
+  `Mob::SpellOnTarget` wraps the spell name in
+  `Saylink::Silent("#castspell <id>", <name>)`
+  (`/mnt/projects/akk-stack/code/common/say_link.cpp`,
+  `EQ::SayLinkEngine::GenerateLink()`), which emits
+  `0x12 <fixed-width hex body> <display text> 0x12`. The body width is
+  client-version specific and the Titanium/"6.2" layout is exactly **45**
+  characters: `%1X` action_id, `%05X` item_id, `%05X`×5 augments, `%1X`
+  is_evolving, `%04X` evolve_group, `%1X` evolve_level, `%08X` hash. The two
+  measured blobs therefore decode as `item_id = 0xFFFFF` with
+  **`augment_2 = 0x4F` (79)** and **`0x50` (80)** -- consecutive `saylink`
+  table row ids for `#castspell 93` and `#castspell 54` (a SILENT saylink puts
+  its id in augment_2, a spoken one in augment_1), which is why the board saw
+  them as "sequential and not the spell ids". Two corrections to this entry's
+  own text: the delimiters ARE in the line and were invisible in the
+  transcription (`cat -A` on
+  `review/T386/logs/fable_session_selfcast.log:1041,1879` shows `^R` = 0x12 on
+  both sides), and the second blob quoted here is one character short -- both
+  are 45 on the wire. Fixed by `eqt::StripSayLinks()`
+  (`include/client/say_link_text.h`, `src/client/core/say_link_text.cpp`),
+  applied at the two consumers that print server-authored text:
+  `ZoneComponent::OnSpecialMesg` and `ChatComponent::ZoneProcessChannelMessage`
+  (a player's item link is the same wire shape). Pinned by
+  `tests/test_say_link_text.cpp` (7 tests, **2 red pre-fix**).
   Prov: T386 Review §3.
 
 ### Added / struck by T392 (2026-09-05)
@@ -3074,16 +3117,53 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   both ways. **The suite now has NO expected failures**; every doc above was
   struck in the same commit. Prov: T392 Review.
 
-- **B216** (B) `tools/willeq_db_builder.cpp` `loadRaceData` / the `race_data`
-  table -- **475 rows built into every `willeq.db` and read by nothing.** A grep
-  for `race_data` and `getRaceData` across `src/ include/ tests/ tools/
-  benchmarks/ docker/ scripts/` returns only the builder itself (the four
-  `tool_race_db` hits are about opening the database, not this table); the
-  schema is `(race_id, gender, raw_fields)` where `raw_fields` is the whole
-  `RaceData.txt` line stored verbatim, i.e. nothing ever parsed it. Found while
-  auditing which tables T392's CRLF fix changed. Closes when the loader and the
-  table are deleted (and the builder's `--data-path` docs say so), or a consumer
-  is named. Prov: T392 Review.
+- ~~**B216** (B) `tools/willeq_db_builder.cpp` `loadRaceData` / the `race_data`
+  table -- 475 rows built into every `willeq.db` and read by nothing.~~
+  **STRUCK T395 (`fd8f2779`)**: the census was re-run over `src/ include/
+  tests/ tools/ benchmarks/ docker/ scripts/` and still returned only the
+  builder, so `loadRaceData()`, its `CREATE TABLE`, its call site and the
+  `race_data:` line of the builder's report are gone (a tombstone replaces the
+  loader). **The schema version did NOT move**: `WilleqDatabase::open()`
+  validates `metadata.version` and nothing else -- there is no table list to
+  satisfy -- so this is content-only and `kWilleqDbExpectedVersion` stays at 7.
+  `data/willeq.db` rebuilt (mode 664) with T392's identity proof: 14 tables ->
+  13, and all **eleven** content tables byte-identical either side (row count
+  plus a sha256 of the full `SELECT *` -- `spells` 8,066, `dbstrings` 8,305,
+  `eqstrings` 5,901, `item_models` 3,661, `equipment_textures` 2,623,
+  `sound_assets` 2,165, `equipment_models` 1,000, `login_strings` 470,
+  `race_models` 190, `music_files` 24, `animation_sounds` 9). `metadata`
+  differs only in `build_date` and `total_entries` (32,889 -> 32,414 = the 475
+  deleted rows exactly). Pinned by
+  `WilleqDatabaseShippedContentTest.RaceDataTableIsGone`.
+  Prov: T392 Review.
+
+### Added by T395 (2026-09-05)
+
+- **B220** (B) `src/client/graphics/environment/particle_manager.cpp`
+  `ParticleManager::removeSpellEffect(effectID)` **cannot remove anything**:
+  it writes the id into `cmd.preAssignedEffectID`, while the worker's
+  `ParticleCommand::RemoveSpellEffect` arm (`src/client/graphics/sim_particles.cpp`)
+  matches on `cmd.effectID`, which the setter never touches and which defaults
+  to 0 -- and effect ids start at 1, so the loop can never hit. It has **ZERO
+  callers** in `src/ include/ tests/ tools/ benchmarks/ docker/` (the B166
+  rule), so nothing is broken today; it is a wired-wrong method waiting for its
+  first caller. Either fix the field and give it a caller, or delete it with
+  the rest of B161's unreached creation half. Same family as B195. Found by
+  T395 while tracing B204.
+
+- **B221** (B) `src/client/graphics/environment/particle_manager.cpp`
+  `ParticleManager::ParticleManager()` loads `config/spell_effects.json` by a
+  **CWD-relative path**, and every spell preset reads it through
+  `SpellEffectsConfig::instance()`. Started from anywhere but the repo root the
+  load fails silently and each preset falls back to `EmitterConfig`'s own
+  defaults -- which are a different effect, not a degraded one: the shipped
+  `impact` style is a 36-particle one-shot burst with a 0.1 s emitter lifetime,
+  and the fallback is a **permanent** emitter at 10 particles/second. MEASURED
+  by T395: `tests/test_spell_impact_visual.cpp` produced zero particles in two
+  frames until it loaded the config the way the renderer does. No other data
+  file is reached this way (`willeq.db` and the EQ tree are both configured
+  paths). Closes when the path is resolved against the config directory the
+  client was given. Found by T395.
 
 - **B218** (B) `src/client/graphics/ui/static_panels.cpp` `renderInventoryPopup`
   / `assets/ui_atlas` — **there is no coin sprite in fable's UI atlas.** The
@@ -3150,8 +3230,8 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   **B203**. Do not re-strike it from a desk fit.
 
 - **B160** — its owed live pair is **NOT PROVEN** and the reason is bigger than
-  the colours; see **B204** (nothing is drawn). **B202 (the two-client session
-  segfaults) is STRUCK by T391 (`e332162f`), so that half of the block is
-  gone** — a two-client session now survives 5 minutes — but T391 did not have
-  the budget to take the fire-vs-frost observer pair, so B160's proof is still
-  owed.
+  the colours; see **B204** (nothing was drawn -- the two causes were found
+  and fixed by T395, so the live pair is worth re-attempting). **B202 (the
+  two-client session segfaults) is STRUCK by T391 (`e332162f`)** -- a two-client
+  session now survives 5 minutes -- but T391 did not have the budget to take
+  the fire-vs-frost observer pair, so B160's proof is still owed (T389).
