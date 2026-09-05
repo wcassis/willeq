@@ -114,7 +114,13 @@ struct SpellData {
     // ========================================================================
 
     uint16_t cast_anim = 0;       // Casting animation ID
+    // T384: spells_us.txt field 121 (eqemu spells_new.TargetAnim). Assigned
+    // in SpellDatabase::queryAndCache; non-zero for 3,608 of 8,066 spells.
     uint16_t target_anim = 0;     // Target impact animation
+    // T384: spells_us.txt field 122 (eqemu spells_new.TravelType). == 3 marks
+    // the 85 spells with a projectile travel stage; 0 for the other 7,981.
+    // Made AVAILABLE only -- nothing draws a projectile from it yet (B165).
+    uint8_t travel_type = 0;
     uint16_t spell_icon = 0;      // Spellbook icon
     uint16_t gem_icon = 0;        // Spell gem icon
 
@@ -317,6 +323,7 @@ struct SpellData {
         v.resistType = resist_type;
         v.school = getSchool();
         v.spellAffectIndex = spell_affect_index;
+        v.travelType = travel_type;
         return v;
     }
 

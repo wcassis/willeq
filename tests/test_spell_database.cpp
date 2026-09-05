@@ -689,6 +689,49 @@ TEST_F(SpellDatabaseTest, EnduranceCostRoundTripsForMeasuredDisciplines) {
     }
 }
 
+// T384 (board B163): target_anim + travel_type reach SpellData.
+//
+// spells_us.txt fields 121 and 122, the same ordinals eqemu's positional
+// import puts at spells_new.TargetAnim / .TravelType
+// (Columns()[121]/[122] in
+// /mnt/projects/akk-stack/code/common/repositories/base/base_spells_new_repository.h).
+// Values re-measured from the shipped spells_us.txt with
+// scripts/refactor/t380_spell_visual_census.py; the three spells carry three
+// DISTINCT target_anim values so a stuck-at-one-value read fails.
+TEST_F(SpellDatabaseTest, SpellVisualColumnsRoundTripForMeasuredSpells) {
+    if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
+
+    struct Row { uint32_t id; const char* name; uint16_t targetAnim; uint8_t travelType; };
+    const Row kMeasured[] = {
+        // The projectile: travel_type 3 is the 85-spell population, and Frost
+        // Bolt is the one T381 measured through the visual vocabulary.
+        {  54, "Frost Bolt",  13, 3},
+        { 202, "Courage",     27, 0},
+        {  50, "Summon Food", 43, 0},
+    };
+
+    for (const Row& r : kMeasured) {
+        const SpellData* spell = db.getSpell(r.id);
+        ASSERT_NE(spell, nullptr) << "spell " << r.id;
+        EXPECT_EQ(spell->name, r.name) << "spell " << r.id;
+        EXPECT_EQ(spell->target_anim, r.targetAnim) << "spell " << r.id;
+        EXPECT_EQ(spell->travel_type, r.travelType) << "spell " << r.id;
+        // cast_anim was already bound before T384 and must not have shifted.
+        EXPECT_NE(spell->cast_anim, 0) << "spell " << r.id;
+    }
+}
+
+// The control: 4,458 of 8,066 spells have target_anim 0 and 7,981 have
+// travel_type 0, so the new columns must not read non-zero for everything.
+TEST_F(SpellDatabaseTest, SpellVisualColumnsAreZeroForANonProjectileSpell) {
+    if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
+    const SpellData* spell = db.getSpell(15);
+    ASSERT_NE(spell, nullptr);
+    EXPECT_EQ(spell->name, "Greater Healing");
+    EXPECT_EQ(spell->target_anim, 0);
+    EXPECT_EQ(spell->travel_type, 0);
+}
+
 // The control: a Classic spell costs no endurance, so the new column must
 // not turn every spell into a discipline.
 TEST_F(SpellDatabaseTest, EnduranceCostIsZeroForAClassicSpell) {
