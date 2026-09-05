@@ -171,12 +171,15 @@ cases with the old inferred table; **11/11 pass** after. Logs in
 | `scripts/build-gles2-x86.sh` | **exit 0** |
 | `scripts/build-arm-noble.sh` | **exit 0** |
 | `scripts/refactor/check_file_sizes.sh fable` | 53 checked, **53 ok, 0 warn, 0 fail** |
-| visual gate | goldens **untouched**, no image mismatch in any run; **CPU-p95 load artefact** — see below |
+| visual gate (standalone, host quiet) | **PASS**, goldens **untouched** |
 
-The visual gate's only failures are `p95 process-CPU`, and they moved zones
-between runs (run 1: befallen 31.2; run 2: befallen 6.2 and qeynos2 15.0)
-while slot2 and slot3 were both mid-build on this host — the documented load
-artefact, not a regression. No golden image compare failed in either run.
+The gate was run three times. The first two FAILED on `p95 process-CPU` only,
+and the failing zone MOVED between them (run 1: befallen 31.2; run 2: befallen
+6.2 and qeynos2 15.0) while slot2 and slot3 were both mid-build on this host —
+the documented load artefact. Re-run standalone with the host quiet it is
+`=== VISUAL GATE: PASS ===` (qeynos2 6.72, gfaydark 5.29, befallen 9.31, all
+under their ceilings). No golden image compare failed in any of the three
+runs, and `git status` is clean — no golden was touched.
 
 ### Server state
 
