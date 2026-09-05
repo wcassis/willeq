@@ -828,3 +828,18 @@ failure this guards against).
   derived and configured all eight budgets in the orangepi preset from the
   on-disk assets, 1280x720 and the Pi envelope. The board row was STALE and is
   struck; the one open figure (untracked RSS) is B021.
+
+## 2026-09-05 - racial vision table settled by the official client (T361)
+
+Measured on the Titanium client under Wine at forced night with a cast
+Ultravision positive control per sweep: **Dark Elf alone is Ultravision**;
+Wood Elf, High Elf, Half Elf, Dwarf, **Troll, Ogre**, Halfling, Gnome, Iksar and
+Vah Shir are Infravision; Human, Barbarian, Erudite are Normal. Will's
+expectation (Troll = Ultravision) was refuted by the measurement, as he asked.
+Froglok measures a FOURTH level between Infravision and Ultravision that
+`VisionType` cannot express — left on Normal, needs Will's call (B060 residue).
+Ultravision on the official client is a ~1.55x whole-frame ambient raise at
+night, sky unchanged; Infravision ~1.25x and red. Fable now imposes a
+per-channel floor under the global ambient (`vision_ambient.cpp`), gains solved
+against the oracle. The residual is bounded by B080: fable's night is ~35x
+darker than the oracle's on near geometry.
