@@ -1925,9 +1925,12 @@ it without taking that measurement first.
   Ultravision is near-neutral with a blue lift (R x1.458 / G x1.463 / B x1.851)
   while fable's green lags (R x1.461 / **G x1.281** / B x1.663), and the oracle's
   Infravision raises all three channels (R x1.328 / G x1.211 / B x1.208) while
-  fable's **drives blue DOWN to x0.821** at R x1.600. That is **B171**. See B110 for the term that does separate the two clients.** Pinned by
+  fable's **drives blue DOWN to x0.821** at R x1.600. That is **B171** — **STRUCK PROVISIONALLY by T383 (`T383_COMMIT_HASH`), live re-measure OWED; T383 also established that NO code path in the tree can lower a channel under a vision buff, so the x0.821 is unexplained by the source and the re-measure has to account for it.** See B110 for the term that does separate the two clients.** Pinned by
   `tests/test_vision_ambient.cpp` (3 of 6 cases fail against the pre-T361
-  behaviour). Prov: T361 Review, `review/T361/README.md`. `visionType` has exactly two consumers tree-wide
+  behaviour). Prov: T361 Review, `review/T361/README.md`. **CORRECTION (T383): `visionType` now has THREE
+  consumers — T361 added `IrrlichtRenderer::updateTimeOfDay` ->
+  `applyVisionAmbientFloor`, the global-ambient floor, and it is the dominant
+  one. The two below are the zone-light arms.** `visionType` had exactly two consumers tree-wide
   (`applyVisionWeatherToZoneLights` and `computeLightAnimations`), both of which
   multiply `zoneData_.zoneLightNodes[i].diffuseColor`. In qeynos2 that is 218
   lights the client's own log calls `ZONE LIGHTS: 218 total (no scene nodes,
@@ -2567,8 +2570,35 @@ branches can be deleted independently of these items.
   body, no reserved height — while fable draws the titled *frame* T368 gave it
   (`FrameComponent::groupPanelIsVisible`, `static_panels.h`). Prov: B115; T377 Review.
 
-- **B171** (A) `src/client/graphics/vision_ambient.cpp` /
+- ~~**B171** (A) `src/client/graphics/vision_ambient.cpp` /
   `IrrlichtRenderer::updateTimeOfDay` — **the vision floor's per-channel gains
+  are wrong against the oracle, even where the scalar ratio is right.**~~
+  **STRUCK PROVISIONALLY by T383 (branch `task/T383-vision-channels`,
+  commit `T383_COMMIT_HASH`) — THE LIVE RE-MEASURE IS OWED to the next lock
+  unit.** All six floor channels were re-solved against T377's oracle table by
+  inverting T361's measured power law per channel
+  (`floor_c = night_c * oracle_ratio_c ^ (1/1.1405)`): Ultravision gain
+  **0.1601** x tint **(0.695, 0.698, 1.607)**, Infravision gain **0.1248** x
+  tint **(0.823, 0.759, 1.419)**. Forward-checked, the predicted per-channel
+  ratios land within **0.11%** of all six oracle numbers and the implied
+  whole-frame greys within **0.33%** — channels and scalar together, so the
+  plan's STOP did not fire. The zone-light arm's Infravision `redShift` was
+  the second parameter and was solved from the same oracle row by least
+  squares on the log of its three channel ratios: **0.3 -> 0.0508** (a lamp
+  red-to-blue spread of 1.857 against the oracle's 1.0998; residuals
+  -0.35% / +1.38% / -0.99%). Pinned by `tests/test_vision_ambient.cpp`
+  (**6 of 18 fail pre-fix**) and `tests/test_vision_zone_lights.cpp`.
+  **The point-light tint was NOT the blue-down cause and nothing in the tree
+  is**: `applyVisionAmbientFloor` is a per-channel `std::max`, both zone-light
+  arms raise every channel against Normal's flat 0.25 (Infravision blue is
+  `0.75*(1-s)`, x2.85 UP), and the object lights never see `visionType` at all
+  (vision-invariant — possibly its own defect). fable's measured **B x0.8209**
+  is therefore not reproducible from the source, and no per-channel model fits
+  the pre-fix fable row (a three-parameter additive fit puts blue's
+  point-light coefficient at -0.00177, non-physical). **That is what the owed
+  re-measure must settle.** Prov: T383 Review, `review/T383/README.md`.
+
+  ORIGINAL TEXT: **the vision floor's per-channel gains
   are wrong against the oracle, even where the scalar ratio is right.** MEASURED
   T377 (`review/T377/` §2), both clients in one session, same spot, same crop,
   video-stepped on both sides. Ultravision: the oracle lifts **R x1.458 / G x1.463
@@ -2597,3 +2627,18 @@ branches can be deleted independently of these items.
   and still has NO production caller — see B036 clause 2.) Closes when the
   handler pushes `PlaySoundIntent{BUY_ITEM}`, banks the four denominations, and a
   test pins both. Prov: T377 Review; B036.
+
+## Added 2026-09-05 by T383 (vision colour channels)
+
+- **B180** (B) `tests/test_direct_sender_census.cpp`
+  `DirectSenderCensus.LoginAndWorldStreamsAreTheOnlyExemptionAndStillTwelve` —
+  **a RED test on the `fable` tip, and it is the census that is stale, not the
+  code.** T379 (`f08369db`) closed B146 by routing all 12 login/world direct
+  sends through `PacketSender`; T378's census (`6e4f9d9e`) still asserts
+  `kLoginWorldExpected == 12` and now measures **0**. The test's own failure
+  message says exactly what to do: *"If B146 was closed, this count goes to 0
+  and kLoginWorldExpected comes with it"*. It fails standalone (22 s), not
+  only under `-j6`, so it is not a load artefact. Closes when the exemption
+  and its constant are deleted and the case asserts that login/world have no
+  direct senders left. Found by T383, whose diff touches no network file.
+  Prov: T383 Review, `review/T383/README.md`.

@@ -17,12 +17,14 @@
 #include <gtest/gtest.h>
 
 #include "client/graphics/vision_ambient.h"
+#include "client/graphics/vision_type.h"
 
 using EQT::Graphics::AmbientRGB;
 using EQT::Graphics::VisionType;
 using EQT::Graphics::applyVisionAmbientFloor;
 using EQT::Graphics::racialBaseVision;
 using EQT::Graphics::visionAmbientFloor;
+using EQT::Graphics::visionFrameRatios;
 
 namespace {
 
@@ -66,10 +68,16 @@ TEST(VisionAmbientTest, InfravisionLiftsLessThanUltravisionAndIsRedBiased) {
     EXPECT_GT(mean(ultra), mean(infra));
     EXPECT_GT(mean(infra), 0.0f);
 
-    // Oracle: Infravision's added light is strongly red (R/B measured 2.49),
-    // Ultravision's is near-neutral and if anything slightly blue.
-    EXPECT_GT(infra.r, infra.b);
-    EXPECT_LT(ultra.r, ultra.b);
+    // T383: the bias is a statement about the FRAME RATIOS the oracle
+    // measured, not about the floor's raw channel order. fable's night ambient
+    // is blue-dominant (0.08/0.08/0.15) while the oracle's night FRAME is
+    // red-dominant, so a floor that reproduces the oracle's ratios need not be
+    // red-dominant itself. Oracle Infravision R x1.328 > B x1.208 (red-biased
+    // lift); oracle Ultravision R x1.458 < B x1.851 (blue-lifted).
+    const AmbientRGB ir = visionFrameRatios(VisionType::Infravision, kNight);
+    const AmbientRGB ur = visionFrameRatios(VisionType::Ultravision, kNight);
+    EXPECT_GT(ir.r, ir.b);
+    EXPECT_LT(ur.r, ur.b);
 }
 
 TEST(VisionAmbientTest, OrderingIsNormalBelowInfraBelowUltra) {
@@ -145,4 +153,125 @@ TEST(RacialVisionTest, FroglokIsUnsettledAndLeftNormal) {
 TEST(RacialVisionTest, UnknownRaceIsNormal) {
     EXPECT_EQ(racialBaseVision(0), VisionType::Normal);
     EXPECT_EQ(racialBaseVision(9999), VisionType::Normal);
+}
+
+// ---------------------------------------------------------------------------
+// T383 (board B171): the PER-CHANNEL gains, solved against the oracle table.
+//
+// T361 solved the two SCALAR gains and got them close (fable 1.449 / 1.237
+// against the oracle's 1.560 / 1.252), but the per-channel shape was never
+// fitted: it was carried over from T361's near-wall added-light deltas. T377
+// measured both clients in one session, same spot, same crop, video-stepped on
+// both sides, and the channels came out wrong -- fable's Ultravision green
+// lagged its red by 12.5 points (a magenta cast where the oracle's lift is
+// near-neutral), and fable's Infravision drove BLUE DOWN to x0.821, the only
+// channel in either table that moved the wrong way.
+//
+// THE ORACLE TABLE (review/T377/README.md section 2, linear light, 700x420
+// crop, qeynos2 -74/428/3.75 h=160, forced 22:00, Oraclealpha -- a Human, so
+// no racial floor confounds the buff):
+//
+//     Ultravision  R x1.4581  G x1.4633  B x1.8507   grey x1.5612
+//     Infravision  R x1.3284  G x1.2111  B x1.2079   grey x1.2555
+//
+// These cases pin the mapping against that table through visionFrameRatios(),
+// the power-law response T361 measured on fable's own frames (exponent 1.1405,
+// given independently by its two probe points as 1.1402 and 1.1409). The bar
+// is 2%; T377's still-to-still noise floor is 1.3%.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// review/T377/README.md section 2, oracle rows.
+constexpr float kOracleUltraRatio[3] = {1.4581f, 1.4633f, 1.8507f};
+constexpr float kOracleInfraRatio[3] = {1.3284f, 1.2111f, 1.2079f};
+constexpr float kOracleUltraGrey = 1.5612f;
+constexpr float kOracleInfraGrey = 1.2555f;
+
+// fable's own measured night channel levels on that crop (T377, the two
+// "night, no buff" windows that bracket each landing). Used only to weight the
+// per-channel ratios into a whole-frame grey ratio the same way the oracle
+// table's grey column is formed.
+constexpr float kFableNightBeforeUltra[3] = {0.004443f, 0.003763f, 0.002664f};
+constexpr float kFableNightBeforeInfra[3] = {0.004435f, 0.003757f, 0.002663f};
+
+float greyRatio(const AmbientRGB& r, const float (&base)[3]) {
+    const float lit = r.r * base[0] + r.g * base[1] + r.b * base[2];
+    return lit / (base[0] + base[1] + base[2]);
+}
+
+}  // namespace
+
+TEST(VisionOracleChannelsTest, UltravisionChannelRatiosMatchTheOracle) {
+    const AmbientRGB r = visionFrameRatios(VisionType::Ultravision, kNight);
+    EXPECT_NEAR(r.r, kOracleUltraRatio[0], 0.02f * kOracleUltraRatio[0]);
+    EXPECT_NEAR(r.g, kOracleUltraRatio[1], 0.02f * kOracleUltraRatio[1]);
+    EXPECT_NEAR(r.b, kOracleUltraRatio[2], 0.02f * kOracleUltraRatio[2]);
+}
+
+TEST(VisionOracleChannelsTest, InfravisionChannelRatiosMatchTheOracle) {
+    const AmbientRGB r = visionFrameRatios(VisionType::Infravision, kNight);
+    EXPECT_NEAR(r.r, kOracleInfraRatio[0], 0.02f * kOracleInfraRatio[0]);
+    EXPECT_NEAR(r.g, kOracleInfraRatio[1], 0.02f * kOracleInfraRatio[1]);
+    EXPECT_NEAR(r.b, kOracleInfraRatio[2], 0.02f * kOracleInfraRatio[2]);
+}
+
+// The plan's second half of the STOP condition: the whole-frame ratio has to
+// come out right at the same time as the channels, not instead of them.
+TEST(VisionOracleChannelsTest, WholeFrameGreyRatiosMatchTheOracle) {
+    const float ultra = greyRatio(visionFrameRatios(VisionType::Ultravision, kNight),
+                                  kFableNightBeforeUltra);
+    const float infra = greyRatio(visionFrameRatios(VisionType::Infravision, kNight),
+                                  kFableNightBeforeInfra);
+    EXPECT_NEAR(ultra, kOracleUltraGrey, 0.02f * kOracleUltraGrey);
+    EXPECT_NEAR(infra, kOracleInfraGrey, 0.02f * kOracleInfraGrey);
+}
+
+// The headline defect of B171: no vision may move a channel the wrong way.
+// T377 measured fable's Infravision at B x0.821.
+TEST(VisionOracleChannelsTest, NoVisionLowersAnyChannel) {
+    for (VisionType v : {VisionType::Normal, VisionType::Infravision,
+                         VisionType::Ultravision}) {
+        const AmbientRGB r = visionFrameRatios(v, kNight);
+        EXPECT_GE(r.r, 1.0f);
+        EXPECT_GE(r.g, 1.0f);
+        EXPECT_GE(r.b, 1.0f);
+    }
+}
+
+// Ultravision's lift is near-neutral in R and G (the oracle's two agree to
+// 0.4%) with blue on top. fable's green lagged its red by 12.5 points.
+TEST(VisionOracleChannelsTest, UltravisionRedAndGreenAreNeutralToEachOther) {
+    const AmbientRGB r = visionFrameRatios(VisionType::Ultravision, kNight);
+    EXPECT_NEAR(r.g / r.r, kOracleUltraRatio[1] / kOracleUltraRatio[0], 0.02f);
+}
+
+// ---------------------------------------------------------------------------
+// The second parameter (T383): the zone-light arm's Infravision tint.
+//
+// visionLightModifiers() applies r*(1+s), g*(1-0.5s), b*(1-s) to every zone
+// light. At s = 0.3 that is a 1.857:1 spread between red and blue on the
+// lamps; the oracle's Infravision spread is 1.328/1.208 = 1.0998. s was
+// re-solved by least squares on the log of the oracle's three Infravision
+// channel ratios (see the plan's Review): s = 0.0508, residuals -0.4% / +1.4%
+// / -1.0%. Note the light arm was NEVER the cause of fable's B x0.821 -- it
+// cannot be, since Infravision's blue multiplier (0.75 * (1 - s)) is above
+// Normal's flat 0.25 for every s < 0.667 -- but its shape was wrong against
+// the oracle by 24 points on blue and it is fitted here for that reason.
+// ---------------------------------------------------------------------------
+
+TEST(VisionLightTintTest, InfravisionLampSpreadMatchesTheOracle) {
+    const auto infra = EQT::Graphics::visionLightModifiers(VisionType::Infravision);
+    const float red = 1.0f + infra.redShift;
+    const float blue = 1.0f - infra.redShift;
+    EXPECT_NEAR(red / blue, kOracleInfraRatio[0] / kOracleInfraRatio[2], 0.02f);
+}
+
+TEST(VisionLightTintTest, InfravisionRaisesEveryLampChannelAgainstNormal) {
+    const auto normal = EQT::Graphics::visionLightModifiers(VisionType::Normal);
+    const auto infra = EQT::Graphics::visionLightModifiers(VisionType::Infravision);
+    const float s = infra.redShift;
+    EXPECT_GT(infra.intensity * (1.0f + s), normal.intensity);
+    EXPECT_GT(infra.intensity * (1.0f - 0.5f * s), normal.intensity);
+    EXPECT_GT(infra.intensity * (1.0f - s), normal.intensity);
 }
