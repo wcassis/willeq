@@ -21,8 +21,8 @@
 // src/client/eq_group.cpp to here, and the bodies rebased from EverQuest onto
 // eqt::group::GroupComponent. Still verbatim -- only the substitutions
 // Mechanism 4 allows (m_game_state/m_bridge/m_character/m_zone_connection/
-// m_zone_connection_manager/m_entities -> ctx_.*; m_test_bypass_send_guard ->
-// owner_.*, it stays on EverQuest; IsFullyZonedIn/AddChatSystemMessage/HasPet/
+// m_zone_connection_manager/m_entities -> ctx_.*; the T88 send-guard bypass ->
+// ctx_.net (T366); IsFullyZonedIn/AddChatSystemMessage/HasPet/
 // MySpawnId/OnPetButtonStateChanged -> owner_.*). The raid state members
 // (m_in_raid, m_raid_leader, m_pending_raid_inviter, m_raid_roster,
 // m_raid_locked) moved into the component and are unqualified here as before.
@@ -81,7 +81,7 @@ void eqt::group::GroupComponent::SendGroupInvite(const std::string& target_name)
 // reach; with the seam unset the guard is exactly what it was.
 void eqt::group::GroupComponent::SendGroupFollow(const std::string& inviter_name)
 {
-	if (!owner_.m_test_bypass_send_guard && (!ctx_.zone_connection_manager || !ctx_.self.IsFullyZonedIn())) {
+	if (!ctx_.net.TestBypassSendGuard() && (!ctx_.zone_connection_manager || !ctx_.self.IsFullyZonedIn())) {
 		LOG_WARN(MOD_MAIN, "Cannot accept group invite - not connected to zone");
 		return;
 	}
@@ -109,7 +109,7 @@ void eqt::group::GroupComponent::SendGroupFollow(const std::string& inviter_name
 // T217: same aliasing hazard as SendGroupFollow() above -- copy first.
 void eqt::group::GroupComponent::SendGroupDecline(const std::string& inviter_name)
 {
-	if (!owner_.m_test_bypass_send_guard && (!ctx_.zone_connection_manager || !ctx_.self.IsFullyZonedIn())) {
+	if (!ctx_.net.TestBypassSendGuard() && (!ctx_.zone_connection_manager || !ctx_.self.IsFullyZonedIn())) {
 		LOG_WARN(MOD_MAIN, "Cannot decline group invite - not connected to zone");
 		return;
 	}

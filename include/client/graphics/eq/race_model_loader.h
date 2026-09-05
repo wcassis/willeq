@@ -662,6 +662,13 @@ private:
     // should allow -- see refactor/T91_entity_prepare_gate.md Review for the
     // measured thrash this caused. Caller must already hold
     // otherChrCacheMutex_ (every existing call site already does).
+    //
+    // The bypass outlived T91 at five more sites, closed since: T364 (B065)
+    // took the four in loadModelFromCachedChr, T366 (B095) the one in
+    // loadModelFromZoneChr's animation-source branch and the three in
+    // searchZoneChrFilesForModel (two negative-cache inserts plus one that
+    // open-coded the push/evict below). There is now exactly one
+    // `otherChrCaches_[key]` in the tree and it is the line below.
     void storeOtherChrCacheLocked(const std::string& lowerFilename,
                                    std::vector<std::shared_ptr<CharacterModel>> characters,
                                    std::map<std::string, std::shared_ptr<TextureInfo>> textures);

@@ -29,10 +29,13 @@
 
 #include <gtest/gtest.h>
 
+#include <filesystem>
 #include <fstream>
 #include <memory>
 #include <string>
 #include <vector>
+
+#include <unistd.h>
 
 #include "client/willeq_database.h"
 
@@ -169,6 +172,160 @@ TEST_F(ChrCacheLruTest, UnlimitedCapKeepsEveryEntry) {
     EXPECT_EQ(acc.maxEntries, 0u);
     EXPECT_GE(acc.entries, races_.size())
         << "with no cap every distinct archive should stay cached";
+}
+
+
+// ---------------------------------------------------------------------------
+// T366 (B095) — the two OTHER functions that write otherChrCaches_:
+//   RaceModelLoader::loadModelFromZoneChr        (the animation-source insert)
+//   RaceModelLoader::searchZoneChrFilesForModel  (two negative-cache inserts
+//                                                 plus one inline copy of the
+//                                                 store helper's push/evict)
+//
+// Both are private, and both are reached from ensureModelDataLoaded() in
+// NEW-models mode. searchZoneChrFilesForModel scans the WHOLE client
+// directory for `*_chr.s3d`, so pointing it at the real tree would load 378
+// archives; instead the fixture builds a private client tree of symlinks
+// holding a controlled handful, plus two archives engineered to take the two
+// negative-cache branches:
+//
+//   zzbroken_chr.s3d  — 64 bytes of junk, S3DLoader::loadZone() fails
+//   zznochars_chr.s3d — a real ZONE archive (arena.s3d), loads clean with
+//                       zero characters
+//
+// Neither can ever be evicted while its insert bypasses
+// storeOtherChrCacheLocked(), so they pin the cache permanently over its cap.
+// ---------------------------------------------------------------------------
+
+class ChrCacheScanTest : public ::testing::Test {
+protected:
+    EQT::WilleqDatabase db_;
+    irr::IrrlichtDevice* device_ = nullptr;
+    std::unique_ptr<EQT::Graphics::ConstrainedTextureCache> textureCache_;
+    std::unique_ptr<EQT::Graphics::RaceModelLoader> loader_;
+    std::filesystem::path tree_;
+
+    // Archives symlinked into the private tree. beholder holds PUM (race 76,
+    // animation source LIM); arena holds LIM (race 50) and is what
+    // getRaceS3DFileByCode("LIM") names, i.e. exactly the file
+    // loadModelFromZoneChr's animation-source branch loads.
+    const std::vector<std::string> archives_{
+        "beholder_chr.s3d", "arena_chr.s3d", "akanon_chr.s3d",
+        "befallen_chr.s3d", "butcher_chr.s3d"};
+
+    void SetUp() override {
+        const std::string dbPath = WILLEQ_DB_REAL_PATH;
+        if (!fileExists(dbPath)) GTEST_SKIP() << "no shipped db at " << dbPath;
+        ASSERT_TRUE(db_.open(dbPath)) << dbPath;
+        EQT::WilleqDatabase::setGlobalInstance(&db_);
+
+        const std::string eq = clientPath();
+        for (const auto& a : archives_) {
+            if (!fileExists(eq + a)) GTEST_SKIP() << "EQ client tree not at " << eq;
+        }
+        if (!fileExists(eq + "arena.s3d")) GTEST_SKIP() << "no arena.s3d at " << eq;
+
+        std::error_code ec;
+        tree_ = std::filesystem::temp_directory_path() /
+                ("willeq_scantree_" + std::to_string(::getpid()));
+        std::filesystem::remove_all(tree_, ec);
+        ASSERT_TRUE(std::filesystem::create_directories(tree_, ec)) << ec.message();
+        for (const auto& a : archives_) {
+            std::filesystem::create_symlink(eq + a, tree_ / a, ec);
+            ASSERT_FALSE(ec) << a << ": " << ec.message();
+        }
+        // Loads clean, holds zero characters (it is a zone-geometry archive).
+        std::filesystem::create_symlink(eq + "arena.s3d", tree_ / "zznochars_chr.s3d", ec);
+        ASSERT_FALSE(ec) << ec.message();
+        // Fails to load at all.
+        {
+            std::ofstream junk((tree_ / "zzbroken_chr.s3d").string(), std::ios::binary);
+            junk << "not an s3d archive, not even close --------------------------";
+        }
+
+        irr::SIrrlichtCreationParameters params;
+        params.DriverType = irr::video::EDT_NULL;
+        params.WindowSize = irr::core::dimension2d<irr::u32>(64, 64);
+        device_ = irr::createDeviceEx(params);
+        if (!device_) GTEST_SKIP() << "no EDT_NULL device";
+
+        loader_ = std::make_unique<EQT::Graphics::RaceModelLoader>(
+            device_->getSceneManager(), device_->getVideoDriver(), device_->getFileSystem());
+        loader_->setClientPath(tree_.string());
+        auto config = EQT::Graphics::ConstrainedRendererConfig::fromPreset(
+            EQT::Graphics::ConstrainedRenderingPreset::TNT);
+        textureCache_ = std::make_unique<EQT::Graphics::ConstrainedTextureCache>(config);
+        textureCache_->setDriver(device_->getVideoDriver());
+        loader_->setConstrainedTextureCache(textureCache_.get());
+        loader_->getMeshBuilder()->setConstrainedTextureCache(textureCache_.get());
+        // Both target functions sit on the new-models branch of
+        // ensureModelDataLoaded().
+        loader_->setUseOldModels(false);
+    }
+
+    void TearDown() override {
+        loader_.reset();
+        textureCache_.reset();
+        if (device_) { device_->drop(); device_ = nullptr; }
+        EQT::WilleqDatabase::setGlobalInstance(nullptr);
+        std::error_code ec;
+        if (!tree_.empty()) std::filesystem::remove_all(tree_, ec);
+    }
+};
+
+// loadModelFromZoneChr's animation-source branch: race 76 (PUM) is in
+// beholder_chr.s3d with too few animations of its own, its animation source
+// is LIM, LIM is not in beholder, so the branch loads arena_chr.s3d (LIM's
+// own archive) into otherChrCaches_. Pre-fix that insert is a raw
+// otherChrCaches_[key] = ..., so the entry never enters chrCacheLruOrder_.
+TEST_F(ChrCacheScanTest, ZoneChrAnimationSourceInsertIsRegisteredInTheLruOrder) {
+    loader_->setMaxChrCacheEntries(2);
+    loader_->setCurrentZone("beholder");
+
+    loader_->ensureModelDataLoaded(76, 0);
+
+    auto acc = loader_->getChrCacheAccountingForTest();
+    EXPECT_GT(acc.entries, 0u)
+        << "loadModelFromZoneChr's animation-source branch cached nothing -- "
+           "the site under test was not reached";
+    EXPECT_EQ(acc.untracked, 0u)
+        << acc.untracked << " of " << acc.entries << " entries never entered "
+        << "chrCacheLruOrder_ (lruOrder=" << acc.lruOrder << ")";
+}
+
+// searchZoneChrFilesForModel scans the client directory. Race 330 (FRM) lives
+// only in globalpcfroglok_chr.s3d, which is NOT in the private tree, so the
+// scan runs to completion and every archive in the tree is cached -- including
+// the two that take the negative-cache branches.
+TEST_F(ChrCacheScanTest, ScannedChrFilesAreAllRegisteredInTheLruOrder) {
+    loader_->setMaxChrCacheEntries(2);
+
+    loader_->ensureModelDataLoaded(330, 0);
+
+    auto acc = loader_->getChrCacheAccountingForTest();
+    EXPECT_GT(acc.entries, 0u)
+        << "searchZoneChrFilesForModel cached nothing -- the scan was not reached";
+    EXPECT_EQ(acc.untracked, 0u)
+        << acc.untracked << " of " << acc.entries << " scanned _chr.s3d entries never "
+        << "entered chrCacheLruOrder_ (lruOrder=" << acc.lruOrder << ")";
+}
+
+// ... and because untracked entries cannot be evicted, the same scan also
+// breaks the cap.
+TEST_F(ChrCacheScanTest, ScannedChrFilesRespectTheCap) {
+    const size_t cap = 2;
+    loader_->setMaxChrCacheEntries(cap);
+
+    loader_->ensureModelDataLoaded(330, 0);
+
+    auto acc = loader_->getChrCacheAccountingForTest();
+    EXPECT_EQ(acc.maxEntries, cap);
+    EXPECT_GT(acc.entries, 0u);
+    EXPECT_LE(acc.entries, cap)
+        << "otherChrCaches_ holds " << acc.entries << " entries with a cap of " << cap
+        << " (" << acc.untracked << " of them unevictable, lruOrder=" << acc.lruOrder << ")";
+    EXPECT_EQ(acc.entries, acc.lruOrder)
+        << "map and LRU order disagree: " << acc.entries << " vs " << acc.lruOrder;
 }
 
 #endif  // EQT_HAS_GRAPHICS

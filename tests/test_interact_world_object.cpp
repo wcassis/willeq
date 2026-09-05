@@ -96,7 +96,7 @@ TEST(InteractWorldObject, CapturedForge_FoundInRangeAndNotFoundOutOfRange) {
 
 TEST(InteractWorldObject, Dispatcher_InteractSucceedsWithForgeInRange) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     ReplayCapturedForgeGroundSpawn(eq);
 
     const eqt::WorldObject* forge = eq.Entities().GetWorldObject(190);

@@ -20,7 +20,7 @@
 //     entry point (EqActionHandler::moveToLocation -> EverQuest::Move) and
 //     reading back what SendPositionUpdate() transmits.
 //
-// These tests use the T88 test seam (Test_SetBypassSendGuardForSeam /
+// These tests use the T88 test seam (Net().Test_SetBypassSendGuardForSeam /
 // Test_GetLastComputedPositionUpdate, eq.h) because SendPositionUpdate()'s
 // top guard requires a live m_zone_connection that no headless test can
 // construct -- everything past that guard already degrades gracefully with
@@ -81,7 +81,7 @@ std::vector<uint8_t> BuildPlayerProfilePayload(float server_x, float server_y, f
 
 TEST(PositionFrameRoundTrip, ServerFrame_InboundThenOutbound_IsIdentity) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
 
     // Distinct, unambiguous values -- a transposition or a broken inverse
     // is unmistakable in the assertion, not maskable by an accidental
@@ -116,7 +116,7 @@ TEST(PositionFrameRoundTrip, ServerFrame_InboundThenOutbound_IsIdentity) {
 // that only shows up for certain sign/magnitude combinations.
 TEST(PositionFrameRoundTrip, ServerFrame_InboundThenOutbound_IsIdentity_SecondSample) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
 
     const float server_x = 1024.5f;
     const float server_y = -87.25f;
@@ -141,7 +141,7 @@ TEST(PositionFrameRoundTrip, ServerFrame_InboundThenOutbound_IsIdentity_SecondSa
 
 TEST(PositionFrameRoundTrip, MoveToLocation_ClientFrameTarget_TransmitsUnderDocumentedConvention) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(460);
     eqt::EqActionHandler handler(eq);
 
@@ -192,7 +192,7 @@ TEST(PositionFrameRoundTrip, MoveToLocation_ClientFrameTarget_TransmitsUnderDocu
 
 TEST(PositionFrameRoundTrip, T85Scenario_ServerFrameNumbersFedToClientFrameMoveProduceObservedMirroring) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(460);
     eqt::EqActionHandler handler(eq);
 
@@ -270,7 +270,7 @@ void StandAt(EverQuest& eq, eqt::bridge::GameStateBridge& bridge,
 
 TEST(WireZ, DefaultHumanoidOnZeroGround_TransmitsTheOfficialClientsValue) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(460);
     IntentBridge bridge;
     eq.setBridge(&bridge);
@@ -309,7 +309,7 @@ TEST(WireZ, NonDefaultSize_ScalesLinearlyWithNoRaceTerm) {
 
     for (const auto& c : cases) {
         EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-        eq.Test_SetBypassSendGuardForSeam(true);
+        eq.Net().Test_SetBypassSendGuardForSeam(true);
         eq.Test_SetMySpawnIdForSeam(460);
         IntentBridge bridge;
         eq.setBridge(&bridge);
@@ -329,7 +329,7 @@ TEST(WireZ, NonDefaultSize_ScalesLinearlyWithNoRaceTerm) {
 // where the official client transmitted 31.751.
 TEST(WireZ, NonZeroGround_IsGroundPlusTheOffset) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(460);
     IntentBridge bridge;
     eq.setBridge(&bridge);
@@ -346,7 +346,7 @@ TEST(WireZ, NonZeroGround_IsGroundPlusTheOffset) {
 TEST(WireZ, DifferentMeshOffset_SameGround_SameWireZ) {
     for (float meshOffset : {2.0f, 3.004f, 4.5f}) {
         EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-        eq.Test_SetBypassSendGuardForSeam(true);
+        eq.Net().Test_SetBypassSendGuardForSeam(true);
         eq.Test_SetMySpawnIdForSeam(460);
         IntentBridge bridge;
         eq.setBridge(&bridge);
@@ -367,7 +367,7 @@ TEST(WireZ, DifferentMeshOffset_SameGround_SameWireZ) {
 // ground snap corrects it on the first movement frame after the model arrives.
 TEST(WireZ, UnknownMeshOffset_ConversionIsTheIdentity) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(460);
     IntentBridge bridge;
     eq.setBridge(&bridge);
@@ -432,7 +432,7 @@ TEST(WireZ, TheConstantIsThreePointOneTwoFive_NotEQEmusPerRaceTable) {
 
 TEST(WireZ, SelfSpawnBeforeModelLoads_DoesNotDoubleConvert) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(460);
     IntentBridge bridge;
     eq.setBridge(&bridge);
@@ -476,7 +476,7 @@ TEST(WireZ, RepeatedZoneInsDoNotAccumulate) {
     float carried = 3.751f;
     for (int login = 0; login < 3; ++login) {
         EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-        eq.Test_SetBypassSendGuardForSeam(true);
+        eq.Net().Test_SetBypassSendGuardForSeam(true);
         eq.Test_SetMySpawnIdForSeam(460);
         IntentBridge bridge;
         eq.setBridge(&bridge);

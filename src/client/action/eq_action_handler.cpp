@@ -517,7 +517,7 @@ void EqActionHandler::beginCastFromGem(uint8_t gemSlot, uint16_t targetId) {
     // before this every result the switch below did not name fell to a
     // bare "Cannot cast spell" (T240 finding 1). T251: rendered by
     // castRefusalMessage() so a missing component is named.
-    if (std::string refusal = EQ::castRefusalMessage(m_eq, result); !refusal.empty()) {
+    if (std::string refusal = EQ::castRefusalMessage(m_eq.Context(), result); !refusal.empty()) {
         m_eq.AddChatSystemMessage(refusal);
         return;
     }

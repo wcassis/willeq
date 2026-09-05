@@ -148,23 +148,23 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 	// K03: the chat family, same shape.
 	m_chat = std::make_unique<eqt::chat::ChatComponent>(m_ctx);
 	// K04: the group family (group, raid, pet). Same rule.
-	m_group = std::make_unique<eqt::group::GroupComponent>(m_ctx, *this);
+	m_group = std::make_unique<eqt::group::GroupComponent>(m_ctx);
 	// K05: the merchant family, same shape.
 	m_merchant = std::make_unique<eqt::merchant::MerchantComponent>(m_ctx);
 	// K06: the entities family, same shape.
 	m_entities_component = std::make_unique<eqt::entities::EntitiesComponent>(m_ctx);
 	// K07: the movement family. Same rule.
-	m_movement = std::make_unique<eqt::movement::MovementComponent>(m_ctx, *this);
+	m_movement = std::make_unique<eqt::movement::MovementComponent>(m_ctx);
 	// K10: the login_world family. It owns the login/world connection managers,
 	// so it must exist before SetCredentials below.
 	m_login_world = std::make_unique<eqt::login_world::LoginWorldComponent>(m_ctx);
 	// K08: the player family. The player-state facade stays on EverQuest.
 	m_player = std::make_unique<eqt::player::PlayerComponent>(m_ctx);
 	// K09: the zone family -- handshake, entry, DispatchZonePacket, lifecycle.
-	m_zone = std::make_unique<eqt::zone::ZoneComponent>(m_ctx, *this);
+	m_zone = std::make_unique<eqt::zone::ZoneComponent>(m_ctx);
 	// K11: the bridge family -- graphics lifecycle, the intent/event pumps,
 	// the loot window, config persistence and audio.
-	m_bridge_component = std::make_unique<eqt::bridge::BridgeComponent>(m_ctx, *this);
+	m_bridge_component = std::make_unique<eqt::bridge::BridgeComponent>(m_ctx);
 	// K12: the commands + combat_actions family. Constructed here (with the
 	// other components) even though m_command_registry itself is not
 	// allocated until RegisterCommands() is called below -- ctx_.command_registry
@@ -809,13 +809,6 @@ void EverQuest::ZoneOnStatusChangeReconnectEnabled(std::shared_ptr<EQ::Net::Dayb
 		m_zone_connection.reset();
 		SetLoadingPhase(LoadingPhase::ZONE_CONNECTING);
 		m_zone_connection_manager->Connect(m_login_world->GetZoneServerHost(), m_login_world->GetZoneServerPort());
-	}
-}
-
-void EverQuest::ZoneOnStatusChangeReconnectDisabled(std::shared_ptr<EQ::Net::DaybreakConnection> conn, EQ::Net::DbProtocolStatus from, EQ::Net::DbProtocolStatus to)
-{
-	if (to == EQ::Net::StatusDisconnected) {
-		m_zone_connection.reset();
 	}
 }
 

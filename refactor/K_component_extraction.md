@@ -322,11 +322,41 @@ the ctor/lifecycle, the five `Application` entry points, the player-state
 facade forwarders and the shared-service core. Twelve components under
 `src/client/<family>/` + four context services (`ChatOutput`,
 `PlayerFacade`, `PacketSender`, `StringDb`). The transition handle is
-measured down to **83 uses** (BOARD B038), the friend lines to those with a
+measured down to **83 uses** (BOARD B038; T366 took it to ZERO -- see the
+subsection below), the friend lines to those with a
 qualified-private use (B039). Open structural decisions for Will: B006
 (`InitGraphics` narrowing — K15 measured the shape: two calls, an interface
 that does not exist yet), B036 (silent-by-omission sounds), B040
 (placeables gate). Suite 3,604 → run it.
+
+### The handle reached ZERO — T366, 2026-09-05 (B038 CLOSED)
+
+T341 took `owner_.` from 83 to 5 and the friend lines from eleven to three;
+T366 finished it. **No component under `src/client/<family>/` names
+`EverQuest` in any form** — not through the handle, not by qualification, not
+by taking a private member function's address:
+
+| what was left at T341 | T366's ruling |
+|---|---|
+| `EverQuest::m_test_bypass_send_guard`, 5 `owner_.` uses (movement 3, group 2) | moved to `eqt::PacketSender` — the guard bypass belongs to the thing that SENDS. Guards read `ctx_.net.TestBypassSendGuard()`; the 70 test sites arm it as `eq.Net().Test_SetBypassSendGuardForSeam(true)` |
+| 22 `&owner_` identity keys in movement's five function-static throttle tables | back on `this`, key type `const MovementComponent*`. One `MovementComponent` per `EverQuest`, so the keys stay one-to-one (K06/K07 correction (n) is REVERSED, and stated as an invariant comment in `movement_update.cpp`) |
+| 2 `std::bind(&EverQuest::ZoneOnStatusChangeReconnectDisabled, &owner_, …)` in zone | the function moved into `eqt::zone::ZoneComponent`; its only two callers were those binds. Body change: `m_zone_connection` → `ctx_.zone_connection` |
+| 2 `EQ::castRefusalMessage(owner_, result)` in bridge | the free function takes `eqt::ClientContext&`. Everything it reads (spell manager, inventory manager, eqstr lookup) is a context member |
+
+The `Owner&` constructor parameter and the `EverQuest& owner_` member are gone
+from group, movement, zone and bridge — the last four that carried them — and
+the last three `friend` lines with them. `eq.h`'s friend list is now
+`CombatManager` and `TradeManager`, neither of which is a component.
+
+**Final census (T366 tip, comment-filtered, code lines only):** `owner_` under
+`src/client/**` + `include/client/**` **excluding** `graphics/` = **0**.
+The 341 remaining are all `graphics/`, and none of them is this handle: 163 are
+Batch L's `IrrlichtRenderer& owner_` in the eleven renderer components (slash
+39, zone_lifecycle 31, sim 20, zone_load 16, diagnostics 13, frame 11, player 9,
+overlays 9, eqe1 9, zone_stream 6 — the RendererContext pattern, tracked as the
+closed B050), and 178 are `zone_shader_callbacks.h`, where `owner_` is a
+`ZoneShaderManager*` back-pointer inside the shader-callback classes and has
+nothing to do with either programme.
 
 ## Batch L (planned: `refactor/L_renderer_component_extraction.md`)
 

@@ -44,11 +44,11 @@
 // ctx_.lifecycle.TickNetwork(). Both axes of the K13 (ii) friend test are
 // empty.
 //
-// `owner_` SURVIVES, and only for this: two intent arms pass it, by
-// reference, to EQ::castRefusalMessage(EverQuest&, CastResult) -- an
-// EverQuest& parameter on a free function, which needs no private access and
-// therefore no friendship. That is the last EverQuest coupling in this
-// component. m_zone_load_requested stays on EverQuest; Application consumes it
+// T341 removed the `friend` line; T366 (B038 CLOSED) removed the `owner_`
+// handle that outlived it. Its only use was two intent arms passing it, by
+// reference, to EQ::castRefusalMessage(EverQuest&, CastResult); that free
+// function now takes the ClientContext, so the arms pass ctx_.
+// m_zone_load_requested stays on EverQuest; Application consumes it
 // through ConsumeZoneLoadRequest() and no component reaches it.
 //
 // The reference-returning loot getters below are the mirror image: the
@@ -96,7 +96,9 @@ class GameStateBridge;
 
 class BridgeComponent {
 public:
-	BridgeComponent(ClientContext& ctx, EverQuest& owner) : ctx_(ctx), owner_(owner) {}
+	// T366 (B038): the EverQuest& transition handle is gone -- this component
+	// names nothing on EverQuest any more.
+	explicit BridgeComponent(ClientContext& ctx) : ctx_(ctx) {}
 
 	// Loot window item, game-side (D18a/T268).
 	struct GameLootItem {
@@ -431,7 +433,6 @@ private:
 #endif
 
 	ClientContext& ctx_;
-	EverQuest& owner_;
 };
 
 }  // namespace bridge

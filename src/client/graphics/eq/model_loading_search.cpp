@@ -240,37 +240,37 @@ bool RaceModelLoader::searchZoneChrFilesForModel(uint16_t raceId, uint8_t gender
             // Try to load from this _chr.s3d file
             std::string fullPath = entry.path().string();
             S3DLoader loader;
+            // T366 (B095): all three inserts below go through
+            // storeOtherChrCacheLocked -- the negative-cache entries as much as
+            // the positive one. A raw otherChrCaches_[key] = ... never enters
+            // chrCacheLruOrder_, so it can never be evicted while still counting
+            // against maxChrCacheEntries_ (the T91 bypass), and the third insert
+            // used to open-code the helper's push/evict inline.
             if (!loader.loadZone(fullPath)) {
                 // Cache an empty entry so we don't try again
-                otherChrCaches_[lowerFilename] = OtherChrCache{};
+                storeOtherChrCacheLocked(lowerFilename, {}, {});
                 continue;
             }
 
             auto zone = loader.getZone();
             if (!zone || zone->characters.empty()) {
                 // Cache an empty entry so we don't try again
-                otherChrCaches_[lowerFilename] = OtherChrCache{};
+                storeOtherChrCacheLocked(lowerFilename, {}, {});
                 continue;
             }
 
             // Cache this file's characters and textures for future searches
-            OtherChrCache& cache = otherChrCaches_[lowerFilename];
-            cache.characters = zone->characters;
-            cache.textures = zone->characterTextures;
-            // Invalidate merged textures cache since we added new textures
-            mergedTexturesCacheValid_ = false;
+            storeOtherChrCacheLocked(lowerFilename, zone->characters, zone->characterTextures);
 
-            // LRU tracking and eviction
-            if (maxChrCacheEntries_ > 0) {
-                chrCacheLruOrder_.push_front(lowerFilename);
-                while (otherChrCaches_.size() > maxChrCacheEntries_ &&
-                       chrCacheLruOrder_.size() > 1) {
-                    const std::string& oldest = chrCacheLruOrder_.back();
-                    otherChrCaches_.erase(oldest);
-                    chrCacheLruOrder_.pop_back();
-                    mergedTexturesCacheValid_ = false;
-                }
+            // Re-find: the store may have evicted this very entry (a cap of 1
+            // with an already-tracked entry ahead of it), so read the cached
+            // vectors back through the iterator rather than assuming they are
+            // still there.
+            auto insertedIt = otherChrCaches_.find(lowerFilename);
+            if (insertedIt == otherChrCaches_.end()) {
+                continue;
             }
+            OtherChrCache& cache = insertedIt->second;
 
             LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Cached {} characters from {} (total cached: {})",
                       cache.characters.size(), lowerFilename, otherChrCaches_.size());

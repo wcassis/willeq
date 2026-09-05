@@ -39,7 +39,7 @@ namespace {
 
 TEST(SetHeadingConversion, SetHeading90_LeavesHeadingAt90NotDoubleConverted) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(460);
     EqActionHandler handler(eq);
 
@@ -52,7 +52,7 @@ TEST(SetHeadingConversion, SetHeading90_LeavesHeadingAt90NotDoubleConverted) {
 
 TEST(SetHeadingConversion, SetHeading225_LeavesHeadingAt225NotDoubleConverted) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(460);
     EqActionHandler handler(eq);
 
@@ -65,7 +65,7 @@ TEST(SetHeadingConversion, SetHeading225_LeavesHeadingAt225NotDoubleConverted) {
 
 TEST(SetHeadingConversion, SetHeading0_IsZero) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(460);
     EqActionHandler handler(eq);
 
@@ -76,7 +76,7 @@ TEST(SetHeadingConversion, SetHeading0_IsZero) {
 
 TEST(SetHeadingConversion, SetHeading359_IsUnchanged) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(460);
     EqActionHandler handler(eq);
 
@@ -88,7 +88,7 @@ TEST(SetHeadingConversion, SetHeading359_IsUnchanged) {
 // Wrap case: negative input normalizes into [0, 360).
 TEST(SetHeadingConversion, SetHeadingNegative10_WrapsTo350) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(460);
     EqActionHandler handler(eq);
 
@@ -100,7 +100,7 @@ TEST(SetHeadingConversion, SetHeadingNegative10_WrapsTo350) {
 // Wrap case: input >= 360 normalizes back into [0, 360).
 TEST(SetHeadingConversion, SetHeading400_WrapsTo40) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(460);
     EqActionHandler handler(eq);
 
@@ -118,7 +118,7 @@ TEST(SetHeadingConversion, SetHeading400_WrapsTo40) {
 
 TEST(SetHeadingConversion, FaceEntity_RealHandler_ProducesSaneHeadingNotScaled) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(460);
     EqActionHandler handler(eq);
 
@@ -153,7 +153,7 @@ TEST(SetHeadingConversion, FaceEntity_RealHandler_ProducesSaneHeadingNotScaled) 
 
 TEST(SetHeadingConversion, FaceEntity_NonCardinalDirection_HeadingStaysInDegreeRange) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(460);
     EqActionHandler handler(eq);
 

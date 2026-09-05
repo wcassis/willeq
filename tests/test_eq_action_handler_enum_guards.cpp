@@ -64,7 +64,7 @@ public:
 
 TEST(EqActionHandlerEnumGuards, SetMovementMode_ValidBoundaryLow_Run_ReachesRealSetter) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(460);
     RecordingBridge bridge;
     eq.setBridge(&bridge);
@@ -86,7 +86,7 @@ TEST(EqActionHandlerEnumGuards, SetMovementMode_ValidBoundaryLow_Run_ReachesReal
 
 TEST(EqActionHandlerEnumGuards, SetMovementMode_ValidBoundaryHigh_Sneak_ReachesRealSetter) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(460);
     RecordingBridge bridge;
     eq.setBridge(&bridge);
@@ -102,7 +102,7 @@ TEST(EqActionHandlerEnumGuards, SetMovementMode_ValidBoundaryHigh_Sneak_ReachesR
 
 TEST(EqActionHandlerEnumGuards, SetMovementMode_NegativeOutOfRange_RejectedNoEventPushed) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(460);
     RecordingBridge bridge;
     eq.setBridge(&bridge);
@@ -129,7 +129,7 @@ TEST(EqActionHandlerEnumGuards, SetMovementMode_NegativeOutOfRange_RejectedNoEve
 
 TEST(EqActionHandlerEnumGuards, SetMovementMode_JustPastHighEnd_RejectedNoEventPushed) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(460);
     RecordingBridge bridge;
     eq.setBridge(&bridge);
@@ -147,7 +147,7 @@ TEST(EqActionHandlerEnumGuards, SetMovementMode_JustPastHighEnd_RejectedNoEventP
 
 TEST(EqActionHandlerEnumGuards, SetMovementMode_WayOutOfRange_RejectedNoEventPushed) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(460);
     RecordingBridge bridge;
     eq.setBridge(&bridge);
@@ -169,7 +169,7 @@ TEST(EqActionHandlerEnumGuards, SetMovementMode_WayOutOfRange_RejectedNoEventPus
 
 TEST(EqActionHandlerEnumGuards, SetPositionState_ValidBoundaryLow_Standing_ReachesRealSetter) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(460);
     RecordingBridge bridge;
     eq.setBridge(&bridge);
@@ -190,7 +190,7 @@ TEST(EqActionHandlerEnumGuards, SetPositionState_ValidBoundaryLow_Standing_Reach
 
 TEST(EqActionHandlerEnumGuards, SetPositionState_ValidBoundaryHigh_Dead_ReachesRealSetter) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(460);
     RecordingBridge bridge;
     eq.setBridge(&bridge);
@@ -206,7 +206,7 @@ TEST(EqActionHandlerEnumGuards, SetPositionState_ValidBoundaryHigh_Dead_ReachesR
 
 TEST(EqActionHandlerEnumGuards, SetPositionState_NegativeOutOfRange_RejectedNoEventPushed) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(460);
     RecordingBridge bridge;
     eq.setBridge(&bridge);
@@ -226,7 +226,7 @@ TEST(EqActionHandlerEnumGuards, SetPositionState_NegativeOutOfRange_RejectedNoEv
 
 TEST(EqActionHandlerEnumGuards, SetPositionState_JustPastHighEnd_RejectedNoEventPushed) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(460);
     RecordingBridge bridge;
     eq.setBridge(&bridge);
@@ -252,7 +252,7 @@ TEST(EqActionHandlerEnumGuards, SetPositionState_JustPastHighEnd_RejectedNoEvent
 
 TEST(EqActionHandlerEnumGuards, SendPetCommand_ValidLowEnumerator_NoRejectionMessage) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(460);
     RecordingBridge bridge;
     eq.setBridge(&bridge);
@@ -272,7 +272,7 @@ TEST(EqActionHandlerEnumGuards, SendPetCommand_ValidLowEnumerator_NoRejectionMes
 
 TEST(EqActionHandlerEnumGuards, SendPetCommand_ValidHighEnumerator_NoRejectionMessage) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(460);
     RecordingBridge bridge;
     eq.setBridge(&bridge);
@@ -292,7 +292,7 @@ TEST(EqActionHandlerEnumGuards, SendPetCommand_ValidHighEnumerator_NoRejectionMe
 
 TEST(EqActionHandlerEnumGuards, SendPetCommand_ZeroBelowRange_RejectedBeforeCast) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(460);
     RecordingBridge bridge;
     eq.setBridge(&bridge);
@@ -314,7 +314,7 @@ TEST(EqActionHandlerEnumGuards, SendPetCommand_ZeroBelowRange_RejectedBeforeCast
 
 TEST(EqActionHandlerEnumGuards, SendPetCommand_22AboveRange_RejectedBeforeCast) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(460);
     RecordingBridge bridge;
     eq.setBridge(&bridge);
@@ -331,7 +331,7 @@ TEST(EqActionHandlerEnumGuards, SendPetCommand_22AboveRange_RejectedBeforeCast) 
 
 TEST(EqActionHandlerEnumGuards, SendPetCommand_255WayAboveRange_RejectedBeforeCast) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(460);
     RecordingBridge bridge;
     eq.setBridge(&bridge);
@@ -346,7 +346,7 @@ TEST(EqActionHandlerEnumGuards, SendPetCommand_255WayAboveRange_RejectedBeforeCa
 
 TEST(EqActionHandlerEnumGuards, SendPetCommand_15InteriorGap_RejectedBeforeCast) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(460);
     RecordingBridge bridge;
     eq.setBridge(&bridge);

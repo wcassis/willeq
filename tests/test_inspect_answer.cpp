@@ -115,7 +115,7 @@ TEST(InspectAnswer, BodyIsTheExactTitaniumSize) {
 // T88/T90/T167.
 TEST(InspectAnswer, SendInspectAnswerBuildsTheBodyFromOurOwnSpawnId) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(kMe);
 
     EXPECT_FALSE(eq.Player().Test_GetLastInspectAnswer().sent);
@@ -246,7 +246,7 @@ TEST(InspectMessageStore, HandlerShowDoesNotModify) {
 // The whole point: what we set is what we answer with.
 TEST(InspectMessageStore, TheAnswerCarriesTheStoredMessage) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(kMe);
     eq.Bridge().SetInspectMessage("Hail");
 

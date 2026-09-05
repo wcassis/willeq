@@ -12,14 +12,14 @@
 // owner_.m_x, Foo() -> owner_.Foo(), EverQuest statics and nested types
 // qualified), plus the K07 addition recorded in the Review: `this`, where a
 // moved body used it purely as an identity key into a function-static map,
-// became `&owner_` so the key is bit-for-bit the one it always was.
+// became `&owner_`; T366 put them back on `this`.
 //
-// `owner_` is the TRANSITION handle: the moved code still reaches EverQuest
-// members and methods that have not been extracted yet (m_movement_history,
-// m_water_state, m_zone_bsp_tree, m_navmesh_path, the zone-out handshake
-// flags, PosX()/PosY()/PosZ(), SafeQueueZonePacket(), ...). EverQuest declares
-// `friend class eqt::movement::MovementComponent` for exactly that. K-final
-// removes both the handle and the friendship.
+// T366 (B038 CLOSED): the `owner_` TRANSITION handle and the
+// `friend class eqt::movement::MovementComponent` line are both GONE. Its two
+// last uses were the private m_test_bypass_send_guard (the T88 seam, now on
+// eqt::PacketSender, read as ctx_.net.TestBypassSendGuard()) and the 22
+// `&owner_` identity keys in the function-static throttle tables, which are
+// back on `this` -- see movement_update.cpp for the one-to-one invariant.
 
 #include "client/client_context.h"
 #include "client/eq_enums.h"
@@ -41,7 +41,9 @@ namespace movement {
 
 class MovementComponent {
 public:
-	MovementComponent(ClientContext& ctx, EverQuest& owner) : ctx_(ctx), owner_(owner) {}
+	// T366 (B038): the EverQuest& transition handle is gone -- this component
+	// names nothing on EverQuest any more.
+	explicit MovementComponent(ClientContext& ctx) : ctx_(ctx) {}
 
 	// Commanded movement API (was src/client/eq_movement.cpp).
 	void Move(float x, float y, float z);
@@ -155,7 +157,6 @@ private:
 	float GetMovementSpeed() const;
 
 	ClientContext& ctx_;
-	EverQuest& owner_;
 
 	// K13: swimming state. Was EverQuest::m_water_state.
 	WaterState m_water_state = WaterState::NotInWater;
@@ -174,7 +175,7 @@ private:
 	// by RelocateWithinZone().
 	bool m_force_next_position_update = false;
 
-	// T88 test seam (see EverQuest::Test_SetBypassSendGuardForSeam /
+	// T88 test seam (see eqt::PacketSender::Test_SetBypassSendGuardForSeam /
 	// Test_GetLastComputedPositionUpdate above).
 	TestSentPositionUpdate m_test_last_sent_update;
 };

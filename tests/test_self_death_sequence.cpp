@@ -209,7 +209,7 @@ public:
         eq.GetGameState().world().setZoneConnected(true);
         eq.GetGameState().world().setClientReady(true);
         eq.m_update_running = true;
-        eq.Test_SetBypassSendGuardForSeam(true);
+        eq.Net().Test_SetBypassSendGuardForSeam(true);
         eq.Test_SetMySpawnIdForSeam(kSelfId);
         // SafeQueueZone refuses to send over a connection whose stats are all
         // zero ("appears invalid"). A FakeUdpTransport connection that has

@@ -29,7 +29,7 @@
 #include <cstdint>
 #include <string>
 
-class EverQuest;
+namespace eqt { struct ClientContext; }
 
 namespace EQ {
 
@@ -58,7 +58,12 @@ enum CastRefusalStringId : uint32_t {
 // client has received: inventory, bank, merchant, loot, links) knows the
 // item; an item the client has never been sent has no local name source,
 // so 272 stands for it. Defined in src/client/spell/cast_refusal.cpp.
-std::string castRefusalMessage(EverQuest& eq, CastResult result);
+//
+// T366 (B038 cluster 4): takes the ClientContext, not EverQuest&. The three
+// things it reads -- the spell manager, the inventory manager and the eqstr
+// lookup -- are all context members, so passing the whole client was the last
+// reason eqt::bridge::BridgeComponent carried an EverQuest& handle.
+std::string castRefusalMessage(eqt::ClientContext& ctx, CastResult result);
 
 inline uint32_t castRefusalStringId(CastResult result) {
     switch (result) {

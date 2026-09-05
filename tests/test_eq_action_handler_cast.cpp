@@ -108,7 +108,7 @@ public:
         EXPECT_NE(conn, nullptr);
 
         eq.setBridge(&bridge);
-        eq.Test_SetBypassSendGuardForSeam(true);
+        eq.Net().Test_SetBypassSendGuardForSeam(true);
         eq.Test_SetMySpawnIdForSeam(kSelfId);
         eq.Test_SetZoneConnectedForSeam(true);
         eq.m_zone_connection = conn;

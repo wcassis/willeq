@@ -128,7 +128,7 @@ std::vector<uint8_t> BuildPlayerProfilePayload(float server_x, float server_y, f
 class ZoneInZ : public ::testing::Test {
 protected:
     void SetUp() override {
-        eq.Test_SetBypassSendGuardForSeam(true);
+        eq.Net().Test_SetBypassSendGuardForSeam(true);
         eq.Test_SetMySpawnIdForSeam(460);
         eq.setBridge(&bridge);
         renderer.PlayerCamera().setCameraMode(IrrlichtRenderer::CameraMode::Free);
@@ -167,7 +167,7 @@ TEST_F(ZoneInZ, ThreeConsecutiveZoneInsDoNotAccumulate) {
     float carried = kOfficialWireZ;
     for (int login = 0; login < 3; ++login) {
         EverQuest session("127.0.0.1", 0, "test", "test", "test", "Testchar");
-        session.Test_SetBypassSendGuardForSeam(true);
+        session.Net().Test_SetBypassSendGuardForSeam(true);
         session.Test_SetMySpawnIdForSeam(460);
         IntentBridge sessionBridge;
         session.setBridge(&sessionBridge);
