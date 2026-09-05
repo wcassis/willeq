@@ -45,8 +45,11 @@ Additional context is in subdirectory CLAUDE.md files:
   `include/client/eq.h` fell to 899 lines and
   `include/client/graphics/irrlicht_renderer.h` to 1,343 — so
   `scripts/refactor/file_size_allowlist.txt` is EMPTY and a file over 1,500
-  under `src/`, `include/` or `tests/` is a **FAIL** in the `FileSizeCeiling`
-  ctest test, not a warning (M00, `docs/decisions.md` 2026-09-04). Put
+  under `src/`, `include/`, `tests/`, `tools/` or `benchmarks/` is a **FAIL**
+  in the `FileSizeCeiling` ctest test, not a warning (M00,
+  `docs/decisions.md` 2026-09-04; T385 added the last two directories, board
+  B167 — `--all` had never scanned `tools/`, and six files there were over the
+  ceiling while the checker reported a clean tree). Put
   substantial new code in new TUs; a file that genuinely must exceed the
   ceiling needs an allowlist entry with a reason and a no-grow max. Close-outs:
   `refactor/J_file_size_reclamation.md`, `refactor/K_component_extraction.md`,

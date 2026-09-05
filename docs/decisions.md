@@ -6,6 +6,29 @@ Newest entries first. Each entry: decision, rationale, implications.
 
 ---
 
+## 2026-09-05 — The ceiling covers `tools/` and `benchmarks/` too (T385)
+
+**Decision:** `scripts/refactor/check_file_sizes.sh --all` scans `src/`,
+`include/`, `tests/`, `tools/` **and** `benchmarks/`. The M00 rule is unchanged
+in shape; it now applies to every C++ file in the tree, which is what M00 said
+it did.
+
+**Rationale:** M00 said "tree-wide" and `--all` scanned three directories.
+`tools/` was never checked, and it held **six** files over the ceiling —
+`tools/hwcaps/zone_bench_loader.cpp` 3,280, `tools/model_viewer.cpp` 3,246,
+`tools/hwcaps/gles2_zone_benchmark.cpp` 3,060, `tools/model_viewer_spell_bar.h`
+1,965, `tools/entity_composite_builder.cpp` 1,861,
+`tools/hwcaps/gles2_fog_volume_benchmark.cpp` 1,711 — three of them over the
+3,000-line hard cap, while `FileSizeCeiling` reported a clean tree. `tools/`
+holds production-API callers (board B166: `tools/model_viewer.cpp` was the one
+caller of `setSpellDatabase()`), so it is not a second-class directory.
+
+**Implications:** a scanned directory that does not exist is skipped, so
+`benchmarks/` (no C++ today) costs nothing and is covered the day it grows
+some. `tools/retired/` is scanned like everything else. The allowlist is still
+the one reviewable exception mechanism and is still empty — a shader table or a
+hand-written parser is not "generated data" and does not earn an entry.
+
 ## 2026-09-04 — The 1,500-line ceiling is ENFORCED, and the allowlist is empty (M00)
 
 **Decision:** 1,500 lines is the enforced ceiling for every `*.cpp`, `*.h` and

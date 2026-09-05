@@ -166,3 +166,36 @@ base lists five files, all `.md`, `.sh` and `.txt`, and the same diff filtered
 to `*.cpp *.h *.hpp *.cmake CMakeLists.txt` returns NOTHING. No compiled
 artefact and no rendered pixel can differ. The ctest runs above used the
 pre-existing GLES2-config `build/` tree unmodified.
+
+---
+
+## T385 addendum (2026-09-05) — "tree-wide" was not true, and now is
+
+M00's claim was scoped to what `--all` actually scanned: `src/`, `include/`,
+`tests/`. It did not scan `tools/`, so the "0 FAIL, 0 WARN" run above measured
+866 files and missed 105. Board **B167**; closed by **T385**.
+
+The census `--all` finds once `tools/` and `benchmarks/` are added (971 files
+at `6c351a88`):
+
+| file | lines | over |
+|---|---|---|
+| `tools/hwcaps/zone_bench_loader.cpp` | 3,280 | the 3,000 hard cap |
+| `tools/model_viewer.cpp` | 3,246 | the 3,000 hard cap |
+| `tools/hwcaps/gles2_zone_benchmark.cpp` | 3,060 | the 3,000 hard cap |
+| `tools/model_viewer_spell_bar.h` | 1,965 | the 1,500 ceiling |
+| `tools/entity_composite_builder.cpp` | 1,861 | the 1,500 ceiling |
+| `tools/hwcaps/gles2_fog_volume_benchmark.cpp` | 1,711 | the 1,500 ceiling |
+
+Six, not the five B167 counted by hand — a scan finds what a hand count
+misses, which is the whole point of the change.
+
+T385 decomposed four of them (`model_viewer.cpp` 3,246 -> 155,
+`model_viewer_spell_bar.h` 1,965 -> 14, `entity_composite_builder.cpp`
+1,861 -> 484, `gles2_fog_volume_benchmark.cpp` 1,711 -> 1,220). The two
+`hwcaps` zone files are **T387**'s, dispatched in parallel; until that merges,
+`FileSizeCeiling` fails on those two and only those two.
+
+The allowlist stays EMPTY. Nothing in `tools/` qualified: the mechanism is for
+a generated data table, and a GLSL shader set, a hand-rolled JSON parser and a
+UI header are none of them.
