@@ -547,7 +547,25 @@ it without taking that measurement first.
   baselined but deliberately not asserted; gating it needs repeat-run data from a
   second machine first. Prov: archived board, T69.
 
-- **B022** (C) `src/client/graphics/spell_visual_fx.cpp` — the data-driven spell
+- **B022** (C) `src/client/graphics/spell_visual_fx.cpp` --
+  **THE PADDING RULING IS ANSWERED BY THE ORACLE (T389, 2026-09-05):
+  `EmptyRecord` and `NoAffectIndex` DO NOT DIFFER -- both draw the same
+  generic bright-blue dome of point sprites, for the same 2.8 s.** Measured
+  back to back in one session, 20 s apart, same spot and camera:
+  **4243 Intoxication I** (affect index 70, EmptyRecord, self-target,
+  effect 10 = null so it lands harmlessly) peaked at RGB .378/.383/.523 and
+  **6594 GM Cleansing** (affect index -1, NoAffectIndex) at .381/.386/.624;
+  **1494 Flame Jet** (index 71, the other byte-identical template) drew the
+  same generic blue in a third run. So the three
+  `!visual.isFallback() && !visual.hasXStage()` gates in
+  `spell_visual_fx.cpp` are CORRECT AS WRITTEN for both fallback classes --
+  `isFallback()` is true for each, so neither is ever suppressed -- and
+  T380 Leg B3's STOP ("stop if the oracle's answer differs between 1494 and
+  6594") did **not** fire. Evidence:
+  `review/T389/oracle/T389_oracle_6594_full_1024x768.png`,
+  `review/T389/oracle/T389_oracle_1494_full_1024x768.png`;
+  `refactor/T389_spell_fx_oracle.md` Review S4. What is left of B022 is only
+  the sprite-name half, which is **B162**. Original text: the data-driven spell
   visual layer is still entirely ahead: nothing consumes the `spells.eff` reader
   in place of the hardcoded resist/school vocabulary, and the spells whose
   `spell_affect_index` hits an empty padding record need a rendering ruling.
@@ -719,7 +737,40 @@ it without taking that measurement first.
   available (`SpellVisualVocabulary::travelType`, 85 spells with
   `travel_type == 3`); nothing consumes it. Census by T388.
 
-- **B162** (C) `src/client/spell/spells_eff_reader.cpp`
+- **B162** (C) `src/client/spell/spells_eff_reader.cpp` --
+  **THE HYPOTHESIS IS SETTLED BY THE ORACLE (T389, 2026-09-05): the digit is
+  0-BASED. `GEN<L><d>0_SPRITE` -> `spel<l><d+1>.tga`, and the `'0'` exclusion
+  is wrong too.** Two spells.eff records whose every non-empty sprite slot in
+  every stage holds ONE name, for a letter with at least two files on disk,
+  settle it -- the drawn particle can only have come from that name:
+  record **20** (every slot `GENN00_SPRITE`, cast as spell **41 Weaken**) drew
+  `speln1.tga`'s green/orange mottled spheres, where the shipped rule says a
+  `'0'` digit resolves to nothing; record **35** (every slot `GENA10_SPRITE`,
+  cast as spell **253 Whirling Wind**) drew `spela2.tga`'s bright blue
+  EIGHT-pointed stars, **not** `spela1.tga`'s blue blob cloud, which is what
+  the verbatim reading gives. Corroborated by `spelo1.tga` (285 Pendril's
+  Animation, record 11) and `spelu1.tga` (54 Frost Bolt's `GENU00` Source
+  stage). Evidence: `review/T389/oracle/T389_oracle_41_weaken_full_1024x768.png`,
+  `review/T389/oracle/T389_oracle_253_GENA10_crop3.5x.png`,
+  `review/T389/sprites/montage_discriminators.png`;
+  `refactor/T389_spell_fx_oracle.md` Review S3. **A trap the measurement had to
+  clear: the purple ribbon swirl at a caster's hands is the client's own
+  casting animation, not a record sprite** -- it appears on any caster,
+  including an NPC casting in frame, and it briefly looked like evidence for
+  the verbatim reading. **What is still open, and why this stays (C):**
+  `effectNameToTexture()` was deliberately NOT changed by T389, because
+  correcting it moves 157 -> 272 of 301 sprite slots across 8,066 spells at
+  once and nothing downstream can draw a `spel*.tga` anyway (see **B225**).
+  That correction plus its regression net is the remaining work here.
+  T389 also did the smallest end-to-end slice on top of the measurement
+  (T380 Leg B2): `GEND10_SPRITE` -> `ParticleAtlas::SpellSparkle` and
+  `GENU10_SPRITE` -> `ParticleAtlas::IceCrystal` in
+  `SpellEffectsConfig::buildTextureNameMap()`, routed into
+  `EmitterConfig::textureRegions[]` by the new
+  `SpellPresets::applyStageSpriteNames()` from
+  `SpellVisualFX::createImpact()` / `createImpactAtPosition()`, pinned by
+  `tests/test_spell_target_stage_textures.cpp` (8 tests, 6 red pre-fix).
+  `ParticleAtlas` was NOT extended and no `spel*.tga` is loaded. Original text:
   `SpellsEffReader::effectNameToTexture()` maps only **18 of the 40** distinct
   sprite names in `spells.eff` — 16 of those exist in
   `/mnt/projects/EverQuestP1999/SpellEffects/` — which is **157 of 301 sprite
@@ -764,7 +815,17 @@ it without taking that measurement first.
   makes the data AVAILABLE -- nothing consumes `travel_type` yet; the
   projectile question is still B165, whose decision waits on B162's oracle.**
 
-- **B165** (B) The three T72 stage-suppression gates
+- **B165** (B) **ANNOTATED by T389 (2026-09-05): the oracle says both impact
+  gates and the cast-glow gate are correct as written, so only the travel gate
+  is still a question.** T389 measured that `EmptyRecord` and `NoAffectIndex`
+  draw the SAME generic effect on the official client (see B022), and both are
+  `isFallback()`, so the gates never suppress either -- which is the behaviour
+  the shipped code already has. The travel gate's 6,250-spell population is
+  still unexercised because `createProjectile()` still has no client caller,
+  and **T389 could not measure whether the official client draws a travelling
+  bolt at all** -- four attempts failed for reasons recorded in **B227**. The
+  projectile decision therefore still waits, but it now waits on B227's
+  capture, not on B162, which is settled. Original text: The three T72 stage-suppression gates
   (`!visual.isFallback() && !visual.hasXStage()` in
   `SpellVisualFX::createCastGlow` / `createProjectile` / `createImpact` /
   `createImpactAtPosition`, `src/client/graphics/spell_visual_fx.cpp`) became
@@ -3235,4 +3296,97 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   (the two-client session segfaults) is STRUCK by T391 (`e332162f`), so that
   half of the block is gone** -- a two-client session now survives 5 minutes --
   but neither T391 nor T395 had the budget to take the fire-vs-frost observer
-  pair, so B160's proof is still owed.
+  pair, so B160's proof is still owed. **T389 (2026-09-05) did not take it
+  either** -- seven official-client sessions took that session's budget and
+  both fable runs were single-client -- and it found the reason the pair would
+  not have shown anything yet: see **B226** (fable's impact burst is 36
+  particles of 0.05-0.15 world units for 0.4-0.8 s and is not resolvable in a
+  3.22 fps capture, against the oracle's hundreds of sprites over a third of
+  the screen for 2-3 s). T389 did measure the ORACLE half of the same
+  question: Burst of Flame is R-dominant (.360/.379/.199) and Frost Bolt is
+  B-dominant (.213/.284/.315) on the official client, so the two colours are
+  real there. Take the observer pair after B226.
+
+### Added by T389 (2026-09-05)
+
+- **B225** (A) `data/textures/particle_atlas.bmp` -- **the shipped particle
+  atlas has NO alpha channel, so every particle in the game is drawn as a
+  flat, fully opaque coloured square.** The file is a 24-bit `BMP3`, 64x64,
+  and every one of the 256 pixels in tile 0 is `255,255,255` (checked with
+  PIL: `len(np.unique(...)) == 1` over the tile). `generateParticleAtlas()`
+  in `src/client/graphics/texture_generators.cpp` builds the sixteen shapes
+  entirely in ALPHA -- `drawCircle`/`drawStar`/`drawSpellSparkle` write a
+  constant RGB and vary only `pixelColor.setAlpha(...)` -- and
+  `tools/retired/generate_textures.cpp`'s `writeImage(..., "particle_atlas.bmp")`
+  drops it. `ParticleManager::loadParticleAtlas()` loads that file and
+  `particleMaterial_.MaterialType = EMT_TRANSPARENT_ALPHA_CHANNEL`, so the
+  blend reads alpha 255 everywhere: SoftCircle, Snowflake, SpellSparkle and
+  IceCrystal are indistinguishable opaque squares that differ only in the
+  flat RGB the generator happened to pick. **Consequence for the spell work:
+  a sprite-name -> tile mapping (B162, T389 Leg B) cannot change the shape of
+  anything on screen today, only its tint** -- and it bounds what any spell
+  particle can ever look like. Closes when the atlas is stored in a format
+  that carries alpha (PNG, or a BMP32/`ECF_A8R8G8B8` writer) and a test
+  asserts a non-trivial alpha histogram for at least two tiles. Not fixed by
+  T389: it is a texture-pipeline change with a golden-image blast radius, not
+  part of a measurement unit. Prov: T389 Review S6.
+
+- **B226** (B) `config/spell_effects.json` `styles.impact` /
+  `styles.spellComplete` -- **fable's impact burst is two orders of magnitude
+  smaller than the oracle's and is not visible in a capture.** MEASURED T389:
+  Testcaster cast Frost Bolt six times in `qeynos2` with GM invulnerability
+  off on a binary carrying T395's B204 fixes; all six reached the worker
+  (`ParticleManager: Enqueued CreateSpellEffect 'Impact'` +
+  `SimWorker: Created spell effect 'Impact'` x6, so T395's chain is confirmed
+  live), and across **607 dumped frames at a measured 3.22 fps** the changed-
+  pixel count in a 420x280 crop of the 3D scene around the caster never left
+  its 300-1,400 idle-animation band; the one larger excursion is nameplate
+  and chat text. The style is **36 particles of `sizeStartMin` 0.05 to
+  `sizeEndMax` 0.15 world units, `emitterLifetime` 0.1 s, particle lifetime
+  0.4-0.8 s**. The oracle paints hundreds of sprites over roughly a third of
+  the screen for 2.0-3.3 s (T389 Review S2). Closes when a landed spell
+  produces a burst an observer can see and a capture can resolve. Frame pair:
+  `review/T389/fable/T389_fable_54_impact_crop4x.png` versus
+  `review/T389/oracle/T389_oracle_54_self_full_1024x768.png`. This is the
+  live half of **B204**'s proof and the reason **B160**'s observer pair is
+  still not worth taking. Prov: T389 Review S7.
+
+- **B227** (B) the projectile question (does the official client draw a Frost
+  Bolt travelling between caster and target, and over how many frames) is
+  **still unmeasured after four attempts** -- T389 could not frame one. The
+  four failure modes, so the next unit does not repeat them: (1) a GM
+  `#castspell` calls eqemu's `SpellFinished`, so there is no cast bar and no
+  travel stage at all -- the Middle stage needs a REAL gem cast
+  (`#scribespells N`, `#memspell <spell> <gem>`, `/cast <gem>`); (2) a hostile
+  target closes to melee within seconds and melee **interrupts** a gem cast;
+  (3) a heading written to `character_data` does not take on zone-in -- use
+  eqemu's `#goto [x y z] [h]` (`zone/gm_commands/goto.cpp`), and note the
+  convention T389 derived and confirmed: **`world_angle_atan2 =
+  heading * (360/512) + 90`, +X north, +Y east**, so `h=128` faces -X (south)
+  and `h=384` faces +X (north); (4) backpedalling to make distance walked the
+  character out of `qeynos2` into `qeynos`. The recipe that should work: a
+  real gem cast at an un-aggroed target ~90 units away, placed with
+  `#goto x y z h`, fired immediately with no intervening screenshots. This
+  blocks the travel-gate half of **B165** and the wire-or-delete decision in
+  **B161**. Prov: T389 Review S5.
+
+- **B228** (P) `tests/goldens/manifest.json` memory-coverage `eqe1MappedBytes`
+  -- the visual gate is **RED at this tip for a reason outside any checkout**:
+  `/mnt/projects/EverQuest_ETC1/willeq.eqe1`, the composite sheet, was
+  rewritten on the shared NFS asset directory at **2026-09-05 21:20** and grew
+  by **239 bytes**, so all three memory-coverage zones miss by exactly that
+  amount (qeynos2 expected 119944431 got 119944670; gfaydark 118610523 ->
+  118610762; befallen 113095019 -> 113095258). Every other gate check passes:
+  the golden images match, CPU p95 is under ceiling in all three zones, and
+  the per-zone budget block is clean. This is the SAME class of drift the
+  manifest's own T303 note already records ("the +1,040 byte eqe1MappedBytes
+  and +183 byte characterModelsBytes drift ... was traced to willeq.eqe1, the
+  composite sheet rebuilt by T284/T287"), and it hits every branch equally --
+  T389 changed only four source files, none of which can alter the mapped
+  size of an archive on NFS. **A re-bless is Will's call and an executor must
+  never self-bless**, so T389 left the goldens untouched and reported the
+  gate as FAIL. Closes when the three values are re-blessed against the
+  current archive, or the sheet is pinned so a rebuild is bit-identical --
+  which is the better fix, because a shared asset that changes under three
+  worktrees is the same hazard class as the git stash and the shared
+  scratchpad. Prov: T389 Review S9.

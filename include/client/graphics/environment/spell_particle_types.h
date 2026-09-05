@@ -76,6 +76,22 @@ namespace SpellPresets {
     SpellEffectDef SpellRain(glm::vec4 color, float radius, uint32_t spellId = 0);
     SpellEffectDef GroundCircle(glm::vec4 color, float radius, uint32_t spellId = 0);
     glm::vec4 resistToParticleColor(uint8_t resistType);
+
+    // T389 (board B162): replace an effect definition's atlas tile choice
+    // with the tiles named by a resolved spells.eff stage.
+    //
+    // spriteNames are the raw slots as read from the file (up to three, any
+    // of them possibly empty); each non-empty one is passed through
+    // SpellEffectsConfig::getTextureIndex(), which already falls back to
+    // SoftCircle for a name it does not know -- so an unmapped name degrades
+    // exactly as it does today and nothing is ever left unset. If every slot
+    // is empty the definition is left untouched.
+    //
+    // Applied to every emitter in the definition, because the Target stage
+    // describes one impact and the Impact preset is one emitter.
+    void applyStageSpriteNames(SpellEffectDef& def,
+                               const std::vector<std::string>& spriteNames,
+                               uint32_t spellId = 0);
 }
 
 } // namespace Environment

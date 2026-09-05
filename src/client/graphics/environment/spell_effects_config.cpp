@@ -33,6 +33,32 @@ void SpellEffectsConfig::buildTextureNameMap() {
     textureNameMap_["RainStreak"] = ParticleAtlas::RainStreak;
     textureNameMap_["SmokeWisp"] = ParticleAtlas::SmokeWisp;
     textureNameMap_["IceCrystal"] = ParticleAtlas::IceCrystal;
+
+    // T389 (board B162): the spells.eff sprite names the official Titanium
+    // client actually draws, mapped onto the tiles this atlas already has.
+    //
+    // The name->file rule was MEASURED against the official client, not
+    // argued (review/T389/): GEN<L><d>0_SPRITE resolves to
+    // spel<l><d+1>.tga -- the digit is 0-BASED. Two independent single-name
+    // records settle it: record 20 (every slot GENN00_SPRITE, spell 41
+    // Weaken) draws speln1.tga's green/orange mottled spheres, and record 35
+    // (every slot GENA10_SPRITE, spell 253 Whirling Wind) draws spela2.tga's
+    // bright blue eight-point stars -- NOT spela1.tga's blue blob cloud,
+    // which is what the verbatim reading would give.
+    //
+    // Frost Bolt (54) record 23 Target stage = GEND10 + GENU10 x2, i.e.
+    // speld2.tga and spelu2.tga. Neither has a close tile here (see the
+    // comparison in refactor/T389_spell_fx_oracle.md Review); these are the
+    // nearest of the sixteen:
+    //   speld2.tga  cyan EIGHT-pointed star, bright core, soft radial glow
+    //               -> SpellSparkle, the only tile drawn as a pointed star
+    //                  with a bright core plus a soft glow (and its
+    //                  |cos(4*theta)|^3 lobe function gives eight lobes).
+    //   spelu2.tga  small blue diagonal cross with a bright white core
+    //               -> IceCrystal, the only angular, pale-blue tile; the
+    //                  cross arms have no counterpart at all.
+    textureNameMap_["GEND10_SPRITE"] = ParticleAtlas::SpellSparkle;
+    textureNameMap_["GENU10_SPRITE"] = ParticleAtlas::IceCrystal;
 }
 
 uint8_t SpellEffectsConfig::getTextureIndex(const std::string& name) const {
