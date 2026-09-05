@@ -2905,6 +2905,68 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   pins the constants that did it, and the fit is closed against a measurement
   rather than extrapolated. Prov: T386 Review §4; B171; B067.
 
+  **T394 (`7cd6c124`) REVERTED T383's six constants and its redShift** —
+  `include/client/graphics/vision_ambient.h`, `include/client/graphics/vision_type.h`
+  and `src/client/graphics/vision_ambient.cpp` are byte-identical to the
+  pre-T383 tree again (Ultravision gain **0.1521** x tint **(1.009, 0.848,
+  1.143)**, Infravision gain **0.0956** x tint **(1.539, 0.843, 0.617)**,
+  Infravision lamp redShift **0.3**; `visionFrameRatios()` and
+  `kVisionFrameExponent`, which existed only to express the refuted model, are
+  gone with it). A refuted model is reverted, not patched: **no constant here
+  may be moved by argument again.** `tests/test_vision_ambient.cpp` gained
+  `VisionGainsRevertedT394Test` (5 cases naming the refutation) and
+  `tests/test_vision_zone_lights.cpp` is back to T360's literal; **6 cases fail
+  against T383's constants and all pass against the restored ones**.
+
+  **B203 STAYS OPEN.** What is OWED is a **LIVE A/B search** in the next lock
+  unit — one parameter at a time, oracle frame beside fable frame, T361's
+  method — starting from the live-measured pre-T383 baseline (Ultravision
+  R 1.4609 / G 1.2814 / B 1.6629, grey 1.4483; Infravision R 1.6002 / G 1.1264
+  / B 0.8209, grey 1.2450). Not a desk re-fit: the desk re-fit is what T383
+  did.
+
+  **The +55% blue night-base shift: BISECTED TO NO COMMIT, and the plan's range
+  was wrong.** `c0a76fea..65cbed39` is not the interval between the two
+  measurements — `c0a76fea` IS T386's own base/tip and `65cbed39` is later.
+  The real interval is **`032de79a` (T377's tip) .. `c0a76fea` (T386's tip)**,
+  48 commits. Diffed in full: the only changes under `src/client/graphics/` or
+  `include/client/graphics/` are T383's vision floors, T381's spell FX and
+  T382's UI panels/hotkeys. **Nothing in the interval touches
+  `updateTimeOfDay`, the day/night ambient curve, the zone lights,
+  `sim_animation.cpp`, any shader, fog or culling** — and T383's floors cannot
+  reach an unbuffed frame here, because Testchar is **race 1**, which the
+  session's own log resolves as `Player race 1 -> base vision: Normal`
+  (`review/T377/logs/fable_session_vis.log:808`). No commit changed the night
+  base. What the bisect found instead is **B211**. Prov: T386 Review §4; T394
+  Review; B171; B067.
+
+- **B211** (A) `src/client/graphics/renderer/irrlicht_renderer.cpp`
+  `IrrlichtRenderer::updateTimeOfDay` — **the weather ambient modifier
+  multiplies the night ambient and is uncontrolled by, and invisible to, every
+  vision measurement taken so far.** FOUND T394 while bisecting B203's +55%
+  blue night-base shift, which no commit between the two measurement tips
+  explains (see B203). `updateTimeOfDay` scales `r`, `g`, `b` and
+  `sunIntensity` by `weatherEffects_->getAmbientLightModifier()`, and T377's
+  own vision session logged **`weatherMod=0.460`** 26 s before its first
+  measurement window
+  (`review/T377/logs/fable_session_vis.log:9193`) — the night ambient more
+  than halved, with no `#set weather` in any measurement recipe. Two
+  consequences. (1) The log line fires only when the modifier **changes by
+  >0.01 AND is below 0.99**, so a return to 1.0 is never logged: a session
+  cannot be shown to have been weather-free from its log. (2) The vision floor
+  is applied **AFTER** the weather multiply (the comment on the floor block
+  says so deliberately), so weather darkens the base a vision ratio is measured
+  against while leaving the floor fixed — which **inflates a measured vision
+  ratio in proportion to the weather at the time**. Every cross-session night
+  or vision-ratio comparison in T358/T361/T377/T383/T386 is therefore
+  unpinned, T383's fit included, and B203's owed live re-solve cannot be
+  trusted until this is nailed down. Closes when the measurement recipe forces
+  and verifies a known weather state (or the client logs the modifier every
+  time it is applied), the ordering against the floor is a deliberate,
+  tested decision, and one session demonstrates a repeatable night base. **Not
+  fixed in T394** — T394 was a revert and holds no server lock. B210 is left
+  free for T391. Prov: T394 Review; B203.
+
 - **B204** (B) `src/client/graphics/spell_visual_fx_nodes.cpp` /
   `SpellVisualFX` — **no spell impact visual is drawn at all, on the observing
   client or anywhere, so T381's Fire/Cold colours have no consumer that reaches
@@ -2972,7 +3034,10 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   character, while `Alt+P`, `G` and `P` were typed into the chat box. Send
   `Escape` before each key.
 
-- **B171** — its provisional strike **must be reversed**; see **B203**.
+- **B171** — its provisional strike **is reversed by T394 (`7cd6c124`)**:
+  T383's constants are gone from the tree and the defect B171 names (the
+  per-channel gains are wrong against the oracle) is live again, tracked as
+  **B203**. Do not re-strike it from a desk fit.
 
 - **B160** — its owed live pair is **NOT PROVEN** and the reason is bigger than
   the colours; see **B204** (nothing is drawn) and **B202** (the two-client
