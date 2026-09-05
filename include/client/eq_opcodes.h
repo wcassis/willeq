@@ -125,6 +125,13 @@ enum TitaniumZoneOpcodes {
 	HC_OP_AutoAttack = 0x5e55,
 	HC_OP_AutoAttack2 = 0x0701,
 	HC_OP_TargetCommand = 0x1477,
+	// T374 (BOARD B137): the server's reply to OP_TargetCommand. G01 carried
+	// it into kZoneOpcodeTable as the bare literal 0x61f9 -- the only key in
+	// either table that was not an enumerator -- because no enumerator had
+	// ever been written for it. Value unchanged; the G01 golden
+	// (tests/goldens/zone_opcodes_g01.txt) pins it and is byte-identical
+	// across the change.
+	HC_OP_TargetCommandReply = 0x61f9,
 	HC_OP_TargetMouse = 0x6c47,
 	HC_OP_Consider = 0x65ca,
 	HC_OP_Action = 0x497c,

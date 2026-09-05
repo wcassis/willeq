@@ -306,7 +306,7 @@ private:
 	void OnLootItem(const EQ::Net::Packet &p);
 	void OnLootComplete(const EQ::Net::Packet &p);
 	void OnItemPacket(const EQ::Net::Packet &p);
-	void OnTargetCommandResponse(const EQ::Net::Packet &p);  // case 0x61f9 // OP_TargetCommand response
+	void OnTargetCommandResponse(const EQ::Net::Packet &p);  // HC_OP_TargetCommandReply (T374; was the bare 0x61f9)
 	void OnBecomeCorpse(const EQ::Net::Packet &p);
 	void OnTargetHoTT(const EQ::Net::Packet &p);
 	void OnSkillUpdate(const EQ::Net::Packet &p);
