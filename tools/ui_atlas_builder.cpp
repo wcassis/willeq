@@ -4,10 +4,24 @@
  * U02: Pre-generates the UI chrome sprite atlas. Run offline, output goes
  * into the --atlas-path directory alongside zone atlases.
  *
+ * T398 (board B218/B230a): it is no longer purely procedural. With
+ * --uifiles-path it also lifts the four coin decals the official client
+ * blits into its IW_Money buttons (A_PlatinumCoin / A_GoldCoin /
+ * A_SilverCoin / A_CopperCoin) out of the oracle's own art: EQUI_Animations.xml
+ * puts all four in ONE texture, window_pieces01.tga, as a contiguous 72x18
+ * strip at (90,140), each animation 18x18. fable draws them in
+ * InventoryLayout::coinDecalRect(), replacing T393's placeholder letter.
+ *
  * Usage:
- *   ui_atlas_builder --output <atlas-path-dir>
+ *   ui_atlas_builder --output <atlas-path-dir> [--uifiles-path <dir>]
  *   # Creates: <atlas-path-dir>/ui_atlas.bmp + <atlas-path-dir>/ui_atlas.json
+ *   # --uifiles-path is the official client's uifiles/default directory. If
+ *   # given, window_pieces01.tga MUST be readable there -- a missing coin
+ *   # sprite is a hard error, not a degraded atlas (Will's all-or-nothing
+ *   # rule for EQE1 assets). Omitting it emits the pre-T398 atlas.
  */
+
+#include "tga_reader.h"
 
 #include <cstdio>
 #include <cstdint>
@@ -62,6 +76,16 @@ static void fillGradientV(int x, int y, int w, int h, Color top, Color bot) {
     }
 }
 
+// Copies a tightly-packed top-down RGBA block into the atlas.
+static void blitRGBA(int x, int y, int w, int h, const std::vector<uint8_t>& src) {
+    for (int py = 0; py < h; ++py) {
+        for (int px = 0; px < w; ++px) {
+            size_t s = (static_cast<size_t>(py) * w + px) * 4;
+            setPixel(x + px, y + py, {src[s], src[s + 1], src[s + 2], src[s + 3]});
+        }
+    }
+}
+
 static void reg(const std::string& name, int x, int y, int w, int h) {
     sprites.push_back({name, x, y, w, h});
 }
@@ -101,6 +125,54 @@ static void generate() {
 
     // White pixel (4x4 for safe UV sampling)
     reg("white", 252, 252, 4, 4);  fillRect(252, 252, 4, 4, {255, 255, 255, 255});
+}
+
+// ── Coin decals from the official client's own art (T398) ───────────────────
+// The four coin animations live in ONE 256x256 texture as a contiguous
+// 72x18 strip; EQUI_Animations.xml gives each an 18x18 cell.
+static constexpr int COIN_SRC_X = 90;
+static constexpr int COIN_SRC_Y = 140;
+static constexpr int COIN_SIZE  = 18;
+
+// Row 4 of the atlas (y=224) was empty. 20 px pitch keeps each 18 px tile
+// inside its own 4x4 ETC1 block column, so no coin bleeds into its
+// neighbour when the atlas is compressed for the pack.
+static constexpr int COIN_DST_Y     = 224;
+static constexpr int COIN_DST_PITCH = 20;
+
+static const char* const kCoinSpriteNames[4] = {
+    "coin_platinum",  // A_PlatinumCoin
+    "coin_gold",      // A_GoldCoin
+    "coin_silver",    // A_SilverCoin
+    "coin_copper",    // A_CopperCoin
+};
+
+static bool generateCoins(const std::string& uifilesPath) {
+    const std::string tgaPath = uifilesPath + "/window_pieces01.tga";
+
+    EQT::ToolTGA::Image img;
+    std::string error;
+    if (!EQT::ToolTGA::load(tgaPath, img, error)) {
+        fprintf(stderr, "Error: coin decals unavailable: %s\n", error.c_str());
+        return false;
+    }
+
+    for (int i = 0; i < 4; ++i) {
+        std::vector<uint8_t> tile;
+        if (!img.crop(COIN_SRC_X + i * COIN_SIZE, COIN_SRC_Y,
+                      COIN_SIZE, COIN_SIZE, tile)) {
+            fprintf(stderr, "Error: coin cell %d is outside %s (%dx%d)\n",
+                    i, tgaPath.c_str(), img.width, img.height);
+            return false;
+        }
+        const int dstX = i * COIN_DST_PITCH;
+        blitRGBA(dstX, COIN_DST_Y, COIN_SIZE, COIN_SIZE, tile);
+        reg(kCoinSpriteNames[i], dstX, COIN_DST_Y, COIN_SIZE, COIN_SIZE);
+    }
+
+    printf("Lifted 4 coin decals from %s (%d,%d %dx%d)\n",
+           tgaPath.c_str(), COIN_SRC_X, COIN_SRC_Y, COIN_SIZE * 4, COIN_SIZE);
+    return true;
 }
 
 static bool writeJson(const std::string& path) {
@@ -182,17 +254,31 @@ static bool writeBMP(const std::string& path) {
 
 int main(int argc, char* argv[]) {
     std::string outputDir = ".";
+    std::string uifilesPath;
     for (int i = 1; i < argc; ++i) {
         if (std::string(argv[i]) == "--output" && i + 1 < argc) {
             outputDir = argv[++i];
+        } else if (std::string(argv[i]) == "--uifiles-path" && i + 1 < argc) {
+            uifilesPath = argv[++i];
         } else if (std::string(argv[i]) == "--help" || std::string(argv[i]) == "-h") {
-            printf("Usage: ui_atlas_builder --output <dir>\n");
+            printf("Usage: ui_atlas_builder --output <dir> [--uifiles-path <dir>]\n");
             printf("  Generates ui_atlas.bmp + ui_atlas.json in <dir>\n");
+            printf("  --uifiles-path  the official client's uifiles/default\n");
+            printf("                  directory; adds the four coin decals\n");
+            printf("                  lifted from window_pieces01.tga.\n");
             return 0;
         }
     }
 
     generate();
+
+    // All-or-nothing: if the caller asked for the oracle's coins and they
+    // cannot be read, fail loudly rather than write an atlas whose coin
+    // sprites are missing -- UIAtlas::mapSprite would silently drop the
+    // names and drawSprite would emit degenerate quads.
+    if (!uifilesPath.empty() && !generateCoins(uifilesPath)) {
+        return 1;
+    }
 
     std::string bmpPath = outputDir + "/ui_atlas.bmp";
     std::string jsonPath = outputDir + "/ui_atlas.json";

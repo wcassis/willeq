@@ -3211,7 +3211,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   paths). Closes when the path is resolved against the config directory the
   client was given. Found by T395.
 
-- **B218** (B) `src/client/graphics/ui/static_panels.cpp` `renderInventoryPopup`
+- ~~**B218** (B) `src/client/graphics/ui/static_panels.cpp` `renderInventoryPopup`
   / `assets/ui_atlas` — **there is no coin sprite in fable's UI atlas.** The
   oracle's four `IW_Money` buttons each blit a decal
   (`A_PlatinumCoin` / `A_GoldCoin` / `A_SilverCoin` / `A_CopperCoin`) into an
@@ -3253,7 +3253,35 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   with no atlas entry `UIAtlas::mapSprite` drops the name with a `LOG_WARN`,
   `getSprite()` returns the empty rect, and `drawSprite` would replace a
   readable letter with a degenerate quad. **B218 stays open; the blocker is
-  boarded as B230.** Prov: T396 Review Leg B.
+  boarded as B230.** Prov: T396 Review Leg B.~~ **STRUCK T398 Leg B (this commit)**:
+  the four coin decals are in the atlas and the popup draws them. T396 located
+  the pixels correctly and both of its blockers were real; T398 Leg A removed
+  the second one, and Leg B did the rest. `tools/tga_reader.h` (the decoder
+  lifted out of `tools/dump_icon_sheet.cpp`, which was never a CMake target --
+  the tree's only TGA decoder compiled NOWHERE, and both tools build it now)
+  gives `ui_atlas_builder` a `--uifiles-path`; it crops the 72x18 strip at
+  (90,140) of `window_pieces01.tga` into four 18x18 tiles at atlas row 4
+  (y=224, x=0/20/40/60 -- a 20 px pitch so no 18 px tile shares a 4x4 ETC1
+  block with its neighbour). Four new `UISprite` enumerators in denomination
+  order, four `mapSprite` names, and `renderInventoryPopup` now calls
+  `drawSprite(coinDecalRect(...), CoinPlatinum + denom)` where T393 wrote a
+  letter. **Missing art is a HARD FAILURE at both levels** (Will's
+  all-or-nothing rule): `ui_atlas_builder` exits 1 if `--uifiles-path` is given
+  and the TGA is unreadable, and `build_willeq_pack.sh` refuses to pack at all
+  -- a coinless atlas would be the exact regression this entry warned about.
+  Five new tests in `tests/test_ui_atlas_pixels.cpp` (`UIAtlasCoinDecalTest`,
+  device-backed against the live pack), **all five fail pre-fix** -- including
+  the end-to-end one that renders the whole popup and samples the centre of
+  the gold row's decal box: (69,69,71) before, gold after. The static-panel
+  seam moved the other way and is pinned:
+  `PurseT393Render.TheInventoryPopupEmitsOneTextEntryPerCoinRow` went 32 -> 28
+  text quads, because the letter is gone. Pack rebuilt and reinstalled by Leg
+  A's script; only 3 of 67 entries changed (`ui_atlas`, `ui_atlas_alpha`,
+  `ui_atlas.json`), the other 64 byte-identical, +239 B total, all of it the
+  four new sprite records in the JSON. Before/after captures in
+  `review/T398/`. **B219 (the paperdoll overlaps the purse) and T393's owed
+  live oracle pair are untouched and still open.** Gate consequence boarded as
+  B240. Prov: T398 Review Leg B; B230; B218.
 
 - **B219** (C) `include/client/graphics/ui/inventory_layout.h` `paperdollRect`
   — **fable's paperdoll rect is proportionally far wider than the oracle's
@@ -3269,7 +3297,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   moves: either the doll narrows to the oracle's proportion or the purse does
   not follow the oracle here. Prov: T393 Review.
 
-- **B230** (B) `tools/ui_atlas_builder.cpp` / `/mnt/projects/EverQuest_ETC1/willeq.eqe1`
+- ~~**B230** (B) `tools/ui_atlas_builder.cpp` / `/mnt/projects/EverQuest_ETC1/willeq.eqe1`
   -- **the UI atlas cannot take a pixel from the official client, and the
   shipped pack cannot be rebuilt from the tree.** Split out of B218 by T396
   Leg B, which stopped on it (full evidence under B218). Two pieces, and the
@@ -3287,7 +3315,79 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   reproduces the current file byte-for-byte -- T279 recorded the builder as
   deterministic) and a repack is one command with a temp-file-then-`mv`, so a
   concurrent slot never reads it half-written. Then B218 is a small unit.
-  Prov: T396 Review Leg B; B218.
+  Prov: T396 Review Leg B; B218.~~ **STRUCK T398 (Leg A `457fa812`, Leg B this
+  commit)**: both halves are closed, and **(b)'s premise was wrong**. The pack
+  partitions with ZERO residue. Its 67 entries are the 3 the procedural
+  `ui_atlas_builder` produces (`ui_atlas`, its ETC1 alpha companion
+  `ui_atlas_alpha`, and the raw `ui_atlas.json`) plus the **64 BMPs in
+  `data/textures`** -- and every name this entry cited as unexplained
+  (`creature_atlas`, `detail_atlas`, `particle_atlas`, the rain/snow/storm
+  sets, `software_cursor`) IS one of those 64. `data/atlas/` never needed to
+  exist and nothing had to be extracted from the pack for provenance; the
+  recipe is generate-then-pack, not a missing checked-in directory.
+  `scripts/build_willeq_pack.sh` stages the two input sets into a temp
+  directory whose subdirectory names ("atlas" before "textures") reproduce the
+  shipped entry order under `eqe1_builder`'s global path sort, packs with
+  `--name willeq`, and installs by writing a temp file **in the destination
+  directory** and `mv`-ing it over the pack -- atomic, so a concurrent slot's
+  ctest or gate never reads it half-written. **The very first rebuild was
+  byte-identical to the shipped pack** (sha256 `a59af18d...`, 2,810,863 B),
+  confirming T279's determinism finding for the ETC1 encoder end-to-end.
+  `PackReproducible` (ctest, labels `hygiene;slow`, RUN_SERIAL, ~41 s) rebuilds
+  into a temp path and compares against BOTH the pinned
+  `data/willeq.eqe1.sha256` and the installed pack, so an input drift and a
+  hand-edit of the shared file are each a red; planted fault (one byte of
+  `data/textures/tumbleweed.bmp` XORed) FAILS, restored PASSES. (a) closed in
+  Leg B -- see the struck B218. One caveat, boarded as B241: the coin lift
+  makes the pack depend on an external path, so "reproducible from the tree"
+  is now "reproducible from the tree PLUS the official client tree".
+  Prov: T398 Review.
+
+- **B240** (C) `tests/goldens/manifest.json` (the `memory-coverage` block,
+  the three `eqe1MappedBytes` values) -- **the visual gate's EQE1 memory
+  baseline is stale by exactly +239 bytes in all three zones and needs Will's
+  bless.** T398 Leg B deliberately grew `/mnt/projects/EverQuest_ETC1/willeq.eqe1`
+  from 2,810,863 to 2,811,102 bytes (the four coin sprite records added to the
+  raw `ui_atlas.json` entry; only 3 of 67 entries changed, the other 64
+  byte-identical). `eqe1MappedBytes` is the mapped size of the pack set, so
+  every zone moved by that same 239:
+
+  | zone     | manifest    | measured    | delta |
+  |----------|------------:|------------:|------:|
+  | qeynos2  | 119,944,431 | 119,944,670 | +239  |
+  | gfaydark | 118,610,523 | 118,610,762 | +239  |
+  | befallen | 113,095,019 | 113,095,258 | +239  |
+
+  **No image golden moved and no CPU p95 ceiling was missed** -- these three
+  metrics are the gate's ONLY failures, and two consecutive gate runs produced
+  bit-identical numbers. T389 (slot1) independently measured the same +239 on
+  every branch. The block was blessed by Will in chat for T303, whose own note
+  records the SAME cause (a rebuilt `willeq.eqe1`) and says the values were
+  applied BY HAND, never by `--bless` -- which would also rewrite the T69
+  per-zone memory block. **T398 did not touch it.** Closes when Will blesses
+  the three numbers above and someone edits them by hand (lines 171/180/189).
+  Until then `visual_gate` is the one red in a 4,105-test suite. Prov: T398
+  Review Leg B; B230; B218.
+
+- **B241** (B) `scripts/build_willeq_pack.sh` / `tools/ui_atlas_builder.cpp`
+  -- **`willeq.eqe1` is reproducible from the tree PLUS the official client
+  tree, not from the tree alone.** B230 closed on a byte-identical rebuild
+  whose inputs were entirely checked in; T398 Leg B then made the four coin
+  decals come out of
+  `/mnt/projects/EverQuestP1999/uifiles/default/window_pieces01.tga`, which
+  lives outside the repo. That is a deliberate trade -- copying the oracle's
+  pixels into the repo would duplicate licensed art, and every other EQE1 pack
+  already reads that tree -- but it means the `PackReproducible` ctest test
+  fails on a host without the client tree (it aborts with a named error rather
+  than packing a coinless atlas, which is the correct all-or-nothing
+  behaviour, but it is still a red rather than a skip). Two ways out, neither
+  taken here: make `PackReproducible` SKIP when the uifiles directory is
+  absent, the way `test_ui_atlas_pixels` skips without the pack; or pin the
+  sha256 of `window_pieces01.tga` alongside the pack's so a silently updated
+  client tree is caught as an input drift rather than as a mysterious pack
+  mismatch. The second is the stronger fix and neither is urgent -- every
+  host that runs this suite today has the tree. Found by T398. Prov: T398
+  Review Leg A; B230.
 
 - **B231** (C) `src/client/graphics/weather_effects_controller.cpp`
   `getAmbientLightModifier` -- **how much the OFFICIAL client darkens for

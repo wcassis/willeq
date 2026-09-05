@@ -381,25 +381,20 @@ void renderInventoryPopup(UIRenderer& ui, const UILayout& layout,
     // IW_CharacterView is only 85 of its 428 px wide), so the oracle-scaled
     // coin column lands over the doll's right-hand margin and must sit on
     // top of it. UIRenderer submission order is draw order (T294).
-    static const char* const kCoinLetter[InventoryLayout::COIN_COUNT] =
-        {"p", "g", "s", "c"};
-    static const irr::video::SColor kCoinColor[InventoryLayout::COIN_COUNT] = {
-        irr::video::SColor(255, 229, 228, 226),  // platinum
-        irr::video::SColor(255, 255, 215,   0),  // gold
-        irr::video::SColor(255, 192, 192, 192),  // silver
-        irr::video::SColor(255, 184, 115,  51),  // copper
-    };
     for (int denom = 0; denom < InventoryLayout::COIN_COUNT; ++denom) {
         const auto row = InventoryLayout::coinRect(layout, denom);
         ui.drawSprite(row, static_cast<uint8_t>(UISprite::SlotBackground));
         ui.drawSprite(row, static_cast<uint8_t>(UISprite::SlotBorderNormal));
-        if (!tb) continue;
-        // The oracle blits A_PlatinumCoin/A_GoldCoin/... into the decal box;
-        // fable's atlas has no coin sprite, so the denomination letter goes
-        // there in the coin's own colour.
+        // The oracle blits A_PlatinumCoin/A_GoldCoin/A_SilverCoin/
+        // A_CopperCoin into the decal box. T398 put those exact pixels in
+        // fable's atlas (ui_atlas_builder --uifiles-path lifts the 72x18
+        // strip at (90,140) of window_pieces01.tga), so the decal is now the
+        // oracle's own coin, not T393's placeholder letter. The UISprite
+        // coin entries are in denomination order, hence the plain offset.
         const auto decal = InventoryLayout::coinDecalRect(layout, denom);
-        tb->addText(kCoinLetter[denom], decal.UpperLeftCorner.X,
-            decal.UpperLeftCorner.Y, kCoinColor[denom]);
+        ui.drawSprite(decal, static_cast<uint8_t>(
+            static_cast<int>(UISprite::CoinPlatinum) + denom));
+        if (!tb) continue;
         tb->addText(coinRowText(inv, denom),
             decal.LowerRightCorner.X + 2, decal.UpperLeftCorner.Y,
             irr::video::SColor(255, 255, 255, 255));

@@ -960,10 +960,20 @@ TEST_F(PurseT393, AZeroDenominationStillPrintsItsRow) {
 // --- and the popup actually draws them
 //
 // renderInventoryPopup() emits, per frame: 1 title + 22 equipment slot labels
-// + 1 "General" label + 0 general-slot labels (no items here) + 2 per coin row
-// (the denomination letter in the decal box and the count beside it) = 32.
-// Before T393 it emitted 24 and no coin row existed.
-TEST(PurseT393Render, TheInventoryPopupEmitsTwoTextEntriesPerCoinRow) {
+// + 1 "General" label + 0 general-slot labels (no items here) + 1 per coin
+// row (the count beside the decal) = 28.
+//
+// The history is the point. Before T393 it emitted 24 and no coin row
+// existed. T393 added TWO text entries per row -- the count AND a
+// denomination letter standing in for the decal, because fable's atlas had
+// no coin sprite (board B218) -- so it emitted 32. T398 put the oracle's own
+// coin decals in the atlas and `renderInventoryPopup` now draws a SPRITE
+// there, so the letter is gone and the count is the only text left: 28.
+// A regression that dropped the decal back to a letter would read 32 here,
+// and one that dropped the decal entirely would still read 28 -- which is
+// why UIAtlasCoinDecalTest in tests/test_ui_atlas_pixels.cpp asserts on the
+// pixels the decal actually paints.
+TEST(PurseT393Render, TheInventoryPopupEmitsOneTextEntryPerCoinRow) {
     irr::SIrrlichtCreationParameters params;
     params.DriverType = irr::video::EDT_NULL;
     params.WindowSize = irr::core::dimension2d<irr::u32>(800, 600);
@@ -991,8 +1001,9 @@ TEST(PurseT393Render, TheInventoryPopupEmitsTwoTextEntriesPerCoinRow) {
     tb.begin();
     renderInventoryPopup(ui, layout, inv);
 
-    EXPECT_EQ(tb.getQuadCount(), static_cast<size_t>(32))
-        << "1 title + 22 equipment labels + 1 General + 4 coin rows x 2";
+    EXPECT_EQ(tb.getQuadCount(), static_cast<size_t>(28))
+        << "1 title + 22 equipment labels + 1 General + 4 coin counts "
+           "(the decal is a sprite since T398, not a letter)";
 
     device->drop();
 }

@@ -25,8 +25,10 @@
 #include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/constrained_renderer_config.h"
 #include "client/graphics/eqe1_loader.h"
+#include "client/state/event_bus.h"   // T398: CurrencyChangedData
 
 #include <irrlicht.h>
+#include <cstdlib>
 #include <fstream>
 #include <functional>
 #include <memory>
@@ -391,4 +393,127 @@ TEST_F(UIAtlasPaperdollTest, PaperdollSurvivesOnTheFallbackPath) {
         << (int)got.getGreen() << "," << (int)got.getBlue() << ")";
     EXPECT_GT(static_cast<int>(got.getBlue()), 150);
     EXPECT_LT(static_cast<int>(got.getGreen()), 100);
+}
+
+// ── The coin decals (T398, board B218) ──────────────────────────────────────
+//
+// T393 reproduced the oracle's four IW_Money decal BOXES
+// (InventoryLayout::coinDecalRect()) but had nothing to put in them: fable's
+// atlas was fully procedural (tools/ui_atlas_builder opened no file) and had
+// no coin sprite, so the popup drew the denomination letter p/g/s/c instead.
+//
+// T398 gave ui_atlas_builder a --uifiles-path and lifted the oracle's own
+// pixels: EQUI_Animations.xml puts A_PlatinumCoin / A_GoldCoin /
+// A_SilverCoin / A_CopperCoin in ONE texture, window_pieces01.tga, as a
+// contiguous 72x18 strip at (90,140). They land in row 4 of the atlas
+// (y=224, 20 px pitch) and reach the client through willeq.eqe1.
+//
+// These assert on HUE, not on exact bytes: the atlas is ETC1-compressed with
+// an alpha companion and the sprite is stretched, so the values move a
+// little. The measured centre pixels of the four source cells are
+// platinum (171,174,194), gold (255,240,12), silver (142,143,148),
+// copper (60,21,0) -- gold is the only strongly chromatic one, copper is a
+// dark red-brown, and the two greys differ mainly in blue.
+//
+// Pre-fix (the shipped pack without the coin entries) every one of these
+// fails: UIAtlas::getSprite() returns the empty rect for an unmapped name,
+// so the decal is a degenerate quad and the sample is the slot background.
+class UIAtlasCoinDecalTest : public UIAtlasPixelTest {
+protected:
+    // Draws one coin sprite stretched over a large rect and samples its
+    // centre -- the stretch maps the centre of the 18x18 cell onto the
+    // sample point, so this reads the coin's own body, not its alpha edge.
+    irr::video::SColor sampleCoin(UISprite sprite) {
+        UIRenderer ui;
+        ui.init(driver_, atlas_.get(), &textBatch_);
+        return renderAndSample(ui, 400, 300, [&](UIRenderer& r) {
+            r.drawSprite(irr::core::rect<irr::s32>(300, 200, 500, 400),
+                         static_cast<uint8_t>(sprite));
+        });
+    }
+};
+
+TEST_F(UIAtlasCoinDecalTest, TheAtlasHasARectForEveryCoinDenomination) {
+    const UISprite kCoins[4] = {UISprite::CoinPlatinum, UISprite::CoinGold,
+                                UISprite::CoinSilver, UISprite::CoinCopper};
+    for (int i = 0; i < 4; ++i) {
+        const auto& r = atlas_->getSprite(kCoins[i]).srcRect;
+        EXPECT_EQ(r.getWidth(), 18) << "coin " << i << " is not an 18x18 cell";
+        EXPECT_EQ(r.getHeight(), 18) << "coin " << i;
+        EXPECT_EQ(r.UpperLeftCorner.Y, 224) << "coin " << i << " is not in atlas row 4";
+        EXPECT_EQ(r.UpperLeftCorner.X, i * 20)
+            << "coin " << i << " is not at its 20 px pitch";
+    }
+}
+
+TEST_F(UIAtlasCoinDecalTest, GoldIsYellow) {
+    irr::video::SColor got = sampleCoin(UISprite::CoinGold);
+    EXPECT_GT(static_cast<int>(got.getRed()), 120)
+        << "gold coin sampled (" << (int)got.getRed() << "," << (int)got.getGreen()
+        << "," << (int)got.getBlue() << ")";
+    EXPECT_GT(static_cast<int>(got.getGreen()), 120);
+    EXPECT_LT(static_cast<int>(got.getBlue()), 120)
+        << "gold must be far more red+green than blue";
+}
+
+TEST_F(UIAtlasCoinDecalTest, CopperIsADarkRedBrown) {
+    irr::video::SColor got = sampleCoin(UISprite::CoinCopper);
+    EXPECT_GT(static_cast<int>(got.getRed()), static_cast<int>(got.getGreen()))
+        << "copper coin sampled (" << (int)got.getRed() << "," << (int)got.getGreen()
+        << "," << (int)got.getBlue() << ")";
+    EXPECT_GE(static_cast<int>(got.getGreen()), static_cast<int>(got.getBlue()));
+    EXPECT_GT(static_cast<int>(got.getRed()), 20) << "copper drew nothing at all";
+}
+
+// The two greys are near-neutral and bright; platinum carries the blue cast
+// that separates it from silver in the oracle's art.
+TEST_F(UIAtlasCoinDecalTest, PlatinumAndSilverAreBrightNeutralsAndPlatinumIsBluer) {
+    irr::video::SColor plat = sampleCoin(UISprite::CoinPlatinum);
+    irr::video::SColor silver = sampleCoin(UISprite::CoinSilver);
+
+    EXPECT_GT(static_cast<int>(plat.getRed()), 100)
+        << "platinum sampled (" << (int)plat.getRed() << "," << (int)plat.getGreen()
+        << "," << (int)plat.getBlue() << ")";
+    EXPECT_GT(static_cast<int>(silver.getRed()), 100)
+        << "silver sampled (" << (int)silver.getRed() << "," << (int)silver.getGreen()
+        << "," << (int)silver.getBlue() << ")";
+    EXPECT_LT(std::abs(static_cast<int>(silver.getRed()) -
+                       static_cast<int>(silver.getBlue())), 40)
+        << "silver is a neutral grey";
+    EXPECT_GT(static_cast<int>(plat.getBlue()), static_cast<int>(silver.getBlue()) - 20)
+        << "platinum is the bluer of the two greys";
+}
+
+// The end-to-end pin: the pixel a PLAYER sees. Render the whole inventory
+// popup and sample the centre of the gold row's decal box. Gold is the only
+// unambiguous hue in the set, and the decal is drawn after the paperdoll
+// blit (T393), so nothing can be on top of it.
+TEST_F(UIAtlasCoinDecalTest, TheInventoryPopupPaintsTheGoldDecalGold) {
+    UIRenderer ui;
+    ui.init(driver_, atlas_.get(), &textBatch_);
+
+    InventoryPanelState inv;
+    inv.activePopup = PopupType::Inventory;
+    eqt::state::CurrencyChangedData d;
+    d.platinum = 8; d.gold = 18; d.silver = 8; d.copper = 16;
+    applyCurrencyChanged(inv, d);
+
+    const auto decal = InventoryLayout::coinDecalRect(layout_, InventoryLayout::COIN_GOLD);
+    ASSERT_GT(decal.getWidth(), 4);
+    ASSERT_GT(decal.getHeight(), 4);
+    const irr::s32 cx = (decal.UpperLeftCorner.X + decal.LowerRightCorner.X) / 2;
+    const irr::s32 cy = (decal.UpperLeftCorner.Y + decal.LowerRightCorner.Y) / 2;
+
+    irr::video::SColor got = renderAndSample(ui, cx, cy, [&](UIRenderer& r) {
+        renderInventoryPopup(r, layout_, inv);
+    });
+
+    // Pre-fix this sampled the slot background behind the letter: a very dark
+    // near-neutral slab.
+    EXPECT_GT(static_cast<int>(got.getRed()), 100)
+        << "gold decal at (" << cx << "," << cy << ") sampled ("
+        << (int)got.getRed() << "," << (int)got.getGreen() << ","
+        << (int)got.getBlue() << ")";
+    EXPECT_GT(static_cast<int>(got.getGreen()), 100);
+    EXPECT_LT(static_cast<int>(got.getBlue()), static_cast<int>(got.getGreen()));
 }

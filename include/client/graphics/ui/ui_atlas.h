@@ -36,6 +36,15 @@ enum class UISprite : uint8_t {
     PanelBorder,
     White,
     ScrollIndicator,
+    // T398 (board B218): the four coin decals the official client blits into
+    // its IW_Money buttons, lifted from window_pieces01.tga (90,140) by
+    // ui_atlas_builder --uifiles-path. Order matches
+    // InventoryLayout::COIN_PLATINUM..COIN_COPPER, so
+    // coinSprite(denom) is CoinPlatinum + denom.
+    CoinPlatinum,
+    CoinGold,
+    CoinSilver,
+    CoinCopper,
     Count
 };
 

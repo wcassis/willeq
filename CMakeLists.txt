@@ -1537,6 +1537,15 @@ ENDIF()
 ADD_EXECUTABLE(ui_atlas_builder
     tools/ui_atlas_builder.cpp
 )
+TARGET_INCLUDE_DIRECTORIES(ui_atlas_builder PRIVATE ${CMAKE_SOURCE_DIR}/tools)
+
+# T398: dump_icon_sheet was never a CMake target, so the tree's only TGA
+# decoder compiled nowhere. Both it and ui_atlas_builder now share
+# tools/tga_reader.h, and both are built.
+ADD_EXECUTABLE(dump_icon_sheet
+    tools/dump_icon_sheet.cpp
+)
+TARGET_INCLUDE_DIRECTORIES(dump_icon_sheet PRIVATE ${CMAKE_SOURCE_DIR}/tools)
 
 # Atlas UV audit tool (check which textures can be atlased)
 IF(EQT_GRAPHICS)
