@@ -265,11 +265,25 @@ it without taking that measurement first.
   handshake, forces `crc_bytes = 3`, and asserts both that a supported width
   stays quiet and that the rejection names `crc_bytes=3`. Prov: deferred item 41.
 
-- **B009** (B) `tests/test_daybreak_connection_pcap.cpp` — reads `connect_code`,
+- ~~**B009** (B) `tests/test_daybreak_connection_pcap.cpp` — reads `connect_code`,
   `encode_key` and `max_packet_size` raw off the wire, which is exactly the bug
   T21 fixed in production; it cannot fail if that fix regresses, and passes today
   only because eqemu's key is a byte-swap palindrome. Closes when: the test reads
-  through the production path. Prov: deferred item 40.
+  through the production path. Prov: deferred item 40.~~ **CLOSED by T364 Leg A
+  `f734ac3a`**: `processSessionResponse()` now feeds the recorded bytes through
+  `DaybreakConnection::ProcessPacket()`; the only value the test supplies is our
+  own connect code. Two new tests give it teeth.
+  `RecordedHandshakeYieldsNetworkOrderMaxPacketSize` asserts `max_packet_size
+  == 512` — the one field the capture can discriminate (network-order 512 reads
+  raw as 131072). The other two cannot be caught by any capture on disk:
+  **measured, all eleven `OP_SessionResponse` datagrams in
+  `data/captures/session.pcap` carry `connect_code` ∈ {0, 0xFFFFFFFF} and
+  `encode_key` ∈ {0, 0xFFFFFFFF}** — byte-swap palindromes, T21's own RNG-collapse
+  finding — so `SynthesisedHandshakeByteSwapsAllThreeFields` writes a 17-byte
+  handshake's wire bytes big-endian by hand (connect_code 0x11223344, encode_key
+  0xA1B2C3D4, max_packet_size 512). With T21's byte-swap reverted in production
+  both new tests fail and the pre-T364 version of the file passes 4 of 4, which is
+  this entry restated as a measurement.
 
 - ~~**B010** (B) `tests/test_irrlicht_camera_command.cpp`
   `CameraCommandRoundTripTest` — no `PrintTo` for the parameter type, so gtest
@@ -403,13 +417,40 @@ it without taking that measurement first.
   needs a run that loads a zone (a `#zone` tour under TSAN) while the prep
   worker is live. Closing it is a restructure, not a lock. Prov: T352 Review.
 
-- **B065** (B) `src/client/graphics/eq/model_loading_chr.cpp`
+- ~~**B065** (B) `src/client/graphics/eq/model_loading_chr.cpp`
   `RaceModelLoader::loadModelFromCachedChr` — writes
   `otherChrCaches_[lowerFilename]` directly instead of through
   `storeOtherChrCacheLocked()`, the LRU-accounting bypass T91 was written to
   eliminate, surviving at this one site. Under `otherChrCacheMutex_`, so not a
   race: the entry never enters `chrCacheLruOrder_` and can never be evicted,
-  while still counting against `maxChrCacheEntries_`. Prov: T352 Review.
+  while still counting against `maxChrCacheEntries_`. Prov: T352 Review.~~
+  **CLOSED by T364 Leg B `ca96cb56`**: it was **four** sites in that function,
+  not one — the two negative-cache inserts, the positive insert, and the
+  animation-source archive insert; all four now go through
+  `storeOtherChrCacheLocked()`. Pinned by `tests/test_chr_cache_lru.cpp`
+  (`ChrCacheLruTest`), which drives the user-reachable `ensureModelDataLoaded()`
+  for five races whose rows name five different plain zone archives, cap 2,
+  offline against the real client tree under `EDT_NULL`. Measured pre-fix:
+  **6 of 6 cached entries untracked, `chrCacheLruOrder_` empty, 6 entries against
+  a cap of 2** — i.e. the cap was not merely exceeded, on this path it did
+  nothing at all. Post-fix `untracked=0`, `entries==lruOrder`, `entries<=cap`.
+  The accounting had no observable surface, so `getChrCacheAccountingForTest()`
+  was added next to `setMaxChrCacheEntries()`.
+
+- **B095** (B) `src/client/graphics/eq/model_loading_chr.cpp`
+  `RaceModelLoader::loadModelFromZoneChr` (the animation-source insert) and
+  `src/client/graphics/eq/model_loading_search.cpp`
+  `RaceModelLoader::searchZoneChrFilesForModel` (its two negative-cache inserts,
+  and a third that open-codes the store helper's LRU push/evict inline) — the
+  same `otherChrCaches_[key] = ...` bypass T364 Leg B closed in
+  `loadModelFromCachedChr`, at four more sites. **Confirmed by reading at
+  `ca96cb56`, not measured**: no test drives these two functions'
+  LRU accounting, so the size of the effect is unknown — B065's own path turned
+  out to be total (6 of 6 entries untracked), and this may be the same or may be
+  partly masked by the inline accounting in `searchZoneChrFilesForModel`. Closes
+  when: all four go through `storeOtherChrCacheLocked()` and
+  `tests/test_chr_cache_lru.cpp` is extended to reach them. Prov: T364 Leg B
+  Review.
 
 - ~~**B019** (B) `include/client/eq.h` `EverQuest::m_guild_name` — declared and
   default-initialised, **zero references anywhere**.~~ **CLOSED by K15**:
