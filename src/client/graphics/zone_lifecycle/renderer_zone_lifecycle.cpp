@@ -135,6 +135,13 @@ void ZoneLifecycleComponent::unloadZone() {
         ctx_.tumbleweedManager->onZoneLeave();
     }
 
+    // Clear weather. T396 (board B211): this call did not exist -- the three
+    // managers above were unloaded and the weather controller was not, so
+    // rain (and its ambient darkening) survived the zone change.
+    if (ctx_.weatherEffects) {
+        ctx_.weatherEffects->onZoneLeave();
+    }
+
     // Now safe to remove zone collision data
     ctx_.regionWorldTriangles.clear();
     ctx_.objectWorldTriangles.clear();

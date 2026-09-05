@@ -2992,7 +2992,21 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   base. What the bisect found instead is **B211**. Prov: T386 Review §4; T394
   Review; B171; B067.
 
-- **B211** (A) `src/client/graphics/renderer/irrlicht_renderer.cpp`
+  **T396 CLOSED THE WEATHER CONFOUND B211 NAMED, AND THE ANSWER IS WORSE THAN
+  "UNCONTROLLED".** T377's whole vision-measurement window ran under SERVER
+  RAIN at intensity 9 (`weatherMod = 0.460`) — see the struck B211 for the
+  packet and the arithmetic. Weather multiplies the base ambient and leaves
+  the vision floor untouched, so **every ratio measured in that session is
+  inflated**, and `VisionAmbientCompositionT396Test.UncontrolledWeatherInflatesAMeasuredVisionRatio`
+  shows the apparent Ultravision ratio more than DOUBLING at 0.460. The owed
+  LIVE A/B search must therefore (a) verify the modifier is 1.000 for the
+  whole window — the log now prints every change in both directions plus one
+  line per zone-in, so this is now checkable from the session log alone — and
+  (b) treat the pre-T383 baseline numbers above as SUSPECT until re-measured
+  under a verified-clear sky, because nobody knows what weather T358/T361/T377
+  were under. Nothing about the constants themselves changed in T396.
+
+- ~~**B211** (A) `src/client/graphics/renderer/irrlicht_renderer.cpp`
   `IrrlichtRenderer::updateTimeOfDay` — **the weather ambient modifier
   multiplies the night ambient and is uncontrolled by, and invisible to, every
   vision measurement taken so far.** FOUND T394 while bisecting B203's +55%
@@ -3017,7 +3031,39 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   time it is applied), the ordering against the floor is a deliberate,
   tested decision, and one session demonstrates a repeatable night base. **Not
   fixed in T394** — T394 was a revert and holds no server lock. B210 is left
-  free for T391. Prov: T394 Review; B203.
+  free for T391. Prov: T394 Review; B203.~~ **STRUCK T396 (`0c0d484d` +
+  `824de12e`).** The 0.460 is REPRODUCED headlessly with its source, and it is
+  not a client defect: **the SERVER sent rain.** The same session log carries
+  `Weather packet: type=0, intensity=9` (line 1074) and the decode
+  `newType=1 newIntensity=9` (7443) 24 s before the 0.460 at 9193, so
+  `targetDarkening = storm.maxDarkening(0.6) * 9/10 = 0.54` and
+  `modifier = 1 - 0.54 = 0.460` exactly. The two overlay multipliers
+  contributed nothing (unified GLES2 weather particles were active, so
+  `getRainDaylightMultiplier()` returns false) and lightning was off under the
+  session's own `low` preset. `tests/test_weather_ambient_modifier.cpp` (9
+  cases, no device: the controller takes four nulls) pins the arithmetic, the
+  0.5/s ramp, and the oracle's RULE that clear weather leaves the modifier at
+  exactly 1.0. **The weather-ACTIVE value is still unmeasured against the
+  oracle and was deliberately not touched — see B230.**
+  Three fixes. (1) **`onZoneEnter()`/`onZoneLeave()` had ZERO callers**
+  (grepped `src/ include/ tests/ tools/ benchmarks/ docker/`) and
+  `onZoneEnter()` reset nothing anyway, so a zone-in inherited the previous
+  zone's darkening — the oracle rule broken in the one place it matters. Both
+  now share `resetWeatherState()` and both are wired (SEQ Step11 in
+  `renderer_zone_load_env.cpp`, `unloadZone()` in
+  `renderer_zone_lifecycle.cpp`). (2) The log fires on **every** change in
+  **both** directions with the old value, the new value and the type/intensity
+  behind it, plus once per zone-in; the last-logged value moved from a
+  function-static to the member `weatherModLogged_`. A session can now be
+  shown weather-free from its own log. (3) **The ordering is a tested
+  decision, not a comment**: the four-step composition moved into
+  `composeSceneAmbient()` (`vision_ambient.h/.cpp`), which `updateTimeOfDay()`
+  calls, and the vision floor is LAST. Six `VisionAmbientCompositionT396Test`
+  cases pin it, including B211's own consequence — under rain at 0.460 the
+  apparent Ultravision ratio more than DOUBLES. Proven a real net by
+  inverting the two steps (2 of 6 red, green on restore). Visual gate PASS
+  with **no golden moved**: `gles2_zone_benchmark` receives no `OP_Weather`,
+  so the goldens do not carry weather and the STOP condition did not fire.
 
 - ~~**B204** (B) `src/client/graphics/spell_visual_fx_nodes.cpp` /
   `SpellVisualFX` — no spell impact visual is drawn at all, on the observing
@@ -3176,6 +3222,39 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   when the four coin sprites are in the atlas, `coinDecalRect()` gets a
   `drawSprite`, and `tests/test_ui_atlas_pixels.cpp` pins them. Prov: T393 Review.
 
+  **T396 Leg B STOPPED on the plan's own condition and did not change a line.**
+  The pixels EXIST and are located exactly: `EQUI_Animations.xml` puts all four
+  animations in ONE texture, `window_pieces01.tga`, as a contiguous 72x18 strip
+  at (90,140) -- `A_PlatinumCoin` (90,140), `A_GoldCoin` (108,140),
+  `A_SilverCoin` (126,140), `A_CopperCoin` (144,140), each 18x18. The file is a
+  256x256 uncompressed 32-bit TGA (type 2, bottom-left origin, 262,162 B) at
+  `/mnt/projects/EverQuestP1999/uifiles/default/window_pieces01.tga`, and the
+  four alpha masks read as real ~16px coin discs (verified by decoding the
+  header and dumping the masks). **Two independent blockers, neither of which
+  the plan anticipated.** (1) They are **not in any archive fable reads**:
+  `uifiles/` is named nowhere in `src/ include/ tools/ scripts/` except one
+  comment in `inventory_layout.h`; `tools/ui_atlas_builder.cpp` is *fully
+  procedural* and opens **no file at all** (a 256x256 RGBA buffer,
+  `setPixel`/`fillRect`/`fillGradientV`, one hand-written `reg()` per sprite);
+  and the only TGA decoder in the tree is a standalone `loadTGA()` in
+  `tools/dump_icon_sheet.cpp`, not linked by anything under `src/`.
+  `eqe1_builder` accepts `.bmp`/`.dds`/`.json`/`.wld` and never `.tga`. (2)
+  Getting an atlas to the CLIENT means overwriting
+  **`/mnt/projects/EverQuest_ETC1/willeq.eqe1`** -- a 2.8 MB SHARED asset
+  outside every worktree, read live by every slot's ctest
+  (`tests/test_ui_atlas_pixels.cpp` hard-codes that path) and by the visual
+  gate -- and the worktree **cannot reproduce its inputs**: the canonical
+  recipe is `eqe1_builder --bmp-dir data/atlas --bmp-dir data/textures`, and
+  `data/atlas/` does not exist in `main` or any slot, while the shipped pack
+  holds far more than `data/textures`'s 64 BMPs (`creature_atlas`,
+  `detail_atlas`, `particle_atlas`, the rain/snow/storm sets, `software_cursor`,
+  ...). A repack from a guessed input set would silently drop entries for every
+  slot at once. Doing the code half alone is a REGRESSION, not a partial win:
+  with no atlas entry `UIAtlas::mapSprite` drops the name with a `LOG_WARN`,
+  `getSprite()` returns the empty rect, and `drawSprite` would replace a
+  readable letter with a degenerate quad. **B218 stays open; the blocker is
+  boarded as B230.** Prov: T396 Review Leg B.
+
 - **B219** (C) `include/client/graphics/ui/inventory_layout.h` `paperdollRect`
   — **fable's paperdoll rect is proportionally far wider than the oracle's
   character view, so the oracle-placed purse sits ON it.** The oracle's
@@ -3189,6 +3268,41 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   together on screen. Needs Will's eye on the owed live pair before anything
   moves: either the doll narrows to the oracle's proportion or the purse does
   not follow the oracle here. Prov: T393 Review.
+
+- **B230** (B) `tools/ui_atlas_builder.cpp` / `/mnt/projects/EverQuest_ETC1/willeq.eqe1`
+  -- **the UI atlas cannot take a pixel from the official client, and the
+  shipped pack cannot be rebuilt from the tree.** Split out of B218 by T396
+  Leg B, which stopped on it (full evidence under B218). Two pieces, and the
+  second blocks every future atlas change, not just the coins. (a)
+  `ui_atlas_builder` opens no file: adding an oracle sprite needs a TGA reader
+  (lift `loadTGA()` out of `tools/dump_icon_sheet.cpp`) plus a
+  `--uifiles-path`, or a deliberate ruling that fable's atlas stays
+  hand-drawn. (b) **`willeq.eqe1` has no reproducible build recipe in the
+  repo**: `data/atlas/` is absent everywhere, so the documented
+  `eqe1_builder --bmp-dir data/atlas --bmp-dir data/textures` cannot be run,
+  and the pack holds entries `data/textures`'s 64 BMPs do not explain. Until
+  (b) is fixed nobody can change one atlas pixel without hand-assembling a
+  2.8 MB shared asset that three worktrees read concurrently. Closes when the
+  pack has a checked-in deterministic build (a script or CMake target that
+  reproduces the current file byte-for-byte -- T279 recorded the builder as
+  deterministic) and a repack is one command with a temp-file-then-`mv`, so a
+  concurrent slot never reads it half-written. Then B218 is a small unit.
+  Prov: T396 Review Leg B; B218.
+
+- **B231** (C) `src/client/graphics/weather_effects_controller.cpp`
+  `getAmbientLightModifier` -- **how much the OFFICIAL client darkens for
+  ACTIVE weather is unmeasured, and fable's number is invented.** Raised by
+  T396, which fixed the clear-weather rule (modifier exactly 1.0) and
+  deliberately left the active-weather curve alone, per its plan. fable uses
+  `1 - storm.maxDarkening * intensity/10` with `maxDarkening = 0.6`, so server
+  rain at intensity 9 more than halves the world's ambient (0.460) -- a number
+  nobody has compared against the oracle. It is also large enough to dominate
+  any live light measurement taken in a rainy zone, which is how it corrupted
+  T377 (see the struck B211). Needs an oracle A/B in a lock unit: same zone,
+  same spot, forced time, weather on and off, oracle frame beside fable frame,
+  T361's method. Until then no vision or ambient measurement may be taken
+  without asserting the modifier is 1.000 in the session log. Prov: T396
+  Review Leg A; B203; B211.
 
 ### Struck / amended by T386
 

@@ -529,7 +529,27 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_vision_ambient PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_vision_ambient GTest::gtest_main willeq_core)
+    # T396 (B211): the composition-order cases read the renderer TU to prove
+    # updateTimeOfDay() still calls composeSceneAmbient().
+    TARGET_COMPILE_DEFINITIONS(test_vision_ambient PRIVATE
+        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
     GTEST_DISCOVER_TESTS(test_vision_ambient)
+ENDIF()
+
+# T396 (B211): the weather ambient modifier that multiplies the same ambient
+# the vision floor then clamps. Drives the real WeatherEffectsController with
+# four null device pointers (nothing it touches here needs a device) plus two
+# text-level reachability pins, so it needs the Irrlicht include path and the
+# repo root like its neighbours.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_weather_ambient_modifier
+        test_weather_ambient_modifier.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_weather_ambient_modifier PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_weather_ambient_modifier GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_weather_ambient_modifier PRIVATE
+        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+    GTEST_DISCOVER_TESTS(test_weather_ambient_modifier)
 ENDIF()
 
 # T391 (B202): EntityVisual::lightNode ownership -- the render-thread

@@ -49,5 +49,21 @@ AmbientRGB applyVisionAmbientFloor(VisionType vision, AmbientRGB base) {
                       std::max(base.b, floor.b)};
 }
 
+AmbientRGB composeSceneAmbient(AmbientRGB dayNight, float ambientMultiplier,
+                               float weatherModifier, VisionType vision) {
+    // The user multiplier is clamped per channel (Page Up can only brighten
+    // to full white, never past it); weather is not clamped here because a
+    // lightning flash deliberately overshoots 1.0.
+    AmbientRGB out{std::min(1.0f, dayNight.r * ambientMultiplier),
+                   std::min(1.0f, dayNight.g * ambientMultiplier),
+                   std::min(1.0f, dayNight.b * ambientMultiplier)};
+    out.r *= weatherModifier;
+    out.g *= weatherModifier;
+    out.b *= weatherModifier;
+    // Floor LAST -- see the header. Nothing may darken the world below what
+    // the vision buff grants.
+    return applyVisionAmbientFloor(vision, out);
+}
+
 }  // namespace Graphics
 }  // namespace EQT

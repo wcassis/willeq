@@ -99,5 +99,29 @@ VisionType racialBaseVision(uint16_t raceId);
 // at noon and transforms midnight.
 AmbientRGB applyVisionAmbientFloor(VisionType vision, AmbientRGB base);
 
+// THE ORDER (T396, board B211). The scene ambient is composed from four
+// things and the order is load-bearing, not incidental:
+//
+//   1. the day/night curve                (IrrlichtRenderer::updateTimeOfDay)
+//   2. x the user's ambient multiplier    (Page Up / Page Down), clamped to 1
+//   3. x the weather modifier             (WeatherEffectsController)
+//   4. raised to the vision floor         <- LAST
+//
+// The floor goes last because it is a floor on WHAT THE PLAYER SEES. A vision
+// buff is a promise about the darkest the world can get; if weather were
+// allowed to multiply it afterwards, a storm would take Ultravision below the
+// level the oracle measured it at, and -- the reason B211 exists -- a vision
+// RATIO measured live would be inflated in proportion to the weather at the
+// time, because weather darkens the base while leaving the floor fixed. That
+// is exactly what happened to T377's session (server rain at intensity 9,
+// modifier 0.460, uncontrolled), which is why every cross-session vision
+// number in T358/T361/T377/T383/T386 is unpinned.
+//
+// This function IS the production composition -- updateTimeOfDay() calls it
+// rather than open-coding the four steps -- so the order above is pinned by
+// tests/test_vision_ambient.cpp instead of by a comment.
+AmbientRGB composeSceneAmbient(AmbientRGB dayNight, float ambientMultiplier,
+                               float weatherModifier, VisionType vision);
+
 }  // namespace Graphics
 }  // namespace EQT

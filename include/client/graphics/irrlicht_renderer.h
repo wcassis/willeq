@@ -1079,6 +1079,12 @@ private:
     std::vector<bool> objectLightInSceneGraph_;  // Track which object lights are in scene graph
     std::vector<VertexAnimatedMesh> vertexAnimatedMeshes_;  // Meshes with vertex animation (flags, banners)
     float ambientMultiplier_ = 1.0f;  // User-adjustable ambient light multiplier (Page Up/Down)
+    // T396 (board B211): last weather ambient modifier this renderer LOGGED.
+    // A member, not the function-static it replaced -- that static was shared
+    // by every renderer in the process, and its "only below 0.99" gate meant
+    // a return to clear weather was never logged at all, so no session log
+    // could show a measurement window had been weather-free.
+    float weatherModLogged_ = 1.0f;
 
     // Time of day
     uint8_t currentHour_ = 12;
