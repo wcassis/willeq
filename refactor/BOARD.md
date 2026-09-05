@@ -2720,7 +2720,11 @@ branches can be deleted independently of these items.
   is therefore not reproducible from the source, and no per-channel model fits
   the pre-fix fable row (a three-parameter additive fit puts blue's
   point-light coefficient at -0.00177, non-physical). **That is what the owed
-  re-measure must settle.** Prov: T383 Review, `review/T383/README.md`.
+  re-measure must settle.** **RE-MEASURED T386 (`review/T386/` §4): the re-solve
+  is REFUTED and BOTH scalars REGRESSED (Ultravision 1.4483 -> 1.1686 against the
+  oracle's 1.5612, Infravision 1.2450 -> 1.0757 against 1.2555), and the
+  B x0.8209 anomaly did NOT reproduce (blue is now x1.1274, moving up). This
+  strike is REVERSED -- see B188.** Prov: T383 Review, `review/T383/README.md`.
 
   ORIGINAL TEXT: **the vision floor's per-channel gains
   are wrong against the oracle, even where the scalar ratio is right.** MEASURED
@@ -2750,7 +2754,7 @@ branches can be deleted independently of these items.
   `BUY_ITEM` at `InventoryManager::pickupMoney()`, which is a different gesture
   and still has NO production caller — see B036 clause 2.) Closes when the
   handler pushes `PlaySoundIntent{BUY_ITEM}`, banks the four denominations, and a
-  test pins both. Prov: T377 Review; B036.~~ **STRUCK T382 Leg A (`0d7751fe`)**: `ZoneProcessMoneyOnCorpse` banks the four denominations through `PlayerState::addCurrency` (a thin delta wrapper over `setCurrency`, still the tree's ONE purse writer and the function `OP_MoneyUpdate` credits through), publishes the same `CurrencyChanged` projection `OP_MoneyUpdate` publishes, pushes `PlaySoundIntent{BUY_ITEM}` and prints eqstr 12072 with the counts. Two judgement calls, both recorded in the code: the list is spelled WITHOUT the Oxford comma eqstr 13108 carries, because that is what the oracle's pixels show (13108 is deliberately not used); and "all four denominations zero" is the guard that keeps the sound and the line off every non-grant shape -- eqemu's six `SendLootReqErrorPacket` responses, a corpse with no money, and the autosplit path all carry four zeros. A zero in ONE denomination is still printed; the official client's zero form is UNMEASURED (T377's single capture had all four non-zero) and the test says so. 11 tests (`tests/test_corpse_coin.cpp` + 3 in `tests/test_ui_sound_events.cpp`); 7 of them fail pre-fix. **The LIVE proof -- loot a corpse on fable, hear 138, watch the purse move -- is OWED to the next unit that holds the eqemu lock.**
+  test pins both. Prov: T377 Review; B036.~~ **STRUCK T382 Leg A (`0d7751fe`)**: `ZoneProcessMoneyOnCorpse` banks the four denominations through `PlayerState::addCurrency` (a thin delta wrapper over `setCurrency`, still the tree's ONE purse writer and the function `OP_MoneyUpdate` credits through), publishes the same `CurrencyChanged` projection `OP_MoneyUpdate` publishes, pushes `PlaySoundIntent{BUY_ITEM}` and prints eqstr 12072 with the counts. Two judgement calls, both recorded in the code: the list is spelled WITHOUT the Oxford comma eqstr 13108 carries, because that is what the oracle's pixels show (13108 is deliberately not used); and "all four denominations zero" is the guard that keeps the sound and the line off every non-grant shape -- eqemu's six `SendLootReqErrorPacket` responses, a corpse with no money, and the autosplit path all carry four zeros. A zero in ONE denomination is still printed; the official client's zero form is UNMEASURED (T377's single capture had all four non-zero) and the test says so. 11 tests (`tests/test_corpse_coin.cpp` + 3 in `tests/test_ui_sound_events.cpp`); 7 of them fail pre-fix. **The LIVE proof -- loot a corpse on fable, hear 138, watch the purse move -- was TAKEN by T386 and SPLIT: the banking and the chat line are PROVEN (two trials, `review/T386/` §1a); the SOUND is NOT (the asset will not load -- B185); and the purse cannot be watched at all because nothing draws it (B186). The official client's ZERO-denomination form is still UNMEASURED -- `review/T386/` §1d has the method and the trap.**
 
 ## Added 2026-09-05 by the orchestrator (T381 merge)
 
@@ -2801,3 +2805,175 @@ branches can be deleted independently of these items.
   and its constant are deleted and the case asserts that login/world have no
   direct senders left. Found by T383, whose diff touches no network file.
   Prov: T383 Review, `review/T383/README.md`.~~ **CLOSED at the T378 merge (`b48996f7`, before T383 reported):** the orchestrator learned the pin in place — `kLoginWorldExpected` 12 → 0, case renamed `LoginAndWorldStreamsHaveNoDirectSendersEither`; the merge-step golden rule applies to census pins too.
+
+## Added 2026-09-05 by T386 (owed live proofs 6)
+
+Full evidence for every entry below: **`review/T386/README.md`** (measurement
+only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
+
+- **B185** (A) `src/client/audio/audio_manager.cpp` `AudioManager::loadSoundDataFromPfs`
+  / `loadSound` — **every sound that lives in a `snd*.pfs` archive fails to load
+  at runtime, so fable is silent for the whole UI/combat sound set.** MEASURED
+  T386 (`review/T386/` §1b) in one live `arena` session: **31** `Failed to load
+  sound: <name> (not found on disk or in PFS)` lines and **zero** `Loaded sound
+  from PFS` lines. Among them is **`BuyItem.WAV`, sound id 138** —
+  `Sound failed: id=138 file=BuyItem.WAV (not found)`, 11 ms after the corpse
+  loot response — so T382's B172 wiring is proven live end to end
+  (`PlaySoundIntent{BUY_ITEM}` -> `BridgeComponent::PlaySound` ->
+  `AudioManager::playSound(138)` -> the db resolves the filename) and the player
+  still hears nothing. Also `SwordBlk.WAV` (120) once a combat round,
+  `Swing.WAV`, `SwingBig.WAV`, `Kick1.WAV`, `KickHit.WAV`, `RndKick.WAV`,
+  `Punch1.WAV`, `PunchHit.WAV`, `Spell_1..5.wav`, `SpelCast.WAV`,
+  `LevelUp.WAV`, `WaterIn.WAV`, `WatTrd_1/2.WAV`. **Narrowed, not root-caused:**
+  the names ARE in the index the client loaded (`config/snd_index_cache.json`
+  maps `buyitem.wav` and `swordblk.wav` to `snd2.pfs`; the client logs
+  `Loaded PFS index cache: 2088 sound files`), and `loadSoundDataFromPfs`
+  lowercases before the lookup, so case is not the obvious cause; every OTHER
+  failure exit in that function logs (`Failed to open archive (lazy)`,
+  `Failed to extract … (lazy)`, `Failed to decode WAV from PFS`) and **none of
+  those lines appears**, which leaves the silent `pfsFileIndex_.find() == end()`
+  return as the only reachable exit. Closes when a live session plays a PFS
+  sound and a test pins the id-138 lookup against the shipped index.
+  Prov: T386 Review §1b; B172; B036.
+
+- **B186** (A) `src/client/bridge/irrlicht_bridge.cpp`
+  `GameEventType::CurrencyChanged` arm / `renderer_entities.cpp`
+  `updateCharacterStats` — **the player's purse is never drawn anywhere, so
+  "watch the purse move" is not a thing a fable player can do.** The bridge arm
+  for `CurrencyChanged` is a comment plus a `LOG_TRACE` ("Currency display is
+  context-dependent … Deferred"), and the renderer entry point that is supposed
+  to carry the four counts discards them outright
+  (`(void)platinum; (void)gold; (void)silver; (void)copper;`). CONFIRMED live
+  T386 (`review/T386/` §1c): the inventory window opened immediately after a
+  corpse loot shows paperdoll, equipment and general slots and **no coin
+  counters** (`review/T386/fable/T386_fable_arena2_purse_01_after_1024x768.png`),
+  while `character_currency` moved by exactly the amount the chat line named.
+  So B172's own close-out wording is unmeasurable as written, and every future
+  coin row has no on-screen consumer. Closes when the coin counts reach a panel
+  and a test pins the projection. Prov: T386 Review §1c; B172.
+
+- **B187** (A) `src/client/graphics/sim/` `SimBridgeComponent::applySimulationOutput`
+  — **SIGSEGV on the render thread whenever a second player is in the zone.**
+  MEASURED T386 (`review/T386/` §5): **five segfaults across seven
+  client-instances in six two-client runs**, in `qeynos2` AND in `arena`, in
+  both the observing and the casting role, 20-60 s after zone-in. Single-client
+  sessions on the same binary in the same zones ran 5+ minutes clean (the whole
+  T386 vision run, both corpse runs). Backtrace captured under `gdb -batch`
+  (`review/T386/logs/fable_spells3_caster_gdb.txt`):
+  `applySimulationOutput` <- `applySimulationResults` <-
+  `FrameComponent::processFrame` <- `IrrlichtRenderer::processFrame` <-
+  `Application::render` <- `mainLoop`; the `SimulationWorker` thread is parked
+  in its condition variable at the time, so this is the apply side reading a
+  result the worker produced. This is what blocks B160's owed two-client proof
+  and it will block every future two-client unit. Closes when a two-client
+  session survives 5 minutes and a test pins whatever invariant
+  `applySimulationOutput` is missing. Prov: T386 Review §5.
+
+- **B188** (A) `include/client/graphics/vision_ambient.h` `kUltravisionAmbientGain`
+  / `kUltravisionTint` / `kInfravisionAmbientGain` / `kInfravisionTint` —
+  **B171 REOPENED: T383's re-solve is refuted by the live re-measure it was
+  waiting for, and it made both scalar ratios WORSE.** MEASURED T386
+  (`review/T386/` §4), T377 §2 repeated exactly (same character, spot, forced
+  22:00, 700x420+40+40 crop, linear light, video-stepped over 882 frames;
+  composition control: the two sessions' night stills differ by RMSE 2.7%).
+
+  | | R | G | B | grey |
+  |---|---|---|---|---|
+  | oracle Ultravision | x1.4581 | x1.4633 | x1.8507 | **x1.5612** |
+  | T383 predicted | x1.4569 | x1.4640 | x1.8503 | x1.5561 |
+  | fable pre-T383 | x1.4609 | x1.2814 | x1.6629 | x1.4483 |
+  | **fable post-T383 (measured)** | **x0.9674** | **x0.9723** | **x1.6377** | **x1.1686** |
+  | oracle Infravision | x1.3284 | x1.2111 | x1.2079 | **x1.2555** |
+  | T383 predicted | x1.3298 | x1.2125 | x1.2085 | x1.2582 |
+  | fable pre-T383 | x1.6002 | x1.1264 | **x0.8209** | x1.2450 |
+  | **fable post-T383 (measured)** | **x1.0688** | **x1.0345** | **x1.1274** | **x1.0757** |
+
+  Three facts. (1) **The `B x0.8209` anomaly did NOT reproduce** — Infravision
+  blue is now x1.1274, moving UP and closest of the three to the oracle; the
+  question T383 left open is answered no. (2) **The forward model is wrong**:
+  raising the floor's R and G from 0.08 to ~0.111 predicted x1.457/x1.464 and
+  delivered **x0.967/x0.972** — the frame got very slightly DARKER in those
+  channels, so T361's `ambient^1.1405` power law does not hold per channel at
+  this operating point. (3) **Both scalars regressed**: Ultravision 1.4483 ->
+  1.1686 (93% of the oracle -> 75%), Infravision 1.2450 -> 1.0757 (99% -> 86%),
+  and the pre-T383 Infravision scalar was very nearly right. A fourth
+  observation for whoever takes this: fable's night-no-buff BASE also moved
+  between the two tips on the same crop — R 0.004256 -> 0.005295, G 0.003610 ->
+  0.004362, **B 0.002649 -> 0.004095 (+55%)** — which nothing in T383's stated
+  changes touches. Closes when a live re-measure lands all six channel ratios
+  and both greys within ~2% of the oracle table, `tests/test_vision_ambient.cpp`
+  pins the constants that did it, and the fit is closed against a measurement
+  rather than extrapolated. Prov: T386 Review §4; B171; B067.
+
+- **B189** (B) `src/client/graphics/spell_visual_fx_nodes.cpp` /
+  `SpellVisualFX` — **no spell impact visual is drawn at all, on the observing
+  client or anywhere, so T381's Fire/Cold colours have no consumer that reaches
+  a frame.** MEASURED T386 (`review/T386/` §3): Testcaster cast Burst of Flame
+  (93) and Frost Bolt (54) on itself with GM invulnerability OFF (both landed,
+  `effect_flag=4`); the observing client 15 units away with the caster in frame
+  logged both `SpellAction` packets and its pixels did not move — a 150x120 crop
+  centred on the caster holds mean channels 0.2766/0.3571/0.4349 before the fire
+  cast and 0.2768/0.3571/0.4349 at the impact (fourth decimal = idle
+  animation). This is consistent with T381's own review (all four visual gates
+  sit inside `if (m_particle_manager)`, and `createProjectile()` — the one gate
+  with a population — has no client caller), but it **removes the standing
+  explanation**: the particle manager is NOT null in production (`ParticleManager
+  initialized`, `SimulationWorker: Particle pool initialized (size=1024)` are
+  both in the observing client's log). Closes when a landed spell paints
+  something an observing client can see and the two vocabulary colours differ on
+  screen. Prov: T386 Review §3; B160; B161; B165.
+
+- **B190** (B) the eqstr for "your spell failed to land … invulnerable" —
+  **fable prints a 45-character hex blob in front of the spell name in a line
+  the player sees.** MEASURED T386, twice in one session
+  (`review/T386/logs/fable_session_selfcast.log`, screenshot
+  `review/T386/fable/T386_fable_selfcast_invulnerable_refusal_800x600.png`):
+
+      Your spell 0FFFFF000000004F00000000000000000000000000000Burst of Flame has failed to land on yourself because you are invulnerable.
+      Your spell 0FFFFF00000000500000000000000000000000000000Frost Bolt has failed to land on yourself because you are invulnerable.
+
+  The blob looks like a colour/format prefix the message assembler passes
+  through as literal text instead of consuming (`0FFFFF` reads as a colour
+  code; the differing `…4F…` / `…50…` bytes are sequential and are NOT the two
+  spell ids, so what they are is unidentified and this entry does not guess).
+  Closes when the line reads
+  `Your spell Burst of Flame has failed to land …` and a test pins it.
+  Prov: T386 Review §3.
+
+### Struck / amended by T386
+
+- **B172** — its owed live proof is **TAKEN and SPLIT**. The banking and the
+  chat line are **PROVEN live, two independent trials** (`review/T386/` §1a):
+  `You receive 1 platinum, 9 gold, 2 silver and 3 copper from the corpse.` with
+  `character_currency` 4/6/1/8 -> 5/15/3/11, and
+  `You receive 3 platinum, 3 gold, 5 silver and 5 copper from the corpse.` with
+  5/15/3/11 -> 8/18/8/16 — both deltas exactly the four printed counts. The
+  SOUND half is **NOT** proven and is now **B185**; "watch the purse move" turns
+  out to be impossible on fable's screen and is now **B186**. The official
+  client's **zero-denomination** form is **still UNMEASURED**: T386's oracle
+  attempt is recorded in `review/T386/` §1d together with the method that will
+  work (eqemu splits the loot table's copper by digit division, `zone/loot.cpp`,
+  so ~1 kill in 4 of `Gargalek_Daemado` has a zero) and the trap that killed it
+  (a level-1 character takes falling damage from `#goto`'s Z in `arena` and gets
+  stuck at HP 0 answering `You may not use that command while dead.`; use a
+  levelled character, the zone's own safe Z 51, and `#set invulnerable on`
+  BEFORE the first `#goto`).
+
+- **B170** — **PROVEN live** (`review/T386/` §2). `Alt+P`, `Alt+F1` and `Alt+B`
+  each toggle their window (six `Group window opened/closed`, `Pet window …`,
+  `Buff window …` lines against six `OnEvent: action Toggle…` lines); bare `G`
+  and bare `P` produce no input event and no window line. The empty group window
+  is a bare title strip on both clients — crops
+  `review/T386/oracle/T386_oracle_group_window_nogroup_CROP.png` and
+  `review/T386/fable/T386_fable_group_window_nogroup_CROP.png`. **A trap worth
+  keeping:** the first run pressed all eight keys with the chat field focused
+  (`INPUT-TRACE … chatFocused=true`) and every renderer-local action was
+  silently dropped — `Alt+F1` still registered because `F1` is not a text
+  character, while `Alt+P`, `G` and `P` were typed into the chat box. Send
+  `Escape` before each key.
+
+- **B171** — its provisional strike **must be reversed**; see **B188**.
+
+- **B160** — its owed live pair is **NOT PROVEN** and the reason is bigger than
+  the colours; see **B189** (nothing is drawn) and **B187** (the two-client
+  session segfaults).
