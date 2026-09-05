@@ -13,6 +13,7 @@
 #include "client/graphics/eq/bone_attachment.h"
 #include "client/animation_constants.h"
 #include "common/logging.h"
+#include "client/data_paths.h"
 #include "common/name_utils.h"
 #include "common/performance_metrics.h"
 #include <algorithm>
@@ -34,7 +35,8 @@ bool EntityRenderer::loadEquipmentModels() {
     }
 
     // Load item ID to model ID mapping (file validated at startup by S03)
-    int mappingCount = equipmentModelLoader_->loadItemModelMapping("data/item_models.json");
+    int mappingCount = equipmentModelLoader_->loadItemModelMapping(
+        eqt::ResolveDataPath("data/item_models.json"));
     if (mappingCount < 0) {
         LOG_FATAL(MOD_ENTITY, "EntityRenderer: Failed to load data/item_models.json");
     } else {

@@ -5,6 +5,7 @@
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/renderer_zone_merge.h"
 #include "common/logging.h"
+#include "client/data_paths.h"
 #include <json/json.h>
 #include <fstream>
 
@@ -516,7 +517,9 @@ bool DiagnosticsComponent::loadIndoorRegionMap(const std::string& zoneName) {
     std::string regionMapsPath = ctx_.config.regionMapsPath;
     if (regionMapsPath.empty()) regionMapsPath = "data/region_maps";
 
-    std::string mapFile = regionMapsPath + "/" + zoneName + ".json";
+    // T399 (board B235): resolved on the COMPLETE path, so the config knob
+    // (config.regionMapsPath, absolute or relative) keeps working.
+    std::string mapFile = eqt::ResolveDataPath(regionMapsPath + "/" + zoneName + ".json");
     std::ifstream ifs(mapFile);
     if (!ifs.is_open()) {
         LOG_DEBUG(MOD_GRAPHICS, "No region map file: {} (portal vis will use zone-level heuristic)", mapFile);

@@ -35,6 +35,7 @@
 #include "client/state/event_bus.h"
 #include "client/events/renderer_intents.h"
 #include "common/logging.h"
+#include "client/data_paths.h"
 #include <fmt/format.h>
 #include "common/name_utils.h"
 #include "common/performance_metrics.h"
@@ -149,7 +150,7 @@ void ZoneLoadComponent::loadZoneStep0_EQE1(ZoneLoadContext& ctx) {
         // walked this whole list. Loaded once; the candidate set above is what
         // varies per zone.
         if (!ctx_.Eqe1().eqe1Index().isLoaded()) {
-            if (!ctx_.Eqe1().eqe1Index().load("data/eqe1_texture_index.json")) {
+            if (!ctx_.Eqe1().eqe1Index().load(eqt::ResolveDataPath("data/eqe1_texture_index.json"))) {
                 LOG_ERROR(MOD_GRAPHICS,
                           "EQE1: no data/eqe1_texture_index.json -- EQE1 lookups "
                           "will resolve nothing. Rebuild it with "
