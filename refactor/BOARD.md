@@ -437,29 +437,21 @@ it without taking that measurement first.
   The accounting had no observable surface, so `getChrCacheAccountingForTest()`
   was added next to `setMaxChrCacheEntries()`.
 
-- **B105** (B) `src/client/graphics/eq/s3d_loader.cpp` `S3DLoader::loadCharacters`
-  — **the character-archive path is derived by searching the WHOLE PATH for the
-  substring `_chr`, first occurrence**, so any client path with `_chr` anywhere in
-  a DIRECTORY name truncates the path and no character model loads at all:
-  ```
-  basePath = archivePath minus extension;
-  chrSuffix = basePath.find("_chr");        // first occurrence, whole path
-  basePath = basePath.substr(0, chrSuffix);
-  chrArchivePath = basePath + "_chr.s3d";
-  ```
-  **Measured 2026-09-05 (T366 Leg A, by accident):** with the loader pointed at
-  `/tmp/willeq_chrscan_1185004/`, every archive resolved to
-  `chrArchivePath='/tmp/willeq_chr.s3d'` and every load returned zero characters —
-  silently, because `searchZoneChrFilesForModel` treats "no characters" as a
-  negative cache entry and moves on. Renaming the directory to
-  `willeq_scantree_…` fixed it outright. The whole path is searched but only the
-  BASENAME's suffix is meant; the fix is to split the filename off first and match
-  `_chr` only as a suffix of the stem. Nothing in the shipped tree hits it today
-  (`/mnt/projects/EverQuestP1999` has no `_chr` directory component), which is why
-  it has survived — but it is a silent total failure for anyone whose EQ directory
-  happens to contain `_chr`, and it is not diagnosable from the client's output.
-  Closes when: the derivation operates on the basename and a test pins a client
-  path containing `_chr` in a directory name.
+- ~~**B105** (B)~~ **CLOSED by T369 (`bae6befc`)**:
+  `S3DLoader::deriveChrArchivePath()` derives the character archive from the
+  FILENAME's stem (`std::filesystem::path`: `parent_path` / `stem`, then a
+  trailing `_chr` with an optional numeric variant stripped), so a directory
+  component containing `_chr` no longer truncates the path. Pinned three ways in
+  `tests/test_chr_path_derivation.cpp`: the derivation directly, end-to-end (an
+  archive loaded out of `/tmp/willeq_chrscan_<pid>/` returns characters where it
+  returned zero before), and an IDENTITY pin over the real client tree — all
+  **1,006 `.s3d` archives** under `/mnt/projects/EverQuestP1999` derive
+  byte-for-byte what the old code derived, so the fix changed only the broken
+  case. The `_chr2` variants (`acrylia_chr2.s3d` and 30-odd siblings) are why the
+  strip allows trailing digits; a bare `_chr`-suffix match would have moved them.
+  The silence is closed too: **both** negative-cache branches in
+  `searchZoneChrFilesForModel` now log WARN naming the path ("is a `_chr.s3d`
+  archive that yielded NO characters"), caching behaviour unchanged.
 
 - ~~**B095** (B)~~ **CLOSED by T366 Leg A (`a2b83e28`)**: all four sites now call
   `storeOtherChrCacheLocked()`, the inline push/evict copy is deleted, and there is
