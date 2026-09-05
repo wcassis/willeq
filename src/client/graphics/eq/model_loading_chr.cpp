@@ -208,12 +208,17 @@ bool RaceModelLoader::loadModelFromZoneChr(const std::string& zoneName, uint16_t
                                     if (loader.loadZone(fullPath)) {
                                         auto zone = loader.getZone();
                                         if (zone && !zone->characters.empty()) {
-                                            OtherChrCache& cache = otherChrCaches_[lowerFilename];
-                                            cache.characters = zone->characters;
-                                            cache.textures = zone->characterTextures;
-                                            mergedTexturesCacheValid_ = false;
+                                            // T366 (B095): storeOtherChrCacheLocked
+                                            // is the only correct insert -- a raw
+                                            // otherChrCaches_[key] = ... never enters
+                                            // chrCacheLruOrder_, so it can never be
+                                            // evicted while still counting against
+                                            // maxChrCacheEntries_ (the T91 bypass).
+                                            storeOtherChrCacheLocked(lowerFilename, zone->characters,
+                                                                     zone->characterTextures);
                                             LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loaded {} for animation source {}",
                                                       animSourceS3d, animSourceCode);
+                                            // Re-find: the store may have evicted.
                                             cacheIt = otherChrCaches_.find(lowerFilename);
                                         }
                                     }
