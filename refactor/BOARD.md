@@ -560,9 +560,9 @@ it without taking that measurement first.
   `src/client/action/command_processor_registration.cpp` with the alias
   `report`) sends `HC_OP_Report`, which is eqemu's PLAYER-report channel, not
   its bug channel. Titanium has a separate `OP_Bug` (0x7ac2, `patch_Titanium.conf`)
-  whose `Handle_OP_Bug` (`zone/client_packet.cpp:4253`) requires
+  whose `Handle_OP_Bug` (`/mnt/projects/akk-stack/code/zone/client_packet.cpp:4253`) requires
   `app->size == sizeof(BugReport_Struct)` — an **8,736-byte** Titanium struct
-  (`common/patches/titanium_structs.h:2604`) carrying `category_name[64]`,
+  (`/mnt/projects/akk-stack/code/common/patches/titanium_structs.h:2604`) carrying `category_name[64]`,
   `character_name[64]`, `ui_path[128]`, position, heading, `time_played`,
   `target_id`, `target_name[64]`, `optional_info_mask`, `bug_report[2050]` and
   `system_info[4098]`. fable has no `HC_OP_Bug` at all. T375 made `/bug` correct
