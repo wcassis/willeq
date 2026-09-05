@@ -109,6 +109,10 @@ void UIAtlas::mapSprite(const std::string& name, const irr::core::rect<irr::s32>
         {"panel_border",        UISprite::PanelBorder},
         {"white",               UISprite::White},
         {"scroll_indicator",    UISprite::ScrollIndicator},
+        {"coin_platinum",       UISprite::CoinPlatinum},
+        {"coin_gold",           UISprite::CoinGold},
+        {"coin_silver",         UISprite::CoinSilver},
+        {"coin_copper",         UISprite::CoinCopper},
     };
 
     auto it = nameMap.find(name);

@@ -1,0 +1,6 @@
+# sha256 of /mnt/projects/EverQuest_ETC1/willeq.eqe1, the shared UI/effects
+# pack. Rebuilt by scripts/build_willeq_pack.sh from tools/ui_atlas_builder
+# (procedural) plus the 64 BMPs in data/textures/. Pinned here so a drift in
+# either input, or a hand-edit of the shared pack, is a ctest FAIL
+# (PackReproducible). Update this line in the SAME commit that changes an input.
+e60962fb572d5bcfcaea59069095c05f4a79da82b09b2dc723fd8f1bfff7bf16  willeq.eqe1

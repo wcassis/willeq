@@ -222,6 +222,31 @@ Zone loading runs on a dedicated **LoadingThread** that owns the GL context duri
 - GPU capability tools: `gpu_texture_formats`, `gles2_etc1_benchmark`, `egl_image_sharing_test`
 - Shader benchmarks: `gles2_shader_perpixel_benchmark` (FS optimization variants), `gles2_program_switch_benchmark` (per-light-count programs, switching cost, program count pressure)
 
+### The shared client pack `willeq.eqe1`
+
+`/mnt/projects/EverQuest_ETC1/willeq.eqe1` is fable's OWN pack (not an S3D
+conversion): the UI chrome atlas plus the weather/particle/cursor textures.
+It is opened once at init and retained across zone unloads
+(`isPersistentEQE1Archive()`), and it is READ LIVE by every worktree's ctest
+and by the visual gate, so it is never edited in place.
+
+It has exactly two input sources and no residue (T398, board B230):
+
+1. `tools/ui_atlas_builder` — fully procedural, opens no file. Its
+   `ui_atlas.bmp` / `ui_atlas.json` become the pack entries `ui_atlas`,
+   `ui_atlas_alpha` (the ETC1 alpha companion) and the raw entry
+   `ui_atlas.json`.
+2. The BMPs checked in under `data/textures/`.
+
+Rebuild it with `scripts/build_willeq_pack.sh` — it stages the two input
+sets, runs `eqe1_builder --bmp-dir ... --name willeq`, and installs the
+result by writing a temp file in the destination directory and `mv`-ing it
+over the pack, so a concurrent slot never reads it half-written. The ETC1
+encode is deterministic (T279), so the rebuild is byte-identical; the
+`PackReproducible` ctest test (label `hygiene;slow`) proves it against the
+pinned `data/willeq.eqe1.sha256`. **A deliberate input change updates that
+hash file and reinstalls the pack in the same commit.**
+
 ## Graphics Integration Tests
 
 Graphics integration tests require a running EQEmu server and X display. They are NOT auto-discovered by ctest because they need external dependencies.
