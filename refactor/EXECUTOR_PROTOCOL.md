@@ -261,3 +261,7 @@ pointing at `main/` breaks the moment main rebuilds its Irrlicht (T357).
   merge, push, or delete branches. Orchestrator reviews and merges.
 - Final report: pass/fail per verification step, headline findings,
   commit hashes, deviations; if blocked/STOPped, exactly where and why.
+   Load artefacts inside `ctest -j6` (re-run standalone before believing them):
+   a `visual_gate` CPU-p95 ceiling miss, and `HeadlessShutdownTest` failing
+   with `failed to open data/willeq.db (sqlite rc=14)` (T360). And ctest
+   exits 8 even when only the waived ALSA test fails — read the summary line.
