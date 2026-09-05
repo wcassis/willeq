@@ -140,6 +140,10 @@ public:
 	void setPlayerSpawnId(uint16_t spawnId);
 	void setPlayerRace(uint16_t raceId);
 	void setVisionType(VisionType vision);
+
+	// T361 (B067): re-runs the day/night lighting so a vision change reaches
+	// the global ambient immediately instead of at the next server time tick.
+	void refreshVisionLighting();
 	void setPlayerPosition(float x, float y, float z, float heading);
 	void setSwimmingState(bool swimming, float swimSpeed = 20.0f, bool levitating = false);
 	void setCameraMode(CameraMode mode);

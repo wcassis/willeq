@@ -528,6 +528,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/zone_lifecycle/renderer_gpu_upload.cpp
         src/client/graphics/renderer/renderer_entities.cpp
         src/client/graphics/zone_shader.cpp
+        src/client/graphics/vision_ambient.cpp
         src/client/graphics/portal_system.cpp
         src/client/graphics/frustum_culler.cpp
         src/client/graphics/software_occlusion_culler.cpp
@@ -1737,6 +1738,7 @@ IF(EQT_GRAPHICS)
         src/client/hc_map.cpp
         src/client/raycast_mesh.cpp
         src/client/graphics/zone_shader.cpp
+        src/client/graphics/vision_ambient.cpp
         src/client/graphics/texture_atlas.cpp
         src/client/graphics/software_occlusion_culler.cpp
         src/client/graphics/eq/race_model_loader.cpp
@@ -1866,6 +1868,7 @@ IF(EQT_GRAPHICS)
         src/client/hc_map.cpp
         src/client/raycast_mesh.cpp
         src/client/graphics/zone_shader.cpp
+        src/client/graphics/vision_ambient.cpp
         src/client/graphics/texture_atlas.cpp
         src/client/graphics/software_occlusion_culler.cpp
         src/client/graphics/eq/race_model_loader.cpp
@@ -1957,6 +1960,7 @@ IF(EQT_GRAPHICS)
         src/client/hc_map.cpp
         src/client/raycast_mesh.cpp
         src/client/graphics/zone_shader.cpp
+        src/client/graphics/vision_ambient.cpp
         src/client/graphics/texture_atlas.cpp
         src/client/graphics/software_occlusion_culler.cpp
         src/client/graphics/eq/race_model_loader.cpp
