@@ -764,6 +764,12 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             auto& d = std::get<state::SpellCastVisualStartedData>(event.data);
             // Create cast glow effect
             if (renderer_->getSpellVisualFX()) {
+                // T381 (B160): teach the FX layer this spell's resist type,
+                // school and spell_affect_index BEFORE creating anything --
+                // createCastGlow() reads all three back out (colour, spray
+                // style, spells.eff stage gate). The game thread filled them;
+                // the renderer never touches a SpellDatabase.
+                renderer_->getSpellVisualFX()->noteSpellVocabulary(d.spellId, d.spellVisual);
                 renderer_->getSpellVisualFX()->createCastGlow(d.casterId, d.spellId, d.castTimeMs);
             }
             if (d.isPlayerCast) {
@@ -789,6 +795,10 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             auto& d = std::get<state::SpellCastVisualCompleteData>(event.data);
             // Remove cast glow from caster
             if (renderer_->getSpellVisualFX()) {
+                // T381 (B160): a cast can land without this client having
+                // seen its BeginCast (zoned in mid-cast, out of range), so
+                // the completion payload carries the vocabulary too.
+                renderer_->getSpellVisualFX()->noteSpellVocabulary(d.spellId, d.spellVisual);
                 renderer_->getSpellVisualFX()->removeCastGlow(d.casterId);
             }
             // Complete entity casting bar

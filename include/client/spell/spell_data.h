@@ -9,6 +9,7 @@
 #define EQT_SPELL_DATA_H
 
 #include "spell_constants.h"
+#include "spell_visual_vocabulary.h"
 #include <string>
 #include <array>
 #include <cstdint>
@@ -304,6 +305,19 @@ struct SpellData {
     // Check if this is a buff spell (beneficial with duration)
     bool isBuffSpell() const {
         return is_beneficial && hasDuration();
+    }
+
+    // T381 (B160): the three per-spell facts the renderer's spell effect
+    // layer needs, copied by value onto the SpellCastVisual* bridge events
+    // on the game thread. See spell_visual_vocabulary.h for why the
+    // SpellDatabase pointer itself must not cross the bridge.
+    SpellVisualVocabulary visualVocabulary() const {
+        SpellVisualVocabulary v;
+        v.known = true;
+        v.resistType = resist_type;
+        v.school = getSchool();
+        v.spellAffectIndex = spell_affect_index;
+        return v;
     }
 
     // Get spell school from casting skill

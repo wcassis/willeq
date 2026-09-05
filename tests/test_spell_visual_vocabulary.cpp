@@ -1,0 +1,293 @@
+/*
+ * T381 (board B160): the spell visual vocabulary is reachable.
+ *
+ * B160, measured by T380: SpellVisualFX::setSpellDatabase() had no caller in
+ * the client, so m_spell_db was permanently nullptr and every consumer took
+ * its null branch -- getSpellColor() always returned the default
+ * SColor(255,150,180,255), isSprayCastStyle() always returned false, and
+ * resolveVisual() always left the index at kSpellsEffNoEffectIndex so the
+ * whole T70/T72 spells.eff layer could never reach Resolved. Net user-visible
+ * effect: every spell in the game drew one identical lavender-blue orbital
+ * glow.
+ *
+ * The fix routes the three facts the renderer needs (resist type, casting
+ * school, spell_affect_index) across the bridge BY VALUE on the
+ * SpellCastVisual* events -- the SpellDatabase pointer must not cross,
+ * because the only instance is game-thread-owned and its LRU has no mutex.
+ *
+ * These tests drive the SAME two halves the production path drives:
+ *   producer  -- SpellData::visualVocabulary(), what SpellManager copies onto
+ *                SpellCastVisualStartedData/CompleteData;
+ *   consumer  -- SpellVisualFX::noteSpellVocabulary(), what
+ *                src/client/bridge/irrlicht_bridge.cpp calls before
+ *                createCastGlow()/createSpellComplete().
+ * They are assembled here through a real eqt::state::GameEvent payload so the
+ * test fails if either half of the wire is cut.
+ *
+ * EDT_NULL Irrlicht device (no window, no GPU, no DISPLAY) -- the same idiom
+ * every other renderer-side test in this suite uses.
+ */
+
+#include <gtest/gtest.h>
+
+#include <cstdlib>
+#include <filesystem>
+#include <memory>
+#include <string>
+#include <variant>
+
+#ifdef EQT_HAS_GRAPHICS
+#include <irrlicht.h>
+
+#include "client/graphics/spell_visual_fx.h"
+#include "client/spell/spell_database.h"
+#include "client/spell/spell_data.h"
+#include "client/state/event_bus.h"
+#include "client/willeq_database.h"
+
+#ifdef EQT_HAS_GLES2
+#include "client/graphics/environment/particle_manager.h"
+#endif
+#endif
+
+#ifdef EQT_HAS_GRAPHICS
+
+using namespace EQ;
+
+namespace {
+
+// Spells chosen against the shipped data, verified with
+// scripts/refactor/t380_spell_visual_census.py:
+//   54   Frost Bolt      resist Cold(3), Evocation, spell_affect_index 23
+//                        -> spells.eff record 23: Source + Middle + Target
+//   93   Burst of Flame  resist Fire(2), Evocation, spell_affect_index 0
+//   15   Greater Healing resist None(0), Alteration (the spray cast style)
+//   3    Summon Corpse   spell_affect_index 4  -> Source + Target, NO Middle
+//   6    Ignite Blood    spell_affect_index 20 -> Source + Middle + Target
+//   6594 GM Cleansing    spell_affect_index -1 (the NoAffectIndex population)
+constexpr uint32_t kFrostBolt     = 54;
+constexpr uint32_t kBurstOfFlame  = 93;
+constexpr uint32_t kGreaterHealing = 15;
+constexpr uint32_t kSummonCorpse  = 3;
+constexpr uint32_t kIgniteBlood   = 6;
+constexpr uint32_t kGmCleansing   = 6594;
+
+const irr::video::SColor kPreT381DefaultColour(255, 150, 180, 255);
+
+std::string eqClientPath() {
+    const char* env = std::getenv("EQ_CLIENT_PATH");
+    return env ? env : EQ_CLIENT_DATA_PATH;
+}
+
+std::string willeqDbPath() {
+    const char* env = std::getenv("WILLEQ_DB_PATH");
+    return env ? env : WILLEQ_DB_PATH;
+}
+
+class SpellVisualVocabularyTest : public ::testing::Test {
+protected:
+    static EQT::WilleqDatabase* db;
+    static bool db_available;
+
+    irr::IrrlichtDevice* device_ = nullptr;
+    std::unique_ptr<SpellVisualFX> fx_;
+    SpellDatabase spellDb_;
+
+    static void SetUpTestSuite() {
+        const std::string path = willeqDbPath();
+        if (!std::filesystem::exists(path)) return;
+        db = new EQT::WilleqDatabase();
+        if (db->open(path)) {
+            EQT::WilleqDatabase::setGlobalInstance(db);
+            db_available = true;
+        }
+    }
+
+    static void TearDownTestSuite() {
+        delete db;
+        db = nullptr;
+    }
+
+    void SetUp() override {
+        if (!db_available) {
+            GTEST_SKIP() << "willeq.db not found at " << willeqDbPath();
+        }
+        ASSERT_TRUE(spellDb_.initFromDatabase()) << spellDb_.getLoadError();
+
+        irr::SIrrlichtCreationParameters params;
+        params.DriverType = irr::video::EDT_NULL;
+        params.WindowSize = irr::core::dimension2d<irr::u32>(64, 64);
+        device_ = irr::createDeviceEx(params);
+        if (!device_) {
+            GTEST_SKIP() << "Failed to create EDT_NULL Irrlicht device";
+        }
+        fx_ = std::make_unique<SpellVisualFX>(device_->getSceneManager(),
+                                              device_->getVideoDriver(),
+                                              eqClientPath());
+    }
+
+    void TearDown() override {
+        fx_.reset();
+        if (device_) {
+            device_->drop();
+            device_ = nullptr;
+        }
+    }
+
+    // The production wire, both halves: game thread reads its own SpellData
+    // onto the event, renderer thread notes the payload into the FX layer.
+    void castThroughTheBridge(uint32_t spell_id) {
+        const SpellData* spell = spellDb_.getSpell(spell_id);
+        ASSERT_NE(spell, nullptr) << "spell " << spell_id << " missing from willeq.db";
+
+        eqt::state::SpellCastVisualStartedData started;
+        started.casterId = 1;
+        started.spellId = spell_id;
+        started.castTimeMs = 1000;
+        started.spellName = spell->name;
+        started.spellVisual = spell->visualVocabulary();
+
+        eqt::state::GameEvent event(eqt::state::GameEventType::SpellCastVisualStarted,
+                                    std::move(started));
+        const auto& d = std::get<eqt::state::SpellCastVisualStartedData>(event.data);
+        fx_->noteSpellVocabulary(d.spellId, d.spellVisual);
+    }
+};
+
+EQT::WilleqDatabase* SpellVisualVocabularyTest::db = nullptr;
+bool SpellVisualVocabularyTest::db_available = false;
+
+// ---------------------------------------------------------------------------
+// Producer half: the event payload actually carries the three facts.
+// ---------------------------------------------------------------------------
+
+TEST_F(SpellVisualVocabularyTest, EventPayloadCarriesResistSchoolAndAffectIndex) {
+    const SpellData* frost = spellDb_.getSpell(kFrostBolt);
+    ASSERT_NE(frost, nullptr);
+
+    eqt::state::SpellCastVisualStartedData started;
+    started.spellVisual = frost->visualVocabulary();
+
+    EXPECT_TRUE(started.spellVisual.known);
+    EXPECT_EQ(started.spellVisual.resistType, ResistType::Cold);
+    EXPECT_EQ(started.spellVisual.school, SpellSchool::Evocation);
+    EXPECT_EQ(started.spellVisual.spellAffectIndex, 23);
+
+    // A default-constructed payload (an id the game thread could not find)
+    // must read as "unknown", never as a real Fire/Abjuration spell.
+    eqt::state::SpellCastVisualCompleteData complete;
+    EXPECT_FALSE(complete.spellVisual.known);
+    EXPECT_EQ(complete.spellVisual.spellAffectIndex, kNoSpellAffectIndex);
+}
+
+// ---------------------------------------------------------------------------
+// The B160 headline: two resist types, two colours.
+// ---------------------------------------------------------------------------
+
+TEST_F(SpellVisualVocabularyTest, FireAndColdSpellsDrawDifferentColours) {
+    castThroughTheBridge(kBurstOfFlame);
+    castThroughTheBridge(kFrostBolt);
+
+    const irr::video::SColor fire = fx_->getSpellColorForSpell(kBurstOfFlame);
+    const irr::video::SColor cold = fx_->getSpellColorForSpell(kFrostBolt);
+
+    // The defect: before T381 both of these were kPreT381DefaultColour.
+    EXPECT_NE(fire.color, cold.color)
+        << "a Fire spell and a Cold spell still draw the same colour (B160)";
+    EXPECT_NE(fire.color, kPreT381DefaultColour.color);
+    EXPECT_NE(cold.color, kPreT381DefaultColour.color);
+
+    // The six resist colours in spell_visual_fx_nodes.cpp, now reachable.
+    EXPECT_EQ(fire.color, irr::video::SColor(255, 255, 120, 50).color);
+    EXPECT_EQ(cold.color, irr::video::SColor(255, 100, 180, 255).color);
+}
+
+TEST_F(SpellVisualVocabularyTest, AnUnnotedSpellKeepsThePreT381Fallback) {
+    // Never noted: no cast event has been seen for this id. Behaviour must be
+    // exactly what the whole game got before T381, not a crash and not a
+    // fabricated colour.
+    EXPECT_EQ(fx_->getSpellColorForSpell(kFrostBolt).color, kPreT381DefaultColour.color);
+    EXPECT_FALSE(fx_->isSprayCastStyle(kGreaterHealing));
+    EXPECT_FALSE(fx_->spellVocabulary(kFrostBolt).known);
+    EXPECT_EQ(fx_->resolveVisual(kFrostBolt).source, SpellVisualSource::NoAffectIndex);
+}
+
+TEST_F(SpellVisualVocabularyTest, SchoolSelectsTheSprayCastStyle) {
+    castThroughTheBridge(kGreaterHealing);  // Alteration
+    castThroughTheBridge(kFrostBolt);       // Evocation
+
+    // isSprayCastStyle() returned false for every spell in the game before
+    // T381 -- the spray cast style never played.
+    EXPECT_TRUE(fx_->isSprayCastStyle(kGreaterHealing));
+    EXPECT_FALSE(fx_->isSprayCastStyle(kFrostBolt));
+}
+
+// ---------------------------------------------------------------------------
+// The spells.eff layer reaches Resolved.
+// ---------------------------------------------------------------------------
+
+TEST_F(SpellVisualVocabularyTest, ASpellWithAnAffectIndexReachesResolved) {
+    if (!std::filesystem::exists(eqClientPath() + "/spells.eff")) {
+        GTEST_SKIP() << "spells.eff not present under " << eqClientPath();
+    }
+    castThroughTheBridge(kFrostBolt);
+
+    const SpellVisualResolution res = fx_->resolveVisual(kFrostBolt);
+    EXPECT_EQ(res.source, SpellVisualSource::Resolved)
+        << "spells.eff resolution is still unreachable (B160)";
+    EXPECT_FALSE(res.isFallback());
+    EXPECT_EQ(res.spell_affect_index, 23);
+    EXPECT_TRUE(res.hasSourceStage());
+    EXPECT_TRUE(res.hasTargetStage());
+
+    // And the -1 population still lands on the NoAffectIndex fallback.
+    castThroughTheBridge(kGmCleansing);
+    EXPECT_EQ(fx_->resolveVisual(kGmCleansing).source, SpellVisualSource::NoAffectIndex);
+}
+
+#ifdef EQT_HAS_GLES2
+// The three T72 stage-suppression gates live inside the ParticleManager
+// branch of createCastGlow()/createProjectile()/createImpact() and all read
+// `!visual.isFallback() && !visual.hasXStage()`. With B160 in place none of
+// them could ever be true. Measured against the shipped data, only the
+// TRAVEL gate has a non-empty population (6,250 of the 7,105 resolving
+// spells reference a record with no Middle stage; every referenced record
+// has a Source and a Target stage) -- see this unit's Review and board B165.
+//
+// Observed without a GL context: the gate returns BEFORE the entity-position
+// callback is consulted, so the callback is the branch witness.
+TEST_F(SpellVisualVocabularyTest, TravelStageGateFiresForARecordWithNoMiddleStage) {
+    if (!std::filesystem::exists(eqClientPath() + "/spells.eff")) {
+        GTEST_SKIP() << "spells.eff not present under " << eqClientPath();
+    }
+    EQT::Graphics::Environment::ParticleManager pm(device_->getSceneManager(),
+                                                   device_->getVideoDriver());
+    fx_->setParticleManager(&pm);
+
+    int positionLookups = 0;
+    fx_->setEntityPositionCallback(
+        [&positionLookups](uint16_t, irr::core::vector3df& out) -> bool {
+            ++positionLookups;
+            out = irr::core::vector3df(0.0f, 0.0f, 0.0f);
+            return true;
+        });
+
+    castThroughTheBridge(kSummonCorpse);  // record 4: Source + Target, no Middle
+    castThroughTheBridge(kIgniteBlood);   // record 20: all three stages
+    ASSERT_EQ(fx_->resolveVisual(kSummonCorpse).source, SpellVisualSource::Resolved);
+    ASSERT_FALSE(fx_->resolveVisual(kSummonCorpse).hasTravelStage());
+    ASSERT_TRUE(fx_->resolveVisual(kIgniteBlood).hasTravelStage());
+
+    fx_->createProjectile(1, 2, kSummonCorpse);
+    EXPECT_EQ(positionLookups, 0) << "the travel-stage gate did not suppress";
+
+    fx_->createProjectile(1, 2, kIgniteBlood);
+    EXPECT_GT(positionLookups, 0) << "a record WITH a Middle stage must not be gated";
+
+    fx_->setParticleManager(nullptr);
+}
+#endif  // EQT_HAS_GLES2
+
+}  // namespace
+
+#endif  // EQT_HAS_GRAPHICS

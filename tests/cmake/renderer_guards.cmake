@@ -64,6 +64,23 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_t124_texture_holder_guards)
 ENDIF()
 
+# T381 (board B160): the spell visual vocabulary -- resist type, casting
+# school and spell_affect_index -- reaches SpellVisualFX across the bridge by
+# value, so the six resist colours, the five school colours, the spray cast
+# style and the whole spells.eff resolution layer stop being dead code.
+# Needs willeq.db (spell rows) and the EQ client data (spells.eff); both are
+# GTEST_SKIP'd, never failed, when absent.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_spell_visual_vocabulary
+        test_spell_visual_vocabulary.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_spell_visual_vocabulary PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_COMPILE_DEFINITIONS(test_spell_visual_vocabulary PRIVATE
+        WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    TARGET_LINK_LIBRARIES(test_spell_visual_vocabulary GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_spell_visual_vocabulary)
+ENDIF()
+
 # T126: the dominant UAF holder named by this unit's write-time
 # return-address probe -- EntityVisual::primaryEquipNode/secondaryEquipNode
 # (weapon/shield meshes) were never scanned by EntityMeshTextureGuard despite

@@ -14,7 +14,6 @@
 #include "client/graphics/simulation_worker.h"
 #include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/eq/dds_decoder.h"
-#include "client/spell/spell_database.h"
 #include "client/spell/spell_constants.h"
 #include "common/logging.h"
 #ifdef EQT_HAS_GLES2
@@ -158,24 +157,20 @@ bool SpellVisualFX::hasBuffAura(uint16_t entity_id, uint32_t spell_id) const
 
 irr::video::SColor SpellVisualFX::getSpellColor(uint32_t spell_id) const
 {
-    if (m_spell_db) {
-        const SpellData* spell = m_spell_db->getSpell(spell_id);
-        if (spell) {
-            return getSpellColor(spell);
-        }
-    }
-    // Default: white/magical blue
-    return irr::video::SColor(255, 150, 180, 255);
+    // T381 (B160): keyed on the vocabulary the bridge noted from the
+    // SpellCastVisual* event, not on a SpellDatabase the renderer never had.
+    return colorForVocabulary(spellVocabulary(spell_id));
 }
 
-irr::video::SColor SpellVisualFX::getSpellColor(const SpellData* spell) const
+irr::video::SColor SpellVisualFX::colorForVocabulary(const SpellVisualVocabulary& vocab)
 {
-    if (!spell) {
+    if (!vocab.known) {
+        // Default: white/magical blue. Before T381 EVERY spell landed here.
         return irr::video::SColor(255, 150, 180, 255);
     }
 
     // Color based on resist type
-    switch (spell->resist_type) {
+    switch (vocab.resistType) {
         case ResistType::Fire:
             return irr::video::SColor(255, 255, 120, 50);   // Orange/red
         case ResistType::Cold:
@@ -193,7 +188,7 @@ irr::video::SColor SpellVisualFX::getSpellColor(const SpellData* spell) const
     }
 
     // Color based on spell school
-    switch (spell->getSchool()) {
+    switch (vocab.school) {
         case SpellSchool::Abjuration:
             return irr::video::SColor(255, 255, 255, 200);  // White/gold
         case SpellSchool::Alteration:

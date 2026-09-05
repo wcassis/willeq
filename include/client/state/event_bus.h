@@ -10,6 +10,7 @@
 #include <glm/glm.hpp>
 
 #include "client/hotbar/hotbar_slot_type.h"  // T156: HotbarSlotAssignedData carries the enum, not a raw uint8_t
+#include "client/spell/spell_visual_vocabulary.h"  // T381: SpellCastVisual*Data carry the render vocabulary by value, not a SpellDatabase*
 
 class HCMap;
 class PathfinderNavmesh;
@@ -807,6 +808,10 @@ struct SpellCastVisualStartedData {
     bool isTargetCast;          // true if caster is the player's current target
     // Completion animation info (for NPC casts)
     std::string completionAnim; // empty = no animation on start
+    // T381 (B160): resist type / school / spell_affect_index, read off the
+    // game thread's own SpellDatabase in SpellManager::handleBeginCast.
+    // `known == false` means the id was not in the database.
+    EQ::SpellVisualVocabulary spellVisual;
 };
 
 struct SpellCastVisualCompleteData {
@@ -818,6 +823,10 @@ struct SpellCastVisualCompleteData {
     bool isPlayerCast;
     bool isTargetCast;
     std::string completionAnim; // Animation to play on caster (e.g. "c03", "c04")
+    // T381 (B160): see SpellCastVisualStartedData -- the completion path
+    // (createSpellComplete / createImpact) needs the same vocabulary, and a
+    // cast can land without this client having seen its BeginCast.
+    EQ::SpellVisualVocabulary spellVisual;
 };
 
 struct SpellCastVisualInterruptedData {
