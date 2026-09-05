@@ -292,4 +292,75 @@ TEST(DirectSendersPacketSender, RecordedSession_Movement) {
         });
 }
 
+// =====================================================================
+// player -- PlayerComponent, 25 senders across four TUs:
+//   player_component.cpp  SendCorpseDrag SendCorpseDrop SendConsiderCorpse
+//                         SendConsent SendConsentDeny
+//   player_state.cpp      SendTradeSkillCombine
+//   player_buffs.cpp      SendBuffCancelRequest SendApplyPoison
+//   player_misc.cpp       SendAssist SendAssistGroup SendSplit
+//                         SendLFGCommand SendShielding SendDuelRequest
+//                         SendDuelAccept SendDuelDecline SendBindWound
+//                         SendTrackTarget SendSurname SendFaceChange
+//                         SendRandom SendFindPerson SendRewind
+//                         SendYellForHelp SendFriendsWho
+// SendApplyPoison and SendTradeSkillCombine are the B140 crash shape (their
+// only guard is IsFullyZonedIn()); the other 23 sit inside an
+// `if (ctx_.zone_connection && isZoneConnected())` that also gates logging,
+// so those wrappers stay and only the send moves.
+// =====================================================================
+
+TEST(DirectSendersPacketSender, NoZoneConnection_Player) {
+    SenderHarness h(/*withConnection=*/false);
+    ASSERT_EQ(h.eq.m_zone_connection, nullptr);
+    ASSERT_TRUE(h.eq.IsFullyZonedIn());
+
+    auto& p = h.eq.Player();
+    p.SendCorpseDrag("Testchar's corpse");
+    p.SendCorpseDrop();
+    p.SendConsiderCorpse(7);
+    p.SendConsent("Someone");
+    p.SendConsentDeny("Someone");
+    p.SendTradeSkillCombine(262);
+    p.SendBuffCancelRequest(0);
+    p.SendApplyPoison(22);
+    p.SendAssist(9);
+    p.SendAssistGroup(9);
+    p.SendSplit(1, 2, 3, 4);
+    p.SendLFGCommand(true);
+    p.SendShielding(9);
+    p.SendDuelRequest(9);
+    p.SendDuelAccept(9);
+    p.SendDuelDecline(9);
+    p.SendBindWound(9);
+    p.SendTrackTarget(9);
+    p.SendSurname("Thepoor");
+    p.SendFaceChange(1, 2, 3, 4, 5, 6, 7);
+    p.SendRandom(1, 100);
+    p.SendFindPerson(9);
+    p.SendRewind();
+    p.SendYellForHelp();
+    p.SendFriendsWho("Someone");
+
+    SUCCEED() << "the 25 player senders survived a null zone connection";
+}
+
+TEST(DirectSendersPacketSender, RecordedSession_Player) {
+    WithRecordedSession(
+        "t378_player_recorded.sleq",
+        [](SenderHarness& h) {
+            h.eq.Player().SendRandom(1, 100);
+            h.eq.Player().SendApplyPoison(22);
+        },
+        [](const std::vector<RecordedPacket>& recorded) {
+            EXPECT_EQ(CountOpcode(recorded, HC_OP_RandomReq), 1u)
+                << "SendRandom (/random) must reach the session recorder; a "
+                   "sender that calls zone_connection->QueuePacket() directly "
+                   "is invisible to it (BOARD B145)";
+            EXPECT_EQ(CountOpcode(recorded, HC_OP_ApplyPoison), 1u)
+                << "SendApplyPoison, one of the ten crash-shape sites, same "
+                   "bypass, same fix";
+        });
+}
+
 }  // namespace

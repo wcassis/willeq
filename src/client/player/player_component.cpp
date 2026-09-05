@@ -572,7 +572,7 @@ void eqt::player::PlayerComponent::SendCorpseDrag(const std::string& corpse_name
 	packet.PutData(2, &drag, sizeof(drag));
 
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
-		ctx_.zone_connection->QueuePacket(packet);
+		ctx_.net.SafeQueueZone(packet);
 		m_is_dragging_corpse = true;
 		m_dragged_corpse_name = corpse_name;
 		LOG_INFO(MOD_MAIN, "Started dragging corpse: {}", corpse_name);
@@ -597,7 +597,7 @@ void eqt::player::PlayerComponent::SendCorpseDrop()
 	packet.PutData(2, &drop, sizeof(drop));
 
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
-		ctx_.zone_connection->QueuePacket(packet);
+		ctx_.net.SafeQueueZone(packet);
 		LOG_INFO(MOD_MAIN, "Dropped corpse: {}", m_dragged_corpse_name);
 		ctx_.out.System(fmt::format("You stop dragging {}.", m_dragged_corpse_name));
 		m_is_dragging_corpse = false;
@@ -629,7 +629,7 @@ void eqt::player::PlayerComponent::SendConsiderCorpse(uint32_t corpse_id)
 	packet.PutData(2, &con, sizeof(con));
 
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
-		ctx_.zone_connection->QueuePacket(packet);
+		ctx_.net.SafeQueueZone(packet);
 		LOG_DEBUG(MOD_MAIN, "Considering corpse ID: {}", corpse_id);
 	}
 }
@@ -645,7 +645,7 @@ void eqt::player::PlayerComponent::SendConsent(const std::string& player_name)
 	packet.PutString(2, player_name);
 
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
-		ctx_.zone_connection->QueuePacket(packet);
+		ctx_.net.SafeQueueZone(packet);
 		LOG_INFO(MOD_MAIN, "Granting corpse consent to: {}", player_name);
 		ctx_.out.System(fmt::format("You have granted {} permission to drag your corpse.", player_name));
 	}
@@ -658,7 +658,7 @@ void eqt::player::PlayerComponent::SendConsentDeny(const std::string& player_nam
 	packet.PutString(2, player_name);
 
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
-		ctx_.zone_connection->QueuePacket(packet);
+		ctx_.net.SafeQueueZone(packet);
 		LOG_INFO(MOD_MAIN, "Denying corpse consent for: {}", player_name);
 		ctx_.out.System(fmt::format("You have denied {} permission to drag your corpse.", player_name));
 	}
