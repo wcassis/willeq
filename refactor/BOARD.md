@@ -1856,7 +1856,7 @@ it without taking that measurement first.
 
 ## Added 2026-09-05 by T365
 
-- **B100** (B) `include/client/input/input_handler.h` `eqt::input::InputAction`
+- ~~**B100** (B) `include/client/input/input_handler.h` `eqt::input::InputAction`
   — `ToggleVendor`, `TogglePetWindow`, `ToggleTrainer` and `ToggleSpellbook`
   are declared, have **no producer** (`ConsoleInputHandler` never sets them and
   no other InputHandler does) and **no consumer**
@@ -1868,9 +1868,9 @@ it without taking that measurement first.
   stand-in, so deleting them means restating that case over a surviving
   enumerator (or deleting it — with all seven gone, "not bridge territory" has
   no subject left). Closes when: each is either produced-and-consumed or
-  deleted, and the compiler confirms no reader remains. Prov: T365 Leg A.
+  deleted, and the compiler confirms no reader remains. Prov: T365 Leg A.~~ **STRUCK T368 Leg B (`8afdc6d7`)**: all four deleted; the enum now has NO UI-toggle section, with a tombstone naming the two enums a UI toggle actually belongs in (`eqt::input::HotkeyAction` and `EQT::Graphics::RendererAction`, both untouched and both live). The plan's instruction to DELETE `UIToggleActions_AreNotBridgeTerritory` was wrong -- its set also held `ToggleWireframe`/`ToggleHUD`, which `GraphicalMode` really does consume with `consumeAction()`, so the case has a subject and was RESTATED over four surviving graphics toggles as `GraphicsToggleActions_AreNotBridgeTerritory`. Pinned by `InputActionEnumTest.T368_NoConsumerlessUITogglesRemain` (a whole-line source scan of the header, failing pre-fix with all four found).
 
-- **B101** (B) `src/client/graphics/frame/renderer_frame_input.cpp`
+- ~~**B101** (B) `src/client/graphics/frame/renderer_frame_input.cpp`
   `case RA::ToggleGroup:` — the G keybind (and the Alt+P alternate binding,
   `hotkey_manager.cpp`) reaches an EMPTY arm: "Group panel visibility is driven
   by inGroup state". So **G does nothing** — pressing it in a live session
@@ -1882,6 +1882,30 @@ it without taking that measurement first.
   toggles (a `groupPanelState_.isOpen` the panel honours, the shape
   `FrameComponent::toggleSkillsWindow()` has) or the bindings are removed so no
   key advertises a behaviour the tree does not have. Class C if Will wants the
-  panels to stay auto-driven. Prov: T365 Leg A.
+  panels to stay auto-driven. Prov: T365 Leg A.~~ **STRUCK T368 Leg A (`466bcadc`)**: all three keys got real toggles -- `FrameComponent::toggleGroupWindow()`, `togglePetWindow()`, `toggleBuffWindow()`, the `toggleSkillsWindow()` shape. Each panel's render early-returns on a free predicate (`groupPanelIsVisible()` / `petPanelIsVisible()` / `buffBarIsVisible()`, `static_panels.h`) that composes the new `isOpen` with the auto-driven state: group = `isOpen` alone (an open window with no group draws its empty titled frame; joining a group never reopens a closed one), pet = `isOpen && hasPet`, buffs = `isOpen && at least one buff` -- and `hitTestBuffBar()` reads the same predicate, so a hidden icon is unclickable. `isOpen` defaults TRUE because the official client's `defaults.ini` writes `Show=0` only under a section whose window ships closed and writes none under `[GroupWindow]`, `[PetInfoWindow]` or `[BuffWindow]`. Bindings unchanged -- see B115 for why. Fixed in passing: `IrrlichtBridge`'s `PetRemoved` arm reset `petPanelState_` wholesale, which put `isOpen` back to true and silently reopened a window the player had closed. Pinned by 10 cases, 9 failing pre-fix.
 
 
+
+## Added 2026-09-05 by T368
+
+- **B115** (B) The official client's DEFAULT KEYS for the group, pet and buff
+  windows are not recorded in any file on disk, so fable's `G` / `Alt+P` (group),
+  `P` (pet) and `Alt+B` (buff) in `src/client/input/hotkey_manager.cpp` are
+  UNVERIFIED against the oracle. Measured by T368, without the server:
+  `eqgame.exe` holds a 247-entry table of `KEYMAPPING_` action names (file
+  offset `0x2945a8`, VA `0x6945a8`) which includes `TOGGLE_PARTYWIN` (index
+  152), `TOGGLE_BUFFWIN` (155) and `TOGGLE_PETINFOWIN` (168) — so the ACTION
+  names are settled — but the table is a bare `char*` array with no parallel
+  default-scancode array anywhere in `.data`/`.rdata` (scanned at strides 1, 2,
+  4, 8, 12 and 16 for a 247-long window of plausible scancodes; nothing). An
+  `eqclient.ini` records a `KEYMAPPING_<NAME>_<n>` line only for a binding the
+  user CHANGED, and the only such lines in ANY of the seven `eqclient*.ini` /
+  `p1999-*.ini` files under `/mnt/projects/EverQuestP1999` are five movement
+  overrides (`FORWARD_2=17`, `BACK_2=31`, `RIGHT_2=32`, `LEFT_2=30`,
+  `DUCK_1=208`/`45`). Closes when: someone screenshots the official client's
+  Options > Keys tab (needs the eqemu lock, held by T367 at the time) and either
+  confirms fable's three or names the official ones. Related, and ALSO
+  unverified: what the official group window PAINTS with no group —
+  `defaults.ini` proves it is SHOWN by default (no `Show=0` under
+  `[GroupWindow]`) but not what is inside it; fable draws the titled frame with
+  no member rows. Prov: T368 Leg A.
