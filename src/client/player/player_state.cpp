@@ -528,7 +528,7 @@ void eqt::player::PlayerComponent::SendTradeSkillCombine(int16_t container_slot)
 	p.PutInt16(2, container_slot);     // container_slot
 	p.PutInt16(4, 0);                  // guildtribute_slot (usually 0)
 
-	ctx_.zone_connection->QueuePacket(p, 0, true);
+	ctx_.net.SafeQueueZone(p, 0, true);
 }
 
 

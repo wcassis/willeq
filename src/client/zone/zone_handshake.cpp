@@ -101,7 +101,7 @@ void eqt::zone::ZoneComponent::ZoneSendZoneEntry()
 	
 	eqt::strings::DumpPacket("C->S", HC_OP_ZoneEntry, p);
 	if (ctx_.zone_connection) {
-		ctx_.zone_connection->QueuePacket(p);
+		ctx_.net.SafeQueueZone(p);
 	} else {
 		ctx_.net.NoteSuppressedSend();
 	}
@@ -130,7 +130,7 @@ void eqt::zone::ZoneComponent::ZoneSendReqClientSpawn()
 	
 	eqt::strings::DumpPacket("C->S", HC_OP_ReqClientSpawn, p);
 	if (ctx_.zone_connection) {
-		ctx_.zone_connection->QueuePacket(p);
+		ctx_.net.SafeQueueZone(p);
 	} else {
 		ctx_.net.NoteSuppressedSend();
 	}
@@ -147,7 +147,7 @@ void eqt::zone::ZoneComponent::ZoneSendClientReady()
 
 	eqt::strings::DumpPacket("C->S", HC_OP_ClientReady, p);
 	if (ctx_.zone_connection) {
-		ctx_.zone_connection->QueuePacket(p);
+		ctx_.net.SafeQueueZone(p);
 	} else {
 		ctx_.net.NoteSuppressedSend();
 	}
@@ -185,7 +185,7 @@ void eqt::zone::ZoneComponent::ZoneSendSetServerFilter()
 
 	eqt::strings::DumpPacket("C->S", HC_OP_SetServerFilter, p);
 	if (ctx_.zone_connection) {
-		ctx_.zone_connection->QueuePacket(p);
+		ctx_.net.SafeQueueZone(p);
 	} else {
 		ctx_.net.NoteSuppressedSend();
 	}
@@ -202,7 +202,7 @@ void eqt::zone::ZoneComponent::ZoneSendStreamIdentify()
 	
 	LOG_DEBUG(MOD_ZONE, "Sending stream identify with opcode {:#06x} (Titanium_zone)", 0x7213);
 	
-	ctx_.zone_connection->QueuePacket(p, 0, false);  // Send unreliable
+	ctx_.net.SafeQueueZone(p, 0, false);  // Send unreliable
 }
 
 void eqt::zone::ZoneComponent::ZoneSendAckPacket()
@@ -215,7 +215,7 @@ void eqt::zone::ZoneComponent::ZoneSendAckPacket()
 	
 	eqt::strings::DumpPacket("C->S", HC_OP_AckPacket, p);
 	if (ctx_.zone_connection) {
-		ctx_.zone_connection->QueuePacket(p);
+		ctx_.net.SafeQueueZone(p);
 	} else {
 		ctx_.net.NoteSuppressedSend();
 	}
@@ -230,7 +230,7 @@ void eqt::zone::ZoneComponent::ZoneSendReqNewZone()
 	
 	eqt::strings::DumpPacket("C->S", HC_OP_ReqNewZone, p);
 	if (ctx_.zone_connection) {
-		ctx_.zone_connection->QueuePacket(p);
+		ctx_.net.SafeQueueZone(p);
 	} else {
 		ctx_.net.NoteSuppressedSend();
 	}
@@ -246,7 +246,7 @@ void eqt::zone::ZoneComponent::ZoneSendSendAATable()
 	
 	eqt::strings::DumpPacket("C->S", HC_OP_SendAATable, p);
 	if (ctx_.zone_connection) {
-		ctx_.zone_connection->QueuePacket(p);
+		ctx_.net.SafeQueueZone(p);
 	} else {
 		ctx_.net.NoteSuppressedSend();
 	}
@@ -263,7 +263,7 @@ void eqt::zone::ZoneComponent::ZoneSendUpdateAA()
 	
 	eqt::strings::DumpPacket("C->S", HC_OP_UpdateAA, p);
 	if (ctx_.zone_connection) {
-		ctx_.zone_connection->QueuePacket(p);
+		ctx_.net.SafeQueueZone(p);
 	} else {
 		ctx_.net.NoteSuppressedSend();
 	}
@@ -279,7 +279,7 @@ void eqt::zone::ZoneComponent::ZoneSendSendTributes()
 	
 	eqt::strings::DumpPacket("C->S", HC_OP_SendTributes, p);
 	if (ctx_.zone_connection) {
-		ctx_.zone_connection->QueuePacket(p);
+		ctx_.net.SafeQueueZone(p);
 	} else {
 		ctx_.net.NoteSuppressedSend();
 	}
@@ -295,7 +295,7 @@ void eqt::zone::ZoneComponent::ZoneSendRequestGuildTributes()
 	
 	eqt::strings::DumpPacket("C->S", HC_OP_RequestGuildTributes, p);
 	if (ctx_.zone_connection) {
-		ctx_.zone_connection->QueuePacket(p);
+		ctx_.net.SafeQueueZone(p);
 	} else {
 		ctx_.net.NoteSuppressedSend();
 	}
@@ -311,7 +311,7 @@ void eqt::zone::ZoneComponent::ZoneSendSendExpZonein()
 	
 	eqt::strings::DumpPacket("C->S", HC_OP_SendExpZonein, p);
 	if (ctx_.zone_connection) {
-		ctx_.zone_connection->QueuePacket(p);
+		ctx_.net.SafeQueueZone(p);
 	} else {
 		ctx_.net.NoteSuppressedSend();
 	}

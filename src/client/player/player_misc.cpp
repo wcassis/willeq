@@ -48,7 +48,7 @@ void eqt::player::PlayerComponent::SendAssist(uint32_t target_id)
 	packet.PutUInt32(2, target_id);
 
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
-		ctx_.zone_connection->QueuePacket(packet);
+		ctx_.net.SafeQueueZone(packet);
 		LOG_DEBUG(MOD_MAIN, "Assist request for target ID: {}", target_id);
 	}
 }
@@ -60,7 +60,7 @@ void eqt::player::PlayerComponent::SendAssistGroup(uint32_t target_id)
 	packet.PutUInt32(2, target_id);
 
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
-		ctx_.zone_connection->QueuePacket(packet);
+		ctx_.net.SafeQueueZone(packet);
 		LOG_DEBUG(MOD_MAIN, "Group assist request for target ID: {}", target_id);
 	}
 }
@@ -126,7 +126,7 @@ void eqt::player::PlayerComponent::SendSplit(uint32_t platinum, uint32_t gold, u
 	packet.PutData(2, &split, sizeof(split));
 
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
-		ctx_.zone_connection->QueuePacket(packet);
+		ctx_.net.SafeQueueZone(packet);
 		LOG_INFO(MOD_MAIN, "Splitting {}p {}g {}s {}c with group", platinum, gold, silver, copper);
 		ctx_.out.System(fmt::format("You split {}p {}g {}s {}c with your group.",
 			platinum, gold, silver, copper));
@@ -144,7 +144,7 @@ void eqt::player::PlayerComponent::SendLFGCommand(bool lfg_on)
 	packet.PutUInt32(2, lfg_on ? 1 : 0);
 
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
-		ctx_.zone_connection->QueuePacket(packet);
+		ctx_.net.SafeQueueZone(packet);
 		m_is_lfg = lfg_on;
 		LOG_INFO(MOD_MAIN, "LFG status: {}", lfg_on ? "ON" : "OFF");
 		ctx_.out.System(fmt::format("You are {} looking for a group.", lfg_on ? "now" : "no longer"));
@@ -189,7 +189,7 @@ void eqt::player::PlayerComponent::SendShielding(uint32_t target_id)
 	packet.PutData(2, &shield, sizeof(shield));
 
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
-		ctx_.zone_connection->QueuePacket(packet);
+		ctx_.net.SafeQueueZone(packet);
 		LOG_INFO(MOD_MAIN, "Shielding target ID: {}", target_id);
 	}
 }
@@ -415,7 +415,7 @@ void eqt::player::PlayerComponent::SendDuelRequest(uint32_t target_id)
 	packet.PutData(2, &duel, sizeof(duel));
 
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
-		ctx_.zone_connection->QueuePacket(packet);
+		ctx_.net.SafeQueueZone(packet);
 		m_has_pending_duel = true;
 		m_duel_target_id = target_id;
 		LOG_INFO(MOD_MAIN, "Sent duel request to target ID: {}", target_id);
@@ -434,7 +434,7 @@ void eqt::player::PlayerComponent::SendDuelAccept(uint32_t target_id)
 	packet.PutData(2, &duel, sizeof(duel));
 
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
-		ctx_.zone_connection->QueuePacket(packet);
+		ctx_.net.SafeQueueZone(packet);
 		m_is_dueling = true;
 		m_has_pending_duel = false;
 		m_duel_target_id = target_id;
@@ -455,7 +455,7 @@ void eqt::player::PlayerComponent::SendDuelDecline(uint32_t target_id)
 	packet.PutData(2, &response, sizeof(response));
 
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
-		ctx_.zone_connection->QueuePacket(packet);
+		ctx_.net.SafeQueueZone(packet);
 		m_has_pending_duel = false;
 		m_duel_initiator_id = 0;
 		LOG_INFO(MOD_MAIN, "Declined duel from: {}", target_id);
@@ -506,7 +506,7 @@ void eqt::player::PlayerComponent::SendBindWound(uint32_t target_id)
 	packet.PutData(2, &bw, sizeof(bw));
 
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
-		ctx_.zone_connection->QueuePacket(packet);
+		ctx_.net.SafeQueueZone(packet);
 		LOG_DEBUG(MOD_MAIN, "Bind wound on target: {}", target_id);
 	}
 }
@@ -518,7 +518,7 @@ void eqt::player::PlayerComponent::SendTrackTarget(uint32_t target_id)
 	packet.PutUInt32(2, target_id);
 
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
-		ctx_.zone_connection->QueuePacket(packet);
+		ctx_.net.SafeQueueZone(packet);
 		LOG_DEBUG(MOD_MAIN, "Track target: {}", target_id);
 	}
 }
@@ -539,7 +539,7 @@ void eqt::player::PlayerComponent::SendSurname(const std::string& surname)
 	packet.PutData(2, &sn, sizeof(sn));
 
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
-		ctx_.zone_connection->QueuePacket(packet);
+		ctx_.net.SafeQueueZone(packet);
 		LOG_INFO(MOD_MAIN, "Set surname to: {}", surname);
 		ctx_.out.System(fmt::format("Requesting surname: {}", surname));
 	}
@@ -575,7 +575,7 @@ void eqt::player::PlayerComponent::SendFaceChange(uint8_t haircolor, uint8_t bea
 	m_test_last_face_change.body.valid = true;
 
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
-		ctx_.zone_connection->QueuePacket(packet);
+		ctx_.net.SafeQueueZone(packet);
 		LOG_INFO(MOD_MAIN, "Face change requested");
 	}
 }
@@ -595,7 +595,7 @@ void eqt::player::PlayerComponent::SendRandom(uint32_t low, uint32_t high)
 	packet.PutData(2, &rnd, sizeof(rnd));
 
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
-		ctx_.zone_connection->QueuePacket(packet);
+		ctx_.net.SafeQueueZone(packet);
 		LOG_DEBUG(MOD_MAIN, "Random {} to {}", low, high);
 	}
 }
@@ -628,7 +628,7 @@ void eqt::player::PlayerComponent::SendFindPerson(uint32_t npc_id)
 	packet.PutData(2, &fp, sizeof(fp));
 
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
-		ctx_.zone_connection->QueuePacket(packet);
+		ctx_.net.SafeQueueZone(packet);
 		LOG_DEBUG(MOD_MAIN, "Find person request for NPC: {}", npc_id);
 	}
 }
@@ -652,7 +652,7 @@ void eqt::player::PlayerComponent::SendRewind()
 	packet.PutUInt16(0, HC_OP_Rewind);
 
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
-		ctx_.zone_connection->QueuePacket(packet);
+		ctx_.net.SafeQueueZone(packet);
 		LOG_INFO(MOD_MAIN, "Rewind requested");
 		ctx_.out.System("Attempting to rewind to a safe position...");
 	}
@@ -664,7 +664,7 @@ void eqt::player::PlayerComponent::SendYellForHelp()
 	packet.PutUInt16(0, HC_OP_YellForHelp);
 
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
-		ctx_.zone_connection->QueuePacket(packet);
+		ctx_.net.SafeQueueZone(packet);
 		LOG_INFO(MOD_MAIN, "Yelling for help!");
 		ctx_.out.System("You yell for help!");
 	}
@@ -741,7 +741,7 @@ void eqt::player::PlayerComponent::SendFriendsWho(const std::string& friends_lis
 	packet.PutCString(2, friends_list.c_str());
 
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
-		ctx_.zone_connection->QueuePacket(packet);
+		ctx_.net.SafeQueueZone(packet);
 		LOG_DEBUG(MOD_MAIN, "Friends who requested for: {}", friends_list);
 	}
 }

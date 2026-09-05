@@ -132,7 +132,7 @@ void eqt::chat::ChatComponent::ZoneSendChannelMessage(const std::string &message
 	}
 
 	eqt::strings::DumpPacket("C->S", HC_OP_ChannelMessage, p);
-	ctx_.zone_connection->QueuePacket(p);
+	ctx_.net.SafeQueueZone(p);
 }
 
 void eqt::chat::ChatComponent::ZoneProcessChannelMessage(const EQ::Net::Packet &p)
@@ -277,7 +277,7 @@ void eqt::chat::ChatComponent::ZoneSendEmote(const std::string &message)
 	}
 
 	eqt::strings::DumpPacket("C->S", HC_OP_Emote, p);
-	ctx_.zone_connection->QueuePacket(p);
+	ctx_.net.SafeQueueZone(p);
 
 	// Local echo. eqemu broadcasts the emote with ignore_sender=true
 	// (QueueCloseClients in Handle_OP_Emote), so the actor's own line comes

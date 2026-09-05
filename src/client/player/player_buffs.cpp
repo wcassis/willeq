@@ -544,7 +544,7 @@ void eqt::player::PlayerComponent::SendBuffCancelRequest(uint8_t slot)
 		slot, buff->spell_id, name.empty() ? "unknown" : name);
 
 	eqt::strings::DumpPacket("C->S", HC_OP_Buff, packet);
-	ctx_.zone_connection->QueuePacket(packet);
+	ctx_.net.SafeQueueZone(packet);
 }
 
 void eqt::player::PlayerComponent::ZoneProcessPetBuffWindow(const EQ::Net::Packet &p)
@@ -603,7 +603,7 @@ void eqt::player::PlayerComponent::SendApplyPoison(uint32_t inventory_slot)
 	p.PutUInt32(2, inventory_slot);  // inventorySlot
 	p.PutUInt32(6, 0);               // success (0 when sending, server fills in response)
 
-	ctx_.zone_connection->QueuePacket(p, 0, true);
+	ctx_.net.SafeQueueZone(p, 0, true);
 }
 
 void eqt::player::PlayerComponent::ZoneProcessApplyPoison(const EQ::Net::Packet &p)

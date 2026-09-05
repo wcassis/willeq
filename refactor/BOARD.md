@@ -2475,30 +2475,33 @@ branches can be deleted independently of these items.
   `DoorPendingClickOwnership` cases pin WHICH set through the manager's public
   accessors and were all red pre-fix.
 
-- **B145** (B) The T376 census of direct zone-stream senders: **70 sites in 13
-  files** still call `ctx_.zone_connection->QueuePacket(...)` (or, in
-  `src/client/core/everquest.cpp`'s `SendZoneChange`, `m_zone_connection->`)
-  instead of `eqt::PacketSender::SafeQueueZone`, so the R01 session recorder
-  and the T268 ordered-capture seam do not see any of them. Measured
-  comment-filtered at `e580ce97` + T376 Leg A, by file, all under
-  `src/client/`: player_misc.cpp 18, zone_handshake.cpp 12, merchant.cpp 9,
-  gm_component.cpp 9, group_component.cpp 6, player_component.cpp 5,
-  merchant_vendor_bank.cpp 4, player_buffs.cpp 2, chat_component.cpp 2,
-  player_state.cpp 1, movement_state.cpp 1, everquest.cpp 1. **TEN of the 70
-  are the B140 crash shape** — an unguarded `shared_ptr` deref with no
-  `ctx_.zone_connection` test anywhere in the enclosing function:
-  chat_component.cpp x2 (`SendChannelMessage`, `SendTell`),
-  group_component.cpp x4, movement_state.cpp (`SendJump`),
-  player_buffs.cpp (`SendApplyPoison`), player_state.cpp
-  (`SendTradeSkillCombine`), zone_handshake.cpp (`ZoneSendStreamIdentify`).
-  The other 60 sit inside an `if (ctx_.zone_connection && ...)` and are
-  recorder-blind only. Routing them is mechanical but wide: T376 measured that
-  the switch is not free — a harness that observes the outbound stream BELOW
-  `SafeQueueZone` (the `DaybreakConnection` resend map) goes red on
-  `SafeQueueZone`'s zero-stats "connection appears invalid" guard and needs
-  `conn->m_stats.sent_packets = 1`, exactly as T346/T360 found. Closes when
-  every zone-stream sender goes through `PacketSender` (the ten unguarded ones
-  first — they are the ones that segfault). Prov: T376.
+- ~~**B145** (B) The T376 census of direct zone-stream senders: 70 sites in 13
+  files still call the zone connection directly instead of
+  `eqt::PacketSender::SafeQueueZone`, so the R01 session recorder and the T268
+  ordered-capture seam do not see any of them. Ten are the B140 crash
+  shape.~~ **CLOSED (T378, 2026-09-05.)** 69 sites at T378's tip -- T375 had
+  already routed one of player_misc.cpp's on its way past, which is the whole
+  difference from T376's 70 -- routed in eight per-family commits: chat
+  13e60ab8 (2), group 835ca086 (6), movement f8205cba (1), player 4774190e
+  (25), zone handshake 8fc1005b (12), merchant 2794291a (13), gm ee2ac431 (9),
+  core f2e234c8 (1). The census is now ZERO outside PacketSender and the
+  login/world TU (B146), and 6e4f9d9e pins it: tests/test_direct_sender_census.cpp
+  re-runs the sweep on every ctest and names the file and line of any new
+  direct sender (proven by re-planting one). tests/test_direct_senders_packet_sender.cpp
+  carries a case pair per family, 17 cases; every no-connection case for a
+  crash-shape family died with exit 139 pre-fix, and every recorded-session
+  case counted 0. Only the bare `if (ctx_.zone_connection) { send; }` wrappers
+  were deleted (two, in group); the eleven zone-handshake if/else wrappers
+  STAY, because their else arm is the only writer of the
+  replay-suppressed-send counter, which SafeQueueZone's own null guard does not
+  bump. 9bad7fe4 armed the four harnesses that observe below SafeQueueZone
+  (17 cases across BankCoinIntent, ReadBook, ScribeScroll and
+  EqActionHandlerTransformsReal) with the `conn->m_stats.sent_packets = 1` line
+  T346/T360/T376 already carry -- exactly the trap the entry predicted. Two
+  corrections to this entry as written: the file count was 13, not 12 (it
+  counted merchant_vendor_bank.cpp inside merchant.cpp), and everquest.cpp's
+  one site is SendPetition, not SendZoneChange -- there is no SendZoneChange in
+  that TU. Prov: T376, T378.
 
 - ~~**B146** (B) The login and world streams have no `PacketSender` equivalent:
   `src/client/login_world/login_world_component.cpp` holds **12 direct sends**

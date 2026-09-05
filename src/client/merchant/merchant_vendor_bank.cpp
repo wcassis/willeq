@@ -548,7 +548,7 @@ void eqt::merchant::MerchantComponent::SendRecipesFavorite(uint32_t object_type,
 	packet.PutData(2, body.data(), body.size());
 
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
-		ctx_.zone_connection->QueuePacket(packet);
+		ctx_.net.SafeQueueZone(packet);
 		LOG_DEBUG(MOD_MAIN, "Sent {} favorite recipes (object_type={})", count, object_type);
 	}
 }
@@ -570,7 +570,7 @@ void eqt::merchant::MerchantComponent::SendRecipesSearch(uint32_t object_type, c
 	packet.PutData(2, &search, sizeof(search));
 
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
-		ctx_.zone_connection->QueuePacket(packet);
+		ctx_.net.SafeQueueZone(packet);
 		LOG_DEBUG(MOD_MAIN, "Recipe search: '{}'", query);
 	}
 }
@@ -582,7 +582,7 @@ void eqt::merchant::MerchantComponent::SendRecipeDetails(uint32_t recipe_id)
 	packet.PutUInt32(2, recipe_id);
 
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
-		ctx_.zone_connection->QueuePacket(packet);
+		ctx_.net.SafeQueueZone(packet);
 		LOG_DEBUG(MOD_MAIN, "Request recipe details: {}", recipe_id);
 	}
 }
@@ -601,7 +601,7 @@ void eqt::merchant::MerchantComponent::SendRecipeAutoCombine(uint32_t object_typ
 	packet.PutData(2, &combine, sizeof(combine));
 
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
-		ctx_.zone_connection->QueuePacket(packet);
+		ctx_.net.SafeQueueZone(packet);
 		LOG_DEBUG(MOD_MAIN, "Auto-combine recipe: {}", recipe_id);
 	}
 }

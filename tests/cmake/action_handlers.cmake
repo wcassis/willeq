@@ -342,3 +342,26 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_login_world_flow PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
 GTEST_DISCOVER_TESTS(test_login_world_flow)
+
+# T378 (BOARD B145): every zone-stream sender goes out through
+# eqt::PacketSender::SafeQueueZone -- null-guard (the ten B140 crash-shape
+# sites) plus the R01 session recorder, one case pair per family.
+ADD_EXECUTABLE(test_direct_senders_packet_sender
+    test_direct_senders_packet_sender.cpp
+)
+TARGET_LINK_LIBRARIES(test_direct_senders_packet_sender GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_direct_senders_packet_sender PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_direct_senders_packet_sender)
+
+# T378 (BOARD B145): the direct-zone-sender census as a source-reader pin --
+# a new ctx_.zone_connection->QueuePacket() anywhere under src/client or
+# include/client fails ctest, naming the file and line. Pure source scan; no
+# artefact, no server, no display.
+ADD_EXECUTABLE(test_direct_sender_census
+    test_direct_sender_census.cpp
+)
+TARGET_LINK_LIBRARIES(test_direct_sender_census GTest::gtest_main)
+TARGET_COMPILE_DEFINITIONS(test_direct_sender_census PRIVATE WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+GTEST_DISCOVER_TESTS(test_direct_sender_census)
