@@ -365,6 +365,21 @@ void SimulationWorker::computeObjectVisibility(const SimulationInput& input, Sim
 // Zone Light Visibility Computation
 // ============================================================================
 
+// T367 (board B080): the zone light's influence RADIUS lives on
+// `zoneData_.zoneLightNodes[i]` (built from the WLD light's own radius in
+// ZoneLoadComponent::loadZoneStep12_Lights) while the culling struct
+// `zoneData_.zoneLights[i]` carries only position + BSP region. The two
+// vectors are built from the same `zoneLightData` in
+// SimBridgeComponent::buildSimulationZoneData(), one entry each, so index i
+// names the same lamp in both. Returns false when the radius is unknown, which
+// keeps the pre-T367 culling for a malformed zone.
+bool SimulationWorker::lightRadiusReachesCamera(size_t lightIndex, float distSq) const {
+    if (lightIndex >= zoneData_.zoneLightNodes.size()) return false;
+    const float radius = zoneData_.zoneLightNodes[lightIndex].radius;
+    if (!(radius > 0.0f)) return false;
+    return distSq <= radius * radius;
+}
+
 void SimulationWorker::computeLightVisibility(const SimulationInput& input, SimulationOutput& output) {
     size_t lightCount = zoneData_.zoneLights.size();
     if (lightCount == 0) return;
@@ -392,8 +407,20 @@ void SimulationWorker::computeLightVisibility(const SimulationInput& input, Simu
             continue;
         }
 
+        // T367 (board B080): a light whose own influence sphere CONTAINS the
+        // camera must survive both remaining culls. PVS asks "can I see the
+        // lamp's own BSP region" and the frustum asks "is the lamp on screen";
+        // neither question has anything to do with whether the lamp lights the
+        // wall the player is standing in front of. Measured live in qeynos2 at
+        // forced 22:00: `ZoneLightVis: 0/218 visible` on EVERY frame of a whole
+        // session, including 6 units from a radius-40 lamp -- 54 lights inside
+        // the render distance, 44 PVS-culled and 10 frustum-culled, so the
+        // shader's uLightPos[1..7] were never fed and the lamp lit nothing.
+        const bool cameraInsideInfluence = lightRadiusReachesCamera(i, distSq);
+
         // PVS check
-        if (zoneData_.usePvsCulling && zoneData_.bspTree &&
+        if (!cameraInsideInfluence &&
+            zoneData_.usePvsCulling && zoneData_.bspTree &&
             light.bspRegion != SIZE_MAX && output.currentPvsRegion != SIZE_MAX) {
             const auto& regions = zoneData_.bspTree->regions;
             if (output.currentPvsRegion < regions.size() && regions[output.currentPvsRegion]) {
@@ -407,7 +434,7 @@ void SimulationWorker::computeLightVisibility(const SimulationInput& input, Simu
         }
 
         // Frustum culling: convert Irrlicht Y-up position to EQ Z-up
-        if (input.frustumValid) {
+        if (!cameraInsideInfluence && input.frustumValid) {
             // Treat light as a small sphere (radius ~30 units) for frustum test
             float eqX = light.position.X;
             float eqY = light.position.Z;  // Irrlicht Z → EQ Y
@@ -461,8 +488,13 @@ void SimulationWorker::computeObjectLightVisibility(const SimulationInput& input
             continue;
         }
 
+        // T367 (board B080) -- same rule as computeLightVisibility above.
+        const float objInfluence = std::max(light.radius, 0.0f);
+        const bool cameraInsideInfluence = distSq <= objInfluence * objInfluence;
+
         // PVS check
-        if (zoneData_.usePvsCulling && zoneData_.bspTree &&
+        if (!cameraInsideInfluence &&
+            zoneData_.usePvsCulling && zoneData_.bspTree &&
             light.bspRegion != SIZE_MAX && output.currentPvsRegion != SIZE_MAX) {
             const auto& regions = zoneData_.bspTree->regions;
             if (output.currentPvsRegion < regions.size() && regions[output.currentPvsRegion]) {
@@ -476,7 +508,7 @@ void SimulationWorker::computeObjectLightVisibility(const SimulationInput& input
         }
 
         // Frustum culling: convert Irrlicht Y-up position to EQ Z-up
-        if (input.frustumValid) {
+        if (!cameraInsideInfluence && input.frustumValid) {
             float eqX = light.position.X;
             float eqY = light.position.Z;  // Irrlicht Z → EQ Y
             float eqZ = light.position.Y;  // Irrlicht Y → EQ Z
