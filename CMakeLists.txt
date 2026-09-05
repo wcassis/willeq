@@ -1543,6 +1543,32 @@ ADD_EXECUTABLE(ui_atlas_builder
 )
 TARGET_INCLUDE_DIRECTORIES(ui_atlas_builder PRIVATE ${CMAKE_SOURCE_DIR}/tools)
 
+# T400 (board B225): particle atlas builder. It is the FIRST CMake consumer of
+# src/client/graphics/texture_generators.cpp -- that 926-line TU was in no
+# target at all after P26 retired tools/generate_textures.cpp, so the code
+# that defines the shape of every particle in the game compiled nowhere while
+# its (alpha-less) output kept shipping in data/textures/ and in willeq.eqe1.
+IF(EQT_GRAPHICS)
+    ADD_EXECUTABLE(particle_atlas_builder
+        tools/particle_atlas_builder.cpp
+        src/client/graphics/texture_generators.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(particle_atlas_builder PRIVATE
+        ${CMAKE_SOURCE_DIR}/tools
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src
+    )
+    TARGET_LINK_LIBRARIES(particle_atlas_builder ${IRRLICHT_LIBRARY})
+    IF(EQT_DRM OR EQT_GLES2)
+        # Same P26/P27 link set every other Irrlicht-linking tool needs against
+        # the static GLES2-patched archive.
+        TARGET_LINK_LIBRARIES(particle_atlas_builder EGL GLESv2 drm gbm)
+        IF(NOT EQT_DRM)
+            TARGET_LINK_LIBRARIES(particle_atlas_builder X11)
+        ENDIF()
+    ENDIF()
+ENDIF()
+
 # T398: dump_icon_sheet was never a CMake target, so the tree's only TGA
 # decoder compiled nowhere. Both it and ui_atlas_builder now share
 # tools/tga_reader.h, and both are built.

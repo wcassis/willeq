@@ -170,3 +170,28 @@ IF(EQT_GRAPHICS)
     # test_graphics comment above (same mandatory-Irrlicht gate).
     GTEST_DISCOVER_TESTS(test_asset_loading)
 ENDIF()
+
+# T400 (board B225): the particle atlas must carry its alpha.
+#
+# Three things are pinned here and they only mean something together:
+# the shipped data/textures/particle_atlas.bmp is 32 bpp and its alpha
+# matches generateParticleAtlas() texel for texel; the willeq.eqe1 entry
+# carries that alpha IN-BAND (RGBA8888) rather than in an ETC1 `_alpha`
+# companion no particle shader samples; and ParticleManager's material is
+# alpha-BLEND, which is what makes straight (non-premultiplied) RGB the
+# right thing to store. Change the blend mode and the file has to change
+# with it -- hence one test binary, not three.
+#
+# texture_generators.cpp is compiled in directly: willeq_core does not
+# contain it (it had no CMake consumer at all until particle_atlas_builder).
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_particle_atlas_alpha
+        test_particle_atlas_alpha.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/texture_generators.cpp
+    )
+    TARGET_COMPILE_DEFINITIONS(test_particle_atlas_alpha PRIVATE
+        WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    TARGET_INCLUDE_DIRECTORIES(test_particle_atlas_alpha PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_particle_atlas_alpha GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_particle_atlas_alpha)
+ENDIF()

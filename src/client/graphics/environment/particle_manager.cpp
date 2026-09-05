@@ -158,13 +158,10 @@ bool ParticleManager::init(const std::string& eqClientPath) {
         std::exit(1);
     }
 
-    // Set up particle material
-    particleMaterial_.MaterialType = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL;
-    particleMaterial_.setTexture(0, atlasTexture_);
-    particleMaterial_.Lighting = false;
-    particleMaterial_.ZWriteEnable = false;
-    particleMaterial_.BackfaceCulling = false;
-    particleMaterial_.FogEnable = false;
+    // Set up particle material (T400: see configureParticleMaterial()'s
+    // doc comment for why this is alpha-blend and what that demands of the
+    // atlas's alpha channel).
+    configureParticleMaterial(particleMaterial_, atlasTexture_);
 
     initialized_ = true;
     LOG_INFO(MOD_GRAPHICS, "ParticleManager initialized");
@@ -544,6 +541,16 @@ void ParticleManager::setupEmittersForBiome(ZoneBiome biome) {
     addEmitter(std::make_unique<SmokeEmitter>());
 
     LOG_DEBUG(MOD_GRAPHICS, "ParticleManager: Created {} emitters", emitters_.size());
+}
+
+void ParticleManager::configureParticleMaterial(irr::video::SMaterial& material,
+                                                irr::video::ITexture* atlasTexture) {
+    material.MaterialType = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL;
+    material.setTexture(0, atlasTexture);
+    material.Lighting = false;
+    material.ZWriteEnable = false;
+    material.BackfaceCulling = false;
+    material.FogEnable = false;
 }
 
 void ParticleManager::setEnabled(bool enabled) {

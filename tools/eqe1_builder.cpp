@@ -627,10 +627,38 @@ static bool processArchive(const std::string& eqPath,
 
 // ── BMP directory processing ────────────────────────────────────────────────
 
+// T400 (board B225): per-texture payload override.
+//
+// The pack format was designed for this -- an EQE1 index entry carries its
+// own payloadFormat byte and readers dispatch on THAT, not on the file
+// version (see eqe1_format.h: "v2 packs may mix payload formats
+// per-entry"). Until now nothing used it: --payload-format applied to every
+// texture in the pack at once.
+//
+// `particle_atlas` needs it. Its whole content is an ALPHA ramp, and the
+// default ETC1 encode stores alpha in a SEPARATE `_alpha` companion entry
+// that only the alpha-TEST shader variants sample (ATLAS_ALPHA3D, via
+// texture unit 1). Both particle draw paths sample ONE texture and read
+// `texColor.a` from it -- ParticleManager's EMT_TRANSPARENT_ALPHA_CHANNEL
+// material goes to SOLID3D_FS, and UnifiedParticleRenderer's point-sprite
+// shader has a single sampler -- so an ETC1 (RGB-only) particle atlas reads
+// alpha=1.0 everywhere no matter what the companion holds. Forcing this one
+// 64x64 texture to RGBA8888 puts its alpha in-band where both of them
+// actually look.
+static BuilderPayloadMode modeForTexture(const std::string& texName,
+                                          BuilderPayloadMode defaultMode,
+                                          const std::vector<std::string>& rgba8888Names) {
+    for (const auto& n : rgba8888Names) {
+        if (n == texName) return BuilderPayloadMode::RGBA8888;
+    }
+    return defaultMode;
+}
+
 static bool processBmpDirectories(const std::vector<std::string>& bmpDirs,
                                    const std::string& outputDir,
                                    const std::string& nameOverride,
                                    BuilderPayloadMode mode,
+                                   const std::vector<std::string>& rgba8888Names,
                                    bool verbose) {
     // Collect .bmp files and non-texture files (JSON, etc.) as raw data from all directories
     std::vector<fs::path> bmpFiles;
@@ -683,13 +711,15 @@ static bool processBmpDirectories(const std::vector<std::string>& bmpDirs,
         }
 
         bool hasAlpha = detectAlpha(rgba.data(), width, height);
-        TextureEntry tex = encodeTexture(texName, rgba.data(), width, height, hasAlpha, mode);
+        BuilderPayloadMode texMode = modeForTexture(texName, mode, rgba8888Names);
+        TextureEntry tex = encodeTexture(texName, rgba.data(), width, height, hasAlpha, texMode);
 
         if (verbose) {
             std::cout << "    " << tex.name << " " << tex.width << "x" << tex.height
                       << " " << (int)tex.mipLevels << " mips"
                       << " " << tex.rgbETC1.size() << " bytes"
-                      << (tex.hasAlpha ? " +alpha" : "") << std::endl;
+                      << (tex.hasAlpha ? " +alpha" : "")
+                      << (texMode != mode ? " [payload override]" : "") << std::endl;
         }
 
         textures.push_back(std::move(tex));
@@ -731,7 +761,14 @@ static bool processBmpDirectories(const std::vector<std::string>& bmpDirs,
         rawEntries.push_back(std::move(raw));
     }
 
-    uint16_t fileVersion = (mode == BuilderPayloadMode::ETC1) ? EQE1_VERSION : EQE1_VERSION_V2;
+    // A pack carrying ANY non-ETC1 payload is a v2 file, whether that came
+    // from --payload-format or from a single --rgba8888-texture override.
+    // Readers accept both version numbers and dispatch per entry.
+    bool anyV2 = false;
+    for (const auto& t : textures) {
+        if (t.payloadFormat != EQE1_PAYLOAD_ETC1) { anyV2 = true; break; }
+    }
+    uint16_t fileVersion = anyV2 ? EQE1_VERSION_V2 : EQE1_VERSION;
     if (!writeEQE1File(textures, rawEntries, outputPath, verbose, fileVersion)) {
         return false;
     }
@@ -766,6 +803,14 @@ static void printUsage(const char* argv0) {
               << "                       RGB565 for opaque textures and RGBA4444 for alpha-\n"
               << "                       carrying ones. Both non-etc1 modes write v2 packs\n"
               << "                       (version 2) with no alpha companion entries.\n"
+              << "  --rgba8888-texture <name>\n"
+              << "                       Force ONE texture (by pack entry name, no extension)\n"
+              << "                       to the uncompressed RGBA8888 payload while every other\n"
+              << "                       entry keeps --payload-format. Repeatable. Use it when a\n"
+              << "                       texture's alpha must be IN-BAND rather than in an ETC1\n"
+              << "                       _alpha companion -- shaders with a single sampler\n"
+              << "                       (particles) never see the companion. BMP-directory mode\n"
+              << "                       only. Emits a v2 pack.\n"
               << std::endl;
 }
 
@@ -778,6 +823,7 @@ int main(int argc, char** argv) {
     bool allArchives = false;
     bool verbose = false;
     std::string payloadFormatArg = "etc1";
+    std::vector<std::string> rgba8888Names;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -793,6 +839,8 @@ int main(int argc, char** argv) {
             nameOverride = argv[++i];
         } else if (arg == "--payload-format" && i + 1 < argc) {
             payloadFormatArg = argv[++i];
+        } else if (arg == "--rgba8888-texture" && i + 1 < argc) {
+            rgba8888Names.push_back(toLower(argv[++i]));
         } else if (arg == "--all") {
             allArchives = true;
         } else if (arg == "--verbose") {
@@ -843,13 +891,17 @@ int main(int argc, char** argv) {
         for (const auto& dir : bmpDirs) {
             std::cout << "Processing BMP directory: " << dir << std::endl;
         }
-        if (processBmpDirectories(bmpDirs, outputDir, nameOverride, mode, verbose)) {
+        if (processBmpDirectories(bmpDirs, outputDir, nameOverride, mode, rgba8888Names, verbose)) {
             return 0;
         }
         return 1;
     }
 
     // ── S3D archive mode ────────────────────────────────────────────────────
+    if (!rgba8888Names.empty()) {
+        std::cerr << "Error: --rgba8888-texture is only supported in --bmp-dir mode\n";
+        return 1;
+    }
     if (eqPath.empty()) {
         std::cerr << "Error: --eq-path or --bmp-dir is required\n";
         printUsage(argv[0]);

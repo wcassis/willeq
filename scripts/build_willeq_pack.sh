@@ -143,9 +143,19 @@ ln -s "$TEXTURES_DIR" "$WORK/textures"
 
 # ── Stage 3: pack ───────────────────────────────────────────────────────────
 mkdir -p "$WORK/out"
+# T400 (board B225): particle_atlas is forced to the in-band RGBA8888 payload.
+# Its entire content is an alpha ramp, and the default ETC1 encode puts alpha
+# in a separate `_alpha` companion entry that only the alpha-TEST shader
+# variants sample (texture unit 1). Both particle draw paths -- ParticleManager's
+# EMT_TRANSPARENT_ALPHA_CHANNEL material (SOLID3D_FS) and
+# UnifiedParticleRenderer's point-sprite shader -- read `texColor.a` from a
+# SINGLE sampler, so an ETC1 particle atlas is alpha=1.0 everywhere no matter
+# what the companion holds. This makes the pack a v2 file; every other entry
+# stays ETC1 and byte-identical.
 if ! "$BIN_DIR/eqe1_builder" \
         --bmp-dir "$WORK/atlas" \
         --bmp-dir "$WORK/textures" \
+        --rgba8888-texture particle_atlas \
         --output "$WORK/out" \
         --name willeq > "$WORK/pack.log" 2>&1; then
     echo "ERROR: eqe1_builder failed:" >&2

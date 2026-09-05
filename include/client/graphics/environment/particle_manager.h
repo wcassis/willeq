@@ -366,6 +366,25 @@ public:
      */
     const glm::vec3& getAmbientColor() const { return ambientColor_; }
 
+    /**
+     * Configure the material every particle billboard is drawn with.
+     *
+     * T400 (board B225): extracted from init() so the blend mode can be
+     * PINNED by a test without standing up a device, an atlas and a texture
+     * cache. It is ALPHA-BLEND, not additive:
+     * COpenGLES2Driver::applyMaterialRenderState() maps
+     * EMT_TRANSPARENT_ALPHA_CHANNEL to
+     * glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA) with depth writes
+     * off, and selects SOLID3D_FS, which takes its alpha from
+     * texture2D(uTexture, uv).a -- a SINGLE sampler. That is why the atlas
+     * must carry its alpha IN-BAND (a 32-bit BMP on the raw path, an
+     * RGBA8888 payload in the EQE1 pack) rather than in an ETC1 `_alpha`
+     * companion, which only the alpha-TEST shader variants ever sample.
+     * Straight (non-premultiplied) RGB is what this blend expects.
+     */
+    static void configureParticleMaterial(irr::video::SMaterial& material,
+                                          irr::video::ITexture* atlasTexture);
+
 private:
     /**
      * Create emitters appropriate for the given biome.
