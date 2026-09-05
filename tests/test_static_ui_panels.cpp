@@ -609,4 +609,71 @@ TEST_F(UIRendererGraphicsTest, RenderInventoryPopupClosedIsNoOp) {
     EXPECT_NO_FATAL_FAILURE(ui.endFrame());
 }
 
+// ---------------------------------------------------------------------------
+// T368 (B101): the group / pet / buff windows compose their key toggle with
+// the auto-driven state that used to be their ONLY gate.
+//
+// The three predicates below are the single body each render function's early
+// return calls, so a test can assert "the panel draws" without an Irrlicht
+// device. Before T368 there was no isOpen at all and the G / P / Alt+B keys
+// reached empty switch arms.
+//
+// The default (isOpen == true) is the official client's: its defaults.ini
+// writes `Show=0` only under a section whose window ships CLOSED
+// ([SelectorWindow], [HotButtonWnd3], [HotButtonWnd4]) and writes no Show key
+// under [GroupWindow], [PetInfoWindow] or [BuffWindow].
+// ---------------------------------------------------------------------------
+
+TEST(T368PanelVisibility, GroupPanelDefaultsOpenAndDrawsItsEmptyFrameWithNoGroup) {
+    GroupPanelState g;
+    EXPECT_TRUE(g.isOpen) << "the official [GroupWindow] has no Show=0 in defaults.ini";
+    EXPECT_FALSE(g.inGroup);
+    EXPECT_TRUE(groupPanelIsVisible(g))
+        << "an open group window with no group must still draw its empty frame";
+}
+
+TEST(T368PanelVisibility, ClosedGroupPanelStaysClosedWhenYouJoinAGroup) {
+    GroupPanelState g;
+    g.isOpen = false;
+    EXPECT_FALSE(groupPanelIsVisible(g));
+    g.inGroup = true;
+    g.memberCount = 3;
+    EXPECT_FALSE(groupPanelIsVisible(g))
+        << "joining a group reopened a window the player had closed";
+}
+
+TEST(T368PanelVisibility, PetPanelNeedsBothTheToggleAndAPet) {
+    PetPanelState p;
+    EXPECT_TRUE(p.isOpen);
+    EXPECT_FALSE(petPanelIsVisible(p)) << "no pet -- nothing to draw";
+    p.hasPet = true;
+    EXPECT_TRUE(petPanelIsVisible(p));
+    p.isOpen = false;
+    EXPECT_FALSE(petPanelIsVisible(p)) << "P must hide a pet panel that has a pet";
+}
+
+TEST(T368PanelVisibility, BuffBarNeedsBothTheToggleAndABuff) {
+    BuffBarState b;
+    EXPECT_TRUE(b.isOpen);
+    EXPECT_FALSE(buffBarIsVisible(b)) << "empty bar -- nothing to draw";
+    b.buffs[0].spellId = 15;
+    EXPECT_TRUE(buffBarIsVisible(b));
+    b.isOpen = false;
+    EXPECT_FALSE(buffBarIsVisible(b)) << "Alt+B must hide a bar that has buffs";
+}
+
+TEST(T368PanelVisibility, AClosedBuffBarIsUnclickableAsWellAsInvisible) {
+    // The hit-test reads the same predicate, so an icon you cannot see can
+    // never be clicked off (T277 pinned the geometry half of this).
+    UILayout layout;
+    layout.computeLayout(800, 600);
+    BuffBarState b;
+    b.buffs[0].spellId = 15;
+    const int x = layout.buffBar.UpperLeftCorner.X + 4;
+    const int y = layout.buffBar.UpperLeftCorner.Y + 4;
+    EXPECT_EQ(hitTestBuffBar(layout, b, x, y), 0);
+    b.isOpen = false;
+    EXPECT_EQ(hitTestBuffBar(layout, b, x, y), -1);
+}
+
 } // namespace

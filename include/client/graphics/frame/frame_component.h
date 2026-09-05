@@ -190,6 +190,31 @@ public:
 	// state so the slash arm can echo it without re-reading the member.
 	bool toggleSkillsWindow();
 
+	// ---- T368 (B101): the three keys that used to reach empty arms ----
+	// G (and the Alt+P alternate), P and Alt+B each reached a `break;` with
+	// the comment "visibility is driven by <auto> state", so the key did
+	// nothing at all -- a bound key that advertises a behaviour the tree does
+	// not have. Each now flips an `isOpen` its panel honours, exactly the
+	// shape toggleSkillsWindow() has, and each returns the new state.
+	//
+	// The official client's on-disk files name these three actions
+	// TOGGLE_PARTYWIN, TOGGLE_PETINFOWIN and TOGGLE_BUFFWIN (the KEYMAPPING_
+	// suffixes in eqgame.exe) and record their windows as shown by default
+	// (defaults.ini writes `Show=0` only for a window whose default is
+	// closed). They do NOT record the default KEY for any of the three -- an
+	// eqclient.ini carries a KEYMAPPING_ line only for a binding the user
+	// changed -- so fable's G / P / Alt+B are left as they were rather than
+	// re-picked by argument. See B115.
+	//
+	// Composition with the auto-driven state (see static_panels.h):
+	//   group  -- toggle only; an open window with no group draws its empty
+	//             frame, and joining a group does not reopen a closed one
+	//   pet    -- toggle AND hasPet
+	//   buffs  -- toggle AND the bar having at least one buff
+	bool toggleGroupWindow();
+	bool togglePetWindow();
+	bool toggleBuffWindow();
+
 	// ---- T357 (B057): slash-command tab completion ----
 	// The chat box is a hand-rolled string in chatPanelState_, drained by
 	// processChatInput() on the RENDER thread; the command vocabulary lives on

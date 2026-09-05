@@ -181,6 +181,28 @@ bool FrameComponent::toggleSkillsWindow() {
     return skillsPopupState_.isOpen;
 }
 
+// T368 (B101): the three toggles that replace empty arms. Deliberately NOT
+// mutually exclusive with the centre popups the way toggleSkillsWindow() is --
+// these are HUD panels, not centre popups, and the official client keeps them
+// open alongside everything else.
+bool FrameComponent::toggleGroupWindow() {
+    groupPanelState_.isOpen = !groupPanelState_.isOpen;
+    LOG_INFO(MOD_GRAPHICS, "Group window {}", groupPanelState_.isOpen ? "opened" : "closed");
+    return groupPanelState_.isOpen;
+}
+
+bool FrameComponent::togglePetWindow() {
+    petPanelState_.isOpen = !petPanelState_.isOpen;
+    LOG_INFO(MOD_GRAPHICS, "Pet window {}", petPanelState_.isOpen ? "opened" : "closed");
+    return petPanelState_.isOpen;
+}
+
+bool FrameComponent::toggleBuffWindow() {
+    buffBarState_.isOpen = !buffBarState_.isOpen;
+    LOG_INFO(MOD_GRAPHICS, "Buff window {}", buffBarState_.isOpen ? "opened" : "closed");
+    return buffBarState_.isOpen;
+}
+
 void FrameComponent::processPlayerInput(const std::vector<RendererEvent>& actions) {
     using RA = RendererAction;
     for (const auto& event : actions) {
@@ -232,18 +254,16 @@ void FrameComponent::processPlayerInput(const std::vector<RendererEvent>& action
 
             // UI Windows
             case RA::ToggleInventory: owner_.toggleInventory(); break;
-            case RA::ToggleGroup:
-                break;  // Group panel visibility is driven by inGroup state
+            // T368 (B101): real toggles -- these three were empty arms.
+            case RA::ToggleGroup: toggleGroupWindow(); break;
             // T363 (B058): one body, shared with /skills.
             case RA::ToggleSkills: toggleSkillsWindow(); break;
-            case RA::TogglePet:
-                break;  // Pet panel visibility is driven by hasPet state
+            case RA::TogglePet: togglePetWindow(); break;
             case RA::ToggleSpellbook:
                 spellbookState_.isOpen = !spellbookState_.isOpen;
                 LOG_INFO(MOD_GRAPHICS, "Spellbook {}", spellbookState_.isOpen ? "opened" : "closed");
                 break;
-            case RA::ToggleBuffWindow:
-                break;  // Buff bar always visible when buffs exist
+            case RA::ToggleBuffWindow: toggleBuffWindow(); break;
 
             // Debug overlays
             case RA::ToggleZoneLineVisualization: ctx_.Overlays().toggleZoneLineVisualization(); break;
