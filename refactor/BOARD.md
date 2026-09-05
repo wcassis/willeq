@@ -1925,7 +1925,7 @@ it without taking that measurement first.
   Ultravision is near-neutral with a blue lift (R x1.458 / G x1.463 / B x1.851)
   while fable's green lags (R x1.461 / **G x1.281** / B x1.663), and the oracle's
   Infravision raises all three channels (R x1.328 / G x1.211 / B x1.208) while
-  fable's **drives blue DOWN to x0.821** at R x1.600. That is **B171** — **STRUCK PROVISIONALLY by T383 (`T383_COMMIT_HASH`), live re-measure OWED; T383 also established that NO code path in the tree can lower a channel under a vision buff, so the x0.821 is unexplained by the source and the re-measure has to account for it.** See B110 for the term that does separate the two clients.** Pinned by
+  fable's **drives blue DOWN to x0.821** at R x1.600. That is **B171** — **STRUCK PROVISIONALLY by T383 (`776357f1`), live re-measure OWED; T383 also established that NO code path in the tree can lower a channel under a vision buff, so the x0.821 is unexplained by the source and the re-measure has to account for it.** See B110 for the term that does separate the two clients.** Pinned by
   `tests/test_vision_ambient.cpp` (3 of 6 cases fail against the pre-T361
   behaviour). Prov: T361 Review, `review/T361/README.md`. **CORRECTION (T383): `visionType` now has THREE
   consumers — T361 added `IrrlichtRenderer::updateTimeOfDay` ->
@@ -2574,7 +2574,7 @@ branches can be deleted independently of these items.
   `IrrlichtRenderer::updateTimeOfDay` — **the vision floor's per-channel gains
   are wrong against the oracle, even where the scalar ratio is right.**~~
   **STRUCK PROVISIONALLY by T383 (branch `task/T383-vision-channels`,
-  commit `T383_COMMIT_HASH`) — THE LIVE RE-MEASURE IS OWED to the next lock
+  commit `776357f1`) — THE LIVE RE-MEASURE IS OWED to the next lock
   unit.** All six floor channels were re-solved against T377's oracle table by
   inverting T361's measured power law per channel
   (`floor_c = night_c * oracle_ratio_c ^ (1/1.1405)`): Ultravision gain
