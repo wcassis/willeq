@@ -342,38 +342,47 @@ void IrrlichtRenderer::updateTimeOfDay(uint8_t hour, uint8_t minute) {
         sunIntensity = 1.0f - t * 0.9f;
     }
 
-    // Apply user-adjustable ambient multiplier (Page Up/Down)
-    r = std::min(1.0f, r * ambientMultiplier_);
-    g = std::min(1.0f, g * ambientMultiplier_);
-    b = std::min(1.0f, b * ambientMultiplier_);
-
-    // Apply weather effects (darkening for storms)
+    // The weather modifier (1.0 = clear). T396 (board B211): LOG EVERY CHANGE,
+    // in BOTH directions and including the return to 1.0. The old line fired
+    // only when the modifier changed AND was below 0.99, so a clear sky was
+    // never logged and a session could not be shown to have been weather-free
+    // from its own log -- which is why T377's whole vision measurement window
+    // turned out, only in T394's bisect, to have been taken under server rain
+    // at intensity 9 (modifier 0.460). The last-logged value is a MEMBER, not
+    // a function-static: a second renderer in the process must not silence
+    // the first one's transitions.
+    float weatherMod = 1.0f;
     if (weatherEffects_ && weatherEffects_->isEnabled()) {
-        float weatherMod = weatherEffects_->getAmbientLightModifier();
-        static float lastLoggedMod = -1.0f;
-        if (std::abs(weatherMod - lastLoggedMod) > 0.01f && weatherMod < 0.99f) {
-            LOG_DEBUG(MOD_GRAPHICS, "updateTimeOfDay: weatherMod={:.3f}, applying to ambient r={:.3f} g={:.3f} b={:.3f}",
-                      weatherMod, r, g, b);
-            lastLoggedMod = weatherMod;
-        }
-        r *= weatherMod;
-        g *= weatherMod;
-        b *= weatherMod;
-        sunIntensity *= weatherMod;
+        weatherMod = weatherEffects_->getAmbientLightModifier();
     }
+    if (std::abs(weatherMod - weatherModLogged_) > 0.005f) {
+        LOG_DEBUG(MOD_GRAPHICS,
+                  "updateTimeOfDay: weatherMod {:.3f} -> {:.3f} (type={} intensity={}), "
+                  "pre-weather ambient r={:.3f} g={:.3f} b={:.3f}",
+                  weatherModLogged_, weatherMod,
+                  weatherEffects_ ? weatherEffects_->getCurrentType() : 0,
+                  weatherEffects_ ? weatherEffects_->getCurrentIntensity() : 0,
+                  r, g, b);
+        weatherModLogged_ = weatherMod;
+    }
+    sunIntensity *= weatherMod;
 
     // T361 (board B067): vision type reaches the GLOBAL ambient here, and
     // this is its only production site. Before T361 it reached nothing but
     // the zone's data-only point lights, so a full Ultravision buff was worth
     // +4.9% at night while the day/night cycle was worth 4x. The floor is
     // measured against the official client -- see
-    // include/client/graphics/vision_ambient.h. It is applied AFTER the
-    // day/night curve, the user ambient multiplier and weather, so it is a
-    // true floor: nothing can darken the world below what the buff grants,
-    // and daylight (0.5 on every channel) is already above it.
+    // include/client/graphics/vision_ambient.h.
+    //
+    // T396 (board B211): the four-step composition (day/night curve, user
+    // ambient multiplier, weather, vision floor LAST) moved into
+    // composeSceneAmbient() so the ORDER is pinned by a test rather than by
+    // this comment. The floor is last on purpose: it is a floor on what the
+    // player SEES, so nothing -- weather included -- may darken the world
+    // below what the buff grants.
     {
-        const AmbientRGB lit =
-            applyVisionAmbientFloor(currentVision_, AmbientRGB{r, g, b});
+        const AmbientRGB lit = composeSceneAmbient(
+            AmbientRGB{r, g, b}, ambientMultiplier_, weatherMod, currentVision_);
         r = lit.r;
         g = lit.g;
         b = lit.b;

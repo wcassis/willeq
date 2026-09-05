@@ -529,6 +529,10 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_vision_ambient PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_vision_ambient GTest::gtest_main willeq_core)
+    # T396 (B211): the composition-order cases read the renderer TU to prove
+    # updateTimeOfDay() still calls composeSceneAmbient().
+    TARGET_COMPILE_DEFINITIONS(test_vision_ambient PRIVATE
+        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
     GTEST_DISCOVER_TESTS(test_vision_ambient)
 ENDIF()
 

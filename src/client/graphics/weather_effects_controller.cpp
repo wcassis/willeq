@@ -887,6 +887,20 @@ float WeatherEffectsController::getLightningFlashIntensity() const {
 void WeatherEffectsController::onZoneEnter(const std::string& zoneName) {
     currentZoneName_ = zoneName;
 
+    // T396 (board B211): a zone-in starts CLEAR. Weather is per-zone server
+    // state and the new zone has not told us anything yet -- until its
+    // OP_Weather arrives (if it arrives at all) the world must be lit
+    // normally, because the official client does not darken for clear
+    // weather. Without this reset the previous zone's rain followed the
+    // player through the zone line and kept the global ambient at
+    // 1 - maxDarkening*intensity/10 (0.460 at intensity 9) indefinitely.
+    // onZoneLeave() has always done this; nothing called it either.
+    resetWeatherState();
+    LOG_INFO(MOD_GRAPHICS,
+             "WeatherEffectsController::onZoneEnter('{}'): weather reset to "
+             "clear, ambient modifier {:.3f}",
+             zoneName, getAmbientLightModifier());
+
     // Check for indoor zones (dungeons, caves)
     // This is a simplified check - could be expanded
     isIndoorZone_ = (zoneName.find("guk") != std::string::npos ||
@@ -904,19 +918,32 @@ void WeatherEffectsController::onZoneEnter(const std::string& zoneName) {
 }
 
 void WeatherEffectsController::onZoneLeave() {
-    // Clear weather state
-    currentType_ = 0;
-    currentIntensity_ = 0;
-    currentDarkening_ = 0.0f;
-    targetDarkening_ = 0.0f;
-
-    // Clear lightning
-    lightningBolt_.clear();
-    lightningActive_ = false;
+    resetWeatherState();
 
     if (stormCloudLayer_) {
         stormCloudLayer_->onZoneLeave();
     }
+}
+
+// T396 (board B211): the one place weather state returns to clear. Both zone
+// hooks call it; keeping the two in sync by hand is what let onZoneEnter()
+// leave the darkening behind.
+void WeatherEffectsController::resetWeatherState() {
+    currentType_ = 0;
+    currentIntensity_ = 0;
+    targetIntensity_ = 0;
+    currentDarkening_ = 0.0f;
+    targetDarkening_ = 0.0f;
+    transitionProgress_ = 1.0f;
+
+    // Clear lightning
+    lightningBolt_.clear();
+    lightningActive_ = false;
+    lightningFlashTimer_ = 0.0f;
+    lightningBoltTimer_ = 0.0f;
+
+    if (rainOverlay_) rainOverlay_->setIntensity(0);
+    if (snowOverlay_) snowOverlay_->setIntensity(0);
 }
 
 int WeatherEffectsController::getSceneNodeCount() const {

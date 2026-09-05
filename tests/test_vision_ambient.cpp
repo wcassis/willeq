@@ -22,6 +22,10 @@
 
 #include <gtest/gtest.h>
 
+#include <fstream>
+#include <sstream>
+#include <string>
+
 #include "client/graphics/vision_ambient.h"
 #include "client/graphics/vision_type.h"
 
@@ -279,4 +283,102 @@ TEST(VisionGainsRevertedT394Test,
     EXPECT_LT(kFableInfraRatioPreT383[2], 1.0f);
     // ...and where it overshoots: Infravision red ran 20% hot.
     EXPECT_GT(kFableInfraRatioPreT383[0], 1.15f * kOracleInfraRatio[0]);
+}
+
+// ---------------------------------------------------------------------------
+// T396 (board B211): THE COMPOSITION ORDER.
+//
+// updateTimeOfDay() builds the scene ambient from four things, and until T396
+// the order lived only in a comment. B211 is the reason it matters: the
+// weather modifier multiplies the ambient a vision ratio is measured against
+// while leaving the floor fixed, so an uncontrolled weather state inflates any
+// measured vision ratio in proportion to the weather at the time. T377's
+// session ran at weatherMod 0.460 (server rain, intensity 9) throughout.
+//
+// The floor is applied LAST, on purpose: it is a floor on WHAT THE PLAYER
+// SEES. `composeSceneAmbient()` IS the production composition, so these cases
+// pin the order at the site rather than restating it.
+// ---------------------------------------------------------------------------
+
+using EQT::Graphics::composeSceneAmbient;
+
+namespace {
+// The exact modifier T377's session ran under: 1 - 0.6*9/10.
+constexpr float kT377WeatherMod = 0.46f;
+}  // namespace
+
+TEST(VisionAmbientCompositionT396Test, ClearWeatherAndNoUserBoostChangeNothing) {
+    const AmbientRGB out =
+        composeSceneAmbient(kNight, 1.0f, 1.0f, VisionType::Normal);
+    EXPECT_FLOAT_EQ(out.r, kNight.r);
+    EXPECT_FLOAT_EQ(out.g, kNight.g);
+    EXPECT_FLOAT_EQ(out.b, kNight.b);
+}
+
+TEST(VisionAmbientCompositionT396Test, WeatherMultipliesTheUnbuffedNightAmbient) {
+    const AmbientRGB out =
+        composeSceneAmbient(kNight, 1.0f, kT377WeatherMod, VisionType::Normal);
+    EXPECT_FLOAT_EQ(out.r, kNight.r * kT377WeatherMod);
+    EXPECT_FLOAT_EQ(out.g, kNight.g * kT377WeatherMod);
+    EXPECT_FLOAT_EQ(out.b, kNight.b * kT377WeatherMod);
+}
+
+// The order pin. Under the CORRECT order the buff is untouched by the storm;
+// under the inverted order every channel would come out 0.46x lower.
+TEST(VisionAmbientCompositionT396Test, TheVisionFloorClampsTheFinalAmbientAfterWeather) {
+    const AmbientRGB floor = visionAmbientFloor(VisionType::Ultravision);
+    const AmbientRGB out =
+        composeSceneAmbient(kNight, 1.0f, kT377WeatherMod, VisionType::Ultravision);
+
+    EXPECT_FLOAT_EQ(out.r, floor.r);
+    EXPECT_FLOAT_EQ(out.g, floor.g);
+    EXPECT_FLOAT_EQ(out.b, floor.b)
+        << "weather multiplied the vision floor; the floor must be last";
+
+    // And explicitly: not the other order.
+    EXPECT_GT(out.r, floor.r * kT377WeatherMod);
+    EXPECT_GT(mean(out), kT377WeatherMod * mean(floor) * 1.5f);
+}
+
+// The consequence B211 records, stated as a test so it cannot be forgotten:
+// weather changes the base a vision ratio is measured against but NOT the
+// buffed frame, so the ratio measured under rain is larger than the true one.
+TEST(VisionAmbientCompositionT396Test, UncontrolledWeatherInflatesAMeasuredVisionRatio) {
+    const float clearBase = mean(composeSceneAmbient(kNight, 1.0f, 1.0f, VisionType::Normal));
+    const float clearBuff = mean(composeSceneAmbient(kNight, 1.0f, 1.0f, VisionType::Ultravision));
+    const float rainBase = mean(composeSceneAmbient(kNight, 1.0f, kT377WeatherMod, VisionType::Normal));
+    const float rainBuff = mean(composeSceneAmbient(kNight, 1.0f, kT377WeatherMod, VisionType::Ultravision));
+
+    EXPECT_FLOAT_EQ(clearBuff, rainBuff) << "the floor is weather-independent";
+    EXPECT_GT(rainBuff / rainBase, (clearBuff / clearBase) * 1.9f)
+        << "T377's rain more than doubled the apparent Ultravision ratio";
+}
+
+// Daylight is above every floor and the user multiplier still clamps at 1.
+TEST(VisionAmbientCompositionT396Test, DaylightIsAboveEveryFloorAndTheUserBoostClamps) {
+    const AmbientRGB out =
+        composeSceneAmbient(kDay, 4.0f, 1.0f, VisionType::Ultravision);
+    EXPECT_FLOAT_EQ(out.r, 1.0f);
+    EXPECT_FLOAT_EQ(out.g, 1.0f);
+    EXPECT_FLOAT_EQ(out.b, 1.0f);
+
+    const AmbientRGB plain =
+        composeSceneAmbient(kDay, 1.0f, 1.0f, VisionType::Ultravision);
+    EXPECT_FLOAT_EQ(plain.r, kDay.r);
+    EXPECT_FLOAT_EQ(plain.g, kDay.g);
+    EXPECT_FLOAT_EQ(plain.b, kDay.b);
+}
+
+// The production site calls it -- so the order above is the one that ships.
+TEST(VisionAmbientCompositionT396Test, UpdateTimeOfDayUsesTheComposition) {
+    const char* kRendererTU =
+        WILLEQ_REPO_ROOT "/src/client/graphics/renderer/irrlicht_renderer.cpp";
+    std::ifstream in(kRendererTU);
+    ASSERT_TRUE(in.good()) << "cannot open " << kRendererTU;
+    std::stringstream ss;
+    ss << in.rdbuf();
+    const std::string src = ss.str();
+    EXPECT_NE(src.find("composeSceneAmbient("), std::string::npos)
+        << "updateTimeOfDay() open-codes the ambient composition again; the "
+           "order is then pinned by nothing";
 }

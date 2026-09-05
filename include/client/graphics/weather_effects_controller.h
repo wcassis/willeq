@@ -302,11 +302,15 @@ public:
 
     /**
      * Called when entering a new zone.
+     *
+     * T396 (board B211): this RESETS the weather to clear. Weather is
+     * per-zone server state; the previous zone's rain must not follow the
+     * player through the zone line and keep the global ambient darkened.
      */
     void onZoneEnter(const std::string& zoneName);
 
     /**
-     * Called when leaving a zone.
+     * Called when leaving a zone. Also resets the weather to clear.
      */
     void onZoneLeave();
 
@@ -328,6 +332,13 @@ private:
      * Apply settings from WeatherConfigLoader singleton.
      */
     void applyConfigFromLoader();
+
+    /**
+     * T396 (board B211): return every weather field to "clear". Called by
+     * BOTH zone hooks so the two can never drift apart -- onZoneEnter()
+     * used to reset nothing, and the previous zone's darkening survived.
+     */
+    void resetWeatherState();
 
     /**
      * Update rain effects.

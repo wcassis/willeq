@@ -556,6 +556,21 @@ void ZoneLoadComponent::loadZoneStep11_Env(ZoneLoadContext& ctx) {
                       Environment::ZoneBiomeDetector::instance().getBiomeName(biome));
         }
 
+        // Weather. T396 (board B211): WeatherEffectsController::onZoneEnter()
+        // and ::onZoneLeave() had ZERO callers tree-wide (grepped src/
+        // include/ tests/ tools/ benchmarks/ docker/), so the weather state
+        // was never reset on a zone change and the previous zone's rain kept
+        // the global ambient darkened -- 1 - maxDarkening*intensity/10, i.e.
+        // 0.460 at the intensity 9 qeynos2 served T377. Every other
+        // environment manager here gets its onZoneEnter; this one was the
+        // odd one out. It is called BEFORE the zone's own OP_Weather can
+        // arrive, so a zone with no weather packet is lit normally.
+        if (ctx_.weatherEffects) {
+            ctx_.weatherEffects->onZoneEnter(ctx_.currentZoneName);
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: weatherEffects_ onZoneEnter, ambientModifier={:.3f}",
+                      ctx_.weatherEffects->getAmbientLightModifier());
+        }
+
         // Weather surface + display settings
         if (ctx_.weatherEffects && ctx_.detailManager && ctx_.detailManager->hasSurfaceMap()) {
             ctx_.weatherEffects->setSurfaceMap(ctx_.detailManager->getSurfaceMap());
