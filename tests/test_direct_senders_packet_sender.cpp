@@ -538,4 +538,34 @@ TEST(DirectSendersPacketSender, RecordedSession_Gm) {
         });
 }
 
+// =====================================================================
+// core -- EverQuest::SendPetition, the one direct sender left on EverQuest
+// itself (src/client/core/everquest.cpp). It reaches PacketSender as
+// m_packet_sender, not ctx_.net, because it is not inside a component.
+// Guarded by if (m_zone_connection && isZoneConnected()), which also gates
+// the log line and the "Your petition has been submitted." chat reply, so
+// the wrapper stays.
+// =====================================================================
+
+TEST(DirectSendersPacketSender, NoZoneConnection_Core) {
+    SenderHarness h(/*withConnection=*/false);
+    ASSERT_EQ(h.eq.m_zone_connection, nullptr);
+
+    h.eq.SendPetition("stuck in a wall");
+
+    SUCCEED() << "SendPetition survived a null zone connection";
+}
+
+TEST(DirectSendersPacketSender, RecordedSession_Core) {
+    WithRecordedSession(
+        "t378_core_recorded.sleq",
+        [](SenderHarness& h) { h.eq.SendPetition("stuck in a wall"); },
+        [](const std::vector<RecordedPacket>& recorded) {
+            EXPECT_EQ(CountOpcode(recorded, HC_OP_Petition), 1u)
+                << "SendPetition must reach the session recorder; a sender "
+                   "that calls m_zone_connection->QueuePacket() directly is "
+                   "invisible to it (BOARD B145)";
+        });
+}
+
 }  // namespace

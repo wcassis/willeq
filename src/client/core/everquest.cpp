@@ -925,7 +925,7 @@ void EverQuest::SendPetition(const std::string& text)
 	packet.PutCString(2, text.c_str());
 
 	if (m_zone_connection && m_game_state.world().isZoneConnected()) {
-		m_zone_connection->QueuePacket(packet);
+		m_packet_sender.SafeQueueZone(packet);
 		LOG_INFO(MOD_MAIN, "Petition submitted");
 		AddChatSystemMessage("Your petition has been submitted.");
 	}
