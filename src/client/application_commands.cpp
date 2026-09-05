@@ -508,9 +508,15 @@ void Application::wireUnifiedCommandDispatch() {
 }
 
 // T357 (B057): see the doc comment in application.h. The merge is what makes
-// this the ONE vocabulary: registry 1's names/aliases plus registry 2's, sorted
-// and de-duplicated (registry 3, the renderer's own slash set, is reached only
-// after both of these miss and has no getCompletions() to ask).
+// this the ONE vocabulary: registry 1's names/aliases plus registry 2's plus
+// registry 3's, sorted and de-duplicated.
+//
+// T365 (B091): registry 3 used to be missing here while `/help` listed it, so
+// Tab and `/help` disagreed by the whole ~70-command Graphics category --
+// exactly the divergence T357's Review claimed could never happen. The static
+// catalog now answers completions too (RendererCommandCompletions), so all
+// three registries back both. Registry 3 is unioned LAST, matching the
+// dispatch order, though the sort below makes the order cosmetic.
 std::vector<std::string> Application::commandCompletions(const std::string& partial) const {
     std::vector<std::string> out;
     if (m_eqClient) {
@@ -522,6 +528,9 @@ std::vector<std::string> Application::commandCompletions(const std::string& part
         for (std::string& name : m_commandProcessor->getCompletions(partial)) {
             out.push_back(std::move(name));
         }
+    }
+    for (std::string& name : eqt::help::RendererCommandCompletions(partial)) {
+        out.push_back(std::move(name));
     }
     std::sort(out.begin(), out.end());
     out.erase(std::unique(out.begin(), out.end()), out.end());

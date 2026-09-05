@@ -1,7 +1,10 @@
 #include "client/help/renderer_command_catalog.h"
 
+#include "client/command_completion.h"
+
 #include <algorithm>
 #include <cctype>
+#include <map>
 
 namespace eqt {
 namespace help {
@@ -110,6 +113,28 @@ const RendererCommandInfo* FindRendererCommand(const std::string& name) {
         }
     }
     return nullptr;
+}
+
+std::vector<std::string> RendererCommandCompletions(const std::string& partial) {
+    // The catalog is a vector, but the shared helper wants the two
+    // lowercase-keyed maps registries 1 and 2 already hold. Built once: the
+    // catalog is a compile-time constant, so this cannot go stale.
+    static const auto kMaps = [] {
+        std::map<std::string, const RendererCommandInfo*> byName;
+        std::map<std::string, std::string> byAlias;
+        for (const auto& info : kCatalog) {
+            byName[Lower(info.name)] = &info;
+            for (const auto& alias : info.aliases) {
+                byAlias[Lower(alias)] = Lower(info.name);
+            }
+        }
+        return std::make_pair(byName, byAlias);
+    }();
+
+    return completion::PrefixCompletions(
+        partial, kMaps.first,
+        [](const RendererCommandInfo* info) { return info->name; },
+        kMaps.second);
 }
 
 } // namespace help

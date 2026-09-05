@@ -351,6 +351,35 @@ public:
      */
     static bool loadConfigFile(const std::string& configFile, ApplicationConfig& config);
 
+    /**
+     * T357 (B057): the slash-command vocabulary for the chat box's Tab key.
+     *
+     * Application is the only object that holds the registries the chat
+     * box's submit path reaches -- registry 1 (eqt::ui::CommandRegistry, via
+     * ChatSubmitIntent -> ChatComponent::DispatchSlashCommand), registry 2
+     * (action::CommandProcessor, via the unrecognized-command fallback
+     * installed in wireUnifiedCommandDispatch()) and registry 3 (the static
+     * renderer catalog, the fallback after both) -- so it is the only place
+     * that can answer the question the renderer asks. This is deliberately
+     * the SAME set BuildHelpResponse() merges for /help: a Tab that offered
+     * a different set than /help lists would be a defect.
+     *
+     * T365 (B091): it WAS such a defect. Registry 3 had no completion source,
+     * so Tab offered registries 1+2 while /help listed all three -- the whole
+     * ~70-command Graphics category was untabbable. All three are unioned now.
+     *
+     * PUBLIC since T365, so the union can be asserted end-to-end rather than
+     * pinned as source text. It is a const query over maps that are filled
+     * during construction/initialize() and never mutated afterwards; it holds
+     * no invariant a caller could break.
+     *
+     * Called on the RENDER thread through the closure
+     * initRendererAndGraphics() installs on the renderer. Safe without a lock
+     * only because both maps are filled during construction/initialize() and
+     * nothing registers a command afterwards.
+     */
+    std::vector<std::string> commandCompletions(const std::string& partial) const;
+
 private:
     friend struct ApplicationScriptTestPeer;  // T238
     friend struct ApplicationCommandOutputTestPeer;  // T308
@@ -486,24 +515,6 @@ private:
     // from initialize().
     void wireUnifiedCommandDispatch();
 
-    /**
-     * T357 (B057): the slash-command vocabulary for the chat box's Tab key.
-     *
-     * Application is the only object that holds BOTH registries the chat
-     * box's submit path reaches -- registry 1 (eqt::ui::CommandRegistry, via
-     * ChatSubmitIntent -> ChatComponent::DispatchSlashCommand) and registry 2
-     * (action::CommandProcessor, via the unrecognized-command fallback
-     * installed in wireUnifiedCommandDispatch()) -- so it is the only place
-     * that can answer the question the renderer asks. This is deliberately
-     * the SAME pair BuildHelpResponse() merges for /help: a Tab that offered
-     * a different set than /help lists would be a defect.
-     *
-     * Called on the RENDER thread through the closure
-     * initRendererAndGraphics() installs on the renderer. Safe without a lock
-     * only because both maps are filled during construction/initialize() and
-     * nothing registers a command afterwards.
-     */
-    std::vector<std::string> commandCompletions(const std::string& partial) const;
 
     // T30: pre-connection lifecycle intercept. m_inputBridge->update() in
     // processInput() is gated on m_fullyConnected (loading-drift

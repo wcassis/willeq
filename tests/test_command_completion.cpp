@@ -24,6 +24,7 @@
 
 #include "client/command_completion.h"
 #include "client/graphics/ui/command_registry.h"
+#include "client/help/renderer_command_catalog.h"
 
 namespace {
 
@@ -134,4 +135,49 @@ TEST(CommandCompletionHelperTest, ToLowerIsTheOneLowercaser) {
     EXPECT_EQ(eqt::completion::ToLower("ShOuT"), "shout");
     EXPECT_EQ(eqt::completion::ToLower(""), "");
     EXPECT_EQ(eqt::completion::ToLower("/say Hi"), "/say hi");
+}
+
+// ---------------------------------------------------------------------------
+// T365 (B091) -- registry 3's completion source.
+//
+// The static renderer catalog had no getCompletions() at all, so
+// Application::commandCompletions() unioned registries 1 and 2 only while
+// /help listed all three: none of the ~70 renderer commands was tab-
+// completable. RendererCommandCompletions() is the missing half, and it is
+// the SAME body -- eqt::completion::PrefixCompletions -- the other two use.
+// ---------------------------------------------------------------------------
+
+TEST(RendererCommandCompletionTest, ARendererCatalogNameCompletes) {
+    auto out = eqt::help::RendererCommandCompletions("ski");
+    EXPECT_TRUE(Contains(out, "skills"))
+        << "registry 3 offers no completions -- /ski<Tab> cannot reach /skills";
+}
+
+TEST(RendererCommandCompletionTest, TheRenamedInventoryCommandCompletes) {
+    auto out = eqt::help::RendererCommandCompletions("inventor");
+    EXPECT_EQ(out, (std::vector<std::string>{"inventory"}));
+}
+
+TEST(RendererCommandCompletionTest, AliasesCompleteToo) {
+    // `sd` is the alias of `shaderdebug`; both must be offered for "s".
+    auto out = eqt::help::RendererCommandCompletions("sd");
+    EXPECT_TRUE(Contains(out, "sd"));
+}
+
+TEST(RendererCommandCompletionTest, SortedDeDuplicatedAndCaseInsensitive) {
+    auto lower = eqt::help::RendererCommandCompletions("scr");
+    auto upper = eqt::help::RendererCommandCompletions("SCR");
+    EXPECT_EQ(lower, upper);
+    EXPECT_TRUE(std::is_sorted(lower.begin(), lower.end()));
+    EXPECT_EQ(std::adjacent_find(lower.begin(), lower.end()), lower.end());
+    EXPECT_TRUE(Contains(lower, "screenshot"));
+}
+
+TEST(RendererCommandCompletionTest, AnEmptyPartialOffersTheWholeCatalog) {
+    auto out = eqt::help::RendererCommandCompletions("");
+    EXPECT_GE(out.size(), eqt::help::AllRendererCommands().size());
+}
+
+TEST(RendererCommandCompletionTest, AnUnknownPrefixOffersNothing) {
+    EXPECT_TRUE(eqt::help::RendererCommandCompletions("zzzznotacommand").empty());
 }

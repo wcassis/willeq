@@ -21,6 +21,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -155,6 +156,28 @@ TEST(HeadlessCommandRefusalTest, T365_ConsoleHandlerNoLongerInterceptsTheThreeUI
     EXPECT_NE(src.find("m_rawCommands.push(\"inventory\")"), std::string::npos)
         << "`inv` must be rewritten to the primary name, not passed through "
            "to registry 2's /invite alias";
+}
+
+// ---------------------------------------------------------------------------
+// T365 (B091): Tab completion covers registry 3 too.
+//
+// Application::commandCompletions() is what the chat box's Tab key asks
+// (Application installs it on the renderer as a closure). On a bare, never-
+// initialize()d Application registries 1 and 2 are absent, which isolates
+// registry 3's contribution exactly.
+// ---------------------------------------------------------------------------
+TEST(HeadlessCommandRefusalTest, T365_TabCompletionReachesTheRendererCatalog) {
+    Application app;
+    std::vector<std::string> out = app.commandCompletions("ski");
+    EXPECT_NE(std::find(out.begin(), out.end(), "skills"), out.end())
+        << "Tab still offers registries 1+2 only; /help lists three";
+}
+
+TEST(HeadlessCommandRefusalTest, T365_TabCompletionOffersTheRenamedInventory) {
+    Application app;
+    std::vector<std::string> out = app.commandCompletions("inventor");
+    EXPECT_NE(std::find(out.begin(), out.end(), "inventory"), out.end());
+    EXPECT_EQ(std::find(out.begin(), out.end(), "newinv"), out.end());
 }
 
 TEST(HeadlessCommandRefusalTest, RendererAliasWithArgsIsRefusedByName) {

@@ -42,5 +42,15 @@ const std::vector<RendererCommandInfo>& AllRendererCommands();
 // leading '/'). Null if registry 3 does not know the name.
 const RendererCommandInfo* FindRendererCommand(const std::string& name);
 
+// T365 (B091): registry 3's half of Tab completion. Every catalog name and
+// alias starting with `partial` (case-insensitive), sorted and de-duplicated,
+// in the same shape registries 1 and 2 return -- it is literally the same
+// body, eqt::completion::PrefixCompletions (include/client/command_completion.h).
+//
+// Registry 3 had no getCompletions() at all, so `Application::commandCompletions`
+// unioned only registries 1 and 2 while `/help` listed all three: none of the
+// ~70 renderer commands was tab-completable. This closes that gap.
+std::vector<std::string> RendererCommandCompletions(const std::string& partial);
+
 } // namespace help
 } // namespace eqt

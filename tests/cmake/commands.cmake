@@ -102,9 +102,12 @@ GTEST_DISCOVER_TESTS(test_appearance_command)
 # (include/client/command_completion.h) and the registry half that used to
 # drift from it. Header-only helper + one TU -- no action layer, no
 # EverQuest, no Irrlicht.
+# T365 (B091) adds registry 3's half -- the static renderer catalog, which is
+# deliberately graphics-independent, so this stays a two-TU target.
 ADD_EXECUTABLE(test_command_completion
     test_command_completion.cpp
     ${CMAKE_SOURCE_DIR}/src/client/graphics/ui/command_registry.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/help/renderer_command_catalog.cpp
 )
 TARGET_LINK_LIBRARIES(test_command_completion GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_command_completion)
