@@ -141,8 +141,8 @@ it without taking that measurement first.
   keeps the lowest-spawn-id pick; and `MovementComponent::Follow` stores its
   target as a NAME and re-matches it by exact string every tick
   (`src/client/movement/movement_update.cpp:183`), so following one of two
-  identically-named mobs is ambiguous per tick.~~ **CLOSED by T359 Leg A**
-  (`refactor/T359_combat_movement_spawn_id.md`). `CombatState` and `PlayerState`
+  identically-named mobs is ambiguous per tick.~~ **CLOSED by T359 Leg A** (`310725a4`,
+  `refactor/T359_combat_movement_spawn_id.md`). `CombatState` and `PlayerState`
   now store a SPAWN ID as the target identity (the name rides along for the log
   lines only): `UpdateCombatMovement` and the per-tick follow branch read the
   entity map by id, `MoveToEntityWithinRange`/`FaceEntity` take a `uint16_t`,
@@ -286,7 +286,7 @@ it without taking that measurement first.
   `EntityRenderer::setEntitySize` — updates neither `collisionHeight` nor `deckZ`,
   so a resized boat's deck surface goes stale. Nothing in the game resizes a
   boat, so this is a documented limit, not a live defect.~~ **CLOSED by T359
-  Leg C — the limit is ASSERTED, not removed.** The recompute was rejected on
+  Leg C (`23863718`) — the limit is ASSERTED, not removed.** The recompute was rejected on
   reading it: it would be a THIRD copy of a formula whose two existing copies
   (`entity_mesh_build.cpp` reads `mesh->getBoundingBox()` and a local `z`;
   `entity_build_step.cpp` reads `vis.meshNode->getMesh()->getBoundingBox()` and
@@ -352,7 +352,7 @@ it without taking that measurement first.
 - ~~**B015** (B) `src/client/audio/midi_player.cpp` `MidiPlayer::loadSoundFont` —
   swaps a raw `tsf*` with no atomic or mutex; safe today only because its single
   call site runs before the audio thread exists, which the file's own comment
-  records.~~ **CLOSED by T359 Leg B** — the precondition is ASSERTED, not
+  records.~~ **CLOSED by T359 Leg B** (`c73f8745`) — the precondition is ASSERTED, not
   synchronised (a mutex in the realtime audio callback was explicitly rejected).
   `MidiPlayer::setAudioThreadRunning(bool)` is called by `AudioManager` at the
   one point every backend branch converges on (`initialize`, right after the
@@ -1428,4 +1428,4 @@ it without taking that measurement first.
   than `/target` picked. `/warp` is a GM/debug command, which is why this is B and
   not A. Closes when: `RequestWarp` resolves through the ranked lookup (ideally at
   the dispatcher, as T356 did) and `FindEntityByName` is deleted with its last
-  caller. Prov: T359 Leg A.
+  caller. Prov: T359 Leg A (`310725a4`).
