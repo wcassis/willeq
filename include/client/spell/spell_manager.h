@@ -62,7 +62,6 @@ namespace EQ {
 
 // Callback types for spell events
 using SpellCastCallback = std::function<void(CastResult result, uint32_t spell_id)>;
-using SpellLandCallback = std::function<void(uint32_t spell_id, uint16_t caster_id, uint16_t target_id)>;
 using SpellFadeCallback = std::function<void(uint32_t spell_id, uint16_t entity_id)>;
 
 class SpellManager {
@@ -190,7 +189,6 @@ public:
     // ========================================================================
 
     void setOnCastComplete(SpellCastCallback cb) { m_on_cast_complete = std::move(cb); }
-    void setOnSpellLand(SpellLandCallback cb) { m_on_spell_land = std::move(cb); }
     void setOnSpellFade(SpellFadeCallback cb) { m_on_spell_fade = std::move(cb); }
 
     // ========================================================================
@@ -335,7 +333,6 @@ private:
     // ------------------------------------------------------------------------
 
     SpellCastCallback m_on_cast_complete;
-    SpellLandCallback m_on_spell_land;
     SpellFadeCallback m_on_spell_fade;
 };
 
