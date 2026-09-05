@@ -149,6 +149,7 @@ ADD_EXECUTABLE(test_spell_target_stage_textures
     test_spell_target_stage_textures.cpp
     ${CMAKE_SOURCE_DIR}/src/client/graphics/environment/spell_effects_config.cpp
     ${CMAKE_SOURCE_DIR}/src/client/graphics/environment/spell_emitter_presets.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
 )
 TARGET_LINK_LIBRARIES(test_spell_target_stage_textures GTest::gtest_main ${FMT_LIB} ${JSONCPP_LIBRARIES} dl)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
