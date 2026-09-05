@@ -20,6 +20,8 @@
 #include "client/bridge/game_state_bridge.h"
 #include "client/events/renderer_intents.h"
 #include "client/hotbar/hotbar_slot_type.h"  // T156
+#include "client/graphics/text_batch.h"       // T393: purse render smoke test
+#include "client/state/event_bus.h"            // T393: CurrencyChangedData
 
 #include <irrlicht.h>
 #include <vector>
@@ -769,4 +771,228 @@ TEST(GroupPanelShapeAtEveryResolution, TheEmptyWindowIsOneTitleStripEverywhere) 
         EXPECT_EQ(frame.getWidth(), layout.groupPanel.getWidth())
             << r[0] << "x" << r[1];
     }
+}
+
+// ===========================================================================
+// T393 (board B201) — the purse is drawn
+//
+// Before this unit the four coin counts reached nothing: IrrlichtBridge's
+// CurrencyChanged arm was a LOG_TRACE that discarded its payload, and
+// IrrlichtRenderer::updateCharacterStats() discarded platinum/gold/silver/
+// copper outright, so T386 opened the inventory window right after a corpse
+// loot and found no coin counters at all
+// (review/T386/fable/T386_fable_arena2_purse_01_after_1024x768.png).
+//
+// THE PLACEMENT IS THE ORACLE'S. Quoted from the official default UI,
+// /mnt/projects/EverQuestP1999/uifiles/default/EQUI_Inventory.xml:
+//
+//   <Screen item="InventoryWindow">  Size CX=428 CY=460
+//   IW_Money0 (A_PlatinumCoin)  Location 303,121  Size 70x24
+//   IW_Money1 (A_GoldCoin)      Location 303,147  Size 70x24
+//   IW_Money2 (A_SilverCoin)    Location 303,171  Size 70x24
+//   IW_Money3 (A_CopperCoin)    Location 303,197  Size 70x24
+//   (each DecalOffset 1,3  DecalSize 18x18)
+//
+// centerPopup is a fixed 400x350 at every resolution (T351 measured five), so
+// the scale rule is the proportional map 428x460 -> 400x350, integer
+// division. Expected rects at 800x600 (popup origin 200,125):
+//   x = 200 + 303*400/428 = 483, w = 70*400/428 = 65
+//   y = 125 + {121,147,171,197}*350/460 = {217,236,255,274}, h = 24*350/460 = 18
+// ===========================================================================
+
+class PurseT393 : public ::testing::Test {
+protected:
+    UILayout layout;
+    InventoryPanelState inv;
+    void SetUp() override { layout.computeLayout(800, 600); }
+};
+
+TEST_F(PurseT393, EachCoinRowIsTheOracleRectScaledIntoThePopup) {
+    const irr::core::rect<irr::s32> expected[4] = {
+        {483, 217, 548, 235},  // IW_Money0 platinum
+        {483, 236, 548, 254},  // IW_Money1 gold
+        {483, 255, 548, 273},  // IW_Money2 silver
+        {483, 274, 548, 292},  // IW_Money3 copper
+    };
+    for (int d = 0; d < InventoryLayout::COIN_COUNT; ++d) {
+        EXPECT_EQ(InventoryLayout::coinRect(layout, d), expected[d])
+            << "denomination " << d;
+    }
+}
+
+TEST_F(PurseT393, TheFourRowsRunPlatinumToCopperTopDownAndDoNotOverlap) {
+    for (int d = 1; d < InventoryLayout::COIN_COUNT; ++d) {
+        const auto above = InventoryLayout::coinRect(layout, d - 1);
+        const auto here = InventoryLayout::coinRect(layout, d);
+        EXPECT_GE(here.UpperLeftCorner.Y, above.LowerRightCorner.Y)
+            << "row " << d << " overlaps row " << (d - 1);
+        EXPECT_EQ(here.UpperLeftCorner.X, above.UpperLeftCorner.X)
+            << "the oracle's four buttons share one X";
+        EXPECT_EQ(here.getWidth(), above.getWidth());
+        EXPECT_EQ(here.getHeight(), above.getHeight());
+    }
+}
+
+TEST_F(PurseT393, EveryCoinRowLiesWhollyInsideThePopupFrame) {
+    for (int d = 0; d < InventoryLayout::COIN_COUNT; ++d) {
+        const auto r = InventoryLayout::coinRect(layout, d);
+        EXPECT_TRUE(layout.centerPopup.isRectCollided(r)) << d;
+        EXPECT_GE(r.UpperLeftCorner.X, layout.centerPopup.UpperLeftCorner.X) << d;
+        EXPECT_GE(r.UpperLeftCorner.Y, layout.centerPopup.UpperLeftCorner.Y) << d;
+        EXPECT_LE(r.LowerRightCorner.X, layout.centerPopup.LowerRightCorner.X) << d;
+        EXPECT_LE(r.LowerRightCorner.Y, layout.centerPopup.LowerRightCorner.Y) << d;
+    }
+}
+
+// The purse must not cover any of the 30 item slots — a coin row over a slot
+// would make that slot unreadable and (because the hit test is geometric)
+// visually lie about where a click lands.
+TEST_F(PurseT393, NoCoinRowOverlapsAnyInventorySlot) {
+    for (int d = 0; d < InventoryLayout::COIN_COUNT; ++d) {
+        const auto coin = InventoryLayout::coinRect(layout, d);
+        for (int i = 0; i < InventoryLayout::TOTAL_SLOTS; ++i) {
+            const auto slot = InventoryLayout::slotRect(layout, i);
+            const bool overlaps =
+                coin.UpperLeftCorner.X < slot.LowerRightCorner.X &&
+                slot.UpperLeftCorner.X < coin.LowerRightCorner.X &&
+                coin.UpperLeftCorner.Y < slot.LowerRightCorner.Y &&
+                slot.UpperLeftCorner.Y < coin.LowerRightCorner.Y;
+            EXPECT_FALSE(overlaps) << "coin row " << d << " over slot " << i;
+        }
+    }
+}
+
+TEST_F(PurseT393, TheDecalBoxSitsInsideItsOwnRow) {
+    for (int d = 0; d < InventoryLayout::COIN_COUNT; ++d) {
+        const auto row = InventoryLayout::coinRect(layout, d);
+        const auto decal = InventoryLayout::coinDecalRect(layout, d);
+        EXPECT_GE(decal.UpperLeftCorner.X, row.UpperLeftCorner.X) << d;
+        EXPECT_GE(decal.UpperLeftCorner.Y, row.UpperLeftCorner.Y) << d;
+        EXPECT_LE(decal.LowerRightCorner.X, row.LowerRightCorner.X) << d;
+        EXPECT_LE(decal.LowerRightCorner.Y, row.LowerRightCorner.Y) << d;
+    }
+}
+
+TEST_F(PurseT393, AnOutOfRangeDenominationIsDegenerate) {
+    for (int d : {-1, 4, 99}) {
+        EXPECT_EQ(InventoryLayout::coinRect(layout, d),
+                  irr::core::rect<irr::s32>(0, 0, 0, 0)) << d;
+        EXPECT_EQ(InventoryLayout::coinDecalRect(layout, d),
+                  irr::core::rect<irr::s32>(0, 0, 0, 0)) << d;
+        EXPECT_EQ(coinRowText(inv, d), std::string()) << d;
+    }
+}
+
+// centerPopup is a fixed 400x350 at every resolution, so the purse must be at
+// the same offset inside the frame everywhere — the same invariant T351
+// measured for the slots.
+TEST(PurseT393Resolutions, TheRowsAreIdenticalRelativeToThePopupOrigin) {
+    const int kRes[][2] = {{640, 480}, {800, 600}, {1024, 768}, {1280, 1024}, {1920, 1080}};
+    const irr::core::position2d<irr::s32> expectedOrigin[4] = {
+        {283, 92}, {283, 111}, {283, 130}, {283, 149},
+    };
+    for (const auto& r : kRes) {
+        UILayout layout;
+        layout.computeLayout(r[0], r[1]);
+        for (int d = 0; d < InventoryLayout::COIN_COUNT; ++d) {
+            const auto rect = InventoryLayout::coinRect(layout, d);
+            EXPECT_EQ(rect.UpperLeftCorner.X - layout.centerPopup.UpperLeftCorner.X,
+                      expectedOrigin[d].X) << r[0] << "x" << r[1] << " d=" << d;
+            EXPECT_EQ(rect.UpperLeftCorner.Y - layout.centerPopup.UpperLeftCorner.Y,
+                      expectedOrigin[d].Y) << r[0] << "x" << r[1] << " d=" << d;
+        }
+    }
+}
+
+// --- the counts travel: the real publisher payload through the real applier
+
+TEST_F(PurseT393, StartsWithAnEmptyPurse) {
+    for (int d = 0; d < InventoryLayout::COIN_COUNT; ++d) {
+        EXPECT_EQ(coinRowText(inv, d), "0") << d;
+    }
+}
+
+TEST_F(PurseT393, ACurrencyChangedEventPutsTheFourCountsOnThePanel) {
+    // T386 trial 2's post-loot purse, read out of character_currency:
+    // 8 platinum / 18 gold / 8 silver / 16 copper.
+    eqt::state::CurrencyChangedData d;
+    d.platinum = 8; d.gold = 18; d.silver = 8; d.copper = 16;
+    applyCurrencyChanged(inv, d);
+
+    EXPECT_EQ(coinRowText(inv, InventoryLayout::COIN_PLATINUM), "8");
+    EXPECT_EQ(coinRowText(inv, InventoryLayout::COIN_GOLD), "18");
+    EXPECT_EQ(coinRowText(inv, InventoryLayout::COIN_SILVER), "8");
+    EXPECT_EQ(coinRowText(inv, InventoryLayout::COIN_COPPER), "16");
+}
+
+// Absolute counts, not deltas — every publisher sends the whole purse, so a
+// second event REPLACES the first (T386 trial 1 -> trial 2).
+TEST_F(PurseT393, ASecondEventReplacesTheFirstRatherThanAccumulating) {
+    eqt::state::CurrencyChangedData first;
+    first.platinum = 5; first.gold = 15; first.silver = 3; first.copper = 11;
+    applyCurrencyChanged(inv, first);
+
+    eqt::state::CurrencyChangedData second;
+    second.platinum = 8; second.gold = 18; second.silver = 8; second.copper = 16;
+    applyCurrencyChanged(inv, second);
+
+    EXPECT_EQ(coinRowText(inv, InventoryLayout::COIN_PLATINUM), "8");
+    EXPECT_EQ(coinRowText(inv, InventoryLayout::COIN_GOLD), "18");
+    EXPECT_EQ(coinRowText(inv, InventoryLayout::COIN_SILVER), "8");
+    EXPECT_EQ(coinRowText(inv, InventoryLayout::COIN_COPPER), "16");
+}
+
+// A zero denomination still gets a row: the oracle ships four IW_Money
+// buttons unconditionally, and eqemu's digit-division split produces zeros
+// often (review/T386 §1d).
+TEST_F(PurseT393, AZeroDenominationStillPrintsItsRow) {
+    eqt::state::CurrencyChangedData d;
+    d.platinum = 0; d.gold = 0; d.silver = 7; d.copper = 0;
+    applyCurrencyChanged(inv, d);
+
+    EXPECT_EQ(coinRowText(inv, InventoryLayout::COIN_PLATINUM), "0");
+    EXPECT_EQ(coinRowText(inv, InventoryLayout::COIN_SILVER), "7");
+    EXPECT_FALSE(InventoryLayout::coinRect(layout, InventoryLayout::COIN_PLATINUM)
+                     .getWidth() == 0)
+        << "the row is drawn whatever the count";
+}
+
+// --- and the popup actually draws them
+//
+// renderInventoryPopup() emits, per frame: 1 title + 22 equipment slot labels
+// + 1 "General" label + 0 general-slot labels (no items here) + 2 per coin row
+// (the denomination letter in the decal box and the count beside it) = 32.
+// Before T393 it emitted 24 and no coin row existed.
+TEST(PurseT393Render, TheInventoryPopupEmitsTwoTextEntriesPerCoinRow) {
+    irr::SIrrlichtCreationParameters params;
+    params.DriverType = irr::video::EDT_NULL;
+    params.WindowSize = irr::core::dimension2d<irr::u32>(800, 600);
+    params.LoggingLevel = irr::ELL_NONE;
+    irr::IrrlichtDevice* device = irr::createDeviceEx(params);
+    if (!device) GTEST_SKIP() << "no EDT_NULL device";
+
+    TextBatch tb;
+    if (!tb.init(device->getGUIEnvironment())) {
+        device->drop();
+        GTEST_SKIP() << "EDT_NULL device has no built-in font";
+    }
+
+    UILayout layout;
+    layout.computeLayout(800, 600);
+    InventoryPanelState inv;
+    inv.activePopup = PopupType::Inventory;
+    eqt::state::CurrencyChangedData d;
+    d.platinum = 8; d.gold = 18; d.silver = 8; d.copper = 16;
+    applyCurrencyChanged(inv, d);
+
+    UIRenderer ui;
+    ui.init(device->getVideoDriver(), nullptr, &tb);
+    ui.beginFrame();
+    tb.begin();
+    renderInventoryPopup(ui, layout, inv);
+
+    EXPECT_EQ(tb.getQuadCount(), static_cast<size_t>(32))
+        << "1 title + 22 equipment labels + 1 General + 4 coin rows x 2";
+
+    device->drop();
 }

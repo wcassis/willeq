@@ -369,6 +369,41 @@ void renderInventoryPopup(UIRenderer& ui, const UILayout& layout,
             }
         }
     }
+
+    // The purse (T393, board B201). Four rows, platinum/gold/silver/copper
+    // top to bottom, in the oracle's own element order and at the oracle's
+    // own rect scaled into centerPopup -- all of that geometry lives in
+    // InventoryLayout::coinRect()/coinDecalRect(), so this body contains no
+    // coin-position arithmetic, the same rule the slots follow.
+    //
+    // Drawn AFTER the paperdoll blit deliberately: fable's paperdoll rect
+    // spans the whole gap between the two equipment columns (the oracle's
+    // IW_CharacterView is only 85 of its 428 px wide), so the oracle-scaled
+    // coin column lands over the doll's right-hand margin and must sit on
+    // top of it. UIRenderer submission order is draw order (T294).
+    static const char* const kCoinLetter[InventoryLayout::COIN_COUNT] =
+        {"p", "g", "s", "c"};
+    static const irr::video::SColor kCoinColor[InventoryLayout::COIN_COUNT] = {
+        irr::video::SColor(255, 229, 228, 226),  // platinum
+        irr::video::SColor(255, 255, 215,   0),  // gold
+        irr::video::SColor(255, 192, 192, 192),  // silver
+        irr::video::SColor(255, 184, 115,  51),  // copper
+    };
+    for (int denom = 0; denom < InventoryLayout::COIN_COUNT; ++denom) {
+        const auto row = InventoryLayout::coinRect(layout, denom);
+        ui.drawSprite(row, static_cast<uint8_t>(UISprite::SlotBackground));
+        ui.drawSprite(row, static_cast<uint8_t>(UISprite::SlotBorderNormal));
+        if (!tb) continue;
+        // The oracle blits A_PlatinumCoin/A_GoldCoin/... into the decal box;
+        // fable's atlas has no coin sprite, so the denomination letter goes
+        // there in the coin's own colour.
+        const auto decal = InventoryLayout::coinDecalRect(layout, denom);
+        tb->addText(kCoinLetter[denom], decal.UpperLeftCorner.X,
+            decal.UpperLeftCorner.Y, kCoinColor[denom]);
+        tb->addText(coinRowText(inv, denom),
+            decal.LowerRightCorner.X + 2, decal.UpperLeftCorner.Y,
+            irr::video::SColor(255, 255, 255, 255));
+    }
 }
 
 void renderHotbar(UIRenderer& ui, const UILayout& layout,
@@ -980,6 +1015,28 @@ void applyHotbarSlotAssigned(HotbarPanelState& state,
     slot.emoteText = data.emoteText;
     slot.name = data.name;
     slot.iconId = data.iconId;
+}
+
+// ---------------------------------------------------------------------------
+// T393 (board B201): the purse
+// ---------------------------------------------------------------------------
+
+void applyCurrencyChanged(InventoryPanelState& state,
+                          const eqt::state::CurrencyChangedData& data) {
+    // Absolute counts. Every one of the five publishers (OP_MoneyUpdate in
+    // core/everquest.cpp, the corpse-coin grant in commands/combat_actions.cpp,
+    // the merchant in merchant/merchant_trade.cpp, and the two stat pushes in
+    // bridge/) reads the whole purse off PlayerState and sends it, so this is
+    // a set, never an add.
+    state.coins[InventoryLayout::COIN_PLATINUM] = data.platinum;
+    state.coins[InventoryLayout::COIN_GOLD]     = data.gold;
+    state.coins[InventoryLayout::COIN_SILVER]   = data.silver;
+    state.coins[InventoryLayout::COIN_COPPER]   = data.copper;
+}
+
+std::string coinRowText(const InventoryPanelState& state, int denom) {
+    if (denom < 0 || denom >= InventoryLayout::COIN_COUNT) return std::string();
+    return fmt::format("{}", state.coins[denom]);
 }
 
 } // namespace Graphics

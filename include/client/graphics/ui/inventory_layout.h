@@ -82,6 +82,43 @@ constexpr int16_t kWeaponRow[WEAPON_COUNT] = {
     EquipmentSlot::SLOT_AMMO,    EquipmentSlot::SLOT_CHARM,
 };
 
+// --- The purse (T393, board B201) -------------------------------------
+//
+// THE PLACEMENT IS THE ORACLE'S, NOT OURS. Every number below is quoted
+// verbatim from the official Titanium/P1999 default UI,
+// /mnt/projects/EverQuestP1999/uifiles/default/EQUI_Inventory.xml:
+//
+//   <Screen item="InventoryWindow">  Size CX=428 CY=460
+//   <Button item="IW_Money0">  Location X=303 Y=121  Size CX=70 CY=24
+//                              ButtonDrawTemplate/NormalDecal A_PlatinumCoin
+//                              DecalOffset X=1 Y=3  DecalSize CX=18 CY=18
+//   <Button item="IW_Money1">  Location X=303 Y=147  Size CX=70 CY=24
+//                              NormalDecal A_GoldCoin     (same decal box)
+//   <Button item="IW_Money2">  Location X=303 Y=171  Size CX=70 CY=24
+//                              NormalDecal A_SilverCoin   (same decal box)
+//   <Button item="IW_Money3">  Location X=303 Y=197  Size CX=70 CY=24
+//                              NormalDecal A_CopperCoin   (same decal box)
+//
+// so the oracle draws the four denominations as a single column of 70x24
+// boxes, top to bottom platinum/gold/silver/copper, each with a coin decal
+// on its left and the count as its text.
+//
+// The scale rule is the popup's own: fable's centerPopup is a fixed
+// 400x350 at every resolution (T351 measured all five) and every rect in
+// this header is expressed relative to that frame, so the coin column is
+// the oracle's rect mapped proportionally from the 428x460 window onto
+// centerPopup's width and height. Integer division, so the mapping is
+// exact and reproducible; no rounding policy to drift.
+constexpr irr::s32 ORACLE_WINDOW_W = 428;
+constexpr irr::s32 ORACLE_WINDOW_H = 460;
+constexpr irr::s32 ORACLE_COIN_X = 303;
+constexpr irr::s32 ORACLE_COIN_W = 70;
+constexpr irr::s32 ORACLE_COIN_H = 24;
+constexpr irr::s32 ORACLE_COIN_Y[4] = {121, 147, 171, 197};
+constexpr irr::s32 ORACLE_DECAL_X = 1;
+constexpr irr::s32 ORACLE_DECAL_Y = 3;
+constexpr irr::s32 ORACLE_DECAL_SIZE = 18;
+
 } // namespace detail
 
 /**
@@ -169,6 +206,57 @@ inline irr::core::rect<irr::s32> paperdollRect(const UILayout& layout) {
     const irr::s32 y2 = popupY + CONTENT_TOP + COL_ROWS * SLOT;  // column height
 
     return irr::core::rect<irr::s32>(x1, y1, x2, y2);
+}
+
+// Denomination order is the oracle's element order, IW_Money0..3.
+constexpr int COIN_COUNT = 4;
+enum Coin { COIN_PLATINUM = 0, COIN_GOLD = 1, COIN_SILVER = 2, COIN_COPPER = 3 };
+
+/**
+ * Returns the screen-space rect for one coin row (0=platinum .. 3=copper),
+ * positioned within `layout.centerPopup`. Degenerate (all-zero) rect for an
+ * out-of-range denomination.
+ *
+ * As with slotRect(), this is the ONLY place purse geometry is computed —
+ * renderInventoryPopup() contains no coin-position arithmetic of its own.
+ */
+inline irr::core::rect<irr::s32> coinRect(const UILayout& layout, int denom) {
+    using namespace detail;
+    if (denom < 0 || denom >= COIN_COUNT) {
+        return irr::core::rect<irr::s32>(0, 0, 0, 0);
+    }
+    const auto& popup = layout.centerPopup;
+    const irr::s32 popupW = popup.getWidth();
+    const irr::s32 popupH = popup.getHeight();
+
+    const irr::s32 x = popup.UpperLeftCorner.X + ORACLE_COIN_X * popupW / ORACLE_WINDOW_W;
+    const irr::s32 y = popup.UpperLeftCorner.Y + ORACLE_COIN_Y[denom] * popupH / ORACLE_WINDOW_H;
+    const irr::s32 w = ORACLE_COIN_W * popupW / ORACLE_WINDOW_W;
+    const irr::s32 h = ORACLE_COIN_H * popupH / ORACLE_WINDOW_H;
+    return irr::core::rect<irr::s32>(x, y, x + w, y + h);
+}
+
+/**
+ * The coin decal box inside one coin row — where the oracle blits
+ * A_PlatinumCoin / A_GoldCoin / A_SilverCoin / A_CopperCoin. fable's UI
+ * atlas has no coin sprite yet, so renderInventoryPopup() puts the
+ * denomination letter here; the rect is the oracle's either way.
+ */
+inline irr::core::rect<irr::s32> coinDecalRect(const UILayout& layout, int denom) {
+    using namespace detail;
+    if (denom < 0 || denom >= COIN_COUNT) {
+        return irr::core::rect<irr::s32>(0, 0, 0, 0);
+    }
+    const auto& popup = layout.centerPopup;
+    const irr::s32 popupW = popup.getWidth();
+    const irr::s32 popupH = popup.getHeight();
+    const auto row = coinRect(layout, denom);
+
+    const irr::s32 x = row.UpperLeftCorner.X + ORACLE_DECAL_X * popupW / ORACLE_WINDOW_W;
+    const irr::s32 y = row.UpperLeftCorner.Y + ORACLE_DECAL_Y * popupH / ORACLE_WINDOW_H;
+    const irr::s32 w = ORACLE_DECAL_SIZE * popupW / ORACLE_WINDOW_W;
+    const irr::s32 h = ORACLE_DECAL_SIZE * popupH / ORACLE_WINDOW_H;
+    return irr::core::rect<irr::s32>(x, y, x + w, y + h);
 }
 
 } // namespace InventoryLayout

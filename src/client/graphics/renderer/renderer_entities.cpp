@@ -3,6 +3,7 @@
 #include "client/graphics/light_source.h"
 #include "client/graphics/renderer_zone_merge.h"  // ForwardingTextureGuard (T124)
 #include "client/graphics/ui/character_model_view.h"  // T294: markDirty() on popup open
+#include "client/graphics/ui/inventory_layout.h"  // T393: the purse denominations
 #include "common/logging.h"
 
 #ifdef EQT_HAS_GLES2
@@ -439,7 +440,26 @@ void IrrlichtRenderer::updateCharacterStats(uint32_t curHp, uint32_t maxHp,
     (void)curHp; (void)maxHp; (void)curMana; (void)maxMana; (void)curEnd; (void)maxEnd;
     (void)ac; (void)atk; (void)str; (void)sta; (void)agi; (void)dex; (void)wis; (void)intel; (void)cha;
     (void)pr; (void)mr; (void)dr; (void)fr; (void)cr; (void)weight; (void)maxWeight;
-    (void)platinum; (void)gold; (void)silver; (void)copper;
+
+    // T393 (board B201): the four coin counts used to be discarded here
+    // alongside the rest. They are not any more -- they go to the same
+    // InventoryPanelState the CurrencyChanged bridge arm writes, so a stats
+    // push and a currency event agree on what the purse holds.
+    //
+    // NOTE the reaching path is the BRIDGE ARM, not this function:
+    // updateCharacterStats() has zero callers anywhere in the tree
+    // (grepped src/ include/ tests/ tools/ benchmarks/ docker/ -- only the
+    // declaration, the three OutputRenderer overrides and the test
+    // fixture's empty one). It stays wired because a discard is what B201
+    // was, and a future caller must not silently drop the purse again.
+    frame_->inventoryState_.coins[InventoryLayout::COIN_PLATINUM] =
+        static_cast<int32_t>(platinum);
+    frame_->inventoryState_.coins[InventoryLayout::COIN_GOLD] =
+        static_cast<int32_t>(gold);
+    frame_->inventoryState_.coins[InventoryLayout::COIN_SILVER] =
+        static_cast<int32_t>(silver);
+    frame_->inventoryState_.coins[InventoryLayout::COIN_COPPER] =
+        static_cast<int32_t>(copper);
 }
 
 void IrrlichtRenderer::updatePlayerAppearance(uint16_t raceId, uint8_t gender,
