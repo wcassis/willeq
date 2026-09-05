@@ -140,6 +140,21 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_click_senders_packet_sender)
 
+# T379 (BOARD B146): the login-stream and world-stream senders go out through
+# eqt::PacketSender -- the R01 recorder and the T268 seam now see the client's
+# half of the login/world handshake. WILLEQ_SOURCE_DIR backs the census pin
+# case, which greps the routed TU for a direct connection->QueuePacket().
+ADD_EXECUTABLE(test_login_world_senders_packet_sender
+    test_login_world_senders_packet_sender.cpp
+)
+TARGET_LINK_LIBRARIES(test_login_world_senders_packet_sender GTest::gtest_main willeq_core)
+TARGET_COMPILE_DEFINITIONS(test_login_world_senders_packet_sender
+    PRIVATE WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_login_world_senders_packet_sender PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_login_world_senders_packet_sender)
+
 # T169: OP_RaidUpdate decoding -- the action codes against eqemu's
 # common/raid.h and the per-action body shapes (actions 8, 10, 14 and 30 do
 # NOT have `parameter` where the general body does). Links willeq_core for
