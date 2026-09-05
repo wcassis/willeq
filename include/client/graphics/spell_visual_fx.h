@@ -124,6 +124,29 @@ public:
 
     // ========================================================================
     // Effect Creation
+    //
+    // WHO CALLS WHAT (board B161; census re-taken by T388 over src/, include/,
+    // tests/, tools/, benchmarks/ and docker/ -- the B166 rule: a zero-caller
+    // claim must name the directories it grepped, and tools/ must be one):
+    //
+    //   Reached from the GAME (src/client/bridge/irrlicht_bridge.cpp):
+    //     createCastGlow / removeCastGlow, createSpellComplete, createImpact.
+    //
+    //   Reached ONLY from tools/model_viewer/model_viewer_spell_test.cpp --
+    //   the manual FX harness, the one place a developer exercises this layer
+    //   by hand -- and, for createProjectile, also from
+    //   tests/test_spell_visual_vocabulary.cpp:
+    //     createProjectile, createImpactAtPosition, createBuffAura,
+    //     createRainEffect, createGroundCircle.
+    //   These are KEPT deliberately: deleting them deletes the harness's
+    //   feature, and the projectile question is open (B165: 6,250 spells
+    //   populate the travel gate, 85 carry TravelType == 3 -- T384 put that
+    //   on SpellVisualVocabulary::travelType -- but what to DRAW for them
+    //   waits on B162's oracle capture). Do not wire them speculatively and
+    //   do not delete them; the decision is a planned unit.
+    //
+    //   Called by NOTHING, in any directory: removeBuffAura,
+    //   removeAllForEntity (see the Effect Removal block below).
     // ========================================================================
 
     // Determine cast effect style from spell school (spray vs smolder/orbital)
@@ -163,10 +186,15 @@ public:
     // Remove casting glow (when cast ends)
     void removeCastGlow(uint16_t caster_id);
 
-    // Remove buff aura (when buff fades)
+    // Remove buff aura (when buff fades).
+    // ZERO CALLERS anywhere (T388 census: src/ include/ tests/ tools/
+    // benchmarks/ docker/) -- not even the model_viewer harness, which
+    // creates auras and never removes them. Board B195.
     void removeBuffAura(uint16_t entity_id, uint32_t spell_id);
 
-    // Remove all effects for an entity (when entity despawns)
+    // Remove all effects for an entity (when entity despawns).
+    // ZERO CALLERS anywhere (same census). Nothing calls this on despawn.
+    // Board B195.
     void removeAllForEntity(uint16_t entity_id);
 
     // Clear all effects

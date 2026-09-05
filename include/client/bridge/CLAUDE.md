@@ -47,7 +47,7 @@ Defined in `include/client/state/event_bus.h`. See `include/client/state/CLAUDE.
 Defined in `include/client/events/renderer_intents.h`. `RendererIntent` is a `std::variant` holding all intent structs:
 
 - **Movement**: `PlayerPositionChanged` (position + velocity)
-- **Targeting**: `TargetIntent` (T51: `AttackIntent`/`ToggleAutoAttackIntent` removed -- never had a producer; auto-attack is reached via direct `CombatManager` calls from `eq_commands_movement.cpp`/`ActionDispatcher`, not the intent system)
+- **Targeting**: `TargetIntent` (T51: `AttackIntent`/`ToggleAutoAttackIntent` removed -- never had a producer; auto-attack is reached via direct `CombatManager` calls from `src/client/commands/commands_movement.cpp` (K12 moved it off the flat `eq_commands_movement.cpp`)/`ActionDispatcher`, not the intent system)
 - **Interaction**: `DoorInteractIntent`, `LootCorpseIntent`, `LootItemIntent`, `LootAllIntent`, `CloseLootIntent`, `WorldObjectInteractIntent`, `ZoningEnabledIntent`, `ReadItemIntent`
 - **Commerce**: `VendorToggleIntent`, `VendorBuyIntent`, `VendorSellIntent`, `BankerInteractIntent`, `BankCurrencyMoveIntent`, `BankCurrencyConvertIntent`
 - **Spells**: `CastSpellIntent`, `MemorizeSpellIntent`, `ScribeSpellIntent`, `SpellbookStateIntent`

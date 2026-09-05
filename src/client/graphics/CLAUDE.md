@@ -31,9 +31,8 @@
   `ctx_.ZoneLoad()`, …) and, except `RdpComponent`, an `IrrlichtRenderer&
   owner_` for what has not moved yet. L13 closed that handle down to 151
   uses (81 public methods + 70 in thirteen thread- or lifetime-bound stays);
-  it has drifted up with normal work since — T366's census read 163 and a
-  comment-filtered count at this tip reads **165**, so re-measure rather than
-  quote a number;
+  it has drifted up with normal work since — T366's census read 163, T371's
+  read 165 and T388's reads **174**, so re-measure rather than quote a number;
   a member owned by another component is reached as
   `ctx_.<Owner>().<accessor>()`. See the closed **B050** — read it before assuming a member belongs
   where you find it. `initLoadingScreen`, `initDeferredGraphics`,
@@ -48,7 +47,18 @@
 - `ConstrainedRendererConfig` - Hardware-tier presets (OrangePi, low, medium, high)
 - `ConstrainedTextureCache` - LRU-evicting texture cache with memory budget
 - `PortalSystem` - AABB-derived portal extraction and stencil-based portal occlusion
-- `SpellVisualFX` - Spell casting effects: glow, projectile, impact, aura, rain, ground circle
+- `SpellVisualFX` - Spell casting effects. **Only three of these are reached
+  from the game** (`src/client/bridge/irrlicht_bridge.cpp`): `createCastGlow` /
+  `removeCastGlow`, `createSpellComplete` and `createImpact`. The projectile,
+  buff-aura, rain and ground-circle entry points have **no production caller**
+  — their only callers are `tools/model_viewer/model_viewer_spell_test.cpp`
+  (the manual FX harness) and the T381 unit test, so no buff aura and no spell
+  projectile is ever created in a real session. Board **B161** (census re-taken
+  T388, decision deferred to **B165**/**B162**); the class header says the same
+  thing. Since T381 the FX layer is keyed on `EQ::SpellVisualVocabulary`
+  (`noteSpellVocabulary()`), pushed across the bridge by value on the two
+  spell-cast events — `setSpellDatabase()` and the `SpellDatabase` pointer are <!-- RETIRED-OK: tombstone for the route T381 deleted -->
+  gone (B160), and T384 added `travelType` to that vocabulary.
 - `ParticleManager` - Unified point-sprite particle system for weather and spell effects (GLES2)
 - `SpellEffectsConfig` - JSON-configurable spell particle presets (`config/spell_effects.json`)
 - `GPUUploadThread` - Async texture/VBO uploads via shared EGL context (separate from render thread)

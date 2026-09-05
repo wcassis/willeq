@@ -85,8 +85,12 @@ RETIRED = [
      "moved to eqt::PacketSender; a test arms it with "
      "eq.Net().Test_SetBypassSendGuardForSeam(true)", "T366 (B038)"),
     ("kWilleqDbExpectedVersion 5",
-     "the expected willeq.db version is 6 (spells.endurance_cost)",
-     "T355"),
+     "the expected willeq.db version is 7 (spells.target_anim, "
+     "spells.travel_type)", "T384 (B163)"),
+    ("kWilleqDbExpectedVersion 6",
+     "the expected willeq.db version is 7 -- T384 appended target_anim "
+     "(field 121) and travel_type (field 122) to the spells table, 99 "
+     "columns -> 101, and every build tree must be rebuilt", "T384 (B163)"),
     ("InputAction::ToggleInventory",
      "deleted -- it had no consumer in InputActionBridge", "T365 (B090)"),
     ("InputAction::ToggleSkills",
@@ -101,6 +105,24 @@ RETIRED = [
      "deleted -- it had no consumer in InputActionBridge", "T368 (B100)"),
     ("InputAction::ToggleVendor",
      "deleted -- it had no consumer in InputActionBridge", "T368 (B100)"),
+
+    # --- T388, from T376/T381 -------------------------------------------
+    ("m_pending_door_clicks",
+     "deleted; DoorStateManager owns the one pending-click set "
+     "(pendingClicks_, addPendingClick/isClickPending), and "
+     "ZoneProcessMoveDoor must ask BEFORE setDoorState consumes it",
+     "T376 (B141)"),
+    ("ClearPendingDoorClicks",
+     "deleted with m_pending_door_clicks; doors().clear() clears doors_ "
+     "and pendingClicks_ together", "T376 (B141)"),
+    ("m_doors",
+     "there is no such member; doors live in DoorStateManager::doors_, "
+     "reached as GameState::doors()", "T376 (B141)"),
+    ("setSpellDatabase",
+     "deleted with SpellVisualFX::m_spell_db; the renderer is fed "
+     "EQ::SpellVisualVocabulary by value over the bridge "
+     "(noteSpellVocabulary), because the SpellDatabase LRU is game-thread "
+     "owned and unlocked", "T381 (B160)"),
 ]
 
 

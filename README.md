@@ -42,7 +42,7 @@ current defect list; where the two disagree, the board wins.
 
 **What doesn't work or is incomplete:**
 - No character creation (requires existing account/character)
-- Visual spell effects incomplete (cast glow, projectile, impact, aura exist; many spell types missing)
+- Visual spell effects incomplete. Only the cast glow, the cast-complete flash and the impact are reached from the game; the projectile, buff-aura, rain and ground-circle code exists but has **no production caller** — its only callers are the `model_viewer` FX harness and a unit test (`refactor/BOARD.md` B161/B165), so no spell projectile and no buff aura is ever drawn in a real session
 - Swimming mechanics incomplete (keys exist, physics don't)
 - Boats/transport not implemented
 - Fall damage not implemented
@@ -93,7 +93,7 @@ Legend: Done | Partial | Not Implemented
 | Animated textures | Done | Water, lava, fire, flags |
 | Environmental particles | Done | Rain, snow, dust, pollen, mist, fireflies |
 | Ambient creatures | Done | Flocking birds, fish, insects (boids system) |
-| Spell visual effects | Partial | Cast glow, projectile, impact, aura, rain, ground circle; JSON-configurable |
+| Spell visual effects | Partial | Cast glow, cast-complete and impact only; the projectile/aura/rain/ground-circle code has no production caller (B161). JSON-configurable |
 | Detail objects | Partial | Grass, plants, rocks with wind animation |
 
 ### Movement
@@ -112,7 +112,7 @@ Legend: Done | Partial | Not Implemented
 ### Camera
 | Feature | Status | Notes |
 |---------|--------|-------|
-| First-person | Partial | Player model + eye camera + clamped down-pitch (T300); clamp angle inferred, live look unjudged |
+| First-person | Partial | Player model + weapon are drawn for the duration of an attack animation and at no other time (T307 measured this against the official client, T309 implemented it). The down-pitch clamp this row used to describe was REFUTED live and no longer exists. Eye placement is still open (B018) |
 | Third-person follow | Done | With collision, zoom +/- |
 | Free camera | Done | Debug/admin mode |
 | Mouse look | Done | LMB or RMB drag |
@@ -140,7 +140,7 @@ Legend: Done | Partial | Not Implemented
 | Spell book | Done | Searchable |
 | Memorize spells | Done | /mem, /forget, drag-to-gem |
 | Cast spells | Done | Gem slots, casting bar, interrupts |
-| Spell effects | Partial | Cast glow, projectile, impact, aura particles |
+| Spell effects | Partial | Cast glow, cast-complete and impact particles; projectile and aura are unreached code (B161) |
 | Buff bar | Done | Duration timers |
 
 ### Chat
@@ -197,7 +197,7 @@ Legend: Done | Partial | Not Implemented
 | Inspect | Done | /inspect; /inspectmessage sets your own text |
 | LFG / anon / roleplay / AFK | Done | Toggles |
 | Surname / random | Done | |
-| Bug / petition | Partial | /petition works; /bug body does not match the eqemu report format (T135) |
+| Bug / petition | Done | /petition and /bug both work. T375 rewrote `OP_Report`'s body to eqemu's `reporter|reported|text` byte-parsed shape; T377 proved the live row (`name=Testchar`, `reported_text` populated). `CanUseReport` allows one `/bug` per session |
 
 ### NPC Interaction
 | Feature | Status | Notes |
@@ -296,7 +296,7 @@ mkdir -p build && cmake -S . -B build \
 # Build
 cmake --build build -j24
 
-# Run tests (2746 registered tests)
+# Run tests (for the count: ctest --test-dir build -N | tail -1)
 ctest --test-dir build --output-on-failure
 ```
 
@@ -765,10 +765,10 @@ Software-mixed spatial audio using header-only libraries (no external deps):
 ### Key Components
 
 - **Application** (`src/client/application.cpp`) - Owns renderer, bridge, game thread, loading thread; CLI and config parsing
-- **EverQuest** (`src/client/eq.cpp` + 18 `eq_*.cpp` domain TUs) - Protocol handling and game state; see `docs/module_map.md`
+- **EverQuest** (`src/client/core/everquest.cpp` + the twelve extracted `src/client/<family>/` components, Batch K) - Protocol handling and game state; see `docs/module_map.md`
 - **GameStateBridge / IrrlichtBridge** (`include/client/bridge/`) - Thread-safe event/intent queues between game and renderer
 - **ActionDispatcher / CommandProcessor** (`src/client/action/`) - Unified action layer behind slash commands, hotbar, and console input
-- **IrrlichtRenderer** (`src/client/graphics/renderer/irrlicht_renderer.cpp` + `renderer_*.cpp`) - Scene management, zone load steps, visibility, lighting
+- **IrrlichtRenderer** (`src/client/graphics/renderer/` + the eleven `EQT::Graphics::<Name>Component` directories, Batch L) - Scene management, zone load steps, visibility, lighting
 - **EntityRenderer** - Character/NPC models with skeletal animation and equipment
 - **RaceModelLoader / EquipmentModelLoader** (`src/client/graphics/eq/`) - Model loading from S3D/WLD by race and item model
 - **EQE1Loader / EQE1TextureIndex** - mmap'd ETC1 flat packs and the name-to-archive index
@@ -788,12 +788,15 @@ src/
   client/
     main.cpp                 # Entry point
     application.cpp          # Application lifecycle, CLI/config parsing
-    eq.cpp, eq_*.cpp         # Client core + domain TUs (chat, combat, group, guild, merchant, ...)
+    core/                    # everquest.cpp + eq_chat/eq_strings/eq_player_info (Batch K)
+    chat/ commands/ entities/ gm/ group/ guild/ login_world/ merchant/
+    movement/ player/ zone/    # the twelve extracted EverQuest components (Batch K)
     action/                  # ActionDispatcher, CommandProcessor (slash commands)
     bridge/                  # Game<->renderer event/intent bridge
     graphics/
-      irrlicht_renderer.cpp  # Renderer core
-      renderer_*.cpp         # Zone load steps, frame, entities, overlays, diagnostics
+      renderer/              # IrrlichtRenderer's own four TUs (Batch L)
+      frame/ zone_load/ zone_lifecycle/ zone_stream/ player/ overlays/
+      diagnostics/ sim/ slash/ eqe1/ rdp/   # the eleven renderer components (Batch L)
       sim_*.cpp              # SimulationWorker: animation, particles, boids, weather, visibility
       eqe1_loader.cpp        # EQE1 flat-pack loader + texture index
       zone_shader.cpp        # GLSL ES shaders

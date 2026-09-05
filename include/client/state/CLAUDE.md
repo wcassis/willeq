@@ -19,7 +19,7 @@ Central owner of all state modules:
 | `SpellState` | `spell_state.h` | Spellbook, memorized gems (8), buffs, cooldowns |
 | `TradeState` | `trade_state.h` | Player-to-player trade session state |
 | `PetState` | `pet_state.h` | Pet name/level/HP, command state |
-| `DoorStateManager` | (in game state layer) | Door positions and open/closed state |
+| `DoorStateManager` | `door_state_manager.h` (`include/client/`) | Door positions and open/closed state (`doors_`), and since T376 (B141) the pending-click set (`pendingClicks_`, `addPendingClick()`/`isClickPending()`) that `EntitiesComponent` used to duplicate |
 
 **Lifecycle:**
 - `resetForZoneChange()` — clears entities/doors for zone transitions

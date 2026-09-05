@@ -21,7 +21,7 @@ it did.
 `tools/hwcaps/gles2_fog_volume_benchmark.cpp` 1,711 — three of them over the
 3,000-line hard cap, while `FileSizeCeiling` reported a clean tree. `tools/`
 holds production-API callers (board B166: `tools/model_viewer.cpp` was the one
-caller of `setSpellDatabase()`), so it is not a second-class directory.
+caller of `setSpellDatabase()`), so it is not a second-class directory. <!-- RETIRED-OK: the historical fact that made the case for scanning tools/; T381 deleted the method -->
 
 **Implications:** a scanned directory that does not exist is skipped, so
 `benchmarks/` (no C++ today) costs nothing and is covered the day it grows
@@ -864,5 +864,19 @@ Froglok measures a FOURTH level between Infravision and Ultravision that
 Ultravision on the official client is a ~1.55x whole-frame ambient raise at
 night, sky unchanged; Infravision ~1.25x and red. Fable now imposes a
 per-channel floor under the global ambient (`vision_ambient.cpp`), gains solved
-against the oracle. The residual is bounded by B080: fable's night is ~35x
-darker than the oracle's on near geometry.
+against the oracle.
+
+**Two corrections since (do not read the sentence this replaces).** (a) B080's
+"fable's night is ~35x darker than the oracle's on near geometry" is
+**REFUTED** — T367 measured both clients at a lamp-free spot at forced 22:00
+and fable reads 0.005502 linear grey against the oracle's 0.004245, i.e. fable
+is **1.30x brighter**. The 35x came from cropping two frames that did not show
+the same geometry. What is real is B080's *lead*: the missing night light is a
+lamp term, and the open residual is the baked per-vertex zone colours fable
+skips (**B110**, Will's call). (b) T377 re-measured the vision ratios
+(oracle 1.5612 / 1.2555 whole-frame) and T383 re-solved the gains **per
+channel** rather than as one scalar: Ultravision gain 0.1601 x tint
+(0.695, 0.698, 1.607), Infravision gain 0.1248 x tint (0.823, 0.759, 1.419),
+and the zone-light Infravision shift dropped 0.3 -> 0.0508. All six channel
+residuals land inside 0.11%. That fit is a model extrapolation from T361's
+exponent, not a closed loop — the live re-measure is still owed (B171).
