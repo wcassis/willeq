@@ -7,6 +7,7 @@
 #include <filesystem>
 #include "client/graphics/eq/dds_decoder.h"
 #include "client/graphics/eq/equipment_textures.h"
+#include "client/graphics/frame/frame_component.h"  // T357: setCommandCompletionProvider forwarder
 #include "client/graphics/frame_budget_governor.h"
 #include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/light_source.h"
@@ -789,6 +790,15 @@ void IrrlichtRenderer::handleActionResult(const std::string& actionName, bool su
     requestChatPrefill(message);
 }
 
+
+// T357 (B057): forwarder to the frame component, which owns the chat input
+// state the Tab arm edits. Application calls this once, after the renderer is
+// constructed and before the render thread starts.
+void IrrlichtRenderer::setCommandCompletionProvider(CommandCompletionProvider provider) {
+    if (frame_) {
+        frame_->setCommandCompletionProvider(std::move(provider));
+    }
+}
 
 void IrrlichtRenderer::run() {
     if (!initialized_) {

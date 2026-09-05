@@ -28,6 +28,9 @@
 #include "zone_stream_test_utils.h"
 
 #include <chrono>
+#include <fstream>
+#include <sstream>
+#include <string>
 
 using namespace zonetest;
 using namespace EQ;
@@ -416,8 +419,6 @@ TEST(SpellManagerHandlers, HandleActionSuccessPacketCompletesOwnCastAndFiresCall
 
     CastResult seenResult = CastResult::Interrupted;
     mgr->setOnCastComplete([&](CastResult r, uint32_t) { seenResult = r; });
-    bool landed = false;
-    mgr->setOnSpellLand([&](uint32_t, uint16_t, uint16_t) { landed = true; });
 
     EQT::SpellActionInfo action{};
     action.type = 231;
@@ -430,7 +431,6 @@ TEST(SpellManagerHandlers, HandleActionSuccessPacketCompletesOwnCastAndFiresCall
 
     EXPECT_FALSE(mgr->isCasting());
     EXPECT_EQ(seenResult, CastResult::Success);
-    EXPECT_TRUE(landed);
 }
 
 TEST(SpellManagerHandlers, HandleActionClearsTargetCastTracking) {
@@ -506,10 +506,17 @@ TEST(SpellManagerHandlers, HandleManaChangeDoesNotCrash) {
 }
 
 // ===================================================================
-// 5. Callbacks -- setOnCastComplete/setOnSpellLand/setOnSpellFade fire
-// with the right arguments. (setOnSpellFade has no production caller in
-// spell_manager.cpp itself -- see Review; round-tripped via direct
-// std::function assignment/invocation instead.)
+// 5. Callbacks -- setOnCastComplete/setOnSpellFade fire with the right
+// arguments. (setOnSpellFade has no production caller in spell_manager.cpp
+// itself -- see Review; round-tripped via direct std::function
+// assignment/invocation instead.)
+//
+// T357 (B061): setOnSpellLand is GONE, and so is the test that only
+// exercised it. It had zero setters in production, and its invocation in
+// handleAction() sat OUTSIDE the `spell && is_success_packet` gate, so it
+// fired on the animation packet too -- it was never a landing hook. The real
+// landing producer is OP_Action effect_flag 4 (T348). The absence is pinned
+// below by SpellLandHookIsGone.
 // ===================================================================
 
 TEST(SpellManagerCallbacks, OnCastCompleteReceivesResultAndSpellId) {
@@ -526,29 +533,6 @@ TEST(SpellManagerCallbacks, OnCastCompleteReceivesResultAndSpellId) {
         EXPECT_EQ(id, 7u);
     });
     mgr->completeCast(true);
-    EXPECT_TRUE(called);
-}
-
-TEST(SpellManagerCallbacks, OnSpellLandReceivesSpellCasterTarget) {
-    EverQuest eq = MakeEq();
-    auto* mgr = eq.GetSpellManager();
-
-    bool called = false;
-    mgr->setOnSpellLand([&](uint32_t spell_id, uint16_t caster_id, uint16_t target_id) {
-        called = true;
-        EXPECT_EQ(spell_id, 500u);
-        EXPECT_EQ(caster_id, 201u);
-        EXPECT_EQ(target_id, 202u);
-    });
-
-    EQT::SpellActionInfo action{};
-    action.type = 231;
-    action.effect_flag = 4;
-    action.source = 201;
-    action.target = 202;
-    action.spell = 500;
-    mgr->handleAction(action);
-
     EXPECT_TRUE(called);
 }
 
@@ -745,6 +729,43 @@ TEST(SpellManagerCastComplete, HandleInterruptOtherCasterDoesNotPublish) {
     for (auto& e : events) {
         EXPECT_NE(e.type, eqt::state::GameEventType::SpellCastComplete);
     }
+}
+
+// T357 (B061) -- the hook is gone and must stay gone.
+//
+// Red before the fix: every one of these strings was present in the header
+// and the TU. This is a source-reader pin because a deleted member has no
+// runtime observable: the whole point is that nothing fires. The invocation
+// it replaces sat at function scope in handleAction(), below and OUTSIDE the
+// `spell && is_success_packet` gate, which is what made it fire on the
+// animation packet.
+TEST(SpellLandHookIsGone, NoTypedefSetterMemberOrInvocationRemains) {
+    auto slurp = [](const std::string& path) {
+        std::ifstream in(path);
+        EXPECT_TRUE(in.is_open()) << "cannot open: " << path;
+        std::stringstream ss;
+        ss << in.rdbuf();
+        return ss.str();
+    };
+    const std::string root = WILLEQ_REPO_ROOT;
+    const std::string header = slurp(root + "/include/client/spell/spell_manager.h");
+    const std::string source = slurp(root + "/src/client/spell/spell_manager.cpp");
+
+    EXPECT_EQ(header.find("SpellLandCallback"), std::string::npos)
+        << "the typedef came back";
+    EXPECT_EQ(header.find("setOnSpellLand"), std::string::npos)
+        << "the setter came back -- it had zero production callers";
+    EXPECT_EQ(header.find("m_on_spell_land"), std::string::npos)
+        << "the member came back";
+    EXPECT_EQ(source.find("m_on_spell_land("), std::string::npos)
+        << "the invocation came back -- and it fires outside the is_success_packet "
+           "gate, i.e. on the animation packet, which is not a landing";
+
+    // The two neighbours it was deleted from between are untouched.
+    EXPECT_NE(header.find("SpellCastCallback"), std::string::npos);
+    EXPECT_NE(header.find("SpellFadeCallback"), std::string::npos);
+    EXPECT_NE(header.find("setOnCastComplete"), std::string::npos);
+    EXPECT_NE(header.find("setOnSpellFade"), std::string::npos);
 }
 
 int main(int argc, char** argv) {

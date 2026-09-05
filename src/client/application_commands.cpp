@@ -2,6 +2,7 @@
 #include <json/json.h>  // Must be before eq.h → logging.h so JSONCPP_VERSION_STRING is defined
 #include "client/eq.h"
 #include "client/help/merged_help.h"
+#include "client/graphics/ui/command_registry.h"  // T357: getCompletions() (complete type)
 // T310 Leg A: --fpcam. No renderer dependency -- the tunable store is a plain
 // process-global of floats (see the header), so this include is safe in an
 // EQT_GRAPHICS=OFF build too.
@@ -504,6 +505,27 @@ void Application::wireUnifiedCommandDispatch() {
             }
         });
     }
+}
+
+// T357 (B057): see the doc comment in application.h. The merge is what makes
+// this the ONE vocabulary: registry 1's names/aliases plus registry 2's, sorted
+// and de-duplicated (registry 3, the renderer's own slash set, is reached only
+// after both of these miss and has no getCompletions() to ask).
+std::vector<std::string> Application::commandCompletions(const std::string& partial) const {
+    std::vector<std::string> out;
+    if (m_eqClient) {
+        if (const eqt::ui::CommandRegistry* registry = m_eqClient->Commands().GetCommandRegistry()) {
+            out = registry->getCompletions(partial);
+        }
+    }
+    if (m_commandProcessor) {
+        for (std::string& name : m_commandProcessor->getCompletions(partial)) {
+            out.push_back(std::move(name));
+        }
+    }
+    std::sort(out.begin(), out.end());
+    out.erase(std::unique(out.begin(), out.end()), out.end());
+    return out;
 }
 
 CommandDispatchResult Application::DispatchSlashCommand(const std::string& rawLine) {

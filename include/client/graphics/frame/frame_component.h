@@ -142,7 +142,9 @@
 
 #include <chrono>
 #include <cstdint>
+#include <functional>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace eqt { namespace ui { class ChatMessageBuffer; } }
@@ -176,6 +178,30 @@ public:
 	void processCommonInput(const std::vector<RendererEvent>& actions);
 	void processPlayerInput(const std::vector<RendererEvent>& actions);
 	void processChatInput();
+
+	// ---- T357 (B057): slash-command tab completion ----
+	// The chat box is a hand-rolled string in chatPanelState_, drained by
+	// processChatInput() on the RENDER thread; the command vocabulary lives on
+	// the GAME thread (eqt::ui::CommandRegistry, which the submit path's
+	// ChatSubmitIntent reaches through ChatComponent::DispatchSlashCommand,
+	// plus action::CommandProcessor, which the unrecognized-command fallback
+	// reaches). Rather than give the renderer either registry, Application
+	// installs ONE provider closure here in initRendererAndGraphics() -- the
+	// same merged vocabulary /help lists (eqt::help::BuildHelpResponse takes
+	// both), so what Tab completes and what /help prints can never drift.
+	//
+	// Both maps are filled during EverQuest construction / initActionLayer(),
+	// before the render loop starts, and nothing registers or unregisters a
+	// command afterwards, so this const read needs no lock. If a command is
+	// ever registered live, this becomes a race and needs one.
+	using CommandCompletionProvider =
+	    std::function<std::vector<std::string>(const std::string& partial)>;
+	void setCommandCompletionProvider(CommandCompletionProvider provider) {
+		commandCompletionProvider_ = std::move(provider);
+	}
+	bool hasCommandCompletionProvider() const {
+		return static_cast<bool>(commandCompletionProvider_);
+	}
 
 	// ---- UI panel state ----
 	// The first sixteen were already public on IrrlichtRenderer, with the
@@ -327,6 +353,13 @@ private:
 	int polygonBudgetExceededFrames_ = 0;  // Throttle warnings
 	int constrainedStatsLogCounter_ = 0;   // Periodic stats logging
 	bool frustumDebugDraw_ = false;  // Draw region bboxes colored by frustum result
+
+	// T357 (B057): the Tab arm of processChatInput()'s key drain, and the
+	// closure it completes from (empty until Application installs one -- a
+	// bare renderer in a test then treats Tab as a no-op, exactly as a run
+	// with no command registries would).
+	void applyCommandCompletion();
+	CommandCompletionProvider commandCompletionProvider_;
 
 	// L13: owned state, see the accessors above.
 	bool chatInputFocused_ = false;

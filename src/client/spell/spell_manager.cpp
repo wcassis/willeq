@@ -1044,10 +1044,13 @@ void SpellManager::handleAction(const EQT::SpellActionInfo& action)
         completeCast(true);
     }
 
-    // Notify callback
-    if (m_on_spell_land) {
-        m_on_spell_land(spell_id, caster_id, target_id);
-    }
+    // T357 (B061): the m_on_spell_land callback that used to fire here is
+    // GONE. It had zero setters tree-wide, and this invocation sat OUTSIDE the
+    // `spell && is_success_packet` gate above -- so it fired on the animation
+    // packet as well, which is not a landing at all. Spell landing is
+    // OP_Action with effect_flag 4, and T348 built the real producer there
+    // (refactor/T348_buff_landing_producer.md); nothing needs a second,
+    // wrong-shaped hook here.
 }
 
 void SpellManager::handleInterrupt(uint16_t caster_id, uint16_t spell_id, uint8_t message_type)

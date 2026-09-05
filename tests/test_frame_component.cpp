@@ -14,11 +14,15 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/frame/frame_component.h"
+#include "client/bridge/game_state_bridge.h"
+#include "client/state/event_bus.h"
 
 using namespace EQT::Graphics;
 
@@ -147,6 +151,143 @@ TEST_F(FrameComponentTest, ProcessFrameOnANotRunningRendererStopsThroughTheForwa
     // component -> owner_ path, with no device touched.
     EXPECT_FALSE(renderer.processFrame(0.016f));
     EXPECT_FALSE(renderer.Frame().processFrame(0.016f));
+}
+
+// =========================================================================
+// T357 (B057) -- Tab completion, through the key drain a player reaches.
+//
+// Red before the fix: processChatInput()'s while-loop had no KEY_TAB arm, so
+// Tab fell through to the printable-character test (char 9 < 32) and did
+// nothing at all; CommandProcessor::getCompletions() and
+// CommandRegistry::getCompletions() were both implemented, tested and called
+// by NOTHING in production while both CLAUDE.md files advertised the feature.
+//
+// The vocabulary here is a stand-in for the closure Application installs in
+// initRendererAndGraphics() (that statement is itself pinned by
+// tests/goldens/application_init_order_g04.txt entry 256, which is the
+// reachability net -- this file pins the behaviour).
+// =========================================================================
+
+irr::SEvent TabKeyDown() {
+    irr::SEvent ev{};
+    ev.EventType = irr::EET_KEY_INPUT_EVENT;
+    ev.KeyInput.Key = irr::KEY_TAB;
+    ev.KeyInput.Char = L'\t';
+    ev.KeyInput.PressedDown = true;
+    ev.KeyInput.Shift = false;
+    ev.KeyInput.Control = false;
+    return ev;
+}
+
+class CompletionCaptureBridge : public eqt::bridge::GameStateBridge {
+public:
+    void applyEvent(const eqt::state::GameEvent&) override {}
+};
+
+std::vector<std::string> DrainSystemMessages(eqt::bridge::GameStateBridge& bridge) {
+    std::vector<std::string> out;
+    for (auto& ev : bridge.drainEvents()) {
+        if (ev.type == eqt::state::GameEventType::SystemMessage) {
+            out.push_back(std::get<eqt::state::ChatMessageData>(ev.data).message);
+        }
+    }
+    return out;
+}
+
+class ChatTabCompletionTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        renderer.Context().eventReceiver = std::make_unique<RendererEventReceiver>();
+        renderer.setBridge(&bridge);
+        // A tiny fixed vocabulary standing in for the merged registry-1 +
+        // registry-2 set Application supplies. Prefix-matched and sorted
+        // exactly as both production getCompletions() do.
+        renderer.setCommandCompletionProvider([](const std::string& partial) {
+            static const std::vector<std::string> kVocab = {
+                "guild", "guildinvite", "gu", "say", "target"};
+            std::vector<std::string> hits;
+            for (const std::string& name : kVocab) {
+                if (name.rfind(partial, 0) == 0) hits.push_back(name);
+            }
+            std::sort(hits.begin(), hits.end());
+            return hits;
+        });
+    }
+    // Open the chat box on the given text, the way the T319 prefill path does,
+    // then press Tab and let the drain run.
+    void TypeThenTab(const std::string& text) {
+        renderer.requestChatPrefill(text);
+        renderer.Frame().processChatInput();
+        renderer.Context().eventReceiver->OnEvent(TabKeyDown());
+        renderer.Frame().processChatInput();
+    }
+    IrrlichtRenderer renderer;
+    CompletionCaptureBridge bridge;
+};
+
+TEST_F(ChatTabCompletionTest, TabCompletesAUniquePartialAndLeavesRoomForArguments) {
+    TypeThenTab("/target");
+    EXPECT_EQ(renderer.Frame().chatPanelState_.inputText, "/target ")
+        << "Tab did not complete the only matching command";
+    EXPECT_EQ(renderer.Frame().chatPanelState_.cursorPos,
+              static_cast<int>(std::string("/target ").size()));
+    EXPECT_TRUE(DrainSystemMessages(bridge).empty())
+        << "a unique completion must not also print a candidate list";
+}
+
+TEST_F(ChatTabCompletionTest, TabOnSeveralMatchesListsThemOnOneChatLineAndKeepsTheText) {
+    TypeThenTab("/gu");
+    EXPECT_EQ(renderer.Frame().chatPanelState_.inputText, "/gu")
+        << "an ambiguous Tab must not rewrite what the player typed";
+    auto msgs = DrainSystemMessages(bridge);
+    ASSERT_EQ(msgs.size(), 1u) << "the candidates must arrive as ONE chat line";
+    EXPECT_NE(msgs[0].find("/gu"), std::string::npos) << "got: " << msgs[0];
+    EXPECT_NE(msgs[0].find("/guild"), std::string::npos) << "got: " << msgs[0];
+    EXPECT_NE(msgs[0].find("/guildinvite"), std::string::npos) << "got: " << msgs[0];
+}
+
+TEST_F(ChatTabCompletionTest, TabWithNoMatchDoesNothingAtAll) {
+    TypeThenTab("/zzz");
+    EXPECT_EQ(renderer.Frame().chatPanelState_.inputText, "/zzz");
+    EXPECT_TRUE(DrainSystemMessages(bridge).empty());
+}
+
+TEST_F(ChatTabCompletionTest, TabOnPlainChatTextIsANoOp) {
+    // Not a slash command: there is no vocabulary to complete against, and
+    // eating the player's sentence would be the worst possible outcome.
+    TypeThenTab("guild meeting at 8");
+    EXPECT_EQ(renderer.Frame().chatPanelState_.inputText, "guild meeting at 8");
+    EXPECT_TRUE(DrainSystemMessages(bridge).empty());
+}
+
+TEST_F(ChatTabCompletionTest, TabAfterTheCommandWordDoesNotTouchTheArguments) {
+    // "/say gu" -- 'gu' is an argument, not a command; completing it would
+    // rewrite the message being typed.
+    TypeThenTab("/say gu");
+    EXPECT_EQ(renderer.Frame().chatPanelState_.inputText, "/say gu");
+    EXPECT_TRUE(DrainSystemMessages(bridge).empty());
+}
+
+TEST_F(ChatTabCompletionTest, TabStaysInsideTheChatBox) {
+    // Consuming the event is what keeps Tab from reaching
+    // HotkeyAction::CycleTargets (and, in an Irrlicht build with widgets,
+    // from moving focus). The receiver's chat-focus gate is the mechanism;
+    // pin that chat focus is still held after the completion.
+    TypeThenTab("/target");
+    EXPECT_TRUE(renderer.Frame().chatPanelState_.inputActive);
+    EXPECT_TRUE(renderer.Frame().chatInputFocused())
+        << "Tab dropped chat focus -- the next keystroke would go to the hotkey table";
+}
+
+TEST_F(ChatTabCompletionTest, ABareRendererWithNoProviderTreatsTabAsANoOp) {
+    IrrlichtRenderer bare;
+    bare.Context().eventReceiver = std::make_unique<RendererEventReceiver>();
+    EXPECT_FALSE(bare.Frame().hasCommandCompletionProvider());
+    bare.requestChatPrefill("/gu");
+    bare.Frame().processChatInput();
+    bare.Context().eventReceiver->OnEvent(TabKeyDown());
+    bare.Frame().processChatInput();
+    EXPECT_EQ(bare.Frame().chatPanelState_.inputText, "/gu");
 }
 
 }  // namespace

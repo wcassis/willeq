@@ -509,6 +509,17 @@ void FrameComponent::processChatInput() {
                 return;
             }
 
+            if (ke.key == irr::KEY_TAB) {
+                // T357 (B057): complete the slash command under the caret.
+                // Tab is already consumed by RendererEventReceiver::OnEvent()
+                // while chat is focused (only F1-F12 escape that gate), so it
+                // never reaches HotkeyAction::CycleTargets from here and
+                // Irrlicht focus cannot move -- there is no IGUIEditBox to
+                // move it to.
+                applyCommandCompletion();
+                continue;
+            }
+
             if (ke.key == irr::KEY_BACK) {
                 // Backspace
                 if (chatPanelState_.cursorPos > 0 && !chatPanelState_.inputText.empty()) {
@@ -551,6 +562,74 @@ void FrameComponent::processChatInput() {
             ctx_.eventReceiver->pushBridgeAction({RendererAction::ClearTarget});
         }
     }
+}
+
+// T357 (B057): the Tab arm of processChatInput()'s key drain.
+//
+// Before this unit BOTH CommandProcessor::getCompletions() and
+// CommandRegistry::getCompletions() were implemented, tested and called by
+// nothing in production, while both CLAUDE.md files advertised tab
+// completion. This is the caller. The vocabulary comes from the provider
+// Application installs (see FrameComponent::setCommandCompletionProvider) --
+// the same merged registry-1 + registry-2 set /help prints -- so completion
+// and help can never list different commands.
+//
+// Rules, matching the official client's behaviour closely enough to be
+// unsurprising:
+//   * only a line that starts with '/' completes; plain chat does not;
+//   * only the COMMAND WORD completes -- once the line has a space the
+//     argument vocabulary is per-command and we have none, so Tab is a no-op
+//     rather than a corruption of what the player typed;
+//   * exactly one match replaces the partial and appends a space, so the
+//     player can type arguments without reaching for it;
+//   * several matches print them on ONE chat line and leave the text alone
+//     (the shell convention, and the line the player is reading is the same
+//     System channel /help writes to);
+//   * no match does nothing at all -- silently, because a beep-equivalent
+//     for every stray Tab would be noise.
+void FrameComponent::applyCommandCompletion() {
+    if (!commandCompletionProvider_) {
+        return;
+    }
+    const std::string& text = chatPanelState_.inputText;
+    if (text.empty() || text[0] != '/') {
+        return;
+    }
+    const std::string partial = text.substr(1);
+    if (partial.find(' ') != std::string::npos) {
+        return;
+    }
+
+    const std::vector<std::string> matches = commandCompletionProvider_(partial);
+    if (matches.empty()) {
+        return;
+    }
+
+    if (matches.size() == 1) {
+        chatPanelState_.inputText = "/" + matches[0] + " ";
+        chatPanelState_.cursorPos = static_cast<int>(chatPanelState_.inputText.size());
+        return;
+    }
+
+    std::string line;
+    for (const std::string& m : matches) {
+        if (!line.empty()) {
+            line += "  ";
+        }
+        line += "/" + m;
+    }
+    // Same push the renderer's own slash commands use (registry 3's
+    // counterpart of EverQuest::AddChatSystemMessage) -- this runs on the
+    // render thread, where the game-thread ChatOutput is not reachable.
+    if (ctx_.bridge) {
+        eqt::state::ChatMessageData data;
+        data.message = line;
+        data.channelType = 0;
+        data.channelName = "system";
+        ctx_.bridge->pushEvent(eqt::state::GameEvent(
+            eqt::state::GameEventType::SystemMessage, std::move(data)));
+    }
+    LOG_INFO(MOD_MAIN, "{}", line);
 }
 
 // ===== Phase 2: Visibility =====

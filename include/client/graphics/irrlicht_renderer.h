@@ -421,6 +421,15 @@ public:
         return taken;
     }
 
+    // ---- T357 (B057): slash-command tab completion ----
+    // Application installs the vocabulary (initRendererAndGraphics()); the
+    // Tab arm of FrameComponent::processChatInput() consumes it. Declared
+    // here rather than on FrameComponent's type so application.cpp does not
+    // need the component header. Body in irrlicht_renderer.cpp.
+    using CommandCompletionProvider =
+        std::function<std::vector<std::string>(const std::string& partial)>;
+    void setCommandCompletionProvider(CommandCompletionProvider provider);
+
     // Run the main render loop (blocking)
     void run();
 
