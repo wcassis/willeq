@@ -1029,6 +1029,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/texture_upload_ledger.cpp
         src/client/graphics/eqe1_loader.cpp
         src/client/graphics/background_thread_pool.cpp
+        # T399 (board B235): every routed loader calls eqt::ResolveDataPath().
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
     )
     # P26: GPU upload thread (GLES2 only — needed by constrained_texture_cache)
     IF(EQT_GLES2)
@@ -1095,6 +1097,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/texture_upload_ledger.cpp
         src/client/graphics/eqe1_loader.cpp
         src/client/graphics/background_thread_pool.cpp
+        # T399 (board B235): every routed loader calls eqt::ResolveDataPath().
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
     )
     # P26: GPU upload thread (GLES2 only — needed by constrained_texture_cache)
     IF(EQT_GLES2)
@@ -1283,6 +1287,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/texture_upload_ledger.cpp
         src/client/graphics/eqe1_loader.cpp
         src/client/graphics/background_thread_pool.cpp
+        # T399 (board B235): every routed loader calls eqt::ResolveDataPath().
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
     )
     # P26: GPU upload thread (GLES2 only — needed by constrained_texture_cache)
     IF(EQT_GLES2)
@@ -1351,6 +1357,8 @@ IF(EQT_GRAPHICS)
         src/client/hc_map.cpp
         src/client/raycast_mesh.cpp
         src/common/util/compression.cpp
+        # T399 (board B235): every routed loader calls eqt::ResolveDataPath().
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
     )
     # P26: GPU upload thread (GLES2 only — needed by constrained_texture_cache)
     IF(EQT_GLES2)
@@ -1812,6 +1820,8 @@ IF(EQT_GRAPHICS)
         third_party/sqlite3.c
         src/client/zone_bsp.cpp
         src/common/util/compression.cpp
+        # T399 (board B235): every routed loader calls eqt::ResolveDataPath().
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
     )
     # GPU upload thread (GLES2 only — needed by texture_atlas.cpp)
     IF(EQT_GLES2)
@@ -1946,6 +1956,8 @@ IF(EQT_GRAPHICS)
         third_party/sqlite3.c
         src/client/zone_bsp.cpp
         src/common/util/compression.cpp
+        # T399 (board B235): every routed loader calls eqt::ResolveDataPath().
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
     )
     IF(EQT_GLES2)
         TARGET_SOURCES(gles2_shader_diagnostic PRIVATE src/client/graphics/gpu_upload_thread.cpp)
@@ -2042,6 +2054,8 @@ IF(EQT_GRAPHICS)
         third_party/sqlite3.c
         src/client/zone_bsp.cpp
         src/common/util/compression.cpp
+        # T399 (board B235): every routed loader calls eqt::ResolveDataPath().
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
     )
     IF(EQT_GLES2)
         TARGET_SOURCES(gles2_composite_audit PRIVATE src/client/graphics/gpu_upload_thread.cpp)

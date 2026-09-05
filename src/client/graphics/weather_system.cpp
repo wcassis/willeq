@@ -1,6 +1,7 @@
 #include "client/graphics/weather_system.h"
 #include "client/graphics/simulation_worker.h"
 #include "common/logging.h"
+#include "client/data_paths.h"
 #include <json/json.h>
 #include <fstream>
 #include <sstream>
@@ -141,12 +142,16 @@ std::string WeatherSystem::getDebugInfo() const {
 
 bool loadZoneWeatherConfig(const std::string& zoneName, ZoneWeatherConfig& config) {
     // Try zone-specific config
-    std::string configPath = "config/zones/" + zoneName + "/weather.json";
+    // T399 (board B235): both candidates go through the one path rule. Both
+    // are genuinely optional -- neither config/zones/ nor data/config/ exists
+    // in the tree -- so the miss stays silent and the caller keeps its
+    // built-in per-zone table.
+    std::string configPath = eqt::ResolveDataPath("config/zones/" + zoneName + "/weather.json");
     std::ifstream file(configPath);
 
     if (!file.is_open()) {
         // Try default weather config
-        configPath = "data/config/weather.json";
+        configPath = eqt::ResolveDataPath("data/config/weather.json");
         file.open(configPath);
 
         if (!file.is_open()) {

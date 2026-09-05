@@ -1,5 +1,6 @@
 #include "client/graphics/environment/environment_config.h"
 #include "common/logging.h"
+#include "client/data_paths.h"
 #include <json/json.h>
 #include <fstream>
 
@@ -13,11 +14,16 @@ EnvironmentEffectsConfig& EnvironmentEffectsConfig::instance() {
 }
 
 bool EnvironmentEffectsConfig::load(const std::string& path) {
-    configPath_ = path;
+    // T399 (board B235): resolved; config/environment_effects.json is
+    // shipped, so a miss silently swaps the ambient effect settings.
+    configPath_ = eqt::ResolveDataPath(path);
 
-    std::ifstream file(path);
+    std::ifstream file(configPath_);
     if (!file.is_open()) {
-        LOG_WARN(MOD_GRAPHICS, "EnvironmentEffectsConfig: Could not open '{}', using defaults", path);
+        LOG_ERROR(MOD_GRAPHICS,
+                  "EnvironmentEffectsConfig: cannot open '{}' (resolved to '{}') -- the "
+                  "SHIPPED ambient effect settings are not applied; built-in defaults are "
+                  "in effect", path, configPath_);
         setDefaults();
         loaded_ = true;
         return true;  // Not an error, just use defaults

@@ -14,6 +14,7 @@
 #include <GLES2/gl2.h>
 #endif
 #include "common/logging.h"
+#include "client/data_paths.h"
 #include <algorithm>
 #include <cmath>
 #include <fstream>
@@ -140,19 +141,18 @@ bool ParticleManager::init(const std::string& eqClientPath) {
     // SpellEffectsConfig::load() now resolves its argument through
     // eqt::ResolveDataPath() and returns false -- loudly -- when the file is
     // missing, so this call works from any working directory.
-    // EnvironmentEffectsConfig is the same shape and is NOT fixed here: its
-    // loader is weather/ambient territory owned by a parallel unit. It is
-    // boarded, not forgotten.
-    EnvironmentEffectsConfig::instance().load("config/environment_effects.json");
+    // T399 closed B235: EnvironmentEffectsConfig is routed too (T396 has
+    // merged, so the weather/ambient files are no longer another unit's).
+    EnvironmentEffectsConfig::instance().load(eqt::ResolveDataPath("config/environment_effects.json"));
 
-    if (!SpellEffectsConfig::instance().load("config/spell_effects.json")) {
+    if (!SpellEffectsConfig::instance().load(eqt::ResolveDataPath("config/spell_effects.json"))) {
         LOG_ERROR(MOD_GRAPHICS,
                   "ParticleManager: spell effect presets are the built-in fallback table, "
                   "not the shipped config -- spell visuals will differ from the shipped effect");
     }
 
     // Load particle atlas texture via constrained cache
-    std::string atlasPath = kAtlasTexturePath;
+    std::string atlasPath = eqt::ResolveDataPath(kAtlasTexturePath);
     if (!loadParticleAtlas(atlasPath)) {
         LOG_FATAL(MOD_GRAPHICS, "ParticleManager: Required texture {} not found — run generate_textures first", atlasPath);
         std::exit(1);
@@ -253,7 +253,7 @@ void ParticleManager::onZoneEnter(const std::string& zoneName, ZoneBiome biome) 
     // after unloadZone()'s clear() has already executed (P17 synchronous
     // unload), making this the correct per-zone re-acquisition point.
     if (initialized_ && !atlasTexture_) {
-        if (loadParticleAtlas(kAtlasTexturePath)) {
+        if (loadParticleAtlas(eqt::ResolveDataPath(kAtlasTexturePath))) {
             particleMaterial_.setTexture(0, atlasTexture_);
             LOG_INFO(MOD_GRAPHICS, "ParticleManager: re-acquired atlas texture for zone '{}'", zoneName);
         } else {

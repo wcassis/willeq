@@ -62,9 +62,9 @@
 42 struct stat st;
 43 if (stat(path.c_str(), &st) != 0 || !S_ISREG(st.st_mode)) {
 44 missing += fmt::format("  - {}: {}\n", what, path);
-45 checkFile("config/constrained_presets.json", "constrained presets config");
-46 checkFile("config/race_models.json", "race model mappings");
-47 checkFile("data/item_models.json", "item model mappings");
+45 checkFile(eqt::ResolveDataPath("config/constrained_presets.json"), "constrained presets config");
+46 checkFile(eqt::ResolveDataPath("config/race_models.json"), "race model mappings");
+47 checkFile(eqt::ResolveDataPath("data/item_models.json"), "item model mappings");
 48 checkFile(config.eqClientPath + "/eqstr_us.txt", "EQ string database");
 49 checkFile(config.eqClientPath + "/dbstr_us.txt", "EQ database strings");
 50 checkFile(config.eqClientPath + "/spells_us.txt", "spell database");
@@ -92,7 +92,7 @@
 72 m_eqClient->Zone().SetNavmeshPath(config.navmeshPath);
 73 if (!config.mapsPath.empty()) {
 74 m_eqClient->Zone().SetMapsPath(config.mapsPath);
-75 std::string dbPath = "data/willeq.db";
+75 std::string dbPath = eqt::ResolveDataPath("data/willeq.db");
 76 m_eqClient->OpenDatabase(dbPath);
 77 if (!config.recordSessionPath.empty()) {
 78 m_eqClient->StartSessionRecording(config.recordSessionPath);
@@ -188,7 +188,7 @@
 168 builtConfig.textureMemoryBytes / (1024*1024),
 169 builtConfig.framebufferMemoryBytes / (1024*1024));
 170 LOG_TRACE(MOD_GRAPHICS, "Loading JSON overrides for memory spec...");
-171 builtConfig.loadJsonOverrides(config.constrainedPreset, "config/constrained_presets.json");
+171 builtConfig.loadJsonOverrides(config.constrainedPreset, eqt::ResolveDataPath("config/constrained_presets.json"));
 172 } else {
 173 auto preset = EQT::Graphics::ConstrainedRendererConfig::parsePreset(config.constrainedPreset);
 174 LOG_DEBUG(MOD_GRAPHICS, "Using named preset '{}' -> {}",
@@ -196,13 +196,13 @@
 176 EQT::Graphics::ConstrainedRendererConfig::presetName(preset));
 177 builtConfig = EQT::Graphics::ConstrainedRendererConfig::fromPreset(preset);
 178 LOG_TRACE(MOD_GRAPHICS, "Loading JSON overrides for named preset...");
-179 builtConfig.loadJsonOverrides(config.constrainedPreset, "config/constrained_presets.json");
+179 builtConfig.loadJsonOverrides(config.constrainedPreset, eqt::ResolveDataPath("config/constrained_presets.json"));
 180 } else {
 181 LOG_DEBUG(MOD_GRAPHICS, "No preset specified, defaulting to OrangePi");
 182 builtConfig = EQT::Graphics::ConstrainedRendererConfig::fromPreset(
 183 EQT::Graphics::ConstrainedRenderingPreset::OrangePi);
 184 LOG_TRACE(MOD_GRAPHICS, "Loading JSON overrides for default preset...");
-185 builtConfig.loadJsonOverrides("orangepi", "config/constrained_presets.json");
+185 builtConfig.loadJsonOverrides("orangepi", eqt::ResolveDataPath("config/constrained_presets.json"));
 186 if (config.rendererGles2Requested) {
 187 LOG_DEBUG(MOD_GRAPHICS, "CLI override: renderer backend -> {}",
 188 EQT::Graphics::backendName(builtConfig.renderingBackend));
@@ -233,7 +233,7 @@
 213 LOG_DEBUG(MOD_GRAPHICS, "CLI override: deferred asset loading -> {}",
 214 builtConfig.deferredAssetLoading ? "automatic" : "manual");
 215 LOG_TRACE(MOD_GRAPHICS, "Loading debug overrides...");
-216 builtConfig.loadDebugOverrides("config/debug.json");
+216 builtConfig.loadDebugOverrides(eqt::ResolveDataPath("config/debug.json"));
 217 std::string presetErrors;
 218 if (!builtConfig.validate(presetErrors)) {
 219 LOG_FATAL(MOD_GRAPHICS, "Invalid constrained renderer config:\n{}", presetErrors);

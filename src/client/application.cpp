@@ -1,6 +1,7 @@
 #include "client/application.h"
 #include <json/json.h>  // Must be before eq.h → logging.h so JSONCPP_VERSION_STRING is defined
 #include "client/eq.h"
+#include "client/data_paths.h"
 #include "client/help/merged_help.h"
 // T310 Leg A: --fpcam. No renderer dependency -- the tunable store is a plain
 // process-global of floats (see the header), so this include is safe in an
@@ -222,15 +223,18 @@ bool Application::initRequiredFileValidation(const ApplicationConfig& config) {
 #ifdef EQT_HAS_GRAPHICS
     if (config.graphicsEnabled) {
         std::string missing;
+        // T399 (board B235): every shipped-data literal below is resolved
+        // through the one path rule, so the validation agrees with what the
+        // loaders will actually open from any working directory.
         auto checkFile = [&missing](const std::string& path, const char* what) {
             struct stat st;
             if (stat(path.c_str(), &st) != 0 || !S_ISREG(st.st_mode)) {
                 missing += fmt::format("  - {}: {}\n", what, path);
             }
         };
-        checkFile("config/constrained_presets.json", "constrained presets config");
-        checkFile("config/race_models.json", "race model mappings");
-        checkFile("data/item_models.json", "item model mappings");
+        checkFile(eqt::ResolveDataPath("config/constrained_presets.json"), "constrained presets config");
+        checkFile(eqt::ResolveDataPath("config/race_models.json"), "race model mappings");
+        checkFile(eqt::ResolveDataPath("data/item_models.json"), "item model mappings");
         checkFile(config.eqClientPath + "/eqstr_us.txt", "EQ string database");
         checkFile(config.eqClientPath + "/dbstr_us.txt", "EQ database strings");
         checkFile(config.eqClientPath + "/spells_us.txt", "spell database");
@@ -289,7 +293,12 @@ bool Application::initEverQuestClient(const ApplicationConfig& config) {
 
         // Open WilleqDatabase before any data lookups (SetEQClientPath loads strings)
         {
-            std::string dbPath = "data/willeq.db";
+            // T399 (board B235): resolved, so a client started outside the
+            // repo root opens the shipped db rather than silently falling
+            // back to legacy file loading. The version check is unchanged --
+            // it runs inside WilleqDatabase::open() on whatever this resolves
+            // to.
+            std::string dbPath = eqt::ResolveDataPath("data/willeq.db");
             m_eqClient->OpenDatabase(dbPath);
         }
 
@@ -515,7 +524,7 @@ bool Application::initConstrainedRendererConfig(const ApplicationConfig& config)
                               builtConfig.textureMemoryBytes / (1024*1024),
                               builtConfig.framebufferMemoryBytes / (1024*1024));
                     LOG_TRACE(MOD_GRAPHICS, "Loading JSON overrides for memory spec...");
-                    builtConfig.loadJsonOverrides(config.constrainedPreset, "config/constrained_presets.json");
+                    builtConfig.loadJsonOverrides(config.constrainedPreset, eqt::ResolveDataPath("config/constrained_presets.json"));
                 } else {
                     auto preset = EQT::Graphics::ConstrainedRendererConfig::parsePreset(config.constrainedPreset);
                     LOG_DEBUG(MOD_GRAPHICS, "Using named preset '{}' -> {}",
@@ -523,7 +532,7 @@ bool Application::initConstrainedRendererConfig(const ApplicationConfig& config)
                               EQT::Graphics::ConstrainedRendererConfig::presetName(preset));
                     builtConfig = EQT::Graphics::ConstrainedRendererConfig::fromPreset(preset);
                     LOG_TRACE(MOD_GRAPHICS, "Loading JSON overrides for named preset...");
-                    builtConfig.loadJsonOverrides(config.constrainedPreset, "config/constrained_presets.json");
+                    builtConfig.loadJsonOverrides(config.constrainedPreset, eqt::ResolveDataPath("config/constrained_presets.json"));
                 }
             } else {
                 // Default to OrangePi preset
@@ -531,7 +540,7 @@ bool Application::initConstrainedRendererConfig(const ApplicationConfig& config)
                 builtConfig = EQT::Graphics::ConstrainedRendererConfig::fromPreset(
                     EQT::Graphics::ConstrainedRenderingPreset::OrangePi);
                 LOG_TRACE(MOD_GRAPHICS, "Loading JSON overrides for default preset...");
-                builtConfig.loadJsonOverrides("orangepi", "config/constrained_presets.json");
+                builtConfig.loadJsonOverrides("orangepi", eqt::ResolveDataPath("config/constrained_presets.json"));
             }
 
             // CLI override: --renderer gles2 is a no-op (GLES2 is the only
@@ -592,7 +601,7 @@ bool Application::initConstrainedRendererConfig(const ApplicationConfig& config)
 
             // Load debug overrides (skip* flags from config/debug.json)
             LOG_TRACE(MOD_GRAPHICS, "Loading debug overrides...");
-            builtConfig.loadDebugOverrides("config/debug.json");
+            builtConfig.loadDebugOverrides(eqt::ResolveDataPath("config/debug.json"));
 
             // S02: Validate preset values
             {

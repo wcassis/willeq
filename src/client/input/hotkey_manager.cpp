@@ -1,5 +1,6 @@
 #include "client/input/hotkey_manager.h"
 #include "common/logging.h"
+#include "client/data_paths.h"
 #include <fstream>
 #include <sstream>
 #include <algorithm>
@@ -596,9 +597,17 @@ uint32_t HotkeyManager::makeKeyHash(irr::EKEY_CODE key, ModifierFlags mods) cons
 }
 
 bool HotkeyManager::loadFromFile(const std::string& path) {
-    std::ifstream file(path);
+    // T399 (board B235): shipped data resolves through the one path rule.
+    // config/hotkeys.json IS shipped, so a miss is not "no user overrides
+    // yet" -- it means the shipped bindings are not the ones in effect.
+    // That was a LOG_DEBUG; it is an ERROR now.
+    const std::string resolved = eqt::ResolveDataPath(path);
+    std::ifstream file(resolved);
     if (!file.is_open()) {
-        LOG_DEBUG(MOD_INPUT, "HotkeyManager: Config file not found: {}", path);
+        LOG_ERROR(MOD_INPUT,
+                  "HotkeyManager: cannot open '{}' (resolved to '{}') -- the SHIPPED key "
+                  "bindings are not loaded; the built-in defaults are in effect",
+                  path, resolved);
         return false;
     }
 
@@ -607,11 +616,11 @@ bool HotkeyManager::loadFromFile(const std::string& path) {
     std::string errors;
 
     if (!Json::parseFromStream(builder, file, &root, &errors)) {
-        LOG_ERROR(MOD_INPUT, "HotkeyManager: Failed to parse {}: {}", path, errors);
+        LOG_ERROR(MOD_INPUT, "HotkeyManager: Failed to parse {}: {}", resolved, errors);
         return false;
     }
 
-    m_configPath = path;
+    m_configPath = resolved;
 
     // Clear existing bindings and set up fresh from file
     m_bindings.clear();

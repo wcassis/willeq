@@ -1,6 +1,7 @@
 #include "client/zone_lines.h"
 #include "client/hc_map.h"
 #include "common/logging.h"
+#include "client/data_paths.h"
 #include <algorithm>
 #include <iostream>
 #include <fstream>
@@ -114,8 +115,10 @@ bool ZoneLines::loadFromZone(const std::string& zoneName, const std::string& eqC
     bool loadedAny = false;
 
     // First, try to load from zone-specific file (preferred - manually curated data)
+    // T399 (board B235): the first candidate goes through the one path rule,
+    // so a client started outside the repo root still finds the shipped file.
     std::vector<std::string> zoneSpecificPaths = {
-        "data/zone_lines/" + zoneName + ".json",                      // Relative to CWD (project root)
+        eqt::ResolveDataPath("data/zone_lines/" + zoneName + ".json"),  // shipped data
         "../data/zone_lines/" + zoneName + ".json",                   // Relative to CWD (build directory)
         eqClientPath + "/../data/zone_lines/" + zoneName + ".json"   // Relative to EQ client path
     };
@@ -131,7 +134,7 @@ bool ZoneLines::loadFromZone(const std::string& zoneName, const std::string& eqC
     // Fall back to old zone_lines.json format if zone-specific file not found
     if (!loadedAny) {
         std::vector<std::string> zoneLinesJsonPaths = {
-            "data/zone_lines.json",                      // Relative to CWD (project root)
+            eqt::ResolveDataPath("data/zone_lines.json"),  // shipped data
             "../data/zone_lines.json",                   // Relative to CWD (build directory)
             eqClientPath + "/../data/zone_lines.json"   // Relative to EQ client path
         };

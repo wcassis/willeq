@@ -1,5 +1,6 @@
 #include "client/graphics/environment/storm_cloud_layer.h"
 #include "common/logging.h"
+#include "client/data_paths.h"
 #include <irrlicht.h>
 #include <cmath>
 #include <fstream>
@@ -290,7 +291,7 @@ void StormCloudLayer::generateCloudTextures() {
     int totalFrames = frameCount * blendSteps;
 
     for (int i = 0; i < totalFrames; ++i) {
-        std::string texPath = "data/textures/storm_cloud_blend_" + std::to_string(i) + ".bmp";
+        std::string texPath = eqt::ResolveDataPath("data/textures/storm_cloud_blend_" + std::to_string(i) + ".bmp");
         std::string cacheName = "storm_cloud_blend_" + std::to_string(i);
 
         std::ifstream file(texPath, std::ios::binary | std::ios::ate);

@@ -1,6 +1,7 @@
 #include "client/application.h"
 #include <json/json.h>  // Must be before eq.h → logging.h so JSONCPP_VERSION_STRING is defined
 #include "client/eq.h"
+#include "client/data_paths.h"
 #include "client/help/merged_help.h"
 // T310 Leg A: --fpcam. No renderer dependency -- the tunable store is a plain
 // process-global of floats (see the header), so this include is safe in an
@@ -271,7 +272,10 @@ bool Application::loadConfigFile(const std::string& configFile, ApplicationConfi
     try {
         EQT::PerformanceMetrics::instance().startTimer("Config Loading", EQT::MetricCategory::Startup);
 
-        auto jsonConfig = EQ::JsonConfigFile::Load(configFile);
+        // T399 (board B235): willeq.json itself is CWD-relative by default
+        // ("willeq.json", include/client/application.h). Resolving it lets a
+        // client started outside the repo root find the checked-out config.
+        auto jsonConfig = EQ::JsonConfigFile::Load(eqt::ResolveDataPath(configFile));
         auto handle = jsonConfig.RawHandle();
 
         // Handle both array format (legacy) and object format
@@ -284,7 +288,7 @@ bool Application::loadConfigFile(const std::string& configFile, ApplicationConfi
             {
                 auto& hotkeyMgr = eqt::input::HotkeyManager::instance();
                 hotkeyMgr.resetToDefaults();
-                hotkeyMgr.loadFromFile("config/hotkeys.json");
+                hotkeyMgr.loadFromFile(eqt::ResolveDataPath("config/hotkeys.json"));
             }
 #endif
         } else if (handle.isObject()) {
@@ -302,7 +306,7 @@ bool Application::loadConfigFile(const std::string& configFile, ApplicationConfi
             {
                 auto& hotkeyMgr = eqt::input::HotkeyManager::instance();
                 hotkeyMgr.resetToDefaults();
-                hotkeyMgr.loadFromFile("config/hotkeys.json");
+                hotkeyMgr.loadFromFile(eqt::ResolveDataPath("config/hotkeys.json"));
                 if (handle.isMember("hotkeys")) {
                     LOG_INFO(MOD_INPUT, "Applying hotkey overrides from main config");
                     hotkeyMgr.applyOverrides(handle["hotkeys"]);

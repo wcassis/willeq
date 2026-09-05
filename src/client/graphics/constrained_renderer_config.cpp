@@ -1,5 +1,6 @@
 #include "client/graphics/constrained_renderer_config.h"
 #include "common/logging.h"
+#include "client/data_paths.h"
 #include <algorithm>
 #include <cmath>
 #include <cctype>
@@ -453,8 +454,17 @@ bool ConstrainedRendererConfig::parseMemorySpec(const std::string& spec, Constra
 
 bool ConstrainedRendererConfig::loadJsonOverrides(const std::string& presetName,
                                                    const std::string& jsonPath) {
-    std::ifstream file(jsonPath);
+    // T399 (board B235): shipped data resolves through the one path rule, and
+    // a miss is no longer SILENT -- config/constrained_presets.json is
+    // shipped, and without it the renderer runs on the built-in preset
+    // numbers rather than the tuned ones, with nothing said.
+    const std::string resolved = eqt::ResolveDataPath(jsonPath);
+    std::ifstream file(resolved);
     if (!file.is_open()) {
+        LOG_ERROR(MOD_GRAPHICS,
+                  "ConstrainedRendererConfig: cannot open '{}' (resolved to '{}') -- preset "
+                  "'{}' keeps its built-in values; the shipped JSON overrides are NOT applied",
+                  jsonPath, resolved, presetName);
         return false;
     }
 
@@ -698,8 +708,16 @@ bool ConstrainedRendererConfig::loadJsonOverrides(const std::string& presetName,
 }
 
 bool ConstrainedRendererConfig::loadDebugOverrides(const std::string& jsonPath) {
-    std::ifstream file(jsonPath);
+    // T399 (board B235): resolved, and a miss is logged -- config/debug.json
+    // is shipped, and its skip* flags silently reverting to their built-in
+    // values is exactly the class of silence B235 is about.
+    const std::string resolved = eqt::ResolveDataPath(jsonPath);
+    std::ifstream file(resolved);
     if (!file.is_open()) {
+        LOG_ERROR(MOD_GRAPHICS,
+                  "ConstrainedRendererConfig: cannot open '{}' (resolved to '{}') -- the "
+                  "shipped debug skip-flags are NOT applied",
+                  jsonPath, resolved);
         return false;
     }
 

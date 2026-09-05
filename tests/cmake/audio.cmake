@@ -64,6 +64,8 @@ IF(WITH_AUDIO)
         ${CMAKE_SOURCE_DIR}/src/client/audio/zone_audio_manager.cpp
         ${CMAKE_SOURCE_DIR}/src/client/audio/eff_loader.cpp
         ${AUDIO_COMMON_TEST_SOURCES}
+        # T399 (board B235): every routed loader calls eqt::ResolveDataPath().
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
     )
     TARGET_COMPILE_DEFINITIONS(test_zone_sound_emitters PRIVATE WITH_AUDIO)
     TARGET_LINK_LIBRARIES(test_zone_sound_emitters ${AUDIO_COMMON_TEST_LIBS})
@@ -78,6 +80,8 @@ IF(WITH_AUDIO)
         ${CMAKE_SOURCE_DIR}/src/client/audio/zone_audio_manager.cpp
         ${CMAKE_SOURCE_DIR}/src/client/audio/eff_loader.cpp
         ${AUDIO_COMMON_TEST_SOURCES}
+        # T399 (board B235): every routed loader calls eqt::ResolveDataPath().
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
     )
     TARGET_COMPILE_DEFINITIONS(test_day_night_audio PRIVATE WITH_AUDIO)
     TARGET_LINK_LIBRARIES(test_day_night_audio ${AUDIO_COMMON_TEST_LIBS})
@@ -89,6 +93,8 @@ IF(WITH_AUDIO)
     ADD_EXECUTABLE(test_zone_music
         test_zone_music.cpp
         ${AUDIO_COMMON_TEST_SOURCES}
+        # T399 (board B235): every routed loader calls eqt::ResolveDataPath().
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
     )
     TARGET_COMPILE_DEFINITIONS(test_zone_music PRIVATE WITH_AUDIO)
     TARGET_LINK_LIBRARIES(test_zone_music ${AUDIO_COMMON_TEST_LIBS})
@@ -100,6 +106,8 @@ IF(WITH_AUDIO)
     ADD_EXECUTABLE(test_sound_assets
         test_sound_assets.cpp
         ${AUDIO_COMMON_TEST_SOURCES}
+        # T399 (board B235): every routed loader calls eqt::ResolveDataPath().
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
     )
     TARGET_COMPILE_DEFINITIONS(test_sound_assets PRIVATE WITH_AUDIO
         WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
@@ -112,6 +120,8 @@ IF(WITH_AUDIO)
     ADD_EXECUTABLE(test_sound_effects
         test_sound_effects.cpp
         ${AUDIO_COMMON_TEST_SOURCES}
+        # T399 (board B235): every routed loader calls eqt::ResolveDataPath().
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
     )
     TARGET_COMPILE_DEFINITIONS(test_sound_effects PRIVATE WITH_AUDIO)
     TARGET_LINK_LIBRARIES(test_sound_effects ${AUDIO_COMMON_TEST_LIBS})
@@ -123,6 +133,8 @@ IF(WITH_AUDIO)
     ADD_EXECUTABLE(test_spatial_audio
         test_spatial_audio.cpp
         ${AUDIO_COMMON_TEST_SOURCES}
+        # T399 (board B235): every routed loader calls eqt::ResolveDataPath().
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
     )
     TARGET_COMPILE_DEFINITIONS(test_spatial_audio PRIVATE WITH_AUDIO)
     TARGET_LINK_LIBRARIES(test_spatial_audio ${AUDIO_COMMON_TEST_LIBS})
@@ -147,6 +159,8 @@ IF(WITH_AUDIO)
         ${CMAKE_SOURCE_DIR}/src/client/audio/weather_audio.cpp
         ${CMAKE_SOURCE_DIR}/src/client/audio/water_sounds.cpp
         ${AUDIO_COMMON_TEST_SOURCES}
+        # T399 (board B235): every routed loader calls eqt::ResolveDataPath().
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
     )
     TARGET_COMPILE_DEFINITIONS(test_weather_audio PRIVATE WITH_AUDIO)
     TARGET_LINK_LIBRARIES(test_weather_audio ${AUDIO_COMMON_TEST_LIBS})
@@ -251,6 +265,8 @@ IF(WITH_AUDIO)
         test_combat_music.cpp
         ${CMAKE_SOURCE_DIR}/src/client/audio/combat_music.cpp
         ${AUDIO_COMMON_TEST_SOURCES}
+        # T399 (board B235): every routed loader calls eqt::ResolveDataPath().
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
     )
     TARGET_COMPILE_DEFINITIONS(test_combat_music PRIVATE WITH_AUDIO)
     TARGET_LINK_LIBRARIES(test_combat_music ${AUDIO_COMMON_TEST_LIBS})
@@ -260,6 +276,8 @@ IF(WITH_AUDIO)
     ADD_EXECUTABLE(test_music_loopback_compare
         test_music_loopback_compare.cpp
         ${AUDIO_COMMON_TEST_SOURCES}
+        # T399 (board B235): every routed loader calls eqt::ResolveDataPath().
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
     )
     TARGET_COMPILE_DEFINITIONS(test_music_loopback_compare PRIVATE WITH_AUDIO)
     TARGET_LINK_LIBRARIES(test_music_loopback_compare GTest::gtest ${AUDIO_COMMON_TEST_LIBS})
@@ -272,6 +290,8 @@ IF(WITH_AUDIO)
     ADD_EXECUTABLE(test_pfs_sound_load
         test_pfs_sound_load.cpp
         ${AUDIO_COMMON_TEST_SOURCES}
+        # T399 (board B235): every routed loader calls eqt::ResolveDataPath().
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
     )
     TARGET_COMPILE_DEFINITIONS(test_pfs_sound_load PRIVATE WITH_AUDIO
         WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")

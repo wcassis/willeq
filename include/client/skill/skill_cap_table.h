@@ -47,8 +47,10 @@ public:
         uint32_t max_cap = 0;       // MAX(cap) over all levels; lifetime, not per-level.
     };
 
-    // Path shipped with the client, relative to the working directory, in the
-    // style of config/race_models.json and config/spell_effects.json.
+    // Path shipped with the client, in the style of config/race_models.json
+    // and config/spell_effects.json. T399 (board B235): repo-relative, NOT
+    // working-directory-relative -- SkillCapTable::load() resolves it through
+    // eqt::ResolveDataPath().
     static constexpr const char* kDefaultPath = "config/skill_caps.json";
 
     static SkillCapTable& instance();

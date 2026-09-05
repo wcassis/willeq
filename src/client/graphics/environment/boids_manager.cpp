@@ -3,6 +3,7 @@
 #include "client/graphics/simulation_worker.h"
 #include "client/graphics/renderer_zone_merge.h"  // swapTextureInMaterial (T124 shared primitive)
 #include "common/logging.h"
+#include "client/data_paths.h"
 #include <algorithm>
 #include <cmath>
 #include <fstream>
@@ -26,7 +27,7 @@ BoidsManager::~BoidsManager() = default;
 bool BoidsManager::init(const std::string& eqClientPath) {
     if (initialized_) return true;
 
-    std::string atlasPath = "data/textures/creature_atlas.bmp";
+    std::string atlasPath = eqt::ResolveDataPath("data/textures/creature_atlas.bmp");
     if (!loadCreatureAtlas(atlasPath)) {
         LOG_FATAL(MOD_GRAPHICS, "BoidsManager: Required texture {} not found — run generate_textures first", atlasPath);
         std::exit(1);

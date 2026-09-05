@@ -11,6 +11,7 @@
 #include "client/willeq_database.h"
 #include "client/graphics/eq/pfs.h"
 #include "common/logging.h"
+#include "client/data_paths.h"
 
 #include <filesystem>
 #include <algorithm>
@@ -805,7 +806,10 @@ size_t AudioManager::getPfsArchiveCacheBytes() const {
 }
 
 bool AudioManager::loadPfsIndexCache() {
-    std::string cachePath = "config/snd_index_cache.json";
+    // T399 (board B235): resolved. This one is a CACHE, not shipped content
+    // -- a miss means "rescan the archives", which is correct and cheap, so
+    // the quiet miss stays quiet.
+    std::string cachePath = eqt::ResolveDataPath("config/snd_index_cache.json");
     std::ifstream cacheFile(cachePath);
     if (!cacheFile.is_open()) {
         return false;
@@ -890,7 +894,10 @@ void AudioManager::savePfsIndexCache() {
     }
     root["index"] = index;
 
-    std::string cachePath = "config/snd_index_cache.json";
+    // The cache is WRITTEN here: resolve so a rewrite lands on the file the
+    // read side found, and fall back to the CWD-relative name when there is
+    // none yet (ResolveDataPath returns its input unchanged in that case).
+    std::string cachePath = eqt::ResolveDataPath("config/snd_index_cache.json");
     std::ofstream out(cachePath);
     if (!out.is_open()) {
         LOG_WARN(MOD_AUDIO, "Failed to save PFS index cache to {}", cachePath);
@@ -1041,10 +1048,15 @@ void AudioManager::loadMusicEventConfig() {
     vendorBankMusicConfig_.loop = true;
     vendorBankMusicConfig_.enabled = true;
 
-    std::string configPath = "config/music_events.json";
+    // T399 (board B235): resolved, and the miss is an ERROR --
+    // config/music_events.json IS shipped, so falling back to the built-in
+    // track numbers above is a silent substitution.
+    std::string configPath = eqt::ResolveDataPath("config/music_events.json");
     std::ifstream file(configPath);
     if (!file.is_open()) {
-        LOG_DEBUG(MOD_AUDIO, "Music events config not found at {}, using defaults", configPath);
+        LOG_ERROR(MOD_AUDIO,
+                  "cannot open '{}' -- the SHIPPED music event config is not applied; "
+                  "built-in track defaults are in effect", configPath);
         return;
     }
 

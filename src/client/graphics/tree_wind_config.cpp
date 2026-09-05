@@ -1,5 +1,6 @@
 #include "client/graphics/tree_wind_config.h"
 #include "common/logging.h"
+#include "client/data_paths.h"
 #include <json/json.h>
 #include <fstream>
 #include <sstream>
@@ -107,7 +108,9 @@ std::string TreeWindConfigLoader::findConfigFile(const std::string& cmdLinePath,
 
     // 2. Zone-specific config
     if (!zoneName.empty()) {
-        std::string zonePath = "config/zones/" + zoneName + "/tree_wind.json";
+        // T399 (board B235): per-zone override, genuinely optional (there is
+        // no config/zones/ in the tree today) -- resolved, miss stays quiet.
+        std::string zonePath = eqt::ResolveDataPath("config/zones/" + zoneName + "/tree_wind.json");
         std::ifstream test(zonePath);
         if (test.good()) {
             return zonePath;
@@ -115,13 +118,17 @@ std::string TreeWindConfigLoader::findConfigFile(const std::string& cmdLinePath,
     }
 
     // 3. Default config
-    std::string defaultPath = "config/tree_wind.json";
+    std::string defaultPath = eqt::ResolveDataPath("config/tree_wind.json");
     std::ifstream test(defaultPath);
     if (test.good()) {
         return defaultPath;
     }
 
-    // 4. No config file found - will use built-in defaults
+    // 4. No config file found - will use built-in defaults. config/tree_wind.json
+    // IS shipped, so reaching here is a defect, not a configuration choice.
+    LOG_ERROR(MOD_GRAPHICS,
+              "TreeWindConfigLoader: cannot open '{}' -- the SHIPPED tree wind config is "
+              "not applied; built-in defaults are in effect", defaultPath);
     return "";
 }
 

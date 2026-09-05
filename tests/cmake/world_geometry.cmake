@@ -42,7 +42,9 @@ ADD_EXECUTABLE(test_zone_lines
     ${CMAKE_SOURCE_DIR}/src/client/hc_map.cpp
     ${CMAKE_SOURCE_DIR}/src/client/raycast_mesh.cpp
     ${CMAKE_SOURCE_DIR}/src/common/util/compression.cpp
-)
+        # T399 (board B235): every routed loader calls eqt::ResolveDataPath().
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
+    )
 TARGET_COMPILE_DEFINITIONS(test_zone_lines PRIVATE WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
 TARGET_LINK_LIBRARIES(test_zone_lines GTest::gtest_main ${FMT_LIB} ${ZLIB_LIBRARIES} ${JSONCPP_LIBRARIES})
 GTEST_DISCOVER_TESTS(test_zone_lines)

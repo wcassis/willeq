@@ -5,6 +5,7 @@
 #include "client/graphics/eq/wld_loader.h"
 #include "client/graphics/simulation_worker.h"
 #include "common/logging.h"
+#include "client/data_paths.h"
 #include <fmt/format.h>
 #include <cmath>
 #include <algorithm>
@@ -77,7 +78,10 @@ void DetailManager::onZoneEnter(const std::string& zoneName,
 
     // Try to load pre-computed surface map for fast surface type lookups
     if (!surfaceMapsPath_.empty()) {
-        std::string mapPath = surfaceMapsPath_ + "/" + zoneName + "_surface.map";
+        // T399 (board B235): resolved on the COMPLETE path, so the
+        // directory knob (setSurfaceMapsPath) keeps working and an absolute
+        // override is returned untouched.
+        std::string mapPath = eqt::ResolveDataPath(surfaceMapsPath_ + "/" + zoneName + "_surface.map");
         if (surfaceMap_.load(mapPath)) {
             LOG_INFO(MOD_GRAPHICS, "DetailManager: Loaded surface map from '{}' "
                      "({}x{} grid, cell size {})",
@@ -133,7 +137,7 @@ void DetailManager::onZoneEnter(const std::string& zoneName,
 
     // Load texture atlas from pre-generated BMP via constrained cache
     if (!atlasTexture_ && constrainedCache_) {
-        std::string atlasPath = "data/textures/detail_atlas.bmp";
+        std::string atlasPath = eqt::ResolveDataPath("data/textures/detail_atlas.bmp");
         std::ifstream file(atlasPath, std::ios::binary | std::ios::ate);
         if (!file) {
             LOG_FATAL(MOD_GRAPHICS, "DetailManager: Required texture {} not found — run generate_textures first", atlasPath);

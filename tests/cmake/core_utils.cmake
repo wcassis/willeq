@@ -144,3 +144,13 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_data_paths PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
 GTEST_DISCOVER_TESTS(test_data_paths)
+
+# T399 (board B235): the census as a test. A source reader -- it opens the
+# client sources at WILLEQ_REPO_ROOT and fails on any shipped-data literal that
+# does not go through eqt::ResolveDataPath(). No link deps on purpose: most of
+# the routed sites end in std::exit(1) on a miss and cannot be run in-process.
+ADD_EXECUTABLE(test_data_path_routing
+    test_data_path_routing.cpp
+)
+TARGET_LINK_LIBRARIES(test_data_path_routing GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_data_path_routing)

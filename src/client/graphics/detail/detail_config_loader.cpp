@@ -1,6 +1,7 @@
 #include "client/graphics/detail/detail_config_loader.h"
 #include "client/graphics/detail/detail_texture_atlas.h"
 #include "common/logging.h"
+#include "client/data_paths.h"
 #include <json/json.h>
 #include <fstream>
 #include <sstream>
@@ -43,7 +44,8 @@ std::unique_ptr<ZoneDetailConfig> DetailConfigLoader::loadConfigForZone(
 }
 
 std::unique_ptr<ZoneDetailConfig> DetailConfigLoader::loadDefaultConfig(const std::string& dataPath) const {
-    std::string configPath = "config/detail_objects.json";
+    // T399 (board B235): one path rule for shipped data.
+    std::string configPath = eqt::ResolveDataPath("config/detail_objects.json");
     auto config = loadConfigFile(configPath);
     if (config) {
         LOG_INFO(MOD_GRAPHICS, "DetailConfigLoader: Loaded default config from {}", configPath);
@@ -359,10 +361,12 @@ SurfaceType DetailConfigLoader::parseSurfaceTypeString(const std::string& str) {
 FoliageDisturbanceConfig DetailConfigLoader::loadFoliageDisturbanceConfig(const std::string& dataPath) const {
     FoliageDisturbanceConfig config;  // Defaults
 
-    std::string configPath = "config/detail_objects.json";
+    std::string configPath = eqt::ResolveDataPath("config/detail_objects.json");
     std::ifstream file(configPath);
     if (!file.is_open()) {
-        LOG_INFO(MOD_GRAPHICS, "DetailConfigLoader: No foliage_disturbance config found, using defaults");
+        LOG_ERROR(MOD_GRAPHICS,
+                  "DetailConfigLoader: cannot open '{}' -- the SHIPPED foliage_disturbance "
+                  "config is not applied; built-in defaults are in effect", configPath);
         return config;
     }
 
@@ -395,10 +399,12 @@ FoliageDisturbanceConfig DetailConfigLoader::loadFoliageDisturbanceConfig(const 
 FootprintConfig DetailConfigLoader::loadFootprintConfig(const std::string& dataPath) const {
     FootprintConfig config;  // Defaults
 
-    std::string configPath = "config/detail_objects.json";
+    std::string configPath = eqt::ResolveDataPath("config/detail_objects.json");
     std::ifstream file(configPath);
     if (!file.is_open()) {
-        LOG_INFO(MOD_GRAPHICS, "DetailConfigLoader: No footprints config found, using defaults");
+        LOG_ERROR(MOD_GRAPHICS,
+                  "DetailConfigLoader: cannot open '{}' -- the SHIPPED footprint config is "
+                  "not applied; built-in defaults are in effect", configPath);
         return config;
     }
 

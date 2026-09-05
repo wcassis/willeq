@@ -33,13 +33,23 @@
 
 #include <cstdlib>
 #include <fstream>
+#include <sstream>
 #include <string>
 
 #include "client/data_paths.h"
 
+// T399 (board B235): the loaders whose CWD-relative literals T399 routed.
+#include "client/graphics/constrained_renderer_config.h"
+#include "client/input/hotkey_manager.h"
+#include "client/skill/skill_cap_table.h"
+#include "client/zone_lines.h"
+
 #if defined(EQT_HAS_GRAPHICS) && defined(EQT_HAS_GLES2)
 #include "client/graphics/environment/spell_effects_config.h"
 #include "client/graphics/environment/spell_particle_types.h"
+#include "client/graphics/environment/environment_config.h"
+#include "client/graphics/weather_config_loader.h"
+#include "client/graphics/detail/detail_config_loader.h"
 #endif
 
 namespace {
@@ -169,3 +179,152 @@ TEST(DataPaths, ZzzRestoreTheShippedConfigForTheSingleton) {
 #endif  // EQT_HAS_GRAPHICS && EQT_HAS_GLES2
 
 }  // namespace
+
+// ===========================================================================
+// T399 (board B235): the rest of the census, routed.
+//
+// T397 routed ONE literal (config/spell_effects.json) and boarded the other
+// ~40 as B235. These are the tests for the rest. Every one of them runs from
+// a working directory with no config/ or data/ tree -- the only place the
+// defect was ever visible -- and every one of them is RED before the routing
+// commit for its family.
+// ===========================================================================
+
+namespace {
+
+// One row per shipped file a routed literal names. Bytes, not existence:
+// resolving to *a* file called race_models.json somewhere else would pass an
+// existence check and still be the wrong client.
+const char* const kShippedLiterals[] = {
+    // core / app
+    "config/constrained_presets.json",
+    "config/debug.json",
+    "config/hotkeys.json",
+    "config/skill_caps.json",
+    "data/willeq.db",
+    "data/zone_lines.json",
+    "data/zone_lines/qeynos2.json",
+    // config/*.json loaders
+    "config/display_settings.json",
+    "config/race_models.json",
+    "config/eqe1_archives.json",
+    "config/detail_objects.json",
+    "config/tree_wind.json",
+    "config/weather_effects.json",
+    "config/environment_effects.json",
+    "config/spell_effects.json",
+    // audio / index caches
+    "config/music_events.json",
+    "config/snd_index_cache.json",
+    "config/gfx_index_cache.json",
+    // textures
+    "data/textures/particle_atlas.bmp",
+    "data/textures/detail_atlas.bmp",
+    "data/textures/creature_atlas.bmp",
+    "data/textures/tumbleweed.bmp",
+    "data/textures/software_cursor.bmp",
+    "data/textures/spell_particle_fallback.bmp",
+    "data/textures/spell_particle_fallback.bmp",
+    "data/textures/storm_cloud_blend_0.bmp",
+    "data/textures/rain_streaks.bmp",
+    "data/textures/snow_flakes.bmp",
+    // the rest
+    "data/item_models.json",
+    "data/eqe1_texture_index.json",
+};
+
+std::string SlurpOrEmpty(const std::string& path) {
+    std::ifstream f(path, std::ios::binary);
+    if (!f.is_open()) return std::string();
+    std::stringstream ss;
+    ss << f.rdbuf();
+    return ss.str();
+}
+
+}  // namespace
+
+// Every shipped literal in the census resolves, from a working directory that
+// has neither config/ nor data/, to the SAME BYTES the repo ships.
+TEST_F(CwdElsewhere, EveryShippedLiteralResolvesToTheRepoBytes) {
+    for (const char* lit : kShippedLiterals) {
+        const std::string resolved = eqt::ResolveDataPath(lit);
+        const std::string expected = std::string(WILLEQ_REPO_ROOT) + "/" + lit;
+        const std::string got = SlurpOrEmpty(resolved);
+        ASSERT_FALSE(got.empty())
+            << lit << " resolved to '" << resolved << "', which does not open";
+        EXPECT_EQ(got, SlurpOrEmpty(expected))
+            << lit << " resolved to '" << resolved << "', whose bytes are not the repo's";
+    }
+}
+
+// --- family: core / app ----------------------------------------------------
+//
+// PRE-FIX RED. loadJsonOverrides() opened the CWD-relative literal and
+// returned false SILENTLY, so the renderer ran on the built-in preset numbers
+// with nothing said. loadDebugOverrides() was the same shape.
+TEST_F(CwdElsewhere, ConstrainedPresetOverridesLoadFromAnyDirectory) {
+    EQT::Graphics::ConstrainedRendererConfig cfg =
+        EQT::Graphics::ConstrainedRendererConfig::fromPreset(
+            EQT::Graphics::ConstrainedRenderingPreset::OrangePi);
+    EXPECT_TRUE(cfg.loadJsonOverrides("orangepi", "config/constrained_presets.json"))
+        << "the shipped preset overrides were not applied";
+    EXPECT_TRUE(cfg.loadDebugOverrides("config/debug.json"))
+        << "the shipped debug skip-flags were not applied";
+}
+
+// PRE-FIX RED. The shipped key bindings were silently replaced by the built-in
+// defaults (and the miss logged at DEBUG, i.e. nowhere).
+TEST_F(CwdElsewhere, HotkeyBindingsLoadFromAnyDirectory) {
+    auto& mgr = eqt::input::HotkeyManager::instance();
+    mgr.resetToDefaults();
+    EXPECT_TRUE(mgr.loadFromFile("config/hotkeys.json"))
+        << "the shipped key bindings were not loaded";
+}
+
+// PRE-FIX RED. A missing skill_caps.json disables the skill possession gate
+// entirely -- the loudest silent default in the census, and it fired for every
+// client not started from the repo root.
+TEST_F(CwdElsewhere, SkillCapTableLoadsFromAnyDirectory) {
+    auto& table = EQ::SkillCapTable::instance();
+    EXPECT_TRUE(table.load(EQ::SkillCapTable::kDefaultPath))
+        << "the skill possession gate is DISABLED from this working directory";
+    EXPECT_GT(table.entryCount(), 0u);
+}
+
+// PRE-FIX RED. Zone lines are what make a zone boundary work at all.
+TEST_F(CwdElsewhere, ZoneLinesLoadFromAnyDirectory) {
+    EQT::ZoneLines lines;
+    EXPECT_TRUE(lines.loadFromZone("qeynos2", ""))
+        << "no zone line data resolved from this working directory";
+}
+
+#if defined(EQT_HAS_GRAPHICS) && defined(EQT_HAS_GLES2)
+
+// --- family: config/*.json loaders -----------------------------------------
+//
+// PRE-FIX RED. Both of these loaders returned TRUE on a miss and quietly
+// substituted their built-in table, so the only observable is the path they
+// ended up reading. getConfigPath() must name a file that opens.
+TEST_F(CwdElsewhere, WeatherAndEnvironmentConfigsLoadFromAnyDirectory) {
+    auto& weather = EQT::Graphics::WeatherConfigLoader::instance();
+    weather.load("config/weather_effects.json");
+    EXPECT_TRUE(std::ifstream(weather.getConfigPath()).is_open())
+        << "WeatherConfigLoader settled on '" << weather.getConfigPath()
+        << "', which does not open -- the built-in defaults are in effect";
+
+    auto& env = EQT::Graphics::Environment::EnvironmentEffectsConfig::instance();
+    env.load("config/environment_effects.json");
+    EXPECT_TRUE(std::ifstream(env.getConfigPath()).is_open())
+        << "EnvironmentEffectsConfig settled on '" << env.getConfigPath()
+        << "', which does not open -- the built-in defaults are in effect";
+}
+
+// PRE-FIX RED. loadDefaultConfig() returns nullptr when the file misses, and
+// the caller falls back to a hard-coded per-zone table.
+TEST_F(CwdElsewhere, DetailObjectConfigLoadsFromAnyDirectory) {
+    EQT::Graphics::Detail::DetailConfigLoader loader;
+    EXPECT_NE(loader.loadDefaultConfig(""), nullptr)
+        << "config/detail_objects.json did not resolve; the hard-coded default is in effect";
+}
+
+#endif  // EQT_HAS_GRAPHICS && EQT_HAS_GLES2

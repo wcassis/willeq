@@ -1,5 +1,6 @@
 #include "client/graphics/weather_config_loader.h"
 #include "common/logging.h"
+#include "client/data_paths.h"
 #include <json/json.h>
 #include <fstream>
 #include <algorithm>
@@ -13,11 +14,16 @@ WeatherConfigLoader& WeatherConfigLoader::instance() {
 }
 
 bool WeatherConfigLoader::load(const std::string& path) {
-    configPath_ = path;
+    // T399 (board B235): resolved; config/weather_effects.json is shipped, so
+    // "using defaults" is a silent substitution of a different weather look.
+    configPath_ = eqt::ResolveDataPath(path);
 
-    std::ifstream file(path);
+    std::ifstream file(configPath_);
     if (!file.is_open()) {
-        LOG_WARN(MOD_GRAPHICS, "WeatherConfigLoader: Could not open '{}', using defaults", path);
+        LOG_ERROR(MOD_GRAPHICS,
+                  "WeatherConfigLoader: cannot open '{}' (resolved to '{}') -- the SHIPPED "
+                  "weather settings are not applied; built-in defaults are in effect",
+                  path, configPath_);
         setDefaults();
         loaded_ = true;
         return true;  // Not an error, just use defaults

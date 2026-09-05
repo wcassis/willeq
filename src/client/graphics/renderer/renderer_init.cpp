@@ -42,6 +42,7 @@
 #include "client/graphics/detail/detail_types.h"
 #include "client/graphics/detail/seasonal_controller.h"
 #include "common/logging.h"
+#include "client/data_paths.h"
 #include <fmt/format.h>
 #include "common/name_utils.h"
 #include "common/performance_metrics.h"
@@ -112,9 +113,15 @@ namespace Graphics {
 static eqt::ui::DisplaySettings loadDisplaySettingsFromFile() {
     eqt::ui::DisplaySettings settings;  // defaults: everything enabled
 
-    std::ifstream file("config/display_settings.json");
+    // T399 (board B235): resolved, and a miss is an ERROR -- the file IS
+    // shipped, so "using defaults" means the shipped display settings are not
+    // the ones on screen.
+    const std::string path = eqt::ResolveDataPath("config/display_settings.json");
+    std::ifstream file(path);
     if (!file.is_open()) {
-        LOG_INFO(MOD_GRAPHICS, "No display_settings.json found, using defaults");
+        LOG_ERROR(MOD_GRAPHICS,
+                  "cannot open '{}' -- the SHIPPED display settings are not applied; "
+                  "built-in defaults (everything enabled) are in effect", path);
         return settings;
     }
 
@@ -365,14 +372,14 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     // One-time race mappings load (validated at startup by S03)
     if (!areRaceMappingsLoaded()) {
         LOG_TRACE(MOD_GRAPHICS, "Loading race mappings from config/race_models.json...");
-        if (!loadRaceMappings("config/race_models.json")) {
+        if (!loadRaceMappings(eqt::ResolveDataPath("config/race_models.json"))) {
             LOG_FATAL(MOD_GRAPHICS, "Failed to load race model mappings: config/race_models.json");
         }
     }
 
     // Load EQE1 archive configuration (which .eqe1 files to open per zone)
     if (eqe1_->archiveEntries().empty()) {
-        eqe1_->loadEQE1ArchiveConfig("config/eqe1_archives.json");
+        eqe1_->loadEQE1ArchiveConfig(eqt::ResolveDataPath("config/eqe1_archives.json"));
     }
 
     // Item model mappings handled on-demand via SQLite — no pre-loading needed
