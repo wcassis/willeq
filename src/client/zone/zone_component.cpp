@@ -531,7 +531,7 @@ bool eqt::zone::ZoneComponent::BeginGracefulZoneOut()
 	// the close is expected from this point on, not a fault.
 	if (ctx_.zone_connection_manager) {
 		ctx_.zone_connection_manager->OnConnectionStateChange(
-			std::bind(&EverQuest::ZoneOnStatusChangeReconnectDisabled, &owner_,
+			std::bind(&eqt::zone::ZoneComponent::ZoneOnStatusChangeReconnectDisabled, this,
 				std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
 	}
 
@@ -564,6 +564,19 @@ bool eqt::zone::ZoneComponent::BeginGracefulZoneOut()
 	return true;
 }
 
+// T366 (B038 cluster 3): was EverQuest::ZoneOnStatusChangeReconnectDisabled
+// (src/client/core/everquest.cpp). Verbatim apart from the one substitution
+// Mechanism 4 allows: m_zone_connection -> ctx_.zone_connection.
+void eqt::zone::ZoneComponent::ZoneOnStatusChangeReconnectDisabled(
+	std::shared_ptr<EQ::Net::DaybreakConnection> conn,
+	EQ::Net::DbProtocolStatus from,
+	EQ::Net::DbProtocolStatus to)
+{
+	if (to == EQ::Net::StatusDisconnected) {
+		ctx_.zone_connection.reset();
+	}
+}
+
 void eqt::zone::ZoneComponent::DisconnectFromZone()
 {
 	LOG_DEBUG(MOD_ZONE, "Disconnecting from current zone server");
@@ -582,7 +595,7 @@ void eqt::zone::ZoneComponent::DisconnectFromZone()
 	// Disable reconnect on the zone connection before disconnecting
 	if (ctx_.zone_connection_manager) {
 		ctx_.zone_connection_manager->OnConnectionStateChange(
-			std::bind(&EverQuest::ZoneOnStatusChangeReconnectDisabled, &owner_,
+			std::bind(&eqt::zone::ZoneComponent::ZoneOnStatusChangeReconnectDisabled, this,
 				std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
 	}
 

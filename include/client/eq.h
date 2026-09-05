@@ -198,16 +198,9 @@ public:
 	// T88 test seam: SendPositionUpdate()'s top guard
 	// (`!IsFullyZonedIn() || !m_zone_connection`) and MoveToWithPath()'s
 	// "Not in zone yet" guard both require a live UDP zone connection that
-	// no headless test can construct. Everything past those guards already
-	// degrades gracefully with a null m_zone_connection --
-	// SafeQueueZonePacket() and SendMovementHistory() both self-check and
-	// no-op -- so this flag exists ONLY to skip those specific guards (and
-	// SendPositionUpdate's send throttle, which is a single process-wide
-	// static and would otherwise make test order/timing-dependent) so a
-	// test can read back what the outbound C->S coordinate conversion
-	// actually computed. Default false; production behavior is bit-for-bit
-	// unchanged when unset. Not called from any production path.
-	void Test_SetBypassSendGuardForSeam(bool bypass) { m_test_bypass_send_guard = bypass; }
+	// no headless test can construct. T366 (B038 cluster 1) moved the bypass
+	// flag and its setter to eqt::PacketSender, where the full rationale now
+	// lives: a test arms it with eq.Net().Test_SetBypassSendGuardForSeam(true).
 
 	// T88 test seam: SendPositionUpdate() silently no-ops (by design) when
 	// the player's spawn id is still 0 -- normally only ever set from a
@@ -528,18 +521,17 @@ public:
 	// bridge; gm went at K13). The 134 `EverQuest::s_debug_level`
 	// qualifications inside the families became the PUBLIC
 	// `EverQuest::GetDebugLevel()` -- same static, the K13 (jj) substitution
-	// -- which is what emptied axis 2. THREE lines remain, each for a named
-	// reason: group and movement read the private m_test_bypass_send_guard
-	// (the T88 seam, B038's last cluster), and zone binds the PRIVATE
-	// &EverQuest::ZoneOnStatusChangeReconnectDisabled in two std::binds.
-	// eqt::bridge::BridgeComponent lost its friendship but KEEPS its
-	// `EverQuest& owner_`: it passes it by reference to
-	// EQ::castRefusalMessage(EverQuest&, ...), which needs no private access.
+	// -- which is what emptied axis 2.
+	//
+	// T366 (B038 CLOSED) removed the last three (group, movement, zone) and
+	// with them the last four `EverQuest& owner_` handles: the T88 send-guard
+	// bypass moved to eqt::PacketSender, movement's function-static throttle
+	// tables went back to keying on `this`, ZoneOnStatusChangeReconnectDisabled
+	// moved into eqt::zone::ZoneComponent, and EQ::castRefusalMessage now takes
+	// the ClientContext. NO component names EverQuest any more; the only friends
+	// left are the two managers below, which are not components.
 	friend class CombatManager;
 	friend class TradeManager;
-	friend class eqt::group::GroupComponent;  // T88 seam: m_test_bypass_send_guard
-	friend class eqt::movement::MovementComponent;  // T88 seam: m_test_bypass_send_guard
-	friend class eqt::zone::ZoneComponent;  // private ZoneOnStatusChangeReconnectDisabled
 
 	// String database (all modes). K14: LoadStringFiles moved to eqt::StringDb
 	// -- see Strings(). T341: GetStringDatabase() DELETED, zero callers
@@ -634,7 +626,6 @@ private:
 	void ConnectToZone();
 	void ZoneOnNewConnection(std::shared_ptr<EQ::Net::DaybreakConnection> connection);
 	void ZoneOnStatusChangeReconnectEnabled(std::shared_ptr<EQ::Net::DaybreakConnection> conn, EQ::Net::DbProtocolStatus from, EQ::Net::DbProtocolStatus to);
-	void ZoneOnStatusChangeReconnectDisabled(std::shared_ptr<EQ::Net::DaybreakConnection> conn, EQ::Net::DbProtocolStatus from, EQ::Net::DbProtocolStatus to);
 	void ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> conn, const EQ::Net::Packet &p);
 
 	// K12 (Batch K): the combat packet handlers (ZoneProcessConsider/Action/
@@ -650,9 +641,10 @@ private:
 	// elsewhere. SafeQueueZonePacket had no caller outside the friend
 	// components, so nothing forwards for it.
 
-	// T88 test seam (see Test_SetBypassSendGuardForSeam and
-	// MovementComponent::Test_GetLastComputedPositionUpdate).
-	bool m_test_bypass_send_guard = false;
+	// T366 (B038 cluster 1): the T88 send-guard bypass moved to
+	// eqt::PacketSender -- eq.Net().Test_SetBypassSendGuardForSeam(true) arms
+	// it, ctx_.net.TestBypassSendGuard() reads it. The guard bypass belongs to
+	// the thing that sends.
 
 	// T341: m_loading_phase/m_loading_status_text moved into
 	// eqt::bridge::BridgeComponent with their state machine.

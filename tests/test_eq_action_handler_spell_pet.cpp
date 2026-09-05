@@ -71,7 +71,7 @@ public:
 // handler_transforms.cpp's (T93) established idiom.
 #define MAKE_TEST_EQ(varName)                                                \
     EverQuest varName("127.0.0.1", 0, "test", "test", "test", "Testchar");   \
-    varName.Test_SetBypassSendGuardForSeam(true);                            \
+    varName.Net().Test_SetBypassSendGuardForSeam(true);                            \
     varName.Test_SetMySpawnIdForSeam(460);
 
 uint32_t FindSpellId(EQ::SpellDatabase& db, uint32_t lo, uint32_t hi,

@@ -109,7 +109,7 @@ TEST(PositionStoreCoherence, SelfClientUpdate_PositionAndHeadingReachTheStateLay
     // getNearestPlayer, GameState::playerPosition) was reading that stale
     // value for the whole session.
     EverQuest eq{"127.0.0.1", 0, "test", "test", "test", "Testchar"};
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(kSelfId);
 
     // server_x=80 raw (/8 -> 10), server_y=160 (-> 20), z=24 (-> 3),
@@ -140,7 +140,7 @@ TEST(PositionStoreCoherence, SelfClientUpdate_HeadingFlipIsStillPlayerOnly) {
     // heading-90-offset-load-bearing). Converging the position STORE must not
     // converge the two conventions -- this asserts they still differ.
     EverQuest eq{"127.0.0.1", 0, "test", "test", "test", "Testchar"};
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(kSelfId);
 
     ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn,
@@ -157,7 +157,7 @@ TEST(PositionStoreCoherence, SelfClientUpdate_HeadingFlipIsStillPlayerOnly) {
 
 TEST(PositionStoreCoherence, PlayerProfile_PositionAndHeadingAgreeAcrossAccessors) {
     EverQuest eq{"127.0.0.1", 0, "test", "test", "test", "Testchar"};
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
 
     // wire heading 128 of 512 -> server_heading_deg = 90 -> client 90-90 = 0.
     ReplayZone(eq, HC_OP_PlayerProfile,
@@ -181,7 +181,7 @@ TEST(PositionStoreCoherence, MovementIntegratorStepIsVisibleToTheStateLayer) {
     // target into m_x/m_y/m_z directly. The state layer never saw a single
     // step of the integrator.
     EverQuest eq{"127.0.0.1", 0, "test", "test", "test", "Testchar"};
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(kSelfId);
 
     eq.Movement().MoveTo(30.0f, 40.0f, 5.0f);
@@ -210,7 +210,7 @@ TEST(PositionStoreCoherence, PlayerProfile_SpawnIdReachesTheStateLayer) {
     // EqActionHandler::targetNearestPlayer()'s "skip myself" argument
     // (player.spawnId()) was 0 and could never exclude the player.
     EverQuest eq{"127.0.0.1", 0, "test", "test", "test", "Testchar"};
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
 
     ReplayZone(eq, HC_OP_PlayerProfile,
                PlayerProfilePayload(0.0f, 0.0f, 0.0f, 0.0f, /*entity_id=*/kSelfId));
@@ -222,7 +222,7 @@ TEST(PositionStoreCoherence, PlayerProfile_SpawnIdReachesTheStateLayer) {
 
 TEST(PositionStoreCoherence, ClientUpdateAdoptsSpawnIdIntoTheOneStore) {
     EverQuest eq{"127.0.0.1", 0, "test", "test", "test", "Testchar"};
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     ASSERT_EQ(eq.GetMySpawnID(), 0);
 
     // With no spawn id yet, the self branch is not taken; the id is adopted
@@ -239,7 +239,7 @@ TEST(PositionStoreCoherence, ClientUpdateAdoptsSpawnIdIntoTheOneStore) {
 
 TEST(PositionStoreCoherence, NewZoneWritesOneZoneIdentity) {
     EverQuest eq{"127.0.0.1", 0, "test", "test", "test", "Testchar"};
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
 
     ReplayZone(eq, HC_OP_NewZone, NewZonePayload("befallen", 36, 10.0f, 20.0f, 3.0f));
 
@@ -257,7 +257,7 @@ TEST(PositionStoreCoherence, CleanupZoneClearsTheOneZoneIdentity) {
     // NOT be told the zone "changed" to the empty string, so the clear is
     // deliberately event-free (WorldState::clearZone).
     EverQuest eq{"127.0.0.1", 0, "test", "test", "test", "Testchar"};
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     RecordingBridge bridge;
     eq.setBridge(&bridge);
 
@@ -280,7 +280,7 @@ TEST(PositionStoreCoherence, CleanupZoneClearsTheOneZoneIdentity) {
 
 TEST(PositionStoreCoherence, ZoneToSecondZoneAndBackKeepsIdentityCoherent) {
     EverQuest eq{"127.0.0.1", 0, "test", "test", "test", "Testchar"};
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
 
     ReplayZone(eq, HC_OP_NewZone, NewZonePayload("befallen", 36, 10.0f, 20.0f, 3.0f));
     ASSERT_EQ(eq.GetGameState().world().zoneId(), 36);

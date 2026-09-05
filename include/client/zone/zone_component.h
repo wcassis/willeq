@@ -29,14 +29,11 @@
 // senders those callbacks drive are PUBLIC here (friendship runs
 // EverQuest -> component, not the other way; K10 correction 1).
 //
-// `owner_` is the TRANSITION handle for the zone environment that stays with
-// EverQuest for the bridge/renderer (m_zone_map, m_zone_bsp_tree*, the fog and
-// sky/zone-type fields, m_zone_audio_manager, m_eq_client_path) and for the
-// EverQuest primitives the moved bodies still call (PosX/PosY/PosZ,
-// MySpawnId, SetLoadingPhase, QueuePacket, SafeQueueZonePacket,
-// AddChatSystemMessage, ...). EverQuest declares
-// `friend class eqt::zone::ZoneComponent` for exactly that; K-final removes
-// both.
+// T366 (B038 CLOSED): the `owner_` TRANSITION handle and the
+// `friend class eqt::zone::ZoneComponent` line are both GONE. Its last use was
+// std::bind(&EverQuest::ZoneOnStatusChangeReconnectDisabled, &owner_, ...) --
+// a PRIVATE member function taken by address, and the only axis-2 use left
+// tree-wide. That function is zone territory and moved here.
 //
 // The reference-returning getters below are the mirror image: the entities,
 // movement, player and login_world components, eq.cpp and eq_bridge.cpp still
@@ -70,7 +67,9 @@ namespace zone {
 
 class ZoneComponent {
 public:
-	ZoneComponent(ClientContext& ctx, EverQuest& owner) : ctx_(ctx), owner_(owner) {}
+	// T366 (B038): the EverQuest& transition handle is gone -- this component
+	// names nothing on EverQuest any more.
+	explicit ZoneComponent(ClientContext& ctx) : ctx_(ctx) {}
 
 	// T341 (B038 cluster 4): the player's own PlayerProfile appearance.
 	// ZoneProcessPlayerProfile is the only writer; EverQuest forwards
@@ -111,6 +110,14 @@ public:
 	static const std::unordered_map<uint16_t, ZoneArmHandler>& ZoneOpcodeTable();
 	// opcode -> the reason its former arm gave for doing nothing.
 	static const std::unordered_map<uint16_t, const char*>& IgnoredZoneOpcodes();
+
+	// T366 (B038 cluster 3): moved here from EverQuest, whose only two callers
+	// were the std::binds below in this file. Installed on the zone connection
+	// manager by SendGracefulZoneOut() and DisconnectFromZone() so a close we
+	// initiated is not treated as a fault worth reconnecting from.
+	void ZoneOnStatusChangeReconnectDisabled(std::shared_ptr<EQ::Net::DaybreakConnection> conn,
+	                                         EQ::Net::DbProtocolStatus from,
+	                                         EQ::Net::DbProtocolStatus to);
 
 	// Driven by EverQuest::ZoneOnNewConnection / ZoneOnStatusChangeReconnectEnabled
 	// (eq.cpp), which own the zone socket.
@@ -473,7 +480,6 @@ private:
 	TestZoneChangeRequest m_test_last_zone_change_request;
 
 	ClientContext& ctx_;
-	EverQuest& owner_;
 };
 
 }  // namespace zone

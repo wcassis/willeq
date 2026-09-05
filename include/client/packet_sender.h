@@ -60,6 +60,16 @@ public:
 	void NoteSuppressedSend() { ++m_replay_suppressed_sends; }
 	uint64_t ReplaySuppressedSendCount() const { return m_replay_suppressed_sends; }
 
+	// T88 test seam (T366, B038 cluster 1): the send guards in the movement
+	// and group families refuse to build a packet without a live zone
+	// connection and a fully-zoned-in player, which no unit test has. The
+	// bypass belongs to the thing that SENDS, so it lives here rather than on
+	// EverQuest: the guards read ctx_.net.TestBypassSendGuard() and a test
+	// arms it with eq.Net().Test_SetBypassSendGuardForSeam(true). Off by
+	// default (production never touches it).
+	void Test_SetBypassSendGuardForSeam(bool bypass) { m_test_bypass_send_guard = bypass; }
+	bool TestBypassSendGuard() const { return m_test_bypass_send_guard; }
+
 	// T268 test seam: every packet Queue() was asked to send (opcode + body
 	// bytes), captured before the connection gate so a headless test can
 	// assert the exact wire sequence a loot action produces (OP_LootRequest,
@@ -89,6 +99,7 @@ private:
 	std::thread::id& m_main_thread_id;
 
 	uint64_t m_replay_suppressed_sends = 0;
+	bool m_test_bypass_send_guard = false;
 	bool m_test_capture_queued_packets = false;
 	std::vector<TestQueuedPacket> m_test_queued_packets;
 };

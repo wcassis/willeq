@@ -181,7 +181,7 @@ protected:
         if (GetParam()) {
             eq.setBridge(&bridge);
         }
-        eq.Test_SetBypassSendGuardForSeam(true);
+        eq.Net().Test_SetBypassSendGuardForSeam(true);
         eq.Test_SetMySpawnIdForSeam(kSelfId);
     }
 

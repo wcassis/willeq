@@ -8,12 +8,10 @@
 // body are the substitutions Mechanism 4 allows (m_x -> ctx_.x / owner_.m_x,
 // Foo() -> owner_.Foo()).
 //
-// `owner_` is the TRANSITION handle: the moved code still reaches EverQuest
-// members and methods that have not been extracted yet
-// (m_test_bypass_send_guard, IsFullyZonedIn(), AddChatSystemMessage(),
-// HasPet(), MySpawnId(), OnPetButtonStateChanged()). EverQuest declares
-// `friend class eqt::group::GroupComponent` for exactly that. K-final removes
-// both the handle and the friendship.
+// T366 (B038 CLOSED): the `owner_` TRANSITION handle and the
+// `friend class eqt::group::GroupComponent` line are both GONE. The last use
+// was the private m_test_bypass_send_guard (the T88 seam), which now lives on
+// eqt::PacketSender and is read as ctx_.net.TestBypassSendGuard().
 //
 // K04 deleted two bodies outright under Mechanism 5 -- DismissPet() and
 // UpdateGroupMemberFromEntity() had zero callers anywhere, inside the family
@@ -41,7 +39,9 @@ namespace group {
 
 class GroupComponent {
 public:
-	GroupComponent(ClientContext& ctx, EverQuest& owner) : ctx_(ctx), owner_(owner) {}
+	// T366 (B038): the EverQuest& transition handle is gone -- this component
+	// names nothing on EverQuest any more.
+	explicit GroupComponent(ClientContext& ctx) : ctx_(ctx) {}
 
 	// Group queries / actions. Were public on EverQuest; K04 deleted those
 	// declarations and retargeted the callers (eq_action_handler.cpp,
@@ -97,7 +97,6 @@ private:
 	void ZoneProcessGroupJoin(const EQ::Net::Packet& p);
 
 	ClientContext& ctx_;
-	EverQuest& owner_;
 
 	// T179/T180: raid state, derived from ZoneProcessRaidUpdate. Moved out of
 	// EverQuest by K04: referenced by this family only.

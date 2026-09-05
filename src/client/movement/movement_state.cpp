@@ -187,8 +187,9 @@ bool eqt::movement::MovementComponent::FindPath(float start_x, float start_y, fl
 // T88: FRAME CONTRACT -- CLIENT frame, same as EverQuest::Move() above.
 void eqt::movement::MovementComponent::MoveToWithPath(float x, float y, float z)
 {
-	// T88 test seam: see Test_SetBypassSendGuardForSeam's comment in eq.h.
-	if (!owner_.m_test_bypass_send_guard && !ctx_.self.IsFullyZonedIn()) {
+	// T88 test seam: see Test_SetBypassSendGuardForSeam's comment in
+	// packet_sender.h.
+	if (!ctx_.net.TestBypassSendGuard() && !ctx_.self.IsFullyZonedIn()) {
 		LOG_ERROR(MOD_PATHFIND, "Not in zone yet");
 		return;
 	}

@@ -88,7 +88,7 @@ public:
         eq.GetGameState().world().setZoneConnected(true);
         eq.GetGameState().world().setClientReady(true);
         eq.m_update_running = true;
-        eq.Test_SetBypassSendGuardForSeam(true);
+        eq.Net().Test_SetBypassSendGuardForSeam(true);
         eq.Test_SetMySpawnIdForSeam(kSelfId);
         // T360 (BOARD B068): SendSpawnAppearance now goes out through
         // PacketSender::SafeQueueZone rather than straight onto the zone

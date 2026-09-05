@@ -420,7 +420,7 @@ void eqt::bridge::BridgeComponent::onCastSpellIntent(const eqt::events::CastSpel
 		uint32_t spellId = ctx_.spell_manager->getMemorizedSpell(i.gemSlot);
 		const EQ::SpellData* spell = ctx_.spell_manager->getSpell(spellId);
 		if (spell) ctx_.out.System(fmt::format("Casting {}", spell->name));
-	} else if (std::string refusal = EQ::castRefusalMessage(owner_, result); !refusal.empty()) {
+	} else if (std::string refusal = EQ::castRefusalMessage(ctx_, result); !refusal.empty()) {
 		// T244: same official-string table as EqActionHandler::
 		// beginCastFromGem() -- the two sites had drifted. T251:
 		// same renderer too (names a missing component).
@@ -641,7 +641,7 @@ void eqt::bridge::BridgeComponent::onHotbarActivateIntent(const eqt::events::Hot
 					if (result == EQ::CastResult::Success) {
 						const EQ::SpellData* spell = ctx_.spell_manager->getSpell(i.id);
 						if (spell) ctx_.out.System(fmt::format("Casting {}", spell->name));
-					} else if (std::string refusal = EQ::castRefusalMessage(owner_, result); !refusal.empty()) {
+					} else if (std::string refusal = EQ::castRefusalMessage(ctx_, result); !refusal.empty()) {
 						// T253: third refusal site, same table/renderer as
 						// CastSpellIntent above and EqActionHandler::
 						// beginCastFromGem(). Was three literals (mana /

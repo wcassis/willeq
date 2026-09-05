@@ -102,7 +102,7 @@ TEST_F(GroupComponentTest, AcceptInviteNamesTheInviter) {
     ASSERT_TRUE(eq.HasPendingGroupInvite());
     DrainSystemMessages(bridge);
 
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Group().AcceptGroupInvite();
 
     auto msgs = DrainSystemMessages(bridge);

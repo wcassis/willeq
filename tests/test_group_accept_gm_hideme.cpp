@@ -63,7 +63,7 @@ TEST_F(GroupAcceptTest, AcceptNamesTheInviterEvenThoughFollowClearsThePendingNam
     // Let SendGroupFollow() run past its zone-connection guard so it clears
     // m_pending_inviter_name exactly as it does live. No connection exists,
     // so nothing is actually sent.
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Group().AcceptGroupInvite();
 
     auto msgs = DrainSystemMessages(bridge);
@@ -78,7 +78,7 @@ TEST_F(GroupAcceptTest, AcceptNamesTheInviterEvenThoughFollowClearsThePendingNam
 }
 
 TEST_F(GroupAcceptTest, AcceptWithoutPendingInviteSaysNothing) {
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Group().AcceptGroupInvite();
     EXPECT_TRUE(DrainSystemMessages(bridge).empty());
 }
@@ -88,7 +88,7 @@ TEST_F(GroupAcceptTest, DeclineStillConsumesThePendingInvite) {
     ASSERT_TRUE(eq.HasPendingGroupInvite());
     DrainSystemMessages(bridge);
 
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Group().DeclineGroupInvite();
 
     auto msgs = DrainSystemMessages(bridge);
@@ -106,7 +106,7 @@ TEST_F(GroupAcceptTest, GuardStillBlocksWhenNotZonedIn) {
     eq.Group().SendGroupFollow("Oraclerogue");
     // Guard returned early, so the private flag is still set and a later
     // accept still fires its chat line.
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Group().AcceptGroupInvite();
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);

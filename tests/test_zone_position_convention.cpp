@@ -571,7 +571,7 @@ TEST(SameZoneRelocation, SameZone_NoZoneChangeReply_PositionHeadingAndBridgeAppl
 
 TEST(SameZoneRelocation, SameZone_ForcedClientUpdateCarriesDestination) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.Test_SetBypassSendGuardForSeam(true);   // no live socket in a unit test
+    eq.Net().Test_SetBypassSendGuardForSeam(true);   // no live socket in a unit test
     eq.Test_SetMySpawnIdForSeam(42);
     ReplayNewZone(eq, 77);
 

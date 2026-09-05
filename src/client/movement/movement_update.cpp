@@ -274,17 +274,24 @@ void eqt::movement::MovementComponent::UpdateMovement()
 		ctx_.Zone().CheckZoneLine();
 
 		// Send idle position updates like real clients (every 1-2 seconds)
-		static std::map<EverQuest*, std::chrono::steady_clock::time_point> last_idle_updates;
-		if (last_idle_updates.find(&owner_) == last_idle_updates.end()) {
-			last_idle_updates[&owner_] = std::chrono::steady_clock::now();
+		// T366 (B038 cluster 2): these five function-static throttle tables were
+		// keyed on `&owner_` (K06/K07 correction (n) turned the original `this`
+		// into `&owner_` when the bodies moved off EverQuest). They are back on
+		// `this`: EverQuest owns exactly one MovementComponent and the component
+		// outlives nothing else, so the two pointers are in one-to-one
+		// correspondence and every per-instance throttle keeps its identity. The
+		// key type is the component, and the handle is gone.
+		static std::map<const MovementComponent*, std::chrono::steady_clock::time_point> last_idle_updates;
+		if (last_idle_updates.find(this) == last_idle_updates.end()) {
+			last_idle_updates[this] = std::chrono::steady_clock::now();
 		}
 
 		auto now = std::chrono::steady_clock::now();
-		auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_idle_updates[&owner_]);
+		auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_idle_updates[this]);
 
 		if (elapsed.count() >= 1500) {  // 1.5 seconds average
 			SendPositionUpdate();
-			last_idle_updates[&owner_] = now;
+			last_idle_updates[this] = now;
 		}
 		return;
 	}
@@ -308,13 +315,13 @@ void eqt::movement::MovementComponent::UpdateMovement()
 			m_current_path_index, m_current_path.size()-1, dist_to_waypoint);
 		
 		// Stuck detection - track if we're not making progress
-		static std::map<EverQuest*, std::pair<float, std::chrono::steady_clock::time_point>> stuck_detection;
+		static std::map<const MovementComponent*, std::pair<float, std::chrono::steady_clock::time_point>> stuck_detection;
 		auto now = std::chrono::steady_clock::now();
 		
-		if (stuck_detection.find(&owner_) == stuck_detection.end()) {
-			stuck_detection[&owner_] = {dist_to_waypoint, now};
+		if (stuck_detection.find(this) == stuck_detection.end()) {
+			stuck_detection[this] = {dist_to_waypoint, now};
 		} else {
-			auto& [last_dist, last_time] = stuck_detection[&owner_];
+			auto& [last_dist, last_time] = stuck_detection[this];
 			auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - last_time).count();
 			
 			// If we haven't moved closer to the waypoint in 3 seconds, we're stuck
@@ -327,17 +334,17 @@ void eqt::movement::MovementComponent::UpdateMovement()
 					m_current_path_index++;
 					LOG_DEBUG(MOD_MOVEMENT, "Skipping to next waypoint due to being stuck");
 					// Reset stuck detection for the new waypoint
-					stuck_detection.erase(&owner_);
+					stuck_detection.erase(this);
 				} else {
 					LOG_DEBUG(MOD_MOVEMENT, "Stuck on final waypoint, stopping movement");
 					StopMovement();
-					stuck_detection.erase(&owner_);
+					stuck_detection.erase(this);
 					return;
 				}
 			} else if (elapsed >= 1) {
 				// Update every second if we've made progress
 				if (std::abs(dist_to_waypoint - last_dist) > 0.5f) {
-					stuck_detection[&owner_] = {dist_to_waypoint, now};
+					stuck_detection[this] = {dist_to_waypoint, now};
 				}
 			}
 		}
@@ -349,7 +356,7 @@ void eqt::movement::MovementComponent::UpdateMovement()
 		if (waypoint_reached) { // Within range of waypoint
 			// Move to next waypoint
 			m_current_path_index++;
-			stuck_detection.erase(&owner_); // Clear stuck detection when reaching waypoint
+			stuck_detection.erase(this); // Clear stuck detection when reaching waypoint
 			
 			if (m_current_path_index >= m_current_path.size()) {
 				// Reached the end of the path
@@ -422,13 +429,13 @@ void eqt::movement::MovementComponent::UpdateMovement()
 	}
 	
 	// Calculate time delta based on actual elapsed time
-	static std::map<EverQuest*, std::chrono::steady_clock::time_point> last_move_times;
-	if (last_move_times.find(&owner_) == last_move_times.end()) {
-		last_move_times[&owner_] = std::chrono::steady_clock::now();
+	static std::map<const MovementComponent*, std::chrono::steady_clock::time_point> last_move_times;
+	if (last_move_times.find(this) == last_move_times.end()) {
+		last_move_times[this] = std::chrono::steady_clock::now();
 	}
 	auto now_movement = std::chrono::steady_clock::now();
-	auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now_movement - last_move_times[&owner_]);
-	last_move_times[&owner_] = now_movement;
+	auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now_movement - last_move_times[this]);
+	last_move_times[this] = now_movement;
 	
 	float delta_time = elapsed.count() / 1000.0f;  // Convert to seconds
 	if (delta_time > 0.1f) delta_time = 0.1f;  // Cap at 100ms to prevent large jumps
@@ -535,16 +542,16 @@ void eqt::movement::MovementComponent::UpdateMovement()
 	
 	// Fix Z position periodically to follow terrain (but not while jumping)
 	if (!ctx_.game_state.player().isJumping()) {
-		static std::map<EverQuest*, std::chrono::steady_clock::time_point> last_z_fix_times;
-		if (last_z_fix_times.find(&owner_) == last_z_fix_times.end()) {
-			last_z_fix_times[&owner_] = now;
+		static std::map<const MovementComponent*, std::chrono::steady_clock::time_point> last_z_fix_times;
+		if (last_z_fix_times.find(this) == last_z_fix_times.end()) {
+			last_z_fix_times[this] = now;
 		}
 		
-		auto z_fix_elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_z_fix_times[&owner_]);
+		auto z_fix_elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_z_fix_times[this]);
 		// Fix Z every 1000ms while moving (once per second to reduce adjustments)
 		if (z_fix_elapsed.count() >= 1000) {
 			ctx_.Zone().FixZ();
-			last_z_fix_times[&owner_] = now;
+			last_z_fix_times[this] = now;
 		}
 	}
 	
@@ -594,10 +601,11 @@ void eqt::movement::MovementComponent::SendPositionUpdate()
 		return;
 	}
 
-	// T88 test seam: m_test_bypass_send_guard skips this guard (and the
+	// T88 test seam: PacketSender's bypass flag skips this guard (and the
 	// throttle below) so a headless test can reach the encoder logic
-	// without a live m_zone_connection. See Test_SetBypassSendGuardForSeam.
-	if (!owner_.m_test_bypass_send_guard && (!ctx_.self.IsFullyZonedIn() || !ctx_.zone_connection)) {
+	// without a live m_zone_connection. See PacketSender::
+	// Test_SetBypassSendGuardForSeam.
+	if (!ctx_.net.TestBypassSendGuard() && (!ctx_.self.IsFullyZonedIn() || !ctx_.zone_connection)) {
 		LOG_DEBUG(MOD_MOVEMENT, "SendPositionUpdate skipped: zoned_in={} zone_conn={}",
 			ctx_.self.IsFullyZonedIn(), ctx_.zone_connection != nullptr);
 		return;
@@ -620,7 +628,7 @@ void eqt::movement::MovementComponent::SendPositionUpdate()
 	const bool force_update = m_force_next_position_update;
 	m_force_next_position_update = false;
 
-	if (!owner_.m_test_bypass_send_guard && !force_update && !isStoppingNow && elapsed.count() < 250) {
+	if (!ctx_.net.TestBypassSendGuard() && !force_update && !isStoppingNow && elapsed.count() < 250) {
 		// Throttled - skip this update
 		return;
 	}
@@ -629,14 +637,14 @@ void eqt::movement::MovementComponent::SendPositionUpdate()
 	lastSentAnimation = ctx_.game_state.player().animation();
 	
 	// Keep track of last position for delta calculations (per instance, not static)
-	static std::map<EverQuest*, std::tuple<float, float, float, float>> last_positions;
+	static std::map<const MovementComponent*, std::tuple<float, float, float, float>> last_positions;
 	
 	// Initialize last position if this is the first update
-	if (force_update || last_positions.find(&owner_) == last_positions.end()) {
-		last_positions[&owner_] = std::make_tuple(ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ(), ctx_.self.HeadingDeg());
+	if (force_update || last_positions.find(this) == last_positions.end()) {
+		last_positions[this] = std::make_tuple(ctx_.self.PosX(), ctx_.self.PosY(), ctx_.self.PosZ(), ctx_.self.HeadingDeg());
 	}
 	
-	auto& [last_x, last_y, last_z, last_heading] = last_positions[&owner_];
+	auto& [last_x, last_y, last_z, last_heading] = last_positions[this];
 	
 	// Calculate deltas
 	float delta_x = ctx_.self.PosX() - last_x;

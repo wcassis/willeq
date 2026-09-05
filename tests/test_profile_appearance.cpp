@@ -114,7 +114,7 @@ TEST(ProfileAppearanceParse, DefaultConstructedIsNotValid) {
 
 TEST(AppearanceMerge, UnnamedFieldsAreResentFromTheProfile) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(460);
     eq.SetProfileAppearance(knownAppearance());
     EqActionHandler handler(eq);
@@ -142,7 +142,7 @@ TEST(AppearanceMerge, UnnamedFieldsAreResentFromTheProfile) {
 
 TEST(AppearanceMerge, EveryNamedFieldOverridesTheProfile) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(460);
     eq.SetProfileAppearance(knownAppearance());
     EqActionHandler handler(eq);
@@ -172,7 +172,7 @@ TEST(AppearanceMerge, EveryNamedFieldOverridesTheProfile) {
 // implementation that treats 0 as "not supplied" would silently drop it.
 TEST(AppearanceMerge, ZeroIsAValueNotAnAbsentField) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(460);
     eq.SetProfileAppearance(knownAppearance());
     EqActionHandler handler(eq);
@@ -192,7 +192,7 @@ TEST(AppearanceMerge, ZeroIsAValueNotAnAbsentField) {
 // re-sends the stale profile and silently undoes the first.
 TEST(AppearanceMerge, ASecondChangeDoesNotRevertTheFirst) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(460);
     eq.SetProfileAppearance(knownAppearance());
     EqActionHandler handler(eq);
@@ -221,7 +221,7 @@ TEST(AppearanceMerge, ASecondChangeDoesNotRevertTheFirst) {
 
 TEST(AppearanceMerge, NoProfileAndNoSelfEntitySendsNothing) {
     EverQuest eq("127.0.0.1", 0, "test", "test", "test", "Testchar");
-    eq.Test_SetBypassSendGuardForSeam(true);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
     eq.Test_SetMySpawnIdForSeam(460);   // no entity with this id exists
     EqActionHandler handler(eq);
 
