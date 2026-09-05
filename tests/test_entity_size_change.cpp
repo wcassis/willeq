@@ -376,3 +376,56 @@ TEST(GuildInviteAcceptWire, AcceptAndDeclineAreDistinguishableOnTheWire) {
 }
 
 }  // namespace
+
+// =========================================================================
+// T359 (board B011) -- the DOCUMENTED LIMIT of setEntitySize: it rescales the
+// node and the collision Z offset, and does NOT recompute a boat's
+// collisionHeight / deckZ. Both are computed once, at mesh-build time, from
+// the unscaled mesh bounding box multiplied by the build-time scale
+// (entity_mesh_build.cpp and entity_build_step.cpp hold the two copies of that
+// formula), so a resized boat's deck surface would go stale.
+//
+// This is a limit, not a live defect: nothing in the game resizes a boat.
+// eqemu's size changes come from Mob::ChangeSize() (spell SPA 89 / SPA 58
+// illusions on players and NPCs) and boats are zone-owned static spawns that
+// nothing casts on. The recompute was deliberately NOT added: it would be a
+// THIRD copy of a formula that already disagrees with itself between its two
+// existing sites (one reads mesh->getBoundingBox() at build, the other
+// vis.meshNode->getMesh()->getBoundingBox() and vis.lastZ), and no reachable
+// path could ever exercise it. Pinning the limit is what keeps it honest -- if
+// a future unit DOES make boats resizable, this test fails and says why.
+// =========================================================================
+
+TEST_F(EntityRescaleNodeTest, ResizingABoatLeavesItsDeckSurfaceWhereItWas) {
+    constexpr uint16_t kBoat = 41;
+    constexpr uint16_t kShipRace = 72;
+    ASSERT_TRUE(entities_->createEntity(kBoat, kShipRace, "Barrel_Barge", 100.f, 200.f, 30.f, 0.f,
+                                        /*isPlayer=*/false, /*gender=*/0,
+                                        EQT::Graphics::EntityAppearance(), /*isNPC=*/true,
+                                        /*isCorpse=*/false, /*serverSize=*/6.0f));
+
+    const auto& built = entities_->getEntities();
+    auto it = built.find(kBoat);
+    ASSERT_NE(it, built.end());
+    if (!it->second.hasCollision) {
+        GTEST_SKIP() << "race " << kShipRace
+                     << " did not build a collision mesh from this client tree -- "
+                        "nothing to assert the limit against";
+    }
+
+    const float deckBefore = it->second.deckZ;
+    const float heightBefore = it->second.collisionHeight;
+    ASSERT_GT(heightBefore, 0.0f);
+
+    // Double the boat. The node really does rescale...
+    auto* node = it->second.sceneNode;
+    ASSERT_NE(node, nullptr);
+    const float scaleBefore = node->getScale().Y;
+    EXPECT_TRUE(entities_->setEntitySize(kBoat, 12.0f));
+    EXPECT_NEAR(entities_->getEntities().at(kBoat).sceneNode->getScale().Y,
+                scaleBefore * 2.0f, scaleBefore * 1e-4f);
+
+    // ...and the deck surface does NOT follow it. THIS IS THE LIMIT, pinned.
+    EXPECT_FLOAT_EQ(entities_->getEntities().at(kBoat).collisionHeight, heightBefore);
+    EXPECT_FLOAT_EQ(entities_->getEntities().at(kBoat).deckZ, deckBefore);
+}

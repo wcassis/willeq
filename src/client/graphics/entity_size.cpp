@@ -49,6 +49,20 @@ bool EntityRenderer::setEntitySize(uint16_t spawnId, float serverSize) {
     visual.collisionZOffset =
         collisionZOffsetFromBounds(visual.sceneNode->getBoundingBox(), scale);
 
+    // T359 (board B011) -- THE DOCUMENTED LIMIT. A boat's collisionHeight and
+    // deckZ (EntityVisual, used by findBoatDeckZ to stand the player on a deck)
+    // are NOT recomputed here: they are derived once at mesh-build time from the
+    // unscaled mesh bounding box times the build-time scale, so a resized boat
+    // keeps its original deck surface. Deliberate, not an oversight -- nothing
+    // in the game resizes a boat (eqemu's size changes come from
+    // Mob::ChangeSize(), i.e. SPA 89 / SPA 58 on players and NPCs; boats are
+    // zone-owned static spawns nothing casts on), and adding the recompute here
+    // would be a THIRD copy of a formula whose two existing copies
+    // (entity_mesh_build.cpp and entity_build_step.cpp) already read their
+    // bounding box and their Z from different places. The limit is pinned, with
+    // a real Ship mesh, by
+    // EntityRescaleNodeTest.ResizingABoatLeavesItsDeckSurfaceWhereItWas -- so if
+    // a future unit makes boats resizable, that test fails and says why.
     LOG_DEBUG(MOD_ENTITY, "Entity {} ({}) resized: serverSize={:.2f} scale={:.3f}",
               spawnId, visual.name, serverSize, scale);
     return true;

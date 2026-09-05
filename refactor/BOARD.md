@@ -282,11 +282,23 @@ it without taking that measurement first.
   `--gtest_list_tests` runs of the built binary are byte-identical (they
   differed on all eight lines before).
 
-- **B011** (B) `src/client/graphics/entity_size.cpp`
+- ~~**B011** (B) `src/client/graphics/entity_size.cpp`
   `EntityRenderer::setEntitySize` — updates neither `collisionHeight` nor `deckZ`,
   so a resized boat's deck surface goes stale. Nothing in the game resizes a
-  boat, so this is a documented limit, not a live defect. Closes when: both are
-  recomputed, or the limit is asserted in a test. Prov: deferred item 38.
+  boat, so this is a documented limit, not a live defect.~~ **CLOSED by T359
+  Leg C — the limit is ASSERTED, not removed.** The recompute was rejected on
+  reading it: it would be a THIRD copy of a formula whose two existing copies
+  (`entity_mesh_build.cpp` reads `mesh->getBoundingBox()` and a local `z`;
+  `entity_build_step.cpp` reads `vis.meshNode->getMesh()->getBoundingBox()` and
+  `vis.lastZ`) already disagree on their inputs, and no reachable path could
+  exercise it — eqemu's size changes are `Mob::ChangeSize()` (SPA 89 / SPA 58) on
+  players and NPCs, and boats are zone-owned static spawns nothing casts on.
+  Pinned by `EntityRescaleNodeTest.ResizingABoatLeavesItsDeckSurfaceWhereItWas`,
+  which builds a REAL race-72 Ship mesh (collisionHeight 338.78, deckZ 199.39),
+  doubles the boat, checks the node really rescaled, and asserts both collision
+  values held. Verified load-bearing: with the recompute planted it fails
+  (collisionHeight 677.56, deckZ 368.78). The limit is also now stated in the
+  source next to the code that has it. Prov: deferred item 38.
 
 - ~~**B012** (B) `src/client/action/action_dispatcher.cpp`
   `ActionDispatcher::clearTarget` — reachable only from a keybinding; no command
