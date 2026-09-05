@@ -14,6 +14,11 @@ references this file; plans carry only unit-specific content.
 - Read the unit plan in refactor/ as the contract, plus the
   prior-unit reviews it names.
 
+⚠ Configure the slot against ITS OWN `third_party/irrlicht-gles2-x86`
+(`-DEQT_GLES2_IRRLICHT_DIR=<slot>/third_party/irrlicht-gles2-x86`). Check
+`grep EQT_GLES2_IRRLICHT_DIR <slot>/build/CMakeCache.txt` at checkout: a cache
+pointing at `main/` breaks the moment main rebuilds its Irrlicht (T357).
+
 ## Hard rules
 - Shell discipline (hook-enforced): never chain commands with `&&` or
   `;`; never `cd` — pass paths as arguments (script contents and ssh
