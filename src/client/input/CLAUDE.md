@@ -42,6 +42,7 @@ behind the shared private header `command_processor_internal.h`. See
 - Maps command name → handler function via `CommandInfo` structs
 - Built-in commands: chat (/say, /tell), movement (/loc, /sit), combat (/target, /cast), group (/invite), utility (/who, /help)
 - Alias support, tab completion, category browsing
+- `getCompletions()` is reached from the in-game chat box's Tab key (T357/B057) via `Application::commandCompletions()`, which merges it with `eqt::ui::CommandRegistry::getCompletions()`; the consumer is `FrameComponent::applyCommandCompletion()` in `src/client/graphics/frame/renderer_frame_input.cpp`
 - Returns `ActionResult` (success + message)
 
 **ActionDispatcher** (`action_dispatcher.h`) — Central hub for all game actions:

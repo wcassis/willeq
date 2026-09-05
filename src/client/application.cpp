@@ -670,6 +670,8 @@ bool Application::initRendererAndGraphics(const ApplicationConfig& config) {
         m_stateSyncBridge = std::make_unique<eqt::bridge::GameStateSyncBridge>(
             *m_irrlichtBridge);
         m_renderer->setBridge(m_stateSyncBridge.get());
+        // T357 (B057): the chat box's Tab key. See Application::commandCompletions().
+        m_renderer->setCommandCompletionProvider([this](const std::string& p) { return commandCompletions(p); });
         m_bridge = m_stateSyncBridge.get();
         LOG_DEBUG(MOD_GRAPHICS, "Renderer and bridge created");
         LOG_TRACE(MOD_GRAPHICS, "Entering InitGraphics({}x{})...", config.displayWidth, config.displayHeight);

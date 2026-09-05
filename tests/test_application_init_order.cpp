@@ -195,12 +195,18 @@ TEST(ApplicationInitOrderTest, GoldenIsPresentAndTheRightSize) {
     // kGoldenSize: 316 at G04 (the pre-G04 body's normalised line count), then
     // -2 by T347 (B051), which DELETED entries 163 `bool customMemorySpec =
     // false;` and 166 `customMemorySpec = true;` -- a write-only flag whose
-    // enclosing if/else calls loadJsonOverrides() identically in both arms.
+    // enclosing if/else calls loadJsonOverrides() identically in both arms,
+    // then +1 by T357 (B057), which ADDED entry 256
+    // `m_renderer->setCommandCompletionProvider(...)` right after
+    // `m_renderer->setBridge(...)` -- Application is the only holder of both
+    // command registries, so it is the only object that can supply the chat
+    // box's Tab-completion vocabulary.
     // Correction 32: an order golden learns a reviewed edit in place, at its
     // positions, named here; it is never regenerated from the tip.
-    EXPECT_EQ(golden.size(), 314u)
+    EXPECT_EQ(golden.size(), 315u)
         << "316 statement lines at G04, -2 for T347's write-only "
-           "customMemorySpec; the golden has " << golden.size();
+           "customMemorySpec, +1 for T357's completion-provider wiring; "
+           "the golden has " << golden.size();
     for (const auto& e : golden) EXPECT_FALSE(e.empty());
 }
 
