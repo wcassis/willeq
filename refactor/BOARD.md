@@ -2723,6 +2723,20 @@ branches can be deleted independently of these items.
   holds C++), every file over 1,500 there is decomposed by the K/L/G mechanism
   (`model_viewer.cpp` first), and the M00 close-out and `CLAUDE.md` say
   "tree-wide" truthfully. → T385. Prov: T381 Review (file-size table).
+  **T387 (hwcaps half) DONE** — `tools/hwcaps/zone_bench_loader.cpp` 3,280 →
+  **977** (`4b5a697c` draw, `b607423d` entities, `cb1f04d9` lod, `ec01db71`
+  regions) and `tools/hwcaps/gles2_zone_benchmark.cpp` 3,060 → **992**
+  (`da9dd157` options, `8bf3b1c9` frame, `39131bf6` modes); nine new TUs, all
+  ≤ 867 lines, `main()` 1,713 → 227. Behaviour proof is the visual gate before
+  and after: all nine golden PNGs byte-identical, every asserted memory
+  category byte-identical in all six memory JSONs (only the two
+  explicitly-ungated fields, `processRssBytes`/`untrackedBytes`, move), every
+  deterministic CSV column identical, `--help` byte-identical; goldens
+  untouched. `model_viewer*` / `entity_composite_builder` /
+  `check_file_sizes.sh` / the allowlist were T385's half and untouched here.
+  Still over the ceiling under `tools/` and owned by neither unit:
+  `tools/hwcaps/gles2_fog_volume_benchmark.cpp` (1,711) — needs a successor
+  or an allowlist entry before `--all` can FAIL cleanly on `tools/`.
 
 ## Added 2026-09-05 by T383 (vision colour channels)
 

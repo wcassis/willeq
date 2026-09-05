@@ -9,8 +9,8 @@
 // runs of consecutive entries in the ALREADY-SORTED (materialKey,
 // distanceSq) draw-entry list that share the same materialKey (which
 // already encodes texture identity + effective MaterialType, i.e. the
-// per-region adaptive-lighting tier decision -- see zone_bench_loader.cpp's
-// collectDrawEntries()) are coalesced: their precomputed index ranges are
+// per-region adaptive-lighting tier decision -- see zone_bench_draw.cpp's
+// collectDrawEntries(), T387) are coalesced: their precomputed index ranges are
 // gathered into a small per-frame scratch index array and submitted as ONE
 // glDrawElements via Irrlicht's existing client-side-vertex-array fallback
 // path (COpenGLES2Driver::drawMeshBuffer -- the same code path already used
