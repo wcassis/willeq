@@ -338,6 +338,26 @@ TEST(WilleqDatabaseShippedContentTest, ZoneCharactersTableIsGone) {
     sqlite3_close(db);
 }
 
+// T395 Leg C (board B216): `race_data` -- 475 rows of (race_id, gender,
+// raw_fields), where raw_fields is the whole RaceData.txt line stored
+// verbatim -- was built into every willeq.db and read by nothing. A grep for
+// `race_data` and `getRaceData` across src/ include/ tests/ tools/
+// benchmarks/ docker/ scripts/ returned only the builder itself. Nothing ever
+// parsed the raw line, so there was no consumer to preserve. The loader and
+// the table are gone; WilleqDatabase::open() validates only metadata.version,
+// never a table list, so this is a content-only change and the schema version
+// did not move.
+TEST(WilleqDatabaseShippedContentTest, RaceDataTableIsGone) {
+    const std::string path = WILLEQ_DB_REAL_PATH;
+    if (!FileExists(path)) GTEST_SKIP() << "no shipped db at " << path;
+    sqlite3* db = nullptr;
+    ASSERT_EQ(sqlite3_open_v2(path.c_str(), &db, SQLITE_OPEN_READONLY, nullptr), SQLITE_OK);
+    EXPECT_FALSE(TableExists(db, "race_data"))
+        << "race_data has no reader; the builder must not write it (T395, B216)";
+    EXPECT_TRUE(TableExists(db, "race_models"));
+    sqlite3_close(db);
+}
+
 TEST(WilleqDatabaseShippedContentTest, DragonRacesNameTheirChrArchive) {
     const std::string path = WILLEQ_DB_REAL_PATH;
     if (!FileExists(path)) GTEST_SKIP() << "no shipped db at " << path;

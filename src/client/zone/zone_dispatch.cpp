@@ -1,4 +1,5 @@
 #include "client/eq.h"
+#include "client/say_link_text.h"
 #include "client/willeq_database.h"
 #include "client/pathfinder_interface.h"
 #ifdef EQT_HAS_NAVMESH
@@ -591,7 +592,11 @@ void eqt::zone::ZoneComponent::OnSpecialMesg(const EQ::Net::Packet & p)
 			std::string message(msgStart, strnlen(msgStart, maxLen));
 
 			if (!message.empty()) {
-				ctx_.out.System(message);
+				// T395 (board B205): server text can carry 0x12-delimited EQ
+				// links -- eqemu wraps names in Saylink::Silent() -- and the
+				// 45-character Titanium link body was reaching the player's
+				// chat line verbatim. See client/say_link_text.h.
+				ctx_.out.System(eqt::StripSayLinks(message));
 			}
 		}
 	}

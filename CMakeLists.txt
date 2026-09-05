@@ -287,6 +287,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/commands/commands_spells.cpp
     src/client/commands/commands_train.cpp
     src/client/core/eq_strings.cpp
+    src/client/core/say_link_text.cpp
     src/client/login_world/login_world_component.cpp
     src/client/guild/guild_component.cpp
     src/client/gm/gm_component.cpp

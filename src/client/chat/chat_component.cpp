@@ -23,6 +23,7 @@
 // note in this family's component header.
 
 #include "client/chat/chat_component.h"
+#include "client/say_link_text.h"
 
 #include "client/eq.h"
 #include "client/combat.h"
@@ -153,7 +154,10 @@ void eqt::chat::ChatComponent::ZoneProcessChannelMessage(const EQ::Net::Packet &
 	uint32_t language = p.GetUInt32(130);
 	uint32_t channel = p.GetUInt32(134);
 	uint32_t skill = p.GetUInt32(146);
-	std::string message = p.GetCString(150);
+	// T395 (board B205): 0x12-delimited EQ links arrive in chat text too --
+	// an item link a player posts is the same wire shape as the saylink
+	// eqemu wrapped a spell name in. Render the display text, not the body.
+	std::string message = eqt::StripSayLinks(p.GetCString(150));
 
 	// Track last tell sender for /reply command
 	if (channel == CHAT_CHANNEL_TELL && !sender.empty() && sender != ctx_.character) {
