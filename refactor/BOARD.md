@@ -563,12 +563,16 @@ it without taking that measurement first.
   moved from `zone_connection->QueuePacket()` to `ctx_.net.SafeQueueZone()` so the
   T268 seam and the session recorder both see it (the T360/B068 shape). Pinned by
   `tests/test_op_report_shape.cpp` (6 tests; 5 red pre-fix), which transcribes
-  eqemu's parse loop as its oracle. **LIVE PROOF IS OWED**: a `/report` landing as
-  a row in eqemu's `reports` table (`name` = the character, `reported_text` = the
-  description) has NOT been observed — the eqemu lock was held by T370 during
-  T375. The next lock unit takes it. Note when doing so that
-  `Handle_OP_Report`'s first statement is `if (!CanUseReport)`, so a client gets
-  exactly ONE report per zone session. Original text: the wire
+  eqemu's parse loop as its oracle. ~~**LIVE PROOF IS OWED**~~ **LIVE-PROVEN
+  T377, 2026-09-05** (`review/T377/` §4): one `/bug test T377` from fable
+  (Testchar, qeynos2), the client's own `Chat submit: '/bug test T377'` at
+  10:35:25.212 followed by `Report submitted`, and the row eqemu filed reads
+  **`name` = `Testchar`, `reported` = '' (empty), `reported_text` = `test T377`**.
+  The two pre-T375 rows still in the table are the control: both have an EMPTY
+  `name` and an EMPTY `reported_text` with the whole message stuffed into
+  `reported` behind four zero bytes. B023 is closed on the wire, not just on the
+  unit test. Note `Handle_OP_Report`'s first statement is `if (!CanUseReport)`,
+  so a client gets exactly ONE report per zone session — T377 sent exactly one. Original text: the wire
   shape does not match eqemu's `OP_Report` (pipe-delimited reported/reporter/
   message versus a 4-byte category plus raw text), so `AddReport()` is never
   reached. Fixing it is a command-shape decision, not a mechanical patch. Prov:
@@ -633,10 +637,24 @@ it without taking that measurement first.
   measured non-viable at ~25,000 lines inside conflict regions. Prov: deferred
   item 22.
 
-- **B027** (P) Something on the eqemu server sets `Oraclerogue`'s persisted `gm`
+- ~~**B027** (P) Something on the eqemu server sets `Oraclerogue`'s persisted `gm`
   flag to 1 — four consecutive live units (T297, T320, T322, T323) saw it, none
-  issued `#gm`, and T323 captured it before starting any client. It silently
-  changes what a test character can do. **Needs eqemu.** Prov: deferred item 43.
+  issued `#gm`, and T323 captured it before starting any client.~~ **STRUCK by
+  T377, 2026-09-05 — THE PREMISE IS REFUTED: nothing sets it, the value is simply
+  PERSISTED** (`review/T377/` §5). Source: `character_data.gm` has exactly ONE
+  writer tree-wide, `Client::SetGM(bool)` (`zone/client.cpp:2659`), whose callers
+  are the `#set gm [on|off]` handler, `Lua_Client::SetGM`, `Perl_Client_SetGM`
+  and the `OP_GMBecomeNPC` arm that only ever sets it FALSE; load and save are a
+  pure round trip (`pp->gm = e.gm` / `e.gm = pp->gm`, `zone/zonedb.cpp:501`
+  and `:1096`), nothing derives it from account status, `world/` has no writer,
+  and the only quest script that touches it (`quests/lua_modules/commands/don.lua`)
+  *restores* an existing GM state around `#don`. Live: the flag was set to **0**
+  by hand and sampled through a whole fable session as Oraclerogue — PRE-CLIENT 0,
+  after login 0, after an explicit `#save` 0, after `#zone qeynos2` 0, after
+  camp/quit 0. T297/T320/T322/T323 each observed a value set once by a
+  `#set gm on` (the "kit out a character" recipe; `SetGM()` calls `Save()`) and
+  persisted ever since. The flag was restored to 1. Prov: deferred item 43;
+  T377 Review.
 
 - **B028** (P) Batch Z's Z5.3 empty-draw measurement (one-triangle buffer
   isolation) was never taken. Prov: archived board, Batch Z.
@@ -794,8 +812,31 @@ it without taking that measurement first.
   `ZoneProcessShopPlayerSell`. ~~combine success~~ and ~~combine failure~~ —
   **both measured SILENT** (2 successes, 3 failures) and now PINNED silent;
   `LevDn.WAV` sits in the bank and would have been a plausible guess for the
-  failure, and the oracle plays nothing. 7 new tests. **What REMAINS on this
-  clause is one row: coin out of a CORPSE'S LOOT WINDOW.** T342 spawned an NPC
+  failure, and the oracle plays nothing. 7 new tests. ~~**What REMAINS on this
+  clause is one row: coin out of a CORPSE'S LOOT WINDOW.**~~ **MEASURED T377,
+  2026-09-05, on the same tone probe** (`review/T377/` §3; its `tonemap.json` is
+  again byte-identical, `md5 0dc0708b…`, so all three units' rows are ONE
+  measurement). **`BuyItem.WAV` 138 — the same generic coin sound as every other
+  coin row — and the loot window's OPENING is SILENT** (`itemclth.wav`'s chord is
+  absent from the window; both controls either side resolve zero non-bed tones,
+  as do two right-clicks that missed the corpse). **Single trial**: nine further
+  right-clicks on two later corpses never reopened the loot window, and a second
+  asset (`stepcrch.wav`, a footstep) also resolves in the one good window, so the
+  attribution rests on `buyitem` being the sound T328/T342 already measured for
+  every other coin movement. **The GESTURE is not what T342 assumed** — there is
+  no "click the coin": the client's own Looting Tip says *"Coins on the corpse
+  are taken automatically by the first person to loot the corpse"* and
+  `You receive 1 platinum, 8 gold, 3 silver and 4 copper from the corpse.`
+  appears the instant the loot window opens. **fable plays NOTHING here and does
+  not bank the coin either** — `CommandsComponent::ZoneProcessMoneyOnCorpse`
+  (`src/client/commands/combat_actions.cpp:487`) logs and returns, with the
+  comment `// For now, just log it`. That gap is **B147**. The recipe that worked,
+  for the next unit: zone **`arena`** (no clutter), `#npctypespawn 113423`
+  (`Gargalek_Daemado`, loottable 13487, 1144–7572 copper, a GIANT so the corpse is
+  big), `/target Gargalek`, **`#damage 100000` not `#kill`** (`#kill` calls
+  `Mob::Kill()` with no killer; `#damage` credits you), then step 20 units away
+  and press **F9 for third person** so the corpse is on screen at all. Original
+  text: T342 spawned an NPC
   with a cash loot table and killed it, but `#npctypespawn` drops it among North
   Qeynos' training dummies and eight verified right-clicks reached a dummy's
   Consider window instead of the corpse. It needs a zone with no NPC clutter at
@@ -1752,7 +1793,22 @@ it without taking that measurement first.
   some other cause and is still unexplained. T367 did not re-measure the vision
   ratios themselves (its change moves the night baseline at that spot by +7.2%,
   one distant light now surviving), so a re-measurement against the oracle table
-  is OWED. See B110 for the term that does separate the two clients.** Pinned by
+  is OWED.** **RE-MEASURED T377 (`review/T377/` §2), 2026-09-05, with T367's fix
+  in the binary — the row is now taken and the OWE is CLOSED.** BOTH clients were
+  re-measured in the same session, same spot, same 700x420+40+40 crop, linear
+  light, fable stepped over 1167 dumped frames and the oracle over a 2164-frame
+  video: **the oracle reproduces to 0.4%** (Ultravision 1.554 -> **1.560**,
+  Infravision 1.253 -> **1.252**), which is the control that makes fable's row
+  readable. **fable's Infravision now matches the oracle: 1.237 vs 1.252 (99%).
+  fable's Ultravision is 1.449 against 1.560 (93%) — and T367's light-culling fix
+  moved it slightly DOWN, not up (T361's 1.473 -> 1.449).** So the ~7% residual
+  on the Ultravision lift is real and is still unexplained; the absolute night
+  levels are NOT compared (T367's composition rule). What the re-measurement DID
+  find is that the scalar ratio hides a per-channel error: the oracle's
+  Ultravision is near-neutral with a blue lift (R x1.458 / G x1.463 / B x1.851)
+  while fable's green lags (R x1.461 / **G x1.281** / B x1.663), and the oracle's
+  Infravision raises all three channels (R x1.328 / G x1.211 / B x1.208) while
+  fable's **drives blue DOWN to x0.821** at R x1.600. That is **B146**. See B110 for the term that does separate the two clients.** Pinned by
   `tests/test_vision_ambient.cpp` (3 of 6 cases fail against the pre-T361
   behaviour). Prov: T361 Review, `review/T361/README.md`. `visionType` has exactly two consumers tree-wide
   (`applyVisionWeatherToZoneLights` and `computeLightAnimations`), both of which
@@ -2082,7 +2138,22 @@ it without taking that measurement first.
   unverified: what the official group window PAINTS with no group —
   `defaults.ini` proves it is SHOWN by default (no `Show=0` under
   `[GroupWindow]`) but not what is inside it; fable draws the titled frame with
-  no member rows. Prov: T368 Leg A.
+  no member rows. **MEASURED T377 (`review/T377/`), 2026-09-05 — BOTH HALVES
+  ANSWERED, and fable is WRONG on two of three keys.** The official client's
+  Options > Keys > category **UI** page reads, screenshotted at
+  `review/T377/oracle/T377_oracle_options_keys_UI_page1..4.png`:
+  **Toggle party window = `Alt P`** (the group window; Alternate `-------`),
+  **Toggle buff window = `Alt B`**, **Toggle pet info window = `Alt F1`**, and
+  — the sting — **Toggle Customer Service Win = `P`**. Against
+  `hotkey_manager.cpp:486-492`: buff `Alt+B` **MATCHES**; group's `Alt+P`
+  alternate matches but its PRIMARY `G` is an invention (`G` is bound to nothing
+  in the UI or Commands category; `Alt G` is Guild Management); pet's `P` is
+  **wrong AND collides with the official Customer Service key**, which should be
+  `Alt+F1`. `Alt+P` was also verified live (it hides and re-shows the Group
+  window). **The empty group window paints ONLY ITS TITLE BAR** — a single strip
+  reading `Group`, no member rows, no empty body, no reserved height — visible in
+  every `review/T377/oracle/*.png`; fable draws a titled *frame*. The rebinding
+  and the empty-window shape are **B145**. Prov: T368 Leg A; T377 Review.
 
 ---
 
@@ -2285,3 +2356,59 @@ branches can be deleted independently of these items.
   plain assignment or an implicit load. **3 of 3 post-fix tours clean, exit 0.**
   `review/T370/run{1,2,3}/tsan_report.*` (pre-fix, verbatim; fixed in `373cea89`),
   `review/T370/runpostfix{1,2,3}/` (post-fix). Prov: T370 Review.
+
+---
+
+## Added 2026-09-05 by T377 (owed live proofs 5)
+
+- **B145** (A) `src/client/input/hotkey_manager.cpp` `HotkeyManager::registerDefaultBindings`
+  — **two of fable's three window keys do not match the official client, and one
+  of them collides with an official binding.** MEASURED T377 against the oracle's
+  own Options > Keys > **UI** page (`review/T377/oracle/T377_oracle_options_keys_UI_page1..4.png`),
+  which B115 could not reach because `eqgame.exe` holds no default-scancode table
+  on disk: the official defaults are **party (group) window `Alt P`**, **buff
+  window `Alt B`**, **pet info window `Alt F1`**, every one with an EMPTY
+  Alternate column. fable binds `ToggleGroup` to **`G`** with `Alt+P` only as the
+  alternate, `TogglePetWindow` to **`P`**, and `ToggleBuffWindow` to `Alt+B`.
+  So: buff is correct; group's primary `G` is an invention (`G` is bound to
+  nothing in the UI or Commands category — `Alt G` is Guild Management); and
+  pet's `P` is both wrong and **the official key for the Customer Service
+  window**, so a player who learned the real client reaches for `Alt+F1` and gets
+  nothing, then presses `P` expecting the petition window and gets a pet window.
+  Closes when the three primaries are `Alt+P` / `Alt+F1` / `Alt+B`, `G` and `P`
+  are dropped or re-justified, and a test pins the table against the measured
+  row. **A second, cheaper half:** the oracle's group window with NO group paints
+  **only its title bar** — a single strip reading `Group`, no member rows, no
+  body, no reserved height — while fable draws the titled *frame* T368 gave it
+  (`FrameComponent::groupPanelIsVisible`, `static_panels.h`). Prov: B115; T377 Review.
+
+- **B146** (A) `src/client/graphics/vision_ambient.cpp` /
+  `IrrlichtRenderer::updateTimeOfDay` — **the vision floor's per-channel gains
+  are wrong against the oracle, even where the scalar ratio is right.** MEASURED
+  T377 (`review/T377/` §2), both clients in one session, same spot, same crop,
+  video-stepped on both sides. Ultravision: the oracle lifts **R x1.458 / G x1.463
+  / B x1.851** — near-neutral with a blue lift, matching its own "eyes glow
+  violet" flavour — while fable lifts **R x1.461 / G x1.281 / B x1.663**, so
+  fable's green lags its red by 12.5 points and the buff reads as a magenta cast.
+  Infravision: the oracle raises **all three** (R x1.328 / G x1.211 / B x1.208)
+  while fable **drives blue DOWN to x0.821** at R x1.600 — the only channel in
+  either table that moves the wrong way. T361 solved the two SCALAR gains by A/B
+  against the oracle and they are close (fable 1.449 / 1.237 vs the oracle's
+  1.560 / 1.252); the per-channel shape was never fitted. Closes when the three
+  channel gains are solved against the oracle table the same way the scalar was,
+  and `tests/test_vision_ambient.cpp` pins them. Prov: T377 Review; B067.
+
+- **B147** (A) `src/client/commands/combat_actions.cpp`
+  `eqt::commands::CommandsComponent::ZoneProcessMoneyOnCorpse` — **corpse coin is
+  parsed, logged and DROPPED: no sound, and no credit to the player's purse.**
+  The body ends `// For now, just log it - money is auto-looted when we loot any
+  item`, and the log line itself is behind `GetDebugLevel() >= 1`. MEASURED T377
+  (`review/T377/` §3): the official client plays **`BuyItem.WAV` (138)** and
+  prints `You receive 1 platinum, 8 gold, 3 silver and 4 copper from the corpse.`
+  the instant the loot window opens — corpse coin is granted on OPENING the
+  window, not by a separate click, so `ZoneProcessMoneyOnCorpse` is exactly the
+  right publisher and it is the one T328 Leg B did not wire. (T328 wired
+  `BUY_ITEM` at `InventoryManager::pickupMoney()`, which is a different gesture
+  and still has NO production caller — see B036 clause 2.) Closes when the
+  handler pushes `PlaySoundIntent{BUY_ITEM}`, banks the four denominations, and a
+  test pins both. Prov: T377 Review; B036.
