@@ -407,7 +407,7 @@ it without taking that measurement first.
   `otherChrCacheMutex_` the writer already holds; 6 of 6 post-fix runs clean.
   `review/T352/`. The residuals are B062 and B063. Prov: archived board, T114.
 
-- **B064** (B) `src/client/graphics/eq/mesh_building.cpp`
+- ~~**B064** (B) `src/client/graphics/eq/mesh_building.cpp`
   `RaceModelLoader::getMergedTextures` — T352's lock covers `otherChrCaches_`
   and `mergedTexturesCacheValid_`, but the same function also reads
   `globalTextures_`, `numberedGlobalTextures_`, `armorTextureCache_` and
@@ -415,7 +415,25 @@ it without taking that measurement first.
   `otherChrCacheMutex_`. **Unconfirmed as a live race** — TSAN reported none of
   them in any T352 run; the driver never mutated them concurrently. Confirming
   needs a run that loads a zone (a `#zone` tour under TSAN) while the prep
-  worker is live. Closing it is a restructure, not a lock. Prov: T352 Review.
+  worker is live. Closing it is a restructure, not a lock. Prov: T352 Review.~~
+  **CLOSED by T370 as NOT a live race — the measurement T352 could not take is
+  now taken.** The T120/T121 amplified zone tour (login, six `#zone` crossings
+  Befallen<->Qeynos2, `/camp`) was run three times against a live eqemu under
+  ThreadSanitizer with the EntityPrepWorker doing real background prep
+  (112 / 79 / 107 completed prep jobs; all three runs reached script step 42
+  of 43). **ThreadSanitizer reported ZERO races on any of the four containers
+  in any run** — no `globalTextures_`, no `numberedGlobalTextures_`, no
+  `armorTextureCache_`, no `zoneTextures_`, and none anywhere in
+  `RaceModelLoader`. The clean result is a finding, not a silent harness: the
+  same three runs each reported a DIFFERENT in-process race (B125 below) with
+  byte-identical stacks, and the post-fix binary still reports the Mesa
+  libgallium races the harness suppresses by library when the suppression file
+  is emptied (`review/T370/poscontrol_postfix/`). Reports, logs, the tour
+  script and the runner are in `review/T370/`. No restructure was performed and
+  none is warranted on this evidence; the code-level observation stands
+  (`loadGlobalModels`/`loadZoneModels`/`getArmorTexture` do mutate three of the
+  four outside `otherChrCacheMutex_`), but every mutation the tour reached ran
+  on the same thread as the reader. Anyone reviving it must bring a report.
 
 - ~~**B065** (B) `src/client/graphics/eq/model_loading_chr.cpp`
   `RaceModelLoader::loadModelFromCachedChr` — writes
@@ -1995,3 +2013,21 @@ it without taking that measurement first.
   baked colours are loaded, the lighting equation matches the oracle, and the
   lamp-spot day/night ratio lands near the oracle's 17.1x.
   Prov: T367 Review, `review/T367/README.md`.
+
+- ~~**B125** (A) `include/client/audio/audio_mixer.h` `MixChannel::volume` —
+  a plain `float` written by the GAME thread and read by the miniaudio AUDIO
+  thread, with no synchronisation.~~ **FOUND AND CLOSED IN THE SAME UNIT
+  (T370).** The B064 zone tour under ThreadSanitizer reported it **3 of 3 runs
+  with byte-identical stacks** — the only race the tour found anywhere:
+  write at `MusicPlayer::setVolume` (`music_player.cpp:213`) <-
+  `AudioManager::playMusic` <- `ZoneAudioManager::update` <-
+  `BridgeComponent::UpdateAudioListener` on the game thread, previous read at
+  `AudioMixer::render` (`audio_mixer.cpp:50`) <- `miniaudioDataCallback` on the
+  miniaudio worker thread. It fires on every zone change, because that is when
+  the zone's music is (re)started. Fixed by making `MixChannel::volume` and its
+  identical sibling `MixChannel::pan` `std::atomic<float>` — no lock, so
+  `render()` stays lock-free and no lock-ordering edge is added; the struct was
+  already non-copyable (`std::atomic<bool> active`) and every touch site is a
+  plain assignment or an implicit load. **3 of 3 post-fix tours clean, exit 0.**
+  `review/T370/run{1,2,3}/tsan_report.*` (pre-fix, verbatim),
+  `review/T370/runpostfix{1,2,3}/` (post-fix). Prov: T370 Review.
