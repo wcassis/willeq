@@ -4,11 +4,16 @@ Post-Batch-F layout (2026-07-23), refreshed by T215 (2026-08-25), by J21
 (2026-09-02) after Batch J's splits, and by K00 (2026-09-03, `3808ebe9`). The former
 mega-files are split into domain translation units; classes are unchanged —
 only method definitions moved. Line counts are `wc -l` at `3808ebe9`; they
-drift with normal work. Ceilings: warn >1,500, fail >3,000
-(`scripts/refactor/check_file_sizes.sh`). **As of Batch J no file in the tree
-is over the 3,000-line fail line** — the grandfathered pair this map used to
-name (`irrlicht_renderer.cpp`, `entity_renderer.cpp`) were split by J11 and
-J03. The pre-split cluster analysis this map replaced is preserved in git
+drift with normal work. Ceiling: **1,500 is a FAIL**, not a warning —
+`scripts/refactor/check_file_sizes.sh --all` (the `FileSizeCeiling` ctest
+test) fails any file over it that is not in
+`scripts/refactor/file_size_allowlist.txt`, and M00 emptied that list
+(`docs/decisions.md` 2026-09-04). 3,000 stays as a second line of defence.
+Only the diff/`--files` modes still report >1,500 as a WARN, which is what
+`docs/decisions.md`'s 2026-07-22 entry describes. **Every file in the tree is
+under 1,500** — the grandfathered pair this map used to name
+(`irrlicht_renderer.cpp`, `entity_renderer.cpp`) were split by J11 and J03,
+and `eq.h` (899) and `irrlicht_renderer.h` (1,343) fell to Batches K and L. The pre-split cluster analysis this map replaced is preserved in git
 history (docs/module_map.md @ commit a0c02cd..93a3c2a era) and in each unit's
 review section under `refactor/F*.md` and `refactor/J*.md`.
 

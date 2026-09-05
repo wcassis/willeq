@@ -67,7 +67,7 @@ Center popups (inventory, spellbook, skills, vendor, bank, loot, trade) share th
 | Ctrl+D / Home | Strafe right (T313 moved this off PageDown, which now scrolls the UI) |
 | Q | Toggle auto-attack |
 | Ctrl+Q | Attack (initiate combat) |
-| ` / NumLock / Numpad+ | Bound to Toggle autorun, but **autorun is a no-op** — `EqActionHandler::toggleAutorun()` is a stub and nothing writes the renderer's `autorun` flag (`refactor/BOARD.md` B002) |
+| ` / NumLock / Numpad+ | Toggle autorun. Live since T343 and live-proven by T345 (board B002 CLOSED): the route is RENDERER-side — the receiver queues `RA::ToggleAutorun` on `actionQueue_`, `processCommonInput()` flips `PlayerCameraComponent::toggleAutorun()`, and movement phase 1 cancels it on a translational key (turning does not cancel). The game-side `EqActionHandler::toggleAutorun()` survives for the console handler alone |
 | Space | Jump |
 | 1-8 | Hotbar slots 1-8 (routed by slot content type: Spell → cast, Skill → useSkill, Item → useItemById (T230), Emote/Macro/Combat → activateHotbarCommandSlot (T239)) |
 | 9-0 | Hotbar slots 9-10 (same routing) |
@@ -89,7 +89,7 @@ Center popups (inventory, spellbook, skills, vendor, bank, loot, trade) share th
 | U | Interact (nearest door/object) |
 | H | Hail (say "Hail" or "Hail, <target>") |
 | L | Cycle object lights |
-| ESC | Clear target (keybinding only — no slash command reaches it, `refactor/BOARD.md` B012) |
+| ESC | Clear target. `/cleartarget` (no alias, category Combat) reaches the same `ActionDispatcher::clearTarget()` since T347 (board B012 CLOSED), so a `--script` run can clear a target |
 | +/- | Camera zoom in/out |
 | PageUp / PageDown | Scroll the UI panel under the cursor (T313) |
 | Ctrl+Alt+C | Toggle collision |
@@ -135,8 +135,11 @@ migration); `Application::DispatchSlashCommand` tries them in order:
    (aliases `/memory`, `/mem_report`), `/music`, `/sound`, `/volume`
    (`/vol`), `/musicvolume` (`/mvol`), `/effectsvolume` (`/evol`, `/sfxvol`).
 2. **Registry 2 — `action::CommandProcessor`**
-   (`src/client/action/command_processor_registration.cpp`, 142
-   `registerCommand({...})` calls at `9684644f`; J04 split the handlers into
+   (`src/client/action/command_processor_registration.cpp`, **143**
+   `registerCommand({...})` calls — T347 inserted `/cleartarget` at entry 022
+   and `tests/goldens/command_registration_order_g03.txt` pins both the count
+   and the position, so re-read the golden header rather than this line; J04
+   split the handlers into
    `command_processor_{social,spells_gm,world,bank,loot,train}.cpp`): the real
    slash vocabulary, listed below by its own category strings. Derived from
    the `registerCommand({...})` calls — regenerate from the source, do not
@@ -151,10 +154,19 @@ migration); `Application::DispatchSlashCommand` tries them in order:
    (the scriptable half of the wheel and PageUp/PageDown, T313 — a `--script`
    run cannot generate either), `/skills`, `/inventory`, `/newbook`,
    `/weatherpreset`, …)
-   — see `src/client/graphics/CLAUDE.md`. Not queryable by `/help` (T143).
+   — see `src/client/graphics/CLAUDE.md`. It IS queryable by `/help`: T223
+   added registry 3's static catalog (`src/client/help/renderer_command_catalog.cpp`)
+   and `BuildCategoryOverview` appends the whole Graphics category, tagged
+   `(graphics)` because a `--no-graphics` run refuses these. T365 (B091) gave
+   the catalog a `RendererCommandCompletions()` too, so registry 3 is now
+   tab-completable as well.
 
-`/help [command]` (registry-aware since T143 `e979a821`) lists registries
-1+2 deduplicated.
+`/help [command]` (registry-aware since T143 `e979a821`) lists **all three**
+registries: 1 and 2 merged by category and deduplicated, then registry 3's
+catalog appended as one `Graphics (graphics):` line (T223). Since T365 (B090)
+`/help <word>` resolves the word as a COMMAND NAME first and as a category
+second; when both exist it prints the command detail, then a one-line
+`"<Word>" is also a category:` note, then the category.
 
 **Chat:** `/say` (`/s`), `/shout` (`/sh`, `/sho`), `/ooc` (`/o`), `/auction`
 (`/auc`), `/gsay` (`/g`), `/gu` (`/guildsay`), `/tell <player> <msg>` (`/t`,
@@ -213,7 +225,7 @@ before you can click it (T268).
 
 **Skills:** `/bandage` (`/bindwound`; inbound reply parsed since T177),
 `/train`, `/track [name]`. The skills window toggle is `/skills`
-(registry 3), renamed from `/newskills` with NO alias on Will's ruling
+(registry 3), renamed from `/newskills` with NO alias on Will's ruling <!-- RETIRED-OK: tombstone for the old name -->
 (T363, B058); the ORIGINAL `/skills` was a dead stub deleted by T138/T139, so
 the name was free. Its body is `FrameComponent::toggleSkillsWindow()` --
 the K keybind (`HotkeyAction::ToggleSkills`) and piped stdin's bare `skills`

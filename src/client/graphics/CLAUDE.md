@@ -29,8 +29,11 @@
   A component holds `RendererContext& ctx_` (shared renderer state bound by
   reference, plus a pointer to every sibling: `ctx_.Frame()`,
   `ctx_.ZoneLoad()`, …) and, except `RdpComponent`, an `IrrlichtRenderer&
-  owner_` for what has not moved yet. L13 closed that handle down to **151**
+  owner_` for what has not moved yet. L13 closed that handle down to 151
   uses (81 public methods + 70 in thirteen thread- or lifetime-bound stays);
+  it has drifted up with normal work since — T366's census read 163 and a
+  comment-filtered count at this tip reads **165**, so re-measure rather than
+  quote a number;
   a member owned by another component is reached as
   `ctx_.<Owner>().<accessor>()`. See the closed **B050** — read it before assuming a member belongs
   where you find it. `initLoadingScreen`, `initDeferredGraphics`,
@@ -175,7 +178,7 @@ Zone loading runs on a dedicated **LoadingThread** that owns the GL context duri
 - `LoadingThread` (`include/client/graphics/loading_thread.h`) — spawns a thread, transfers GL context ownership, runs `loadZoneSequential()`, renders loading screen progress
 - `LoadingStatus` — shared atomic struct for thread-safe progress communication (step number, percentage, status text)
 - `GLContextHandles` — platform-specific GL context handles (EGL on ARM/GLES2, GLX on desktop) for cross-thread transfer
-- `loadZoneSequential()` — 13-step sequential zone loading function that replaces the old async state machine
+- `loadZoneSequential()` — sequential zone loading function that replaces the old async state machine. It runs **twenty** `loadZoneStepN_*()` bodies (`include/client/graphics/zone_load/zone_load_component.h`), not thirteen: the numbering runs 0..13 but steps 8a-8f and 12b are separate functions (re-counted T371; the component table above already said twenty)
 
 **Flow (initial zone load and re-zoning):**
 1. Application (render thread) calls `startLoadingThread()` — transfers GL context to loading thread
