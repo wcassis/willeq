@@ -2104,7 +2104,7 @@ branches can be deleted independently of these items.
   `HC_OP_TargetCommand`, the table and `src/client/core/eq_strings.cpp` use it,
   and (optionally, as the branch did) a self-check asserts every registered
   opcode resolves to a name. Prov: T372, branch commit `6c082a4f`.~~
-  **CLOSED by T374 Leg B** (`LEGB_HASH`). `HC_OP_TargetCommandReply = 0x61f9`
+  **CLOSED by T374 Leg B** (`7d5e1bed`). `HC_OP_TargetCommandReply = 0x61f9`
   is in `include/client/eq_opcodes.h` beside `HC_OP_TargetCommand`; the table
   and `GetOpcodeName` use it. A SECOND bare literal was found in the same
   table and fixed with it: `0x65ca`, whose `HC_OP_Consider` enumerator already

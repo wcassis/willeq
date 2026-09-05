@@ -80,7 +80,7 @@ reaching the code under test. The file therefore installs a real
 test_forced_pose_no_echo / test_self_death_sequence seam, no extra link deps.
 That crash is a finding in its own right; **boarded as B140**.
 
-### Leg B — B137, the opcode literal (`LEGB_HASH`)
+### Leg B — B137, the opcode literal (`7d5e1bed`)
 
 - `HC_OP_TargetCommandReply = 0x61f9` added to `include/client/eq_opcodes.h`
   directly beside `HC_OP_TargetCommand`, with the provenance comment.
