@@ -2852,22 +2852,37 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   coin row has no on-screen consumer. Closes when the coin counts reach a panel
   and a test pins the projection. Prov: T386 Review §1c; B172.
 
-- **B202** (A) `src/client/graphics/sim/` `SimBridgeComponent::applySimulationOutput`
+- ~~**B202** (A) `src/client/graphics/sim/` `SimBridgeComponent::applySimulationOutput`
   — **SIGSEGV on the render thread whenever a second player is in the zone.**
   MEASURED T386 (`review/T386/` §5): **five segfaults across seven
   client-instances in six two-client runs**, in `qeynos2` AND in `arena`, in
   both the observing and the casting role, 20-60 s after zone-in. Single-client
-  sessions on the same binary in the same zones ran 5+ minutes clean (the whole
-  T386 vision run, both corpse runs). Backtrace captured under `gdb -batch`
-  (`review/T386/logs/fable_spells3_caster_gdb.txt`):
-  `applySimulationOutput` <- `applySimulationResults` <-
-  `FrameComponent::processFrame` <- `IrrlichtRenderer::processFrame` <-
-  `Application::render` <- `mainLoop`; the `SimulationWorker` thread is parked
-  in its condition variable at the time, so this is the apply side reading a
-  result the worker produced. This is what blocks B160's owed two-client proof
-  and it will block every future two-client unit. Closes when a two-client
-  session survives 5 minutes and a test pins whatever invariant
-  `applySimulationOutput` is missing. Prov: T386 Review §5.
+  sessions on the same binary in the same zones ran 5+ minutes clean.~~
+  **STRUCK by T391 (`e332162f`, 2026-09-05) — and it was never a race.** The
+  worker parked in its condition variable was the tell: this is a plain
+  use-after-free of `EntityVisual::lightNode`.
+  `EntityRenderer::setEntityLight()` builds it with
+  `addLightSceneNode(nullptr, ...)`, so Irrlicht parents it to the ROOT node
+  and drops its construction reference — the node comes back at a reference
+  count of **one, held by its parent alone**, while `EntityVisual` keeps a raw
+  pointer. `applySimulationOutput()`'s cull arm calls
+  `visual.lightNode->remove()`, which is `Parent->removeChild(this)`, which
+  drops: the node is **deleted** and the pointer dangles, so the next frame
+  that re-admits the entity runs `addChild()` on freed memory. **The "second
+  player" shape is the other player's lantern**: T386's crashing session built
+  exactly ONE entity light node out of 206 entities, for Testbuddy
+  (`items.light = 11`); no NPC in `qeynos2` carries a light, so a single-client
+  session has nothing to free. Reproduced under ASAN
+  (`review/T391/logs/t391_prefix3_asan_asan.2431866`, heap-buffer-overflow at
+  `entity_lifecycle.cpp:210`), with a befallen run whose second player carried
+  no light surviving 407 s as the negative control. Fixed by ownership at the
+  apply side (`grab()` at creation, `drop()` on all three clear paths), pinned
+  by `tests/test_entity_light_node_lifetime.cpp` (5 tests through the real
+  apply seam; 2 failed pre-fix, all pass post-fix), live-proven by two-client
+  ASAN sessions surviving 331 s in `qeynos2` and 330 s in `arena` with no
+  report and a clean shutdown. **B160's owed two-client proof is unblocked but
+  still owed** — T391 did not have the budget to take it. Prov: T391 Review;
+  T386 Review §5.
 
 - **B203** (A) `include/client/graphics/vision_ambient.h` `kUltravisionAmbientGain`
   / `kUltravisionTint` / `kInfravisionAmbientGain` / `kInfravisionTint` —
@@ -2975,5 +2990,8 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
 - **B171** — its provisional strike **must be reversed**; see **B203**.
 
 - **B160** — its owed live pair is **NOT PROVEN** and the reason is bigger than
-  the colours; see **B204** (nothing is drawn) and **B202** (the two-client
-  session segfaults).
+  the colours; see **B204** (nothing is drawn). **B202 (the two-client session
+  segfaults) is STRUCK by T391 (`e332162f`), so that half of the block is
+  gone** — a two-client session now survives 5 minutes — but T391 did not have
+  the budget to take the fire-vs-frost observer pair, so B160's proof is still
+  owed.
