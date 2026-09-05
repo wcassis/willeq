@@ -1653,7 +1653,7 @@ it without taking that measurement first.
 - ~~**B080** (A) `src/client/graphics/renderer/irrlicht_renderer.cpp`
   `IrrlichtRenderer::updateTimeOfDay` / the zone lighting as a whole —
   **fable's night is ~35x darker than the official client's on near geometry.**~~
-  **STRUCK by T367 (`9026cd58`, branch `task/T367-night-brightness-oracle`): the
+  **STRUCK by T367 (`b572846f`, branch `task/T367-night-brightness-oracle`): the
   35x DOES NOT REPRODUCE, and the lead underneath it DOES.** T367 ran the same
   four-state sequence on both clients — two qeynos2 coordinates x forced 11:00 /
   22:00, camera untouched inside each client — and read every state off a flat
