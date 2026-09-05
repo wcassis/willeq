@@ -25,7 +25,9 @@
 
 #include "client/state/game_state.h"
 #include "common/net/daybreak_connection.h"
+#include "common/net/session_log.h"
 #include "common/net/session_recorder.h"
+#include "common/logging.h"
 
 #include <cstdint>
 #include <memory>
@@ -52,6 +54,37 @@ public:
 
 	// Was EverQuest::SafeQueueZonePacket(EQ::Net::Packet&, int, bool).
 	bool SafeQueueZone(EQ::Net::Packet &p, int stream = 0, bool reliable = true);
+
+	// T379 (BOARD B146): the LOGIN and WORLD streams. Both are the same
+	// three-step body SafeQueueZone has -- T268 seam, then the R01 recorder
+	// with this stream's SessionStream, then the connection's queue -- and
+	// neither is a variant of SafeQueueZone: they run BEFORE a zone connection
+	// exists, so routing them there would refuse every packet on the null-zone
+	// gate. Before T379 the twelve senders in
+	// src/client/login_world/login_world_component.cpp called
+	// connection->QueuePacket() directly, so a --record-session .sleq held the
+	// SERVER's half of the handshake and none of the client's, even though
+	// EQT::Net::SessionStream has had Login and World members all along.
+	//
+	// Null-safe on BOTH the binding and the connection: a call before
+	// BindLoginWorldStreams(), or with the connection down, logs, bumps the
+	// replay-suppression counter (what the twelve call sites did themselves in
+	// their else branch) and returns false. No dereference either way.
+	bool QueueLogin(EQ::Net::Packet &p);
+	bool QueueWorld(EQ::Net::Packet &p);
+
+	// The login and world connections are owned by
+	// eqt::login_world::LoginWorldComponent, which EverQuest constructs in its
+	// BODY -- after this service's members are bound in the initialiser list.
+	// So these two arrive as pointers set once, from EverQuest's constructor,
+	// rather than as references in the ctor list like m_zone_connection. The
+	// component is heap-allocated and never moved, so the addresses are stable
+	// for the life of the client.
+	void BindLoginWorldStreams(std::shared_ptr<EQ::Net::DaybreakConnection>* login_connection,
+	                           std::shared_ptr<EQ::Net::DaybreakConnection>* world_connection) {
+		m_login_connection = login_connection;
+		m_world_connection = world_connection;
+	}
 
 	// Batch R: bumped whenever a Zone packet sender no-ops because the zone
 	// connection is null (replay/test mode has no live connection). Was
@@ -92,8 +125,19 @@ public:
 	}
 
 private:
+	// T379: the body QueueLogin and QueueWorld share. `slot` is the pointer
+	// BindLoginWorldStreams was given (may be null, and may point at a null
+	// connection); `stream` and `module` are all that differ between them.
+	bool QueueOnStream(std::shared_ptr<EQ::Net::DaybreakConnection>* slot,
+	                   EQT::Net::SessionStream stream, LogModule module,
+	                   const char* stream_name, EQ::Net::Packet &p);
+
 	eqt::state::GameState& m_game_state;
 	std::shared_ptr<EQ::Net::DaybreakConnection>& m_zone_connection;
+	// T379: see BindLoginWorldStreams above -- pointers, not references, and
+	// null until EverQuest's constructor has built LoginWorldComponent.
+	std::shared_ptr<EQ::Net::DaybreakConnection>* m_login_connection = nullptr;
+	std::shared_ptr<EQ::Net::DaybreakConnection>* m_world_connection = nullptr;
 	std::unique_ptr<EQ::Net::DaybreakConnectionManager>& m_zone_connection_manager;
 	std::unique_ptr<EQT::Net::SessionRecorder>& m_session_recorder;
 	std::thread::id& m_main_thread_id;

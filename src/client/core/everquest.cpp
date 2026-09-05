@@ -179,6 +179,15 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 	                    m_login_world.get(), m_player.get(), m_zone.get(),
 	                    m_bridge_component.get(), m_commands.get());
 
+	// T379 (BOARD B146): the login and world streams reach eqt::PacketSender
+	// the same way the zone stream does, but they can only be BOUND here --
+	// LoginWorldComponent owns both connections and is constructed in this
+	// body, long after m_packet_sender's initialiser list ran. The component
+	// is heap-allocated and never moved, so these two addresses are stable for
+	// the life of the client.
+	m_packet_sender.BindLoginWorldStreams(&m_login_world->LoginConnection(),
+	                                      &m_login_world->WorldConnection());
+
 	m_login_world->SetCredentials(host, port, user, pass, server);
 	m_character = character;
 	m_main_thread_id = std::this_thread::get_id();

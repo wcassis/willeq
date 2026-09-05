@@ -113,6 +113,66 @@ bool eqt::PacketSender::SafeQueueZone(EQ::Net::Packet &p, int stream, bool relia
 	}
 }
 
+// T379 (BOARD B146): the login and world streams.
+//
+// This is SafeQueueZone's three-step body with the zone-only machinery cut
+// out, not a copy of it. Dropped deliberately, each for a reason:
+//   * the stream/reliable arguments -- all twelve call sites sent reliably on
+//     stream 0, which is DaybreakConnection::QueuePacket's default;
+//   * the async hop off m_main_thread_id -- the login and world handshakes run
+//     entirely on the thread that owns the connection managers, and the twelve
+//     bodies replaced here called QueuePacket() synchronously, so adding the
+//     hop would be a behaviour change, not a port;
+//   * the zero-stats "connection appears invalid" guard -- it reads
+//     m_game_state.world().isZoneConnected(), which is false for the whole
+//     login and world handshake by definition, so it could never fire here;
+//   * the catch-and-reset -- SafeQueueZone clears m_zone_connection and marks
+//     the zone disconnected on an exception; the login and world connections
+//     have their own reconnect paths (LoginOnStatusChange*/WorldOnStatusChange*)
+//     and must not be torn down from a send.
+//
+// What is KEPT is the part B146 is about: the T268 capture seam before the
+// gate, and the R01 recorder with this stream's EQT::Net::SessionStream on the
+// ClientToServer side.
+bool eqt::PacketSender::QueueOnStream(std::shared_ptr<EQ::Net::DaybreakConnection>* slot,
+	EQT::Net::SessionStream stream, LogModule module, const char* stream_name,
+	EQ::Net::Packet &p)
+{
+	// T268 seam, before every gate -- "the client decided to send this".
+	if (p.Length() >= 2) {
+		Test_RecordQueuedPacket(p.GetUInt16(0), static_cast<const uint8_t*>(p.Data()) + 2,
+			p.Length() - 2);
+	}
+
+	// Null on both axes: unbound (BindLoginWorldStreams not called yet) and
+	// bound-but-down (the connection reset by a status change). Neither
+	// dereferences. The counter bump is what the twelve call sites did in
+	// their own else branch before the routing.
+	if (!slot || !*slot) {
+		LOG_WARN(module, "Attempted to send packet with null {} connection", stream_name);
+		NoteSuppressedSend();
+		return false;
+	}
+
+	if (m_session_recorder && p.Length() >= 2) {
+		m_session_recorder->record(stream, EQT::Net::SessionDirection::ClientToServer,
+			p.GetUInt16(0), (const uint8_t*)p.Data() + 2, static_cast<uint32_t>(p.Length() - 2));
+	}
+
+	(*slot)->QueuePacket(p);
+	return true;
+}
+
+bool eqt::PacketSender::QueueLogin(EQ::Net::Packet &p)
+{
+	return QueueOnStream(m_login_connection, EQT::Net::SessionStream::Login, MOD_LOGIN, "login", p);
+}
+
+bool eqt::PacketSender::QueueWorld(EQ::Net::Packet &p)
+{
+	return QueueOnStream(m_world_connection, EQT::Net::SessionStream::World, MOD_WORLD, "world", p);
+}
+
 void eqt::PacketSender::Queue(uint16_t opcode, EQ::Net::DynamicPacket* packet)
 {
 	if (!packet) {
