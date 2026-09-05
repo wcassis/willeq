@@ -271,7 +271,14 @@ void eqt::entities::EntitiesComponent::SendClickDoor(uint8_t door_id, uint32_t i
 	p.PutUInt16(14, ctx_.self.MySpawnId());   // player_id
 	p.PutUInt16(16, 0);               // unknown014
 
-	ctx_.zone_connection->QueuePacket(p, 0, true);
+	// T376 (BOARD B140): through PacketSender, not a raw
+	// ctx_.zone_connection-> deref. SafeQueueZone guards the null connection
+	// (this line segfaulted without one -- measured exit 139 in T374), feeds
+	// the T268 ordered-capture seam BEFORE its gates, and feeds the R01
+	// session recorder after them, so a --record-session .sleq finally
+	// contains the door clicks the client sent. Same fix T360 made for
+	// SendSpawnAppearance/SendAnimation (B068).
+	ctx_.net.SafeQueueZone(p, 0, true);
 }
 
 // ============================================================================
@@ -304,7 +311,8 @@ void eqt::entities::EntitiesComponent::SendClickObject(uint32_t drop_id)
 	p.PutUInt32(2, drop_id);           // drop_id
 	p.PutUInt32(6, ctx_.self.MySpawnId());     // player_id
 
-	ctx_.zone_connection->QueuePacket(p, 0, true);
+	// T376 (BOARD B140): see SendClickDoor above -- same bypass, same fix.
+	ctx_.net.SafeQueueZone(p, 0, true);
 }
 
 void eqt::entities::EntitiesComponent::SendCloseContainer(uint32_t drop_id)
@@ -333,7 +341,10 @@ void eqt::entities::EntitiesComponent::SendCloseContainer(uint32_t drop_id)
 		p.PutUInt8(30 + i, 0);
 	}
 
-	ctx_.zone_connection->QueuePacket(p, 0, true);
+	// T376: the third and last direct sender in this TU. B140 named only the
+	// two click senders; this one is the same shape in the same family, and
+	// leaving it behind would have left the file half-routed.
+	ctx_.net.SafeQueueZone(p, 0, true);
 
 	// Clear active tradeskill object. T278: eqemu does NOT echo
 	// ClickObjectAction open=0 (Object::Close() answers with OP_ClearObject

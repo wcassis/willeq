@@ -118,6 +118,15 @@ public:
         eq.GetGameState().world().setClientReady(true);
         eq.m_update_running = true;
         eq.Test_SetMySpawnIdForSeam(kMySpawnId);  // T288: one store
+        // T376: SendCloseContainer now goes out through
+        // PacketSender::SafeQueueZone (BOARD B140), which refuses to send
+        // over a connection whose stats are all zero ("appears invalid") --
+        // which is exactly what a FakeUdpTransport connection that has never
+        // round-tripped looks like. This harness observes the outbound stream
+        // one layer BELOW SafeQueueZone (the resend map), so declare the
+        // connection live. Same line, same reason, as PoseHarness (T360) and
+        // DeathHarness (T346). No assertion is weakened.
+        conn->m_stats.sent_packets = 1;
 
         dispatcher.setActionHandler(&handler);
     }
