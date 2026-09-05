@@ -2040,7 +2040,7 @@ it without taking that measurement first.
   way `command_registration_order_g03.txt` asserts the registration count.
   T371 corrected all of them in place and, where the number is inherently
   drifty (the suite total, the `owner_` census), replaced it with the command
-  that measures it.~~ **CLOSED by T373 Leg A**
+  that measures it.~~ **CLOSED by T373 Leg A `4bd4709a`**
   (`refactor/T373_doc_counts_net.md`): `scripts/refactor/check_doc_counts.py`,
   registered as the `DocCounts` ctest test under label `hygiene` beside
   `DocClaims`. Seven counts are netted over fourteen doc sites against
@@ -2058,7 +2058,7 @@ it without taking that measurement first.
   directory tree still said "123 test executables" (T371 corrected only the
   prose paragraph). Prov: T371.
 
-- **B131** (P) `refactor/BOARD.md` and the batch close-outs (`refactor/K_*.md`)
+- ~~**B131** (P) `refactor/BOARD.md` and the batch close-outs (`refactor/K_*.md`)
   are inside `DocCitations`' live-doc set but deliberately OUTSIDE `DocClaims`'
   scan (T371 measured 39 retired-name hits in them, every one legitimate
   struck-item ledger text — `/newskills`, `setOnSpellLand`,
@@ -2067,4 +2067,20 @@ it without taking that measurement first.
   name that has since been retired, nothing catches it, and the board is the
   first thing a new agent reads. Closes when either the ledger text is
   distinguishable from live description (a per-entry struck marker the scanner
-  can honour) or someone rules that board drift is acceptable. Prov: T371.
+  can honour) or someone rules that board drift is acceptable.~~ **CLOSED by
+  T373 Leg B** (`refactor/T373_doc_counts_net.md`, the tip of
+  `task/T373-doc-counts-net`; Leg A is `4bd4709a`): the
+  exemption became a RULE. `check_doc_claims.py` now scans
+  `refactor/BOARD.md`, one top-level bullet at a time, and only LIVE bullets
+  -- a bullet whose text opens with the strike marker is a closed ledger
+  entry and is skipped whole, together with every continuation line under it,
+  up to the next top-level bullet or heading. Prose belonging to no bullet
+  (the class/rules preamble, the section headings) is not an entry and is not
+  scanned. The pass line reports how many live entries were scanned -- 19 at this
+  tip: the 15 live items plus the 4 header bullets, out of 88 top-level
+  bullets in the file. The batch
+  close-outs and the unit plans stay OUT entirely: they are historical end to
+  end and have no live half to separate, which is the one part of T371's
+  exemption that was right. Planted fault: `setOnSpellLand` written into a
+  live entry -> FAIL naming the entry's line; reverted byte-for-byte and
+  green. Prov: T371.
