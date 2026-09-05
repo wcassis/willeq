@@ -33,7 +33,7 @@ T384's willeq.db v7 has merged by then, rebuild all three trees).
    notes; restore every server value (snapshot the world clock);
    `down.sh`; delete the lock.
 
-STOP: lock present; a proof FAILS (record, board B185+, continue).
+STOP: lock present; a proof FAILS (record, board B200+, continue).
 
 ---
 
@@ -51,10 +51,10 @@ Full evidence, every table and every frame: **`/mnt/projects/fable/review/T386/R
 
 | # | item | verdict |
 |---|---|---|
-| 1 | B172/B036 corpse coin | **PASS** on the purse and the chat line (2 trials); **FAIL** on the sound (**B185**); the purse is drawn nowhere (**B186**); the oracle's zero-denomination line **UNMEASURED** (blocked, method + trap recorded) |
+| 1 | B172/B036 corpse coin | **PASS** on the purse and the chat line (2 trials); **FAIL** on the sound (**B200**); the purse is drawn nowhere (**B201**); the oracle's zero-denomination line **UNMEASURED** (blocked, method + trap recorded) |
 | 2 | B170 window keys + empty group window | **PASS** (all five keys, plus the side-by-side crop pair) |
-| 3 | B160 spell colours, two-client | **FAIL / NOT PROVEN** — nothing is drawn (**B189**), and the two-client session segfaults (**B187**) |
-| 4 | B171 vision channels | **FAIL** — T383's re-solve is refuted and both scalars regressed (**B188**); the `B x0.82` anomaly did **NOT** reproduce |
+| 3 | B160 spell colours, two-client | **FAIL / NOT PROVEN** — nothing is drawn (**B204**), and the two-client session segfaults (**B202**) |
+| 4 | B171 vision channels | **FAIL** — T383's re-solve is refuted and both scalars regressed (**B203**); the `B x0.82` anomaly did **NOT** reproduce |
 
 ### 1 — corpse coin
 
@@ -70,9 +70,9 @@ Two independent trials, each `SELECT`ed after `#save`:
 Both deltas are exactly the printed counts. The sound intent reaches the audio
 manager and the asset then fails to load — `Sound failed: id=138
 file=BuyItem.WAV (not found)` — which proves T382's chain live AND that nothing
-is audible; 31 such failures and 0 PFS sound loads in one session (**B185**).
+is audible; 31 such failures and 0 PFS sound loads in one session (**B200**).
 The purse itself is drawn nowhere: the `CurrencyChanged` bridge arm is a
-`LOG_TRACE` and `updateCharacterStats` voids the four values (**B186**).
+`LOG_TRACE` and `updateCharacterStats` voids the four values (**B201**).
 
 **Deviation, flagged:** the T328 tone-probe rig was NOT used on the fable side.
 It exists because the official client has no log; fable names the sound id and
@@ -94,10 +94,10 @@ before each key.
 Six two-client attempts. The blocker is a reproducible SIGSEGV on the render
 thread in `SimBridgeComponent::applySimulationOutput` whenever a second player
 is in the zone (five crashes in seven client-instances; backtrace captured
-under gdb) — **B187**. In the one run that survived both casts with the caster
+under gdb) — **B202**. In the one run that survived both casts with the caster
 in frame, the observing client logged both `SpellAction` packets and its pixels
 did not move at all (crop channel means agree to the fourth decimal across the
-impact) — **B189**, and the standing "the particle manager is null" explanation
+impact) — **B204**, and the standing "the particle manager is null" explanation
 is removed, because it is initialised in that very log.
 
 Two rig facts worth keeping: **a GM is invulnerable and `#castspell` on self is
@@ -130,9 +130,9 @@ crop, blue by **+55%**, which nothing in T383's stated changes touches.
 
 ### Board
 
-New: **B185** (A, PFS sounds never load), **B186** (A, purse never drawn),
-**B187** (A, two-client render-thread SIGSEGV), **B188** (A, B171 reopened),
-**B189** (B, no spell impact visual), **B190** (B, hex blob in the
+New: **B200** (A, PFS sounds never load), **B201** (A, purse never drawn),
+**B202** (A, two-client render-thread SIGSEGV), **B203** (A, B171 reopened),
+**B204** (B, no spell impact visual), **B205** (B, hex blob in the
 spell-refusal eqstr). Amended in place: **B170** proven live, **B171**'s
 provisional strike reversed, **B172**'s owed proof taken and split.
 

@@ -2754,7 +2754,7 @@ branches can be deleted independently of these items.
   `BUY_ITEM` at `InventoryManager::pickupMoney()`, which is a different gesture
   and still has NO production caller — see B036 clause 2.) Closes when the
   handler pushes `PlaySoundIntent{BUY_ITEM}`, banks the four denominations, and a
-  test pins both. Prov: T377 Review; B036.~~ **STRUCK T382 Leg A (`0d7751fe`)**: `ZoneProcessMoneyOnCorpse` banks the four denominations through `PlayerState::addCurrency` (a thin delta wrapper over `setCurrency`, still the tree's ONE purse writer and the function `OP_MoneyUpdate` credits through), publishes the same `CurrencyChanged` projection `OP_MoneyUpdate` publishes, pushes `PlaySoundIntent{BUY_ITEM}` and prints eqstr 12072 with the counts. Two judgement calls, both recorded in the code: the list is spelled WITHOUT the Oxford comma eqstr 13108 carries, because that is what the oracle's pixels show (13108 is deliberately not used); and "all four denominations zero" is the guard that keeps the sound and the line off every non-grant shape -- eqemu's six `SendLootReqErrorPacket` responses, a corpse with no money, and the autosplit path all carry four zeros. A zero in ONE denomination is still printed; the official client's zero form is UNMEASURED (T377's single capture had all four non-zero) and the test says so. 11 tests (`tests/test_corpse_coin.cpp` + 3 in `tests/test_ui_sound_events.cpp`); 7 of them fail pre-fix. **The LIVE proof -- loot a corpse on fable, hear 138, watch the purse move -- was TAKEN by T386 and SPLIT: the banking and the chat line are PROVEN (two trials, `review/T386/` §1a); the SOUND is NOT (the asset will not load -- B185); and the purse cannot be watched at all because nothing draws it (B186). The official client's ZERO-denomination form is still UNMEASURED -- `review/T386/` §1d has the method and the trap.**
+  test pins both. Prov: T377 Review; B036.~~ **STRUCK T382 Leg A (`0d7751fe`)**: `ZoneProcessMoneyOnCorpse` banks the four denominations through `PlayerState::addCurrency` (a thin delta wrapper over `setCurrency`, still the tree's ONE purse writer and the function `OP_MoneyUpdate` credits through), publishes the same `CurrencyChanged` projection `OP_MoneyUpdate` publishes, pushes `PlaySoundIntent{BUY_ITEM}` and prints eqstr 12072 with the counts. Two judgement calls, both recorded in the code: the list is spelled WITHOUT the Oxford comma eqstr 13108 carries, because that is what the oracle's pixels show (13108 is deliberately not used); and "all four denominations zero" is the guard that keeps the sound and the line off every non-grant shape -- eqemu's six `SendLootReqErrorPacket` responses, a corpse with no money, and the autosplit path all carry four zeros. A zero in ONE denomination is still printed; the official client's zero form is UNMEASURED (T377's single capture had all four non-zero) and the test says so. 11 tests (`tests/test_corpse_coin.cpp` + 3 in `tests/test_ui_sound_events.cpp`); 7 of them fail pre-fix. **The LIVE proof -- loot a corpse on fable, hear 138, watch the purse move -- was TAKEN by T386 and SPLIT: the banking and the chat line are PROVEN (two trials, `review/T386/` §1a); the SOUND is NOT (the asset will not load -- B200); and the purse cannot be watched at all because nothing draws it (B201). The official client's ZERO-denomination form is still UNMEASURED -- `review/T386/` §1d has the method and the trap.**
 
 ## Added 2026-09-05 by the orchestrator (T381 merge)
 
@@ -2811,7 +2811,7 @@ branches can be deleted independently of these items.
 Full evidence for every entry below: **`review/T386/README.md`** (measurement
 only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
 
-- **B185** (A) `src/client/audio/audio_manager.cpp` `AudioManager::loadSoundDataFromPfs`
+- **B200** (A) `src/client/audio/audio_manager.cpp` `AudioManager::loadSoundDataFromPfs`
   / `loadSound` — **every sound that lives in a `snd*.pfs` archive fails to load
   at runtime, so fable is silent for the whole UI/combat sound set.** MEASURED
   T386 (`review/T386/` §1b) in one live `arena` session: **31** `Failed to load
@@ -2836,7 +2836,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   sound and a test pins the id-138 lookup against the shipped index.
   Prov: T386 Review §1b; B172; B036.
 
-- **B186** (A) `src/client/bridge/irrlicht_bridge.cpp`
+- **B201** (A) `src/client/bridge/irrlicht_bridge.cpp`
   `GameEventType::CurrencyChanged` arm / `renderer_entities.cpp`
   `updateCharacterStats` — **the player's purse is never drawn anywhere, so
   "watch the purse move" is not a thing a fable player can do.** The bridge arm
@@ -2852,7 +2852,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   coin row has no on-screen consumer. Closes when the coin counts reach a panel
   and a test pins the projection. Prov: T386 Review §1c; B172.
 
-- **B187** (A) `src/client/graphics/sim/` `SimBridgeComponent::applySimulationOutput`
+- **B202** (A) `src/client/graphics/sim/` `SimBridgeComponent::applySimulationOutput`
   — **SIGSEGV on the render thread whenever a second player is in the zone.**
   MEASURED T386 (`review/T386/` §5): **five segfaults across seven
   client-instances in six two-client runs**, in `qeynos2` AND in `arena`, in
@@ -2869,7 +2869,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   session survives 5 minutes and a test pins whatever invariant
   `applySimulationOutput` is missing. Prov: T386 Review §5.
 
-- **B188** (A) `include/client/graphics/vision_ambient.h` `kUltravisionAmbientGain`
+- **B203** (A) `include/client/graphics/vision_ambient.h` `kUltravisionAmbientGain`
   / `kUltravisionTint` / `kInfravisionAmbientGain` / `kInfravisionTint` —
   **B171 REOPENED: T383's re-solve is refuted by the live re-measure it was
   waiting for, and it made both scalar ratios WORSE.** MEASURED T386
@@ -2905,7 +2905,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   pins the constants that did it, and the fit is closed against a measurement
   rather than extrapolated. Prov: T386 Review §4; B171; B067.
 
-- **B189** (B) `src/client/graphics/spell_visual_fx_nodes.cpp` /
+- **B204** (B) `src/client/graphics/spell_visual_fx_nodes.cpp` /
   `SpellVisualFX` — **no spell impact visual is drawn at all, on the observing
   client or anywhere, so T381's Fire/Cold colours have no consumer that reaches
   a frame.** MEASURED T386 (`review/T386/` §3): Testcaster cast Burst of Flame
@@ -2923,7 +2923,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   something an observing client can see and the two vocabulary colours differ on
   screen. Prov: T386 Review §3; B160; B161; B165.
 
-- **B190** (B) the eqstr for "your spell failed to land … invulnerable" —
+- **B205** (B) the eqstr for "your spell failed to land … invulnerable" —
   **fable prints a 45-character hex blob in front of the spell name in a line
   the player sees.** MEASURED T386, twice in one session
   (`review/T386/logs/fable_session_selfcast.log`, screenshot
@@ -2948,11 +2948,11 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   `character_currency` 4/6/1/8 -> 5/15/3/11, and
   `You receive 3 platinum, 3 gold, 5 silver and 5 copper from the corpse.` with
   5/15/3/11 -> 8/18/8/16 — both deltas exactly the four printed counts. The
-  SOUND half is **NOT** proven and is now **B185**; "watch the purse move" turns
-  out to be impossible on fable's screen and is now **B186**. The official
+  SOUND half is **NOT** proven and is now **B200**; "watch the purse move" turns
+  out to be impossible on fable's screen and is now **B201**. The official
   client's **zero-denomination** form is **still UNMEASURED**: T386's oracle
   attempt is recorded in `review/T386/` §1d together with the method that will
-  work (eqemu splits the loot table's copper by digit division, `zone/loot.cpp`,
+  work (eqemu splits the loot table's copper by digit division, `/mnt/projects/akk-stack/code/zone/loot.cpp`,
   so ~1 kill in 4 of `Gargalek_Daemado` has a zero) and the trap that killed it
   (a level-1 character takes falling damage from `#goto`'s Z in `arena` and gets
   stuck at HP 0 answering `You may not use that command while dead.`; use a
@@ -2972,8 +2972,8 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   character, while `Alt+P`, `G` and `P` were typed into the chat box. Send
   `Escape` before each key.
 
-- **B171** — its provisional strike **must be reversed**; see **B188**.
+- **B171** — its provisional strike **must be reversed**; see **B203**.
 
 - **B160** — its owed live pair is **NOT PROVEN** and the reason is bigger than
-  the colours; see **B189** (nothing is drawn) and **B187** (the two-client
+  the colours; see **B204** (nothing is drawn) and **B202** (the two-client
   session segfaults).
