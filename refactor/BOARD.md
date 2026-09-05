@@ -2021,7 +2021,7 @@ it without taking that measurement first.
 
 ## Added 2026-09-05 by T371 (documentation truth sweep, T352-T370)
 
-- **B130** (P) The orientation docs carry hand-maintained COUNTS with no
+- ~~**B130** (P) The orientation docs carry hand-maintained COUNTS with no
   regression net, and T371 found every one of them wrong at `a7e760dc`:
   `src/client/input/CLAUDE.md`'s `InputAction` enum (said 40, measured 33 —
   T365 and T368 deleted seven consumer-less enumerators) and `HotkeyAction`
@@ -2040,7 +2040,23 @@ it without taking that measurement first.
   way `command_registration_order_g03.txt` asserts the registration count.
   T371 corrected all of them in place and, where the number is inherently
   drifty (the suite total, the `owner_` census), replaced it with the command
-  that measures it. Prov: T371.
+  that measures it.~~ **CLOSED by T373 Leg A**
+  (`refactor/T373_doc_counts_net.md`): `scripts/refactor/check_doc_counts.py`,
+  registered as the `DocCounts` ctest test under label `hygiene` beside
+  `DocClaims`. Seven counts are netted over fourteen doc sites against
+  measuring functions over the tree -- the `InputAction` (33) and
+  `HotkeyAction` (94) enum bodies, `registerCommand({` call sites in
+  `command_processor_registration.cpp` (143), the `RendererIntent`
+  `std::variant` (36), the `loadZoneStep*` functions (20), and the
+  `*_component.h` headers per family (graphics 11, client 12) -- and a doc
+  site that LOSES its sentence fails as MISSING rather than passing silently.
+  The two counts that must NOT be pinned (the registered-test total, the
+  `owner_` census) are asserted the other way round: the doc must still name
+  its measuring command. Planted fault (`HotkeyAction` 94 -> 80) failed
+  naming file, line, stated and measured number; reverted byte-for-byte and
+  green. One further drift found in passing and fixed: `README.md`'s
+  directory tree still said "123 test executables" (T371 corrected only the
+  prose paragraph). Prov: T371.
 
 - **B131** (P) `refactor/BOARD.md` and the batch close-outs (`refactor/K_*.md`)
   are inside `DocCitations`' live-doc set but deliberately OUTSIDE `DocClaims`'
