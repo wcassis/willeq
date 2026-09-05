@@ -756,10 +756,12 @@ it without taking that measurement first.
 
 - **B166** (P) A reachability census that greps only `src/`, `include/` and
   `tests/` is not "tree-wide". T380 boarded B160 as "`setSpellDatabase()` has
-  ZERO callers tree-wide"; T381 found the call in
-  `tools/model_viewer.cpp:2750`, i.e. the ONE place a developer actually
-  exercises the spell FX layer by hand, which is exactly why the defect
-  survived — the tool looked right and the game did not. `tools/` holds
+  ZERO callers tree-wide"; T381 found the call in `tools/model_viewer.cpp`
+  (line 2750 of the 3,246-line TU as it then stood; T385 decomposed that file,
+  and the spell-test wiring now lives in
+  `tools/model_viewer/model_viewer_spell_test.cpp`), i.e. the ONE place a
+  developer actually exercises the spell FX layer by hand, which is exactly why
+  the defect survived — the tool looked right and the game did not. `tools/` holds
   `model_viewer`, `willeq_db_builder`, the zone/atlas builders and the audit
   binaries, all of which call production APIs. Every future zero-caller claim
   must state the directories it grepped and include `tools/` (and `docker/`,
@@ -2714,15 +2716,39 @@ branches can be deleted independently of these items.
 
 ## Added 2026-09-05 by the orchestrator (T381 merge)
 
-- **B167** (P) `scripts/refactor/check_file_sizes.sh --all` scans `src/`,
+- ~~**B167** (P) `scripts/refactor/check_file_sizes.sh --all` scans `src/`,
   `include/` and `tests/` only, so M00's "1,500 ceiling enforced tree-wide" is
-  FALSE for `tools/`: `tools/model_viewer.cpp` is **3,246 lines** at `d5b4bdaf`
-  (the file `ctest` never sees), and T381 measured it growing (+4) with no
-  guard. Census at `3bea8022` (`wc -l` over `tools/`): `tools/hwcaps/zone_bench_loader.cpp` 3,280, `tools/model_viewer.cpp` 3,246, `tools/hwcaps/gles2_zone_benchmark.cpp` 3,060, `tools/model_viewer_spell_bar.h` 1,965, `tools/entity_composite_builder.cpp` 1,861 — five files over the ceiling, not one. `tools/` holds production-API callers (B166), so the same structural
-  rule applies. Closes when: `--all` covers `tools/` (and `benchmarks/` if it
-  holds C++), every file over 1,500 there is decomposed by the K/L/G mechanism
-  (`model_viewer.cpp` first), and the M00 close-out and `CLAUDE.md` say
-  "tree-wide" truthfully. → T385. Prov: T381 Review (file-size table).
+  FALSE for `tools/`.~~ **MOSTLY CLOSED by T385** (Leg A `4c28993c`, Leg B and
+  the three follow-on splits). `--all` now scans `src/`, `include/`, `tests/`,
+  `tools/` and `benchmarks/` (971 files, up from 866), and the census it finds
+  is **six** files, not the five this entry counted by hand — the sixth is
+  `tools/hwcaps/gles2_fog_volume_benchmark.cpp` at 1,711. T385 decomposed four:
+  `tools/model_viewer.cpp` 3,246 -> 155 (eight TUs under `tools/model_viewer/`,
+  behind `model_viewer_state.h`), `tools/model_viewer_spell_bar.h` 1,965 -> 14
+  (three headers), `tools/entity_composite_builder.cpp` 1,861 -> 484 (three TUs
+  under `tools/entity_composite/`, `namespace ecb`), and
+  `tools/hwcaps/gles2_fog_volume_benchmark.cpp` 1,711 -> 1,220 (ten GLSL
+  sources to their own TU). Each was proved by byte-comparing the tool's own
+  output before and after — for `entity_composite_builder` that is 16 produced
+  files identical by md5. `docs/decisions.md` 2026-09-05, `CLAUDE.md`
+  §"Process requirement" and `refactor/M00_ceiling_closed.md` all say
+  "tree-wide" truthfully now. **Remains open only for the two `hwcaps` zone
+  files, which are T387's** (see B185). Prov: T381 Review (file-size table),
+  T385 Review.
+
+## Added 2026-09-05 by T385 (tools/ under the ceiling)
+
+- **B185** (P) The two `tools/hwcaps` zone files are the last two files in the
+  tree over the size ceiling: `tools/hwcaps/zone_bench_loader.cpp` **3,280**
+  and `tools/hwcaps/gles2_zone_benchmark.cpp` **3,060**, both over the 3,000
+  hard cap, not just the 1,500 ceiling. They were invisible until T385 pointed
+  `check_file_sizes.sh --all` at `tools/` (B167), so `FileSizeCeiling` is RED
+  on the tip until they are split. Dispatched to **T387** (slot3) in the same
+  wave as T385; this entry exists so the RED test has an owner on the board and
+  is not mistaken for a T385 regression. Note for whoever takes it:
+  `gles2_zone_benchmark` is what `scripts/ci/visual_gate.sh` targets, so its
+  split needs a gate run, not just a byte-compared log. Closes when both are
+  under 1,500 and `check_file_sizes.sh --all` is 0 FAIL. Prov: T385 Review.
 
 ## Added 2026-09-05 by T383 (vision colour channels)
 

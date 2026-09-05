@@ -842,6 +842,18 @@ ENDIF()
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(model_viewer
         tools/model_viewer.cpp
+        # T385 (board B167): model_viewer.cpp was 3,246 lines -- over the
+        # 3,000-line hard cap -- and check_file_sizes.sh did not scan tools/,
+        # so nothing caught it. Decomposed by function; main() is all that is
+        # left in the original TU.
+        tools/model_viewer/model_viewer_state.cpp
+        tools/model_viewer/model_viewer_startup.cpp
+        tools/model_viewer/model_viewer_loop.cpp
+        tools/model_viewer/model_viewer_input.cpp
+        tools/model_viewer/model_viewer_mesh.cpp
+        tools/model_viewer/model_viewer_entity.cpp
+        tools/model_viewer/model_viewer_equipment.cpp
+        tools/model_viewer/model_viewer_spell_test.cpp
         tools/tool_race_db.cpp
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp
@@ -919,6 +931,9 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(model_viewer PRIVATE
         ${CMAKE_SOURCE_DIR}/include
         ${CMAKE_SOURCE_DIR}/src
+        # T385: tools/model_viewer/*.cpp include "model_viewer_spell_bar.h" and
+        # "tool_race_db.h", which used to resolve relative to tools/.
+        ${CMAKE_SOURCE_DIR}/tools
         ${CMAKE_SOURCE_DIR}/third_party
         ${IRRLICHT_INCLUDE_DIR}
         ${ZLIB_INCLUDE_DIRS}
@@ -1049,6 +1064,11 @@ IF(EQT_GRAPHICS)
     # Entity Composite Texture Builder (offline composite sheet generation for single-draw entity rendering)
     ADD_EXECUTABLE(entity_composite_builder
         tools/entity_composite_builder.cpp
+        # T385 (board B167): this tool was 1,861 lines in one TU, over the
+        # 1,500 ceiling that check_file_sizes.sh did not apply to tools/.
+        tools/entity_composite/composite_texture_io.cpp
+        tools/entity_composite/composite_model.cpp
+        tools/entity_composite/composite_archives.cpp
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp
         src/client/graphics/eq/wld_fragments_material.cpp
@@ -1076,6 +1096,8 @@ IF(EQT_GRAPHICS)
         TARGET_SOURCES(entity_composite_builder PRIVATE src/client/graphics/gpu_upload_thread.cpp)
     ENDIF()
     TARGET_INCLUDE_DIRECTORIES(entity_composite_builder PRIVATE
+        # T385: tools/entity_composite/*.cpp include "entity_composite/..."
+        ${CMAKE_SOURCE_DIR}/tools
         ${CMAKE_SOURCE_DIR}/include
         ${CMAKE_SOURCE_DIR}/src
         ${ZLIB_INCLUDE_DIRS}
@@ -1612,8 +1634,13 @@ ELSE()
     TARGET_LINK_LIBRARIES(gles2_program_switch_benchmark EGL GLESv2)
 ENDIF()
 
-ADD_EXECUTABLE(gles2_fog_volume_benchmark tools/hwcaps/gles2_fog_volume_benchmark.cpp)
-TARGET_INCLUDE_DIRECTORIES(gles2_fog_volume_benchmark PRIVATE ${CMAKE_SOURCE_DIR}/include)
+# T385 (board B167): the shader sources moved out -- the benchmark TU was
+# 1,711 lines, over the 1,500 ceiling that now covers tools/.
+ADD_EXECUTABLE(gles2_fog_volume_benchmark
+    tools/hwcaps/gles2_fog_volume_benchmark.cpp
+    tools/hwcaps/fog_volume/fog_volume_shaders.cpp)
+TARGET_INCLUDE_DIRECTORIES(gles2_fog_volume_benchmark PRIVATE ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/tools/hwcaps)
 IF(EQT_DRM)
     TARGET_COMPILE_DEFINITIONS(gles2_fog_volume_benchmark PRIVATE EQT_HAS_DRM)
     IF(LIBDRM_INCLUDE_DIR)

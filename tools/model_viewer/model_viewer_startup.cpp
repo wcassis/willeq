@@ -1,0 +1,417 @@
+// tools/model_viewer/model_viewer_startup.cpp -- everything main() used to do
+// before the render loop: the command line, the usage banner, direct
+// race-code loading (S3D archives, body/head variants, the character texture
+// merge), Irrlicht device creation, and subsystem wiring.
+// Bodies moved from tools/model_viewer.cpp by T385 (board B167): main()
+// alone was 933 lines. Only the mechanical changes are made here --
+// locals that crossed a new function boundary became ViewerArgs fields or
+// out-parameters, and `return 1` on a fatal path became `return false`.
+
+#include "model_viewer_state.h"
+
+
+void parseCommandLine(int argc, char* argv[], ViewerArgs& args) {
+    // Parse command line arguments
+    for (int i = 1; i < argc; i++) {
+        std::string arg = argv[i];
+        if (arg == "--entities" && i + 1 < argc) {
+            args.entityFile = argv[++i];
+        } else if (arg == "--entity" && i + 1 < argc) {
+            args.entityName = argv[++i];
+        } else if (arg == "--client" && i + 1 < argc) {
+            clientPath = argv[++i];
+            if (clientPath.back() != '/') clientPath += '/';
+        } else if (arg == "--spell-test") {
+            spellTestMode = true;
+        } else if (arg == "--gl") {
+            useGLRenderer = true;
+        } else if (arg == "--gles2") {
+            useGLES2Renderer = true;
+        } else if (arg == "--debug" || arg == "-d") {
+            args.debugLevel = 1;
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+                // Check if next arg is a number
+                try {
+                    args.debugLevel = std::stoi(argv[i + 1]);
+                    ++i;
+                } catch (...) {
+                    // Not a number, keep args.debugLevel = 1
+                }
+            }
+        } else if (arg[0] != '-') {
+            // First non-flag arg is client path, second is race code
+            if (clientPath == "/home/user/projects/claude/EverQuestP1999/") {
+                clientPath = arg;
+                if (clientPath.back() != '/') clientPath += '/';
+            } else {
+                args.raceCode = arg;
+                std::transform(args.raceCode.begin(), args.raceCode.end(), args.raceCode.begin(),
+                    [](unsigned char c) { return std::toupper(c); });
+            }
+        }
+    }
+}
+
+void printUsageBanner(const ViewerArgs& args) {
+    std::cout << "EQ Model Viewer" << std::endl;
+    std::cout << "Client path: " << clientPath << std::endl;
+    std::cout << "Debug level: " << args.debugLevel << std::endl;
+    std::cout << "Usage: model_viewer [client_path] [race_code]" << std::endl;
+    std::cout << "       model_viewer --entities <file.json> [--entity <name>]" << std::endl;
+    std::cout << "       model_viewer --spell-test [--gl|--gles2] --client <path>" << std::endl;
+    std::cout << "       --debug, -d [level]  Enable debug output (default level 1)" << std::endl;
+    std::cout << std::endl;
+    std::cout << "Controls:" << std::endl;
+    std::cout << "  Arrow keys: Rotate (Y/X axis)" << std::endl;
+    std::cout << "  Q/E: Rotate Z axis" << std::endl;
+    std::cout << "  +/-: Zoom in/out" << std::endl;
+    std::cout << "  S: Toggle static/animated mode" << std::endl;
+    std::cout << "  V/Shift+V: Cycle body variant next/prev" << std::endl;
+    std::cout << "  H/Shift+H: Cycle head variant next/prev" << std::endl;
+    std::cout << "  B: Toggle equipment textures on/off" << std::endl;
+    std::cout << "  N/Shift+N: Cycle body texture next/prev (when equipment textures on)" << std::endl;
+    std::cout << "  A/Shift+A: Cycle animations next/prev" << std::endl;
+    std::cout << "  Space: Pause/Resume animation" << std::endl;
+    std::cout << "  [/]: Decrease/Increase animation speed" << std::endl;
+    std::cout << "  W: Toggle wireframe" << std::endl;
+    std::cout << "  R: Reset rotation" << std::endl;
+    std::cout << "  ,/.: Cycle entities (prev/next)" << std::endl;
+    std::cout << "  F7/Shift+F7: Cycle spell effects (next/prev)" << std::endl;
+    std::cout << "  1-0: Cast spell from slot" << std::endl;
+    std::cout << "  ESC: Quit" << std::endl;
+    std::cout << std::endl;
+}
+
+// Direct race-code mode: no entity JSON and no spell test, so the viewer loads
+// global_chr.s3d up front and picks a character out of it. Returns false on a
+// fatal load failure (main turns that into exit 1).
+bool loadDirectRaceMode(const ViewerArgs& args, std::shared_ptr<CharacterModel>& character) {
+    std::shared_ptr<S3DZone> zone = nullptr;
+    // Direct race code mode - load global_chr.s3d
+    std::string s3dPath = clientPath + "global_chr.s3d";
+    std::cout << "Loading: " << s3dPath << std::endl;
+
+    S3DLoader loader;
+    if (!loader.loadZone(s3dPath)) {
+        LOG_ERROR(MOD_MAIN, "Failed to load {}: {}", s3dPath, loader.getError());
+        return false;
+    }
+
+    zone = loader.getZone();
+    if (!zone || zone->characters.empty()) {
+        LOG_ERROR(MOD_MAIN, "No character models found in {}", s3dPath);
+        return false;
+    }
+
+    std::cout << "Found " << zone->characters.size() << " character models" << std::endl;
+
+    // Find the requested model
+    currentRaceCode = args.raceCode;
+
+    for (const auto& ch : zone->characters) {
+        // Extract model base from skeleton name (remove _HS_DEF suffix)
+        std::string modelBase = ch->name;
+        size_t hsDefPos = modelBase.find("_HS_DEF");
+        if (hsDefPos != std::string::npos) {
+            modelBase = modelBase.substr(0, hsDefPos);
+        }
+        // Convert to uppercase for comparison
+        std::string upperBase = modelBase;
+        std::transform(upperBase.begin(), upperBase.end(), upperBase.begin(),
+            [](unsigned char c) { return std::toupper(c); });
+
+        std::cout << "  Available: " << ch->name << " (base: " << upperBase
+        << ", " << ch->parts.size() << " parts";
+        if (ch->animatedSkeleton) {
+            std::cout << ", " << ch->animatedSkeleton->animations.size() << " anims";
+        }
+        std::cout << ")" << std::endl;
+
+        // Look for requested model
+        if (upperBase == currentRaceCode) {
+            character = ch;
+            std::cout << "  -> Selected " << currentRaceCode << " model" << std::endl;
+        }
+    }
+
+    // Fall back to first model if not found
+    if (!character && !zone->characters.empty()) {
+        character = zone->characters[0];
+        std::cout << "  -> " << currentRaceCode << " not found, using first model" << std::endl;
+    }
+
+    if (!character) {
+        LOG_ERROR(MOD_MAIN, "No character model found");
+        return false;
+    }
+    std::cout << "Character: " << character->name << " with " << character->parts.size() << " parts" << std::endl;
+
+    // Map race code to ID for animated mesh loading
+    // This is a simplified mapping - could be expanded
+    if (currentRaceCode == "HUM") currentRaceId = 1;
+    else if (currentRaceCode == "BAM") currentRaceId = 2;
+    else if (currentRaceCode == "ERM") currentRaceId = 3;
+    else if (currentRaceCode == "ELM") currentRaceId = 4;
+    else if (currentRaceCode == "HIM") currentRaceId = 5;
+    else if (currentRaceCode == "DAM") currentRaceId = 6;
+    else if (currentRaceCode == "HAM") currentRaceId = 7;
+    else if (currentRaceCode == "DWM") currentRaceId = 8;
+    else if (currentRaceCode == "TRM") currentRaceId = 9;
+    else if (currentRaceCode == "OGM") currentRaceId = 10;
+    else if (currentRaceCode == "HOM") currentRaceId = 11;
+    else if (currentRaceCode == "GNM") currentRaceId = 12;
+    else if (currentRaceCode == "ELE") currentRaceId = 75;  // Elemental
+    else if (currentRaceCode == "SKE") currentRaceId = 21;  // Skeleton
+    else currentRaceId = 1;  // Default to human
+
+    // Extract race code from skeleton name for classifying parts
+    std::string raceCode = character->name;
+    size_t hsDefPos = raceCode.find("_HS_DEF");
+    if (hsDefPos != std::string::npos) {
+        raceCode = raceCode.substr(0, hsDefPos);
+    }
+    std::transform(raceCode.begin(), raceCode.end(), raceCode.begin(),
+        [](unsigned char c) { return std::toupper(c); });
+
+    // Categorize parts into body variants and head variants
+    for (const auto& part : character->parts) {
+        std::string partName = part->name;
+        std::transform(partName.begin(), partName.end(), partName.begin(),
+            [](unsigned char c) { return std::toupper(c); });
+
+        // Check if it's a head variant (contains "HE" after race code)
+        std::string headPattern = raceCode + "HE";
+        if (partName.find(headPattern) == 0) {
+            headVariants.push_back(part);
+            std::cout << "  Head variant: " << part->name << " (" << part->vertices.size() << " verts)" << std::endl;
+        } else if (partName.find(raceCode) == 0) {
+            bodyVariants.push_back(part);
+            std::cout << "  Body variant: " << part->name << " (" << part->vertices.size() << " verts)" << std::endl;
+        }
+    }
+
+    std::cout << "Found " << bodyVariants.size() << " body variants, "
+    << headVariants.size() << " head variants" << std::endl;
+
+    // Start with first body and first head variant
+    currentBodyVariant = 0;
+    currentHeadVariant = 0;
+
+    // Combine initial variants
+    combineCurrentVariants();
+    if (!characterGeometry || characterGeometry->vertices.empty()) {
+        LOG_ERROR(MOD_MAIN, "Failed to combine character variants");
+        return false;
+    }
+
+    std::cout << "Initial geometry: " << characterGeometry->vertices.size() << " vertices, "
+    << characterGeometry->triangles.size() << " triangles" << std::endl;
+
+    // Load textures from all S3D files (base textures first, then overrides)
+    // Order: global_chr.s3d -> global2-7_chr.s3d -> zone_chr.s3d (zone takes precedence)
+    if (args.debugLevel >= 1) {
+        std::cout << "\n=== Loading Textures ===" << std::endl;
+    }
+
+    // 1. Start with textures from global_chr.s3d
+    characterTextures = zone->characterTextures;
+    if (args.debugLevel >= 1) {
+        std::cout << "  [global_chr.s3d] Loaded " << characterTextures.size() << " textures" << std::endl;
+        if (args.debugLevel >= 2) {
+            for (const auto& [name, tex] : characterTextures) {
+                std::cout << "    - " << name << " (" << (tex ? tex->data.size() : 0) << " bytes)" << std::endl;
+            }
+        }
+    }
+
+    // 2. Load textures from global2-7_chr.s3d files
+    for (int globalNum = 2; globalNum <= 7; ++globalNum) {
+        std::string globalPath = clientPath + "global" + std::to_string(globalNum) + "_chr.s3d";
+        S3DLoader globalLoader;
+        if (globalLoader.loadZone(globalPath)) {
+            auto globalData = globalLoader.getZone();
+            if (globalData && !globalData->characterTextures.empty()) {
+                size_t addedCount = 0;
+                for (const auto& [name, tex] : globalData->characterTextures) {
+                    if (characterTextures.find(name) == characterTextures.end()) {
+                        characterTextures[name] = tex;
+                        addedCount++;
+                    }
+                }
+                if (args.debugLevel >= 1) {
+                    std::cout << "  [global" << globalNum << "_chr.s3d] Added " << addedCount
+                    << " new textures (skipped " << (globalData->characterTextures.size() - addedCount)
+                    << " duplicates)" << std::endl;
+                }
+            } else if (args.debugLevel >= 1) {
+                std::cout << "  [global" << globalNum << "_chr.s3d] Loaded (no character textures)" << std::endl;
+            }
+        } else if (args.debugLevel >= 1) {
+            std::cout << "  [global" << globalNum << "_chr.s3d] Not found or failed to load" << std::endl;
+        }
+    }
+
+    // 3. Load zone-specific textures (these take precedence over global textures)
+    if (!currentZoneName.empty()) {
+        std::string zoneS3dPath = clientPath + currentZoneName + "_chr.s3d";
+        S3DLoader zoneLoader;
+        if (zoneLoader.loadZone(zoneS3dPath)) {
+            auto zoneData = zoneLoader.getZone();
+            if (zoneData && !zoneData->characterTextures.empty()) {
+                size_t overrideCount = 0;
+                size_t newCount = 0;
+                for (const auto& [name, tex] : zoneData->characterTextures) {
+                    if (characterTextures.find(name) != characterTextures.end()) {
+                        overrideCount++;
+                    } else {
+                        newCount++;
+                    }
+                    characterTextures[name] = tex;  // Override or add
+                }
+                if (args.debugLevel >= 1) {
+                    std::cout << "  [" << currentZoneName << "_chr.s3d] Added " << newCount
+                    << " new textures, overrode " << overrideCount << " existing" << std::endl;
+                }
+                if (args.debugLevel >= 2) {
+                    std::cout << "    Zone textures:" << std::endl;
+                    for (const auto& [name, tex] : zoneData->characterTextures) {
+                        std::cout << "      - " << name << " (" << (tex ? tex->data.size() : 0) << " bytes)" << std::endl;
+                    }
+                }
+            }
+        } else if (args.debugLevel >= 1) {
+            std::cout << "  [" << currentZoneName << "_chr.s3d] Not found or failed to load" << std::endl;
+        }
+    }
+
+    if (args.debugLevel >= 1) {
+        std::cout << "  Total: " << characterTextures.size() << " textures loaded" << std::endl;
+    }
+    return true;
+}
+
+// Returns false if the device could not be created.
+bool createViewerDevice() {
+    video::E_DRIVER_TYPE driverType = video::EDT_SOFTWARE;
+    if (useGLRenderer) {
+        driverType = video::EDT_OPENGL;
+        std::cout << "Using OpenGL renderer" << std::endl;
+    }
+    #ifdef EQT_HAS_GLES2
+    else if (useGLES2Renderer) {
+        driverType = video::EDT_OGLES2;
+        std::cout << "Using GLES2 renderer" << std::endl;
+    }
+    #endif
+    else if (spellTestMode) {
+        // Spell test mode defaults to GL for particle effects
+        driverType = video::EDT_OPENGL;
+        std::cout << "Spell test mode: using OpenGL renderer (use --gles2 for GLES2)" << std::endl;
+    }
+
+    // Create Irrlicht device
+    device = createDevice(driverType,
+        core::dimension2d<u32>(800, 600),
+        32, false, false, false, &receiver);
+
+    if (!device) {
+        LOG_ERROR(MOD_MAIN, "Failed to create Irrlicht device");
+        return false;
+    }
+
+    device->setWindowCaption(L"EQ Model Viewer - A/Z: animations, Space: pause, S: toggle mode");
+
+    driver = device->getVideoDriver();
+    smgr = device->getSceneManager();
+    fileSystem = device->getFileSystem();
+    return true;
+}
+
+void initViewerSubsystems() {
+    // Initialize spell bar for casting visualization
+    spellBar.initialize(driver, device->getGUIEnvironment());
+    spellBar.setScreenSize(800, 600);
+    spellBar.setSpellClickCallback([](int index, const EQT::SpellBarEntry& spell) {
+        // Don't start a new cast if already casting
+        if (castingBar.isCasting()) {
+        std::cout << "Already casting - cannot cast " << spell.name << std::endl;
+        return;
+        }
+
+        // Create a modified spell with 2x cast time for testing
+        EQT::SpellBarEntry testSpell = spell;
+        testSpell.castTime = spell.castTime * 2.0f;  // Double cast time for testing
+
+        std::cout << "Casting spell [" << (index + 1) << "]: " << testSpell.name
+        << " (" << testSpell.getCastAnimation() << ", " << testSpell.castTime << "s)" << std::endl;
+
+        // Start the cast with progress tracking
+        castingBar.startCast(testSpell);
+
+        // Play the casting animation if we have an animated node
+        if (animatedNode && useAnimatedMesh) {
+        std::string animCode = testSpell.getCastAnimation();
+        if (animatedNode->playAnimation(animCode, true, false)) {  // loop=true while casting
+        std::cout << "  Playing animation: " << animCode << std::endl;
+        } else {
+        std::cout << "  Animation not found: " << animCode << std::endl;
+        }
+
+        // Create casting particle effect using selected effect or default
+        if (currentEffectIndex >= 0) {
+        const auto* emitter = spellFX.getSpellEffectDB().getEmitterByIndex(currentEffectIndex);
+        if (emitter) {
+        spellFX.createCastingEffectFromEmitter(animatedNode, *emitter, testSpell);
+        } else {
+        spellFX.createCastingEffect(animatedNode, testSpell);
+        }
+        } else {
+        spellFX.createCastingEffect(animatedNode, testSpell);
+        }
+        }
+        });
+
+    // Initialize casting bar
+    castingBar.initialize(driver, device->getGUIEnvironment());
+    castingBar.setScreenSize(800, 600);
+
+    // Initialize spell particle effects
+    spellFX.initialize(smgr, driver, clientPath);
+
+    // Create race model loader for animated meshes
+    raceModelLoader = std::make_unique<RaceModelLoader>(smgr, driver, fileSystem);
+    raceModelLoader->setClientPath(clientPath);
+
+    // Create equipment model loader for weapons/shields
+    equipmentModelLoader = std::make_unique<EquipmentModelLoader>(smgr, driver, fileSystem);
+    equipmentModelLoader->setClientPath(clientPath);
+    // T62: wire a texture cache so equipped weapon/shield meshes actually
+    // get textures -- see the declaration comment above.
+    equipmentTextureCache = std::make_unique<ConstrainedTextureCache>(
+        ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::TNT));
+    equipmentTextureCache->setDriver(driver);
+    equipmentModelLoader->setConstrainedTextureCache(equipmentTextureCache.get());
+
+    // Load item ID to model ID mapping
+    std::string mappingPath = "data/item_models.json";
+    int mappingCount = equipmentModelLoader->loadItemModelMapping(mappingPath);
+    if (mappingCount > 0) {
+        std::cout << "Loaded " << mappingCount << " item-to-model mappings from " << mappingPath << std::endl;
+    } else {
+        std::cout << "Warning: Failed to load item mappings from " << mappingPath << std::endl;
+    }
+
+    // Load equipment models from gequip archives
+    if (equipmentModelLoader->loadEquipmentArchives()) {
+        std::cout << "Loaded " << equipmentModelLoader->getLoadedModelCount() << " equipment models" << std::endl;
+    } else {
+        std::cout << "Warning: Failed to load equipment archives" << std::endl;
+    }
+
+    // Set current zone if loaded from entity file (enables zone-specific models)
+    if (!currentZoneName.empty()) {
+        std::cout << "Setting zone for model loading: " << currentZoneName << std::endl;
+        raceModelLoader->setCurrentZone(currentZoneName);
+    }
+}
+
