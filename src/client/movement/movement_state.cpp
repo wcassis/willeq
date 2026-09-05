@@ -406,7 +406,7 @@ void eqt::movement::MovementComponent::SendJump()
 	
 	p.PutUInt16(0, HC_OP_Jump);  // opcode
 	
-	ctx_.zone_connection->QueuePacket(p, 0, false);
+	ctx_.net.SafeQueueZone(p, 0, false);
 	
 	if (EverQuest::GetDebugLevel() >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Sent OP_Jump packet (2 bytes)");

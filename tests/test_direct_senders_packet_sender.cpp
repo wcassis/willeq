@@ -264,4 +264,32 @@ TEST(DirectSendersPacketSender, RecordedSession_Group) {
         });
 }
 
+// =====================================================================
+// movement -- MovementComponent::SendJump
+// The B140 crash shape: the only guard is IsFullyZonedIn(), which says
+// nothing about the connection pointer.
+// =====================================================================
+
+TEST(DirectSendersPacketSender, NoZoneConnection_Movement) {
+    SenderHarness h(/*withConnection=*/false);
+    ASSERT_EQ(h.eq.m_zone_connection, nullptr);
+    ASSERT_TRUE(h.eq.IsFullyZonedIn());
+
+    h.eq.Movement().SendJump();
+
+    SUCCEED() << "SendJump survived a null zone connection";
+}
+
+TEST(DirectSendersPacketSender, RecordedSession_Movement) {
+    WithRecordedSession(
+        "t378_movement_recorded.sleq",
+        [](SenderHarness& h) { h.eq.Movement().SendJump(); },
+        [](const std::vector<RecordedPacket>& recorded) {
+            EXPECT_EQ(CountOpcode(recorded, HC_OP_Jump), 1u)
+                << "SendJump must reach the session recorder; a sender that "
+                   "calls zone_connection->QueuePacket() directly is invisible "
+                   "to it (BOARD B145)";
+        });
+}
+
 }  // namespace
