@@ -813,3 +813,18 @@ failure this guards against).
   possibly tradeskill combine. Measure the official client's sounds first
   (match-the-oracle), then wire. A feature unit, not a structural one.
 - **B040, the placeables memory gate:** stays open, low priority.
+
+## 2026-09-05 - three rulings from Will
+
+- **B058 `/skills`:** rename `/newskills` to `/skills` and remove `/newskills`
+  outright (no alias). One body survives: the fuller one (closes the spellbook
+  and inventory popups and echoes to chat). The bare `skills` stdin keyword
+  keeps toggling the same window. Unit T363.
+- **B060 racial vision table:** Will's expectation is Troll = Ultravision,
+  Ogre = Infravision, but the table is settled by the OFFICIAL CLIENT, not by
+  ruling — T361 captures the no-buff night floor per race under Wine.
+- **B020 per-category memory budgets:** Will asked for a guess from the Orange
+  Pi as the normal platform. No guess is needed: T293 (2026-08-26) already
+  derived and configured all eight budgets in the orangepi preset from the
+  on-disk assets, 1280x720 and the Pi envelope. The board row was STALE and is
+  struck; the one open figure (untracked RSS) is B021.

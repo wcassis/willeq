@@ -440,11 +440,11 @@ it without taking that measurement first.
   `refactor/K00_truth_reset.md`, was fixed with it.)** Prov: the archived board's
   "SERVER-SENT PLACEABLES AND DOORS ARE UNMEASURED BY ANY GATE" section.
 
-- **B020** (C) `include/client/graphics/constrained_renderer_config.h` — eight
+- ~~**B020** (C) `include/client/graphics/constrained_renderer_config.h` — eight
   measured memory categories (zoneGeometry, s3dZoneSource, gpuTexture, vboEbo,
   eqe1Mapped, characterModels, placeableObjects, untracked) carry no configured
   budget, only baseline guards. The per-category ruling is owed. Prov: archived
-  board, T69.
+  board, T69.~~ **STALE — CLOSED by T293 (2026-08-26): every one of the eight categories has a configured budget in the orangepi preset (`config/constrained_presets.json`), derived per Will's ruling from the assets on disk, 1280x720 and the Orange Pi One envelope (`include/client/graphics/constrained_renderer_config.h` §T293). The only remaining unbudgeted figure is untracked RSS, which is B021. Re-confirmed to Will 2026-09-05.**
 
 - **B021** (C) `scripts/ci/visual_gate.py` `untrackedBytes` — emitted and
   baselined but deliberately not asserted; gating it needs repeat-run data from a
@@ -1345,7 +1345,7 @@ it without taking that measurement first.
   the reachability. See the new **B066** for the duplication the plan asked to
   record rather than merge. Prov: T347 (B013 measurement).
 
-- **B058** (C) `/skills` vs `/newskills` — a NAMING choice, not a defect.
+- **B058** (B) `/skills` vs `/newskills` — a NAMING choice, not a defect.
   `/newskills` (`renderer_slash_commands.cpp:422`) and the bare `skills` keyword
   piped stdin recognises (`console_input_handler.cpp:432` →
   `InputAction::ToggleSkills` → `renderer_frame_input.cpp:222`) toggle the same
@@ -1355,6 +1355,8 @@ it without taking that measurement first.
   nothing. Closes when: Will rules on the name (rename `/newskills` to `/skills`
   and keep one body, or keep both and say why). Do not merge them silently: the
   two bodies are not equivalent. Prov: T347 (B013 measurement).
+  **WILL RULED 2026-09-05: rename to `/skills`, REMOVE `/newskills` (no alias);
+  keep the fuller body (closes spellbook + inventory, echoes). → T363. Now class B.**
 
 ## Added 2026-09-04 by the T346 Review (self-death sequence)
 
@@ -1418,6 +1420,8 @@ it without taking that measurement first.
   Closes when the table is settled against the official client (a night capture
   per race is cheap once the eqemu lock is free — one zone-in each, the floor is
   visible with no buff up) or Will rules on it. Prov: T348 Review.
+  **WILL 2026-09-05: expects Troll = Ultravision, Ogre = Infravision, but the
+  official client decides — T361 captures the per-race night floor.**
 
 - ~~**B061** (B) `include/client/spell/spell_manager.h:193`
   `SpellManager::setOnSpellLand()` — **zero production callers.** The
