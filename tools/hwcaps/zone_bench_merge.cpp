@@ -20,10 +20,12 @@ namespace ZoneBench {
 
 namespace {
 
-// H02b: byte-identical copy of zone_bench_loader.cpp's textureGroupId (kept
-// private/anonymous there) -- same duplication convention already used by
-// production's zone_lifecycle/renderer_zone_draw.cpp (see that function's header comment).
-// Keep in sync with zone_bench_loader.cpp's copy if the hash ever changes.
+// H02b: byte-identical copy of the benchmark's textureGroupId -- same
+// duplication convention already used by production's
+// zone_lifecycle/renderer_zone_draw.cpp (see that function's header comment).
+// T387 moved the original out of zone_bench_loader.cpp into
+// zone_bench_draw_util.h, where it is now inline rather than file-private;
+// keep in sync with that copy if the hash ever changes.
 uint32_t textureGroupId(const irr::video::SMaterial& mat) {
     if (!mat.getTexture(0)) return 0;
     const irr::io::path& tname = mat.getTexture(0)->getName().getPath();

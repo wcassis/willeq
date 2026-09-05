@@ -2738,7 +2738,7 @@ branches can be deleted independently of these items.
 
 ## Added 2026-09-05 by T385 (tools/ under the ceiling)
 
-- **B185** (P) The two `tools/hwcaps` zone files are the last two files in the
+- ~~**B185** (P) The two `tools/hwcaps` zone files are the last two files in the
   tree over the size ceiling: `tools/hwcaps/zone_bench_loader.cpp` **3,280**
   and `tools/hwcaps/gles2_zone_benchmark.cpp` **3,060**, both over the 3,000
   hard cap, not just the 1,500 ceiling. They were invisible until T385 pointed
@@ -2748,8 +2748,7 @@ branches can be deleted independently of these items.
   is not mistaken for a T385 regression. Note for whoever takes it:
   `gles2_zone_benchmark` is what `scripts/ci/visual_gate.sh` targets, so its
   split needs a gate run, not just a byte-compared log. Closes when both are
-  under 1,500 and `check_file_sizes.sh --all` is 0 FAIL. Prov: T385 Review.
-
+  under 1,500 and `check_file_sizes.sh --all` is 0 FAIL. Prov: T385 Review. **CLOSED by T387 (`4b5a697c`…`39131bf6`): `zone_bench_loader.cpp` 3,280 → 977 (+4 TUs), `gles2_zone_benchmark.cpp` 3,060 → 992 (+3 TU pairs); gate before/after: 9 golden PNGs, every asserted memory category, all deterministic CSV columns and `--help` byte-identical. `--all` is 0 FAIL on the merged tip.**~~ **CLOSED by T387 (see B167).**
 ## Added 2026-09-05 by T383 (vision colour channels)
 
 - ~~**B180** (B) `tests/test_direct_sender_census.cpp`

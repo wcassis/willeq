@@ -1,7 +1,7 @@
 #pragma once
 // P09 A-gate: cross-region same-material zone draw merge -- risky-primitive
 // micro-benchmark. Extends the P08 --synthetic-draws machinery (see
-// runSyntheticDrawTest in gles2_zone_benchmark.cpp) with a sibling test mode
+// runSyntheticDrawTest in zone_bench_frame.cpp, T387) with a sibling test mode
 // that measures the SUBMISSION-TIME primitives the three P09 candidate
 // architectures depend on, at matched geometry:
 //

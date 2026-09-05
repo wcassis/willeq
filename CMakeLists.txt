@@ -1727,8 +1727,15 @@ ENDIF()
 IF(EQT_GRAPHICS)
     ADD_EXECUTABLE(gles2_zone_benchmark
         tools/hwcaps/gles2_zone_benchmark.cpp
+        tools/hwcaps/zone_bench_options.cpp
+        tools/hwcaps/zone_bench_frame.cpp
+        tools/hwcaps/zone_bench_modes.cpp
         tools/hwcaps/zone_bench_memory.cpp
         tools/hwcaps/zone_bench_loader.cpp
+        tools/hwcaps/zone_bench_draw.cpp
+        tools/hwcaps/zone_bench_entities.cpp
+        tools/hwcaps/zone_bench_lod.cpp
+        tools/hwcaps/zone_bench_regions.cpp
         tools/hwcaps/zone_bench_camera.cpp
         tools/hwcaps/zone_bench_entity_viewer.cpp
         tools/hwcaps/zone_bench_metrics.cpp
@@ -1864,6 +1871,10 @@ IF(EQT_GRAPHICS)
     ADD_EXECUTABLE(gles2_shader_diagnostic
         tools/hwcaps/gles2_shader_diagnostic.cpp
         tools/hwcaps/zone_bench_loader.cpp
+        tools/hwcaps/zone_bench_draw.cpp
+        tools/hwcaps/zone_bench_entities.cpp
+        tools/hwcaps/zone_bench_lod.cpp
+        tools/hwcaps/zone_bench_regions.cpp
         tools/hwcaps/zone_bench_camera.cpp
         tools/hwcaps/zone_bench_metrics.cpp
         tools/hwcaps/zone_bench_histogram.cpp
@@ -1956,6 +1967,10 @@ IF(EQT_GRAPHICS)
     ADD_EXECUTABLE(gles2_composite_audit
         tools/hwcaps/gles2_composite_audit.cpp
         tools/hwcaps/zone_bench_loader.cpp
+        tools/hwcaps/zone_bench_draw.cpp
+        tools/hwcaps/zone_bench_entities.cpp
+        tools/hwcaps/zone_bench_lod.cpp
+        tools/hwcaps/zone_bench_regions.cpp
         tools/hwcaps/zone_bench_camera.cpp
         tools/hwcaps/zone_bench_metrics.cpp
         tools/hwcaps/zone_bench_histogram.cpp

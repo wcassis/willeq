@@ -135,7 +135,7 @@ struct ViewAngle {
 
 // Front/back/side minimum per the plan; a 4th ("right") is free and gives a
 // more complete part-by-part read. Heading follows the same EQ convention
-// used throughout this tool (poseToDirection() in gles2_zone_benchmark.cpp:
+// used throughout this tool (poseToDirection() in zone_bench_frame.cpp, T387:
 // heading 0 -> +Y EQ, clockwise) -- "front" is simply heading 0, not a claim
 // about which way the model's texture artist intended it to face.
 constexpr ViewAngle kAngles[] = {
@@ -151,9 +151,10 @@ void poseToDirEQ(float headingDeg, float& dirX, float& dirY) {
     dirY = cosf(headingDeg * d2r);
 }
 
-// Mirrors gles2_zone_benchmark.cpp's static setupCamera() (not exported --
-// this TU is intentionally self-contained per the plan's "put substantial
-// new code in its own TU" instruction). Same EQ (x,y,z-up) -> Irrlicht
+// Mirrors zone_bench_frame.cpp's setupCamera() (T387 moved it there out of
+// gles2_zone_benchmark.cpp; it is exported now, but this TU stays
+// self-contained per the plan's "put substantial new code in its own TU"
+// instruction). Same EQ (x,y,z-up) -> Irrlicht
 // (x,z,y-up) convention, same shader camera-pos plumbing.
 void setupViewerCamera(ZoneBenchData& data,
                         float eqX, float eqY, float eqZ,
@@ -227,7 +228,7 @@ std::vector<EntityViewerAngleResult> runEntityViewer(ZoneBenchData& data,
     }
 
     // Ground the model at EQ Z=0 (Irrlicht Y=0), same convention as
-    // gles2_zone_benchmark.cpp's --composite-entity-test mode: offset by
+    // zone_bench_modes.cpp's --composite-entity-test mode (T387): offset by
     // -MinEdge.Y so the feet sit at the origin height.
     float meshOffsetY = -localBox.MinEdge.Y;
     irr::core::vector3df pos(0.0f, meshOffsetY, 0.0f);
