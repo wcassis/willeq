@@ -109,6 +109,10 @@ pointing at `main/` breaks the moment main rebuilds its Irrlicht (T357).
   aborts at gtest DISCOVERY with a shell syntax error.** The zero-byte sweep does
   not see it. After any exit 143 scan `build/bin` for the ELF magic (`head -c4 |
   od`; anything not `7f 45 4c 46` is deleted and rebuilt).
+   Also: a killed `ar` leaves multi-GB temp files named `build*/lib/st??????`
+   (six random chars, no extension). Delete them after every exit 143 — the
+   volume hit 93% on 20 GB of them (T359).
+
 
 - Honor STOP conditions exactly; report narrowed evidence, don't thrash.
 - Evidence discipline: garbled/invalid renders void any claim built on
