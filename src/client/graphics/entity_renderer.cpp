@@ -479,7 +479,11 @@ void EntityRenderer::setEntityLight(uint16_t spawnId, uint8_t lightLevel) {
     if (lightLevel == 0) {
         // Remove existing light
         if (visual.lightNode) {
+            // T391 (B202): detach, then release OUR reference (the grab below).
+            // remove() is a no-op when the worker has already culled the entity
+            // and detached this node.
             visual.lightNode->remove();
+            visual.lightNode->drop();
             visual.lightNode = nullptr;
             LOG_DEBUG(MOD_ENTITY, "Removed light from entity {} ({})", spawnId, visual.name);
         }
@@ -517,6 +521,23 @@ void EntityRenderer::setEntityLight(uint16_t spawnId, uint8_t lightLevel) {
         );
 
         if (visual.lightNode) {
+            // T391 (B202): OWN a reference. addLightSceneNode(nullptr, ...)
+            // parents the node to the ROOT scene node and drops its
+            // construction reference, so the node comes back with a count of
+            // ONE, held by the parent alone -- while EntityVisual keeps a raw
+            // pointer to it. SimBridgeComponent::applySimulationOutput()
+            // detaches this node with remove() every time the worker culls the
+            // entity, and remove() is Parent->removeChild(this), which drops:
+            // at a count of one that DELETES the node and leaves
+            // visual.lightNode dangling, so the next frame that re-admits the
+            // entity ran addChild() on freed memory on the render thread.
+            // That is the whole of B202 (see refactor/T391_two_client_segv.md
+            // and tests/test_entity_light_node_lifetime.cpp). This is the same
+            // grab-then-detach ownership the object lights already use
+            // (renderer_zone_load_objects.cpp) and that the entity's own
+            // sceneNode already has. Every path that clears lightNode must
+            // drop() this reference.
+            visual.lightNode->grab();
             irr::video::SLight& lightData = visual.lightNode->getLightData();
             lightData.Type = irr::video::ELT_POINT;
             // Attenuation: 1/(constant + linear*d + quadratic*d²)

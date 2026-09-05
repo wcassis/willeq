@@ -81,9 +81,15 @@ void EntityRenderer::removeEntity(uint16_t spawnId) {
         visual.castBarBillboard = nullptr;
     }
 
-    // Remove light source
+    // Remove light source. T391 (B202): the lightNode is grabbed at creation
+    // (setEntityLight, entity_renderer.cpp) because the worker's cull path
+    // detaches it with remove(); detach it here and then release OUR
+    // reference. Before T391 this line ran remove() on a node the cull had
+    // already freed, which is where ASAN caught B202 (see clearEntities()
+    // below and refactor/T391_two_client_segv.md).
     if (visual.lightNode) {
         visual.lightNode->remove();
+        visual.lightNode->drop();
         visual.lightNode = nullptr;
     }
 
@@ -205,9 +211,14 @@ void EntityRenderer::clearEntities() {
         if (visual.castBarBillboard) {
             visual.castBarBillboard->remove();
         }
-        // Remove light node
+        // Remove light node. T391 (B202): same grab/drop ownership as
+        // removeEntity() above -- this is the exact line ASAN faulted on
+        // (entity_lifecycle.cpp:210, heap-buffer-overflow read of a node the
+        // worker's cull had already deleted).
         if (visual.lightNode) {
             visual.lightNode->remove();
+            visual.lightNode->drop();
+            visual.lightNode = nullptr;
         }
         if (visual.nameNode) {
             visual.nameNode->remove();
