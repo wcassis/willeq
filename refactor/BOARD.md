@@ -134,17 +134,26 @@ it without taking that measurement first.
   `ActionDispatcherTest.MoveToAndFollow_PickTheNearestMatch_NotTheLowestSpawnId`,
   verified to fail on the unranked lookup (picked spawn 68, expected 277).
 
-- **B003d** (B) `src/client/entities/entities_component_appearance.cpp:326`
+- ~~**B003d** (B) `src/client/entities/entities_component_appearance.cpp:326`
   `EntitiesComponent::FindEntityByName` — the unranked case-insensitive PREFIX
   resolver T356 took out of moveTo/follow still backs `MoveToEntityWithinRange`,
   `StartCombatMovement(name)` and `UpdateCombatMovement`, so combat movement
   keeps the lowest-spawn-id pick; and `MovementComponent::Follow` stores its
   target as a NAME and re-matches it by exact string every tick
   (`src/client/movement/movement_update.cpp:183`), so following one of two
-  identically-named mobs is ambiguous per tick. Closes when: combat movement
-  resolves once through the ranked lookup and passes a spawn id (the T230/T356
-  rule), Follow tracks the spawn id, and the resolver has no callers left (then
-  delete it). Prov: T356 Review.
+  identically-named mobs is ambiguous per tick.~~ **CLOSED by T359 Leg A** (`310725a4`,
+  `refactor/T359_combat_movement_spawn_id.md`). `CombatState` and `PlayerState`
+  now store a SPAWN ID as the target identity (the name rides along for the log
+  lines only): `UpdateCombatMovement` and the per-tick follow branch read the
+  entity map by id, `MoveToEntityWithinRange`/`FaceEntity` take a `uint16_t`,
+  and the name-taking `StartCombatMovement(const std::string&, float)` — which
+  had ZERO production callers — was deleted. Pinned by
+  `MovementComponentTest.{FollowTracksTheSpawnIdAcrossTicksNotTheNameMatch,
+  CombatMovementTracksTheSpawnIdAcrossTicksNotTheNameMatch}`, both verified to
+  fail on the name re-match (they latched the far beetle at x=100 instead of the
+  near one at x=30). **The resolver was NOT deleted**: `RequestWarp`
+  (`/warp <entity_name>`) still calls it with a genuinely user-typed name — see
+  the new **B070**. Prov: T356 Review.
 
 - ~~**B004** (A) `include/client/graphics/ui/ui_layout.h` `centerPopup` — `popW`/
   `popH` are hardcoded 400/350 at every resolution; the archive records general
@@ -273,11 +282,23 @@ it without taking that measurement first.
   `--gtest_list_tests` runs of the built binary are byte-identical (they
   differed on all eight lines before).
 
-- **B011** (B) `src/client/graphics/entity_size.cpp`
+- ~~**B011** (B) `src/client/graphics/entity_size.cpp`
   `EntityRenderer::setEntitySize` — updates neither `collisionHeight` nor `deckZ`,
   so a resized boat's deck surface goes stale. Nothing in the game resizes a
-  boat, so this is a documented limit, not a live defect. Closes when: both are
-  recomputed, or the limit is asserted in a test. Prov: deferred item 38.
+  boat, so this is a documented limit, not a live defect.~~ **CLOSED by T359
+  Leg C (`23863718`) — the limit is ASSERTED, not removed.** The recompute was rejected on
+  reading it: it would be a THIRD copy of a formula whose two existing copies
+  (`entity_mesh_build.cpp` reads `mesh->getBoundingBox()` and a local `z`;
+  `entity_build_step.cpp` reads `vis.meshNode->getMesh()->getBoundingBox()` and
+  `vis.lastZ`) already disagree on their inputs, and no reachable path could
+  exercise it — eqemu's size changes are `Mob::ChangeSize()` (SPA 89 / SPA 58) on
+  players and NPCs, and boats are zone-owned static spawns nothing casts on.
+  Pinned by `EntityRescaleNodeTest.ResizingABoatLeavesItsDeckSurfaceWhereItWas`,
+  which builds a REAL race-72 Ship mesh (collisionHeight 338.78, deckZ 199.39),
+  doubles the boat, checks the node really rescaled, and asserts both collision
+  values held. Verified load-bearing: with the recompute planted it fails
+  (collisionHeight 677.56, deckZ 368.78). The limit is also now stated in the
+  source next to the code that has it. Prov: deferred item 38.
 
 - ~~**B012** (B) `src/client/action/action_dispatcher.cpp`
   `ActionDispatcher::clearTarget` — reachable only from a keybinding; no command
@@ -341,11 +362,20 @@ it without taking that measurement first.
   a real manifest and the shipped EQ tree, so a counted assertion would
   `GTEST_SKIP` on this host. Prov: archived board, T92.
 
-- **B015** (B) `src/client/audio/midi_player.cpp` `MidiPlayer::loadSoundFont` —
+- ~~**B015** (B) `src/client/audio/midi_player.cpp` `MidiPlayer::loadSoundFont` —
   swaps a raw `tsf*` with no atomic or mutex; safe today only because its single
   call site runs before the audio thread exists, which the file's own comment
-  records. Closes when: the swap is synchronised or the single-call-site
-  precondition is asserted. Prov: archived board, T131.
+  records.~~ **CLOSED by T359 Leg B** (`c73f8745`) — the precondition is ASSERTED, not
+  synchronised (a mutex in the realtime audio callback was explicitly rejected).
+  `MidiPlayer::setAudioThreadRunning(bool)` is called by `AudioManager` at the
+  one point every backend branch converges on (`initialize`, right after the
+  started backend) and again in `shutdown` after `backend_->stop()`;
+  `loadSoundFont` refuses with a `LOG_ERROR` naming the hazard and returns false
+  while that flag is set, before loading anything. Pinned by
+  `MidiPlayerPreallocTest.{LoadSoundFontRefusedWhileTheAudioThreadIsRunning,
+  LoadSoundFontRefusalDoesNotDisturbTheAudioThreadFlag}`; the first was verified
+  to fail with the check disabled (the swap was accepted). Prov: archived board,
+  T131.
 
 - ~~**B016** (B) `src/client/graphics/eq/` `RaceModelLoader::ensureModelDataLoaded`
   — ~20 unlocked `loadedModels_` reads across four TUs.~~ **CLOSED by T352**,
@@ -1539,3 +1569,18 @@ it without taking that measurement first.
   Closes when: the prefix-match is one shared helper both call, or
   `CommandRegistry::getCompletions` de-duplicates like its twin. Prov: T357 Leg
   A (step 1 measurement).
+## Added 2026-09-04 by T359 (B003d close-out)
+
+- **B070** (B) `src/client/commands/commands_movement.cpp`
+  `CommandsComponent::RequestWarp` — the LAST caller of the unranked
+  case-insensitive prefix resolver `EntitiesComponent::FindEntityByName`, and the
+  reason T359 could not delete it. `/warp <entity_name>` takes a genuinely
+  user-typed name, so it needs a resolution, but it uses the unranked one
+  (lowest spawn id wins) rather than `EntityManager::findEntityByName(name, x, y,
+  z)`, the T244 nearest-first ranked overload that `/target`, `/face`, `/moveto`
+  and `/follow` all use since T350/T356. Same defect shape as B003b/B003c, one
+  command later: with two same-named mobs `/warp` teleports to a different one
+  than `/target` picked. `/warp` is a GM/debug command, which is why this is B and
+  not A. Closes when: `RequestWarp` resolves through the ranked lookup (ideally at
+  the dispatcher, as T356 did) and `FindEntityByName` is deleted with its last
+  caller. Prov: T359 Leg A (`310725a4`).

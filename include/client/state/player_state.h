@@ -136,11 +136,19 @@ public:
     void clearMovementTarget();
     bool hasMovementTarget() const { return m_hasMovementTarget; }
 
-    // Follow target
+    // Follow target. T359 (board B003d): the SPAWN ID is the identity; the
+    // name is kept alongside it for the log/console lines only. Follow used
+    // to store just the name and UpdateMovement re-matched it by exact string
+    // every tick, so with two identically-named mobs the tick could latch a
+    // different one than /follow resolved.
+    uint16_t followTargetId() const { return m_followTargetId; }
     const std::string& followTarget() const { return m_followTarget; }
-    void setFollowTarget(const std::string& name) { m_followTarget = name; }
-    void clearFollowTarget() { m_followTarget.clear(); }
-    bool isFollowing() const { return !m_followTarget.empty(); }
+    void setFollowTarget(uint16_t spawnId, const std::string& name) {
+        m_followTargetId = spawnId;
+        m_followTarget = name;
+    }
+    void clearFollowTarget() { m_followTargetId = 0; m_followTarget.clear(); }
+    bool isFollowing() const { return m_followTargetId != 0; }
     float followDistance() const { return m_followDistance; }
     void setFollowDistance(float dist) { m_followDistance = dist; }
 
@@ -388,6 +396,7 @@ private:
     bool m_hasMovementTarget = false;
 
     // Follow target
+    uint16_t m_followTargetId = 0;
     std::string m_followTarget;
     float m_followDistance = 10.0f;
 

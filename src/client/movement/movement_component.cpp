@@ -118,9 +118,16 @@ void eqt::movement::MovementComponent::MoveToEntity(uint16_t spawn_id)
 	}
 }
 
-void eqt::movement::MovementComponent::MoveToEntityWithinRange(const std::string &name, float stop_distance)
+// T359 (B003d): id-keyed. Both callers (CombatManager::TickAwaitingCorpse with
+// m_pending_corpse_id, and StartCombatMovement below with its entity_id)
+// already held the spawn id and passed the entity's NAME, which this body then
+// re-resolved through EntitiesComponent::FindEntityByName -- an unranked
+// case-insensitive prefix match that returns the LOWEST spawn id among
+// matches. With two same-named mobs that walked to the wrong one.
+void eqt::movement::MovementComponent::MoveToEntityWithinRange(uint16_t spawn_id, float stop_distance)
 {
-	Entity* entity = ctx_.Entities().FindEntityByName(name);
+	auto it = ctx_.entities.find(spawn_id);
+	Entity* entity = (it != ctx_.entities.end()) ? &it->second : nullptr;
 	if (entity) {
 		if (EverQuest::GetDebugLevel() >= 1) {
 			std::cout << fmt::format("Found entity '{}' at ({:.2f}, {:.2f}, {:.2f}), stopping within {:.1f} units", 
@@ -189,7 +196,7 @@ void eqt::movement::MovementComponent::MoveToEntityWithinRange(const std::string
 			Move(target_x, target_y, target_z);  // This will block until complete
 		}
 	} else {
-		std::cout << fmt::format("Entity '{}' not found", name) << std::endl;
+		std::cout << fmt::format("Entity {} not found", spawn_id) << std::endl;
 	}
 }
 
@@ -199,7 +206,11 @@ void eqt::movement::MovementComponent::Follow(uint16_t spawn_id)
 	auto it = ctx_.entities.find(spawn_id);
 	Entity* entity = (it != ctx_.entities.end()) ? &it->second : nullptr;
 	if (entity) {
-		ctx_.game_state.player().setFollowTarget(entity->name);  // Store the actual entity name
+		// T359 (B003d): store the SPAWN ID, not just the name -- UpdateMovement
+		// re-matched the name by exact string every tick and could latch a
+		// different same-named mob than the one /follow resolved. The name
+		// still rides along for the console/log lines.
+		ctx_.game_state.player().setFollowTarget(spawn_id, entity->name);
 		std::cout << fmt::format("Following {}", entity->name) << std::endl;
 		
 		// Calculate initial path if pathfinding is enabled
@@ -246,27 +257,11 @@ void eqt::movement::MovementComponent::StopFollow()
 	StopMovement();
 }
 
-void eqt::movement::MovementComponent::StartCombatMovement(const std::string &name, float stop_distance)
-{
-	Entity* entity = ctx_.Entities().FindEntityByName(name);
-	if (entity) {
-		// Phase 7.6 / T286: CombatState is the only store
-		ctx_.game_state.combat().setCombatTarget(entity->name);
-		ctx_.game_state.combat().setCombatStopDistance(stop_distance);
-		ctx_.game_state.combat().setInCombatMovement(true);
-		ctx_.game_state.combat().setLastCombatMovementUpdate(std::chrono::steady_clock::now());
-
-		if (EverQuest::GetDebugLevel() >= 1) {
-			std::cout << fmt::format("Starting combat movement to '{}' with stop distance {:.1f}",
-				entity->name, stop_distance) << std::endl;
-		}
-
-		// Start initial movement immediately
-		UpdateCombatMovement();
-	} else {
-		std::cout << fmt::format("Combat target '{}' not found", name) << std::endl;
-	}
-}
+// T359 (B003d): the name-taking StartCombatMovement(const std::string&, float)
+// that stood here had ZERO production callers -- ProcessCombatRound has always
+// used the uint16_t overload below with m_current_target_id -- and its only
+// content was one more FindEntityByName re-resolution. Deleted rather than
+// converted; nothing lost, since the id overload does everything it did.
 
 // G03: uint16_t overload co-located from eq.cpp
 void eqt::movement::MovementComponent::StartCombatMovement(uint16_t entity_id)
@@ -286,7 +281,7 @@ void eqt::movement::MovementComponent::StartCombatMovement(uint16_t entity_id)
 	if (ctx_.game_state.combat().combatStopDistance() <= 0.0f) {
 		ctx_.game_state.combat().setCombatStopDistance(5.0f);
 	}
-	ctx_.game_state.combat().setCombatTarget(entity.name);
+	ctx_.game_state.combat().setCombatTarget(entity_id, entity.name);
 	ctx_.game_state.combat().setInCombatMovement(true);
 
 	if (EverQuest::GetDebugLevel() >= 1) {
@@ -294,16 +289,20 @@ void eqt::movement::MovementComponent::StartCombatMovement(uint16_t entity_id)
 	}
 
 	// Start moving to the target
-	MoveToEntityWithinRange(entity.name, ctx_.game_state.combat().combatStopDistance());
+	MoveToEntityWithinRange(entity_id, ctx_.game_state.combat().combatStopDistance());
 }
 
 void eqt::movement::MovementComponent::UpdateCombatMovement()
 {
-	if (!ctx_.game_state.combat().inCombatMovement() || ctx_.game_state.combat().combatTarget().empty()) {
+	if (!ctx_.game_state.combat().inCombatMovement() || !ctx_.game_state.combat().hasCombatTarget()) {
 		return;
 	}
 	
-	Entity* entity = ctx_.Entities().FindEntityByName(ctx_.game_state.combat().combatTarget());
+	// T359 (B003d): read the target by SPAWN ID. This used to re-resolve the
+	// stored NAME through the unranked prefix matcher on every tick, so combat
+	// movement could silently switch to a different same-named mob mid-fight.
+	auto target_it = ctx_.entities.find(ctx_.game_state.combat().combatTargetId());
+	Entity* entity = (target_it != ctx_.entities.end()) ? &target_it->second : nullptr;
 	if (!entity) {
 		// Target disappeared
 		ctx_.game_state.combat().setInCombatMovement(false);  // Phase 7.6 / T286
@@ -437,16 +436,22 @@ void eqt::movement::MovementComponent::Face(float x, float y, float z)
 	SendPositionUpdate();
 }
 
-void eqt::movement::MovementComponent::FaceEntity(const std::string &name)
+// T359 (B003d): id-keyed for the same reason as its neighbours. Its one
+// production caller (CombatManager::ProcessCombatRound) faces the entity it
+// has already matched by m_current_target_id and passed that entity's name.
+// NOTE: this is NOT the /face command -- that goes ActionDispatcher::faceEntity
+// -> EqActionHandler::setHeading and was fixed by T350.
+void eqt::movement::MovementComponent::FaceEntity(uint16_t spawn_id)
 {
-	Entity* entity = ctx_.Entities().FindEntityByName(name);
+	auto it = ctx_.entities.find(spawn_id);
+	Entity* entity = (it != ctx_.entities.end()) ? &it->second : nullptr;
 	if (entity) {
 		if (EverQuest::GetDebugLevel() >= 2) {
 			std::cout << fmt::format("Facing entity '{}'", entity->name) << std::endl;
 		}
 		Face(entity->x, entity->y, entity->z);
 	} else {
-		std::cout << fmt::format("Entity '{}' not found", name) << std::endl;
+		std::cout << fmt::format("Entity {} not found", spawn_id) << std::endl;
 	}
 }
 

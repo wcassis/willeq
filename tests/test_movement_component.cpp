@@ -163,3 +163,117 @@ TEST(MovementWaterStateGuard, SwimmingEventCarriesNoSurfaceHeight) {
 }
 
 }  // namespace
+
+// =====================================================================
+// T359 (board B003d) -- combat movement and Follow track a SPAWN ID.
+//
+// T356 fixed which entity /moveto and /follow START on (the dispatcher now
+// resolves once, ranked nearest-first, and passes an id). It left the layer
+// below: Follow stored only the target's NAME and UpdateMovement re-matched
+// that string over the entity map every tick, and combat movement stored only
+// the name and re-resolved it through EntitiesComponent::FindEntityByName --
+// an unranked case-insensitive PREFIX match over a std::map keyed by spawn id,
+// i.e. "the lowest spawn id that starts with this name wins".
+//
+// So both fixtures below spawn two identically-named mobs with the NEARER one
+// spawned SECOND, giving it the HIGHER spawn id: the id-keyed reads must track
+// the near one, while the name re-match picks the far one. Both cases run two
+// UpdateMovement ticks, because the per-tick re-resolution is the defect --
+// a single-call assertion would not see it.
+// =====================================================================
+
+namespace {
+
+struct TwoSameNamedBeetles {
+    const Entity* near_beetle = nullptr;
+    const Entity* far_beetle = nullptr;
+};
+
+// far = spawn 10 (LOWER id, what the prefix matcher returns), near = spawn 20.
+TwoSameNamedBeetles SpawnTwoBeetles(EverQuest& eq) {
+    // NewSpawnPayloadAt takes SERVER coords; entity.x <- server_y (INVERSEXY).
+    ReplayZone(eq, HC_OP_NewSpawn, NewSpawnPayloadAt(10, "a_fire_beetle", 0, 800, 0));
+    ReplayZone(eq, HC_OP_NewSpawn, NewSpawnPayloadAt(20, "a_fire_beetle", 0, 240, 0));
+
+    TwoSameNamedBeetles out;
+    const auto& entities = eq.GetEntities();
+    auto f = entities.find(10);
+    auto n = entities.find(20);
+    EXPECT_NE(f, entities.end());
+    EXPECT_NE(n, entities.end());
+    if (f != entities.end()) out.far_beetle = &f->second;
+    if (n != entities.end()) out.near_beetle = &n->second;
+    return out;
+}
+
+}  // namespace
+
+// The pre-condition every assertion below rests on: the unranked prefix
+// resolver really does return the FAR beetle, so tracking the near one cannot
+// be a coincidence of iteration order.
+TEST_F(MovementComponentTest, TheNameResolverStillPicksTheFarBeetle) {
+    TwoSameNamedBeetles b = SpawnTwoBeetles(eq);
+    ASSERT_NE(b.near_beetle, nullptr);
+    ASSERT_NE(b.far_beetle, nullptr);
+    EXPECT_LT(std::abs(b.near_beetle->x), std::abs(b.far_beetle->x));
+    Entity* by_name = eq.Entities().FindEntityByName("a_fire_beetle");
+    ASSERT_NE(by_name, nullptr);
+    EXPECT_EQ(by_name->spawn_id, 10u);
+}
+
+TEST_F(MovementComponentTest, FollowTracksTheSpawnIdAcrossTicksNotTheNameMatch) {
+    TwoSameNamedBeetles b = SpawnTwoBeetles(eq);
+    ASSERT_NE(b.near_beetle, nullptr);
+    ASSERT_NE(b.far_beetle, nullptr);
+    const float near_x = b.near_beetle->x;
+    const float far_x = b.far_beetle->x;
+
+    eq.Movement().Follow(20);
+    EXPECT_EQ(eq.GetGameState().player().followTargetId(), 20u);
+
+    eq.Movement().UpdateMovement();
+    eq.Movement().UpdateMovement();
+
+    // The follow tick sets the movement target straight onto the entity.
+    EXPECT_NEAR(eq.GetGameState().player().targetX(), near_x, 5.0f)
+        << "follow tick latched the far beetle (" << far_x << ") -- it re-matched the NAME";
+}
+
+TEST_F(MovementComponentTest, CombatMovementTracksTheSpawnIdAcrossTicksNotTheNameMatch) {
+    TwoSameNamedBeetles b = SpawnTwoBeetles(eq);
+    ASSERT_NE(b.near_beetle, nullptr);
+    ASSERT_NE(b.far_beetle, nullptr);
+    const float near_x = b.near_beetle->x;
+    const float far_x = b.far_beetle->x;
+
+    eq.Movement().StartCombatMovement(20);
+    EXPECT_EQ(eq.GetGameState().combat().combatTargetId(), 20u);
+    EXPECT_TRUE(eq.GetGameState().combat().inCombatMovement());
+
+    eq.Movement().UpdateMovement();
+    eq.Movement().UpdateMovement();
+
+    // Combat movement stops short of the target, so the destination sits
+    // between the player and the near beetle -- nowhere near the far one.
+    EXPECT_LT(eq.GetGameState().player().targetX(), (near_x + far_x) * 0.5f)
+        << "combat movement latched the far beetle (" << far_x << ") -- it re-resolved the NAME";
+    EXPECT_NEAR(eq.GetGameState().player().targetX(), near_x, 10.0f);
+}
+
+// The despawn path: a follow target that vanishes stops driving movement, and
+// does it without crashing on a dangling id. Pre-T359 a name miss simply fell
+// through the scan; the id miss must fall through the same way.
+TEST_F(MovementComponentTest, FollowTargetThatDespawnsJustStopsDrivingMovement) {
+    SpawnTwoBeetles(eq);
+    eq.Movement().Follow(20);
+    ASSERT_TRUE(eq.GetGameState().player().isFollowing());
+
+    eq.Movement().UpdateMovement();
+    const float driven_x = eq.GetGameState().player().targetX();
+
+    eq.Context().entities.erase(20);
+    ASSERT_EQ(eq.GetEntities().count(20), 0u);
+
+    EXPECT_NO_THROW(eq.Movement().UpdateMovement());
+    EXPECT_FLOAT_EQ(eq.GetGameState().player().targetX(), driven_x);
+}
