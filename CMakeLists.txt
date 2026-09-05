@@ -1705,6 +1705,7 @@ IF(EQT_GRAPHICS)
         tools/hwcaps/zone_bench_draw.cpp
         tools/hwcaps/zone_bench_entities.cpp
         tools/hwcaps/zone_bench_lod.cpp
+        tools/hwcaps/zone_bench_regions.cpp
         tools/hwcaps/zone_bench_camera.cpp
         tools/hwcaps/zone_bench_entity_viewer.cpp
         tools/hwcaps/zone_bench_metrics.cpp
@@ -1843,6 +1844,7 @@ IF(EQT_GRAPHICS)
         tools/hwcaps/zone_bench_draw.cpp
         tools/hwcaps/zone_bench_entities.cpp
         tools/hwcaps/zone_bench_lod.cpp
+        tools/hwcaps/zone_bench_regions.cpp
         tools/hwcaps/zone_bench_camera.cpp
         tools/hwcaps/zone_bench_metrics.cpp
         tools/hwcaps/zone_bench_histogram.cpp
@@ -1938,6 +1940,7 @@ IF(EQT_GRAPHICS)
         tools/hwcaps/zone_bench_draw.cpp
         tools/hwcaps/zone_bench_entities.cpp
         tools/hwcaps/zone_bench_lod.cpp
+        tools/hwcaps/zone_bench_regions.cpp
         tools/hwcaps/zone_bench_camera.cpp
         tools/hwcaps/zone_bench_metrics.cpp
         tools/hwcaps/zone_bench_histogram.cpp
