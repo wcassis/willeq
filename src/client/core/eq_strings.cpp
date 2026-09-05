@@ -431,6 +431,9 @@ std::string eqt::StringDb::GetStringMessage(uint32_t string_id) {
 		case 433: return "You are missing %1.";
 		case 275: return "You feel yourself starting to appear.";
 		case 12442: return "You are already casting a spell!";
+		// T382 (B172): the corpse-coin grant line, MEASURED at the oracle
+		// (review/T377/oracle/T377_oracle_corpse_loot_coin_1024x768.png).
+		case 12072: return "You receive %1 from the corpse.";
 		// T355: the endurance counterpart of 199, emitted by the local
 		// endurance refusal (SpellManager::checkEndurance).
 		case 5805: return "Insufficient Endurance to activate this ability!";

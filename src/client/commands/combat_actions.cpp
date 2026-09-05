@@ -30,6 +30,11 @@
 #include "common/packet_structs.h"
 #include "common/name_utils.h"
 #include "client/bridge/game_state_bridge.h"
+// T382 (B172): the corpse-coin grant writes the purse, publishes
+// CurrencyChanged and asks for the coin sound through T328 Leg B's intent.
+#include "client/state/game_state.h"
+#include "client/state/event_bus.h"
+#include "client/events/renderer_intents.h"
 
 // P28: renderer-free chat data model, used unconditionally below
 // (eqt::ui::ChatChannel).
@@ -38,6 +43,7 @@
 #ifdef WITH_AUDIO
 #include "client/audio/audio_manager.h"
 #include "client/audio/sound_assets.h"
+#include "client/audio/ui_sounds.h"
 #endif
 
 #include <sstream>
@@ -484,22 +490,41 @@ void eqt::commands::CommandsComponent::ZoneProcessDamage(const EQ::Net::Packet &
 	}
 }
 
+// T382 (B172). OP_MoneyOnCorpse is how the server tells the client how much
+// coin the corpse just handed over: eqemu's Corpse::MakeLootRequestPackets
+// calls Client::AddMoneyToPP() and sends this packet in the SAME breath, so
+// the coin is granted by OPENING the loot window, not by any later click
+// ("Coins on the corpse are taken automatically by the first person to loot
+// the corpse" -- the official client's own Looting Tip).
+//
+// MEASURED against the official client, T377 (review/T377/, B036's corpse
+// row): the instant the loot window opens it plays BuyItem.WAV (UI sound 138,
+// the same generic coin sound T328/T342 measured for every other coin
+// movement) and prints, in the green system colour,
+//
+//     You receive 1 platinum, 8 gold, 3 silver and 4 copper from the corpse.
+//
+// -- eqstr 12072 "You receive %1 from the corpse." with the four counts
+// substituted in. NOTE the phrase is spelled WITHOUT the Oxford comma the
+// eqstr table's own list template (13108, "%1 platinum, %2 gold, %3 silver,
+// and %4 copper") carries; the oracle's pixels are the golden here, so the
+// list is built below to match what the client actually printed and 13108 is
+// deliberately NOT used.
+//
+// Before this unit the handler parsed the four counts, logged them behind
+// GetDebugLevel() >= 1 and dropped them on the floor.
 void eqt::commands::CommandsComponent::ZoneProcessMoneyOnCorpse(const EQ::Net::Packet &p)
 {
-	// Money on corpse packet
-	if (p.Length() < 22) {
+	// T382: the canonical struct (common/packets/combat.h, static_asserted at
+	// 20 bytes against eqemu's moneyOnCorpseStruct) replaces the local
+	// re-declaration that used to sit here. The old length check was the same
+	// 22 bytes spelled as a literal.
+	if (p.Length() < sizeof(EQT::MoneyOnCorpse_Struct) + 2) {
 		return;
 	}
 
-	// Parse money amounts
-	struct MoneyOnCorpse_Struct {
-		uint8_t response;   // 0x01 = success
-		uint8_t unknown1[3];
-		uint32_t platinum;
-		uint32_t gold;
-		uint32_t silver;
-		uint32_t copper;
-	} __attribute__((packed)) *money = (MoneyOnCorpse_Struct*)((uint8_t*)p.Data() + 2);
+	const auto* money = reinterpret_cast<const EQT::MoneyOnCorpse_Struct*>(
+		static_cast<const char*>(p.Data()) + 2);
 
 	// Copy packed struct fields to local variables for fmt::format
 	uint32_t plat = money->platinum;
@@ -511,7 +536,56 @@ void eqt::commands::CommandsComponent::ZoneProcessMoneyOnCorpse(const EQ::Net::P
 		LOG_DEBUG(MOD_MAIN, "MoneyOnCorpse: {} platinum, {} gold, {} silver, {} copper\n", plat, gold, silver, copper);
 	}
 
-	// For now, just log it - money is auto-looted when we loot any item
+	// Every packet that is NOT a coin grant carries four zeros: the six
+	// SendLootReqErrorPacket responses (LootResponse::SomeoneElse / NotAtThisTime
+	// / Hostiles / TooFar), a corpse with no money at all, and the autosplit
+	// path (which zeroes the struct and pays the group through its own
+	// OP_MoneyUpdate). So "all four zero" is the one guard that keeps the sound
+	// and the chat line off every failure shape without this client having to
+	// guess at eqemu's response enum, which is not on the wire in any form the
+	// oracle was measured against.
+	if (plat == 0 && gold == 0 && silver == 0 && copper == 0) {
+		return;
+	}
+
+	// Bank it. PlayerState::setCurrency is the tree's ONE purse writer (the
+	// OP_MoneyUpdate handler, the buy path and zone entry are its other
+	// callers); addCurrency is a thin delta wrapper OVER it, not a second
+	// writer -- see include/client/state/player_state.h.
+	auto& player = ctx_.game_state.player();
+	player.addCurrency(plat, gold, silver, copper);
+
+	// Same projection OP_MoneyUpdate publishes after it writes the purse
+	// (MerchantComponent::ZoneProcessMoneyUpdate) -- D18a: the bridge is the
+	// sole path to the renderer, so the coin counters on screen move only if
+	// this event is pushed.
+	if (ctx_.bridge) {
+		eqt::state::CurrencyChangedData data;
+		data.platinum = static_cast<int32_t>(player.platinum());
+		data.gold = static_cast<int32_t>(player.gold());
+		data.silver = static_cast<int32_t>(player.silver());
+		data.copper = static_cast<int32_t>(player.copper());
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::CurrencyChanged, std::move(data)));
+	}
+
+#ifdef WITH_AUDIO
+	// T328 Leg B's seam: one intent, one consumer arm, forwarded to
+	// BridgeComponent::PlaySound().
+	if (ctx_.bridge) {
+		ctx_.bridge->pushIntent(eqt::events::PlaySoundIntent{
+			EQT::Audio::UISoundId::BUY_ITEM});
+	}
+#endif
+
+	// The four counts are printed even when one of them is zero. T377's single
+	// capture had all four non-zero, so what the official client does with a
+	// zero denomination -- drop that term, or print "0 silver" -- is UNMEASURED;
+	// printing all four is what the one measured line shows. If a later live
+	// unit sees a corpse with, say, no silver, this is the line to correct.
+	std::string counts = fmt::format("{} platinum, {} gold, {} silver and {} copper",
+		plat, gold, silver, copper);
+	ctx_.out.System(ctx_.strings.GetFormattedStringMessage(12072, {counts}));
 }
 
 // T247. OP_Stun: eqemu Stun_Struct{uint32 duration} in ms, sent only to the
