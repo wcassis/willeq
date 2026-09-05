@@ -3253,8 +3253,9 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   reached this way" is FALSE and was the unit's biggest surprise: `willeq.db`
   is `"data/willeq.db"` in `application.cpp`, `willeq.json` itself defaults to
   a bare relative name, and the census found ~40 such literals under
-  `src/client`. That census is **B235**; there was no existing resolution to
-  reuse, so `ResolveDataPath()` is the first one.
+  `src/client`. That census is **B235**, **STRUCK by T399 (2026-09-05)** --
+  all 41 literal sites now route through `ResolveDataPath()`, which was the
+  first such resolution in the tree.
 
 - **B218** (B) `src/client/graphics/ui/static_panels.cpp` `renderInventoryPopup`
   / `assets/ui_atlas` — **there is no coin sprite in fable's UI atlas.** The
@@ -3350,7 +3351,26 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   Review Leg A; B203; B211.
 ### Added by T397 (2026-09-05)
 
-- **B235** (B) `src/client/**` — **~40 shipped data files are named by
+- ~~**B235**~~ **STRUCK (T399, 2026-09-05)** — commits `3128a1fa` (core/app, 12
+  sites), `239b51c9` (config/*.json loaders, 14), `2061b4a0` (data/textures,
+  8), `76c1371c` (audio + index caches, 5), `35d26d9a` (the rest, 2), tests
+  `99a61191`. **41 literal sites routed through `eqt::ResolveDataPath()`,
+  including `data/willeq.db` (version check unchanged), both files T397 left
+  to T396, and `willeq.json`'s own default.** Eleven silent-or-DEBUG defaults
+  became ERROR logs, each for a file that IS shipped and whose absence
+  substitutes a DIFFERENT set of values: `constrained_presets.json` (was NO
+  log at all), `debug.json` (no log), `hotkeys.json`, `display_settings.json`,
+  `eqe1_archives.json`, `detail_objects.json` x2, `tree_wind.json`,
+  `weather_effects.json`, `environment_effects.json`, `music_events.json`.
+  Left quiet on purpose: `config/zones/*` + `data/config/weather.json`
+  (neither directory exists; genuinely optional per-zone overrides) and the
+  two index CACHES, whose miss means "rescan". The census is now a TEST --
+  `tests/test_data_path_routing.cpp` re-takes it on every ctest run over all
+  of `src/client` + `include/client` and fails on a bare literal. The client
+  no longer has to be started from the repo root: a headless run from `/tmp`
+  produces a log identical to the repo-root run modulo timings, loading the
+  same 94 hotkey bindings and the same `willeq.db`. Original entry:
+- ~~B235 (B)~~ `src/client/**` — ~40 shipped data files are named by
   CWD-relative literals; the client only works because everything starts it
   from the repo root.** B221 was filed as a one-off; the T397 census shows it
   is the tree-wide convention. Measured with
@@ -3376,6 +3396,62 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   `config/environment_effects.json` and `config/weather_effects.json` sit in
   the weather/ambient files T396 owns, which is why T397 left them. Found by
   T397 Leg A.
+
+- **B245** (B) `config/chat_settings.json`, `config/ui_settings.json` — **two
+  shipped config files that NOTHING reads.** Both are git-tracked in `config/`,
+  and `CLAUDE.md` documented `chat_settings.json` as live "user settings", but
+  the strings `chat_settings` and `ui_settings` appear in **no `.cpp` or `.h`
+  under `src/`, `include/` or `tools/`** — only in `README.md`, `CLAUDE.md` and
+  `refactor/completed/U_ui_overhaul.md`. Either the chat/UI window state was
+  never wired to persistence, or its loader was deleted and the files outlived
+  it. Closes when the persistence is wired with a test, or both files and their
+  doc lines are deleted. `CLAUDE.md` now says they are dead. Found by T399's
+  census (they are the two shipped files the B235 grep could not see, because
+  no literal names them).
+
+- **B246** (B) `src/client/graphics/eq/race_codes.cpp` `loadRaceMappings` —
+  **the function ignores its argument; `config/race_models.json` is validated
+  at startup and read by nothing.** The body is
+  `(void)jsonPath; s_mappingsLoaded = (WilleqDatabase::globalInstance() != nullptr);`
+  — race data has come from SQLite since the db landed. Yet
+  `Application::initRequiredFileValidation` (S03) still `stat`s
+  `config/race_models.json` and refuses to start without it, and
+  `renderer_init.cpp` still passes the literal and LOG_FATALs on a false
+  return that only ever means "no database". So a shipped JSON file is a hard
+  startup requirement for a loader that never opens it. Closes when the
+  parameter and the S03 check go (or the JSON is genuinely read again).
+  T399 routed the literal through `ResolveDataPath()` rather than change
+  behaviour mid-unit. Found by T399.
+
+- **B247** (P) `tests/goldens/manifest.json` / `scripts/ci/visual_gate.sh` —
+  **the visual gate is RED on the `fable` tip itself: T398 Leg B grew the
+  shared `willeq.eqe1` by 239 bytes and the Will-blessed `eqe1MappedBytes`
+  baselines were not re-blessed.** Measured by T399 (2026-09-05) standalone on
+  `build-gles2` built from its own tip: `memory-coverage qeynos2` expected
+  119,944,431 got 119,944,670; `gfaydark` 118,610,523 -> 118,610,762;
+  `befallen` 113,095,019 -> 113,095,258 — **+239 in all three, the signature of
+  one shared file every zone maps, not of anything zone-dependent.** Every
+  other manifest field matches and all three CPU p95 numbers are inside their
+  ceilings. The pack is `/mnt/projects/EverQuest_ETC1/willeq.eqe1`, the only
+  file in that tree modified on 2026-09-05 (21:20), and T398's Leg B
+  (`23378528`, merged `3f328966`) is what put the four coin decals in it;
+  `tests/goldens/manifest.json` has not changed since T303 (`a32600a4`, "bless
+  the T80 memory-coverage baselines (Will)"). **Only Will re-blesses**, so
+  T399 did not. Until then every unit that touches graphics will report this
+  same gate FAIL and have to re-derive the attribution. Found by T399.
+
+- **B248** (B) `config/snd_index_cache.json`, `config/gfx_index_cache.json` —
+  **two generated caches are git-tracked, and every client run rewrites them,
+  so a plain `willeq` run dirties the working tree.** T399 measured it: a 40 s
+  headless run (`--no-graphics`) left `config/snd_index_cache.json` modified
+  (same 17 archives, same 2,088 index entries, same `eqPath` — the content is
+  equivalent, only the serialisation differs), and it had to be restored by
+  hand before committing. That is a trap for every executor: an unrelated
+  modified file appears in `git status` after any run, and a careless
+  `git add -A` commits it. Either both files leave the index and join
+  `.gitignore` (they are caches; a miss just triggers a rescan, which is why
+  T399 deliberately left their miss silent), or the writer becomes
+  content-stable and only rewrites on a real change. Found by T399.
 
 ### Struck / amended by T386
 

@@ -158,6 +158,32 @@ targets; keep using it for the visual gate, it is unaffected by the above.
 ./build/bin/willeq -c willeq.json --rdp --rdp-port 13389
 ```
 
+### Where the client's shipped data comes from
+
+**The client no longer has to be started from the repo root** (T399, board
+B235). Every shipped data file it reads — `config/*.json`, `data/willeq.db`,
+`data/textures/*.bmp`, `data/zone_lines/*.json`, `data/item_models.json`,
+`data/eqe1_texture_index.json` and the rest — goes through one resolution,
+`eqt::ResolveDataPath()` (`include/client/data_paths.h`). Search order, first
+existing file wins:
+
+1. the path itself, if it is absolute (never rewritten);
+2. **the path as given, i.e. relative to the current working directory** —
+   deliberately first, so a run from the repo root reads exactly the bytes it
+   read before this existed (the visual gate included);
+3. `$WILLEQ_DATA_ROOT/<relative>`, for a staged install whose data tree is not
+   beside the binary;
+4. the directory holding the running executable, then up to three parents —
+   which finds `<repo>/config/...` from `<repo>/build/bin/willeq`,
+   `<repo>/build-gles2/bin/willeq` and `<repo>/build-arm-noble/bin/willeq`
+   alike.
+
+If nothing exists the input comes back unchanged, so the caller's own "could
+not open X" names the X it asked for. `willeq.json` itself is resolved the
+same way. **A new shipped-data load must call `ResolveDataPath()`** —
+`tests/test_data_path_routing.cpp` re-takes the census on every ctest run and
+fails on a bare `"config/…"` / `"data/…"` literal that does not.
+
 ### Display Options Comparison
 
 | Method | Use Case | Audio | Client |
@@ -477,8 +503,11 @@ Audio tests and graphics integration tests are documented in their respective CL
 - 3-tier hierarchy: global settings → per-style defaults → per-spell overrides
 - Configures resist colors, spawn rates, lifetimes, motion types, blend modes
 
-**User settings** stored in `config/` directory:
-- `config/chat_settings.json` - Chat window position, size, channel filters
+**User settings** in the `config/` directory:
+- `config/chat_settings.json` and `config/ui_settings.json` are **shipped but
+  read by nothing** — the names appear in no `.cpp` or `.h` under `src/`,
+  `include/` or `tools/` (measured T399). Board **B245**. Do not treat them as
+  live configuration.
 
 Audio configuration is documented in `src/client/audio/CLAUDE.md`.
 
