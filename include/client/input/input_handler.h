@@ -45,18 +45,23 @@ enum class InputAction {
     CycleTargetsReverse,
 
     // UI toggles
-    // T365 (B090): ToggleInventory, ToggleSkills and ToggleGroup are DELETED.
-    // ConsoleInputHandler was the only producer of any of them and
-    // InputActionBridge::processDiscreteActions never had an arm for one, so
-    // the three keywords behind them (`inventory`/`inv`, `skills`, `group`)
-    // did nothing at all. The keywords now fall through to the slash
-    // dispatcher (see console_input_handler.cpp). The three below are
-    // consumer-less in the same way but have no producer here either; they
-    // are left alone as out of that unit's territory.
-    ToggleVendor,
-    TogglePetWindow,
-    ToggleTrainer,
-    ToggleSpellbook,
+    // T365 (B090) deleted ToggleInventory, ToggleSkills and ToggleGroup;
+    // T368 (B100) deleted the last four -- ToggleVendor, TogglePetWindow,
+    // ToggleTrainer and ToggleSpellbook. THERE ARE NO UI TOGGLES IN THIS
+    // ENUM ANY MORE, by design, and adding one back is a mistake.
+    //
+    // All seven were declared here with no producer and no consumer: no
+    // InputHandler ever set them and
+    // InputActionBridge::processDiscreteActions() never had an arm for one.
+    // The real UI toggles are a DIFFERENT pair of enums that this one is
+    // easily confused with -- eqt::input::HotkeyAction
+    // (include/client/input/hotkey_manager.h), which the key table produces,
+    // and EQT::Graphics::RendererAction
+    // (include/client/graphics/renderer_types.h), which
+    // RendererEventReceiver translates it into and FrameComponent consumes.
+    // A UI toggle belongs in those two, never here; this enum is the
+    // game-thread InputHandler vocabulary, and its UI-toggle section was
+    // only ever a duplicate that drifted.
 
     // Interaction
     InteractDoor,
