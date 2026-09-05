@@ -53,7 +53,7 @@ const fs::path kRoot = WILLEQ_REPO_ROOT;
 // Relative to the repo root.
 const char* kPacketSenderTu = "src/client/packet_sender.cpp";
 const char* kLoginWorldTu = "src/client/login_world/login_world_component.cpp";
-constexpr size_t kLoginWorldExpected = 12;  // board B146
+constexpr size_t kLoginWorldExpected = 0;   // board B146 CLOSED by T379: routed through PacketSender::QueueLogin/QueueWorld
 
 struct Hit {
     std::string file;  // repo-relative
@@ -140,17 +140,16 @@ TEST(DirectSenderCensus, PacketSenderStillHoldsTheRealSends) {
 
 // The B146 exemption, pinned at its measured size so that closing B146 --
 // or adding a new login/world sender -- has to come back to this file.
-TEST(DirectSenderCensus, LoginAndWorldStreamsAreTheOnlyExemptionAndStillTwelve) {
+TEST(DirectSenderCensus, LoginAndWorldStreamsHaveNoDirectSendersEither) {
     std::vector<Hit> lw;
     for (const auto& h : collect()) {
         if (h.file == kLoginWorldTu) lw.push_back(h);
     }
     EXPECT_EQ(lw.size(), kLoginWorldExpected)
-        << "the login and world streams have no PacketSender equivalent "
-           "(BOARD B146): 12 direct sends, 4 on m_login_connection and 8 on "
-           "m_world_connection. If B146 was closed, this count goes to 0 and "
-           "kLoginWorldExpected comes with it; if a new login/world sender was "
-           "added, it needs the same treatment the other 69 got.";
+        << "T379 closed B146: the 12 login/world sends go through "
+           "PacketSender::QueueLogin/QueueWorld, so this TU has ZERO direct "
+           "senders too. A new login/world sender needs the same treatment "
+           "the other 81 got (merge-step learning at the T378/T379 merge).";
 }
 
 }  // namespace
