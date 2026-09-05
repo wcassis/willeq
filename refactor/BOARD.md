@@ -1373,9 +1373,31 @@ it without taking that measurement first.
 
 ## Added 2026-09-04 by T348 (B055/B056)
 
-- **B060** (C) `src/client/graphics/player/renderer_camera.cpp`
-  `PlayerCameraComponent::setPlayerRace` — **the racial vision table has no
-  oracle, and it disagrees with B056's own board text.** The table puts Wood Elf
+- **B060** (C) `src/client/graphics/player/renderer_camera.cpp` →
+  `EQT::Graphics::racialBaseVision()` — **MEASURED AGAINST THE ORACLE BY T361
+  (`c531006f`); every row but ONE is now settled and fixed, and only Froglok
+  still needs Will.** Method: two logins as Oraclealpha in qeynos2 at forced
+  22:00, camera never touched, race changed in-game with `#race N`, read from
+  the session VIDEO, each session carrying its own `#castspell 46` positive
+  control that race 6 lands on to four decimals. Three levels and only three,
+  window spreads ≤0.14 luma against a 4.8-luma separation:
+  **Normal** = Human (1), Barbarian (2), Erudite (3); **Infravision** = Wood Elf
+  (4), High Elf (5), Half Elf (7), Dwarf (8), **Troll (9)**, **Ogre (10)**,
+  Halfling (11), Gnome (12), Iksar (128), Vah Shir (130); **Ultravision** = the
+  **Dark Elf (6) ALONE**. So the old table was wrong for 4, 5, 9 and 128 (all
+  Ultravision, all actually Infravision) and omitted 130; all fixed and pinned
+  by `tests/test_vision_ambient.cpp`. Will's expectation was Troll =
+  Ultravision, Ogre = Infravision; **the oracle puts both on Infravision.**
+  **THE ONE OPEN ROW: Froglok (330) measures 63.49** — a distinct FOURTH level,
+  1.51 luma below Ultravision and 3.31 above Infravision, both far outside the
+  noise, which the three-valued `VisionType` cannot express. It is left on the
+  `Normal` default rather than rounded to a neighbour by argument. Closes when
+  Will rules on Froglok (round it to Ultravision, round it to Infravision, or
+  give `VisionType` a fourth value). Prov: T361 Review, `review/T361/README.md`.
+  Original text follows.
+
+  ~~**the racial vision table has no oracle, and it disagrees with B056's own
+  board text.**~~ The table puts Wood Elf
   (4), High Elf (5), Dark Elf (6), Troll (9) and Iksar (128) on Ultravision, and
   Half Elf (7), Dwarf (8), Ogre (10), Halfling (11), Gnome (12) on Infravision.
   B056's entry above describes the intent as "Dark Elf Ultravision, Dwarf/Troll/
@@ -1479,10 +1501,26 @@ it without taking that measurement first.
   Ultravision -> intensity 1.0 / redShift 0 and Infravision -> 0.75 / 0.3.
   Prov: T358 Review, `review/T358/logs/frame_rgb_visionvid.txt`.
 
-- **B067** (A) `src/client/graphics/sim_animation.cpp` /
+- ~~**B067** (A) `src/client/graphics/sim_animation.cpp` /
   `src/client/graphics/zone_shader.cpp` — **vision type never reaches the global
   ambient; it only scales the zone's point lights, so Ultravision is nearly
-  invisible.** `visionType` has exactly two consumers tree-wide
+  invisible.**~~ **CLOSED by T361 (`c531006f`, branch
+  `task/T361-ultravision-oracle`).** Vision now raises a per-channel FLOOR under
+  the global ambient in `IrrlichtRenderer::updateTimeOfDay()` (new TU
+  `src/client/graphics/vision_ambient.cpp`), which is the one place fable
+  computes the day/night ambient and hands it to both `smgr_->setAmbientLight()`
+  and `ZoneShader::setAmbientColor()`. **The mechanism is the oracle's, measured
+  not assumed:** the official Titanium client at the same spot lifts a 700x420
+  world crop **x1.554** (linear) for Ultravision and **x1.253** for Infravision;
+  its SKY does not change (x1.17, blue x1.02) so it is not a post-process, and
+  its NEAR geometry lifts x1.32 while distant lifts x3.25 — fog explains the
+  second and cannot explain the first. The two gains were SOLVED by A/B (the
+  frame's response to mean ambient is a power law whose exponent two independent
+  probe points give as 1.1402 and 1.1409), not chosen. fable now measures
+  **x1.473** on the search crop and **x1.780** combined against the oracle's
+  x1.554 — see **B080** for why the residual is not smaller. Pinned by
+  `tests/test_vision_ambient.cpp` (3 of 6 cases fail against the pre-T361
+  behaviour). Prov: T361 Review, `review/T361/README.md`. `visionType` has exactly two consumers tree-wide
   (`applyVisionWeatherToZoneLights` and `computeLightAnimations`), both of which
   multiply `zoneData_.zoneLightNodes[i].diffuseColor`. In qeynos2 that is 218
   lights the client's own log calls `ZONE LIGHTS: 218 total (no scene nodes,
@@ -1497,6 +1535,29 @@ it without taking that measurement first.
   official client's Ultravision actually does — that is B060's oracle question)
   and a night frame with the buff up is measurably, obviously brighter.
   Prov: T358 Review, `review/T358/logs/frame_brightness_visionvid.txt`.
+
+## Added 2026-09-05 by T361 (the Ultravision oracle)
+
+- **B080** (A) `src/client/graphics/renderer/irrlicht_renderer.cpp`
+  `IrrlichtRenderer::updateTimeOfDay` / the zone lighting as a whole —
+  **fable's night is ~35x darker than the official client's on near geometry,
+  and that gap is what stops T361's vision match from closing.** Measured at
+  the same spot, same zone, same forced 22:00, same 300x300 near-wall crop:
+  the oracle reads **0.0643** linear grey and fable **0.0018**. On a whole
+  700x420 world crop the oracle reads 0.0332 and fable 0.0019 — a factor of
+  17. The consequence is not cosmetic: because fable's night baseline is so
+  much lower, the SAME ambient raise is a much larger *fraction* of it, so no
+  single ambient parameter can reproduce both the oracle's near-wall ratio
+  (x1.325) and its whole-frame ratio (x1.554). T361 solved for the whole-frame
+  ratio and lands at x1.473 / x1.780 (crop-dependent) with the near wall
+  over-lifting at x2.07. The suspected cause is that fable's zone point lights
+  do not reach the near wall at all at this spot while the oracle's lamps
+  plainly do (fable's own log: `ZONE LIGHTS: 218 total (no scene nodes,
+  data-only)` — they scale colours but light nothing), but that is a LEAD, not
+  a finding. Closes when fable's unbuffed night frame is within a small factor
+  of the oracle's at the same spot, measured the same way, and T361's residual
+  is re-checked against the oracle table. Prov: T361 Review,
+  `review/T361/README.md`.
 
 - **B068** (B) `src/client/entities/entities_component_world.cpp`
   `EntitiesComponent::SendSpawnAppearance` / `SendAnimation` — **these two
