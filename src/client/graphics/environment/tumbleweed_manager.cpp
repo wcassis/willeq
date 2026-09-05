@@ -2,6 +2,7 @@
 #include "client/graphics/environment/environment_config.h"
 #include "client/graphics/simulation_worker.h"
 #include "common/logging.h"
+#include "client/data_paths.h"
 #include <cmath>
 #include <fstream>
 #include <sstream>
@@ -35,7 +36,7 @@ bool TumbleweedManager::init() {
 
     reloadSettings();
 
-    std::string texPath = "data/textures/tumbleweed.bmp";
+    std::string texPath = eqt::ResolveDataPath("data/textures/tumbleweed.bmp");
     if (!constrainedCache_) {
         LOG_FATAL(MOD_GRAPHICS, "TumbleweedManager: Constrained texture cache not set");
         std::exit(1);

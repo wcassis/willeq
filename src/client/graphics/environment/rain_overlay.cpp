@@ -1,5 +1,6 @@
 #include "client/graphics/environment/rain_overlay.h"
 #include "common/logging.h"
+#include "client/data_paths.h"
 #include <cmath>
 #include <fstream>
 #include <vector>
@@ -32,7 +33,7 @@ bool RainOverlay::initialize(irr::video::IVideoDriver* driver,
     }
 
     auto loadTexture = [&](const std::string& texName, const std::string& cacheName) -> irr::video::ITexture* {
-        std::string path = "data/textures/" + texName;
+        std::string path = eqt::ResolveDataPath("data/textures/" + texName);
         std::ifstream file(path, std::ios::binary | std::ios::ate);
         if (!file) {
             LOG_FATAL(MOD_GRAPHICS, "RainOverlay: Required texture {} not found — run generate_textures first", path);

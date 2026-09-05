@@ -17,6 +17,7 @@
 #include "client/graphics/eq/dds_decoder.h"
 #include "client/spell/spell_constants.h"
 #include "common/logging.h"
+#include "client/data_paths.h"
 #ifdef EQT_HAS_GLES2
 #include "client/graphics/environment/particle_manager.h"
 #include "client/graphics/environment/spell_particle_types.h"
@@ -249,7 +250,7 @@ void SpellVisualFX::loadFallbackTexture()
     if (!m_driver || !m_constrained_cache) return;
 
     // Load pre-generated fallback texture from BMP via constrained cache
-    std::string path = "data/textures/spell_particle_fallback.bmp";
+    std::string path = eqt::ResolveDataPath("data/textures/spell_particle_fallback.bmp");
     std::ifstream file(path, std::ios::binary | std::ios::ate);
     if (!file) {
         LOG_FATAL(MOD_SPELL, "Required texture missing: {} — run generate_textures first", path);

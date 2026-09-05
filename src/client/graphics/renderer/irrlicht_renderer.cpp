@@ -44,6 +44,7 @@
 #include "client/graphics/detail/detail_types.h"
 #include "client/graphics/detail/seasonal_controller.h"
 #include "common/logging.h"
+#include "client/data_paths.h"
 #include <fmt/format.h>
 #include "common/name_utils.h"
 #include "common/performance_metrics.h"
@@ -224,7 +225,7 @@ void IrrlichtRenderer::createSoftwareCursor() {
     if (!driver_ || !config_.constrainedConfig.useDRM) return;
 
     // Load pre-generated cursor texture via constrained cache
-    std::string cursorPath = "data/textures/software_cursor.bmp";
+    std::string cursorPath = eqt::ResolveDataPath("data/textures/software_cursor.bmp");
     std::ifstream cursorFile(cursorPath, std::ios::binary | std::ios::ate);
     if (!cursorFile) {
         LOG_FATAL(MOD_GRAPHICS, "Required texture {} not found — run generate_textures first", cursorPath);
