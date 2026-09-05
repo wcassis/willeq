@@ -32,6 +32,7 @@
 #include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/eq/race_codes.h"
 #include "common/logging.h"
+#include "client/data_paths.h"
 #include <cctype>
 #include <json/json.h>
 #include <filesystem>
@@ -632,9 +633,15 @@ size_t Eqe1ArchiveComponent::getEQE1MappedBytesTotal() const {
 // ---------------------------------------------------------------------------
 
 bool Eqe1ArchiveComponent::loadEQE1ArchiveConfig(const std::string& path) {
-    std::ifstream file(path);
+    // T399 (board B235): resolved; the miss is an ERROR because
+    // config/eqe1_archives.json is shipped and the built-in list below is a
+    // DIFFERENT archive set, not a degraded one.
+    const std::string resolved = eqt::ResolveDataPath(path);
+    std::ifstream file(resolved);
     if (!file.is_open()) {
-        LOG_INFO(MOD_GRAPHICS, "No {} found, using built-in EQE1 archive defaults", path);
+        LOG_ERROR(MOD_GRAPHICS,
+                  "cannot open '{}' (resolved to '{}') -- falling back to the BUILT-IN "
+                  "EQE1 archive list, which is not the shipped one", path, resolved);
 
         // Built-in fallback (matches original hard-coded list)
         EQE1ArchiveEntry defaultEntry;

@@ -7,6 +7,7 @@
 #include "client/graphics/environment/rain_overlay.h"
 #include "client/graphics/environment/snow_overlay.h"
 #include "common/logging.h"
+#include "client/data_paths.h"
 #include <irrlicht.h>
 #include <cmath>
 #include <algorithm>
@@ -45,7 +46,7 @@ bool WeatherEffectsController::initialize(const std::string& eqClientPath) {
     // Load weather config from JSON
     LOG_TRACE(MOD_GRAPHICS, "WeatherEffects: Loading weather config from JSON...");
     auto& configLoader = WeatherConfigLoader::instance();
-    configLoader.load("config/weather_effects.json");
+    configLoader.load(eqt::ResolveDataPath("config/weather_effects.json"));
 
     // Set up reload callback to apply settings when config reloads
     configLoader.setReloadCallback([this]() {

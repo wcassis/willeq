@@ -1,5 +1,6 @@
 #include "client/graphics/tree_identifier.h"
 #include "common/logging.h"
+#include "client/data_paths.h"
 #include <json/json.h>
 #include <fstream>
 #include <algorithm>
@@ -214,7 +215,9 @@ bool TreeIdentifier::loadZoneOverrides(const std::string& zoneName) {
     }
 
     // Try zone-specific config file
-    std::string configPath = "config/zones/" + zoneName + "/tree_overrides.json";
+    // T399 (board B235): per-zone override, genuinely optional -- resolved,
+    // and the miss stays a DEBUG (there is no config/zones/ in the tree).
+    std::string configPath = eqt::ResolveDataPath("config/zones/" + zoneName + "/tree_overrides.json");
     std::ifstream file(configPath);
 
     if (!file.is_open()) {
