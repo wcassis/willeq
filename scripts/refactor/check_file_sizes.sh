@@ -4,7 +4,15 @@
 # M00 (2026-09-04): 1500 is now the ENFORCED ceiling, not a soft warning.
 # Batches J, K, L and G brought every *.cpp/*.h/*.hpp under src/, include/ and
 # tests/ below it, so under --all a file over 1500 that is not allowlisted is a
-# FAIL. The 3000-line hard cap stays as a second line of defence (it also
+# FAIL.
+#
+# T385 (2026-09-05, board B167): --all now also scans tools/ and benchmarks/.
+# It did not, and that made M00's "tree-wide" claim false for tools/ -- six
+# files there were over the ceiling, two of them over the 3000 hard cap, with
+# ctest reporting a clean tree the whole time. tools/retired/ is scanned too
+# (its largest file is 474 lines, so nothing there is excused by omission).
+#
+# The 3000-line hard cap stays as a second line of defence (it also
 # applies to allowlisted files). The allowlist
 # (scripts/refactor/file_size_allowlist.txt) is now EMPTY; an entry is how a
 # future single-class file that must exceed 1500 is permitted, with a reason
@@ -20,8 +28,9 @@
 #                                                # script's own checkout / ambient cwd
 #   check_file_sizes.sh --files f1 f2 ...       # check specific files
 #   check_file_sizes.sh --all                   # check every *.cpp/*.h/*.hpp under
-#                                                # src/, include/, tests/ (excludes
-#                                                # third_party/, build*/), tree-wide,
+#                                                # src/, include/, tests/, tools/ and
+#                                                # benchmarks/ (excludes third_party/,
+#                                                # build*/), tree-wide,
 #                                                # not just what changed vs a base rev
 #                                                # (K00). Over 1500 is a FAIL unless the
 #                                                # file is listed in
@@ -74,10 +83,29 @@ fi
 all_mode=0
 if [ "${1:-}" = "--all" ]; then
     all_mode=1
-    mapfile -t files < <(find "$repo_root/src" "$repo_root/include" "$repo_root/tests" \
-        -type d \( -name third_party -o -name 'build*' \) -prune -o \
+    # T385 (2026-09-05, board B167): tools/ and benchmarks/ are in scope too.
+    # They were left out when --all was written, so M00's "the ceiling holds
+    # tree-wide" was FALSE for the one directory ctest never looked at --
+    # tools/ held SIX files over 1,500 (two of them over the 3,000 hard cap)
+    # while the checker reported a clean tree. tools/ holds production-API
+    # callers (board B166), so the same structural rule applies. A scanned
+    # directory that does not exist is skipped silently; benchmarks/ holds no
+    # C++ today, and is listed so it is covered the day it does. tools/retired/
+    # is NOT pruned -- it is dead code kept for reference, but every file in it
+    # is already well under the ceiling, so excluding it would only hide a
+    # future regression.
+    scan_dirs=()
+    for d in src include tests tools benchmarks; do
+        [ -d "$repo_root/$d" ] && scan_dirs+=("$repo_root/$d")
+    done
+    if [ "${#scan_dirs[@]}" -eq 0 ]; then
+        echo "ERROR none of src/ include/ tests/ tools/ benchmarks/ exist under $repo_root — nothing was checked"
+        exit 2
+    fi
+    mapfile -t files < <(find "${scan_dirs[@]}" \
+        -type d \( -name third_party -o -name 'build*' -o -name '@eaDir' \) -prune -o \
         -type f \( -name '*.cpp' -o -name '*.h' -o -name '*.hpp' \) -print 2>/dev/null | sort)
-    source_desc="every *.cpp/*.h/*.hpp under src/, include/, tests/ in $repo_root (excludes third_party/, build*/)"
+    source_desc="every *.cpp/*.h/*.hpp under src/, include/, tests/, tools/, benchmarks/ in $repo_root (excludes third_party/, build*/)"
 elif [ "${1:-}" = "--files" ]; then
     shift
     files=("$@")
