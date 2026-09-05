@@ -4,6 +4,7 @@
 #include "client/graphics/eq/pfs.h"
 #include "client/graphics/eq/race_codes.h"
 #include "common/logging.h"
+#include "client/data_paths.h"
 
 #include <algorithm>
 #include <cctype>
@@ -61,7 +62,9 @@ PfsArchive* GraphicsArchiveIndex::getCachedArchive(const std::string& archivePat
 }
 
 bool GraphicsArchiveIndex::loadCache() {
-    std::string cachePath = "config/gfx_index_cache.json";
+    // T399 (board B235): resolved. A CACHE, like snd_index_cache.json: a miss
+    // means "rescan", so it stays quiet.
+    std::string cachePath = eqt::ResolveDataPath("config/gfx_index_cache.json");
     std::ifstream cacheFile(cachePath);
     if (!cacheFile.is_open()) {
         return false;
@@ -151,7 +154,7 @@ void GraphicsArchiveIndex::saveCache() {
     }
     root["raceIndex"] = index;
 
-    std::string cachePath = "config/gfx_index_cache.json";
+    std::string cachePath = eqt::ResolveDataPath("config/gfx_index_cache.json");
     std::ofstream out(cachePath);
     if (!out.is_open()) {
         LOG_WARN(MOD_GRAPHICS_LOAD, "Failed to save GFX index cache to {}", cachePath);
