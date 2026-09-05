@@ -183,7 +183,7 @@ void eqt::merchant::MerchantComponent::SendMoveItem(int16_t fromSlot, int16_t to
 	LOG_DEBUG(MOD_INVENTORY, "Sending MoveItem packet: {} -> {} (qty: {})", fromSlot, toSlot, quantity);
 
 	eqt::strings::DumpPacket("C->S", HC_OP_MoveItem, packet);
-	ctx_.zone_connection->QueuePacket(packet);
+	ctx_.net.SafeQueueZone(packet);
 }
 
 void eqt::merchant::MerchantComponent::SendDeleteItem(int16_t slot)
@@ -206,7 +206,7 @@ void eqt::merchant::MerchantComponent::SendDeleteItem(int16_t slot)
 	LOG_DEBUG(MOD_INVENTORY, "Sending DeleteItem: slot {}", slot);
 
 	eqt::strings::DumpPacket("C->S", HC_OP_DeleteItem, packet);
-	ctx_.zone_connection->QueuePacket(packet);
+	ctx_.net.SafeQueueZone(packet);
 }
 
 // T276 -- the ONE place a scribe refusal becomes a chat line, shared by the
@@ -329,7 +329,7 @@ void eqt::merchant::MerchantComponent::ScribeSpellFromScroll(uint32_t spellId, u
 		LOG_DEBUG(MOD_SPELL, "Sending MemorizeSpell: spell={} book_slot={} scribing=0 (scribe from scroll)",
 			spellId, bookSlot);
 		eqt::strings::DumpPacket("C->S", HC_OP_MemorizeSpell, memPacket);
-		ctx_.zone_connection->QueuePacket(memPacket);
+		ctx_.net.SafeQueueZone(memPacket);
 	}
 
 	// Store pending scribe state for confirmation handling (eq.cpp's
@@ -357,7 +357,7 @@ void eqt::merchant::MerchantComponent::SendTradeRequest(const EQT::TradeRequest_
 	memcpy(packet.Data() + 2, &req, sizeof(EQT::TradeRequest_Struct));
 
 	eqt::strings::DumpPacket("C->S", HC_OP_TradeRequest, packet);
-	ctx_.zone_connection->QueuePacket(packet);
+	ctx_.net.SafeQueueZone(packet);
 }
 
 void eqt::merchant::MerchantComponent::SendTradeRequestAck(const EQT::TradeRequestAck_Struct& ack)
@@ -373,7 +373,7 @@ void eqt::merchant::MerchantComponent::SendTradeRequestAck(const EQT::TradeReque
 	memcpy(packet.Data() + 2, &ack, sizeof(EQT::TradeRequestAck_Struct));
 
 	eqt::strings::DumpPacket("C->S", HC_OP_TradeRequestAck, packet);
-	ctx_.zone_connection->QueuePacket(packet);
+	ctx_.net.SafeQueueZone(packet);
 }
 
 // T168: SendTradeCoins was DELETED here. It sent on an opcode eqemu never
@@ -403,7 +403,7 @@ void eqt::merchant::MerchantComponent::SendMoveCoin(const EQT::MoveCoin_Struct& 
 
 	LOG_DEBUG(MOD_MAIN, "Queueing MoveCoin packet, size={}", packet.Length());
 	eqt::strings::DumpPacket("C->S", HC_OP_MoveCoin, packet);
-	ctx_.zone_connection->QueuePacket(packet);
+	ctx_.net.SafeQueueZone(packet);
 }
 
 // T269: /bank deposit|withdraw -> the kept BankCurrencyMoveIntent (T264
@@ -458,7 +458,7 @@ void eqt::merchant::MerchantComponent::SendTradeAcceptClick(const EQT::TradeAcce
 	memcpy(packet.Data() + 2, &accept, sizeof(EQT::TradeAcceptClick_Struct));
 
 	eqt::strings::DumpPacket("C->S", HC_OP_TradeAcceptClick, packet);
-	ctx_.zone_connection->QueuePacket(packet);
+	ctx_.net.SafeQueueZone(packet);
 }
 
 void eqt::merchant::MerchantComponent::SendCancelTrade(const EQT::CancelTrade_Struct& cancel)
@@ -474,7 +474,7 @@ void eqt::merchant::MerchantComponent::SendCancelTrade(const EQT::CancelTrade_St
 	memcpy(packet.Data() + 2, &cancel, sizeof(EQT::CancelTrade_Struct));
 
 	eqt::strings::DumpPacket("C->S", HC_OP_CancelTrade, packet);
-	ctx_.zone_connection->QueuePacket(packet);
+	ctx_.net.SafeQueueZone(packet);
 }
 
 // Book/Note reading methods
@@ -505,7 +505,7 @@ void eqt::merchant::MerchantComponent::SendReadBookRequest(uint8_t window, uint8
 	LOG_DEBUG(MOD_MAIN, "Sending ReadBook request: window={} type={} filename='{}'", window, type, filename);
 
 	eqt::strings::DumpPacket("C->S", HC_OP_ReadBook, packet);
-	ctx_.zone_connection->QueuePacket(packet);
+	ctx_.net.SafeQueueZone(packet);
 }
 
 void eqt::merchant::MerchantComponent::ZoneProcessReadBook(const EQ::Net::Packet& p)

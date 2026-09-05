@@ -433,4 +433,64 @@ TEST(DirectSendersPacketSender, RecordedSession_ZoneHandshake) {
         });
 }
 
+// =====================================================================
+// merchant -- MerchantComponent, 13 senders across two TUs:
+//   merchant.cpp              SendMoveItem SendDeleteItem
+//                             ScribeSpellFromScroll SendTradeRequest
+//                             SendTradeRequestAck SendMoveCoin
+//                             SendTradeAcceptClick SendCancelTrade
+//                             SendReadBookRequest
+//   merchant_vendor_bank.cpp  SendRecipesFavorite SendRecipesSearch
+//                             SendRecipeDetails SendRecipeAutoCombine
+// None of these is a crash-shape site -- every one already returns early or
+// skips the send on a null connection -- so the (a) case below is green in
+// both directions and is here as the regression net. The (b) case is the
+// finding: all thirteen were invisible to the recorder.
+// =====================================================================
+
+TEST(DirectSendersPacketSender, NoZoneConnection_Merchant) {
+    SenderHarness h(/*withConnection=*/false);
+    ASSERT_EQ(h.eq.m_zone_connection, nullptr);
+
+    auto& m = h.eq.Merchant();
+    EQT::TradeRequest_Struct req{};
+    EQT::TradeRequestAck_Struct ack{};
+    EQT::MoveCoin_Struct coin{};
+    EQT::TradeAcceptClick_Struct accept{};
+    EQT::CancelTrade_Struct cancel{};
+    m.SendMoveItem(30, 31, 0);
+    m.SendDeleteItem(30);
+    m.ScribeSpellFromScroll(1, 0, 30);
+    m.SendTradeRequest(req);
+    m.SendTradeRequestAck(ack);
+    m.SendMoveCoin(coin);
+    m.SendTradeAcceptClick(accept);
+    m.SendCancelTrade(cancel);
+    m.SendReadBookRequest(0, 0, "book");
+    m.SendRecipesFavorite(15, std::vector<uint32_t>{1, 2});
+    m.SendRecipesSearch(15, "iron", 0, 300);
+    m.SendRecipeDetails(1);
+    m.SendRecipeAutoCombine(15, 1);
+
+    SUCCEED() << "the 13 merchant senders survived a null zone connection";
+}
+
+TEST(DirectSendersPacketSender, RecordedSession_Merchant) {
+    WithRecordedSession(
+        "t378_merchant_recorded.sleq",
+        [](SenderHarness& h) {
+            h.eq.Merchant().SendMoveItem(30, 31, 0);
+            h.eq.Merchant().SendRecipeDetails(1);
+        },
+        [](const std::vector<RecordedPacket>& recorded) {
+            EXPECT_EQ(CountOpcode(recorded, HC_OP_MoveItem), 1u)
+                << "SendMoveItem -- every inventory drag in the client -- must "
+                   "reach the session recorder; a sender that calls "
+                   "zone_connection->QueuePacket() directly is invisible to it "
+                   "(BOARD B145)";
+            EXPECT_EQ(CountOpcode(recorded, HC_OP_RecipeDetails), 1u)
+                << "SendRecipeDetails, the second merchant TU, same fix";
+        });
+}
+
 }  // namespace
