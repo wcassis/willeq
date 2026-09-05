@@ -203,8 +203,11 @@ TEST_F(InputActionBridgeTest, DiscreteAction_FiresOnceThenStaysQuiet) {
 TEST_F(InputActionBridgeTest, UIToggleActions_AreNotBridgeTerritory) {
     // The UI/graphics toggles are handled elsewhere (GraphicsInputHandler /
     // renderer); the bridge must leave them pending, not consume-and-drop.
+    // T365 (B090): ToggleInventory was the first entry here until its
+    // enumerator was deleted -- nothing produced it and nothing consumed it.
+    // ToggleVendor stands in: same UI-toggle family, still declared.
     input.pendingActions = {
-        InputAction::ToggleInventory, InputAction::ToggleSpellbook,
+        InputAction::ToggleVendor, InputAction::ToggleSpellbook,
         InputAction::ToggleWireframe, InputAction::ToggleHUD,
     };
 

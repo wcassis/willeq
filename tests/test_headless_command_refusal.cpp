@@ -86,6 +86,77 @@ TEST(HeadlessCommandRefusalTest, ConsoleHandlerNoLongerInterceptsTheSkillsKeywor
         << "the deletion is not explained at the site";
 }
 
+// ---------------------------------------------------------------------------
+// T365 (B090): the `inventory` / `inv` / `group` stdin keywords. All three set
+// an InputAction nothing consumed, exactly like `skills` before T363.
+// ---------------------------------------------------------------------------
+
+// The bare word now falls through to the unified dispatcher, which hands it
+// to DispatchSlashCommand with no leading slash. Registry 3 claims it because
+// this unit renamed the catalog row `newinv` -> `inventory`.
+TEST(HeadlessCommandRefusalTest, T365_BareInventoryKeywordIsClaimedByTheRendererRegistry) {
+    Application app;
+    CommandDispatchResult r = app.DispatchSlashCommand("inventory");
+    EXPECT_TRUE(r.recognized);
+    EXPECT_EQ(r.registry, "renderer");
+    EXPECT_NE(r.message.find("/inventory requires graphics mode"), std::string::npos) << r.message;
+}
+
+// The old spelling must be claimed by NO registry -- the rename removed the
+// catalog row, and no alias was added (Will's B058 shape).
+TEST(HeadlessCommandRefusalTest, T365_NewInvIsNoLongerRecognizedByAnyRegistry) {
+    Application app;
+    CommandDispatchResult r = app.DispatchSlashCommand("/newinv");
+    EXPECT_FALSE(r.recognized);
+    EXPECT_EQ(r.registry, "none");
+    EXPECT_FALSE(r.queued);
+}
+
+// Why `inv` cannot simply fall through: registry 2 owns it as an alias of
+// /invite and is tried BEFORE registry 3, so a bare `inv` line would invite a
+// group member. Registry 3 must NOT claim it -- adding `inv` as an alias of
+// `/inventory` would be dead weight (registry 2 wins) AND would make the
+// catalog lie about what the word does. The registry-2 half of the collision
+// is pinned in test_merged_help.cpp (T365_InvIsInvitesAliasNotInventorys),
+// which has a real CommandProcessor; a bare Application has none.
+TEST(HeadlessCommandRefusalTest, T365_RegistryThreeDoesNotClaimInv) {
+    Application app;
+    CommandDispatchResult r = app.DispatchSlashCommand("inv");
+    EXPECT_FALSE(r.recognized)
+        << "registry 3 claims `inv`; registry 2's /invite alias wins the real "
+           "dispatch anyway, so the ConsoleInputHandler rewrite is what makes "
+           "the keyword work -- revisit it if this changes";
+    EXPECT_EQ(r.registry, "none");
+}
+
+// `group` had no consumer at all: RendererAction::ToggleGroup is an empty arm
+// in renderer_frame_input.cpp, so there is no group-window toggle to route to.
+// The keyword is deleted; the word is now honestly unrecognized.
+TEST(HeadlessCommandRefusalTest, T365_GroupKeywordIsUnrecognizedNotSilentlySwallowed) {
+    Application app;
+    CommandDispatchResult r = app.DispatchSlashCommand("group");
+    EXPECT_FALSE(r.recognized);
+    EXPECT_EQ(r.registry, "none");
+    EXPECT_FALSE(r.queued);
+}
+
+// The source-text half, the T363 shape: processCommand() is private and its
+// constructor spawns a stdin thread, so the interceptions are pinned as text.
+TEST(HeadlessCommandRefusalTest, T365_ConsoleHandlerNoLongerInterceptsTheThreeUIToggles) {
+    std::ifstream in(CONSOLE_INPUT_SOURCE);
+    ASSERT_TRUE(in.is_open()) << CONSOLE_INPUT_SOURCE;
+    std::stringstream buffer;
+    buffer << in.rdbuf();
+    const std::string src = buffer.str();
+    EXPECT_EQ(src.find("InputAction::ToggleInventory"), std::string::npos)
+        << "ConsoleInputHandler still sets the dead ToggleInventory action";
+    EXPECT_EQ(src.find("InputAction::ToggleGroup"), std::string::npos)
+        << "ConsoleInputHandler still sets the dead ToggleGroup action";
+    EXPECT_NE(src.find("m_rawCommands.push(\"inventory\")"), std::string::npos)
+        << "`inv` must be rewritten to the primary name, not passed through "
+           "to registry 2's /invite alias";
+}
+
 TEST(HeadlessCommandRefusalTest, RendererAliasWithArgsIsRefusedByName) {
     Application app;
     CommandDispatchResult r = app.DispatchSlashCommand("wq high");

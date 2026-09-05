@@ -376,7 +376,7 @@ void IrrlichtRenderer::initDeferredGraphics() {
 // keybind reaches it (hotkeys.json "ToggleInventory": "I" ->
 // HotkeyAction::ToggleInventory -> RendererAction::ToggleInventory ->
 // renderer_frame.cpp's action drain), so `I` silently did nothing and the
-// popup was reachable only via /newinv. This is now THE body; the /newinv
+// popup was reachable only via /inventory. This is now THE body; the /inventory
 // handler calls straight into it so the two paths cannot drift.
 void IrrlichtRenderer::toggleInventory() {
     if (isInventoryOpen()) {

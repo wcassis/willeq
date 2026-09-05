@@ -321,6 +321,24 @@ TEST_F(MergedHelpTest, T363_NewSkillsIsUnknownToHelp) {
         << "the old spelling is still in a registry -- the alias was not removed";
 }
 
+// T365 (B090): the registry-2 half of the `inv` collision. It is /invite's
+// alias, and registry 2 is tried before registry 3 -- which is why
+// ConsoleInputHandler rewrites the bare `inv` keyword to `inventory` instead
+// of letting it fall through, and why `/inventory` has no `inv` alias.
+TEST_F(MergedHelpTest, T365_InvIsInvitesAliasNotInventorys) {
+    HelpResponse r = BuildHelpResponse("help inv", &game, processor.get());
+    ASSERT_TRUE(r.handled);
+    EXPECT_TRUE(ContainsSubstring(r.lines, "=== invite ==="));
+    EXPECT_FALSE(ContainsSubstring(r.lines, "=== inventory ==="));
+}
+
+// T365: the old `/newinv` spelling is gone from every registry.
+TEST_F(MergedHelpTest, T365_NewInvIsUnknownToHelp) {
+    HelpResponse r = BuildHelpResponse("help newinv", &game, processor.get());
+    ASSERT_TRUE(r.handled);
+    EXPECT_TRUE(ContainsSubstring(r.lines, "Unknown command"));
+}
+
 TEST_F(MergedHelpTest, T223_RendererAliasIsFoundByHelp) {
     HelpResponse r = BuildHelpResponse("help ds", &game, processor.get());
     ASSERT_TRUE(r.handled);

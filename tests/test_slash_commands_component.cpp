@@ -7,7 +7,7 @@
 // each of the four routes the moved body now uses lands on the RENDERER'S OWN
 // storage rather than a copy:
 //
-//   1. owner_.member_  -- the frame family's UI-panel state (/newui, /newinv).
+//   1. owner_.member_  -- the frame family's UI-panel state (/newui, /inventory).
 //   2. owner_.Method() -- a method that stayed on IrrlichtRenderer
 //      (/renderdist).
 //   3. ctx_.<member>   -- observed through IrrlichtRenderer::Context().
@@ -54,9 +54,9 @@ TEST(SlashCommandsComponentTest, NewUiCommandWritesTheRenderersOwnMemberThroughO
 TEST(SlashCommandsComponentTest, NewInvCommandReachesTheInventoryPopupState) {
     IrrlichtRenderer renderer;
     ASSERT_FALSE(renderer.isInventoryOpen());
-    renderer.processSlashCommand("/newinv");
+    renderer.processSlashCommand("/inventory");
     EXPECT_TRUE(renderer.isInventoryOpen());
-    renderer.processSlashCommand("/newinv");
+    renderer.processSlashCommand("/inventory");
     EXPECT_FALSE(renderer.isInventoryOpen());
 }
 
@@ -149,7 +149,7 @@ TEST(SlashCommandsComponentTest, SkillsCommandTogglesThePopupAndClosesTheOtherTw
     // commands -- a default-constructed state would prove nothing about the
     // closing (L01 correction 6: assert a MUTATION).
     renderer.processSlashCommand("/newbook");
-    renderer.processSlashCommand("/newinv");
+    renderer.processSlashCommand("/inventory");
     ASSERT_TRUE(renderer.Frame().spellbookState_.isOpen);
     ASSERT_TRUE(renderer.isInventoryOpen());
     ASSERT_FALSE(renderer.Frame().skillsPopupState_.isOpen);
@@ -185,7 +185,7 @@ TEST(SlashCommandsComponentTest, NewSkillsIsNoLongerARendererCommand) {
 TEST(SlashCommandsComponentTest, ToggleSkillsActionClosesTheOtherTwoPopupsToo) {
     IrrlichtRenderer renderer;
     renderer.processSlashCommand("/newbook");
-    renderer.processSlashCommand("/newinv");
+    renderer.processSlashCommand("/inventory");
     ASSERT_TRUE(renderer.Frame().spellbookState_.isOpen);
     ASSERT_TRUE(renderer.isInventoryOpen());
 

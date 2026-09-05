@@ -124,7 +124,7 @@ migration); `Application::DispatchSlashCommand` tries them in order:
    `/dumpscene`, `/hideui` (aliases `/toggleui`, `/ui` — the scriptable half
    of F11, T301), `/scroll [chat|skills|loot] [up|down|top|bottom] [lines]`
    (the scriptable half of the wheel and PageUp/PageDown, T313 — a `--script`
-   run cannot generate either), `/skills`, `/newinv`, `/newbook`,
+   run cannot generate either), `/skills`, `/inventory`, `/newbook`,
    `/weatherpreset`, …)
    — see `src/client/graphics/CLAUDE.md`. Not queryable by `/help` (T143).
 

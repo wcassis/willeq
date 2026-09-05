@@ -45,9 +45,14 @@ enum class InputAction {
     CycleTargetsReverse,
 
     // UI toggles
-    ToggleInventory,
-    ToggleSkills,
-    ToggleGroup,
+    // T365 (B090): ToggleInventory, ToggleSkills and ToggleGroup are DELETED.
+    // ConsoleInputHandler was the only producer of any of them and
+    // InputActionBridge::processDiscreteActions never had an arm for one, so
+    // the three keywords behind them (`inventory`/`inv`, `skills`, `group`)
+    // did nothing at all. The keywords now fall through to the slash
+    // dispatcher (see console_input_handler.cpp). The three below are
+    // consumer-less in the same way but have no producer here either; they
+    // are left alone as out of that unit's territory.
     ToggleVendor,
     TogglePetWindow,
     ToggleTrainer,

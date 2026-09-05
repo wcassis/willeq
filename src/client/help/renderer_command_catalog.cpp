@@ -60,7 +60,7 @@ const std::vector<RendererCommandInfo> kCatalog = {
     {"newbookprev", {}, "Spellbook: previous page"},
     {"newbooknext", {}, "Spellbook: next page"},
     {"skills", {}, "Toggle the skills window"},  // T363: was newskills (B058)
-    {"newinv", {}, "Toggle the inventory window"},
+    {"inventory", {}, "Toggle the inventory window"},  // T365: was newinv (B090)
     {"timestamp", {"timestamps", "ts"}, "Chat timestamps (not available: WindowManager removed)"},
     {"filter", {}, "Chat filter (not available: WindowManager removed)"},
     {"reloadeffects", {"particlereload", "reloadfx", "reloadparticles"}, "Reload environment effect settings"},
