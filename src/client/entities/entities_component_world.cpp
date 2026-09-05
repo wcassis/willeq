@@ -28,7 +28,8 @@
 // PosX()/PosY()/PosZ()/MySpawnId()/IsFullyZonedIn() -> owner_.*, they stay on
 // EverQuest; s_debug_level -> EverQuest::s_debug_level. m_pending_door_clicks
 // moved WITH this family, so its reference needs no prefix at all. See the
-// K06 Review.
+// K06 Review. (T376/B141: that member is GONE -- the pending-click set is the
+// door state manager's, reached as ctx_.game_state.doors().)
 //
 // T341 (board B038): the "stay on EverQuest" clauses above are HISTORY, not
 // the current shape. This family now reaches EverQuest not at all -- the
@@ -133,10 +134,14 @@ void eqt::entities::EntitiesComponent::ZoneProcessMoveDoor(const EQ::Net::Packet
 	const EQT::DoorState* door = ctx_.game_state.doors().getDoor(door_id);
 	if (door) {
 		bool is_open = (action == 0x03);
-		ctx_.game_state.doors().setDoorState(door_id, is_open);
 
-		// Check if this was a user-initiated door click
-		bool user_initiated = (m_pending_door_clicks.erase(door_id) > 0);
+		// T376 (BOARD B141): the pending-click set lives on the door state
+		// manager, which OWNS door state -- there is no longer a second copy
+		// on this component. READ IT FIRST: setDoorState() consumes the entry
+		// (it erases the id on every state update), so asking afterwards
+		// always answers false.
+		bool user_initiated = ctx_.game_state.doors().isClickPending(door_id);
+		ctx_.game_state.doors().setDoorState(door_id, is_open);
 
 		// Log at debug level 2+ for all doors, or level 1+ for user-initiated
 		if (EverQuest::GetDebugLevel() >= 2 || (user_initiated && EverQuest::GetDebugLevel() >= 1)) {
@@ -251,8 +256,11 @@ void eqt::entities::EntitiesComponent::SendClickDoor(uint8_t door_id, uint32_t i
 
 	LOG_INFO(MOD_ENTITY, "Clicking door {} ('{}')", door_id, door->name);
 
-	// Track this as a user-initiated door click
-	m_pending_door_clicks.insert(door_id);
+	// Track this as a user-initiated door click. T376 (BOARD B141): on the
+	// door state manager, the one owner of door state -- it erases the id on
+	// the confirming OP_MoveDoor and clears the whole set on clear(), which
+	// is the zone-change cleanup ZoneComponent::CleanupZone already calls.
+	ctx_.game_state.doors().addPendingClick(door_id);
 
 	// Build ClickDoor packet
 	EQ::Net::DynamicPacket p;
@@ -374,17 +382,6 @@ void eqt::entities::EntitiesComponent::ClearWorldObjects()
 	if (ctx_.inventory_manager) {
 		ctx_.inventory_manager->setWorldContainerOpen(false);
 	}
-}
-
-void eqt::entities::EntitiesComponent::ClearPendingDoorClicks()
-{
-	// T374 (BOARD B136). Zone change: the ids in this set name doors in the
-	// zone being left, and the new zone renumbers from its own door list.
-	if (!m_pending_door_clicks.empty()) {
-		LOG_DEBUG(MOD_ENTITY, "Dropping {} unconfirmed door click(s) at zone change",
-			m_pending_door_clicks.size());
-	}
-	m_pending_door_clicks.clear();
 }
 
 void eqt::entities::EntitiesComponent::ZoneProcessClickObjectAction(const EQ::Net::Packet &p)

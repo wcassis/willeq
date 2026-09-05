@@ -19,10 +19,12 @@
 //
 // No network, no graphics, no eqemu. SendClickDoor is gated on
 // IsFullyZonedIn(), whose third term (EverQuest::m_update_running) has no
-// public setter, and it queues straight onto m_zone_connection (it is one of
-// the senders that still bypasses PacketSender -- boarded as B140), so a
-// harness without a connection segfaults in the send rather than reaching the
-// code under test. This file therefore uses the same seam as
+// public setter, and when this file was written it queued straight onto
+// m_zone_connection (boarded as B140, CLOSED by T376 Leg A -- it now goes
+// through PacketSender::SafeQueueZone and no longer crashes without a
+// connection), so a harness without a connection segfaulted in the send
+// rather than reaching the code under test. This file therefore uses the
+// same seam as
 // test_forced_pose_no_echo.cpp / test_self_death_sequence.cpp: a real
 // DaybreakConnection over FakeUdpTransport installed as m_zone_connection via
 // the T17 `#define private public` idiom.
@@ -154,6 +156,63 @@ TEST(DoorClickZoneReset, PendingClickDoesNotSurviveAZoneChange) {
         << "a door click made in the PREVIOUS zone was carried across "
            "CleanupZone() and credited to the new zone's door "
         << static_cast<int>(kDoorId);
+}
+
+// ---------------------------------------------------------------------
+// T376 Leg B (BOARD B141): ONE pending-click set, and it is the door state
+// manager's.
+//
+// EQT::DoorStateManager carried a complete, correct, entirely unreached
+// duplicate of this set (pendingClicks_ + four accessors, zero callers
+// tree-wide) while the copy that WAS reached lived on EntitiesComponent and
+// was the broken one -- it lacked the erase-on-clear that B136 was about.
+// Duplicated-then-drifted. The manager owns door state, so the manager's set
+// is the one copy; EntitiesComponent::m_pending_door_clicks and
+// ClearPendingDoorClicks() are deleted.
+//
+// The two cases above pin the BEHAVIOUR and are unchanged. These three pin
+// WHICH set, through the manager's own public accessors -- pre-T376 all three
+// read the unreached copy and were red.
+// ---------------------------------------------------------------------
+
+TEST(DoorPendingClickOwnership, ClickRegistersOnTheDoorStateManager) {
+    DoorHarness h;
+    h.SpawnDoor(kDoorId);
+    EXPECT_FALSE(h.eq.GetGameState().doors().isClickPending(kDoorId));
+
+    h.eq.Entities().SendClickDoor(kDoorId, 0);
+
+    EXPECT_TRUE(h.eq.GetGameState().doors().isClickPending(kDoorId))
+        << "SendClickDoor must record the pending click on the door state "
+           "manager -- the one owner of door state (BOARD B141)";
+}
+
+TEST(DoorPendingClickOwnership, MoveDoorConsumesTheManagersPendingClick) {
+    DoorHarness h;
+    h.SpawnDoor(kDoorId);
+    h.eq.Entities().SendClickDoor(kDoorId, 0);
+    ASSERT_TRUE(h.eq.GetGameState().doors().isClickPending(kDoorId));
+
+    h.ReceiveMoveDoor(kDoorId);
+
+    EXPECT_FALSE(h.eq.GetGameState().doors().isClickPending(kDoorId))
+        << "setDoorState() erases the id, so the confirming OP_MoveDoor must "
+           "leave the set empty -- and the userInitiated read has to happen "
+           "BEFORE that call";
+    EXPECT_TRUE(h.LastUserInitiated());
+}
+
+TEST(DoorPendingClickOwnership, ZoneCleanupClearsTheManagersPendingClicks) {
+    DoorHarness h;
+    h.SpawnDoor(kDoorId);
+    h.eq.Entities().SendClickDoor(kDoorId, 0);
+    ASSERT_TRUE(h.eq.GetGameState().doors().isClickPending(kDoorId));
+
+    h.eq.Zone().CleanupZone();
+
+    EXPECT_FALSE(h.eq.GetGameState().doors().isClickPending(kDoorId))
+        << "DoorStateManager::clear() clears doors_ and pendingClicks_ "
+           "together; CleanupZone() needs no second call for the set";
 }
 
 }  // namespace
