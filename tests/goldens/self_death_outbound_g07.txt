@@ -20,6 +20,14 @@
 #     from the zone teardown (fable: CleanupZone), which needs the
 #     full handshake this headless test does not run.
 #
+# T360 (BOARD B068): the three lines below are unchanged. What changed is
+# that they are now compared against TWO observers of the same burst --
+# the T268 ordered-capture seam ("the client decided to send this") and the
+# R01 session recorder ("this went out through PacketSender"). Before T360
+# the recorder saw only OP_Save and OP_ZoneChange, because
+# EntitiesComponent::SendSpawnAppearance queued straight onto the zone
+# connection; that recorded burst was two lines where the oracle has three.
+#
 # Never re-blessed. If a line here changes, the capture was re-read.
 C->S OP_Save
 C->S OP_SpawnAppearance type=14 param=115

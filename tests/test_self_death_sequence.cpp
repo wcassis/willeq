@@ -128,6 +128,62 @@ const uint8_t kT311ZonePlayerToBindBody[33] = {
     'h',  ' ',  'Q',  'e',  'y',  'n',  'o',  's',  0x00,
 };
 
+// One outbound application packet, opcode plus body (no opcode prefix) -- the
+// shape BOTH observers hand back: the T268 capture seam
+// (PacketSender::TestQueuedPacket) and, since T360, the R01 session recorder's
+// own .sleq records.
+struct OutboundPacket {
+    uint16_t opcode = 0;
+    std::vector<uint8_t> bytes;
+};
+
+// The death-sequence projection: the three opcodes T311 Leg A's windows and
+// this unit are about, in order, rendered as golden lines. Every other opcode
+// fable happens to emit is deliberately not compared -- see the golden's
+// header for each exclusion and why.
+//
+// T360 made this a free function over a packet list so the SAME projection can
+// be run against the SAME golden from two different observers (see
+// RecordedSession_MatchesTheOracleSequence below).
+std::vector<std::string> ProjectDeathSequence(const std::vector<OutboundPacket>& packets) {
+    std::vector<std::string> out;
+    for (auto& p : packets) {
+        switch (p.opcode) {
+        case HC_OP_SpawnAppearance: {
+            if (p.bytes.size() < 8) break;
+            uint16_t type = static_cast<uint16_t>(p.bytes[2] | (p.bytes[3] << 8));
+            uint32_t param = static_cast<uint32_t>(p.bytes[4]) |
+                             (static_cast<uint32_t>(p.bytes[5]) << 8) |
+                             (static_cast<uint32_t>(p.bytes[6]) << 16) |
+                             (static_cast<uint32_t>(p.bytes[7]) << 24);
+            std::ostringstream os;
+            os << "C->S OP_SpawnAppearance type=" << type << " param=" << param;
+            out.push_back(os.str());
+            break;
+        }
+        case HC_OP_ClientUpdate:
+            out.push_back("C->S OP_ClientUpdate");
+            break;
+        case HC_OP_Save:
+            // T349: the body is compared separately, against
+            // op_save_body_g08.txt -- the timeline TSV this golden comes from
+            // keeps only the first 32 of its 192 bytes.
+            out.push_back("C->S OP_Save");
+            break;
+        case HC_OP_ZoneChange:
+            // No zone_id: the capture's TSV keeps only the first 32 payload
+            // bytes and the field lives at offset 64. The bind zone is pinned
+            // separately, from OP_ZonePlayerToBind, whose whole 33-byte body
+            // IS in the capture.
+            out.push_back("C->S OP_ZoneChange");
+            break;
+        default:
+            break;
+        }
+    }
+    return out;
+}
+
 class SilentBridge : public eqt::bridge::GameStateBridge {
 public:
     void applyEvent(const eqt::state::GameEvent&) override {}
@@ -182,47 +238,11 @@ public:
         return eq.Test_GetQueuedPackets();
     }
 
-    // The death-sequence projection: the three opcodes T311 Leg A's windows
-    // and this unit are about, in order, rendered as golden lines. Every
-    // other opcode fable happens to emit is deliberately not compared -- see
-    // the golden's header for each exclusion and why.
+    // The death-sequence projection over the T268 seam.
     std::vector<std::string> deathSequence() {
-        std::vector<std::string> out;
-        for (auto& p : sentPackets()) {
-            switch (p.opcode) {
-            case HC_OP_SpawnAppearance: {
-                if (p.bytes.size() < 8) break;
-                uint16_t type = static_cast<uint16_t>(p.bytes[2] | (p.bytes[3] << 8));
-                uint32_t param = static_cast<uint32_t>(p.bytes[4]) |
-                                 (static_cast<uint32_t>(p.bytes[5]) << 8) |
-                                 (static_cast<uint32_t>(p.bytes[6]) << 16) |
-                                 (static_cast<uint32_t>(p.bytes[7]) << 24);
-                std::ostringstream os;
-                os << "C->S OP_SpawnAppearance type=" << type << " param=" << param;
-                out.push_back(os.str());
-                break;
-            }
-            case HC_OP_ClientUpdate:
-                out.push_back("C->S OP_ClientUpdate");
-                break;
-            case HC_OP_Save:
-                // T349: the body is compared separately, against
-                // op_save_body_g08.txt -- the timeline TSV this golden comes
-                // from keeps only the first 32 of its 192 bytes.
-                out.push_back("C->S OP_Save");
-                break;
-            case HC_OP_ZoneChange:
-                // No zone_id: the capture's TSV keeps only the first 32
-                // payload bytes and the field lives at offset 64. The bind
-                // zone is pinned separately, from OP_ZonePlayerToBind, whose
-                // whole 33-byte body IS in the capture.
-                out.push_back("C->S OP_ZoneChange");
-                break;
-            default:
-                break;
-            }
-        }
-        return out;
+        std::vector<OutboundPacket> packets;
+        for (auto& p : sentPackets()) packets.push_back(OutboundPacket{p.opcode, p.bytes});
+        return ProjectDeathSequence(packets);
     }
 
     std::vector<std::pair<uint16_t, uint32_t>> sentAppearances() {
@@ -255,6 +275,52 @@ public:
     }
 
     void clearSent() { eq.Test_ClearQueuedPackets(); }
+
+    // ------------------------------------------------------------------
+    // T360 (BOARD B068) -- the R01 SESSION RECORDER as a second observer.
+    //
+    // The T268 seam above says "the client DECIDED to send this". The session
+    // recorder (--record-session) says "this went out through PacketSender",
+    // which is a different and stricter claim: a sender that reaches
+    // zone_connection->QueuePacket() directly is invisible to it. Before T360
+    // both EntitiesComponent senders did exactly that, so a .sleq of a real
+    // death carried the OP_Save and the OP_ZoneChange but NOT the Lying
+    // appearance -- T358 measured that on a live capture and had to take the
+    // proof from the server's own packet log instead.
+    // ------------------------------------------------------------------
+
+    void startRecording(const fs::path& path) {
+        eq.m_session_recorder = std::make_unique<EQT::Net::SessionRecorder>();
+        ASSERT_TRUE(eq.m_session_recorder->open(path.string(), "Oraclealpha", "qeynos"))
+            << "could not open " << path.string();
+    }
+
+    void stopRecording() {
+        if (eq.m_session_recorder) eq.m_session_recorder->close();
+    }
+
+    // Reads the .sleq back and returns the C->S ZONE records in file order.
+    static std::vector<OutboundPacket> RecordedClientToServer(const fs::path& path) {
+        std::vector<OutboundPacket> out;
+        std::ifstream in(path, std::ios::binary);
+        EXPECT_TRUE(in.is_open()) << "no session log at " << path.string();
+        EQT::Net::SessionLogFileHeader fh{};
+        in.read(reinterpret_cast<char*>(&fh), sizeof(fh));
+        EXPECT_EQ(fh.magic, EQT::Net::SESSION_LOG_MAGIC);
+        while (in) {
+            EQT::Net::SessionLogRecordHeader rec{};
+            in.read(reinterpret_cast<char*>(&rec), sizeof(rec));
+            if (!in) break;
+            std::vector<uint8_t> body(rec.size);
+            if (rec.size) in.read(reinterpret_cast<char*>(body.data()), rec.size);
+            if (!in && rec.size) break;
+            if (rec.stream != static_cast<uint8_t>(EQT::Net::SessionStream::Zone)) continue;
+            if (rec.direction != static_cast<uint8_t>(EQT::Net::SessionDirection::ClientToServer))
+                continue;
+            out.push_back(OutboundPacket{rec.opcode, std::move(body)});
+        }
+        return out;
+    }
 
     EverQuest eq;
     SilentBridge bridge;
@@ -577,6 +643,98 @@ TEST(SelfDeathSequence, T311Capture_OutboundSequenceMatchesTheOracle) {
         EXPECT_EQ(actual[i], expected[i])
             << "step " << i << " diverges from the oracle; fable sent:" << got.str();
     }
+}
+
+
+// ------------------------------------------------------------------
+// T360 (BOARD B068) -- the appearance and animation senders go through
+// PacketSender, so the session recorder can see them.
+// ------------------------------------------------------------------
+
+// A recorded session must contain the C->S OP_SpawnAppearance the client just
+// sent. Pre-T360 SendSpawnAppearance called ctx_.zone_connection->QueuePacket()
+// directly and this was ZERO -- a .sleq was a false negative for every
+// appearance the client ever sent, which also degrades the Batch R replay
+// oracle (it replays what the recorder saw).
+TEST(SelfDeathSequence, RecordedSession_ContainsTheSpawnAppearance) {
+    const fs::path log = fs::temp_directory_path() /
+                         "t360_spawn_appearance_recorded.sleq";
+    fs::remove(log);
+
+    {
+        DeathHarness h;
+        h.spawnSelf();
+        h.startRecording(log);
+
+        h.eq.Entities().SendSpawnAppearance(AT_ANIMATION, 115);
+        h.eq.Entities().SendAnimation(/*animation_id=*/1, /*animation_speed=*/10);
+
+        h.stopRecording();
+    }
+
+    auto recorded = DeathHarness::RecordedClientToServer(log);
+    size_t appearances = 0, animations = 0;
+    for (const auto& p : recorded) {
+        if (p.opcode == HC_OP_SpawnAppearance) ++appearances;
+        if (p.opcode == HC_OP_Animation) ++animations;
+    }
+    EXPECT_EQ(appearances, 1u)
+        << "SendSpawnAppearance must reach the session recorder; a sender that "
+           "calls zone_connection->QueuePacket() directly is invisible to it "
+           "(BOARD B068)";
+    EXPECT_EQ(animations, 1u)
+        << "SendAnimation, same bypass, same fix";
+
+    // And the body survived the trip: spawn id, then type, then param.
+    for (const auto& p : recorded) {
+        if (p.opcode != HC_OP_SpawnAppearance) continue;
+        ASSERT_EQ(p.bytes.size(), 8u);
+        EXPECT_EQ(static_cast<uint16_t>(p.bytes[0] | (p.bytes[1] << 8)), kSelfId);
+        EXPECT_EQ(static_cast<uint16_t>(p.bytes[2] | (p.bytes[3] << 8)),
+                  static_cast<uint16_t>(AT_ANIMATION));
+        EXPECT_EQ(static_cast<uint32_t>(p.bytes[4]), 115u);
+    }
+    fs::remove(log);
+}
+
+// The death burst, projected from the RECORDER rather than from the T268 seam,
+// against the same G07 golden. This is the ordering half of B068: T349 asserts
+// OP_Save is the first C->S packet of the burst, and it is -- at the seam. At
+// the PacketSender level, pre-T360, the appearance was not there at all, so
+// the recorded burst was two lines where the oracle has three.
+TEST(SelfDeathSequence, RecordedSession_MatchesTheOracleSequence) {
+    auto expected = ReadGolden();
+    ASSERT_EQ(expected.size(), 3u);
+
+    const fs::path log = fs::temp_directory_path() / "t360_death_burst_recorded.sleq";
+    fs::remove(log);
+
+    {
+        DeathHarness h;
+        h.spawnSelf();
+        h.clearSent();
+        h.startRecording(log);
+
+        h.die();
+        for (int i = 0; i < 4; ++i) h.eq.Movement().SendPositionUpdate();
+        h.zonePlayerToBind();
+        for (int i = 0; i < 4; ++i) h.eq.Movement().SendPositionUpdate();
+
+        h.stopRecording();
+    }
+
+    auto actual = ProjectDeathSequence(DeathHarness::RecordedClientToServer(log));
+
+    std::ostringstream got;
+    for (auto& l : actual) got << "\n  " << l;
+    ASSERT_EQ(actual.size(), expected.size())
+        << "the recorded death burst, as a .sleq would carry it:" << got.str();
+    for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_EQ(actual[i], expected[i])
+            << "step " << i << " diverges from the oracle; the recorder saw:"
+            << got.str();
+    }
+    fs::remove(log);
 }
 
 }  // namespace
