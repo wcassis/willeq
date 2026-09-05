@@ -37,3 +37,27 @@ ADD_TEST(NAME DocCounts
     COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/refactor/check_doc_counts.py
             --repo ${CMAKE_SOURCE_DIR})
 SET_TESTS_PROPERTIES(DocCounts PROPERTIES LABELS "hygiene")
+
+# T398 (2026-09-05, board B230b): the shared UI/effects pack
+# /mnt/projects/EverQuest_ETC1/willeq.eqe1 had no build recipe in the repo,
+# so no atlas pixel could be changed without hand-assembling a 2.8 MB asset
+# that three worktrees read concurrently. scripts/build_willeq_pack.sh now
+# rebuilds it from the two checked-in input sources (procedural
+# tools/ui_atlas_builder plus the 64 BMPs in data/textures/) and installs it
+# atomically. This test rebuilds into a temp path and compares the sha256
+# against both the pinned data/willeq.eqe1.sha256 and the installed pack, so
+# a drift in either input -- or a hand-edit of the shared file -- is a red.
+#
+# SLOW: the ETC1 encode of 65 textures takes ~1 minute. RUN_SERIAL because
+# it saturates the encoder and because three slots share the read side of
+# the pack. Requires the two builder binaries, hence the TARGET guard.
+IF(TARGET eqe1_builder AND TARGET ui_atlas_builder)
+    ADD_TEST(NAME PackReproducible
+        COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/build_willeq_pack.sh --check
+                --bin-dir $<TARGET_FILE_DIR:eqe1_builder>
+                --sha-file ${CMAKE_SOURCE_DIR}/data/willeq.eqe1.sha256)
+    SET_TESTS_PROPERTIES(PackReproducible PROPERTIES
+        LABELS "hygiene;slow"
+        RUN_SERIAL TRUE
+        TIMEOUT 900)
+ENDIF()

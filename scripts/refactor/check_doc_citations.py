@@ -129,9 +129,18 @@ CITE_WITH_LINE = re.compile(
     r"%s(?P<path>/?[A-Za-z0-9_.\-]+(?:/[A-Za-z0-9_.\-]+)+\.(?:%s)):(?P<line>[0-9]+)"
     % (_NOT_PATH_TOKEN_BEFORE, _EXT_WITH_LINE)
 )
+# T398: the bare form needs a TRAILING guard too. Without one,
+# "data/willeq.eqe1.sha256" matched as the path "data/willeq.eqe1.sh" (the
+# ".sh" extension, with "a256" simply left unmatched) and FAILed as a
+# nonexistent file. The guard excludes a following alnum/underscore/dash but
+# deliberately NOT a following ".", so a sentence-ending citation
+# ("... see src/foo.cpp.") still matches. The WITH-line form is already safe
+# because its ":" anchors the end of the path.
+_NOT_PATH_TOKEN_AFTER = r"(?![A-Za-z0-9_\-])"
+
 CITE_BARE = re.compile(
-    r"%s(?P<path>/?[A-Za-z0-9_.\-]+(?:/[A-Za-z0-9_.\-]+)+\.(?:%s))"
-    % (_NOT_PATH_TOKEN_BEFORE, _EXT_BARE)
+    r"%s(?P<path>/?[A-Za-z0-9_.\-]+(?:/[A-Za-z0-9_.\-]+)+\.(?:%s))%s"
+    % (_NOT_PATH_TOKEN_BEFORE, _EXT_BARE, _NOT_PATH_TOKEN_AFTER)
 )
 
 # K00 Leg C: review/ is the sanctioned outside-repo media directory
