@@ -437,7 +437,42 @@ it without taking that measurement first.
   The accounting had no observable surface, so `getChrCacheAccountingForTest()`
   was added next to `setMaxChrCacheEntries()`.
 
-- **B095** (B) `src/client/graphics/eq/model_loading_chr.cpp`
+- **B105** (B) `src/client/graphics/eq/s3d_loader.cpp` `S3DLoader::loadCharacters`
+  — **the character-archive path is derived by searching the WHOLE PATH for the
+  substring `_chr`, first occurrence**, so any client path with `_chr` anywhere in
+  a DIRECTORY name truncates the path and no character model loads at all:
+  ```
+  basePath = archivePath minus extension;
+  chrSuffix = basePath.find("_chr");        // first occurrence, whole path
+  basePath = basePath.substr(0, chrSuffix);
+  chrArchivePath = basePath + "_chr.s3d";
+  ```
+  **Measured 2026-09-05 (T366 Leg A, by accident):** with the loader pointed at
+  `/tmp/willeq_chrscan_1185004/`, every archive resolved to
+  `chrArchivePath='/tmp/willeq_chr.s3d'` and every load returned zero characters —
+  silently, because `searchZoneChrFilesForModel` treats "no characters" as a
+  negative cache entry and moves on. Renaming the directory to
+  `willeq_scantree_…` fixed it outright. The whole path is searched but only the
+  BASENAME's suffix is meant; the fix is to split the filename off first and match
+  `_chr` only as a suffix of the stem. Nothing in the shipped tree hits it today
+  (`/mnt/projects/EverQuestP1999` has no `_chr` directory component), which is why
+  it has survived — but it is a silent total failure for anyone whose EQ directory
+  happens to contain `_chr`, and it is not diagnosable from the client's output.
+  Closes when: the derivation operates on the basename and a test pins a client
+  path containing `_chr` in a directory name.
+
+- ~~**B095** (B)~~ **CLOSED by T366 Leg A (`a2b83e28`)**: all four sites now call
+  `storeOtherChrCacheLocked()`, the inline push/evict copy is deleted, and there is
+  exactly ONE `otherChrCaches_[key]` left in the tree — the helper's own line.
+  **Measured, per path, with a cap of 2** (`tests/test_chr_cache_lru.cpp`,
+  `ChrCacheScanTest`, a private client tree of symlinked archives so the directory
+  scan is bounded): `loadModelFromZoneChr`'s animation-source branch left
+  **1 of 1** cached entries untracked (`lruOrder=0`); `searchZoneChrFilesForModel`
+  left **1 of 3** untracked and held **3 entries against a cap of 2**. Both are 0
+  and 2 post-fix. So it was NOT the total bypass B065's path turned out to be —
+  the search path's inline accounting really did track its positive inserts, and
+  only the negative-cache entries escaped, which is what pinned the map over its
+  cap forever. Original text: `src/client/graphics/eq/model_loading_chr.cpp`
   `RaceModelLoader::loadModelFromZoneChr` (the animation-source insert) and
   `src/client/graphics/eq/model_loading_search.cpp`
   `RaceModelLoader::searchZoneChrFilesForModel` (its two negative-cache inserts,
@@ -737,7 +772,29 @@ it without taking that measurement first.
 
 ## Added 2026-09-03 by the K13 Review (context services)
 
-- **B038** (B) **the `EverQuest&` transition-handle residue — 83 -> 5.**
+- ~~**B038** (B)~~ **CLOSED by T366 Leg B (`7ac4efe6`): the handle is at ZERO.**
+  All four clusters retired, on the orchestrator's 2026-09-05 ruling that the
+  transition handle goes entirely. (1) `m_test_bypass_send_guard` moved to
+  `eqt::PacketSender` — the bypass belongs to the thing that sends; guards read
+  `ctx_.net.TestBypassSendGuard()` and the 70 test sites arm it as
+  `eq.Net().Test_SetBypassSendGuardForSeam(true)`. (2) movement's 22 `&owner_`
+  identity keys are back on `this` (`const MovementComponent*`); one component per
+  `EverQuest`, stated as an invariant comment. (3)
+  `ZoneOnStatusChangeReconnectDisabled` moved into `eqt::zone::ZoneComponent` —
+  its only two callers were the binds in that file. (4) `EQ::castRefusalMessage`
+  takes `eqt::ClientContext&`; everything it reads is a context member. The
+  `Owner&` ctor parameter and the `EverQuest& owner_` member are gone from group,
+  movement, zone and bridge, and the last three `friend` lines with them —
+  `CombatManager` and `TradeManager` are the only friends `eq.h` has left, and
+  neither is a component. Final census: comment-filtered `owner_` under
+  `src/client`/`include/client` outside `graphics/` = **0**; the 341 inside
+  `graphics/` are Batch L's `IrrlichtRenderer& owner_` (163, eleven renderer
+  components, the closed B050) and a `ZoneShaderManager*` back-pointer in
+  `zone_shader_callbacks.h` (178). Proof: `TestBypassSendGuard()` forced to
+  false fails 23 cases in `test_position_frame_roundtrip` and 2 in
+  `test_group_accept_gm_hideme`; restored, both green. See
+  `refactor/K_component_extraction.md` §CLOSE-OUT and `CLAUDE.md`. Original text:
+  **the `EverQuest&` transition-handle residue — 83 -> 5.**
   T341 retired clusters 1-4 and censused both friend axes for all twelve
   components. What is LEFT, measured at T341's tip:
   (1) **`EverQuest::m_test_bypass_send_guard`, 5 `owner_.` uses** — movement 3

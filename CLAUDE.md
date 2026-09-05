@@ -420,7 +420,17 @@ Audio tests and graphics integration tests are documented in their respective CL
 - Movement updates require `SendPositionUpdate()` to sync with server
 - Entities tracked in `m_entities` map keyed by spawn_id
 - Doors tracked in `m_doors` map keyed by door_id
-- Friend class pattern: `CombatManager` is friend of `EverQuest` for internal access
+- Friend class pattern: `CombatManager` and `TradeManager` are friends of
+  `EverQuest` for internal access. **They are the only two** (T366, 2026-09-05,
+  board B038 CLOSED): no extracted component is a friend and none holds an
+  `EverQuest&` transition handle any more. A comment-filtered `owner_` grep
+  under `src/client` / `include/client` returns **zero outside `graphics/`**;
+  every `owner_` inside `graphics/` is a different pattern — Batch L's
+  `IrrlichtRenderer& owner_` in the eleven renderer components (the
+  RendererContext pattern) and a `ZoneShaderManager*` back-pointer in
+  `zone_shader_callbacks.h`. A component reaches shared state as `ctx_.member`
+  and a sibling family as `ctx_.<Family>().Foo()`; if something new needs
+  `EverQuest`, it goes on `ClientContext` or a context service, not on a handle.
 - **BSP tree** (`include/client/zone_bsp.h`): Zone spatial data shared between game state (water detection, zone lines) and renderer (PVS culling). No graphics dependencies.
 
 ## Configuration
