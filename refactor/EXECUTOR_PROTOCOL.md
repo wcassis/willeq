@@ -157,6 +157,12 @@ pointing at `main/` breaks the moment main rebuilds its Irrlicht (T357).
   Assets are read from NFS everywhere (never copy to Pi-local).
 
 ## Verification bar (every unit unless the plan narrows it)
+
+⚠ A "zero callers" claim must name the directories grepped and MUST include
+`tools/`, `benchmarks/` and `docker/` alongside `src/ include/ tests/` —
+`tools/model_viewer.cpp` was the one caller of `setSpellDatabase()` and the
+reason B160 survived (T381, B166). The compiler-by-deletion proof covers
+only the targets you build; build the tools too.
 1. `cmake --build <slot>/build -j24` — `<slot>/build` is the GLES2-config
    tree (P30, `refactor/desktop_gl_elimination_plan.md`): configured with
    `-DEQT_GRAPHICS=ON -DEQT_GLES2=ON -DEQT_DRM=OFF

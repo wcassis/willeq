@@ -2657,3 +2657,16 @@ branches can be deleted independently of these items.
   and still has NO production caller — see B036 clause 2.) Closes when the
   handler pushes `PlaySoundIntent{BUY_ITEM}`, banks the four denominations, and a
   test pins both. Prov: T377 Review; B036.
+
+## Added 2026-09-05 by the orchestrator (T381 merge)
+
+- **B167** (P) `scripts/refactor/check_file_sizes.sh --all` scans `src/`,
+  `include/` and `tests/` only, so M00's "1,500 ceiling enforced tree-wide" is
+  FALSE for `tools/`: `tools/model_viewer.cpp` is **3,246 lines** at `d5b4bdaf`
+  (the file `ctest` never sees), and T381 measured it growing (+4) with no
+  guard. `tools/` holds production-API callers (B166), so the same structural
+  rule applies. Closes when: `--all` covers `tools/` (and `benchmarks/` if it
+  holds C++), every file over 1,500 there is decomposed by the K/L/G mechanism
+  (`model_viewer.cpp` first), and the M00 close-out and `CLAUDE.md` say
+  "tree-wide" truthfully. → T385. Prov: T381 Review (file-size table).
+
