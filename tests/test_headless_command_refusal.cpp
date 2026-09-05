@@ -21,6 +21,8 @@
 
 #include <gtest/gtest.h>
 
+#include <fstream>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -29,13 +31,59 @@ using eqt::CommandDispatchResult;
 
 TEST(HeadlessCommandRefusalTest, KnownRendererCommandIsRefusedNotQueued) {
     Application app;
-    CommandDispatchResult r = app.DispatchSlashCommand("/newskills");
+    // T363 (B058): the command is /skills now, not /newskills.
+    CommandDispatchResult r = app.DispatchSlashCommand("/skills");
     EXPECT_TRUE(r.recognized);
     EXPECT_EQ(r.registry, "renderer");
     EXPECT_FALSE(r.success);
     EXPECT_FALSE(r.queued);
     EXPECT_NE(r.message.find("requires graphics mode"), std::string::npos) << r.message;
-    EXPECT_NE(r.message.find("/newskills"), std::string::npos) << r.message;
+    EXPECT_NE(r.message.find("/skills"), std::string::npos) << r.message;
+}
+
+// T363 (B058): Will ruled rename, no alias. The old name must be claimed by
+// NO registry at all -- registry 3 classifies by the static catalog, so
+// deleting the catalog row is what makes this unrecognized rather than
+// "queued to a handler that only logs a warning" (the T139 queued lie).
+TEST(HeadlessCommandRefusalTest, NewSkillsIsNoLongerRecognizedByAnyRegistry) {
+    Application app;
+    CommandDispatchResult r = app.DispatchSlashCommand("/newskills");
+    EXPECT_FALSE(r.recognized);
+    EXPECT_EQ(r.registry, "none");
+    EXPECT_FALSE(r.queued);
+}
+
+// T363: the bare `skills` word on piped stdin. Before this unit
+// ConsoleInputHandler intercepted it into InputAction::ToggleSkills, which
+// NOTHING consumes (InputActionBridge::processDiscreteActions has no arm for
+// it) -- so the keyword did nothing at all, which is not what B058 recorded.
+// With the interception deleted it falls through to m_rawCommands, which
+// Application's unified dispatcher hands to DispatchSlashCommand VERBATIM,
+// i.e. with no leading slash. That is the line this asserts: the same
+// registry-3 classification a typed /skills gets.
+TEST(HeadlessCommandRefusalTest, BareSkillsKeywordIsClaimedByTheRendererRegistry) {
+    Application app;
+    CommandDispatchResult r = app.DispatchSlashCommand("skills");
+    EXPECT_TRUE(r.recognized);
+    EXPECT_EQ(r.registry, "renderer");
+    EXPECT_NE(r.message.find("/skills requires graphics mode"), std::string::npos) << r.message;
+}
+
+// The source-text half of the same claim: ConsoleInputHandler must no longer
+// carry the dead InputAction::ToggleSkills interception. A behavioural test
+// cannot drive processCommand() -- it is private, and the constructor spawns
+// a stdin-reading thread, which is not something a ctest may do.
+TEST(HeadlessCommandRefusalTest, ConsoleHandlerNoLongerInterceptsTheSkillsKeyword) {
+    std::ifstream in(CONSOLE_INPUT_SOURCE);
+    ASSERT_TRUE(in.is_open()) << CONSOLE_INPUT_SOURCE;
+    std::stringstream buffer;
+    buffer << in.rdbuf();
+    const std::string src = buffer.str();
+    EXPECT_EQ(src.find("InputAction::ToggleSkills"), std::string::npos)
+        << "ConsoleInputHandler still sets the dead ToggleSkills action; the "
+           "`skills` keyword cannot reach the renderer's one body";
+    EXPECT_NE(src.find("// T363"), std::string::npos)
+        << "the deletion is not explained at the site";
 }
 
 TEST(HeadlessCommandRefusalTest, RendererAliasWithArgsIsRefusedByName) {

@@ -179,6 +179,17 @@ public:
 	void processPlayerInput(const std::vector<RendererEvent>& actions);
 	void processChatInput();
 
+	// ---- T363 (B058): the ONE skills-window toggle ----
+	// Both reachable paths land here: the `/skills` slash command (registry 3,
+	// which piped stdin's bare `skills` word also reaches -- see
+	// ConsoleInputHandler) and the K keybind (HotkeyAction::ToggleSkills ->
+	// RendererAction::ToggleSkills -> processPlayerInput's arm). Before this
+	// they were two copies and only the slash one closed the other two centre
+	// popups, so pressing K left the spellbook stacked underneath. Same shape
+	// as T294's IrrlichtRenderer::toggleInventory(). Returns the new open
+	// state so the slash arm can echo it without re-reading the member.
+	bool toggleSkillsWindow();
+
 	// ---- T357 (B057): slash-command tab completion ----
 	// The chat box is a hand-rolled string in chatPanelState_, drained by
 	// processChatInput() on the RENDER thread; the command vocabulary lives on

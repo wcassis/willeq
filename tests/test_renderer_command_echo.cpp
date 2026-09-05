@@ -8,7 +8,7 @@
 // IrrlichtRenderer::processSlashCommand()'s chat() lambda
 // (irrlicht_renderer.cpp) is the registry-3 equivalent and only did the
 // first half, so a --script run or a grep of the log saw nothing for
-// /fps, /wireframe, /newskills, /camera, ... (review/T142/ has the live A/B
+// /fps, /wireframe, /skills, /camera, ... (review/T142/ has the live A/B
 // where the "[MAIN] Spell effect settings reloaded" line vanished when
 // /spellreload moved to registry 3).
 //

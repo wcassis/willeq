@@ -1347,7 +1347,7 @@ it without taking that measurement first.
   the reachability. See the new **B066** for the duplication the plan asked to
   record rather than merge. Prov: T347 (B013 measurement).
 
-- **B058** (B) `/skills` vs `/newskills` — a NAMING choice, not a defect.
+- ~~**B058** (B) `/skills` vs `/newskills` — a NAMING choice, not a defect.
   `/newskills` (`renderer_slash_commands.cpp:422`) and the bare `skills` keyword
   piped stdin recognises (`console_input_handler.cpp:432` →
   `InputAction::ToggleSkills` → `renderer_frame_input.cpp:222`) toggle the same
@@ -1358,7 +1358,21 @@ it without taking that measurement first.
   and keep one body, or keep both and say why). Do not merge them silently: the
   two bodies are not equivalent. Prov: T347 (B013 measurement).
   **WILL RULED 2026-09-05: rename to `/skills`, REMOVE `/newskills` (no alias);
-  keep the fuller body (closes spellbook + inventory, echoes). → T363. Now class B.**
+  keep the fuller body (closes spellbook + inventory, echoes). → T363. Now class B.**~~
+  **CLOSED by T363** (`refactor/T363_skills_rename.md`, branch
+  `task/T363-skills-rename` off `e69410f4`). The command is `/skills`, no alias;
+  the one body is `FrameComponent::toggleSkillsWindow()`, which the slash arm and
+  the K keybind (`RendererAction::ToggleSkills`) both call, so the popup mutual
+  exclusion is now reached from BOTH. **The entry's middle arrow was WRONG and the
+  measurement is worse than it recorded:** `InputAction::ToggleSkills` does not
+  reach `renderer_frame_input.cpp` at all — it is a different enum, and NOTHING
+  consumes it (`InputActionBridge::processDiscreteActions` has no arm), so the
+  bare `skills` word on piped stdin did **nothing whatsoever**, it did not toggle
+  the popup. The interception is deleted; the word now falls through to
+  `m_rawCommands` → `Application::DispatchSlashCommand("skills")` → registry 3's
+  `/skills`. Pinned by 11 tests (3 in `test_slash_commands_component`, 4 in
+  `test_headless_command_refusal`, 4 in `test_merged_help`), all failing before
+  the change. Two new items fell out: **B090** and **B091**.
 
 ## Added 2026-09-04 by the T346 Review (self-death sequence)
 
@@ -1646,3 +1660,52 @@ it without taking that measurement first.
   T350/T356 accepted for `/face`, `/moveto` and `/follow`. Pinned by
   `ActionDispatcherTest.Warp_ByName_PicksTheNearestMatch_NotTheLowestSpawnId`
   plus two siblings.
+
+## Added 2026-09-05 by T363 (B058 close-out)
+
+- **B090** (A) `src/client/input/console_input_handler.cpp`
+  `ConsoleInputHandler::processCommand` — the `inventory`/`inv` and `group`
+  keywords on piped stdin set `InputAction::ToggleInventory` /
+  `InputAction::ToggleGroup`, and **nothing consumes either**:
+  `InputActionBridge::processDiscreteActions`
+  (`src/client/action/input_action_bridge.cpp`) has no arm for any of the three
+  UI toggles. T363 measured the set mechanically (the InputAction literals
+  console_input_handler produces minus the ones input_action_bridge consumes =
+  ToggleInventory, ToggleSkills, ToggleGroup) and deleted only the `skills` one,
+  which was its territory. So a `--script`/piped `inventory` line silently does
+  nothing today — the same defect B058 recorded for `skills`, one keyword over.
+  Closes when: `inventory`/`inv` falls through to `m_rawCommands` the way
+  `skills` now does (registry 3 knows `/newinv`, so the fall-through needs the
+  word to BE a catalog name, or an explicit rewrite to `newinv`), and `group`
+  either gets a consumer or is deleted with its dead action. Note the asymmetry:
+  `skills` worked as a fall-through only because T363 gave registry 3 a command
+  of exactly that name. Prov: T363 (B058 close-out measurement).
+
+- **B092** (B) `src/client/help/merged_help.cpp` `BuildHelpResponse` —
+  a bare `/help <arg>` resolves `<arg>` as a CATEGORY before it tries a command
+  name, so a command whose name equals a category name has no reachable help
+  entry. T363 hit this immediately: registry 2 has a `"Skills"` category
+  (bandage/train/trainclose/track), so `/help skills` prints that category and
+  the renamed command's own detail block (`=== skills ===`,
+  `Registry: renderer (graphics)`) can no longer be reached by name —
+  `/help newskills` used to reach it. `/help graphics` still lists it, and the
+  command itself is unaffected. Closes when: the resolution tries both and says
+  so (e.g. prints the command detail followed by "…is also a category"), or the
+  order is inverted with the reverse collision handled. Pinned as it stands by
+  `MergedHelpTest.T363_HelpSkillsResolvesToTheSkillsCategoryNotTheCommand`.
+  Prov: T363.
+
+- **B091** (P) `refactor/T357_tab_completion_spell_land_eqe1_gate.md` §Review and
+  the two `CLAUDE.md` sentences it added
+  (`include/client/graphics/ui/CLAUDE.md`, `src/client/input/CLAUDE.md`) claim
+  that because Tab and `/help` share the same merged pair, "Tab and `/help` can
+  never list different commands." **They already do.** `/help` lists THREE
+  registries — `BuildCategoryOverview` appends registry 3's whole Graphics
+  category from `AllRendererCommands()` — while `Application::commandCompletions`
+  unions only registries 1 and 2, because registry 3 has no `getCompletions()`.
+  So none of the ~70 renderer commands is tab-completable: `/newskills` was not
+  before T363 and `/skills` is not after it (T363 verified this by reading
+  `CommandProcessor::getCompletions` and `commandCompletions`; the rename changed
+  nothing here). Closes when: either the completion provider also offers the
+  static catalog's names, or all three claims are corrected to say Tab covers
+  registries 1+2 only. Prov: T363 (plan step 3 check).

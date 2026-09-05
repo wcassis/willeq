@@ -30,6 +30,9 @@
 
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/slash/slash_commands_component.h"
+#include "client/graphics/frame/frame_component.h"  // T363: skillsPopupState_, processPlayerInput
+
+#include <vector>
 
 using namespace EQT::Graphics;
 
@@ -130,4 +133,67 @@ TEST(SlashCommandsComponentTest, UnknownCommandIsInertAndDisturbsNothing) {
     renderer.processSlashCommand("");
     EXPECT_EQ(renderer.isNewUIEnabled(), ui);
     EXPECT_FALSE(renderer.isAllUIHidden());
+}
+
+// ---------------------------------------------------------------------------
+// T363 (B058): `/newskills` renamed to `/skills`, no alias (Will's ruling
+// 2026-09-05). The surviving body is the fuller one -- it toggles the skills
+// popup AND closes the spellbook and the inventory popup, the same
+// one-center-popup-at-a-time rule /newbook and the loot bridge arm apply.
+// ---------------------------------------------------------------------------
+
+TEST(SlashCommandsComponentTest, SkillsCommandTogglesThePopupAndClosesTheOtherTwo) {
+    IrrlichtRenderer renderer;
+
+    // Put both of the other centre popups up first, through their own
+    // commands -- a default-constructed state would prove nothing about the
+    // closing (L01 correction 6: assert a MUTATION).
+    renderer.processSlashCommand("/newbook");
+    renderer.processSlashCommand("/newinv");
+    ASSERT_TRUE(renderer.Frame().spellbookState_.isOpen);
+    ASSERT_TRUE(renderer.isInventoryOpen());
+    ASSERT_FALSE(renderer.Frame().skillsPopupState_.isOpen);
+
+    renderer.processSlashCommand("/skills");
+    EXPECT_TRUE(renderer.Frame().skillsPopupState_.isOpen);
+    EXPECT_FALSE(renderer.Frame().spellbookState_.isOpen)
+        << "/skills opened the skills popup without closing the spellbook";
+    EXPECT_FALSE(renderer.isInventoryOpen())
+        << "/skills opened the skills popup without closing the inventory";
+
+    // Closing again must NOT re-close anything -- the mutual exclusion is
+    // guarded by the open branch only.
+    renderer.processSlashCommand("/skills");
+    EXPECT_FALSE(renderer.Frame().skillsPopupState_.isOpen);
+}
+
+TEST(SlashCommandsComponentTest, NewSkillsIsNoLongerARendererCommand) {
+    IrrlichtRenderer renderer;
+    ASSERT_FALSE(renderer.Frame().skillsPopupState_.isOpen);
+    // No alias: the old name falls to the chain's `else` (one LOG_WARN) and
+    // must leave every panel exactly as it was.
+    renderer.processSlashCommand("/newskills");
+    EXPECT_FALSE(renderer.Frame().skillsPopupState_.isOpen)
+        << "/newskills still toggles the skills popup -- the alias was not removed";
+    EXPECT_FALSE(renderer.Frame().spellbookState_.isOpen);
+    EXPECT_FALSE(renderer.isInventoryOpen());
+}
+
+// The K keybind (hotkeys.json "ToggleSkills") reaches RendererAction::
+// ToggleSkills, which before T363 had its OWN copy of the toggle that closed
+// nothing -- the drift B058 recorded. Both paths are now one body.
+TEST(SlashCommandsComponentTest, ToggleSkillsActionClosesTheOtherTwoPopupsToo) {
+    IrrlichtRenderer renderer;
+    renderer.processSlashCommand("/newbook");
+    renderer.processSlashCommand("/newinv");
+    ASSERT_TRUE(renderer.Frame().spellbookState_.isOpen);
+    ASSERT_TRUE(renderer.isInventoryOpen());
+
+    renderer.Frame().processPlayerInput(
+        std::vector<RendererEvent>{RendererEvent{RendererAction::ToggleSkills}});
+    EXPECT_TRUE(renderer.Frame().skillsPopupState_.isOpen);
+    EXPECT_FALSE(renderer.Frame().spellbookState_.isOpen)
+        << "the K keybind's arm still has its own toggle -- it did not close the spellbook";
+    EXPECT_FALSE(renderer.isInventoryOpen())
+        << "the K keybind's arm still has its own toggle -- it did not close the inventory";
 }
