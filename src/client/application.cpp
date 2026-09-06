@@ -233,7 +233,10 @@ bool Application::initRequiredFileValidation(const ApplicationConfig& config) {
             }
         };
         checkFile(eqt::ResolveDataPath("config/constrained_presets.json"), "constrained presets config");
-        checkFile(eqt::ResolveDataPath("config/race_models.json"), "race model mappings");
+        // T402 (board B246): config/race_models.json was checked here and is
+        // NOT checked any more. It is the db builder's input, not a runtime
+        // file: nothing at runtime opens it, and the race rows come from
+        // data/willeq.db, whose own failure is reported where it happens.
         checkFile(eqt::ResolveDataPath("data/item_models.json"), "item model mappings");
         checkFile(config.eqClientPath + "/eqstr_us.txt", "EQ string database");
         checkFile(config.eqClientPath + "/dbstr_us.txt", "EQ database strings");

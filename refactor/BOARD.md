@@ -3572,7 +3572,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
 
 - **B255** (B) `include/client/graphics/ui/ui_layout.h` `UILayout`, `include/client/graphics/ui/static_panels.h` `ChatPanelState` — **the client persists NO user settings.** Chat timestamps, panel visibility, chat scrollback size, UI colours and every panel position are computed or defaulted at startup and nothing writes them back: `saveLayout`, `loadLayout` and any preferences writer return zero hits under `src/`, `include/` and `tools/`, and the only two files that ever held such state (`config/chat_settings.json`, `config/ui_settings.json`) were the deleted WindowManager's and are gone (B245). So a player who moves nothing notices nothing, and a player who changes anything loses it at exit. Closes when a preferences file is written and re-read with a test, or when Will rules that a fixed static UI needs no persistence. Found by T402.
 
-- **B246** (B) `src/client/graphics/eq/race_codes.cpp` `loadRaceMappings` —
+- ~~**B246** (B) `src/client/graphics/eq/race_codes.cpp` `loadRaceMappings` —
   **the function ignores its argument; `config/race_models.json` is validated
   at startup and read by nothing.** The body is
   `(void)jsonPath; s_mappingsLoaded = (WilleqDatabase::globalInstance() != nullptr);`
@@ -3584,7 +3584,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   startup requirement for a loader that never opens it. Closes when the
   parameter and the S03 check go (or the JSON is genuinely read again).
   T399 routed the literal through `ResolveDataPath()` rather than change
-  behaviour mid-unit. Found by T399.
+  behaviour mid-unit. Found by T399.~~ **CLOSED by T402 Leg C** (`refactor/T402_caches_dead_configs.md`): the parameter is gone (`bool loadRaceMappings()`), the S03 `checkFile` line for `config/race_models.json` is gone, and `renderer_init`'s fatal now says `Race model mappings unavailable: no willeq.db is open` — the only condition a false return has ever meant. **`config/race_models.json` is NOT deleted and that is not a STOP:** the census (`src/ include/ tests/ tools/ benchmarks/ scripts/ docker/`) shows it is the DB BUILDER's input — `tools/willeq_db_builder.cpp:1353` `loadRaceModels(db, configPath + "/race_models.json")` builds the `race_models` table from it, and `scripts/generate_race_colors.py`, `scripts/update_race_models_from_reference.py` and `scripts/generate_s3d_reference_json.py` read it too. It is build-time source, not a runtime file; only the RUNTIME requirement was wrong. Proven live: with `config/race_models.json` moved away the client starts, initialises graphics and logs `Race mappings using on-demand SQLite lookup`; with `data/willeq.db` moved away it fails naming the db (`failed to open data/willeq.db ... rc=14`, and in fact dies at the spell database before the renderer's check is reached). Pinned by `RaceNameNoDatabaseTest.RaceMappingsFailOnTheDatabaseAndNothingElse`, `RaceNameFromDbTest.RaceMappingsBindToTheDatabase` and the G04 init-order golden, which learned the deletion of entry 46 in place (correction 32).
 
 - ~~**B247** (P) `tests/goldens/manifest.json` / `scripts/ci/visual_gate.sh` —
   **the visual gate is RED on the `fable` tip itself: T398 Leg B grew the

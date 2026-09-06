@@ -7,12 +7,19 @@
 namespace EQT {
 namespace Graphics {
 
-// Load race model mappings from JSON file
-// Returns true if loaded successfully
-bool loadRaceMappings(const std::string& jsonPath);
+// Bind the race model mappings to the open WilleqDatabase.
+//
+// T402 (board B246): this took a `const std::string& jsonPath` it had ignored
+// since race data moved into SQLite -- the body was `(void)jsonPath;` -- while
+// the caller still passed "config/race_models.json" and LOG_FATAL'd on a false
+// return that only ever meant "no database". The JSON is the DB BUILDER's
+// input (tools/willeq_db_builder.cpp), not a runtime file.
+//
+// Returns true when a global WilleqDatabase is open, i.e. when the race rows
+// can actually be served. False means NO DATABASE and nothing else.
+bool loadRaceMappings();
 
-// Reload race model mappings from previously loaded JSON file
-// Returns true if reloaded successfully
+// Re-bind after the global database changes. Same meaning as above.
 bool reloadRaceMappings();
 
 // Check if race mappings have been loaded

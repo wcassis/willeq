@@ -200,12 +200,15 @@ TEST(ApplicationInitOrderTest, GoldenIsPresentAndTheRightSize) {
     // `m_renderer->setCommandCompletionProvider(...)` right after
     // `m_renderer->setBridge(...)` -- Application is the only holder of both
     // command registries, so it is the only object that can supply the chat
-    // box's Tab-completion vocabulary.
+    // box's Tab-completion vocabulary, then -1 by T402 (B246), which DELETED
+    // entry 46 `checkFile(... "config/race_models.json" ...)` -- a startup
+    // requirement for a file no runtime loader opens.
     // Correction 32: an order golden learns a reviewed edit in place, at its
     // positions, named here; it is never regenerated from the tip.
-    EXPECT_EQ(golden.size(), 315u)
+    EXPECT_EQ(golden.size(), 314u)
         << "316 statement lines at G04, -2 for T347's write-only "
-           "customMemorySpec, +1 for T357's completion-provider wiring; "
+           "customMemorySpec, +1 for T357's completion-provider wiring, "
+           "-1 for T402's S03 race_models.json check (B246); "
            "the golden has " << golden.size();
     for (const auto& e : golden) EXPECT_FALSE(e.empty());
 }

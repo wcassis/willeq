@@ -369,11 +369,16 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         displaySettingsCached_ = true;
     }
 
-    // One-time race mappings load (validated at startup by S03)
+    // One-time race mappings bind. T402 (board B246): this used to pass
+    // "config/race_models.json" to a loader that ignored it and to blame that
+    // file for a failure it cannot cause. Race rows come from SQLite; a false
+    // return means the database is not open, and the message now says so.
     if (!areRaceMappingsLoaded()) {
-        LOG_TRACE(MOD_GRAPHICS, "Loading race mappings from config/race_models.json...");
-        if (!loadRaceMappings(eqt::ResolveDataPath("config/race_models.json"))) {
-            LOG_FATAL(MOD_GRAPHICS, "Failed to load race model mappings: config/race_models.json");
+        LOG_TRACE(MOD_GRAPHICS, "Binding race mappings to the open database...");
+        if (!loadRaceMappings()) {
+            LOG_FATAL(MOD_GRAPHICS,
+                      "Race model mappings unavailable: no willeq.db is open "
+                      "(data/willeq.db failed to load)");
         }
     }
 
