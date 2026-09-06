@@ -93,6 +93,29 @@ size_t estimateMeshSizeBytes(irr::scene::IMeshSceneNode* node) {
     return total;
 }
 
+
+namespace {
+// T408 (B110): unpack the WLD's baked per-vertex light into an Irrlicht vertex
+// colour. The 0x36 colour array is packed BGRA; the fourth byte is NOT part of
+// the baked RGB (its qeynos2 mean is 107/255 against 26.8/53.5/53.1 for
+// B/G/R -- tests/test_baked_vertex_lighting.cpp pins both) and is carried
+// through in the vertex alpha as the sun/sky exposure channel the shader's
+// uBakedLight.y masks the sun term with. Callers set
+// Material.MaterialTypeParam = 1 on the buffers that get these, which is the
+// per-material flag the zone shader keys uBakedFlag off; without it the
+// shader's equation is exactly the pre-T408 one.
+inline bool geometryHasBakedLight(const EQT::Graphics::ZoneGeometry& g) {
+    return g.vertexColors.size() == g.vertices.size() && !g.vertexColors.empty();
+}
+inline irr::video::SColor bakedVertexColor(uint32_t packedBgra) {
+    return irr::video::SColor(
+        static_cast<irr::u32>((packedBgra >> 24) & 0xFF),   // A: sky exposure
+        static_cast<irr::u32>((packedBgra >> 16) & 0xFF),   // R
+        static_cast<irr::u32>((packedBgra >> 8) & 0xFF),    // G
+        static_cast<irr::u32>(packedBgra & 0xFF));          // B
+}
+}  // namespace
+
 irr::scene::IMesh* ZoneMeshBuilder::buildMesh(const ZoneGeometry& geometry) {
     if (geometry.vertices.empty() || geometry.triangles.empty()) {
         return nullptr;
@@ -326,6 +349,13 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMesh(
     float minZ = geometry.minZ;
     float maxZ = geometry.maxZ;
 
+    // T408 (B110): this builder serves BOTH zone/object geometry (flipV=false)
+    // and character models (flipV=true -- variant_loading.cpp,
+    // race_model_loader.cpp). Only the zone's WLD bakes static light into its
+    // vertex colours; a character's are the model's own and are not light, so
+    // the baked path is gated on flipV as well as on the array being present.
+    const bool useBaked = !flipV && geometryHasBakedLight(geometry);
+
     // Group triangles by texture index
     std::map<uint32_t, std::vector<size_t>> trianglesByTexture;
     for (size_t i = 0; i < geometry.triangles.size(); i++) {
@@ -429,6 +459,10 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMesh(
             buffer->Material.MaterialType = irr::video::EMT_SOLID;
             buffer->Material.BackfaceCulling = false;  // Disabled to show both sides of polygons
             buffer->Material.Lighting = false;  // Use vertex/texture colors
+            // T408 (B110): the zone shader's per-material baked-light flag.
+            // ShaderCallback::OnSetMaterial reads it; 0 keeps the pre-T408
+            // equation exact for every mesh that is not carrying baked light.
+            buffer->Material.MaterialTypeParam = useBaked ? 1.0f : 0.0f;
 
             if (texture) {
                 buffer->Material.setTexture(0, texture);
@@ -537,9 +571,13 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMesh(
                         vertex.TCoords.X = v.u - static_cast<float>(cellU);
                         vertex.TCoords.Y = (flipV ? (1.0f - v.v) : v.v) - static_cast<float>(cellV);
 
-                        // White color if textured, height-based if not
+                        // T408 (B110): EQ's baked per-vertex light where the
+                        // WLD carries it, white otherwise (the pre-T408
+                        // value), height-based when untextured.
                         if (texture) {
-                            vertex.Color = irr::video::SColor(255, 255, 255, 255);
+                            vertex.Color = useBaked
+                                ? bakedVertexColor(geometry.vertexColors[vidx])
+                                : irr::video::SColor(255, 255, 255, 255);
                         } else {
                             vertex.Color = heightToColor(v.z, minZ, maxZ);
                         }

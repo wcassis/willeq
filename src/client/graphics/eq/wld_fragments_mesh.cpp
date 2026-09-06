@@ -124,8 +124,20 @@ void WldLoader::parseFragment36(const char* fragBuffer, uint32_t fragLength, uin
     ptr += sizeof(WldNormal) * (header.normalCount > header.vertexCount ?
                                 header.normalCount - header.vertexCount : 0);
 
-    // Skip colors (RGBA packed as uint32_t)
-    ptr += sizeof(uint32_t) * header.colorCount;
+    // Baked per-vertex lighting (T408, B110). Until T408 this array was
+    // `ptr += sizeof(uint32_t) * header.colorCount;` under a `// Skip colors`
+    // comment, so every zone vertex reached the GPU as opaque white and the
+    // official client's static lamp pools did not exist in fable at all.
+    // The array is one packed 32-bit colour per vertex; it is stored raw here
+    // and unpacked by the mesh builders, which alone know Irrlicht's channel
+    // order.
+    if (header.colorCount > 0) {
+        geom->vertexColors.resize(header.colorCount);
+        for (uint32_t i = 0; i < header.colorCount; ++i) {
+            geom->vertexColors[i] = read_val<uint32_t>(ptr);
+            ptr += sizeof(uint32_t);
+        }
+    }
 
     // Read polygons
     geom->triangles.resize(header.polygonCount);

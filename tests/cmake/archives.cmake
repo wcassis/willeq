@@ -26,6 +26,7 @@ IF(EQT_GRAPHICS)
         test_wld_texture_loading.cpp
         test_wld_zones.cpp
         test_wld_zones_comprehensive.cpp
+        test_baked_vertex_lighting.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/pfs.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_loader.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_material.cpp
@@ -36,6 +37,10 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_bsp.cpp
         ${CMAKE_SOURCE_DIR}/src/client/zone_bsp.cpp
     )
+    # T408: test_baked_vertex_lighting.cpp reads the shader source file to
+    # check all six vertex programs carry the baked-light uniforms.
+    TARGET_COMPILE_DEFINITIONS(test_wld PRIVATE
+        T408_ZONE_SHADER_SOURCES="${CMAKE_SOURCE_DIR}/src/client/graphics/zone_shader_sources_gles2.h")
     TARGET_LINK_LIBRARIES(test_wld GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB})
     GTEST_DISCOVER_TESTS(test_wld)
 ENDIF()

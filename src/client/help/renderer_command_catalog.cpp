@@ -39,6 +39,7 @@ const std::vector<RendererCommandInfo> kCatalog = {
     {"olight", {}, "Toggle object lights"},
     {"zlight", {}, "Toggle the directional zone light"},
     {"lightmode", {}, "Toggle unified/additive lighting"},
+    {"bakedlight", {}, "Zone baked vertex light: mode [gain] [skyWeight]"},
     {"shaderdebug", {"sd"}, "Set the shader debug visualisation mode"},
     {"fire", {}, "Toggle fire particles"},
     {"sky", {}, "Toggle sky rendering"},

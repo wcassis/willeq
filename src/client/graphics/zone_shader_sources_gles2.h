@@ -49,6 +49,15 @@ uniform float uFireGlowLightRadius[8];
 uniform float uFireGlowLightIntensity[8];
 uniform int uNumFireGlowLights;
 uniform int uUnifiedLighting;
+// T408 (B110): the zone's baked per-vertex lighting.
+//   uBakedLight = (gain, skyMaskWeight, mode); mode 0 = off (pre-T408),
+//   1 = additive, 2 = multiplicative, 3 = max.
+//   uBakedFlag  = 1.0 only on materials whose vertices actually carry the
+//   WLD's baked colours (set from SMaterial::MaterialTypeParam). Entities and
+//   every other mesh share these programs with aColor = opaque white, so the
+//   equation below is EXACTLY the pre-T408 one whenever uBakedFlag is 0.
+uniform vec3 uBakedLight;
+uniform float uBakedFlag;
 
 varying vec4 vColor;
 varying vec2 vTexCoord;
@@ -70,7 +79,18 @@ void main() {
     // Directional sun light
     vec3 sunL = normalize(-uSunDir);
     float sunNdotL = max(dot(worldN, sunL), 0.0);
-    vec3 baseLighting = min(uAmbientColor + sunNdotL * uSunColor, vec3(1.0));
+    float bakedOn = uBakedFlag * step(0.5, uBakedLight.z);
+    vec3 bakedRGB = aColor.rgb;
+    // On a mesh whose aColor IS the baked light, the old "aColor is a tint"
+    // reading has to be replaced by white, not merely left alone -- otherwise
+    // turning the baked path OFF silently becomes the multiplicative
+    // composition instead of the pre-T408 equation, and mode 0 stops being a
+    // baseline. Same for the alpha byte, which on those meshes is the sky
+    // exposure channel and not an opacity.
+    vec3 tintSrc = mix(aColor.rgb, vec3(1.0), uBakedFlag);
+    float alphaSrc = mix(aColor.a, 1.0, uBakedFlag);
+    float skyMask = mix(1.0, aColor.a, uBakedLight.y * bakedOn);
+    vec3 baseLighting = min(uAmbientColor + sunNdotL * uSunColor * skyMask, vec3(1.0));
 
     // Point lights 1-7 per-vertex (light[0] = player light, computed per-pixel in FS)
     vec3 pointLighting = vec3(0.0);
@@ -99,10 +119,19 @@ void main() {
         }
     }
 
+    vec3 tintOnly = baseLighting * uTintColor;
+    vec3 litAdd = tintOnly + uBakedLight.x * bakedRGB;
+    vec3 litMul = tintOnly * bakedRGB;
+    vec3 litMax = max(tintOnly, uBakedLight.x * bakedRGB);
+    vec3 lit = litAdd;
+    if (uBakedLight.z > 1.5 && uBakedLight.z < 2.5) lit = litMul;
+    else if (uBakedLight.z > 2.5) lit = litMax;
+
     if (uUnifiedLighting > 0) {
-        vColor = vec4((baseLighting * uTintColor + pointLighting + fogGlow) * aColor.rgb, aColor.a);
+        vColor = vec4((tintOnly + pointLighting + fogGlow) * tintSrc, alphaSrc);
     } else {
-        vColor = vec4(baseLighting * uTintColor, 1.0) * aColor + vec4(pointLighting + fogGlow, 0.0);
+        vec3 litRGB = mix(tintOnly * tintSrc, lit, bakedOn) + pointLighting + fogGlow;
+        vColor = vec4(litRGB, alphaSrc);
     }
 
     // Linear fog factor (1.0 = no fog, 0.0 = full fog)
@@ -283,6 +312,15 @@ uniform float uFireGlowLightRadius[8];
 uniform float uFireGlowLightIntensity[8];
 uniform int uNumFireGlowLights;
 uniform int uUnifiedLighting;
+// T408 (B110): the zone's baked per-vertex lighting.
+//   uBakedLight = (gain, skyMaskWeight, mode); mode 0 = off (pre-T408),
+//   1 = additive, 2 = multiplicative, 3 = max.
+//   uBakedFlag  = 1.0 only on materials whose vertices actually carry the
+//   WLD's baked colours (set from SMaterial::MaterialTypeParam). Entities and
+//   every other mesh share these programs with aColor = opaque white, so the
+//   equation below is EXACTLY the pre-T408 one whenever uBakedFlag is 0.
+uniform vec3 uBakedLight;
+uniform float uBakedFlag;
 
 varying vec4 vColor;
 varying vec2 vTexCoord;
@@ -306,7 +344,18 @@ void main() {
     // Directional sun light
     vec3 sunL = normalize(-uSunDir);
     float sunNdotL = max(dot(worldN, sunL), 0.0);
-    vec3 baseLighting = min(uAmbientColor + sunNdotL * uSunColor, vec3(1.0));
+    float bakedOn = uBakedFlag * step(0.5, uBakedLight.z);
+    vec3 bakedRGB = aColor.rgb;
+    // On a mesh whose aColor IS the baked light, the old "aColor is a tint"
+    // reading has to be replaced by white, not merely left alone -- otherwise
+    // turning the baked path OFF silently becomes the multiplicative
+    // composition instead of the pre-T408 equation, and mode 0 stops being a
+    // baseline. Same for the alpha byte, which on those meshes is the sky
+    // exposure channel and not an opacity.
+    vec3 tintSrc = mix(aColor.rgb, vec3(1.0), uBakedFlag);
+    float alphaSrc = mix(aColor.a, 1.0, uBakedFlag);
+    float skyMask = mix(1.0, aColor.a, uBakedLight.y * bakedOn);
+    vec3 baseLighting = min(uAmbientColor + sunNdotL * uSunColor * skyMask, vec3(1.0));
 
     // Point lights 1-7 per-vertex (light[0] = player light, computed per-pixel in FS)
     vec3 pointLighting = vec3(0.0);
@@ -335,10 +384,19 @@ void main() {
         }
     }
 
+    vec3 tintOnly = baseLighting * uTintColor;
+    vec3 litAdd = tintOnly + uBakedLight.x * bakedRGB;
+    vec3 litMul = tintOnly * bakedRGB;
+    vec3 litMax = max(tintOnly, uBakedLight.x * bakedRGB);
+    vec3 lit = litAdd;
+    if (uBakedLight.z > 1.5 && uBakedLight.z < 2.5) lit = litMul;
+    else if (uBakedLight.z > 2.5) lit = litMax;
+
     if (uUnifiedLighting > 0) {
-        vColor = vec4((baseLighting * uTintColor + pointLighting + fogGlow) * aColor.rgb, aColor.a);
+        vColor = vec4((tintOnly + pointLighting + fogGlow) * tintSrc, alphaSrc);
     } else {
-        vColor = vec4(baseLighting * uTintColor, 1.0) * aColor + vec4(pointLighting + fogGlow, 0.0);
+        vec3 litRGB = mix(tintOnly * tintSrc, lit, bakedOn) + pointLighting + fogGlow;
+        vColor = vec4(litRGB, alphaSrc);
     }
 
     // Linear fog factor (1.0 = no fog, 0.0 = full fog)
@@ -543,6 +601,15 @@ uniform float uFireGlowLightRadius[8];
 uniform float uFireGlowLightIntensity[8];
 uniform int uNumFireGlowLights;
 uniform int uUnifiedLighting;
+// T408 (B110): the zone's baked per-vertex lighting.
+//   uBakedLight = (gain, skyMaskWeight, mode); mode 0 = off (pre-T408),
+//   1 = additive, 2 = multiplicative, 3 = max.
+//   uBakedFlag  = 1.0 only on materials whose vertices actually carry the
+//   WLD's baked colours (set from SMaterial::MaterialTypeParam). Entities and
+//   every other mesh share these programs with aColor = opaque white, so the
+//   equation below is EXACTLY the pre-T408 one whenever uBakedFlag is 0.
+uniform vec3 uBakedLight;
+uniform float uBakedFlag;
 
 uniform float uWindTime;
 uniform vec4 uWindParams;   // baseStrength, baseFrequency, gustStrength, gustFrequency
@@ -596,7 +663,18 @@ void main() {
     // Directional sun light
     vec3 sunL = normalize(-uSunDir);
     float sunNdotL = max(dot(worldN, sunL), 0.0);
-    vec3 baseLighting = min(uAmbientColor + sunNdotL * uSunColor, vec3(1.0));
+    float bakedOn = uBakedFlag * step(0.5, uBakedLight.z);
+    vec3 bakedRGB = aColor.rgb;
+    // On a mesh whose aColor IS the baked light, the old "aColor is a tint"
+    // reading has to be replaced by white, not merely left alone -- otherwise
+    // turning the baked path OFF silently becomes the multiplicative
+    // composition instead of the pre-T408 equation, and mode 0 stops being a
+    // baseline. Same for the alpha byte, which on those meshes is the sky
+    // exposure channel and not an opacity.
+    vec3 tintSrc = mix(aColor.rgb, vec3(1.0), uBakedFlag);
+    float alphaSrc = mix(aColor.a, 1.0, uBakedFlag);
+    float skyMask = mix(1.0, aColor.a, uBakedLight.y * bakedOn);
+    vec3 baseLighting = min(uAmbientColor + sunNdotL * uSunColor * skyMask, vec3(1.0));
 
     // Point lights 1-7 per-vertex (light[0] = player light, computed per-pixel in FS)
     vec3 pointLighting = vec3(0.0);
@@ -625,10 +703,19 @@ void main() {
         }
     }
 
+    vec3 tintOnly = baseLighting * uTintColor;
+    vec3 litAdd = tintOnly + uBakedLight.x * bakedRGB;
+    vec3 litMul = tintOnly * bakedRGB;
+    vec3 litMax = max(tintOnly, uBakedLight.x * bakedRGB);
+    vec3 lit = litAdd;
+    if (uBakedLight.z > 1.5 && uBakedLight.z < 2.5) lit = litMul;
+    else if (uBakedLight.z > 2.5) lit = litMax;
+
     if (uUnifiedLighting > 0) {
-        vColor = vec4((baseLighting * uTintColor + pointLighting + fogGlow) * aColor.rgb, aColor.a);
+        vColor = vec4((tintOnly + pointLighting + fogGlow) * tintSrc, alphaSrc);
     } else {
-        vColor = vec4(baseLighting * uTintColor, 1.0) * aColor + vec4(pointLighting + fogGlow, 0.0);
+        vec3 litRGB = mix(tintOnly * tintSrc, lit, bakedOn) + pointLighting + fogGlow;
+        vColor = vec4(litRGB, alphaSrc);
     }
 
     // Linear fog factor
@@ -675,6 +762,15 @@ uniform float uFireGlowLightRadius[8];
 uniform float uFireGlowLightIntensity[8];
 uniform int uNumFireGlowLights;
 uniform int uUnifiedLighting;
+// T408 (B110): the zone's baked per-vertex lighting.
+//   uBakedLight = (gain, skyMaskWeight, mode); mode 0 = off (pre-T408),
+//   1 = additive, 2 = multiplicative, 3 = max.
+//   uBakedFlag  = 1.0 only on materials whose vertices actually carry the
+//   WLD's baked colours (set from SMaterial::MaterialTypeParam). Entities and
+//   every other mesh share these programs with aColor = opaque white, so the
+//   equation below is EXACTLY the pre-T408 one whenever uBakedFlag is 0.
+uniform vec3 uBakedLight;
+uniform float uBakedFlag;
 
 varying vec4 vColor;
 varying vec2 vTexCoord;
@@ -691,7 +787,18 @@ void main() {
     // Directional sun light
     vec3 sunL = normalize(-uSunDir);
     float sunNdotL = max(dot(worldN, sunL), 0.0);
-    vec3 baseLighting = min(uAmbientColor + sunNdotL * uSunColor, vec3(1.0));
+    float bakedOn = uBakedFlag * step(0.5, uBakedLight.z);
+    vec3 bakedRGB = aColor.rgb;
+    // On a mesh whose aColor IS the baked light, the old "aColor is a tint"
+    // reading has to be replaced by white, not merely left alone -- otherwise
+    // turning the baked path OFF silently becomes the multiplicative
+    // composition instead of the pre-T408 equation, and mode 0 stops being a
+    // baseline. Same for the alpha byte, which on those meshes is the sky
+    // exposure channel and not an opacity.
+    vec3 tintSrc = mix(aColor.rgb, vec3(1.0), uBakedFlag);
+    float alphaSrc = mix(aColor.a, 1.0, uBakedFlag);
+    float skyMask = mix(1.0, aColor.a, uBakedLight.y * bakedOn);
+    vec3 baseLighting = min(uAmbientColor + sunNdotL * uSunColor * skyMask, vec3(1.0));
 
     // All 8 point lights per-vertex (standard Lambertian, single loop)
     vec3 pointLighting = vec3(0.0);
@@ -718,10 +825,19 @@ void main() {
         }
     }
 
+    vec3 tintOnly = baseLighting * uTintColor;
+    vec3 litAdd = tintOnly + uBakedLight.x * bakedRGB;
+    vec3 litMul = tintOnly * bakedRGB;
+    vec3 litMax = max(tintOnly, uBakedLight.x * bakedRGB);
+    vec3 lit = litAdd;
+    if (uBakedLight.z > 1.5 && uBakedLight.z < 2.5) lit = litMul;
+    else if (uBakedLight.z > 2.5) lit = litMax;
+
     if (uUnifiedLighting > 0) {
-        vColor = vec4((baseLighting * uTintColor + pointLighting + fogGlow) * aColor.rgb, aColor.a);
+        vColor = vec4((tintOnly + pointLighting + fogGlow) * tintSrc, alphaSrc);
     } else {
-        vColor = vec4(baseLighting * uTintColor, 1.0) * aColor + vec4(pointLighting + fogGlow, 0.0);
+        vec3 litRGB = mix(tintOnly * tintSrc, lit, bakedOn) + pointLighting + fogGlow;
+        vColor = vec4(litRGB, alphaSrc);
     }
 
     // Linear fog factor (1.0 = no fog, 0.0 = full fog)
@@ -760,6 +876,15 @@ uniform float uFireGlowLightRadius[8];
 uniform float uFireGlowLightIntensity[8];
 uniform int uNumFireGlowLights;
 uniform int uUnifiedLighting;
+// T408 (B110): the zone's baked per-vertex lighting.
+//   uBakedLight = (gain, skyMaskWeight, mode); mode 0 = off (pre-T408),
+//   1 = additive, 2 = multiplicative, 3 = max.
+//   uBakedFlag  = 1.0 only on materials whose vertices actually carry the
+//   WLD's baked colours (set from SMaterial::MaterialTypeParam). Entities and
+//   every other mesh share these programs with aColor = opaque white, so the
+//   equation below is EXACTLY the pre-T408 one whenever uBakedFlag is 0.
+uniform vec3 uBakedLight;
+uniform float uBakedFlag;
 
 varying vec4 vColor;
 varying vec2 vTexCoord;
@@ -778,7 +903,18 @@ void main() {
     // Directional sun light
     vec3 sunL = normalize(-uSunDir);
     float sunNdotL = max(dot(worldN, sunL), 0.0);
-    vec3 baseLighting = min(uAmbientColor + sunNdotL * uSunColor, vec3(1.0));
+    float bakedOn = uBakedFlag * step(0.5, uBakedLight.z);
+    vec3 bakedRGB = aColor.rgb;
+    // On a mesh whose aColor IS the baked light, the old "aColor is a tint"
+    // reading has to be replaced by white, not merely left alone -- otherwise
+    // turning the baked path OFF silently becomes the multiplicative
+    // composition instead of the pre-T408 equation, and mode 0 stops being a
+    // baseline. Same for the alpha byte, which on those meshes is the sky
+    // exposure channel and not an opacity.
+    vec3 tintSrc = mix(aColor.rgb, vec3(1.0), uBakedFlag);
+    float alphaSrc = mix(aColor.a, 1.0, uBakedFlag);
+    float skyMask = mix(1.0, aColor.a, uBakedLight.y * bakedOn);
+    vec3 baseLighting = min(uAmbientColor + sunNdotL * uSunColor * skyMask, vec3(1.0));
 
     // All 8 point lights per-vertex (standard Lambertian, single loop)
     vec3 pointLighting = vec3(0.0);
@@ -805,10 +941,19 @@ void main() {
         }
     }
 
+    vec3 tintOnly = baseLighting * uTintColor;
+    vec3 litAdd = tintOnly + uBakedLight.x * bakedRGB;
+    vec3 litMul = tintOnly * bakedRGB;
+    vec3 litMax = max(tintOnly, uBakedLight.x * bakedRGB);
+    vec3 lit = litAdd;
+    if (uBakedLight.z > 1.5 && uBakedLight.z < 2.5) lit = litMul;
+    else if (uBakedLight.z > 2.5) lit = litMax;
+
     if (uUnifiedLighting > 0) {
-        vColor = vec4((baseLighting * uTintColor + pointLighting + fogGlow) * aColor.rgb, aColor.a);
+        vColor = vec4((tintOnly + pointLighting + fogGlow) * tintSrc, alphaSrc);
     } else {
-        vColor = vec4(baseLighting * uTintColor, 1.0) * aColor + vec4(pointLighting + fogGlow, 0.0);
+        vec3 litRGB = mix(tintOnly * tintSrc, lit, bakedOn) + pointLighting + fogGlow;
+        vColor = vec4(litRGB, alphaSrc);
     }
 
     // Linear fog factor (1.0 = no fog, 0.0 = full fog)
@@ -927,6 +1072,15 @@ uniform float uFireGlowLightRadius[8];
 uniform float uFireGlowLightIntensity[8];
 uniform int uNumFireGlowLights;
 uniform int uUnifiedLighting;
+// T408 (B110): the zone's baked per-vertex lighting.
+//   uBakedLight = (gain, skyMaskWeight, mode); mode 0 = off (pre-T408),
+//   1 = additive, 2 = multiplicative, 3 = max.
+//   uBakedFlag  = 1.0 only on materials whose vertices actually carry the
+//   WLD's baked colours (set from SMaterial::MaterialTypeParam). Entities and
+//   every other mesh share these programs with aColor = opaque white, so the
+//   equation below is EXACTLY the pre-T408 one whenever uBakedFlag is 0.
+uniform vec3 uBakedLight;
+uniform float uBakedFlag;
 
 uniform float uWindTime;
 uniform vec4 uWindParams;   // baseStrength, baseFrequency, gustStrength, gustFrequency
@@ -972,7 +1126,18 @@ void main() {
     // Directional sun light
     vec3 sunL = normalize(-uSunDir);
     float sunNdotL = max(dot(worldN, sunL), 0.0);
-    vec3 baseLighting = min(uAmbientColor + sunNdotL * uSunColor, vec3(1.0));
+    float bakedOn = uBakedFlag * step(0.5, uBakedLight.z);
+    vec3 bakedRGB = aColor.rgb;
+    // On a mesh whose aColor IS the baked light, the old "aColor is a tint"
+    // reading has to be replaced by white, not merely left alone -- otherwise
+    // turning the baked path OFF silently becomes the multiplicative
+    // composition instead of the pre-T408 equation, and mode 0 stops being a
+    // baseline. Same for the alpha byte, which on those meshes is the sky
+    // exposure channel and not an opacity.
+    vec3 tintSrc = mix(aColor.rgb, vec3(1.0), uBakedFlag);
+    float alphaSrc = mix(aColor.a, 1.0, uBakedFlag);
+    float skyMask = mix(1.0, aColor.a, uBakedLight.y * bakedOn);
+    vec3 baseLighting = min(uAmbientColor + sunNdotL * uSunColor * skyMask, vec3(1.0));
 
     // All 8 point lights per-vertex (standard Lambertian, single loop)
     vec3 pointLighting = vec3(0.0);
@@ -999,10 +1164,19 @@ void main() {
         }
     }
 
+    vec3 tintOnly = baseLighting * uTintColor;
+    vec3 litAdd = tintOnly + uBakedLight.x * bakedRGB;
+    vec3 litMul = tintOnly * bakedRGB;
+    vec3 litMax = max(tintOnly, uBakedLight.x * bakedRGB);
+    vec3 lit = litAdd;
+    if (uBakedLight.z > 1.5 && uBakedLight.z < 2.5) lit = litMul;
+    else if (uBakedLight.z > 2.5) lit = litMax;
+
     if (uUnifiedLighting > 0) {
-        vColor = vec4((baseLighting * uTintColor + pointLighting + fogGlow) * aColor.rgb, aColor.a);
+        vColor = vec4((tintOnly + pointLighting + fogGlow) * tintSrc, alphaSrc);
     } else {
-        vColor = vec4(baseLighting * uTintColor, 1.0) * aColor + vec4(pointLighting + fogGlow, 0.0);
+        vec3 litRGB = mix(tintOnly * tintSrc, lit, bakedOn) + pointLighting + fogGlow;
+        vColor = vec4(litRGB, alphaSrc);
     }
 
     // Linear fog factor

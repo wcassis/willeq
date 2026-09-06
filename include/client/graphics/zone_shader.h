@@ -9,6 +9,65 @@
 namespace EQT {
 namespace Graphics {
 
+// ---------------------------------------------------------------------------
+// T408 (board B110) -- the zone's baked per-vertex lighting.
+//
+// EQ bakes static light into the zone WLD's 0x36 colour array: 1,915 region
+// meshes in qeynos2, one BGRA colour per vertex, min 0 / max 255, mean RGB
+// byte 44.4/255 (tests/test_baked_vertex_lighting.cpp re-takes that census
+// every ctest run). Until T408 `parseFragment36` stepped over the array and
+// every zone vertex reached the GPU as opaque white, which is why fable's
+// night had no lamp pools while the official client's did.
+//
+// The three constants below are the composition, SOLVED LIVE against the
+// official Titanium client at two spots and two hours on the pinned T405 rig
+// -- never argued. The probe that produced them is the `/bakedlight` slash
+// command and the table in refactor/T408_baked_vertex_lighting.md §Review.
+// A change to any of them moves every zone pixel golden.
+// ---------------------------------------------------------------------------
+enum BakedLightMode {
+    kBakedLightOff        = 0,  // pre-T408: the baked colours are ignored
+    kBakedLightAdditive   = 1,  // ambient*tint + gain*baked
+    kBakedLightMultiply   = 2,  // ambient*tint*baked
+    kBakedLightMax        = 3   // max(ambient*tint, gain*baked)
+};
+
+// THE SOLVE REACHED ITS STOP, AND THE COMMITTED COMPOSITION IS THEREFORE
+// `kBakedLightOff` -- NOT because the baked colours are unavailable (they are
+// loaded, and this build ships them in every zone vertex) but because the
+// live A/B REFUTED the premise that they are what separates fable from the
+// official client at these spots. Measured T408 on two spots x two hours x
+// two clients, weather and heading pinned, on a GEOMETRY-ONLY crop
+// (560x110+200+350 -- T361's 700x420+40+40 world crop is about half sky, and
+// no zone-lighting term touches the sky):
+//
+//   L = (day/night at the lamp-free spot) / (day/night at the lamp spot)
+//     = how much more a lamp is worth at night than by day, with each spot's
+//       own composition divided out. It is invariant to a UNIFORM error in a
+//       client's night ambient, which is exactly the error board B280 records.
+//
+//   oracle (two sessions, agreeing to 0.5%)     L = 2.281
+//   fable, baked light OFF (pre-T408)           L = 2.476   (+8.5%)
+//   fable, additive  gain 0.25 / 0.50 / 1.00    L = 2.826 / 3.096 / 3.622
+//   fable, multiplicative                       L = 0.655
+//   fable, max       gain 0.50 / 1.00           L = 3.461 / 4.683
+//
+// Every baked composition moves fable AWAY from the oracle, and gain 0 is the
+// best fit in the family. The reason is in the residual's SHAPE: to reproduce
+// the oracle's own day/night ratio fable's night needs x2.27 at the lamp-free
+// spot and x2.09 at the lamp spot -- the SAME factor at both, i.e. a UNIFORM
+// deficit. A baked-vertex-light term is lamp-shaped by construction (at gain
+// 1.0 it is worth x1.03 in the open and x2.48 next to a lamp), so it cannot
+// supply a uniform deficit without breaking the spot it already fits. That
+// uniform deficit is board B280 (the night ambient), not B110.
+//
+// So these constants may not be moved off Off by argument. The probe that
+// produced the table above is `/bakedlight <mode> [gain] [skyWeight]`; re-run
+// it after B280 is solved, because moving the night ambient moves every row.
+static constexpr int   kBakedLightMode      = kBakedLightOff;
+static constexpr float kBakedLightGain      = 0.0f;
+static constexpr float kBakedLightSkyWeight = 0.0f;
+
 // GLSL shader pipeline for combined fog, directional lighting, point lights,
 // and day/night tinting.
 // Targets OpenGL 2.1 / GLSL 1.20 (Mali 400 Lima driver on Orange Pi One).
@@ -94,6 +153,20 @@ public:
     // Unified lighting mode: multiply pointLighting by aColor instead of additive
     void setUnifiedLighting(bool enabled) { unifiedLighting_ = enabled; }
     bool unifiedLighting() const { return unifiedLighting_; }
+
+    // T408 (B110): the zone's baked per-vertex lighting.
+    //   [0] gain      -- how much of the WLD's baked colour is light
+    //   [1] skyWeight -- how much the baked alpha byte masks the sun term
+    //   [2] mode      -- 0 off (pre-T408), 1 additive, 2 multiplicative, 3 max
+    // These are solved LIVE against the official client (T408 Review); the
+    // committed defaults are kBakedLight* below and are pinned by
+    // tests/test_baked_vertex_lighting.cpp. The setter exists so one live
+    // session can sweep the family via /bakedlight instead of costing a
+    // rebuild per candidate -- the probe that produced the constants.
+    void setBakedLight(float gain, float skyWeight, float mode) {
+        bakedLight_[0] = gain; bakedLight_[1] = skyWeight; bakedLight_[2] = mode;
+    }
+    const float* bakedLight() const { return bakedLight_; }
 
     // Debug shader program (separate FS with visualization branches)
     irr::s32 getDebugMaterialType() const { return materialDebug_; }
@@ -275,6 +348,10 @@ private:
     // Shader debug mode
     int shaderDebug_ = 0;
     bool unifiedLighting_ = false;
+    // T408: solved live against the official Titanium client -- see the
+    // composition table in refactor/T408_baked_vertex_lighting.md §Review.
+    float bakedLight_[3] = { kBakedLightGain, kBakedLightSkyWeight,
+                             static_cast<float>(kBakedLightMode) };
 
     // Wind uniforms (for tree vertex shader animation)
     float windTime_ = 0.0f;
