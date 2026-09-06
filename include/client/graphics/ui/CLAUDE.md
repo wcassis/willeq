@@ -29,8 +29,15 @@ The old WindowManager/WindowBase draggable window system was completely removed 
 | Spellbook | Center popup | `SpellbookPopupState` | `renderSpellbookPopup()` |
 | Skills | Center popup | `SkillsPopupState` | `renderSkillsPopup()` |
 | Loot | Center popup | `LootPanelState` | `renderLootPopup()` (T290) |
+| Tradeskill container | Center popup | `TradeskillPanelState` | `renderTradeskillPopup()` (T415, board B321) |
 
-Center popups (inventory, spellbook, skills, vendor, bank, loot, trade) share the same screen region and are mutually exclusive.
+Center popups (inventory, spellbook, skills, vendor, bank, loot, trade, tradeskill container) share the same screen region and are mutually exclusive.
+
+**The tradeskill panel takes its geometry from the oracle's XML**, the way the purse and the paperdoll do:
+`include/client/graphics/ui/tradeskill_layout.h` derives `EQUI_TradeskillWnd.xml`'s anchor-positioned
+container half (`COMBW_ComponentArea`'s ten `COMBW_RequiredIcon` 42x42 cells, `COMBW_ContainerName`,
+`COMBW_CombineButton`, `COMBW_CloseButton`) into absolute rects in the oracle's 400x525 window and maps
+them proportionally onto `centerPopup`. The panel's `.cpp` computes no rect of its own.
 
 ## Design Patterns
 

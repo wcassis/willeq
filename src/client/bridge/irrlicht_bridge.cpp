@@ -400,11 +400,27 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
     case state::GameEventType::TrainerWindowClosed:
         LOG_TRACE(MOD_GRAPHICS, "Bridge: TrainerWindowClosed");
         break;
+    // T415 (board B321): both arms were LOG_TRACEs that discarded their
+    // payloads, because fable had no container window. They now feed one.
     case state::GameEventType::TradeskillContainerOpened:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: TradeskillContainerOpened");
+        if (renderer_) {
+            auto& d = std::get<state::TradeskillContainerOpenedEvent>(event.data);
+            EQT::Graphics::applyTradeskillContainerOpened(
+                renderer_->Frame().tradeskillState_, d);
+            // A container is a centre popup: opening one closes the other
+            // three, the same rule the LootWindowOpened arm applies.
+            renderer_->Frame().inventoryState_.activePopup =
+                EQT::Graphics::PopupType::None;
+            renderer_->Frame().spellbookState_.isOpen = false;
+            renderer_->Frame().skillsPopupState_.isOpen = false;
+        }
         break;
     case state::GameEventType::TradeskillContainerClosed:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: TradeskillContainerClosed");
+        if (renderer_) {
+            auto& d = std::get<state::TradeskillContainerClosedEvent>(event.data);
+            EQT::Graphics::applyTradeskillContainerClosed(
+                renderer_->Frame().tradeskillState_, d);
+        }
         break;
 
     // Inventory events (D11a)
@@ -432,6 +448,19 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 slot.itemName = d.hasItem ? d.itemName : "";
                 slot.iconId = d.hasItem ? d.iconId : 0;
                 slot.quantity = d.hasItem ? d.quantity : 0;
+            } else {
+                // T415 (board B321): the WORLD container range, 4000-4009.
+                // eqemu sends a tradeskill container's contents as
+                // ITEM_PACKET_WORLD_CONTAINER; InventoryManager maps index i
+                // to WORLD_BEGIN + i (T282) and zone_dispatch publishes an
+                // enriched InventorySlotChanged for it. This branch is where
+                // that event was being dropped -- the if/else above covered
+                // only 0..29, so an open forge's contents crossed the bridge
+                // and went nowhere. applyTradeskillSlotChanged() ignores any
+                // slot id outside the world range, so this stays a no-op for
+                // bank and cursor slots.
+                EQT::Graphics::applyTradeskillSlotChanged(
+                    renderer_->Frame().tradeskillState_, d);
             }
         }
         break;

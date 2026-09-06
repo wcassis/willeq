@@ -62,7 +62,18 @@ const std::string kGolden = kRoot + "/tests/goldens/frame_render_order_g05.txt";
 //     count DROPS by one, 305 -> 304: a statement was removed and nothing
 //     replaced it. Entries 0-278 are byte-identical; entries 280-304 became
 //     279-303 with their text byte-identical; nothing was reordered.
-const size_t kGoldenSize = 304u;
+//   * T415 Leg A (board B321): the tradeskill container window added to
+//     renderStaticUI(), entry 279 -- inserted directly after entry 278
+//     `renderLootPopup(...)`, because the container window is the last centre
+//     popup and nothing may cover it. Plus its input hop, entries 257-259 --
+//     the three lines of `staticUIInput_->processPanelInput(...)`, inserted
+//     directly after entry 256, the last line of the existing processInput()
+//     call, and before `pendingUIClick_ = false;` which both calls read.
+//     The count RISES by four, 304 -> 308: four statements were added and
+//     nothing was removed or replaced. Entries 0-256 are byte-identical;
+//     everything after each insertion point shifts with its text
+//     byte-identical; nothing was reordered.
+const size_t kGoldenSize = 308u;
 
 std::vector<std::string> readLines(const std::string& path) {
     std::ifstream in(path);

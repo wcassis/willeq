@@ -4907,7 +4907,7 @@ client uses every field.
   and the field feeds its gauge; the field is left in place until then, so the
   producer does not have to be rewritten twice. Split out of B296 by T413.
 
-- **B321** (B) `include/client/state/event_bus.h`
+- ~~**B321** (B) `include/client/state/event_bus.h`
   `TradeskillContainerOpenedEvent::containerName` / `::isWorldObject` /
   `::slotCount` and `TradeskillContainerClosedEvent::wasWorldObject`, and the
   panel they need -- **fable has no tradeskill container window.**
@@ -4916,7 +4916,30 @@ client uses every field.
   world-vs-inventory provenance and its slot COUNT are exactly a container
   window's title, close behaviour and grid size. Oracle:
   `EQUI_TradeskillWnd.xml`. Closes when that panel exists and the four fields
-  feed it. Split out of B296 by T413.
+  feed it. Split out of B296 by T413.~~
+  **CLOSED by T415 Leg A** (`__LEGA_HASH__`). The panel is
+  `include/client/graphics/ui/tradeskill_panel.h` +
+  `src/client/graphics/ui/tradeskill_panel.cpp`; its geometry is the oracle's,
+  derived in `tradeskill_layout.h` from `EQUI_TradeskillWnd.xml`'s ANCHOR
+  arithmetic (the container half of that window is anchor-positioned, not
+  absolute -- the full derivation is written out in the header) and mapped
+  proportionally onto `centerPopup` the way `InventoryLayout::coinRect()` maps
+  the purse. `containerName` is the title (`COMBW_ContainerName`),
+  `slotCount` bounds the ten `COMBW_RequiredIcon` cells, `isWorldObject`
+  chooses which combine the Combine button sends, and either close event
+  hides the window.
+  **THE SURPRISE, and why the STOP condition did not fire:** the slot
+  CONTENTS needed no new event. eqemu sends a world container's items as
+  `ITEM_PACKET_WORLD_CONTAINER`, `InventoryManager::processItemPacket` maps
+  index i to `WORLD_BEGIN + i` (T282), and `zone_dispatch.cpp`'s generic
+  ItemPacket fallback publishes an ENRICHED `InventorySlotChanged` for it --
+  name, icon and quantity included. That event was already crossing the
+  bridge; `IrrlichtBridge`'s arm just dropped every slot id outside 0..29, so
+  an open forge's contents arrived renderer-side and went nowhere. The fix is
+  one `else` branch. `ZoneProcessClearObject` publishes the same event with
+  `hasItem = false` for all ten slots, so the clear path needed nothing
+  either. Pinned by `tests/test_tradeskill_combat_panels.cpp` (8 cases) and
+  the render-order golden. Live screenshot pair OWED to the next lock unit.
 
 - **B322** (B) `src/client/graphics/texture_generators.cpp`
   `generateSpellParticleFallback()`, `data/textures/spell_particle_fallback.bmp`,
@@ -4943,3 +4966,55 @@ client uses every field.
   recorded in `tests/test_texture_alpha_census.cpp`'s reason string for the
   file. Low urgency: the fallback is reached only when Glowflare03.dds,
   glittersp501.dds and Corona1.dds are ALL missing. Found by T413.
+
+## Added 2026-09-06 by T415
+
+- **B335** (B) `include/client/graphics/ui/tradeskill_layout.h`,
+  `src/client/graphics/ui/tradeskill_panel.cpp` -- **the tradeskill window's
+  whole LEFT side is not drawn: no recipe search, no known-recipe list, no
+  favourites.** T415 Leg A drew the container half of
+  `EQUI_TradeskillWnd.xml` (`COMBW_RightSideArea` -- the ten container cells,
+  the container name, Combine, Close) and mapped it onto `centerPopup` from
+  the oracle's own 400x525 frame, so the cells land where the official client
+  puts them. The consequence is that the left 60% of fable's popup is empty:
+  the oracle fills it with `COMBW_LeftSideArea`
+  (`COMBW_SearchArea` -- `COMBW_MinTrivialEdit` / `COMBW_MaxTrivialEdit` /
+  `COMBW_SearchTextEdit` / `COMBW_SearchButton`; `COMBW_RecipeListArea` --
+  the `COMBW_RecipeList` listbox; `COMBW_FavoritesArea` --
+  `COMBW_AddFavoriteButton` / `COMBW_RemoveFavoriteButton` /
+  `COMBW_ShowFavoritesButton`).
+  **The four opcodes it needs ALREADY EXIST and are already sent** -- checked,
+  not assumed: `MerchantComponent` writes `HC_OP_RecipesFavorite`,
+  `HC_OP_RecipesSearch`, `HC_OP_RecipeDetails` and `HC_OP_RecipeAutoCombine`
+  (`src/client/merchant/merchant_vendor_bank.cpp:547/559/581/593`), reached
+  from `CommandProcessor`. **What is missing is the CONSUMER**, and it is the
+  T413 shape again one layer up: `ZoneProcessRecipeReply`
+  (`merchant_vendor_bank.cpp:609`) parses `RecipeReply_Struct` -- recipe name,
+  id, trivial -- and its whole body is a single `LOG_DEBUG`. The server's
+  recipe list is arriving and being thrown away, so every recipe a search
+  returns is already on the wire with nowhere to land. Closes when
+  `ZoneProcessRecipeReply` publishes an event a recipe list on the popup's
+  left side consumes. (A cheaper alternative, if Will would rather not have
+  the feature: draw only the container half at the oracle's own proportion --
+  a ~160x525-shaped popup -- so there is no empty region.) Also unimplemented from the same window and deliberately left as
+  drawn-but-inert: `COMBW_ExperimentButton`, `COMBW_AutoInvButton`,
+  `COMBW_UseCtrlCheckbox`, `COMBW_ContainerIcon` (fable's UI atlas has no item
+  icon sheet), and `CAW_OpenCombatSkillSelectWnd` from the combat abilities
+  window (fable has no combat skill select window). Found by T415 Leg A.
+
+- **B336** (B) `src/client/graphics/ui/static_ui_input.cpp`
+  `StaticUIInput::processKey` -- **ESC does not dismiss the tradeskill
+  container window, and must not be made to naively.** `processKey()`
+  dismisses the top centre popup (inventory, spellbook, skills, loot) and
+  T415 deliberately did NOT add the container to that list: T290's rule is
+  that the UI never closes itself, because an optimistic local close desyncs
+  the server's "this container is open" state
+  (`ctx_.active_tradeskill_object_id`, which also gates
+  `InventoryManager::setWorldContainerOpen`). The correct ESC behaviour is to
+  push `TradeskillCloseIntent` and leave the panel up until
+  `TradeskillContainerClosed` comes back -- exactly what the window's Close
+  button now does -- but `processKey()` has no established pattern for a
+  dismissal that goes through the bridge, and the loot popup has the same
+  latent question (ESC on an open corpse). Closes when ESC on either
+  server-owned window sends its close intent instead of hiding the panel.
+  Found by T415 Leg A.

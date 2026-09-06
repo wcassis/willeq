@@ -236,6 +236,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_static_ui_panels)
 ENDIF()
 
+# T415 (board B321 + B320): the tradeskill container window and the combat
+# abilities window. Pure state + geometry, no device -- same gate as
+# test_static_ui_panels above only because both panels live in the graphics
+# UI sources inside willeq_core.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_tradeskill_combat_panels
+        test_tradeskill_combat_panels.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_tradeskill_combat_panels PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_tradeskill_combat_panels GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_tradeskill_combat_panels)
+ENDIF()
+
 # T413 (board B285): the software cursor's cache name vs the pack's entry name.
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(test_software_cursor_pack_name

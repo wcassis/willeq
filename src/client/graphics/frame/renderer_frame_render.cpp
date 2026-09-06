@@ -575,6 +575,9 @@ void FrameComponent::renderStaticUI() {
             ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(), pendingUIClick_,
             uiLayout_, hotbarState_, spellGemState_, inventoryState_,
             spellbookState_, skillsPopupState_, buffBarState_, lootState_);
+        staticUIInput_->processPanelInput(
+            ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
+            pendingUIClick_, uiLayout_, tradeskillState_);
         pendingUIClick_ = false;
     }
 
@@ -613,6 +616,10 @@ void FrameComponent::renderStaticUI() {
         // while the game says a corpse is open, and opening one closes the
         // other three (IrrlichtBridge's LootWindowOpened arm).
         renderLootPopup(*uiRenderer_, uiLayout_, lootState_);
+        // T415 (B321): the tradeskill container window, the last centre
+        // popup, drawn after the loot popup for the same reason -- the
+        // server opens it and nothing else may cover it.
+        renderTradeskillPopup(*uiRenderer_, uiLayout_, tradeskillState_);
         renderXPBar(*uiRenderer_, uiLayout_, xpBarState_);
         uiRenderer_->endFrame();
     }

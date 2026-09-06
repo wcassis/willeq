@@ -139,6 +139,7 @@
 #include "client/graphics/renderer_context.h"
 #include "client/graphics/ui/ui_layout.h"
 #include "client/graphics/ui/static_panels.h"
+#include "client/graphics/ui/tradeskill_panel.h"
 
 #include <chrono>
 #include <cstdint>
@@ -265,6 +266,11 @@ public:
 	// loot bridge arms (applyLoot*), read by renderLootPopup() and
 	// StaticUIInput's row/button hit tests.
 	LootPanelState lootState_;          // T290
+	// T415 (board B321): renderer-side tradeskill container contents. Fed by
+	// the two Tradeskill* bridge arms plus the WORLD-slot branch of the
+	// InventorySlotChanged arm; read by renderTradeskillPopup() and its two
+	// hit tests.
+	TradeskillPanelState tradeskillState_;      // T415
 	XPBarState xpBarState_;             // U06i
 	std::unique_ptr<StaticUIInput> staticUIInput_;  // U06j
 
