@@ -261,6 +261,29 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_recipe_list)
 ENDIF()
 
+# T421 Leg A (board B298, item half): the item display window -- the text
+# composer over a real ItemInstance, the rects against EQUI_ItemDisplay.xml,
+# and the real click that asks for it. No device, no server.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_item_display
+        test_item_display.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_item_display PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_item_display GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_item_display)
+ENDIF()
+
+# T421 Leg B (board B365): the ONE text-entry widget, and the tradeskill
+# search box using it.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_search_entry
+        test_search_entry.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_search_entry PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_search_entry GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_search_entry)
+ENDIF()
+
 # T419 Leg B (board B352): the pet command grid. Header-only geometry, so it
 # needs no willeq_core body at all -- but it links it for UILayout's TU-free
 # inline definitions, the same way the panel tests above do.

@@ -598,6 +598,11 @@ void FrameComponent::renderStaticUI() {
         staticUIInput_->processPanelInput(
             ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
             pendingUIClick_, uiLayout_, tradeskillState_, combatAbilityState_);
+        // T421 (board B298): the item display window is hit-tested LAST and
+        // drawn LAST -- it sits on top of every centre popup.
+        staticUIInput_->processItemDisplayInput(
+            ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
+            pendingUIClick_, uiLayout_, itemDisplayState_);
         pendingUIClick_ = false;
     }
 
@@ -643,6 +648,10 @@ void FrameComponent::renderStaticUI() {
         // T415 (B320): the combat abilities window is a HUD panel, not a
         // centre popup, so it draws above the popups like the buff bar does.
         renderCombatAbilityPanel(*uiRenderer_, uiLayout_, combatAbilityState_);
+        // T421 (B298 item half): the item display window. Drawn after every
+        // popup because the oracle's ItemDisplayWindow has its own absolute
+        // placement (0,80) and overlaps whatever is beneath it.
+        renderItemDisplayPopup(*uiRenderer_, uiLayout_, itemDisplayState_);
         renderXPBar(*uiRenderer_, uiLayout_, xpBarState_);
         uiRenderer_->endFrame();
     }

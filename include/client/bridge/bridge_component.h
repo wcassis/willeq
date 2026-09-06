@@ -348,6 +348,9 @@ private:
 	void onTradeskillCombineIntent(const eqt::events::TradeskillCombineIntent& i);
 	void onTradeskillCloseIntent(const eqt::events::TradeskillCloseIntent& i);
 	void onRecipeDetailsRequestIntent(const eqt::events::RecipeDetailsRequestIntent& i);
+	void onRecipeSearchIntent(const eqt::events::RecipeSearchIntent& i);
+	void onRecipeFavoriteIntent(const eqt::events::RecipeFavoriteIntent& i);
+	void onItemDisplayRequestIntent(const eqt::events::ItemDisplayRequestIntent& i);
 	void onTrainSkillIntent(const eqt::events::TrainSkillIntent& i);
 	void onCloseTrainerIntent(const eqt::events::CloseTrainerIntent& i);
 	void onMoveItemIntent(const eqt::events::MoveItemIntent& i);

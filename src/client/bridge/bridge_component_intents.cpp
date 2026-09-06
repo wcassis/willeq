@@ -43,6 +43,9 @@
 // ShutdownGraphics below) stay gated.
 #include "client/state/entity_pose_state.h"
 #include "client/inventory/inventory_manager.h"
+#include "client/inventory/item_instance.h"
+#include "client/inventory/item_display_text.h"
+#include "client/entities/entities_component.h"
 #include "client/inventory/inventory_constants.h"
 #include "client/inventory/item_instance.h"
 #include "client/chat/chat_message_buffer.h"
@@ -710,6 +713,93 @@ void eqt::bridge::BridgeComponent::onRecipeDetailsRequestIntent(const eqt::event
 	ctx_.Merchant().SendRecipeDetails(i.recipeId);
 }
 
+namespace {
+
+// T421: the bridge-side twin of EqActionHandler::resolveOpenContainerObjectType().
+// The object_type of the OPEN tradeskill container, or false if none is open
+// or its ground-spawn record is missing. Silent rather than chatty: unlike
+// the slash-command path there is no typed command to answer, and a click on
+// a window that is drawn can only be a stale frame.
+bool resolveOpenTradeskillObjectType(eqt::ClientContext& ctx, uint32_t& out) {
+	const uint32_t dropId = ctx.active_tradeskill_object_id;
+	if (dropId == 0) {
+		return false;
+	}
+	const eqt::WorldObject* obj = ctx.Entities().GetWorldObject(dropId);
+	if (obj == nullptr) {
+		LOG_WARN(MOD_UI, "Open tradeskill container {} has no world object record", dropId);
+		return false;
+	}
+	out = obj->object_type;
+	return true;
+}
+
+}  // namespace
+
+// T421 (board B365): the tradeskill window's own search box and favourites
+// row. Both reach senders that already existed and were reachable only from
+// a slash command.
+//
+// `object_type` is not on either intent because it is not the UI's to know:
+// it comes from the OPEN container's ground-spawn record, exactly the way
+// EqActionHandler::resolveOpenContainerObjectType() reads it for
+// /recipesearch. Resolving it here rather than shipping it across the bridge
+// keeps one source for it.
+void eqt::bridge::BridgeComponent::onRecipeSearchIntent(const eqt::events::RecipeSearchIntent& i) {
+	uint32_t objectType = 0;
+	if (!resolveOpenTradeskillObjectType(ctx_, objectType)) {
+		return;
+	}
+	ctx_.Merchant().SendRecipesSearch(objectType, i.query, i.minTrivial, i.maxTrivial);
+}
+
+void eqt::bridge::BridgeComponent::onRecipeFavoriteIntent(const eqt::events::RecipeFavoriteIntent& i) {
+	uint32_t objectType = 0;
+	if (!resolveOpenTradeskillObjectType(ctx_, objectType)) {
+		return;
+	}
+	// eqemu's OP_RecipesFavorite carries the WHOLE favourites set, not a
+	// delta, so Add and Remove send the edited list. fable keeps no
+	// favourites list of its own yet -- board B377 -- so Add sends the one
+	// selected id and Remove sends an empty set, which is what "remove the
+	// only thing in it" means on this wire. Show re-fetches whatever the
+	// server has, which is the list-boundary request the window needs.
+	std::vector<uint32_t> ids;
+	if (i.op == eqt::events::RecipeFavoriteOp::Add) {
+		if (i.recipeId == 0) {
+			return;  // nothing selected -- refuse rather than send an empty add
+		}
+		ids.push_back(i.recipeId);
+	} else if (i.op == eqt::events::RecipeFavoriteOp::Remove) {
+		if (i.recipeId == 0) {
+			return;
+		}
+	}
+	ctx_.Merchant().SendRecipesFavorite(objectType, ids);
+}
+
+// T421 (board B298, item half): describe an inventory item.
+//
+// The TEXT is composed here, on the game thread, because this is the thread
+// the ItemInstance lives on -- the renderer never sees one. See
+// include/client/inventory/item_display_text.h for the oracle.
+void eqt::bridge::BridgeComponent::onItemDisplayRequestIntent(const eqt::events::ItemDisplayRequestIntent& i) {
+	if (!ctx_.inventory_manager || !ctx_.bridge) {
+		return;
+	}
+	const eqt::inventory::ItemInstance* item = ctx_.inventory_manager->getItem(i.slot);
+	if (item == nullptr) {
+		return;
+	}
+	eqt::state::ItemDisplayShownData data;
+	data.itemId = item->itemId;
+	data.name = item->name;
+	data.iconId = item->icon;
+	data.lines = eqt::inventory::BuildItemDisplayText(*item);
+	ctx_.bridge->pushEvent(eqt::state::GameEvent(
+		eqt::state::GameEventType::ItemDisplayShown, std::move(data)));
+}
+
 // Trainer intents (D20b1)
 void eqt::bridge::BridgeComponent::onTrainSkillIntent(const eqt::events::TrainSkillIntent& i) {
 	ctx_.Merchant().TrainSkill(i.skillId);
@@ -815,6 +905,9 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 			[this](const eqt::events::TradeskillCombineIntent& i) { onTradeskillCombineIntent(i); },
 			[this](const eqt::events::TradeskillCloseIntent& i) { onTradeskillCloseIntent(i); },
 			[this](const eqt::events::RecipeDetailsRequestIntent& i) { onRecipeDetailsRequestIntent(i); },
+			[this](const eqt::events::RecipeSearchIntent& i) { onRecipeSearchIntent(i); },
+			[this](const eqt::events::RecipeFavoriteIntent& i) { onRecipeFavoriteIntent(i); },
+			[this](const eqt::events::ItemDisplayRequestIntent& i) { onItemDisplayRequestIntent(i); },
 			[this](const eqt::events::TrainSkillIntent& i) { onTrainSkillIntent(i); },
 			[this](const eqt::events::CloseTrainerIntent& i) { onCloseTrainerIntent(i); },
 			[this](const eqt::events::MoveItemIntent& i) { onMoveItemIntent(i); },

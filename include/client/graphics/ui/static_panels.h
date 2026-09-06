@@ -14,6 +14,7 @@
 #include <chrono>
 
 #include "client/hotbar/hotbar_slot_type.h"  // T156
+#include "client/graphics/ui/text_entry.h"  // T421: ChatPanelState derives from it
 
 namespace eqt { namespace ui { class ChatMessageBuffer; } }
 // T156: applyHotbarSlotAssigned() below takes this by const reference; the
@@ -81,14 +82,16 @@ void renderTargetInfo(UIRenderer& ui, const UILayout& layout,
                       const TargetInfoData& target);
 
 // Cached chat panel state
-struct ChatPanelState {
+// T421 (board B365): the three input members moved to TextEntryState, which
+// this now DERIVES from -- `inputText`, `cursorPos` and `inputActive` keep
+// their names and every chat call site is untouched. They live there because
+// the tradeskill window's three editboxes are the same widget, and fable has
+// exactly one text-entry mechanism (include/client/graphics/ui/text_entry.h).
+struct ChatPanelState : TextEntryState {
     eqt::ui::ChatMessageBuffer* messageBuffer = nullptr;
     int scrollOffset = 0;      // Lines scrolled up from bottom (0 = at bottom)
     bool showTimestamps = false;
-    bool inputActive = false;  // Whether chat input field is focused
     bool mouseHover = false;   // Whether mouse is over chat panel
-    std::string inputText;     // Current input field text
-    int cursorPos = 0;
 };
 
 /** Render chat panel (message history + input field). */

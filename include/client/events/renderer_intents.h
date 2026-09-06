@@ -220,6 +220,38 @@ struct RecipeDetailsRequestIntent {
     uint32_t recipeId;
 };
 
+// T421 (board B365): the tradeskill window's own COMBW_SearchButton (and the
+// Enter key in COMBW_SearchTextEdit). Reaches
+// MerchantComponent::SendRecipesSearch(), the OP_RecipesSearch sender
+// /recipesearch already used -- a second producer for it, not a second
+// packet. The bounds are the two trivial editboxes; 0 means "no bound",
+// which is what /recipesearch sends when the player omits them.
+struct RecipeSearchIntent {
+    std::string query;
+    uint32_t minTrivial = 0;
+    uint32_t maxTrivial = 0;
+};
+
+// T421 (board B365): COMBW_AddFavoriteButton / COMBW_RemoveFavoriteButton /
+// COMBW_ShowFavoritesButton. All three reach
+// MerchantComponent::SendRecipesFavorite(), which takes the WHOLE favourites
+// list -- eqemu's OP_RecipesFavorite is a set, not a delta -- so the add and
+// remove buttons send the edited list and the show button sends the list
+// unchanged to re-fetch it.
+enum class RecipeFavoriteOp : uint8_t { Add = 0, Remove, Show };
+
+struct RecipeFavoriteIntent {
+    RecipeFavoriteOp op = RecipeFavoriteOp::Show;
+    uint32_t recipeId = 0;  // the selected row, ignored by Show
+};
+
+// T421 (board B298, item half): a click on an inventory slot that holds an
+// item. The game thread answers with an ItemDisplayShown event carrying the
+// composed description -- the renderer never sees an ItemInstance.
+struct ItemDisplayRequestIntent {
+    int16_t slot;
+};
+
 // --- Trainer ---
 
 struct TrainSkillIntent {
@@ -325,6 +357,9 @@ using RendererIntent = std::variant<
     TradeskillCombineIntent,
     TradeskillCloseIntent,
     RecipeDetailsRequestIntent,
+    RecipeSearchIntent,
+    RecipeFavoriteIntent,
+    ItemDisplayRequestIntent,
     // Trainer
     TrainSkillIntent,
     CloseTrainerIntent,

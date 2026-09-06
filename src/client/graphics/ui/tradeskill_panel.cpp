@@ -157,6 +157,19 @@ TradeskillButton hitTestTradeskillButton(const UILayout& layout,
     if (TradeskillLayout::closeRect(layout).isPointInside(p)) {
         return TradeskillButton::Close;
     }
+    // T421 (board B365): the four the left side drew and could not return.
+    if (TradeskillLayout::searchButtonRect(layout).isPointInside(p)) {
+        return TradeskillButton::Search;
+    }
+    if (TradeskillLayout::addFavoriteRect(layout).isPointInside(p)) {
+        return TradeskillButton::AddFavorite;
+    }
+    if (TradeskillLayout::removeFavoriteRect(layout).isPointInside(p)) {
+        return TradeskillButton::RemoveFavorite;
+    }
+    if (TradeskillLayout::showFavoritesRect(layout).isPointInside(p)) {
+        return TradeskillButton::ShowFavorites;
+    }
     return TradeskillButton::None;
 }
 

@@ -30,7 +30,7 @@ Central owner of all state modules:
 
 Thread-safe publish/subscribe system for game state changes.
 
-**99 event types** (`GameEventType`, re-counted 2026-09-06 by T419, which added `TradeskillRecipeListCleared` and `TradeskillRecipeReceived`) organized by domain; `IrrlichtBridge` has a case for all 99 in its switch, `ConsoleBridge` logs a subset headless:
+**100 event types** (`GameEventType`, re-counted 2026-09-06 by T421, which added `ItemDisplayShown`; T419 added `TradeskillRecipeListCleared` and `TradeskillRecipeReceived`) organized by domain; `IrrlichtBridge` has a case for all 100 in its switch, `ConsoleBridge` logs a subset headless:
 - **Player**: PositionChanged, StatsChanged, MovementModeChanged, LevelChanged
 - **Entity**: EntitySpawned, EntityDespawned, EntityMoved, EntityAppearanceChanged, EntityAnimation
 - **Door**: DoorSpawned, DoorStateChanged

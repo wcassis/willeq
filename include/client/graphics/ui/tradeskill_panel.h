@@ -33,6 +33,7 @@
 #include <vector>
 
 #include "client/graphics/ui/ui_layout.h"
+#include "client/graphics/ui/text_entry.h"
 
 namespace eqt { namespace state {
 struct TradeskillContainerOpenedEvent;
@@ -46,6 +47,18 @@ namespace EQT {
 namespace Graphics {
 
 class UIRenderer;
+
+/**
+ * T421 (board B365): which of COMBW_SearchArea's three Editboxes has the
+ * caret. `None` is the ordinary state and is what a click outside them
+ * restores.
+ */
+enum class TradeskillField : uint8_t {
+    None = 0,
+    MinTrivial,   // COMBW_MinTrivialEdit
+    MaxTrivial,   // COMBW_MaxTrivialEdit
+    SearchText    // COMBW_SearchTextEdit
+};
 
 /** One container cell, the same shape as SlotDisplayInfo. */
 struct TradeskillSlotDisplay {
@@ -105,13 +118,40 @@ struct TradeskillPanelState {
     int selectedRecipe = -1; // index into `recipes`, -1 for none
     int hoveredRecipe = -1;  // index into `recipes`, recomputed every frame
 
-    // What the last list request asked for; drawn in COMBW_SearchTextEdit /
-    // COMBW_MinTrivialEdit / COMBW_MaxTrivialEdit, which fable does not yet
-    // let the player type into (the request comes from /recipesearch).
+    // What the last list request asked for. Still recorded, because it is
+    // the SERVER-acknowledged query rather than whatever is half-typed in
+    // the box; applyTradeskillRecipeListCleared() seeds the three editboxes
+    // from it so they echo the live list, which is all they did before T421.
     std::string searchQuery;
     uint32_t minTrivial = 0;
     uint32_t maxTrivial = 0;
     bool showingFavorites = false;
+
+    // --- T421 (board B365): the three editboxes are now typeable ---
+    //
+    // Three `TextEntryState`s, not a second entry widget: this is the same
+    // struct ChatPanelState derives from and the same applyTextEntryKey()
+    // drives (include/client/graphics/ui/text_entry.h).
+    TextEntryState minTrivialEntry;
+    TextEntryState maxTrivialEntry;
+    TextEntryState searchEntry;
+
+    // Which of them has the caret. `None` means the window is not eating
+    // keystrokes, and FrameComponent releases the keyboard gate.
+    TradeskillField focusedField = TradeskillField::None;
+
+    /** The focused field's entry, or nullptr for TradeskillField::None. */
+    TextEntryState* focusedEntry();
+    const TextEntryState* focusedEntry() const;
+
+    /**
+     * What COMBW_SearchButton (or Enter in any of the three) asks for. The
+     * two trivial bounds parse as decimal; anything unparseable -- including
+     * an empty box -- is 0, which is exactly what /recipesearch sends when
+     * the player omits a bound, so a typo cannot become a silent filter.
+     */
+    uint32_t typedMinTrivial() const;
+    uint32_t typedMaxTrivial() const;
 
     /** Highest legal `recipeScroll`, the LootPanelState::maxScrollOffset shape. */
     int maxRecipeScroll() const;
@@ -121,16 +161,21 @@ struct TradeskillPanelState {
 };
 
 /**
- * The window's two CLICKABLE buttons. COMBW_SearchButton and the three
- * favourites buttons are drawn but have no enumerator here on purpose: a
- * name in this enum that no hit test can ever return is exactly the
- * unreached-code defect B335 is an instance of. Board B365 adds them when
- * fable grows a text-entry widget for COMBW_SearchTextEdit.
+ * The window's clickable buttons. T421 (board B365) added the last four:
+ * COMBW_SearchButton and the three favourites buttons were drawn and inert
+ * until the window had a text-entry widget for COMBW_SearchTextEdit, and
+ * T419 deliberately withheld their enumerators until then, because a name
+ * in this enum that no hit test can ever return is the same unreached-code
+ * defect one layer up.
  */
 enum class TradeskillButton : uint8_t {
     None = 0,
     Combine,
-    Close
+    Close,
+    Search,
+    AddFavorite,
+    RemoveFavorite,
+    ShowFavorites
 };
 
 /**
@@ -202,6 +247,15 @@ TradeskillButton hitTestTradeskillButton(const UILayout& layout,
 int hitTestTradeskillSlot(const UILayout& layout,
                           const TradeskillPanelState& state,
                           int mouseX, int mouseY);
+
+/**
+ * T421 (board B365): hit-test the three Editboxes. Returns the field the
+ * point is in, or `TradeskillField::None`. Same closed-window rule as the
+ * hit tests above.
+ */
+TradeskillField hitTestTradeskillField(const UILayout& layout,
+                                       const TradeskillPanelState& state,
+                                       int mouseX, int mouseY);
 
 /**
  * Hit-test COMBW_RecipeList. Returns an index into `state.recipes` (i.e.

@@ -93,6 +93,7 @@ enum class GameEventType {
 
     // Inventory events
     InventorySlotChanged,
+    ItemDisplayShown,
     CursorItemChanged,
     EquipmentStatsChanged,
     CurrencyChanged,
@@ -568,6 +569,23 @@ struct TradeskillRecipeReceivedData {
 };
 
 // --- Inventory events ---
+
+// T421 (board B298, item half). The item display window's contents.
+//
+// The lines are COMPOSED GAME-SIDE, by BuildItemDisplayText()
+// (include/client/inventory/item_display_text.h), rather than shipped as
+// fifty numbered fields for the renderer to format. That is what the
+// official client does too: EQUI_ItemDisplay.xml's whole body is one
+// <STMLbox item="IDW_ItemDescription">, a free-text box the client fills,
+// and the stat FORMATS live in the shipped string table eqstr_us.txt. A
+// renderer-side formatter would put the string ids on the wrong side of the
+// bridge and split the item's knowledge across two threads.
+struct ItemDisplayShownData {
+    uint32_t itemId = 0;
+    std::string name;          // -> the Style_Titlebar row
+    uint32_t iconId = 0;       // -> IDW_IconButton's 40x40 decal
+    std::vector<std::string> lines;  // -> IDW_ItemDescription
+};
 
 struct InventorySlotChangedData {
     int16_t slotId;
@@ -1056,6 +1074,7 @@ using EventData = std::variant<
     TradeskillRecipeReceivedData,
     // Inventory
     InventorySlotChangedData,
+    ItemDisplayShownData,
     CursorItemChangedData,
     EquipmentStatsChangedData,
     CurrencyChangedData,

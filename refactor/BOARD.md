@@ -4891,24 +4891,52 @@ T407 deleted eleven (see below). The rest are boarded here.
   `ConfigKeyReachability.EveryShippedConfigKeyIsNamedByCode`, the KEY-level
   companion to B245's file-level census.
 
-- **B298** (B) `include/client/inventory/item_instance.h`,
+- **B298** (B) ~~`include/client/inventory/item_instance.h`~~,
   `include/client/spell/spell_data.h`, `include/client/skill/skill_data.h`,
   `include/client/state/entity_manager.h` -- **server- and DB-sourced data
-  parsed and never shown.** `ItemInstance` carries 21 such fields
-  (`accuracy`, `damageShield`, `dotShield`, `spellShield`, `strikethrough`,
-  `stunResist`, `shielding`, `enduranceRegen`, `hpRegen`, `manaRegen`, `delay`,
-  `recLevel`, `maxCharges`, `lore`, `currentSlot`, the seven `heroic*`,
-  `expendable`, `bardEffect`); `SpellData` carries `resist_diff`, `zone_type`,
+  parsed and never shown.**
+  **ITEM HALF STRUCK by T421 Leg A** (`f7b0fc22`): fable now has an item
+  display window -- `EQUI_ItemDisplay.xml`'s own 400x190 `ItemDisplayWindow` at
+  its own absolute (0,80), an `IDW_IconButton` and one `IDW_ItemDescription`
+  STMLbox -- and the STMLbox's text is composed by
+  `eqt::inventory::BuildItemDisplayText()`
+  (`src/client/inventory/item_display_text.cpp`) from format strings quoted out
+  of the official client's OWN string table,
+  `/mnt/projects/EverQuestP1999/eqstr_us.txt`. **Fourteen of the item fields
+  now have a drawn line**: `accuracy` (eqstr 9043), `damageShield` (5847),
+  `dotShield` (5836), `spellShield` (9041), `strikethrough` (9045),
+  `stunResist` (9044), `shielding` (9040), `enduranceRegen` (6184), `hpRegen`
+  (5845), `manaRegen` (5846), `delay` (3008, with the weapon skill name),
+  `recLevel` (3028), `maxCharges` (3003/3002), `lore` (3048) -- plus
+  `expendable` (3001), `attack`, `avoidance`, `haste`, `endurance` and the
+  whole 12457..12470 STR/DEX/STA/CHA/WIS/INT/AGI/HP/MANA/SV block, which were
+  never drawn either. Their twelve rows are gone from
+  `scripts/refactor/check_write_only_fields.py`'s EXEMPT table.
+  **Two corrections to this entry's own census, both measured at
+  `8f7e718c`:** (a) the count "21" over-reads -- the names listed are 24, and
+  (b) **`expendable`, the seven `heroic*` and `bardEffect` have NO WRITER
+  ANYWHERE** (`grep` over `src/ include/ tests/ tools/ benchmarks/`: the only
+  hits are the declarations). They are not parsed-and-unshown; they are dead
+  struct members, which is a different defect -- split out as **B375**.
+  What remains under this id for the item struct is `currentSlot` alone, and
+  its reason is now measured rather than pending: **the oracle has no element
+  for it.** `EQUI_ItemDisplay.xml` is a title bar, an icon button and one free-text
+  box; `Slot:` (eqstr 3000) is the item's EQUIPPABLE slot list, which the
+  window draws from `slots`, and nothing anywhere shows where an item
+  currently sits. Its exemption row says so.
+  `SpellData` carries `resist_diff`, `zone_type`,
   `teleport_zone`, `spell_fades`, `player_tag`, `environment_type`,
   `time_of_day`, `aoe_duration`, `push_up`, `allow_rest`, `is_dispellable`,
   `no_partial_resist`, `no_expend_reagent`; `SkillData` carries
   `animation_code`, `usable_while_sitting`, `usable_while_stunned`,
   `min_level`; `Entity` carries `guildId`, `anon_status`, `deltaHeading`;
   `RaceModelInfo` carries `genderVariants`, `neuterCode`. Each is a loader
-  writing a value with no reader -- item tooltips, spell descriptions, skill
+  writing a value with no reader -- spell descriptions, skill
   gating and the `/who` guild/anon columns are the features they belong to.
   Closes per family as those features land; until then the loads are honest
-  but inert. Found by T407's census.
+  but inert. Found by T407's census. **Item half CLOSED by T421 Leg A**
+  (see above); the `SpellData`, `SkillData`, `Entity` and `RaceModelInfo`
+  families are still OPEN under this id.
 
 - ~~**B299** (B) `include/client/combat.h` `CombatManager::m_assist_range`,
   `m_combat_range`, `m_spell_range`, `m_is_resting`, `m_rest_mana_threshold`,
@@ -5544,8 +5572,9 @@ client uses every field.
   `TradeskillRecipeReceivedData` from the server's own struct --
   `RecipeReply_Struct { uint32 object_type; uint32 some_id; uint32
   component_count; uint32 recipe_id; uint32 trivial; char recipe_name[64]; }`,
-  eqemu `/mnt/projects/akk-stack/code/common/eq_packet_structs.h:4313`, 84 bytes, one packet per matching
-  recipe from `Client::SendTradeskillSearchResults` (`/mnt/projects/akk-stack/code/zone/tradeskills.cpp:866`).
+  eqemu `/mnt/projects/akk-stack/code/common/eq_packet_structs.h:4313`, 84 bytes,
+  one packet per matching recipe from `Client::SendTradeskillSearchResults`
+  (`/mnt/projects/akk-stack/code/zone/tradeskills.cpp:866`).
   Two new `GameEventType`s carry it: `TradeskillRecipeReceived` (one reply) and
   `TradeskillRecipeListCleared`, published by the client's OWN
   `SendRecipesSearch` / `SendRecipesFavorite` because **eqemu marks neither the
@@ -5676,7 +5705,7 @@ client uses every field.
 
 ## Added 2026-09-06 by T419
 
-- **B365** (B) `src/client/graphics/ui/tradeskill_recipe_list.cpp`,
+- ~~**B365** (B) `src/client/graphics/ui/tradeskill_recipe_list.cpp`,
   `src/client/graphics/ui/static_ui_input.cpp` -- **the tradeskill window's
   search box and favourites buttons are DRAWN and INERT.** T419 Leg A drew
   `COMBW_SearchArea` (`COMBW_MinTrivialEdit`, `COMBW_MaxTrivialEdit`,
@@ -5694,7 +5723,39 @@ client uses every field.
   (`TradeskillRecipeListClearedData` carries the query and both trivial
   bounds). Closes when the popup grows a focusable edit field and the four
   buttons push intents -- `SendRecipesSearch` / `SendRecipesFavorite` already
-  exist and are already reached from the command processor. Found by T419 Leg A.
+  exist and are already reached from the command processor. Found by T419 Leg A.~~ **CLOSED by T421 Leg B**
+  (`f35a4517`). fable now has a text-entry widget, and there is exactly
+  ONE: `EQT::Graphics::TextEntryState` +
+  `applyTextEntryKey()`/`focusTextEntry()`/`clearTextEntry()`
+  (`include/client/graphics/ui/text_entry.h`,
+  `src/client/graphics/ui/text_entry.cpp`). **`ChatPanelState` DERIVES from
+  it** -- `inputText`, `cursorPos` and `inputActive` keep the names chat has
+  always used, so every chat call site and every chat test is untouched -- and
+  `FrameComponent::processChatInput()`'s inline key drain is now a call to
+  that one body plus chat's own policy on the four actions it returns. The
+  tradeskill window's three Editboxes are three more `TextEntryState`s on
+  `TradeskillPanelState`, with a `TradeskillField focusedField` saying which
+  holds the caret; `hitTestTradeskillField()` focuses one and a click
+  elsewhere in the window blurs it. **`TradeskillButton` gained the four
+  enumerators T419 withheld** -- `Search`, `AddFavorite`, `RemoveFavorite`,
+  `ShowFavorites` -- and `hitTestTradeskillButton()` returns them. Enter in
+  any of the three boxes, or a click on `COMBW_SearchButton`, pushes the new
+  `RecipeSearchIntent{query, minTrivial, maxTrivial}` into the EXISTING
+  `MerchantComponent::SendRecipesSearch()`; the favourites row pushes
+  `RecipeFavoriteIntent{op, recipeId}` into the EXISTING
+  `SendRecipesFavorite()`. No second packet and no second entry widget.
+  **The keyboard GATE stays in one place**: `processChatInput()` is still the
+  only caller of `setChatInputFocused()`, and it early-returns into
+  `FrameComponent::processTradeskillSearchInput()` when a search box has the
+  caret -- which is why `popKeyEvent`'s entry in
+  `tests/test_read_and_reset_ownership.cpp` went 1 -> 2 call sites with the
+  `getMouseWheelDelta` "two textual sites, one consumer, mutually exclusive"
+  reason. **Two things the search box does NOT do**, both deliberate: a
+  trivial bound that will not parse is 0 (= no bound, what `/recipesearch`
+  sends when the player omits it), never a silent filter; and Tab is a no-op
+  in a search box, because a recipe name is the server's vocabulary and
+  T357's rule is that Tab with no vocabulary leaves the text alone.
+  Pinned by `tests/test_search_entry.cpp` (9 cases).
 
 - **B366** (C) `include/client/graphics/ui/ui_layout.h`,
   `include/client/graphics/ui/pet_layout.h` -- **fable's left HUD column cannot
@@ -5867,3 +5928,58 @@ client uses every field.
   writer is wired (a key binding or a slash command, with the multiplier
   marking the ambient dirty like every other input) or the term and its
   argument are removed together. Prov: T423 Review section 1; B362.
+
+---
+
+## Added 2026-09-06 by T421
+
+- **B375** (B) `include/client/inventory/item_instance.h` -- **nine
+  `ItemInstance` members have NO WRITER at all.** `expendable`, the seven
+  `heroic*` (`heroicStr`/`Sta`/`Agi`/`Dex`/`Wis`/`Int`/`Cha`) and `bardEffect`
+  are declared, default-initialised and assigned by nothing:
+  `TitaniumItemParser::parse()` (`src/client/inventory/inventory_item_parser.cpp`)
+  never touches them, and a comment-filtered grep over `src/ include/ tests/
+  tools/ benchmarks/` finds only the declarations. B298 listed them among the
+  "parsed and never shown" item fields; that was wrong -- they are not parsed
+  either, which makes them dead struct members (B290's class), not a missing
+  display. **Two of the three groups also have no oracle line**, so drawing
+  them would be an invention: `eqstr_us.txt` has no heroic-stat format string
+  anywhere (heroic stats postdate this client) and no instrument-modifier item
+  line. `expendable` DOES have one (eqstr 3001 "EXPENDABLE     Charges: %1")
+  and `BuildItemDisplayText()` already prints it -- so that member closes the
+  moment the parser fills it. Titanium's `SerializeItem` does carry the
+  bard fields at `fields[41-42]` (`BardType`, `BardValue`), which the parser
+  reads past with a comment. Closes when each group is either wired to its
+  wire field or deleted. Found by T421 Leg A (the seven `heroic*` surfaced as
+  `WriteOnlyFields` NEW rows the moment a test wrote them).
+
+- **B376** (B) `include/client/graphics/ui/static_panels.h`
+  `SlotDisplayInfo::iconId`, `TradeskillSlotDisplay::iconId`,
+  `LootItemDisplay`, `ItemDisplayPanelState::iconId` -- **fable has no
+  item-icon atlas.** Every panel that shows an item carries the server's icon
+  id (S2 put it on `InventorySlotChangedData` precisely so the renderer would
+  have it) and not one of them has art to draw for it: the inventory popup
+  paints the first three characters of the item's NAME in a 32x32 slot, the
+  tradeskill grid does the same, and T421's item display window paints the
+  icon NUMBER inside `IDW_IconButton`'s frame rather than a wrong picture.
+  The oracle's own `<ButtonDrawTemplate><NormalDecal>BuffIcons</NormalDecal>`
+  names the sheet; the shipped art is the client's `dragitem*.tga` /
+  `objects*.dds` families, which nothing in the EQE1 pack pipeline indexes
+  yet. Closes when an item-icon sheet joins the pack and the four consumers
+  draw from it. Found by T421 Leg A.
+
+- **B377** (B) `src/client/bridge/bridge_component_intents.cpp`
+  `onRecipeFavoriteIntent`, `include/client/graphics/ui/tradeskill_panel.h`
+  -- **fable keeps no tradeskill favourites list**, so the Add and Remove
+  buttons cannot send a correct edit. eqemu's `OP_RecipesFavorite` carries the
+  WHOLE favourites set, not a delta (`Client::SendTradeskillSearchResults`'s
+  favourites arm reads a fixed array of ids), so an "add" is "send the old set
+  plus one" and a "remove" is "send the old set minus one". T421 Leg B wired
+  the three buttons because the alternative was leaving named enumerators no
+  hit test could return, but with no stored set Add sends a one-element list
+  and Remove sends an empty one -- correct only when the player has exactly
+  the one favourite. Show is unaffected and correct (it re-fetches). Closes
+  when `TradeskillPanelState` (or the game side) holds the acknowledged
+  favourites set -- which the server itself supplies, since a favourites fetch
+  returns exactly that list through the same `TradeskillRecipeReceived`
+  stream. Found by T421 Leg B.
