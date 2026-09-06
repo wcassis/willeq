@@ -46,6 +46,44 @@ namespace eqt {
  */
 std::string ResolveDataPath(const std::string& relative);
 
+/*
+ * ---------------------------------------------------------------------------
+ * GENERATED CACHES (T402, board B248) -- a different rule from shipped data.
+ *
+ * config/snd_index_cache.json and config/gfx_index_cache.json are not shipped
+ * content: they are derived indices keyed on one absolute EQ-data path, and
+ * the client REWRITES them on every run whose scan misses. While they lived
+ * under config/ they were git-tracked, so a plain client run left the working
+ * tree dirty and a careless `git add -A` committed one machine's index.
+ *
+ * They are caches: a miss just means "rescan", which costs ~0.4 s for the 17
+ * sound archives and ~30 ms for the character archives (measured, T402). So
+ * the write side moves out of the checkout entirely, to the first WRITABLE of:
+ *
+ *   1. $WILLEQ_CACHE_DIR
+ *   2. $WILLEQ_DATA_ROOT/cache        (the staged-install data root)
+ *   3. <directory of the running executable>/cache   (build/bin/cache, ...)
+ *   4. cache/                          (CWD-relative last resort)
+ *
+ * The read side takes the first candidate where the file EXISTS, so a
+ * read-only staged cache still serves a run that cannot write one.
+ * ---------------------------------------------------------------------------
+ */
+
+/**
+ * Path to read a generated cache from: the first candidate directory that
+ * already holds `name`. Returns "" when no candidate has it -- the caller
+ * treats that as a cache miss and rescans.
+ */
+std::string ResolveCachePathForRead(const std::string& name);
+
+/**
+ * Path to write a generated cache to: the first candidate directory that is
+ * writable, created if need be. Returns "" when none is -- the caller then
+ * skips saving (a cache it cannot write is not an error).
+ */
+std::string ResolveCachePathForWrite(const std::string& name);
+
 /** Directory of the running executable, or "" if it cannot be determined. */
 std::string ExecutableDirectory();
 

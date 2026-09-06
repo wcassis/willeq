@@ -16,6 +16,12 @@
 namespace EQT {
 namespace Graphics {
 
+namespace {
+// T402 (board B248): the cache file's NAME; the directory comes from
+// eqt::ResolveCachePath*.
+constexpr const char* kGfxIndexCacheName = "gfx_index_cache.json";
+}  // namespace
+
 bool GraphicsArchiveIndex::buildIndex(const std::string& eqPath, bool lazyMode,
                                        std::function<void()> tickCallback) {
     eqPath_ = eqPath;
@@ -62,9 +68,14 @@ PfsArchive* GraphicsArchiveIndex::getCachedArchive(const std::string& archivePat
 }
 
 bool GraphicsArchiveIndex::loadCache() {
-    // T399 (board B235): resolved. A CACHE, like snd_index_cache.json: a miss
-    // means "rescan", so it stays quiet.
-    std::string cachePath = eqt::ResolveDataPath("config/gfx_index_cache.json");
+    // T402 (board B248): a generated cache, NOT shipped content -- read from
+    // the run-local cache directory, never from the checkout. A miss means
+    // "rescan" (~30 ms here: one directory listing plus filename arithmetic,
+    // no archive is opened), so it stays quiet.
+    std::string cachePath = eqt::ResolveCachePathForRead(kGfxIndexCacheName);
+    if (cachePath.empty()) {
+        return false;
+    }
     std::ifstream cacheFile(cachePath);
     if (!cacheFile.is_open()) {
         return false;
@@ -154,7 +165,13 @@ void GraphicsArchiveIndex::saveCache() {
     }
     root["raceIndex"] = index;
 
-    std::string cachePath = eqt::ResolveDataPath("config/gfx_index_cache.json");
+    // Written to the run-local cache directory (T402, board B248). No
+    // writable candidate is not an error -- it just costs a rescan next run.
+    std::string cachePath = eqt::ResolveCachePathForWrite(kGfxIndexCacheName);
+    if (cachePath.empty()) {
+        LOG_DEBUG(MOD_GRAPHICS_LOAD, "No writable cache directory; GFX index not saved");
+        return;
+    }
     std::ofstream out(cachePath);
     if (!out.is_open()) {
         LOG_WARN(MOD_GRAPHICS_LOAD, "Failed to save GFX index cache to {}", cachePath);

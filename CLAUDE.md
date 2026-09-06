@@ -184,6 +184,19 @@ same way. **A new shipped-data load must call `ResolveDataPath()`** —
 `tests/test_data_path_routing.cpp` re-takes the census on every ctest run and
 fails on a bare `"config/…"` / `"data/…"` literal that does not.
 
+**Generated caches follow the opposite rule: they are written OUTSIDE the
+checkout** (T402, board B248). `snd_index_cache.json` (the sound-archive
+index) and `gfx_index_cache.json` (the character-archive index) used to be
+git-tracked files under `config/` that the client rewrote on every run, so a
+plain `willeq` run left the working tree dirty and a careless `git add -A`
+committed one machine's absolute EQ path. They now resolve through
+`eqt::ResolveCachePathForRead()` / `ResolveCachePathForWrite()`
+(`include/client/data_paths.h`), which pick the first writable of
+`$WILLEQ_CACHE_DIR`, `$WILLEQ_DATA_ROOT/cache`, `<exe dir>/cache` (i.e.
+`build/bin/cache`) and `cache/`. A miss is not an error — it costs a rescan,
+measured at ~0.4 s for the 17 sound archives and ~30 ms for the 378
+character archives. A new generated cache uses these, never `ResolveDataPath()`.
+
 ### Display Options Comparison
 
 | Method | Use Case | Audio | Client |
@@ -503,11 +516,18 @@ Audio tests and graphics integration tests are documented in their respective CL
 - 3-tier hierarchy: global settings → per-style defaults → per-spell overrides
 - Configures resist colors, spawn rates, lifetimes, motion types, blend modes
 
-**User settings** in the `config/` directory:
-- `config/chat_settings.json` and `config/ui_settings.json` are **shipped but
-  read by nothing** — the names appear in no `.cpp` or `.h` under `src/`,
-  `include/` or `tools/` (measured T399). Board **B245**. Do not treat them as
-  live configuration.
+**User settings are NOT persisted at all** (T402, board B255). Nothing the
+player changes at runtime — chat timestamps, panel visibility, chat
+scrollback, UI colours — survives a restart: the static UI computes every
+panel rect from the resolution (`include/client/graphics/ui/ui_layout.h`) and
+no code writes a preferences file. The two files that looked like the
+persistence, `config/chat_settings.json` and `config/ui_settings.json`, were
+the DELETED `WindowManager`'s saved state (removed with it in `0f25cb57`,
+"U07c2: Delete WindowManager + all old UI window files"); they described
+draggable windows the client no longer has and were read by nothing, so T402
+deleted them (board B245). Every shipped `config/*.json` that remains is
+named by code, and `DataPathRouting.EveryShippedConfigFileIsNamedByCode`
+keeps it that way.
 
 Audio configuration is documented in `src/client/audio/CLAUDE.md`.
 

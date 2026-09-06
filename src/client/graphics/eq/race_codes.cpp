@@ -12,9 +12,9 @@ namespace Graphics {
 // Race mappings now served on-demand from WilleqDatabase::globalInstance()
 static bool s_mappingsLoaded = false;
 
-bool loadRaceMappings(const std::string& jsonPath) {
-    (void)jsonPath;
-    // Race mappings now served on-demand from SQLite
+bool loadRaceMappings() {
+    // Race mappings are served on-demand from SQLite; the only thing that can
+    // fail here is having no database (T402, board B246).
     s_mappingsLoaded = (WilleqDatabase::globalInstance() != nullptr);
     if (s_mappingsLoaded) {
         LOG_INFO(MOD_GRAPHICS, "Race mappings using on-demand SQLite lookup");
@@ -23,7 +23,7 @@ bool loadRaceMappings(const std::string& jsonPath) {
 }
 
 bool reloadRaceMappings() {
-    return loadRaceMappings("");
+    return loadRaceMappings();
 }
 
 bool areRaceMappingsLoaded() {

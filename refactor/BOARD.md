@@ -3612,7 +3612,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   the weather/ambient files T396 owns, which is why T397 left them. Found by
   T397 Leg A.
 
-- **B245** (B) `config/chat_settings.json`, `config/ui_settings.json` — **two
+- ~~**B245** (B) `config/chat_settings.json`, `config/ui_settings.json` — **two
   shipped config files that NOTHING reads.** Both are git-tracked in `config/`,
   and `CLAUDE.md` documented `chat_settings.json` as live "user settings", but
   the strings `chat_settings` and `ui_settings` appear in **no `.cpp` or `.h`
@@ -3622,9 +3622,11 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   it. Closes when the persistence is wired with a test, or both files and their
   doc lines are deleted. `CLAUDE.md` now says they are dead. Found by T399's
   census (they are the two shipped files the B235 grep could not see, because
-  no literal names them).
+  no literal names them).~~ **CLOSED by T402 Leg B** (`refactor/T402_caches_dead_configs.md`): both files DELETED. Provenance measured, not guessed — `git log -S'ui_settings.json' -- src include` names `0f25cb57` "U07c2: Delete WindowManager + all old UI window files (~35K lines)": they are the deleted WindowManager's saved state. What they describe (draggable per-window x/y/w/h + `visible` per resolution, a `globalTheme` colour/layout block, 19 chat `channelFilters`) does not exist in the client that replaced it: `UILayout` computes every panel rect from the screen size, there are no movable windows, and `channelFilters`/`globalTheme`/`blinkIntervalMs`/`maxHistory` appear in NO source at all. The one live concept, `showTimestamps`, is a `ChatPanelState`/`GameModeConfig` field no file feeds. The genuinely missing feature is boarded as **B255**; the deleted bytes stay recoverable at `0f25cb57^`. Pinned by `DataPathRouting.EveryShippedConfigFileIsNamedByCode`, which starts from the config DIRECTORY (the only way to see a file nothing opens) and fails on any shipped `config/*.json` no source names.
 
-- **B246** (B) `src/client/graphics/eq/race_codes.cpp` `loadRaceMappings` —
+- **B255** (B) `include/client/graphics/ui/ui_layout.h` `UILayout`, `include/client/graphics/ui/static_panels.h` `ChatPanelState` — **the client persists NO user settings.** Chat timestamps, panel visibility, chat scrollback size, UI colours and every panel position are computed or defaulted at startup and nothing writes them back: `saveLayout`, `loadLayout` and any preferences writer return zero hits under `src/`, `include/` and `tools/`, and the only two files that ever held such state (`config/chat_settings.json`, `config/ui_settings.json`) were the deleted WindowManager's and are gone (B245). So a player who moves nothing notices nothing, and a player who changes anything loses it at exit. Closes when a preferences file is written and re-read with a test, or when Will rules that a fixed static UI needs no persistence. Found by T402.
+
+- ~~**B246** (B) `src/client/graphics/eq/race_codes.cpp` `loadRaceMappings` —
   **the function ignores its argument; `config/race_models.json` is validated
   at startup and read by nothing.** The body is
   `(void)jsonPath; s_mappingsLoaded = (WilleqDatabase::globalInstance() != nullptr);`
@@ -3636,7 +3638,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   startup requirement for a loader that never opens it. Closes when the
   parameter and the S03 check go (or the JSON is genuinely read again).
   T399 routed the literal through `ResolveDataPath()` rather than change
-  behaviour mid-unit. Found by T399.
+  behaviour mid-unit. Found by T399.~~ **CLOSED by T402 Leg C** (`refactor/T402_caches_dead_configs.md`): the parameter is gone (`bool loadRaceMappings()`), the S03 `checkFile` line for `config/race_models.json` is gone, and `renderer_init`'s fatal now says `Race model mappings unavailable: no willeq.db is open` — the only condition a false return has ever meant. **`config/race_models.json` is NOT deleted and that is not a STOP:** the census (`src/ include/ tests/ tools/ benchmarks/ scripts/ docker/`) shows it is the DB BUILDER's input — `tools/willeq_db_builder.cpp:1353` `loadRaceModels(db, configPath + "/race_models.json")` builds the `race_models` table from it, and `scripts/generate_race_colors.py`, `scripts/update_race_models_from_reference.py` and `scripts/generate_s3d_reference_json.py` read it too. It is build-time source, not a runtime file; only the RUNTIME requirement was wrong. Proven live: with `config/race_models.json` moved away the client starts, initialises graphics and logs `Race mappings using on-demand SQLite lookup`; with `data/willeq.db` moved away it fails naming the db (`failed to open data/willeq.db ... rc=14`, and in fact dies at the spell database before the renderer's check is reached). Pinned by `RaceNameNoDatabaseTest.RaceMappingsFailOnTheDatabaseAndNothingElse`, `RaceNameFromDbTest.RaceMappingsBindToTheDatabase` and the G04 init-order golden, which learned the deletion of entry 46 in place (correction 32).
 
 - ~~**B260** (P) `tests/goldens/manifest.json` / `scripts/ci/visual_gate.sh` —
   **the visual gate is RED on the `fable` tip itself: T398 Leg B grew the
@@ -3654,7 +3656,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   the T80 memory-coverage baselines (Will)"). **Only Will re-blesses**, so
   T399 did not. Until then every unit that touches graphics will report this
   same gate FAIL and have to re-derive the attribution. Found by T399.~~ **DUPLICATE of B240 (T398 boarded the same 239-byte delta first) — struck at the T399 merge; the bless request stands under B240.**
-- **B248** (B) `config/snd_index_cache.json`, `config/gfx_index_cache.json` —
+- ~~**B248** (B) `config/snd_index_cache.json`, `config/gfx_index_cache.json` —
   **two generated caches are git-tracked, and every client run rewrites them,
   so a plain `willeq` run dirties the working tree.** T399 measured it: a 40 s
   headless run (`--no-graphics`) left `config/snd_index_cache.json` modified
@@ -3665,7 +3667,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   `git add -A` commits it. Either both files leave the index and join
   `.gitignore` (they are caches; a miss just triggers a rescan, which is why
   T399 deliberately left their miss silent), or the writer becomes
-  content-stable and only rewrites on a real change. Found by T399.
+  content-stable and only rewrites on a real change. Found by T399.~~ **CLOSED by T402 Leg A** (`refactor/T402_caches_dead_configs.md`): both files left the index (`git rm --cached` + `.gitignore`) and the client now resolves them through `eqt::ResolveCachePathForRead()` / `ResolveCachePathForWrite()` (`include/client/data_paths.h`), which pick the first WRITABLE of `$WILLEQ_CACHE_DIR`, `$WILLEQ_DATA_ROOT/cache`, `<exe dir>/cache` and `cache/` — none of them inside the checkout. Keeping them as shipped seeds was rejected: each is keyed on ONE absolute `eqPath` (`/mnt/projects/EverQuestP1999`), so the seed is worthless to any other tree, and a stale seed would have to be re-read AND re-written on every run. Cold-rescan cost measured instead: **~0.4 s** for the 17 sound archives (613 ms vs 221 ms for `test_pfs_sound_load` end to end) and **~30 ms** for the 378 `*_chr.s3d` (cold 31-57 ms vs 12 ms warm). Pinned by `PfsIndexCacheLocation.RescanWritesOutsideTheRepoConfigDir` (an alias EQ tree of symlinks forces the rescan; nothing under `config/` may appear, vanish or change), `DataPathRouting.IndexCachesAreNotWrittenUnderConfig` and three `CachePaths.*` tests.
 
 ### Struck / amended by T386
 

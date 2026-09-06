@@ -213,10 +213,10 @@ const char* const kShippedLiterals[] = {
     "config/weather_effects.json",
     "config/environment_effects.json",
     "config/spell_effects.json",
-    // audio / index caches
+    // audio (the two *_index_cache.json entries left this list in T402: they
+    // are generated caches, no longer shipped and no longer in the checkout --
+    // board B248, and see the CachePaths tests below)
     "config/music_events.json",
-    "config/snd_index_cache.json",
-    "config/gfx_index_cache.json",
     // textures
     "data/textures/particle_atlas.bmp",
     "data/textures/detail_atlas.bmp",
@@ -328,3 +328,67 @@ TEST_F(CwdElsewhere, DetailObjectConfigLoadsFromAnyDirectory) {
 }
 
 #endif  // EQT_HAS_GRAPHICS && EQT_HAS_GLES2
+
+// ===========================================================================
+// T402 (board B248): generated caches resolve OUTSIDE the checkout.
+//
+// config/snd_index_cache.json and config/gfx_index_cache.json were tracked
+// files the client rewrote on every run, so a plain run dirtied the working
+// tree. They are caches -- a miss costs a rescan -- so the write side moved to
+// a run-local directory. These tests pin the two properties that matter: the
+// resolved write path is never inside the repo's config/, and what the write
+// side produces is what the read side finds.
+// ===========================================================================
+
+TEST(CachePaths, WriteTargetIsNeverInsideTheCheckout) {
+    ::unsetenv("WILLEQ_CACHE_DIR");
+    const std::string path = eqt::ResolveCachePathForWrite("snd_index_cache.json");
+    ASSERT_FALSE(path.empty()) << "no writable cache directory at all";
+    EXPECT_EQ(path.find(std::string(WILLEQ_REPO_ROOT) + "/config/"), std::string::npos)
+        << "the cache would be written into the checkout: " << path;
+    EXPECT_NE(path.find("cache/"), std::string::npos)
+        << "expected a cache/ directory, got " << path;
+}
+
+TEST(CachePaths, ExplicitCacheDirIsHonouredAndRoundTrips) {
+    char tmpl[] = "/tmp/willeq_t402_cacheXXXXXX";
+    const char* dir = ::mkdtemp(tmpl);
+    ASSERT_NE(dir, nullptr);
+    const std::string sub = std::string(dir) + "/nested";  // must be created for us
+
+    // A name no other candidate directory can hold. Using a REAL cache name
+    // here is a race: the read side searches every candidate, and a
+    // test_pfs_sound_load running in parallel writes <exe dir>/cache/
+    // snd_index_cache.json, which is a legitimate hit (T402 lost a ctest -j6
+    // run to exactly that).
+    const char* kName = "t402_roundtrip_cache.json";
+    ::setenv("WILLEQ_CACHE_DIR", sub.c_str(), 1);
+    const std::string write = eqt::ResolveCachePathForWrite(kName);
+    EXPECT_EQ(write, sub + "/" + kName);
+
+    // Nothing written yet: the read side must report a MISS, not a path.
+    EXPECT_EQ(eqt::ResolveCachePathForRead(kName), "");
+
+    { std::ofstream(write) << "{}"; }
+    EXPECT_EQ(eqt::ResolveCachePathForRead(kName), write);
+
+    ::unsetenv("WILLEQ_CACHE_DIR");
+    ::unlink(write.c_str());
+    ::rmdir(sub.c_str());
+    ::rmdir(dir);
+}
+
+TEST(CachePaths, DataRootCacheDirIsUsedWhenSet) {
+    char tmpl[] = "/tmp/willeq_t402_rootXXXXXX";
+    const char* dir = ::mkdtemp(tmpl);
+    ASSERT_NE(dir, nullptr);
+    ::unsetenv("WILLEQ_CACHE_DIR");
+    ::setenv("WILLEQ_DATA_ROOT", dir, 1);
+
+    const std::string write = eqt::ResolveCachePathForWrite("gfx_index_cache.json");
+    EXPECT_EQ(write, std::string(dir) + "/cache/gfx_index_cache.json");
+
+    ::unsetenv("WILLEQ_DATA_ROOT");
+    ::rmdir((std::string(dir) + "/cache").c_str());
+    ::rmdir(dir);
+}

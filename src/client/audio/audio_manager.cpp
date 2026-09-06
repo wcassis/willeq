@@ -805,11 +805,22 @@ size_t AudioManager::getPfsArchiveCacheBytes() const {
     return total;
 }
 
+namespace {
+// T402 (board B248): the cache file's NAME. It is no longer a repo-relative
+// path -- the directory comes from eqt::ResolveCachePath*.
+constexpr const char* kSndIndexCacheName = "snd_index_cache.json";
+}  // namespace
+
 bool AudioManager::loadPfsIndexCache() {
-    // T399 (board B235): resolved. This one is a CACHE, not shipped content
-    // -- a miss means "rescan the archives", which is correct and cheap, so
-    // the quiet miss stays quiet.
-    std::string cachePath = eqt::ResolveDataPath("config/snd_index_cache.json");
+    // T402 (board B248): a generated cache, NOT shipped content, so it is
+    // read from and written to the run-local cache directory rather than the
+    // checkout -- see eqt::ResolveCachePathForRead in client/data_paths.h. A
+    // miss means "rescan the archives" (~0.4 s), which is correct and cheap,
+    // so the quiet miss stays quiet.
+    std::string cachePath = eqt::ResolveCachePathForRead(kSndIndexCacheName);
+    if (cachePath.empty()) {
+        return false;
+    }
     std::ifstream cacheFile(cachePath);
     if (!cacheFile.is_open()) {
         return false;
@@ -894,10 +905,14 @@ void AudioManager::savePfsIndexCache() {
     }
     root["index"] = index;
 
-    // The cache is WRITTEN here: resolve so a rewrite lands on the file the
-    // read side found, and fall back to the CWD-relative name when there is
-    // none yet (ResolveDataPath returns its input unchanged in that case).
-    std::string cachePath = eqt::ResolveDataPath("config/snd_index_cache.json");
+    // The cache is WRITTEN here, into the run-local cache directory (T402,
+    // board B248). No writable candidate is not an error -- a cache that
+    // cannot be saved simply costs a rescan next run.
+    std::string cachePath = eqt::ResolveCachePathForWrite(kSndIndexCacheName);
+    if (cachePath.empty()) {
+        LOG_DEBUG(MOD_AUDIO, "No writable cache directory; PFS index not saved");
+        return;
+    }
     std::ofstream out(cachePath);
     if (!out.is_open()) {
         LOG_WARN(MOD_AUDIO, "Failed to save PFS index cache to {}", cachePath);

@@ -313,6 +313,29 @@ TEST_F(RaceNameFromDbTest, InvisibleRacesStayFullyTransparent) {
     EXPECT_EQ(EQT::Graphics::getRaceColorARGB(240), 0u);  // IVM Teleport Man
 }
 
+// T402 (board B246): loadRaceMappings() takes NO path, and the only thing it
+// can fail on is the database.
+//
+// It used to take a `const std::string& jsonPath` whose body was
+// `(void)jsonPath;`, while renderer_init passed "config/race_models.json" and
+// LOG_FATAL'd naming that file on a false return. The JSON is the db builder's
+// input (tools/willeq_db_builder.cpp); no runtime loader opens it, and S03
+// no longer refuses to start without it.
+TEST_F(RaceNameNoDatabaseTest, RaceMappingsFailOnTheDatabaseAndNothingElse) {
+    EXPECT_FALSE(EQT::Graphics::loadRaceMappings())
+        << "with no database open there is nothing to bind to";
+    EXPECT_FALSE(EQT::Graphics::areRaceMappingsLoaded());
+    EXPECT_FALSE(EQT::Graphics::reloadRaceMappings());
+}
+
+TEST_F(RaceNameFromDbTest, RaceMappingsBindToTheDatabase) {
+    EXPECT_TRUE(EQT::Graphics::loadRaceMappings());
+    EXPECT_TRUE(EQT::Graphics::areRaceMappingsLoaded());
+    // ...and the rows really are served, from the db and from nowhere else.
+    EXPECT_FALSE(EQT::Graphics::getRaceS3DFile(1).empty())
+        << "race 1 has no model file, so the binding served nothing";
+}
+
 TEST_F(RaceNameFromDbTest, IdWithNoRowGetsTheNeutralGrey) {
     ASSERT_FALSE(db_.getRaceModel(9999).found);
     EXPECT_EQ(EQT::Graphics::getRaceColorARGB(9999), EQT::Graphics::kDefaultRaceColorARGB);
