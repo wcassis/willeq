@@ -108,6 +108,15 @@ FOREACH(k13svc test_chat_output test_player_facade test_packet_sender)
     GTEST_DISCOVER_TESTS(${k13svc})
 ENDFOREACH()
 
+# T404 Leg B (board B251): the self entity row is a PROJECTION of the one
+# position store, and must follow both funnels that move the player.
+ADD_EXECUTABLE(test_self_entity_position test_self_entity_position.cpp)
+TARGET_LINK_LIBRARIES(test_self_entity_position GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_self_entity_position PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_self_entity_position)
+
 # K06 (Batch K): the extracted eqt::entities::EntitiesComponent, driven
 # directly
 ADD_EXECUTABLE(test_entities_component

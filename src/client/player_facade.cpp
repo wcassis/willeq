@@ -208,6 +208,9 @@ void eqt::PlayerFacade::SetPosition(float x, float y, float z)
 	// it always has -- this is the discrete-relocation path, not the
 	// per-tick integrator path (SetPosLocal()).
 	m_game_state.player().setPosition(x, y, z);
+	// T404 (board B251): and the self row in the entity map, which every
+	// range check and positioned sound reads. See player_facade.h.
+	MirrorSelfEntityPosition(x, y, z);
 }
 
 void eqt::PlayerFacade::SetMoving(bool moving)

@@ -87,7 +87,7 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 	// reference. Reference members must be bound here; nothing is read
 	// through them during construction.
 	: m_chat_output{m_bridge},
-	  m_player_facade{m_game_state, m_update_running},
+	  m_player_facade{m_game_state, m_update_running, m_entities},
 	  m_packet_sender{m_game_state, m_zone_connection, m_zone_connection_manager,
 	                  m_session_recorder, m_main_thread_id},
 	  // K14: the fourth context service, over EverQuest's own m_string_db
