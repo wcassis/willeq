@@ -643,23 +643,35 @@ TEST(CombatManagerState, UpdateCombatStatsFeedsShouldFlee) {
 // 6. Config round-trips
 // ===================================================================
 //
-// Assist range, aggro radius, and combat range have setters
-// (SetAssistRange/SetAggroRadius/SetCombatRange) but NO public getters --
-// there is no accessor to round-trip against, and their only observable
-// effect is inside the wall-clock-gated Update()/ScanForTargets path,
-// which is out of proportion to "cheap" for a plain setter smoke test.
-// Per the plan's STOP conditions ("cannot be reached without ... a new
-// accessor -> skip it, name it in the Review"), these three are skipped
-// as true round-trips; only a call-does-not-crash smoke test is included.
-// Auto-loot and auto-movement DO have matching getters and are fully
-// round-tripped below.
+// T414 Leg B (board B299) resolved what this block used to describe.
+//
+// SetAssistRange() and SetCombatRange() had exactly ONE caller each -- the
+// EXPECT_NO_THROW smoke test that used to live here -- and their members were
+// read by nothing, so the "no public getter to round-trip against" problem was
+// not a testability gap: there was no behaviour to observe because the values
+// reached no decision.  Both setters and their members are gone, along with
+// m_spell_range.  What actually decides each of the three is elsewhere and is
+// covered by its own tests: /assist is a server round-trip, melee reach is
+// CalculateCombatRange(my_size, target_size, race), and spell range comes from
+// the spell row.
+//
+// SetAggroRadius() survives -- m_aggro_radius IS read (GetNearbyHostiles() and
+// the hunt scan) -- so it now gets a real round-trip through observable
+// behaviour rather than an EXPECT_NO_THROW: with the radius at 0 no hostile
+// can be within it, and the potential-target scan must come back empty.
 
-TEST(CombatManagerConfig, SettersWithoutGettersDoNotCrash) {
+TEST(CombatManagerConfig, AggroRadiusIsHonouredByTheHostileScan) {
     EverQuest eq = MakeEq();
     auto* cm = eq.GetCombatManager();
-    EXPECT_NO_THROW(cm->SetAssistRange(75.0f));
+
+    // A generous radius and a zero radius must not agree, and zero must be
+    // empty: the radius is a real gate, not a stored number.
+    cm->SetAggroRadius(0.0f);
+    EXPECT_TRUE(cm->GetNearbyHostiles(0.0f).empty());
+
+    // The setter is total: any value round-trips through the scan without
+    // throwing, including the large one the deleted smoke test used.
     EXPECT_NO_THROW(cm->SetAggroRadius(40.0f));
-    EXPECT_NO_THROW(cm->SetCombatRange(8.0f));
 }
 
 TEST(CombatManagerConfig, AutoLootRoundTripsViaEnableAutoLoot) {

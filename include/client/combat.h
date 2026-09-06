@@ -112,7 +112,6 @@ struct CombatTarget {
 	HCConsiderColor con_color;
 	TargetPriority priority;
 	bool is_aggro;
-	std::chrono::steady_clock::time_point last_considered;
 	bool has_consider_data;
 	uint32_t faction;
 	uint32_t con_level;
@@ -272,10 +271,8 @@ public:
 	LootSubState GetLootSubState() const { return m_loot_sub_state; }
 
 	// Configuration
-	void SetAssistRange(float range) { m_assist_range = range; }
 	void SetAggroRadius(float radius) { m_aggro_radius = radius; }
 	void EnableAutoLoot(bool enable) { m_auto_loot_enabled = enable; }
-	void SetCombatRange(float range) { m_combat_range = range; }
 
 	// Auto-hunting
 	void SetAutoHunting(bool enable);
@@ -379,7 +376,6 @@ private:
 	std::chrono::steady_clock::time_point m_last_hunt_update;
 	std::chrono::steady_clock::time_point m_last_rest_check;
 	std::chrono::steady_clock::time_point m_combat_end_time;
-	bool m_is_resting;
 	float m_hunt_radius;
 	float m_rest_hp_threshold;
 	float m_rest_mana_threshold;
@@ -390,11 +386,23 @@ private:
 	// T247: entity id -> steady-clock time of its last attack on us.
 	std::map<uint16_t, std::chrono::steady_clock::time_point> m_recent_attackers;
 
-	// Configuration
-	float m_assist_range;
+	// Configuration.
+	//
+	// T414 Leg B (board B299) deleted m_assist_range, m_combat_range and
+	// m_spell_range together with SetAssistRange()/SetCombatRange(): each was
+	// a fixed number nothing read, and in every case the value that IS used
+	// comes from somewhere the server decides.
+	//   - assist: /assist is a server round-trip (ActionDispatcher::assist ->
+	//     the handler's packet); the server picks and returns the target, so
+	//     there is no client range to gate it on.
+	//   - combat: the melee reach actually used is per-target and per-race,
+	//     CalculateCombatRange(my_size, target_size, race) in
+	//     combat_rounds.cpp; a fixed 5.0f would have fought that formula.
+	//   - spell: range comes from the spell row (spell.range,
+	//     combat_rounds.cpp), not from a manager-wide constant.
+	// The server enforces swing timers and reach; the client animates.
+	// m_aggro_radius stays -- GetNearbyHostiles() and the hunt scan read it.
 	float m_aggro_radius;
-	float m_combat_range;
-	float m_spell_range;
 
 	// T104: publish the two combat projection events at their sole choke
 	// points (see combat.cpp) -- replaces Application::syncCombatState()'s
