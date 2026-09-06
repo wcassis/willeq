@@ -222,7 +222,7 @@ public:
 
 private:
     // ========================================================================
-    // Target Adjustment
+    // Target Adjustment  (defined in src/client/spell/spell_cast_validation.cpp)
     // ========================================================================
 
     // Adjust target based on spell target type restrictions
@@ -235,6 +235,11 @@ private:
 
     // ========================================================================
     // Cast Validation
+    //
+    // T407: validateCast / checkMana / checkEndurance / checkRange are defined
+    // in src/client/spell/spell_cast_validation.cpp; checkLineOfSight /
+    // checkReagents / checkPlayerState / countCarriedItem in
+    // src/client/spell/spell_cast_checks.cpp (T246).
     // ========================================================================
 
     CastResult validateCast(const SpellData& spell, uint16_t target_id);
