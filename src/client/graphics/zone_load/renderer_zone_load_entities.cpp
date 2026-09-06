@@ -173,7 +173,12 @@ bool ZoneLoadComponent::loadZoneStep8_Entities(ZoneLoadContext& ctx) {
 
                 // Upload all pending textures (including composite EQE1 entries queued in Step 8a)
                 // so they're available as GPU textures when buildEntityMesh builds composite meshes.
-                if (ctx_.constrainedTextureCache) {
+                // T412 (board B291): the same skipEntityTextureUpload knob
+                // EntityRenderer::uploadPendingEntityTextures() honours -- these are
+                // entity textures too, and skipping only the gameplay-time site would
+                // have left zone-in uploading everything anyway.
+                if (ctx_.constrainedTextureCache
+                    && !ctx_.config.constrainedConfig.skipEntityTextureUpload) {
                     ctx_.constrainedTextureCache->uploadAllPending();
                 }
                 ctx.msUpload += t209lap();
@@ -249,7 +254,9 @@ bool ZoneLoadComponent::loadZoneStep8_Entities(ZoneLoadContext& ctx) {
         }
         // T09: Upload all decoded textures from Steps 8a-8d to GPU.
         // getOrLoad() decoded them; uploadAllPending() promotes DecodedEntry → CachedTexture.
-        if (ctx_.constrainedTextureCache) {
+        // T412 (board B291): honours skipEntityTextureUpload, as above.
+        if (ctx_.constrainedTextureCache
+            && !ctx_.config.constrainedConfig.skipEntityTextureUpload) {
             int uploaded = ctx_.constrainedTextureCache->uploadAllPending();
             LOG_INFO(MOD_GRAPHICS, "SEQ Step8: uploadAllPending uploaded {} entity textures", uploaded);
         }

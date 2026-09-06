@@ -482,6 +482,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_vision_zone_lights)
 ENDIF()
 
+# T412 Leg A (B291): the skipEntityTextureUpload debug knob must actually skip.
+# Drives EntityRenderer::uploadPendingEntityTextures() against a real
+# ConstrainedTextureCache on an EDT_NULL device -- no EQ client data, no server.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_entity_texture_upload_skip
+        test_entity_texture_upload_skip.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_entity_texture_upload_skip PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_entity_texture_upload_skip GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_entity_texture_upload_skip)
+ENDIF()
+
 # T367 (B080): zone/object lights whose influence sphere contains the camera
 # must survive PVS and frustum culling. Drives computeLightVisibility,
 # computeObjectLightVisibility and computeLightSelection through

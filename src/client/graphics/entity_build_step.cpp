@@ -27,6 +27,27 @@
 namespace EQT {
 namespace Graphics {
 
+// T412 (board B291): the single seam through which the entity build path
+// promotes its decoded textures to the GPU, and the only reader of
+// skipTextureUpload_. The knob arrives from config/debug.json's
+// "skipEntityTextureUpload" via ConstrainedRendererConfig and
+// IrrlichtRenderer::initDeferredGraphics; before this it was stored and never
+// read, so setting it in the shipped debug config changed nothing.
+//
+// Skipping leaves the decoded entries in the cache untouched (they are NOT
+// dropped), so a run that clears the flag later uploads them normally. The
+// entities themselves still build -- they draw untextured, which is exactly
+// what a "skip glTexImage2D to isolate upload cost" debug flag is for.
+int EntityRenderer::uploadPendingEntityTextures() {
+    if (!constrainedTextureCache_) return 0;
+    if (skipTextureUpload_) {
+        LOG_DEBUG(MOD_GRAPHICS,
+                  "skipEntityTextureUpload set -- entity texture upload skipped");
+        return 0;
+    }
+    return constrainedTextureCache_->uploadAllPending();
+}
+
 bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion) {
     if (!smgr_ || !raceModelLoader_) return false;
 
@@ -184,9 +205,9 @@ bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion) {
 
             // T11: Upload any decoded textures to GPU before mesh building.
             // During gameplay, only this entity's textures should be pending.
-            if (constrainedTextureCache_) {
-                constrainedTextureCache_->uploadAllPending();
-            }
+            // T412 (board B291): routed through uploadPendingEntityTextures()
+            // so the skipEntityTextureUpload debug knob is actually honoured.
+            uploadPendingEntityTextures();
 
             // Promote any background-preloaded model data
             if (entityPrepWorker_ && raceModelLoader_) {
