@@ -255,7 +255,6 @@ private:
     // well-defined; initMutex_ still guards the one-time population of
     // equipmentModelIndex_/textureIndex_ itself.
     std::atomic<bool> archivesLoaded_{false};
-    std::atomic<bool> mappingLoaded_{false};
     std::mutex initMutex_;  // Guards ensureIndexLoaded() for thread safety
 
     // Constrained texture cache for LRU tracking (non-owning, owned by IrrlichtRenderer)

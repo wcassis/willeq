@@ -75,7 +75,6 @@ private:
 
     // XMI format info
     uint16_t numSequences_ = 0;
-    uint16_t ticksPerQuarter_ = 60;  // XMI default
 
     // Temporary storage during conversion
     std::vector<uint8_t> midiOutput_;

@@ -170,7 +170,6 @@ private:
     std::string error_;
 
     // Temporary storage during parsing
-    std::vector<char> wldBuffer_;
     std::map<std::string, std::shared_ptr<ZoneGeometry>> geometries_;
     std::map<std::string, std::string> materialTextures_;  // Material name -> texture name
 };

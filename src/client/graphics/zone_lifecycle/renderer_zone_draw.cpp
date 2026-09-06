@@ -236,7 +236,6 @@ void IrrlichtRenderer::RenderPassTimer::OnRenderPassPreRender(irr::scene::E_SCEN
         firstPassStart_ = passStart_;
         firstPassSeen_ = true;
     }
-    currentPass_ = renderPass;
 
     // Capture 3D camera transforms during the SOLID pass — this is the only
     // reliable point where ETS_VIEW/ETS_PROJECTION contain the 3D perspective

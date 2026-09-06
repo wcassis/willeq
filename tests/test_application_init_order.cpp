@@ -202,13 +202,18 @@ TEST(ApplicationInitOrderTest, GoldenIsPresentAndTheRightSize) {
     // command registries, so it is the only object that can supply the chat
     // box's Tab-completion vocabulary, then -1 by T402 (B246), which DELETED
     // entry 46 `checkFile(... "config/race_models.json" ...)` -- a startup
-    // requirement for a file no runtime loader opens.
+    // requirement for a file no runtime loader opens, then -1 by T407 (B290),
+    // which DELETED entry 311 `m_lastUpdate = std::chrono::steady_clock::now();`
+    // -- a member written there and read nowhere, found by the new
+    // scripts/refactor/check_write_only_fields.py census. The live per-frame
+    // clock is m_lastGraphicsUpdate, the next entry, which stays.
     // Correction 32: an order golden learns a reviewed edit in place, at its
     // positions, named here; it is never regenerated from the tip.
-    EXPECT_EQ(golden.size(), 314u)
+    EXPECT_EQ(golden.size(), 313u)
         << "316 statement lines at G04, -2 for T347's write-only "
            "customMemorySpec, +1 for T357's completion-provider wiring, "
-           "-1 for T402's S03 race_models.json check (B246); "
+           "-1 for T402's S03 race_models.json check (B246), "
+           "-1 for T407's write-only m_lastUpdate (B290); "
            "the golden has " << golden.size();
     for (const auto& e : golden) EXPECT_FALSE(e.empty());
 }

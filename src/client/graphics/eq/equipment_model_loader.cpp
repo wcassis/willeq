@@ -142,7 +142,6 @@ int EquipmentModelLoader::loadItemModelMapping(const std::string& jsonPath) {
         itemToModelMap_[itemId] = modelId;
     }
 
-    mappingLoaded_ = true;
     LOG_INFO(MOD_GRAPHICS, "EquipmentModelLoader: Loaded {} item-to-model mappings", itemToModelMap_.size());
     return static_cast<int>(itemToModelMap_.size());
 }
@@ -184,7 +183,6 @@ void EquipmentModelLoader::ensureIndexLoaded() {
     }
 
     // Item-to-model mapping handled on-demand via SQLite
-    mappingLoaded_ = true;
     LOG_INFO(MOD_GRAPHICS, "EquipmentModelLoader: item model mapping via on-demand SQLite");
 
     archivesLoaded_ = true;
@@ -813,7 +811,6 @@ void EquipmentModelLoader::adoptIndex(
     textureIndex_ = std::move(textureIndex);
     itemToModelMap_ = std::move(itemToModelMap);
     archivesLoaded_ = true;
-    mappingLoaded_ = !itemToModelMap_.empty();
     LOG_INFO(MOD_GRAPHICS, "EquipmentModelLoader: adopted pre-built index ({} models, {} textures, {} mappings)",
              equipmentModelIndex_.size(), textureIndex_.size(), itemToModelMap_.size());
 }

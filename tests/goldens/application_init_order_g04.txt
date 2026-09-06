@@ -24,6 +24,12 @@
 #     arms of the enclosing if/else call loadJsonOverrides() identically, so
 #     it distinguished nothing. Entries 164-316 renumbered to 163-314
 #     (166 excepted). Count 316 -> 314.
+#   T407 (B290): entry 311
+#     `m_lastUpdate = std::chrono::steady_clock::now();` DELETED -- the member
+#     was written here and read nowhere in the tree; the live per-frame clock
+#     is m_lastGraphicsUpdate on the next line, which stays. Found by
+#     scripts/refactor/check_write_only_fields.py. Entries 312-314 renumbered
+#     to 311-313. Count 314 -> 313.
 1 m_config = config;
 2 LOG_INFO(MOD_MAIN, "Initializing application...");
 3 for (const std::string& spec : config.fpCamOverrides) {
@@ -334,7 +340,6 @@
 308 LOG_INFO(MOD_MAIN, "Connecting to login server ({}:{})...", config.host, config.port);
 309 m_eqClient->LoginWorld().ConnectToLogin();
 310 m_running.store(true);
-311 m_lastUpdate = std::chrono::steady_clock::now();
-312 m_lastGraphicsUpdate = std::chrono::steady_clock::now();
-313 LOG_INFO(MOD_MAIN, "Application initialized successfully");
-314 return true;
+311 m_lastGraphicsUpdate = std::chrono::steady_clock::now();
+312 LOG_INFO(MOD_MAIN, "Application initialized successfully");
+313 return true;
