@@ -49,14 +49,12 @@ AmbientRGB applyVisionAmbientFloor(VisionType vision, AmbientRGB base) {
                       std::max(base.b, floor.b)};
 }
 
-AmbientRGB composeSceneAmbient(AmbientRGB dayNight, float ambientMultiplier,
-                               float weatherModifier, VisionType vision) {
-    // The user multiplier is clamped per channel (Page Up can only brighten
-    // to full white, never past it); weather is not clamped here because a
-    // lightning flash deliberately overshoots 1.0.
-    AmbientRGB out{std::min(1.0f, dayNight.r * ambientMultiplier),
-                   std::min(1.0f, dayNight.g * ambientMultiplier),
-                   std::min(1.0f, dayNight.b * ambientMultiplier)};
+AmbientRGB composeSceneAmbient(AmbientRGB dayNight, float weatherModifier,
+                               VisionType vision) {
+    // Weather is not clamped here: a lightning flash deliberately overshoots
+    // 1.0. (T424 removed the user ambient multiplier and its per-channel
+    // clamp -- see the header for why.)
+    AmbientRGB out{dayNight.r, dayNight.g, dayNight.b};
     out.r *= weatherModifier;
     out.g *= weatherModifier;
     out.b *= weatherModifier;

@@ -157,13 +157,24 @@ VisionType racialBaseVision(uint16_t raceId);
 // at noon and transforms midnight.
 AmbientRGB applyVisionAmbientFloor(VisionType vision, AmbientRGB base);
 
-// THE ORDER (T396, board B211). The scene ambient is composed from four
-// things and the order is load-bearing, not incidental:
+// THE ORDER (T396, board B211; T424 dropped the second term). The scene
+// ambient is composed from three things and the order is load-bearing, not
+// incidental:
 //
 //   1. the day/night curve                (IrrlichtRenderer::updateTimeOfDay)
-//   2. x the user's ambient multiplier    (Page Up / Page Down), clamped to 1
-//   3. x the weather modifier             (WeatherEffectsController)
-//   4. raised to the vision floor         <- LAST
+//   2. x the weather modifier             (WeatherEffectsController)
+//   3. raised to the vision floor         <- LAST
+//
+// There used to be a fourth, a "user ambient multiplier" between (1) and (2),
+// clamped per channel. T424 (board B380) removed it: its writer was a
+// Page Up / Page Down handler in the renderer's ADMIN mode, deleted on
+// purpose with that whole mode in `cac31166` ("Remove Admin and Repair
+// renderer modes, keeping only Player mode"), and nothing has written the
+// field since. It survived as a constant 1.0 multiplied into every frame --
+// a term the T423 dirty flag could never see move, and a promise of
+// "user-adjustable ambient light" the client does not keep. The per-channel
+// clamp went with it: the day/night curve is already <= 1 and the weather
+// modifier is deliberately allowed to overshoot for a lightning flash.
 //
 // The floor goes last because it is a floor on WHAT THE PLAYER SEES. A vision
 // buff is a promise about the darkest the world can get; if weather were
@@ -178,8 +189,8 @@ AmbientRGB applyVisionAmbientFloor(VisionType vision, AmbientRGB base);
 // This function IS the production composition -- updateTimeOfDay() calls it
 // rather than open-coding the four steps -- so the order above is pinned by
 // tests/test_vision_ambient.cpp instead of by a comment.
-AmbientRGB composeSceneAmbient(AmbientRGB dayNight, float ambientMultiplier,
-                               float weatherModifier, VisionType vision);
+AmbientRGB composeSceneAmbient(AmbientRGB dayNight, float weatherModifier,
+                               VisionType vision);
 
 }  // namespace Graphics
 }  // namespace EQT

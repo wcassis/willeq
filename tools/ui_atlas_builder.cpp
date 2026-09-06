@@ -96,20 +96,18 @@ static void generate() {
     reg("slot_background",      0, 0, 32, 32);  fillRect(0, 0, 32, 32, {20, 20, 25, 200});
     reg("slot_border_normal",  32, 0, 32, 32);  fillBorder(32, 0, 32, 32, {80, 80, 80, 255});
     reg("slot_border_hover",   64, 0, 32, 32);  fillBorder(64, 0, 32, 32, {255, 215, 0, 255});
-    reg("slot_border_selected",96, 0, 32, 32);  fillBorder(96, 0, 32, 32, {255, 255, 255, 255});
 
-    // Row 1 (y=32): Buttons 64x24 each
-    reg("button_normal",   0, 32, 64, 24);
-    fillGradientV(0, 32, 64, 24, {70, 70, 75, 255}, {40, 40, 45, 255});
-    fillBorder(0, 32, 64, 24, {100, 100, 105, 255});
-
-    reg("button_pressed",  64, 32, 64, 24);
-    fillGradientV(64, 32, 64, 24, {30, 30, 35, 255}, {55, 55, 60, 255});
-    fillBorder(64, 32, 64, 24, {80, 80, 85, 255});
-
-    reg("button_disabled", 128, 32, 64, 24);
-    fillRect(128, 32, 64, 24, {35, 35, 38, 255});
-    fillBorder(128, 32, 64, 24, {50, 50, 55, 255});
+    // T424 (board B351): row 0's fourth slot sprite (`slot_border_selected`)
+    // and the whole of row 1 (`button_normal` / `button_pressed` /
+    // `button_disabled`) are GONE, along with `panel_border` and
+    // `scroll_indicator` below. T416's census found all six with no consumer
+    // anywhere in src/, tools/ or tests/, and none of them is oracle art:
+    // every one is a gradient or a 1px border invented for the WindowManager
+    // UI deleted in 0f25cb57. Wiring them would INVENT a look (a 64x24
+    // gradient stretched onto a button of another size; a 32x32 one-pixel
+    // border stretched across a 400px panel), which is board B350's open
+    // question and starts from window_pieces01.tga, not from here. The
+    // surviving roster is pinned by tests/test_ui_sprite_roster.cpp.
 
     // Row 2 (y=64): Bar fills 128x16 each
     reg("bar_hp",         0, 64, 128, 16);  fillGradientV(0, 64, 128, 16, {40, 200, 40, 255}, {20, 140, 20, 255});
@@ -121,8 +119,6 @@ static void generate() {
 
     // Row 3 (y=160): Panels and misc
     reg("panel_background", 0, 160, 64, 64);  fillRect(0, 160, 64, 64, {10, 10, 15, 180});
-    reg("panel_border",    64, 160, 32, 32);   fillBorder(64, 160, 32, 32, {60, 60, 70, 255});
-    reg("scroll_indicator", 96, 160, 8, 16);   fillRect(96, 160, 8, 16, {120, 120, 130, 200});
 
     // White pixel (4x4 for safe UV sampling)
     reg("white", 252, 252, 4, 4);  fillRect(252, 252, 4, 4, {255, 255, 255, 255});

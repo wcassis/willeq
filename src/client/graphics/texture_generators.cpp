@@ -759,6 +759,21 @@ irr::video::IImage* generateSpellParticleFallback(irr::video::IVideoDriver* driv
     float center = size / 2.0f;
     float maxDist = center;
 
+    // T424 (board B322): the falloff goes in RGB, not in alpha.
+    //
+    // SpellVisualFX draws this sprite with EMT_TRANSPARENT_ADD_COLOR, which the
+    // GLES2 driver maps to glBlendFunc(GL_ONE, GL_ONE) -- an additive blend
+    // samples the COLOUR and never looks at alpha. It also ships as a 24-bit
+    // BMP (tools/generate_textures.cpp, BmpFormat::Bmp24), which has no alpha
+    // channel to ship in the first place. Writing the cosine into alpha over
+    // constant white RGB therefore produced exactly what T413 measured off the
+    // shipped file: 3,072 pixel bytes all 255, a solid white SQUARE where the
+    // draw wants a soft dome. Premultiplied white x cosine is what an additive
+    // draw wants and what the official client's Glowflare DDS carries.
+    //
+    // The arithmetic must stay bit-identical across -O0 and -O2 (board B268):
+    // it is float-only with no association to re-order and no integer
+    // overflow, and TexturesReproducible checks the result either way.
     for (int y = 0; y < size; ++y) {
         for (int x = 0; x < size; ++x) {
             float dx = x - center + 0.5f;
@@ -766,13 +781,16 @@ irr::video::IImage* generateSpellParticleFallback(irr::video::IVideoDriver* driv
             float dist = std::sqrt(dx * dx + dy * dy);
 
             float normalizedDist = dist / maxDist;
-            int alpha = 0;
+            int level = 0;
             if (normalizedDist < 1.0f) {
                 float falloff = std::cos(normalizedDist * 3.14159f * 0.5f);
-                alpha = static_cast<int>(falloff * 255.0f);
+                level = static_cast<int>(falloff * 255.0f);
             }
 
-            image->setPixel(x, y, irr::video::SColor(alpha, 255, 255, 255));
+            // Alpha stays opaque: nothing on this path samples it, and the
+            // 24-bit write would drop it regardless (kNeverAlpha in
+            // tests/test_texture_alpha_census.cpp records why).
+            image->setPixel(x, y, irr::video::SColor(255, level, level, level));
         }
     }
 

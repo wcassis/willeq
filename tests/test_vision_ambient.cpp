@@ -358,8 +358,9 @@ TEST(VisionSolvedT405Test, NoRefutedConstantSetCanComeBack) {
 // ---------------------------------------------------------------------------
 // T396 (board B211): THE COMPOSITION ORDER.
 //
-// updateTimeOfDay() builds the scene ambient from four things, and until T396
-// the order lived only in a comment. B211 is the reason it matters: the
+// updateTimeOfDay() builds the scene ambient from three things (four until
+// T424 dropped the dead user multiplier -- board B380), and until T396 the
+// order lived only in a comment. B211 is the reason it matters: the
 // weather modifier multiplies the ambient a vision ratio is measured against
 // while leaving the floor fixed, so an uncontrolled weather state inflates any
 // measured vision ratio in proportion to the weather at the time. T377's
@@ -379,7 +380,7 @@ constexpr float kT377WeatherMod = 0.46f;
 
 TEST(VisionAmbientCompositionT396Test, ClearWeatherAndNoUserBoostChangeNothing) {
     const AmbientRGB out =
-        composeSceneAmbient(kNight, 1.0f, 1.0f, VisionType::Normal);
+        composeSceneAmbient(kNight, 1.0f, VisionType::Normal);
     EXPECT_FLOAT_EQ(out.r, kNight.r);
     EXPECT_FLOAT_EQ(out.g, kNight.g);
     EXPECT_FLOAT_EQ(out.b, kNight.b);
@@ -387,7 +388,7 @@ TEST(VisionAmbientCompositionT396Test, ClearWeatherAndNoUserBoostChangeNothing) 
 
 TEST(VisionAmbientCompositionT396Test, WeatherMultipliesTheUnbuffedNightAmbient) {
     const AmbientRGB out =
-        composeSceneAmbient(kNight, 1.0f, kT377WeatherMod, VisionType::Normal);
+        composeSceneAmbient(kNight, kT377WeatherMod, VisionType::Normal);
     EXPECT_FLOAT_EQ(out.r, kNight.r * kT377WeatherMod);
     EXPECT_FLOAT_EQ(out.g, kNight.g * kT377WeatherMod);
     EXPECT_FLOAT_EQ(out.b, kNight.b * kT377WeatherMod);
@@ -398,7 +399,7 @@ TEST(VisionAmbientCompositionT396Test, WeatherMultipliesTheUnbuffedNightAmbient)
 TEST(VisionAmbientCompositionT396Test, TheVisionFloorClampsTheFinalAmbientAfterWeather) {
     const AmbientRGB floor = visionAmbientFloor(VisionType::Ultravision);
     const AmbientRGB out =
-        composeSceneAmbient(kNight, 1.0f, kT377WeatherMod, VisionType::Ultravision);
+        composeSceneAmbient(kNight, kT377WeatherMod, VisionType::Ultravision);
 
     EXPECT_FLOAT_EQ(out.r, floor.r);
     EXPECT_FLOAT_EQ(out.g, floor.g);
@@ -414,29 +415,75 @@ TEST(VisionAmbientCompositionT396Test, TheVisionFloorClampsTheFinalAmbientAfterW
 // weather changes the base a vision ratio is measured against but NOT the
 // buffed frame, so the ratio measured under rain is larger than the true one.
 TEST(VisionAmbientCompositionT396Test, UncontrolledWeatherInflatesAMeasuredVisionRatio) {
-    const float clearBase = mean(composeSceneAmbient(kNight, 1.0f, 1.0f, VisionType::Normal));
-    const float clearBuff = mean(composeSceneAmbient(kNight, 1.0f, 1.0f, VisionType::Ultravision));
-    const float rainBase = mean(composeSceneAmbient(kNight, 1.0f, kT377WeatherMod, VisionType::Normal));
-    const float rainBuff = mean(composeSceneAmbient(kNight, 1.0f, kT377WeatherMod, VisionType::Ultravision));
+    const float clearBase = mean(composeSceneAmbient(kNight, 1.0f, VisionType::Normal));
+    const float clearBuff = mean(composeSceneAmbient(kNight, 1.0f, VisionType::Ultravision));
+    const float rainBase = mean(composeSceneAmbient(kNight, kT377WeatherMod, VisionType::Normal));
+    const float rainBuff = mean(composeSceneAmbient(kNight, kT377WeatherMod, VisionType::Ultravision));
 
     EXPECT_FLOAT_EQ(clearBuff, rainBuff) << "the floor is weather-independent";
     EXPECT_GT(rainBuff / rainBase, (clearBuff / clearBase) * 1.9f)
         << "T377's rain more than doubled the apparent Ultravision ratio";
 }
 
-// Daylight is above every floor and the user multiplier still clamps at 1.
-TEST(VisionAmbientCompositionT396Test, DaylightIsAboveEveryFloorAndTheUserBoostClamps) {
-    const AmbientRGB out =
-        composeSceneAmbient(kDay, 4.0f, 1.0f, VisionType::Ultravision);
-    EXPECT_FLOAT_EQ(out.r, 1.0f);
-    EXPECT_FLOAT_EQ(out.g, 1.0f);
-    EXPECT_FLOAT_EQ(out.b, 1.0f);
-
+// Daylight is above every floor, so a vision buff is invisible at noon.
+TEST(VisionAmbientCompositionT396Test, DaylightIsAboveEveryFloor) {
     const AmbientRGB plain =
-        composeSceneAmbient(kDay, 1.0f, 1.0f, VisionType::Ultravision);
+        composeSceneAmbient(kDay, 1.0f, VisionType::Ultravision);
     EXPECT_FLOAT_EQ(plain.r, kDay.r);
     EXPECT_FLOAT_EQ(plain.g, kDay.g);
     EXPECT_FLOAT_EQ(plain.b, kDay.b);
+}
+
+// T424 (board B380). The fourth term this composition used to carry -- a
+// "user ambient multiplier", clamped per channel, sitting between the
+// day/night curve and the weather modifier -- is GONE, and this test is what
+// keeps it gone. Its only writer was a Page Up / Page Down handler in the
+// renderer's ADMIN mode, deleted with that whole mode in cac31166 ("Remove
+// Admin and Repair renderer modes, keeping only Player mode"); from then until
+// T424 the field was a constant 1.0 that every frame multiplied by, and T423
+// found it while enumerating the inputs its ambient dirty flag has to watch.
+// A term nothing can move is not an input. If a user-adjustable ambient is
+// ever wanted, it arrives as a key binding or a slash command WITH a writer
+// and WITH markSceneAmbientDirty(), not as a resurrected field.
+TEST(VisionAmbientCompositionT396Test, NoUserAmbientMultiplierRemains) {
+    // The declaration is gone (the header keeps a prose tombstone naming it,
+    // so this looks for the DECLARATION, not the word) ...
+    {
+        const std::string path = std::string(WILLEQ_REPO_ROOT) +
+                                 "/include/client/graphics/irrlicht_renderer.h";
+        std::ifstream in(path);
+        ASSERT_TRUE(in.good()) << "cannot open " << path;
+        std::stringstream ss;
+        ss << in.rdbuf();
+        EXPECT_EQ(ss.str().find("float ambientMultiplier_"), std::string::npos)
+            << path << " declares ambientMultiplier_ again. The field had no "
+               "writer from cac31166 until T424 deleted it (board B380); "
+               "re-adding it needs a writer and a markSceneAmbientDirty() "
+               "call, not a default.";
+    }
+    // ... and no code names it at all.
+    for (const char* rel : {"/include/client/graphics/vision_ambient.h",
+                            "/src/client/graphics/vision_ambient.cpp",
+                            "/src/client/graphics/renderer/irrlicht_renderer.cpp"}) {
+        const std::string path = std::string(WILLEQ_REPO_ROOT) + rel;
+        std::ifstream in(path);
+        ASSERT_TRUE(in.good()) << "cannot open " << path;
+        std::stringstream ss;
+        ss << in.rdbuf();
+        EXPECT_EQ(ss.str().find("ambientMultiplier"), std::string::npos)
+            << path << " names the user ambient multiplier again (board B380)";
+    }
+    // And the signature is three arguments, so no caller can pass one.
+    const std::string hdr = std::string(WILLEQ_REPO_ROOT) +
+                            "/include/client/graphics/vision_ambient.h";
+    std::ifstream in(hdr);
+    ASSERT_TRUE(in.good());
+    std::stringstream ss;
+    ss << in.rdbuf();
+    EXPECT_NE(ss.str().find("composeSceneAmbient(AmbientRGB dayNight, float weatherModifier,"),
+              std::string::npos)
+        << "composeSceneAmbient() no longer takes exactly (dayNight, "
+           "weatherModifier, vision)";
 }
 
 // The production site calls it -- so the order above is the one that ships.
