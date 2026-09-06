@@ -78,7 +78,24 @@ public:
                       SpellbookPopupState& spellbook,
                       SkillsPopupState& skills,
                       const BuffBarState& buffs,
-                      LootPanelState& loot);
+                      LootPanelState& loot,
+                      // T425 (board B298, spell half): SHIFT is a MODIFIER on
+                      // the two clicks that already had a job -- a gem click
+                      // casts (T272) and a spellbook click memorises -- so it
+                      // cannot be its own entry point the way T415's and
+                      // T421's are: the plain arms would fire first. It is
+                      // appended with a default instead, which leaves every
+                      // existing caller and every existing test compiling and
+                      // asserting exactly what they did before.
+                      //
+                      // DEVIATION from the oracle, flagged: the official
+                      // client opens the spell display on a RIGHT click.
+                      // fable binds the right button to mouselook and its
+                      // static UI latches no right click (T421 recorded the
+                      // same wall); unlike T421's inventory slot, which did
+                      // NOTHING before, left is already taken here, so the
+                      // free gesture is shift+left.
+                      bool shift = false);
 
     /**
      * T415 (boards B321/B320): the two panels added after processInput()'s

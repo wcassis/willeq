@@ -4924,10 +4924,50 @@ T407 deleted eleven (see below). The rest are boarded here.
   box; `Slot:` (eqstr 3000) is the item's EQUIPPABLE slot list, which the
   window draws from `slots`, and nothing anywhere shows where an item
   currently sits. Its exemption row says so.
-  `SpellData` carries `resist_diff`, `zone_type`,
-  `teleport_zone`, `spell_fades`, `player_tag`, `environment_type`,
-  `time_of_day`, `aoe_duration`, `push_up`, `allow_rest`, `is_dispellable`,
-  `no_partial_resist`, `no_expend_reagent`; `SkillData` carries
+  **SPELL HALF STRUCK by T425 Leg A** (`__LEGA__`). fable now has a spell
+  display window -- and it is the SAME window, because **the oracle has no
+  second one**: there is no `EQUI_SpellDisplay.xml` and no `SpellDisplay` /
+  `SpellInfo` screen anywhere in `/mnt/projects/EverQuestP1999/uifiles/default`
+  (79 `<Screen item=...>` declarations, none of them a spell display), and
+  `EQUI_ItemDisplay.xml`'s own `IDW_IconButton` decals the SPELL sheet
+  (`<NormalDecal>BuffIcons</NormalDecal>`). So T425 added no panel, no layout,
+  no event and no scroll target: `eqt::spell::BuildSpellDisplayText()`
+  (`src/client/spell/spell_display_text.cpp`) composes lines from the same
+  `eqstr_us.txt` T421 quoted and ships them on the same `ItemDisplayShown`
+  event. **Nine lines are drawn**, each quoting its id: `class_levels` (3004
+  `Level Needed: %1` / 3005 `Level Needed: CANNOT USE`), `mana_cost` (3006),
+  the duration (3102 `Spell Duration: %1.` / 3103 `Spell Duration:
+  Permanent.`), `casting_skill` (3105 `Skill: %1`), `cast_time_ms` (3107
+  `Cast Time: %1`), `range` (6730 `Range = %1`), `recast_time_ms` (9234
+  `Recast Delay: %1`), plus `name` -> the `Style_Titlebar` row and
+  `spell_icon` -> `IDW_IconButton`'s decal. Trigger: **SHIFT+left click** on a
+  memorised gem or a spellbook row -- flagged as a deviation, since the oracle
+  uses a right click (fable's right button is mouselook) and, unlike T421's
+  inventory slot, plain left was already the cast/memorise action.
+  **`spell_fades` is CLOSED and is not a window field**: it is the sibling of
+  `cast_on_you`/`cast_on_other`, which `spell_packet_handlers.cpp` prints on a
+  landing, so T425 prints it at `BuffManager`'s existing fade callback
+  (`src/client/core/everquest.cpp`) when a PLAYER buff wears off.
+  **Every other spell field stays hidden because the oracle has no line for
+  it** -- measured by grepping `eqstr_us.txt`, not assumed, and each
+  `WriteOnlyFields` exemption row now says which absence:
+  `resist_type`/`resist_diff` (the table has NO spell-resist line at all --
+  every "Resist" hit is a combat message, an AA name, or 9044, the ITEM
+  stun-resist stat), `zone_type` and `environment_type` and `time_of_day` (no
+  Indoor/Outdoor, environment or time format string), `teleport_zone` (no
+  Destination/Location line), `player_tag` (a spells_us.txt internal tag),
+  `target_type`/`aoe_range`/`aoe_duration`/`push_back`/`push_up`/
+  `allow_rest`/`is_dispellable`/`no_partial_resist` (no such line), and
+  `endurance_cost` (5809 `Endurance: %1` is the ITEM stat). **Seven of those
+  came up as NEW `WriteOnlyFields` rows the moment the new test WROTE them to
+  assert they stay hidden** -- the same shape as T421's `heroic*`. The
+  reagents are the one line the oracle HAS (6732 `Reagents Needed: %1`) and
+  fable cannot draw: it wants an item NAME and the client has no
+  item-name-by-id source at all -- **B391**.
+  What remains under this id is the SKILL and ENTITY halves.
+  `SpellEffectSlot::base2_value` also stays: the oracle prints no per-effect
+  numbers in the display window.
+  `SkillData` carries
   `animation_code`, `usable_while_sitting`, `usable_while_stunned`,
   `min_level`; `Entity` carries `guildId`, `anon_status`, `deltaHeading`;
   `RaceModelInfo` carries `genderVariants`, `neuterCode`. Each is a loader
@@ -5983,3 +6023,38 @@ client uses every field.
   favourites set -- which the server itself supplies, since a favourites fetch
   returns exactly that list through the same `TradeskillRecipeReceived`
   stream. Found by T421 Leg B.
+
+---
+
+## Added 2026-09-06 by T425
+
+- **B390** (B) `src/client/inventory/item_display_text.cpp`,
+  `src/client/spell/spell_display_text.cpp` -- **the two display composers
+  hardcode format strings the client already ships as data.** Every line they
+  emit is quoted from `/mnt/projects/EverQuestP1999/eqstr_us.txt`, and that
+  whole table is ALREADY in `data/willeq.db` as `eqstrings` (5,901 rows,
+  loaded by `tools/willeq_db_builder.cpp`'s `loadEqStrings()`) and ALREADY
+  reachable at runtime through `EQT::StringDatabase::getString()` /
+  `formatString()`, which `EverQuest::m_string_db` owns and
+  `chat_component.cpp` and `eq_strings.cpp` already use. So the two composers
+  transcribe by hand what one `getString(3006)` would fetch, which means a
+  localised `eqstr_XX.txt` would not reach them and a transcription typo is
+  invisible. Not fixed in T425 because the composers are free functions that
+  a test drives with no database and changing that is a design call (an
+  injected string-lookup hook, the `who_response.h` shape, is the obvious
+  form). Closes when both composers take their formats from the string table.
+  Found by T425 Leg A.
+
+- **B391** (B) `src/client/spell/spell_display_text.cpp`,
+  `include/client/spell/spell_data.h` `reagent_id` -- **the one spell-display
+  line the oracle has that fable cannot draw.** eqstr 6732 is
+  `Reagents Needed: %1` (6731 `Reagents Available: %1`), and `%1` is an item
+  NAME. `SpellData` carries `reagent_id[4]` / `reagent_count[4]` and nothing
+  else; the client has no item-name-by-id source anywhere -- `data/willeq.db`
+  has no items table (its tables are `animation_sounds`, `dbstrings`,
+  `eqstrings`, `equipment_models`, `equipment_textures`, `item_models`,
+  `login_strings`, `metadata`, `music_files`, `race_models`, `sound_assets`,
+  `spells`), and the wire only names an item inside an item packet the player
+  happens to receive. Printing the ids would be inventing a line the official
+  client never draws, so T425 drew nothing. Closes when an item-name lookup
+  exists (the same gap `B376`'s icon sheet sits next to). Found by T425 Leg A.

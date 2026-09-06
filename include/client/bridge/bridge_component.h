@@ -351,6 +351,7 @@ private:
 	void onRecipeSearchIntent(const eqt::events::RecipeSearchIntent& i);
 	void onRecipeFavoriteIntent(const eqt::events::RecipeFavoriteIntent& i);
 	void onItemDisplayRequestIntent(const eqt::events::ItemDisplayRequestIntent& i);
+	void onSpellDisplayRequestIntent(const eqt::events::SpellDisplayRequestIntent& i);
 	void onTrainSkillIntent(const eqt::events::TrainSkillIntent& i);
 	void onCloseTrainerIntent(const eqt::events::CloseTrainerIntent& i);
 	void onMoveItemIntent(const eqt::events::MoveItemIntent& i);

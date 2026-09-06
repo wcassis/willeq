@@ -55,7 +55,8 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
                                   SpellbookPopupState& spellbook,
                                   SkillsPopupState& skills,
                                   const BuffBarState& buffs,
-                                  LootPanelState& loot) {
+                                  LootPanelState& loot,
+                                  bool shift) {
     bool consumed = false;
 
     // Reset hover states
@@ -99,7 +100,17 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
                 mouseY >= gy && mouseY < gy + UILayout::SLOT_SIZE) {
                 spellGems.hoveredGem = i;
                 consumed = true;
-                if (leftClicked) {
+                if (leftClicked && shift) {
+                    // T425 (board B298, spell half): shift+click a MEMORISED
+                    // gem asks for the spell display. The gem's own spellId
+                    // is already cached here (SpellGemState), so the request
+                    // carries the spell, not the slot -- the same id the
+                    // spellbook arm below sends.
+                    if (bridge_ && spellGems.gems[i].spellId != 0) {
+                        bridge_->pushIntent(eqt::events::SpellDisplayRequestIntent{
+                            spellGems.gems[i].spellId});
+                    }
+                } else if (leftClicked) {
                     if (spellbook.isOpen) {
                         // T272: with the spellbook open, a gem click PICKS the
                         // destination for the next memorize instead of casting
@@ -194,7 +205,16 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
                 int ry = startY + i * (LINE_H + PAD);
                 if (mouseY >= ry && mouseY < ry + LINE_H) {
                     spellbook.hoveredSlot = i;
-                    if (leftClicked) {
+                    if (leftClicked && shift) {
+                        // T425 (board B298, spell half): shift+click a
+                        // spellbook row asks for the spell display instead of
+                        // memorising it.
+                        int idx = spellbook.currentPage * SpellbookPopupState::SPELLS_PER_PAGE + i;
+                        if (idx < static_cast<int>(spellbook.spells.size()) && bridge_) {
+                            bridge_->pushIntent(eqt::events::SpellDisplayRequestIntent{
+                                spellbook.spells[idx].spellId});
+                        }
+                    } else if (leftClicked) {
                         // T272: this was a LOG stub naming MemorizeSpellIntent
                         // as the missing piece (T264 kept the intent for
                         // exactly this). Row index is relative to the current

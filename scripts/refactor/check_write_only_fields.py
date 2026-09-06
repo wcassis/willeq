@@ -179,18 +179,44 @@ EXEMPT = {
         ("boarded", "B375: no writer AND no oracle line"),
     ("ItemInstance", "heroicWis"):
         ("boarded", "B375: no writer AND no oracle line"),
+    # T425 (B298 spell half): the spell display window EXISTS now
+    # (BuildSpellDisplayText, drawn in the oracle's one ItemDisplayWindow).
+    # These four have no line in it because the official client's string
+    # table has no format string for them -- measured by grepping
+    # /mnt/projects/EverQuestP1999/eqstr_us.txt, not assumed. Same shape as
+    # ItemInstance::currentSlot's row: the oracle does not show it.
     ("SpellData", "player_tag"):
-        ("boarded", "B298: spell record field; lands with spell descriptions"),
+        ("boarded", "B298 (spell half CLOSED by T425): spells_us.txt internal tag ('PLAYER_1'); no eqstr format string"),
     ("SpellData", "resist_diff"):
-        ("boarded", "B298: spell record field; lands with spell descriptions"),
-    ("SpellData", "spell_fades"):
-        ("boarded", "B298: spell record field; lands with spell descriptions"),
+        ("boarded", "B298 (spell half CLOSED by T425): eqstr has NO spell-resist line -- every 'Resist' hit is a "
+                   "combat message, an AA name, or 9044 the ITEM stun-resist stat"),
     ("SpellData", "teleport_zone"):
-        ("boarded", "B298: spell record field; lands with spell descriptions"),
+        ("boarded", "B298 (spell half CLOSED by T425): eqstr has no Destination/Location format string"),
     ("SpellData", "zone_type"):
-        ("boarded", "B298: spell record field; lands with spell descriptions"),
+        ("boarded", "B298 (spell half CLOSED by T425): eqstr has no Indoor/Outdoor format string"),
+    # The other SEVEN rows of B298's spell census. They surfaced as NEW the
+    # moment tests/test_spell_display.cpp WROTE them to assert they stay
+    # hidden -- the same shape T421 hit with the seven `heroic*`, and the
+    # checker doing its job. Each has no eqstr format string either
+    # (Indoor/Outdoor, environment, time of day, AoE duration, knockback,
+    # med-while-active and dispellability are all absent from the table).
+    ("SpellData", "allow_rest"):
+        ("boarded", "B298 (spell half CLOSED by T425): no eqstr line -- the oracle never prints med-while-active"),
+    ("SpellData", "aoe_duration"):
+        ("boarded", "B298 (spell half CLOSED by T425): no eqstr line -- the oracle never prints an AoE duration"),
+    ("SpellData", "environment_type"):
+        ("boarded", "B298 (spell half CLOSED by T425): no eqstr line -- no environment format string exists"),
+    ("SpellData", "is_dispellable"):
+        ("boarded", "B298 (spell half CLOSED by T425): no eqstr line -- no dispel format string exists"),
+    ("SpellData", "no_partial_resist"):
+        ("boarded", "B298 (spell half CLOSED by T425): no eqstr line -- the table has no spell-resist line at all"),
+    ("SpellData", "push_up"):
+        ("boarded", "B298 (spell half CLOSED by T425): no eqstr line -- the oracle never prints knockback"),
+    ("SpellData", "time_of_day"):
+        ("boarded", "B298 (spell half CLOSED by T425): no eqstr line -- no time-of-day format string exists"),
     ("SpellEffectSlot", "base2_value"):
-        ("boarded", "B298: spell record field; lands with spell descriptions"),
+        ("boarded", "B298: spell record field; the oracle prints no per-effect "
+                    "numbers at all in the display window"),
     ("SkillData", "animation_code"):
         ("boarded", "B298: skill record field; lands with skill gating"),
     ("SkillData", "usable_while_sitting"):

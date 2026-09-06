@@ -102,6 +102,18 @@ const std::string kGolden = kRoot + "/tests/goldens/frame_render_order_g05.txt";
 //     byte-identical; nothing was reordered (verified by diffing the composed
 //     list against the pre-edit golden -- the only hunks are the two
 //     insertions).
+//   * T425 (board B298, spell half): the spell display window -- which is
+//     the SAME window, because the oracle has no second one (there is no
+//     EQUI_SpellDisplay.xml in uifiles/default at all). So NO draw was added
+//     and NO input entry point was added; the only change is entry 257, the
+//     last argument line of the existing `staticUIInput_->processInput(...)`
+//     call, which gained `ctx_.eventReceiver->isKeyDown(irr::KEY_SHIFT)`.
+//     SHIFT had to be an argument to THAT call rather than its own entry
+//     point (the T415/T421 shape) because it modifies two clicks the same
+//     call already handles -- a gem click casts and a spellbook click
+//     memorises -- so a separate later pass would fire after they had
+//     already acted. The count is UNCHANGED at 314: one entry's TEXT
+//     changed and nothing was added, removed or reordered.
 //   * MERGE (T423 + T421, orchestrator): both learnings composed -- T423's
 //     entry 3 plus T421's four insertions, 309 -> 314; the golden was rebuilt
 //     from the branch list with T423's statement re-inserted at index 3.
