@@ -494,6 +494,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_entity_texture_upload_skip)
 ENDIF()
 
+# T412 Leg C (B294): the deleted forcePvsUpdate_ flag and the trigger that
+# replaced it. Drives calculateRegions()/computeVisibility() through
+# SimulationWorker::computeOnce() -- no Irrlicht device, no thread, no assets --
+# plus a source guard (WILLEQ_REPO_ROOT is defined globally in tests/CMakeLists.txt).
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_pvs_render_distance_trigger
+        test_pvs_render_distance_trigger.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_pvs_render_distance_trigger PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_pvs_render_distance_trigger GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_pvs_render_distance_trigger)
+ENDIF()
+
 # T367 (B080): zone/object lights whose influence sphere contains the camera
 # must survive PVS and frustum culling. Drives computeLightVisibility,
 # computeObjectLightVisibility and computeLightSelection through

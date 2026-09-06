@@ -502,8 +502,15 @@ public:
         // AnimatedTreeManager — it only fed the CPU-instancing distance
         // culling (dead on GLES2; that code path was reachable only via
         // the removed EDT_BURNINGSVIDEO branch).
-        // Force visibility update on next frame
-        forcePvsUpdate_ = true;
+        // T412 (board B294): no flag is set here. renderDistance_ is republished
+        // to SimulationWorker on EVERY frame (SimBridgeComponent::
+        // buildSimulationInput sets input.renderDistance = ctx_.renderDistance),
+        // and computeVisibility()/calculateRegions() recompute the whole visible
+        // set from it unconditionally -- there is no movement threshold and no
+        // cached camera position left to invalidate. The old forcePvsUpdate_
+        // reset the render thread's static BSP-lookup cache in
+        // updatePvsVisibility(), which 6914d99b deleted when PVS moved to the
+        // worker; the flag has been inert ever since.
     }
     float getRenderDistance() const { return renderDistance_; }
 
@@ -1063,7 +1070,6 @@ private:
     // fogEnd = renderDistance_, fogStart = renderDistance_ - fogThickness_
     float renderDistance_ = 300.0f;    // Effective render limit (sphere around player)
     float fogThickness_ = 50.0f;       // Thickness of fog fade zone at edge
-    bool forcePvsUpdate_ = false;  // Force PVS visibility recalculation (set when render distance changes)
     // L13: these five types were nested here; they now live at namespace scope
     // (renderer_types.h; render_pass_timer.h for the timer class) so the
     // context and the component headers can name them. See those headers.

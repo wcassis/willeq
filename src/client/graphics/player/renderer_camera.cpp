@@ -454,8 +454,8 @@ void PlayerCameraComponent::setPlayerPosition(float x, float y, float z, float h
                  static_cast<int>(cameraMode_), playerInBounds, ctx_.camera != nullptr);
     }
 
-    // Force visibility recalculation on the next frame.
-    owner_.forcePvsUpdate_ = true;
+    // T412 (board B294): no flag. The next frame's SimulationWorker pass
+    // recomputes visibility from the camera position this call just set.
 }
 
 void PlayerCameraComponent::setSwimmingState(bool swimming, float swimSpeed, bool levitating) {

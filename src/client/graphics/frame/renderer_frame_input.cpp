@@ -401,8 +401,8 @@ void FrameComponent::processPlayerInput(const std::vector<RendererEvent>& action
                         }
                     }
 
-                    // Force visibility rebuild
-                    owner_.forcePvsUpdate_ = true;
+                    // T412 (board B294): no flag -- SimulationWorker rebuilds
+                    // visibility on the next frame regardless.
                 }
                 break;
 
