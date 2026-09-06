@@ -257,7 +257,13 @@ TEST(SpellSpriteRealArt, AWeakenStageRoutesTheRealSpriteIntoEveryRegion) {
 // ---------------------------------------------------------------------------
 
 TEST(SpellSpriteAtlasLayout, EveryCellIndexFitsAUint8AndTheSheet) {
-    EXPECT_LE(SpellSpriteAtlas::kFileCount, SpellSpriteAtlas::kCapacity);
+    // T420 (board B355): the sheet holds every sprite's whole animation, so
+    // the CELL count is 16x the sprite count -- but the ORDINAL a particle
+    // carries still names a sprite, which is the only reason it still fits in
+    // the uint8_t EmitterConfig::textureRegions[].
+    EXPECT_LE(SpellSpriteAtlas::kUsedCells, SpellSpriteAtlas::kCapacity);
+    EXPECT_EQ(SpellSpriteAtlas::kUsedCells,
+              SpellSpriteAtlas::kFileCount * SpellSpriteAtlas::kFramesPerSprite);
     EXPECT_LE(SpellSpriteAtlas::kBase + SpellSpriteAtlas::kFileCount, 256);
     EXPECT_GT(SpellSpriteAtlas::kBase, ParticleAtlas::TileCount);
 }
@@ -271,14 +277,84 @@ TEST(SpellSpriteAtlasLayout, TheFileTableIsSortedAndUnique) {
 }
 
 TEST(SpellSpriteAtlasLayout, CellOriginsAreOnTheCellPitch) {
-    for (int slot = 0; slot < SpellSpriteAtlas::kFileCount; ++slot) {
+    for (int cell = 0; cell < SpellSpriteAtlas::kUsedCells; ++cell) {
         int x = 0, y = 0;
-        SpellSpriteAtlas::cellOrigin(slot, x, y);
-        EXPECT_EQ(x % SpellSpriteAtlas::kCellSize, 0) << slot;
-        EXPECT_EQ(y % SpellSpriteAtlas::kCellSize, 0) << slot;
+        SpellSpriteAtlas::cellOrigin(cell, x, y);
+        EXPECT_EQ(x % SpellSpriteAtlas::kCellSize, 0) << cell;
+        EXPECT_EQ(y % SpellSpriteAtlas::kCellSize, 0) << cell;
         EXPECT_LT(x, SpellSpriteAtlas::kWidth);
         EXPECT_LT(y, SpellSpriteAtlas::kHeight);
+        // Every cell edge is also an ETC1 4x4 block edge, so the pack cannot
+        // bleed one sprite frame into the next.
+        EXPECT_EQ(x % 4, 0) << cell;
+        EXPECT_EQ(y % 4, 0) << cell;
     }
+}
+
+// ---------------------------------------------------------------------------
+// T420 (board B355) -- the animation's addressing, as pure arithmetic.
+// ---------------------------------------------------------------------------
+
+TEST(SpellSpriteAnimation, EveryFrameOfEverySpriteHasItsOwnCell) {
+    std::vector<bool> seen(SpellSpriteAtlas::kCapacity, false);
+    for (int sprite = 0; sprite < SpellSpriteAtlas::kFileCount; ++sprite) {
+        for (int f = 0; f < SpellSpriteAtlas::kFramesPerSprite; ++f) {
+            const int cell = SpellSpriteAtlas::cellFor(sprite, f);
+            ASSERT_GE(cell, 0);
+            ASSERT_LT(cell, SpellSpriteAtlas::kUsedCells)
+                << SpellSpriteAtlas::kFiles[sprite] << " frame " << f;
+            ASSERT_FALSE(seen[cell]) << "cell " << cell << " is claimed twice";
+            seen[cell] = true;
+        }
+    }
+}
+
+TEST(SpellSpriteAnimation, ASpriteAnimationIsContiguousAndOnOneRow) {
+    // Sixteen frames, 32 columns: a sprite occupies exactly half a row, so a
+    // contact sheet reads each animation left to right without wrapping.
+    for (int sprite = 0; sprite < SpellSpriteAtlas::kFileCount; ++sprite) {
+        int x0 = 0, y0 = 0, x15 = 0, y15 = 0;
+        SpellSpriteAtlas::cellOrigin(SpellSpriteAtlas::cellFor(sprite, 0), x0, y0);
+        SpellSpriteAtlas::cellOrigin(
+            SpellSpriteAtlas::cellFor(sprite, SpellSpriteAtlas::kFramesPerSprite - 1),
+            x15, y15);
+        EXPECT_EQ(y0, y15) << SpellSpriteAtlas::kFiles[sprite]
+                           << " straddles a row boundary";
+        EXPECT_EQ(x15 - x0,
+                  (SpellSpriteAtlas::kFramesPerSprite - 1) * SpellSpriteAtlas::kCellSize)
+            << SpellSpriteAtlas::kFiles[sprite] << " is not contiguous";
+    }
+}
+
+TEST(SpellSpriteAnimation, TheSheetPlaysThroughExactlyOnceOverTheLifetime) {
+    // The plan's assertion, as arithmetic: birth is frame 0, half life the
+    // middle frame, the end the last frame.
+    EXPECT_EQ(SpellSpriteAtlas::frameForNormalizedAge(0.0f), 0);
+    EXPECT_EQ(SpellSpriteAtlas::frameForNormalizedAge(0.5f),
+              SpellSpriteAtlas::kFramesPerSprite / 2);
+    EXPECT_EQ(SpellSpriteAtlas::frameForNormalizedAge(0.999f),
+              SpellSpriteAtlas::kFramesPerSprite - 1);
+
+    // Every frame gets an equal, non-empty slice of the life, in order.
+    int previous = -1;
+    for (int f = 0; f < SpellSpriteAtlas::kFramesPerSprite; ++f) {
+        const float mid =
+            (static_cast<float>(f) + 0.5f) / SpellSpriteAtlas::kFramesPerSprite;
+        const int got = SpellSpriteAtlas::frameForNormalizedAge(mid);
+        EXPECT_EQ(got, f) << "normalized age " << mid;
+        EXPECT_GT(got, previous);
+        previous = got;
+    }
+}
+
+TEST(SpellSpriteAnimation, AgeOutsideTheLifetimeClampsRatherThanWraps) {
+    // Below zero holds the first frame; at or past the end holds the LAST.
+    // Wrapping would make the seven blank-frame-0 sprites blink out.
+    EXPECT_EQ(SpellSpriteAtlas::frameForNormalizedAge(-1.0f), 0);
+    EXPECT_EQ(SpellSpriteAtlas::frameForNormalizedAge(1.0f),
+              SpellSpriteAtlas::kFramesPerSprite - 1);
+    EXPECT_EQ(SpellSpriteAtlas::frameForNormalizedAge(17.5f),
+              SpellSpriteAtlas::kFramesPerSprite - 1);
 }
 
 TEST(SpellSpriteAtlasLayout, AnUnknownFileHasNoCell) {

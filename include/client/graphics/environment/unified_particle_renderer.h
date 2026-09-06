@@ -44,12 +44,15 @@ public:
     //   multiply is an exact no-op.
     // spriteTexture / spriteAlphaCompanion: T417, board B300. The SECOND
     //   particle sheet, data/textures/spell_sprite_atlas.bmp -- the official
-    //   client's own spel*.tga art, 8x8 cells of 64x64. A particle whose
-    //   textureIndex is >= SpellSpriteAtlas::kBase addresses this sheet
-    //   instead of the 4x4 procedural atlas, and is drawn in its own batch
-    //   because the sheet and its region size are per-draw state. 0 means
-    //   the sheet is unavailable, and such particles are skipped rather than
-    //   drawn with the wrong sheet's UVs.
+    //   client's own spel*.tga art, 32x32 cells of 32x32 (T420, board B355:
+    //   all sixteen animation frames of each of the 33 sprites). A particle
+    //   whose textureIndex is >= SpellSpriteAtlas::kBase addresses this sheet
+    //   instead of the 4x4 procedural atlas -- the ordinal names the SPRITE
+    //   and the CELL is derived from the particle's normalized age, so the
+    //   sprite animates -- and it is drawn in its own batch because the sheet
+    //   and its region size are per-draw state. 0 means the sheet is
+    //   unavailable, and such particles are skipped rather than drawn with
+    //   the wrong sheet's UVs.
     void render(const UnifiedParticle* particles, int count,
                 const float* viewMatrix, const float* projMatrix,
                 float fogStart, float fogEnd, const float* fogColor,

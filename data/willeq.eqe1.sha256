@@ -2,7 +2,8 @@
 # pack. Rebuilt by scripts/build_willeq_pack.sh from tools/ui_atlas_builder
 # (procedural) plus the 65 BMPs in data/textures/ -- 64 procedural plus T417's
 # spell_sprite_atlas.bmp, lifted from the official client's SpellEffects/*.tga
-# by tools/spell_sprite_atlas_builder. Pinned here so a drift in
+# by tools/spell_sprite_atlas_builder (T420: all sixteen animation frames of
+# each of its 33 sprites, 1024x1024 -- the pack grew by exactly 1 MiB). Pinned here so a drift in
 # either input, or a hand-edit of the shared pack, is a ctest FAIL
 # (PackReproducible). Update this line in the SAME commit that changes an input.
-584ba1fe001b8be9349d09e3e75fcb278b60c518c9389e9d3554522e13e6c274  willeq.eqe1
+14a6bd45c477582afd8eba3dd044519b3a66f89bbd4cc2e5df5405a39d67c34d  willeq.eqe1

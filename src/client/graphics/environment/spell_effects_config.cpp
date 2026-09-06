@@ -52,8 +52,8 @@ void SpellEffectsConfig::buildTextureNameMap() {
     // sprite art now ships as a second particle sheet
     // (`data/textures/spell_sprite_atlas.bmp`, built by
     // `tools/spell_sprite_atlas_builder` from `SpellEffects/spel*.tga`), and
-    // `getTextureIndex()` below resolves any GEN name straight to its cell
-    // through the same 0-based rule the reader uses. No hand-written name
+    // `getTextureIndex()` below resolves any GEN name straight to its sprite
+    // ordinal on that sheet through the same 0-based rule the reader uses. No hand-written name
     // table can drift from the sheet, because there is no name table: the
     // rule is `effectNameToTexture()` and the layout is
     // `spell_sprite_atlas.h`, which the builder includes too.
@@ -78,8 +78,10 @@ uint8_t SpellEffectsConfig::getTextureIndex(const std::string& name) const {
 
     // T417 (board B300): a `spells.eff` sprite name resolves to its REAL
     // sprite. The 0-based rule is the reader's -- one implementation, so the
-    // atlas and the resolution cannot disagree -- and the cell comes from
-    // the layout header the builder also includes.
+    // atlas and the resolution cannot disagree -- and the ordinal comes from
+    // the layout header the builder also includes. T420 (B355): the ordinal
+    // names the SPRITE; the animation CELL is chosen per particle at draw
+    // time from its age, so nothing here changes when the sheet grew 16x.
     const std::string file = EQ::SpellsEffReader::effectNameToTexture(name);
     if (!file.empty()) {
         const int slot = SpellSpriteAtlas::slotForFile(file.c_str());

@@ -295,8 +295,7 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
         if (!p.isAlive()) continue;
 
         // T417 (board B300): an index at or above kBase addresses the spell
-        // sprite sheet (8x8 cells), anything below it the procedural atlas
-        // (4x4 tiles).
+        // sprite sheet, anything below it the procedural atlas (4x4 tiles).
         const bool onSpriteSheet = p.textureIndex >= SpellSpriteAtlas::kBase;
 
         // A sprite particle with no sheet loaded is SKIPPED, never drawn
@@ -306,10 +305,23 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
 
         float atlasU, atlasV;
         if (onSpriteSheet) {
-            const int slot = p.textureIndex - SpellSpriteAtlas::kBase;
-            atlasU = (slot % SpellSpriteAtlas::kColumns) *
+            // T420 (board B355): THE SPRITE ANIMATES. The ordinal names a
+            // SPRITE, not a cell -- 528 cells do not fit in the uint8_t
+            // `EmitterConfig::textureRegions[]` -- and the cell is derived
+            // here, per particle, per frame, from how far through its life
+            // the particle is. That is the whole animation: the sheets are
+            // fade-in/peak/fade-out cycles, so one playthrough per lifetime
+            // makes a particle bloom and vanish the way the official
+            // client's do. No shader change was needed; the offset was
+            // already computed on the CPU and handed over as a vertex
+            // attribute.
+            const int sprite = p.textureIndex - SpellSpriteAtlas::kBase;
+            const int frame =
+                SpellSpriteAtlas::frameForNormalizedAge(p.getNormalizedAge());
+            const int cell = SpellSpriteAtlas::cellFor(sprite, frame);
+            atlasU = (cell % SpellSpriteAtlas::kColumns) *
                      (1.0f / SpellSpriteAtlas::kColumns);
-            atlasV = (slot / SpellSpriteAtlas::kColumns) *
+            atlasV = (cell / SpellSpriteAtlas::kColumns) *
                      (1.0f / SpellSpriteAtlas::kRows);
         } else {
             const int col = p.textureIndex % 4;

@@ -218,13 +218,25 @@ the BMPs are procedural (`generate_textures`); `spell_sprite_atlas.bmp` is
 by `tools/spell_sprite_atlas_builder`, and `build_textures.sh` runs both tools
 into the same directory. So a `data/textures/` change may need either tool,
 and the pin file covers the union. Its layout —
-which sprite occupies which of the 8x8 cells — lives in ONE place,
+which sprite's which animation frame occupies which of the 32x32 cells — lives
+in ONE place,
 `include/client/graphics/environment/spell_sprite_atlas.h`, which the builder
 and `SpellEffectsConfig` both include, so the sheet and the client's
 addressing of it cannot drift. A particle's `textureIndex` below
 `SpellSpriteAtlas::kBase` (64) is a procedural atlas tile; at or above it, a
-sprite cell. **Those sheets animate** (sixteen distinct frames each) and the
-atlas ships one still frame of each — board **B355**. The pack lives outside the repo and is
+**sprite ordinal, not a cell** — because `EmitterConfig::textureRegions[]` is a
+`uint8_t[4]` and 528 cells do not fit in one. **Those sheets animate**, and
+since T420 (board B355 closed) all sixteen frames of all 33 sprites ship
+(1024x1024, 32x32 cells, 528 used): the CELL is derived per particle per frame
+in `UnifiedParticleRenderer::render()` from
+`SpellSpriteAtlas::frameForNormalizedAge(p.getNormalizedAge())`, so the sheet
+plays through exactly once over a particle's lifetime — frame 0 at birth, the
+last frame as it dies. These sheets are fade-in/peak/fade-out cycles, so that
+mapping is the animation; a fixed cells-per-second clock would strand a
+short-lived particle in the faint fade-in frames. No shader change was needed
+— the atlas offset was already a CPU-computed vertex attribute. The playback
+RATE is therefore `16 / lifetime`, set by `config/spell_effects.json`, which is
+board B226/B356's business. The pack lives outside the repo and is
 read live by every worktree; only `build_willeq_pack.sh` may install it (it
 writes a temp file in the destination directory and `mv`s it into place).
 

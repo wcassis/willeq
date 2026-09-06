@@ -4283,6 +4283,12 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   still what ships. The live A/B against T389's oracle videos was T417's
   Leg C and did NOT run: T418 held the eqemu lock for the whole unit. That
   owed match is **B356**, and it is the next thing this entry needs.
+  **ANNOTATED T420 (this commit)**: T420 did not touch `styles.impact` either,
+  but it gave those lifetimes a SECOND consequence. The sprite sheets now
+  animate at `16 / lifetime` cells per second, so the 0.4-0.8 s lifetimes are
+  simultaneously too small, too short AND -- against T420's oracle bound of
+  below ~3 cells/s -- roughly ten times too fast. One knob, three symptoms;
+  retune all three in the one pass. Boarded as **B370**.
 
 - **B227** (B) the projectile question (does the official client draw a Frost
   Bolt travelling between caster and target, and over how many frames) is
@@ -4998,25 +5004,68 @@ client uses every field.
   What this did NOT change is the burst's SIZE and LIFETIME -- that is B226,
   and its live A/B is **B356**. Prov: T417 Review.
 
-- **B355** (B) `tools/spell_sprite_atlas_builder.cpp` -- **the spell sprite
-  sheets ANIMATE, and fable draws one frame of each.** MEASURED T417: every
-  one of the 67 `SpellEffects/spel*.tga` is a 4x4 sheet of between 5 and 16
-  DISTINCT frames (T409's "one repeated frame" is refuted, and the record is
-  corrected under the struck B300). `spelg1` is a sword rotating through
-  sixteen headings; `speln1` is a mottled disc whose noise churns; the small
-  64x64 sheets are fade-in/fade-out cycles whose first frame is empty. The
-  shipped atlas takes the PEAK frame of each -- the fully-formed sprite --
-  which is a faithful still but is still a still. The official client plays
-  the animation, so "as close to the original as possible" (Will, 2026-09-06)
-  is not yet fully served. Closes when a particle can advance through its
-  sheet's sixteen frames. **This is not a small change and should not be done
-  casually**: the sheet would grow 16x (33 sprites x 16 frames x 64x64 is
-  ~1536x1536, against today's 512x512 and +349,664 pack bytes), or the atlas
-  would have to page, and `UnifiedParticle` has no per-particle animation
-  clock -- `textureIndex` is a single flat ordinal it never changes. A
-  cheaper first step worth measuring: whether a frame chosen per PARTICLE
-  (spreading the sixteen across a burst, no per-particle clock needed) reads
-  as animation at burst sizes. Prov: T417 Review.
+- ~~**B355** (B) `tools/spell_sprite_atlas_builder.cpp` -- **the spell sprite
+  sheets ANIMATE, and fable draws one frame of each.**~~ **STRUCK T420
+  (this commit, base `ee1743a1`).** All sixteen frames of all 33 sprites now
+  ship and a particle walks them over its own lifetime.
+  * **Layout.** 512x512 / 64 px cells / 33 cells -> **1024x1024 / 32 px cells /
+    32x32 grid, 528 of 1024 used**, cell = `sprite * 16 + frame`, so a sprite
+    occupies exactly half a row and reads left to right in a contact sheet
+    (`review/T420/sheets/`). The cell SHRANK because 33 x 16 at 64 px needs
+    2048x2048 -- 5.6 MB of ETC1 pair on every zone's mapped budget and on a
+    512 MB Orange Pi -- against 1.4 MB at 32 px, and a spell point sprite is
+    clamped to 100 screen px and measures single digits to ~30 px in
+    practice, so 32 px is still oversampled. 64 px frames are reduced 2:1 by
+    an ALPHA-WEIGHTED integer box average (an unweighted one fringes every
+    edge, because a transparent texel's RGB in these files is arbitrary and
+    the additive blend samples RGB directly); 16 px frames are magnified 2x
+    nearest; 32 px frames are copied.
+  * **NO SHADER RESTRUCTURE WAS NEEDED and the plan's STOP did not fire.**
+    The atlas offset was already computed on the CPU per particle per frame
+    in `UnifiedParticleRenderer::render()`'s binning loop and handed to the
+    vertex shader as an attribute. The flat ordinal a particle carries still
+    names a **SPRITE**, never a cell -- `EmitterConfig::textureRegions[]` is a
+    `uint8_t[4]` and 528 does not fit -- and the CELL is derived at draw time
+    from `SpellSpriteAtlas::frameForNormalizedAge(p.getNormalizedAge())`.
+    `SpellEffectsConfig::getTextureIndex()` did not change.
+  * **The rule is ONE PLAYTHROUGH PER PARTICLE LIFETIME** (frame 0 at birth,
+    frame 15 as it dies, clamped rather than wrapped). T420 MEASURED the
+    oracle (`review/T420/oracle_frame_rate/`) and **refuted an effect-wide
+    clock**: one render of Whirling Wind holds six sprites on one animation
+    phase and eight on another simultaneously. Per-particle playback is what
+    survived. The RATE could not be pinned -- the T389 capture holds only ~5
+    new renders/s during Whirling Wind and ~1.2/s during Weaken, so Nyquist
+    stops at 2.5 cells/s -- but the defensible bound is **below ~3 cells/s**,
+    consistent with one 16-cell playthrough over the ~6 s effect. See
+    **B370**: fable's 0.4-0.8 s particle lifetimes make that 20-40 cells/s,
+    an order of magnitude fast, and the fix is a lifetime, which is B226/B356's.
+  * **Two record corrections.** (a) T409's "one repeated frame" stays
+    refuted. A sha1 census of all 16 frames of all 33 files gives **8 to 16
+    BYTE-distinct frames** each, with exactly one file (`spelh1`) whose frames
+    8..15 are byte-identical to 0..7. But an RMS distance matrix
+    (`review/T420/oracle_frame_rate/sheet_cell_duplicate_matrix.txt`) shows
+    `speln1`, `spela2` and `spelg1` -- byte-distinct at 16, 16 and 10 -- have
+    frame f and frame f+8 within **0.0-0.3 of 255**, i.e. VISUALLY the same.
+    So several sheets are effectively **8 phases played twice**, and the
+    shipped 16 cells reproduce that faithfully rather than asserting 16
+    different pictures. Both measurements are in the record because each
+    answers a different question. (b) **These are NOT uniformly fade-in cycles**:
+    six files have a completely blank frame 0 (`spelb3`, `spelb4`, `spelc3`,
+    `spelc4`, `speld4`, `spely3`; `spely4` is a seventh at 256/11,418), FIVE
+    PEAK at frame 0 and decay (`spela2`, `spelb2`, `spelj2`, `spelu1`,
+    `spely2`), and the rest ramp to a peak in the middle. Do not re-write the
+    justification as "they are fade cycles".
+  * Pack **5,881,918 -> 6,930,494 B (+1,048,576, exactly 1 MiB)**, entry count
+    unchanged at 128, sha `584ba1fe...` -> `14a6bd45...`; BMP 1,048,698 ->
+    4,194,426 B. `eqe1MappedBytes` **+1,048,576 in each of the three gate
+    zones, the ONLY visual-gate miss -- every image golden matched.**
+    **Bless owed, see B371.** Pinned by `SpellSpriteAtlasFile.*` (8, incl.
+    `EveryCellEqualsItsSourceFrame` over all 528 cells and
+    `TheSixteenFramesOfASpriteAreNotAllTheSame`), `SpellSpriteSheetDrawTest.*`
+    (9 pixel cases through a real headless GLES2 point sprite, incl.
+    `AParticleWalksItsSheetFromBirthToDeath`) and `SpellSpriteAnimation.*` +
+    `SpellSpriteAtlasLayout.*`. **14 red before, all green after.**
+    Prov: T420 Review.
 
 - **B356** (B) `config/spell_effects.json` `styles.impact` -- **T417's Leg C
   did not run: the burst size/lifetime A/B against the oracle is still
@@ -5031,7 +5080,11 @@ client uses every field.
   particle looks like**, so a capture pair taken now would differ from
   T389's in two ways at once and prove nothing about size -- take the A/B
   first, then the pair. Closes with the measured parameter table and a live
-  capture. Prov: T417 Review; B226.
+  capture. **ANNOTATED T420 (this commit)**: T420 changed what each particle
+  looks like AGAIN -- it now ANIMATES -- so the "two things at once" warning
+  above still stands and the A/B is still owed. Add the animation RATE to the
+  parameter table when it is taken: it is the same lifetime knob (**B370**).
+  Prov: T417 Review; B226.
 
 - ~~**B357** (P) `tests/goldens/manifest.json` memory-coverage
   `eqe1MappedBytes` -- **a bless is owed for T417's pack growth, and the
@@ -5642,3 +5695,29 @@ client uses every field.
   OPEN and still called B335, so a bare "B335" reference is ambiguous and only
   file position tells them apart. Closes when the duplicate is renumbered (with
   every reference updated) or the id convention gains a check. Found by T419.
+
+- **B370** (B) `config/spell_effects.json` particle lifetimes vs the sprite
+  animation rate -- **fable now animates the sprite sheets, but roughly an
+  order of magnitude too fast.** T420 tied one 16-frame playthrough to a
+  particle's lifetime, so the playback rate is `16 / lifetime`. `styles.impact`
+  ships 0.4-0.8 s lifetimes, i.e. **20-40 cells/s**, against the oracle bound
+  T420 could defend of **below ~3 cells/s** (consistent with one playthrough
+  over Whirling Wind's ~6 s effect; the T389 capture's own ~5 renders/s stops
+  a tighter measurement -- see `review/T420/oracle_frame_rate/`). The knob is
+  the lifetime, not a new constant, and it is the SAME knob **B226**/**B356**
+  hold for the burst's size and duration -- so retune it there, in one pass,
+  rather than adding a second rate. Closes when the lifetimes are set against
+  a measured oracle rate. Prov: T420 Review.
+
+- **B371** (P) `tests/goldens/manifest.json` memory-coverage
+  `eqe1MappedBytes` -- **a bless is owed for T420's pack growth, and the
+  visual gate is RED on `task/T420-sprite-animation` until it is given.**
+  T420 grew `spell_sprite_atlas` and its `_alpha` companion from 512x512 to
+  1024x1024 (all sixteen animation frames of 33 sprites), so the pack went
+  5,881,918 -> 6,930,494 B (+1,048,576, entry count unchanged at 128, sha
+  `584ba1fe...` -> `14a6bd45...`) and each of the three gate zones' mapped
+  bytes rose by exactly 1,048,576: qeynos2 123,015,486 -> 124,064,062,
+  gfaydark 121,681,578 -> 122,730,154, befallen 116,166,074 -> 117,214,650.
+  **Every image golden MATCHED** and no other assertion moved -- the three
+  memory numbers are the whole failure. An executor may never self-bless;
+  Will blesses in chat. Prov: T420 Review.

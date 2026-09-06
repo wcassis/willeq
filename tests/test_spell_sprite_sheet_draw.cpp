@@ -1,5 +1,6 @@
-// T417 (board B300): the SECOND particle sheet reaches the point sprite, and
-// a particle's cell index selects the right cell on it.
+// T417 (board B300) / T420 (board B355): the SECOND particle sheet reaches the
+// point sprite, a particle's ordinal selects the right SPRITE on it, and the
+// particle's AGE selects the right animation FRAME within that sprite.
 //
 // The defect this guards. `UnifiedParticleRenderer` had one texture, one
 // `uAtlasRegionSize` and a hard-coded 4x4 grid (`index % 4`, `* 0.25f`). The
@@ -12,13 +13,19 @@
 //   (c) it draws the right size at the wrong offset, i.e. a DIFFERENT
 //       sprite -- a skull where a star belongs, which looks deliberate.
 //
-// Method, and why it is decisive. A synthetic 512x512 sheet is painted so
-// every 64x64 cell is a UNIQUE solid colour derived from its index. A single
-// particle is drawn with `textureIndex = kBase + slot`, white, alpha blend,
-// over a magenta clear, and the centre pixel is read back. The colour read
-// back names the cell that was actually sampled, so a wrong offset is not
-// merely a failure -- the failure message says which cell was drawn instead.
-// A uniform cell colour also makes the result independent of filtering.
+// T420 adds a fourth: (d) the sheet grew to 32x32 cells of 32x32 holding all
+// sixteen frames of each sprite, and the particle draws the same frame for its
+// whole life -- an animation that does not animate, which no still capture
+// distinguishes from T417's behaviour.
+//
+// Method, and why it is decisive. A synthetic 1024x1024 sheet is painted so
+// every 32x32 cell is a UNIQUE solid colour derived from its index. A single
+// particle is drawn with `textureIndex = kBase + sprite` at a chosen
+// normalized age, white, alpha blend, over a magenta clear, and the centre
+// pixel is read back. The colour read back names the cell that was actually
+// sampled, so a wrong offset is not merely a failure -- the failure message
+// says which cell was drawn instead. A uniform cell colour also makes the
+// result independent of filtering.
 //
 // Frost Bolt (54) is the worked case: record 23's Target stage resolves to
 // speld2.tga and spelu2.tga (T389, oracle-measured), and those two cells must
@@ -43,12 +50,14 @@ using namespace EQT::Graphics::Environment;
 
 namespace {
 
-// A cell's identifying colour. Spread over the byte range so neighbouring
-// cells are far apart and a one-cell offset cannot read as a rounding error.
-void cellColour(int slot, uint8_t& r, uint8_t& g, uint8_t& b) {
-    r = static_cast<uint8_t>(20 + (slot % 8) * 30);
-    g = static_cast<uint8_t>(20 + (slot / 8) * 30);
-    b = static_cast<uint8_t>(255 - slot * 3);
+// A cell's identifying colour. 1024 cells do not fit in one byte channel, so
+// the index is split across red (column) and green (row) on an 8-level pitch
+// -- far enough apart that a one-cell offset cannot read as a rounding error,
+// and unique for every one of the 1024 cells.
+void cellColour(int cell, uint8_t& r, uint8_t& g, uint8_t& b) {
+    r = static_cast<uint8_t>(4 + (cell % SpellSpriteAtlas::kColumns) * 8);
+    g = static_cast<uint8_t>(4 + (cell / SpellSpriteAtlas::kColumns) * 8);
+    b = 128;
 }
 
 int slotOf(const char* file) { return SpellSpriteAtlas::slotForFile(file); }
@@ -60,6 +69,13 @@ protected:
     irr::IrrlichtDevice* device_ = nullptr;
     irr::video::IVideoDriver* driver_ = nullptr;
     irr::video::ITexture* sheet_ = nullptr;
+
+    // Which frame the renderer must pick for a given normalized age, derived
+    // here from the layout header rather than copied, so a change to the
+    // frame count cannot leave this test asserting stale numbers.
+    static int frameAt(float normalizedAge) {
+        return SpellSpriteAtlas::frameForNormalizedAge(normalizedAge);
+    }
 
     static constexpr irr::u32 kW = 256;
     static constexpr irr::u32 kH = 256;
@@ -86,7 +102,7 @@ protected:
         }
     }
 
-    // 512x512, one flat colour per 64x64 cell, fully opaque.
+    // 1024x1024, one flat colour per 32x32 cell, fully opaque.
     irr::video::ITexture* makeSheet() {
         irr::video::IImage* img = driver_->createImage(
             irr::video::ECF_A8R8G8B8,
@@ -126,10 +142,16 @@ protected:
         return c;
     }
 
-    // Draw ONE particle at the given flat texture index and read the centre.
-    // `atlasTexture` is deliberately a different texture (or 0) so that a
-    // sprite particle drawn from the wrong sheet cannot accidentally pass.
-    irr::video::SColor drawOne(uint16_t textureIndex, GLuint atlasTexture = 0) {
+    // Draw ONE particle at the given flat texture index and normalized age,
+    // and read the centre. `atlasTexture` is deliberately a different texture
+    // (or 0) so that a sprite particle drawn from the wrong sheet cannot
+    // accidentally pass.
+    //
+    // The age is expressed as a fraction of a fixed one-second lifetime, so
+    // the caller says "a tenth of the way through its life" and the renderer's
+    // own `getNormalizedAge()` is exercised rather than bypassed.
+    irr::video::SColor drawOne(uint16_t textureIndex, float normalizedAge = 0.0f,
+                               GLuint atlasTexture = 0) {
         UnifiedParticleRenderer renderer;
         if (!renderer.init()) return irr::video::SColor(0, 0, 0, 0);
 
@@ -138,6 +160,8 @@ protected:
         p.color = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
         p.textureIndex = textureIndex;
         p.size = 4.0f;
+        p.maxLifetime = 1.0f;
+        p.age = normalizedAge;
         p.setAlive(true);
         p.setBlendMode(UnifiedBlendMode::ALPHA);
 
@@ -155,13 +179,13 @@ protected:
     // Which cell does this colour name? -1 if none matches. Turns a wrong-UV
     // failure into a statement about which sprite was drawn.
     static int identifyCell(const irr::video::SColor& c) {
-        for (int slot = 0; slot < SpellSpriteAtlas::kCapacity; ++slot) {
+        for (int cell = 0; cell < SpellSpriteAtlas::kCapacity; ++cell) {
             uint8_t r = 0, g = 0, b = 0;
-            cellColour(slot, r, g, b);
-            if (std::abs(static_cast<int>(c.getRed()) - r) <= 6 &&
-                std::abs(static_cast<int>(c.getGreen()) - g) <= 6 &&
-                std::abs(static_cast<int>(c.getBlue()) - b) <= 6) {
-                return slot;
+            cellColour(cell, r, g, b);
+            if (std::abs(static_cast<int>(c.getRed()) - r) <= 3 &&
+                std::abs(static_cast<int>(c.getGreen()) - g) <= 3 &&
+                std::abs(static_cast<int>(c.getBlue()) - b) <= 3) {
+                return cell;
             }
         }
         return -1;
@@ -173,28 +197,30 @@ protected:
 // ---------------------------------------------------------------------------
 
 TEST_F(SpellSpriteSheetDrawTest, FrostBoltImpactSamplesTheSpelD2Cell) {
-    const int slot = slotOf("speld2.tga");
-    ASSERT_GE(slot, 0);
+    const int sprite = slotOf("speld2.tga");
+    ASSERT_GE(sprite, 0);
+    const int want = SpellSpriteAtlas::cellFor(sprite, 0);
 
     const irr::video::SColor c =
-        drawOne(static_cast<uint16_t>(SpellSpriteAtlas::kBase + slot));
+        drawOne(static_cast<uint16_t>(SpellSpriteAtlas::kBase + sprite));
     const int drawn = identifyCell(c);
 
-    EXPECT_EQ(drawn, slot)
-        << "GEND10_SPRITE -> speld2.tga is cell " << slot << ", but the point "
-        << "sprite sampled cell " << drawn << " (read back " << c.getRed() << ","
-        << c.getGreen() << "," << c.getBlue()
+    EXPECT_EQ(drawn, want)
+        << "GEND10_SPRITE -> speld2.tga is sprite " << sprite << ", whose frame "
+        << "0 is cell " << want << ", but the point sprite sampled cell " << drawn
+        << " (read back " << c.getRed() << "," << c.getGreen() << ","
+        << c.getBlue()
         << "; a magenta 255,0,255 means the sprite batch did not draw at all)";
 }
 
 TEST_F(SpellSpriteSheetDrawTest, FrostBoltImpactSamplesTheSpelU2Cell) {
-    const int slot = slotOf("spelu2.tga");
-    ASSERT_GE(slot, 0);
+    const int sprite = slotOf("spelu2.tga");
+    ASSERT_GE(sprite, 0);
 
     const irr::video::SColor c =
-        drawOne(static_cast<uint16_t>(SpellSpriteAtlas::kBase + slot));
-    EXPECT_EQ(identifyCell(c), slot)
-        << "GENU10_SPRITE -> spelu2.tga is cell " << slot << "; read back "
+        drawOne(static_cast<uint16_t>(SpellSpriteAtlas::kBase + sprite));
+    EXPECT_EQ(identifyCell(c), SpellSpriteAtlas::cellFor(sprite, 0))
+        << "GENU10_SPRITE -> spelu2.tga sampled the wrong cell; read back "
         << c.getRed() << "," << c.getGreen() << "," << c.getBlue();
 }
 
@@ -209,44 +235,122 @@ TEST_F(SpellSpriteSheetDrawTest, TheTwoFrostBoltSpritesDrawDifferentPixels) {
     const irr::video::SColor b =
         drawOne(static_cast<uint16_t>(SpellSpriteAtlas::kBase + u2));
     EXPECT_NE(a.color, b.color)
-        << "both Frost Bolt sprites drew the same pixels -- the cell index is "
-           "not reaching the UV offset";
+        << "both Frost Bolt sprites drew the same pixels -- the sprite ordinal "
+           "is not reaching the UV offset";
+}
+
+// ---------------------------------------------------------------------------
+// T420 (board B355) -- THE SPRITE ANIMATES OVER THE PARTICLE'S LIFE.
+//
+// This is the unit's headline assertion, stated exactly as the plan does: a
+// particle at age 0 samples cell 0 of its sprite, at half life the middle
+// cell, and at the end the last one. Before T420 all three drew the same cell,
+// because `textureIndex` was a flat ordinal the renderer never changed.
+// ---------------------------------------------------------------------------
+
+TEST_F(SpellSpriteSheetDrawTest, AParticleWalksItsSheetFromBirthToDeath) {
+    const int sprite = slotOf("speln1.tga");  // Weaken's sprite, T389-measured
+    ASSERT_GE(sprite, 0);
+    const uint16_t index = static_cast<uint16_t>(SpellSpriteAtlas::kBase + sprite);
+
+    const int born = identifyCell(drawOne(index, 0.0f));
+    const int half = identifyCell(drawOne(index, 0.5f));
+    const int dying = identifyCell(drawOne(index, 0.999f));
+
+    EXPECT_EQ(born, SpellSpriteAtlas::cellFor(sprite, 0))
+        << "a newborn particle must sample the FIRST frame; it sampled cell "
+        << born;
+    EXPECT_EQ(half, SpellSpriteAtlas::cellFor(sprite, frameAt(0.5f)))
+        << "at half life the particle must sample the middle frame (frame "
+        << frameAt(0.5f) << "); it sampled cell " << half;
+    EXPECT_EQ(dying, SpellSpriteAtlas::cellFor(
+                         sprite, SpellSpriteAtlas::kFramesPerSprite - 1))
+        << "at the end of its life the particle must sample the LAST frame; it "
+           "sampled cell "
+        << dying;
+
+    EXPECT_NE(born, half);
+    EXPECT_NE(half, dying);
+}
+
+TEST_F(SpellSpriteSheetDrawTest, EveryFrameOfASpriteIsReachableByAge) {
+    // Sixteen distinct cells over sixteen equal slices of the life -- the
+    // failure this catches is an animation that advances but skips or repeats
+    // frames (an off-by-one in the age-to-frame map, or a rate that runs the
+    // sheet out before the particle dies).
+    const int sprite = slotOf("spelg1.tga");  // the rotating sword
+    ASSERT_GE(sprite, 0);
+    const uint16_t index = static_cast<uint16_t>(SpellSpriteAtlas::kBase + sprite);
+
+    for (int f = 0; f < SpellSpriteAtlas::kFramesPerSprite; ++f) {
+        // The middle of frame f's slice of the life.
+        const float age =
+            (static_cast<float>(f) + 0.5f) / SpellSpriteAtlas::kFramesPerSprite;
+        EXPECT_EQ(identifyCell(drawOne(index, age)),
+                  SpellSpriteAtlas::cellFor(sprite, f))
+            << "age " << age << " should show frame " << f;
+    }
+}
+
+TEST_F(SpellSpriteSheetDrawTest, AnOverrunParticleHoldsTheLastFrameRatherThanWrapping) {
+    // A particle drawn on the tick after its lifetime expires must not wrap
+    // round to frame 0 -- for the six sheets whose frame 0 is BLANK that would
+    // be a one-frame disappearance at the end of every particle's life.
+    const int sprite = slotOf("spelb3.tga");  // one of the blank-frame-0 six
+    ASSERT_GE(sprite, 0);
+    const uint16_t index = static_cast<uint16_t>(SpellSpriteAtlas::kBase + sprite);
+
+    const int last =
+        SpellSpriteAtlas::cellFor(sprite, SpellSpriteAtlas::kFramesPerSprite - 1);
+    EXPECT_EQ(identifyCell(drawOne(index, 1.0f)), last);
+    EXPECT_EQ(identifyCell(drawOne(index, 3.7f)), last)
+        << "a particle past its lifetime wrapped instead of holding";
 }
 
 // ---------------------------------------------------------------------------
 // The whole sheet, and the failure modes.
 // ---------------------------------------------------------------------------
 
-TEST_F(SpellSpriteSheetDrawTest, EveryShippedCellDrawsItsOwnPixels) {
+TEST_F(SpellSpriteSheetDrawTest, EveryShippedSpriteDrawsItsOwnPixels) {
     // The region-size failure (b) shows up here as an early cell reading a
     // neighbour's colour; the offset failure (c) as a consistent shift.
-    for (int slot = 0; slot < SpellSpriteAtlas::kFileCount; ++slot) {
-        const irr::video::SColor c =
-            drawOne(static_cast<uint16_t>(SpellSpriteAtlas::kBase + slot));
-        EXPECT_EQ(identifyCell(c), slot)
-            << "cell " << slot << " (" << SpellSpriteAtlas::kFiles[slot]
-            << ") read back " << c.getRed() << "," << c.getGreen() << ","
-            << c.getBlue();
+    // Three frames of every sprite -- first, middle and last -- covers every
+    // row of the sheet and both ends of every animation without paying for
+    // 528 separate GL draws.
+    for (int sprite = 0; sprite < SpellSpriteAtlas::kFileCount; ++sprite) {
+        const uint16_t index =
+            static_cast<uint16_t>(SpellSpriteAtlas::kBase + sprite);
+        for (float age : {0.0f, 0.5f, 0.999f}) {
+            const int want = SpellSpriteAtlas::cellFor(sprite, frameAt(age));
+            const irr::video::SColor c = drawOne(index, age);
+            EXPECT_EQ(identifyCell(c), want)
+                << "sprite " << sprite << " (" << SpellSpriteAtlas::kFiles[sprite]
+                << ") at age " << age << " read back " << c.getRed() << ","
+                << c.getGreen() << "," << c.getBlue();
+        }
     }
 }
 
 TEST_F(SpellSpriteSheetDrawTest, TheSpriteSheetIsNotSampledAtTheAtlasRegionSize) {
-    // If uAtlasRegionSize were left at 0.25 the sprite would cover a 2x2
-    // block of cells, so the last row and column would sample outside the
-    // sheet. Cell 32 is in row 4 of 8; at 0.25 its footprint would run into
-    // row 6, whose colour is different in green.
-    const int slot = SpellSpriteAtlas::kFileCount - 1;
+    // If uAtlasRegionSize were left at 0.25 the sprite would cover an 8x8
+    // block of cells rather than one. The last shipped cell is the sharpest
+    // probe: at any region size larger than 1/32 its footprint runs into the
+    // unused, transparent cells beyond it and the read-back stops naming it.
+    const int lastCell = SpellSpriteAtlas::kUsedCells - 1;
+    const int sprite = SpellSpriteAtlas::kFileCount - 1;
     const irr::video::SColor c =
-        drawOne(static_cast<uint16_t>(SpellSpriteAtlas::kBase + slot));
-    EXPECT_EQ(identifyCell(c), slot)
-        << "the last shipped cell sampled wrong -- region size is likely still "
-           "0.25 rather than 1/8";
+        drawOne(static_cast<uint16_t>(SpellSpriteAtlas::kBase + sprite), 0.999f);
+    EXPECT_EQ(identifyCell(c), lastCell)
+        << "the last shipped cell sampled wrong -- region size is likely not "
+           "1/32";
 }
 
 TEST_F(SpellSpriteSheetDrawTest, AProceduralIndexDoesNotReachTheSpriteSheet) {
     // A tile index below kBase with NO procedural atlas bound must draw
-    // nothing at all: it must not fall through onto the sprite sheet.
-    const irr::video::SColor c = drawOne(ParticleAtlas::SoftCircle, /*atlas=*/0);
+    // nothing at all: it must not fall through onto the sprite sheet. Its age
+    // must not select a sprite cell either.
+    const irr::video::SColor c =
+        drawOne(ParticleAtlas::SoftCircle, 0.5f, /*atlas=*/0);
     EXPECT_EQ(identifyCell(c), -1)
         << "a procedural tile index sampled the SPRITE sheet (cell "
         << identifyCell(c) << ")";
