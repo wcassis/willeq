@@ -239,6 +239,7 @@ public:
     float getTransitionDuration() const { return transitionDuration_; }
     float getCurrentDarkening() const { return currentDarkening_; }
     float getTargetDarkening() const { return targetDarkening_; }
+    float getDarkeningRate() const { return darkeningRate_; }
     float getLightningFlashTimer() const { return lightningFlashTimer_; }
     float getLightningBoltTimer() const { return lightningBoltTimer_; }
     float getLightningTimer() const { return lightningTimer_; }
@@ -416,6 +417,9 @@ private:
     // Storm atmosphere
     float currentDarkening_ = 0.0f;  // 0-1, current sky darkening
     float targetDarkening_ = 0.0f;   // Target darkening for current intensity
+    // T418: units per second for the move currently in flight, so every
+    // transition lasts the oracle's measured kOracleWeatherTransitionSeconds.
+    float darkeningRate_ = 0.0f;
 
     // Lightning state
     float lightningTimer_ = 0.0f;       // Time until next lightning

@@ -428,8 +428,17 @@ void IrrlichtRenderer::updateTimeOfDay(uint8_t hour, uint8_t minute) {
             if (weatherEffects_ && weatherEffects_->isEnabled()) {
                 // Blend fog color with weather fog color
                 irr::video::SColor weatherFog = weatherEffects_->getWeatherFogColor();
-                float weatherMod = weatherEffects_->getAmbientLightModifier();
-                float blendFactor = 1.0f - weatherMod;  // More blending when darker
+                // T418 (board B231): read the DARKENING term directly. This
+                // used to be `1 - getAmbientLightModifier()`, which was the
+                // same number only because the modifier was defined as
+                // `1 - currentDarkening_`. The modifier is now the MEASURED
+                // ambient curve (flat at 1.000 -- the official client does not
+                // dim the world for weather), so the old expression would have
+                // silently deleted the weather fog blend along with the
+                // darkening. The fog behaviour is unchanged, deliberately: the
+                // oracle's overcast sky/fog swap is measured but not yet
+                // matched -- board B360.
+                float blendFactor = weatherEffects_->getCurrentDarkening();
 
                 fogColor.setRed(static_cast<uint8_t>(
                     fogColor.getRed() * (1.0f - blendFactor) + weatherFog.getRed() * blendFactor));

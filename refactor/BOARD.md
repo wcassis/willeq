@@ -3697,23 +3697,49 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   host that runs this suite today has the tree. Found by T398. Prov: T398
   Review Leg A; B230.
 
-- **B231** (B) `src/client/graphics/weather_effects_controller.cpp`
-  `getAmbientLightModifier` -- **how much the OFFICIAL client darkens for
-  ACTIVE weather is unmeasured, and fable's number is invented.** Raised by
-  T396, which fixed the clear-weather rule (modifier exactly 1.0) and
-  deliberately left the active-weather curve alone, per its plan. fable uses
-  `1 - storm.maxDarkening * intensity/10` with `maxDarkening = 0.6`, so server
-  rain at intensity 9 more than halves the world's ambient (0.460) -- a number
-  nobody has compared against the oracle. It is also large enough to dominate
-  any live light measurement taken in a rainy zone, which is how it corrupted
-  T377 (see the struck B211). Needs an oracle A/B in a lock unit: same zone,
-  same spot, forced time, weather on and off, oracle frame beside fable frame,
-  T361's method. Until then no vision or ambient measurement may be taken
-  without asserting the modifier is 1.000 in the session log. Prov: T396
-  Review Leg A; B203; B211.
+- ~~**B231** (B) `src/client/graphics/weather_effects_controller.cpp`
+  `getAmbientLightModifier` -- how much the OFFICIAL client darkens for ACTIVE
+  weather is unmeasured, and fable's number is invented. Raised by T396, which
+  fixed the clear-weather rule (modifier exactly 1.0) and deliberately left the
+  active-weather curve alone, per its plan. **WILL RULED 2026-09-06:** capture
+  the official client under forced rain and mimic the curve.~~ **STRUCK T418
+  (`__T418_HASH__`).** MEASURED, and the answer is that **the official Titanium
+  client does not darken the world for weather AT ALL** -- not at intensity 2, 5
+  or 9, not in rain and not in snow. It BRIGHTENS it. qeynos2, both clients,
+  `#goto -74 428 3.751 160`, `rain_chance` zeroed, clock re-pinned before every
+  state, each state paired with its own clear reference 30 s earlier, plateaus
+  read out of a 5 fps capture, five oracle sessions (the Wine client crashed
+  three times). Geometry band `560x110+200+350`, linear light, day:
+  **rain 2 x1.2496, rain 5 x1.2552 and x1.2541 (two sessions), rain 9 x1.2549,
+  snow 5 x1.2501** -- a 0.4% spread against a 0.03% clear-reference control, so
+  **intensity does nothing and snow is rain**. Night agrees on the sign
+  (x1.006 to x1.133, never below 1.0). It is **fog, not ambient**: the same
+  frames' ratio grows monotonically with depth (R x1.42 on the nearest wall
+  strip to x2.73 on the farthest) and the sky goes blue (.163,.290,.429) to grey
+  (.285,.286,.348) -- no scalar on the scene ambient can produce that. So the
+  committed curve is the plan's stated answer for exactly this case: a lookup
+  table whose knots (rain 0/2/5/9/10, snow 0/5/10) are the measured intensities
+  and whose every value is **1.000**, in
+  `include/client/graphics/weather_ambient_oracle.h`. What IS mimicable and was
+  mimicked is the FADE: **9.0, 9.0, 9.2, 9.4, 9.6 s** over the five clean day
+  transitions, independent of intensity, against fable's 1.08 s at intensity 9;
+  `kOracleWeatherTransitionSeconds = 9.3f`, residual <=3.3% on every
+  measurement. Ten `WeatherDarkeningOracleT418Test` cases pin the table, the
+  fade and the ramp (**8 red pre-fix**), and three of T396's cases were
+  rewritten to assert the darkening TERM rather than the modifier (**2 red
+  pre-fix**). Live: fable at rain 9 by day went **x0.4203 -> x0.9969** and at
+  rain 2 **x0.9380 -> x0.9968**, inside the 0.7% session control, with **zero**
+  `weatherMod` lines left in the post-fix log. The weather FOG is deliberately
+  byte-for-byte unchanged (`currentDarkening_` still targets
+  `maxDarkening * i/10` and still drives the blend -- the blend now reads it
+  directly, because `1 - getAmbientLightModifier()` is identically zero under
+  the measured curve and would have deleted the weather fog silently).
+  Residues: the overcast sky/fog swap the oracle actually performs is **B360**;
+  the three ramp copies are **B361**; the modifier reaching the scene only on a
+  time-of-day packet is **B362**. Prov: T418 Review; `review/T418/`; B203; B211.
+
 ### Added by T397 (2026-09-05)
 
-  **WILL RULED 2026-09-06:** capture the official client under forced rain and mimic the curve. → the next lock unit (T418). Now class B.
 - ~~**B235**~~ **STRUCK (T399, 2026-09-05)** — commits `3128a1fa` (core/app, 12
   sites), `239b51c9` (config/*.json loaders, 14), `2061b4a0` (data/textures,
   8), `76c1371c` (audio + index caches, 5), `35d26d9a` (the rest, 2), tests
@@ -5338,3 +5364,77 @@ client uses every field.
   latent question (ESC on an open corpse). Closes when ESC on either
   server-owned window sends its close intent instead of hiding the panel.
   Found by T415 Leg A.
+
+## Added 2026-09-06 by T418 (the active-weather oracle)
+
+- **B360** (A) `src/client/graphics/renderer/irrlicht_renderer.cpp`
+  `IrrlichtRenderer::updateTimeOfDay` weather fog block /
+  `WeatherEffectsController::getWeatherFogColor` -- **what the official client
+  actually does for weather is swap the sky and the fog to an overcast state,
+  and fable's version of that is unmeasured.** MEASURED T418 as the thing B231
+  turned out to be: at the same spot, hour and heading, the oracle's rain frame
+  is BRIGHTER than its clear frame by a factor that grows with DEPTH -- R x1.42
+  / G x1.06 / B x1.01 on the nearest wall strip, R x2.73 / G x1.65 / B x1.25 on
+  the farthest -- and its sky goes from (.163, .290, .429), blue, to
+  (.285, .286, .348), grey. That is a fog colour and a sky swap, and it is the
+  whole of the oracle's weather lighting. fable has both mechanisms already
+  (`getWeatherFogColor()`, `getFogDensityModifier()`, `getRainFogSettings()`,
+  and `SkyRenderer`), all driven by numbers nobody has compared with the
+  oracle, and T418 deliberately left every one of them byte-for-byte alone
+  because it had no target for them: its measurement solves the AMBIENT term
+  only. Closes when the fog colour, the fog distances and the overcast sky are
+  solved against the oracle the way the ambient now is -- the rig is
+  `review/T418/scripts/` and needs no new tooling, just a fog-strength knob per
+  the `/bakedlight` pattern so one session can sweep the family. Note the depth
+  strips are the target, not the whole-frame grey: a whole-frame ratio mixes the
+  sky swap and the fog blend, and the two are separate terms. Prov: T418 Review
+  section 3; B231.
+
+- **B361** (B) `src/client/graphics/sim_weather.cpp`
+  `SimulationWorker::computeWeatherEffectsState` /
+  `src/client/graphics/weather_effects_controller.cpp`
+  `WeatherEffectsController::computeState` + `updateStormAtmosphere` --
+  **the weather ramp had THREE copies and the only one under test was one
+  production never executed.** Census over `src/ include/ tests/ tools/
+  benchmarks/ docker/`: the reached path is `renderer_sim_bridge.cpp`
+  snapshotting the controller, `SimulationWorker` advancing its OWN copy in
+  `sim_weather.cpp`, and `applyState()` writing the result back;
+  `WeatherEffectsController::computeState()` has **no** production caller (only
+  T396's test), and `WeatherEffectsController::update()` -- the sole caller of
+  `updateStormAtmosphere()` -- has **none at all**, so both its ramp and its
+  storm-atmosphere body are dead. T418 made all three call one
+  `advanceWeatherDarkening()` and pinned that by text
+  (`EveryCopyOfTheRampCallsTheOneDefinition`) plus a numeric step-for-step
+  equivalence between the worker form and the controller form, which is what
+  makes the measured 9.3 s fade actually reach the screen. **The duplication is
+  narrowed, not removed**: `computeState()` and `computeWeatherEffectsState()`
+  are still two functions that must be kept in step by hand (the lightning
+  timers and the transition progress are still copy-pasted), and
+  `update()`/`updateStormAtmosphere()`/`updateRain()`/`updateSnow()` are still
+  unreached. Closes when the dead `update()` path is deleted or wired, and the
+  worker's copy is the controller's one function rather than a parallel body.
+  Prov: T418 Review section 6; B231.
+
+- **B362** (A) `src/client/graphics/renderer/irrlicht_renderer.cpp`
+  `IrrlichtRenderer::updateTimeOfDay` -- **the scene ambient is recomputed ONLY
+  when a time-of-day packet arrives, so a weather change reaches the world's
+  lighting at an arbitrary later moment, or never.** FOUND T418 by accident and
+  it is the reason the unit's first live session measured nothing: with the
+  PRE-FIX 0.460 modifier live in the controller, a full day block of forced rain
+  at intensities 2, 5, 9 and snow produced geometry ratios of **0.998-1.014**
+  and **zero** `updateTimeOfDay: weatherMod ...` lines in the client's own log
+  (`review/T418/logs/fable_session_before.log.gz`). `updateTimeOfDay()` is the
+  only production site that calls `composeSceneAmbient()` and
+  `smgr_->setAmbientLight()`, and its callers are the OP_TimeOfDay handler and
+  zone-in -- eqemu sends that packet at zone-in and on `#set time`, not on a
+  timer. So between two time packets the weather modifier, the vision floor and
+  the user ambient multiplier are all frozen at whatever they were. The unit's
+  before/after pair had to force the recompute with a second `#set time` after
+  the trigger (`REPIN_AFTER_TRIGGER=1` in the rig) to make the modifier visible
+  at all. **This did not bite the committed fix** -- the measured modifier is a
+  constant 1.000, so a stale recompute is harmless for weather -- but it makes
+  every future weather/vision/lighting change latent, and it means B360's fog
+  work cannot be measured live without the same workaround. Closes when the
+  ambient is recomposed on the state that feeds it (a weather change, a vision
+  change, an ambient-multiplier change) rather than only on a clock packet,
+  with a test. Prov: T418 Review section 5.

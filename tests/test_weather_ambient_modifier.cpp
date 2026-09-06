@@ -50,6 +50,7 @@
 #include <sstream>
 #include <string>
 
+#include "client/graphics/weather_ambient_oracle.h"
 #include "client/graphics/weather_effects_controller.h"
 
 #ifndef WILLEQ_REPO_ROOT
@@ -88,8 +89,10 @@ std::unique_ptr<WeatherEffectsController> makeController() {
 }
 
 // Run the storm-darkening integrator the way SimulationWorker does --
-// computeState() off-thread, applyState() back on -- until it settles.
-void settle(WeatherEffectsController& c, float seconds = 4.0f, float dt = 0.05f) {
+// computeState() off-thread, applyState() back on -- until it settles. T418
+// raised the default from 4 s: the ramp is no longer a fixed 0.5 units/second
+// but the oracle's measured ~9.3 s transition, so 4 s no longer settles it.
+void settle(WeatherEffectsController& c, float seconds = 25.0f, float dt = 0.05f) {
     for (float t = 0.0f; t < seconds; t += dt) {
         c.applyState(c.computeState(dt));
     }
@@ -124,6 +127,15 @@ TEST(WeatherAmbientModifierTest, TheGarbageZoneInPacketDecodesToNoDarkening) {
 // The reproduction: where T377's 0.460 came from.
 // ---------------------------------------------------------------------------
 
+// T418 UPDATED THIS CASE. The decode and the darkening TERM are unchanged and
+// still pinned here -- 0.6 * 9/10 = 0.54 is still what qeynos2's rain sets, and
+// it still drives the weather fog blend. What changed is that the term no
+// longer reaches the scene ambient: T418 measured the official client under
+// forced rain at intensities 2, 5 and 9 and under snow, and found NO ambient
+// darkening at any of them (see tests/test_weather_darkening_oracle.cpp and
+// include/client/graphics/weather_ambient_oracle.h). So the historical 0.460
+// is recorded here as the arithmetic that PRODUCED T377's log line, and the
+// modifier the client would compute for the same packet today is 1.000.
 TEST(WeatherAmbientModifierTest, ServerRainIntensityNineReproducesT377sPointFourSixZero) {
     auto c = makeController();
     c->setWeather(0, 9);   // the literal OP_Weather payload from the session log
@@ -135,26 +147,33 @@ TEST(WeatherAmbientModifierTest, ServerRainIntensityNineReproducesT377sPointFour
 
     settle(*c);
     EXPECT_NEAR(c->getCurrentDarkening(), 0.54f, 1e-5f);
-    EXPECT_NEAR(c->getAmbientLightModifier(), 0.460f, 1e-4f)
-        << "this is the weatherMod=0.460 at fable_session_vis.log:9193 -- "
-           "server rain, not a client defect";
+    EXPECT_NEAR(1.0f - c->getCurrentDarkening(), 0.460f, 1e-4f)
+        << "this is the arithmetic behind weatherMod=0.460 at "
+           "fable_session_vis.log:9193 -- server rain, not a client defect";
+    EXPECT_FLOAT_EQ(c->getAmbientLightModifier(), 1.0f)
+        << "T418: the official client does not darken for active weather";
 }
 
-// It ramps, so a session sampled mid-transition sees a DIFFERENT number: this
-// is why one logged value cannot pin a whole measurement window.
-TEST(WeatherAmbientModifierTest, TheDarkeningRampsAtHalfAUnitPerSecond) {
+// It ramps, so a session sampled mid-transition sees a DIFFERENT darkening:
+// this is why one logged value cannot pin a whole measurement window. T418
+// replaced the fixed 0.5 units/second with the oracle's measured transition
+// TIME, so half the move happens in half of that time whatever the intensity.
+TEST(WeatherAmbientModifierTest, TheDarkeningRampsOverTheOracleTransitionTime) {
     auto c = makeController();
     c->setWeather(0, 9);
-    c->applyState(c->computeState(0.5f));
-    EXPECT_NEAR(c->getCurrentDarkening(), 0.25f, 1e-5f);
-    EXPECT_NEAR(c->getAmbientLightModifier(), 0.75f, 1e-4f);
+    const float target = c->getTargetDarkening();
+    const float half = 0.5f * EQT::Graphics::kOracleWeatherTransitionSeconds;
+    for (float t = 0.0f; t < half; t += 0.05f) {
+        c->applyState(c->computeState(0.05f));
+    }
+    EXPECT_NEAR(c->getCurrentDarkening() / target, 0.5f, 0.02f);
 }
 
 TEST(WeatherAmbientModifierTest, ClearingTheWeatherReturnsTheModifierToOne) {
     auto c = makeController();
     c->setWeather(0, 9);
     settle(*c);
-    ASSERT_NEAR(c->getAmbientLightModifier(), 0.460f, 1e-4f);
+    ASSERT_NEAR(c->getCurrentDarkening(), 0.54f, 1e-4f);
 
     c->setWeather(1, 0);   // "rain off"
     settle(*c);
@@ -169,7 +188,9 @@ TEST(WeatherAmbientModifierTest, ZoneEnterClearsStaleWeatherDarkening) {
     auto c = makeController();
     c->setWeather(0, 9);
     settle(*c);
-    ASSERT_NEAR(c->getAmbientLightModifier(), 0.460f, 1e-4f);
+    // T418: the pre-condition is that the weather STATE is live -- the ambient
+    // modifier no longer moves for it (the official client does not darken).
+    ASSERT_NEAR(c->getCurrentDarkening(), 0.54f, 1e-4f);
 
     // Zoning out of the rain and into somewhere else. Nothing here has told
     // the client it is raining in the NEW zone -- until its OP_Weather
@@ -188,9 +209,10 @@ TEST(WeatherAmbientModifierTest, ZoneLeaveClearsStaleWeatherDarkening) {
     auto c = makeController();
     c->setWeather(0, 9);
     settle(*c);
-    ASSERT_NEAR(c->getAmbientLightModifier(), 0.460f, 1e-4f);
+    ASSERT_NEAR(c->getCurrentDarkening(), 0.54f, 1e-4f);
 
     c->onZoneLeave();
+    EXPECT_FLOAT_EQ(c->getCurrentDarkening(), 0.0f);
     EXPECT_FLOAT_EQ(c->getAmbientLightModifier(), 1.0f);
 }
 

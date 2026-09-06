@@ -282,6 +282,10 @@ struct SimulationInput {
     float weatherTransitionDuration = 5.0f;
     float weatherCurrentDarkening = 0.0f;
     float weatherTargetDarkening = 0.0f;
+    // T418: units/second for the transition in flight (see
+    // weather_ambient_oracle.h). 0 means "snap", which is what a snapshot taken
+    // before any weather packet should do.
+    float weatherDarkeningRate = 0.0f;
     float weatherLightningFlashTimer = 0.0f;
     float weatherLightningBoltTimer = 0.0f;
     float weatherLightningTimer = 0.0f;

@@ -999,6 +999,7 @@ void ZoneLoadComponent::loadZoneStep12b_Simulation(ZoneLoadContext& ctx) {
             input.weatherTransitionDuration = ctx_.weatherEffects->getTransitionDuration();
             input.weatherCurrentDarkening = ctx_.weatherEffects->getCurrentDarkening();
             input.weatherTargetDarkening = ctx_.weatherEffects->getTargetDarkening();
+            input.weatherDarkeningRate = ctx_.weatherEffects->getDarkeningRate();
             input.weatherLightningFlashTimer = ctx_.weatherEffects->getLightningFlashTimer();
             input.weatherLightningBoltTimer = ctx_.weatherEffects->getLightningBoltTimer();
             input.weatherLightningTimer = ctx_.weatherEffects->getLightningTimer();

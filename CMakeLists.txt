@@ -624,6 +624,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/tree_identifier.cpp
         src/client/graphics/tree_wind_controller.cpp
         src/client/graphics/weather_system.cpp
+        src/client/graphics/weather_ambient_oracle.cpp
         src/client/graphics/weather_effects_controller.cpp
         src/client/graphics/weather_config_loader.cpp
         src/client/graphics/weather_quality_preset.cpp

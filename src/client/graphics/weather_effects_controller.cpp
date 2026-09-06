@@ -1,4 +1,5 @@
 #include "client/graphics/weather_effects_controller.h"
+#include "client/graphics/weather_ambient_oracle.h"
 #include "client/graphics/weather_config_loader.h"
 #include "client/graphics/weather_quality_preset.h"
 #include "client/graphics/sky_renderer.h"
@@ -153,6 +154,11 @@ void WeatherEffectsController::setWeather(uint8_t type, uint8_t intensity) {
         } else {
             targetDarkening_ = 0.0f;
         }
+
+        // T418: the ramp rate for THIS move, so it lasts the oracle's measured
+        // transition time however far it has to travel.
+        darkeningRate_ = std::abs(targetDarkening_ - currentDarkening_) /
+                         kOracleWeatherTransitionSeconds;
 
         // Update particle manager weather state
         if (particleManager_) {
@@ -433,16 +439,13 @@ WeatherEffectsController::WeatherEffectsState WeatherEffectsController::computeS
         state.transitionProgress = std::min(1.0f, state.transitionProgress);
     }
 
-    // Advance storm darkening
-    float darkeningSpeed = 0.5f;
-    state.currentDarkening = currentDarkening_;
-    if (state.currentDarkening < targetDarkening_) {
-        state.currentDarkening += darkeningSpeed * deltaTime;
-        state.currentDarkening = std::min(state.currentDarkening, targetDarkening_);
-    } else if (state.currentDarkening > targetDarkening_) {
-        state.currentDarkening -= darkeningSpeed * deltaTime;
-        state.currentDarkening = std::max(state.currentDarkening, targetDarkening_);
-    }
+    // Advance storm darkening. T418: the rate is the one captured when the
+    // target last changed, so the whole move takes the oracle's measured
+    // kOracleWeatherTransitionSeconds whatever its size -- the official client
+    // takes the same ~9.3 s at intensity 2, 5, 9 and in snow, because its
+    // endpoints do not depend on the intensity either.
+    state.currentDarkening = advanceWeatherDarkening(
+        currentDarkening_, targetDarkening_, darkeningRate_, deltaTime);
 
     // Advance lightning timers
     state.lightningFlashTimer = lightningFlashTimer_;
@@ -573,15 +576,9 @@ void WeatherEffectsController::updateSnow(float deltaTime) {
 }
 
 void WeatherEffectsController::updateStormAtmosphere(float deltaTime) {
-    // Smoothly transition darkening
-    float darkeningSpeed = 0.5f;  // Units per second
-    if (currentDarkening_ < targetDarkening_) {
-        currentDarkening_ += darkeningSpeed * deltaTime;
-        currentDarkening_ = std::min(currentDarkening_, targetDarkening_);
-    } else if (currentDarkening_ > targetDarkening_) {
-        currentDarkening_ -= darkeningSpeed * deltaTime;
-        currentDarkening_ = std::max(currentDarkening_, targetDarkening_);
-    }
+    // T418: the same one ramp as computeState() and SimulationWorker's copy.
+    currentDarkening_ = advanceWeatherDarkening(
+        currentDarkening_, targetDarkening_, darkeningRate_, deltaTime);
 }
 
 void WeatherEffectsController::updateLightning(float deltaTime) {
@@ -807,8 +804,15 @@ void WeatherEffectsController::renderLightningBolt() {
 }
 
 float WeatherEffectsController::getAmbientLightModifier() const {
-    // Base modifier from storm darkening
-    float modifier = 1.0f - currentDarkening_;
+    // T418 (board B231): the MEASURED curve, not `1 - currentDarkening_`.
+    // The official Titanium client does not scale the scene ambient or the sun
+    // for active weather at ANY intensity, in rain or in snow -- what it does
+    // instead is swap the sky and fog to an overcast state, which is depth
+    // dependent and therefore not an ambient term at all (board B360). See
+    // weather_ambient_oracle.h for the rig, the plateaus and the depth
+    // decomposition. `currentDarkening_` still exists and still drives the fog
+    // blend in updateTimeOfDay(), byte for byte as before.
+    float modifier = oracleWeatherAmbientModifier(currentType_, currentIntensity_);
 
     // Apply rain daylight reduction (darker during rain)
     float rainMultiplier = 1.0f;
@@ -935,6 +939,7 @@ void WeatherEffectsController::resetWeatherState() {
     targetIntensity_ = 0;
     currentDarkening_ = 0.0f;
     targetDarkening_ = 0.0f;
+    darkeningRate_ = 0.0f;
     transitionProgress_ = 1.0f;
 
     // Clear lightning
