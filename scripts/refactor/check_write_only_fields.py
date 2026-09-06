@@ -130,6 +130,198 @@ def collect_members(root):
     return members
 
 
+
+# ---------------------------------------------------------------------------
+# T414 Leg C (board B290): the triage table.
+#
+# Every write-only row the census reports must appear here with a CATEGORY and
+# a REASON.  A row that is not listed FAILS `--check` (and so the `WriteOnlyFields`
+# ctest test): a new field written and never read has to be justified or fixed
+# before it can be merged.  A row listed here that the census NO LONGER reports
+# also fails, so the table cannot rot -- when a field is wired or deleted, its
+# entry goes with it.
+#
+# Categories:
+#   wire     the struct mirrors bytes on disk or on the network; the field must
+#            exist for the layout even where this client ignores its value.
+#   boarded  a real gap with an open board entry that owns it.  The reason names
+#            the entry; do not re-board.
+#   owned    another in-flight unit owns the file; hands off.
+#   report   a diagnostic aggregate whose consumer is a report that does not
+#            currently print this member.  Boarded as a group.
+# ---------------------------------------------------------------------------
+
+EXEMPT = {
+    ("CastingStateChangedData", "castTimeRemainingMs"):
+        ("owned", "B296, T413 (slot1) owns event_bus payload fields"),
+    ("CastingStateChangedData", "castTimeTotalMs"):
+        ("owned", "B296, T413 (slot1) owns event_bus payload fields"),
+    ("CursorItemChangedData", "queueSize"):
+        ("owned", "B296, T413 (slot1) owns event_bus payload fields"),
+    ("SkillActivationFeedbackData", "cooldownMs"):
+        ("owned", "B296, T413 (slot1) owns event_bus payload fields"),
+    ("SpellMemorizingData", "progressMs"):
+        ("owned", "B296, T413 (slot1) owns event_bus payload fields"),
+    ("TradeskillContainerOpenedEvent", "containerName"):
+        ("owned", "B296, T413 (slot1) owns event_bus payload fields"),
+    ("TradeskillContainerOpenedEvent", "isWorldObject"):
+        ("owned", "B296, T413 (slot1) owns event_bus payload fields"),
+    ("TradeskillContainerOpenedEvent", "slotCount"):
+        ("owned", "B296, T413 (slot1) owns event_bus payload fields"),
+    ("TradeskillContainerClosedEvent", "wasWorldObject"):
+        ("owned", "B296, T413 (slot1) owns event_bus payload fields"),
+    ("ItemInstance", "accuracy"):
+        ("boarded", "B298: item record field; lands with item tooltips"),
+    ("ItemInstance", "currentSlot"):
+        ("boarded", "B298: item record field; lands with item tooltips"),
+    ("ItemInstance", "damageShield"):
+        ("boarded", "B298: item record field; lands with item tooltips"),
+    ("ItemInstance", "delay"):
+        ("boarded", "B298: item record field; lands with item tooltips"),
+    ("ItemInstance", "dotShield"):
+        ("boarded", "B298: item record field; lands with item tooltips"),
+    ("ItemInstance", "enduranceRegen"):
+        ("boarded", "B298: item record field; lands with item tooltips"),
+    ("ItemInstance", "lore"):
+        ("boarded", "B298: item record field; lands with item tooltips"),
+    ("ItemInstance", "maxCharges"):
+        ("boarded", "B298: item record field; lands with item tooltips"),
+    ("ItemInstance", "recLevel"):
+        ("boarded", "B298: item record field; lands with item tooltips"),
+    ("ItemInstance", "shielding"):
+        ("boarded", "B298: item record field; lands with item tooltips"),
+    ("ItemInstance", "spellShield"):
+        ("boarded", "B298: item record field; lands with item tooltips"),
+    ("ItemInstance", "strikethrough"):
+        ("boarded", "B298: item record field; lands with item tooltips"),
+    ("ItemInstance", "stunResist"):
+        ("boarded", "B298: item record field; lands with item tooltips"),
+    ("SpellData", "player_tag"):
+        ("boarded", "B298: spell record field; lands with spell descriptions"),
+    ("SpellData", "resist_diff"):
+        ("boarded", "B298: spell record field; lands with spell descriptions"),
+    ("SpellData", "spell_fades"):
+        ("boarded", "B298: spell record field; lands with spell descriptions"),
+    ("SpellData", "teleport_zone"):
+        ("boarded", "B298: spell record field; lands with spell descriptions"),
+    ("SpellData", "zone_type"):
+        ("boarded", "B298: spell record field; lands with spell descriptions"),
+    ("SpellEffectSlot", "base2_value"):
+        ("boarded", "B298: spell record field; lands with spell descriptions"),
+    ("SkillData", "animation_code"):
+        ("boarded", "B298: skill record field; lands with skill gating"),
+    ("SkillData", "usable_while_sitting"):
+        ("boarded", "B298: skill record field; lands with skill gating"),
+    ("Entity", "anon_status"):
+        ("boarded", "B298: /who anon column"),
+    ("Entity", "guildId"):
+        ("boarded", "B298: /who guild column"),
+    ("Entity", "deltaHeading"):
+        ("boarded", "B298: spawn record field, no consumer"),
+    ("RaceModelInfo", "genderVariants"):
+        ("boarded", "B298: race record field from willeq.db"),
+    ("RaceModelInfo", "neuterCode"):
+        ("boarded", "B298: race record field from willeq.db"),
+    ("GraphicsArchiveIndex", "lazyMode_"):
+        ("boarded", "B295: buildIndex() stores its lazyMode argument and never reads it"),
+    ("EQE1Header", "reserved"):
+        ("wire", "EQE1 header padding; the on-disk layout requires it"),
+    ("WldFragment37Header", "param2"):
+        ("wire", "WLD 0x37 fragment header field this client does not use"),
+    ("SkyLayer", "isCloud"):
+        ("wire", "parsed from sky.wld; kept so the parsed record matches the file"),
+    ("SkyTrack", "frameDelayMs"):
+        ("wire", "parsed from sky.wld; kept so the parsed record matches the file"),
+    ("SkyType", "typeId"):
+        ("wire", "parsed from sky.wld; kept so the parsed record matches the file"),
+    ("DoorVisual", "incline_raw"):
+        ("wire", "the server's raw OP_SpawnDoor byte kept beside the decoded value"),
+    ("DoorVisual", "initiallyOpen_raw"):
+        ("wire", "the server's raw OP_SpawnDoor byte kept beside the decoded value"),
+    ("RDPPeerContext", "selectedAudioFormat"):
+        ("wire", "FreeRDP negotiates and stores the format; the server side reads it"),
+    ("MemoryStats", "animatedMeshCacheCount"):
+        ("report", "B337: /pmem aggregates a loader fills and the report never prints"),
+    ("MemoryStats", "armorTextureCount"):
+        ("report", "B337: /pmem aggregates a loader fills and the report never prints"),
+    ("MemoryStats", "loadedModelCount"):
+        ("report", "B337: /pmem aggregates a loader fills and the report never prints"),
+    ("MemoryStats", "variantMeshCacheCount"):
+        ("report", "B337: /pmem aggregates a loader fills and the report never prints"),
+    ("MemoryStats", "meshCacheCount"):
+        ("report", "B337: /pmem aggregates a loader fills and the report never prints"),
+    ("Stats", "excludedMeshCount"):
+        ("report", "B337: TreeIdentifier counters filled and never printed"),
+    ("Stats", "leafPatternCount"):
+        ("report", "B337: TreeIdentifier counters filled and never printed"),
+    ("Stats", "treePatternCount"):
+        ("report", "B337: TreeIdentifier counters filled and never printed"),
+    ("Stats", "zoneTreeMeshCount"):
+        ("report", "B337: TreeIdentifier counters filled and never printed"),
+    ("ZoneDetailConfig", "viewDistance"):
+        ("boarded", "B336: detail_objects.json globalSettings.viewDistance is inert; DetailManager culls by viewDistanceChunks_"),
+    ("ConstrainedTextureCache", "bgThreadPool_"):
+        ("boarded", "B338: setter supplies a real pool, no async decode reads it"),
+    ("ConstrainedTextureCache", "compressedTexturesAvailable_"):
+        ("boarded", "B338: four writes probe ETC1 support, nothing consults the answer"),
+    ("WeatherEffectsController", "targetIntensity_"):
+        ("boarded", "B339: the smooth weather transition it was for does not exist"),
+    ("ZoneLifecycleComponent", "entitiesLoaded_"):
+        ("boarded", "B340: L09 deleted the zero-caller accessor and left the member"),
+    ("ZoneLifecycleComponent", "expectedEntityCount_"):
+        ("boarded", "B340: L09 deleted the zero-caller accessor and left the member"),
+    ("OverlaysComponent", "currentTargetInfo_"):
+        ("boarded", "B341: target-overlay state cached per frame and never drawn from"),
+    ("OverlaysComponent", "currentTargetLevel_"):
+        ("boarded", "B341: target-overlay state cached per frame and never drawn from"),
+    ("InventoryManager", "deleteItemCallback_"):
+        ("boarded", "B342: three registered callbacks the manager never invokes"),
+    ("InventoryManager", "equipmentChangedCallback_"):
+        ("boarded", "B342: three registered callbacks the manager never invokes"),
+    ("InventoryManager", "moveItemCallback_"):
+        ("boarded", "B342: three registered callbacks the manager never invokes"),
+    ("ParticleManager", "entityDirCallback_"):
+        ("boarded", "B342: registered callback the manager never invokes"),
+    ("CharacterModelView", "inventoryManager_"):
+        ("boarded", "B343: paperdoll holds the inventory manager and reads nothing from it"),
+    ("EQAnimatedMeshSceneNode", "sceneManager_"):
+        ("boarded", "B343: stored scene manager with no reader"),
+    ("BridgeComponent", "m_audio_config_vendor_music"):
+        ("boarded", "B344: the vendor-music config reaches no audio decision"),
+    ("PlayerComponent", "m_duel_target_id"):
+        ("boarded", "B344: /duel stores the target id; the reply path never consults it"),
+    ("SkillManager", "m_player_race"):
+        ("boarded", "B344: race stored for skill gating that does not gate on race"),
+    ("CameraController", "orbitAngleInitialized_"):
+        ("boarded", "B345: orbit-camera latch with no reader"),
+    ("ConsoleRenderer", "m_curEnd"):
+        ("boarded", "B345: headless console renderer state with no reader"),
+    ("ConsoleRenderer", "m_playerHeading"):
+        ("boarded", "B345: headless console renderer state with no reader"),
+    ("ConsoleRenderer", "m_startTime"):
+        ("boarded", "B345: headless console renderer state with no reader"),
+    ("ConflictInfo", "binding1"):
+        ("boarded", "B345: hotkey conflict report fields nothing formats"),
+    ("ConflictInfo", "binding2"):
+        ("boarded", "B345: hotkey conflict report fields nothing formats"),
+    ("EntityResult", "shouldDeactivate"):
+        ("boarded", "B346: SimulationWorker sets it and the drain ignores it"),
+    ("SimulationInput", "cameraTarget"):
+        ("boarded", "B346: filled per frame, no sim pass reads it"),
+    ("EntityVisual", "corpseYOffset"):
+        ("boarded", "B346: computed per corpse and never applied"),
+    ("ParticleEmitter", "spawnRadius_"):
+        ("boarded", "B346: emitter spawn radius set by seven callers, unused in the spawn"),
+    ("SpellEffectInstance", "spellID"):
+        ("boarded", "B346: FX instance records the spell and nothing looks it up"),
+    ("RendererEvent", "intData"):
+        ("boarded", "B346: renderer event payload with no consumer"),
+    ("SpellActionInfo", "level2"):
+        ("boarded", "B346: OP_Action field with no consumer"),
+}
+
+
+
 ASSIGN = re.compile(r"^\s*(?:\+|-|\*|/|%|\||&|\^|<<|>>)?=(?!=)")
 CTOR_INIT_PREFIX = re.compile(r"[:,]\s*$")
 
@@ -168,6 +360,10 @@ def main():
     ap.add_argument("--include-unused", action="store_true",
                     help="also list members with no occurrence at all")
     ap.add_argument("--json")
+    ap.add_argument("--check", action="store_true",
+                    help="ratchet mode: exit 1 if any write-only field is missing "
+                         "from EXEMPT, or if any EXEMPT entry is no longer "
+                         "write-only. Used by the WriteOnlyFields ctest test.")
     args = ap.parse_args()
     root = os.path.abspath(args.repo)
 
@@ -187,6 +383,32 @@ def main():
             write_only.append((tname, nm, rel, lineno, w))
         elif not r and not w:
             unused.append((tname, nm, rel, lineno))
+
+    if args.check:
+        found = {(t, n) for t, n, _r, _l, _w in write_only}
+        unlisted = sorted(found - set(EXEMPT))
+        stale = sorted(set(EXEMPT) - found)
+        for t, n in unlisted:
+            rel, ln = members[(t, n)]
+            print("NEW write-only field: %s::%s   %s:%d" % (t, n, rel, ln))
+        for t, n in stale:
+            print("STALE exemption (no longer write-only): %s::%s -- %s"
+                  % (t, n, EXEMPT[(t, n)][1]))
+        if unlisted or stale:
+            print("")
+            print("%d unlisted, %d stale." % (len(unlisted), len(stale)))
+            if unlisted:
+                print("A field written and never read is the same reachability defect "
+                      "class as an uncalled function (B290, T404's MixChannel::sampleRate)."
+                      "\nWire it, delete it, or add it to EXEMPT in this script with a "
+                      "category and a reason.")
+            if stale:
+                print("An exemption whose field is no longer write-only must be removed "
+                      "from EXEMPT -- the table is not allowed to outlive its rows.")
+            return 1
+        print("write-only census clean: %d fields, all %d classified in EXEMPT."
+              % (len(found), len(EXEMPT)))
+        return 0
 
     print("=" * 78)
     print("WRITE-ONLY FIELDS (written somewhere, read nowhere)")

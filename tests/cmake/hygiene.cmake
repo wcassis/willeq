@@ -82,3 +82,17 @@ IF(TARGET eqe1_builder AND TARGET ui_atlas_builder)
         RUN_SERIAL TRUE
         TIMEOUT 900)
 ENDIF()
+
+# T414 Leg C (2026-09-06, board B290): the write-only field census as a ratchet.
+# T404 found MixChannel::sampleRate written by every producer and read by
+# nobody, for years; T407 turned that shape into a script and left 213 of its
+# 224 rows untriaged. Every row is now classified in the script's EXEMPT table
+# (wire / boarded / owned / report, each with a reason), and --check fails on
+# two things: a write-only field that is NOT in the table, and a table entry
+# whose field is no longer write-only. The second half is what keeps the table
+# from rotting -- an exemption cannot outlive the row it excuses. Pure source
+# scan, no artefact/server/display, same "hygiene" label as its neighbours.
+ADD_TEST(NAME WriteOnlyFields
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/refactor/check_write_only_fields.py
+            --repo ${CMAKE_SOURCE_DIR} --check)
+SET_TESTS_PROPERTIES(WriteOnlyFields PROPERTIES LABELS "hygiene")
