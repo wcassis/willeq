@@ -331,6 +331,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_alpha_blend_companion)
 ENDIF()
 
+# T417 (board B300): pixel proof that the SECOND particle sheet -- the spell
+# sprite atlas -- reaches the point sprite and that a cell index selects the
+# right cell on it. Same headless-GLES2 idiom and self-skip as the two above;
+# see refactor/T417_real_spell_sprites.md.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_spell_sprite_sheet_draw
+        test_spell_sprite_sheet_draw.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_spell_sprite_sheet_draw PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_spell_sprite_sheet_draw GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_spell_sprite_sheet_draw)
+ENDIF()
+
 # T156: /useskill + the hotbar/skills-popup intent producers. Same graphics
 # gate as test_static_ui_panels above (it drives StaticUIInput), and no device
 # is created — see refactor/T156_skill_reachability.md. Deliberately a NEW

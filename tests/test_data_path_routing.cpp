@@ -63,6 +63,10 @@ const Waiver kWaivers[] = {
     // Header constants and default arguments. Every use site resolves.
     {"include/client/graphics/environment/particle_manager.h", "data/textures/particle_atlas.bmp",
      "constant; both use sites in particle_manager.cpp resolve it"},
+    {"include/client/graphics/environment/particle_manager.h",
+     "data/textures/spell_sprite_atlas.bmp",
+     "T417 constant; both use sites in particle_manager.cpp (init and "
+     "onZoneEnter re-acquisition) resolve it, exactly like its sibling above"},
     {"include/client/input/hotkey_manager.h", "config/hotkeys.json",
      "default argument / member default; HotkeyManager::loadFromFile resolves"},
     {"include/client/skill/skill_cap_table.h", "config/skill_caps.json",

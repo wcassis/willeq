@@ -22,6 +22,7 @@
 #include "client/graphics/environment/particle_types.h"
 #include "client/graphics/environment/spell_effects_config.h"
 #include "client/graphics/environment/spell_particle_types.h"
+#include "client/graphics/environment/spell_sprite_atlas.h"
 
 using namespace EQT::Graphics::Environment;
 
@@ -31,6 +32,13 @@ namespace {
 // exactly as SpellsEffReader reads them.
 const std::vector<std::string> kFrostBoltTargetStage = {
     "GEND10_SPRITE", "GENU10_SPRITE", "GENU10_SPRITE"};
+
+// T417: the flat ordinal a resolved sprite file occupies.
+uint8_t spriteIndex(const char* file) {
+    const int slot = SpellSpriteAtlas::slotForFile(file);
+    EXPECT_GE(slot, 0) << file;
+    return static_cast<uint8_t>(SpellSpriteAtlas::kBase + (slot < 0 ? 0 : slot));
+}
 
 SpellEffectDef oneEmitterDef() {
     SpellEffectDef def;
@@ -49,14 +57,27 @@ SpellEffectDef oneEmitterDef() {
 // name falls back to SoftCircle).
 // ---------------------------------------------------------------------------
 
-TEST(SpellTargetStageTextures, GenD10MapsToTheEightPointedStarTile) {
+// T417 (board B300) REPLACED the tile approximations these two cases used to
+// assert. GEND10/GENU10 are the two ORACLE-MEASURED names, and they now
+// resolve to the sprite files the oracle actually drew, not to the nearest
+// procedural tile.
+TEST(SpellTargetStageTextures, GenD10MapsToItsOwnRealSprite) {
     EXPECT_EQ(SpellEffectsConfig::instance().getTextureIndex("GEND10_SPRITE"),
-              ParticleAtlas::SpellSparkle);
+              spriteIndex("speld2.tga"));
 }
 
-TEST(SpellTargetStageTextures, GenU10MapsToTheAngularBlueTile) {
+TEST(SpellTargetStageTextures, GenU10MapsToItsOwnRealSprite) {
     EXPECT_EQ(SpellEffectsConfig::instance().getTextureIndex("GENU10_SPRITE"),
-              ParticleAtlas::IceCrystal);
+              spriteIndex("spelu2.tga"));
+}
+
+// The point of the whole unit: neither of the two measured names is a
+// procedural tile any more.
+TEST(SpellTargetStageTextures, TheTwoMeasuredNamesAreNotProceduralTiles) {
+    EXPECT_GE(SpellEffectsConfig::instance().getTextureIndex("GEND10_SPRITE"),
+              SpellSpriteAtlas::kBase);
+    EXPECT_GE(SpellEffectsConfig::instance().getTextureIndex("GENU10_SPRITE"),
+              SpellSpriteAtlas::kBase);
 }
 
 TEST(SpellTargetStageTextures, TheTwoMeasuredNamesDoNotShareATile) {
@@ -82,9 +103,9 @@ TEST(SpellTargetStageTextures, FrostBoltTargetStageFillsThreeTextureRegions) {
     ASSERT_EQ(def.emitters.size(), 1u);
     const auto& cfg = def.emitters[0].config;
     EXPECT_EQ(cfg.textureRegionCount, 3);
-    EXPECT_EQ(cfg.textureRegions[0], ParticleAtlas::SpellSparkle);
-    EXPECT_EQ(cfg.textureRegions[1], ParticleAtlas::IceCrystal);
-    EXPECT_EQ(cfg.textureRegions[2], ParticleAtlas::IceCrystal);
+    EXPECT_EQ(cfg.textureRegions[0], spriteIndex("speld2.tga"));
+    EXPECT_EQ(cfg.textureRegions[1], spriteIndex("spelu2.tga"));
+    EXPECT_EQ(cfg.textureRegions[2], spriteIndex("spelu2.tga"));
 }
 
 TEST(SpellTargetStageTextures, FrostBoltTargetStageChangesTheStyleDefault) {
@@ -98,7 +119,7 @@ TEST(SpellTargetStageTextures, EmptySlotsAreSkippedNotCounted) {
     SpellEffectDef def = oneEmitterDef();
     SpellPresets::applyStageSpriteNames(def, {"GEND10_SPRITE", "", ""}, 54);
     EXPECT_EQ(def.emitters[0].config.textureRegionCount, 1);
-    EXPECT_EQ(def.emitters[0].config.textureRegions[0], ParticleAtlas::SpellSparkle);
+    EXPECT_EQ(def.emitters[0].config.textureRegions[0], spriteIndex("speld2.tga"));
 }
 
 TEST(SpellTargetStageTextures, AnAllEmptyStageLeavesTheDefinitionUntouched) {
@@ -109,99 +130,117 @@ TEST(SpellTargetStageTextures, AnAllEmptyStageLeavesTheDefinitionUntouched) {
 }
 
 // ===========================================================================
-// T409 Leg B -- the names the corrected 0-based reader newly resolves
-// (board B162).
+// T417 -- the REAL sprites (board B300, Will's ruling 2026-09-06: "as close
+// to the original as possible").
 //
-// SpellsEffReader::effectNameToTexture() used to reject the "00"-digit form
-// outright, so the COMMONEST names in spells.eff resolved to nothing. With
-// the 0-based rule they resolve, and each one now has a real sprite whose
-// shape can be compared against this atlas's sixteen tiles -- the same
-// tile-vs-crop comparison T389 used for GEND10/GENU10, on the single frame
-// each 4x4 sheet repeats (review/T409/sprites/).
+// T389 and T409 mapped twelve spells.eff names onto the nearest of the
+// sixteen PROCEDURAL tiles and stopped, because four of the sprites are
+// figurative and no 16x16 tile stands in for them honestly. Those twelve
+// approximation rows are gone. Every GEN name that the 0-based rule resolves
+// to a shipped file now addresses that file's own cell on the spell sprite
+// sheet, and the resolution goes through the reader's ONE implementation of
+// the rule -- there is no second name table to drift.
 //
-// Only the sprites that fall UNAMBIGUOUSLY into a shape class this atlas
-// actually has are mapped. The rest deliberately keep the SoftCircle
-// fallback, and the reason is on the board (B300): several resolved sprites
-// are not abstract particles at all -- spelg1.tga is a SWORD, speli1.tga a
-// flaming SKULL, spelk2.tga a row of skulls -- and no 16x16 procedural tile
-// can stand in for them.
+// These cases are RED before the change: every name below returned a
+// ParticleAtlas tile ordinal (0..15), all of which are below
+// SpellSpriteAtlas::kBase.
 // ===========================================================================
 
-TEST(SpellSpriteTilesT409, TheGreenBurstNamesMapToTheGreenStarTile) {
-    // spelb1.tga: a green/yellow multi-point burst. StarShape is the only
-    // green pointed-star tile in the atlas.
-    EXPECT_EQ(SpellEffectsConfig::instance().getTextureIndex("GENB00_SPRITE"),
-              ParticleAtlas::StarShape);
-}
-
-TEST(SpellSpriteTilesT409, TheOrangeSunburstMapsToEmber) {
-    // spelc1.tga: an orange radiant sunburst. Ember is the only orange tile.
-    EXPECT_EQ(SpellEffectsConfig::instance().getTextureIndex("GENC00_SPRITE"),
-              ParticleAtlas::Ember);
-}
-
-TEST(SpellSpriteTilesT409, ThePointedStarsWithABrightCoreShareTheSparkleTile) {
-    // spela1.tga and spela2.tga are both pointed stars with a bright white
-    // core over a soft glow -- the same shape class as speld2.tga, which
-    // T389 measured onto SpellSparkle. spela2 is itself oracle-measured:
-    // record 35 / spell 253 Whirling Wind drew its eight-pointed stars.
-    EXPECT_EQ(SpellEffectsConfig::instance().getTextureIndex("GENA00_SPRITE"),
-              ParticleAtlas::SpellSparkle);
-    EXPECT_EQ(SpellEffectsConfig::instance().getTextureIndex("GENA10_SPRITE"),
-              ParticleAtlas::SpellSparkle);
-}
-
-TEST(SpellSpriteTilesT409, TheMottledSphereMapsToTheMottledDiscTile) {
-    // speln1.tga: the green/orange MOTTLED sphere the oracle drew for
-    // record 20 / spell 41 Weaken. SnowPatch is the atlas's only mottled
-    // disc; every other round tile is a smooth gradient.
-    EXPECT_EQ(SpellEffectsConfig::instance().getTextureIndex("GENN00_SPRITE"),
-              ParticleAtlas::SnowPatch);
-}
-
-TEST(SpellSpriteTilesT409, TheRibbonSwirlsMapToTheWispTile) {
-    // spelu1.tga (the purple/blue ribbon swirl T389 saw at Frost Bolt's
-    // caster) and spelj1.tga (a pale-blue ribbon swirl) are elongated
-    // curved strokes; SmokeWisp is the atlas's only elongated tile.
-    EXPECT_EQ(SpellEffectsConfig::instance().getTextureIndex("GENU00_SPRITE"),
-              ParticleAtlas::SmokeWisp);
-    EXPECT_EQ(SpellEffectsConfig::instance().getTextureIndex("GENJ00_SPRITE"),
-              ParticleAtlas::SmokeWisp);
-}
-
-TEST(SpellSpriteTilesT409, TheSmokeBallMapsToWispyCloud) {
-    // spelz1.tga: a white/grey swirling smoke ball.
-    EXPECT_EQ(SpellEffectsConfig::instance().getTextureIndex("GENZ00_SPRITE"),
-              ParticleAtlas::WispyCloud);
-}
-
-TEST(SpellSpriteTilesT409, TheGreenSphereMapsToTheGreenDisc) {
-    // spele1.tga: a green/teal sphere. Both spells.eff spellings of it
-    // (GENE00 and the one-off GENE01) must land on the same tile.
-    EXPECT_EQ(SpellEffectsConfig::instance().getTextureIndex("GENE00_SPRITE"),
-              ParticleAtlas::LeafShape);
-    EXPECT_EQ(SpellEffectsConfig::instance().getTextureIndex("GENE01_SPRITE"),
-              ParticleAtlas::LeafShape);
-}
-
-// The deliberate non-mappings. These names DO resolve to a real file now,
-// but the file is a model texture or a figurative sprite with no tile
-// counterpart, so they must keep the fallback rather than be given a
-// misleading shape (board B300).
-TEST(SpellSpriteTilesT409, TheFigurativeSpritesKeepTheFallback) {
-    for (const char* name : {"GENG00_SPRITE",   // spelg1.tga -- a SWORD
-                             "GENI00_SPRITE",   // speli1.tga -- a flaming SKULL
-                             "GENK10_SPRITE",   // spelk2.tga -- a row of skulls
-                             "GENH00_SPRITE"}) {  // spelh1.tga -- a lightning-wreathed sphere
-        EXPECT_EQ(SpellEffectsConfig::instance().getTextureIndex(name),
-                  ParticleAtlas::SoftCircle) << name;
+TEST(SpellSpriteRealArt, TheFigurativeSpritesNowDrawThemselves) {
+    // The four sprites B300 was opened for. Each was pinned to SoftCircle by
+    // T409's TheFigurativeSpritesKeepTheFallback, which this case replaces.
+    struct Row { const char* name; const char* file; const char* what; };
+    const Row rows[] = {
+        {"GENG00_SPRITE", "spelg1.tga", "a SWORD"},
+        {"GENI00_SPRITE", "speli1.tga", "a flaming SKULL"},
+        {"GENK10_SPRITE", "spelk2.tga", "a row of skulls"},
+        {"GENH00_SPRITE", "spelh1.tga", "a lightning-wreathed sphere"},
+    };
+    for (const auto& r : rows) {
+        EXPECT_EQ(SpellEffectsConfig::instance().getTextureIndex(r.name),
+                  spriteIndex(r.file)) << r.name << " (" << r.what << ")";
     }
 }
 
-// A stage whose three slots are the commonest name in the whole file must
-// route that one tile into all three regions -- the shape B162's census is
-// really about (GENI00 appears 32 times, GENN00 15, GENG00 12).
-TEST(SpellSpriteTilesT409, AWeakenStageRoutesTheMottledDiscIntoEveryRegion) {
+TEST(SpellSpriteRealArt, TheCommonestNameInTheFileIsTheSkullSprite) {
+    // GENI00_SPRITE occupies 32 of spells.eff's 301 populated slots -- more
+    // than any other name -- and it is the skull. That it drew a soft white
+    // dot was the whole of B300.
+    EXPECT_EQ(SpellEffectsConfig::instance().getTextureIndex("GENI00_SPRITE"),
+              spriteIndex("speli1.tga"));
+    EXPECT_GE(SpellEffectsConfig::instance().getTextureIndex("GENI00_SPRITE"),
+              SpellSpriteAtlas::kBase);
+}
+
+TEST(SpellSpriteRealArt, EveryNameT409ApproximatedNowResolvesToItsOwnFile) {
+    struct Row { const char* name; const char* file; };
+    const Row rows[] = {
+        {"GENA00_SPRITE", "spela1.tga"}, {"GENA10_SPRITE", "spela2.tga"},
+        {"GENB00_SPRITE", "spelb1.tga"}, {"GENC00_SPRITE", "spelc1.tga"},
+        {"GENE00_SPRITE", "spele1.tga"}, {"GENE01_SPRITE", "spele1.tga"},
+        {"GENJ00_SPRITE", "spelj1.tga"}, {"GENN00_SPRITE", "speln1.tga"},
+        {"GENU00_SPRITE", "spelu1.tga"}, {"GENZ00_SPRITE", "spelz1.tga"},
+    };
+    for (const auto& r : rows) {
+        EXPECT_EQ(SpellEffectsConfig::instance().getTextureIndex(r.name),
+                  spriteIndex(r.file)) << r.name;
+    }
+}
+
+TEST(SpellSpriteRealArt, DistinctFilesGetDistinctCells) {
+    // spela1 and spela2 shared SpellSparkle under T409; spelu1 and spelj1
+    // shared SmokeWisp. Distinct art must now be distinct on screen.
+    auto& cfg = SpellEffectsConfig::instance();
+    EXPECT_NE(cfg.getTextureIndex("GENA00_SPRITE"),
+              cfg.getTextureIndex("GENA10_SPRITE"));
+    EXPECT_NE(cfg.getTextureIndex("GENU00_SPRITE"),
+              cfg.getTextureIndex("GENJ00_SPRITE"));
+}
+
+TEST(SpellSpriteRealArt, TheTwoSpellingsOfSpelE1ShareOneCell) {
+    // GENE00 and the one-off GENE01 name the same file, so they must land on
+    // the same cell -- the reader ignores name[5].
+    EXPECT_EQ(SpellEffectsConfig::instance().getTextureIndex("GENE00_SPRITE"),
+              SpellEffectsConfig::instance().getTextureIndex("GENE01_SPRITE"));
+}
+
+TEST(SpellSpriteRealArt, ANameWhoseFileIsNotShippedKeepsTheProceduralFallback) {
+    // The 0-based rule resolves these two, but SpellEffects/ ships neither
+    // spela3.tga nor spela4.tga. A name that resolves to nothing on disk
+    // must degrade, not index a wrong cell.
+    EXPECT_EQ(SpellEffectsConfig::instance().getTextureIndex("GENA20_SPRITE"),
+              ParticleAtlas::SoftCircle);
+    EXPECT_EQ(SpellEffectsConfig::instance().getTextureIndex("GENA30_SPRITE"),
+              ParticleAtlas::SoftCircle);
+}
+
+TEST(SpellSpriteRealArt, TheFourNonGenNamesKeepAProceduralTile) {
+    // These four never matched the GEN rule and have no file at all, so a
+    // procedural tile chosen from what the name says is the honest answer.
+    auto& cfg = SpellEffectsConfig::instance();
+    EXPECT_EQ(cfg.getTextureIndex("I_SNOWFLAKESPRITE"), ParticleAtlas::Snowflake);
+    EXPECT_EQ(cfg.getTextureIndex("I_TFIRE_SPB"), ParticleAtlas::Ember);
+    EXPECT_EQ(cfg.getTextureIndex("I_TSMOKE_SPB"), ParticleAtlas::SmokeWisp);
+    EXPECT_EQ(cfg.getTextureIndex("GEN_Z_SPB"), ParticleAtlas::WispyCloud);
+    for (const char* n : {"I_SNOWFLAKESPRITE", "I_TFIRE_SPB", "I_TSMOKE_SPB",
+                          "GEN_Z_SPB"}) {
+        EXPECT_LT(cfg.getTextureIndex(n), SpellSpriteAtlas::kBase) << n;
+    }
+}
+
+TEST(SpellSpriteRealArt, TheProceduralShapeNamesAreUnaffected) {
+    // config/spell_effects.json addresses tiles by shape name; those rows
+    // must still resolve to the procedural atlas, below kBase.
+    auto& cfg = SpellEffectsConfig::instance();
+    EXPECT_EQ(cfg.getTextureIndex("SoftCircle"), ParticleAtlas::SoftCircle);
+    EXPECT_EQ(cfg.getTextureIndex("Ember"), ParticleAtlas::Ember);
+    EXPECT_EQ(cfg.getTextureIndex("IceCrystal"), ParticleAtlas::IceCrystal);
+    EXPECT_LT(cfg.getTextureIndex("SmokeWisp"), SpellSpriteAtlas::kBase);
+}
+
+TEST(SpellSpriteRealArt, AWeakenStageRoutesTheRealSpriteIntoEveryRegion) {
+    // Record 20 / spell 41 Weaken: all three slots GENN00_SPRITE, which the
+    // oracle drew as speln1.tga's mottled sphere.
     SpellEffectDef def = oneEmitterDef();
     SpellPresets::applyStageSpriteNames(
         def, {"GENN00_SPRITE", "GENN00_SPRITE", "GENN00_SPRITE"}, 41);
@@ -209,6 +248,41 @@ TEST(SpellSpriteTilesT409, AWeakenStageRoutesTheMottledDiscIntoEveryRegion) {
     const auto& cfg = def.emitters[0].config;
     EXPECT_EQ(cfg.textureRegionCount, 3);
     for (int i = 0; i < 3; ++i) {
-        EXPECT_EQ(cfg.textureRegions[i], ParticleAtlas::SnowPatch) << i;
+        EXPECT_EQ(cfg.textureRegions[i], spriteIndex("speln1.tga")) << i;
     }
+}
+
+// ---------------------------------------------------------------------------
+// The sheet's own layout invariants.
+// ---------------------------------------------------------------------------
+
+TEST(SpellSpriteAtlasLayout, EveryCellIndexFitsAUint8AndTheSheet) {
+    EXPECT_LE(SpellSpriteAtlas::kFileCount, SpellSpriteAtlas::kCapacity);
+    EXPECT_LE(SpellSpriteAtlas::kBase + SpellSpriteAtlas::kFileCount, 256);
+    EXPECT_GT(SpellSpriteAtlas::kBase, ParticleAtlas::TileCount);
+}
+
+TEST(SpellSpriteAtlasLayout, TheFileTableIsSortedAndUnique) {
+    for (int i = 1; i < SpellSpriteAtlas::kFileCount; ++i) {
+        EXPECT_LT(std::string(SpellSpriteAtlas::kFiles[i - 1]),
+                  std::string(SpellSpriteAtlas::kFiles[i]))
+            << "cell " << i;
+    }
+}
+
+TEST(SpellSpriteAtlasLayout, CellOriginsAreOnTheCellPitch) {
+    for (int slot = 0; slot < SpellSpriteAtlas::kFileCount; ++slot) {
+        int x = 0, y = 0;
+        SpellSpriteAtlas::cellOrigin(slot, x, y);
+        EXPECT_EQ(x % SpellSpriteAtlas::kCellSize, 0) << slot;
+        EXPECT_EQ(y % SpellSpriteAtlas::kCellSize, 0) << slot;
+        EXPECT_LT(x, SpellSpriteAtlas::kWidth);
+        EXPECT_LT(y, SpellSpriteAtlas::kHeight);
+    }
+}
+
+TEST(SpellSpriteAtlasLayout, AnUnknownFileHasNoCell) {
+    EXPECT_EQ(SpellSpriteAtlas::slotForFile("spelzz9.tga"), -1);
+    EXPECT_EQ(SpellSpriteAtlas::slotForFile(""), -1);
+    EXPECT_EQ(SpellSpriteAtlas::slotForFile(nullptr), -1);
 }

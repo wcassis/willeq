@@ -204,19 +204,34 @@ test that fails if the checked-in bytes and their inputs drift apart:
 
 | asset | recipe | pinned by | ctest |
 |---|---|---|---|
-| `data/textures/*.bmp` (64 files) | `scripts/build_textures.sh` → `tools/generate_textures` | `data/textures.sha256` | `TexturesReproducible` |
-| `/mnt/projects/EverQuest_ETC1/willeq.eqe1` (126 entries since T411: 65 textures, 60 ETC1 `_alpha` companions, 1 raw) | `scripts/build_willeq_pack.sh` | `data/willeq.eqe1.sha256` | `PackReproducible` |
+| `data/textures/*.bmp` (65 files) | `scripts/build_textures.sh` → `tools/generate_textures` (64, procedural) **and `tools/spell_sprite_atlas_builder` (1, lifted from the client's own art — T417)** | `data/textures.sha256` | `TexturesReproducible` |
+| `/mnt/projects/EverQuest_ETC1/willeq.eqe1` (128 entries since T417: 66 textures, 61 ETC1 `_alpha` companions, 1 raw) | `scripts/build_willeq_pack.sh` | `data/willeq.eqe1.sha256` | `PackReproducible` |
 
-The pack's inputs are the 64 BMPs plus `tools/ui_atlas_builder`, so a texture
+The pack's inputs are the 65 BMPs plus `tools/ui_atlas_builder`, so a texture
 change cascades: regenerate the BMPs, rewrite `data/textures.sha256`
 (`--write-pins`), rebuild the pack, update `data/willeq.eqe1.sha256` — all in
-**one commit**, or both tests go red. The pack lives outside the repo and is
+**one commit**, or both tests go red.
+
+**`data/textures/` has TWO recipes since T417 (board B300).** Sixty-four of
+the BMPs are procedural (`generate_textures`); `spell_sprite_atlas.bmp` is
+**not** — it is the official client's own `SpellEffects/spel*.tga` art, packed
+by `tools/spell_sprite_atlas_builder`, and `build_textures.sh` runs both tools
+into the same directory. So a `data/textures/` change may need either tool,
+and the pin file covers the union. Its layout —
+which sprite occupies which of the 8x8 cells — lives in ONE place,
+`include/client/graphics/environment/spell_sprite_atlas.h`, which the builder
+and `SpellEffectsConfig` both include, so the sheet and the client's
+addressing of it cannot drift. A particle's `textureIndex` below
+`SpellSpriteAtlas::kBase` (64) is a procedural atlas tile; at or above it, a
+sprite cell. **Those sheets animate** (sixteen distinct frames each) and the
+atlas ships one still frame of each — board **B355**. The pack lives outside the repo and is
 read live by every worktree; only `build_willeq_pack.sh` may install it (it
 writes a temp file in the destination directory and `mv`s it into place).
 
-Every one of those BMPs is produced by
+All but one of those BMPs is produced by
 `src/client/graphics/texture_generators.cpp` (plus
-`DetailTextureAtlas::createAtlasImage()` for `detail_atlas.bmp`). That TU was
+`DetailTextureAtlas::createAtlasImage()` for `detail_atlas.bmp`, and T417's
+`spell_sprite_atlas.bmp`, which is client art rather than generated pixels). That TU was
 in **no CMake target at all** until T400/T403 — which is how the particle
 atlas shipped alpha-less for a year (board B225). T406 closed the second
 half of that (board B266): **60 of the 64 now ship 32-bit with their alpha
@@ -234,15 +249,18 @@ makes a new generator declare which side it is on:
 `spell_particle_fallback.bmp` (drawn additively, alpha provably unsampled —
 board **B286**), `detail_atlas.bmp` (board **B265**: still the one file no
 build reproduces), and `rain_streaks.bmp` + `snow_flakes.bmp` (no consumer
-at all). `generate_textures --report` prints the census.
+at all). T417's `spell_sprite_atlas.bmp` is 32-bit and takes the ordinary ETC1
+companion route — it needed no `--rgba8888-texture` override. `generate_textures --report` prints the census.
 
 **A 32-bit entry is not free**: with all 60 in-band the pack went 2.83 MB to
 19.99 MB and every zone's `eqe1MappedBytes` rose by 17.2 MB, because an ETC1
 256x256 entry with mips is 43,704 bytes and its RGBA8888 form is 349,524.
 T411 (board B287) took that back by fixing the shaders instead of the payload:
-the pack is **5,532,254 bytes** (the extra over the pre-T406 2.83 MB is the
-ETC1 companions, which are new — the old 24-bit BMPs had no alpha to carry),
-and `eqe1MappedBytes` fell by 14,462,656 per zone. The one entry that keeps
+the pack is **5,881,918 bytes** (5,532,254 after T411; T417 added the spell
+sprite sheet and its companion, +349,664 — the extra over the pre-T406
+2.83 MB is the ETC1 companions, which are new, as the old 24-bit BMPs had no
+alpha to carry), and `eqe1MappedBytes` fell by 14,462,656 per zone at T411
+before rising 349,664 at T417. The one entry that keeps
 an in-band payload is `ui_atlas`, and not for a single-sampler reason: a 1px
 UI `drawRect` minifies the atlas 4:1 and selects companion mip level 2, where
 ETC1 decodes the isolated `white` texel as 217/255 and dims the rect by 15%. **A new

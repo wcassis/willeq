@@ -1,6 +1,7 @@
 #ifdef EQT_HAS_GLES2
 
 #include "client/graphics/environment/unified_particle_renderer.h"
+#include "client/graphics/environment/spell_sprite_atlas.h"
 #include "common/logging.h"
 #include <cstring>
 #include <chrono>
@@ -261,6 +262,8 @@ bool UnifiedParticleRenderer::init() {
     // Reserve vertex array space
     additiveVerts_.reserve(1024);
     alphaVerts_.reserve(256);
+    spriteAdditiveVerts_.reserve(1024);
+    spriteAlphaVerts_.reserve(256);
 
     initialized_ = true;
     LOG_INFO(MOD_GRAPHICS, "UnifiedParticleRenderer: Initialized (max point size: {:.0f}, "
@@ -273,24 +276,47 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
                                       const float* viewMatrix, const float* projMatrix,
                                       float fogStart, float fogEnd, const float* fogColor,
                                       float screenHeight, GLuint atlasTexture,
-                                      GLuint alphaCompanion) {
+                                      GLuint alphaCompanion, GLuint spriteTexture,
+                                      GLuint spriteAlphaCompanion) {
     if (!initialized_ || count <= 0 || !particles) return;
 
     auto t0 = std::chrono::steady_clock::now();
 
-    // Separate particles by blend mode and fill vertex arrays
+    // Separate particles by SHEET and blend mode, and fill vertex arrays.
+    // Both are per-draw state -- the bound texture and uAtlasRegionSize for
+    // the sheet, glBlendFunc for the mode -- so each combination is a batch.
     additiveVerts_.clear();
     alphaVerts_.clear();
+    spriteAdditiveVerts_.clear();
+    spriteAlphaVerts_.clear();
 
     for (int i = 0; i < count; ++i) {
         const UnifiedParticle& p = particles[i];
         if (!p.isAlive()) continue;
 
-        // Compute atlas UV offset from texture index (4x4 grid)
-        int col = p.textureIndex % 4;
-        int row = p.textureIndex / 4;
-        float atlasU = col * 0.25f;
-        float atlasV = row * 0.25f;
+        // T417 (board B300): an index at or above kBase addresses the spell
+        // sprite sheet (8x8 cells), anything below it the procedural atlas
+        // (4x4 tiles).
+        const bool onSpriteSheet = p.textureIndex >= SpellSpriteAtlas::kBase;
+
+        // A sprite particle with no sheet loaded is SKIPPED, never drawn
+        // with the procedural atlas's UVs -- that would paint an unrelated
+        // tile with a confident face on it.
+        if (onSpriteSheet && spriteTexture == 0) continue;
+
+        float atlasU, atlasV;
+        if (onSpriteSheet) {
+            const int slot = p.textureIndex - SpellSpriteAtlas::kBase;
+            atlasU = (slot % SpellSpriteAtlas::kColumns) *
+                     (1.0f / SpellSpriteAtlas::kColumns);
+            atlasV = (slot / SpellSpriteAtlas::kColumns) *
+                     (1.0f / SpellSpriteAtlas::kRows);
+        } else {
+            const int col = p.textureIndex % 4;
+            const int row = p.textureIndex / 4;
+            atlasU = col * 0.25f;
+            atlasV = row * 0.25f;
+        }
 
         PointSpriteVertex v;
         v.x = p.position.x;
@@ -305,14 +331,18 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
         v.atlasU = atlasU;
         v.atlasV = atlasV;
 
-        if (p.getBlendMode() == UnifiedBlendMode::ADDITIVE) {
-            additiveVerts_.push_back(v);
+        const bool additive = p.getBlendMode() == UnifiedBlendMode::ADDITIVE;
+        if (onSpriteSheet) {
+            (additive ? spriteAdditiveVerts_ : spriteAlphaVerts_).push_back(v);
         } else {
-            alphaVerts_.push_back(v);
+            (additive ? additiveVerts_ : alphaVerts_).push_back(v);
         }
     }
 
-    if (additiveVerts_.empty() && alphaVerts_.empty()) return;
+    if (additiveVerts_.empty() && alphaVerts_.empty() &&
+        spriteAdditiveVerts_.empty() && spriteAlphaVerts_.empty()) {
+        return;
+    }
 
     auto t1 = std::chrono::steady_clock::now();
 
@@ -406,27 +436,50 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
         }
     }
 
-    if (uAtlasRegionSize_ >= 0) glUniform2f(uAtlasRegionSize_, 0.25f, 0.25f);
-
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, alphaCompanion ? alphaCompanion : opaqueAlphaFallback_);
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, atlasTexture);
     if (uTexture_ >= 0) glUniform1i(uTexture_, 0);
     if (uAlphaTexture_ >= 0) glUniform1i(uAlphaTexture_, 1);
 
     auto t3 = std::chrono::steady_clock::now();
 
-    // Render additive particles (1 draw call)
-    if (!additiveVerts_.empty()) {
-        renderBatch(additiveVerts_, UnifiedBlendMode::ADDITIVE);
+    // ── Sheet 0: the 4x4 procedural particle atlas ──────────────────────
+    if (!additiveVerts_.empty() || !alphaVerts_.empty()) {
+        if (uAtlasRegionSize_ >= 0) glUniform2f(uAtlasRegionSize_, 0.25f, 0.25f);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D,
+                      alphaCompanion ? alphaCompanion : opaqueAlphaFallback_);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, atlasTexture);
+
+        if (!additiveVerts_.empty()) {
+            renderBatch(additiveVerts_, UnifiedBlendMode::ADDITIVE);
+        }
+        if (!alphaVerts_.empty()) {
+            renderBatch(alphaVerts_, UnifiedBlendMode::ALPHA);
+        }
     }
 
     auto t4 = std::chrono::steady_clock::now();
 
-    // Render alpha-blended particles (1 draw call)
-    if (!alphaVerts_.empty()) {
-        renderBatch(alphaVerts_, UnifiedBlendMode::ALPHA);
+    // ── Sheet 1: the spell sprite sheet (T417, board B300) ──────────────
+    // The binning loop already dropped these when spriteTexture is 0, so
+    // reaching here with a non-empty batch means the sheet is loaded.
+    if (!spriteAdditiveVerts_.empty() || !spriteAlphaVerts_.empty()) {
+        if (uAtlasRegionSize_ >= 0) {
+            glUniform2f(uAtlasRegionSize_, 1.0f / SpellSpriteAtlas::kColumns,
+                        1.0f / SpellSpriteAtlas::kRows);
+        }
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, spriteAlphaCompanion ? spriteAlphaCompanion
+                                                          : opaqueAlphaFallback_);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, spriteTexture);
+
+        if (!spriteAdditiveVerts_.empty()) {
+            renderBatch(spriteAdditiveVerts_, UnifiedBlendMode::ADDITIVE);
+        }
+        if (!spriteAlphaVerts_.empty()) {
+            renderBatch(spriteAlphaVerts_, UnifiedBlendMode::ALPHA);
+        }
     }
 
     auto t5 = std::chrono::steady_clock::now();
@@ -468,11 +521,13 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
         };
         LOG_WARN(MOD_GRAPHICS,
                  "UnifiedParticle SPIKE: {:.1f}ms total | fillVerts={:.1f}ms stateSave={:.1f}ms "
-                 "setup={:.1f}ms drawAdd={:.1f}ms({}) drawAlpha={:.1f}ms({}) restore={:.1f}ms",
+                 "setup={:.1f}ms atlas={:.1f}ms(add {} alpha {}) sprites={:.1f}ms"
+                 "(add {} alpha {}) restore={:.1f}ms",
                  totalUs / 1000.0f,
                  us(t0, t1) / 1000.0f, us(t1, t2) / 1000.0f,
                  us(t2, t3) / 1000.0f, us(t3, t4) / 1000.0f, additiveVerts_.size(),
-                 us(t4, t5) / 1000.0f, alphaVerts_.size(),
+                 alphaVerts_.size(), us(t4, t5) / 1000.0f,
+                 spriteAdditiveVerts_.size(), spriteAlphaVerts_.size(),
                  us(t5, t6) / 1000.0f);
     }
 }

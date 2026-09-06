@@ -1,5 +1,7 @@
 #include "client/graphics/environment/spell_effects_config.h"
 #include "client/graphics/environment/particle_types.h"
+#include "client/graphics/environment/spell_sprite_atlas.h"
+#include "client/spell/spells_eff_reader.h"
 #include "client/data_paths.h"
 #include "common/logging.h"
 #include <json/json.h>
@@ -35,77 +37,61 @@ void SpellEffectsConfig::buildTextureNameMap() {
     textureNameMap_["SmokeWisp"] = ParticleAtlas::SmokeWisp;
     textureNameMap_["IceCrystal"] = ParticleAtlas::IceCrystal;
 
-    // T389 (board B162): the spells.eff sprite names the official Titanium
-    // client actually draws, mapped onto the tiles this atlas already has.
+    // T417 (board B300 -- Will ruled 2026-09-06: draw the REAL sprites,
+    // "as close to the original as possible").
     //
-    // The name->file rule was MEASURED against the official client, not
-    // argued (review/T389/): GEN<L><d>0_SPRITE resolves to
-    // spel<l><d+1>.tga -- the digit is 0-BASED. Two independent single-name
-    // records settle it: record 20 (every slot GENN00_SPRITE, spell 41
-    // Weaken) draws speln1.tga's green/orange mottled spheres, and record 35
-    // (every slot GENA10_SPRITE, spell 253 Whirling Wind) draws spela2.tga's
-    // bright blue eight-point stars -- NOT spela1.tga's blue blob cloud,
-    // which is what the verbatim reading would give.
+    // T389 and T409 mapped twelve `spells.eff` sprite names onto the nearest
+    // of the sixteen PROCEDURAL tiles, and stopped there because four of the
+    // sprites are figurative and no 16x16 procedural tile stands in for them
+    // honestly: `spelg1.tga` is a SWORD, `speli1.tga` a flaming SKULL,
+    // `spelk2.tga` a row of skulls, `spelh1.tga` a lightning-wreathed sphere
+    // -- and `GENI00_SPRITE`, the skull, is the single commonest name in the
+    // whole file (32 of its 301 populated slots).
     //
-    // Frost Bolt (54) record 23 Target stage = GEND10 + GENU10 x2, i.e.
-    // speld2.tga and spelu2.tga. Neither has a close tile here (see the
-    // comparison in refactor/T389_spell_fx_oracle.md Review); these are the
-    // nearest of the sixteen:
-    //   speld2.tga  cyan EIGHT-pointed star, bright core, soft radial glow
-    //               -> SpellSparkle, the only tile drawn as a pointed star
-    //                  with a bright core plus a soft glow (and its
-    //                  |cos(4*theta)|^3 lobe function gives eight lobes).
-    //   spelu2.tga  small blue diagonal cross with a bright white core
-    //               -> IceCrystal, the only angular, pale-blue tile; the
-    //                  cross arms have no counterpart at all.
-    textureNameMap_["GEND10_SPRITE"] = ParticleAtlas::SpellSparkle;
-    textureNameMap_["GENU10_SPRITE"] = ParticleAtlas::IceCrystal;
-
-    // T409 (board B162): the reader's 0-based correction resolves 36 of the
-    // 40 names instead of 18, so the names below now HAVE a sprite to
-    // compare against. Each row is the same tile-vs-crop comparison T389
-    // used, run on the single frame each sheet repeats (spel*.tga are 4x4
-    // sheets of one identical frame; the crops are in review/T409/sprites/).
+    // Those twelve approximation rows are GONE. The official client's own
+    // sprite art now ships as a second particle sheet
+    // (`data/textures/spell_sprite_atlas.bmp`, built by
+    // `tools/spell_sprite_atlas_builder` from `SpellEffects/spel*.tga`), and
+    // `getTextureIndex()` below resolves any GEN name straight to its cell
+    // through the same 0-based rule the reader uses. No hand-written name
+    // table can drift from the sheet, because there is no name table: the
+    // rule is `effectNameToTexture()` and the layout is
+    // `spell_sprite_atlas.h`, which the builder includes too.
     //
-    // Only sprites that fall unambiguously into a shape class this atlas
-    // HAS are mapped. Anything figurative keeps the SoftCircle fallback --
-    // spelg1.tga is a SWORD, speli1.tga a flaming SKULL, spelk2.tga a row
-    // of skulls, spelh1.tga a lightning-wreathed sphere -- and no 16x16
-    // procedural tile stands in for those honestly (board B300).
-    //
-    //   spela1/spela2  pointed star, bright white core over a soft glow
-    //                  -> SpellSparkle, the same class as speld2 above.
-    //                     spela2 is itself oracle-measured (record 35,
-    //                     spell 253 Whirling Wind).
-    //   spelb1         green/yellow multi-point burst
-    //                  -> StarShape, the only green pointed-star tile.
-    //   spelc1         orange radiant sunburst -> Ember, the only orange tile.
-    //   spele1         green/teal sphere -> LeafShape, the green filled disc.
-    //   spelj1/spelu1  elongated curved ribbon strokes -> SmokeWisp, the
-    //                  only elongated tile. spelu1 is what T389 saw at
-    //                  Frost Bolt's caster.
-    //   speln1         green/orange MOTTLED sphere (oracle-measured, record
-    //                  20, spell 41 Weaken) -> SnowPatch, the atlas's only
-    //                  mottled disc; every other round tile is a smooth
-    //                  gradient.
-    //   spelz1         white/grey swirling smoke ball -> WispyCloud.
-    textureNameMap_["GENA00_SPRITE"] = ParticleAtlas::SpellSparkle;
-    textureNameMap_["GENA10_SPRITE"] = ParticleAtlas::SpellSparkle;
-    textureNameMap_["GENB00_SPRITE"] = ParticleAtlas::StarShape;
-    textureNameMap_["GENC00_SPRITE"] = ParticleAtlas::Ember;
-    textureNameMap_["GENE00_SPRITE"] = ParticleAtlas::LeafShape;
-    textureNameMap_["GENE01_SPRITE"] = ParticleAtlas::LeafShape;
-    textureNameMap_["GENJ00_SPRITE"] = ParticleAtlas::SmokeWisp;
-    textureNameMap_["GENN00_SPRITE"] = ParticleAtlas::SnowPatch;
-    textureNameMap_["GENU00_SPRITE"] = ParticleAtlas::SmokeWisp;
-    textureNameMap_["GENZ00_SPRITE"] = ParticleAtlas::WispyCloud;
+    // The FOUR non-GEN names have no file to resolve to -- the 0-based rule
+    // does not apply to them -- so they keep a procedural tile, chosen from
+    // what the name itself says. These are the only tile approximations left
+    // for a `spells.eff` name.
+    textureNameMap_["I_SNOWFLAKESPRITE"] = ParticleAtlas::Snowflake;
+    textureNameMap_["I_TFIRE_SPB"] = ParticleAtlas::Ember;
+    textureNameMap_["I_TSMOKE_SPB"] = ParticleAtlas::SmokeWisp;
+    textureNameMap_["GEN_Z_SPB"] = ParticleAtlas::WispyCloud;
 }
 
 uint8_t SpellEffectsConfig::getTextureIndex(const std::string& name) const {
+    // An explicit row wins: the fifteen procedural shape names that
+    // config/spell_effects.json uses, and the four non-GEN sprite names.
     auto it = textureNameMap_.find(name);
     if (it != textureNameMap_.end()) {
         return it->second;
     }
+
+    // T417 (board B300): a `spells.eff` sprite name resolves to its REAL
+    // sprite. The 0-based rule is the reader's -- one implementation, so the
+    // atlas and the resolution cannot disagree -- and the cell comes from
+    // the layout header the builder also includes.
+    const std::string file = EQ::SpellsEffReader::effectNameToTexture(name);
+    if (!file.empty()) {
+        const int slot = SpellSpriteAtlas::slotForFile(file.c_str());
+        if (slot >= 0) {
+            return static_cast<uint8_t>(SpellSpriteAtlas::kBase + slot);
+        }
+        // The rule named a file the client does not ship. Two names do
+        // this -- GENA20_SPRITE -> spela3.tga and GENA30_SPRITE ->
+        // spela4.tga, neither of which exists under SpellEffects/ -- and
+        // they fall through to the procedural circle below.
+    }
+
     return ParticleAtlas::SoftCircle;
 }
 

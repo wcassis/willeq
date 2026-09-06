@@ -1567,6 +1567,18 @@ ADD_EXECUTABLE(ui_atlas_builder
 )
 TARGET_INCLUDE_DIRECTORIES(ui_atlas_builder PRIVATE ${CMAKE_SOURCE_DIR}/tools)
 
+# T417 (board B300): spell sprite atlas builder. Reads the official client's
+# own SpellEffects/spel*.tga and packs frame 0 of each 4x4 sheet into
+# data/textures/spell_sprite_atlas.bmp. Header-only inputs (tga_reader.h,
+# bmp32_writer.h) plus the shared layout header, so it links nothing.
+ADD_EXECUTABLE(spell_sprite_atlas_builder
+    tools/spell_sprite_atlas_builder.cpp
+)
+TARGET_INCLUDE_DIRECTORIES(spell_sprite_atlas_builder PRIVATE
+    ${CMAKE_SOURCE_DIR}/tools
+    ${CMAKE_SOURCE_DIR}/include
+)
+
 # T400 (board B225): particle atlas builder. It is the FIRST CMake consumer of
 # src/client/graphics/texture_generators.cpp -- that 926-line TU was in no
 # target at all after P26 retired tools/generate_textures.cpp, so the code

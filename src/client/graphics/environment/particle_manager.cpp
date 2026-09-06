@@ -2,6 +2,7 @@
 #include "client/graphics/environment/environment_config.h"
 #include "client/graphics/environment/spell_effects_config.h"
 #include "client/graphics/environment/zone_biome.h"
+#include "client/graphics/environment/spell_sprite_atlas.h"
 #include "client/graphics/environment/emitters/dust_mote_emitter.h"
 #include "client/graphics/environment/emitters/pollen_emitter.h"
 #include "client/graphics/environment/emitters/firefly_emitter.h"
@@ -124,7 +125,18 @@ void ParticleManager::setConstrainedTextureCache(ConstrainedTextureCache* cache)
 // already existed and is simply now callable more than once.
 void ParticleManager::onTextureEvicted(const std::string& name, irr::video::ITexture* texture) {
     (void)name;
-    if (!texture || texture != atlasTexture_) return;
+    if (!texture) return;
+
+    // T417: the sprite sheet is a second cached texture with the same
+    // dangling-pointer exposure, and the same per-zone re-acquisition.
+    if (texture == spellSpriteAtlasTexture_) {
+        spellSpriteAtlasTexture_ = nullptr;
+        LOG_DEBUG(MOD_GRAPHICS,
+                  "ParticleManager: spell sprite atlas evicted, cleared dangling "
+                  "reference (will reload on next onZoneEnter)");
+    }
+
+    if (texture != atlasTexture_) return;
     atlasTexture_ = nullptr;
     particleMaterial_.setTexture(0, nullptr);
     LOG_DEBUG(MOD_GRAPHICS, "ParticleManager: atlas texture evicted, cleared dangling reference "
@@ -156,6 +168,20 @@ bool ParticleManager::init(const std::string& eqClientPath) {
     if (!loadParticleAtlas(atlasPath)) {
         LOG_FATAL(MOD_GRAPHICS, "ParticleManager: Required texture {} not found — run generate_textures first", atlasPath);
         std::exit(1);
+    }
+
+    // T417 (board B300): the spell sprite sheet. Unlike the procedural
+    // atlas this is NOT fatal if missing -- every procedural particle still
+    // draws, and only real-sprite spell effects are lost -- but it is loud,
+    // because a silently missing sheet looks exactly like the approximation
+    // this unit removed.
+    std::string spriteAtlasPath = eqt::ResolveDataPath(kSpellSpriteAtlasPath);
+    if (!loadSpellSpriteAtlas(spriteAtlasPath)) {
+        LOG_ERROR(MOD_GRAPHICS,
+                  "ParticleManager: spell sprite atlas {} not found -- spell "
+                  "effects that name a real sprite will not draw. Run "
+                  "scripts/build_textures.sh.",
+                  spriteAtlasPath);
     }
 
     // Set up particle material (T400: see configureParticleMaterial()'s
@@ -256,6 +282,19 @@ void ParticleManager::onZoneEnter(const std::string& zoneName, ZoneBiome biome) 
         } else {
             LOG_ERROR(MOD_GRAPHICS, "ParticleManager: failed to re-acquire atlas texture for zone '{}' "
                                      "— particles will not render this zone visit", zoneName);
+        }
+    }
+
+    // T417: the same re-acquisition for the sprite sheet.
+    if (initialized_ && !spellSpriteAtlasTexture_) {
+        if (loadSpellSpriteAtlas(eqt::ResolveDataPath(kSpellSpriteAtlasPath))) {
+            LOG_INFO(MOD_GRAPHICS,
+                     "ParticleManager: re-acquired spell sprite atlas for zone '{}'",
+                     zoneName);
+        } else {
+            LOG_ERROR(MOD_GRAPHICS,
+                      "ParticleManager: failed to re-acquire spell sprite atlas for "
+                      "zone '{}' -- real-sprite spell effects will not draw", zoneName);
         }
     }
 
@@ -588,6 +627,29 @@ bool ParticleManager::loadParticleAtlas(const std::string& path) {
     return atlasTexture_ != nullptr;
 }
 
+// T417 (board B300). Same shape as loadParticleAtlas() above, one cache key
+// down: "spell_sprite_atlas" is a pack entry like any other, so it arrives
+// ETC1 with its alpha in an `_alpha` companion and the point-sprite shader
+// samples that on unit 1 (T411).
+bool ParticleManager::loadSpellSpriteAtlas(const std::string& path) {
+    if (!driver_ || !constrainedCache_) return false;
+
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    if (!file) return false;
+    std::streamsize fileSize = file.tellg();
+    file.seekg(0, std::ios::beg);
+    std::vector<char> data(fileSize);
+    if (!file.read(data.data(), fileSize)) return false;
+
+    spellSpriteAtlasTexture_ =
+        constrainedCache_->getOrLoad("spell_sprite_atlas", data);
+    if (!spellSpriteAtlasTexture_) {
+        spellSpriteAtlasTexture_ =
+            constrainedCache_->uploadTexture("spell_sprite_atlas");
+    }
+    return spellSpriteAtlasTexture_ != nullptr;
+}
+
 void ParticleManager::renderBillboard(const Particle& p,
                                        const irr::core::vector3df& cameraPos,
                                        const irr::core::vector3df& cameraUp)
@@ -673,6 +735,17 @@ void ParticleManager::renderBillboard(const Particle& p,
 }
 
 void ParticleManager::getAtlasUVs(uint8_t tileIndex, float& u0, float& v0, float& u1, float& v1) const {
+    // T417 (board B300): this is the LEGACY CPU billboard path, whose
+    // material is bound to the procedural atlas alone -- it has no way to
+    // reach the spell sprite sheet. Only the billboard EMITTERS (weather,
+    // fire, dust) come through here, and none of them names a spells.eff
+    // sprite, so a sprite index arriving is a wiring mistake rather than a
+    // drawing decision. Return tile 0 rather than `index % 4`, which would
+    // silently paint an unrelated procedural tile.
+    if (tileIndex >= SpellSpriteAtlas::kBase) {
+        tileIndex = ParticleAtlas::SoftCircle;
+    }
+
     // Calculate tile position in atlas
     int col = tileIndex % ParticleAtlas::AtlasColumns;
     int row = tileIndex / ParticleAtlas::AtlasColumns;
@@ -748,6 +821,21 @@ void ParticleManager::renderUnified(const irr::core::matrix4& viewMatrix,
         }
     }
 
+    // T417 (board B300): the spell sprite sheet and its own companion. 0
+    // when the sheet failed to load -- the renderer then SKIPS sprite-sheet
+    // particles rather than drawing them with the procedural atlas's UVs.
+    GLuint spriteGL = 0;
+    GLuint spriteAlphaGL = 0;
+    if (spellSpriteAtlasTexture_) {
+        spriteGL = static_cast<GLuint>(spellSpriteAtlasTexture_->getDriverTextureHandle());
+        if (constrainedCache_) {
+            if (irr::video::ITexture* a =
+                    constrainedCache_->getAlphaTexture(spellSpriteAtlasTexture_)) {
+                spriteAlphaGL = static_cast<GLuint>(a->getDriverTextureHandle());
+            }
+        }
+    }
+
     // Periodic debug logging (every ~5 seconds at 50fps = every 250 frames)
     static int frameCounter = 0;
     if (++frameCounter >= 250) {
@@ -768,7 +856,7 @@ void ParticleManager::renderUnified(const irr::core::matrix4& viewMatrix,
                              static_cast<int>(externalRenderBuffer->size()),
                              viewMatrix.pointer(), projMatrix.pointer(),
                              fogStart, fogEnd, fogColor,
-                             screenHeight, atlasGL, alphaGL);
+                             screenHeight, atlasGL, alphaGL, spriteGL, spriteAlphaGL);
 #endif
     (void)cameraPos;
 }

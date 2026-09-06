@@ -112,9 +112,21 @@ if [ -z "$BIN_DIR" ] || [ ! -x "$BIN_DIR/generate_textures" ]; then
     exit 3
 fi
 
+# T417 (board B300): data/textures/ has a SECOND recipe. The spell sprite
+# atlas is lifted from the official client's own SpellEffects/*.tga, so it
+# cannot come out of generate_textures (which builds procedurally and links
+# no TGA decoder). Both tools write into the same directory and the pin file
+# covers the union.
+if [ ! -x "$BIN_DIR/spell_sprite_atlas_builder" ]; then
+    echo "ERROR: spell_sprite_atlas_builder not found in $BIN_DIR. Build it first:" >&2
+    echo "       cmake --build $REPO_ROOT/build --target spell_sprite_atlas_builder" >&2
+    exit 3
+fi
+
 # ── In-place regeneration ───────────────────────────────────────────────────
 if [ "$CHECK_ONLY" -eq 0 ]; then
     "$BIN_DIR/generate_textures" --output "$TEXTURES_DIR" || exit 4
+    "$BIN_DIR/spell_sprite_atlas_builder" --output "$TEXTURES_DIR" || exit 4
     echo
     echo "NOTE: data/textures/ was rewritten. Update $PIN_FILE"
     echo "      (scripts/build_textures.sh --write-pins) and rebuild the pack"
@@ -164,11 +176,17 @@ if ! "$BIN_DIR/generate_textures" --output "$WORK/regen" > "$WORK/gen.log" 2>&1;
     cat "$WORK/gen.log" >&2
     exit 4
 fi
+if ! "$BIN_DIR/spell_sprite_atlas_builder" --output "$WORK/regen" \
+        > "$WORK/gen_sprites.log" 2>&1; then
+    echo "FAIL: spell_sprite_atlas_builder failed:" >&2
+    cat "$WORK/gen_sprites.log" >&2
+    exit 4
+fi
 
 # --- assertion 3: CENSUS ----------------------------------------------------
 ( cd "$WORK/regen" && ls ) | sort > "$WORK/regen_names.txt"
 if ! diff -u "$WORK/pinned_names.txt" "$WORK/regen_names.txt" > "$WORK/census.diff"; then
-    echo "FAIL[CENSUS]: generate_textures did not write exactly the pinned set" >&2
+    echo "FAIL[CENSUS]: the texture recipes did not write exactly the pinned set" >&2
     echo "              (- = pinned but not generated, + = generated but unpinned)" >&2
     sed -n '3,$p' "$WORK/census.diff" >&2
     rc=1
