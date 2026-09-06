@@ -356,15 +356,21 @@ TEST(CachePaths, ExplicitCacheDirIsHonouredAndRoundTrips) {
     ASSERT_NE(dir, nullptr);
     const std::string sub = std::string(dir) + "/nested";  // must be created for us
 
+    // A name no other candidate directory can hold. Using a REAL cache name
+    // here is a race: the read side searches every candidate, and a
+    // test_pfs_sound_load running in parallel writes <exe dir>/cache/
+    // snd_index_cache.json, which is a legitimate hit (T402 lost a ctest -j6
+    // run to exactly that).
+    const char* kName = "t402_roundtrip_cache.json";
     ::setenv("WILLEQ_CACHE_DIR", sub.c_str(), 1);
-    const std::string write = eqt::ResolveCachePathForWrite("snd_index_cache.json");
-    EXPECT_EQ(write, sub + "/snd_index_cache.json");
+    const std::string write = eqt::ResolveCachePathForWrite(kName);
+    EXPECT_EQ(write, sub + "/" + kName);
 
     // Nothing written yet: the read side must report a MISS, not a path.
-    EXPECT_EQ(eqt::ResolveCachePathForRead("snd_index_cache.json"), "");
+    EXPECT_EQ(eqt::ResolveCachePathForRead(kName), "");
 
     { std::ofstream(write) << "{}"; }
-    EXPECT_EQ(eqt::ResolveCachePathForRead("snd_index_cache.json"), write);
+    EXPECT_EQ(eqt::ResolveCachePathForRead(kName), write);
 
     ::unsetenv("WILLEQ_CACHE_DIR");
     ::unlink(write.c_str());
