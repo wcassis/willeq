@@ -52,6 +52,7 @@
 
 #include "client/graphics/weather_ambient_oracle.h"
 #include "client/graphics/weather_effects_controller.h"
+#include "weather_worker_step.h"
 
 #ifndef WILLEQ_REPO_ROOT
 #error "WILLEQ_REPO_ROOT must be defined (tests/cmake/renderer_guards.cmake)"
@@ -88,14 +89,18 @@ std::unique_ptr<WeatherEffectsController> makeController() {
     return c;
 }
 
-// Run the storm-darkening integrator the way SimulationWorker does --
-// computeState() off-thread, applyState() back on -- until it settles. T418
-// raised the default from 4 s: the ramp is no longer a fixed 0.5 units/second
-// but the oracle's measured ~9.3 s transition, so 4 s no longer settles it.
+// Run the storm-darkening integrator the way the CLIENT does. T418 raised the
+// default from 4 s: the ramp is no longer a fixed 0.5 units/second but the
+// oracle's measured ~9.3 s transition, so 4 s no longer settles it.
+//
+// T423 (board B361): this used to drive WeatherEffectsController::computeState(),
+// which NOTHING IN PRODUCTION CALLED -- the render thread snapshots the
+// controller and SimulationWorker advances its own copy. Proved by planting a
+// 4x rate in the copy the client runs: all nineteen weather cases stayed
+// green. The two dead copies are deleted and this drives the surviving one
+// through the production snapshot/apply hop.
 void settle(WeatherEffectsController& c, float seconds = 25.0f, float dt = 0.05f) {
-    for (float t = 0.0f; t < seconds; t += dt) {
-        c.applyState(c.computeState(dt));
-    }
+    willeq_test::weatherWorkerAdvance(c, seconds, dt);
 }
 
 }  // namespace
@@ -163,9 +168,7 @@ TEST(WeatherAmbientModifierTest, TheDarkeningRampsOverTheOracleTransitionTime) {
     c->setWeather(0, 9);
     const float target = c->getTargetDarkening();
     const float half = 0.5f * EQT::Graphics::kOracleWeatherTransitionSeconds;
-    for (float t = 0.0f; t < half; t += 0.05f) {
-        c->applyState(c->computeState(0.05f));
-    }
+    willeq_test::weatherWorkerAdvance(*c, half);
     EXPECT_NEAR(c->getCurrentDarkening() / target, 0.5f, 0.02f);
 }
 

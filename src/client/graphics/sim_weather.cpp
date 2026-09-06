@@ -43,13 +43,16 @@ void SimulationWorker::computeWeatherEffectsState(const SimulationInput& input, 
         ws.transitionProgress = std::min(1.0f, ws.transitionProgress);
     }
 
-    // Advance storm darkening. T418 (board B361): this is the copy the CLIENT
-    // actually runs -- WeatherEffectsController::computeState() has no
-    // production caller and update()/updateStormAtmosphere() has none either,
-    // so for years the only tested ramp was one nothing executed. All three now
-    // call the same advanceWeatherDarkening(), at the rate the controller
-    // captured when the target changed, so the move takes the oracle's measured
-    // transition time.
+    // Advance storm darkening. T418 (board B361) narrowed three copies of this
+    // ramp to one shared advanceWeatherDarkening(); T423 CLOSED it by deleting
+    // the two copies nothing ran (WeatherEffectsController::computeState() and
+    // update()/updateStormAtmosphere()). This is the only one left, and it is
+    // the one the client executes -- the render thread snapshots the
+    // controller into `input`, this advances it, and applyState() writes it
+    // back. The rate is the one the controller captured when the target
+    // changed, so the move takes the oracle's measured transition time whatever
+    // its size. T418's and T396's tests now drive THIS function through the
+    // same hop (tests/weather_worker_step.h).
     ws.currentDarkening = advanceWeatherDarkening(
         input.weatherCurrentDarkening, input.weatherTargetDarkening,
         input.weatherDarkeningRate, input.deltaTime);

@@ -124,15 +124,22 @@ public:
     void onWeatherChanged(WeatherType newWeather) override;
 
     /**
-     * Update weather effects each frame.
-     * @param deltaTime Time since last update in seconds
-     */
-    void update(float deltaTime);
-
-    /**
      * Compute/apply split for worker thread offloading.
-     * computeState() advances timers and state (no scene graph calls).
-     * applyState() applies the computed state to the scene (render thread only).
+     *
+     * T423 (board B361): computeState() and update() are GONE. There were
+     * THREE copies of the weather ramp -- this class's computeState(), this
+     * class's update()/updateStormAtmosphere(), and SimulationWorker's
+     * computeWeatherEffectsState() -- and the only one PRODUCTION ran was the
+     * worker's. update() had no caller at all; computeState() had none but
+     * T396's and T418's tests, so for years the only ramp under test was one
+     * nothing executed, and a change to the copy the client runs could not
+     * turn a test red (proved by planting a 4x rate in it: all nineteen
+     * weather cases stayed green). The worker's copy is now the only one, and
+     * the tests drive it through the same snapshot/apply hop
+     * renderer_sim_bridge.cpp makes (tests/weather_worker_step.h).
+     *
+     * applyState() applies the computed state to the scene (render thread
+     * only) and stays: it is the render-thread half of that hop.
      */
     struct WeatherEffectsState {
         float transitionProgress = 1.0f;
@@ -142,7 +149,6 @@ public:
         bool lightningActive = false;
         bool triggerLightningFlash = false;  // Signal for render thread
     };
-    WeatherEffectsState computeState(float deltaTime) const;
     void applyState(const WeatherEffectsState& state);
 
     /**
@@ -351,15 +357,11 @@ private:
      */
     void updateSnow(float deltaTime);
 
-    /**
-     * Update storm atmosphere (sky darkening).
-     */
-    void updateStormAtmosphere(float deltaTime);
-
-    /**
-     * Update lightning system.
-     */
-    void updateLightning(float deltaTime);
+    // T423 (board B361): updateStormAtmosphere() and updateLightning() went
+    // with update(), their only caller. The darkening ramp lives in
+    // SimulationWorker::computeWeatherEffectsState() and the lightning timers
+    // with it; triggerLightning()/scheduleLightning() below are still reached,
+    // from applyState() when the worker raises triggerLightningFlash.
 
     /**
      * Generate random lightning bolt shape.

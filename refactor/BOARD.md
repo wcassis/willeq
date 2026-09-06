@@ -3742,9 +3742,10 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   `maxDarkening * i/10` and still drives the blend -- the blend now reads it
   directly, because `1 - getAmbientLightModifier()` is identically zero under
   the measured curve and would have deleted the weather fog silently).
-  Residues: the overcast sky/fog swap the oracle actually performs is **B360**;
-  the three ramp copies are **B361**; the modifier reaching the scene only on a
-  time-of-day packet is **B362**. Prov: T418 Review; `review/T418/`; B203; B211.
+  Residues: the overcast sky/fog swap the oracle actually performs is **B360**
+  and is still open; the three ramp copies (**B361**) and the modifier reaching
+  the scene only on a time-of-day packet (**B362**) were both CLOSED by T423.
+  Prov: T418 Review; `review/T418/`; B203; B211.
 
 ### Added by T397 (2026-09-05)
 
@@ -5772,7 +5773,7 @@ client uses every field.
   sky swap and the fog blend, and the two are separate terms. Prov: T418 Review
   section 3; B231.
 
-- **B361** (B) `src/client/graphics/sim_weather.cpp`
+- ~~**B361** (B) `src/client/graphics/sim_weather.cpp`
   `SimulationWorker::computeWeatherEffectsState` /
   `src/client/graphics/weather_effects_controller.cpp`
   `WeatherEffectsController::computeState` + `updateStormAtmosphere` --
@@ -5795,9 +5796,24 @@ client uses every field.
   `update()`/`updateStormAtmosphere()`/`updateRain()`/`updateSnow()` are still
   unreached. Closes when the dead `update()` path is deleted or wired, and the
   worker's copy is the controller's one function rather than a parallel body.
-  Prov: T418 Review section 6; B231.
+  Prov: T418 Review section 6; B231.~~ **STRUCK T423 Leg B.** The two copies
+  nothing ran are DELETED --
+  `WeatherEffectsController::computeState()`, `::update()`,
+  `::updateStormAtmosphere()` and `::updateLightning()` (update()'s alone) --
+  leaving `SimulationWorker::computeWeatherEffectsState()` as the only
+  implementation, which is the one production executes. It is public + static
+  now (a pure function of the input snapshot) and T396's and T418's nineteen
+  weather cases drive it through the SAME snapshot/apply hop
+  renderer_sim_bridge.cpp makes (`tests/weather_worker_step.h`). **The
+  blindness was measured, not argued**: a 4x rate planted in the production
+  copy left all nineteen green before the move and turns four RED after it
+  (`TheTransitionTakesTheOracleMeasuredSeconds`, `ClearingTakesTheSame
+  MeasuredTime`, `TheDarkeningRampsOverTheOracleTransitionTime`,
+  `TheProductionHopMatchesTheBareRamp`). `updateRain()`/`updateSnow()` were NOT
+  unreached, contrary to this entry's last sentence -- `updateRenderOnly()`
+  calls both every frame from renderer_frame_input.cpp -- so they stay.
 
-- **B362** (A) `src/client/graphics/renderer/irrlicht_renderer.cpp`
+- ~~**B362** (A) `src/client/graphics/renderer/irrlicht_renderer.cpp`
   `IrrlichtRenderer::updateTimeOfDay` -- **the scene ambient is recomputed ONLY
   when a time-of-day packet arrives, so a weather change reaches the world's
   lighting at an arbitrary later moment, or never.** FOUND T418 by accident and
@@ -5819,4 +5835,35 @@ client uses every field.
   work cannot be measured live without the same workaround. Closes when the
   ambient is recomposed on the state that feeds it (a weather change, a vision
   change, an ambient-multiplier change) rather than only on a clock packet,
-  with a test. Prov: T418 Review section 5.
+  with a test. Prov: T418 Review section 5.~~ **STRUCK T423 Leg A
+  (`8b82b125`).** One dirty flag on `IrrlichtRenderer`
+  (`markSceneAmbientDirty()` / `isSceneAmbientDirty()`), set by every writer of
+  a non-clock ambient input and consumed once per frame by the new FIRST render
+  pass `FrameComponent::recomposeSceneAmbientIfDirty()` (G05 golden entry 3,
+  309 -> 310, learned in place). `updateTimeOfDay()` clears the flag, so the
+  clock path is unchanged and a marked-then-clocked frame recomposes once.
+  Writers: `ZoneLifecycleComponent::setWeather` (OP_Weather), the worker's
+  weather `applyState` hop when the modifier actually MOVES (a lightning flash
+  moves it with no packet either way), zone-enter's weather reset, the three
+  vision writes through `refreshVisionLighting()` -- which now MARKS instead of
+  recomposing inline, so T405's second path is gone and there is one -- and
+  both diagnostics lighting toggles. `tests/test_scene_ambient_recompute.cpp`,
+  11 cases, ten RED with the wiring reverted. **The fourth input named in this
+  entry, the ambient multiplier, has NO WRITER AT ALL** -- see the new B380.
+
+- **B380** (B) `include/client/graphics/irrlicht_renderer.h`
+  `ambientMultiplier_` -- **the user ambient multiplier has one reader and no
+  writer.** Found T423 while enumerating the four inputs B362 says must trigger
+  a recompose. Census over `src/ include/ tests/ tools/ benchmarks/`: exactly
+  one read, `composeSceneAmbient()`'s second argument in `updateTimeOfDay()`,
+  and zero writes anywhere. Its comment names "Page Up/Down", which no key
+  binding produces -- the keys were presumably lost with the WindowManager UI
+  or an earlier input map. So the term is a constant 1.0, it is not an input
+  the T423 dirty flag can ever see move, and the "user-adjustable ambient
+  light" the comment promises does not exist. Left in place rather than
+  deleted because `composeSceneAmbient()`'s four-term ORDER is measured and
+  pinned (test_vision_ambient.cpp, T396) and dropping a term would rewrite
+  that signature for a reason unrelated to the oracle. Closes when either a
+  writer is wired (a key binding or a slash command, with the multiplier
+  marking the ambient dirty like every other input) or the term and its
+  argument are removed together. Prov: T423 Review section 1; B362.
