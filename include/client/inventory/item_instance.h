@@ -56,6 +56,14 @@ struct ItemInstance {
     bool summoned = false;
     bool noDestroy = false;
     bool questItem = false;
+    // T425 Leg B (board B375): expendable is DERIVED, not a wire field, and
+    // TitaniumItemParser now derives it. eqemu's own definition is
+    // ItemInstance::IsExpendable() (common/item_instance.h):
+    //     Click.Type == item::ItemEffectExpendable || ItemType == ItemTypePotion
+    // and BOTH inputs are on Titanium's wire (Click.Type is field 135,
+    // ItemType is field 0). It drives eqstr 3001 "EXPENDABLE     Charges: %1",
+    // which BuildItemDisplayText() has printed since T421 and which nothing
+    // could reach until now.
     bool expendable = false;
 
     // Restrictions
@@ -121,14 +129,12 @@ struct ItemInstance {
     int32_t shielding = 0;
     int32_t dotShield = 0;
 
-    // Heroic stats
-    int32_t heroicStr = 0;
-    int32_t heroicSta = 0;
-    int32_t heroicAgi = 0;
-    int32_t heroicDex = 0;
-    int32_t heroicWis = 0;
-    int32_t heroicInt = 0;
-    int32_t heroicCha = 0;
+    // T425 Leg B (board B375): the seven heroic stats are GONE. They are not
+    // on Titanium's wire -- eqemu's titanium.cpp SerializeItem() never emits
+    // an ItemData::Heroic* field (grep: zero hits in that function) -- and
+    // eqstr_us.txt has no heroic-stat format string either, because heroic
+    // stats postdate this client. Declared, default-initialised and assigned
+    // by nothing: dead struct members, not a missing display.
 
     // Augments
     std::array<AugmentSlot, MAX_AUGMENT_SLOTS> augmentSlots;
@@ -139,7 +145,12 @@ struct ItemInstance {
     ItemEffect focusEffect;
     ItemEffect procEffect;
     ItemEffect scrollEffect;
-    ItemEffect bardEffect;
+    // T425 Leg B (board B375): `bardEffect` is GONE. Titanium's wire carries
+    // FIVE ItemEffect blocks -- Click, Proc, Worn, Focus, Scroll (fields
+    // 134-158) -- and no sixth. What it does carry is the scalar pair
+    // BardType/BardValue at fields 41-42, which is a skill-modifier pair and
+    // not an effect at all; eqstr_us.txt has no instrument-modifier item line
+    // for it either, so there is nothing to parse it INTO and nothing to draw.
 
     // Vendor price
     int32_t price = 0;

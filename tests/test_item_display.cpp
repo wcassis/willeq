@@ -27,6 +27,7 @@
 #include "client/graphics/ui/ui_layout.h"
 #include "client/inventory/item_display_text.h"
 #include "client/inventory/item_instance.h"
+#include "client/inventory/inventory_manager.h"
 #include "client/state/event_bus.h"
 
 #include <irrlicht.h>
@@ -124,11 +125,11 @@ ItemInstance loadedItem() {
 
     // The fields the ORACLE does not show. Set non-zero on purpose: the test
     // below proves they never reach a line.
+    // T425 Leg B (board B375): the seven heroic* and bardEffect used to be
+    // set here to prove they never reached a line. They are GONE from
+    // ItemInstance -- not on Titanium's wire and not in eqstr_us.txt -- so
+    // the proof is now the compiler's, and this fixture cannot name them.
     it.currentSlot = 13;
-    it.heroicStr = 91; it.heroicSta = 92; it.heroicAgi = 93; it.heroicDex = 94;
-    it.heroicWis = 95; it.heroicInt = 96; it.heroicCha = 97;
-    it.bardEffect.effectId = 500;
-    it.bardEffect.name = "Wind Instruments";
     return it;
 }
 
@@ -184,9 +185,9 @@ TEST(ItemDisplayT421, RecommendedLevelChargesAndLore) {
     EXPECT_TRUE(hasLine(lines, "LORE: This weapon hums faintly."))   << dump(lines);
 }
 
-// eqstr 3001 "EXPENDABLE     Charges: %1". `expendable` is in B298's list but
-// has NO WRITER anywhere in the tree (see the Review / board B375); the line
-// is here so it shows the day the parser fills it.
+// eqstr 3001 "EXPENDABLE     Charges: %1". T425 Leg B gave `expendable` its
+// writer (see ItemDisplayT425ExpendableIsParsed below), so this line is
+// reachable now; it was unreachable when T421 wrote it.
 TEST(ItemDisplayT421, ExpendableTakesItsOwnChargeLine) {
     ItemInstance it = loadedItem();
     it.expendable = true;
@@ -199,19 +200,86 @@ TEST(ItemDisplayT421, ExpendableTakesItsOwnChargeLine) {
 // heroic-stat format string at all, no instrument-modifier item line, and no
 // "where the item currently is" line -- `Slot:` (3000) is the EQUIPPABLE
 // list, which the same item prints from `slots`.
+//
+// T425 Leg B: the heroic and instrument assertions are gone because the
+// MEMBERS are gone -- deleted from ItemInstance, since neither is on
+// Titanium's wire. A deleted member cannot leak, and the compiler enforces
+// that far better than a string search did.
 TEST(ItemDisplayT421, TheOraclesOmissionsStayOmitted) {
     const auto lines = BuildItemDisplayText(loadedItem());
 
-    for (const char* frag : {"91", "92", "93", "94", "95", "96", "97"}) {
-        EXPECT_FALSE(anyLineContains(lines, frag))
-            << "a heroic stat leaked into the display" << dump(lines);
-    }
     EXPECT_FALSE(anyLineContains(lines, "Heroic")) << dump(lines);
     EXPECT_FALSE(anyLineContains(lines, "Instrument")) << dump(lines);
-    EXPECT_FALSE(anyLineContains(lines, "Wind Instruments")) << dump(lines);
 
     // `Slot:` IS printed, and it is the equippable list -- not currentSlot.
     EXPECT_TRUE(hasLine(lines, "Slot: Primary Secondary")) << dump(lines);
+}
+
+// ===================================================================
+// T425 Leg B (board B375) -- the writer `expendable` never had.
+// ===================================================================
+//
+// `expendable` is not a wire FIELD; it is derived, and eqemu's own
+// ItemInstance::IsExpendable() is the definition:
+//     Click.Type == item::ItemEffectExpendable (3) || ItemType == ItemTypePotion (21)
+// Both inputs ARE on Titanium's wire (fields 135 and 0), which is why this
+// member is wired rather than deleted like its eight B375 siblings.
+namespace {
+
+std::string serializeItem(std::vector<std::string> fields) {
+    std::string staticData;
+    for (size_t i = 0; i < fields.size(); ++i) {
+        if (i) staticData += "|";
+        staticData += fields[i];
+    }
+    return "1|0|22|0|1|0|0|0|2|0|0\"" + staticData + "\"";
+}
+
+std::vector<std::string> baseFields() {
+    std::vector<std::string> f(159, "0");
+    f[1] = "a glowing potion";
+    f[2] = "a glowing potion";
+    f[3] = "IT63";
+    f[4] = "12345";
+    return f;
+}
+
+}  // namespace
+
+TEST(ItemDisplayT425, ExpendableIsParsedFromTheClickEffectType) {
+    auto f = baseFields();
+    f[0] = "11";   // ItemTypeMisc -- not a potion
+    f[135] = "3";  // Click.Type = ItemEffectExpendable
+    int16_t slot = -1;
+    auto item = eqt::inventory::TitaniumItemParser::parseItem(serializeItem(f), slot);
+    ASSERT_NE(item, nullptr);
+    EXPECT_TRUE(item->expendable)
+        << "Click.Type 3 is ItemEffectExpendable and must set expendable";
+}
+
+TEST(ItemDisplayT425, ExpendableIsParsedFromThePotionItemType) {
+    auto f = baseFields();
+    f[0] = "21";   // ItemTypePotion
+    f[135] = "1";  // Click.Type = ItemEffectClick, i.e. NOT expendable itself
+    int16_t slot = -1;
+    auto item = eqt::inventory::TitaniumItemParser::parseItem(serializeItem(f), slot);
+    ASSERT_NE(item, nullptr);
+    EXPECT_TRUE(item->expendable) << "every potion is expendable (eqemu IsExpendable)";
+}
+
+TEST(ItemDisplayT425, AnOrdinaryItemIsNotExpendable) {
+    auto f = baseFields();
+    f[0] = "10";   // ItemTypeArmor
+    f[135] = "1";  // ItemEffectClick
+    int16_t slot = -1;
+    auto item = eqt::inventory::TitaniumItemParser::parseItem(serializeItem(f), slot);
+    ASSERT_NE(item, nullptr);
+    EXPECT_FALSE(item->expendable);
+
+    // ...and the composer then draws the ordinary charge line, not 3001.
+    ItemInstance it = loadedItem();
+    it.expendable = false;
+    EXPECT_FALSE(anyLineContains(BuildItemDisplayText(it), "EXPENDABLE"));
 }
 
 // A zero-valued field is OMITTED, the way the official window omits it,

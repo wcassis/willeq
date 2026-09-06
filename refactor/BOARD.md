@@ -5973,7 +5973,35 @@ client uses every field.
 
 ## Added 2026-09-06 by T421
 
-- **B375** (B) `include/client/inventory/item_instance.h` -- **nine
+- **B375** (B) ~~`include/client/inventory/item_instance.h`~~ -- **STRUCK by
+  T425 Leg B** (`__LEGB__`). Each of the nine was resolved against
+  eqemu's `titanium.cpp` `SerializeItem()`, the wire this client actually
+  reads, one verdict per member:
+  * **the seven `heroic*` -- DELETED.** `SerializeItem()` never emits an
+    `ItemData::Heroic*` field (grep over that function: zero hits), so there
+    is nothing on the wire to parse; and eqstr_us.txt has no heroic-stat
+    format string, so there would be nothing to draw either. Compiler proof:
+    the tree builds with the members gone, and the seven `WriteOnlyFields`
+    exemption rows went with them.
+  * **`bardEffect` -- DELETED.** Titanium's wire carries FIVE `ItemEffect`
+    blocks and no sixth: `Click`, `Proc`, `Worn`, `Focus`, `Scroll`, at
+    fields 134-158. The bard data it does carry is the SCALAR pair
+    `BardType`/`BardValue` at fields 41-42 -- a skill-modifier pair, not an
+    effect -- and eqstr has no instrument-modifier item line for that either,
+    so parsing it into a new scalar would produce another unread field. The
+    parser's existing `// fields[41-42] = BardType, BardValue` comment stays.
+  * **`expendable` -- WIRED.** It is not a wire FIELD; it is derived, and
+    eqemu's `ItemInstance::IsExpendable()` (`common/item_instance.h`) is the
+    definition: `Click.Type == item::ItemEffectExpendable || ItemType ==
+    ItemTypePotion`. BOTH inputs are serialized by Titanium -- `Click.Type`
+    is field 135 and `ItemType` is field 0 -- so the parser now derives it,
+    and eqstr 3001 `EXPENDABLE     Charges: %1`, which
+    `BuildItemDisplayText()` has printed since T421 and which nothing could
+    ever reach, is live. Three cases in `tests/test_item_display.cpp` drive
+    the REAL parser over a real serialized item: a click-type expendable, a
+    potion, and an ordinary item that is neither.
+
+- ~~**B375** (B) `include/client/inventory/item_instance.h` -- **nine
   `ItemInstance` members have NO WRITER at all.** `expendable`, the seven
   `heroic*` (`heroicStr`/`Sta`/`Agi`/`Dex`/`Wis`/`Int`/`Cha`) and `bardEffect`
   are declared, default-initialised and assigned by nothing:
@@ -5991,7 +6019,7 @@ client uses every field.
   bard fields at `fields[41-42]` (`BardType`, `BardValue`), which the parser
   reads past with a comment. Closes when each group is either wired to its
   wire field or deleted. Found by T421 Leg A (the seven `heroic*` surfaced as
-  `WriteOnlyFields` NEW rows the moment a test wrote them).
+  `WriteOnlyFields` NEW rows the moment a test wrote them).~~
 
 - **B376** (B) `include/client/graphics/ui/static_panels.h`
   `SlotDisplayInfo::iconId`, `TradeskillSlotDisplay::iconId`,

@@ -165,20 +165,6 @@ EXEMPT = {
     # gone. These nine are what is left, and they are a DIFFERENT defect.
     ("ItemInstance", "currentSlot"):
         ("boarded", "B298 (item half CLOSED by T421): the oracle has no element for it. EQUI_ItemDisplay.xml is a title, an icon and one STMLbox; `Slot:` (eqstr 3000) is the EQUIPPABLE list, drawn from `slots`. Nothing shows where an item currently sits."),
-    ("ItemInstance", "heroicAgi"):
-        ("boarded", "B375: no writer AND no oracle line -- TitaniumItemParser never fills it and eqstr_us.txt has no heroic-stat format string at all"),
-    ("ItemInstance", "heroicCha"):
-        ("boarded", "B375: no writer AND no oracle line"),
-    ("ItemInstance", "heroicDex"):
-        ("boarded", "B375: no writer AND no oracle line"),
-    ("ItemInstance", "heroicInt"):
-        ("boarded", "B375: no writer AND no oracle line"),
-    ("ItemInstance", "heroicSta"):
-        ("boarded", "B375: no writer AND no oracle line"),
-    ("ItemInstance", "heroicStr"):
-        ("boarded", "B375: no writer AND no oracle line"),
-    ("ItemInstance", "heroicWis"):
-        ("boarded", "B375: no writer AND no oracle line"),
     # T425 (B298 spell half): the spell display window EXISTS now
     # (BuildSpellDisplayText, drawn in the oracle's one ItemDisplayWindow).
     # These four have no line in it because the official client's string

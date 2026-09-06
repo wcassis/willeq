@@ -410,6 +410,27 @@ bool TitaniumItemParser::parseStaticData(std::string_view quotedData, ItemInstan
             item.name, item.scrollEffect.effectId, item.scrollEffect.type);
     }
 
+    // T425 Leg B (board B375): `expendable`, which had NO WRITER at all and
+    // so could never light eqstr 3001 "EXPENDABLE     Charges: %1" that
+    // BuildItemDisplayText() has printed since T421.
+    //
+    // It is not a field on the wire -- it is DERIVED, and eqemu's own
+    // derivation is the definition (common/item_instance.h):
+    //
+    //     inline bool IsExpendable() const {
+    //         return m_item->Click.Type == item::ItemEffectExpendable
+    //             || m_item->ItemType == item::ItemTypePotion; }
+    //
+    // Both inputs are serialized by Titanium: Click.Type is field 135 (read
+    // just above as clickEffect.type) and ItemType is field 0 (read at the
+    // top as item.itemType). The two enumerator values come from
+    // common/item_data.h: ItemEffect{Combat,Click,Worn,Expendable,...} makes
+    // Expendable 3, and the ItemType table makes Potion 21.
+    constexpr int kItemEffectExpendable = 3;   // EQ::item::ItemEffectExpendable
+    constexpr uint8_t kItemTypePotion   = 21;  // EQ::item::ItemTypePotion
+    item.expendable = (item.clickEffect.type == kItemEffectExpendable)
+                   || (item.itemType == kItemTypePotion);
+
     return true;
 }
 

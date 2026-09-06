@@ -39,12 +39,13 @@
  *   * `currentSlot` -- where the item is RIGHT NOW. `Slot:` (id 3000) is the
  *     item's EQUIPPABLE slot list, a different thing; the item display window
  *     has no element and no string for the item's present location.
- *   * the seven `heroic*` -- eqstr_us.txt has NO heroic-stat format string at
- *     all (grep for "Heroic" returns nothing). Heroic stats postdate this
- *     client; there is no oracle line to put them on.
- *   * `bardEffect` -- no instrument-modifier item-display string exists in
- *     this table either (5750 "All Instrument Types" is a spell-requirement
- *     line, not an item stat).
+ *   * the seven `heroic*` and `bardEffect` -- DELETED from `ItemInstance` by
+ *     T425 Leg B (board B375). eqstr_us.txt has no heroic-stat format string
+ *     at all (grep for "Heroic" returns nothing -- heroic stats postdate this
+ *     client) and no instrument-modifier item-display string (5750 "All
+ *     Instrument Types" is a spell-requirement line, not an item stat); and
+ *     neither is on Titanium's wire, so there was nothing to parse them from
+ *     either. They were dead struct members, not a missing display.
  *   * `loreGroup`, `flags`, `material`, `color`, `bookFilename`, the augment
  *     slot `type` bitmasks -- structural, never printed.
  *
