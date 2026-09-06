@@ -3658,7 +3658,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   host that runs this suite today has the tree. Found by T398. Prov: T398
   Review Leg A; B230.
 
-- **B231** (C) `src/client/graphics/weather_effects_controller.cpp`
+- **B231** (B) `src/client/graphics/weather_effects_controller.cpp`
   `getAmbientLightModifier` -- **how much the OFFICIAL client darkens for
   ACTIVE weather is unmeasured, and fable's number is invented.** Raised by
   T396, which fixed the clear-weather rule (modifier exactly 1.0) and
@@ -3674,6 +3674,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   Review Leg A; B203; B211.
 ### Added by T397 (2026-09-05)
 
+  **WILL RULED 2026-09-06:** capture the official client under forced rain and mimic the curve. → the next lock unit (T418). Now class B.
 - ~~**B235**~~ **STRUCK (T399, 2026-09-05)** — commits `3128a1fa` (core/app, 12
   sites), `239b51c9` (config/*.json loaders, 14), `2061b4a0` (data/textures,
   8), `76c1371c` (audio + index caches, 5), `35d26d9a` (the rest, 2), tests
@@ -4795,7 +4796,7 @@ T407 deleted eleven (see below). The rest are boarded here.
   reads it (`combat_hunting.cpp`). It was named from the census summary, not the
   census output, which never flagged it.
 
-- **B300** (C) `src/client/graphics/environment/spell_effects_config.cpp`
+- **B300** (A) `src/client/graphics/environment/spell_effects_config.cpp`
   `buildTextureNameMap()` -- **the 16-tile procedural particle atlas cannot
   represent a large share of the sprites the corrected reader now resolves,
   because several of them are not abstract particles at all.** Split out of
@@ -4836,6 +4837,7 @@ fields it needs and the struct mirrors the on-disk header),
 `UnkRange72`. A wire or file struct must keep its shape whether or not the
 client uses every field.
 
+  **WILL RULED 2026-09-06:** draw the REAL sprites — effects as close to the original as possible. → T417 (atlas from SpellEffects/*.tga). Now class A.
 - **B305** (P) The T410 scenario lane's THREE LIVE PROOF RUNS ARE OWED. The
   lane builds, its 20 headless state-machine cases are green, and the client
   was observed arming and reporting a verdict; but `zone_in`,

@@ -905,3 +905,13 @@ exponent, not a closed loop — the live re-measure is still owed (B171).
   reports through.
 - **B142**: `/bug` stays on the player-report channel; no structured OP_Bug body.
 - B022 is closed by T389's oracle answer; B162's reader fix is reclassified B.
+
+## 2026-09-06 - spell sprites and weather darkening (Will)
+
+- **B300**: draw the REAL official sprite files (`SpellEffects/spel*.tga`) —
+  "I want willeq's effects to be as close to the original as possible." The
+  particle atlas grows to carry them (a texture-loading atlas, not the 16-tile
+  procedural sheet); approximation by tile is retired once the files draw.
+- **B231**: capture the official client's ambient change under forced rain at
+  the same spot and mimic the curve; fable's `maxDarkening = 0.6` is replaced
+  by the measured value. Reclassified B, lock unit.
