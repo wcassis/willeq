@@ -168,6 +168,17 @@ public:
     // Set spell gems from PlayerProfile
     void setSpellGems(const uint32_t* gems, size_t count);
 
+    // T404 (board B254): the SERVER's own OP_MemorizeSpell response for a gem
+    // slot. `scribing` is the wire field verbatim -- 1 = memorise, 2 =
+    // un-memorise, 0 = a scribe-to-spellbook confirmation this does not
+    // handle. Before T404 no arm of the response handler touched a gem at
+    // all, so a server-driven gem change (#memspell, and any future
+    // server-side memorisation) left the bar showing -- and CASTING -- the
+    // spell that used to be there. Applied in ARRIVAL ORDER: eqemu sends the
+    // un-memorise for the occupied slot and then the memorise, and each
+    // packet is one edit, so the order takes care of itself.
+    void applyServerGemUpdate(uint32_t gem_slot, uint32_t spell_id, uint32_t scribing);
+
     // ========================================================================
     // Packet Handlers (called by EverQuest class)
     // ========================================================================

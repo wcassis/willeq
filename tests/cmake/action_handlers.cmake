@@ -108,6 +108,17 @@ FOREACH(k13svc test_chat_output test_player_facade test_packet_sender)
     GTEST_DISCOVER_TESTS(${k13svc})
 ENDFOREACH()
 
+# T404 Leg C (board B254): the OP_MemorizeSpell response's gem arms, which did
+# not exist -- the handler acted only on scribing == 0 (a spellbook scribe).
+ADD_EXECUTABLE(test_memorize_into_occupied_gem test_memorize_into_occupied_gem.cpp)
+TARGET_COMPILE_DEFINITIONS(test_memorize_into_occupied_gem PRIVATE
+    WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+TARGET_LINK_LIBRARIES(test_memorize_into_occupied_gem GTest::gtest willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_memorize_into_occupied_gem PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_memorize_into_occupied_gem)
+
 # T404 Leg B (board B251): the self entity row is a PROJECTION of the one
 # position store, and must follow both funnels that move the player.
 ADD_EXECUTABLE(test_self_entity_position test_self_entity_position.cpp)
