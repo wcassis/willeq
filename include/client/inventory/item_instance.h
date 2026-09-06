@@ -58,7 +58,7 @@ struct ItemInstance {
     bool questItem = false;
     // T425 Leg B (board B375): expendable is DERIVED, not a wire field, and
     // TitaniumItemParser now derives it. eqemu's own definition is
-    // ItemInstance::IsExpendable() (common/item_instance.h):
+    // ItemInstance::IsExpendable() (/mnt/projects/akk-stack/code/common/item_instance.h):
     //     Click.Type == item::ItemEffectExpendable || ItemType == ItemTypePotion
     // and BOTH inputs are on Titanium's wire (Click.Type is field 135,
     // ItemType is field 0). It drives eqstr 3001 "EXPENDABLE     Charges: %1",

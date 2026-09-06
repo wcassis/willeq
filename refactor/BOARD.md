@@ -4924,7 +4924,7 @@ T407 deleted eleven (see below). The rest are boarded here.
   box; `Slot:` (eqstr 3000) is the item's EQUIPPABLE slot list, which the
   window draws from `slots`, and nothing anywhere shows where an item
   currently sits. Its exemption row says so.
-  **SPELL HALF STRUCK by T425 Leg A** (`__LEGA__`). fable now has a spell
+  **SPELL HALF STRUCK by T425 Leg A** (`266189d4`). fable now has a spell
   display window -- and it is the SAME window, because **the oracle has no
   second one**: there is no `EQUI_SpellDisplay.xml` and no `SpellDisplay` /
   `SpellInfo` screen anywhere in `/mnt/projects/EverQuestP1999/uifiles/default`
@@ -5974,7 +5974,7 @@ client uses every field.
 ## Added 2026-09-06 by T421
 
 - **B375** (B) ~~`include/client/inventory/item_instance.h`~~ -- **STRUCK by
-  T425 Leg B** (`__LEGB__`). Each of the nine was resolved against
+  T425 Leg B** (`73c79386`). Each of the nine was resolved against
   eqemu's `titanium.cpp` `SerializeItem()`, the wire this client actually
   reads, one verdict per member:
   * **the seven `heroic*` -- DELETED.** `SerializeItem()` never emits an
@@ -5991,7 +5991,8 @@ client uses every field.
     so parsing it into a new scalar would produce another unread field. The
     parser's existing `// fields[41-42] = BardType, BardValue` comment stays.
   * **`expendable` -- WIRED.** It is not a wire FIELD; it is derived, and
-    eqemu's `ItemInstance::IsExpendable()` (`common/item_instance.h`) is the
+    eqemu's `ItemInstance::IsExpendable()`
+    (`/mnt/projects/akk-stack/code/common/item_instance.h`) is the
     definition: `Click.Type == item::ItemEffectExpendable || ItemType ==
     ItemTypePotion`. BOTH inputs are serialized by Titanium -- `Click.Type`
     is field 135 and `ItemType` is field 0 -- so the parser now derives it,

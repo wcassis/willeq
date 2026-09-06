@@ -415,7 +415,7 @@ bool TitaniumItemParser::parseStaticData(std::string_view quotedData, ItemInstan
     // BuildItemDisplayText() has printed since T421.
     //
     // It is not a field on the wire -- it is DERIVED, and eqemu's own
-    // derivation is the definition (common/item_instance.h):
+    // derivation is the definition (/mnt/projects/akk-stack/code/common/item_instance.h):
     //
     //     inline bool IsExpendable() const {
     //         return m_item->Click.Type == item::ItemEffectExpendable
@@ -424,7 +424,7 @@ bool TitaniumItemParser::parseStaticData(std::string_view quotedData, ItemInstan
     // Both inputs are serialized by Titanium: Click.Type is field 135 (read
     // just above as clickEffect.type) and ItemType is field 0 (read at the
     // top as item.itemType). The two enumerator values come from
-    // common/item_data.h: ItemEffect{Combat,Click,Worn,Expendable,...} makes
+    // /mnt/projects/akk-stack/code/common/item_data.h: ItemEffect{Combat,Click,Worn,Expendable,...} makes
     // Expendable 3, and the ItemType table makes Potion 21.
     constexpr int kItemEffectExpendable = 3;   // EQ::item::ItemEffectExpendable
     constexpr uint8_t kItemTypePotion   = 21;  // EQ::item::ItemTypePotion
