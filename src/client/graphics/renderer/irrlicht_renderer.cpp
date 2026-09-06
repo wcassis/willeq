@@ -313,6 +313,17 @@ void IrrlichtRenderer::setupLighting() {
 
 void IrrlichtRenderer::updateTimeOfDay(uint8_t hour, uint8_t minute) {
     if (isLoading()) return;
+
+    // T423 (board B362): this function IS the scene-ambient recompute, and it
+    // is the ONLY production site that calls composeSceneAmbient() and
+    // smgr_->setAmbientLight(). So it consumes the dirty mark whoever set it
+    // and for whatever input -- a weather packet, a vision buff, a zone-light
+    // toggle or the clock itself. Cleared here rather than in the frame pass
+    // so the OP_TimeOfDay path (irrlicht_bridge.cpp) settles the flag too and
+    // a packet-then-frame pair recomposes once. NOT cleared above the
+    // isLoading() guard: a mark taken during a zone load must survive it.
+    sceneAmbientDirty_ = false;
+
     if (!smgr_) return;
 
     currentHour_ = hour;

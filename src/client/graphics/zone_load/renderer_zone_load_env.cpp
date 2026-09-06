@@ -569,6 +569,10 @@ void ZoneLoadComponent::loadZoneStep11_Env(ZoneLoadContext& ctx) {
             ctx_.weatherEffects->onZoneEnter(ctx_.currentZoneName);
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step11: weatherEffects_ onZoneEnter, ambientModifier={:.3f}",
                       ctx_.weatherEffects->getAmbientLightModifier());
+            // T423 (board B362): onZoneEnter() resets the weather state, which
+            // is a write to an input of the scene ambient -- mark it, exactly
+            // as the OP_Weather site does.
+            owner_.markSceneAmbientDirty();
         }
 
         // Weather surface + display settings

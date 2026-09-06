@@ -592,6 +592,21 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_weather_darkening_oracle)
 ENDIF()
 
+# T423 (B362): the scene ambient recomposes on every input, not only on a
+# clock packet. Behavioural cases on a default-constructed, never-Init()'d
+# IrrlichtRenderer (the test_diagnostics_component idiom -- no GL context)
+# plus text pins on the sites a headless renderer cannot reach.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_scene_ambient_recompute
+        test_scene_ambient_recompute.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_scene_ambient_recompute PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_scene_ambient_recompute GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_scene_ambient_recompute PRIVATE
+        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+    GTEST_DISCOVER_TESTS(test_scene_ambient_recompute)
+ENDIF()
+
 # T391 (B202): EntityVisual::lightNode ownership -- the render-thread
 # use-after-free a second player in the zone triggered. Drives the real
 # SimBridgeComponent::applySimulationOutput() cull/un-cull seam over a real

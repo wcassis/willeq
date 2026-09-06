@@ -863,7 +863,18 @@ void SimBridgeComponent::applySimulationOutput(const SimulationOutput& resultsRe
         wes.lightningBoltTimer = results->weatherEffectsState.lightningBoltTimer;
         wes.lightningActive = results->weatherEffectsState.lightningActive;
         wes.triggerLightningFlash = results->weatherEffectsState.triggerLightningFlash;
+        // T423 (board B362): this is where the worker's advanced weather state
+        // lands back on the render thread, so it is the weather WRITER as far
+        // as the scene ambient is concerned. The modifier is not a pure
+        // function of the OP_Weather packet -- a lightning flash lifts it for
+        // flashDuration and drops it again, with no packet either way -- so the
+        // mark is taken on the modifier actually MOVING rather than on every
+        // apply, which would dirty the ambient every frame weather is enabled.
+        const float modBefore = ctx_.weatherEffects->getAmbientLightModifier();
         ctx_.weatherEffects->applyState(wes);
+        if (std::abs(ctx_.weatherEffects->getAmbientLightModifier() - modBefore) > 0.0005f) {
+            owner_.markSceneAmbientDirty();
+        }
     }
 
     // Update player light position (every frame, not gated)
