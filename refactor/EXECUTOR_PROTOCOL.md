@@ -142,6 +142,12 @@ bit-deterministic across build types (T403).
   post-P12b animated path.
 
 ## eqemu (only if the plan assigns server ownership)
+
+⚠ A "no server" negative test is NOT safe without checking the lock: T410's
+smoke test for the could-not-start exit found T405's server UP and logged a
+character in under another unit's lock (B306). Before ANY command that could
+open a connection to 127.0.0.1:5998, read `/mnt/projects/fable/.eqemu-lock`;
+if it exists and is not yours, do not run the command.
 - LOCK FIRST (cross-session protocol, refactor/TESTING_CHARTER.md):
   take `/mnt/projects/fable/.eqemu-lock` ATOMICALLY — check-then-create is
   a race (T224 clobbered T222's lock 90s after seeing it absent). Use:
