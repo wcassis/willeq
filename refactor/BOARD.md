@@ -659,9 +659,16 @@ it without taking that measurement first.
   reachable. Pinned by `tests/test_spell_visual_vocabulary.cpp` (6 tests, 4 red
   pre-fix). **The pointer had ONE caller after all** — `tools/model_viewer.cpp`
   (T380's census grepped `src/`, `include/`, `tests/` only); it now plays the
-  game thread's part with `noteSpellVocabulary()`. See B165, B166. **A live
+  game thread's part with `noteSpellVocabulary()`. See B165, B166. ~~**A live
   two-client pair showing a fire cast and a frost cast side by side is OWED**
-  — the eqemu lock was held by T377 during T381. Original text:
+  — the eqemu lock was held by T377 during T381.~~ **TAKEN T401
+  (`4ff78bb4`, `review/T401/` §3): the two colours are DIFFERENT on the
+  observing client's screen and they are the right two.** Testcaster gem-cast
+  (not `#castspell`) Burst of Flame 93 and Frost Bolt 54 on itself with
+  Testbuddy watching 15 units away; in a 180x160 crop differenced against a
+  frame 2.5 s earlier the changed pixels read **(255, 155, 63) — orange —
+  for 93** and **(64, 255, 241) — cyan — for 54**, 442 and 438 pixels.
+  Frames, 4x crops and the 920-frame video are in `review/T401/fable/`. Original text:
   `include/client/graphics/spell_visual_fx.h` —
   `SpellVisualFX::setSpellDatabase()` has **ZERO callers tree-wide**
   (`src/`, `include/`, `tests/`), so `m_spell_db` is always `nullptr` in
@@ -1092,9 +1099,19 @@ it without taking that measurement first.
   had nothing to do with the wiring: `willeq.db` returned each filename with
   a trailing carriage return, so the PFS lookup missed silently (B200,
   struck). The tests were green throughout because they assert on the
-  `PlaySoundIntent`, which is the correct seam and did fire. **A live ear on
+  `PlaySoundIntent`, which is the correct seam and did fire. ~~**A live ear on
   id 138 is OWED before this entry can rest on "fable plays the same
-  sounds".**
+  sounds".**~~ **TAKEN T401 (`4ff78bb4`, `review/T401/` §1): id 138 is HEARD.**
+  The session logs **21** `Loaded sound from PFS` and **zero** `not found`,
+  and the recording off an ALSA loopback matches the real `buyitem.wav` bytes
+  (extracted from `snd2.pfs`) at **ncc 0.83** at 232.065 s -- the instant of
+  the `Sound play: id=138` line. `LevDn.WAV` 140 (ncc 0.996) and `SpelCast.WAV`
+  108 on a gem cast (0.72-0.77, three trials) are heard too. **But two new
+  defects came with it: every one of them plays at exactly DOUBLE rate
+  (B250), and `SwordBlk.WAV` 120 is played 30 times and is INAUDIBLE because
+  it is emitted at the player's stale spawn position (B251).** This clause's
+  live proof is discharged for the coin/container/cast rows; clause 3's
+  `DEATH` id (140 = LevDn) is now also proven audible and still wrong-named.
 
   **THIS ENTRY STAYS OPEN on three things Leg B deliberately did not guess:**
   (1) ~~the FIVE UNMEASURED rows — coin pickup by denomination from a corpse,
@@ -2828,7 +2845,7 @@ branches can be deleted independently of these items.
   `BUY_ITEM` at `InventoryManager::pickupMoney()`, which is a different gesture
   and still has NO production caller — see B036 clause 2.) Closes when the
   handler pushes `PlaySoundIntent{BUY_ITEM}`, banks the four denominations, and a
-  test pins both. Prov: T377 Review; B036.~~ **STRUCK T382 Leg A (`0d7751fe`)**: `ZoneProcessMoneyOnCorpse` banks the four denominations through `PlayerState::addCurrency` (a thin delta wrapper over `setCurrency`, still the tree's ONE purse writer and the function `OP_MoneyUpdate` credits through), publishes the same `CurrencyChanged` projection `OP_MoneyUpdate` publishes, pushes `PlaySoundIntent{BUY_ITEM}` and prints eqstr 12072 with the counts. Two judgement calls, both recorded in the code: the list is spelled WITHOUT the Oxford comma eqstr 13108 carries, because that is what the oracle's pixels show (13108 is deliberately not used); and "all four denominations zero" is the guard that keeps the sound and the line off every non-grant shape -- eqemu's six `SendLootReqErrorPacket` responses, a corpse with no money, and the autosplit path all carry four zeros. A zero in ONE denomination is still printed; the official client's zero form is UNMEASURED (T377's single capture had all four non-zero) and the test says so. 11 tests (`tests/test_corpse_coin.cpp` + 3 in `tests/test_ui_sound_events.cpp`); 7 of them fail pre-fix. **The LIVE proof -- loot a corpse on fable, hear 138, watch the purse move -- was TAKEN by T386 and SPLIT: the banking and the chat line are PROVEN (two trials, `review/T386/` §1a); the SOUND is NOT (the asset will not load -- B200); and the purse cannot be watched at all because nothing draws it (B201). The official client's ZERO-denomination form is still UNMEASURED -- `review/T386/` §1d has the method and the trap.**
+  test pins both. Prov: T377 Review; B036.~~ **STRUCK T382 Leg A (`0d7751fe`)**: `ZoneProcessMoneyOnCorpse` banks the four denominations through `PlayerState::addCurrency` (a thin delta wrapper over `setCurrency`, still the tree's ONE purse writer and the function `OP_MoneyUpdate` credits through), publishes the same `CurrencyChanged` projection `OP_MoneyUpdate` publishes, pushes `PlaySoundIntent{BUY_ITEM}` and prints eqstr 12072 with the counts. Two judgement calls, both recorded in the code: the list is spelled WITHOUT the Oxford comma eqstr 13108 carries, because that is what the oracle's pixels show (13108 is deliberately not used); and "all four denominations zero" is the guard that keeps the sound and the line off every non-grant shape -- eqemu's six `SendLootReqErrorPacket` responses, a corpse with no money, and the autosplit path all carry four zeros. A zero in ONE denomination is still printed; the official client's zero form is UNMEASURED (T377's single capture had all four non-zero) and the test says so. 11 tests (`tests/test_corpse_coin.cpp` + 3 in `tests/test_ui_sound_events.cpp`); 7 of them fail pre-fix. **The LIVE proof -- loot a corpse on fable, hear 138, watch the purse move -- was TAKEN by T386 and SPLIT: the banking and the chat line are PROVEN (two trials, `review/T386/` §1a); the SOUND is NOT (the asset will not load -- B200); and the purse cannot be watched at all because nothing draws it (B201). **BOTH HALVES CLOSED T401 (`4ff78bb4`, `review/T401/` §1 and §2): the sound is HEARD (`buyitem.wav` at ncc 0.83, on the `Sound play: id=138` line) and the purse IS watched -- `character_currency` 4/6/1/8 -> 9/13/2/16 with the four counts on screen in the inventory popup, beside the official client's own window at the same purse.** The official client's ZERO-denomination form is still UNMEASURED -- `review/T386/` §1d has the method and the trap.**
 
 ## Added 2026-09-05 by the orchestrator (T381 merge)
 
@@ -2930,9 +2947,15 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   `tests/test_pfs_sound_load.cpp` (15 tests, 7 red pre-fix) against the real
   archives: `BuyItem.WAV`/138 plus SwordBlk/120, Swing/118, Spell_1/103,
   LevelUp/139, WaterIn/100 by name AND by id, an all-2,165-row
-  control-character sweep, and two negatives. **The LIVE ear is still OWED**
+  control-character sweep, and two negatives. ~~**The LIVE ear is still OWED**
   (no server this unit; the archives on disk were the oracle) -- one T328
-  tone-probe row for id 138 on the next lock unit, see B036/B172.
+  tone-probe row for id 138 on the next lock unit, see B036/B172.~~
+  **TAKEN T401** (`review/T401/` §1): 21 `Loaded sound from PFS`, zero
+  `not found`, and id 138 identified in the recording by matched filter
+  against the archive's own bytes (ncc 0.83). Not by a tone probe -- a
+  tone-probe client reads LOOSE files and would have bypassed the PFS path
+  this entry is about; the method and that deviation are in §1b. New: B250,
+  B251.
 
 - ~~**B201** (A) `src/client/bridge/irrlicht_bridge.cpp`
   `GameEventType::CurrencyChanged` arm / `renderer_entities.cpp`
@@ -2948,7 +2971,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   while `character_currency` moved by exactly the amount the chat line named.
   So B172's own close-out wording is unmeasurable as written, and every future
   coin row has no on-screen consumer. Closes when the coin counts reach a panel
-  and a test pins the projection. Prov: T386 Review §1c; B172.~~ **STRUCK T393 (`f13b9979`)**: the purse is drawn. `InventoryLayout::coinRect()`/`coinDecalRect()` put four coin rows in the inventory popup at the OFFICIAL client's own placement -- `/mnt/projects/EverQuestP1999/uifiles/default/EQUI_Inventory.xml`, `IW_Money0..3` at Location X=303, Y=121/147/171/197, Size 70x24, decals A_PlatinumCoin/A_GoldCoin/A_SilverCoin/A_CopperCoin at DecalOffset 1,3 DecalSize 18x18, inside a 428x460 `InventoryWindow` -- mapped proportionally onto the fixed 400x350 `centerPopup` (283,92 / 283,111 / 283,130 / 283,149, 65x18, identical at all five resolutions T351 measured). The `CurrencyChanged` bridge arm is no longer a payload-discarding `LOG_TRACE`: it calls the free function `applyCurrencyChanged()` (the `applyLootWindowOpened()` idiom) onto `InventoryPanelState::coins`, so ALL FIVE publishers -- `OP_MoneyUpdate` (`src/client/core/everquest.cpp`), the corpse-coin grant (`src/client/commands/combat_actions.cpp`), the merchant (`src/client/merchant/merchant_trade.cpp`) and the two stat pushes in `bridge/` -- reach the panel. `updateCharacterStats`'s four `(void)` discards are gone too, though that function still has ZERO callers tree-wide (grepped `src/ include/ tests/ tools/ benchmarks/ docker/`) -- the reaching path is the bridge arm. 12 tests in `tests/test_static_ui_panels.cpp` (`PurseT393*`), **7 of them fail pre-fix**, including a device-backed render pin (`TheInventoryPopupEmitsTwoTextEntriesPerCoinRow`: 24 text entries before, 32 after). **The live screenshot pair (fable vs oracle inventory with coins) is still OWED** -- T393 held no eqemu lock. Two consequences boarded: **B218** (fable's UI atlas has no coin sprite, so the decal box gets a letter) and **B219** (fable's paperdoll rect spans the whole inter-column gap, so the oracle-scaled coin column overlays its right margin). Prov: T393 Review; B172.
+  and a test pins the projection. Prov: T386 Review §1c; B172.~~ **STRUCK T393 (`f13b9979`)**: the purse is drawn. `InventoryLayout::coinRect()`/`coinDecalRect()` put four coin rows in the inventory popup at the OFFICIAL client's own placement -- `/mnt/projects/EverQuestP1999/uifiles/default/EQUI_Inventory.xml`, `IW_Money0..3` at Location X=303, Y=121/147/171/197, Size 70x24, decals A_PlatinumCoin/A_GoldCoin/A_SilverCoin/A_CopperCoin at DecalOffset 1,3 DecalSize 18x18, inside a 428x460 `InventoryWindow` -- mapped proportionally onto the fixed 400x350 `centerPopup` (283,92 / 283,111 / 283,130 / 283,149, 65x18, identical at all five resolutions T351 measured). The `CurrencyChanged` bridge arm is no longer a payload-discarding `LOG_TRACE`: it calls the free function `applyCurrencyChanged()` (the `applyLootWindowOpened()` idiom) onto `InventoryPanelState::coins`, so ALL FIVE publishers -- `OP_MoneyUpdate` (`src/client/core/everquest.cpp`), the corpse-coin grant (`src/client/commands/combat_actions.cpp`), the merchant (`src/client/merchant/merchant_trade.cpp`) and the two stat pushes in `bridge/` -- reach the panel. `updateCharacterStats`'s four `(void)` discards are gone too, though that function still has ZERO callers tree-wide (grepped `src/ include/ tests/ tools/ benchmarks/ docker/`) -- the reaching path is the bridge arm. 12 tests in `tests/test_static_ui_panels.cpp` (`PurseT393*`), **7 of them fail pre-fix**, including a device-backed render pin (`TheInventoryPopupEmitsTwoTextEntriesPerCoinRow`: 24 text entries before, 32 after). ~~**The live screenshot pair (fable vs oracle inventory with coins) is still OWED** -- T393 held no eqemu lock.~~ **TAKEN T401 (`4ff78bb4`, `review/T401/` §2), and the two windows agree**: four rows, platinum->gold->silver->copper, a round decal left and the count right, **9 / 13 / 2 / 16 in both** (the oracle character's purse was written to fable's post-loot purse before login). `review/T401/fable/T401_fable_purse_coinrows_crop4x.png` vs `review/T401/oracle/T401_oracle_purse_coinrows_crop4x.png`. B218's letter is gone. **B219 is now VISIBLE rather than predicted** and is what remains. Two consequences boarded: **B218** (fable's UI atlas has no coin sprite, so the decal box gets a letter) and **B219** (fable's paperdoll rect spans the whole inter-column gap, so the oracle-scaled coin column overlays its right margin). Prov: T393 Review; B172.
 
 - ~~**B202** (A) `src/client/graphics/sim/` `SimBridgeComponent::applySimulationOutput`
   — **SIGSEGV on the render thread whenever a second player is in the zone.**
@@ -3033,10 +3056,15 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
 
   **B203 STAYS OPEN.** What is OWED is a **LIVE A/B search** in the next lock
   unit — one parameter at a time, oracle frame beside fable frame, T361's
-  method — starting from the live-measured pre-T383 baseline (Ultravision
+  method — ~~starting from the live-measured pre-T383 baseline (Ultravision
   R 1.4609 / G 1.2814 / B 1.6629, grey 1.4483; Infravision R 1.6002 / G 1.1264
-  / B 0.8209, grey 1.2450). Not a desk re-fit: the desk re-fit is what T383
-  did.
+  / B 0.8209, grey 1.2450)~~ **— and NOT from those numbers, which T401
+  REFUTED as weather-inflated (B252): re-measured on the same T394 constants
+  under a modifier PROVEN 1.000 for the whole window, fable's Ultravision is
+  grey x1.1606 (R 1.2078 / G 1.1658 / B 1.0649) and its Infravision grey
+  x1.1693 (R 1.2754 / G 1.1076 / B 1.0596). Nor from the oracle table above,
+  which did not reproduce per-channel — see B253.** Not a desk re-fit: the
+  desk re-fit is what T383 did.
 
   **The +55% blue night-base shift: BISECTED TO NO COMMIT, and the plan's range
   was wrong.** `c0a76fea..65cbed39` is not the interval between the two
@@ -3165,9 +3193,16 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
      emitter's position in the spawn phase, before the lifetime check and the
      frustum test.
   Pinned by `tests/test_spell_impact_visual.cpp` (5 tests, **4 red pre-fix**).
-  **The live pixel proof is OWED to T389** — this unit held no server lock, so
+  ~~**The live pixel proof is OWED to T389** — this unit held no server lock, so
   "a landed spell paints something an observing client can see, and the two
-  vocabulary colours differ on screen" is still unmeasured. Note for whoever
+  vocabulary colours differ on screen" is still unmeasured.~~ **TAKEN T401
+  (`4ff78bb4`, `review/T401/` §3): BOTH halves are proven.** The observing
+  client logs `SpellAction: … effect_flag=0` and then `Enqueued
+  CreateSpellEffect 'Impact'` + `SimWorker: Created spell effect 'Impact'`
+  for each of the two casts — T395's `effect_flag == 0` gate is right on a
+  bystander, which sees the 0 and never the 4 — and the pixels move, in two
+  different colours (see B160). The plan's note about `#castspell` was
+  followed: the casts were `/cast` from a gem. Note for whoever
   takes it: **`#castspell` is the wrong driver for the cast-glow half.** eqemu
   broadcasts `OP_BeginCast` to close clients (`Mob::SendBeginCast`,
   `QueueCloseClients`), but T386's observer log carries no BeginCast at all
@@ -3400,9 +3435,14 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   land over its right-hand margin. T393 drew them AFTER the paperdoll blit so
   they are on top (UIRenderer submission order is draw order, T294) and the
   character model is centred in the rect, but nobody has looked at the two
-  together on screen. Needs Will's eye on the owed live pair before anything
-  moves: either the doll narrows to the oracle's proportion or the purse does
-  not follow the oracle here. Prov: T393 Review.
+  together on screen. ~~Needs Will's eye on the owed live pair before anything
+  moves~~ **THE PAIR IS TAKEN (T401, `review/T401/` §2) and it confirms the
+  prediction exactly**: the oracle's coin column clears its character view
+  entirely, fable's four rows land ON the paperdoll panel's right-hand margin,
+  over the dark doll background. They are legible (drawn after the doll blit,
+  as T393 intended). **This entry now waits on nothing but Will's ruling**:
+  either the doll narrows to the oracle's proportion or the purse does
+  not follow the oracle here. Prov: T393 Review; T401 Review §2.
 
 - ~~**B230** (B) `tools/ui_atlas_builder.cpp` / `/mnt/projects/EverQuest_ETC1/willeq.eqe1`
   -- **the UI atlas cannot take a pixel from the official client, and the
@@ -3807,7 +3847,17 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   `sizeEndMax` 0.15 world units, `emitterLifetime` 0.1 s, particle lifetime
   0.4-0.8 s**. The oracle paints hundreds of sprites over roughly a third of
   the screen for 2.0-3.3 s (T389 Review S2). Closes when a landed spell
-  produces a burst an observer can see and a capture can resolve. Frame pair:
+  produces a burst an observer can see and a capture can resolve.
+  **T401 (`4ff78bb4`, `review/T401/` §3) RESOLVED THAT MUCH: "not visible in
+  a capture" is no longer true.** On an OBSERVING client (T389 measured the
+  caster's own screen) a landed Burst of Flame moves **442 pixels** and a
+  Frost Bolt **438** in a 180x160 crop, in unambiguous orange and cyan, at
+  4.92 measured fps — plainly visible at 4x and visible unaided in the full
+  800x600 frame. **The size question is now Will's**: it is resolvable but
+  still far smaller than the oracle's third-of-a-screen burst, and the
+  changed-pixel COUNT does not discriminate it from the idle animation (389
+  pixels) — only the colour does. The binary carried NO T400 (the
+  particle-atlas alpha, B225, was planned and unmerged at that tip). Frame pair:
   `review/T389/fable/T389_fable_54_impact_crop4x.png` versus
   `review/T389/oracle/T389_oracle_54_self_full_1024x768.png`. This is the
   live half of **B204**'s proof and the reason **B160**'s observer pair is
@@ -3862,3 +3912,137 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   which is the better fix, because a shared asset that changes under three
   worktrees is the same hazard class as the git stash and the shared
   scratchpad. Prov: T389 Review S9.
+
+## Added 2026-09-06 by T401 (owed live proofs 7, tip `4ff78bb4`)
+
+- **B250** (A) `src/client/audio/audio_manager.cpp` `loadSoundDataFromPfs` /
+  `playSoundInternal` -- **every sound fable loads out of a `snd*.pfs` archive
+  plays at exactly DOUBLE rate: an octave high and half as long.** MEASURED
+  T401 (`review/T401/` §1d) on a bit-exact ALSA-loopback recording of a live
+  session, matched against the archives' own bytes by normalised
+  cross-correlation over a playback-rate scan of 0.5..3.0 in 0.01 steps.
+  Three assets, three separate events, all **k = 2.00 and nothing anywhere
+  else**: `BuyItem.WAV` 138 on a corpse loot (ncc **0.8292**, best at k=1.00
+  is 0.03), `LevDn.WAV` 140 on an NPC death (**0.9959**), `SpelCast.WAV` 108
+  on a gem cast (**0.762 / 0.728 / 0.768**, three trials). All three are
+  **11,025 Hz** 16-bit mono assets; the band spectrum of the recorded
+  `BuyItem` burst peaks at 8.4-9.4 kHz where the file's peaks at 4.1-4.6 kHz
+  (ratio 2.05), and it lasts 0.26 s against the file's 0.516 s. So a player
+  who hears these at all hears the wrong sound. **What is NOT measured is
+  whether a 22,050 Hz asset is doubled too** -- the only one that played
+  (`caveloop.wav`, 8-bit, distant emitter) never rose above the correlation
+  floor -- so "the decoder ignores the file's rate and assumes 22,050" and
+  "everything is doubled" are both still live, and one 22,050 Hz row
+  distinguishes them. Whichever it is, the rate is being taken from
+  somewhere other than the decoded WAV header. Closes when a PFS sound
+  correlates at k = 1.00 in a live recording and a test pins the decoded
+  sample rate of a known 11,025 Hz archive member. Prov: T401 Review §1d;
+  B200; B036.
+
+- **B251** (A) `src/client/commands/combat_actions.cpp`
+  `eqt::commands::CommandsComponent` (the `WITH_AUDIO` block after the
+  miss/hit text) and the entity map's record for `MySpawnId()` -- **the local
+  player's own `Entity` row is never updated when the server relocates him, so
+  every sound and every range check that reads it uses the position he spawned
+  at.** MEASURED T401 twice, in two unrelated symptoms.
+  (1) `SwordBlk.WAV` 120 is played **30 times** in one combat session and is
+  **absent from the recording at every rate** (best ncc 0.077): its log line
+  reads `Sound play: id=120 file=SwordBlk.WAV pos=(428,-74,3)` while the
+  player stands at `(146,-1009,51)` -- and `(428,-74,3)` is his own stored
+  `character_data` row `x=-74, y=428, z=3` in wire order, i.e. the spawn pose,
+  ~1,020 units away, where the 3D attenuation takes it to zero. The same
+  session's `LevDn` at the *NPC's* position was audible, which is the control.
+  (2) `SpellManager::validateCast` -> `checkRange` refuses a **self**-targeted
+  gem cast with `Your target is out of range, get closer!` after a `#goto`:
+  `checkRange: player=(0.0,12.0,3.0) target=(-1009.0,146.0,51.8)
+  distance=1019.0 range=200` -- caster and target are the same character.
+  So this is not an audio bug; it is one stale record with at least two
+  reachable consequences, and it silently breaks any test that positions a
+  character with `#goto` (T401 lost a whole run to it). Closes when a
+  server-forced relocation updates the self entity, a live session shows the
+  melee sound audible at the player's real position, and a test pins the
+  self-entity position against an `OP_ClientUpdate`/zone-summon for
+  `MySpawnId()`. Prov: T401 Review §1e and §6.3.
+
+- **B252** (A/P) `refactor/BOARD.md` B203's own starting numbers --
+  **the "live-measured pre-T383 baseline" B203 tells the next unit to start
+  its A/B search from is WEATHER-INFLATED and 25% too high.** T377 measured
+  fable's Ultravision at grey **x1.4483** and Infravision at **x1.2450**; T394
+  later bisected and T396 proved that session was running under server rain at
+  `weatherMod = 0.460`, which darkens the base a ratio is measured against
+  while leaving the vision floor fixed. MEASURED T401 (`review/T401/` §4) on
+  the **same constants** (T394 restored them byte-identically) with the
+  modifier **proven 1.000 for the whole window** from the client's own log --
+  the `onZoneEnter … ambient modifier 1.000` line plus the total absence of
+  any `updateTimeOfDay: weatherMod … -> …` line, which since T396 fires on
+  every change in both directions: **Ultravision grey x1.1606 (R 1.2078 /
+  G 1.1658 / B 1.0649), Infravision grey x1.1693 (R 1.2754 / G 1.1076 /
+  B 1.0596)**, video-stepped over 1,117 frames, five windows, each buff
+  divided by the no-buff window before it. Against the oracle's grey fable is
+  at **75%** (Ultravision) and **88%** (Infravision), not the 93%/99% the
+  board records. Closes when B203's text no longer quotes the T377 numbers as
+  a starting point -- done in the same commit -- and the re-solve is fitted
+  against a clear-sky measurement. Prov: T401 Review §4d(1); B203; B211; T396.
+
+- **B253** (A) the oracle side of B203's target table --
+  **the official client's PER-CHANNEL vision ratios are composition-dependent
+  and did not reproduce between two sessions at the same coordinates.**
+  MEASURED T401 (`review/T401/` §4d(2)): Oraclealpha re-measured in the same
+  session as the fable run, weather forced clear, gives Ultravision
+  **R x1.9422 / G x1.2990 / B x1.5466 / grey x1.5419** against T377's
+  **R x1.4581 / G x1.4633 / B x1.8507 / grey x1.5612**. The grey reproduces to
+  1.2%; the channels do not, and the reason is in the frame -- T401's oracle
+  is looking at a stone wall filling the left half of the crop where T377's is
+  looking down an open street. **T386's own composition control fails on this
+  pair: RMSE between the two sessions' oracle night stills is 10.3%, against
+  the 2.7% T386 required to call two sessions comparable.** A vision buff
+  multiplies the scene, so a per-channel ratio only means something between
+  frames showing the same thing. B203's owed A/B search therefore cannot start
+  from the per-channel table as written. Closes when one oracle capture is
+  taken with the camera heading pinned and RECORDED (the official client's
+  yaw on login is not the `character_data` heading), the composition control
+  is inside 3%, and the per-channel table is re-taken against it. Prov: T401
+  Review §4d(2); B203; B146.
+
+- **B254** (A) `src/client/spell/spell_manager.cpp` the `OP_MemorizeSpell`
+  handler -- **memorising a spell into an ALREADY-OCCUPIED gem leaves fable
+  casting the OLD spell.** MEASURED T401 (`review/T401/` §6.4): after
+  `#scribespells` filled the bar, `#memspell 93 0` produced the correct pair
+  of server messages -- `MemorizeSpell response: slot=0 spell_id=467
+  scribing=2` (un-memorise) then `slot=0 spell_id=93 scribing=1` (memorise) --
+  and `/cast 1` then sent **`Sent CastSpell packet: spell=467, gem=0`**,
+  `Beginning cast of 'Lightning Storm' (ID: 467)`. The gem into which nothing
+  had been memorised (`#memspell 54 1` into an empty slot 1) took the new
+  spell correctly, so the `scribing=1` arm works and the defect is in the
+  order or the guard when a `scribing=2` for the same slot precedes it in the
+  same batch. `#unmemspells` first is the workaround and made it correct in
+  every later run. **A player hitting a gem and getting a different spell than
+  the icon shows is class A**, and the wire evidence is a two-line replay.
+  Closes when the two responses in that order leave gem 0 holding 93 and a
+  test replays the pair. Prov: T401 Review §6.4.
+
+- **B255** (P) `/mnt/projects/EverQuest_ETC1/willeq.eqe1` -- **the shared UI /
+  effects pack is rewritten under running units, and T401 caught it changing
+  51 seconds into a live capture session.** MEASURED T401: the file went
+  **2,811,102 -> 2,830,206 bytes at 23:09:57 on 2026-09-05**, alpha companions
+  **1 -> 2** (T400's particle-atlas alpha, B225, whose CODE was not merged and
+  is in nobody's binary). Two clients in the same unit therefore mmap'd
+  different packs, and their own logs say so:
+  `23:09:06 EQE1Loader: mmap'd '.../willeq.eqe1' (66 textures, 1 alpha, 1 raw,
+  2811102 bytes)` versus `23:47:22 … (66 textures, 2 alpha, 1 raw, 2830206
+  bytes)`. **So a live pixel measurement taken in one worktree can silently be
+  a measurement of another worktree's unmerged asset** -- T401's fire/frost
+  capture is "T401's code + T400's atlas", and it cannot separate the two.
+  It also makes `ctest` red on every branch: `PackReproducible` fails (the
+  installed sha256 no longer matches `data/willeq.eqe1.sha256`) and
+  `visual_gate` fails on `eqe1MappedBytes` by **+19,343** in all three zones --
+  which is NOT B240's +239, so B240's blessing numbers are already stale
+  again. This is the same hazard class as the git stash (B-series
+  `git-stash-is-cross-slot-shared`) and the shared session scratchpad: a
+  mutable resource outside every checkout that no worktree owns. B228 and
+  B230 name the drift; what is new here is that the window is **measured** and
+  the consequence reaches captured PIXELS, not just a gate number. Closes when
+  installing the pack is serialised against running units (a lock, the way the
+  eqemu server is), or each worktree reads its own pack, so that a live
+  capture can name the asset it ran against. Prov: T401 Review §0; B228; B230;
+  B240; B225.
