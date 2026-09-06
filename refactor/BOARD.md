@@ -5426,7 +5426,7 @@ client uses every field.
   either way. Closes when each is wired or removed from the builder, the JSON
   name map and the enum together. Found by T416.
 
-- **B352** (B) `src/client/graphics/ui/static_panels.cpp` `renderPetPanel` and
+- ~~**B352** (B) `src/client/graphics/ui/static_panels.cpp` `renderPetPanel` and
   `include/client/graphics/ui/ui_layout.h` `petPanel` -- **the pet command
   button row is drawn OUTSIDE the panel and its last button is clipped away.**
   `petPanel` is `BAR_HEIGHT * 2 + MARGIN * 3` = 40px tall, and the row loop
@@ -5437,7 +5437,31 @@ client uses every field.
   and the `bx > right - 10` guard drops the tenth ("SH", Shrink) silently. The
   honest fix is the oracle's own `EQUI_PetInfoWindow.xml` shape (a grid of
   buttons, not a single text row), which is a layout decision -- hence B, not
-  a one-constant edit. Found by T416.
+  a one-constant edit. Found by T416.~~
+  **STRUCK T419 Leg B**: the row is a GRID and it is inside the frame.
+  `include/client/graphics/ui/pet_layout.h` (new) quotes
+  `EQUI_PetInfoWindow.xml` -- a 154x142 `Style_Sizable` window with
+  `PIW_PetHPGauge` (2,0) 108x26, `PIW_AttackButton` (2,28) 108x20 and a
+  two-column grid of 54x20 cells at x=2/x=56 with rows at y=50/74/96 -- and
+  `PetLayout::buttonRect()` is the only place a pet button rect is computed.
+  `UILayout::computeLayout()` now sizes `petPanel` from the same two constants
+  the grid is drawn from (`PET_BUTTON_ROWS` 2, `PET_BUTTON_H` 10), 40px -> 52px,
+  so the grid cannot fall out of the frame the way the text run did. **Two
+  deviations from the XML, both written out in that header rather than
+  absorbed**: (1) fable's `PetButton` set is eqemu's TEN (Sit, Stop, Regroup,
+  Follow, Guard, Taunt, Hold, GHold, Focus, SpellHold) and only five of them
+  have a cell in the Titanium XML at all, so ten cells cannot be laid on a grid
+  drawn for seven; (2) the grid is **5x2, not the oracle's 2x5**, because
+  MEASURED at 640x480 `petPanel` starts at y=172 under a 94px group panel under
+  a 70px status block with the buff bar's top edge at y=228 -- SIXTEEN pixels
+  of slack, where the oracle's five-row grid needs 100. Restoring the oracle's
+  shape needs a pet window that is not stacked in that column: board **B366**.
+  Note also that this entry said the tenth button is "Shrink"; it is
+  **SpellHold** (`PET_BUTTON_SPELLHOLD`, `include/client/pet_constants.h`) --
+  fable has no Shrink pet button. Pinned by `tests/test_pet_buttons.cpp`
+  (5 cases, **3 failing pre-fix**: `EveryButtonRectLiesInsideThePanel`,
+  `TheTenthButtonHasItsOwnCell`, `ThePanelIsSizedFromTheGridsOwnConstants`).
+  Before/after: `review/T419/crops/pet_before_after_4x.png`.
 
 - **B353** (P) `scripts/ci/visual_gate.sh` -- **proposal: the gate should
   photograph the UI.** Its three zones capture geometry only, which is why
@@ -5471,6 +5495,25 @@ client uses every field.
   bounds). Closes when the popup grows a focusable edit field and the four
   buttons push intents -- `SendRecipesSearch` / `SendRecipesFavorite` already
   exist and are already reached from the command processor. Found by T419 Leg A.
+
+- **B366** (C) `include/client/graphics/ui/ui_layout.h`,
+  `include/client/graphics/ui/pet_layout.h` -- **fable's left HUD column cannot
+  hold the oracle's pet window, and which way to fix that is a look decision.**
+  Measured at 640x480, the smallest supported resolution: `playerStatus` ends at
+  y=70, `groupPanel` runs 74..168, `petPanel` starts at 172 and the buff bar's
+  top edge is at y=228 -- **sixteen pixels of slack**. `EQUI_PetInfoWindow.xml`
+  is a 154x142 window whose command buttons are a two-column grid of 54x20
+  cells; fable has TEN pet buttons rather than that file's seven, so the
+  oracle's shape needs five rows -- 100px at the oracle's own row height, and
+  scaling it proportionally into 16px puts a 3px row under a 3px row. T419 Leg B
+  therefore laid the ten out 5x2 in 20px (B352, struck) and boarded the shape
+  here rather than silently inventing a HUD reflow. The options are Will's:
+  (a) leave it -- the 5x2 grid is legible and inside the frame; (b) make the
+  left column resolution-aware, so the pet window gets the oracle's 2x5 above
+  some resolution; (c) give the pet window its own anchor off the stack, which
+  is what the official client does (`PetInfoWindow`
+  `<Location><X>50</X><Y>160</Y>`, `RelativePosition false` -- a free-floating
+  window, not a stacked panel). Found by T419 Leg B.
 
 - **B367** (P) `refactor/BOARD.md` -- **the id `B335` was issued twice, on the
   same day.** T414 Leg A used it for the four inert `storm` keys in

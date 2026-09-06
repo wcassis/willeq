@@ -261,6 +261,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_recipe_list)
 ENDIF()
 
+# T419 Leg B (board B352): the pet command grid. Header-only geometry, so it
+# needs no willeq_core body at all -- but it links it for UILayout's TU-free
+# inline definitions, the same way the panel tests above do.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_pet_buttons
+        test_pet_buttons.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_pet_buttons PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_pet_buttons GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_pet_buttons)
+ENDIF()
+
 # T413 (board B285): the software cursor's cache name vs the pack's entry name.
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(test_software_cursor_pack_name

@@ -42,6 +42,17 @@ them proportionally onto `centerPopup`; `include/client/graphics/ui/combat_abili
 `EQUI_CombatAbilityWnd.xml`'s offsets UNSCALED, because that window is `Style_Sizable false` at 174x150.
 Neither panel's `.cpp` computes a rect.
 
+**The pet panel takes its command-grid geometry from the oracle too** (T419,
+board B352): `include/client/graphics/ui/pet_layout.h` quotes
+`EQUI_PetInfoWindow.xml`'s 154x142 window and its 54x20 command cells, and
+`UILayout::computeLayout()` sizes `petPanel` from the same two constants
+(`PET_BUTTON_ROWS`, `PET_BUTTON_H`) the grid is drawn from — before this the
+row was drawn 34px down a 40px panel, so the labels hung outside the frame and
+the tenth ("SH", SpellHold) was silently dropped for want of width. Two
+deviations from the XML are written out in that header: fable's `PetButton`
+set is eqemu's TEN, not Titanium's seven, and the grid is 5x2 rather than the
+XML's 2x5 because at 640x480 the panel has sixteen pixels of slack between the
+group panel and the buff bar (board **B366**).
 
 ## Design Patterns
 
