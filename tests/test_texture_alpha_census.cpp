@@ -94,6 +94,18 @@ std::vector<Entry> weatherSet() {
     return v;
 }
 
+// ── The software cursor ─────────────────────────────────────────────────────
+// IrrlichtRenderer::createSoftwareCursor() loads it (DRM/KMS only -- there is
+// no hardware cursor there) and FrameComponent::renderFrame() draws it with
+// draw2DImage(..., useAlphaChannelOfTexture=true). generateSoftwareCursor()
+// clears the 8x10 image to SColor(0,0,0,0) and draws a black-outlined white
+// arrow over it: two alpha levels, 0 and 255. 24-bit made the transparent
+// surround opaque black.
+std::vector<Entry> cursorSet() {
+    return {{"software_cursor.bmp", "software_cursor",
+             "IrrlichtRenderer software cursor, draw2DImage alpha blend"}};
+}
+
 // ── The files that stay 24-bit, and why ─────────────────────────────────────
 struct NeverAlpha {
     std::string file;
@@ -293,6 +305,18 @@ TEST(TextureAlphaCensus, WeatherPackEntriesCarryAlphaInBand) {
     expectPackedInBand(weatherSet());
 }
 
+TEST(TextureAlphaCensus, SoftwareCursorIs32Bit) {
+    expectFormat32(cursorSet());
+}
+
+TEST(TextureAlphaCensus, SoftwareCursorHasANonTrivialAlphaHistogram) {
+    expectNonTrivialAlpha(cursorSet());
+}
+
+TEST(TextureAlphaCensus, SoftwareCursorPackEntryCarriesAlphaInBand) {
+    expectPackedInBand(cursorSet());
+}
+
 // ── The files that stay 24-bit ──────────────────────────────────────────────
 
 TEST(TextureAlphaCensus, TheDocumentedExceptionsStay24Bit) {
@@ -328,6 +352,22 @@ TEST(TextureAlphaCensus, StormCloudLayerBlendsWithAlpha) {
            "their alpha would stop being sampled and the files would need to carry "
            "the shape in RGB instead.";
     EXPECT_EQ(src.find("EMT_TRANSPARENT_ADD_COLOR"), std::string::npos);
+}
+
+TEST(TextureAlphaCensus, TheSoftwareCursorIsDrawnWithItsTextureAlpha) {
+    const std::string src = sourceText("src/client/graphics/frame/renderer_frame_render.cpp");
+    ASSERT_FALSE(src.empty());
+    EXPECT_NE(src.find("draw2DImage(owner_.softwareCursorTexture_, destPos, srcRect,"),
+              std::string::npos)
+        << "the software cursor is no longer drawn through draw2DImage; its BMP "
+           "carries the arrow's shape entirely in alpha.";
+    // The literal `true` on the next line is useAlphaChannelOfTexture.
+    const size_t at = src.find("draw2DImage(owner_.softwareCursorTexture_");
+    if (at != std::string::npos) {
+        EXPECT_NE(src.find("SColor(255, 255, 255, 255), true);", at), std::string::npos)
+            << "the software cursor draw dropped useAlphaChannelOfTexture=true, so "
+               "its transparent surround would draw as an opaque rectangle.";
+    }
 }
 
 TEST(TextureAlphaCensus, RainAndSnowOverlaysDrawWithTheTextureAlpha) {

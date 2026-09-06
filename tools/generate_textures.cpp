@@ -157,7 +157,11 @@ std::vector<TextureRecipe> buildManifest() {
 
     m.push_back({"spell_particle_fallback.bmp", BmpFormat::Bmp24,
                  [](IVideoDriver* d) { return EQT::Graphics::generateSpellParticleFallback(d); }});
-    m.push_back({"software_cursor.bmp", BmpFormat::Bmp24,
+    // T406 (board B266): an 8x10 arrow drawn on a TRANSPARENT ground -- two
+    // alpha levels, 0 and 255. FrameComponent draws it with
+    // draw2DImage(..., useAlphaChannelOfTexture=true), so 24-bit made it an
+    // opaque 8x10 black-and-white rectangle following the pointer.
+    m.push_back({"software_cursor.bmp", BmpFormat::Bmp32,
                  [](IVideoDriver* d) { return EQT::Graphics::generateSoftwareCursor(d); }});
     m.push_back({"detail_atlas.bmp", BmpFormat::Bmp24, &makeDetailAtlas});
 
