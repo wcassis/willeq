@@ -267,7 +267,8 @@ private:
     uint32_t countCarriedItem(uint32_t item_id) const;
 
     // ========================================================================
-    // Packet Sending
+    // Packet Sending  (defined in src/client/spell/spell_publish.cpp, beside
+    // the three bridge publishers below)
     // ========================================================================
 
     void sendCastSpellPacket(uint32_t spell_id, uint8_t gem_slot, uint16_t target_id);

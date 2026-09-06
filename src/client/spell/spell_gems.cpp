@@ -17,6 +17,8 @@
 
 #include "client/spell/spell_manager.h"
 #include "client/eq.h"
+#include "client/bridge/game_state_bridge.h"
+#include "client/state/event_bus.h"
 #include "common/logging.h"
 
 namespace EQ {
