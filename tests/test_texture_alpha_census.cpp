@@ -136,7 +136,13 @@ std::vector<Entry> billboardSet() {
 // companion ParticleManager reads out of the cache (T411).
 std::vector<Entry> particleSet() {
     return {{"particle_atlas.bmp", "particle_atlas",
-             "UnifiedParticleRenderer point sprite, alpha blend"}};
+             "UnifiedParticleRenderer point sprite, alpha blend"},
+            // T417 (board B300): the SECOND particle sheet -- the official
+            // client's own spel*.tga art. Same consumer, same draw path,
+            // same companion route; it is a second bound texture in the same
+            // point-sprite program, not a new mechanism.
+            {"spell_sprite_atlas.bmp", "spell_sprite_atlas",
+             "UnifiedParticleRenderer point sprite (sheet 1), alpha blend"}};
 }
 
 // ── Entries that must stay in-band RGBA8888, and why ────────────────────────
@@ -557,7 +563,10 @@ TEST(TextureAlphaCensus, EveryShippedBmpIsAccountedFor) {
         if (sp == std::string::npos) continue;
         pinned.insert(line.substr(sp + 1));
     }
-    ASSERT_EQ(pinned.size(), 64u) << "data/textures.sha256 does not pin 64 files";
+    // 64 procedural BMPs + T417's spell_sprite_atlas.bmp, which is lifted
+    // from the official client's art by a second recipe
+    // (tools/spell_sprite_atlas_builder) into the same directory.
+    ASSERT_EQ(pinned.size(), 65u) << "data/textures.sha256 does not pin 65 files";
 
     std::set<std::string> censused;
     for (const std::string& f : allCensusedFiles()) censused.insert(f);

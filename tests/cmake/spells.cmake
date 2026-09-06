@@ -145,10 +145,15 @@ GTEST_DISCOVER_TESTS(test_spell_effect_removal)
 # mapping measured against the official client, and the routing of a resolved
 # Target stage into an impact effect's EmitterConfig::textureRegions[].
 # Pure logic -- two Environment TUs, no renderer, no Irrlicht device.
+# T417 (board B300) rewrote the mapping half: the twelve tile approximations
+# are gone and every resolving GEN name addresses its own cell on the spell
+# sprite sheet. spells_eff_reader.cpp joins the sources because the config now
+# resolves through the reader's one implementation of the 0-based rule.
 ADD_EXECUTABLE(test_spell_target_stage_textures
     test_spell_target_stage_textures.cpp
     ${CMAKE_SOURCE_DIR}/src/client/graphics/environment/spell_effects_config.cpp
     ${CMAKE_SOURCE_DIR}/src/client/graphics/environment/spell_emitter_presets.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/spell/spells_eff_reader.cpp
     ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
 )
 TARGET_LINK_LIBRARIES(test_spell_target_stage_textures GTest::gtest_main ${FMT_LIB} ${JSONCPP_LIBRARIES} dl)

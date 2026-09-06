@@ -202,6 +202,9 @@ public:
      * Get the particle atlas texture (for water ripples and other effects).
      */
     irr::video::ITexture* getAtlasTexture() const { return atlasTexture_; }
+    irr::video::ITexture* getSpellSpriteAtlasTexture() const {
+        return spellSpriteAtlasTexture_;
+    }
 
     // === Unified Particle System (GLES2 point sprites) ===
 
@@ -401,10 +404,19 @@ private:
      */
     bool loadParticleAtlas(const std::string& path);
 
+    // T417 (board B300): the SECOND particle sheet -- the official client's
+    // own spel*.tga art, packed by tools/spell_sprite_atlas_builder. Loaded
+    // and re-acquired exactly like the procedural atlas above; a failure is
+    // NOT fatal, because every procedural particle still draws without it
+    // and only real-sprite spell effects are lost.
+    bool loadSpellSpriteAtlas(const std::string& path);
+
     // Path passed to loadParticleAtlas() by init() — retained so onZoneEnter()
     // can re-acquire the atlas via the exact same path if a prior eviction
     // (onTextureEvicted()) nulled atlasTexture_ (P34).
     static constexpr const char* kAtlasTexturePath = "data/textures/particle_atlas.bmp";
+    static constexpr const char* kSpellSpriteAtlasPath =
+        "data/textures/spell_sprite_atlas.bmp";
 
     /**
      * Render a single billboard-oriented quad.
@@ -421,6 +433,7 @@ private:
     irr::scene::ISceneManager* smgr_ = nullptr;
     irr::video::IVideoDriver* driver_ = nullptr;
     irr::video::ITexture* atlasTexture_ = nullptr;
+    irr::video::ITexture* spellSpriteAtlasTexture_ = nullptr;  // T417
     ConstrainedTextureCache* constrainedCache_ = nullptr;
     irr::video::SMaterial particleMaterial_;
 

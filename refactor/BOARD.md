@@ -874,6 +874,14 @@ it without taking that measurement first.
   `spells.eff` + `data/willeq.db`; reproduce with
   `scripts/refactor/t380_spell_visual_census.py`. Found by T381.
 
+  **ANNOTATED T417 (this commit)**: B300 is struck and the sprite half of the
+  question is closed -- every stage sprite name a record carries now resolves
+  to the official client's own art on a real sheet, so "what does the client
+  draw for this name" is no longer an open input to the projectile decision.
+  What still blocks B165 is unchanged and is NOT a data question: it is
+  B227's unmeasured travel capture. T417 could not help there either, because
+  it never held the lock.
+
 - **B195** (B) `include/client/graphics/spell_visual_fx.h`
   `SpellVisualFX::removeBuffAura(entity_id, spell_id)` and
   `SpellVisualFX::removeAllForEntity(entity_id)` have **ZERO callers** in
@@ -4266,6 +4274,15 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   changing the sizes and the sprite shapes in one unit would make the next
   capture pair unattributable. Retune it in its own unit, then take the
   capture; that unit now has a real atlas under it.
+  **ANNOTATED T417 (this commit)**: the sprite shapes are now the OFFICIAL
+  CLIENT'S OWN ART, not sixteen procedural approximations (B300 struck), so
+  T400's "changing the sizes and the shapes in one unit would make the next
+  capture pair unattributable" has had its shape half spent. This entry is
+  unchanged on its own numbers -- T417 deliberately did not touch
+  `styles.impact`, and 36 particles of 0.05-0.15 world units for 0.4-0.8 s is
+  still what ships. The live A/B against T389's oracle videos was T417's
+  Leg C and did NOT run: T418 held the eqemu lock for the whole unit. That
+  owed match is **B356**, and it is the next thing this entry needs.
 
 - **B227** (B) the projectile question (does the official client draw a Frost
   Bolt travelling between caster and target, and over how many frames) is
@@ -4885,7 +4902,7 @@ T407 deleted eleven (see below). The rest are boarded here.
   reads it (`combat_hunting.cpp`). It was named from the census summary, not the
   census output, which never flagged it.
 
-- **B300** (A) `src/client/graphics/environment/spell_effects_config.cpp`
+- ~~**B300** (A) `src/client/graphics/environment/spell_effects_config.cpp`
   `buildTextureNameMap()` -- **the 16-tile procedural particle atlas cannot
   represent a large share of the sprites the corrected reader now resolves,
   because several of them are not abstract particles at all.** Split out of
@@ -4926,7 +4943,111 @@ fields it needs and the struct mirrors the on-disk header),
 `UnkRange72`. A wire or file struct must keep its shape whether or not the
 client uses every field.
 
-  **WILL RULED 2026-09-06:** draw the REAL sprites — effects as close to the original as possible. → T417 (atlas from SpellEffects/*.tga). Now class A.
+  **WILL RULED 2026-09-06:** draw the REAL sprites — effects as close to the original as possible. → T417 (atlas from SpellEffects/*.tga). Now class A.~~
+  **STRUCK T417 (this commit)**: fable draws the real sprites. The official
+  client's own art now ships as a SECOND particle sheet,
+  `data/textures/spell_sprite_atlas.bmp` -- 512x512, 8x8 cells of 64x64, 33
+  used -- built by the new `tools/spell_sprite_atlas_builder` from
+  `SpellEffects/spel*.tga` and packed into `willeq.eqe1` as ETC1 with an
+  `_alpha` companion like every other entry. `SpellEffectsConfig::
+  getTextureIndex()` no longer carries ANY name->tile row for a `spells.eff`
+  name: on a miss it calls `SpellsEffReader::effectNameToTexture()` -- the
+  reader's one implementation of the 0-based rule -- and looks the resulting
+  file up in `include/client/graphics/environment/spell_sprite_atlas.h`, the
+  shared layout header the builder also includes. There is no second name
+  table, so the sheet and the client's addressing of it cannot drift. All
+  twelve T389/T409 approximation rows are DELETED, the four figurative
+  sprites included: the sword, the flaming skull, the row of skulls and the
+  lightning-wreathed sphere now draw themselves. Addressing: a flat ordinal
+  below `SpellSpriteAtlas::kBase` (64) is a procedural tile, at or above it a
+  sprite cell; `UnifiedParticleRenderer` bins particles by SHEET as well as
+  blend mode (four vertex arrays, not two) because the bound texture and
+  `uAtlasRegionSize` are per-draw state, and a sprite particle with no sheet
+  loaded is SKIPPED, never redrawn with the procedural atlas's UVs.
+
+  **THREE MEASURED CORRECTIONS to what this entry and T409 recorded.**
+  (1) **T409's "4x4 sheet of one repeated frame" is REFUTED.** All sixteen
+  frames of all 67 `spel*.tga` were hashed: every file has between 5 and 16
+  DISTINCT frames. They are animations -- `spelg1` is a sword rotating
+  through sixteen headings. (2) **Frame 0 is the wrong frame**, and this was
+  not a cosmetic choice: the sheets are fade-in cycles, SEVEN of the 33 files
+  have a completely blank frame 0 (`spelb3`, `spelb4`, `spelc3`, `spelc4`,
+  `speld4`, `spely3`, `spely4`), and `spelu2` -- Frost Bolt's impact --
+  carries 12% of its peak alpha there. The first build of the atlas shipped
+  seven empty cells. The rule is now the PEAK frame (greatest total alpha,
+  ties to the lowest index). (3) **"36 of the 40 names resolve to a real
+  file" is off by two.** 40 distinct names; 36 match the GEN rule; **34**
+  resolve to a file that exists; those 34 name **33** distinct files
+  (`GENE00` and `GENE01` share `spele1.tga`). The two that resolve to nothing
+  on disk are `GENA20_SPRITE` -> `spela3.tga` and `GENA30_SPRITE` ->
+  `spela4.tga`, neither shipped under `SpellEffects/`; they keep the
+  procedural fallback, as do the four non-GEN names, which T417 gave named
+  tiles (`I_SNOWFLAKESPRITE` -> Snowflake, `I_TFIRE_SPB` -> Ember,
+  `I_TSMOKE_SPB` -> SmokeWisp, `GEN_Z_SPB` -> WispyCloud).
+
+  Pack: 5,532,254 -> 5,881,918 B (+349,664), 126 -> 128 entries, sha
+  `aca03e7f...` -> `584ba1fe...`; `eqe1MappedBytes` +349,664 in each of the
+  three gate zones, which is the ONLY visual-gate miss (every image golden
+  matched) -- **bless owed, see B357**. Pinned by
+  `SpellSpriteAtlasFile.*` (6 cases, incl. `EveryCellEqualsItsSourceFrame`,
+  which re-derives every cell from the source TGA rather than trusting a
+  golden), `SpellSpriteRealArt.*` + `SpellSpriteAtlasLayout.*` (11), and
+  `SpellSpriteSheetDrawTest.*` (6 pixel cases through a real headless GLES2
+  point sprite, incl. Frost Bolt's `speld2`/`spelu2`). 17 red before, all
+  green after; a planted 0.25 region size turns 4 of the 6 draw cases red.
+  What this did NOT change is the burst's SIZE and LIFETIME -- that is B226,
+  and its live A/B is **B356**. Prov: T417 Review.
+
+- **B355** (B) `tools/spell_sprite_atlas_builder.cpp` -- **the spell sprite
+  sheets ANIMATE, and fable draws one frame of each.** MEASURED T417: every
+  one of the 67 `SpellEffects/spel*.tga` is a 4x4 sheet of between 5 and 16
+  DISTINCT frames (T409's "one repeated frame" is refuted, and the record is
+  corrected under the struck B300). `spelg1` is a sword rotating through
+  sixteen headings; `speln1` is a mottled disc whose noise churns; the small
+  64x64 sheets are fade-in/fade-out cycles whose first frame is empty. The
+  shipped atlas takes the PEAK frame of each -- the fully-formed sprite --
+  which is a faithful still but is still a still. The official client plays
+  the animation, so "as close to the original as possible" (Will, 2026-09-06)
+  is not yet fully served. Closes when a particle can advance through its
+  sheet's sixteen frames. **This is not a small change and should not be done
+  casually**: the sheet would grow 16x (33 sprites x 16 frames x 64x64 is
+  ~1536x1536, against today's 512x512 and +349,664 pack bytes), or the atlas
+  would have to page, and `UnifiedParticle` has no per-particle animation
+  clock -- `textureIndex` is a single flat ordinal it never changes. A
+  cheaper first step worth measuring: whether a frame chosen per PARTICLE
+  (spreading the sixteen across a burst, no per-particle clock needed) reads
+  as animation at burst sizes. Prov: T417 Review.
+
+- **B356** (B) `config/spell_effects.json` `styles.impact` -- **T417's Leg C
+  did not run: the burst size/lifetime A/B against the oracle is still
+  owed.** T417 was to match count, size and lifetime for spells 54 and 93
+  against T389's oracle videos, one parameter at a time with weather and
+  heading pinned (T405's rig). `/mnt/projects/fable/.eqemu-lock` read
+  `T418 2026-09-06` for the whole unit and the protocol forbids waiting on
+  it, so the plan's own STOP applied. Nothing was measured and nothing was
+  changed. The gap is unchanged from B226: fable paints 36 particles of
+  0.05-0.15 world units for 0.4-0.8 s, the oracle hundreds of sprites over a
+  third of the screen for 2.0-3.3 s. **What T417 DID change is what each
+  particle looks like**, so a capture pair taken now would differ from
+  T389's in two ways at once and prove nothing about size -- take the A/B
+  first, then the pair. Closes with the measured parameter table and a live
+  capture. Prov: T417 Review; B226.
+
+- **B357** (P) `tests/goldens/manifest.json` memory-coverage
+  `eqe1MappedBytes` -- **a bless is owed for T417's pack growth, and the
+  visual gate is RED on `task/T417-real-spell-sprites` until it is given.**
+  T417 added `spell_sprite_atlas` and its `_alpha` companion to
+  `willeq.eqe1` (5,532,254 -> 5,881,918 B, 126 -> 128 entries, sha
+  `aca03e7f...` -> `584ba1fe...`), and all three gate zones' mapped bytes
+  rose by **exactly the pack's own byte delta, 349,664**: qeynos2
+  122,665,822 -> 123,015,486; gfaydark 121,331,914 -> 121,681,578; befallen
+  115,816,410 -> 116,166,074. **Every other gate check PASSED** -- every
+  image golden matched (no golden moved, so the plan's STOP did not fire),
+  CPU p95 under ceiling in all three zones (5.277/6.291/6.370 against
+  10.108/10.672/10.948), budget block clean. The manifest was NOT touched:
+  an executor never self-blesses. Closes when Will blesses the three numbers.
+  Prov: T417 Review; the same class as B228 and B315.
+
 - **B305** (P) The T410 scenario lane's THREE LIVE PROOF RUNS ARE OWED. The
   lane builds, its 20 headless state-machine cases are green, and the client
   was observed arming and reporting a verdict; but `zone_in`,

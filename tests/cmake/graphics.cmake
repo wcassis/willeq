@@ -204,6 +204,22 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_particle_atlas_alpha)
 ENDIF()
 
+# T417 (board B300): the shipped spell sprite atlas versus the official
+# client's own SpellEffects/*.tga, cell for cell. Files only -- no device, no
+# GPU, no willeq_core; the TGA decode is the builder's own header-only reader,
+# so the expected pixels are re-derived from the source rather than from a
+# golden nobody can re-check.
+ADD_EXECUTABLE(test_spell_sprite_atlas
+    test_spell_sprite_atlas.cpp
+)
+TARGET_COMPILE_DEFINITIONS(test_spell_sprite_atlas PRIVATE
+    WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+TARGET_INCLUDE_DIRECTORIES(test_spell_sprite_atlas PRIVATE
+    ${CMAKE_SOURCE_DIR}/tools
+    ${CMAKE_SOURCE_DIR}/include)
+TARGET_LINK_LIBRARIES(test_spell_sprite_atlas GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_spell_sprite_atlas)
+
 # T406 (board B266): the census of every shipped BMP's alpha, its consumer's
 # blend, and the willeq.eqe1 payload that carries it. Reads files only (the
 # BMPs, the pack, and the consumer sources) -- no device, no GPU. Links

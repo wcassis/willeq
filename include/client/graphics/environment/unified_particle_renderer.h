@@ -42,11 +42,20 @@ public:
     //   when the atlas carries its alpha in band (T411, board B261). Bound on
     //   texture unit 1; 0 binds a 1x1 opaque-white texture so the shader's
     //   multiply is an exact no-op.
+    // spriteTexture / spriteAlphaCompanion: T417, board B300. The SECOND
+    //   particle sheet, data/textures/spell_sprite_atlas.bmp -- the official
+    //   client's own spel*.tga art, 8x8 cells of 64x64. A particle whose
+    //   textureIndex is >= SpellSpriteAtlas::kBase addresses this sheet
+    //   instead of the 4x4 procedural atlas, and is drawn in its own batch
+    //   because the sheet and its region size are per-draw state. 0 means
+    //   the sheet is unavailable, and such particles are skipped rather than
+    //   drawn with the wrong sheet's UVs.
     void render(const UnifiedParticle* particles, int count,
                 const float* viewMatrix, const float* projMatrix,
                 float fogStart, float fogEnd, const float* fogColor,
                 float screenHeight, GLuint atlasTexture,
-                GLuint alphaCompanion = 0);
+                GLuint alphaCompanion = 0, GLuint spriteTexture = 0,
+                GLuint spriteAlphaCompanion = 0);
 
     // Max supported point size on this GPU
     float getMaxPointSize() const { return maxPointSize_; }
@@ -93,9 +102,12 @@ private:
     GLint uAtlasRegionSize_ = -1;
     GLint uScreenHeight_ = -1;
 
-    // CPU-side vertex arrays (reused each frame)
+    // CPU-side vertex arrays (reused each frame). Four, not two: blend mode
+    // splits the draw, and so does the sheet (T417).
     std::vector<PointSpriteVertex> additiveVerts_;
     std::vector<PointSpriteVertex> alphaVerts_;
+    std::vector<PointSpriteVertex> spriteAdditiveVerts_;
+    std::vector<PointSpriteVertex> spriteAlphaVerts_;
 };
 
 } // namespace Environment
