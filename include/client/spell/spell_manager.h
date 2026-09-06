@@ -109,6 +109,7 @@ public:
 
     // ========================================================================
     // Spell Gems
+    // (defined in src/client/spell/spell_gems.cpp)
     // ========================================================================
 
     // Memorize a spell into a gem slot (0-7)
@@ -140,6 +141,7 @@ public:
 
     // ========================================================================
     // Spellbook
+    // (defined in src/client/spell/spell_gems.cpp)
     // ========================================================================
 
     // Scribe a spell to spellbook (from server data or scroll)
