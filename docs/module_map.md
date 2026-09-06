@@ -136,6 +136,24 @@ and have no such header. The count is netted by the `DocCounts` test (T373).
 | inventory_packets.cpp | 276 | processCharInventory, processItemPacket, move/delete responses, dumpInventory |
 | inventory_constants.cpp | 125 | Slot constants and name tables |
 
+## Spells — SpellManager (`include/client/spell/spell_manager.h`) — split by T407
+
+`SpellManager` is a plain class, not an extracted `EverQuest` component: there
+is no `ClientContext`, no `owner_` handle and no friendship. Its TUs are
+therefore a straight split of one class's bodies — each re-opens `namespace EQ`
+and defines `SpellManager::` methods, exactly as T246's `spell_cast_checks.cpp`
+already did. The header is a single declaration list; each of its banners names
+the TU that defines the bodies under it.
+
+| TU | Lines | Contents |
+|---|---|---|
+| spell_manager.cpp | 473 | Core: ctor/dtor, `initialize`, the per-frame `update` (+ `updateGemCooldowns`, `updateMemorization`), the cast state machine's own transitions — `beginCastFromGem`, `beginCastById`, `interruptCast`, `getCastProgress`, `getCastTimeRemaining`, `completeCast`. The player-reachable path starts here: gem click / `/cast` -> `beginCastFromGem()` -> `validateCast()` |
+| spell_gems.cpp | 378 | The gem bar and the spellbook — one storage family (`m_spell_gems`, `m_gem_states`, `m_gem_cooldown_start`/`_duration`, `m_memorize_*`, `m_spellbook`): `memorizeSpell`, `forgetSpell`, `swapGems`, the six gem accessors, `calculateMemorizeTime`, `findGemSlotForSpell`, `startGemCooldown`, `scribeSpell`, `hasSpellScribed`, `getSpellbookSpell`, `findFreeSpellbookSlot`, `getScribedSpells`, `setSpellbook`, `setSpellGems`, `applyServerGemUpdate` (T404's server-driven gem edit) |
+| spell_packet_handlers.cpp | 351 | The four inbound-packet arms the zone dispatcher calls — `handleBeginCast`, `handleAction`, `handleInterrupt`, `handleManaChange` — plus `showSpellMessages` / `showBeginCastMessage`, whose only callers they are. T357's deleted spell-land hook sat inside `handleAction()`; `SpellLandHookIsGone` in `tests/test_spell_manager_timing.cpp` reads this TU (and every sibling) as text to keep it gone |
+| spell_cast_validation.cpp | 222 | The pre-cast decision layer: `adjustTargetForSpellType`, `isValidCreatureTarget`, then `validateCast` and the three checks it owns — `checkMana`, `checkEndurance` (T355), `checkRange` |
+| spell_cast_checks.cpp | 171 | T246: the other four pre-cast checks — `checkLineOfSight`, `countCarriedItem`, `checkReagents`, `checkPlayerState`. Each is permissive wherever the client has no state to judge from |
+| spell_publish.cpp | 148 | Everything that leaves the class: the three outbound packets (`sendCastSpellPacket`, `sendInterruptPacket`, `sendMemorizePacket`) and the three bridge publishers (`publishCastStarted`, `publishCastComplete` — T44 — and `publishGemChanged` — U06b), each of which also does T221's source-side `GameState` write first |
+
 ## Renderer — IrrlichtRenderer class (`include/client/graphics/irrlicht_renderer.h`)
 
 K16 (board B006): `IrrlichtRenderer` now implements

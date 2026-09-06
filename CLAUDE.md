@@ -449,7 +449,10 @@ The client connects through three stages, each with its own connection manager:
 **Spells** (`src/client/spell/`)
 - `SpellManager` - Spell casting, gem state, cooldowns, memorization. The only
   one of these a player reaches: gem click / `/cast` -> `beginCastFromGem()` ->
-  `validateCast()`.
+  `validateCast()`. Its bodies live in six TUs (T407 split the 1,451-line
+  `spell_manager.cpp` before it breached the ceiling) - see
+  `docs/module_map.md` for which TU holds which method; the header's banners
+  name the defining TU too.
 - `SpellTypeProcessor` - **DELETED (T324, 2026-09-02)**. Client-side target
   resolution with zero callers; the server resolves spell targets and reports
   each landing.

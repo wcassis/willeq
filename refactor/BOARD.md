@@ -4278,8 +4278,10 @@ T407 deleted eleven (see below). The rest are boarded here.
 
 - **B294** (A) `include/client/graphics/irrlicht_renderer.h`
   `IrrlichtRenderer::forcePvsUpdate_` -- set true in FOUR places
-  (`renderer_init.cpp`, `player/renderer_camera.cpp`,
-  `frame/renderer_frame_input.cpp`, and an inline setter in the header) to
+  (`src/client/graphics/renderer/renderer_init.cpp`,
+  `src/client/graphics/player/renderer_camera.cpp`,
+  `src/client/graphics/frame/renderer_frame_input.cpp`, and an inline setter in
+  the header) to
   force a PVS visibility recalculation, and read nowhere. The comment on the
   member says "set when render distance changes"; changing render distance
   therefore does not force the recompute it asks for. Closes when the frame
