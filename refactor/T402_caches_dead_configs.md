@@ -55,7 +55,7 @@ has since merged and `fable` is at `4f5c9125` — my merge-base is unchanged).
 | leg | commit | what |
 |---|---|---|
 | A (B248) | `5a178682` (+ fixup `286fc71b`) | index caches leave the checkout |
-| B (B245) | `923fe626` | the two orphan config files deleted, B255 boarded |
+| B (B245) | `923fe626` | the two orphan config files deleted, B275 boarded |
 | C (B246) | `7a1c5b39` | the ignored argument, the S03 check, the wrong fatal |
 
 **No STOP fired.** Leg C's STOP ("race_models.json carries data the db does
@@ -121,7 +121,7 @@ it by months and `CLAUDE.md` still called the first one live user settings.
 **Decision: both DELETED.** They describe a UI the client no longer has, so
 restoring them would configure windows that do not exist. The one live concept
 they touch (`showTimestamps`) and the real gap they were masking are boarded as
-**B255**: *the client persists no user settings at all*. The bytes stay
+**B275**: *the client persists no user settings at all*. The bytes stay
 recoverable at `0f25cb57^`.
 
 ### Leg C — the ignored argument, and what happened to race_models.json
@@ -219,7 +219,7 @@ for +19,343.** Only Will re-blesses.
    and red under `-j6` is the tell for this class.
 3. **The plan's Leg B option "the file is the unreached feature, board it"
    split in two.** The files describe a DELETED subsystem, so they were not
-   worth keeping; but the feature gap behind them is real and is now B255. The
+   worth keeping; but the feature gap behind them is real and is now B275. The
    B245 strike names both halves.
 4. **Leg C's file survives for a reason the plan did not anticipate**: not
    "the db lacks its data" but "the db is BUILT from it". A runtime census
