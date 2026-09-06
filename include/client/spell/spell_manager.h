@@ -183,6 +183,7 @@ public:
 
     // ========================================================================
     // Packet Handlers (called by EverQuest class)
+    // (defined in src/client/spell/spell_packet_handlers.cpp)
     // ========================================================================
 
     // Server confirms cast is starting (HC_OP_BeginCast)

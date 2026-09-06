@@ -1,0 +1,351 @@
+/*
+ * T407: SpellManager's inbound-packet arms, split out of spell_manager.cpp
+ * when that TU reached 1,451 of the 1,500-line ceiling.
+ *
+ * The four handlers EverQuest's zone dispatcher calls -- handleBeginCast
+ * (HC_OP_BeginCast), handleAction (HC_OP_Action, the landing), handleInterrupt
+ * (HC_OP_InterruptCast) and handleManaChange (HC_OP_ManaChange) -- plus
+ * showSpellMessages() / showBeginCastMessage(), whose only callers they are.
+ *
+ * T357 (board B061) deleted a spell-land callback hook that sat at function
+ * scope in handleAction(), OUTSIDE the `spell && is_success_packet` gate, so
+ * it fired on the animation packet. It must stay gone; the source-reader pin
+ * is SpellLandHookIsGone in tests/test_spell_manager_timing.cpp, and T407
+ * repointed it at this file along with the body.
+ *
+ * Bodies moved verbatim; no behaviour change.
+ */
+
+#include "client/spell/spell_manager.h"
+#include "client/eq.h"
+#include "client/combat.h"
+#include "client/bridge/game_state_bridge.h"
+#include "client/state/event_bus.h"
+#include "common/logging.h"
+#include "common/name_utils.h"
+
+namespace EQ {
+
+// ============================================================================
+// Packet Handlers
+// ============================================================================
+
+void SpellManager::handleBeginCast(uint16_t caster_id, uint16_t spell_id, uint32_t cast_time_ms)
+{
+    const SpellData* spell = m_spell_db.getSpell(spell_id);
+    std::string spell_name = spell ? spell->name : "Unknown";
+
+    LOG_DEBUG(MOD_SPELL, "BeginCast: caster={}, spell='{}' ({}), time={}ms",
+        caster_id, spell_name, spell_id, cast_time_ms);
+
+    // If this is our cast, confirm it
+    if (caster_id == m_eq->GetEntityID()) {
+        if (m_is_casting && m_current_spell_id == spell_id) {
+            // Spell gem cast confirmed by server
+            m_waiting_for_server_confirm = false;
+            m_cast_duration_ms = cast_time_ms;  // Use server's cast time
+            m_cast_start_time = std::chrono::steady_clock::now();  // Reset timer
+
+            LOG_INFO(MOD_SPELL, "Server confirmed cast of '{}'", spell_name);
+        } else {
+            // Item click or other cast source - start tracking it now
+            m_is_casting = true;
+            m_current_spell_id = spell_id;
+            m_cast_duration_ms = cast_time_ms;
+            m_cast_start_time = std::chrono::steady_clock::now();
+            m_waiting_for_server_confirm = false;
+            m_current_gem_slot = 255;  // No gem (item cast)
+
+            LOG_INFO(MOD_SPELL, "Item/other cast started: '{}'", spell_name);
+        }
+
+        // D20e1: Signal cast visual start via bridge
+        if (m_bridge) {
+            eqt::state::SpellCastVisualStartedData d;
+            d.casterId = caster_id;
+            d.spellId = spell_id;
+            d.castTimeMs = cast_time_ms;
+            d.spellName = spell_name;
+            d.casterName = "";
+            d.isPlayerCast = true;
+            d.isTargetCast = false;
+            // T381 (B160): the renderer has no SpellDatabase and must not be
+            // handed this one (game-thread-owned, unsynchronised LRU), so the
+            // visual vocabulary is copied by value here.
+            if (spell) d.spellVisual = spell->visualVocabulary();
+            m_bridge->pushEvent(eqt::state::GameEvent(
+                eqt::state::GameEventType::SpellCastVisualStarted, std::move(d)));
+        }
+    } else {
+        // NPC or other player casting
+        // Show chat message
+        if (spell) {
+            showBeginCastMessage(caster_id, spell);
+        }
+
+        // Get caster name for target casting bar (converted to display format)
+        std::string caster_name = "Unknown";
+        const auto& entities = m_eq->GetEntities();
+        auto it = entities.find(caster_id);
+        if (it != entities.end()) {
+            caster_name = EQT::toDisplayName(it->second.name);
+        }
+
+        // Check if this is our current target
+        bool isTargetCast = false;
+        CombatManager* combat = m_eq->GetCombatManager();
+        if (combat && caster_id == combat->GetTargetId()) {
+            m_target_caster_id = caster_id;
+            m_target_spell_id = spell_id;
+            isTargetCast = true;
+        }
+
+        // D20e1: Signal cast visual start via bridge (NPC/other player)
+        if (m_bridge) {
+            eqt::state::SpellCastVisualStartedData d;
+            d.casterId = caster_id;
+            d.spellId = spell_id;
+            d.castTimeMs = cast_time_ms;
+            d.spellName = spell_name;
+            d.casterName = caster_name;
+            d.isPlayerCast = false;
+            d.isTargetCast = isTargetCast;
+            if (spell) d.spellVisual = spell->visualVocabulary();  // T381 (B160)
+            m_bridge->pushEvent(eqt::state::GameEvent(
+                eqt::state::GameEventType::SpellCastVisualStarted, std::move(d)));
+        }
+    }
+}
+
+void SpellManager::handleAction(const EQT::SpellActionInfo& action)
+{
+    // Type 231 (0xE7) indicates spell effect
+    if (action.type != 231) {
+        return;
+    }
+
+    uint32_t spell_id = action.spell;
+    uint16_t caster_id = static_cast<uint16_t>(action.source);
+    uint16_t target_id = static_cast<uint16_t>(action.target);
+
+    const SpellData* spell = m_spell_db.getSpell(spell_id);
+    std::string spell_name = spell ? spell->name : "Unknown";
+
+    LOG_DEBUG(MOD_SPELL, "SpellAction: caster={}, target={}, spell='{}' ({}), effect_flag={}",
+        caster_id, target_id, spell_name, spell_id, action.effect_flag);
+
+    // effect_flag meanings:
+    // 0 = initial spell animation packet (first of two action packets)
+    // 4 = success flag (second packet, causes buff icon to appear)
+    // Resists are communicated via separate message packets, not effect_flag
+    bool is_success_packet = (action.effect_flag == 4);
+
+    // Determine completion animation for NPC casts
+    std::string completion_anim;
+    if (is_success_packet && spell && caster_id != m_eq->GetEntityID()) {
+        if (spell->isDamageSpell() || spell->isDetrimental()) {
+            completion_anim = "c03";
+        } else if (spell->is_beneficial) {
+            completion_anim = "c04";
+        } else {
+            completion_anim = "c01";
+        }
+    }
+
+    // Check if this was our target's cast
+    bool isTargetCast = (caster_id == m_target_caster_id && spell_id == m_target_spell_id);
+    if (isTargetCast) {
+        m_target_caster_id = 0;
+        m_target_spell_id = SPELL_UNKNOWN;
+    }
+
+    bool isPlayerCast = (caster_id == m_eq->GetEntityID());
+
+    // D20e1: Signal cast visual completion via bridge
+    if (m_bridge) {
+        eqt::state::SpellCastVisualCompleteData d;
+        d.casterId = caster_id;
+        d.targetId = target_id;
+        d.spellId = spell_id;
+        d.spellName = spell_name;
+        d.isSuccess = is_success_packet;
+        // T395 (board B204): the CAST-ANIMATION packet is what paints the
+        // spell. eqemu queues effect_flag == 0 to the target, the caster AND
+        // every client in range (Mob::SpellOnTarget: "this causes the caster
+        // animation and the particles around the target"), then repeats the
+        // packet with effect_flag == 4 -- to the caster and target ONLY --
+        // once the spell lands, purely so a buff icon appears. Gating the
+        // impact FX on isSuccess therefore made a bystander's spell visual
+        // unreachable by construction, which is exactly what T386 measured.
+        d.isCastAnimation = (action.effect_flag == 0);
+        d.isPlayerCast = isPlayerCast;
+        d.isTargetCast = isTargetCast;
+        d.completionAnim = completion_anim;
+        if (spell) d.spellVisual = spell->visualVocabulary();  // T381 (B160)
+        m_bridge->pushEvent(eqt::state::GameEvent(
+            eqt::state::GameEventType::SpellCastVisualComplete, std::move(d)));
+    }
+
+    // Display spell landing messages only on success packet
+    if (spell && is_success_packet) {
+        showSpellMessages(spell, caster_id, target_id, false);  // Not resisted
+    }
+
+    // If this is our cast completing
+    if (isPlayerCast && m_is_casting) {
+        completeCast(true);
+    }
+
+    // T357 (B061): the m_on_spell_land callback that used to fire here is
+    // GONE. It had zero setters tree-wide, and this invocation sat OUTSIDE the
+    // `spell && is_success_packet` gate above -- so it fired on the animation
+    // packet as well, which is not a landing at all. Spell landing is
+    // OP_Action with effect_flag 4, and T348 built the real producer there
+    // (refactor/T348_buff_landing_producer.md); nothing needs a second,
+    // wrong-shaped hook here.
+}
+
+void SpellManager::handleInterrupt(uint16_t caster_id, uint16_t spell_id, uint8_t message_type)
+{
+    LOG_DEBUG(MOD_SPELL, "Interrupt: caster={}, spell={}, type={}",
+        caster_id, spell_id, message_type);
+
+    // Check if this was our target's cast
+    bool isTargetCast = (caster_id == m_target_caster_id && spell_id == m_target_spell_id);
+    if (isTargetCast) {
+        m_target_caster_id = 0;
+        m_target_spell_id = SPELL_UNKNOWN;
+    }
+
+    bool isPlayerCast = (caster_id == m_eq->GetEntityID());
+
+    // D20e1: Signal cast visual interrupt via bridge
+    if (m_bridge) {
+        eqt::state::SpellCastVisualInterruptedData d;
+        d.casterId = caster_id;
+        d.spellId = spell_id;
+        d.isPlayerCast = isPlayerCast;
+        d.isTargetCast = isTargetCast;
+        m_bridge->pushEvent(eqt::state::GameEvent(
+            eqt::state::GameEventType::SpellCastVisualInterrupted, std::move(d)));
+    }
+
+    // If this is our cast being interrupted
+    if (isPlayerCast && m_is_casting) {
+        m_is_casting = false;
+        m_waiting_for_server_confirm = false;
+
+        // Reset gem state
+        if (m_current_gem_slot < MAX_SPELL_GEMS) {
+            m_gem_states[m_current_gem_slot] = GemState::Ready;
+            publishGemChanged(m_current_gem_slot);
+        }
+
+        // Determine interrupt type
+        CastResult result = CastResult::Interrupted;
+        if (message_type == 2) {
+            result = CastResult::Fizzle;
+        }
+
+        // Notify callback
+        if (m_on_cast_complete) {
+            m_on_cast_complete(result, spell_id);
+        }
+
+        publishCastComplete(spell_id, result);
+
+        const SpellData* spell = m_spell_db.getSpell(spell_id);
+        LOG_INFO(MOD_SPELL, "Cast of '{}' {} ",
+            spell ? spell->name : "Unknown",
+            result == CastResult::Fizzle ? "fizzled" : "was interrupted");
+
+        m_current_spell_id = SPELL_UNKNOWN;
+        m_current_target_id = 0;
+    }
+}
+
+void SpellManager::handleManaChange(uint32_t new_mana, uint32_t stamina, uint32_t spell_id)
+{
+    LOG_DEBUG(MOD_SPELL, "ManaChange: mana={}, stamina={}, spell={}",
+        new_mana, stamina, spell_id);
+
+    // Mana is updated in EverQuest class, we just log it here
+}
+// ============================================================================
+// Spell Message Display
+// ============================================================================
+
+void SpellManager::showSpellMessages(const SpellData* spell, uint16_t caster_id,
+                                      uint16_t target_id, bool resisted)
+{
+    if (!spell) {
+        return;
+    }
+
+    // Get entity names (converted to display format)
+    std::string caster_name = "Unknown";
+    std::string target_name = "Unknown";
+    bool target_is_player = (target_id == m_eq->GetEntityID());
+    bool caster_is_player = (caster_id == m_eq->GetEntityID());
+
+    const auto& entities = m_eq->GetEntities();
+
+    auto caster_it = entities.find(caster_id);
+    if (caster_it != entities.end()) {
+        caster_name = EQT::toDisplayName(caster_it->second.name);
+    }
+
+    auto target_it = entities.find(target_id);
+    if (target_it != entities.end()) {
+        target_name = EQT::toDisplayName(target_it->second.name);
+    }
+
+    // Handle resist message
+    if (resisted) {
+        if (target_is_player) {
+            m_eq->AddChatSystemMessage("You resist the spell!");
+        } else if (!target_name.empty()) {
+            m_eq->AddChatSystemMessage(target_name + " resists the spell!");
+        }
+        return;
+    }
+
+    // Display landing message
+    if (target_is_player) {
+        // "You" message (cast_on_you)
+        if (!spell->cast_on_you.empty()) {
+            m_eq->AddChatSystemMessage(spell->cast_on_you);
+        }
+    } else {
+        // "Other" message with name substitution (cast_on_other)
+        if (!spell->cast_on_other.empty()) {
+            std::string msg = spell->cast_on_other;
+            size_t pos = msg.find("%s");
+            if (pos != std::string::npos) {
+                msg.replace(pos, 2, target_name);
+            }
+            m_eq->AddChatSystemMessage(msg);
+        }
+    }
+}
+
+void SpellManager::showBeginCastMessage(uint16_t caster_id, const SpellData* spell)
+{
+    if (!spell) {
+        return;
+    }
+
+    // Get caster name
+    std::string caster_name = "Unknown";
+    const auto& entities = m_eq->GetEntities();
+    auto it = entities.find(caster_id);
+    if (it != entities.end()) {
+        caster_name = EQT::toDisplayName(it->second.name);
+    }
+
+    // Display "X begins casting Y" message
+    std::string message = caster_name + " begins casting " + spell->name + ".";
+    m_eq->AddChatSystemMessage(message);
+}
+
+} // namespace EQ

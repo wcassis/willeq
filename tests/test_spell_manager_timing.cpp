@@ -749,7 +749,16 @@ TEST(SpellLandHookIsGone, NoTypedefSetterMemberOrInvocationRemains) {
     };
     const std::string root = WILLEQ_REPO_ROOT;
     const std::string header = slurp(root + "/include/client/spell/spell_manager.h");
-    const std::string source = slurp(root + "/src/client/spell/spell_manager.cpp");
+    // T407 split spell_manager.cpp five ways and handleAction() -- the body the
+    // hook sat in -- moved to spell_packet_handlers.cpp. Reading only the old
+    // file would have left this clause green while pinning nothing, so the pin
+    // follows the body: every SpellManager TU is concatenated and searched.
+    std::string source;
+    for (const char* tu : {"spell_manager.cpp", "spell_packet_handlers.cpp",
+                           "spell_gems.cpp", "spell_cast_validation.cpp",
+                           "spell_publish.cpp", "spell_cast_checks.cpp"}) {
+        source += slurp(root + "/src/client/spell/" + tu);
+    }
 
     EXPECT_EQ(header.find("SpellLandCallback"), std::string::npos)
         << "the typedef came back";

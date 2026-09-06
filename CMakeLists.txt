@@ -434,6 +434,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/spell/spell_cast_checks.cpp
     src/client/spell/spell_cast_validation.cpp
     src/client/spell/spell_gems.cpp
+    src/client/spell/spell_packet_handlers.cpp
     src/client/spell/cast_refusal.cpp
     src/client/spell/buff_manager.cpp
     src/client/spell/buff_cancel_request.cpp
