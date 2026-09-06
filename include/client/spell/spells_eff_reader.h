@@ -208,18 +208,39 @@ public:
     // Number of records for which SpellsEffRecord::hasContent() is true.
     size_t populatedRecordCount() const;
 
-    // Salvaged from the parked fix-spell-effects branch (48ae032b),
-    // verified against the real files in
-    // /mnt/projects/EverQuestP1999/SpellEffects/ per the T70 Review
-    // rather than trusted as-is:
-    //   GEN[A-Z][1-9]0_SPRITE -> spel[a-z][1-9].tga
-    // This holds for most but NOT all observed nonzero-digit names (two
-    // counterexamples found: GENA30_SPRITE and GENY10_SPRITE have no
-    // matching file) and NEVER holds for the "00"-digit form (GENx00,
-    // 0/16 observed names resolved to a real file) -- so digit '0'
-    // deliberately returns empty rather than a name that is known not to
-    // exist. Non-"GEN..." names (e.g. "GEN_Z_SPB", "I_SNOWFLAKESPRITE")
-    // also return empty; no evidenced mapping exists for them.
+    // THE DIGIT IS 0-BASED (T409, board B162):
+    //   GEN<L><d>0_SPRITE -> spel<lowercase L><d+1>.tga
+    //
+    // T70 salvaged the verbatim reading (GEN[A-Z][1-9]0 -> spel[a-z][1-9])
+    // from the parked fix-spell-effects branch and excluded digit '0'
+    // because none of the sixteen observed "00" names resolved to a file.
+    // T389 MEASURED the rule against the official Titanium client and
+    // refuted it. Two spells.eff records whose every non-empty sprite slot
+    // in every stage holds ONE name settle it, because the drawn particle
+    // can only have come from that name:
+    //   record 20, every slot GENN00_SPRITE, cast as spell 41 Weaken, drew
+    //     speln1.tga's green/orange mottled spheres -- the verbatim rule
+    //     resolves that name to nothing at all;
+    //   record 35, every slot GENA10_SPRITE, cast as spell 253 Whirling
+    //     Wind, drew spela2.tga's bright blue EIGHT-pointed stars, NOT
+    //     spela1.tga, which is what the verbatim rule gives.
+    // Corroborated by spelo1.tga (285 Pendril's Animation, record 11) and
+    // spelu1.tga (54 Frost Bolt's GENU00 Source stage). Evidence:
+    // review/T389/, refactor/T389_spell_fx_oracle.md Review S3.
+    //
+    // Census over the shipped spells.eff and SpellEffects/ (pinned by
+    // SpellsEffReaderFileTest.TheResolvedSlotCensusIsTheZeroBasedOne):
+    // the verbatim rule resolved 18 of the 40 distinct names and 157 of
+    // the 301 non-empty slots to a file present on disk; the 0-based rule
+    // resolves 36 names and 272 slots.
+    //
+    // It is still not 100%: GENA20_SPRITE and GENA30_SPRITE construct
+    // spela3.tga / spela4.tga, neither of which exists. The reader returns
+    // the constructed name anyway -- texture existence is a rendering
+    // concern. Digit '9' would construct a two-character index no file
+    // uses, so the accepted digit range is '0'..'8'. Non-"GEN..." names
+    // (GEN_Z_SPB, I_SNOWFLAKESPRITE, I_TFIRE_SPB, I_TSMOKE_SPB -- the only
+    // four in the file) return empty; no evidenced mapping exists for them.
     static std::string effectNameToTexture(const std::string& effect_name);
 
 private:

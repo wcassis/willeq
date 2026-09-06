@@ -96,9 +96,13 @@ TEST_F(SpellVisualSelectorFileTest, NegativeOneResolvesToNoAffectIndex) {
 // Record 0 is T70's known fixture: Source = [GENC10_SPRITE, GENC30_SPRITE,
 // GENC10_SPRITE, "Source"], Middle = [GENC30_SPRITE, "", "", ""], Target =
 // [GENC20_SPRITE, GENC10_SPRITE, GENG00_SPRITE, "Target"]. Asserted exactly,
-// including that GENC10_SPRITE resolves to a real texture (spelc1.tga,
-// independently verified by T70) and GENG00_SPRITE (the "00"-digit form)
-// deliberately resolves to "" per T70's finding.
+// including that GENC10_SPRITE resolves to a real texture. T409 (board
+// B162) corrected the reader's digit rule to the 0-based one T389 measured
+// against the official client, so the two texture assertions here MOVED:
+// GENC10_SPRITE is spelc2.tga, not spelc1.tga, and GENG00_SPRITE -- the
+// "00"-digit form T70 believed never resolved -- is spelg1.tga, a file that
+// does exist. Both were re-checked against
+// /mnt/projects/EverQuestP1999/SpellEffects/.
 TEST_F(SpellVisualSelectorFileTest, Record0ResolvesWithExactStagingAndTextures) {
     SpellVisualSelector selector(&reader);
     SpellVisualResolution res = selector.resolve(0);
@@ -111,7 +115,7 @@ TEST_F(SpellVisualSelectorFileTest, Record0ResolvesWithExactStagingAndTextures) 
     EXPECT_TRUE(res.hasTargetStage());
 
     EXPECT_EQ(res.source_stage.sprite_names[0], "GENC10_SPRITE");
-    EXPECT_EQ(res.source_stage.texture_files[0], "spelc1.tga");
+    EXPECT_EQ(res.source_stage.texture_files[0], "spelc2.tga");
     EXPECT_EQ(res.source_stage.attach_tag, "Source");
 
     EXPECT_EQ(res.middle_stage.sprite_names[0], "GENC30_SPRITE");
@@ -119,9 +123,9 @@ TEST_F(SpellVisualSelectorFileTest, Record0ResolvesWithExactStagingAndTextures) 
     EXPECT_EQ(res.middle_stage.texture_files[1], "");  // empty slot, no name to map
 
     EXPECT_EQ(res.target_stage.sprite_names[2], "GENG00_SPRITE");
-    EXPECT_EQ(res.target_stage.texture_files[2], "")
-        << "the '00'-digit form never resolves to a real file (T70 finding) -- "
-           "must stay empty, not a guessed filename";
+    EXPECT_EQ(res.target_stage.texture_files[2], "spelg1.tga")
+        << "the '00'-digit form DOES resolve under the 0-based rule T389 "
+           "measured (T409, board B162): GENG00 -> spelg1.tga, which exists";
     EXPECT_EQ(res.target_stage.attach_tag, "Target");
 }
 

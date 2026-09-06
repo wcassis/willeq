@@ -744,7 +744,7 @@ it without taking that measurement first.
   available (`SpellVisualVocabulary::travelType`, 85 spells with
   `travel_type == 3`); nothing consumes it. Census by T388.
 
-- **B162** (B) `src/client/spell/spells_eff_reader.cpp` --
+- ~~**B162** (B) `src/client/spell/spells_eff_reader.cpp` --
   **THE HYPOTHESIS IS SETTLED BY THE ORACLE (T389, 2026-09-05): the digit is
   0-BASED. `GEN<L><d>0_SPRITE` -> `spel<l><d+1>.tga`, and the `'0'` exclusion
   is wrong too.** Two spells.eff records whose every non-empty sprite slot in
@@ -797,7 +797,30 @@ it without taking that measurement first.
   `EmitterConfig::textureRegions[]` filled by
   `SpellEffectsConfig::getTextureIndex()`
   (`src/client/graphics/environment/spell_effects_config.cpp`), which maps a
-  NAME to a tile index and falls back to `SoftCircle`. Found by T380.
+  NAME to a tile index and falls back to `SoftCircle`. Found by T380.~~ **STRUCK T409 Leg B (this commit)**: `effectNameToTexture()` now
+  implements the measured rule -- `GEN<L><d>0_SPRITE` -> `spel<l><d+1>.tga`,
+  digit range `'0'..'8'` ('9' would construct a two-character index no file
+  uses), and the `'0'` exclusion is gone. **Census taken over the real
+  `spells.eff` and the real `SpellEffects/`, not quoted** (new
+  `SpellsEffReaderFileTest.TheResolvedSlotCensusIsTheZeroBasedOne`, which
+  prints the table): 40 distinct names / 301 non-empty slots either way;
+  **18 names -> 36, 166 slots -> 286 resolved, and 157 -> 272 landing on a
+  file that exists**. The 4 that never resolve are the non-GEN names
+  (`GEN_Z_SPB`, `I_SNOWFLAKESPRITE`, `I_TFIRE_SPB`, `I_TSMOKE_SPB`). The
+  counterexamples MOVED: T70's pair was `GENA30`/`GENY10`, and under the
+  correct rule `GENY10` resolves to the real `spely2.tga` while `GENA20` and
+  `GENA30` construct the absent `spela3`/`spela4`. Second half done too:
+  the name -> tile map gained **ten rows** by T389's tile-vs-crop comparison
+  (`GENA00`/`GENA10` -> SpellSparkle, `GENB00` -> StarShape, `GENC00` ->
+  Ember, `GENE00`/`GENE01` -> LeafShape, `GENJ00`/`GENU00` -> SmokeWisp,
+  `GENN00` -> SnowPatch, `GENZ00` -> WispyCloud), two of them oracle-measured
+  (`spela2` record 35, `speln1` record 20). Crops and the tile sheet:
+  `review/T409/sprites/`. **A trap the crops exposed: every `spel*.tga` is a
+  4x4 SHEET of one identical frame, so any descriptor taken over the whole
+  file is meaningless** -- T389's own crops are whole sheets. 14 tests red
+  pre-fix (6 in `test_spells_eff_reader`, 8 in
+  `test_spell_target_stage_textures`). What is NOT mapped, and why, is
+  **B300**. Prov: T409 Review Leg B; T389 Review S3.
 
 - ~~**B163** (B)~~ **CLOSED 2026-09-05 by T384 (`57258eea`).**
   `tools/willeq_db_builder.cpp` `loadSpells()` now binds `TargetAnim` (121)
@@ -2980,7 +3003,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   while `character_currency` moved by exactly the amount the chat line named.
   So B172's own close-out wording is unmeasurable as written, and every future
   coin row has no on-screen consumer. Closes when the coin counts reach a panel
-  and a test pins the projection. Prov: T386 Review §1c; B172.~~ **STRUCK T393 (`f13b9979`)**: the purse is drawn. `InventoryLayout::coinRect()`/`coinDecalRect()` put four coin rows in the inventory popup at the OFFICIAL client's own placement -- `/mnt/projects/EverQuestP1999/uifiles/default/EQUI_Inventory.xml`, `IW_Money0..3` at Location X=303, Y=121/147/171/197, Size 70x24, decals A_PlatinumCoin/A_GoldCoin/A_SilverCoin/A_CopperCoin at DecalOffset 1,3 DecalSize 18x18, inside a 428x460 `InventoryWindow` -- mapped proportionally onto the fixed 400x350 `centerPopup` (283,92 / 283,111 / 283,130 / 283,149, 65x18, identical at all five resolutions T351 measured). The `CurrencyChanged` bridge arm is no longer a payload-discarding `LOG_TRACE`: it calls the free function `applyCurrencyChanged()` (the `applyLootWindowOpened()` idiom) onto `InventoryPanelState::coins`, so ALL FIVE publishers -- `OP_MoneyUpdate` (`src/client/core/everquest.cpp`), the corpse-coin grant (`src/client/commands/combat_actions.cpp`), the merchant (`src/client/merchant/merchant_trade.cpp`) and the two stat pushes in `bridge/` -- reach the panel. `updateCharacterStats`'s four `(void)` discards are gone too, though that function still has ZERO callers tree-wide (grepped `src/ include/ tests/ tools/ benchmarks/ docker/`) -- the reaching path is the bridge arm. 12 tests in `tests/test_static_ui_panels.cpp` (`PurseT393*`), **7 of them fail pre-fix**, including a device-backed render pin (`TheInventoryPopupEmitsTwoTextEntriesPerCoinRow`: 24 text entries before, 32 after). ~~**The live screenshot pair (fable vs oracle inventory with coins) is still OWED** -- T393 held no eqemu lock.~~ **TAKEN T401 (`4ff78bb4`, `review/T401/` §2), and the two windows agree**: four rows, platinum->gold->silver->copper, a round decal left and the count right, **9 / 13 / 2 / 16 in both** (the oracle character's purse was written to fable's post-loot purse before login). `review/T401/fable/T401_fable_purse_coinrows_crop4x.png` vs `review/T401/oracle/T401_oracle_purse_coinrows_crop4x.png`. B218's letter is gone. **B219 is now VISIBLE rather than predicted** and is what remains. Two consequences boarded: **B218** (fable's UI atlas has no coin sprite, so the decal box gets a letter) and **B219** (fable's paperdoll rect spans the whole inter-column gap, so the oracle-scaled coin column overlays its right margin). Prov: T393 Review; B172.
+  and a test pins the projection. Prov: T386 Review §1c; B172.~~ **STRUCK T393 (`f13b9979`)**: the purse is drawn. `InventoryLayout::coinRect()`/`coinDecalRect()` put four coin rows in the inventory popup at the OFFICIAL client's own placement -- `/mnt/projects/EverQuestP1999/uifiles/default/EQUI_Inventory.xml`, `IW_Money0..3` at Location X=303, Y=121/147/171/197, Size 70x24, decals A_PlatinumCoin/A_GoldCoin/A_SilverCoin/A_CopperCoin at DecalOffset 1,3 DecalSize 18x18, inside a 428x460 `InventoryWindow` -- mapped proportionally onto the fixed 400x350 `centerPopup` (283,92 / 283,111 / 283,130 / 283,149, 65x18, identical at all five resolutions T351 measured). The `CurrencyChanged` bridge arm is no longer a payload-discarding `LOG_TRACE`: it calls the free function `applyCurrencyChanged()` (the `applyLootWindowOpened()` idiom) onto `InventoryPanelState::coins`, so ALL FIVE publishers -- `OP_MoneyUpdate` (`src/client/core/everquest.cpp`), the corpse-coin grant (`src/client/commands/combat_actions.cpp`), the merchant (`src/client/merchant/merchant_trade.cpp`) and the two stat pushes in `bridge/` -- reach the panel. `updateCharacterStats`'s four `(void)` discards are gone too, though that function still has ZERO callers tree-wide (grepped `src/ include/ tests/ tools/ benchmarks/ docker/`) -- the reaching path is the bridge arm. 12 tests in `tests/test_static_ui_panels.cpp` (`PurseT393*`), **7 of them fail pre-fix**, including a device-backed render pin (`TheInventoryPopupEmitsTwoTextEntriesPerCoinRow`: 24 text entries before, 32 after). ~~**The live screenshot pair (fable vs oracle inventory with coins) is still OWED** -- T393 held no eqemu lock.~~ **TAKEN T401 (`4ff78bb4`, `review/T401/` §2), and the two windows agree**: four rows, platinum->gold->silver->copper, a round decal left and the count right, **9 / 13 / 2 / 16 in both** (the oracle character's purse was written to fable's post-loot purse before login). `review/T401/fable/T401_fable_purse_coinrows_crop4x.png` vs `review/T401/oracle/T401_oracle_purse_coinrows_crop4x.png`. B218's letter is gone. **B219 is now VISIBLE rather than predicted** and is what remains. [B219 CLOSED by T409 Leg A.] Two consequences boarded: **B218** (fable's UI atlas has no coin sprite, so the decal box gets a letter) and **B219** (fable's paperdoll rect spans the whole inter-column gap, so the oracle-scaled coin column overlays its right margin). Prov: T393 Review; B172.
 
 - ~~**B202** (A) `src/client/graphics/sim/` `SimBridgeComponent::applySimulationOutput`
   — **SIGSEGV on the render thread whenever a second player is in the zone.**
@@ -3431,10 +3454,11 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   `ui_atlas.json`), the other 64 byte-identical, +239 B total, all of it the
   four new sprite records in the JSON. Before/after captures in
   `review/T398/`. **B219 (the paperdoll overlaps the purse) and T393's owed
-  live oracle pair are untouched and still open.** Gate consequence boarded as
+  live oracle pair are untouched and still open.** [B219 CLOSED by T409 Leg A;
+  the live pair is still owed.] Gate consequence boarded as
   B240. Prov: T398 Review Leg B; B230; B218.
 
-- **B219** (C) `include/client/graphics/ui/inventory_layout.h` `paperdollRect`
+- ~~**B219** (C) `include/client/graphics/ui/inventory_layout.h` `paperdollRect`
   — **fable's paperdoll rect is proportionally far wider than the oracle's
   character view, so the oracle-placed purse sits ON it.** The oracle's
   `IW_CharacterView` is 85x168 at (166,57) inside a 428x460 window — 20% of the
@@ -3453,7 +3477,31 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   either the doll narrows to the oracle's proportion or the purse does
   not follow the oracle here. Prov: T393 Review; T401 Review §2.
 
-  **WILL RULED 2026-09-06:** shrink the paperdoll to the oracle proportion; the coin column stays. → T409.
+  **WILL RULED 2026-09-06:** shrink the paperdoll to the oracle proportion; the coin column stays. → T409.~~
+  **STRUCK T409 Leg A (this commit)**: `paperdollRect()` now maps the
+  oracle's own `IW_CharacterView` -- Location 166,57 Size 85x168 inside the
+  428x460 `InventoryWindow`, quoted from
+  `/mnt/projects/EverQuestP1999/uifiles/default/EQUI_Inventory.xml` -- onto
+  `centerPopup` by `coinRect()`'s rule (proportional, integer division, onto
+  the fixed 400x350). Offset **(155,43) size 79x127** inside the frame at
+  every resolution, i.e. {355,168,434,295} at 800x600, against the old
+  {248,145,552,401} (offset (48,20) size 304x256). The doll now ends at
+  popup-x 234 and the coin column starts at popup-x 283, so the two are
+  **disjoint by 49 px at every one of the five resolutions T351 measured**,
+  and disjoint from the four decal boxes too. The T60 invariants are
+  unaffected -- the rect is still inside the frame and clear of all 30 slots.
+  Second, smaller finding the narrowing forced: the paperdoll's offscreen
+  render target was a **hardcoded 304x256 in two places**
+  (`overlays_hud_env.cpp` `ensurePaperdollInitialized()` and
+  `tools/hwcaps/ui_inventory_capture.cpp`), sized to the OLD rect, so a
+  narrowed rect would have squashed the model 1.9x horizontally. Both now
+  call the new `InventoryLayout::paperdollRenderTargetSize()` (the rect
+  supersampled 2x = 158x254), so the target can never drift from the rect
+  again. 4 tests in `tests/test_static_ui_panels.cpp` (`PaperdollT409.*`),
+  **3 red pre-fix**; the fourth (`TheRenderTargetCarriesTheRectsAspect`) is a
+  guard that was green pre-fix by construction and would have gone red on the
+  rect change alone. ~~The live screenshot pair is OWED~~ -- still OWED, to
+  the next unit that holds the eqemu lock (T405 holds it this wave).
 - ~~**B230** (B) `tools/ui_atlas_builder.cpp` / `/mnt/projects/EverQuest_ETC1/willeq.eqe1`
   -- **the UI atlas cannot take a pixel from the official client, and the
   shipped pack cannot be rebuilt from the tree.** Split out of B218 by T396
@@ -4455,6 +4503,35 @@ T407 deleted eleven (see below). The rest are boarded here.
   removing the setters requires editing that test, which T407's contract kept
   unedited. Closes when the setters, the members and the test's `EXPECT_NO_THROW`
   block go together, or a consumer appears. Found by T407's census.
+
+- **B300** (C) `src/client/graphics/environment/spell_effects_config.cpp`
+  `buildTextureNameMap()` -- **the 16-tile procedural particle atlas cannot
+  represent a large share of the sprites the corrected reader now resolves,
+  because several of them are not abstract particles at all.** Split out of
+  B162 by T409 Leg B, which mapped ten names and stopped here. With the
+  0-based rule 36 of the 40 `spells.eff` names resolve to a real
+  `SpellEffects/*.tga`; T409 cropped every one of them to the single frame
+  its 4x4 sheet repeats (`review/T409/sprites/`) and found three groups.
+  (a) **Mappable**: a pointed star with a bright core (`spela1`, `spela2`,
+  `speld2`), a green burst (`spelb1`), an orange sunburst (`spelc1`), a
+  green disc (`spele1`), an elongated ribbon (`spelj1`, `spelu1`), a mottled
+  disc (`speln1`), a smoke ball (`spelz1`) -- these are the ten rows T409
+  added. (b) **Figurative, and unmappable by construction**: `spelg1.tga` is
+  a **SWORD**, `speli1.tga` a **flaming SKULL**, `spelk2.tga` a row of
+  **skulls**, `spelh1.tga` a lightning-wreathed sphere. `GENI00_SPRITE` is
+  the COMMONEST name in the whole file (32 slots) and it is the skull -- so
+  the single most-used sprite in `spells.eff` is one the atlas can never
+  approximate. They keep the `SoftCircle` fallback, pinned by
+  `SpellSpriteTilesT409.TheFigurativeSpritesKeepTheFallback`. (c) **Round
+  soft dots** (`spelm1`, `spelo1`, `spell1`, `spelv1`, `spelp1`) that the
+  `SoftCircle` fallback already serves correctly, so a row would add
+  nothing. **Will's call**: either fable draws the real `spel*.tga` files
+  (which is B225's "nothing downstream can draw a `spel*.tga` anyway", and
+  needs a texture path, not an atlas tile), or the atlas grows tiles for the
+  figurative shapes, or those spells are accepted as visually approximate
+  forever. Do NOT quietly widen the name -> tile table to cover (b) -- a
+  skull drawn as a soft white dot is a wrong answer with a confident face on
+  it. Prov: T409 Review Leg B; B162; B225.
 
 **Exempt, recorded so nobody re-reports them.** The census also names fields
 that are write-only BY CONSTRUCTION because they are serialised layout, and

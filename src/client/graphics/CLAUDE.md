@@ -275,10 +275,16 @@ it used to also hold (`InventoryModelViewTest`, unconditionally skipped —
 its subject was `WindowManager`/`InventoryWindow`, deleted in 0f25cb57).
 **The paperdoll itself was rebuilt by T60** on the static-panel UI:
 `eqt::ui::CharacterModelView` renders the player's live `EntityAppearance`
-into a 304x256 RTT and `renderInventoryPopup()` blits it at
+into an offscreen RTT and `renderInventoryPopup()` blits it at
 `InventoryLayout::paperdollRect()` — see `refactor/T60_paperdoll_restore.md`
 and, for the atlas-ordering defect that hid it in the real client until
-T294, `refactor/T294_paperdoll_atlas_verify.md`. Run it like any other discovered test:
+T294, `refactor/T294_paperdoll_atlas_verify.md`. **T409 (board B219) moved
+the rect to the official client's own `IW_CharacterView` placement** — 85x168
+at (166,57) in a 428x460 window, mapped onto `centerPopup` the same way
+`coinRect()` maps the purse — so it no longer spans the whole gap between the
+equipment columns and the coin column no longer lands on it. The RTT is sized
+from that rect by `InventoryLayout::paperdollRenderTargetSize()`; nothing
+hardcodes 304x256 any more. Run it like any other discovered test:
 `./bin/test_inventory_model_view` or `ctest -R RaceModelAnimationHeadlessTest`.
 Static-panel UI input/hit-testing coverage (also new, T54) lives in
 `tests/test_static_ui_panels.cpp`, same auto-discovered/no-device-needed

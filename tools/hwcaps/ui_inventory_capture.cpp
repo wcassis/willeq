@@ -302,7 +302,11 @@ bool runPaperdollCaptures(const std::string& outputDir, const std::string& eqPat
                             "skipping paperdoll captures\n", kRaceHuman, eqPath.c_str());
         } else {
             eqt::ui::CharacterModelView doll;
-            doll.init(smgr, driver, /*width=*/304, /*height=*/256);  // Matches InventoryLayout::paperdollRect()
+            // T409: the render target's size and proportion come from the
+            // rect the doll is blitted into, not a hardcoded pair.
+            const auto dollRT = InventoryLayout::paperdollRenderTargetSize();
+            doll.init(smgr, driver, static_cast<int>(dollRT.Width),
+                      static_cast<int>(dollRT.Height));
             doll.setRaceModelLoader(&raceModelLoader);
             doll.setEquipmentModelLoader(&equipmentModelLoader);
 

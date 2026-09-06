@@ -119,6 +119,27 @@ constexpr irr::s32 ORACLE_DECAL_X = 1;
 constexpr irr::s32 ORACLE_DECAL_Y = 3;
 constexpr irr::s32 ORACLE_DECAL_SIZE = 18;
 
+// --- The character view (T409, board B219) ----------------------------
+//
+// Same file, same window, same scale rule as the purse above:
+//
+//   <Screen item="IW_CharacterView">  Location X=166 Y=57
+//                                     Size CX=85 CY=168
+//
+// i.e. the oracle's doll is a TALL box occupying 20% of the window width,
+// which is what leaves its coin column at X=303 clear of it. fable's rect
+// used to fill the whole gap between the equipment columns (76% of the
+// popup) and the coin rows landed on it -- board B219, ruled 2026-09-06.
+constexpr irr::s32 ORACLE_DOLL_X = 166;
+constexpr irr::s32 ORACLE_DOLL_Y = 57;
+constexpr irr::s32 ORACLE_DOLL_W = 85;
+constexpr irr::s32 ORACLE_DOLL_H = 168;
+
+// The doll is rendered to an offscreen target and blitted into
+// paperdollRect(). Supersample factor: the target is this many times the
+// drawn rect on each axis, so the blit only ever downscales.
+constexpr irr::s32 PAPERDOLL_RT_SUPERSAMPLE = 2;
+
 } // namespace detail
 
 /**
@@ -183,29 +204,52 @@ inline irr::core::rect<irr::s32> slotRect(const UILayout& layout, int globalInde
 }
 
 /**
- * Returns the screen-space rect for the character paperdoll (T60), sitting
- * between the left/right equipment columns and above the weapon row.
- * Computed from the same constants slotRect() uses, so it moves with
- * centerPopup and can never overlap the columns or the weapon/general rows
- * by construction — see the exhaustive test in
- * tests/test_static_ui_panels.cpp.
+ * Returns the screen-space rect for the character paperdoll (T60), placed
+ * where the OFFICIAL client puts its character view (T409, board B219).
+ *
+ * THE PLACEMENT IS THE ORACLE'S, NOT OURS, exactly as it is for coinRect():
+ * the `IW_CharacterView` rect (166,57 85x168) mapped proportionally from the
+ * 428x460 `InventoryWindow` onto centerPopup's fixed 400x350, integer
+ * division. It used to fill the entire gap between the two equipment columns
+ * — 76% of the popup width against the oracle's 20% — which is why T393's
+ * oracle-placed coin column landed on its right-hand margin (B219, seen on
+ * screen in T401's live pair). Narrowing it to the oracle's proportion makes
+ * the doll and the purse disjoint at every resolution; both facts are pinned
+ * in tests/test_static_ui_panels.cpp.
+ *
+ * It still lies between the two equipment columns and above the weapon row,
+ * so the T60 containment/no-overlap invariants hold as before.
  */
 inline irr::core::rect<irr::s32> paperdollRect(const UILayout& layout) {
     using namespace detail;
     const auto& popup = layout.centerPopup;
-    const irr::s32 popupX = popup.UpperLeftCorner.X;
-    const irr::s32 popupY = popup.UpperLeftCorner.Y;
     const irr::s32 popupW = popup.getWidth();
+    const irr::s32 popupH = popup.getHeight();
 
-    constexpr irr::s32 DOLL_MARGIN = 8;  // gap from the adjacent equipment columns
-    const irr::s32 rightColX = popupW - LEFT_COL_X - SLOT;
+    const irr::s32 x = popup.UpperLeftCorner.X + ORACLE_DOLL_X * popupW / ORACLE_WINDOW_W;
+    const irr::s32 y = popup.UpperLeftCorner.Y + ORACLE_DOLL_Y * popupH / ORACLE_WINDOW_H;
+    const irr::s32 w = ORACLE_DOLL_W * popupW / ORACLE_WINDOW_W;
+    const irr::s32 h = ORACLE_DOLL_H * popupH / ORACLE_WINDOW_H;
+    return irr::core::rect<irr::s32>(x, y, x + w, y + h);
+}
 
-    const irr::s32 x1 = popupX + LEFT_COL_X + SLOT + DOLL_MARGIN;
-    const irr::s32 x2 = popupX + rightColX - DOLL_MARGIN;
-    const irr::s32 y1 = popupY + CONTENT_TOP;
-    const irr::s32 y2 = popupY + CONTENT_TOP + COL_ROWS * SLOT;  // column height
-
-    return irr::core::rect<irr::s32>(x1, y1, x2, y2);
+/**
+ * The pixel size of the offscreen render target the character model is
+ * drawn into before it is blitted into paperdollRect() (T409, board B219).
+ *
+ * It lives here, beside the rect it feeds, because the two must share a
+ * proportion: a target whose aspect differs from the rect's squashes the
+ * model in the blit. centerPopup is a fixed 400x350 at every resolution
+ * (T351 measured five), so this is a constant, and the layout is computed
+ * at an arbitrary resolution to read it.
+ */
+inline irr::core::dimension2d<irr::u32> paperdollRenderTargetSize() {
+    UILayout probe;
+    probe.computeLayout(1024, 768);
+    const auto r = paperdollRect(probe);
+    return irr::core::dimension2d<irr::u32>(
+        static_cast<irr::u32>(r.getWidth() * detail::PAPERDOLL_RT_SUPERSAMPLE),
+        static_cast<irr::u32>(r.getHeight() * detail::PAPERDOLL_RT_SUPERSAMPLE));
 }
 
 // Denomination order is the oracle's element order, IW_Money0..3.
