@@ -59,6 +59,24 @@ public:
     // Upload raw ETC1 compressed data (native, no conversion)
     void uploadETC1(const void* data, u32 dataSize, u32 width, u32 height);
 
+    // T411 (board B261/B287): the ETC1 `_alpha` companion that carries this
+    // texture's alpha channel, or nullptr when the texture carries its alpha
+    // in band (RGBA8888 / raw BMP / DDS decode) or has none.
+    //
+    // The association is set ONCE by the app's ConstrainedTextureCache the
+    // moment it wraps both GL handles (gles2SetAlphaCompanion(), the sibling
+    // of gles2WrapTexture()), so every draw path -- 3D material, draw2DImage,
+    // draw2DImageBatch -- can find the companion from texture unit 0 alone
+    // instead of each consumer remembering to call setTexture(1, ...). That
+    // is what made an ETC1 alpha invisible to every alpha-BLEND draw (B261).
+    //
+    // Raw, non-grabbed pointer. Safe because the cache creates the pair
+    // together and never destroys the companion before the main texture:
+    // ConstrainedTextureCache::evictTexture() removes only the main texture,
+    // so the companion always OUTLIVES the object holding this pointer.
+    void setAlphaCompanion(ITexture* companion) { AlphaCompanion = companion; }
+    ITexture* getAlphaCompanion() const { return AlphaCompanion; }
+
     // P42 (P38 state-dedup prototype, productionized): per-texture-object
     // cache of the last-applied mag/min-filter + wrap-S/T combo, so
     // COpenGLES2Driver::applyMaterialRenderState() can skip the 4
@@ -112,6 +130,9 @@ private:
 
     // GPU memory usage tracking (set during upload)
     u32 GpuBytes;
+
+    // T411: ETC1 alpha companion (unit 1). See setAlphaCompanion().
+    ITexture* AlphaCompanion = nullptr;
 
     // P42 state-dedup cache (see texParamsMatch()/cacheTexParams() above).
     mutable bool TexParamsCached = false;

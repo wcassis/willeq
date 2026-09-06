@@ -3830,7 +3830,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   `tools/retired/README.md` corrected (and the stale `B247` citation in it
   fixed to B260); CLAUDE.md gained a shipped-data recipe section.
 
-- **B261** (B) `tools/eqe1_builder.cpp` / `docker/irrlicht-drm/COGLES2Shaders.cpp`
+- ~~**B261** (B) `tools/eqe1_builder.cpp` / `docker/irrlicht-drm/COGLES2Shaders.cpp`
   -- **the ETC1 `_alpha` companion is INVISIBLE to any shader with a single
   sampler, and nothing warns you.** The default ETC1 encode stores a
   texture's alpha in a separate `<name>_alpha` pack entry, uploaded to
@@ -3851,7 +3851,25 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   and NOT the same thing: an alpha-blend material with a companion has no
   shader at all (there is no blended dual-sampler variant), so "bind the
   companion" is not a fix for a blended draw -- in-band alpha is. Prov:
-  T400 Review.
+  T400 Review.~~  **CLOSED by T411 (2026-09-06)**, the second way round: the invariant is now enforced by CONSTRUCTION rather than by a warning.
+  `COGLES2Texture` carries its own companion (`setAlphaCompanion()`, recorded
+  once by `ConstrainedTextureCache::uploadCompressedETC1`), the driver binds
+  texture unit 1 from the unit-0 texture in ONE place
+  (`COpenGLES2Driver::bindAlphaCompanionUnit()`, used by the 3D material path
+  AND both `draw2DImage` overloads, which bound NOTHING on unit 1 before), and
+  the three alpha-BLEND programs -- `SOLID3D_FS`, `UI2D_FS` and
+  `UnifiedParticleRenderer`'s `POINT_SPRITE_FS` -- do
+  `texColor.a *= texture2D(uAlphaTexture, uv).r`. The multiply needs no
+  `hasAlpha` uniform: with no companion the driver binds a 1x1 opaque-white
+  texture, so it is an exact no-op for in-band alpha, and for an ETC1 payload
+  `texColor.a` is 1.0, so it is exactly the companion. Pinned in PIXELS by
+  `tests/test_alpha_blend_companion.cpp` (6 cases through a real headless
+  GLES2 device; the 3 companion cases read (255,255,255) and FAIL with the
+  three multiply lines removed, the 3 no-companion controls stay green either
+  way). The note "an alpha-blend material with a companion has no shader at
+  all, so in-band alpha is the only fix" was the wrong conclusion -- giving
+  the blend shaders the sampler was ~10 lines of GLSL and returned 14.7 MB of
+  pack (see the struck B287).
 
 ### Added by T403 (2026-09-06)
 
@@ -4335,7 +4353,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   `glittersp501.dds` / `Corona1.dds` are all missing, which is why it has
   never been reported. Prov: T406 Review.
 
-- **B287** (C) `/mnt/projects/EverQuest_ETC1/willeq.eqe1`,
+- ~~**B287** (C) `/mnt/projects/EverQuest_ETC1/willeq.eqe1`,
   `include/client/graphics/eqe1_format.h` -- **B266's fix cost 17.2 MB of shared pack and the
   same again in mapped bytes per zone, and the format has no cheaper way to
   carry an alpha-only texture.** Measured across T406's three commits: the
@@ -4573,3 +4591,79 @@ client uses every field.
   already refuses on a held lock (exit 64); a bare `willeq --scenario` does
   not, and arguably should warn. Closes when: T405 confirms it was
   undisturbed, or the damage is identified and repaired. Prov: T410 Review.
+
+  Prov: T406 Review; B261; B240.~~  **CLOSED by T411 (2026-09-06) -- and it needed no format addition.** The
+  question was "accept the 17.2 MB or fund an A8 payload"; the answer was
+  neither. The format ALREADY carries an alpha-only texture cheaply -- the ETC1
+  `<name>_alpha` companion -- and the only reason T400/T406 could not use it
+  was that no alpha-BLEND shader sampled unit 1 (B261). T411 gave the three
+  blend shaders that sampler and cut `scripts/build_willeq_pack.sh`'s
+  `--rgba8888-texture` list from **60 entries to 1**: every one of the 60
+  dropped it, and the one that has it now (`ui_atlas`) was never on the list
+  and is there for a different, measured reason -- the static UI's 1px-tall
+  `drawRect` minifies the atlas 4:1, selecting companion mip level 2, where
+  ETC1 decodes the isolated `white` texel as **217/255** and dims every 1px UI
+  rect by 15% (`UIAtlasPixelTest.SpellGemReadyBorderIsGreen` read 172 against
+  a wanted 200; decoded straight out of `ui_atlas_alpha` level 2 to confirm).
+  The list is pinned by `kInBandAlpha` in
+  `tests/test_texture_alpha_census.cpp`, and
+  `NoPackEntryNeedsTheRgba8888Payload` fails on any addition without one.
+  Measured: `willeq.eqe1` **19,994,910 -> 5,532,254 bytes (-14,462,656,
+  -72.3%)** and `eqe1MappedBytes` **-14,462,656 in each of the gate's three
+  zones** (qeynos2 137,128,478 -> 122,665,822; gfaydark 135,794,570 ->
+  121,331,914; befallen 130,279,066 -> 115,816,410). Per 256x256 weather entry
+  the pack payload goes 349,524 -> 43,704 plus a 43,704 companion, and the GPU
+  upload 349,524 -> 87,376 (-75%). It does NOT return to the pre-T406 2.83 MB:
+  the companions are new bytes (the pre-T406 BMPs were 24-bit and had no alpha
+  at all). **The GPU saving is not visible in the gate**: `gpuTextureBytes` for
+  the qeynos2 coverage run is 9,682,104 with BOTH packs, because that run
+  activates no weather, spawns no particles and draws no UI, so none of the
+  changed entries is resident. The alpha is now ETC1-compressed rather than
+  exact 8-bit -- no image golden moved, and the remaining bless is the
+  eqe1MappedBytes DOWN-move under B315.
+
+### Added by T411 (2026-09-06)
+
+- ~~**B315** (C) `tests/goldens/manifest.json` (the `memoryCoverage` block, the
+  three `eqe1MappedBytes` values) -- **the gate's EQE1 memory baseline is stale
+  by -14,462,656 in every zone and needs Will's bless, the same way the
+  UP-move did.** B240's blessed numbers were T406's; T411 gave the alpha-BLEND
+  shaders a companion sampler and cut the `--rgba8888-texture` list from 60
+  entries to 1, so `/mnt/projects/EverQuest_ETC1/willeq.eqe1` went
+  19,994,910 -> 5,532,254 bytes and every zone's mapped total fell by exactly
+  that 14,462,656:
+
+  | zone     | manifest (T406) | measured T411 | delta       |
+  |----------|----------------:|--------------:|------------:|
+  | qeynos2  |     137,128,478 |   122,665,822 | -14,462,656 |
+  | gfaydark |     135,794,570 |   121,331,914 | -14,462,656 |
+  | befallen |     130,279,066 |   115,816,410 | -14,462,656 |
+
+  **No image golden moved and no CPU p95 ceiling was missed** (qeynos2 7.041 /
+  gfaydark 5.620 / befallen 6.081 against 10.108 / 10.672 / 10.948) -- these
+  three metrics are the gate's ONLY failures, and `git status tests/goldens/`
+  is empty after the run. T411 did NOT bless: same standing rule as B240 --
+  Will blesses in chat, someone then edits the three values BY HAND (never
+  `--bless`, which would also rewrite the T69 per-zone memory block).
+  Prov: T411 Review; B240; B287.~~ **APPLIED at the T411 merge under Will's B240 bless (2026-09-06, "bless B240" for the pack's final content): eqe1MappedBytes = 122,665,822 / 121,331,914 / 115,816,410; no image golden moved.**
+- **B316** (B) `src/client/graphics/ui/` consumers of the `ui_atlas` pack entry
+  -- **the static UI had been drawing its atlas fully OPAQUE, and T411 turned
+  its real alpha on; only the pinned pixels have been checked.** `ui_atlas` has
+  always been an ETC1 entry with an ETC1 `ui_atlas_alpha` companion, and the
+  whole static UI reaches it through `draw2DImage(..., useAlphaChannelOfTexture
+  =true)` -> `UI2D_FS`, which until T411 read `texture2D(uTexture, uv).a` ==
+  1.0 for an ETC1 texture (B261). Measured on the generated atlas:
+  **77.1% of its 65,536 texels are not opaque and 64.0% are fully transparent**
+  (42 alpha levels, min 0 max 255). So every sprite, bar, border and coin decal
+  the UI draws was painted as a filled rectangle, and since T411 it is painted
+  with its shape. That is the correct behaviour and exactly what B261 was
+  about, but it is a real visual change on a path the visual gate does not
+  photograph -- **no gate golden moved**, which is itself the finding: the
+  gate's three zones capture no UI. What DID catch a piece of it is
+  `UIAtlasPixelTest.SpellGemReadyBorderIsGreen`, which went red at 172/200 --
+  traced not to the atlas alpha itself but to companion MIP selection (see the
+  struck B287), and fixed by giving `ui_atlas` (and only `ui_atlas`) the
+  in-band payload. All 14 `test_ui_atlas_pixels` cases are green with the alpha
+  live, so no PINNED UI pixel changed; the unpinned rest of the UI is what
+  nobody has looked at. Closes when someone runs the client and looks at it, or
+  pins more of it. Prov: T411 Review section 4.

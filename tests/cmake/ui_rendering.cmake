@@ -280,6 +280,21 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_eqe1_alpha_companion_mip)
 ENDIF()
 
+# T411 (board B261/B287): pixel proof that the ETC1 `_alpha` companion reaches
+# the three alpha-BLEND draw paths -- draw2DImage's UI2D_FS, an
+# EMT_TRANSPARENT_ALPHA_CHANNEL mesh through SOLID3D_FS, and the
+# UnifiedParticleRenderer point sprite. Same headless-GLES2 idiom (and same
+# self-skip) as test_eqe1_alpha_companion_mip above; see
+# refactor/T411_etc1_alpha_companion.md.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_alpha_blend_companion
+        test_alpha_blend_companion.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_alpha_blend_companion PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_alpha_blend_companion GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_alpha_blend_companion)
+ENDIF()
+
 # T156: /useskill + the hotbar/skills-popup intent producers. Same graphics
 # gate as test_static_ui_panels above (it drives StaticUIInput), and no device
 # is created — see refactor/T156_skill_reachability.md. Deliberately a NEW

@@ -38,15 +38,21 @@ public:
     // fogColor: RGBA float[4] (may be nullptr if no fog)
     // screenHeight: viewport height for perspective point size scaling
     // atlasTexture: GL texture handle for the particle atlas
+    // alphaCompanion: GL handle of the atlas's ETC1 `_alpha` companion, or 0
+    //   when the atlas carries its alpha in band (T411, board B261). Bound on
+    //   texture unit 1; 0 binds a 1x1 opaque-white texture so the shader's
+    //   multiply is an exact no-op.
     void render(const UnifiedParticle* particles, int count,
                 const float* viewMatrix, const float* projMatrix,
                 float fogStart, float fogEnd, const float* fogColor,
-                float screenHeight, GLuint atlasTexture);
+                float screenHeight, GLuint atlasTexture,
+                GLuint alphaCompanion = 0);
 
     // Max supported point size on this GPU
     float getMaxPointSize() const { return maxPointSize_; }
 
     bool isInitialized() const { return initialized_; }
+
 
 private:
     // Point sprite vertex layout: position(3f) + color(4f) + texcoord0(2f) + texcoord1(2f) = 11 floats = 44 bytes
@@ -67,6 +73,12 @@ private:
     void renderBatch(const std::vector<PointSpriteVertex>& verts, UnifiedBlendMode blendMode);
 
     GLuint program_ = 0;
+    // T411: 1x1 opaque-white texture bound on unit 1 when the atlas has no
+    // ETC1 companion, so `texColor.a *= texture2D(uAlphaTexture, uv).r` is an
+    // exact no-op for an in-band-alpha atlas. Mirrors the driver's
+    // COpenGLES2Driver::getOpaqueAlphaFallback(); this renderer bypasses the
+    // driver entirely (raw GL), so it needs its own.
+    GLuint opaqueAlphaFallback_ = 0;
     bool initialized_ = false;
     float maxPointSize_ = 64.0f;
 
@@ -77,6 +89,7 @@ private:
     GLint uFogEnd_ = -1;
     GLint uFogColor_ = -1;
     GLint uTexture_ = -1;
+    GLint uAlphaTexture_ = -1;   // T411: ETC1 alpha companion sampler (unit 1)
     GLint uAtlasRegionSize_ = -1;
     GLint uScreenHeight_ = -1;
 

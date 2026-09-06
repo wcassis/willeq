@@ -463,6 +463,14 @@ private:
     // 1x1 white texture for alpha fallback (lazily created)
     GLuint opaqueAlphaFallback_ = 0;
     GLuint getOpaqueAlphaFallback();
+
+    // T411 (board B261): bind texture unit 1 for a draw whose unit-0 texture
+    // is `tex0`. Order of preference: an explicit unit-1 texture the caller
+    // set on the material (atlas alpha page / a hand-bound companion), then
+    // tex0's own ETC1 `_alpha` companion, then the 1x1 opaque-white fallback
+    // so every shader sampling uAlphaTexture reads 1.0 instead of stale data.
+    // ONE function, used by the 3D material path and both draw2DImage paths.
+    void bindAlphaCompanionUnit(const ITexture* tex0, const ITexture* explicitUnit1);
 };
 
 // Factory function (called from CIrrDeviceFB::createDriver)
