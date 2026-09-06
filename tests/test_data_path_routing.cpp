@@ -240,6 +240,60 @@ TEST(DataPathRouting, AudioAndIndexCacheLoadsAreRouted) {
 // what made a plain `willeq` run dirty the working tree. They now live in a
 // run-local cache directory (eqt::ResolveCachePathForRead/ForWrite), so no
 // "config/…_index_cache.json" literal may come back anywhere in the client.
+// T402 (board B245/B255): every shipped config/*.json must be NAMED by code.
+//
+// config/chat_settings.json and config/ui_settings.json shipped for months
+// after the WindowManager that wrote them was deleted (0f25cb57). They were
+// invisible to every census here, because a file nothing opens has no literal
+// to find -- the only way to see it is to start from the DIRECTORY and ask
+// which files nothing names. That is this test.
+TEST(DataPathRouting, EveryShippedConfigFileIsNamedByCode) {
+    // The haystack: every client/tool source, comments included on purpose --
+    // a name mentioned only in a comment is at least a live reference someone
+    // can follow, and the failure this catches is a total absence.
+    std::string haystack;
+    const char* roots[] = {"src", "include", "tools"};
+    for (const char* r : roots) {
+        std::string cmd = "find '" + kRoot + r +
+                          "' -type f \\( -name '*.cpp' -o -name '*.h' \\)";
+        FILE* p = ::popen(cmd.c_str(), "r");
+        ASSERT_NE(p, nullptr) << "could not enumerate " << r;
+        char buf[4096];
+        while (::fgets(buf, sizeof(buf), p)) {
+            std::string path(buf);
+            while (!path.empty() && (path.back() == '\n' || path.back() == '\r')) path.pop_back();
+            if (path.empty()) continue;
+            if (path.rfind(kRoot, 0) == 0) path = path.substr(kRoot.size());
+            haystack += ReadFile(path);
+            haystack += '\n';
+        }
+        ::pclose(p);
+    }
+    ASSERT_GT(haystack.size(), 1000000u) << "the source walk came back empty";
+
+    std::vector<std::string> orphans;
+    FILE* p = ::popen(("ls '" + kRoot + "config'").c_str(), "r");
+    ASSERT_NE(p, nullptr);
+    char buf[4096];
+    size_t seen = 0;
+    while (::fgets(buf, sizeof(buf), p)) {
+        std::string name(buf);
+        while (!name.empty() && (name.back() == '\n' || name.back() == '\r')) name.pop_back();
+        if (name.size() < 6 || name.substr(name.size() - 5) != ".json") continue;
+        ++seen;
+        if (haystack.find(name) == std::string::npos) orphans.push_back(name);
+    }
+    ::pclose(p);
+    EXPECT_GE(seen, 10u) << "config/ looks empty -- did the walk work?";
+
+    std::ostringstream ss;
+    for (const auto& o : orphans) ss << "\n  config/" << o;
+    EXPECT_TRUE(orphans.empty())
+        << orphans.size() << " shipped config file(s) that NO source names:" << ss.str()
+        << "\nEither wire the loader (and board the unreached feature) or delete "
+           "the file -- a shipped file nothing reads is data with no owner (B245).";
+}
+
 TEST(DataPathRouting, IndexCachesAreNotWrittenUnderConfig) {
     std::vector<Offender> offenders;
     const char* roots[] = {"src/client", "include/client"};

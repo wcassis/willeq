@@ -3558,7 +3558,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   the weather/ambient files T396 owns, which is why T397 left them. Found by
   T397 Leg A.
 
-- **B245** (B) `config/chat_settings.json`, `config/ui_settings.json` — **two
+- ~~**B245** (B) `config/chat_settings.json`, `config/ui_settings.json` — **two
   shipped config files that NOTHING reads.** Both are git-tracked in `config/`,
   and `CLAUDE.md` documented `chat_settings.json` as live "user settings", but
   the strings `chat_settings` and `ui_settings` appear in **no `.cpp` or `.h`
@@ -3568,7 +3568,9 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   it. Closes when the persistence is wired with a test, or both files and their
   doc lines are deleted. `CLAUDE.md` now says they are dead. Found by T399's
   census (they are the two shipped files the B235 grep could not see, because
-  no literal names them).
+  no literal names them).~~ **CLOSED by T402 Leg B** (`refactor/T402_caches_dead_configs.md`): both files DELETED. Provenance measured, not guessed — `git log -S'ui_settings.json' -- src include` names `0f25cb57` "U07c2: Delete WindowManager + all old UI window files (~35K lines)": they are the deleted WindowManager's saved state. What they describe (draggable per-window x/y/w/h + `visible` per resolution, a `globalTheme` colour/layout block, 19 chat `channelFilters`) does not exist in the client that replaced it: `UILayout` computes every panel rect from the screen size, there are no movable windows, and `channelFilters`/`globalTheme`/`blinkIntervalMs`/`maxHistory` appear in NO source at all. The one live concept, `showTimestamps`, is a `ChatPanelState`/`GameModeConfig` field no file feeds. The genuinely missing feature is boarded as **B255**; the deleted bytes stay recoverable at `0f25cb57^`. Pinned by `DataPathRouting.EveryShippedConfigFileIsNamedByCode`, which starts from the config DIRECTORY (the only way to see a file nothing opens) and fails on any shipped `config/*.json` no source names.
+
+- **B255** (B) `include/client/graphics/ui/ui_layout.h` `UILayout`, `include/client/graphics/ui/static_panels.h` `ChatPanelState` — **the client persists NO user settings.** Chat timestamps, panel visibility, chat scrollback size, UI colours and every panel position are computed or defaulted at startup and nothing writes them back: `saveLayout`, `loadLayout` and any preferences writer return zero hits under `src/`, `include/` and `tools/`, and the only two files that ever held such state (`config/chat_settings.json`, `config/ui_settings.json`) were the deleted WindowManager's and are gone (B245). So a player who moves nothing notices nothing, and a player who changes anything loses it at exit. Closes when a preferences file is written and re-read with a test, or when Will rules that a fixed static UI needs no persistence. Found by T402.
 
 - **B246** (B) `src/client/graphics/eq/race_codes.cpp` `loadRaceMappings` —
   **the function ignores its argument; `config/race_models.json` is validated

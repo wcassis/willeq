@@ -386,7 +386,7 @@ Optional RDP configuration:
 }
 ```
 
-Other user settings live in `config/`: `hotkeys.json` (key bindings), `chat_settings.json`, `display_settings.json`, `ui_settings.json`, `constrained_presets.json` (hardware presets), `eqe1_archives.json` (EQE1 archive lists), `spell_effects.json` (particle presets, hot-reloadable), `skill_caps.json`, and the weather/detail/tree-wind configs.
+Other user settings live in `config/`: `hotkeys.json` (key bindings), `display_settings.json`, `constrained_presets.json` (hardware presets), `eqe1_archives.json` (EQE1 archive lists), `spell_effects.json` (particle presets, hot-reloadable), `skill_caps.json`, and the weather/detail/tree-wind configs. (`chat_settings.json` and `ui_settings.json` were listed here until T402 deleted them: they were the deleted `WindowManager`'s saved window state and no code had read them for months. The client persists no user settings at all — board B255.)
 
 ### EQE1 Asset Packs
 
