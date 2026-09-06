@@ -277,6 +277,28 @@ void SlashCommandsComponent::processSlashCommand(const std::string& command) {
             chat(fmt::format("Lighting mode: {}", unified ? "UNIFIED (pointLight * aColor)" : "ADDITIVE (pointLight + base*aColor)"));
             LOG_INFO(MOD_SHADER, "Lighting mode toggled to {}", unified ? "unified" : "additive");
         }
+    } else if (cmd == "/bakedlight") {
+        // T408 (B110): the probe that solved the baked-light composition.
+        // `/bakedlight <mode> [gain] [skyweight]` -- mode 0 off (pre-T408),
+        // 1 additive, 2 multiplicative, 3 max. It exists so ONE live session
+        // against the official client can sweep the whole family; solving it
+        // with a rebuild per candidate is what made T405 cost six sessions.
+        if (ctx_.zoneShader) {
+            int mode = EQT::Graphics::kBakedLightMode;
+            float gain = EQT::Graphics::kBakedLightGain;
+            float sky = EQT::Graphics::kBakedLightSkyWeight;
+            if (!args.empty()) {
+                std::istringstream iss(args);
+                iss >> mode;
+                if (!(iss >> gain)) gain = EQT::Graphics::kBakedLightGain;
+                if (!(iss >> sky)) sky = EQT::Graphics::kBakedLightSkyWeight;
+            }
+            ctx_.zoneShader->setBakedLight(gain, sky, static_cast<float>(mode));
+            chat(fmt::format("Baked vertex light: mode={} gain={:.4f} skyWeight={:.4f}",
+                             mode, gain, sky));
+            LOG_INFO(MOD_SHADER, "BakedLight probe: mode={} gain={:.4f} skyWeight={:.4f}",
+                     mode, gain, sky);
+        }
     } else if (cmd == "/shaderdebug" || cmd == "/sd") {
         if (ctx_.zoneShader) {
             int mode = 0;

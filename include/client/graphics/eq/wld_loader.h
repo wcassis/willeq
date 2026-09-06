@@ -490,6 +490,14 @@ struct ResolvedMaterialList {
 struct ZoneGeometry {
     std::vector<Vertex3D> vertices;
     std::vector<Triangle> triangles;
+    // Baked per-vertex lighting from the WLD's 0x36 colour array (T408, B110).
+    // One packed BGRA byte quad per vertex when the fragment carries them
+    // (qeynos2: all 3,830 region meshes have colorCount == vertexCount), empty
+    // otherwise. This is EQ's static light: the official client lights zone
+    // geometry from it, which is why fable's night had no lamp pools while it
+    // was skipped. Kept as a parallel vector rather than a Vertex3D field so a
+    // mesh without colours (every character model) costs nothing.
+    std::vector<uint32_t> vertexColors;
     std::string name;
     float minX, minY, minZ;
     float maxX, maxY, maxZ;
@@ -533,6 +541,7 @@ struct ZoneGeometry {
         size_t total = sizeof(ZoneGeometry);
         total += vertices.capacity() * sizeof(Vertex3D);
         total += triangles.capacity() * sizeof(Triangle);
+        total += vertexColors.capacity() * sizeof(uint32_t);
         // materialData counted separately to handle sharing (see WldLoader::getMemoryUsage)
         total += sizeof(std::shared_ptr<ResolvedMaterialList>);
         total += vertexPieces.capacity() * sizeof(VertexPiece);

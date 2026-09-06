@@ -26,7 +26,14 @@ class ShaderCallback : public irr::video::IShaderConstantSetCallBack {
 public:
     ShaderCallback(ZoneShaderManager* owner) : owner_(owner) {}
 
-    void OnSetMaterial(const irr::video::SMaterial& material) override {}
+    // T408 (B110): SMaterial::MaterialTypeParam is the per-material
+    // "these vertices carry the WLD's baked lighting" flag. These programs
+    // are shared with every entity mesh, whose aColor is opaque white, so
+    // the flag -- not the material type -- is what keeps the pre-T408
+    // equation exact for them. The field was unused on this callback.
+    void OnSetMaterial(const irr::video::SMaterial& material) override {
+        bakedFlag_ = (material.MaterialTypeParam > 0.5f) ? 1.0f : 0.0f;
+    }
 
     void OnSetConstants(irr::video::IMaterialRendererServices* services,
                         irr::s32 userData) override {
@@ -71,6 +78,8 @@ public:
             locNumFireGlowLights_   = glGetUniformLocation(prog, "uNumFireGlowLights");
             locShaderDebug_         = glGetUniformLocation(prog, "uShaderDebug");
             locUnifiedLighting_     = glGetUniformLocation(prog, "uUnifiedLighting");
+            locBakedLight_          = glGetUniformLocation(prog, "uBakedLight");
+            locBakedFlag_           = glGetUniformLocation(prog, "uBakedFlag");
             LOG_DEBUG(MOD_SHADER, "ShaderCallback: uniforms resolved — WVP={} World={} SunDir={} "
                       "LightPos={} LightColor={} LightAtten={} PlayerLightPos={} Texture={} AlphaTex={} "
                       "NumPointLights={} NumFireGlow={}",
@@ -88,6 +97,11 @@ public:
         irr::core::matrix4 world = driver->getTransform(irr::video::ETS_WORLD);
         if (locWorld_ >= 0)
             glUniformMatrix4fv(locWorld_, 1, GL_FALSE, world.pointer());
+
+        // T408: baked-light knobs. uBakedFlag is PER MATERIAL, so it cannot
+        // live in the per-frame block below.
+        if (locBakedFlag_ >= 0)  glUniform1f(locBakedFlag_, bakedFlag_);
+        if (locBakedLight_ >= 0) glUniform3fv(locBakedLight_, 1, owner_->bakedLight());
 
         // Per-frame uniforms (same for every node — skip if already set this frame)
         if (lastFrameId_ != owner_->frameId()) {
@@ -200,12 +214,16 @@ public:
         services->setVertexShaderConstant("uNumFireGlowLights", &numFireGlowLights, 1);
         irr::s32 unifiedLighting = owner_->unifiedLighting() ? 1 : 0;
         services->setVertexShaderConstant("uUnifiedLighting", &unifiedLighting, 1);
+        services->setVertexShaderConstant("uBakedLight", owner_->bakedLight(), 3);
+        services->setVertexShaderConstant("uBakedFlag", &bakedFlag_, 1);
 #endif
     }
 
 private:
     ZoneShaderManager* owner_;
+    float bakedFlag_ = 0.0f;   // T408: set by OnSetMaterial, uploaded per node
 #ifdef EQT_HAS_GLES2
+    GLint locBakedLight_ = -2, locBakedFlag_ = -2;
     // Cached uniform locations (-2 = not yet resolved)
     GLint locWVP_ = -2, locWorld_ = -2;
     GLint locSunDir_ = -2, locSunColor_ = -2, locAmbient_ = -2, locTint_ = -2;

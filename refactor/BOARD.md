@@ -2171,7 +2171,7 @@ line of a future live session. The LIVE proof of the corpse row itself (hear
   Ultravision is near-neutral with a blue lift (R x1.458 / G x1.463 / B x1.851)
   while fable's green lags (R x1.461 / **G x1.281** / B x1.663), and the oracle's
   Infravision raises all three channels (R x1.328 / G x1.211 / B x1.208) while
-  fable's **drives blue DOWN to x0.821** at R x1.600. That is **B171** — **STRUCK PROVISIONALLY by T383 (`776357f1`), live re-measure OWED; T383 also established that NO code path in the tree can lower a channel under a vision buff, so the x0.821 is unexplained by the source and the re-measure has to account for it.** See B110 for the term that does separate the two clients.** Pinned by
+  fable's **drives blue DOWN to x0.821** at R x1.600. That is **B171** — **STRUCK PROVISIONALLY by T383 (`776357f1`), live re-measure OWED; T383 also established that NO code path in the tree can lower a channel under a vision buff, so the x0.821 is unexplained by the source and the re-measure has to account for it.** ~~See B110 for the term that does separate the two clients.~~ **T408 (2026-09-06) MEASURED B110 and it does NOT separate them: loading the baked colours moves fable away from the oracle on the lamp invariant, and the term that separates the two clients is the UNIFORM x2.2 night deficit, i.e. B280. So B067's ~7% Ultravision residual has no explanation in B110 either and stays unexplained.** Pinned by
   `tests/test_vision_ambient.cpp` (3 of 6 cases fail against the pre-T361
   behaviour). Prov: T361 Review, `review/T361/README.md`. **CORRECTION (T383): `visionType` now has THREE
   consumers — T361 added `IrrlichtRenderer::updateTimeOfDay` ->
@@ -2483,6 +2483,45 @@ line of a future live session. The LIVE proof of the corpse row itself (hear
   lamp-spot day/night ratio lands near the oracle's 17.1x.
   Prov: T367 Review, `review/T367/README.md`.
   **WILL RULED 2026-09-06:** APPROVED as its own unit (T408); the re-bless of the moved pixel goldens is approved for that unit, contact sheet to Will.
+  **ANSWERED by T408 (`32cf1fb2`, branch `task/T408-baked-vertex-lighting`), and the
+  answer is NO on the second half.** The colours ARE loaded now -- `parseFragment36`
+  reads the array into `ZoneGeometry::vertexColors`, `buildTexturedMesh` writes it into
+  the vertex and flags the material, and all six zone vertex programs carry the
+  composition -- and `tests/test_baked_vertex_lighting.cpp` re-takes the census through
+  the PRODUCTION loader on every ctest run. **Two corrections to the entry above.**
+  (1) **The census numbers here were 2x.** Through the production loader qeynos2 has
+  **1,915** region meshes and **36,218** coloured vertices, not 3,830 and 72,436;
+  T367's temporary instrumentation double-counted every mesh (1,915 is the number
+  `wld_loader.h`'s own `ResolvedMaterialList` comment has carried since batch J). The
+  distribution is otherwise as described: min 0, max 255, mean RGB byte 44.44/255.
+  (2) **The premise is REFUTED: the baked colours are not what separates the two
+  clients at these spots.** Measured live at two spots x two hours x two clients with
+  weather and heading pinned (`review/T408/`), on a GEOMETRY-ONLY crop -- T361/T405's
+  700x420+40+40 world crop is about half SKY at both spots and no zone-lighting term
+  touches the sky. On the invariant `L = (day/night)_lampfree / (day/night)_lamp` (how
+  much more a lamp is worth at night than by day, each spot's composition divided out,
+  immune to a uniform night-ambient error): **oracle 2.281** (two sessions agreeing to
+  0.5%), **fable with the baked light OFF 2.476 (+8.5%)**, and EVERY baked composition
+  moves fable AWAY -- additive gain 0.25/0.50/1.00 give 2.826/3.096/3.622, max
+  0.50/1.00 give 3.461/4.683, and multiplicative (the tree's own equation with the
+  colours loaded, the one this entry predicted would darken the world) gives 0.655.
+  **L is monotone in gain above the oracle's value, so no gain improves the fit and
+  the plan's STOP fired.** The reason is the residual's SHAPE: to reproduce the
+  oracle's own day/night ratio fable's night needs **x2.27** at the lamp-free spot and
+  **x2.09** at the lamp spot -- the SAME factor, i.e. a UNIFORM deficit, which is
+  **B280**, not this. A baked term is lamp-shaped by construction (x1.03 in the open,
+  x2.48 next to a lamp at gain 1.0) and cannot supply it. The baked-alpha sky mask was
+  measured too and is null (+0.1% / -0.2% by day).
+  **So the committed composition is `kBakedLightOff` and NO PIXEL GOLDEN MOVED** --
+  mode 0 is byte-for-byte the pre-T408 equation, pinned by
+  `BakedLightCompositionTest.EveryZoneVertexShaderCarriesTheBakedUniformsAndIsNeutralWhenOff`
+  -- so Will's pre-approved pixel re-bless was NOT used. Three memory baselines did
+  move and were blessed under the same approval (`characterModelsBytes` +6,144/+6,288/
+  +6,216 = 24 bytes per character geometry, the new vector member; character WLD meshes
+  carry no colour array at all). **What is left open is `B325`: re-run T408's
+  `/bakedlight` probe after B280 is solved, because moving the night ambient moves
+  every row of that table.** This entry is now class B, not C: the design decision Will
+  was needed for has been taken and measured.
 ## Added 2026-09-05 by T368
 
 - ~~**B115** (B) The official client's DEFAULT KEYS for the group, pet and buff
@@ -3756,9 +3795,59 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   `VisionSolvedT405Test.GreyIsBaseWeightedSoTheOracleGreyIsNotATarget` pins that
   arithmetic so it is not re-discovered as a defect. Closes when the night
   ambient itself is solved against the oracle the way the vision floors now
-  are. **It is one job with a re-solve of those floors**, because moving the
+  are. **T408 (2026-09-06) MEASURED THE SHAPE OF THIS DEFICIT AND IT IS
+  UNIFORM**: at two spots 10x apart in night brightness, fable's night needs the
+  SAME factor (x2.27 lamp-free, x2.09 next to a lamp) to reproduce the oracle's own
+  day/night ratio at that spot. That rules out every lamp-shaped explanation --
+  B110's baked vertex colours included, measured and refuted -- and says this is a
+  single scalar (or a per-channel triple) on the night ambient. It also gives the
+  target: `review/T408/logs/final_table.txt`. **It is one job with a re-solve of those floors**, because moving the
   base moves every ratio measured against it -- which is exactly why T405 did
   not attempt it mid-search. Prov: T405 Review §2, §4; B203; B067.
+
+## Added 2026-09-06 by T408 (the baked vertex lighting)
+
+- **B325** (B) `include/client/graphics/zone_shader.h` `kBakedLightMode` /
+  `src/client/graphics/slash/renderer_slash_commands.cpp` `/bakedlight` --
+  **the zone's baked per-vertex lighting is LOADED and shipped in every zone
+  vertex, and the committed composition ignores it.** That is deliberate and
+  measured, not an oversight: T408's live A/B (B110) found that every member of
+  the composition family moves fable AWAY from the official client on the lamp
+  invariant, because the deficit that actually separates them is UNIFORM
+  (B280), not lamp-shaped. `kBakedLightOff` is therefore the best fit in the
+  family and mode 0 is byte-for-byte the pre-T408 equation. The colours reach
+  the GPU, the six shader programs carry the composition, and `/bakedlight
+  <mode> [gain] [skyWeight]` is the reachable consumer -- the same shape
+  `/shaderdebug` has. Cost: 24 bytes per loaded geometry (the vector member,
+  blessed into the three `characterModelsBytes` baselines) plus 145 KB of
+  qeynos2 vertex colours. **Closes when B280 is solved and T408's probe is
+  re-run** -- moving the night ambient moves every row of T408's table, so the
+  composition cannot be re-solved before it -- **or when Will rules that the
+  colours should not ship until there is a consumer**, in which case the loader
+  and the six shader edits revert together and only the census test stays.
+  Prov: T408 Review; `review/T408/README.md` §4.
+
+- **B326** (B) `src/client/graphics/eq/zone_geometry.cpp`
+  `ZoneMeshBuilder::buildTexturedMeshFromUploaded` / `buildCompositeMesh` /
+  `zone_geometry_atlased.cpp` `buildAtlasedMesh` -- **three of the four zone
+  mesh builders have ZERO callers, and T408 wired the baked colours into only
+  the one that is reached.** Census over `src/ include/ tests/ tools/
+  benchmarks/ docker/`: `buildTexturedMesh` is called from
+  `renderer_zone_draw.cpp` (the zone), `renderer_zone_stream.cpp` and
+  `door_manager.cpp` (objects and doors) and `variant_loading.cpp` /
+  `race_model_loader.cpp` (characters, `flipV=true`); the other three are
+  called by nothing outside their own declarations. The atlased builder cannot
+  take the baked flag as things stand anyway -- `AtlasShaderCallback` already
+  uses `SMaterial::MaterialTypeParam` for the atlas page index and
+  `MaterialTypeParam2` for the alpha page, which is the field T408 uses as the
+  flag on the main callback. Closes when the three are deleted, or wired and
+  reached with a test. Found by T408 while looking for "the three mesh
+  builders" the plan named -- the plan named the ENTITY builders
+  (`entity_mesh_build.cpp`, `entity_build_step.cpp`), which must NOT get the
+  zone's baked light: they draw character models, and character WLD meshes
+  carry no colour array at all (T408 measured `colorCount == 0` for every one,
+  which is why the memory baselines moved by exactly one empty vector header
+  per geometry). Prov: T408 Review §5.
 
 - **B281** (A) `src/client/graphics/renderer/irrlicht_renderer.cpp` /
   `SkyRenderer::updateTimeOfDay` -- **fable's night frame gets steadily
