@@ -278,6 +278,10 @@ could return, which is the defect T419 refused to create.
 in the first `-j6` run with **empty** process output — the load artefact the
 protocol names. Passes standalone.
 
+**Commits.** Leg B `f35a4517`, Leg A `f7b0fc22` (which also carries the shared
+TUs and this Review). The board hashes were filled in a third, no-code commit
+because each strike names its own commit.
+
 ### Deviations
 
 * **Leg A is a new window, not fields added to an existing popup** — the plan

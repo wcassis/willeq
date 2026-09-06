@@ -4862,7 +4862,7 @@ T407 deleted eleven (see below). The rest are boarded here.
   `include/client/spell/spell_data.h`, `include/client/skill/skill_data.h`,
   `include/client/state/entity_manager.h` -- **server- and DB-sourced data
   parsed and never shown.**
-  **ITEM HALF STRUCK by T421 Leg A** (`ITEMHASH`): fable now has an item
+  **ITEM HALF STRUCK by T421 Leg A** (`f7b0fc22`): fable now has an item
   display window -- `EQUI_ItemDisplay.xml`'s own 400x190 `ItemDisplayWindow` at
   its own absolute (0,80), an `IDW_IconButton` and one `IDW_ItemDescription`
   STMLbox -- and the STMLbox's text is composed by
