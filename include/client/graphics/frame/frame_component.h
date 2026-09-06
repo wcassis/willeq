@@ -139,6 +139,8 @@
 #include "client/graphics/renderer_context.h"
 #include "client/graphics/ui/ui_layout.h"
 #include "client/graphics/ui/static_panels.h"
+#include "client/graphics/ui/tradeskill_panel.h"
+#include "client/graphics/ui/combat_ability_panel.h"
 
 #include <chrono>
 #include <cstdint>
@@ -219,6 +221,15 @@ public:
 	bool togglePetWindow();
 	bool toggleBuffWindow();
 
+	// ---- T415 (board B320): the combat abilities window's toggle ----
+	// MEASURED at the official client's Options > Keys > UI page (T377,
+	// review/T377/oracle/T377_oracle_options_keys_UI_page3.png):
+	// "Toggle Combat Ability Window   Alt C", Alternate column empty. Same
+	// shape as the three above -- a HUD window, not a centre popup, so it is
+	// deliberately NOT mutually exclusive with the inventory/spellbook/skills
+	// popups. Returns the new open state.
+	bool toggleCombatAbilityWindow();
+
 	// ---- T357 (B057): slash-command tab completion ----
 	// The chat box is a hand-rolled string in chatPanelState_, drained by
 	// processChatInput() on the RENDER thread; the command vocabulary lives on
@@ -265,6 +276,14 @@ public:
 	// loot bridge arms (applyLoot*), read by renderLootPopup() and
 	// StaticUIInput's row/button hit tests.
 	LootPanelState lootState_;          // T290
+	// T415 (board B321): renderer-side tradeskill container contents. Fed by
+	// the two Tradeskill* bridge arms plus the WORLD-slot branch of the
+	// InventorySlotChanged arm; read by renderTradeskillPopup() and its two
+	// hit tests.
+	TradeskillPanelState tradeskillState_;      // T415
+	// T415 (board B320): the combat abilities window. Its gauge is the only
+	// consumer of SkillActivationFeedbackData::cooldownMs.
+	CombatAbilityPanelState combatAbilityState_;  // T415
 	XPBarState xpBarState_;             // U06i
 	std::unique_ptr<StaticUIInput> staticUIInput_;  // U06j
 

@@ -149,6 +149,7 @@ static const ActionNameMapping s_actionNameMappings[] = {
     {"ToggleTrainer", HotkeyAction::ToggleTrainer},
     {"ToggleSpellbook", HotkeyAction::ToggleSpellbook},
     {"ToggleBuffWindow", HotkeyAction::ToggleBuffWindow},
+    {"ToggleCombatAbilities", HotkeyAction::ToggleCombatAbilities},
     {"ToggleOptions", HotkeyAction::ToggleOptions},
     {"ToggleCollision", HotkeyAction::ToggleCollision},
     {"ToggleCollisionDebug", HotkeyAction::ToggleCollisionDebug},
@@ -499,6 +500,11 @@ void HotkeyManager::setupDefaults() {
     addBinding(HotkeyAction::ToggleTrainer, HotkeyMode::Player, irr::KEY_KEY_T);
     addBinding(HotkeyAction::ToggleSpellbook, HotkeyMode::Player, irr::KEY_KEY_B, ModifierFlags::Ctrl);
     addBinding(HotkeyAction::ToggleBuffWindow, HotkeyMode::Player, irr::KEY_KEY_B, ModifierFlags::Alt);
+    // T415 (board B320). MEASURED at the official client's Options > Keys > UI
+    // page, T377 (review/T377/oracle/T377_oracle_options_keys_UI_page3.png and
+    // page4): "Toggle Combat Ability Window   Alt C", Alternate column empty.
+    // Alt+C is free here -- ToggleCollision is Ctrl+Alt+C.
+    addBinding(HotkeyAction::ToggleCombatAbilities, HotkeyMode::Player, irr::KEY_KEY_C, ModifierFlags::Alt);
     addBinding(HotkeyAction::ToggleCollision, HotkeyMode::Player, irr::KEY_KEY_C, ModifierFlags::Ctrl | ModifierFlags::Alt);
     addBinding(HotkeyAction::ToggleZoneLineVisualization, HotkeyMode::Player, irr::KEY_KEY_Z, ModifierFlags::Ctrl);
     addBinding(HotkeyAction::ToggleMapOverlay, HotkeyMode::Player, irr::KEY_KEY_M, ModifierFlags::Ctrl);

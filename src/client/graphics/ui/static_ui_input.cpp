@@ -7,6 +7,11 @@
 #include "client/graphics/ui/ui_layout.h"
 #include "client/graphics/ui/static_panels.h"
 #include "client/graphics/ui/inventory_layout.h"
+#include "client/graphics/ui/tradeskill_panel.h"
+#include "client/graphics/ui/tradeskill_layout.h"
+#include "client/graphics/ui/combat_ability_panel.h"
+#include "client/graphics/ui/combat_ability_layout.h"
+#include "client/inventory/inventory_constants.h"
 #include "client/bridge/game_state_bridge.h"
 #include "client/events/renderer_intents.h"
 #include "common/logging.h"
@@ -284,6 +289,71 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
                     }
                     break;
                 }
+            }
+        }
+    }
+
+    return consumed;
+}
+
+// T415 (boards B321/B320) -- see the declaration for why this is its own
+// entry point rather than two more parameters on processInput().
+bool StaticUIInput::processPanelInput(int mouseX, int mouseY, bool leftClicked,
+                                      const UILayout& layout,
+                                      TradeskillPanelState& tradeskill,
+                                      CombatAbilityPanelState& combatAbilities) {
+    bool consumed = false;
+
+    tradeskill.hoveredSlot = -1;
+    combatAbilities.hoveredButton = -1;
+
+    // --- The tradeskill container window (B321) ---
+    if (tradeskill.isOpen) {
+        const int slot = hitTestTradeskillSlot(layout, tradeskill, mouseX, mouseY);
+        if (slot >= 0) {
+            tradeskill.hoveredSlot = slot;
+            consumed = true;
+        }
+        const TradeskillButton button =
+            hitTestTradeskillButton(layout, tradeskill, mouseX, mouseY);
+        if (button != TradeskillButton::None) {
+            consumed = true;
+            if (leftClicked && bridge_) {
+                if (button == TradeskillButton::Combine) {
+                    // The container slot the server expects. A WORLD container
+                    // combines through SLOT_TRADESKILL_EXPERIMENT_COMBINE (the
+                    // same value `/combine` with no argument sends); an
+                    // inventory container combines through its own slot.
+                    const int16_t containerSlot =
+                        tradeskill.isWorldObject
+                            ? eqt::inventory::SLOT_TRADESKILL_EXPERIMENT_COMBINE
+                            : tradeskill.inventorySlot;
+                    bridge_->pushIntent(
+                        eqt::events::TradeskillCombineIntent{containerSlot});
+                } else {
+                    // The UI never closes itself -- T290's rule. The panel
+                    // stays up until TradeskillContainerClosed comes back, so
+                    // an optimistic local close cannot desync the server's
+                    // "this container is open" state.
+                    bridge_->pushIntent(
+                        eqt::events::TradeskillCloseIntent{tradeskill.objectId});
+                }
+            }
+        }
+    }
+
+    // --- The combat abilities window (B320) ---
+    if (combatAbilityWindowIsVisible(combatAbilities)) {
+        if (CombatAbilityLayout::windowRect(layout).isPointInside(
+                irr::core::vector2di(mouseX, mouseY))) {
+            consumed = true;
+        }
+        const int row = hitTestCombatAbility(layout, combatAbilities, mouseX, mouseY);
+        if (row >= 0) {
+            combatAbilities.hoveredButton = row;
+            if (leftClicked && bridge_) {
+                bridge_->pushIntent(eqt::events::SkillActivateIntent{
+                    combatAbilities.abilities[row].skillId});
             }
         }
     }

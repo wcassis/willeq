@@ -29,8 +29,18 @@ The old WindowManager/WindowBase draggable window system was completely removed 
 | Spellbook | Center popup | `SpellbookPopupState` | `renderSpellbookPopup()` |
 | Skills | Center popup | `SkillsPopupState` | `renderSkillsPopup()` |
 | Loot | Center popup | `LootPanelState` | `renderLootPopup()` (T290) |
+| Tradeskill container | Center popup | `TradeskillPanelState` | `renderTradeskillPopup()` (T415, board B321) |
+| Combat abilities | Top-right, under target, left of the gems | `CombatAbilityPanelState` | `renderCombatAbilityPanel()` (T415, board B320) |
 
-Center popups (inventory, spellbook, skills, vendor, bank, loot, trade) share the same screen region and are mutually exclusive.
+Center popups (inventory, spellbook, skills, vendor, bank, loot, trade, tradeskill container) share the same screen region and are mutually exclusive. The combat abilities window is NOT one of them -- like the buff/group/pet panels it is a HUD window with its own anchor and its own Alt+C toggle.
+
+**The two T415 panels take their geometry from the oracle's XML**, the way the purse and the paperdoll do:
+`include/client/graphics/ui/tradeskill_layout.h` derives `EQUI_TradeskillWnd.xml`'s anchor-positioned
+container half (`COMBW_ComponentArea`'s ten `COMBW_RequiredIcon` 42x42 cells, `COMBW_ContainerName`,
+`COMBW_CombineButton`, `COMBW_CloseButton`) into absolute rects in the oracle's 400x525 window and maps
+them proportionally onto `centerPopup`; `include/client/graphics/ui/combat_ability_layout.h` uses
+`EQUI_CombatAbilityWnd.xml`'s offsets UNSCALED, because that window is `Style_Sizable false` at 174x150.
+Neither panel's `.cpp` computes a rect.
 
 ## Design Patterns
 
@@ -86,6 +96,7 @@ Center popups (inventory, spellbook, skills, vendor, bank, loot, trade) share th
 | Alt+F1 | Toggle pet window |
 | Ctrl+B | Toggle spellbook |
 | Alt+B | Toggle buff window |
+| Alt+C | Toggle combat abilities window (T415, board B320 -- measured at the oracle's Options > Keys > UI page, `review/T377/oracle/T377_oracle_options_keys_UI_page3.png`: "Toggle Combat Ability Window   Alt C") |
 | U | Interact (nearest door/object) |
 | H | Hail (say "Hail" or "Hail, <target>") |
 | L | Cycle object lights |

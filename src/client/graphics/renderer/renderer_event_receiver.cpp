@@ -205,6 +205,7 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                     case HA::TogglePetWindow: actionQueue_.push_back({RA::TogglePet}); break;
                     case HA::ToggleSpellbook: actionQueue_.push_back({RA::ToggleSpellbook}); break;
                     case HA::ToggleBuffWindow: actionQueue_.push_back({RA::ToggleBuffWindow}); break;
+                    case HA::ToggleCombatAbilities: actionQueue_.push_back({RA::ToggleCombatAbilities}); break;
                     case HA::ToggleOptions: actionQueue_.push_back({RA::ToggleOptions}); break;
                     case HA::ToggleVendor: actionQueue_.push_back({RA::ToggleVendor}); break;
                     case HA::ToggleTrainer: actionQueue_.push_back({RA::ToggleTrainer}); break;
