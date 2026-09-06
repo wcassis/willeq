@@ -144,8 +144,14 @@ std::vector<TextureRecipe> buildManifest() {
     m.push_back({"tumbleweed.bmp", BmpFormat::Bmp24,
                  [](IVideoDriver* d) { return EQT::Graphics::generateTumbleweedTexture(d); }});
 
+    // T406 (board B266): the 32 cloud frames are a CONSTANT RGB with the whole
+    // shape in alpha (generateCloudFrame() writes SColor(alpha, r, g, b) with
+    // r/g/b fixed), and StormCloudLayer draws the dome with
+    // EMT_TRANSPARENT_ALPHA_CHANNEL -- glBlendFunc(GL_SRC_ALPHA,
+    // GL_ONE_MINUS_SRC_ALPHA) through SOLID3D_FS, one sampler. A 24-bit write
+    // makes every frame a solid grey dome.
     for (int i = 0; i < kCloudFrames * kBlendStepsPerPair; ++i) {
-        m.push_back({"storm_cloud_blend_" + std::to_string(i) + ".bmp", BmpFormat::Bmp24,
+        m.push_back({"storm_cloud_blend_" + std::to_string(i) + ".bmp", BmpFormat::Bmp32,
                      [i](IVideoDriver* d) { return makeCloudBlend(d, i); }});
     }
 
@@ -157,20 +163,28 @@ std::vector<TextureRecipe> buildManifest() {
 
     // Rain: ten intensities plus three fixed layers. numStreaks/seed/length
     // arguments are the retired tool's, verbatim -- they are the recipe.
+    // T406: the twelve RainOverlay reads (and the twelve SnowOverlay ones
+    // below) go through driver->draw2DImage(..., useAlphaChannelOfTexture=true),
+    // i.e. GL_SRC_ALPHA/GL_ONE_MINUS_SRC_ALPHA with the single-sampler UI2D
+    // program. The streaks and flakes ARE the alpha, so those twelve+twelve are
+    // Bmp32; the two files nothing loads stay Bmp24.
     for (int intensity = 1; intensity <= 10; ++intensity) {
         char buf[64];
         snprintf(buf, sizeof(buf), "rain_intensity_%02d.bmp", intensity);
         const int numStreaks = 20 + (intensity - 1) * (100 - 20) / 9;
         const int seed = 100 + intensity;
-        m.push_back({buf, BmpFormat::Bmp24,
+        m.push_back({buf, BmpFormat::Bmp32,
                      [numStreaks, seed](IVideoDriver* d) {
                          return EQT::Graphics::generateRainTexture(d, numStreaks, seed, 30, 70);
                      }});
     }
-    m.push_back({"rain_layer_mid.bmp", BmpFormat::Bmp24, [](IVideoDriver* d) {
+    m.push_back({"rain_layer_mid.bmp", BmpFormat::Bmp32, [](IVideoDriver* d) {
                      return EQT::Graphics::generateRainTexture(d, 40, 200, 20, 50); }});
-    m.push_back({"rain_layer_far.bmp", BmpFormat::Bmp24, [](IVideoDriver* d) {
+    m.push_back({"rain_layer_far.bmp", BmpFormat::Bmp32, [](IVideoDriver* d) {
                      return EQT::Graphics::generateRainTexture(d, 35, 201, 10, 35); }});
+    // rain_streaks has NO consumer -- RainOverlay names rain_intensity_01..10
+    // and rain_layer_mid/far and nothing else -- so it stays 24-bit rather than
+    // paying for an RGBA8888 pack entry nothing samples (T406, board B266).
     m.push_back({"rain_streaks.bmp", BmpFormat::Bmp24, [](IVideoDriver* d) {
                      return EQT::Graphics::generateRainTexture(d, 50, 42, 10, 40); }});
 
@@ -182,16 +196,17 @@ std::vector<TextureRecipe> buildManifest() {
         const float minSz = 1.0f + (intensity - 1) * 0.1f;
         const float maxSz = 3.0f + (intensity - 1) * 0.2f;
         const int alpha = 140 + intensity * 8;
-        m.push_back({buf, BmpFormat::Bmp24,
+        m.push_back({buf, BmpFormat::Bmp32,
                      [density, minSz, maxSz, alpha](IVideoDriver* d) {
                          return EQT::Graphics::generateSnowTexture(d, density, 42 + density,
                                                                   minSz, maxSz, alpha);
                      }});
     }
-    m.push_back({"snow_layer_mid.bmp", BmpFormat::Bmp24, [](IVideoDriver* d) {
+    m.push_back({"snow_layer_mid.bmp", BmpFormat::Bmp32, [](IVideoDriver* d) {
                      return EQT::Graphics::generateSnowTexture(d, 200, 242, 1.5f, 3.5f, 160); }});
-    m.push_back({"snow_layer_far.bmp", BmpFormat::Bmp24, [](IVideoDriver* d) {
+    m.push_back({"snow_layer_far.bmp", BmpFormat::Bmp32, [](IVideoDriver* d) {
                      return EQT::Graphics::generateSnowTexture(d, 150, 292, 0.8f, 2.0f, 120); }});
+    // snow_flakes has NO consumer, exactly like rain_streaks above.
     m.push_back({"snow_flakes.bmp", BmpFormat::Bmp24, [](IVideoDriver* d) {
                      return EQT::Graphics::generateSnowTexture(d, 300, 342, 1.0f, 3.0f, 180); }});
 

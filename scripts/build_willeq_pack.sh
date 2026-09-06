@@ -143,19 +143,39 @@ ln -s "$TEXTURES_DIR" "$WORK/textures"
 
 # ── Stage 3: pack ───────────────────────────────────────────────────────────
 mkdir -p "$WORK/out"
-# T400 (board B225): particle_atlas is forced to the in-band RGBA8888 payload.
-# Its entire content is an alpha ramp, and the default ETC1 encode puts alpha
-# in a separate `_alpha` companion entry that only the alpha-TEST shader
-# variants sample (texture unit 1). Both particle draw paths -- ParticleManager's
-# EMT_TRANSPARENT_ALPHA_CHANNEL material (SOLID3D_FS) and
-# UnifiedParticleRenderer's point-sprite shader -- read `texColor.a` from a
-# SINGLE sampler, so an ETC1 particle atlas is alpha=1.0 everywhere no matter
-# what the companion holds. This makes the pack a v2 file; every other entry
+# T400 (board B225) / T406 (board B266): every texture whose CONSUMER samples
+# alpha from a single texture unit is forced to the in-band RGBA8888 payload.
+# The default ETC1 encode puts alpha in a separate `_alpha` companion entry
+# that ONLY the alpha-TEST shader variants sample (texture unit 1, via
+# ATLAS_ALPHA3D_FS / ALPHA3D_FS). Not one consumer in the list below is
+# alpha-test: they are alpha-BLEND draws through SOLID3D_FS (particles, the
+# storm cloud dome) or draw2DImage's single-sampler UI2D program (the rain and
+# snow overlays). For those, an ETC1 payload reads alpha=1.0 everywhere no
+# matter how good the companion is, and in-band alpha is the only fix
+# (board B261). This makes the pack a v2 file; every entry NOT listed here
 # stays ETC1 and byte-identical.
+#
+# The list is the same census `generate_textures --report` prints and
+# tests/test_texture_alpha_census.cpp pins; keep the three in step.
+RGBA8888_ENTRIES="particle_atlas"
+for i in $(seq 0 31); do
+    RGBA8888_ENTRIES="$RGBA8888_ENTRIES storm_cloud_blend_$i"
+done
+for i in 01 02 03 04 05 06 07 08 09 10; do
+    RGBA8888_ENTRIES="$RGBA8888_ENTRIES rain_intensity_$i snow_intensity_$i"
+done
+RGBA8888_ENTRIES="$RGBA8888_ENTRIES rain_layer_mid rain_layer_far"
+RGBA8888_ENTRIES="$RGBA8888_ENTRIES snow_layer_mid snow_layer_far"
+
+RGBA8888_ARGS=""
+for e in $RGBA8888_ENTRIES; do
+    RGBA8888_ARGS="$RGBA8888_ARGS --rgba8888-texture $e"
+done
+
 if ! "$BIN_DIR/eqe1_builder" \
         --bmp-dir "$WORK/atlas" \
         --bmp-dir "$WORK/textures" \
-        --rgba8888-texture particle_atlas \
+        $RGBA8888_ARGS \
         --output "$WORK/out" \
         --name willeq > "$WORK/pack.log" 2>&1; then
     echo "ERROR: eqe1_builder failed:" >&2

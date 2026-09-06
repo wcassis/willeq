@@ -203,3 +203,15 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_particle_atlas_alpha GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_particle_atlas_alpha)
 ENDIF()
+
+# T406 (board B266): the census of every shipped BMP's alpha, its consumer's
+# blend, and the willeq.eqe1 payload that carries it. Reads files only (the
+# BMPs, the pack, and the consumer sources) -- no device, no GPU. Links
+# willeq_core for EQE1Loader.
+ADD_EXECUTABLE(test_texture_alpha_census
+    test_texture_alpha_census.cpp
+)
+TARGET_COMPILE_DEFINITIONS(test_texture_alpha_census PRIVATE
+    WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+TARGET_LINK_LIBRARIES(test_texture_alpha_census GTest::gtest_main willeq_core)
+GTEST_DISCOVER_TESTS(test_texture_alpha_census)
