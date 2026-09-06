@@ -355,7 +355,7 @@ void expectPackedWithCompanion(const std::vector<Entry>& set) {
             << e.pack << "_alpha` companion on texture unit 1 since T411, so the "
                "in-band RGBA8888 payload is ~8x the bytes for the same pixels "
                "(board B287). Rebuild the pack with scripts/build_willeq_pack.sh, "
-               "which passes no --rgba8888-texture at all.";
+               "whose --rgba8888-texture list holds only the kInBandAlpha entries.";
         EXPECT_NE(entry->alphaData, nullptr)
             << e.pack << ": ETC1 payload with hasAlpha but no companion payload -- "
                "its alpha would read 1.0 everywhere (board B261)";
