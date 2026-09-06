@@ -76,6 +76,11 @@ static const char* POINT_SPRITE_FS = R"(
 precision mediump float;
 
 uniform sampler2D uTexture;
+// T411 (board B261): the atlas's ETC1 `_alpha` companion on unit 1, or a 1x1
+// opaque-white texture when the atlas carries its alpha in band. Multiplying
+// unconditionally is exact for both: an ETC1 payload reads texColor.a == 1.0
+// so alpha becomes the companion, and an in-band payload multiplies by 1.0.
+uniform sampler2D uAlphaTexture;
 uniform vec4 uFogColor;
 uniform vec2 uAtlasRegionSize;
 
@@ -97,6 +102,7 @@ void main() {
 
     // Sample atlas texture
     vec4 texColor = texture2D(uTexture, uv);
+    texColor.a *= texture2D(uAlphaTexture, uv).r;
 
     // Multiply texture by vertex color (particle color with alpha fade)
     vec4 color = texColor * vColor;
@@ -123,6 +129,10 @@ UnifiedParticleRenderer::~UnifiedParticleRenderer() {
     if (program_ != 0) {
         glDeleteProgram(program_);
         program_ = 0;
+    }
+    if (opaqueAlphaFallback_ != 0) {   // T411
+        glDeleteTextures(1, &opaqueAlphaFallback_);
+        opaqueAlphaFallback_ = 0;
     }
 }
 
@@ -219,8 +229,29 @@ bool UnifiedParticleRenderer::init() {
     uFogEnd_ = glGetUniformLocation(program_, "uFogEnd");
     uFogColor_ = glGetUniformLocation(program_, "uFogColor");
     uTexture_ = glGetUniformLocation(program_, "uTexture");
+    uAlphaTexture_ = glGetUniformLocation(program_, "uAlphaTexture");
     uAtlasRegionSize_ = glGetUniformLocation(program_, "uAtlasRegionSize");
     uScreenHeight_ = glGetUniformLocation(program_, "uScreenHeight");
+
+    // T411: 1x1 opaque-white companion fallback (see the header). Created here
+    // rather than lazily in render() because render() saves/restores unit 0's
+    // binding around itself and a lazy glGenTextures there would have to be
+    // careful about which unit is active -- exactly the P09b footgun.
+    {
+        GLint savedActive = GL_TEXTURE0;
+        glGetIntegerv(GL_ACTIVE_TEXTURE, &savedActive);
+        GLint savedTex = 0;
+        glActiveTexture(GL_TEXTURE1);
+        glGetIntegerv(GL_TEXTURE_BINDING_2D, &savedTex);
+        glGenTextures(1, &opaqueAlphaFallback_);
+        glBindTexture(GL_TEXTURE_2D, opaqueAlphaFallback_);
+        const unsigned char white[4] = {255, 255, 255, 255};
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, white);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(savedTex));
+        glActiveTexture(static_cast<GLenum>(savedActive));
+    }
 
     // Query max point size
     float pointSizeRange[2] = {1.0f, 64.0f};
@@ -241,7 +272,8 @@ bool UnifiedParticleRenderer::init() {
 void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count,
                                       const float* viewMatrix, const float* projMatrix,
                                       float fogStart, float fogEnd, const float* fogColor,
-                                      float screenHeight, GLuint atlasTexture) {
+                                      float screenHeight, GLuint atlasTexture,
+                                      GLuint alphaCompanion) {
     if (!initialized_ || count <= 0 || !particles) return;
 
     auto t0 = std::chrono::steady_clock::now();
@@ -326,6 +358,14 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
     GLint savedTexture0 = 0;
     glGetIntegerv(GL_TEXTURE_BINDING_2D, &savedTexture0);
 
+    // T411: unit 1 now carries the atlas's alpha companion, so it has to be
+    // saved and restored exactly like unit 0 -- this renderer runs inside an
+    // Irrlicht frame and must leave every unit as it found it.
+    glActiveTexture(GL_TEXTURE1);
+    GLint savedTexture1 = 0;
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &savedTexture1);
+    glActiveTexture(GL_TEXTURE0);
+
     GLint savedVBO = 0;
     glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &savedVBO);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
@@ -368,8 +408,12 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
 
     if (uAtlasRegionSize_ >= 0) glUniform2f(uAtlasRegionSize_, 0.25f, 0.25f);
 
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, alphaCompanion ? alphaCompanion : opaqueAlphaFallback_);
+    glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, atlasTexture);
     if (uTexture_ >= 0) glUniform1i(uTexture_, 0);
+    if (uAlphaTexture_ >= 0) glUniform1i(uAlphaTexture_, 1);
 
     auto t3 = std::chrono::steady_clock::now();
 
@@ -406,6 +450,8 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
     glBindBuffer(GL_ARRAY_BUFFER, savedVBO);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, savedEBO);
 
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(savedTexture1));
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, savedTexture0);
     if (savedActiveTexture != GL_TEXTURE0) glActiveTexture(savedActiveTexture);

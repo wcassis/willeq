@@ -736,6 +736,18 @@ void ParticleManager::renderUnified(const irr::core::matrix4& viewMatrix,
     GLuint atlasGL = static_cast<GLuint>(atlasTexture_->getDriverTextureHandle());
     if (atlasGL == 0) return;
 
+    // T411 (board B261): the atlas's ETC1 `_alpha` companion, if the pack
+    // shipped one. 0 when the payload carries alpha in band (RGBA8888) or the
+    // atlas came from a raw BMP decode -- the shader then samples a 1x1 white
+    // texture and the multiply is a no-op. This renderer talks raw GL, so it
+    // cannot go through the driver's material path that binds unit 1.
+    GLuint alphaGL = 0;
+    if (constrainedCache_) {
+        if (irr::video::ITexture* alphaTex = constrainedCache_->getAlphaTexture(atlasTexture_)) {
+            alphaGL = static_cast<GLuint>(alphaTex->getDriverTextureHandle());
+        }
+    }
+
     // Periodic debug logging (every ~5 seconds at 50fps = every 250 frames)
     static int frameCounter = 0;
     if (++frameCounter >= 250) {
@@ -756,7 +768,7 @@ void ParticleManager::renderUnified(const irr::core::matrix4& viewMatrix,
                              static_cast<int>(externalRenderBuffer->size()),
                              viewMatrix.pointer(), projMatrix.pointer(),
                              fogStart, fogEnd, fogColor,
-                             screenHeight, atlasGL);
+                             screenHeight, atlasGL, alphaGL);
 #endif
     (void)cameraPos;
 }

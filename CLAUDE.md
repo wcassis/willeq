@@ -205,7 +205,7 @@ test that fails if the checked-in bytes and their inputs drift apart:
 | asset | recipe | pinned by | ctest |
 |---|---|---|---|
 | `data/textures/*.bmp` (64 files) | `scripts/build_textures.sh` → `tools/generate_textures` | `data/textures.sha256` | `TexturesReproducible` |
-| `/mnt/projects/EverQuest_ETC1/willeq.eqe1` (67 entries) | `scripts/build_willeq_pack.sh` | `data/willeq.eqe1.sha256` | `PackReproducible` |
+| `/mnt/projects/EverQuest_ETC1/willeq.eqe1` (127 entries since T411: 65 textures, 61 ETC1 `_alpha` companions, 1 raw) | `scripts/build_willeq_pack.sh` | `data/willeq.eqe1.sha256` | `PackReproducible` |
 
 The pack's inputs are the 64 BMPs plus `tools/ui_atlas_builder`, so a texture
 change cascades: regenerate the BMPs, rewrite `data/textures.sha256`
@@ -220,9 +220,13 @@ Every one of those BMPs is produced by
 in **no CMake target at all** until T400/T403 — which is how the particle
 atlas shipped alpha-less for a year (board B225). T406 closed the second
 half of that (board B266): **60 of the 64 now ship 32-bit with their alpha
-in-band**, and the pack gives each of those an `--rgba8888-texture` override,
-because every one of their consumers is an alpha-BLEND draw through a SINGLE
-sampler and so can never see an ETC1 `_alpha` companion (board B261). The
+in-band**. T411 then took the pack side back: the pack passes **no
+`--rgba8888-texture` override at all**, because the three alpha-BLEND shaders
+(`SOLID3D_FS`, `UI2D_FS`, the particle point sprite) now sample the ETC1
+`_alpha` companion on texture unit 1 — the driver binds it from the unit-0
+texture in one place, `COpenGLES2Driver::bindAlphaCompanionUnit()`, and
+`ConstrainedTextureCache` records the pairing on the texture itself (boards
+B261 and B287, both closed). The
 four that stay 24-bit each carry a written reason in
 `tests/test_texture_alpha_census.cpp`, whose `EveryShippedBmpIsAccountedFor`
 makes a new generator declare which side it is on:
@@ -231,10 +235,17 @@ board **B286**), `detail_atlas.bmp` (board **B265**: still the one file no
 build reproduces), and `rain_streaks.bmp` + `snow_flakes.bmp` (no consumer
 at all). `generate_textures --report` prints the census.
 
-**A 32-bit entry is not free**: the pack went 2.83 MB to 19.99 MB and every
-zone's `eqe1MappedBytes` rose by 17.2 MB, because an ETC1 256x256 entry with
-mips is 43,688 bytes and its RGBA8888 form is 349,528. Board **B287** asks
-Will whether a compact single-channel payload should replace it.
+**A 32-bit entry is not free**: with all 60 in-band the pack went 2.83 MB to
+19.99 MB and every zone's `eqe1MappedBytes` rose by 17.2 MB, because an ETC1
+256x256 entry with mips is 43,704 bytes and its RGBA8888 form is 349,524.
+T411 (board B287) took that back by fixing the shaders instead of the payload:
+the pack is **5,270,190 bytes** (the extra over the pre-T406 2.83 MB is the
+ETC1 companions, which are new — the old 24-bit BMPs had no alpha to carry),
+and `eqe1MappedBytes` fell by 14,724,720 per zone. **A new
+`--rgba8888-texture` override is now a ctest FAIL**
+(`TextureAlphaCensus.NoPackEntryNeedsTheRgba8888Payload`); if a consumer
+genuinely cannot take a second sampler, it needs an entry in that test's
+`kInBandAlpha` list naming the consumer and the reason.
 
 A generator must be **bit-identical across optimisation levels** — a shipped
 asset whose bytes depend on `CMAKE_BUILD_TYPE` makes `TexturesReproducible` a

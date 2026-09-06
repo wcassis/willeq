@@ -40,6 +40,10 @@ typedef void (*PFNGLCOMPRESSEDTEXIMAGE2DPROC_)(GLenum target, GLint level,
 extern void* gles2WrapTexture(void* driver, const char* name, unsigned int glTexName,
                                unsigned int width, unsigned int height,
                                unsigned int gpuBytes);
+// T411 (board B261): records the ETC1 `_alpha` companion ON the main texture,
+// so every draw path (3D material, draw2DImage, draw2DImageBatch) can bind
+// unit 1 from unit 0 alone instead of each consumer calling setTexture(1,...).
+extern void gles2SetAlphaCompanion(void* mainTexture, void* companionTexture);
 #endif
 
 namespace EQT {
@@ -536,6 +540,13 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedETC1(
             LOG_WARN(MOD_GRAPHICS, "Constrained cache: wrapTexture failed for ETC1 alpha '{}'", alphaName);
         }
     }
+
+    // T411 (board B261): the ONE place the pair is known. Recording it on the
+    // texture is what makes an ETC1 alpha visible to the alpha-BLEND shaders
+    // (SOLID3D_FS, UI2D_FS, the particle point sprite); before this only the
+    // alpha-TEST variants saw it, and only where a consumer had remembered to
+    // call setTexture(1, getAlphaTexture(...)).
+    gles2SetAlphaCompanion(texture, alphaTexture);
 
     // Register in LRU cache (P46d: under cacheEntryKey — see cacheKey())
     lruOrder_.push_back(cacheEntryKey);

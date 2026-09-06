@@ -932,6 +932,11 @@ void COpenGLES2Driver::draw2DImage(const video::ITexture* texture,
     // Bind texture
     const COGLES2Texture* gles2Tex = static_cast<const COGLES2Texture*>(texture);
     bindTexture(GL_TEXTURE0, gles2Tex->getOpenGLTextureName());
+    // T411 (board B261): the 2D path bound NOTHING on unit 1, so UI2D_FS could
+    // not read an ETC1 alpha companion -- the rain/snow overlays and the
+    // software cursor drew opaque. There is no material here, so the companion
+    // comes from the texture itself.
+    bindAlphaCompanionUnit(texture, nullptr);
 
     shaderManager_.useProgram(EOGLES2SP_UI2D);
 
@@ -942,9 +947,11 @@ void COpenGLES2Driver::draw2DImage(const video::ITexture* texture,
     if (u.mWorldViewProj >= 0)
         glUniformMatrix4fv(u.mWorldViewProj, 1, GL_FALSE, wvp.pointer());
 
-    // Set texture sampler
+    // Set texture samplers
     if (u.uTexture >= 0)
         glUniform1i(u.uTexture, 0);
+    if (u.uAlphaTexture >= 0)
+        glUniform1i(u.uAlphaTexture, 1);
 
     SColor tint = colors ? colors[0] : SColor(255, 255, 255, 255);
 
@@ -1017,6 +1024,8 @@ void COpenGLES2Driver::draw2DImageBatch(const video::ITexture* texture,
 
     const COGLES2Texture* gles2Tex = static_cast<const COGLES2Texture*>(texture);
     bindTexture(GL_TEXTURE0, gles2Tex->getOpenGLTextureName());
+    // T411: same companion binding as the single-quad overload above.
+    bindAlphaCompanionUnit(texture, nullptr);
 
     shaderManager_.useProgram(EOGLES2SP_UI2D);
 
@@ -1028,6 +1037,8 @@ void COpenGLES2Driver::draw2DImageBatch(const video::ITexture* texture,
         glUniformMatrix4fv(u.mWorldViewProj, 1, GL_FALSE, wvp.pointer());
     if (u.uTexture >= 0)
         glUniform1i(u.uTexture, 0);
+    if (u.uAlphaTexture >= 0)
+        glUniform1i(u.uAlphaTexture, 1);
 
     const core::dimension2d<u32>& texSize = texture->getOriginalSize();
     f32 invW = 1.0f / (f32)texSize.Width;
@@ -1357,6 +1368,36 @@ GLuint COpenGLES2Driver::getOpaqueAlphaFallback() {
     return opaqueAlphaFallback_;
 }
 
+// T411 (board B261): one place that decides what texture unit 1 holds.
+//
+// Before this, unit 1 was bound only by applyMaterialRenderState() and only
+// from material.getTexture(1), which meant (a) every alpha-BLEND consumer had
+// to remember to call setTexture(1, cache->getAlphaTexture(...)) and none of
+// them did, and (b) the whole 2D path (draw2DImage / draw2DImageBatch, i.e.
+// the rain and snow overlays and the software cursor) bound nothing at all.
+// An ETC1 texture's alpha therefore reached no blended draw -- the texture
+// looked opaque with no log line and no failing test.
+//
+// The companion is now a property of the TEXTURE (COGLES2Texture::
+// getAlphaCompanion(), set once by ConstrainedTextureCache), so any draw can
+// find it from unit 0 alone.
+void COpenGLES2Driver::bindAlphaCompanionUnit(const ITexture* tex0,
+                                              const ITexture* explicitUnit1)
+{
+    const ITexture* alpha = explicitUnit1;
+    if (!alpha && tex0)
+        alpha = static_cast<const COGLES2Texture*>(tex0)->getAlphaCompanion();
+
+    if (alpha) {
+        bindTexture(GL_TEXTURE1,
+                    static_cast<const COGLES2Texture*>(alpha)->getOpenGLTextureName());
+    } else {
+        // Opaque white => texture2D(uAlphaTexture, uv).r == 1.0, so the
+        // shaders' `texColor.a *= ...` is an exact no-op for in-band alpha.
+        bindTexture(GL_TEXTURE1, getOpaqueAlphaFallback());
+    }
+}
+
 void COpenGLES2Driver::applyMaterialRenderState(const SMaterial& material)
 {
     // Blend / depth-write based on material type
@@ -1420,15 +1461,10 @@ void COpenGLES2Driver::applyMaterialRenderState(const SMaterial& material)
         }
     }
 
-    // Second texture unit (for ETC1 alpha companion or atlas alpha)
-    if (material.getTexture(1)) {
-        const COGLES2Texture* tex = static_cast<const COGLES2Texture*>(material.getTexture(1));
-        bindTexture(GL_TEXTURE1, tex->getOpenGLTextureName());
-    } else {
-        // Bind white fallback so shaders reading uAlphaTexture get alpha=1.0 (opaque)
-        // instead of undefined data, which would cause spurious discard.
-        bindTexture(GL_TEXTURE1, getOpaqueAlphaFallback());
-    }
+    // Second texture unit (for ETC1 alpha companion or atlas alpha).
+    // T411: falls back to the unit-0 texture's own companion before the white
+    // fallback, so an alpha-BLEND material never has to bind one by hand.
+    bindAlphaCompanionUnit(material.getTexture(0), material.getTexture(1));
 }
 
 void COpenGLES2Driver::applyMaterialState(const SMaterial& material)
@@ -2224,6 +2260,21 @@ void* gles2WrapTexture(void* driver, const char* name, unsigned int glTexName,
     auto* d = static_cast<irr::video::COpenGLES2Driver*>(driver);
     irr::core::dimension2d<irr::u32> size(width, height);
     return d->wrapExternalTexture(irr::io::path(name), (GLuint)glTexName, size, gpuBytes);
+}
+
+// T411 (board B261): associate an ETC1 `_alpha` companion with its main
+// texture. Sibling of gles2WrapTexture() above and called from the same place
+// (ConstrainedTextureCache::uploadCompressedETC1), so the pairing is recorded
+// exactly once, at the moment both GL handles are wrapped. After this, every
+// draw path finds the companion from texture unit 0 -- see
+// COpenGLES2Driver::bindAlphaCompanionUnit().
+void gles2SetAlphaCompanion(void* mainTexture, void* companionTexture)
+{
+    if (!mainTexture)
+        return;
+    auto* t = static_cast<irr::video::COGLES2Texture*>(
+        static_cast<irr::video::ITexture*>(mainTexture));
+    t->setAlphaCompanion(static_cast<irr::video::ITexture*>(companionTexture));
 }
 
 void gles2RegisterExternalHWBuffer(void* driver, const void* meshBuffer,

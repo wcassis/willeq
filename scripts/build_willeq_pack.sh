@@ -143,36 +143,45 @@ ln -s "$TEXTURES_DIR" "$WORK/textures"
 
 # ── Stage 3: pack ───────────────────────────────────────────────────────────
 mkdir -p "$WORK/out"
-# T400 (board B225) / T406 (board B266): every texture whose CONSUMER samples
-# alpha from a single texture unit is forced to the in-band RGBA8888 payload.
-# The default ETC1 encode puts alpha in a separate `_alpha` companion entry
-# that ONLY the alpha-TEST shader variants sample (texture unit 1, via
-# ATLAS_ALPHA3D_FS / ALPHA3D_FS). Not one consumer in the list below is
-# alpha-test: they are alpha-BLEND draws through SOLID3D_FS (particles, the
-# storm cloud dome) or draw2DImage's single-sampler UI2D program (the rain and
-# snow overlays). For those, an ETC1 payload reads alpha=1.0 everywhere no
-# matter how good the companion is, and in-band alpha is the only fix
-# (board B261). This makes the pack a v2 file; every entry NOT listed here
-# stays ETC1 and byte-identical.
+# T411 (board B261/B287) -- THE RGBA8888 OVERRIDE LIST IS DOWN FROM 60 TO 1.
 #
-# The list is the same census `generate_textures --report` prints and
-# tests/test_texture_alpha_census.cpp pins; keep the three in step.
-RGBA8888_ENTRIES="particle_atlas"
-for i in $(seq 0 31); do
-    RGBA8888_ENTRIES="$RGBA8888_ENTRIES storm_cloud_blend_$i"
-done
-for i in 01 02 03 04 05 06 07 08 09 10; do
-    RGBA8888_ENTRIES="$RGBA8888_ENTRIES rain_intensity_$i snow_intensity_$i"
-done
-RGBA8888_ENTRIES="$RGBA8888_ENTRIES rain_layer_mid rain_layer_far"
-RGBA8888_ENTRIES="$RGBA8888_ENTRIES snow_layer_mid snow_layer_far"
-RGBA8888_ENTRIES="$RGBA8888_ENTRIES software_cursor"
-RGBA8888_ENTRIES="$RGBA8888_ENTRIES creature_atlas tumbleweed"
+# T400 and T406 forced 60 entries to the in-band RGBA8888 payload because the
+# ETC1 `_alpha` companion was sampled ONLY by the alpha-TEST shader variants
+# (ATLAS_ALPHA3D_FS / ALPHA3D_FS, texture unit 1) and every one of those 60
+# consumers is an alpha-BLEND draw through a single-sampler program. That cost
+# 17.2 MB of shared pack and the same again in mapped bytes per zone, for
+# images whose entire content is one 8-bit channel (board B287).
+#
+# T411 fixed the shaders instead of the payload: `SOLID3D_FS`, `UI2D_FS` and
+# the particle point sprite all sample unit 1 now, the GLES2 driver binds the
+# companion from the unit-0 texture in ONE place
+# (COpenGLES2Driver::bindAlphaCompanionUnit), and the pairing is recorded on
+# the texture by ConstrainedTextureCache. Every entry is therefore back to
+# ETC1 + an ETC1 companion, which is what the format was designed to do.
+#
+# ONE entry still needs the in-band payload, and it is not one of the 60:
+# `ui_atlas`. The static UI draws it through draw2DImage at destination rects
+# ONE PIXEL tall (UIRenderer::drawRect maps the 4x4 `white` sprite onto a 32x1
+# border), which minifies 4:1 in v and therefore selects mip level 2 of
+# whatever is on texture unit 1. The companion's mip chain is ETC1-encoded
+# PER LEVEL, and at level 2 the `white` sprite is a single bright texel alone
+# in its 4x4 block, which ETC1 cannot represent: it decodes to 217/255
+# (measured), dimming every 1px UI rect by 15% -- caught by
+# UIAtlasPixelTest.SpellGemReadyBorderIsGreen, which read 172 where it wants
+# 200. Unit 0 is filtered GL_LINEAR with no mip filter (T275), so an in-band
+# alpha has no such artifact. Cost: ~+260 KB, against ~14.7 MB saved on the
+# other 60. Companions with a mip chain are fine for the 3D alpha-test and
+# alpha-blend paths, which never minify a 4x4 sprite this hard.
+RGBA8888_ENTRIES="ui_atlas"
 
 RGBA8888_ARGS=""
 for e in $RGBA8888_ENTRIES; do
     RGBA8888_ARGS="$RGBA8888_ARGS --rgba8888-texture $e"
 done
+
+# Any further addition needs the same shape of measured reason here AND an
+# entry in tests/test_texture_alpha_census.cpp's kInBandAlpha list, which
+# NoPackEntryNeedsTheRgba8888Payload checks the pack against.
 
 if ! "$BIN_DIR/eqe1_builder" \
         --bmp-dir "$WORK/atlas" \

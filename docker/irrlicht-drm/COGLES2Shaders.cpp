@@ -55,13 +55,24 @@ void main() {
 }
 )";
 
+// T411 (board B261): uAlphaTexture is the ETC1 `_alpha` companion on unit 1.
+// The driver binds either the real companion (looked up from the unit-0
+// texture, see COGLES2Texture::getAlphaCompanion()) or the 1x1 opaque-white
+// fallback, so the MULTIPLY below is exact in both cases:
+//   * ETC1 payload  -> texColor.a is 1.0 (ETC1 is RGB-only), companion.r is
+//                      the real alpha  => alpha = companion.r
+//   * in-band alpha -> companion.r is 1.0 (white fallback)
+//                      => alpha = texColor.a, byte-identical to before.
+// No `hasAlpha` uniform is needed and there is only one code path.
 static const char* UI2D_FS = R"(
 precision mediump float;
 uniform sampler2D uTexture;
+uniform sampler2D uAlphaTexture;
 varying vec4 vColor;
 varying vec2 vTexCoord;
 void main() {
     vec4 texColor = texture2D(uTexture, vTexCoord);
+    texColor.a *= texture2D(uAlphaTexture, vTexCoord).r;
     gl_FragColor = texColor * vColor;
 }
 )";
@@ -127,15 +138,23 @@ void main() {
 }
 )";
 
+// T411 (board B261): companion alpha on unit 1 -- see UI2D_FS's comment for
+// why an unconditional multiply is exact for both payload shapes. This is the
+// shader every alpha-BLEND 3D draw uses (EMT_TRANSPARENT_ALPHA_CHANNEL: the
+// storm cloud dome, the boids/tumbleweed billboards), and it is also the FS of
+// AtlasSolid3D -- harmless there because a SOLID material draws with blending
+// off, so gl_FragColor.a reaches nothing.
 static const char* SOLID3D_FS = R"(
 precision mediump float;
 uniform sampler2D uTexture;
+uniform sampler2D uAlphaTexture;
 uniform vec4 uFogColor;
 varying vec4 vColor;
 varying vec2 vTexCoord;
 varying float vFogFactor;
 void main() {
     vec4 texColor = texture2D(uTexture, vTexCoord);
+    texColor.a *= texture2D(uAlphaTexture, vTexCoord).r;
     vec4 lit = texColor * vColor;
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
 }

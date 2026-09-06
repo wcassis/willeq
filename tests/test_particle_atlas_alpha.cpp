@@ -260,14 +260,21 @@ TEST(ParticleAtlasAlpha, ParticleMaterialIsAlphaBlendNotAdditive) {
     EXPECT_FALSE(material.Lighting);
     EXPECT_FALSE(material.BackfaceCulling);
     EXPECT_FALSE(material.FogEnable);
-    // The material never binds a second texture: there is no shader on this
-    // path that would sample an ETC1 `_alpha` companion.
+    // The material still binds no second texture BY HAND -- T411 made that the
+    // driver's job: COpenGLES2Driver::bindAlphaCompanionUnit() looks the
+    // companion up from the unit-0 texture, so unit 1 is correct on this
+    // material without the consumer knowing a companion exists.
     EXPECT_EQ(material.getTexture(1), nullptr);
 }
 
 // ── The pack ────────────────────────────────────────────────────────────────
 
-TEST(ParticleAtlasAlpha, PackEntryCarriesAlphaInBand) {
+// T411 (board B261/B287) INVERTED this: T400 required the in-band RGBA8888
+// payload because no alpha-BLEND shader sampled texture unit 1. The particle
+// point sprite (POINT_SPRITE_FS) now does -- ParticleManager reads the
+// companion out of the cache and UnifiedParticleRenderer binds it -- so the
+// atlas is back to ETC1 + companion at a fifth of the bytes.
+TEST(ParticleAtlasAlpha, PackEntryCarriesAlphaInACompanion) {
     std::ifstream probe(kWilleqEqe1, std::ios::binary);
     if (!probe.good()) {
         GTEST_SKIP() << "willeq.eqe1 not present at " << kWilleqEqe1;
@@ -281,19 +288,18 @@ TEST(ParticleAtlasAlpha, PackEntryCarriesAlphaInBand) {
     ASSERT_NE(entry, nullptr) << "willeq.eqe1 has no particle_atlas entry";
 
     EXPECT_TRUE(entry->hasAlpha) << "the packed particle atlas reports no alpha";
-    EXPECT_EQ(entry->payloadFormat, EQT::Graphics::EQE1_PAYLOAD_RGBA8888)
+    EXPECT_EQ(entry->payloadFormat, EQT::Graphics::EQE1_PAYLOAD_ETC1)
         << "the packed particle atlas is payload format "
         << static_cast<int>(entry->payloadFormat)
-        << ". Both particle draw paths sample ONE texture and read texColor.a from "
-           "it, so an ETC1 payload gives alpha=1.0 everywhere however good the "
-           "`particle_atlas_alpha` companion is (board B225). Rebuild the pack with "
-           "scripts/build_willeq_pack.sh, which passes "
-           "--rgba8888-texture particle_atlas.";
+        << ", not ETC1. Since T411 POINT_SPRITE_FS samples the "
+           "`particle_atlas_alpha` companion on texture unit 1, so the in-band "
+           "RGBA8888 payload is 8x the bytes for the same pixels (board B287). "
+           "Rebuild the pack with scripts/build_willeq_pack.sh, which passes no "
+           "--rgba8888-texture for it.";
 
-    // With alpha in-band there is no companion to sample, and nothing on the
-    // particle path would sample one.
-    EXPECT_EQ(entry->alphaData, nullptr)
-        << "an RGBA8888 entry must not also carry an ETC1 alpha companion";
-    EXPECT_EQ(loader.lookup("particle_atlas_alpha"), nullptr)
-        << "an RGBA8888 entry must not also carry an ETC1 alpha companion";
+    EXPECT_NE(entry->alphaData, nullptr)
+        << "hasAlpha with an ETC1 payload and no companion payload: the atlas "
+           "would sample alpha=1.0 everywhere (board B261)";
+    EXPECT_NE(loader.lookup("particle_atlas_alpha"), nullptr)
+        << "willeq.eqe1 has no particle_atlas_alpha companion entry";
 }
