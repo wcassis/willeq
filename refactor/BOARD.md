@@ -3703,7 +3703,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   fixed the clear-weather rule (modifier exactly 1.0) and deliberately left the
   active-weather curve alone, per its plan. **WILL RULED 2026-09-06:** capture
   the official client under forced rain and mimic the curve.~~ **STRUCK T418
-  (`__T418_HASH__`).** MEASURED, and the answer is that **the official Titanium
+  (`26a2fa05`).** MEASURED, and the answer is that **the official Titanium
   client does not darken the world for weather AT ALL** -- not at intensity 2, 5
   or 9, not in rain and not in snow. It BRIGHTENS it. qeynos2, both clients,
   `#goto -74 428 3.751 160`, `rain_chance` zeroed, clock re-pinned before every
