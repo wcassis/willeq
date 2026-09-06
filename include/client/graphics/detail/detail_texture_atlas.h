@@ -106,6 +106,14 @@ public:
     // Returns nullptr on failure
     irr::video::ITexture* createAtlas(irr::video::IVideoDriver* driver);
 
+    // T403 (board B260): the same atlas as a plain IImage, before it is
+    // handed to the driver. `createAtlas()` is this plus one addTexture().
+    // The offline `generate_textures` tool needs the image and runs on an
+    // EDT_NULL device, whose textures are dummies that cannot be read back
+    // -- the retired tool's texture->image round trip only worked because it
+    // asked for a software driver. Caller must drop() the returned image.
+    irr::video::IImage* createAtlasImage(irr::video::IVideoDriver* driver);
+
 private:
     // Helper to get tile position from AtlasTile enum
     void getTilePosition(AtlasTile tile, int& startX, int& startY);

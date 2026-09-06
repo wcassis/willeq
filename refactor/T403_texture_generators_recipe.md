@@ -38,3 +38,210 @@ is a STOP with the contact sheet.
 
 STOP: a generator's output differs in pixels from a shipped file that the
 gate's zones draw (report the pair; do not regenerate).
+
+## Review
+
+Branch `task/T403-texture-generators-recipe`, base `95dd9f0f`. Slot 1, no
+server, no eqemu lock taken. **No shipped BMP changed and the pack was not
+rebuilt** — `/mnt/projects/EverQuest_ETC1/willeq.eqe1` is untouched at
+`1078463f…`, 2,830,206 B, exactly as T400 left it.
+
+### 1. Census — all 64 BMPs, and there are no hand-made files
+
+The retired tool wrote every one of the 64, and the un-retired one still does:
+1 + 1 + 1 + 32 + 1 + 1 + 1 + 13 + 13 = 64, with nothing left over. **The
+"hand-made / unknown" column is empty.**
+
+| file(s) | count | generator | shipped format | regenerated |
+|---|---:|---|---|---|
+| `particle_atlas.bmp` | 1 | `generateParticleAtlas()` | **BMP32** (T400) | identical |
+| `creature_atlas.bmp` | 1 | `generateCreatureAtlas()` | BMP24 | identical |
+| `tumbleweed.bmp` | 1 | `generateTumbleweedTexture()` | BMP24 | identical |
+| `storm_cloud_blend_0..31.bmp` | 32 | `generateCloudFrame()` x4 seeds (12345 + i*7919, 256px, 4 octaves, 0.5) then `generateBlendedCloudFrame()` in 8 steps per pair | BMP24 | identical |
+| `spell_particle_fallback.bmp` | 1 | `generateSpellParticleFallback()` | BMP24 | identical |
+| `software_cursor.bmp` | 1 | `generateSoftwareCursor()` | BMP24 | identical |
+| `detail_atlas.bmp` | 1 | `DetailTextureAtlas::createAtlasImage()` | BMP24 | **DIFFERS — see §2** |
+| `rain_intensity_01..10.bmp` | 10 | `generateRainTexture(20+(i-1)*80/9, 100+i, 30, 70)` | BMP24 | identical |
+| `rain_layer_mid/far.bmp`, `rain_streaks.bmp` | 3 | `generateRainTexture(40,200,20,50)` / `(35,201,10,35)` / `(50,42,10,40)` | BMP24 | identical |
+| `snow_intensity_01..10.bmp` | 10 | `generateSnowTexture(50+(i-1)*60, 42+density, 1+(i-1)*0.1, 3+(i-1)*0.2, 140+8i)` | BMP24 | identical |
+| `snow_layer_mid/far.bmp`, `snow_flakes.bmp` | 3 | `generateSnowTexture(200,242,1.5,3.5,160)` / `(150,292,0.8,2,120)` / `(300,342,1,3,180)` | BMP24 | identical |
+
+**63 of 64 regenerate byte-for-byte identical to the shipped file** — same
+sha256, same size, no header or pixel difference at all. `data/textures/` is
+now a derived directory.
+
+### 2. The one that differs: `detail_atlas.bmp` (STOP condition, board B265)
+
+Same 786,486 bytes, byte-identical 54-byte header, **29,509 of 262,144 pixels
+differ**. Two independent causes, separated by measurement:
+
+- **18,913 pixels: 5-bit quantisation only.** Every one of the shipped file's
+  786,432 pixel bytes is a multiple of 8. The retired tool created an
+  `EDT_SOFTWARE` device and did image → texture → image; the software driver
+  stores textures at `A1R5G5B5`. Those pixels satisfy
+  `shipped == (regen >> 3) << 3` exactly.
+- **10,596 pixels: code drift**, confined to the twelve footprint tiles (rows
+  5–6), 883 pixels in each of the twelve. Shipped values are near-black (BGR
+  0..24) where `drawFootprintLeft/Right` now draws the per-biome colour it is
+  passed (grass = `(25,35,40)`…). The BMP predates the biome-coloured
+  footprints.
+
+This is the plan's STOP: `detail_atlas` is drawn by the outdoor zones the
+gate covers, so **it was not regenerated**. It is hash-pinned in
+`data/textures.sha256` and listed in `NOT_REPRODUCIBLE`, so it cannot drift
+further unnoticed. Boarded **B265**.
+
+### 3. The finding the census forced: B225 has 63 siblings (board B266)
+
+`generate_textures --report` prints each image's alpha histogram *before* it
+is written. **Every generator except the particle atlas draws real alpha, and
+every one of those 63 files ships 24-bit with the alpha thrown away.**
+`software_cursor` (an arrow on a transparent ground) and `tumbleweed`: 2 alpha
+levels, min 0 max 255. `creature_atlas`: 23 levels. Every rain and snow
+texture: 64+ levels, min 0. `spell_particle_fallback` (a cosine-falloff soft
+circle): 64+ levels, min 0 max 254. The 32 `storm_cloud_blend_*` frames: 56–64+
+levels with **max 87–107**, i.e. clouds meant to be mostly transparent that
+ship fully opaque. Live consumers confirmed by grep: `SpellVisualFx`,
+`DetailManager`, `BoidsManager`, plus the weather and cursor paths.
+
+Not fixed here — the plan's rule was to change no shipped BMP, and the fix
+rewrites 63 files, rebuilds the pack, and needs a per-texture B261 decision
+(in-band RGBA8888 vs an ETC1 companion a single-sampler shader never reads).
+Boarded **B266** (class A).
+
+### 4. Mid-unit scope addition: a shipped asset that depended on `-O` (board B268)
+
+The orchestrator reported `ParticleAtlasAlpha.ShippedFileMatchesTheGenerator‑
+PixelForPixel` green in a slot and red on the merged tip against the same BMP.
+Root cause, measured: `pseudoNoise` (tile 11, snow patch) and `noise2D()` (the
+32 storm-cloud frames) both computed
+`n * (n * n * 15731 + 789221) + 1376312589` in **signed `int`, which overflows
+— undefined behaviour**. GCC folded it differently at -O0 and -O2.
+
+| build of `generate_textures` | particle atlas vs shipped |
+|---|---|
+| slot1 `build/` (no `CMAKE_BUILD_TYPE`, -O0) | identical |
+| `build-rwdi/` (`RelWithDebInfo`, -O2 -g -DNDEBUG) | **157 of 4,096 texels differ, ALL in ALPHA, ALL in tile 11**, deltas up to 80 |
+
+Both hashes moved to `uint32_t` (wrap is defined, and reproduces the shipped
+values). Proof after the fix:
+
+- tool built at -O0 and at -O2 → all 64 outputs **bit-identical to each other**
+  (`cmp` over all 64: 0 differences);
+- 63 of 64 bit-identical to `data/textures/` in **both** builds (the 64th is
+  B265's `detail_atlas.bmp`, which neither build reproduces);
+- `test_particle_atlas_alpha` built `RelWithDebInfo`: **5/5 PASS**.
+
+No shipped byte changed. B268 boarded and struck in this unit. The rule is
+now in `scripts/build_textures.sh`'s header and CLAUDE.md.
+
+### 5. Changes
+
+- **`tools/generate_textures.cpp`** (new, 328 lines) — the un-retired tool,
+  a live `EQT_GRAPHICS` CMake target. Three deliberate differences from the
+  retired source: `EDT_NULL` instead of `EDT_SOFTWARE`; `createAtlasImage()`
+  instead of a texture round trip; and a **per-file output format** column
+  (`BMP24` via Irrlicht, `BMP32` via `tools/bmp32_writer.h`) recording the
+  format of the *shipped* asset, so a regeneration is byte-comparable.
+  `--report` prints the alpha census; `--only <name>` restricts to one file.
+- **`tools/retired/generate_textures.cpp`** — deleted (it is no longer retired).
+- **`DetailTextureAtlas::createAtlasImage()`** (new) — `createAtlas()` is now
+  that plus one `addTexture()`. No behaviour change; it exists because an
+  `EDT_NULL` driver's textures are dummies that cannot be read back.
+- **`src/client/graphics/texture_generators.cpp`** — the two `uint32_t` hash
+  fixes (§4). No other change.
+- **`scripts/build_textures.sh`** (new, sibling of `build_willeq_pack.sh`):
+  `--check`, `--write-pins`, or in-place regeneration.
+- **`data/textures.sha256`** (new) — sha256 of all 64.
+- **`tests/cmake/hygiene.cmake`** — `TexturesReproducible` (label `hygiene`,
+  ~5 s, no GPU).
+- **`tools/retired/README.md`** — corrected; the stale `B247` citation fixed
+  to B260, and a section on why "no found consumer" was the wrong test for a
+  tool that produces DATA.
+- **`CLAUDE.md`** — a "shipped data has build recipes" section (the two
+  derived assets, the cascade rule, the determinism rule).
+- **`tools/particle_atlas_builder.cpp`** — comment only: it is now a strict
+  subset of `generate_textures --only particle_atlas.bmp` (board **B267**).
+
+### 6. The hygiene test and its planted faults
+
+`TexturesReproducible` runs `scripts/build_textures.sh --check`, which asserts
+three separable things. Each was shown FAILING on a planted fault and PASSING
+after a byte-for-byte revert (`cmp` verified):
+
+| # | assertion | planted fault | result |
+|---|---|---|---|
+| 1 | **PIN** — every shipped BMP matches `data/textures.sha256`, and the directory holds exactly the pinned set | XOR byte 70,000 of `detail_atlas.bmp` (chosen because it is RECIPE-exempt, so only PIN can fire) | `FAIL[PIN]: detail_atlas.bmp: FAILED`, exit 1 → revert → PASS, exit 0 |
+| 2 | **RECIPE** — every generator-owned file regenerates byte-identical | `std::mt19937 rng(seed)` → `rng(seed + 1)` in `generateRainTexture()` | `FAIL[RECIPE]` naming all **13** rain files with both hashes; `50 identical, 13 drifted`, exit 1 → revert → `63 identical, 0 drifted`, exit 0 |
+| 3 | **CENSUS** — the tool writes exactly the pinned names | delete the `tumbleweed.bmp` recipe from the manifest | `FAIL[CENSUS]` with a diff showing `-tumbleweed.bmp`, exit 1 → revert → PASS, exit 0 |
+
+Assertion 1 is what pins the one file no generator reproduces; without it
+`detail_atlas.bmp` would be unprotected by both nets.
+
+### 7. Proof
+
+| step | result |
+|---|---|
+| `cmake --build build -j24` | **EXIT=0** (three exit-143 kills along the way; sweeps below) |
+| `ctest --test-dir build -j6` | **4,141 / 4,142**, 17 skipped. Only failure: `visual_gate` |
+| `TexturesReproducible` | PASS, 5.5 s |
+| `PackReproducible` | PASS, 41.7 s (pack unchanged) |
+| `ParticleAtlasAlpha` (5 cases) | PASS in `build`, and PASS built `RelWithDebInfo` |
+| `visual_gate` standalone | **FAIL on exactly the three `eqe1MappedBytes` lines and nothing else** |
+| goldens | untouched (`git status tests/goldens/` empty); no image moved; CPU p95 4.864 / 5.302 / 7.187 vs ceilings 10.108 / 10.672 / 10.948 |
+| `build-gles2-x86.sh` | EXIT=0 |
+| `build-arm-noble.sh` | EXIT=0 |
+| `check_file_sizes.sh fable` | 18 ok, 0 warn, 0 fail; new files explicitly: `generate_textures.cpp` 328, `build_textures.sh` 210, `hygiene.cmake` 84 |
+| `check_doc_citations.py` | 769 ok, **0 fail**, 18 skip |
+
+**The gate.** Identical to what T400 left, byte for byte — this unit added
+nothing to it:
+
+| zone | manifest | measured | delta |
+|---|---:|---:|---:|
+| qeynos2 | 119,944,431 | 119,963,774 | +19,343 |
+| gfaydark | 118,610,523 | 118,629,866 | +19,343 |
+| befallen | 113,095,019 | 113,114,362 | +19,343 |
+
+That is B240's pending bless (T398's +239 plus T400's +19,104). **Not blessed
+here, and not grown here** — no pack change, no `data/willeq.eqe1.sha256`
+change, no copy under `review/T403/` needed.
+
+**Post-143 sweeps.** Three builds hit the 600 s ceiling. (a) First: 20 targets
+`Terminated`; 288 binaries all valid ELF, both archives intact (324 / 15
+members), no `build*/lib/st??????` temps, the terminated binaries simply
+ABSENT — rebuilt clean. (b) Second: the killed `ar` **deleted
+`lib/libwilleq_core.a` outright** and left `lib/stT70QX0` — the documented
+absence shape a glob cannot see; temp deleted, rebuilt. (c) Third: three test
+binaries terminated mid-link, deleted and rebuilt. Final state verified:
+296 binaries, 0 bad, `libwilleq_core.a` 324 members, no `st??????` temps.
+
+### 8. What surprised me
+
+1. **63 of 64 matched on the first run**, including all 32 Perlin cloud
+   frames and all 26 seeded rain/snow textures. The generators had not
+   drifted from the assets in a year of compiling nowhere.
+2. **The alpha loss is universal, not the particle atlas's private bug** (§3).
+   `generate_textures --report` turns a year-long invisible defect into one
+   command, and it only became possible because the TU finally builds.
+3. **`detail_atlas.bmp`'s two defects are cleanly separable by arithmetic** —
+   "every pixel byte is a multiple of 8" is a fingerprint of a 16-bit texture
+   round trip, and it isolates the format loss from the code drift exactly.
+4. **A shipped binary asset was hostage to `CMAKE_BUILD_TYPE`** (§4). The
+   `TexturesReproducible` net would have been a coin toss depending on which
+   tree ran it; the orchestrator caught this mid-unit and it was the most
+   valuable finding of the four.
+
+### 9. Deviations
+
+- **Step 2's "un-retire … and regenerate" was executed as un-retire and
+  VERIFY.** No shipped file was rewritten, because all 63 reproducible ones
+  already match and the 64th moves pixels the gate draws (§2).
+- **The format rule was applied as "the format of the shipped asset", not
+  "32-bit wherever the generator draws alpha".** The literal reading would
+  have rewritten 63 BMPs and the pack; §3 boards that instead.
+- **B268 was not in the plan** — it arrived mid-unit from the orchestrator and
+  was fixed and struck here.
+- **`tools/particle_atlas_builder` was kept**, not deleted, though it is now
+  redundant; boarded as B267 rather than absorbed silently, because a test's
+  failure text and T400's Review name it by hand.

@@ -38,6 +38,27 @@ ADD_TEST(NAME DocCounts
             --repo ${CMAKE_SOURCE_DIR})
 SET_TESTS_PROPERTIES(DocCounts PROPERTIES LABELS "hygiene")
 
+# T403 (2026-09-06, board B260): the 64 BMPs under data/textures/ are 64 of
+# willeq.eqe1's 67 entries, and until now they were checked-in binaries with
+# no build recipe -- P26 retired their generator as dead while its output kept
+# shipping, which is how the alpha-less particle atlas (B225) survived a year.
+# tools/generate_textures is that generator, un-retired as a live target;
+# scripts/build_textures.sh --check regenerates into a temp directory and
+# asserts three things: every shipped BMP matches its pinned sha256 and the
+# directory holds exactly the pinned set (PIN), every generator-owned file
+# regenerates byte-identical (RECIPE), and the tool writes exactly the pinned
+# names (CENSUS). Fast (~20 s, no GPU, EDT_NULL device), so no slow label.
+IF(TARGET generate_textures)
+    ADD_TEST(NAME TexturesReproducible
+        COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/build_textures.sh --check
+                --bin-dir $<TARGET_FILE_DIR:generate_textures>
+                --textures-dir ${CMAKE_SOURCE_DIR}/data/textures
+                --pin-file ${CMAKE_SOURCE_DIR}/data/textures.sha256)
+    SET_TESTS_PROPERTIES(TexturesReproducible PROPERTIES
+        LABELS "hygiene"
+        TIMEOUT 600)
+ENDIF()
+
 # T398 (2026-09-05, board B230b): the shared UI/effects pack
 # /mnt/projects/EverQuest_ETC1/willeq.eqe1 had no build recipe in the repo,
 # so no atlas pixel could be changed without hand-assembling a 2.8 MB asset

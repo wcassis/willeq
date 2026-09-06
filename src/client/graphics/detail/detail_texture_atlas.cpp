@@ -21,6 +21,23 @@ void DetailTextureAtlas::getTilePosition(AtlasTile tile, int& startX, int& start
 }
 
 irr::video::ITexture* DetailTextureAtlas::createAtlas(irr::video::IVideoDriver* driver) {
+    irr::video::IImage* image = createAtlasImage(driver);
+    if (!image) {
+        return nullptr;
+    }
+
+    // Create texture from image
+    irr::video::ITexture* texture = driver->addTexture("detail_atlas", image);
+    image->drop();
+
+    if (texture) {
+        LOG_INFO(MOD_GRAPHICS, "DetailTextureAtlas: Created {}x{} atlas texture", ATLAS_SIZE, ATLAS_SIZE);
+    }
+
+    return texture;
+}
+
+irr::video::IImage* DetailTextureAtlas::createAtlasImage(irr::video::IVideoDriver* driver) {
     if (!driver) {
         return nullptr;
     }
@@ -162,15 +179,7 @@ irr::video::ITexture* DetailTextureAtlas::createAtlas(irr::video::IVideoDriver* 
     getTilePosition(AtlasTile::GrassBroken, x, y);
     drawGrassBroken(image, x, y);
 
-    // Create texture from image
-    irr::video::ITexture* texture = driver->addTexture("detail_atlas", image);
-    image->drop();
-
-    if (texture) {
-        LOG_INFO(MOD_GRAPHICS, "DetailTextureAtlas: Created {}x{} atlas texture", ATLAS_SIZE, ATLAS_SIZE);
-    }
-
-    return texture;
+    return image;
 }
 
 void DetailTextureAtlas::setPixel(irr::video::IImage* image, int x, int y, irr::video::SColor color) {
