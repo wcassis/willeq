@@ -298,3 +298,17 @@ IF(WITH_AUDIO)
     TARGET_LINK_LIBRARIES(test_pfs_sound_load ${AUDIO_COMMON_TEST_LIBS})
     GTEST_DISCOVER_TESTS(test_pfs_sound_load)
 ENDIF()
+
+# T404 Leg A (board B250): the mixer's playback RATE. AudioMixer::render()
+# never read MixChannel::sampleRate, so every asset played at the device rate
+# and the shipped 11,025 Hz effects came out an octave high and half as long.
+IF(WITH_AUDIO)
+    ADD_EXECUTABLE(test_audio_playback_rate
+        test_audio_playback_rate.cpp
+        ${AUDIO_COMMON_TEST_SOURCES}
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
+    )
+    TARGET_COMPILE_DEFINITIONS(test_audio_playback_rate PRIVATE WITH_AUDIO)
+    TARGET_LINK_LIBRARIES(test_audio_playback_rate ${AUDIO_COMMON_TEST_LIBS})
+    GTEST_DISCOVER_TESTS(test_audio_playback_rate)
+ENDIF()
