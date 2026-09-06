@@ -159,101 +159,180 @@ TEST(RacialVisionTest, UnknownRaceIsNormal) {
 }
 
 // ---------------------------------------------------------------------------
-// T394 (board B203): T383's per-channel re-solve was REFUTED by the live
-// re-measure it was waiting for, and the constants are back to T361's
-// live-matched values. These cases pin the RESTORED numbers so the refuted
-// ones cannot come back by accident.
+// T405 (board B203, B252, B253): THE LIVE RE-SOLVE, with weather AND heading
+// pinned. These cases pin the constants that produced the match and the
+// evidence that they do, so neither the refuted values nor the refuted method
+// can come back.
 //
-// WHAT WAS REFUTED. T383 re-solved all six floor channels (and the zone-light
-// arm's Infravision redShift) by inverting T361's measured power law
-// `floor_c = night_c * oracle_ratio_c ^ (1/1.1405)` PER CHANNEL, and
-// forward-checked the prediction to within 0.11% of the oracle table. T386 §4
-// then repeated T377 §2 exactly -- same character, spot, forced 22:00,
-// 700x420+40+40 crop, linear light, video-stepped over 882 frames, with the
-// two sessions' night stills agreeing to RMSE 2.7% -- and measured the frame:
+// THE TWO CONFOUNDS, AND WHY EVERY EARLIER FIT WAS UNSOUND.
 //
-//   | condition                  |      R |      G |      B |   grey |
-//   |----------------------------|--------|--------|--------|--------|
-//   | oracle Ultravision         | 1.4581 | 1.4633 | 1.8507 | 1.5612 |
-//   | T383 PREDICTED             | 1.4569 | 1.4640 | 1.8503 | 1.5561 |
-//   | fable pre-T383  (T377)     | 1.4609 | 1.2814 | 1.6629 | 1.4483 |
-//   | fable post-T383 (T386)     | 0.9674 | 0.9723 | 1.6377 | 1.1686 |
-//   | oracle Infravision         | 1.3284 | 1.2111 | 1.2079 | 1.2555 |
-//   | T383 PREDICTED             | 1.3298 | 1.2125 | 1.2085 | 1.2582 |
-//   | fable pre-T383  (T377)     | 1.6002 | 1.1264 | 0.8209 | 1.2450 |
-//   | fable post-T383 (T386)     | 1.0688 | 1.0345 | 1.1274 | 1.0757 |
+//   * WEATHER (B211/B252). T377's whole vision window ran under server rain at
+//     weatherMod 0.460. Weather multiplies the base a ratio is measured
+//     against and leaves the vision floor fixed, so it INFLATES the ratio --
+//     T377 read fable's Ultravision as x1.4483 where a clear-sky re-measure on
+//     the SAME constants reads x1.1606 (T401). 25% too high.
+//   * HEADING (B253). The official client's yaw on login is not the
+//     character_data heading, so two captures at the same coordinates showed
+//     different scenes: T401's oracle night still differs from T377's by RMSE
+//     10.3%, against T386's 2.7% same-scene control. A vision buff MULTIPLIES
+//     the scene, so a per-channel ratio only means something between frames of
+//     the same thing -- and the oracle's per-channel table duly failed to
+//     reproduce (R x1.94 against x1.46).
 //
-// Raising the floor's R and G from 0.08 to ~0.111 was predicted to move the
-// frame x1.457 / x1.464 and moved it x0.967 / x0.972 -- very slightly DARKER.
-// The `ambient^1.1405` power law does not hold per channel at this operating
-// point, so the forward model is wrong, and both scalar ratios regressed
-// (Ultravision 1.4483 -> 1.1686 against 1.5612; Infravision 1.2450 -> 1.0757
-// against 1.2555, having been within 1% before). T386 also answered T383's
-// open question: the `B x0.8209` anomaly did NOT reproduce.
+// T405 pinned both. `#weather 0 0` plus qeynos2's rain/snow chances zeroed for
+// the session, with the modifier PROVEN 1.000 for every measurement window
+// from the client's own log; and `#goto -74 428 3.751 160`, eqemu goto.cpp's
+// optional 4th argument -> MovePC, the only placement that also aims. The
+// control then PASSES on both clients: two independent oracle sessions agree
+// to RMSE 0.389% and two fable sessions to 1.540%, against the 2.7% bar.
 //
-// A refuted model is reverted, not patched. The per-channel fit is OWED as a
-// LIVE A/B search -- one parameter at a time, oracle frame beside fable frame,
-// T361's method -- and the pre-T383 row above is the baseline it starts from.
-// No constant here may be moved by argument again.
+// The solve was six probe builds, each re-measured in its own live session
+// (review/T405/README.md carries the search log). It is not a desk re-fit --
+// the desk re-fit is what T383 did, and T386 measured it WORSE.
 // ---------------------------------------------------------------------------
 
 namespace {
 
-// review/T377/README.md section 2 and review/T386/README.md section 4.
-constexpr float kOracleUltraRatio[3] = {1.4581f, 1.4633f, 1.8507f};
-constexpr float kOracleInfraRatio[3] = {1.3284f, 1.2111f, 1.2079f};
-constexpr float kOracleUltraGrey = 1.5612f;
-constexpr float kOracleInfraGrey = 1.2555f;
+// The heading-pinned oracle, mean of sessions o1 and o2, which agree to better
+// than 0.2% on every channel. review/T405/README.md.
+constexpr float kOracleUltraRatio[3] = {2.2531f, 1.4399f, 1.7687f};
+constexpr float kOracleInfraRatio[3] = {1.8744f, 1.1956f, 1.1936f};
+constexpr float kOracleUltraGrey = 1.7469f;
+constexpr float kOracleInfraGrey = 1.3553f;
 
-// The LIVE-MEASURED fable rows. Pre-T383 is what the restored constants
-// produce on a real frame and is the baseline for the next re-solve; post-T383
-// is what the refuted constants produced.
-constexpr float kFableUltraRatioPreT383[3] = {1.4609f, 1.2814f, 1.6629f};
-constexpr float kFableInfraRatioPreT383[3] = {1.6002f, 1.1264f, 0.8209f};
-constexpr float kFableUltraGreyPreT383 = 1.4483f;
-constexpr float kFableInfraGreyPreT383 = 1.2450f;
-constexpr float kFableUltraGreyPostT383 = 1.1686f;
-constexpr float kFableInfraGreyPostT383 = 1.0757f;
+// fable on exactly the constants below, mean of the two confirmation sessions
+// p6 and p6b.
+constexpr float kFableUltraRatio[3] = {2.2662f, 1.4730f, 1.8020f};
+constexpr float kFableInfraRatio[3] = {1.8679f, 1.1576f, 1.1631f};
+constexpr float kFableUltraGrey = 1.87225f;
+constexpr float kFableInfraGrey = 1.41730f;
 
-float absErr(float a, float b) { return a > b ? a - b : b - a; }
+// fable's own unbuffed night base on the measurement crop, per channel, from
+// the same two sessions. This is what makes the grey basis differ -- see the
+// grey case below.
+constexpr float kFableNightBaseUltra[3] = {0.005398f, 0.004540f, 0.004472f};
+constexpr float kFableNightBaseInfra[3] = {0.004926f, 0.004166f, 0.004475f};
+
+// The night ambient the floors are raised over (IrrlichtRenderer::
+// updateTimeOfDay's 20:00-05:00 arm).
+constexpr float kNightAmbient[3] = {0.08f, 0.08f, 0.15f};
+
+// The worst per-channel residual T405 reached. Six probe builds got every
+// channel inside this; it is the number a future re-solve must BEAT, not a
+// tolerance to relax.
+constexpr float kT405WorstResidual = 0.032f;
+
+float relErr(float a, float b) { return (a > b ? a - b : b - a) / b; }
+
+float channel(const AmbientRGB& c, int i) {
+    return i == 0 ? c.r : (i == 1 ? c.g : c.b);
+}
 
 }  // namespace
 
-// T383's gains were 0.1601 / 0.1248. These are T361's, solved by an A/B
-// search against the oracle on live frames.
-TEST(VisionGainsRevertedT394Test,
-     T383PerChannelFitRefutedByT386SoTheGainsAreT361LiveMatchedValues) {
-    EXPECT_FLOAT_EQ(EQT::Graphics::kUltravisionAmbientGain, 0.1521f);
-    EXPECT_FLOAT_EQ(EQT::Graphics::kInfravisionAmbientGain, 0.0956f);
+// The four scalars. T361/T394's were 0.1521 / 0.0956 and T383's 0.1601 /
+// 0.1248; both are refuted and neither may come back.
+TEST(VisionSolvedT405Test, GainsAreTheLiveSolvedValues) {
+    EXPECT_FLOAT_EQ(EQT::Graphics::kUltravisionAmbientGain, 0.24607f);
+    EXPECT_FLOAT_EQ(EQT::Graphics::kInfravisionAmbientGain, 0.16257f);
 }
 
-// T383's tints were (0.695, 0.698, 1.607) and (0.823, 0.759, 1.419). These
-// are the oracle's own measured added-light chromaticities (T361 Leg A).
-TEST(VisionGainsRevertedT394Test,
-     T383PerChannelFitRefutedByT386SoTheTintsAreOracleAddedLightChromaticities) {
-    EXPECT_FLOAT_EQ(EQT::Graphics::kUltravisionTint[0], 1.009f);
-    EXPECT_FLOAT_EQ(EQT::Graphics::kUltravisionTint[1], 0.848f);
-    EXPECT_FLOAT_EQ(EQT::Graphics::kUltravisionTint[2], 1.143f);
-    EXPECT_FLOAT_EQ(EQT::Graphics::kInfravisionTint[0], 1.539f);
-    EXPECT_FLOAT_EQ(EQT::Graphics::kInfravisionTint[1], 0.843f);
-    EXPECT_FLOAT_EQ(EQT::Graphics::kInfravisionTint[2], 0.617f);
+// The chromaticities. T361/T394's were (1.009, 0.848, 1.143) and
+// (1.539, 0.843, 0.617) -- the oracle's measured ADDED-LIGHT colours, which
+// T405 showed cannot work, because the three channels are coupled.
+TEST(VisionSolvedT405Test, TintsAreTheLiveSolvedChromaticities) {
+    EXPECT_FLOAT_EQ(EQT::Graphics::kUltravisionTint[0], 1.07877f);
+    EXPECT_FLOAT_EQ(EQT::Graphics::kUltravisionTint[1], 0.79866f);
+    EXPECT_FLOAT_EQ(EQT::Graphics::kUltravisionTint[2], 1.12256f);
+    EXPECT_FLOAT_EQ(EQT::Graphics::kInfravisionTint[0], 1.15398f);
+    EXPECT_FLOAT_EQ(EQT::Graphics::kInfravisionTint[1], 0.70739f);
+    EXPECT_FLOAT_EQ(EQT::Graphics::kInfravisionTint[2], 1.13864f);
 }
 
-// The shape, not just the values: T361's Infravision floor is red-dominant
-// ("'s eyes glow red", R/B measured 2.49). T383's was blue-dominant, which is
-// the visible signature of the refuted fit.
-TEST(VisionGainsRevertedT394Test,
-     T383PerChannelFitRefutedByT386SoTheInfravisionFloorIsRedDominantAgain) {
+// What the split actually composes to -- the floors probe 6 measured. Pinning
+// the product as well as its two factors is what makes a "harmless"
+// re-normalisation of gain against tint a visible edit.
+TEST(VisionSolvedT405Test, FloorsAreProbeSixsMeasuredValues) {
+    const AmbientRGB ultra = visionAmbientFloor(VisionType::Ultravision);
+    EXPECT_NEAR(ultra.r, 0.26545f, 0.0001f);
+    EXPECT_NEAR(ultra.g, 0.19653f, 0.0001f);
+    EXPECT_NEAR(ultra.b, 0.27623f, 0.0001f);
     const AmbientRGB infra = visionAmbientFloor(VisionType::Infravision);
-    EXPECT_GT(infra.r, infra.g);
-    EXPECT_GT(infra.r, infra.b);
-    EXPECT_NEAR(infra.r / infra.b, 2.49f, 0.05f);
+    EXPECT_NEAR(infra.r, 0.18760f, 0.0001f);
+    EXPECT_NEAR(infra.g, 0.11500f, 0.0001f);
+    EXPECT_NEAR(infra.b, 0.18511f, 0.0001f);
 }
 
-// The zone-light arm's second parameter. T383 moved it to 0.0508; T360's
-// literal is 0.3 and it is restored untouched.
-TEST(VisionGainsRevertedT394Test,
-     T383LampRedShiftRefutedByT386SoTheInfravisionShiftIsT360sLiteral) {
+// THE STRUCTURAL DEFECT T405 FOUND IN THE OLD NUMBERS. A floor only does
+// anything on a channel it is ABOVE. The pre-T405 Infravision floor was
+// (0.147, 0.081, 0.059) against a night base of (0.08, 0.08, 0.15): G cleared
+// the base by 1%, and B was BELOW it -- so two of the three channels could not
+// be moved by the buff at all, and every Infravision fit before T405 was in
+// truth solved from one usable channel. Both floors must now clear the base
+// everywhere.
+TEST(VisionSolvedT405Test, EveryFloorChannelClearsTheNightBase) {
+    for (VisionType v : {VisionType::Ultravision, VisionType::Infravision}) {
+        const AmbientRGB f = visionAmbientFloor(v);
+        for (int i = 0; i < 3; ++i) {
+            EXPECT_GT(channel(f, i), kNightAmbient[i] * 1.2f)
+                << "vision " << static_cast<int>(v) << " channel " << i
+                << " does not clear the night base by a usable margin";
+        }
+    }
+}
+
+// The match itself: every channel of both visions inside the residual the
+// search reached, measured live on these constants against the heading-pinned
+// oracle.
+TEST(VisionSolvedT405Test, EveryChannelMatchesTheHeadingPinnedOracle) {
+    for (int i = 0; i < 3; ++i) {
+        EXPECT_LE(relErr(kFableUltraRatio[i], kOracleUltraRatio[i]),
+                  kT405WorstResidual)
+            << "Ultravision channel " << i;
+        EXPECT_LE(relErr(kFableInfraRatio[i], kOracleInfraRatio[i]),
+                  kT405WorstResidual)
+            << "Infravision channel " << i;
+    }
+}
+
+// This is the case that stops the next unit chasing a phantom. "grey" is the
+// unweighted mean of the three channel means, so a grey RATIO is a
+// base-weighted average of the three channel ratios -- weighted by the
+// client's OWN night base. fable's night base is red-heavy and the oracle's is
+// green-heavy, so two clients whose per-channel ratios agree EXACTLY still
+// report different greys. The reachable grey is the one fable would report at
+// exact per-channel agreement, computed here from fable's own measured base.
+TEST(VisionSolvedT405Test, GreyIsBaseWeightedSoTheOracleGreyIsNotATarget) {
+    struct Row {
+        const float* base;
+        const float* oracleRatio;
+        float fableGrey;
+        float oracleGrey;
+    };
+    const Row rows[2] = {
+        {kFableNightBaseUltra, kOracleUltraRatio, kFableUltraGrey, kOracleUltraGrey},
+        {kFableNightBaseInfra, kOracleInfraRatio, kFableInfraGrey, kOracleInfraGrey},
+    };
+    for (const Row& r : rows) {
+        float num = 0.0f, den = 0.0f;
+        for (int i = 0; i < 3; ++i) {
+            num += r.base[i] * r.oracleRatio[i];
+            den += r.base[i];
+        }
+        const float reachableGrey = num / den;
+        // Against the reachable grey, fable is inside 2%...
+        EXPECT_LE(relErr(r.fableGrey, reachableGrey), 0.02f);
+        // ...while against the oracle's own grey it is more than 4% away, and
+        // that gap is the base chromaticity, not a defect.
+        EXPECT_GT(relErr(r.fableGrey, r.oracleGrey), 0.04f);
+    }
+}
+
+// T405 did NOT move the zone-light arm. A probe build set Infravision's lamp
+// modifiers equal to Ultravision's so a single session could sweep one ambient
+// channel with the lamps held fixed; that change was probe-only and reverted,
+// and T360's literals stand.
+TEST(VisionSolvedT405Test, LampModifiersAreStillT360sLiterals) {
     const auto infra = EQT::Graphics::visionLightModifiers(VisionType::Infravision);
     EXPECT_FLOAT_EQ(infra.intensity, 0.75f);
     EXPECT_FLOAT_EQ(infra.redShift, 0.3f);
@@ -262,27 +341,18 @@ TEST(VisionGainsRevertedT394Test,
     EXPECT_FLOAT_EQ(ultra.redShift, 0.0f);
 }
 
-// The baseline the next LIVE re-solve starts from: on every measured basis the
-// restored constants sit closer to the oracle than T383's did. This case
-// carries the numbers so a future unit does not have to re-derive them from
-// two review directories -- it is the contract B203 closes against.
-TEST(VisionGainsRevertedT394Test,
-     PreT383LiveRatiosAreTheBaselineForTheOwedLiveResolve) {
-    EXPECT_LT(absErr(kFableUltraGreyPreT383, kOracleUltraGrey),
-              absErr(kFableUltraGreyPostT383, kOracleUltraGrey));
-    EXPECT_LT(absErr(kFableInfraGreyPreT383, kOracleInfraGrey),
-              absErr(kFableInfraGreyPostT383, kOracleInfraGrey));
-
-    // Where the restored row is already good, and where the work remains.
-    // Ultravision red is within 0.2% of the oracle; its green is 12.4% short
-    // and Infravision blue is the outlier the live re-solve must explain --
-    // T386 did NOT reproduce it (x1.1274), so it may not even be real.
-    EXPECT_NEAR(kFableUltraRatioPreT383[0], kOracleUltraRatio[0],
-                0.01f * kOracleUltraRatio[0]);
-    EXPECT_LT(kFableUltraRatioPreT383[1], 0.95f * kOracleUltraRatio[1]);
-    EXPECT_LT(kFableInfraRatioPreT383[2], 1.0f);
-    // ...and where it overshoots: Infravision red ran 20% hot.
-    EXPECT_GT(kFableInfraRatioPreT383[0], 1.15f * kOracleInfraRatio[0]);
+// The tombstone. Every superseded value in one place, so a revert to any of
+// them is a red test naming the unit that refuted it.
+TEST(VisionSolvedT405Test, NoRefutedConstantSetCanComeBack) {
+    // T361/T394's, refuted by T405: 75% of the oracle's Ultravision under a
+    // proven-clear sky (T401 §4).
+    EXPECT_NE(EQT::Graphics::kUltravisionAmbientGain, 0.1521f);
+    EXPECT_NE(EQT::Graphics::kInfravisionAmbientGain, 0.0956f);
+    EXPECT_NE(EQT::Graphics::kUltravisionTint[0], 1.009f);
+    EXPECT_NE(EQT::Graphics::kInfravisionTint[0], 1.539f);
+    // T383's, refuted by T386's live re-measure and reverted by T394.
+    EXPECT_NE(EQT::Graphics::kUltravisionAmbientGain, 0.1601f);
+    EXPECT_NE(EQT::Graphics::kInfravisionAmbientGain, 0.1248f);
 }
 
 // ---------------------------------------------------------------------------

@@ -3005,7 +3005,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   still owed** — T391 did not have the budget to take it. Prov: T391 Review;
   T386 Review §5.
 
-- **B203** (A) `include/client/graphics/vision_ambient.h` `kUltravisionAmbientGain`
+- ~~**B203** (A) `include/client/graphics/vision_ambient.h` `kUltravisionAmbientGain`
   / `kUltravisionTint` / `kInfravisionAmbientGain` / `kInfravisionTint` —
   **B171 REOPENED: T383's re-solve is refuted by the live re-measure it was
   waiting for, and it made both scalar ratios WORSE.** MEASURED T386
@@ -3093,7 +3093,50 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   line per zone-in, so this is now checkable from the session log alone — and
   (b) treat the pre-T383 baseline numbers above as SUSPECT until re-measured
   under a verified-clear sky, because nobody knows what weather T358/T361/T377
-  were under. Nothing about the constants themselves changed in T396.
+  were under. Nothing about the constants themselves changed in T396.~~ **STRUCK T405 (`b31e0ed7`) -- THE LIVE RE-SOLVE LANDED.** The owed A/B search was
+  run with BOTH confounds pinned for the first time: weather proven 1.000 for
+  every window from the client's own log (and `#set weather 0 0` is NOT enough
+  on its own -- `Zone::ChangeWeather()` re-rolls on a 60 s timer from
+  `zone.rain_chance1..4`, which is 10/10/10/10 for qeynos2 and dropped rain
+  INSIDE this unit's first Ultravision window; the rig zeroes those columns for
+  the session and restores them), and the camera AIMED with
+  `#goto -74 428 3.751 160` (see the struck B253). On that rig the composition
+  control passes at RMSE 0.389% (oracle) and 1.540% (fable).
+
+  Six probe builds, each re-measured in its own live session (the full search
+  log is `review/T405/README.md` §3). Committed:
+  Ultravision gain **0.24607** x tint **(1.07877, 0.79866, 1.12256)**,
+  Infravision gain **0.16257** x tint **(1.15398, 0.70739, 1.13864)** --
+  i.e. floors (0.26545, 0.19653, 0.27623) and (0.18760, 0.11500, 0.18511).
+  Measured on exactly those, mean of two confirmation sessions:
+
+  | | R | G | B |
+  |---|---|---|---|
+  | oracle Ultravision (heading-pinned) | x2.2531 | x1.4399 | x1.7687 |
+  | **fable Ultravision** | **x2.2662** (+0.58%) | **x1.4730** (+2.30%) | **x1.8020** (+1.88%) |
+  | oracle Infravision (heading-pinned) | x1.8744 | x1.1956 | x1.1936 |
+  | **fable Infravision** | **x1.8679** (-0.35%) | **x1.1576** (-3.18%) | **x1.1631** (-2.56%) |
+
+  From 75% / 88% of the oracle's grey (T401's clear-sky measurement of the
+  T394 constants) to every channel inside 3.2%. **The greys are NOT within 2%
+  and CANNOT be**: "grey" is the unweighted mean of the three channel means, so
+  a grey ratio is a base-weighted average of the channel ratios weighted by each
+  client's OWN night base -- fable's is red-heavy, the oracle's green-heavy, and
+  two clients matching exactly per channel still report different greys. Against
+  the grey fable would report at exact per-channel agreement (computed from its
+  own measured base) the residuals are **+1.39% and -1.67%**, and
+  `VisionSolvedT405Test.GreyIsBaseWeightedSoTheOracleGreyIsNotATarget` pins that
+  arithmetic. The two facts that made the solve possible, both new: the three
+  channels are **coupled** (raising the R and B floors lowers the frame's G
+  ratio at a fixed G floor, proven by an isolated three-point G sweep), so a
+  per-channel fit could never converge; and the old Infravision floor
+  (0.147, 0.081, 0.059) sat **below the night base on B and 1% above it on G**,
+  so two of its three channels could not move at all. Eight
+  `VisionSolvedT405Test` cases pin the constants, the floors, the base-clearance
+  rule and the grey arithmetic; **5 fail against T394's constants and all pass
+  against T405's**. `vision_type.h` is untouched (a probe-only lamp change was
+  reverted and is pinned). Residues: the two chromaticity questions are now
+  **B280**, the world-clock drift **B281**. Prov: T405 Review; `review/T405/`.
 
 - ~~**B211** (A) `src/client/graphics/renderer/irrlicht_renderer.cpp`
   `IrrlichtRenderer::updateTimeOfDay` — **the weather ambient modifier
@@ -3626,6 +3669,55 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
 
 - **B275** (B) `include/client/graphics/ui/ui_layout.h` `UILayout`, `include/client/graphics/ui/static_panels.h` `ChatPanelState` — **the client persists NO user settings.** Chat timestamps, panel visibility, chat scrollback size, UI colours and every panel position are computed or defaulted at startup and nothing writes them back: `saveLayout`, `loadLayout` and any preferences writer return zero hits under `src/`, `include/` and `tools/`, and the only two files that ever held such state (`config/chat_settings.json`, `config/ui_settings.json`) were the deleted WindowManager's and are gone (B245). So a player who moves nothing notices nothing, and a player who changes anything loses it at exit. Closes when a preferences file is written and re-read with a test, or when Will rules that a fixed static UI needs no persistence. Found by T402.
 
+- **B280** (A) `src/client/graphics/renderer/irrlicht_renderer.cpp`
+  `IrrlichtRenderer::updateTimeOfDay` night ambient (0.08, 0.08, 0.15) --
+  **fable's night is 5.6x darker than the official client's AND a different
+  colour, and every vision number is a ratio precisely because of it.**
+  MEASURED T405 (`review/T405/`) on the first rig with both weather and heading
+  pinned -- same server, zone, spot and heading, 700x420+40+40 crop, linear
+  light: the oracle's unbuffed night base is (R .01900, G .03333, B .02797),
+  grey .02675; fable's is (R .00540, G .00453, B .00445), grey .00478. The
+  oracle's night is **5.6x brighter** and **green-dominant**; fable's is nearly
+  flat and faintly red-dominant. Two consequences, and the second is the one
+  that bites. (1) Every vision comparison in the project since T358 has been a
+  buff/no-buff RATIO, so an absolute difference this large has never been
+  visible. (2) A grey ratio is a base-weighted average of the three channel
+  ratios, weighted by each client's OWN base -- so **fable and the oracle cannot
+  report the same grey ratio even when their per-channel ratios agree exactly**,
+  which is why B203 closed on per-channel agreement with the grey held against a
+  base-corrected target (+1.39% / -1.67%) instead of the oracle's own grey
+  (+7.18% / +4.57%).
+  `VisionSolvedT405Test.GreyIsBaseWeightedSoTheOracleGreyIsNotATarget` pins that
+  arithmetic so it is not re-discovered as a defect. Closes when the night
+  ambient itself is solved against the oracle the way the vision floors now
+  are. **It is one job with a re-solve of those floors**, because moving the
+  base moves every ratio measured against it -- which is exactly why T405 did
+  not attempt it mid-search. Prov: T405 Review §2, §4; B203; B067.
+
+- **B281** (A) `src/client/graphics/renderer/irrlicht_renderer.cpp` /
+  `SkyRenderer::updateTimeOfDay` -- **fable's night frame gets steadily
+  brighter as the world clock runs, with no buff, no weather and no camera
+  movement; the official client's does not.** MEASURED T405. A probe session
+  whose clock was set once with `#set time 22 0` and then left alone drifted its
+  unbuffed base **x1.68** in about five minutes (grey .00432 -> .00952, a smooth
+  continuous ramp), and its own two night stills differ by RMSE **7.46%** -- the
+  session was discarded and re-run, costing the unit a probe. Even the
+  well-behaved sessions drift 3-5% across a measurement window. **The oracle,
+  measured in the same zone at the same spot on the same server in the same
+  hours, does not drift**: its control reads 0.996-1.003 over seven minutes.
+  Ruled out: weather (proven 1.000 throughout, zero modifier lines in the log)
+  and the vision floors (the drifting frames are unbuffed and Testchar is race 1
+  -> Normal, so no floor applies). The suspect is a celestial/moon term feeding
+  light into the scene while the day/night ambient curve is FLAT across the
+  20:00-05:00 arm -- but that is a suspect, not a finding; it was not bisected.
+  T405 worked around it by re-pinning the clock with `#set time 22 0`
+  immediately before each of its five measurement windows
+  (`review/T405/scripts/t405_fable_vision.sh`), which is a rig workaround and
+  not a fix -- **any future night measurement that does not do this is
+  contaminated.** Closes when the drift is root-caused and either removed or
+  shown to match the oracle. Prov: T405 Review §1d.
+
+
 - ~~**B246** (B) `src/client/graphics/eq/race_codes.cpp` `loadRaceMappings` —
   **the function ignores its argument; `config/race_models.json` is validated
   at startup and read by nothing.** The body is
@@ -3966,7 +4058,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   self-entity position against an `OP_ClientUpdate`/zone-summon for
   `MySpawnId()`. Prov: T401 Review §1e and §6.3.
 
-- **B252** (A/P) `refactor/BOARD.md` B203's own starting numbers --
+- ~~**B252** (A/P) `refactor/BOARD.md` B203's own starting numbers --
   **the "live-measured pre-T383 baseline" B203 tells the next unit to start
   its A/B search from is WEATHER-INFLATED and 25% too high.** T377 measured
   fable's Ultravision at grey **x1.4483** and Infravision at **x1.2450**; T394
@@ -3984,9 +4076,14 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   at **75%** (Ultravision) and **88%** (Infravision), not the 93%/99% the
   board records. Closes when B203's text no longer quotes the T377 numbers as
   a starting point -- done in the same commit -- and the re-solve is fitted
-  against a clear-sky measurement. Prov: T401 Review §4d(1); B203; B211; T396.
+  against a clear-sky measurement. Prov: T401 Review §4d(1); B203; B211; T396.~~ **STRUCK T405 (`b31e0ed7`).** B203's text no longer quotes the T377 numbers as
+  a starting point -- it no longer quotes ANY of them, because T405 re-measured
+  both sides on a rig with the heading pinned as well as the weather and re-solved
+  the constants against it. The re-solve is fitted against a clear-sky
+  measurement, which is what this item asked for. Prov: T405 Review §1a, §3;
+  `review/T405/`.
 
-- **B253** (A) the oracle side of B203's target table --
+- ~~**B253** (A) the oracle side of B203's target table --
   **the official client's PER-CHANNEL vision ratios are composition-dependent
   and did not reproduce between two sessions at the same coordinates.**
   MEASURED T401 (`review/T401/` §4d(2)): Oraclealpha re-measured in the same
@@ -4004,7 +4101,19 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   taken with the camera heading pinned and RECORDED (the official client's
   yaw on login is not the `character_data` heading), the composition control
   is inside 3%, and the per-channel table is re-taken against it. Prov: T401
-  Review §4d(2); B203; B146.
+  Review §4d(2); B203; B146.~~ **STRUCK T405 (`b31e0ed7`).** The heading IS pinnable and it was the whole
+  problem. eqemu's `goto.cpp` takes an optional 4th argument and passes it to
+  `MovePC`, so `#goto -74 428 3.751 160` places AND aims (T389 §5.3 had already
+  found a `character_data` heading does not take on zone-in); h=160 is world
+  angle 202.5 deg. With it recorded in the recipe, T386's composition control
+  PASSES on the official client at **RMSE 0.389%** between two independent
+  sessions -- against the 10.3% this item measured unpinned and the 2.7% bar --
+  and the per-channel table duly REPRODUCES, to better than 0.2% on every
+  channel: Ultravision R x2.2531 / G x1.4399 / B x1.7687, Infravision
+  R x1.8744 / G x1.1956 / B x1.1936. That table replaces both earlier ones
+  (T377's, weather-unknown, and T401's, unpinned). fable's own two sessions
+  agree to 1.540%. Rig in `review/T405/scripts/`. Prov: T405 Review §1b, §1c,
+  §2.
 
 - **B254** (A) `src/client/spell/spell_manager.cpp` the `OP_MemorizeSpell`
   handler -- **memorising a spell into an ALREADY-OCCUPIED gem leaves fable
@@ -4048,3 +4157,23 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   eqemu server is), or each worktree reads its own pack, so that a live
   capture can name the asset it ran against. Prov: T401 Review §0; B228; B230;
   B240; B225.
+
+  **T405 (`b31e0ed7`) MEASURED THE WINDOW AGAIN AND IT IS WORSE: the shared pack was
+  rewritten THREE TIMES inside one six-hour unit**, dated from the clients' own
+  `EQE1Loader: mmap'd` lines -- 2,830,206 bytes (66 tex / 2 alpha) for its first
+  two sessions, 19,994,910 (66 / 61) for the next five, 5,270,190 (126 / 61) for
+  the last two, and 5,532,254 (125 / 61) by the time its ctest ran. That produced
+  FOUR reds T405 did not cause (`visual_gate` on `eqe1MappedBytes`, short by an
+  identical **2,721,391** in all three zones -- so B240's numbers AND B255's own
+  +19,343 are both stale again; `PackReproducible`, whose BUILT sha matches the
+  pin while the SHIPPED file does not; and `ParticleAtlasAlpha.{ShippedFileMatchesTheGeneratorPixelForPixel,PackEntryCarriesAlphaInBand}`),
+  and it crossed a measurement CHAIN: T405's Newton steps were fitted on one pack
+  and confirmed on another. T405 checked rather than assumed whether that
+  invalidated its numbers -- the unbuffed night base on its measurement crop is
+  0.004759 / 0.004779 / 0.004803 across the three packs (0.9% between group
+  means, no step at either boundary), because the pack carries UI and particle
+  textures and not the zone geometry the crop shows -- and its committed result
+  rests on a matched pair on ONE pack. **That check was available by luck, not by
+  design.** A live unit cannot pin a shared NFS asset it does not own, and a unit
+  whose pixels are its evidence learns the asset moved only by reading its own
+  log afterwards. Prov: T405 Review §6.
