@@ -29,7 +29,7 @@ The old WindowManager/WindowBase draggable window system was completely removed 
 | Spellbook | Center popup | `SpellbookPopupState` | `renderSpellbookPopup()` |
 | Skills | Center popup | `SkillsPopupState` | `renderSkillsPopup()` |
 | Loot | Center popup | `LootPanelState` | `renderLootPopup()` (T290) |
-| Tradeskill container | Center popup | `TradeskillPanelState` | `renderTradeskillPopup()` (T415, board B321) |
+| Tradeskill container | Center popup | `TradeskillPanelState` | `renderTradeskillPopup()` (T415, board B321; T419 added the recipe list on the left, board B335 — `renderTradeskillRecipeList()` in `src/client/graphics/ui/tradeskill_recipe_list.cpp`) |
 | Combat abilities | Top-right, under target, left of the gems | `CombatAbilityPanelState` | `renderCombatAbilityPanel()` (T415, board B320) |
 
 Center popups (inventory, spellbook, skills, vendor, bank, loot, trade, tradeskill container) share the same screen region and are mutually exclusive. The combat abilities window is NOT one of them -- like the buff/group/pet panels it is a HUD window with its own anchor and its own Alt+C toggle.
@@ -41,6 +41,7 @@ container half (`COMBW_ComponentArea`'s ten `COMBW_RequiredIcon` 42x42 cells, `C
 them proportionally onto `centerPopup`; `include/client/graphics/ui/combat_ability_layout.h` uses
 `EQUI_CombatAbilityWnd.xml`'s offsets UNSCALED, because that window is `Style_Sizable false` at 174x150.
 Neither panel's `.cpp` computes a rect.
+
 
 ## Design Patterns
 

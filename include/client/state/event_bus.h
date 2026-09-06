@@ -88,6 +88,8 @@ enum class GameEventType {
     TrainerWindowClosed,
     TradeskillContainerOpened,
     TradeskillContainerClosed,
+    TradeskillRecipeListCleared,
+    TradeskillRecipeReceived,
 
     // Inventory events
     InventorySlotChanged,
@@ -522,6 +524,47 @@ struct TradeskillContainerClosedEvent {
     bool wasWorldObject;
     uint32_t objectId;
     int16_t inventorySlot;
+};
+
+// T419 (board B335) -- the tradeskill recipe list.
+//
+// eqemu's Client::SendTradeskillSearchResults() (zone/tradeskills.cpp) sends
+// ONE OP_RecipeReply per matching recipe and marks neither the start nor the
+// end of the run. The only honest list boundary is therefore the client's own
+// request, so the two opcodes that ask for a list -- OP_RecipesSearch and
+// OP_RecipesFavorite -- publish Cleared as they go out, and every reply that
+// arrives afterwards appends.
+struct TradeskillRecipeListClearedData {
+    uint32_t objectType;   // the container the request was issued against
+    std::string query;     // the search text; empty for a favourites fetch
+    uint32_t minTrivial;   // RecipesSearch_Struct::mintrivial, as sent
+    uint32_t maxTrivial;   // RecipesSearch_Struct::maxtrivial, as sent
+    bool isFavorites;
+};
+
+// One OP_RecipeReply. Every field is the server's, verbatim:
+//
+//   struct RecipeReply_Struct {          // common/eq_packet_structs.h:4313
+//       uint32 object_type;
+//       uint32 some_id;                  //same as in favorites
+//       uint32 component_count;
+//       uint32 recipe_id;
+//       uint32 trivial;
+//       char recipe_name[64];
+//   /*84*/
+//   };
+//
+// Note what is NOT on the wire: the recipe's tradeskill and its component
+// NAMES. The server filters by tradeskill before it builds the packet and
+// sends the component list only in reply to OP_RecipeDetails, so a row can
+// show a name and a trivial and a component COUNT, and nothing else.
+struct TradeskillRecipeReceivedData {
+    uint32_t objectType;
+    uint32_t someId;
+    uint32_t componentCount;
+    uint32_t recipeId;
+    uint32_t trivial;
+    std::string name;
 };
 
 // --- Inventory events ---
@@ -1009,6 +1052,8 @@ using EventData = std::variant<
     VendorItemAddedData,
     TradeskillContainerOpenedEvent,
     TradeskillContainerClosedEvent,
+    TradeskillRecipeListClearedData,
+    TradeskillRecipeReceivedData,
     // Inventory
     InventorySlotChangedData,
     CursorItemChangedData,

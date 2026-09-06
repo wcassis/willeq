@@ -550,6 +550,7 @@ void eqt::merchant::MerchantComponent::SendRecipesFavorite(uint32_t object_type,
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
 		ctx_.net.SafeQueueZone(packet);
 		LOG_DEBUG(MOD_MAIN, "Sent {} favorite recipes (object_type={})", count, object_type);
+		PublishRecipeListCleared(object_type, std::string(), 0, 0, true);
 	}
 }
 
@@ -572,6 +573,7 @@ void eqt::merchant::MerchantComponent::SendRecipesSearch(uint32_t object_type, c
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
 		ctx_.net.SafeQueueZone(packet);
 		LOG_DEBUG(MOD_MAIN, "Recipe search: '{}'", query);
+		PublishRecipeListCleared(object_type, query, mintrivial, maxtrivial, false);
 	}
 }
 
@@ -606,17 +608,72 @@ void eqt::merchant::MerchantComponent::SendRecipeAutoCombine(uint32_t object_typ
 	}
 }
 
+// T419 (board B335). The decode, as a free function so a test can drive the
+// real wire bytes through it. Every field is RecipeReply_Struct's, verbatim --
+// the packet carries no tradeskill and no component names (see the struct
+// quote in src/client/graphics/ui/tradeskill_recipe_list.cpp).
+bool eqt::merchant::DecodeRecipeReply(const void* data, size_t length,
+                                      eqt::state::TradeskillRecipeReceivedData& out)
+{
+	if (data == nullptr || length < sizeof(EQT::RecipeReply_Struct)) {
+		return false;
+	}
+	const EQT::RecipeReply_Struct* recipe =
+		reinterpret_cast<const EQT::RecipeReply_Struct*>(data);
+	out.objectType = recipe->object_type;
+	out.someId = recipe->some_id;
+	out.componentCount = recipe->component_count;
+	out.recipeId = recipe->recipe_id;
+	out.trivial = recipe->trivial;
+	// recipe_name is strn0cpy'd by the server and need not be terminated if
+	// a name is exactly 64 characters.
+	out.name.assign(recipe->recipe_name,
+	                strnlen(recipe->recipe_name, sizeof(recipe->recipe_name)));
+	return true;
+}
+
 void eqt::merchant::MerchantComponent::ZoneProcessRecipeReply(const EQ::Net::Packet &p)
 {
-	if (p.Length() < 2 + sizeof(EQT::RecipeReply_Struct)) {
+	if (p.Length() < 2) {
 		return;
 	}
 
-	const EQT::RecipeReply_Struct* recipe = reinterpret_cast<const EQT::RecipeReply_Struct*>(
-		static_cast<const uint8_t*>(p.Data()) + 2);
+	// Until T419 this whole body was the LOG_DEBUG below: the server's recipe
+	// list arrived and was thrown away, so the tradeskill window's entire
+	// left side had nothing to draw.
+	eqt::state::TradeskillRecipeReceivedData data;
+	if (!eqt::merchant::DecodeRecipeReply(
+	        static_cast<const uint8_t*>(p.Data()) + 2, p.Length() - 2, data)) {
+		return;
+	}
 
-	std::string name(recipe->recipe_name, strnlen(recipe->recipe_name, 64));
-	LOG_DEBUG(MOD_MAIN, "Recipe: {} (ID: {}, Trivial: {})", name, recipe->recipe_id, recipe->trivial);
+	LOG_DEBUG(MOD_MAIN, "Recipe: {} (ID: {}, Trivial: {})", data.name, data.recipeId, data.trivial);
+
+	if (ctx_.bridge) {
+		ctx_.bridge->pushEvent(eqt::state::GameEvent(
+			eqt::state::GameEventType::TradeskillRecipeReceived, std::move(data)));
+	}
+}
+
+// The list boundary. eqemu's Client::SendTradeskillSearchResults() queues one
+// OP_RecipeReply per matching row and marks neither the start nor the end of
+// the run, so the only thing that can say "a new list starts here" is the
+// request that provoked it -- which is this client.
+void eqt::merchant::MerchantComponent::PublishRecipeListCleared(
+	uint32_t object_type, const std::string& query,
+	uint32_t mintrivial, uint32_t maxtrivial, bool is_favorites)
+{
+	if (!ctx_.bridge) {
+		return;
+	}
+	eqt::state::TradeskillRecipeListClearedData data;
+	data.objectType = object_type;
+	data.query = query;
+	data.minTrivial = mintrivial;
+	data.maxTrivial = maxtrivial;
+	data.isFavorites = is_favorites;
+	ctx_.bridge->pushEvent(eqt::state::GameEvent(
+		eqt::state::GameEventType::TradeskillRecipeListCleared, std::move(data)));
 }
 
 void eqt::merchant::MerchantComponent::ZoneProcessRecipeAutoCombine(const EQ::Net::Packet &p)

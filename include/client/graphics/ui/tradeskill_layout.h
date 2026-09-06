@@ -61,12 +61,55 @@
  *                                         => (20,109)-(140,131)
  *     => absolute (260,501)-(380,523), 120 x 22
  *
- * What fable does NOT draw from this window is its whole LEFT side — the
- * recipe search box, the known-recipe list and the favourites buttons
- * (COMBW_LeftSideArea) — because fable has no recipe database to fill them
- * from. That is boarded, not forgotten; the window's frame is still the
- * oracle's 400x525 so the container half lands where the official client
- * puts it.
+ * ---------------------------------------------------------------------------
+ * T419 (board B335) added the LEFT side. Same derivation, same anchors:
+ *
+ *   <Screen item="COMBW_LeftSideArea">   parent = TradeskillWnd (400x525)
+ *       LeftAnchorOffset   2, LeftAnchorToLeft   true  -> x0 = 2
+ *       TopAnchorOffset    0, TopAnchorToTop     true  -> y0 = 0
+ *       RightAnchorOffset160, RightAnchorToLeft  false -> x1 = 400-160 = 240
+ *       BottomAnchorOffset 0, BottomAnchorToTop  false -> y1 = 525
+ *     => (2,0)-(240,525), i.e. 238 x 525
+ *
+ *   <Screen item="COMBW_SearchArea">     parent = LeftSideArea (238x525)
+ *       0 / 0 / 0(from right) / 124(from top)  => absolute (2,0)-(240,124)
+ *     Its children are Location/Size, not anchors (RelativePosition):
+ *       <Label   item="COMBW_MinTrivialText">  Location (4,4)    Size 100x24
+ *       <Editbox item="COMBW_MinTrivialEdit">  Location (106,4)  Size  50x24
+ *       <Label   item="COMBW_MaxTrivialText">  Location (4,30)   Size 100x24
+ *       <Editbox item="COMBW_MaxTrivialEdit">  Location (106,30) Size  50x24
+ *       <Label   item="COMBW_SearchTextText">  Location (4,56)   Size 100x24
+ *       <Editbox item="COMBW_SearchTextEdit">  Location (106,56) Size  80x24
+ *       <Button  item="COMBW_SearchButton">    Location (50,84)  Size 100x20
+ *     => absolute = the Location + (2,0)
+ *
+ *   <Screen item="COMBW_RecipeListArea"> parent = LeftSideArea (238x525)
+ *       0 / 124(from top) / 0(from right) / 50(from BOTTOM)
+ *     => (0,124)-(238,475)  => absolute (2,124)-(240,475), 238 x 351
+ *   <Label item="COMBW_KnownRecipeText">  2 / 2 / 2(from right) / 22(from top)
+ *     => (2,2)-(236,22)   => absolute (4,126)-(238,146), 234 x 20
+ *   <Listbox item="COMBW_RecipeList">     2 / 24 / 2(from right) / 2(from BOTTOM)
+ *     => (2,24)-(236,349) => absolute (4,148)-(238,473), 234 x 325
+ *       <Columns><Width>140</Width><Heading>Recipe Name</Heading></Columns>
+ *       <Columns><Width> 50</Width><Heading>Trivial</Heading></Columns>
+ *
+ *   <Screen item="COMBW_FavoritesArea">  parent = LeftSideArea (238x525)
+ *       0 / 50(from BOTTOM) / 0(from right) / 0(from bottom)
+ *     => (0,475)-(238,525) => absolute (2,475)-(240,525), 238 x 50
+ *   <Label item="COMBW_FavoritesText">   2 / 0 / 0(from right) / 22(from top)
+ *     => absolute (4,475)-(240,497), 236 x 22
+ *   <Button item="COMBW_AddFavoriteButton">     Location (2,24)   Size 60x24
+ *   <Button item="COMBW_RemoveFavoriteButton">  Location (64,24)  Size 60x24
+ *   <Button item="COMBW_ShowFavoritesButton">   Location (124,24) Size 60x24
+ *     => absolute = the Location + (2,475)
+ *
+ * THE ONE NUMBER THAT IS NOT THE ORACLE'S is the recipe list's ROW HEIGHT.
+ * `COMBW_RecipeList` is a `<Listbox>`; the XML gives its rect and its two
+ * column widths and says nothing about how tall a row is — the official
+ * client measures that from the window font at runtime, and there is no
+ * shipped number to quote. ORACLE_ROW_H below is therefore FABLE'S choice
+ * (20, matching the 20px the same file uses for every Label and Editbox in
+ * this window), flagged here rather than dressed up as a quotation.
  */
 
 #pragma once
@@ -108,6 +151,57 @@ constexpr irr::s32 ORACLE_CLOSE_X = 260;
 constexpr irr::s32 ORACLE_CLOSE_Y = 501;
 constexpr irr::s32 ORACLE_CLOSE_W = 120;
 constexpr irr::s32 ORACLE_CLOSE_H = 22;
+
+// --- The left side (T419, board B335) ---
+
+// COMBW_SearchArea's children, absolute in the 400x525 window.
+constexpr irr::s32 ORACLE_MIN_TRIVIAL_LABEL_X = 6;
+constexpr irr::s32 ORACLE_MIN_TRIVIAL_LABEL_Y = 4;
+constexpr irr::s32 ORACLE_MAX_TRIVIAL_LABEL_Y = 30;
+constexpr irr::s32 ORACLE_SEARCH_LABEL_Y      = 56;
+constexpr irr::s32 ORACLE_SEARCH_LABEL_W      = 100;
+constexpr irr::s32 ORACLE_SEARCH_FIELD_H      = 24;
+
+constexpr irr::s32 ORACLE_TRIVIAL_EDIT_X = 108;
+constexpr irr::s32 ORACLE_TRIVIAL_EDIT_W = 50;
+constexpr irr::s32 ORACLE_SEARCH_EDIT_W  = 80;
+
+constexpr irr::s32 ORACLE_SEARCH_BTN_X = 52;
+constexpr irr::s32 ORACLE_SEARCH_BTN_Y = 84;
+constexpr irr::s32 ORACLE_SEARCH_BTN_W = 100;
+constexpr irr::s32 ORACLE_SEARCH_BTN_H = 20;
+
+// COMBW_KnownRecipeText and COMBW_RecipeList.
+constexpr irr::s32 ORACLE_LIST_LABEL_X = 4;
+constexpr irr::s32 ORACLE_LIST_LABEL_Y = 126;
+constexpr irr::s32 ORACLE_LIST_LABEL_W = 234;
+constexpr irr::s32 ORACLE_LIST_LABEL_H = 20;
+
+constexpr irr::s32 ORACLE_LIST_X = 4;
+constexpr irr::s32 ORACLE_LIST_Y = 148;
+constexpr irr::s32 ORACLE_LIST_W = 234;
+constexpr irr::s32 ORACLE_LIST_H = 325;
+
+// <Columns>: "Recipe Name" 140 wide, then "Trivial" 50 wide.
+constexpr irr::s32 ORACLE_COL_NAME_W    = 140;
+constexpr irr::s32 ORACLE_COL_TRIVIAL_W = 50;
+
+// NOT the oracle's — see the header comment. 20px per row in oracle space.
+constexpr irr::s32 ORACLE_ROW_H = 20;
+constexpr int      RECIPE_ROWS_VISIBLE = ORACLE_LIST_H / ORACLE_ROW_H;  // 16
+
+// COMBW_FavoritesText and the three favourite buttons.
+constexpr irr::s32 ORACLE_FAV_LABEL_X = 4;
+constexpr irr::s32 ORACLE_FAV_LABEL_Y = 475;
+constexpr irr::s32 ORACLE_FAV_LABEL_W = 236;
+constexpr irr::s32 ORACLE_FAV_LABEL_H = 22;
+
+constexpr irr::s32 ORACLE_FAV_BTN_Y     = 499;
+constexpr irr::s32 ORACLE_FAV_BTN_W     = 60;
+constexpr irr::s32 ORACLE_FAV_BTN_H     = 24;
+constexpr irr::s32 ORACLE_FAV_ADD_X     = 4;
+constexpr irr::s32 ORACLE_FAV_REMOVE_X  = 66;
+constexpr irr::s32 ORACLE_FAV_SHOW_X    = 126;
 
 /**
  * Map an oracle-window rect into `layout.centerPopup`, proportionally.
@@ -154,6 +248,125 @@ inline irr::core::rect<irr::s32> combineRect(const UILayout& layout) {
 inline irr::core::rect<irr::s32> closeRect(const UILayout& layout) {
     return scaled(layout, ORACLE_CLOSE_X, ORACLE_CLOSE_Y,
                   ORACLE_CLOSE_W, ORACLE_CLOSE_H);
+}
+
+// --- The left side's rects (T419) ---
+
+/** COMBW_MinTrivialText / COMBW_MaxTrivialText / COMBW_SearchTextText. */
+inline irr::core::rect<irr::s32> minTrivialLabelRect(const UILayout& layout) {
+    return scaled(layout, ORACLE_MIN_TRIVIAL_LABEL_X, ORACLE_MIN_TRIVIAL_LABEL_Y,
+                  ORACLE_SEARCH_LABEL_W, ORACLE_SEARCH_FIELD_H);
+}
+inline irr::core::rect<irr::s32> maxTrivialLabelRect(const UILayout& layout) {
+    return scaled(layout, ORACLE_MIN_TRIVIAL_LABEL_X, ORACLE_MAX_TRIVIAL_LABEL_Y,
+                  ORACLE_SEARCH_LABEL_W, ORACLE_SEARCH_FIELD_H);
+}
+inline irr::core::rect<irr::s32> searchLabelRect(const UILayout& layout) {
+    return scaled(layout, ORACLE_MIN_TRIVIAL_LABEL_X, ORACLE_SEARCH_LABEL_Y,
+                  ORACLE_SEARCH_LABEL_W, ORACLE_SEARCH_FIELD_H);
+}
+
+/** COMBW_MinTrivialEdit / COMBW_MaxTrivialEdit / COMBW_SearchTextEdit. */
+inline irr::core::rect<irr::s32> minTrivialEditRect(const UILayout& layout) {
+    return scaled(layout, ORACLE_TRIVIAL_EDIT_X, ORACLE_MIN_TRIVIAL_LABEL_Y,
+                  ORACLE_TRIVIAL_EDIT_W, ORACLE_SEARCH_FIELD_H);
+}
+inline irr::core::rect<irr::s32> maxTrivialEditRect(const UILayout& layout) {
+    return scaled(layout, ORACLE_TRIVIAL_EDIT_X, ORACLE_MAX_TRIVIAL_LABEL_Y,
+                  ORACLE_TRIVIAL_EDIT_W, ORACLE_SEARCH_FIELD_H);
+}
+inline irr::core::rect<irr::s32> searchEditRect(const UILayout& layout) {
+    return scaled(layout, ORACLE_TRIVIAL_EDIT_X, ORACLE_SEARCH_LABEL_Y,
+                  ORACLE_SEARCH_EDIT_W, ORACLE_SEARCH_FIELD_H);
+}
+
+/** COMBW_SearchButton. */
+inline irr::core::rect<irr::s32> searchButtonRect(const UILayout& layout) {
+    return scaled(layout, ORACLE_SEARCH_BTN_X, ORACLE_SEARCH_BTN_Y,
+                  ORACLE_SEARCH_BTN_W, ORACLE_SEARCH_BTN_H);
+}
+
+/** COMBW_KnownRecipeText — the list's heading label. */
+inline irr::core::rect<irr::s32> recipeListLabelRect(const UILayout& layout) {
+    return scaled(layout, ORACLE_LIST_LABEL_X, ORACLE_LIST_LABEL_Y,
+                  ORACLE_LIST_LABEL_W, ORACLE_LIST_LABEL_H);
+}
+
+/** COMBW_RecipeList — the listbox frame. */
+inline irr::core::rect<irr::s32> recipeListRect(const UILayout& layout) {
+    return scaled(layout, ORACLE_LIST_X, ORACLE_LIST_Y,
+                  ORACLE_LIST_W, ORACLE_LIST_H);
+}
+
+/**
+ * Map an oracle-space X / Y to fable's, WITHOUT deriving a size from it.
+ *
+ * `scaled()` scales an origin and a size independently, which is right for an
+ * isolated rect and WRONG for a run of adjacent ones: 20 oracle rows of 20px
+ * scaled that way gap or overlap by a pixel wherever the two integer
+ * divisions disagree. The recipe rows are a run, so each row's bottom is the
+ * NEXT row's scaled top and the list tiles exactly.
+ */
+inline irr::s32 scaledX(const UILayout& layout, irr::s32 x) {
+    return layout.centerPopup.UpperLeftCorner.X +
+           x * layout.centerPopup.getWidth() / ORACLE_WINDOW_W;
+}
+inline irr::s32 scaledY(const UILayout& layout, irr::s32 y) {
+    return layout.centerPopup.UpperLeftCorner.Y +
+           y * layout.centerPopup.getHeight() / ORACLE_WINDOW_H;
+}
+
+/**
+ * One visible row of COMBW_RecipeList, 0..RECIPE_ROWS_VISIBLE-1. Degenerate
+ * for an out-of-range index, the same contract slotRect() has.
+ */
+inline irr::core::rect<irr::s32> recipeRowRect(const UILayout& layout, int row) {
+    if (row < 0 || row >= RECIPE_ROWS_VISIBLE) {
+        return irr::core::rect<irr::s32>(0, 0, 0, 0);
+    }
+    return irr::core::rect<irr::s32>(
+        scaledX(layout, ORACLE_LIST_X),
+        scaledY(layout, ORACLE_LIST_Y + row * ORACLE_ROW_H),
+        scaledX(layout, ORACLE_LIST_X + ORACLE_LIST_W),
+        scaledY(layout, ORACLE_LIST_Y + (row + 1) * ORACLE_ROW_H));
+}
+
+/** The "Recipe Name" column of one row (<Columns><Width>140). */
+inline irr::core::rect<irr::s32> recipeNameCellRect(const UILayout& layout, int row) {
+    auto r = recipeRowRect(layout, row);
+    if (r.getWidth() == 0) return r;
+    r.LowerRightCorner.X = scaledX(layout, ORACLE_LIST_X + ORACLE_COL_NAME_W);
+    return r;
+}
+
+/** The "Trivial" column of one row (<Columns><Width>50), right of the name. */
+inline irr::core::rect<irr::s32> recipeTrivialCellRect(const UILayout& layout, int row) {
+    auto r = recipeRowRect(layout, row);
+    if (r.getWidth() == 0) return r;
+    r.UpperLeftCorner.X = scaledX(layout, ORACLE_LIST_X + ORACLE_COL_NAME_W);
+    r.LowerRightCorner.X =
+        scaledX(layout, ORACLE_LIST_X + ORACLE_COL_NAME_W + ORACLE_COL_TRIVIAL_W);
+    return r;
+}
+
+/** COMBW_FavoritesText. */
+inline irr::core::rect<irr::s32> favoritesLabelRect(const UILayout& layout) {
+    return scaled(layout, ORACLE_FAV_LABEL_X, ORACLE_FAV_LABEL_Y,
+                  ORACLE_FAV_LABEL_W, ORACLE_FAV_LABEL_H);
+}
+
+/** COMBW_AddFavoriteButton / RemoveFavoriteButton / ShowFavoritesButton. */
+inline irr::core::rect<irr::s32> addFavoriteRect(const UILayout& layout) {
+    return scaled(layout, ORACLE_FAV_ADD_X, ORACLE_FAV_BTN_Y,
+                  ORACLE_FAV_BTN_W, ORACLE_FAV_BTN_H);
+}
+inline irr::core::rect<irr::s32> removeFavoriteRect(const UILayout& layout) {
+    return scaled(layout, ORACLE_FAV_REMOVE_X, ORACLE_FAV_BTN_Y,
+                  ORACLE_FAV_BTN_W, ORACLE_FAV_BTN_H);
+}
+inline irr::core::rect<irr::s32> showFavoritesRect(const UILayout& layout) {
+    return scaled(layout, ORACLE_FAV_SHOW_X, ORACLE_FAV_BTN_Y,
+                  ORACLE_FAV_BTN_W, ORACLE_FAV_BTN_H);
 }
 
 } // namespace TradeskillLayout

@@ -33,6 +33,8 @@
 //                 "before" half of T416's before/after.
 
 #include "client/graphics/ui/static_panels.h"
+#include "client/graphics/ui/tradeskill_panel.h"
+#include "client/state/event_bus.h"
 #include "client/graphics/ui/ui_renderer.h"
 #include "client/graphics/ui/ui_layout.h"
 #include "client/graphics/ui/ui_atlas.h"
@@ -98,6 +100,7 @@ struct PanelStates {
     SpellbookPopupState spellbook;
     SkillsPopupState skills;
     LootPanelState loot;
+    TradeskillPanelState tradeskill;   // T419 (boards B335/B321)
     XPBarState xp;
 
     PanelStates() {
@@ -225,6 +228,46 @@ struct PanelStates {
         }
         loot.hoveredRow = 1;
 
+        // T419 (board B335): the tradeskill window WITH its recipe list, so
+        // the capture shows the left side B335 said was missing.
+        eqt::state::TradeskillContainerOpenedEvent forge;
+        forge.isWorldObject = true;
+        forge.objectId = 4242;
+        forge.inventorySlot = -1;
+        forge.containerName = "Forge";
+        forge.containerType = 15;
+        forge.slotCount = 10;
+        applyTradeskillContainerOpened(tradeskill, forge);
+        for (int i = 0; i < 4; ++i) {
+            tradeskill.slots[i].hasItem = true;
+            tradeskill.slots[i].itemName = "Ore";
+            tradeskill.slots[i].quantity = i + 1;
+        }
+        eqt::state::TradeskillRecipeListClearedData search;
+        search.objectType = 15;
+        search.query = "bracer";
+        search.minTrivial = 1;
+        search.maxTrivial = 200;
+        search.isFavorites = false;
+        applyTradeskillRecipeListCleared(tradeskill, search);
+        const char* recipeNames[9] = {
+            "Banded Bracer", "Bronze Bracer", "Cured Silk Bracer",
+            "Fine Steel Bracer", "Iron Bracer", "Leather Bracer",
+            "Rawhide Bracer", "Small Bronze Bracer", "Split Paw Hide Bracer"};
+        const uint32_t trivials[9] = {122, 68, 90, 135, 44, 21, 33, 68, 51};
+        for (int i = 0; i < 9; ++i) {
+            eqt::state::TradeskillRecipeReceivedData r;
+            r.objectType = 15;
+            r.someId = 0;
+            r.componentCount = 3;
+            r.recipeId = 2000 + i;
+            r.trivial = trivials[i];
+            r.name = recipeNames[i];
+            applyTradeskillRecipeReceived(tradeskill, r);
+        }
+        tradeskill.selectedRecipe = 2;
+        tradeskill.hoveredRecipe = 4;
+
         xp.progress = 0.62f;
     }
 };
@@ -267,6 +310,9 @@ std::vector<PanelCapture> buildCaptureList() {
             renderSkillsPopup(u, l, s.skills); }},
         {"loot", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             renderLootPopup(u, l, s.loot); }},
+        // T419 (board B335): the recipe list on the window's left side.
+        {"tradeskill", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderTradeskillPopup(u, l, s.tradeskill); }},
         // Everything the HUD draws at once -- the screen a player sees.
         {"hud_all", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             renderPlayerStatus(u, l, s.stats);

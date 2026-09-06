@@ -5306,7 +5306,7 @@ client uses every field.
 
 ## Added 2026-09-06 by T415
 
-- **B335** (B) `include/client/graphics/ui/tradeskill_layout.h`,
+- ~~**B335** (B) `include/client/graphics/ui/tradeskill_layout.h`,
   `src/client/graphics/ui/tradeskill_panel.cpp` -- **the tradeskill window's
   whole LEFT side is not drawn: no recipe search, no known-recipe list, no
   favourites.** T415 Leg A drew the container half of
@@ -5337,7 +5337,42 @@ client uses every field.
   drawn-but-inert: `COMBW_ExperimentButton`, `COMBW_AutoInvButton`,
   `COMBW_UseCtrlCheckbox`, `COMBW_ContainerIcon` (fable's UI atlas has no item
   icon sheet), and `CAW_OpenCombatSkillSelectWnd` from the combat abilities
-  window (fable has no combat skill select window). Found by T415 Leg A.
+  window (fable has no combat skill select window). Found by T415 Leg A.~~
+  **STRUCK T419 Leg A**: `ZoneProcessRecipeReply` publishes, and the left side
+  draws. The decode is now the free function `eqt::merchant::DecodeRecipeReply`
+  (`src/client/merchant/merchant_vendor_bank.cpp`), which fills a
+  `TradeskillRecipeReceivedData` from the server's own struct --
+  `RecipeReply_Struct { uint32 object_type; uint32 some_id; uint32
+  component_count; uint32 recipe_id; uint32 trivial; char recipe_name[64]; }`,
+  eqemu `common/eq_packet_structs.h:4313`, 84 bytes, one packet per matching
+  recipe from `Client::SendTradeskillSearchResults` (`zone/tradeskills.cpp:866`).
+  Two new `GameEventType`s carry it: `TradeskillRecipeReceived` (one reply) and
+  `TradeskillRecipeListCleared`, published by the client's OWN
+  `SendRecipesSearch` / `SendRecipesFavorite` because **eqemu marks neither the
+  start nor the end of a reply run** -- the request is the only honest list
+  boundary. `IrrlichtBridge` feeds both into `TradeskillPanelState::recipes`
+  through `applyTradeskillRecipeReceived()` /
+  `applyTradeskillRecipeListCleared()`, and `renderTradeskillRecipeList()` (new
+  TU `src/client/graphics/ui/tradeskill_recipe_list.cpp`) draws
+  `COMBW_LeftSideArea` from thirteen new rects in `tradeskill_layout.h`, all
+  derived from the XML's anchors and written out there: `COMBW_SearchArea`'s
+  three labels + three editboxes + `COMBW_SearchButton`,
+  `COMBW_KnownRecipeText`, the `COMBW_RecipeList` listbox with its two
+  `<Columns>` (Recipe Name 140, Trivial 50) and sixteen rows,
+  `COMBW_FavoritesText` and the three favourites buttons. A row click pushes
+  the new `RecipeDetailsRequestIntent`, whose consumer arm calls the
+  `SendRecipeDetails()` that `/recipedetails` already used -- a second producer
+  for an existing sender, not a second packet. **Two things the wire does NOT
+  carry, so they are not drawn: the recipe's TRADESKILL** (the server filters by
+  it in SQL before building the packet) **and its COMPONENT NAMES** (sent only
+  in reply to OP_RecipeDetails) -- so a row shows a name, a trivial and a
+  component count. The search box and the three favourites buttons are DRAWN
+  and INERT, because fable's static UI has no text-entry widget outside the
+  chat box: board **B365**. Pinned by `tests/test_recipe_list.cpp` (12 cases;
+  pre-fix the file does not compile -- none of the symbols exist). Capture:
+  `review/T419/after/tradeskill_800x600.png`,
+  `review/T419/crops/tradeskill_after_2x.png`. **Live proof (open a forge, run
+  `/recipesearch`, see the rows) is OWED to the next lock unit.**
 
 - **B336** (B) `src/client/graphics/ui/static_ui_input.cpp`
   `StaticUIInput::processKey` -- **ESC does not dismiss the tradeskill
@@ -5412,3 +5447,35 @@ client uses every field.
   stage would be cheap; it would also add sixteen image goldens to the set
   Will has to bless on every UI edit. **The gate is Will's to extend** -- T416
   boarded this rather than doing it, per its own plan. Found by T416.
+
+---
+
+## Added 2026-09-06 by T419
+
+- **B365** (B) `src/client/graphics/ui/tradeskill_recipe_list.cpp`,
+  `src/client/graphics/ui/static_ui_input.cpp` -- **the tradeskill window's
+  search box and favourites buttons are DRAWN and INERT.** T419 Leg A drew
+  `COMBW_SearchArea` (`COMBW_MinTrivialEdit`, `COMBW_MaxTrivialEdit`,
+  `COMBW_SearchTextEdit`, `COMBW_SearchButton`) and `COMBW_FavoritesArea`
+  (`COMBW_AddFavoriteButton`, `COMBW_RemoveFavoriteButton`,
+  `COMBW_ShowFavoritesButton`) because leaving a hole where the oracle's chrome
+  belongs is what B335 complained about, but none of the seven is clickable and
+  `TradeskillButton` deliberately has NO enumerator for them -- an enum name no
+  hit test can return would be the same unreached-code defect one layer up. The
+  reason is structural, not laziness: **fable's static UI has no text-entry
+  widget outside the chat box** (`StaticUIInput` hit-tests slot grids and
+  buttons; the only keyboard consumer is `processChatInput()`), so there is
+  nothing for the three editboxes to be. The search itself is reached from
+  `/recipesearch`, and the boxes echo what that command last asked for
+  (`TradeskillRecipeListClearedData` carries the query and both trivial
+  bounds). Closes when the popup grows a focusable edit field and the four
+  buttons push intents -- `SendRecipesSearch` / `SendRecipesFavorite` already
+  exist and are already reached from the command processor. Found by T419 Leg A.
+
+- **B367** (P) `refactor/BOARD.md` -- **the id `B335` was issued twice, on the
+  same day.** T414 Leg A used it for the four inert `storm` keys in
+  `config/weather_effects.json`; T415 Leg A used it again for the tradeskill
+  window's undrawn left side. T419 struck the T415 one; the T414 one is still
+  OPEN and still called B335, so a bare "B335" reference is ambiguous and only
+  file position tells them apart. Closes when the duplicate is renumbered (with
+  every reference updated) or the id convention gains a check. Found by T419.
