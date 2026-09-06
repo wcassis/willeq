@@ -38,11 +38,11 @@ EverQuest::tick()                    processFrame()
    └─ process user actions              (user actions)
 ```
 
-## Event Types (97)
+## Event Types (99)
 
 Defined in `include/client/state/event_bus.h`. See `include/client/state/CLAUDE.md` for the full categorization.
 
-## Intent Types (36)
+## Intent Types (37)
 
 Defined in `include/client/events/renderer_intents.h`. `RendererIntent` is a `std::variant` holding all intent structs:
 

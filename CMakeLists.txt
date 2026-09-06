@@ -600,6 +600,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/ui/static_panels.cpp
         src/client/graphics/ui/loot_panel.cpp
         src/client/graphics/ui/tradeskill_panel.cpp
+        src/client/graphics/ui/tradeskill_recipe_list.cpp
         src/client/graphics/ui/combat_ability_panel.cpp
         src/client/graphics/ui/character_model_view.cpp
         src/client/graphics/spell_visual_fx.cpp

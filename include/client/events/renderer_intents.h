@@ -212,6 +212,14 @@ struct TradeskillCloseIntent {
     uint32_t dropId;  // World object drop ID (0 for inventory containers)
 };
 
+// T419 (board B335): a click on a COMBW_RecipeList row. Reaches
+// MerchantComponent::SendRecipeDetails(), the OP_RecipeDetails sender that
+// /recipedetails already used -- the row is a second producer for it, not a
+// second packet.
+struct RecipeDetailsRequestIntent {
+    uint32_t recipeId;
+};
+
 // --- Trainer ---
 
 struct TrainSkillIntent {
@@ -316,6 +324,7 @@ using RendererIntent = std::variant<
     // Tradeskill
     TradeskillCombineIntent,
     TradeskillCloseIntent,
+    RecipeDetailsRequestIntent,
     // Trainer
     TrainSkillIntent,
     CloseTrainerIntent,

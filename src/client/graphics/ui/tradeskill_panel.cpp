@@ -140,6 +140,10 @@ void renderTradeskillPopup(UIRenderer& ui, const UILayout& layout,
 
     drawButton(ui, tb, TradeskillLayout::combineRect(layout), "Combine", true);
     drawButton(ui, tb, TradeskillLayout::closeRect(layout), "Close", true);
+
+    // COMBW_LeftSideArea -- the search box, the recipe list, the favourites
+    // row (T419, board B335). Its own TU; see tradeskill_recipe_list.cpp.
+    renderTradeskillRecipeList(ui, layout, state);
 }
 
 TradeskillButton hitTestTradeskillButton(const UILayout& layout,

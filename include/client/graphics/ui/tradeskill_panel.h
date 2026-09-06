@@ -30,6 +30,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "client/graphics/ui/ui_layout.h"
 
@@ -37,6 +38,8 @@ namespace eqt { namespace state {
 struct TradeskillContainerOpenedEvent;
 struct TradeskillContainerClosedEvent;
 struct InventorySlotChangedData;
+struct TradeskillRecipeListClearedData;
+struct TradeskillRecipeReceivedData;
 } }
 
 namespace EQT {
@@ -50,6 +53,23 @@ struct TradeskillSlotDisplay {
     std::string itemName;
     uint32_t iconId = 0;
     int32_t quantity = 1;
+};
+
+/**
+ * One row of COMBW_RecipeList. Every field is `RecipeReply_Struct`'s, and
+ * the struct has no more: the server does NOT put the recipe's tradeskill or
+ * its component NAMES on this packet (it filters by tradeskill before
+ * building it, and sends the component list only in reply to
+ * OP_RecipeDetails). A row can therefore show a name, a trivial and a
+ * component count, and nothing else -- see the T419 Review.
+ */
+struct RecipeListEntry {
+    uint32_t recipeId = 0;
+    std::string name;
+    uint32_t trivial = 0;
+    uint32_t componentCount = 0;
+    uint32_t objectType = 0;
+    uint32_t someId = 0;
 };
 
 struct TradeskillPanelState {
@@ -67,9 +87,46 @@ struct TradeskillPanelState {
     TradeskillSlotDisplay slots[MAX_SLOTS];
 
     int hoveredSlot = -1;
+
+    // --- The left side: COMBW_RecipeList (T419, board B335) ---
+    //
+    // Before T419 `ZoneProcessRecipeReply`'s whole body was a LOG_DEBUG: the
+    // server's recipe list arrived on the wire and was thrown away, so the
+    // oracle's entire COMBW_LeftSideArea had nothing to draw. These are the
+    // rows it drops into.
+    std::vector<RecipeListEntry> recipes;
+
+    // A search on a big tradeskill returns hundreds of rows; the window shows
+    // sixteen. The cap is fable's, not the server's -- eqemu streams one
+    // packet per matching recipe with no count and no end marker.
+    static constexpr size_t MAX_RECIPES = 200;
+
+    int recipeScroll = 0;    // first visible row in `recipes`
+    int selectedRecipe = -1; // index into `recipes`, -1 for none
+    int hoveredRecipe = -1;  // index into `recipes`, recomputed every frame
+
+    // What the last list request asked for; drawn in COMBW_SearchTextEdit /
+    // COMBW_MinTrivialEdit / COMBW_MaxTrivialEdit, which fable does not yet
+    // let the player type into (the request comes from /recipesearch).
+    std::string searchQuery;
+    uint32_t minTrivial = 0;
+    uint32_t maxTrivial = 0;
+    bool showingFavorites = false;
+
+    /** Highest legal `recipeScroll`, the LootPanelState::maxScrollOffset shape. */
+    int maxRecipeScroll() const;
+
+    /** How many rows are actually drawn this frame (0..RECIPE_ROWS_VISIBLE). */
+    int visibleRecipeRows() const;
 };
 
-/** The window's two buttons. */
+/**
+ * The window's two CLICKABLE buttons. COMBW_SearchButton and the three
+ * favourites buttons are drawn but have no enumerator here on purpose: a
+ * name in this enum that no hit test can ever return is exactly the
+ * unreached-code defect B335 is an instance of. Board B365 adds them when
+ * fable grows a text-entry widget for COMBW_SearchTextEdit.
+ */
 enum class TradeskillButton : uint8_t {
     None = 0,
     Combine,
@@ -99,9 +156,34 @@ void applyTradeskillSlotChanged(
     TradeskillPanelState& state,
     const eqt::state::InventorySlotChangedData& data);
 
+/**
+ * T419 -- the two recipe-list arms.
+ *
+ * `Cleared` is published by the client's own OP_RecipesSearch /
+ * OP_RecipesFavorite send, because eqemu marks neither the start nor the end
+ * of a reply run (`Client::SendTradeskillSearchResults`, zone/tradeskills.cpp,
+ * loops over its query result queuing one OP_RecipeReply each). `Received` is
+ * one such packet; it APPENDS, and a repeat of a recipe id already in the
+ * list is ignored rather than duplicated.
+ */
+void applyTradeskillRecipeListCleared(
+    TradeskillPanelState& state,
+    const eqt::state::TradeskillRecipeListClearedData& data);
+void applyTradeskillRecipeReceived(
+    TradeskillPanelState& state,
+    const eqt::state::TradeskillRecipeReceivedData& data);
+
 /** Render the container window. Only when state.isOpen. */
 void renderTradeskillPopup(UIRenderer& ui, const UILayout& layout,
                            const TradeskillPanelState& state);
+
+/**
+ * Draw COMBW_LeftSideArea -- the search box, the recipe list and the
+ * favourites row (T419, src/client/graphics/ui/tradeskill_recipe_list.cpp).
+ * Called by renderTradeskillPopup(); it does NOT re-check `isOpen`.
+ */
+void renderTradeskillRecipeList(UIRenderer& ui, const UILayout& layout,
+                                const TradeskillPanelState& state);
 
 /**
  * Hit-test the two buttons. `TradeskillButton::None` on a miss and on a
@@ -120,6 +202,15 @@ TradeskillButton hitTestTradeskillButton(const UILayout& layout,
 int hitTestTradeskillSlot(const UILayout& layout,
                           const TradeskillPanelState& state,
                           int mouseX, int mouseY);
+
+/**
+ * Hit-test COMBW_RecipeList. Returns an index into `state.recipes` (i.e.
+ * scroll-adjusted, not the on-screen row) or -1. Same closed-window rule as
+ * the two above.
+ */
+int hitTestTradeskillRecipe(const UILayout& layout,
+                            const TradeskillPanelState& state,
+                            int mouseX, int mouseY);
 
 } // namespace Graphics
 } // namespace EQT

@@ -4,6 +4,7 @@
  */
 
 #include "client/graphics/ui/static_panels.h"
+#include "client/graphics/ui/pet_layout.h"
 #include "client/graphics/ui/ui_renderer.h"
 #include "client/graphics/ui/ui_atlas.h"
 #include "client/graphics/ui/ui_layout.h"
@@ -844,7 +845,6 @@ void renderPetPanel(UIRenderer& ui, const UILayout& layout,
 
     auto* tb = ui.getTextBatch();
     constexpr irr::s32 BAR_H = UILayout::BAR_HEIGHT;
-    constexpr irr::s32 PAD = UILayout::MARGIN;
 
     ui.drawPanel(layout.petPanel);
 
@@ -870,19 +870,27 @@ void renderPetPanel(UIRenderer& ui, const UILayout& layout,
         std::string hpText = percentText(state.hpPercent);
         tb->addTextCentered(hpText, hpRect, irr::video::SColor(255, 255, 255, 255));
     }
-    y += BAR_H + PAD;
 
-    // Command button indicators (compact row of abbreviations)
-    static const char* btnLabels[] = {"Sit","Stp","Reg","Fol","Grd","Tnt","Hld","GH","Foc","SH"};
-    if (tb) {
-        irr::s32 bx = x;
-        for (int i = 0; i < PetPanelState::BUTTON_COUNT && i < 10; ++i) {
-            irr::video::SColor col = state.buttonStates[i]
-                ? irr::video::SColor(255, 100, 255, 100)   // Active — green
-                : irr::video::SColor(255, 120, 120, 120);  // Inactive — gray
-            tb->addText(btnLabels[i], bx, y, col);
-            bx += tb->getTextWidth(btnLabels[i]) + 4;
-            if (bx > layout.petPanel.LowerRightCorner.X - 10) break;
+    // T419 (board B352): the command indicators are a GRID inside the panel,
+    // not a run of text past its bottom edge. Every rect comes from
+    // PetLayout::buttonRect() -- which quotes EQUI_PetInfoWindow.xml and
+    // records the two deviations from it -- so the draw and the panel's own
+    // height are computed from one set of constants and the tenth button
+    // ("SH", SpellHold) can no longer be silently dropped for want of room.
+    static const char* btnLabels[] = {"Sit","Stp","Reg","Fol","Grd",
+                                      "Tnt","Hld","GH","Foc","SH"};
+    static_assert(PetPanelState::BUTTON_COUNT == PetLayout::BUTTON_COUNT,
+                  "the pet grid must hold every PetButton");
+    for (int i = 0; i < PetPanelState::BUTTON_COUNT; ++i) {
+        const auto r = PetLayout::buttonRect(layout, i);
+        ui.drawRect(r, state.buttonStates[i]
+                           ? irr::video::SColor(160, 30, 70, 30)
+                           : irr::video::SColor(120, 28, 28, 34));
+        if (tb) {
+            tb->addTextCentered(btnLabels[i], r,
+                state.buttonStates[i]
+                    ? irr::video::SColor(255, 100, 255, 100)   // Active — green
+                    : irr::video::SColor(255, 120, 120, 120)); // Inactive — gray
         }
     }
 }

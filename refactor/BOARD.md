@@ -5426,7 +5426,7 @@ client uses every field.
 
 ## Added 2026-09-06 by T415
 
-- **B335** (B) `include/client/graphics/ui/tradeskill_layout.h`,
+- ~~**B335** (B) `include/client/graphics/ui/tradeskill_layout.h`,
   `src/client/graphics/ui/tradeskill_panel.cpp` -- **the tradeskill window's
   whole LEFT side is not drawn: no recipe search, no known-recipe list, no
   favourites.** T415 Leg A drew the container half of
@@ -5457,7 +5457,42 @@ client uses every field.
   drawn-but-inert: `COMBW_ExperimentButton`, `COMBW_AutoInvButton`,
   `COMBW_UseCtrlCheckbox`, `COMBW_ContainerIcon` (fable's UI atlas has no item
   icon sheet), and `CAW_OpenCombatSkillSelectWnd` from the combat abilities
-  window (fable has no combat skill select window). Found by T415 Leg A.
+  window (fable has no combat skill select window). Found by T415 Leg A.~~
+  **STRUCK T419 Leg A**: `ZoneProcessRecipeReply` publishes, and the left side
+  draws. The decode is now the free function `eqt::merchant::DecodeRecipeReply`
+  (`src/client/merchant/merchant_vendor_bank.cpp`), which fills a
+  `TradeskillRecipeReceivedData` from the server's own struct --
+  `RecipeReply_Struct { uint32 object_type; uint32 some_id; uint32
+  component_count; uint32 recipe_id; uint32 trivial; char recipe_name[64]; }`,
+  eqemu `common/eq_packet_structs.h:4313`, 84 bytes, one packet per matching
+  recipe from `Client::SendTradeskillSearchResults` (`zone/tradeskills.cpp:866`).
+  Two new `GameEventType`s carry it: `TradeskillRecipeReceived` (one reply) and
+  `TradeskillRecipeListCleared`, published by the client's OWN
+  `SendRecipesSearch` / `SendRecipesFavorite` because **eqemu marks neither the
+  start nor the end of a reply run** -- the request is the only honest list
+  boundary. `IrrlichtBridge` feeds both into `TradeskillPanelState::recipes`
+  through `applyTradeskillRecipeReceived()` /
+  `applyTradeskillRecipeListCleared()`, and `renderTradeskillRecipeList()` (new
+  TU `src/client/graphics/ui/tradeskill_recipe_list.cpp`) draws
+  `COMBW_LeftSideArea` from thirteen new rects in `tradeskill_layout.h`, all
+  derived from the XML's anchors and written out there: `COMBW_SearchArea`'s
+  three labels + three editboxes + `COMBW_SearchButton`,
+  `COMBW_KnownRecipeText`, the `COMBW_RecipeList` listbox with its two
+  `<Columns>` (Recipe Name 140, Trivial 50) and sixteen rows,
+  `COMBW_FavoritesText` and the three favourites buttons. A row click pushes
+  the new `RecipeDetailsRequestIntent`, whose consumer arm calls the
+  `SendRecipeDetails()` that `/recipedetails` already used -- a second producer
+  for an existing sender, not a second packet. **Two things the wire does NOT
+  carry, so they are not drawn: the recipe's TRADESKILL** (the server filters by
+  it in SQL before building the packet) **and its COMPONENT NAMES** (sent only
+  in reply to OP_RecipeDetails) -- so a row shows a name, a trivial and a
+  component count. The search box and the three favourites buttons are DRAWN
+  and INERT, because fable's static UI has no text-entry widget outside the
+  chat box: board **B365**. Pinned by `tests/test_recipe_list.cpp` (12 cases;
+  pre-fix the file does not compile -- none of the symbols exist). Capture:
+  `review/T419/after/tradeskill_800x600.png`,
+  `review/T419/crops/tradeskill_after_2x.png`. **Live proof (open a forge, run
+  `/recipesearch`, see the rows) is OWED to the next lock unit.**
 
 - **B336** (B) `src/client/graphics/ui/static_ui_input.cpp`
   `StaticUIInput::processKey` -- **ESC does not dismiss the tradeskill
@@ -5511,7 +5546,7 @@ client uses every field.
   either way. Closes when each is wired or removed from the builder, the JSON
   name map and the enum together. Found by T416.
 
-- **B352** (B) `src/client/graphics/ui/static_panels.cpp` `renderPetPanel` and
+- ~~**B352** (B) `src/client/graphics/ui/static_panels.cpp` `renderPetPanel` and
   `include/client/graphics/ui/ui_layout.h` `petPanel` -- **the pet command
   button row is drawn OUTSIDE the panel and its last button is clipped away.**
   `petPanel` is `BAR_HEIGHT * 2 + MARGIN * 3` = 40px tall, and the row loop
@@ -5522,7 +5557,31 @@ client uses every field.
   and the `bx > right - 10` guard drops the tenth ("SH", Shrink) silently. The
   honest fix is the oracle's own `EQUI_PetInfoWindow.xml` shape (a grid of
   buttons, not a single text row), which is a layout decision -- hence B, not
-  a one-constant edit. Found by T416.
+  a one-constant edit. Found by T416.~~
+  **STRUCK T419 Leg B**: the row is a GRID and it is inside the frame.
+  `include/client/graphics/ui/pet_layout.h` (new) quotes
+  `EQUI_PetInfoWindow.xml` -- a 154x142 `Style_Sizable` window with
+  `PIW_PetHPGauge` (2,0) 108x26, `PIW_AttackButton` (2,28) 108x20 and a
+  two-column grid of 54x20 cells at x=2/x=56 with rows at y=50/74/96 -- and
+  `PetLayout::buttonRect()` is the only place a pet button rect is computed.
+  `UILayout::computeLayout()` now sizes `petPanel` from the same two constants
+  the grid is drawn from (`PET_BUTTON_ROWS` 2, `PET_BUTTON_H` 10), 40px -> 52px,
+  so the grid cannot fall out of the frame the way the text run did. **Two
+  deviations from the XML, both written out in that header rather than
+  absorbed**: (1) fable's `PetButton` set is eqemu's TEN (Sit, Stop, Regroup,
+  Follow, Guard, Taunt, Hold, GHold, Focus, SpellHold) and only five of them
+  have a cell in the Titanium XML at all, so ten cells cannot be laid on a grid
+  drawn for seven; (2) the grid is **5x2, not the oracle's 2x5**, because
+  MEASURED at 640x480 `petPanel` starts at y=172 under a 94px group panel under
+  a 70px status block with the buff bar's top edge at y=228 -- SIXTEEN pixels
+  of slack, where the oracle's five-row grid needs 100. Restoring the oracle's
+  shape needs a pet window that is not stacked in that column: board **B366**.
+  Note also that this entry said the tenth button is "Shrink"; it is
+  **SpellHold** (`PET_BUTTON_SPELLHOLD`, `include/client/pet_constants.h`) --
+  fable has no Shrink pet button. Pinned by `tests/test_pet_buttons.cpp`
+  (5 cases, **3 failing pre-fix**: `EveryButtonRectLiesInsideThePanel`,
+  `TheTenthButtonHasItsOwnCell`, `ThePanelIsSizedFromTheGridsOwnConstants`).
+  Before/after: `review/T419/crops/pet_before_after_4x.png`.
 
 - **B353** (P) `scripts/ci/visual_gate.sh` -- **proposal: the gate should
   photograph the UI.** Its three zones capture geometry only, which is why
@@ -5532,3 +5591,54 @@ client uses every field.
   stage would be cheap; it would also add sixteen image goldens to the set
   Will has to bless on every UI edit. **The gate is Will's to extend** -- T416
   boarded this rather than doing it, per its own plan. Found by T416.
+
+---
+
+## Added 2026-09-06 by T419
+
+- **B365** (B) `src/client/graphics/ui/tradeskill_recipe_list.cpp`,
+  `src/client/graphics/ui/static_ui_input.cpp` -- **the tradeskill window's
+  search box and favourites buttons are DRAWN and INERT.** T419 Leg A drew
+  `COMBW_SearchArea` (`COMBW_MinTrivialEdit`, `COMBW_MaxTrivialEdit`,
+  `COMBW_SearchTextEdit`, `COMBW_SearchButton`) and `COMBW_FavoritesArea`
+  (`COMBW_AddFavoriteButton`, `COMBW_RemoveFavoriteButton`,
+  `COMBW_ShowFavoritesButton`) because leaving a hole where the oracle's chrome
+  belongs is what B335 complained about, but none of the seven is clickable and
+  `TradeskillButton` deliberately has NO enumerator for them -- an enum name no
+  hit test can return would be the same unreached-code defect one layer up. The
+  reason is structural, not laziness: **fable's static UI has no text-entry
+  widget outside the chat box** (`StaticUIInput` hit-tests slot grids and
+  buttons; the only keyboard consumer is `processChatInput()`), so there is
+  nothing for the three editboxes to be. The search itself is reached from
+  `/recipesearch`, and the boxes echo what that command last asked for
+  (`TradeskillRecipeListClearedData` carries the query and both trivial
+  bounds). Closes when the popup grows a focusable edit field and the four
+  buttons push intents -- `SendRecipesSearch` / `SendRecipesFavorite` already
+  exist and are already reached from the command processor. Found by T419 Leg A.
+
+- **B366** (C) `include/client/graphics/ui/ui_layout.h`,
+  `include/client/graphics/ui/pet_layout.h` -- **fable's left HUD column cannot
+  hold the oracle's pet window, and which way to fix that is a look decision.**
+  Measured at 640x480, the smallest supported resolution: `playerStatus` ends at
+  y=70, `groupPanel` runs 74..168, `petPanel` starts at 172 and the buff bar's
+  top edge is at y=228 -- **sixteen pixels of slack**. `EQUI_PetInfoWindow.xml`
+  is a 154x142 window whose command buttons are a two-column grid of 54x20
+  cells; fable has TEN pet buttons rather than that file's seven, so the
+  oracle's shape needs five rows -- 100px at the oracle's own row height, and
+  scaling it proportionally into 16px puts a 3px row under a 3px row. T419 Leg B
+  therefore laid the ten out 5x2 in 20px (B352, struck) and boarded the shape
+  here rather than silently inventing a HUD reflow. The options are Will's:
+  (a) leave it -- the 5x2 grid is legible and inside the frame; (b) make the
+  left column resolution-aware, so the pet window gets the oracle's 2x5 above
+  some resolution; (c) give the pet window its own anchor off the stack, which
+  is what the official client does (`PetInfoWindow`
+  `<Location><X>50</X><Y>160</Y>`, `RelativePosition false` -- a free-floating
+  window, not a stacked panel). Found by T419 Leg B.
+
+- **B367** (P) `refactor/BOARD.md` -- **the id `B335` was issued twice, on the
+  same day.** T414 Leg A used it for the four inert `storm` keys in
+  `config/weather_effects.json`; T415 Leg A used it again for the tradeskill
+  window's undrawn left side. T419 struck the T415 one; the T414 one is still
+  OPEN and still called B335, so a bare "B335" reference is ambiguous and only
+  file position tells them apart. Closes when the duplicate is renumbered (with
+  every reference updated) or the id convention gains a check. Found by T419.

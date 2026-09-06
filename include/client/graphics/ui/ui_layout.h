@@ -25,6 +25,14 @@ struct UILayout {
     static constexpr irr::s32 BAR_WIDTH = 160;
     static constexpr irr::s32 SLOT_SIZE = 32;
 
+    // T419 (board B352): the pet command grid's row height. The panel is
+    // sized from it so the ten indicators land INSIDE the frame -- before
+    // this the row was drawn 34px down a 40px panel and hung out of it.
+    // See include/client/graphics/ui/pet_layout.h for the oracle quote and
+    // for why the grid is 5x2 rather than the XML's 2x5.
+    static constexpr irr::s32 PET_BUTTON_H = 10;
+    static constexpr irr::s32 PET_BUTTON_ROWS = 2;
+
     // --- Top-left: Player status ---
     irr::core::rect<irr::s32> playerStatus;     // Overall region
     irr::core::rect<irr::s32> playerHPBar;
@@ -140,9 +148,13 @@ struct UILayout {
         irr::s32 gpH = 5 * (BAR_HEIGHT + MARGIN) + MARGIN;
         groupPanel = {gpX, gpY, gpX + gpW, gpY + gpH};
 
-        // Pet panel: below group
+        // Pet panel: below group. Name row + HP bar + the command grid
+        // (T419/B352 -- the grid used to be drawn past the bottom edge).
+        // At 640x480 this bottom edge lands at y=224 with the buff bar's top
+        // at y=228, so the taller panel still clears it.
         irr::s32 ppY = groupPanel.LowerRightCorner.Y + MARGIN;
-        petPanel = {gpX, ppY, gpX + gpW, ppY + BAR_HEIGHT * 2 + MARGIN * 3};
+        petPanel = {gpX, ppY, gpX + gpW,
+                    ppY + BAR_HEIGHT * 2 + MARGIN + PET_BUTTON_ROWS * PET_BUTTON_H};
     }
 };
 

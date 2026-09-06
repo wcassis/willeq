@@ -305,6 +305,7 @@ bool StaticUIInput::processPanelInput(int mouseX, int mouseY, bool leftClicked,
     bool consumed = false;
 
     tradeskill.hoveredSlot = -1;
+    tradeskill.hoveredRecipe = -1;
     combatAbilities.hoveredButton = -1;
 
     // --- The tradeskill container window (B321) ---
@@ -313,6 +314,22 @@ bool StaticUIInput::processPanelInput(int mouseX, int mouseY, bool leftClicked,
         if (slot >= 0) {
             tradeskill.hoveredSlot = slot;
             consumed = true;
+        }
+        // COMBW_RecipeList (T419, board B335). A row click selects the recipe
+        // AND asks the server for its components -- the same OP_RecipeDetails
+        // /recipedetails sends, so the row is a second producer for an
+        // existing sender, not a second packet.
+        const int recipe = hitTestTradeskillRecipe(layout, tradeskill, mouseX, mouseY);
+        if (recipe >= 0) {
+            tradeskill.hoveredRecipe = recipe;
+            consumed = true;
+            if (leftClicked) {
+                tradeskill.selectedRecipe = recipe;
+                if (bridge_) {
+                    bridge_->pushIntent(eqt::events::RecipeDetailsRequestIntent{
+                        tradeskill.recipes[static_cast<size_t>(recipe)].recipeId});
+                }
+            }
         }
         const TradeskillButton button =
             hitTestTradeskillButton(layout, tradeskill, mouseX, mouseY);

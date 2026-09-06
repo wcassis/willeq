@@ -422,6 +422,24 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 renderer_->Frame().tradeskillState_, d);
         }
         break;
+    // T419 (board B335): the recipe list. `Cleared` is the client's own
+    // OP_RecipesSearch / OP_RecipesFavorite going out (the server marks no
+    // list boundary); `Received` is one OP_RecipeReply, of which the server
+    // sends one per matching recipe.
+    case state::GameEventType::TradeskillRecipeListCleared:
+        if (renderer_) {
+            auto& d = std::get<state::TradeskillRecipeListClearedData>(event.data);
+            EQT::Graphics::applyTradeskillRecipeListCleared(
+                renderer_->Frame().tradeskillState_, d);
+        }
+        break;
+    case state::GameEventType::TradeskillRecipeReceived:
+        if (renderer_) {
+            auto& d = std::get<state::TradeskillRecipeReceivedData>(event.data);
+            EQT::Graphics::applyTradeskillRecipeReceived(
+                renderer_->Frame().tradeskillState_, d);
+        }
+        break;
 
     // Inventory events (D11a)
     case state::GameEventType::InventorySlotChanged: {

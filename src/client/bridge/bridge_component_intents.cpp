@@ -704,6 +704,12 @@ void eqt::bridge::BridgeComponent::onTradeskillCloseIntent(const eqt::events::Tr
 	ctx_.active_tradeskill_object_id = 0;
 }
 
+// T419 (board B335): a recipe row click asks the server for that recipe's
+// component list, the same OP_RecipeDetails /recipedetails sends.
+void eqt::bridge::BridgeComponent::onRecipeDetailsRequestIntent(const eqt::events::RecipeDetailsRequestIntent& i) {
+	ctx_.Merchant().SendRecipeDetails(i.recipeId);
+}
+
 // Trainer intents (D20b1)
 void eqt::bridge::BridgeComponent::onTrainSkillIntent(const eqt::events::TrainSkillIntent& i) {
 	ctx_.Merchant().TrainSkill(i.skillId);
@@ -808,6 +814,7 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 			[this](const eqt::events::HotbarActivateIntent& i) { onHotbarActivateIntent(i); },
 			[this](const eqt::events::TradeskillCombineIntent& i) { onTradeskillCombineIntent(i); },
 			[this](const eqt::events::TradeskillCloseIntent& i) { onTradeskillCloseIntent(i); },
+			[this](const eqt::events::RecipeDetailsRequestIntent& i) { onRecipeDetailsRequestIntent(i); },
 			[this](const eqt::events::TrainSkillIntent& i) { onTrainSkillIntent(i); },
 			[this](const eqt::events::CloseTrainerIntent& i) { onCloseTrainerIntent(i); },
 			[this](const eqt::events::MoveItemIntent& i) { onMoveItemIntent(i); },

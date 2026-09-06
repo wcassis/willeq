@@ -35,6 +35,8 @@
 
 class EverQuest;
 
+namespace eqt { namespace state { struct TradeskillRecipeReceivedData; } }
+
 namespace EQ {
 namespace Net {
 class Packet;
@@ -157,6 +159,13 @@ public:
 	void ZoneProcessRecipeAutoCombine(const EQ::Net::Packet &p);
 
 private:
+	// T419 (board B335): the tradeskill recipe list's boundary marker. The
+	// server never says a reply run has started, so the two senders that ask
+	// for a list publish this as they go out.
+	void PublishRecipeListCleared(uint32_t object_type, const std::string& query,
+	                              uint32_t mintrivial, uint32_t maxtrivial,
+	                              bool is_favorites);
+
 	ClientContext& ctx_;
 
 	// Trainer state, moved out of EverQuest: referenced by this family only.
@@ -167,6 +176,19 @@ private:
 	// the trainer session; cleared by CloseTrainerWindow().
 	std::vector<uint32_t> m_trainer_skill_caps;
 };
+
+/**
+ * Decode ONE OP_RecipeReply body into the bridge payload (T419, board B335).
+ *
+ * A free function, and not a private method, so a test can drive the real
+ * wire bytes through the real decode with no ClientContext, no bridge and no
+ * server -- the decode is the half B335 was missing and the half worth
+ * pinning. `data`/`length` are the packet MINUS its two opcode bytes.
+ * Returns false (and leaves `out` alone) for anything shorter than the
+ * struct's 84 bytes, which is the same gate ZoneProcessRecipeReply applies.
+ */
+bool DecodeRecipeReply(const void* data, size_t length,
+                       eqt::state::TradeskillRecipeReceivedData& out);
 
 }  // namespace merchant
 }  // namespace eqt
