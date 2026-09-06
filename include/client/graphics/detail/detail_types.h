@@ -94,13 +94,10 @@ struct DetailType {
     DetailCategory category = DetailCategory::Grass;
     DetailOrientation orientation = DetailOrientation::CrossedQuads;
 
-    // UV coordinates in atlas (pixel coords, converted to normalized at load)
-    int atlasX = 0;
-    int atlasY = 0;
-    int atlasWidth = 64;
-    int atlasHeight = 64;
-
-    // Cached normalized UVs (set by loader)
+    // Normalized UVs, set by the loader from the type's `atlasTile` name via
+    // getTileUV().  T414 Leg A (board B297) deleted the legacy pixel-coordinate
+    // form (`atlas: {x,y,width,height}`): nothing converted those four ints into
+    // these four floats, so a config using the legacy block drew tile 0.
     float u0 = 0.0f, v0 = 0.0f, u1 = 1.0f, v1 = 1.0f;
 
     // Size range (randomized per instance)
@@ -119,8 +116,11 @@ struct DetailType {
     // Wind response (0.0 = no wind, 1.0 = full response)
     float windResponse = 1.0f;
 
-    // Height at which wind effect is strongest (normalized 0-1)
-    float windHeightBias = 0.8f;
+    // T414 Leg A (board B297) deleted `windHeightBias`.  DetailChunk builds a
+    // crossed quad with only BASE and TOP vertices and pushes windInfluence_ =
+    // 0 at the base and `windResponse` at the top; there is no mid-height
+    // vertex for a bias to move, so honouring it needs new geometry -- board
+    // B334.
 
     // Color for testing (used when no atlas is loaded)
     irr::video::SColor testColor = irr::video::SColor(255, 100, 200, 100);
@@ -161,7 +161,6 @@ struct ChunkKeyHash {
 // Zone detail configuration
 struct ZoneDetailConfig {
     std::string zoneName;
-    bool isOutdoor = true;
     Season season = Season::Default;
 
     std::vector<DetailType> detailTypes;

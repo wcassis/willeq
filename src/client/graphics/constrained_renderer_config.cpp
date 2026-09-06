@@ -335,7 +335,6 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.eqe1MappedAddressSpaceBytes   = 256 * 1024 * 1024;  // 256MB
             // Deferred asset loading (progressive mesh building during gameplay)
             config.deferredAssetLoading = true;
-            config.enableItemIcons = false;
             config.backgroundThreadCount = 1;
             config.targetFps = 30.0f;
             // Adaptive per-pixel lighting: nearest N regions/objects get per-pixel
@@ -634,8 +633,6 @@ bool ConstrainedRendererConfig::loadJsonOverrides(const std::string& presetName,
         fog = preset["fog"].asBool();
     if (preset.isMember("wireframe"))
         wireframe = preset["wireframe"].asBool();
-    if (preset.isMember("frontToBackSorting"))
-        frontToBackSorting = preset["frontToBackSorting"].asBool();
     if (preset.isMember("portalOcclusion"))
         portalOcclusion = preset["portalOcclusion"].asBool();
     if (preset.isMember("playerLight"))
@@ -657,8 +654,6 @@ bool ConstrainedRendererConfig::loadJsonOverrides(const std::string& presetName,
         nameTagsEnabled = preset["nameTagsEnabled"].asBool();
     if (preset.isMember("frameTimingEnabled"))
         frameTimingEnabled = preset["frameTimingEnabled"].asBool();
-    if (preset.isMember("enableItemIcons"))
-        enableItemIcons = preset["enableItemIcons"].asBool();
     if (preset.isMember("chrCacheMaxEntries"))
         chrCacheMaxEntries = static_cast<size_t>(preset["chrCacheMaxEntries"].asUInt());
     if (preset.isMember("mergeZoneDraws"))

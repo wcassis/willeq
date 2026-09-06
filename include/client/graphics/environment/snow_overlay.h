@@ -27,9 +27,6 @@ struct SnowOverlaySettings {
     float swayPhaseVariation = 0.3f;     // Phase offset between layers (radians factor)
 
     // Layer configuration (multiple layers for parallax depth)
-    int numLayers = 1;
-    float layerDepthMin = 2.0f;          // Closest layer distance from camera
-    float layerDepthMax = 8.0f;          // Farthest layer distance
     float layerScaleMin = 1.0f;          // UV scale for closest layer (foreground)
     float layerScaleMax = 2.0f;          // UV scale for farthest layer (smaller flakes)
     float layerSpeedMin = 0.6f;          // Scroll speed multiplier for farthest layer

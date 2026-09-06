@@ -2,17 +2,11 @@
   "storm": {
     "skyDarkeningEnabled": true,
     "maxDarkening": 0.6,
-    "fogDensityMultiplier": 1.5,
-    "fogColorR": 100,
-    "fogColorG": 110,
-    "fogColorB": 130,
     "lightningEnabled": true,
     "lightningMinInterval": 10.0,
     "lightningMaxInterval": 30.0,
     "flashDuration": 0.1,
-    "boltDuration": 0.15,
-    "lightningIntensityThreshold": 3,
-    "maxBranchLevel": 4
+    "boltDuration": 0.15
   },
   "stormClouds": {
     "enabled": true,
@@ -24,7 +18,6 @@
     "windInfluence": 0.5,
     "frameCount": 4,
     "frameDuration": 3.0,
-    "blendDuration": 1.5,
     "maxOpacity": 0.7,
     "fadeInSpeed": 0.5,
     "fadeOutSpeed": 0.3,
@@ -50,8 +43,6 @@
     "layerSpeedMax": 1.0,
     "baseOpacity": 0.3,
     "maxOpacity": 0.8,
-    "windTiltBase": 0.0,
-    "windTiltIntensity": 0.3,
     "fogReductionEnabled": true,
     "fogStartMin": 10.0,
     "fogStartMax": 200.0,

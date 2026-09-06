@@ -17,7 +17,6 @@ namespace Detail {
 ZoneDetailConfig DetailManager::createDefaultConfig(const std::string& zoneName) const {
     ZoneDetailConfig config;
     config.zoneName = zoneName;
-    config.isOutdoor = true;
     config.chunkSize = 50.0f;
     config.viewDistance = 150.0f;
     config.densityMultiplier = 1.0f;

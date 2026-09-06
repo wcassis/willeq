@@ -48,7 +48,6 @@ struct ConstrainedRendererConfig {
     // Rendering feature toggles (startup defaults, may be overridden at runtime)
     bool fog = true;
     bool wireframe = false;
-    bool frontToBackSorting = false;
     bool portalOcclusion = false;
     bool playerLight = true;
     bool objectLights = true;
@@ -65,7 +64,6 @@ struct ConstrainedRendererConfig {
 
     bool nameTagsEnabled = true;
     bool frameTimingEnabled = false;
-    bool enableItemIcons = true;  // Load item/spell icon textures (disable to save RAM)
 
     // Framebuffer memory (determines max resolution)
     // Includes: front buffer + back buffer + depth-stencil buffer

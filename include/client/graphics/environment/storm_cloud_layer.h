@@ -43,7 +43,6 @@ struct StormCloudSettings {
     // Frame animation (multi-texture cycling)
     int frameCount = 4;                 // Number of cloud texture frames
     float frameDuration = 3.0f;         // Seconds per frame cycle
-    float blendDuration = 1.5f;         // Seconds to blend between frames
 
     // Opacity
     float maxOpacity = 0.7f;            // Maximum cloud opacity

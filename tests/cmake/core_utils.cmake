@@ -171,3 +171,18 @@ ADD_EXECUTABLE(test_data_path_routing
 )
 TARGET_LINK_LIBRARIES(test_data_path_routing GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_data_path_routing)
+
+# T414 Leg A (board B297): the KEY-level companion to
+# DataPathRouting.EveryShippedConfigFileIsNamedByCode. It walks every key in
+# every shipped config/*.json and fails on one no source names, and it pins the
+# display_settings.json wiring (eight of its keys had a live consumer and no
+# parse line). Links the extracted parser TU so the wiring cases need no
+# renderer, no device and no GL context.
+ADD_EXECUTABLE(test_config_key_reachability
+    test_config_key_reachability.cpp
+)
+TARGET_LINK_LIBRARIES(test_config_key_reachability GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_config_key_reachability PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_config_key_reachability)

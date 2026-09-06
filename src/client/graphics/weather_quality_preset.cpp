@@ -19,27 +19,19 @@ WeatherQualityManager::WeatherQualityManager() {
 void WeatherQualityManager::initializePresets() {
     // Low preset - minimal effects
     lowPreset_.lightningEnabled = false;
-    lowPreset_.maxBranchLevel = 0;
     lowPreset_.cloudOverlayEnabled = false;
-    lowPreset_.fogTransitionSpeed = 0.0f;  // Instant
 
     // Medium preset - basic lightning
     mediumPreset_.lightningEnabled = true;
-    mediumPreset_.maxBranchLevel = 2;
     mediumPreset_.cloudOverlayEnabled = false;
-    mediumPreset_.fogTransitionSpeed = 0.2f;  // Fast
 
     // High preset - all effects
     highPreset_.lightningEnabled = true;
-    highPreset_.maxBranchLevel = 4;
     highPreset_.cloudOverlayEnabled = true;
-    highPreset_.fogTransitionSpeed = 0.5f;  // Smooth
 
     // Ultra preset - all effects at highest quality
     ultraPreset_.lightningEnabled = true;
-    ultraPreset_.maxBranchLevel = 6;
     ultraPreset_.cloudOverlayEnabled = true;
-    ultraPreset_.fogTransitionSpeed = 0.5f;  // Smooth
 
     // Custom preset - matches high by default, but won't override JSON
     customPreset_ = highPreset_;
@@ -89,8 +81,6 @@ void WeatherQualityManager::applyToWeatherConfig(WeatherEffectsConfig& config) c
 
     const auto& preset = getCurrentPresetValues();
     config.storm.lightningEnabled = preset.lightningEnabled;
-    // Note: maxBranchLevel would need to be added to WeatherEffectsConfig
-    // For now, lightning enabled/disabled is the main control
 
     LOG_DEBUG(MOD_GRAPHICS, "Applied {} preset to weather config: lightning={}",
               presetToString(currentPreset_), config.storm.lightningEnabled);

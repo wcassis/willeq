@@ -233,8 +233,8 @@ void WeatherEffectsController::applyConfigFromLoader() {
     if (rainOverlay_) {
         const auto& rainSettings = loader.getRainOverlaySettings();
         rainOverlay_->setSettings(rainSettings);
-        LOG_DEBUG(MOD_GRAPHICS, "Applied rain overlay config: numLayers={}, baseOpacity={}, maxOpacity={}",
-                  rainSettings.numLayers, rainSettings.baseOpacity, rainSettings.maxOpacity);
+        LOG_DEBUG(MOD_GRAPHICS, "Applied rain overlay config: baseOpacity={}, maxOpacity={}",
+                  rainSettings.baseOpacity, rainSettings.maxOpacity);
         LOG_DEBUG(MOD_GRAPHICS, "Rain overlay daylight settings: enabled={}, daylightMin={:.3f}, daylightMax={:.3f}",
                   rainSettings.daylightReductionEnabled, rainSettings.daylightMin, rainSettings.daylightMax);
     }

@@ -23,15 +23,18 @@ enum class WeatherQualityPreset {
  * WeatherPresetValues - All tunable values for a quality preset.
  */
 struct WeatherPresetValues {
-    // Lightning
+    // Lightning.  T414 Leg A (board B297) deleted `maxBranchLevel` and the
+    // shipped `storm.maxBranchLevel` key with it: there is no lightning-bolt
+    // branch generator in the tree, so the depth had nothing to bound.
+    // Re-add both together when one lands -- board B331.
     bool lightningEnabled = true;
-    int maxBranchLevel = 4;
 
     // Cloud overlay
     bool cloudOverlayEnabled = false;
 
-    // Fog transition speed (seconds to reach target)
-    float fogTransitionSpeed = 0.5f;  // Smooth = 0.5, Fast = 0.2, Instant = 0.0
+    // T414 also deleted `fogTransitionSpeed`: the weather fog is set outright
+    // (WeatherEffectsController), never interpolated, so the four presets'
+    // "Instant / Fast / Smooth" values reached no interpolator.
 };
 
 /**

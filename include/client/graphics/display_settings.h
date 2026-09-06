@@ -37,7 +37,6 @@ struct DisplaySettings {
 
     bool detailObjectsEnabled = true;
     float detailDensity = 1.0f;
-    float detailViewDistance = 150.0f;
     bool detailGrass = true;
     bool detailPlants = true;
     bool detailRocks = true;
