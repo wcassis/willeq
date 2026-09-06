@@ -594,7 +594,7 @@ void FrameComponent::renderStaticUI() {
         staticUIInput_->processInput(
             ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(), pendingUIClick_,
             uiLayout_, hotbarState_, spellGemState_, inventoryState_,
-            spellbookState_, skillsPopupState_, buffBarState_, lootState_);
+            spellbookState_, skillsPopupState_, buffBarState_, lootState_, ctx_.eventReceiver->isKeyDown(irr::KEY_SHIFT));
         staticUIInput_->processPanelInput(
             ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
             pendingUIClick_, uiLayout_, tradeskillState_, combatAbilityState_);

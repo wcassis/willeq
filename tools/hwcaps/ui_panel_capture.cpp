@@ -36,6 +36,8 @@
 #include "client/graphics/ui/tradeskill_panel.h"
 #include "client/graphics/ui/item_display_panel.h"
 #include "client/inventory/item_display_text.h"
+#include "client/spell/spell_display_text.h"
+#include "client/spell/spell_data.h"
 #include "client/inventory/item_instance.h"
 #include "client/inventory/inventory_constants.h"
 #include "client/state/event_bus.h"
@@ -106,6 +108,10 @@ struct PanelStates {
     LootPanelState loot;
     TradeskillPanelState tradeskill;   // T419 (boards B335/B321)
     ItemDisplayPanelState itemDisplay; // T421 (board B298, item half)
+    // T425 (board B298, spell half): the SAME window shape holding a SPELL.
+    // The oracle has no second display window, so this is a second STATE,
+    // not a second panel.
+    ItemDisplayPanelState spellDisplay;
     XPBarState xp;
 
     PanelStates() {
@@ -312,6 +318,28 @@ struct PanelStates {
             applyItemDisplayShown(itemDisplay, d);
         }
 
+        // T425 (board B298, spell half): a spell in that same window.
+        {
+            EQ::SpellData sp;
+            sp.id = 15;
+            sp.name = "Word of Health";
+            sp.mana_cost = 200;
+            sp.cast_time_ms = 4500;
+            sp.recast_time_ms = 9000;
+            sp.duration_formula = static_cast<uint8_t>(EQ::DurationFormula::Fixed50);
+            sp.range = 100.0f;
+            sp.casting_skill = EQ::CastingSkill::Alteration;
+            sp.spell_icon = 331;
+            for (auto& lvl : sp.class_levels) lvl = 255;
+            sp.class_levels[1] = 44;  // Cleric
+            eqt::state::ItemDisplayShownData d;
+            d.itemId = sp.id;
+            d.name = sp.name;
+            d.iconId = sp.spell_icon;
+            d.lines = eqt::spell::BuildSpellDisplayText(sp, 2, 50);
+            applyItemDisplayShown(spellDisplay, d);
+        }
+
         xp.progress = 0.62f;
     }
 };
@@ -360,6 +388,9 @@ std::vector<PanelCapture> buildCaptureList() {
         // T421 (board B298, item half): the item display window.
         {"item_display", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             renderItemDisplayPopup(u, l, s.itemDisplay); }},
+        // T425 (board B298, spell half): the same window with a SPELL in it.
+        {"spell_display", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderItemDisplayPopup(u, l, s.spellDisplay); }},
         // Everything the HUD draws at once -- the screen a player sees.
         {"hud_all", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             renderPlayerStatus(u, l, s.stats);

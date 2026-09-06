@@ -273,6 +273,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_item_display)
 ENDIF()
 
+# T425 Leg A (board B298, spell half): the spell display window -- the text
+# composer over a real SpellData, the oracle's omissions, and the real
+# shift+click that asks for it. No device, no database, no server.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_spell_display
+        test_spell_display.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_spell_display PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_spell_display GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_spell_display)
+ENDIF()
+
 # T421 Leg B (board B365): the ONE text-entry widget, and the tradeskill
 # search box using it.
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)

@@ -441,6 +441,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/action/eq_action_handler_extended.cpp
     # Spell system sources
     src/client/spell/spell_database.cpp
+    src/client/spell/spell_display_text.cpp
     src/client/spell/spell_manager.cpp
     src/client/spell/spell_body_type_target.cpp
     src/client/spell/spell_cast_checks.cpp

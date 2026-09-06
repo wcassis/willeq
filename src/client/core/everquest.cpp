@@ -369,9 +369,27 @@ bool EverQuest::InitializeSpellSystem(const std::string& eqClientPath)
 
 	// The fade hook. Three of the four fade paths notify BEFORE erasing, so the
 	// departing spell must be excluded or it would count itself as still up.
+	//
+	// T425 (board B298, spell half): the same hook is where `spell_fades`
+	// belongs. It is the sibling of `cast_on_you` / `cast_on_other`, the two
+	// spells_us.txt messages ZoneProcessAction already prints to chat on a
+	// LANDING (spell_packet_handlers.cpp); `spell_fades` is the one the
+	// official client prints when the buff WEARS OFF, and it had no reader at
+	// all -- a loader writing a string nobody read, which is exactly what
+	// B298 catalogued. It is NOT a spell-display-window line: the window's
+	// vocabulary is eqstr_us.txt's numbered formats, and this text is a
+	// complete sentence shipped per spell in the spell row itself.
+	// Player buffs only (entity_id 0): the fade text is written in the
+	// second person ("Your strength fades") and the client has no
+	// third-person form of it.
 	m_buff_manager->setBuffFadeCallback(
-		[publishVisionForBuffChange](uint16_t entity_id, uint32_t spell_id) {
+		[this, publishVisionForBuffChange](uint16_t entity_id, uint32_t spell_id) {
 			publishVisionForBuffChange(entity_id, spell_id, spell_id);
+			if (entity_id != 0 || !m_spell_manager) return;
+			const EQ::SpellData* faded = m_spell_manager->getSpell(spell_id);
+			if (faded && !faded->spell_fades.empty()) {
+				AddChatSystemMessage(faded->spell_fades);
+			}
 		});
 
 	// ========================================================================

@@ -4965,10 +4965,50 @@ T407 deleted eleven (see below). The rest are boarded here.
   box; `Slot:` (eqstr 3000) is the item's EQUIPPABLE slot list, which the
   window draws from `slots`, and nothing anywhere shows where an item
   currently sits. Its exemption row says so.
-  `SpellData` carries `resist_diff`, `zone_type`,
-  `teleport_zone`, `spell_fades`, `player_tag`, `environment_type`,
-  `time_of_day`, `aoe_duration`, `push_up`, `allow_rest`, `is_dispellable`,
-  `no_partial_resist`, `no_expend_reagent`; `SkillData` carries
+  **SPELL HALF STRUCK by T425 Leg A** (`266189d4`). fable now has a spell
+  display window -- and it is the SAME window, because **the oracle has no
+  second one**: there is no `EQUI_SpellDisplay.xml` and no `SpellDisplay` /
+  `SpellInfo` screen anywhere in `/mnt/projects/EverQuestP1999/uifiles/default`
+  (79 `<Screen item=...>` declarations, none of them a spell display), and
+  `EQUI_ItemDisplay.xml`'s own `IDW_IconButton` decals the SPELL sheet
+  (`<NormalDecal>BuffIcons</NormalDecal>`). So T425 added no panel, no layout,
+  no event and no scroll target: `eqt::spell::BuildSpellDisplayText()`
+  (`src/client/spell/spell_display_text.cpp`) composes lines from the same
+  `eqstr_us.txt` T421 quoted and ships them on the same `ItemDisplayShown`
+  event. **Nine lines are drawn**, each quoting its id: `class_levels` (3004
+  `Level Needed: %1` / 3005 `Level Needed: CANNOT USE`), `mana_cost` (3006),
+  the duration (3102 `Spell Duration: %1.` / 3103 `Spell Duration:
+  Permanent.`), `casting_skill` (3105 `Skill: %1`), `cast_time_ms` (3107
+  `Cast Time: %1`), `range` (6730 `Range = %1`), `recast_time_ms` (9234
+  `Recast Delay: %1`), plus `name` -> the `Style_Titlebar` row and
+  `spell_icon` -> `IDW_IconButton`'s decal. Trigger: **SHIFT+left click** on a
+  memorised gem or a spellbook row -- flagged as a deviation, since the oracle
+  uses a right click (fable's right button is mouselook) and, unlike T421's
+  inventory slot, plain left was already the cast/memorise action.
+  **`spell_fades` is CLOSED and is not a window field**: it is the sibling of
+  `cast_on_you`/`cast_on_other`, which `spell_packet_handlers.cpp` prints on a
+  landing, so T425 prints it at `BuffManager`'s existing fade callback
+  (`src/client/core/everquest.cpp`) when a PLAYER buff wears off.
+  **Every other spell field stays hidden because the oracle has no line for
+  it** -- measured by grepping `eqstr_us.txt`, not assumed, and each
+  `WriteOnlyFields` exemption row now says which absence:
+  `resist_type`/`resist_diff` (the table has NO spell-resist line at all --
+  every "Resist" hit is a combat message, an AA name, or 9044, the ITEM
+  stun-resist stat), `zone_type` and `environment_type` and `time_of_day` (no
+  Indoor/Outdoor, environment or time format string), `teleport_zone` (no
+  Destination/Location line), `player_tag` (a spells_us.txt internal tag),
+  `target_type`/`aoe_range`/`aoe_duration`/`push_back`/`push_up`/
+  `allow_rest`/`is_dispellable`/`no_partial_resist` (no such line), and
+  `endurance_cost` (5809 `Endurance: %1` is the ITEM stat). **Seven of those
+  came up as NEW `WriteOnlyFields` rows the moment the new test WROTE them to
+  assert they stay hidden** -- the same shape as T421's `heroic*`. The
+  reagents are the one line the oracle HAS (6732 `Reagents Needed: %1`) and
+  fable cannot draw: it wants an item NAME and the client has no
+  item-name-by-id source at all -- **B391**.
+  What remains under this id is the SKILL and ENTITY halves.
+  `SpellEffectSlot::base2_value` also stays: the oracle prints no per-effect
+  numbers in the display window.
+  `SkillData` carries
   `animation_code`, `usable_while_sitting`, `usable_while_stunned`,
   `min_level`; `Entity` carries `guildId`, `anon_status`, `deltaHeading`;
   `RaceModelInfo` carries `genderVariants`, `neuterCode`. Each is a loader
@@ -6059,7 +6099,36 @@ client uses every field.
 
 ## Added 2026-09-06 by T421
 
-- **B375** (B) `include/client/inventory/item_instance.h` -- **nine
+- **B375** (B) ~~`include/client/inventory/item_instance.h`~~ -- **STRUCK by
+  T425 Leg B** (`73c79386`). Each of the nine was resolved against
+  eqemu's `titanium.cpp` `SerializeItem()`, the wire this client actually
+  reads, one verdict per member:
+  * **the seven `heroic*` -- DELETED.** `SerializeItem()` never emits an
+    `ItemData::Heroic*` field (grep over that function: zero hits), so there
+    is nothing on the wire to parse; and eqstr_us.txt has no heroic-stat
+    format string, so there would be nothing to draw either. Compiler proof:
+    the tree builds with the members gone, and the seven `WriteOnlyFields`
+    exemption rows went with them.
+  * **`bardEffect` -- DELETED.** Titanium's wire carries FIVE `ItemEffect`
+    blocks and no sixth: `Click`, `Proc`, `Worn`, `Focus`, `Scroll`, at
+    fields 134-158. The bard data it does carry is the SCALAR pair
+    `BardType`/`BardValue` at fields 41-42 -- a skill-modifier pair, not an
+    effect -- and eqstr has no instrument-modifier item line for that either,
+    so parsing it into a new scalar would produce another unread field. The
+    parser's existing `// fields[41-42] = BardType, BardValue` comment stays.
+  * **`expendable` -- WIRED.** It is not a wire FIELD; it is derived, and
+    eqemu's `ItemInstance::IsExpendable()`
+    (`/mnt/projects/akk-stack/code/common/item_instance.h`) is the
+    definition: `Click.Type == item::ItemEffectExpendable || ItemType ==
+    ItemTypePotion`. BOTH inputs are serialized by Titanium -- `Click.Type`
+    is field 135 and `ItemType` is field 0 -- so the parser now derives it,
+    and eqstr 3001 `EXPENDABLE     Charges: %1`, which
+    `BuildItemDisplayText()` has printed since T421 and which nothing could
+    ever reach, is live. Three cases in `tests/test_item_display.cpp` drive
+    the REAL parser over a real serialized item: a click-type expendable, a
+    potion, and an ordinary item that is neither.
+
+- ~~**B375** (B) `include/client/inventory/item_instance.h` -- **nine
   `ItemInstance` members have NO WRITER at all.** `expendable`, the seven
   `heroic*` (`heroicStr`/`Sta`/`Agi`/`Dex`/`Wis`/`Int`/`Cha`) and `bardEffect`
   are declared, default-initialised and assigned by nothing:
@@ -6077,7 +6146,7 @@ client uses every field.
   bard fields at `fields[41-42]` (`BardType`, `BardValue`), which the parser
   reads past with a comment. Closes when each group is either wired to its
   wire field or deleted. Found by T421 Leg A (the seven `heroic*` surfaced as
-  `WriteOnlyFields` NEW rows the moment a test wrote them).
+  `WriteOnlyFields` NEW rows the moment a test wrote them).~~
 
 - **B376** (B) `include/client/graphics/ui/static_panels.h`
   `SlotDisplayInfo::iconId`, `TradeskillSlotDisplay::iconId`,
@@ -6254,3 +6323,38 @@ client uses every field.
   LOOK change, which is why this is C and not B: it belongs with **B350**
   (the 70-78% opacity decision), not ahead of it. Nobody has ruled on either.
   Found by T424 Leg C while closing B351.
+
+---
+
+## Added 2026-09-06 by T425
+
+- **B390** (B) `src/client/inventory/item_display_text.cpp`,
+  `src/client/spell/spell_display_text.cpp` -- **the two display composers
+  hardcode format strings the client already ships as data.** Every line they
+  emit is quoted from `/mnt/projects/EverQuestP1999/eqstr_us.txt`, and that
+  whole table is ALREADY in `data/willeq.db` as `eqstrings` (5,901 rows,
+  loaded by `tools/willeq_db_builder.cpp`'s `loadEqStrings()`) and ALREADY
+  reachable at runtime through `EQT::StringDatabase::getString()` /
+  `formatString()`, which `EverQuest::m_string_db` owns and
+  `chat_component.cpp` and `eq_strings.cpp` already use. So the two composers
+  transcribe by hand what one `getString(3006)` would fetch, which means a
+  localised `eqstr_XX.txt` would not reach them and a transcription typo is
+  invisible. Not fixed in T425 because the composers are free functions that
+  a test drives with no database and changing that is a design call (an
+  injected string-lookup hook, the `who_response.h` shape, is the obvious
+  form). Closes when both composers take their formats from the string table.
+  Found by T425 Leg A.
+
+- **B391** (B) `src/client/spell/spell_display_text.cpp`,
+  `include/client/spell/spell_data.h` `reagent_id` -- **the one spell-display
+  line the oracle has that fable cannot draw.** eqstr 6732 is
+  `Reagents Needed: %1` (6731 `Reagents Available: %1`), and `%1` is an item
+  NAME. `SpellData` carries `reagent_id[4]` / `reagent_count[4]` and nothing
+  else; the client has no item-name-by-id source anywhere -- `data/willeq.db`
+  has no items table (its tables are `animation_sounds`, `dbstrings`,
+  `eqstrings`, `equipment_models`, `equipment_textures`, `item_models`,
+  `login_strings`, `metadata`, `music_files`, `race_models`, `sound_assets`,
+  `spells`), and the wire only names an item inside an item packet the player
+  happens to receive. Printing the ids would be inventing a line the official
+  client never draws, so T425 drew nothing. Closes when an item-name lookup
+  exists (the same gap `B376`'s icon sheet sits next to). Found by T425 Leg A.

@@ -255,7 +255,7 @@
 254 staticUIInput_->processInput(
 255 ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(), pendingUIClick_,
 256 uiLayout_, hotbarState_, spellGemState_, inventoryState_,
-257 spellbookState_, skillsPopupState_, buffBarState_, lootState_);
+257 spellbookState_, skillsPopupState_, buffBarState_, lootState_, ctx_.eventReceiver->isKeyDown(irr::KEY_SHIFT));
 258 staticUIInput_->processPanelInput(
 259 ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
 260 pendingUIClick_, uiLayout_, tradeskillState_, combatAbilityState_);

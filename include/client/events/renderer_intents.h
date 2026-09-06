@@ -252,6 +252,15 @@ struct ItemDisplayRequestIntent {
     int16_t slot;
 };
 
+// T425 (board B298, spell half): a SHIFT+click on an occupied spell gem or on
+// a spellbook entry. The game thread answers with the SAME ItemDisplayShown
+// event -- the oracle has ONE display window (there is no EQUI_SpellDisplay
+// in uifiles/default at all) and it shows a spell or an item, so the renderer
+// gets composed lines either way and never sees a SpellData.
+struct SpellDisplayRequestIntent {
+    uint32_t spellId;
+};
+
 // --- Trainer ---
 
 struct TrainSkillIntent {
@@ -360,6 +369,7 @@ using RendererIntent = std::variant<
     RecipeSearchIntent,
     RecipeFavoriteIntent,
     ItemDisplayRequestIntent,
+    SpellDisplayRequestIntent,
     // Trainer
     TrainSkillIntent,
     CloseTrainerIntent,

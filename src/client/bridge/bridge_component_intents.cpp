@@ -45,6 +45,8 @@
 #include "client/inventory/inventory_manager.h"
 #include "client/inventory/item_instance.h"
 #include "client/inventory/item_display_text.h"
+#include "client/spell/spell_display_text.h"
+#include "client/spell/spell_data.h"
 #include "client/entities/entities_component.h"
 #include "client/inventory/inventory_constants.h"
 #include "client/inventory/item_instance.h"
@@ -800,6 +802,30 @@ void eqt::bridge::BridgeComponent::onItemDisplayRequestIntent(const eqt::events:
 		eqt::state::GameEventType::ItemDisplayShown, std::move(data)));
 }
 
+// T425 (board B298, spell half). The SAME window as the item display, because
+// the oracle has only one: uifiles/default holds no EQUI_SpellDisplay.xml and
+// no SpellDisplay screen -- ItemDisplayWindow's own icon button decals the
+// spell sheet (<NormalDecal>BuffIcons</NormalDecal>). So the answer is an
+// ItemDisplayShown event with lines composed by BuildSpellDisplayText(), and
+// the renderer never learns a SpellData exists.
+void eqt::bridge::BridgeComponent::onSpellDisplayRequestIntent(const eqt::events::SpellDisplayRequestIntent& i) {
+	if (!ctx_.spell_manager || !ctx_.bridge) {
+		return;
+	}
+	const EQ::SpellData* spell = ctx_.spell_manager->getSpell(i.spellId);
+	if (spell == nullptr) {
+		return;
+	}
+	eqt::state::ItemDisplayShownData data;
+	data.itemId = spell->id;
+	data.name = spell->name;
+	data.iconId = spell->spell_icon;
+	data.lines = eqt::spell::BuildSpellDisplayText(
+		*spell, ctx_.game_state.player().classId(), ctx_.game_state.player().level());
+	ctx_.bridge->pushEvent(eqt::state::GameEvent(
+		eqt::state::GameEventType::ItemDisplayShown, std::move(data)));
+}
+
 // Trainer intents (D20b1)
 void eqt::bridge::BridgeComponent::onTrainSkillIntent(const eqt::events::TrainSkillIntent& i) {
 	ctx_.Merchant().TrainSkill(i.skillId);
@@ -908,6 +934,7 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 			[this](const eqt::events::RecipeSearchIntent& i) { onRecipeSearchIntent(i); },
 			[this](const eqt::events::RecipeFavoriteIntent& i) { onRecipeFavoriteIntent(i); },
 			[this](const eqt::events::ItemDisplayRequestIntent& i) { onItemDisplayRequestIntent(i); },
+			[this](const eqt::events::SpellDisplayRequestIntent& i) { onSpellDisplayRequestIntent(i); },
 			[this](const eqt::events::TrainSkillIntent& i) { onTrainSkillIntent(i); },
 			[this](const eqt::events::CloseTrainerIntent& i) { onCloseTrainerIntent(i); },
 			[this](const eqt::events::MoveItemIntent& i) { onMoveItemIntent(i); },
