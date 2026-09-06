@@ -3,6 +3,7 @@
 #ifdef WITH_AUDIO
 
 #include <cstdint>
+#include <list>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -60,15 +61,47 @@ public:
 
     // Cache management
     size_t getCacheSize() const;
+
+    // Set the cache ceiling in bytes; 0 means unlimited. Applying a ceiling
+    // evicts immediately, so lowering it at runtime takes effect at once.
+    // T412 (board B292): before this the budget was stored and nothing ever
+    // compared cacheSizeBytes_ against it, so the SFX cache grew without bound
+    // on a memory-constrained target.
     void setCacheMaxBytes(size_t maxBytes);
+    size_t getCacheMaxBytes() const;
+
+    // Number of WAVs currently cached, and how many have been evicted since
+    // construction. Both exist for the budget tests and the debug HUD.
+    size_t getCachedSoundCount() const;
+    size_t getEvictionCount() const;
 
 private:
+    // --- T412 (board B292): LRU budget enforcement. All three require
+    // cacheMutex_ to be held by the caller. ---
+
+    // Evict least-recently-used entries until cacheSizeBytes_ <= cacheMaxBytes_,
+    // skipping anything a mixer channel is still playing, and always keeping at
+    // least one entry (the sibling rule in AudioManager::loadSound()).
+    void enforceCacheBudgetLocked();
+
+    // A WAV is "in use" when an ACTIVE mixer channel's sample pointer aliases
+    // its vector -- play() hands the channel wav->samples.data() directly, so
+    // freeing a playing entry is a use-after-free on the audio thread.
+    bool isInUseLocked(const WavData& wav) const;
+
+    // Move filename to the most-recently-used end.
+    void touchLruLocked(const std::string& filename) const;
+
     AudioMixer* mixer_ = nullptr;
 
     mutable std::mutex cacheMutex_;
     std::unordered_map<std::string, WavData> cache_;
+    // Most-recently-used at the front. Mutable because getWavData() is const
+    // and IS the read that makes a sound recently used (play() goes through it).
+    mutable std::list<std::string> lruOrder_;
     size_t cacheMaxBytes_ = 0;  // 0 = unlimited
     size_t cacheSizeBytes_ = 0;
+    size_t evictionCount_ = 0;
 
     // Listener state for spatial audio
     glm::vec3 listenerPos_{0.0f};
