@@ -539,7 +539,13 @@ struct InventorySlotChangedData {
 
 struct CursorItemChangedData {
     bool hasCursorItem;
-    uint8_t queueSize;
+    // T413 (board B296): `queueSize` lived here and no consumer ever read it.
+    // It is not a rendering omission -- the official UI has no element for it:
+    // EQUI_CursorAttachment.xml's whole screen is CA_Anim / CA_Anim2 /
+    // CA_SpellGem, three 40x40 icon slots with no count label anywhere, and
+    // the queue depth is simply never shown. The game-side depth stays on
+    // InventoryState::cursorQueueSize() (which has a reader and a test); only
+    // the renderer-facing copy is gone.
 };
 
 struct EquipmentStatsChangedData {
@@ -632,7 +638,14 @@ struct SpellGemChangedData {
     uint8_t gemState;  // SpellGemState value
     uint32_t cooldownRemainingMs;
     uint32_t cooldownTotalMs;       // Total cooldown duration (for progress computation)
-    uint32_t memorizeTotalMs;       // Total memorize duration (for progress computation)
+    // T413 (board B296): `memorizeTotalMs` lived here, was copied onto the
+    // cached gem state and read by nothing. The oracle draws no gauge on a
+    // gem: EQUI_CastSpellWnd.xml's <SpellGem item="CSPW_Spell0".."Spell8">
+    // carry only a SpellGemDrawTemplate (Holder/Background/Highlight) and no
+    // Gauge piece at all. Memorisation progress is shown by
+    // EQUI_SpellBookWnd.xml's <Gauge item="SBW_Memorize_Gauge"> (EQType 9),
+    // which fable now draws from SpellMemorizingData -- the event that
+    // actually carries the progress. So this duplicate is dropped, not drawn.
     std::string spellName;          // Spell name (for tooltip/display)
     uint32_t iconId;                // Spell gem icon ID
 };

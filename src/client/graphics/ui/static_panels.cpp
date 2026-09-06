@@ -658,6 +658,56 @@ void renderBuffBar(UIRenderer& ui, const UILayout& layout,
     }
 }
 
+// T413 (board B296): CastingStateChangedData::castTimeRemainingMs and
+// ::castTimeTotalMs were filled by SpellState on every casting transition and
+// read by nobody -- the bridge's CastingStateChanged arm was a LOG_TRACE
+// whose comment still pointed at the deleted WindowManager. They now drive
+// the same gauge SpellCastVisualStarted opens.
+void applyCastingStateChanged(CastingBarState& state,
+                              const eqt::state::CastingStateChangedData& data) {
+    if (!data.isCasting) {
+        state.isCasting = false;
+        state.remainingMs = 0;
+        state.totalMs = 0;
+        return;
+    }
+    state.isCasting = true;
+    state.remainingMs = data.castTimeRemainingMs;
+    state.totalMs = data.castTimeTotalMs;
+    // The name comes from SpellCastVisualStarted, which carries it; this
+    // event does not, so an existing name is never cleared here.
+    if (state.castTimeMs == 0) state.castTimeMs = data.castTimeTotalMs;
+}
+
+void applySpellMemorizing(SpellbookPopupState& state,
+                          const eqt::state::SpellMemorizingData& data) {
+    if (!data.isMemorizing) {
+        state.isMemorizing = false;
+        state.memorizeProgressMs = 0;
+        state.memorizeTotalMs = 0;
+        return;
+    }
+    state.isMemorizing = true;
+    state.memorizeGemSlot = data.gemSlot;
+    state.memorizeProgressMs = data.progressMs;
+    state.memorizeTotalMs = data.totalMs;
+}
+
+irr::core::rect<irr::s32> spellbookMemorizeGaugeRect(const UILayout& layout) {
+    // EQUI_SpellBookWnd.xml, quoted in the header: gauge (204,312) 100x8
+    // inside a 510x360 screen.
+    constexpr int kOracleX = 204, kOracleY = 312;
+    constexpr int kOracleW = 100, kOracleH = 8;
+    constexpr int kOracleWinW = 510, kOracleWinH = 360;
+
+    const auto& popup = layout.centerPopup;
+    const irr::s32 x = popup.UpperLeftCorner.X + kOracleX * popup.getWidth() / kOracleWinW;
+    const irr::s32 y = popup.UpperLeftCorner.Y + kOracleY * popup.getHeight() / kOracleWinH;
+    const irr::s32 w = kOracleW * popup.getWidth() / kOracleWinW;
+    const irr::s32 h = kOracleH * popup.getHeight() / kOracleWinH;
+    return {x, y, x + w, y + h};
+}
+
 void renderCastingBar(UIRenderer& ui, const UILayout& layout,
                       const CastingBarState& state) {
     if (!state.isCasting) return;
@@ -890,6 +940,17 @@ void renderSpellbookPopup(UIRenderer& ui, const UILayout& layout,
             tb->addText(spell.name, startX + 30, y + 6,
                 irr::video::SColor(255, 220, 220, 255));
         }
+    }
+
+    // T413 (board B296): the memorisation gauge, at the oracle's own place --
+    // EQUI_SpellBookWnd.xml's <Gauge item="SBW_Memorize_Gauge"> (EQType 9),
+    // FillTint (200,0,200). Drawn only while a memorise is in flight, which
+    // is exactly when the oracle's gauge is non-empty.
+    if (state.isMemorizing) {
+        const auto gauge = spellbookMemorizeGaugeRect(layout);
+        ui.drawBar(gauge, state.memorizeProgress(),
+                   irr::video::SColor(255, 200, 0, 200),
+                   irr::video::SColor(180, 20, 20, 20));
     }
 
     // Page navigation hints

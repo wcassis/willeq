@@ -248,6 +248,17 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_software_cursor_pack_name)
 ENDIF()
 
+# T413 (board B296): the bridge payload fields nothing drew. Pure state +
+# geometry over static_panels/UILayout — no device, no server, no DISPLAY.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_bridge_payload_fields
+        test_bridge_payload_fields.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_bridge_payload_fields PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_bridge_payload_fields GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_bridge_payload_fields)
+ENDIF()
+
 # T275: pixel-level assertions on the ATLAS-backed UIRenderer path (a real
 # headless GLES2 device + the real ui_atlas out of willeq.eqe1). Every UI
 # capture harness before this ran with atlas=nullptr, so the atlas path had

@@ -31,6 +31,10 @@ struct LootItemRemovedData;
 // T393 (board B201): the purse. The CurrencyChanged arm was a LOG_TRACE that
 // discarded its payload, so no coin count ever reached a panel.
 struct CurrencyChangedData;
+// T413 (board B296): the casting bar and the spellbook's memorisation gauge
+// apply their payloads through the free functions declared below.
+struct CastingStateChangedData;
+struct SpellMemorizingData;
 } }
 
 namespace EQT {
@@ -223,7 +227,6 @@ struct SpellGemState {
     uint32_t iconId = 0;
     uint32_t cooldownRemainingMs = 0;
     uint32_t cooldownTotalMs = 0;
-    uint32_t memorizeTotalMs = 0;
     std::chrono::steady_clock::time_point lastUpdateTime;
 };
 
@@ -307,19 +310,51 @@ int hitTestBuffBar(const UILayout& layout, const BuffBarState& state,
                    int mouseX, int mouseY);
 
 // Cached casting bar state
+//
+// The oracle is EQUI_CastingWindow.xml's <Gauge item="Casting_Gauge">
+// (EQType 7, 116x10 at (3,19) inside the 140x60 "Casting Time" screen): one
+// horizontal fill plus the spell name above it. fable's bar is that gauge.
 struct CastingBarState {
     bool isCasting = false;
     std::string spellName;
     uint32_t castTimeMs = 0;
     std::chrono::steady_clock::time_point castStartTime;
 
+    // T413 (board B296): the AUTHORITATIVE remaining/total the game thread
+    // computes and publishes on CastingStateChanged. Before this the bar had
+    // only its own render-thread stopwatch, started when
+    // SpellCastVisualStarted arrived, so every source of skew between the two
+    // threads (a stall, a long frame, a zone load, a cast the server shortened)
+    // showed up as a gauge that disagreed with the cast it was drawing --
+    // and the two fields the game thread had already computed for exactly this
+    // were read by nobody. totalMs == 0 means "no authoritative sample yet",
+    // and the stopwatch is used, exactly as before.
+    uint32_t remainingMs = 0;
+    uint32_t totalMs = 0;
+
     float getProgress() const {
-        if (!isCasting || castTimeMs == 0) return 0.0f;
+        if (!isCasting) return 0.0f;
+        if (totalMs > 0) {
+            const uint32_t done = (remainingMs >= totalMs) ? 0u : (totalMs - remainingMs);
+            return std::min(1.0f, static_cast<float>(done) / static_cast<float>(totalMs));
+        }
+        if (castTimeMs == 0) return 0.0f;
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - castStartTime).count();
         return std::min(1.0f, static_cast<float>(elapsed) / static_cast<float>(castTimeMs));
     }
 };
+
+/**
+ * T413: apply a CastingStateChanged bridge event to the cached bar state.
+ *
+ * Same one-hop free-function shape as applyHotbarSlotAssigned() above, for
+ * the same reason: a test can drive the real producer's data struct into the
+ * real consumer state with no Irrlicht device. A `isCasting == false` payload
+ * clears the bar, which is what the game thread means by it.
+ */
+void applyCastingStateChanged(CastingBarState& state,
+                              const eqt::state::CastingStateChangedData& data);
 
 /** Render casting bar (center-bottom, only when casting). */
 void renderCastingBar(UIRenderer& ui, const UILayout& layout,
@@ -425,10 +460,48 @@ struct SpellbookPopupState {
     static constexpr int SPELLS_PER_PAGE = 8;
     int hoveredSlot = -1;                       // 0-7 within current page
 
+    // T413 (board B296): memorisation progress, from SpellMemorizingData.
+    // The oracle puts this gauge in the SPELLBOOK, not on the gem — see
+    // spellbookMemorizeGaugeRect() below for the quoted XML.
+    bool isMemorizing = false;
+    uint8_t memorizeGemSlot = 0;
+    uint32_t memorizeProgressMs = 0;
+    uint32_t memorizeTotalMs = 0;
+
+    float memorizeProgress() const {
+        if (!isMemorizing || memorizeTotalMs == 0) return 0.0f;
+        if (memorizeProgressMs >= memorizeTotalMs) return 1.0f;
+        return static_cast<float>(memorizeProgressMs) / static_cast<float>(memorizeTotalMs);
+    }
+
     int pageCount() const {
         return spells.empty() ? 1 : static_cast<int>((spells.size() + SPELLS_PER_PAGE - 1) / SPELLS_PER_PAGE);
     }
 };
+
+/**
+ * T413: apply a SpellMemorizing bridge event to the cached spellbook state.
+ * `isMemorizing == false` clears the gauge.
+ */
+void applySpellMemorizing(SpellbookPopupState& state,
+                          const eqt::state::SpellMemorizingData& data);
+
+/**
+ * T413: the memorisation gauge's rect, the oracle's own, scaled into the
+ * centre popup exactly the way InventoryLayout::coinRect()/paperdollRect()
+ * scale theirs (proportional, integer division).
+ *
+ * Quoted from /mnt/projects/EverQuestP1999/uifiles/default/EQUI_SpellBookWnd.xml:
+ *
+ *   <Gauge item="SBW_Memorize_Gauge">
+ *     <Location><X>204</X><Y>312</Y></Location>
+ *     <Size><CX>100</CX><CY>8</CY></Size>
+ *     <EQType>9</EQType>
+ *   </Gauge>
+ *
+ * inside  <Screen item="SpellBookWnd">  <Size><CX>510</CX><CY>360</CY></Size>.
+ */
+irr::core::rect<irr::s32> spellbookMemorizeGaugeRect(const UILayout& layout);
 
 /** Render spellbook popup (center screen). */
 void renderSpellbookPopup(UIRenderer& ui, const UILayout& layout,

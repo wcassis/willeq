@@ -629,7 +629,6 @@ void EverQuest::PublishFullStateSnapshot() {
 			data.gemState = static_cast<uint8_t>(m_spell_manager->getGemState(i));
 			data.cooldownRemainingMs = m_spell_manager->getGemCooldownRemaining(i);
 			data.cooldownTotalMs = 0;
-			data.memorizeTotalMs = 0;
 			if (spellId != EQ::SPELL_UNKNOWN) {
 				const auto* spell = m_spell_manager->getSpell(spellId);
 				data.spellName = spell ? spell->name : "";

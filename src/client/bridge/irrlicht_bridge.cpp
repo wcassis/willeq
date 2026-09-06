@@ -553,22 +553,28 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 gem.iconId = d.iconId;
                 gem.cooldownRemainingMs = d.cooldownRemainingMs;
                 gem.cooldownTotalMs = d.cooldownTotalMs;
-                gem.memorizeTotalMs = d.memorizeTotalMs;
                 gem.lastUpdateTime = std::chrono::steady_clock::now();
             }
         }
         break;
+    // T413 (board B296): both of these arms used to discard their payload
+    // with a comment pointing at WindowManager, a class deleted in 0f25cb57.
+    // The static UI has drawn both gauges for units; only the wiring was
+    // missing, so every field the game thread computed for them
+    // (castTimeRemainingMs/castTimeTotalMs, progressMs/totalMs) was write-only.
     case state::GameEventType::CastingStateChanged:
-        // Casting bar is driven by direct SpellManager → WindowManager calls
-        // (startCast/cancelCast/completeCast). Event struct lacks spell name
-        // required by startCast(). Deferred to Phase 5 renderer refactor.
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: CastingStateChanged");
+        if (renderer_) {
+            EQT::Graphics::applyCastingStateChanged(
+                renderer_->Frame().castingBarState_,
+                std::get<state::CastingStateChangedData>(event.data));
+        }
         break;
     case state::GameEventType::SpellMemorizing:
-        // Memorize bar is driven by direct SpellManager → WindowManager calls
-        // (startMemorize/cancelMemorize/completeMemorize). Event struct lacks
-        // spell name. Deferred to Phase 5 renderer refactor.
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: SpellMemorizing");
+        if (renderer_) {
+            EQT::Graphics::applySpellMemorizing(
+                renderer_->Frame().spellbookState_,
+                std::get<state::SpellMemorizingData>(event.data));
+        }
         break;
     case state::GameEventType::BuffUpdated:
         if (renderer_) {
