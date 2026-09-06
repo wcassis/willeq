@@ -3514,7 +3514,16 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   per-zone memory block. **T398 did not touch it.** Closes when Will blesses
   the three numbers above and someone edits them by hand (lines 171/180/189).
   Until then `visual_gate` is the one red in a 4,105-test suite. Prov: T398
-  Review Leg B; B230; B218. **T400 ADDS A SECOND, LARGER DELTA TO THE SAME
+  Review Leg B; B230; B218. **T406 ADDS A THIRD AND MUCH LARGER DELTA TO
+  THE SAME BLESS (2026-09-06)**: converting the 59 B266 textures to in-band
+  RGBA8888 moved `willeq.eqe1` from 2,830,206 to **19,994,910** bytes
+  (+17,164,704), so `eqe1MappedBytes` is now stale by **+17,184,047** per zone,
+  not +19,343 -- measured qeynos2 137,128,478 / gfaydark 135,794,570 /
+  befallen 130,279,066 against manifest 119,944,431 / 118,610,523 /
+  113,095,019 (three standalone gate runs, one after each family commit). No
+  image golden moved in any of them and all three CPU p95 numbers stayed
+  inside their ceilings. T406 did not bless either, and whether the 17.2 MB is
+  the right price at all is boarded separately as **B287**. **T400 ADDS A SECOND, LARGER DELTA TO THE SAME
   BLESS (this commit)**: rebuilding the pack for B225 moved `willeq.eqe1` again,
   2,811,102 -> 2,830,206 bytes (**+19,104**), so `eqe1MappedBytes` is now stale
   by **+19,343** per zone, not +239. T400 did NOT bless it either -- same rule,
@@ -3819,7 +3828,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   textures), reblesses whatever gate images move, and rebuilds the pack.
   Prov: T403 Review §2.
 
-- **B266** (A) `data/textures/*.bmp` (63 files) / `tools/generate_textures.cpp`
+- ~~**B266** (A) `data/textures/*.bmp` (63 files) / `tools/generate_textures.cpp`
   -- **B225 was not one file. Every generator except the particle atlas draws
   a real alpha channel, and every one of those 63 BMPs ships 24-bit with that
   alpha thrown away.** Measured by `generate_textures --report`, which prints
@@ -3843,7 +3852,29 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   actually samples (B261 again) -- and the plan's rule was to change no
   shipped BMP. Closes when the 63 are converted through
   `tools/bmp32_writer.h`, their consumers are checked against B261, the pack
-  is rebuilt, and the gate is re-blessed. Prov: T403 Review §3.
+  is rebuilt, and the gate is re-blessed. Prov: T403 Review §3.~~  **CLOSED by T406 (2026-09-06)** in three commits, one per consumer
+  family: `75de2288` weather (the 32 `storm_cloud_blend_*`, the ten rain
+  intensities + `rain_layer_mid/far`, the ten snow intensities +
+  `snow_layer_mid/far` -- 56 files), `d5dd61fc` `software_cursor.bmp`, and
+  `93429d28` `creature_atlas.bmp` + `tumbleweed.bmp`. **59 files converted,
+  not 63.** The other four are recorded with their reason and pinned as
+  24-bit: `spell_particle_fallback.bmp` (its only consumer is an
+  `EMT_TRANSPARENT_ADD_COLOR` particle system, i.e. `glBlendFunc(GL_ONE,
+  GL_ONE)`, and `SOLID3D_FS` does not multiply RGB by alpha, so the alpha is
+  provably never sampled -> new **B286**), `detail_atlas.bmp` (B265: no build
+  reproduces it, so a 32-bit rewrite is a pixel move in every outdoor gate
+  zone), and `rain_streaks.bmp` + `snow_flakes.bmp` (**no consumer at all** --
+  `RainOverlay`/`SnowOverlay` name neither). Every converted consumer was
+  checked against B261 and not one is alpha-TEST: the storm dome and the two
+  billboard sets are `EMT_TRANSPARENT_ALPHA_CHANNEL` -> `SOLID3D_FS`, and the
+  rain/snow/cursor draws are `draw2DImage(..., useAlphaChannelOfTexture=true)`
+  -> the single-sampler `UI2D` program. All 59 therefore take the in-band
+  `--rgba8888-texture` override, which `scripts/build_willeq_pack.sh` now
+  builds as a list. Pinned by `tests/test_texture_alpha_census.cpp` (14 cases,
+  3 failing per family before its fix), whose
+  `EveryShippedBmpIsAccountedFor` forces every future generator into one list
+  or the other. **The gate was NOT re-blessed** (that is B240's, and the cost
+  is now large enough to be its own question -> new **B287**).
 
 - **B267** (B) `tools/particle_atlas_builder.cpp` -- **a 118-line target that
   is now a strict subset of another one.** T400 created it to regenerate the
@@ -4153,3 +4184,65 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   eqemu server is), or each worktree reads its own pack, so that a live
   capture can name the asset it ran against. Prov: T401 Review §0; B228; B230;
   B240; B225.
+
+### Added by T406 (2026-09-06)
+
+- **B285** (B) `src/client/graphics/renderer/irrlicht_renderer.cpp`
+  `createSoftwareCursor()` -- **the cursor is loaded under a cache name that
+  no pack entry can ever match.** It calls
+  `constrainedTextureCache_->getOrLoad("softwareCursor", ...)`, but the pack
+  entry built from `data/textures/software_cursor.bmp` is named
+  `software_cursor`; `findCompressedEntry()` only strips the extension and
+  lowercases, so `softwarecursor` never matches. It works today purely by
+  ordering luck: `createSoftwareCursor()` runs at `renderer_init.cpp:484`,
+  **fourteen lines before** `getOrOpenEQE1("willeq")` at line 498, so
+  `snapshotEQE1Loaders()` is still empty and the call falls through to the raw
+  BMP decoder. Move the cursor load one line later, or open the pack one line
+  earlier, and `getOrLoad()` takes the "EQE1 is configured but the texture is
+  not in it" branch, which is `LOG_FATAL` + `exit(1)` -- on the DRM/KMS path,
+  i.e. the Orange Pi, where the software cursor is the only cursor. T406 gave
+  the pack entry the RGBA8888 override anyway so the two paths agree, but the
+  name mismatch is unfixed. Closes when the cache name becomes
+  `software_cursor` (and the ordering assumption is either removed or
+  commented as load-bearing). Prov: T406 Review.
+
+- **B286** (B) `src/client/graphics/spell_visual_fx.cpp` /
+  `data/textures/spell_particle_fallback.bmp` -- **the spell particle fallback
+  is a white square by construction, and no texture change can fix it.**
+  `generateSpellParticleFallback()` writes `SColor(alpha, 255, 255, 255)`: a
+  cosine falloff from the centre entirely in ALPHA over constant white RGB.
+  Its only consumer sets the particle system to
+  `EMT_TRANSPARENT_ADD_COLOR`, which `COpenGLES2Driver::
+  applyMaterialRenderState()` maps to `glBlendFunc(GL_ONE, GL_ONE)`, and
+  `SOLID3D_FS` computes `texColor * vColor` without premultiplying by alpha --
+  so the source alpha reaches no visible channel and every texel of the 32x32
+  quad adds full white. This is why T406 left the file 24-bit: converting it
+  would have been a 33% size increase for zero pixels. The fix is one of
+  (a) make the generator put the falloff in RGB (correct for an additive
+  blend, and what the official client's Glowflare DDS does), or (b) draw the
+  fallback alpha-blended like every other B266 consumer and convert the file.
+  Reached only when the official client's `Glowflare03.dds` /
+  `glittersp501.dds` / `Corona1.dds` are all missing, which is why it has
+  never been reported. Prov: T406 Review.
+
+- **B287** (C) `/mnt/projects/EverQuest_ETC1/willeq.eqe1`,
+  `include/client/graphics/eqe1_format.h` -- **B266's fix cost 17.2 MB of shared pack and the
+  same again in mapped bytes per zone, and the format has no cheaper way to
+  carry an alpha-only texture.** Measured across T406's three commits: the
+  pack went 2,830,206 -> 19,994,910 bytes (**+606%**), and `eqe1MappedBytes`
+  rose by +17,184,047 in each of the gate's three zones. The reason is that
+  59 textures moved from ETC1 (4 bits/texel, RGB only) to RGBA8888
+  (32 bits/texel): a 256x256 entry with its mip chain goes 43,688 -> 349,528
+  bytes, and 56 of the 59 are 256x256. The GPU cost is the same multiple --
+  `benchmarks/audits/p13_texture_ledger` shows all 32 `storm_cloud_blend_*`
+  uploaded in qeynos2 -- which lands on the Orange Pi's constrained texture
+  budget, the platform where composite entities are already off for memory
+  pressure. **Every one of the 59 is a CONSTANT-RGB image whose whole content
+  is one 8-bit channel**, so an `A8` (or luminance+alpha) payload format would
+  carry them at 8 bits/texel: ~4.4 MB instead of ~17.2 MB, with no visual
+  difference at all. That is a format addition (`eqe1_format.h` payload id,
+  builder mode, `uploadCompressed*` path, and a shader that reads the single
+  channel as alpha), not a texture change, which is why T406 shipped the
+  RGBA8888 form the plan specified rather than inventing one mid-unit.
+  Needs Will's call: accept the 17.2 MB, or fund the compact payload.
+  Prov: T406 Review; B261; B240.
