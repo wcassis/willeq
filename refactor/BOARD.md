@@ -5033,7 +5033,7 @@ client uses every field.
   first, then the pair. Closes with the measured parameter table and a live
   capture. Prov: T417 Review; B226.
 
-- **B357** (P) `tests/goldens/manifest.json` memory-coverage
+- ~~**B357** (P) `tests/goldens/manifest.json` memory-coverage
   `eqe1MappedBytes` -- **a bless is owed for T417's pack growth, and the
   visual gate is RED on `task/T417-real-spell-sprites` until it is given.**
   T417 added `spell_sprite_atlas` and its `_alpha` companion to
@@ -5046,8 +5046,7 @@ client uses every field.
   CPU p95 under ceiling in all three zones (5.277/6.291/6.370 against
   10.108/10.672/10.948), budget block clean. The manifest was NOT touched:
   an executor never self-blesses. Closes when Will blesses the three numbers.
-  Prov: T417 Review; the same class as B228 and B315.
-
+  Prov: T417 Review; the same class as B228 and B315.~~ **APPLIED at the T417 merge under Will's B240 bless: 123,015,486 / 121,681,578 / 116,166,074.**
 - **B305** (P) The T410 scenario lane's THREE LIVE PROOF RUNS ARE OWED. The
   lane builds, its 20 headless state-machine cases are green, and the client
   was observed arming and reporting a verdict; but `zone_in`,

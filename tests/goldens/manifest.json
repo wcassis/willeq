@@ -168,7 +168,7 @@
       {
         "zone": "qeynos2",
         "memory": {
-          "eqe1MappedBytes": 122665822,
+          "eqe1MappedBytes": 123015486,
           "eqe1ArchiveCount": 28,
           "placeableObjectsBytes": 1365564,
           "characterModelsBytes": 25743220
@@ -177,7 +177,7 @@
       {
         "zone": "gfaydark",
         "memory": {
-          "eqe1MappedBytes": 121331914,
+          "eqe1MappedBytes": 121681578,
           "eqe1ArchiveCount": 28,
           "placeableObjectsBytes": 5624100,
           "characterModelsBytes": 25374894
@@ -186,7 +186,7 @@
       {
         "zone": "befallen",
         "memory": {
-          "eqe1MappedBytes": 115816410,
+          "eqe1MappedBytes": 116166074,
           "eqe1ArchiveCount": 28,
           "placeableObjectsBytes": 2168052,
           "characterModelsBytes": 25502699
