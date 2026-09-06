@@ -3093,7 +3093,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   line per zone-in, so this is now checkable from the session log alone — and
   (b) treat the pre-T383 baseline numbers above as SUSPECT until re-measured
   under a verified-clear sky, because nobody knows what weather T358/T361/T377
-  were under. Nothing about the constants themselves changed in T396.~~ **STRUCK T405 (`b31e0ed7`) -- THE LIVE RE-SOLVE LANDED.** The owed A/B search was
+  were under. Nothing about the constants themselves changed in T396.~~ **STRUCK T405 (`2edf3b3b`) -- THE LIVE RE-SOLVE LANDED.** The owed A/B search was
   run with BOTH confounds pinned for the first time: weather proven 1.000 for
   every window from the client's own log (and `#set weather 0 0` is NOT enough
   on its own -- `Zone::ChangeWeather()` re-rolls on a 60 s timer from
@@ -4076,7 +4076,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   at **75%** (Ultravision) and **88%** (Infravision), not the 93%/99% the
   board records. Closes when B203's text no longer quotes the T377 numbers as
   a starting point -- done in the same commit -- and the re-solve is fitted
-  against a clear-sky measurement. Prov: T401 Review §4d(1); B203; B211; T396.~~ **STRUCK T405 (`b31e0ed7`).** B203's text no longer quotes the T377 numbers as
+  against a clear-sky measurement. Prov: T401 Review §4d(1); B203; B211; T396.~~ **STRUCK T405 (`2edf3b3b`).** B203's text no longer quotes the T377 numbers as
   a starting point -- it no longer quotes ANY of them, because T405 re-measured
   both sides on a rig with the heading pinned as well as the weather and re-solved
   the constants against it. The re-solve is fitted against a clear-sky
@@ -4101,7 +4101,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   taken with the camera heading pinned and RECORDED (the official client's
   yaw on login is not the `character_data` heading), the composition control
   is inside 3%, and the per-channel table is re-taken against it. Prov: T401
-  Review §4d(2); B203; B146.~~ **STRUCK T405 (`b31e0ed7`).** The heading IS pinnable and it was the whole
+  Review §4d(2); B203; B146.~~ **STRUCK T405 (`2edf3b3b`).** The heading IS pinnable and it was the whole
   problem. eqemu's `goto.cpp` takes an optional 4th argument and passes it to
   `MovePC`, so `#goto -74 428 3.751 160` places AND aims (T389 §5.3 had already
   found a `character_data` heading does not take on zone-in); h=160 is world
@@ -4158,7 +4158,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   capture can name the asset it ran against. Prov: T401 Review §0; B228; B230;
   B240; B225.
 
-  **T405 (`b31e0ed7`) MEASURED THE WINDOW AGAIN AND IT IS WORSE: the shared pack was
+  **T405 (`2edf3b3b`) MEASURED THE WINDOW AGAIN AND IT IS WORSE: the shared pack was
   rewritten THREE TIMES inside one six-hour unit**, dated from the clients' own
   `EQE1Loader: mmap'd` lines -- 2,830,206 bytes (66 tex / 2 alpha) for its first
   two sessions, 19,994,910 (66 / 61) for the next five, 5,270,190 (126 / 61) for
