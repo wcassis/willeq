@@ -1,28 +1,27 @@
 {
-  "detailObjects" : 
+  "detailObjects" :
   {
     "debris" : true,
-    "density" : 0.17142857611179352,
+    "density" : 1.0,
     "enabled" : true,
     "grass" : true,
     "plants" : true,
-    "rocks" : true,
-    "viewDistance" : 200.0
+    "rocks" : true
   },
-  "environmentEffects" : 
+  "environmentEffects" :
   {
     "ambientCreatures" : true,
     "animatedTrees" : true,
     "atmosphericParticles" : false,
-    "density" : 0.0,
-    "enableFireGlowIcospheres" : true,
+    "density" : 0.5,
+    "enableFireGlowIcospheres" : false,
     "enableFireGlowLighting" : true,
     "fireEffects" : true,
-    "maxFireGlowLights" : 8,
-    "quality" : "low",
+    "maxFireGlowLights" : 4,
+    "quality" : "medium",
     "reactiveFoliage" : true,
     "rollingObjects" : true,
     "skyEnabled" : true
   },
-  "renderDistance" : 200.0
+  "renderDistance" : 300.0
 }

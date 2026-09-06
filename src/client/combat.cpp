@@ -45,15 +45,11 @@ CombatManager::CombatManager(EverQuest* eq)
 	, m_auto_loot_enabled(true)
 	, m_auto_movement_enabled(false)  // Default to false - only enabled by "attack" command
 	, m_auto_hunting_enabled(false)
-	, m_is_resting(false)
 	, m_hunt_radius(300.0f)
 	, m_rest_hp_threshold(50.0f)
 	, m_rest_mana_threshold(30.0f)
 	, m_waiting_for_considers(false)
-	, m_assist_range(50.0f)
 	, m_aggro_radius(30.0f)
-	, m_combat_range(5.0f)  // Standard melee range
-	, m_spell_range(200.0f)
 	, m_attack_delay_ms(2000) // Default 2 second attack delay
 {
 	// Initialize memorized spells vector
@@ -755,7 +751,6 @@ std::vector<CombatTarget> CombatManager::GetNearbyHostiles(float range) {
 					target.con_color = CON_WHITE; // Default until we consider
 					target.priority = TARGET_PRIORITY_MEDIUM;
 					target.is_aggro = IsRecentAttacker(id); // T247: it has hit us lately
-					target.last_considered = std::chrono::steady_clock::now();
 					target.has_consider_data = false;
 
 					hostiles.push_back(target);

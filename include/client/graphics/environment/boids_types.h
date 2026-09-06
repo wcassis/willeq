@@ -98,21 +98,20 @@ struct BoidsBudget {
     int maxFlocks;          // Maximum active flocks
     int maxCreatures;       // Maximum total creatures
     float densityMult;      // Density multiplier (0-1)
-    float viewDistance;     // Distance at which creatures are visible
     float cullDistance;     // Distance at which to cull creatures
 
     static BoidsBudget fromQuality(int quality) {
         // 0 = Off, 1 = Low, 2 = Medium, 3 = High
         switch (quality) {
             case 0:  // Off
-                return {0, 0, 0.0f, 0.0f, 0.0f};
+                return {0, 0, 0.0f, 0.0f};
             case 1:  // Low
-                return {2, 30, 0.5f, 100.0f, 120.0f};
+                return {2, 30, 0.5f, 120.0f};
             case 2:  // Medium
-                return {3, 50, 0.75f, 130.0f, 150.0f};
+                return {3, 50, 0.75f, 150.0f};
             case 3:  // High
             default:
-                return {4, 80, 1.0f, 150.0f, 180.0f};
+                return {4, 80, 1.0f, 180.0f};
         }
     }
 };

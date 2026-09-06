@@ -4543,7 +4543,7 @@ checked before anyone acts on it.
 
 T407 deleted eleven (see below). The rest are boarded here.
 
-- **B290** (P) `scripts/refactor/check_write_only_fields.py` -- **the census is
+- ~~**B290** (P) `scripts/refactor/check_write_only_fields.py` -- **the census is
   the queue; 213 of its 224 rows are untriaged.** T407 deleted eleven fields
   whose writes it also removed, compiler-proven at exit 0 with `tools/` in the
   build: `Application::m_lastUpdate`, `AudioManager::useDbForSounds_`,
@@ -4558,7 +4558,18 @@ T407 deleted eleven (see below). The rest are boarded here.
   ctest as a no-grow ratchet. Re-run it with
   `python3 scripts/refactor/check_write_only_fields.py --include-unused`.
   Found by T407 Leg B; the shape was named by T404 surprise 2
-  (`MixChannel::sampleRate`).
+  (`MixChannel::sampleRate`).~~ **CLOSED by T414 Leg C**: all 83
+  remaining write-only rows are classified in the script's new `EXEMPT` table --
+  `wire` (the struct mirrors bytes on disk or on the wire: `EQE1Header::reserved`,
+  `WldFragment37Header::param2`, the three `Sky*` records, `DoorVisual`'s two
+  `_raw` bytes, `RDPPeerContext::selectedAudioFormat`), `owned` (B296's nine
+  event_bus payload fields, T413's territory), `boarded` (B295, B298's 26 record
+  fields, and the new B336-B346), `report` (B337). `--check` is wired into ctest
+  as **`WriteOnlyFields`** (label `hygiene`) and fails BOTH ways: on a write-only
+  field missing from the table, and on a table entry whose field is no longer
+  write-only, so an exemption cannot outlive the row it excuses. Planted-fault
+  proof of both halves in `refactor/T414_inert_config_keys_combat_tuning.md`
+  §Review. The row count fell 111 -> 83 across T414's own legs.
 
 - ~~**B291** (A) `include/client/graphics/entity_renderer.h`
   `EntityRenderer::skipTextureUpload_` -- **a constrained-mode knob that does
@@ -4692,7 +4703,7 @@ T407 deleted eleven (see below). The rest are boarded here.
   compile-time pins in the new TU do that job for the dropped pair, and the
   general sweep is a separate piece of work. Prov: T413 Review.
 
-- **B297** (B) `include/client/graphics/environment/environment_config.h` and
+- ~~**B297** (B) `include/client/graphics/environment/environment_config.h` and
   siblings -- **JSON config keys parsed into fields nothing reads.** The census
   names `DetailSettings::grassEnabled` / `plantsEnabled` / `rocksEnabled` /
   `debrisEnabled`, `BoidsSettings::flockSizeMin` / `flockSizeMax` /
@@ -4707,7 +4718,38 @@ T407 deleted eleven (see below). The rest are boarded here.
   the shipped JSON changes nothing, silently -- the same defect class as B245's
   read-by-nobody config files, one level down. Closes when each is consumed or
   the key is removed from the loader and the shipped JSON together. Found by
-  T407's census.
+  T407's census.~~ **CLOSED by T414 Leg A**
+  (`315619f5`). The entry undercounted: **twenty-nine** shipped keys were inert,
+  not twenty-two, and the eight most damaging were in a file B297 never named.
+  **Eight were WIRED**, not deleted: `config/display_settings.json` ships fifteen
+  keys and `renderer_init.cpp`'s static `loadDisplaySettingsFromFile()` read
+  SEVEN. `renderDistance`, `environmentEffects.quality`/`.density`/
+  `.reactiveFoliage`/`.enableFireGlowLighting`/`.enableFireGlowIcospheres`/
+  `.maxFireGlowLights` and `detailObjects.density`/`.grass`/`.plants`/`.rocks`/
+  `.debris` all name `DisplaySettings` fields with LIVE consumers --
+  `IrrlichtRenderer::setRenderDistance()` and
+  `OverlaysComponent::applyEnvironmentalDisplaySettings()`, which calls
+  `DetailManager::setCategoryEnabled()` per category with a value the file never
+  supplied. Only the parse line was missing. The parse moved to
+  `src/client/graphics/display_settings_loader.cpp` (testable with no renderer,
+  device or GL context) and the shipped file -- one machine's saved slider
+  positions from the DELETED options window, never in effect -- was rewritten to
+  the values that WERE in effect, so no behaviour and no visual golden moved.
+  **Twenty-one were deleted**: `environment_effects.json`'s whole `detailObjects`
+  and `boids` sections with `DetailSettings`/`BoidsSettings` (`getDetailObjects()`
+  and `getBoids()` have ZERO callers -- a second, drifting copy of configuration
+  that `detail_objects.json` and `SimulationWorker`+`BoidsBudget::fromQuality()`
+  actually own), `detail_objects.json`'s `seasons` section (an exact duplicate of
+  `SeasonalController`'s hardcoded table), `constrained_presets.json`'s
+  `enableTextureAtlas` (its field was removed by E10), `stormClouds.blendDuration`
+  (the crossfade is PRE-BAKED into `storm_cloud_blend_N.bmp`), the rain and snow
+  `layerDepthMin`/`layerDepthMax`/`numLayers`, `BoidsBudget::viewDistance`,
+  `WeatherPresetValues::fogTransitionSpeed`, `ZoneDetailConfig::isOutdoor`, the
+  legacy `DetailType::atlas{X,Y,Width,Height}` block (superseded by `atlasTile`;
+  nothing converted its pixels to UVs) and `DisplaySettings::detailViewDistance`.
+  **Five families boarded**: B330-B335. New net:
+  `ConfigKeyReachability.EveryShippedConfigKeyIsNamedByCode`, the KEY-level
+  companion to B245's file-level census.
 
 - **B298** (B) `include/client/inventory/item_instance.h`,
   `include/client/spell/spell_data.h`, `include/client/skill/skill_data.h`,
@@ -4728,7 +4770,7 @@ T407 deleted eleven (see below). The rest are boarded here.
   Closes per family as those features land; until then the loads are honest
   but inert. Found by T407's census.
 
-- **B299** (B) `include/client/combat.h` `CombatManager::m_assist_range`,
+- ~~**B299** (B) `include/client/combat.h` `CombatManager::m_assist_range`,
   `m_combat_range`, `m_spell_range`, `m_is_resting`, `m_rest_mana_threshold`,
   and `CombatTarget::last_considered` -- dead tuning state. `SetAssistRange()`
   and `SetCombatRange()` have exactly one caller each, `test_combat_manager.cpp`,
@@ -4737,7 +4779,21 @@ T407 deleted eleven (see below). The rest are boarded here.
   `combat_hunting.cpp` and consulted by nothing. NOT deleted in T407 because
   removing the setters requires editing that test, which T407's contract kept
   unedited. Closes when the setters, the members and the test's `EXPECT_NO_THROW`
-  block go together, or a consumer appears. Found by T407's census.
+  block go together, or a consumer appears. Found by T407's census.~~ **CLOSED by T414 Leg B**
+  (`4ac66d13`). `m_assist_range`, `m_combat_range`, `m_spell_range`,
+  `m_is_resting` and `CombatTarget::last_considered` are deleted with
+  `SetAssistRange()`/`SetCombatRange()`, and `test_combat_manager.cpp`'s
+  `EXPECT_NO_THROW` block is replaced by a real round-trip on the one setter that
+  survives (`SetAggroRadius` -- `m_aggro_radius` IS read by `GetNearbyHostiles()`
+  and the hunt scan): at radius 0 the hostile scan comes back empty. The common
+  reason is one line: the server enforces reach and swing timers, the client
+  animates. `/assist` is a server round-trip, melee reach is per-target
+  `CalculateCombatRange(my_size, target_size, race)`, spell range comes from the
+  spell row, and `SetCombatState(COMBAT_STATE_RESTING)` was already the resting
+  flag `m_is_resting` duplicated. **Correction to this entry**:
+  `m_rest_mana_threshold` is NOT write-only -- `CombatManager::ShouldRest()`
+  reads it (`combat_hunting.cpp`). It was named from the census summary, not the
+  census output, which never flagged it.
 
 - **B300** (C) `src/client/graphics/environment/spell_effects_config.cpp`
   `buildTextureNameMap()` -- **the 16-tile procedural particle atlas cannot
@@ -4943,3 +4999,149 @@ client uses every field.
   recorded in `tests/test_texture_alpha_census.cpp`'s reason string for the
   file. Low urgency: the fallback is reached only when Glowflare03.dds,
   glittersp501.dds and Corona1.dds are ALL missing. Found by T413.
+
+- **B330** (B) `include/client/graphics/environment/rain_overlay.h` --
+  **the rain overlay cannot tilt.** `windTiltBase` / `windTiltIntensity` were
+  parsed from `weather_effects.json` (clamped, ranged) into fields nothing read;
+  T414 Leg A deleted the keys, the parse and the fields. Honouring them needs a
+  rotated-quad draw: `RainOverlay::render()` tiles the streak texture with
+  axis-aligned `draw2DImage` rects, so a screen-space angle has nowhere to go.
+  Closes when the overlay can draw a rotated quad and the two keys come back
+  together with a test. Found by T414 Leg A.
+
+- **B331** (B) `include/client/graphics/weather_quality_preset.h` -- **lightning
+  has no branches to bound.** `WeatherPresetValues::maxBranchLevel` carried
+  0/2/4/6 per quality preset and the shipped `storm.maxBranchLevel` key carried
+  4; there is no lightning-bolt branch generator anywhere in the tree, and
+  `applyToWeatherConfig()` said so in a comment ("would need to be added to
+  WeatherEffectsConfig"). T414 Leg A deleted the field, the four preset lines,
+  the comment and the key. Closes when a branching bolt lands and re-adds all of
+  them together. Found by T414 Leg A.
+
+- **B332** (B) `include/client/graphics/constrained_renderer_config.h` --
+  **`enableItemIcons` promised a RAM saving that nothing could deliver.** The
+  `orangepi` preset set it false in code and `constrained_presets.json` set it in
+  two presets; there is no item/spell icon texture loading in the tree at all --
+  `static_panels.cpp` draws abbreviated item names with "placeholder until icon
+  atlas" beside them, and `StaticPanels::iconId` is commented "for future icon
+  atlas". T414 Leg A deleted the field, the parse and the shipped keys. Closes
+  when an icon atlas exists and the flag gates its load. Found by T414 Leg A.
+
+- **B333** (B) `include/client/graphics/constrained_renderer_config.h` --
+  **`frontToBackSorting` was a second, dead spelling of a live feature.** The
+  preset key parsed into a field nothing read. The real front-to-back zone draw
+  is `manualZoneDrawEnabled_` (`/sort`, `RenderPassTimer::OnRenderPassPreRender`);
+  this one never reached it. T414 Leg A deleted the field and the parse. Closes
+  if a preset should be able to preset `/sort` -- then it wires to
+  `manualZoneDrawEnabled_`, not to a new flag. Found by T414 Leg A.
+
+- **B334** (B) `include/client/graphics/detail/detail_types.h` --
+  **`DetailType::windHeightBias` has no vertex to act on.** The key was parsed
+  per detail type and the field never read. `DetailChunk` builds a crossed quad
+  with only BASE and TOP vertices and pushes `windInfluence_` = 0 at the base and
+  `windResponse` at the top, so a "height at which wind is strongest" has no
+  mid-height vertex to move. T414 Leg A deleted the parse and the field. Closes
+  when the detail quad gains a mid vertex (or a vertex shader takes the bias as
+  a uniform) and the key returns with a test. Found by T414 Leg A.
+
+- **B335** (B) `config/weather_effects.json` `storm` -- **four shipped storm keys
+  with no field at all.** `fogDensityMultiplier`, `fogColorR`, `fogColorG`,
+  `fogColorB` and `lightningIntensityThreshold` were in the shipped file;
+  `WeatherEffectsConfig::Storm` has no such members, and the loader's only
+  acknowledgement was an empty `if (json.isMember("fogDensityMultiplier")) { }`
+  whose body was two comments. So a storm has no configurable fog tint and
+  lightning has no configurable intensity gate. T414 Leg A deleted the keys and
+  the empty stub. Closes when the storm fog tint and the lightning threshold are
+  real fields with consumers. Found by T414 Leg A.
+
+- **B336** (B) `include/client/graphics/detail/detail_types.h`
+  `ZoneDetailConfig::viewDistance` -- **the detail view distance in
+  `detail_objects.json` is inert.** `globalSettings.viewDistance` (200.0 shipped)
+  and the legacy root-level `viewDistance` both parse into the field, and
+  `DetailManager` culls by `viewDistanceChunks_`, a hardcoded 2 (a 5x5 chunk
+  grid). Not deleted with B297's siblings because the wiring is mechanical
+  (`ceil(viewDistance / chunkSize)`) but NOT behaviour-neutral: 200/50 is 4
+  chunks, a 9x9 grid, which changes both the visual gate and the frame cost.
+  It hid from T407's census behind the reads of the two `viewDistance` fields
+  T414 Leg A deleted. Closes when the chunk radius derives from the configured
+  distance, with a measured before/after. Found by T414 Leg C.
+
+- **B337** (B) `include/client/graphics/eq/race_model_loader.h`,
+  `equipment_model_loader.h`, `include/client/graphics/tree_identifier.h` --
+  **diagnostic aggregates filled and never printed.** `MemoryStats::
+  loadedModelCount` / `variantMeshCacheCount` / `animatedMeshCacheCount` /
+  `armorTextureCount` / `meshCacheCount` and `TreeIdentifier::Stats::
+  treePatternCount` / `leafPatternCount` / `zoneTreeMeshCount` /
+  `excludedMeshCount` are computed for reports that do not print them. Closes
+  when each is printed (`/pmem`, the tree report) or dropped. Classified
+  `report` in the census table. Found by T414 Leg C.
+
+- **B338** (A) `include/client/graphics/constrained_texture_cache.h` --
+  **two cache flags a caller sets and the cache ignores.** `bgThreadPool_` is
+  handed a real `BackgroundThreadPool*` by a setter and read by nothing, while
+  `renderer_zone_draw.cpp` carries a comment about "async background decode
+  submits to bgThreadPool_"; `compressedTexturesAvailable_` is written four
+  times by the ETC1 support probe and consulted nowhere. Same shape as the
+  closed B291 (`skipEntityTextureUpload`): a caller supplies an intended value
+  that changes nothing. Closes when both are consumed or both are deleted with
+  their setters. Found by T414 Leg C.
+
+- **B339** (B) `include/client/graphics/weather_effects_controller.h`
+  `targetIntensity_` -- commented "For smooth transitions", written on every
+  intensity change and on reset, read by nothing: weather intensity is applied
+  outright, never interpolated toward a target. Closes when the transition
+  exists or the member goes. Found by T414 Leg C.
+
+- **B340** (B) `include/client/graphics/zone_lifecycle/zone_lifecycle_component.h`
+  `entitiesLoaded_` / `expectedEntityCount_` -- **the header already documents
+  them as write-only.** L09 deleted their zero-caller accessors and left the
+  members and their four writes behind. Closes when they go with the writes, or
+  a consumer for the zone-in entity gate appears. Found by T414 Leg C.
+
+- **B341** (B) `include/client/graphics/overlays/overlays_component.h`
+  `currentTargetInfo_` / `currentTargetLevel_` -- target-overlay state cached
+  when the target changes and never read by the draw. The target outline and
+  name plate get their data elsewhere. Closes when the overlay draws from them
+  or they go. Found by T414 Leg C.
+
+- **B342** (B) `include/client/inventory/inventory_manager.h` and
+  `include/client/graphics/environment/particle_manager.h` -- **four registered
+  callbacks that are never invoked.** `InventoryManager::moveItemCallback_`,
+  `deleteItemCallback_`, `equipmentChangedCallback_` and
+  `ParticleManager::entityDirCallback_` each have a setter a caller uses and no
+  call site. A registered callback that never fires is worse than none: the
+  registrant believes it is wired. Closes when each is called or the setter and
+  member go together. Found by T414 Leg C.
+
+- **B343** (B) `include/client/graphics/ui/character_model_view.h`
+  `inventoryManager_` and `include/client/graphics/eq/animated_mesh_scene_node.h`
+  `sceneManager_` -- stored collaborator pointers with no reader. Closes when
+  each is used or dropped from the constructor/setter. Found by T414 Leg C.
+
+- **B344** (B) `include/client/bridge/bridge_component.h`
+  `m_audio_config_vendor_music`, `include/client/player/player_component.h`
+  `m_duel_target_id`, `include/client/skill/skill_manager.h` `m_player_race` --
+  three pieces of state stored at the point a decision is made and never
+  consulted when the decision is taken: the vendor-music config reaches no audio
+  call, `/duel` records the target id the reply path does not use, and the
+  player race is stored for skill gating that does not gate on race. Closes per
+  member. Found by T414 Leg C.
+
+- **B345** (B) `include/client/graphics/camera_controller.h`
+  `orbitAngleInitialized_`, `include/client/output/console_renderer.h`
+  `m_curEnd` / `m_playerHeading` / `m_startTime`,
+  `include/client/input/hotkey_manager.h` `ConflictInfo::binding1` / `binding2`
+  -- write-only leftovers in three unrelated classes: an orbit-camera
+  first-frame latch, three headless-console-renderer members, and the two
+  binding strings a hotkey conflict report never formats. Closes per class.
+  Found by T414 Leg C.
+
+- **B346** (B) simulation/renderer per-frame payload fields with no consumer --
+  `SimulationWorker`'s `EntityResult::shouldDeactivate` (set by the worker,
+  ignored by the drain) and `SimulationInput::cameraTarget`,
+  `EntityVisual::corpseYOffset` (computed per corpse, never applied to the
+  node), `ParticleEmitter::spawnRadius_` (seven callers set it; the spawn does
+  not use it), `SpellEffectInstance::spellID`, `RendererEvent::intData`,
+  `SpellActionInfo::level2`. Same class as B296 one layer down: a producer
+  computes a value for a consumer that never reads it. Closes per field. Found
+  by T414 Leg C.

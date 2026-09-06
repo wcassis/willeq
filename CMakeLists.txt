@@ -625,6 +625,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/weather_effects_controller.cpp
         src/client/graphics/weather_config_loader.cpp
         src/client/graphics/weather_quality_preset.cpp
+        src/client/graphics/display_settings_loader.cpp
         # Environmental particle system
         src/client/graphics/environment/particle_emitter.cpp
         src/client/graphics/environment/particle_manager.cpp

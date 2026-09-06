@@ -87,9 +87,6 @@ bool DetailConfigLoader::parseConfigJson(const std::string& json, ZoneDetailConf
     if (root.isMember("zoneName")) {
         config.zoneName = root["zoneName"].asString();
     }
-    if (root.isMember("isOutdoor")) {
-        config.isOutdoor = root["isOutdoor"].asBool();
-    }
 
     // Parse global settings (new format)
     if (root.isMember("globalSettings")) {
@@ -148,15 +145,6 @@ bool DetailConfigLoader::parseConfigJson(const std::string& json, ZoneDetailConf
                 getTileUV(tile, type.u0, type.v0, type.u1, type.v1);
             }
 
-            // Parse atlas coordinates (legacy format)
-            if (typeJson.isMember("atlas")) {
-                const Json::Value& atlas = typeJson["atlas"];
-                if (atlas.isMember("x")) type.atlasX = atlas["x"].asInt();
-                if (atlas.isMember("y")) type.atlasY = atlas["y"].asInt();
-                if (atlas.isMember("width")) type.atlasWidth = atlas["width"].asInt();
-                if (atlas.isMember("height")) type.atlasHeight = atlas["height"].asInt();
-            }
-
             // Parse size - new format (separate fields)
             if (typeJson.isMember("minSize")) {
                 type.minSize = typeJson["minSize"].asFloat();
@@ -206,9 +194,6 @@ bool DetailConfigLoader::parseConfigJson(const std::string& json, ZoneDetailConf
             // Parse wind settings
             if (typeJson.isMember("windResponse")) {
                 type.windResponse = typeJson["windResponse"].asFloat();
-            }
-            if (typeJson.isMember("windHeightBias")) {
-                type.windHeightBias = typeJson["windHeightBias"].asFloat();
             }
 
             // Parse test color (ARGB array)
@@ -272,7 +257,6 @@ DetailOrientation DetailConfigLoader::parseOrientationString(const std::string& 
 ZoneDetailConfig DetailConfigLoader::getHardcodedDefault(const std::string& zoneName) {
     ZoneDetailConfig config;
     config.zoneName = zoneName;
-    config.isOutdoor = true;
     config.chunkSize = 50.0f;
     config.viewDistance = 150.0f;
     config.densityMultiplier = 1.0f;

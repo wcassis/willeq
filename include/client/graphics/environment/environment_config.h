@@ -67,37 +67,6 @@ public:
     };
 
     /**
-     * Settings for detail objects (grass, plants, etc.)
-     */
-    struct DetailSettings {
-        bool enabled = true;
-        float density = 1.0f;
-        float viewDistance = 150.0f;
-        bool grassEnabled = true;
-        bool plantsEnabled = true;
-        bool rocksEnabled = true;
-        bool debrisEnabled = true;
-    };
-
-    /**
-     * Settings for ambient creatures (boids flocking system)
-     */
-    struct BoidsSettings {
-        bool enabled = true;
-        int maxFlocks = 3;
-        int flockSizeMin = 5;
-        int flockSizeMax = 12;
-        float spawnCooldown = 30.0f;
-        float viewDistance = 150.0f;
-        float scatterRadius = 20.0f;
-        // Boids behavior weights
-        float separation = 1.5f;
-        float alignment = 1.0f;
-        float cohesion = 1.0f;
-        float avoidance = 2.0f;
-    };
-
-    /**
      * Settings for tumbleweeds in desert/plains zones
      */
     struct TumbleweedSettings {
@@ -125,8 +94,6 @@ public:
     const EmitterSettings& getSandDust() const { return sandDust_; }
     const EmitterSettings& getEmbers() const { return embers_; }
     const EmitterSettings& getSmoke() const { return smoke_; }
-    const DetailSettings& getDetailObjects() const { return detailObjects_; }
-    const BoidsSettings& getBoids() const { return boids_; }
     const TumbleweedSettings& getTumbleweeds() const { return tumbleweeds_; }
 
     /**
@@ -149,8 +116,6 @@ private:
     EnvironmentEffectsConfig& operator=(const EnvironmentEffectsConfig&) = delete;
 
     void loadEmitterSettings(const Json::Value& json, const std::string& name, EmitterSettings& settings);
-    void loadDetailSettings(const Json::Value& json);
-    void loadBoidsSettings(const Json::Value& json);
     void loadTumbleweedSettings(const Json::Value& json);
     void setDefaults();
 
@@ -164,8 +129,6 @@ private:
     EmitterSettings sandDust_;
     EmitterSettings embers_;
     EmitterSettings smoke_;
-    DetailSettings detailObjects_;
-    BoidsSettings boids_;
     TumbleweedSettings tumbleweeds_;
 
     ReloadCallback reloadCallback_;

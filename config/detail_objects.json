@@ -36,29 +36,6 @@
     "show_on_jungle": true
   },
 
-  "seasons": {
-    "default": {
-      "densityMultiplier": 1.0,
-      "tint": [255, 255, 255, 255]
-    },
-    "snow": {
-      "densityMultiplier": 0.4,
-      "tint": [255, 200, 220, 255]
-    },
-    "desert": {
-      "densityMultiplier": 0.5,
-      "tint": [255, 255, 230, 180]
-    },
-    "swamp": {
-      "densityMultiplier": 1.2,
-      "tint": [255, 180, 200, 150]
-    },
-    "autumn": {
-      "densityMultiplier": 1.0,
-      "tint": [255, 255, 200, 150]
-    }
-  },
-
   "detailTypes": [
     {
       "name": "grass",

@@ -227,8 +227,9 @@ bool CombatManager::ShouldRest() const {
 }
 
 void CombatManager::StartResting() {
+	// COMBAT_STATE_RESTING is the resting flag; T414 Leg B (board B299)
+	// deleted the duplicate m_is_resting bool, which nothing read.
 	SetCombatState(COMBAT_STATE_RESTING);
-	m_is_resting = true;
 
 	// Sit down to rest
 	m_eq->Movement().SetPositionState(POS_SITTING);
@@ -238,8 +239,6 @@ void CombatManager::StartResting() {
 }
 
 void CombatManager::StopResting() {
-	m_is_resting = false;
-
 	// Stand up
 	m_eq->Movement().SetPositionState(POS_STANDING);
 

@@ -21,10 +21,9 @@ struct RainOverlaySettings {
     float scrollSpeedBase = 0.3f;       // Base scroll speed (texture scrolls/sec)
     float scrollSpeedIntensity = 0.05f; // Additional speed per intensity level
 
-    // Layer configuration (multiple layers for parallax depth)
-    int numLayers = 1;
-    float layerDepthMin = 2.0f;        // Closest layer distance from camera
-    float layerDepthMax = 8.0f;        // Farthest layer distance
+    // Layer configuration (multiple layers for parallax depth).  The LAYER
+    // COUNT is not configurable: RainOverlay::render() derives it from the
+    // weather intensity (1/2/3) and there are exactly three coded layers.
     float layerScaleMin = 0.5f;        // UV scale for closest layer (larger = fewer streaks)
     float layerScaleMax = 2.0f;        // UV scale for farthest layer
     float layerSpeedMin = 0.5f;        // Scroll speed multiplier for farthest layer
@@ -33,10 +32,6 @@ struct RainOverlaySettings {
     // Opacity
     float baseOpacity = 0.3f;          // Base opacity at intensity 1
     float maxOpacity = 0.8f;           // Max opacity at intensity 10
-
-    // Wind tilt (screen-space angle)
-    float windTiltBase = 0.0f;         // Base angle in radians (0 = vertical)
-    float windTiltIntensity = 0.3f;    // Additional tilt per intensity level (radians)
 
     // Fog reduction (original EQ behavior)
     bool fogReductionEnabled = true;

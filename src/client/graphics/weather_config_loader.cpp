@@ -154,12 +154,6 @@ void WeatherConfigLoader::loadStormSettings(const Json::Value& root) {
         weatherConfig_.storm.boltDuration = clampFloat(json["boltDuration"].asFloat(), 0.05f, 2.0f, "storm.boltDuration");
     }
 
-    // Also update the rain config section
-    if (json.isMember("fogDensityMultiplier")) {
-        // Store in weather config (not directly in rain settings)
-        // This would need to be applied through WeatherEffectsController
-    }
-
     LOG_DEBUG(MOD_GRAPHICS, "WeatherConfigLoader: Loaded storm settings (lightning={}, darkening={})",
               weatherConfig_.storm.lightningEnabled, weatherConfig_.storm.maxDarkening);
 }
@@ -198,9 +192,6 @@ void WeatherConfigLoader::loadStormCloudSettings(const Json::Value& root) {
     }
     if (json.isMember("frameDuration")) {
         stormCloudSettings_.frameDuration = clampFloat(json["frameDuration"].asFloat(), 0.5f, 30.0f, "stormClouds.frameDuration");
-    }
-    if (json.isMember("blendDuration")) {
-        stormCloudSettings_.blendDuration = clampFloat(json["blendDuration"].asFloat(), 0.1f, 10.0f, "stormClouds.blendDuration");
     }
     if (json.isMember("maxOpacity")) {
         stormCloudSettings_.maxOpacity = clampFloat(json["maxOpacity"].asFloat(), 0.0f, 1.0f, "stormClouds.maxOpacity");
@@ -268,15 +259,6 @@ void WeatherConfigLoader::loadRainOverlaySettings(const Json::Value& root) {
     if (json.isMember("scrollSpeedIntensity")) {
         rainOverlaySettings_.scrollSpeedIntensity = clampFloat(json["scrollSpeedIntensity"].asFloat(), 0.0f, 5.0f, "rainOverlay.scrollSpeedIntensity");
     }
-    if (json.isMember("numLayers")) {
-        rainOverlaySettings_.numLayers = clampInt(json["numLayers"].asInt(), 1, 5, "rainOverlay.numLayers");
-    }
-    if (json.isMember("layerDepthMin")) {
-        rainOverlaySettings_.layerDepthMin = clampFloat(json["layerDepthMin"].asFloat(), 0.5f, 20.0f, "rainOverlay.layerDepthMin");
-    }
-    if (json.isMember("layerDepthMax")) {
-        rainOverlaySettings_.layerDepthMax = clampFloat(json["layerDepthMax"].asFloat(), 1.0f, 50.0f, "rainOverlay.layerDepthMax");
-    }
     if (json.isMember("layerScaleMin")) {
         rainOverlaySettings_.layerScaleMin = clampFloat(json["layerScaleMin"].asFloat(), 0.1f, 5.0f, "rainOverlay.layerScaleMin");
     }
@@ -294,12 +276,6 @@ void WeatherConfigLoader::loadRainOverlaySettings(const Json::Value& root) {
     }
     if (json.isMember("maxOpacity")) {
         rainOverlaySettings_.maxOpacity = clampFloat(json["maxOpacity"].asFloat(), 0.0f, 1.0f, "rainOverlay.maxOpacity");
-    }
-    if (json.isMember("windTiltBase")) {
-        rainOverlaySettings_.windTiltBase = clampFloat(json["windTiltBase"].asFloat(), -1.0f, 1.0f, "rainOverlay.windTiltBase");
-    }
-    if (json.isMember("windTiltIntensity")) {
-        rainOverlaySettings_.windTiltIntensity = clampFloat(json["windTiltIntensity"].asFloat(), 0.0f, 2.0f, "rainOverlay.windTiltIntensity");
     }
     if (json.isMember("fogReductionEnabled")) {
         rainOverlaySettings_.fogReductionEnabled = json["fogReductionEnabled"].asBool();
@@ -326,8 +302,8 @@ void WeatherConfigLoader::loadRainOverlaySettings(const Json::Value& root) {
         rainOverlaySettings_.daylightMax = clampFloat(json["daylightMax"].asFloat(), 0.0f, 1.0f, "rainOverlay.daylightMax");
     }
 
-    LOG_DEBUG(MOD_GRAPHICS, "WeatherConfigLoader: Loaded rain overlay settings (numLayers={}, baseOpacity={}, maxOpacity={})",
-              rainOverlaySettings_.numLayers, rainOverlaySettings_.baseOpacity, rainOverlaySettings_.maxOpacity);
+    LOG_DEBUG(MOD_GRAPHICS, "WeatherConfigLoader: Loaded rain overlay settings (baseOpacity={}, maxOpacity={})",
+              rainOverlaySettings_.baseOpacity, rainOverlaySettings_.maxOpacity);
 }
 
 void WeatherConfigLoader::loadSnowOverlaySettings(const Json::Value& root) {
@@ -355,15 +331,6 @@ void WeatherConfigLoader::loadSnowOverlaySettings(const Json::Value& root) {
     }
     if (json.isMember("swayPhaseVariation")) {
         snowOverlaySettings_.swayPhaseVariation = clampFloat(json["swayPhaseVariation"].asFloat(), 0.0f, 1.0f, "snowOverlay.swayPhaseVariation");
-    }
-    if (json.isMember("numLayers")) {
-        snowOverlaySettings_.numLayers = clampInt(json["numLayers"].asInt(), 1, 5, "snowOverlay.numLayers");
-    }
-    if (json.isMember("layerDepthMin")) {
-        snowOverlaySettings_.layerDepthMin = clampFloat(json["layerDepthMin"].asFloat(), 0.5f, 20.0f, "snowOverlay.layerDepthMin");
-    }
-    if (json.isMember("layerDepthMax")) {
-        snowOverlaySettings_.layerDepthMax = clampFloat(json["layerDepthMax"].asFloat(), 1.0f, 50.0f, "snowOverlay.layerDepthMax");
     }
     if (json.isMember("layerScaleMin")) {
         snowOverlaySettings_.layerScaleMin = clampFloat(json["layerScaleMin"].asFloat(), 0.1f, 5.0f, "snowOverlay.layerScaleMin");

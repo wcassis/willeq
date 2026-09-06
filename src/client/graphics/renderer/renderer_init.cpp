@@ -43,6 +43,7 @@
 #include "client/graphics/detail/seasonal_controller.h"
 #include "common/logging.h"
 #include "client/data_paths.h"
+#include "client/graphics/display_settings_loader.h"
 #include <fmt/format.h>
 #include "common/name_utils.h"
 #include "common/performance_metrics.h"
@@ -107,48 +108,6 @@ namespace eqt { namespace ui { class WindowManager { public: virtual ~WindowMana
 
 namespace EQT {
 namespace Graphics {
-
-// Read display settings directly from config/display_settings.json
-// This file is optional — missing file uses defaults (everything enabled)
-static eqt::ui::DisplaySettings loadDisplaySettingsFromFile() {
-    eqt::ui::DisplaySettings settings;  // defaults: everything enabled
-
-    // T399 (board B235): resolved, and a miss is an ERROR -- the file IS
-    // shipped, so "using defaults" means the shipped display settings are not
-    // the ones on screen.
-    const std::string path = eqt::ResolveDataPath("config/display_settings.json");
-    std::ifstream file(path);
-    if (!file.is_open()) {
-        LOG_ERROR(MOD_GRAPHICS,
-                  "cannot open '{}' -- the SHIPPED display settings are not applied; "
-                  "built-in defaults (everything enabled) are in effect", path);
-        return settings;
-    }
-
-    Json::Value root;
-    Json::CharReaderBuilder builder;
-    std::string errors;
-    if (!Json::parseFromStream(builder, file, &root, &errors)) {
-        LOG_WARN(MOD_GRAPHICS, "Failed to parse display_settings.json: {}", errors);
-        return settings;
-    }
-
-    if (root.isMember("environmentEffects")) {
-        const Json::Value& env = root["environmentEffects"];
-        settings.atmosphericParticles = env.get("atmosphericParticles", true).asBool();
-        settings.ambientCreatures = env.get("ambientCreatures", true).asBool();
-        settings.rollingObjects = env.get("rollingObjects", true).asBool();
-        settings.skyEnabled = env.get("skyEnabled", true).asBool();
-        settings.animatedTrees = env.get("animatedTrees", true).asBool();
-        settings.fireEffects = env.get("fireEffects", true).asBool();
-    }
-    if (root.isMember("detailObjects")) {
-        const Json::Value& detail = root["detailObjects"];
-        settings.detailObjectsEnabled = detail.get("enabled", true).asBool();
-    }
-
-    return settings;
-}
 
 // Log detailed OpenGL/driver information for debugging GPU issues
 static void logDriverDetails(irr::video::IVideoDriver* driver, irr::IrrlichtDevice* device,
@@ -365,7 +324,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     // Caches display settings so render-thread code never reads JSON.
     if (!displaySettingsCached_) {
         LOG_TRACE(MOD_GRAPHICS, "Loading display settings from file...");
-        cachedDisplaySettings_ = loadDisplaySettingsFromFile();
+        cachedDisplaySettings_ = eqt::ui::LoadShippedDisplaySettings();
         displaySettingsCached_ = true;
     }
 

@@ -10,7 +10,12 @@ namespace EQT {
 namespace Graphics {
 namespace Detail {
 
-// Maps zones to seasons based on name patterns
+// Maps zones to seasons based on name patterns.
+//
+// This class is the SINGLE source of the per-season tint and density values.
+// config/detail_objects.json used to carry a "seasons" block repeating exactly
+// these numbers, parsed by nothing; T414 Leg A (board B297) deleted it rather
+// than add a second, drifting copy.  A season value changes HERE.
 class SeasonalController {
 public:
     SeasonalController();
