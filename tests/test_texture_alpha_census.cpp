@@ -106,6 +106,30 @@ std::vector<Entry> cursorSet() {
              "IrrlichtRenderer software cursor, draw2DImage alpha blend"}};
 }
 
+// ── The billboard cutouts ───────────────────────────────────────────────────
+// BoidsManager (fish/birds) and TumbleweedManager both draw camera-facing
+// quads with EMT_TRANSPARENT_ALPHA_CHANNEL, which the GLES2 driver maps to
+// glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA) plus SOLID3D_FS -- one
+// sampler. Both textures are shapes on a transparent ground.
+std::vector<Entry> billboardSet() {
+    return {{"creature_atlas.bmp", "creature_atlas",
+             "BoidsManager creature billboards, EMT_TRANSPARENT_ALPHA_CHANNEL"},
+            {"tumbleweed.bmp", "tumbleweed",
+             "TumbleweedManager mesh buffer, EMT_TRANSPARENT_ALPHA_CHANNEL"}};
+}
+
+// Every shipped BMP must appear in exactly one of the lists in this file:
+// the four converted sets, the one file T400 already converted, or the
+// documented 24-bit exceptions. A new generator with no census entry is the
+// state B266 exists to end.
+std::vector<std::string> allCensusedFiles() {
+    std::vector<std::string> v{"particle_atlas.bmp"};  // T400, board B225
+    for (const Entry& e : weatherSet()) v.push_back(e.file);
+    for (const Entry& e : cursorSet()) v.push_back(e.file);
+    for (const Entry& e : billboardSet()) v.push_back(e.file);
+    return v;
+}
+
 // ── The files that stay 24-bit, and why ─────────────────────────────────────
 struct NeverAlpha {
     std::string file;
@@ -317,6 +341,18 @@ TEST(TextureAlphaCensus, SoftwareCursorPackEntryCarriesAlphaInBand) {
     expectPackedInBand(cursorSet());
 }
 
+TEST(TextureAlphaCensus, BillboardCutoutsAre32Bit) {
+    expectFormat32(billboardSet());
+}
+
+TEST(TextureAlphaCensus, BillboardCutoutsHaveANonTrivialAlphaHistogram) {
+    expectNonTrivialAlpha(billboardSet());
+}
+
+TEST(TextureAlphaCensus, BillboardPackEntriesCarryAlphaInBand) {
+    expectPackedInBand(billboardSet());
+}
+
 // ── The files that stay 24-bit ──────────────────────────────────────────────
 
 TEST(TextureAlphaCensus, TheDocumentedExceptionsStay24Bit) {
@@ -382,5 +418,42 @@ TEST(TextureAlphaCensus, RainAndSnowOverlaysDrawWithTheTextureAlpha) {
             << tu << " no longer draws its layers with useAlphaChannelOfTexture=true. "
                      "The 24 rain/snow BMPs put their streaks and flakes entirely in "
                      "alpha; without that flag they draw as opaque sheets.";
+    }
+}
+
+// ── Nothing is missing from the census ──────────────────────────────────────
+
+TEST(TextureAlphaCensus, EveryShippedBmpIsAccountedFor) {
+    // The pinned set is the authority on what ships (scripts/build_textures.sh
+    // asserts data/textures/ holds exactly it).
+    std::vector<char> raw = readFile(kRoot + "data/textures.sha256");
+    ASSERT_FALSE(raw.empty()) << "cannot read data/textures.sha256";
+
+    std::set<std::string> pinned;
+    std::istringstream in(std::string(raw.begin(), raw.end()));
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.empty() || line[0] == '#') continue;
+        const size_t sp = line.find_last_of(' ');
+        if (sp == std::string::npos) continue;
+        pinned.insert(line.substr(sp + 1));
+    }
+    ASSERT_EQ(pinned.size(), 64u) << "data/textures.sha256 does not pin 64 files";
+
+    std::set<std::string> censused;
+    for (const std::string& f : allCensusedFiles()) censused.insert(f);
+    for (const NeverAlpha& n : kNeverAlpha) censused.insert(n.file);
+
+    for (const std::string& f : pinned) {
+        EXPECT_EQ(censused.count(f), 1u)
+            << f << " ships but appears in no list in this file. Decide which it "
+                    "is: does its consumer sample alpha from a single texture unit "
+                    "(then it is 32-bit with an rgba8888 pack override), or is it "
+                    "provably never sampled (then it belongs in kNeverAlpha with "
+                    "the reason)? See generate_textures --report.";
+    }
+    for (const std::string& f : censused) {
+        EXPECT_EQ(pinned.count(f), 1u)
+            << f << " is censused here but is not a shipped file any more.";
     }
 }

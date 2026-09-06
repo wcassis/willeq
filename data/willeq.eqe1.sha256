@@ -3,4 +3,4 @@
 # (procedural) plus the 64 BMPs in data/textures/. Pinned here so a drift in
 # either input, or a hand-edit of the shared pack, is a ctest FAIL
 # (PackReproducible). Update this line in the SAME commit that changes an input.
-0f084675fd17578db52ae5e2f04fd05cca8d1239ad5ef55e0a8fb1451b7816ec  willeq.eqe1
+2f76087a68912385e96732b1f0cbaee1c3adbc22797a118406ab2c6b4c29288f  willeq.eqe1

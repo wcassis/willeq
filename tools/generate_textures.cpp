@@ -139,9 +139,15 @@ std::vector<TextureRecipe> buildManifest() {
     // erases the asset.
     m.push_back({"particle_atlas.bmp", BmpFormat::Bmp32,
                  [](IVideoDriver* d) { return EQT::Graphics::generateParticleAtlas(d); }});
-    m.push_back({"creature_atlas.bmp", BmpFormat::Bmp24,
+    // T406 (board B266): both are cutouts on a transparent ground drawn by
+    // billboarded quads whose material is EMT_TRANSPARENT_ALPHA_CHANNEL
+    // (BoidsManager::creatureMaterial_, TumbleweedManager's mesh buffer) --
+    // glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA) through the
+    // single-sampler SOLID3D_FS. 24-bit turned every fish, bird and
+    // tumbleweed into an opaque quad.
+    m.push_back({"creature_atlas.bmp", BmpFormat::Bmp32,
                  [](IVideoDriver* d) { return EQT::Graphics::generateCreatureAtlas(d); }});
-    m.push_back({"tumbleweed.bmp", BmpFormat::Bmp24,
+    m.push_back({"tumbleweed.bmp", BmpFormat::Bmp32,
                  [](IVideoDriver* d) { return EQT::Graphics::generateTumbleweedTexture(d); }});
 
     // T406 (board B266): the 32 cloud frames are a CONSTANT RGB with the whole

@@ -167,6 +167,7 @@ done
 RGBA8888_ENTRIES="$RGBA8888_ENTRIES rain_layer_mid rain_layer_far"
 RGBA8888_ENTRIES="$RGBA8888_ENTRIES snow_layer_mid snow_layer_far"
 RGBA8888_ENTRIES="$RGBA8888_ENTRIES software_cursor"
+RGBA8888_ENTRIES="$RGBA8888_ENTRIES creature_atlas tumbleweed"
 
 RGBA8888_ARGS=""
 for e in $RGBA8888_ENTRIES; do
