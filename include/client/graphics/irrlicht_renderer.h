@@ -1105,14 +1105,13 @@ private:
     std::vector<ObjectLight> objectLights_;  // Light-emitting objects (torches, lanterns)
     std::vector<bool> objectLightInSceneGraph_;  // Track which object lights are in scene graph
     std::vector<VertexAnimatedMesh> vertexAnimatedMeshes_;  // Meshes with vertex animation (flags, banners)
-    // T423 (board B380): NOTHING WRITES THIS. The "Page Up/Down" the comment
-    // names does not exist any more -- a census over src/ include/ tests/
-    // tools/ benchmarks/ finds one read (composeSceneAmbient's second
-    // argument) and no write, so the user ambient multiplier is a constant
-    // 1.0 and is not one of the inputs B362's dirty flag can ever see move.
-    // Left in place because composeSceneAmbient()'s four-term order is pinned
-    // by test_vision_ambient.cpp; boarded rather than deleted.
-    float ambientMultiplier_ = 1.0f;
+    // T424 (board B380): the user ambient multiplier field was DELETED here. T423
+    // found it with one read (composeSceneAmbient's second argument) and no
+    // writer anywhere; T424 found the writer's grave -- a Page Up / Page Down
+    // handler in the renderer's ADMIN mode, removed on purpose with that mode
+    // in cac31166. It had been a constant 1.0 multiplied into every frame ever
+    // since. The term went with it, so composeSceneAmbient() takes three
+    // arguments now (include/client/graphics/vision_ambient.h).
     // T423 (board B362): set by every writer of a non-clock ambient input,
     // consumed once per frame by FrameComponent. See markSceneAmbientDirty().
     bool sceneAmbientDirty_ = true;

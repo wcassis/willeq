@@ -398,15 +398,16 @@ void IrrlichtRenderer::updateTimeOfDay(uint8_t hour, uint8_t minute) {
     // measured against the official client -- see
     // include/client/graphics/vision_ambient.h.
     //
-    // T396 (board B211): the four-step composition (day/night curve, user
-    // ambient multiplier, weather, vision floor LAST) moved into
-    // composeSceneAmbient() so the ORDER is pinned by a test rather than by
-    // this comment. The floor is last on purpose: it is a floor on what the
-    // player SEES, so nothing -- weather included -- may darken the world
-    // below what the buff grants.
+    // T396 (board B211): the composition (day/night curve, weather, vision
+    // floor LAST) moved into composeSceneAmbient() so the ORDER is pinned by a
+    // test rather than by this comment. The floor is last on purpose: it is a
+    // floor on what the player SEES, so nothing -- weather included -- may
+    // darken the world below what the buff grants. T424 (board B380) dropped
+    // the fourth term, a user ambient multiplier no code had written since
+    // the admin renderer mode was deleted in cac31166.
     {
         const AmbientRGB lit = composeSceneAmbient(
-            AmbientRGB{r, g, b}, ambientMultiplier_, weatherMod, currentVision_);
+            AmbientRGB{r, g, b}, weatherMod, currentVision_);
         r = lit.r;
         g = lit.g;
         b = lit.b;
