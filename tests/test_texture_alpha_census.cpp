@@ -188,12 +188,22 @@ struct NeverAlpha {
 
 const std::vector<NeverAlpha> kNeverAlpha = {
     {"spell_particle_fallback.bmp",
-     "SpellVisualFX draws it through an Irrlicht particle system set to "
-     "EMT_TRANSPARENT_ADD_COLOR, which the GLES2 driver maps to "
-     "glBlendFunc(GL_ONE, GL_ONE). SOLID3D_FS does not multiply RGB by alpha, "
-     "so the source alpha never reaches a visible channel: converting the file "
-     "would change nothing. (The shape being invisible on that path at all is a "
-     "separate defect -- see the board.)"},
+     "board B322 (T413, MEASURED): this file is 32x32 24-bit and ALL 3,072 of "
+     "its pixel bytes are 255 -- solid white, with no falloff in any channel. "
+     "generateSpellParticleFallback() computes a cosine falloff and writes it "
+     "into ALPHA only (SColor(alpha, 255, 255, 255)); the 24-bit BMP write "
+     "discards that channel, so the shape is destroyed at generation time, not "
+     "at blend time. That refutes both of B286's proposed code-side fixes: "
+     "there is no alpha for a shader to premultiply and none for an alpha-blend "
+     "material to use, so neither switching the material nor changing "
+     "SOLID3D_FS can produce a pixel that is not full white. The fix is the "
+     "GENERATOR putting the falloff in RGB (correct for the additive blend this "
+     "is drawn with, and what the official client's Glowflare DDS does), which "
+     "moves data/textures/, data/textures.sha256, the shared willeq.eqe1 and "
+     "data/willeq.eqe1.sha256 together -- and PackReproducible --check compares "
+     "against the INSTALLED pack in every worktree, so it belongs to a unit "
+     "that owns the pack exclusively. Until then the entry stays 24-bit and "
+     "honest: there is nothing in its alpha to carry."},
     {"detail_atlas.bmp",
      "board B265: this is the one BMP no build reproduces (a 16-bit software "
      "driver round trip plus code drift in the twelve footprint tiles). "
