@@ -3500,7 +3500,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   is now "reproducible from the tree PLUS the official client tree".
   Prov: T398 Review.
 
-- **B240** (C) `tests/goldens/manifest.json` (the `memory-coverage` block,
+- ~~**B240** (C) `tests/goldens/manifest.json` (the `memory-coverage` block,
   the three `eqe1MappedBytes` values) -- **the visual gate's EQE1 memory
   baseline is stale by exactly +239 bytes in all three zones and needs Will's
   bless.** T398 Leg B deliberately grew `/mnt/projects/EverQuest_ETC1/willeq.eqe1`
@@ -3549,7 +3549,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   either. The cause is the same one this entry already records (a rebuilt
   `willeq.eqe1`) and the +239 and +19,104 are the same bless, not two.
 
-  **WILL RULED 2026-09-06:** BLESSED — applied at the T406 merge with the final measured numbers.
+  **WILL RULED 2026-09-06:** BLESSED — applied at the T406 merge with the final measured numbers.~~ **APPLIED at the T406 merge: manifest eqe1MappedBytes = 137,128,478 / 135,794,570 / 130,279,066 (Will's bless 2026-09-06); the standalone gate PASSES on the tip.**
 - **B241** (B) `scripts/build_willeq_pack.sh` / `tools/ui_atlas_builder.cpp`
   -- **`willeq.eqe1` is reproducible from the tree PLUS the official client
   tree, not from the tree alone.** B230 closed on a byte-identical rebuild

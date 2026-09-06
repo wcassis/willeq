@@ -163,12 +163,12 @@
     }
   ],
   "memoryCoverage": {
-    "note": "T80: SEPARATE from the zones[] block above -- a distinct benchmark invocation (--eqe1-path/--objects/--entities/--test-races) that exercises eqe1MappedBytes/eqe1ArchiveCount/placeableObjectsBytes/characterModelsBytes, which the zones[] golden-image runs above always baseline at zero (they never load objects, entities, or an EQE1 archive). BLESSED by Will in chat 2026-08-28 (T303) from a freshly measured run on fable tip, two passes bit-identical; values applied BY HAND, not by --bless (which would also rewrite the T69 per-zone memory block -- see T291). The +1,040 byte eqe1MappedBytes and +183 byte characterModelsBytes drift from T80's 2026-08-12 proposal was traced to willeq.eqe1, the composite sheet rebuilt by T284/T287 and the only one of the 28 archives not dated 2026-03-22. See scripts/ci/visual_gate.py's MEMORY_COVERAGE_* constants for the fixed entity count/race list/frame count this run uses. T303 (2026-08-28), what these numbers DO NOT cover: placeableObjectsBytes here is STATIC ARCHIVE PLACEABLES ONLY -- the benchmark never connects to a server, so the objects EQEmu sends at zone-in (the object table: ground spawns, forges, containers; and the doors table) are not counted, while the production field of the same name (renderer_diagnostics.cpp, over objectNodes_) counts BOTH populations. characterModelsBytes covers only the pinned race list (MEMORY_COVERAGE_TEST_RACES = 1..5). These are regression detectors on a FIXED sample of three zones and five races, not coverage of either category -- bless them as such.",
+    "note": "T80: SEPARATE from the zones[] block above -- a distinct benchmark invocation (--eqe1-path/--objects/--entities/--test-races) that exercises eqe1MappedBytes/eqe1ArchiveCount/placeableObjectsBytes/characterModelsBytes, which the zones[] golden-image runs above always baseline at zero (they never load objects, entities, or an EQE1 archive). BLESSED by Will in chat 2026-08-28 (T303) from a freshly measured run on fable tip, two passes bit-identical; values applied BY HAND, not by --bless (which would also rewrite the T69 per-zone memory block -- see T291). The +1,040 byte eqe1MappedBytes and +183 byte characterModelsBytes drift from T80's 2026-08-12 proposal was traced to willeq.eqe1, the composite sheet rebuilt by T284/T287 and the only one of the 28 archives not dated 2026-03-22. See scripts/ci/visual_gate.py's MEMORY_COVERAGE_* constants for the fixed entity count/race list/frame count this run uses. T303 (2026-08-28), what these numbers DO NOT cover: placeableObjectsBytes here is STATIC ARCHIVE PLACEABLES ONLY -- the benchmark never connects to a server, so the objects EQEmu sends at zone-in (the object table: ground spawns, forges, containers; and the doors table) are not counted, while the production field of the same name (renderer_diagnostics.cpp, over objectNodes_) counts BOTH populations. characterModelsBytes covers only the pinned race list (MEMORY_COVERAGE_TEST_RACES = 1..5). These are regression detectors on a FIXED sample of three zones and five races, not coverage of either category -- bless them as such. BLESSED AGAIN by Will in chat 2026-09-06 (board B240): eqe1MappedBytes +17,184,047 per zone = T398 coin decals (+239) + T400 particle-atlas RGBA8888 payload (+19,104) + T406 59 textures RGBA8888 (+17,164,704); no image golden moved in any of the three; values applied BY HAND by the orchestrator at the T406 merge from T406's standalone gate run.",
     "zones": [
       {
         "zone": "qeynos2",
         "memory": {
-          "eqe1MappedBytes": 119944431,
+          "eqe1MappedBytes": 137128478,
           "eqe1ArchiveCount": 28,
           "placeableObjectsBytes": 1365564,
           "characterModelsBytes": 25737076
@@ -177,7 +177,7 @@
       {
         "zone": "gfaydark",
         "memory": {
-          "eqe1MappedBytes": 118610523,
+          "eqe1MappedBytes": 135794570,
           "eqe1ArchiveCount": 28,
           "placeableObjectsBytes": 5624100,
           "characterModelsBytes": 25368606
@@ -186,7 +186,7 @@
       {
         "zone": "befallen",
         "memory": {
-          "eqe1MappedBytes": 113095019,
+          "eqe1MappedBytes": 130279066,
           "eqe1ArchiveCount": 28,
           "placeableObjectsBytes": 2168052,
           "characterModelsBytes": 25496483
