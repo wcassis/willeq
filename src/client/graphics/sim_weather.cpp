@@ -1,4 +1,5 @@
 #include "client/graphics/simulation_worker.h"
+#include "client/graphics/weather_ambient_oracle.h"
 #include "client/graphics/portal_system.h"
 #include "client/graphics/eq/wld_loader.h"
 #include "client/graphics/environment/unified_particle.h"
@@ -42,16 +43,16 @@ void SimulationWorker::computeWeatherEffectsState(const SimulationInput& input, 
         ws.transitionProgress = std::min(1.0f, ws.transitionProgress);
     }
 
-    // Advance storm darkening
-    float darkeningSpeed = 0.5f;
-    ws.currentDarkening = input.weatherCurrentDarkening;
-    if (ws.currentDarkening < input.weatherTargetDarkening) {
-        ws.currentDarkening += darkeningSpeed * input.deltaTime;
-        ws.currentDarkening = std::min(ws.currentDarkening, input.weatherTargetDarkening);
-    } else if (ws.currentDarkening > input.weatherTargetDarkening) {
-        ws.currentDarkening -= darkeningSpeed * input.deltaTime;
-        ws.currentDarkening = std::max(ws.currentDarkening, input.weatherTargetDarkening);
-    }
+    // Advance storm darkening. T418 (board B361): this is the copy the CLIENT
+    // actually runs -- WeatherEffectsController::computeState() has no
+    // production caller and update()/updateStormAtmosphere() has none either,
+    // so for years the only tested ramp was one nothing executed. All three now
+    // call the same advanceWeatherDarkening(), at the rate the controller
+    // captured when the target changed, so the move takes the oracle's measured
+    // transition time.
+    ws.currentDarkening = advanceWeatherDarkening(
+        input.weatherCurrentDarkening, input.weatherTargetDarkening,
+        input.weatherDarkeningRate, input.deltaTime);
 
     // Advance lightning timers
     ws.lightningFlashTimer = input.weatherLightningFlashTimer;
