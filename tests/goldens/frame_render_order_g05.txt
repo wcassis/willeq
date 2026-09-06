@@ -257,7 +257,7 @@
 256 spellbookState_, skillsPopupState_, buffBarState_, lootState_);
 257 staticUIInput_->processPanelInput(
 258 ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
-259 pendingUIClick_, uiLayout_, tradeskillState_);
+259 pendingUIClick_, uiLayout_, tradeskillState_, combatAbilityState_);
 260 pendingUIClick_ = false;
 261 if (newUIEnabled_ && inventoryState_.activePopup == PopupType::Inventory) {
 262 ctx_.Overlays().updatePaperdollForFrame();
@@ -278,31 +278,32 @@
 277 renderSkillsPopup(*uiRenderer_, uiLayout_, skillsPopupState_);
 278 renderLootPopup(*uiRenderer_, uiLayout_, lootState_);
 279 renderTradeskillPopup(*uiRenderer_, uiLayout_, tradeskillState_);
-280 renderXPBar(*uiRenderer_, uiLayout_, xpBarState_);
-281 uiRenderer_->endFrame();
-282 frameTimings_.staticUI = measureSection();
-283 ctx_.Overlays().drawZoneLineBoxLabels();
-284 frameTimings_.zoneLineOverlay = measureSection();
-285 eqtGPUPhaseEnd(2 /* GPUSyncPhase::ParticlesUI */);
-286 ctx_.Rdp().captureFrameForRDP();
-287 if (owner_.softwareCursorTexture_) {
-288 auto* cursor = ctx_.device->getCursorControl();
-289 if (cursor && cursor->isVisible()) {
-290 auto pos = cursor->getPosition();
-291 irr::core::position2di destPos(pos.X, pos.Y);
-292 irr::core::rect<irr::s32> srcRect(0, 0, 8, 10);
-293 ctx_.driver->draw2DImage(owner_.softwareCursorTexture_, destPos, srcRect,
-294 nullptr, irr::video::SColor(255, 255, 255, 255), true);
-295 if (pendingScreenshot_) {
-296 pendingScreenshot_ = false;
-297 owner_.saveScreenshot("screenshot.png");
-298 frameTimings_.postRender = measureSection();
-299 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 11: endScene");
-300 eqtGPUPhaseBegin(3 /* GPUSyncPhase::Swap */);
-301 ctx_.driver->endScene();
-302 eqtGPUPhaseEnd(3 /* GPUSyncPhase::Swap */);
-303 eqtGPUPhaseCollectResults();
-304 frameTimings_.endScene = measureSection();
-305 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 12: frame complete");
-306 FlushThreadLog();
-307 return true;
+280 renderCombatAbilityPanel(*uiRenderer_, uiLayout_, combatAbilityState_);
+281 renderXPBar(*uiRenderer_, uiLayout_, xpBarState_);
+282 uiRenderer_->endFrame();
+283 frameTimings_.staticUI = measureSection();
+284 ctx_.Overlays().drawZoneLineBoxLabels();
+285 frameTimings_.zoneLineOverlay = measureSection();
+286 eqtGPUPhaseEnd(2 /* GPUSyncPhase::ParticlesUI */);
+287 ctx_.Rdp().captureFrameForRDP();
+288 if (owner_.softwareCursorTexture_) {
+289 auto* cursor = ctx_.device->getCursorControl();
+290 if (cursor && cursor->isVisible()) {
+291 auto pos = cursor->getPosition();
+292 irr::core::position2di destPos(pos.X, pos.Y);
+293 irr::core::rect<irr::s32> srcRect(0, 0, 8, 10);
+294 ctx_.driver->draw2DImage(owner_.softwareCursorTexture_, destPos, srcRect,
+295 nullptr, irr::video::SColor(255, 255, 255, 255), true);
+296 if (pendingScreenshot_) {
+297 pendingScreenshot_ = false;
+298 owner_.saveScreenshot("screenshot.png");
+299 frameTimings_.postRender = measureSection();
+300 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 11: endScene");
+301 eqtGPUPhaseBegin(3 /* GPUSyncPhase::Swap */);
+302 ctx_.driver->endScene();
+303 eqtGPUPhaseEnd(3 /* GPUSyncPhase::Swap */);
+304 eqtGPUPhaseCollectResults();
+305 frameTimings_.endScene = measureSection();
+306 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 12: frame complete");
+307 FlushThreadLog();
+308 return true;

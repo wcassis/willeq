@@ -577,7 +577,7 @@ void FrameComponent::renderStaticUI() {
             spellbookState_, skillsPopupState_, buffBarState_, lootState_);
         staticUIInput_->processPanelInput(
             ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
-            pendingUIClick_, uiLayout_, tradeskillState_);
+            pendingUIClick_, uiLayout_, tradeskillState_, combatAbilityState_);
         pendingUIClick_ = false;
     }
 
@@ -620,6 +620,9 @@ void FrameComponent::renderStaticUI() {
         // popup, drawn after the loot popup for the same reason -- the
         // server opens it and nothing else may cover it.
         renderTradeskillPopup(*uiRenderer_, uiLayout_, tradeskillState_);
+        // T415 (B320): the combat abilities window is a HUD panel, not a
+        // centre popup, so it draws above the popups like the buff bar does.
+        renderCombatAbilityPanel(*uiRenderer_, uiLayout_, combatAbilityState_);
         renderXPBar(*uiRenderer_, uiLayout_, xpBarState_);
         uiRenderer_->endFrame();
     }

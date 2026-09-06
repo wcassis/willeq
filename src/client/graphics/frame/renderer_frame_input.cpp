@@ -203,6 +203,17 @@ bool FrameComponent::toggleBuffWindow() {
     return buffBarState_.isOpen;
 }
 
+// T415 (B320): the combat abilities window. A HUD panel like the three
+// above, so it is deliberately NOT mutually exclusive with the centre
+// popups. Alt+C is the oracle's own key -- MEASURED at Options > Keys > UI
+// (review/T377/oracle/T377_oracle_options_keys_UI_page3.png).
+bool FrameComponent::toggleCombatAbilityWindow() {
+    combatAbilityState_.isOpen = !combatAbilityState_.isOpen;
+    LOG_INFO(MOD_GRAPHICS, "Combat abilities window {}",
+        combatAbilityState_.isOpen ? "opened" : "closed");
+    return combatAbilityState_.isOpen;
+}
+
 void FrameComponent::processPlayerInput(const std::vector<RendererEvent>& actions) {
     using RA = RendererAction;
     for (const auto& event : actions) {
@@ -264,6 +275,8 @@ void FrameComponent::processPlayerInput(const std::vector<RendererEvent>& action
                 LOG_INFO(MOD_GRAPHICS, "Spellbook {}", spellbookState_.isOpen ? "opened" : "closed");
                 break;
             case RA::ToggleBuffWindow: toggleBuffWindow(); break;
+            // T415 (B320): Alt+C, the oracle's own key.
+            case RA::ToggleCombatAbilities: toggleCombatAbilityWindow(); break;
 
             // Debug overlays
             case RA::ToggleZoneLineVisualization: ctx_.Overlays().toggleZoneLineVisualization(); break;

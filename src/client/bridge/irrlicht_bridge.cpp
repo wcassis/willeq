@@ -651,6 +651,10 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                     break;
                 }
             }
+            // T415: a skill going from 0 to non-zero is a NEW ability row.
+            EQT::Graphics::rebuildCombatAbilities(
+                renderer_->Frame().combatAbilityState_,
+                renderer_->Frame().skillsPopupState_.skills);
         }
         break;
     case state::GameEventType::SkillsRefreshed:
@@ -669,6 +673,11 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 item.maxValue = s.maxValue;
                 renderer_->Frame().skillsPopupState_.skills.push_back(std::move(item));
             }
+            // T415 (board B320): the combat abilities window's eight rows are
+            // a VIEW of this same list -- no second source of skill data.
+            EQT::Graphics::rebuildCombatAbilities(
+                renderer_->Frame().combatAbilityState_,
+                renderer_->Frame().skillsPopupState_.skills);
         }
         break;
 
@@ -785,8 +794,14 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             }
         }
         break;
+    // T415 (board B320): the arm that discarded the whole payload. Its
+    // cooldownMs now drives CAW_CombatEffectTimeRemainingGauge.
     case state::GameEventType::SkillActivationFeedback:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: SkillActivationFeedback");
+        if (renderer_) {
+            auto& d = std::get<state::SkillActivationFeedbackData>(event.data);
+            EQT::Graphics::applyCombatAbilityFeedback(
+                renderer_->Frame().combatAbilityState_, d);
+        }
         break;
     case state::GameEventType::RendererCommand:
         if (renderer_) {

@@ -9,6 +9,8 @@
 #include "client/graphics/ui/inventory_layout.h"
 #include "client/graphics/ui/tradeskill_panel.h"
 #include "client/graphics/ui/tradeskill_layout.h"
+#include "client/graphics/ui/combat_ability_panel.h"
+#include "client/graphics/ui/combat_ability_layout.h"
 #include "client/inventory/inventory_constants.h"
 #include "client/bridge/game_state_bridge.h"
 #include "client/events/renderer_intents.h"
@@ -294,14 +296,16 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
     return consumed;
 }
 
-// T415 (board B321) -- see the declaration for why this is its own entry
-// point rather than one more parameter on processInput().
+// T415 (boards B321/B320) -- see the declaration for why this is its own
+// entry point rather than two more parameters on processInput().
 bool StaticUIInput::processPanelInput(int mouseX, int mouseY, bool leftClicked,
                                       const UILayout& layout,
-                                      TradeskillPanelState& tradeskill) {
+                                      TradeskillPanelState& tradeskill,
+                                      CombatAbilityPanelState& combatAbilities) {
     bool consumed = false;
 
     tradeskill.hoveredSlot = -1;
+    combatAbilities.hoveredButton = -1;
 
     // --- The tradeskill container window (B321) ---
     if (tradeskill.isOpen) {
@@ -334,6 +338,22 @@ bool StaticUIInput::processPanelInput(int mouseX, int mouseY, bool leftClicked,
                     bridge_->pushIntent(
                         eqt::events::TradeskillCloseIntent{tradeskill.objectId});
                 }
+            }
+        }
+    }
+
+    // --- The combat abilities window (B320) ---
+    if (combatAbilityWindowIsVisible(combatAbilities)) {
+        if (CombatAbilityLayout::windowRect(layout).isPointInside(
+                irr::core::vector2di(mouseX, mouseY))) {
+            consumed = true;
+        }
+        const int row = hitTestCombatAbility(layout, combatAbilities, mouseX, mouseY);
+        if (row >= 0) {
+            combatAbilities.hoveredButton = row;
+            if (leftClicked && bridge_) {
+                bridge_->pushIntent(eqt::events::SkillActivateIntent{
+                    combatAbilities.abilities[row].skillId});
             }
         }
     }

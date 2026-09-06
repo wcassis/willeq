@@ -120,6 +120,7 @@ enum class RendererAction : uint8_t {
     ToggleVendor, ToggleTrainer, ToggleCollision, ToggleCollisionDebug,
     ClearTarget, ToggleInventory, ToggleGroup, ToggleSkills,
     TogglePet, ToggleSpellbook, ToggleBuffWindow, ToggleOptions,
+    ToggleCombatAbilities,      // T415 (B320): Alt+C
     DoorInteract, WorldObjectInteract,
     ReplyToTell,                // T319: R key -> ActionDispatcher::openReplyToTell()
 

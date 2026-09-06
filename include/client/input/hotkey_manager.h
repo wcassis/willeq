@@ -94,6 +94,8 @@ enum class HotkeyAction : uint32_t {
     ToggleTrainer,
     ToggleSpellbook,    // Spellbook window (Ctrl+B)
     ToggleBuffWindow,   // Buff window (Alt+B)
+    ToggleCombatAbilities,  // T415: Combat abilities window (Alt+C, measured
+                            // at the oracle's Options > Keys > UI page)
     ToggleOptions,      // Options window (O key) - available in all modes
     ToggleCollision,
     ToggleCollisionDebug,

@@ -31,6 +31,7 @@ struct BuffBarState;
 struct LootPanelState;
 struct ChatPanelState;
 struct TradeskillPanelState;
+struct CombatAbilityPanelState;
 
 /**
  * T313 -- the three panels that carry a scrollOffset.
@@ -74,19 +75,23 @@ public:
                       LootPanelState& loot);
 
     /**
-     * T415 (board B321): the tradeskill container window's hover + click,
-     * kept as its own entry point rather than growing processInput()'s
-     * parameter list, which was already ten wide -- every existing caller
-     * (three tests and renderStaticUI) is untouched.
+     * T415 (boards B321/B320): the two panels added after processInput()'s
+     * parameter list was already ten wide, kept as their own entry point
+     * rather than growing it to twelve -- every existing caller (three tests
+     * and renderStaticUI) is untouched.
+     *
+     * Hover + click for the tradeskill container window and the combat
+     * abilities window. Returns true if the UI consumed the position.
      *
      * The intents are the ones that already existed and had exactly one
      * pusher each: TradeskillCombineIntent / TradeskillCloseIntent (the
-     * `/combine` and `/closecontainer` commands, T278). Nothing new crosses
-     * the bridge.
+     * `/combine` and `/closecontainer` commands, T278) and
+     * SkillActivateIntent. Nothing new crosses the bridge.
      */
     bool processPanelInput(int mouseX, int mouseY, bool leftClicked,
                            const UILayout& layout,
-                           TradeskillPanelState& tradeskill);
+                           TradeskillPanelState& tradeskill,
+                           CombatAbilityPanelState& combatAbilities);
 
     /**
      * Handle a key press. Returns true if consumed.

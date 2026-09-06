@@ -4892,7 +4892,7 @@ client uses every field.
 
 ## Added 2026-09-06 by T413
 
-- **B320** (B) `include/client/state/event_bus.h`
+- ~~**B320** (B) `include/client/state/event_bus.h`
   `SkillActivationFeedbackData::cooldownMs`, and the panel it needs --
   **fable has no combat-abilities window, so a skill's cooldown has nowhere to
   be drawn.** `EverQuest` computes an adjusted cooldown
@@ -4905,7 +4905,34 @@ client uses every field.
   `<Screen item="CombatAbilityWnd"> <Text>Combat Abilities</Text>`, plus the
   eight 40x40 `CAW_Button1..8` ability buttons. Closes when that panel exists
   and the field feeds its gauge; the field is left in place until then, so the
-  producer does not have to be rewritten twice. Split out of B296 by T413.
+  producer does not have to be rewritten twice. Split out of B296 by T413.~~
+  **CLOSED by T415 Leg B** (`task/T415-tradeskill-combat-windows`, the commit
+  that added this line). The panel exists:
+  `include/client/graphics/ui/combat_ability_panel.h` +
+  `src/client/graphics/ui/combat_ability_panel.cpp`, with the oracle's
+  geometry in `combat_ability_layout.h` at the window's own 174x150 --
+  `Style_Sizable false`, so nothing is scaled and no rect can round. The
+  `SkillActivationFeedback` arm now calls `applyCombatAbilityFeedback()` and
+  `cooldownMs` drives `CAW_CombatEffectTimeRemainingGauge` as a
+  TIME-REMAINING fill (1.0 at activation falling to 0.0). The eight
+  `CAW_Button1..8` rows are a VIEW of `skillsPopupState_.skills` -- the list
+  `/skills` already draws -- filtered to `SkillCategory::Combat` AND
+  `isActivatableSkill()` AND value != 0, in skill-id order, capped at eight;
+  there is no second source of skill data, and the rebuild is driven off the
+  existing `SkillsSnapshot` and `SkillValueChanged` arms. A click pushes the
+  existing `SkillActivateIntent`. The key is **Alt+C**, MEASURED at the
+  oracle's Options > Keys > UI page (T377,
+  `review/T377/oracle/T377_oracle_options_keys_UI_page3.png` and `page4`):
+  "Toggle Combat Ability Window   Alt C", Alternate column empty -- not the
+  Titanium-table guess the plan allowed for. Default CLOSED:
+  `/mnt/projects/EverQuestP1999/defaults.ini` has NO `[CombatAbilityWnd]`
+  section at all, so unlike `[BuffWindow]`/`[GroupWindow]` there is no shipped
+  `Show=` to read either way. **DEVIATION, flagged:** the window's own
+  `<Location>` is (50,50), which in fable's layout is the player status
+  panel, so the window is anchored top-right instead -- under `targetInfo`
+  and left of the spell-gem column. Size and every interior rect are the
+  oracle's. Pinned by `tests/test_tradeskill_combat_panels.cpp` (8 cases) and
+  the render-order golden. Live screenshot pair OWED to the next lock unit.
 
 - ~~**B321** (B) `include/client/state/event_bus.h`
   `TradeskillContainerOpenedEvent::containerName` / `::isWorldObject` /
@@ -4917,7 +4944,7 @@ client uses every field.
   window's title, close behaviour and grid size. Oracle:
   `EQUI_TradeskillWnd.xml`. Closes when that panel exists and the four fields
   feed it. Split out of B296 by T413.~~
-  **CLOSED by T415 Leg A** (`__LEGA_HASH__`). The panel is
+  **CLOSED by T415 Leg A** (`913455bf`). The panel is
   `include/client/graphics/ui/tradeskill_panel.h` +
   `src/client/graphics/ui/tradeskill_panel.cpp`; its geometry is the oracle's,
   derived in `tradeskill_layout.h` from `EQUI_TradeskillWnd.xml`'s ANCHOR

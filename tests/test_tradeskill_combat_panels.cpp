@@ -1,4 +1,5 @@
-// T415 Leg A (board B321): the tradeskill container window.
+// T415 (board B321 + B320): the tradeskill container window and the combat
+// abilities window.
 //
 // Both panels are pure state + geometry: no Irrlicht device is needed to
 // assert either one, exactly like test_static_ui_panels.cpp's layout cases.
@@ -11,6 +12,10 @@
 //   include/client/graphics/ui/tradeskill_layout.h from
 //   /mnt/projects/EverQuestP1999/uifiles/default/EQUI_TradeskillWnd.xml.
 //
+//   Leg B (B320) -- SkillActivationFeedbackData::cooldownMs had no panel to
+//   be drawn in. CAW_CombatEffectTimeRemainingGauge (EQType 26) is that
+//   panel's gauge; the eight CAW_Button1..8 rows come from the skills the
+//   character actually has.
 
 #include <gtest/gtest.h>
 
@@ -18,7 +23,10 @@
 #include "client/graphics/ui/static_panels.h"
 #include "client/graphics/ui/tradeskill_layout.h"
 #include "client/graphics/ui/tradeskill_panel.h"
+#include "client/graphics/ui/combat_ability_layout.h"
+#include "client/graphics/ui/combat_ability_panel.h"
 #include "client/inventory/inventory_constants.h"
+#include "client/skill/skill_constants.h"
 #include "client/state/event_bus.h"
 
 #include <irrlicht.h>
@@ -279,4 +287,211 @@ TEST(TradeskillWindowT415, ButtonHitTests) {
     const auto s5 = TradeskillLayout::slotRect(l, 5);
     EXPECT_EQ(hitTestTradeskillSlot(
                   l, state, s5.UpperLeftCorner.X + 2, s5.UpperLeftCorner.Y + 2), -1);
+}
+
+// ===========================================================================
+// Leg B -- B320, the combat abilities window
+// ===========================================================================
+
+// The gauge. cooldownMs is the field B320 named; it had nowhere to go.
+TEST(CombatAbilityWindowT415, SkillFeedbackDrivesTheGauge) {
+    CombatAbilityPanelState state;
+    EXPECT_FALSE(state.hasEffect);
+    EXPECT_EQ(state.effectLabelText(), "No Effect");  // the oracle's <Text>
+    EXPECT_FLOAT_EQ(state.gaugeProgress(), 0.0f);
+
+    eqt::state::SkillActivationFeedbackData d;
+    d.skillId = 10;  // Bash
+    d.success = true;
+    d.cooldownMs = 8000;
+    applyCombatAbilityFeedback(state, d);
+
+    EXPECT_TRUE(state.hasEffect);
+    EXPECT_EQ(state.effectSkillId, 10);
+    EXPECT_EQ(state.cooldownMs, 8000u);
+    EXPECT_EQ(state.effectLabelText(), "Bash");
+    // freshly started: the remaining-time gauge is (near) full
+    EXPECT_GT(state.gaugeProgress(), 0.9f);
+    EXPECT_LE(state.gaugeProgress(), 1.0f);
+}
+
+// A failed activation and a zero cooldown are not effects.
+TEST(CombatAbilityWindowT415, NoGaugeWithoutACooldown) {
+    CombatAbilityPanelState state;
+
+    eqt::state::SkillActivationFeedbackData fail;
+    fail.skillId = 10;
+    fail.success = false;
+    fail.cooldownMs = 8000;
+    applyCombatAbilityFeedback(state, fail);
+    EXPECT_FALSE(state.hasEffect);
+
+    eqt::state::SkillActivationFeedbackData nocd;
+    nocd.skillId = 30;
+    nocd.success = true;
+    nocd.cooldownMs = 0;
+    applyCombatAbilityFeedback(state, nocd);
+    EXPECT_FALSE(state.hasEffect);
+}
+
+// The ability rows: the character's own ACTIVATABLE COMBAT skills, in skill
+// id order, capped at the oracle's eight buttons. A skill at value 0 is one
+// the character does not have.
+TEST(CombatAbilityWindowT415, AbilityRowsComeFromTheCharactersSkills) {
+    CombatAbilityPanelState state;
+    std::vector<SkillDisplayItem> skills;
+    auto add = [&skills](uint8_t id, const char* name, uint32_t v) {
+        SkillDisplayItem s;
+        s.skillId = id;
+        s.name = name;
+        s.value = v;
+        s.maxValue = 200;
+        skills.push_back(s);
+    };
+    add(1, "1H Slash", 100);      // Weapon, not activatable
+    add(10, "Bash", 55);          // Combat + activatable
+    add(15, "Defense", 120);      // Defense, not activatable
+    add(27, "Forage", 40);        // activatable but Utility, not Combat
+    add(30, "Kick", 61);          // Combat + activatable
+    add(73, "Taunt", 12);         // Combat + activatable
+    add(8, "Backstab", 0);        // Combat + activatable but NOT LEARNED
+
+    rebuildCombatAbilities(state, skills);
+
+    ASSERT_EQ(state.abilities.size(), 3u);
+    EXPECT_EQ(state.abilities[0].skillId, 10);
+    EXPECT_EQ(state.abilities[0].name, "Bash");
+    EXPECT_EQ(state.abilities[1].skillId, 30);
+    EXPECT_EQ(state.abilities[2].skillId, 73);
+}
+
+TEST(CombatAbilityWindowT415, AbilityRowsAreCappedAtTheOraclesEightButtons) {
+    CombatAbilityPanelState state;
+    std::vector<SkillDisplayItem> skills;
+    // every activatable Combat skill in skill_constants.h
+    const uint8_t ids[] = {6, 8, 10, 16, 21, 23, 26, 30, 38, 52, 71, 72, 73};
+    for (uint8_t id : ids) {
+        SkillDisplayItem s;
+        s.skillId = id;
+        s.name = EQ::getSkillName(id);
+        s.value = 50;
+        s.maxValue = 200;
+        skills.push_back(s);
+    }
+    rebuildCombatAbilities(state, skills);
+    EXPECT_EQ(static_cast<int>(state.abilities.size()),
+              CombatAbilityPanelState::BUTTON_COUNT);
+}
+
+// THE PLACEMENT IS THE ORACLE'S -- EQUI_CombatAbilityWnd.xml, verbatim, at
+// the window's own 174x150 (Style_Sizable false), so no scaling at all.
+//
+//   <Screen item="CombatAbilityWnd"> Size 174x150
+//   <Gauge item="CAW_CombatEffectTimeRemainingGauge"> (11,30) 116x10 EQType 26
+//   <Button item="CAW_CombatEffectButton"> (5,4) 20x20
+//   <Label  item="CAW_CombatEffectLabel">  (28,5) 129x20
+//   <Button item="CAW_Button1..8"> 40x40 at (2|42|82|122, 45) and (.., 85)
+TEST(CombatAbilityLayoutT415, RectsAreTheOraclesVerbatim) {
+    const UILayout l = layout800();
+
+    const auto win = CombatAbilityLayout::windowRect(l);
+    EXPECT_EQ(win.getWidth(), CombatAbilityLayout::ORACLE_WINDOW_W);
+    EXPECT_EQ(win.getHeight(), CombatAbilityLayout::ORACLE_WINDOW_H);
+    EXPECT_EQ(rectStr(win), "{586,42,760,192}");
+
+    EXPECT_EQ(rectStr(CombatAbilityLayout::effectIconRect(l)), "{591,66,611,86}");
+    EXPECT_EQ(rectStr(CombatAbilityLayout::effectLabelRect(l)), "{614,67,743,87}");
+    EXPECT_EQ(rectStr(CombatAbilityLayout::gaugeRect(l)), "{597,92,713,102}");
+    EXPECT_EQ(rectStr(CombatAbilityLayout::skillSelectRect(l)), "{710,90,747,104}");
+
+    EXPECT_EQ(rectStr(CombatAbilityLayout::buttonRect(l, 0)), "{588,107,628,147}");
+    EXPECT_EQ(rectStr(CombatAbilityLayout::buttonRect(l, 3)), "{708,107,748,147}");
+    EXPECT_EQ(rectStr(CombatAbilityLayout::buttonRect(l, 4)), "{588,147,628,187}");
+    EXPECT_EQ(rectStr(CombatAbilityLayout::buttonRect(l, 7)), "{708,147,748,187}");
+
+    EXPECT_EQ(CombatAbilityLayout::buttonRect(l, -1).getWidth(), 0);
+    EXPECT_EQ(CombatAbilityLayout::buttonRect(l, 8).getWidth(), 0);
+}
+
+// The window is anchored, not absolute: at every resolution it stays wholly
+// on screen, keeps the oracle's size, and does not land on the target panel
+// above it or the spell gems below it.
+TEST(CombatAbilityLayoutT415, TheWindowStaysOnScreenAndClearOfItsNeighbours) {
+    const struct { int w, h; } resolutions[] = {
+        {640, 480}, {800, 600}, {1024, 768}, {1280, 1024}, {1920, 1080}};
+    for (const auto& rc : resolutions) {
+        UILayout l;
+        l.computeLayout(rc.w, rc.h);
+        const auto win = CombatAbilityLayout::windowRect(l);
+
+        EXPECT_EQ(win.getWidth(), CombatAbilityLayout::ORACLE_WINDOW_W);
+        EXPECT_EQ(win.getHeight(), CombatAbilityLayout::ORACLE_WINDOW_H);
+        EXPECT_GE(win.UpperLeftCorner.X, 0) << rc.w << "x" << rc.h;
+        EXPECT_GE(win.UpperLeftCorner.Y, 0) << rc.w << "x" << rc.h;
+        EXPECT_LE(win.LowerRightCorner.X, rc.w) << rc.w << "x" << rc.h;
+        EXPECT_LE(win.LowerRightCorner.Y, rc.h) << rc.w << "x" << rc.h;
+
+        EXPECT_FALSE(win.isRectCollided(l.targetInfo))
+            << rc.w << "x" << rc.h << ": overlaps target info";
+        EXPECT_FALSE(win.isRectCollided(l.spellGems))
+            << rc.w << "x" << rc.h << ": overlaps spell gems";
+
+        for (int i = 0; i < CombatAbilityPanelState::BUTTON_COUNT; ++i) {
+            const auto b = CombatAbilityLayout::buttonRect(l, i);
+            EXPECT_GE(b.UpperLeftCorner.X, win.UpperLeftCorner.X) << rectStr(b);
+            EXPECT_GE(b.UpperLeftCorner.Y, win.UpperLeftCorner.Y) << rectStr(b);
+            EXPECT_LE(b.LowerRightCorner.X, win.LowerRightCorner.X) << rectStr(b);
+            EXPECT_LE(b.LowerRightCorner.Y, win.LowerRightCorner.Y) << rectStr(b);
+        }
+        const auto g = CombatAbilityLayout::gaugeRect(l);
+        EXPECT_LE(g.LowerRightCorner.Y,
+                  CombatAbilityLayout::buttonRect(l, 0).UpperLeftCorner.Y)
+            << "the gauge must sit above the button grid";
+    }
+}
+
+// A closed window consumes nothing; an open one hit-tests only rows that
+// exist.
+TEST(CombatAbilityWindowT415, ButtonHitTests) {
+    const UILayout l = layout800();
+    CombatAbilityPanelState state;
+    std::vector<SkillDisplayItem> skills;
+    for (uint8_t id : {uint8_t(10), uint8_t(30)}) {
+        SkillDisplayItem s;
+        s.skillId = id;
+        s.name = EQ::getSkillName(id);
+        s.value = 50;
+        s.maxValue = 200;
+        skills.push_back(s);
+    }
+    rebuildCombatAbilities(state, skills);
+    ASSERT_EQ(state.abilities.size(), 2u);
+
+    const auto b0 = CombatAbilityLayout::buttonRect(l, 0);
+    const int x = b0.UpperLeftCorner.X + 4;
+    const int y = b0.UpperLeftCorner.Y + 4;
+
+    EXPECT_EQ(hitTestCombatAbility(l, state, x, y), -1)
+        << "a closed combat abilities window must not consume clicks";
+
+    state.isOpen = true;
+    EXPECT_EQ(hitTestCombatAbility(l, state, x, y), 0);
+
+    const auto b2 = CombatAbilityLayout::buttonRect(l, 2);
+    EXPECT_EQ(hitTestCombatAbility(l, state, b2.UpperLeftCorner.X + 4,
+                                   b2.UpperLeftCorner.Y + 4), -1)
+        << "an empty button row is not clickable";
+
+    EXPECT_EQ(hitTestCombatAbility(l, state, 0, 0), -1);
+}
+
+// The oracle's own default: MEASURED at Options > Keys > UI,
+// review/T377/oracle/T377_oracle_options_keys_UI_page3.png --
+// "Toggle Combat Ability Window   Alt C", Alternate column empty.
+TEST(CombatAbilityWindowT415, DefaultIsClosedAndTheToggleFlips) {
+    CombatAbilityPanelState state;
+    EXPECT_FALSE(state.isOpen);
+    EXPECT_TRUE(combatAbilityWindowIsVisible(state) == false);
+    state.isOpen = true;
+    EXPECT_TRUE(combatAbilityWindowIsVisible(state));
 }
