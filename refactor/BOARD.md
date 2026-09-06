@@ -5467,7 +5467,7 @@ client uses every field.
   refuted by T413's measurement, and the generator fix is the one this file
   needed. The kNeverAlpha reason string in
   `tests/test_texture_alpha_census.cpp` is rewritten accordingly.
-  ⚠ `eqe1MappedBytes` in `tests/goldens/manifest.json` is now 378 bytes high in
+  ⚠ (APPLIED at the T424 merge under the B240 bless.) `eqe1MappedBytes` in `tests/goldens/manifest.json` was 378 bytes high in
   all three gate zones (124064062/122730154/117214650 expected against
   124063684/122729776/117214272 measured). T424 did NOT edit the manifest;
   the re-bless is the orchestrator's.
