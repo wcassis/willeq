@@ -75,7 +75,18 @@ const std::string kGolden = kRoot + "/tests/goldens/frame_render_order_g05.txt";
 //     nothing was removed or replaced. Entries 0-256 are byte-identical;
 //     everything after each insertion point shifts with its text
 //     byte-identical; nothing was reordered.
-const size_t kGoldenSize = 309u;
+//   * T423 (board B362): the scene-ambient recompute added as the FIRST render
+//     pass, entry 3 -- `if (owner_.isSceneAmbientDirty())
+//     owner_.updateTimeOfDay(ctx_.currentHour, ctx_.currentMinute);`, inserted
+//     directly after entry 2 `return false;  // Signal loading screen was
+//     shown` and before entry 3 (now 4), the first line of
+//     runSceneProfileIfScheduled(). It goes there because the ambient it sets
+//     is read by the same frame's drawAll() and zone-shader uniforms, so it
+//     must precede beginScene(). The count RISES by one, 309 -> 310: one
+//     statement was added and nothing was removed or replaced. Entries 0-2 are
+//     byte-identical; entries 3-308 became 4-309 with their text
+//     byte-identical; nothing was reordered.
+const size_t kGoldenSize = 310u;
 
 std::vector<std::string> readLines(const std::string& path) {
     std::ifstream in(path);
@@ -204,7 +215,7 @@ TEST(FrameRenderOrder, EveryPassIsCalledExactlyOnceAndNoneIsOrphaned) {
             EXPECT_NE(calls[i], calls[j]) << "render pass called twice: " << calls[i];
         }
     }
-    EXPECT_EQ(calls.size(), 16u) << "expected sixteen render passes in processFrameRender()";
+    EXPECT_EQ(calls.size(), 17u) << "expected seventeen render passes in processFrameRender()";
     for (const auto& kv : defs) {
         if (kv.first == "processFrameRender") continue;
         EXPECT_NE(std::find(calls.begin(), calls.end(), kv.first), calls.end())

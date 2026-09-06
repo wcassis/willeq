@@ -361,6 +361,27 @@ public:
     // Update time of day lighting (hour 0-23, minute 0-59)
     void updateTimeOfDay(uint8_t hour, uint8_t minute);
 
+    // T423 (board B362): the scene ambient is a function of FOUR inputs -- the
+    // day/night clock, the user ambient multiplier, the weather modifier and
+    // the vision floor -- and until this it was recomposed only when the CLOCK
+    // moved. eqemu sends OP_TimeOfDay at zone-in and on `#set time`, never on a
+    // timer, so between two clock packets a weather change or a vision buff
+    // reached the world's lighting at an arbitrary later moment or never at
+    // all. T418's first live session measured a whole day block of forced rain
+    // and got zero `updateTimeOfDay: weatherMod ...` lines out of the client.
+    //
+    // Every writer of a non-clock input now MARKS the ambient dirty and the
+    // render thread consumes the mark once per frame
+    // (FrameComponent::recomposeSceneAmbientIfDirty, pinned in the G05
+    // frame-order golden). updateTimeOfDay() itself is the one recompute, and
+    // it CLEARS the flag -- so the clock packet path is unchanged and a
+    // marked-then-clocked frame recomposes once, not twice.
+    //
+    // It starts TRUE: the first frame after a zone load composes the ambient
+    // whether or not the server has sent a clock packet yet.
+    void markSceneAmbientDirty() { sceneAmbientDirty_ = true; }
+    bool isSceneAmbientDirty() const { return sceneAmbientDirty_; }
+
     // Camera control modes.
     // L05 (Batch L): the enum was nested here. PlayerCameraComponent's
     // setCameraMode(CameraMode) needs it, and the component header cannot
@@ -1084,7 +1105,17 @@ private:
     std::vector<ObjectLight> objectLights_;  // Light-emitting objects (torches, lanterns)
     std::vector<bool> objectLightInSceneGraph_;  // Track which object lights are in scene graph
     std::vector<VertexAnimatedMesh> vertexAnimatedMeshes_;  // Meshes with vertex animation (flags, banners)
-    float ambientMultiplier_ = 1.0f;  // User-adjustable ambient light multiplier (Page Up/Down)
+    // T423 (board B380): NOTHING WRITES THIS. The "Page Up/Down" the comment
+    // names does not exist any more -- a census over src/ include/ tests/
+    // tools/ benchmarks/ finds one read (composeSceneAmbient's second
+    // argument) and no write, so the user ambient multiplier is a constant
+    // 1.0 and is not one of the inputs B362's dirty flag can ever see move.
+    // Left in place because composeSceneAmbient()'s four-term order is pinned
+    // by test_vision_ambient.cpp; boarded rather than deleted.
+    float ambientMultiplier_ = 1.0f;
+    // T423 (board B362): set by every writer of a non-clock ambient input,
+    // consumed once per frame by FrameComponent. See markSceneAmbientDirty().
+    bool sceneAmbientDirty_ = true;
     // T396 (board B211): last weather ambient modifier this renderer LOGGED.
     // A member, not the function-static it replaced -- that static was shared
     // by every renderer in the process, and its "only below 0.99" gate meant

@@ -1,309 +1,310 @@
 0 if (ctx_.loadingScreenVisible) {
 1 ctx_.Overlays().drawLoadingScreen(loadingProgress_, loadingText_);
 2 return false;  // Signal loading screen was shown
-3 if (ctx_.Diagnostics().sceneProfileEnabled()) {
-4 if (ctx_.Diagnostics().sceneProfileFrameCount() < 0) {
-5 ctx_.Diagnostics().sceneProfileFrameCount()++;
-6 } else {
-7 ctx_.Diagnostics().profileSceneBreakdown();
-8 irr::video::SColor clearColor(255, 50, 50, 80);
-9 if (ctx_.skyRenderer && ctx_.skyRenderer->isEnabled() && ctx_.skyRenderer->isInitialized()) {
-10 clearColor = ctx_.skyRenderer->getCurrentClearColor();
-11 LOG_TRACE(MOD_GRAPHICS, "PRE-DRAW checkpoint 0: beginScene");
-12 ctx_.driver->beginScene(true, true, clearColor);
-13 sectionStart_ = std::chrono::steady_clock::now();
-14 if (ctx_.renderPassTimer) ctx_.renderPassTimer->reset();
-15 if (ctx_.zoneShader) {
-16 windTime_ += deltaTime;
-17 ctx_.zoneShader->setWindTime(windTime_);
-18 float weatherMult = ctx_.treeWindController.isEnabled()
-19 ? ctx_.treeWindController.getWeatherMultiplier()
-20 : 0.0f;
-21 ctx_.zoneShader->setWindParams(
-22 0.3f * weatherMult,   // baseStrength
-23 0.4f,                 // baseFrequency
-24 0.5f * weatherMult,   // gustStrength
-25 0.1f);                // gustFrequency
-26 ctx_.zoneShader->beginFrame();
-27 ctx_.PlayerCamera().applyFirstPersonPitchClamp();
-28 ctx_.smgr->drawAll();
-29 frameTimings_.sceneDrawAll = measureSection();
-30 if (ctx_.renderPassTimer) {
-31 frameTimings_.sceneAnimate = ctx_.renderPassTimer->getAnimateTime();
-32 frameTimings_.sceneSolid = ctx_.renderPassTimer->solidTime;
-33 frameTimings_.sceneTransparent = ctx_.renderPassTimer->transparentTime;
-34 frameTimings_.sceneSkybox = ctx_.renderPassTimer->skyboxTime;
-35 frameTimings_.sceneOther = ctx_.renderPassTimer->otherTime;
-36 frameTimings_.sceneNodeCount = ctx_.renderPassTimer->nodeCount;
-37 if (frameTimings_.sceneDrawAll > 50000) {
-38 LOG_WARN(MOD_GRAPHICS, "PERF: smgr->drawAll() took {} ms", frameTimings_.sceneDrawAll / 1000);
-39 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 1: getPrimitiveCountDrawn");
-40 lastPolygonCount_ = ctx_.driver->getPrimitiveCountDrawn();
-41 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 2: footprints (detail={})", ctx_.detailManager != nullptr);
-42 if (ctx_.detailManager && ctx_.detailManager->isFootprintEnabled()) {
-43 ctx_.detailManager->renderFootprints();
-44 frameTimings_.footprintRender = measureSection();
-45 if (lastPolygonCount_ > static_cast<uint32_t>(ctx_.config.constrainedConfig.maxPolygonsPerFrame)) {
-46 if (++polygonBudgetExceededFrames_ >= 60) {
-47 LOG_WARN(MOD_GRAPHICS, "Polygon budget exceeded: {} > {} (limit)",
-48 lastPolygonCount_, ctx_.config.constrainedConfig.maxPolygonsPerFrame);
-49 polygonBudgetExceededFrames_ = 0;
-50 } else {
-51 polygonBudgetExceededFrames_ = 0;
-52 if (++constrainedStatsLogCounter_ >= 150) {
-53 constrainedStatsLogCounter_ = 0;
-54 int visibleEntities = ctx_.entityRenderer ? ctx_.entityRenderer->getVisibleEntityCount() : 0;
-55 int totalEntities = ctx_.entityRenderer ? static_cast<int>(ctx_.entityRenderer->getEntityCount()) : 0;
-56 size_t tmuUsed = 0, tmuLimit = 0;
-57 float hitRate = 0.0f;
-58 size_t evictions = 0;
-59 if (ctx_.constrainedTextureCache) {
-60 tmuUsed = ctx_.constrainedTextureCache->getCurrentUsage();
-61 tmuLimit = ctx_.constrainedTextureCache->getMemoryLimit();
-62 hitRate = ctx_.constrainedTextureCache->getHitRate();
-63 evictions = ctx_.constrainedTextureCache->getEvictionCount();
-64 size_t fbiUsed = ctx_.config.constrainedConfig.calculateFramebufferUsage(ctx_.config.width, ctx_.config.height);
-65 size_t fbiLimit = ctx_.config.constrainedConfig.framebufferMemoryBytes;
-66 LOG_INFO(MOD_GRAPHICS, "=== RENDERER STATS [{}] ===",
-67 ConstrainedRendererConfig::presetName(ctx_.config.constrainedPreset));
-68 LOG_INFO(MOD_GRAPHICS, "  Resolution: {}x{} @ {}-bit (FBI: {:.1f}MB/{:.1f}MB)",
-69 ctx_.config.width, ctx_.config.height, ctx_.config.constrainedConfig.colorDepthBits,
-70 fbiUsed / (1024.0f * 1024.0f), fbiLimit / (1024.0f * 1024.0f));
-71 LOG_INFO(MOD_GRAPHICS, "  Textures: TMU {:.1f}MB/{:.1f}MB | Hit: {:.0f}% | Evictions: {}",
-72 tmuUsed / (1024.0f * 1024.0f), tmuLimit / (1024.0f * 1024.0f), hitRate, evictions);
-73 LOG_INFO(MOD_GRAPHICS, "  Geometry: Polys {}/{} | Entities {}/{} (max {}) | Clip {:.0f}",
-74 lastPolygonCount_, ctx_.config.constrainedConfig.maxPolygonsPerFrame,
-75 visibleEntities, totalEntities, ctx_.config.constrainedConfig.maxVisibleEntities,
-76 ctx_.config.constrainedConfig.clipDistance);
-77 LOG_INFO(MOD_GRAPHICS, "  FPS: {}", currentFps_);
-78 FILE* f = fopen("/proc/self/statm", "r");
-79 if (f) {
-80 unsigned long vm = 0, rss = 0;
-81 if (fscanf(f, "%lu %lu", &vm, &rss) == 2) {
-82 long ps = sysconf(_SC_PAGESIZE);
-83 LOG_INFO(MOD_GRAPHICS, "  Memory: RSS {:.1f}MB",
-84 (rss * ps) / (1024.0f * 1024.0f));
-85 fclose(f);
-86 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 3: target outline");
-87 ctx_.Overlays().drawTargetOutline();
-88 ctx_.Overlays().drawTargetSelectionBox();
-89 frameTimings_.targetBox = measureSection();
-90 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 4: particles (mgr={}, enabled={}, zoneReady={})",
-91 ctx_.particleManager != nullptr,
-92 ctx_.particleManager ? ctx_.particleManager->isEnabled() : false,
-93 ctx_.zoneReady);
-94 eqtGPUPhaseBegin(2 /* GPUSyncPhase::ParticlesUI */);
-95 if (ctx_.particleManager && ctx_.particleManager->isEnabled() && ctx_.zoneReady) ctx_.particleManager->render();
-96 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 5: unified particles (have3D={})", have3DTransforms_);
-97 if (ctx_.particleManager && ctx_.zoneReady && have3DTransforms_) {
-98 float fogStart = ctx_.zoneShader ? ctx_.zoneShader->fogStart() : 999999.0f;
-99 float fogEnd = ctx_.zoneShader ? ctx_.zoneShader->fogEnd() : 999999.0f;
-100 const float* fogCol = ctx_.zoneShader ? ctx_.zoneShader->fogColor() : nullptr;
-101 float screenH = static_cast<float>(ctx_.driver->getScreenSize().Height);
-102 ctx_.particleManager->renderUnified(ctx_.captured3DView, ctx_.captured3DProj,
-103 ctx_.camera ? ctx_.camera->getAbsolutePosition() : irr::core::vector3df(0, 0, 0),
-104 fogStart, fogEnd, fogCol, screenH,
-105 ctx_.particleRenderBuffer);
-106 frameTimings_.particles = measureSection();
-107 if (ctx_.fireEffectsEnabled && !ctx_.fireGlowLights.empty() && ctx_.zoneReady && have3DTransforms_) {
-108 fireGlowTime_ += deltaTime;
-109 if (ctx_.fireGlowLightingEnabled) {
-110 ctx_.Eqe1().updateFireGlowLighting();
-111 if (ctx_.fireGlowIcospheresEnabled && ctx_.icosphereProgram != 0) {
-112 ctx_.Eqe1().renderFireGlowIcospheres();
-113 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 6: boids");
-114 if (ctx_.boidsManager && ctx_.boidsManager->isEnabled() && ctx_.zoneReady) ctx_.boidsManager->render();
-115 frameTimings_.boids = measureSection();
-116 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 7: weather");
-117 if (ctx_.weatherEffects && ctx_.weatherEffects->isEnabled()) ctx_.weatherEffects->render();
-118 frameTimings_.weatherRender = measureSection();
-119 if (ctx_.PlayerCamera().playerConfig().collisionDebug) ctx_.PlayerCamera().drawCollisionDebugLines(deltaTime);
-120 if (frustumDebugDraw_ && ctx_.frustumCuller) {
-121 irr::video::SMaterial debugMat;
-122 debugMat.Lighting = false;
-123 debugMat.ZBuffer = irr::video::ECFN_ALWAYS;
-124 debugMat.ZWriteEnable = false;
-125 debugMat.AntiAliasing = false;
-126 debugMat.Thickness = 2.0f;
-127 WorldLineBatch batch(ctx_, debugMat);
-128 ctx_.driver->setTransform(irr::video::ETS_WORLD, irr::core::matrix4());
-129 std::shared_ptr<EQT::Graphics::BspRegion> pvsRegion;
-130 if (ctx_.usePvsCulling && ctx_.zoneBspTree && ctx_.currentPvsRegion != SIZE_MAX
-131 && ctx_.currentPvsRegion < ctx_.zoneBspTree->regions.size()) {
-132 pvsRegion = ctx_.zoneBspTree->regions[ctx_.currentPvsRegion];
-133 float camX = ctx_.playerX, camY = ctx_.playerY, camZ = ctx_.playerZ;
-134 for (auto& [regionIdx, eqBbox] : ctx_.regionBoundingBoxes) {
-135 irr::video::SColor color;
-136 bool pvsVisible = true;
-137 if (pvsRegion && !pvsRegion->visibleRegions.empty()) {
-138 if (regionIdx == ctx_.currentPvsRegion) {
-139 pvsVisible = true;
-140 } else if (regionIdx < pvsRegion->visibleRegions.size()) {
-141 pvsVisible = pvsRegion->visibleRegions[regionIdx];
-142 if (!pvsVisible) {
-143 color = irr::video::SColor(255, 64, 64, 255);  // Blue = PVS-culled
-144 } else {
-145 float closestX = std::max(eqBbox.MinEdge.X, std::min(camX, eqBbox.MaxEdge.X));
-146 float closestY = std::max(eqBbox.MinEdge.Y, std::min(camY, eqBbox.MaxEdge.Y));
-147 float closestZ = std::max(eqBbox.MinEdge.Z, std::min(camZ, eqBbox.MaxEdge.Z));
-148 float ddx = camX - closestX, ddy = camY - closestY, ddz = camZ - closestZ;
-149 float dist = std::sqrt(ddx*ddx + ddy*ddy + ddz*ddz);
-150 if (dist > ctx_.renderDistance) {
-151 color = irr::video::SColor(255, 255, 255, 0);  // Yellow = distance-culled
-152 } else {
-153 bool inFrustum = ctx_.frustumCuller->testAABB(
-154 eqBbox.MinEdge.X, eqBbox.MinEdge.Y, eqBbox.MinEdge.Z,
-155 eqBbox.MaxEdge.X, eqBbox.MaxEdge.Y, eqBbox.MaxEdge.Z);
-156 if (!inFrustum) {
-157 color = irr::video::SColor(255, 255, 0, 0);  // Red = frustum-culled
-158 } else if (ctx_.occlusionCulledRegions.count(regionIdx)) {
-159 color = irr::video::SColor(200, 255, 0, 255);  // Magenta = occlusion-culled
-160 } else {
-161 color = irr::video::SColor(255, 0, 255, 0);  // Green = rendered
-162 irr::core::vector3df corners[8];
-163 corners[0] = irr::core::vector3df(eqBbox.MinEdge.X, eqBbox.MinEdge.Z, eqBbox.MinEdge.Y);
-164 corners[1] = irr::core::vector3df(eqBbox.MaxEdge.X, eqBbox.MinEdge.Z, eqBbox.MinEdge.Y);
-165 corners[2] = irr::core::vector3df(eqBbox.MaxEdge.X, eqBbox.MaxEdge.Z, eqBbox.MinEdge.Y);
-166 corners[3] = irr::core::vector3df(eqBbox.MinEdge.X, eqBbox.MaxEdge.Z, eqBbox.MinEdge.Y);
-167 corners[4] = irr::core::vector3df(eqBbox.MinEdge.X, eqBbox.MinEdge.Z, eqBbox.MaxEdge.Y);
-168 corners[5] = irr::core::vector3df(eqBbox.MaxEdge.X, eqBbox.MinEdge.Z, eqBbox.MaxEdge.Y);
-169 corners[6] = irr::core::vector3df(eqBbox.MaxEdge.X, eqBbox.MaxEdge.Z, eqBbox.MaxEdge.Y);
-170 corners[7] = irr::core::vector3df(eqBbox.MinEdge.X, eqBbox.MaxEdge.Z, eqBbox.MaxEdge.Y);
-171 ctx_.driver->draw3DLine(corners[0], corners[1], color);
-172 ctx_.driver->draw3DLine(corners[1], corners[2], color);
-173 ctx_.driver->draw3DLine(corners[2], corners[3], color);
-174 ctx_.driver->draw3DLine(corners[3], corners[0], color);
-175 ctx_.driver->draw3DLine(corners[4], corners[5], color);
-176 ctx_.driver->draw3DLine(corners[5], corners[6], color);
-177 ctx_.driver->draw3DLine(corners[6], corners[7], color);
-178 ctx_.driver->draw3DLine(corners[7], corners[4], color);
-179 ctx_.driver->draw3DLine(corners[0], corners[4], color);
-180 ctx_.driver->draw3DLine(corners[1], corners[5], color);
-181 ctx_.driver->draw3DLine(corners[2], corners[6], color);
-182 ctx_.driver->draw3DLine(corners[3], corners[7], color);
-183 if (ctx_.Overlays().showMapOverlay()) {
-184 ctx_.Overlays().updateMapOverlay(glm::vec3(ctx_.playerX, ctx_.playerZ, ctx_.playerY));
-185 ctx_.Overlays().drawMapOverlay();
-186 if (ctx_.Overlays().showNavmeshOverlay()) {
-187 ctx_.Overlays().updateNavmeshOverlay(glm::vec3(ctx_.playerX, ctx_.playerZ, ctx_.playerY));
-188 ctx_.Overlays().drawNavmeshOverlay();
-189 if (ctx_.Diagnostics().portalDebugDraw() && ctx_.portalSystem && ctx_.portalSystem->hasPortals() && have3DTransforms_) {
-190 const auto& portalData = ctx_.portalSystem->getData();
-191 float camEqX = ctx_.playerX;
-192 float camEqY = ctx_.playerZ;  // Irrlicht Z -> EQ Y
-193 float camEqZ = ctx_.playerY;  // Irrlicht Y -> EQ Z
-194 const float maxDistSq = 500.0f * 500.0f;
-195 std::vector<float> lineBuf;
-196 lineBuf.reserve(4096);
-197 size_t lineCount = 0;
-198 auto pushLine = [&](float x1, float y1, float z1, float x2, float y2, float z2,
-199 float r, float g, float b) {
-200 lineBuf.push_back(x1); lineBuf.push_back(z1); lineBuf.push_back(y1);
-201 lineBuf.push_back(r); lineBuf.push_back(g); lineBuf.push_back(b); lineBuf.push_back(1.0f);
-202 lineBuf.push_back(x2); lineBuf.push_back(z2); lineBuf.push_back(y2);
-203 lineBuf.push_back(r); lineBuf.push_back(g); lineBuf.push_back(b); lineBuf.push_back(1.0f);
-204 lineCount++;
-205 for (size_t pi = 0; pi < portalData.portals.size(); ++pi) {
-206 const auto& portal = portalData.portals[pi];
-207 size_t n = portal.vertexCount();
-208 if (n < 3) continue;
-209 float dx = portal.centerX - camEqX;
-210 float dy = portal.centerY - camEqY;
-211 float dz = portal.centerZ - camEqZ;
-212 if (dx * dx + dy * dy + dz * dz > maxDistSq) continue;
-213 bool isAdjacentToCamera = (portal.regionA == ctx_.currentPvsRegion ||
-214 portal.regionB == ctx_.currentPvsRegion);
-215 float r, g, b;
-216 if (isAdjacentToCamera) { r = 0.0f; g = 1.0f; b = 1.0f; }  // Cyan
-217 else { r = 1.0f; g = 0.647f; b = 0.0f; }                    // Orange
-218 for (size_t vi = 0; vi < n; ++vi) {
-219 size_t vj = (vi + 1) % n;
-220 pushLine(portal.vx(vi), portal.vy(vi), portal.vz(vi),
-221 portal.vx(vj), portal.vy(vj), portal.vz(vj), r, g, b);
-222 if (lineCount > 0) {
-223 ctx_.driver->setTransform(irr::video::ETS_VIEW, ctx_.captured3DView);
-224 ctx_.driver->setTransform(irr::video::ETS_PROJECTION, ctx_.captured3DProj);
-225 ctx_.driver->setTransform(irr::video::ETS_WORLD, irr::core::matrix4());
-226 gles2Draw3DLinesBatch(ctx_.driver, lineBuf.data(), static_cast<unsigned int>(lineCount));
-227 if (ctx_.Diagnostics().stencilDebugDraw() && ctx_.portalOcclusionEnabled) {
-228 irr::video::SColor levelColors[4] = {
-229 irr::video::SColor(80, 0, 255, 0),     // Level 1: green
-230 irr::video::SColor(80, 0, 0, 255),     // Level 2: blue
-231 irr::video::SColor(80, 255, 255, 0),   // Level 3: yellow
-232 irr::video::SColor(80, 255, 0, 255)    // Level 4: magenta
-233 for (int level = 1; level <= 4; ++level) {
-234 glEnable(GL_STENCIL_TEST);
-235 glStencilFunc(GL_EQUAL, level, 0xFF);
-236 glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
-237 irr::core::rect<irr::s32> fullScreen(0, 0,
-238 static_cast<irr::s32>(ctx_.driver->getScreenSize().Width),
-239 static_cast<irr::s32>(ctx_.driver->getScreenSize().Height));
-240 ctx_.driver->draw2DRectangle(levelColors[level - 1], fullScreen);
-241 glDisable(GL_STENCIL_TEST);
-242 frameTimings_.debugOverlays = measureSection();
-243 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 8: casting bars (entityRenderer={})", ctx_.entityRenderer != nullptr);
-244 if (!allUIHidden_ && ctx_.entityRenderer) ctx_.entityRenderer->renderEntityCastingBars(ctx_.driver, ctx_.Overlays().guienv(), ctx_.camera);
-245 frameTimings_.castingBars = measureSection();
-246 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 9: GUI drawAll");
-247 if (!allUIHidden_ && !newUIEnabled_) {
-248 ctx_.Overlays().guienv()->drawAll();
-249 if (!allUIHidden_) {
-250 ctx_.Overlays().drawFPSCounter();
-251 frameTimings_.guiDrawAll = measureSection();
-252 if (newUIEnabled_ && staticUIInput_ && ctx_.eventReceiver) {
-253 staticUIInput_->processInput(
-254 ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(), pendingUIClick_,
-255 uiLayout_, hotbarState_, spellGemState_, inventoryState_,
-256 spellbookState_, skillsPopupState_, buffBarState_, lootState_);
-257 staticUIInput_->processPanelInput(
-258 ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
-259 pendingUIClick_, uiLayout_, tradeskillState_, combatAbilityState_);
-260 pendingUIClick_ = false;
-261 if (newUIEnabled_ && inventoryState_.activePopup == PopupType::Inventory) {
-262 ctx_.Overlays().updatePaperdollForFrame();
-263 inventoryState_.paperdollTexture = ctx_.Overlays().characterModelView() ? ctx_.Overlays().characterModelView()->getTexture() : nullptr;
-264 if (newUIEnabled_ && uiRenderer_ && !allUIHidden_) {
-265 uiRenderer_->beginFrame();
-266 renderPlayerStatus(*uiRenderer_, uiLayout_, cachedPlayerStats_);
-267 renderTargetInfo(*uiRenderer_, uiLayout_, cachedTargetInfo_);
-268 renderChatPanel(*uiRenderer_, uiLayout_, chatPanelState_);
-269 renderHotbar(*uiRenderer_, uiLayout_, hotbarState_);
-270 renderSpellGemPanel(*uiRenderer_, uiLayout_, spellGemState_);
-271 renderBuffBar(*uiRenderer_, uiLayout_, buffBarState_);
-272 renderCastingBar(*uiRenderer_, uiLayout_, castingBarState_);
-273 renderGroupPanel(*uiRenderer_, uiLayout_, groupPanelState_);
-274 renderPetPanel(*uiRenderer_, uiLayout_, petPanelState_);
-275 renderInventoryPopup(*uiRenderer_, uiLayout_, inventoryState_);
-276 renderSpellbookPopup(*uiRenderer_, uiLayout_, spellbookState_);
-277 renderSkillsPopup(*uiRenderer_, uiLayout_, skillsPopupState_);
-278 renderLootPopup(*uiRenderer_, uiLayout_, lootState_);
-279 renderTradeskillPopup(*uiRenderer_, uiLayout_, tradeskillState_);
-280 renderCombatAbilityPanel(*uiRenderer_, uiLayout_, combatAbilityState_);
-281 renderXPBar(*uiRenderer_, uiLayout_, xpBarState_);
-282 uiRenderer_->endFrame();
-283 frameTimings_.staticUI = measureSection();
-284 ctx_.Overlays().drawZoneLineBoxLabels();
-285 frameTimings_.zoneLineOverlay = measureSection();
-286 eqtGPUPhaseEnd(2 /* GPUSyncPhase::ParticlesUI */);
-287 ctx_.Rdp().captureFrameForRDP();
-288 if (owner_.softwareCursorTexture_) {
-289 auto* cursor = ctx_.device->getCursorControl();
-290 if (cursor && cursor->isVisible()) {
-291 auto pos = cursor->getPosition();
-292 irr::core::position2di destPos(pos.X, pos.Y);
-293 irr::core::rect<irr::s32> srcRect(0, 0, 8, 10);
-294 ctx_.driver->draw2DImage(owner_.softwareCursorTexture_, destPos, srcRect,
-295 nullptr, irr::video::SColor(255, 255, 255, 255), true);
-296 if (pendingScreenshot_) {
-297 pendingScreenshot_ = false;
-298 owner_.saveScreenshot("screenshot.png");
-299 frameTimings_.postRender = measureSection();
-300 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 11: endScene");
-301 eqtGPUPhaseBegin(3 /* GPUSyncPhase::Swap */);
-302 ctx_.driver->endScene();
-303 eqtGPUPhaseEnd(3 /* GPUSyncPhase::Swap */);
-304 eqtGPUPhaseCollectResults();
-305 frameTimings_.endScene = measureSection();
-306 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 12: frame complete");
-307 FlushThreadLog();
-308 return true;
+3 if (owner_.isSceneAmbientDirty()) owner_.updateTimeOfDay(ctx_.currentHour, ctx_.currentMinute);
+4 if (ctx_.Diagnostics().sceneProfileEnabled()) {
+5 if (ctx_.Diagnostics().sceneProfileFrameCount() < 0) {
+6 ctx_.Diagnostics().sceneProfileFrameCount()++;
+7 } else {
+8 ctx_.Diagnostics().profileSceneBreakdown();
+9 irr::video::SColor clearColor(255, 50, 50, 80);
+10 if (ctx_.skyRenderer && ctx_.skyRenderer->isEnabled() && ctx_.skyRenderer->isInitialized()) {
+11 clearColor = ctx_.skyRenderer->getCurrentClearColor();
+12 LOG_TRACE(MOD_GRAPHICS, "PRE-DRAW checkpoint 0: beginScene");
+13 ctx_.driver->beginScene(true, true, clearColor);
+14 sectionStart_ = std::chrono::steady_clock::now();
+15 if (ctx_.renderPassTimer) ctx_.renderPassTimer->reset();
+16 if (ctx_.zoneShader) {
+17 windTime_ += deltaTime;
+18 ctx_.zoneShader->setWindTime(windTime_);
+19 float weatherMult = ctx_.treeWindController.isEnabled()
+20 ? ctx_.treeWindController.getWeatherMultiplier()
+21 : 0.0f;
+22 ctx_.zoneShader->setWindParams(
+23 0.3f * weatherMult,   // baseStrength
+24 0.4f,                 // baseFrequency
+25 0.5f * weatherMult,   // gustStrength
+26 0.1f);                // gustFrequency
+27 ctx_.zoneShader->beginFrame();
+28 ctx_.PlayerCamera().applyFirstPersonPitchClamp();
+29 ctx_.smgr->drawAll();
+30 frameTimings_.sceneDrawAll = measureSection();
+31 if (ctx_.renderPassTimer) {
+32 frameTimings_.sceneAnimate = ctx_.renderPassTimer->getAnimateTime();
+33 frameTimings_.sceneSolid = ctx_.renderPassTimer->solidTime;
+34 frameTimings_.sceneTransparent = ctx_.renderPassTimer->transparentTime;
+35 frameTimings_.sceneSkybox = ctx_.renderPassTimer->skyboxTime;
+36 frameTimings_.sceneOther = ctx_.renderPassTimer->otherTime;
+37 frameTimings_.sceneNodeCount = ctx_.renderPassTimer->nodeCount;
+38 if (frameTimings_.sceneDrawAll > 50000) {
+39 LOG_WARN(MOD_GRAPHICS, "PERF: smgr->drawAll() took {} ms", frameTimings_.sceneDrawAll / 1000);
+40 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 1: getPrimitiveCountDrawn");
+41 lastPolygonCount_ = ctx_.driver->getPrimitiveCountDrawn();
+42 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 2: footprints (detail={})", ctx_.detailManager != nullptr);
+43 if (ctx_.detailManager && ctx_.detailManager->isFootprintEnabled()) {
+44 ctx_.detailManager->renderFootprints();
+45 frameTimings_.footprintRender = measureSection();
+46 if (lastPolygonCount_ > static_cast<uint32_t>(ctx_.config.constrainedConfig.maxPolygonsPerFrame)) {
+47 if (++polygonBudgetExceededFrames_ >= 60) {
+48 LOG_WARN(MOD_GRAPHICS, "Polygon budget exceeded: {} > {} (limit)",
+49 lastPolygonCount_, ctx_.config.constrainedConfig.maxPolygonsPerFrame);
+50 polygonBudgetExceededFrames_ = 0;
+51 } else {
+52 polygonBudgetExceededFrames_ = 0;
+53 if (++constrainedStatsLogCounter_ >= 150) {
+54 constrainedStatsLogCounter_ = 0;
+55 int visibleEntities = ctx_.entityRenderer ? ctx_.entityRenderer->getVisibleEntityCount() : 0;
+56 int totalEntities = ctx_.entityRenderer ? static_cast<int>(ctx_.entityRenderer->getEntityCount()) : 0;
+57 size_t tmuUsed = 0, tmuLimit = 0;
+58 float hitRate = 0.0f;
+59 size_t evictions = 0;
+60 if (ctx_.constrainedTextureCache) {
+61 tmuUsed = ctx_.constrainedTextureCache->getCurrentUsage();
+62 tmuLimit = ctx_.constrainedTextureCache->getMemoryLimit();
+63 hitRate = ctx_.constrainedTextureCache->getHitRate();
+64 evictions = ctx_.constrainedTextureCache->getEvictionCount();
+65 size_t fbiUsed = ctx_.config.constrainedConfig.calculateFramebufferUsage(ctx_.config.width, ctx_.config.height);
+66 size_t fbiLimit = ctx_.config.constrainedConfig.framebufferMemoryBytes;
+67 LOG_INFO(MOD_GRAPHICS, "=== RENDERER STATS [{}] ===",
+68 ConstrainedRendererConfig::presetName(ctx_.config.constrainedPreset));
+69 LOG_INFO(MOD_GRAPHICS, "  Resolution: {}x{} @ {}-bit (FBI: {:.1f}MB/{:.1f}MB)",
+70 ctx_.config.width, ctx_.config.height, ctx_.config.constrainedConfig.colorDepthBits,
+71 fbiUsed / (1024.0f * 1024.0f), fbiLimit / (1024.0f * 1024.0f));
+72 LOG_INFO(MOD_GRAPHICS, "  Textures: TMU {:.1f}MB/{:.1f}MB | Hit: {:.0f}% | Evictions: {}",
+73 tmuUsed / (1024.0f * 1024.0f), tmuLimit / (1024.0f * 1024.0f), hitRate, evictions);
+74 LOG_INFO(MOD_GRAPHICS, "  Geometry: Polys {}/{} | Entities {}/{} (max {}) | Clip {:.0f}",
+75 lastPolygonCount_, ctx_.config.constrainedConfig.maxPolygonsPerFrame,
+76 visibleEntities, totalEntities, ctx_.config.constrainedConfig.maxVisibleEntities,
+77 ctx_.config.constrainedConfig.clipDistance);
+78 LOG_INFO(MOD_GRAPHICS, "  FPS: {}", currentFps_);
+79 FILE* f = fopen("/proc/self/statm", "r");
+80 if (f) {
+81 unsigned long vm = 0, rss = 0;
+82 if (fscanf(f, "%lu %lu", &vm, &rss) == 2) {
+83 long ps = sysconf(_SC_PAGESIZE);
+84 LOG_INFO(MOD_GRAPHICS, "  Memory: RSS {:.1f}MB",
+85 (rss * ps) / (1024.0f * 1024.0f));
+86 fclose(f);
+87 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 3: target outline");
+88 ctx_.Overlays().drawTargetOutline();
+89 ctx_.Overlays().drawTargetSelectionBox();
+90 frameTimings_.targetBox = measureSection();
+91 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 4: particles (mgr={}, enabled={}, zoneReady={})",
+92 ctx_.particleManager != nullptr,
+93 ctx_.particleManager ? ctx_.particleManager->isEnabled() : false,
+94 ctx_.zoneReady);
+95 eqtGPUPhaseBegin(2 /* GPUSyncPhase::ParticlesUI */);
+96 if (ctx_.particleManager && ctx_.particleManager->isEnabled() && ctx_.zoneReady) ctx_.particleManager->render();
+97 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 5: unified particles (have3D={})", have3DTransforms_);
+98 if (ctx_.particleManager && ctx_.zoneReady && have3DTransforms_) {
+99 float fogStart = ctx_.zoneShader ? ctx_.zoneShader->fogStart() : 999999.0f;
+100 float fogEnd = ctx_.zoneShader ? ctx_.zoneShader->fogEnd() : 999999.0f;
+101 const float* fogCol = ctx_.zoneShader ? ctx_.zoneShader->fogColor() : nullptr;
+102 float screenH = static_cast<float>(ctx_.driver->getScreenSize().Height);
+103 ctx_.particleManager->renderUnified(ctx_.captured3DView, ctx_.captured3DProj,
+104 ctx_.camera ? ctx_.camera->getAbsolutePosition() : irr::core::vector3df(0, 0, 0),
+105 fogStart, fogEnd, fogCol, screenH,
+106 ctx_.particleRenderBuffer);
+107 frameTimings_.particles = measureSection();
+108 if (ctx_.fireEffectsEnabled && !ctx_.fireGlowLights.empty() && ctx_.zoneReady && have3DTransforms_) {
+109 fireGlowTime_ += deltaTime;
+110 if (ctx_.fireGlowLightingEnabled) {
+111 ctx_.Eqe1().updateFireGlowLighting();
+112 if (ctx_.fireGlowIcospheresEnabled && ctx_.icosphereProgram != 0) {
+113 ctx_.Eqe1().renderFireGlowIcospheres();
+114 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 6: boids");
+115 if (ctx_.boidsManager && ctx_.boidsManager->isEnabled() && ctx_.zoneReady) ctx_.boidsManager->render();
+116 frameTimings_.boids = measureSection();
+117 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 7: weather");
+118 if (ctx_.weatherEffects && ctx_.weatherEffects->isEnabled()) ctx_.weatherEffects->render();
+119 frameTimings_.weatherRender = measureSection();
+120 if (ctx_.PlayerCamera().playerConfig().collisionDebug) ctx_.PlayerCamera().drawCollisionDebugLines(deltaTime);
+121 if (frustumDebugDraw_ && ctx_.frustumCuller) {
+122 irr::video::SMaterial debugMat;
+123 debugMat.Lighting = false;
+124 debugMat.ZBuffer = irr::video::ECFN_ALWAYS;
+125 debugMat.ZWriteEnable = false;
+126 debugMat.AntiAliasing = false;
+127 debugMat.Thickness = 2.0f;
+128 WorldLineBatch batch(ctx_, debugMat);
+129 ctx_.driver->setTransform(irr::video::ETS_WORLD, irr::core::matrix4());
+130 std::shared_ptr<EQT::Graphics::BspRegion> pvsRegion;
+131 if (ctx_.usePvsCulling && ctx_.zoneBspTree && ctx_.currentPvsRegion != SIZE_MAX
+132 && ctx_.currentPvsRegion < ctx_.zoneBspTree->regions.size()) {
+133 pvsRegion = ctx_.zoneBspTree->regions[ctx_.currentPvsRegion];
+134 float camX = ctx_.playerX, camY = ctx_.playerY, camZ = ctx_.playerZ;
+135 for (auto& [regionIdx, eqBbox] : ctx_.regionBoundingBoxes) {
+136 irr::video::SColor color;
+137 bool pvsVisible = true;
+138 if (pvsRegion && !pvsRegion->visibleRegions.empty()) {
+139 if (regionIdx == ctx_.currentPvsRegion) {
+140 pvsVisible = true;
+141 } else if (regionIdx < pvsRegion->visibleRegions.size()) {
+142 pvsVisible = pvsRegion->visibleRegions[regionIdx];
+143 if (!pvsVisible) {
+144 color = irr::video::SColor(255, 64, 64, 255);  // Blue = PVS-culled
+145 } else {
+146 float closestX = std::max(eqBbox.MinEdge.X, std::min(camX, eqBbox.MaxEdge.X));
+147 float closestY = std::max(eqBbox.MinEdge.Y, std::min(camY, eqBbox.MaxEdge.Y));
+148 float closestZ = std::max(eqBbox.MinEdge.Z, std::min(camZ, eqBbox.MaxEdge.Z));
+149 float ddx = camX - closestX, ddy = camY - closestY, ddz = camZ - closestZ;
+150 float dist = std::sqrt(ddx*ddx + ddy*ddy + ddz*ddz);
+151 if (dist > ctx_.renderDistance) {
+152 color = irr::video::SColor(255, 255, 255, 0);  // Yellow = distance-culled
+153 } else {
+154 bool inFrustum = ctx_.frustumCuller->testAABB(
+155 eqBbox.MinEdge.X, eqBbox.MinEdge.Y, eqBbox.MinEdge.Z,
+156 eqBbox.MaxEdge.X, eqBbox.MaxEdge.Y, eqBbox.MaxEdge.Z);
+157 if (!inFrustum) {
+158 color = irr::video::SColor(255, 255, 0, 0);  // Red = frustum-culled
+159 } else if (ctx_.occlusionCulledRegions.count(regionIdx)) {
+160 color = irr::video::SColor(200, 255, 0, 255);  // Magenta = occlusion-culled
+161 } else {
+162 color = irr::video::SColor(255, 0, 255, 0);  // Green = rendered
+163 irr::core::vector3df corners[8];
+164 corners[0] = irr::core::vector3df(eqBbox.MinEdge.X, eqBbox.MinEdge.Z, eqBbox.MinEdge.Y);
+165 corners[1] = irr::core::vector3df(eqBbox.MaxEdge.X, eqBbox.MinEdge.Z, eqBbox.MinEdge.Y);
+166 corners[2] = irr::core::vector3df(eqBbox.MaxEdge.X, eqBbox.MaxEdge.Z, eqBbox.MinEdge.Y);
+167 corners[3] = irr::core::vector3df(eqBbox.MinEdge.X, eqBbox.MaxEdge.Z, eqBbox.MinEdge.Y);
+168 corners[4] = irr::core::vector3df(eqBbox.MinEdge.X, eqBbox.MinEdge.Z, eqBbox.MaxEdge.Y);
+169 corners[5] = irr::core::vector3df(eqBbox.MaxEdge.X, eqBbox.MinEdge.Z, eqBbox.MaxEdge.Y);
+170 corners[6] = irr::core::vector3df(eqBbox.MaxEdge.X, eqBbox.MaxEdge.Z, eqBbox.MaxEdge.Y);
+171 corners[7] = irr::core::vector3df(eqBbox.MinEdge.X, eqBbox.MaxEdge.Z, eqBbox.MaxEdge.Y);
+172 ctx_.driver->draw3DLine(corners[0], corners[1], color);
+173 ctx_.driver->draw3DLine(corners[1], corners[2], color);
+174 ctx_.driver->draw3DLine(corners[2], corners[3], color);
+175 ctx_.driver->draw3DLine(corners[3], corners[0], color);
+176 ctx_.driver->draw3DLine(corners[4], corners[5], color);
+177 ctx_.driver->draw3DLine(corners[5], corners[6], color);
+178 ctx_.driver->draw3DLine(corners[6], corners[7], color);
+179 ctx_.driver->draw3DLine(corners[7], corners[4], color);
+180 ctx_.driver->draw3DLine(corners[0], corners[4], color);
+181 ctx_.driver->draw3DLine(corners[1], corners[5], color);
+182 ctx_.driver->draw3DLine(corners[2], corners[6], color);
+183 ctx_.driver->draw3DLine(corners[3], corners[7], color);
+184 if (ctx_.Overlays().showMapOverlay()) {
+185 ctx_.Overlays().updateMapOverlay(glm::vec3(ctx_.playerX, ctx_.playerZ, ctx_.playerY));
+186 ctx_.Overlays().drawMapOverlay();
+187 if (ctx_.Overlays().showNavmeshOverlay()) {
+188 ctx_.Overlays().updateNavmeshOverlay(glm::vec3(ctx_.playerX, ctx_.playerZ, ctx_.playerY));
+189 ctx_.Overlays().drawNavmeshOverlay();
+190 if (ctx_.Diagnostics().portalDebugDraw() && ctx_.portalSystem && ctx_.portalSystem->hasPortals() && have3DTransforms_) {
+191 const auto& portalData = ctx_.portalSystem->getData();
+192 float camEqX = ctx_.playerX;
+193 float camEqY = ctx_.playerZ;  // Irrlicht Z -> EQ Y
+194 float camEqZ = ctx_.playerY;  // Irrlicht Y -> EQ Z
+195 const float maxDistSq = 500.0f * 500.0f;
+196 std::vector<float> lineBuf;
+197 lineBuf.reserve(4096);
+198 size_t lineCount = 0;
+199 auto pushLine = [&](float x1, float y1, float z1, float x2, float y2, float z2,
+200 float r, float g, float b) {
+201 lineBuf.push_back(x1); lineBuf.push_back(z1); lineBuf.push_back(y1);
+202 lineBuf.push_back(r); lineBuf.push_back(g); lineBuf.push_back(b); lineBuf.push_back(1.0f);
+203 lineBuf.push_back(x2); lineBuf.push_back(z2); lineBuf.push_back(y2);
+204 lineBuf.push_back(r); lineBuf.push_back(g); lineBuf.push_back(b); lineBuf.push_back(1.0f);
+205 lineCount++;
+206 for (size_t pi = 0; pi < portalData.portals.size(); ++pi) {
+207 const auto& portal = portalData.portals[pi];
+208 size_t n = portal.vertexCount();
+209 if (n < 3) continue;
+210 float dx = portal.centerX - camEqX;
+211 float dy = portal.centerY - camEqY;
+212 float dz = portal.centerZ - camEqZ;
+213 if (dx * dx + dy * dy + dz * dz > maxDistSq) continue;
+214 bool isAdjacentToCamera = (portal.regionA == ctx_.currentPvsRegion ||
+215 portal.regionB == ctx_.currentPvsRegion);
+216 float r, g, b;
+217 if (isAdjacentToCamera) { r = 0.0f; g = 1.0f; b = 1.0f; }  // Cyan
+218 else { r = 1.0f; g = 0.647f; b = 0.0f; }                    // Orange
+219 for (size_t vi = 0; vi < n; ++vi) {
+220 size_t vj = (vi + 1) % n;
+221 pushLine(portal.vx(vi), portal.vy(vi), portal.vz(vi),
+222 portal.vx(vj), portal.vy(vj), portal.vz(vj), r, g, b);
+223 if (lineCount > 0) {
+224 ctx_.driver->setTransform(irr::video::ETS_VIEW, ctx_.captured3DView);
+225 ctx_.driver->setTransform(irr::video::ETS_PROJECTION, ctx_.captured3DProj);
+226 ctx_.driver->setTransform(irr::video::ETS_WORLD, irr::core::matrix4());
+227 gles2Draw3DLinesBatch(ctx_.driver, lineBuf.data(), static_cast<unsigned int>(lineCount));
+228 if (ctx_.Diagnostics().stencilDebugDraw() && ctx_.portalOcclusionEnabled) {
+229 irr::video::SColor levelColors[4] = {
+230 irr::video::SColor(80, 0, 255, 0),     // Level 1: green
+231 irr::video::SColor(80, 0, 0, 255),     // Level 2: blue
+232 irr::video::SColor(80, 255, 255, 0),   // Level 3: yellow
+233 irr::video::SColor(80, 255, 0, 255)    // Level 4: magenta
+234 for (int level = 1; level <= 4; ++level) {
+235 glEnable(GL_STENCIL_TEST);
+236 glStencilFunc(GL_EQUAL, level, 0xFF);
+237 glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+238 irr::core::rect<irr::s32> fullScreen(0, 0,
+239 static_cast<irr::s32>(ctx_.driver->getScreenSize().Width),
+240 static_cast<irr::s32>(ctx_.driver->getScreenSize().Height));
+241 ctx_.driver->draw2DRectangle(levelColors[level - 1], fullScreen);
+242 glDisable(GL_STENCIL_TEST);
+243 frameTimings_.debugOverlays = measureSection();
+244 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 8: casting bars (entityRenderer={})", ctx_.entityRenderer != nullptr);
+245 if (!allUIHidden_ && ctx_.entityRenderer) ctx_.entityRenderer->renderEntityCastingBars(ctx_.driver, ctx_.Overlays().guienv(), ctx_.camera);
+246 frameTimings_.castingBars = measureSection();
+247 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 9: GUI drawAll");
+248 if (!allUIHidden_ && !newUIEnabled_) {
+249 ctx_.Overlays().guienv()->drawAll();
+250 if (!allUIHidden_) {
+251 ctx_.Overlays().drawFPSCounter();
+252 frameTimings_.guiDrawAll = measureSection();
+253 if (newUIEnabled_ && staticUIInput_ && ctx_.eventReceiver) {
+254 staticUIInput_->processInput(
+255 ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(), pendingUIClick_,
+256 uiLayout_, hotbarState_, spellGemState_, inventoryState_,
+257 spellbookState_, skillsPopupState_, buffBarState_, lootState_);
+258 staticUIInput_->processPanelInput(
+259 ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
+260 pendingUIClick_, uiLayout_, tradeskillState_, combatAbilityState_);
+261 pendingUIClick_ = false;
+262 if (newUIEnabled_ && inventoryState_.activePopup == PopupType::Inventory) {
+263 ctx_.Overlays().updatePaperdollForFrame();
+264 inventoryState_.paperdollTexture = ctx_.Overlays().characterModelView() ? ctx_.Overlays().characterModelView()->getTexture() : nullptr;
+265 if (newUIEnabled_ && uiRenderer_ && !allUIHidden_) {
+266 uiRenderer_->beginFrame();
+267 renderPlayerStatus(*uiRenderer_, uiLayout_, cachedPlayerStats_);
+268 renderTargetInfo(*uiRenderer_, uiLayout_, cachedTargetInfo_);
+269 renderChatPanel(*uiRenderer_, uiLayout_, chatPanelState_);
+270 renderHotbar(*uiRenderer_, uiLayout_, hotbarState_);
+271 renderSpellGemPanel(*uiRenderer_, uiLayout_, spellGemState_);
+272 renderBuffBar(*uiRenderer_, uiLayout_, buffBarState_);
+273 renderCastingBar(*uiRenderer_, uiLayout_, castingBarState_);
+274 renderGroupPanel(*uiRenderer_, uiLayout_, groupPanelState_);
+275 renderPetPanel(*uiRenderer_, uiLayout_, petPanelState_);
+276 renderInventoryPopup(*uiRenderer_, uiLayout_, inventoryState_);
+277 renderSpellbookPopup(*uiRenderer_, uiLayout_, spellbookState_);
+278 renderSkillsPopup(*uiRenderer_, uiLayout_, skillsPopupState_);
+279 renderLootPopup(*uiRenderer_, uiLayout_, lootState_);
+280 renderTradeskillPopup(*uiRenderer_, uiLayout_, tradeskillState_);
+281 renderCombatAbilityPanel(*uiRenderer_, uiLayout_, combatAbilityState_);
+282 renderXPBar(*uiRenderer_, uiLayout_, xpBarState_);
+283 uiRenderer_->endFrame();
+284 frameTimings_.staticUI = measureSection();
+285 ctx_.Overlays().drawZoneLineBoxLabels();
+286 frameTimings_.zoneLineOverlay = measureSection();
+287 eqtGPUPhaseEnd(2 /* GPUSyncPhase::ParticlesUI */);
+288 ctx_.Rdp().captureFrameForRDP();
+289 if (owner_.softwareCursorTexture_) {
+290 auto* cursor = ctx_.device->getCursorControl();
+291 if (cursor && cursor->isVisible()) {
+292 auto pos = cursor->getPosition();
+293 irr::core::position2di destPos(pos.X, pos.Y);
+294 irr::core::rect<irr::s32> srcRect(0, 0, 8, 10);
+295 ctx_.driver->draw2DImage(owner_.softwareCursorTexture_, destPos, srcRect,
+296 nullptr, irr::video::SColor(255, 255, 255, 255), true);
+297 if (pendingScreenshot_) {
+298 pendingScreenshot_ = false;
+299 owner_.saveScreenshot("screenshot.png");
+300 frameTimings_.postRender = measureSection();
+301 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 11: endScene");
+302 eqtGPUPhaseBegin(3 /* GPUSyncPhase::Swap */);
+303 ctx_.driver->endScene();
+304 eqtGPUPhaseEnd(3 /* GPUSyncPhase::Swap */);
+305 eqtGPUPhaseCollectResults();
+306 frameTimings_.endScene = measureSection();
+307 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 12: frame complete");
+308 FlushThreadLog();
+309 return true;

@@ -360,7 +360,7 @@ private:
 	bool processFrameRender(float deltaTime);  // Returns false for loading screen early-return
 	void processInputDeltas(float deltaTime);
 
-	// G05 (refactor/G05_process_frame_render.md): the sixteen render passes
+	// G05 (refactor/G05_process_frame_render.md): the render passes
 	// processFrameRender() calls, in this order. Each is a verbatim slice of
 	// the pre-G05 body INCLUDING its measureSection() bracket, so the
 	// frameTimings_ categories are unchanged; the ORDER is load-bearing and is
@@ -371,6 +371,10 @@ private:
 	// render/game thread boundary changed -- all sixteen run on the render
 	// thread, in the same order, exactly as the single body did.
 	// Callers: processFrameRender() and nothing else.
+	// T423 (board B362): added to the pass list as its FIRST entry -- the
+	// scene-ambient recompute, consumed from the dirty mark every non-clock
+	// writer of an ambient input now sets.
+	void recomposeSceneAmbientIfDirty();
 	void runSceneProfileIfScheduled();
 	void beginSceneAndDrawWorld(float deltaTime);
 	void collectScenePassTimings();

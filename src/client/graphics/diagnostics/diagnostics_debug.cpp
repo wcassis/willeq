@@ -87,8 +87,8 @@ void DiagnosticsComponent::toggleZoneLights() {
     if (ctx_.lightingEnabled && !zoneLightsEnabled_) {
         // State 1 -> State 2: Turn zone lights ON, restore normal ambient/sun
         zoneLightsEnabled_ = true;
-        // Restore normal ambient and sun based on time of day
-        owner_.updateTimeOfDay(ctx_.currentHour, ctx_.currentMinute);
+        // Restore normal ambient and sun based on time of day -- see the
+        // T423 mark at the end of this function.
         if (sunLight_) {
             sunLight_->setVisible(true);
         }
@@ -169,6 +169,15 @@ void DiagnosticsComponent::toggleZoneLights() {
         }
         LOG_INFO(MOD_GRAPHICS, "Lighting: ON, Zone lights: OFF (dark mode)");
     }
+
+    // T423 (board B362): all three arms write ctx_.lightingEnabled or
+    // zoneLightsEnabled_, and updateTimeOfDay() READS both -- it early-returns
+    // while zone lights are off, which is exactly why this used to recompose
+    // inline. It marks like every other non-clock writer now, and the frame
+    // pass runs the recompute before the same frame's draw, so the toggle is
+    // still instant. Marked for all three states, not just the restore: the
+    // gate updateTimeOfDay() reads has moved in every one of them.
+    owner_.markSceneAmbientDirty();
 }
 
 void DiagnosticsComponent::togglePlayerLight() {
@@ -377,11 +386,15 @@ void DiagnosticsComponent::toggleDirectionalLight() {
             ctx_.zoneShader->setAmbientColor(1.0f, 1.0f, 1.0f);
             ctx_.zoneShader->setSunColor(0.0f, 0.0f, 0.0f);
             ctx_.zoneShader->setTintColor(1.0f, 1.0f, 1.0f);
-        } else {
-            // Restore time-of-day lighting
-            owner_.updateTimeOfDay(ctx_.currentHour, ctx_.currentMinute);
         }
     }
+    // T423 (board B362): updateTimeOfDay() branches on
+    // debugDirectionalLightEnabled_ -- it writes the fullbright override in
+    // one state and the composed ambient in the other -- so this flag is an
+    // ambient input in BOTH directions. Marked outside the zoneShader guard:
+    // the mark is about the input having moved, not about a pointer that
+    // happens to be null before initDeferredGraphics().
+    owner_.markSceneAmbientDirty();
     LOG_INFO(MOD_GRAPHICS, "Debug: Directional/ambient light {}", debugDirectionalLightEnabled_ ? "ENABLED" : "DISABLED");
 }
 

@@ -732,6 +732,14 @@ void ZoneLifecycleComponent::setWeather(uint8_t type, uint8_t intensity) {
     if (ctx_.weatherEffects) {
         ctx_.weatherEffects->setWeather(type, intensity);
     }
+    // T423 (board B362): OP_Weather is one of the four inputs to the scene
+    // ambient, and it is the input that made B362 visible -- T418's first live
+    // session forced rain at four intensities and the client never once
+    // recomposed, because the recompute hung off the CLOCK packet alone.
+    // Marked unconditionally: the recompute is idempotent, and gating it on
+    // ctx_.weatherEffects would make the mark depend on a pointer the weather
+    // input has nothing to do with.
+    owner_.markSceneAmbientDirty();
 }
 
 

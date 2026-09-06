@@ -366,113 +366,7 @@ bool WeatherEffectsController::getSnowBrightnessMultiplier(float& outMultiplier)
     return result;
 }
 
-void WeatherEffectsController::update(float deltaTime) {
-    if (!enabled_ || !initialized_) {
-        static bool warnedOnce = false;
-        if (!warnedOnce) {
-            LOG_WARN(MOD_GRAPHICS, "WeatherEffectsController::update skipped - enabled={} initialized={}",
-                     enabled_, initialized_);
-            warnedOnce = true;
-        }
-        return;
-    }
 
-    // Update transition progress
-    if (transitionProgress_ < 1.0f) {
-        transitionProgress_ += deltaTime / transitionDuration_;
-        transitionProgress_ = std::min(1.0f, transitionProgress_);
-    }
-
-    // Update rain
-    if (currentType_ == 1 && currentIntensity_ > 0) {
-        static bool rainStartLogged = false;
-        if (!rainStartLogged) {
-            LOG_INFO(MOD_GRAPHICS, "WeatherEffectsController: Rain effects starting - type={} intensity={}",
-                     currentType_, currentIntensity_);
-            rainStartLogged = true;
-        }
-        updateRain(deltaTime);
-    }
-
-    // Update snow
-    if (currentType_ == 2 && currentIntensity_ > 0) {
-        updateSnow(deltaTime);
-    }
-
-    // Update storm atmosphere
-    updateStormAtmosphere(deltaTime);
-
-    // Update lightning during storms
-    if (currentType_ == 1 && currentIntensity_ >= 3 && config_.storm.lightningEnabled) {
-        updateLightning(deltaTime);
-    }
-
-    // Update storm cloud layer
-    if (stormCloudLayer_ && isCloudOverlayEnabled()) {
-        glm::vec3 windDirection(1.0f, 0.0f, 0.0f);
-        float windStrength = 0.5f;
-        float timeOfDay = 12.0f;
-        glm::vec3 playerPos(0, 0, 0);
-
-        if (particleManager_) {
-            const auto& env = particleManager_->getEnvironmentState();
-            windDirection = env.windDirection;
-            windStrength = env.windStrength;
-            timeOfDay = env.timeOfDay;
-            playerPos = env.playerPosition;
-        } else if (smgr_ && smgr_->getActiveCamera()) {
-            irr::core::vector3df pos = smgr_->getActiveCamera()->getPosition();
-            // Convert from Irrlicht (Y-up) to EQ (Z-up)
-            playerPos = glm::vec3(pos.X, pos.Z, pos.Y);
-        }
-        stormCloudLayer_->update(deltaTime, playerPos, windDirection, windStrength, currentIntensity_, timeOfDay);
-    }
-}
-
-WeatherEffectsController::WeatherEffectsState WeatherEffectsController::computeState(float deltaTime) const {
-    WeatherEffectsState state;
-
-    // Advance transition progress
-    state.transitionProgress = transitionProgress_;
-    if (state.transitionProgress < 1.0f) {
-        state.transitionProgress += deltaTime / transitionDuration_;
-        state.transitionProgress = std::min(1.0f, state.transitionProgress);
-    }
-
-    // Advance storm darkening. T418: the rate is the one captured when the
-    // target last changed, so the whole move takes the oracle's measured
-    // kOracleWeatherTransitionSeconds whatever its size -- the official client
-    // takes the same ~9.3 s at intensity 2, 5, 9 and in snow, because its
-    // endpoints do not depend on the intensity either.
-    state.currentDarkening = advanceWeatherDarkening(
-        currentDarkening_, targetDarkening_, darkeningRate_, deltaTime);
-
-    // Advance lightning timers
-    state.lightningFlashTimer = lightningFlashTimer_;
-    state.lightningBoltTimer = lightningBoltTimer_;
-    state.lightningActive = lightningActive_;
-    state.triggerLightningFlash = false;
-
-    if (state.lightningFlashTimer > 0.0f) {
-        state.lightningFlashTimer -= deltaTime;
-    }
-    if (state.lightningBoltTimer > 0.0f) {
-        state.lightningBoltTimer -= deltaTime;
-        if (state.lightningBoltTimer <= 0.0f) {
-            state.lightningActive = false;
-        }
-    }
-
-    // Check for next lightning strike (only during storms)
-    if (currentType_ == 1 && currentIntensity_ >= 3 && config_.storm.lightningEnabled) {
-        float timer = lightningTimer_ - deltaTime;
-        if (timer <= 0.0f) {
-            state.triggerLightningFlash = true;
-        }
-    }
-
-    return state;
-}
 
 void WeatherEffectsController::applyState(const WeatherEffectsState& state) {
     transitionProgress_ = state.transitionProgress;
@@ -500,6 +394,20 @@ void WeatherEffectsController::applyState(const WeatherEffectsState& state) {
     }
 }
 
+// T423 (board B361, closing T418's narrowing): update(), computeState(),
+// updateStormAtmosphere() and updateLightning() were DELETED here. The weather
+// ramp had three implementations and production ran exactly one of them --
+// SimulationWorker::computeWeatherEffectsState() in sim_weather.cpp, reached
+// from renderer_sim_bridge.cpp's snapshot/applyState hop. update() had no
+// caller anywhere in src/ include/ tests/ tools/ benchmarks/ docker/;
+// computeState() had none in production and was driven only by T396's and
+// T418's tests, which is why a 4x change planted in the copy the CLIENT runs
+// left all nineteen weather cases green. updateStormAtmosphere() and
+// updateLightning() were update()'s alone. What used to be inside them still
+// happens: updateRain()/updateSnow()/the storm cloud layer run every frame
+// from updateRenderOnly() (renderer_frame_input.cpp), the darkening ramps in
+// the worker, and the lightning timers ride the same worker state back through
+// applyState(), which calls triggerLightning()/scheduleLightning().
 void WeatherEffectsController::updateRenderOnly(float deltaTime) {
     if (!enabled_ || !initialized_) return;
 
@@ -575,34 +483,7 @@ void WeatherEffectsController::updateSnow(float deltaTime) {
     }
 }
 
-void WeatherEffectsController::updateStormAtmosphere(float deltaTime) {
-    // T418: the same one ramp as computeState() and SimulationWorker's copy.
-    currentDarkening_ = advanceWeatherDarkening(
-        currentDarkening_, targetDarkening_, darkeningRate_, deltaTime);
-}
 
-void WeatherEffectsController::updateLightning(float deltaTime) {
-    // Update flash timer
-    if (lightningFlashTimer_ > 0.0f) {
-        lightningFlashTimer_ -= deltaTime;
-    }
-
-    // Update bolt visibility timer
-    if (lightningBoltTimer_ > 0.0f) {
-        lightningBoltTimer_ -= deltaTime;
-        if (lightningBoltTimer_ <= 0.0f) {
-            lightningBolt_.clear();
-            lightningActive_ = false;
-        }
-    }
-
-    // Check for next lightning strike
-    lightningTimer_ -= deltaTime;
-    if (lightningTimer_ <= 0.0f) {
-        triggerLightning();
-        scheduleLightning();
-    }
-}
 
 void WeatherEffectsController::triggerLightning() {
     if (!config_.storm.lightningEnabled || isIndoorZone_) return;

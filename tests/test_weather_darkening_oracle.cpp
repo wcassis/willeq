@@ -33,6 +33,7 @@
 
 #include "client/graphics/weather_ambient_oracle.h"
 #include "client/graphics/weather_effects_controller.h"
+#include "weather_worker_step.h"
 
 #ifndef WILLEQ_REPO_ROOT
 #error "WILLEQ_REPO_ROOT must be defined (tests/cmake/renderer_guards.cmake)"
@@ -59,12 +60,13 @@ std::unique_ptr<WeatherEffectsController> makeController() {
     return std::make_unique<WeatherEffectsController>(nullptr, nullptr, nullptr, nullptr);
 }
 
-// Drive the controller the way the render thread does -- compute off-thread,
-// apply back on -- for `seconds` of simulated time in `dt` steps.
+// Drive the controller the way the render thread does -- snapshot into a
+// SimulationInput, advance it in SimulationWorker::computeWeatherEffectsState(),
+// apply the result back -- for `seconds` of simulated time in `dt` steps.
+// T423 (board B361): this used to call WeatherEffectsController::computeState(),
+// a copy of the ramp with no production caller. See tests/weather_worker_step.h.
 void advance(WeatherEffectsController& c, float seconds, float dt = 0.05f) {
-    for (float t = 0.0f; t < seconds; t += dt) {
-        c.applyState(c.computeState(dt));
-    }
+    willeq_test::weatherWorkerAdvance(c, seconds, dt);
 }
 
 }  // namespace
@@ -191,25 +193,45 @@ TEST(WeatherDarkeningOracleT418Test, ClearingTakesTheSameMeasuredTime) {
 // 3. The ramp the CLIENT runs is the ramp the test drives.
 // ---------------------------------------------------------------------------
 //
-// WeatherEffectsController::computeState() has no production caller: the
-// render thread hands a snapshot to SimulationWorker, which advances its OWN
-// copy in sim_weather.cpp and hands the result back through applyState().
-// WeatherEffectsController::update()/updateStormAtmosphere() has no caller
-// either. For years the only ramp under test was one nothing executed
-// (board B361). All three now call one function.
+// T418 found THREE copies of this ramp and made all three call one shared
+// advanceWeatherDarkening(). T423 (board B361) removed the duplication itself.
+// Production's copy is SimulationWorker::computeWeatherEffectsState(): the
+// render thread hands a snapshot to the worker, which advances it in
+// sim_weather.cpp, and applyState() writes it back.
+// WeatherEffectsController::computeState() had no production caller and
+// update()/updateStormAtmosphere() had no caller at all, so for years the only
+// ramp under test was one nothing executed. Both are DELETED, and every case
+// in this file now steps the surviving copy through the production hop
+// (tests/weather_worker_step.h).
 
-TEST(WeatherDarkeningOracleT418Test, EveryCopyOfTheRampCallsTheOneDefinition) {
-    for (const char* rel : {"src/client/graphics/sim_weather.cpp",
-                            "src/client/graphics/weather_effects_controller.cpp"}) {
-        const std::string src = readFile(kRoot / rel);
-        EXPECT_NE(src.find("advanceWeatherDarkening"), std::string::npos)
-            << rel << " does not use the shared ramp";
-        EXPECT_EQ(src.find("float darkeningSpeed = 0.5f"), std::string::npos)
-            << rel << " still carries its own 0.5 units/second ramp";
+TEST(WeatherDarkeningOracleT423Test, TheRampHasExactlyOneImplementation) {
+    const std::string worker = readFile(kRoot / "src/client/graphics/sim_weather.cpp");
+    EXPECT_NE(worker.find("advanceWeatherDarkening"), std::string::npos)
+        << "sim_weather.cpp is the production ramp and does not call the shared "
+           "definition";
+    EXPECT_EQ(worker.find("float darkeningSpeed = 0.5f"), std::string::npos);
+
+    // The controller must carry NO ramp of its own any more -- not a call to
+    // the shared function, and not a hand-rolled one. It snapshots and applies.
+    const std::string ctrl =
+        readFile(kRoot / "src/client/graphics/weather_effects_controller.cpp");
+    EXPECT_EQ(ctrl.find("currentDarkening_ = advanceWeatherDarkening"), std::string::npos)
+        << "WeatherEffectsController advances the darkening again; that copy "
+           "has no production caller and re-opens B361";
+    EXPECT_EQ(ctrl.find("float darkeningSpeed = 0.5f"), std::string::npos);
+    for (const char* gone : {"WeatherEffectsController::computeState",
+                             "WeatherEffectsController::update(float",
+                             "WeatherEffectsController::updateStormAtmosphere",
+                             "WeatherEffectsController::updateLightning"}) {
+        EXPECT_EQ(ctrl.find(gone), std::string::npos)
+            << gone << " came back; it had no production caller";
     }
 }
 
-TEST(WeatherDarkeningOracleT418Test, TheWorkerRampMatchesTheControllerRamp) {
+// The bare shared function and the production hop must agree step for step --
+// this is what makes the 9.3 s fade the tests above measure the fade that
+// actually reaches the screen.
+TEST(WeatherDarkeningOracleT423Test, TheProductionHopMatchesTheBareRamp) {
     using EQT::Graphics::advanceWeatherDarkening;
     auto c = makeController();
     c->setWeather(0, 9);
@@ -217,15 +239,13 @@ TEST(WeatherDarkeningOracleT418Test, TheWorkerRampMatchesTheControllerRamp) {
     const float rate = c->getDarkeningRate();
     EXPECT_NEAR(rate, target / EQT::Graphics::kOracleWeatherTransitionSeconds, 1e-6f);
 
-    // The worker is stateless: it is handed current/target/rate and returns the
-    // next value. Stepping it beside the controller must not diverge.
-    float worker = 0.0f;
+    float bare = 0.0f;
     for (int i = 0; i < 400; ++i) {
-        worker = advanceWeatherDarkening(worker, target, rate, 0.05f);
-        c->applyState(c->computeState(0.05f));
-        ASSERT_NEAR(worker, c->getCurrentDarkening(), 1e-6f) << "step " << i;
+        bare = advanceWeatherDarkening(bare, target, rate, 0.05f);
+        willeq_test::weatherWorkerStep(*c, 0.05f);
+        ASSERT_NEAR(bare, c->getCurrentDarkening(), 1e-6f) << "step " << i;
     }
-    EXPECT_FLOAT_EQ(worker, target);
+    EXPECT_FLOAT_EQ(bare, target);
 }
 
 TEST(WeatherDarkeningOracleT418Test, TheWorkerIsHandedTheRate) {

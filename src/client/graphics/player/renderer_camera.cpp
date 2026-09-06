@@ -323,9 +323,19 @@ void PlayerCameraComponent::setPlayerSpawnId(uint16_t spawnId) {
 // function only runs when the server sends a time update, which is minutes
 // apart, so a vision change has to re-run it or the buff would not show until
 // the next tick. The three sites that write ctx_.currentVision all call this.
+//
+// T423 (board B362): it MARKS instead of recomposing inline. Before this there
+// were two paths into the recompute -- the clock packet and this one -- and
+// only the vision input had a second one, so weather and the zone-light toggle
+// were left waiting on a packet that arrives at zone-in and on `#set time` and
+// at no other moment. There is one path now: every non-clock writer marks, and
+// FrameComponent consumes the mark once per frame. A vision change still
+// reaches the screen on the very next frame (this runs on the render thread,
+// from the bridge's VisionChanged arm, before that frame's render phase), so
+// nothing about the buff's latency changed.
 void PlayerCameraComponent::refreshVisionLighting() {
     if (owner_.isLoading()) return;
-    owner_.updateTimeOfDay(ctx_.currentHour, ctx_.currentMinute);
+    owner_.markSceneAmbientDirty();
 }
 
 void PlayerCameraComponent::setPlayerRace(uint16_t raceId) {

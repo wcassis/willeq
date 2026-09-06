@@ -74,6 +74,7 @@ bool FrameComponent::processFrameRender(float deltaTime) {
         return false;  // Signal loading screen was shown
     }
 
+    recomposeSceneAmbientIfDirty();
     runSceneProfileIfScheduled();
     beginSceneAndDrawWorld(deltaTime);
     collectScenePassTimings();
@@ -94,6 +95,25 @@ bool FrameComponent::processFrameRender(float deltaTime) {
     LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 12: frame complete");
     FlushThreadLog();
     return true;
+}
+
+// T423 (board B362): the ONE consumer of the scene-ambient dirty mark.
+//
+// Until this, IrrlichtRenderer::updateTimeOfDay() -- the only production site
+// that calls composeSceneAmbient() and smgr_->setAmbientLight() -- ran only
+// when an OP_TimeOfDay packet arrived or a vision write forced it. eqemu sends
+// that packet at zone-in and on `#set time`, not on a timer, so a weather
+// change, a zone-light toggle or an ambient-multiplier change reached the
+// world's lighting at an arbitrary later moment or never. T418's first live
+// session ran a whole day block of forced rain at four intensities and got
+// zero recomposes out of the client.
+//
+// It is FIRST in the pass list, before beginScene(): the ambient it sets is
+// read by smgr_->drawAll() and by the zone shader's uniforms in the same
+// frame, so a recompute after the draw would land a frame late. Costs one
+// bool test per frame when nothing has changed.
+void FrameComponent::recomposeSceneAmbientIfDirty() {
+    if (owner_.isSceneAmbientDirty()) owner_.updateTimeOfDay(ctx_.currentHour, ctx_.currentMinute);
 }
 
 void FrameComponent::runSceneProfileIfScheduled() {

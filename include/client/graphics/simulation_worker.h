@@ -814,6 +814,18 @@ public:
     };
     DebugInfo getDebugInfo() const;
 
+    // T423 (board B361): THE weather darkening ramp -- the only one left.
+    // Public and static because it is a pure function of the input snapshot
+    // (it touches no worker member), and because it is the copy PRODUCTION
+    // runs: renderer_sim_bridge.cpp snapshots the controller into a
+    // SimulationInput, this advances it, and applyState() writes the result
+    // back. Before T423 there were two more copies on WeatherEffectsController
+    // and the tests drove one of THOSE, so a change here could not turn a test
+    // red. tests/weather_worker_step.h makes the same hop, so the ramp under
+    // test and the ramp on screen are one function. Defined in sim_weather.cpp.
+    static void computeWeatherEffectsState(const SimulationInput& input,
+                                           SimulationOutput& output);
+
 private:
     void workerLoop();
 
@@ -841,7 +853,6 @@ private:
     void computeVertexAnimations(const SimulationInput& input, SimulationOutput& output);
     void computeLightAnimations(const SimulationInput& input, SimulationOutput& output);
     void computeSkyState(const SimulationInput& input, SimulationOutput& output);
-    void computeWeatherEffectsState(const SimulationInput& input, SimulationOutput& output);
     void computeParticles(const SimulationInput& input, SimulationOutput& output);
     void computeBoids(const SimulationInput& input, SimulationOutput& output);
     void computeTumbleweeds(const SimulationInput& input, SimulationOutput& output);
