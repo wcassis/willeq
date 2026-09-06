@@ -3712,7 +3712,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   source of truth. Do NOT half-do it: a generator that compiles but whose
   output nobody compares is exactly the state that produced B225. The
   `tools/retired/README.md` paragraph needs correcting whichever way it
-  goes. Prov: T400 Review.~~ **CLOSED by T403 (2026-09-06, `<COMMIT>`) via route (a).**
+  goes. Prov: T400 Review.~~ **CLOSED by T403 (2026-09-06, `9122297d`) via route (a).**
   `tools/generate_textures.cpp` is un-retired as a live CMake target and
   `scripts/build_textures.sh --check` (ctest `TexturesReproducible`)
   regenerates all 64 into a temp dir on every run: **63 of 64 come out
@@ -3832,7 +3832,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   passed in a slot and failed on the merged tip against the identical BMP.
   `noise2D()` (the storm-cloud Perlin hash, 32 shipped frames) carried the
   same UB and was only accidentally stable.~~ **FIXED and CLOSED by T403
-  (2026-09-06, `<COMMIT>`):** both hashes moved to `uint32_t`, whose wrap is
+  (2026-09-06, `9122297d`):** both hashes moved to `uint32_t`, whose wrap is
   defined and reproduces the shipped values at every optimisation level.
   Proof: the tool built at -O0 and at -O2 (`build-rwdi`,
   `-DCMAKE_BUILD_TYPE=RelWithDebInfo`) now writes all 64 BMPs **bit-identical
