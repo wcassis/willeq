@@ -22,10 +22,14 @@ enum class UISprite : uint8_t {
     SlotBackground,
     SlotBorderNormal,
     SlotBorderHover,
-    SlotBorderSelected,
-    ButtonNormal,
-    ButtonPressed,
-    ButtonDisabled,
+    // T424 (board B351): SlotBorderSelected, ButtonNormal, ButtonPressed,
+    // ButtonDisabled, PanelBorder and ScrollIndicator were removed here, in
+    // UIAtlas::mapSprite's nameMap and in tools/ui_atlas_builder together.
+    // T416's census found all six with no consumer, and none is oracle art --
+    // they are procedural leftovers of the WindowManager UI deleted in
+    // 0f25cb57. Giving the loot buttons and the chat scrollbar thumb real
+    // chrome is board B385's oracle question (window_pieces01.tga), not a
+    // matter of re-adding a gradient. Pinned by tests/test_ui_sprite_roster.cpp.
     BarHP,
     BarMana,
     BarStamina,
@@ -33,9 +37,7 @@ enum class UISprite : uint8_t {
     BarCasting,
     BarBackground,
     PanelBackground,
-    PanelBorder,
     White,
-    ScrollIndicator,
     // T398 (board B218): the four coin decals the official client blits into
     // its IW_Money buttons, lifted from window_pieces01.tga (90,140) by
     // ui_atlas_builder --uifiles-path. Order matches

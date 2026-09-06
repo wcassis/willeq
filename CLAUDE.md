@@ -259,7 +259,10 @@ four that stay 24-bit each carry a written reason in
 `tests/test_texture_alpha_census.cpp`, whose `EveryShippedBmpIsAccountedFor`
 makes a new generator declare which side it is on:
 `spell_particle_fallback.bmp` (drawn additively, alpha provably unsampled —
-board **B286**), `detail_atlas.bmp` (board **B265**: still the one file no
+boards **B286**/**B322**; T424 closed B322 by moving its cosine falloff out of
+the discarded alpha channel and into RGB, which is what an additive blend
+samples — before that it shipped as a solid white square), `detail_atlas.bmp`
+(board **B265**: still the one file no
 build reproduces), and `rain_streaks.bmp` + `snow_flakes.bmp` (no consumer
 at all). T417's `spell_sprite_atlas.bmp` is 32-bit and takes the ordinary ETC1
 companion route — it needed no `--rgba8888-texture` override. `generate_textures --report` prints the census.
@@ -268,7 +271,7 @@ companion route — it needed no `--rgba8888-texture` override. `generate_textur
 19.99 MB and every zone's `eqe1MappedBytes` rose by 17.2 MB, because an ETC1
 256x256 entry with mips is 43,704 bytes and its RGBA8888 form is 349,524.
 T411 (board B287) took that back by fixing the shaders instead of the payload:
-the pack is **5,881,918 bytes** (5,532,254 after T411; T417 added the spell
+the pack is **6,930,116 bytes** (5,532,254 after T411; T417 added the spell
 sprite sheet and its companion, +349,664 — the extra over the pre-T406
 2.83 MB is the ETC1 companions, which are new, as the old 24-bit BMPs had no
 alpha to carry), and `eqe1MappedBytes` fell by 14,462,656 per zone at T411

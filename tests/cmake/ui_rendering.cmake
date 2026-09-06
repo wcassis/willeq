@@ -425,3 +425,15 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_loot_panel GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_loot_panel)
 ENDIF()
+
+# T424 (board B351): the UI sprite roster -- the enum, the JSON name map, the
+# builder and the shipped ui_atlas.json must name the same fifteen sprites, and
+# every one of them must have a consumer. Reads files only (no device, no GPU);
+# links willeq_core for EQE1Loader to read the pack's raw ui_atlas.json entry.
+ADD_EXECUTABLE(test_ui_sprite_roster
+    test_ui_sprite_roster.cpp
+)
+TARGET_COMPILE_DEFINITIONS(test_ui_sprite_roster PRIVATE
+    WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+TARGET_LINK_LIBRARIES(test_ui_sprite_roster GTest::gtest_main willeq_core)
+GTEST_DISCOVER_TESTS(test_ui_sprite_roster)

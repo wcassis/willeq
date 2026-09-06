@@ -6,4 +6,4 @@
 # each of its 33 sprites, 1024x1024 -- the pack grew by exactly 1 MiB). Pinned here so a drift in
 # either input, or a hand-edit of the shared pack, is a ctest FAIL
 # (PackReproducible). Update this line in the SAME commit that changes an input.
-14a6bd45c477582afd8eba3dd044519b3a66f89bbd4cc2e5df5405a39d67c34d  willeq.eqe1
+19e78745e996cd4ebfa1e5eff01613cc221d686fdfb034a13cf85ed573a5ba49  willeq.eqe1

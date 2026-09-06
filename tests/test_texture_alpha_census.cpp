@@ -43,6 +43,7 @@
 #include "client/graphics/eqe1_format.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <fstream>
@@ -194,22 +195,19 @@ struct NeverAlpha {
 
 const std::vector<NeverAlpha> kNeverAlpha = {
     {"spell_particle_fallback.bmp",
-     "board B322 (T413, MEASURED): this file is 32x32 24-bit and ALL 3,072 of "
-     "its pixel bytes are 255 -- solid white, with no falloff in any channel. "
-     "generateSpellParticleFallback() computes a cosine falloff and writes it "
-     "into ALPHA only (SColor(alpha, 255, 255, 255)); the 24-bit BMP write "
-     "discards that channel, so the shape is destroyed at generation time, not "
-     "at blend time. That refutes both of B286's proposed code-side fixes: "
-     "there is no alpha for a shader to premultiply and none for an alpha-blend "
-     "material to use, so neither switching the material nor changing "
-     "SOLID3D_FS can produce a pixel that is not full white. The fix is the "
-     "GENERATOR putting the falloff in RGB (correct for the additive blend this "
-     "is drawn with, and what the official client's Glowflare DDS does), which "
-     "moves data/textures/, data/textures.sha256, the shared willeq.eqe1 and "
-     "data/willeq.eqe1.sha256 together -- and PackReproducible --check compares "
-     "against the INSTALLED pack in every worktree, so it belongs to a unit "
-     "that owns the pack exclusively. Until then the entry stays 24-bit and "
-     "honest: there is nothing in its alpha to carry."},
+     "board B322 (T413 measured it, T424 fixed it): SpellVisualFX draws this "
+     "sprite with EMT_TRANSPARENT_ADD_COLOR -> glBlendFunc(GL_ONE, GL_ONE), an "
+     "additive blend that samples COLOUR and never alpha, so there is nothing "
+     "for a 32-bit file to carry. It is 24-bit and correct. The trap it fell "
+     "into was the opposite one: generateSpellParticleFallback() wrote its "
+     "cosine falloff into ALPHA over constant white RGB, the 24-bit write "
+     "discarded that channel, and all 3,072 pixel bytes shipped as 255 -- a "
+     "solid white square where the draw wants a soft dome. T424 moved the "
+     "falloff into RGB (premultiplied white x cosine, which is what an "
+     "additive blend samples and what the official client's Glowflare DDS "
+     "carries) and rebuilt the pack. SpellParticleFallbackCarriesItsFalloffInRgb "
+     "below pins the profile; do not 'fix' this file by converting it to 32-bit, "
+     "which would add ~8x the pack bytes for a channel no shader reads."},
     {"detail_atlas.bmp",
      "board B265: this is the one BMP no build reproduces (a 16-bit software "
      "driver round trip plus code drift in the twelve footprint tiles). "
@@ -584,4 +582,133 @@ TEST(TextureAlphaCensus, EveryShippedBmpIsAccountedFor) {
         EXPECT_EQ(pinned.count(f), 1u)
             << f << " is censused here but is not a shipped file any more.";
     }
+}
+
+// ── T424 (board B322): the spell particle fallback's SHAPE, in RGB ──────────
+//
+// This file's kNeverAlpha entry says why the fallback is 24-bit: it is drawn
+// additively (`EMT_TRANSPARENT_ADD_COLOR` -> `glBlendFunc(GL_ONE, GL_ONE)`),
+// so its alpha is never sampled. T413 then MEASURED the shipped file and found
+// the consequence nobody had checked: `generateSpellParticleFallback()` wrote
+// its cosine falloff into ALPHA over constant white RGB, the 24-bit BMP write
+// discarded that channel, and all 3,072 pixel bytes shipped as 255 -- a solid
+// white square where the draw wants a soft dome.
+//
+// The fix is the generator writing the falloff into RGB (premultiplied white
+// x cosine), which is exactly what an additive blend samples and what the
+// official client's Glowflare DDS carries. These two tests pin that: the BMP's
+// centre-to-edge profile IS the cosine, and the pack entry the client actually
+// reads carries the same variation rather than 64 identical white blocks.
+
+namespace {
+
+// The generator's own arithmetic (src/client/graphics/texture_generators.cpp),
+// restated so the test fails when the SHAPE changes, not when the code moves.
+int expectedFallbackLevel(int x, int y, int size) {
+    const float center = size / 2.0f;
+    const float maxDist = center;
+    const float dx = x - center + 0.5f;
+    const float dy = y - center + 0.5f;
+    const float dist = std::sqrt(dx * dx + dy * dy);
+    const float normalizedDist = dist / maxDist;
+    if (normalizedDist >= 1.0f) return 0;
+    return static_cast<int>(std::cos(normalizedDist * 3.14159f * 0.5f) * 255.0f);
+}
+
+}  // namespace
+
+TEST(TextureAlphaCensus, SpellParticleFallbackCarriesItsFalloffInRgb) {
+    const std::string path = kRoot + "data/textures/spell_particle_fallback.bmp";
+    std::vector<char> data = readFile(path);
+    ASSERT_FALSE(data.empty()) << "cannot read " << path;
+
+    std::vector<uint8_t> rgba;
+    int w = 0, h = 0;
+    ASSERT_TRUE(decodeBmpToRgba(data, rgba, w, h)) << "failed to decode " << path;
+    ASSERT_EQ(w, 32);
+    ASSERT_EQ(h, 32);
+
+    auto lum = [&](int x, int y) {
+        return static_cast<int>(rgba[(static_cast<size_t>(y) * w + x) * 4]);
+    };
+
+    // 1. It is not a flat white square any more. This is the B322 symptom.
+    int minV = 255, maxV = 0;
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            minV = std::min(minV, lum(x, y));
+            maxV = std::max(maxV, lum(x, y));
+        }
+    }
+    EXPECT_LT(minV, 8)
+        << "spell_particle_fallback.bmp never goes dark (min channel " << minV
+        << "). Under glBlendFunc(GL_ONE, GL_ONE) every texel adds light, so a "
+           "floor above zero draws the sprite's bounding SQUARE (board B322).";
+    EXPECT_GT(maxV, 250)
+        << "spell_particle_fallback.bmp never reaches full brightness at its "
+           "centre (max channel " << maxV << ")";
+
+    // 2. The three channels agree -- the sprite is white, tinted per particle
+    //    by the vertex colour, not by the texture.
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            const size_t i = (static_cast<size_t>(y) * w + x) * 4;
+            ASSERT_EQ(rgba[i + 0], rgba[i + 1]) << "at (" << x << "," << y << ")";
+            ASSERT_EQ(rgba[i + 1], rgba[i + 2]) << "at (" << x << "," << y << ")";
+        }
+    }
+
+    // 3. The profile IS the cosine the generator computes, to within the
+    //    24-bit BMP round trip (which is exact -- there is none).
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            const int want = expectedFallbackLevel(x, y, 32);
+            ASSERT_NEAR(lum(x, y), want, 1)
+                << "spell_particle_fallback.bmp at (" << x << "," << y << ") is "
+                << lum(x, y) << ", not the generator's cosine " << want;
+        }
+    }
+
+    // 4. And it is still 24-bit: nothing here asks for an alpha channel the
+    //    additive blend cannot sample (kNeverAlpha above).
+    BmpHeader hdr;
+    ASSERT_TRUE(parseBmpHeader(data, hdr));
+    EXPECT_EQ(hdr.bitsPerPixel, 24);
+}
+
+TEST(TextureAlphaCensus, SpellParticleFallbackPackEntryCarriesTheSameShape) {
+    std::ifstream probe(kWilleqEqe1, std::ios::binary);
+    if (!probe.good()) {
+        GTEST_SKIP() << "willeq.eqe1 not present at " << kWilleqEqe1;
+    }
+    probe.close();
+
+    EQT::Graphics::EQE1Loader loader;
+    ASSERT_TRUE(loader.open(kWilleqEqe1)) << "failed to open " << kWilleqEqe1;
+
+    const auto* entry = loader.lookup("spell_particle_fallback");
+    ASSERT_NE(entry, nullptr) << "willeq.eqe1 has no 'spell_particle_fallback' entry";
+    EXPECT_EQ(entry->width, 32);
+    EXPECT_EQ(entry->height, 32);
+    EXPECT_EQ(entry->payloadFormat, EQT::Graphics::EQE1_PAYLOAD_ETC1);
+
+    // A 32x32 ETC1 level 0 is 8x8 = 64 blocks of 8 bytes. A SOLID image encodes
+    // to 64 byte-identical blocks; the cosine dome cannot. No ETC1 decoder is
+    // needed to tell those two apart, and this is what the client reads -- the
+    // BMP above is only the pack's input.
+    ASSERT_NE(entry->data, nullptr);
+    ASSERT_GE(entry->dataSize, 512u) << "level 0 of a 32x32 ETC1 is 512 bytes";
+
+    std::set<std::string> blocks;
+    for (int b = 0; b < 64; ++b) {
+        blocks.insert(std::string(reinterpret_cast<const char*>(entry->data) + b * 8, 8));
+    }
+    EXPECT_GT(blocks.size(), 8u)
+        << "the willeq.eqe1 'spell_particle_fallback' entry encodes to "
+        << blocks.size() << " distinct ETC1 block(s) in level 0. One means the "
+           "shipped sprite is a uniform colour -- the pack was not rebuilt after "
+           "the generator gained its RGB falloff (board B322): rerun "
+           "scripts/build_textures.sh, --write-pins, then "
+           "scripts/build_willeq_pack.sh and update data/willeq.eqe1.sha256 in "
+           "the same commit.";
 }
