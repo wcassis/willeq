@@ -880,3 +880,25 @@ channel** rather than as one scalar: Ultravision gain 0.1601 x tint
 and the zone-light Infravision shift dropped 0.3 -> 0.0508. All six channel
 residuals land inside 0.11%. That fit is a model extrapolation from T361's
 exponent, not a closed loop — the live re-measure is still owed (B171).
+
+## 2026-09-06 - Will's rulings on the open class-C items
+
+- **B240 BLESSED**: the visual gate's `eqe1MappedBytes` memory baselines move
+  to what the shared pack measures once T406's alpha payloads have landed
+  (T398 coins, T400 particle atlas, T406 the other textures). Applied by the
+  orchestrator at the T406 merge with the final numbers; no pixel golden moved
+  in any of those units.
+- **B110 APPROVED as its own unit**: load the zone's baked per-vertex colours
+  and match the zone lighting equation to the oracle; the pixel goldens WILL
+  move and a re-bless with the contact sheet is approved for that unit only.
+- **B219**: shrink fable's paperdoll to the official window's proportion
+  (`IW_CharacterView` 85x168 in 428x460); the coin column stays where the
+  oracle puts it.
+- **B060**: add a FOURTH vision level for Froglok (its measured night floor
+  sits between Infravision and Ultravision); its floor is solved by live A/B
+  like the other two.
+- **B138 / B139**: Will wants the live-server scenario lane; build it NEW
+  (both surveys' recommendation), plugging into the automated mode's unreached
+  callback.
+- **B142**: `/bug` stays on the player-report channel; no structured OP_Bug body.
+- B022 is closed by T389's oracle answer; B162's reader fix is reclassified B.

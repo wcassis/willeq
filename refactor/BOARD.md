@@ -547,7 +547,7 @@ it without taking that measurement first.
   baselined but deliberately not asserted; gating it needs repeat-run data from a
   second machine first. Prov: archived board, T69.
 
-- **B022** (C) `src/client/graphics/spell_visual_fx.cpp` --
+- ~~**B022** (C) `src/client/graphics/spell_visual_fx.cpp` --
   **THE PADDING RULING IS ANSWERED BY THE ORACLE (T389, 2026-09-05):
   `EmptyRecord` and `NoAffectIndex` DO NOT DIFFER -- both draw the same
   generic bright-blue dome of point sprites, for the same 2.8 s.** Measured
@@ -611,7 +611,7 @@ it without taking that measurement first.
     eqemu lock): **Frost Bolt 54** (index 23, Wizard 1, `travel_type == 3`),
     **Flame Jet 1494** (index 71, its sole referent), **GM Cleansing 6594**
     (index −1, all classes, no reagent).
-
+~~ **CLOSED 2026-09-06: T389 measured EmptyRecord == NoAffectIndex (the generic dome) on the official client; the gates are correct as written; all 163 hits are NPC-only.**
 - ~~**B023** (B)~~ **CLOSED 2026-09-05 by T375 (`src/client/player/player_misc.cpp`).**
   `SendReport` now builds the body eqemu's `Client::Handle_OP_Report` actually
   parses: `"<reported>|<reporter>|<text>\0"`. The handler casts to NO struct and
@@ -744,7 +744,7 @@ it without taking that measurement first.
   available (`SpellVisualVocabulary::travelType`, 85 spells with
   `travel_type == 3`); nothing consumes it. Census by T388.
 
-- **B162** (C) `src/client/spell/spells_eff_reader.cpp` --
+- **B162** (B) `src/client/spell/spells_eff_reader.cpp` --
   **THE HYPOTHESIS IS SETTLED BY THE ORACLE (T389, 2026-09-05): the digit is
   0-BASED. `GEN<L><d>0_SPRITE` -> `spel<l><d+1>.tga`, and the `'0'` exclusion
   is wrong too.** Two spells.eff records whose every non-empty sprite slot in
@@ -877,7 +877,7 @@ it without taking that measurement first.
   must state the directories it grepped and include `tools/` (and `docker/`,
   `benchmarks/` where relevant) or say why not. Found by T381.
 
-- **B142** (C) `/bug <description>` (registered in
+- ~~**B142** (C) `/bug <description>` (registered in
   `src/client/action/command_processor_registration.cpp` with the alias
   `report`) sends `HC_OP_Report`, which is eqemu's PLAYER-report channel, not
   its bug channel. Titanium has a separate `OP_Bug` (0x7ac2, `patch_Titanium.conf`)
@@ -894,6 +894,7 @@ it without taking that measurement first.
   which fable currently sends empty because its only caller reports a defect.
   Discovered by T375 while reading the two handlers side by side.
 
+  **WILL RULED 2026-09-06:** leave /bug on the report channel. CLOSED as ruled.
 ## P — process and documentation
 
 - ~~**B024** (P)~~ **CLOSED 2026-09-04 (M00 merge): the structural programme is complete.** Batch K (K00–K16: `eq.h` 2,025 → 899, twelve components + four context services, the transition handle measured down to 83 uses = B038), Batch L (L01–L13: `irrlicht_renderer.h` 1,914 → 1,343, eleven components, residue 151 = B050 closed), Batch G (six of eight oversize methods decomposed and golden-pinned; `createDefaultConfig` ruled out; the variant loader parked as B052), M00 (no allowlist; the 1,500 ceiling enforced tree-wide by ctest). Original text: Component extraction of `class EverQuest` (2,025-line header, 685
@@ -2001,6 +2002,7 @@ line of a future live session. The LIVE proof of the corpse row itself (hear
   **WILL 2026-09-05: expects Troll = Ultravision, Ogre = Infravision, but the
   official client decides — T361 captures the per-race night floor.**
 
+  **WILL RULED 2026-09-06:** add a FOURTH vision level for Froglok; floor solved by live A/B. → the vision follow-up after T405.
 - ~~**B061** (B) `include/client/spell/spell_manager.h:193`
   `SpellManager::setOnSpellLand()` — **zero production callers.** The
   `SpellLandCallback` typedef, the setter and the member all exist;
@@ -2455,6 +2457,7 @@ line of a future live session. The LIVE proof of the corpse row itself (hear
   baked colours are loaded, the lighting equation matches the oracle, and the
   lamp-spot day/night ratio lands near the oracle's 17.1x.
   Prov: T367 Review, `review/T367/README.md`.
+  **WILL RULED 2026-09-06:** APPROVED as its own unit (T408); the re-bless of the moved pixel goldens is approved for that unit, contact sheet to Will.
 ## Added 2026-09-05 by T368
 
 - ~~**B115** (B) The official client's DEFAULT KEYS for the group, pet and buff
@@ -2634,6 +2637,7 @@ branches can be deleted independently of these items.
   fix.** Closes when: Will rules build or drop. Prov: T372, the 22-commit
   scenario cluster on `task/eqcpp-zoneprocess-track-b-remaining`.
 
+  **WILL RULED 2026-09-06:** YES, build the scenario lane NEW. → T410 (with B139 as its seam).
 - **B139** (B) `AutomatedMode::setAutomationCallback`
   (`include/client/mode/automated_mode.h`) has ZERO callers in `src/`,
   `include/`, `tests/` or `benchmarks/` — the callback is invoked in
@@ -2645,6 +2649,7 @@ branches can be deleted independently of these items.
   Prov: T372 (flagged incidentally by T305 at `9bb156ea`, still true at
   `3964d100`).
 
+  **WILL RULED 2026-09-06:** wire it as the scenario lane's hook (B138 approved). → T410.
 - ~~**B140** (B) `EntitiesComponent::SendClickDoor` and `SendClickObject`
   (`src/client/entities/entities_component_world.cpp`) end in
   `ctx_.zone_connection->QueuePacket(p, 0, true)` — a raw dereference of a
@@ -3448,6 +3453,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   either the doll narrows to the oracle's proportion or the purse does
   not follow the oracle here. Prov: T393 Review; T401 Review §2.
 
+  **WILL RULED 2026-09-06:** shrink the paperdoll to the oracle proportion; the coin column stays. → T409.
 - ~~**B230** (B) `tools/ui_atlas_builder.cpp` / `/mnt/projects/EverQuest_ETC1/willeq.eqe1`
   -- **the UI atlas cannot take a pixel from the official client, and the
   shipped pack cannot be rebuilt from the tree.** Split out of B218 by T396
@@ -3534,6 +3540,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   either. The cause is the same one this entry already records (a rebuilt
   `willeq.eqe1`) and the +239 and +19,104 are the same bless, not two.
 
+  **WILL RULED 2026-09-06:** BLESSED — applied at the T406 merge with the final measured numbers.
 - **B241** (B) `scripts/build_willeq_pack.sh` / `tools/ui_atlas_builder.cpp`
   -- **`willeq.eqe1` is reproducible from the tree PLUS the official client
   tree, not from the tree alone.** B230 closed on a byte-identical rebuild
