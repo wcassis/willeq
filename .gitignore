@@ -89,6 +89,15 @@ perf.data.old
 
 # Runtime caches
 config/shader_cache/
+# T402 (board B248): the two generated archive indices. They used to be
+# TRACKED here, so every client run left the working tree dirty and a careless
+# `git add -A` committed one machine's absolute EQ path. They are caches (a
+# miss costs a rescan) and the client now writes them to a run-local cache
+# directory -- $WILLEQ_CACHE_DIR, $WILLEQ_DATA_ROOT/cache or <exe dir>/cache.
+# These two lines cover a stale copy left in an existing checkout.
+config/snd_index_cache.json
+config/gfx_index_cache.json
+/cache/
 
 # Runtime data
 data/detail/

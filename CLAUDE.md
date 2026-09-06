@@ -184,6 +184,19 @@ same way. **A new shipped-data load must call `ResolveDataPath()`** —
 `tests/test_data_path_routing.cpp` re-takes the census on every ctest run and
 fails on a bare `"config/…"` / `"data/…"` literal that does not.
 
+**Generated caches follow the opposite rule: they are written OUTSIDE the
+checkout** (T402, board B248). `snd_index_cache.json` (the sound-archive
+index) and `gfx_index_cache.json` (the character-archive index) used to be
+git-tracked files under `config/` that the client rewrote on every run, so a
+plain `willeq` run left the working tree dirty and a careless `git add -A`
+committed one machine's absolute EQ path. They now resolve through
+`eqt::ResolveCachePathForRead()` / `ResolveCachePathForWrite()`
+(`include/client/data_paths.h`), which pick the first writable of
+`$WILLEQ_CACHE_DIR`, `$WILLEQ_DATA_ROOT/cache`, `<exe dir>/cache` (i.e.
+`build/bin/cache`) and `cache/`. A miss is not an error — it costs a rescan,
+measured at ~0.4 s for the 17 sound archives and ~30 ms for the 378
+character archives. A new generated cache uses these, never `ResolveDataPath()`.
+
 ### Display Options Comparison
 
 | Method | Use Case | Audio | Client |

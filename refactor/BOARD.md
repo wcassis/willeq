@@ -3600,7 +3600,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   the T80 memory-coverage baselines (Will)"). **Only Will re-blesses**, so
   T399 did not. Until then every unit that touches graphics will report this
   same gate FAIL and have to re-derive the attribution. Found by T399.~~ **DUPLICATE of B240 (T398 boarded the same 239-byte delta first) — struck at the T399 merge; the bless request stands under B240.**
-- **B248** (B) `config/snd_index_cache.json`, `config/gfx_index_cache.json` —
+- ~~**B248** (B) `config/snd_index_cache.json`, `config/gfx_index_cache.json` —
   **two generated caches are git-tracked, and every client run rewrites them,
   so a plain `willeq` run dirties the working tree.** T399 measured it: a 40 s
   headless run (`--no-graphics`) left `config/snd_index_cache.json` modified
@@ -3611,7 +3611,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   `git add -A` commits it. Either both files leave the index and join
   `.gitignore` (they are caches; a miss just triggers a rescan, which is why
   T399 deliberately left their miss silent), or the writer becomes
-  content-stable and only rewrites on a real change. Found by T399.
+  content-stable and only rewrites on a real change. Found by T399.~~ **CLOSED by T402 Leg A** (`refactor/T402_caches_dead_configs.md`): both files left the index (`git rm --cached` + `.gitignore`) and the client now resolves them through `eqt::ResolveCachePathForRead()` / `ResolveCachePathForWrite()` (`include/client/data_paths.h`), which pick the first WRITABLE of `$WILLEQ_CACHE_DIR`, `$WILLEQ_DATA_ROOT/cache`, `<exe dir>/cache` and `cache/` — none of them inside the checkout. Keeping them as shipped seeds was rejected: each is keyed on ONE absolute `eqPath` (`/mnt/projects/EverQuestP1999`), so the seed is worthless to any other tree, and a stale seed would have to be re-read AND re-written on every run. Cold-rescan cost measured instead: **~0.4 s** for the 17 sound archives (613 ms vs 221 ms for `test_pfs_sound_load` end to end) and **~30 ms** for the 378 `*_chr.s3d` (cold 31-57 ms vs 12 ms warm). Pinned by `PfsIndexCacheLocation.RescanWritesOutsideTheRepoConfigDir` (an alias EQ tree of symlinks forces the rescan; nothing under `config/` may appear, vanish or change), `DataPathRouting.IndexCachesAreNotWrittenUnderConfig` and three `CachePaths.*` tests.
 
 ### Struck / amended by T386
 

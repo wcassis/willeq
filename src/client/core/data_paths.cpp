@@ -6,8 +6,12 @@
 #include "client/data_paths.h"
 
 #include <cstdlib>
+#include <fcntl.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
+
+#include <vector>
 
 #include <limits.h>
 
@@ -75,6 +79,74 @@ std::string ResolveDataPath(const std::string& relative) {
     // Nothing found. Hand back what the caller asked for so its own "could
     // not open X" message names X.
     return relative;
+}
+
+namespace {
+
+// The candidate directories for a generated cache, in order. See the block
+// comment in include/client/data_paths.h (T402, board B248): none of them is
+// inside the checkout, which is the point.
+std::vector<std::string> CacheDirCandidates() {
+    std::vector<std::string> dirs;
+    if (const char* explicitDir = std::getenv("WILLEQ_CACHE_DIR")) {
+        if (explicitDir[0] != '\0') dirs.push_back(explicitDir);
+    }
+    if (const char* root = std::getenv("WILLEQ_DATA_ROOT")) {
+        if (root[0] != '\0') dirs.push_back(std::string(root) + "/cache");
+    }
+    const std::string exeDir = ExecutableDirectory();
+    if (!exeDir.empty()) dirs.push_back(exeDir + "/cache");
+    dirs.push_back("cache");
+    return dirs;
+}
+
+// mkdir -p for one directory path, no <filesystem> (this TU is linked into
+// twenty-four targets and stays dependency-free).
+bool EnsureDirectory(const std::string& dir) {
+    if (dir.empty()) return false;
+    struct stat st;
+    if (::stat(dir.c_str(), &st) == 0) return S_ISDIR(st.st_mode);
+    const std::string parent = ParentOf(dir);
+    if (!parent.empty() && parent != dir) EnsureDirectory(parent);
+    if (::mkdir(dir.c_str(), 0775) == 0) return true;
+    return ::stat(dir.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+}
+
+// Writability by TRYING, not by asking. ::access(W_OK) is not reliable here:
+// the dev tree lives on an NFSv3 mount whose ACCESS RPC answers "no write" for
+// a directory this process can in fact write (mode 0777, server-side uid
+// mapping) -- T402 lost a test run to exactly that. Create-and-unlink is the
+// only honest probe.
+bool DirectoryIsWritable(const std::string& dir) {
+    const std::string probe = dir + "/.willeq_cache_write_test." + std::to_string(::getpid());
+    const int fd = ::open(probe.c_str(), O_CREAT | O_WRONLY | O_EXCL, 0664);
+    if (fd < 0) return false;
+    ::close(fd);
+    ::unlink(probe.c_str());
+    return true;
+}
+
+}  // namespace
+
+std::string ResolveCachePathForRead(const std::string& name) {
+    if (name.empty()) return "";
+    if (name[0] == '/') return FileExists(name) ? name : "";
+    for (const auto& dir : CacheDirCandidates()) {
+        const std::string candidate = dir + "/" + name;
+        if (FileExists(candidate)) return candidate;
+    }
+    return "";
+}
+
+std::string ResolveCachePathForWrite(const std::string& name) {
+    if (name.empty()) return "";
+    if (name[0] == '/') return name;
+    for (const auto& dir : CacheDirCandidates()) {
+        if (!EnsureDirectory(dir)) continue;
+        if (!DirectoryIsWritable(dir)) continue;
+        return dir + "/" + name;
+    }
+    return "";
 }
 
 }  // namespace eqt

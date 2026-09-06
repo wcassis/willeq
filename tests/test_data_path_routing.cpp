@@ -235,6 +235,48 @@ TEST(DataPathRouting, AudioAndIndexCacheLoadsAreRouted) {
     });
 }
 
+// T402 (board B248): the two GENERATED caches are not shipped data, and their
+// old home -- a git-tracked config/*.json that every client run rewrote -- is
+// what made a plain `willeq` run dirty the working tree. They now live in a
+// run-local cache directory (eqt::ResolveCachePathForRead/ForWrite), so no
+// "config/…_index_cache.json" literal may come back anywhere in the client.
+TEST(DataPathRouting, IndexCachesAreNotWrittenUnderConfig) {
+    std::vector<Offender> offenders;
+    const char* roots[] = {"src/client", "include/client"};
+    for (const char* r : roots) {
+        std::string cmd = "find '" + kRoot + r +
+                          "' -type f \\( -name '*.cpp' -o -name '*.h' \\)";
+        FILE* p = ::popen(cmd.c_str(), "r");
+        ASSERT_NE(p, nullptr) << "could not enumerate " << r;
+        char buf[4096];
+        while (::fgets(buf, sizeof(buf), p)) {
+            std::string path(buf);
+            while (!path.empty() && (path.back() == '\n' || path.back() == '\r')) path.pop_back();
+            if (path.empty()) continue;
+            if (path.rfind(kRoot, 0) == 0) path = path.substr(kRoot.size());
+            // Comments are stripped first: the doc comment in data_paths.h
+            // NAMES the old tracked path on purpose, and so does the note in
+            // graphics_archive_index.h. Only code counts.
+            const std::string code = StripComments(ReadFile(path));
+            std::istringstream ls(code);
+            std::string line;
+            int lineNo = 0;
+            while (std::getline(ls, line)) {
+                ++lineNo;
+                if (line.find("_index_cache.json") == std::string::npos) continue;
+                if (line.find("config/") == std::string::npos) continue;
+                offenders.push_back({path, lineNo, "config/*_index_cache.json"});
+            }
+        }
+        ::pclose(p);
+    }
+    EXPECT_TRUE(offenders.empty())
+        << Describe(offenders)
+        << "\nThese are generated CACHES: use eqt::ResolveCachePathForRead/"
+           "ForWrite (include/client/data_paths.h), which keeps them out of the "
+           "checkout entirely (board B248).";
+}
+
 TEST(DataPathRouting, RemainingDataLoadsAreRouted) {
     ExpectRouted({
         "src/client/graphics/entity_equipment.cpp",

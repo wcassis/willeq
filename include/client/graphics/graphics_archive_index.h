@@ -16,7 +16,9 @@ class PfsArchive;
 // Persistent archive index for O(1) race-to-archive lookups.
 // Mirrors the audio system's PFS index caching pattern:
 //   - First run: scans *_chr.s3d archives, extracts character names, maps race codes
-//   - Subsequent runs: loads from config/gfx_index_cache.json (validated by file sizes)
+//   - Subsequent runs: loads gfx_index_cache.json from the run-local cache
+//     directory (T402, board B248 -- eqt::ResolveCachePathForRead; it used to
+//     be a git-tracked config/gfx_index_cache.json), validated by file sizes
 //   - Lazy mode: closes archives after scanning; non-lazy: keeps them open for fast extraction
 class GraphicsArchiveIndex {
 public:
