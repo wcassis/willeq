@@ -44,6 +44,28 @@ public:
                     irr::video::SColor tint = irr::video::SColor(255, 255, 255, 255));
 
     /**
+     * T416 (board B316): draw a `thickness`-pixel rectangular OUTLINE.
+     *
+     * The one body for something five call sites had each open-coded as four
+     * drawRect() calls (drawPanel, the casting bar, a buff icon, a spell
+     * gem's state border and its 2px memorize marker) -- same four rects,
+     * same order, five times.
+     *
+     * It is also the FIX for the coin rows. A frame drawn by stretching the
+     * atlas's `slot_border_normal` sprite (a 1px border inside a 32x32 tile)
+     * survives only while the destination is 32x32: the purse's rows are 18px
+     * tall, which minifies the tile and selects mip level 1, where the 1px
+     * ring has averaged into its transparent interior. That was invisible
+     * until T411, because the UI painted the atlas fully opaque and the
+     * washed-out ring sat on an opaque black tile; with the alpha live the
+     * row's frame drops to a 17/255 contrast step. drawRect()'s 4x4 `white`
+     * sprite has no such problem -- it is uniform, so every mip of it is
+     * still white.
+     */
+    void drawFrame(const irr::core::rect<irr::s32>& rect, irr::video::SColor color,
+                   irr::s32 thickness = 1);
+
+    /**
      * Draw a progress bar (HP, mana, etc.).
      * Draws background + filled portion.
      */

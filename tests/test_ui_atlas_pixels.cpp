@@ -517,3 +517,113 @@ TEST_F(UIAtlasCoinDecalTest, TheInventoryPopupPaintsTheGoldDecalGold) {
     EXPECT_GT(static_cast<int>(got.getGreen()), 100);
     EXPECT_LT(static_cast<int>(got.getBlue()), static_cast<int>(got.getGreen()));
 }
+
+// ── The purse's row frames (T416, board B316) ───────────────────────────────
+//
+// T411 turned the atlas's real alpha on for the UI (77.1% of ui_atlas is not
+// opaque). Every 32x32 slot in the client draws its border by stretching
+// `slot_border_normal` -- a 1px ring inside a 32x32 tile -- onto a 32x32 rect,
+// which is 1:1 and fine. The purse is the ONE place that sprite is drawn onto
+// a rect SMALLER than the tile: a coin row is 18 px tall at 800x600, so the
+// tile is minified, the sampler takes mip level 1, and the ring has averaged
+// into its own transparent interior. Before T411 that was invisible -- the
+// washed-out ring sat on a tile the UI painted fully opaque, so the row still
+// read as a filled box. With the alpha live the frame collapsed to a 17/255
+// step against the row's interior (measured T416,
+// review/T416/crops/coinrows_zoom4x_before_after.png), and the row stopped
+// reading as a box at all.
+//
+// The oracle's IW_Money buttons are framed plates
+// (review/T401/oracle/T401_oracle_purse_coinrows_crop4x.png), so the fix
+// draws the frame from the uniform 4x4 `white` sprite via
+// UIRenderer::drawFrame() -- every mip of which is still white -- in the same
+// {80,80,80} grey ui_atlas_builder gives the ring.
+//
+// Pre-fix both tests below fail: the top edge samples ~38 where the interior
+// samples ~21.
+class UIAtlasCoinRowFrameTest : public UIAtlasPixelTest {
+protected:
+    // Renders the whole inventory popup once and returns the framebuffer, so
+    // the edge and the interior are sampled from the SAME frame -- a contrast
+    // assertion across two frames would be comparing two renders.
+    irr::video::IImage* renderPurse(UIRenderer& ui) {
+        InventoryPanelState inv;
+        inv.activePopup = PopupType::Inventory;
+        eqt::state::CurrencyChangedData d;
+        d.platinum = 8; d.gold = 18; d.silver = 8; d.copper = 16;
+        applyCurrencyChanged(inv, d);
+        return renderFrame(ui, [&](UIRenderer& r) {
+            renderInventoryPopup(r, layout_, inv);
+        });
+    }
+};
+
+TEST_F(UIAtlasCoinRowFrameTest, EveryCoinRowPaintsAFullBrightFrame) {
+    UIRenderer ui;
+    ui.init(driver_, atlas_.get(), &textBatch_);
+
+    irr::video::IImage* img = renderPurse(ui);
+    ASSERT_NE(img, nullptr);
+
+    for (int denom = 0; denom < InventoryLayout::COIN_COUNT; ++denom) {
+        const auto row = InventoryLayout::coinRect(layout_, denom);
+        ASSERT_GT(row.getWidth(), 8) << "denom " << denom;
+        ASSERT_GT(row.getHeight(), 4) << "denom " << denom;
+
+        const irr::s32 midX = (row.UpperLeftCorner.X + row.LowerRightCorner.X) / 2;
+        const irr::s32 midY = (row.UpperLeftCorner.Y + row.LowerRightCorner.Y) / 2;
+
+        // The four edge pixels drawFrame() paints.
+        const irr::video::SColor top =
+            img->getPixel(static_cast<irr::u32>(midX),
+                          static_cast<irr::u32>(row.UpperLeftCorner.Y));
+        const irr::video::SColor bottom =
+            img->getPixel(static_cast<irr::u32>(midX),
+                          static_cast<irr::u32>(row.LowerRightCorner.Y - 1));
+        const irr::video::SColor left =
+            img->getPixel(static_cast<irr::u32>(row.UpperLeftCorner.X),
+                          static_cast<irr::u32>(midY));
+        const irr::video::SColor right =
+            img->getPixel(static_cast<irr::u32>(row.LowerRightCorner.X - 1),
+                          static_cast<irr::u32>(midY));
+
+        const char* kEdge[4] = {"top", "bottom", "left", "right"};
+        const irr::video::SColor edges[4] = {top, bottom, left, right};
+        for (int e = 0; e < 4; ++e) {
+            EXPECT_GT(static_cast<int>(edges[e].getRed()), 60)
+                << "coin row " << denom << " " << kEdge[e] << " edge sampled ("
+                << (int)edges[e].getRed() << "," << (int)edges[e].getGreen() << ","
+                << (int)edges[e].getBlue() << ") -- the frame is not being drawn "
+                   "at full strength";
+        }
+    }
+    img->drop();
+}
+
+TEST_F(UIAtlasCoinRowFrameTest, TheFrameStandsOutAgainstTheRowInterior) {
+    UIRenderer ui;
+    ui.init(driver_, atlas_.get(), &textBatch_);
+
+    irr::video::IImage* img = renderPurse(ui);
+    ASSERT_NE(img, nullptr);
+
+    const auto row = InventoryLayout::coinRect(layout_, InventoryLayout::COIN_PLATINUM);
+    const irr::s32 midX = (row.UpperLeftCorner.X + row.LowerRightCorner.X) / 2;
+
+    const irr::video::SColor edge =
+        img->getPixel(static_cast<irr::u32>(midX),
+                      static_cast<irr::u32>(row.UpperLeftCorner.Y));
+    // Two pixels in from the top edge, same column: the row's own interior.
+    // The decal and its number are on the left half, so a mid-column sample
+    // just below the frame reads the slot background and nothing else.
+    const irr::video::SColor interior =
+        img->getPixel(static_cast<irr::u32>(midX),
+                      static_cast<irr::u32>(row.UpperLeftCorner.Y + 2));
+    img->drop();
+
+    EXPECT_GT(static_cast<int>(edge.getRed()) - static_cast<int>(interior.getRed()), 30)
+        << "frame (" << (int)edge.getRed() << "," << (int)edge.getGreen() << ","
+        << (int)edge.getBlue() << ") vs interior (" << (int)interior.getRed() << ","
+        << (int)interior.getGreen() << "," << (int)interior.getBlue()
+        << ") -- the row does not read as a box";
+}

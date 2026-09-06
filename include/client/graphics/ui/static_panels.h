@@ -64,6 +64,18 @@ struct TargetInfoData {
 void renderPlayerStatus(UIRenderer& ui, const UILayout& layout,
                         const PlayerStatsData& stats);
 
+/**
+ * T416 (board B316): the health-percent label, as one shared body.
+ *
+ * The target panel, every group member row and the pet panel each formatted
+ * it as `fmt::format("{}%%", pct)` -- and fmt is not printf: `%` is an
+ * ordinary character to it, so all three drew **"100%%"** on screen, doubled
+ * sign and all. Caught in T416's panel captures
+ * (review/T416/crops/group_3way.png). One body, pinned by a test, like
+ * coinRowText() below.
+ */
+std::string percentText(uint8_t percent);
+
 /** Render target info panel (HP bar + name). Only renders if target exists. */
 void renderTargetInfo(UIRenderer& ui, const UILayout& layout,
                       const TargetInfoData& target);

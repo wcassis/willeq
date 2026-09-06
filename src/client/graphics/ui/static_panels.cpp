@@ -68,6 +68,12 @@ void renderPlayerStatus(UIRenderer& ui, const UILayout& layout,
     }
 }
 
+std::string percentText(uint8_t percent) {
+    // NOT "{}%%" -- fmt copies a literal `%` through verbatim, so that form
+    // printed the sign twice. See the declaration for the three panels it hit.
+    return fmt::format("{}%", percent);
+}
+
 void renderTargetInfo(UIRenderer& ui, const UILayout& layout,
                       const TargetInfoData& target) {
     if (target.spawnId == 0) return;  // No target
@@ -90,7 +96,7 @@ void renderTargetInfo(UIRenderer& ui, const UILayout& layout,
         static_cast<uint8_t>(UISprite::BarBackground));
 
     if (auto* tb = ui.getTextBatch()) {
-        std::string hpText = fmt::format("{}%%", target.hpPercent);
+        std::string hpText = percentText(target.hpPercent);
         tb->addTextCentered(hpText, layout.targetHPBar,
             irr::video::SColor(255, 255, 255, 255));
     }
@@ -384,7 +390,19 @@ void renderInventoryPopup(UIRenderer& ui, const UILayout& layout,
     for (int denom = 0; denom < InventoryLayout::COIN_COUNT; ++denom) {
         const auto row = InventoryLayout::coinRect(layout, denom);
         ui.drawSprite(row, static_cast<uint8_t>(UISprite::SlotBackground));
-        ui.drawSprite(row, static_cast<uint8_t>(UISprite::SlotBorderNormal));
+        // T416 (board B316): NOT drawSprite(SlotBorderNormal). That sprite is
+        // a 1px ring inside a 32x32 tile and a coin row is 18px tall, so the
+        // tile is MINIFIED and the sampler takes mip level 1, where the ring
+        // has averaged into its own transparent interior. Until T411 the atlas
+        // drew opaque and the washed-out ring sat on an opaque black tile, so
+        // the row still read as a box; with the alpha live the frame collapses
+        // to a 17/255 step against the row's interior (measured, T416). The
+        // oracle's IW_Money buttons are framed plates
+        // (review/T401/oracle/T401_oracle_purse_coinrows_crop4x.png), so the
+        // frame is drawn from the uniform 4x4 `white` sprite instead -- every
+        // mip of which is still white -- in the same grey the atlas ring
+        // carries (slot_border_normal is {80,80,80,255} in ui_atlas_builder).
+        ui.drawFrame(row, irr::video::SColor(255, 80, 80, 80));
         // The oracle blits A_PlatinumCoin/A_GoldCoin/A_SilverCoin/
         // A_CopperCoin into the decal box. T398 put those exact pixels in
         // fable's atlas (ui_atlas_builder --uifiles-path lifts the 72x18
@@ -509,11 +527,7 @@ void renderSpellGemPanel(UIRenderer& ui, const UILayout& layout,
 
         // State-colored border
         if (gem.spellId != 0 && gem.gemState > 0) {
-            irr::video::SColor borderCol = gemColor(gem.gemState);
-            ui.drawRect({x, y, x + SLOT, y + 1}, borderCol);
-            ui.drawRect({x, y + SLOT - 1, x + SLOT, y + SLOT}, borderCol);
-            ui.drawRect({x, y, x + 1, y + SLOT}, borderCol);
-            ui.drawRect({x + SLOT - 1, y, x + SLOT, y + SLOT}, borderCol);
+            ui.drawFrame(slotRect, gemColor(gem.gemState));
         } else {
             uint8_t borderSprite = (state.hoveredGem == i)
                 ? static_cast<uint8_t>(UISprite::SlotBorderHover)
@@ -526,11 +540,7 @@ void renderSpellGemPanel(UIRenderer& ui, const UILayout& layout,
         // is just as visible as an empty one. Default state
         // (memorizeTargetGem == -1) draws nothing.
         if (state.memorizeTargetGem == i) {
-            const irr::video::SColor targetCol(255, 255, 215, 0);  // gold
-            ui.drawRect({x, y, x + SLOT, y + 2}, targetCol);
-            ui.drawRect({x, y + SLOT - 2, x + SLOT, y + SLOT}, targetCol);
-            ui.drawRect({x, y, x + 2, y + SLOT}, targetCol);
-            ui.drawRect({x + SLOT - 2, y, x + SLOT, y + SLOT}, targetCol);
+            ui.drawFrame(slotRect, irr::video::SColor(255, 255, 215, 0), 2);  // gold
         }
 
         // Cooldown overlay for refresh state
@@ -630,10 +640,7 @@ void renderBuffBar(UIRenderer& ui, const UILayout& layout,
 
         // Colored background based on beneficial/detrimental (simplified: always blue-ish)
         ui.drawRect(iconRect, irr::video::SColor(200, 30, 50, 120));
-        ui.drawRect({x, y, x + ICON, y + 1}, irr::video::SColor(255, 80, 100, 180));
-        ui.drawRect({x, y + ICON - 1, x + ICON, y + ICON}, irr::video::SColor(255, 80, 100, 180));
-        ui.drawRect({x, y, x + 1, y + ICON}, irr::video::SColor(255, 80, 100, 180));
-        ui.drawRect({x + ICON - 1, y, x + ICON, y + ICON}, irr::video::SColor(255, 80, 100, 180));
+        ui.drawFrame(iconRect, irr::video::SColor(255, 80, 100, 180));
 
         // Abbreviated spell name
         if (tb) {
@@ -730,15 +737,7 @@ void renderCastingBar(UIRenderer& ui, const UILayout& layout,
     }
 
     // Border
-    irr::video::SColor border(255, 80, 140, 200);
-    irr::s32 x1 = layout.castingBar.UpperLeftCorner.X;
-    irr::s32 y1 = layout.castingBar.UpperLeftCorner.Y;
-    irr::s32 x2 = layout.castingBar.LowerRightCorner.X;
-    irr::s32 y2 = layout.castingBar.LowerRightCorner.Y;
-    ui.drawRect({x1, y1, x2, y1 + 1}, border);
-    ui.drawRect({x1, y2 - 1, x2, y2}, border);
-    ui.drawRect({x1, y1, x1 + 1, y2}, border);
-    ui.drawRect({x2 - 1, y1, x2, y2}, border);
+    ui.drawFrame(layout.castingBar, irr::video::SColor(255, 80, 140, 200));
 
     // Spell name centered
     if (tb) {
@@ -825,7 +824,7 @@ void renderGroupPanel(UIRenderer& ui, const UILayout& layout,
             irr::video::SColor(200, 15, 15, 20));
 
         if (tb) {
-            std::string hpText = fmt::format("{}%%", m.hpPercent);
+            std::string hpText = percentText(m.hpPercent);
             tb->addTextCentered(hpText, hpRect,
                 irr::video::SColor(255, 255, 255, 255));
         }
@@ -868,7 +867,7 @@ void renderPetPanel(UIRenderer& ui, const UILayout& layout,
         irr::video::SColor(200, 15, 15, 20));
 
     if (tb) {
-        std::string hpText = fmt::format("{}%%", state.hpPercent);
+        std::string hpText = percentText(state.hpPercent);
         tb->addTextCentered(hpText, hpRect, irr::video::SColor(255, 255, 255, 255));
     }
     y += BAR_H + PAD;

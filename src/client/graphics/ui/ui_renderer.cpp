@@ -47,6 +47,23 @@ void UIRenderer::drawSprite(const irr::core::rect<irr::s32>& rect, uint8_t sprit
     }
 }
 
+void UIRenderer::drawFrame(const irr::core::rect<irr::s32>& rect,
+                           irr::video::SColor color, irr::s32 thickness) {
+    if (!driver_ || thickness <= 0) return;
+
+    const irr::s32 x1 = rect.UpperLeftCorner.X;
+    const irr::s32 y1 = rect.UpperLeftCorner.Y;
+    const irr::s32 x2 = rect.LowerRightCorner.X;
+    const irr::s32 y2 = rect.LowerRightCorner.Y;
+
+    // Exactly the four rects, in exactly the order, that every open-coded
+    // copy of this used -- so migrating them cannot move a pixel.
+    drawRect({x1, y1, x2, y1 + thickness}, color);           // Top
+    drawRect({x1, y2 - thickness, x2, y2}, color);           // Bottom
+    drawRect({x1, y1, x1 + thickness, y2}, color);           // Left
+    drawRect({x2 - thickness, y1, x2, y2}, color);           // Right
+}
+
 void UIRenderer::drawBar(const irr::core::rect<irr::s32>& rect, float fillPercent,
                          irr::video::SColor fillColor, irr::video::SColor bgColor) {
     if (!driver_) return;
@@ -89,15 +106,7 @@ void UIRenderer::drawPanel(const irr::core::rect<irr::s32>& rect) {
     drawSprite(rect, static_cast<uint8_t>(UISprite::PanelBackground));
 
     // Border (1px lines around the panel)
-    irr::video::SColor borderColor(255, 60, 60, 70);
-    irr::s32 x1 = rect.UpperLeftCorner.X;
-    irr::s32 y1 = rect.UpperLeftCorner.Y;
-    irr::s32 x2 = rect.LowerRightCorner.X;
-    irr::s32 y2 = rect.LowerRightCorner.Y;
-    drawRect({x1, y1, x2, y1 + 1}, borderColor);  // Top
-    drawRect({x1, y2 - 1, x2, y2}, borderColor);  // Bottom
-    drawRect({x1, y1, x1 + 1, y2}, borderColor);  // Left
-    drawRect({x2 - 1, y1, x2, y2}, borderColor);  // Right
+    drawFrame(rect, irr::video::SColor(255, 60, 60, 70));
 }
 
 void UIRenderer::drawTexture(const irr::core::rect<irr::s32>& rect, irr::video::ITexture* texture) {

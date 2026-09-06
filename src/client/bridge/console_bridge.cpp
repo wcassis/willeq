@@ -57,7 +57,9 @@ void ConsoleBridge::applyEvent(const state::GameEvent& event) {
         if (d.spawnId == 0) {
             LOG_INFO(MOD_MAIN, "[TARGET] Cleared");
         } else {
-            LOG_INFO(MOD_MAIN, "[TARGET] {} (id={}) level={} HP={}%%",
+            // T416: NOT "%%" -- LOG_INFO formats through fmt, which copies a
+            // literal `%` verbatim, so this line printed "HP=63%%".
+            LOG_INFO(MOD_MAIN, "[TARGET] {} (id={}) level={} HP={}%",
                 d.name, d.spawnId, d.level, d.hpPercent);
         }
         break;

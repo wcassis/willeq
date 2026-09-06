@@ -151,16 +151,14 @@ def collect_members(root):
 #            currently print this member.  Boarded as a group.
 # ---------------------------------------------------------------------------
 
+# T416: the four rows T413 made stale (CastingStateChangedData::
+# castTimeRemainingMs / ::castTimeTotalMs, CursorItemChangedData::queueSize,
+# SpellMemorizingData::progressMs) are DELETED, not updated -- T413 gave each
+# of them a real consumer, and this checker fails on an exemption whose field
+# is no longer write-only. `WriteOnlyFields` was RED at 6522c387 for exactly
+# that reason; nothing else about T413's merge was incomplete.
 EXEMPT = {
-    ("CastingStateChangedData", "castTimeRemainingMs"):
-        ("owned", "B296, T413 (slot1) owns event_bus payload fields"),
-    ("CastingStateChangedData", "castTimeTotalMs"):
-        ("owned", "B296, T413 (slot1) owns event_bus payload fields"),
-    ("CursorItemChangedData", "queueSize"):
-        ("owned", "B296, T413 (slot1) owns event_bus payload fields"),
     ("SkillActivationFeedbackData", "cooldownMs"):
-        ("owned", "B296, T413 (slot1) owns event_bus payload fields"),
-    ("SpellMemorizingData", "progressMs"):
         ("owned", "B296, T413 (slot1) owns event_bus payload fields"),
     ("TradeskillContainerOpenedEvent", "containerName"):
         ("owned", "B296, T413 (slot1) owns event_bus payload fields"),

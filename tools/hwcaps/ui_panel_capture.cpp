@@ -1,0 +1,408 @@
+// ui_panel_capture -- T416 (board B316): every static UI panel, drawn through
+// a REAL UIAtlas, one PNG per panel.
+//
+// Why this exists. T411 made the three alpha-BLEND shaders sample the ETC1
+// `_alpha` companion, so `UI2D_FS` stopped reading `texture2D(uTexture, uv).a
+// == 1.0` for the atlas and started honouring the atlas's real alpha --
+// 77.1% of its texels are not opaque and 64.0% are fully transparent. Before
+// that every sprite, bar, border and coin decal the static UI drew was
+// painted as a filled rectangle. No visual-gate golden photographs any UI
+// (the gate's three zones capture geometry only), and the sibling tool
+// `ui_inventory_capture` only ever renders the inventory popup plus one
+// combined atlas frame, so most of the UI has never been looked at on the
+// path the client actually uses.
+//
+// What it draws. Each panel alone, on a CHECKERBOARD background, at 800x600:
+// the checker is what makes a now-transparent region legible as transparency
+// rather than as "dark". It never self-assesses -- it writes pixels and says
+// what they are.
+//
+// Usage:
+//   ui_panel_capture <output_dir> [--eqe1-path <dir-or-file>] [--opaque-alpha]
+//
+//   --eqe1-path   directory holding willeq.eqe1, OR the pack file itself
+//                 (so a reference pack such as
+//                 review/T411/willeq.eqe1.pre-T411 can be named directly).
+//   --opaque-alpha  clears the atlas texture's ETC1 alpha companion after
+//                 load, which makes UI2D_FS read alpha 1.0 for an ETC1
+//                 entry -- exactly the pre-T411 behaviour. Only meaningful
+//                 against a pack whose `ui_atlas` is ETC1 (the pre-T411
+//                 one); the post-T411 pack carries `ui_atlas` alpha IN BAND,
+//                 where unit 0 supplies it and unbinding unit 1 changes
+//                 nothing. Pairing this flag with the pre-T411 pack is the
+//                 "before" half of T416's before/after.
+
+#include "client/graphics/ui/static_panels.h"
+#include "client/graphics/ui/ui_renderer.h"
+#include "client/graphics/ui/ui_layout.h"
+#include "client/graphics/ui/ui_atlas.h"
+#include "client/graphics/eqe1_loader.h"
+#include "client/graphics/constrained_texture_cache.h"
+#include "client/graphics/constrained_renderer_config.h"
+#include "client/graphics/text_batch.h"
+#include "client/chat/chat_message_buffer.h"
+
+#include <irrlicht.h>
+#include <cstdio>
+#include <cstring>
+#include <string>
+#include <vector>
+#include <functional>
+#include <sys/stat.h>
+
+using namespace EQT::Graphics;
+
+// Defined in the patched GLES2 driver (docker/irrlicht-drm): records the
+// ETC1 alpha companion on a texture. Passing nullptr clears the pairing.
+extern void gles2SetAlphaCompanion(void* mainTexture, void* companionTexture);
+
+namespace {
+
+// A 16px checkerboard, drawn IMMEDIATELY (before any UIRenderer quad is
+// flushed) so every UI pixel with alpha < 255 shows it through.
+void drawChecker(irr::video::IVideoDriver* driver, int w, int h) {
+    const irr::video::SColor a(255, 96, 96, 104);
+    const irr::video::SColor b(255, 56, 56, 64);
+    constexpr int kCell = 16;
+    for (int y = 0; y < h; y += kCell) {
+        for (int x = 0; x < w; x += kCell) {
+            const bool even = ((x / kCell) + (y / kCell)) % 2 == 0;
+            driver->draw2DRectangle(even ? a : b,
+                irr::core::rect<irr::s32>(x, y, x + kCell, y + kCell));
+        }
+    }
+}
+
+void addChat(eqt::ui::ChatMessageBuffer& buf, const char* text, uint32_t color) {
+    eqt::ui::ChatMessage msg;
+    msg.text = text;
+    msg.color = color;
+    msg.channel = eqt::ui::ChatChannel::Say;
+    buf.addMessage(std::move(msg));
+}
+
+// ---- panel states, populated once and shared by every capture -------------
+
+struct PanelStates {
+    PlayerStatsData stats;
+    TargetInfoData target;
+    eqt::ui::ChatMessageBuffer chatBuffer;
+    ChatPanelState chat;
+    InventoryPanelState inventory;
+    HotbarPanelState hotbar;
+    SpellGemPanelState gems;
+    BuffBarState buffs;
+    CastingBarState casting;
+    GroupPanelState group;
+    PetPanelState pet;
+    SpellbookPopupState spellbook;
+    SkillsPopupState skills;
+    LootPanelState loot;
+    XPBarState xp;
+
+    PanelStates() {
+        stats.name = "Testchar";
+        stats.level = 12;
+        stats.curHP = 137; stats.maxHP = 220;
+        stats.curMana = 90; stats.maxMana = 180;
+        stats.curEndurance = 74; stats.maxEndurance = 100;
+
+        target.spawnId = 42;
+        target.name = "a large rat";
+        target.level = 9;
+        target.hpPercent = 63;
+
+        addChat(chatBuffer, "Welcome to EverQuest!", 0xFFFFFF00u);
+        addChat(chatBuffer, "You say, 'Hail, a large rat'", 0xFFC8C8C8u);
+        addChat(chatBuffer, "a large rat bites YOU for 7 points of damage.", 0xFFFF6464u);
+        addChat(chatBuffer, "You have gained experience!", 0xFF78DCFFu);
+        chatBuffer.processPending();
+        chat.messageBuffer = &chatBuffer;
+        chat.inputActive = true;          // so the chat panel BACKGROUND draws
+        chat.inputText = "/say hail";
+        chat.cursorPos = 9;
+
+        inventory.activePopup = PopupType::Inventory;
+        for (int i = 0; i < InventoryPanelState::EQUIP_SLOTS; ++i) {
+            inventory.equipSlots[i].hasItem = (i % 3) != 0;
+            inventory.equipSlots[i].itemName = "Item";
+        }
+        for (int i = 0; i < InventoryPanelState::GENERAL_SLOTS; ++i) {
+            inventory.generalSlots[i].hasItem = true;
+            inventory.generalSlots[i].itemName = "Bag";
+            inventory.generalSlots[i].quantity = i + 1;
+        }
+        inventory.hoveredSlot = 4;
+        inventory.coins[0] = 12; inventory.coins[1] = 5;
+        inventory.coins[2] = 8;  inventory.coins[3] = 47;
+
+        for (int i = 0; i < HotbarPanelState::SLOT_COUNT; ++i) {
+            hotbar.slots[i].type = eqt::HotbarSlotType::Spell;
+            hotbar.slots[i].id = 100 + i;
+            hotbar.slots[i].name = "Spel";
+        }
+        hotbar.hoveredSlot = 3;
+
+        gems.gems[0].spellId = 278; gems.gems[0].gemState = 1; gems.gems[0].spellName = "Frost Bolt";
+        gems.gems[1].spellId = 279; gems.gems[1].gemState = 1; gems.gems[1].spellName = "Frost Rift";
+        gems.gems[2].spellId = 280; gems.gems[2].gemState = 3; gems.gems[2].spellName = "Shock";
+        gems.memorizeTargetGem = 5;
+
+        buffs.isOpen = true;
+        for (int i = 0; i < 5; ++i) {
+            buffs.buffs[i].spellId = 500 + i;
+            buffs.buffs[i].spellName = "Buff";
+            buffs.buffs[i].ticksLeft = 60 - i * 7;
+            buffs.buffs[i].updateTime = std::chrono::steady_clock::now();
+        }
+
+        casting.isCasting = true;
+        casting.spellName = "Minor Healing";
+        casting.totalMs = 2000;
+        casting.remainingMs = 900;
+
+        group.isOpen = true;
+        group.inGroup = true;
+        group.isLeader = true;
+        group.leaderName = "Testchar";
+        group.memberCount = 3;
+        const char* names[3] = {"Aldric", "Brynn", "Cadoc"};
+        const uint8_t hp[3] = {100, 71, 34};
+        for (int i = 0; i < 3; ++i) {
+            group.members[i].name = names[i];
+            group.members[i].hpPercent = hp[i];
+            group.members[i].manaPercent = 80;
+            group.members[i].inZone = (i != 2);
+        }
+
+        pet.isOpen = true;
+        pet.hasPet = true;
+        pet.name = "Gynok";
+        pet.level = 10;
+        pet.hpPercent = 88;
+        pet.buttonStates[0] = true;
+        pet.buttonStates[3] = true;
+
+        spellbook.isOpen = true;
+        for (int i = 0; i < 12; ++i) {
+            SpellbookDisplayEntry e;
+            e.slot = static_cast<uint16_t>(i);
+            e.spellId = 300 + i;
+            e.level = static_cast<uint8_t>(1 + i);
+            e.name = "Spell Of Testing";
+            spellbook.spells.push_back(e);
+        }
+        spellbook.hoveredSlot = 2;
+        spellbook.isMemorizing = true;
+        spellbook.memorizeGemSlot = 3;
+        spellbook.memorizeProgressMs = 4000;
+        spellbook.memorizeTotalMs = 10000;
+
+        skills.isOpen = true;
+        const char* skillNames[10] = {"1H Slashing", "Offense", "Defense", "Dodge",
+                                      "Parry", "Swimming", "Sense Heading", "Meditate",
+                                      "Bind Wound", "Alcohol Tolerance"};
+        for (int i = 0; i < 10; ++i) {
+            SkillDisplayItem s;
+            s.skillId = static_cast<uint8_t>(i);
+            s.name = skillNames[i];
+            s.value = 20 + i * 13;
+            s.maxValue = 200;
+            skills.skills.push_back(s);
+        }
+        skills.hoveredRow = 3;
+
+        loot.isOpen = true;
+        loot.corpseId = 7;
+        loot.corpseName = "a large rat's corpse";
+        const char* lootNames[4] = {"Rat Ears", "Rusty Dagger", "Bone Chips", "Small Bag"};
+        for (int i = 0; i < 4; ++i) {
+            LootItemDisplay it;
+            it.slot = static_cast<uint8_t>(i * 3);
+            it.itemId = 1000 + i;
+            it.itemName = lootNames[i];
+            loot.items.push_back(it);
+        }
+        loot.hoveredRow = 1;
+
+        xp.progress = 0.62f;
+    }
+};
+
+struct PanelCapture {
+    const char* name;
+    std::function<void(UIRenderer&, const UILayout&, PanelStates&)> draw;
+};
+
+std::vector<PanelCapture> buildCaptureList() {
+    return {
+        {"player_status", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderPlayerStatus(u, l, s.stats); }},
+        {"target_info", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderTargetInfo(u, l, s.target); }},
+        {"chat", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderChatPanel(u, l, s.chat); }},
+        {"hotbar", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderHotbar(u, l, s.hotbar); }},
+        {"spell_gems", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderSpellGemPanel(u, l, s.gems); }},
+        {"buff_bar", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderBuffBar(u, l, s.buffs); }},
+        {"casting_bar", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderCastingBar(u, l, s.casting); }},
+        {"group", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderGroupPanel(u, l, s.group); }},
+        {"group_nogroup", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            GroupPanelState g = s.group; g.inGroup = false;
+            renderGroupPanel(u, l, g); }},
+        {"pet", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderPetPanel(u, l, s.pet); }},
+        {"xp_bar", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderXPBar(u, l, s.xp); }},
+        {"inventory", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderInventoryPopup(u, l, s.inventory); }},
+        {"spellbook", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderSpellbookPopup(u, l, s.spellbook); }},
+        {"skills", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderSkillsPopup(u, l, s.skills); }},
+        {"loot", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderLootPopup(u, l, s.loot); }},
+        // Everything the HUD draws at once -- the screen a player sees.
+        {"hud_all", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderPlayerStatus(u, l, s.stats);
+            renderTargetInfo(u, l, s.target);
+            renderGroupPanel(u, l, s.group);
+            renderPetPanel(u, l, s.pet);
+            renderBuffBar(u, l, s.buffs);
+            renderChatPanel(u, l, s.chat);
+            renderCastingBar(u, l, s.casting);
+            renderHotbar(u, l, s.hotbar);
+            renderSpellGemPanel(u, l, s.gems);
+            renderXPBar(u, l, s.xp); }},
+    };
+}
+
+std::string resolvePackPath(const std::string& eqe1Path) {
+    struct stat st;
+    if (stat(eqe1Path.c_str(), &st) == 0 && S_ISREG(st.st_mode)) return eqe1Path;
+    return eqe1Path + "/willeq.eqe1";
+}
+
+} // namespace
+
+int main(int argc, char** argv) {
+    std::string outputDir = "ui_panel_capture";
+    std::string eqe1Path = "/mnt/projects/EverQuest_ETC1";
+    bool opaqueAlpha = false;
+
+    for (int i = 1; i < argc; ++i) {
+        if (!strcmp(argv[i], "--eqe1-path") && i + 1 < argc) {
+            eqe1Path = argv[++i];
+        } else if (!strcmp(argv[i], "--opaque-alpha")) {
+            opaqueAlpha = true;
+        } else if (argv[i][0] != '-') {
+            outputDir = argv[i];
+        } else {
+            fprintf(stderr, "ERROR: unknown argument '%s'\n", argv[i]);
+            return 1;
+        }
+    }
+    mkdir(outputDir.c_str(), 0755);
+
+    const std::string packPath = resolvePackPath(eqe1Path);
+    {
+        FILE* probe = fopen(packPath.c_str(), "rb");
+        if (!probe) {
+            fprintf(stderr, "ERROR: %s not readable\n", packPath.c_str());
+            return 1;
+        }
+        fclose(probe);
+    }
+
+    constexpr irr::u32 kW = 800, kH = 600;
+    irr::SIrrlichtCreationParameters params;
+    params.DriverType = irr::video::EDT_OGLES2;
+    params.WindowSize = irr::core::dimension2d<irr::u32>(kW, kH);
+    params.Fullscreen = true;
+    irr::IrrlichtDevice* device = irr::createDeviceEx(params);
+    if (!device) {
+        fprintf(stderr, "ERROR: failed to create Irrlicht device\n");
+        return 1;
+    }
+    irr::video::IVideoDriver* driver = device->getVideoDriver();
+
+    bool ok = true;
+    {
+        EQE1Loader loader;
+        if (!loader.open(packPath)) {
+            fprintf(stderr, "ERROR: failed to open %s\n", packPath.c_str());
+            device->drop();
+            return 1;
+        }
+
+        auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::TNT);
+        ConstrainedTextureCache textureCache(config);
+        textureCache.setDriver(driver);
+        textureCache.addEQE1Loader(&loader);
+
+        UIAtlas atlas;
+        if (!atlas.load(driver, &textureCache)) {
+            fprintf(stderr, "ERROR: UIAtlas::load() failed against %s\n", packPath.c_str());
+            device->drop();
+            return 1;
+        }
+        if (opaqueAlpha) {
+            gles2SetAlphaCompanion(atlas.getTexture(), nullptr);
+            printf("--opaque-alpha: cleared the ui_atlas ETC1 alpha companion "
+                   "(pre-T411 emulation; a no-op if this pack's ui_atlas is RGBA8888)\n");
+        }
+
+        TextBatch textBatch;
+        textBatch.init(device->getGUIEnvironment());
+
+        UIRenderer ui;
+        ui.init(driver, &atlas, &textBatch);
+
+        UILayout layout;
+        layout.computeLayout(static_cast<irr::s32>(kW), static_cast<irr::s32>(kH));
+
+        PanelStates states;
+        const auto captures = buildCaptureList();
+
+        // Prime the driver, then a warm-up content frame: the surfaceless-EGL
+        // /llvmpipe backend drops immediate-mode quads on the first content
+        // frame after the prime (documented in ui_inventory_capture.cpp).
+        driver->beginScene(true, true, irr::video::SColor(255, 0, 0, 0));
+        driver->endScene();
+
+        for (const auto& cap : captures) {
+            for (int pass = 0; pass < 2; ++pass) {
+                driver->beginScene(true, true, irr::video::SColor(255, 0, 0, 0));
+                drawChecker(driver, static_cast<int>(kW), static_cast<int>(kH));
+                ui.beginFrame();
+                cap.draw(ui, layout, states);
+                ui.endFrame();
+                driver->endScene();
+            }
+
+            irr::video::IImage* img = driver->createScreenShot();
+            if (!img) {
+                fprintf(stderr, "ERROR: createScreenShot() returned null for %s\n", cap.name);
+                ok = false;
+                continue;
+            }
+            const std::string path = outputDir + "/" + cap.name + "_800x600.png";
+            const bool wrote = driver->writeImageToFile(img, path.c_str());
+            img->drop();
+            if (!wrote) {
+                fprintf(stderr, "ERROR: writeImageToFile failed for %s\n", path.c_str());
+                ok = false;
+                continue;
+            }
+            printf("Wrote %s\n", path.c_str());
+        }
+    }
+
+    device->drop();
+    return ok ? 0 : 1;
+}
