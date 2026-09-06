@@ -152,24 +152,8 @@ def collect_members(root):
 # ---------------------------------------------------------------------------
 
 EXEMPT = {
-    ("CastingStateChangedData", "castTimeRemainingMs"):
-        ("owned", "B296, T413 (slot1) owns event_bus payload fields"),
-    ("CastingStateChangedData", "castTimeTotalMs"):
-        ("owned", "B296, T413 (slot1) owns event_bus payload fields"),
-    ("CursorItemChangedData", "queueSize"):
-        ("owned", "B296, T413 (slot1) owns event_bus payload fields"),
-    ("SkillActivationFeedbackData", "cooldownMs"):
-        ("owned", "B296, T413 (slot1) owns event_bus payload fields"),
-    ("SpellMemorizingData", "progressMs"):
-        ("owned", "B296, T413 (slot1) owns event_bus payload fields"),
-    ("TradeskillContainerOpenedEvent", "containerName"):
-        ("owned", "B296, T413 (slot1) owns event_bus payload fields"),
-    ("TradeskillContainerOpenedEvent", "isWorldObject"):
-        ("owned", "B296, T413 (slot1) owns event_bus payload fields"),
-    ("TradeskillContainerOpenedEvent", "slotCount"):
-        ("owned", "B296, T413 (slot1) owns event_bus payload fields"),
     ("TradeskillContainerClosedEvent", "wasWorldObject"):
-        ("owned", "B296, T413 (slot1) owns event_bus payload fields"),
+        ("boarded", "B336: the close path does not yet distinguish world vs inventory containers (T415 drew the window; the close behaviour is B336)"),
     ("ItemInstance", "accuracy"):
         ("boarded", "B298: item record field; lands with item tooltips"),
     ("ItemInstance", "currentSlot"):
