@@ -5013,7 +5013,7 @@ client uses every field.
   Will blesses in chat, someone then edits the three values BY HAND (never
   `--bless`, which would also rewrite the T69 per-zone memory block).
   Prov: T411 Review; B240; B287.~~ **APPLIED at the T411 merge under Will's B240 bless (2026-09-06, "bless B240" for the pack's final content): eqe1MappedBytes = 122,665,822 / 121,331,914 / 115,816,410; no image golden moved.**
-- **B316** (B) `src/client/graphics/ui/` consumers of the `ui_atlas` pack entry
+- ~~**B316** (B) `src/client/graphics/ui/` consumers of the `ui_atlas` pack entry
   -- **the static UI had been drawing its atlas fully OPAQUE, and T411 turned
   its real alpha on; only the pinned pixels have been checked.** `ui_atlas` has
   always been an ETC1 entry with an ETC1 `ui_atlas_alpha` companion, and the
@@ -5033,7 +5033,24 @@ client uses every field.
   in-band payload. All 14 `test_ui_atlas_pixels` cases are green with the alpha
   live, so no PINNED UI pixel changed; the unpinned rest of the UI is what
   nobody has looked at. Closes when someone runs the client and looks at it, or
-  pins more of it. Prov: T411 Review section 4.
+  pins more of it. Prov: T411 Review section 4.~~
+  **CLOSED by T416** (`refactor/T416_ui_atlas_review.md` Review): all fourteen
+  static panels plus the four popups were captured headlessly through a real
+  `UIAtlas` at 800x600 on a checkerboard, three ways -- pre-T411 (alpha
+  ignored), T411 as merged, and fixed -- in `review/T416/{before,after,fixed}/`
+  with per-panel contact sheets in `review/T416/crops/`. The tool is new and
+  reusable: `tools/hwcaps/ui_panel_capture.cpp`. **Exactly ONE thing broke**:
+  the purse's coin rows, the only place `slot_border_normal` (a 1px ring in a
+  32x32 tile) is drawn onto a rect SMALLER than the tile (18px tall), so mip
+  level 1 is selected and the ring has averaged into its own transparent
+  interior -- the frame fell to a 17/255 contrast step. Fixed by drawing it
+  from the uniform 4x4 `white` sprite through the new
+  `UIRenderer::drawFrame()`, pinned by `UIAtlasCoinRowFrameTest` (2 cases,
+  both RED pre-fix at edge 37 / interior 18). Everything else survived the
+  alpha intact. What the sweep also turned up: the doubled "%%" health label
+  (fixed here), and four items boarded rather than fixed:
+  B350 (the look decision), B351 (six atlas regions with no consumer), B352
+  (the pet button row) and B353 (a gate proposal).
 
 ---
 
@@ -5338,3 +5355,60 @@ client uses every field.
   latent question (ESC on an open corpse). Closes when ESC on either
   server-owned window sends its close intent instead of hiding the panel.
   Found by T415 Leg A.
+
+---
+
+## Added 2026-09-06 by T416
+
+- **B350** (C) `tools/ui_atlas_builder.cpp` `generate()`, and every panel that
+  draws `panel_background` / `slot_background` -- **since T411 the whole static
+  UI is translucent, and the oracle's windows are opaque.** The atlas author
+  gave `panel_background` alpha **180/255** and `slot_background` **200/255**,
+  which nothing honoured until T411; now the 3D world shows through the chat
+  window, the inventory popup, the loot list, the skills list and every panel
+  background (`review/T416/crops/hud_all_3way.png`, `chat_3way.png`,
+  `loot_3way.png`, `skills_3way.png` -- middle column is T411 as merged). The
+  official client's inventory window is a solid dark plate
+  (`review/T401/oracle/T401_oracle_inventory_window_crop.png`) and so is each
+  IW_Money row
+  (`review/T401/oracle/T401_oracle_purse_coinrows_crop4x.png`). Whether fable
+  should match that, keep a deliberate translucency, or split the two (popups
+  opaque, HUD panels translucent, which is what the official UI actually does)
+  is a LOOK decision, not a defect -- one number per sprite in
+  `ui_atlas_builder`, plus a pack rebuild and its two sha256 pins. Nobody has
+  ruled on it, so T416 changed nothing here. Found by T416.
+
+- **B351** (B) `include/client/graphics/ui/ui_atlas.h` `UISprite` -- **six of
+  the twenty-one atlas sprite regions have no consumer at all.** A
+  comment-filtered `UISprite::` census over `src/`, `tools/` and `tests/`
+  finds zero uses of `ButtonNormal`, `ButtonPressed`, `ButtonDisabled`,
+  `PanelBorder`, `ScrollIndicator` and `SlotBorderSelected`. Two of them have
+  an obvious caller waiting: the loot popup's Loot All / Close buttons draw
+  themselves with three `drawRect()` calls
+  (`src/client/graphics/ui/loot_panel.cpp`, `drawButton`) instead of
+  `ButtonNormal`/`ButtonPressed`, and the chat scrollbar thumb is a `drawRect`
+  instead of `ScrollIndicator`. The regions cost atlas space and pack bytes
+  either way. Closes when each is wired or removed from the builder, the JSON
+  name map and the enum together. Found by T416.
+
+- **B352** (B) `src/client/graphics/ui/static_panels.cpp` `renderPetPanel` and
+  `include/client/graphics/ui/ui_layout.h` `petPanel` -- **the pet command
+  button row is drawn OUTSIDE the panel and its last button is clipped away.**
+  `petPanel` is `BAR_HEIGHT * 2 + MARGIN * 3` = 40px tall, and the row loop
+  starts the buttons at y+34 with a ~14px line height, so the labels hang 8px
+  below the frame (`review/T416/crops/pet_3way.png` -- visible in all three
+  columns, so this pre-dates T411 and is not an alpha effect). The row also
+  runs out of width: ten labels at ~24px pitch need ~240px in a 160px panel,
+  and the `bx > right - 10` guard drops the tenth ("SH", Shrink) silently. The
+  honest fix is the oracle's own `EQUI_PetInfoWindow.xml` shape (a grid of
+  buttons, not a single text row), which is a layout decision -- hence B, not
+  a one-constant edit. Found by T416.
+
+- **B353** (P) `scripts/ci/visual_gate.sh` -- **proposal: the gate should
+  photograph the UI.** Its three zones capture geometry only, which is why
+  T411's atlas-alpha change moved no golden at all and needed T416 to look at
+  it by hand. `tools/hwcaps/ui_panel_capture` now renders all sixteen panel
+  captures headlessly in ~10 s with no server and no zone, so a `UiPanels`
+  stage would be cheap; it would also add sixteen image goldens to the set
+  Will has to bless on every UI edit. **The gate is Will's to extend** -- T416
+  boarded this rather than doing it, per its own plan. Found by T416.

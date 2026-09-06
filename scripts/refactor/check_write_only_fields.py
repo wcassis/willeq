@@ -151,6 +151,12 @@ def collect_members(root):
 #            currently print this member.  Boarded as a group.
 # ---------------------------------------------------------------------------
 
+# T416: the four rows T413 made stale (CastingStateChangedData::
+# castTimeRemainingMs / ::castTimeTotalMs, CursorItemChangedData::queueSize,
+# SpellMemorizingData::progressMs) are DELETED, not updated -- T413 gave each
+# of them a real consumer, and this checker fails on an exemption whose field
+# is no longer write-only. `WriteOnlyFields` was RED at 6522c387 for exactly
+# that reason; nothing else about T413's merge was incomplete.
 EXEMPT = {
     ("TradeskillContainerClosedEvent", "wasWorldObject"):
         ("boarded", "B336: the close path does not yet distinguish world vs inventory containers (T415 drew the window; the close behaviour is B336)"),

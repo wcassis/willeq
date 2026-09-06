@@ -843,6 +843,16 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(ui_inventory_capture willeq_core ${LINK_LIBS})
 ENDIF()
 
+# T416 (board B316): the sibling of ui_inventory_capture that renders EVERY
+# static panel through a real UIAtlas, one PNG per panel, on a checkerboard
+# background so the atlas alpha T411 turned on is legible. A sibling rather
+# than another mode of ui_inventory_capture because that file is already 648
+# lines and this needs its own panel-state fixture set.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(ui_panel_capture tools/hwcaps/ui_panel_capture.cpp)
+    TARGET_LINK_LIBRARIES(ui_panel_capture willeq_core ${LINK_LIBS})
+ENDIF()
+
 # P23: SimulationWorker input/output-buffer race stress harness. Manual
 # tool (not ctest-registered — it's a bounded soak, not a fast deterministic
 # unit test); see refactor/P23_particle_race_stability.md Review for the

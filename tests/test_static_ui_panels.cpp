@@ -1121,3 +1121,29 @@ TEST(PaperdollT409, TheRenderTargetCarriesTheRectsAspect) {
     EXPECT_GE(static_cast<int>(rt.Width), doll.getWidth());
     EXPECT_GE(static_cast<int>(rt.Height), doll.getHeight());
 }
+
+// ── The health-percent label (T416, board B316) ─────────────────────────────
+//
+// Found by eye in T416's panel captures (review/T416/crops/group_3way.png):
+// every group member row read "100%%". Three panels -- target info, each
+// group member row, the pet panel -- formatted the label as
+// `fmt::format("{}%%", pct)`, and fmt is not printf: a literal `%` is copied
+// through verbatim, so the doubled sign printed. `%%` in a LOG_INFO in
+// console_bridge.cpp's TargetChanged arm was the same bug in the same shape.
+//
+// percentText() is now the one body all three panels call. Pre-fix this test
+// fails with "100%%".
+TEST(StaticPanelPercentLabelT416, PercentTextPrintsExactlyOneSign) {
+    EXPECT_EQ(EQT::Graphics::percentText(100), "100%");
+    EXPECT_EQ(EQT::Graphics::percentText(0), "0%");
+    EXPECT_EQ(EQT::Graphics::percentText(63), "63%");
+}
+
+TEST(StaticPanelPercentLabelT416, PercentTextNeverDoublesTheSign) {
+    for (int p = 0; p <= 255; ++p) {
+        const std::string s = EQT::Graphics::percentText(static_cast<uint8_t>(p));
+        EXPECT_EQ(s.find("%%"), std::string::npos)
+            << "percentText(" << p << ") = '" << s << "'";
+        EXPECT_EQ(s.back(), '%') << "percentText(" << p << ") = '" << s << "'";
+    }
+}
