@@ -65,6 +65,7 @@ enum LogModule {
     MOD_UI,             // User interface
     MOD_CONFIG,         // Configuration loading/saving
     MOD_MAIN,           // Main application logic
+    MOD_SCENARIO,       // T410: --scenario lane trace (pinned above --log-level)
     MOD_COUNT           // Number of modules (must be last)
 };
 
@@ -74,7 +75,7 @@ inline const char* GetModuleName(LogModule mod) {
         "NET", "NET_PACKET", "LOGIN", "WORLD", "ZONE",
         "ENTITY", "MOVEMENT", "COMBAT", "SPELL", "INVENTORY",
         "GRAPHICS", "GRAPHICS_LOAD", "SHADER", "CAMERA", "INPUT", "AUDIO",
-        "PATHFIND", "MAP", "UI", "CONFIG", "MAIN"
+        "PATHFIND", "MAP", "UI", "CONFIG", "MAIN", "SCENARIO"
     };
     if (mod >= 0 && mod < MOD_COUNT) {
         return names[mod];
@@ -93,7 +94,8 @@ inline LogModule ParseModuleName(const char* name) {
         {"SHADER", MOD_SHADER},
         {"CAMERA", MOD_CAMERA}, {"INPUT", MOD_INPUT}, {"AUDIO", MOD_AUDIO},
         {"PATHFIND", MOD_PATHFIND}, {"MAP", MOD_MAP}, {"UI", MOD_UI},
-        {"CONFIG", MOD_CONFIG}, {"MAIN", MOD_MAIN}
+        {"CONFIG", MOD_CONFIG}, {"MAIN", MOD_MAIN},
+        {"SCENARIO", MOD_SCENARIO}
     };
     for (const auto& m : mapping) {
         if (strcmp(name, m.name) == 0) return m.mod;

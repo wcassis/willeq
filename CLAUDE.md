@@ -255,6 +255,75 @@ arithmetic defined.
 
 RDP and VNC can run simultaneously if both X11 and RDP are enabled.
 
+### The scenario lane — a live verification that exits with a code
+
+**T410 (board B138/B139).** Before this, every live verification on the board
+ended with a human reading a session transcript: `main.cpp` returned `0`
+unconditionally, so a client that crashed, never logged in, or logged in and
+did nothing at all were indistinguishable to a script. The scenario lane makes
+the process exit code the result.
+
+```bash
+# One scenario, headless, against a running eqemu:
+./build/bin/willeq -c config.json --scenario zone_in --timeout 120
+
+# The whole rig -- lock, up.sh, snapshot, run, restore with the world DOWN,
+# down.sh, release -- with the client's exit code passed through:
+bash scripts/scenario.sh zone_in --timeout 120 --unit T4xx
+```
+
+**Exit-code taxonomy** (`include/client/scenario/scenario_runner.h`; nothing
+else may be returned from a scenario run):
+
+| code | meaning |
+|---|---|
+| 0 | pass — the scenario asserted and the assertion held |
+| 1 | fail — the scenario ran and its assertion failed |
+| 2 | timeout — zoned in, but no verdict inside `--timeout` (**also what an unfinished run reports**, so an external `/quit`, a SIGTERM or a crash can never masquerade as success) |
+| 3 | could-not-start — never reached a zone (server down, bad login, unknown scenario name) |
+
+`scripts/scenario.sh` adds its own operator codes on top: 64 lock held by
+another session, 65 `up.sh` failed, 66 the server snapshot did not restore.
+
+**How it hangs off the client.** `--scenario` forces Automated mode, and the
+runner is registered on `AutomatedMode::setAutomationCallback` — the per-tick
+hook that had zero registrants in the whole tree until this (board B139). The
+callback runs on the GAME THREAD (`Application::processInput()`), one
+`ScenarioRunner::Tick(dt)` per ~60 Hz tick; returning `false` is
+`AutomatedMode`'s own contract for "stop", so the client unwinds through
+`isQuitRequested()` exactly like `/camp` and never calls `exit()` from inside a
+tick.
+
+**The runner owns the pre-flight, not the scenarios.** Until
+`IsFullyZonedIn()` is true it does not call `Step()` at all; if that never
+happens inside the start deadline the verdict is 3. So "the server was down"
+can never be reported as a scenario failure, and every scenario's first
+`Step()` may assume a live, zoned-in client.
+
+**Scenarios poll; they do not subscribe.** `GameState::events()` (which
+`AutomatedMode` forwards) and the renderer-facing `GameStateBridge` are two
+different streams, and the interesting landings — buffs via T348's `OP_Action`
+path — go to the bridge, which a headless client does not drain. Polling reads
+the same authoritative state either stream was published from.
+
+| scenario | asserts | replaces |
+|---|---|---|
+| `zone_in` | login → zone → `IsFullyZonedIn()` with a non-empty zone name | every `grep "Zone connection complete"` rig |
+| `two_client_survive` | a second player appears AND both hold for `--scenario-hold` seconds (default 300) | `review/T391/scripts/t391_run.sh`'s `kill -0` poll, which printed SURVIVED when the partner never logged in |
+| `cast_lands` | T401's prep recipe, then `/cast 1`, then the buff actually reaching `BuffManager` | the hand-read chat panel in T386/T401 |
+
+The partner for `two_client_survive` is a **peer process**, launched by
+`scripts/scenario.sh` running `zone_in` on the second account — the client
+never forks a second client.
+
+The state machines are pure logic over `IScenarioWorld`
+(`include/client/scenario/scenario.h`), so
+`tests/test_scenario_state_machines.cpp` runs all twenty cases with no client,
+no server and no network. A scenario needing something new adds a method
+there, and `ApplicationScenarioWorld` is the only implementation that touches
+`EverQuest`. Trace goes to the `MOD_SCENARIO` log module, pinned to INFO by
+the lane itself so a `--log-level` cannot silence the verdict.
+
 ### Video capture (temporal evidence — attack swings, casting, zoning, particles)
 
 Stills can't show a temporal sequence. When the thing under review is

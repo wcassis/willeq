@@ -124,6 +124,7 @@ bool Application::initialize(const ApplicationConfig& config) {
     if (!initCommandOutputRouting(config)) return false;
     if (!initGraphics(config)) return false;
     if (!initConsoleBridge(config)) return false;
+    if (!initScenario(config)) return false;
     if (!initLoginConnection(config)) return false;
 
     LOG_INFO(MOD_MAIN, "Application initialized successfully");

@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cstring>
 #include <string>
+#include <iostream>
 
 #if defined(__linux__)
 #include <malloc.h>
@@ -8,6 +9,7 @@
 
 #include "client/application.h"
 #include "client/eq.h"
+#include "client/scenario/scenarios.h"
 #include "common/logging.h"
 
 int main(int argc, char* argv[]) {
@@ -44,6 +46,21 @@ int main(int argc, char* argv[]) {
     }
     if (config.parseError) {
         return 1;  // parseArguments already printed the fatal message
+    }
+
+    // T410 (board B138): validate --scenario before anything else starts.
+    // An unknown name is "could not start", exit 3 -- the same code a missing
+    // server gets, because in both cases the scenario never ran. Reporting it
+    // as a plain usage error (1) would be indistinguishable from a scenario
+    // that ran and FAILED, which is the whole distinction this lane exists
+    // to make.
+    if (!config.scenarioName.empty() && !eqt::scenario::IsScenarioName(config.scenarioName)) {
+        std::cerr << "Unknown scenario '" << config.scenarioName << "'. Available:";
+        for (const auto& name : eqt::scenario::ScenarioNames()) {
+            std::cerr << " " << name;
+        }
+        std::cerr << "\n";
+        return eqt::scenario::kScenarioCouldNotStart;
     }
 
     // Initialize logging from CLI args (--log-level, --log-module)
@@ -154,11 +171,31 @@ int main(int argc, char* argv[]) {
     eqt::Application app;
     if (!app.initialize(config)) {
         LOG_FATAL(MOD_MAIN, "Failed to initialize application");
-        return 1;
+        // T410: in the scenario lane an initialize() failure is
+        // could-not-start (3), never a scenario failure (1).
+        return config.scenarioName.empty() ? 1 : eqt::scenario::kScenarioCouldNotStart;
     }
 
     app.run();
     app.shutdown();
+
+    // T410: the scenario lane's exit-code taxonomy -- 0 pass, 1 fail,
+    // 2 timeout, 3 could-not-start. Read AFTER shutdown() on purpose: the
+    // runner outlives the game mode, so a client stopped by anything other
+    // than the runner itself (SIGTERM, /quit, an early camp) reports the
+    // unfinished-run code rather than a false 0. Every non-scenario run
+    // still returns 0 exactly as it did before this existed.
+    int exitCode = 0;
+    if (app.scenarioRequested()) {
+        exitCode = app.scenarioExitCode();
+        LOG_INFO(MOD_SCENARIO, "scenario '{}' -> exit {} ({}): {}",
+            app.scenarioName(), exitCode,
+            eqt::scenario::ScenarioExitCodeName(exitCode), app.scenarioReason());
+        std::cerr << "SCENARIO " << app.scenarioName() << " "
+                  << eqt::scenario::ScenarioExitCodeName(exitCode)
+                  << " exit=" << exitCode << " reason=" << app.scenarioReason()
+                  << "\n";
+    }
     FlushThreadLog();
-    return 0;
+    return exitCode;
 }
