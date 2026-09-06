@@ -4211,3 +4211,157 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   eqemu server is), or each worktree reads its own pack, so that a live
   capture can name the asset it ran against. Prov: T401 Review §0; B228; B230;
   B240; B225.
+
+---
+
+## Added 2026-09-06 by T407 Leg B (the written-never-read field census)
+
+`scripts/refactor/check_write_only_fields.py` (new, committed) parses every
+struct/class body under `include/client/` and `src/client/` -- **6,414 data
+members, 4,365 distinct names** -- and sweeps `src/ include/ tests/ tools/
+benchmarks/` for every occurrence, classifying each as a write (`.name =`,
+`->name =`, a compound assign, or a `: name(...)` / `, name{...}` constructor
+initialiser) or a read. At tip `4dbeeedb` it reports **123 write-only fields**
+(written somewhere, read nowhere) and **101 with no occurrence at all outside
+their own declaration** -- 224 rows.
+
+Matching is by IDENTIFIER, not by receiver type. That asymmetry is deliberate:
+a name shared with another class can only ADD reads, so a collision can HIDE a
+write-only field but can never invent one. **The report is a floor, and the
+rows below are a queue, not a finding** -- each still needs the receiver
+checked before anyone acts on it.
+
+T407 deleted eleven (see below). The rest are boarded here.
+
+- **B290** (P) `scripts/refactor/check_write_only_fields.py` -- **the census is
+  the queue; 213 of its 224 rows are untriaged.** T407 deleted eleven fields
+  whose writes it also removed, compiler-proven at exit 0 with `tools/` in the
+  build: `Application::m_lastUpdate`, `AudioManager::useDbForSounds_`,
+  `CharacterModelView::parentSmgr_` and `::modelCenterY_`,
+  `EntityRenderer::nameFont_` and `::currentCameraRegionIdx_`,
+  `EquipmentModelLoader::mappingLoaded_`, `RenderPassTimer::currentPass_`,
+  `PathfinderWaypoint::Implementation::FileName`, `SkyLoader::wldBuffer_`,
+  `XmiDecoder::ticksPerQuarter_`. `tests/goldens/application_init_order_g04.txt`
+  learned the `m_lastUpdate` deletion in place (entry 311 removed, count 314 ->
+  313, both faults re-planted) per G correction 32. Closes when the remaining
+  rows are triaged into delete / defect / exempt and the script is wired into
+  ctest as a no-grow ratchet. Re-run it with
+  `python3 scripts/refactor/check_write_only_fields.py --include-unused`.
+  Found by T407 Leg B; the shape was named by T404 surprise 2
+  (`MixChannel::sampleRate`).
+
+- **B291** (A) `include/client/graphics/entity_renderer.h`
+  `EntityRenderer::skipTextureUpload_` -- **a constrained-mode knob that does
+  nothing.** `src/client/graphics/renderer/irrlicht_renderer.cpp` calls
+  `entityRenderer_->setSkipTextureUpload(config_.constrainedConfig.skipEntityTextureUpload)`
+  with a real configured value; the member is stored and never read, so entity
+  texture upload happens regardless. This is a live defect, not dead code: a
+  caller supplies an intended value. Closes when the flag is consumed at the
+  upload site or the config key and its plumbing are deleted together. Found by
+  T407's census.
+
+- **B292** (A) `include/client/audio/sfx_manager.h` `SfxManager::cacheMaxBytes_`
+  -- **the sound cache has no ceiling.** `AudioManager` calls
+  `sfxManager_->setCacheMaxBytes(soundCacheBytes)` with the configured budget;
+  `setCacheMaxBytes()` stores it and nothing ever compares `cacheSizeBytes_`
+  against it, so the SFX cache grows without bound on a memory-constrained
+  target. Closes when eviction reads the ceiling, or when the setter and its
+  caller go. Found by T407's census.
+
+- **B293** (B) `include/client/graphics/environment/particle_manager.h`
+  `ParticleManager::entityDirCallback_` -- installed by TWO callers
+  (`src/client/graphics/renderer/renderer_entities.cpp` and
+  `tools/model_viewer/model_viewer_spell_test.cpp`) and invoked by none, so
+  entity-direction-aware particle emission is unreachable. Closes when the
+  callback is called or the setter, the member and the `EntityDirCallback`
+  typedef are deleted with both call sites. Found by T407's census.
+
+- **B294** (A) `include/client/graphics/irrlicht_renderer.h`
+  `IrrlichtRenderer::forcePvsUpdate_` -- set true in FOUR places
+  (`renderer_init.cpp`, `player/renderer_camera.cpp`,
+  `frame/renderer_frame_input.cpp`, and an inline setter in the header) to
+  force a PVS visibility recalculation, and read nowhere. The comment on the
+  member says "set when render distance changes"; changing render distance
+  therefore does not force the recompute it asks for. Closes when the frame
+  path consumes and clears the flag, or the four writes go with it. Found by
+  T407's census.
+
+- **B295** (B) `include/client/graphics/graphics_archive_index.h`
+  `GraphicsArchiveIndex::lazyMode_` -- `buildIndex(eqPath, lazyMode, tick)`
+  stores its `lazyMode` argument and never reads it, so the lazy/eager choice
+  its callers make is discarded. Closes when the parameter is honoured or
+  removed from the signature. Found by T407's census.
+
+- **B296** (A) `include/client/state/event_bus.h` -- **bridge event payload
+  fields that every producer fills and no consumer reads.** The census names
+  `CastingStateChangedData::castTimeRemainingMs` and `::castTimeTotalMs`,
+  `SpellMemorizingData::progressMs`, `SpellGemChangedData::memorizeTotalMs`,
+  `SkillActivationFeedbackData::cooldownMs`, `CursorItemChangedData::queueSize`,
+  `TradeskillContainerOpenedEvent::containerName` / `::isWorldObject` /
+  `::slotCount`, and `TradeskillContainerClosedEvent::wasWorldObject`. Each is
+  a value the game thread computed for the renderer to draw -- cast bars,
+  memorise bars, gem cooldown arcs, the tradeskill container title -- and the
+  renderer never looks at it. This is the T264 event-reachability sweep's
+  missing half: `test_reachability_sweep` pins that every event TYPE has a
+  publisher and a consumer, and says nothing about its FIELDS. Closes when each
+  field is drawn or dropped; a per-field clause in the reachability sweep would
+  keep it closed. Found by T407's census.
+
+- **B297** (B) `include/client/graphics/environment/environment_config.h` and
+  siblings -- **JSON config keys parsed into fields nothing reads.** The census
+  names `DetailSettings::grassEnabled` / `plantsEnabled` / `rocksEnabled` /
+  `debrisEnabled`, `BoidsSettings::flockSizeMin` / `flockSizeMax` /
+  `scatterRadius` / `spawnCooldown`, `BoidsBudget::viewDistance`,
+  `RainOverlaySettings::layerDepthMin` / `layerDepthMax` / `windTiltBase` /
+  `windTiltIntensity`, `SnowOverlaySettings::layerDepthMin` / `layerDepthMax`,
+  `StormCloudSettings::blendDuration`,
+  `ConstrainedRendererConfig::enableItemIcons` / `frontToBackSorting`,
+  `WeatherPresetValues::fogTransitionSpeed` / `maxBranchLevel`,
+  `ZoneDetailConfig::isOutdoor`, `DisplaySettings::detailViewDistance`,
+  `DetailType::atlasX` / `atlasY` / `windHeightBias`. Editing any of these in
+  the shipped JSON changes nothing, silently -- the same defect class as B245's
+  read-by-nobody config files, one level down. Closes when each is consumed or
+  the key is removed from the loader and the shipped JSON together. Found by
+  T407's census.
+
+- **B298** (B) `include/client/inventory/item_instance.h`,
+  `include/client/spell/spell_data.h`, `include/client/skill/skill_data.h`,
+  `include/client/state/entity_manager.h` -- **server- and DB-sourced data
+  parsed and never shown.** `ItemInstance` carries 21 such fields
+  (`accuracy`, `damageShield`, `dotShield`, `spellShield`, `strikethrough`,
+  `stunResist`, `shielding`, `enduranceRegen`, `hpRegen`, `manaRegen`, `delay`,
+  `recLevel`, `maxCharges`, `lore`, `currentSlot`, the seven `heroic*`,
+  `expendable`, `bardEffect`); `SpellData` carries `resist_diff`, `zone_type`,
+  `teleport_zone`, `spell_fades`, `player_tag`, `environment_type`,
+  `time_of_day`, `aoe_duration`, `push_up`, `allow_rest`, `is_dispellable`,
+  `no_partial_resist`, `no_expend_reagent`; `SkillData` carries
+  `animation_code`, `usable_while_sitting`, `usable_while_stunned`,
+  `min_level`; `Entity` carries `guildId`, `anon_status`, `deltaHeading`;
+  `RaceModelInfo` carries `genderVariants`, `neuterCode`. Each is a loader
+  writing a value with no reader -- item tooltips, spell descriptions, skill
+  gating and the `/who` guild/anon columns are the features they belong to.
+  Closes per family as those features land; until then the loads are honest
+  but inert. Found by T407's census.
+
+- **B299** (B) `include/client/combat.h` `CombatManager::m_assist_range`,
+  `m_combat_range`, `m_spell_range`, `m_is_resting`, `m_rest_mana_threshold`,
+  and `CombatTarget::last_considered` -- dead tuning state. `SetAssistRange()`
+  and `SetCombatRange()` have exactly one caller each, `test_combat_manager.cpp`,
+  whose own comment says the class has "NO public getters" and which asserts
+  only `EXPECT_NO_THROW`; `m_is_resting` is written true/false by
+  `combat_hunting.cpp` and consulted by nothing. NOT deleted in T407 because
+  removing the setters requires editing that test, which T407's contract kept
+  unedited. Closes when the setters, the members and the test's `EXPECT_NO_THROW`
+  block go together, or a consumer appears. Found by T407's census.
+
+**Exempt, recorded so nobody re-reports them.** The census also names fields
+that are write-only BY CONSTRUCTION because they are serialised layout, and
+these are not defects: `DDSHeader` / `DDSPixelFormat` (the decoder reads the
+fields it needs and the struct mirrors the on-disk header),
+`WldFragment12Header` / `WldFragment36Header` / `WldFragment37Header` /
+`WldHeader::unk3`, `EQE1Header::reserved`, `Weather_Struct::pad1` / `pad2`,
+`ActionPacket_Struct::unknown23` / `unknown25` / `force` / `hit_heading` /
+`hit_pitch` / `instrument_mod`, `CombatDamage_Struct::unknown06`, and
+`EffSoundEntry::UnkPad57` / `UnkPad58` / `UnkPad59` / `UnkRange64` /
+`UnkRange72`. A wire or file struct must keep its shape whether or not the
+client uses every field.
