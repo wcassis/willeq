@@ -111,6 +111,28 @@ and have no such header. The count is netted by the `DocCounts` test (T373).
 | application_config.cpp | 434 | parseArguments, loadConfigFile |
 | application_frame.cpp | 224 | updateGameState, render |
 
+Steps 1-17 above are all defined in `application.cpp` itself and therefore
+inlined by the G04 golden. The 18th, **`initScenario()`** (T410), is defined in
+`src/client/scenario/scenario_application_wiring.cpp` instead, so the golden
+pins its POSITION (after the console bridge, before the login connection) but
+not its statements -- the scenario lane is opt-in machinery and an ordinary run
+constructs nothing in it.
+
+## Scenario lane (`include/client/scenario/`) — added by T410 (B138/B139)
+
+Live verification with a process exit code. See CLAUDE.md's "The scenario
+lane" for the taxonomy and how it hangs off `AutomatedMode`'s per-tick hook.
+
+| TU | Lines | Contents |
+|---|---|---|
+| src/client/scenario/scenario_runner.cpp | 102 | `ScenarioRunner::Tick`, the pre-flight (zoned-in or exit 3), the timeout, `ScenarioExitCodeName` |
+| src/client/scenario/scenario_registry.cpp | 47 | `MakeScenario` / `ScenarioNames` / `IsScenarioName` — the ONLY place the three names are listed |
+| src/client/scenario/scenario_zone_in.cpp | 45 | `zone_in` |
+| src/client/scenario/scenario_two_client_survive.cpp | 105 | `two_client_survive` (peer arrives, both hold) |
+| src/client/scenario/scenario_cast_lands.cpp | 131 | `cast_lands` (T401's prep recipe, gem cast, buff landing) |
+| src/client/scenario/scenario_world_app.cpp | 72 | `ApplicationScenarioWorld` — the only `IScenarioWorld` that touches `EverQuest`; game-thread only |
+| src/client/scenario/scenario_application_wiring.cpp | 91 | `Application::initScenario` + the three result accessors |
+
 ## Slash commands — action::CommandProcessor — split by J04 (+ T268/T269/T280)
 
 | TU | Lines | Contents |

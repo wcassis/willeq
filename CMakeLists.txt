@@ -396,6 +396,15 @@ SET(CLIENT_CORE_SOURCES
     src/client/mode/automated_mode.cpp
     src/client/mode/headless_mode.cpp
     src/client/mode/graphical_mode.cpp
+    # T410: the scenario lane (board B138/B139). Opt-in via --scenario; an
+    # ordinary run constructs nothing here.
+    src/client/scenario/scenario_registry.cpp
+    src/client/scenario/scenario_runner.cpp
+    src/client/scenario/scenario_zone_in.cpp
+    src/client/scenario/scenario_two_client_survive.cpp
+    src/client/scenario/scenario_cast_lands.cpp
+    src/client/scenario/scenario_world_app.cpp
+    src/client/scenario/scenario_application_wiring.cpp
     # Bridge sources
     src/client/bridge/console_bridge.cpp
     src/client/bridge/game_state_sync_bridge.cpp

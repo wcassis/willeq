@@ -899,6 +899,9 @@ exponent, not a closed loop — the live re-measure is still owed (B171).
   like the other two.
 - **B138 / B139**: Will wants the live-server scenario lane; build it NEW
   (both surveys' recommendation), plugging into the automated mode's unreached
-  callback.
+  callback. **Built by T410** (`src/client/scenario/`, `--scenario`,
+  `scripts/scenario.sh`) -- see CLAUDE.md's "The scenario lane" for the
+  exit-code taxonomy, which is now the contract every live verification
+  reports through.
 - **B142**: `/bug` stays on the player-report channel; no structured OP_Bug body.
 - B022 is closed by T389's oracle answer; B162's reader fix is reclassified B.

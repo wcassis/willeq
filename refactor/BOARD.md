@@ -956,7 +956,9 @@ it without taking that measurement first.
   scaffolding → `EXECUTOR_PROTOCOL.md` + this board, 9 a second x86 GLES2
   code path `fable` deliberately does not have), **(c) 24** still relevant —
   now B136, B137 and B138. Both branches are recommended for DELETION (B's
-  immediately; A's once B136/B137 are worked and B138 is ruled on); a merge was
+  immediately; A's once B136/B137 are worked -- **B138 was ruled on and CLOSED
+  by T410**, which rebuilt the scenario lane against `fable` rather than
+  porting it, so nothing on either branch is needed for it); a merge was
   measured non-viable at ~25,000 lines inside conflict regions. Prov: deferred
   item 22.
 
@@ -2639,40 +2641,35 @@ branches can be deleted independently of these items.
   after. The G01 golden `tests/goldens/zone_opcodes_g01.txt` is byte-identical
   and `test_zone_dispatch_table` passes unedited (6/6).
 
-- **B138** (C) `fable` has no live-server scenario lane and no exit-code
-  contract at all: `src/client/main.cpp` ends `return 0;` unconditionally, so
-  every live verification on this board finishes with a human reading a
-  transcript. The audited branch built one — a `--scenario <name> --timeout <n>`
-  client mode over a `ScenarioRunner` + `IScenario` registry; a taxonomy shared
-  verbatim between the client and the scripts (0 pass / 2 operator error /
-  3 stale session refused / 4 kick failed / 10 assertion failed / 11 timeout /
-  12 stack failure) with a guard so an external quit mid-run cannot masquerade
-  as success; a `MOD_SCENARIO` log module pinned above `--log-level` so pass/fail
-  survives quiet logging; one real scenario (`arena-idle`, a four-stage C→S→C
-  position-acceptance oracle asserting zone-in, a nudge, the throttled send, and
-  the server echo within 1.5 units); and `test/harness/`
-  (`precheck`→`reset`→`seed`→`normalize`→`run-scenario` over SQL fixtures, with
-  a world-telnet stale-session kick that `fable`'s `.eqemu-lock` convention
-  cannot see). `fable` has the half the branch lacks — `scripts/eqemu/up.sh` /
-  `down.sh` / `status.sh`. Both T305 and T372 recommend REBUILDING this against
-  `fable`'s architecture (~500 lines of C++ plus bash), not porting it; T305
-  sized it at 1–2 units. **Needs Will: this is new capability, not a defect
-  fix.** Closes when: Will rules build or drop. Prov: T372, the 22-commit
-  scenario cluster on `task/eqcpp-zoneprocess-track-b-remaining`.
+- ~~**B138** (C) `fable` has no live-server scenario lane and no exit-code
+  contract at all~~ **CLOSED T410** (`task/T410-scenario-lane`). Built NEW per
+  Will's 2026-09-06 ruling, not ported. `src/client/scenario/` holds an
+  `IScenario` state machine over a narrow `IScenarioWorld`, a registry, and a
+  `ScenarioRunner` driven from `AutomatedMode`'s per-tick automation callback
+  (B139's seam); `--scenario <name>`, `--timeout <s>`, `--scenario-hold <s>`
+  and `--scenario-spell <id>` on `Application`; `main.cpp` returns the
+  taxonomy **0 pass / 1 fail / 2 timeout / 3 could-not-start**, with the
+  reason on stderr (`SCENARIO <name> <verdict> exit=N reason=...`) and in the
+  log under the new `MOD_SCENARIO` module, which the lane pins to INFO so no
+  `--log-level` can silence a verdict. The external-quit guard is that an
+  UNFINISHED run reports 2, never 0. Three scenarios (`zone_in`,
+  `two_client_survive`, `cast_lands`) with 20 headless state-machine cases in
+  `tests/test_scenario_state_machines.cpp`, and `scripts/scenario.sh` doing
+  lock -> `up.sh` -> snapshot -> run -> restore-with-the-world-down ->
+  `down.sh` -> release. **The three live PASS runs are OWED (B305)**: the
+  eqemu lock was held by T405 for the whole unit. Prov: T372, T305.
 
-  **WILL RULED 2026-09-06:** YES, build the scenario lane NEW. → T410 (with B139 as its seam).
-- **B139** (B) `AutomatedMode::setAutomationCallback`
-  (`include/client/mode/automated_mode.h`) has ZERO callers in `src/`,
-  `include/`, `tests/` or `benchmarks/` — the callback is invoked in
-  `src/client/mode/automated_mode.cpp` but nothing ever registers one, so
-  automated mode's per-tick hook is an unreached seam (the implemented-but-
-  unreached pattern again). It is also exactly the seam B138's scenario lane
-  would plug into, so the two should be ruled on together: wire it, or delete it
-  with the mode's command queue. Closes when: it has a caller or it is gone.
-  Prov: T372 (flagged incidentally by T305 at `9bb156ea`, still true at
-  `3964d100`).
+- ~~**B139** (B) `AutomatedMode::setAutomationCallback` has ZERO callers~~
+  **CLOSED T410** (`task/T410-scenario-lane`). It has one now:
+  `Application::initScenario()`
+  (`src/client/scenario/scenario_application_wiring.cpp`) registers the
+  `ScenarioRunner` on it, so the hook fires once per ~60 Hz game tick from
+  `Application::processInput()`. The callback's existing "return false to
+  stop" contract is what ends a scenario run -- it sets `m_quitRequested`, the
+  game thread's `isQuitRequested()` check unwinds normally, and nothing calls
+  `exit()` from inside a tick. Nothing about the mode had to be restructured
+  (the plan's STOP condition did not fire). Prov: T372, T305.
 
-  **WILL RULED 2026-09-06:** wire it as the scenario lane's hook (B138 approved). → T410.
 - ~~**B140** (B) `EntitiesComponent::SendClickDoor` and `SendClickObject`
   (`src/client/entities/entities_component_world.cpp`) end in
   `ctx_.zone_connection->QueuePacket(p, 0, true)` — a raw dereference of a
@@ -4544,3 +4541,35 @@ fields it needs and the struct mirrors the on-disk header),
 `EffSoundEntry::UnkPad57` / `UnkPad58` / `UnkPad59` / `UnkRange64` /
 `UnkRange72`. A wire or file struct must keep its shape whether or not the
 client uses every field.
+
+- **B305** (P) The T410 scenario lane's THREE LIVE PROOF RUNS ARE OWED. The
+  lane builds, its 20 headless state-machine cases are green, and the client
+  was observed arming and reporting a verdict; but `zone_in`,
+  `two_client_survive` and `cast_lands` have never been run through
+  `scripts/scenario.sh` against eqemu, because `/mnt/projects/fable/.eqemu-lock`
+  was held by T405 (slot2) for the whole of T410 and the protocol forbids
+  waiting on it. Two specific things are UNMEASURED and could each turn a
+  green lane red on first contact: (a) `cast_lands`'s prep recipe assumes
+  `#memspell <spellid> <gem, 0-based>` accepts spell 46 (Ultravision) for a
+  level-25 wizard -- T401 measured the SYNTAX with spells 93 and 54, not this
+  spell for this class, and a `#memspell` the server silently refuses looks
+  exactly like a cast that did not land; (b) `scripts/scenario.sh`'s
+  snapshot/restore has never been exercised -- its `restore_snapshot()` is
+  written from T377's and T401's lesson (the world rewrites character rows on
+  shutdown, so restore only with world/zone/loginserver and the spire
+  launcher killed) but has not itself been run. Closes when: the three runs
+  are recorded in `review/T410/` with their exit codes and a byte-identical
+  before/after snapshot diff. Prov: T410 Review.
+
+- **B306** (P) An unattributed process ran a live client against eqemu while
+  T405 held the lock. During T410 a smoke test intended to prove the
+  could-not-start path (`--scenario zone_in` expecting exit 3 with no server)
+  found the server UP: it logged `Testcaster` in, zoned to `befallen`, passed
+  and exited 0 after 4.95 s. It sent no command and moved no character, but it
+  is a lock violation and, if T405 was using `Testcaster`, it will have kicked
+  that session. **The lesson is mechanical, not moral: a "there is no server"
+  negative test is not safe to run without checking the lock first, because
+  the server's absence is an assumption, not a fact.** `scripts/scenario.sh`
+  already refuses on a held lock (exit 64); a bare `willeq --scenario` does
+  not, and arguably should warn. Closes when: T405 confirms it was
+  undisturbed, or the damage is identified and repaired. Prov: T410 Review.

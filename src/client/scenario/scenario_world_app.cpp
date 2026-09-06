@@ -1,0 +1,72 @@
+#include "client/scenario/scenario_world_app.h"
+
+#include "client/application.h"
+#include "client/eq.h"
+#include "client/spell/buff_manager.h"
+#include "client/state/game_state.h"
+#include "common/logging.h"
+
+namespace eqt {
+namespace scenario {
+
+ApplicationScenarioWorld::ApplicationScenarioWorld(Application& app, EverQuest& client)
+    : app_(app), client_(client) {}
+
+bool ApplicationScenarioWorld::IsConnected() const {
+    // There is no separate "connected" term on EverQuest -- the client's own
+    // gate is IsFullyZonedIn() (application.cpp's isConnected is exactly
+    // that). The zone name is the earliest thing the world server hands us,
+    // so a non-empty name with IsFullyZonedIn() still false is precisely
+    // "the handshake got somewhere and then stalled", which is the only
+    // distinction the could-not-start message needs to draw.
+    return !client_.GetCurrentZoneName().empty();
+}
+
+bool ApplicationScenarioWorld::IsFullyZonedIn() const {
+    return client_.IsFullyZonedIn();
+}
+
+std::string ApplicationScenarioWorld::ZoneName() const {
+    return client_.GetCurrentZoneName();
+}
+
+int ApplicationScenarioWorld::OtherPlayerCount() const {
+    const uint16_t me = client_.GetMySpawnID();
+    int count = 0;
+    for (const auto& entry : client_.GetEntities()) {
+        // npc_type 0 is a live player; 2 and 3 are corpses, 1 is an NPC.
+        if (entry.second.npc_type == 0 && entry.first != me) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+std::string ApplicationScenarioWorld::PlayerName() const {
+    return client_.GetGameState().player().name();
+}
+
+std::vector<uint32_t> ApplicationScenarioWorld::PlayerBuffSpellIds() const {
+    std::vector<uint32_t> ids;
+    EQ::BuffManager* buffs = client_.GetBuffManager();
+    if (!buffs) {
+        return ids;
+    }
+    for (const auto& buff : buffs->getPlayerBuffs()) {
+        ids.push_back(buff.spell_id);
+    }
+    return ids;
+}
+
+void ApplicationScenarioWorld::SendCommand(const std::string& rawLine) {
+    // The same unified dispatch --script and piped stdin use (T29), so a
+    // scenario can never reach a command a human operator could not.
+    app_.DispatchSlashCommand(rawLine);
+}
+
+void ApplicationScenarioWorld::Note(const std::string& line) {
+    LOG_INFO(MOD_SCENARIO, "{}", line);
+}
+
+}  // namespace scenario
+}  // namespace eqt

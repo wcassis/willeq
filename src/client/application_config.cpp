@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <set>
 #include <cctype>
+#include <cstdlib>
 #include <sys/stat.h>
 
 #ifndef _WIN32
@@ -193,6 +194,30 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             if (i + 1 < argc) {
                 config.fpCamOverrides.push_back(argv[++i]);
             }
+        } else if (arg == "--scenario") {
+            // T410: the scenario lane implies Automated mode -- no graphics,
+            // no stdin reader, and AutomatedMode's per-tick automation
+            // callback free for the runner (board B139's seam). Set here
+            // rather than left to the operator so `--scenario X` alone is a
+            // complete, correct invocation.
+            if (i + 1 < argc) {
+                config.scenarioName = argv[++i];
+                config.graphicsEnabled = false;
+                config.operatingMode = mode::OperatingMode::Automated;
+            }
+        } else if (arg == "--timeout") {
+            if (i + 1 < argc) {
+                config.scenarioTimeoutSeconds = std::atof(argv[++i]);
+            }
+        } else if (arg == "--scenario-hold") {
+            if (i + 1 < argc) {
+                config.scenarioHoldSeconds = std::atof(argv[++i]);
+            }
+        } else if (arg == "--scenario-spell") {
+            if (i + 1 < argc) {
+                config.scenarioSpellId =
+                    static_cast<unsigned int>(std::atoi(argv[++i]));
+            }
         } else if (arg == "--script") {
             if (i + 1 < argc) {
                 config.scriptPath = argv[++i];
@@ -218,6 +243,10 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             std::cout << "  -np, --no-pathfinding    Disable navmesh pathfinding\n";
             std::cout << "  --record-session <file>  Record decoded session packets to <file> for later replay\n";
             std::cout << "  --script <file>          Run a scripted command tour ('wait N' + slash-command lines)\n";
+            std::cout << "  --scenario <name>        Run a live scenario headless and exit 0 pass / 1 fail / 2 timeout / 3 could-not-start\n";
+            std::cout << "  --timeout <s>            --scenario: overall wall-clock budget (default 300)\n";
+            std::cout << "  --scenario-hold <s>      --scenario two_client_survive: how long the pair must hold (default 300)\n";
+            std::cout << "  --scenario-spell <id>    --scenario cast_lands: beneficial spell to memorise and cast (default 46, Ultravision)\n";
             std::cout << "  --fpcam <name=value,...>  Override first-person camera tunables at startup (repeatable; same names as /fpcam)\n";
             std::cout << "  --dump-frames-dir <dir>  Video-capture evidence tool: write numbered PNG frames to <dir> (needs --dump-every)\n";
             std::cout << "  --dump-every <N>         Video-capture: dump every Nth rendered frame\n";

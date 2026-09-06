@@ -10,6 +10,7 @@
 
 #include "client/graphics/loading_thread.h"
 #include "client/zone_load_snapshot.h"
+#include "client/scenario/scenario_runner.h"
 
 #include <memory>
 #include <string>
@@ -113,6 +114,17 @@ struct ApplicationConfig {
 
     // H03: Scripted command tour (--script <file>)
     std::string scriptPath;
+
+    // T410 (board B138): the scenario lane. --scenario <name> puts the client
+    // in Automated mode (no graphics, no stdin) with one ScenarioRunner on
+    // AutomatedMode's per-tick automation callback, and makes the PROCESS
+    // EXIT CODE the result: 0 pass / 1 fail / 2 timeout / 3 could-not-start.
+    // Empty name = the lane is off and nothing below is read.
+    std::string scenarioName;
+    double scenarioTimeoutSeconds = 300.0;      // --timeout <s>
+    double scenarioStartDeadlineSeconds = 120.0;  // zone-in deadline -> exit 3
+    double scenarioHoldSeconds = 300.0;         // --scenario-hold <s>
+    unsigned int scenarioSpellId = 46;          // --scenario-spell <id>
 
     // T64: video-capture evidence tool (--dump-frames-dir/--dump-every/
     // --dump-max-frames). Off by default (empty dir = disabled) -- does not
@@ -305,6 +317,20 @@ public:
     const EverQuest* getEverQuestClient() const { return m_eqClient.get(); }
 
     /**
+     * T410: the --scenario lane's result.
+     *
+     * scenarioRequested() is false for every ordinary run, and main() then
+     * returns 0 exactly as it always did. When it IS true, main() returns
+     * scenarioExitCode() -- which is deliberately readable AFTER shutdown():
+     * the runner outlives m_gameMode so an external quit (SIGTERM, /quit)
+     * still reports a non-zero "no verdict" rather than a false success.
+     */
+    bool scenarioRequested() const { return m_scenarioRunner != nullptr; }
+    int scenarioExitCode() const;
+    std::string scenarioReason() const;
+    std::string scenarioName() const;
+
+    /**
      * T29 — the single unified slash-command dispatch entry point.
      *
      * Both automation front doors (piped/scripted stdin via
@@ -410,6 +436,9 @@ private:
     bool initConstrainedRendererConfig(const ApplicationConfig& config);
     bool initRendererAndGraphics(const ApplicationConfig& config);
     bool initConsoleBridge(const ApplicationConfig& config);
+    // T410: builds the scenario world + runner and registers the runner on
+    // AutomatedMode::setAutomationCallback (board B139's unreached seam).
+    bool initScenario(const ApplicationConfig& config);
     bool initLoginConnection(const ApplicationConfig& config);
 
     // ========== Main Loop Stages ==========
@@ -555,6 +584,12 @@ private:
     // becomes fully connected.
     bool m_preConnectionHeldAnnounced = false;
     std::string m_preConnectionHeldLastCmd;
+
+    // T410: the scenario lane. Both are null unless --scenario was given.
+    // Declared before m_eqClient so they are DESTROYED FIRST -- the world
+    // adapter holds references to Application and EverQuest.
+    std::unique_ptr<scenario::IScenarioWorld> m_scenarioWorld;
+    std::unique_ptr<scenario::ScenarioRunner> m_scenarioRunner;
 
     // EverQuest client and adapter
     std::unique_ptr<EverQuest> m_eqClient;

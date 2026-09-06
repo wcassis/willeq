@@ -206,14 +206,21 @@ TEST(ApplicationInitOrderTest, GoldenIsPresentAndTheRightSize) {
     // which DELETED entry 311 `m_lastUpdate = std::chrono::steady_clock::now();`
     // -- a member written there and read nowhere, found by the new
     // scripts/refactor/check_write_only_fields.py census. The live per-frame
-    // clock is m_lastGraphicsUpdate, the next entry, which stays.
+    // clock is m_lastGraphicsUpdate, the next entry, which stays, then +1 by
+    // T410 (B138/B139), which ADDED entry 308 `if (!initScenario(config))
+    // return false;` between the console bridge and the login connection.
+    // That step is defined in src/client/scenario/scenario_application_wiring.cpp,
+    // not in this TU, so Expand() emits the CALL rather than inlining the
+    // body -- the golden pins where the scenario lane is armed in the startup
+    // order, which is what matters here (after the bridge, before login).
     // Correction 32: an order golden learns a reviewed edit in place, at its
     // positions, named here; it is never regenerated from the tip.
-    EXPECT_EQ(golden.size(), 313u)
+    EXPECT_EQ(golden.size(), 314u)
         << "316 statement lines at G04, -2 for T347's write-only "
            "customMemorySpec, +1 for T357's completion-provider wiring, "
            "-1 for T402's S03 race_models.json check (B246), "
-           "-1 for T407's write-only m_lastUpdate (B290); "
+           "-1 for T407's write-only m_lastUpdate (B290), "
+           "+1 for T410's initScenario() step (B138/B139); "
            "the golden has " << golden.size();
     for (const auto& e : golden) EXPECT_FALSE(e.empty());
 }

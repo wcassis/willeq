@@ -80,6 +80,23 @@ ADD_EXECUTABLE(test_random
 TARGET_LINK_LIBRARIES(test_random GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_random)
 
+# T410 (board B138/B139): the scenario lane's state machines.
+# Links the scenario TUs directly -- NOT willeq_core -- because the whole
+# point of IScenarioWorld is that a scenario needs no client, no network and
+# no database to be tested. If this target ever needs willeq_core, the
+# interface has grown a dependency it should not have.
+ADD_EXECUTABLE(test_scenario_state_machines
+    test_scenario_state_machines.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_registry.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_runner.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_zone_in.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_two_client_survive.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_cast_lands.cpp
+)
+TARGET_INCLUDE_DIRECTORIES(test_scenario_state_machines PRIVATE ${CMAKE_SOURCE_DIR}/include)
+TARGET_LINK_LIBRARIES(test_scenario_state_machines GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_scenario_state_machines)
+
 # Test logging infrastructure
 ADD_EXECUTABLE(test_logging
     test_logging.cpp

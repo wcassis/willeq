@@ -330,8 +330,9 @@ TEST_F(LoggingTest, FormatTimestamp_ProducesValidFormat) {
 // =============================================================================
 
 TEST_F(LoggingTest, ModuleCount_MatchesExpected) {
-    // MOD_COUNT should be 21 (the number of defined modules)
-    EXPECT_EQ(MOD_COUNT, 21);
+    // MOD_COUNT should be 22 (the number of defined modules; T410 added
+    // MOD_SCENARIO for the --scenario lane's verdict trace)
+    EXPECT_EQ(MOD_COUNT, 22);
 }
 
 // =============================================================================

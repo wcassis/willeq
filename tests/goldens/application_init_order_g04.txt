@@ -24,6 +24,18 @@
 #     arms of the enclosing if/else call loadJsonOverrides() identically, so
 #     it distinguished nothing. Entries 164-316 renumbered to 163-314
 #     (166 excepted). Count 316 -> 314.
+#   T410 (B138/B139): entry 308
+#     `if (!initScenario(config)) return false;` ADDED between
+#     initConsoleBridge()'s last statement and initLoginConnection()'s first.
+#     DELIBERATE EXCEPTION: initScenario() is defined in
+#     src/client/scenario/scenario_application_wiring.cpp, not in
+#     application.cpp, so Expand() cannot inline it and the golden pins the
+#     STEP CALL rather than its statements -- the scenario lane is opt-in
+#     machinery (nothing is constructed without --scenario) and belongs in
+#     its own TU. Order is still pinned: it must run after the console bridge
+#     (the runner's world adapter reads a client whose bridge is attached)
+#     and before initLoginConnection(), which is deliberately last. Entries
+#     308-313 renumbered to 309-314. Count 313 -> 314.
 #   T407 (B290): entry 311
 #     `m_lastUpdate = std::chrono::steady_clock::now();` DELETED -- the member
 #     was written here and read nowhere in the tree; the live per-frame clock
@@ -337,9 +349,10 @@
 305 m_bridge = m_stateSyncBridge.get();
 306 m_eqClient->setBridge(m_bridge);
 307 LOG_INFO(MOD_MAIN, "Console bridge attached (headless mode)");
-308 LOG_INFO(MOD_MAIN, "Connecting to login server ({}:{})...", config.host, config.port);
-309 m_eqClient->LoginWorld().ConnectToLogin();
-310 m_running.store(true);
-311 m_lastGraphicsUpdate = std::chrono::steady_clock::now();
-312 LOG_INFO(MOD_MAIN, "Application initialized successfully");
-313 return true;
+308 if (!initScenario(config)) return false;
+309 LOG_INFO(MOD_MAIN, "Connecting to login server ({}:{})...", config.host, config.port);
+310 m_eqClient->LoginWorld().ConnectToLogin();
+311 m_running.store(true);
+312 m_lastGraphicsUpdate = std::chrono::steady_clock::now();
+313 LOG_INFO(MOD_MAIN, "Application initialized successfully");
+314 return true;
