@@ -4603,7 +4603,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   `software_cursor` (and the ordering assumption is either removed or
   commented as load-bearing). Prov: T406 Review.~~ **CLOSED by T413 Leg B (`cd7a9bab`)**: the cache name is now `software_cursor`, the pack's own, and the comment says out loud that the initialisation order is no longer load-bearing. Pinned by `tests/test_software_cursor_pack_name.cpp` (4 tests), which READS the name out of `createSoftwareCursor()`'s source rather than restating it, looks it up in the real shipped `willeq.eqe1`, drives the real `ConstrainedTextureCache` with the pack ALREADY OPEN (the configuration the ordering was hiding), and pins the consequence with a death test -- with the pack open an unmatchable name is `ExitedWithCode(1)`, not a fallback. Pre-fix, with only the production literal reverted, 2 of the 4 fail naming 'softwareCursor'. Prov: T413 Review.
 
-- **B286** (B) `src/client/graphics/spell_visual_fx.cpp` /
+- ~~**B286** (B) `src/client/graphics/spell_visual_fx.cpp` /
   `data/textures/spell_particle_fallback.bmp` -- **the spell particle fallback
   is a white square by construction, and no texture change can fix it.**
   `generateSpellParticleFallback()` writes `SColor(alpha, 255, 255, 255)`: a
@@ -4638,7 +4638,13 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   red mid-flight; see **B322**. The reason string in
   `tests/test_texture_alpha_census.cpp` now carries the measurement. Class
   unchanged (B): the fallback is reached only when Glowflare03.dds,
-  glittersp501.dds and Corona1.dds are all missing.
+  glittersp501.dds and Corona1.dds are all missing.~~
+  **CLOSED by T424 Leg A** (`0911184a`), the same commit that closed B322 --
+  the two entries are the same defect seen from the consumer end and the
+  generator end. The asset-side fix this entry called for is done: the cosine
+  falloff is in RGB, the additive blend samples it, and the shared pack was
+  rebuilt and installed in that one commit. See the struck B322 for the
+  measured before/after profile and the pack delta.
 
 - ~~**B287** (C) `/mnt/projects/EverQuest_ETC1/willeq.eqe1`,
   `include/client/graphics/eqe1_format.h` -- **B266's fix cost 17.2 MB of shared pack and the
@@ -5332,7 +5338,7 @@ client uses every field.
   either. Pinned by `tests/test_tradeskill_combat_panels.cpp` (8 cases) and
   the render-order golden. Live screenshot pair OWED to the next lock unit.
 
-- **B322** (B) `src/client/graphics/texture_generators.cpp`
+- ~~**B322** (B) `src/client/graphics/texture_generators.cpp`
   `generateSpellParticleFallback()`, `data/textures/spell_particle_fallback.bmp`,
   `data/textures.sha256`, `/mnt/projects/EverQuest_ETC1/willeq.eqe1`,
   `data/willeq.eqe1.sha256` -- **the spell particle fallback's shape is
@@ -5356,7 +5362,36 @@ client uses every field.
   unit that owns the pack exclusively (the way T411 did). The measurement is
   recorded in `tests/test_texture_alpha_census.cpp`'s reason string for the
   file. Low urgency: the fallback is reached only when Glowflare03.dds,
-  glittersp501.dds and Corona1.dds are ALL missing. Found by T413.
+  glittersp501.dds and Corona1.dds are ALL missing. Found by T413.~~
+  **CLOSED by T424 Leg A** (`0911184a`, `refactor/T424_fallback_multiplier_sprites.md`):
+  `generateSpellParticleFallback()` now writes premultiplied white x cosine into
+  RGB and leaves alpha opaque, which is exactly what the additive draw samples.
+  Measured on the shipped file -- centre-to-edge R along y=16 went
+  `255,255,...,255` to `12,37,61,85,108,130,151,170,188,204,218,230,239,247,251,254`,
+  corner (0,0) 255 -> 0, distinct pixel byte values 1 -> 84. The file stays
+  24-bit (32-bit would cost ~8x the pack bytes for a channel no shader reads).
+  The full cascade ran in ONE commit: `data/textures/spell_particle_fallback.bmp`,
+  `data/textures.sha256`, the shared pack, `data/willeq.eqe1.sha256`. Pack
+  **6,930,494 -> 6,930,116 bytes (-378)**, sha `14a6bd45` -> `19e78745`,
+  installed atomically at 20:27:44 with no `willeq`/ctest/gate process live
+  (`main` had just finished its own `ctest -j6`); the pre-T424 pack is kept at
+  `review/T424/willeq.eqe1.before_T424`. Pinned by
+  `TextureAlphaCensus.SpellParticleFallbackCarriesItsFalloffInRgb` (the BMP's
+  profile IS the generator's cosine, per texel) and
+  `.SpellParticleFallbackPackEntryCarriesTheSameShape` (the pack entry's ETC1
+  level 0 must encode to more than 8 distinct 8-byte blocks out of 64; the
+  pre-fix pack encoded to exactly **1**, because a uniform image compresses to
+  64 identical blocks -- so the shipped payload can be told apart from a flat
+  square with no ETC1 decoder at all). Both FAILED pre-fix.
+  **B286 goes with it** -- both of its proposed code-side fixes were already
+  refuted by T413's measurement, and the generator fix is the one this file
+  needed. The kNeverAlpha reason string in
+  `tests/test_texture_alpha_census.cpp` is rewritten accordingly.
+  ⚠ `eqe1MappedBytes` in `tests/goldens/manifest.json` is now 378 bytes high in
+  all three gate zones (124064062/122730154/117214650 expected against
+  124063684/122729776/117214272 measured). T424 did NOT edit the manifest;
+  the re-bless is the orchestrator's.
+
 
 - **B330** (B) `include/client/graphics/environment/rain_overlay.h` --
   **the rain overlay cannot tilt.** `windTiltBase` / `windTiltIntensity` were
@@ -5613,7 +5648,7 @@ client uses every field.
   `ui_atlas_builder`, plus a pack rebuild and its two sha256 pins. Nobody has
   ruled on it, so T416 changed nothing here. Found by T416.
 
-- **B351** (B) `include/client/graphics/ui/ui_atlas.h` `UISprite` -- **six of
+- ~~**B351** (B) `include/client/graphics/ui/ui_atlas.h` `UISprite` -- **six of
   the twenty-one atlas sprite regions have no consumer at all.** A
   comment-filtered `UISprite::` census over `src/`, `tools/` and `tests/`
   finds zero uses of `ButtonNormal`, `ButtonPressed`, `ButtonDisabled`,
@@ -5624,7 +5659,26 @@ client uses every field.
   `ButtonNormal`/`ButtonPressed`, and the chat scrollbar thumb is a `drawRect`
   instead of `ScrollIndicator`. The regions cost atlas space and pack bytes
   either way. Closes when each is wired or removed from the builder, the JSON
-  name map and the enum together. Found by T416.
+  name map and the enum together. Found by T416.~~
+  **CLOSED by T424 Leg C** (`0911184a`): all six were DELETED from
+  `tools/ui_atlas_builder`, `UIAtlas::mapSprite`'s nameMap and the `UISprite`
+  enum together, and the atlas roster is now fifteen sprites with a consumer
+  each. The disposition is "leftover", not "consumer waiting", and the reason is
+  measured rather than aesthetic: **none of the six is oracle art**. Every one is
+  a procedural gradient or a 1px border invented for the WindowManager UI deleted
+  in `0f25cb57`, and the two with an obvious caller cannot take them as they are
+  -- a 64x24 `button_normal` gradient stretched onto a loot button of another
+  size, or a 32x32 one-pixel `panel_border` stretched across a 400px popup,
+  invents chrome nobody measured against the official client. That is B350's
+  open look question, and the honest starting point for it is
+  `window_pieces01.tga`, not these regions; boarded as the new **B385**. Pinned
+  by the new `tests/test_ui_sprite_roster.cpp` (5 cases, 4 RED pre-fix): the
+  enum, the nameMap, the builder and the SHIPPED `ui_atlas.json` inside
+  `willeq.eqe1` must name the same fifteen, and `EveryShippedSpriteHasAConsumer`
+  fails on the next region that ships with nothing to draw it. The atlas change
+  went into the SAME commit as Leg A's pack install so the shared pack was
+  installed exactly once.
+
 
 - ~~**B352** (B) `src/client/graphics/ui/static_panels.cpp` `renderPetPanel` and
   `include/client/graphics/ui/ui_layout.h` `petPanel` -- **the pet command
@@ -5851,7 +5905,7 @@ client uses every field.
   11 cases, ten RED with the wiring reverted. **The fourth input named in this
   entry, the ambient multiplier, has NO WRITER AT ALL** -- see the new B380.
 
-- **B380** (B) `include/client/graphics/irrlicht_renderer.h`
+- ~~**B380** (B) `include/client/graphics/irrlicht_renderer.h`
   `ambientMultiplier_` -- **the user ambient multiplier has one reader and no
   writer.** Found T423 while enumerating the four inputs B362 says must trigger
   a recompose. Census over `src/ include/ tests/ tools/ benchmarks/`: exactly
@@ -5866,4 +5920,47 @@ client uses every field.
   that signature for a reason unrelated to the oracle. Closes when either a
   writer is wired (a key binding or a slash command, with the multiplier
   marking the ambient dirty like every other input) or the term and its
-  argument are removed together. Prov: T423 Review section 1; B362.
+  argument are removed together. Prov: T423 Review section 1; B362.~~
+  **CLOSED by T424 Leg B** (`70e5de2a`): DELETED, field and term together.
+  T424 found the writer's grave that T423 could not: it was a Page Up / Page
+  Down handler inside the renderer's **ADMIN mode** --
+  `float ambientDelta = eventReceiver_->getAmbientLightDelta(); if (ambientDelta
+  != 0.0f) { ambientMultiplier_ = clamp(...); updateTimeOfDay(...); }` -- and
+  `cac31166` ("Remove Admin and Repair renderer modes, keeping only Player
+  mode", Feb 2026) deleted that handler, its delta accumulator and its hotkey
+  binding deliberately, with ~2,200 lines of other admin/repair features.
+  Nothing was lost by accident, so there was no writer to restore: this was
+  residue of a removed dev control, not a zone/config override. Removed with it:
+  the per-channel `std::min(1.0f, ...)` clamp, which existed only for the
+  multiplier (the day/night curve is already <= 1 and the weather modifier is
+  deliberately allowed to overshoot for a lightning flash). `composeSceneAmbient()`
+  is now `(dayNight, weatherModifier, vision)` and the pinned ORDER is three
+  steps; `include/client/graphics/vision_ambient.h` says why. Compiler proof of
+  zero callers: the whole tree builds with the field gone, tools and benchmarks
+  included. Pinned by `VisionAmbientCompositionT396Test.NoUserAmbientMultiplierRemains`
+  (RED with the leg reverted by patch, on two assertions).
+  A future user-adjustable ambient arrives as a key binding or slash command
+  WITH a writer and WITH `markSceneAmbientDirty()` -- which is B362's whole
+  point: a term nothing can move is not an input.
+
+- **B385** (C) `src/client/graphics/ui/loot_panel.cpp` `drawButton`,
+  `src/client/graphics/ui/static_panels.cpp` `renderChatPanel`,
+  `tools/ui_atlas_builder.cpp` -- **the UI's buttons and its scrollbar thumb
+  are hand-drawn `drawRect`s, and the oracle draws them from art.** T416 read
+  this as "two of the six unconsumed atlas regions have an obvious caller
+  waiting"; T424 measured that it is the other way round. The loot popup's
+  Loot All / Close buttons are three `drawRect()` calls (a fill plus a top and
+  a bottom 1px line) and the chat scrollbar thumb is one more; the six regions
+  that looked like their destination -- `button_normal`, `button_pressed`,
+  `button_disabled`, `panel_border`, `scroll_indicator`, `slot_border_selected`
+  -- were procedural chrome invented for the deleted WindowManager UI, at fixed
+  sizes (64x24, 32x32, 8x16) that stretch wrong onto the rects fable actually
+  draws, so T424 deleted them rather than wire an invented look. The official
+  client's buttons come out of `window_pieces01.tga`, the same texture T398
+  lifted the four coin decals from, as 9-sliced pieces with pressed/disabled
+  states; `EQUI_LootWnd.xml` and `EQUI_ChatWindow.xml` name the pieces. Doing
+  it means teaching `ui_atlas_builder` a 9-slice lift and `UIRenderer` a
+  9-slice draw, then a pack rebuild with its two sha256 pins -- and it is a
+  LOOK change, which is why this is C and not B: it belongs with **B350**
+  (the 70-78% opacity decision), not ahead of it. Nobody has ruled on either.
+  Found by T424 Leg C while closing B351.
