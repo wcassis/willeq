@@ -235,8 +235,19 @@ last frame as it dies. These sheets are fade-in/peak/fade-out cycles, so that
 mapping is the animation; a fixed cells-per-second clock would strand a
 short-lived particle in the faint fade-in frames. No shader change was needed
 — the atlas offset was already a CPU-computed vertex attribute. The playback
-RATE is therefore `16 / lifetime`, set by `config/spell_effects.json`, which is
-board B226/B356's business. The pack lives outside the repo and is
+RATE is therefore `16 / lifetime`, set by `config/spell_effects.json`. **T422
+settled that lifetime against the official client (boards B226/B356/B370, all
+closed): `impact` and `spellComplete` now run 1.6-2.0 s, i.e. 8.0-10.0
+cells/s, where they used to run 0.4-0.8 s and 20-40 cells/s.** The lifetime
+is measured -- the oracle's particle population rises for 1.46-1.96 s with no
+deaths at all -- but the cells/s figure is DERIVED from it, because at the
+official client's measured 4.4-5.8 renders/s a direct animation-rate
+measurement is below Nyquist. Do not quote 8-10 cells/s as a measurement, and
+do not re-derive T420's "below ~3 cells/s" bound: it came from a statistic
+over a mixed-age particle population and does not survive
+(`review/T422/README.md`). Any future edit to those lifetimes moves the
+animation rate with them; `tests/test_spell_burst_oracle_match.cpp` fails if it
+leaves the measured band. The pack lives outside the repo and is
 read live by every worktree; only `build_willeq_pack.sh` may install it (it
 writes a temp file in the destination directory and `mv`s it into place).
 

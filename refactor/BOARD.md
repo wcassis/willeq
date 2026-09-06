@@ -3990,7 +3990,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   per-channel gains are wrong against the oracle) is live again, tracked as
   **B203**. Do not re-strike it from a desk fit.
 
-- **B160** — its owed live pair is **NOT PROVEN** and the reason is bigger than
+- ~~**B160** — its owed live pair is **NOT PROVEN** and the reason is bigger than
   the colours; see **B204** (nothing was drawn -- **the two causes were found
   and fixed by T395**, so the live pair is now worth re-attempting). **B202
   (the two-client session segfaults) is STRUCK by T391 (`e332162f`), so that
@@ -4005,7 +4005,24 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   the screen for 2-3 s). T389 did measure the ORACLE half of the same
   question: Burst of Flame is R-dominant (.360/.379/.199) and Frost Bolt is
   B-dominant (.213/.284/.315) on the official client, so the two colours are
-  real there. Take the observer pair after B226.
+  real there. Take the observer pair after B226.~~ **THE OWED PAIR IS
+  TAKEN -- CLOSED by T422 (this commit).** B226 was closed first, in the same
+  unit, exactly as this note said to. All four spells (54, 93, 41, 253) were
+  self-cast by Testcaster in qeynos2 and every one of them DREW on a second
+  fable client (Testbuddy, its own process and its own Xvfb, 25 units away,
+  `/target` + `/face` on the caster), with the official client's own sprite
+  art. Stills:
+  `review/T422/fable/T422_fable_observer_<id>_<name>_1024x768.png`.
+  Colours, measured identically for each (mean added RGB over the particle
+  pixels against a temporal median of the pre-cast renders, normalised):
+  **54 Frost Bolt .228/.363/.409 (B-dominant)**, **93 Burst of Flame
+  .515/.339/.146 (R-dominant)**, 41 Weaken .377/.294/.329, 253 Whirling Wind
+  .299/.248/.453. The fire/frost pair this entry actually asked for is
+  unambiguous in both directions and matches the ORACLE's polarity (T389: 93
+  .360/.379/.199 R-dominant, 54 .213/.284/.315 B-dominant). SHAPES differ per
+  spell too and are in the stills for Will to judge. One colour does NOT match
+  and is boarded rather than buried: Weaken is R-dominant in fable and
+  G-dominant in the oracle -- **B378**.
 
 ### Added by T400 (2026-09-05)
 
@@ -4262,7 +4279,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   Consequence for B162/B226: a sprite-name -> tile mapping can now change the
   SHAPE on screen, not only the tint. Prov: T400 Review.
 
-- **B226** (B) `config/spell_effects.json` `styles.impact` /
+- ~~**B226** (B) `config/spell_effects.json` `styles.impact` /
   `styles.spellComplete` -- **fable's impact burst is two orders of magnitude
   smaller than the oracle's and is not visible in a capture.** MEASURED T389:
   Testcaster cast Frost Bolt six times in `qeynos2` with GM invulnerability
@@ -4315,7 +4332,25 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   animate at `16 / lifetime` cells per second, so the 0.4-0.8 s lifetimes are
   simultaneously too small, too short AND -- against T420's oracle bound of
   below ~3 cells/s -- roughly ten times too fast. One knob, three symptoms;
-  retune all three in the one pass. Boarded as **B370**.
+  retune all three in the one pass. Boarded as **B370**.~~ **CLOSED by T422
+  (this commit).** The retune ran against a fresh oracle capture and the
+  parameter table is in `review/T422/README.md` section 4. **Two corrections to this
+  entry's own framing, both measured:**
+  (a) **"two orders of magnitude smaller" conflated three different things.**
+  The PER-SPRITE size was 1.6x out, not 100x (fable's shipped 0.05-0.15 world
+  units rendered at a median 3.57 px against the oracle's 4.4-6.9; it is now
+  5.53 px). The POPULATION was 8x out (81 combined against 561-715). The
+  whole-burst EXTENT was an effect of the 0.4-0.8 s lifetime cutting the
+  travel short, not a knob of its own -- `expandSpeed` 4.0 measured RIGHT
+  against the oracle's ~4.2 units/s and was deliberately not touched.
+  (b) **The shape was wrong in a way this entry never named**: the official
+  client does not fire a one-shot burst at all. Its population rises
+  monotonically with NO deaths for 1.96 s (spell 93) and 1.46 s (spell 41)
+  before collapsing, so `burstCount` was the wrong mechanism and the style is
+  now a `spawnRate` over a 0.6 s `emitterLifetime`. The residual ramp-then-cut
+  shape fable still cannot express is **B376**; the fact that one style must
+  serve spells whose oracle populations differ 20x is **B377**. Pinned by
+  `tests/test_spell_burst_oracle_match.cpp` (9 tests, 8 red pre-fix).
 
 - **B227** (B) the projectile question (does the official client draw a Frost
   Bolt travelling between caster and target, and over how many frames) is
@@ -5122,7 +5157,7 @@ client uses every field.
     `SpellSpriteAtlasLayout.*`. **14 red before, all green after.**
     Prov: T420 Review.
 
-- **B356** (B) `config/spell_effects.json` `styles.impact` -- **T417's Leg C
+- ~~**B356** (B) `config/spell_effects.json` `styles.impact` -- **T417's Leg C
   did not run: the burst size/lifetime A/B against the oracle is still
   owed.** T417 was to match count, size and lifetime for spells 54 and 93
   against T389's oracle videos, one parameter at a time with weather and
@@ -5139,7 +5174,24 @@ client uses every field.
   looks like AGAIN -- it now ANIMATES -- so the "two things at once" warning
   above still stands and the A/B is still owed. Add the animation RATE to the
   parameter table when it is taken: it is the same lifetime knob (**B370**).
-  Prov: T417 Review; B226.
+  Prov: T417 Review; B226.~~ **CLOSED by T422 (this commit,
+  `refactor/T422_spell_effects_live_ab.md`).** The A/B ran: the official client
+  was re-captured at 30 fps x11grab -- five to six times its own MEASURED
+  4.4-5.8 renders/s, so every distinct render is sampled once instead of
+  aliased -- with nameplates and corpses off (run1 proved they otherwise fake
+  80-100 "particles" per render), and fable was captured the same way at its
+  own measured 13-18 renders/s. The parameter table, each value with its probe,
+  is in `review/T422/README.md` 4 and repeated in the T422 Review.
+  Headline: combined peak population **81 -> 648** against the oracle's 561
+  (Weaken) to 715 (Burst of Flame); the one-shot `burstCount` became a
+  `spawnRate` over a 0.6 s `emitterLifetime` because the oracle EMITS
+  CONTINUOUSLY for 1.5-2.0 s; lifetimes **0.4-0.8 -> 1.6-2.0 s** from a
+  death-free rise; sizes **x1.57** from a live probe that moved the median
+  sprite diameter 3.57 -> 5.53 px against the oracle's 4.4-6.9. `expandSpeed`
+  4.0 was MEASURED RIGHT (the oracle spreads ~4.2 units/s) and left alone.
+  Residuals: duration 2.16 s against 2.33-2.6 s (-12%), and the emission SHAPE
+  is unmatched -- see **B376**. Pinned by
+  `tests/test_spell_burst_oracle_match.cpp` (9 tests, 8 red pre-fix).
 
 - ~~**B357** (P) `tests/goldens/manifest.json` memory-coverage
   `eqe1MappedBytes` -- **a bless is owed for T417's pack growth, and the
@@ -5784,7 +5836,7 @@ client uses every field.
   file position tells them apart. Closes when the duplicate is renumbered (with
   every reference updated) or the id convention gains a check. Found by T419.
 
-- **B370** (B) `config/spell_effects.json` particle lifetimes vs the sprite
+- ~~**B370** (B) `config/spell_effects.json` particle lifetimes vs the sprite
   animation rate -- **fable now animates the sprite sheets, but roughly an
   order of magnitude too fast.** T420 tied one 16-frame playthrough to a
   particle's lifetime, so the playback rate is `16 / lifetime`. `styles.impact`
@@ -5795,7 +5847,27 @@ client uses every field.
   the lifetime, not a new constant, and it is the SAME knob **B226**/**B356**
   hold for the burst's size and duration -- so retune it there, in one pass,
   rather than adding a second rate. Closes when the lifetimes are set against
-  a measured oracle rate. Prov: T420 Review.
+  a measured oracle rate. Prov: T420 Review.~~ **CLOSED by T422 (this
+  commit).** The lifetimes are now **1.6-2.0 s**, i.e. **8.0-10.0 cells/s**
+  rather than 20-40. **Read the next sentence before quoting that number.**
+  T422's oracle render rate is 4.4-5.8/s (Nyquist 2.2-2.9 cells/s), so a
+  DIRECT cells/s measurement is still impossible and 8-10 is DERIVED from a
+  directly measured particle LIFETIME under T420's own one-playthrough-per-
+  lifetime rule. It therefore does not reach T420's "below ~3 cells/s", and
+  that bound does not survive scrutiny: T420 could not measure a rate either
+  and inferred it from the modal orientation class of a **mixed-age**
+  population of stars holding across four renders -- a statistic over a
+  mixed-age population is not a clock, and T420 itself rated it low confidence
+  and separately refuted the effect-wide clock that argument needs. The
+  lifetime, by contrast, is bounded below by a 1.46-1.96 s rise during which
+  the oracle's population grows monotonically with **no deaths**, and above by
+  Whirling Wind's steady population divided by its emission rate (1.4 s).
+  Whether the ceiling can be raised at all: probed and reported in
+  `review/T422/README.md` 1 -- `LP_NUM_THREADS` 1 -> 4 changes nothing,
+  `MaxBGFPS=100` buys 5.00 -> 6.00 renders/s, and 640x480 is BLOCKED because
+  the shared `eq-oracle/scripts/login-as.sh` drives the login screen by
+  1024x768 screen coordinates. Pinned by
+  `SpellBurstOracleMatch.SheetPlaybackRateFollowsFromTheMeasuredLifetime`.
 
 - ~~**B371** (P) `tests/goldens/manifest.json` memory-coverage
   `eqe1MappedBytes` -- **a bless is owed for T420's pack growth, and the
@@ -5983,3 +6055,103 @@ client uses every field.
   favourites set -- which the server itself supplies, since a favourites fetch
   returns exactly that list through the same `TradeskillRecipeReceived`
   stream. Found by T421 Leg B.
+
+  with a test. Prov: T418 Review section 5.
+
+## Added 2026-09-06 by T422 (spell effects matched live against the oracle)
+
+- **B395** (B) `src/client/graphics/sim/renderer_sim_bridge.cpp`
+  `SimBridgeComponent::postSimulationInput` -- ~~`global.maxParticles` in
+  `config/spell_effects.json` had NO CONSUMER.~~ **CLOSED by T422 (this
+  commit).** The line read `pi.poolSize = 0; // Worker determines pool size
+  from config` and the worker's own arm is `if (poolSize <= 0) poolSize =
+  1024;` -- a hardcoded default that happened to equal the shipped config
+  value, so the knob looked honoured and was inert. It did not bite while one
+  landing was 81 sprites; T422 took that to 648, at which two overlapping
+  landings exceed 1024 and would have been silently clipped, making every
+  measured count wrong. The bridge now sends
+  `SpellEffectsConfig::instance().getGlobal().maxParticles` and the config
+  ships 4096. Pinned by
+  `SpellBurstPoolSizing.TheOldHardcodedPoolClipsAndTheConfiguredOneDoesNot`
+  (four simultaneous impacts, run at 1024 and at the configured pool, must
+  differ) and `SpellBurstOracleMatch.TheConfiguredPoolHoldsTwoOverlappingLandings`.
+  Prov: T422 Review.
+
+- **B396** (C) `config/spell_effects.json` `styles.impact` /
+  `styles.spellComplete` -- **the official client's burst RAMPS and is then cut
+  off, and fable's emitter cannot express that shape.** MEASURED T422 at
+  4.4-5.8 renders/s: spell 93's population rises monotonically with no deaths
+  through 11 -> 22 -> 188 -> 324 -> 502 -> 578 -> 637 -> **705** over 1.96 s and
+  then collapses to 9 in **0.37 s**; spell 41 rises 204 -> ... -> **561** over
+  1.46 s and falls over 0.97 s. A rectangular emission plus a lifetime tail --
+  which is all `spawnRate` + `emitterLifetime` + `lifetimeMin/Max` can
+  describe -- gives a rise, a plateau and a fall of comparable length, never a
+  2 s ramp cut off in a third of a second. T422 matched the peak population,
+  the duration and the sprite size instead and left the shape; fable's measured
+  duration is 2.16 s against the oracle's 2.33-2.6 s. Closes with either a
+  measurement showing the shape does not matter to a viewer, or an emission
+  curve (a rate ramp plus an effect-scoped kill) in the config. **Class C: this
+  is a "how faithful do we want to be" call, not a defect.** Prov: T422 Review 4.
+
+- **B397** (B) `config/spell_effects.json` `spellOverrides` -- **it is an empty
+  object and always has been, so one `impact`/`spellComplete` setting has to
+  serve spells whose oracle populations differ by a factor of 20.** MEASURED
+  T422: the official client paints **715** sprites for Burst of Flame (93),
+  **561** for Weaken (41) and a steady **25-36** for Whirling Wind (253), and
+  its sprite sizes differ too (median 4.8-6.9 px, 4.4-6.7 px, and 8.0-10.5 px
+  respectively). T422 set the single style to the wide-burst case, which is
+  right for 93 and 41 and leaves 253 with ~20x too many sprites each ~31%
+  too small. The three-tier hierarchy (global -> style -> per-spell) is
+  implemented and documented in `CLAUDE.md`; `SpellEffectsConfig::getStyleSettings`
+  takes a `spellId` and applies overrides. Only the DATA is missing. Closes
+  when the spells whose oracle numbers are measured carry their own overrides,
+  with the same before/after capture discipline. Prov: T422 Review 2, 4.
+
+- **B398** (A) `config/spell_effects.json` `resistColors` / `getSpellColor` --
+  **fable's Weaken (41) burst is RED-dominant on screen where the official
+  client's is GREEN-dominant.** MEASURED T422 on the OBSERVING client, mean
+  added RGB over the particle pixels, normalised: fable **0.377 / 0.294 /
+  0.329**; the oracle (T389, same normalisation) **0.448 / 0.572 / 0.191**.
+  The fire/frost pair matches (fable 93 = .515/.339/.146 R-dominant against the
+  oracle's .360/.379/.199; fable 54 = .228/.363/.409 B-dominant against
+  .213/.284/.315), so the mechanism works and this is a per-spell colour
+  lookup that is wrong for 41 specifically -- Weaken is a magic-resist spell
+  and takes the `magic` row (0.78, 0.39, 1.0), which is purple, not the green
+  the oracle draws. Whirling Wind (253) is also more blue than the oracle
+  (fable .299/.248/.453 against .258/.309/.214). Closes when the per-spell
+  colour is taken from the same place the official client takes it (the
+  `spells.eff` record, not the resist type) or measured overrides are added.
+  Prov: T422 Review 5.
+
+- **B399** (A) `src/client/graphics/player/renderer_camera.cpp` /
+  `movement` -- **a server `#goto x y z h` does not turn fable's camera; the
+  client's own heading echoes straight back over it.** MEASURED T422: with
+  `character_data.heading` 160 and the oracle's exact aiming command
+  `#goto -74 428 3.751 160` sent from the fable client, the client logged
+  `[ZONE-IN] setPlayerPosition: ... heading=160.00` once and then
+  `heading=480.00` on the next update and every update after, and the camera
+  stayed pointed at a wall for the whole session. The oracle, given the same
+  command, faces open field. `/face <target>` DOES work (the observer's
+  `/face Testcaster` centred the caster). This is the same family as B001/T344
+  (a server-forced pose that cannot be applied without the client overwriting
+  it) and it cost T422 a whole capture session. Closes when a server-supplied
+  heading survives the next outbound position update, with a test.
+  Prov: T422 Review 3.
+
+- **B400** (A) `src/client/graphics/sim_particles.cpp` /
+  `SpellVisualFX::createImpact` -- **a landing intermittently draws nothing on
+  the CASTER's own client while drawing correctly on an observer.** MEASURED
+  T422: in `review/T422/fable/T422_fable_after2_size_caster.mkv` the Weaken (41)
+  landing at grab frame ~6126 produced no excursion above the noise floor on
+  the caster's own capture (peak 72 components against a 63-72 floor), while
+  the SAME landing at frame 6140 of the observer capture from the same session
+  is a clear 139-pixel excursion, and the same spell in the immediately
+  preceding session (`..._after_caster.mkv`, frame 6061) peaked at 365
+  components on the caster. Both Burst of Flame (93) and Weaken (41) were
+  missing from that one caster capture; Frost Bolt (54) and Whirling Wind (253)
+  drew. All four `SimWorker: Created spell effect 'Impact'` lines are present
+  in the log, so the effect reached the worker every time -- the loss is
+  downstream. Suspect the T395 one-frame attach-position protocol interacting
+  with the frustum test at a low frame rate, but that is UNCONFIRMED and the
+  next unit must measure it rather than scope off this sentence. Closes when
+  the drop is reproduced deterministically and fixed. Prov: T422 Review 4.

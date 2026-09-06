@@ -231,8 +231,19 @@ protected:
         auto impact = EQT::Graphics::Environment::SpellPresets::Impact(
             glm::vec4(1.0f), 93);
         ASSERT_EQ(impact.emitters.size(), 1u);
-        ASSERT_GT(impact.emitters[0].config.burstCount, 0)
-            << "the shipped impact style is a one-shot burst; the config did not apply";
+        // T422: the shipped impact style stopped being a one-shot burst. The
+        // official client's population rises over ~2 s with no deaths rather
+        // than appearing in a single frame (review/T422/README.md 2), so the
+        // style is now a spawnRate emitter over a 0.6 s emitterLifetime and
+        // its burstCount is 0. What these two tests prove is unchanged --
+        // WHERE the first frame of particles is born -- because the emitter
+        // does not exist until the lifecycle phase, so either shape spawns its
+        // first particles on the SECOND worker frame, by which time the
+        // attach position has been requested and resolved.
+        ASSERT_GT(impact.emitters[0].config.spawnRate, 0.0f)
+            << "the shipped impact style emits over a window; the config did not apply";
+        ASSERT_GT(impact.emitters[0].config.emitterLifetime, 0.0f)
+            << "the shipped impact style has a bounded emission window; the config did not apply";
     }
 
     static constexpr uint16_t kTarget = 38;

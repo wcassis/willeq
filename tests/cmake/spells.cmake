@@ -116,6 +116,20 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_spell_impact_visual)
 
+# T422 (board B226/B356/B370): the impact and spellComplete burst parameters
+# pinned against the official client measured live at 30 fps in T422.  Reads
+# the shipped config through the same preset functions production calls, and
+# drives SimulationWorker::computeOnce() to prove the pool size is
+# load-bearing, so it needs the Irrlicht headers when graphics are on.
+ADD_EXECUTABLE(test_spell_burst_oracle_match
+    test_spell_burst_oracle_match.cpp
+)
+TARGET_LINK_LIBRARIES(test_spell_burst_oracle_match GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_spell_burst_oracle_match PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_spell_burst_oracle_match)
+
 # T395 Leg B (board B205): eqemu say-links in server chat text. The helper
 # plus the two consumers that print server-authored lines (OP_SpecialMesg and
 # OP_ChannelMessage).
