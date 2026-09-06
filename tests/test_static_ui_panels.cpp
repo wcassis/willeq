@@ -1007,3 +1007,117 @@ TEST(PurseT393Render, TheInventoryPopupEmitsOneTextEntryPerCoinRow) {
 
     device->drop();
 }
+
+// ===========================================================================
+// T409 Leg A — the paperdoll at the ORACLE's proportion (board B219)
+//
+// B219: fable's paperdoll filled the whole gap between the two equipment
+// columns (x 48..352 of the 400-wide popup, 76% of its width), so the
+// oracle-placed coin column T393 introduced (x 283..348) landed ON the
+// doll's right-hand margin — confirmed on screen by T401's live pair.
+// Will ruled 2026-09-06: the doll narrows to the oracle's proportion, the
+// coin column stays.
+//
+// The oracle rect, quoted from the official Titanium/P1999 default UI,
+// /mnt/projects/EverQuestP1999/uifiles/default/EQUI_Inventory.xml:
+//
+//   <Screen item="IW_CharacterView">  Location X=166 Y=57  Size CX=85 CY=168
+//   inside <Screen item="InventoryWindow">  Size CX=428 CY=460
+//
+// mapped by coinRect()'s own rule (proportional, integer division, from
+// 428x460 onto centerPopup's fixed 400x350):
+//   x = 166*400/428 = 155   w = 85*400/428  = 79
+//   y =  57*350/460 =  43   h = 168*350/460 = 127
+// so, at 800x600 (popup origin 200,125), {355,168,434,295}.
+// ===========================================================================
+
+namespace {
+
+// The oracle numbers, re-derived here rather than read from the header, so
+// the test fails if the header's arithmetic changes.
+constexpr int kOracleDollX = 166, kOracleDollY = 57;
+constexpr int kOracleDollW = 85,  kOracleDollH = 168;
+constexpr int kOracleWinW = 428,  kOracleWinH = 460;
+
+} // namespace
+
+TEST(PaperdollT409, TheRectIsTheOracleCharacterViewScaledIntoThePopup) {
+    UILayout layout;
+    layout.computeLayout(800, 600);
+    EXPECT_EQ(InventoryLayout::paperdollRect(layout),
+              irr::core::rect<irr::s32>(355, 168, 434, 295));
+}
+
+TEST(PaperdollT409, TheRectIsIdenticalRelativeToThePopupOriginAtEveryResolution) {
+    for (const auto& rc : kResolutions) {
+        UILayout layout;
+        layout.computeLayout(rc.w, rc.h);
+        const auto& popup = layout.centerPopup;
+        const auto doll = InventoryLayout::paperdollRect(layout);
+
+        const int expX = kOracleDollX * popup.getWidth() / kOracleWinW;
+        const int expY = kOracleDollY * popup.getHeight() / kOracleWinH;
+        const int expW = kOracleDollW * popup.getWidth() / kOracleWinW;
+        const int expH = kOracleDollH * popup.getHeight() / kOracleWinH;
+
+        EXPECT_EQ(doll.UpperLeftCorner.X - popup.UpperLeftCorner.X, expX)
+            << rc.w << "x" << rc.h;
+        EXPECT_EQ(doll.UpperLeftCorner.Y - popup.UpperLeftCorner.Y, expY)
+            << rc.w << "x" << rc.h;
+        EXPECT_EQ(doll.getWidth(), expW) << rc.w << "x" << rc.h;
+        EXPECT_EQ(doll.getHeight(), expH) << rc.w << "x" << rc.h;
+    }
+}
+
+// The whole point of B219: the doll and the purse must not share a pixel.
+TEST(PaperdollT409, TheRectIsDisjointFromEveryCoinRowAtEveryResolution) {
+    for (const auto& rc : kResolutions) {
+        UILayout layout;
+        layout.computeLayout(rc.w, rc.h);
+        const auto doll = InventoryLayout::paperdollRect(layout);
+
+        for (int d = 0; d < InventoryLayout::COIN_COUNT; ++d) {
+            const auto row = InventoryLayout::coinRect(layout, d);
+            const bool overlap = doll.UpperLeftCorner.X < row.LowerRightCorner.X &&
+                                 doll.LowerRightCorner.X > row.UpperLeftCorner.X &&
+                                 doll.UpperLeftCorner.Y < row.LowerRightCorner.Y &&
+                                 doll.LowerRightCorner.Y > row.UpperLeftCorner.Y;
+            EXPECT_FALSE(overlap)
+                << rc.w << "x" << rc.h << ": paperdoll {"
+                << doll.UpperLeftCorner.X << "," << doll.UpperLeftCorner.Y << ","
+                << doll.LowerRightCorner.X << "," << doll.LowerRightCorner.Y
+                << "} overlaps coin row " << d << " {"
+                << row.UpperLeftCorner.X << "," << row.UpperLeftCorner.Y << ","
+                << row.LowerRightCorner.X << "," << row.LowerRightCorner.Y << "}";
+
+            const auto decal = InventoryLayout::coinDecalRect(layout, d);
+            const bool decalOverlap = doll.UpperLeftCorner.X < decal.LowerRightCorner.X &&
+                                      doll.LowerRightCorner.X > decal.UpperLeftCorner.X &&
+                                      doll.UpperLeftCorner.Y < decal.LowerRightCorner.Y &&
+                                      doll.LowerRightCorner.Y > decal.UpperLeftCorner.Y;
+            EXPECT_FALSE(decalOverlap)
+                << rc.w << "x" << rc.h << ": paperdoll overlaps coin decal " << d;
+        }
+    }
+}
+
+// The render target the doll is drawn into must carry the rect's own
+// proportion, or the model is squashed on its way to the screen. Before
+// T409 the RTT was a fixed 304x256 (aspect 1.19) matching the old wide
+// rect; the oracle's view is a TALL box (aspect 0.62 once mapped).
+TEST(PaperdollT409, TheRenderTargetCarriesTheRectsAspect) {
+    UILayout layout;
+    layout.computeLayout(800, 600);
+    const auto doll = InventoryLayout::paperdollRect(layout);
+    const auto rt = InventoryLayout::paperdollRenderTargetSize();
+
+    ASSERT_GT(rt.Width, 0u);
+    ASSERT_GT(rt.Height, 0u);
+    // Same aspect to within a percent, and at least the drawn size so the
+    // blit never upscales.
+    const double rtAspect = static_cast<double>(rt.Width) / rt.Height;
+    const double rectAspect = static_cast<double>(doll.getWidth()) / doll.getHeight();
+    EXPECT_NEAR(rtAspect, rectAspect, 0.01);
+    EXPECT_GE(static_cast<int>(rt.Width), doll.getWidth());
+    EXPECT_GE(static_cast<int>(rt.Height), doll.getHeight());
+}

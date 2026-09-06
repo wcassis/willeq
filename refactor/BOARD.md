@@ -2980,7 +2980,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   while `character_currency` moved by exactly the amount the chat line named.
   So B172's own close-out wording is unmeasurable as written, and every future
   coin row has no on-screen consumer. Closes when the coin counts reach a panel
-  and a test pins the projection. Prov: T386 Review §1c; B172.~~ **STRUCK T393 (`f13b9979`)**: the purse is drawn. `InventoryLayout::coinRect()`/`coinDecalRect()` put four coin rows in the inventory popup at the OFFICIAL client's own placement -- `/mnt/projects/EverQuestP1999/uifiles/default/EQUI_Inventory.xml`, `IW_Money0..3` at Location X=303, Y=121/147/171/197, Size 70x24, decals A_PlatinumCoin/A_GoldCoin/A_SilverCoin/A_CopperCoin at DecalOffset 1,3 DecalSize 18x18, inside a 428x460 `InventoryWindow` -- mapped proportionally onto the fixed 400x350 `centerPopup` (283,92 / 283,111 / 283,130 / 283,149, 65x18, identical at all five resolutions T351 measured). The `CurrencyChanged` bridge arm is no longer a payload-discarding `LOG_TRACE`: it calls the free function `applyCurrencyChanged()` (the `applyLootWindowOpened()` idiom) onto `InventoryPanelState::coins`, so ALL FIVE publishers -- `OP_MoneyUpdate` (`src/client/core/everquest.cpp`), the corpse-coin grant (`src/client/commands/combat_actions.cpp`), the merchant (`src/client/merchant/merchant_trade.cpp`) and the two stat pushes in `bridge/` -- reach the panel. `updateCharacterStats`'s four `(void)` discards are gone too, though that function still has ZERO callers tree-wide (grepped `src/ include/ tests/ tools/ benchmarks/ docker/`) -- the reaching path is the bridge arm. 12 tests in `tests/test_static_ui_panels.cpp` (`PurseT393*`), **7 of them fail pre-fix**, including a device-backed render pin (`TheInventoryPopupEmitsTwoTextEntriesPerCoinRow`: 24 text entries before, 32 after). ~~**The live screenshot pair (fable vs oracle inventory with coins) is still OWED** -- T393 held no eqemu lock.~~ **TAKEN T401 (`4ff78bb4`, `review/T401/` §2), and the two windows agree**: four rows, platinum->gold->silver->copper, a round decal left and the count right, **9 / 13 / 2 / 16 in both** (the oracle character's purse was written to fable's post-loot purse before login). `review/T401/fable/T401_fable_purse_coinrows_crop4x.png` vs `review/T401/oracle/T401_oracle_purse_coinrows_crop4x.png`. B218's letter is gone. **B219 is now VISIBLE rather than predicted** and is what remains. Two consequences boarded: **B218** (fable's UI atlas has no coin sprite, so the decal box gets a letter) and **B219** (fable's paperdoll rect spans the whole inter-column gap, so the oracle-scaled coin column overlays its right margin). Prov: T393 Review; B172.
+  and a test pins the projection. Prov: T386 Review §1c; B172.~~ **STRUCK T393 (`f13b9979`)**: the purse is drawn. `InventoryLayout::coinRect()`/`coinDecalRect()` put four coin rows in the inventory popup at the OFFICIAL client's own placement -- `/mnt/projects/EverQuestP1999/uifiles/default/EQUI_Inventory.xml`, `IW_Money0..3` at Location X=303, Y=121/147/171/197, Size 70x24, decals A_PlatinumCoin/A_GoldCoin/A_SilverCoin/A_CopperCoin at DecalOffset 1,3 DecalSize 18x18, inside a 428x460 `InventoryWindow` -- mapped proportionally onto the fixed 400x350 `centerPopup` (283,92 / 283,111 / 283,130 / 283,149, 65x18, identical at all five resolutions T351 measured). The `CurrencyChanged` bridge arm is no longer a payload-discarding `LOG_TRACE`: it calls the free function `applyCurrencyChanged()` (the `applyLootWindowOpened()` idiom) onto `InventoryPanelState::coins`, so ALL FIVE publishers -- `OP_MoneyUpdate` (`src/client/core/everquest.cpp`), the corpse-coin grant (`src/client/commands/combat_actions.cpp`), the merchant (`src/client/merchant/merchant_trade.cpp`) and the two stat pushes in `bridge/` -- reach the panel. `updateCharacterStats`'s four `(void)` discards are gone too, though that function still has ZERO callers tree-wide (grepped `src/ include/ tests/ tools/ benchmarks/ docker/`) -- the reaching path is the bridge arm. 12 tests in `tests/test_static_ui_panels.cpp` (`PurseT393*`), **7 of them fail pre-fix**, including a device-backed render pin (`TheInventoryPopupEmitsTwoTextEntriesPerCoinRow`: 24 text entries before, 32 after). ~~**The live screenshot pair (fable vs oracle inventory with coins) is still OWED** -- T393 held no eqemu lock.~~ **TAKEN T401 (`4ff78bb4`, `review/T401/` §2), and the two windows agree**: four rows, platinum->gold->silver->copper, a round decal left and the count right, **9 / 13 / 2 / 16 in both** (the oracle character's purse was written to fable's post-loot purse before login). `review/T401/fable/T401_fable_purse_coinrows_crop4x.png` vs `review/T401/oracle/T401_oracle_purse_coinrows_crop4x.png`. B218's letter is gone. **B219 is now VISIBLE rather than predicted** and is what remains. [B219 CLOSED by T409 Leg A.] Two consequences boarded: **B218** (fable's UI atlas has no coin sprite, so the decal box gets a letter) and **B219** (fable's paperdoll rect spans the whole inter-column gap, so the oracle-scaled coin column overlays its right margin). Prov: T393 Review; B172.
 
 - ~~**B202** (A) `src/client/graphics/sim/` `SimBridgeComponent::applySimulationOutput`
   — **SIGSEGV on the render thread whenever a second player is in the zone.**
@@ -3431,10 +3431,11 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   `ui_atlas.json`), the other 64 byte-identical, +239 B total, all of it the
   four new sprite records in the JSON. Before/after captures in
   `review/T398/`. **B219 (the paperdoll overlaps the purse) and T393's owed
-  live oracle pair are untouched and still open.** Gate consequence boarded as
+  live oracle pair are untouched and still open.** [B219 CLOSED by T409 Leg A;
+  the live pair is still owed.] Gate consequence boarded as
   B240. Prov: T398 Review Leg B; B230; B218.
 
-- **B219** (C) `include/client/graphics/ui/inventory_layout.h` `paperdollRect`
+- ~~**B219** (C) `include/client/graphics/ui/inventory_layout.h` `paperdollRect`
   — **fable's paperdoll rect is proportionally far wider than the oracle's
   character view, so the oracle-placed purse sits ON it.** The oracle's
   `IW_CharacterView` is 85x168 at (166,57) inside a 428x460 window — 20% of the
@@ -3453,7 +3454,31 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   either the doll narrows to the oracle's proportion or the purse does
   not follow the oracle here. Prov: T393 Review; T401 Review §2.
 
-  **WILL RULED 2026-09-06:** shrink the paperdoll to the oracle proportion; the coin column stays. → T409.
+  **WILL RULED 2026-09-06:** shrink the paperdoll to the oracle proportion; the coin column stays. → T409.~~
+  **STRUCK T409 Leg A (this commit)**: `paperdollRect()` now maps the
+  oracle's own `IW_CharacterView` -- Location 166,57 Size 85x168 inside the
+  428x460 `InventoryWindow`, quoted from
+  `/mnt/projects/EverQuestP1999/uifiles/default/EQUI_Inventory.xml` -- onto
+  `centerPopup` by `coinRect()`'s rule (proportional, integer division, onto
+  the fixed 400x350). Offset **(155,43) size 79x127** inside the frame at
+  every resolution, i.e. {355,168,434,295} at 800x600, against the old
+  {248,145,552,401} (offset (48,20) size 304x256). The doll now ends at
+  popup-x 234 and the coin column starts at popup-x 283, so the two are
+  **disjoint by 49 px at every one of the five resolutions T351 measured**,
+  and disjoint from the four decal boxes too. The T60 invariants are
+  unaffected -- the rect is still inside the frame and clear of all 30 slots.
+  Second, smaller finding the narrowing forced: the paperdoll's offscreen
+  render target was a **hardcoded 304x256 in two places**
+  (`overlays_hud_env.cpp` `ensurePaperdollInitialized()` and
+  `tools/hwcaps/ui_inventory_capture.cpp`), sized to the OLD rect, so a
+  narrowed rect would have squashed the model 1.9x horizontally. Both now
+  call the new `InventoryLayout::paperdollRenderTargetSize()` (the rect
+  supersampled 2x = 158x254), so the target can never drift from the rect
+  again. 4 tests in `tests/test_static_ui_panels.cpp` (`PaperdollT409.*`),
+  **3 red pre-fix**; the fourth (`TheRenderTargetCarriesTheRectsAspect`) is a
+  guard that was green pre-fix by construction and would have gone red on the
+  rect change alone. ~~The live screenshot pair is OWED~~ -- still OWED, to
+  the next unit that holds the eqemu lock (T405 holds it this wave).
 - ~~**B230** (B) `tools/ui_atlas_builder.cpp` / `/mnt/projects/EverQuest_ETC1/willeq.eqe1`
   -- **the UI atlas cannot take a pixel from the official client, and the
   shipped pack cannot be rebuilt from the tree.** Split out of B218 by T396

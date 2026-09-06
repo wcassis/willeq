@@ -566,15 +566,18 @@ void OverlaysComponent::ensurePaperdollInitialized() {
         return;
     }
 
-    // Fixed size matching InventoryLayout::paperdollRect()'s dimensions
-    // (304x256 — constant regardless of screen resolution, since
-    // centerPopup is a fixed-size box whose ORIGIN, not size, varies with
-    // resolution — see inventory_layout.h).
-    constexpr int kPaperdollWidth = 304;
-    constexpr int kPaperdollHeight = 256;
+    // Size and proportion come from the rect the doll is blitted into —
+    // InventoryLayout::paperdollRenderTargetSize(), which is
+    // paperdollRect() supersampled. Constant regardless of screen
+    // resolution, since centerPopup is a fixed-size box whose ORIGIN, not
+    // size, varies with resolution (see inventory_layout.h). T409 narrowed
+    // the rect to the oracle's IW_CharacterView proportion (board B219),
+    // so the old hardcoded 304x256 would now squash the model.
+    const auto rt = InventoryLayout::paperdollRenderTargetSize();
 
     auto doll = std::make_unique<eqt::ui::CharacterModelView>();
-    doll->init(ctx_.smgr, ctx_.driver, kPaperdollWidth, kPaperdollHeight);
+    doll->init(ctx_.smgr, ctx_.driver, static_cast<int>(rt.Width),
+               static_cast<int>(rt.Height));
     if (ctx_.entityRenderer) {
         doll->setRaceModelLoader(ctx_.entityRenderer->getRaceModelLoader());
         doll->setEquipmentModelLoader(ctx_.entityRenderer->getEquipmentModelLoader());
