@@ -19,6 +19,12 @@ references this file; plans carry only unit-specific content.
 `grep EQT_GLES2_IRRLICHT_DIR <slot>/build/CMakeCache.txt` at checkout: a cache
 pointing at `main/` breaks the moment main rebuilds its Irrlicht (T357).
 
+⚠ A full RelWithDebInfo build of a slot no longer fits the 600 s tool
+ceiling (the core archive is 3.2 GB; a killed `ar` deletes it outright —
+T412). Run builds in the BACKGROUND with an exit file and poll with
+`scripts/wait_for.sh --exit-file`; never end a turn while one is running.
+`--target x` is not a shortcut: it relinks `willeq_core` first.
+
 ⚠ BUILD TYPE: `main/build` is `CMAKE_BUILD_TYPE=RelWithDebInfo` (-O2). A slot
 whose `build/` has the build type UNSET compiles at -O0 and its green suite
 does not prove the tip's: T400's pixel-for-pixel atlas test passed at -O0
