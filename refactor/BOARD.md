@@ -5865,7 +5865,7 @@ client uses every field.
   Whether the ceiling can be raised at all: probed and reported in
   `review/T422/README.md` 1 -- `LP_NUM_THREADS` 1 -> 4 changes nothing,
   `MaxBGFPS=100` buys 5.00 -> 6.00 renders/s, and 640x480 is BLOCKED because
-  the shared `eq-oracle/scripts/login-as.sh` drives the login screen by
+  the shared `/mnt/projects/eq-oracle/scripts/login-as.sh` drives the login screen by
   1024x768 screen coordinates. Pinned by
   `SpellBurstOracleMatch.SheetPlaybackRateFollowsFromTheMeasuredLifetime`.
 
