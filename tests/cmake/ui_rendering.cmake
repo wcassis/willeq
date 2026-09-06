@@ -236,6 +236,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_static_ui_panels)
 ENDIF()
 
+# T413 (board B285): the software cursor's cache name vs the pack's entry name.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_software_cursor_pack_name
+        test_software_cursor_pack_name.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_software_cursor_pack_name PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_software_cursor_pack_name GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_software_cursor_pack_name PRIVATE
+        WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    GTEST_DISCOVER_TESTS(test_software_cursor_pack_name)
+ENDIF()
+
 # T275: pixel-level assertions on the ATLAS-backed UIRenderer path (a real
 # headless GLES2 device + the real ui_atlas out of willeq.eqe1). Every UI
 # capture harness before this ran with atlas=nullptr, so the atlas path had
