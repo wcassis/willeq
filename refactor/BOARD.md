@@ -4542,7 +4542,7 @@ T407 deleted eleven (see below). The rest are boarded here.
   Found by T407 Leg B; the shape was named by T404 surprise 2
   (`MixChannel::sampleRate`).
 
-- **B291** (A) `include/client/graphics/entity_renderer.h`
+- ~~**B291** (A) `include/client/graphics/entity_renderer.h`
   `EntityRenderer::skipTextureUpload_` -- **a constrained-mode knob that does
   nothing.** `src/client/graphics/renderer/irrlicht_renderer.cpp` calls
   `entityRenderer_->setSkipTextureUpload(config_.constrainedConfig.skipEntityTextureUpload)`
@@ -4550,15 +4550,36 @@ T407 deleted eleven (see below). The rest are boarded here.
   texture upload happens regardless. This is a live defect, not dead code: a
   caller supplies an intended value. Closes when the flag is consumed at the
   upload site or the config key and its plumbing are deleted together. Found by
-  T407's census.
+  T407's census.~~ **CLOSED by T412 Leg A** (`3596e841`): the flag is read at the
+  new `EntityRenderer::uploadPendingEntityTextures()`, the entity build path's
+  single upload seam. There were **THREE** entity texture upload sites, not one --
+  `ZoneLoadComponent`'s Step 8 (`renderer_zone_load_entities.cpp`) calls
+  `uploadAllPending()` twice more, and both are now gated on the same config
+  field; gating only the gameplay site would have left zone-in uploading
+  everything. Skipping leaves the decoded entries PENDING, not dropped. The
+  orangepi preset leaves `skipEntityTextureUpload` at the struct default
+  `false`, and the visual gate cannot exercise it either way
+  (`loadDebugOverrides()`'s only caller is `application.cpp`, i.e. `willeq`;
+  the gate drives `gles2_zone_benchmark`). Pinned by
+  `tests/test_entity_texture_upload_skip.cpp`, 4 cases.
 
-- **B292** (A) `include/client/audio/sfx_manager.h` `SfxManager::cacheMaxBytes_`
+- ~~**B292** (A) `include/client/audio/sfx_manager.h` `SfxManager::cacheMaxBytes_`
   -- **the sound cache has no ceiling.** `AudioManager` calls
   `sfxManager_->setCacheMaxBytes(soundCacheBytes)` with the configured budget;
   `setCacheMaxBytes()` stores it and nothing ever compares `cacheSizeBytes_`
   against it, so the SFX cache grows without bound on a memory-constrained
   target. Closes when eviction reads the ceiling, or when the setter and its
-  caller go. Found by T407's census.
+  caller go. Found by T407's census.~~ **CLOSED by T412 Leg B** (`37d35918`):
+  LRU eviction mirroring `AudioManager::loadSound()`'s own sound-buffer LRU --
+  `getWavData()` is the touch point (it is the read `play()` goes through),
+  `setCacheMaxBytes()` enforces immediately so lowering the ceiling at runtime
+  bites at once, 0 still means unlimited, and the cache is never evicted empty.
+  The rule the sibling cache does not need: a WAV an ACTIVE `MixChannel` aliases
+  (`play()` hands the mixer `wav->samples.data()`, read by the AUDIO thread) is
+  never evicted -- over budget with a WARN beats a use-after-free. Note
+  `src/client/audio/CLAUDE.md` had described this cache as an "LRU cache" all
+  along; the doc was aspirational, not stale, and is now true. Pinned by
+  `tests/test_sfx_cache_eviction.cpp`, 6 cases, two independent pre-fix plants.
 
 - **B293** (B) `include/client/graphics/environment/particle_manager.h`
   `ParticleManager::entityDirCallback_` -- installed by TWO callers
@@ -4568,7 +4589,7 @@ T407 deleted eleven (see below). The rest are boarded here.
   callback is called or the setter, the member and the `EntityDirCallback`
   typedef are deleted with both call sites. Found by T407's census.
 
-- **B294** (A) `include/client/graphics/irrlicht_renderer.h`
+- ~~**B294** (A) `include/client/graphics/irrlicht_renderer.h`
   `IrrlichtRenderer::forcePvsUpdate_` -- set true in FOUR places
   (`src/client/graphics/renderer/renderer_init.cpp`,
   `src/client/graphics/player/renderer_camera.cpp`,
@@ -4578,7 +4599,25 @@ T407 deleted eleven (see below). The rest are boarded here.
   member says "set when render distance changes"; changing render distance
   therefore does not force the recompute it asks for. Closes when the frame
   path consumes and clears the flag, or the four writes go with it. Found by
-  T407's census.
+  T407's census.~~ **CLOSED by T412 Leg C** (`927994b8`) -- **the member and all
+  four writes DELETED, with the proof.** The flag was a leftover, not a missing
+  consumer: its one reader lived in `IrrlichtRenderer::updatePvsVisibility()`,
+  which cached the camera's BSP region behind a 5-unit movement threshold in
+  function-local statics, and `6914d99b` deleted that whole function when PVS
+  moved to `SimulationWorker` (`portalCacheDirty_`, the other thing it reset, is
+  gone from the tree too). Since then `SimBridgeComponent::buildSimulationInput()`
+  republishes `input.renderDistance` and the camera position EVERY frame and
+  `computeAll()` runs `calculateRegions()` + `computeVisibility()` over them
+  unconditionally -- no threshold, no cache, nothing to invalidate; the one
+  surviving cache (`computeRegionDepthMap()`'s) is keyed on region and is pure
+  portal adjacency, independent of render distance. Consuming the flag would have
+  meant inventing a skip that does not exist. Pinned by
+  `tests/test_pvs_render_distance_trigger.cpp`: two behavioural cases on the
+  replacement trigger (which pass on BOTH sides -- that is the point) plus a
+  source guard, red at the base for all four writers. **`hideLoadingScreen()`'s
+  comment was a truncated sentence** ("Without resetting here, the movement")
+  left dangling by `6914d99b` -- an unfinished tombstone is what made the flag
+  look deliberate.
 
 - **B295** (B) `include/client/graphics/graphics_archive_index.h`
   `GraphicsArchiveIndex::lazyMode_` -- `buildIndex(eqPath, lazyMode, tick)`

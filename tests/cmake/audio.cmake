@@ -128,6 +128,19 @@ IF(WITH_AUDIO)
     GTEST_DISCOVER_TESTS(test_sound_effects)
 ENDIF()
 
+# T412 Leg B (B292): the SFX cache must honour setCacheMaxBytes(). Drives the
+# real SfxManager and a real AudioMixer -- no device is opened.
+IF(WITH_AUDIO)
+    ADD_EXECUTABLE(test_sfx_cache_eviction
+        test_sfx_cache_eviction.cpp
+        ${AUDIO_COMMON_TEST_SOURCES}
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
+    )
+    TARGET_COMPILE_DEFINITIONS(test_sfx_cache_eviction PRIVATE WITH_AUDIO)
+    TARGET_LINK_LIBRARIES(test_sfx_cache_eviction ${AUDIO_COMMON_TEST_LIBS})
+    GTEST_DISCOVER_TESTS(test_sfx_cache_eviction)
+ENDIF()
+
 # Test spatial audio (3D positional audio, distance attenuation, listener position)
 IF(WITH_AUDIO)
     ADD_EXECUTABLE(test_spatial_audio

@@ -808,12 +808,12 @@ void IrrlichtRenderer::hideLoadingScreen() {
     loadingScreenVisible_ = false;
     LOG_DEBUG(MOD_GRAPHICS, "Loading screen hidden");
 
-    // Force full visibility and lighting recalculation on the first gameplay frame.
-    // During loading, Tier2 updates (PVS, object culling, lights) run and cache
-    // camera positions. By the time loading completes, these caches are populated
-    // at the camera's loading-phase position. Without resetting here, the movement
-    // Force PVS recalculation on initial zone-in.
-    forcePvsUpdate_ = true;
+    // T412 (board B294): the PVS force-update flag write that stood here (and the
+    // half-finished comment above it about Tier2 caching camera positions) is
+    // gone. Both described the render thread's own updatePvsVisibility(), whose
+    // static BSP-lookup cache was deleted with the function in 6914d99b when PVS
+    // moved to SimulationWorker. The worker's first non-loading computeAll()
+    // recomputes the whole visible set from scratch, so zone-in needs no flag.
 
     // Request deferred governor reset so the 11+ second loading screen frame
     // doesn't poison the rolling average. requestReset() defers the actual reset

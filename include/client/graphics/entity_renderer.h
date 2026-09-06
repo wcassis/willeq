@@ -298,8 +298,19 @@ public:
     // Set the base path for EQ client files (S3D archives)
     void setClientPath(const std::string& path);
 
-    // Debug: skip texture uploads during entity build (isolate glTexImage2D)
+    // Debug: skip texture uploads during entity build (isolate glTexImage2D).
+    // Fed from ConstrainedRendererConfig::skipEntityTextureUpload (config/debug.json)
+    // by IrrlichtRenderer::initDeferredGraphics; consumed by
+    // uploadPendingEntityTextures() below (T412, board B291 -- before that the
+    // value was stored and never read, so the knob did nothing).
     void setSkipTextureUpload(bool skip) { skipTextureUpload_ = skip; }
+    bool skipTextureUpload() const { return skipTextureUpload_; }
+
+    // Promote every texture the entity build path decoded into the constrained
+    // cache to the GPU, and report how many were uploaded. Returns 0 without
+    // touching the cache when setSkipTextureUpload(true) is in effect -- that is
+    // the whole meaning of the knob. Defined in entity_build_step.cpp.
+    int uploadPendingEntityTextures();
 
     // Set composite entity texture path (enables 1-draw-call entity rendering)
     void setCompositeEntityPath(const std::string& path);
