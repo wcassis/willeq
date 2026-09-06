@@ -234,7 +234,15 @@ const SweepEntry kSweep[] = {
     // while the new UI is off. They are mutually exclusive, so no notch is
     // ever read twice.
     {"getMouseWheelDelta", 2, "render thread only; if/else in processFrameInput, mutually exclusive."},
-    {"popKeyEvent", 1, "render thread (processChatInput). T241."},
+    // T421 (board B365): a SECOND textual call site, ONE consumer -- the
+    // getMouseWheelDelta exception above, exactly. processChatInput() calls
+    // processTradeskillSearchInput() FIRST and returns immediately when it
+    // reports it holds the keyboard, so the two drains are mutually
+    // exclusive by construction and no key is ever read twice. The two are
+    // also the same widget: both loops feed applyTextEntryKey()
+    // (include/client/graphics/ui/text_entry.h), which is why there is no
+    // second entry mechanism to keep in step.
+    {"popKeyEvent", 2, "render thread only; processChatInput early-returns into processTradeskillSearchInput, mutually exclusive. T241/T421."},
     {"enterKeyPressed", 1, "render thread (processChatInput). T241."},
     {"slashKeyPressed", 1, "render thread (processChatInput). T241."},
     {"escapeKeyPressed", 1, "render thread (processChatInput). T241."},

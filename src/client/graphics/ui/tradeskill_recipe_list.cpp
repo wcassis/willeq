@@ -39,14 +39,17 @@
  * COMPONENT NAMES (sent only in reply to OP_RecipeDetails, as a separate
  * hand-packed buffer). A row shows a name, a trivial and a component count.
  *
- * INERT BY DESIGN, boarded rather than faked: the three editboxes
+ * T421 (board B365) MADE THE LEFT SIDE LIVE. T419 drew the three editboxes
  * (COMBW_MinTrivialEdit / COMBW_MaxTrivialEdit / COMBW_SearchTextEdit), the
- * COMBW_SearchButton and the three favourites buttons are DRAWN — they are
- * the oracle's own chrome and leaving a hole where they belong is what B335
- * complained about — but they are not clickable, because fable's static UI
- * has no text-entry widget outside the chat box. The search itself is
- * reached from `/recipesearch`, and the edit boxes echo what that command
- * last asked for. Board B365.
+ * COMBW_SearchButton and the three favourites buttons and left every one of
+ * them inert, because "fable's static UI has no text-entry widget outside
+ * the chat box". It has one now, and there is exactly ONE:
+ * include/client/graphics/ui/text_entry.h, the struct ChatPanelState itself
+ * derives from. The three editboxes are three `TextEntryState`s driven by
+ * the same applyTextEntryKey(); Enter in any of them, or a click on
+ * COMBW_SearchButton, pushes RecipeSearchIntent, which reaches the
+ * OP_RecipesSearch sender `/recipesearch` already used. The favourites row
+ * pushes RecipeFavoriteIntent into the existing SendRecipesFavorite().
  */
 
 #include "client/graphics/ui/tradeskill_panel.h"
@@ -55,10 +58,13 @@
 #include "client/graphics/ui/ui_renderer.h"
 #include "client/graphics/ui/ui_atlas.h"
 #include "client/graphics/text_batch.h"
+#include "client/graphics/ui/text_entry.h"
 #include "client/state/event_bus.h"
 
 #include <fmt/format.h>
 #include <algorithm>
+#include <chrono>
+#include <cstdlib>
 
 namespace EQT {
 namespace Graphics {
@@ -66,13 +72,17 @@ namespace Graphics {
 namespace {
 
 // A sunken field, the shape WDT_Inner gives every Editbox in this window.
+// T421: `focused` lights the top edge and draws the caret -- the same block
+// cursor renderChatPanel() draws for the chat input, at the same 500ms blink,
+// because it is the same widget.
 void drawField(UIRenderer& ui, TextBatch* tb,
                const irr::core::rect<irr::s32>& r,
-               const std::string& text) {
+               const std::string& text, bool focused) {
     ui.drawRect(r, irr::video::SColor(200, 18, 18, 24));
     ui.drawRect({r.UpperLeftCorner.X, r.UpperLeftCorner.Y,
                  r.LowerRightCorner.X, r.UpperLeftCorner.Y + 1},
-                irr::video::SColor(255, 30, 30, 38));
+                focused ? irr::video::SColor(255, 120, 150, 200)
+                        : irr::video::SColor(255, 30, 30, 38));
     ui.drawRect({r.UpperLeftCorner.X, r.LowerRightCorner.Y - 1,
                  r.LowerRightCorner.X, r.LowerRightCorner.Y},
                 irr::video::SColor(255, 90, 90, 110));
@@ -80,19 +90,38 @@ void drawField(UIRenderer& ui, TextBatch* tb,
         tb->addText(text, r.UpperLeftCorner.X + 2, r.UpperLeftCorner.Y + 1,
                     irr::video::SColor(255, 230, 230, 230));
     }
+    if (focused && tb) {
+        const auto now = std::chrono::steady_clock::now();
+        const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now.time_since_epoch()).count();
+        if ((ms / 500) % 2 == 0) {
+            const irr::s32 cx = r.UpperLeftCorner.X + 2 + tb->getTextWidth(text);
+            ui.drawRect({cx, r.UpperLeftCorner.Y + 1, cx + 1, r.LowerRightCorner.Y - 1},
+                        irr::video::SColor(255, 255, 255, 255));
+        }
+    }
 }
 
-// The same button shape tradeskill_panel.cpp's Combine/Close use. Drawn
-// dimmed, because none of the left side's buttons is wired (see the header).
-void drawInertButton(UIRenderer& ui, TextBatch* tb,
-                     const irr::core::rect<irr::s32>& r,
-                     const std::string& label) {
-    ui.drawRect(r, irr::video::SColor(180, 35, 35, 40));
+/** Decimal, or 0 for empty/unparseable -- see typedMinTrivial()'s comment. */
+uint32_t parseBound(const std::string& text) {
+    if (text.empty()) return 0;
+    char* end = nullptr;
+    const long v = std::strtol(text.c_str(), &end, 10);
+    if (end == text.c_str() || v < 0) return 0;
+    return static_cast<uint32_t>(v);
+}
+
+// The same button shape tradeskill_panel.cpp's Combine/Close use. T421 took
+// the dim "inert" colour off: all four of these are wired now.
+void drawButton(UIRenderer& ui, TextBatch* tb,
+                const irr::core::rect<irr::s32>& r,
+                const std::string& label) {
+    ui.drawRect(r, irr::video::SColor(200, 55, 55, 66));
     ui.drawRect({r.UpperLeftCorner.X, r.UpperLeftCorner.Y,
                  r.LowerRightCorner.X, r.UpperLeftCorner.Y + 1},
-                irr::video::SColor(255, 80, 80, 100));
+                irr::video::SColor(255, 110, 110, 135));
     if (tb) {
-        tb->addTextCentered(label, r, irr::video::SColor(255, 120, 120, 120));
+        tb->addTextCentered(label, r, irr::video::SColor(255, 225, 225, 225));
     }
 }
 
@@ -121,6 +150,51 @@ void applyTradeskillRecipeListCleared(
     state.minTrivial = data.minTrivial;
     state.maxTrivial = data.maxTrivial;
     state.showingFavorites = data.isFavorites;
+
+    // T421: seed the three editboxes from the request the server is actually
+    // answering, so a `/recipesearch` typed in the chat box updates the
+    // window's own fields -- which is all they showed before they were
+    // typeable. A field the player is CURRENTLY editing is left alone;
+    // overwriting a caret mid-word is the one thing a shared entry widget
+    // must never do.
+    if (state.focusedField != TradeskillField::SearchText) {
+        state.searchEntry.inputText = data.query;
+        state.searchEntry.cursorPos = static_cast<int>(data.query.size());
+    }
+    if (state.focusedField != TradeskillField::MinTrivial) {
+        state.minTrivialEntry.inputText =
+            data.minTrivial ? std::to_string(data.minTrivial) : std::string();
+        state.minTrivialEntry.cursorPos =
+            static_cast<int>(state.minTrivialEntry.inputText.size());
+    }
+    if (state.focusedField != TradeskillField::MaxTrivial) {
+        state.maxTrivialEntry.inputText =
+            data.maxTrivial ? std::to_string(data.maxTrivial) : std::string();
+        state.maxTrivialEntry.cursorPos =
+            static_cast<int>(state.maxTrivialEntry.inputText.size());
+    }
+}
+
+TextEntryState* TradeskillPanelState::focusedEntry() {
+    switch (focusedField) {
+        case TradeskillField::MinTrivial: return &minTrivialEntry;
+        case TradeskillField::MaxTrivial: return &maxTrivialEntry;
+        case TradeskillField::SearchText: return &searchEntry;
+        case TradeskillField::None:       break;
+    }
+    return nullptr;
+}
+
+const TextEntryState* TradeskillPanelState::focusedEntry() const {
+    return const_cast<TradeskillPanelState*>(this)->focusedEntry();
+}
+
+uint32_t TradeskillPanelState::typedMinTrivial() const {
+    return parseBound(minTrivialEntry.inputText);
+}
+
+uint32_t TradeskillPanelState::typedMaxTrivial() const {
+    return parseBound(maxTrivialEntry.inputText);
 }
 
 void applyTradeskillRecipeReceived(
@@ -166,12 +240,16 @@ void renderTradeskillRecipeList(UIRenderer& ui, const UILayout& layout,
                     kLabel);
     }
     drawField(ui, tb, TradeskillLayout::minTrivialEditRect(layout),
-              state.minTrivial ? fmt::format("{}", state.minTrivial) : std::string());
+              state.minTrivialEntry.inputText,
+              state.focusedField == TradeskillField::MinTrivial);
     drawField(ui, tb, TradeskillLayout::maxTrivialEditRect(layout),
-              state.maxTrivial ? fmt::format("{}", state.maxTrivial) : std::string());
-    drawField(ui, tb, TradeskillLayout::searchEditRect(layout), state.searchQuery);
-    drawInertButton(ui, tb, TradeskillLayout::searchButtonRect(layout),
-                    "Search Recipes");
+              state.maxTrivialEntry.inputText,
+              state.focusedField == TradeskillField::MaxTrivial);
+    drawField(ui, tb, TradeskillLayout::searchEditRect(layout),
+              state.searchEntry.inputText,
+              state.focusedField == TradeskillField::SearchText);
+    drawButton(ui, tb, TradeskillLayout::searchButtonRect(layout),
+               "Search Recipes");
 
     // --- COMBW_RecipeListArea ---
     if (tb) {
@@ -210,9 +288,9 @@ void renderTradeskillRecipeList(UIRenderer& ui, const UILayout& layout,
         tb->addText("Favorite Recipes:",
                     lbl.UpperLeftCorner.X, lbl.UpperLeftCorner.Y, kLabel);
     }
-    drawInertButton(ui, tb, TradeskillLayout::addFavoriteRect(layout), "Add");
-    drawInertButton(ui, tb, TradeskillLayout::removeFavoriteRect(layout), "Remove");
-    drawInertButton(ui, tb, TradeskillLayout::showFavoritesRect(layout), "Show");
+    drawButton(ui, tb, TradeskillLayout::addFavoriteRect(layout), "Add");
+    drawButton(ui, tb, TradeskillLayout::removeFavoriteRect(layout), "Remove");
+    drawButton(ui, tb, TradeskillLayout::showFavoritesRect(layout), "Show");
 }
 
 int hitTestTradeskillRecipe(const UILayout& layout,
@@ -227,6 +305,23 @@ int hitTestTradeskillRecipe(const UILayout& layout,
         }
     }
     return -1;
+}
+
+TradeskillField hitTestTradeskillField(const UILayout& layout,
+                                       const TradeskillPanelState& state,
+                                       int mouseX, int mouseY) {
+    if (!state.isOpen) return TradeskillField::None;
+    const irr::core::vector2di p(mouseX, mouseY);
+    if (TradeskillLayout::minTrivialEditRect(layout).isPointInside(p)) {
+        return TradeskillField::MinTrivial;
+    }
+    if (TradeskillLayout::maxTrivialEditRect(layout).isPointInside(p)) {
+        return TradeskillField::MaxTrivial;
+    }
+    if (TradeskillLayout::searchEditRect(layout).isPointInside(p)) {
+        return TradeskillField::SearchText;
+    }
+    return TradeskillField::None;
 }
 
 }  // namespace Graphics
