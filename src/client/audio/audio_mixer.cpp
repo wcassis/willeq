@@ -77,10 +77,28 @@ void AudioMixer::render(float* output, int frame_count) {
             continue;
         }
 
+        // T404 (board B250): SOURCE frames advanced per OUTPUT frame. The
+        // device runs at SAMPLE_RATE; an asset recorded at a different rate
+        // must be resampled or it plays at the wrong pitch and duration. This
+        // loop used to do ch.position++ unconditionally and never look at
+        // ch.sampleRate at all, so every 11,025 Hz effect in the shipped
+        // snd*.pfs archives came out at exactly k = 2.00 (T401 measured it
+        // live on BuyItem/LevDn/SpelCast). Linear interpolation between the
+        // two bracketing source frames; step is 1.0 exactly for a device-rate
+        // asset, so those channels are bit-identical to the pre-T404 path.
+        const double step = (ch.sampleRate > 0)
+            ? static_cast<double>(ch.sampleRate) / static_cast<double>(SAMPLE_RATE)
+            : 1.0;
+
         for (int i = 0; i < frame_count; ++i) {
-            if (ch.position >= ch.totalFrames) {
+            if (ch.position >= static_cast<double>(ch.totalFrames)) {
                 if (ch.looping) {
-                    ch.position = 0;
+                    // Keep the fractional remainder so a looped ambient does
+                    // not accumulate a phase error every wrap.
+                    ch.position -= static_cast<double>(ch.totalFrames);
+                    if (ch.position < 0.0 || ch.position >= static_cast<double>(ch.totalFrames)) {
+                        ch.position = 0.0;
+                    }
                 } else {
                     // release (T248): the allocator's seq_cst load of active
                     // then orders our reads of this channel before its
@@ -90,19 +108,33 @@ void AudioMixer::render(float* output, int frame_count) {
                 }
             }
 
+            const size_t idx0 = static_cast<size_t>(ch.position);
+            const float frac = static_cast<float>(ch.position - static_cast<double>(idx0));
+            // The last source frame has no successor: hold it rather than
+            // reading one past the buffer.
+            const size_t idx1 = (idx0 + 1 < ch.totalFrames)
+                ? idx0 + 1
+                : (ch.looping ? 0 : idx0);
+
             float sL, sR;
             if (ch.channels == 2) {
-                sL = ch.samples[ch.position * 2];
-                sR = ch.samples[ch.position * 2 + 1];
+                const float a0 = ch.samples[idx0 * 2];
+                const float a1 = ch.samples[idx0 * 2 + 1];
+                const float b0 = ch.samples[idx1 * 2];
+                const float b1 = ch.samples[idx1 * 2 + 1];
+                sL = a0 + (b0 - a0) * frac;
+                sR = a1 + (b1 - a1) * frac;
             } else {
                 // Mono: duplicate to both channels
-                sL = sR = ch.samples[ch.position];
+                const float a = ch.samples[idx0];
+                const float b = ch.samples[idx1];
+                sL = sR = a + (b - a) * frac;
             }
 
             output[i * 2]     += sL * gainL;
             output[i * 2 + 1] += sR * gainR;
 
-            ch.position++;
+            ch.position += step;
         }
     }
 
@@ -121,7 +153,7 @@ static void resetChannel(MixChannel& ch, MixChannelType type) {
     ch.sampleRate = AudioMixer::SAMPLE_RATE;
     ch.channels = 1;
     ch.totalFrames = 0;
-    ch.position = 0;
+    ch.position = 0.0;
     ch.looping = false;
     ch.renderCallback = nullptr;
     ch.renderUserData = nullptr;

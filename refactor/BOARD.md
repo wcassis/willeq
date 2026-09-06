@@ -1109,7 +1109,11 @@ it without taking that measurement first.
   108 on a gem cast (0.72-0.77, three trials) are heard too. **But two new
   defects came with it: every one of them plays at exactly DOUBLE rate
   (B250), and `SwordBlk.WAV` 120 is played 30 times and is INAUDIBLE because
-  it is emitted at the player's stale spawn position (B251).** This clause's
+  it is emitted at the player's stale spawn position (B251).** ~~both~~ **BOTH
+  FIXED by T404** (`4452b378` Leg A, `853bdf2b` Leg B) -- the mixer never read
+  `MixChannel::sampleRate` and played every asset at the device's 22,050, and
+  the self entity row was a projection nothing refreshed. **Neither is
+  live-re-checked yet; T404 took no server.** This clause's
   live proof is discharged for the coin/container/cast rows; clause 3's
   `DEATH` id (140 = LevDn) is now also proven audible and still wrong-named.
 
@@ -4022,7 +4026,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
 
 ## Added 2026-09-06 by T401 (owed live proofs 7, tip `4ff78bb4`)
 
-- **B250** (A) `src/client/audio/audio_manager.cpp` `loadSoundDataFromPfs` /
+- ~~**B250** (A) `src/client/audio/audio_manager.cpp` `loadSoundDataFromPfs` /
   `playSoundInternal` -- **every sound fable loads out of a `snd*.pfs` archive
   plays at exactly DOUBLE rate: an octave high and half as long.** MEASURED
   T401 (`review/T401/` §1d) on a bit-exact ALSA-loopback recording of a live
@@ -4043,10 +4047,28 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   distinguishes them. Whichever it is, the rate is being taken from
   somewhere other than the decoded WAV header. Closes when a PFS sound
   correlates at k = 1.00 in a live recording and a test pins the decoded
-  sample rate of a known 11,025 Hz archive member. Prov: T401 Review §1d;
-  B200; B036.
+  sample rate of a known 11,025 Hz archive member.~~ **FIXED by T404 Leg A**
+  (`4452b378`), **live re-check OWED**. The entry named the wrong two
+  functions and so did the plan: the PFS path and the decoder are both
+  correct, and the new decode assertions pass on the pre-fix tree (11,025 Hz
+  on BuyItem/LevDn/SpelCast/SwordBlk, read straight from each member's RIFF
+  header). `AudioMixer::render()`'s PCM loop did `ch.position++` once per
+  OUTPUT frame and **never read `MixChannel::sampleRate` at all** -- every
+  producer wrote that field and nothing consumed it. The device is opened at
+  `AudioMixer::SAMPLE_RATE == 22050`, so an 11,025 Hz asset came out at
+  exactly 2.00 and, by the same line, a 44,100 Hz asset would have played at
+  half speed. That answers the entry's open question: it is **not** "the
+  decoder assumes 22,050" and **not** "everything is doubled" -- it is "every
+  asset plays at the device rate", which happens to double the whole shipped
+  effects set because they are all 11,025. `position` is now a fractional
+  source-frame cursor advanced by `sampleRate / SAMPLE_RATE` with linear
+  interpolation; a device-rate channel steps by exactly 1.0 and is unchanged.
+  `tests/test_audio_playback_rate.cpp`, 8 tests: pre-fix 7 fail at ratios
+  1.985 / 1.999 / 1.989 against the assets' own headers, post-fix 8 pass.
+  **OWED: the audible re-check on T401's loopback rig (ncc peak at k = 1.00)
+  -- T404 took no server.** Prov: T401 Review §1d; T404 Review; B200; B036.
 
-- **B251** (A) `src/client/commands/combat_actions.cpp`
+- ~~**B251** (A) `src/client/commands/combat_actions.cpp`
   `eqt::commands::CommandsComponent` (the `WITH_AUDIO` block after the
   miss/hit text) and the entity map's record for `MySpawnId()` -- **the local
   player's own `Entity` row is never updated when the server relocates him, so
@@ -4069,7 +4091,26 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   server-forced relocation updates the self entity, a live session shows the
   melee sound audible at the player's real position, and a test pins the
   self-entity position against an `OP_ClientUpdate`/zone-summon for
-  `MySpawnId()`. Prov: T401 Review §1e and §6.3.
+  `MySpawnId()`.~~ **FIXED by T404 Leg B** (`853bdf2b`), **live re-check
+  OWED**. There is ONE authoritative position store and it is
+  `m_game_state.player()` (T288); the self row is a PROJECTION of it, and
+  only four sites wrote it -- the two `ZoneProcessClientUpdate` branches,
+  `WarpToPosition` (`/warp`) and the spawn itself. Never the movement
+  integrator, never the renderer's `PlayerPositionChanged` intent, never a
+  zone-in warp or a death respawn; and the server does not routinely echo our
+  own `OP_ClientUpdate`, so in a normal session the row held the spawn pose
+  for the whole session. `eqt::PlayerFacade` now takes `m_entities` by
+  reference and refreshes the projection from its two funnels --
+  `SetPosLocal()` (integrator + renderer intent) and `SetPosition()`
+  (discrete relocation) -- and nowhere else. **POSITION ONLY, deliberately:
+  `ZoneProcessClientUpdate` stores `server_h` verbatim in the self row while
+  writing `90 - server_h` into `PlayerState`, so mirroring the heading would
+  rotate every self row by 90 degrees plus a mirror. A test pins that the
+  heading is NOT mirrored.** `tests/test_self_entity_position.cpp`, 7 tests:
+  pre-fix 4 fail, the self-targeted range check computing **977.78** against
+  T401's live 1019.0 for the same shape; post-fix 7 pass. **OWED: the live
+  proof (melee sound audible at the player's real position after a `#goto`)
+  -- T404 took no server.** Prov: T401 Review §1e and §6.3; T404 Review.
 
 - **B252** (A/P) `refactor/BOARD.md` B203's own starting numbers --
   **the "live-measured pre-T383 baseline" B203 tells the next unit to start
@@ -4111,7 +4152,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   is inside 3%, and the per-channel table is re-taken against it. Prov: T401
   Review §4d(2); B203; B146.
 
-- **B254** (A) `src/client/spell/spell_manager.cpp` the `OP_MemorizeSpell`
+- ~~**B254** (A) `src/client/spell/spell_manager.cpp` the `OP_MemorizeSpell`
   handler -- **memorising a spell into an ALREADY-OCCUPIED gem leaves fable
   casting the OLD spell.** MEASURED T401 (`review/T401/` §6.4): after
   `#scribespells` filled the bar, `#memspell 93 0` produced the correct pair
@@ -4126,7 +4167,24 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   every later run. **A player hitting a gem and getting a different spell than
   the icon shows is class A**, and the wire evidence is a two-line replay.
   Closes when the two responses in that order leave gem 0 holding 93 and a
-  test replays the pair. Prov: T401 Review §6.4.
+  test replays the pair.~~ **CLOSED by T404 Leg C** (`b75ac801`). Not an
+  ordering bug and not a guard bug: **the arms did not exist.** The handler is
+  `eqt::zone::ZoneComponent::OnMemorizeSpell` (`src/client/zone/zone_dispatch.cpp`,
+  not `spell_manager.cpp` as this entry said) and it had two arms, both
+  requiring `scribing == 0` -- the spellbook-scribe confirmation, and a bare
+  `LOG_DEBUG` for a gem slot claiming "SpellManager handles this via other
+  mechanisms". It does not: `m_spell_gems` moved only on our own local
+  memorise timer and on the `PlayerProfile` bulk load, so nothing the server
+  said about a GEM ever reached it. New
+  `SpellManager::applyServerGemUpdate(gem_slot, spell_id, scribing)` plus the
+  dispatch arm for `scribing` 1 or 2; one packet, one edit, applied in
+  ARRIVAL ORDER. The un-memorise is unconditional (unlike `forgetSpell()`,
+  which refuses while casting -- the server has already emptied the slot), and
+  a response matching our own in-flight memorise is ignored so the
+  `MemorizeProgress` animation is not cut short.
+  `tests/test_memorize_into_occupied_gem.cpp`, 6 tests, wire replay: pre-fix 5
+  fail with gem 0 still holding 467, post-fix 6 pass. Prov: T401 Review §6.4;
+  T404 Review.
 
 - **B255** (P) `/mnt/projects/EverQuest_ETC1/willeq.eqe1` -- **the shared UI /
   effects pack is rewritten under running units, and T401 caught it changing

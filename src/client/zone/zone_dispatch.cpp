@@ -575,6 +575,24 @@ void eqt::zone::ZoneComponent::OnMemorizeSpell(const EQ::Net::Packet & p)
 			// Existing gem memorization - SpellManager handles this via other mechanisms
 			LOG_DEBUG(MOD_SPELL, "Gem memorization confirmation: gem={} spell={}", slot, spell_id);
 		}
+		// T404 (board B254): the MEMORISE and UN-MEMORISE arms, which did not
+		// exist. This handler acted only on scribing == 0 (a scribe into the
+		// spellbook), so nothing the server said about a GEM ever reached
+		// SpellManager: m_spell_gems moved only on our own local memorise
+		// timer and on the PlayerProfile bulk load. T401 measured the
+		// consequence -- #memspell 93 0 into an occupied gem produced the
+		// correct pair of responses (slot=0 spell_id=467 scribing=2, then
+		// slot=0 spell_id=93 scribing=1) and /cast 1 still sent spell=467,
+		// "Beginning cast of 'Lightning Storm'". A player clicking a gem got
+		// a different spell than its icon showed.
+		//
+		// One packet, one edit, applied in ARRIVAL ORDER -- so the un-memorise
+		// that precedes the memorise for the same slot cannot undo it.
+		else if (slot < EQ::MAX_SPELL_GEMS && (scribing == 1 || scribing == 2)) {
+			if (ctx_.spell_manager) {
+				ctx_.spell_manager->applyServerGemUpdate(slot, spell_id, scribing);
+			}
+		}
 	}
 }
 

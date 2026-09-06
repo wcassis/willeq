@@ -30,8 +30,10 @@
 // callers outside the friend components at all, so it is GONE from eq.h.
 
 #include "client/state/game_state.h"
+#include "client/eq_types.h"
 
 #include <atomic>
+#include <map>
 #include <cstdint>
 #include <glm/glm.hpp>
 #include <string>
@@ -40,8 +42,24 @@ namespace eqt {
 
 class PlayerFacade {
 public:
-	PlayerFacade(eqt::state::GameState& game_state, std::atomic<bool>& update_running)
-		: m_game_state(game_state), m_update_running(update_running) {}
+	// T404 (board B251): the entity map comes in by reference too. It is
+	// NOT a second store of the player's position -- the position store is
+	// m_game_state.player() and still only that (T288). The self row in the
+	// entity map is a PROJECTION that every range check and every positioned
+	// sound reads (SpellManager::checkRange takes the caster from
+	// GetPosition() and the target from this map, so a SELF-targeted cast
+	// compared the two), and before this unit only four discrete relocation
+	// sites wrote it -- never the movement integrator, never the renderer's
+	// PlayerPositionChanged intent, never a zone-in warp. T401 measured the
+	// consequence twice: a melee sound emitted 1,020 units away at the spawn
+	// pose and inaudible, and `distance=1019` on a self-targeted gem cast
+	// after a #goto. SetPosLocal()/SetPosition() below are the only two
+	// funnels through which the player's position ever changes, so the
+	// projection is refreshed there and nowhere else.
+	PlayerFacade(eqt::state::GameState& game_state, std::atomic<bool>& update_running,
+	             std::map<uint16_t, Entity>& entities)
+		: m_game_state(game_state), m_update_running(update_running),
+		  m_entities(entities) {}
 
 	// --- Cluster 2: player stat getters (K08's facade, verbatim) ---
 	uint8_t GetLevel() const;
@@ -132,6 +150,7 @@ public:
 	// the event-firing relocation path.
 	void SetPosLocal(float x, float y, float z) {
 		m_game_state.player().setPositionNoEvent(x, y, z);
+		MirrorSelfEntityPosition(x, y, z);  // T404 (B251)
 	}
 	void SetHeadingLocal(float heading) {
 		m_game_state.player().setHeadingNoEvent(heading);
@@ -159,8 +178,31 @@ public:
 	bool IsTrainerWindowOpen() const { return m_game_state.player().trainerNpcId() != 0; }
 
 private:
+	// T404 (board B251). POSITION ONLY, deliberately: the self row's HEADING
+	// is not in the same convention as PlayerState's. ZoneProcessClientUpdate
+	// stores `server_h` verbatim in the row while writing `90 - server_h`
+	// into PlayerState (the player-only flip documented in docs/CLAUDE.md's
+	// Heading/Rotation Conventions), so mirroring HeadingDeg() into the row
+	// would corrupt it by 90 degrees plus a mirror. Do not "finish the job"
+	// here without measuring which convention each reader wants.
+	//
+	// Cheap by construction: one map lookup on a map that holds a few
+	// hundred entries, on the two calls that already wrote the whole
+	// PlayerState position. A spawn id of 0 (pre-zone-in) finds nothing and
+	// costs one failed lookup.
+	void MirrorSelfEntityPosition(float x, float y, float z) {
+		const uint16_t id = m_game_state.player().spawnId();
+		if (id == 0) return;
+		auto it = m_entities.find(id);
+		if (it == m_entities.end()) return;
+		it->second.x = x;
+		it->second.y = y;
+		it->second.z = z;
+	}
+
 	eqt::state::GameState& m_game_state;
 	std::atomic<bool>& m_update_running;
+	std::map<uint16_t, Entity>& m_entities;
 };
 
 }  // namespace eqt

@@ -900,6 +900,47 @@ void SpellManager::setSpellGems(const uint32_t* gems, size_t count)
     LOG_DEBUG(MOD_SPELL, "Set {} spell gems", max_count);
 }
 
+void SpellManager::applyServerGemUpdate(uint32_t gem_slot, uint32_t spell_id,
+                                        uint32_t scribing)
+{
+    if (gem_slot >= MAX_SPELL_GEMS) {
+        return;
+    }
+    const uint8_t slot = static_cast<uint8_t>(gem_slot);
+
+    // Our OWN in-flight memorisation for this same slot and spell owns the
+    // gem until updateMemorization() completes it -- the progress animation
+    // is the whole point of MemorizeProgress. Leave it alone.
+    if (m_is_memorizing && m_memorize_slot == slot && m_memorize_spell_id == spell_id) {
+        LOG_DEBUG(MOD_SPELL, "Server gem update for gem {} matches our in-flight memorise; ignored", slot + 1);
+        return;
+    }
+
+    if (scribing == 2) {
+        // Un-memorise. Unconditional: the server has already emptied the
+        // slot, and refusing (as forgetSpell() does while casting) would
+        // leave the client holding a spell the server says is gone.
+        if (m_spell_gems[slot] == SPELL_UNKNOWN) {
+            return;
+        }
+        LOG_DEBUG(MOD_SPELL, "Server un-memorised spell {} from gem {}", m_spell_gems[slot], slot + 1);
+        m_spell_gems[slot] = SPELL_UNKNOWN;
+        m_gem_states[slot] = GemState::Empty;
+        publishGemChanged(slot);
+        return;
+    }
+
+    if (scribing == 1) {
+        m_spell_gems[slot] = spell_id;
+        m_gem_states[slot] = (spell_id != SPELL_UNKNOWN && spell_id != 0)
+            ? GemState::Ready : GemState::Empty;
+        const SpellData* spell = m_spell_db.getSpell(spell_id);
+        LOG_INFO(MOD_SPELL, "Server memorised '{}' ({}) into gem {}",
+            spell ? spell->name : "Unknown", spell_id, slot + 1);
+        publishGemChanged(slot);
+    }
+}
+
 // ============================================================================
 // Packet Handlers
 // ============================================================================

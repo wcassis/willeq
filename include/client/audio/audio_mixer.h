@@ -41,7 +41,16 @@ struct MixChannel {
     uint32_t sampleRate = 22050;
     uint8_t channels = 1;      // 1 = mono, 2 = stereo
     size_t totalFrames = 0;    // Total frames in sample data
-    size_t position = 0;       // Current playback position in frames
+    // T404 (board B250): a FRACTIONAL source-frame cursor, not an integer
+    // index. render() advances it by sampleRate/AudioMixer::SAMPLE_RATE per
+    // output frame, so a channel plays at the rate its asset was recorded at.
+    // Before T404 this was a size_t stepped by exactly one per output frame
+    // and sampleRate above was written by every producer and read by nobody:
+    // the shipped 11,025 Hz effects therefore played at the device's 22,050,
+    // an octave high and half as long (T401 measured k = 2.00 on three assets
+    // in a bit-exact loopback recording). Producers set it to 0; only render()
+    // advances it.
+    double position = 0.0;     // Current playback position in SOURCE frames
     bool looping = false;
     std::atomic<bool> active{false};  // Lock-free read in render()
 
