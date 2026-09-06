@@ -236,8 +236,20 @@ void IrrlichtRenderer::createSoftwareCursor() {
     std::vector<char> cursorData(cursorFileSize);
     cursorFile.read(cursorData.data(), cursorFileSize);
 
-    softwareCursorTexture_ = constrainedTextureCache_->getOrLoad("softwareCursor", cursorData);
-    if (!softwareCursorTexture_) softwareCursorTexture_ = constrainedTextureCache_->uploadTexture("softwareCursor");
+    // T413 (board B285): the cache name is the PACK's name. It used to be
+    // "softwareCursor", which findCompressedEntry() lowercases to
+    // "softwarecursor" and no EQE1 entry can ever match -- the pack's entry,
+    // built from software_cursor.bmp, is "software_cursor". That never showed
+    // up because this runs fourteen lines before getOrOpenEQE1("willeq") in
+    // renderer_init.cpp, so snapshotEQE1Loaders() was still empty and
+    // getOrLoad() fell through to the raw BMP decoder. Open the pack any
+    // earlier -- or add any other archive before this point -- and getOrLoad()
+    // takes its "EQE1 is configured but the texture is not in it" branch,
+    // which is LOG_FATAL + exit(1), on the DRM/KMS path, i.e. the Orange Pi,
+    // where this is the only cursor there is. With the name matching, the
+    // ordering is no longer load-bearing.
+    softwareCursorTexture_ = constrainedTextureCache_->getOrLoad("software_cursor", cursorData);
+    if (!softwareCursorTexture_) softwareCursorTexture_ = constrainedTextureCache_->uploadTexture("software_cursor");
     if (!softwareCursorTexture_) {
         LOG_FATAL(MOD_GRAPHICS, "Failed to load required texture: {}", cursorPath);
         std::exit(1);

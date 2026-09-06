@@ -4444,7 +4444,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
 
 ### Added by T406 (2026-09-06)
 
-- **B285** (B) `src/client/graphics/renderer/irrlicht_renderer.cpp`
+- ~~**B285** (B) `src/client/graphics/renderer/irrlicht_renderer.cpp`
   `createSoftwareCursor()` -- **the cursor is loaded under a cache name that
   no pack entry can ever match.** It calls
   `constrainedTextureCache_->getOrLoad("softwareCursor", ...)`, but the pack
@@ -4461,7 +4461,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   the pack entry the RGBA8888 override anyway so the two paths agree, but the
   name mismatch is unfixed. Closes when the cache name becomes
   `software_cursor` (and the ordering assumption is either removed or
-  commented as load-bearing). Prov: T406 Review.
+  commented as load-bearing). Prov: T406 Review.~~ **CLOSED by T413 Leg B (`cd7a9bab`)**: the cache name is now `software_cursor`, the pack's own, and the comment says out loud that the initialisation order is no longer load-bearing. Pinned by `tests/test_software_cursor_pack_name.cpp` (4 tests), which READS the name out of `createSoftwareCursor()`'s source rather than restating it, looks it up in the real shipped `willeq.eqe1`, drives the real `ConstrainedTextureCache` with the pack ALREADY OPEN (the configuration the ordering was hiding), and pins the consequence with a death test -- with the pack open an unmatchable name is `ExitedWithCode(1)`, not a fallback. Pre-fix, with only the production literal reverted, 2 of the 4 fail naming 'softwareCursor'. Prov: T413 Review.
 
 - **B286** (B) `src/client/graphics/spell_visual_fx.cpp` /
   `data/textures/spell_particle_fallback.bmp` -- **the spell particle fallback
@@ -4480,7 +4480,25 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   fallback alpha-blended like every other B266 consumer and convert the file.
   Reached only when the official client's `Glowflare03.dds` /
   `glittersp501.dds` / `Corona1.dds` are all missing, which is why it has
-  never been reported. Prov: T406 Review.
+  never been reported. Prov: T406 Review. **T413 MEASURED IT AND BOTH
+  PROPOSED FIXES ARE REFUTED (T413 Leg C, this branch's third commit): the shipped
+  `data/textures/spell_particle_fallback.bmp` is 32x32 24-bit and ALL 3,072 of
+  its pixel bytes are 255.** There is no falloff in ANY channel: the generator
+  writes the cosine into ALPHA (`SColor(alpha, 255, 255, 255)`) and the 24-bit
+  BMP write discards it, so the shape is destroyed at GENERATION time, not at
+  blend time. So (a) there is no alpha for a shader to premultiply and (b) an
+  alpha-blend material would sample alpha=1 everywhere and draw the same opaque
+  white square. The only fix is asset-side -- the falloff in RGB, which is
+  correct for the additive blend it is drawn with and is what the official
+  client's Glowflare DDS does -- and that moves `data/textures/`,
+  `data/textures.sha256`, the SHARED `/mnt/projects/EverQuest_ETC1/willeq.eqe1`
+  and `data/willeq.eqe1.sha256` in one commit. **T413 did not do it because
+  `PackReproducible --check` compares against the INSTALLED pack in every
+  worktree**, so installing a new one turns the two units running in parallel
+  red mid-flight; see **B322**. The reason string in
+  `tests/test_texture_alpha_census.cpp` now carries the measurement. Class
+  unchanged (B): the fallback is reached only when Glowflare03.dds,
+  glittersp501.dds and Corona1.dds are all missing.
 
 - ~~**B287** (C) `/mnt/projects/EverQuest_ETC1/willeq.eqe1`,
   `include/client/graphics/eqe1_format.h` -- **B266's fix cost 17.2 MB of shared pack and the
@@ -4625,7 +4643,7 @@ T407 deleted eleven (see below). The rest are boarded here.
   its callers make is discarded. Closes when the parameter is honoured or
   removed from the signature. Found by T407's census.
 
-- **B296** (A) `include/client/state/event_bus.h` -- **bridge event payload
+- ~~**B296** (A) `include/client/state/event_bus.h` -- **bridge event payload
   fields that every producer fills and no consumer reads.** The census names
   `CastingStateChangedData::castTimeRemainingMs` and `::castTimeTotalMs`,
   `SpellMemorizingData::progressMs`, `SpellGemChangedData::memorizeTotalMs`,
@@ -4638,7 +4656,41 @@ T407 deleted eleven (see below). The rest are boarded here.
   missing half: `test_reachability_sweep` pins that every event TYPE has a
   publisher and a consumer, and says nothing about its FIELDS. Closes when each
   field is drawn or dropped; a per-field clause in the reachability sweep would
-  keep it closed. Found by T407's census.
+  keep it closed. Found by T407's census.~~ **CLOSED by T413 Leg A (`89e773df`), per field**:
+  - `CastingStateChangedData::castTimeRemainingMs` / `::castTimeTotalMs` --
+    **DRAWN**. Oracle `EQUI_CastingWindow.xml` `<Gauge item="Casting_Gauge">`
+    EQType 7, 116x10 at (3,19) in the 140x60 "Casting Time" screen. fable
+    already drew that gauge but clocked it off a render-thread stopwatch; the
+    bridge arm was a `LOG_TRACE` whose comment named `WindowManager`, deleted
+    in `0f25cb57`. It now applies the authoritative remaining/total, stopwatch
+    kept as the pre-first-sample fallback.
+  - `SpellMemorizingData::progressMs` -- **DRAWN**. Oracle
+    `EQUI_SpellBookWnd.xml` `<Gauge item="SBW_Memorize_Gauge">` EQType 9,
+    100x8 at (204,312), FillTint (200,0,200), in the 510x360 `SpellBookWnd`.
+    Drawn in fable's spellbook popup by `spellbookMemorizeGaugeRect()`, the
+    same proportional rule `InventoryLayout::coinRect()` uses --
+    `{360,428,438,435}` at 800x600. Second WindowManager-era `LOG_TRACE` gone.
+  - `SpellGemChangedData::memorizeTotalMs` -- **DROPPED**. The oracle draws no
+    gauge on a gem: `EQUI_CastSpellWnd.xml`'s `<SpellGem item="CSPW_Spell0">`
+    .. `"CSPW_Spell8"` carry only a `SpellGemDrawTemplate`
+    (Holder/Background/Highlight), no Gauge piece. Memorise progress is the
+    spellbook's gauge, published on `SpellMemorizing`.
+  - `CursorItemChangedData::queueSize` -- **DROPPED**.
+    `EQUI_CursorAttachment.xml` is three 40x40 icon slots (`CA_Anim`,
+    `CA_Anim2`, `CA_SpellGem`) with no count label: the official client never
+    shows the queue depth. `InventoryState::cursorQueueSize()` (read + tested)
+    is untouched.
+  - `SkillActivationFeedbackData::cooldownMs` -- **BOARDED, panel missing**:
+    **B320**.
+  - `TradeskillContainerOpenedEvent::containerName` / `::isWorldObject` /
+    `::slotCount` and `TradeskillContainerClosedEvent::wasWorldObject` --
+    **BOARDED, panel missing**: **B321**.
+
+  Pinned by `tests/test_bridge_payload_fields.cpp` (12 tests; pre-fix the TU
+  does not compile against the reverted production). The per-field clause the
+  entry asked for is NOT added to `test_reachability_sweep` -- the two
+  compile-time pins in the new TU do that job for the dropped pair, and the
+  general sweep is a separate piece of work. Prov: T413 Review.
 
 - **B297** (B) `include/client/graphics/environment/environment_config.h` and
   siblings -- **JSON config keys parsed into fields nothing reads.** The census
@@ -4835,3 +4887,59 @@ client uses every field.
   live, so no PINNED UI pixel changed; the unpinned rest of the UI is what
   nobody has looked at. Closes when someone runs the client and looks at it, or
   pins more of it. Prov: T411 Review section 4.
+
+---
+
+## Added 2026-09-06 by T413
+
+- **B320** (B) `include/client/state/event_bus.h`
+  `SkillActivationFeedbackData::cooldownMs`, and the panel it needs --
+  **fable has no combat-abilities window, so a skill's cooldown has nowhere to
+  be drawn.** `EverQuest` computes an adjusted cooldown
+  (`src/client/core/everquest.cpp`) and publishes it on every skill
+  activation; `IrrlichtBridge`'s `SkillActivationFeedback` arm is a
+  `LOG_TRACE` that discards the whole payload, and no static panel has a slot
+  for it. The oracle element is `EQUI_CombatAbilityWnd.xml`'s
+  `<Gauge item="CAW_CombatEffectTimeRemainingGauge">` (EQType 26, 116x10 at
+  (11,30)) with `CAW_CombatEffectLabel` above it, inside the 174x150
+  `<Screen item="CombatAbilityWnd"> <Text>Combat Abilities</Text>`, plus the
+  eight 40x40 `CAW_Button1..8` ability buttons. Closes when that panel exists
+  and the field feeds its gauge; the field is left in place until then, so the
+  producer does not have to be rewritten twice. Split out of B296 by T413.
+
+- **B321** (B) `include/client/state/event_bus.h`
+  `TradeskillContainerOpenedEvent::containerName` / `::isWorldObject` /
+  `::slotCount` and `TradeskillContainerClosedEvent::wasWorldObject`, and the
+  panel they need -- **fable has no tradeskill container window.**
+  `EntitiesComponent` fills all four (`entities_component_world.cpp`) and both
+  bridge arms are `LOG_TRACE`s that discard them; the container's NAME, its
+  world-vs-inventory provenance and its slot COUNT are exactly a container
+  window's title, close behaviour and grid size. Oracle:
+  `EQUI_TradeskillWnd.xml`. Closes when that panel exists and the four fields
+  feed it. Split out of B296 by T413.
+
+- **B322** (B) `src/client/graphics/texture_generators.cpp`
+  `generateSpellParticleFallback()`, `data/textures/spell_particle_fallback.bmp`,
+  `data/textures.sha256`, `/mnt/projects/EverQuest_ETC1/willeq.eqe1`,
+  `data/willeq.eqe1.sha256` -- **the spell particle fallback's shape is
+  destroyed at GENERATION time, and fixing it is a SHARED-PACK unit.**
+  T413 measured the shipped file: 32x32, 24-bit, and **all 3,072 pixel bytes
+  are 255** -- solid white, no falloff in any channel. The generator computes a
+  cosine falloff and writes it into ALPHA only
+  (`SColor(alpha, 255, 255, 255)`); the 24-bit BMP write throws that channel
+  away. This REFUTES both fixes B286 proposed: there is no alpha for a shader
+  to premultiply, and an alpha-blend material would sample alpha=1 everywhere
+  and draw the same opaque white square. The fix is the generator putting the
+  falloff in RGB -- correct for the additive blend
+  (`EMT_TRANSPARENT_ADD_COLOR` -> `glBlendFunc(GL_ONE, GL_ONE)`) this is drawn
+  with, and what the official client's Glowflare DDS does -- which cascades:
+  regenerate the BMPs, rewrite `data/textures.sha256`, rebuild the pack,
+  update `data/willeq.eqe1.sha256`, **all in one commit**. **T413 did not do it
+  and that is the point of this entry**: `PackReproducible --check` compares
+  the rebuild against the pinned hash AND against the INSTALLED pack, which
+  every worktree reads, so installing a new pack turns the suite red in every
+  slot running a unit at the time -- T408 and T412 were both live. This needs a
+  unit that owns the pack exclusively (the way T411 did). The measurement is
+  recorded in `tests/test_texture_alpha_census.cpp`'s reason string for the
+  file. Low urgency: the fallback is reached only when Glowflare03.dds,
+  glittersp501.dds and Corona1.dds are ALL missing. Found by T413.

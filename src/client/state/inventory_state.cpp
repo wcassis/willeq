@@ -228,7 +228,6 @@ void InventoryState::fireCursorItemChangedEvent() {
 
     CursorItemChangedData event;
     event.hasCursorItem = m_hasCursorItem;
-    event.queueSize = m_cursorQueueSize;
     m_eventBus->publish(GameEventType::CursorItemChanged, event);
 }
 
