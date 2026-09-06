@@ -1577,6 +1577,40 @@ IF(EQT_GRAPHICS)
     ENDIF()
 ENDIF()
 
+# T403 (board B260): generate_textures, un-retired. It is the build recipe for
+# all 64 BMPs under data/textures/ -- 64 of willeq.eqe1's 67 entries. P26
+# retired it as dead; T398/T400 proved that wrong. scripts/build_textures.sh
+# --check (the TexturesReproducible ctest test) regenerates into a temp dir and
+# diffs the hashes against the checked-in tree, so the directory is derived.
+IF(EQT_GRAPHICS)
+    ADD_EXECUTABLE(generate_textures
+        tools/generate_textures.cpp
+        src/client/graphics/texture_generators.cpp
+        src/client/graphics/detail/detail_texture_atlas.cpp
+        src/client/graphics/detail/detail_texture_atlas_flora.cpp
+        src/client/graphics/detail/detail_texture_atlas_grass.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(generate_textures PRIVATE
+        ${CMAKE_SOURCE_DIR}/tools
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src
+    )
+    IF(fmt_FOUND)
+        TARGET_LINK_LIBRARIES(generate_textures ${IRRLICHT_LIBRARY} fmt::fmt)
+    ELSE()
+        TARGET_LINK_LIBRARIES(generate_textures ${IRRLICHT_LIBRARY} ${FMT_LIBRARY})
+    ENDIF()
+    IF(EQT_DRM OR EQT_GLES2)
+        # Same P26/P27 link set every other Irrlicht-linking tool needs against
+        # the static GLES2-patched archive. Its absence is what got all six
+        # tools in tools/retired/ retired instead of fixed.
+        TARGET_LINK_LIBRARIES(generate_textures EGL GLESv2 drm gbm)
+        IF(NOT EQT_DRM)
+            TARGET_LINK_LIBRARIES(generate_textures X11)
+        ENDIF()
+    ENDIF()
+ENDIF()
+
 # T398: dump_icon_sheet was never a CMake target, so the tree's only TGA
 # decoder compiled nowhere. Both it and ui_atlas_builder now share
 # tools/tga_reader.h, and both are built.

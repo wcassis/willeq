@@ -197,6 +197,39 @@ committed one machine's absolute EQ path. They now resolve through
 measured at ~0.4 s for the 17 sound archives and ~30 ms for the 378
 character archives. A new generated cache uses these, never `ResolveDataPath()`.
 
+### The shipped data has build recipes — use them, do not hand-edit
+
+Two shipped assets are **derived**, not hand-carried, and each has a ctest
+test that fails if the checked-in bytes and their inputs drift apart:
+
+| asset | recipe | pinned by | ctest |
+|---|---|---|---|
+| `data/textures/*.bmp` (64 files) | `scripts/build_textures.sh` → `tools/generate_textures` | `data/textures.sha256` | `TexturesReproducible` |
+| `/mnt/projects/EverQuest_ETC1/willeq.eqe1` (67 entries) | `scripts/build_willeq_pack.sh` | `data/willeq.eqe1.sha256` | `PackReproducible` |
+
+The pack's inputs are the 64 BMPs plus `tools/ui_atlas_builder`, so a texture
+change cascades: regenerate the BMPs, rewrite `data/textures.sha256`
+(`--write-pins`), rebuild the pack, update `data/willeq.eqe1.sha256` — all in
+**one commit**, or both tests go red. The pack lives outside the repo and is
+read live by every worktree; only `build_willeq_pack.sh` may install it (it
+writes a temp file in the destination directory and `mv`s it into place).
+
+Every one of those BMPs is produced by
+`src/client/graphics/texture_generators.cpp` (plus
+`DetailTextureAtlas::createAtlasImage()` for `detail_atlas.bmp`). That TU was
+in **no CMake target at all** until T400/T403 — which is how the particle
+atlas shipped alpha-less for a year (board B225). Two known gaps remain:
+`detail_atlas.bmp` does not match its generator (board **B265**), and 63 of
+the 64 files are written 24-bit, silently dropping alpha their generators do
+draw (board **B266**). `generate_textures --report` prints that census.
+
+A generator must be **bit-identical across optimisation levels** — a shipped
+asset whose bytes depend on `CMAKE_BUILD_TYPE` makes `TexturesReproducible` a
+coin toss. Two noise hashes overflowed signed `int` (UB) and GCC folded them
+differently at -O0 and -O2, moving 157 texels of the particle atlas (board
+B268, fixed in T403 by moving them to `uint32_t`). Keep new generator
+arithmetic defined.
+
 ### Display Options Comparison
 
 | Method | Use Case | Audio | Client |

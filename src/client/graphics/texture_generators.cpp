@@ -1,5 +1,6 @@
 #include "client/graphics/texture_generators.h"
 #include <cmath>
+#include <cstdint>
 #include <random>
 
 namespace EQT {
@@ -190,10 +191,18 @@ irr::video::IImage* generateParticleAtlas(irr::video::IVideoDriver* driver) {
         float centerY = tileSize / 2.0f;
         float baseRadius = tileSize / 2.0f - 2.0f;
 
+        // T403 (board B268): this hash MUST run in uint32_t. Written in
+        // signed `int` it overflows, which is UNDEFINED BEHAVIOUR, and GCC
+        // folded it differently at -O0 and at -O2: the two builds produced
+        // 157 texels of different ALPHA in this tile alone, so the bytes of
+        // a SHIPPED asset depended on CMAKE_BUILD_TYPE. uint32_t wraps by
+        // definition and reproduces the shipped values at every -O level.
         auto pseudoNoise = [](int x, int y, int seed) -> float {
-            int n = x + y * 57 + seed;
+            uint32_t n = static_cast<uint32_t>(x + y * 57 + seed);
             n = (n << 13) ^ n;
-            return (1.0f - ((n * (n * n * 15731 + 789221) + 1376312589) & 0x7fffffff) / 1073741824.0f) * 0.5f + 0.5f;
+            const uint32_t h =
+                (n * (n * n * 15731u + 789221u) + 1376312589u) & 0x7fffffffu;
+            return (1.0f - static_cast<float>(h) / 1073741824.0f) * 0.5f + 0.5f;
         };
 
         for (int y = 0; y < tileSize; ++y) {
@@ -598,9 +607,13 @@ float noise2D(float x, float y, int seed) {
     int xi = static_cast<int>(std::floor(x)) & 255;
     int yi = static_cast<int>(std::floor(y)) & 255;
 
-    int n = xi + yi * 57 + seed;
+    // T403 (board B268): uint32_t, not int -- see generateParticleAtlas()'s
+    // pseudoNoise. Signed overflow here is UB and made the 32 shipped
+    // storm-cloud frames hostage to the optimisation level.
+    uint32_t n = static_cast<uint32_t>(xi + yi * 57 + seed);
     n = (n << 13) ^ n;
-    return (1.0f - ((n * (n * n * 15731 + 789221) + 1376312589) & 0x7fffffff) / 1073741824.0f);
+    const uint32_t h = (n * (n * n * 15731u + 789221u) + 1376312589u) & 0x7fffffffu;
+    return (1.0f - static_cast<float>(h) / 1073741824.0f);
 }
 
 float smoothNoise2D(float x, float y, int seed) {

@@ -4,7 +4,8 @@
  * T400 (board B225). `generateParticleAtlas()` builds all sixteen tiles
  * ENTIRELY IN ALPHA -- every draw helper writes one constant RGB per tile
  * and varies only `pixelColor.setAlpha(...)`. The shipped file was written
- * by the retired `tools/retired/generate_textures.cpp`, which used
+ * by the then-retired generator (now the live `tools/generate_textures.cpp`,
+ * un-retired by T403 / board B260), which used
  * Irrlicht's `writeImageToFile(img, "*.bmp")`; `CImageWriterBMP` emits 24
  * bpp and DROPS the alpha channel, so the atlas shipped as a 24-bit BMP3
  * whose every texel in a tile is that tile's flat RGB. The runtime's
@@ -34,6 +35,11 @@
  * Deterministic: no RNG, no time, no GPU -- an EDT_NULL Irrlicht device is
  * created purely because `generateParticleAtlas()` takes an IVideoDriver*
  * to call `createImage()`.
+ *
+ * NOTE (T403, board B267): `generate_textures --only particle_atlas.bmp` now
+ * does exactly what this tool does, for all 64 shipped BMPs rather than one.
+ * This target is a strict subset and a duplicate-then-drift risk; it is kept
+ * only because `test_particle_atlas_alpha` and T400's Review name it.
  */
 
 #include "bmp32_writer.h"

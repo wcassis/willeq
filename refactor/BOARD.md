@@ -3727,7 +3727,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
 
 ### Added by T400 (2026-09-05)
 
-- **B260** (B) `src/client/graphics/texture_generators.cpp` /
+- ~~**B260** (B) `src/client/graphics/texture_generators.cpp` /
   `data/textures/` -- **the 926-line TU that DEFINES every procedural texture
   the client ships was in no CMake target at all, and 63 of its 64 outputs
   still have no build recipe.** Found by T400 while fixing B225: a
@@ -3754,7 +3754,16 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   source of truth. Do NOT half-do it: a generator that compiles but whose
   output nobody compares is exactly the state that produced B225. The
   `tools/retired/README.md` paragraph needs correcting whichever way it
-  goes. Prov: T400 Review.
+  goes. Prov: T400 Review.~~ **CLOSED by T403 (2026-09-06, `9122297d`) via route (a).**
+  `tools/generate_textures.cpp` is un-retired as a live CMake target and
+  `scripts/build_textures.sh --check` (ctest `TexturesReproducible`)
+  regenerates all 64 into a temp dir on every run: **63 of 64 come out
+  byte-for-byte identical to the shipped file**, so `data/textures/` is now
+  DERIVED. The 64th, `detail_atlas.bmp`, differs in PIXELS and was left
+  alone per the plan -> **B265**. The 24-bit alpha drop turned out to affect
+  all 63, not just the particle atlas -> **B266**.
+  `tools/retired/README.md` corrected (and the stale `B247` citation in it
+  fixed to B260); CLAUDE.md gained a shipped-data recipe section.
 
 - **B261** (B) `tools/eqe1_builder.cpp` / `docker/irrlicht-drm/COGLES2Shaders.cpp`
   -- **the ETC1 `_alpha` companion is INVISIBLE to any shader with a single
@@ -3779,6 +3788,101 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   companion" is not a fix for a blended draw -- in-band alpha is. Prov:
   T400 Review.
 
+### Added by T403 (2026-09-06)
+
+- **B265** (B) `data/textures/detail_atlas.bmp` /
+  `src/client/graphics/detail/detail_texture_atlas.cpp` -- **the shipped
+  detail atlas is the ONLY one of the 64 BMPs that its generator does not
+  reproduce, and it is wrong in two independent ways.** T403 regenerated all
+  64 through the un-retired `tools/generate_textures`; 63 matched byte for
+  byte, this one did not (same 786,486 bytes, identical 54-byte header,
+  **29,509 of 262,144 pixels differ**). Two causes, measured separately:
+  (a) **5-bit quantisation.** Every one of the shipped file's 786,432 pixel
+  bytes is a multiple of 8 -- it was round-tripped through an `A1R5G5B5`
+  (16-bit) texture. The retired tool asked for an `EDT_SOFTWARE` device and
+  wrote `createImage(createAtlas(driver))`, i.e. image -> software texture ->
+  image, and Irrlicht's software driver stores textures at 16 bpp. 18,913
+  pixels differ by exactly that truncation and nothing else.
+  (b) **Code drift in the twelve footprint tiles** (rows 5-6, `AtlasTile::
+  FootprintLeft/Right{Grass,Dirt,Sand,Snow,Swamp,Jungle}`): 883 pixels in
+  each of the twelve, identical counts, and the shipped pixels are near-black
+  (BGR values 0..24) where `drawFootprintLeft/Right` now draws the per-biome
+  colour it is passed (e.g. `(25,35,40)..(54,..)` for grass). The BMP predates
+  the biome-coloured footprints. 10,596 pixels total.
+  T403 did NOT regenerate it: `detail_atlas` is drawn by every outdoor zone
+  the visual gate covers, so moving its pixels is a golden move and the plan's
+  STOP condition. It is hash-pinned in `data/textures.sha256` and named in
+  `scripts/build_textures.sh`'s `NOT_REPRODUCIBLE` list, so the file cannot
+  drift further unnoticed, but the tree is not its source of truth. Closes when
+  someone regenerates it deliberately (dropping the software-driver round trip
+  -- `DetailTextureAtlas::createAtlasImage()` exists now and needs no driver
+  textures), reblesses whatever gate images move, and rebuilds the pack.
+  Prov: T403 Review §2.
+
+- **B266** (A) `data/textures/*.bmp` (63 files) / `tools/generate_textures.cpp`
+  -- **B225 was not one file. Every generator except the particle atlas draws
+  a real alpha channel, and every one of those 63 BMPs ships 24-bit with that
+  alpha thrown away.** Measured by `generate_textures --report`, which prints
+  the alpha histogram of each image BEFORE it is written: `software_cursor`
+  (an 8x10 arrow on a transparent ground) has 2 alpha levels min 0 max 255;
+  `tumbleweed` 2 levels min 0 max 255; `creature_atlas` 23 levels; every rain
+  texture 64+ levels min 0 max ~219; every snow texture 64+ levels min 0;
+  `spell_particle_fallback` (a cosine-falloff soft circle) 64+ levels min 0
+  max 254; the 32 `storm_cloud_blend_*` frames 56-64+ levels with max ~90-107,
+  i.e. the clouds are meant to be **mostly transparent** and ship fully
+  opaque. Irrlicht's `CImageWriterBMP` emits 24 bpp and drops alpha with no
+  diagnostic; `ConstrainedTextureCache::decodeBMP()` then substitutes
+  `A=255`, and in the pack ETC1 is RGB-only anyway (B261). Live consumers
+  confirmed: `SpellVisualFx` (`spell_particle_fallback`), `DetailManager`
+  (`detail_atlas`), `BoidsManager` (`creature_atlas`), plus the weather and
+  cursor paths. This is the same defect as B225 with 63 siblings, and it is
+  now measurable in one command because the generator finally compiles.
+  **Not fixed in T403**, deliberately: the fix rewrites 63 shipped BMPs (they
+  grow ~33%), rebuilds `willeq.eqe1`, and needs a per-texture decision about
+  in-band RGBA8888 vs an ETC1 `_alpha` companion the consuming shader
+  actually samples (B261 again) -- and the plan's rule was to change no
+  shipped BMP. Closes when the 63 are converted through
+  `tools/bmp32_writer.h`, their consumers are checked against B261, the pack
+  is rebuilt, and the gate is re-blessed. Prov: T403 Review §3.
+
+- **B267** (B) `tools/particle_atlas_builder.cpp` -- **a 118-line target that
+  is now a strict subset of another one.** T400 created it to regenerate the
+  single file `data/textures/particle_atlas.bmp`; T403's `generate_textures`
+  writes all 64 including that one, through the same `tools/bmp32_writer.h`,
+  and `generate_textures --only particle_atlas.bmp` is the exact equivalent
+  (verified: `TexturesReproducible` regenerates the shipped 32-bit atlas
+  byte-identical). Two producers for one asset is the duplicated-then-drifted
+  pattern; the shipped file would follow whichever one someone happened to
+  run. Kept in T403 only because `tests/test_particle_atlas_alpha.cpp`'s
+  failure message and T400's Review name it by hand. Closes when the target
+  and source are deleted and that test's message points at
+  `generate_textures` instead -- or on a ruling that the narrow tool earns its
+  keep. Prov: T403 Review §5.
+
+- ~~**B268** (A) `src/client/graphics/texture_generators.cpp`
+  `generateParticleAtlas()`'s `pseudoNoise` and `noise2D()` -- **the bytes of
+  a SHIPPED asset depended on `CMAKE_BUILD_TYPE`.** Both hashes ran
+  `n * (n * n * 15731 + 789221) + 1376312589` in signed `int`, which
+  overflows -- undefined behaviour -- and GCC folded it differently at -O0
+  and at -O2. Measured: `tools/generate_textures` built in slot1's default
+  tree (no `CMAKE_BUILD_TYPE`, -O0) and in a `RelWithDebInfo` tree (-O2 -g
+  -DNDEBUG) from the SAME source produced particle atlases differing in
+  **157 of 4,096 texels, all in the ALPHA channel, all inside tile 11 (the
+  snow patch, the only `pseudoNoise` consumer)**, alpha deltas up to 80. The
+  -O0 build matched the shipped file; the -O2 build did not, which is why
+  T400's `ParticleAtlasAlpha.ShippedFileMatchesTheGeneratorPixelForPixel`
+  passed in a slot and failed on the merged tip against the identical BMP.
+  `noise2D()` (the storm-cloud Perlin hash, 32 shipped frames) carried the
+  same UB and was only accidentally stable.~~ **FIXED and CLOSED by T403
+  (2026-09-06, `9122297d`):** both hashes moved to `uint32_t`, whose wrap is
+  defined and reproduces the shipped values at every optimisation level.
+  Proof: the tool built at -O0 and at -O2 (`build-rwdi`,
+  `-DCMAKE_BUILD_TYPE=RelWithDebInfo`) now writes all 64 BMPs **bit-identical
+  to each other**, and 63 of 64 bit-identical to `data/textures/` (the 64th
+  is B265's `detail_atlas.bmp`, which no build reproduces);
+  `test_particle_atlas_alpha` is 5/5 green built RelWithDebInfo. No shipped
+  byte changed. Prov: T403 Review §4.
+
 ### Added by T389 (2026-09-05)
 
 - ~~**B225** (A) `data/textures/particle_atlas.bmp` -- **the shipped particle
@@ -3789,8 +3893,9 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   in `src/client/graphics/texture_generators.cpp` builds the sixteen shapes
   entirely in ALPHA -- `drawCircle`/`drawStar`/`drawSpellSparkle` write a
   constant RGB and vary only `pixelColor.setAlpha(...)` -- and
-  `tools/retired/generate_textures.cpp`'s `writeImage(..., "particle_atlas.bmp")`
-  drops it. `ParticleManager::loadParticleAtlas()` loads that file and
+  the retired generator's `writeImage(..., "particle_atlas.bmp")`
+  drops it (that tool is no longer under `tools/retired/` -- T403 un-retired
+  it as `tools/generate_textures.cpp`). `ParticleManager::loadParticleAtlas()` loads that file and
   `particleMaterial_.MaterialType = EMT_TRANSPARENT_ALPHA_CHANNEL`, so the
   blend reads alpha 255 everywhere: SoftCircle, Snowflake, SpellSparkle and
   IceCrystal are indistinguishable opaque squares that differ only in the
