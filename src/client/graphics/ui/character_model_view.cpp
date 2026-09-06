@@ -41,7 +41,6 @@ void CharacterModelView::init(irr::scene::ISceneManager* smgr,
         return;
     }
 
-    parentSmgr_ = smgr;
     driver_ = driver;
     width_ = width;
     height_ = height;
@@ -335,7 +334,6 @@ void CharacterModelView::adjustCameraForModel() {
 
     // Store for zoom functionality
     cameraDistance_ = distance;
-    modelCenterY_ = modelCenter;
 
     // Position camera slightly above center, looking at model center
     float cameraHeight = modelCenter + extent.Y * 0.1f;

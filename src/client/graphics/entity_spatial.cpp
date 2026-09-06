@@ -110,7 +110,6 @@ void EntityRenderer::getEntitiesInRange(float centerX, float centerY, float rang
 
 void EntityRenderer::setBspTree(std::shared_ptr<BspTree> bspTree) {
     bspTree_ = bspTree;
-    currentCameraRegionIdx_ = SIZE_MAX;
     currentCameraRegion_ = nullptr;
     LOG_DEBUG(MOD_GRAPHICS, "EntityRenderer: BSP tree set with {} regions",
               bspTree_ ? bspTree_->regions.size() : 0);
@@ -150,7 +149,6 @@ void EntityRenderer::invalidateOcclusionCache() {
 
 void EntityRenderer::clearBspTree() {
     bspTree_ = nullptr;
-    currentCameraRegionIdx_ = SIZE_MAX;
     currentCameraRegion_ = nullptr;
     LOG_DEBUG(MOD_GRAPHICS, "EntityRenderer: BSP tree cleared");
 }

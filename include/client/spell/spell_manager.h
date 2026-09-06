@@ -109,6 +109,7 @@ public:
 
     // ========================================================================
     // Spell Gems
+    // (defined in src/client/spell/spell_gems.cpp)
     // ========================================================================
 
     // Memorize a spell into a gem slot (0-7)
@@ -140,6 +141,7 @@ public:
 
     // ========================================================================
     // Spellbook
+    // (defined in src/client/spell/spell_gems.cpp)
     // ========================================================================
 
     // Scribe a spell to spellbook (from server data or scroll)
@@ -181,6 +183,7 @@ public:
 
     // ========================================================================
     // Packet Handlers (called by EverQuest class)
+    // (defined in src/client/spell/spell_packet_handlers.cpp)
     // ========================================================================
 
     // Server confirms cast is starting (HC_OP_BeginCast)
@@ -222,7 +225,7 @@ public:
 
 private:
     // ========================================================================
-    // Target Adjustment
+    // Target Adjustment  (defined in src/client/spell/spell_cast_validation.cpp)
     // ========================================================================
 
     // Adjust target based on spell target type restrictions
@@ -235,6 +238,11 @@ private:
 
     // ========================================================================
     // Cast Validation
+    //
+    // T407: validateCast / checkMana / checkEndurance / checkRange are defined
+    // in src/client/spell/spell_cast_validation.cpp; checkLineOfSight /
+    // checkReagents / checkPlayerState / countCarriedItem in
+    // src/client/spell/spell_cast_checks.cpp (T246).
     // ========================================================================
 
     CastResult validateCast(const SpellData& spell, uint16_t target_id);
@@ -259,7 +267,8 @@ private:
     uint32_t countCarriedItem(uint32_t item_id) const;
 
     // ========================================================================
-    // Packet Sending
+    // Packet Sending  (defined in src/client/spell/spell_publish.cpp, beside
+    // the three bridge publishers below)
     // ========================================================================
 
     void sendCastSpellPacket(uint32_t spell_id, uint8_t gem_slot, uint16_t target_id);

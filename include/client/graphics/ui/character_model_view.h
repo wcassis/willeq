@@ -124,7 +124,6 @@ private:
     void updateWeaponTransforms();
 
     // Irrlicht components (not owned)
-    irr::scene::ISceneManager* parentSmgr_ = nullptr;
     irr::video::IVideoDriver* driver_ = nullptr;
 
     // Our own scene manager for isolated rendering
@@ -190,7 +189,6 @@ private:
     float cameraDistance_ = 20.0f;  // Current camera distance
     float minCameraDistance_ = 5.0f;
     float maxCameraDistance_ = 100.0f;
-    float modelCenterY_ = 0.0f;  // Cached model center for zoom
 
     // Mouse drag state
     bool isDragging_ = false;

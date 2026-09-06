@@ -96,7 +96,6 @@ struct PathfinderWaypoint::Implementation {
 	boost::geometry::index::rtree<RTreeValue, boost::geometry::index::quadratic<16>> Tree;
 	GraphType Graph;
 	std::vector<Node> Nodes;
-	std::string FileName;
 	EQ::Random random;
 };
 
@@ -104,7 +103,6 @@ PathfinderWaypoint::PathfinderWaypoint(const std::string &path)
 {
 	m_impl.reset(new Implementation());
 	m_impl->PathFileValid = false;
-	m_impl->FileName = path;
 	Load(path);
 }
 

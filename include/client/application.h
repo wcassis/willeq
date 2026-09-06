@@ -618,7 +618,6 @@ private:
     std::string m_pendingBspTreeZone;  // Protected by m_zoneLoadMutex
 
     // Timing
-    std::chrono::steady_clock::time_point m_lastUpdate;
     std::chrono::steady_clock::time_point m_lastGraphicsUpdate;
 
     // ========== Sync State Tracking ==========

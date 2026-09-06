@@ -90,7 +90,6 @@ private:
     std::chrono::steady_clock::time_point firstPassStart_;
     std::chrono::steady_clock::time_point preRenderTime_;
     bool firstPassSeen_ = false;
-    irr::scene::E_SCENE_NODE_RENDER_PASS currentPass_ = irr::scene::ESNRP_NONE;
     // P52: tracks whether a GPU timer query for the entity pass (GPUSyncPhase::EntityPass)
     // was opened this SOLID pass, so OnRenderPassPostRender only closes it when it was
     // actually opened (manualZoneDrawEnabled_ gates whether zone/entity are split at all).

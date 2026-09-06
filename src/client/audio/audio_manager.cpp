@@ -683,7 +683,6 @@ std::string AudioManager::findZoneMusic(const std::string& zoneName) {
 void AudioManager::loadSoundAssets() {
     // Sound assets accessed on-demand via SQLite
     soundIdMap_.clear();
-    useDbForSounds_ = true;
     LOG_INFO(MOD_AUDIO, "Sound assets using on-demand SQLite lookup");
 }
 

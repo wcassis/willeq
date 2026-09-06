@@ -794,7 +794,6 @@ bool Application::initLoginConnection(const ApplicationConfig& config) {
     m_eqClient->LoginWorld().ConnectToLogin();
 
     m_running.store(true);
-    m_lastUpdate = std::chrono::steady_clock::now();
     m_lastGraphicsUpdate = std::chrono::steady_clock::now();
     return true;
 }
