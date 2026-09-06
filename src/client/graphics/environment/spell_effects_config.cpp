@@ -60,6 +60,45 @@ void SpellEffectsConfig::buildTextureNameMap() {
     //                  cross arms have no counterpart at all.
     textureNameMap_["GEND10_SPRITE"] = ParticleAtlas::SpellSparkle;
     textureNameMap_["GENU10_SPRITE"] = ParticleAtlas::IceCrystal;
+
+    // T409 (board B162): the reader's 0-based correction resolves 36 of the
+    // 40 names instead of 18, so the names below now HAVE a sprite to
+    // compare against. Each row is the same tile-vs-crop comparison T389
+    // used, run on the single frame each sheet repeats (spel*.tga are 4x4
+    // sheets of one identical frame; the crops are in review/T409/sprites/).
+    //
+    // Only sprites that fall unambiguously into a shape class this atlas
+    // HAS are mapped. Anything figurative keeps the SoftCircle fallback --
+    // spelg1.tga is a SWORD, speli1.tga a flaming SKULL, spelk2.tga a row
+    // of skulls, spelh1.tga a lightning-wreathed sphere -- and no 16x16
+    // procedural tile stands in for those honestly (board B300).
+    //
+    //   spela1/spela2  pointed star, bright white core over a soft glow
+    //                  -> SpellSparkle, the same class as speld2 above.
+    //                     spela2 is itself oracle-measured (record 35,
+    //                     spell 253 Whirling Wind).
+    //   spelb1         green/yellow multi-point burst
+    //                  -> StarShape, the only green pointed-star tile.
+    //   spelc1         orange radiant sunburst -> Ember, the only orange tile.
+    //   spele1         green/teal sphere -> LeafShape, the green filled disc.
+    //   spelj1/spelu1  elongated curved ribbon strokes -> SmokeWisp, the
+    //                  only elongated tile. spelu1 is what T389 saw at
+    //                  Frost Bolt's caster.
+    //   speln1         green/orange MOTTLED sphere (oracle-measured, record
+    //                  20, spell 41 Weaken) -> SnowPatch, the atlas's only
+    //                  mottled disc; every other round tile is a smooth
+    //                  gradient.
+    //   spelz1         white/grey swirling smoke ball -> WispyCloud.
+    textureNameMap_["GENA00_SPRITE"] = ParticleAtlas::SpellSparkle;
+    textureNameMap_["GENA10_SPRITE"] = ParticleAtlas::SpellSparkle;
+    textureNameMap_["GENB00_SPRITE"] = ParticleAtlas::StarShape;
+    textureNameMap_["GENC00_SPRITE"] = ParticleAtlas::Ember;
+    textureNameMap_["GENE00_SPRITE"] = ParticleAtlas::LeafShape;
+    textureNameMap_["GENE01_SPRITE"] = ParticleAtlas::LeafShape;
+    textureNameMap_["GENJ00_SPRITE"] = ParticleAtlas::SmokeWisp;
+    textureNameMap_["GENN00_SPRITE"] = ParticleAtlas::SnowPatch;
+    textureNameMap_["GENU00_SPRITE"] = ParticleAtlas::SmokeWisp;
+    textureNameMap_["GENZ00_SPRITE"] = ParticleAtlas::WispyCloud;
 }
 
 uint8_t SpellEffectsConfig::getTextureIndex(const std::string& name) const {

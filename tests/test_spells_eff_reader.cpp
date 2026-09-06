@@ -14,9 +14,12 @@
 
 #include <gtest/gtest.h>
 
+#include <cctype>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <iostream>
+#include <set>
 #include <fstream>
 #include <string>
 
@@ -183,43 +186,76 @@ TEST(SpellsEffReaderTest, LoadFailsGracefullyOnMissingFile) {
 }
 
 // ============================================================================
-// effectNameToTexture -- salvaged mapping, verified (not trusted) against
-// the real filenames in /mnt/projects/EverQuestP1999/SpellEffects/. These
-// are NOT tautological: they assert specific, independently-verified
-// filenames exist or do not, rather than re-deriving the expected string
-// from the function under test.
+// effectNameToTexture -- THE DIGIT IS 0-BASED (T409, board B162).
+//
+// T70 salvaged the verbatim reading GEN[A-Z][1-9]0_SPRITE -> spel[a-z][1-9]
+// and excluded digit '0' because no "00" name resolved to a file. T389
+// MEASURED the rule against the official Titanium client and refuted it:
+//
+//   GEN<L><d>0_SPRITE  ->  spel<lowercase L><d+1>.tga
+//
+// settled by two spells.eff records whose every non-empty sprite slot in
+// every stage holds ONE name, for a letter with at least two files on disk,
+// so the drawn particle can only have come from that name:
+//   record 20, every slot GENN00_SPRITE, cast as spell 41 Weaken, drew
+//     speln1.tga's green/orange mottled spheres -- where the verbatim rule
+//     resolves nothing at all;
+//   record 35, every slot GENA10_SPRITE, cast as spell 253 Whirling Wind,
+//     drew spela2.tga's bright blue EIGHT-pointed stars, NOT spela1.tga's
+//     blue star-with-core, which is what the verbatim rule gives.
+// Evidence: review/T389/, refactor/T389_spell_fx_oracle.md Review S3.
+//
+// These are NOT tautological: they assert specific filenames that were
+// independently confirmed present or absent in
+// /mnt/projects/EverQuestP1999/SpellEffects/, rather than re-deriving the
+// expected string from the function under test.
 // ============================================================================
 
-TEST(SpellsEffReaderMappingTest, NonzeroDigitNamesMapToVerifiedRealFiles) {
-    // Each of these has been confirmed to exist in SpellEffects/ (T70 Review).
-    EXPECT_EQ(SpellsEffReader::effectNameToTexture("GENC10_SPRITE"), "spelc1.tga");
-    EXPECT_EQ(SpellsEffReader::effectNameToTexture("GENC30_SPRITE"), "spelc3.tga");
-    EXPECT_EQ(SpellsEffReader::effectNameToTexture("GENC20_SPRITE"), "spelc2.tga");
-    EXPECT_EQ(SpellsEffReader::effectNameToTexture("GENB30_SPRITE"), "spelb3.tga");
-    EXPECT_EQ(SpellsEffReader::effectNameToTexture("GENU10_SPRITE"), "spelu1.tga");
+TEST(SpellsEffReaderMappingTest, TheTwoOracleMeasuredNamesResolveZeroBased) {
+    // The two records that settle the rule. Both files exist.
+    EXPECT_EQ(SpellsEffReader::effectNameToTexture("GENN00_SPRITE"), "speln1.tga");
+    EXPECT_EQ(SpellsEffReader::effectNameToTexture("GENA10_SPRITE"), "spela2.tga");
 }
 
-// Confirmed counterexamples: the naive letter+digit rule constructs a
-// plausible-looking name, but no such file exists in SpellEffects/. The
-// reader still returns the constructed name (texture *existence* is a
-// rendering-unit concern, out of scope here) -- this test exists so a
-// future reader of this mapping does not assume it is 100% accurate.
+TEST(SpellsEffReaderMappingTest, TheZeroDigitFormNowResolves) {
+    // The form T70 excluded outright. Every one of these files exists; they
+    // are also the COMMONEST names in spells.eff (GENI00 x32, GENN00 x15,
+    // GENG00 x12).
+    EXPECT_EQ(SpellsEffReader::effectNameToTexture("GENA00_SPRITE"), "spela1.tga");
+    EXPECT_EQ(SpellsEffReader::effectNameToTexture("GENC00_SPRITE"), "spelc1.tga");
+    EXPECT_EQ(SpellsEffReader::effectNameToTexture("GENI00_SPRITE"), "speli1.tga");
+    EXPECT_EQ(SpellsEffReader::effectNameToTexture("GENZ00_SPRITE"), "spelz1.tga");
+}
+
+TEST(SpellsEffReaderMappingTest, NonzeroDigitNamesShiftUpByOne) {
+    // Each right-hand side confirmed present in SpellEffects/.
+    EXPECT_EQ(SpellsEffReader::effectNameToTexture("GENC10_SPRITE"), "spelc2.tga");
+    EXPECT_EQ(SpellsEffReader::effectNameToTexture("GENC20_SPRITE"), "spelc3.tga");
+    EXPECT_EQ(SpellsEffReader::effectNameToTexture("GENC30_SPRITE"), "spelc4.tga");
+    EXPECT_EQ(SpellsEffReader::effectNameToTexture("GENB30_SPRITE"), "spelb4.tga");
+    EXPECT_EQ(SpellsEffReader::effectNameToTexture("GENU10_SPRITE"), "spelu2.tga");
+    EXPECT_EQ(SpellsEffReader::effectNameToTexture("GEND10_SPRITE"), "speld2.tga");
+}
+
+// The counterexamples MOVED when the rule was corrected. Under the verbatim
+// rule they were GENA30 and GENY10; under the 0-based rule GENY10 resolves
+// to a real file (spely2.tga) and the two names whose construction has no
+// file are GENA20 and GENA30. The reader still returns the constructed name
+// -- texture existence is a rendering concern, out of scope here -- so this
+// test exists to stop a future reader assuming the mapping is 100% accurate.
 TEST(SpellsEffReaderMappingTest, KnownCounterexamplesDocumented) {
-    EXPECT_EQ(SpellsEffReader::effectNameToTexture("GENA30_SPRITE"), "spela3.tga");
-    EXPECT_EQ(SpellsEffReader::effectNameToTexture("GENY10_SPRITE"), "spely1.tga");
-    // Neither spela3.tga nor spely1.tga exists in SpellEffects/ as of T70 --
-    // verified directly by directory listing, not asserted here (this test
-    // has no filesystem dependency), see T70 Review for the listing.
+    EXPECT_EQ(SpellsEffReader::effectNameToTexture("GENA20_SPRITE"), "spela3.tga");
+    EXPECT_EQ(SpellsEffReader::effectNameToTexture("GENA30_SPRITE"), "spela4.tga");
+    // Neither spela3.tga nor spela4.tga exists in SpellEffects/; verified by
+    // directory listing, not asserted here (this test has no filesystem
+    // dependency). The name T70 listed, GENY10, now resolves to a real file:
+    EXPECT_EQ(SpellsEffReader::effectNameToTexture("GENY10_SPRITE"), "spely2.tga");
 }
 
-// Every "00"-digit form observed in spells.eff (16 distinct names) was
-// checked against SpellEffects/ in the T70 Review: zero of sixteen
-// resolved to a real file. The reader deliberately refuses to construct a
-// name known not to exist, returning empty instead.
-TEST(SpellsEffReaderMappingTest, ZeroDigitFormNeverResolves) {
-    EXPECT_EQ(SpellsEffReader::effectNameToTexture("GENA00_SPRITE"), "");
-    EXPECT_EQ(SpellsEffReader::effectNameToTexture("GENC00_SPRITE"), "");
-    EXPECT_EQ(SpellsEffReader::effectNameToTexture("GENZ00_SPRITE"), "");
+// Digit '9' would construct spel<l>10.tga -- a two-character index no file
+// on disk uses -- so the accepted digit range is '0'..'8'.
+TEST(SpellsEffReaderMappingTest, DigitNineIsOutOfRange) {
+    EXPECT_EQ(SpellsEffReader::effectNameToTexture("GENZ90_SPRITE"), "");
 }
 
 TEST(SpellsEffReaderMappingTest, NonGenPatternNamesReturnEmpty) {
@@ -228,8 +264,67 @@ TEST(SpellsEffReaderMappingTest, NonGenPatternNamesReturnEmpty) {
     EXPECT_EQ(SpellsEffReader::effectNameToTexture("GEN_Z_SPB"), "");
     EXPECT_EQ(SpellsEffReader::effectNameToTexture("I_SNOWFLAKESPRITE"), "");
     EXPECT_EQ(SpellsEffReader::effectNameToTexture("I_TFIRE_SPB"), "");
+    EXPECT_EQ(SpellsEffReader::effectNameToTexture("I_TSMOKE_SPB"), "");
     EXPECT_EQ(SpellsEffReader::effectNameToTexture(""), "");
     EXPECT_EQ(SpellsEffReader::effectNameToTexture("garbage"), "");
+}
+
+// ---------------------------------------------------------------------------
+// The census, taken over the REAL spells.eff and the REAL SpellEffects/
+// directory rather than quoted: this is the number board B162 turns on.
+//
+//   shipped rule (verbatim, digit '0' excluded): 18 of 40 distinct names,
+//     166 of 301 non-empty slots, of which 157 slots land on a file present
+//     on disk;
+//   0-based rule: 36 of 40 names, 286 of 301 slots, of which 272 land on a
+//     file present on disk.
+//
+// The four names that resolve to nothing under either rule are the
+// non-GEN ones: GEN_Z_SPB, I_SNOWFLAKESPRITE, I_TFIRE_SPB, I_TSMOKE_SPB.
+// ---------------------------------------------------------------------------
+
+TEST_F(SpellsEffReaderFileTest, TheResolvedSlotCensusIsTheZeroBasedOne) {
+    const std::string spriteDir = getEqClientPath() + "/SpellEffects";
+    if (!std::filesystem::exists(spriteDir)) {
+        GTEST_SKIP() << "SpellEffects/ not found at " << spriteDir
+                     << " -- SKIPPING, not passing.";
+    }
+    std::set<std::string> onDisk;
+    for (const auto& e : std::filesystem::directory_iterator(spriteDir)) {
+        std::string n = e.path().filename().string();
+        for (auto& c : n) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        onDisk.insert(n);
+    }
+
+    std::set<std::string> distinctNames, resolvedNames;
+    int nonEmptySlots = 0, resolvedSlots = 0, onDiskSlots = 0;
+    for (size_t i = 0; i < SpellsEffReader::recordCount(); ++i) {
+        const SpellsEffRecord* rec = reader.getRecord(static_cast<int>(i));
+        ASSERT_NE(rec, nullptr);
+        for (const auto& em : rec->emitters) {
+            for (const auto& name : em.sprite_names) {
+                if (name.empty()) continue;
+                ++nonEmptySlots;
+                distinctNames.insert(name);
+                const std::string tex = SpellsEffReader::effectNameToTexture(name);
+                if (tex.empty()) continue;
+                ++resolvedSlots;
+                resolvedNames.insert(name);
+                if (onDisk.count(tex)) ++onDiskSlots;
+            }
+        }
+    }
+
+    std::cout << "spells.eff sprite census: " << distinctNames.size()
+              << " distinct names, " << nonEmptySlots << " non-empty slots; "
+              << resolvedNames.size() << " names resolved, " << resolvedSlots
+              << " slots resolved, " << onDiskSlots << " of those on disk\n";
+
+    EXPECT_EQ(distinctNames.size(), 40u);
+    EXPECT_EQ(nonEmptySlots, 301);
+    EXPECT_EQ(resolvedNames.size(), 36u) << "the four non-GEN names never resolve";
+    EXPECT_EQ(resolvedSlots, 286);
+    EXPECT_EQ(onDiskSlots, 272) << "board B162's number: 157 under the shipped rule";
 }
 
 // ============================================================================

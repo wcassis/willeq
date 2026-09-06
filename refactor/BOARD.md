@@ -744,7 +744,7 @@ it without taking that measurement first.
   available (`SpellVisualVocabulary::travelType`, 85 spells with
   `travel_type == 3`); nothing consumes it. Census by T388.
 
-- **B162** (B) `src/client/spell/spells_eff_reader.cpp` --
+- ~~**B162** (B) `src/client/spell/spells_eff_reader.cpp` --
   **THE HYPOTHESIS IS SETTLED BY THE ORACLE (T389, 2026-09-05): the digit is
   0-BASED. `GEN<L><d>0_SPRITE` -> `spel<l><d+1>.tga`, and the `'0'` exclusion
   is wrong too.** Two spells.eff records whose every non-empty sprite slot in
@@ -797,7 +797,30 @@ it without taking that measurement first.
   `EmitterConfig::textureRegions[]` filled by
   `SpellEffectsConfig::getTextureIndex()`
   (`src/client/graphics/environment/spell_effects_config.cpp`), which maps a
-  NAME to a tile index and falls back to `SoftCircle`. Found by T380.
+  NAME to a tile index and falls back to `SoftCircle`. Found by T380.~~ **STRUCK T409 Leg B (this commit)**: `effectNameToTexture()` now
+  implements the measured rule -- `GEN<L><d>0_SPRITE` -> `spel<l><d+1>.tga`,
+  digit range `'0'..'8'` ('9' would construct a two-character index no file
+  uses), and the `'0'` exclusion is gone. **Census taken over the real
+  `spells.eff` and the real `SpellEffects/`, not quoted** (new
+  `SpellsEffReaderFileTest.TheResolvedSlotCensusIsTheZeroBasedOne`, which
+  prints the table): 40 distinct names / 301 non-empty slots either way;
+  **18 names -> 36, 166 slots -> 286 resolved, and 157 -> 272 landing on a
+  file that exists**. The 4 that never resolve are the non-GEN names
+  (`GEN_Z_SPB`, `I_SNOWFLAKESPRITE`, `I_TFIRE_SPB`, `I_TSMOKE_SPB`). The
+  counterexamples MOVED: T70's pair was `GENA30`/`GENY10`, and under the
+  correct rule `GENY10` resolves to the real `spely2.tga` while `GENA20` and
+  `GENA30` construct the absent `spela3`/`spela4`. Second half done too:
+  the name -> tile map gained **ten rows** by T389's tile-vs-crop comparison
+  (`GENA00`/`GENA10` -> SpellSparkle, `GENB00` -> StarShape, `GENC00` ->
+  Ember, `GENE00`/`GENE01` -> LeafShape, `GENJ00`/`GENU00` -> SmokeWisp,
+  `GENN00` -> SnowPatch, `GENZ00` -> WispyCloud), two of them oracle-measured
+  (`spela2` record 35, `speln1` record 20). Crops and the tile sheet:
+  `review/T409/sprites/`. **A trap the crops exposed: every `spel*.tga` is a
+  4x4 SHEET of one identical frame, so any descriptor taken over the whole
+  file is meaningless** -- T389's own crops are whole sheets. 14 tests red
+  pre-fix (6 in `test_spells_eff_reader`, 8 in
+  `test_spell_target_stage_textures`). What is NOT mapped, and why, is
+  **B300**. Prov: T409 Review Leg B; T389 Review S3.
 
 - ~~**B163** (B)~~ **CLOSED 2026-09-05 by T384 (`57258eea`).**
   `tools/willeq_db_builder.cpp` `loadSpells()` now binds `TargetAnim` (121)
@@ -4480,6 +4503,35 @@ T407 deleted eleven (see below). The rest are boarded here.
   removing the setters requires editing that test, which T407's contract kept
   unedited. Closes when the setters, the members and the test's `EXPECT_NO_THROW`
   block go together, or a consumer appears. Found by T407's census.
+
+- **B300** (C) `src/client/graphics/environment/spell_effects_config.cpp`
+  `buildTextureNameMap()` -- **the 16-tile procedural particle atlas cannot
+  represent a large share of the sprites the corrected reader now resolves,
+  because several of them are not abstract particles at all.** Split out of
+  B162 by T409 Leg B, which mapped ten names and stopped here. With the
+  0-based rule 36 of the 40 `spells.eff` names resolve to a real
+  `SpellEffects/*.tga`; T409 cropped every one of them to the single frame
+  its 4x4 sheet repeats (`review/T409/sprites/`) and found three groups.
+  (a) **Mappable**: a pointed star with a bright core (`spela1`, `spela2`,
+  `speld2`), a green burst (`spelb1`), an orange sunburst (`spelc1`), a
+  green disc (`spele1`), an elongated ribbon (`spelj1`, `spelu1`), a mottled
+  disc (`speln1`), a smoke ball (`spelz1`) -- these are the ten rows T409
+  added. (b) **Figurative, and unmappable by construction**: `spelg1.tga` is
+  a **SWORD**, `speli1.tga` a **flaming SKULL**, `spelk2.tga` a row of
+  **skulls**, `spelh1.tga` a lightning-wreathed sphere. `GENI00_SPRITE` is
+  the COMMONEST name in the whole file (32 slots) and it is the skull -- so
+  the single most-used sprite in `spells.eff` is one the atlas can never
+  approximate. They keep the `SoftCircle` fallback, pinned by
+  `SpellSpriteTilesT409.TheFigurativeSpritesKeepTheFallback`. (c) **Round
+  soft dots** (`spelm1`, `spelo1`, `spell1`, `spelv1`, `spelp1`) that the
+  `SoftCircle` fallback already serves correctly, so a row would add
+  nothing. **Will's call**: either fable draws the real `spel*.tga` files
+  (which is B225's "nothing downstream can draw a `spel*.tga` anyway", and
+  needs a texture path, not an atlas tile), or the atlas grows tiles for the
+  figurative shapes, or those spells are accepted as visually approximate
+  forever. Do NOT quietly widen the name -> tile table to cover (b) -- a
+  skull drawn as a soft white dot is a wrong answer with a confident face on
+  it. Prov: T409 Review Leg B; B162; B225.
 
 **Exempt, recorded so nobody re-reports them.** The census also names fields
 that are write-only BY CONSTRUCTION because they are serialised layout, and

@@ -113,9 +113,10 @@ size_t SpellsEffReader::populatedRecordCount() const {
 }
 
 std::string SpellsEffReader::effectNameToTexture(const std::string& effect_name) {
-    // GEN[A-Z][1-9]0_SPRITE -> spel[a-z][1-9].tga. See the header comment
-    // and the T70 Review for exactly which observed names this does and
-    // does not resolve to a real file.
+    // GEN<L><d>0_SPRITE -> spel<l><d+1>.tga -- THE DIGIT IS 0-BASED, and
+    // digit '0' resolves like any other. See the header comment for the
+    // oracle measurement (T389) that settled this and refuted T70's
+    // verbatim reading.
     if (effect_name.size() < 5 || effect_name.compare(0, 3, "GEN") != 0) {
         return "";
     }
@@ -123,11 +124,13 @@ std::string SpellsEffReader::effectNameToTexture(const std::string& effect_name)
     char letter = effect_name[3];
     char digit = effect_name[4];
     if (letter < 'A' || letter > 'Z') return "";
-    if (digit < '1' || digit > '9') return "";  // '0' deliberately excluded -- never resolves
+    // '9' would construct a two-character index (spel<l>10.tga) that no file
+    // on disk uses, so the accepted range is '0'..'8'.
+    if (digit < '0' || digit > '8') return "";
 
     std::string texture = "spel";
     texture += static_cast<char>(std::tolower(static_cast<unsigned char>(letter)));
-    texture += digit;
+    texture += static_cast<char>(digit + 1);
     texture += ".tga";
     return texture;
 }
