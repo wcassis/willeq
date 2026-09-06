@@ -160,32 +160,25 @@ def collect_members(root):
 EXEMPT = {
     ("TradeskillContainerClosedEvent", "wasWorldObject"):
         ("boarded", "B336: the close path does not yet distinguish world vs inventory containers (T415 drew the window; the close behaviour is B336)"),
-    ("ItemInstance", "accuracy"):
-        ("boarded", "B298: item record field; lands with item tooltips"),
+    # T421 closed B298's item half: the fourteen fields that HAVE an oracle
+    # line are drawn by the item display window, and their exemptions are
+    # gone. These nine are what is left, and they are a DIFFERENT defect.
     ("ItemInstance", "currentSlot"):
-        ("boarded", "B298: item record field; lands with item tooltips"),
-    ("ItemInstance", "damageShield"):
-        ("boarded", "B298: item record field; lands with item tooltips"),
-    ("ItemInstance", "delay"):
-        ("boarded", "B298: item record field; lands with item tooltips"),
-    ("ItemInstance", "dotShield"):
-        ("boarded", "B298: item record field; lands with item tooltips"),
-    ("ItemInstance", "enduranceRegen"):
-        ("boarded", "B298: item record field; lands with item tooltips"),
-    ("ItemInstance", "lore"):
-        ("boarded", "B298: item record field; lands with item tooltips"),
-    ("ItemInstance", "maxCharges"):
-        ("boarded", "B298: item record field; lands with item tooltips"),
-    ("ItemInstance", "recLevel"):
-        ("boarded", "B298: item record field; lands with item tooltips"),
-    ("ItemInstance", "shielding"):
-        ("boarded", "B298: item record field; lands with item tooltips"),
-    ("ItemInstance", "spellShield"):
-        ("boarded", "B298: item record field; lands with item tooltips"),
-    ("ItemInstance", "strikethrough"):
-        ("boarded", "B298: item record field; lands with item tooltips"),
-    ("ItemInstance", "stunResist"):
-        ("boarded", "B298: item record field; lands with item tooltips"),
+        ("boarded", "B298 (item half CLOSED by T421): the oracle has no element for it. EQUI_ItemDisplay.xml is a title, an icon and one STMLbox; `Slot:` (eqstr 3000) is the EQUIPPABLE list, drawn from `slots`. Nothing shows where an item currently sits."),
+    ("ItemInstance", "heroicAgi"):
+        ("boarded", "B375: no writer AND no oracle line -- TitaniumItemParser never fills it and eqstr_us.txt has no heroic-stat format string at all"),
+    ("ItemInstance", "heroicCha"):
+        ("boarded", "B375: no writer AND no oracle line"),
+    ("ItemInstance", "heroicDex"):
+        ("boarded", "B375: no writer AND no oracle line"),
+    ("ItemInstance", "heroicInt"):
+        ("boarded", "B375: no writer AND no oracle line"),
+    ("ItemInstance", "heroicSta"):
+        ("boarded", "B375: no writer AND no oracle line"),
+    ("ItemInstance", "heroicStr"):
+        ("boarded", "B375: no writer AND no oracle line"),
+    ("ItemInstance", "heroicWis"):
+        ("boarded", "B375: no writer AND no oracle line"),
     ("SpellData", "player_tag"):
         ("boarded", "B298: spell record field; lands with spell descriptions"),
     ("SpellData", "resist_diff"):

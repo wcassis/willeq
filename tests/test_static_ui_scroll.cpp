@@ -46,6 +46,7 @@
 #include <vector>
 
 #include "client/graphics/ui/static_ui_input.h"
+#include "client/graphics/ui/item_display_panel.h"
 #include "client/graphics/ui/static_panels.h"
 #include "client/graphics/ui/ui_layout.h"
 #include "client/graphics/ui/ui_renderer.h"
@@ -105,6 +106,10 @@ struct Panels {
     ChatPanelState chat;
     SkillsPopupState skills;
     LootPanelState loot;
+    // T421: the router gained a fifth target (the item display window, whose
+    // IDW_ItemDescription is Style_VScroll). Closed here, so every existing
+    // case still means what it meant.
+    ItemDisplayPanelState itemDisplay;
     Panels() { layout.computeLayout(800, 600); }
 };
 
@@ -128,32 +133,32 @@ protected:
 
 TEST_F(ScrollRouterTest, NothingUnderTheCursorIsNoTarget) {
     // Dead centre-top of the screen: no popup open, not the chat box.
-    EXPECT_EQ(StaticUIInput::scrollTargetAt(400, 20, p.layout, p.skills, p.loot),
+    EXPECT_EQ(StaticUIInput::scrollTargetAt(400, 20, p.layout, p.skills, p.loot, p.itemDisplay),
               ScrollTarget::None);
 }
 
 TEST_F(ScrollRouterTest, ChatPanelIsATargetAnywhereInsideIt) {
     EXPECT_EQ(StaticUIInput::scrollTargetAt(chatX(p.layout), chatY(p.layout),
-                                            p.layout, p.skills, p.loot),
+                                            p.layout, p.skills, p.loot, p.itemDisplay),
               ScrollTarget::Chat);
     // The tab strip at the very top of the box counts too -- a dead band
     // there is exactly the kind of thing the user reads as "scroll broken".
     EXPECT_EQ(StaticUIInput::scrollTargetAt(chatX(p.layout),
                                             p.layout.chatTabs.UpperLeftCorner.Y + 1,
-                                            p.layout, p.skills, p.loot),
+                                            p.layout, p.skills, p.loot, p.itemDisplay),
               ScrollTarget::Chat);
 }
 
 TEST_F(ScrollRouterTest, ClosedPopupsAreNotTargets) {
     EXPECT_EQ(StaticUIInput::scrollTargetAt(popX(p.layout), popY(p.layout),
-                                            p.layout, p.skills, p.loot),
+                                            p.layout, p.skills, p.loot, p.itemDisplay),
               ScrollTarget::None);
 }
 
 TEST_F(ScrollRouterTest, OpenSkillsPopupTakesTheCentre) {
     p.skills.isOpen = true;
     EXPECT_EQ(StaticUIInput::scrollTargetAt(popX(p.layout), popY(p.layout),
-                                            p.layout, p.skills, p.loot),
+                                            p.layout, p.skills, p.loot, p.itemDisplay),
               ScrollTarget::Skills);
 }
 
@@ -161,21 +166,21 @@ TEST_F(ScrollRouterTest, LootWinsOverSkillsBecauseItIsDrawnOnTop) {
     p.skills.isOpen = true;
     p.loot.isOpen = true;
     EXPECT_EQ(StaticUIInput::scrollTargetAt(popX(p.layout), popY(p.layout),
-                                            p.layout, p.skills, p.loot),
+                                            p.layout, p.skills, p.loot, p.itemDisplay),
               ScrollTarget::Loot);
 }
 
 TEST_F(ScrollRouterTest, ChatOffsetIsMeasuredFromTheBottomSoUpIsPositive) {
     // The conventions are deliberately NOT harmonised: chat counts lines up
     // from the newest, the two lists count rows down from the first.
-    StaticUIInput::scrollPanel(ScrollTarget::Chat, 5, p.layout, p.chat, p.skills, p.loot);
+    StaticUIInput::scrollPanel(ScrollTarget::Chat, 5, p.layout, p.chat, p.skills, p.loot, p.itemDisplay);
     EXPECT_EQ(p.chat.scrollOffset, 5);
-    StaticUIInput::scrollPanel(ScrollTarget::Chat, -2, p.layout, p.chat, p.skills, p.loot);
+    StaticUIInput::scrollPanel(ScrollTarget::Chat, -2, p.layout, p.chat, p.skills, p.loot, p.itemDisplay);
     EXPECT_EQ(p.chat.scrollOffset, 3);
 }
 
 TEST_F(ScrollRouterTest, ChatCannotScrollBelowTheNewestLine) {
-    StaticUIInput::scrollPanel(ScrollTarget::Chat, -50, p.layout, p.chat, p.skills, p.loot);
+    StaticUIInput::scrollPanel(ScrollTarget::Chat, -50, p.layout, p.chat, p.skills, p.loot, p.itemDisplay);
     EXPECT_EQ(p.chat.scrollOffset, 0);
 }
 
@@ -185,9 +190,9 @@ TEST_F(ScrollRouterTest, ListOffsetsAreMeasuredFromTheTopSoUpIsNegative) {
         p.loot.items.push_back({static_cast<uint8_t>(i), 1000u + i, "item"});
     }
     p.loot.scrollOffset = 10;
-    StaticUIInput::scrollPanel(ScrollTarget::Loot, 3, p.layout, p.chat, p.skills, p.loot);
+    StaticUIInput::scrollPanel(ScrollTarget::Loot, 3, p.layout, p.chat, p.skills, p.loot, p.itemDisplay);
     EXPECT_EQ(p.loot.scrollOffset, 7) << "wheel-up must move TOWARDS the first row";
-    StaticUIInput::scrollPanel(ScrollTarget::Loot, -3, p.layout, p.chat, p.skills, p.loot);
+    StaticUIInput::scrollPanel(ScrollTarget::Loot, -3, p.layout, p.chat, p.skills, p.loot, p.itemDisplay);
     EXPECT_EQ(p.loot.scrollOffset, 10);
 }
 
@@ -198,9 +203,9 @@ TEST_F(ScrollRouterTest, LootScrollSaturatesAtTheExistingMaxScrollOffset) {
     }
     // 12 items, 8 visible rows -> the panel's own helper says 4.
     ASSERT_EQ(p.loot.maxScrollOffset(), 4);
-    StaticUIInput::scrollPanel(ScrollTarget::Loot, -999, p.layout, p.chat, p.skills, p.loot);
+    StaticUIInput::scrollPanel(ScrollTarget::Loot, -999, p.layout, p.chat, p.skills, p.loot, p.itemDisplay);
     EXPECT_EQ(p.loot.scrollOffset, 4) << "the writer must ride the panel's clamp, not past it";
-    StaticUIInput::scrollPanel(ScrollTarget::Loot, 999, p.layout, p.chat, p.skills, p.loot);
+    StaticUIInput::scrollPanel(ScrollTarget::Loot, 999, p.layout, p.chat, p.skills, p.loot, p.itemDisplay);
     EXPECT_EQ(p.loot.scrollOffset, 0);
 }
 
@@ -212,21 +217,22 @@ TEST_F(ScrollRouterTest, SkillsScrollSaturatesAtItsOwnMax) {
         p.skills.skills.push_back({static_cast<uint8_t>(i), "skill", 10, 200});
     }
     ASSERT_EQ(p.skills.maxScrollOffset(visible), 7);
-    StaticUIInput::scrollPanel(ScrollTarget::Skills, -999, p.layout, p.chat, p.skills, p.loot);
+    StaticUIInput::scrollPanel(ScrollTarget::Skills, -999, p.layout, p.chat, p.skills, p.loot, p.itemDisplay);
     EXPECT_EQ(p.skills.scrollOffset, 7);
 }
 
 TEST_F(ScrollRouterTest, ShortListsDoNotScrollAtAll) {
     p.loot.isOpen = true;
     p.loot.items.push_back({0, 1001, "a"});
-    StaticUIInput::scrollPanel(ScrollTarget::Loot, -5, p.layout, p.chat, p.skills, p.loot);
+    StaticUIInput::scrollPanel(ScrollTarget::Loot, -5, p.layout, p.chat, p.skills, p.loot, p.itemDisplay);
     EXPECT_EQ(p.loot.scrollOffset, 0);
 }
 
 TEST_F(ScrollRouterTest, NoneTargetWritesNothingAndReportsFalse) {
     p.chat.scrollOffset = 4;
     EXPECT_FALSE(StaticUIInput::scrollPanel(ScrollTarget::None, 3, p.layout,
-                                            p.chat, p.skills, p.loot));
+                                            p.chat, p.skills, p.loot,
+                                            p.itemDisplay));
     EXPECT_EQ(p.chat.scrollOffset, 4);
 }
 
@@ -236,23 +242,23 @@ TEST_F(ScrollRouterTest, NoneTargetWritesNothingAndReportsFalse) {
 
 TEST_F(ScrollRouterTest, WheelOverTheChatBoxScrollsChatBackwards) {
     EXPECT_TRUE(input.processWheel(chatX(p.layout), chatY(p.layout), 1.0f,
-                                   p.layout, p.chat, p.skills, p.loot));
+                                   p.layout, p.chat, p.skills, p.loot, p.itemDisplay));
     EXPECT_EQ(p.chat.scrollOffset, StaticUIInput::WHEEL_LINES);
 }
 
 TEST_F(ScrollRouterTest, WheelOverEmptyScreenIsNotConsumed) {
-    EXPECT_FALSE(input.processWheel(400, 20, 1.0f, p.layout, p.chat, p.skills, p.loot));
+    EXPECT_FALSE(input.processWheel(400, 20, 1.0f, p.layout, p.chat, p.skills, p.loot, p.itemDisplay));
     EXPECT_EQ(p.chat.scrollOffset, 0);
 }
 
 TEST_F(ScrollRouterTest, ZeroWheelIsNeverConsumed) {
     EXPECT_FALSE(input.processWheel(chatX(p.layout), chatY(p.layout), 0.0f,
-                                    p.layout, p.chat, p.skills, p.loot));
+                                    p.layout, p.chat, p.skills, p.loot, p.itemDisplay));
 }
 
 TEST_F(ScrollRouterTest, SeveralNotchesInOneFrameAllCount) {
     input.processWheel(chatX(p.layout), chatY(p.layout), 3.0f,
-                       p.layout, p.chat, p.skills, p.loot);
+                       p.layout, p.chat, p.skills, p.loot, p.itemDisplay);
     EXPECT_EQ(p.chat.scrollOffset, 3 * StaticUIInput::WHEEL_LINES);
 }
 
@@ -262,7 +268,7 @@ TEST_F(ScrollRouterTest, PageKeyMovesAWholePage) {
         p.loot.items.push_back({static_cast<uint8_t>(i), 1000u + i, "item"});
     }
     EXPECT_TRUE(input.processScrollKey(/*up=*/false, popX(p.layout), popY(p.layout),
-                                       p.layout, p.chat, p.skills, p.loot));
+                                       p.layout, p.chat, p.skills, p.loot, p.itemDisplay));
     EXPECT_EQ(p.loot.scrollOffset, LootPanelState::VISIBLE_ROWS);
 }
 
@@ -275,13 +281,13 @@ TEST_F(ScrollRouterTest, PageKeyFindsTheOpenPopupEvenWithTheCursorAtTheOrigin) {
         p.skills.skills.push_back({static_cast<uint8_t>(i), "skill", 10, 200});
     }
     EXPECT_TRUE(input.processScrollKey(/*up=*/false, 0, 0,
-                                       p.layout, p.chat, p.skills, p.loot));
+                                       p.layout, p.chat, p.skills, p.loot, p.itemDisplay));
     EXPECT_EQ(p.skills.scrollOffset, skillsVisibleRows(p.layout));
 }
 
 TEST_F(ScrollRouterTest, PageKeyWithNothingOpenFallsBackToChat) {
     EXPECT_TRUE(input.processScrollKey(/*up=*/true, 0, 0,
-                                       p.layout, p.chat, p.skills, p.loot));
+                                       p.layout, p.chat, p.skills, p.loot, p.itemDisplay));
     EXPECT_EQ(p.chat.scrollOffset, chatVisibleLines(p.layout));
 }
 
@@ -353,7 +359,7 @@ TEST_F(LootScrollTest, TheFix_ScrollingBringsSlot13OntoARowAndLootsIt) {
     // corpse slots 6..13 and slot 13 lands on the LAST visible row.
     ASSERT_EQ(p.loot.maxScrollOffset(), 6);
     ASSERT_TRUE(input.processWheel(popX(p.layout), popY(p.layout), -2.0f,
-                                   p.layout, p.chat, p.skills, p.loot));
+                                   p.layout, p.chat, p.skills, p.loot, p.itemDisplay));
     ASSERT_EQ(p.loot.scrollOffset, 6) << "two notches of 3 lines, clamped at the end";
 
     clickVisibleRow(LootPanelState::VISIBLE_ROWS - 1);
@@ -373,7 +379,7 @@ TEST_F(LootScrollTest, TheVisibleRowSetChanges) {
     EXPECT_EQ(rowItem(0), 0);
     EXPECT_EQ(rowItem(7), 7);
 
-    StaticUIInput::scrollPanel(ScrollTarget::Loot, -4, p.layout, p.chat, p.skills, p.loot);
+    StaticUIInput::scrollPanel(ScrollTarget::Loot, -4, p.layout, p.chat, p.skills, p.loot, p.itemDisplay);
 
     EXPECT_EQ(rowItem(0), 4);
     EXPECT_EQ(rowItem(7), 11);
@@ -381,12 +387,12 @@ TEST_F(LootScrollTest, TheVisibleRowSetChanges) {
 
 TEST_F(LootScrollTest, ScrollingClearsTheStaleHoveredRow) {
     p.loot.hoveredRow = 3;
-    StaticUIInput::scrollPanel(ScrollTarget::Loot, -2, p.layout, p.chat, p.skills, p.loot);
+    StaticUIInput::scrollPanel(ScrollTarget::Loot, -2, p.layout, p.chat, p.skills, p.loot, p.itemDisplay);
     EXPECT_EQ(p.loot.hoveredRow, -1);
 }
 
 TEST_F(LootScrollTest, ClosingAndReopeningStillResetsToTheTop) {
-    StaticUIInput::scrollPanel(ScrollTarget::Loot, -6, p.layout, p.chat, p.skills, p.loot);
+    StaticUIInput::scrollPanel(ScrollTarget::Loot, -6, p.layout, p.chat, p.skills, p.loot, p.itemDisplay);
     ASSERT_EQ(p.loot.scrollOffset, 6);
     eqt::state::LootWindowOpenedData opened;
     opened.corpseId = 99;
@@ -449,7 +455,7 @@ TEST_F(SkillsScrollTest, TheDefect_TheLastSkillIsUnreachableUnscrolled) {
 
 TEST_F(SkillsScrollTest, TheFix_ScrollingReachesTheLastSkill) {
     ASSERT_TRUE(input.processScrollKey(/*up=*/false, popX(p.layout), popY(p.layout),
-                                       p.layout, p.chat, p.skills, p.loot));
+                                       p.layout, p.chat, p.skills, p.loot, p.itemDisplay));
     EXPECT_EQ(p.skills.scrollOffset, 5) << "one page down, clamped at the end of the list";
     clickVisibleRow(visible - 1);
     auto ids = activated();
@@ -463,7 +469,7 @@ TEST_F(SkillsScrollTest, TheVisibleRowSetChanges) {
     ASSERT_EQ(before.size(), 1u);
     EXPECT_EQ(before[0], 0);
 
-    StaticUIInput::scrollPanel(ScrollTarget::Skills, -3, p.layout, p.chat, p.skills, p.loot);
+    StaticUIInput::scrollPanel(ScrollTarget::Skills, -3, p.layout, p.chat, p.skills, p.loot, p.itemDisplay);
 
     clickVisibleRow(0);
     auto after = activated();
@@ -829,7 +835,9 @@ TEST_F(LootScrollPixelTest, ScrollingRedrawsTheLootListWithDifferentRows) {
 
     ChatPanelState chat;
     SkillsPopupState skills;
-    StaticUIInput::scrollPanel(ScrollTarget::Loot, -100, layout_, chat, skills, loot_);
+    ItemDisplayPanelState itemDisplay;
+    StaticUIInput::scrollPanel(ScrollTarget::Loot, -100, layout_, chat, skills, loot_,
+                               itemDisplay);
     ASSERT_EQ(loot_.scrollOffset, loot_.maxScrollOffset());
     ASSERT_EQ(loot_.scrollOffset, 6);
 

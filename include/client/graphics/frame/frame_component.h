@@ -141,6 +141,7 @@
 #include "client/graphics/ui/static_panels.h"
 #include "client/graphics/ui/tradeskill_panel.h"
 #include "client/graphics/ui/combat_ability_panel.h"
+#include "client/graphics/ui/item_display_panel.h"
 
 #include <chrono>
 #include <cstdint>
@@ -180,6 +181,18 @@ public:
 	void processCommonInput(const std::vector<RendererEvent>& actions);
 	void processPlayerInput(const std::vector<RendererEvent>& actions);
 	void processChatInput();
+
+	/**
+	 * T421 (board B365): the tradeskill search boxes' arm of the key drain.
+	 *
+	 * processChatInput() owns the keyboard gate for the WHOLE renderer (it
+	 * is the only caller of setChatInputFocused()), so a second focusable
+	 * field has to be routed from there rather than from StaticUIInput --
+	 * which has no event receiver and cannot open the gate. Returns true if
+	 * the tradeskill window holds the keyboard this frame, in which case
+	 * chat does not see the keys.
+	 */
+	bool processTradeskillSearchInput();
 
 	// ---- T363 (B058): the ONE skills-window toggle ----
 	// Both reachable paths land here: the `/skills` slash command (registry 3,
@@ -284,6 +297,13 @@ public:
 	// T415 (board B320): the combat abilities window. Its gauge is the only
 	// consumer of SkillActivationFeedbackData::cooldownMs.
 	CombatAbilityPanelState combatAbilityState_;  // T415
+	// T421 (board B298, item half): the item display window. Fed by the
+	// ItemDisplayShown bridge arm (whose lines the GAME thread composes with
+	// BuildItemDisplayText), read by renderItemDisplayPopup() and
+	// StaticUIInput::processItemDisplayInput(). Not one of the mutually
+	// exclusive centre popups -- the oracle gives it its own absolute
+	// placement -- so it is drawn on top of them.
+	ItemDisplayPanelState itemDisplayState_;    // T421
 	XPBarState xpBarState_;             // U06i
 	std::unique_ptr<StaticUIInput> staticUIInput_;  // U06j
 
@@ -422,6 +442,9 @@ private:
 
 	// L13: owned state, see the accessors above.
 	bool chatInputFocused_ = false;
+	// T421: true while processTradeskillSearchInput() holds the keyboard
+	// gate, so the release is a state change and not a per-frame write.
+	bool textEntryGateHeld_ = false;
 	int currentFps_ = 0;
 	float essentialSimCostAvgUs_ = 3000.0f;  // EMA of essential sim cost (us), init ~3ms
 	float fireGlowTime_ = 0.0f;  // Animation time accumulator

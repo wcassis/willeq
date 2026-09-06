@@ -426,7 +426,8 @@ void SlashCommandsComponent::processSlashCommand(const std::string& command) {
             args,
             ctx_.eventReceiver ? ctx_.eventReceiver->getMouseX() : 0,
             ctx_.eventReceiver ? ctx_.eventReceiver->getMouseY() : 0,
-            ctx_.Frame().uiLayout_, ctx_.Frame().chatPanelState_, ctx_.Frame().skillsPopupState_, ctx_.Frame().lootState_));
+            ctx_.Frame().uiLayout_, ctx_.Frame().chatPanelState_, ctx_.Frame().skillsPopupState_,
+            ctx_.Frame().lootState_, ctx_.Frame().itemDisplayState_));
     }
     else if (cmd == "/newui") {
         ctx_.Frame().newUIEnabled_ = !ctx_.Frame().newUIEnabled_;

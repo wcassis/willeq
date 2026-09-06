@@ -258,52 +258,56 @@
 257 staticUIInput_->processPanelInput(
 258 ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
 259 pendingUIClick_, uiLayout_, tradeskillState_, combatAbilityState_);
-260 pendingUIClick_ = false;
-261 if (newUIEnabled_ && inventoryState_.activePopup == PopupType::Inventory) {
-262 ctx_.Overlays().updatePaperdollForFrame();
-263 inventoryState_.paperdollTexture = ctx_.Overlays().characterModelView() ? ctx_.Overlays().characterModelView()->getTexture() : nullptr;
-264 if (newUIEnabled_ && uiRenderer_ && !allUIHidden_) {
-265 uiRenderer_->beginFrame();
-266 renderPlayerStatus(*uiRenderer_, uiLayout_, cachedPlayerStats_);
-267 renderTargetInfo(*uiRenderer_, uiLayout_, cachedTargetInfo_);
-268 renderChatPanel(*uiRenderer_, uiLayout_, chatPanelState_);
-269 renderHotbar(*uiRenderer_, uiLayout_, hotbarState_);
-270 renderSpellGemPanel(*uiRenderer_, uiLayout_, spellGemState_);
-271 renderBuffBar(*uiRenderer_, uiLayout_, buffBarState_);
-272 renderCastingBar(*uiRenderer_, uiLayout_, castingBarState_);
-273 renderGroupPanel(*uiRenderer_, uiLayout_, groupPanelState_);
-274 renderPetPanel(*uiRenderer_, uiLayout_, petPanelState_);
-275 renderInventoryPopup(*uiRenderer_, uiLayout_, inventoryState_);
-276 renderSpellbookPopup(*uiRenderer_, uiLayout_, spellbookState_);
-277 renderSkillsPopup(*uiRenderer_, uiLayout_, skillsPopupState_);
-278 renderLootPopup(*uiRenderer_, uiLayout_, lootState_);
-279 renderTradeskillPopup(*uiRenderer_, uiLayout_, tradeskillState_);
-280 renderCombatAbilityPanel(*uiRenderer_, uiLayout_, combatAbilityState_);
-281 renderXPBar(*uiRenderer_, uiLayout_, xpBarState_);
-282 uiRenderer_->endFrame();
-283 frameTimings_.staticUI = measureSection();
-284 ctx_.Overlays().drawZoneLineBoxLabels();
-285 frameTimings_.zoneLineOverlay = measureSection();
-286 eqtGPUPhaseEnd(2 /* GPUSyncPhase::ParticlesUI */);
-287 ctx_.Rdp().captureFrameForRDP();
-288 if (owner_.softwareCursorTexture_) {
-289 auto* cursor = ctx_.device->getCursorControl();
-290 if (cursor && cursor->isVisible()) {
-291 auto pos = cursor->getPosition();
-292 irr::core::position2di destPos(pos.X, pos.Y);
-293 irr::core::rect<irr::s32> srcRect(0, 0, 8, 10);
-294 ctx_.driver->draw2DImage(owner_.softwareCursorTexture_, destPos, srcRect,
-295 nullptr, irr::video::SColor(255, 255, 255, 255), true);
-296 if (pendingScreenshot_) {
-297 pendingScreenshot_ = false;
-298 owner_.saveScreenshot("screenshot.png");
-299 frameTimings_.postRender = measureSection();
-300 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 11: endScene");
-301 eqtGPUPhaseBegin(3 /* GPUSyncPhase::Swap */);
-302 ctx_.driver->endScene();
-303 eqtGPUPhaseEnd(3 /* GPUSyncPhase::Swap */);
-304 eqtGPUPhaseCollectResults();
-305 frameTimings_.endScene = measureSection();
-306 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 12: frame complete");
-307 FlushThreadLog();
-308 return true;
+260 staticUIInput_->processItemDisplayInput(
+261 ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
+262 pendingUIClick_, uiLayout_, itemDisplayState_);
+263 pendingUIClick_ = false;
+264 if (newUIEnabled_ && inventoryState_.activePopup == PopupType::Inventory) {
+265 ctx_.Overlays().updatePaperdollForFrame();
+266 inventoryState_.paperdollTexture = ctx_.Overlays().characterModelView() ? ctx_.Overlays().characterModelView()->getTexture() : nullptr;
+267 if (newUIEnabled_ && uiRenderer_ && !allUIHidden_) {
+268 uiRenderer_->beginFrame();
+269 renderPlayerStatus(*uiRenderer_, uiLayout_, cachedPlayerStats_);
+270 renderTargetInfo(*uiRenderer_, uiLayout_, cachedTargetInfo_);
+271 renderChatPanel(*uiRenderer_, uiLayout_, chatPanelState_);
+272 renderHotbar(*uiRenderer_, uiLayout_, hotbarState_);
+273 renderSpellGemPanel(*uiRenderer_, uiLayout_, spellGemState_);
+274 renderBuffBar(*uiRenderer_, uiLayout_, buffBarState_);
+275 renderCastingBar(*uiRenderer_, uiLayout_, castingBarState_);
+276 renderGroupPanel(*uiRenderer_, uiLayout_, groupPanelState_);
+277 renderPetPanel(*uiRenderer_, uiLayout_, petPanelState_);
+278 renderInventoryPopup(*uiRenderer_, uiLayout_, inventoryState_);
+279 renderSpellbookPopup(*uiRenderer_, uiLayout_, spellbookState_);
+280 renderSkillsPopup(*uiRenderer_, uiLayout_, skillsPopupState_);
+281 renderLootPopup(*uiRenderer_, uiLayout_, lootState_);
+282 renderTradeskillPopup(*uiRenderer_, uiLayout_, tradeskillState_);
+283 renderCombatAbilityPanel(*uiRenderer_, uiLayout_, combatAbilityState_);
+284 renderItemDisplayPopup(*uiRenderer_, uiLayout_, itemDisplayState_);
+285 renderXPBar(*uiRenderer_, uiLayout_, xpBarState_);
+286 uiRenderer_->endFrame();
+287 frameTimings_.staticUI = measureSection();
+288 ctx_.Overlays().drawZoneLineBoxLabels();
+289 frameTimings_.zoneLineOverlay = measureSection();
+290 eqtGPUPhaseEnd(2 /* GPUSyncPhase::ParticlesUI */);
+291 ctx_.Rdp().captureFrameForRDP();
+292 if (owner_.softwareCursorTexture_) {
+293 auto* cursor = ctx_.device->getCursorControl();
+294 if (cursor && cursor->isVisible()) {
+295 auto pos = cursor->getPosition();
+296 irr::core::position2di destPos(pos.X, pos.Y);
+297 irr::core::rect<irr::s32> srcRect(0, 0, 8, 10);
+298 ctx_.driver->draw2DImage(owner_.softwareCursorTexture_, destPos, srcRect,
+299 nullptr, irr::video::SColor(255, 255, 255, 255), true);
+300 if (pendingScreenshot_) {
+301 pendingScreenshot_ = false;
+302 owner_.saveScreenshot("screenshot.png");
+303 frameTimings_.postRender = measureSection();
+304 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 11: endScene");
+305 eqtGPUPhaseBegin(3 /* GPUSyncPhase::Swap */);
+306 ctx_.driver->endScene();
+307 eqtGPUPhaseEnd(3 /* GPUSyncPhase::Swap */);
+308 eqtGPUPhaseCollectResults();
+309 frameTimings_.endScene = measureSection();
+310 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 12: frame complete");
+311 FlushThreadLog();
+312 return true;

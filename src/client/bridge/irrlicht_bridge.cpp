@@ -441,6 +441,17 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         }
         break;
 
+    // T421 (board B298, item half): the item display window's contents. The
+    // lines arrive already composed -- BuildItemDisplayText() runs on the
+    // GAME thread, where the ItemInstance lives.
+    case state::GameEventType::ItemDisplayShown:
+        if (renderer_) {
+            auto& d = std::get<state::ItemDisplayShownData>(event.data);
+            EQT::Graphics::applyItemDisplayShown(
+                renderer_->Frame().itemDisplayState_, d);
+        }
+        break;
+
     // Inventory events (D11a)
     case state::GameEventType::InventorySlotChanged: {
         // U05/S2: update cached inventory state from event data only — the

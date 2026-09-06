@@ -11,6 +11,8 @@
 #include "client/graphics/ui/tradeskill_layout.h"
 #include "client/graphics/ui/combat_ability_panel.h"
 #include "client/graphics/ui/combat_ability_layout.h"
+#include "client/graphics/ui/item_display_panel.h"
+#include "client/graphics/ui/item_display_layout.h"
 #include "client/inventory/inventory_constants.h"
 #include "client/bridge/game_state_bridge.h"
 #include "client/events/renderer_intents.h"
@@ -23,6 +25,27 @@
 
 namespace EQT {
 namespace Graphics {
+
+namespace {
+
+/**
+ * Does inventory slot `i` (the flat 0..TOTAL_SLOTS-1 index the layout uses)
+ * hold an item? The twin of renderInventoryPopup()'s own split between the
+ * equipment array and the general array -- same bound, same indexing.
+ */
+bool slotHasItem(const InventoryPanelState& inv, int i) {
+    if (i < 0) return false;
+    if (i < InventoryPanelState::EQUIP_SLOTS) {
+        return inv.equipSlots[i].hasItem;
+    }
+    const int g = i - InventoryPanelState::EQUIP_SLOTS;
+    if (g < InventoryPanelState::GENERAL_SLOTS) {
+        return inv.generalSlots[g].hasItem;
+    }
+    return false;
+}
+
+}  // namespace
 
 bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
                                   const UILayout& layout,
@@ -110,6 +133,22 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
                 if (mouseX >= r.UpperLeftCorner.X && mouseX < r.LowerRightCorner.X &&
                     mouseY >= r.UpperLeftCorner.Y && mouseY < r.LowerRightCorner.Y) {
                     inventory.hoveredSlot = i;
+                    // T421 (board B298, item half): a click on an occupied
+                    // slot asks the game thread to describe the item. Until
+                    // this, a click on an inventory slot did NOTHING at all
+                    // -- the loop set hoveredSlot and broke.
+                    //
+                    // DEVIATION from the oracle, flagged: the official client
+                    // opens the item display on a RIGHT click. fable binds the
+                    // right button to mouselook (see the key table in
+                    // include/client/graphics/ui/CLAUDE.md) and its static UI
+                    // has no right-click routing at all -- RendererEventReceiver
+                    // tracks rightButtonDown_ for the camera and latches no
+                    // click. Left is the button that was free.
+                    if (leftClicked && bridge_ && slotHasItem(inventory, i)) {
+                        bridge_->pushIntent(eqt::events::ItemDisplayRequestIntent{
+                            static_cast<int16_t>(i)});
+                    }
                     break;
                 }
             }
@@ -331,12 +370,69 @@ bool StaticUIInput::processPanelInput(int mouseX, int mouseY, bool leftClicked,
                 }
             }
         }
+        // T421 (board B365): the three Editboxes. A click focuses one; a
+        // click anywhere else inside the window blurs them, which is how the
+        // keyboard gate is released (FrameComponent watches focusedField).
+        const TradeskillField field =
+            hitTestTradeskillField(layout, tradeskill, mouseX, mouseY);
+        if (field != TradeskillField::None) {
+            consumed = true;
+            if (leftClicked) {
+                if (auto* prev = tradeskill.focusedEntry()) {
+                    prev->inputActive = false;
+                }
+                tradeskill.focusedField = field;
+                if (auto* now = tradeskill.focusedEntry()) {
+                    now->inputActive = true;
+                    now->cursorPos = static_cast<int>(now->inputText.size());
+                }
+            }
+        } else if (leftClicked &&
+                   layout.centerPopup.isPointInside(
+                       irr::core::vector2di(mouseX, mouseY))) {
+            // The tradeskill window IS layout.centerPopup (TradeskillLayout
+            // maps the oracle's 400x525 onto it), so this is "clicked in the
+            // window but not in an editbox".
+            if (auto* prev = tradeskill.focusedEntry()) {
+                prev->inputActive = false;
+            }
+            tradeskill.focusedField = TradeskillField::None;
+        }
+
         const TradeskillButton button =
             hitTestTradeskillButton(layout, tradeskill, mouseX, mouseY);
         if (button != TradeskillButton::None) {
             consumed = true;
             if (leftClicked && bridge_) {
-                if (button == TradeskillButton::Combine) {
+                if (button == TradeskillButton::Search) {
+                    // T421: COMBW_SearchButton. The same request Enter in any
+                    // of the three editboxes makes, and the same
+                    // OP_RecipesSearch `/recipesearch` sends.
+                    bridge_->pushIntent(eqt::events::RecipeSearchIntent{
+                        tradeskill.searchEntry.inputText,
+                        tradeskill.typedMinTrivial(),
+                        tradeskill.typedMaxTrivial()});
+                } else if (button == TradeskillButton::AddFavorite ||
+                           button == TradeskillButton::RemoveFavorite ||
+                           button == TradeskillButton::ShowFavorites) {
+                    // T421: the favourites row. Add/Remove act on the
+                    // SELECTED row (0 for none, which the game side refuses
+                    // rather than sending an empty edit); Show re-fetches.
+                    const auto op =
+                        button == TradeskillButton::AddFavorite
+                            ? eqt::events::RecipeFavoriteOp::Add
+                            : (button == TradeskillButton::RemoveFavorite
+                                   ? eqt::events::RecipeFavoriteOp::Remove
+                                   : eqt::events::RecipeFavoriteOp::Show);
+                    const uint32_t id =
+                        (tradeskill.selectedRecipe >= 0 &&
+                         tradeskill.selectedRecipe <
+                             static_cast<int>(tradeskill.recipes.size()))
+                            ? tradeskill.recipes[static_cast<size_t>(
+                                  tradeskill.selectedRecipe)].recipeId
+                            : 0;
+                    bridge_->pushIntent(eqt::events::RecipeFavoriteIntent{op, id});
+                } else if (button == TradeskillButton::Combine) {
                     // The container slot the server expects. A WORLD container
                     // combines through SLOT_TRADESKILL_EXPERIMENT_COMBINE (the
                     // same value `/combine` with no argument sends); an
@@ -421,8 +517,16 @@ bool StaticUIInput::processKey(irr::EKEY_CODE key, bool pressed, bool /*shift*/,
 ScrollTarget StaticUIInput::scrollTargetAt(int mouseX, int mouseY,
                                            const UILayout& layout,
                                            const SkillsPopupState& skills,
-                                           const LootPanelState& loot) {
+                                           const LootPanelState& loot,
+                                           const ItemDisplayPanelState& itemDisplay) {
     const irr::core::vector2di p(mouseX, mouseY);
+
+    // T421: the item display window is TOPMOST -- it has its own absolute
+    // placement and is drawn after every centre popup -- so it is asked
+    // first, and it is the one target that is not in layout.centerPopup.
+    if (itemDisplayContains(layout, itemDisplay, mouseX, mouseY)) {
+        return ScrollTarget::ItemDisplay;
+    }
 
     // Popups first, topmost first -- the same precedence processKey()'s ESC
     // handler uses. Both draw into layout.centerPopup.
@@ -448,6 +552,8 @@ int StaticUIInput::pageSize(ScrollTarget target, const UILayout& layout) {
             return skillsVisibleRows(layout);
         case ScrollTarget::Loot:
             return LootPanelState::VISIBLE_ROWS;
+        case ScrollTarget::ItemDisplay:
+            return ItemDisplayLayout::visibleDescriptionLines(layout);
         case ScrollTarget::None:
         default:
             return 0;
@@ -458,7 +564,8 @@ bool StaticUIInput::scrollPanel(ScrollTarget target, int lines,
                                 const UILayout& layout,
                                 ChatPanelState& chat,
                                 SkillsPopupState& skills,
-                                LootPanelState& loot) {
+                                LootPanelState& loot,
+                                ItemDisplayPanelState& itemDisplay) {
     switch (target) {
         case ScrollTarget::Chat: {
             // From the BOTTOM: 0 is pinned to the newest line, and scrolling
@@ -487,6 +594,16 @@ bool StaticUIInput::scrollPanel(ScrollTarget target, int lines,
             loot.hoveredRow = -1;
             return true;
         }
+        case ScrollTarget::ItemDisplay: {
+            // T421: from the TOP, the skills/loot convention.
+            // `Style_VScroll true` on IDW_ItemDescription is why this exists:
+            // a loaded item composes more lines than the oracle's 190px
+            // window shows.
+            int maxOff = itemDisplay.maxScrollOffset(layout);
+            int next = itemDisplay.scrollOffset - lines;
+            itemDisplay.scrollOffset = std::max(0, std::min(next, maxOff));
+            return true;
+        }
         case ScrollTarget::None:
         default:
             return false;
@@ -497,9 +614,10 @@ bool StaticUIInput::processWheel(int mouseX, int mouseY, float wheelDelta,
                                  const UILayout& layout,
                                  ChatPanelState& chat,
                                  SkillsPopupState& skills,
-                                 LootPanelState& loot) {
+                                 LootPanelState& loot,
+                                 ItemDisplayPanelState& itemDisplay) {
     if (wheelDelta == 0.0f) return false;
-    ScrollTarget target = scrollTargetAt(mouseX, mouseY, layout, skills, loot);
+    ScrollTarget target = scrollTargetAt(mouseX, mouseY, layout, skills, loot, itemDisplay);
     if (target == ScrollTarget::None) return false;
 
     // Irrlicht's Wheel is +1 per notch away from the user. Round rather than
@@ -507,28 +625,32 @@ bool StaticUIInput::processWheel(int mouseX, int mouseY, float wheelDelta,
     // translation in rdp_input_handler.cpp) still moves a line.
     int notches = static_cast<int>(std::lround(wheelDelta));
     if (notches == 0) notches = (wheelDelta > 0.0f) ? 1 : -1;
-    return scrollPanel(target, notches * WHEEL_LINES, layout, chat, skills, loot);
+    return scrollPanel(target, notches * WHEEL_LINES, layout, chat, skills, loot,
+                       itemDisplay);
 }
 
 bool StaticUIInput::processScrollKey(bool up, int mouseX, int mouseY,
                                      const UILayout& layout,
                                      ChatPanelState& chat,
                                      SkillsPopupState& skills,
-                                     LootPanelState& loot) {
-    ScrollTarget target = scrollTargetAt(mouseX, mouseY, layout, skills, loot);
+                                     LootPanelState& loot,
+                                     ItemDisplayPanelState& itemDisplay) {
+    ScrollTarget target = scrollTargetAt(mouseX, mouseY, layout, skills, loot, itemDisplay);
     if (target == ScrollTarget::None) {
         // A page key with the cursor out in the world still has an obvious
         // subject when a scrollable popup is up -- you opened it, it is the
         // only thing on screen, and requiring the cursor to be inside it as
         // well would make the keyboard path useless to a --script run, which
         // never moves the pointer off (0,0).
-        if (loot.isOpen) target = ScrollTarget::Loot;
+        if (itemDisplay.isOpen) target = ScrollTarget::ItemDisplay;
+        else if (loot.isOpen) target = ScrollTarget::Loot;
         else if (skills.isOpen) target = ScrollTarget::Skills;
         else target = ScrollTarget::Chat;   // the always-present panel
     }
     int page = pageSize(target, layout);
     if (page <= 0) return false;
-    return scrollPanel(target, up ? page : -page, layout, chat, skills, loot);
+    return scrollPanel(target, up ? page : -page, layout, chat, skills, loot,
+                       itemDisplay);
 }
 
 std::string StaticUIInput::runScrollCommand(const std::string& args,
@@ -536,7 +658,8 @@ std::string StaticUIInput::runScrollCommand(const std::string& args,
                                             const UILayout& layout,
                                             ChatPanelState& chat,
                                             SkillsPopupState& skills,
-                                            LootPanelState& loot) {
+                                            LootPanelState& loot,
+                                            ItemDisplayPanelState& itemDisplay) {
     std::vector<std::string> tok;
     {
         std::istringstream iss(args);
@@ -550,13 +673,14 @@ std::string StaticUIInput::runScrollCommand(const std::string& args,
         if (tok[0] == "chat") { target = ScrollTarget::Chat; dirIdx = 1; }
         else if (tok[0] == "skills") { target = ScrollTarget::Skills; dirIdx = 1; }
         else if (tok[0] == "loot") { target = ScrollTarget::Loot; dirIdx = 1; }
+        else if (tok[0] == "item") { target = ScrollTarget::ItemDisplay; dirIdx = 1; }
     }
     if (target == ScrollTarget::None) {
-        target = scrollTargetAt(mouseX, mouseY, layout, skills, loot);
+        target = scrollTargetAt(mouseX, mouseY, layout, skills, loot, itemDisplay);
     }
     if (target == ScrollTarget::None) {
         return "Scroll: no scrollable panel under the cursor "
-               "(usage: /scroll [chat|skills|loot] [up|down|top|bottom] [lines])";
+               "(usage: /scroll [chat|skills|loot|item] [up|down|top|bottom] [lines])";
     }
 
     const std::string which = tok.size() > dirIdx ? tok[dirIdx] : std::string("up");
@@ -571,9 +695,9 @@ std::string StaticUIInput::runScrollCommand(const std::string& args,
     else if (which == "bottom") lines = -1000000;
     else if (which == "down") lines = -lines;
 
-    scrollPanel(target, lines, layout, chat, skills, loot);
+    scrollPanel(target, lines, layout, chat, skills, loot, itemDisplay);
 
-    static const char* kNames[] = {"none", "chat", "skills", "loot"};
+    static const char* kNames[] = {"none", "chat", "skills", "loot", "item"};
     return std::string("Scroll: ") + kNames[static_cast<int>(target)] + " " + which;
 }
 
@@ -585,6 +709,28 @@ int StaticUIInput::hitTestSlotRow(int mx, int my, int startX, int startY,
         if (mx >= sx && mx < sx + slotSize) return i;
     }
     return -1;
+}
+
+// T421 (board B298, item half) -- see the declaration for why this is its
+// own entry point.
+bool StaticUIInput::processItemDisplayInput(int mouseX, int mouseY,
+                                            bool leftClicked,
+                                            const UILayout& layout,
+                                            ItemDisplayPanelState& itemDisplay) {
+    itemDisplay.closeHovered = false;
+    if (!itemDisplay.isOpen) return false;
+
+    if (hitTestItemDisplayCloseBox(layout, itemDisplay, mouseX, mouseY)) {
+        itemDisplay.closeHovered = true;
+        if (leftClicked) {
+            // Unlike the loot popup, this window has no server-side state:
+            // the item display is a pure client view of an item the client
+            // already holds, so closing it locally cannot desync anything.
+            itemDisplay.isOpen = false;
+        }
+        return true;
+    }
+    return itemDisplayContains(layout, itemDisplay, mouseX, mouseY);
 }
 
 } // namespace Graphics

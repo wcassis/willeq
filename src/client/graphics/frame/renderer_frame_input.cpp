@@ -88,7 +88,8 @@ void FrameComponent::processFrameInput(float deltaTime) {
         // hotkeys, not the wheel), so a UI-consumed notch cannot also zoom.
         if (newUIEnabled_ && staticUIInput_) {
             staticUIInput_->processWheel(mx, my, ctx_.eventReceiver->getMouseWheelDelta(),
-                uiLayout_, chatPanelState_, skillsPopupState_, lootState_);
+                uiLayout_, chatPanelState_, skillsPopupState_, lootState_,
+                itemDisplayState_);
         } else {
             ctx_.eventReceiver->getMouseWheelDelta();  // drain, never accumulate
         }
@@ -127,7 +128,8 @@ void FrameComponent::processCommonInput(const std::vector<RendererEvent>& action
                     staticUIInput_->processScrollKey(
                         event.action == RA::ScrollUIUp,
                         ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
-                        uiLayout_, chatPanelState_, skillsPopupState_, lootState_);
+                        uiLayout_, chatPanelState_, skillsPopupState_, lootState_,
+                        itemDisplayState_);
                 }
                 break;
             case RA::ToggleZoneLights: ctx_.Diagnostics().toggleZoneLights(); break;
@@ -502,6 +504,14 @@ void FrameComponent::processChatInput() {
         return;
     }
 
+    // T421 (board B365): the tradeskill search boxes get the keys first when
+    // one of them has the caret. They cannot take the gate themselves --
+    // StaticUIInput has no event receiver -- so the ONE keyboard gate lives
+    // here for both entries.
+    if (processTradeskillSearchInput()) {
+        return;
+    }
+
     // Open chat input on Enter or / key
     if (!chatInputFocused_) {
         if (ctx_.eventReceiver->enterKeyPressed()) {
@@ -524,38 +534,41 @@ void FrameComponent::processChatInput() {
         }
     }
 
-    // Process typed characters when chat is focused
+    // Process typed characters when chat is focused.
+    //
+    // T421 (board B365): the edit itself is applyTextEntryKey() -- the ONE
+    // text-entry body, which the tradeskill search boxes use too. What is
+    // left here is only chat's POLICY on the four actions it can return:
+    // Submit publishes ChatSubmitIntent and drops focus, Cancel drops focus
+    // without publishing, Complete is T357's slash completion, Changed needs
+    // nothing.
     if (chatInputFocused_) {
         while (ctx_.eventReceiver->hasPendingKeyEvents()) {
             auto ke = ctx_.eventReceiver->popKeyEvent();
+            const TextEntryAction action =
+                applyTextEntryKey(chatPanelState_, ke.key, ke.character);
 
-            if (ke.key == irr::KEY_RETURN) {
-                // Submit chat text
+            if (action == TextEntryAction::Submit) {
                 if (!chatPanelState_.inputText.empty()) {
                     LOG_INFO(MOD_GRAPHICS, "Chat submit: '{}'", chatPanelState_.inputText);
                     if (ctx_.bridge) {
                         ctx_.bridge->pushIntent(eqt::events::ChatSubmitIntent{chatPanelState_.inputText});
                     }
                 }
-                chatPanelState_.inputText.clear();
-                chatPanelState_.cursorPos = 0;
-                chatPanelState_.inputActive = false;
+                clearTextEntry(chatPanelState_);
                 chatInputFocused_ = false;
                 ctx_.eventReceiver->setChatInputFocused(false);
                 return;
             }
 
-            if (ke.key == irr::KEY_ESCAPE) {
-                // Cancel chat input
-                chatPanelState_.inputText.clear();
-                chatPanelState_.cursorPos = 0;
-                chatPanelState_.inputActive = false;
+            if (action == TextEntryAction::Cancel) {
+                clearTextEntry(chatPanelState_);
                 chatInputFocused_ = false;
                 ctx_.eventReceiver->setChatInputFocused(false);
                 return;
             }
 
-            if (ke.key == irr::KEY_TAB) {
+            if (action == TextEntryAction::Complete) {
                 // T357 (B057): complete the slash command under the caret.
                 // Tab is already consumed by RendererEventReceiver::OnEvent()
                 // while chat is focused (only F1-F12 escape that gate), so it
@@ -564,21 +577,6 @@ void FrameComponent::processChatInput() {
                 // move it to.
                 applyCommandCompletion();
                 continue;
-            }
-
-            if (ke.key == irr::KEY_BACK) {
-                // Backspace
-                if (chatPanelState_.cursorPos > 0 && !chatPanelState_.inputText.empty()) {
-                    chatPanelState_.inputText.erase(chatPanelState_.cursorPos - 1, 1);
-                    chatPanelState_.cursorPos--;
-                }
-                continue;
-            }
-
-            // Insert printable character
-            if (ke.character >= 32 && ke.character < 127) {
-                chatPanelState_.inputText.insert(chatPanelState_.cursorPos, 1, static_cast<char>(ke.character));
-                chatPanelState_.cursorPos++;
             }
         }
         return;
@@ -595,8 +593,15 @@ void FrameComponent::processChatInput() {
         // does, and it is the single body for "ESC closes the loot window"
         // (which pushes CloseLootIntent -- the panel closes when the server
         // confirms, never optimistically).
+        // T421: the item display is drawn on TOP of the centre popups (its
+        // oracle placement is its own, not centerPopup's), so ESC dismisses
+        // it before them -- same top-down rule T290 gave the loot window.
         bool popupConsumedEscape = false;
-        if (newUIEnabled_ && staticUIInput_) {
+        if (itemDisplayState_.isOpen) {
+            itemDisplayState_.isOpen = false;
+            popupConsumedEscape = true;
+        }
+        if (!popupConsumedEscape && newUIEnabled_ && staticUIInput_) {
             popupConsumedEscape = staticUIInput_->processKey(
                 irr::KEY_ESCAPE, /*pressed=*/true, /*shift=*/false, /*ctrl=*/false,
                 inventoryState_, spellbookState_, skillsPopupState_, lootState_);
@@ -633,6 +638,63 @@ void FrameComponent::processChatInput() {
 //     System channel /help writes to);
 //   * no match does nothing at all -- silently, because a beep-equivalent
 //     for every stray Tab would be noise.
+// T421 (board B365) -- see the declaration. The EDIT is applyTextEntryKey(),
+// the same body chat uses; what is here is the tradeskill window's POLICY.
+bool FrameComponent::processTradeskillSearchInput() {
+    TextEntryState* entry = tradeskillState_.focusedEntry();
+    if (entry == nullptr) {
+        if (textEntryGateHeld_) {
+            textEntryGateHeld_ = false;
+            ctx_.eventReceiver->setChatInputFocused(false);
+        }
+        return false;
+    }
+
+    if (!textEntryGateHeld_) {
+        textEntryGateHeld_ = true;
+        ctx_.eventReceiver->setChatInputFocused(true);
+        ctx_.eventReceiver->clearPendingKeyEvents();
+        return true;
+    }
+
+    while (ctx_.eventReceiver->hasPendingKeyEvents()) {
+        auto ke = ctx_.eventReceiver->popKeyEvent();
+        const TextEntryAction action = applyTextEntryKey(*entry, ke.key, ke.character);
+
+        if (action == TextEntryAction::Submit) {
+            // Enter in ANY of the three runs the search, which is what the
+            // official client's Editboxes do -- the Search button and the
+            // return key are one request, not two.
+            if (ctx_.bridge) {
+                ctx_.bridge->pushIntent(eqt::events::RecipeSearchIntent{
+                    tradeskillState_.searchEntry.inputText,
+                    tradeskillState_.typedMinTrivial(),
+                    tradeskillState_.typedMaxTrivial()});
+            }
+            // The text STAYS -- the box goes on echoing the live query, and
+            // applyTradeskillRecipeListCleared() will confirm it from the
+            // server's own answer. Only the caret leaves.
+            entry->inputActive = false;
+            tradeskillState_.focusedField = TradeskillField::None;
+            textEntryGateHeld_ = false;
+            ctx_.eventReceiver->setChatInputFocused(false);
+            return true;
+        }
+
+        if (action == TextEntryAction::Cancel) {
+            entry->inputActive = false;
+            tradeskillState_.focusedField = TradeskillField::None;
+            textEntryGateHeld_ = false;
+            ctx_.eventReceiver->setChatInputFocused(false);
+            return true;
+        }
+        // Complete (Tab) has no vocabulary here -- a recipe name is the
+        // server's, not the client's -- so it is a deliberate no-op rather
+        // than a corruption of what the player typed (T357's rule).
+    }
+    return true;
+}
+
 void FrameComponent::applyCommandCompletion() {
     if (!commandCompletionProvider_) {
         return;

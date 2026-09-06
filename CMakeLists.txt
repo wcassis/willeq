@@ -356,6 +356,9 @@ SET(CLIENT_CORE_SOURCES
     # buffer, and chat command registry are plain data models with no
     # renderer dependency (declassified in eq.h; see the P28 unit).
     src/client/inventory/inventory_constants.cpp
+    # T421 (board B298 item half): the item display window's TEXT. Pure
+    # ItemInstance -> lines, no graphics dependency at all.
+    src/client/inventory/item_display_text.cpp
     src/client/inventory/inventory_manager.cpp
     # J01: inventory_manager.cpp split move-only into four TUs
     src/client/inventory/inventory_item_parser.cpp
@@ -601,6 +604,10 @@ IF(EQT_GRAPHICS)
         src/client/graphics/ui/loot_panel.cpp
         src/client/graphics/ui/tradeskill_panel.cpp
         src/client/graphics/ui/tradeskill_recipe_list.cpp
+        # T421: the ONE text-entry widget (board B365) and the item display
+        # window (board B298 item half).
+        src/client/graphics/ui/text_entry.cpp
+        src/client/graphics/ui/item_display_panel.cpp
         src/client/graphics/ui/combat_ability_panel.cpp
         src/client/graphics/ui/character_model_view.cpp
         src/client/graphics/spell_visual_fx.cpp

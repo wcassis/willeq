@@ -32,6 +32,7 @@ struct LootPanelState;
 struct ChatPanelState;
 struct TradeskillPanelState;
 struct CombatAbilityPanelState;
+struct ItemDisplayPanelState;
 
 /**
  * T313 -- the three panels that carry a scrollOffset.
@@ -49,7 +50,12 @@ enum class ScrollTarget : uint8_t {
     None = 0,
     Chat,
     Skills,
-    Loot
+    Loot,
+    // T421 (board B298, item half): IDW_ItemDescription is `Style_VScroll
+    // true` and a loaded item composes more lines than the oracle's 190px
+    // window shows. Added here rather than given a private scroll writer,
+    // because T313's rule is that there is ONE scroll router.
+    ItemDisplay
 };
 
 class StaticUIInput {
@@ -94,6 +100,22 @@ public:
                            CombatAbilityPanelState& combatAbilities);
 
     /**
+     * T421 (board B298, item half): the item display window.
+     *
+     * Its own entry point for the same reason processPanelInput() is: the
+     * window is not one of the mutually-exclusive centre popups (the oracle
+     * places it at its own absolute (0,80), `RelativePosition false`), so it
+     * is drawn and hit-tested on top of them and every existing caller of
+     * the two entry points above stays untouched.
+     *
+     * The only click it takes is Style_Closebox; the rest of the window is
+     * consumed so a click on it does not fall through to the 3D scene.
+     */
+    bool processItemDisplayInput(int mouseX, int mouseY, bool leftClicked,
+                                 const UILayout& layout,
+                                 ItemDisplayPanelState& itemDisplay);
+
+    /**
      * Handle a key press. Returns true if consumed.
      */
     bool processKey(irr::EKEY_CODE key, bool pressed, bool shift, bool ctrl,
@@ -121,7 +143,8 @@ public:
     static ScrollTarget scrollTargetAt(int mouseX, int mouseY,
                                        const UILayout& layout,
                                        const SkillsPopupState& skills,
-                                       const LootPanelState& loot);
+                                       const LootPanelState& loot,
+                                       const ItemDisplayPanelState& itemDisplay);
 
     /**
      * Move `target`'s scrollOffset by `lines`, clamped.
@@ -140,7 +163,8 @@ public:
                             const UILayout& layout,
                             ChatPanelState& chat,
                             SkillsPopupState& skills,
-                            LootPanelState& loot);
+                            LootPanelState& loot,
+                            ItemDisplayPanelState& itemDisplay);
 
     /**
      * A mouse wheel notch over the UI. `wheelDelta` is Irrlicht's
@@ -152,7 +176,8 @@ public:
                       const UILayout& layout,
                       ChatPanelState& chat,
                       SkillsPopupState& skills,
-                      LootPanelState& loot);
+                      LootPanelState& loot,
+                      ItemDisplayPanelState& itemDisplay);
 
     /**
      * PageUp / PageDown. Same routing as the wheel, a whole page at a time.
@@ -162,7 +187,8 @@ public:
                           const UILayout& layout,
                           ChatPanelState& chat,
                           SkillsPopupState& skills,
-                          LootPanelState& loot);
+                          LootPanelState& loot,
+                          ItemDisplayPanelState& itemDisplay);
 
     /** One page of `target`, in lines. */
     static int pageSize(ScrollTarget target, const UILayout& layout);
@@ -174,7 +200,7 @@ public:
      * irrlicht_renderer.cpp, which was over the file-size ceiling at the
      * time; J11 has since split it).
      *
-     * Grammar: [chat|skills|loot] [up|down|top|bottom] [lines]
+     * Grammar: [chat|skills|loot|item] [up|down|top|bottom] [lines]
      * An omitted panel means "whatever is under the cursor", the same rule
      * the wheel follows.
      */
@@ -183,7 +209,8 @@ public:
                                         const UILayout& layout,
                                         ChatPanelState& chat,
                                         SkillsPopupState& skills,
-                                        LootPanelState& loot);
+                                        LootPanelState& loot,
+                                        ItemDisplayPanelState& itemDisplay);
 
     /** Lines moved per wheel notch. */
     static constexpr int WHEEL_LINES = 3;

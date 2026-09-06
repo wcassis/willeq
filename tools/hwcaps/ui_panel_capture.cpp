@@ -34,6 +34,10 @@
 
 #include "client/graphics/ui/static_panels.h"
 #include "client/graphics/ui/tradeskill_panel.h"
+#include "client/graphics/ui/item_display_panel.h"
+#include "client/inventory/item_display_text.h"
+#include "client/inventory/item_instance.h"
+#include "client/inventory/inventory_constants.h"
 #include "client/state/event_bus.h"
 #include "client/graphics/ui/ui_renderer.h"
 #include "client/graphics/ui/ui_layout.h"
@@ -101,6 +105,7 @@ struct PanelStates {
     SkillsPopupState skills;
     LootPanelState loot;
     TradeskillPanelState tradeskill;   // T419 (boards B335/B321)
+    ItemDisplayPanelState itemDisplay; // T421 (board B298, item half)
     XPBarState xp;
 
     PanelStates() {
@@ -267,6 +272,45 @@ struct PanelStates {
         }
         tradeskill.selectedRecipe = 2;
         tradeskill.hoveredRecipe = 4;
+        // T421 (board B365): COMBW_SearchTextEdit has the caret, so the
+        // capture shows the focused-field frame and the block cursor.
+        tradeskill.focusedField = TradeskillField::SearchText;
+        tradeskill.searchEntry.inputActive = true;
+
+        // T421 (board B298, item half): the item display window, filled by
+        // the REAL composer over a REAL ItemInstance -- no hand-typed lines.
+        {
+            eqt::inventory::ItemInstance it;
+            it.itemId = 4231;
+            it.name = "Bladed Thulian Claws";
+            it.icon = 640;
+            it.magic = true;
+            it.loreItem = true;
+            it.noDrop = true;
+            it.slots = eqt::inventory::EQUIPSLOT_PRIMARY;
+            it.weight = 4.5f;
+            it.size = eqt::inventory::SIZE_MEDIUM;
+            it.ac = 12;  it.damage = 19;  it.delay = 21;  it.skillType = 1;
+            it.str = 5;  it.sta = 4;  it.dex = 2;  it.agi = 3;
+            it.hp = 35;  it.mana = 40;
+            it.fireResist = 8;  it.coldResist = 9;  it.magicResist = 10;
+            it.attack = 14;  it.haste = 16;  it.accuracy = 17;
+            it.damageShield = 18;  it.dotShield = 19;  it.spellShield = 20;
+            it.strikethrough = 21;  it.stunResist = 22;  it.shielding = 23;
+            it.hpRegen = 25;  it.manaRegen = 26;  it.enduranceRegen = 24;
+            it.recLevel = 45;  it.reqLevel = 40;
+            it.maxCharges = 3;  it.charges = 2;
+            it.clickEffect.effectId = 300;
+            it.clickEffect.name = "Shield of Words";
+            it.clickEffect.castTime = 2500;
+            it.lore = "This weapon hums faintly.";
+            eqt::state::ItemDisplayShownData d;
+            d.itemId = it.itemId;
+            d.name = it.name;
+            d.iconId = it.icon;
+            d.lines = eqt::inventory::BuildItemDisplayText(it);
+            applyItemDisplayShown(itemDisplay, d);
+        }
 
         xp.progress = 0.62f;
     }
@@ -313,6 +357,9 @@ std::vector<PanelCapture> buildCaptureList() {
         // T419 (board B335): the recipe list on the window's left side.
         {"tradeskill", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             renderTradeskillPopup(u, l, s.tradeskill); }},
+        // T421 (board B298, item half): the item display window.
+        {"item_display", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderItemDisplayPopup(u, l, s.itemDisplay); }},
         // Everything the HUD draws at once -- the screen a player sees.
         {"hud_all", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             renderPlayerStatus(u, l, s.stats);

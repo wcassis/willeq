@@ -75,7 +75,23 @@ const std::string kGolden = kRoot + "/tests/goldens/frame_render_order_g05.txt";
 //     nothing was removed or replaced. Entries 0-256 are byte-identical;
 //     everything after each insertion point shifts with its text
 //     byte-identical; nothing was reordered.
-const size_t kGoldenSize = 309u;
+//   * T421 (board B298, item half): the item display window. Its INPUT hop,
+//     entries 260-262 -- the three lines of
+//     `staticUIInput_->processItemDisplayInput(...)`, inserted directly after
+//     entry 259 (the last line of T415's processPanelInput call) and before
+//     `pendingUIClick_ = false;`, which all three input calls read. And its
+//     DRAW, entry 285 -- `renderItemDisplayPopup(...)`, inserted directly
+//     after entry 284 `renderCombatAbilityPanel(...)` and before
+//     `renderXPBar(...)`, because the oracle's ItemDisplayWindow has its own
+//     absolute placement (`RelativePosition false`, (0,80)) and overlaps
+//     whatever is beneath it, so it is drawn last of the windows.
+//     The count RISES by four, 309 -> 313: four statements were added and
+//     nothing was removed or replaced. Entries 0-259 are byte-identical;
+//     everything after each insertion point shifts with its text
+//     byte-identical; nothing was reordered (verified by diffing the composed
+//     list against the pre-edit golden -- the only hunks are the two
+//     insertions).
+const size_t kGoldenSize = 313u;
 
 std::vector<std::string> readLines(const std::string& path) {
     std::ifstream in(path);
