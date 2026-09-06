@@ -135,10 +135,21 @@ TEST(DataPaths, TheCwdRelativePathWinsWhenItExists) {
 using EQT::Graphics::Environment::SpellEffectsConfig;
 namespace SpellPresets = EQT::Graphics::Environment::SpellPresets;
 
-// The shipped burst count, read out of config/spell_effects.json.
-constexpr int kShippedImpactBurst = 36;
-// What setDefaults() puts there instead when the file is missing.
-constexpr int kBuiltInImpactBurst = 12;
+// The discriminator is the impact style's SPAWN RATE, and it has to be a
+// three-way one: shipped, built-in-fallback, and never-configured must all be
+// distinguishable, or a test that means "the file was found" can pass on a
+// file that was not.
+//
+// T422 moved it off `burstCount`. That used to read 36 shipped / 12 built-in /
+// 0 never-configured, but T422 matched the impact style to the official
+// client, whose population rises over ~2 s rather than appearing in one frame,
+// so the shipped style is now a `spawnRate` emitter and its burstCount is 0 --
+// which used to be the "no config was applied at all" value. `spawnRate` reads
+// 480 shipped / 0 built-in (setDefaults() still describes the pre-T422
+// one-shot) / 10 never-configured (EmitterConfig's own default, board B221's
+// "permanent 10/s emitter").
+constexpr float kShippedImpactSpawnRate = 480.0f;
+constexpr float kBuiltInImpactSpawnRate = 0.0f;
 
 // PRE-FIX RED. From a CWD with no config/ tree, the production string opens
 // nothing, load() returns true anyway, and the impact preset is the built-in
@@ -149,9 +160,9 @@ TEST_F(CwdElsewhere, TheProductionStringLoadsTheShippedConfigFromAnyDirectory) {
 
     const auto impact = SpellPresets::Impact(glm::vec4(1.0f), 93);
     ASSERT_EQ(impact.emitters.size(), 1u);
-    EXPECT_EQ(impact.emitters[0].config.burstCount, kShippedImpactBurst)
-        << "the preset is not the shipped impact; " << kBuiltInImpactBurst
-        << " means the built-in fallback table, 0 means no config was applied at all";
+    EXPECT_FLOAT_EQ(impact.emitters[0].config.spawnRate, kShippedImpactSpawnRate)
+        << "the preset is not the shipped impact; " << kBuiltInImpactSpawnRate
+        << " means the built-in fallback table, 10 means no config was applied at all";
 }
 
 // PRE-FIX RED. A genuinely missing shipped data file must not report success.
@@ -164,7 +175,9 @@ TEST_F(CwdElsewhere, AMissingConfigFileIsReportedAsAFailure) {
     // ...and the fallback is still SAFE: the built-in table, not empty state.
     const auto impact = SpellPresets::Impact(glm::vec4(1.0f), 93);
     ASSERT_EQ(impact.emitters.size(), 1u);
-    EXPECT_EQ(impact.emitters[0].config.burstCount, kBuiltInImpactBurst)
+    EXPECT_FLOAT_EQ(impact.emitters[0].config.spawnRate, kBuiltInImpactSpawnRate)
+        << "the built-in fallback table did not apply";
+    EXPECT_EQ(impact.emitters[0].config.burstCount, 12)
         << "the built-in fallback table did not apply";
 }
 

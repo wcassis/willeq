@@ -3,6 +3,7 @@
 #include "client/graphics/weather_effects_controller.h"
 #include "client/graphics/spell_visual_fx.h"
 #include "client/graphics/sky_renderer.h"
+#include "client/graphics/environment/spell_effects_config.h"
 #include "common/logging.h"
 #include <fmt/format.h>
 #include <algorithm>
@@ -456,7 +457,18 @@ void SimBridgeComponent::postSimulationInput(float deltaTime) {
         // State flags
         pi.fireEnabled = ctx_.particleManager->isUnifiedFireEnabled();
         pi.unifiedRendererInitialized = true;  // If we got here, it's initialized
-        pi.poolSize = 0;  // Worker determines pool size from config
+        // T422 (board B375): `global.maxParticles` in config/spell_effects.json
+        // had NO consumer.  This line used to send 0 with the comment "Worker
+        // determines pool size from config", and the worker's own arm is
+        // `if (poolSize <= 0) poolSize = 1024;` -- a hardcoded default that
+        // happened to equal the shipped config value, so the knob looked
+        // honoured and was inert.  T422 raised the impact/spellComplete burst
+        // counts against the oracle (B226/B356) and the two of them together
+        // exceed 1024, so a silently-clamped pool would have made every
+        // measured count wrong.  0 is still accepted by the worker and is what
+        // the headless tests pass.
+        pi.poolSize = EQT::Graphics::Environment::SpellEffectsConfig::instance()
+                          .getGlobal().maxParticles;
 
         // Weather lights: collect nearby lights for per-particle illumination
         if (ctx_.particleManager->isWeatherParticlesActive()) {
