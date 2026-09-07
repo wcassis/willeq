@@ -223,6 +223,13 @@ Compare: 85-3,000 draw calls today → **2-5 draw calls** with batched atlas ren
 
 **Goal**: Implement inventory, bags, bank, loot, vendor, and trade as center-screen popups with batched slot rendering.
 
+> ~~inventory, bags, loot, vendor, bank~~ **DELIVERED** — inventory and bags in
+> Batch U07c, loot in **T290**, the merchant and bank windows and the cursor
+> attachment in **T436** (board B429), each from the official client's own XML
+> rather than the sketch below. The bank is NOT a centre popup: `EQUI_BankWnd.xml`
+> is `Style_Sizable false` at 108x347 and keeps its own anchor. **Trade has no
+> window** and is still slash-command only. Struck by T444.
+
 **Scope**:
 - `renderInventoryPopup(uiRenderer, textBatch, inventoryState)`:
   - Equipment slots (22) in fixed positions (matching EQ paper doll layout)
@@ -233,12 +240,10 @@ Compare: 85-3,000 draw calls today → **2-5 draw calls** with batched atlas ren
   - Grid of slots (variable size per bag: 4/6/8/10)
   - Opens adjacent to inventory, not overlapping
 - All item slots use the same `drawSlot()` helper: background quad + item icon quad + optional stack count text
-- Hover: highlight slot border color. Click: pick up / put down item (cursor item state).
+- Hover: highlight slot border color. Click: pick up / put down item (cursor item state). **NOT delivered** — the hover half exists, the gesture does not: the static UI latches no drag and no click-to-pick-up, so the click arm sets `hoveredSlot` and returns. `SendMoveItem()` and `MoveItemIntent` exist and `/equip` drives them, so only the gesture is missing. Board **B442** (T444 confirmed it is still open).
 - Tooltip: render near cursor position using `TextBatch` for stat text. One tooltip visible at a time.
 
-**Item icon rendering**: Item icons are textures loaded from EQ client files. Options:
-- Individual textures (current approach): each icon is a separate texture, each slot is a separate draw call
-- Icon atlas: pack all item icons into atlas pages at load time. All slots share one texture, one draw call for all slots. This is the preferred approach.
+**Item icon rendering**: ~~Item icons are textures loaded from EQ client files. Options: individual textures (each a separate texture and a separate draw call), or an icon atlas packed at load time.~~ **DELIVERED in T430** (board B376), by the atlas route this entry preferred — but built ahead of time, not at load: `tools/item_icon_atlas_builder` lifts the official client's `uifiles/default/dragitem1..34.tga` into two 1024x1024 ETC1 pack entries, the layout lives in the one shared header `include/client/graphics/ui/item_icon_atlas.h`, and `UIRenderer::drawItemIcon()` batches every slot into the frame's UI vertex buffer. **The addressing is COLUMN-major within a source sheet** (`<Vertical>true</Vertical>`), which is the opposite of the folklore. Struck by T444.
 
 **Per-slot draw calls**: Current = 6-9 per slot. New (with atlas) = 0 additional draw calls (all quads batched into the frame's UI vertex buffer). For 30 inventory slots + 10 bag slots: **240-360 draw calls → 0 additional** (folded into the 2-5 total UI draw calls).
 
@@ -261,7 +266,7 @@ Compare: 85-3,000 draw calls today → **2-5 draw calls** with batched atlas ren
 - Pet panel: pet name + HP bar + command buttons.
 - Spellbook popup: list of known spells with memorize action.
 - Skills popup: list of skills with values.
-- Options popup: settings toggles.
+- ~~Options popup: settings toggles.~~ **DELIVERED in T434**, from `EQUI_OptionsWindow.xml` at the oracle's own 400x452 with seven tabs and Alt+O — not a toggle list. Its geometry is the constexpr table in `include/client/graphics/ui/options_layout.h`, **114 control rows**; six are wired (three sliders — music volume, effects volume, clip plane — and their three value labels) and the other 108 are drawn greyed and are not hit-testable, which is the T363 rule made mechanical (boards B430, B431, B433). Struck by T444.
 
 Each panel is a simple render function. No class hierarchy, no inheritance, no virtual dispatch.
 

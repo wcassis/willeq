@@ -199,6 +199,108 @@ def count_test_cmake_fragments(repo):
     return len(frags)
 
 
+
+def count_constexpr_int(repo, rel, name):
+    """The integer value of a `constexpr[ int] <name> = <digits>;` in a header.
+
+    T444: several counts a doc states are already single constants in the
+    tree (kVolumeSteps, kSheetCount, ...). Reading the constant is a stronger
+    net than re-deriving it, because the constant is what the code uses.
+    """
+    text = strip_comments(read(repo, rel))
+    consts = {}
+    for m in re.finditer(
+            r"\bconstexpr\s+(?:[A-Za-z_][\w:]*\s+)?([A-Za-z_]\w*)\s*=\s*"
+            r"([^;{]+);", text):
+        consts[m.group(1)] = m.group(2).strip()
+    if name not in consts:
+        raise SourceError("no `constexpr ... %s = ...;` in %s" % (name, rel))
+
+    # The RHS is often an expression over the header's own constants
+    # (kPopulatedIconCount = 33 * kCellsPerSheet - 1 + 13). Resolve names,
+    # then evaluate the arithmetic -- and refuse anything that is not
+    # arithmetic, so this can never run header text as code.
+    def resolve(expr, seen):
+        expr = re.sub(r"\b(\d+)[uUlL]+\b", r"\1", expr)
+        for ident in sorted(set(re.findall(r"[A-Za-z_]\w*", expr)),
+                            key=len, reverse=True):
+            if ident in seen:
+                raise SourceError("%s is circular in %s" % (ident, rel))
+            if ident not in consts:
+                raise SourceError("%s = %s in %s names %s, which is not a "
+                                  "constexpr in the same header"
+                                  % (name, consts[name], rel, ident))
+            expr = re.sub(r"\b%s\b" % re.escape(ident),
+                          "(%s)" % resolve(consts[ident], seen | {ident}),
+                          expr)
+        return expr
+
+    expr = resolve(consts[name], {name})
+    if not re.fullmatch(r"[0-9+\-*/() ]+", expr):
+        raise SourceError("%s in %s resolves to %r, which is not integer "
+                          "arithmetic" % (name, rel, expr))
+    try:
+        value = eval(expr, {"__builtins__": {}}, {})  # arithmetic only
+    except Exception as exc:
+        raise SourceError("%s in %s: %s" % (name, rel, exc))
+    return int(value)
+
+
+def count_array_rows(repo, rel, array, marker):
+    """Occurrences of `marker` inside `<array>[] = { ... };`.
+
+    One marker per row is the shape of the constexpr control tables (T434's
+    OptionsLayout::kControls uses `Setting::` exactly once per control), and
+    counting the marker is brace-safe where counting `{` is not: the rows
+    nest rect initialisers.
+    """
+    text = strip_comments(read(repo, rel))
+    m = re.search(r"\b%s\s*\[\s*\]\s*=\s*\{" % re.escape(array), text)
+    if not m:
+        raise SourceError("no `%s[] = {` in %s" % (array, rel))
+    start = m.end()
+    depth = 1
+    for i in range(start, len(text)):
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                n = text[start:i].count(marker)
+                if n == 0:
+                    raise SourceError("'%s' does not occur inside %s[] in %s"
+                                      % (marker, array, rel))
+                return n
+    raise SourceError("%s[] is unterminated in %s" % (array, rel))
+
+
+def count_shipped_bmps(repo, only_32bit=False):
+    """The shipped data/textures/*.bmp files, optionally only the 32-bit ones.
+
+    T444: root CLAUDE.md states both the total and the 32-bit share, and both
+    had drifted (T417 and T430 each added a sheet after the sentences were
+    written). Bits-per-pixel is the BMP header's 16-bit LE field at offset 28.
+    """
+    import struct
+    root = os.path.join(repo, "data", "textures")
+    if not os.path.isdir(root):
+        raise SourceError("no such directory: data/textures")
+    names = sorted(n for n in os.listdir(root) if n.endswith(".bmp"))
+    if not names:
+        raise SourceError("no *.bmp under data/textures")
+    if not only_32bit:
+        return len(names)
+    n32 = 0
+    for name in names:
+        with open(os.path.join(root, name), "rb") as fh:
+            head = fh.read(30)
+        if len(head) < 30:
+            raise SourceError("data/textures/%s is not a BMP header" % name)
+        if struct.unpack_from("<H", head, 28)[0] == 32:
+            n32 += 1
+    return n32
+
+
 # --- the table ------------------------------------------------------------
 # (label, measurer, why-it-drifts, [(doc, regex with ONE capture group), ...])
 #
@@ -287,12 +389,114 @@ ROWS = [
      [("docs/module_map.md",
        r"Batch K extracted\s+(\w+)\s+components")]),
 
+    # --- T444 rows. Each of these was corrected BY HAND in T444 because the
+    # doc had drifted from the tree; the rule is that a hand-corrected count
+    # gets a row here so the next drift is a red instead of a re-read.
+
+    ("VisionType enumerators",
+     lambda r: count_enumerators(
+         r, "include/client/graphics/vision_type.h", "VisionType"),
+     "T428 appended FroglokVision as a fourth level and closed B060; "
+     "docs/decisions.md had said Froglok was left on Normal",
+     [("docs/decisions.md",
+       r"`VisionType`\s*\n?now has\s+(\w+)\s+enumerators")]),
+
+    ("audio volume steps (kVolumeSteps)",
+     lambda r: count_constexpr_int(
+         r, "include/client/audio/volume_steps.h", "kVolumeSteps"),
+     "T439 introduced the oracle's absolute 0..N slider unit; the UI, the "
+     "two intents and the [Options] ini keys all carry it",
+     [("src/client/audio/CLAUDE.md",
+       r"`eqt::audio::kVolumeSteps\s*=\s*(\d+)`"),
+      ("CLAUDE.md",
+       r"step 0\.\.(\d+)\s*\n?\(`include/client/audio/volume_steps\.h`")]),
+
+    ("Options window control rows (OptionsLayout::kControls)",
+     lambda r: count_array_rows(
+         r, "include/client/graphics/ui/options_layout.h",
+         "kControls", "Setting::"),
+     "T434 quoted every control EQUI_OptionsWindow.xml declares; wiring one "
+     "more moves the greyed remainder with it",
+     [("README.md",
+       r"\*\*(\w+)\s+control rows\*\*"),
+      ("docs/future/ui_fixes.md",
+       r"\*\*(\w+)\s+control rows\*\*")]),
+
+    ("item icon source sheets (kSheetCount)",
+     lambda r: count_constexpr_int(
+         r, "include/client/graphics/ui/item_icon_atlas.h", "kSheetCount"),
+     "T430 quoted EQUI_Animations.xml's A_DragItem list",
+     [("CLAUDE.md",
+       r"\*\*(\w+)\s+sheets of 6x6 40x40 cells"),
+      ("include/client/graphics/ui/CLAUDE.md",
+       r"The layout — (\w+) sheets of 6x6 40x40 cells")]),
+
+    ("item icon cells that carry art (kPopulatedIconCount)",
+     lambda r: count_constexpr_int(
+         r, "include/client/graphics/ui/item_icon_atlas.h",
+         "kPopulatedIconCount"),
+     "dragitem34 stops after thirteen and dragitem21 has an empty cell "
+     "mid-grid; a re-lift of the art would move this",
+     [("CLAUDE.md",
+       r"\n(\w+) of the 1224 cells carry art")]),
+
+    ("shipped data/textures BMPs",
+     count_shipped_bmps,
+     "T417 added the spell sprite atlas and T430 the two item icon sheets; "
+     "four sentences in CLAUDE.md stated the pre-T417 count",
+     [("CLAUDE.md",
+       r"`data/textures/\*\.bmp`\s+\((\d+)\s+files\)"),
+      ("CLAUDE.md",
+       r"every one of\s*\n?the\s+(\d+)\s+shipped BMPs is now byte-reproducible"),
+      ("CLAUDE.md",
+       r"The pack's inputs are the\s+(\d+)\s+BMPs")]),
+
+    ("shipped 32-bit BMPs (alpha in band)",
+     lambda r: count_shipped_bmps(r, only_32bit=True),
+     "T406 wrote '60 of the 64'; T417 and T430 each added a 32-bit sheet",
+     [("CLAUDE.md",
+       r"\*\*(\d+) of the 67 shipped 32-bit with their")]),
+
     ("tests/cmake per-domain fragments",
      count_test_cmake_fragments,
      "T371/T373 added hygiene.cmake; a new test domain adds another",
      [("docs/module_map.md",
        r"`include\(\)`s \*\*(\w+)\*\* per-domain")]),
 ]
+
+# Directories whose every source file must be NAMED in a doc (T444).
+#
+# DocCounts nets NUMBERS and DocClaims nets retired NAMES. Neither catches the
+# third shape: a doc that is a MAP, whose defect is a file it does not mention.
+# T444 found docs/module_map.md -- the doc CLAUDE.md tells a new agent to
+# consult "instead of scanning" -- missing two TUs, and both had been there for
+# several units: src/client/graphics/frame/renderer_frame_options.cpp (T434)
+# and src/client/graphics/player/ground_query.cpp (T437/T440). A count would
+# not have found either, because the map states no count.
+#
+# (label, directory relative to the repo, suffix, doc, why)
+COVERAGE = [
+    ("renderer component TUs", "src/client/graphics/frame", ".cpp",
+     "docs/module_map.md",
+     "FrameComponent's TU list and the renderer TU table both enumerate "
+     "these by name; T434 added one and neither learned it"),
+    ("renderer component TUs", "src/client/graphics/player", ".cpp",
+     "docs/module_map.md",
+     "PlayerCameraComponent's TU list; T437 added ground_query.cpp"),
+    ("renderer component TUs", "src/client/graphics/zone_load", ".cpp",
+     "docs/module_map.md", "ZoneLoadComponent's five TUs"),
+    ("renderer component TUs", "src/client/graphics/zone_lifecycle", ".cpp",
+     "docs/module_map.md", "ZoneLifecycleComponent's three TUs"),
+    ("renderer component TUs", "src/client/graphics/zone_stream", ".cpp",
+     "docs/module_map.md", "ZoneStreamComponent's two TUs"),
+    ("renderer component TUs", "src/client/graphics/overlays", ".cpp",
+     "docs/module_map.md", "OverlaysComponent's two TUs"),
+    ("renderer component TUs", "src/client/graphics/diagnostics", ".cpp",
+     "docs/module_map.md", "DiagnosticsComponent's two TUs"),
+    ("renderer component TUs", "src/client/graphics/renderer", ".cpp",
+     "docs/module_map.md", "what is left of class IrrlichtRenderer"),
+]
+
 
 # Counts that MUST NOT be pinned to a number: they change with ordinary work.
 # T371 replaced each with the command that measures it; assert the command
@@ -391,6 +595,32 @@ def main():
                         "authoritative."
                         % (rel, n, stated, label, expected, why))
 
+    for label, subdir, suffix, rel, why in COVERAGE:
+        docs.add(rel)
+        root = os.path.join(repo, subdir)
+        if not os.path.isdir(root):
+            failures.append("MEASURE  %s: no such directory: %s" %
+                            (label, subdir))
+            continue
+        names = sorted(n for n in os.listdir(root) if n.endswith(suffix))
+        if not names:
+            failures.append("MEASURE  %s: no *%s under %s"
+                            % (label, suffix, subdir))
+            continue
+        try:
+            text = read(repo, rel)
+        except SourceError as exc:
+            failures.append("MISSING  %s" % exc)
+            continue
+        sites += 1
+        for name in names:
+            if name not in text:
+                failures.append(
+                    "FAIL  %s does not name %s/%s -- %s. The map must list "
+                    "every TU in the directory, or an agent told to consult "
+                    "it instead of scanning will miss this file."
+                    % (rel, subdir, name, why))
+
     for rel, phrase, why in NAMED_COMMAND:
         docs.add(rel)
         try:
@@ -421,9 +651,11 @@ def main():
                 % (rel, line_of(text, m.start()), m.group(0).strip(), why))
 
     print("DocCounts: %d counts netted over %d doc sites in %d docs, "
-          "%d not-a-number assertions, %d forbidden-restatement assertions"
-          % (len(ROWS), sites - len(NAMED_COMMAND) - len(FORBIDDEN),
-             len(docs), len(NAMED_COMMAND), len(FORBIDDEN)))
+          "%d not-a-number assertions, %d forbidden-restatement assertions, "
+          "%d directory-coverage assertions"
+          % (len(ROWS),
+             sites - len(NAMED_COMMAND) - len(FORBIDDEN) - len(COVERAGE),
+             len(docs), len(NAMED_COMMAND), len(FORBIDDEN), len(COVERAGE)))
 
     for label, value in measured:
         print("  measured %-58s %d" % (label, value))

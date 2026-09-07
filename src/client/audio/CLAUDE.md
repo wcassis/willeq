@@ -33,6 +33,43 @@ Sound files are loaded from `snd*.pfs` archives and the `sounds/` directory in t
 
 Header-only libraries: miniaudio.h (output), tsf.h + tml.h (MIDI synthesis), dr_wav.h (WAV loading)
 
+## The volume round trip (T439, board B432)
+
+Music and effects volume are the only audio settings a player can change from
+the UI, and they are the only ones that make a round trip back to it. Two
+units are in play and the doc-relevant fact is which one crosses which
+boundary:
+
+- The **audio manager holds a 0..1 fraction**, and the `--audio-volume` /
+  `--music-volume` / `--effects-volume` flags and the `audio` config block
+  below are 0..100 percentages onto it.
+- The **UI carries an absolute step 0..20** -- **21 slider positions**,
+  `eqt::audio::kVolumeSteps = 20` in the device-free
+  `include/client/audio/volume_steps.h`, with
+  `volumeFractionFromStep()` / `volumeStepFromFraction()` /
+  `clampVolumeStep()` as the only conversions. That is the OFFICIAL client's
+  unit, measured from its `eqclient.ini` (`Music=18` / `SoundVolume=10`
+  displaying as 90 % / 50 %), and it is what `[Options] Music` /
+  `SoundVolume` persist per character.
+
+`MusicVolumeChangeIntent` and `EffectsVolumeChangeIntent` carry that ABSOLUTE
+step, not a delta, and the handler clamps it. Every site that moves a volume
+then publishes what the audio manager actually holds back to the renderer on
+`GameEventType::VolumesChanged`, through the ONE publisher
+`BridgeComponent::PublishVolumesChanged()`
+(`src/client/bridge/bridge_component_ui_audio.cpp`) -- from the config apply in
+`InitializeAudio()`, from both intent handlers, and from `/musicvolume` and
+`/effectsvolume`. It READS the manager back rather than echoing what it was
+sent. Before T439 the intents carried a delta and the renderer shadowed what it
+had last sent, so a slash command behind the UI's back left the Options slider
+stale and its next drag applied a difference against a value that was no longer
+true. The step<->fraction conversion is lossy on purpose and only once
+(`/musicvolume 53` sets 0.53 and shows step 11).
+
+`/volume` (master) is deliberately OUTSIDE this round trip: the oracle's
+Options window declares no master control, so there is nothing to publish it to
+(board **B449**).
+
 ## Configuration
 
 ```json

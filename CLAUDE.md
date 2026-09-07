@@ -50,11 +50,12 @@ Additional context is in subdirectory CLAUDE.md files:
   in the `FileSizeCeiling` ctest test, not a warning (M00,
   `docs/decisions.md` 2026-09-04; T385 added the last two directories, board
   B167 — `--all` had never scanned `tools/`, and six files there were over the
-  ceiling while the checker reported a clean tree). **`tools/` is not clean
-  yet and `FileSizeCeiling` is RED at this tip**: T385 split four of the six,
-  leaving `tools/hwcaps/zone_bench_loader.cpp` (3,280) and
-  `tools/hwcaps/gles2_zone_benchmark.cpp` (3,060) over the 3,000 hard cap —
-  board **B185**, owned by T387. Put
+  ceiling while the checker reported a clean tree). **The tree is clean and
+  `FileSizeCeiling` is GREEN** (T444 re-measured: `check_file_sizes.sh --all`
+  reports 1,129 files, 0 warn, 0 fail). T387 finished what T385 started and
+  board **B185** is struck: `tools/hwcaps/zone_bench_loader.cpp` is 977 lines
+  and `tools/hwcaps/gles2_zone_benchmark.cpp` 992, not the 3,280 and 3,060
+  earlier revisions of this paragraph reported. Put
   substantial new code in new TUs; a file that genuinely must exceed the
   ceiling needs an allowlist entry with a reason and a no-grow max. Close-outs:
   `refactor/J_file_size_reclamation.md`, `refactor/K_component_extraction.md`,
@@ -205,7 +206,7 @@ test that fails if the checked-in bytes and their inputs drift apart:
 | asset | recipe | pinned by | ctest |
 |---|---|---|---|
 | `data/textures/*.bmp` (67 files) | `scripts/build_textures.sh` → `tools/generate_textures` (64, procedural), **`tools/spell_sprite_atlas_builder` (1, T417) and `tools/item_icon_atlas_builder` (2, T430) — both lifted from the client's own art** | `data/textures.sha256` | `TexturesReproducible` |
-| `/mnt/projects/EverQuest_ETC1/willeq.eqe1` (132 entries since T430: 68 textures, 63 ETC1 `_alpha` companions, 1 raw) | `scripts/build_willeq_pack.sh` | `data/willeq.eqe1.sha256` | `PackReproducible` |
+| `/mnt/projects/EverQuest_ETC1/willeq.eqe1` (132 entries since T430: 67 textures, 64 ETC1 `_alpha` companions, 1 raw — `build/bin/verify_eqe1` prints the census; re-measured T444) | `scripts/build_willeq_pack.sh` | `data/willeq.eqe1.sha256` | `PackReproducible` |
 
 The pack's inputs are the 67 BMPs plus `tools/ui_atlas_builder`, so a texture
 change cascades: regenerate the BMPs, rewrite `data/textures.sha256`
@@ -246,8 +247,13 @@ the oracle rather than assumed, and both matter:
 1200 of the 1224 cells carry art: `dragitem34` stops after thirteen, and
 `dragitem21` has a transparent cell in the MIDDLE of its grid (icon id
 **1230**). An empty cell is still addressable and simply draws nothing. The
-sheets load LAZILY — a session that never opens an item panel never uploads
-them — and a `lookup()` miss makes `UIRenderer::drawItemIcon()` return false,
+sheets load EAGERLY, beside `ui_atlas` in `UIAtlas::load()` — T430 wrote them
+lazily first and MEASURED the consequence: `ConstrainedTextureCache::getOrLoad()`
+logs FATAL and `std::exit(1)`s on a pack miss, so first-use loading turns a
+startup failure into a mid-SESSION exit the moment a player opens an inventory
+(the reason is written out in `include/client/graphics/ui/item_icon_sheets.h`;
+an earlier revision of this paragraph said LAZILY and was wrong — T444). A
+`lookup()` miss makes `UIRenderer::drawItemIcon()` return false,
 which is why every caller kept its pre-T430 text placeholder as the fallback.
 The spell sprite atlas's layout —
 which sprite's which animation frame occupies which of the 32x32 cells — lives
@@ -312,8 +318,10 @@ All but one of those BMPs is produced by
 `spell_sprite_atlas.bmp`, which is client art rather than generated pixels). That TU was
 in **no CMake target at all** until T400/T403 — which is how the particle
 atlas shipped alpha-less for a year (board B225). T406 closed the second
-half of that (board B266): **60 of the 64 now ship 32-bit with their alpha
-in-band**. T411 then took the pack side back: the pack's
+half of that (board B266). T417 and T430 have added three sheets since, so
+the census re-measured at T444 is **63 of the 67 shipped 32-bit with their
+alpha in-band**, and the four 24-bit ones are the four named below.
+ T411 then took the pack side back: the pack's
 `--rgba8888-texture` list is **down from 60 entries to one**, because the
 three alpha-BLEND shaders
 (`SOLID3D_FS`, `UI2D_FS`, the particle point sprite) now sample the ETC1
@@ -329,8 +337,9 @@ boards **B286**/**B322**; T424 closed B322 by moving its cosine falloff out of
 the discarded alpha channel and into RGB, which is what an additive blend
 samples — before that it shipped as a solid white square), `detail_atlas.bmp`
 (board **B410**: T427 closed **B265** by regenerating it, so **every one of
-the 65 shipped BMPs is now byte-reproducible from its generator and
-`NOT_REPRODUCIBLE` is empty**; it stays 24-bit on scope, not on a measured
+the 67 shipped BMPs is now byte-reproducible from its generator and
+`NOT_REPRODUCIBLE` is empty** — 65 when T427 wrote that, 67 since T430's two
+icon sheets, re-measured T444; it stays 24-bit on scope, not on a measured
 reason, because both its consumers alpha-BLEND it and converting it is a look
 change), and `rain_streaks.bmp` + `snow_flakes.bmp` (no consumer
 at all). T417's `spell_sprite_atlas.bmp` is 32-bit and takes the ordinary ETC1
@@ -340,11 +349,14 @@ companion route — it needed no `--rgba8888-texture` override. `generate_textur
 19.99 MB and every zone's `eqe1MappedBytes` rose by 17.2 MB, because an ETC1
 256x256 entry with mips is 43,704 bytes and its RGBA8888 form is 349,524.
 T411 (board B287) took that back by fixing the shaders instead of the payload:
-the pack is **6,930,116 bytes** (5,532,254 after T411; T417 added the spell
-sprite sheet and its companion, +349,664 — the extra over the pre-T406
+the pack is **9,726,596 bytes** (5,532,254 after T411; T417 added the spell
+sprite sheet and its companion, +349,664, and T430 the two item-icon sheets
+and their companions, +2,796,480 — the extra over the pre-T406
 2.83 MB is the ETC1 companions, which are new, as the old 24-bit BMPs had no
 alpha to carry), and `eqe1MappedBytes` fell by 14,462,656 per zone at T411
-before rising 349,664 at T417. The one entry that keeps
+before rising 349,664 at T417 and 2,796,480 at T430. The size is pinned by
+`data/willeq.eqe1.sha256`, which carries the same arithmetic; re-measured
+T444. The one entry that keeps
 an in-band payload is `ui_atlas`, and not for a single-sampler reason: a 1px
 UI `drawRect` minifies the atlas 4:1 and selects companion mip level 2, where
 ETC1 decodes the isolated `white` texel as 217/255 and dims the rect by 15%. **A new
