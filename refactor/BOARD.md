@@ -3808,9 +3808,30 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   census (they are the two shipped files the B235 grep could not see, because
   no literal names them).~~ **CLOSED by T402 Leg B** (`refactor/T402_caches_dead_configs.md`): both files DELETED. Provenance measured, not guessed — `git log -S'ui_settings.json' -- src include` names `0f25cb57` "U07c2: Delete WindowManager + all old UI window files (~35K lines)": they are the deleted WindowManager's saved state. What they describe (draggable per-window x/y/w/h + `visible` per resolution, a `globalTheme` colour/layout block, 19 chat `channelFilters`) does not exist in the client that replaced it: `UILayout` computes every panel rect from the screen size, there are no movable windows, and `channelFilters`/`globalTheme`/`blinkIntervalMs`/`maxHistory` appear in NO source at all. The one live concept, `showTimestamps`, is a `ChatPanelState`/`GameModeConfig` field no file feeds. The genuinely missing feature is boarded as **B275**; the deleted bytes stay recoverable at `0f25cb57^`. Pinned by `DataPathRouting.EveryShippedConfigFileIsNamedByCode`, which starts from the config DIRECTORY (the only way to see a file nothing opens) and fails on any shipped `config/*.json` no source names.
 
-- **B275** (B) `include/client/graphics/ui/ui_layout.h` `UILayout`, `include/client/graphics/ui/static_panels.h` `ChatPanelState` — **the client persists NO user settings.** Chat timestamps, panel visibility, chat scrollback size, UI colours and every panel position are computed or defaulted at startup and nothing writes them back: `saveLayout`, `loadLayout` and any preferences writer return zero hits under `src/`, `include/` and `tools/`, and the only two files that ever held such state (`config/chat_settings.json`, `config/ui_settings.json`) were the deleted WindowManager's and are gone (B245). So a player who moves nothing notices nothing, and a player who changes anything loses it at exit. Closes when a preferences file is written and re-read with a test, or when Will rules that a fixed static UI needs no persistence. Found by T402.
+- ~~**B275** (B) `include/client/graphics/ui/ui_layout.h` `UILayout`, `include/client/graphics/ui/static_panels.h` `ChatPanelState` — **the client persists NO user settings.** Chat timestamps, panel visibility, chat scrollback size, UI colours and every panel position are computed or defaulted at startup and nothing writes them back: `saveLayout`, `loadLayout` and any preferences writer return zero hits under `src/`, `include/` and `tools/`, and the only two files that ever held such state (`config/chat_settings.json`, `config/ui_settings.json`) were the deleted WindowManager's and are gone (B245). So a player who moves nothing notices nothing, and a player who changes anything loses it at exit. Closes when a preferences file is written and re-read with a test, or when Will rules that a fixed static UI needs no persistence. Found by T402.
 
-  **WILL 2026-09-07:** persist per character what is user-changeable: the 15 window open states + camera mode (measured); positions are static by design. → T432.
+  **WILL 2026-09-07:** persist per character what is user-changeable: the 15 window open states + camera mode (measured); positions are static by design. → T432.~~
+  **CLOSED by T432** (`refactor/T432_per_character_persistence.md`): the client
+  now writes `<cache dir>/ui/UI_<Char>_<server>.ini` -- the official client's
+  own filename, section and `Show=0/1` key shape -- and re-reads it at zone-in.
+  **SEVEN windows, not fifteen**: a census of every user-toggleable window in
+  the tree found `[InventoryWindow]`, `[SpellBookWnd]`, `[SkillsWindow]`,
+  `[GroupWindow]`, `[PetInfoWindow]`, `[BuffWindow]` and `[CombatAbilityWnd]`,
+  plus `[Camera] Mode=`. The other panel `isOpen` flags are server- or
+  click-driven (loot, tradeskill container, item display), and
+  `RA::ToggleOptions` reaches a `break;` -- fable has no options window at all
+  (a `PopupType::Options` enumerator with zero uses). `F11`'s `allUIHidden_` is
+  deliberately NOT persisted: a client that starts with no UI gives the player
+  no way to learn why. An ABSENT `Show=` key keeps the default, which is
+  `defaults.ini`'s own rule (T368), so a fresh character writes no file until it
+  changes something. ONE persistence path: `FrameComponent::syncUiPreferences()`
+  COMPARES the whole collected value against the last one it wrote, so no
+  per-toggle save hook exists to forget. Pinned by 18 cases in
+  `tests/test_ui_preferences.cpp` (4 red pre-fix against a probe that reproduces
+  this tip's behaviour). Chat timestamps, scrollback and UI colours stay
+  unpersisted -- Will's ruling narrowed the scope to window states and the
+  camera. **The live proof (toggle, camp, log in) is OWED to a lock unit**:
+  T433 held the eqemu lock.
 - **B280** (A) `src/client/graphics/renderer/irrlicht_renderer.cpp`
   `IrrlichtRenderer::updateTimeOfDay` night ambient (0.08, 0.08, 0.15) --
   **fable's night is 5.6x darker than the official client's AND a different
@@ -5833,6 +5854,21 @@ client uses every field.
   is a LOOK decision, not a defect -- one number per sprite in
   `ui_atlas_builder`, plus a pack rebuild and its two sha256 pins. Nobody has
   ruled on it, so T416 changed nothing here. Found by T416.
+
+  **T432 note (per-character ini, board B275).** The oracle's own
+  `UI_<Char>_<server>.ini` carries per-window LOOK keys that bear directly on
+  this decision and that fable does **not** honour: `BGTint.red/green/blue`
+  (all `255` in every file checked), `BGType=1`, `Alpha=255`,
+  `FadeToAlpha=255`, `Fades=true` with `Delay=2000`/`Duration=500`, `Locked`,
+  and `[Main] UISkin=Default` / `AtlasSkin=Default`. So the official window
+  background is a per-window **user-tintable, user-fadeable** plate whose
+  shipped state is fully opaque (`Alpha=255`) and untinted -- which is
+  corroboration for "the oracle's windows are opaque" from a second, textual
+  source, and it says the opacity is a SETTING there rather than baked art.
+  T432 persisted none of them (Will's ruling scoped this unit to open/closed
+  state and the camera); they are listed here so whoever rules on B350 knows
+  the oracle's own knobs. Measured in
+  `/mnt/projects/EverQuestP1999/UI_Obian_project1999.ini`.
 
 - ~~**B351** (B) `include/client/graphics/ui/ui_atlas.h` `UISprite` -- **six of
   the twenty-one atlas sprite regions have no consumer at all.** A

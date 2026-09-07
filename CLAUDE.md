@@ -696,12 +696,35 @@ Audio tests and graphics integration tests are documented in their respective CL
 - 3-tier hierarchy: global settings → per-style defaults → per-spell overrides
 - Configures resist colors, spawn rates, lifetimes, motion types, blend modes
 
-**User settings are NOT persisted at all** (T402, board B255). Nothing the
-player changes at runtime — chat timestamps, panel visibility, chat
-scrollback, UI colours — survives a restart: the static UI computes every
-panel rect from the resolution (`include/client/graphics/ui/ui_layout.h`) and
-no code writes a preferences file. The two files that looked like the
-persistence, `config/chat_settings.json` and `config/ui_settings.json`, were
+**Per-character UI state IS persisted, and it is the only thing that is**
+(T432, board **B275** closed; T402 found the gap). The client writes
+`<cache dir>/ui/UI_<Char>_<server>.ini` — the official client's own filename,
+section names and `Show=0/1` keys — and re-reads it at zone-in. What it holds
+is what Will ruled user-changeable (`docs/decisions.md` 2026-09-07): the seven
+toggleable windows (`[InventoryWindow]`, `[SpellBookWnd]`, `[SkillsWindow]`,
+`[GroupWindow]`, `[PetInfoWindow]`, `[BuffWindow]`, `[CombatAbilityWnd]`) and
+`[Camera] Mode=`. Window POSITIONS are static by design — `UILayout` computes
+every rect from the resolution — and key bindings are global
+(`config/hotkeys.json`), so neither is per character. An ABSENT `Show=` key
+keeps the default, which is `defaults.ini`'s own rule (T368), so a fresh
+character writes no file until it changes something. **Chat timestamps, chat
+scrollback and UI colours are still NOT persisted**; that was scope, not
+oversight.
+
+The whole feature is three files —
+`include/client/graphics/ui/ui_preferences.h`,
+`src/client/graphics/ui/ui_preferences.cpp` (the format, device-free) and
+`src/client/graphics/frame/renderer_frame_preferences.cpp` (the load at
+zone-in, the save on change and at `/camp`). There is deliberately **no
+per-toggle save hook**: `FrameComponent::syncUiPreferences()` compares the
+whole collected value against the last one it wrote, so a newly persisted
+field cannot be added and then forgotten at one call site. A new persisted
+field goes in `UiPreferences` + the `kWindows` table + the binding, nowhere
+else. It is a generated file, so it goes through `ResolveCachePathForWrite()`
+(T402's rule) and never dirties the checkout.
+
+The two files that once looked like the persistence,
+`config/chat_settings.json` and `config/ui_settings.json`, were
 the DELETED `WindowManager`'s saved state (removed with it in `0f25cb57`,
 "U07c2: Delete WindowManager + all old UI window files"); they described
 draggable windows the client no longer has and were read by nothing, so T402

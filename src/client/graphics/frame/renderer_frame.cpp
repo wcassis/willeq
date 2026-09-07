@@ -113,6 +113,13 @@ bool FrameComponent::processFrame(float deltaTime) {
     // Phase 1: Input
     processFrameInput(deltaTime);
 
+    // T432 (board B275): THE per-character persistence tick. Immediately
+    // after input, so a window a player just toggled is on disk before the
+    // frame that draws it. A no-op until Application hands it an identity,
+    // and a scalar compare when nothing changed -- see
+    // renderer_frame_preferences.cpp.
+    syncUiPreferences();
+
     // ─── Always: drain queues (cheap data moves, no GL) ───
     sectionStart_ = std::chrono::steady_clock::now();
 #ifdef EQT_HAS_GLES2

@@ -142,6 +142,7 @@
 #include "client/graphics/ui/tradeskill_panel.h"
 #include "client/graphics/ui/combat_ability_panel.h"
 #include "client/graphics/ui/item_display_panel.h"
+#include "client/graphics/ui/ui_preferences.h"
 
 #include <chrono>
 #include <cstdint>
@@ -243,6 +244,30 @@ public:
 	// popups. Returns the new open state.
 	bool toggleCombatAbilityWindow();
 
+	// ---- T432 (board B275): the ONE per-character persistence path ----
+	// Before this the client persisted NOTHING a player changed. Will's
+	// ruling (docs/decisions.md 2026-09-07) is to persist per character what
+	// is user-changeable: the window open/closed states and the camera mode.
+	//
+	// setUiPreferencesIdentity() is called once per zone-in by Application,
+	// which is where the character name (the zone-load snapshot) and the
+	// server name (the config) are both known; syncUiPreferences() is called
+	// once per frame from processFrame() and once from IrrlichtRenderer::
+	// shutdown(), i.e. on the /camp path.
+	//
+	// There is deliberately no per-toggle save hook. sync() COMPARES the
+	// current state against the last state it wrote and saves on a
+	// difference, so a new persisted field cannot be added to the file and
+	// then forgotten at one of nine call sites -- the single comparison sees
+	// every change by construction. The compare is eight scalars; the write
+	// happens only when the player actually toggled something.
+	void setUiPreferencesIdentity(const std::string& character,
+	                              const std::string& server);
+	void syncUiPreferences();
+	// The binding over this component's own panel members. Public so a test
+	// can build the identical one over plain structs.
+	UiPreferencesBinding uiPreferencesBinding();
+
 	// ---- T357 (B057): slash-command tab completion ----
 	// The chat box is a hand-rolled string in chatPanelState_, drained by
 	// processChatInput() on the RENDER thread; the command vocabulary lives on
@@ -305,6 +330,12 @@ public:
 	// placement -- so it is drawn on top of them.
 	ItemDisplayPanelState itemDisplayState_;    // T421
 	XPBarState xpBarState_;             // U06i
+	// T432 (board B275): per-character UI persistence. Empty identity =
+	// not logged in yet, and sync() is then a no-op.
+	std::string uiPrefsCharacter_;
+	std::string uiPrefsServer_;
+	UiPreferences uiPrefsLastSaved_;
+	bool uiPrefsLoaded_ = false;
 	std::unique_ptr<StaticUIInput> staticUIInput_;  // U06j
 
 	// The five that were private on IrrlichtRenderer. Public here so that

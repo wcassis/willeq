@@ -115,6 +115,12 @@ eqt::ui::DisplaySettings IrrlichtRenderer::getDisplaySettings() {
 }
 
 void IrrlichtRenderer::shutdown() {
+    // T432 (board B275): the /camp path. requestQuit() (which /camp, the
+    // window close button and SIGTERM all reach) unwinds the render loop into
+    // here, so this is the last chance to persist a toggle made in the final
+    // frame. Same single function the frame tick calls.
+    if (frame_) frame_->syncUiPreferences();
+
     // P10b: unregister before constrainedTextureCache_ (owned by Application,
     // outlives IrrlichtRenderer in the normal shutdown order, but don't rely
     // on that) can call into a soon-to-be-destroyed regionMeshTextureGuard_.

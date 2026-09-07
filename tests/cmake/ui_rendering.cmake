@@ -240,6 +240,19 @@ ENDIF()
 # abilities window. Pure state + geometry, no device -- same gate as
 # test_static_ui_panels above only because both panels live in the graphics
 # UI sources inside willeq_core.
+# T432 (board B275): per-character UI persistence. Pure state + a disk round
+# trip under a private WILLEQ_CACHE_DIR -- no device, no server. Same gate as
+# the panel tests above only because the persisted panel structs live in the
+# graphics UI sources inside willeq_core.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_ui_preferences
+        test_ui_preferences.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_ui_preferences PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_ui_preferences GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_ui_preferences)
+ENDIF()
+
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(test_tradeskill_combat_panels
         test_tradeskill_combat_panels.cpp

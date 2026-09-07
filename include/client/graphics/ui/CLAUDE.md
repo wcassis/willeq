@@ -158,6 +158,24 @@ and writes none under `[GroupWindow]`, `[PetInfoWindow]` or `[BuffWindow]`. The
 official ACTION names are `TOGGLE_PARTYWIN`, `TOGGLE_PETINFOWIN` and
 `TOGGLE_BUFFWIN` (`KEYMAPPING_` suffixes in `eqgame.exe`).
 
+**T432 (B275): every one of these toggles is now PERSISTED per character.**
+`<cache dir>/ui/UI_<Char>_<server>.ini` holds `[<Window>] Show=0/1` for the
+seven toggleable windows -- `[InventoryWindow]`, `[SpellBookWnd]`,
+`[SkillsWindow]`, `[GroupWindow]`, `[PetInfoWindow]`, `[BuffWindow]`,
+`[CombatAbilityWnd]` -- plus `[Camera] Mode=`, using the official client's own
+filename, section names and key. It is read at zone-in and written whenever a
+toggle changes and at `/camp`. An ABSENT `Show=` key keeps the default, so
+`defaults.ini`'s "a default is stated by omission" rule (above) still governs a
+fresh character. Loot, tradeskill-container and item-display windows are NOT
+persisted -- the server or a click opens them, the player does not. Neither is
+`F11`'s all-UI hide: a client that starts with no UI gives the player nothing
+to click. The format lives in `ui_preferences.h`/`.cpp`; the load/save tick is
+`FrameComponent::syncUiPreferences()` in
+`src/client/graphics/frame/renderer_frame_preferences.cpp`, which COMPARES the
+whole value rather than hanging a save off each toggle -- add a persisted field
+to `UiPreferences`, the `kWindows` table and the binding, and every path picks
+it up.
+
 **T382 (B170/B115): the three KEYS are now the oracle's own.** They are
 recorded in no file on disk, so T377 screenshotted the official client's
 Options > Keys > **UI** page instead
