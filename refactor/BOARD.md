@@ -7497,13 +7497,13 @@ in `refactor/T433_doors_lifts_survey.md` Review; raw dumps in
   `fallbackMeshNode`, `renderer_context.h:163`) -- **a member nothing ever
   creates.** It is `= nullptr` at its declaration and the only two
   assignments in the tree are `= nullptr`
-  (`zone_lifecycle/renderer_zone_lifecycle.cpp:180`,
-  `zone_load/renderer_zone_load.cpp:426`); no site anywhere assigns a scene
+  (`src/client/graphics/zone_lifecycle/renderer_zone_lifecycle.cpp:180`,
+  `src/client/graphics/zone_load/renderer_zone_load.cpp:426`); no site anywhere assigns a scene
   node to it. Six other sites nonetheless test it, remove it, drop it, swap its
   material to the debug material, re-parent it and count it in the scene
-  breakdown (`zone_lifecycle/renderer_zone_draw.cpp:321,599,720,841`,
-  `diagnostics/diagnostics_component.cpp:214`,
-  `diagnostics/diagnostics_debug.cpp:282,359,458,477`). Grepped over `src/`,
+  breakdown (`src/client/graphics/zone_lifecycle/renderer_zone_draw.cpp:321,599,720,841`,
+  `src/client/graphics/diagnostics/diagnostics_component.cpp:214`,
+  `src/client/graphics/diagnostics/diagnostics_debug.cpp:282,359,458,477`). Grepped over `src/`,
   `include/`, `tests/`, `tools/`, `benchmarks/` and `docker/`: no creator. The
   "single zone mesh" fallback that its name refers to is really
   `ZoneLifecycleComponent::createZoneMesh()` writing `ctx_.zoneMeshNode`.
