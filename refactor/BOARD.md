@@ -5914,7 +5914,7 @@ client uses every field.
   `review/T419/crops/tradeskill_after_2x.png`. **Live proof (open a forge, run
   `/recipesearch`, see the rows) is OWED to the next lock unit.**
 
-- **B336** (B) `src/client/graphics/ui/static_ui_input.cpp`
+- **B454** (B) `src/client/graphics/ui/static_ui_input.cpp`
   `StaticUIInput::processKey` -- **ESC does not dismiss the tradeskill
   container window, and must not be made to naively.** `processKey()`
   dismisses the top centre popup (inventory, spellbook, skills, loot) and
