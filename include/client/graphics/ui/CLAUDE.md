@@ -21,7 +21,7 @@ The old WindowManager/WindowBase draggable window system was completely removed 
   Five draw sites use it: the 22 equipment slots and 8 general slots (`renderInventoryPopup`), the
   tradeskill container cells (`renderTradeskillPopup`), the loot rows (`renderLootPopup`, at 20px in a
   22px row) and `IDW_IconButton` (`renderItemDisplayPopup`, at the oracle's own 40x40 decal rect).
-  There is still **no merchant, bank or cursor-item panel** to give icons to — board **B415**.
+  There is still **no merchant, bank or cursor-item panel** to give icons to — board **B429**.
 - `UIAtlas` - Loads pre-generated sprite atlas (`ui_atlas.bmp` + `ui_atlas.json`, both packed into `willeq.eqe1` by `tools/ui_atlas_builder`).
   Provides the `UISprite` enum (SlotBackground, BarHP, PanelBackground, White, the four coin decals, ...) with source rects.
   **The roster is fifteen sprites and every one of them has a consumer** — T424 (board B351) deleted `SlotBorderSelected`,

@@ -6364,7 +6364,7 @@ client uses every field.
   `tests/test_ui_atlas_pixels.cpp`. **The entry's merchant and bank windows do
   not exist** -- there is no merchant/bank/cursor panel in the static UI at all
   (the game side already threads `iconId` through `merchant.cpp` /
-  `merchant_trade.cpp` for windows that were never built); that is **B415**.~~
+  `merchant_trade.cpp` for windows that were never built); that is **B429**.~~
 - **B377** (P) `src/client/bridge/bridge_component_intents.cpp`
   `onRecipeFavoriteIntent`, `include/client/graphics/ui/tradeskill_panel.h`
   -- **fable keeps no tradeskill favourites list**, so the Add and Remove
@@ -6605,7 +6605,7 @@ client uses every field.
 
 ### Added by T430 (2026-09-07)
 
-- **B415** (B) `src/client/merchant/merchant.cpp:103`,
+- **B429** (B) `src/client/merchant/merchant.cpp:103`,
   `src/client/merchant/merchant_trade.cpp:405` and `:693`
   (`data.iconId = data.hasItem ? item->icon : 0;`) -- **there is no merchant
   window, no bank window and no cursor-item slot in the static UI**, so three

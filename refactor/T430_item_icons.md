@@ -174,7 +174,7 @@ struct or render function under `src/client/graphics/ui/` and
 the commerce vocabulary is reachable only as slash commands. The game side
 already threads `iconId` through `merchant.cpp:103` and
 `merchant_trade.cpp:405`/`:693` for windows that were never built. Boarded as
-**B415**, not silently absorbed.
+**B429**, not silently absorbed.
 
 **A MEASURED design change mid-unit.** `ItemIconSheets` was written LAZY —
 load on the first icon drawn, to keep 2 x 1024x1024 off a 512 MB Orange Pi that
