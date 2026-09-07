@@ -112,19 +112,7 @@ float DistanceNoZ(const glm::vec4& point1, const glm::vec4& point2) {
 	return Distance(static_cast<glm::vec2>(point1),static_cast<glm::vec2>(point2));
 }
 
-/**
-* Produces the non square root'ed distance between the two points within the XY plane.
-*/
-float DistanceSquaredNoZ(const glm::vec3& point1, const glm::vec3& point2) {
-	return DistanceSquared(static_cast<glm::vec2>(point1),static_cast<glm::vec2>(point2));
-}
 
-/**
-* Produces the non square root'ed distance between the two points within the XY plane.
-*/
-float DistanceSquaredNoZ(const glm::vec4& point1, const glm::vec4& point2) {
-	return DistanceSquared(static_cast<glm::vec2>(point1),static_cast<glm::vec2>(point2));
-}
 
 /**
 * Determines if 'position' is within (inclusive) the axis aligned
@@ -195,10 +183,6 @@ float GetReciprocalHeading(const float heading)
 	return result;
 }
 
-bool IsHeadingEqual(const float h1, const float h2)
-{
-	return std::abs(h2 - h1) < 0.01f;
-}
 
 bool IsPositionEqual(const glm::vec2 &p1, const glm::vec2 &p2)
 {
@@ -215,13 +199,7 @@ bool IsPositionEqual(const glm::vec4 &p1, const glm::vec4 &p2)
 	return std::abs(p1.x - p2.x) < position_eps && std::abs(p1.y - p2.y) < position_eps && std::abs(p1.z - p2.z) < position_eps;
 }
 
-bool IsPositionEqualWithinCertainZ(const glm::vec3 &p1, const glm::vec3 &p2, float z_eps) {
-	return std::abs(p1.x - p2.x) < position_eps && std::abs(p1.y - p2.y) < position_eps && std::abs(p1.z - p2.z) < z_eps;
-}
 
-bool IsPositionEqualWithinCertainZ(const glm::vec4 &p1, const glm::vec4 &p2, float z_eps) {
-	return std::abs(p1.x - p2.x) < position_eps && std::abs(p1.y - p2.y) < position_eps && std::abs(p1.z - p2.z) < z_eps;
-}
 
 bool IsPositionWithinSimpleCylinder(const glm::vec3 &p1, const glm::vec3 &cylinder_center, float cylinder_radius, float cylinder_height)
 {

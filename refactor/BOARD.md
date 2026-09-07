@@ -8212,3 +8212,216 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   rather than argued. NOT a regression: before T452 this function resolved
   nothing at all, and the code it replaced in 2026-03 opened all seven
   archives EAGERLY for a ~60 MB spike. Found by T452.
+## Added 2026-09-07 by T455 (the zero-caller census, `refactor/T455_zero_caller_census.md`)
+
+**One finding, thirteen owners.** T455 took the FUNCTION half of this project's
+dominant defect class as a script rather than by hand:
+`scripts/refactor/check_zero_callers.py` collects every free function and every
+public/protected member function declared under `include/` and `src/`, sweeps
+`src/ include/ tests/ tools/ benchmarks/ docker/` for uses with comments and
+string literals stripped, and reports the ones with no use anywhere. **4,430
+candidates, 449 zero-caller hits.** Thirty-two of them were residue T455
+DELETED outright (`common/util/strings`, the whole of `common/util/file`, three
+`position.h` overload sets); the remaining **417** are grouped below, one entry
+per subsystem, and are listed row by row in the script's `EXEMPT` table so the
+count ratchets and no NEW dead function can be added silently (ctest
+`ZeroCallers`).
+
+Read these three limits before working any of them — they are why a row here is
+a LEAD, not a verdict:
+- **A caller count is not reachability** (T442/B451: `checkCollisionIrrlicht()` <!-- RETIRED-OK: citing the deleted function is the point of the warning -->
+  had five call sites and was still unreachable). The converse also holds: a row
+  here has zero callers, but that is not proof the feature is unwanted.
+- **"Nothing calls it" and "nothing CAN call it because the route is broken"
+  look identical from a grep** (T452/B468).
+- The census matches by IDENTIFIER, not by receiver type, so a name collision
+  can only ADD uses. It therefore MISSES dead functions and never invents one;
+  the 417 are a floor.
+
+Each entry closes when every row it owns is either wired (with the caller named)
+or deleted, and its rows removed from `EXEMPT`. A row deleted individually is
+fine — the table fails on a stale entry, so it cannot rot.
+
+- **B490** (B, unreached) **The environment/particle subsystem's query and
+  control API: 35 zero-caller public functions across 11 headers under
+  `include/client/graphics/environment/`.** Emitter, flock, boids, overlay and
+  storm-cloud accessors and setters that no renderer pass, no config load and
+  no slash command reaches — `ParticleManager::registerExternalEmitter()` /
+  `unregisterExternalEmitter()`, `setWind()`, `getAtlasTexture()`,
+  `setWeatherLights()`; `FlockController::setDestination()` / `scatter()` /
+  `setCollisionDetection()`; `RainOverlay::getSettings()` /
+  `SnowOverlay::getSettings()`. Note the overlap with the FIELD census: B339
+  and B346 already own `WeatherEffectsController::targetIntensity_` and
+  `ParticleEmitter::spawnRadius_`, which are the same subsystem's unread
+  members. Found by T455.
+
+- **B491** (B, unreached) **The S3D/WLD asset-loader query API: 49 zero-caller
+  public functions across 10 headers under
+  `include/client/graphics/eq/`.** Loader accessors
+  (`S3DLoader::getGeometry()` / `getObjects()` / `getObjectCount()` /
+  `getLightCount()`, `WldLoader::getTrackRef()`, `SkyLoader::getLayerCount()`),
+  the whole of `SkeletalAnimator`'s playback and frame-trigger control surface
+  (`pauseAnimation()`, `resumeAnimation()`, `setBlendingEnabled()`,
+  `setBlendDuration()`, `setEventCallback()`, `addHitFrameTrigger()`,
+  `addFootstepTriggers()`, `removeFrameTrigger()`, 16 rows), and the
+  `equipment_textures.h` / `race_codes.h` inline helpers. The animator group is
+  the interesting one: it is a complete blend-and-trigger feature with no
+  caller at all, which is the T39/B024 shape. Found by T455.
+
+- **B492** (B, unreached) **The detail/foliage subsystem's query and control
+  API: 24 zero-caller public functions across 8 headers under
+  `include/client/graphics/detail/`.** `DetailManager::adjustDensity()` (its
+  comment says "For keyboard +/- controls" and no key is bound to it),
+  `clearSeasonOverride()`, `setFootprintConfig()` / `getFootprintConfig()`,
+  `getTotalPlacementCount()`, `isFoliageDisturbanceEnabled()`;
+  `FoliageDisturbance::addDisturbanceSource()` / `clearSources()` —
+  i.e. nothing ever adds a disturbance; `SurfaceMap`'s four bounds accessors;
+  `SeasonalController::hasOverride()` / `getOverride()`. Related to the closed
+  B330-B336 field rows in the same subsystem. Found by T455.
+
+- **B493** (B, unreached) **The paperdoll's input API and the output-renderer
+  factory: 15 zero-caller public functions across
+  `include/client/graphics/ui/character_model_view.h` and
+  `include/client/output/`.** `CharacterModelView::onMouseDown()` /
+  `onMouseMove()` / `onMouseUp()` / `isDragging()` / `setRotationY()` — the
+  panel IS drawn, and B343 already records that it holds an
+  `inventoryManager_` it never reads; this is the other half, a drag-to-rotate
+  interaction with nothing routing mouse events into it. Plus
+  `createRenderer()` (`output_renderer.h`) and
+  `GraphicalRenderer::getRenderQuality()`. Found by T455.
+
+- **B494** (B, unreached) **Renderer component and helper API: 127 zero-caller
+  public functions across 28 headers under `include/client/graphics/`** — the
+  largest group, and the one T448's ten deletions did not reach.
+  `EntityRenderer` alone has 33: the whole debug offset/rotation control set
+  (`adjustOffsetX/Y/Z`, `adjustRotationX/Y/Z`, `resetOffsets()` and their six
+  getters), the per-entity animation query set (`getEntityAnimation()`,
+  `hasEntityAnimation()`, `getEntityAnimationList()`,
+  `isEntityPlayingThrough()`, `getEntityPoseState()`), `setOcclusionCuller()`,
+  `setNameTagDistance()`, `isPlayerInFirstPersonMode()`. Then
+  `CameraController` (11), `TextureAtlas`'s whole preload path (10:
+  `preloadFromFile()`, `uploadPreloadedPage()`, `uploadPreloadedPageAsync()`,
+  `finalizePreload()`), `ZoneShaderManager` (9, including the four wind
+  material-type getters and `appendAtlasPageTextures()`), `SkyRenderer`'s strip
+  upload (`beginStripUpload()` / `continueStripUpload()` /
+  `finalizeStripUpload()` / `isStripActive()`), `WeatherSystem` (8),
+  `ConstrainedTextureCache::freeze()` / `isFrozen()`, and
+  `RendererContext::Slash()` — a Batch-L sibling accessor nothing calls.
+  `SpellVisualFX::removeBuffAura()` / `removeAllForEntity()` are in this group
+  and are ALREADY owned by **B195**: do not delete them independently of B161,
+  they are the leak fix if the creation path is wired. Split this entry before
+  working it. Found by T455.
+
+- **B495** (B, unreached) **InventoryManager's bank/cursor/callback API and the
+  unreached `inventory_constants.h` helpers: 41 zero-caller public functions
+  across 3 headers.** `getBankItems()`, `getSharedBankItems()`,
+  `getSellableItems()`, `isBankBag()`, `getBankBagSize()`, `isBankBagEmpty()`,
+  `clearBankSlots()`, `swapItems()`, `destroyItem()`, `destroyCursorItem()`,
+  `popCursorItem()`, `getBagSize()`, `dumpInventory()`, the three
+  `set*Callback()` registrars (whose stored members B342 already owns as
+  write-only), and eleven `inventory_constants.h` slot helpers
+  (`isAnyBankSlot()`, `calcSharedBankBagSlotId()`, `getParentBankSlotAny()`,
+  `getBankBagIndexAny()`, `isContainerSlot()`, ...). The bank and inventory
+  windows read `GameState`, not the manager, which is why a whole bank API can
+  sit here with a working bank window. Found by T455.
+
+- **B496** (B, unreached) **GameState module setters and getters with no
+  caller: 30 zero-caller public functions across 7 headers under
+  `include/client/state/`.** `PlayerState`'s seven stat setters
+  (`setSTR/STA/CHA/DEX/INT/AGI/WIS`) — the server sends the values and nothing
+  stores them; `bindHeading()`, `setCharacterId()` / `characterId()`,
+  `setVelocity()`, `setMovementSequence()`; `WorldState::setZoneLoading()` /
+  `setZoneLoadProgress()` / `zoneLoadProgress()` / `zoneLoadStatus()` — a
+  zone-load progress channel with neither a writer nor a reader;
+  `TradeState`'s three partner-item accessors; `SpellState::castingTargetId()`,
+  `memorizingSpellId()`; `InventoryState`'s three equipment-total getters;
+  `GroupState::updateMemberStats()`. Found by T455.
+
+- **B497** (B, unreached) **Top-level manager API with no caller: 26
+  zero-caller public functions across 9 headers directly under
+  `include/client/`.** `Application::getGameMode()` / `getActionDispatcher()` /
+  `getCommandProcessor()` / `getEverQuestClient()` — four component accessors
+  on the top-level orchestrator, none reached; `CombatManager::LoadSpellSet()`
+  / `SaveSpellSet()` / `GetMemorizedSpells()` / `GetNearbyAllies()`;
+  `TradeManager`'s slot API (`addItemToTrade()`, `removeItemFromTrade()`,
+  `hasPartnerItem()`, `setOwnMoney()`, `handlePartnerItemRemoved()`);
+  `DoorStateManager::getDoorsInRadius()` / `removePendingClick()` /
+  `clearPendingClicks()`; `ZoneLines::addZonePoint()` / `getZonePoint()`;
+  `WilleqDatabase::getAnimationSound()`; `GetChatTypeName()`;
+  `getCombatSkillAnimation()`. Found by T455.
+
+- **B498** (B, unreached) **The input-injection API: 15 zero-caller public
+  functions across `include/client/input/`.** `NullInputHandler`'s eleven
+  `inject*` methods (`injectSpellCast()`, `injectHotbar()`, `injectTarget()`,
+  `injectLoot()`, `injectChatMessage()`, `injectMoveCommand()`,
+  `injectMoveToEntity()`, `injectFace()`, `injectFaceEntity()`,
+  `injectStopMovement()`, `injectRawCommand()`) plus
+  `GraphicsInputHandler::injectTargetRequest()` / `injectLootRequest()` and the
+  two `ConsoleInputHandler` mode predicates. This is the automation surface
+  T410's scenario lane does NOT use: `ScenarioRunner` drives `EverQuest`
+  through `IScenarioWorld` instead. Decide whether the injection API is the
+  scenario lane's missing input half or dead weight from the pre-scenario era
+  — do not delete it without reading `include/client/scenario/scenario.h`
+  first. Found by T455.
+
+- **B499** (B, unreached) **Audio query API with no caller: 12 zero-caller
+  public functions across 7 headers under `include/client/audio/`.**
+  `AudioManager::isAutoAttackMusicPlaying()` / `isVendorBankMusicPlaying()` /
+  `isUse3DAudio()`, `AudioMixer::getSfxVolume()`, `EffLoader::getMp3Index()`,
+  `SoundBuffer::loadFromPCM()`, `WeatherAudio::getThunderTimer()`,
+  `ZoneSoundEmitter::getXmiIndex1()` / `getXmiIndex2()`, and `MusicPlayer`'s
+  three OpenAL-era methods (`enableSoftwareRendering()`,
+  `isSoftwareRendering()`, `reinitializeOpenAL()`) — the client uses miniaudio,
+  so those three are residue from a backend that is gone. Found by T455.
+
+- **B500** (B, unreached) **The `IGameMode` implementations' accessors: 10
+  zero-caller public functions across the three mode headers.**
+  `AutomatedMode::getGameState()` / `queueCommand()` / `getNextCommand()` /
+  `hasPendingCommands()` / `setEventCallback()` — a whole command queue that
+  T410's scenario lane replaced with `setAutomationCallback` and did not
+  remove; plus `HeadlessMode::consoleInput()` / `consoleRenderer()` /
+  `getGameState()` and `GraphicalMode::getGameState()` /
+  `getRendererType()`. Note B345 already owns three write-only
+  `ConsoleRenderer` members, which is the same corner of the tree. Found by
+  T455.
+
+- **B501** (B, unreached) **`common/` utility API with no caller: 12
+  zero-caller public functions across 5 headers.**
+  `PerformanceMetrics::getTimings()` / `resetGameplay()` / `getElapsedMs()` /
+  `markZoneLoadStart()` / `markZoneLoadEnd()` / `getCategoryName()` — a
+  zone-load timing channel nothing marks; the KSM heap helpers
+  (`MarkHeapStart()`, `MeasureHeapUsage()`, `CheckPageAlignment()`,
+  `PageAlignVectorAligned()` — note `PageAlignedAllocator::allocate()` /
+  `deallocate()` are NOT dead, they are standard-library customisation points
+  and the census excludes them by rule); `ClampLower()`; `Random::Shuffle()`;
+  `Logger::GetMutex()`. This is the remaining `common/util` residue after
+  T455 deleted `strings` and `file`; it is left because `ksm.h` pairs every
+  helper across a `_WIN32` / Linux `#ifdef` and a partial deletion there is
+  not mechanical. Found by T455.
+
+- **B502** (B, unreached) **Gameplay-domain manager API with no caller: 21
+  zero-caller public functions across 9 headers
+  (`skill/`, `spell/`, `chat/`, `movement/`, `player/`).**
+  `SkillManager::isSkillReady()` / `getSkillsByCategory()` /
+  `getActivatableSkills()` / `toggleSkill()` / `isSkillActive()`;
+  `SpellAnimations::getTargetAnimation()` / `getSchoolCastAnimation()` /
+  `getAnimationDuration()` / `isValidAnimation()` — the whole spell-animation
+  lookup table, unreached, in a client that plays cast animations by another
+  route; `BuffManager::getSpellDatabase()`;
+  `ChatMessageBuffer::getRecentMessages()` / `hasNewMessages()` /
+  `clearNewMessageFlag()` / `getChannelName()`;
+  `MovementComponent::IsSwimming()` / `GetMovementSpeed()` /
+  `WaterStateRef()`; `PlayerComponent::PerformEmote()`;
+  `SkillData::getValueString()`; `SpellData::isInstantCast()`. Found by T455.
+
+- **B503** (P, process) **The zero-caller census is ONE PASS and does not see
+  cascading death.** T455 deleted 24 functions from `common/util/strings`, re-ran
+  the census, and `Strings::SecondsToTime` and `Strings::ToUnsignedInt` <!-- RETIRED-OK: the tombstone for the two functions this unit deleted -->
+  appeared as NEW hits — their only callers had been the functions just
+  deleted. A third pass found none, so the tree is at a fixed point today, but
+  the same will happen to whoever works B490-B502: **after deleting a group,
+  re-run `check_zero_callers.py` until it stops producing new rows, and only
+  then trust the count.** The same shape hid `File::Exists()`, which showed one
+  use (the free `Exists()` wrapper) that was itself dead — the whole
+  `common/util/file` translation unit was dead behind a single live-looking
+  reference. Found by T455.

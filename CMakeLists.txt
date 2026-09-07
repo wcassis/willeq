@@ -251,7 +251,6 @@ SET(COMMON_SOURCES
     src/common/util/random.cpp
     src/common/util/data_verification.cpp
     src/common/util/compression.cpp
-    src/common/util/file.cpp
     src/common/util/json_config.cpp
     src/common/net/packet.cpp
     src/common/net/daybreak_connection.cpp
