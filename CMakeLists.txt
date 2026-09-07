@@ -599,6 +599,9 @@ IF(EQT_GRAPHICS)
         # CLIENT_CORE_SOURCES — P28, see there: no renderer dependency, used
         # unconditionally by base game logic)
         src/client/graphics/ui/ui_atlas.cpp
+        # T430 (board B376): the item-icon sheets, lazily loaded from the
+        # pack and addressed by include/client/graphics/ui/item_icon_atlas.h.
+        src/client/graphics/ui/item_icon_sheets.cpp
         src/client/graphics/ui/static_ui_input.cpp
         src/client/graphics/ui/ui_renderer.cpp
         src/client/graphics/ui/static_panels.cpp
@@ -1595,6 +1598,19 @@ ADD_EXECUTABLE(spell_sprite_atlas_builder
     tools/spell_sprite_atlas_builder.cpp
 )
 TARGET_INCLUDE_DIRECTORIES(spell_sprite_atlas_builder PRIVATE
+    ${CMAKE_SOURCE_DIR}/tools
+    ${CMAKE_SOURCE_DIR}/include
+)
+
+# T430 (board B376): item icon atlas builder. Reads the official client's own
+# uifiles/default/dragitem*.tga -- the 34 sheets EQUI_Animations.xml lists
+# under A_DragItem -- and packs all 1224 40x40 icons into
+# data/textures/item_icons{0,1}.bmp. Header-only inputs (tga_reader.h,
+# bmp32_writer.h) plus the shared layout header, so it links nothing.
+ADD_EXECUTABLE(item_icon_atlas_builder
+    tools/item_icon_atlas_builder.cpp
+)
+TARGET_INCLUDE_DIRECTORIES(item_icon_atlas_builder PRIVATE
     ${CMAKE_SOURCE_DIR}/tools
     ${CMAKE_SOURCE_DIR}/include
 )

@@ -146,6 +146,23 @@ std::vector<Entry> particleSet() {
              "UnifiedParticleRenderer point sprite (sheet 1), alpha blend"}};
 }
 
+// ── The item icon sheets ────────────────────────────────────────────────────
+// T430 (board B376). The official client's own dragitem*.tga icons, packed
+// into two 1024x1024 sheets by tools/item_icon_atlas_builder. Every panel that
+// shows an item draws them through UIRenderer::drawItemIcon() -> draw2DImage
+// with useAlphaChannelOfTexture=true, i.e. the same UI2D_FS alpha-blend path
+// ui_atlas takes -- which since T411 samples the ETC1 `_alpha` companion on
+// unit 1. Item icons are cut-outs on transparency, so the companion is
+// load-bearing; unlike ui_atlas they need no in-band payload, because nothing
+// minifies a 4x4 sprite onto a 1px rect here -- a 40x40 cell lands on a 32x32
+// slot or a 40x40 decal, barely a level of minification.
+std::vector<Entry> itemIconSet() {
+    return {{"item_icons0.bmp", "item_icons0",
+             "UIRenderer::drawItemIcon, draw2DImage alpha blend (UI2D_FS)"},
+            {"item_icons1.bmp", "item_icons1",
+             "UIRenderer::drawItemIcon, draw2DImage alpha blend (UI2D_FS)"}};
+}
+
 // ── Entries that must stay in-band RGBA8888, and why ────────────────────────
 // Down from 60 to 1 at T411. An entry here costs ~8x its ETC1 size in the
 // shared pack AND in every zone's mapped bytes (a 256x256 with mips:
@@ -184,6 +201,7 @@ std::vector<std::string> allCensusedFiles() {
     for (const Entry& e : weatherSet()) v.push_back(e.file);
     for (const Entry& e : cursorSet()) v.push_back(e.file);
     for (const Entry& e : billboardSet()) v.push_back(e.file);
+    for (const Entry& e : itemIconSet()) v.push_back(e.file);  // T430, board B376
     return v;
 }
 
@@ -567,10 +585,11 @@ TEST(TextureAlphaCensus, EveryShippedBmpIsAccountedFor) {
         if (sp == std::string::npos) continue;
         pinned.insert(line.substr(sp + 1));
     }
-    // 64 procedural BMPs + T417's spell_sprite_atlas.bmp, which is lifted
-    // from the official client's art by a second recipe
-    // (tools/spell_sprite_atlas_builder) into the same directory.
-    ASSERT_EQ(pinned.size(), 65u) << "data/textures.sha256 does not pin 65 files";
+    // 64 procedural BMPs + T417's spell_sprite_atlas.bmp + T430's two
+    // item_icons sheets, the last three lifted from the official client's art
+    // by two further recipes (tools/spell_sprite_atlas_builder,
+    // tools/item_icon_atlas_builder) into the same directory.
+    ASSERT_EQ(pinned.size(), 67u) << "data/textures.sha256 does not pin 67 files";
 
     std::set<std::string> censused;
     for (const std::string& f : allCensusedFiles()) censused.insert(f);

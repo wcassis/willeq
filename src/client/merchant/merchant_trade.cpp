@@ -364,6 +364,10 @@ void eqt::merchant::MerchantComponent::ZoneProcessLootItemToUI(const EQ::Net::Pa
 				ldata.slot = static_cast<uint8_t>(slot_num);
 				ldata.itemId = itemId;
 				ldata.itemName = item_name;
+				// T430 (board B376): `icon` was parsed from field[22] above
+				// and then dropped on the floor -- the loot window had no art
+				// to draw for it. It does now.
+				ldata.iconId = icon;
 				ctx_.bridge->pushEvent(eqt::state::GameEvent(
 					eqt::state::GameEventType::LootItemAdded, std::move(ldata)));
 			}

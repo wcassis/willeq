@@ -204,20 +204,52 @@ test that fails if the checked-in bytes and their inputs drift apart:
 
 | asset | recipe | pinned by | ctest |
 |---|---|---|---|
-| `data/textures/*.bmp` (65 files) | `scripts/build_textures.sh` → `tools/generate_textures` (64, procedural) **and `tools/spell_sprite_atlas_builder` (1, lifted from the client's own art — T417)** | `data/textures.sha256` | `TexturesReproducible` |
-| `/mnt/projects/EverQuest_ETC1/willeq.eqe1` (128 entries since T417: 66 textures, 61 ETC1 `_alpha` companions, 1 raw) | `scripts/build_willeq_pack.sh` | `data/willeq.eqe1.sha256` | `PackReproducible` |
+| `data/textures/*.bmp` (67 files) | `scripts/build_textures.sh` → `tools/generate_textures` (64, procedural), **`tools/spell_sprite_atlas_builder` (1, T417) and `tools/item_icon_atlas_builder` (2, T430) — both lifted from the client's own art** | `data/textures.sha256` | `TexturesReproducible` |
+| `/mnt/projects/EverQuest_ETC1/willeq.eqe1` (132 entries since T430: 68 textures, 63 ETC1 `_alpha` companions, 1 raw) | `scripts/build_willeq_pack.sh` | `data/willeq.eqe1.sha256` | `PackReproducible` |
 
-The pack's inputs are the 65 BMPs plus `tools/ui_atlas_builder`, so a texture
+The pack's inputs are the 67 BMPs plus `tools/ui_atlas_builder`, so a texture
 change cascades: regenerate the BMPs, rewrite `data/textures.sha256`
 (`--write-pins`), rebuild the pack, update `data/willeq.eqe1.sha256` — all in
 **one commit**, or both tests go red.
 
-**`data/textures/` has TWO recipes since T417 (board B300).** Sixty-four of
-the BMPs are procedural (`generate_textures`); `spell_sprite_atlas.bmp` is
-**not** — it is the official client's own `SpellEffects/spel*.tga` art, packed
-by `tools/spell_sprite_atlas_builder`, and `build_textures.sh` runs both tools
-into the same directory. So a `data/textures/` change may need either tool,
-and the pin file covers the union. Its layout —
+**`data/textures/` has THREE recipes since T430 (boards B300, B376).**
+Sixty-four of the BMPs are procedural (`generate_textures`); the other three
+are the official client's own art. `spell_sprite_atlas.bmp` comes from
+`SpellEffects/spel*.tga` via `tools/spell_sprite_atlas_builder`, and
+`item_icons0.bmp` + `item_icons1.bmp` come from
+`uifiles/default/dragitem1..34.tga` via `tools/item_icon_atlas_builder`.
+`build_textures.sh` runs all three tools into the same directory, so a
+`data/textures/` change may need any of them, and the pin file covers the
+union.
+
+**The item icon sheets (T430, board B376 CLOSED).** Before T430 fable had no
+item art at all: every panel that showed an item carried the server's icon id
+(S2 put it on `InventorySlotChangedData`) and drew a placeholder — the
+inventory popup and the tradeskill grid painted the first three characters of
+the item's NAME, and T421's item display window painted the icon NUMBER inside
+`IDW_IconButton`'s frame. The layout lives in ONE place,
+`include/client/graphics/ui/item_icon_atlas.h`, which the builder and the
+client's `ItemIconSheets` loader both include. Two facts there are QUOTED from
+the oracle rather than assumed, and both matter:
+- **34 sheets of 6x6 40x40 cells, ids 500..1723** — `EQUI_Animations.xml`'s
+  single `<Ui2DAnimation item="A_DragItem">` lists exactly `dragitem1.tga` ..
+  `dragitem34.tga` with `<CellWidth>40</CellWidth>` on a `<Size>256x256</Size>`
+  texture.
+- **COLUMN-major within a sheet**, because that animation carries
+  `<Vertical>true</Vertical>`. The usual `(id-500)%36 / 6 = row` folklore is
+  the wrong way round, and `dragitem34` — the only partly-filled sheet —
+  proves it: its thirteen icons fill two whole COLUMNS plus one, not two rows.
+  `tests/test_item_icon_atlas.cpp` asserts both the positive and the negative
+  (the row-major cell holds different art), so a "cleanup" back to row-major
+  is a red test rather than 1224 wrong pictures.
+
+1200 of the 1224 cells carry art: `dragitem34` stops after thirteen, and
+`dragitem21` has a transparent cell in the MIDDLE of its grid (icon id
+**1230**). An empty cell is still addressable and simply draws nothing. The
+sheets load LAZILY — a session that never opens an item panel never uploads
+them — and a `lookup()` miss makes `UIRenderer::drawItemIcon()` return false,
+which is why every caller kept its pre-T430 text placeholder as the fallback.
+The spell sprite atlas's layout —
 which sprite's which animation frame occupies which of the 32x32 cells — lives
 in ONE place,
 `include/client/graphics/environment/spell_sprite_atlas.h`, which the builder

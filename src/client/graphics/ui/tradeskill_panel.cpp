@@ -123,14 +123,20 @@ void renderTradeskillPopup(UIRenderer& ui, const UILayout& layout,
         if (state.hoveredSlot == i) {
             ui.drawRect(r, irr::video::SColor(60, 255, 255, 255));
         }
-        if (!state.slots[i].hasItem || !tb) continue;
+        if (!state.slots[i].hasItem) continue;
 
-        // The cell is small; the same 3-character abbreviation the
-        // equipment slots use, with the stack count under it.
-        tb->addText(state.slots[i].itemName.substr(
-                        0, std::min<size_t>(3, state.slots[i].itemName.size())),
-                    r.UpperLeftCorner.X + 3, r.UpperLeftCorner.Y + 2,
-                    irr::video::SColor(255, 220, 220, 220));
+        // T430 (board B376): the container's cells carry an A_DragItem decal
+        // in the oracle (EQUI_TradeskillWnd.xml's COMBW_Slot buttons name it
+        // by that exact element), so draw the real icon and keep the
+        // 3-character abbreviation only as the no-art fallback.
+        const bool drewIcon = ui.drawItemIcon(r, state.slots[i].iconId);
+        if (!tb) continue;
+        if (!drewIcon) {
+            tb->addText(state.slots[i].itemName.substr(
+                            0, std::min<size_t>(3, state.slots[i].itemName.size())),
+                        r.UpperLeftCorner.X + 3, r.UpperLeftCorner.Y + 2,
+                        irr::video::SColor(255, 220, 220, 220));
+        }
         if (state.slots[i].quantity > 1) {
             tb->addText(fmt::format("{}", state.slots[i].quantity),
                         r.UpperLeftCorner.X + 3, r.UpperLeftCorner.Y + 14,

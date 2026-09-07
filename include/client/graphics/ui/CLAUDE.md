@@ -8,6 +8,20 @@ The old WindowManager/WindowBase draggable window system was completely removed 
 - `UILayout` - Anchor-based screen region definitions. `computeLayout(width, height)` positions all panels for any resolution. Constants: MARGIN=4, BAR_HEIGHT=14, SLOT_SIZE=32.
 - `StaticPanels` - Free render functions (not a class hierarchy) for each panel. Each takes a `UIRenderer`, `UILayout`, and a plain data struct. No state ownership.
 - `StaticUIInput` - Mouse/keyboard input handler for static UI. Communicates with game thread via `GameStateBridge` intents. Hit-tests slot grids for inventory, hotbar, spell gems. Its `processKey()` (ESC dismisses the top popup) had NO production caller until T290 wired it into `renderer_frame.cpp`'s escape handling, ahead of clear-target. **Scrolling (T313):** `processWheel()` / `processScrollKey()` / `runScrollCommand()` all funnel into ONE router — `scrollTargetAt()` picks the panel under the cursor (loot > skills > chat, the draw order), `scrollPanel()` moves it. Before T313 there was no scroll writer of any kind: chat scrollback, the skills list and the loot list all honoured a `scrollOffset` in both their render body and their hit test that nothing ever wrote, so a corpse with more than 8 items was partly UNLOOTABLE. **The offset conventions differ and are not harmonised** — chat counts lines up from the BOTTOM (0 = newest), skills and loot count rows down from the TOP; `scrollPanel()`'s `lines > 0` means "towards older content" either way. The clamps stay with the panels: `renderChatPanel()` owns chat's upper bound (it is the only code that knows the wrapped-line count), `SkillsPopupState::maxScrollOffset(visibleRows)` and `LootPanelState::maxScrollOffset()` own the other two.
+- `ItemIconSheets` - **T430 (board B376)**: the item icon art, lifted from the official client's own
+  `uifiles/default/dragitem1..34.tga` by `tools/item_icon_atlas_builder` into two 1024x1024 pack entries
+  (`item_icons0`, `item_icons1`). Held by `UIAtlas` (`atlas->icons()`) and reached as
+  `UIRenderer::drawItemIcon(rect, iconId)`. The layout — 34 sheets of 6x6 40x40 cells, ids **500..1723**,
+  **COLUMN-major within a sheet** because `EQUI_Animations.xml`'s `A_DragItem` carries
+  `<Vertical>true</Vertical>` — lives in `include/client/graphics/ui/item_icon_atlas.h`, which the builder
+  and the loader both include. The sheets load LAZILY on the first icon drawn (they are 2 x 1024x1024 and
+  a session that never opens an item panel should not pay for them), and `drawItemIcon()` returns
+  **false** when the pack entry or the id has no art — every caller keeps its pre-T430 text placeholder
+  for that case, which is why a headless test or a pack-less client looks unchanged.
+  Five draw sites use it: the 22 equipment slots and 8 general slots (`renderInventoryPopup`), the
+  tradeskill container cells (`renderTradeskillPopup`), the loot rows (`renderLootPopup`, at 20px in a
+  22px row) and `IDW_IconButton` (`renderItemDisplayPopup`, at the oracle's own 40x40 decal rect).
+  There is still **no merchant, bank or cursor-item panel** to give icons to — board **B415**.
 - `UIAtlas` - Loads pre-generated sprite atlas (`ui_atlas.bmp` + `ui_atlas.json`, both packed into `willeq.eqe1` by `tools/ui_atlas_builder`).
   Provides the `UISprite` enum (SlotBackground, BarHP, PanelBackground, White, the four coin decals, ...) with source rects.
   **The roster is fifteen sprites and every one of them has a consumer** — T424 (board B351) deleted `SlotBorderSelected`,

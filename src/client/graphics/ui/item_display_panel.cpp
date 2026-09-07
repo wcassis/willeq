@@ -71,15 +71,21 @@ void renderItemDisplayPopup(UIRenderer& ui, const UILayout& layout,
     }
 
     // --- IDW_IconButton: RedIconBackground + a 40x40 decal ---
-    // fable has no item-icon atlas yet (SlotDisplayInfo::iconId has carried
-    // the id since S2 and nothing has ever had art to draw for it), so the
-    // button is drawn as the oracle's frame with the icon NUMBER in it
-    // rather than a wrong picture. Board B376.
+    // T430 (board B376, CLOSED): the decal is the real dragitem art now. The
+    // oracle's own EQUI_ItemDisplay.xml gives IDW_IconButton
+    // `<ButtonDrawTemplate><Normal>RedIconBackground</Normal>
+    // <NormalDecal>BuffIcons</NormalDecal></ButtonDrawTemplate>` and swaps
+    // that decal for the item's icon at runtime; the decal rect here is
+    // already the 40x40 the sheets are cut at, so this is a 1:1 blit.
+    //
+    // The icon NUMBER that stood here from T421 until T430 is the fallback,
+    // not the deleted placeholder: a client with no pack still says which
+    // icon it would have drawn rather than showing an empty frame.
     const auto iconBtn = ItemDisplayLayout::iconButtonRect(layout);
     ui.drawRect(iconBtn, irr::video::SColor(220, 70, 24, 24));
     const auto decal = ItemDisplayLayout::iconDecalRect(layout);
     ui.drawRect(decal, irr::video::SColor(200, 18, 18, 24));
-    if (tb && state.iconId != 0) {
+    if (!ui.drawItemIcon(decal, state.iconId) && tb && state.iconId != 0) {
         tb->addTextCentered(std::to_string(state.iconId), decal,
                             irr::video::SColor(255, 170, 170, 190));
     }

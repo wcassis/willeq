@@ -9,6 +9,7 @@
 #pragma once
 
 #include "client/graphics/constrained_texture_cache.h"
+#include "client/graphics/ui/item_icon_sheets.h"
 #include <irrlicht.h>
 #include <cstdint>
 #include <string>
@@ -72,11 +73,23 @@ public:
     irr::video::ITexture* getTexture() { return texture_; }
     const UISpriteRect& getSprite(UISprite sprite) const;
 
+    /**
+     * T430 (board B376): the item-icon sheets, lifted from the official
+     * client's dragitem*.tga. They are a SEPARATE pair of pack entries, not
+     * regions of ui_atlas -- 1224 40x40 icons do not fit in a 256x256 UI
+     * atlas -- and they are loaded by load() below, beside ui_atlas itself.
+     * Held here because UIAtlas is the object every panel already reaches
+     * through UIRenderer; see UIRenderer::drawItemIcon().
+     */
+    ItemIconSheets& icons() { return icons_; }
+    const ItemIconSheets& icons() const { return icons_; }
+
 private:
     bool loadJsonFromMemory(const char* data, size_t size);
     void mapSprite(const std::string& name, const irr::core::rect<irr::s32>& rect);
 
     irr::video::ITexture* texture_ = nullptr;
+    ItemIconSheets icons_;
     UISpriteRect sprites_[static_cast<int>(UISprite::Count)];
     UISpriteRect emptySprite_{};
 };
