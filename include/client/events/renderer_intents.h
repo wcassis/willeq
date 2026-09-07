@@ -124,6 +124,14 @@ struct BankerInteractIntent {
     uint16_t npcId;  // Validation stays on game thread
 };
 
+// T436 (board B429): the bank window's BW_DoneButton and its Style_Closebox.
+// BankerInteractIntent cannot close -- its handler returns early when the
+// window is already open -- and there was no other renderer-side way to end a
+// bank session, so this is the CloseTrainerIntent shape: an empty close
+// intent whose handler is the existing MerchantComponent::CloseBankWindow().
+// The panel closes when BankWindowClosed comes back, never optimistically.
+struct CloseBankIntent {};
+
 // T269: produced by EverQuest::RequestBankCoinMove() (/bank deposit|withdraw)
 // -- the same intent a bank-window coin gesture would push. Consumed by the
 // eq_bridge.cpp arm that builds OP_MoveCoin {inventory<->bank, cointype1==
@@ -344,6 +352,7 @@ using RendererIntent = std::variant<
     VendorSellIntent,
     // Bank
     BankerInteractIntent,
+    CloseBankIntent,
     BankCurrencyMoveIntent,
     BankCurrencyConvertIntent,
     // Trainer

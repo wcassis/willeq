@@ -143,6 +143,10 @@
 #include "client/graphics/ui/combat_ability_panel.h"
 #include "client/graphics/ui/item_display_panel.h"
 #include "client/graphics/ui/options_panel.h"
+// T436 (board B429): the merchant, bank and cursor-attachment windows.
+#include "client/graphics/ui/merchant_panel.h"
+#include "client/graphics/ui/bank_panel.h"
+#include "client/graphics/ui/cursor_attachment.h"
 #include "client/graphics/ui/ui_preferences.h"
 
 #include <chrono>
@@ -358,6 +362,20 @@ public:
 	// popups -- the oracle's OptionsWindow is `RelativePosition false` at its
 	// own <Location> -- so it is drawn and hit-tested on top of them.
 	OptionsPanelState optionsState_;            // T434
+	// T436 (board B429): the merchant window. One of the mutually exclusive
+	// centre popups (the oracle's MerchantWnd is Style_Sizable true and does
+	// not fit 640x480, so it is scaled onto centerPopup the way T415 scaled
+	// the tradeskill window). Fed by the three Vendor* bridge arms.
+	MerchantPanelState merchantState_;          // T436
+	// T436 (board B429): the bank window. NOT a centre popup -- the oracle's
+	// BankWnd is Style_Sizable false at 108x347, so it keeps its own size and
+	// its own anchor. Fed by the two Bank* window arms, BankCurrencyChanged
+	// and the 2000..2007 branch of the InventorySlotChanged arm.
+	BankPanelState bankState_;                  // T436
+	// T436 (board B429): the item held on the cursor, drawn at the mouse.
+	// Fed by the slot-30 branch of the InventorySlotChanged arm; its mouse
+	// position is written once per frame by renderStaticUI().
+	CursorAttachmentState cursorState_;         // T436
 	XPBarState xpBarState_;             // U06i
 	// T432 (board B275): per-character UI persistence. Empty identity =
 	// not logged in yet, and sync() is then a no-op.

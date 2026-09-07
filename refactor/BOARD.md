@@ -6605,7 +6605,7 @@ client uses every field.
 
 ### Added by T430 (2026-09-07)
 
-- **B429** (B) `src/client/merchant/merchant.cpp:103`,
+- ~~**B429** (B) `src/client/merchant/merchant.cpp:103`,
   `src/client/merchant/merchant_trade.cpp:405` and `:693`
   (`data.iconId = data.hasItem ? item->icon : 0;`) -- **there is no merchant
   window, no bank window and no cursor-item slot in the static UI**, so three
@@ -6622,7 +6622,28 @@ client uses every field.
   <NormalDecal>A_DragItem</NormalDecal></ButtonDrawTemplate>` with
   `<DecalSize><CX>40</CX><CY>40</CY></DecalSize>`, so the art and the layout
   source both exist now -- only the panels do not. Closes when a merchant and
-  a bank window exist and draw their icons. Found by T430.
+  a bank window exist and draw their icons. Found by T430.~~ **CLOSED by T436
+  (this commit).** All three windows now exist, each with a layout header that
+  quotes its own oracle XML and a panel TU that computes no rect:
+  `merchant_layout.h`/`merchant_panel.cpp` (`EQUI_MerchantWnd.xml`, scaled onto
+  `centerPopup` because the window is `Style_Sizable true` and 505px tall from
+  its `<Location>`), `bank_layout.h`/`bank_panel.cpp` (`EQUI_BankWnd.xml`,
+  UNSCALED at 108x347 because it is `Style_Sizable false`, eight slots per the
+  era file) and `cursor_attachment_layout.h`/`cursor_attachment.cpp`
+  (`EQUI_CursorAttachment.xml`, `CA_Anim` 40x40 at the mouse). The five window
+  bridge arms and `BankCurrencyChanged` had their LOG_TRACE stubs replaced by
+  real appliers; `VendorItemAddedData` gained the `iconId` its producer had
+  been parsing and dropping; and the enriched `InventorySlotChanged` arm --
+  which covered 0..29 and the WORLD range and nothing else -- now routes slot
+  30 to the cursor and 2000..2007 to the bank. Pinned by
+  `tests/test_merchant_bank_cursor.cpp` (32 cases, including a four-case SOURCE
+  CENSUS of the defect that runs and FAILS against the pre-T436 tree). NOTE:
+  B429's own quote of `MW_SelectedItem`'s `A_RecessedBox`/`A_DragItem` template
+  called it a "slot grid"; it is ONE button. `EQUI_MerchantWnd.xml` has no slot
+  grid at all -- its stock is a `<Listbox>` with seven `<Columns>`, the first of
+  which (24px, empty `<Heading>`) is the icon cell. LIVE PROOF IS OWED: T436
+  held no eqemu lock (T428 had it), so no real vendor or banker has been in
+  front of these windows. Prov: T436 Review.
 
 ### Added by T427 (2026-09-07)
 
@@ -7058,3 +7079,67 @@ in `refactor/T433_doors_lifts_survey.md` Review; raw dumps in
   already animates, so this is verify-only. **STOP: each opentype's motion
   (which axis, how far, how long) is a separate oracle measurement — do not
   generalise from opentype 0.** Found by T433 Leg C.
+
+### Added by T436 (2026-09-07)
+
+- **B440** (B) `include/client/graphics/ui/cursor_attachment_layout.h`,
+  `/mnt/projects/EverQuestP1999/uifiles/default/EQUI_CursorAttachment.xml` --
+  **two of the CursorAttachment screen's three pieces have no fable producer.**
+  The oracle's screen is `CA_Anim`, `CA_Anim2` and `CA_SpellGem`, all three at
+  the same `<Location>(5,5)</Location>`, so at most one is ever visible; the
+  official client shows `CA_Anim` for an item and `CA_SpellGem` for a spell
+  being scribed off a scroll. fable's cursor holds an ITEM and nothing else --
+  `InventoryManager`'s `cursorQueue_` is a queue of `ItemInstance` -- so T436
+  drew `CA_Anim` and left the other two undrawn rather than inventing a state
+  to fill them. Closes when there is a cursor-held SPELL to draw (the scribe
+  path already exists: `ScribeSpellIntent` carries a `sourceSlot`), or when it
+  is established that Titanium never puts one there and the two elements are
+  recorded as deliberately unused. Found by T436.
+
+- **B441** (C) `src/client/graphics/ui/bank_panel.cpp` (`BW_ChangeButton`),
+  `include/client/graphics/ui/bank_layout.h` -- **the bank window's Change
+  button is drawn greyed and is not hit-testable.** The oracle's Change opens a
+  coin-denomination dialog that fable does not have, and the underlying
+  capability DOES exist game-side (`BankCurrencyConvertIntent` ->
+  `OP_MoveCoin` bank->bank with `cointype1 != cointype2`, T269) -- what is
+  missing is a way for one click to supply the from/to/amount triple it needs.
+  `/bank convert <from> <to> <amount>` remains the only route. Drawn disabled
+  rather than wired to a guess, the T363 rule T434 made mechanical. Closes on a
+  decision about what gesture supplies the triple. Found by T436.
+
+- **B442** (B) `src/client/graphics/ui/static_ui_input.cpp`
+  (`StaticUIInput::processCommerceInput`, the bank-slot arm) -- **a bank slot
+  can be hovered and cannot be used.** Moving an item into or out of the bank
+  is a `MoveItem` between the bank slot and the cursor, and fable's static UI
+  latches no drag and no click-to-pick-up: the click arm sets `hoveredSlot` and
+  returns. `SendMoveItem(fromSlot, toSlot, quantity)` and `MoveItemIntent` both
+  exist and `/equip` already drives them, so the protocol side is complete --
+  what is missing is the gesture. The same gap makes the merchant window's SELL
+  button reachable only when something else has already put an item on the
+  cursor. Closes when the inventory/bank/cursor click model has a pick-up and a
+  put-down. Found by T436.
+
+- **B443** (B) `src/client/graphics/ui/merchant_panel.cpp`
+  (`renderMerchantPopup`, the trade button) -- **which of Buy and Sell the
+  merchant window shows is a design choice, not a measurement.**
+  `EQUI_MerchantWnd.xml` gives `MW_Buy_Button` and `MW_Sell_Button`
+  byte-identical anchors (`10 / 44-from-bottom / 74-from-left /
+  6-from-bottom`, both of them), so the official client can only ever show one
+  of the two, and the file says nothing about when it swaps. T436 chose "an
+  item on the cursor means SELL, otherwise BUY" because the list holds the
+  MERCHANT's stock and the cursor is the one player-owned item the window can
+  name. The oracle's actual rule is unmeasured. Closes by watching the official
+  client at a vendor with and without a held item (the T342 rig). Found by
+  T436.
+
+- **B444** (B) `src/client/core/everquest.cpp` (the zone-in inventory snapshot,
+  `for (int16_t slot = 0; slot < 30; ++slot)`) -- **the zone-in snapshot
+  publishes slots 0..29 only, so a cursor item and the bank's contents are
+  invisible until something else moves them.** T436 gave slot 30 and
+  2000..2007 consumers; the generic ItemPacket choke point in
+  `zone_dispatch.cpp` publishes them when the server sends them (bank-window
+  population is one of the two cases its own comment names), but the
+  OnGameStateComplete snapshot loop stops at 30. A character who zones in
+  holding something on the cursor therefore draws no attachment until the next
+  MoveItem. Closes when the loop covers `CURSOR_SLOT` and the bank range.
+  Unverified live -- T436 held no lock. Found by T436.

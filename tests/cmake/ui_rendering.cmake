@@ -330,6 +330,21 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_display_text_from_db)
 ENDIF()
 
+# T436 (board B429): the merchant window, the bank window and the cursor
+# attachment -- the source census of the defect, the geometry against the
+# three oracle XMLs, the appliers driven with the real publishers' data
+# structs, and the clicks against a real GameStateBridge. No device, no
+# database, no server. WILLEQ_REPO_ROOT is set globally in
+# tests/CMakeLists.txt, which is what the census cases read the tree with.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_merchant_bank_cursor
+        test_merchant_bank_cursor.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_merchant_bank_cursor PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_merchant_bank_cursor GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_merchant_bank_cursor)
+ENDIF()
+
 # T421 Leg B (board B365): the ONE text-entry widget, and the tradeskill
 # search box using it.
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)

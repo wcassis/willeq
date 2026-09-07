@@ -496,6 +496,17 @@ void eqt::bridge::BridgeComponent::onVendorSellIntent(const eqt::events::VendorS
 	ctx_.Merchant().SellToVendor(i.npcId, i.slot, i.quantity);
 }
 
+// T436 (board B429): the bank window's Done button / close box. The existing
+// BankerInteractIntent cannot close (its handler returns early when the
+// window is already open), and CloseBankWindow() is the body /bank's no-arg
+// toggle already reaches -- this is a second producer for it, not a second
+// packet. The panel closes on the BankWindowClosed event that call publishes,
+// never optimistically.
+void eqt::bridge::BridgeComponent::onCloseBankIntent(const eqt::events::CloseBankIntent& i) {
+	(void)i;
+	ctx_.Merchant().CloseBankWindow();
+}
+
 // Bank intents (T269: producers are EverQuest::RequestBankCoinMove/
 // Convert via /bank deposit|withdraw|convert). Wire truth, from
 // eqemu zone/client_process.cpp Client::OPMoveCoin: from_slot/
@@ -919,6 +930,7 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 			[this](const eqt::events::VendorBuyIntent& i) { onVendorBuyIntent(i); },
 			[this](const eqt::events::VendorSellIntent& i) { onVendorSellIntent(i); },
 			[this](const eqt::events::BankerInteractIntent& i) { onBankerInteractIntent(i); },
+			[this](const eqt::events::CloseBankIntent& i) { onCloseBankIntent(i); },
 			[this](const eqt::events::BankCurrencyMoveIntent& i) { onBankCurrencyMoveIntent(i); },
 			[this](const eqt::events::BankCurrencyConvertIntent& i) { onBankCurrencyConvertIntent(i); },
 			[this](const eqt::events::TrainerToggleIntent& i) { onTrainerToggleIntent(i); },

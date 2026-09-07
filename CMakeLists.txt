@@ -620,6 +620,11 @@ IF(EQT_GRAPHICS)
         src/client/graphics/ui/item_display_panel.cpp
         src/client/graphics/ui/combat_ability_panel.cpp
         src/client/graphics/ui/options_panel.cpp
+        # T436 (board B429): the merchant, bank and cursor-attachment
+        # windows -- one TU per panel (M00).
+        src/client/graphics/ui/merchant_panel.cpp
+        src/client/graphics/ui/bank_panel.cpp
+        src/client/graphics/ui/cursor_attachment.cpp
         # T432 (board B275): per-character UI persistence -- the ONE reader and
         # writer of UI_<char>_<server>.ini.
         src/client/graphics/ui/ui_preferences.cpp

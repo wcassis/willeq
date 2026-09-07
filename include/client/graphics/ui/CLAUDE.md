@@ -21,7 +21,11 @@ The old WindowManager/WindowBase draggable window system was completely removed 
   Five draw sites use it: the 22 equipment slots and 8 general slots (`renderInventoryPopup`), the
   tradeskill container cells (`renderTradeskillPopup`), the loot rows (`renderLootPopup`, at 20px in a
   22px row) and `IDW_IconButton` (`renderItemDisplayPopup`, at the oracle's own 40x40 decal rect).
-  There is still **no merchant, bank or cursor-item panel** to give icons to — board **B429**.
+  Since T436 (board **B429** CLOSED) there are three more: the merchant window's 24px icon COLUMN
+  (`renderMerchantPopup`, `MW_ItemList`'s first `<Columns>` entry, the one with an empty `<Heading>`),
+  the eight bank cells (`renderBankWindow`, at `BW_BankSlot`'s own `<ItemOffsetX>` inset) and the
+  cursor attachment (`renderCursorAttachment`, at `CA_Anim`'s own 40x40 -- a 1:1 blit, like
+  `IDW_IconButton`).
 - `UIAtlas` - Loads pre-generated sprite atlas (`ui_atlas.bmp` + `ui_atlas.json`, both packed into `willeq.eqe1` by `tools/ui_atlas_builder`).
   Provides the `UISprite` enum (SlotBackground, BarHP, PanelBackground, White, the four coin decals, ...) with source rects.
   **The roster is fifteen sprites and every one of them has a consumer** — T424 (board B351) deleted `SlotBorderSelected`,
@@ -53,8 +57,50 @@ The old WindowManager/WindowBase draggable window system was completely removed 
 | Combat abilities | Top-right, under target, left of the gems | `CombatAbilityPanelState` | `renderCombatAbilityPanel()` (T415, board B320) |
 | Item display | Its own absolute (0,80), 400x190 | `ItemDisplayPanelState` | `renderItemDisplayPopup()` (T421, board B298 item half) |
 | Options | Centred, the oracle's own 400x452, seven tabs | `OptionsPanelState` | `renderOptionsWindow()` (T434) |
+| Merchant | Center popup (the oracle's 374x480 scaled onto it) | `MerchantPanelState` | `renderMerchantPopup()` (T436, board B429) |
+| Bank | Centred, the oracle's own 108x347, unscaled | `BankPanelState` | `renderBankWindow()` (T436, board B429) |
+| Cursor item | At the mouse, the oracle's 50x50 box | `CursorAttachmentState` | `renderCursorAttachment()` (T436, board B429) |
 
-Center popups (inventory, spellbook, skills, vendor, bank, loot, trade, tradeskill container) share the same screen region and are mutually exclusive. The combat abilities window is NOT one of them -- like the buff/group/pet panels it is a HUD window with its own anchor and its own Alt+C toggle. **Neither is the item display window** (T421): `EQUI_ItemDisplay.xml` gives it `RelativePosition false` and `<Location>(0,80)</Location>`, so it is drawn and hit-tested LAST, on top of every centre popup, and ESC dismisses it before them. **Nor is the Options window** (T434), for the same reason and one level higher still: `EQUI_OptionsWindow.xml` is `RelativePosition false` at `<Location>(90,47)</Location>`, so it is drawn and hit-tested after even the item display and ESC dismisses it first of all. Its geometry is `options_layout.h`, a table of every control the oracle XML declares; a control whose `OptionsLayout::Setting` is `None` has no backing setting in fable, is drawn greyed and is **not hit-testable** (the T363 rule made mechanical). Three are wired: `OGP_MusicVolumeSlider`, `OGP_SoundVolumeSlider` and `ODP_ClipPlaneSlider`.
+Center popups (inventory, spellbook, skills, merchant, loot, trade, tradeskill container) share the same screen region and are mutually exclusive. **The BANK is not one of them** (T436): the oracle's `BankWnd` is `Style_Sizable false` at its own 108x347, so like the combat-abilities window it keeps its own size and its own anchor and draws above the centre popups. The combat abilities window is NOT one of them -- like the buff/group/pet panels it is a HUD window with its own anchor and its own Alt+C toggle. **Neither is the item display window** (T421): `EQUI_ItemDisplay.xml` gives it `RelativePosition false` and `<Location>(0,80)</Location>`, so it is drawn and hit-tested LAST, on top of every centre popup, and ESC dismisses it before them. **Nor is the Options window** (T434), for the same reason and one level higher still: `EQUI_OptionsWindow.xml` is `RelativePosition false` at `<Location>(90,47)</Location>`, so it is drawn and hit-tested after even the item display and ESC dismisses it first of all. Its geometry is `options_layout.h`, a table of every control the oracle XML declares; a control whose `OptionsLayout::Setting` is `None` has no backing setting in fable, is drawn greyed and is **not hit-testable** (the T363 rule made mechanical). Three are wired: `OGP_MusicVolumeSlider`, `OGP_SoundVolumeSlider` and `ODP_ClipPlaneSlider`.
+
+**The three commerce windows** (T436, board **B429** CLOSED). Three producers filled an `iconId`
+nothing could draw, because the merchant window, the bank window and the cursor attachment did not
+exist -- the commerce vocabulary was reachable only as `/vendor`, `/vendorlist`, `/buy`, `/sell`,
+`/bank`. Each takes its geometry from a header that quotes its own oracle XML and computes no rect in
+its `.cpp`: `merchant_layout.h` (`EQUI_MerchantWnd.xml`), `bank_layout.h` (`EQUI_BankWnd.xml`),
+`cursor_attachment_layout.h` (`EQUI_CursorAttachment.xml`).
+
+- **Merchant** — `Style_Sizable true` and 505px tall from its own `<Location>`, which does not fit
+  640x480, so it is mapped proportionally onto `centerPopup`, T415's rule. It is the LAST centre
+  popup. **`MW_Buy_Button` and `MW_Sell_Button` carry byte-identical anchors in the shipped file**, so
+  the official client can only ever show one; fable draws Sell when an item is on the cursor and Buy
+  otherwise, which is a design choice made to fit that shared rect and is flagged as one. Buy pushes
+  `VendorBuyIntent`, Sell `VendorSellIntent` (the cursor slot), Done `VendorToggleIntent` — all three
+  pre-existing, the same intents `/buy`, `/sell` and `/vendor` push. `MW_DoneButton` (no underscores)
+  is declared in the file and is in NO `<Pieces>` list, so the oracle never instantiates it and
+  neither does fable.
+- **Bank** — `Style_Sizable false` at 108x347, so it is drawn UNSCALED at the oracle's own offsets,
+  T415's other rule; it is CENTRED rather than at the oracle's `<Location>` (0,25), the same flagged
+  anchor deviation T434 and T415 made. **Eight slots, not sixteen**: `inventory_constants.h`'s
+  `BANK_COUNT = 16` is a post-Velious bank, and the era file declares `BW_BankSlot0..7`.
+  `BW_SharedBankSlot0/1`, `BW_SharedMoney0`, `BW_SharedBankLabel` and `BW_AltStorageButton` are IN the
+  `<Pieces>` list and carry a `<ScreenID>` and nothing else — no `<Location>`, no `<Size>` — so the
+  era file itself declares them as geometry-less stubs and fable draws none of them. `BW_ChangeButton`
+  is drawn greyed and is NOT hit-testable (board **B441**). `BW_DoneButton` and the close box push
+  **`CloseBankIntent`**, the unit's one new intent, whose handler is the existing `CloseBankWindow()`.
+- **Cursor attachment** — `CA_Anim` at (5,5) 40x40 in a 50x50 box that follows the mouse, drawn LAST
+  of everything (it is the pointer). `Style_Transparent true` / `Style_Border false`, so no plate and
+  no frame is drawn under it. There is no count label anywhere in that screen, which is the same fact
+  T413 recorded when it dropped `CursorItemChangedData::queueSize` (board B296) — a stack's quantity
+  is simply never shown there. `CursorItemChangedData` is NOT the feed (it carries one bool and a
+  `sizeof` test pins that): the feed is the enriched `InventorySlotChanged` for slot **30**, which the
+  bridge's arm had been dropping along with the bank's 2000..2007.
+
+None of the three closes itself. Each pushes the intent that ends the SERVER-side session and waits
+for the server's own `VendorWindowClosed` / `BankWindowClosed`, T290's rule; ESC follows the same
+top-down order the draw does (Options, item display, bank, merchant, then the centre popups). There is
+still no way to MOVE an item into or out of a bank slot: that is a drag between the slot and the
+cursor and fable's static UI latches no drag — board **B442**.
 
 **Text entry** (T421, board B365). There is exactly ONE text-entry widget in the static UI: `EQT::Graphics::TextEntryState` and `applyTextEntryKey()` (`include/client/graphics/ui/text_entry.h`). `ChatPanelState` DERIVES from it -- `inputText` / `cursorPos` / `inputActive` are its members -- and the tradeskill window's three Editboxes (`COMBW_MinTrivialEdit`, `COMBW_MaxTrivialEdit`, `COMBW_SearchTextEdit`) are three more of them, selected by `TradeskillPanelState::focusedField`. The KEYBOARD GATE is `FrameComponent::processChatInput()`, still the only caller of `setChatInputFocused()`: it early-returns into `processTradeskillSearchInput()` when a search box holds the caret, so the two key drains are mutually exclusive and no keystroke is read twice (`tests/test_read_and_reset_ownership.cpp` records that as `popKeyEvent`'s two-sites-one-consumer exception). Enter in a search box, or `COMBW_SearchButton`, pushes `RecipeSearchIntent` into the existing `SendRecipesSearch()`; the favourites row pushes `RecipeFavoriteIntent` into the existing `SendRecipesFavorite()` (with board **B377** on the missing favourites set).
 
