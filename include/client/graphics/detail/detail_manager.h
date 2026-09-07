@@ -103,6 +103,15 @@ public:
     const WindController& getWindController() const { return windController_; }
     const ZoneDetailConfig& getZoneConfig() const { return config_; }
 
+    // Install a zone config. This is the ONE place viewDistanceChunks_ is
+    // derived (B336): the cull radius follows the config's view distance, so a
+    // caller cannot set one without the other. loadZone() routes both its
+    // branches (JSON config, hardcoded default) through here.
+    void setZoneConfig(const ZoneDetailConfig& config);
+
+    // The chunk cull radius currently in force -- (2*r+1)^2 chunks stay loaded.
+    int getViewDistanceChunks() const { return viewDistanceChunks_; }
+
     // Footprint system control
     void setFootprintConfig(const FootprintConfig& config);
     const FootprintConfig& getFootprintConfig() const;
@@ -182,8 +191,10 @@ private:
     std::vector<DetailChunk*> activeChunks_;
     ChunkKey lastCameraChunk_{INT32_MAX, INT32_MAX};
 
-    // View distance in chunks
-    int viewDistanceChunks_ = 2;  // 2 chunks in each direction = 5x5 grid
+    // View distance in chunks, derived from config_.viewDistance /
+    // config_.chunkSize by setZoneConfig() -- see detailChunkRadius(). The 2
+    // here is only the pre-config value; with the shipped config it becomes 3.
+    int viewDistanceChunks_ = 2;
 
     // SimulationWorker command queue
     std::vector<DetailCommandData> pendingCommands_;

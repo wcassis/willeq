@@ -38,6 +38,21 @@ ADD_TEST(NAME DocCounts
             --repo ${CMAKE_SOURCE_DIR})
 SET_TESTS_PROPERTIES(DocCounts PROPERTIES LABELS "hygiene")
 
+# T445 (2026-09-07, board B457): DocClaims, DocCounts and DocCitations all stop
+# at *.md -- T444 wrote that out loud, and B457 is what it cost. T428 solved the
+# night ambient live and moved it; three comments in vision_ambient.h went on
+# quoting the pre-T428 triple 0.08/0.08/0.15 while kNightAmbient five lines away
+# said {0.26244, 0.31147, 0.24003}. That header is exactly where a future unit
+# reads to sanity-check a vision floor, and solving against a stale base is the
+# mistake T428 found in T405's own floors. This is the C++-comment analogue of
+# DocClaims: a table of (file, retired pattern) rows matched against comment
+# text only, with the same RETIRED-OK line exemption. Same
+# no-artefact/no-server/no-display shape, same "hygiene" label.
+ADD_TEST(NAME CommentClaims
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/refactor/check_comment_claims.py
+            --repo ${CMAKE_SOURCE_DIR})
+SET_TESTS_PROPERTIES(CommentClaims PROPERTIES LABELS "hygiene")
+
 # T403 (2026-09-06, board B260): the 64 BMPs under data/textures/ are 64 of
 # willeq.eqe1's 67 entries, and until now they were checked-in binaries with
 # no build recipe -- P26 retired their generator as dead while its output kept

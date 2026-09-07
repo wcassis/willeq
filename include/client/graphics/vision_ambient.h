@@ -30,9 +30,26 @@
 //
 // THE MECHANISM CHOSEN. Vision raises a FLOOR under the global ambient, per
 // channel. A floor -- rather than a multiply or an add -- is what makes the
-// buff do nothing in daylight (fable's day ambient is 0.5 on every channel,
-// already above every floor here) while dominating at night (fable's night
-// ambient is 0.08/0.08/0.15), which is how EQ's vision buffs read.
+// buff nearly inert in daylight (kDayAmbient, below) while dominating at
+// night (kNightAmbient, below), which is how EQ's vision buffs read.
+//
+// DO NOT WRITE THE NIGHT BASE AS A LITERAL IN THIS FILE. It moved once
+// already -- T428 solved it live against the oracle -- and three comments
+// here went on quoting the pre-T428 triple while the constant beside them
+// said something else (board B457). Anyone sanity-checking a floor against a
+// stale base solves against the wrong number, which is exactly the mistake
+// T428 found in T405's floors. Name kNightAmbient / kDayAmbient instead;
+// scripts/refactor/check_comment_claims.py fails the build if the retired
+// triple comes back.
+//
+// "Nearly" inert, not inert: the floors below are gain x tint, and
+// Ultravision's and Froglok's R and G channels land a little ABOVE
+// kDayAmbient's 0.5 (Ultravision R 0.5132, G 0.5141; Froglok R 0.5059,
+// G 0.5134), so those two buffs do lift a noon frame by ~0.014 on two
+// channels. Infravision is entirely below 0.5 and is genuinely inert by day.
+// An earlier revision of this paragraph asserted the day ambient was "already
+// above every floor here"; it is not, and nobody has measured whether the
+// oracle's daylight Ultravision has that lift (board B465).
 //
 // THE NUMBERS ARE T405's, AND THEY WERE SOLVED LIVE (board B203/B252/B253).
 // Every earlier value here was fitted against a measurement with an
@@ -174,8 +191,8 @@ AmbientRGB dayNightAmbient(uint8_t hour, uint8_t minute, AmbientRGB night,
 // floors measurably LOWERS the frame's G ratio at a fixed G floor: probe 1's
 // G fell to x1.2162 from x1.2769 while its G floor went UP). Units are
 // "ambient light level", the same units as the day/night ambient in
-// IrrlichtRenderer::updateTimeOfDay() (night is 0.08/0.08/0.15, day
-// 0.5/0.5/0.5). The floors these express are
+// IrrlichtRenderer::updateTimeOfDay() -- i.e. kNightAmbient and kDayAmbient
+// above, whose values are stated ONCE, there. The floors these express are
 //
 //     Ultravision  (0.26545, 0.19653, 0.27623)   probe 6
 //     Infravision  (0.18760, 0.11500, 0.18511)   probe 6
@@ -191,11 +208,14 @@ inline constexpr float kUltravisionTint[3] = {1.01323f, 1.01502f, 0.97175f};
 inline constexpr float kFroglokVisionTint[3] = {1.02056f, 1.03579f, 0.94365f};
 inline constexpr float kInfravisionTint[3] = {1.08065f, 1.04177f, 0.87758f};
 
-// Both Infravision floors now sit ABOVE the night base on every channel
-// (0.08/0.08/0.15), which the pre-T405 values did not: the old Infravision
-// floor was (0.147, 0.081, 0.059), so G was a hair above the base and B was
-// BELOW it, and the buff could not move those two channels at all. That is
-// why every Infravision fit before T405 was solved from one usable channel.
+// Both Infravision floors now sit ABOVE the night base -- kNightAmbient --
+// on every channel, which the pre-T405 values did not: the old Infravision
+// floor was (0.147, 0.081, 0.059), so G was a hair above the base of the day
+// and B was BELOW it, and the buff could not move those two channels at all.
+// That is why every Infravision fit before T405 was solved from one usable
+// channel. The claim still holds after T428 raised the base: gain x tint puts
+// Infravision at (0.4481, 0.4320, 0.3639) against a base of (0.2624, 0.3115,
+// 0.2400). Re-check it against kNightAmbient, never against a literal.
 
 // The ambient floor a vision type imposes. Normal imposes none.
 AmbientRGB visionAmbientFloor(VisionType vision);

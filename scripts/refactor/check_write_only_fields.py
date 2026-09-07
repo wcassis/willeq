@@ -159,7 +159,7 @@ def collect_members(root):
 # that reason; nothing else about T413's merge was incomplete.
 EXEMPT = {
     ("TradeskillContainerClosedEvent", "wasWorldObject"):
-        ("boarded", "B336: the close path does not yet distinguish world vs inventory containers (T415 drew the window; the close behaviour is B336)"),
+        ("boarded", "B321: T415 Leg A drew the window and either close event hides it, so the world-vs-inventory provenance of the CLOSE is still unread (T445 fixed the board id here: this row cited B336, which is the detail view distance and has nothing to do with containers)"),
     # T421 closed B298's item half: the fourteen fields that HAVE an oracle
     # line are drawn by the item display window, and their exemptions are
     # gone. These nine are what is left, and they are a DIFFERENT defect.
@@ -272,8 +272,6 @@ EXEMPT = {
         ("report", "B337: TreeIdentifier counters filled and never printed"),
     ("Stats", "zoneTreeMeshCount"):
         ("report", "B337: TreeIdentifier counters filled and never printed"),
-    ("ZoneDetailConfig", "viewDistance"):
-        ("boarded", "B336: detail_objects.json globalSettings.viewDistance is inert; DetailManager culls by viewDistanceChunks_"),
     ("ConstrainedTextureCache", "bgThreadPool_"):
         ("boarded", "B338: setter supplies a real pool, no async decode reads it"),
     ("ConstrainedTextureCache", "compressedTexturesAvailable_"):

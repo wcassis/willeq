@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <cmath>
 #include <functional>
 
 namespace EQT {
@@ -179,6 +180,31 @@ struct ZoneDetailConfig {
     // Exclusion regions (zone lines, water)
     std::vector<irr::core::aabbox3df> exclusionBoxes;
 };
+
+// The chunk cull radius DetailManager keeps loaded around the camera, derived
+// from the configured view distance (board B336). Before this the radius was a
+// hardcoded 2 and ZoneDetailConfig::viewDistance was parsed and never read, so
+// detail_objects.json's globalSettings.viewDistance was inert: whatever the
+// file said, the manager kept a (2*2+1)^2 = 5x5 chunk grid.
+//
+// A chunk is chunkSize units square and is loaded whole, so the radius is the
+// CEILING of the distance in chunks -- a chunk whose near edge is inside the
+// view distance must be resident even if its far edge is not. The result is
+// clamped to at least 1: a zero radius would leave only the camera's own chunk
+// and pop detail in at the player's feet, and a non-positive chunkSize (a
+// malformed config) has no meaningful answer, so it falls back to 1 rather
+// than dividing by zero.
+//
+// The shipped config is viewDistance 150 / chunkSize 50, i.e. radius 3 and a
+// 7x7 grid. NOTE: the oracle's own detail draw distance has never been
+// measured, so 150 is fable's number, not EverQuest's.
+inline int detailChunkRadius(float viewDistance, float chunkSize) {
+    if (!(chunkSize > 0.0f) || !(viewDistance > 0.0f)) {
+        return 1;
+    }
+    const int radius = static_cast<int>(std::ceil(viewDistance / chunkSize));
+    return radius < 1 ? 1 : radius;
+}
 
 // Callback types for ground queries
 // Returns: true if ground found, false otherwise

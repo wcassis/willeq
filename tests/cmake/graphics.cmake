@@ -246,3 +246,15 @@ TARGET_COMPILE_DEFINITIONS(test_texture_alpha_census PRIVATE
     WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 TARGET_LINK_LIBRARIES(test_texture_alpha_census GTest::gtest_main willeq_core)
 GTEST_DISCOVER_TESTS(test_texture_alpha_census)
+
+# T445 (board B336): the configured detail view distance drives the chunk cull
+# radius. Pins the arithmetic (detailChunkRadius), the DetailManager wiring
+# (setZoneConfig is the one place the radius is derived) and the shipped
+# config's own numbers. No device: DetailManager is constructed with null
+# scene manager and driver, which touches neither. Links willeq_core for
+# DetailManager and DetailConfigLoader.
+ADD_EXECUTABLE(test_detail_view_distance
+    test_detail_view_distance.cpp
+)
+TARGET_LINK_LIBRARIES(test_detail_view_distance GTest::gtest_main willeq_core)
+GTEST_DISCOVER_TESTS(test_detail_view_distance)
