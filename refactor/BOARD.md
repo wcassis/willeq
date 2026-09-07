@@ -6230,7 +6230,7 @@ client uses every field.
 
   **WILL 2026-09-07:** CRITICAL. The official `uifiles/default/dragitem*.tga` sheets are the source. → T430.
 
-  **CLOSED by T430 (2026-09-07), `<COMMIT>`.** All 1224 icons ship.
+  **CLOSED by T430 (2026-09-07), `20e9e3a9`.** All 1224 icons ship.
   `tools/item_icon_atlas_builder` packs the 34 `dragitem*.tga` sheets the
   oracle's `EQUI_Animations.xml` names under `A_DragItem` into
   `data/textures/item_icons{0,1}.bmp` (two 1024x1024 sheets, 25x25 cells of
