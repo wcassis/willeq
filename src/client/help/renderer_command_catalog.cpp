@@ -40,6 +40,7 @@ const std::vector<RendererCommandInfo> kCatalog = {
     {"zlight", {}, "Toggle the directional zone light"},
     {"lightmode", {}, "Toggle unified/additive lighting"},
     {"bakedlight", {}, "Zone baked vertex light: mode [gain] [skyWeight]"},
+    {"nightambient", {}, "Night ambient base: r g b / reset (T428 probe)"},
     {"shaderdebug", {"sd"}, "Set the shader debug visualisation mode"},
     {"fire", {}, "Toggle fire particles"},
     {"sky", {}, "Toggle sky rendering"},

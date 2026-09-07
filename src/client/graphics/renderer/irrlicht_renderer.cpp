@@ -341,36 +341,20 @@ void IrrlichtRenderer::updateTimeOfDay(uint8_t hour, uint8_t minute) {
         return;
     }
 
-    // Calculate ambient light based on hour
-    // EQ time: 0-4 night, 5-6 dawn, 7-17 day, 18-19 dusk, 20-23 night
-    float r, g, b;
+    // The day/night curve. T428 (board B280) moved the four-armed if-chain
+    // that used to be written out here into
+    // EQT::Graphics::dayNightAmbient(): its night triple is a constant
+    // MEASURED against the official client, it is named by all three arms
+    // that touch it (night, and both ends of the dawn/dusk ramps), and the
+    // curve is now testable without a device. `nightAmbientProbe_` is
+    // kNightAmbient in every production run -- only `/nightambient` moves it,
+    // which is how the triple was solved live.
     float sunIntensity = 1.0f;
-
-    if (hour >= 7 && hour <= 17) {
-        // Day - bright white ambient
-        r = 0.5f; g = 0.5f; b = 0.5f;
-        sunIntensity = 1.0f;
-    } else if (hour >= 20 || hour <= 4) {
-        // Night - dark blue ambient
-        r = 0.08f; g = 0.08f; b = 0.15f;
-        sunIntensity = 0.1f;
-    } else if (hour >= 5 && hour <= 6) {
-        // Dawn - transition from night to day (orange tint)
-        float t = (hour - 5) + minute / 60.0f;  // 0-2 range
-        t /= 2.0f;  // normalize to 0-1
-        r = 0.08f + t * (0.5f - 0.08f);
-        g = 0.08f + t * (0.4f - 0.08f);
-        b = 0.15f + t * (0.35f - 0.15f);
-        sunIntensity = 0.1f + t * 0.9f;
-    } else {
-        // Dusk (18-19) - transition from day to night (orange tint)
-        float t = (hour - 18) + minute / 60.0f;  // 0-2 range
-        t /= 2.0f;  // normalize to 0-1
-        r = 0.5f - t * (0.5f - 0.08f);
-        g = 0.4f - t * (0.4f - 0.08f);
-        b = 0.35f - t * (0.35f - 0.15f);
-        sunIntensity = 1.0f - t * 0.9f;
-    }
+    const AmbientRGB dayNight =
+        dayNightAmbient(hour, minute, nightAmbientProbe_, sunIntensity);
+    float r = dayNight.r;
+    float g = dayNight.g;
+    float b = dayNight.b;
 
     // The weather modifier (1.0 = clear). T396 (board B211): LOG EVERY CHANGE,
     // in BOTH directions and including the return to 1.0. The old line fired

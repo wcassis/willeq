@@ -359,15 +359,18 @@ void PlayerCameraComponent::setPlayerRace(uint16_t raceId) {
     //   luma 65.00  Ultravision   race  6      (= the cast-Ultravision control,
     //                                           65.004 and 65.006, twice)
     //
-    // ONE ROW IS NOT SETTLED: Froglok (330) measures 63.49 -- a distinct
-    // FOURTH level that this three-valued enum cannot express. It is left on
-    // the Normal default here rather than rounded to a neighbour by argument;
-    // the measurement is on board entry B060 for Will.
+    // THE LAST ROW IS SETTLED (T428, board B060 CLOSED). Froglok (330)
+    // measured 63.49 here -- a distinct FOURTH level the three-valued enum
+    // could not express, so T361 left it on the Normal default rather than
+    // round it to a neighbour by argument. Will ruled a fourth level; T428
+    // measured it per channel on the same official client (x2.6803 R,
+    // x1.9478 G, x2.1753 B over its own night base, against Ultravision's
+    // x2.7995 / x1.9517 / x2.4946) and `VisionType::FroglokVision` carries
+    // it. It is 5.5% under Ultravision on B and 60% over Infravision there.
     baseVision_ = racialBaseVision(raceId);
     ctx_.currentVision = baseVision_;
     LOG_INFO(MOD_GRAPHICS, "Player race {} -> base vision: {}",
-             raceId, ctx_.currentVision == VisionType::Ultravision ? "Ultravision" :
-                     ctx_.currentVision == VisionType::Infravision ? "Infravision" : "Normal");
+             raceId, visionName(ctx_.currentVision));
     // Zone light colors updated by SimulationWorker via visionType in SimulationInput
     refreshVisionLighting();
 }
@@ -389,11 +392,13 @@ void PlayerCameraComponent::setVisionType(VisionType vision) {
     if (owner_.isLoading()) return;
     resetVisionToBase();
     // Buffs raise vision above the racial base; they never lower it below.
-    if (vision > ctx_.currentVision) {
+    // T428: rank, not enumerator -- FroglokVision is 3 by wire value and 2 by
+    // brightness, so `vision > ctx_.currentVision` would refuse to raise a
+    // Froglok to Ultravision. See visionRank() in vision_type.h.
+    if (visionRank(vision) > visionRank(ctx_.currentVision)) {
         ctx_.currentVision = vision;
         LOG_INFO(MOD_GRAPHICS, "Vision upgraded to: {}",
-                 ctx_.currentVision == VisionType::Ultravision ? "Ultravision" :
-                 ctx_.currentVision == VisionType::Infravision ? "Infravision" : "Normal");
+                 visionName(ctx_.currentVision));
         // Zone light colors updated by SimulationWorker via visionType in SimulationInput
         refreshVisionLighting();
     }
@@ -404,8 +409,7 @@ void PlayerCameraComponent::resetVisionToBase() {
     if (ctx_.currentVision != baseVision_) {
         ctx_.currentVision = baseVision_;
         LOG_INFO(MOD_GRAPHICS, "Vision reset to base: {}",
-                 ctx_.currentVision == VisionType::Ultravision ? "Ultravision" :
-                 ctx_.currentVision == VisionType::Infravision ? "Infravision" : "Normal");
+                 visionName(ctx_.currentVision));
         // Zone light colors updated by SimulationWorker via visionType in SimulationInput
         refreshVisionLighting();
     }

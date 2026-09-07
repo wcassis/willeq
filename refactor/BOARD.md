@@ -1996,8 +1996,23 @@ line of a future live session. The LIVE proof of the corpse row itself (hear
 
 ## Added 2026-09-04 by T348 (B055/B056)
 
-- **B060** (C) `src/client/graphics/player/renderer_camera.cpp` →
-  `EQT::Graphics::racialBaseVision()` — **MEASURED AGAINST THE ORACLE BY T361
+- ~~**B060** (C)~~ **CLOSED by T428** (`refactor/T428_night_base.md`): Will ruled a
+  FOURTH vision level and the solved night base (B280) turned it from a guess into a
+  measurement. Oracle session o3, `#race 330` at a pinned camera at forced 22:00,
+  bracketed by race-1 windows agreeing to 0.7%: **Froglok = x2.6803 R, x1.9478 G,
+  x2.1753 B** over its own night base, against Ultravision's x2.7995 / x1.9517 /
+  x2.4946 and Infravision's x2.2483 / x1.4121 / x1.3561 -- 5.5% under Ultravision on
+  B and 60% over Infravision there, so it is its own level and not a rounding of
+  either. `VisionType::FroglokVision` carries it (APPENDED as 3, because the
+  enumerator values are wire values -- `BuffManager::computeVisionType()` returns
+  literal 2 for UltraVision -- and `visionRank()` is the measured brightness order,
+  without which an Ultravision buff would be a silent no-op on a Froglok). Two legs
+  are OWED, both boarded: fable's own confirmation, blocked because a race change on
+  SELF never reaches `setPlayerRace()` (**B433**), and the zone-LIGHT half, which
+  inherits Ultravision's pair rather than inventing one (**B067**). Evidence:
+  `review/T428/README.md` §4. Original text follows.
+
+  ~~`EQT::Graphics::racialBaseVision()` — **MEASURED AGAINST THE ORACLE BY T361
   (`c531006f`); every row but ONE is now settled and fixed, and only Froglok
   still needs Will.** Method: two logins as Oraclealpha in qeynos2 at forced
   22:00, camera never touched, race changed in-game with `#race N`, read from
@@ -2200,6 +2215,15 @@ line of a future live session. The LIVE proof of the corpse row itself (hear
   official client's Ultravision actually does — that is B060's oracle question)
   and a night frame with the buff up is measurably, obviously brighter.
   Prov: T358 Review, `review/T358/logs/frame_brightness_visionvid.txt`.
+
+  **T428 (2026-09-07) ADDED A ROW AND DID NOT MEASURE IT.** The fourth vision
+  level (`VisionType::FroglokVision`, B060) takes Ultravision's `(intensity 1.0,
+  redShift 0.0)` on the zone-light side, inherited from its nearest measured
+  neighbour rather than invented; the comment at the site and
+  `VisionSolvedT405Test.LampModifiersAreStillT360sLiterals` both say so out loud.
+  T428 also gives B067 a much bigger sibling: **B431**, fable's zone lamp being
+  worth far more relative to its ambient than the oracle's -- the lamp spot still
+  misses by +34/+71/+32% after the night base is solved.
 
 ## Added 2026-09-05 by T361 (the Ultravision oracle)
 
@@ -3118,6 +3142,19 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   pins the constants that did it, and the fit is closed against a measurement
   rather than extrapolated. Prov: T386 Review §4; B171; B067.
 
+  **T428 (2026-09-07) RE-SOLVED ALL SIX CONSTANTS and superseded the oracle table
+  this entry closed against, for TWO independent reasons.** (1) The night base they
+  are floors over moved 3.3x (B280), and T405's Ultravision floor sits BELOW the new
+  base on G -- the buff would have been a no-op on that channel, the exact shape
+  T405 itself found in the pre-T405 Infravision floor. (2) T405's oracle ratios were
+  measured on the 700x420+40+40 crop, which is about HALF SKY at that spot, and the
+  sky does not respond to a vision buff -- so the crop dilutes every ratio by a
+  factor set by each client's own camera. Re-measuring T405's OWN two oracle videos
+  on T408's geometry band, plus a third session, gives Ultravision x2.7995 / x1.9517
+  / x2.4946 (three sessions inside 1%) where T405 read x2.2531 / x1.4399 / x1.7687.
+  fable now matches to +0.9 / +1.2 / -4.0% (Ultravision) and +3.0 / +1.6 / +3.0%
+  (Infravision). B203 stays CLOSED; this is the record of what replaced its numbers.
+
   **T394 (`7cd6c124`) REVERTED T383's six constants and its redShift** —
   `include/client/graphics/vision_ambient.h`, `include/client/graphics/vision_type.h`
   and `src/client/graphics/vision_ambient.cpp` are byte-identical to the
@@ -3832,8 +3869,25 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   unpersisted -- Will's ruling narrowed the scope to window states and the
   camera. **The live proof (toggle, camp, log in) is OWED to a lock unit**:
   T433 held the eqemu lock.
-- **B280** (A) `src/client/graphics/renderer/irrlicht_renderer.cpp`
-  `IrrlichtRenderer::updateTimeOfDay` night ambient (0.08, 0.08, 0.15) --
+- ~~**B280** (A)~~ **CLOSED by T428** (`refactor/T428_night_base.md`): the night
+  ambient is now **(0.26244, 0.31147, 0.24003)**, solved live against the official
+  client's own DAY/NIGHT ratio per channel on T408's geometry-only crop. fable's
+  lamp-free day/night reads **R 4.4760 / G 3.6025 / B 3.7316** against the oracle's
+  **4.4540 / 3.6220 / 3.8090** -- **+0.5% / -0.5% / -2.0%**, from +121% / +247% /
+  +22%. The probe is `/nightambient <r> <g> <b>`; the constants live in
+  `include/client/graphics/vision_ambient.h` with the whole day/night curve
+  (`dayNightAmbient()`), and `tests/test_night_ambient.cpp` pins them. **The grey
+  consequence below resolved itself**: with the bases matched, the two clients'
+  Ultravision greys now agree to 0.4% with nobody aiming at the grey (Infravision's
+  gap survives at ~7%, because the DAY chromaticities still differ -- the arithmetic
+  stands, one of its two rows collapsed). **Three things came out of it and none of
+  them is closed**: the ambient is uploaded twice and squares its own chromaticity
+  (**B430**, and it is the root cause of T405's unexplained channel coupling); the
+  lamp spot still misses by +34/+71/+32% because fable's lamp is too strong relative
+  to its ambient (**B431**); and the re-solved Ultravision floor now lifts daylight
+  ~2.5% (**B432**). Evidence: `review/T428/`. Original text follows.
+
+  ~~`IrrlichtRenderer::updateTimeOfDay` night ambient (0.08, 0.08, 0.15) --~~
   **fable's night is 5.6x darker than the official client's AND a different
   colour, and every vision number is a ratio precisely because of it.**
   MEASURED T405 (`review/T405/`) on the first rig with both weather and heading
@@ -3884,6 +3938,14 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   colours should not ship until there is a consumer**, in which case the loader
   and the six shader edits revert together and only the census test stays.
   Prov: T408 Review; `review/T408/README.md` §4.
+
+  **T428 (2026-09-07) SOLVED B280, so this entry's own trigger has fired**: the
+  night ambient moved to (0.26244, 0.31147, 0.24003) and every row of T408's
+  composition table was taken against the old one. The re-run is now possible and
+  is owed. Note before re-running it that T428 found the residual is NOT uniform
+  per channel even though it is uniform in grey -- the lamp spot still misses by
+  +34/+71/+32% (B431) -- so a lamp-shaped term is back on the table for that spot,
+  which is what B110 originally proposed and T408 measured away in grey.
 
 - **B326** (B) `src/client/graphics/eq/zone_geometry.cpp`
   `ZoneMeshBuilder::buildTexturedMeshFromUploaded` / `buildCompositeMesh` /
@@ -7209,3 +7271,86 @@ in `refactor/T433_doors_lifts_survey.md` Review; raw dumps in
   holding something on the cursor therefore draws no attachment until the next
   MoveItem. Closes when the loop covers `CURSOR_SLOT` and the bank range.
   Unverified live -- T436 held no lock. Found by T436.
+---
+
+## Added 2026-09-07 by T428 (the night base, B280; the fourth vision level, B060)
+
+- **B445** (A) `src/client/graphics/renderer/irrlicht_renderer.cpp`
+  `IrrlichtRenderer::updateTimeOfDay` -- **the scene ambient is uploaded to the
+  zone shader TWICE, and the second copy is the first one normalised to its own
+  largest channel**, so the ambient's chromaticity is applied squared. The two
+  lines are `zoneShader_->setAmbientColor(r, g, b)` and, four lines later,
+  `setTintColor(r/maxAmb, g/maxAmb, b/maxAmb)`; the vertex programs then compute
+  `tintOnly = baseLighting * uTintColor` where `baseLighting` already carries
+  `uAmbientColor`. MEASURED T428, live, at the T405 spot: raising ONLY the night
+  ambient's R from 0.08 to 0.24 dropped the frame's G by **9.4%** and its B by
+  **16%**; raising only G dropped R by **17%**; raising only B dropped R and G by
+  **25%**. No physical ambient does that. **This is the root cause of "the three
+  channels are COUPLED", which T405 found, pinned in prose and could not
+  explain** (`include/client/graphics/vision_ambient.h`, and T405 Review §3's
+  "the fit has to be a 3-D Newton step with the measured cross-terms"). It is
+  also why every night measurement collapses onto one curve per channel in
+  `x = A^2 / max(A)` -- `review/T428/logs/points_nolamp.json` is the eighteen
+  points that show it. **T428 did NOT change it**: the night base and all three
+  vision floors were solved WITH the double application in place, so removing it
+  invalidates every one of them and is a unit of its own. The sun term is tinted
+  too, so this is not a pure re-scale. Closes when the tint is either given a
+  measured job of its own or deleted, and the affected constants are re-solved
+  live in the same session. Prov: T428 Review §1d, §2; B280; B203.
+
+- **B446** (A) `src/client/graphics/renderer/irrlicht_renderer.cpp` +
+  `src/client/graphics/sim_animation.cpp` -- **fable's zone LAMP is worth far
+  more, relative to its ambient, than the official client's is, and the night
+  ambient cannot absorb it.** T428 solved the night base at the lamp-free spot
+  and then measured the committed value at T367's lamp spot (33, 375, 8) h160,
+  same crop, same session protocol: fable's day/night there reads
+  **R 2.043 / G 2.539 / B 5.702** against the oracle's **1.521 / 1.485 / 4.317**
+  -- **+34% / +71% / +32%**. That is a big improvement on the pre-T428
+  **+82% / +256% / +43%** (the ambient was most of it), but it is not a match,
+  and the residual is lamp-shaped: at the lamp spot the non-ambient term is
+  **half** the frame (fitted P_R = 0.0906 against a wanted 0.1909), so no ambient
+  triple satisfies both spots at once. **This is the term T408's grey-only
+  uniformity test could not see**: ×2.27 vs ×2.09 in grey is uniform, but per
+  channel the two spots want different things. Closes when the zone point-light
+  path (intensity, attenuation, or the vision modifiers on it -- B067) is solved
+  against the oracle at the lamp spot with the night base held at T428's value.
+  Prov: T428 Review §0, §2; B280; B067; T408 Review §4.
+
+- **B447** (B, unmeasured decision) `include/client/graphics/vision_ambient.h`
+  `kUltravisionAmbientGain` x `kUltravisionTint` -- **Ultravision now lifts
+  DAYLIGHT by ~2.5%, and whether the official client does that is unmeasured.**
+  Reaching the oracle's x2.7995 R at night needs a floor of
+  `(0.51320, 0.51411, 0.49219)`, which is 2.6% and 2.8% ABOVE the day ambient
+  (0.5) on R and G -- so the "a floor does nothing at noon" property T361 chose
+  the mechanism for no longer holds exactly. Measured live on the committed
+  constants (T428 conf2): daylight under Ultravision reads **R x1.0239, G
+  x1.0259, B x0.9414**. Infravision is still invisible by day on every channel.
+  The oracle side is NOT settled: T428's o3 day block read x1.028 / x1.022 /
+  x1.030, but that session's own unbuffed day control drifted **30-48%** over the
+  same four minutes, so the signal is inside the drift. Closes when one oracle
+  session measures day-with-Ultravision against a day control that holds (re-pin
+  `#set time 11 0` immediately before EVERY day window, the way T405 does at
+  night), and fable's floor is either accepted or the mechanism changed. Pinned
+  meanwhile by
+  `VisionAmbientTest.DaylightIsUntouchedByInfravisionAndBarelyMovedByUltravision`.
+  Prov: T428 Review §3b.
+
+- **B448** (A) `src/client/graphics/player/renderer_camera.cpp`
+  `PlayerCameraComponent::setPlayerRace` -- **a server-side race change on the
+  player's OWN character never reaches the vision system.** `setPlayerRace()` is
+  called from `IrrlichtRenderer::registerEntity()` (T348, B056), i.e. when an
+  entity is REGISTERED; an illusion/`#race` on a character already in the world
+  produces no `Player race N -> base vision:` line at all. MEASURED T428 twice:
+  `#race 330` was submitted and confirmed in the chat log in both confirmation
+  sessions (`Chat submit: '/say #race 330'` in
+  `review/T428/logs/fable_session_conf{1,2}.log.gz`) and the vision base never
+  moved -- the frame ratio across the window is 0.95-0.99, i.e. drift only. Two
+  consequences: an illusion spell that changes race does not change what the
+  player can see in the dark, and **T428's Froglok floor could not be confirmed
+  on fable's side** (it is solved from the same measured curve as the other two
+  and bracketed by them, but the live pair is OWED). Closes when a race change
+  on self reaches `setPlayerRace()` and a live session shows the fourth level's
+  ratio against the oracle's x2.6803 / x1.9478 / x2.1753. Prov: T428 Review §4;
+  B060; B056.
+
+- (T428 also boarded the DocCitations red at BOARD.md:6877 as its B434; the orchestrator had already fixed it on fable at 6aadff59, so that entry is not carried.)

@@ -561,6 +561,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_vision_ambient)
 ENDIF()
 
+# T428 (B280): the night base of the day/night curve, solved live against the
+# official client, plus the curve's own continuity and the day arm's
+# independence from it (which is why no daytime golden moved).
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_night_ambient
+        test_night_ambient.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_night_ambient PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_night_ambient GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_night_ambient)
+ENDIF()
+
 # T396 (B211): the weather ambient modifier that multiplies the same ambient
 # the vision floor then clamps. Drives the real WeatherEffectsController with
 # four null device pointers (nothing it touches here needs a device) plus two
