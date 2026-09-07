@@ -71,6 +71,20 @@ void Application::startLoadingThread() {
         return;
     }
 
+    // T432 (board B275): zone-in is where the character name and the server
+    // name are both known on this (the render) thread -- the snapshot the
+    // game thread just published carries the name, and m_config carries the
+    // server. Hand them to the renderer; its frame tick loads the saved
+    // window states and camera mode on the next frame. Cheap and idempotent:
+    // a re-zone hands over the same pair and the renderer ignores it.
+    {
+        std::lock_guard<std::mutex> lock(m_zoneLoadMutex);
+        if (!m_zoneLoadSnapshot.playerName.empty()) {
+            m_renderer->setUiPreferencesIdentity(m_zoneLoadSnapshot.playerName,
+                                                 m_config.server);
+        }
+    }
+
     // Extract GL handles while main thread still owns context
     m_glHandles = EQT::Graphics::LoadingThread::extractGLHandles(
         m_renderer->getDevice(), m_renderer->getDriver());

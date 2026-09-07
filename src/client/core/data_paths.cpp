@@ -144,7 +144,14 @@ std::string ResolveCachePathForWrite(const std::string& name) {
     for (const auto& dir : CacheDirCandidates()) {
         if (!EnsureDirectory(dir)) continue;
         if (!DirectoryIsWritable(dir)) continue;
-        return dir + "/" + name;
+        const std::string full = dir + "/" + name;
+        // T432: `name` may name a subdirectory (`ui/UI_Char_server.ini`). The
+        // caller opens `full` directly, so the leaf directory has to exist by
+        // the time we hand the path back -- a plain `name` is unaffected,
+        // because its parent IS `dir`, which we just ensured.
+        const std::string parent = ParentOf(full);
+        if (parent != dir && !EnsureDirectory(parent)) continue;
+        return full;
     }
     return "";
 }

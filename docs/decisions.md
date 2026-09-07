@@ -925,6 +925,14 @@ exponent, not a closed loop — the live re-measure is still owed (B171).
   — measured: the 15 window open/closed states, the camera mode; keybinds are
   global (`config/hotkeys.json`). Window positions are static by design (XML-
   derived), nothing to persist there.
+  **Implemented T432.** The census of user-toggleable windows in the tree came
+  to **seven**, not fifteen: `[InventoryWindow]`, `[SpellBookWnd]`,
+  `[SkillsWindow]`, `[GroupWindow]`, `[PetInfoWindow]`, `[BuffWindow]`,
+  `[CombatAbilityWnd]`, plus `[Camera] Mode=`. The remaining panel `isOpen`
+  flags are opened by the server or by clicking a container (loot, tradeskill,
+  item display), and `RA::ToggleOptions` reaches an empty arm — fable has no
+  options window. The file is `<cache dir>/ui/UI_<Char>_<server>.ini`, the
+  official client's own filename, section names and `Show=0/1` key.
 - **Item icons (B376) are critical** — the official `dragitem*.tga` sheets are
   the source.
 - **Era rule**: the target is the original game from launch through Kunark and

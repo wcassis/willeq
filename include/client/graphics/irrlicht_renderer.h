@@ -614,6 +614,14 @@ public:
     void openInventory();
     void closeInventory();
 
+    // T432 (board B275): per-character UI persistence. Application calls this
+    // once per zone-in with the character name (out of the zone-load
+    // snapshot) and the configured server name -- the one place both are
+    // known -- and the renderer's frame tick does the rest. Declared here so
+    // Application does not learn FrameComponent exists (Batch L's rule).
+    void setUiPreferencesIdentity(const std::string& character,
+                                  const std::string& server);
+
     // Note/Book reading UI
     void showNoteWindow(const std::string& text, uint8_t type);
 
