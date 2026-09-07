@@ -797,7 +797,9 @@ void eqt::bridge::BridgeComponent::onItemDisplayRequestIntent(const eqt::events:
 	data.itemId = item->itemId;
 	data.name = item->name;
 	data.iconId = item->icon;
-	data.lines = eqt::inventory::BuildItemDisplayText(*item);
+	// T429 (B390): the formats come out of the shipped eqstr table, not out
+	// of the composer's source, so it needs EverQuest's own StringDatabase.
+	data.lines = eqt::inventory::BuildItemDisplayText(ctx_.strings.Db(), *item);
 	ctx_.bridge->pushEvent(eqt::state::GameEvent(
 		eqt::state::GameEventType::ItemDisplayShown, std::move(data)));
 }
@@ -821,7 +823,8 @@ void eqt::bridge::BridgeComponent::onSpellDisplayRequestIntent(const eqt::events
 	data.name = spell->name;
 	data.iconId = spell->spell_icon;
 	data.lines = eqt::spell::BuildSpellDisplayText(
-		*spell, ctx_.game_state.player().classId(), ctx_.game_state.player().level());
+		ctx_.strings.Db(), *spell,
+		ctx_.game_state.player().classId(), ctx_.game_state.player().level());
 	ctx_.bridge->pushEvent(eqt::state::GameEvent(
 		eqt::state::GameEventType::ItemDisplayShown, std::move(data)));
 }

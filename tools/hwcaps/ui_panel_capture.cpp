@@ -49,6 +49,9 @@
 #include "client/graphics/constrained_renderer_config.h"
 #include "client/graphics/text_batch.h"
 #include "client/chat/chat_message_buffer.h"
+#include "client/data_paths.h"
+#include "client/string_database.h"
+#include "client/willeq_database.h"
 
 #include <irrlicht.h>
 #include <cstdio>
@@ -79,6 +82,27 @@ void drawChecker(irr::video::IVideoDriver* driver, int w, int h) {
                 irr::core::rect<irr::s32>(x, y, x + kCell, y + kCell));
         }
     }
+}
+
+// T429 (board B390): the display composers fetch their formats from the
+// shipped eqstr table, so this tool has to open `data/willeq.db` the way the
+// client does. If the db is not there the composers draw nothing and the two
+// display captures come out empty -- which is visible, not silent.
+EQT::StringDatabase& eqStrings() {
+    static EQT::WilleqDatabase db;
+    static EQT::StringDatabase strings;
+    static bool once = [] {
+        if (db.open(eqt::ResolveDataPath("data/willeq.db"))) {
+            EQT::WilleqDatabase::setGlobalInstance(&db);
+            strings.initFromDatabase();
+        } else {
+            std::fprintf(stderr, "ui_panel_capture: could not open data/willeq.db -- "
+                                 "the item/spell display captures will be empty\n");
+        }
+        return true;
+    }();
+    (void)once;
+    return strings;
 }
 
 void addChat(eqt::ui::ChatMessageBuffer& buf, const char* text, uint32_t color) {
@@ -314,7 +338,7 @@ struct PanelStates {
             d.itemId = it.itemId;
             d.name = it.name;
             d.iconId = it.icon;
-            d.lines = eqt::inventory::BuildItemDisplayText(it);
+            d.lines = eqt::inventory::BuildItemDisplayText(eqStrings(), it);
             applyItemDisplayShown(itemDisplay, d);
         }
 
@@ -336,7 +360,7 @@ struct PanelStates {
             d.itemId = sp.id;
             d.name = sp.name;
             d.iconId = sp.spell_icon;
-            d.lines = eqt::spell::BuildSpellDisplayText(sp, 2, 50);
+            d.lines = eqt::spell::BuildSpellDisplayText(eqStrings(), sp, 2, 50);
             applyItemDisplayShown(spellDisplay, d);
         }
 

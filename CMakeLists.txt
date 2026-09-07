@@ -330,6 +330,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/world_object.cpp
     src/client/formatted_message.cpp
     src/client/string_database.cpp
+    src/client/core/display_eqstr.cpp
     src/client/willeq_database.cpp
     third_party/sqlite3.c
     src/client/pathfinder_interface.cpp

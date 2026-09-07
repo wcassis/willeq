@@ -22,6 +22,8 @@
 
 #include <gtest/gtest.h>
 
+#include "eqstr_test_db.h"
+
 #include "client/bridge/game_state_bridge.h"
 #include "client/events/renderer_intents.h"
 #include "client/graphics/ui/item_display_layout.h"
@@ -42,6 +44,11 @@ using namespace EQT::Graphics;
 using eqt::spell::BuildSpellDisplayText;
 
 namespace {
+
+// T429 (board B390): the composers read their formats out of the shipped
+// eqstr table now, so every case below drives the REAL strings.
+const EQT::StringDatabase& strings() { return eqt_test::ShippedStrings(); }
+
 
 UILayout layout800() {
     UILayout l;
@@ -120,7 +127,7 @@ public:
 // eqstr 3006 "Mana Cost: %1", 3107 "Cast Time: %1", 9234 "Recast Delay: %1",
 // 6730 "Range = %1", 3105 "Skill: %1".
 TEST(SpellDisplayT425, TheCoreLinesAreTheOraclesOwnFormats) {
-    const auto lines = BuildSpellDisplayText(loadedSpell(), kClericClassId, 50);
+    const auto lines = BuildSpellDisplayText(strings(), loadedSpell(), kClericClassId, 50);
 
     EXPECT_TRUE(hasLine(lines, "Mana Cost: 200")) << dump(lines);      // 3006
     EXPECT_TRUE(hasLine(lines, "Cast Time: 4.5")) << dump(lines);      // 3107
@@ -131,41 +138,41 @@ TEST(SpellDisplayT425, TheCoreLinesAreTheOraclesOwnFormats) {
 
 // eqstr 3102 "Spell Duration: %1." / 3103 "Spell Duration: Permanent."
 TEST(SpellDisplayT425, DurationTakesTheOraclesTwoForms) {
-    EXPECT_TRUE(hasLine(BuildSpellDisplayText(loadedSpell(), kClericClassId, 50),
+    EXPECT_TRUE(hasLine(BuildSpellDisplayText(strings(), loadedSpell(), kClericClassId, 50),
                         "Spell Duration: 50."))                        // 3102
         << "Fixed50 at level 50";
 
     EQ::SpellData permanent = loadedSpell();
     permanent.duration_formula = static_cast<uint8_t>(EQ::DurationFormula::Permanent);
     permanent.duration_cap = 0;
-    EXPECT_TRUE(hasLine(BuildSpellDisplayText(permanent, kClericClassId, 50),
+    EXPECT_TRUE(hasLine(BuildSpellDisplayText(strings(), permanent, kClericClassId, 50),
                         "Spell Duration: Permanent."));                // 3103
 
     EQ::SpellData instantOnly = loadedSpell();
     instantOnly.duration_formula = 0;
     instantOnly.duration_cap = 0;
-    EXPECT_FALSE(anyLineContains(BuildSpellDisplayText(instantOnly, kClericClassId, 50),
+    EXPECT_FALSE(anyLineContains(BuildSpellDisplayText(strings(), instantOnly, kClericClassId, 50),
                                  "Spell Duration"))
         << "a spell with no duration prints no duration line, it does not print 0";
 }
 
 // eqstr 3004 "Level Needed: %1" / 3005 "Level Needed: CANNOT USE"
 TEST(SpellDisplayT425, LevelNeededReadsThePlayersOwnClassColumn) {
-    const auto cleric = BuildSpellDisplayText(loadedSpell(), kClericClassId, 50);
+    const auto cleric = BuildSpellDisplayText(strings(), loadedSpell(), kClericClassId, 50);
     EXPECT_TRUE(hasLine(cleric, "Level Needed: 44")) << dump(cleric);   // 3004
 
     // Class 1 (Warrior) is 255 in the fixture -- the oracle's own wording.
-    const auto warrior = BuildSpellDisplayText(loadedSpell(), 1, 50);
+    const auto warrior = BuildSpellDisplayText(strings(), loadedSpell(), 1, 50);
     EXPECT_TRUE(hasLine(warrior, "Level Needed: CANNOT USE")) << dump(warrior);  // 3005
 
     // An unknown class prints neither, rather than guessing a column.
-    const auto unknown = BuildSpellDisplayText(loadedSpell(), 0, 50);
+    const auto unknown = BuildSpellDisplayText(strings(), loadedSpell(), 0, 50);
     EXPECT_FALSE(anyLineContains(unknown, "Level Needed"));
 }
 
 // The ascending-eqstr-id order BuildItemDisplayText() uses, applied here.
 TEST(SpellDisplayT425, LinesComeOutInAscendingStringIdOrder) {
-    const auto lines = BuildSpellDisplayText(loadedSpell(), kClericClassId, 50);
+    const auto lines = BuildSpellDisplayText(strings(), loadedSpell(), kClericClassId, 50);
     const std::vector<std::string> want{
         "Level Needed: 44",        // 3004
         "Mana Cost: 200",          // 3006
@@ -184,7 +191,7 @@ TEST(SpellDisplayT425, LinesComeOutInAscendingStringIdOrder) {
 // ===================================================================
 
 TEST(SpellDisplayT425, TheOraclesOmissionsStayOmitted) {
-    const auto lines = BuildSpellDisplayText(loadedSpell(), kClericClassId, 50);
+    const auto lines = BuildSpellDisplayText(strings(), loadedSpell(), kClericClassId, 50);
 
     // B298's spell census: no format string exists for any of these.
     EXPECT_FALSE(anyLineContains(lines, "PLAYER_1"))   << "player_tag has no eqstr line";
@@ -215,7 +222,7 @@ TEST(SpellDisplayT425, ZeroFieldsAreOmittedNotPrintedAsZero) {
     for (auto& lvl : bare.class_levels) lvl = 255;
     bare.class_levels[kClericClassId - 1] = 1;
 
-    const auto lines = BuildSpellDisplayText(bare, kClericClassId, 10);
+    const auto lines = BuildSpellDisplayText(strings(), bare, kClericClassId, 10);
     EXPECT_FALSE(anyLineContains(lines, "Mana Cost")) << dump(lines);
     EXPECT_FALSE(anyLineContains(lines, "Cast Time")) << dump(lines);
     EXPECT_FALSE(anyLineContains(lines, "Recast Delay")) << dump(lines);
@@ -344,7 +351,7 @@ TEST(SpellDisplayT425, TheSpellReusesTheOraclesOneDisplayWindow) {
     d.itemId = 15;
     d.name = "Word of Health";
     d.iconId = 331;
-    d.lines = BuildSpellDisplayText(loadedSpell(), kClericClassId, 50);
+    d.lines = BuildSpellDisplayText(strings(), loadedSpell(), kClericClassId, 50);
     applyItemDisplayShown(state, d);
 
     EXPECT_TRUE(state.isOpen);

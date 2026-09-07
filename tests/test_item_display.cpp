@@ -17,6 +17,8 @@
 
 #include <gtest/gtest.h>
 
+#include "eqstr_test_db.h"
+
 #include "client/bridge/game_state_bridge.h"
 #include "client/events/renderer_intents.h"
 #include "client/graphics/ui/item_display_layout.h"
@@ -40,6 +42,11 @@ using eqt::inventory::BuildItemDisplayText;
 using eqt::inventory::ItemInstance;
 
 namespace {
+
+// T429 (board B390): the composers read their formats out of the shipped
+// eqstr table now, so every case below drives the REAL strings.
+const EQT::StringDatabase& strings() { return eqt_test::ShippedStrings(); }
+
 
 UILayout layout800() {
     UILayout l;
@@ -147,7 +154,7 @@ public:
 // eqstr 5836/5844/5845/5846/5847/6184/9040..9045 -- twelve of the fourteen
 // B298 item fields that have an oracle line live here.
 TEST(ItemDisplayT421, TheExtendedStatBlockIsTheOraclesOwnFormats) {
-    const auto lines = BuildItemDisplayText(loadedItem());
+    const auto lines = BuildItemDisplayText(strings(), loadedItem());
 
     EXPECT_TRUE(hasLine(lines, "Accuracy: 17"))              << dump(lines);  // 9043
     EXPECT_TRUE(hasLine(lines, "Damage Shield: 18"))         << dump(lines);  // 5847
@@ -169,7 +176,7 @@ TEST(ItemDisplayT421, TheExtendedStatBlockIsTheOraclesOwnFormats) {
 // eqstr 3008 "Skill: %1   Atk Delay: %2" -- B298's `delay`, with the weapon
 // skill name it shares a line with.
 TEST(ItemDisplayT421, TheWeaponLineCarriesTheDelay) {
-    const auto lines = BuildItemDisplayText(loadedItem());
+    const auto lines = BuildItemDisplayText(strings(), loadedItem());
     EXPECT_TRUE(hasLine(lines, "Skill: 1H Slash   Atk Delay: 21")) << dump(lines);
     EXPECT_TRUE(hasLine(lines, "DMG: 19")) << dump(lines);   // 12455
     EXPECT_TRUE(hasLine(lines, "AC: 12"))  << dump(lines);   // 3016
@@ -178,7 +185,7 @@ TEST(ItemDisplayT421, TheWeaponLineCarriesTheDelay) {
 // eqstr 3028 (recLevel), 3003 (maxCharges) and 3048 (lore) -- the last three
 // B298 item fields with an oracle line.
 TEST(ItemDisplayT421, RecommendedLevelChargesAndLore) {
-    const auto lines = BuildItemDisplayText(loadedItem());
+    const auto lines = BuildItemDisplayText(strings(), loadedItem());
     EXPECT_TRUE(hasLine(lines, "Recommended level of 45."))          << dump(lines);
     EXPECT_TRUE(hasLine(lines, "Level Needed: 40"))                  << dump(lines);
     EXPECT_TRUE(hasLine(lines, "Charges: 2"))                        << dump(lines);
@@ -191,7 +198,7 @@ TEST(ItemDisplayT421, RecommendedLevelChargesAndLore) {
 TEST(ItemDisplayT421, ExpendableTakesItsOwnChargeLine) {
     ItemInstance it = loadedItem();
     it.expendable = true;
-    const auto lines = BuildItemDisplayText(it);
+    const auto lines = BuildItemDisplayText(strings(), it);
     EXPECT_TRUE(hasLine(lines, "EXPENDABLE     Charges: 2")) << dump(lines);
     EXPECT_FALSE(hasLine(lines, "Charges: 2")) << "one charge line, not two";
 }
@@ -206,7 +213,7 @@ TEST(ItemDisplayT421, ExpendableTakesItsOwnChargeLine) {
 // Titanium's wire. A deleted member cannot leak, and the compiler enforces
 // that far better than a string search did.
 TEST(ItemDisplayT421, TheOraclesOmissionsStayOmitted) {
-    const auto lines = BuildItemDisplayText(loadedItem());
+    const auto lines = BuildItemDisplayText(strings(), loadedItem());
 
     EXPECT_FALSE(anyLineContains(lines, "Heroic")) << dump(lines);
     EXPECT_FALSE(anyLineContains(lines, "Instrument")) << dump(lines);
@@ -279,7 +286,7 @@ TEST(ItemDisplayT425, AnOrdinaryItemIsNotExpendable) {
     // ...and the composer then draws the ordinary charge line, not 3001.
     ItemInstance it = loadedItem();
     it.expendable = false;
-    EXPECT_FALSE(anyLineContains(BuildItemDisplayText(it), "EXPENDABLE"));
+    EXPECT_FALSE(anyLineContains(BuildItemDisplayText(strings(), it), "EXPENDABLE"));
 }
 
 // A zero-valued field is OMITTED, the way the official window omits it,
@@ -288,7 +295,7 @@ TEST(ItemDisplayT421, ZeroFieldsAreOmittedNotPrintedAsZero) {
     ItemInstance plain;
     plain.name = "a rusty dagger";
     plain.weight = 1.0f;
-    const auto lines = BuildItemDisplayText(plain);
+    const auto lines = BuildItemDisplayText(strings(), plain);
 
     for (const char* frag : {"Accuracy", "Damage Shield", "DoT Shielding",
                              "Spell Shield", "Strikethrough", "Stun Resist",
@@ -313,7 +320,7 @@ TEST(ItemDisplayT421, AContainerPrintsTheContainerLines) {
     bag.bagSlots = 10;
     bag.bagWR = 25;
     bag.bagSize = eqt::inventory::SIZE_LARGE;
-    const auto lines = BuildItemDisplayText(bag);
+    const auto lines = BuildItemDisplayText(strings(), bag);
     EXPECT_TRUE(hasLine(lines, "WT: 2.0    Weight Reduction: 25")) << dump(lines);
     EXPECT_TRUE(hasLine(lines, "Capacity: 10    Size Capacity: LARGE")) << dump(lines);
     EXPECT_FALSE(anyLineContains(lines, "Size: LARGE\n")) << dump(lines);
@@ -321,7 +328,7 @@ TEST(ItemDisplayT421, AContainerPrintsTheContainerLines) {
 
 // eqstr 3036 + the 3029..3034 qualifiers, and 5530 for the focus.
 TEST(ItemDisplayT421, EffectsCarryTheOraclesQualifiers) {
-    const auto lines = BuildItemDisplayText(loadedItem());
+    const auto lines = BuildItemDisplayText(strings(), loadedItem());
     EXPECT_TRUE(hasLine(lines, "Effect: Shield of Words (Casting Time: 2.5)")) << dump(lines);
     EXPECT_TRUE(hasLine(lines, "Effect: Lifetap Strike (Combat)")) << dump(lines);
     EXPECT_TRUE(hasLine(lines, "Effect: Haste (Worn)")) << dump(lines);
@@ -521,7 +528,7 @@ TEST(ItemDisplayT421, TheDescriptionScrollsThroughTheOneRouter) {
 
     eqt::state::ItemDisplayShownData d;
     d.name = "Bladed Thulian Claws";
-    d.lines = BuildItemDisplayText(loadedItem());
+    d.lines = BuildItemDisplayText(strings(), loadedItem());
     applyItemDisplayShown(state, d);
 
     const int fit = ItemDisplayLayout::visibleDescriptionLines(l);

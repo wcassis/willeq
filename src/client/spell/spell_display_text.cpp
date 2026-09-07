@@ -3,15 +3,18 @@
  * for why there is no second window, and for the fields the oracle does NOT
  * show.
  *
- * Every format string below is quoted from
- * /mnt/projects/EverQuestP1999/eqstr_us.txt with its id. The ids are the
- * client's own; the comment is the shipped line verbatim.
+ * T429 Leg A (board B390): the formats are FETCHED from the shipped string
+ * table by id through eqt::EqStrLine(), the same one-engine route
+ * BuildItemDisplayText() takes. The ids stay in the code and the comment
+ * still names the line; the TEXT is data now, not a literal.
  */
 
 #include "client/spell/spell_display_text.h"
 
+#include "client/display_eqstr.h"
 #include "client/spell/spell_data.h"
 #include "client/skill/skill_constants.h"
+#include "client/string_database.h"
 
 #include <fmt/format.h>
 
@@ -25,9 +28,17 @@ std::string seconds(uint32_t ms) {
     return fmt::format("{:.1f}", static_cast<double>(ms) / 1000.0);
 }
 
+/** push_back unless the string table had no row for the id. */
+void emit(std::vector<std::string>& out, std::string line) {
+    if (!line.empty()) {
+        out.push_back(std::move(line));
+    }
+}
+
 }  // namespace
 
-std::vector<std::string> BuildSpellDisplayText(const EQ::SpellData& spell,
+std::vector<std::string> BuildSpellDisplayText(const EQT::StringDatabase& strings,
+                                               const EQ::SpellData& spell,
                                                uint32_t playerClassId,
                                                uint8_t playerLevel) {
     std::vector<std::string> out;
@@ -41,15 +52,15 @@ std::vector<std::string> BuildSpellDisplayText(const EQ::SpellData& spell,
     if (playerClassId >= 1 && playerClassId <= EQ::NUM_CLASSES) {
         const uint8_t needed = spell.class_levels[playerClassId - 1];
         if (needed == 255) {
-            out.push_back("Level Needed: CANNOT USE");
+            emit(out, EqStrLine(strings, kSpellStrLevelCannotUse));
         } else if (needed != 0) {
-            out.push_back(fmt::format("Level Needed: {}", needed));
+            emit(out, EqStrLine(strings, kSpellStrLevelNeeded, {std::to_string(needed)}));
         }
     }
 
     // --- 3006 "Mana Cost: %1" ---
     if (spell.mana_cost != 0) {
-        out.push_back(fmt::format("Mana Cost: {}", spell.mana_cost));
+        emit(out, EqStrLine(strings, kSpellStrManaCost, {std::to_string(spell.mana_cost)}));
     }
 
     // --- 3102 "Spell Duration: %1." / 3103 "Spell Duration: Permanent." ---
@@ -58,31 +69,32 @@ std::vector<std::string> BuildSpellDisplayText(const EQ::SpellData& spell,
     {
         const uint32_t ticks = spell.calculateDuration(playerLevel);
         if (ticks == 0xFFFFFFFFu) {
-            out.push_back("Spell Duration: Permanent.");
+            emit(out, EqStrLine(strings, kSpellStrDurationPermanent));
         } else if (ticks != 0) {
-            out.push_back(fmt::format("Spell Duration: {}.", ticks));
+            emit(out, EqStrLine(strings, kSpellStrDuration, {std::to_string(ticks)}));
         }
     }
 
     // --- 3105 "Skill: %1" ---
     // CastingSkill's enumerators ARE skill ids, so the name comes from the
     // same EQ::getSkillName() the item window's 3008 line uses.
-    out.push_back(fmt::format(
-        "Skill: {}", EQ::getSkillName(static_cast<uint8_t>(spell.casting_skill))));
+    emit(out, EqStrLine(strings, kSpellStrSkill,
+                        {EQ::getSkillName(static_cast<uint8_t>(spell.casting_skill))}));
 
     // --- 3107 "Cast Time: %1" ---
     if (spell.cast_time_ms != 0) {
-        out.push_back(fmt::format("Cast Time: {}", seconds(spell.cast_time_ms)));
+        emit(out, EqStrLine(strings, kSpellStrCastTime, {seconds(spell.cast_time_ms)}));
     }
 
     // --- 6730 "Range = %1" ---
     if (spell.range > 0.0f) {
-        out.push_back(fmt::format("Range = {}", static_cast<int>(spell.range)));
+        emit(out, EqStrLine(strings, kSpellStrRange,
+                            {std::to_string(static_cast<int>(spell.range))}));
     }
 
     // --- 9234 "Recast Delay: %1" ---
     if (spell.recast_time_ms != 0) {
-        out.push_back(fmt::format("Recast Delay: {}", seconds(spell.recast_time_ms)));
+        emit(out, EqStrLine(strings, kSpellStrRecastDelay, {seconds(spell.recast_time_ms)}));
     }
 
     return out;
