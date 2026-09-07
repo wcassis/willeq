@@ -915,3 +915,21 @@ exponent, not a closed loop — the live re-measure is still owed (B171).
 - **B231**: capture the official client's ambient change under forced rain at
   the same spot and mimic the curve; fable's `maxDarkening = 0.6` is replaced
   by the measured value. Reclassified B, lock unit.
+
+## 2026-09-07 - Will's directions on the remaining features
+
+- **Spell effect measurement**: use TWO characters duelling each other; they
+  can hold a set distance for the tests that need it (projectiles B227, the
+  observer pairs). The rig for every future spell capture.
+- **UI persistence (B275)**: persist per character whatever is user-changeable
+  — measured: the 15 window open/closed states, the camera mode; keybinds are
+  global (`config/hotkeys.json`). Window positions are static by design (XML-
+  derived), nothing to persist there.
+- **Item icons (B376) are critical** — the official `dragitem*.tga` sheets are
+  the source.
+- **Era rule**: the target is the original game from launch through Kunark and
+  Velious. Tradeskill favourites and recipe search (B377) did not exist then:
+  LOW priority; do not build post-Velious features.
+- **First-person eye placement (B018)**: no judgement needed — capture the
+  official client's first-person frame at the same spot and match it, like
+  every other render parameter.

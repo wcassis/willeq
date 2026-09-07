@@ -520,12 +520,13 @@ it without taking that measurement first.
   tests an already-remapped value). The open half is user-facing wording, and no
   copy should be invented. Prov: deferred item 37.
 
-- **B018** (C) first-person eye placement — `refactor/T301_first_person_eye_placement.md`
+- **B018** (B) first-person eye placement — `refactor/T301_first_person_eye_placement.md`
   is written and not dispatched; T309 landed the measured draw rule
   (`src/client/graphics/entity_first_person_draw.cpp`) but the eye sits at the
   static bbox crown, and Will judges the look on the live gate. Prov: deferred
   item 16.
 
+  **WILL 2026-09-07:** no judgement needed: capture the official first-person frame at the same spot and match it. Reclassified B. → T431 (lock).
 - **B040** (C) server-sent placeables and doors are measured by no gate — the
   benchmark's `placeableObjectsBytes` (`tools/hwcaps/zone_bench_memory.h`) is
   summed over the zone's own S3D archive and never connects to a server, so
@@ -3809,6 +3810,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
 
 - **B275** (B) `include/client/graphics/ui/ui_layout.h` `UILayout`, `include/client/graphics/ui/static_panels.h` `ChatPanelState` — **the client persists NO user settings.** Chat timestamps, panel visibility, chat scrollback size, UI colours and every panel position are computed or defaulted at startup and nothing writes them back: `saveLayout`, `loadLayout` and any preferences writer return zero hits under `src/`, `include/` and `tools/`, and the only two files that ever held such state (`config/chat_settings.json`, `config/ui_settings.json`) were the deleted WindowManager's and are gone (B245). So a player who moves nothing notices nothing, and a player who changes anything loses it at exit. Closes when a preferences file is written and re-read with a test, or when Will rules that a fixed static UI needs no persistence. Found by T402.
 
+  **WILL 2026-09-07:** persist per character what is user-changeable: the 15 window open states + camera mode (measured); positions are static by design. → T432.
 - **B280** (A) `src/client/graphics/renderer/irrlicht_renderer.cpp`
   `IrrlichtRenderer::updateTimeOfDay` night ambient (0.08, 0.08, 0.15) --
   **fable's night is 5.6x darker than the official client's AND a different
@@ -4371,6 +4373,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   blocks the travel-gate half of **B165** and the wire-or-delete decision in
   **B161**. Prov: T389 Review S5.
 
+  **WILL 2026-09-07:** measure with TWO characters duelling at a set distance (the standing spell rig). → the next lock unit.
 - **B228** (P) `tests/goldens/manifest.json` memory-coverage `eqe1MappedBytes`
   -- the visual gate is **RED at this tip for a reason outside any checkout**:
   `/mnt/projects/EverQuest_ETC1/willeq.eqe1`, the composite sheet, was
@@ -6163,7 +6166,8 @@ client uses every field.
   yet. Closes when an item-icon sheet joins the pack and the four consumers
   draw from it. Found by T421 Leg A.
 
-- **B377** (B) `src/client/bridge/bridge_component_intents.cpp`
+  **WILL 2026-09-07:** CRITICAL. The official `uifiles/default/dragitem*.tga` sheets are the source. → T430.
+- **B377** (P) `src/client/bridge/bridge_component_intents.cpp`
   `onRecipeFavoriteIntent`, `include/client/graphics/ui/tradeskill_panel.h`
   -- **fable keeps no tradeskill favourites list**, so the Add and Remove
   buttons cannot send a correct edit. eqemu's `OP_RecipesFavorite` carries the
@@ -6181,6 +6185,7 @@ client uses every field.
 
   with a test. Prov: T418 Review section 5.
 
+  **WILL 2026-09-07:** LOW priority — favourites/recipe search did not exist launch→Velious (era rule).
 ## Added 2026-09-06 by T422 (spell effects matched live against the oracle)
 
 - **B395** (B) `src/client/graphics/sim/renderer_sim_bridge.cpp`
