@@ -20,7 +20,7 @@ and `FileSizeCeiling` is GREEN**: T387 closed board **B185**, so
 `tools/hwcaps/zone_bench_loader.cpp` is 977 lines and
 `tools/hwcaps/gles2_zone_benchmark.cpp` 992, not the 3,280 and 3,060 earlier
 revisions of this paragraph reported, and `check_file_sizes.sh --all` reads
-1,129 files / 0 warn / 0 fail (re-measured T444). Run
+1,162 files / 0 warn / 0 fail (re-measured T447; 1,129 at T444). Run
 the checker, do not quote this paragraph. The pre-split cluster analysis this map replaced is preserved in git
 history (docs/module_map.md @ commit a0c02cd..93a3c2a era) and in each unit's
 review section under `refactor/F*.md` and `refactor/J*.md`.
@@ -370,6 +370,26 @@ fragments from `tests/cmake/`: `action_handlers`, `archives`, `audio`,
 `DocCounts`), `midi`, `network`, `packets_skills`, `renderer_guards`,
 `spells`, `state`, `ui_rendering`, `world_geometry`, `zone_integration`.
 Add a new test to the fragment for its domain, not to the driver.
+
+## Tools (`tools/`) — the split multi-TU tools
+
+`tools/` is scanned by the ceiling since T385, and the tools that breached it
+were split the same way `src/` was: one target, several sources, a shared
+header beside them in a per-tool subdirectory. The rest of `tools/` is still
+one file per tool.
+
+| tool (target) | seam header | TUs |
+|---|---|---|
+| `model_viewer` (T385) | `tools/model_viewer/model_viewer_state.h` | `model_viewer.cpp` (main) + `model_viewer/` startup, loop, input, mesh, entity, equipment, spell_test |
+| `entity_composite_builder` (T385) | `tools/entity_composite/composite_builder.h` | `entity_composite_builder.cpp` (usage+main) + `entity_composite/` texture_io, model, archives |
+| `gles2_fog_volume_benchmark` (T385) | `tools/hwcaps/fog_volume/fog_volume_shaders.h` | benchmark + the GLSL sources |
+| `zone_bench_loader`, `gles2_zone_benchmark` (T387) | — | split in place under `tools/hwcaps/` |
+| `willeq_db_builder` (T447) | `tools/willeq_db/db_builder.h` | `willeq_db_builder.cpp` (helpers, metadata, main) + `tools/willeq_db/db_loaders_text.cpp` (the client's `*.txt`) + `tools/willeq_db/db_loaders_json.cpp` (the WillEQ/config `*.json`) |
+| `wld_dump` (T447) | `tools/wld_dump/wld_dump.h` | `wld_dump.cpp` (archive I/O + main) + `tools/wld_dump/wld_dump_core.cpp` (header, string table, fragment index) + `wld_dump_geometry.cpp` (0x10/0x36/lights) + `wld_dump_animation.cpp` (0x12–0x2D + hex fallback) |
+| `gles2_shader_perpixel_benchmark` (T447) | `tools/hwcaps/shader_perpixel/shader_perpixel.h` | benchmark (runner + main) + `shader_perpixel_egl.cpp` + `shader_perpixel_shaders.cpp` (13 GLSL ES sources) + `shader_perpixel_scene.cpp` |
+
+Each of those targets carries `${CMAKE_SOURCE_DIR}/tools` on its include path,
+so the seam header is reached as `"<tool>/<header>.h"`.
 
 ## Conventions
 

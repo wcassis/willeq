@@ -1228,6 +1228,9 @@ IF(EQT_GRAPHICS)
     # WLD Dump tool (for analyzing WLD file contents)
     ADD_EXECUTABLE(wld_dump
         tools/wld_dump.cpp
+        tools/wld_dump/wld_dump_core.cpp
+        tools/wld_dump/wld_dump_geometry.cpp
+        tools/wld_dump/wld_dump_animation.cpp
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp
         src/client/graphics/eq/wld_fragments_material.cpp
@@ -1241,6 +1244,7 @@ IF(EQT_GRAPHICS)
     TARGET_INCLUDE_DIRECTORIES(wld_dump PRIVATE
         ${CMAKE_SOURCE_DIR}/include
         ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/tools
         ${ZLIB_INCLUDE_DIRS}
     )
     TARGET_LINK_LIBRARIES(wld_dump
@@ -1470,11 +1474,14 @@ IF(EQT_GRAPHICS)
     # WillEQ Database Builder tool (offline SQLite database generation)
     ADD_EXECUTABLE(willeq_db_builder
         tools/willeq_db_builder.cpp
+        tools/willeq_db/db_loaders_text.cpp
+        tools/willeq_db/db_loaders_json.cpp
         third_party/sqlite3.c
     )
     TARGET_INCLUDE_DIRECTORIES(willeq_db_builder PRIVATE
         ${CMAKE_SOURCE_DIR}/third_party
         ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/tools
     )
     TARGET_LINK_LIBRARIES(willeq_db_builder dl pthread)
     TARGET_COMPILE_DEFINITIONS(willeq_db_builder PRIVATE
@@ -1781,8 +1788,16 @@ ELSE()
     TARGET_LINK_LIBRARIES(gles2_etc1_alpha_readback_test EGL GLESv2)
 ENDIF()
 
-ADD_EXECUTABLE(gles2_shader_perpixel_benchmark tools/hwcaps/gles2_shader_perpixel_benchmark.cpp)
-TARGET_INCLUDE_DIRECTORIES(gles2_shader_perpixel_benchmark PRIVATE ${CMAKE_SOURCE_DIR}/include)
+ADD_EXECUTABLE(gles2_shader_perpixel_benchmark
+    tools/hwcaps/gles2_shader_perpixel_benchmark.cpp
+    tools/hwcaps/shader_perpixel/shader_perpixel_egl.cpp
+    tools/hwcaps/shader_perpixel/shader_perpixel_shaders.cpp
+    tools/hwcaps/shader_perpixel/shader_perpixel_scene.cpp
+)
+TARGET_INCLUDE_DIRECTORIES(gles2_shader_perpixel_benchmark PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/tools
+)
 IF(EQT_DRM)
     TARGET_COMPILE_DEFINITIONS(gles2_shader_perpixel_benchmark PRIVATE EQT_HAS_DRM)
     IF(LIBDRM_INCLUDE_DIR)
