@@ -253,6 +253,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_ui_preferences)
 ENDIF()
 
+# T434: the Options window -- geometry against EQUI_OptionsWindow.xml, the
+# T363 disabled-control rule, the three wired sliders, the Alt+O binding and
+# the persistence round trip. Device-free like its siblings.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_options_window
+        test_options_window.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_options_window PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_options_window GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_options_window)
+ENDIF()
+
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(test_tradeskill_combat_panels
         test_tradeskill_combat_panels.cpp

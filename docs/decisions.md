@@ -930,9 +930,17 @@ exponent, not a closed loop — the live re-measure is still owed (B171).
   `[SkillsWindow]`, `[GroupWindow]`, `[PetInfoWindow]`, `[BuffWindow]`,
   `[CombatAbilityWnd]`, plus `[Camera] Mode=`. The remaining panel `isOpen`
   flags are opened by the server or by clicking a container (loot, tradeskill,
-  item display), and `RA::ToggleOptions` reaches an empty arm — fable has no
+  item display), and `RA::ToggleOptions` reached an empty arm — fable had no
   options window. The file is `<cache dir>/ui/UI_<Char>_<server>.ini`, the
   official client's own filename, section names and `Show=0/1` key.
+  **T434 built that window** (`EQUI_OptionsWindow.xml`, 400x452, seven tabs)
+  and added an eighth section, `[OptionsWindow] Show=`, plus an `[Options]`
+  section carrying the three controls fable can wire — `Music`,
+  `SoundVolume` and `ClipPlane`, the oracle's own key names on the oracle's
+  own 0..20 slider scale. The key moved from a bare `O` to **Alt+O**, which is
+  what the official client's Options > Keys > UI page shows. Everything on
+  that window with no backing setting in fable is drawn greyed and is not
+  hit-testable (boards B430–B434).
 - **Item icons (B376) are critical** — the official `dragitem*.tga` sheets are
   the source.
 - **Era rule**: the target is the original game from launch through Kunark and

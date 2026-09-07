@@ -10,6 +10,7 @@
 #include "client/graphics/ui/tradeskill_panel.h"
 #include "client/graphics/ui/tradeskill_layout.h"
 #include "client/graphics/ui/combat_ability_panel.h"
+#include "client/graphics/ui/options_panel.h"
 #include "client/graphics/ui/combat_ability_layout.h"
 #include "client/graphics/ui/item_display_panel.h"
 #include "client/graphics/ui/item_display_layout.h"
@@ -492,6 +493,50 @@ bool StaticUIInput::processPanelInput(int mouseX, int mouseY, bool leftClicked,
     }
 
     return consumed;
+}
+
+// T434 -- the Options window. See the doc comment on the declaration for why
+// it is its own entry point and why it resolves a click into a Setting rather
+// than acting on it here.
+bool StaticUIInput::processOptionsInput(int mouseX, int mouseY, bool leftClicked,
+                                        const UILayout& layout,
+                                        OptionsPanelState& options,
+                                        OptionsLayout::Setting& changed) {
+    changed = OptionsLayout::Setting::None;
+    if (!optionsWindowIsVisible(options)) {
+        options.hoveredTab = -1;
+        options.hoveredControl = -1;
+        return false;
+    }
+    if (!optionsWindowContains(layout, options, mouseX, mouseY)) {
+        options.hoveredTab = -1;
+        options.hoveredControl = -1;
+        return false;
+    }
+
+    options.hoveredTab = hitTestOptionsTab(layout, options, mouseX, mouseY);
+    options.hoveredControl = hitTestOptionsControl(layout, options, mouseX, mouseY);
+
+    if (leftClicked && options.hoveredTab >= 0) {
+        options.activeTab = options.hoveredTab;
+        // A tab switch changes which page is hit-testable, so the control
+        // hover is stale the instant it lands.
+        options.hoveredControl = -1;
+    } else if (leftClicked && options.hoveredControl >= 0) {
+        const int i = options.hoveredControl;
+        const auto& c = OptionsLayout::kControls[i];
+        if (c.kind == OptionsLayout::Kind::Slider) {
+            const int step = OptionsLayout::sliderStepAt(layout, i, mouseX);
+            if (step != optionsSettingStep(options, c.setting)) {
+                setOptionsSettingStep(options, c.setting, step);
+                changed = c.setting;
+            }
+        }
+    }
+
+    // The whole window consumes the position either way, so a click on a
+    // greyed control does not fall through to the 3D scene behind it.
+    return true;
 }
 
 bool StaticUIInput::processKey(irr::EKEY_CODE key, bool pressed, bool /*shift*/, bool /*ctrl*/,

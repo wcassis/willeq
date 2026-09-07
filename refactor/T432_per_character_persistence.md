@@ -65,6 +65,8 @@ What was deliberately left out, with the reason:
   comment "WindowManager removed — options window not available", and
   `PopupType::Options` has zero uses in the tree. There is no window to
   persist. (Unchanged by this unit; it is B115's territory.)
+  **CLOSED by T434**, which built the window and added `[OptionsWindow]
+  Show=` plus an `[Options]` section for the three wired controls.
 - **Chat timestamps, chat scrollback, UI colours** — named in B275, ruled out
   of scope by Will's 2026-09-07 direction, which narrowed the unit to window
   states and the camera. Still unpersisted.

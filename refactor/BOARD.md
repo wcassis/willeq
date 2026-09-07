@@ -6624,6 +6624,82 @@ client uses every field.
   Greater Faydark's lifts to Kelethin. Baseline: the official client. → T433
   (survey + oracle capture), then the implementation units it names.
 
+- **B430** (B) **The Options window's General page is nineteen checkboxes with
+  no setting behind any of them.** T434 drew the whole page at the oracle's
+  offsets (`options_layout.h`, from `EQUI_OptionsWindow.xml`) and wired only
+  what exists, so `OGP_FastItemDestroyCheckbox` .. `OGP_AutoConsentGuildCheckbox`
+  plus `OGP_EnvSoundsCheckbox` and `OGP_CombatMusicCheckbox` are drawn greyed
+  and are NOT hit-testable (`hitTestOptionsControl` skips
+  `OptionsLayout::Setting::None`, pinned by
+  `OptionsWindowT434.ADisabledControlIsNotHitTestable`). Several have a real
+  server or client counterpart that could be wired one at a time --
+  `OGP_AnonymousCheckbox` and `OGP_RoleplayingCheckbox` are `/anon` and
+  `/roleplay`, `OGP_LootAutosplitCheckbox` is `/autosplit`,
+  `OGP_CombatMusicCheckbox` is `CombatMusicManager::setEnabled()` (which has
+  no caller outside its own class) -- each needs an intent or a config field,
+  which is why none was invented here. Prov: T434.
+
+- **B431** (B) **The Options window's Display page has one wired control out
+  of forty-seven.** `ODP_ClipPlaneSlider` drives `setRenderDistance()`; every
+  other control on `OptionsDisplayPage` is greyed. The near ones:
+  `ODP_PCNamesCheckbox`/`ODP_NPCNamesCheckbox` -- fable has ONE nametag
+  toggle (`DiagnosticsComponent::toggleNameTags()`, Ctrl+F3), not the
+  oracle's separate PC and NPC flags, so wiring either to it would make one
+  control silently move the other; `ODP_MaxFPSSlider` and `ODP_GammaSlider`
+  have no setting at all; `ODP_SetFullscreenButton`/`ODP_SetWindowedButton`/
+  `ODP_VideoModesButton` are mode switches an EGL-surfaceless or DRM client
+  does not have; the four fade/alpha sliders belong to the window chrome
+  T432 measured (`Fades`, `Delay`, `Duration`, `Alpha`, `FadeToAlpha` in the
+  official UI ini) and fable's panels do not fade at all; and the nested
+  `ODP_ParticlesTabs` box is drawn with its three sub-tab captions and the
+  Spell page's rows, but the sub-tabs are NOT clickable because all nine
+  controls behind them are disabled. `config/spell_effects.json` and
+  `config/display_settings.json` between them hold real density/opacity
+  knobs, so the particle page is the most wireable of these. Prov: T434.
+
+- **B432** (B) **The Options window's volume sliders can drift from the audio
+  manager, because the only volume intents carry a DELTA.**
+  `MusicVolumeChangeIntent` / `EffectsVolumeChangeIntent` take a `float
+  delta`, and nothing publishes the resulting absolute volume back to the
+  renderer, so `FrameComponent` keeps its own record of what it last told the
+  audio manager (`optionsAppliedMusicStep_` / `optionsAppliedSoundStep_`) and
+  sends the difference. A `/volume`, `/music` or `/sound` slash command
+  (`commands_spells.cpp`) sets the audio manager ABSOLUTELY and the panel
+  never hears about it, so the slider then shows a stale value and its next
+  drag applies a delta computed from that stale value. Two ways out: an
+  absolute set-volume intent, or a `VolumesChanged` event published wherever
+  a volume moves (four sites: the config apply in
+  `bridge_component_ui_audio.cpp`, the two delta intents, the three slash
+  commands). Not a live defect until a player mixes the two paths. Prov: T434.
+
+- **B433** (B) **The Options window's Mouse, Keys, Filters, Colors and Mail
+  pages are drawn and entirely inert.** Every control on all five is
+  `OptionsLayout::Setting::None`. Per page: MOUSE -- fable's player mouse-look
+  multiplies by hardcoded `0.5f`/`0.3f` in `renderer_player_physics.cpp` and
+  `CameraController::mouseSensitivity_` is set once to `0.2f` and never
+  again, so `OMP_MouseSensitivitySlider` has no knob to turn and the five
+  checkboxes (invert Y, look spring, mouse look, wheel zoom, handedness) have
+  no flags; KEYS -- `OKP_KeyboardAssignmentList` could be filled READ-ONLY
+  today from `HotkeyManager::getBindingsForAction()` /
+  `keyCodeToName()` (the oracle's own three columns are Command 180 /
+  Keypress 75 / Alternate 75), which is the cheapest of these to close, and
+  rebinding on top of it needs a writer plus persistence (bindings are
+  GLOBAL, `config/hotkeys.json`, not per character -- T432); FILTERS -- fable
+  has no chat filter model at all; COLORS -- fable has no user colour table
+  (T432 ruled UI colours out of scope); MAIL -- there is no mail feature and
+  it is arguably post-Velious anyway, so this page may be the one to DELETE
+  rather than fill. Prov: T434.
+
+- **B434** (B) `PopupType::Options` is still a bare enumerator with zero uses.
+  T434 built the Options window as an independent window with its own
+  `OptionsPanelState` and its own oracle placement (`EQUI_OptionsWindow.xml`
+  is `RelativePosition false` at `<Location>(90,47)</Location>`), NOT as one
+  of the mutually exclusive centre popups, so the enumerator stayed unused
+  rather than being pressed into a role the oracle does not give it. It is
+  now the only member of `PopupType` with no producer and no consumer
+  (`Vendor`, `Bank` and `Trade` at least appear in tests). Delete it, or
+  decide the centre-popup family is what it should have been. Prov: T434.
+
 
   the CASTER's own client while drawing correctly on an observer.**~~ **STRUCK
   T426 (this commit, base `8f5e586a`): reproduced deterministically and fixed.**
