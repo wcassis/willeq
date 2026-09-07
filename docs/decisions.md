@@ -966,7 +966,10 @@ Read the header's constants, never this paragraph's history.
   LOW priority; do not build post-Velious features.
 - **First-person eye placement (B018)**: no judgement needed — capture the
   official client's first-person frame at the same spot and match it, like
-  every other render parameter.
+  every other render parameter. *(Carried out by T431, 2026-09-07: skull
+  fraction 0.65 → 0.45, Human male eye now 6.02 above its own feet against the
+  oracle's frames. The same sweep on a second race says one global fraction
+  cannot fit every race — board B470.)*
 
 ## 2026-09-07 - doors, lifts, elevators, switches and traps (Will)
 

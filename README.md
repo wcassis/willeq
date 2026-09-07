@@ -112,7 +112,7 @@ Legend: Done | Partial | Not Implemented
 ### Camera
 | Feature | Status | Notes |
 |---------|--------|-------|
-| First-person | Partial | Player model + weapon are drawn for the duration of an attack animation and at no other time (T307 measured this against the official client, T309 implemented it). The down-pitch clamp this row used to describe was REFUTED live and no longer exists. Eye placement is still open (B018) |
+| First-person | Partial | Player model + weapon are drawn for the duration of an attack animation and at no other time (T307 measured this against the official client, T309 implemented it). The down-pitch clamp this row used to describe was REFUTED live and no longer exists. Eye placement was solved against the official client by T431 (B018 closed): the eye is derived per race from the head bone's own vertex cluster and sits 0.45 up the symmetrised skull, which puts a Human male's eye 6.02 units above its own feet — the value the oracle's own frames minimise at. A Dwarf male still solves 1.0 units lower than that global fraction gives it (B470) |
 | Third-person follow | Done | With collision, zoom +/- |
 | Free camera | Done | Debug/admin mode |
 | Mouse look | Done | LMB or RMB drag |

@@ -98,16 +98,23 @@ TEST_F(FpTunablesTest, EveryDefaultEqualsTheConstantItReplaced) {
 // Belt and braces: the LITERAL values, so a sweep that edits the constant AND
 // this table in the same motion still trips something.
 //
-// T310 Leg C moved two of them, which is what this leg exists to do: the eye
+// T310 Leg C moved two of them, which is what that leg existed to do: the eye
 // height was SOLVED against the official client's own frames (skull fraction
 // 0.574 -> 0.65, and the crown-to-eye distance that follows, 0.60 -> 0.49).
-// The other seven are unchanged and were CONFIRMED by the same oracle sweeps
-// -- eyeForwardOffset's curve minimises at 0.0 and hfov's at 62.8.
+// The other seven were CONFIRMED by the same oracle sweeps -- eyeForwardOffset's
+// curve minimises at 0.0 and hfov's at 62.8.
+//
+// *** T431 MOVED THE SAME THREE AGAIN: 0.65 -> 0.45, 0.49 -> 0.765 and
+// 0.925 -> 0.887. *** Same oracle, same spot, same method; what changed under
+// T310's solve without anybody re-solving was T310 Leg B's collisionZOffset fix
+// (which raised every eye 0.119 units off the ground) and B399's heading fix.
+// The curve, the error bars and the second race are in review/T431/README.md;
+// the reasoning is on the constants themselves in first_person_eye.h.
 TEST_F(FpTunablesTest, TheDefaultsAreTodaysMeasuredNumbers) {
     EXPECT_FLOAT_EQ(fpTunable(FpTunable::EyeForwardOffsetUnits), 0.0f);
-    EXPECT_FLOAT_EQ(fpTunable(FpTunable::EyeHeightFractionOfSkull), 0.65f);
-    EXPECT_FLOAT_EQ(fpTunable(FpTunable::CrownAboveEyeUnits), 0.49f);
-    EXPECT_FLOAT_EQ(fpTunable(FpTunable::EyeHeightFractionOfStandingHeight), 0.925f);
+    EXPECT_FLOAT_EQ(fpTunable(FpTunable::EyeHeightFractionOfSkull), 0.45f);
+    EXPECT_FLOAT_EQ(fpTunable(FpTunable::CrownAboveEyeUnits), 0.765f);
+    EXPECT_FLOAT_EQ(fpTunable(FpTunable::EyeHeightFractionOfStandingHeight), 0.887f);
     EXPECT_FLOAT_EQ(fpTunable(FpTunable::MaxDownPitchDegrees), 94.9f);
     EXPECT_FLOAT_EQ(fpTunable(FpTunable::MaxUpPitchDegrees), 89.0f);
     EXPECT_FLOAT_EQ(fpTunable(FpTunable::PitchDownDegrees), 3.65f);
