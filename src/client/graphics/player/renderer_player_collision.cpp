@@ -248,13 +248,13 @@ bool PlayerCameraComponent::checkCollisionIrrlicht(const irr::core::vector3df& s
     return false;
 }
 
-GroundZ PlayerCameraComponent::findGroundZIrrlicht(float x, float y, float currentZ, float modelYOffset) {
-    // DIAGNOSTIC: This should NOT be called on the hot path anymore.
-    // BSP-filtered collision should be used instead for movement.
-    LOG_WARN(MOD_GRAPHICS, "findGroundZIrrlicht CALLED — old meta selector path! "
-             "pos ({},{},{})", x, y, currentZ);
-    return GroundZ::Floor(currentZ - modelYOffset);
-}
+// T440 (board B438): findGroundZIrrlicht() is GONE. It was a LOG_WARN plus
+// `return GroundZ::Floor(currentZ - modelYOffset)` -- "the floor is exactly
+// under your feet" -- reached from five ternaries in renderer_player_physics.cpp
+// whose `useBspFiltered` condition can never be false there: the caller only
+// enters resolveIrrlichtCollision() when regionWorldTriangles is non-empty, and
+// region triangles exist only when the BSP tree was installed. Those five
+// ternaries are gone with it; the BSP path is the only path.
 
 // updateNameTagsWithLOS removed — name tag visibility now computed by SimulationWorker
 
@@ -458,9 +458,18 @@ bool PlayerCameraComponent::checkCollisionBspFiltered(const irr::core::vector3df
 
 GroundZ PlayerCameraComponent::findGroundZBspFiltered(float x, float y, float currentZ, float modelYOffset) {
     if (!ctx_.zoneBspTree) {
-        // No BSP data to ask: "the floor is right under your feet" is what this
-        // has always answered, and it keeps a standing player standing.
-        return GroundZ::Floor(currentZ - modelYOffset);
+        // T440 (B438). There is no collision data to ask, so there is no floor
+        // to report -- the same answer findGroundZ() gives for a null
+        // collisionMap. It used to answer Floor(feetZ), "the floor is right
+        // under your feet", which a falling player's landing test accepted.
+        //
+        // Unreachable in practice, and kept honest rather than kept convenient:
+        // resolveIrrlichtCollision() is entered only when
+        // ctx_.regionWorldTriangles is non-empty, and those triangles are built
+        // from regionMeshNodes, which exist only when a BSP tree was installed.
+        // A zone with no BSP/PVS data takes createZoneMesh() instead and its
+        // movement resolves through resolveHCMapCollision().
+        return GroundZ::NoFloor();
     }
 
     float feetZ = currentZ - modelYOffset;
@@ -511,13 +520,16 @@ GroundZ PlayerCameraComponent::findGroundZBspFiltered(float x, float y, float cu
         }
     }
 
-    if (nearHit) {
-        float floorZ = bestHit.Y;
-        if (floorZ <= feetZ + maxStepUp + 0.1f) {
+    // T440 (B438): the same three-way verdict the full ray uses, spelled once
+    // in the device-free seam. Phase 1 only RETURNS on a floor -- a near miss
+    // or a near ceiling falls through to the full raycast below.
+    {
+        GroundZ nearGround = ClassifyBspGroundRay(nearHit, bestHit.Y, feetZ, maxStepUp);
+        if (nearGround.hasFloor()) {
             if (playerConfig_.collisionDebug) {
                 addCollisionDebugLine(nearStart, bestHit, irr::video::SColor(255, 0, 255, 128), 0.2f);
             }
-            return GroundZ::Floor(floorZ);
+            return nearGround;
         }
     }
 
@@ -560,8 +572,7 @@ GroundZ PlayerCameraComponent::findGroundZBspFiltered(float x, float y, float cu
     // Debug visualization
     if (playerConfig_.collisionDebug) {
         if (hit) {
-            float floorZ = bestHit.Y;
-            bool validFloor = (floorZ <= feetZ + maxStepUp + 0.1f);
+            bool validFloor = ClassifyBspGroundRay(hit, bestHit.Y, feetZ, maxStepUp).hasFloor();
             if (validFloor) {
                 addCollisionDebugLine(rayStart, bestHit, irr::video::SColor(255, 0, 255, 255), 0.2f);
             } else {
@@ -573,25 +584,27 @@ GroundZ PlayerCameraComponent::findGroundZBspFiltered(float x, float y, float cu
         }
     }
 
-    float groundZ = feetZ;  // Default to current feet position
-    if (hit) {
-        float floorZ = bestHit.Y;
-        if (floorZ <= feetZ + maxStepUp + 0.1f) {
-            groundZ = floorZ;
-        } else {
-            // T437 (B435): the ray met geometry ABOVE the step-up limit -- a
-            // ceiling, an overhang, the underside of a platform. This used to
-            // return `feetZ + 1000.0f`, a float the four jump landings happily
-            // accepted as ground.
-            return GroundZ::NoFloor();
-        }
-    }
+    // T440 (board B438) -- THE DEFECT THIS UNIT CLOSES.
+    //
+    // This used to read `float groundZ = feetZ;` and, on a total miss, return
+    // Floor(feetZ): "the floor is exactly under your feet", whatever column the
+    // player is over. ShouldLandJump() then compared feetZ <= feetZ, agreed,
+    // and ended a fall in mid-air. A miss is now NoFloor and the fall
+    // continues. (The ceiling case -- geometry above the step-up limit, T437's
+    // B435 -- was already NoFloor and is now spelled by the same seam.)
+    GroundZ ground = ClassifyBspGroundRay(hit, bestHit.Y, feetZ, maxStepUp);
 
-    // Check for boat collision — only when boats exist in zone
+    // Check for boat collision — only when boats exist in zone.
+    // T440: a deck is a floor, and when the zone geometry answers NoFloor it is
+    // the ONLY floor there is -- findBoatDeckZ() already bounds its answer to
+    // the player's own z band, so it cannot report a deck the player is nowhere
+    // near. Before this the comparison was against the phantom `groundZ =
+    // feetZ`, so a deck below the feet was discarded and the phantom won; and a
+    // ceiling hit returned before the boat check ran at all.
     if (ctx_.entityRenderer && ctx_.entityRenderer->hasBoatsInZone()) {
         float boatDeckZ = ctx_.entityRenderer->findBoatDeckZ(x, y, feetZ);
         if (boatDeckZ != BEST_Z_INVALID) {
-            if (boatDeckZ > groundZ) {
+            if (!ground.hasFloor() || boatDeckZ > ground.z()) {
                 if (playerConfig_.collisionDebug) {
                     irr::core::vector3df irrFrom(x, feetZ, y);
                     irr::core::vector3df irrTo(x, boatDeckZ, y);
@@ -602,7 +615,7 @@ GroundZ PlayerCameraComponent::findGroundZBspFiltered(float x, float y, float cu
         }
     }
 
-    return GroundZ::Floor(groundZ);
+    return ground;
 }
 
 // --- Collision Debug Visualization ---

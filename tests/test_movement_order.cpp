@@ -272,7 +272,23 @@ std::vector<std::string> goldenOrder() {
 // The `!= BEST_Z_INVALID` guards that vanish were DEAD: findGroundZ() rewrote
 // every failure to the caller's own z, so they never fired. They are now live,
 // spelled hasFloor(), and that is a stated behaviour change (T437 Review).
-constexpr size_t kGoldenSize = 473;
+//
+// T440: B438 (a total ray miss is NoFloor) and the deletion of the
+// findGroundZIrrlicht() stub. The golden LEARNED this edit in place: FIVE
+// three-line ternaries
+//     `GroundZ groundZ = useBspFiltered`
+//     `? findGroundZBspFiltered(<args>)`
+//     `: findGroundZIrrlicht(<args>);`
+// each collapsed to the one statement
+//     `GroundZ groundZ = findGroundZBspFiltered(<args>);`
+// at the SAME position -- ten statements deleted (473 -> 463), nothing
+// inserted, nothing moved, no other line touched. findGroundZIrrlicht() was a
+// LOG_WARN plus "the floor is under your feet", and its `useBspFiltered`
+// selector can never be false inside resolveIrrlichtCollision(): that body is
+// entered only when ctx_.regionWorldTriangles is non-empty, and region
+// triangles exist only when the BSP tree was installed. The remaining
+// `useBspFiltered` ternaries (the checkCollisionIrrlicht ones) are untouched.
+constexpr size_t kGoldenSize = 463;
 
 }  // namespace
 
