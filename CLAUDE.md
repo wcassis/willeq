@@ -44,7 +44,10 @@ Additional context is in subdirectory CLAUDE.md files:
   and `tests/` is under 1,500 lines and ctest enforces it.** The last two
   exceptions there are gone —
   `include/client/eq.h` fell to 899 lines and
-  `include/client/graphics/irrlicht_renderer.h` to 1,343 — so
+  `include/client/graphics/irrlicht_renderer.h` to 1,343, and T448 took the
+  renderer facade the rest of the way to **1,191** (ten zero-caller
+  declarations deleted, every multi-line inline body moved to the TU that owns
+  the state, and the Batch-L narrative moved into the component headers) — so
   `scripts/refactor/file_size_allowlist.txt` is EMPTY and a file over 1,500
   under `src/`, `include/`, `tests/`, `tools/` or `benchmarks/` is a **FAIL**
   in the `FileSizeCeiling` ctest test, not a warning (M00,

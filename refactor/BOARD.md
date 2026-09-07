@@ -7865,13 +7865,20 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   measures it is the same one T438 used (a 4 Hz server-side position trace via a
   Perl quest timer while the official client jumps). Found by T438 Leg C.
 
-- **B464** (B) `src/client/entities/entities_component.cpp:457` -- **the door
-  spawn debug dump prints the wrong door and the wrong bytes.**
-  `LOG_DEBUG(MOD_ENTITY, "Door {} raw bytes @60-67: ...", i, data[60], ...)`
-  passes the loop INDEX as the door id (so it reads "Door 69" for the 69th door
-  in the array, not door 69) and indexes `data` from the PACKET base rather than
-  from that door's 80-byte record, so every line in a session prints the FIRST
-  door's bytes. It cost T438 a wrong turn -- the line appeared to show
-  `door_param == 0` for the gfaydark lift when the server demonstrably sends 68
-  (`/mnt/projects/akk-stack/code/zone/entity.cpp:988`). Either fix both indices
-  or delete the line. Found by T438.
+- ~~**B464** (B)~~ **CLOSED 2026-09-07 (T448).** The door-spawn debug dump
+  named the loop INDEX where the door id belongs, so a two-door packet whose
+  doors are 69 and 70 printed "Door 0" and "Door 1" -- which is what cost T438 a
+  wrong turn (the line looked like it showed `door_param == 0` for the gfaydark
+  lift, when the record it was naming was a different door's; the server does
+  send 68, `/mnt/projects/akk-stack/code/zone/entity.cpp:988`).
+  **The board's second claim was WRONG and T448 measured it:** `data` is
+  `p.Data() + offset`, i.e. already that door's own 80-byte record, so the eight
+  bytes were never taken from the packet base and no line ever printed the first
+  door's bytes. The line now formats through
+  `eqt::entities::FormatDoorSpawnDump(loopIndex, record)`, which prints the
+  record's own id and keeps the loop index as an explicit "packet slot".
+  `tests/test_entities_component.cpp` pins both halves
+  (`DoorSpawnDumpTest.EachLineNamesItsOwnDoorIdNotTheLoopIndex` -- RED before
+  the fix -- and `.EachLinePrintsItsOwnRecordsBytesNotTheFirstDoors`, which was
+  already green and is the pin against a "fix" that regresses it). Found by
+  T438, closed by T448.

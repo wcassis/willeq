@@ -51,6 +51,14 @@ class Packet;
 namespace eqt {
 namespace entities {
 
+// T448 (board B464): the SpawnDoor debug dump line, extracted from
+// ZoneProcessSpawnDoor() so both of its indices can be asserted.
+// `record` points at ONE door's own 80-byte Door_Struct inside the SpawnDoor
+// packet -- not at the packet base -- and the eight bytes it prints are that
+// record's offsets 60..67: doorId, opentype, state_at_spawn, invert_state and
+// the four bytes of door_param.
+std::string FormatDoorSpawnDump(uint32_t loopIndex, const uint8_t* record);
+
 class EntitiesComponent {
 public:
 	// T341: the EverQuest& transition handle is GONE -- this family reaches

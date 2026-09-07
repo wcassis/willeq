@@ -41,6 +41,43 @@
 // declaration stayed on IrrlichtRenderer (L04 correction 5, the measureSection
 // case). L09 decides where the lighting family finally puts it.
 //
+// T448 moved the following two paragraphs here out of irrlicht_renderer.h,
+// where they annotated the forwarders this family left behind.
+//
+// L05 (Batch L): the four methods that stay as one-line forwarders on
+// IrrlichtRenderer do so ONLY because these callers hold an IrrlichtRenderer
+// and must not learn a component exists (the K11 rule):
+//   setPlayerSpawnId  -- application_zone_loading.cpp:249,359;
+//                        bridge/irrlicht_bridge.cpp:69,173
+//   setVisionType     -- bridge/irrlicht_bridge.cpp:582
+//   setPlayerPosition -- application_zone_loading.cpp:270,380;
+//                        bridge/irrlicht_bridge.cpp:24
+//   setSwimmingState  -- bridge/irrlicht_bridge.cpp:629
+// setPlayerRace(), resetVisionToBase(), getBaseVision() and isSwimming() got
+// NO forwarder: each has zero callers on an IrrlichtRenderer receiver, and a
+// forwarder for surface nothing calls is exactly what this batch removes.
+// Reach them through PlayerCamera(). T334 (B046) DELETED setSwimUp(),
+// setSwimDown() and setLevitating(): the first two were never the sole writers
+// of playerMovement_.swimUp/.swimDown -- the G06 input poll assigns both every
+// frame from the [ and ] bindings -- and the third duplicated
+// setSwimmingState()'s levitating parameter. resetVisionToBase() is no longer
+// a dead end either: setVisionType() calls it (B046).
+//
+// The camera forwarders that stayed, each with a real caller on an
+// IrrlichtRenderer receiver:
+//   setCameraMode       -- application_zone_loading.cpp:268,378;
+//                          tests/test_zoning_graphics_integration.cpp:729
+//   getCameraModeString -- tests/test_irrlicht_camera_command.cpp:68,106
+// cycleCameraMode() is NOT among them: L05 measured zero callers on that
+// class. GraphicalMode calls it through std::unique_ptr<output::IOutputRenderer>
+// and reaches output_renderer.h's empty default body -- IrrlichtRenderer has NO
+// base class (L03 correction 13). Its one real caller is
+// renderer_slash_commands.cpp, in the renderer, which reaches the component.
+// getCameraTransform() was gone from that header for the same reason and T334
+// (B045) deleted it outright: the audio listener it was written for has had a
+// producer since D20c2, and that producer uses the PLAYER position by design
+// (BridgeComponent::UpdateAudioListener).
+//
 // The component needs friendship on BOTH axes of K13 correction (ii): it
 // reaches 20 private IrrlichtRenderer members through owner_, and it names the
 // private nested type IrrlichtRenderer::DoorCollisionData.

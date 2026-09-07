@@ -481,6 +481,27 @@ private:
 	// T423 (board B362): added to the pass list as its FIRST entry -- the
 	// scene-ambient recompute, consumed from the dirty mark every non-clock
 	// writer of an ambient input now sets.
+	// T448 moved the following paragraph here out of irrlicht_renderer.h,
+	// where it annotated markSceneAmbientDirty().
+	//
+	// T423 (board B362): the scene ambient is a function of FOUR inputs -- the
+	// day/night clock, the user ambient multiplier, the weather modifier and
+	// the vision floor -- and until this it was recomposed only when the CLOCK
+	// moved. eqemu sends OP_TimeOfDay at zone-in and on `#set time`, never on
+	// a timer, so between two clock packets a weather change or a vision buff
+	// reached the world's lighting at an arbitrary later moment or never at
+	// all. T418's first live session measured a whole day block of forced rain
+	// and got zero `updateTimeOfDay: weatherMod ...` lines out of the client.
+	//
+	// Every writer of a non-clock input now MARKS the ambient dirty
+	// (IrrlichtRenderer::markSceneAmbientDirty) and the render thread consumes
+	// the mark once per frame here, pinned in the G05 frame-order golden.
+	// IrrlichtRenderer::updateTimeOfDay() itself is the one recompute, and it
+	// CLEARS the flag -- so the clock packet path is unchanged and a
+	// marked-then-clocked frame recomposes once, not twice.
+	//
+	// The flag starts TRUE: the first frame after a zone load composes the
+	// ambient whether or not the server has sent a clock packet yet.
 	void recomposeSceneAmbientIfDirty();
 	void runSceneProfileIfScheduled();
 	void beginSceneAndDrawWorld(float deltaTime);
