@@ -23,7 +23,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     #   cmake -S . -B build -DEQT_LIVE_TESTS=ON
     #   ctest --test-dir build -L live
     IF(EQT_LIVE_TESTS)
-        GTEST_DISCOVER_TESTS(test_zoning_graphics_integration PROPERTIES LABELS "live")
+        GTEST_DISCOVER_TESTS(test_zoning_graphics_integration PROPERTIES LABELS "live" DISCOVERY_TIMEOUT 120)
     ENDIF()
 ENDIF()
 
@@ -52,7 +52,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     # are db-only now).
     TARGET_COMPILE_DEFINITIONS(test_inventory_model_view PRIVATE
         WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
-    GTEST_DISCOVER_TESTS(test_inventory_model_view)
+    GTEST_DISCOVER_TESTS(test_inventory_model_view DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T309: the measured first-person draw rule (predicate + the withhold seam).
@@ -64,7 +64,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_first_person_body_draw_rule GTest::gtest willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_first_person_body_draw_rule PRIVATE
         WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
-    GTEST_DISCOVER_TESTS(test_first_person_body_draw_rule)
+    GTEST_DISCOVER_TESTS(test_first_person_body_draw_rule DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T301 Leg C: first-person weapon attachment geometry (probe).
@@ -76,7 +76,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_first_person_weapon_attachment GTest::gtest willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_first_person_weapon_attachment PRIVATE
         WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
-    GTEST_DISCOVER_TESTS(test_first_person_weapon_attachment)
+    GTEST_DISCOVER_TESTS(test_first_person_weapon_attachment DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T301 Leg D: the UI-hide toggle, from the paths a user or a capture script
@@ -90,7 +90,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_ui_hide_command GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_ui_hide_command PRIVATE
         WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
-    GTEST_DISCOVER_TESTS(test_ui_hide_command)
+    GTEST_DISCOVER_TESTS(test_ui_hide_command DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T330 (B043): the four debug-hotkey switch arms in processCommonInput that had
@@ -105,7 +105,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_debug_hotkey_arms GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_debug_hotkey_arms PRIVATE
         WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
-    GTEST_DISCOVER_TESTS(test_debug_hotkey_arms)
+    GTEST_DISCOVER_TESTS(test_debug_hotkey_arms DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T343 (B002): the autorun arm in processCommonInput. Behavioural on a
@@ -120,7 +120,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_autorun_arm GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_autorun_arm PRIVATE
         WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
-    GTEST_DISCOVER_TESTS(test_autorun_arm)
+    GTEST_DISCOVER_TESTS(test_autorun_arm DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T267: race 330 (playable Froglok) resolves to and loads from the row's
@@ -135,7 +135,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_race_330_loader GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_race_330_loader PRIVATE
         WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
-    GTEST_DISCOVER_TESTS(test_race_330_loader)
+    GTEST_DISCOVER_TESTS(test_race_330_loader DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T364 Leg B (B065): the _chr.s3d cache's LRU accounting -- every cached entry
@@ -151,7 +151,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_chr_cache_lru GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_chr_cache_lru PRIVATE
         WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
-    GTEST_DISCOVER_TESTS(test_chr_cache_lru)
+    GTEST_DISCOVER_TESTS(test_chr_cache_lru DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T369 (B105): the character archive is derived from the FILENAME, never from
@@ -167,7 +167,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_chr_path_derivation GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_chr_path_derivation PRIVATE
         WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
-    GTEST_DISCOVER_TESTS(test_chr_path_derivation)
+    GTEST_DISCOVER_TESTS(test_chr_path_derivation DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T340 Leg A (B052): drives RaceModelLoader's variant/animation loader through
@@ -183,7 +183,22 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_variant_loader_candidates GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_variant_loader_candidates PRIVATE
         WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
-    GTEST_DISCOVER_TESTS(test_variant_loader_candidates)
+    GTEST_DISCOVER_TESTS(test_variant_loader_candidates DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# T452 (board B468): getArmorTexture() resolves the 17-23 armor tier from
+# global17-23_amr.s3d. Until this unit it queried an `s3d_assets` table the
+# shipped database has never contained, so it returned nullptr for everything
+# and the whole high-tier armor set rendered as the base skin. Same EDT_NULL +
+# willeq_core gate as test_race_330_loader; uses the real client tree only (no
+# database, no server, no DISPLAY) and skips without it.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_armor_texture_archive
+        test_armor_texture_archive.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_armor_texture_archive PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_armor_texture_archive GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_armor_texture_archive DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T285: pins the two applyPaletteMask plumbing sites (P46d Part B / P50) --
@@ -199,7 +214,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_palette_mask_plumbing GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_palette_mask_plumbing PRIVATE
         WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
-    GTEST_DISCOVER_TESTS(test_palette_mask_plumbing)
+    GTEST_DISCOVER_TESTS(test_palette_mask_plumbing DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T271: race DISPLAY NAMES come from the db (EverQuest::GetRaceName was
@@ -217,7 +232,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_race_names GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_race_names PRIVATE
         WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
-    GTEST_DISCOVER_TESTS(test_race_names)
+    GTEST_DISCOVER_TESTS(test_race_names DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T54: first tests for the static-panel UI (StaticUIInput hit-testing,
@@ -233,7 +248,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_static_ui_panels PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_static_ui_panels GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_static_ui_panels)
+    GTEST_DISCOVER_TESTS(test_static_ui_panels DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T415 (board B321 + B320): the tradeskill container window and the combat
@@ -250,7 +265,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_ui_preferences PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_ui_preferences GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_ui_preferences)
+    GTEST_DISCOVER_TESTS(test_ui_preferences DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T434: the Options window -- geometry against EQUI_OptionsWindow.xml, the
@@ -262,7 +277,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_options_window PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_options_window GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_options_window)
+    GTEST_DISCOVER_TESTS(test_options_window DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
@@ -271,7 +286,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_tradeskill_combat_panels PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_tradeskill_combat_panels GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_tradeskill_combat_panels)
+    GTEST_DISCOVER_TESTS(test_tradeskill_combat_panels DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T419 Leg A (board B335): the tradeskill recipe list -- the packet decode,
@@ -283,7 +298,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_recipe_list PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_recipe_list GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_recipe_list)
+    GTEST_DISCOVER_TESTS(test_recipe_list DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T421 Leg A (board B298, item half): the item display window -- the text
@@ -298,7 +313,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     # T429 (board B390): the composer reads its formats out of the shipped db.
     TARGET_COMPILE_DEFINITIONS(test_item_display PRIVATE
         WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
-    GTEST_DISCOVER_TESTS(test_item_display)
+    GTEST_DISCOVER_TESTS(test_item_display DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T425 Leg A (board B298, spell half): the spell display window -- the text
@@ -313,7 +328,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     # T429 (board B390): the composer reads its formats out of the shipped db.
     TARGET_COMPILE_DEFINITIONS(test_spell_display PRIVATE
         WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
-    GTEST_DISCOVER_TESTS(test_spell_display)
+    GTEST_DISCOVER_TESTS(test_spell_display DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T429 Leg A (board B390): the two display composers take their format strings
@@ -327,7 +342,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_display_text_from_db GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_display_text_from_db PRIVATE
         WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
-    GTEST_DISCOVER_TESTS(test_display_text_from_db)
+    GTEST_DISCOVER_TESTS(test_display_text_from_db DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T436 (board B429): the merchant window, the bank window and the cursor
@@ -342,7 +357,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_merchant_bank_cursor PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_merchant_bank_cursor GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_merchant_bank_cursor)
+    GTEST_DISCOVER_TESTS(test_merchant_bank_cursor DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T439 (boards B432/B444/B434): the T434/T436 residue -- the absolute volume
@@ -357,7 +372,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_options_merchant_residue PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_options_merchant_residue GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_options_merchant_residue)
+    GTEST_DISCOVER_TESTS(test_options_merchant_residue DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T442 (boards B450/B451/B452): three dead renderer/UI members, deleted. Every
@@ -370,7 +385,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_dead_renderer_members PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_dead_renderer_members GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_dead_renderer_members)
+    GTEST_DISCOVER_TESTS(test_dead_renderer_members DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T443 (board B454): ESC on a server-owned window sends its close intent
@@ -382,7 +397,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_esc_server_owned_windows PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_esc_server_owned_windows GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_esc_server_owned_windows)
+    GTEST_DISCOVER_TESTS(test_esc_server_owned_windows DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T443 (board B453): /dumpscene's unaccounted count, against a hand-built
@@ -393,7 +408,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_scene_node_census PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_scene_node_census GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_scene_node_census)
+    GTEST_DISCOVER_TESTS(test_scene_node_census DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T421 Leg B (board B365): the ONE text-entry widget, and the tradeskill
@@ -404,7 +419,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_search_entry PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_search_entry GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_search_entry)
+    GTEST_DISCOVER_TESTS(test_search_entry DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T419 Leg B (board B352): the pet command grid. Header-only geometry, so it
@@ -416,7 +431,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_pet_buttons PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_pet_buttons GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_pet_buttons)
+    GTEST_DISCOVER_TESTS(test_pet_buttons DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T413 (board B285): the software cursor's cache name vs the pack's entry name.
@@ -428,7 +443,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_software_cursor_pack_name GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_software_cursor_pack_name PRIVATE
         WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
-    GTEST_DISCOVER_TESTS(test_software_cursor_pack_name)
+    GTEST_DISCOVER_TESTS(test_software_cursor_pack_name DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T413 (board B296): the bridge payload fields nothing drew. Pure state +
@@ -439,7 +454,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_bridge_payload_fields PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_bridge_payload_fields GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_bridge_payload_fields)
+    GTEST_DISCOVER_TESTS(test_bridge_payload_fields DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T275: pixel-level assertions on the ATLAS-backed UIRenderer path (a real
@@ -453,7 +468,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_ui_atlas_pixels PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_ui_atlas_pixels GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_ui_atlas_pixels)
+    GTEST_DISCOVER_TESTS(test_ui_atlas_pixels DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T313: the static UI's missing scroll INPUT -- chat scrollback, the skills
@@ -470,7 +485,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_static_ui_scroll GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_static_ui_scroll PRIVATE
         WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
-    GTEST_DISCOVER_TESTS(test_static_ui_scroll)
+    GTEST_DISCOVER_TESTS(test_static_ui_scroll DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T279: pixel proof for the EQE1 ALPHA COMPANION mip filter. Builds synthetic
@@ -483,7 +498,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_eqe1_alpha_companion_mip PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_eqe1_alpha_companion_mip GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_eqe1_alpha_companion_mip)
+    GTEST_DISCOVER_TESTS(test_eqe1_alpha_companion_mip DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T411 (board B261/B287): pixel proof that the ETC1 `_alpha` companion reaches
@@ -498,7 +513,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_alpha_blend_companion PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_alpha_blend_companion GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_alpha_blend_companion)
+    GTEST_DISCOVER_TESTS(test_alpha_blend_companion DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T417 (board B300): pixel proof that the SECOND particle sheet -- the spell
@@ -511,7 +526,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_spell_sprite_sheet_draw PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_spell_sprite_sheet_draw GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_spell_sprite_sheet_draw)
+    GTEST_DISCOVER_TESTS(test_spell_sprite_sheet_draw DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T156: /useskill + the hotbar/skills-popup intent producers. Same graphics
@@ -525,7 +540,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_skill_reachability PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_skill_reachability GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_skill_reachability)
+    GTEST_DISCOVER_TESTS(test_skill_reachability DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T272: the spellbook popup's click -> MemorizeSpellIntent -> SpellManager
@@ -540,7 +555,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_COMPILE_DEFINITIONS(test_spellbook_memorize PRIVATE WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
     TARGET_INCLUDE_DIRECTORIES(test_spellbook_memorize PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_spellbook_memorize GTest::gtest willeq_core)
-    GTEST_DISCOVER_TESTS(test_spellbook_memorize)
+    GTEST_DISCOVER_TESTS(test_spellbook_memorize DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T277: clicking a buff off the buff bar. Geometry (hitTestBuffBar), the
@@ -555,7 +570,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_COMPILE_DEFINITIONS(test_buff_click_off PRIVATE WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
     TARGET_INCLUDE_DIRECTORIES(test_buff_click_off PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_buff_click_off GTest::gtest willeq_core)
-    GTEST_DISCOVER_TESTS(test_buff_click_off)
+    GTEST_DISCOVER_TESTS(test_buff_click_off DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T290: the loot window, restored. The four bridge-arm bodies (applyLoot*),
@@ -569,7 +584,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_loot_panel PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_loot_panel GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_loot_panel)
+    GTEST_DISCOVER_TESTS(test_loot_panel DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T424 (board B351): the UI sprite roster -- the enum, the JSON name map, the
@@ -582,4 +597,4 @@ ADD_EXECUTABLE(test_ui_sprite_roster
 TARGET_COMPILE_DEFINITIONS(test_ui_sprite_roster PRIVATE
     WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 TARGET_LINK_LIBRARIES(test_ui_sprite_roster GTest::gtest_main willeq_core)
-GTEST_DISCOVER_TESTS(test_ui_sprite_roster)
+GTEST_DISCOVER_TESTS(test_ui_sprite_roster DISCOVERY_TIMEOUT 120)

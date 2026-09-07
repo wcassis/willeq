@@ -169,8 +169,6 @@ void WilleqDatabase::close() {
     fin(stmtGetString_);
     fin(stmtGetDbString_);
     fin(stmtGetItemModel_);
-    fin(stmtGetAsset_);
-    fin(stmtGetAssetsInArchive_);
     fin(stmtGetRaceModel_);
     fin(stmtGetRaceModelByCode_);
     fin(stmtGetSoundAsset_);
@@ -539,66 +537,6 @@ int32_t WilleqDatabase::getItemModel(uint32_t itemId) {
     if (sqlite3_step(stmt) == SQLITE_ROW)
         return sqlite3_column_int(stmt, 0);
     return -1;
-}
-
-// ============================================================================
-// S3D asset queries
-// ============================================================================
-
-AssetLocation WilleqDatabase::getAssetLocation(const std::string& assetName) {
-    ScopedQueryTimer timer(stats_);
-    std::lock_guard<std::mutex> lock(dbMutex_);
-    AssetLocation loc;
-    if (!db_) return loc;
-
-    auto* stmt = prepare(
-        "SELECT archive, block_offset, compressed_size, uncompressed_size "
-        "FROM s3d_assets WHERE name=?",
-        stmtGetAsset_);
-    if (!stmt) return loc;
-
-    sqlite3_reset(stmt);
-    sqlite3_bind_text(stmt, 1, assetName.c_str(), -1, SQLITE_TRANSIENT);
-
-    if (sqlite3_step(stmt) == SQLITE_ROW) {
-        loc.found = true;
-        loc.name = assetName;
-        loc.archive = colText(stmt, 0);
-        loc.blockOffset = sqlite3_column_int(stmt, 1);
-        loc.compressedSize = sqlite3_column_int(stmt, 2);
-        loc.uncompressedSize = sqlite3_column_int(stmt, 3);
-    }
-
-    return loc;
-}
-
-std::vector<AssetLocation> WilleqDatabase::getAssetsInArchive(const std::string& archiveName) {
-    ScopedQueryTimer timer(stats_);
-    std::lock_guard<std::mutex> lock(dbMutex_);
-    std::vector<AssetLocation> results;
-    if (!db_) return results;
-
-    auto* stmt = prepare(
-        "SELECT name, block_offset, compressed_size, uncompressed_size "
-        "FROM s3d_assets WHERE archive=?",
-        stmtGetAssetsInArchive_);
-    if (!stmt) return results;
-
-    sqlite3_reset(stmt);
-    sqlite3_bind_text(stmt, 1, archiveName.c_str(), -1, SQLITE_TRANSIENT);
-
-    while (sqlite3_step(stmt) == SQLITE_ROW) {
-        AssetLocation loc;
-        loc.found = true;
-        loc.name = colText(stmt, 0);
-        loc.archive = archiveName;
-        loc.blockOffset = sqlite3_column_int(stmt, 1);
-        loc.compressedSize = sqlite3_column_int(stmt, 2);
-        loc.uncompressedSize = sqlite3_column_int(stmt, 3);
-        results.push_back(std::move(loc));
-    }
-
-    return results;
 }
 
 // ============================================================================

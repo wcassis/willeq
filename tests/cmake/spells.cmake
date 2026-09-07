@@ -37,7 +37,7 @@ ENDIF()
 # while the two genuinely slowest binaries (test_zoning_graphics_integration
 # and test_beneficial_spell_casting, 0.21s) were never in the set. All 112
 # discovery calls in this file now behave identically.
-GTEST_DISCOVER_TESTS(test_spell_manager)
+GTEST_DISCOVER_TESTS(test_spell_manager DISCOVERY_TIMEOUT 120)
 
 # T314: the two hand-rolled body-type tables in src/client/spell/ are gone --
 # creature-restricted spells go through one shared predicate. Headless (no DB,
@@ -56,7 +56,7 @@ TARGET_LINK_LIBRARIES(test_spell_body_type_targeting GTest::gtest_main willeq_co
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_spell_body_type_targeting PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_spell_body_type_targeting)
+GTEST_DISCOVER_TESTS(test_spell_body_type_targeting DISCOVERY_TIMEOUT 120)
 
 ADD_EXECUTABLE(test_spell_manager_timing
     test_spell_manager_timing.cpp
@@ -65,7 +65,7 @@ TARGET_LINK_LIBRARIES(test_spell_manager_timing GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_spell_manager_timing PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_spell_manager_timing)
+GTEST_DISCOVER_TESTS(test_spell_manager_timing DISCOVERY_TIMEOUT 120)
 
 # T24: BuffManager coverage. BuffManager is constructible standalone from a
 # SpellDatabase* (buff_manager.h:99) with no EverQuest at all -- the
@@ -80,7 +80,7 @@ ADD_EXECUTABLE(test_buff_manager
 )
 TARGET_COMPILE_DEFINITIONS(test_buff_manager PRIVATE WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
 TARGET_LINK_LIBRARIES(test_buff_manager GTest::gtest_main ${FMT_LIB} dl)
-GTEST_DISCOVER_TESTS(test_buff_manager)
+GTEST_DISCOVER_TESTS(test_buff_manager DISCOVERY_TIMEOUT 120)
 
 # T348 (board B055): the buff-LANDING producer. eqemu never sends a Titanium
 # client an "applied" OP_Buff, so ZoneProcessBuff()'s apply branch -- the only
@@ -99,7 +99,7 @@ TARGET_LINK_LIBRARIES(test_buff_landing_producer GTest::gtest willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_buff_landing_producer PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_buff_landing_producer)
+GTEST_DISCOVER_TESTS(test_buff_landing_producer DISCOVERY_TIMEOUT 120)
 
 # T395 Leg A (board B204): the spell impact visual, wire to particle. The
 # producer half needs a real EverQuest + dispatch (willeq_core); the worker
@@ -114,7 +114,7 @@ TARGET_LINK_LIBRARIES(test_spell_impact_visual GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_spell_impact_visual PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_spell_impact_visual)
+GTEST_DISCOVER_TESTS(test_spell_impact_visual DISCOVERY_TIMEOUT 120)
 
 # T422 (board B226/B356/B370): the impact and spellComplete burst parameters
 # pinned against the official client measured live at 30 fps in T422.  Reads
@@ -128,7 +128,7 @@ TARGET_LINK_LIBRARIES(test_spell_burst_oracle_match GTest::gtest_main willeq_cor
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_spell_burst_oracle_match PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_spell_burst_oracle_match)
+GTEST_DISCOVER_TESTS(test_spell_burst_oracle_match DISCOVERY_TIMEOUT 120)
 
 # T395 Leg B (board B205): eqemu say-links in server chat text. The helper
 # plus the two consumers that print server-authored lines (OP_SpecialMesg and
@@ -140,7 +140,7 @@ TARGET_LINK_LIBRARIES(test_say_link_text GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_say_link_text PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_say_link_text)
+GTEST_DISCOVER_TESTS(test_say_link_text DISCOVERY_TIMEOUT 120)
 
 # T397 Leg B (board B220): removal of spell particle effects by entity. The
 # command under test is drained from a real ParticleManager and fed to a real
@@ -153,7 +153,7 @@ TARGET_LINK_LIBRARIES(test_spell_effect_removal GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_spell_effect_removal PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_spell_effect_removal)
+GTEST_DISCOVER_TESTS(test_spell_effect_removal DISCOVERY_TIMEOUT 120)
 
 # T426 Leg C (board B400): the caster's own landing must survive the SECOND
 # OP_Action eqemu sends it for its own cast. Real SpellVisualFX (EDT_NULL
@@ -165,7 +165,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_caster_own_landing PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_caster_own_landing GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_caster_own_landing)
+    GTEST_DISCOVER_TESTS(test_caster_own_landing DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T389 Leg B (board B162): the spells.eff sprite name -> particle-atlas tile
@@ -187,7 +187,7 @@ TARGET_LINK_LIBRARIES(test_spell_target_stage_textures GTest::gtest_main ${FMT_L
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_spell_target_stage_textures PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_spell_target_stage_textures)
+GTEST_DISCOVER_TESTS(test_spell_target_stage_textures DISCOVERY_TIMEOUT 120)
 
 # T441 (boards B398, B397): where the official client's per-spell colour comes
 # from (spells_us.txt field 123 -> spells.eff record -> the stage's sprite
@@ -207,4 +207,4 @@ TARGET_LINK_LIBRARIES(test_spell_colour_and_overrides GTest::gtest_main ${FMT_LI
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_spell_colour_and_overrides PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_spell_colour_and_overrides)
+GTEST_DISCOVER_TESTS(test_spell_colour_and_overrides DISCOVERY_TIMEOUT 120)

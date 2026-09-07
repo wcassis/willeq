@@ -10,7 +10,7 @@ ADD_EXECUTABLE(test_strings
     ${CMAKE_SOURCE_DIR}/src/common/util/strings.cpp
 )
 TARGET_LINK_LIBRARIES(test_strings GTest::gtest_main ${FMT_LIB})
-GTEST_DISCOVER_TESTS(test_strings)
+GTEST_DISCOVER_TESTS(test_strings DISCOVERY_TIMEOUT 120)
 
 # Test compression
 ADD_EXECUTABLE(test_compression
@@ -18,7 +18,7 @@ ADD_EXECUTABLE(test_compression
     ${CMAKE_SOURCE_DIR}/src/common/util/compression.cpp
 )
 TARGET_LINK_LIBRARIES(test_compression GTest::gtest_main ${ZLIB_LIBRARIES})
-GTEST_DISCOVER_TESTS(test_compression)
+GTEST_DISCOVER_TESTS(test_compression DISCOVERY_TIMEOUT 120)
 
 # Test CRC32
 ADD_EXECUTABLE(test_crc32
@@ -26,7 +26,7 @@ ADD_EXECUTABLE(test_crc32
     ${CMAKE_SOURCE_DIR}/src/common/net/crc32.cpp
 )
 TARGET_LINK_LIBRARIES(test_crc32 GTest::gtest_main)
-GTEST_DISCOVER_TESTS(test_crc32)
+GTEST_DISCOVER_TESTS(test_crc32 DISCOVERY_TIMEOUT 120)
 
 # P49: DRM mode-selection decision logic (docker/irrlicht-drm/
 # drm_mode_select.h) -- pure, header-only, no libdrm/gbm/EGL/Irrlicht
@@ -38,7 +38,7 @@ ADD_EXECUTABLE(test_drm_mode_select
 )
 TARGET_INCLUDE_DIRECTORIES(test_drm_mode_select PRIVATE ${CMAKE_SOURCE_DIR})
 TARGET_LINK_LIBRARIES(test_drm_mode_select GTest::gtest_main)
-GTEST_DISCOVER_TESTS(test_drm_mode_select)
+GTEST_DISCOVER_TESTS(test_drm_mode_select DISCOVERY_TIMEOUT 120)
 
 # Test packet serialization - packet.cpp uses fmt
 ADD_EXECUTABLE(test_packet
@@ -46,7 +46,7 @@ ADD_EXECUTABLE(test_packet
     ${CMAKE_SOURCE_DIR}/src/common/net/packet.cpp
 )
 TARGET_LINK_LIBRARIES(test_packet GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB})
-GTEST_DISCOVER_TESTS(test_packet)
+GTEST_DISCOVER_TESTS(test_packet DISCOVERY_TIMEOUT 120)
 
 # Test position utilities
 ADD_EXECUTABLE(test_position
@@ -54,7 +54,7 @@ ADD_EXECUTABLE(test_position
     ${CMAKE_SOURCE_DIR}/src/client/position.cpp
 )
 TARGET_LINK_LIBRARIES(test_position GTest::gtest_main ${FMT_LIB})
-GTEST_DISCOVER_TESTS(test_position)
+GTEST_DISCOVER_TESTS(test_position DISCOVERY_TIMEOUT 120)
 
 # Test data verification
 ADD_EXECUTABLE(test_data_verification
@@ -62,7 +62,7 @@ ADD_EXECUTABLE(test_data_verification
     ${CMAKE_SOURCE_DIR}/src/common/util/data_verification.cpp
 )
 TARGET_LINK_LIBRARIES(test_data_verification GTest::gtest_main)
-GTEST_DISCOVER_TESTS(test_data_verification)
+GTEST_DISCOVER_TESTS(test_data_verification DISCOVERY_TIMEOUT 120)
 
 # Test UDP transport
 ADD_EXECUTABLE(test_udp_transport
@@ -70,7 +70,7 @@ ADD_EXECUTABLE(test_udp_transport
     ${CMAKE_SOURCE_DIR}/src/common/net/posix_udp_transport.cpp
 )
 TARGET_LINK_LIBRARIES(test_udp_transport GTest::gtest_main ${FMT_LIB})
-GTEST_DISCOVER_TESTS(test_udp_transport)
+GTEST_DISCOVER_TESTS(test_udp_transport DISCOVERY_TIMEOUT 120)
 
 # Test random
 ADD_EXECUTABLE(test_random
@@ -78,7 +78,7 @@ ADD_EXECUTABLE(test_random
     ${CMAKE_SOURCE_DIR}/src/common/util/random.cpp
 )
 TARGET_LINK_LIBRARIES(test_random GTest::gtest_main)
-GTEST_DISCOVER_TESTS(test_random)
+GTEST_DISCOVER_TESTS(test_random DISCOVERY_TIMEOUT 120)
 
 # T410 (board B138/B139): the scenario lane's state machines.
 # Links the scenario TUs directly -- NOT willeq_core -- because the whole
@@ -95,14 +95,14 @@ ADD_EXECUTABLE(test_scenario_state_machines
 )
 TARGET_INCLUDE_DIRECTORIES(test_scenario_state_machines PRIVATE ${CMAKE_SOURCE_DIR}/include)
 TARGET_LINK_LIBRARIES(test_scenario_state_machines GTest::gtest_main)
-GTEST_DISCOVER_TESTS(test_scenario_state_machines)
+GTEST_DISCOVER_TESTS(test_scenario_state_machines DISCOVERY_TIMEOUT 120)
 
 # Test logging infrastructure
 ADD_EXECUTABLE(test_logging
     test_logging.cpp
 )
 TARGET_LINK_LIBRARIES(test_logging GTest::gtest_main ${FMT_LIB})
-GTEST_DISCOVER_TESTS(test_logging)
+GTEST_DISCOVER_TESTS(test_logging DISCOVERY_TIMEOUT 120)
 
 # G04: the startup-ORDER net for Application::initialize().
 # Pure text parse of src/client/application.cpp (WILLEQ_REPO_ROOT, set
@@ -116,7 +116,7 @@ ADD_EXECUTABLE(test_application_init_order
     test_application_init_order.cpp
 )
 TARGET_LINK_LIBRARIES(test_application_init_order GTest::gtest_main)
-GTEST_DISCOVER_TESTS(test_application_init_order)
+GTEST_DISCOVER_TESTS(test_application_init_order DISCOVERY_TIMEOUT 120)
 
 # G05: the render-PASS-ORDER net for FrameComponent::processFrameRender().
 # Pure text parse of src/client/graphics/frame/renderer_frame_render.cpp
@@ -131,7 +131,7 @@ ADD_EXECUTABLE(test_frame_render_order
     test_frame_render_order.cpp
 )
 TARGET_LINK_LIBRARIES(test_frame_render_order GTest::gtest_main)
-GTEST_DISCOVER_TESTS(test_frame_render_order)
+GTEST_DISCOVER_TESTS(test_frame_render_order DISCOVERY_TIMEOUT 120)
 
 # G06: the same idiom for the player's per-frame movement order. A pure text
 # parse of src/client/graphics/player/renderer_player_physics.cpp against
@@ -145,7 +145,7 @@ ADD_EXECUTABLE(test_movement_order
     test_movement_order.cpp
 )
 TARGET_LINK_LIBRARIES(test_movement_order GTest::gtest_main)
-GTEST_DISCOVER_TESTS(test_movement_order)
+GTEST_DISCOVER_TESTS(test_movement_order DISCOVERY_TIMEOUT 120)
 
 # T397 Leg A (board B221): eqt::ResolveDataPath() plus the consumer that made
 # it necessary -- SpellEffectsConfig::load("config/spell_effects.json"), whose
@@ -160,7 +160,7 @@ TARGET_LINK_LIBRARIES(test_data_paths GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_data_paths PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_data_paths)
+GTEST_DISCOVER_TESTS(test_data_paths DISCOVERY_TIMEOUT 120)
 
 # T399 (board B235): the census as a test. A source reader -- it opens the
 # client sources at WILLEQ_REPO_ROOT and fails on any shipped-data literal that
@@ -170,7 +170,7 @@ ADD_EXECUTABLE(test_data_path_routing
     test_data_path_routing.cpp
 )
 TARGET_LINK_LIBRARIES(test_data_path_routing GTest::gtest_main)
-GTEST_DISCOVER_TESTS(test_data_path_routing)
+GTEST_DISCOVER_TESTS(test_data_path_routing DISCOVERY_TIMEOUT 120)
 
 # T414 Leg A (board B297): the KEY-level companion to
 # DataPathRouting.EveryShippedConfigFileIsNamedByCode. It walks every key in
@@ -185,4 +185,4 @@ TARGET_LINK_LIBRARIES(test_config_key_reachability GTest::gtest_main willeq_core
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_config_key_reachability PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_config_key_reachability)
+GTEST_DISCOVER_TESTS(test_config_key_reachability DISCOVERY_TIMEOUT 120)

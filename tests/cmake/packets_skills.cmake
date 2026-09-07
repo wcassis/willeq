@@ -8,7 +8,7 @@
 # to real observed wire bytes rather than to sizeof(). See the header's docstring.
 ADD_EXECUTABLE(test_captured_packets test_captured_packets.cpp)
 TARGET_LINK_LIBRARIES(test_captured_packets GTest::gtest_main)
-GTEST_DISCOVER_TESTS(test_captured_packets)
+GTEST_DISCOVER_TESTS(test_captured_packets DISCOVERY_TIMEOUT 120)
 
 # T149: real-EverQuest/EqActionHandler coverage for the four tradeskill recipe
 # commands -- specifically that object_type is resolved from the OPEN
@@ -24,7 +24,7 @@ TARGET_LINK_LIBRARIES(test_eq_action_handler_tradeskill GTest::gtest_main willeq
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_eq_action_handler_tradeskill PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_eq_action_handler_tradeskill)
+GTEST_DISCOVER_TESTS(test_eq_action_handler_tradeskill DISCOVERY_TIMEOUT 120)
 
 # T316: the interact-world-object no-op. Drives T144's captured OP_GroundSpawn
 # bytes through a real EverQuest into EqActionHandler::findNearestWorldObject()
@@ -37,7 +37,7 @@ TARGET_LINK_LIBRARIES(test_interact_world_object GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_interact_world_object PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_interact_world_object)
+GTEST_DISCOVER_TESTS(test_interact_world_object DISCOVERY_TIMEOUT 120)
 
 # T230: keyboard hotbar Item route below the action layer --
 # EqActionHandler::findItemSlotByItemId (the id->slot hop) and
@@ -51,7 +51,7 @@ TARGET_LINK_LIBRARIES(test_eq_action_handler_hotbar_item GTest::gtest_main wille
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_eq_action_handler_hotbar_item PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_eq_action_handler_hotbar_item)
+GTEST_DISCOVER_TESTS(test_eq_action_handler_hotbar_item DISCOVERY_TIMEOUT 120)
 
 # T239: real-EverQuest coverage for the keyboard hotbar Emote/Macro/Combat
 # route below the action layer: EqActionHandler::activateHotbarCommandSlot
@@ -64,7 +64,7 @@ TARGET_LINK_LIBRARIES(test_eq_action_handler_hotbar_command GTest::gtest_main wi
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_eq_action_handler_hotbar_command PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_eq_action_handler_hotbar_command)
+GTEST_DISCOVER_TESTS(test_eq_action_handler_hotbar_command DISCOVERY_TIMEOUT 120)
 
 # T152: the two skill-opcode bodies this client had to build from scratch
 # (OP_Disarm, OP_PickPocket), pinned field-by-field at named offsets against
@@ -74,7 +74,7 @@ GTEST_DISCOVER_TESTS(test_eq_action_handler_hotbar_command)
 ADD_EXECUTABLE(test_skill_packet_bodies test_skill_packet_bodies.cpp)
 TARGET_LINK_LIBRARIES(test_skill_packet_bodies GTest::gtest_main)
 TARGET_INCLUDE_DIRECTORIES(test_skill_packet_bodies PRIVATE ${CMAKE_SOURCE_DIR}/include)
-GTEST_DISCOVER_TESTS(test_skill_packet_bodies)
+GTEST_DISCOVER_TESTS(test_skill_packet_bodies DISCOVERY_TIMEOUT 120)
 
 # T159: the skill possession gate and the real per-class cap table behind it.
 # Loads the SHIPPED config/skill_caps.json by path (WILLEQ_REPO_ROOT) -- the
@@ -89,7 +89,7 @@ TARGET_LINK_LIBRARIES(test_skill_possession_gate GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_skill_possession_gate PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_skill_possession_gate)
+GTEST_DISCOVER_TESTS(test_skill_possession_gate DISCOVERY_TIMEOUT 120)
 
 # T317: the two skill gates that were not gates -- checkCombatRequirement()
 # substituted "has a target" for "in combat", and checkPositionRequirement()
@@ -102,7 +102,7 @@ TARGET_LINK_LIBRARIES(test_skill_gates GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_skill_gates PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_skill_gates)
+GTEST_DISCOVER_TESTS(test_skill_gates DISCOVERY_TIMEOUT 120)
 
 # T317: the guild opcodes' rank fields, and where the player's real rank lives
 ADD_EXECUTABLE(test_guild_wire_rank
@@ -112,7 +112,7 @@ TARGET_LINK_LIBRARIES(test_guild_wire_rank GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_guild_wire_rank PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_guild_wire_rank)
+GTEST_DISCOVER_TESTS(test_guild_wire_rank DISCOVERY_TIMEOUT 120)
 
 # K01 (Batch K): the extracted eqt::guild::GuildComponent, driven directly
 ADD_EXECUTABLE(test_guild_component
@@ -122,7 +122,7 @@ TARGET_LINK_LIBRARIES(test_guild_component GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_guild_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_guild_component)
+GTEST_DISCOVER_TESTS(test_guild_component DISCOVERY_TIMEOUT 120)
 
 # T162: the commands that emitted a skill opcode without passing T159's gate
 ADD_EXECUTABLE(test_skill_gate_bypasses
@@ -132,7 +132,7 @@ TARGET_LINK_LIBRARIES(test_skill_gate_bypasses GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_skill_gate_bypasses PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_skill_gate_bypasses)
+GTEST_DISCOVER_TESTS(test_skill_gate_bypasses DISCOVERY_TIMEOUT 120)
 
 # T301 Leg B: the first-person eye is inside the head and derived per race
 # from the mesh. Pure-geometry parts need nothing; the shipped-mesh parts use
@@ -147,7 +147,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_first_person_eye_anatomy GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_first_person_eye_anatomy PRIVATE
         WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
-    GTEST_DISCOVER_TESTS(test_first_person_eye_anatomy)
+    GTEST_DISCOVER_TESTS(test_first_person_eye_anatomy DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T318: shrink/grow/illusion reach the renderer (wire -> event -> node scale),
@@ -162,7 +162,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_COMPILE_DEFINITIONS(test_entity_size_change PRIVATE
         WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}"
         WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
-    GTEST_DISCOVER_TESTS(test_entity_size_change)
+    GTEST_DISCOVER_TESTS(test_entity_size_change DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T310 Leg B: collisionZOffset is the origin-to-feet distance, not half the
@@ -176,7 +176,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_entity_collision_z_offset GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_entity_collision_z_offset PRIVATE
         WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
-    GTEST_DISCOVER_TESTS(test_entity_collision_z_offset)
+    GTEST_DISCOVER_TESTS(test_entity_collision_z_offset DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T320: OP_GroupUpdate carries TWO structs of the SAME 452-byte size --
@@ -194,7 +194,7 @@ TARGET_LINK_LIBRARIES(test_group_packet_shapes GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_group_packet_shapes PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_group_packet_shapes)
+GTEST_DISCOVER_TESTS(test_group_packet_shapes DISCOVERY_TIMEOUT 120)
 
 # K04 (Batch K): the extracted eqt::group::GroupComponent, driven directly
 ADD_EXECUTABLE(test_group_component
@@ -204,7 +204,7 @@ TARGET_LINK_LIBRARIES(test_group_component GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_group_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_group_component)
+GTEST_DISCOVER_TESTS(test_group_component DISCOVERY_TIMEOUT 120)
 
 # K07 (Batch K): the extracted eqt::movement::MovementComponent, driven directly
 ADD_EXECUTABLE(test_movement_component
@@ -214,7 +214,7 @@ TARGET_LINK_LIBRARIES(test_movement_component GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_movement_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_movement_component)
+GTEST_DISCOVER_TESTS(test_movement_component DISCOVERY_TIMEOUT 120)
 
 # T343 (B032): EqActionHandler::stopAllMovement() after the game-side
 # keyboard-movement cluster was deleted -- /stop must clear the movement target
@@ -226,7 +226,7 @@ TARGET_LINK_LIBRARIES(test_stop_all_movement GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_stop_all_movement PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_stop_all_movement)
+GTEST_DISCOVER_TESTS(test_stop_all_movement DISCOVERY_TIMEOUT 120)
 
 # T443 (board B418): OP_GuildsList parsed into a guild-id -> name lookup.
 # Device-free, database-free; the census cases run against the pre-fix tree.
@@ -237,7 +237,7 @@ TARGET_LINK_LIBRARIES(test_guild_name_table GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_guild_name_table PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_guild_name_table)
+GTEST_DISCOVER_TESTS(test_guild_name_table DISCOVERY_TIMEOUT 120)
 
 # K10 (Batch K): the extracted eqt::login_world::LoginWorldComponent, driven
 # directly through EverQuest::LoginWorld().
@@ -248,7 +248,7 @@ TARGET_LINK_LIBRARIES(test_login_world_component GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_login_world_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_login_world_component)
+GTEST_DISCOVER_TESTS(test_login_world_component DISCOVERY_TIMEOUT 120)
 # K08 (Batch K): the extracted eqt::player::PlayerComponent, driven directly,
 # plus the cut -- the player-state facade that stayed on EverQuest.
 ADD_EXECUTABLE(test_player_component
@@ -258,7 +258,7 @@ TARGET_LINK_LIBRARIES(test_player_component GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_player_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_player_component)
+GTEST_DISCOVER_TESTS(test_player_component DISCOVERY_TIMEOUT 120)
 
 # K09 (Batch K): the extracted eqt::zone::ZoneComponent, driven directly --
 # the accessor identity, the moved handshake/zone-out state and its seams, and
@@ -270,7 +270,7 @@ TARGET_LINK_LIBRARIES(test_zone_component GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_zone_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_zone_component)
+GTEST_DISCOVER_TESTS(test_zone_component DISCOVERY_TIMEOUT 120)
 
 # G01 (Batch G): the opcode-coverage net for the DispatchZonePacket table --
 # the golden list of every case label the pre-G01 switch had, asserted against
@@ -282,7 +282,7 @@ TARGET_LINK_LIBRARIES(test_zone_dispatch_table GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_zone_dispatch_table PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_zone_dispatch_table)
+GTEST_DISCOVER_TESTS(test_zone_dispatch_table DISCOVERY_TIMEOUT 120)
 
 # K11 (Batch K): the extracted eqt::bridge::BridgeComponent, driven directly --
 # the accessor identity, the FIVE sanctioned lifecycle forwarders that stayed
@@ -294,7 +294,7 @@ TARGET_LINK_LIBRARIES(test_bridge_component GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_bridge_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_bridge_component)
+GTEST_DISCOVER_TESTS(test_bridge_component DISCOVERY_TIMEOUT 120)
 
 # K16 (board B006): EverQuest::InitGraphics takes EQT::Graphics::IZoneLoadSurface*,
 # the two-method zone-load surface, instead of a concrete IrrlichtRenderer*.
@@ -309,7 +309,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_zone_load_surface PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_zone_load_surface GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_zone_load_surface)
+    GTEST_DISCOVER_TESTS(test_zone_load_surface DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T320 (Leg C): one chat-channel name table. eq_chat.cpp built the name twice
@@ -326,7 +326,7 @@ TARGET_LINK_LIBRARIES(test_chat_component GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_chat_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_chat_component)
+GTEST_DISCOVER_TESTS(test_chat_component DISCOVERY_TIMEOUT 120)
 
 # K05 (Batch K): the extracted eqt::merchant::MerchantComponent, driven
 # directly -- construction, the ClientContext binding, the one member that
@@ -338,7 +338,7 @@ TARGET_LINK_LIBRARIES(test_merchant_component GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_merchant_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_merchant_component)
+GTEST_DISCOVER_TESTS(test_merchant_component DISCOVERY_TIMEOUT 120)
 
 ADD_EXECUTABLE(test_chat_channel_names
     test_chat_channel_names.cpp
@@ -347,7 +347,7 @@ TARGET_LINK_LIBRARIES(test_chat_channel_names GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_chat_channel_names PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_chat_channel_names)
+GTEST_DISCOVER_TESTS(test_chat_channel_names DISCOVERY_TIMEOUT 120)
 
 # T429 Leg B (board B298 entity half, board B390): the /con line, composed
 # from the shipped eqstr table. Free composer -- no server, no device.
@@ -360,4 +360,4 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 TARGET_COMPILE_DEFINITIONS(test_consider_text PRIVATE
     WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
-GTEST_DISCOVER_TESTS(test_consider_text)
+GTEST_DISCOVER_TESTS(test_consider_text DISCOVERY_TIMEOUT 120)

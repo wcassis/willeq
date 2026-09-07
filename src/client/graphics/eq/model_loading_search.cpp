@@ -490,7 +490,9 @@ RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
     }
 
     stats.armorTextureBytes = sumMapBytes(armorTextureCache_);
-    stats.armorTextureCount = armorTextureIndex_.size();
+    // T452: was armorTextureIndex_.size(), a map with no writer at all --
+    // it always read 0. The cache is what actually holds armor textures.
+    stats.armorTextureCount = armorTextureCache_.size();
     stats.zoneTextureBytes = sumMapBytes(zoneTextures_);
 
     {

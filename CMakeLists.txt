@@ -1536,17 +1536,10 @@ IF(EQT_GRAPHICS)
         )
     ENDIF()
 
-    # S3D Index Builder tool (offline asset index generation)
-    ADD_EXECUTABLE(s3d_index_builder
-        tools/s3d_index_builder.cpp
-    )
-    TARGET_INCLUDE_DIRECTORIES(s3d_index_builder PRIVATE
-        ${CMAKE_SOURCE_DIR}/include
-        ${ZLIB_INCLUDE_DIRS}
-    )
-    TARGET_LINK_LIBRARIES(s3d_index_builder
-        ${ZLIB_LIBRARIES}
-    )
+    # T452 (board B468): s3d_index_builder was here. It wrote s3d_index.json,
+    # whose only consumer was willeq_db_builder --s3d-index (deleted with it),
+    # and s3d_index.bin, which no runtime code has ever read. Nothing produced
+    # or consumed either file in any script, CMake rule or test.
 
     ADD_EXECUTABLE(zone_atlas_builder
         tools/zone_atlas_builder.cpp

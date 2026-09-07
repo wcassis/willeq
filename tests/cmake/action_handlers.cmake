@@ -21,7 +21,7 @@ TARGET_LINK_LIBRARIES(test_eq_action_handler_cast GTest::gtest willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_eq_action_handler_cast PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_eq_action_handler_cast)
+GTEST_DISCOVER_TESTS(test_eq_action_handler_cast DISCOVERY_TIMEOUT 120)
 
 # T234: the five transforms T93 listed but could not reach (targetSelf,
 # targetGroupMember, hailTarget, setMovementMode, setPositionState) pinned
@@ -36,7 +36,7 @@ TARGET_LINK_LIBRARIES(test_eq_action_handler_transforms_real GTest::gtest_main w
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_eq_action_handler_transforms_real PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_eq_action_handler_transforms_real)
+GTEST_DISCOVER_TESTS(test_eq_action_handler_transforms_real DISCOVERY_TIMEOUT 120)
 
 # T167: PlayerProfile appearance parse + the /appearance merge. Pins the seven
 # PlayerProfile offsets (verified against eqemu's titanium_structs.h) and the
@@ -50,7 +50,7 @@ TARGET_LINK_LIBRARIES(test_profile_appearance GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_profile_appearance PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_profile_appearance)
+GTEST_DISCOVER_TESTS(test_profile_appearance DISCOVERY_TIMEOUT 120)
 
 # T217: group-accept inviter name (the T99 aliasing bug) and the OP_GMHideMe
 # sender body (the T148 misroute). Headless EverQuest + TestBridge + the T88
@@ -62,7 +62,7 @@ TARGET_LINK_LIBRARIES(test_group_accept_gm_hideme GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_group_accept_gm_hideme PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_group_accept_gm_hideme)
+GTEST_DISCOVER_TESTS(test_group_accept_gm_hideme DISCOVERY_TIMEOUT 120)
 
 # T229: the two remaining T148 GM-sender defects -- SendGMSummon's zeroed
 # coordinates (eqemu READS them) and ZoneProcessGMFind's int32 decode of a
@@ -74,7 +74,7 @@ TARGET_LINK_LIBRARIES(test_gm_summon_find GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_gm_summon_find PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_gm_summon_find)
+GTEST_DISCOVER_TESTS(test_gm_summon_find DISCOVERY_TIMEOUT 120)
 
 # K02 (Batch K): the extracted eqt::gm::GmComponent, driven directly
 ADD_EXECUTABLE(test_gm_component
@@ -84,7 +84,7 @@ TARGET_LINK_LIBRARIES(test_gm_component GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_gm_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_gm_component)
+GTEST_DISCOVER_TESTS(test_gm_component DISCOVERY_TIMEOUT 120)
 
 # K12 (Batch K): the extracted eqt::commands::CommandsComponent (commands +
 # combat_actions), driven directly
@@ -95,7 +95,7 @@ TARGET_LINK_LIBRARIES(test_commands_component GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_commands_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_commands_component)
+GTEST_DISCOVER_TESTS(test_commands_component DISCOVERY_TIMEOUT 120)
 
 # K13 (Batch K): the three CONTEXT SERVICES -- eqt::ChatOutput,
 # eqt::PlayerFacade and eqt::PacketSender, driven directly.
@@ -105,7 +105,7 @@ FOREACH(k13svc test_chat_output test_player_facade test_packet_sender)
     IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         TARGET_INCLUDE_DIRECTORIES(${k13svc} PRIVATE ${IRRLICHT_INCLUDE_DIR})
     ENDIF()
-    GTEST_DISCOVER_TESTS(${k13svc})
+    GTEST_DISCOVER_TESTS(${k13svc} DISCOVERY_TIMEOUT 120)
 ENDFOREACH()
 
 # T404 Leg C (board B254): the OP_MemorizeSpell response's gem arms, which did
@@ -117,7 +117,7 @@ TARGET_LINK_LIBRARIES(test_memorize_into_occupied_gem GTest::gtest willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_memorize_into_occupied_gem PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_memorize_into_occupied_gem)
+GTEST_DISCOVER_TESTS(test_memorize_into_occupied_gem DISCOVERY_TIMEOUT 120)
 
 # T404 Leg B (board B251): the self entity row is a PROJECTION of the one
 # position store, and must follow both funnels that move the player.
@@ -126,7 +126,7 @@ TARGET_LINK_LIBRARIES(test_self_entity_position GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_self_entity_position PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_self_entity_position)
+GTEST_DISCOVER_TESTS(test_self_entity_position DISCOVERY_TIMEOUT 120)
 
 # K06 (Batch K): the extracted eqt::entities::EntitiesComponent, driven
 # directly
@@ -137,7 +137,7 @@ TARGET_LINK_LIBRARIES(test_entities_component GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_entities_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_entities_component)
+GTEST_DISCOVER_TESTS(test_entities_component DISCOVERY_TIMEOUT 120)
 
 # T374 Leg A (BOARD B136): pending door clicks cleared at zone change.
 ADD_EXECUTABLE(test_door_click_zone_reset
@@ -147,7 +147,7 @@ TARGET_LINK_LIBRARIES(test_door_click_zone_reset GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_door_click_zone_reset PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_door_click_zone_reset)
+GTEST_DISCOVER_TESTS(test_door_click_zone_reset DISCOVERY_TIMEOUT 120)
 
 # T435 Leg B (BOARD B428): the OP_MoveDoor action byte is only "open" or
 # "close" after invert_state is applied (eqemu zone/doors.cpp:37-40).
@@ -158,7 +158,7 @@ TARGET_LINK_LIBRARIES(test_door_invert_state GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_door_invert_state PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_door_invert_state)
+GTEST_DISCOVER_TESTS(test_door_invert_state DISCOVERY_TIMEOUT 120)
 
 # T435 Leg A (BOARD B425): doors have collision, and the map that carries it
 # finally has a writer.
@@ -168,7 +168,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_door_collision PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_door_collision GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_door_collision)
+    GTEST_DISCOVER_TESTS(test_door_collision DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T438 Leg C (BOARD B424): a discrete relocation cancels an in-flight jump.
@@ -176,7 +176,7 @@ ADD_EXECUTABLE(test_jump_relocation
     test_jump_relocation.cpp
 )
 TARGET_LINK_LIBRARIES(test_jump_relocation GTest::gtest_main willeq_core)
-GTEST_DISCOVER_TESTS(test_jump_relocation)
+GTEST_DISCOVER_TESTS(test_jump_relocation DISCOVERY_TIMEOUT 120)
 
 # T438 (BOARD B421/B422/B423): every door-motion constant, measured against the
 # official client, plus the lift cycle that plays them.
@@ -187,7 +187,7 @@ TARGET_LINK_LIBRARIES(test_door_motion GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_door_motion PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_door_motion)
+GTEST_DISCOVER_TESTS(test_door_motion DISCOVERY_TIMEOUT 120)
 
 # T437 (BOARD B435, B436): the ground query's honest answer shape, the two
 # decisions that read it, and HCMap::FindBestZ() against hand-built triangle
@@ -199,7 +199,7 @@ TARGET_LINK_LIBRARIES(test_ground_sentinels GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_ground_sentinels PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_ground_sentinels)
+GTEST_DISCOVER_TESTS(test_ground_sentinels DISCOVERY_TIMEOUT 120)
 
 # T376 Leg A (BOARD B140): the door / world-object click senders go out
 # through eqt::PacketSender (null-guard, T268 seam, session recorder).
@@ -210,7 +210,7 @@ TARGET_LINK_LIBRARIES(test_click_senders_packet_sender GTest::gtest_main willeq_
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_click_senders_packet_sender PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_click_senders_packet_sender)
+GTEST_DISCOVER_TESTS(test_click_senders_packet_sender DISCOVERY_TIMEOUT 120)
 
 # T379 (BOARD B146): the login-stream and world-stream senders go out through
 # eqt::PacketSender -- the R01 recorder and the T268 seam now see the client's
@@ -225,7 +225,7 @@ TARGET_COMPILE_DEFINITIONS(test_login_world_senders_packet_sender
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_login_world_senders_packet_sender PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_login_world_senders_packet_sender)
+GTEST_DISCOVER_TESTS(test_login_world_senders_packet_sender DISCOVERY_TIMEOUT 120)
 
 # T169: OP_RaidUpdate decoding -- the action codes against eqemu's
 # common/raid.h and the per-action body shapes (actions 8, 10, 14 and 30 do
@@ -238,7 +238,7 @@ TARGET_LINK_LIBRARIES(test_raid_update_decode GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_raid_update_decode PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_raid_update_decode)
+GTEST_DISCOVER_TESTS(test_raid_update_decode DISCOVERY_TIMEOUT 120)
 
 # T177: OP_Bind_Wound reply outcome mapping. Pure function, no network/graphics;
 # links only the single TU under test.
@@ -247,7 +247,7 @@ ADD_EXECUTABLE(test_bind_wound_outcome
     ${CMAKE_SOURCE_DIR}/src/client/bind_wound_outcome.cpp
 )
 TARGET_LINK_LIBRARIES(test_bind_wound_outcome GTest::gtest_main)
-GTEST_DISCOVER_TESTS(test_bind_wound_outcome)
+GTEST_DISCOVER_TESTS(test_bind_wound_outcome DISCOVERY_TIMEOUT 120)
 
 # T178: OP_WhoAllResponse %1 count substitution. Pure function, no deps.
 ADD_EXECUTABLE(test_who_format
@@ -255,7 +255,7 @@ ADD_EXECUTABLE(test_who_format
     ${CMAKE_SOURCE_DIR}/src/client/who_format.cpp
 )
 TARGET_LINK_LIBRARIES(test_who_format GTest::gtest_main)
-GTEST_DISCOVER_TESTS(test_who_format)
+GTEST_DISCOVER_TESTS(test_who_format DISCOVERY_TIMEOUT 120)
 
 # T224: OP_WhoAllResponse entry parsing/formatting (pure, who_response.cpp)
 # plus the handler end-to-end through the ReplayZonePacket seam, observed as
@@ -271,7 +271,7 @@ ENDIF()
 # the fixture opens the shipped db the way EverQuest::OpenDatabase() does.
 TARGET_COMPILE_DEFINITIONS(test_who_response PRIVATE
     WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
-GTEST_DISCOVER_TESTS(test_who_response)
+GTEST_DISCOVER_TESTS(test_who_response DISCOVERY_TIMEOUT 120)
 
 # T170: OP_InspectAnswer generation -- the field inversion between the request
 # and the answer (TargetID is the requester in an answer, the inspected player
@@ -283,7 +283,7 @@ TARGET_LINK_LIBRARIES(test_inspect_answer GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_inspect_answer PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_inspect_answer)
+GTEST_DISCOVER_TESTS(test_inspect_answer DISCOVERY_TIMEOUT 120)
 
 # T95: regression tests for the previously-unvalidated int->enum casts in
 # EqActionHandler::setMovementMode()/setPositionState()/sendPetCommand() --
@@ -299,7 +299,7 @@ TARGET_LINK_LIBRARIES(test_eq_action_handler_enum_guards GTest::gtest_main wille
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_eq_action_handler_enum_guards PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_eq_action_handler_enum_guards)
+GTEST_DISCOVER_TESTS(test_eq_action_handler_enum_guards DISCOVERY_TIMEOUT 120)
 
 # T103: regression tests proving EqActionHandler's trade methods
 # (requestTrade/acceptTrade/cancelTrade/declineTrade) read precondition/
@@ -313,7 +313,7 @@ TARGET_LINK_LIBRARIES(test_eq_action_handler_trade GTest::gtest_main willeq_core
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_eq_action_handler_trade PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_eq_action_handler_trade)
+GTEST_DISCOVER_TESTS(test_eq_action_handler_trade DISCOVERY_TIMEOUT 120)
 
 # T101: real-EqActionHandler coverage for the SpellManager-backed methods
 # the Spells+Pet migration added/repointed (beginCastFromGem(),
@@ -330,7 +330,7 @@ TARGET_LINK_LIBRARIES(test_eq_action_handler_spell_pet GTest::gtest_main willeq_
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_eq_action_handler_spell_pet PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_eq_action_handler_spell_pet)
+GTEST_DISCOVER_TESTS(test_eq_action_handler_spell_pet DISCOVERY_TIMEOUT 120)
 
 # T221 (Option A stage 2): every READ-model domain the GameStateSyncBridge
 # projection was the sole writer of (pet, spells, entity position/appearance,
@@ -349,7 +349,7 @@ TARGET_LINK_LIBRARIES(test_game_state_source_writes GTest::gtest_main willeq_cor
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_game_state_source_writes PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_game_state_source_writes)
+GTEST_DISCOVER_TESTS(test_game_state_source_writes DISCOVERY_TIMEOUT 120)
 
 # T288: position/heading, spawn id and zone identity have one store each.
 # Coherence assertions across the public EverQuest accessors and the state
@@ -362,7 +362,7 @@ TARGET_LINK_LIBRARIES(test_position_store_coherence GTest::gtest_main willeq_cor
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_position_store_coherence PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_position_store_coherence)
+GTEST_DISCOVER_TESTS(test_position_store_coherence DISCOVERY_TIMEOUT 120)
 
 # T05: login/world replay seam smoke test (ReplayLoginPacket/ReplayWorldPacket
 # -> DispatchLoginPacket/DispatchWorldPacket). Same replay-seam idiom as
@@ -375,7 +375,7 @@ TARGET_LINK_LIBRARIES(test_login_world_seam GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_login_world_seam PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_login_world_seam)
+GTEST_DISCOVER_TESTS(test_login_world_seam DISCOVERY_TIMEOUT 120)
 
 # T18: entity-domain zone-stream tests (eq_entities.cpp) -- real-capture
 # full-stream replay + synthetic Spawn_Struct decode and malformed-packet
@@ -387,7 +387,7 @@ TARGET_LINK_LIBRARIES(test_zone_entities GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_zone_entities PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_zone_entities)
+GTEST_DISCOVER_TESTS(test_zone_entities DISCOVERY_TIMEOUT 120)
 
 # T18: chat-domain zone-stream tests (eq_chat.cpp) -- ChannelMessage channel
 # mapping, /reply tracking, size guards, and real-capture chat replay,
@@ -399,7 +399,7 @@ TARGET_LINK_LIBRARIES(test_zone_chat GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_zone_chat PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_zone_chat)
+GTEST_DISCOVER_TESTS(test_zone_chat DISCOVERY_TIMEOUT 120)
 
 # T06: login/world flow coverage (real-capture replay, synthetic sequencing,
 # and robustness cases) -- the thing the T05 seam above was built for. Same
@@ -413,7 +413,7 @@ TARGET_LINK_LIBRARIES(test_login_world_flow GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_login_world_flow PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_login_world_flow)
+GTEST_DISCOVER_TESTS(test_login_world_flow DISCOVERY_TIMEOUT 120)
 
 # T378 (BOARD B145): every zone-stream sender goes out through
 # eqt::PacketSender::SafeQueueZone -- null-guard (the ten B140 crash-shape
@@ -425,7 +425,7 @@ TARGET_LINK_LIBRARIES(test_direct_senders_packet_sender GTest::gtest_main willeq
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_direct_senders_packet_sender PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_direct_senders_packet_sender)
+GTEST_DISCOVER_TESTS(test_direct_senders_packet_sender DISCOVERY_TIMEOUT 120)
 
 # T378 (BOARD B145): the direct-zone-sender census as a source-reader pin --
 # a new ctx_.zone_connection->QueuePacket() anywhere under src/client or
@@ -436,4 +436,4 @@ ADD_EXECUTABLE(test_direct_sender_census
 )
 TARGET_LINK_LIBRARIES(test_direct_sender_census GTest::gtest_main)
 TARGET_COMPILE_DEFINITIONS(test_direct_sender_census PRIVATE WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
-GTEST_DISCOVER_TESTS(test_direct_sender_census)
+GTEST_DISCOVER_TESTS(test_direct_sender_census DISCOVERY_TIMEOUT 120)

@@ -12,7 +12,7 @@ ADD_EXECUTABLE(test_tsf_oob_read
     test_tsf_oob_read.cpp
 )
 TARGET_LINK_LIBRARIES(test_tsf_oob_read GTest::gtest_main)
-GTEST_DISCOVER_TESTS(test_tsf_oob_read)
+GTEST_DISCOVER_TESTS(test_tsf_oob_read DISCOVERY_TIMEOUT 120)
 
 # T131: verifies tsf_set_max_voices + all-16-channels-precreated is applied
 # on every MidiPlayer construction path, including the runtime reload
@@ -28,7 +28,7 @@ IF(WITH_AUDIO)
     TARGET_COMPILE_DEFINITIONS(test_midi_player_prealloc PRIVATE WITH_AUDIO
         WILLEQ_TEST_SF2_PATH="${CMAKE_SOURCE_DIR}/data/1mgm.sf2")
     TARGET_LINK_LIBRARIES(test_midi_player_prealloc GTest::gtest_main ${FMT_LIB})
-    GTEST_DISCOVER_TESTS(test_midi_player_prealloc)
+    GTEST_DISCOVER_TESTS(test_midi_player_prealloc DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T248: MidiPlayer::stop() vs the audio render callback. Links MidiPlayer +
@@ -44,5 +44,5 @@ IF(WITH_AUDIO)
     TARGET_COMPILE_DEFINITIONS(test_midi_stop_race PRIVATE WITH_AUDIO
         WILLEQ_TEST_SF2_PATH="${CMAKE_SOURCE_DIR}/data/1mgm.sf2")
     TARGET_LINK_LIBRARIES(test_midi_stop_race GTest::gtest_main ${FMT_LIB})
-    GTEST_DISCOVER_TESTS(test_midi_stop_race)
+    GTEST_DISCOVER_TESTS(test_midi_stop_race DISCOVERY_TIMEOUT 120)
 ENDIF()

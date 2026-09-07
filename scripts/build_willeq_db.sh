@@ -19,8 +19,11 @@
 #                            mp3index.txt, eqlsstr_us.txt
 #   from data/               item_models.json, equipment_models.json
 #   from config/             race_models.json
-# The optional --s3d-index input is NOT part of the shipped database (it has
-# no s3d_assets table), so this script never passes it.
+# T452 (board B468): there is no longer an eleventh, optional --s3d-index
+# input to leave out. It built an `s3d_assets` table that never shipped, and
+# its only reachable consumer had been querying a table that did not exist
+# since 2026-03-21. The flag, the loader and tools/s3d_index_builder are gone,
+# so the ten inputs above are ALL of them.
 #
 # Usage:
 #   scripts/build_willeq_db.sh [--check] [--bin-dir DIR] [--eq-path DIR]

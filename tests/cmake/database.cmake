@@ -13,7 +13,7 @@ ADD_EXECUTABLE(test_string_database
     ${CMAKE_SOURCE_DIR}/third_party/sqlite3.c
 )
 TARGET_LINK_LIBRARIES(test_string_database GTest::gtest_main ${FMT_LIB} dl)
-GTEST_DISCOVER_TESTS(test_string_database)
+GTEST_DISCOVER_TESTS(test_string_database DISCOVERY_TIMEOUT 120)
 
 # Test spell database loading and querying
 ADD_EXECUTABLE(test_spell_database
@@ -24,7 +24,7 @@ ADD_EXECUTABLE(test_spell_database
 )
 TARGET_COMPILE_DEFINITIONS(test_spell_database PRIVATE WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
 TARGET_LINK_LIBRARIES(test_spell_database GTest::gtest_main ${FMT_LIB} dl)
-GTEST_DISCOVER_TESTS(test_spell_database)
+GTEST_DISCOVER_TESTS(test_spell_database DISCOVERY_TIMEOUT 120)
 
 # T70: spells.eff visual-effect-definition reader, indexed by
 # SpellAffectIndex. Deliberately no graphics/Irrlicht dependency (the reader
@@ -40,7 +40,7 @@ ADD_EXECUTABLE(test_spells_eff_reader
 )
 TARGET_COMPILE_DEFINITIONS(test_spells_eff_reader PRIVATE WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
 TARGET_LINK_LIBRARIES(test_spells_eff_reader GTest::gtest_main ${FMT_LIB} dl)
-GTEST_DISCOVER_TESTS(test_spells_eff_reader)
+GTEST_DISCOVER_TESTS(test_spells_eff_reader DISCOVERY_TIMEOUT 120)
 
 # T72: pure spell_affect_index -> spells.eff record -> per-stage visual
 # selection layer (spell_visual_selection.h/.cpp). No Irrlicht/rendering
@@ -56,7 +56,7 @@ ADD_EXECUTABLE(test_spell_visual_selection
 )
 TARGET_COMPILE_DEFINITIONS(test_spell_visual_selection PRIVATE WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
 TARGET_LINK_LIBRARIES(test_spell_visual_selection GTest::gtest_main ${FMT_LIB} dl)
-GTEST_DISCOVER_TESTS(test_spell_visual_selection)
+GTEST_DISCOVER_TESTS(test_spell_visual_selection DISCOVERY_TIMEOUT 120)
 
 # Test WilleqDatabase::open() schema-version validation (T56)
 ADD_EXECUTABLE(test_willeq_database
@@ -72,4 +72,4 @@ TARGET_LINK_LIBRARIES(test_willeq_database GTest::gtest_main ${FMT_LIB} ${ZLIB_L
 # file on its real filesystem (the race is NFS-specific and inter-process).
 TARGET_COMPILE_DEFINITIONS(test_willeq_database PRIVATE
     WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
-GTEST_DISCOVER_TESTS(test_willeq_database)
+GTEST_DISCOVER_TESTS(test_willeq_database DISCOVERY_TIMEOUT 120)

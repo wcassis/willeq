@@ -21,7 +21,7 @@ IF(EQT_GRAPHICS)
         GLES2_ZONE_BENCHMARK_BIN="$<TARGET_FILE:gles2_zone_benchmark>")
     TARGET_LINK_LIBRARIES(test_entity_viewer_regression GTest::gtest_main)
     ADD_DEPENDENCIES(test_entity_viewer_regression gles2_zone_benchmark)
-    GTEST_DISCOVER_TESTS(test_entity_viewer_regression)
+    GTEST_DISCOVER_TESTS(test_entity_viewer_regression DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T30: exit-matrix pin for "headless + piped stdin + no server" -- the case
@@ -39,7 +39,7 @@ TARGET_COMPILE_DEFINITIONS(test_headless_shutdown PRIVATE
     WILLEQ_BIN_PATH="$<TARGET_FILE:willeq>")
 TARGET_LINK_LIBRARIES(test_headless_shutdown GTest::gtest_main)
 ADD_DEPENDENCIES(test_headless_shutdown willeq)
-GTEST_DISCOVER_TESTS(test_headless_shutdown)
+GTEST_DISCOVER_TESTS(test_headless_shutdown DISCOVERY_TIMEOUT 120)
 
 # Test door loading (unit tests + graphics tests)
 # Unit tests run without display, graphics tests need DISPLAY=:99
@@ -98,7 +98,7 @@ IF(EQT_GRAPHICS)
     ENDIF()
     # P30: desktop X11/Xxf86vm/GL ELSEIF(NOT APPLE) branch removed — see the
     # test_graphics comment above (same mandatory-Irrlicht gate).
-    GTEST_DISCOVER_TESTS(test_door_loading)
+    GTEST_DISCOVER_TESTS(test_door_loading DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # Integration test: Zoning (connects to real EQEmu server)
@@ -121,7 +121,7 @@ ENDIF()
 #   cmake -S . -B build -DEQT_LIVE_TESTS=ON
 #   ctest --test-dir build -L live
 IF(EQT_LIVE_TESTS)
-    GTEST_DISCOVER_TESTS(test_zoning_integration PROPERTIES LABELS "live")
+    GTEST_DISCOVER_TESTS(test_zoning_integration PROPERTIES LABELS "live" DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # Batch R (R02): headless session replay harness / game-state regression
@@ -135,7 +135,7 @@ TARGET_LINK_LIBRARIES(test_session_replay GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_session_replay PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_session_replay)
+GTEST_DISCOVER_TESTS(test_session_replay DISCOVERY_TIMEOUT 120)
 
 # T04: zone connection-flow sequencing tests (CheckZoneRequestPhaseComplete
 # gating, dispatcher robustness, observable post-handshake state). Same
@@ -156,7 +156,7 @@ TARGET_LINK_LIBRARIES(test_zone_connection_flow GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_zone_connection_flow PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_zone_connection_flow)
+GTEST_DISCOVER_TESTS(test_zone_connection_flow DISCOVERY_TIMEOUT 120)
 
 # T52: pins the x/y coordinate convention at the three m_pending_zone_x/y/z
 # sites (two producers in eq_zone.cpp, one consumer in eq_login_world.cpp).
@@ -169,7 +169,7 @@ TARGET_LINK_LIBRARIES(test_zone_position_convention GTest::gtest_main willeq_cor
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_zone_position_convention PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_zone_position_convention)
+GTEST_DISCOVER_TESTS(test_zone_position_convention DISCOVERY_TIMEOUT 120)
 
 # T426 Leg A (board B399): the self OP_ClientUpdate edge -- a server-forced
 # relocation of our own character -- must reach the camera in the client's
@@ -182,7 +182,7 @@ TARGET_LINK_LIBRARIES(test_self_relocation_heading GTest::gtest_main willeq_core
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_self_relocation_heading PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_self_relocation_heading)
+GTEST_DISCOVER_TESTS(test_self_relocation_heading DISCOVERY_TIMEOUT 120)
 
 # T88: headless position-frame round-trip regression tests (inbound
 # server-frame decode -> outbound client-frame encode -> server-frame
@@ -196,7 +196,7 @@ TARGET_LINK_LIBRARIES(test_position_frame_roundtrip GTest::gtest_main willeq_cor
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_position_frame_roundtrip PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_position_frame_roundtrip)
+GTEST_DISCOVER_TESTS(test_position_frame_roundtrip DISCOVERY_TIMEOUT 120)
 
 # T332 (B049): the same zone-in z conversion WITH A RENDERER PRESENT -- the arm
 # test_position_frame_roundtrip structurally cannot cover, because headless
@@ -209,7 +209,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_zone_in_z_conversion PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_zone_in_z_conversion GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_zone_in_z_conversion)
+    GTEST_DISCOVER_TESTS(test_zone_in_z_conversion DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T90: EqActionHandler::setHeading() double-conversion regression tests
@@ -224,7 +224,7 @@ TARGET_LINK_LIBRARIES(test_setheading_conversion GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_setheading_conversion PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_setheading_conversion)
+GTEST_DISCOVER_TESTS(test_setheading_conversion DISCOVERY_TIMEOUT 120)
 
 # T322: pins the zone-transition connection lifecycle -- the graceful
 # source-zone hand-off (OP_SaveOnZoneReq + OP_DeleteSpawn, server closes the
@@ -238,7 +238,7 @@ TARGET_LINK_LIBRARIES(test_zone_out_handshake GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_zone_out_handshake PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_zone_out_handshake)
+GTEST_DISCOVER_TESTS(test_zone_out_handshake DISCOVERY_TIMEOUT 120)
 
 # T344 (BOARD B001): the split of MovementComponent::SetPositionState into a
 # user-initiated setter (state + OP_SpawnAppearance) and a server-forced one
@@ -255,7 +255,7 @@ TARGET_LINK_LIBRARIES(test_forced_pose_no_echo GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_forced_pose_no_echo PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_forced_pose_no_echo)
+GTEST_DISCOVER_TESTS(test_forced_pose_no_echo DISCOVERY_TIMEOUT 120)
 
 # T374 Leg B (BOARD B137): the zone opcode table names its keys with HC_OP_*
 # enumerators, never bare hex. A source reader over zone_dispatch.cpp plus two
@@ -267,7 +267,7 @@ TARGET_LINK_LIBRARIES(test_zone_opcode_literals GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_zone_opcode_literals PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_zone_opcode_literals)
+GTEST_DISCOVER_TESTS(test_zone_opcode_literals DISCOVERY_TIMEOUT 120)
 
 # T346 (BOARD B001 remainder): the self-death sequence matches the official
 # client. Replays the T311 Leg A capture's OP_Death + OP_ZonePlayerToBind
@@ -284,4 +284,4 @@ TARGET_LINK_LIBRARIES(test_self_death_sequence GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_self_death_sequence PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_self_death_sequence)
+GTEST_DISCOVER_TESTS(test_self_death_sequence DISCOVERY_TIMEOUT 120)

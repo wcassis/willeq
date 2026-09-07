@@ -11,7 +11,7 @@ ADD_EXECUTABLE(test_event_bus
     ${CMAKE_SOURCE_DIR}/src/client/state/event_bus.cpp
 )
 TARGET_LINK_LIBRARIES(test_event_bus GTest::gtest_main)
-GTEST_DISCOVER_TESTS(test_event_bus)
+GTEST_DISCOVER_TESTS(test_event_bus DISCOVERY_TIMEOUT 120)
 
 # T02: state module unit tests, part 1 (EntityManager, PlayerState,
 # SpellState, InventoryState -- the priority-1 modules). No graphics, no
@@ -28,7 +28,7 @@ ADD_EXECUTABLE(test_state_modules
     ${CMAKE_SOURCE_DIR}/src/client/state/inventory_state.cpp
 )
 TARGET_LINK_LIBRARIES(test_state_modules GTest::gtest_main)
-GTEST_DISCOVER_TESTS(test_state_modules)
+GTEST_DISCOVER_TESTS(test_state_modules DISCOVERY_TIMEOUT 120)
 
 # T02: state module unit tests, part 2 (GroupState, PetState, WorldState,
 # CombatState, GameState; TradeskillState deleted T232). Split from test_state_modules
@@ -55,4 +55,4 @@ ADD_EXECUTABLE(test_state_modules_secondary
     ${CMAKE_SOURCE_DIR}/src/client/door_state_manager.cpp
 )
 TARGET_LINK_LIBRARIES(test_state_modules_secondary GTest::gtest_main)
-GTEST_DISCOVER_TESTS(test_state_modules_secondary)
+GTEST_DISCOVER_TESTS(test_state_modules_secondary DISCOVERY_TIMEOUT 120)
