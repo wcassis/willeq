@@ -4109,7 +4109,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
 
 ### Added by T403 (2026-09-06)
 
-- **B265** (B) `data/textures/detail_atlas.bmp` /
+- ~~**B265** (B) `data/textures/detail_atlas.bmp` /
   `src/client/graphics/detail/detail_texture_atlas.cpp` -- **the shipped
   detail atlas is the ONLY one of the 64 BMPs that its generator does not
   reproduce, and it is wrong in two independent ways.** T403 regenerated all
@@ -4136,7 +4136,44 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   someone regenerates it deliberately (dropping the software-driver round trip
   -- `DetailTextureAtlas::createAtlasImage()` exists now and needs no driver
   textures), reblesses whatever gate images move, and rebuilds the pack.
-  Prov: T403 Review §2.
+  Prov: T403 Review §2.~~ **CLOSED by T427 (2026-09-07, this commit).** The
+  file is regenerated and `NOT_REPRODUCIBLE` is now **EMPTY**:
+  `build_textures.sh --check` reports `65 byte-identical, 0 drifted, 0 exempt`.
+  **Nothing moved.** The gate PASSED against a temp pack built from the
+  regenerated textures dir (`--textures-dir`, new flag; `data/eqe1_client`
+  repointed at a staging tree) with **0 differing pixels in all nine golden
+  frames** and **0 bytes** of `eqe1MappedBytes` delta in all three zones
+  (124063684 / 122729776 / 117214272, exactly the manifest) -- the pack is the
+  same 6,930,116 bytes because ETC1 is fixed-rate, so an entry's byte count
+  cannot follow its content.
+  **TWO CLAIMS ABOVE ARE WRONG AND ARE CORRECTED HERE.**
+  (i) *"detail_atlas is drawn by every outdoor zone the visual gate covers"* --
+  it is not drawn by ANY of them. `tools/hwcaps/gles2_zone_benchmark.cpp`
+  never instantiates `DetailManager` and never names `detail_atlas`; a grep of
+  the whole `tools/hwcaps/` directory for either returns nothing. No golden
+  frame has ever held a detail-atlas texel, so the STOP that guarded this item
+  for two units could not have fired.
+  (ii) *cause (b) is not code drift.* The shipped footprint tiles are not
+  near-black-where-the-generator-draws-colour: they carry the per-biome colour
+  at **~0.71x** its value. At the 114 pixels per tile where the generator
+  writes the base colour exactly (alpha = 1), shipped reads Grass (24,24,16)
+  against (40,35,25), Dirt (32,24,16) against (50,40,30), Sand (104,88,56)
+  against (140,120,80), Snow (128,136,152) against (180,190,210), Swamp
+  (24,32,16) against (35,45,30), Jungle (32,24,24) against (45,40,35) -- every
+  one a multiple of 8 and every one ~0.7 of the argument. That is **RGB
+  PREMULTIPLIED BY ALPHA**, and it is the SAME retired-tool write path as
+  cause (a), not a second, independent defect: premultiplication is invisible
+  wherever alpha is 0 or 255, and `drawFootprintLeft`/`drawFootprintRight`
+  (`detail_texture_atlas_grass.cpp:96` and `:180`) are the ONLY two writes in
+  the entire atlas that emit a fractional alpha -- `SColor(alpha * 200, ...)`.
+  Every other `SColor(` in the three atlas TUs is alpha 255 or the transparent
+  fill. The twelve tiles that differ beyond quantisation are exactly the twelve
+  the fractional alpha touches; the ratio distribution over a whole footprint
+  tile runs 0..0.729, capped at alpha's own `200/255`. So B265 was ONE defect
+  with two symptoms, and no code ever drifted from the asset.
+  A separate, real question the census forced out -- the atlas is 24-bit while
+  both its consumers alpha-BLEND it -- is boarded as **B410**, not folded in
+  here.
 
 - ~~**B266** (A) `data/textures/*.bmp` (63 files) / `tools/generate_textures.cpp`
   -- **B225 was not one file. Every generator except the particle atlas draws
@@ -4171,9 +4208,10 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   24-bit: `spell_particle_fallback.bmp` (its only consumer is an
   `EMT_TRANSPARENT_ADD_COLOR` particle system, i.e. `glBlendFunc(GL_ONE,
   GL_ONE)`, and `SOLID3D_FS` does not multiply RGB by alpha, so the alpha is
-  provably never sampled -> new **B286**), `detail_atlas.bmp` (B265: no build
-  reproduces it, so a 32-bit rewrite is a pixel move in every outdoor gate
-  zone), and `rain_streaks.bmp` + `snow_flakes.bmp` (**no consumer at all** --
+  provably never sampled -> new **B286**), `detail_atlas.bmp` (B265 at the time: no
+  build reproduced it, so a 32-bit rewrite looked like a pixel move in every
+  outdoor gate zone -- **both halves of that were wrong; see the struck B265
+  and the new B410**), and `rain_streaks.bmp` + `snow_flakes.bmp` (**no consumer at all** --
   `RainOverlay`/`SnowOverlay` name neither). Every converted consumer was
   checked against B261 and not one is alpha-TEST: the storm dome and the two
   billboard sets are `EMT_TRANSPARENT_ALPHA_CHANNEL` -> `SOLID3D_FS`, and the
@@ -4220,7 +4258,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   Proof: the tool built at -O0 and at -O2 (`build-rwdi`,
   `-DCMAKE_BUILD_TYPE=RelWithDebInfo`) now writes all 64 BMPs **bit-identical
   to each other**, and 63 of 64 bit-identical to `data/textures/` (the 64th
-  is B265's `detail_atlas.bmp`, which no build reproduces);
+  was B265's `detail_atlas.bmp`, which no build reproduced until T427);
   `test_particle_atlas_alpha` is 5/5 green built RelWithDebInfo. No shipped
   byte changed. Prov: T403 Review §4.
 
@@ -5516,14 +5554,38 @@ client uses every field.
   the re-bless is the orchestrator's.
 
 
-- **B330** (B) `include/client/graphics/environment/rain_overlay.h` --
+- ~~**B330** (B) `include/client/graphics/environment/rain_overlay.h` --
   **the rain overlay cannot tilt.** `windTiltBase` / `windTiltIntensity` were
   parsed from `weather_effects.json` (clamped, ranged) into fields nothing read;
   T414 Leg A deleted the keys, the parse and the fields. Honouring them needs a
   rotated-quad draw: `RainOverlay::render()` tiles the streak texture with
   axis-aligned `draw2DImage` rects, so a screen-space angle has nowhere to go.
   Closes when the overlay can draw a rotated quad and the two keys come back
-  together with a test. Found by T414 Leg A.
+  together with a test. Found by T414 Leg A.~~ **CLOSED by T427 (2026-09-07,
+  this commit): THE ORACLE DRAWS VERTICAL RAIN, so the two keys were fiction
+  and there is nothing to honour. No code change.** Measured off T418's oracle
+  captures (`review/T418/oracle/`, five sessions of the official Titanium
+  client in qeynos2). Method: consecutive-frame differences at the capture's
+  5 fps isolate the moving streaks from a static scene; each difference image
+  is sheared by a candidate angle and the variance of its column sums is
+  maximised, which finds the streaks' principal axis to ~0.1 deg. Four
+  independent aggregates, angle measured FROM VERTICAL:
+
+  | state | frame-pairs | best angle | peak/median |
+  |---|---|---|---|
+  | day 11:00, rain intensity 9 (o1) | 99 | **+0.0 deg** | 4.30 |
+  | day 11:00, rain intensity 5 (o5) | 174 | **+1.1 deg** | 3.02 |
+  | night 22:00, rain intensity 9 (o4) | 174 | **+0.3 deg** | 1.39 |
+  | night 22:00, snow intensity 5 (o4) | 174 | **+0.6 deg** | 1.16 |
+
+  Twelve single-frame measurements (active-minus-clear stills at intensities
+  2/5/9 plus snow, two crops each) span -3.3 deg to +1.9 deg and **disagree in
+  SIGN between the sky crop and the wall crop of the same frame**, which is
+  what a null looks like. **The angle does not move with intensity** (2, 5 and
+  9 land within 1.1 deg of each other), so even a wind-driven tilt keyed on
+  intensity has no support. fable's overlay already tiles a vertical streak
+  texture with axis-aligned rects, i.e. it already matches. Evidence and the
+  scan script: `review/T427/legA/`.
 
 - **B331** (B) `include/client/graphics/weather_quality_preset.h` -- **lightning
   has no branches to bound.** `WeatherPresetValues::maxBranchLevel` carried
@@ -6363,3 +6425,35 @@ client uses every field.
   happens to receive. Printing the ids would be inventing a line the official
   client never draws, so T425 drew nothing. Closes when an item-name lookup
   exists (the same gap `B376`'s icon sheet sits next to). Found by T425 Leg A.
+
+### Added by T427 (2026-09-07)
+
+- **B410** (C) `data/textures/detail_atlas.bmp` / `tools/generate_textures.cpp`
+  (`m.push_back({"detail_atlas.bmp", BmpFormat::Bmp24, ...})`) --
+  **the detail atlas ships 24-bit and both of its consumers alpha-BLEND it.**
+  `DetailTextureAtlas::createAtlasImage()` fills the whole 512x512 with
+  `SColor(0,0,0,0)` -- transparent black -- and paints 56 cutout tiles on it;
+  `DetailChunk::rebuildMesh` (`detail_chunk.cpp:518`, `:681`) and
+  `FootprintManager` (`footprint_manager.cpp:19`) both set
+  `EMT_TRANSPARENT_ALPHA_CHANNEL`, which is exactly the alpha-blend shape T406
+  converted 60 other files for under B266. This file was not converted with
+  them only because B265 had it flagged as un-reproducible, and T403's census
+  entry inherited that as its stated reason; T427 closed B265 and the reason
+  no longer holds, so the question is now open on its merits and the census
+  entry says so.
+  It is **C, not B**: unlike the sixty, converting this one is a LOOK change,
+  not a cascade. Every tile is drawn on a transparent ground, so today every
+  grass blade, flower and footprint is a fully opaque quad with a black
+  surround, and giving the atlas its alpha back changes what every outdoor
+  zone draws. It is also NOT free -- a 512x512 ETC1 entry with mips is
+  ~174,760 bytes and its RGBA8888 form ~1,398,100, though T411's companion
+  route means the real cost is one more ETC1 entry, not the in-band payload.
+  Nobody has looked at what fable's outdoor detail actually looks like beside
+  the oracle's; that judgement is Will's and belongs with **B350**.
+  Two things must NOT be assumed when this is taken up: (1) the visual gate
+  will not catch it either way -- `gles2_zone_benchmark` never instantiates
+  `DetailManager` (measured in T427), so a conversion moves zero golden pixels
+  and needs live captures, not the gate; (2) `spell_particle_fallback.bmp` is
+  the counter-example that says "alpha-blend" is not automatically the answer
+  -- T424 measured its blend as additive and left it 24-bit deliberately.
+  Found by T427 Leg B while closing B265.
