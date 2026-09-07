@@ -71,9 +71,15 @@ bool PlayerCameraComponent::checkMovementCollision(float fromX, float fromY, flo
     return clear;
 }
 
-float PlayerCameraComponent::findGroundZ(float x, float y, float currentZ) {
+// T437 (B435/B436). This used to return a bare float and rewrite every
+// failure to `currentZ` -- so `BEST_Z_INVALID` never reached a caller and every
+// `!= BEST_Z_INVALID` guard downstream was dead code. Worse, the phantom floor
+// it substituted sat at the player's own CENTRE z, and the landing then snapped
+// to `centre + modelYOffset`, lifting the player by one model offset per frame
+// over a column the map has no floor for. "No floor" is now an answer.
+GroundZ PlayerCameraComponent::findGroundZ(float x, float y, float currentZ) {
     if (!ctx_.collisionMap) {
-        return currentZ;
+        return GroundZ::NoFloor();
     }
 
     float maxStepUp = playerConfig_.collisionStepHeight;
@@ -102,7 +108,7 @@ float PlayerCameraComponent::findGroundZ(float x, float y, float currentZ) {
                     irr::core::vector3df(irrTo.X + markerSize, irrTo.Y, irrTo.Z),
                     irr::video::SColor(255, 0, 255, 128), 0.2f);
             }
-            return nearGroundZ;
+            return GroundZ::Floor(nearGroundZ);
         }
     }
 
@@ -150,16 +156,16 @@ float PlayerCameraComponent::findGroundZ(float x, float y, float currentZ) {
                     irr::core::vector3df irrTo(x, boatDeckZ, y);
                     addCollisionDebugLine(irrFrom, irrTo, irr::video::SColor(255, 255, 255, 0), 0.3f);
                 }
-                return boatDeckZ;
+                return GroundZ::Floor(boatDeckZ);
             }
         }
     }
 
     if (groundZ == BEST_Z_INVALID) {
-        return currentZ;  // No ground found, keep current Z
+        return GroundZ::NoFloor();  // No floor under this column.
     }
 
-    return groundZ;
+    return GroundZ::Floor(groundZ);
 }
 
 // --- Irrlicht-based Collision Detection (using zone mesh) ---
@@ -242,12 +248,12 @@ bool PlayerCameraComponent::checkCollisionIrrlicht(const irr::core::vector3df& s
     return false;
 }
 
-float PlayerCameraComponent::findGroundZIrrlicht(float x, float y, float currentZ, float modelYOffset) {
+GroundZ PlayerCameraComponent::findGroundZIrrlicht(float x, float y, float currentZ, float modelYOffset) {
     // DIAGNOSTIC: This should NOT be called on the hot path anymore.
     // BSP-filtered collision should be used instead for movement.
     LOG_WARN(MOD_GRAPHICS, "findGroundZIrrlicht CALLED — old meta selector path! "
              "pos ({},{},{})", x, y, currentZ);
-    return currentZ - modelYOffset;
+    return GroundZ::Floor(currentZ - modelYOffset);
 }
 
 // updateNameTagsWithLOS removed — name tag visibility now computed by SimulationWorker
@@ -450,9 +456,11 @@ bool PlayerCameraComponent::checkCollisionBspFiltered(const irr::core::vector3df
     return anyHit;
 }
 
-float PlayerCameraComponent::findGroundZBspFiltered(float x, float y, float currentZ, float modelYOffset) {
+GroundZ PlayerCameraComponent::findGroundZBspFiltered(float x, float y, float currentZ, float modelYOffset) {
     if (!ctx_.zoneBspTree) {
-        return currentZ - modelYOffset;  // Return current feet position
+        // No BSP data to ask: "the floor is right under your feet" is what this
+        // has always answered, and it keeps a standing player standing.
+        return GroundZ::Floor(currentZ - modelYOffset);
     }
 
     float feetZ = currentZ - modelYOffset;
@@ -509,7 +517,7 @@ float PlayerCameraComponent::findGroundZBspFiltered(float x, float y, float curr
             if (playerConfig_.collisionDebug) {
                 addCollisionDebugLine(nearStart, bestHit, irr::video::SColor(255, 0, 255, 128), 0.2f);
             }
-            return floorZ;
+            return GroundZ::Floor(floorZ);
         }
     }
 
@@ -571,7 +579,11 @@ float PlayerCameraComponent::findGroundZBspFiltered(float x, float y, float curr
         if (floorZ <= feetZ + maxStepUp + 0.1f) {
             groundZ = floorZ;
         } else {
-            return feetZ + 1000.0f;  // Ceiling sentinel
+            // T437 (B435): the ray met geometry ABOVE the step-up limit -- a
+            // ceiling, an overhang, the underside of a platform. This used to
+            // return `feetZ + 1000.0f`, a float the four jump landings happily
+            // accepted as ground.
+            return GroundZ::NoFloor();
         }
     }
 
@@ -585,12 +597,12 @@ float PlayerCameraComponent::findGroundZBspFiltered(float x, float y, float curr
                     irr::core::vector3df irrTo(x, boatDeckZ, y);
                     addCollisionDebugLine(irrFrom, irrTo, irr::video::SColor(255, 255, 255, 0), 0.3f);
                 }
-                return boatDeckZ;
+                return GroundZ::Floor(boatDeckZ);
             }
         }
     }
 
-    return groundZ;
+    return GroundZ::Floor(groundZ);
 }
 
 // --- Collision Debug Visualization ---

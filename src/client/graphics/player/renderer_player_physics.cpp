@@ -421,23 +421,23 @@ void PlayerCameraComponent::resolveIrrlichtClearPath(MovementFrame& frame, bool 
     const float modelYOffset = frame.modelYOffset;
 
     // Path is clear, now find ground at new position
-    float groundZ = useBspFiltered
+    GroundZ groundZ = useBspFiltered
         ? findGroundZBspFiltered(newX, newY, newZ, modelYOffset)
         : findGroundZIrrlicht(newX, newY, newZ, modelYOffset);
 
-    LOG_TRACE(MOD_MOVEMENT, "Ground at target: {}, playerZ: {}, newZ: {}", groundZ, ctx_.playerZ, newZ);
+    LOG_TRACE(MOD_MOVEMENT, "Ground at target: {}, playerZ: {}, newZ: {}", groundZ.zOr(newZ), ctx_.playerZ, newZ);
 
     if (playerMovement_.isJumping) {
         // While jumping, check if we've landed
         // Compare feet position (centerZ - modelYOffset) with ground
         float feetZ = newZ - modelYOffset;
-        if (feetZ <= groundZ && playerMovement_.verticalVelocity <= 0) {
+        if (ShouldLandJump(groundZ, feetZ, playerMovement_.verticalVelocity)) {
             // Landed - snap center to be modelYOffset above ground
-            newZ = groundZ + modelYOffset;
+            newZ = groundZ.z() + modelYOffset;
             playerMovement_.isJumping = false;
             playerMovement_.verticalVelocity = 0.0f;
             if (playerConfig_.collisionDebug) {
-                LOG_INFO(MOD_GRAPHICS, "[Jump] Landed at groundZ={}, serverZ={}", groundZ, newZ);
+                LOG_INFO(MOD_GRAPHICS, "[Jump] Landed at groundZ={}, serverZ={}", groundZ.z(), newZ);
             }
         }
         // Allow horizontal movement while in air
@@ -476,16 +476,18 @@ void PlayerCameraComponent::resolveIrrlichtClearPath(MovementFrame& frame, bool 
             }
         }
 
-        // Check if we'd go below ground and clamp if so
-        // Note: findGroundZIrrlicht returns feetZ+1000 as a "blocked" sentinel when hitting a ceiling
-        // We need to ignore that sentinel value for floor clamping
+        // Check if we'd go below ground and clamp if so.
+        // T437 (B435): the `ctx_.playerZ + 100.0f` heuristic that used to guard
+        // this line is GONE. It existed only to keep the `feetZ + 1000` ceiling
+        // sentinel out of the clamp; a GroundZ that hit a ceiling now says
+        // hasFloor() == false, so the guard has nothing left to exclude -- and
+        // it also wrongly excluded a genuine floor more than 100 units up.
         float feetZ = newZ - modelYOffset;
-        float maxReasonableGround = ctx_.playerZ + 100.0f;  // Ground can't reasonably be 100+ units above current position
-        if (groundZ < maxReasonableGround && feetZ < groundZ) {
+        if (ShouldClampSwimToFloor(groundZ, feetZ)) {
             // Would sink below ground - stop at ground level
-            newZ = groundZ + modelYOffset;
+            newZ = groundZ.z() + modelYOffset;
             if (playerConfig_.collisionDebug) {
-                LOG_INFO(MOD_GRAPHICS, "[Swim] Hit bottom at groundZ={}, serverZ={}", groundZ, newZ);
+                LOG_INFO(MOD_GRAPHICS, "[Swim] Hit bottom at groundZ={}, serverZ={}", groundZ.z(), newZ);
             }
         }
         positionChanged = true;
@@ -493,16 +495,20 @@ void PlayerCameraComponent::resolveIrrlichtClearPath(MovementFrame& frame, bool 
         // Normal ground movement - check step height
         // Compare feet positions: current feet vs target ground
         float currentFeetZ = ctx_.playerZ - modelYOffset;
-        float stepHeight = groundZ - currentFeetZ;
+        // T437 (B435): with no floor there is nothing to step onto. Pre-T437
+        // the ceiling sentinel made stepHeight ~1000, which fell through to
+        // "step up too high" and blocked the move; NoFloor blocks it too, but
+        // by saying so instead of by arithmetic accident.
+        float stepHeight = groundZ.zOr(currentFeetZ) - currentFeetZ;
 
         // Limit both stepping UP and stepping DOWN
         // Small steps down (e.g., stairs) are OK, but large drops should trigger falling
         float maxStepDown = playerConfig_.collisionStepHeight * 2.0f;  // Allow stepping down ~2x step height
-        if (stepHeight <= playerConfig_.collisionStepHeight && stepHeight >= -maxStepDown) {
+        if (groundZ.hasFloor() && stepHeight <= playerConfig_.collisionStepHeight && stepHeight >= -maxStepDown) {
             // Snap center to be modelYOffset above ground
-            newZ = groundZ + modelYOffset;
+            newZ = groundZ.z() + modelYOffset;
             positionChanged = true;
-        } else if (stepHeight < -maxStepDown) {
+        } else if (groundZ.hasFloor() && stepHeight < -maxStepDown) {
             // Large drop detected - start falling instead of snapping
             playerMovement_.isJumping = true;
             playerMovement_.verticalVelocity = 0.0f;  // Start with 0 velocity (just walked off edge)
@@ -530,17 +536,17 @@ void PlayerCameraComponent::resolveIrrlichtBlockedPath(
     // Horizontal movement blocked - try wall sliding or continue jump/swim vertically
     if (playerMovement_.isJumping) {
         // Even if horizontal is blocked, continue vertical jump movement
-        float groundZ = useBspFiltered
+        GroundZ groundZ = useBspFiltered
             ? findGroundZBspFiltered(ctx_.playerX, ctx_.playerY, newZ, modelYOffset)
             : findGroundZIrrlicht(ctx_.playerX, ctx_.playerY, newZ, modelYOffset);
         float feetZ = newZ - modelYOffset;
-        if (feetZ <= groundZ && playerMovement_.verticalVelocity <= 0) {
+        if (ShouldLandJump(groundZ, feetZ, playerMovement_.verticalVelocity)) {
             // Landed - snap center to be modelYOffset above ground
-            newZ = groundZ + modelYOffset;
+            newZ = groundZ.z() + modelYOffset;
             playerMovement_.isJumping = false;
             playerMovement_.verticalVelocity = 0.0f;
             if (playerConfig_.collisionDebug) {
-                LOG_INFO(MOD_GRAPHICS, "[Jump] Landed (blocked horizontal) at groundZ={}, serverZ={}", groundZ, newZ);
+                LOG_INFO(MOD_GRAPHICS, "[Jump] Landed (blocked horizontal) at groundZ={}, serverZ={}", groundZ.z(), newZ);
             }
         }
         // Keep X/Y at current position but update Z
@@ -572,17 +578,16 @@ void PlayerCameraComponent::resolveIrrlichtBlockedPath(
             }
         }
 
-        // Check floor collision
-        // Note: findGroundZ returns feetZ+1000 as a "blocked" sentinel when hitting a ceiling
-        float groundZ = useBspFiltered
+        // Check floor collision. T437 (B435): the `+ 100.0f` heuristic is gone
+        // for the same reason as its twin on the clear path.
+        GroundZ groundZ = useBspFiltered
             ? findGroundZBspFiltered(ctx_.playerX, ctx_.playerY, newZ, modelYOffset)
             : findGroundZIrrlicht(ctx_.playerX, ctx_.playerY, newZ, modelYOffset);
         float feetZ = newZ - modelYOffset;
-        float maxReasonableGround = ctx_.playerZ + 100.0f;
-        if (groundZ < maxReasonableGround && feetZ < groundZ) {
-            newZ = groundZ + modelYOffset;
+        if (ShouldClampSwimToFloor(groundZ, feetZ)) {
+            newZ = groundZ.z() + modelYOffset;
             if (playerConfig_.collisionDebug) {
-                LOG_INFO(MOD_GRAPHICS, "[Swim] Hit bottom (blocked horiz) at groundZ={}, serverZ={}", groundZ, newZ);
+                LOG_INFO(MOD_GRAPHICS, "[Swim] Hit bottom (blocked horiz) at groundZ={}, serverZ={}", groundZ.z(), newZ);
             }
         }
         positionChanged = true;
@@ -591,15 +596,16 @@ void PlayerCameraComponent::resolveIrrlichtBlockedPath(
         irr::core::vector3df rayEndX(newX, ctx_.playerZ + checkHeight, ctx_.playerY);
         if (!(useBspFiltered ? checkCollisionBspFiltered(rayStart, rayEndX, hitPoint, hitTriangle)
                              : checkCollisionIrrlicht(rayStart, rayEndX, hitPoint, hitTriangle))) {
-            float groundZ = useBspFiltered
+            GroundZ groundZ = useBspFiltered
                 ? findGroundZBspFiltered(newX, ctx_.playerY, ctx_.playerZ, modelYOffset)
                 : findGroundZIrrlicht(newX, ctx_.playerY, ctx_.playerZ, modelYOffset);
             float currentFeetZ = ctx_.playerZ - modelYOffset;
-            float stepHeight = groundZ - currentFeetZ;
-            // Only limit stepping UP - can always step down
-            if (stepHeight <= playerConfig_.collisionStepHeight) {
+            float stepHeight = groundZ.zOr(currentFeetZ) - currentFeetZ;
+            // Only limit stepping UP - can always step down. T437 (B435): a
+            // ceiling is no longer a candidate to slide onto.
+            if (groundZ.hasFloor() && stepHeight <= playerConfig_.collisionStepHeight) {
                 newY = ctx_.playerY;
-                newZ = groundZ + modelYOffset;
+                newZ = groundZ.z() + modelYOffset;
                 positionChanged = true;
                 LOG_TRACE(MOD_MOVEMENT, "Wall slide X");
             }
@@ -609,15 +615,15 @@ void PlayerCameraComponent::resolveIrrlichtBlockedPath(
             irr::core::vector3df rayEndY(ctx_.playerX, ctx_.playerZ + checkHeight, newY);
             if (!(useBspFiltered ? checkCollisionBspFiltered(rayStart, rayEndY, hitPoint, hitTriangle)
                                   : checkCollisionIrrlicht(rayStart, rayEndY, hitPoint, hitTriangle))) {
-                float groundZ = useBspFiltered
+                GroundZ groundZ = useBspFiltered
                     ? findGroundZBspFiltered(ctx_.playerX, newY, ctx_.playerZ, modelYOffset)
                     : findGroundZIrrlicht(ctx_.playerX, newY, ctx_.playerZ, modelYOffset);
                 float currentFeetZ = ctx_.playerZ - modelYOffset;
-                float stepHeight = groundZ - currentFeetZ;
-                // Only limit stepping UP - can always step down
-                if (stepHeight <= playerConfig_.collisionStepHeight) {
+                float stepHeight = groundZ.zOr(currentFeetZ) - currentFeetZ;
+                // Only limit stepping UP - can always step down. T437 (B435).
+                if (groundZ.hasFloor() && stepHeight <= playerConfig_.collisionStepHeight) {
                     newX = ctx_.playerX;
-                    newZ = groundZ + modelYOffset;
+                    newZ = groundZ.z() + modelYOffset;
                     positionChanged = true;
                     LOG_TRACE(MOD_MOVEMENT, "Wall slide Y");
                 }
@@ -638,9 +644,9 @@ void PlayerCameraComponent::resolveHCMapCollision(MovementFrame& frame) {
     const float modelYOffset = frame.modelYOffset;
 
     // --- HCMap-based collision (server map file) ---
-    float targetGroundZ = findGroundZ(newX, newY, newZ);
+    GroundZ targetGroundZ = findGroundZ(newX, newY, newZ);
 
-    LOG_TRACE(MOD_MOVEMENT, "HCMap Move from ({}, {}, {}) to ({}, {}), groundZ={}", ctx_.playerX, ctx_.playerY, ctx_.playerZ, newX, newY, targetGroundZ);
+    LOG_TRACE(MOD_MOVEMENT, "HCMap Move from ({}, {}, {}) to ({}, {}), groundZ={}", ctx_.playerX, ctx_.playerY, ctx_.playerZ, newX, newY, targetGroundZ.zOr(newZ));
 
     if (playerMovement_.isJumping) {
         // Handle jumping with HCMap
@@ -648,12 +654,12 @@ void PlayerCameraComponent::resolveHCMapCollision(MovementFrame& frame) {
         if (losCheck) {
             // Check if we've landed (compare feet position with ground)
             float feetZ = newZ - modelYOffset;
-            if (targetGroundZ != BEST_Z_INVALID && feetZ <= targetGroundZ && playerMovement_.verticalVelocity <= 0) {
-                newZ = targetGroundZ + modelYOffset;
+            if (ShouldLandJump(targetGroundZ, feetZ, playerMovement_.verticalVelocity)) {
+                newZ = targetGroundZ.z() + modelYOffset;
                 playerMovement_.isJumping = false;
                 playerMovement_.verticalVelocity = 0.0f;
                 if (playerConfig_.collisionDebug) {
-                    LOG_INFO(MOD_GRAPHICS, "[Jump] Landed (HCMap) at groundZ={}, serverZ={}", targetGroundZ, newZ);
+                    LOG_INFO(MOD_GRAPHICS, "[Jump] Landed (HCMap) at groundZ={}, serverZ={}", targetGroundZ.z(), newZ);
                 }
             }
             positionChanged = true;
@@ -661,14 +667,14 @@ void PlayerCameraComponent::resolveHCMapCollision(MovementFrame& frame) {
             // Horizontal blocked but continue vertical movement
             newX = ctx_.playerX;
             newY = ctx_.playerY;
-            float currentGroundZ = findGroundZ(ctx_.playerX, ctx_.playerY, newZ);
+            GroundZ currentGroundZ = findGroundZ(ctx_.playerX, ctx_.playerY, newZ);
             float feetZ = newZ - modelYOffset;
-            if (currentGroundZ != BEST_Z_INVALID && feetZ <= currentGroundZ && playerMovement_.verticalVelocity <= 0) {
-                newZ = currentGroundZ + modelYOffset;
+            if (ShouldLandJump(currentGroundZ, feetZ, playerMovement_.verticalVelocity)) {
+                newZ = currentGroundZ.z() + modelYOffset;
                 playerMovement_.isJumping = false;
                 playerMovement_.verticalVelocity = 0.0f;
                 if (playerConfig_.collisionDebug) {
-                    LOG_INFO(MOD_GRAPHICS, "[Jump] Landed (HCMap, blocked) at groundZ={}, serverZ={}", currentGroundZ, newZ);
+                    LOG_INFO(MOD_GRAPHICS, "[Jump] Landed (HCMap, blocked) at groundZ={}, serverZ={}", currentGroundZ.z(), newZ);
                 }
             }
             positionChanged = true;
@@ -698,11 +704,11 @@ void PlayerCameraComponent::resolveHCMapCollision(MovementFrame& frame) {
             }
 
             float feetZ = newZ - modelYOffset;
-            if (targetGroundZ != BEST_Z_INVALID && feetZ < targetGroundZ) {
+            if (ShouldClampSwimToFloor(targetGroundZ, feetZ)) {
                 // Would sink below ground - stop at ground level
-                newZ = targetGroundZ + modelYOffset;
+                newZ = targetGroundZ.z() + modelYOffset;
                 if (playerConfig_.collisionDebug) {
-                    LOG_INFO(MOD_GRAPHICS, "[Swim] Hit bottom (HCMap) at groundZ={}, serverZ={}", targetGroundZ, newZ);
+                    LOG_INFO(MOD_GRAPHICS, "[Swim] Hit bottom (HCMap) at groundZ={}, serverZ={}", targetGroundZ.z(), newZ);
                 }
             }
             positionChanged = true;
@@ -729,48 +735,48 @@ void PlayerCameraComponent::resolveHCMapCollision(MovementFrame& frame) {
                 }
             }
 
-            float currentGroundZ = findGroundZ(ctx_.playerX, ctx_.playerY, newZ);
+            GroundZ currentGroundZ = findGroundZ(ctx_.playerX, ctx_.playerY, newZ);
             float feetZ = newZ - modelYOffset;
-            if (currentGroundZ != BEST_Z_INVALID && feetZ < currentGroundZ) {
-                newZ = currentGroundZ + modelYOffset;
+            if (ShouldClampSwimToFloor(currentGroundZ, feetZ)) {
+                newZ = currentGroundZ.z() + modelYOffset;
             }
             positionChanged = true;
         }
-    } else if (targetGroundZ != BEST_Z_INVALID) {
+    } else if (targetGroundZ.hasFloor()) {
         // Compare feet positions for step height
         float currentFeetZ = ctx_.playerZ - modelYOffset;
-        float stepHeight = targetGroundZ - currentFeetZ;
+        float stepHeight = targetGroundZ.z() - currentFeetZ;
 
         LOG_TRACE(MOD_MOVEMENT, "HCMap Step height: {} (max up: {})", stepHeight, playerConfig_.collisionStepHeight);
 
         // Limit both stepping UP and stepping DOWN
         float maxStepDown = playerConfig_.collisionStepHeight * 2.0f;
         if (stepHeight <= playerConfig_.collisionStepHeight && stepHeight >= -maxStepDown) {
-            bool losCheck = checkMovementCollision(ctx_.playerX, ctx_.playerY, ctx_.playerZ, newX, newY, targetGroundZ);
+            bool losCheck = checkMovementCollision(ctx_.playerX, ctx_.playerY, ctx_.playerZ, newX, newY, targetGroundZ.z());
 
             LOG_TRACE(MOD_MOVEMENT, "HCMap LOS check: {}", (losCheck ? "CLEAR" : "BLOCKED"));
 
             if (losCheck) {
-                newZ = targetGroundZ + modelYOffset;
+                newZ = targetGroundZ.z() + modelYOffset;
                 positionChanged = true;
             } else {
                 // Wall sliding for HCMap
-                float xGroundZ = findGroundZ(newX, ctx_.playerY, ctx_.playerZ);
-                float xStepHeight = xGroundZ - currentFeetZ;
-                if (xGroundZ != BEST_Z_INVALID &&
+                GroundZ xGroundZ = findGroundZ(newX, ctx_.playerY, ctx_.playerZ);
+                float xStepHeight = xGroundZ.zOr(currentFeetZ) - currentFeetZ;
+                if (xGroundZ.hasFloor() &&
                     xStepHeight <= playerConfig_.collisionStepHeight && xStepHeight >= -maxStepDown &&
-                    checkMovementCollision(ctx_.playerX, ctx_.playerY, ctx_.playerZ, newX, ctx_.playerY, xGroundZ)) {
+                    checkMovementCollision(ctx_.playerX, ctx_.playerY, ctx_.playerZ, newX, ctx_.playerY, xGroundZ.z())) {
                     newY = ctx_.playerY;
-                    newZ = xGroundZ + modelYOffset;
+                    newZ = xGroundZ.z() + modelYOffset;
                     positionChanged = true;
                 } else {
-                    float yGroundZ = findGroundZ(ctx_.playerX, newY, ctx_.playerZ);
-                    float yStepHeight = yGroundZ - currentFeetZ;
-                    if (yGroundZ != BEST_Z_INVALID &&
+                    GroundZ yGroundZ = findGroundZ(ctx_.playerX, newY, ctx_.playerZ);
+                    float yStepHeight = yGroundZ.zOr(currentFeetZ) - currentFeetZ;
+                    if (yGroundZ.hasFloor() &&
                         yStepHeight <= playerConfig_.collisionStepHeight && yStepHeight >= -maxStepDown &&
-                        checkMovementCollision(ctx_.playerX, ctx_.playerY, ctx_.playerZ, ctx_.playerX, newY, yGroundZ)) {
+                        checkMovementCollision(ctx_.playerX, ctx_.playerY, ctx_.playerZ, ctx_.playerX, newY, yGroundZ.z())) {
                         newX = ctx_.playerX;
-                        newZ = yGroundZ + modelYOffset;
+                        newZ = yGroundZ.z() + modelYOffset;
                         positionChanged = true;
                     }
                 }

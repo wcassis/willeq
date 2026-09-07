@@ -244,7 +244,35 @@ std::vector<std::string> goldenOrder() {
 // The autorun flag had no writer at all until T343 wired the hotkey arm; this
 // is its cancel half, and it is a BEHAVIOUR change stated here, not a
 // regeneration from the tip.
-constexpr size_t kGoldenSize = 475;
+//
+// T437: B435 (the ceiling sentinel) and B436. The golden LEARNED this edit in
+// place -- every statement below is an in-place rewrite of the statement that
+// was already there, at the same position; NOTHING was inserted and nothing
+// moved. Two statements were DELETED (475 -> 473), and they are named here:
+//   * `float maxReasonableGround = ctx_.playerZ + 100.0f;  // Ground can't ...`
+//     in resolveIrrlichtClearPath(), and
+//   * `float maxReasonableGround = ctx_.playerZ + 100.0f;`
+//     in resolveIrrlichtBlockedPath().
+// Both existed only to keep findGroundZBspFiltered()'s `feetZ + 1000` ceiling
+// sentinel out of the swim floor clamp. The ground queries now answer a
+// GroundZ (include/client/graphics/player/ground_query.h): a ceiling is
+// hasFloor() == false and cannot reach a clamp or a landing at all, so the
+// heuristic had nothing left to exclude -- while still wrongly excluding a
+// GENUINE floor more than 100 units above the player.
+// The rewrites, all in place, all of the same statement:
+//   * five `float groundZ = ...` / `float targetGroundZ = ...` /
+//     `float xGroundZ = ...` etc. declarations became `GroundZ ...`;
+//   * the FOUR jump landings' `feetZ <= groundZ && verticalVelocity <= 0`
+//     became `ShouldLandJump(groundZ, feetZ, playerMovement_.verticalVelocity)`
+//     -- the B435 fix;
+//   * the FOUR swim floor clamps became `ShouldClampSwimToFloor(...)`;
+//   * the step-height and wall-slide sites gained an explicit
+//     `groundZ.hasFloor() &&`, and read `.z()` / `.zOr(currentFeetZ)` where
+//     they used to read the bare float.
+// The `!= BEST_Z_INVALID` guards that vanish were DEAD: findGroundZ() rewrote
+// every failure to the caller's own z, so they never fired. They are now live,
+// spelled hasFloor(), and that is a stated behaviour change (T437 Review).
+constexpr size_t kGoldenSize = 473;
 
 }  // namespace
 

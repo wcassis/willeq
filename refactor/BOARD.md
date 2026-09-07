@@ -6658,7 +6658,7 @@ client uses every field.
 
 ## Added 2026-09-07 by T435 (door collision; found while ruling out B424)
 
-- **B435** (A, live defect) **a jumping player can "land" on the ceiling
+- ~~**B435** (A, live defect) **a jumping player can "land" on the ceiling
   sentinel, 1,000 units up.** `findGroundZBspFiltered()` returns
   `feetZ + 1000.0f` as a "blocked / that is a ceiling, not a floor" sentinel
   (`src/client/graphics/player/renderer_player_collision.cpp:574`). Four
@@ -6673,9 +6673,25 @@ client uses every field.
   sentinel is not. Not observed live -- found by reading, while T435 Leg C was
   ruling this family out as B424's mechanism -- so a repro is owed: jump under
   low geometry (a Kelethin platform underside, a dungeon ceiling) where the
-  down-ray finds only the ceiling.
+  down-ray finds only the ceiling.~~ **CLOSED by T437**
+  (`refactor/T437_ground_sentinels.md`). The magic floats on this path are
+  gone: `findGroundZ()`, `findGroundZIrrlicht()` and
+  `findGroundZBspFiltered()` all return an `EQT::Graphics::GroundZ`
+  (`include/client/graphics/player/ground_query.h`) -- a floor, or NoFloor,
+  with no conversion to float, so the COMPILER rejects a site that forgets to
+  ask `hasFloor()`. It caught one the entry had not listed: the walking
+  step-height path in `resolveIrrlichtClearPath()`. The four landings and the
+  four swim clamps now go through `ShouldLandJump()` /
+  `ShouldClampSwimToFloor()`
+  (`src/client/graphics/player/ground_query.cpp`), device-free and tested.
+  **The two `ctx_.playerZ + 100.0f` guards are DELETED, not kept**: they
+  existed only to exclude the sentinel, which can no longer reach them, and
+  they also wrongly excluded a genuine floor more than 100 units above.
+  `tests/test_ground_sentinels.cpp`, 12 cases (5 red pre-fix). The live repro
+  the entry owed is now **B437**: the BSP query needs a device and a loaded
+  zone, so it cannot be driven headless.
 
-- **B436** (A, live defect) **`HCMap::FindBestZ()` silently returns a CEILING
+- ~~**B436** (A, live defect) **`HCMap::FindBestZ()` silently returns a CEILING
   as ground.** `src/client/hc_map.cpp:793-803`: if the downward raycast finds
   nothing it re-casts UPWARD ("Try casting ray up if nothing found below") and
   returns that hit's z with no marker distinguishing it from a real floor.
@@ -6689,7 +6705,57 @@ client uses every field.
   `FixZ` is gated by `abs_diff < 20.0f`, which is why it is not currently
   producing B424's 71 units -- but the fallback is a silent lie and either
   needs a distinct return (a "ceiling, not floor" flag) or deleting. Found by
-  T435 Leg C.
+  T435 Leg C.~~ **CLOSED by T437: DELETED.** The choice was made by reading
+  what each caller could do with a ceiling, and the answer was nothing --
+  `ZoneComponent::FixZ()` wrote it into the player position, `findGroundZ()`
+  handed it to the landings and the swim clamp, and SimBoids' three queries
+  placed creatures on it. A distinct "ceiling" return would have had ZERO
+  consumers, which is this project's own recurring defect class, so the
+  upward re-cast is gone and "nothing below" is `BEST_Z_INVALID`, which every
+  caller already handled. It is not a lost recovery for a player sunk under
+  the floor: the DOWNWARD cast already starts at `start.z + 10`
+  (`src/client/hc_map.cpp`, `FindBestZ`), so any penetration under ten units
+  is resolved without the re-cast, and past ten units "recovery" is a
+  teleport. **Measured headless on real dungeon geometry** (T437 Review,
+  `/mnt/projects/akk-stack/server/maps/base/befallen.map`): of 3,600 sampled
+  columns queried from below the geometry, **1,709 would have returned a
+  ceiling as ground**, one of them 48.16 units above the query point.
+  Pinned by `tests/test_ground_sentinels.cpp` (`FindBestZT437.*`, hand-built
+  V1 map files: floor below / ceiling only / both / empty column, plus the
+  `FixZ` arithmetic).
+
+
+## Added 2026-09-07 by T437 (ground sentinels; found while closing B435/B436)
+
+- **B437** (A, live proof owed) **B435's live repro is still owed, and it
+  cannot be taken headless.** T437 fixed the ceiling sentinel and pinned it
+  device-free, but the path that produced it --
+  `PlayerCameraComponent::findGroundZBspFiltered()` --  reads
+  `ctx_.zoneBspTree` and `ctx_.regionWorldTriangles`, both populated only by
+  the zone loader with a live Irrlicht device, and the comparison it feeds
+  sits inside `resolveIrrlichtClearPath()`, which additionally needs an event
+  receiver, an entity renderer and a bridge. There is no headless harness for
+  either. The B436 half WAS reproduced headless on real dungeon geometry (see
+  that entry). What is owed: with a client under the eqemu lock, jump under
+  low geometry -- a Kelethin platform underside or a Befallen ceiling -- and
+  confirm the jump ends on the original floor rather than 1,000 units up.
+  Prov: T437.
+
+- **B438** (B) **the BSP ground query answers "the floor is at your feet" when
+  its ray hits NOTHING AT ALL, and a falling player therefore lands in mid-air
+  over a hole.** `findGroundZBspFiltered()`
+  (`src/client/graphics/player/renderer_player_collision.cpp`) initialises
+  `float groundZ = feetZ;` and returns `GroundZ::Floor(groundZ)` when neither
+  the near nor the full raycast hits, so `ShouldLandJump()` sees
+  `feetZ <= feetZ`, evaluates true, and ends the jump wherever the player
+  happens to be. The `!ctx_.zoneBspTree` early return does the same thing.
+  T437 deliberately did NOT change this: it is pre-existing behaviour, the
+  alternative (NoFloor, so the player keeps falling) has no test coverage and
+  no measurement behind it, and turning it on inside a unit scoped to the
+  ceiling sentinel would have mixed two behaviour changes in one diff. Deciding
+  it needs the same live rig B437 needs -- walk off a gap in a zone whose BSP
+  region has no triangles under the column and see what the oracle does.
+  Prov: T437.
 
 
 ## Added 2026-09-07 by the orchestrator (Will's direction: doors, lifts, traps)
