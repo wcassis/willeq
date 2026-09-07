@@ -188,3 +188,23 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_spell_target_stage_textures PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
 GTEST_DISCOVER_TESTS(test_spell_target_stage_textures)
+
+# T441 (boards B398, B397): where the official client's per-spell colour comes
+# from (spells_us.txt field 123 -> spells.eff record -> the stage's sprite
+# names -> spel*.tga art, with NO colour field anywhere in the chain), and the
+# per-spell style overrides T422 measured. Reads the SHIPPED spell sprite
+# sheet's pixels directly and the real spells.eff when the client data is
+# mounted; otherwise it rests on the measured stage literals. Same source set
+# as test_spell_target_stage_textures -- pure logic, no renderer, no device.
+ADD_EXECUTABLE(test_spell_colour_and_overrides
+    test_spell_colour_and_overrides.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/graphics/environment/spell_effects_config.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/graphics/environment/spell_emitter_presets.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/spell/spells_eff_reader.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
+)
+TARGET_LINK_LIBRARIES(test_spell_colour_and_overrides GTest::gtest_main ${FMT_LIB} ${JSONCPP_LIBRARIES} dl)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_spell_colour_and_overrides PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_spell_colour_and_overrides)

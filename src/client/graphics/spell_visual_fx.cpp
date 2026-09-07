@@ -397,6 +397,19 @@ uint32_t SpellVisualFX::createCastGlow(uint16_t caster_id, uint32_t spell_id, ui
         auto def = spray
             ? EQT::Graphics::Environment::SpellPresets::CastSpray(c, spell_id)
             : EQT::Graphics::Environment::SpellPresets::CastGlow(c, spell_id);
+        // T441 (board B398). The Source stage was already RESOLVED here (the
+        // gate above reads it), but only its presence was used -- its sprite
+        // names were dropped and the glow drew procedural sparkles tinted by
+        // the resist type. Route the names, exactly as T389 did for the
+        // Target stage; applyStageSpriteNames() also drops the tint, because
+        // the art it just installed IS the colour.
+        if (visual.hasSourceStage()) {
+            EQT::Graphics::Environment::SpellPresets::applyStageSpriteNames(
+                def,
+                std::vector<std::string>(visual.source_stage.sprite_names.begin(),
+                                         visual.source_stage.sprite_names.end()),
+                spell_id);
+        }
         // Override emitter lifetime to match cast duration
         float durSec = duration_ms / 1000.0f;
         for (auto& e : def.emitters) {
@@ -512,6 +525,16 @@ void SpellVisualFX::createProjectile(uint16_t caster_id, uint16_t target_id, uin
         glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f,
                      scolor.getBlue() / 255.0f, 1.0f);
         auto def = EQT::Graphics::Environment::SpellPresets::Projectile(c, spell_id);
+        // T441 (board B398): the travel trail draws the Middle stage's own
+        // sprites, and therefore its own colour. Same rule as the Source and
+        // Target stages.
+        if (visual.hasTravelStage()) {
+            EQT::Graphics::Environment::SpellPresets::applyStageSpriteNames(
+                def,
+                std::vector<std::string>(visual.middle_stage.sprite_names.begin(),
+                                         visual.middle_stage.sprite_names.end()),
+                spell_id);
+        }
 
         // Compute travel duration from distance
         irr::core::vector3df srcPos, tgtPos;
@@ -679,6 +702,20 @@ void SpellVisualFX::createSpellComplete(uint16_t caster_id, uint32_t spell_id)
         glm::vec4 c(scolor.getRed() / 255.0f, scolor.getGreen() / 255.0f,
                      scolor.getBlue() / 255.0f, 1.0f);
         auto def = EQT::Graphics::Environment::SpellPresets::SpellComplete(c, spell_id);
+        // T441 (board B398). spellComplete is the caster-side half of a
+        // landing, so it takes the Source stage's sprites -- and with them
+        // its colour. NO suppression gate is added here: unlike the cast
+        // glow, this burst has never been staged, and adding a gate would
+        // silently remove it for every spell whose record has an empty
+        // Source block. Only the art (and hence the colour) changes.
+        SpellVisualResolution visual = resolveVisual(spell_id);
+        if (visual.hasSourceStage()) {
+            EQT::Graphics::Environment::SpellPresets::applyStageSpriteNames(
+                def,
+                std::vector<std::string>(visual.source_stage.sprite_names.begin(),
+                                         visual.source_stage.sprite_names.end()),
+                spell_id);
+        }
         m_particle_manager->createSpellEffect(def, caster_id, 0);
         return;
     }

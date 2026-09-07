@@ -279,7 +279,30 @@ do not re-derive T420's "below ~3 cells/s" bound: it came from a statistic
 over a mixed-age particle population and does not survive
 (`review/T422/README.md`). Any future edit to those lifetimes moves the
 animation rate with them; `tests/test_spell_burst_oracle_match.cpp` fails if it
-leaves the measured band. The pack lives outside the repo and is
+leaves the measured band.
+
+**A SPELL'S COLOUR IS ITS SPRITE, and there is no colour field anywhere in the
+chain** (T441, boards B398 and B397, both closed). `spells_us.txt` field 123
+SPELLAFFECTINDEX indexes `spells.eff`; that record's three stage blocks name
+sprites; `GEN<L><d>0_SPRITE` resolves 0-based to `SpellEffects/spel<l><d+1>.tga`;
+and the particle is that file's texels. Field 85 RESISTTYPE is a mechanic the
+official client does not paint with, and T73 had already refuted the only
+colour-shaped candidate inside `spells.eff`'s unknown region. So
+`SpellPresets::applyStageSpriteNames()` drops the particle colour modulation to
+WHITE whenever it installs a real stage's sprites — `POINT_SPRITE_FS` computes
+`texColor * vColor`, and any non-white modulation is fable tinting the oracle's
+own art. `config/spell_effects.json`'s `resistColors` and
+`SpellVisualFX::colorForVocabulary()` survive only for the ~946 spells with no
+usable `spells.eff` record, the one case where there is no art to take a colour
+from. All three stages route their names now: Source → cast glow and
+spellComplete, Middle → projectile trail, Target → impact. `spellOverrides` is
+no longer empty either: 93, 41 and 253 carry the populations and (for 253) the
+sizes and duration T422 measured live, and a spell whose oracle numbers nobody
+has taken still resolves to the plain style — an invented override is the guess
+Will's ruling forbids. `tests/test_spell_colour_and_overrides.cpp` pins both
+halves, including the negatives (a reintroduced tint, an invented override).
+
+The pack lives outside the repo and is
 read live by every worktree; only `build_willeq_pack.sh` may install it (it
 writes a temp file in the destination directory and `mv`s it into place).
 
