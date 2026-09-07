@@ -6753,3 +6753,146 @@ client uses every field.
   missing item-name lookup. Closes when `OP_GuildsList` is parsed into a
   lookup (which also unblocks a guild column wherever one belongs). Found by
   T429 Leg B.
+
+---
+
+## Added 2026-09-07 by T433 (doors, lifts, switches and traps: the census)
+
+**B420 annotation (census, from T433's read-only SQL over `peq.doors`).**
+19,249 door rows / 429 zones; **6,099 rows / 140 zones** inside Will's era
+(`zone.expansion <= 3`). Sixty-five distinct `opentype` values exist and
+**fable gives distinct treatment to seven** (0/5/56 rotate 90 deg over 0.5 s;
+100/105 spin at 42.35 deg/s; 50/53/54 are never created). Every other
+opentype — 59 lifts, 40 levers, 55/57/58, 71, 76/77, 120 traps, all of them —
+takes a default path whose `openHeading == closedHeading`, so the door changes
+state and **rotates by exactly zero degrees**. There is no translation code in
+the renderer at all and `door_param` is never read. **Lifts are opentype 59**;
+the era set with real travel is gfaydark 69/77/80 (`FAYLEVATOR`,
+`door_param` 68/98/69, `invert_state` 1) with six `FELE2` call buttons
+(`triggerdoor` → the lift, `door_param` 1), plus paineel 25, citymist 70,
+mistmoore 3, acrylia 27, echo 7. Era traps: soldunga `SPEARDOWN` x2
+(opentype 120), sebilis `SBDOOR103` x14 + bazaar x4 (opentype 71), steamfont
+`WMBLADE` x3 + airplane `AIRWMBLDS` x2 (opentype 105). 1,370 rows carry a
+`dest_zone` (691 at opentype 58, 416 at 57); 591 carry a `triggerdoor`.
+**Correction to the plan's premise: there is no `lift`, `trigger_door` or
+`trigger_type` field in the wire `Door_Struct`, and no `lift` column in
+`peq.doors`** — chains and destinations are resolved server-side and reach the
+client only as `OP_MoveDoor{doorid, action}` or a position change. Full tables
+in `refactor/T433_doors_lifts_survey.md` Review; raw dumps in
+`review/T433/data/`.
+
+- **B421** (A, feature — **gates B422/B423/B426**) **the official client cannot
+  be made to click a door under the Xvfb/xdotool oracle rig, so every door
+  timing in fable is still an invented constant.** T433 turned on eqemu's own
+  arrival log (`#logs set gmsay 10 3`; `client_packet.cpp:4671` logs every
+  `OP_ClickDoor` before any gating) and ran **six** click styles (plain click,
+  press-hold-release, double-click, right-click, the project's `jclick` with
+  its 1px move, hover-then-click) plus a 30-point grid over the lift, at 3 and
+  at 10 units, on the gfaydark lift AND on an ordinary opentype-0 `FAYDOOR`:
+  **zero `client handle` lines**. The log was live throughout (NPC-driven
+  `[Doors] [ForceOpen]` lines streamed continuously) and world clicks do reach
+  the client (an item-on-cursor click raised the client's own drop-confirm
+  dialog), so this is the client's 3D door pick refusing synthetic input, not
+  lost input. The click-free routes are closed too: `Mob::HandleDoorOpen()`
+  skips every door with `door_param > 0` (i.e. every lift and every button), and
+  `#door` is a geometry editor with no open/toggle. Two candidate fixes, one
+  needing Will: (a) drive the pointer with real multi-frame motion / find the
+  client's door-use keybind in `eqclient.ini`; (b) a one-line Perl quest
+  calling `ForceOpen()` — server *content*, not server code, needs a ruling.
+  Deliverable once unblocked: one recorded lift cycle with per-frame platform
+  Z (travel time, speed profile, dwell, whether the player is carried), plus
+  the rotation duration of one opentype-0 door and the spin rate of one
+  100/105 — the three constants fable currently invents. Evidence:
+  `review/T433/probe/T433_oracle_clickstyles_doorslog_6styles.png`,
+  `review/T433/video/T433_grid_lift69.mkv`. Found by T433 Leg B.
+
+- **B422** (A, feature — needs B421) **opentype 59 lifts do not move.** fable's
+  `DoorVisual` has no translation state at all; `update()` only lerps a Y
+  rotation and, for opentype 59, lerps it between a value and itself.
+  `DoorState::doorParam` is stored and read by nothing. Work: a translation
+  animation on `DoorVisual` driven by `door_param`, open = far end, closed =
+  spawn, with `invert_state` applied to the wire action byte. Applies only to
+  opentype 59 with `door_param > 0` — the 21 era rows with `door_param` 0/-1
+  (grobb signs, acrylia torches, arena tower) are decorative and must keep
+  today's behaviour. **STOP: direction and timing come from B421's video, never
+  from the `door_param` arithmetic.** Found by T433 Leg A.2.
+
+- **B423** (A, feature — needs B421 and B425) **a lift is not a walkable moving
+  surface.** Two halves beyond B425's missing writer: (1) a translating door's
+  collision triangles must be re-baked or transformed each frame, and
+  `rayTestDoorsAndObjects()`'s `if (door->isAnimating) continue;` — correct for
+  a hinged door, since EQ lets you walk through one mid-swing — is exactly
+  backwards for a lift, which is animating for its whole ride; (2) fable owns
+  player position and sends it to the server, so "the player rides it" means
+  adding the platform's per-frame Z delta to the player while their feet are on
+  it. **STOP: whether the official client carries the player or merely keeps
+  colliding with a rising surface is B421's measurement.** Found by T433.
+
+- **B424** (A, live defect) **fable resolves ground ~71 units too high at the
+  gfaydark Kelethin lift.** `#goto 340 137 6` then `/loc` returns
+  `137.0, 340.0, 77.0`, and `#goto 350 137 8` returns `137.0, 350.0, 77.0` —
+  reproduced in two independent sessions at two coordinates. The **official
+  client on the same server at the same spot returns z `-0.09`** (the forest
+  floor). fable puts the player on the Kelethin platform 70+ units above, with
+  the camera inside a tree trunk. This blocks all lift work in gfaydark: an
+  executor cannot stand next to the lift.
+  Evidence: `review/T433/fable/T433_fable_lift69b_A_beside_lift_1024x768.png`,
+  `…_C_on_lift_settled_…png`, `review/T433/logs/fable_session_lift69*.log`
+  vs `review/T433/probe/T433_aim_a384_1024x768.png`. Found by T433 Leg B.5.
+
+- **B425** (A, live defect) **doors have no collision anywhere in fable, and
+  the code that would give them collision has no writer.** `DoorCollisionData`
+  (`include/client/graphics/renderer_types.h:414`) and
+  `ctx_.doorCollisionData` are *read* by `rayTestDoorsAndObjects()`
+  (`src/client/graphics/player/renderer_player_collision.cpp:336`), which is
+  wired into both `checkCollisionBspFiltered()` (walls) and
+  `findGroundZBspFiltered()` (standing surfaces). A whole-tree grep over
+  `src/ include/ tests/ tools/ benchmarks/ docker/` finds two `clear()` calls,
+  one `.size()` in a log line, one context binding and that one read —
+  **nothing ever inserts**. The map is always empty, so every door in every
+  zone is walk-through and non-standable. `hasCollision` is likewise never
+  assigned; its comment ("false for invisible, teleporter, spinning, lifts,
+  hazardous") describes an intent that was never implemented, and
+  `DoorManager::getDoorSceneNodes()` — documented "for collision detection" —
+  has exactly one production caller, a **material swap** in
+  `diagnostics_debug.cpp:296`. The reachability pattern again. Found by T433
+  Leg A.2.
+
+- **B427** (B, unmeasured decision) **opentypes 50/53/54 are dropped on the
+  floor with nothing behind the decision.** `INVISIBLE_OPENTYPES = {50, 53, 54}`
+  (`door_manager.cpp:22`) makes `createDoor()`/`registerDoor()` return before
+  any mesh, node, collision or state exists — **1,310 era rows**, including 926
+  `CRATEG` (53), 115 city `DOOR1` and 16 gfaydark `FAYLEVATOR` (54). The server
+  visibly opens and closes them: T433's session logged
+  `[Doors] [Process] door open and timer triggered door_id [93] open_type [54]`
+  repeatedly. Whether the official client draws them is **unmeasured**; settle
+  it against the oracle (B421's rig) rather than keeping the guess. Found by
+  T433 Leg A.
+
+- **B428** (A, live defect) **`invert_state` is never applied to the incoming
+  door action byte.** `ZoneProcessMoveDoor`
+  (`src/client/entities/entities_component_world.cpp:130`) reads
+  `is_open = (action == 0x03)`. eqemu emits `OPEN_DOOR 0x02 / CLOSE_DOOR 0x03`
+  for a normal door and `OPEN_INVDOOR 0x03 / CLOSE_INVDOOR 0x02` for one with
+  `invert_state = 1` (`zone/doors.cpp:37-40`), so **every `invert_state = 1`
+  door in the game reads backwards in fable** — including all three Kelethin
+  lifts (`FAYLEVATOR` 69/77/80). `DoorState::invertState` is populated from the
+  spawn packet and then used by nothing on this path. Found by T433 Leg A.3.
+
+- **B426** (B, feature — needs B421) **switches, levers, traps and teleporters
+  are all 0-degree no-ops.** The client's whole job for each of these is
+  animation + sound; the mechanism is server-side and already reaches fable.
+  (a) *Chains*: eqemu resolves `triggerdoor` itself (`doors.cpp:520-540`), so
+  one `OP_ClickDoor` returns two `OP_MoveDoor`s and fable need only animate
+  both — but opentypes 40, 55, 66, 76, 77 and the opentype-59 buttons must stop
+  animating zero degrees first (457 era rows carry a `triggerdoor`).
+  (b) *Traps*: era set is soldunga `SPEARDOWN` (120) x2, sebilis `SBDOOR103`
+  (71) x14, bazaar `BAZIGATE30x` (71) x4, plus `WMBLADE`/`AIRWMBLDS` (105)
+  which fable already spins. **The damage is the server's** and arrives as
+  ordinary `OP_Damage`, which fable handles — the client work is animation and
+  sound only. (c) *Teleporters*: `EQ::ValueWithin(m_open_type, 57, 58) &&
+  HasDestinationZone()` → `MovePC()` (`doors.cpp:540`), a server push; the era
+  set is the opentype-0/5 zone doors carrying a `dest_zone`, which fable
+  already animates, so this is verify-only. **STOP: each opentype's motion
+  (which axis, how far, how long) is a separate oracle measurement — do not
+  generalise from opentype 0.** Found by T433 Leg C.
