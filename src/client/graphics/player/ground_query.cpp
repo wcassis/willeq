@@ -25,5 +25,19 @@ bool ShouldClampSwimToFloor(const GroundZ& ground, float feetZ) {
 	return feetZ < ground.z();
 }
 
+// T440 (B438). A ray that hit NOTHING is not a floor at your feet.
+GroundZ ClassifyBspGroundRay(bool hit, float hitZ, float feetZ, float maxStepUp) {
+	// The miss. Pre-T440 this fell through to `float groundZ = feetZ;` and the
+	// function returned Floor(feetZ) -- so a player falling down a hole was
+	// told the floor was exactly where his feet already were, ShouldLandJump()
+	// agreed, and the fall ended in mid-air. Nothing under the column means
+	// there is nothing to land on.
+	if (!hit) return GroundZ::NoFloor();
+	// The ceiling / overhang / platform underside (T437, B435): geometry above
+	// the step-up limit is not something to stand on either.
+	if (hitZ > feetZ + maxStepUp + 0.1f) return GroundZ::NoFloor();
+	return GroundZ::Floor(hitZ);
+}
+
 }  // namespace Graphics
 }  // namespace EQT

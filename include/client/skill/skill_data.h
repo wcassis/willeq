@@ -67,13 +67,39 @@ struct SkillData {
 
     // Animation
     uint8_t animation_id = 0;           // Animation ID to send to server
-    std::string animation_code;         // Skeletal animation code (e.g., "t02")
+    // T440 (board B415): there is NO animation_code here. initializeSkillData()
+    // used to copy getSkillAnimationCode(skill_id) into a std::string field that
+    // nothing ever read -- SkillManager::playSkillAnimation(), the one consumer
+    // that wants a skill's skeletal code, calls the free function directly. A
+    // second copy of a value the table already owns is a store that can only go
+    // stale; the function is the source.
 
     // State flags
     bool is_activatable = false;        // Can be manually activated
     bool is_toggle = false;             // Toggle skill (Hide, Sneak, Meditate)
     bool is_active = false;             // Currently toggled on
-    bool usable_while_sitting = false;  // Can use while sitting
+    // T440 (board B416): there is NO usable_while_sitting here, and adding one
+    // back needs a measured refusal, not a guess -- the same bar T353 set for
+    // endurance_cost and T325 for requires_combat.
+    //
+    // eqemu refuses NOTHING a fable skill activation can send on account of
+    // sitting. The whole zone server has exactly two sitting refusals for an
+    // action the player initiates, both in
+    // /mnt/projects/akk-stack/code/zone/special_attacks.cpp -- Client::RangedAttack()
+    // (line 976) and Client::ThrowingAttack() (line 1597), each an
+    // `IsSitting() ||` term in a refusal list -- and neither is reachable from
+    // this client: OPCombatAbility() only routes to them when
+    // `ca_atk->m_atk == EQ::invslot::slotRange`, while CombatManager::UseAbility()
+    // hardcodes that field to 100, and Archery(7)/Throwing(51) are not in
+    // isActivatableSkill() at all. Not one of the seventeen dedicated skill
+    // opcode handlers in client_packet.cpp reads the appearance. The only
+    // stand-up gate in the server is for SPELLS (aa.cpp:1323, STAND_TO_CAST),
+    // and it stands the caster UP rather than refusing.
+    //
+    // The field was also backwards as a gate: it was true for Meditate(31)
+    // alone, so a predicate over it would have refused every OTHER skill while
+    // sitting -- precisely the over-strictness that cost the rogue his opener
+    // in T325.
     bool usable_while_stunned = false;  // Can use while stunned
 
     // ========================================================================
@@ -167,11 +193,6 @@ inline void initializeSkillData(SkillData& skill, uint8_t skill_id) {
     skill.is_activatable = isActivatableSkill(skill_id);
     skill.animation_id = getSkillAnimationId(skill_id);
     skill.recast_time_ms = getSkillRecastTime(skill_id);
-
-    const char* anim_code = getSkillAnimationCode(skill_id);
-    if (anim_code) {
-        skill.animation_code = anim_code;
-    }
 
     // Set skill-specific flags
     //
@@ -272,7 +293,6 @@ inline void initializeSkillData(SkillData& skill, uint8_t skill_id) {
 
         case 31: // Meditate
             skill.is_toggle = true;
-            skill.usable_while_sitting = true;
             break;
 
         default:

@@ -296,7 +296,8 @@ private:
 	                            irr::core::vector3df& hitPoint, irr::core::triangle3df& hitTriangle);
 	// Find ground Z at position. currentZ is the node origin (server Z);
 	// modelYOffset is the origin-to-feet distance.
-	GroundZ findGroundZIrrlicht(float x, float y, float currentZ, float modelYOffset);
+	// T440 (B438) deleted the findGroundZIrrlicht() companion: it was a warn-and-
+	// return-your-own-feet stub whose five call sites were all unreachable.
 	GroundZ findGroundZBspFiltered(float x, float y, float currentZ, float modelYOffset);
 	void addCollisionDebugLine(const irr::core::vector3df& start, const irr::core::vector3df& end,
 	                           const irr::video::SColor& color, float duration = 0.5f);

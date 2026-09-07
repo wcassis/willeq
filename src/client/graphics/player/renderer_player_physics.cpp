@@ -421,9 +421,7 @@ void PlayerCameraComponent::resolveIrrlichtClearPath(MovementFrame& frame, bool 
     const float modelYOffset = frame.modelYOffset;
 
     // Path is clear, now find ground at new position
-    GroundZ groundZ = useBspFiltered
-        ? findGroundZBspFiltered(newX, newY, newZ, modelYOffset)
-        : findGroundZIrrlicht(newX, newY, newZ, modelYOffset);
+    GroundZ groundZ = findGroundZBspFiltered(newX, newY, newZ, modelYOffset);
 
     LOG_TRACE(MOD_MOVEMENT, "Ground at target: {}, playerZ: {}, newZ: {}", groundZ.zOr(newZ), ctx_.playerZ, newZ);
 
@@ -536,9 +534,7 @@ void PlayerCameraComponent::resolveIrrlichtBlockedPath(
     // Horizontal movement blocked - try wall sliding or continue jump/swim vertically
     if (playerMovement_.isJumping) {
         // Even if horizontal is blocked, continue vertical jump movement
-        GroundZ groundZ = useBspFiltered
-            ? findGroundZBspFiltered(ctx_.playerX, ctx_.playerY, newZ, modelYOffset)
-            : findGroundZIrrlicht(ctx_.playerX, ctx_.playerY, newZ, modelYOffset);
+        GroundZ groundZ = findGroundZBspFiltered(ctx_.playerX, ctx_.playerY, newZ, modelYOffset);
         float feetZ = newZ - modelYOffset;
         if (ShouldLandJump(groundZ, feetZ, playerMovement_.verticalVelocity)) {
             // Landed - snap center to be modelYOffset above ground
@@ -580,9 +576,7 @@ void PlayerCameraComponent::resolveIrrlichtBlockedPath(
 
         // Check floor collision. T437 (B435): the `+ 100.0f` heuristic is gone
         // for the same reason as its twin on the clear path.
-        GroundZ groundZ = useBspFiltered
-            ? findGroundZBspFiltered(ctx_.playerX, ctx_.playerY, newZ, modelYOffset)
-            : findGroundZIrrlicht(ctx_.playerX, ctx_.playerY, newZ, modelYOffset);
+        GroundZ groundZ = findGroundZBspFiltered(ctx_.playerX, ctx_.playerY, newZ, modelYOffset);
         float feetZ = newZ - modelYOffset;
         if (ShouldClampSwimToFloor(groundZ, feetZ)) {
             newZ = groundZ.z() + modelYOffset;
@@ -596,9 +590,7 @@ void PlayerCameraComponent::resolveIrrlichtBlockedPath(
         irr::core::vector3df rayEndX(newX, ctx_.playerZ + checkHeight, ctx_.playerY);
         if (!(useBspFiltered ? checkCollisionBspFiltered(rayStart, rayEndX, hitPoint, hitTriangle)
                              : checkCollisionIrrlicht(rayStart, rayEndX, hitPoint, hitTriangle))) {
-            GroundZ groundZ = useBspFiltered
-                ? findGroundZBspFiltered(newX, ctx_.playerY, ctx_.playerZ, modelYOffset)
-                : findGroundZIrrlicht(newX, ctx_.playerY, ctx_.playerZ, modelYOffset);
+            GroundZ groundZ = findGroundZBspFiltered(newX, ctx_.playerY, ctx_.playerZ, modelYOffset);
             float currentFeetZ = ctx_.playerZ - modelYOffset;
             float stepHeight = groundZ.zOr(currentFeetZ) - currentFeetZ;
             // Only limit stepping UP - can always step down. T437 (B435): a
@@ -615,9 +607,7 @@ void PlayerCameraComponent::resolveIrrlichtBlockedPath(
             irr::core::vector3df rayEndY(ctx_.playerX, ctx_.playerZ + checkHeight, newY);
             if (!(useBspFiltered ? checkCollisionBspFiltered(rayStart, rayEndY, hitPoint, hitTriangle)
                                   : checkCollisionIrrlicht(rayStart, rayEndY, hitPoint, hitTriangle))) {
-                GroundZ groundZ = useBspFiltered
-                    ? findGroundZBspFiltered(ctx_.playerX, newY, ctx_.playerZ, modelYOffset)
-                    : findGroundZIrrlicht(ctx_.playerX, newY, ctx_.playerZ, modelYOffset);
+                GroundZ groundZ = findGroundZBspFiltered(ctx_.playerX, newY, ctx_.playerZ, modelYOffset);
                 float currentFeetZ = ctx_.playerZ - modelYOffset;
                 float stepHeight = groundZ.zOr(currentFeetZ) - currentFeetZ;
                 // Only limit stepping UP - can always step down. T437 (B435).

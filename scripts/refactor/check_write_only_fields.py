@@ -208,16 +208,10 @@ EXEMPT = {
     # against the oracle's XML and against eqstr_us.txt, and none of them has
     # a line. The two SkillData rows and the three Entity rows are three
     # DIFFERENT defects, boarded separately (B415/B416/B418).
-    ("SkillData", "animation_code"):
-        ("boarded", "B298 (skill half CLOSED by T429): not a display field at all -- it is a "
-                    "skeletal animation code, and it is a DUPLICATE STORE: the one consumer, "
-                    "SkillManager (skill_manager.cpp:719), calls getSkillAnimationCode(skill_id) "
-                    "directly and never reads the copy. B415"),
-    ("SkillData", "usable_while_sitting"):
-        ("boarded", "B298 (skill half CLOSED by T429): not a display field -- a GATE predicate "
-                    "for an in-combat/while-sitting check that does not exist; no sitting test "
-                    "appears anywhere under src/client/skill/. eqstr has no skills-window line "
-                    "for it either. B416"),
+    # T440 STRUCK the two SkillData rows by DELETING both fields (B415, B416):
+    # animation_code was a duplicate of getSkillAnimationCode(), and eqemu has
+    # no sitting refusal any fable skill activation can reach. The exemptions
+    # went with the fields -- an exemption may not outlive its row.
     ("Entity", "anon_status"):
         ("boarded", "B298 (entity half CLOSED by T429): the oracle's anon lines are the /who "
                     "formats 5023/5024, whose '[ANONYMOUS]' is inside the format itself -- and "

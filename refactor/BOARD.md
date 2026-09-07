@@ -5138,10 +5138,11 @@ T407 deleted eleven (see below). The rest are boarded here.
     animation code, `"t02"`), and a **duplicate store**: its one consumer,
     `SkillManager` (`skill_manager.cpp:719`), calls
     `getSkillAnimationCode(skill_id)` directly and never reads the copy.
-    **B415**.
+    **B415 -- CLOSED by T440, the field is deleted.**
   * `SkillData::usable_while_sitting` -- a GATE predicate for a
     while-sitting check that does not exist; no sitting test appears anywhere
-    under `src/client/skill/`. **B416**.
+    under `src/client/skill/`. **B416 -- CLOSED by T440, the field is deleted:
+    eqemu's only two sitting refusals are unreachable from fable.**
   * `Entity::anon_status` -- the oracle's anon lines are the /who formats
     5023/5024, whose `[ANONYMOUS]` is inside the format itself, and the /who
     path parses its OWN wire entries (`who_response.h`), never `Entity`.
@@ -6824,21 +6825,34 @@ client uses every field.
   confirm the jump ends on the original floor rather than 1,000 units up.
   Prov: T437.
 
-- **B438** (B) **the BSP ground query answers "the floor is at your feet" when
-  its ray hits NOTHING AT ALL, and a falling player therefore lands in mid-air
-  over a hole.** `findGroundZBspFiltered()`
-  (`src/client/graphics/player/renderer_player_collision.cpp`) initialises
-  `float groundZ = feetZ;` and returns `GroundZ::Floor(groundZ)` when neither
-  the near nor the full raycast hits, so `ShouldLandJump()` sees
-  `feetZ <= feetZ`, evaluates true, and ends the jump wherever the player
-  happens to be. The `!ctx_.zoneBspTree` early return does the same thing.
-  T437 deliberately did NOT change this: it is pre-existing behaviour, the
-  alternative (NoFloor, so the player keeps falling) has no test coverage and
-  no measurement behind it, and turning it on inside a unit scoped to the
-  ceiling sentinel would have mixed two behaviour changes in one diff. Deciding
-  it needs the same live rig B437 needs -- walk off a gap in a zone whose BSP
-  region has no triangles under the column and see what the oracle does.
-  Prov: T437.
+- ~~**B438** (B) **the BSP ground query answers "the floor is at your feet" when
+    its ray hits NOTHING AT ALL, and a falling player therefore lands in mid-air
+    over a hole.** `findGroundZBspFiltered()`
+    (`src/client/graphics/player/renderer_player_collision.cpp`) initialises
+    `float groundZ = feetZ;` and returns `GroundZ::Floor(groundZ)` when neither
+    the near nor the full raycast hits, so `ShouldLandJump()` sees
+    `feetZ <= feetZ`, evaluates true, and ends the jump wherever the player
+    happens to be. The `!ctx_.zoneBspTree` early return does the same thing.
+    T437 deliberately did NOT change this: it is pre-existing behaviour, the
+    alternative (NoFloor, so the player keeps falling) has no test coverage and
+    no measurement behind it, and turning it on inside a unit scoped to the
+    ceiling sentinel would have mixed two behaviour changes in one diff. Deciding
+    it needs the same live rig B437 needs -- walk off a gap in a zone whose BSP
+    region has no triangles under the column and see what the oracle does.
+    Prov: T437.~~
+  **CLOSED by T440** (`refactor/T440_ground_miss_and_dead_stores.md`):
+  `findGroundZBspFiltered()` answers `GroundZ::NoFloor()` on a total miss AND
+  when `ctx_.zoneBspTree` is null. The verdict moved into the device-free
+  `EQT::Graphics::ClassifyBspGroundRay()` beside T437's two decisions, so the
+  three places that spelled the predicate inline cannot drift. Every consumer
+  was verified: a falling player keeps falling and lands on the first real
+  floor the 500-unit ray finds; the swim clamps do not clamp; the walking
+  step-height path and the two wall slides already carried `hasFloor()` guards
+  and now refuse the move instead of accepting a phantom floor at the feet.
+  Pre-fix red: 3 of the 5 new `GroundMissT440` cases in
+  `tests/test_ground_sentinels.cpp`, produced by restoring the defect in a
+  standalone link (`review/T440/README.md`); 17/17 after. The live repro is
+  still **B437**, which covers this fix too.
 
 
 ## Added 2026-09-07 by the orchestrator (Will's direction: doors, lifts, traps)
@@ -6997,28 +7011,51 @@ client uses every field.
 
 ## Added 2026-09-07 by T429
 
-- **B415** (B) `include/client/skill/skill_data.h` `animation_code` --
-  **a duplicate store nothing reads.** `initializeSkillData()` copies
-  `getSkillAnimationCode(skill_id)` into the struct, and the one consumer
-  that wants a skill's animation code -- `SkillManager`, at
-  `src/client/skill/skill_manager.cpp:719` -- calls the free function
-  directly instead. So the field has a writer, a plausible reader, and zero
-  actual reads. Measured by T429 Leg B while closing B298's skill half; it is
-  NOT a missing display (there is no eqstr line and no
-  `EQUI_SkillsWindow.xml` element for an animation code). Closes when the
-  field is deleted or `SkillManager` reads it. Found by T429 Leg B.
+- ~~**B415** (B) `include/client/skill/skill_data.h` `animation_code` --
+    **a duplicate store nothing reads.** `initializeSkillData()` copies
+    `getSkillAnimationCode(skill_id)` into the struct, and the one consumer
+    that wants a skill's animation code -- `SkillManager`, at
+    `src/client/skill/skill_manager.cpp:719` -- calls the free function
+    directly instead. So the field has a writer, a plausible reader, and zero
+    actual reads. Measured by T429 Leg B while closing B298's skill half; it is
+    NOT a missing display (there is no eqstr line and no
+    `EQUI_SkillsWindow.xml` element for an animation code). Closes when the
+    field is deleted or `SkillManager` reads it. Found by T429 Leg B.~~
+  **CLOSED by T440**: the field is DELETED. Deleting is what removes the
+  duplicate store -- `SkillManager::playSkillAnimation()` already calls
+  `getSkillAnimationCode(skill_id)`, so the table is the source and a second
+  copy could only go stale. `skill_data.h` carries a tombstone naming the
+  consumer, and the `EXEMPT` row went out of
+  `scripts/refactor/check_write_only_fields.py` with it.
 
-- **B416** (B) `include/client/skill/skill_data.h` `usable_while_sitting`,
-  `src/client/skill/` -- **a gate predicate with no gate.**
-  `initializeSkillData()` sets it true for Meditate (31) and false for
-  everything else, and no sitting test exists anywhere under
-  `src/client/skill/` (`grep -i sitting` over `src/client/skill/*.cpp` and
-  `include/client/skill/*.h` returns only the declaration, the assignment,
-  and an unrelated `"p07" // Sitting (meditation pose)` animation comment).
-  The same shape as `requires_combat` before T325, except that one at least
-  had a predicate. Deciding whether fable should refuse a skill while sitting
-  needs the eqemu handlers read per opcode the way T325 read them for
-  in-combat. Found by T429 Leg B.
+- ~~**B416** (B) `include/client/skill/skill_data.h` `usable_while_sitting`,
+    `src/client/skill/` -- **a gate predicate with no gate.**
+    `initializeSkillData()` sets it true for Meditate (31) and false for
+    everything else, and no sitting test exists anywhere under
+    `src/client/skill/` (`grep -i sitting` over `src/client/skill/*.cpp` and
+    `include/client/skill/*.h` returns only the declaration, the assignment,
+    and an unrelated `"p07" // Sitting (meditation pose)` animation comment).
+    The same shape as `requires_combat` before T325, except that one at least
+    had a predicate. Deciding whether fable should refuse a skill while sitting
+    needs the eqemu handlers read per opcode the way T325 read them for
+    in-combat. Found by T429 Leg B.~~
+  **CLOSED by T440: the field is DELETED, and the eqemu handler text decided.**
+  The whole zone server has exactly two sitting refusals for a player-initiated
+  action -- `Client::RangedAttack()` at
+  `/mnt/projects/akk-stack/code/zone/special_attacks.cpp:976` and
+  `Client::ThrowingAttack()` at line 1597, each an `IsSitting() ||` term in a
+  refusal list -- and NEITHER is reachable from fable:
+  `Client::OPCombatAbility()` routes to them only when
+  `ca_atk->m_atk == EQ::invslot::slotRange`, while
+  `CombatManager::UseAbility()` (`src/client/combat.cpp:645`) hardcodes that
+  field to 100, and Archery(7)/Throwing(51) are not in `isActivatableSkill()`.
+  Not one of the seventeen dedicated skill opcode handlers in
+  `/mnt/projects/akk-stack/code/zone/client_packet.cpp` reads the appearance.
+  The only stand-up gate in the server is for SPELLS
+  (`/mnt/projects/akk-stack/code/zone/aa.cpp:1323`, `STAND_TO_CAST`) and it
+  stands the caster UP rather than refusing. The field was also backwards as a
+  gate -- true for Meditate(31) alone, so a predicate over it would have
+  refused every OTHER skill while sitting, the T325 over-strictness again.
 
 - **B417** (B) `src/client/commands/consider_text.cpp` -- **the `/con`
   difficulty tail is fable's wording, not the oracle's.** eqstr 12239 is
@@ -7436,3 +7473,40 @@ in `refactor/T433_doors_lifts_survey.md` Review; raw dumps in
   exclusion should route through it after all -- the second reading is the
   alternative B434 offered, and T434 and T436 both declined it in practice.
   One decision, then a small deletion. Found by T439.
+---
+
+## Added 2026-09-07 by T440
+
+- **B451** (B) `src/client/graphics/player/renderer_player_collision.cpp`
+  `PlayerCameraComponent::checkCollisionIrrlicht()` -- **the surviving twin of
+  the stub T440 deleted.** It is a `LOG_WARN(... "CALLED -- old meta selector
+  path!")` plus `return false` ("nothing blocks you"), reached from five
+  `useBspFiltered ? checkCollisionBspFiltered(...) : checkCollisionIrrlicht(...)`
+  ternaries in `renderer_player_physics.cpp` (the horizontal check, the two
+  swim ceiling checks and the two wall slides). `useBspFiltered` is
+  `ctx_.zoneBspTree && !ctx_.regionWorldTriangles.empty()` evaluated inside
+  `resolveIrrlichtCollision()`, which the caller enters only when
+  `regionWorldTriangles` is already non-empty -- so, exactly as with
+  `findGroundZIrrlicht()`, the false arm is unreachable. T440 deleted the
+  ground half because the plan named it and left this one alone rather than
+  widening scope. Closes the same way: delete the function, delete the five
+  ternaries, learn the G06 golden in place. Found by T440.
+
+- **B452** (B) `include/client/graphics/irrlicht_renderer.h`
+  `IrrlichtRenderer::fallbackMeshNode_` (bound into `RendererContext` as
+  `fallbackMeshNode`, `renderer_context.h:163`) -- **a member nothing ever
+  creates.** It is `= nullptr` at its declaration and the only two
+  assignments in the tree are `= nullptr`
+  (`zone_lifecycle/renderer_zone_lifecycle.cpp:180`,
+  `zone_load/renderer_zone_load.cpp:426`); no site anywhere assigns a scene
+  node to it. Six other sites nonetheless test it, remove it, drop it, swap its
+  material to the debug material, re-parent it and count it in the scene
+  breakdown (`zone_lifecycle/renderer_zone_draw.cpp:321,599,720,841`,
+  `diagnostics/diagnostics_component.cpp:214`,
+  `diagnostics/diagnostics_debug.cpp:282,359,458,477`). Grepped over `src/`,
+  `include/`, `tests/`, `tools/`, `benchmarks/` and `docker/`: no creator. The
+  "single zone mesh" fallback that its name refers to is really
+  `ZoneLifecycleComponent::createZoneMesh()` writing `ctx_.zoneMeshNode`.
+  Closes by deleting the member and its dead handling, or by finding the
+  creator that was lost and restoring it -- decide by reading
+  `createZoneMesh()`. Found by T440 while confirming the non-BSP zone path.

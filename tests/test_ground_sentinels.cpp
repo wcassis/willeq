@@ -12,6 +12,12 @@
 //   B436  HCMap::FindBestZ() re-cast UPWARD when the downward cast missed and
 //         returned the ceiling's z with no marker at all.
 //
+// T440 added a third (board B438): findGroundZBspFiltered() answered
+// Floor(feetZ) when its ray hit NOTHING AT ALL, so a player falling over a hole
+// "landed" in mid-air. That verdict now lives in
+// EQT::Graphics::ClassifyBspGroundRay(), tested in the GroundMissT440 suite
+// below.
+//
 // The B435 half is tested through EQT::Graphics::ShouldLandJump() /
 // ShouldClampSwimToFloor(), which is where those comparisons now live (T435's
 // RayTestDoorCollision extraction is the model). The B436 half is tested
@@ -38,6 +44,7 @@
 using EQT::Graphics::GroundZ;
 using EQT::Graphics::ShouldClampSwimToFloor;
 using EQT::Graphics::ShouldLandJump;
+using EQT::Graphics::ClassifyBspGroundRay;
 
 namespace {
 
@@ -195,6 +202,93 @@ TEST(GroundSentinelsT437, TheOldPlusHundredHeuristicWasBothLeakyAndWrong) {
     EXPECT_FALSE(realFloorHighAbove < maxReasonableGround)
         << "a real floor 150 units up was rejected by the old heuristic";
     EXPECT_TRUE(ShouldClampSwimToFloor(GroundZ::Floor(realFloorHighAbove), 140.0f));
+}
+
+// ---------------------------------------------------------------------------
+// T440 / B438 -- a TOTAL MISS is not a floor at your feet
+//
+// findGroundZBspFiltered() used to open its verdict with
+// `float groundZ = feetZ;` and, when neither the near nor the full raycast hit
+// anything at all, return Floor(feetZ). ShouldLandJump() then read
+// `feetZ <= feetZ`, agreed, and ended a fall in mid-air over a hole. The
+// verdict now lives in ClassifyBspGroundRay(), which is the seam these cases
+// drive -- the query itself needs a live Irrlicht device, a loaded zone with
+// region triangles and a BSP tree.
+// ---------------------------------------------------------------------------
+
+TEST(GroundMissT440, ARayThatHitsNothingReportsNoFloor) {
+    // THE DEFECT, stated as the arithmetic it was.
+    const float feetZ = 42.0f;
+    const GroundZ legacyMissAnswer = GroundZ::Floor(feetZ);
+    EXPECT_TRUE(ShouldLandJump(legacyMissAnswer, feetZ, -12.0f))
+        << "the pre-T440 miss answer WAS a landing, at the falling player's own "
+           "feet -- this line is the defect, restated";
+
+    // The fix.
+    const GroundZ miss = ClassifyBspGroundRay(/*hit=*/false, /*hitZ=*/0.0f, feetZ,
+                                              /*maxStepUp=*/5.0f);
+    EXPECT_FALSE(miss.hasFloor());
+    EXPECT_FLOAT_EQ(miss.zOr(feetZ), feetZ) << "and it carries no number of its own";
+}
+
+TEST(GroundMissT440, AFallingPlayerOverAHoleKeepsFalling) {
+    // The player-visible consequence, swept over a fall: at every height down
+    // the hole the query misses, and at no height does the jump end.
+    const float maxStepUp = 5.0f;
+    for (float feetZ : {100.0f, 50.0f, 0.0f, -250.0f, -4000.0f}) {
+        const GroundZ ground = ClassifyBspGroundRay(false, 0.0f, feetZ, maxStepUp);
+        EXPECT_FALSE(ShouldLandJump(ground, feetZ, -30.0f)) << "at feetZ " << feetZ;
+        EXPECT_FALSE(ShouldClampSwimToFloor(ground, feetZ)) << "at feetZ " << feetZ;
+    }
+}
+
+TEST(GroundMissT440, TheFallEndsOnTheFirstRealFloorTheRayFinds) {
+    // ... and it is a real landing when the ray does find one, at THAT floor,
+    // not at the feet. This is the other half of "falls until the next floor".
+    const float maxStepUp = 5.0f;
+    const float pitFloorZ = -302.5f;
+
+    // Still above the pit floor: the ray reports it, and the fall continues.
+    const GroundZ seenFromAbove = ClassifyBspGroundRay(true, pitFloorZ, -300.0f, maxStepUp);
+    ASSERT_TRUE(seenFromAbove.hasFloor());
+    EXPECT_FLOAT_EQ(seenFromAbove.z(), pitFloorZ);
+    EXPECT_FALSE(ShouldLandJump(seenFromAbove, -300.0f, -30.0f));
+
+    // The frame the feet reach it: the jump ends AT the pit floor, and the
+    // caller snaps to that z -- not to the feet, which is what the miss answer
+    // used to hand it.
+    const GroundZ reached = ClassifyBspGroundRay(true, pitFloorZ, -303.0f, maxStepUp);
+    ASSERT_TRUE(reached.hasFloor());
+    EXPECT_FLOAT_EQ(reached.z(), pitFloorZ);
+    EXPECT_TRUE(ShouldLandJump(reached, -303.0f, -30.0f));
+}
+
+TEST(GroundMissT440, TheCeilingVerdictIsUnchangedByTheMissFix) {
+    // T437's B435 case, now spelled by the same seam: geometry ABOVE the
+    // step-up limit is still not a floor, and the boundary is still the
+    // pre-existing `feetZ + maxStepUp + 0.1f`.
+    const float feetZ = 10.0f;
+    const float maxStepUp = 5.0f;
+    EXPECT_FALSE(ClassifyBspGroundRay(true, 1010.0f, feetZ, maxStepUp).hasFloor());
+    EXPECT_FALSE(ClassifyBspGroundRay(true, 15.2f, feetZ, maxStepUp).hasFloor());
+    // Exactly at the limit is still reachable ground.
+    EXPECT_TRUE(ClassifyBspGroundRay(true, 15.1f, feetZ, maxStepUp).hasFloor());
+    EXPECT_TRUE(ClassifyBspGroundRay(true, 9.0f, feetZ, maxStepUp).hasFloor());
+}
+
+TEST(GroundMissT440, AMissAndACeilingGiveTheSameAnswerAndItIsNotAFloor) {
+    // Three inputs, one verdict shape -- the property that lets every consumer
+    // written since T437 handle a hole with the code it already has.
+    const float feetZ = 0.0f;
+    const float maxStepUp = 5.0f;
+    for (const GroundZ& g : {ClassifyBspGroundRay(false, 0.0f, feetZ, maxStepUp),
+                             ClassifyBspGroundRay(true, 200.0f, feetZ, maxStepUp)}) {
+        EXPECT_FALSE(g.hasFloor());
+        // The walking step-height path: `zOr(currentFeetZ)` makes the step zero
+        // and the `hasFloor()` guard refuses the move, so a walker does not
+        // stride out over a column with nothing under it.
+        EXPECT_FLOAT_EQ(g.zOr(feetZ) - feetZ, 0.0f);
+    }
 }
 
 // ---------------------------------------------------------------------------

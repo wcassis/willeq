@@ -69,6 +69,27 @@ bool ShouldLandJump(const GroundZ& ground, float feetZ, float verticalVelocity);
 // re-clamped every frame, which is the pre-T437 comparison, preserved.
 bool ShouldClampSwimToFloor(const GroundZ& ground, float feetZ);
 
+// T440 (board B438) -- the BSP downward raycast's verdict, lifted out of
+// PlayerCameraComponent::findGroundZBspFiltered() for the same reason as the
+// two decisions above: it lives in a body that needs a live Irrlicht device, a
+// loaded zone with region triangles and a BSP tree, so it had no regression
+// net either.
+//
+// Before T440 the MISS case ("the ray met nothing at all") answered
+// `Floor(feetZ)` -- the floor is exactly under your feet, wherever you happen
+// to be. ShouldLandJump() then saw `feetZ <= feetZ`, evaluated TRUE, and ended
+// a fall in mid-air over a hole. A miss is not a floor; it is the absence of
+// one, and the falling player must keep falling.
+//
+//   hit == false                      -> NoFloor  (T440; was Floor(feetZ))
+//   hit, hitZ above the step-up limit -> NoFloor  (T437's ceiling case)
+//   hit, hitZ within reach            -> Floor(hitZ)
+//
+// `maxStepUp` is the collision step height; the 0.1f slack is the pre-existing
+// tolerance, kept verbatim so this is the same predicate the two phases of the
+// BSP query already spelled inline.
+GroundZ ClassifyBspGroundRay(bool hit, float hitZ, float feetZ, float maxStepUp);
+
 }  // namespace Graphics
 }  // namespace EQT
 
