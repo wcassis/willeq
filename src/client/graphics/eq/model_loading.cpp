@@ -90,53 +90,111 @@ bool RaceModelLoader::loadNumberedGlobalModels() {
     return loadedCount > 0;
 }
 
-bool RaceModelLoader::loadArmorTextures() {
-    if (armorTexturesLoaded_) {
-        return true;
-    }
+// T452 (board B468): the armor archive is DERIVED FROM THE TEXTURE NAME.
+//
+// Until this unit getArmorTexture() ran
+//   SELECT archive, ... FROM s3d_assets WHERE name=?
+// against a table the shipped data/willeq.db has NEVER contained. `s3d_assets`
+// is created only by `willeq_db_builder --s3d-index`, and no script, CMake
+// rule or test has ever passed that flag, so the query failed at prepare() and
+// every call returned nullptr -- from a MISSING TABLE, not from a miss. That
+// has been true since the route was introduced on 2026-03-21 (ca267770), and
+// it was not harmless.
+//
+// MEASURED against the client tree at /mnt/projects/EverQuestP1999. A
+// character body texture is named {race}{part}{variant:02d}{page:02d}.bmp, and
+// the variant partitions the archives:
+//   00-04   global_chr.s3d           -- already merged into globalTextures_
+//   10-16   robes; mesh_building.cpp rewrites these to clk<nn><page>.bmp,
+//           which is also in global_chr.s3d (42 clk pages)
+//   17-23   global17_amr.s3d .. global23_amr.s3d -- loaded by NOTHING ELSE
+// The seven *_amr.s3d hold 1,784 textures between them (289/291/289/290/291/
+// 289/45) and no other archive has them. So mesh_building.cpp's
+// isTextureAvailable() asked for e.g. hufch1701.bmp, got nullptr, and declined
+// the variant override: the whole Kunark/Velious armor tier rendered as the
+// base skin.
+//
+// Each archive holds its own variant and, with ONE exception, nothing else --
+// haft2202.bmp is in global20_amr.s3d, not global21..23. A strict
+// name->archive derivation would miss exactly that one file, so this probes
+// the derived archive FIRST and then the other six, which is both correct for
+// all 1,784 and cheap: the fallback runs only for a 17-23 name, and only when
+// the obvious archive did not have it.
+//
+// No database, no index file, and nothing new to ship. All 1,784 names are
+// already in data/eqe1_texture_index.json and all seven archives have EQE1
+// packs, so the bytes returned here resolve to real pixels under --eqe1-path
+// as well (checked: 0 of 1,784 missing from the index).
+namespace {
 
-    // Armor textures accessed on-demand via SQLite — no index pre-loading needed
-    armorTexturesLoaded_ = true;
-    LOG_INFO(MOD_GRAPHICS, "RaceModelLoader: Armor textures using on-demand SQLite lookup");
-    return true;
+constexpr int kArmorVariantFirst = 17;
+constexpr int kArmorVariantLast = 23;
+
+// The 2-digit variant a body-texture name encodes, or -1 if it is not of that
+// shape. The four characters before the extension are {variant}{page}; the
+// race+part prefix is 5 characters for player races but this does not depend
+// on its length, only on there being one.
+int armorVariantFromTextureName(const std::string& lowerName) {
+    size_t dot = lowerName.rfind('.');
+    if (dot == std::string::npos || dot < 5) return -1;
+    size_t v = dot - 4;
+    for (size_t i = v; i < dot; ++i) {
+        if (lowerName[i] < '0' || lowerName[i] > '9') return -1;
+    }
+    return (lowerName[v] - '0') * 10 + (lowerName[v + 1] - '0');
+}
+
+}  // namespace
+
+// The archives to probe for `lowerName`, most likely first. Empty means the
+// name is not a 17-23 armor texture and nothing should be opened at all --
+// which is the common case, and is why this is cheaper than the SQL query it
+// replaces even when it finds nothing.
+std::vector<std::string> ArmorArchivesForTextureName(const std::string& lowerName) {
+    const int variant = armorVariantFromTextureName(lowerName);
+    if (variant < kArmorVariantFirst || variant > kArmorVariantLast) return {};
+
+    std::vector<std::string> archives;
+    archives.reserve(kArmorVariantLast - kArmorVariantFirst + 1);
+    archives.push_back("global" + std::to_string(variant) + "_amr.s3d");
+    for (int v = kArmorVariantFirst; v <= kArmorVariantLast; ++v) {
+        if (v == variant) continue;
+        archives.push_back("global" + std::to_string(v) + "_amr.s3d");
+    }
+    return archives;
 }
 
 std::shared_ptr<TextureInfo> RaceModelLoader::getArmorTexture(const std::string& lowerName) {
-    // Check cache first
+    // A cached entry may be null: that is a cached MISS, and it matters --
+    // without it every mesh build re-probes seven 3 MB archives for a name no
+    // archive has (most races do not have every one of the seven tiers).
     auto cacheIt = armorTextureCache_.find(lowerName);
     if (cacheIt != armorTextureCache_.end()) {
         return cacheIt->second;
     }
 
-    // On-demand SQLite lookup — find which archive contains this texture
-    auto* db = EQT::WilleqDatabase::globalInstance();
-    if (!db) return nullptr;
+    const std::vector<std::string> archives = ArmorArchivesForTextureName(lowerName);
+    if (archives.empty()) return nullptr;
 
-    auto loc = db->getAssetLocation(lowerName);
-    if (!loc.found) return nullptr;
+    for (const std::string& archiveName : archives) {
+        PfsArchive archive;
+        if (!archive.open(clientPath_ + archiveName)) continue;
 
-    // Open the specific archive and extract the texture
-    std::string archivePath = clientPath_ + loc.archive;
-    PfsArchive archive;
-    if (!archive.open(archivePath)) {
-        LOG_WARN(MOD_GRAPHICS, "RaceModelLoader: Failed to open archive for armor texture: {}", archivePath);
-        return nullptr;
+        std::vector<char> data;
+        if (!archive.get(lowerName, data)) continue;
+
+        auto tex = std::make_shared<TextureInfo>();
+        tex->name = lowerName;
+        tex->data = std::move(data);
+        armorTextureCache_[lowerName] = tex;
+
+        LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loaded armor texture on demand: {} ({} bytes from {})",
+                  lowerName, tex->data.size(), archiveName);
+        return tex;
     }
 
-    std::vector<char> data;
-    if (!archive.get(lowerName, data)) {
-        LOG_WARN(MOD_GRAPHICS, "RaceModelLoader: Failed to extract armor texture: {} from {}", lowerName, archivePath);
-        return nullptr;
-    }
-
-    auto tex = std::make_shared<TextureInfo>();
-    tex->name = lowerName;
-    tex->data = std::move(data);
-    armorTextureCache_[lowerName] = tex;
-
-    LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loaded armor texture on demand: {} ({} bytes from {})",
-              lowerName, tex->data.size(), loc.archive);
-    return tex;
+    armorTextureCache_[lowerName] = nullptr;
+    return nullptr;
 }
 
 bool RaceModelLoader::loadZoneModels(const std::string& zoneName) {

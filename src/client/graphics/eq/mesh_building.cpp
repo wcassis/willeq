@@ -33,8 +33,9 @@ std::map<std::string, std::shared_ptr<TextureInfo>> RaceModelLoader::getMergedTe
     // holds otherChrCacheMutex_ when it calls this (model_loading_chr.cpp's
     // T114 comment at line 336 makes releasing it first an explicit
     // invariant, and model_loading.cpp:181's guard closes two lines later),
-    // and nothing this function calls -- loadNumberedGlobalModels(),
-    // loadArmorTextures() -- acquires it or any other loader mutex. No new
+    // and nothing this function calls -- loadNumberedGlobalModels() (T452
+    // removed the second callee, loadArmorTextures()) -- acquires it or any
+    // other loader mutex. No new
     // lock-ordering edge is introduced.
     std::lock_guard<std::mutex> chrCacheLock(otherChrCacheMutex_);
 
@@ -52,10 +53,11 @@ std::map<std::string, std::shared_ptr<TextureInfo>> RaceModelLoader::getMergedTe
         loadNumberedGlobalModels();
     }
 
-    // Ensure armor textures are loaded (global17-23_amr.s3d contain high-tier armor textures)
-    if (!armorTexturesLoaded_ && !graphicsArchiveIndex_) {
-        loadArmorTextures();
-    }
+    // T452: there is no armor-texture PRE-load any more. loadArmorTextures()
+    // was called here and did nothing but set a flag -- it was gutted in
+    // 2026-03 when the lookup moved to a database table that never shipped
+    // (board B468). global17-23_amr.s3d are opened by getArmorTexture(), one
+    // texture at a time, only for a name whose variant says they hold it.
 
     std::map<std::string, std::shared_ptr<TextureInfo>> merged;
 
@@ -71,8 +73,10 @@ std::map<std::string, std::shared_ptr<TextureInfo>> RaceModelLoader::getMergedTe
         }
     }
 
-    // 3. Add already-cached armor textures (loaded on demand from global17-23_amr.s3d)
+    // 3. Add already-cached armor textures (loaded on demand from global17-23_amr.s3d).
+    // T452: a NULL value is a cached miss, not a texture -- never merge one.
     for (const auto& [name, tex] : armorTextureCache_) {
+        if (!tex) continue;
         if (merged.find(name) == merged.end()) {
             merged[name] = tex;
         }

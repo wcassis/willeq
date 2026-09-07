@@ -222,6 +222,20 @@ test that fails if the checked-in bytes and their inputs drift apart:
 | `/mnt/projects/EverQuest_ETC1/willeq.eqe1` (132 entries since T430: 67 textures, 64 ETC1 `_alpha` companions, 1 raw — `build/bin/verify_eqe1` prints the census; re-measured T444) | `scripts/build_willeq_pack.sh` | `data/willeq.eqe1.sha256` | `PackReproducible` |
 | `data/willeq.db` (32,414 rows in eleven tables; `metadata.version` = 7) | `scripts/build_willeq_db.sh` → `tools/willeq_db_builder`, over the EQ client's seven `*.txt` files plus `data/item_models.json`, `data/equipment_models.json` and `config/race_models.json` | `data/willeq.db.sha256` | `DbReproducible` (T450) |
 
+**Every table the builder can create now ships** (T452, board B468 CLOSED).
+There used to be a twelfth, `s3d_assets` — a name→archive index over every
+S3D, built only when `willeq_db_builder` was given `--s3d-index`, which no
+script, CMake rule or test has ever passed. So it was never in the shipped
+file, and the two client queries against it
+(`WilleqDatabase::getAssetLocation()` / `getAssetsInArchive()`) failed at
+`prepare()` and returned "not found" from a MISSING TABLE rather than from a
+miss — for six months, on a reachable path. The loader, the flag,
+`tools/s3d_index_builder` and both queries are gone.
+`WilleqDatabaseShippedContent.EveryTableTheClientQueriesExists` (ctest) now
+takes the census from `src/client/willeq_database.cpp` itself and fails on a
+query naming a table the shipped database does not have, so this class of
+drift cannot recur silently.
+
 **The database's pin is T450's (board B467), and it could not have existed
 before.** `willeq_db_builder` stamped `metadata.build_date = __DATE__ " "
 __TIME__`, so **recompiling the tool changed `data/willeq.db` with

@@ -12,7 +12,7 @@ ADD_EXECUTABLE(test_integration_network
     ${CMAKE_SOURCE_DIR}/src/common/util/compression.cpp
 )
 TARGET_LINK_LIBRARIES(test_integration_network GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB})
-GTEST_DISCOVER_TESTS(test_integration_network)
+GTEST_DISCOVER_TESTS(test_integration_network DISCOVERY_TIMEOUT 120)
 
 # Protocol-level pcap replay tests (Batch R / R03).
 # All of these SKIP cleanly when no capture is present: WILLEQ_PCAP env var,
@@ -25,7 +25,7 @@ ADD_EXECUTABLE(test_pcap_extractor
     test_pcap_extractor.cpp
 )
 TARGET_LINK_LIBRARIES(test_pcap_extractor GTest::gtest)
-GTEST_DISCOVER_TESTS(test_pcap_extractor)
+GTEST_DISCOVER_TESTS(test_pcap_extractor DISCOVERY_TIMEOUT 120)
 
 # Test the standalone DaybreakTestHarness (replicates protocol decode logic
 # for exploration/debugging without touching production code); needs zlib
@@ -34,14 +34,14 @@ ADD_EXECUTABLE(test_daybreak_harness
     test_daybreak_harness.cpp
 )
 TARGET_LINK_LIBRARIES(test_daybreak_harness GTest::gtest ${ZLIB_LIBRARIES})
-GTEST_DISCOVER_TESTS(test_daybreak_harness)
+GTEST_DISCOVER_TESTS(test_daybreak_harness DISCOVERY_TIMEOUT 120)
 
 # Step-by-step verbose pcap decode verification (uses the standalone harness)
 ADD_EXECUTABLE(test_pcap_step_through
     test_pcap_step_through.cpp
 )
 TARGET_LINK_LIBRARIES(test_pcap_step_through GTest::gtest ${ZLIB_LIBRARIES})
-GTEST_DISCOVER_TESTS(test_pcap_step_through)
+GTEST_DISCOVER_TESTS(test_pcap_step_through DISCOVERY_TIMEOUT 120)
 
 # Test the REAL production DaybreakConnection::ProcessPacket() against a
 # pcap capture (private-member access via #define private public).
@@ -55,7 +55,7 @@ ADD_EXECUTABLE(test_daybreak_connection_pcap
     ${CMAKE_SOURCE_DIR}/src/common/net/posix_udp_transport.cpp
 )
 TARGET_LINK_LIBRARIES(test_daybreak_connection_pcap GTest::gtest ${ZLIB_LIBRARIES} ${FMT_LIB})
-GTEST_DISCOVER_TESTS(test_daybreak_connection_pcap)
+GTEST_DISCOVER_TESTS(test_daybreak_connection_pcap DISCOVERY_TIMEOUT 120)
 
 # T321: CRC validation driven by REAL captured wire bytes (login/world/zone
 # session responses + a covering sample of each stream) from T311 Leg A's
@@ -74,7 +74,7 @@ ADD_EXECUTABLE(test_daybreak_crc_capture
 TARGET_COMPILE_DEFINITIONS(test_daybreak_crc_capture PRIVATE
     T321_CRC_CAPTURE="${CMAKE_SOURCE_DIR}/tests/data/t321_crc_capture.txt")
 TARGET_LINK_LIBRARIES(test_daybreak_crc_capture GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB})
-GTEST_DISCOVER_TESTS(test_daybreak_crc_capture)
+GTEST_DISCOVER_TESTS(test_daybreak_crc_capture DISCOVERY_TIMEOUT 120)
 
 # T17: DaybreakConnection/DaybreakConnectionManager state-machine tests
 # driven through a FakeUdpTransport (tests/fake_udp_transport.h) — session
@@ -89,11 +89,11 @@ ADD_EXECUTABLE(test_daybreak_state_machine
     ${CMAKE_SOURCE_DIR}/src/common/net/crc32.cpp
 )
 TARGET_LINK_LIBRARIES(test_daybreak_state_machine GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB})
-GTEST_DISCOVER_TESTS(test_daybreak_state_machine)
+GTEST_DISCOVER_TESTS(test_daybreak_state_machine DISCOVERY_TIMEOUT 120)
 
 # Test Titanium opcodes are correctly hard-coded
 ADD_EXECUTABLE(test_titanium_opcodes
     test_titanium_opcodes.cpp
 )
 TARGET_LINK_LIBRARIES(test_titanium_opcodes GTest::gtest_main ${FMT_LIB})
-GTEST_DISCOVER_TESTS(test_titanium_opcodes)
+GTEST_DISCOVER_TESTS(test_titanium_opcodes DISCOVERY_TIMEOUT 120)

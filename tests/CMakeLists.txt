@@ -57,6 +57,33 @@ IF(CMAKE_VERSION VERSION_LESS 3.18)
 ENDIF()
 SET(CMAKE_GTEST_DISCOVER_TESTS_DISCOVERY_MODE PRE_TEST)
 
+# T452 (2026-09-07): DISCOVERY_TIMEOUT 120 on every GTEST_DISCOVER_TESTS()
+# call in this directory (292 of them, across tests/CMakeLists.txt and the
+# nineteen tests/cmake/*.cmake fragments).
+#
+# T163 above moved discovery OUT of the parallel build, which removed the
+# contention this project generates for itself. It does NOT remove the
+# contention from the OTHER worktree slots: three executors build
+# concurrently by design, and a `ctest` in slot2 runs its PRE_TEST discovery
+# while slot1 and slot3 are saturating 24 cores and the same NFS mount. The
+# GoogleTest module's default DISCOVERY_TIMEOUT is 5 SECONDS, and under that
+# cross-slot load a random test binary exceeds it on nearly every run --
+# ctest then reports "Process terminated due to timeout" against an innocent
+# test and stops at the FIRST such failure, so the run proves nothing and
+# costs a full suite each time.
+#
+# 120 s is slack, not a fix for a slow binary: the measured worst
+# --gtest_list_tests over all binaries is 0.21 s idle and 1.07 s under this
+# project's own -j24 build (T163's measurements). A discovery that genuinely
+# takes over two minutes is a real defect and still fails.
+#
+# There is no directory-level variable for this -- unlike DISCOVERY_MODE,
+# the GoogleTest module reads DISCOVERY_TIMEOUT only as a per-call keyword
+# (`if(NOT arg_DISCOVERY_TIMEOUT) set(arg_DISCOVERY_TIMEOUT 5)`), so it is
+# spelled at every call site. A NEW test target must carry it too; the
+# keyword goes last, after PROPERTIES, which is a multi-value keyword that
+# terminates at the next recognised one.
+
 # T36: repo root as a compile-time define, for EVERY test target in this
 # directory and below.
 #

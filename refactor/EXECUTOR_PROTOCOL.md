@@ -296,3 +296,13 @@ only the targets you build; build the tools too.
    a `visual_gate` CPU-p95 ceiling miss, and `HeadlessShutdownTest` failing
    with `failed to open data/willeq.db (sqlite rc=14)` (T360). And ctest
    exits 8 even when only the waived ALSA test fails — read the summary line.
+   ⚠ **A gtest DISCOVERY timeout naming a random binary was a THIRD load
+   artefact, and T452 (2026-09-07) removed it.** GoogleTest's default
+   `DISCOVERY_TIMEOUT` is 5 seconds; with three slots compiling at once that
+   was exceeded on nearly every `ctest` run, and ctest reports only the FIRST
+   discovery failure, so the whole suite had to be re-run. All 292
+   `GTEST_DISCOVER_TESTS()` calls under `tests/` now pass
+   `DISCOVERY_TIMEOUT 120` (there is no directory-level variable for it — a
+   NEW test target must spell it too; see the note in `tests/CMakeLists.txt`).
+   A discovery failure on this tip is therefore no longer a load artefact:
+   treat it as truncation (the exit-143 scan above) or a real defect.

@@ -21,8 +21,15 @@
 // T450: this list used to name a `zone_points` table as well. There is no
 // such loader and no such table -- zone lines ship as data/zone_lines/*.json,
 // built by tools/generate_zone_lines.py, and never went through the database.
-// `s3d_assets` is also NOT in the shipped file: it needs --s3d-index, which
-// nothing in the tree passes (board B468).
+//
+// T452 (board B468 CLOSED): there used to be a twelfth table here too --
+// `s3d_assets`, a name->archive index over every S3D, built only when this
+// tool was given --s3d-index. Nothing in the tree ever passed it, so the
+// table was never in the shipped file, and its only reachable consumer
+// (RaceModelLoader::getArmorTexture) had been querying a missing table since
+// 2026-03-21. The loader, the flag and tools/s3d_index_builder are gone; the
+// armor archive is derived from the texture name instead. This tool builds
+// ELEVEN tables plus metadata, and every one of them ships.
 //
 // T447 split this TU three ways; the loaders live beside it and the seam is
 // tools/willeq_db/db_builder.h:
@@ -217,13 +224,11 @@ int main(int argc, char** argv) {
     std::string dataPath = "data";
     std::string configPath = "config";
     std::string outputPath = "data/willeq.db";
-    std::string s3dIndexPath;
 
     for (int i = 1; i < argc; ++i) {
         if (strcmp(argv[i], "--eq-path") == 0 && i + 1 < argc) eqPath = argv[++i];
         else if (strcmp(argv[i], "--data-path") == 0 && i + 1 < argc) dataPath = argv[++i];
         else if (strcmp(argv[i], "--config-path") == 0 && i + 1 < argc) configPath = argv[++i];
-        else if (strcmp(argv[i], "--s3d-index") == 0 && i + 1 < argc) s3dIndexPath = argv[++i];
         else if (strcmp(argv[i], "--output") == 0 && i + 1 < argc) outputPath = argv[++i];
         else if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) outputPath = argv[++i];
         else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
@@ -232,7 +237,6 @@ int main(int argc, char** argv) {
             printf("  --eq-path PATH      EQ client directory (required)\n");
             printf("  --data-path PATH    WillEQ data directory (default: data)\n");
             printf("  --config-path PATH  WillEQ config directory (default: config)\n");
-            printf("  --s3d-index PATH    s3d_index.json path (optional)\n");
             printf("  -o, --output PATH   Output database path (default: data/willeq.db)\n");
             return 0;
         }
@@ -259,7 +263,6 @@ int main(int argc, char** argv) {
         {"music_index",      eqPath + "/mp3index.txt"},
         {"login_strings",    eqPath + "/eqlsstr_us.txt"},
     };
-    if (!s3dIndexPath.empty()) inputs.push_back({"s3d_index", s3dIndexPath});
 
     auto inputPath = [&](const char* label) -> const std::string& {
         for (const DbInput& in : inputs) {
@@ -391,16 +394,6 @@ int main(int argc, char** argv) {
         auto elapsed = std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - start).count();
         printf("  login_strings:%6d entries (%.0f ms)\n", n, elapsed);
-        totalEntries += n;
-    }
-
-    // ── S3D Asset Index ──
-    if (!s3dIndexPath.empty()) {
-        auto start = std::chrono::steady_clock::now();
-        int n = loadS3dIndex(db, inputPath("s3d_index"));
-        auto elapsed = std::chrono::duration<double, std::milli>(
-            std::chrono::steady_clock::now() - start).count();
-        printf("  s3d_assets:   %6d entries (%.0f ms)\n", n, elapsed);
         totalEntries += n;
     }
 

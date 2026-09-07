@@ -388,9 +388,12 @@ TEST(WilleqDatabaseShippedContentTest, DragonRacesNameTheirChrArchive) {
 // (T211/T213/T262 all found instances). The check reads the archive's WLD
 // string hash directly (PfsArchive + the WLD XOR key), so it needs only
 // pfs.cpp, not the graphics stack. Skips when the EQ client tree is absent.
+#include <algorithm>
 #include <cctype>
 #include <cstdint>
 #include <cstring>
+#include <fstream>
+#include <iterator>
 #include <map>
 #include <set>
 #include <vector>
@@ -549,4 +552,80 @@ TEST(WilleqDatabaseShippedContentTest, T274RaceDisplayNamesCarryNoAnnotation) {
     sqlite3_finalize(stmt);
     sqlite3_close(raw);
     EXPECT_GE(rows, 190) << "race_models shrank";
+}
+
+// ---------------------------------------------------------------------------
+// T452 (board B468): every table the client's SQL names must exist in the
+// shipped database.
+//
+// This is the net that would have caught B468 six months earlier. Two queries
+// in src/client/willeq_database.cpp selected `FROM s3d_assets`, a table
+// created only by `willeq_db_builder --s3d-index` -- a flag nothing in the
+// tree passes. Both therefore failed at prepare() and returned "not found"
+// from a MISSING TABLE rather than from a miss, and one of them was on the
+// reachable armor-texture path, so the whole Kunark/Velious armor tier
+// rendered as the base skin.
+//
+// The census is taken from the SOURCE, not from a hand-written list, so a new
+// query against a table the builder does not create is a red test rather than
+// a silent "not found" the caller cannot tell from an honest miss.
+// ---------------------------------------------------------------------------
+
+// The table name in a `FROM <name>` or `INTO <name>` clause, for every such
+// clause in `src`. Only the identifier is taken; subqueries and joins would
+// need a real parser, and this file has neither.
+std::vector<std::string> TablesNamedInSql(const std::string& src) {
+    std::vector<std::string> names;
+    for (const char* kw : {"FROM ", "INTO "}) {
+        size_t p = 0;
+        const std::string key(kw);
+        while ((p = src.find(key, p)) != std::string::npos) {
+            size_t q = p + key.size();
+            while (q < src.size() && src[q] == ' ') ++q;
+            size_t r = q;
+            while (r < src.size() &&
+                   (std::isalnum(static_cast<unsigned char>(src[r])) || src[r] == '_')) ++r;
+            if (r > q) names.push_back(src.substr(q, r - q));
+            p = r;
+        }
+    }
+    std::sort(names.begin(), names.end());
+    names.erase(std::unique(names.begin(), names.end()), names.end());
+    return names;
+}
+
+TEST(WilleqDatabaseShippedContent, EveryTableTheClientQueriesExists) {
+    const std::string dbPath = WILLEQ_DB_REAL_PATH;
+    if (!FileExists(dbPath)) GTEST_SKIP() << "no shipped db at " << dbPath;
+
+    const std::string srcPath =
+        std::string(WILLEQ_REPO_ROOT) + "/src/client/willeq_database.cpp";
+    std::ifstream in(srcPath);
+    ASSERT_TRUE(in.good()) << "cannot read " << srcPath;
+    const std::string src((std::istreambuf_iterator<char>(in)),
+                          std::istreambuf_iterator<char>());
+
+    const std::vector<std::string> named = TablesNamedInSql(src);
+    ASSERT_GE(named.size(), 8u) << "the census found almost nothing -- it is broken, not clean";
+
+    sqlite3* raw = nullptr;
+    ASSERT_EQ(sqlite3_open_v2(dbPath.c_str(), &raw, SQLITE_OPEN_READONLY, nullptr), SQLITE_OK);
+
+    for (const std::string& table : named) {
+        sqlite3_stmt* stmt = nullptr;
+        ASSERT_EQ(sqlite3_prepare_v2(
+                      raw, "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                      -1, &stmt, nullptr), SQLITE_OK);
+        sqlite3_bind_text(stmt, 1, table.c_str(), -1, SQLITE_TRANSIENT);
+        const bool present = (sqlite3_step(stmt) == SQLITE_ROW);
+        sqlite3_finalize(stmt);
+        EXPECT_TRUE(present)
+            << "src/client/willeq_database.cpp queries table '" << table
+            << "', which the shipped data/willeq.db does not contain. Every such"
+               " query fails at prepare() and returns 'not found' from a missing"
+               " table -- indistinguishable, at the call site, from an honest"
+               " miss. Either the builder must create it (and the pin move with"
+               " it) or the query must go.";
+    }
+    sqlite3_close(raw);
 }

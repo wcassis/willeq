@@ -8081,7 +8081,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   file** -- `metadata.build_date` -> `metadata.input_digest` -- with the
   32,414 data rows and the file size unchanged.
 
-- **B468** (A, unconfirmed live) `src/client/graphics/eq/model_loading.cpp`
+~~- **B468** (A, unconfirmed live) `src/client/graphics/eq/model_loading.cpp`
   `RaceModelLoader::getArmorTexture()`, `src/client/willeq_database.cpp`
   `getAssetLocation()` / `getAssetsInArchive()` -- **two SQL queries run against
   `s3d_assets`, a table the shipped `data/willeq.db` has never contained, and
@@ -8103,7 +8103,46 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   (`scripts/build_willeq_db.sh`, one more table in the pin) or the three
   functions and the loader are deleted. Do NOT add the table to the shipped
   database "to be safe": it would change the pinned bytes for a consumer nobody
-  has shown is reached. Found by T450.
+  has shown is reached. Found by T450.~~ **STRUCK by T452 (this commit): CONFIRMED A LIVE DEFECT, and fixed.**
+
+  What was unmeasured -- whether a player ever saw a consequence -- is now
+  measured, offline, against the client tree. A character body texture is
+  named `{race}{part}{variant:02d}{page:02d}.bmp`, and the variant partitions
+  the archives: **00-04 are in `global_chr.s3d`** (already merged into
+  `globalTextures_`), **10-16 are robes**, which `mesh_building.cpp` rewrites
+  to `clk<nn><page>.bmp` (also in `global_chr.s3d`, 42 pages), and **17-23
+  live ONLY in `global17_amr.s3d` .. `global23_amr.s3d`** -- 1,784 textures
+  that NOTHING ELSE in the client opens. `getArmorTexture()` was the sole
+  route to them, so `isTextureAvailable()` asked for e.g. `hufch1701.bmp`, got
+  `nullptr`, declined the variant override, and the whole Kunark/Velious armor
+  tier rendered as the BASE SKIN. The EQE1 side was never the problem: all
+  1,784 names are in `data/eqe1_texture_index.json` and all seven archives
+  have `.eqe1` packs, so the pixels were there the whole time.
+
+  Neither of the two options the plan named was taken, and the deviation is
+  deliberate. Populating `s3d_assets` would have put a ~50k-row scan of every
+  S3D into a database whose own board entry says not to grow it, to duplicate
+  an index the client already ships. Deleting the route outright would have
+  left the armor tier broken for good. Instead the archive is DERIVED from the
+  name (`ArmorArchivesForTextureName()`, `model_loading.cpp`): the variant
+  digits name the archive, and the other six are probed after it -- because
+  `haft2202.bmp` is the one measured file that is NOT in its own archive (it
+  is in `global20_amr.s3d`). No database, no index file, nothing new shipped,
+  and `data/willeq.db` was NOT rebuilt (the `--s3d-index` input only joined
+  T450's digest when the flag was passed, so the shipped bytes and their pin
+  are untouched).
+
+  Deleted with it: `getAssetLocation()`, `getAssetsInArchive()`, `struct
+  AssetLocation`, two prepared-statement members, `loadS3dIndex()`, the
+  `s3d_assets` DDL, the `--s3d-index` flag, and `tools/s3d_index_builder`
+  (whose `.json` fed only that flag and whose `.bin` no runtime code has ever
+  read). Also `loadArmorTextures()` -- gutted to a flag-setter in 2026-03 and
+  called once -- and `armorTextureIndex_` / `struct ArmorTextureRef`, a map
+  with no writer at all, which made `MemoryStats::armorTextureCount` read 0
+  forever. Pinned by `tests/test_armor_texture_archive.cpp` (9 cases) and by
+  the general net `WilleqDatabaseShippedContent.EveryTableTheClientQueriesExists`,
+  which takes the table census from `src/client/willeq_database.cpp` itself --
+  the test that would have caught this six months earlier.
 
 ---
 
@@ -8126,3 +8165,50 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   fixture, and would also answer whether the round trip is byte-stable at all
   (it reads the file it is about to overwrite, so it may not be). Found by
   T451.
+
+---
+
+### Added by T452 (2026-09-07)
+
+- **B474** (B, hygiene) `tools/willeq_db/db_loaders_json.cpp`
+  `loadEquipmentModels()` -- **the `equipment_textures` table has 2,623 rows in
+  the shipped `data/willeq.db` and NO reader anywhere in the client.** Measured
+  in T452 while closing B468: a tree-wide grep for the string
+  `equipment_textures` across `src/ include/ tests/ tools/ benchmarks/
+  docker/ scripts/` returns the builder that writes it, and nothing else --
+  every `src/` hit is an include of
+  `include/client/graphics/eq/equipment_textures.h`, an unrelated header
+  holding the `EquipSlot` enum. `WilleqDatabase` has no
+  `getEquipmentTexture()` and names the table in no SQL. The rows are the
+  17 `*equip*.s3d` archives' texture directory (`gequip.s3d` 843, `lgequip.s3d`
+  459, ...), i.e. the same name->archive shape `s3d_assets` had, for held
+  items rather than worn armor. So this is the SECOND half of B468's finding
+  and the half that is merely dead rather than broken: it ships bytes nobody
+  reads, in the one file that has a reproducibility pin. Closes when either a
+  consumer is written (the equipment/held-item texture path is the obvious
+  one -- check whether it currently resolves by another route first, the way
+  T452 had to) or the table is dropped from the builder and the database
+  rebuilt and re-pinned under T450's recipe. **Do not drop it without checking
+  the equipment texture path**: B468's lesson is that "nothing reads it" and
+  "nothing CAN read it because the route is broken" look identical from a
+  grep. Found by T452.
+
+- **B475** (B, hygiene) `src/client/graphics/eq/model_loading.cpp`
+  `RaceModelLoader::getArmorTexture()` -- **each lookup opens and fully
+  inflates a whole armor archive to extract one texture, and an entity needs
+  about twelve of them from the same archive.** `PfsArchive::open()` inflates
+  every entry into `files_`, so a `global17_amr.s3d` open is ~290 entries and
+  4.1 MB inflated; T452 measured **~1.0 s cold (NFS) and ~5 ms warm** per
+  open. A fully armored entity asks for ~6 body parts x ~2 pages, all in the
+  same archive, so it pays that ~12 times. T452 kept the per-lookup shape on
+  purpose -- it is exactly the shape the code already had, and the two obvious
+  fixes (cache the opened `PfsArchive`, or harvest all of an archive's
+  textures into `armorTextureCache_` on first hit) both hold ~4 MB of raw BMP
+  resident per archive touched, which is a real cost on the Orange Pi, where
+  composite entities are already off for memory pressure
+  (`docs/decisions.md`). A third option -- harvesting only the entries whose
+  race code matches the entity -- costs nothing extra and was not measured.
+  Closes when one of the three is measured against the constrained preset
+  rather than argued. NOT a regression: before T452 this function resolved
+  nothing at all, and the code it replaced in 2026-03 opened all seven
+  archives EAGERLY for a ~60 MB spike. Found by T452.

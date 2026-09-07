@@ -14,7 +14,7 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
     )
     TARGET_LINK_LIBRARIES(test_constrained_renderer GTest::gtest_main ${FMT_LIB} ${JSONCPP_LIBRARIES})
-    GTEST_DISCOVER_TESTS(test_constrained_renderer)
+    GTEST_DISCOVER_TESTS(test_constrained_renderer DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # Test graphics components (PFS, DDS decoder, etc.)
@@ -97,7 +97,7 @@ IF(EQT_GRAPHICS)
     # mandatory-Irrlicht gate in the top-level CMakeLists.txt guarantees
     # EQT_DRM OR EQT_GLES2 whenever IRRLICHT_LIBRARY is set
     # (refactor/desktop_gl_elimination_plan.md §6 Phase 3).
-    GTEST_DISCOVER_TESTS(test_graphics)
+    GTEST_DISCOVER_TESTS(test_graphics DISCOVERY_TIMEOUT 120)
 
     # Test HotkeyManager (requires Irrlicht for key codes)
     ADD_EXECUTABLE(test_hotkey_manager
@@ -108,7 +108,7 @@ IF(EQT_GRAPHICS)
     )
     TARGET_INCLUDE_DIRECTORIES(test_hotkey_manager PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_hotkey_manager GTest::gtest_main ${FMT_LIB} ${JSONCPP_LIBRARIES})
-    GTEST_DISCOVER_TESTS(test_hotkey_manager)
+    GTEST_DISCOVER_TESTS(test_hotkey_manager DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # Test asset loading (equipment, race models, textures, animations, lights)
@@ -190,7 +190,7 @@ IF(EQT_GRAPHICS)
     ENDIF()
     # P30: desktop X11/Xxf86vm/GL ELSEIF(NOT APPLE) branch removed — see the
     # test_graphics comment above (same mandatory-Irrlicht gate).
-    GTEST_DISCOVER_TESTS(test_asset_loading)
+    GTEST_DISCOVER_TESTS(test_asset_loading DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T400 (board B225): the particle atlas must carry its alpha.
@@ -215,7 +215,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
     TARGET_INCLUDE_DIRECTORIES(test_particle_atlas_alpha PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_particle_atlas_alpha GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_particle_atlas_alpha)
+    GTEST_DISCOVER_TESTS(test_particle_atlas_alpha DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T417 (board B300): the shipped spell sprite atlas versus the official
@@ -232,7 +232,7 @@ TARGET_INCLUDE_DIRECTORIES(test_spell_sprite_atlas PRIVATE
     ${CMAKE_SOURCE_DIR}/tools
     ${CMAKE_SOURCE_DIR}/include)
 TARGET_LINK_LIBRARIES(test_spell_sprite_atlas GTest::gtest_main)
-GTEST_DISCOVER_TESTS(test_spell_sprite_atlas)
+GTEST_DISCOVER_TESTS(test_spell_sprite_atlas DISCOVERY_TIMEOUT 120)
 
 # T430 (board B376): the shipped item icon sheets versus the official client's
 # own uifiles/default/dragitem*.tga, cell for cell, plus the column-major
@@ -247,7 +247,7 @@ TARGET_INCLUDE_DIRECTORIES(test_item_icon_atlas PRIVATE
     ${CMAKE_SOURCE_DIR}/tools
     ${CMAKE_SOURCE_DIR}/include)
 TARGET_LINK_LIBRARIES(test_item_icon_atlas GTest::gtest_main)
-GTEST_DISCOVER_TESTS(test_item_icon_atlas)
+GTEST_DISCOVER_TESTS(test_item_icon_atlas DISCOVERY_TIMEOUT 120)
 
 # T406 (board B266): the census of every shipped BMP's alpha, its consumer's
 # blend, and the willeq.eqe1 payload that carries it. Reads files only (the
@@ -259,7 +259,7 @@ ADD_EXECUTABLE(test_texture_alpha_census
 TARGET_COMPILE_DEFINITIONS(test_texture_alpha_census PRIVATE
     WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 TARGET_LINK_LIBRARIES(test_texture_alpha_census GTest::gtest_main willeq_core)
-GTEST_DISCOVER_TESTS(test_texture_alpha_census)
+GTEST_DISCOVER_TESTS(test_texture_alpha_census DISCOVERY_TIMEOUT 120)
 
 # T445 (board B336): the configured detail view distance drives the chunk cull
 # radius. Pins the arithmetic (detailChunkRadius), the DetailManager wiring
@@ -271,4 +271,4 @@ ADD_EXECUTABLE(test_detail_view_distance
     test_detail_view_distance.cpp
 )
 TARGET_LINK_LIBRARIES(test_detail_view_distance GTest::gtest_main willeq_core)
-GTEST_DISCOVER_TESTS(test_detail_view_distance)
+GTEST_DISCOVER_TESTS(test_detail_view_distance DISCOVERY_TIMEOUT 120)

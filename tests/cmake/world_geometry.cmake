@@ -12,7 +12,7 @@ ADD_EXECUTABLE(test_raycast
     ${CMAKE_SOURCE_DIR}/src/common/util/compression.cpp
 )
 TARGET_LINK_LIBRARIES(test_raycast GTest::gtest_main ${FMT_LIB} ${ZLIB_LIBRARIES})
-GTEST_DISCOVER_TESTS(test_raycast)
+GTEST_DISCOVER_TESTS(test_raycast DISCOVERY_TIMEOUT 120)
 
 # T19: hc_map.cpp (HCMap V1/V2 binary map format) unit tests. Real-fixture
 # tests read maps from /mnt/projects/akk-stack/server/maps/base/ (READ-ONLY
@@ -28,7 +28,7 @@ ADD_EXECUTABLE(test_hc_map
     ${CMAKE_SOURCE_DIR}/src/common/util/compression.cpp
 )
 TARGET_LINK_LIBRARIES(test_hc_map GTest::gtest_main ${FMT_LIB} ${ZLIB_LIBRARIES})
-GTEST_DISCOVER_TESTS(test_hc_map)
+GTEST_DISCOVER_TESTS(test_hc_map DISCOVERY_TIMEOUT 120)
 
 # T19: zone_lines.cpp (EQT::ZoneLines JSON parser, both the zone-specific
 # data/zone_lines/*.json format and the legacy data/zone_lines.json format)
@@ -47,7 +47,7 @@ ADD_EXECUTABLE(test_zone_lines
     )
 TARGET_COMPILE_DEFINITIONS(test_zone_lines PRIVATE WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
 TARGET_LINK_LIBRARIES(test_zone_lines GTest::gtest_main ${FMT_LIB} ${ZLIB_LIBRARIES} ${JSONCPP_LIBRARIES})
-GTEST_DISCOVER_TESTS(test_zone_lines)
+GTEST_DISCOVER_TESTS(test_zone_lines DISCOVERY_TIMEOUT 120)
 
 # Test EQ client structs and enums
 ADD_EXECUTABLE(test_eq_client
@@ -55,7 +55,7 @@ ADD_EXECUTABLE(test_eq_client
     ${CMAKE_SOURCE_DIR}/src/client/position.cpp
 )
 TARGET_LINK_LIBRARIES(test_eq_client GTest::gtest_main ${FMT_LIB})
-GTEST_DISCOVER_TESTS(test_eq_client)
+GTEST_DISCOVER_TESTS(test_eq_client DISCOVERY_TIMEOUT 120)
 
 # Test pathfinder interface and null implementation
 SET(TEST_PATHFINDER_SOURCES
@@ -75,4 +75,4 @@ ENDIF()
 
 ADD_EXECUTABLE(test_pathfinder ${TEST_PATHFINDER_SOURCES})
 TARGET_LINK_LIBRARIES(test_pathfinder ${TEST_PATHFINDER_LIBS})
-GTEST_DISCOVER_TESTS(test_pathfinder)
+GTEST_DISCOVER_TESTS(test_pathfinder DISCOVERY_TIMEOUT 120)

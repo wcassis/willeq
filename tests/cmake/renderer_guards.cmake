@@ -14,7 +14,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_bone_attachment PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_bone_attachment GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_bone_attachment)
+    GTEST_DISCOVER_TESTS(test_bone_attachment DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T92: ConstrainedTextureCache coverage — the P50 masked-variant query-method
@@ -32,7 +32,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_constrained_texture_cache PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_constrained_texture_cache GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_constrained_texture_cache)
+    GTEST_DISCOVER_TESTS(test_constrained_texture_cache DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T123: ObjectNodeTextureGuard regression coverage — a detached object node's
@@ -46,7 +46,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_object_node_texture_guard PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_object_node_texture_guard GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_object_node_texture_guard)
+    GTEST_DISCOVER_TESTS(test_object_node_texture_guard DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T124: shared eviction-swap primitive coverage (swapTextureInMaterial/
@@ -61,7 +61,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_t124_texture_holder_guards PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_t124_texture_holder_guards GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_t124_texture_holder_guards)
+    GTEST_DISCOVER_TESTS(test_t124_texture_holder_guards DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T381 (board B160): the spell visual vocabulary -- resist type, casting
@@ -78,7 +78,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_COMPILE_DEFINITIONS(test_spell_visual_vocabulary PRIVATE
         WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
     TARGET_LINK_LIBRARIES(test_spell_visual_vocabulary GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_spell_visual_vocabulary)
+    GTEST_DISCOVER_TESTS(test_spell_visual_vocabulary DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T126: the dominant UAF holder named by this unit's write-time
@@ -93,7 +93,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_t126_equip_texture_guard PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_t126_equip_texture_guard GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_t126_equip_texture_guard)
+    GTEST_DISCOVER_TESTS(test_t126_equip_texture_guard DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T66: /camera coverage (irrlicht_renderer.cpp processSlashCommand()) --
@@ -109,7 +109,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_irrlicht_camera_command PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_irrlicht_camera_command GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_irrlicht_camera_command)
+    GTEST_DISCOVER_TESTS(test_irrlicht_camera_command DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # L01 (Batch L, refactor/L01_rdp_component.md): the RendererContext binding
@@ -124,7 +124,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_rdp_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_rdp_component GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_rdp_component)
+    GTEST_DISCOVER_TESTS(test_rdp_component DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # L02 (Batch L, refactor/L02_eqe1_effects_component.md): the EQE1 archive
@@ -137,7 +137,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_eqe1_archive_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_eqe1_archive_component GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_eqe1_archive_component)
+    GTEST_DISCOVER_TESTS(test_eqe1_archive_component DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # L03 (Batch L, refactor/L03_overlays_component.md): the OverlaysComponent
@@ -149,7 +149,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_overlays_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_overlays_component GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_overlays_component)
+    GTEST_DISCOVER_TESTS(test_overlays_component DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # L04 (Batch L, refactor/L04_diagnostics_component.md): the DiagnosticsComponent
@@ -162,7 +162,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_diagnostics_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_diagnostics_component GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_diagnostics_component)
+    GTEST_DISCOVER_TESTS(test_diagnostics_component DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # L05 (Batch L, refactor/L05_player_camera_component.md): PlayerCameraComponent
@@ -175,7 +175,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_player_camera_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_player_camera_component GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_player_camera_component)
+    GTEST_DISCOVER_TESTS(test_player_camera_component DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # L06 (Batch L, refactor/L06_slash_commands_component.md): SlashCommandsComponent
@@ -189,7 +189,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_slash_commands_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_slash_commands_component GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_slash_commands_component)
+    GTEST_DISCOVER_TESTS(test_slash_commands_component DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # L07 (Batch L, refactor/L07_sim_bridge_component.md): SimBridgeComponent
@@ -203,7 +203,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_sim_bridge_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_sim_bridge_component GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_sim_bridge_component)
+    GTEST_DISCOVER_TESTS(test_sim_bridge_component DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # L08 (Batch L): ZoneStreamComponent -- progressive load, PVS neighbourhood,
@@ -215,7 +215,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_zone_stream_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_zone_stream_component GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_zone_stream_component)
+    GTEST_DISCOVER_TESTS(test_zone_stream_component DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # L09 (Batch L): ZoneLifecycleComponent -- zone teardown/environment/ready
@@ -228,7 +228,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_zone_lifecycle_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_zone_lifecycle_component GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_zone_lifecycle_component)
+    GTEST_DISCOVER_TESTS(test_zone_lifecycle_component DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # L10 (Batch L): ZoneLoadComponent -- loadZoneSequential() and the twenty
@@ -243,7 +243,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_zone_load_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_zone_load_component GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_zone_load_component)
+    GTEST_DISCOVER_TESTS(test_zone_load_component DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # L11 (refactor/L11_frame_component.md): FrameComponent -- the per-frame loop,
@@ -257,7 +257,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_frame_component PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_frame_component GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_frame_component)
+    GTEST_DISCOVER_TESTS(test_frame_component DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T329 (B041): the NavmeshChanged bridge arm forwarding to
@@ -271,7 +271,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_navmesh_overlay_wire PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_navmesh_overlay_wire GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_navmesh_overlay_wire)
+    GTEST_DISCOVER_TESTS(test_navmesh_overlay_wire DISCOVERY_TIMEOUT 120)
 
     ADD_EXECUTABLE(test_vision_buff_fade_wire
         test_vision_buff_fade_wire.cpp
@@ -283,7 +283,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_COMPILE_DEFINITIONS(test_vision_buff_fade_wire PRIVATE
         WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
     TARGET_LINK_LIBRARIES(test_vision_buff_fade_wire GTest::gtest willeq_core)
-    GTEST_DISCOVER_TESTS(test_vision_buff_fade_wire)
+    GTEST_DISCOVER_TESTS(test_vision_buff_fade_wire DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T333 (B048): the navmesh overlay's DRAW -- it drew nothing and wiped the 2D
@@ -297,7 +297,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_navmesh_overlay_draw PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_navmesh_overlay_draw GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_navmesh_overlay_draw)
+    GTEST_DISCOVER_TESTS(test_navmesh_overlay_draw DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T335 (B054): the same defect and the same proof shape for the two siblings
@@ -311,14 +311,14 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_map_overlay_draw PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_map_overlay_draw GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_map_overlay_draw)
+    GTEST_DISCOVER_TESTS(test_map_overlay_draw DISCOVERY_TIMEOUT 120)
 
     ADD_EXECUTABLE(test_collision_debug_draw
         test_collision_debug_draw.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(test_collision_debug_draw PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_collision_debug_draw GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_collision_debug_draw)
+    GTEST_DISCOVER_TESTS(test_collision_debug_draw DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T335b (B054): the last of the three siblings -- the Ctrl+V frustum debug
@@ -331,7 +331,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_frustum_debug_draw PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_frustum_debug_draw GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_frustum_debug_draw)
+    GTEST_DISCOVER_TESTS(test_frustum_debug_draw DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T310 Leg A: the first-person camera tunables (/fpcam, --fpcam). Same bare,
@@ -344,7 +344,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_first_person_tunables PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_first_person_tunables GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_first_person_tunables)
+    GTEST_DISCOVER_TESTS(test_first_person_tunables DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T233: registry-3 (renderer) command replies must echo to the console log
@@ -357,7 +357,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_renderer_command_echo PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_renderer_command_echo GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_renderer_command_echo)
+    GTEST_DISCOVER_TESTS(test_renderer_command_echo DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T294: the `I` keybind must reach a working IrrlichtRenderer::toggleInventory()
@@ -371,7 +371,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_inventory_toggle PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_inventory_toggle GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_inventory_toggle)
+    GTEST_DISCOVER_TESTS(test_inventory_toggle DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T235: spell-gem hotkeys reach the game thread -- drives the real
@@ -384,7 +384,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_spell_gem_key_race PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_spell_gem_key_race GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_spell_gem_key_race)
+    GTEST_DISCOVER_TESTS(test_spell_gem_key_race DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T319: ConsoleRenderer's target-HP readout. IOutputRenderer::
@@ -394,7 +394,7 @@ ADD_EXECUTABLE(test_console_target_hp
     test_console_target_hp.cpp
 )
 TARGET_LINK_LIBRARIES(test_console_target_hp GTest::gtest_main willeq_core)
-GTEST_DISCOVER_TESTS(test_console_target_hp)
+GTEST_DISCOVER_TESTS(test_console_target_hp DISCOVERY_TIMEOUT 120)
 
 # T319: the R key (ReplyToTell) end to end -- OnEvent decode, the
 # mutex-guarded bridgeQueue_, GraphicsInputHandler, the real
@@ -408,7 +408,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_reply_to_tell_key PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_reply_to_tell_key GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_reply_to_tell_key)
+    GTEST_DISCOVER_TESTS(test_reply_to_tell_key DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T312: RendererEventReceiver's cross-thread state -- the bridgeQueue_
@@ -422,7 +422,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_bridge_queue_race PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_bridge_queue_race GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_bridge_queue_race)
+    GTEST_DISCOVER_TESTS(test_bridge_queue_race DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T315: the read-and-reset double-consumer sweep. The click one-shots
@@ -439,7 +439,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_read_and_reset_ownership GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_read_and_reset_ownership PRIVATE
         WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
-    GTEST_DISCOVER_TESTS(test_read_and_reset_ownership)
+    GTEST_DISCOVER_TESTS(test_read_and_reset_ownership DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T111: coverage for IrrlichtRenderer::isEntityBlockingProgressiveLoad(), the
@@ -452,7 +452,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_progressive_load_rearm PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_progressive_load_rearm GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_progressive_load_rearm)
+    GTEST_DISCOVER_TESTS(test_progressive_load_rearm DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T116: coverage for the SimulationOutput dangling-pointer class made
@@ -467,7 +467,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_simulation_output_lifetime PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_simulation_output_lifetime GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_simulation_output_lifetime)
+    GTEST_DISCOVER_TESTS(test_simulation_output_lifetime DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T360 Leg A (B066): the vision-type -> zone-light mapping. Drives the two real
@@ -479,7 +479,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_vision_zone_lights PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_vision_zone_lights GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_vision_zone_lights)
+    GTEST_DISCOVER_TESTS(test_vision_zone_lights DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T412 Leg A (B291): the skipEntityTextureUpload debug knob must actually skip.
@@ -491,7 +491,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_entity_texture_upload_skip PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_entity_texture_upload_skip GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_entity_texture_upload_skip)
+    GTEST_DISCOVER_TESTS(test_entity_texture_upload_skip DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T412 Leg C (B294): the deleted forcePvsUpdate_ flag and the trigger that
@@ -504,7 +504,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_pvs_render_distance_trigger PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_pvs_render_distance_trigger GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_pvs_render_distance_trigger)
+    GTEST_DISCOVER_TESTS(test_pvs_render_distance_trigger DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T367 (B080): zone/object lights whose influence sphere contains the camera
@@ -517,7 +517,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_zone_light_culling PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_zone_light_culling GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_zone_light_culling)
+    GTEST_DISCOVER_TESTS(test_zone_light_culling DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # Integration test: Beneficial Spell Casting (connects to real EQEmu server with graphics enabled)
@@ -540,7 +540,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     #   cmake -S . -B build -DEQT_LIVE_TESTS=ON
     #   ctest --test-dir build -L live
     IF(EQT_LIVE_TESTS)
-        GTEST_DISCOVER_TESTS(test_beneficial_spell_casting PROPERTIES LABELS "live")
+        GTEST_DISCOVER_TESTS(test_beneficial_spell_casting PROPERTIES LABELS "live" DISCOVERY_TIMEOUT 120)
     ENDIF()
 ENDIF()
 
@@ -558,7 +558,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     # updateTimeOfDay() still calls composeSceneAmbient().
     TARGET_COMPILE_DEFINITIONS(test_vision_ambient PRIVATE
         WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
-    GTEST_DISCOVER_TESTS(test_vision_ambient)
+    GTEST_DISCOVER_TESTS(test_vision_ambient DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T428 (B280): the night base of the day/night curve, solved live against the
@@ -570,7 +570,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_night_ambient PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_night_ambient GTest::gtest_main willeq_core)
-    GTEST_DISCOVER_TESTS(test_night_ambient)
+    GTEST_DISCOVER_TESTS(test_night_ambient DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T396 (B211): the weather ambient modifier that multiplies the same ambient
@@ -586,7 +586,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_weather_ambient_modifier GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_weather_ambient_modifier PRIVATE
         WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
-    GTEST_DISCOVER_TESTS(test_weather_ambient_modifier)
+    GTEST_DISCOVER_TESTS(test_weather_ambient_modifier DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T418 (B231): the ACTIVE-weather curve, measured against the official client
@@ -601,7 +601,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_weather_darkening_oracle GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_weather_darkening_oracle PRIVATE
         WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
-    GTEST_DISCOVER_TESTS(test_weather_darkening_oracle)
+    GTEST_DISCOVER_TESTS(test_weather_darkening_oracle DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T423 (B362): the scene ambient recomposes on every input, not only on a
@@ -616,7 +616,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_scene_ambient_recompute GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_scene_ambient_recompute PRIVATE
         WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
-    GTEST_DISCOVER_TESTS(test_scene_ambient_recompute)
+    GTEST_DISCOVER_TESTS(test_scene_ambient_recompute DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T391 (B202): EntityVisual::lightNode ownership -- the render-thread
@@ -632,5 +632,5 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_entity_light_node_lifetime GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_entity_light_node_lifetime PRIVATE
         WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
-    GTEST_DISCOVER_TESTS(test_entity_light_node_lifetime)
+    GTEST_DISCOVER_TESTS(test_entity_light_node_lifetime DISCOVERY_TIMEOUT 120)
 ENDIF()

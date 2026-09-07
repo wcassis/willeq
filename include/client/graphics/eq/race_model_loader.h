@@ -54,15 +54,15 @@ struct RaceModelData {
     std::string compositeBmpPath;  // EQE1 entry name for composite texture (e.g., "hum_hs_def_0_0")
 };
 
+// T452 (board B468): the S3D archives to probe for an armor texture, most
+// likely first, derived from the name's {variant}{page} digits. Empty when the
+// name is not a 17-23 armor texture, which is the answer "open nothing".
+// Defined in model_loading.cpp, where the measurement behind it is written out.
+std::vector<std::string> ArmorArchivesForTextureName(const std::string& lowerName);
+
 // Loads and caches character models by race ID
 class RaceModelLoader {
 public:
-    // Armor texture lazy-loading: index maps texture name -> archive location
-    struct ArmorTextureRef {
-        std::string archivePath;   // Full path to the S3D archive
-        std::string entryName;     // Original filename inside the archive
-    };
-
     RaceModelLoader(irr::scene::ISceneManager* smgr, irr::video::IVideoDriver* driver,
                     irr::io::IFileSystem* fileSystem);
     ~RaceModelLoader();
@@ -79,11 +79,17 @@ public:
     // Load additional numbered global#_chr.s3d files (global2-global7)
     bool loadNumberedGlobalModels();
 
-    // Load armor textures from global17-23_amr.s3d
-    bool loadArmorTextures();
-
     // Load zone-specific character models from zone_chr.s3d
     bool loadZoneModels(const std::string& zoneName);
+
+    // T452 (board B468): load one armor texture on demand from whichever of
+    // global17-23_amr.s3d holds it. Returns nullptr, and remembers that it
+    // did, when no armor archive has the name. PUBLIC because this is the
+    // exact call mesh_building.cpp's texture fallback makes and the exact
+    // call tests/test_armor_texture_archive.cpp drives -- it was private, and
+    // the six months it spent querying a table that did not exist went
+    // unnoticed partly because nothing could reach it to check.
+    std::shared_ptr<TextureInfo> getArmorTexture(const std::string& lowerName);
 
     // Set the current zone name (for zone-specific model loading)
     void setCurrentZone(const std::string& zoneName);
@@ -611,13 +617,9 @@ private:
     std::map<int, std::map<std::string, std::shared_ptr<TextureInfo>>> numberedGlobalTextures_;
     bool numberedGlobalsLoaded_ = false;
 
-    // Armor texture lazy-loading index (lowercase name -> ref)
-    std::map<std::string, ArmorTextureRef> armorTextureIndex_;
-    std::map<std::string, std::shared_ptr<TextureInfo>> armorTextureCache_; // On-demand loaded
-    bool armorTexturesLoaded_ = false;
-
-    // Load a single armor texture on demand from its archive
-    std::shared_ptr<TextureInfo> getArmorTexture(const std::string& lowerName);
+    // T452: on-demand armor textures from global17-23_amr.s3d. A NULL mapped
+    // value is a cached MISS -- every reader of this map must skip it.
+    std::map<std::string, std::shared_ptr<TextureInfo>> armorTextureCache_;
 
     // Zone-specific character data
     std::string currentZoneName_;

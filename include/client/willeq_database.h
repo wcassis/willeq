@@ -42,15 +42,16 @@ struct DatabaseStats {
     }
 };
 
-// S3D asset location returned by getAssetLocation()
-struct AssetLocation {
-    std::string name;            // e.g., "clkshk01.bmp"
-    std::string archive;         // e.g., "qeynos2.s3d"
-    uint32_t blockOffset = 0;
-    uint32_t compressedSize = 0;
-    uint32_t uncompressedSize = 0;
-    bool found = false;
-};
+// T452 (board B468): `struct AssetLocation`, getAssetLocation() and
+// getAssetsInArchive() lived here and queried an `s3d_assets` table that the
+// shipped data/willeq.db has NEVER contained -- it is created only by
+// willeq_db_builder --s3d-index, which no script, CMake rule or test passes.
+// Both queries therefore failed at prepare() and returned "not found" from a
+// MISSING TABLE rather than from a miss. Their one reachable caller,
+// RaceModelLoader::getArmorTexture(), now derives the armor archive from the
+// texture name; see src/client/graphics/eq/model_loading.cpp. Do not
+// reintroduce a name->archive table here: the client already ships one for
+// the EQE1 tree (data/eqe1_texture_index.json, EQE1TextureIndex).
 
 // Race model mapping entry
 struct RaceModelInfo {
@@ -192,10 +193,6 @@ public:
     // ── Item model queries ──
     int32_t getItemModel(uint32_t itemId);  // Returns -1 if not found
 
-    // ── S3D asset queries ──
-    AssetLocation getAssetLocation(const std::string& assetName);
-    std::vector<AssetLocation> getAssetsInArchive(const std::string& archiveName);
-
     // ── Race model queries ──
     RaceModelInfo getRaceModel(uint16_t raceId);
     RaceModelInfo getRaceModelByCode(const std::string& code);
@@ -242,7 +239,7 @@ private:
     // calls -- it does NOT make that whole sequence atomic when two threads
     // share the same statement handle. EntityPrepWorker's background thread
     // (via EquipmentModelLoader::getModelIdForItem(), RaceModelLoader's
-    // race_codes.cpp queries, getArmorTexture()) and the main/render/game
+    // race_codes.cpp queries) and the main/render/game
     // thread (audio_manager.cpp, spell_database.cpp, string_database.cpp,
     // eff_loader.cpp, more race_codes.cpp call sites) hit the SAME cached
     // statement objects concurrently -- an unguarded reset/bind/step
@@ -267,8 +264,6 @@ private:
     sqlite3_stmt* stmtGetString_ = nullptr;
     sqlite3_stmt* stmtGetDbString_ = nullptr;
     sqlite3_stmt* stmtGetItemModel_ = nullptr;
-    sqlite3_stmt* stmtGetAsset_ = nullptr;
-    sqlite3_stmt* stmtGetAssetsInArchive_ = nullptr;
     sqlite3_stmt* stmtGetRaceModel_ = nullptr;
     sqlite3_stmt* stmtGetRaceModelByCode_ = nullptr;
     sqlite3_stmt* stmtGetSoundAsset_ = nullptr;

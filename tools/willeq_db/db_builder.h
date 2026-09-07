@@ -52,4 +52,3 @@ int loadLoginStrings(sqlite3* db, const std::string& filepath);  // eqlsstr_us.t
 int loadItemModels(sqlite3* db, const std::string& filepath);      // item_models.json
 int loadEquipmentModels(sqlite3* db, const std::string& filepath); // equipment_models.json
 int loadRaceModels(sqlite3* db, const std::string& filepath);      // race_models.json
-int loadS3dIndex(sqlite3* db, const std::string& filepath);        // s3d_index.json

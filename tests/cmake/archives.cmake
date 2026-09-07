@@ -11,7 +11,7 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/pfs.cpp
     )
     TARGET_LINK_LIBRARIES(test_pfs_archive GTest::gtest_main ${ZLIB_LIBRARIES})
-    GTEST_DISCOVER_TESTS(test_pfs_archive)
+    GTEST_DISCOVER_TESTS(test_pfs_archive DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # Test WLD file parsing (Phase 2: Header and String Table)
@@ -42,5 +42,5 @@ IF(EQT_GRAPHICS)
     TARGET_COMPILE_DEFINITIONS(test_wld PRIVATE
         T408_ZONE_SHADER_SOURCES="${CMAKE_SOURCE_DIR}/src/client/graphics/zone_shader_sources_gles2.h")
     TARGET_LINK_LIBRARIES(test_wld GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB})
-    GTEST_DISCOVER_TESTS(test_wld)
+    GTEST_DISCOVER_TESTS(test_wld DISCOVERY_TIMEOUT 120)
 ENDIF()

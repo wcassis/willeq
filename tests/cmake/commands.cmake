@@ -34,7 +34,7 @@ ADD_EXECUTABLE(test_action_dispatcher
     ${ACTION_LAYER_STATE_SOURCES}
 )
 TARGET_LINK_LIBRARIES(test_action_dispatcher GTest::gtest_main)
-GTEST_DISCOVER_TESTS(test_action_dispatcher)
+GTEST_DISCOVER_TESTS(test_action_dispatcher DISCOVERY_TIMEOUT 120)
 
 # T12: CommandProcessor tests -- registration, completion, category
 # consistency, argument parsing, case sensitivity. Needs ActionDispatcher
@@ -71,7 +71,7 @@ ADD_EXECUTABLE(test_command_processor
 # dual-frame /move echo, and the original /moveto and /follow ack wording),
 # so this target now needs fmt linked -- previously it didn't use fmt at all.
 TARGET_LINK_LIBRARIES(test_command_processor GTest::gtest_main fmt::fmt)
-GTEST_DISCOVER_TESTS(test_command_processor)
+GTEST_DISCOVER_TESTS(test_command_processor DISCOVERY_TIMEOUT 120)
 
 # T153: /appearance parse + validation. Same dependency set as
 # test_command_processor (real ActionDispatcher + CommandProcessor driven
@@ -96,7 +96,7 @@ ADD_EXECUTABLE(test_appearance_command
     ${ACTION_LAYER_STATE_SOURCES}
 )
 TARGET_LINK_LIBRARIES(test_appearance_command GTest::gtest_main fmt::fmt)
-GTEST_DISCOVER_TESTS(test_appearance_command)
+GTEST_DISCOVER_TESTS(test_appearance_command DISCOVERY_TIMEOUT 120)
 
 # T362 (B069): the shared slash-command completion helper
 # (include/client/command_completion.h) and the registry half that used to
@@ -110,7 +110,7 @@ ADD_EXECUTABLE(test_command_completion
     ${CMAKE_SOURCE_DIR}/src/client/help/renderer_command_catalog.cpp
 )
 TARGET_LINK_LIBRARIES(test_command_completion GTest::gtest_main)
-GTEST_DISCOVER_TESTS(test_command_completion)
+GTEST_DISCOVER_TESTS(test_command_completion DISCOVERY_TIMEOUT 120)
 
 # T143: registry-aware /help. Merges registry 1's CommandRegistry (game,
 # graphics/ui) and registry 2's CommandProcessor (action) catalogs -- needs
@@ -139,7 +139,7 @@ ADD_EXECUTABLE(test_merged_help
 TARGET_COMPILE_DEFINITIONS(test_merged_help PRIVATE
     RENDERER_COMMAND_SOURCE="${CMAKE_SOURCE_DIR}/src/client/graphics/slash/renderer_slash_commands.cpp")  # J11; L06 moved the directory
 TARGET_LINK_LIBRARIES(test_merged_help GTest::gtest_main fmt::fmt)
-GTEST_DISCOVER_TESTS(test_merged_help)
+GTEST_DISCOVER_TESTS(test_merged_help DISCOVERY_TIMEOUT 120)
 
 # T223: Application::dispatchToActionOrRenderer()'s registry-3 stage on a
 # bare (never initialize()d) Application -- m_graphicsInitialized is false,
@@ -158,7 +158,7 @@ TARGET_LINK_LIBRARIES(test_headless_command_refusal GTest::gtest_main willeq_cor
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_headless_command_refusal PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_headless_command_refusal)
+GTEST_DISCOVER_TESTS(test_headless_command_refusal DISCOVERY_TIMEOUT 120)
 
 # T223 (T198): every configured EQE1 global archive must exist as a client
 # .s3d (asset-gated skip), and the built-in fallback copy of that list must
@@ -170,7 +170,7 @@ TARGET_COMPILE_DEFINITIONS(test_eqe1_archive_config PRIVATE
     EQE1_ARCHIVES_JSON="${CMAKE_SOURCE_DIR}/config/eqe1_archives.json"
     RENDERER_EFFECTS_SOURCE="${CMAKE_SOURCE_DIR}/src/client/graphics/eqe1/eqe1_archive_component.cpp")
 TARGET_LINK_LIBRARIES(test_eqe1_archive_config GTest::gtest_main ${JSONCPP_LIBRARIES})
-GTEST_DISCOVER_TESTS(test_eqe1_archive_config)
+GTEST_DISCOVER_TESTS(test_eqe1_archive_config DISCOVERY_TIMEOUT 120)
 
 # T264: the intent/handler reachability sweep, pinned. Parses
 # renderer_intents.h / eq_bridge.cpp / event_bus.h / action_dispatcher.{h,cpp}
@@ -180,7 +180,7 @@ ADD_EXECUTABLE(test_reachability_sweep
     test_reachability_sweep.cpp
 )
 TARGET_LINK_LIBRARIES(test_reachability_sweep GTest::gtest_main)
-GTEST_DISCOVER_TESTS(test_reachability_sweep)
+GTEST_DISCOVER_TESTS(test_reachability_sweep DISCOVERY_TIMEOUT 120)
 
 # G02: the intent-dispatch coverage net. Parses renderer_intents.h,
 # bridge_component.h and bridge_component_intents.cpp (WILLEQ_REPO_ROOT) and
@@ -191,7 +191,7 @@ ADD_EXECUTABLE(test_bridge_intent_table
     test_bridge_intent_table.cpp
 )
 TARGET_LINK_LIBRARIES(test_bridge_intent_table GTest::gtest_main)
-GTEST_DISCOVER_TESTS(test_bridge_intent_table)
+GTEST_DISCOVER_TESTS(test_bridge_intent_table DISCOVERY_TIMEOUT 120)
 
 # T295: parses src/client/graphics and pins the first-person camera to ONE
 # formula (repositionFirstPersonCamera()), the tunables to one TU, and the
@@ -200,7 +200,7 @@ ADD_EXECUTABLE(test_first_person_camera_single_formula
     test_first_person_camera_single_formula.cpp
 )
 TARGET_LINK_LIBRARIES(test_first_person_camera_single_formula GTest::gtest_main)
-GTEST_DISCOVER_TESTS(test_first_person_camera_single_formula)
+GTEST_DISCOVER_TESTS(test_first_person_camera_single_formula DISCOVERY_TIMEOUT 120)
 
 # T286: parses eq.h and include/client/state/*.h and asserts EverQuest keeps
 # no second copy of a state module's member, except the documented list.
@@ -208,7 +208,7 @@ ADD_EXECUTABLE(test_duplicate_state_stores
     test_duplicate_state_stores.cpp
 )
 TARGET_LINK_LIBRARIES(test_duplicate_state_stores GTest::gtest_main)
-GTEST_DISCOVER_TESTS(test_duplicate_state_stores)
+GTEST_DISCOVER_TESTS(test_duplicate_state_stores DISCOVERY_TIMEOUT 120)
 
 # T266: EQE1TextureIndex::resolve -- candidate fast path, R2 late-open for a
 # name no candidate holds (the T263 post-load spawn FATAL), nothing for a name
@@ -223,7 +223,7 @@ TARGET_COMPILE_DEFINITIONS(test_eqe1_texture_index PRIVATE
     EQE1_TEXTURE_INDEX_JSON="${CMAKE_SOURCE_DIR}/data/eqe1_texture_index.json")
 TARGET_LINK_LIBRARIES(test_eqe1_texture_index GTest::gtest_main ${JSONCPP_LIBRARIES}
     ${FMT_LIB})
-GTEST_DISCOVER_TESTS(test_eqe1_texture_index)
+GTEST_DISCOVER_TESTS(test_eqe1_texture_index DISCOVERY_TIMEOUT 120)
 
 # T284: a composite sheet opens ONE pack, not the whole sheet directory.
 # Index-level guard (sheet names are self-owned, so resolve() can only name one
@@ -244,7 +244,7 @@ IF(EQT_GRAPHICS)
     TARGET_LINK_LIBRARIES(test_eqe1_composite_open GTest::gtest_main ${JSONCPP_LIBRARIES}
         ${FMT_LIB})
     ADD_DEPENDENCIES(test_eqe1_composite_open gles2_zone_benchmark)
-    GTEST_DISCOVER_TESTS(test_eqe1_composite_open)
+    GTEST_DISCOVER_TESTS(test_eqe1_composite_open DISCOVERY_TIMEOUT 120)
 ENDIF()
 # T268: loot window actions (take one item, loot all, close) driven through
 # the real CommandProcessor -> ActionDispatcher -> EqActionHandler ->
@@ -258,7 +258,7 @@ TARGET_LINK_LIBRARIES(test_loot_window_actions GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_loot_window_actions PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_loot_window_actions)
+GTEST_DISCOVER_TESTS(test_loot_window_actions DISCOVERY_TIMEOUT 120)
 
 # T15: InputActionBridge tests -- the T12 follow-on. Driven through a
 # scriptable IInputHandler fake (action_test_fakes.h); observes both the
@@ -290,7 +290,7 @@ TARGET_LINK_LIBRARIES(test_input_action_bridge GTest::gtest_main ${FMT_LIB} ${JS
 # InputAction" rule is asserted rather than left to a reviewer's memory.
 TARGET_COMPILE_DEFINITIONS(test_input_action_bridge PRIVATE
     INPUT_ACTION_HEADER="${CMAKE_SOURCE_DIR}/include/client/input/input_handler.h")
-GTEST_DISCOVER_TESTS(test_input_action_bridge)
+GTEST_DISCOVER_TESTS(test_input_action_bridge DISCOVERY_TIMEOUT 120)
 
 # T40/T227: GameStateSyncBridge tests -- since T227 the decorator projects
 # nothing (one GameState, written at the source), so this covers only the
@@ -302,7 +302,7 @@ ADD_EXECUTABLE(test_game_state_sync_bridge
     ${CMAKE_SOURCE_DIR}/src/client/bridge/game_state_sync_bridge.cpp
 )
 TARGET_LINK_LIBRARIES(test_game_state_sync_bridge GTest::gtest_main fmt::fmt)
-GTEST_DISCOVER_TESTS(test_game_state_sync_bridge)
+GTEST_DISCOVER_TESTS(test_game_state_sync_bridge DISCOVERY_TIMEOUT 120)
 
 # T47: bridge-pointer teardown hygiene (EverQuest::m_bridge + the four
 # managers'). Needs a real EverQuest (for setBridge()/GetHotbarModel()), so
@@ -314,14 +314,14 @@ TARGET_LINK_LIBRARIES(test_bridge_teardown GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_bridge_teardown PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_bridge_teardown)
+GTEST_DISCOVER_TESTS(test_bridge_teardown DISCOVERY_TIMEOUT 120)
 
 # Test combat enums and structures
 ADD_EXECUTABLE(test_combat
     test_combat.cpp
 )
 TARGET_LINK_LIBRARIES(test_combat GTest::gtest_main ${FMT_LIB})
-GTEST_DISCOVER_TESTS(test_combat)
+GTEST_DISCOVER_TESTS(test_combat DISCOVERY_TIMEOUT 120)
 
 # T23: CombatManager behavior coverage (targeting, auto-attack/fire,
 # cycling, consider, state machine, config round-trips, the loot-path
@@ -345,7 +345,7 @@ TARGET_LINK_LIBRARIES(test_combat_manager GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_combat_manager PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_combat_manager)
+GTEST_DISCOVER_TESTS(test_combat_manager DISCOVERY_TIMEOUT 120)
 
 # T308 Leg 1: hunt-target filtering classifies on the server-sent body type,
 # not on CombatManager::IsHumanoid()'s hand-written race-id table (the FIFTH
@@ -361,7 +361,7 @@ TARGET_LINK_LIBRARIES(test_hunt_target_body_type GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_hunt_target_body_type PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_hunt_target_body_type)
+GTEST_DISCOVER_TESTS(test_hunt_target_body_type DISCOVERY_TIMEOUT 120)
 
 # T308 Leg 2: registry 2 (action::CommandProcessor) answers into the on-screen
 # chat window as well as stdout. Drives the user path -- text typed into the
@@ -376,7 +376,7 @@ TARGET_LINK_LIBRARIES(test_command_output_routing GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_command_output_routing PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_command_output_routing)
+GTEST_DISCOVER_TESTS(test_command_output_routing DISCOVERY_TIMEOUT 120)
 
 # T28: coverage for the four eq_commands.cpp readers repointed from the
 # never-populated state-layer CombatState target to the authoritative
@@ -418,7 +418,7 @@ TARGET_LINK_LIBRARIES(test_eq_action_handler_raid_guards GTest::gtest_main wille
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_eq_action_handler_raid_guards PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_eq_action_handler_raid_guards)
+GTEST_DISCOVER_TESTS(test_eq_action_handler_raid_guards DISCOVERY_TIMEOUT 120)
 
 ADD_EXECUTABLE(test_eq_action_handler_vendor
     test_eq_action_handler_vendor.cpp
@@ -427,7 +427,7 @@ TARGET_LINK_LIBRARIES(test_eq_action_handler_vendor GTest::gtest_main willeq_cor
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_eq_action_handler_vendor PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_eq_action_handler_vendor)
+GTEST_DISCOVER_TESTS(test_eq_action_handler_vendor DISCOVERY_TIMEOUT 120)
 
 # T50: /bank, /train coverage (eq_commands_spells.cpp RegisterSpellCommands())
 # -- same seam test_eq_commands_vendor.cpp (T48) used to use, before T136
@@ -443,7 +443,7 @@ TARGET_LINK_LIBRARIES(test_eq_commands_bank_train GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_eq_commands_bank_train PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_eq_commands_bank_train)
+GTEST_DISCOVER_TESTS(test_eq_commands_bank_train DISCOVERY_TIMEOUT 120)
 
 # T269: bank coin deposit / withdraw / convert (T264 F3). Real EverQuest:
 # RequestBankCoinMove/Convert push the kept Bank* intents (refuse with the
@@ -458,7 +458,7 @@ TARGET_LINK_LIBRARIES(test_eq_bank_coins GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_eq_bank_coins PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_eq_bank_coins)
+GTEST_DISCOVER_TESTS(test_eq_bank_coins DISCOVERY_TIMEOUT 120)
 
 # T273: read a book / note item (T264 F2). Command -> ReadItemIntent ->
 # OP_ReadBook wire bytes (real DaybreakConnection over FakeUdpTransport,
@@ -471,7 +471,7 @@ TARGET_LINK_LIBRARIES(test_read_book GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_read_book PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_read_book)
+GTEST_DISCOVER_TESTS(test_read_book DISCOVERY_TIMEOUT 120)
 
 # T276: scribe a spell scroll (T264 F5). /scribe -> ScribeSpellIntent ->
 # OP_MoveItem-then-OP_MemorizeSpell(scribing=0) wire bytes (real
@@ -487,7 +487,7 @@ TARGET_LINK_LIBRARIES(test_scribe_scroll GTest::gtest willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_scribe_scroll PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_scribe_scroll)
+GTEST_DISCOVER_TESTS(test_scribe_scroll DISCOVERY_TIMEOUT 120)
 # T278: manual tradeskill combine + container close (T264 F7). Command ->
 # TradeskillCombineIntent/TradeskillCloseIntent -> OP_TradeSkillCombine /
 # OP_ClickObjectAction(open=0) wire bytes (real DaybreakConnection over
@@ -501,7 +501,7 @@ TARGET_LINK_LIBRARIES(test_tradeskill_combine GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_tradeskill_combine PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_tradeskill_combine)
+GTEST_DISCOVER_TESTS(test_tradeskill_combine DISCOVERY_TIMEOUT 120)
 
 # T280: train a skill at a trainer / close the trainer window (T264 F8).
 # Real EverQuest, real DaybreakConnection over FakeUdpTransport (T234 idiom):
@@ -517,7 +517,7 @@ TARGET_LINK_LIBRARIES(test_train_skill GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_train_skill PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_train_skill)
+GTEST_DISCOVER_TESTS(test_train_skill DISCOVERY_TIMEOUT 120)
 
 # T140: final 16 of the game-registry migration programme (equip excluded).
 # Real-EqActionHandler/EverQuest coverage for showLocation/warp/
@@ -536,7 +536,7 @@ TARGET_LINK_LIBRARIES(test_eq_action_handler_movement_utility GTest::gtest_main 
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_eq_action_handler_movement_utility PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_eq_action_handler_movement_utility)
+GTEST_DISCOVER_TESTS(test_eq_action_handler_movement_utility DISCOVERY_TIMEOUT 120)
 
 # T66: /equip coverage (eq_commands.cpp RegisterEquipmentCommands()) -- same
 # seam test_eq_commands_vendor.cpp (T48) used to use (see
@@ -564,7 +564,7 @@ TARGET_LINK_LIBRARIES(test_eq_commands_equip GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_eq_commands_equip PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_eq_commands_equip)
+GTEST_DISCOVER_TESTS(test_eq_commands_equip DISCOVERY_TIMEOUT 120)
 
 # T64: parseArguments()-only coverage for the video-capture evidence tool's
 # CLI flags (--dump-frames-dir/--dump-every/--dump-max-frames). Static
@@ -577,7 +577,7 @@ TARGET_LINK_LIBRARIES(test_video_capture_flags GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_video_capture_flags PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_video_capture_flags)
+GTEST_DISCOVER_TESTS(test_video_capture_flags DISCOVERY_TIMEOUT 120)
 
 # T51 added coverage here for the then-consolidated attack path
 # (eq_commands_movement.cpp's registry-1 attack/stopattack/aa). T102
@@ -599,7 +599,7 @@ ADD_EXECUTABLE(test_command_registration_order
     test_command_registration_order.cpp
 )
 TARGET_LINK_LIBRARIES(test_command_registration_order GTest::gtest_main)
-GTEST_DISCOVER_TESTS(test_command_registration_order)
+GTEST_DISCOVER_TESTS(test_command_registration_order DISCOVERY_TIMEOUT 120)
 
 # T375 (board B023): /bug (alias /report) must send the body eqemu's
 # Client::Handle_OP_Report actually parses -- "<reported>|<reporter>|<text>\0",
@@ -614,7 +614,7 @@ TARGET_LINK_LIBRARIES(test_op_report_shape GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_op_report_shape PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_op_report_shape)
+GTEST_DISCOVER_TESTS(test_op_report_shape DISCOVERY_TIMEOUT 120)
 
 # T382 Leg A (board B172): the corpse-coin grant --
 # CommandsComponent::ZoneProcessMoneyOnCorpse must bank the four denominations,
@@ -630,4 +630,4 @@ TARGET_LINK_LIBRARIES(test_corpse_coin GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_corpse_coin PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
-GTEST_DISCOVER_TESTS(test_corpse_coin)
+GTEST_DISCOVER_TESTS(test_corpse_coin DISCOVERY_TIMEOUT 120)

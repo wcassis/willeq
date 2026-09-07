@@ -12,7 +12,7 @@ ADD_EXECUTABLE(test_packet_structs
     ${CMAKE_SOURCE_DIR}/src/client/world_object.cpp
 )
 TARGET_LINK_LIBRARIES(test_packet_structs GTest::gtest_main)
-GTEST_DISCOVER_TESTS(test_packet_structs)
+GTEST_DISCOVER_TESTS(test_packet_structs DISCOVERY_TIMEOUT 120)
 
 # T145: wire-layout (offsetof) + sender wire-shape tests
 ADD_EXECUTABLE(test_wire_layout_t145
@@ -20,7 +20,7 @@ ADD_EXECUTABLE(test_wire_layout_t145
     ${CMAKE_SOURCE_DIR}/src/common/net/packet.cpp
 )
 TARGET_LINK_LIBRARIES(test_wire_layout_t145 GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB})
-GTEST_DISCOVER_TESTS(test_wire_layout_t145)
+GTEST_DISCOVER_TESTS(test_wire_layout_t145 DISCOVERY_TIMEOUT 120)
 
 # Test SessionRecorder (R01: session log writer for replay)
 ADD_EXECUTABLE(test_session_recorder
@@ -28,7 +28,7 @@ ADD_EXECUTABLE(test_session_recorder
     ${CMAKE_SOURCE_DIR}/src/common/net/session_recorder.cpp
 )
 TARGET_LINK_LIBRARIES(test_session_recorder GTest::gtest_main ${FMT_LIB})
-GTEST_DISCOVER_TESTS(test_session_recorder)
+GTEST_DISCOVER_TESTS(test_session_recorder DISCOVERY_TIMEOUT 120)
 
 # Test FormattedMessage parsing (link extraction)
 ADD_EXECUTABLE(test_formatted_message
@@ -36,7 +36,7 @@ ADD_EXECUTABLE(test_formatted_message
     ${CMAKE_SOURCE_DIR}/src/client/formatted_message.cpp
 )
 TARGET_LINK_LIBRARIES(test_formatted_message GTest::gtest_main)
-GTEST_DISCOVER_TESTS(test_formatted_message)
+GTEST_DISCOVER_TESTS(test_formatted_message DISCOVERY_TIMEOUT 120)
 
 # Test frustum culler (pure math + logging for diagnostics)
 ADD_EXECUTABLE(test_frustum_culler
@@ -44,7 +44,7 @@ ADD_EXECUTABLE(test_frustum_culler
     ${CMAKE_SOURCE_DIR}/src/client/graphics/frustum_culler.cpp
 )
 TARGET_LINK_LIBRARIES(test_frustum_culler GTest::gtest_main fmt::fmt)
-GTEST_DISCOVER_TESTS(test_frustum_culler)
+GTEST_DISCOVER_TESTS(test_frustum_culler DISCOVERY_TIMEOUT 120)
 
 # Test SIMD math optimizations (pure math + logging for diagnostics)
 ADD_EXECUTABLE(test_simd_math
@@ -53,7 +53,7 @@ ADD_EXECUTABLE(test_simd_math
     ${CMAKE_SOURCE_DIR}/src/client/graphics/frustum_culler.cpp
 )
 TARGET_LINK_LIBRARIES(test_simd_math GTest::gtest_main fmt::fmt)
-GTEST_DISCOVER_TESTS(test_simd_math)
+GTEST_DISCOVER_TESTS(test_simd_math DISCOVERY_TIMEOUT 120)
 
 # Test BackgroundWorkQueue abstraction (pool-backed mode needs background_thread_pool.cpp)
 ADD_EXECUTABLE(test_background_work_queue
@@ -61,7 +61,7 @@ ADD_EXECUTABLE(test_background_work_queue
     ${CMAKE_SOURCE_DIR}/src/client/graphics/background_thread_pool.cpp
 )
 TARGET_LINK_LIBRARIES(test_background_work_queue GTest::gtest_main)
-GTEST_DISCOVER_TESTS(test_background_work_queue)
+GTEST_DISCOVER_TESTS(test_background_work_queue DISCOVERY_TIMEOUT 120)
 
 # Test BackgroundThreadPool (shared priority-ordered thread pool)
 ADD_EXECUTABLE(test_background_thread_pool
@@ -69,11 +69,11 @@ ADD_EXECUTABLE(test_background_thread_pool
     ${CMAKE_SOURCE_DIR}/src/client/graphics/background_thread_pool.cpp
 )
 TARGET_LINK_LIBRARIES(test_background_thread_pool GTest::gtest_main)
-GTEST_DISCOVER_TESTS(test_background_thread_pool)
+GTEST_DISCOVER_TESTS(test_background_thread_pool DISCOVERY_TIMEOUT 120)
 
 # Test WorkPriorityKey unified priority system (header-only, no external dependencies)
 ADD_EXECUTABLE(test_work_priority
     test_work_priority.cpp
 )
 TARGET_LINK_LIBRARIES(test_work_priority GTest::gtest_main)
-GTEST_DISCOVER_TESTS(test_work_priority)
+GTEST_DISCOVER_TESTS(test_work_priority DISCOVERY_TIMEOUT 120)
