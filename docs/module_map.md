@@ -277,6 +277,13 @@ Re-measure; do not quote a number from this paragraph.
 | src/client/graphics/player/renderer_player_lift.cpp | 118 | `EQT::Graphics::PlayerCameraComponent` (fourth TU, T438) — `carryPlayerOnLifts()`: the player standing on an opentype-59 platform rides it. Called once per frame from `FrameComponent` right after `syncDoorCollision()`. Same header |
 | src/client/graphics/door_motion.cpp | 89 | `EQT::Graphics::LiftCycle` and the door-motion helpers (T438). Every constant is MEASURED against the official client — see `include/client/graphics/door_motion.h`, which carries the session that produced each one. Pure: no scene node, no device |
 | src/client/graphics/door_manager_animation.cpp | 170 | `DoorManager::update()` (T438) — the per-frame door animation: the lift cycle, the client-side auto-close, the rotation and spin rates. Split out of `door_manager.cpp` when that TU reached 1,511 lines |
+| src/client/graphics/door_manager.cpp | 368 | `DoorManager` core after T453: ctor/dtor, `setZone`, the two PVS-visibility predicates, `calculateOpenHeading`, `isDoorMeshBuilt`/`getUnbuiltDoors`, `setDoorState`, the two picking queries (`getDoorAtScreenPos`, `getNearestDoor`), `hasDoor`/`getDoor` and `clearDoors`. Header `include/client/graphics/door_manager.h` is unchanged, so no include site moved |
+| src/client/graphics/door_manager_mesh.cpp | 352 | `DoorManager` mesh sourcing (T453) — `findDoorMesh` (the zone `_obj` archive lookup), `invalidateMeshCache`, and the procedural `createPlaceholderMesh` with its two file-static helpers `colorFromName` and `createOctagonalPrism`, whose only callers are in this TU |
+| src/client/graphics/door_manager_create.cpp | 486 | `DoorManager` construction (T453) — `createDoor`, `registerDoor` (the deferred form) and `buildDoorMesh`, plus the `INVISIBLE_OPENTYPES` table (opentypes 50/53/54), which stays file-static because both of its readers are here |
+| src/client/graphics/door_manager_rebuild.cpp | 235 | `DoorManager` rebuild and bulk visibility (T453) — `recomputeAllBspRegions`, `rebuildSingleDoor`, `rebuildPlaceholderDoors`, `setAllDoorsVisible`, `getDoorSceneNodes` |
+| src/client/graphics/detail/detail_manager.cpp | 547 | `DetailManager` core after T453: lifecycle, the texture-cache eviction hook, zone enter/exit and config, `update`, density and per-category enables, the season override, foliage disturbance, footprints, the debug/census accessors, and the two exclusion predicates |
+| src/client/graphics/detail/detail_manager_chunks.cpp | 169 | `DetailManager` chunk residency (T453) — `updateVisibleChunks`, `loadChunk`, `unloadDistantChunks`, `rebuildAllChunkMeshes` |
+| src/client/graphics/detail/detail_manager_surface.cpp | 554 | `DetailManager` surface queries (T453) — `getGroundInfo` (the ground raycast), `getTextureFromMeshNode`, `getSurfaceTypeAtPosition` and `classifyTexture`, the texture-name classifier the surface-map work in `docs/plans/surface_map_expansion_plan.md` is about |
 | src/client/graphics/zone_stream/renderer_zone_merge.cpp | 576 | ZoneMergeBuffers (build/destroy/renderMerged) + the texture-eviction guards: RegionMeshTextureGuard, EntityMeshTextureGuard, ObjectNodeTextureGuard (T123), DoorTextureGuard/boids (T124), plus `EQT::Graphics::ZoneStreamComponent`'s three guard-registration bodies. Extracted from IrrlichtRenderer by L08 (Batch L). Its header `include/client/graphics/renderer_zone_merge.h` did NOT move — it declares namespace-scope classes and free functions, and twelve TUs plus three guard tests include it by that path |
 | src/client/graphics/zone_load/renderer_zone_load_entities.cpp | 552 | `EQT::Graphics::ZoneLoadComponent` — loadZoneStep8_Entities + 8a_BaseModelPrep, 8b_VariantModelPrep, 8c_VariantTextures, 8d_EquipmentPrep, 8e_DistributePrepResults, 8f_BuildEntityMesh. Extracted from IrrlichtRenderer by L10 (Batch L). The T109 load gate (ensureEntityPrepWorkerStarted, deferEntityForLoadGate) is ZoneLoadComponent's own since L12, in src/client/graphics/zone_load/renderer_entity_load_gate.cpp |
 | src/client/graphics/frame/renderer_frame_input.cpp | 756 | `EQT::Graphics::FrameComponent` — frame phases 1-3: processFrameInput, processCommonInput, processPlayerInput, processInputDeltas, processChatInput, processFrameVisibility, processFrameSimulation. Extracted from IrrlichtRenderer by L11 (Batch L). Header `include/client/graphics/frame/frame_component.h`. Read AS TEXT by `tests/test_static_ui_scroll.cpp` and `tests/test_debug_hotkey_arms.cpp` — do not rename |
@@ -401,6 +408,18 @@ fragments from `tests/cmake/`: `action_handlers`, `archives`, `audio`,
 `spells`, `state`, `ui_rendering`, `world_geometry`, `zone_integration`.
 Add a new test to the fragment for its domain, not to the driver.
 
+Four test targets are ONE target built from SEVERAL sources plus a shared
+fixture header, because a ctest test name is `Suite.Case` and separate
+binaries carrying the same suite would register the same name twice:
+`test_command_processor` (T165), and T446's `test_combat_manager`,
+`test_eq_commands_equip` and `test_zone_connection_flow`. T453 made
+`test_action_dispatcher` the fifth: `tests/action_dispatcher_test_fixture.h`
+(the fixture, in the named namespace `action_dispatcher_test`, because an
+anonymous-namespace fixture in a header gives each TU its own type and GTest
+aborts at startup) plus `test_action_dispatcher_routing.cpp` (30 cases),
+`test_action_dispatcher_families.cpp` (18) and
+`test_action_dispatcher_guards.cpp` (15) — 63 cases, the same 63 names.
+
 ## Tools (`tools/`) — the split multi-TU tools
 
 `tools/` is scanned by the ceiling since T385, and the tools that breached it
@@ -412,11 +431,12 @@ one file per tool.
 |---|---|---|
 | `model_viewer` (T385) | `tools/model_viewer/model_viewer_state.h` | `model_viewer.cpp` (main) + `model_viewer/` startup, loop, input, mesh, entity, equipment, spell_test |
 | `entity_composite_builder` (T385) | `tools/entity_composite/composite_builder.h` | `entity_composite_builder.cpp` (usage+main) + `entity_composite/` texture_io, model, archives |
-| `gles2_fog_volume_benchmark` (T385) | `tools/hwcaps/fog_volume/fog_volume_shaders.h` | benchmark + the GLSL sources |
+| `gles2_fog_volume_benchmark` (T385, T453) | `tools/hwcaps/fog_volume/fog_volume_shaders.h` (GLSL sources), `fog_volume_bench.h` (T453 seam: the five shared structs and every cross-TU declaration) | `gles2_fog_volume_benchmark.cpp` (`main`) + `tools/hwcaps/fog_volume/fog_volume_shaders.cpp` (the ten GLSL ES sources) + `fog_volume_egl.cpp` (DRM/GBM and X11 EGL bring-up, page flip, teardown, shader compile/link) + `fog_volume_scene.cpp` (FP16 sqrt/exp LUTs, the subdivided alley, the fog billboard quad, the checker texture, the mat4 helpers, the eight fog-sphere positions) + `fog_volume_passes.cpp` (the zone and fog draw passes and the three timed runners) |
 | `zone_bench_loader`, `gles2_zone_benchmark` (T387) | — | split in place under `tools/hwcaps/` |
 | `willeq_db_builder` (T447) | `tools/willeq_db/db_builder.h` | `willeq_db_builder.cpp` (helpers, metadata, main) + `tools/willeq_db/db_loaders_text.cpp` (the client's `*.txt`) + `tools/willeq_db/db_loaders_json.cpp` (the WillEQ/config `*.json`). T452 deleted its fourth loader, `loadS3dIndex()`, and the `--s3d-index` flag with it: every table the tool can build now ships. |
 | `wld_dump` (T447) | `tools/wld_dump/wld_dump.h` | `wld_dump.cpp` (archive I/O + main) + `tools/wld_dump/wld_dump_core.cpp` (header, string table, fragment index) + `wld_dump_geometry.cpp` (0x10/0x36/lights) + `wld_dump_animation.cpp` (0x12–0x2D + hex fallback) |
 | `gles2_shader_perpixel_benchmark` (T447) | `tools/hwcaps/shader_perpixel/shader_perpixel.h` | benchmark (runner + main) + `shader_perpixel_egl.cpp` + `shader_perpixel_shaders.cpp` (13 GLSL ES sources) + `shader_perpixel_scene.cpp` |
+| `test_gl_points` (T453) | `tools/gl_points/gl_points.h` | `test_gl_points.cpp` (the six-test `main`, left whole — its test blocks share locals, so cutting it would not be a structural move) + `tools/gl_points/gl_points_egl.cpp` (DRM/GBM and X11 EGL bring-up, teardown, the GL error helpers, shader compile/link) + `gl_points_fbo.cpp` (the offscreen FBO, the pixel readback analyser, the four GLSL ES sources, the pass/fail tally) |
 | `zone_line_editor` (T451) | `tools/zone_line_editor/zone_line_editor.h` | `zone_line_editor.cpp` (lifecycle + `main`) + `tools/zone_line_editor/zle_io.cpp` (zone geometry, portal data, zone-line JSON) + `zle_input.cpp` (the key/mouse edit operations and the view transforms) + `zle_render.cpp` (the 2D draw passes and the HUD) |
 
 Each of those targets carries `${CMAKE_SOURCE_DIR}/tools` on its include path,

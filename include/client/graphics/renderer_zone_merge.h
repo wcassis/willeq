@@ -406,7 +406,9 @@ int swapTextureInMeshSceneNode(irr::scene::IMeshSceneNode* node, irr::video::ITe
 // T124: doors_ sibling of ObjectNodeTextureGuard. DoorManager's
 // per-door pivotNode is continuously detached/reattached from the scene
 // graph, PVS-driven, the identical shape T123 found for objectNodes_ (see
-// door_manager.cpp: setDoorState()/update()/rebuildSingleDoor(), all of
+// the door_manager.* family: setDoorState() in door_manager.cpp, update()
+// in door_manager_animation.cpp and rebuildSingleDoor() in
+// door_manager_rebuild.cpp -- all of
 // which node->remove()/addChild() the pivotNode on visibility changes --
 // NOT a one-time thing settled at zone load, and NOT an unload-time gap:
 // clearDoors() unconditionally re-attaches-then-removes-then-drops every
