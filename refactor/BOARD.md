@@ -6658,7 +6658,7 @@ client uses every field.
 
 ## Added 2026-09-07 by T435 (door collision; found while ruling out B424)
 
-- **B430** (A, live defect) **a jumping player can "land" on the ceiling
+- **B435** (A, live defect) **a jumping player can "land" on the ceiling
   sentinel, 1,000 units up.** `findGroundZBspFiltered()` returns
   `feetZ + 1000.0f` as a "blocked / that is a ceiling, not a floor" sentinel
   (`src/client/graphics/player/renderer_player_collision.cpp:574`). Four
@@ -6675,7 +6675,7 @@ client uses every field.
   low geometry (a Kelethin platform underside, a dungeon ceiling) where the
   down-ray finds only the ceiling.
 
-- **B431** (A, live defect) **`HCMap::FindBestZ()` silently returns a CEILING
+- **B436** (A, live defect) **`HCMap::FindBestZ()` silently returns a CEILING
   as ground.** `src/client/hc_map.cpp:793-803`: if the downward raycast finds
   nothing it re-casts UPWARD ("Try casting ray up if nothing found below") and
   returns that hit's z with no marker distinguishing it from a real floor.

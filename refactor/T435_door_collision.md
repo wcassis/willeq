@@ -292,9 +292,9 @@ plus `HCMap::LoadMap`/`FindBestZ` against
 because it cannot answer the question B424 actually poses.
 
 Two live defects were found while ruling this family out, and are boarded
-rather than absorbed: **B430** (four jump-landing comparisons accept the
+rather than absorbed: **B435** (four jump-landing comparisons accept the
 `feetZ + 1000` ceiling sentinel with no upper bound and teleport the player
-1,000 units up — the swim clamp beside them IS guarded) and **B431**
+1,000 units up — the swim clamp beside them IS guarded) and **B436**
 (`HCMap::FindBestZ()` re-casts upward when the downward cast misses and returns
 a ceiling as ground with no marker, `src/client/hc_map.cpp:793-803`).
 
@@ -328,8 +328,8 @@ door_manager.cpp ends at **1,421**, and the new files are 180 / 86 / 79 / 407
 | **B424** | reworded with Leg C's finding, its STOP, and the measurement it now needs |
 | **B427** | annotated (50/53/54 are named explicitly in the classifier) |
 | **B423** | annotated (half (a) done; the three remaining pieces unchanged) |
-| **B430** | NEW (A) — jump landings accept the ceiling sentinel |
-| **B431** | NEW (A) — `HCMap::FindBestZ()` returns a ceiling as ground |
+| **B435** | NEW (A) — jump landings accept the ceiling sentinel |
+| **B436** | NEW (A) — `HCMap::FindBestZ()` returns a ceiling as ground |
 
-B430/B431 are the numbers this unit used; T434 in slot1 may have allocated
-from B430 too — renumber at merge if so.
+B435/B436 are the numbers this unit used; T434 in slot1 may have allocated
+from B435 too — renumber at merge if so.
