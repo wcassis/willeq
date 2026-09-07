@@ -307,13 +307,19 @@ void renderInventoryPopup(UIRenderer& ui, const UILayout& layout,
         ui.drawSprite(slotRect, borderSprite);
 
         const auto& slot = inv.equipSlots[i];
-        if (slot.hasItem && tb) {
-            // Show first 3 chars of item name — placeholder until icon atlas
+        // T430 (board B376): the real dragitem art. The oracle draws an
+        // A_DragItem decal into every equipment slot; drawItemIcon() returns
+        // false only when the sheets are unavailable or the id carries no
+        // art, and then the pre-T430 three-character abbreviation stands in
+        // exactly as it did.
+        const bool drewIcon =
+            slot.hasItem && ui.drawItemIcon(slotRect, slot.iconId);
+        if (slot.hasItem && !drewIcon && tb) {
             std::string abbrev = slot.itemName.substr(0, 3);
             tb->addText(abbrev, slotRect.UpperLeftCorner.X + 2,
                 slotRect.UpperLeftCorner.Y + SLOT / 2 - 6,
                 irr::video::SColor(255, 200, 200, 200));
-        } else if (tb) {
+        } else if (!slot.hasItem && tb) {
             // Empty slot: canonical short label from inventory_constants.h
             const char* name = eqt::inventory::getSlotName(static_cast<int16_t>(i));
             std::string abbrev(name, 0, 3);
@@ -362,11 +368,19 @@ void renderInventoryPopup(UIRenderer& ui, const UILayout& layout,
         ui.drawSprite(slotRect, borderSprite);
 
         const auto& slot = inv.generalSlots[i];
+        // T430 (board B376): same rule as the equipment slots above -- the
+        // icon when there is one, the abbreviation when there is not. The
+        // stack count is drawn either way and, being submitted after the
+        // icon, lands on top of it (UIRenderer replays in submission order).
+        const bool drewGeneralIcon =
+            slot.hasItem && ui.drawItemIcon(slotRect, slot.iconId);
         if (slot.hasItem && tb) {
-            std::string abbrev = slot.itemName.substr(0, 3);
-            tb->addText(abbrev, slotRect.UpperLeftCorner.X + 2,
-                slotRect.UpperLeftCorner.Y + SLOT / 2 - 6,
-                irr::video::SColor(255, 200, 200, 200));
+            if (!drewGeneralIcon) {
+                std::string abbrev = slot.itemName.substr(0, 3);
+                tb->addText(abbrev, slotRect.UpperLeftCorner.X + 2,
+                    slotRect.UpperLeftCorner.Y + SLOT / 2 - 6,
+                    irr::video::SColor(255, 200, 200, 200));
+            }
             // Stack count
             if (slot.quantity > 1) {
                 std::string qty = fmt::format("{}", slot.quantity);

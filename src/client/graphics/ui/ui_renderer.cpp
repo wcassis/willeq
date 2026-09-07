@@ -143,6 +143,30 @@ void UIRenderer::drawTexture(const irr::core::rect<irr::s32>& rect, irr::video::
     driver_->draw2DImage(texture, rect, srcRect, nullptr, nullptr, true);
 }
 
+bool UIRenderer::drawItemIcon(const irr::core::rect<irr::s32>& rect,
+                              uint32_t iconId) {
+    if (!driver_ || !atlas_) return false;
+
+    irr::core::rect<irr::s32> srcRect;
+    irr::video::ITexture* tex = atlas_->icons().lookup(iconId, srcRect);
+    if (!tex) return false;
+
+    const irr::video::SColor white(255, 255, 255, 255);
+
+    // Same ordering contract as drawTexture(): on the atlas path the icon is
+    // queued as a command carrying its OWN texture, so it replays at its
+    // submission position -- behind anything a panel draws after it (a
+    // quantity string, a hover border) and in front of the slot background
+    // it was drawn after.
+    if (atlas_->getTexture()) {
+        atlasQuads_.push_back({rect, srcRect, white, tex});
+        return true;
+    }
+
+    driver_->draw2DImage(tex, rect, srcRect, nullptr, &white, true);
+    return true;
+}
+
 void UIRenderer::endFrame() {
     if (!driver_) return;
 

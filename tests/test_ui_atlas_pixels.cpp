@@ -21,6 +21,7 @@
 #include "client/graphics/ui/ui_layout.h"
 #include "client/graphics/ui/static_panels.h"
 #include "client/graphics/ui/inventory_layout.h"  // T294: paperdollRect()
+#include "client/graphics/ui/item_icon_atlas.h"    // T430: the icon sheets
 #include "client/graphics/text_batch.h"
 #include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/constrained_renderer_config.h"
@@ -626,4 +627,108 @@ TEST_F(UIAtlasCoinRowFrameTest, TheFrameStandsOutAgainstTheRowInterior) {
         << (int)edge.getBlue() << ") vs interior (" << (int)interior.getRed() << ","
         << (int)interior.getGreen() << "," << (int)interior.getBlue()
         << ") -- the row does not read as a box";
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T430 (board B376): a slot with an item draws its ICON, not three letters.
+//
+// The mapping and the shipped pixels are pinned file-side by
+// test_item_icon_atlas.cpp; what needs a device is the DRAW -- that
+// UIRenderer::drawItemIcon() reaches the pack entries at all, that it reports
+// honestly whether it drew, and that renderInventoryPopup() puts a slot's icon
+// inside that slot's rect. Before this unit `drawItemIcon` did not exist and
+// the slot held only the text batch's three-character abbreviation.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class ItemIconDrawTest : public UIAtlasPixelTest {};
+
+// An id inside 500..1723 must resolve; one outside must not. A client with no
+// pack entry is the same "false" as an unknown id, which is exactly why every
+// caller keeps its text fallback.
+TEST_F(ItemIconDrawTest, OnlyIdsTheOfficialSheetsCarryResolve) {
+    irr::core::rect<irr::s32> src;
+    if (!atlas_->icons().lookup(500, src)) {
+        GTEST_SKIP() << "item_icons0/1 not present in willeq.eqe1 -- the pack "
+                        "predates T430";
+    }
+
+    EXPECT_EQ(src.getWidth(), ItemIconAtlasLayout::kCellSize);
+    EXPECT_EQ(src.getHeight(), ItemIconAtlasLayout::kCellSize);
+    EXPECT_EQ(src.UpperLeftCorner.X, 0);
+    EXPECT_EQ(src.UpperLeftCorner.Y, 0);
+
+    EXPECT_NE(atlas_->icons().lookup(1723, src), nullptr) << "last shipped id";
+    EXPECT_EQ(atlas_->icons().lookup(0, src), nullptr) << "0 is 'no icon'";
+    EXPECT_EQ(atlas_->icons().lookup(499, src), nullptr);
+    EXPECT_EQ(atlas_->icons().lookup(1724, src), nullptr);
+
+    // The two sheets are distinct entries and index 625 is the first cell of
+    // the second one.
+    irr::core::rect<irr::s32> firstSrc, secondSrc;
+    auto* first = atlas_->icons().lookup(500, firstSrc);
+    auto* second = atlas_->icons().lookup(500 + ItemIconAtlasLayout::kCellsPerAtlas,
+                                          secondSrc);
+    ASSERT_NE(first, nullptr);
+    ASSERT_NE(second, nullptr);
+    EXPECT_NE(first, second) << "icon 1125 should live on the second sheet";
+    EXPECT_EQ(secondSrc.UpperLeftCorner.X, 0);
+    EXPECT_EQ(secondSrc.UpperLeftCorner.Y, 0);
+}
+
+// The real thing: an inventory general slot holding an item paints art inside
+// its own rect. The 3-character abbreviation it used to paint is a handful of
+// thin glyph strokes on a dark tile; a 40x40 icon minified into the 32x32 slot
+// covers it. So the assertion is on COVERAGE -- how many pixels of the slot
+// are non-background -- which distinguishes an icon from a label without
+// pinning any particular item's colours.
+TEST_F(ItemIconDrawTest, AGeneralSlotWithAnItemDrawsItsIconRegion) {
+    irr::core::rect<irr::s32> probe;
+    if (!atlas_->icons().lookup(500, probe)) {
+        GTEST_SKIP() << "item_icons0/1 not present in willeq.eqe1 -- the pack "
+                        "predates T430";
+    }
+
+    UIRenderer ui;
+    ui.init(driver_, atlas_.get(), &textBatch_);
+
+    // Slot 0 of the general row, with an icon that is known to carry art.
+    const int kGeneral0 = InventoryPanelState::EQUIP_SLOTS;
+    const auto slot = InventoryLayout::slotRect(layout_, kGeneral0);
+
+    InventoryPanelState inv;
+    inv.activePopup = PopupType::Inventory;
+    inv.generalSlots[0].hasItem = true;
+    inv.generalSlots[0].itemName = "Rusty Short Sword";
+    inv.generalSlots[0].iconId = 500;
+    inv.generalSlots[0].quantity = 1;
+
+    InventoryPanelState empty;
+    empty.activePopup = PopupType::Inventory;
+
+    auto litPixels = [&](const InventoryPanelState& state) {
+        irr::video::IImage* img = renderFrame(ui, [&](UIRenderer& r) {
+            renderInventoryPopup(r, layout_, state);
+        });
+        EXPECT_NE(img, nullptr);
+        if (!img) return 0;
+        int lit = 0;
+        for (irr::s32 y = slot.UpperLeftCorner.Y + 2; y < slot.LowerRightCorner.Y - 2; ++y) {
+            for (irr::s32 x = slot.UpperLeftCorner.X + 2; x < slot.LowerRightCorner.X - 2; ++x) {
+                const irr::video::SColor c =
+                    img->getPixel(static_cast<irr::u32>(x), static_cast<irr::u32>(y));
+                if (static_cast<int>(c.getRed()) + c.getGreen() + c.getBlue() > 120) ++lit;
+            }
+        }
+        img->drop();
+        return lit;
+    };
+
+    const int withItem = litPixels(inv);
+    const int withoutItem = litPixels(empty);
+
+    EXPECT_GT(withItem, withoutItem + 60)
+        << "a general slot holding icon 500 lit " << withItem
+        << " pixels against " << withoutItem
+        << " for the empty slot -- an icon should cover far more of the cell "
+           "than the three-character abbreviation it replaced";
 }

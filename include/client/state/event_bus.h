@@ -647,6 +647,11 @@ struct LootItemAddedData {
     uint8_t slot;
     uint32_t itemId;
     std::string itemName;
+    // T430 (board B376): the item's icon id, so the loot window can draw the
+    // dragitem art the oracle draws in its LW_LootSlot cells. The producer
+    // (ZoneProcessLootItem's field[22]) already PARSED this and threw it
+    // away -- it logged the value and never put it on the event.
+    uint32_t iconId = 0;
 };
 
 struct LootItemRemovedData {

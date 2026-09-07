@@ -32,6 +32,13 @@ bool UIAtlas::load(irr::video::IVideoDriver* driver, ConstrainedTextureCache* ca
     // entirely (T201).
     cache->protectTexture("ui_atlas");
 
+    // T430 (board B376): the item-icon sheets, out of the same pack and the
+    // same cache. EAGER on purpose -- getOrLoad() exits the process on a pack
+    // miss, so loading these on first use would turn a stale pack into a
+    // mid-SESSION exit the moment a player opened their inventory. Here it is
+    // the same startup failure a missing ui_atlas already gives.
+    icons_.load(cache);
+
     // Load sprite rects from JSON raw data entry in EQE1
     const uint8_t* jsonData = nullptr;
     uint32_t jsonSize = 0;

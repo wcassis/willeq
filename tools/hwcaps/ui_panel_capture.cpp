@@ -164,10 +164,14 @@ struct PanelStates {
         for (int i = 0; i < InventoryPanelState::EQUIP_SLOTS; ++i) {
             inventory.equipSlots[i].hasItem = (i % 3) != 0;
             inventory.equipSlots[i].itemName = "Item";
+            // T430 (board B376): real dragitem icon ids, so the capture shows
+            // the art rather than the three-letter placeholder it replaced.
+            inventory.equipSlots[i].iconId = 500 + static_cast<uint32_t>(i) * 7;
         }
         for (int i = 0; i < InventoryPanelState::GENERAL_SLOTS; ++i) {
             inventory.generalSlots[i].hasItem = true;
             inventory.generalSlots[i].itemName = "Bag";
+            inventory.generalSlots[i].iconId = 640 + static_cast<uint32_t>(i);
             inventory.generalSlots[i].quantity = i + 1;
         }
         inventory.hoveredSlot = 4;
@@ -259,6 +263,7 @@ struct PanelStates {
             it.slot = static_cast<uint8_t>(i * 3);
             it.itemId = 1000 + i;
             it.itemName = lootNames[i];
+            it.iconId = 500 + static_cast<uint32_t>(i) * 11;  // T430
             loot.items.push_back(it);
         }
         loot.hoveredRow = 1;
@@ -276,6 +281,7 @@ struct PanelStates {
         for (int i = 0; i < 4; ++i) {
             tradeskill.slots[i].hasItem = true;
             tradeskill.slots[i].itemName = "Ore";
+            tradeskill.slots[i].iconId = 700 + static_cast<uint32_t>(i);  // T430
             tradeskill.slots[i].quantity = i + 1;
         }
         eqt::state::TradeskillRecipeListClearedData search;

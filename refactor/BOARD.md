@@ -6326,7 +6326,7 @@ client uses every field.
   wire field or deleted. Found by T421 Leg A (the seven `heroic*` surfaced as
   `WriteOnlyFields` NEW rows the moment a test wrote them).~~
 
-- **B376** (B) `include/client/graphics/ui/static_panels.h`
+- ~~**B376** (B) `include/client/graphics/ui/static_panels.h`
   `SlotDisplayInfo::iconId`, `TradeskillSlotDisplay::iconId`,
   `LootItemDisplay`, `ItemDisplayPanelState::iconId` -- **fable has no
   item-icon atlas.** Every panel that shows an item carries the server's icon
@@ -6342,6 +6342,29 @@ client uses every field.
   draw from it. Found by T421 Leg A.
 
   **WILL 2026-09-07:** CRITICAL. The official `uifiles/default/dragitem*.tga` sheets are the source. → T430.
+
+  **CLOSED by T430 (2026-09-07), `20e9e3a9`.** All 1224 icons ship.
+  `tools/item_icon_atlas_builder` packs the 34 `dragitem*.tga` sheets the
+  oracle's `EQUI_Animations.xml` names under `A_DragItem` into
+  `data/textures/item_icons{0,1}.bmp` (two 1024x1024 sheets, 25x25 cells of
+  the native 40x40), and `include/client/graphics/ui/item_icon_atlas.h` is the
+  one address book both the builder and the client's `ItemIconSheets` loader
+  read. The mapping is QUOTED, not assumed: `<Vertical>true</Vertical>` makes
+  a sheet COLUMN-major, which the usual `(id-500)%36` folklore gets backwards,
+  and `dragitem34`'s partial fill (two whole columns plus one, thirteen icons)
+  proves it independently of the tag. Four draw sites now paint art --
+  the 22 equipment slots, the 8 general slots, the tradeskill container cells
+  and `IDW_IconButton` -- plus a FIFTH the entry did not list: the loot rows,
+  which needed `iconId` added to `LootItemAddedData` and `LootItemDisplay`
+  because the producer had PARSED the icon from `field[22]` and thrown it away.
+  Each keeps its old text placeholder as the no-art fallback, so a client
+  without the pack looks exactly as it did. Pinned by
+  `tests/test_item_icon_atlas.cpp` (9 cases, including the negative that a
+  row-major reading is wrong) and `ItemIconDrawTest` in
+  `tests/test_ui_atlas_pixels.cpp`. **The entry's merchant and bank windows do
+  not exist** -- there is no merchant/bank/cursor panel in the static UI at all
+  (the game side already threads `iconId` through `merchant.cpp` /
+  `merchant_trade.cpp` for windows that were never built); that is **B415**.~~
 - **B377** (P) `src/client/bridge/bridge_component_intents.cpp`
   `onRecipeFavoriteIntent`, `include/client/graphics/ui/tradeskill_panel.h`
   -- **fable keeps no tradeskill favourites list**, so the Add and Remove
@@ -6579,6 +6602,27 @@ client uses every field.
   happens to receive. Printing the ids would be inventing a line the official
   client never draws, so T425 drew nothing. Closes when an item-name lookup
   exists (the same gap `B376`'s icon sheet sits next to). Found by T425 Leg A.
+
+### Added by T430 (2026-09-07)
+
+- **B415** (B) `src/client/merchant/merchant.cpp:103`,
+  `src/client/merchant/merchant_trade.cpp:405` and `:693`
+  (`data.iconId = data.hasItem ? item->icon : 0;`) -- **there is no merchant
+  window, no bank window and no cursor-item slot in the static UI**, so three
+  producers fill an `iconId` nothing can draw. T430 went looking for them to
+  give them icons and found the panels absent: a grep for a
+  `MerchantPanelState` / `BankPanelState` / cursor-item struct or render
+  function under `src/client/graphics/ui/` and `include/client/graphics/ui/`
+  returns NOTHING, and the seventeen-panel table in
+  `include/client/graphics/ui/CLAUDE.md` lists no vendor, bank or cursor row.
+  The commerce vocabulary is reachable only as slash commands (`/vendor`,
+  `/vendorlist`, `/buy`, `/sell`, `/bank`), which is why the gap has been
+  invisible. The oracle's own `EQUI_MerchantWnd.xml` gives its slot buttons
+  `<ButtonDrawTemplate><Normal>A_RecessedBox</Normal>
+  <NormalDecal>A_DragItem</NormalDecal></ButtonDrawTemplate>` with
+  `<DecalSize><CX>40</CX><CY>40</CY></DecalSize>`, so the art and the layout
+  source both exist now -- only the panels do not. Closes when a merchant and
+  a bank window exist and draw their icons. Found by T430.
 
 ### Added by T427 (2026-09-07)
 

@@ -101,6 +101,21 @@ public:
      */
     void drawTexture(const irr::core::rect<irr::s32>& rect, irr::video::ITexture* texture);
 
+    /**
+     * T430 (board B376): draw an item icon from the dragitem sheets.
+     *
+     * Returns FALSE when there is nothing to draw -- no atlas, no pack entry,
+     * or an icon id outside the 500..1723 the official sheets carry -- and
+     * every caller keeps its pre-T430 text placeholder for that case, so a
+     * headless test or a client without the pack looks exactly as it did.
+     *
+     * The oracle draws these at 40x40
+     * (`<DecalSize><CX>40</CX><CY>40</CY></DecalSize>` on every A_DragItem
+     * button); fable's slots are 32x32, so the destination rect is the
+     * caller's and the 40x40 cell is minified into it.
+     */
+    bool drawItemIcon(const irr::core::rect<irr::s32>& rect, uint32_t iconId);
+
     /** Flush all accumulated quads to the driver. */
     void endFrame();
 

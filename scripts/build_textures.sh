@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
-# build_textures.sh -- rebuild (or verify) the 64 shipped BMPs under
-# data/textures/ from their generators.
+# build_textures.sh -- rebuild (or verify) the shipped BMPs under
+# data/textures/ from their generators. There are THREE recipes: 64
+# procedural BMPs from `generate_textures`, `spell_sprite_atlas.bmp` from
+# `spell_sprite_atlas_builder` (T417) and `item_icons{0,1}.bmp` from
+# `item_icon_atlas_builder` (T430) -- the last two lifted from the official
+# client's own art rather than generated.
 #
 # T403 (board B260). Sibling of scripts/build_willeq_pack.sh: that script
 # rebuilds willeq.eqe1 from its two input sources, one of which is this
@@ -32,8 +36,9 @@
 #              the shipped bytes. Catches a generator edit that silently
 #              stops matching the asset (or an asset edited without its
 #              generator).
-#   3. CENSUS  the tool writes exactly the expected 64 names. Catches a
-#              generator added or removed without updating the pins.
+#   3. CENSUS  the three tools together write exactly the pinned set of
+#              names. Catches a generator added or removed without updating
+#              the pins.
 #
 # Determinism note (T403, board B268): the generators must be bit-identical
 # across optimisation levels, or this check is a coin toss that depends on
@@ -130,10 +135,21 @@ if [ ! -x "$BIN_DIR/spell_sprite_atlas_builder" ]; then
     exit 3
 fi
 
+# T430 (board B376): a THIRD recipe. The item icon sheets are lifted from the
+# official client's uifiles/default/dragitem*.tga, so like the spell sprites
+# they cannot come out of generate_textures. All three tools write into the
+# same directory and the pin file covers the union.
+if [ ! -x "$BIN_DIR/item_icon_atlas_builder" ]; then
+    echo "ERROR: item_icon_atlas_builder not found in $BIN_DIR. Build it first:" >&2
+    echo "       cmake --build $REPO_ROOT/build --target item_icon_atlas_builder" >&2
+    exit 3
+fi
+
 # ── In-place regeneration ───────────────────────────────────────────────────
 if [ "$CHECK_ONLY" -eq 0 ]; then
     "$BIN_DIR/generate_textures" --output "$TEXTURES_DIR" || exit 4
     "$BIN_DIR/spell_sprite_atlas_builder" --output "$TEXTURES_DIR" || exit 4
+    "$BIN_DIR/item_icon_atlas_builder" --output "$TEXTURES_DIR" || exit 4
     echo
     echo "NOTE: data/textures/ was rewritten. Update $PIN_FILE"
     echo "      (scripts/build_textures.sh --write-pins) and rebuild the pack"
@@ -187,6 +203,12 @@ if ! "$BIN_DIR/spell_sprite_atlas_builder" --output "$WORK/regen" \
         > "$WORK/gen_sprites.log" 2>&1; then
     echo "FAIL: spell_sprite_atlas_builder failed:" >&2
     cat "$WORK/gen_sprites.log" >&2
+    exit 4
+fi
+if ! "$BIN_DIR/item_icon_atlas_builder" --output "$WORK/regen" \
+        > "$WORK/gen_icons.log" 2>&1; then
+    echo "FAIL: item_icon_atlas_builder failed:" >&2
+    cat "$WORK/gen_icons.log" >&2
     exit 4
 fi
 

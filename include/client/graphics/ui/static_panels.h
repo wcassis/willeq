@@ -594,6 +594,9 @@ struct LootItemDisplay {
     uint8_t slot = 0;        // CORPSE slot id -- what LootItemIntent carries
     uint32_t itemId = 0;
     std::string itemName;
+    // T430 (board B376): the dragitem icon id. Zero means "no art" and the
+    // row falls back to the name alone, exactly as it drew before T430.
+    uint32_t iconId = 0;
 };
 
 // Renderer-side corpse contents. Fed exclusively by the four loot bridge

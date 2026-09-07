@@ -42,6 +42,9 @@ constexpr irr::s32 kButtonW    = 80;
 constexpr irr::s32 kButtonH    = 16;
 constexpr irr::s32 kRowH       = 22;
 constexpr irr::s32 kRowGap     = 2;
+// T430 (board B376): the dragitem icon square at the head of a loot row. One
+// pixel of inset top and bottom inside the 22px row.
+constexpr irr::s32 kRowIcon    = 20;
 
 irr::s32 rowsTop(const UILayout& layout) {
     // title row + the Loot All button row above the list
@@ -129,11 +132,26 @@ void renderLootPopup(UIRenderer& ui, const UILayout& layout,
             ui.drawRect(rowRect, irr::video::SColor(60, 255, 255, 255));
         }
 
+        // T430 (board B376): the oracle's LW_LootSlot cells are 40x40
+        // InvSlots carrying the item's dragitem decal
+        // (`<Size><CX>40</CX><CY>40</CY></Size>` in EQUI_LootWnd.xml). A row
+        // here is 22px, not 40, so the icon is drawn as a 20px square at the
+        // head of the row and the name follows it -- the row stays a LINE,
+        // which is what makes this window scannable, but it now says what
+        // the thing looks like as well as what it is called.
+        irr::s32 textX = startX + 4;
+        const irr::core::rect<irr::s32> iconRect(startX + 1, y + 1,
+                                                 startX + kRowIcon + 1,
+                                                 y + kRowIcon + 1);
+        if (ui.drawItemIcon(iconRect, state.items[i].iconId)) {
+            textX = startX + kRowIcon + 5;
+        }
+
         if (tb) {
             // Full item name, not the 3-character abbreviation the equipment
             // slots use: a loot row is a line, not a 32px icon cell, and the
             // whole point of the window is deciding what to take.
-            tb->addText(state.items[i].itemName, startX + 4, y + 4,
+            tb->addText(state.items[i].itemName, textX, y + 4,
                 irr::video::SColor(255, 210, 210, 210));
         }
     }
@@ -215,9 +233,11 @@ void applyLootItemAdded(LootPanelState& state,
     if (it != state.items.end() && it->slot == data.slot) {
         it->itemId = data.itemId;
         it->itemName = data.itemName;
+        it->iconId = data.iconId;
         return;
     }
-    state.items.insert(it, LootItemDisplay{data.slot, data.itemId, data.itemName});
+    state.items.insert(it, LootItemDisplay{data.slot, data.itemId,
+                                           data.itemName, data.iconId});
 }
 
 void applyLootItemRemoved(LootPanelState& state,
