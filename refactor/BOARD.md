@@ -520,13 +520,95 @@ it without taking that measurement first.
   tests an already-remapped value). The open half is user-facing wording, and no
   copy should be invented. Prov: deferred item 37.
 
-- **B018** (B) first-person eye placement — `refactor/T301_first_person_eye_placement.md`
+- ~~**B018** (B) first-person eye placement — `refactor/T301_first_person_eye_placement.md`
   is written and not dispatched; T309 landed the measured draw rule
   (`src/client/graphics/entity_first_person_draw.cpp`) but the eye sits at the
   static bbox crown, and Will judges the look on the live gate. Prov: deferred
   item 16.
 
-  **WILL 2026-09-07:** no judgement needed: capture the official first-person frame at the same spot and match it. Reclassified B. → T431 (lock).
+  **WILL 2026-09-07:** no judgement needed: capture the official first-person frame at the same spot and match it. Reclassified B. → T431 (lock).~~
+  **CLOSED by T431 (2026-09-07).** The "static bbox crown" half was already
+  stale — T301 Leg B replaced it with the head-bone vertex cluster and T310 Leg C
+  solved the fraction against the oracle. What T431 did is the thing the entry
+  was actually asking for: re-capture the official client's own first-person
+  frame at the same spot, heading, race and resolution, and match it.
+  `kEyeHeightFractionOfSkull` **0.65 → 0.45**, `kCrownAboveEyeUnits`
+  0.49 → 0.765, `kEyeHeightFractionOfStandingHeight` 0.925 → 0.887. The Human
+  male eye now lands at the measured **6.02 ± 0.08 above its own feet** (it was
+  6.30). T310's 0.65 was not wrong when it was taken: it was stated as an
+  ABSOLUTE and T310 Leg B's own `collisionZOffset` fix then raised every eye
+  0.119 units off the ground without anybody re-solving the fraction keyed to
+  it. B399's heading fix is also confirmed live here — fable at `character_data`
+  heading 160 now reproduces the official client's heading-160 frame, where T310
+  had to use 480. Evidence, curves and error bars: `review/T431/README.md`;
+  tests `HumanMaleEyeMatchesTheT431OracleSolve`,
+  `DwarfMaleEyeIsUnderTheT431OracleUpperBound`,
+  `FpTunablesTest.TheDefaultsAreTodaysMeasuredNumbers`. **The second race is a
+  NEGATIVE and it is B465, not part of this closure.**
+
+- **B465** (B) `include/client/graphics/first_person_eye.h` — **ONE GLOBAL
+  `kEyeHeightFractionOfSkull` CANNOT SATISFY EVERY RACE, MEASURED.** T431 solved
+  the parameter against the official client for two races at the same spot and
+  method: **Human male 0.43–0.45** (eye 6.02 ± 0.08 above its own feet) and
+  **Dwarf male 0.08–0.10** (eye 3.58 ± 0.14). The shipped value is the Human
+  male's, because that is the race the whole first-person arc was measured on,
+  which leaves the Dwarf's eye about **1.0 units high**. The cause is visible in
+  the derivation: the Dwarf's eye moves 2.74 units per unit fraction against the
+  Human's 1.40, because its beard is skinned to `dwmhe` and roughly doubles the
+  span the fraction is taken across — the symmetrised bound `max(minZ, -maxZ)`
+  tames it but not enough. **The fix is NOT a per-race table** (that header
+  exists partly to forbid one, and the derivation is already per-race from the
+  mesh): re-derive the skull bound and re-check BOTH races against T431's
+  frames. Pinned as a negative by
+  `ShippedMeshEyeTest.OneSkullFractionCannotSatisfyBothMeasuredRaces` so it
+  cannot be reported closed on arithmetic. Prov: T431 Review §3;
+  `review/T431/sweeps/dwarf_eye{,2}/curve.tsv`.
+
+- **B466** (B) `include/client/graphics/first_person_eye.h`
+  `kSitEyeDropFractionOfHeight` — the SEATED eye has never been A/B'd against
+  the official client, and T431 widened the disagreement it inherited. T301
+  Leg A reports the sit drop two ways that are consistent only if the standing
+  height is 7.9: **3.6 units**, and **0.925 H standing → 0.47 H sitting**. T431
+  re-solved standing to 0.887 H, so the applied drop is now 0.417 H = **2.78
+  units** on the Human male mesh against Leg A's reported 3.6 — a 0.82-unit gap
+  where it was 0.56. The expression is `(standing - 0.47)` deliberately, so the
+  SEATED absolute stays where Leg A measured it, but nobody has checked that
+  absolute against a frame. Closes when the seated eye gets the same live sweep
+  the standing eye just had (the rig is `review/T431/scripts/` plus
+  `scripts/camera_match_sweep.sh`; the official client's `/sit` works under it —
+  `review/T431/probe/T431_sit_dwarf_sitting_h32.png`). Bounded by
+  `FirstPersonEyePosture.SitDropIsAboutThreeAndAHalfUnitsForAHumanSizedBody`.
+  Crouching and Lying are still unmeasured and still reuse the sit drop.
+  Prov: T431 Review §2.
+
+- **B467** (P) **THE CANONICAL MEASUREMENT SPOT IS CONTAMINATED BY A PLAYER
+  CORPSE, and it is invisible to a tall race.** `character_corpses` id 42,
+  Oraclealpha, qeynos2 `(-72.09, 427.83, 3.752)`, `is_buried=0`, dead since
+  **2026-09-05 14:44:55** — 1.9 units from the `(-74, 428)` that T310, T361,
+  T377, T386, T401, T405, T422, T426 and T428 all measure at. At level pitch the
+  down-FOV is vFOV/2 = 24.6 degrees, so ground-level geometry at horizontal
+  distance `d` is only in frame while `d > 2.18 x eye height`: a Human male eye
+  at 6.02 needs 13.1 units of clearance and never sees it, a Dwarf at 3.58 needs
+  7.8 and sees it fill **8–27 % of the frame**. It cost T431 two whole sweeps
+  and was identified only from the corpse's own nameplate in a `/sit` frame.
+  T431 buried it for its session and **restored `is_buried=0` as found**, so it
+  is still there. A second corpse, **id 44** (Oraclealpha, `(-74.08, 427.53)`,
+  2026-09-07), is T431's own — the rig character was killed at the spot by the
+  wandering NPC *Nixx Darkpaw* — and is left `is_buried=1`. Closes when the
+  measurement spot is either cleared (bury both) or moved, and the rig records
+  which. Prov: T431 Review §4; `review/T431/probe/T431_sit_dwarf_sitting_h32.png`.
+
+- **B468** (A) **fable draws a player corpse STANDING UPRIGHT; the official
+  client lays it down.** Same server row (`character_corpses` id 42), same
+  minute, same spot, same resolution: the official client's first-person frame
+  shows a body lying flat — a face and a forearm horizontal across the bottom of
+  the frame (`review/T431/probe/T431_sit_dwarf_sitting_h32.png`) — while fable's
+  frame at the same pose is filled top-to-bottom by an upright model, shoulder
+  and hair, from a corpse two units away
+  (`review/T431/sweeps/human_eye/eyeHeightFractionOfSkull_0.65_/BEST_frame_000051.png`,
+  captured before T431 buried it). fable evidently spawns a corpse as an
+  ordinary standing entity with no death pose. Closes when a corpse entity
+  renders prone and a test pins the pose selection. Prov: T431 Review §0.
 - **B040** (C) server-sent placeables and doors are measured by no gate — the
   benchmark's `placeableObjectsBytes` (`tools/hwcaps/zone_bench_memory.h`) is
   summed over the zone's own S3D archive and never connects to a server, so

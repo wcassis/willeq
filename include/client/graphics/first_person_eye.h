@@ -76,43 +76,71 @@ namespace Graphics {
 // a comment says otherwise.
 // -------------------------------------------------------------------------
 
-// MEASURED: the eye sits at 0.925 +/- 0.004 of the model's own standing
-// height. Leg A's advice is to key off a fraction rather than an absolute,
-// because it does not depend on the frame "height" is measured in.
-constexpr float kEyeHeightFractionOfStandingHeight = 0.925f;
+// The eye as a fraction of the model's own standing height. Leg A's advice is
+// to key off a fraction rather than an absolute, because it does not depend on
+// the frame "height" is measured in.
+//
+// *** T431 RE-MEASURED THIS AGAINST THE OFFICIAL CLIENT AND IT CAME DOWN FROM
+// 0.925 TO 0.887. *** T301 Leg A's 0.925 +/- 0.004 was taken before T310 Leg B
+// fixed collisionZOffset, which raised every eye 0.119 units relative to the
+// ground and was never re-solved under. T431's live A/B at the same spot,
+// heading, race and resolution puts the Human male eye at 6.023 +/- 0.08 above
+// its own feet on a 6.793 standing height: 0.887 (mesh-side cross-check
+// 5.912 / 6.677 = 0.885). review/T431/README.md has the curve.
+//
+// It also carries the SIT drop below, and deliberately: the measured quantity
+// there is the SEATED eye at 0.47 H absolute, so expressing the drop as
+// (standing - 0.47) keeps that measurement fixed while the standing value
+// moves. Nothing about sitting was re-measured by T431.
+constexpr float kEyeHeightFractionOfStandingHeight = 0.887f;
 
-// The crown above the eye. *** T310 LEG C RE-DERIVED THIS AGAINST THE
-// OFFICIAL CLIENT AND IT IS NO LONGER THE DRIVER. ***
+// The crown above the eye. NOT THE DRIVER (T310 Leg C, re-confirmed T431):
+// kEyeHeightFractionOfSkull is what is solved against the official client's own
+// frames and this is the crown-to-eye distance that solve IMPLIES. It earns its
+// place as the cross-check that catches the solve going stale if the head
+// cluster or the symmetrised skull bound ever changes --
+// tests/test_first_person_eye_anatomy.cpp asserts the two keep agreeing.
 //
-// It was 0.60, and the fraction below was solved to reproduce it, on the
-// reasoning quoted in the block this replaces: that 0.925 H could not be
-// trusted because "fable stands the model CENTRED on the server z and the
-// official client stands it FEET-ON-z -- a ~3-unit disagreement". T310 Leg B
-// disproved that premise from the EQEmu source (both clients take z from the
-// same server through the same packets; the server never writes a player's z
-// -- zone/client_packet.cpp:4831 with zone/waypoints.cpp:831), and T310 Leg C
-// then measured the eye directly against the official client's own frames:
-// two clients at the same server-set position, heading and resolution in
-// qeynos2, first person, UI hidden on both, fable's eye height swept and
-// scored against the official client's frame.
-//
-// THE CURVE'S MINIMUM PUT THE EYE AT 0.925 OF STANDING HEIGHT, to within
-// 0.01 units -- i.e. at the value this constant was chosen AGAINST. Eye
-// 6.18 +/- 0.08 above ground on a 6.68-6.79 standing height; crown - 0.60
-// would have been 6.08, outside that band. So the fraction below is now
-// solved against 0.925 H and this number is the cross-check that follows
-// from it, not the other way round.
-constexpr float kCrownAboveEyeUnits = 0.49f;
+// History, so nobody re-derives a dead value: 0.60 (T301 Leg B, chosen), 0.49
+// (T310 Leg C's solve at skull fraction 0.65), 0.765 (T431's solve at 0.45).
+constexpr float kCrownAboveEyeUnits = 0.765f;
 
 // Where the eye sits up the skull: a fraction from the underside of the skull
 // (chin/jaw line) to the crown. SOLVED AGAINST THE OFFICIAL CLIENT'S OWN
-// FRAMES (T310 Leg C): the gradient-correlation curve over this parameter
-// minimises at 0.65, +/- 0.06 at the width of the minimum. Every other race's
-// value then follows from ITS OWN head cluster, so this stays ONE global
-// constant and never a table.
+// FRAMES. Every other race's value then follows from ITS OWN head cluster, so
+// this stays ONE global constant and never a table.
 //
-// It was 0.574, keyed to kCrownAboveEyeUnits = 0.60 above.
-constexpr float kEyeHeightFractionOfSkull = 0.65f;
+// *** T431 RE-SOLVED IT AND IT MOVED 0.65 -> 0.45. *** Two things changed under
+// T310 Leg C's 0.65 without anybody re-solving:
+//
+//   1. T310 Leg B's collisionZOffset fix. T310's own answer was stated as an
+//      ABSOLUTE -- eye 6.18 +/- 0.08 above the collision ground -- and on that
+//      session's tree 0.65 produced exactly that. On today's tree the same
+//      0.65 produces 6.303, because the player's feet moved down onto the
+//      ground. The absolute survived; the fraction keyed to it did not.
+//   2. B399's heading fix (T426). T310 had to run fable at server heading 480
+//      to reproduce the official client's heading-160 frame, because fable's
+//      first-person azimuth was mirrored. It is not any more, so the two
+//      clients are now posed by the same number.
+//
+// T431's measurement (review/T431/README.md, sweeps/human_eye{2,3,4}):
+// qeynos2 (-74, 428, 3.751) heading 160, Human male, both clients first person,
+// UI hidden, 1024x768, day, weather pinned; every captured frame scored against
+// the official client's own frame on the near-wall crop with the gradient
+// metric. The curve is convex with its minimum at 0.45 (parabola vertex 0.430),
+// reproduced across two independent sweeps to four decimals (0.698751 /
+// 0.698855), against an oracle session-to-session noise floor of edge 0.0648.
+// Band 0.35..0.48. BOTH metrics agree this time, which T310's did not.
+//
+// *** IT IS THE HUMAN MALE'S FRACTION AND IT DOES NOT FIT EVERY RACE. *** T431
+// measured a second race as the plan required: a Dwarf male solves at 0.08-0.10
+// (eye 3.575 +/- 0.14 above its own feet), because its beard is skinned to the
+// head bone and inflates the cluster this fraction is taken across. At 0.45 the
+// Dwarf's eye is left about 1.0 units high. That residual is board B465 and the
+// fix is NOT a per-race table -- see the file header.
+//
+// History: 0.574 (T301 Leg B), 0.65 (T310 Leg C), 0.45 (T431).
+constexpr float kEyeHeightFractionOfSkull = 0.45f;
 
 // The EXTRA forward nudge applied to the eye along the look ray, ON TOP of
 // the head cluster's own anatomical forward position. It is a per-mesh-axis-

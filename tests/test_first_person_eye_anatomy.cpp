@@ -153,8 +153,16 @@ TEST(FirstPersonEyeGeometry, ABeardIsNotMistakenForTheSkull) {
         << "the beard must be discarded, not averaged in";
 
     const auto eye = computeEyeInHeadBoneSpace(dwarf);
-    EXPECT_GT(eye.z, 0.0f)
-        << "a symmetrised skull puts a 0.55 eye above the head joint";
+    // Derived from the live constant, never pasted: the symmetrised span is
+    // -0.85..+0.85, so the eye is simply that fraction up it. T431 moved the
+    // fraction to 0.45 and this therefore sits a little BELOW the head joint
+    // (-0.085) where at 0.65 it sat above it (+0.255). What the rule has to
+    // deliver is not "above the joint" -- that was an artefact of the old
+    // fraction -- but "nowhere near the beard", which the two assertions
+    // below measure.
+    EXPECT_NEAR(eye.z, -0.85f + kEyeHeightFractionOfSkull * 1.70f, 1e-4f);
+    EXPECT_GT(eye.z, -0.85f)
+        << "the eye must be inside the symmetrised skull, not at its floor";
 
     // The number this rule was written to kill: with the raw minimum the eye
     // lands at -0.563 in bone space, which on the real dwmhe transform is
@@ -509,6 +517,13 @@ TEST_F(ShippedMeshEyeTest, EyeMatchesTheCrownOffsetTheOracleSolveImplies) {
 }
 
 TEST_F(ShippedMeshEyeTest, StandingHeightCrossCheckAgainstLegAsPoint925) {
+    // *** THE REFERENCE IS T431'S 0.887, NOT LEG A'S 0.925. *** The test name
+    // is kept so the history is greppable. T301 Leg A measured 0.925 +/- 0.004
+    // before T310 Leg B's collisionZOffset fix raised every eye 0.119 units
+    // off the ground; T431 re-measured the Human male against the official
+    // client after that fix and after B399's heading fix and got 0.887.
+    // kEyeHeightFractionOfStandingHeight carries the new value.
+    //
     // Leg A's OTHER number: the eye at 0.925 +/- 0.004 of standing height.
     //
     // *** T310 LEG C MADE THIS THE SPEC RATHER THAN THE CROSS-CHECK. *** The
@@ -533,7 +548,18 @@ TEST_F(ShippedMeshEyeTest, StandingHeightCrossCheckAgainstLegAsPoint925) {
         std::printf("%-20s %8.3f %8.3f %8.3f   %+.3f\n", rc.label, H, frac,
                     EQT::Graphics::kEyeHeightFractionOfStandingHeight,
                     frac - EQT::Graphics::kEyeHeightFractionOfStandingHeight);
-        EXPECT_GT(frac, 0.80f)
+        // T431 LOWERED THIS GUARD FROM 0.80 TO 0.72, and the reason is a
+        // MEASUREMENT, not a convenience. The global skull fraction was
+        // re-solved against the official client at 0.65 -> 0.45, which drops
+        // every race's eye by 0.20 of ITS OWN symmetrised skull span -- a
+        // small drop for a Human male (0.041 of H) and a large one for a
+        // Dwarf male (0.091 of H), because the Dwarf's beard is skinned to
+        // the head bone and doubles that span. The Dwarf male lands at 0.756
+        // and it is the ONLY race under 0.80. That is the boarded residual
+        // (B465): the oracle puts the Dwarf's eye LOWER still, at 0.57 H, so
+        // 0.756 is on the correct side of the error and this guard must not
+        // be read as an endorsement of it.
+        EXPECT_GT(frac, 0.72f)
             << rc.label << ": the eye is far too low up the body to be an eye";
         EXPECT_LT(frac, 1.0f)
             << rc.label << ": the eye is at or above the crown -- the T300 defect";
@@ -565,8 +591,14 @@ TEST(FirstPersonEyePosture, SitDropIsLegAsMeasuredFractionAndStandingIsZero) {
     EXPECT_FLOAT_EQ(eyeDropFractionForPosture(EyePosture::Standing), 0.0f)
         << "standing must be the undisplaced reference";
 
-    // MEASURED: 0.925 H standing -> 0.47 H sitting.
-    EXPECT_NEAR(eyeDropFractionForPosture(EyePosture::Sitting), 0.455f, 1e-4f);
+    // MEASURED: standing H -> 0.47 H sitting. The SEATED value is the
+    // measurement; the drop is (standing - 0.47) so that re-solving the
+    // standing eye moves the drop and leaves the seated eye where Leg A
+    // measured it. T431 took standing from 0.925 to 0.887, so the drop is
+    // now 0.417 where it was 0.455. Sitting itself was NOT re-measured.
+    EXPECT_NEAR(eyeDropFractionForPosture(EyePosture::Sitting),
+                EQT::Graphics::kEyeHeightFractionOfStandingHeight - 0.47f, 1e-4f);
+    EXPECT_NEAR(eyeDropFractionForPosture(EyePosture::Sitting), 0.417f, 1e-3f);
     EXPECT_GT(eyeDropFractionForPosture(EyePosture::Sitting), 0.0f)
         << "sitting must LOWER the eye";
 
@@ -582,17 +614,23 @@ TEST(FirstPersonEyePosture, SitDropIsLegAsMeasuredFractionAndStandingIsZero) {
 }
 
 TEST(FirstPersonEyePosture, SitDropIsAboutThreeAndAHalfUnitsForAHumanSizedBody) {
-    // Leg A reports the sit drop as 3.6 units. Scaling the measured FRACTION
-    // by this mesh's own crown-to-feet span (6.67 for a Human male) gives
-    // 3.04, not 3.6 -- the same frame disagreement as the 0.925 cross-check,
-    // and for the same reason (Leg A's H implies 7.9). The fraction is what
-    // is applied, because it is the frame-independent form Leg A itself
-    // recommended keying off. This test pins the resulting magnitude so the
+    // Leg A reports the sit drop two ways and they have never agreed: 3.6
+    // UNITS, and 0.925 H standing -> 0.47 H sitting, which are consistent only
+    // if H is 7.9. This mesh's Human male H is 6.67.
+    //
+    // *** T431 WIDENED THE DIVERGENCE AND DID NOT RE-MEASURE SITTING. *** The
+    // standing eye re-solved against the official client at 0.887 H, so the
+    // applied drop is 0.417 H = 2.78 units on this mesh, against Leg A's
+    // reported 3.6. The gap is now 0.82 units where it was 0.56. Sitting was
+    // out of T431's scope and is board B466: the seated eye needs the same
+    // live A/B the standing eye just had, and until it gets one the FRACTION
+    // is what is applied, because it is the frame-independent form Leg A
+    // itself recommended keying off. This test pins the magnitude so the
     // discrepancy stays visible and bounded rather than growing unnoticed.
     const float humanMaleMeshHeight = 6.67f;
     const float drop = EQT::Graphics::kSitEyeDropFractionOfHeight * humanMaleMeshHeight;
-    EXPECT_NEAR(drop, 3.04f, 0.10f);
-    EXPECT_LT(std::fabs(drop - 3.6f), 0.7f)
+    EXPECT_NEAR(drop, 2.78f, 0.10f);
+    EXPECT_LT(std::fabs(drop - 3.6f), 1.0f)
         << "the applied sit drop has diverged from Leg A's reported 3.6 units "
            "by more than the known frame disagreement explains";
 }
@@ -716,6 +754,117 @@ TEST_F(ShippedMeshEyeTest, NoClampCanEmptyTheDownFrustumOfTheOwnBody) {
                            "believing this.";
     }
     EXPECT_GE(covered, 20);
+}
+
+
+// =========================================================================
+// Part 4 -- T431. THE TWO RACES MEASURED AGAINST THE OFFICIAL CLIENT.
+// =========================================================================
+//
+// METHOD (review/T431/README.md has the frames, the curves and the traps).
+// Both clients at the same server-set pose in qeynos2, day, weather pinned,
+// first person, UI hidden, 1024x768; fable's eyeHeightFractionOfSkull swept
+// with /fpcam and every captured frame scored against the official client's
+// own frame with scripts/camera_match_score.py's gradient metric. THE CURVE'S
+// MINIMUM IS THE MEASUREMENT AND ITS WIDTH IS THE ERROR BAR.
+//
+//   race         pose                       solved f    eye above own feet
+//   Human male   (-74, 428, 3.751, h160)    0.43-0.45   6.02 +/- 0.08 (live)
+//   Dwarf male   (-70, 428, 3.751, h160)    0.08-0.10   3.58 +/- 0.14 (live)
+//
+// The oracle's own session-to-session repeatability at the human pose is
+// edge 0.0648, so the curves are well clear of the noise floor.
+//
+// LIVE UNITS ARE NOT MESH UNITS. The player node carries a per-race scale, so
+// the numbers asserted below are the LIVE targets divided by that race's
+// measured live/mesh ratio (Human male 1.0183, Dwarf male 0.9554, both read
+// off the same runs' [FPCAM-DUMP] against this fixture's own derivation at
+// the then-shipped f = 0.65).
+//
+//   Human male   live 6.023 -> mesh 5.915
+//   Dwarf male   live 3.575 -> mesh 3.742
+//
+// *** THE HEADLINE, AND IT IS A NEGATIVE: ONE GLOBAL SKULL FRACTION CANNOT
+// SATISFY BOTH RACES. *** The Human male solves at 0.44 and the Dwarf male at
+// 0.09. The fraction shipped is the Human male's, because that is the race
+// the whole first-person arc was measured on; the Dwarf is left ~1.0 units
+// high and that residual is board B465. Do not "fix" it with a per-race
+// table -- the derivation is per-race FROM THE MESH by construction and a
+// table is what first_person_eye.h exists to forbid.
+
+TEST_F(ShippedMeshEyeTest, HumanMaleEyeMatchesTheT431OracleSolve) {
+    // RED at kEyeHeightFractionOfSkull = 0.65 (the derivation gives 6.190,
+    // 0.275 above the measured 5.915); GREEN at 0.45.
+    bool covered = false;
+    for (const auto& rc : kPlayableRaces) {
+        if (rc.raceId != 1 || rc.gender != 0) continue;
+        const Derived d = derive(rc);
+        if (!d.ok) continue;
+        covered = true;
+        const float eyeAboveFeet = d.eyeModelZ - d.bodyMinZ;
+        std::printf("Human male eye above own feet: %.3f (T431 oracle solve %.3f)\n",
+                    eyeAboveFeet, 5.915f);
+        EXPECT_NEAR(eyeAboveFeet, 5.915f, 0.15f)
+            << "the Human male eye no longer lands where the official client's "
+               "own frames put it (review/T431). kEyeHeightFractionOfSkull is "
+               "solved for this and needs re-solving against the oracle, not "
+               "adjusting to suit this number.";
+    }
+    if (!covered) GTEST_SKIP() << "Human male model unavailable";
+}
+
+TEST_F(ShippedMeshEyeTest, DwarfMaleEyeIsUnderTheT431OracleUpperBound) {
+    // The Dwarf is the race the symmetrised-skull rule exists for (its beard
+    // is skinned to the head bone) and it is the race the single fraction
+    // fits worst. The measured eye is 3.742 mesh units above its feet; the
+    // bound below is deliberately LOOSE -- 4.82, i.e. live 4.6 -- because the
+    // residual is boarded, not closed. It still discriminates: the shipped
+    // f = 0.65 puts the eye at 5.317, which is above a Dwarf's own head and
+    // fails; 0.45 puts it at 4.744 and passes.
+    bool covered = false;
+    for (const auto& rc : kPlayableRaces) {
+        if (rc.raceId != 8 || rc.gender != 0) continue;
+        const Derived d = derive(rc);
+        if (!d.ok) continue;
+        covered = true;
+        const float eyeAboveFeet = d.eyeModelZ - d.bodyMinZ;
+        std::printf("Dwarf male eye above own feet: %.3f (T431 oracle solve %.3f, "
+                    "bound %.3f)\n", eyeAboveFeet, 3.742f, 4.82f);
+        EXPECT_LE(eyeAboveFeet, 4.82f)
+            << "the Dwarf male eye is above the loose upper bound the official "
+               "client's own frames allow (measured 3.742; review/T431).";
+    }
+    if (!covered) GTEST_SKIP() << "Dwarf male model unavailable";
+}
+
+TEST_F(ShippedMeshEyeTest, OneSkullFractionCannotSatisfyBothMeasuredRaces) {
+    // A pin on the FINDING, not on a fix. It is green before and after the
+    // constant moved, and it exists so that a later unit cannot quietly
+    // report B465 as closed while the residual is still there: whatever the
+    // global fraction is, the two measured races cannot both be satisfied by
+    // it, because their eyes move at very different rates per unit fraction
+    // (Human male 1.375 mesh units, Dwarf male 2.864).
+    float humanErr = -1.0f, dwarfErr = -1.0f;
+    for (const auto& rc : kPlayableRaces) {
+        const bool isHuman = (rc.raceId == 1 && rc.gender == 0);
+        const bool isDwarf = (rc.raceId == 8 && rc.gender == 0);
+        if (!isHuman && !isDwarf) continue;
+        const Derived d = derive(rc);
+        if (!d.ok) continue;
+        const float eyeAboveFeet = d.eyeModelZ - d.bodyMinZ;
+        if (isHuman) humanErr = std::fabs(eyeAboveFeet - 5.915f);
+        if (isDwarf) dwarfErr = std::fabs(eyeAboveFeet - 3.742f);
+    }
+    if (humanErr < 0.0f || dwarfErr < 0.0f) {
+        GTEST_SKIP() << "Human male or Dwarf male model unavailable";
+    }
+    std::printf("T431 residuals: Human male %.3f, Dwarf male %.3f (mesh units)\n",
+                humanErr, dwarfErr);
+    EXPECT_GT(humanErr + dwarfErr, 0.5f)
+        << "both measured races are now within 0.5 units of their oracle "
+           "solve. If that is real, B465 is CLOSED and this test must be "
+           "replaced by two positive assertions -- but re-measure against the "
+           "official client first; do not delete this on arithmetic alone.";
 }
 
 #endif  // EQT_HAS_GRAPHICS
