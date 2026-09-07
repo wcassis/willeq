@@ -7970,3 +7970,55 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   and are public. Closes when a lane exercises detail with a metric that
   would move: a detail column in the gate CSV plus a benchmark pose that
   builds chunks, or a separate detail benchmark. Found by T445.
+## Added 2026-09-07 by T450 (the third derived asset gets a recipe and a pin)
+
+- ~~**B467** (B) `tools/willeq_db_builder.cpp` `writeMetadata()`,
+  `data/willeq.db` -- **the shipped database was the one derived asset with no
+  recipe script, no pinned hash and no test, and it could not have had one:
+  the builder stamped `metadata.build_date = __DATE__ " " __TIME__`, so
+  RECOMPILING the tool changed the file with byte-identical inputs.** Measured
+  pre-fix in T450: two rebuilds of `willeq_db_builder` from an untouched tree
+  produced `c5bc7e29...` and `cee904e8...` -- same 3,788,800 bytes, one
+  differing metadata row. That is why T447's split proof had to normalise a row
+  instead of comparing sha256s (T447 Review, flagged there and not boarded),
+  and why `data/textures.sha256` and `data/willeq.eqe1.sha256` had no sibling.
+  Found by T447, opened and closed by T450.
+  **CLOSED T450.** The row is now `metadata.input_digest`: FNV-1a/64 over each
+  input's ROLE plus its contents, never a path, so every worktree and every
+  staged install agree. Nothing read the old stamp -- the client reads only
+  `metadata.version` (`src/client/willeq_database.cpp:101`) -- so no consumer
+  moved and `kWilleqDbExpectedVersion` did NOT change (still 7). The input set
+  is now named once in `main()` and both the loaders and the digest read that
+  table, so a new input cannot be loaded without moving the digest.
+  `scripts/build_willeq_db.sh` is the recipe (`--check` rebuilds to a temp path
+  and compares; the install is an atomic `mv` in the destination directory),
+  `data/willeq.db.sha256` is the pin, and **`DbReproducible`** (ctest, label
+  `hygiene`, ~1.5 s, no pack and no GPU) is the ratchet. Post-fix the two
+  rebuilds are byte-identical (`14f09de8...`). `data/willeq.db` was rebuilt
+  once and committed with its pin; **exactly one row differs from the old
+  file** -- `metadata.build_date` -> `metadata.input_digest` -- with the
+  32,414 data rows and the file size unchanged.
+
+- **B468** (A, unconfirmed live) `src/client/graphics/eq/model_loading.cpp`
+  `RaceModelLoader::getArmorTexture()`, `src/client/willeq_database.cpp`
+  `getAssetLocation()` / `getAssetsInArchive()` -- **two SQL queries run against
+  `s3d_assets`, a table the shipped `data/willeq.db` has never contained, and
+  one of them is on a reachable armor-texture path.** Measured in T450:
+  `sqlite3 data/willeq.db .tables` lists eleven tables plus `metadata` and
+  `sqlite_stat1`, and `s3d_assets` is not among them. It is only ever created
+  by `loadS3dIndex()`, which runs only when `willeq_db_builder` is given
+  `--s3d-index` -- and **nothing in the tree passes it**: no script, no
+  CMake rule, and no `s3d_index.json` is checked in (`tools/s3d_index_builder
+  --scan` can produce one by hand, which is the whole of its provenance).
+  `getAssetLocation()` is reached from `getArmorTexture()`, which
+  `src/client/graphics/eq/mesh_building.cpp:210` and `:273` call while building
+  a character mesh, so every on-demand armor-texture lookup returns `nullptr`
+  from a `SELECT` against a missing table rather than from a miss. What is NOT
+  measured is whether a player ever sees a consequence: armor textures may be
+  coming from the EQE1 path in practice, which would make this dead code with a
+  misleading failure mode rather than a live defect. Closes when a live session
+  says which -- then either the input joins the recipe
+  (`scripts/build_willeq_db.sh`, one more table in the pin) or the three
+  functions and the loader are deleted. Do NOT add the table to the shipped
+  database "to be safe": it would change the pinned bytes for a consumer nobody
+  has shown is reached. Found by T450.

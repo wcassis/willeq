@@ -205,13 +205,29 @@ character archives. A new generated cache uses these, never `ResolveDataPath()`.
 
 ### The shipped data has build recipes — use them, do not hand-edit
 
-Two shipped assets are **derived**, not hand-carried, and each has a ctest
+Three shipped assets are **derived**, not hand-carried, and each has a ctest
 test that fails if the checked-in bytes and their inputs drift apart:
 
 | asset | recipe | pinned by | ctest |
 |---|---|---|---|
 | `data/textures/*.bmp` (67 files) | `scripts/build_textures.sh` → `tools/generate_textures` (64, procedural), **`tools/spell_sprite_atlas_builder` (1, T417) and `tools/item_icon_atlas_builder` (2, T430) — both lifted from the client's own art** | `data/textures.sha256` | `TexturesReproducible` |
 | `/mnt/projects/EverQuest_ETC1/willeq.eqe1` (132 entries since T430: 67 textures, 64 ETC1 `_alpha` companions, 1 raw — `build/bin/verify_eqe1` prints the census; re-measured T444) | `scripts/build_willeq_pack.sh` | `data/willeq.eqe1.sha256` | `PackReproducible` |
+| `data/willeq.db` (32,414 rows in eleven tables; `metadata.version` = 7) | `scripts/build_willeq_db.sh` → `tools/willeq_db_builder`, over the EQ client's seven `*.txt` files plus `data/item_models.json`, `data/equipment_models.json` and `config/race_models.json` | `data/willeq.db.sha256` | `DbReproducible` (T450) |
+
+**The database's pin is T450's (board B467), and it could not have existed
+before.** `willeq_db_builder` stamped `metadata.build_date = __DATE__ " "
+__TIME__`, so **recompiling the tool changed `data/willeq.db` with
+byte-identical inputs** — which is why T447's split proof had to normalise one
+row instead of comparing sha256s, and why the database was the one derived
+asset nothing checked. That row is now `metadata.input_digest`: a digest of
+the inputs themselves, mixed from each input's ROLE (never its path, so every
+worktree agrees) plus its contents. Nothing has ever read the stamp — the
+client reads only `metadata.version` — so no consumer moved. Rebuild with
+`scripts/build_willeq_db.sh` and commit `data/willeq.db` together with its new
+`data/willeq.db.sha256` line, exactly like the pack. **Do not bump
+`kWilleqDbExpectedVersion` to ship a data change**: a version bump invalidates
+every build tree in the workspace (T304/T355), and a row edit is not a schema
+change.
 
 The pack's inputs are the 67 BMPs plus `tools/ui_atlas_builder`, so a texture
 change cascades: regenerate the BMPs, rewrite `data/textures.sha256`

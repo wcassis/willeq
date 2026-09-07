@@ -98,6 +98,34 @@ IF(TARGET eqe1_builder AND TARGET ui_atlas_builder)
         TIMEOUT 900)
 ENDIF()
 
+# T450 (2026-09-07, board B467): the third derived asset gets its pin.
+# data/willeq.db is built by tools/willeq_db_builder from the EQ client's
+# *.txt files plus data/*.json and config/race_models.json, and until this
+# unit it had no recipe script, no pinned hash and no test -- while the two
+# assets beside it (the BMPs and the shared pack) had all three. It could not
+# have had one: the builder stamped metadata.build_date = __DATE__ " " __TIME__,
+# so a recompile changed the bytes with identical inputs (T447 Review). That
+# row is now metadata.input_digest, a digest of the inputs.
+#
+# Rebuilds into a temp path and compares the sha256 against both the pinned
+# data/willeq.db.sha256 and the checked-in database, so an input drift or a
+# hand-edit is a red. Touches NO shared pack and no GPU -- it reads the EQ
+# client tree and writes only its own temp dir -- but the whole build is ~1 s
+# of SQLite inserts plus a VACUUM, so it takes the plain "hygiene" label with
+# a generous timeout rather than "slow".
+IF(TARGET willeq_db_builder)
+    ADD_TEST(NAME DbReproducible
+        COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/build_willeq_db.sh --check
+                --bin-dir $<TARGET_FILE_DIR:willeq_db_builder>
+                --data-path ${CMAKE_SOURCE_DIR}/data
+                --config-path ${CMAKE_SOURCE_DIR}/config
+                --output ${CMAKE_SOURCE_DIR}/data/willeq.db
+                --sha-file ${CMAKE_SOURCE_DIR}/data/willeq.db.sha256)
+    SET_TESTS_PROPERTIES(DbReproducible PROPERTIES
+        LABELS "hygiene"
+        TIMEOUT 300)
+ENDIF()
+
 # T414 Leg C (2026-09-06, board B290): the write-only field census as a ratchet.
 # T404 found MixChannel::sampleRate written by every producer and read by
 # nobody, for years; T407 turned that shape into a script and left 213 of its
