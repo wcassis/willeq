@@ -46,6 +46,7 @@
 // private nested type IrrlichtRenderer::DoorCollisionData.
 
 #include "client/graphics/renderer_context.h"
+#include "client/graphics/player/ground_query.h"  // T437 (B435): the ground answer shape
 
 #include <cstdint>
 #include <string>
@@ -73,7 +74,9 @@ public:
 
 	// --- Collision and ground height (was renderer_player_collision.cpp) ---
 	void setupMinimalZoneCollision();
-	float findGroundZ(float x, float y, float currentZ);
+	// T437 (B435/B436): returns a GroundZ, not a float -- "no floor here"
+	// is a distinct answer that no landing or clamp can mistake for ground.
+	GroundZ findGroundZ(float x, float y, float currentZ);
 	bool checkCollisionBspFiltered(const irr::core::vector3df& start, const irr::core::vector3df& end,
 	                               irr::core::vector3df& hitPoint, irr::core::triangle3df& hitTriangle);
 	bool rayTestDoorsAndObjects(const irr::core::vector3df& rayOrigin,
@@ -293,8 +296,8 @@ private:
 	                            irr::core::vector3df& hitPoint, irr::core::triangle3df& hitTriangle);
 	// Find ground Z at position. currentZ is the node origin (server Z);
 	// modelYOffset is the origin-to-feet distance.
-	float findGroundZIrrlicht(float x, float y, float currentZ, float modelYOffset);
-	float findGroundZBspFiltered(float x, float y, float currentZ, float modelYOffset);
+	GroundZ findGroundZIrrlicht(float x, float y, float currentZ, float modelYOffset);
+	GroundZ findGroundZBspFiltered(float x, float y, float currentZ, float modelYOffset);
 	void addCollisionDebugLine(const irr::core::vector3df& start, const irr::core::vector3df& end,
 	                           const irr::video::SColor& color, float duration = 0.5f);
 

@@ -539,6 +539,9 @@ IF(EQT_GRAPHICS)
         src/client/graphics/player/renderer_player_physics.cpp
         src/client/graphics/player/renderer_player_collision.cpp
         src/client/graphics/player/renderer_camera.cpp
+        # T437 (board B435): the ground query's answer shape and the two
+        # decisions that read it, device-free so they can be tested.
+        src/client/graphics/player/ground_query.cpp
         src/client/graphics/zone_lifecycle/renderer_zone_draw.cpp
         src/client/graphics/zone_stream/renderer_zone_merge.cpp
         src/client/graphics/zone_stream/renderer_zone_stream.cpp

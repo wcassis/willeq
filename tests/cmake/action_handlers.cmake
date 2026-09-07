@@ -171,6 +171,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_door_collision)
 ENDIF()
 
+# T437 (BOARD B435, B436): the ground query's honest answer shape, the two
+# decisions that read it, and HCMap::FindBestZ() against hand-built triangle
+# sets (floor below / ceiling only / both / empty column).
+ADD_EXECUTABLE(test_ground_sentinels
+    test_ground_sentinels.cpp
+)
+TARGET_LINK_LIBRARIES(test_ground_sentinels GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_ground_sentinels PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_ground_sentinels)
+
 # T376 Leg A (BOARD B140): the door / world-object click senders go out
 # through eqt::PacketSender (null-guard, T268 seam, session recorder).
 ADD_EXECUTABLE(test_click_senders_packet_sender

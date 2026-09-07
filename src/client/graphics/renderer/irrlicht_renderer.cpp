@@ -681,7 +681,10 @@ void IrrlichtRenderer::createEntityRenderer() {
         entityRenderer_->getRaceModelLoader()->setMaxChrCacheEntries(config_.constrainedConfig.chrCacheMaxEntries);
     }
     entityRenderer_->setGroundFinderCallback([this](float x, float y, float currentZ) {
-        return playerCamera_->findGroundZ(x, y, currentZ);
+        // T437 (B435/B436): findGroundZ() now answers GroundZ. The NPC ground
+        // snap's own "no floor" answer is "leave the NPC where it is", which
+        // is exactly what this callback returned before the shape changed.
+        return playerCamera_->findGroundZ(x, y, currentZ).zOr(currentZ);
     });
     if (zoneBspTree_) {
         entityRenderer_->setBspTree(zoneBspTree_);

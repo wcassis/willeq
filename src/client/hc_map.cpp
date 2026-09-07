@@ -790,18 +790,20 @@ float HCMap::FindBestZ(const glm::vec3 &start, glm::vec3 *result) const {
 		return result->z;
 	}
 
-	// Try casting ray up if nothing found below
-	to.y = -BEST_Z_INVALID;
-	hit = m_impl->rm->raycast((const RmReal*)&from, (const RmReal*)&to, (RmReal*)&mesh_result, nullptr, &hit_distance);
-
-	if (hit) {
-		// Convert mesh coords back to EQ coords
-		result->x = mesh_result.x;
-		result->y = mesh_result.z;
-		result->z = mesh_result.y;
-		return result->z;
-	}
-
+	// T437 (board B436). There used to be an upward re-cast here -- "Try
+	// casting ray up if nothing found below" -- whose hit z was returned with
+	// NO marker distinguishing it from a real floor. It was the only mechanism
+	// in the tree that literally resolved ground ABOVE the query point, and
+	// not one of its callers could do anything with a ceiling:
+	//   * ZoneComponent::GetBestZ() -> FixZ() wrote it straight into the
+	//     player's position (`ctx_.self.SetPosLocal(...)`);
+	//   * PlayerCameraComponent::findGroundZ() handed it to the jump landings
+	//     and the swim floor clamp as ground;
+	//   * SimBoids' three spawn/ground queries placed creatures on it.
+	// A distinct "ceiling" return would therefore have had zero consumers --
+	// the reachability defect this project keeps re-finding -- so the re-cast
+	// is deleted instead. "Nothing below" is BEST_Z_INVALID, and every caller
+	// already handles that by leaving the position alone.
 	return BEST_Z_INVALID;
 }
 
