@@ -333,6 +333,7 @@ private:
 	void onVendorBuyIntent(const eqt::events::VendorBuyIntent& i);
 	void onVendorSellIntent(const eqt::events::VendorSellIntent& i);
 	void onBankerInteractIntent(const eqt::events::BankerInteractIntent& i);
+	void onCloseBankIntent(const eqt::events::CloseBankIntent& i);
 	void onBankCurrencyMoveIntent(const eqt::events::BankCurrencyMoveIntent& i);
 	void onBankCurrencyConvertIntent(const eqt::events::BankCurrencyConvertIntent& i);
 	void onTrainerToggleIntent(const eqt::events::TrainerToggleIntent& i);

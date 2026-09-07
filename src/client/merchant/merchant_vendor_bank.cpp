@@ -97,6 +97,9 @@ void eqt::merchant::MerchantComponent::ZoneProcessVendorItemToUI(const EQ::Net::
 		vdata.itemName = item->name;
 		vdata.price = item->price;
 		vdata.quantity = item->quantity;
+		// T436 (board B429): the icon the merchant window's icon column
+		// draws. Parsed into the ItemInstance above and dropped until now.
+		vdata.iconId = item->icon;
 		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::VendorItemAdded, std::move(vdata)));
 	}

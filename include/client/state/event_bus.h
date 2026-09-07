@@ -510,6 +510,12 @@ struct VendorItemAddedData {
     std::string itemName;
     int32_t price;
     int32_t quantity;
+    // T436 (board B429): the merchant window's first <Columns> entry is a
+    // 24px cell with an EMPTY <Heading> -- the icon cell -- and this is the
+    // field that fills it. `ZoneProcessVendorItemToUI` parsed `icon` off the
+    // wire into an ItemInstance and dropped it here, exactly as T430 found
+    // the loot arm doing.
+    uint32_t iconId = 0;
 };
 
 struct TradeskillContainerOpenedEvent {

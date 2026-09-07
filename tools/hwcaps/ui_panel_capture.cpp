@@ -36,6 +36,10 @@
 #include "client/graphics/ui/tradeskill_panel.h"
 #include "client/graphics/ui/item_display_panel.h"
 #include "client/graphics/ui/options_panel.h"
+// T436 (board B429).
+#include "client/graphics/ui/merchant_panel.h"
+#include "client/graphics/ui/bank_panel.h"
+#include "client/graphics/ui/cursor_attachment.h"
 #include "client/inventory/item_display_text.h"
 #include "client/spell/spell_display_text.h"
 #include "client/spell/spell_data.h"
@@ -140,6 +144,11 @@ struct PanelStates {
     // T434: the Options window. Captured once PER TAB -- the tabs are
     // what a reviewer has to be able to see, and only one page draws.
     OptionsPanelState options;
+    // T436 (board B429): the merchant window, the bank window and the item
+    // held on the cursor. Real dragitem icon ids, T430's lesson.
+    MerchantPanelState merchant;
+    BankPanelState bank;
+    CursorAttachmentState cursor;
     XPBarState xp;
 
     PanelStates() {
@@ -179,6 +188,59 @@ struct PanelStates {
             inventory.generalSlots[i].quantity = i + 1;
         }
         inventory.hoveredSlot = 4;
+
+        // T436 (board B429): a merchant with real stock, a bank with real
+        // contents, and an item on the cursor. The icon ids are real
+        // dragitem ids so the captures show the art rather than a fallback.
+        {
+            eqt::state::WindowOpenedData mo;
+            mo.npcId = 77; mo.npcName = "Bob the Merchant"; mo.sellRate = 1.0f;
+            applyVendorWindowOpened(merchant, mo);
+            static const char* kNames[] = {
+                "Rusty Short Sword", "Cloth Cap", "Water Flask",
+                "Bandages", "Small Lantern", "Iron Ration",
+                "Leather Gloves", "Fishing Pole", "Cracked Staff",
+                "Bronze Dagger", "Tattered Cloak", "Wooden Shield"};
+            for (uint16_t i = 0; i < 12; ++i) {
+                eqt::state::VendorItemAddedData v;
+                v.vendorSlot = i;
+                v.itemId = 1000u + i;
+                v.itemName = kNames[i];
+                v.price = 7 + static_cast<int32_t>(i) * 431;
+                v.quantity = (i % 3 == 0) ? 20 : 1;
+                v.iconId = 512u + i * 3u;
+                applyVendorItemAdded(merchant, v);
+            }
+            merchant.selectedRow = 2;
+            merchant.hoveredRow = 5;
+
+            eqt::state::WindowOpenedData bo;
+            bo.npcId = 55; bo.npcName = "Banker Bruce"; bo.sellRate = 0.0f;
+            applyBankWindowOpened(bank, bo);
+            for (int i = 0; i < BankPanelState::SLOT_COUNT; ++i) {
+                eqt::state::InventorySlotChangedData d;
+                d.slotId = static_cast<int16_t>(2000 + i);
+                d.hasItem = (i != 5);
+                d.itemId = 2000u + static_cast<uint32_t>(i);
+                d.itemName = "Backpack";
+                d.iconId = 700u + static_cast<uint32_t>(i) * 5u;
+                d.quantity = static_cast<uint32_t>(i) + 1u;
+                applyBankSlotChanged(bank, d);
+            }
+            bank.hoveredSlot = 1;
+            eqt::state::BankCurrencyChangedData bc;
+            bc.platinum = 1420; bc.gold = 6; bc.silver = 3; bc.copper = 91;
+            applyBankCurrencyChanged(bank, bc);
+
+            eqt::state::InventorySlotChangedData cd;
+            cd.slotId = 30;   // eqt::inventory::CURSOR_SLOT
+            cd.hasItem = true;
+            cd.itemId = 4242;
+            cd.itemName = "Bread Cake";
+            cd.iconId = 918;
+            cd.quantity = 4;
+            applyCursorSlotChanged(cursor, cd);
+        }
         inventory.coins[0] = 12; inventory.coins[1] = 5;
         inventory.coins[2] = 8;  inventory.coins[3] = 47;
 
@@ -449,6 +511,23 @@ std::vector<PanelCapture> buildCaptureList() {
         {"options_mail", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             s.options.isOpen = true; s.options.activeTab = 6;
             renderOptionsWindow(u, l, s.options); }},
+        // T436 (board B429): the three windows B429 said did not exist.
+        // `merchant_sell` is the SAME window with an item on the cursor --
+        // the oracle gives MW_Buy_Button and MW_Sell_Button one rect, so
+        // only one can show, and that is the state that picks Sell.
+        {"merchant", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            CursorAttachmentState empty;
+            renderMerchantPopup(u, l, s.merchant, empty); }},
+        {"merchant_sell", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderMerchantPopup(u, l, s.merchant, s.cursor); }},
+        {"bank", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderBankWindow(u, l, s.bank); }},
+        {"cursor_item", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            // Placed off-centre so the 50x50 box and its (5,5) inset are
+            // both visible against the empty frame.
+            s.cursor.mouseX = l.screenW / 2;
+            s.cursor.mouseY = l.screenH / 2;
+            renderCursorAttachment(u, l, s.cursor); }},
         // Everything the HUD draws at once -- the screen a player sees.
         {"hud_all", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             renderPlayerStatus(u, l, s.stats);

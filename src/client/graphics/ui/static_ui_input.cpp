@@ -14,6 +14,10 @@
 #include "client/graphics/ui/combat_ability_layout.h"
 #include "client/graphics/ui/item_display_panel.h"
 #include "client/graphics/ui/item_display_layout.h"
+// T436 (board B429).
+#include "client/graphics/ui/merchant_panel.h"
+#include "client/graphics/ui/bank_panel.h"
+#include "client/graphics/ui/cursor_attachment.h"
 #include "client/inventory/inventory_constants.h"
 #include "client/bridge/game_state_bridge.h"
 #include "client/events/renderer_intents.h"
@@ -796,6 +800,106 @@ bool StaticUIInput::processItemDisplayInput(int mouseX, int mouseY,
         return true;
     }
     return itemDisplayContains(layout, itemDisplay, mouseX, mouseY);
+}
+
+// T436 (board B429) -- see the declaration for why the merchant and the bank
+// share one entry point and why the cursor is const here.
+bool StaticUIInput::processCommerceInput(int mouseX, int mouseY,
+                                         bool leftClicked,
+                                         const UILayout& layout,
+                                         MerchantPanelState& merchant,
+                                         BankPanelState& bank,
+                                         const CursorAttachmentState& cursor) {
+    merchant.hoveredRow = -1;
+    merchant.tradeHovered = false;
+    merchant.doneHovered = false;
+    bank.hoveredSlot = -1;
+    bank.doneHovered = false;
+    bank.closeHovered = false;
+
+    // --- the bank window, asked first (it draws above the centre popups) ---
+    if (bank.isOpen) {
+        const bool onDone = hitTestBankDoneButton(layout, bank, mouseX, mouseY);
+        const bool onClose = hitTestBankCloseBox(layout, bank, mouseX, mouseY);
+        if (onDone || onClose) {
+            bank.doneHovered = onDone;
+            bank.closeHovered = onClose;
+            if (leftClicked && bridge_) {
+                // The session is the SERVER's; the panel closes when
+                // BankWindowClosed comes back (T290's rule).
+                bridge_->pushIntent(eqt::events::CloseBankIntent{});
+            }
+            return true;
+        }
+        const int slot = hitTestBankSlot(layout, bank, mouseX, mouseY);
+        if (slot >= 0) {
+            bank.hoveredSlot = slot;
+            // No click action. Moving an item in or out of the bank is a
+            // MoveItem between the bank slot and the cursor, and fable's
+            // static UI latches no drag; board B442.
+            return true;
+        }
+        if (bankContains(layout, bank, mouseX, mouseY)) return true;
+    }
+
+    // --- the merchant window ---
+    if (!merchant.isOpen) return false;
+
+    if (hitTestMerchantDoneButton(layout, merchant, mouseX, mouseY)) {
+        merchant.doneHovered = true;
+        if (leftClicked && bridge_) {
+            // VendorToggleIntent's handler closes an open vendor session --
+            // no new intent is needed and no new packet is sent.
+            bridge_->pushIntent(eqt::events::VendorToggleIntent{});
+        }
+        return true;
+    }
+
+    if (hitTestMerchantTradeButton(layout, merchant, mouseX, mouseY)) {
+        merchant.tradeHovered = true;
+        if (leftClicked && bridge_) {
+            if (cursor.hasItem) {
+                // SELL: the oracle's MW_Sell_Button shares MW_Buy_Button's
+                // rect, so only one can be shown, and the one fable can act
+                // on is the item you are holding. The slot is the cursor's;
+                // SellToVendor() resolves it through
+                // InventoryManager::getItem(), which treats CURSOR_SLOT and
+                // SERVER_CURSOR_SLOT as the same place.
+                int32_t qty = cursor.quantity > 0 ? cursor.quantity : 1;
+                if (qty > 255) qty = 255;
+                bridge_->pushIntent(eqt::events::VendorSellIntent{
+                    merchant.npcId,
+                    static_cast<uint16_t>(eqt::inventory::CURSOR_SLOT),
+                    static_cast<uint8_t>(qty)});
+            } else if (merchant.selectedRow >= 0 &&
+                       merchant.selectedRow <
+                           static_cast<int>(merchant.items.size())) {
+                // BUY: one at a time, which is what a bare click does in the
+                // official client (a quantity dialog is a SHIFT-click there,
+                // and fable's static UI takes shift for the display windows).
+                bridge_->pushIntent(eqt::events::VendorBuyIntent{
+                    merchant.npcId,
+                    merchant.items[static_cast<size_t>(merchant.selectedRow)]
+                        .vendorSlot,
+                    1});
+            }
+        }
+        return true;
+    }
+
+    const int row = hitTestMerchantRow(layout, merchant, mouseX, mouseY);
+    if (row >= 0) {
+        merchant.hoveredRow = row;
+        if (leftClicked) {
+            // MW_SelectedItem / MW_SelectedItemLabel / MW_SelectedPriceLabel
+            // all describe this row. Selection is purely client side -- the
+            // server is told nothing until Buy.
+            merchant.selectedRow = row;
+        }
+        return true;
+    }
+
+    return merchantContains(layout, merchant, mouseX, mouseY);
 }
 
 } // namespace Graphics

@@ -35,6 +35,10 @@ struct ChatPanelState;
 struct TradeskillPanelState;
 struct CombatAbilityPanelState;
 struct ItemDisplayPanelState;
+// T436 (board B429).
+struct MerchantPanelState;
+struct BankPanelState;
+struct CursorAttachmentState;
 struct OptionsPanelState;
 
 /**
@@ -134,6 +138,34 @@ public:
     bool processItemDisplayInput(int mouseX, int mouseY, bool leftClicked,
                                  const UILayout& layout,
                                  ItemDisplayPanelState& itemDisplay);
+
+    /**
+     * T436 (board B429): the merchant and bank windows.
+     *
+     * ONE entry point for both, because they are the two halves of the same
+     * commerce gesture and neither is ever open with the other (a merchant
+     * is class 41, a banker is not). The BANK is asked first: the oracle's
+     * BankWnd is `Style_Sizable false` with its own placement, so it is
+     * drawn above the centre popups, while the merchant window IS a centre
+     * popup -- hit-test order mirrors draw order.
+     *
+     * The cursor attachment is passed CONST: it is not clickable (the
+     * oracle's CursorAttachment is `Style_Transparent true` with no
+     * control in it at all), but the merchant window's shared Buy/Sell rect
+     * reads it -- a held item is what SELL acts on.
+     *
+     * Intents pushed, all of them pre-existing: `VendorBuyIntent` and
+     * `VendorSellIntent` (the same two `/buy` and `/sell` push),
+     * `VendorToggleIntent` for MW_Done_Button (its handler closes an open
+     * session) and T436's own `CloseBankIntent` for BW_DoneButton. No panel
+     * closes itself -- each waits for the server's own Closed event, T290's
+     * rule.
+     */
+    bool processCommerceInput(int mouseX, int mouseY, bool leftClicked,
+                              const UILayout& layout,
+                              MerchantPanelState& merchant,
+                              BankPanelState& bank,
+                              const CursorAttachmentState& cursor);
 
     /**
      * T434: the Options window.

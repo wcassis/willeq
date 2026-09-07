@@ -137,7 +137,33 @@ const std::string kGolden = kRoot + "/tests/goldens/frame_render_order_g05.txt";
 //       order above it, and before `renderXPBar(...)`.
 //     The count rises 314 -> 320: five statements plus one, nothing removed
 //     and nothing replaced.
-const size_t kGoldenSize = 320u;
+//   * T436 (board B429): the merchant window, the bank window and the cursor
+//     attachment. FOUR pure insertions, no text change and no reorder
+//     anywhere (verified by diffing the composed list against the pre-edit
+//     golden -- the only hunks are these four).
+//     - entries 262-266, the input hop: the two `cursorState_.mouseX/Y`
+//       writes and the three lines of the
+//       `staticUIInput_->processCommerceInput(...)` call, inserted directly
+//       after entry 261 (the last line of T415's processPanelInput call) and
+//       before T421's processItemDisplayInput. It goes THERE, and not last,
+//       because the bank window draws above the centre popups but below the
+//       item display and the Options window, and the merchant window IS a
+//       centre popup -- hit-test order mirrors draw order. The two mouse
+//       writes are in this pass rather than the draw pass because this is
+//       the one place that already holds the event receiver.
+//     - entry 295, `renderMerchantPopup(...)`, directly after entry 294
+//       `renderTradeskillPopup(...)`: the merchant window is the last centre
+//       popup (Style_Sizable true, 505px tall from its own <Location>, so it
+//       is scaled onto centerPopup the way T415 scaled the tradeskill one).
+//     - entry 297, `renderBankWindow(...)`, directly after entry 296
+//       `renderCombatAbilityPanel(...)`: NOT a centre popup (Style_Sizable
+//       false at 108x347), so it draws above them.
+//     - entry 301, `renderCursorAttachment(...)`, directly after entry 300
+//       `renderXPBar(...)` and LAST of everything. It is the pointer:
+//       nothing may cover it, not even the Options window or the XP bar.
+//     The count rises 320 -> 328: five statements plus one plus one plus
+//     one, nothing removed and nothing replaced.
+const size_t kGoldenSize = 328u;
 
 std::vector<std::string> readLines(const std::string& path) {
     std::ifstream in(path);

@@ -379,20 +379,52 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         break;
 
     // Window events (D11b, D11c, D12)
+    //
+    // T436 (board B429): these five were LOG_TRACE stubs that DISCARDED their
+    // payloads, which is why there was no merchant window and no bank window
+    // in the tree at all -- the same shape T290 found the four loot arms in.
+    // The bodies live in merchant_panel.cpp / bank_panel.cpp as free
+    // functions so a test can drive the REAL publisher's data struct through
+    // the REAL applier with no Irrlicht device.
     case state::GameEventType::VendorWindowOpened:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: VendorWindowOpened");
+        if (renderer_) {
+            auto& d = std::get<state::WindowOpenedData>(event.data);
+            // A merchant window is one of the mutually exclusive centre
+            // popups, so opening it closes the others -- the same rule the
+            // LootWindowOpened arm below follows.
+            renderer_->Frame().inventoryState_.activePopup =
+                EQT::Graphics::PopupType::None;
+            EQT::Graphics::applyVendorWindowOpened(
+                renderer_->Frame().merchantState_, d);
+        }
         break;
     case state::GameEventType::VendorWindowClosed:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: VendorWindowClosed");
+        if (renderer_) {
+            auto& d = std::get<state::WindowClosedData>(event.data);
+            EQT::Graphics::applyVendorWindowClosed(
+                renderer_->Frame().merchantState_, d);
+        }
         break;
     case state::GameEventType::VendorItemAdded:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: VendorItemAdded");
+        if (renderer_) {
+            auto& d = std::get<state::VendorItemAddedData>(event.data);
+            EQT::Graphics::applyVendorItemAdded(
+                renderer_->Frame().merchantState_, d);
+        }
         break;
     case state::GameEventType::BankWindowOpened:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: BankWindowOpened");
+        if (renderer_) {
+            auto& d = std::get<state::WindowOpenedData>(event.data);
+            EQT::Graphics::applyBankWindowOpened(
+                renderer_->Frame().bankState_, d);
+        }
         break;
     case state::GameEventType::BankWindowClosed:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: BankWindowClosed");
+        if (renderer_) {
+            auto& d = std::get<state::WindowClosedData>(event.data);
+            EQT::Graphics::applyBankWindowClosed(
+                renderer_->Frame().bankState_, d);
+        }
         break;
     case state::GameEventType::TrainerWindowOpened:
         LOG_TRACE(MOD_GRAPHICS, "Bridge: TrainerWindowOpened");
@@ -477,6 +509,19 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 slot.itemName = d.hasItem ? d.itemName : "";
                 slot.iconId = d.hasItem ? d.iconId : 0;
                 slot.quantity = d.hasItem ? d.quantity : 0;
+            } else if (EQT::Graphics::applyCursorSlotChanged(
+                           renderer_->Frame().cursorState_, d)) {
+                // T436 (board B429): the CURSOR slot (30, or the wire's 33).
+                // The event has always carried the icon; nothing consumed it,
+                // so a pick-up was invisible. The applier returns false for
+                // every other slot id, so this arm is exact.
+            } else if (EQT::Graphics::applyBankSlotChanged(
+                           renderer_->Frame().bankState_, d)) {
+                // T436 (board B429): the BANK range, 2000-2007. Published by
+                // the generic ItemPacket choke point in zone_dispatch.cpp --
+                // "the single choke point for vendor-buy item placement and
+                // bank-window population", as its own comment says -- and
+                // dropped here until now.
             } else {
                 // T415 (board B321): the WORLD container range, 4000-4009.
                 // eqemu sends a tradeskill container's contents as
@@ -522,7 +567,14 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         }
         break;
     case state::GameEventType::BankCurrencyChanged:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: BankCurrencyChanged");
+        // T436 (board B429): the bank window's four BW_Money rows. This was a
+        // LOG_TRACE stub for the same reason CurrencyChanged was one before
+        // T393 -- there was no window to put the counts in.
+        if (renderer_) {
+            auto& d = std::get<state::BankCurrencyChangedData>(event.data);
+            EQT::Graphics::applyBankCurrencyChanged(
+                renderer_->Frame().bankState_, d);
+        }
         break;
     case state::GameEventType::EntityWeaponSkillsChanged:
         if (renderer_) {

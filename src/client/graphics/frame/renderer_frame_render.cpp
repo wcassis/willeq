@@ -598,6 +598,16 @@ void FrameComponent::renderStaticUI() {
         staticUIInput_->processPanelInput(
             ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
             pendingUIClick_, uiLayout_, tradeskillState_, combatAbilityState_);
+        // T436 (board B429): the merchant and bank windows, and the mouse
+        // position the cursor attachment is drawn at. The bank is hit-tested
+        // above the centre popups and the merchant is one of them, so this
+        // hop sits between processPanelInput() and the two windows that are
+        // higher still.
+        cursorState_.mouseX = ctx_.eventReceiver->getMouseX();
+        cursorState_.mouseY = ctx_.eventReceiver->getMouseY();
+        staticUIInput_->processCommerceInput(
+            ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
+            pendingUIClick_, uiLayout_, merchantState_, bankState_, cursorState_);
         // T421 (board B298): the item display window is hit-tested LAST and
         // drawn LAST -- it sits on top of every centre popup.
         staticUIInput_->processItemDisplayInput(
@@ -654,9 +664,18 @@ void FrameComponent::renderStaticUI() {
         // popup, drawn after the loot popup for the same reason -- the
         // server opens it and nothing else may cover it.
         renderTradeskillPopup(*uiRenderer_, uiLayout_, tradeskillState_);
+        // T436 (B429): the merchant window, the last centre popup. It is one
+        // of them because the oracle's MerchantWnd is Style_Sizable true and
+        // 505px tall from its own <Location>, which does not fit 640x480 --
+        // T415's condition for scaling a window onto centerPopup.
+        renderMerchantPopup(*uiRenderer_, uiLayout_, merchantState_, cursorState_);
         // T415 (B320): the combat abilities window is a HUD panel, not a
         // centre popup, so it draws above the popups like the buff bar does.
         renderCombatAbilityPanel(*uiRenderer_, uiLayout_, combatAbilityState_);
+        // T436 (B429): the bank window. NOT a centre popup -- the oracle's
+        // BankWnd is Style_Sizable false at 108x347 and keeps its own size --
+        // so it draws above them, mirroring the hit-test order.
+        renderBankWindow(*uiRenderer_, uiLayout_, bankState_);
         // T421 (B298 item half): the item display window. Drawn after every
         // popup because the oracle's ItemDisplayWindow has its own absolute
         // placement (0,80) and overlaps whatever is beneath it.
@@ -667,6 +686,10 @@ void FrameComponent::renderStaticUI() {
         // hit-test order above.
         renderOptionsWindow(*uiRenderer_, uiLayout_, optionsState_);
         renderXPBar(*uiRenderer_, uiLayout_, xpBarState_);
+        // T436 (B429): the cursor attachment is drawn LAST of everything.
+        // It is the pointer: nothing may cover it, including the Options
+        // window and the XP bar.
+        renderCursorAttachment(*uiRenderer_, uiLayout_, cursorState_);
         uiRenderer_->endFrame();
     }
     frameTimings_.staticUI = measureSection();

@@ -614,6 +614,20 @@ void FrameComponent::processChatInput() {
             itemDisplayState_.isOpen = false;
             popupConsumedEscape = true;
         }
+        // T436 (board B429): the bank window, then the merchant window --
+        // the same top-down rule, at the two levels those windows sit at
+        // (the bank draws above the centre popups, the merchant is one of
+        // them). Neither closes itself: both push the intent that ends the
+        // SERVER-side session and wait for its Closed event, exactly as ESC
+        // on the loot window pushes CloseLootIntent.
+        if (!popupConsumedEscape && bankState_.isOpen) {
+            if (ctx_.bridge) ctx_.bridge->pushIntent(eqt::events::CloseBankIntent{});
+            popupConsumedEscape = true;
+        }
+        if (!popupConsumedEscape && merchantState_.isOpen) {
+            if (ctx_.bridge) ctx_.bridge->pushIntent(eqt::events::VendorToggleIntent{});
+            popupConsumedEscape = true;
+        }
         if (!popupConsumedEscape && newUIEnabled_ && staticUIInput_) {
             popupConsumedEscape = staticUIInput_->processKey(
                 irr::KEY_ESCAPE, /*pressed=*/true, /*shift=*/false, /*ctrl=*/false,
