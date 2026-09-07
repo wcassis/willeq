@@ -605,7 +605,7 @@ it without taking that measurement first.
   measurement spot is either cleared (bury both) or moved, and the rig records
   which. Prov: T431 Review §4; `review/T431/probe/T431_sit_dwarf_sitting_h32.png`.
 
-- **B473** (A) **fable draws a player corpse STANDING UPRIGHT; the official
+- ~~**B473** (A) **fable draws a player corpse STANDING UPRIGHT; the official
   client lays it down.** Same server row (`character_corpses` id 42), same
   minute, same spot, same resolution: the official client's first-person frame
   shows a body lying flat — a face and a forearm horizontal across the bottom of
@@ -615,7 +615,35 @@ it without taking that measurement first.
   (`review/T431/sweeps/human_eye/eyeHeightFractionOfSkull_0.65_/BEST_frame_000051.png`,
   captured before T431 buried it). fable evidently spawns a corpse as an
   ordinary standing entity with no death pose. Closes when a corpse entity
-  renders prone and a test pins the pose selection. Prov: T431 Review §0.
+  renders prone and a test pins the pose selection. Prov: T431 Review §0.~~
+  **CLOSED by T454 (2026-09-07), and the cause was NOT the spawn path.** The
+  pose is identified without inference: T346 measured the official client's own
+  wire answer to its own death -- `OP_SpawnAppearance` type 14 (AT_ANIMATION)
+  param **115 = ANIM_LYING**, byte-identical in all four self-death windows of
+  T311 Leg A's capture -- and T431 photographed the result. fable renders that
+  as the LAST frame of `d05`, held (`playAnimation(d05, loop=false)` then
+  `SkeletalAnimator::setToLastFrame()`). T454 **measured** that path and it is
+  correct: a Human male corpse built through the production `registerEntity()`
+  + `buildEntityMesh()` route comes out `d05`, state Stopped, frame 12 of 13,
+  progress 1.000. Nothing had ever tested it. The live defect is one hop
+  later, in `EntityRenderer::updateEntityAppearance()`
+  (`src/client/graphics/entity_lifecycle.cpp`), reached from the
+  `EntityAppearanceChanged` bridge arm: it rebuilds the entity and then
+  restores `currentAnimation` with `setEntityAnimation(..., loop=true, ...)`,
+  which for a corpse restarts `d05` at **frame 0 -- the STANDING pose -- and
+  loops the character falling over forever**. Measured before the fix: state
+  Stopped / frame 12 became state Playing / frame 0. The restore is now
+  skipped for a corpse, because the rebuild has already established the held
+  pose and there is nothing to restore. Pinned by
+  `CorpsePoseTest.AnAppearanceChangeDoesNotStandTheCorpseBackUp`
+  (`tests/test_corpse_death_pose.cpp`, red before / green after), with three
+  wire pins and two preservation pins beside it. **The live A/B against the
+  oracle is OWED** -- T449 holds the eqemu lock and T454 opened no connection;
+  see the T449 follow-up list. Player and NPC corpses are treated identically
+  and that is measured, not assumed: eqemu writes `ns->spawn.NPC = 2` for
+  every corpse of either kind
+  (`/mnt/projects/akk-stack/code/zone/corpse.cpp:1809`), so the two are
+  indistinguishable on the wire.
 - **B040** (C) server-sent placeables and doors are measured by no gate — the
   benchmark's `placeableObjectsBytes` (`tools/hwcaps/zone_bench_memory.h`) is
   summed over the zone's own S3D archive and never connects to a server, so
@@ -8170,7 +8198,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
 
 ### Added by T452 (2026-09-07)
 
-- **B474** (B, hygiene) `tools/willeq_db/db_loaders_json.cpp`
+- ~~**B474** (B, hygiene) `tools/willeq_db/db_loaders_json.cpp`
   `loadEquipmentModels()` -- **the `equipment_textures` table has 2,623 rows in
   the shipped `data/willeq.db` and NO reader anywhere in the client.** Measured
   in T452 while closing B468: a tree-wide grep for the string
@@ -8191,7 +8219,21 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   rebuilt and re-pinned under T450's recipe. **Do not drop it without checking
   the equipment texture path**: B468's lesson is that "nothing reads it" and
   "nothing CAN read it because the route is broken" look identical from a
-  grep. Found by T452.
+  grep. Found by T452.~~ **CLOSED by T454 (2026-09-07).** The check
+  B468's lesson demanded was made and the route is HEALTHY, not broken:
+  `EquipmentModelLoader::buildEquipmentIndex()`
+  (`src/client/graphics/eq/equipment_model_loader.cpp:916`) indexes the same 17
+  `*equip*.s3d` archives LIVE at zone load into `textureIndex_`, and
+  `getTextureRef()` (:978) is what the mesh build asks -- the table was
+  redundant, not load-bearing. The writer, the `CREATE TABLE`, the prepared
+  statement and the whole `"textures"` parse are gone from
+  `loadEquipmentModels()`; the database was rebuilt and re-pinned under T450's
+  recipe in one commit. Row diff is the table and nothing else: 2,623
+  `equipment_textures` rows + its schema + its `sqlite_stat1` line out,
+  `metadata.total_entries` 32,414 -> **29,791**, `metadata.input_digest`
+  UNCHANGED (`c39f5cfbb75e5744` -- the inputs did not move, only the loader),
+  `metadata.version` still 7 and not touched. New converse net:
+  `WilleqDatabaseShippedContent.EveryTableTheDatabaseShipsIsOneTheClientQueries`.
 
 - **B475** (B, hygiene) `src/client/graphics/eq/model_loading.cpp`
   `RaceModelLoader::getArmorTexture()` -- **each lookup opens and fully
@@ -8212,3 +8254,56 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   rather than argued. NOT a regression: before T452 this function resolved
   nothing at all, and the code it replaced in 2026-03 opened all seven
   archives EAGERLY for a ~60 MB spike. Found by T452.
+
+
+---
+
+### Added by T454 (2026-09-07)
+
+- **B476** (B, hygiene) `tools/willeq_db/db_loaders_json.cpp`
+  `loadEquipmentModels()` -- **the `equipment_models` table is the SAME finding
+  as B474 and is still shipping.** 1,000 rows (model_id -> archive / wld /
+  actor / textures) in `data/willeq.db`, and `src/client/willeq_database.cpp`
+  names the table in no SQL -- it is the ONLY sqlite consumer in the tree
+  (`grep -rl sqlite src/client include/client` returns that TU and its header
+  and nothing else). The model index resolves by the same live route the
+  textures do: `EquipmentModelLoader::buildEquipmentIndex()` fills
+  `equipmentModelIndex_` from the 17 `*equip*.s3d` archives and `getModelRef()`
+  is what `EntityPrepWorker::prepEquipmentModels()` asks. T454 left it in place
+  deliberately -- its contract named `equipment_textures` only, and B468's
+  lesson is that dropping a shipped table needs its own deliberate "does it
+  resolve another way" check rather than being swept along. It is the one entry
+  in `EveryTableTheDatabaseShipsIsOneTheClientQueries`'s `kUnreadButShipped`
+  list, so it cannot be forgotten. Closes when the table is dropped and the
+  database rebuilt + re-pinned under T450's recipe (the exemption comes out of
+  the test with it), or a consumer is written. Found by T454.
+
+- **B477** (B) `tests/test_corpse_death_pose.cpp` -- **the ASYNC entity build
+  path's copy of the corpse death-pose ladder is still unmeasured.**
+  `src/client/graphics/entity_build_step.cpp:420-438` holds a second, textually
+  duplicated copy of the d05/d02/d01 + `setToLastFrame()` block that
+  `src/client/graphics/entity_mesh_build.cpp:365-395` has; T454 pinned the
+  synchronous `registerEntity()` + `buildEntityMesh()` route with a real
+  EDT_NULL device and a real Human male mesh, but `processOneEntityBuildStep()`
+  never reached `meshBuilt` in that harness (no prep worker is running), so the
+  async copy is asserted by nothing. Two copies of a pose rule, one tested.
+  Closes when the async path is driven to `Built` in the same test and
+  asserted, or the two copies are merged into one helper both call. Found by
+  T454.
+
+- **B478** (B) corpse recognition is derived FIVE times from the same two
+  fields and the copies disagree. The canonical predicate is
+  `IsCorpseByFields()` (`src/client/corpse_predicate.cpp:75`: flag OR npc_type
+  2/3 OR one of three name forms WITH a trailing id), but
+  `src/client/bridge/bridge_component.cpp:464`,
+  `src/client/application_zone_loading.cpp:239` and `:349` each recompute
+  `npc_type == 2 || npc_type == 3` inline plus a LOOSER `name.find("corpse")`
+  with no id check, and `include/client/state/entity_manager.h:74`
+  `isAnyCorpse()` is a fifth form with no name test at all.
+  `include/client/corpse_predicate.h` already carries a "do not write a second
+  corpse test" note, and there are four. They agree on every case a server
+  actually sends (eqemu writes `NPC = 2` for every corpse,
+  `/mnt/projects/akk-stack/code/zone/corpse.cpp:1809`), so this is hygiene,
+  not a live defect -- but the loose name check would classify a live NPC
+  literally named "a corpse beetle" as a corpse and freeze it in a death pose.
+  Closes when the three inline copies call `IsCorpseByFields()`. Found by T454.
