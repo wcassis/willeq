@@ -506,6 +506,9 @@ NAMED_COMMAND = [
      "the registered-test total; do not restore a number here"),
     ("refactor/BOARD.md", "ctest --test-dir <slot>/build -N | tail -1",
      "the board header's suite line; do not restore a number here"),
+    ("refactor/BOARD.md", "git -C <slot> log --oneline -1",
+     "the board header's tip line (T445, B458): the hash sat stale for "
+     "roughly sixty units; do not restore one here"),
     ("CLAUDE.md", "re-measure, do not",
      "the owner_ census in the IrrlichtRenderer section"),
     ("src/client/graphics/CLAUDE.md", "re-measure rather than",
@@ -520,6 +523,11 @@ NAMED_COMMAND = [
 # DocCounts was green throughout. A doc that has been told to name the
 # command must not also restate the number.
 FORBIDDEN = [
+    ("refactor/BOARD.md",
+     r"\*\*Tree confirmed at:\*\*\s*`[0-9a-f]{7,40}`",
+     "the board header's tip hash was replaced by its measuring command "
+     "(T445, B458); a hash stamped once is stale by the next merge, and this "
+     "one sat unchanged for roughly sixty units"),
     ("README.md",
      r"\(\s*[\d][\d,]{2,}\s+registered tests\s*\)",
      "the registered-test total was replaced by its measuring command "

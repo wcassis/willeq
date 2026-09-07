@@ -1,7 +1,14 @@
 # BOARD — the open-work queue of record
 
-- **Tree confirmed at:** `3808ebe9` (branch `task/K00-legA-board`, base `fable`).
-- **Date:** 2026-09-03. Built by K00 Leg A (`refactor/K00_truth_reset.md`).
+- **Tree confirmed at:** DO NOT QUOTE A HASH FROM THIS LINE -- there was one,
+  `3808ebe9`, and it sat here unchanged for roughly sixty units while the item
+  bodies below were confirmed against much later tips (T445 struck it, board
+  B458). The board is edited by nearly every unit, so a hash stamped once is
+  stale by the next merge, exactly like the suite count below. Get the tip the
+  board actually describes with `git -C <slot> log --oneline -1` on `fable`.
+- **Date:** built 2026-09-03 by K00 Leg A (`refactor/K00_truth_reset.md`) and
+  amended by every unit since; `git log --format=%cs -1 -- refactor/BOARD.md`
+  is the last edit.
 - **Suite:** DO NOT QUOTE A NUMBER FROM THIS LINE. The suite grows with every
   unit -- it went 3,760 -> 3,949 across T352-T370 alone -- so a count written
   here is stale within a day. Get the current one with
@@ -15,8 +22,8 @@
   passes standalone). `visual_gate` also needs `build-gles2` rebuilt from the
   same tip, or it fails with an identical `characterModelsBytes` deficit in all
   three zones -- that shape is a stale tree, never a defect.
-- **Items are confirmed against the tree at the tip above; nothing here is quoted
-  from an older board.**
+- **Every item states the unit that confirmed it, and that unit's merge is the
+  tip it was confirmed against; nothing here is quoted from an older board.**
 
 **Classes.** **A** live defect — a reachable path gives the wrong answer, silently
 does nothing, or looks wrong. **B** implemented-but-unreached, or hygiene that
@@ -5751,7 +5758,7 @@ client uses every field.
   the empty stub. Closes when the storm fog tint and the lightning threshold are
   real fields with consumers. Found by T414 Leg A.
 
-- **B336** (B) `include/client/graphics/detail/detail_types.h`
+- ~~**B336** (B) `include/client/graphics/detail/detail_types.h`
   `ZoneDetailConfig::viewDistance` -- **the detail view distance in
   `detail_objects.json` is inert.** `globalSettings.viewDistance` (200.0 shipped)
   and the legacy root-level `viewDistance` both parse into the field, and
@@ -5762,6 +5769,23 @@ client uses every field.
   It hid from T407's census behind the reads of the two `viewDistance` fields
   T414 Leg A deleted. Closes when the chunk radius derives from the configured
   distance, with a measured before/after. Found by T414 Leg C.
+  **CLOSED T445.** `DetailManager::setZoneConfig()` is now the one place the
+  radius is set and it derives it as `detailChunkRadius(viewDistance,
+  chunkSize)` (`detail_types.h`), which both `loadZone()` branches route
+  through; `tests/test_detail_view_distance.cpp` pins the arithmetic, the
+  wiring and the shipped pair, and `WriteOnlyFields` dropped this row because
+  the field is read. **Two corrections to the entry above.** (1) The shipped
+  value is **150**, not 200 -- `config/detail_objects.json` has said 150 since
+  it was written and `git log -S` finds no 200 in its history -- so the grid
+  goes 5x5 -> **7x7**, not 9x9. (2) "changes both the visual gate and the
+  frame cost" is **false on the gate half**: the gate runs
+  `gles2_zone_benchmark`, which names neither `DetailManager` nor detail
+  anywhere, so it never builds a chunk. Measured, not assumed -- no image
+  golden moved, and `draws`/`polys`/`regions_drawn` are byte-identical in all
+  three zones and all three frames (`review/T445/`). The real frame cost of
+  the 7x7 grid is therefore still UNMEASURED and there is no instrument for it
+  -- see **B460**. The oracle's own detail draw distance remains unmeasured
+  too, so 150 is fable's number, not EverQuest's.
 
 - **B337** (B) `include/client/graphics/eq/race_model_loader.h`,
   `equipment_model_loader.h`, `include/client/graphics/tree_identifier.h` --
@@ -7639,7 +7663,7 @@ in `refactor/T433_doors_lifts_survey.md` Review; raw dumps in
   record has an empty Source block, which is a behaviour change no
   measurement supports. Found by T441.
 
-- **B457** (P) `include/client/graphics/vision_ambient.h` lines 35, 177 and 195
+- ~~**B457** (P) `include/client/graphics/vision_ambient.h` lines 35, 177 and 195
   -- **three comments in the vision header still name `0.08/0.08/0.15` as the
   night ambient, and T428 moved it.** Line 148 of the SAME file defines
   `kNightAmbient = {0.26244f, 0.31147f, 0.24003f}`, solved live against the
@@ -7653,8 +7677,22 @@ in `refactor/T433_doors_lifts_survey.md` Review; raw dumps in
   checker tables. **Also worth noting as the reason it survived: neither
   `DocClaims` nor `DocCounts` nor T444's new coverage table scans C++ comments
   -- every doc net in the tree stops at `*.md`.** Found by T444.
+  **CLOSED T445.** All three comments name `kNightAmbient` / `kDayAmbient`
+  instead of a triple, and the file now carries a DO-NOT-WRITE-THE-LITERAL
+  banner saying why. The net T444 said did not exist is
+  `scripts/refactor/check_comment_claims.py`, registered as the ctest test
+  **`CommentClaims`** (label `hygiene`): the C++-comment analogue of
+  `DocClaims`, a table of (file, retired pattern) rows matched against comment
+  text only -- a hand-rolled scanner, so a string literal cannot open a comment
+  and the constant's own definition is never a hit -- with the same
+  `RETIRED-OK` line exemption and the same "a row naming a missing file is an
+  error" rule. Pre-fix it failed on exactly lines 35, 177 and 195; post-fix it
+  is green. **A finding while rewriting them:** the line-33 claim that the day
+  ambient is "already above every floor here" is WRONG -- Ultravision's and
+  Froglok's floors (gain x tint) exceed 0.5 on R and G, so those two buffs lift
+  a noon frame by ~0.014. Corrected in place and boarded as **B459**.
 
-- **B458** (P) `refactor/BOARD.md`, header block -- **the board's own "Tree
+- ~~**B458** (P) `refactor/BOARD.md`, header block -- **the board's own "Tree
   confirmed at" line still reads `3808ebe9` / 2026-09-03, K00's tip.** Roughly
   sixty units have merged since, the item bodies below are confirmed against
   much later tips (T441's B455/B456 cite work from 2026-09-07), and the header
@@ -7666,3 +7704,48 @@ in `refactor/T433_doors_lifts_survey.md` Review; raw dumps in
   every time the board is edited, or replace the hash with
   `git -C <slot> log --oneline -1`. `DocCounts`'s NAMED_COMMAND table is the
   existing mechanism for "do not pin this, name the command". Found by T444.
+  **CLOSED T445, by the second option: the hash is GONE, replaced by the
+  measuring command.** The header line now reads like the suite line two lines
+  below it -- "DO NOT QUOTE A HASH FROM THIS LINE", with
+  `git -C <slot> log --oneline -1` named -- and the Date line says built-then-
+  amended rather than pretending to one stamp. The "items are confirmed against
+  the tip above" bullet was rewritten too, because with no tip above it it had
+  nothing to point at: each item names the unit that confirmed it, and that
+  unit's merge is its tip. Ratcheted in `check_doc_counts.py`: a NAMED_COMMAND
+  row for the command, and a FORBIDDEN row whose regex fails on
+  `**Tree confirmed at:** \`<hash>\``. Pre-fix `DocCounts` failed on
+  `refactor/BOARD.md:3`; post-fix it is green. Restamping was rejected: the
+  restamp is exactly what sixty units did not do.
+
+- **B459** (C) `include/client/graphics/vision_ambient.h` -- **Ultravision and
+  Froglok vision are NOT inert in daylight, and nobody has checked whether the
+  oracle's are.** The floor a vision type imposes is gain x tint, and for
+  Ultravision that is (0.5132, 0.5141, 0.4922) and for Froglok (0.5059,
+  0.5134, 0.4677) against `kDayAmbient` 0.5 on every channel. R and G are
+  ABOVE it, so both buffs raise a noon frame by ~0.014 on two channels, ~2.6%
+  on R. Infravision (0.4481, 0.4320, 0.3639) is entirely below 0.5 and is
+  genuinely inert. The header asserted the opposite for years ("fable's day
+  ambient is 0.5 on every channel, already above every floor here"); T445
+  corrected the sentence but did not touch a constant, because the file's own
+  rule is that a constant moves only when a live session says so. This is a
+  DESIGN question, not a defect: T361's measured mechanism is a floor, and a
+  floor that happens to clear the day ambient by 1.4% may be correct. Closes
+  when a live A/B at 11:00 with and without Ultravision says whether the
+  oracle lifts a daylight frame. Found by T445.
+
+- **B460** (B) `tools/hwcaps/gles2_zone_benchmark.cpp`,
+  `src/client/graphics/detail/` -- **the detail (foliage) system has no
+  coverage in any performance lane, so its frame cost cannot be measured.**
+  The visual gate is the only automated frame-cost instrument in the tree and
+  it runs `gles2_zone_benchmark`, which names neither `DetailManager` nor
+  detail anywhere -- it never constructs a chunk. T445 proved this rather than
+  inferring it: doubling the resident chunk grid from 25 to 49 left `draws`,
+  `polys` and `regions_drawn` byte-identical in all three zones and all three
+  frames, and moved no golden pixel. So B336's wiring shipped with its cost
+  unmeasured, and the same is true of every future detail change: density, the
+  wind controller, foliage disturbance and footprints are all invisible to CI.
+  There is not even a counter -- the gate CSV has no detail column, though
+  `DetailManager::getActiveChunkCount()` and `getTotalPlacementCount()` exist
+  and are public. Closes when a lane exercises detail with a metric that
+  would move: a detail column in the gate CSV plus a benchmark pose that
+  builds chunks, or a separate detail benchmark. Found by T445.

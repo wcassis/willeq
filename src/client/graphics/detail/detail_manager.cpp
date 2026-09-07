@@ -189,12 +189,12 @@ void DetailManager::onZoneEnter(const std::string& zoneName,
     DetailConfigLoader loader;
     auto loadedConfig = loader.loadDefaultConfig("data");
     if (loadedConfig) {
-        config_ = *loadedConfig;
+        setZoneConfig(*loadedConfig);
         config_.zoneName = zoneName;
         LOG_INFO(MOD_GRAPHICS, "DetailManager: Loaded config with {} detail types", config_.detailTypes.size());
     } else {
         LOG_WARN(MOD_GRAPHICS, "DetailManager: Could not load JSON config, using hardcoded defaults");
-        config_ = createDefaultConfig(zoneName);
+        setZoneConfig(createDefaultConfig(zoneName));
     }
 
     // Detect season for this zone and apply seasonal modifiers
@@ -236,6 +236,16 @@ void DetailManager::onZoneEnter(const std::string& zoneName,
              config_.detailTypes.size(), config_.densityMultiplier,
              disturbanceConfig_.enabled ? "enabled" : "disabled",
              footprintConfig_.enabled ? "enabled" : "disabled");
+}
+
+void DetailManager::setZoneConfig(const ZoneDetailConfig& config) {
+    config_ = config;
+    viewDistanceChunks_ = detailChunkRadius(config_.viewDistance, config_.chunkSize);
+    LOG_INFO(MOD_GRAPHICS,
+             "DetailManager: view distance {} over chunk size {} -> {} chunk "
+             "radius ({}x{} grid)",
+             config_.viewDistance, config_.chunkSize, viewDistanceChunks_,
+             2 * viewDistanceChunks_ + 1, 2 * viewDistanceChunks_ + 1);
 }
 
 void DetailManager::onZoneExit() {
