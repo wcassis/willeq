@@ -77,10 +77,18 @@
  *     label for an item's spell effect; the spell display's own name goes
  *     where the item's does, on the `Style_Titlebar` row.
  *
- * This function is FREE and takes only a `SpellData` plus the two player
- * facts eqstr 3004/3005 need, so a test drives the real fields through the
- * real composer with no bridge, no renderer, no database and no device --
- * the T290/T393/T421 idiom.
+ * T429 Leg A (board B390) CHANGED WHERE THE TEXT COMES FROM. The nine
+ * formats are no longer C++ literals: they are FETCHED out of the shipped
+ * string table by id (`data/willeq.db`'s `eqstrings`) through
+ * `eqt::EqStrLine()`, which runs the one `EQT::StringDatabase` substitution
+ * engine -- the same route `BuildItemDisplayText()` takes. So the composer
+ * takes a `StringDatabase&`, and a table miss draws NO line rather than
+ * falling back to a hardcoded copy of the format.
+ *
+ * This function is still FREE and takes only that database, a `SpellData`
+ * and the two player facts eqstr 3004/3005 need, so a test drives the real
+ * fields through the real composer with no bridge, no renderer and no
+ * device -- the T290/T393/T421 idiom.
  */
 
 #pragma once
@@ -93,8 +101,35 @@ namespace EQ {
 struct SpellData;
 }
 
+namespace EQT {
+class StringDatabase;
+}
+
 namespace eqt {
 namespace spell {
+
+// ---------------------------------------------------------------------------
+// The eqstr ids this window draws (T429, board B390).
+// ---------------------------------------------------------------------------
+constexpr uint32_t kSpellStrLevelNeeded       = 3004;  // "Level Needed: %1"
+constexpr uint32_t kSpellStrLevelCannotUse    = 3005;  // "Level Needed: CANNOT USE"
+constexpr uint32_t kSpellStrManaCost          = 3006;  // "Mana Cost: %1"
+constexpr uint32_t kSpellStrDuration          = 3102;  // "Spell Duration: %1."
+constexpr uint32_t kSpellStrDurationPermanent = 3103;  // "Spell Duration: Permanent."
+constexpr uint32_t kSpellStrSkill             = 3105;  // "Skill: %1"
+constexpr uint32_t kSpellStrCastTime          = 3107;  // "Cast Time: %1"
+constexpr uint32_t kSpellStrRange             = 6730;  // "Range = %1"
+constexpr uint32_t kSpellStrRecastDelay       = 9234;  // "Recast Delay: %1"
+
+/** Every eqstr id BuildSpellDisplayText() can fetch, for the db census test. */
+inline const std::vector<uint32_t>& SpellDisplayEqStrIds() {
+    static const std::vector<uint32_t> ids = {
+        kSpellStrLevelNeeded, kSpellStrLevelCannotUse, kSpellStrManaCost,
+        kSpellStrDuration, kSpellStrDurationPermanent, kSpellStrSkill,
+        kSpellStrCastTime, kSpellStrRange, kSpellStrRecastDelay,
+    };
+    return ids;
+}
 
 /**
  * The spell display window's body text, one entry per drawn line. A
@@ -105,7 +140,8 @@ namespace spell {
  * omits the Level Needed line) and `playerLevel` is `PlayerState::level()`,
  * which the duration formula scales with.
  */
-std::vector<std::string> BuildSpellDisplayText(const EQ::SpellData& spell,
+std::vector<std::string> BuildSpellDisplayText(const EQT::StringDatabase& strings,
+                                               const EQ::SpellData& spell,
                                                uint32_t playerClassId,
                                                uint8_t playerLevel);
 

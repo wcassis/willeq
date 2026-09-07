@@ -317,6 +317,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/player_facade.cpp
     src/client/packet_sender.cpp
     src/client/commands/combat_actions.cpp
+    src/client/commands/consider_text.cpp
     src/client/combat.cpp
     src/client/combat_rounds.cpp
     src/client/combat_hunting.cpp
@@ -330,6 +331,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/world_object.cpp
     src/client/formatted_message.cpp
     src/client/string_database.cpp
+    src/client/core/display_eqstr.cpp
     src/client/willeq_database.cpp
     third_party/sqlite3.c
     src/client/pathfinder_interface.cpp

@@ -270,6 +270,9 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_item_display PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_item_display GTest::gtest_main willeq_core)
+    # T429 (board B390): the composer reads its formats out of the shipped db.
+    TARGET_COMPILE_DEFINITIONS(test_item_display PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
     GTEST_DISCOVER_TESTS(test_item_display)
 ENDIF()
 
@@ -282,7 +285,24 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_spell_display PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_spell_display GTest::gtest_main willeq_core)
+    # T429 (board B390): the composer reads its formats out of the shipped db.
+    TARGET_COMPILE_DEFINITIONS(test_spell_display PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
     GTEST_DISCOVER_TESTS(test_spell_display)
+ENDIF()
+
+# T429 Leg A (board B390): the two display composers take their format strings
+# from the shipped eqstr table rather than from their own source. Needs no
+# device -- it is registered here beside the two windows it covers.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_display_text_from_db
+        test_display_text_from_db.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_display_text_from_db PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_display_text_from_db GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_display_text_from_db PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    GTEST_DISCOVER_TESTS(test_display_text_from_db)
 ENDIF()
 
 # T421 Leg B (board B365): the ONE text-entry widget, and the tradeskill

@@ -203,16 +203,38 @@ EXEMPT = {
     ("SpellEffectSlot", "base2_value"):
         ("boarded", "B298: spell record field; the oracle prints no per-effect "
                     "numbers at all in the display window"),
+    # T429 Leg B closed B298's SKILL and ENTITY halves. Neither of these five
+    # is a missing DISPLAY, which is what B298 was about: each was measured
+    # against the oracle's XML and against eqstr_us.txt, and none of them has
+    # a line. The two SkillData rows and the three Entity rows are three
+    # DIFFERENT defects, boarded separately (B415/B416/B418).
     ("SkillData", "animation_code"):
-        ("boarded", "B298: skill record field; lands with skill gating"),
+        ("boarded", "B298 (skill half CLOSED by T429): not a display field at all -- it is a "
+                    "skeletal animation code, and it is a DUPLICATE STORE: the one consumer, "
+                    "SkillManager (skill_manager.cpp:719), calls getSkillAnimationCode(skill_id) "
+                    "directly and never reads the copy. B415"),
     ("SkillData", "usable_while_sitting"):
-        ("boarded", "B298: skill record field; lands with skill gating"),
+        ("boarded", "B298 (skill half CLOSED by T429): not a display field -- a GATE predicate "
+                    "for an in-combat/while-sitting check that does not exist; no sitting test "
+                    "appears anywhere under src/client/skill/. eqstr has no skills-window line "
+                    "for it either. B416"),
     ("Entity", "anon_status"):
-        ("boarded", "B298: /who anon column"),
+        ("boarded", "B298 (entity half CLOSED by T429): the oracle's anon lines are the /who "
+                    "formats 5023/5024, whose '[ANONYMOUS]' is inside the format itself -- and "
+                    "the /who path parses its OWN wire entries (who_response.h), never Entity. "
+                    "EQUI_TargetWindow.xml has only a name label, an HP gauge and a '%' label; "
+                    "there is no element for it. B418"),
     ("Entity", "guildId"):
-        ("boarded", "B298: /who guild column"),
+        ("boarded", "B298 (entity half CLOSED by T429): the oracle DOES print a guild, and fable "
+                    "cannot -- it has no guild-id-to-name source at all. "
+                    "LoginWorldComponent::WorldProcessGuildsList is one LOG_DEBUG line that "
+                    "parses nothing, and data/willeq.db has no guild table. Same shape as B391's "
+                    "item-name gap: printing the id would invent a line. B418"),
     ("Entity", "deltaHeading"):
-        ("boarded", "B298: spawn record field, no consumer"),
+        ("boarded", "B298 (entity half CLOSED by T429): a MOVEMENT field, not a display one -- "
+                    "the wire's delta heading, the sibling of deltaX/Y/Z that the renderer "
+                    "extrapolates with. No eqstr line and no XML element exists for it "
+                    "anywhere. B418"),
     ("RaceModelInfo", "genderVariants"):
         ("boarded", "B298: race record field from willeq.db"),
     ("RaceModelInfo", "neuterCode"):

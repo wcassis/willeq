@@ -39,6 +39,7 @@
 // P28: renderer-free chat data model, used unconditionally below
 // (eqt::ui::ChatChannel).
 #include "client/chat/chat_message_buffer.h"
+#include "client/commands/consider_text.h"
 
 #ifdef WITH_AUDIO
 #include "client/audio/audio_manager.h"
@@ -85,39 +86,37 @@ void eqt::commands::CommandsComponent::ZoneProcessConsider(const EQ::Net::Packet
 		target_name = EQT::toDisplayName(it->second.name);
 	}
 
-	// Determine faction standing message
-	// Faction values: 1=ally, 2=warmly, 3=kindly, 4=amiably, 5=indifferent,
-	//                 6=apprehensive, 7=dubious, 8=threatening, 9=scowling
-	std::string faction_msg;
-	switch (con->faction) {
-		case 1: faction_msg = "regards you as an ally"; break;
-		case 2: faction_msg = "looks upon you warmly"; break;
-		case 3: faction_msg = "kindly considers you"; break;
-		case 4: faction_msg = "judges you amiably"; break;
-		case 5: faction_msg = "regards you indifferently"; break;
-		case 6: faction_msg = "looks your way apprehensively"; break;
-		case 7: faction_msg = "glowers at you dubiously"; break;
-		case 8: faction_msg = "threatens you"; break;
-		case 9: faction_msg = "scowls at you, ready to attack"; break;
-		default: faction_msg = fmt::format("regards you (faction {})", con->faction); break;
-	}
+	// T429 Leg B (boards B298 entity half / B390): the faction phrase and the
+	// whole line come out of the shipped string table now -- eqstr 12239
+	// "%1 %2 -- %3" with 12212..12220 in %2. Before this the nine phrases were
+	// literals here, and faction 8 printed "threatens you", a phrase that is
+	// in NO eqstr row (the oracle's is 12218 "glares at you threateningly").
+	// See include/client/commands/consider_text.h.
 
-	// Determine con color name and display color based on server level value
+	// Determine con colour name from the server level value. This is FABLE'S
+	// OWN wording, not the oracle's: eqstr has sixteen difficulty lines
+	// (12223..12238) and no colour->line mapping, so picking six of sixteen
+	// would be inference (board B417).
 	std::string con_color;
 	switch (con->level) {
-		case 2:  con_color = "green"; break;
-		case 4:  con_color = "blue"; break;
-		case 6:  con_color = "gray"; break;
-		case 10: con_color = "light blue"; break;
-		case 13: con_color = "red"; break;
-		case 15: con_color = "yellow"; break;
-		case 18: con_color = "light blue"; break;
-		case 20: con_color = "white"; break;
-		default: con_color = "white"; break;
+		case 2:  con_color = "cons green"; break;
+		case 4:  con_color = "cons blue"; break;
+		case 6:  con_color = "cons gray"; break;
+		case 10: con_color = "cons light blue"; break;
+		case 13: con_color = "cons red"; break;
+		case 15: con_color = "cons yellow"; break;
+		case 18: con_color = "cons light blue"; break;
+		case 20: con_color = "cons white"; break;
+		default: con_color = "cons white"; break;
 	}
 
-	// Format: "a gnoll scout regards you indifferently -- cons green"
-	std::string message = fmt::format("{} {} -- cons {}", target_name, faction_msg, con_color);
+	const std::string message = eqt::commands::BuildConsiderText(
+		ctx_.strings.Db(), target_name, con->faction, con_color);
+	if (message.empty()) {
+		// No 12239 in the table: print nothing rather than fabricate a line.
+		LOG_WARN(MOD_MAIN, "Consider: eqstr 12239 missing, no line drawn");
+		return;
+	}
 	// Publish SystemMessage event to bridge
 	if (ctx_.bridge) {
 		eqt::state::ChatMessageData data;

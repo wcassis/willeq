@@ -5046,7 +5046,42 @@ T407 deleted eleven (see below). The rest are boarded here.
   reagents are the one line the oracle HAS (6732 `Reagents Needed: %1`) and
   fable cannot draw: it wants an item NAME and the client has no
   item-name-by-id source at all -- **B391**.
-  What remains under this id is the SKILL and ENTITY halves.
+  **SKILL AND ENTITY HALVES STRUCK by T429 Leg B; B298 IS CLOSED.** Both were
+  measured against the oracle's own XML and against `eqstr_us.txt`, and
+  **neither half turned out to be a missing display** -- the five fields the
+  census named are three different defects wearing B298's clothes, each now
+  boarded on its own:
+  * `SkillData::animation_code` -- not a display field at all (a skeletal
+    animation code, `"t02"`), and a **duplicate store**: its one consumer,
+    `SkillManager` (`skill_manager.cpp:719`), calls
+    `getSkillAnimationCode(skill_id)` directly and never reads the copy.
+    **B415**.
+  * `SkillData::usable_while_sitting` -- a GATE predicate for a
+    while-sitting check that does not exist; no sitting test appears anywhere
+    under `src/client/skill/`. **B416**.
+  * `Entity::anon_status` -- the oracle's anon lines are the /who formats
+    5023/5024, whose `[ANONYMOUS]` is inside the format itself, and the /who
+    path parses its OWN wire entries (`who_response.h`), never `Entity`.
+    `EQUI_TargetWindow.xml` is a name label (`EQType 29`), an HP gauge
+    (`EQType 6`) and a `%` label -- no level, no class, no guild, no anon.
+    **B418**.
+  * `Entity::guildId` -- the oracle DOES print a guild and fable cannot:
+    `LoginWorldComponent::WorldProcessGuildsList` is one `LOG_DEBUG` line
+    that parses nothing, and `data/willeq.db` has no guild table, so there is
+    no guild-id-to-name source anywhere. Same shape as **B391**'s item-name
+    gap; printing the id would invent a line. **B418**.
+  * `Entity::deltaHeading` -- a MOVEMENT field, the wire's delta heading and
+    the sibling of `deltaX/Y/Z`; no eqstr line and no XML element. **B418**.
+  What T429 Leg B DID draw is the entity half's real display surface, the
+  `/con` line: `eqt::commands::BuildConsiderText()`
+  (`src/client/commands/consider_text.cpp`) composes it from eqstr **12239**
+  `%1 %2 -- %3` with the faction phrase from **12212..12220**, through Leg
+  A's fetch. **That found a live defect B390 predicted**: faction 8
+  (`FACTION_THREATENINGLY`,
+  `/mnt/projects/akk-stack/code/common/faction.h:34`) printed
+  **"threatens you"**, a phrase in NO eqstr row -- the oracle's is 12218
+  "glares at you threateningly". The difficulty tail stays fable's own
+  wording (**B417**).
   `SpellEffectSlot::base2_value` also stays: the oracle prints no per-effect
   numbers in the display window.
   `SkillData` carries
@@ -6463,9 +6498,24 @@ client uses every field.
 
 ## Added 2026-09-06 by T425
 
-- **B390** (B) `src/client/inventory/item_display_text.cpp`,
-  `src/client/spell/spell_display_text.cpp` -- **the two display composers
-  hardcode format strings the client already ships as data.** Every line they
+- **B390** ~~(B) `src/client/inventory/item_display_text.cpp`,
+  `src/client/spell/spell_display_text.cpp`~~ -- **STRUCK by T429 Leg A** (`3d59d342`).
+  Both composers now take a `const EQT::StringDatabase&` and fetch every
+  format by id through `eqt::EqStrLine()`
+  (`include/client/display_eqstr.h`), which calls
+  `StringDatabase::formatString()` -- the client's ONE `%n` substitution
+  engine, the same `chat_component.cpp` uses. No second formatter was
+  written. A table miss now draws NO line rather than a hardcoded fallback,
+  and `tests/test_display_text_from_db.cpp` pins three things: a reworded
+  eqstr file rewords the window (so the table is genuinely the source), an
+  empty table draws nothing, and all **fifty-two** item ids plus **nine**
+  spell ids exist in the shipped `eqstrings`. **The surprise: eqstr mixes two
+  placeholder conventions.** 3030 and 3033 are C PRINTF formats --
+  `(Casting Time: %2.1f)` -- not the positional `%1..%n` every other row
+  uses; the positional engine renders them `(Casting Time: .1f)`, so
+  `EqStrPrintfFloat()` handles that one shape in one place. Original entry:
+  **the two display composers hardcode format strings the client already
+  ships as data.** Every line they
   emit is quoted from `/mnt/projects/EverQuestP1999/eqstr_us.txt`, and that
   whole table is ALREADY in `data/willeq.db` as `eqstrings` (5,901 rows,
   loaded by `tools/willeq_db_builder.cpp`'s `loadEqStrings()`) and ALREADY
@@ -6566,3 +6616,60 @@ client uses every field.
   * A live caster/observer re-capture of the four spells is **owed** -- T426 spent
     its live budget on Leg A's six-heading oracle A/B and Leg B's fog table.
   Prov: T426 Review 2; T422 Review 4.
+
+
+---
+
+## Added 2026-09-07 by T429
+
+- **B415** (B) `include/client/skill/skill_data.h` `animation_code` --
+  **a duplicate store nothing reads.** `initializeSkillData()` copies
+  `getSkillAnimationCode(skill_id)` into the struct, and the one consumer
+  that wants a skill's animation code -- `SkillManager`, at
+  `src/client/skill/skill_manager.cpp:719` -- calls the free function
+  directly instead. So the field has a writer, a plausible reader, and zero
+  actual reads. Measured by T429 Leg B while closing B298's skill half; it is
+  NOT a missing display (there is no eqstr line and no
+  `EQUI_SkillsWindow.xml` element for an animation code). Closes when the
+  field is deleted or `SkillManager` reads it. Found by T429 Leg B.
+
+- **B416** (B) `include/client/skill/skill_data.h` `usable_while_sitting`,
+  `src/client/skill/` -- **a gate predicate with no gate.**
+  `initializeSkillData()` sets it true for Meditate (31) and false for
+  everything else, and no sitting test exists anywhere under
+  `src/client/skill/` (`grep -i sitting` over `src/client/skill/*.cpp` and
+  `include/client/skill/*.h` returns only the declaration, the assignment,
+  and an unrelated `"p07" // Sitting (meditation pose)` animation comment).
+  The same shape as `requires_combat` before T325, except that one at least
+  had a predicate. Deciding whether fable should refuse a skill while sitting
+  needs the eqemu handlers read per opcode the way T325 read them for
+  in-combat. Found by T429 Leg B.
+
+- **B417** (B) `src/client/commands/consider_text.cpp` -- **the `/con`
+  difficulty tail is fable's wording, not the oracle's.** eqstr 12239 is
+  `%1 %2 -- %3`; T429 fills `%1` and `%2` from the table (name, and
+  12212..12220 for the faction phrase) but fills `%3` with fable's own
+  `cons <colour>` text. The oracle's own candidates are 12223..12238 --
+  sixteen lines, several near-duplicates of each other ("looks kind of risky,
+  but you might win." at 12228 vs "looks kind of risky..you might win." at
+  12230) -- and the shipped data carries **no con-colour -> line mapping**;
+  that table is in the official client's executable. Picking six of sixteen
+  would be inference, so T429 drew fable's tail and said so. Closes when the
+  mapping is MEASURED against the official client (we control the server, so
+  a con at each colour band is a scriptable observation). Found by T429 Leg B.
+
+- **B418** (B) `include/client/state/entity_manager.h` `guildId`,
+  `deltaHeading`; `include/client/eq_types.h` `anon_status`;
+  `src/client/login_world/login_world_component.cpp`
+  `WorldProcessGuildsList` -- **the three entity fields B298 named, and the
+  one of them that is a real gap.** T429 Leg B measured all three against the
+  oracle: `deltaHeading` is a movement field with no line and no element,
+  `anon_status` duplicates state the /who path already carries on its own
+  wire entries, and **`guildId` is the real one** -- the official client
+  prints a player's guild and fable cannot, because
+  `WorldProcessGuildsList` is a single `LOG_DEBUG` that parses none of
+  `OP_GuildsList`, and `data/willeq.db` has no guild table. So there is no
+  guild-id-to-name source in the client at all, the same shape as **B391**'s
+  missing item-name lookup. Closes when `OP_GuildsList` is parsed into a
+  lookup (which also unblocks a guild column wherever one belongs). Found by
+  T429 Leg B.
