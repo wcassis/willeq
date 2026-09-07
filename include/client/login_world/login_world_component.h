@@ -44,6 +44,7 @@
 // K12's) still touch this state. They are transition scaffolding too.
 
 #include "client/client_context.h"
+#include "client/guild/guild_name_table.h"
 #include "common/net/daybreak_connection.h"
 
 #include <cstdint>
@@ -94,6 +95,15 @@ public:
 	uint16_t GetChatServerPort() const { return m_ucs_port; }
 	const std::string& GetMailKey() const { return m_mail_key; }
 	char GetChatConnectionType() const { return m_ucs_connection_type; }
+
+	// T443 (board B418): the guild-id -> name lookup parsed off
+	// OP_GuildsList. World sends it ONCE, in the character-select block, and
+	// skips it entirely on a zoning world pass (world/client.cpp 516-523,
+	// 847 -- the same condition WorldProcessPostEnterWorld documents), so it
+	// is login-time state that survives zoning, exactly like m_dbid and
+	// m_key. It lives here because this is the family that receives the
+	// packet; see include/client/guild/guild_name_table.h for the wire shape.
+	const eqt::guild::GuildNameTable& GuildNames() const { return m_guild_names; }
 
 	// K10 transition scaffolding: EverQuest's constructor sets the credentials
 	// it was built with, and eq.cpp / eq_zone.cpp / eq_commands.cpp still reach
@@ -207,6 +217,9 @@ private:
 	// UCS implementation needs it to tell the two connections apart, so it is
 	// stored rather than discarded. 0 = nothing parsed yet.
 	char m_ucs_connection_type = 0;
+
+	// T443 (board B418): OP_GuildsList, parsed. Empty until world sends it.
+	eqt::guild::GuildNameTable m_guild_names;
 
 	ClientContext& ctx_;
 };

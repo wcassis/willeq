@@ -5148,14 +5148,19 @@ T407 deleted eleven (see below). The rest are boarded here.
     path parses its OWN wire entries (`who_response.h`), never `Entity`.
     `EQUI_TargetWindow.xml` is a name label (`EQType 29`), an HP gauge
     (`EQType 6`) and a `%` label -- no level, no class, no guild, no anon.
-    **B418**.
+    **B418 (struck by T443, which measured the same conclusion again:
+    the /who path parses its own wire entries and never reads Entity)**.
   * `Entity::guildId` -- the oracle DOES print a guild and fable cannot:
     `LoginWorldComponent::WorldProcessGuildsList` is one `LOG_DEBUG` line
     that parses nothing, and `data/willeq.db` has no guild table, so there is
     no guild-id-to-name source anywhere. Same shape as **B391**'s item-name
-    gap; printing the id would invent a line. **B418**.
+    gap; printing the id would invent a line. **B418 -- the PARSE half is
+    CLOSED by T443** (`OP_GuildsList` is now `eqt::guild::GuildNameTable`);
+    the field is still write-only because nothing may DISPLAY it yet, which
+    is **B455**.
   * `Entity::deltaHeading` -- a MOVEMENT field, the wire's delta heading and
-    the sibling of `deltaX/Y/Z`; no eqstr line and no XML element. **B418**.
+    the sibling of `deltaX/Y/Z`; no eqstr line and no XML element. **B418
+    (struck by T443; this field stays write-only and has no display at all)**.
   What T429 Leg B DID draw is the entity half's real display surface, the
   `/con` line: `eqt::commands::BuildConsiderText()`
   (`src/client/commands/consider_text.cpp`) composes it from eqstr **12239**
@@ -5914,7 +5919,7 @@ client uses every field.
   `review/T419/crops/tradeskill_after_2x.png`. **Live proof (open a forge, run
   `/recipesearch`, see the rows) is OWED to the next lock unit.**
 
-- **B454** (B) `src/client/graphics/ui/static_ui_input.cpp`
+- ~~**B454** (B) `src/client/graphics/ui/static_ui_input.cpp`
   `StaticUIInput::processKey` -- **ESC does not dismiss the tradeskill
   container window, and must not be made to naively.** `processKey()`
   dismisses the top centre popup (inventory, spellbook, skills, loot) and
@@ -5929,7 +5934,21 @@ client uses every field.
   dismissal that goes through the bridge, and the loot popup has the same
   latent question (ESC on an open corpse). Closes when ESC on either
   server-owned window sends its close intent instead of hiding the panel.
-  Found by T415 Leg A.
+  Found by T415 Leg A.~~ **CLOSED by T443** (`refactor/T443_guild_list_esc_dumpscene.md`):
+  `processKey()` takes a `TradeskillPanelState&` and its ESC handler asks the
+  container FIRST -- it is the topmost centre popup, drawn after the loot
+  popup -- pushing `TradeskillCloseIntent{objectId}` and leaving `isOpen`
+  alone; only `applyTradeskillContainerClosed()` clears it. The pattern the
+  entry says was missing was already there: the loot arm. All four
+  server-owned windows now obey T290 on ESC -- loot (`CloseLootIntent`, T290),
+  bank (`CloseBankIntent`) and merchant (`VendorToggleIntent`), both wired by
+  T436 in `FrameComponent`'s escape handler and pinned here as invariants,
+  and the container. Pinned by `tests/test_esc_server_owned_windows.cpp`
+  (9 cases, 4 red pre-fix). **Live proof is OWED** -- T443 held no lock
+  (T438 did). What the ORACLE does on ESC with a vendor or a container open
+  is still unmeasured: T342's captures record merchant open/select/buy/sell
+  and contain no ESC event at all, so fable's shape here is reasoned from
+  T290, not measured. That measurement is **B456**.
 
 ---
 
@@ -7122,7 +7141,7 @@ client uses every field.
   mapping is MEASURED against the official client (we control the server, so
   a con at each colour band is a scriptable observation). Found by T429 Leg B.
 
-- **B418** (B) `include/client/state/entity_manager.h` `guildId`,
+- ~~**B418** (B) `include/client/state/entity_manager.h` `guildId`,
   `deltaHeading`; `include/client/eq_types.h` `anon_status`;
   `src/client/login_world/login_world_component.cpp`
   `WorldProcessGuildsList` -- **the three entity fields B298 named, and the
@@ -7136,7 +7155,28 @@ client uses every field.
   guild-id-to-name source in the client at all, the same shape as **B391**'s
   missing item-name lookup. Closes when `OP_GuildsList` is parsed into a
   lookup (which also unblocks a guild column wherever one belongs). Found by
-  T429 Leg B.
+  T429 Leg B.~~ **CLOSED by T443** (`refactor/T443_guild_list_esc_dumpscene.md`) on its
+  stated close condition: `OP_GuildsList` IS parsed now, into
+  `eqt::guild::GuildNameTable` (`include/client/guild/guild_name_table.h`),
+  owned by `LoginWorldComponent` and reachable as `GuildNames()`. The wire
+  shape is quoted, not inferred, and one fact in it is the opposite of the
+  obvious reading: **the array index IS the guild id** -- Titanium's
+  `ENCODE(OP_GuildsList)` writes `out->Guilds[g.guild_id].name`
+  (`/mnt/projects/akk-stack/code/common/patches/titanium.cpp:819`) into a
+  fixed `uint8 head[64]; GuildsListEntry_Struct Guilds[1500]` of 96,064 bytes
+  (`/mnt/projects/akk-stack/code/common/patches/titanium_structs.h:1412`), sending no id field and appending nothing,
+  so a "walk the entries in order" reading misnames every guild on any server
+  whose ids are not dense from zero. Guild ids >= `MAX_GUILD_ID` (1500,
+  `/mnt/projects/akk-stack/code/common/patches/titanium_limits.h:287`) are dropped by the server and are not
+  addressable at all. Pinned by `tests/test_guild_name_table.cpp` (13 cases,
+  1 red pre-fix). **The three entity fields are NOT closed by this and stay
+  write-only**: T443 measured where the lookup could be DISPLAYED and found
+  nowhere it may be drawn yet -- the /who guild fragment is a wire STRING the
+  server already fills (`sprintf(guildbuffer,"<%s>", guild_mgr.GetGuildName(...))`,
+  `/mnt/projects/akk-stack/code/world/clientlist.cpp:824`, and the same in
+  `/mnt/projects/akk-stack/code/zone/entity.cpp:4970`), so /who needs no lookup; `EQUI_TargetWindow.xml`
+  has no guild element (T429); and the overhead name tag has no measured
+  oracle format. That display half is **B455**.
 
 ---
 
@@ -7566,7 +7606,7 @@ in `refactor/T433_doors_lifts_survey.md` Review; raw dumps in
 
 ## Added 2026-09-07 by T442
 
-- **B453** (B) `src/client/graphics/diagnostics/diagnostics_component.cpp`
+- ~~**B453** (B) `src/client/graphics/diagnostics/diagnostics_component.cpp`
   (`DiagnosticsComponent`'s scene breakdown, the `otherNodes` census around
   line 213) -- **the breakdown never subtracts `ctx_.zoneMeshNode`, so in a
   no-BSP zone the one real zone mesh is reported as an UNACCOUNTED node.**
@@ -7586,7 +7626,25 @@ in `refactor/T433_doors_lifts_survey.md` Review; raw dumps in
   breakdown has been blind to the zone mesh for as long as both have existed.
   Closes by subtracting `zoneMeshNode` the way the collision node is
   subtracted, and by saying what `/dumpscene` should read in a BSP zone
-  (where the node is null and the regions carry the geometry).
+  (where the node is null and the regions carry the geometry).~~ **CLOSED by T443** (`refactor/T443_guild_list_esc_dumpscene.md`):
+  `zoneMeshNode` is subtracted and inserted into the known set exactly the way
+  the collision node is. The eleven ad-hoc `otherNodes--; knownNodes.insert(x);`
+  pairs became ONE call to `computeSceneNodeCensus()`
+  (`include/client/graphics/diagnostics/scene_node_census.h`), which populates
+  both halves together, so a category that is subtracted but not suppressed in
+  the enumeration is no longer expressible. The arithmetic is unchanged --
+  entity subtrees whole, two nodes per in-graph door, sky and weather by their
+  own counts and collectors, everything else one node. **What `/dumpscene`
+  should read in a BSP zone** (the question the entry left open): `unaccounted=0`
+  there too, and by the same rule -- `zoneMeshNode` is null in a BSP zone and a
+  null entry is a no-op, while the geometry is in `regionMeshNodes`, which was
+  always subtracted. That is why the count read 0 in every BSP zone and hid this
+  for as long as the member has existed. Pinned by
+  `tests/test_scene_node_census.cpp` (10 cases, 1 red pre-fix), which builds a
+  scene on an EDT_NULL device and asserts BOTH sides: the zone mesh accounted
+  (`unaccounted=0`) and the pre-fix set (`unaccounted=1`), so a revert is a red
+  test rather than a wrong number in a log nobody reads.
+
 
 ---
 
@@ -7666,3 +7724,48 @@ in `refactor/T433_doors_lifts_survey.md` Review; raw dumps in
   every time the board is edited, or replace the hash with
   `git -C <slot> log --oneline -1`. `DocCounts`'s NAMED_COMMAND table is the
   existing mechanism for "do not pin this, name the command". Found by T444.
+---
+
+## Added 2026-09-07 by T443
+
+- **B459** (C) `src/client/graphics/entity_mesh_build.cpp` (both name-tag
+  creation sites), `include/client/state/entity_manager.h` `guildId` --
+  **fable now HAS a guild-id -> name lookup (the struck B418) and still draws
+  no guild anywhere, because the one surface the oracle uses has never been
+  measured.** T443 searched for a display site and eliminated every candidate
+  but one: the /who guild fragment is a wire STRING eqemu already fills
+  (`/mnt/projects/akk-stack/code/world/clientlist.cpp:824` and
+  `/mnt/projects/akk-stack/code/zone/entity.cpp:4970` both `sprintf` `"<%s>"` from `GetGuildName()`), so
+  the /who path needs no lookup and `who_response.h` never reads `Entity` at
+  all; `EQUI_TargetWindow.xml` is a name label, an HP gauge and a `%` label
+  with no guild element (T429 Leg B); `OP_GuildStatus`'s reply is composed
+  server-side with the name already in it
+  (`/mnt/projects/akk-stack/code/zone/client_packet.cpp:8728`). That leaves the OVERHEAD NAME TAG, and
+  fable draws it as ONE line (`addTextSceneNode` with the built-in font, which
+  has no newline handling -- a second line needs a second node). **No oracle
+  capture of a guild line on the name tag exists**: the whole `review/` tree
+  and every `refactor/*.md` were searched and none records the tag's content,
+  the tag has no `EQUI_*.xml` definition because the 3D renderer draws it
+  rather than the SIDL window system, and `eqstr_us.txt` has no bare
+  `<%1>` row (only 1083/1084, the guild-war sentences). Adding it would be
+  inventing a format, which T363 forbids. **Closes when the official client is
+  captured with a GUILDED character in view and the tag's format is read off
+  the pixels** -- note `review/T132/README.md` and `review/T100/README.md:43`
+  record that the test characters have no guild, so the capture needs a guild
+  created by GM command first. Class C because "should fable draw a guild
+  line, and where" is a look decision once the format is known. Found by T443.
+
+- **B460** (B) `refactor/TESTING_CHARTER.md` / the oracle capture set --
+  **what the official client does when ESC is pressed with a merchant, a bank
+  or a tradeskill container open has never been measured.** T436 gave the
+  merchant and bank an ESC arm and T443 gave the container one, all three in
+  the T290 shape (push the close intent, wait for the server's Closed event),
+  and that shape is right for the DESYNC reason regardless. But whether the
+  oracle closes those windows on ESC AT ALL is a separate question, and
+  T443's plan pointed at T342's captures for the answer: T342 recorded
+  merchant open, select, buy and sell (`review/T342/T342_events.tsv`) and
+  contains no ESC event of any kind. So fable's ESC behaviour on all four
+  server-owned windows is reasoned, not measured. Closes when a lock unit
+  presses ESC on each with the official client running and records what
+  happens. Cheap and scriptable -- we control the server and the vendor.
+  Found by T443.

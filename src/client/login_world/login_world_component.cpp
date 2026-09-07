@@ -725,7 +725,28 @@ void LoginWorldComponent::WorldSendWorldComplete()
 
 void LoginWorldComponent::WorldProcessGuildsList(const EQ::Net::Packet &p)
 {
-	LOG_DEBUG(MOD_WORLD, "Received guilds list");
+	// T443 (board B418). This was one LOG_DEBUG that read none of the
+	// packet, which is why the client had no guild-id -> name source at all
+	// (T429 Leg B, behind Entity::guildId). The wire shape and its
+	// citations are in include/client/guild/guild_name_table.h; the two
+	// bytes skipped here are fable's own opcode prefix, the same +2 every
+	// other World handler in this TU applies.
+	if (p.Length() <= 2) {
+		LOG_DEBUG(MOD_WORLD, "Received guilds list: empty payload");
+		m_guild_names.clear();
+		return;
+	}
+	const size_t body = p.Length() - 2;
+	const size_t named = m_guild_names.parseTitaniumGuildsList(
+		static_cast<const uint8_t*>(p.Data()) + 2, body);
+	if (body != eqt::guild::kGuildsListBodyBytes) {
+		// Not an error: the struct is fixed size, so a short body means the
+		// server is not the Titanium encoder we quoted. Parse what is there
+		// and say so rather than dropping the whole list.
+		LOG_WARN(MOD_WORLD, "Guilds list body is {} bytes, expected {}",
+		         body, eqt::guild::kGuildsListBodyBytes);
+	}
+	LOG_DEBUG(MOD_WORLD, "Received guilds list: {} named guilds", named);
 }
 
 void LoginWorldComponent::WorldProcessLogServer(const EQ::Net::Packet &p)

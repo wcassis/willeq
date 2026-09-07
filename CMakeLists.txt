@@ -292,6 +292,8 @@ SET(CLIENT_CORE_SOURCES
     src/client/core/data_paths.cpp
     src/client/login_world/login_world_component.cpp
     src/client/guild/guild_component.cpp
+    # T443 (B418): OP_GuildsList parsed into a guild-id -> name lookup.
+    src/client/guild/guild_name_table.cpp
     src/client/gm/gm_component.cpp
     src/client/merchant/merchant.cpp
     src/client/merchant/merchant_trade.cpp
@@ -532,6 +534,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/zone_lifecycle/renderer_zone_lifecycle.cpp
         src/client/graphics/diagnostics/diagnostics_component.cpp
         src/client/graphics/diagnostics/diagnostics_debug.cpp
+        # T443 (B453): /dumpscene's unaccounted arithmetic, device-free.
+        src/client/graphics/diagnostics/scene_node_census.cpp
         # L05 (Batch L): the player family -- movement, collision and camera.
         # THE BASENAMES ARE LOAD-BEARING: tests/test_first_person_camera_single_formula.cpp
         # names renderer_camera.cpp and renderer_player_physics.cpp as string

@@ -228,6 +228,17 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_stop_all_movement)
 
+# T443 (board B418): OP_GuildsList parsed into a guild-id -> name lookup.
+# Device-free, database-free; the census cases run against the pre-fix tree.
+ADD_EXECUTABLE(test_guild_name_table
+    test_guild_name_table.cpp
+)
+TARGET_LINK_LIBRARIES(test_guild_name_table GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_guild_name_table PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_guild_name_table)
+
 # K10 (Batch K): the extracted eqt::login_world::LoginWorldComponent, driven
 # directly through EverQuest::LoginWorld().
 ADD_EXECUTABLE(test_login_world_component

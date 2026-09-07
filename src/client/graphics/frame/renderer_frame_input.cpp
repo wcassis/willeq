@@ -626,6 +626,11 @@ void FrameComponent::processChatInput() {
             itemDisplayState_.isOpen = false;
             popupConsumedEscape = true;
         }
+        // T443 (board B454): the tradeskill container is handled inside
+        // processKey() below, with the other centre popups -- it is one of
+        // them, and it is the topmost (drawn after the loot popup). Like
+        // the bank and the merchant it pushes its close intent and waits,
+        // because it is SERVER-owned.
         // T436 (board B429): the bank window, then the merchant window --
         // the same top-down rule, at the two levels those windows sit at
         // (the bank draws above the centre popups, the merchant is one of
@@ -643,7 +648,8 @@ void FrameComponent::processChatInput() {
         if (!popupConsumedEscape && newUIEnabled_ && staticUIInput_) {
             popupConsumedEscape = staticUIInput_->processKey(
                 irr::KEY_ESCAPE, /*pressed=*/true, /*shift=*/false, /*ctrl=*/false,
-                inventoryState_, spellbookState_, skillsPopupState_, lootState_);
+                inventoryState_, spellbookState_, skillsPopupState_, lootState_,
+                tradeskillState_);
         }
         if (!popupConsumedEscape && ctx_.Overlays().currentTargetId() != 0) {
             LOG_INFO(MOD_GRAPHICS, "[TARGET] Cleared target: {}", ctx_.Overlays().currentTargetName());

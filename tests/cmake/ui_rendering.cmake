@@ -373,6 +373,29 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_dead_renderer_members)
 ENDIF()
 
+# T443 (board B454): ESC on a server-owned window sends its close intent
+# instead of hiding the panel (the tradeskill container joins the loot, bank
+# and merchant windows). Census cases run against the pre-fix tree.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_esc_server_owned_windows
+        test_esc_server_owned_windows.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_esc_server_owned_windows PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_esc_server_owned_windows GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_esc_server_owned_windows)
+ENDIF()
+
+# T443 (board B453): /dumpscene's unaccounted count, against a hand-built
+# scene graph on an EDT_NULL device.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_scene_node_census
+        test_scene_node_census.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_scene_node_census PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_scene_node_census GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_scene_node_census)
+ENDIF()
+
 # T421 Leg B (board B365): the ONE text-entry widget, and the tradeskill
 # search box using it.
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
