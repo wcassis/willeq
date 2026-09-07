@@ -165,6 +165,21 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_entity_size_change DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# T454 (board B473): a corpse holds the death pose's last frame. Same
+# EDT_NULL + willeq_core gate as test_entity_size_change; the real-node half
+# skips without the shipped db or the client tree.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_corpse_death_pose
+        test_corpse_death_pose.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_corpse_death_pose PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_corpse_death_pose GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_corpse_death_pose PRIVATE
+        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}"
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    GTEST_DISCOVER_TESTS(test_corpse_death_pose DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T310 Leg B: collisionZOffset is the origin-to-feet distance, not half the
 # bbox. Same EDT_NULL + willeq_core gate as the eye anatomy tests; the
 # shipped-mesh half skips without the db or the client tree.

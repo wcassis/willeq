@@ -15,8 +15,7 @@
 //   item_models     - Item ID to model ID mapping
 //   race_models     - Race ID to model code + S3D file
 //   sound_assets    - Sound file references from SoundAssets.txt
-//   animation_sounds, music_files, login_strings, equipment_models,
-//   equipment_textures, metadata
+//   animation_sounds, music_files, login_strings, equipment_models, metadata
 //
 // T450: this list used to name a `zone_points` table as well. There is no
 // such loader and no such table -- zone lines ship as data/zone_lines/*.json,
@@ -36,6 +35,16 @@
 //   tools/willeq_db/db_loaders_text.cpp  the EQ client's *.txt inputs
 //   tools/willeq_db/db_loaders_json.cpp  the WillEQ/config *.json inputs
 // What stayed here is the four shared helpers, the metadata table and main().
+//
+// T454 (board B474 CLOSED): and an ELEVENTH is gone -- `equipment_textures`,
+// 2,623 rows naming which of the 17 *equip*.s3d archives holds each held-item
+// texture, written by loadEquipmentModels() and read by NOTHING. Unlike
+// B468's s3d_assets this was not a broken route but a redundant one: the
+// equipment texture path resolves LIVE, through
+// EquipmentModelLoader::buildEquipmentIndex(), which indexes those same 17
+// archives into textureIndex_ at zone load, and getTextureRef() is what the
+// mesh build asks. Dropping the table takes total_entries from 32,414 to
+// 29,791 and the shipped file from twelve tables to eleven.
 
 #include <algorithm>
 #include <cstdint>
