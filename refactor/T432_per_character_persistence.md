@@ -188,7 +188,7 @@ POST-FIX: **18/18 pass.**
 |---|---|
 | `cmake --build build -j24` (RelWithDebInfo, GLES2 tree) | EXIT 0 |
 | `ctest -j6` | **4426/4429**, 551 s |
-| `check_file_sizes.sh fable` | 26 files checked, 26 ok, 0 warn, 0 fail |
+| `check_file_sizes.sh fable` | 25 files checked, 25 ok, 0 warn, 0 fail |
 
 ctest reds, all three re-run standalone:
 
