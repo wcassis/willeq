@@ -220,12 +220,12 @@ public:
     bool createDoor(uint8_t doorId, const std::string& name,
                     float x, float y, float z, float heading,
                     uint32_t incline, uint16_t size, uint8_t opentype,
-                    bool initiallyOpen);
+                    bool initiallyOpen, uint32_t doorParam = 0);
     // Register door metadata only (no mesh building, for deferred loading)
     bool registerDoor(uint8_t doorId, const std::string& name,
                       float x, float y, float z, float heading,
                       uint32_t incline, uint16_t size, uint8_t opentype,
-                      bool initiallyOpen);
+                      bool initiallyOpen, uint32_t doorParam = 0);
     void setDoorState(uint8_t doorId, bool open, bool userInitiated = false);
     void clearDoors();
 

@@ -687,9 +687,9 @@ void IrrlichtRenderer::createEntityRenderer() {
 bool IrrlichtRenderer::createDoor(uint8_t doorId, const std::string& name,
                                    float x, float y, float z, float heading,
                                    uint32_t incline, uint16_t size, uint8_t opentype,
-                                   bool initiallyOpen) {
+                                   bool initiallyOpen, uint32_t doorParam) {
     if (doorManager_) {
-        return doorManager_->createDoor(doorId, name, x, y, z, heading, incline, size, opentype, initiallyOpen);
+        return doorManager_->createDoor(doorId, name, x, y, z, heading, incline, size, opentype, initiallyOpen, doorParam);
     }
     return false;
 }
@@ -697,9 +697,9 @@ bool IrrlichtRenderer::createDoor(uint8_t doorId, const std::string& name,
 bool IrrlichtRenderer::registerDoor(uint8_t doorId, const std::string& name,
                                      float x, float y, float z, float heading,
                                      uint32_t incline, uint16_t size, uint8_t opentype,
-                                     bool initiallyOpen) {
+                                     bool initiallyOpen, uint32_t doorParam) {
     if (doorManager_) {
-        return doorManager_->registerDoor(doorId, name, x, y, z, heading, incline, size, opentype, initiallyOpen);
+        return doorManager_->registerDoor(doorId, name, x, y, z, heading, incline, size, opentype, initiallyOpen, doorParam);
     }
     return false;
 }

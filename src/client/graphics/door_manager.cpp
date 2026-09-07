@@ -471,7 +471,7 @@ irr::scene::IMesh* DoorManager::createPlaceholderMesh(const std::string& doorNam
 bool DoorManager::createDoor(uint8_t doorId, const std::string& name,
                               float x, float y, float z, float heading,
                               uint32_t incline, uint16_t size, uint8_t opentype,
-                              bool initiallyOpen)
+                              bool initiallyOpen, uint32_t doorParam)
 {
     if (!smgr_) {
         return false;
@@ -524,6 +524,12 @@ bool DoorManager::createDoor(uint8_t doorId, const std::string& name,
     // Spinning objects: opentype 100 = Y-spin (lamps, gems), 105 = Z-spin (blades)
     visual.isSpinning = (opentype == 100 || opentype == 105);
     visual.spinAngle = 0.0f;
+    // T438 (board B422): opentype 59 with door_param > 0 TRANSLATES.
+    visual.doorParam = doorParam;
+    visual.isLift = DoorTravels(opentype, doorParam);
+    if (visual.isLift) {
+        visual.lift.init(static_cast<float>(doorParam));
+    }
 
     // Calculate scale and bounding box info first
     float scale = static_cast<float>(size) / 100.0f;
@@ -659,7 +665,7 @@ bool DoorManager::createDoor(uint8_t doorId, const std::string& name,
 bool DoorManager::registerDoor(uint8_t doorId, const std::string& name,
                                 float x, float y, float z, float heading,
                                 uint32_t incline, uint16_t size, uint8_t opentype,
-                                bool initiallyOpen)
+                                bool initiallyOpen, uint32_t doorParam)
 {
     if (!smgr_) {
         return false;
@@ -690,6 +696,12 @@ bool DoorManager::registerDoor(uint8_t doorId, const std::string& name,
     visual.isAnimating = false;
     visual.isSpinning = (opentype == 100 || opentype == 105);
     visual.spinAngle = 0.0f;
+    // T438 (board B422): opentype 59 with door_param > 0 TRANSLATES.
+    visual.doorParam = doorParam;
+    visual.isLift = DoorTravels(opentype, doorParam);
+    if (visual.isLift) {
+        visual.lift.init(static_cast<float>(doorParam));
+    }
     visual.meshBuilt = false;
 
     // Store raw parameters for deferred building
@@ -947,10 +959,32 @@ void DoorManager::setDoorState(uint8_t doorId, bool open, bool userInitiated)
         return;
     }
 
+    // T438 (board B422): a lift runs a whole CYCLE per OP_MoveDoor -- it
+    // travels door_param units, dwells and comes back -- so the packet is a
+    // trigger, not a commanded end state. Measured: eqemu's own close arrives
+    // 5 s into lift 69's ride and the official client does not react to it, so
+    // trigger() ignores a MoveDoor that lands mid-cycle.
+    if (visual.isLift) {
+        visual.isOpen = open;
+        visual.lift.trigger();
+        if (userInitiated) {
+            LOG_DEBUG(MOD_GRAPHICS, "Lift {} cycle triggered (travel {} units)", doorId, visual.doorParam);
+        } else {
+            LOG_TRACE(MOD_GRAPHICS, "Lift {} cycle triggered (travel {} units)", doorId, visual.doorParam);
+        }
+        return;
+    }
+
     // Only start animation if state actually changed
     if (visual.isOpen != open) {
         visual.isOpen = open;
         visual.isAnimating = true;
+        // T438: the official client closes the door BY ITSELF 11.04 s after it
+        // opens. eqemu transmits no close at all for an ordinary door
+        // (/mnt/projects/akk-stack/code/zone/doors.cpp:138 only sends one for
+        // open_type 40 or trigger_type 1), so before this every door a player
+        // or an NPC opened stayed open for the rest of the session.
+        visual.autoCloseTimer = open ? DoorMotion::kHingedAutoCloseSeconds : -1.0f;
         // K15 (board B006): the old gate read EverQuest::GetDebugLevel() and
         // printed at "level >= 2 for every door, level >= 1 when the player
         // initiated it". The logging module already has that query
@@ -964,100 +998,10 @@ void DoorManager::setDoorState(uint8_t doorId, bool open, bool userInitiated)
     }
 }
 
-void DoorManager::update(float deltaTime)
-{
-    for (auto& [id, visual] : doors_) {
-        if (!visual.sceneNode) {
-            continue;
-        }
+// T438: DoorManager::update() -- the animation -- moved to
+// door_manager_animation.cpp when this TU reached the 1,500-line ceiling.
+// See docs/module_map.md.
 
-        bool doorVisible = isRegionPvsVisible(visual.bspRegion);
-
-        // Occlusion culling: region-level stencil portal occlusion
-        if (doorVisible && visual.bspRegion != SIZE_MAX && occlusionCulledRegions_
-            && occlusionCulledRegions_->count(visual.bspRegion)) {
-            doorVisible = false;
-        }
-
-        if (!doorVisible) {
-            if (visual.inSceneGraph && visual.pivotNode) {
-                visual.pivotNode->remove();
-                visual.inSceneGraph = false;
-            }
-            continue;
-        } else {
-            if (!visual.inSceneGraph && visual.pivotNode) {
-                smgr_->getRootSceneNode()->addChild(visual.pivotNode);
-                visual.inSceneGraph = true;
-                visual.pivotNode->updateAbsolutePosition();
-                if (visual.sceneNode) visual.sceneNode->updateAbsolutePosition();
-            }
-        }
-
-        // Handle spinning objects (opentype 100 = Y-spin, 105 = Z-spin)
-        if (visual.isSpinning) {
-            visual.spinAngle += SPIN_SPEED * deltaTime;
-            if (visual.spinAngle >= 360.0f) {
-                visual.spinAngle -= 360.0f;
-            }
-
-            // Spinning objects rotate the pivot node
-            irr::scene::ISceneNode* rotNode = visual.pivotNode ? visual.pivotNode : visual.sceneNode;
-            irr::core::vector3df rot = rotNode->getRotation();
-            if (visual.opentype == 100) {
-                // Y-axis spin (lamps, gems, etc.) - add spin to base heading rotation
-                // Heading is in 512 format, convert to degrees, add 90 for alignment
-                rot.Y = -visual.closedHeading * 360.0f / 512.0f + 90.0f + visual.spinAngle;
-            } else if (visual.opentype == 105) {
-                // Z-axis spin (blades, etc.) - spin around local Z
-                rot.Z = visual.spinAngle;
-            }
-            rotNode->setRotation(rot);
-            continue;  // Spinning objects don't use open/close animations
-        }
-
-        // Handle door open/close animations
-        if (!visual.isAnimating) {
-            continue;
-        }
-
-        // Update animation progress
-        float targetProgress = visual.isOpen ? 1.0f : 0.0f;
-        float direction = visual.isOpen ? 1.0f : -1.0f;
-
-        visual.animProgress += direction * ANIM_SPEED * deltaTime;
-        visual.animProgress = std::max(0.0f, std::min(1.0f, visual.animProgress));
-
-        // Interpolate heading between closed and open (both in 512 format)
-        // When closed (progress=0): openHeading (spawn + incline, appears closed)
-        // When open (progress=1): closedHeading (spawn heading, appears open)
-        float currentHeading = visual.openHeading +
-            (visual.closedHeading - visual.openHeading) * visual.animProgress;
-
-        // Apply rotation to pivot node (rotates door around hinge)
-        // Heading is in 512 format, convert to degrees, add 90 for alignment
-        float irrRotation = -currentHeading * 360.0f / 512.0f + 90.0f;
-        irr::scene::ISceneNode* rotNode = visual.pivotNode ? visual.pivotNode : visual.sceneNode;
-        rotNode->setRotation(irr::core::vector3df(0, irrRotation, 0));
-
-        // Update bounding box for interaction
-        visual.boundingBox = visual.sceneNode->getTransformedBoundingBox();
-
-        // T435 (B425): the map holds the door's CURRENT geometry, so a door
-        // re-bakes on every frame it moves as well as when it settles. Today
-        // both poses are a pure function of the two headings, which do not
-        // change mid-animation; a door that TRANSLATES (board B422's lifts)
-        // moves its pivot, and this is the hook that keeps it honest.
-        markCollisionDirty(id);
-
-        // Check if animation complete
-        if (visual.animProgress == targetProgress) {
-            visual.isAnimating = false;
-            LOG_DEBUG(MOD_GRAPHICS, "Door {} animation complete ({})",
-                      id, visual.isOpen ? "open" : "closed");
-        }
-    }
-}
 
 uint8_t DoorManager::getDoorAtScreenPos(int screenX, int screenY,
                                          irr::scene::ICameraSceneNode* camera,
