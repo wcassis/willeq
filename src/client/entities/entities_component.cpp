@@ -403,6 +403,15 @@ void eqt::entities::EntitiesComponent::ZoneProcessTimeOfDay(const EQ::Net::Packe
 		ctx_.game_state.world().timeHour(), ctx_.game_state.world().timeMinute(), ctx_.game_state.world().timeDay(), ctx_.game_state.world().timeMonth(), ctx_.game_state.world().timeYear());
 }
 
+std::string eqt::entities::FormatDoorSpawnDump(uint32_t loopIndex, const uint8_t* record)
+{
+	// B464: record[60] is the door's OWN id. Passing loopIndex here instead
+	// was the defect -- it named the array slot and read as a door id.
+	return fmt::format("Door {} (packet slot {}) raw bytes @60-67: {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}",
+	                   record[60], loopIndex, record[60], record[61], record[62], record[63],
+	                   record[64], record[65], record[66], record[67]);
+}
+
 void eqt::entities::EntitiesComponent::ZoneProcessSpawnDoor(const EQ::Net::Packet &p)
 {
 	// Packet format: opcode(2) + array of Door_Struct(80)
@@ -454,8 +463,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessSpawnDoor(const EQ::Net::Packe
 		ctx_.game_state.doors().addDoor(door);
 
 		// Debug: dump raw bytes at critical offsets (60-68)
-		LOG_DEBUG(MOD_ENTITY, "Door {} raw bytes @60-67: {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}",
-		         i, data[60], data[61], data[62], data[63], data[64], data[65], data[66], data[67]);
+		LOG_DEBUG(MOD_ENTITY, "{}", FormatDoorSpawnDump(i, data));
 
 		LOG_DEBUG(MOD_ENTITY, "Door {}: '{}' at ({:.1f}, {:.1f}, {:.1f}) heading={:.1f} incline={} size={} type={} state_at_spawn={} invert={}",
 		         door.doorId, door.name, door.x, door.y, door.z, door.heading,

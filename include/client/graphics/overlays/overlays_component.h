@@ -53,6 +53,23 @@ public:
 
 	// --- Forwarded from IrrlichtRenderer (the K11 rule: Application and
 	// IrrlichtBridge must not learn a component exists) -------------------
+	// T448 moved these two paragraphs here out of irrlicht_renderer.h, where
+	// they annotated the forwarders this family left behind.
+	//
+	// L03 (Batch L): setCurrentTarget / setCurrentTargetInfo /
+	// clearCurrentTarget stay as one-line forwarders on IrrlichtRenderer
+	// because irrlicht_bridge.cpp calls them and must not learn a component
+	// exists (the K11 rule) -- setCurrentTarget/clearCurrentTarget are also the
+	// IOutputRenderer-shaped public surface ConsoleRenderer/NullRenderer
+	// implement. getCurrentTargetInfo() had zero callers tree-wide and moved
+	// with currentTargetInfo_, so it was deleted (Mechanism 5).
+	//
+	// setZoneLineBoundingBoxes() likewise stays a forwarder there because
+	// application_zone_loading.cpp calls it. The renderer's own callers of
+	// clearZoneLineBoundingBoxes()/toggleZoneLineVisualization() were
+	// retargeted to overlays_->. setZoneLineDebug(), isInZoneLine() and
+	// isZoneLineVisualizationEnabled() had zero callers tree-wide
+	// (Mechanism 5); T354 then deleted the debug border those wrote for (B042).
 	void setCurrentTarget(uint16_t spawnId, const std::string& name, uint8_t hpPercent = 100, uint8_t level = 0);
 	void setCurrentTargetInfo(const TargetInfo& info);
 	void clearCurrentTarget();

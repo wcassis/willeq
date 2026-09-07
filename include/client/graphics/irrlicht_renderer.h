@@ -142,19 +142,15 @@ public:
     void setLoading(bool loading) { loading_.store(loading, std::memory_order_release); }
     bool isLoading() const { return loading_.load(std::memory_order_acquire); }
 
-    // Show/hide loading screen (progress bar overlay)
     void showLoadingScreen();
     void hideLoadingScreen();
-    bool isLoadingScreenVisible() const { return loadingScreenVisible_; }
 
     // D20d: renderer-specific slash commands forwarded from the game thread.
     // L06: SlashCommandsComponent implements it; forwarder kept for the bridge.
     void processSlashCommand(const std::string& command) { slash_->processSlashCommand(command); }
 
-    // Shutdown the renderer
     void shutdown();
 
-    // Check if renderer is running
     bool isRunning() const;
 
     // Request the renderer to quit (for /q, /quit commands)
@@ -164,36 +160,23 @@ public:
     // ZoneLifecycleComponent. These six stay as forwarders, each justified by
     // a NAMED caller listed in zone_lifecycle_component.h (the K11 rule).
     void unloadZone() { zoneLifecycle_->unloadZone(); }
-    void setupInstantScene(const std::string& zoneName, float playerX = 0, float playerY = 0, float playerZ = 0) {
-        zoneLifecycle_->setupInstantScene(zoneName, playerX, playerY, playerZ);
-    }
+    void setupInstantScene(const std::string& zoneName, float playerX = 0, float playerY = 0, float playerZ = 0) { zoneLifecycle_->setupInstantScene(zoneName, playerX, playerY, playerZ); }
     void storeZoneEnvironment(uint8_t skyType, uint8_t zoneType,
                               const uint8_t fogRed[4], const uint8_t fogGreen[4], const uint8_t fogBlue[4],
-                              const float fogMinClip[4], const float fogMaxClip[4]) {
-        zoneLifecycle_->storeZoneEnvironment(skyType, zoneType, fogRed, fogGreen, fogBlue, fogMinClip, fogMaxClip);
-    }
+                              const float fogMinClip[4], const float fogMaxClip[4]) { zoneLifecycle_->storeZoneEnvironment(skyType, zoneType, fogRed, fogGreen, fogBlue, fogMinClip, fogMaxClip); }
     void setExpectedEntityCount(size_t count) { zoneLifecycle_->setExpectedEntityCount(count); }
     void setNetworkReady(bool ready) { zoneLifecycle_->setNetworkReady(ready); }
     void setWeather(uint8_t type, uint8_t intensity) { zoneLifecycle_->setWeather(type, intensity); }
 
-    // Get current zone name
     const std::string& getCurrentZoneName() const { return currentZoneName_; }
 
-    // Sky control for debugging
-    // Toggle sky rendering on/off
     void toggleSky();
 
-    // Force a specific sky type (for testing)
     // skyTypeId: sky type ID (0=default, 6=luclin, 10=thegrey, 11=pofire, etc.)
     void forceSkyType(uint8_t skyTypeId);
 
-    // Check if sky is enabled
     bool isSkyEnabled() const;
 
-    // Get current sky info string for debug HUD
-    std::string getSkyDebugInfo() const;
-
-    // Entity management
     // isPlayer: true if this is our own player character
     // isNPC: true if this is an NPC (npc_type=1), false for other player characters
     // isCorpse: true if this is a corpse (npc_type=2 or 3), starts with death animation
@@ -216,7 +199,6 @@ public:
     void setEntitySize(uint16_t spawnId, float serverSize);     // T318: shrink/grow/illusion resize (server-authoritative)
     void clearEntities();
 
-    // Door management
     bool createDoor(uint8_t doorId, const std::string& name,
                     float x, float y, float z, float heading,
                     uint32_t incline, uint16_t size, uint8_t opentype,
@@ -246,7 +228,6 @@ public:
     // reporting all live on ZoneStreamComponent. The T111 predicate stays a
     // public static there, and tests/test_progressive_load_rearm.cpp calls it
     // as ZoneStreamComponent::isEntityBlockingProgressiveLoad(...).
-    // Check if progressive loading is active
     bool isProgressiveLoadingActive() const { return progressiveLoadingActive_; }
     // L10 (Batch L): the zone-load step sequence lives on ZoneLoadComponent;
     // these two forward for application_zone_loading.cpp:275,277 (K11 rule).
@@ -259,13 +240,11 @@ public:
 
     // World object management (for click detection on tradeskill containers)
     void addWorldObject(uint32_t dropId, float x, float y, float z, uint32_t objectType, const std::string& name);
-    void removeWorldObject(uint32_t dropId);
     void clearWorldObjects();
 
     // Trigger death animation for an entity (plays death animation and holds at last frame)
     void playEntityDeathAnimation(uint16_t spawnId);
 
-    // Play a specific animation on an entity
     // animCode: EQ animation code (e.g., "c01" for attack, "o02" for wave, etc.)
     // loop: whether to loop the animation (when false, holds on last frame)
     // playThrough: if true, animation must complete before next can start
@@ -276,10 +255,8 @@ public:
     using EntityPoseState = eqt::state::EntityPoseState;
     void setEntityPoseState(uint16_t spawnId, EntityPoseState pose);
 
-    // Set entity weapon skill types for combat animation selection
     void setEntityWeaponSkills(uint16_t spawnId, uint8_t primaryWeaponSkill, uint8_t secondaryWeaponSkill);
 
-    // Get entity weapon skill type (for animation selection)
     uint8_t getEntityPrimaryWeaponSkill(uint16_t spawnId) const;
     uint8_t getEntitySecondaryWeaponSkill(uint16_t spawnId) const;
 
@@ -288,7 +265,6 @@ public:
     void queueCombatAnimation(uint16_t sourceId, uint16_t targetId,
                               uint8_t weaponSkill, int32_t damage, float damagePercent);
 
-    // Check if entity has pending combat animations in buffer
     bool hasEntityPendingCombatAnims(uint16_t spawnId) const;
 
     // Queue received damage animation into combat buffer (from emote packets)
@@ -297,35 +273,15 @@ public:
     // Queue combat skill animation into combat buffer (bash, kick, etc.)
     void queueSkillAnimation(uint16_t spawnId, const std::string& animCode);
 
-    // First-person mode methods
-    // Check if in first-person mode
     bool isFirstPersonMode() const { return PlayerCamera().cameraMode() == CameraMode::FirstPerson; }
 
-    // L05 (Batch L): the player family -- movement, collision, ground height
-    // and the camera -- lives in PlayerCameraComponent. The four methods below
-    // stay as one-line forwarders ONLY because these callers hold an
-    // IrrlichtRenderer and must not learn a component exists (the K11 rule):
-    //   setPlayerSpawnId  -- application_zone_loading.cpp:249,359;
-    //                        bridge/irrlicht_bridge.cpp:69,173
-    //   setVisionType     -- bridge/irrlicht_bridge.cpp:582
-    //   setPlayerPosition -- application_zone_loading.cpp:270,380;
-    //                        bridge/irrlicht_bridge.cpp:24
-    //   setSwimmingState  -- bridge/irrlicht_bridge.cpp:629
-    // setPlayerRace(), resetVisionToBase(), getBaseVision() and isSwimming()
-    // got NO forwarder: each has zero callers on an IrrlichtRenderer receiver,
-    // and a forwarder for surface nothing calls is exactly what this batch
-    // removes. Reach them through PlayerCamera(). T334 (B046) DELETED
-    // setSwimUp(), setSwimDown() and setLevitating(): the first two were never
-    // the sole writers of playerMovement_.swimUp/.swimDown -- the G06 input
-    // poll assigns both every frame from the [ and ] bindings -- and the third
-    // duplicated setSwimmingState()'s levitating parameter. resetVisionToBase()
-    // is no longer a dead end either: setVisionType() calls it (B046).
+    // L05: the player family is PlayerCameraComponent. These four stay as
+    // forwarders for named out-of-renderer callers; see that header (T448).
     void setPlayerSpawnId(uint16_t spawnId) { playerCamera_->setPlayerSpawnId(spawnId); }
     void setVisionType(VisionType vision) { playerCamera_->setVisionType(vision); }
     void setPlayerPosition(float x, float y, float z, float heading) { playerCamera_->setPlayerPosition(x, y, z, heading); }
     void setSwimmingState(bool swimming, float swimSpeed = 20.0f, bool levitating = false) { playerCamera_->setSwimmingState(swimming, swimSpeed, levitating); }
 
-    // Get current vision type
     VisionType getVisionType() const { return currentVision_; }
 
     // Get player's current Z (may differ from set value if snapped to ground)
@@ -356,69 +312,26 @@ public:
     // sibling components that toggle UI state.
     FrameComponent& Frame() const { return *frame_; }
 
-    // Get BSP tree for water region detection
     std::shared_ptr<EQT::Graphics::BspTree> getZoneBspTree() const { return zoneBspTree_; }
 
-    // Update time of day lighting (hour 0-23, minute 0-59)
     void updateTimeOfDay(uint8_t hour, uint8_t minute);
 
-    // T423 (board B362): the scene ambient is a function of FOUR inputs -- the
-    // day/night clock, the user ambient multiplier, the weather modifier and
-    // the vision floor -- and until this it was recomposed only when the CLOCK
-    // moved. eqemu sends OP_TimeOfDay at zone-in and on `#set time`, never on a
-    // timer, so between two clock packets a weather change or a vision buff
-    // reached the world's lighting at an arbitrary later moment or never at
-    // all. T418's first live session measured a whole day block of forced rain
-    // and got zero `updateTimeOfDay: weatherMod ...` lines out of the client.
-    //
-    // Every writer of a non-clock input now MARKS the ambient dirty and the
-    // render thread consumes the mark once per frame
-    // (FrameComponent::recomposeSceneAmbientIfDirty, pinned in the G05
-    // frame-order golden). updateTimeOfDay() itself is the one recompute, and
-    // it CLEARS the flag -- so the clock packet path is unchanged and a
-    // marked-then-clocked frame recomposes once, not twice.
-    //
-    // It starts TRUE: the first frame after a zone load composes the ambient
-    // whether or not the server has sent a clock packet yet.
+    // T423 (board B362): the non-clock ambient inputs mark this flag;
+    // FrameComponent::recomposeSceneAmbientIfDirty() consumes it once a frame.
+    // The full rationale is in frame_component.h beside that method (T448).
     void markSceneAmbientDirty() { sceneAmbientDirty_ = true; }
     bool isSceneAmbientDirty() const { return sceneAmbientDirty_; }
 
-    // T428 (board B280): the night base updateTimeOfDay() feeds the day/night
-    // curve. It is kNightAmbient on every production frame; `/nightambient
-    // <r> <g> <b>` moves it so ONE live session against the official client
-    // can sweep a candidate list, which is how the committed triple was
-    // solved (T405 needed six probe BUILDS to solve four constants because
-    // its knobs were compile-time; T408's /bakedlight is the same lesson).
-    // Setting it marks the ambient dirty, so the change lands on the next
-    // frame without waiting for a clock packet.
-    void setNightAmbientProbe(AmbientRGB night) {
-        nightAmbientProbe_ = night;
-        markSceneAmbientDirty();
-    }
+    // T428 (board B280): the /nightambient probe. Body and rationale in
+    // src/client/graphics/renderer/irrlicht_renderer.cpp (T448).
+    void setNightAmbientProbe(AmbientRGB night);
     AmbientRGB nightAmbientProbe() const { return nightAmbientProbe_; }
 
-    // Camera control modes.
-    // L05 (Batch L): the enum was nested here. PlayerCameraComponent's
-    // setCameraMode(CameraMode) needs it, and the component header cannot
-    // include this one, so the enum moved to client/graphics/renderer_types.h
-    // beside VisionType. This alias keeps every existing spelling working --
-    // EQT::Graphics::IrrlichtRenderer::CameraMode::Follow in
-    // application_zone_loading.cpp:268,378, renderer_slash_commands.cpp:126-130
-    // and tests/test_irrlicht_camera_command.cpp still resolve, unchanged.
+    // L05: CameraMode lives at namespace scope (renderer_types.h); this alias
+    // keeps IrrlichtRenderer::CameraMode::Follow resolving. Why the enum
+    // moved, why there is no cycleCameraMode() or getCameraTransform() here:
+    // player_camera_component.h (T448).
     using CameraMode = EQT::Graphics::CameraMode;
-    // Forwarders, each with a real caller on an IrrlichtRenderer receiver:
-    //   setCameraMode       -- application_zone_loading.cpp:268,378;
-    //                          tests/test_zoning_graphics_integration.cpp:729
-    //   getCameraModeString -- tests/test_irrlicht_camera_command.cpp:68,106
-    // cycleCameraMode() is NOT here: L05 measured zero callers on this class.
-    // GraphicalMode calls it through std::unique_ptr<output::IOutputRenderer>
-    // and reaches output_renderer.h's empty default body -- IrrlichtRenderer
-    // has NO base class (L03 correction 13). Its one real caller is
-    // renderer_slash_commands.cpp, in the renderer, which reaches the
-    // component. getCameraTransform() was gone from this header for the same
-    // reason and T334 (B045) deleted it outright: the audio listener it was
-    // written for has had a producer since D20c2, and that producer uses the
-    // PLAYER position by design (BridgeComponent::UpdateAudioListener).
     void setCameraMode(CameraMode mode) { playerCamera_->setCameraMode(mode); }
     CameraMode getCameraMode() const { return PlayerCamera().cameraMode(); }
     std::string getCameraModeString() const { return playerCamera_->getCameraModeString(); }
@@ -430,32 +343,13 @@ public:
     // (the K11 rule). The phase methods are reached through Frame().
     bool processFrame(float deltaTime) { return frame_->processFrame(deltaTime); }
 
-    // ---- T319: chat-input prefill (game thread -> render thread) ----
-    // The R key (HotkeyAction::ReplyToTell) decodes on the render thread,
-    // crosses to the game thread through bridgeQueue_ ->
-    // GraphicsInputHandler -> InputActionBridge ->
-    // ActionDispatcher::openReplyToTell(), which produces the text the
-    // chat input is meant to open with ("/tell <Name> "). That text has to
-    // come BACK to the render thread, where chatPanelState_ lives.
-    //
-    // handleActionResult() is the body of the InputActionBridge action
-    // callback Application installs (application.cpp); it runs on the GAME
-    // thread. requestChatPrefill() parks the text under
-    // chatPrefillMutex_; processChatInput() takes it on the render thread.
-    // Keep every access to pendingChatPrefill_ inside these two -- same
-    // no-raw-access rule as bridgeQueue_ (T312).
+    // T319: chat-input prefill, game thread -> render thread. The full
+    // hand-off is written out beside the bodies in irrlicht_renderer.cpp;
+    // every access to pendingChatPrefill_ goes through these two (T448).
     void handleActionResult(const std::string& actionName, bool success,
                             const std::string& message);
-    void requestChatPrefill(const std::string& text) {
-        std::lock_guard<std::mutex> lock(chatPrefillMutex_);
-        pendingChatPrefill_ = text;
-    }
-    std::optional<std::string> takeChatPrefill() {
-        std::lock_guard<std::mutex> lock(chatPrefillMutex_);
-        std::optional<std::string> taken;
-        taken.swap(pendingChatPrefill_);
-        return taken;
-    }
+    void requestChatPrefill(const std::string& text);
+    std::optional<std::string> takeChatPrefill();
 
     // ---- T357 (B057): slash-command tab completion ----
     // Application installs the vocabulary (initRendererAndGraphics()); the
@@ -466,10 +360,8 @@ public:
         std::function<std::vector<std::string>(const std::string& partial)>;
     void setCommandCompletionProvider(CommandCompletionProvider provider);
 
-    // Run the main render loop (blocking)
     void run();
 
-    // Take a screenshot
     bool saveScreenshot(const std::string& filename);
 
     // Toggle rendering options. L04 (Batch L) moved every toggle body to
@@ -479,7 +371,6 @@ public:
     // toggle can be asserted headlessly (tests/test_ui_hide_command.cpp).
     bool isAllUIHidden() const { return frame_->allUIHidden_; }
 
-    // Front-to-back sorting and portal occlusion controls
     bool isManualZoneDrawEnabled() const { return manualZoneDrawEnabled_; }
 
     // P10: cross-region zone draw merge (see renderer_zone_merge.h). Runtime
@@ -516,50 +407,11 @@ public:
 
     // Unified render distance (controls fog and object culling, NOT camera far plane)
     // The camera far plane must be larger to include the sky dome
-    void setRenderDistance(float distance) {
-        if (isLoading()) return;
-        ZoneLifecycle().userRenderDistance() = distance;
-        // Cap effective render distance by constrained preset's clip distance
-        if (config_.constrainedConfig.clipDistance > 0.0f) {
-            distance = std::min(distance, config_.constrainedConfig.clipDistance);
-        }
-        // Cap effective render distance by server-provided zone max clip plane
-        renderDistance_ = (ZoneLifecycle().zoneMaxClip() > 0.0f) ? std::min(distance, ZoneLifecycle().zoneMaxClip()) : distance;
-        // Sync camera far plane to render distance (must be at least render distance)
-        if (camera_) {
-            camera_->setFarValue(std::max(renderDistance_, SKY_FAR_PLANE));
-        }
-        overlays_->setupFog();
-        // Sync render distance to entity renderer
-        if (entityRenderer_) {
-            entityRenderer_->setRenderDistance(renderDistance_);
-        }
-        // P32: the tree-manager render-distance sync was removed along with
-        // AnimatedTreeManager — it only fed the CPU-instancing distance
-        // culling (dead on GLES2; that code path was reachable only via
-        // the removed EDT_BURNINGSVIDEO branch).
-        // T412 (board B294): no flag is set here. renderDistance_ is republished
-        // to SimulationWorker on EVERY frame (SimBridgeComponent::
-        // buildSimulationInput sets input.renderDistance = ctx_.renderDistance),
-        // and computeVisibility()/calculateRegions() recompute the whole visible
-        // set from it unconditionally -- there is no movement threshold and no
-        // cached camera position left to invalidate. The old forcePvsUpdate_
-        // reset the render thread's static BSP-lookup cache in
-        // updatePvsVisibility(), which 6914d99b deleted when PVS moved to the
-        // worker; the flag has been inert ever since.
-    }
+    void setRenderDistance(float distance);
     float getRenderDistance() const { return renderDistance_; }
 
     // Sky far plane - camera far value must be at least this to render sky
     static constexpr float SKY_FAR_PLANE = 2000.0f;
-
-    // Fog thickness (fade zone at edge of render distance)
-    void setFogThickness(float thickness) {
-        if (isLoading()) return;
-        fogThickness_ = thickness;
-        overlays_->setupFog();
-    }
-    float getFogThickness() const { return fogThickness_; }
 
     // Get Irrlicht device/driver/GUI (for loading thread GL context transfer)
     irr::IrrlichtDevice* getDevice() { return device_; }
@@ -574,10 +426,8 @@ public:
     OverlaysComponent& Overlays() const { return *overlays_; }
     irr::gui::IGUIEnvironment* getGUIEnvironment() { return Overlays().guienv(); }
 
-    // Get entity renderer
     EntityRenderer* getEntityRenderer() { return entityRenderer_.get(); }
 
-    // Get event receiver (for input state queries)
     RendererEventReceiver* getEventReceiver() { return eventReceiver_.get(); }
 
     // K15 (B034): the HUD text update callback (HUDCallback, setHUDCallback,
@@ -596,13 +446,8 @@ public:
     // each site that invoked them already pushes the equivalent bridge
     // intent (TargetIntent, LootCorpseIntent, VendorToggleIntent, ...).
 
-    // Current target management. L03 (Batch L): the bodies moved to
-    // OverlaysComponent; these three stay as one-line forwarders because
-    // irrlicht_bridge.cpp calls them and must not learn a component exists
-    // (the K11 rule) -- setCurrentTarget/clearCurrentTarget are also the
-    // IOutputRenderer-shaped public surface ConsoleRenderer/NullRenderer
-    // implement. getCurrentTargetInfo() had zero callers tree-wide and moved
-    // with currentTargetInfo_, so it was deleted (Mechanism 5).
+    // Current target. L03: bodies on OverlaysComponent; these forward for
+    // irrlicht_bridge.cpp. See overlays_component.h (T448).
     void setCurrentTarget(uint16_t spawnId, const std::string& name, uint8_t hpPercent = 100, uint8_t level = 0) { overlays_->setCurrentTarget(spawnId, name, hpPercent, level); }
     void setCurrentTargetInfo(const TargetInfo& info) { overlays_->setCurrentTargetInfo(info); }
     void clearCurrentTarget() { overlays_->clearCurrentTarget(); }
@@ -615,7 +460,6 @@ public:
     // its own copy on the next zone change.
     void setCollisionMap(std::shared_ptr<const HCMap> map) { if (isLoading()) return; collisionMap_ = std::move(map); }
 
-    // Navmesh pathfinder for navmesh overlay visualization
     void setNavmesh(PathfinderNavmesh* navmesh) { overlays_->setNavmesh(navmesh); }
 
     // Clip distance (camera far plane) - for constrained rendering mode
@@ -637,7 +481,6 @@ public:
     void setUiPreferencesIdentity(const std::string& character,
                                   const std::string& server);
 
-    // Note/Book reading UI
     void showNoteWindow(const std::string& text, uint8_t type);
 
     // Zone ready state - controls whether to show loading screen
@@ -645,34 +488,18 @@ public:
     void setZoneReady(bool ready) { if (isLoading()) return; zoneReady_ = ready; }
     bool isZoneReady() const { return zoneReady_; }
 
-    // Entity loading state - tracks when all entities have been fully loaded
     // L09 (Batch L): on ZoneLifecycleComponent, forwarded above.
     // notifyEntityLoaded(), checkAndSetZoneReady() and areEntitiesLoaded() had
     // ZERO callers and were deleted (§Mechanism 5) -- see the component header.
     bool isNetworkReady() const { return ZoneLifecycle().networkReady(); }
 
-    // Loading progress for zone transitions
-    void setLoadingProgress(float progress, const std::wstring& text) {
-        if (isLoading()) return;
-        Frame().loadingProgress() = progress;
-        Frame().loadingText() = text;
-        // Immediately redraw loading screen so progress updates are visible
-        // during blocking operations like LoadZoneGraphics()
-        if (loadingScreenVisible_) {
-            overlays_->drawLoadingScreen(progress, text);
-        }
-    }
+    void setLoadingProgress(float progress, const std::wstring& text);
 
     // Loading screen title (e.g., "Connecting...", "Loading Zone...")
     void setLoadingTitle(const std::wstring& title) { overlays_->setLoadingTitle(title); }
 
-    // Zone line bounding box visualization. L03: implemented by
-    // OverlaysComponent; this one stays as a forwarder because
-    // application_zone_loading.cpp calls it (the K11 rule). The renderer's
-    // own callers of clearZoneLineBoundingBoxes()/toggleZoneLineVisualization()
-    // were retargeted to overlays_->. setZoneLineDebug(), isInZoneLine() and
-    // isZoneLineVisualizationEnabled() had zero callers tree-wide (Mechanism 5);
-    // T354 then deleted the debug border those wrote for (B042).
+    // Zone-line bounding boxes. L03: body on OverlaysComponent; forwards for
+    // application_zone_loading.cpp. See overlays_component.h (T448).
     void setZoneLineBoundingBoxes(const std::vector<EQT::ZoneLineBoundingBox>& boxes) { overlays_->setZoneLineBoundingBoxes(boxes); }
     bool isInventoryOpen() const;
     void setCharacterInfo(const std::wstring& name, int level, const std::wstring& className);
@@ -687,29 +514,21 @@ public:
                               float weight, float maxWeight,
                               uint32_t platinum, uint32_t gold, uint32_t silver, uint32_t copper);
 
-    // Character model view (3D preview in inventory)
     void updatePlayerAppearance(uint16_t raceId, uint8_t gender,
                                 const EntityAppearance& appearance);
 
-    // Update entity appearance (for illusion spells, etc.)
     void updateEntityAppearance(uint16_t spawnId, uint16_t raceId, uint8_t gender,
                                 const EntityAppearance& appearance);
 
-    // Mouse position (from event receiver)
     int getMouseX() const { return eventReceiver_ ? eventReceiver_->getMouseX() : 0; }
     int getMouseY() const { return eventReceiver_ ? eventReceiver_->getMouseY() : 0; }
 
-    // Loot window access
     // U07c3: getWindowManager() removed — old UI deleted
 
-    // Spell visual effects access
     EQ::SpellVisualFX* getSpellVisualFX() { return SimBridge().spellVisualFX().get(); }
 
     // U01: Batched text renderer
     TextBatch* getTextBatch() { return textBatch_.get(); }
-
-    // U02: UI sprite atlas
-    UIAtlas* getUIAtlas() { return uiAtlas_.get(); }
 
     // U03: Static layout UI
     UIRenderer* getUIRenderer() { return frame_->uiRenderer_.get(); }
@@ -718,47 +537,27 @@ public:
 
     // Constrained texture cache — owned by Application, set before initLoadingScreen()
     void setConstrainedTextureCache(ConstrainedTextureCache* cache) { constrainedTextureCache_ = cache; }
-    ConstrainedTextureCache* getConstrainedTextureCache() { return constrainedTextureCache_; }
 
-    // Frame budget governor access (always available after init)
     FrameBudgetGovernor* getGovernor() { return governor_.get(); }
 
-    // Check if deferred asset loading is enabled
     bool isDeferredAssetLoading() const { return config_.constrainedConfig.deferredAssetLoading; }
 
-    // Zone shader access (returns nullptr if shaders not available/enabled)
-    ZoneShaderManager* getZoneShader() { return zoneShader_.get(); }
-
-    // Detail system access (grass, plants, debris)
     Detail::DetailManager* getDetailManager() { return detailManager_.get(); }
 
-    // Environmental particle system access
     Environment::ParticleManager* getParticleManager() { return particleManager_.get(); }
 
-    // Ambient creatures (boids) system access
-    Environment::BoidsManager* getBoidsManager() { return boidsManager_.get(); }
-
-    // Tumbleweed system access (desert/plains rolling objects)
-    Environment::TumbleweedManager* getTumbleweedManager() { return tumbleweedManager_.get(); }
-
-    // Weather effects system access (rain, snow, lightning)
     WeatherEffectsController* getWeatherEffects() { return weatherEffects_.get(); }
 
     // Memory usage report for /pmem command (forwarder, see dumpScene above).
     // The T69 structured accessor getMemoryReportBreakdown() had no caller
     // outside the family and lives on DiagnosticsComponent only.
-    std::vector<std::string> getMemoryReport(const MemoryReportInput& ext) const {
-        return diagnostics_->getMemoryReport(ext);
-    }
+    std::vector<std::string> getMemoryReport(const MemoryReportInput& ext) const { return diagnostics_->getMemoryReport(ext); }
 
     // L09 (Batch L): setWeather() is on ZoneLifecycleComponent, forwarded above.
 
 #ifdef WITH_RDP
-    // RDP server support (alternative to Xvfb+x11vnc). L01 (Batch L) moved
-    // the implementation to RdpComponent; these five stay as one-line
-    // forwarders because Application calls them and must not learn a
-    // component exists (the K11 rule). getRDPClientCount() had zero callers
-    // tree-wide and was deleted.
+    // RDP server support. L01: bodies on RdpComponent; these five forward for
+    // Application. See rdp/rdp_component.h (T448).
     RdpComponent& Rdp() const { return *rdp_; }
     bool initRDP(uint16_t port = 3389) { return rdp_->initRDP(port); }
     bool startRDPServer() { return rdp_->startRDPServer(); }
@@ -1346,79 +1145,42 @@ private:
         int doorCount = 0;
     };
 
-    // L04 (Batch L): the diagnostics family -- scene dump, profiling, memory
-    // report and the runtime debug toggles -- now lives in
-    // DiagnosticsComponent. Constructed in the IrrlichtRenderer ctor body;
-    // see renderer_init.cpp. It reads 39 members that are shared with other
-    // families but sit below the context's 5-family core threshold, plus the
-    // private nested type SceneBreakdown, so it needs friendship (both axes of
-    // K13 correction ii).
+    // Batch L: the eleven extracted renderer components. Each is constructed
+    // in the IrrlichtRenderer ctor body (renderer_init.cpp) and each documents
+    // its own family, its owner_ member census and why it does or does not
+    // need friendship, in its own header -- T448 moved those paragraphs there
+    // rather than restate them on the facade. A `friend` line below means that
+    // component reaches private IrrlichtRenderer state (K13 correction ii);
+    // SlashCommandsComponent has none because it is private-clean on both
+    // census axes (L12).
     friend class DiagnosticsComponent;
     std::unique_ptr<DiagnosticsComponent> diagnostics_;
 
-    // L02 (Batch L): the EQE1 archive family and the fire-glow icospheres.
-    // Constructed in the IrrlichtRenderer ctor body; see renderer_init.cpp.
     std::unique_ptr<Eqe1ArchiveComponent> eqe1_;
 
 #ifdef WITH_RDP
-    // L01 (Batch L): the rdp family -- the server handle, the caps-lock
-    // state and the four handlers -- now lives in RdpComponent. Constructed
-    // in the IrrlichtRenderer ctor body; see renderer_init.cpp.
     std::unique_ptr<RdpComponent> rdp_;
 #endif // WITH_RDP
 
-    // L03 (Batch L): the overlays family -- HUD, map/navmesh/zone-line
-    // overlays, mouse targeting, the loading screen, fog and the paperdoll.
-    // Constructed in the IrrlichtRenderer ctor body; see renderer_init.cpp.
     std::unique_ptr<OverlaysComponent> overlays_;
 
-    // L05 (Batch L): the player family -- player-mode movement, the collision
-    // and raycast layer, ground-height queries, the collision debug lines and
-    // the camera. Constructed in the IrrlichtRenderer ctor body; see
-    // renderer_init.cpp. It reaches 20 members that are shared with other
-    // families but sit below the context's 5-family core threshold, plus the
-    // private nested type DoorCollisionData, so it needs friendship on both
-    // axes of K13 correction (ii).
     friend class PlayerCameraComponent;
     std::unique_ptr<PlayerCameraComponent> playerCamera_;
 
-    // L06 (Batch L): the slash family -- registry 3, the renderer's slash-
-    // command if-chain. Ctor body, renderer_init.cpp; friendship on axis 1.
-    // L12: no friend line -- SlashCommandsComponent is private-clean on both
-    // census axes (see slash/slash_commands_component.h).
     std::unique_ptr<SlashCommandsComponent> slash_;
-    // L07 (Batch L): the SimulationWorker bridge. It reaches 28 members that
-    // are shared with other families but sit below the context's 5-family
-    // core threshold, plus three private methods, so it needs friendship on
-    // axis 1 of K13 correction (ii). simulationWorker_ itself stays here --
-    // L07 changed no thread ownership.
+
     friend class SimBridgeComponent;
     std::unique_ptr<SimBridgeComponent> simBridge_;
 
-    // L08 (Batch L): the zone streaming family. It reaches 23 members that are
-    // shared with other families but sit below the context's 5-family core
-    // threshold, plus two private methods, so it needs friendship on axis 1 of
-    // K13 correction (ii). No thread ownership moved -- see
-    // include/client/graphics/zone_stream/zone_stream_component.h.
     friend class ZoneStreamComponent;
     std::unique_ptr<ZoneStreamComponent> zoneStream_;
 
-    // L09 (Batch L): three families in one component (batch correction 26).
-    // Friendship on axis 1 of K13 (ii); no thread ownership moved -- see
-    // include/client/graphics/zone_lifecycle/zone_lifecycle_component.h.
     friend class ZoneLifecycleComponent;
     std::unique_ptr<ZoneLifecycleComponent> zoneLifecycle_;
 
-    // L10 (Batch L): the loading thread's zone build. Friendship on BOTH axes
-    // of K13 (ii); no thread ownership moved -- see zone_load_component.h.
     friend class ZoneLoadComponent;
     std::unique_ptr<ZoneLoadComponent> zoneLoad_;
 
-    // L11 (Batch L): FrameComponent needs friendship on both axes of K13
-    // correction (ii) -- it reaches ~60 private members through owner_
-    // (frameTimings_ above all) and names IrrlichtRenderer::FrameTimings when
-    // it resets the accumulator. Thread ownership is unchanged: see the
-    // threading note in frame/frame_component.h.
     friend class FrameComponent;
     std::unique_ptr<FrameComponent> frame_;
 };

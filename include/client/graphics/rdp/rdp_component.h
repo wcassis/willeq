@@ -44,6 +44,11 @@ public:
 	// forwarders on the renderer, because Application calls them and must not
 	// learn a component exists (the K11 rule). getRDPClientCount() had zero
 	// callers tree-wide and published no event, so it was deleted (§5).
+	// T448 moved this paragraph here out of irrlicht_renderer.h. L01 (Batch L)
+	// moved the implementation here; five one-line forwarders stay on
+	// IrrlichtRenderer because Application calls them and must not learn a
+	// component exists (the K11 rule). getRDPClientCount() had zero callers
+	// tree-wide and was deleted.
 	bool initRDP(uint16_t port = 3389);
 	bool startRDPServer();
 	void stopRDPServer();

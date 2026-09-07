@@ -618,26 +618,6 @@ bool IrrlichtRenderer::isSkyEnabled() const {
     return skyRenderer_ && skyRenderer_->isEnabled();
 }
 
-std::string IrrlichtRenderer::getSkyDebugInfo() const {
-    if (!skyRenderer_ || !skyRenderer_->isInitialized()) {
-        return "Sky: Not initialized";
-    }
-
-    std::string info = "Sky: ";
-    if (!skyRenderer_->isEnabled()) {
-        info += "OFF";
-    } else {
-        info += fmt::format("Type {} ", skyRenderer_->getCurrentSkyType());
-
-        // Get sky color info
-        auto colors = skyRenderer_->getCurrentSkyColors();
-        info += fmt::format("Bright:{:.0f}% ", colors.cloudBrightness * 100);
-    }
-
-    return info;
-}
-
-
 void IrrlichtRenderer::createEntityRenderer() {
     // S05: Called once from initLoadingScreen(). No lazy-init guard needed.
     entityRenderer_ = std::make_unique<EntityRenderer>(smgr_, driver_, device_->getFileSystem());
@@ -751,14 +731,6 @@ void IrrlichtRenderer::addWorldObject(uint32_t dropId, float x, float y, float z
     worldObjects_[dropId] = obj;
     LOG_DEBUG(MOD_GRAPHICS, "Added world object: dropId={} type={} name='{}' at ({:.1f}, {:.1f}, {:.1f})",
               dropId, objectType, name, x, y, z);
-}
-
-void IrrlichtRenderer::removeWorldObject(uint32_t dropId) {
-    auto it = worldObjects_.find(dropId);
-    if (it != worldObjects_.end()) {
-        LOG_DEBUG(MOD_GRAPHICS, "Removed world object: dropId={}", dropId);
-        worldObjects_.erase(it);
-    }
 }
 
 void IrrlichtRenderer::clearWorldObjects() {
@@ -985,6 +957,42 @@ void IrrlichtRenderer::setFrameTimingEnabled(bool enabled) {
 
 // --- Renderer Mode Implementation ---
 
+// T448: setRenderDistance() was an inline body in irrlicht_renderer.h. It is
+// the renderer's own state (renderDistance_, config_, camera_) plus two
+// ZoneLifecycleComponent reads, so it lives beside setClipDistance() here.
+void IrrlichtRenderer::setRenderDistance(float distance) {
+    if (isLoading()) return;
+    ZoneLifecycle().userRenderDistance() = distance;
+    // Cap effective render distance by constrained preset's clip distance
+    if (config_.constrainedConfig.clipDistance > 0.0f) {
+        distance = std::min(distance, config_.constrainedConfig.clipDistance);
+    }
+    // Cap effective render distance by server-provided zone max clip plane
+    renderDistance_ = (ZoneLifecycle().zoneMaxClip() > 0.0f) ? std::min(distance, ZoneLifecycle().zoneMaxClip()) : distance;
+    // Sync camera far plane to render distance (must be at least render distance)
+    if (camera_) {
+        camera_->setFarValue(std::max(renderDistance_, SKY_FAR_PLANE));
+    }
+    overlays_->setupFog();
+    // Sync render distance to entity renderer
+    if (entityRenderer_) {
+        entityRenderer_->setRenderDistance(renderDistance_);
+    }
+    // P32: the tree-manager render-distance sync was removed along with
+    // AnimatedTreeManager — it only fed the CPU-instancing distance
+    // culling (dead on GLES2; that code path was reachable only via
+    // the removed EDT_BURNINGSVIDEO branch).
+    // T412 (board B294): no flag is set here. renderDistance_ is republished
+    // to SimulationWorker on EVERY frame (SimBridgeComponent::
+    // buildSimulationInput sets input.renderDistance = ctx_.renderDistance),
+    // and computeVisibility()/calculateRegions() recompute the whole visible
+    // set from it unconditionally -- there is no movement threshold and no
+    // cached camera position left to invalidate. The old forcePvsUpdate_
+    // reset the render thread's static BSP-lookup cache in
+    // updatePvsVisibility(), which 6914d99b deleted when PVS moved to the
+    // worker; the flag has been inert ever since.
+}
+
 void IrrlichtRenderer::setClipDistance(float distance) {
     if (isLoading()) return;
     // Clamp to reasonable range
@@ -1012,6 +1020,52 @@ float IrrlichtRenderer::getClipDistance() const {
         return camera_->getFarValue();
     }
     return config_.constrainedConfig.clipDistance;
+}
+
+
+// ---- T319: chat-input prefill (game thread -> render thread) ----
+// T448 moved this paragraph, and the two bodies below it, out of
+// irrlicht_renderer.h.
+//
+// The R key (HotkeyAction::ReplyToTell) decodes on the render thread, crosses
+// to the game thread through bridgeQueue_ -> GraphicsInputHandler ->
+// InputActionBridge -> ActionDispatcher::openReplyToTell(), which produces the
+// text the chat input is meant to open with ("/tell <Name> "). That text has to
+// come BACK to the render thread, where chatPanelState_ lives.
+//
+// handleActionResult() is the body of the InputActionBridge action callback
+// Application installs (application.cpp); it runs on the GAME thread.
+// requestChatPrefill() parks the text under chatPrefillMutex_;
+// processChatInput() takes it on the render thread. Keep every access to
+// pendingChatPrefill_ inside these two -- same no-raw-access rule as
+// bridgeQueue_ (T312).
+// T448: moved out of the facade header. See the declarations there for the
+// T319 game-thread/render-thread contract these two carry.
+void IrrlichtRenderer::requestChatPrefill(const std::string& text) {
+    std::lock_guard<std::mutex> lock(chatPrefillMutex_);
+    pendingChatPrefill_ = text;
+}
+
+std::optional<std::string> IrrlichtRenderer::takeChatPrefill() {
+    std::lock_guard<std::mutex> lock(chatPrefillMutex_);
+    std::optional<std::string> taken;
+    taken.swap(pendingChatPrefill_);
+    return taken;
+}
+
+// T428 (board B280): the night base updateTimeOfDay() feeds the day/night
+// curve. It is kNightAmbient on every production frame; `/nightambient
+// <r> <g> <b>` moves it so ONE live session against the official client can
+// sweep a candidate list, which is how the committed triple was solved (T405
+// needed six probe BUILDS to solve four constants because its knobs were
+// compile-time; T408's /bakedlight is the same lesson). Setting it marks the
+// ambient dirty, so the change lands on the next frame without waiting for a
+// clock packet. (Paragraph moved here from irrlicht_renderer.h by T448.)
+// T428 (board B280): /nightambient's probe setter. Marking the ambient dirty
+// is what lands the change on the next frame without a clock packet.
+void IrrlichtRenderer::setNightAmbientProbe(AmbientRGB night) {
+    nightAmbientProbe_ = night;
+    markSceneAmbientDirty();
 }
 
 

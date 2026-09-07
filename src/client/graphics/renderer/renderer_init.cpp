@@ -756,6 +756,20 @@ bool IrrlichtRenderer::loadGlobalAssets() {
     return true;
 }
 
+// T448: setLoadingProgress() was an inline body in irrlicht_renderer.h. It
+// writes FrameComponent's two loading fields and redraws through
+// OverlaysComponent, so it lives beside the other loading-screen entry points.
+void IrrlichtRenderer::setLoadingProgress(float progress, const std::wstring& text) {
+    if (isLoading()) return;
+    Frame().loadingProgress() = progress;
+    Frame().loadingText() = text;
+    // Immediately redraw loading screen so progress updates are visible
+    // during blocking operations like LoadZoneGraphics()
+    if (loadingScreenVisible_) {
+        overlays_->drawLoadingScreen(progress, text);
+    }
+}
+
 void IrrlichtRenderer::showLoadingScreen() {
     if (isLoading()) return;
     loadingScreenVisible_ = true;
