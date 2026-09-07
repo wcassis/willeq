@@ -166,8 +166,20 @@ void EntityRenderer::updateEntityAppearance(uint16_t spawnId, uint16_t raceId, u
                                isPlayer, gender, appearance, isNPC, isCorpse);
 
     if (result) {
-        // Restore animation state if entity had one
-        if (!currentAnimation.empty()) {
+        // Restore animation state if entity had one.
+        //
+        // T454 (board B473): NOT for a corpse. A corpse's currentAnimation is
+        // the death animation ("d05", or the d02/d01 fallback), and the
+        // rebuild above has already put the body in that animation's LAST
+        // frame and stopped it there -- which is what "lying down" is. Playing
+        // it again as a LOOPING animation restarts it at frame 0, the STANDING
+        // pose, and then loops the character falling over forever. Measured
+        // before the fix on a Human male corpse: state Stopped / frame 12
+        // became state Playing / frame 0. The oracle lays a corpse flat and
+        // leaves it there (T346's OP_SpawnAppearance AT_ANIMATION param 115,
+        // ANIM_LYING; T431's frames), so there is nothing to restore here.
+        // Pinned by CorpsePoseTest.AnAppearanceChangeDoesNotStandTheCorpseBackUp.
+        if (!isCorpse && !currentAnimation.empty()) {
             setEntityAnimation(spawnId, currentAnimation, true, false);
         }
 
