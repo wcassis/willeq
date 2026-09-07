@@ -16,6 +16,7 @@
 #include <utility>
 #include <optional>
 #include <glm/glm.hpp>
+#include "client/graphics/vision_ambient.h"
 #include "client/state/entity_pose_state.h"
 #include "client/graphics/eq/s3d_loader.h"
 #include "client/graphics/eq/zone_geometry.h"
@@ -381,6 +382,20 @@ public:
     // whether or not the server has sent a clock packet yet.
     void markSceneAmbientDirty() { sceneAmbientDirty_ = true; }
     bool isSceneAmbientDirty() const { return sceneAmbientDirty_; }
+
+    // T428 (board B280): the night base updateTimeOfDay() feeds the day/night
+    // curve. It is kNightAmbient on every production frame; `/nightambient
+    // <r> <g> <b>` moves it so ONE live session against the official client
+    // can sweep a candidate list, which is how the committed triple was
+    // solved (T405 needed six probe BUILDS to solve four constants because
+    // its knobs were compile-time; T408's /bakedlight is the same lesson).
+    // Setting it marks the ambient dirty, so the change lands on the next
+    // frame without waiting for a clock packet.
+    void setNightAmbientProbe(AmbientRGB night) {
+        nightAmbientProbe_ = night;
+        markSceneAmbientDirty();
+    }
+    AmbientRGB nightAmbientProbe() const { return nightAmbientProbe_; }
 
     // Camera control modes.
     // L05 (Batch L): the enum was nested here. PlayerCameraComponent's
@@ -1123,6 +1138,9 @@ private:
     // T423 (board B362): set by every writer of a non-clock ambient input,
     // consumed once per frame by FrameComponent. See markSceneAmbientDirty().
     bool sceneAmbientDirty_ = true;
+    // T428 (board B280): see setNightAmbientProbe(). Production value.
+    AmbientRGB nightAmbientProbe_{kNightAmbient[0], kNightAmbient[1],
+                                  kNightAmbient[2]};
     // T396 (board B211): last weather ambient modifier this renderer LOGGED.
     // A member, not the function-static it replaced -- that static was shared
     // by every renderer in the process, and its "only below 0.99" gate meant

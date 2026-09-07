@@ -31,11 +31,66 @@ namespace Graphics {
 // and buffs raise it above that base. T334 (B046): a buff value is APPLIED,
 // not accumulated -- the publisher recomputes the whole buff set on every fade
 // -- so vision does come back down, never below the racial base.
+//
+// T428 (board B060) added the FOURTH value on Will's ruling. T361 measured
+// Froglok (race 330) at a night floor 1.51 luma below Ultravision and 3.31
+// above Infravision -- outside the noise on both sides -- and left it on
+// Normal rather than rounding it to a neighbour by argument. T428 measured it
+// per channel against the same official client on T408's geometry-only crop
+// (review/T428/, oracle session o3, three sessions agreeing to <1% on the
+// other two levels):
+//
+//     level         R        G        B     grey
+//     Ultravision   x2.7995  x1.9517  x2.4946  2.33
+//     Froglok       x2.6803  x1.9478  x2.1753  2.20
+//     Infravision   x2.2483  x1.4121  x1.3561  1.59
+//
+// It is its own level and not a rounding of either neighbour: it sits 5.5%
+// under Ultravision on B and 60% over Infravision on the same channel.
+// FroglokVision is named for the only race that holds it, the way the table
+// gives Ultravision to the Dark Elf alone -- EQ has no fourth term for it.
 enum class VisionType {
-    Normal,      // Base vision (25% intensity) - Human, Barbarian, Erudite, Vah Shir, Froglok
+    Normal,      // Base vision (25% intensity) - Human, Barbarian, Erudite
     Infravision, // Heat vision (75% intensity, red-shifted) - Dwarf, Gnome, Half Elf, Ogre, Halfling
-    Ultravision  // Full dark vision (100% intensity) - Dark Elf, High Elf, Wood Elf, Troll, Iksar
+    Ultravision, // Full dark vision (100% intensity) - Dark Elf ALONE (T361)
+    FroglokVision // The measured fourth level - Froglok (330) alone (T428)
 };
+
+// THE ENUMERATOR VALUES ARE WIRE VALUES -- do not reorder them. `Ultravision`
+// is 2 because `BuffManager::computeVisionType()` literally `return 2;` for an
+// UltraVision effect and `SimulationInput::visionType` carries the enum as a
+// raw uint8_t across the worker boundary (255 is its "not applied" sentinel).
+// T428 therefore APPENDED FroglokVision as 3 rather than slotting it into
+// brightness order, and split brightness out into visionRank() below.
+//
+// visionRank() is the MEASURED brightness order, which is NOT the enumerator
+// order: Froglok sits between Infravision and Ultravision (vision_ambient.h).
+// The one place that matters is `PlayerCameraComponent::setVisionType()`,
+// whose rule is "a buff raises vision, never lowers it" -- written as a
+// comparison on the enum it would have made an Ultravision buff a NO-OP on a
+// Froglok, because 3 > 2 by enumerator and 2.80 > 2.68 by measurement.
+inline int visionRank(VisionType vision) {
+    switch (vision) {
+    case VisionType::Ultravision:   return 3;
+    case VisionType::FroglokVision: return 2;
+    case VisionType::Infravision:   return 1;
+    case VisionType::Normal:        break;
+    }
+    return 0;
+}
+
+// One spelling of each level's name. Three log sites open-coded a two-armed
+// ternary that printed "Normal" for anything it did not recognise, which a
+// fourth level makes actively wrong.
+inline const char* visionName(VisionType vision) {
+    switch (vision) {
+    case VisionType::Ultravision:   return "Ultravision";
+    case VisionType::FroglokVision: return "FroglokVision";
+    case VisionType::Infravision:   return "Infravision";
+    case VisionType::Normal:        break;
+    }
+    return "Normal";
+}
 
 // What a vision type does to a zone light's colour. The consumers apply it as
 //     r = base.r * intensity, then * (1 + redShift) when redShift > 0
@@ -54,6 +109,16 @@ struct VisionLightModifiers {
 inline VisionLightModifiers visionLightModifiers(VisionType vision) {
     switch (vision) {
     case VisionType::Ultravision:
+        return VisionLightModifiers{1.0f, 0.0f};
+    case VisionType::FroglokVision:
+        // T428: the zone-LIGHT half of the fourth level is NOT measured. What
+        // T428 measured is the global ambient floor (vision_ambient.h), which
+        // is the term that carries the buff since T361; whether vision belongs
+        // on the zone's data-only point lights AT ALL is board B067, still
+        // open and worth ~7% of the residual. Rather than invent a fourth pair
+        // of numbers here, the fourth level takes Ultravision's -- the nearest
+        // measured neighbour, 5% away on the ambient floor -- and this comment
+        // is the record that it is inherited, not measured.
         return VisionLightModifiers{1.0f, 0.0f};
     case VisionType::Infravision:
         return VisionLightModifiers{0.75f, 0.3f};

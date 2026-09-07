@@ -113,6 +113,60 @@ struct AmbientRGB {
     float b = 0.0f;
 };
 
+// THE DAY/NIGHT CURVE, AND ITS NIGHT BASE (T428, board B280).
+//
+// These four literals lived inside IrrlichtRenderer::updateTimeOfDay() as
+// bare numbers in a four-armed if-chain. They are here because the night
+// triple is a MEASURED constant against the official client -- exactly like
+// the vision floors below -- and because the dawn and dusk arms interpolate
+// to and from it, so a night value written in one arm and not the others is
+// a discontinuity at 05:00 and 20:00 rather than a typo anyone would see.
+//
+// WHAT WAS WRONG, AND HOW IT WAS MEASURED. fable's night was 5.6x darker
+// than the official client's and a different colour (B280, measured T405 on
+// the first rig with both weather and heading pinned; T408 then showed the
+// deficit is uniform across a 10x range of spot brightness, so it is the
+// ambient and not a lamp term). T428 solved it live, the same way T405
+// solved the floors and T408 swept the baked-light family: the probe is
+// `/nightambient <r> <g> <b>`, so one session covers a whole candidate list
+// instead of one build per candidate.
+//
+// THE TARGET is per channel and it is a RATIO, never an absolute pixel
+// value: the two clients' cameras sit at different heights, so only a
+// quantity that divides the framing out is comparable. It is the official
+// client's own DAY/NIGHT ratio at a fixed spot, measured on T408's
+// geometry-only crop (560x110+200+350; the older 700x420+40+40 world crop is
+// about half SKY at these spots and the sky carries no ambient term at all):
+//
+//     spot                       R        G        B
+//     lamp-free (-74,428,3.751)  4.454    3.622    3.809
+//     lamp      (33,375,8)       1.521    1.485    4.317
+//
+// See the measured table and the search log in review/T428/README.md.
+//
+// A CONSTANT HERE MAY NOT BE MOVED BY ARGUMENT -- same rule as the floors.
+inline constexpr float kNightAmbient[3] = {0.26244f, 0.31147f, 0.24003f};
+inline constexpr float kDayAmbient[3] = {0.5f, 0.5f, 0.5f};
+
+// The day end of the dawn and dusk ramps. It is NOT kDayAmbient -- the
+// pre-T428 code ramped to (0.5, 0.4, 0.35) and then stepped to (0.5,0.5,0.5)
+// at 07:00; that step is preserved byte-for-byte here, because nothing has
+// measured the ramp against the oracle and this unit changed only the night
+// end of it.
+inline constexpr float kDawnDuskDayAnchor[3] = {0.5f, 0.4f, 0.35f};
+
+// The sun (a directional light) at night and by day. Untouched by T428 and
+// recorded here only so the whole curve is in one place.
+inline constexpr float kNightSunIntensity = 0.1f;
+inline constexpr float kDaySunIntensity = 1.0f;
+
+// The curve itself, pulled out of the renderer so it is testable without a
+// device. `night` is the night base -- kNightAmbient in production, and the
+// probe's override during a live A/B. EQ time: 0-4 night, 5-6 dawn, 7-17 day,
+// 18-19 dusk, 20-23 night.
+AmbientRGB dayNightAmbient(uint8_t hour, uint8_t minute, AmbientRGB night,
+                           float& sunIntensity);
+
 // THE SOLVED FLOORS. Gain x tint is the floor itself; the split into a
 // scalar and a unit-mean chromaticity is presentational, and BOTH halves are
 // solved -- there is no longer one free scalar over a measured chromaticity,
@@ -125,15 +179,17 @@ struct AmbientRGB {
 //
 //     Ultravision  (0.26545, 0.19653, 0.27623)   probe 6
 //     Infravision  (0.18760, 0.11500, 0.18511)   probe 6
-inline constexpr float kUltravisionAmbientGain = 0.24607f;
-inline constexpr float kInfravisionAmbientGain = 0.16257f;
+inline constexpr float kUltravisionAmbientGain = 0.50650f;
+inline constexpr float kFroglokVisionAmbientGain = 0.49566f;
+inline constexpr float kInfravisionAmbientGain = 0.41469f;
 
 // The chromaticity half of each solved floor, normalised to unit mean. These
 // are NOT the oracle's added-light colours any more (T361 used those; the
 // coupling above is why that could not work): they are the chromaticity of
 // the floor that REPRODUCES the oracle's frame, solved live with the gain.
-inline constexpr float kUltravisionTint[3] = {1.07877f, 0.79866f, 1.12256f};
-inline constexpr float kInfravisionTint[3] = {1.15398f, 0.70739f, 1.13864f};
+inline constexpr float kUltravisionTint[3] = {1.01323f, 1.01502f, 0.97175f};
+inline constexpr float kFroglokVisionTint[3] = {1.02056f, 1.03579f, 0.94365f};
+inline constexpr float kInfravisionTint[3] = {1.08065f, 1.04177f, 0.87758f};
 
 // Both Infravision floors now sit ABOVE the night base on every channel
 // (0.08/0.08/0.15), which the pre-T405 values did not: the old Infravision

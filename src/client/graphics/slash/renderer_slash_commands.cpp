@@ -299,6 +299,38 @@ void SlashCommandsComponent::processSlashCommand(const std::string& command) {
             LOG_INFO(MOD_SHADER, "BakedLight probe: mode={} gain={:.4f} skyWeight={:.4f}",
                      mode, gain, sky);
         }
+    } else if (cmd == "/nightambient") {
+        // T428 (board B280): the probe that solved fable's night base against
+        // the official client. `/nightambient <r> <g> <b>` sets the night end
+        // of the day/night curve, `/nightambient reset` puts the committed
+        // constant back, and no argument prints the current triple. Same
+        // reason /bakedlight exists: one live session sweeps a candidate
+        // list, where a compile-time knob costs a build and a session each.
+        const AmbientRGB current = owner_.nightAmbientProbe();
+        if (args.empty()) {
+            chat(fmt::format("Night ambient: r={:.5f} g={:.5f} b={:.5f}",
+                             current.r, current.g, current.b));
+        } else if (args == "reset") {
+            owner_.setNightAmbientProbe(AmbientRGB{
+                EQT::Graphics::kNightAmbient[0], EQT::Graphics::kNightAmbient[1],
+                EQT::Graphics::kNightAmbient[2]});
+            const AmbientRGB now = owner_.nightAmbientProbe();
+            chat(fmt::format("Night ambient reset: r={:.5f} g={:.5f} b={:.5f}",
+                             now.r, now.g, now.b));
+            LOG_INFO(MOD_GRAPHICS, "NightAmbient probe: r={:.5f} g={:.5f} b={:.5f}",
+                     now.r, now.g, now.b);
+        } else {
+            AmbientRGB next = current;
+            std::istringstream iss(args);
+            if (!(iss >> next.r)) next.r = current.r;
+            if (!(iss >> next.g)) next.g = current.g;
+            if (!(iss >> next.b)) next.b = current.b;
+            owner_.setNightAmbientProbe(next);
+            chat(fmt::format("Night ambient: r={:.5f} g={:.5f} b={:.5f}",
+                             next.r, next.g, next.b));
+            LOG_INFO(MOD_GRAPHICS, "NightAmbient probe: r={:.5f} g={:.5f} b={:.5f}",
+                     next.r, next.g, next.b);
+        }
     } else if (cmd == "/shaderdebug" || cmd == "/sd") {
         if (ctx_.zoneShader) {
             int mode = 0;
