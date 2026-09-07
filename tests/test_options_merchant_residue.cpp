@@ -447,10 +447,12 @@ TEST(B434Census, PopupTypeHasNoOptionsEnumerator) {
            "is RelativePosition false at its own <Location> -- so the "
            "enumerator has no producer and no consumer.";
 
-    // The enumerators that remain, in order. `Skills` is now last.
+    // The enumerators that remain. T442 (B450) then deleted five more that
+    // nothing named, leaving the three fable actually drives; the census that
+    // pins the new set is B450Census in test_dead_renderer_members.cpp.
     EXPECT_TRUE(has(body, "None = 0"));
-    EXPECT_TRUE(has(body, "Skills"));
-    EXPECT_EQ(body.find("Skills"), body.rfind("Skills"));
+    EXPECT_TRUE(has(body, "Vendor"));
+    EXPECT_EQ(body.find("Vendor"), body.rfind("Vendor"));
 }
 
 // The whole tree, not just the declaration: nothing names the enumerator any

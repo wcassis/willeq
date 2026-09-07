@@ -215,7 +215,7 @@ IrrlichtRenderer::IrrlichtRenderer()
         // reached through owner_ by three or more of the ten components.
         // Order below is renderer_context.h's declaration order (aggregate
         // initialisation, so it must match exactly).
-        zoneMeshNode_, fallbackMeshNode_, regionWorldTriangles_, deferredObjects_, objectTextureRebuildQueue_,
+        zoneMeshNode_, regionWorldTriangles_, deferredObjects_, objectTextureRebuildQueue_,
         zonePlaceholderNode_, doorTextureRebuildQueue_, playerHeading_, regionNeighbors_, objectRegions_,
         zoneReady_, currentVision_, weatherSystem_, vertexAnimatedMeshes_, objectLightInSceneGraph_,
         fireGlowIcospheresEnabled_, zoneLightPositions_, fireGlowLightingEnabled_, objectWorldTriangles_, pendingTextureObjects_,

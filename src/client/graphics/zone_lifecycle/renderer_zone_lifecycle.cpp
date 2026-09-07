@@ -174,12 +174,6 @@ void ZoneLifecycleComponent::unloadZone() {
     ctx_.regionMeshNodes.clear();
     ctx_.regionBoundingBoxes.clear();
 
-    if (ctx_.fallbackMeshNode) {
-        deleteMeshHardwareBuffers(ctx_.fallbackMeshNode);
-        if (ctx_.fallbackMeshNode->getParent()) ctx_.fallbackMeshNode->remove(); else ctx_.fallbackMeshNode->drop();
-        ctx_.fallbackMeshNode = nullptr;
-    }
-
     // Remove collision-only node (used in PVS mode)
     if (zoneCollisionNode_) {
         zoneCollisionNode_->remove();

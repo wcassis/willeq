@@ -122,15 +122,17 @@ int chatVisibleLines(const UILayout& layout, int lineHeight = 14);
 // consumer. It is deleted rather than pressed into a role the oracle does not
 // give it. The same is true of the merchant window, which IS a centre popup
 // but is tracked by MerchantPanelState::isOpen rather than by `Vendor` here.
+// T442 (board B450) shrank this to the set fable actually drives. It once
+// carried Spellbook, Bank, Loot, Trade and Skills as well, and nothing in the
+// tree named any of them: each of those windows exists and is drawn, but each
+// tracks its own visibility on its own panel state (BankPanelState::isOpen,
+// LootPanelState, SkillsPopupState, ...), exactly as T434's Options window
+// and T436's bank and merchant windows do. Adding an enumerator here without
+// a producer AND a consumer is the B434/B450 defect again.
 enum class PopupType : uint8_t {
     None = 0,
     Inventory,
-    Spellbook,
-    Vendor,
-    Bank,
-    Loot,
-    Trade,
-    Skills
+    Vendor
 };
 
 // A single inventory slot's visible state

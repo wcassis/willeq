@@ -160,7 +160,6 @@ struct RendererContext {
 	// ctx_.zoneMeshNode and nothing else changes.
 	// ------------------------------------------------------------------
 	irr::scene::IMeshSceneNode*& zoneMeshNode;  // 58: diagnostics 33,zone_lifecycle 19,zone_load 6
-	irr::scene::IMeshSceneNode*& fallbackMeshNode;  // 35: diagnostics 15,zone_lifecycle 11,zone_load 9
 	std::map<size_t, std::vector<irr::core::triangle3df>>& regionWorldTriangles;  // 25: player 14,zone_load 9,zone_lifecycle 2
 	std::vector<DeferredObject>& deferredObjects;  // 24: zone_load 13,zone_stream 8,frame 3
 	std::vector<size_t>& objectTextureRebuildQueue;  // 21: zone_lifecycle 9,zone_stream 7,frame 5

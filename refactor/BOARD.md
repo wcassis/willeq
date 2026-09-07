@@ -7458,7 +7458,7 @@ in `refactor/T433_doors_lifts_survey.md` Review; raw dumps in
   than inventing a second mechanism beside them. Zero user-visible effect
   today. Found by T439.
 
-- **B450** (B) `include/client/graphics/ui/static_panels.h` (`enum class
+- ~~**B450** (B) `include/client/graphics/ui/static_panels.h` (`enum class
   PopupType`) -- **five of the seven remaining enumerators are named by
   nothing in the tree.** T439 deleted `Options` (B434) and re-took the census
   that entry got wrong: a comment-blind grep over `src/`, `include/` and
@@ -7472,12 +7472,12 @@ in `refactor/T433_doors_lifts_survey.md` Review; raw dumps in
   should shrink to `{None, Inventory, Vendor}` or whether centre-popup mutual
   exclusion should route through it after all -- the second reading is the
   alternative B434 offered, and T434 and T436 both declined it in practice.
-  One decision, then a small deletion. Found by T439.
+  One decision, then a small deletion. Found by T439.~~ **CLOSED by T442** (`refactor/T442_dead_renderer_members.md`). The reading the board offered second is the one T434 and T436 had already taken in practice, so `PopupType` SHRANK to `{None, Inventory, Vendor}` -- the three the tree names -- and the five that named nothing went. Each of those windows keeps drawing; each tracks its own visibility on its own panel state, as it already did. Pinned by `tests/test_dead_renderer_members.cpp` (`B450Census`, 3 cases, 1 red pre-fix), and `B434Census.PopupTypeHasNoOptionsEnumerator` learned the new set.
 ---
 
 ## Added 2026-09-07 by T440
 
-- **B451** (B) `src/client/graphics/player/renderer_player_collision.cpp`
+- ~~**B451** (B) `src/client/graphics/player/renderer_player_collision.cpp`
   `PlayerCameraComponent::checkCollisionIrrlicht()` -- **the surviving twin of
   the stub T440 deleted.** It is a `LOG_WARN(... "CALLED -- old meta selector
   path!")` plus `return false` ("nothing blocks you"), reached from five
@@ -7490,23 +7490,48 @@ in `refactor/T433_doors_lifts_survey.md` Review; raw dumps in
   `findGroundZIrrlicht()`, the false arm is unreachable. T440 deleted the
   ground half because the plan named it and left this one alone rather than
   widening scope. Closes the same way: delete the function, delete the five
-  ternaries, learn the G06 golden in place. Found by T440.
+  ternaries, learn the G06 golden in place. Found by T440.~~ **CLOSED by T442** (`refactor/T442_dead_renderer_members.md`), exactly as boarded: the function, the five ternaries and the now-dead `useBspFiltered` selector (its two function parameters included) are gone, and `checkCollisionBspFiltered()` is called unconditionally at all five sites. G06 learned the edit IN PLACE -- five collapses plus the selector declaration, 463 -> 456, zero insertions, zero reorders. Pinned by `tests/test_dead_renderer_members.cpp` (`B451Census`, 3 cases, 2 red pre-fix). <!-- RETIRED-OK: the entry names the symbol it retired, which is the point of a struck entry -->
 
-- **B452** (B) `include/client/graphics/irrlicht_renderer.h`
+- ~~**B452** (B) `include/client/graphics/irrlicht_renderer.h`
   `IrrlichtRenderer::fallbackMeshNode_` (bound into `RendererContext` as
   `fallbackMeshNode`, `renderer_context.h:163`) -- **a member nothing ever
   creates.** It is `= nullptr` at its declaration and the only two
   assignments in the tree are `= nullptr`
-  (`zone_lifecycle/renderer_zone_lifecycle.cpp:180`,
-  `zone_load/renderer_zone_load.cpp:426`); no site anywhere assigns a scene
+  (`src/client/graphics/zone_lifecycle/renderer_zone_lifecycle.cpp:180`,
+  `src/client/graphics/zone_load/renderer_zone_load.cpp:426`); no site anywhere assigns a scene
   node to it. Six other sites nonetheless test it, remove it, drop it, swap its
   material to the debug material, re-parent it and count it in the scene
-  breakdown (`zone_lifecycle/renderer_zone_draw.cpp:321,599,720,841`,
-  `diagnostics/diagnostics_component.cpp:214`,
-  `diagnostics/diagnostics_debug.cpp:282,359,458,477`). Grepped over `src/`,
+  breakdown (`src/client/graphics/zone_lifecycle/renderer_zone_draw.cpp:321,599,720,841`,
+  `src/client/graphics/diagnostics/diagnostics_component.cpp:214`,
+  `src/client/graphics/diagnostics/diagnostics_debug.cpp:282,359,458,477`). Grepped over `src/`,
   `include/`, `tests/`, `tools/`, `benchmarks/` and `docker/`: no creator. The
   "single zone mesh" fallback that its name refers to is really
   `ZoneLifecycleComponent::createZoneMesh()` writing `ctx_.zoneMeshNode`.
   Closes by deleting the member and its dead handling, or by finding the
   creator that was lost and restoring it -- decide by reading
-  `createZoneMesh()`. Found by T440 while confirming the non-BSP zone path.
+  `createZoneMesh()`. Found by T440 while confirming the non-BSP zone path.~~ **CLOSED by T442** (`refactor/T442_dead_renderer_members.md`) by DELETION, not restoration: `createZoneMesh()` reads and there is no creator to bring back -- it is the real single-zone-mesh fallback (`ctx_.zoneMeshNode = ctx_.smgr->addOctreeSceneNode(...)`, `src/client/graphics/zone_lifecycle/renderer_zone_draw.cpp:183`) and the no-BSP/PVS install path calls it. The member, its `RendererContext` binding, the `renderer_init.cpp` ctor argument and all eleven handling sites are gone, along with `drawRegionMesh()`'s `SIZE_MAX` sentinel branch, whose only caller was the fallback draw. Pinned by `tests/test_dead_renderer_members.cpp` (`B452Census`, 3 cases, 2 red pre-fix). <!-- RETIRED-OK: the entry names the symbol it retired, which is the point of a struck entry -->
+---
+
+## Added 2026-09-07 by T442
+
+- **B453** (B) `src/client/graphics/diagnostics/diagnostics_component.cpp`
+  (`DiagnosticsComponent`'s scene breakdown, the `otherNodes` census around
+  line 213) -- **the breakdown never subtracts `ctx_.zoneMeshNode`, so in a
+  no-BSP zone the one real zone mesh is reported as an UNACCOUNTED node.**
+  Every other zone-side node the scene graph can hold is subtracted and
+  inserted into `knownNodes` -- the collision node, the placeholder, the
+  camera, the two lights, the sky and weather sets, the entities -- and
+  `zoneMeshNode` is not, although `createZoneMesh()` adds it to the root
+  scene node (`addOctreeSceneNode(mesh, nullptr, -1, 256)`,
+  `src/client/graphics/zone_lifecycle/renderer_zone_draw.cpp:183`). `/dumpscene` in Plane of Sky
+  (T440 measured it as the ONE playable zone with no BSP tree and no regions)
+  therefore prints `unaccounted=1` and enumerates the zone mesh itself as an
+  unidentified `octree` node. Diagnostic only -- nothing renders differently,
+  and the enumeration below the log line still names the node -- but the
+  count is the thing the line exists to make trustworthy. Found by T442 while
+  deleting the dead sibling that WAS subtracted there (the struck B452): the
+  subtraction guarded on `getParent()`, so it never fired either, and the
+  breakdown has been blind to the zone mesh for as long as both have existed.
+  Closes by subtracting `zoneMeshNode` the way the collision node is
+  subtracted, and by saying what `/dumpscene` should read in a BSP zone
+  (where the node is null and the regions carry the geometry).

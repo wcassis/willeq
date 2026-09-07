@@ -421,12 +421,8 @@ void ZoneLoadComponent::loadZoneStep2_BSP(ZoneLoadContext& ctx) {
                 }
                 ctx_.regionMeshNodes.clear();
                 ctx_.regionBoundingBoxes.clear();
-                if (ctx_.fallbackMeshNode) {
-                    if (ctx_.fallbackMeshNode->getParent()) ctx_.fallbackMeshNode->remove(); else ctx_.fallbackMeshNode->drop();
-                    ctx_.fallbackMeshNode = nullptr;
-                }
                 LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: cleaned up existing mesh nodes "
-                          "(zoneMeshNode removed, {} region nodes removed, fallback removed)",
+                          "(zoneMeshNode removed, {} region nodes removed)",
                           oldRegionNodes);
 
                 // Install BSP tree
@@ -751,9 +747,6 @@ void ZoneLoadComponent::loadZoneStep4_Regions(ZoneLoadContext& ctx) {
                 }
                 for (auto& [regionIdx, node] : ctx_.regionMeshNodes) {
                     if (node && node->getParent()) { node->grab(); node->remove(); }
-                }
-                if (ctx_.fallbackMeshNode && ctx_.fallbackMeshNode->getParent()) {
-                    ctx_.fallbackMeshNode->grab(); ctx_.fallbackMeshNode->remove();
                 }
                 LOG_INFO(MOD_GRAPHICS, "Sequential: front-to-back sorting enabled ({} regions)",
                          ctx_.regionMeshNodes.size());
