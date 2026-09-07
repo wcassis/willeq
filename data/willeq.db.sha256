@@ -1,9 +1,15 @@
 # sha256 of data/willeq.db, the shipped SQLite database. Rebuilt by
-# scripts/build_willeq_db.sh from eleven inputs: the EQ client's spells_us.txt,
+# scripts/build_willeq_db.sh from ten inputs: the EQ client's spells_us.txt,
 # eqstr_us.txt, dbstr_us.txt, SoundAssets.txt, AnimationSounds.txt,
 # mp3index.txt and eqlsstr_us.txt, plus data/item_models.json,
-# data/equipment_models.json and config/race_models.json. 32,414 rows across
+# data/equipment_models.json and config/race_models.json. 29,791 rows across
 # eleven tables, metadata.version = 7 (kWilleqDbExpectedVersion).
+#
+# T454 (board B474) dropped the twelfth table, equipment_textures (2,623 rows
+# nothing read -- the equipment texture path resolves live through
+# EquipmentModelLoader::buildEquipmentIndex()), which is the whole of the
+# difference from T450's 32,414. metadata.input_digest did NOT move: the
+# inputs are the same bytes, only the loader changed.
 #
 # T450 (board B467) made the file reproducible in the first place: the builder
 # used to stamp metadata.build_date = __DATE__ " " __TIME__, so recompiling it
@@ -13,4 +19,4 @@
 # Pinned here so an input drift, or a hand-edit of the database, is a ctest
 # FAIL (DbReproducible). Update this line in the SAME commit that changes an
 # input -- exactly like data/willeq.eqe1.sha256 and data/textures.sha256.
-14f09de849939180d6fb580199ba0f957a21eb9d232cdabf1662c056a87717de  willeq.db
+d503b95227d4f827595e30ce7e6175ce65c8007d8d2ba3eadf7095d6734afa25  willeq.db

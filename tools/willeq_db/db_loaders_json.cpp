@@ -3,13 +3,25 @@
 // tools/willeq_db_builder.cpp).
 //
 //   data/item_models.json      -> item_models
-//   data/equipment_models.json -> equipment_models (+ textures)
+//   data/equipment_models.json -> equipment_models
 //   config/race_models.json    -> race_models
 //
 // T452 (board B468): a fourth loader, loadS3dIndex() (s3d_index.json ->
 // s3d_assets), was deleted here. Nothing ever passed willeq_db_builder
 // --s3d-index, so the table was never in the shipped database, and its only
 // reachable consumer had been querying a table that did not exist.
+//
+// T454 (board B474): loadEquipmentModels() also wrote a second table,
+// equipment_textures -- 2,623 rows naming which of the 17 *equip*.s3d
+// archives holds each held-item texture. NOTHING in the client ever read it.
+// The equipment texture path does resolve, and by a different route entirely:
+// EquipmentModelLoader::buildEquipmentIndex() (src/client/graphics/eq/
+// equipment_model_loader.cpp) indexes those same 17 archives LIVE at zone
+// load into textureIndex_, and getTextureRef() is what the mesh build asks.
+// So this was the opposite of B468's failure -- not a broken route, a
+// redundant one -- and the table is gone. The JSON's "textures" section is
+// left alone: data/equipment_models.json is produced by
+// tools/equipment_index_builder and is not this file's to trim.
 //
 // The parsers here are hand-rolled string scans, not a JSON library: the
 // builder links only sqlite3 and must stay dependency-free.
@@ -101,6 +113,9 @@ int loadItemModels(sqlite3* db, const std::string& filepath) {
 
 // ============================================================================
 // Equipment models loader (data/equipment_models.json)
+//
+// Writes equipment_models only. The file's "textures" section is NOT loaded --
+// see the T454/B474 note at the top of this file.
 // ============================================================================
 
 int loadEquipmentModels(sqlite3* db, const std::string& filepath) {
@@ -120,14 +135,6 @@ int loadEquipmentModels(sqlite3* db, const std::string& filepath) {
         )
     )");
 
-    execSQL(db, R"(
-        CREATE TABLE IF NOT EXISTS equipment_textures (
-            name TEXT PRIMARY KEY,
-            archive TEXT NOT NULL,
-            entry TEXT NOT NULL
-        )
-    )");
-
     execSQL(db, "BEGIN TRANSACTION");
 
     sqlite3_stmt* modelStmt;
@@ -135,17 +142,12 @@ int loadEquipmentModels(sqlite3* db, const std::string& filepath) {
         "INSERT OR REPLACE INTO equipment_models (model_id, archive, wld, actor, textures) VALUES (?,?,?,?,?)",
         -1, &modelStmt, nullptr);
 
-    sqlite3_stmt* texStmt;
-    sqlite3_prepare_v2(db,
-        "INSERT OR REPLACE INTO equipment_textures (name, archive, entry) VALUES (?,?,?)",
-        -1, &texStmt, nullptr);
-
-    // Parse JSON — format: {"models": {"id": {...}, ...}, "textures": {"name": {...}, ...}}
+    // Parse JSON — format: {"models": {"id": {...}, ...}, "textures": {...} }.
+    // Only the "models" section is read; "textures" is deliberately skipped.
     std::string content((std::istreambuf_iterator<char>(file)),
                          std::istreambuf_iterator<char>());
 
     int modelCount = 0;
-    int texCount = 0;
 
     // Helper: find matching closing brace/bracket from opening position
     auto findMatchingClose = [&](size_t openPos, char open, char close) -> size_t {
@@ -181,7 +183,6 @@ int loadEquipmentModels(sqlite3* db, const std::string& filepath) {
     if (modelsKey == std::string::npos) {
         fprintf(stderr, "WARNING: no 'models' section in %s\n", filepath.c_str());
         sqlite3_finalize(modelStmt);
-        sqlite3_finalize(texStmt);
         execSQL(db, "COMMIT");
         return 0;
     }
@@ -251,50 +252,9 @@ int loadEquipmentModels(sqlite3* db, const std::string& filepath) {
         pos = braceEnd;
     }
 
-    // Find "textures" section — search for the top-level key after models section
-    size_t texKey = content.find("\"textures\"", modelsClose);
-    if (texKey != std::string::npos) {
-        size_t texOpen = content.find('{', texKey + 10);
-        size_t texClose = findMatchingClose(texOpen, '{', '}');
-
-        pos = texOpen + 1;
-        while (pos < texClose - 1) {
-            pos = content.find('"', pos);
-            if (pos == std::string::npos || pos >= texClose - 1) break;
-            pos++;
-            size_t keyEnd = content.find('"', pos);
-            if (keyEnd == std::string::npos) break;
-            std::string texName = content.substr(pos, keyEnd - pos);
-            pos = keyEnd + 1;
-
-            // Must have a file extension
-            if (texName.find('.') == std::string::npos) continue;
-
-            size_t braceStart = content.find('{', pos);
-            if (braceStart == std::string::npos || braceStart >= texClose) break;
-            size_t braceEnd = findMatchingClose(braceStart, '{', '}');
-            std::string obj = content.substr(braceStart, braceEnd - braceStart);
-
-            std::string archive = extractStr(obj, "archive");
-            std::string entry = extractStr(obj, "entry");
-
-            if (!archive.empty() && !entry.empty()) {
-                sqlite3_reset(texStmt);
-                sqlite3_bind_text(texStmt, 1, texName.c_str(), -1, SQLITE_TRANSIENT);
-                sqlite3_bind_text(texStmt, 2, archive.c_str(), -1, SQLITE_TRANSIENT);
-                sqlite3_bind_text(texStmt, 3, entry.c_str(), -1, SQLITE_TRANSIENT);
-                sqlite3_step(texStmt);
-                texCount++;
-            }
-
-            pos = braceEnd;
-        }
-    }
-
     sqlite3_finalize(modelStmt);
-    sqlite3_finalize(texStmt);
     execSQL(db, "COMMIT");
-    return modelCount + texCount;
+    return modelCount;
 }
 
 // ============================================================================

@@ -629,3 +629,86 @@ TEST(WilleqDatabaseShippedContent, EveryTableTheClientQueriesExists) {
     }
     sqlite3_close(raw);
 }
+
+// ---------------------------------------------------------------------------
+// T454 (board B474): and the CONVERSE -- every table the shipped database
+// contains must be one the client's SQL names.
+//
+// B468 and B474 were the two halves of one finding, and only the first half
+// had a net. `equipment_textures` shipped 2,623 rows that nothing read, in the
+// one file that has a reproducibility pin, for six months. T454 dropped it.
+// This test is what makes the next dead table loud instead of silent: a
+// builder that grows a table no query names is a red test, and a query that
+// names a table the builder does not create is the test above.
+//
+// THE ONE EXEMPTION, and it is a board item, not a waiver of principle:
+// `equipment_models` (1,000 rows) is dead by the same measurement --
+// WilleqDatabase names it in no SQL, and EquipmentModelLoader builds its own
+// model index live from the 17 *equip*.s3d archives, exactly as it does the
+// textures. It is left in place because it was outside T454's contract, and
+// dropping a shipped table needs the "does it resolve by another route"
+// check B468 taught, done deliberately rather than as a side effect. Board
+// B476: drop it, or write the consumer.
+// ---------------------------------------------------------------------------
+TEST(WilleqDatabaseShippedContent, EveryTableTheDatabaseShipsIsOneTheClientQueries) {
+    const std::string dbPath = WILLEQ_DB_REAL_PATH;
+    if (!FileExists(dbPath)) GTEST_SKIP() << "no shipped db at " << dbPath;
+
+    const std::string srcPath =
+        std::string(WILLEQ_REPO_ROOT) + "/src/client/willeq_database.cpp";
+    std::ifstream in(srcPath);
+    ASSERT_TRUE(in.good()) << "cannot read " << srcPath;
+    const std::string src((std::istreambuf_iterator<char>(in)),
+                          std::istreambuf_iterator<char>());
+    const std::vector<std::string> named = TablesNamedInSql(src);
+    ASSERT_GE(named.size(), 8u) << "the census found almost nothing -- it is broken, not clean";
+
+    // Known-dead, boarded. Adding a name here needs a board item and a reason.
+    const std::vector<std::string> kUnreadButShipped = {"equipment_models"};
+    // sqlite's own ANALYZE output; not a data table.
+    const std::vector<std::string> kSqliteInternal = {"sqlite_stat1"};
+
+    sqlite3* raw = nullptr;
+    ASSERT_EQ(sqlite3_open_v2(dbPath.c_str(), &raw, SQLITE_OPEN_READONLY, nullptr), SQLITE_OK);
+    sqlite3_stmt* stmt = nullptr;
+    ASSERT_EQ(sqlite3_prepare_v2(
+                  raw, "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
+                  -1, &stmt, nullptr), SQLITE_OK);
+
+    std::vector<std::string> shipped;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        shipped.push_back(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)));
+    }
+    sqlite3_finalize(stmt);
+    sqlite3_close(raw);
+
+    ASSERT_GE(shipped.size(), 8u) << "the shipped database has almost no tables";
+
+    auto contains = [](const std::vector<std::string>& v, const std::string& x) {
+        return std::find(v.begin(), v.end(), x) != v.end();
+    };
+
+    for (const std::string& table : shipped) {
+        if (contains(kSqliteInternal, table)) continue;
+        if (contains(kUnreadButShipped, table)) {
+            // The exemption is itself pinned: if a consumer IS written, this
+            // fires and the name comes out of the list.
+            EXPECT_FALSE(contains(named, table))
+                << "'" << table << "' now has a reader -- remove it from"
+                   " kUnreadButShipped and strike its board item";
+            continue;
+        }
+        EXPECT_TRUE(contains(named, table))
+            << "the shipped data/willeq.db contains table '" << table
+            << "', which src/client/willeq_database.cpp names in no SQL. It is"
+               " bytes nobody reads, inside the one shipped file that carries a"
+               " reproducibility pin. Either write the consumer, or drop the"
+               " table from tools/willeq_db/ and rebuild + re-pin the database"
+               " under scripts/build_willeq_db.sh. If it must ship unread, add"
+               " it to kUnreadButShipped with a board item and a reason.";
+    }
+
+    // The positive control: equipment_textures WAS here, and is gone.
+    EXPECT_FALSE(contains(shipped, "equipment_textures"))
+        << "T454 dropped equipment_textures; it is back in the shipped file";
+}

@@ -220,7 +220,7 @@ test that fails if the checked-in bytes and their inputs drift apart:
 |---|---|---|---|
 | `data/textures/*.bmp` (67 files) | `scripts/build_textures.sh` → `tools/generate_textures` (64, procedural), **`tools/spell_sprite_atlas_builder` (1, T417) and `tools/item_icon_atlas_builder` (2, T430) — both lifted from the client's own art** | `data/textures.sha256` | `TexturesReproducible` |
 | `/mnt/projects/EverQuest_ETC1/willeq.eqe1` (132 entries since T430: 67 textures, 64 ETC1 `_alpha` companions, 1 raw — `build/bin/verify_eqe1` prints the census; re-measured T444) | `scripts/build_willeq_pack.sh` | `data/willeq.eqe1.sha256` | `PackReproducible` |
-| `data/willeq.db` (32,414 rows in eleven tables; `metadata.version` = 7) | `scripts/build_willeq_db.sh` → `tools/willeq_db_builder`, over the EQ client's seven `*.txt` files plus `data/item_models.json`, `data/equipment_models.json` and `config/race_models.json` | `data/willeq.db.sha256` | `DbReproducible` (T450) |
+| `data/willeq.db` (29,791 rows in eleven tables; `metadata.version` = 7) | `scripts/build_willeq_db.sh` → `tools/willeq_db_builder`, over the EQ client's seven `*.txt` files plus `data/item_models.json`, `data/equipment_models.json` and `config/race_models.json` | `data/willeq.db.sha256` | `DbReproducible` (T450) |
 
 **Every table the builder can create now ships** (T452, board B468 CLOSED).
 There used to be a twelfth, `s3d_assets` — a name→archive index over every
@@ -235,6 +235,23 @@ miss — for six months, on a reachable path. The loader, the flag,
 takes the census from `src/client/willeq_database.cpp` itself and fails on a
 query naming a table the shipped database does not have, so this class of
 drift cannot recur silently.
+
+**T454 (board B474) closed the other half of that finding, and added the
+CONVERSE net.** `equipment_textures` — 2,623 rows naming which of the 17
+`*equip*.s3d` archives holds each held-item texture — shipped for six months
+with no reader anywhere in the client. Unlike `s3d_assets` this was not a
+broken route but a REDUNDANT one: the equipment texture path resolves live,
+through `EquipmentModelLoader::buildEquipmentIndex()`, which indexes those same
+17 archives into `textureIndex_` at zone load, and `getTextureRef()` is what
+the mesh build asks. The writer and the table are gone and the database was
+rebuilt and re-pinned under T450's recipe (32,414 rows → **29,791**, twelve
+tables → eleven; `metadata.input_digest` did not move, because the inputs did
+not). `WilleqDatabaseShippedContent.EveryTableTheDatabaseShipsIsOneTheClientQueries`
+now fails on a shipped table that no client SQL names. It carries exactly one
+exemption, `equipment_models` (1,000 rows), which is dead by the same
+measurement and boarded as **B476** rather than dropped as a side effect —
+B468's lesson is that "nothing reads it" and "nothing CAN read it" look
+identical from a grep, so each drop gets its own deliberate check.
 
 **The database's pin is T450's (board B467), and it could not have existed
 before.** `willeq_db_builder` stamped `metadata.build_date = __DATE__ " "
