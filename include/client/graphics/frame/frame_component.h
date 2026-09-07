@@ -252,9 +252,11 @@ public:
 	// ---- T434: the Options window's toggle ----
 	// Before this the ONLY arm for the bound key was a bare `break;` in
 	// processCommonInput() with the comment "WindowManager removed -- options
-	// window not available", and `PopupType::Options` had zero uses in the
-	// tree: T368's dead-toggle shape, on the one window that is the home of
-	// every user-changeable setting.
+	// window not available", and a `PopupType` enumerator named Options had
+	// zero uses in the tree: T368's dead-toggle shape, on the one window that
+	// is the home of every user-changeable setting. T439 deleted that
+	// enumerator (board B434) -- this window is independent, not a centre
+	// popup.
 	//
 	// The key is Alt+O, MEASURED at the official client's Options > Keys > UI
 	// page (review/T377/oracle/T377_oracle_options_keys_UI_page2.png:
@@ -383,15 +385,13 @@ public:
 	std::string uiPrefsServer_;
 	UiPreferences uiPrefsLastSaved_;
 	bool uiPrefsLoaded_ = false;
-	// T434: the volume steps the audio manager was last TOLD, on the
-	// oracle's 0..20 scale. The volume intents carry a delta, not an
-	// absolute, so applying a slider needs the previous value; these are
-	// that, and they are renderer bookkeeping rather than a preference (a
-	// `/music 50` moves the audio manager without moving them -- board B432).
-	// Seeded from OptionsPanelState's own defaults, which are fable's
-	// shipped audio config values on that scale.
-	int optionsAppliedMusicStep_ = 14;
-	int optionsAppliedSoundStep_ = 20;
+	// T439 (board B432 CLOSED): optionsAppliedMusicStep_ /
+	// optionsAppliedSoundStep_ lived here -- the steps the audio manager was
+	// last TOLD, kept because the volume intents carried a DELTA and
+	// applying a slider needed the previous value. Both are DELETED. The
+	// intents carry an absolute 0..20 step now and the audio manager
+	// publishes what it holds back on GameEventType::VolumesChanged, so
+	// optionsState_ IS the record and nothing shadows it.
 	std::unique_ptr<StaticUIInput> staticUIInput_;  // U06j
 
 	// The five that were private on IrrlichtRenderer. Public here so that

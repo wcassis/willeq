@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Additional context is in subdirectory CLAUDE.md files:
 - `src/client/graphics/CLAUDE.md` - Rendering, shaders, GLES2, zone loading, performance
 - `include/client/graphics/ui/CLAUDE.md` - Static UI panels, key bindings, slash commands
-- `include/client/state/CLAUDE.md` - Game state modules, EventBus, 100 event types
+- `include/client/state/CLAUDE.md` - Game state modules, EventBus, 101 event types
 - `include/client/bridge/CLAUDE.md` - Event/intent bridge, thread-safe game↔renderer communication
 - `src/client/input/CLAUDE.md` - Input handlers, hotkey manager, command processor, action dispatch
 - `src/client/audio/CLAUDE.md` - Audio system, sound categories, audio tests
@@ -542,9 +542,9 @@ Audio updates                       Zone load completion detection
 ```
 
 - **GameStateBridge** (`include/client/bridge/game_state_bridge.h`) — thread-safe queue pair using swap-vector pattern. Game thread pushes events (state changes), renderer pushes intents (user actions). D24 coalesces EntityMoved events per entity and PlayerPositionChanged intents.
-- **IrrlichtBridge** (`include/client/bridge/irrlicht_bridge.h`) — translates game events into IrrlichtRenderer calls (switch over the 100 `GameEventType` enumerators (T264: every event now has a publisher and a consumer, pinned by test_reachability_sweep))
+- **IrrlichtBridge** (`include/client/bridge/irrlicht_bridge.h`) — translates game events into IrrlichtRenderer calls (switch over the 101 `GameEventType` enumerators (T264: every event now has a publisher and a consumer, pinned by test_reachability_sweep))
 - **ConsoleBridge** (`include/client/bridge/console_bridge.h`) — logs events to console in headless mode
-- **Event types** (`include/client/state/event_bus.h`) — 100 event types covering all game state changes
+- **Event types** (`include/client/state/event_bus.h`) — 101 event types covering all game state changes
 - **Intent types** (`include/client/events/renderer_intents.h`) — 42 intent structs in the `RendererIntent` variant (T264 pruned; T268 deleted DestroyAllLootIntent -- no Titanium destroy-loot packet; T328 added PlaySoundIntent, T419 RecipeDetailsRequestIntent, T421 RecipeSearchIntent/RecipeFavoriteIntent/ItemDisplayRequestIntent T425 SpellDisplayRequestIntent and T436 CloseBankIntent -- the bank window's Done button, since BankerInteractIntent's handler returns early on an already-open window and nothing else could end a bank session from the renderer; pinned by test_reachability_sweep) for user actions
 
 **Key separation**: EverQuest communicates with the renderer only through the bridge — no `m_renderer` member, no `GetRenderer()` accessor. Application owns the renderer and wires it to EverQuest via bridge pointers. Player movement flows renderer→game exclusively via the `PlayerPositionChanged` intent (S2 removed the legacy synchronous callback); inventory UI state flows game→renderer exclusively via enriched `InventorySlotChanged` events; bridge payloads are typed (no `void*`). The graphics-facing game code is concentrated in `src/client/bridge/bridge_component.cpp` (the boundary TU); `src/client/core/everquest.cpp` itself has only two graphics includes (loading status + command registry). K16 closed the last structural seam: `InitGraphics` takes `EQT::Graphics::IZoneLoadSurface*` (`include/client/graphics/zone_load_surface.h`), the two-method zone-load surface `IrrlichtRenderer` implements, so game logic names no renderer class. The asset loaders still live in the `EQT::Graphics` namespace — that is naming only and was left deliberately (see the closed B006 in `refactor/BOARD.md`). Do not "fix" coupling ad hoc.
@@ -760,9 +760,18 @@ table, the same member-pointer device for the non-boolean `[Options]` keys) +
 the binding, nowhere else. T434 added a fourth file to the feature,
 `src/client/graphics/frame/renderer_frame_options.cpp`, because its three
 persisted fields are the first that have a SETTING behind them rather than
-just a struct member: the volume intents carry a delta and the clip plane is
-a renderer call, so `FrameComponent::applyOptionsSetting()` is the one body
-both the click path and the load path go through. It is a generated file, so it goes through `ResolveCachePathForWrite()`
+just a struct member: two of them go to the game thread as intents and the
+clip plane is a renderer call, so `FrameComponent::applyOptionsSetting()` is
+the one body both the click path and the load path go through. **T439 (board
+B432) made the volume round trip.** The two volume intents carry an ABSOLUTE
+step 0..20 (`include/client/audio/volume_steps.h`, the oracle's own unit) and
+`BridgeComponent::PublishVolumesChanged()` publishes what the audio manager
+actually holds back on `GameEventType::VolumesChanged` — from all four sites
+that move a volume: the config apply, the two intents, and `/musicvolume` /
+`/effectsvolume`. Before that the intents carried a delta, the renderer
+shadowed what it had last sent, and a slash command behind its back left the
+slider stale and made its next drag apply a difference against a value that
+was no longer true. It is a generated file, so it goes through `ResolveCachePathForWrite()`
 (T402's rule) and never dirties the checkout.
 
 The two files that once looked like the persistence,

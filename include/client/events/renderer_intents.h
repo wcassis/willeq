@@ -202,12 +202,20 @@ struct SkillActivateIntent {
 
 // --- Volume ---
 
+// T439 (board B432): ABSOLUTE, on the oracle's own 0..20 slider step
+// (eqt::audio::kVolumeSteps, include/client/audio/volume_steps.h). These
+// carried a `float delta` until T439, which is why the renderer had to keep
+// a shadow record of what it last told the audio manager -- and why a
+// /musicvolume, which sets it absolutely, left the Options slider stale and
+// made its next drag apply a delta computed from a stale value. The audio
+// manager's applied step comes back on GameEventType::VolumesChanged, so
+// neither side has to remember anything.
 struct MusicVolumeChangeIntent {
-    float delta;  // +/- volume change
+    int step;  // 0..20, clamped by the handler
 };
 
 struct EffectsVolumeChangeIntent {
-    float delta;  // +/- volume change
+    int step;  // 0..20, clamped by the handler
 };
 
 // --- Tradeskill ---

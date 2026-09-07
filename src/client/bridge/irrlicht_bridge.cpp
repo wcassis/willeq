@@ -576,6 +576,18 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 renderer_->Frame().bankState_, d);
         }
         break;
+    case state::GameEventType::VolumesChanged:
+        // T439 (board B432): the applied music/effects volume coming back
+        // from the audio manager, on the oracle's 0..20 step. This arm is
+        // what makes the Options sliders agree with /musicvolume: before it,
+        // the only volume traffic was renderer->game and the renderer had to
+        // shadow what it last sent.
+        if (renderer_) {
+            auto& d = std::get<state::VolumesChangedData>(event.data);
+            EQT::Graphics::applyVolumesChanged(
+                renderer_->Frame().optionsState_, d);
+        }
+        break;
     case state::GameEventType::EntityWeaponSkillsChanged:
         if (renderer_) {
             auto& d = std::get<state::EntityWeaponSkillsChangedData>(event.data);

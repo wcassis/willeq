@@ -345,6 +345,21 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_merchant_bank_cursor)
 ENDIF()
 
+# T439 (boards B432/B444/B434): the T434/T436 residue -- the absolute volume
+# round trip, the zone-in snapshot's cursor and bank slots, and the deleted
+# PopupType::Options enumerator. Half the cases are source censuses that read
+# the tree through WILLEQ_REPO_ROOT (set globally in tests/CMakeLists.txt), so
+# the same binary measures the pre-fix and post-fix sources; the rest are
+# ordinary behaviour over the real appliers. No device, no database, no server.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_options_merchant_residue
+        test_options_merchant_residue.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_options_merchant_residue PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_options_merchant_residue GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_options_merchant_residue)
+ENDIF()
+
 # T421 Leg B (board B365): the ONE text-entry widget, and the tradeskill
 # search box using it.
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)

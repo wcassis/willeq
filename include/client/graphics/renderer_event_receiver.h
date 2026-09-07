@@ -181,8 +181,13 @@ public:
 
     // Delta accumulators (accumulate between frames, consumed once per frame)
     float getCameraZoomDelta() { float d = cameraZoomDelta_; cameraZoomDelta_ = 0; return d; }
-    float getMusicVolumeDelta() { float d = musicVolumeDelta_; musicVolumeDelta_ = 0; return d; }
-    float getEffectsVolumeDelta() { float d = effectsVolumeDelta_; effectsVolumeDelta_ = 0; return d; }
+    // T439 (board B432): STEPS on the oracle's 0..20 scale, not a 0..1
+    // fraction. These were `float` +/- 0.1f, which is +/- 2 steps -- the same
+    // travel, said in the unit the volume intents and VolumesChanged now
+    // speak. The consumer adds them to the step the audio manager last
+    // published, so a hotkey and a slider drag can no longer disagree.
+    int getMusicVolumeStepDelta() { int d = musicVolumeStepDelta_; musicVolumeStepDelta_ = 0; return d; }
+    int getEffectsVolumeStepDelta() { int d = effectsVolumeStepDelta_; effectsVolumeStepDelta_ = 0; return d; }
     // T313: the mouse wheel. Before this unit EMIE_MOUSE_WHEEL had no case
     // in OnEvent() at all -- nothing in the client consumed it, camera zoom
     // included (that is hotkey-only, CameraZoomIn/Out above) -- so the
@@ -277,8 +282,8 @@ private:
 
     // Delta accumulators (accumulate between frames)
     float cameraZoomDelta_ = 0.0f;
-    float musicVolumeDelta_ = 0.0f;
-    float effectsVolumeDelta_ = 0.0f;
+    int musicVolumeStepDelta_ = 0;    // T439: oracle steps, was +/- 0.1f
+    int effectsVolumeStepDelta_ = 0;
 
     // Chat input state -- render thread only since T241 (see the accessors)
     std::vector<KeyEvent> pendingKeyEvents_;

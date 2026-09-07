@@ -9,16 +9,24 @@
 //                             renderer's render distance
 //
 // WHY THE APPLIER IS HERE AND NOT IN StaticUIInput. Two of the three wired
-// controls reach the game thread through an intent that carries a DELTA
+// controls reach the game thread through an intent
 // (MusicVolumeChangeIntent / EffectsVolumeChangeIntent, the only volume
 // intents in the tree) and the third is a direct renderer call
-// (IrrlichtRenderer::setRenderDistance). A delta needs the previous value,
-// and the previous value the AUDIO MANAGER holds is not readable from the
-// render thread -- so the renderer keeps its own record of what it last told
-// it (optionsAppliedMusicStep_ / optionsAppliedSoundStep_) and sends the
-// difference. StaticUIInput therefore resolves a click into "this setting
-// moved" and this is the single body that acts on it, for the click path and
-// for the preferences-load path alike.
+// (IrrlichtRenderer::setRenderDistance). StaticUIInput is device-free and
+// pushes no intent, so it resolves a click into "this setting moved" and
+// this is the single body that acts on it, for the click path and for the
+// preferences-load path alike.
+//
+// T439 (board B432): those two intents used to carry a DELTA, which forced
+// this file to keep optionsAppliedMusicStep_ / optionsAppliedSoundStep_ --
+// a shadow of what it had last told the audio manager. A /musicvolume sets
+// the audio manager ABSOLUTELY and nothing published the result back, so the
+// shadow went stale and the next drag applied a difference computed against
+// a value that was no longer true. Both records are gone: the intents carry
+// the ABSOLUTE step and the audio manager publishes what it actually holds
+// back on GameEventType::VolumesChanged, which applyVolumesChanged() writes
+// straight into optionsState_. There is now exactly one record of a volume
+// on each side of the bridge, and the game side is authoritative.
 //
 // See include/client/graphics/ui/options_panel.h for the measured 0..20
 // scale and the flagged clip-plane mapping.
@@ -47,13 +55,9 @@ void FrameComponent::applyOptionsSetting(OptionsLayout::Setting setting) {
 
         case OptionsLayout::Setting::MusicVolume: {
             const int step = optionsState_.musicVolume;
-            if (step == optionsAppliedMusicStep_) return;
-            const float delta = optionsVolumeFraction(step)
-                              - optionsVolumeFraction(optionsAppliedMusicStep_);
-            optionsAppliedMusicStep_ = step;
             if (ctx_.bridge) {
                 ctx_.bridge->pushIntent(
-                    eqt::events::MusicVolumeChangeIntent{delta});
+                    eqt::events::MusicVolumeChangeIntent{step});
             }
             LOG_INFO(MOD_GRAPHICS, "Options: music volume {} %", step * 5);
             return;
@@ -61,13 +65,9 @@ void FrameComponent::applyOptionsSetting(OptionsLayout::Setting setting) {
 
         case OptionsLayout::Setting::SoundVolume: {
             const int step = optionsState_.soundVolume;
-            if (step == optionsAppliedSoundStep_) return;
-            const float delta = optionsVolumeFraction(step)
-                              - optionsVolumeFraction(optionsAppliedSoundStep_);
-            optionsAppliedSoundStep_ = step;
             if (ctx_.bridge) {
                 ctx_.bridge->pushIntent(
-                    eqt::events::EffectsVolumeChangeIntent{delta});
+                    eqt::events::EffectsVolumeChangeIntent{step});
             }
             LOG_INFO(MOD_GRAPHICS, "Options: sound volume {} %", step * 5);
             return;

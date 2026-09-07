@@ -163,6 +163,13 @@ enum class GameEventType {
     // D20e1: Diagnostics (replaces direct m_renderer->getMemoryReport/dumpScene calls)
     DiagnosticsMemoryReport,
     DiagnosticsSceneDump,
+
+    // T439 (board B432): audio. The APPLIED music/effects volume, on the
+    // oracle's own 0..20 step, published by whichever of the four sites
+    // moved it -- the config apply, the two volume intents, or
+    // /musicvolume and /effectsvolume. The Options window's two sliders
+    // read it back, so a slash command and a drag can no longer disagree.
+    VolumesChanged,
 };
 
 // ============================================================================
@@ -637,6 +644,18 @@ struct BankCurrencyChangedData {
     int32_t copper;
 };
 
+// --- Audio events ---
+
+// T439 (board B432): the volume the audio manager ACTUALLY holds, expressed
+// on the oracle's 0..20 step (eqt::audio::kVolumeSteps). Absolute, never a
+// delta -- that was the whole defect: nothing published the result of a
+// volume change back, so the renderer had to shadow what it last sent and a
+// /musicvolume behind its back left the slider stale.
+struct VolumesChangedData {
+    int musicStep;   // 0..20
+    int soundStep;   // 0..20
+};
+
 // --- Loot events ---
 
 struct LootWindowOpenedData {
@@ -1090,6 +1109,8 @@ using EventData = std::variant<
     EquipmentStatsChangedData,
     CurrencyChangedData,
     BankCurrencyChangedData,
+    // Audio
+    VolumesChangedData,
     // Loot
     LootWindowOpenedData,
     LootWindowClosedData,

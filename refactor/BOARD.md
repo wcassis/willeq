@@ -6758,7 +6758,7 @@ client uses every field.
   `config/display_settings.json` between them hold real density/opacity
   knobs, so the particle page is the most wireable of these. Prov: T434.
 
-- **B432** (B) **The Options window's volume sliders can drift from the audio
+- ~~**B432** (B) **The Options window's volume sliders can drift from the audio
   manager, because the only volume intents carry a DELTA.**
   `MusicVolumeChangeIntent` / `EffectsVolumeChangeIntent` take a `float
   delta`, and nothing publishes the resulting absolute volume back to the
@@ -6771,7 +6771,29 @@ client uses every field.
   absolute set-volume intent, or a `VolumesChanged` event published wherever
   a volume moves (four sites: the config apply in
   `bridge_component_ui_audio.cpp`, the two delta intents, the three slash
-  commands). Not a live defect until a player mixes the two paths. Prov: T434.
+  commands). Not a live defect until a player mixes the two paths. Prov: T434.~~
+  **STRUCK T439 (base `d1458444`): BOTH ways out, because they are halves of one
+  round trip.** `MusicVolumeChangeIntent` / `EffectsVolumeChangeIntent` now carry
+  an ABSOLUTE `int step` 0..20 -- the oracle's own slider unit, moved to the
+  device-free `include/client/audio/volume_steps.h` so the game thread can speak
+  it -- and `BridgeComponent::PublishVolumesChanged()` is the ONE publisher of the
+  new `GameEventType::VolumesChanged`, called from all five sites that move a
+  volume (the config apply in `InitializeAudio()`, both intent handlers, and
+  `/musicvolume` + `/effectsvolume`). It READS the audio manager back rather than
+  echoing what it was handed, so the event states what the audio manager holds
+  after its own clamping. `EQT::Graphics::applyVolumesChanged()` writes it into
+  `OptionsPanelState`, so `optionsAppliedMusicStep_` / `optionsAppliedSoundStep_`
+  are DELETED and there is exactly one record of a volume on each side of the
+  bridge. The volume hotkeys moved to the same unit
+  (`getMusicVolumeStepDelta()`, +/-2 steps = the old +/-0.1f exactly) and now add
+  to the published step, so a hotkey press moves the slider too. Pinned by
+  `B432Census.*` x3 + `OptionsVolumeT439.*` x4 in
+  `tests/test_options_merchant_residue.cpp` -- including
+  `ASlashCommandThenADragLeavesTheAudioManagerOnTheSlider`, the board's own
+  scenario over the real functions. **`/volume` (MASTER volume) is deliberately
+  NOT in the round trip**: the Options window has no master slider, so there is
+  nothing to keep in sync -- see the new **B445**. **LIVE PROOF IS OWED** (T428
+  held the eqemu lock; this unit was offline).
 
 - **B433** (B) **The Options window's Mouse, Keys, Filters, Colors and Mail
   pages are drawn and entirely inert.** Every control on all five is
@@ -6791,7 +6813,7 @@ client uses every field.
   it is arguably post-Velious anyway, so this page may be the one to DELETE
   rather than fill. Prov: T434.
 
-- **B434** (B) `PopupType::Options` is still a bare enumerator with zero uses.
+- ~~**B434** (B) `PopupType::Options` is still a bare enumerator with zero uses.
   T434 built the Options window as an independent window with its own
   `OptionsPanelState` and its own oracle placement (`EQUI_OptionsWindow.xml`
   is `RelativePosition false` at `<Location>(90,47)</Location>`), NOT as one
@@ -6799,7 +6821,19 @@ client uses every field.
   rather than being pressed into a role the oracle does not give it. It is
   now the only member of `PopupType` with no producer and no consumer
   (`Vendor`, `Bank` and `Trade` at least appear in tests). Delete it, or
-  decide the centre-popup family is what it should have been. Prov: T434.
+  decide the centre-popup family is what it should have been. Prov: T434.~~
+  **STRUCK T439 (base `d1458444`): DELETED,** with the T434 reading confirmed --
+  `EQUI_OptionsWindow.xml` is `RelativePosition false`, so the window is drawn
+  and hit-tested above every centre popup and opening it closes nothing. It was
+  never a centre popup and is not pressed into being one. The three comments
+  that named the enumerator (`options_panel.h`, `frame_component.h`,
+  `test_options_window.cpp`) were rewritten rather than left as claims about a
+  symbol that no longer exists. Pinned by `B434Census.*` x3.
+  **ONE CORRECTION to this entry, measured:** its parenthetical is wrong. A
+  comment-blind grep over `src/ include/ tests/` finds only `None`, `Inventory`
+  and `Vendor` used anywhere -- `Bank` and `Trade` appear in NO test, and
+  `Spellbook`, `Loot` and `Skills` have no use either. Five more dead
+  enumerators, boarded as the new **B446**.
 
 
   the CASTER's own client while drawing correctly on an observer.**~~ **STRUCK
@@ -7132,7 +7166,7 @@ in `refactor/T433_doors_lifts_survey.md` Review; raw dumps in
   client at a vendor with and without a held item (the T342 rig). Found by
   T436.
 
-- **B444** (B) `src/client/core/everquest.cpp` (the zone-in inventory snapshot,
+- ~~**B444** (B) `src/client/core/everquest.cpp` (the zone-in inventory snapshot,
   `for (int16_t slot = 0; slot < 30; ++slot)`) -- **the zone-in snapshot
   publishes slots 0..29 only, so a cursor item and the bank's contents are
   invisible until something else moves them.** T436 gave slot 30 and
@@ -7142,4 +7176,48 @@ in `refactor/T433_doors_lifts_survey.md` Review; raw dumps in
   OnGameStateComplete snapshot loop stops at 30. A character who zones in
   holding something on the cursor therefore draws no attachment until the next
   MoveItem. Closes when the loop covers `CURSOR_SLOT` and the bank range.
-  Unverified live -- T436 held no lock. Found by T436.
+  Unverified live -- T436 held no lock. Found by T436.~~
+  **STRUCK T439 (base `d1458444`).** The loop iterates
+  `eqt::inventory::ZoneInSnapshotSlots()` -- a named table in
+  `inventory_constants.h` rather than a second literal range, so the loop and the
+  census cannot drift -- covering 0..29, `CURSOR_SLOT` (30) and
+  `BANK_BEGIN`..`+7`. **EIGHT bank slots, not `BANK_COUNT`'s sixteen**
+  (`BANK_SNAPSHOT_COUNT`): the era's `EQUI_BankWnd.xml` declares
+  `BW_BankSlot0..7` and 2008..2015 have no consumer at all; `BANK_COUNT` is left
+  at 16 because that is the WIRE's range. `SyncInventorySlotToGameState()` was
+  already correct for both new families (a no-op for the cursor,
+  `setBankOccupied` for the bank), so no game-state mirror changed. Pinned by
+  `B444Census.TheZoneInSnapshotCoversTheCursorAndTheBank` and two behaviour cases
+  that drive the REAL appliers with every published slot and require each to be
+  claimed by exactly one consumer family -- so a slot published with nowhere to
+  land is now a red too. **LIVE PROOF IS OWED** (no lock; T428 holds it).
+
+- **B445** (B) `src/client/commands/commands_spells.cpp` (`/volume`) --
+  **MASTER volume is the one volume fable can change that nothing publishes
+  back, because the Options window has no slider for it.** T439 closed B432 by
+  making the music and effects volumes a round trip (an absolute intent out,
+  `GameEventType::VolumesChanged` back). `/volume` was deliberately left out:
+  `EQUI_OptionsWindow.xml`'s General page declares `OGP_MusicVolumeSlider` and
+  `OGP_SoundVolumeSlider` and no master control at all, so there is nothing to
+  keep in sync and adding one would be a fable invention of the class T363
+  forbids. It is boarded rather than forgotten because the ASYMMETRY is a
+  trap: a future master-volume control or readout must extend
+  `VolumesChangedData` and `BridgeComponent::PublishVolumesChanged()` rather
+  than inventing a second mechanism beside them. Zero user-visible effect
+  today. Found by T439.
+
+- **B446** (B) `include/client/graphics/ui/static_panels.h` (`enum class
+  PopupType`) -- **five of the seven remaining enumerators are named by
+  nothing in the tree.** T439 deleted `Options` (B434) and re-took the census
+  that entry got wrong: a comment-blind grep over `src/`, `include/` and
+  `tests/` finds `None`, `Inventory` and `Vendor` and nothing else.
+  `Spellbook`, `Bank`, `Loot`, `Trade` and `Skills` are named by no production
+  code and no test. This is NOT the B434 defect repeated -- each of those five
+  windows exists and is drawn; they simply track their own visibility on their
+  own panel state (`BankPanelState::isOpen`, `LootPanelState`,
+  `SkillsPopupState`, ...) rather than through this enum, exactly as T436's
+  bank and merchant windows do. So the open question is whether `PopupType`
+  should shrink to `{None, Inventory, Vendor}` or whether centre-popup mutual
+  exclusion should route through it after all -- the second reading is the
+  alternative B434 offered, and T434 and T436 both declined it in practice.
+  One decision, then a small deletion. Found by T439.

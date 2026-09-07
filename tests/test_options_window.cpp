@@ -2,10 +2,11 @@
 //
 // Before this unit the `O` key reached a bare `break;` in
 // renderer_frame_input.cpp ("WindowManager removed -- options window not
-// available") and `PopupType::Options` had zero uses in the tree: a bound key
-// advertising the one window that is the home of every user-changeable
-// setting. T432's Review recorded `[OptionsWindow]` as the one section it
-// could not persist because there was nothing to persist.
+// available") and a `PopupType` enumerator named Options had zero uses in the
+// tree: a bound key advertising the one window that is the home of every
+// user-changeable setting. T432's Review recorded `[OptionsWindow]` as the one
+// section it could not persist because there was nothing to persist. T439
+// DELETED that enumerator (board B434) -- see test_options_merchant_residue.
 //
 // Everything here is state + geometry + the ini format, so no Irrlicht device
 // is needed -- the same shape as test_tradeskill_combat_panels.cpp.
