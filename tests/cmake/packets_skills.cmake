@@ -337,3 +337,16 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_chat_channel_names PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
 GTEST_DISCOVER_TESTS(test_chat_channel_names)
+
+# T429 Leg B (board B298 entity half, board B390): the /con line, composed
+# from the shipped eqstr table. Free composer -- no server, no device.
+ADD_EXECUTABLE(test_consider_text
+    test_consider_text.cpp
+)
+TARGET_LINK_LIBRARIES(test_consider_text GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_consider_text PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+TARGET_COMPILE_DEFINITIONS(test_consider_text PRIVATE
+    WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+GTEST_DISCOVER_TESTS(test_consider_text)

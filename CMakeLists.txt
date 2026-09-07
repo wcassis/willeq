@@ -317,6 +317,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/player_facade.cpp
     src/client/packet_sender.cpp
     src/client/commands/combat_actions.cpp
+    src/client/commands/consider_text.cpp
     src/client/combat.cpp
     src/client/combat_rounds.cpp
     src/client/combat_hunting.cpp
