@@ -24,6 +24,7 @@
 #include "client/spell/cast_refusal.h"  // T244: official refusal strings
 #include "client/spell/buff_manager.h"
 #include "client/skill/skill_manager.h"
+#include "client/audio/volume_steps.h"  // T439: the oracle's 0..20 volume step
 #include "client/zone_lines.h"
 #include "client/formatted_message.h"
 #include "common/logging.h"
@@ -561,6 +562,10 @@ void eqt::bridge::BridgeComponent::InitializeAudio() {
 	ctx_.audio_manager->setMasterVolume(m_audio_config_master_volume);
 	ctx_.audio_manager->setMusicVolume(m_audio_config_music_volume);
 	ctx_.audio_manager->setEffectsVolume(m_audio_config_effects_volume);
+	// T439 (board B432): the first of the four volume-moving sites. The
+	// renderer's Options sliders start from the panel struct's own defaults
+	// (14 / 20); if the config says something else, this is what tells them.
+	PublishVolumesChanged();
 
 	// K15 (board B037): the configured 3D-positional-audio switch. Off means
 	// positioned sounds play centred (AudioManager::playSoundInternal).
@@ -652,6 +657,24 @@ void eqt::bridge::BridgeComponent::UpdateAudioListener(float deltaTime) {
 
 	// D20c2: Volume hotkeys handled via intents from renderer
 	// (MusicVolumeChangeIntent / EffectsVolumeChangeIntent in ProcessBridgeIntents)
+}
+
+// T439 (board B432). Four sites move a volume -- this body is what they all
+// call, so there is no per-site "and publish it" step to forget. It reads
+// AudioManager back instead of echoing the value it was handed: the audio
+// manager clamps, and the event must state what it HOLDS, not what it was
+// asked for. The 0..1 float rounds onto the oracle's 21 positions here, so
+// a /musicvolume 53 lands the slider on 55 % -- lossy on purpose, because
+// 21 positions is the control the oracle gives us (volume_steps.h).
+void eqt::bridge::BridgeComponent::PublishVolumesChanged() {
+	if (!ctx_.bridge || !ctx_.audio_manager) return;
+	eqt::state::VolumesChangedData data;
+	data.musicStep =
+		eqt::audio::volumeStepFromFraction(ctx_.audio_manager->getMusicVolume());
+	data.soundStep =
+		eqt::audio::volumeStepFromFraction(ctx_.audio_manager->getEffectsVolume());
+	ctx_.bridge->pushEvent(eqt::state::GameEvent(
+		eqt::state::GameEventType::VolumesChanged, std::move(data)));
 }
 
 void eqt::bridge::BridgeComponent::PlaySound(uint32_t soundId) {

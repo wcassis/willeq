@@ -3,10 +3,12 @@
  *
  * Until this existed `O` reached a bare `break;` in
  * renderer_frame_input.cpp with the comment "WindowManager removed — options
- * window not available", and `PopupType::Options` had zero uses in the whole
- * tree: a bound key advertising a window that was not there. T432's Review
- * recorded it as the one `[…]Window` section it could not persist because
- * there was nothing to persist.
+ * window not available", and a `PopupType` enumerator named Options had zero
+ * uses in the whole tree: a bound key advertising a window that was not
+ * there. T432's Review recorded it as the one `[…]Window` section it could
+ * not persist because there was nothing to persist. T439 DELETED that
+ * enumerator (board B434): this window is independent, not a centre popup,
+ * so the enumerator never gained a producer or a consumer.
  *
  * GEOMETRY is entirely options_layout.h, quoted from the oracle's
  * EQUI_OptionsWindow.xml. This TU computes no rect.
@@ -48,6 +50,7 @@
 #include <string>
 
 #include "client/graphics/ui/options_layout.h"
+#include "client/state/event_bus.h"
 #include "client/graphics/ui/ui_layout.h"
 
 namespace EQT {
@@ -107,9 +110,25 @@ std::string optionsSettingText(const OptionsPanelState& state,
 float optionsClipPlaneDistance(int step);
 int optionsClipPlaneStep(float distance);
 
-/** Volume step <-> the 0..1 float AudioManager takes. */
+/**
+ * Volume step <-> the 0..1 float AudioManager takes. Thin wrappers over
+ * eqt::audio::volumeFractionFromStep / volumeStepFromFraction
+ * (include/client/audio/volume_steps.h) -- T439 moved the arithmetic there
+ * because the GAME thread now needs it too, and options_layout.h's
+ * `irr::s32` cannot be included game-side.
+ */
 float optionsVolumeFraction(int step);
 int optionsVolumeStep(float fraction);
+
+/**
+ * T439 (board B432): the applied volumes coming back from the audio manager.
+ * This is what stops the two sliders drifting -- a /musicvolume, the config
+ * apply and a slider drag all land here, so the panel shows what the audio
+ * manager HOLDS rather than what the renderer last sent it. Returns true if
+ * either slider moved.
+ */
+bool applyVolumesChanged(OptionsPanelState& state,
+                         const eqt::state::VolumesChangedData& data);
 
 /** Render the window. Only when optionsWindowIsVisible(). */
 void renderOptionsWindow(UIRenderer& ui, const UILayout& layout,

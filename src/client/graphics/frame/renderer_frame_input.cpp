@@ -27,6 +27,7 @@
 #include "client/bridge/game_state_bridge.h"
 #include "client/state/event_bus.h"
 #include "client/events/renderer_intents.h"
+#include "client/audio/volume_steps.h"  // T439: the oracle's 0..20 volume step
 #include "common/logging.h"
 #include "common/performance_metrics.h"
 #include <fmt/format.h>
@@ -445,15 +446,26 @@ void FrameComponent::processInputDeltas(float deltaTime) {
         }
     }
 
-    // D20c2: Push volume hotkey changes as intents via bridge
+    // D20c2: Push volume hotkey changes as intents via bridge.
+    // T439 (board B432): the intents are ABSOLUTE now, so a hotkey adds its
+    // step delta to the step the audio manager last PUBLISHED (optionsState_,
+    // written by applyVolumesChanged) rather than to a private accumulator.
+    // The Options slider and the hotkeys therefore move the same number, and
+    // the slider follows a hotkey press without being told separately.
     if (ctx_.bridge) {
-        float musicDelta = ctx_.eventReceiver->getMusicVolumeDelta();
-        if (musicDelta != 0.0f) {
-            ctx_.bridge->pushIntent(eqt::events::MusicVolumeChangeIntent{musicDelta});
+        const int musicDelta = ctx_.eventReceiver->getMusicVolumeStepDelta();
+        if (musicDelta != 0) {
+            const int step = eqt::audio::clampVolumeStep(
+                optionsState_.musicVolume + musicDelta);
+            optionsState_.musicVolume = step;
+            ctx_.bridge->pushIntent(eqt::events::MusicVolumeChangeIntent{step});
         }
-        float effectsDelta = ctx_.eventReceiver->getEffectsVolumeDelta();
-        if (effectsDelta != 0.0f) {
-            ctx_.bridge->pushIntent(eqt::events::EffectsVolumeChangeIntent{effectsDelta});
+        const int effectsDelta = ctx_.eventReceiver->getEffectsVolumeStepDelta();
+        if (effectsDelta != 0) {
+            const int step = eqt::audio::clampVolumeStep(
+                optionsState_.soundVolume + effectsDelta);
+            optionsState_.soundVolume = step;
+            ctx_.bridge->pushIntent(eqt::events::EffectsVolumeChangeIntent{step});
         }
     }
 }

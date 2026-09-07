@@ -722,8 +722,15 @@ void EverQuest::PublishFullStateSnapshot() {
 	// snapshot (see OnGameStateComplete() above) actually publish inventory
 	// data instead of silently compiling out.
 	if (m_inventory_manager) {
-		// Equipment slots (0-21) + general inventory (22-29)
-		for (int16_t slot = 0; slot < 30; ++slot) {
+		// T439 (board B444): equipment (0-21), general (22-29), the CURSOR
+		// (30) and the bank's eight (2000..2007). This loop stopped at 30
+		// until T439 -- which was every slot with a consumer until T436 gave
+		// the cursor and the bank one -- so a character who zoned in holding
+		// something drew no cursor attachment, and an open bank drew nothing,
+		// until the next MoveItem happened to republish the slot. The set is
+		// eqt::inventory::ZoneInSnapshotSlots(), a named table so this loop
+		// and the census cannot drift.
+		for (const int16_t slot : eqt::inventory::ZoneInSnapshotSlots()) {
 			const auto* item = m_inventory_manager->getItem(slot);
 			eqt::state::InventorySlotChangedData data;
 			data.slotId = slot;

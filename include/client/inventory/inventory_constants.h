@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace eqt {
 namespace inventory {
@@ -84,6 +85,40 @@ constexpr int16_t SLOT_TRADESKILL_EXPERIMENT_COMBINE = 1000;
 
 // Invalid slot
 constexpr int16_t SLOT_INVALID = -1;
+
+// ============================================================================
+// The ZONE-IN SNAPSHOT's slot set (T439, board B444)
+// ============================================================================
+// OnGameStateComplete() republishes the whole inventory as enriched
+// InventorySlotChanged events so the renderer's panels start the session
+// agreeing with the game state. That loop was `for (slot = 0; slot < 30;)`
+// -- the 22 equipment slots plus the 8 general ones -- which was every slot
+// with a CONSUMER until T436 gave the cursor (30) and the bank (2000..2007)
+// one. A character who zoned in holding something on the cursor therefore
+// drew no attachment, and an open bank window drew nothing, until the next
+// MoveItem happened to republish the slot.
+//
+// The set is a named table rather than a second literal range so the census
+// test and the loop cannot drift; a new panel that wants a slot family at
+// zone-in adds it HERE and nowhere else.
+//
+// BANK_SNAPSHOT_COUNT is EIGHT, not BANK_COUNT's sixteen: the era's
+// EQUI_BankWnd.xml declares BW_BankSlot0..7 and nothing consumes 2008..2015
+// (T436). BANK_COUNT stays 16 because that is the WIRE's range.
+constexpr int16_t BANK_SNAPSHOT_COUNT = 8;
+
+inline std::vector<int16_t> ZoneInSnapshotSlots() {
+    std::vector<int16_t> slots;
+    slots.reserve(static_cast<size_t>(POSSESSIONS_COUNT) +
+                  static_cast<size_t>(BANK_SNAPSHOT_COUNT));
+    // 0..29: equipment + general. 30: the cursor. POSSESSIONS_COUNT is 31,
+    // so this one range covers both.
+    for (int16_t s = 0; s < POSSESSIONS_COUNT; ++s) slots.push_back(s);
+    for (int16_t i = 0; i < BANK_SNAPSHOT_COUNT; ++i) {
+        slots.push_back(static_cast<int16_t>(BANK_BEGIN + i));
+    }
+    return slots;
+}
 
 // ============================================================================
 // Tradeskill Container Types (bagType values)

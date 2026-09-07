@@ -33,6 +33,7 @@
 // that RegisterSpellCommands() is no longer graphics-only (below).
 #include "client/chat/chat_message_buffer.h"
 #include "client/graphics/ui/command_registry.h"
+#include "client/bridge/bridge_component.h"  // T439: PublishVolumesChanged()
 #include "client/hotbar/hotbar_model.h"
 
 #ifdef EQT_HAS_GRAPHICS
@@ -337,6 +338,10 @@ void eqt::commands::CommandsComponent::RegisterSpellCommands()
 			int vol = std::stoi(args);
 			vol = std::clamp(vol, 0, 100);
 			ctx_.audio_manager->setMusicVolume(vol / 100.0f);
+			// T439 (board B432): this is the path that used to leave the
+			// Options slider stale -- it sets the volume ABSOLUTELY and
+			// nothing told the renderer. Now it does.
+			ctx_.Bridge().PublishVolumesChanged();
 			ctx_.out.System(fmt::format("Music volume set to {}%", vol));
 		} catch (const std::exception&) {
 			ctx_.out.System("Usage: /musicvolume <0-100>");
@@ -366,6 +371,7 @@ void eqt::commands::CommandsComponent::RegisterSpellCommands()
 			int vol = std::stoi(args);
 			vol = std::clamp(vol, 0, 100);
 			ctx_.audio_manager->setEffectsVolume(vol / 100.0f);
+			ctx_.Bridge().PublishVolumesChanged();  // T439 (board B432)
 			ctx_.out.System(fmt::format("Effects volume set to {}%", vol));
 		} catch (const std::exception&) {
 			ctx_.out.System("Usage: /effectsvolume <0-100>");

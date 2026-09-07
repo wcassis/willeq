@@ -226,8 +226,12 @@ const SweepEntry kSweep[] = {
     {"getSpellGemCastRequest", 1, "game thread. The render-thread discard was removed earlier."},
     {"getHotbarActivationRequest", 1, "game thread. Ditto."},
     {"getCameraZoomDelta", 1, "render thread (processInputDeltas)."},
-    {"getMusicVolumeDelta", 1, "render thread (processInputDeltas)."},
-    {"getEffectsVolumeDelta", 1, "render thread (processInputDeltas)."},
+    // T439 (board B432): renamed from get{Music,Effects}VolumeDelta. They
+    // carry an integer number of the oracle's 0..20 slider STEPS now, not a
+    // 0..1 fraction, because the volume intents became absolute; +/-2 steps
+    // is the old +/-0.1f exactly. Same one consumer, same thread.
+    {"getMusicVolumeStepDelta", 1, "render thread (processInputDeltas)."},
+    {"getEffectsVolumeStepDelta", 1, "render thread (processInputDeltas)."},
     // The one documented exception: two textual call sites, ONE consumer.
     // Both are in the same if/else in processFrameInput() -- the UI branch
     // consumes the notch, the else branch drains it so it cannot accumulate

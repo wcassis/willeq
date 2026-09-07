@@ -30,7 +30,7 @@ Central owner of all state modules:
 
 Thread-safe publish/subscribe system for game state changes.
 
-**100 event types** (`GameEventType`, re-counted 2026-09-06 by T421, which added `ItemDisplayShown`; T419 added `TradeskillRecipeListCleared` and `TradeskillRecipeReceived`) organized by domain; `IrrlichtBridge` has a case for all 100 in its switch, `ConsoleBridge` logs a subset headless:
+**101 event types** (`GameEventType`, re-counted 2026-09-07 by T439, which added `VolumesChanged`; T421 added `ItemDisplayShown` and T419 `TradeskillRecipeListCleared` / `TradeskillRecipeReceived`) organized by domain; `IrrlichtBridge` has a case for all 101 in its switch, `ConsoleBridge` logs a subset headless. **This number is netted by `DocCounts`** (`scripts/refactor/check_doc_counts.py`), so a new enumerator that leaves it stale is a red test, not a silent drift:
 - **Player**: PositionChanged, StatsChanged, MovementModeChanged, LevelChanged
 - **Entity**: EntitySpawned, EntityDespawned, EntityMoved, EntityAppearanceChanged, EntityAnimation
 - **Door**: DoorSpawned, DoorStateChanged

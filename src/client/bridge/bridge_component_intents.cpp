@@ -28,6 +28,7 @@
 #include "client/spell/cast_refusal.h"  // T244: official refusal strings
 #include "client/spell/buff_manager.h"
 #include "client/skill/skill_manager.h"
+#include "client/audio/volume_steps.h"  // T439: the oracle's 0..20 volume step
 #include "client/zone_lines.h"
 #include "client/formatted_message.h"
 #include "common/logging.h"
@@ -620,13 +621,17 @@ void eqt::bridge::BridgeComponent::onBankCurrencyConvertIntent(const eqt::events
 	PublishBankCoinProjection(/*inventoryChanged=*/false);
 }
 
-// Volume change intents (D20c2)
+// Volume change intents (D20c2). T439 (board B432): the payload is an
+// ABSOLUTE step 0..20, not a delta, and the applied value is published back
+// on GameEventType::VolumesChanged -- which is what stops the Options slider
+// and /musicvolume from disagreeing.
 void eqt::bridge::BridgeComponent::onMusicVolumeChangeIntent(const eqt::events::MusicVolumeChangeIntent& i) {
 #ifdef WITH_AUDIO
 	if (ctx_.audio_manager) {
-		float newVol = std::max(0.0f, std::min(1.0f, ctx_.audio_manager->getMusicVolume() + i.delta));
-		ctx_.audio_manager->setMusicVolume(newVol);
-		ctx_.out.System(fmt::format("Music volume: {}%", static_cast<int>(newVol * 100)));
+		const int step = eqt::audio::clampVolumeStep(i.step);
+		ctx_.audio_manager->setMusicVolume(eqt::audio::volumeFractionFromStep(step));
+		ctx_.out.System(fmt::format("Music volume: {}%", step * 5));
+		PublishVolumesChanged();
 	}
 #endif
 }
@@ -634,9 +639,10 @@ void eqt::bridge::BridgeComponent::onMusicVolumeChangeIntent(const eqt::events::
 void eqt::bridge::BridgeComponent::onEffectsVolumeChangeIntent(const eqt::events::EffectsVolumeChangeIntent& i) {
 #ifdef WITH_AUDIO
 	if (ctx_.audio_manager) {
-		float newVol = std::max(0.0f, std::min(1.0f, ctx_.audio_manager->getEffectsVolume() + i.delta));
-		ctx_.audio_manager->setEffectsVolume(newVol);
-		ctx_.out.System(fmt::format("Effects volume: {}%", static_cast<int>(newVol * 100)));
+		const int step = eqt::audio::clampVolumeStep(i.step);
+		ctx_.audio_manager->setEffectsVolume(eqt::audio::volumeFractionFromStep(step));
+		ctx_.out.System(fmt::format("Effects volume: {}%", step * 5));
+		PublishVolumesChanged();
 	}
 #endif
 }

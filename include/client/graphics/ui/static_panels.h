@@ -112,7 +112,16 @@ void renderChatPanel(UIRenderer& ui, const UILayout& layout,
  */
 int chatVisibleLines(const UILayout& layout, int lineHeight = 14);
 
-// Popup types for center screen area
+// Popup types for center screen area.
+//
+// T439 (board B434 CLOSED): `Options` was here and is DELETED. T434 built the
+// Options window as an INDEPENDENT window with its own OptionsPanelState and
+// the oracle's own placement -- EQUI_OptionsWindow.xml is `RelativePosition
+// false` at <Location>(90,47)</Location> -- and not as one of these mutually
+// exclusive centre popups, so the enumerator never gained a producer or a
+// consumer. It is deleted rather than pressed into a role the oracle does not
+// give it. The same is true of the merchant window, which IS a centre popup
+// but is tracked by MerchantPanelState::isOpen rather than by `Vendor` here.
 enum class PopupType : uint8_t {
     None = 0,
     Inventory,
@@ -121,8 +130,7 @@ enum class PopupType : uint8_t {
     Bank,
     Loot,
     Trade,
-    Skills,
-    Options
+    Skills
 };
 
 // A single inventory slot's visible state

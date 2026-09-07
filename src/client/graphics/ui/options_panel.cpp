@@ -10,6 +10,8 @@
 
 #include "client/graphics/ui/options_panel.h"
 
+#include "client/audio/volume_steps.h"
+
 #include <algorithm>
 #include <string>
 
@@ -89,15 +91,29 @@ int optionsClipPlaneStep(float distance) {
     return std::max(0, std::min(OptionsLayout::SLIDER_STEPS, step));
 }
 
+// T439: the arithmetic moved to include/client/audio/volume_steps.h, which
+// the GAME thread also includes (the volume intents and VolumesChanged both
+// speak in steps now). These stay as the renderer-side spelling. The
+// static_assert is what stops the slider geometry and the wire unit drifting.
+static_assert(OptionsLayout::SLIDER_STEPS == eqt::audio::kVolumeSteps,
+              "the slider's travel and the wire's volume unit must agree");
+
 float optionsVolumeFraction(int step) {
-    step = std::max(0, std::min(OptionsLayout::SLIDER_STEPS, step));
-    return static_cast<float>(step) / static_cast<float>(OptionsLayout::SLIDER_STEPS);
+    return eqt::audio::volumeFractionFromStep(step);
 }
 
 int optionsVolumeStep(float fraction) {
-    const int step = static_cast<int>(
-        fraction * static_cast<float>(OptionsLayout::SLIDER_STEPS) + 0.5f);
-    return std::max(0, std::min(OptionsLayout::SLIDER_STEPS, step));
+    return eqt::audio::volumeStepFromFraction(fraction);
+}
+
+bool applyVolumesChanged(OptionsPanelState& state,
+                         const eqt::state::VolumesChangedData& data) {
+    const int music = eqt::audio::clampVolumeStep(data.musicStep);
+    const int sound = eqt::audio::clampVolumeStep(data.soundStep);
+    const bool moved = (state.musicVolume != music) || (state.soundVolume != sound);
+    state.musicVolume = music;
+    state.soundVolume = sound;
+    return moved;
 }
 
 void renderOptionsWindow(UIRenderer& ui, const UILayout& layout,

@@ -270,6 +270,15 @@ public:
 	// tree-wide (section Mechanism 5); boarded.
 	void PlaySound(uint32_t soundId);
 
+	// T439 (board B432): the ONE publisher of GameEventType::VolumesChanged.
+	// Every site that moves a volume calls it right after the setter -- the
+	// config apply in InitializeAudio(), the two volume intents, and
+	// /musicvolume + /effectsvolume (through ctx_.Bridge()). It reads the
+	// audio manager back rather than taking the value it was just handed, so
+	// the event states what the audio manager ACTUALLY holds after its own
+	// clamping, which is the whole point of the board item.
+	void PublishVolumesChanged();
+
 	// Audio configuration (applied during InitializeAudio; Application sets
 	// these from the CLI/config before InitGraphics).
 	void SetAudioEnabled(bool enabled) { m_audio_config_enabled = enabled; }

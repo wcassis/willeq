@@ -280,10 +280,12 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                     case HA::CameraZoomOut: cameraZoomDelta_ = 2.0f; break;
 
                     // Audio Volume
-                    case HA::MusicVolumeUp: musicVolumeDelta_ = 0.1f; break;
-                    case HA::MusicVolumeDown: musicVolumeDelta_ = -0.1f; break;
-                    case HA::EffectsVolumeUp: effectsVolumeDelta_ = 0.1f; break;
-                    case HA::EffectsVolumeDown: effectsVolumeDelta_ = -0.1f; break;
+                    // T439 (board B432): 2 steps is the old 0.1f of a 0..1
+                    // volume, said on the oracle's 0..20 scale. Same travel.
+                    case HA::MusicVolumeUp: musicVolumeStepDelta_ = 2; break;
+                    case HA::MusicVolumeDown: musicVolumeStepDelta_ = -2; break;
+                    case HA::EffectsVolumeUp: effectsVolumeStepDelta_ = 2; break;
+                    case HA::EffectsVolumeDown: effectsVolumeStepDelta_ = -2; break;
 
                     // Movement keys and Jump are handled separately (continuous state)
                     default:

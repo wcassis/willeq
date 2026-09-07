@@ -230,6 +230,24 @@ ROWS = [
       ("include/client/graphics/ui/CLAUDE.md",
        r"\*\*(\w+)\*\*\s+`registerCommand\(\{")]),
 
+    # T439 (board B432): four docs stated "100 event types" and a new
+    # enumerator would have left all four stale silently. This is exactly the
+    # drift T373 built this file for, and the enum was simply not on the list.
+    ("GameEventType enumerators",
+     lambda r: count_enumerators(
+         r, "include/client/state/event_bus.h", "GameEventType"),
+     "every new panel or feed adds one; T439 added VolumesChanged",
+     [("CLAUDE.md",
+       r"EventBus,\s+(\w+)\s+event types"),
+      ("CLAUDE.md",
+       r"switch over the\s+(\w+)\s+`GameEventType` enumerators"),
+      ("CLAUDE.md",
+       r"—\s+(\w+)\s+event types covering all game state changes"),
+      ("include/client/state/CLAUDE.md",
+       r"\*\*(\w+)\s+event types\*\*"),
+      ("include/client/state/CLAUDE.md",
+       r"has a case for all\s+(\w+)\s+in its switch")]),
+
     ("RendererIntent variant alternatives",
      lambda r: count_variant_alternatives(
          r, "include/client/events/renderer_intents.h", "RendererIntent"),
