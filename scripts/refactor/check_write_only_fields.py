@@ -219,11 +219,14 @@ EXEMPT = {
                     "EQUI_TargetWindow.xml has only a name label, an HP gauge and a '%' label; "
                     "there is no element for it. B418"),
     ("Entity", "guildId"):
-        ("boarded", "B298 (entity half CLOSED by T429): the oracle DOES print a guild, and fable "
-                    "cannot -- it has no guild-id-to-name source at all. "
-                    "LoginWorldComponent::WorldProcessGuildsList is one LOG_DEBUG line that "
-                    "parses nothing, and data/willeq.db has no guild table. Same shape as B391's "
-                    "item-name gap: printing the id would invent a line. B418"),
+        ("boarded", "B455 (was B298/B418): fable HAS a guild-id-to-name source now -- T443 "
+                    "parsed OP_GuildsList into eqt::guild::GuildNameTable and B418 is struck -- "
+                    "but there is still nowhere it may be DRAWN. The /who guild fragment is a "
+                    "wire string eqemu already fills and the /who path never reads Entity; "
+                    "EQUI_TargetWindow.xml has no guild element; and the overhead name tag, "
+                    "which is the oracle's one remaining surface, has NO measured format in any "
+                    "capture, so drawing one would invent it (T363). Closes when the official "
+                    "client is captured with a guilded character in view. B455"),
     ("Entity", "deltaHeading"):
         ("boarded", "B298 (entity half CLOSED by T429): a MOVEMENT field, not a display one -- "
                     "the wire's delta heading, the sibling of deltaX/Y/Z that the renderer "

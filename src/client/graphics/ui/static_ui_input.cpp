@@ -547,14 +547,31 @@ bool StaticUIInput::processKey(irr::EKEY_CODE key, bool pressed, bool /*shift*/,
                                 InventoryPanelState& inventory,
                                 SpellbookPopupState& spellbook,
                                 SkillsPopupState& skills,
-                                LootPanelState& loot) {
+                                LootPanelState& loot,
+                                TradeskillPanelState& tradeskill) {
     if (!pressed) return false;
 
     // ESC closes any open popup
     if (key == irr::KEY_ESCAPE) {
-        // T290: the loot popup goes first -- it is drawn on top, and it is
-        // the only popup whose close has to reach the server. It does NOT
-        // clear isOpen here; LootWindowClosed does.
+        // T443 (board B454): the tradeskill container goes first -- it is
+        // the LAST centre popup drawn (renderer_frame_render.cpp draws it
+        // after the loot popup), so it is the topmost one here. Like the
+        // loot window it is SERVER-owned: it pushes TradeskillCloseIntent
+        // and does NOT clear isOpen; applyTradeskillContainerClosed() does,
+        // off the server's TradeskillContainerClosed event. That is T290's
+        // rule and the same body the window's Close button already used --
+        // ESC is a second producer for one existing intent, not a new
+        // packet.
+        if (tradeskill.isOpen) {
+            if (bridge_) {
+                bridge_->pushIntent(
+                    eqt::events::TradeskillCloseIntent{tradeskill.objectId});
+            }
+            return true;
+        }
+        // T290: the loot popup goes next -- it is the only OTHER popup whose
+        // close has to reach the server. It does NOT clear isOpen here;
+        // LootWindowClosed does.
         if (loot.isOpen) {
             if (bridge_) {
                 bridge_->pushIntent(eqt::events::CloseLootIntent{loot.corpseId});

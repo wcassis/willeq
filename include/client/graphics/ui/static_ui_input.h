@@ -196,12 +196,27 @@ public:
 
     /**
      * Handle a key press. Returns true if consumed.
+     *
+     * ESC dismisses the topmost open centre popup, in the order they are
+     * DRAWN (renderer_frame_render.cpp): tradeskill, then loot, then
+     * skills, then spellbook, then the inventory popup.
+     *
+     * T443 (board B454): the two SERVER-OWNED windows in that list --
+     * the tradeskill container and the loot window -- do NOT close
+     * themselves. T290's rule: the UI never closes itself, because an
+     * optimistic local close desyncs the server's "this container/corpse
+     * is open" state (`ctx_.active_tradeskill_object_id`, which also
+     * gates InventoryManager::setWorldContainerOpen). Each pushes its
+     * close intent and leaves the panel up until the server's own
+     * TradeskillContainerClosed / LootWindowClosed comes back. The other
+     * three are pure client views and are hidden here.
      */
     bool processKey(irr::EKEY_CODE key, bool pressed, bool shift, bool ctrl,
                     InventoryPanelState& inventory,
                     SpellbookPopupState& spellbook,
                     SkillsPopupState& skills,
-                    LootPanelState& loot);
+                    LootPanelState& loot,
+                    TradeskillPanelState& tradeskill);
 
     // --- T313: the one scroll input path -------------------------------
     //

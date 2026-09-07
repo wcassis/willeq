@@ -14,6 +14,7 @@
 #include "client/graphics/ui/static_ui_input.h"
 #include "client/graphics/ui/ui_layout.h"
 #include "client/graphics/ui/static_panels.h"
+#include "client/graphics/ui/tradeskill_panel.h"
 #include "client/graphics/ui/ui_renderer.h"
 #include "client/graphics/ui/inventory_layout.h"
 #include "client/inventory/inventory_constants.h"
@@ -77,6 +78,8 @@ protected:
     SkillsPopupState skills;
     BuffBarState buffs;
     LootPanelState loot;
+    // T443 (B454): processKey()'s topmost arm. Closed in this fixture.
+    TradeskillPanelState tradeskill;
     StaticUIInput input;
 
     void SetUp() override {
@@ -512,7 +515,7 @@ TEST_F(StaticUIInputTest, InventoryOutsidePopupRegionNoHover) {
 TEST_F(StaticUIInputTest, EscapeClosesOpenInventoryPopup) {
     inventory.activePopup = PopupType::Inventory;
     bool consumed = input.processKey(irr::KEY_ESCAPE, /*pressed=*/true, false, false,
-                                      inventory, spellbook, skills, loot);
+                                      inventory, spellbook, skills, loot, tradeskill);
     EXPECT_TRUE(consumed);
     EXPECT_EQ(inventory.activePopup, PopupType::None);
 }
@@ -524,7 +527,7 @@ TEST_F(StaticUIInputTest, EscapeClosesOpenSpellbookBeforeInventory) {
     spellbook.isOpen = true;
     inventory.activePopup = PopupType::Inventory;
     bool consumed = input.processKey(irr::KEY_ESCAPE, /*pressed=*/true, false, false,
-                                      inventory, spellbook, skills, loot);
+                                      inventory, spellbook, skills, loot, tradeskill);
     EXPECT_TRUE(consumed);
     EXPECT_FALSE(spellbook.isOpen);
     // Inventory is untouched this call — ESC only closes one popup layer
@@ -534,14 +537,14 @@ TEST_F(StaticUIInputTest, EscapeClosesOpenSpellbookBeforeInventory) {
 
 TEST_F(StaticUIInputTest, EscapeWithNothingOpenReturnsFalse) {
     bool consumed = input.processKey(irr::KEY_ESCAPE, /*pressed=*/true, false, false,
-                                      inventory, spellbook, skills, loot);
+                                      inventory, spellbook, skills, loot, tradeskill);
     EXPECT_FALSE(consumed);
 }
 
 TEST_F(StaticUIInputTest, KeyReleaseIsAlwaysIgnored) {
     inventory.activePopup = PopupType::Inventory;
     bool consumed = input.processKey(irr::KEY_ESCAPE, /*pressed=*/false, false, false,
-                                      inventory, spellbook, skills, loot);
+                                      inventory, spellbook, skills, loot, tradeskill);
     EXPECT_FALSE(consumed);
     EXPECT_EQ(inventory.activePopup, PopupType::Inventory);
 }

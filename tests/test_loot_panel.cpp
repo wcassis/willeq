@@ -35,6 +35,7 @@
 #include "client/bridge/game_state_bridge.h"
 #include "client/events/renderer_intents.h"
 #include "client/graphics/ui/static_panels.h"
+#include "client/graphics/ui/tradeskill_panel.h"
 #include "client/graphics/ui/static_ui_input.h"
 #include "client/graphics/ui/ui_layout.h"
 #include "client/state/event_bus.h"
@@ -292,6 +293,9 @@ protected:
     SkillsPopupState skills;
     BuffBarState buffs;
     LootPanelState loot;
+    // T443 (B454): processKey() now asks the tradeskill container first --
+    // it is the topmost centre popup. Closed here, so the loot arm runs.
+    TradeskillPanelState tradeskill;
     CapturingBridge bridge;
     StaticUIInput input;
 
@@ -383,7 +387,7 @@ TEST_F(LootClickTest, CloseButtonPushesCloseLootIntentAndLeavesThePanelUp) {
 
 TEST_F(LootClickTest, EscapePushesCloseLootIntentAndLeavesThePanelUp) {
     bool consumed = input.processKey(irr::KEY_ESCAPE, /*pressed=*/true, false, false,
-                                     inventory, spellbook, skills, loot);
+                                     inventory, spellbook, skills, loot, tradeskill);
     EXPECT_TRUE(consumed);
     auto intents = drain();
     ASSERT_EQ(intents.size(), 1u);
@@ -395,7 +399,7 @@ TEST_F(LootClickTest, EscapeClosesTheLootPanelBeforeAnyOtherPopup) {
     spellbook.isOpen = true;
     inventory.activePopup = PopupType::Inventory;
     EXPECT_TRUE(input.processKey(irr::KEY_ESCAPE, true, false, false,
-                                 inventory, spellbook, skills, loot));
+                                 inventory, spellbook, skills, loot, tradeskill));
     EXPECT_TRUE(spellbook.isOpen);
     EXPECT_EQ(inventory.activePopup, PopupType::Inventory);
 }

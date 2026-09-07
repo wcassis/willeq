@@ -6,6 +6,7 @@
 // renderer_frame.cpp instead — it is frame-phase state, not diagnostics.
 
 #include "client/graphics/diagnostics/diagnostics_component.h"
+#include "client/graphics/diagnostics/scene_node_census.h"
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/frame_budget_governor.h"
 #include "client/graphics/weather_effects_controller.h"
@@ -156,71 +157,68 @@ void DiagnosticsComponent::dumpScene() const {
     }
 
     // --- Other nodes ---
-    // Build a set of all known/tracked scene node pointers for diagnostic enumeration
-    std::set<irr::scene::ISceneNode*> knownNodes;
-    int otherNodes = totalSceneNodes;
-    // Subtract known categories
+    // T443 (board B453): the subtraction and the knownNodes set are built
+    // together, in ONE place, by computeSceneNodeCensus(). They used to be
+    // eleven separate `otherNodes--; knownNodes.insert(x);` pairs, and
+    // ctx_.zoneMeshNode -- the single-zone-mesh node createZoneMesh() adds
+    // to the ROOT scene node in a no-BSP zone -- was in neither half, so
+    // /dumpscene in Plane of Sky printed unaccounted=1 and enumerated the
+    // zone mesh itself as an unidentified octree node. It is a `single`
+    // below now, next to the collision node it always should have sat with.
+    // In a BSP zone the member is null (ignored) and the geometry is in
+    // regionMeshNodes, which is why the count read 0 there and hid this.
+    SceneNodeCensusInputs census;
+    census.smgr = ctx_.smgr;
     if (ctx_.entityRenderer) {
         for (const auto& [id, ent] : ctx_.entityRenderer->getEntities()) {
-            if (ent.inSceneGraph && ent.sceneNode) {
-                otherNodes -= countNodes(ent.sceneNode);  // entity + all descendants (children, grandchildren, etc.)
-                knownNodes.insert(ent.sceneNode);
-            }
-            // Subtract entity light nodes (parented to ROOT, not to entity)
-            if (ent.lightNode && ent.lightNode->getParent()) {
-                otherNodes--;
-                knownNodes.insert(ent.lightNode);
-            }
+            // entity + all descendants (children, grandchildren, etc.)
+            if (ent.inSceneGraph && ent.sceneNode) census.subtrees.push_back(ent.sceneNode);
+            // Entity light nodes are parented to ROOT, not to the entity.
+            if (ent.lightNode && ent.lightNode->getParent()) census.singles.push_back(ent.lightNode);
         }
     }
     if (ctx_.doorManager) {
         for (uint16_t i = 0; i < 256; ++i) {
             const auto* door = ctx_.doorManager->getDoor(static_cast<uint8_t>(i));
             if (door && door->inSceneGraph) {
-                otherNodes -= 2;  // pivot + mesh child
-                if (door->pivotNode) knownNodes.insert(door->pivotNode);
+                census.countedElsewhere += 2;  // pivot + mesh child
+                if (door->pivotNode) census.collected.insert(door->pivotNode);
             }
         }
     }
     for (size_t i = 0; i < ctx_.objectNodes.size(); ++i) {
         if (ctx_.objectNodes[i] && i < ctx_.objectInSceneGraph.size() && ctx_.objectInSceneGraph[i]) {
-            otherNodes--;
-            knownNodes.insert(ctx_.objectNodes[i]);
+            census.singles.push_back(ctx_.objectNodes[i]);
         }
     }
     // Zone lights have no scene nodes — nothing to subtract
-    // Subtract zone mesh nodes that are in the scene graph
     for (const auto& [regionIdx, node] : ctx_.regionMeshNodes) {
-        if (node && node->getParent()) {
-            otherNodes--;
-            knownNodes.insert(node);
-        }
+        if (node && node->getParent()) census.singles.push_back(node);
     }
-    // Subtract object light nodes
     for (const auto& ol : ctx_.objectLights) {
-        if (ol.node && ol.node->getParent()) {
-            otherNodes--;
-            knownNodes.insert(ol.node);
-        }
+        if (ol.node && ol.node->getParent()) census.singles.push_back(ol.node);
     }
-    // Subtract sky renderer nodes and collect their pointers
-    otherNodes -= skyNodeCount;
-    if (ctx_.skyRenderer) ctx_.skyRenderer->collectSceneNodes(knownNodes);
-    // Subtract weather nodes and collect their pointers
-    otherNodes -= weatherNodeCount;
-    if (ctx_.weatherEffects) ctx_.weatherEffects->collectSceneNodes(knownNodes);
-    // Subtract zone collision node
-    if (collisionInGraph) { otherNodes--; knownNodes.insert(ctx_.ZoneLifecycle().zoneCollisionNode()); }
-    if (ctx_.zonePlaceholderNode) { otherNodes--; knownNodes.insert(ctx_.zonePlaceholderNode); }
-    if (ctx_.camera) { otherNodes--; knownNodes.insert(ctx_.camera); }
-    if (sunLight_) { otherNodes--; knownNodes.insert(sunLight_); }
-    if (playerLightNode_) { otherNodes--; knownNodes.insert(playerLightNode_); }
+    census.countedElsewhere += skyNodeCount;
+    if (ctx_.skyRenderer) ctx_.skyRenderer->collectSceneNodes(census.collected);
+    census.countedElsewhere += weatherNodeCount;
+    if (ctx_.weatherEffects) ctx_.weatherEffects->collectSceneNodes(census.collected);
+    if (collisionInGraph) census.singles.push_back(ctx_.ZoneLifecycle().zoneCollisionNode());
+    // B453: the missing one.
+    census.singles.push_back(ctx_.zoneMeshNode);
+    census.singles.push_back(ctx_.zonePlaceholderNode);
+    census.singles.push_back(ctx_.camera);
+    census.singles.push_back(sunLight_);
+    census.singles.push_back(playerLightNode_);
     // P32: the animated-tree scene-node loop was removed along with
     // AnimatedTreeManager — animatedTrees_ (and this loop) was always empty
     // on GLES2, so it never inserted anything into knownNodes. treeInGraph
     // (always 0, see above) is kept for this subtraction's exact prior
     // arithmetic (a no-op).
-    otherNodes -= static_cast<int>(treeInGraph);
+    census.countedElsewhere += static_cast<int>(treeInGraph);
+
+    const SceneNodeCensus scene = computeSceneNodeCensus(census);
+    const std::set<irr::scene::ISceneNode*>& knownNodes = scene.known;
+    const int otherNodes = scene.unaccounted;
     LOG_INFO(MOD_GRAPHICS, "  OTHER: camera={}, sunLight={}, playerLight={}, unaccounted={}",
              ctx_.camera != nullptr, sunLight_ != nullptr, playerLightNode_ != nullptr, otherNodes);
 
