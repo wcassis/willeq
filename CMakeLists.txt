@@ -538,6 +538,7 @@ IF(EQT_GRAPHICS)
         # literals. Only the directory moved.
         src/client/graphics/player/renderer_player_physics.cpp
         src/client/graphics/player/renderer_player_collision.cpp
+        src/client/graphics/player/renderer_player_lift.cpp
         src/client/graphics/player/renderer_camera.cpp
         # T437 (board B435): the ground query's answer shape and the two
         # decisions that read it, device-free so they can be tested.
@@ -584,7 +585,9 @@ IF(EQT_GRAPHICS)
         src/client/graphics/loading_thread.cpp
         src/client/graphics/door_manager.cpp
         src/client/graphics/door_collision.cpp
+        src/client/graphics/door_motion.cpp
         src/client/graphics/door_manager_collision.cpp
+        src/client/graphics/door_manager_animation.cpp
         src/client/graphics/animated_texture_manager.cpp
         src/client/graphics/sky_config.cpp
         src/client/graphics/sky_renderer.cpp

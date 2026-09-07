@@ -14,6 +14,8 @@
 
 #include "client/player_facade.h"
 
+#include "common/logging.h"
+
 #include <glm/glm.hpp>
 
 // ============================================================================
@@ -202,8 +204,27 @@ void eqt::PlayerFacade::SetHeading(float heading)
 	m_game_state.player().setHeading(heading);
 }
 
-void eqt::PlayerFacade::SetPosition(float x, float y, float z)
+void eqt::PlayerFacade::TracePositionWrite(const char* what, float x, float y, float z,
+                                          const char* from_file, int from_line) const
 {
+	// T438 (board B424). One level compare when the module is not at TRACE.
+	if (!ShouldLog(MOD_MOVEMENT, LOG_TRACE)) {
+		return;
+	}
+	const char* base = from_file ? from_file : "?";
+	for (const char* p = base; *p; ++p) {
+		if (*p == '/') {
+			base = p + 1;
+		}
+	}
+	LOG_TRACE(MOD_MOVEMENT, "player z write: {} ({:.4f}, {:.4f}, {:.4f}) from {}:{}",
+	          what, x, y, z, base, from_line);
+}
+
+void eqt::PlayerFacade::SetPosition(float x, float y, float z,
+                                    const char* from_file, int from_line)
+{
+	TracePositionWrite("SetPosition", x, y, z, from_file, from_line);
 	// T288: one store. setPosition() fires PlayerMoved on the state bus, as
 	// it always has -- this is the discrete-relocation path, not the
 	// per-tick integrator path (SetPosLocal()).

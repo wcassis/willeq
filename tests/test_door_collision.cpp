@@ -90,12 +90,14 @@ std::vector<irr::core::triangle3df> Quad(const irr::core::vector3df& a,
     return {irr::core::triangle3df(a, b, c), irr::core::triangle3df(a, c, d)};
 }
 
-DoorRuntimeStateFn StateOf(bool isOpen, bool isAnimating = false, bool known = true) {
-    return [isOpen, isAnimating, known](uint8_t) {
+DoorRuntimeStateFn StateOf(bool isOpen, bool isAnimating = false, bool known = true,
+                           bool isLift = false) {
+    return [isOpen, isAnimating, known, isLift](uint8_t) {
         DoorRuntimeState s;
         s.known = known;
         s.isOpen = isOpen;
         s.isAnimating = isAnimating;
+        s.isLift = isLift;
         return s;
     };
 }
@@ -184,8 +186,34 @@ TEST(DoorCollisionRay, NonCollidingDoorIsWalkedThrough) {
 TEST(DoorCollisionRay, AnimatingDoorIsWalkedThrough) {
     const auto doors = DoorwayMap();
     EXPECT_FALSE(CastThroughDoorway(doors, StateOf(false, /*isAnimating=*/true)).hit)
-        << "walk-through during animation is the original EQ behaviour "
-           "(board B423 owns revisiting it for lifts)";
+        << "walk-through during animation is the original EQ behaviour";
+}
+
+// T438 (board B423): ...and it is the WRONG rule for a lift, which is animating
+// for its whole ride. Scoping it to non-lifts is what makes a moving platform a
+// surface you can stand on, which T438 measured the official client doing.
+TEST(DoorCollisionRay, AnAnimatingLiftStillCollides) {
+    const auto doors = DoorwayMap();
+    EXPECT_TRUE(CastThroughDoorway(doors,
+                                   StateOf(false, /*isAnimating=*/true,
+                                           /*known=*/true, /*isLift=*/true)).hit)
+        << "a lift you are riding must not become walk-through the moment it "
+           "starts moving";
+}
+
+TEST(DoorCollisionRay, TheRayTestNamesTheDoorItHit) {
+    // T438: the rider probe needs the id, so it can ask whether THAT door is
+    // one of the lifts that moved this frame.
+    const auto doors = DoorwayMap();
+    irr::core::vector3df point;
+    irr::core::triangle3df tri;
+    float distSq = 0.0f;
+    uint8_t hitId = 0;
+    ASSERT_TRUE(RayTestDoorCollision(doors, StateOf(false),
+                                     irr::core::vector3df(0.0f, 4.0f, 0.0f),
+                                     irr::core::vector3df(1.0f, 0.0f, 0.0f), 20.0f,
+                                     kRegion, point, tri, distSq, false, &hitId));
+    EXPECT_EQ(hitId, kDoorId);
 }
 
 TEST(DoorCollisionRay, DoorInAnotherBspRegionIsNotTested) {

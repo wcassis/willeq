@@ -325,6 +325,7 @@ bool PlayerCameraComponent::rayTestDoorsAndObjects(const irr::core::vector3df& r
                 state.known = true;
                 state.isOpen = door->isOpen;
                 state.isAnimating = door->isAnimating;
+                state.isLift = door->isLift;  // T438 (B423): rides, not swings
             }
             return state;
         },

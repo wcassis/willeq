@@ -3,6 +3,7 @@
 
 #include <irrlicht.h>
 #include "client/graphics/door_collision.h"
+#include "client/graphics/door_motion.h"
 #include <map>
 #include <set>
 #include <string>
@@ -43,6 +44,12 @@ struct DoorVisual {
     uint16_t size = 100;           // Scale (100 = 1.0)
     uint8_t opentype = 0;          // Door behavior type
 
+    // T438 (board B422): the wire door_param, which is a LIFT's travel distance
+    // in units. It was parsed into DoorState and read by nothing.
+    uint32_t doorParam = 0;
+    bool isLift = false;           // opentype 59 with doorParam > 0
+    LiftCycle lift;                // the measured travel/dwell/return cycle
+
     // Animation state
     bool isOpen = false;
     bool isAnimating = false;
@@ -52,6 +59,11 @@ struct DoorVisual {
     // Spinning animation (for opentype 100/105)
     bool isSpinning = false;       // True for spinning objects
     float spinAngle = 0.0f;        // Current spin angle (degrees)
+
+    // T438: the official client closes a door BY ITSELF -- for an ordinary
+    // door eqemu transmits no close at all (doors.cpp:138). Seconds left until
+    // this door closes on its own; negative means disarmed.
+    float autoCloseTimer = -1.0f;
 
     // Bounding box for interaction
     irr::core::aabbox3df boundingBox;
@@ -133,7 +145,7 @@ public:
     bool createDoor(uint8_t doorId, const std::string& name,
                     float x, float y, float z, float heading,
                     uint32_t incline, uint16_t size, uint8_t opentype,
-                    bool initiallyOpen);
+                    bool initiallyOpen, uint32_t doorParam = 0);
 
     // Update door state (open/close animation)
     // userInitiated: true if triggered by user click/keypress, false if from server broadcast
@@ -141,6 +153,12 @@ public:
 
     // Animation update (call each frame)
     void update(float deltaTime);
+
+    // T438 (board B423): every lift that moved during the last update(), with
+    // the z displacement it applied. PlayerCameraComponent uses this to carry a
+    // player standing on the platform -- measured: the official client carries
+    // the rider exactly.
+    const std::vector<std::pair<uint8_t, float>>& liftMovers() const { return liftMovers_; }
 
     // Find door at screen position (for click targeting)
     // Returns door_id or 0 if none found
@@ -158,7 +176,7 @@ public:
     bool registerDoor(uint8_t doorId, const std::string& name,
                       float x, float y, float z, float heading,
                       uint32_t incline, uint16_t size, uint8_t opentype,
-                      bool initiallyOpen);
+                      bool initiallyOpen, uint32_t doorParam = 0);
     // Build the mesh for a previously registered door
     bool buildDoorMesh(uint8_t doorId);
     // Check if door mesh is built
@@ -251,11 +269,12 @@ private:
     const std::unordered_set<size_t>* occlusionCulledRegions_ = nullptr;
     size_t currentPvsRegion_ = SIZE_MAX;
     const std::unordered_map<size_t, std::vector<size_t>>* regionNeighbors_ = nullptr;
-    // Animation speed (complete animation in ~0.5 seconds)
-    static constexpr float ANIM_SPEED = 2.0f;
-
-    // Spinning speed (~180 degrees per 4.25 seconds = 42.35 deg/sec)
-    static constexpr float SPIN_SPEED = 42.35f;
+    // T438: the animation constants moved to door_motion.h, where each one
+    // carries the oracle session that produced it. The two that stood here --
+    // ANIM_SPEED 2.0 ("~0.5 seconds") and SPIN_SPEED 42.35 ("~180 degrees per
+    // 4.25 seconds") -- were both invented, and both wrong: the rotation is
+    // 0.95 s opening / 0.60 s closing and the spin is a FULL turn in 4.267 s.
+    std::vector<std::pair<uint8_t, float>> liftMovers_;
 };
 
 } // namespace Graphics

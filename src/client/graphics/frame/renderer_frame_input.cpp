@@ -856,6 +856,10 @@ void FrameComponent::processFrameSimulation(float deltaTime) {
         // T435 (board B425): doors only collide because this runs. Must follow
         // update(), which is what marks a moving door's geometry stale.
         ctx_.PlayerCamera().syncDoorCollision();
+        // T438 (board B423): and then the player rides whatever moved. Must
+        // follow syncDoorCollision(), which is what puts the platform's
+        // CURRENT triangles in the map the ride probe queries.
+        ctx_.PlayerCamera().carryPlayerOnLifts(deltaTime);
     }
     frameTimings_.doorUpdate = measureSection();
 

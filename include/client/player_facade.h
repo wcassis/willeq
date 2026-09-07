@@ -98,7 +98,18 @@ public:
 	float GetHeading() const;
 	bool IsMoving() const;
 	void SetHeading(float heading);
-	void SetPosition(float x, float y, float z);
+	// T438 (board B424): the two position writes carry their CALL SITE.
+	// B424 -- "after a same-zone #goto the game-thread player z reports the
+	// Kelethin platform height" -- survived two units because every offline
+	// argument about WHICH handler wrote the z was circumstantial: the writers
+	// were enumerated and excluded one by one from a log that never named one.
+	// __builtin_FILE()/__builtin_LINE() defaults cost nothing at a call site
+	// that does not pass them and make the next such question a single TRACE
+	// run instead of a unit. TracePositionWrite() early-outs unless MOD_MOVEMENT
+	// is at TRACE, so the shipped cost is one level compare per write.
+	void SetPosition(float x, float y, float z,
+	                 const char* from_file = __builtin_FILE(),
+	                 int from_line = __builtin_LINE());
 	void SetMoving(bool moving);
 
 	// --- Behavioural flags ---
@@ -148,7 +159,10 @@ public:
 	// event behaviour the raw members had (see
 	// PlayerState::setPositionNoEvent). SetPosition()/SetHeading() remain
 	// the event-firing relocation path.
-	void SetPosLocal(float x, float y, float z) {
+	void SetPosLocal(float x, float y, float z,
+	                 const char* from_file = __builtin_FILE(),
+	                 int from_line = __builtin_LINE()) {
+		TracePositionWrite("SetPosLocal", x, y, z, from_file, from_line);
 		m_game_state.player().setPositionNoEvent(x, y, z);
 		MirrorSelfEntityPosition(x, y, z);  // T404 (B251)
 	}
@@ -178,6 +192,11 @@ public:
 	bool IsTrainerWindowOpen() const { return m_game_state.player().trainerNpcId() != 0; }
 
 private:
+	// T438: see SetPosition() above. Defined in player_facade.cpp so the
+	// logging header does not have to be pulled into every includer.
+	void TracePositionWrite(const char* what, float x, float y, float z,
+	                        const char* from_file, int from_line) const;
+
 	// T404 (board B251). POSITION ONLY, deliberately: the self row's HEADING
 	// is not in the same convention as PlayerState's. ZoneProcessClientUpdate
 	// stores `server_h` verbatim in the row while writing `90 - server_h`

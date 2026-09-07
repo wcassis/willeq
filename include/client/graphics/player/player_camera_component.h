@@ -97,6 +97,11 @@ public:
 	// DoorManager's changed/removed ids and re-bakes their world-space
 	// triangles. Called once per frame after DoorManager::update().
 	void syncDoorCollision();
+
+	// T438 (board B423): carry the player standing on a lift that moved
+	// this frame. Called right after syncDoorCollision(); defined in
+	// src/client/graphics/player/renderer_player_lift.cpp.
+	void carryPlayerOnLifts(float deltaTime);
 	void drawCollisionDebugLines(float deltaTime);
 
 	// T354 (B042/B047 batch): the incremental collision-registration API
@@ -316,6 +321,10 @@ private:
 	// T332: set by setPlayerPosition() (the only external writer of
 	// ctx_.playerX/Y/Z), cleared by updatePlayerMovement() the moment the
 	// integrator writes them itself. See playerPositionIsSeed() above.
+	// T438: throttle for the rider's own position sync (the movement path
+	// only fires on a frame with movement INPUT, and a rider stands still).
+	float liftRideSyncAccum_ = 0.0f;
+
 	bool playerPositionIsSeed_ = false;
 
 	// Debug visualization for collision rays. The nested type moved with the

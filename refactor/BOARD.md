@@ -7042,7 +7042,7 @@ client only as `OP_MoveDoor{doorid, action}` or a position change. Full tables
 in `refactor/T433_doors_lifts_survey.md` Review; raw dumps in
 `review/T433/data/`.
 
-- **B421** (A, feature — **gates B422/B423/B426**) **the official client cannot
+- ~~**B421** (A, feature — **gates B422/B423/B426**) **the official client cannot
   be made to click a door under the Xvfb/xdotool oracle rig, so every door
   timing in fable is still an invented constant.** T433 turned on eqemu's own
   arrival log (`#logs set gmsay 10 3`; `client_packet.cpp:4671` logs every
@@ -7065,9 +7065,9 @@ in `refactor/T433_doors_lifts_survey.md` Review; raw dumps in
   the rotation duration of one opentype-0 door and the spin rate of one
   100/105 — the three constants fable currently invents. Evidence:
   `review/T433/probe/T433_oracle_clickstyles_doorslog_6styles.png`,
-  `review/T433/video/T433_grid_lift69.mkv`. Found by T433 Leg B.
+  `review/T433/video/T433_grid_lift69.mkv`. Found by T433 Leg B.~~ **CLOSED by T438** (`refactor/T438_lift_oracle.md`). Route (d) is what worked: a one-file Perl player quest calling eqemu's own `quest::forcedooropen()`, installed for the capture and removed with the world down. `Doors::ForceOpen` (`/mnt/projects/akk-stack/code/zone/doors.cpp:658`) emits the SAME `OP_MoveDoor` a click emits, so the recordings ARE the official client's animation. **Correction to this entry and to T438's own first pass: the door-use keybind DOES exist** -- the client's Options > Keys page (category All) lists "Use centerscreen -- Keypress **U**" (`review/T438/probe/T438_oracle_options_keys_use_centerscreen_U.png`; Will named it mid-unit). It does not fire either: twelve `u` presses across an ordinary FAYDOOR (facing at 12.6 units and touching), the lift platform (on the screen centre at 10 and 4 units) and a FELE2 call button produced no `OP_ClickDoor` with the Doors log at Debug 3 to gmsay AND file, and a control proves the key reaches the game rather than the chat bar (the chat input box stays empty). Route (b) adds the diagnostic that the pointer IS tracked -- a hover raises the Actions window's `<Ctrl S>` tooltip -- so what refuses synthetic input is the 3D WORLD-INTERACTION PICK, mouse and centre-screen key alike. Route (c) cannot work by construction: `Mob::HandleDoorOpen()`'s only caller is `mob_ai.cpp:985`, NPC AI. All three deliverables measured: see B422/B423 and `review/T438/README.md`. **Rig lesson**: a zone shipping `quests/<zone>/player.lua` SHADOWS a `player.pl` beside it; the fixture has to go in `quests/<zone>/v0/player.pl`.
 
-- **B422** (A, feature — needs B421) **opentype 59 lifts do not move.** fable's
+- ~~**B422** (A, feature — needs B421) **opentype 59 lifts do not move.** fable's
   `DoorVisual` has no translation state at all; `update()` only lerps a Y
   rotation and, for opentype 59, lerps it between a value and itself.
   `DoorState::doorParam` is stored and read by nothing. Work: a translation
@@ -7076,9 +7076,19 @@ in `refactor/T433_doors_lifts_survey.md` Review; raw dumps in
   opentype 59 with `door_param > 0` — the 21 era rows with `door_param` 0/-1
   (grobb signs, acrylia torches, arena tower) are decorative and must keep
   today's behaviour. **STOP: direction and timing come from B421's video, never
-  from the `door_param` arithmetic.** Found by T433 Leg A.2.
+  from the `door_param` arithmetic.** Found by T433 Leg A.2.~~ **CLOSED by T438.** Lifts translate. `DoorVisual` gains `doorParam`/`isLift`/`LiftCycle`
+(`include/client/graphics/door_motion.h`, `src/client/graphics/door_motion.cpp`), the wire `door_param`
+is threaded from `DoorSpawnedData` and the zone-load snapshot through `createDoor`/`registerDoor`,
+and `DoorManager::update()` (now in `door_manager_animation.cpp`) moves the pivot's Y.
+**MEASURED, not derived from the arithmetic** (the entry's own STOP): travel is `door_param` units at a
+CONSTANT **8.67 units/s**, a **20.5 s** dwell at the far end and an automatic return -- all from ONE
+`OP_MoveDoor`, and a second packet mid-cycle is ignored (proven: the run with a 45 s server close timer
+has identical motion to the run with a 5 s one). At rest the platform sits at `pos_z + door_param`, the
+FAR end. Two lifts of different `door_param` settle the speed and the dwell at once: door 69 (param 68)
+28.328 s open-to-return, door 77 (param 98) 31.788 s. `door_param` 0/-1 rows still do not move.
+Pinned by `tests/test_door_motion.cpp` (16 cases; 4 red pre-fix). Evidence: `review/T438/README.md` s2b.
 
-- **B423** (A, feature — needs B421 and B425) **a lift is not a walkable moving
+- ~~**B423** (A, feature — needs B421 and B425) **a lift is not a walkable moving
   surface.** Two halves beyond B425's missing writer: (1) a translating door's
   collision triangles must be re-baked or transformed each frame, and
   `rayTestDoorsAndObjects()`'s `if (door->isAnimating) continue;` — correct for
@@ -7094,9 +7104,19 @@ in `refactor/T433_doors_lifts_survey.md` Review; raw dumps in
   a door's collision dirty on every frame it moves), lifting the
   `isAnimating` walk-through suppression for lift opentypes
   (`RayTestDoorCollision()`, `src/client/graphics/door_collision.cpp`), and
-  carrying the player. All three still wait on B421's measurement.
+  carrying the player. All three still wait on B421's measurement.~~ **CLOSED by T438 except the live proof of the carry (-> B449).** (1) The re-bake: a lift's collision is
+baked from its LIVE pose into both slots (`door_manager_collision.cpp`), and `DoorManager::update()` marks
+it dirty on every frame the platform moves. (2) The walk-through suppression is scoped: `DoorRuntimeState`
+gains `isLift` and `RayTestDoorCollision()` skips an animating door only when it is NOT a lift
+(`src/client/graphics/door_collision.cpp`) -- pinned by
+`DoorCollisionRay.AnAnimatingLiftStillCollides`, red pre-fix. (3) The carry:
+`PlayerCameraComponent::carryPlayerOnLifts()` (`src/client/graphics/player/renderer_player_lift.cpp`),
+called from `renderer_frame_input.cpp` right after `syncDoorCollision()`. **The oracle DOES carry the
+player** -- measured on gfaydark lift 69 with the rig character parked on the platform: z
+5.81 -> 10.93 -> 19.98 -> 29.30 -> 39.47 -> 49.87 -> 58.65 at the platform's own 8.67 units/s
+(`review/T438/logs/trace_lift69_ride.tsv`).
 
-- **B424** (A, live defect) **fable resolves ground ~71 units too high at the
+- ~~**B424** (A, live defect) **fable resolves ground ~71 units too high at the
   gfaydark Kelethin lift.** `#goto 340 137 6` then `/loc` returns
   `137.0, 340.0, 77.0`, and `#goto 350 137 8` returns `137.0, 350.0, 77.0` —
   reproduced in two independent sessions at two coordinates. The **official
@@ -7145,7 +7165,18 @@ in `refactor/T433_doors_lifts_survey.md` Review; raw dumps in
   `src/client/graphics/zone_lifecycle/renderer_zone_draw.cpp:954`), plus
   `HCMap::LoadMap`/`FindBestZ` against
   `/mnt/projects/akk-stack/server/maps/base/gfaydark.map`;
-  `tools/bsp_region_finder.cpp` is the working device-free precedent.
+  `tools/bsp_region_finder.cpp` is the working device-free precedent.~~ **CLOSED by T438 Leg C, and BOTH stated mechanisms were wrong.** It is not a ground query and it is not
+a packet. `PlayerFacade::SetPosLocal`/`SetPosition` now carry their CALL SITE
+(`__builtin_FILE()`/`__builtin_LINE()` defaults, `MOD_MOVEMENT` TRACE), and one `#goto 340 137 6` named it
+(`review/T438/logs/fable_session_legc.log.gz`): `zone_component.cpp:138` wrote the CORRECT
+`(137.0, 340.0, 6.0000)` at 10:35:27.519, and 3 ms later `movement_state.cpp:569` -- `UpdateJump()`'s arc --
+overwrote it, ending at 10:35:28.488 with `movement_state.cpp:553` writing `jumpStartZ` FLAT: the z
+captured before the relocation. T433's 77.0 is the same arithmetic with a `jumpStartZ` taken on the
+Kelethin platform, and it also explains T435's renderer/game-thread divergence, because `SetPosLocal`
+writes only the game-thread store. Fixed in `PlayerState::setPosition()` -- the discrete-relocation path,
+the one store -- which cancels an in-flight jump and rebases `jumpStartZ`; `setPositionNoEvent()`, the
+per-tick integrator, is deliberately untouched. Pinned by `tests/test_jump_relocation.cpp` (4 cases; 2 red
+pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
 
 - ~~**B425** (A, live defect) **doors have no collision anywhere in fable, and
   the code that would give them collision has no writer.** `DoorCollisionData`
@@ -7179,6 +7210,12 @@ in `refactor/T433_doors_lifts_survey.md` Review; raw dumps in
   non-colliding explicitly, even though `createDoor()`/`registerDoor()` still
   return before any door record exists, so that if this item ever makes them
   real they do not silently become walls.
+  **T438 annotation:** B421's rig now EXISTS and is a one-file Perl quest
+  calling `quest::forcedooropen()`, installed at `quests/<zone>/v0/player.pl`
+  (see the struck B421 and `review/T438/scripts/t438_player.pl`), so this is
+  measurable today: install the fixture, park the official client where a
+  50/53/54 row is, force it open, and see whether anything moves. T438 did not
+  spend a session on it.
 
 - ~~**B428** (A, live defect) **`invert_state` is never applied to the incoming
   door action byte.** `ZoneProcessMoveDoor`
@@ -7207,6 +7244,14 @@ in `refactor/T433_doors_lifts_survey.md` Review; raw dumps in
   already animates, so this is verify-only. **STOP: each opentype's motion
   (which axis, how far, how long) is a separate oracle measurement — do not
   generalise from opentype 0.** Found by T433 Leg C.
+  **T438 annotation:** the rig is unblocked (the struck B421) and the METHOD is
+  settled. A Perl `quest::forcedooropen(<doorid>)` fixture plus 30 fps x11grab
+  stepped frame by frame gives a rotation duration to ~0.1 s; a 200 ms quest
+  timer appending `$client->GetZ()` to a TSV gives a ~4 Hz motion trace that is
+  independent of the official client's ~5 renders/s. T438 measured opentype 0,
+  opentype 59 and the 105 spinner that way. 40/55/57/58/66/71/76/77/120 and
+  opentype 100 are still unmeasured, but each is now a session rather than a
+  blocker.
 
 ### Added by T436 (2026-09-07)
 
@@ -7354,3 +7399,61 @@ in `refactor/T433_doors_lifts_survey.md` Review; raw dumps in
   B060; B056.
 
 - (T428 also boarded the DocCitations red at BOARD.md:6877 as its B434; the orchestrator had already fixed it on fable at 6aadff59, so that entry is not carried.)
+
+## Added 2026-09-07 by T438 (the oracle door measurements)
+
+- **B449** (A, live proof owed) **the lift ride is implemented and unit-proven
+  but has never carried a player in a live fable session.**
+  `PlayerCameraComponent::carryPlayerOnLifts()`
+  (`src/client/graphics/player/renderer_player_lift.cpp`) runs once per frame
+  after `syncDoorCollision()` and is covered by `LiftRideTest` +
+  `DoorCollisionRay.AnAnimatingLiftStillCollides`, and the ORACLE side is
+  measured (the official client carries the rider exactly -- z 5.81 -> 58.65 in
+  step with the platform, `review/T438/logs/trace_lift69_ride.tsv`). Two live
+  attempts on the gfaydark lift 69 did not carry, and the reason is not the
+  carry code: after a `#goto` onto the platform the player FLOATS at the
+  commanded z instead of settling onto the surface, because
+  `resolveMovementCollision()` is gated on `isMoving || isJumpMoving ||
+  isSwimMoving` (T435 Leg C). `/loc` read exactly the goto's `5.0` for the whole
+  ride window, so the ride probe correctly declined. **Work:** repeat with the
+  player WALKING onto the platform (hold `w` from beside it) rather than
+  teleporting, and assert the trace's z climbs at 8.67 units/s. One real bug was
+  already found this way and fixed -- the probe keyed its BSP region on
+  `ctx_.currentPvsRegion`, the CAMERA's PVS region, where
+  `findGroundZBspFiltered()` derives it from the PLAYER's own point, and the
+  lift sits in region 1883. Found by T438.
+
+- **B450** (B, unmeasured decision) **the opentype-100 spin rate is assumed,
+  not measured.** T438 measured a 105 spinner (steamfont `WMBLADE`) at a full
+  360 degrees in 4.267 s = **84.4 deg/s**, and `DoorMotion::kSpinDegreesPerSecond`
+  applies it to opentypes 100 and 105 alike because fable already used one
+  constant for both and nothing suggests they differ. Nobody has watched a
+  100 spin. Era 100s are near at hand -- steamfont `SHAFT` 1/3/4 sit at ground
+  level a few hundred units from the windmills, and there is a `QEYLAMP` in
+  qeynos -- and the method is settled (30 fps x11grab, autocorrelate the
+  object's horizontal centroid; the half-period shows as a strong NEGATIVE peak,
+  which is the trap that produced fable's original 42.35). Found by T438.
+
+- **B451** (A, live defect) **fable's jump is 25 units high, and the number is a
+  debug value.** `MovementComponent::UpdateJump()`
+  (`src/client/movement/movement_state.cpp:545`) reads
+  `const float jump_height = 25.0f;  // Maximum height of jump (increased for
+  visibility)`, over a fixed 1,000 ms parabola. A real EverQuest jump is a few
+  units; 25 is taller than a Kelethin storey, and T438's Leg C trace watched the
+  player arc from 14.49 to 39.49 and back four times in one session. The
+  landing bug that made this dangerous is fixed (the struck B424), so this is now
+  a look/feel defect rather than a position corruption -- but it is unmeasured
+  in both height and duration and both should come off the oracle: the rig that
+  measures it is the same one T438 used (a 4 Hz server-side position trace via a
+  Perl quest timer while the official client jumps). Found by T438 Leg C.
+
+- **B452** (B) `src/client/entities/entities_component.cpp:457` -- **the door
+  spawn debug dump prints the wrong door and the wrong bytes.**
+  `LOG_DEBUG(MOD_ENTITY, "Door {} raw bytes @60-67: ...", i, data[60], ...)`
+  passes the loop INDEX as the door id (so it reads "Door 69" for the 69th door
+  in the array, not door 69) and indexes `data` from the PACKET base rather than
+  from that door's 80-byte record, so every line in a session prints the FIRST
+  door's bytes. It cost T438 a wrong turn -- the line appeared to show
+  `door_param == 0` for the gfaydark lift when the server demonstrably sends 68
+  (`/mnt/projects/akk-stack/code/zone/entity.cpp:988`). Either fix both indices
+  or delete the line. Found by T438.

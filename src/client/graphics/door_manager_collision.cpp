@@ -66,6 +66,18 @@ bool DoorManager::computeDoorCollision(uint8_t doorId, DoorCollisionData& out) c
     // DoorManager's own naming is inverted and load-bearing: createDoor()
     // records "When closed: door is at openHeading" / "When open: door is at
     // closedHeading". Bake each set from the heading that pose actually uses.
+    // T438 (board B422/B423): a LIFT has no two settled poses -- it has one
+    // pose that moves. `pivotPos` is read off the node, which DoorManager
+    // moves every frame the platform travels, so both slots get the platform
+    // where it is RIGHT NOW and the ray test finds a standable surface at the
+    // height the player is actually looking at.
+    if (visual.isLift) {
+        const irr::core::matrix4 xf = DoorPoseTransform(pivotPos, visual.openHeading) * child;
+        AppendMeshWorldTriangles(visual.sceneNode->getMesh(), xf, out.closedTriangles);
+        out.openTriangles = out.closedTriangles;
+        return true;
+    }
+
     AppendMeshWorldTriangles(visual.sceneNode->getMesh(),
                              DoorPoseTransform(pivotPos, visual.openHeading) * child,
                              out.closedTriangles);

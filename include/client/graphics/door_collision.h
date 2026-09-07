@@ -65,6 +65,12 @@ struct DoorRuntimeState {
     bool known = false;
     bool isOpen = false;
     bool isAnimating = false;
+    // T438 (board B423): a hinged door is walked THROUGH while it swings --
+    // that is EQ's own behaviour and the reason `isAnimating` suppresses the
+    // test. A LIFT is animating for its whole ride, so the same rule made the
+    // one door kind you are supposed to stand on the one door kind that never
+    // collides. The suppression is now scoped to non-lifts.
+    bool isLift = false;
 };
 using DoorRuntimeStateFn = std::function<DoorRuntimeState(uint8_t)>;
 
@@ -78,7 +84,8 @@ bool RayTestDoorCollision(const std::map<uint8_t, DoorCollisionData>& doors,
                           size_t bspRegion,
                           irr::core::vector3df& hitPoint,
                           irr::core::triangle3df& hitTriangle,
-                          float& hitDistSq, bool anyHit);
+                          float& hitDistSq, bool anyHit,
+                          uint8_t* hitDoorId = nullptr);
 
 } // namespace Graphics
 } // namespace EQT

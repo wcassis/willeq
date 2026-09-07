@@ -146,17 +146,20 @@ bool RayTestDoorCollision(const std::map<uint8_t, DoorCollisionData>& doors,
                           size_t bspRegion,
                           irr::core::vector3df& hitPoint,
                           irr::core::triangle3df& hitTriangle,
-                          float& hitDistSq, bool anyHit) {
+                          float& hitDistSq, bool anyHit,
+                          uint8_t* hitDoorId) {
     for (const auto& [doorId, doorData] : doors) {
         if (!doorData.hasCollision) continue;
         if (doorData.bspRegion != bspRegion) continue;
 
         const DoorRuntimeState state = stateOf ? stateOf(doorId) : DoorRuntimeState{};
         if (!state.known) continue;
-        // Walk-through during animation (original EQ behaviour). Board B423
-        // owns undoing this for lifts, which are animating for their whole
-        // ride -- that needs the oracle measurement B421 is gated on.
-        if (state.isAnimating) continue;
+        // Walk-through during animation (original EQ behaviour) -- but NOT for
+        // a lift, which is animating for its whole ride and is the one door
+        // kind you are meant to stand on. T438 measured the official client
+        // carrying the player up on gfaydark lift 69, so this scoping is the
+        // board B423 half that was waiting on B421's measurement.
+        if (state.isAnimating && !state.isLift) continue;
 
         const auto& tris = state.isOpen ? doorData.openTriangles : doorData.closedTriangles;
         if (tris.empty()) continue;
@@ -170,6 +173,7 @@ bool RayTestDoorCollision(const std::map<uint8_t, DoorCollisionData>& doors,
                 hitTriangle = ht;
                 hitDistSq = distSq;
                 anyHit = true;
+                if (hitDoorId) *hitDoorId = doorId;
             }
         }
     }

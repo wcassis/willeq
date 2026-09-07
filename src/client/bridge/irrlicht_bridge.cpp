@@ -190,7 +190,8 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         if (renderer_) {
             auto& d = std::get<state::DoorSpawnedData>(event.data);
             renderer_->createDoor(d.doorId, d.name, d.x, d.y, d.z,
-                                  d.heading, d.incline, d.size, d.opentype, d.isOpen);
+                                  d.heading, d.incline, d.size, d.opentype, d.isOpen,
+                                  d.doorParam);  // T438 (B422): a lift's travel
         }
         break;
     case state::GameEventType::DoorStateChanged:

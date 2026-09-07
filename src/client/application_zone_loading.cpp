@@ -275,7 +275,7 @@ void Application::loadZoneGraphicsOnThread(EQT::Graphics::LoadingStatus& status)
     for (const auto& door : snap.doors) {
         m_renderer->registerDoor(door.doorId, door.name, door.x, door.y, door.z,
                                  door.heading, door.incline, door.size, door.opentype,
-                                 door.isOpen);
+                                 door.isOpen, door.doorParam);  // T438 (B422)
     }
 
     // 7. Camera
@@ -385,7 +385,7 @@ void Application::loadZoneGraphics() {
     for (const auto& door : snap.doors) {
         m_renderer->registerDoor(door.doorId, door.name, door.x, door.y, door.z,
                                  door.heading, door.incline, door.size, door.opentype,
-                                 door.isOpen);
+                                 door.isOpen, door.doorParam);  // T438 (B422)
     }
 
     // 7. Camera

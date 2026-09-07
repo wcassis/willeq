@@ -171,6 +171,24 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_door_collision)
 ENDIF()
 
+# T438 Leg C (BOARD B424): a discrete relocation cancels an in-flight jump.
+ADD_EXECUTABLE(test_jump_relocation
+    test_jump_relocation.cpp
+)
+TARGET_LINK_LIBRARIES(test_jump_relocation GTest::gtest_main willeq_core)
+GTEST_DISCOVER_TESTS(test_jump_relocation)
+
+# T438 (BOARD B421/B422/B423): every door-motion constant, measured against the
+# official client, plus the lift cycle that plays them.
+ADD_EXECUTABLE(test_door_motion
+    test_door_motion.cpp
+)
+TARGET_LINK_LIBRARIES(test_door_motion GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_door_motion PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_door_motion)
+
 # T437 (BOARD B435, B436): the ground query's honest answer shape, the two
 # decisions that read it, and HCMap::FindBestZ() against hand-built triangle
 # sets (floor below / ceiling only / both / empty column).
