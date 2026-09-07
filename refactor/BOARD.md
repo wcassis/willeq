@@ -6874,7 +6874,7 @@ in `refactor/T433_doors_lifts_survey.md` Review; raw dumps in
   (`src/client/entities/entities_component_world.cpp:130`) reads
   `is_open = (action == 0x03)`. eqemu emits `OPEN_DOOR 0x02 / CLOSE_DOOR 0x03`
   for a normal door and `OPEN_INVDOOR 0x03 / CLOSE_INVDOOR 0x02` for one with
-  `invert_state = 1` (`zone/doors.cpp:37-40`), so **every `invert_state = 1`
+  `invert_state = 1` (`/mnt/projects/akk-stack/code/zone/doors.cpp:37-40`), so **every `invert_state = 1`
   door in the game reads backwards in fable** — including all three Kelethin
   lifts (`FAYLEVATOR` 69/77/80). `DoorState::invertState` is populated from the
   spawn packet and then used by nothing on this path. Found by T433 Leg A.3.

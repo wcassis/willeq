@@ -7,7 +7,7 @@ Kelethin lifts 69/77/80 with `invert_state = 1`), `DoorCollisionData`
 (`src/client/graphics/player/renderer_player_collision.cpp`),
 `DoorManager` (mesh/node creation per opentype), `ZoneProcessMoveDoor`
 (`src/client/entities/entities_component_world.cpp`), and eqemu's
-`zone/doors.cpp` for the action bytes.
+`/mnt/projects/akk-stack/code/zone/doors.cpp` for the action bytes.
 
 ## Leg A — B425, the writer that never existed
 
@@ -30,7 +30,7 @@ Kelethin lifts 69/77/80 with `invert_state = 1`), `DoorCollisionData`
 
 `is_open = (action == 0x03)` becomes the eqemu mapping: normal doors
 OPEN 0x02/CLOSE 0x03, inverted doors OPEN 0x03/CLOSE 0x02 (quote
-`zone/doors.cpp:37-40` in the test). Test pre-fix failing with a
+`/mnt/projects/akk-stack/code/zone/doors.cpp:37-40` in the test). Test pre-fix failing with a
 `FAYLEVATOR`-shaped state (`invertState = 1`).
 
 ## Leg C — B424, the 71-unit ground error at the lift (measure, then fix if it is fable's)
