@@ -27,7 +27,9 @@ SET(ACTION_LAYER_STATE_SOURCES
 )
 
 ADD_EXECUTABLE(test_action_dispatcher
-    test_action_dispatcher.cpp
+    test_action_dispatcher_routing.cpp
+    test_action_dispatcher_families.cpp
+    test_action_dispatcher_guards.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher_social.cpp
     ${CMAKE_SOURCE_DIR}/src/client/action/action_dispatcher_guild_misc.cpp

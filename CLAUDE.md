@@ -54,8 +54,9 @@ Additional context is in subdirectory CLAUDE.md files:
   `docs/decisions.md` 2026-09-04; T385 added the last two directories, board
   B167 — `--all` had never scanned `tools/`, and six files there were over the
   ceiling while the checker reported a clean tree). **The tree is clean and
-  `FileSizeCeiling` is GREEN** (T451 re-measured: `check_file_sizes.sh --all`
-  reports 1,181 files, 0 warn, 0 fail; 1,162 at T447, 1,129 at T444). T447 split the last
+  `FileSizeCeiling` is GREEN** (T453 re-measured: `check_file_sizes.sh --all`
+  reports 1,196 files, 0 warn, 0 fail; 1,181 at T451, 1,162 at T447, 1,129 at
+  T444). T447 split the last
   three tools riding the ceiling — `willeq_db_builder`, `wld_dump` and
   `gles2_shader_perpixel_benchmark` — see `docs/module_map.md`'s tools table.
   T451 split the next four riding it: `s3d_loader.cpp` (1,336) into five TUs,
@@ -65,7 +66,17 @@ Additional context is in subdirectory CLAUDE.md files:
   (`include/client/state/event_types.h`, which is what `DocCounts` and
   `ReachabilitySweep` now read), five `event_payloads_*.h` family headers and
   an umbrella `event_bus.h` that includes them all — so no include site
-  changed. All thirteen resulting TUs are under 550 lines. T387 finished what T385 started and
+  changed. All thirteen resulting TUs are under 550 lines.
+  **T453 emptied the band above 1,200 entirely**: the five TUs that were over
+  it — `src/client/graphics/door_manager.cpp` (1,365, into four),
+  `tools/hwcaps/gles2_fog_volume_benchmark.cpp` (1,220, into four plus a seam
+  header), `src/client/graphics/detail/detail_manager.cpp` (1,219, into
+  three), the action-dispatcher test TU (1,217, into three sources on one
+  target plus `tests/action_dispatcher_test_fixture.h`, all 63 case names
+  preserved) and
+  `tools/test_gl_points.cpp` (1,206, into three plus a seam header) — are now
+  20 TUs, the largest 772 lines, and the largest file anywhere under `src/`,
+  `include/`, `tests/`, `tools/` or `benchmarks/` is 1,193. T387 finished what T385 started and
   board **B185** is struck: `tools/hwcaps/zone_bench_loader.cpp` is 977 lines
   and `tools/hwcaps/gles2_zone_benchmark.cpp` 992, not the 3,280 and 3,060
   earlier revisions of this paragraph reported. Put

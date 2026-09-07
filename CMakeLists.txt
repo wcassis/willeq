@@ -595,6 +595,9 @@ IF(EQT_GRAPHICS)
         src/client/graphics/sim_boids.cpp
         src/client/graphics/loading_thread.cpp
         src/client/graphics/door_manager.cpp
+        src/client/graphics/door_manager_mesh.cpp
+        src/client/graphics/door_manager_create.cpp
+        src/client/graphics/door_manager_rebuild.cpp
         src/client/graphics/door_collision.cpp
         src/client/graphics/door_motion.cpp
         src/client/graphics/door_manager_collision.cpp
@@ -652,6 +655,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/text_batch.cpp
         # Detail system (grass, plants, debris)
         src/client/graphics/detail/detail_manager.cpp
+        src/client/graphics/detail/detail_manager_chunks.cpp
+        src/client/graphics/detail/detail_manager_surface.cpp
         src/client/graphics/detail/detail_zone_configs.cpp
         src/client/graphics/detail/detail_chunk.cpp
         src/client/graphics/detail/detail_config_loader.cpp
@@ -1858,7 +1863,10 @@ ENDIF()
 # 1,711 lines, over the 1,500 ceiling that now covers tools/.
 ADD_EXECUTABLE(gles2_fog_volume_benchmark
     tools/hwcaps/gles2_fog_volume_benchmark.cpp
-    tools/hwcaps/fog_volume/fog_volume_shaders.cpp)
+    tools/hwcaps/fog_volume/fog_volume_shaders.cpp
+    tools/hwcaps/fog_volume/fog_volume_egl.cpp
+    tools/hwcaps/fog_volume/fog_volume_scene.cpp
+    tools/hwcaps/fog_volume/fog_volume_passes.cpp)
 TARGET_INCLUDE_DIRECTORIES(gles2_fog_volume_benchmark PRIVATE ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/tools/hwcaps)
 IF(EQT_DRM)
@@ -2307,8 +2315,12 @@ IF(EQT_GRAPHICS)
         WILLEQ_EQE1_INDEX_REAL_PATH="${CMAKE_SOURCE_DIR}/data/eqe1_texture_index.json")
 ENDIF()
 
-ADD_EXECUTABLE(test_gl_points tools/test_gl_points.cpp)
-TARGET_INCLUDE_DIRECTORIES(test_gl_points PRIVATE ${CMAKE_SOURCE_DIR}/include)
+ADD_EXECUTABLE(test_gl_points
+    tools/test_gl_points.cpp
+    tools/gl_points/gl_points_egl.cpp
+    tools/gl_points/gl_points_fbo.cpp)
+TARGET_INCLUDE_DIRECTORIES(test_gl_points PRIVATE ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/tools)
 IF(EQT_DRM)
     TARGET_COMPILE_DEFINITIONS(test_gl_points PRIVATE EQT_HAS_DRM)
     IF(LIBDRM_INCLUDE_DIR)
