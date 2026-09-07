@@ -46,8 +46,15 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_light.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_bsp.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/s3d_loader.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/s3d_loader_textures.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/s3d_loader_objects.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/s3d_loader_characters.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/s3d_loader_skinning.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/skeletal_animator.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/animated_mesh_scene_node.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/animated_mesh.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/animated_mesh_skinning.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/animated_mesh_bones.cpp
         ${CMAKE_SOURCE_DIR}/src/common/performance_metrics.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/constrained_renderer_config.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/constrained_texture_cache.cpp
@@ -118,6 +125,10 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_light.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_bsp.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/s3d_loader.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/s3d_loader_textures.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/s3d_loader_objects.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/s3d_loader_characters.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/s3d_loader_skinning.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/zone_geometry.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/zone_geometry_atlased.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/dds_decoder.cpp
@@ -137,6 +148,9 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/animation_mapping.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/skeletal_animator.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/animated_mesh_scene_node.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/animated_mesh.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/animated_mesh_skinning.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/animated_mesh_bones.cpp
         ${CMAKE_SOURCE_DIR}/src/common/performance_metrics.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/constrained_renderer_config.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/constrained_texture_cache.cpp

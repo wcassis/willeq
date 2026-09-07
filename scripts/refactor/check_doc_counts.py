@@ -355,7 +355,7 @@ ROWS = [
     # drift T373 built this file for, and the enum was simply not on the list.
     ("GameEventType enumerators",
      lambda r: count_enumerators(
-         r, "include/client/state/event_bus.h", "GameEventType"),
+         r, "include/client/state/event_types.h", "GameEventType"),
      "every new panel or feed adds one; T439 added VolumesChanged",
      [("CLAUDE.md",
        r"EventBus,\s+(\w+)\s+event types"),

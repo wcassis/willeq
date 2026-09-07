@@ -289,7 +289,7 @@ TEST(ReachabilitySweep, ProducerlessIntentsAreExactlyTheBlockedList) {
 // ===================================================================
 
 std::vector<std::string> eventEnumerators() {
-    auto lines = splitLines(readFile(kRoot / "include/client/state/event_bus.h"));
+    auto lines = splitLines(readFile(kRoot / "include/client/state/event_types.h"));
     std::vector<std::string> names;
     bool in = false;
     for (const auto& l : lines) {
@@ -324,7 +324,7 @@ TEST(ReachabilitySweep, EveryEventIsPublishedAndConsumed) {
         std::string tok = "GameEventType::" + n;
         bool published = false, consumed = false;
         for (const auto& f : files) {
-            if (f.rel == "include/client/state/event_bus.h") continue;
+            if (f.rel == "include/client/state/event_types.h") continue;
             bool consumerTu = isEventConsumerTu(f.rel);
             for (const auto& raw : f.lines) {
                 std::string code = codePart(raw);
