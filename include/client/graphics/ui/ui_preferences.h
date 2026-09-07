@@ -54,6 +54,7 @@ struct GroupPanelState;
 struct PetPanelState;
 struct BuffBarState;
 struct CombatAbilityPanelState;
+struct OptionsPanelState;
 
 /**
  * The persisted per-character state. Every field is user-changeable, and the
@@ -68,10 +69,40 @@ struct UiPreferences {
     bool petInfoWindow = true;       // [PetInfoWindow]
     bool buffWindow = true;          // [BuffWindow]
     bool combatAbilityWnd = false;   // [CombatAbilityWnd]
+    // T434. `Show=0` is what the real player file records:
+    // /mnt/projects/EverQuestP1999/UI_Obian_project1999.ini has
+    // `[OptionsWindow] ... Show=0`.
+    bool optionsWindow = false;      // [OptionsWindow]
     // [Camera] Mode= -- the CameraMode enumerator (0 Free, 1 Follow,
     // 2 FirstPerson). Held as an int so this header stays free of
     // renderer_types.h; PlayerCameraComponent's default is Follow.
     int cameraMode = 1;
+
+    // T434 -- the three Options-window controls fable can actually wire,
+    // under the oracle's OWN key names and on the oracle's OWN 0..20 scale.
+    //
+    // The names are quoted from /mnt/projects/EverQuestP1999/eqclient.ini:
+    // `Music=18` and `SoundVolume=10` (in its `[Defaults]` section) and
+    // `ClipPlane=20` (in its `[Options]` section). The scale is MEASURED,
+    // not assumed: the same client showing that ini displays Music Volume
+    // 90 % and Sound Volume 50 % (review/T377/oracle/
+    // T377_oracle_options_alt_o_1024x768.png), and 18/20 = 90 %,
+    // 10/20 = 50 %.
+    //
+    // DEVIATION, FLAGGED: the oracle keeps these in `eqclient.ini`, a file
+    // that is per-character but not per-server, and splits them across two
+    // sections. fable has ONE persistence writer (T432's rule) so they go in
+    // this file, in one `[Options]` section, under those key names. Recorded
+    // here so nobody later reads the file as an oracle match. It is the same
+    // deviation T432 flagged for `[Camera] Mode=`.
+    //
+    // Defaults are fable's own shipped values on that scale -- music 0.7,
+    // effects 1.0, renderDistance 300 -- and
+    // UiPreferencesTest.DefaultsMatchThePanelStructs pins them against
+    // OptionsPanelState.
+    int musicVolume = 14;    // [Options] Music
+    int soundVolume = 20;    // [Options] SoundVolume
+    int clipPlane = 5;       // [Options] ClipPlane
 
     bool operator==(const UiPreferences& o) const {
         return inventoryWindow == o.inventoryWindow
@@ -81,6 +112,10 @@ struct UiPreferences {
             && petInfoWindow == o.petInfoWindow
             && buffWindow == o.buffWindow
             && combatAbilityWnd == o.combatAbilityWnd
+            && optionsWindow == o.optionsWindow
+            && musicVolume == o.musicVolume
+            && soundVolume == o.soundVolume
+            && clipPlane == o.clipPlane
             && cameraMode == o.cameraMode;
     }
     bool operator!=(const UiPreferences& o) const { return !(*this == o); }
@@ -100,6 +135,7 @@ struct UiPreferencesBinding {
     PetPanelState* pet = nullptr;
     BuffBarState* buff = nullptr;
     CombatAbilityPanelState* combatAbility = nullptr;
+    OptionsPanelState* options = nullptr;   // T434
 };
 
 /** Read the bound panel states (plus the caller's camera mode) into a value. */

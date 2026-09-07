@@ -548,6 +548,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/frame/renderer_frame_input.cpp
         src/client/graphics/frame/renderer_frame_render.cpp
         src/client/graphics/frame/renderer_frame_preferences.cpp
+        src/client/graphics/frame/renderer_frame_options.cpp
         src/client/graphics/zone_lifecycle/renderer_gpu_upload.cpp
         src/client/graphics/renderer/renderer_entities.cpp
         src/client/graphics/zone_shader.cpp
@@ -616,6 +617,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/ui/text_entry.cpp
         src/client/graphics/ui/item_display_panel.cpp
         src/client/graphics/ui/combat_ability_panel.cpp
+        src/client/graphics/ui/options_panel.cpp
         # T432 (board B275): per-character UI persistence -- the ONE reader and
         # writer of UI_<char>_<server>.ini.
         src/client/graphics/ui/ui_preferences.cpp

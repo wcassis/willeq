@@ -11,6 +11,7 @@
 
 #include "client/graphics/ui/ui_preferences.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cstdio>
 #include <fstream>
@@ -18,6 +19,7 @@
 
 #include "client/data_paths.h"
 #include "client/graphics/ui/combat_ability_panel.h"
+#include "client/graphics/ui/options_panel.h"
 #include "client/graphics/ui/static_panels.h"
 #include "common/logging.h"
 
@@ -79,7 +81,27 @@ const WindowRow kWindows[] = {
     {"PetInfoWindow", &UiPreferences::petInfoWindow},
     {"BuffWindow", &UiPreferences::buffWindow},
     {"CombatAbilityWnd", &UiPreferences::combatAbilityWnd},
+    {"OptionsWindow", &UiPreferences::optionsWindow},   // T434
 };
+
+// T434 -- the `[Options]` section. Same anti-drift device as kWindows: one
+// table, walked by both the parse and the serialise, so the two cannot
+// disagree about a key name. The key names are the oracle's own; see the
+// flagged deviation in ui_preferences.h about which FILE the oracle keeps
+// them in. Every value is a 0..20 slider step and is clamped on read, so a
+// hand-edited file cannot produce an out-of-range one.
+struct OptionRow {
+    const char* key;
+    int UiPreferences::*field;
+};
+
+const OptionRow kOptions[] = {
+    {"Music", &UiPreferences::musicVolume},
+    {"SoundVolume", &UiPreferences::soundVolume},
+    {"ClipPlane", &UiPreferences::clipPlane},
+};
+
+constexpr int kOptionMaxStep = 20;
 
 }  // namespace
 
@@ -94,6 +116,12 @@ UiPreferences CollectUiPreferences(const UiPreferencesBinding& b, int cameraMode
     if (b.pet) p.petInfoWindow = b.pet->isOpen;
     if (b.buff) p.buffWindow = b.buff->isOpen;
     if (b.combatAbility) p.combatAbilityWnd = b.combatAbility->isOpen;
+    if (b.options) {
+        p.optionsWindow = b.options->isOpen;
+        p.musicVolume = b.options->musicVolume;
+        p.soundVolume = b.options->soundVolume;
+        p.clipPlane = b.options->clipPlane;
+    }
     p.cameraMode = cameraMode;
     return p;
 }
@@ -123,6 +151,14 @@ void ApplyUiPreferences(const UiPreferences& p, const UiPreferencesBinding& b) {
     if (b.pet) b.pet->isOpen = p.petInfoWindow;
     if (b.buff) b.buff->isOpen = p.buffWindow;
     if (b.combatAbility) b.combatAbility->isOpen = p.combatAbilityWnd;
+    if (b.options) {
+        b.options->isOpen = p.optionsWindow;
+        // The steps were clamped on parse; clamp again here so a value
+        // assembled in code (not read from a file) cannot get through either.
+        b.options->musicVolume = std::max(0, std::min(kOptionMaxStep, p.musicVolume));
+        b.options->soundVolume = std::max(0, std::min(kOptionMaxStep, p.soundVolume));
+        b.options->clipPlane = std::max(0, std::min(kOptionMaxStep, p.clipPlane));
+    }
 }
 
 std::string UiPreferencesFileName(const std::string& character,
@@ -170,6 +206,19 @@ UiPreferences ParseUiPreferences(const std::string& text,
             }
             continue;
         }
+        if (section == "Options") {
+            for (const auto& row : kOptions) {
+                if (key != row.key) continue;
+                try {
+                    const int v = std::stoi(Trim(value));
+                    if (v >= 0 && v <= kOptionMaxStep) p.*(row.field) = v;
+                } catch (...) {
+                    // Not a number -- keep the default, as an absent key would.
+                }
+                break;
+            }
+            continue;
+        }
         if (key != "Show") continue;
         for (const auto& row : kWindows) {
             if (section == row.section) {
@@ -192,6 +241,11 @@ std::string SerializeUiPreferences(const UiPreferences& p) {
         out += "]\nShow=";
         out += (p.*(row.field)) ? "1" : "0";
         out += "\n";
+    }
+    out += "[Options]\n";
+    for (const auto& row : kOptions) {
+        out += row.key;
+        out += "=" + std::to_string(p.*(row.field)) + "\n";
     }
     out += "[Camera]\nMode=" + std::to_string(p.cameraMode) + "\n";
     return out;

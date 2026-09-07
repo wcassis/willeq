@@ -16,6 +16,8 @@
 #include <cstdint>
 #include <string>
 
+#include "client/graphics/ui/options_layout.h"
+
 namespace eqt { namespace bridge { class GameStateBridge; } }
 
 namespace EQT {
@@ -33,6 +35,7 @@ struct ChatPanelState;
 struct TradeskillPanelState;
 struct CombatAbilityPanelState;
 struct ItemDisplayPanelState;
+struct OptionsPanelState;
 
 /**
  * T313 -- the three panels that carry a scrollOffset.
@@ -131,6 +134,33 @@ public:
     bool processItemDisplayInput(int mouseX, int mouseY, bool leftClicked,
                                  const UILayout& layout,
                                  ItemDisplayPanelState& itemDisplay);
+
+    /**
+     * T434: the Options window.
+     *
+     * Its own entry point for the same reason processPanelInput() and
+     * processItemDisplayInput() are: the oracle's OptionsWindow is
+     * `RelativePosition false` at its own <Location>, not one of the
+     * mutually-exclusive centre popups, so it is drawn and hit-tested on
+     * top of them and no existing caller changes.
+     *
+     * It pushes NO intent. Two of the three wired controls need one
+     * (MusicVolumeChangeIntent / EffectsVolumeChangeIntent) and the third
+     * needs a renderer call, and all three need the DELTA against what the
+     * audio manager was last told -- which is FrameComponent's bookkeeping,
+     * not this class's. So the click is resolved here into "this setting
+     * moved" and `changed` names it; FrameComponent::applyOptionsSetting()
+     * is the one place that acts on it. `changed` is set to
+     * OptionsLayout::Setting::None when nothing moved.
+     *
+     * The whole window consumes the position so a click on it cannot fall
+     * through to the 3D scene, but only an ENABLED control is hit-tested --
+     * see hitTestOptionsControl().
+     */
+    bool processOptionsInput(int mouseX, int mouseY, bool leftClicked,
+                             const UILayout& layout,
+                             OptionsPanelState& options,
+                             OptionsLayout::Setting& changed);
 
     /**
      * Handle a key press. Returns true if consumed.

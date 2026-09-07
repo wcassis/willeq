@@ -447,7 +447,13 @@ void HotkeyManager::setupDefaults() {
     // === Global Bindings (always active) ===
     addBinding(HotkeyAction::Screenshot, HotkeyMode::Global, irr::KEY_F12);
     addBinding(HotkeyAction::Quit, HotkeyMode::Global, irr::KEY_ESCAPE, ModifierFlags::Shift);
-    addBinding(HotkeyAction::ToggleOptions, HotkeyMode::Global, irr::KEY_KEY_O);
+    // T434: Alt+O, MEASURED at the official client's Options > Keys > UI
+    // page (review/T377/oracle/T377_oracle_options_keys_UI_page2.png):
+    // "Toggle options window   Alt O", with an EMPTY Alternate column. The
+    // bare `O` this used to bind was a fable invention of exactly the class
+    // T382 removed for the group and pet windows, and it left `O` bound to a
+    // window that did not exist. `O` is now unbound, as it is in the oracle.
+    addBinding(HotkeyAction::ToggleOptions, HotkeyMode::Global, irr::KEY_KEY_O, ModifierFlags::Alt);
     addBinding(HotkeyAction::ToggleAllUI, HotkeyMode::Global, irr::KEY_F11);
     // T313: PageUp/PageDown scroll the static-UI panel under the cursor --
     // chat scrollback, the skills list, the loot list -- which is what they

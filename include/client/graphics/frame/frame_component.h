@@ -142,6 +142,7 @@
 #include "client/graphics/ui/tradeskill_panel.h"
 #include "client/graphics/ui/combat_ability_panel.h"
 #include "client/graphics/ui/item_display_panel.h"
+#include "client/graphics/ui/options_panel.h"
 #include "client/graphics/ui/ui_preferences.h"
 
 #include <chrono>
@@ -244,6 +245,30 @@ public:
 	// popups. Returns the new open state.
 	bool toggleCombatAbilityWindow();
 
+	// ---- T434: the Options window's toggle ----
+	// Before this the ONLY arm for the bound key was a bare `break;` in
+	// processCommonInput() with the comment "WindowManager removed -- options
+	// window not available", and `PopupType::Options` had zero uses in the
+	// tree: T368's dead-toggle shape, on the one window that is the home of
+	// every user-changeable setting.
+	//
+	// The key is Alt+O, MEASURED at the official client's Options > Keys > UI
+	// page (review/T377/oracle/T377_oracle_options_keys_UI_page2.png:
+	// "Toggle options window   Alt O", Alternate column empty). fable had a
+	// bare `O`, an invention of the same class as the `G`/`P` T382 removed.
+	//
+	// A HUD-style window with its own oracle placement, NOT a centre popup,
+	// so opening it closes nothing. Returns the new open state.
+	bool toggleOptionsWindow();
+
+	// The one place a wired Options control reaches its setting. Two of the
+	// three need a bridge intent and the third a renderer call, and all three
+	// need the DELTA against what was last applied -- which is why
+	// StaticUIInput resolves the click into a Setting and this applies it.
+	// Called from renderStaticUI() when processOptionsInput() reports a
+	// change, and from syncUiPreferences() after a load.
+	void applyOptionsSetting(OptionsLayout::Setting setting);
+
 	// ---- T432 (board B275): the ONE per-character persistence path ----
 	// Before this the client persisted NOTHING a player changed. Will's
 	// ruling (docs/decisions.md 2026-09-07) is to persist per character what
@@ -329,6 +354,10 @@ public:
 	// exclusive centre popups -- the oracle gives it its own absolute
 	// placement -- so it is drawn on top of them.
 	ItemDisplayPanelState itemDisplayState_;    // T421
+	// T434: the Options window. Not one of the mutually exclusive centre
+	// popups -- the oracle's OptionsWindow is `RelativePosition false` at its
+	// own <Location> -- so it is drawn and hit-tested on top of them.
+	OptionsPanelState optionsState_;            // T434
 	XPBarState xpBarState_;             // U06i
 	// T432 (board B275): per-character UI persistence. Empty identity =
 	// not logged in yet, and sync() is then a no-op.
@@ -336,6 +365,15 @@ public:
 	std::string uiPrefsServer_;
 	UiPreferences uiPrefsLastSaved_;
 	bool uiPrefsLoaded_ = false;
+	// T434: the volume steps the audio manager was last TOLD, on the
+	// oracle's 0..20 scale. The volume intents carry a delta, not an
+	// absolute, so applying a slider needs the previous value; these are
+	// that, and they are renderer bookkeeping rather than a preference (a
+	// `/music 50` moves the audio manager without moving them -- board B432).
+	// Seeded from OptionsPanelState's own defaults, which are fable's
+	// shipped audio config values on that scale.
+	int optionsAppliedMusicStep_ = 14;
+	int optionsAppliedSoundStep_ = 20;
 	std::unique_ptr<StaticUIInput> staticUIInput_;  // U06j
 
 	// The five that were private on IrrlichtRenderer. Public here so that

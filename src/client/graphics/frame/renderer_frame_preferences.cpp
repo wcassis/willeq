@@ -26,6 +26,7 @@
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/player/player_camera_component.h"
 #include "client/graphics/ui/ui_preferences.h"
+#include "client/graphics/ui/options_panel.h"
 #include "common/logging.h"
 
 namespace EQT {
@@ -40,6 +41,7 @@ UiPreferencesBinding FrameComponent::uiPreferencesBinding() {
     b.pet = &petPanelState_;
     b.buff = &buffBarState_;
     b.combatAbility = &combatAbilityState_;
+    b.options = &optionsState_;          // T434
     return b;
 }
 
@@ -67,6 +69,15 @@ void FrameComponent::syncUiPreferences() {
         if (LoadUiPreferences(uiPrefsCharacter_, uiPrefsServer_, p)) {
             ApplyUiPreferences(p, uiPreferencesBinding());
             ctx_.PlayerCamera().setCameraMode(static_cast<CameraMode>(p.cameraMode));
+            // T434: the three Options sliders are the first persisted fields
+            // that are not just a struct member -- each has a setting BEHIND
+            // it that has to be told. Apply is device-free by design and
+            // cannot push an intent, so the three go through the same one
+            // body a click does. A value that did not move is a no-op there,
+            // so a file matching the defaults sends nothing.
+            applyOptionsSetting(OptionsLayout::Setting::MusicVolume);
+            applyOptionsSetting(OptionsLayout::Setting::SoundVolume);
+            applyOptionsSetting(OptionsLayout::Setting::ClipPlane);
         }
         // Either way the client now agrees with the file (or with the
         // defaults a fresh character keeps), so record that as the baseline:

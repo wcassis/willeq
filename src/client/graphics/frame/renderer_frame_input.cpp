@@ -153,9 +153,12 @@ void FrameComponent::processCommonInput(const std::vector<RendererEvent>& action
                 ctx_.PlayerCamera().toggleAutorun();
                 LOG_INFO(MOD_GRAPHICS, "Autorun {}", ctx_.PlayerCamera().autorun() ? "ON" : "OFF");
                 break;
-            case RA::ToggleOptions:
-                // WindowManager removed — options window not available
-                break;
+            // T434: was a bare `break;` with the comment "WindowManager
+            // removed -- options window not available" -- the T368 dead-arm
+            // shape on the window that is the home of every user-changeable
+            // setting. The key is Alt+O, measured at the oracle's
+            // Options > Keys > UI page (T377).
+            case RA::ToggleOptions: toggleOptionsWindow(); break;
             case RA::ClearTarget:
                 if (ctx_.Overlays().currentTargetId() != 0) {
                     LOG_INFO(MOD_GRAPHICS, "[TARGET] Cleared target: {}", ctx_.Overlays().currentTargetName());
@@ -596,8 +599,18 @@ void FrameComponent::processChatInput() {
         // T421: the item display is drawn on TOP of the centre popups (its
         // oracle placement is its own, not centerPopup's), so ESC dismisses
         // it before them -- same top-down rule T290 gave the loot window.
+        // T434: the Options window is drawn on top of the item display and
+        // of the centre popups (its oracle placement is its own), so ESC
+        // dismisses it first -- the same top-down rule T290 gave the loot
+        // window and T421 the item display. Unlike the loot and tradeskill
+        // windows nothing about it is server-owned, so closing it locally
+        // cannot desync anything.
         bool popupConsumedEscape = false;
-        if (itemDisplayState_.isOpen) {
+        if (optionsState_.isOpen) {
+            optionsState_.isOpen = false;
+            popupConsumedEscape = true;
+        }
+        if (!popupConsumedEscape && itemDisplayState_.isOpen) {
             itemDisplayState_.isOpen = false;
             popupConsumedEscape = true;
         }

@@ -603,6 +603,15 @@ void FrameComponent::renderStaticUI() {
         staticUIInput_->processItemDisplayInput(
             ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
             pendingUIClick_, uiLayout_, itemDisplayState_);
+        // T434: the Options window is hit-tested LAST and drawn LAST -- it
+        // is on top of everything, including the item display. A moved
+        // slider is reported as a Setting and applied in the one place that
+        // knows how (FrameComponent::applyOptionsSetting).
+        OptionsLayout::Setting optionsChanged = OptionsLayout::Setting::None;
+        staticUIInput_->processOptionsInput(
+            ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
+            pendingUIClick_, uiLayout_, optionsState_, optionsChanged);
+        applyOptionsSetting(optionsChanged);
         pendingUIClick_ = false;
     }
 
@@ -652,6 +661,11 @@ void FrameComponent::renderStaticUI() {
         // popup because the oracle's ItemDisplayWindow has its own absolute
         // placement (0,80) and overlaps whatever is beneath it.
         renderItemDisplayPopup(*uiRenderer_, uiLayout_, itemDisplayState_);
+        // T434: the Options window is drawn LAST of all. The oracle's
+        // OptionsWindow is `RelativePosition false` at its own <Location>
+        // and overlaps whatever is beneath it; the draw order mirrors the
+        // hit-test order above.
+        renderOptionsWindow(*uiRenderer_, uiLayout_, optionsState_);
         renderXPBar(*uiRenderer_, uiLayout_, xpBarState_);
         uiRenderer_->endFrame();
     }

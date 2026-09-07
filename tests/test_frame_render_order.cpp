@@ -117,7 +117,27 @@ const std::string kGolden = kRoot + "/tests/goldens/frame_render_order_g05.txt";
 //   * MERGE (T423 + T421, orchestrator): both learnings composed -- T423's
 //     entry 3 plus T421's four insertions, 309 -> 314; the golden was rebuilt
 //     from the branch list with T423's statement re-inserted at index 3.
-const size_t kGoldenSize = 314u;
+//   * T434: the Options window. TWO pure insertions, no text change and no
+//     reorder anywhere (verified by diffing the composed list against the
+//     pre-edit golden -- the only hunks are these two).
+//     - entries 264-268, the input hop: the `OptionsLayout::Setting
+//       optionsChanged` declaration, the three lines of the
+//       `staticUIInput_->processOptionsInput(...)` call and
+//       `applyOptionsSetting(optionsChanged);`. It goes LAST of the four
+//       input entry points because the oracle's OptionsWindow is
+//       `RelativePosition false` at its own <Location> and sits on top of
+//       even the item display window (the T421 rule, one level higher).
+//       It is its own entry point rather than an eleventh parameter on
+//       processInput(), the T415/T421 shape. The Setting out-parameter is
+//       there because two of the three wired controls need a bridge intent
+//       carrying a DELTA and the third needs a renderer call, so the click
+//       is resolved here and acted on in FrameComponent::applyOptionsSetting().
+//     - entry 291, the draw: `renderOptionsWindow(...)` directly after
+//       entry 290 `renderItemDisplayPopup(...)`, mirroring the hit-test
+//       order above it, and before `renderXPBar(...)`.
+//     The count rises 314 -> 320: five statements plus one, nothing removed
+//     and nothing replaced.
+const size_t kGoldenSize = 320u;
 
 std::vector<std::string> readLines(const std::string& path) {
     std::ifstream in(path);

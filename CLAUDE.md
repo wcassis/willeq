@@ -735,7 +735,11 @@ section names and `Show=0/1` keys — and re-reads it at zone-in. What it holds
 is what Will ruled user-changeable (`docs/decisions.md` 2026-09-07): the seven
 toggleable windows (`[InventoryWindow]`, `[SpellBookWnd]`, `[SkillsWindow]`,
 `[GroupWindow]`, `[PetInfoWindow]`, `[BuffWindow]`, `[CombatAbilityWnd]`) and
-`[Camera] Mode=`. Window POSITIONS are static by design — `UILayout` computes
+`[Camera] Mode=` — **plus, since T434, `[OptionsWindow] Show=` and an
+`[Options]` section holding `Music`, `SoundVolume` and `ClipPlane`**, the
+three Options-window controls fable can wire, under the oracle's own key
+names and on the oracle's own 0..20 slider scale (measured: `eqclient.ini`
+has `Music=18`/`SoundVolume=10` and that client displays 90 %/50 %). Window POSITIONS are static by design — `UILayout` computes
 every rect from the resolution — and key bindings are global
 (`config/hotkeys.json`), so neither is per character. An ABSENT `Show=` key
 keeps the default, which is `defaults.ini`'s own rule (T368), so a fresh
@@ -743,7 +747,7 @@ character writes no file until it changes something. **Chat timestamps, chat
 scrollback and UI colours are still NOT persisted**; that was scope, not
 oversight.
 
-The whole feature is three files —
+The whole feature is four files —
 `include/client/graphics/ui/ui_preferences.h`,
 `src/client/graphics/ui/ui_preferences.cpp` (the format, device-free) and
 `src/client/graphics/frame/renderer_frame_preferences.cpp` (the load at
@@ -751,8 +755,14 @@ zone-in, the save on change and at `/camp`). There is deliberately **no
 per-toggle save hook**: `FrameComponent::syncUiPreferences()` compares the
 whole collected value against the last one it wrote, so a newly persisted
 field cannot be added and then forgotten at one call site. A new persisted
-field goes in `UiPreferences` + the `kWindows` table + the binding, nowhere
-else. It is a generated file, so it goes through `ResolveCachePathForWrite()`
+field goes in `UiPreferences` + the `kWindows` table (or T434's `kOptions`
+table, the same member-pointer device for the non-boolean `[Options]` keys) +
+the binding, nowhere else. T434 added a fourth file to the feature,
+`src/client/graphics/frame/renderer_frame_options.cpp`, because its three
+persisted fields are the first that have a SETTING behind them rather than
+just a struct member: the volume intents carry a delta and the clip plane is
+a renderer call, so `FrameComponent::applyOptionsSetting()` is the one body
+both the click path and the load path go through. It is a generated file, so it goes through `ResolveCachePathForWrite()`
 (T402's rule) and never dirties the checkout.
 
 The two files that once looked like the persistence,

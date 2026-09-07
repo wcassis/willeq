@@ -35,6 +35,7 @@
 #include "client/graphics/ui/static_panels.h"
 #include "client/graphics/ui/tradeskill_panel.h"
 #include "client/graphics/ui/item_display_panel.h"
+#include "client/graphics/ui/options_panel.h"
 #include "client/inventory/item_display_text.h"
 #include "client/spell/spell_display_text.h"
 #include "client/spell/spell_data.h"
@@ -136,6 +137,9 @@ struct PanelStates {
     // The oracle has no second display window, so this is a second STATE,
     // not a second panel.
     ItemDisplayPanelState spellDisplay;
+    // T434: the Options window. Captured once PER TAB -- the tabs are
+    // what a reviewer has to be able to see, and only one page draws.
+    OptionsPanelState options;
     XPBarState xp;
 
     PanelStates() {
@@ -421,6 +425,30 @@ std::vector<PanelCapture> buildCaptureList() {
         // T425 (board B298, spell half): the same window with a SPELL in it.
         {"spell_display", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             renderItemDisplayPopup(u, l, s.spellDisplay); }},
+        // T434: one capture per tab of the Options window. `options.isOpen`
+        // is set here rather than in the state block so the seven lambdas
+        // differ ONLY in activeTab.
+        {"options_general", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            s.options.isOpen = true; s.options.activeTab = 0;
+            renderOptionsWindow(u, l, s.options); }},
+        {"options_display", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            s.options.isOpen = true; s.options.activeTab = 1;
+            renderOptionsWindow(u, l, s.options); }},
+        {"options_mouse", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            s.options.isOpen = true; s.options.activeTab = 2;
+            renderOptionsWindow(u, l, s.options); }},
+        {"options_keys", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            s.options.isOpen = true; s.options.activeTab = 3;
+            renderOptionsWindow(u, l, s.options); }},
+        {"options_filters", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            s.options.isOpen = true; s.options.activeTab = 4;
+            renderOptionsWindow(u, l, s.options); }},
+        {"options_colors", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            s.options.isOpen = true; s.options.activeTab = 5;
+            renderOptionsWindow(u, l, s.options); }},
+        {"options_mail", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            s.options.isOpen = true; s.options.activeTab = 6;
+            renderOptionsWindow(u, l, s.options); }},
         // Everything the HUD draws at once -- the screen a player sees.
         {"hud_all", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             renderPlayerStatus(u, l, s.stats);
