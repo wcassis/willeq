@@ -826,6 +826,9 @@ void FrameComponent::processFrameSimulation(float deltaTime) {
             ctx_.occlusionCulledRegions.empty() ? nullptr : &ctx_.occlusionCulledRegions);
         ctx_.doorManager->setPvsRegion(ctx_.currentPvsRegion);
         ctx_.doorManager->update(deltaTime);
+        // T435 (board B425): doors only collide because this runs. Must follow
+        // update(), which is what marks a moving door's geometry stale.
+        ctx_.PlayerCamera().syncDoorCollision();
     }
     frameTimings_.doorUpdate = measureSection();
 

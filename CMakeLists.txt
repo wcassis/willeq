@@ -579,6 +579,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/sim_boids.cpp
         src/client/graphics/loading_thread.cpp
         src/client/graphics/door_manager.cpp
+        src/client/graphics/door_collision.cpp
+        src/client/graphics/door_manager_collision.cpp
         src/client/graphics/animated_texture_manager.cpp
         src/client/graphics/sky_config.cpp
         src/client/graphics/sky_renderer.cpp

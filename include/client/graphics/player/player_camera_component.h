@@ -90,6 +90,10 @@ public:
 	// Extract world-space triangles from a mesh node (called once at build time)
 	static std::vector<irr::core::triangle3df> extractWorldTriangles(
 		irr::scene::ISceneManager* smgr, irr::scene::IMeshSceneNode* node);
+	// T435 (board B425): the writer ctx_.doorCollisionData never had. Drains
+	// DoorManager's changed/removed ids and re-bakes their world-space
+	// triangles. Called once per frame after DoorManager::update().
+	void syncDoorCollision();
 	void drawCollisionDebugLines(float deltaTime);
 
 	// T354 (B042/B047 batch): the incremental collision-registration API

@@ -6656,6 +6656,42 @@ client uses every field.
   -- T424 measured its blend as additive and left it 24-bit deliberately.
   Found by T427 Leg B while closing B265.
 
+## Added 2026-09-07 by T435 (door collision; found while ruling out B424)
+
+- **B430** (A, live defect) **a jumping player can "land" on the ceiling
+  sentinel, 1,000 units up.** `findGroundZBspFiltered()` returns
+  `feetZ + 1000.0f` as a "blocked / that is a ceiling, not a floor" sentinel
+  (`src/client/graphics/player/renderer_player_collision.cpp:574`). Four
+  jump-landing tests compare `feetZ <= groundZ` with **no upper bound** --
+  `src/client/graphics/player/renderer_player_physics.cpp:434` (clear path),
+  `:537` (blocked path), `:651` and `:666` (the HCMap paths) -- so fed the
+  sentinel they all evaluate true and set `newZ = groundZ + modelYOffset`,
+  teleporting the player 1,000 units up and ending the jump there. The swim
+  clamp on the very same value is guarded (`:483`, `:581`:
+  `maxReasonableGround = ctx_.playerZ + 100.0f`); the landings are not. The
+  HCMap pair additionally guard only against `BEST_Z_INVALID`, which the
+  sentinel is not. Not observed live -- found by reading, while T435 Leg C was
+  ruling this family out as B424's mechanism -- so a repro is owed: jump under
+  low geometry (a Kelethin platform underside, a dungeon ceiling) where the
+  down-ray finds only the ceiling.
+
+- **B431** (A, live defect) **`HCMap::FindBestZ()` silently returns a CEILING
+  as ground.** `src/client/hc_map.cpp:793-803`: if the downward raycast finds
+  nothing it re-casts UPWARD ("Try casting ray up if nothing found below") and
+  returns that hit's z with no marker distinguishing it from a real floor.
+  This is the only mechanism in the tree that literally resolves ground above
+  the player, and its callers cannot tell -- `findGroundZ()`
+  (`src/client/graphics/player/renderer_player_collision.cpp:73`) treats the
+  answer as a floor, and the game-side `GetBestZ` -> `FixZ`
+  (`src/client/zone/zone_component.cpp:1106`) writes it into the player
+  position. It is off the live collision path today (the BSP path wins
+  whenever `regionWorldTriangles` is non-empty, which is every real zone) and
+  `FixZ` is gated by `abs_diff < 20.0f`, which is why it is not currently
+  producing B424's 71 units -- but the fallback is a silent lie and either
+  needs a distinct return (a "ceiling, not floor" flag) or deleting. Found by
+  T435 Leg C.
+
+
 ## Added 2026-09-07 by the orchestrator (Will's direction: doors, lifts, traps)
 
 - **B420** (A, feature — **WILL 2026-09-07**) lifts, elevators, click-driven
@@ -6827,6 +6863,13 @@ in `refactor/T433_doors_lifts_survey.md` Review; raw dumps in
   adding the platform's per-frame Z delta to the player while their feet are on
   it. **STOP: whether the official client carries the player or merely keeps
   colliding with a rising surface is B421's measurement.** Found by T433.
+  **T435 annotation:** half (a) -- the missing writer -- is done and boarded
+  separately as the now-closed B425. What remains here is unchanged: a
+  TRANSLATING door's re-bake (the hook exists -- `DoorManager::update()` marks
+  a door's collision dirty on every frame it moves), lifting the
+  `isAnimating` walk-through suppression for lift opentypes
+  (`RayTestDoorCollision()`, `src/client/graphics/door_collision.cpp`), and
+  carrying the player. All three still wait on B421's measurement.
 
 - **B424** (A, live defect) **fable resolves ground ~71 units too high at the
   gfaydark Kelethin lift.** `#goto 340 137 6` then `/loc` returns
@@ -6840,7 +6883,46 @@ in `refactor/T433_doors_lifts_survey.md` Review; raw dumps in
   `…_C_on_lift_settled_…png`, `review/T433/logs/fable_session_lift69*.log`
   vs `review/T433/probe/T433_aim_a384_1024x768.png`. Found by T433 Leg B.5.
 
-- **B425** (A, live defect) **doors have no collision anywhere in fable, and
+  **T435 Leg C (offline, STOPPED at the plan's own STOP): this entry's stated
+  mechanism is WRONG, and the leg stopped rather than invent the right one.**
+  fable did not resolve ground too high; in that session it resolved ground
+  **not at all**. `PlayerCameraComponent::resolveMovementCollision()`
+  (`src/client/graphics/player/renderer_player_physics.cpp:317`) is gated on
+  `isMoving || isJumpMoving || isSwimMoving`, and
+  `review/T433/logs/fable_marks_lift69b.tsv` records no movement key between
+  the `#goto` and the `/loc`. Corroborating: the SimulationWorker PVS anchor is
+  computed from `ctx_.playerX/Y/Z`
+  (`src/client/graphics/sim/renderer_sim_bridge.cpp:276`) and changes exactly
+  twice in the whole session -- at zone-in, and at the `#goto` -- then holds,
+  so the RENDERER stayed at the goto position. `/loc` reads the GAME thread's
+  store, so the two DIVERGED: renderer ~6, game state 77.0. Neither
+  `findGroundZBspFiltered()` nor `HCMap` can produce +71 anyway --
+  `findGroundZBspFiltered` casts DOWN from at most `currentZ + 2` and its only
+  above-the-player return is the `feetZ + 1000` ceiling sentinel
+  (`renderer_player_collision.cpp:574`). The self-echo hypothesis is dead on
+  evidence: `ZoneProcessClientUpdate`'s unconditional "RECEIVED OUR OWN
+  ClientUpdate" line (`src/client/entities/entities_component_updates.cpp:508`)
+  appears exactly ONCE per session, at zone-in, 48 s before the `#goto`. Every
+  writer of the game-thread player z was enumerated (`PlayerFacade` is the only
+  gateway; `EverQuest::SetPosition` has zero production callers; `FixZ` is
+  double-gated by `abs_diff < 20.0f`) and each is excluded by the log.
+  **What is still missing is a per-write trace of
+  `PlayerFacade::SetPosLocal`/`SetPosition` across one `#goto` at this spot --
+  a LIVE, instrumented run under the eqemu lock. Nothing offline settles it**,
+  because an offline geometry probe answers "what is the floor here", which is
+  a different question from "which handler wrote 77.0". Reword the headline to
+  **"after a same-zone `#goto` the game-thread player z diverges from the
+  renderer's and reports the Kelethin platform height"** when this is taken up.
+  An offline probe IS feasible if the geometry question is also wanted, with no
+  graphics device: `WldLoader::parseFromArchive("gfaydark.s3d", "gfaydark.wld")`
+  -> `getBspTree()` -> `BspTree::findRegionIndexForPoint()` ->
+  `WldLoader::getGeometryForRegion()` (the same call `rebuildRegionMesh()` uses,
+  `src/client/graphics/zone_lifecycle/renderer_zone_draw.cpp:954`), plus
+  `HCMap::LoadMap`/`FindBestZ` against
+  `/mnt/projects/akk-stack/server/maps/base/gfaydark.map`;
+  `tools/bsp_region_finder.cpp` is the working device-free precedent.
+
+- ~~**B425** (A, live defect) **doors have no collision anywhere in fable, and
   the code that would give them collision has no writer.** `DoorCollisionData`
   (`include/client/graphics/renderer_types.h:414`) and
   `ctx_.doorCollisionData` are *read* by `rayTestDoorsAndObjects()`
@@ -6856,7 +6938,7 @@ in `refactor/T433_doors_lifts_survey.md` Review; raw dumps in
   `DoorManager::getDoorSceneNodes()` — documented "for collision detection" —
   has exactly one production caller, a **material swap** in
   `diagnostics_debug.cpp:296`. The reachability pattern again. Found by T433
-  Leg A.2.
+  Leg A.2.~~ **CLOSED by T435 Leg A** (`refactor/T435_door_collision.md`). The writer now exists: `DoorManager::computeDoorCollision()` bakes a door's world-space triangles in both settled poses, `markCollisionDirty()` marks it at every point the geometry can change (createDoor, registerDoor, buildDoorMesh, rebuildSingleDoor, rebuildPlaceholderDoors, recomputeAllBspRegions, and every frame a door is animating), `clearDoors()` retracts it, and `PlayerCameraComponent::syncDoorCollision()` -- called once per frame right after `DoorManager::update()` in `src/client/graphics/frame/renderer_frame_input.cpp` -- drains that into `ctx_.doorCollisionData`. All three `doorCollisionData.clear()` sites now call `markAllCollisionDirty()` so the map and the dirty set cannot desync. `hasCollision` is assigned from the OPENTYPE by `DoorOpentypeHasCollision()` (`src/client/graphics/door_collision.cpp`), never from the name -- see the T435 Review for the table and its evidence. The door half of the ray test moved out of `PlayerCameraComponent` into the free `RayTestDoorCollision()` in the same TU, so it is testable without a renderer. Pinned by `tests/test_door_collision.cpp` (17 cases: 8 red pre-fix). The stale `getDoorSceneNodes()` "for collision detection" comment is corrected in place.
 
 - **B427** (B, unmeasured decision) **opentypes 50/53/54 are dropped on the
   floor with nothing behind the decision.** `INVISIBLE_OPENTYPES = {50, 53, 54}`
@@ -6868,16 +6950,20 @@ in `refactor/T433_doors_lifts_survey.md` Review; raw dumps in
   repeatedly. Whether the official client draws them is **unmeasured**; settle
   it against the oracle (B421's rig) rather than keeping the guess. Found by
   T433 Leg A.
+  **T435 annotation:** `DoorOpentypeHasCollision()` lists 50/53/54 as
+  non-colliding explicitly, even though `createDoor()`/`registerDoor()` still
+  return before any door record exists, so that if this item ever makes them
+  real they do not silently become walls.
 
-- **B428** (A, live defect) **`invert_state` is never applied to the incoming
+- ~~**B428** (A, live defect) **`invert_state` is never applied to the incoming
   door action byte.** `ZoneProcessMoveDoor`
   (`src/client/entities/entities_component_world.cpp:130`) reads
   `is_open = (action == 0x03)`. eqemu emits `OPEN_DOOR 0x02 / CLOSE_DOOR 0x03`
   for a normal door and `OPEN_INVDOOR 0x03 / CLOSE_INVDOOR 0x02` for one with
-  `invert_state = 1` (`zone/doors.cpp:37-40`), so **every `invert_state = 1`
+  `invert_state = 1` (`/mnt/projects/akk-stack/code/zone/doors.cpp:37-40`), so **every `invert_state = 1`
   door in the game reads backwards in fable** — including all three Kelethin
   lifts (`FAYLEVATOR` 69/77/80). `DoorState::invertState` is populated from the
-  spawn packet and then used by nothing on this path. Found by T433 Leg A.3.
+  spawn packet and then used by nothing on this path. Found by T433 Leg A.3.~~ **CLOSED by T435 Leg B** (`refactor/T435_door_collision.md`), **and this entry had the direction backwards.** `is_open = (action == 0x03)` is the INVERTED-door mapping: `/mnt/projects/akk-stack/code/zone/doors.cpp:37-40` defines `OPEN_DOOR 0x02`, `CLOSE_DOOR 0x03`, `OPEN_INVDOOR 0x03`, `CLOSE_INVDOOR 0x02`, so 0x03 means OPEN only for an `invert_state = 1` door. fable therefore read the three Kelethin `FAYLEVATOR` lifts RIGHT by accident and read every ordinary door in the game BACKWARDS -- the far larger defect. `src/client/entities/entities_component_world.cpp` now branches on `door->invertState`. Pinned by `tests/test_door_invert_state.cpp` (5 cases: the 3 normal-door ones red pre-fix, the 2 inverted-door ones green before and after).
 
 - **B426** (B, feature — needs B421) **switches, levers, traps and teleporters
   are all 0-degree no-ops.** The client's whole job for each of these is
