@@ -933,3 +933,15 @@ exponent, not a closed loop — the live re-measure is still owed (B171).
 - **First-person eye placement (B018)**: no judgement needed — capture the
   official client's first-person frame at the same spot and match it, like
   every other render parameter.
+
+## 2026-09-07 - doors, lifts, elevators, switches and traps (Will)
+
+Fable has never implemented lifts, elevators, click-activated switches
+that drive other objects, or triggered traps (blades, saws, spikes that
+damage a player in range). Greater Faydark's lifts to Kelethin are the
+first test. The server sends most of these as "doors" (some possibly as
+placeables); their name identifies their function. Requirements: animate
+them as the official client does, treat lifts/elevators as walkable
+moving surfaces, and apply trap behaviour. **The official client's
+handling of doors and objects is the baseline to emulate.** Era rule
+applies (launch → Velious).

@@ -6457,3 +6457,16 @@ client uses every field.
   the counter-example that says "alpha-blend" is not automatically the answer
   -- T424 measured its blend as additive and left it 24-bit deliberately.
   Found by T427 Leg B while closing B265.
+
+## Added 2026-09-07 by the orchestrator (Will's direction: doors, lifts, traps)
+
+- **B420** (A, feature — **WILL 2026-09-07**) lifts, elevators, click-driven
+  switches and triggered traps are unimplemented. The server sends them as
+  `doors` (opentype / name-coded; some may be placeables); fable's
+  `DoorStateManager` + `src/client/graphics/door_manager.cpp` (1,394 lines)
+  handle open/close only. Required: animate as the official client does,
+  lifts/elevators become walkable MOVING surfaces the player rides, traps
+  (blades/saws/spikes) damage in range as the server dictates. First test:
+  Greater Faydark's lifts to Kelethin. Baseline: the official client. → T433
+  (survey + oracle capture), then the implementation units it names.
+
