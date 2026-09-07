@@ -906,7 +906,12 @@ private:
     std::map<size_t, irr::core::aabbox3df> regionBoundingBoxes_;  // World-space bounding boxes in EQ coords for distance culling
     std::shared_ptr<EQT::Graphics::BspTree> zoneBspTree_;  // BSP tree for region queries
     size_t currentPvsRegion_ = SIZE_MAX;  // Current camera region (SIZE_MAX = unknown)
-    irr::scene::IMeshSceneNode* fallbackMeshNode_ = nullptr;  // Mesh for geometry not in any region
+    // T442 (board B452): fallbackMeshNode_ is GONE. It was "mesh for geometry
+    // not in any region" and NOTHING in the tree ever created one: it was
+    // nullptr at its declaration and both assignments anywhere were
+    // `= nullptr`. Eleven sites tested it, dropped it, re-parented it and
+    // swapped its material. The real single-zone-mesh fallback is
+    // ZoneLifecycleComponent::createZoneMesh() writing zoneMeshNode_.
 
     // Manual zone draw (front-to-back sorting and portal occlusion)
     bool manualZoneDrawEnabled_ = false;

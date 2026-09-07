@@ -357,10 +357,12 @@ void PlayerCameraComponent::resolveIrrlichtCollision(MovementFrame& frame) {
     const float newX = frame.newX;
     const float newY = frame.newY;
 
-    // --- Irrlicht-based collision (using actual zone geometry) ---
-    // When BSP tree is available, use BSP-filtered collision (tests only source+dest
-    // region selectors + doors/objects) instead of the full ~1900-region meta selector.
-    bool useBspFiltered = ctx_.zoneBspTree && !ctx_.regionWorldTriangles.empty();
+    // --- BSP-filtered collision (using actual zone geometry) ---
+    // T442 (board B451): the `useBspFiltered` selector is gone with the
+    // checkCollisionIrrlicht() stub it chose against. It was
+    // `ctx_.zoneBspTree && !ctx_.regionWorldTriangles.empty()`, and this body
+    // is entered only when ctx_.regionWorldTriangles is already non-empty --
+    // so it could never be false and the Irrlicht arm never ran.
 
     // Check horizontal collision first
     // Convert EQ coords to Irrlicht: EQ(x,y,z) -> Irr(x,z,y)
@@ -370,9 +372,7 @@ void PlayerCameraComponent::resolveIrrlichtCollision(MovementFrame& frame) {
 
     irr::core::vector3df hitPoint;
     irr::core::triangle3df hitTriangle;
-    bool blocked = useBspFiltered
-        ? checkCollisionBspFiltered(rayStart, rayEnd, hitPoint, hitTriangle)
-        : checkCollisionIrrlicht(rayStart, rayEnd, hitPoint, hitTriangle);
+    bool blocked = checkCollisionBspFiltered(rayStart, rayEnd, hitPoint, hitTriangle);
 
     if (playerConfig_.collisionDebug) {
         // Extend the ray visually so it's easier to see (movement per frame is tiny)
@@ -406,14 +406,14 @@ void PlayerCameraComponent::resolveIrrlichtCollision(MovementFrame& frame) {
     }
 
     if (!blocked) {
-        resolveIrrlichtClearPath(frame, useBspFiltered);
+        resolveIrrlichtClearPath(frame);
     } else {
-        resolveIrrlichtBlockedPath(frame, useBspFiltered, checkHeight, rayStart, hitPoint, hitTriangle);
+        resolveIrrlichtBlockedPath(frame, checkHeight, rayStart, hitPoint, hitTriangle);
     }
 }
 
 // Phase 5b -- Irrlicht, path clear: ground snap / land / swim clamp (was lines 315-408).
-void PlayerCameraComponent::resolveIrrlichtClearPath(MovementFrame& frame, bool useBspFiltered) {
+void PlayerCameraComponent::resolveIrrlichtClearPath(MovementFrame& frame) {
     float& newX = frame.newX;
     float& newY = frame.newY;
     float& newZ = frame.newZ;
@@ -459,8 +459,7 @@ void PlayerCameraComponent::resolveIrrlichtClearPath(MovementFrame& frame, bool 
             LOG_DEBUG(MOD_MOVEMENT, "[Swim] Ceiling check: from Z={} to Z={} (delta={}), ray ({},{},{}) -> ({},{},{})",
                 ctx_.playerZ, newZ, deltaZ, headStart.X, headStart.Y, headStart.Z, headEnd.X, headEnd.Y, headEnd.Z);
 
-            if ((useBspFiltered ? checkCollisionBspFiltered(headStart, headEnd, ceilingHit, ceilingTri)
-                                 : checkCollisionIrrlicht(headStart, headEnd, ceilingHit, ceilingTri))) {
+            if (checkCollisionBspFiltered(headStart, headEnd, ceilingHit, ceilingTri)) {
                 // Hit ceiling - clamp newZ to just below the hit point
                 // ceilingHit.Y is in Irrlicht coords (EQ Z)
                 // Player center should be headHeight below the ceiling hit
@@ -522,7 +521,7 @@ void PlayerCameraComponent::resolveIrrlichtClearPath(MovementFrame& frame, bool 
 
 // Phase 5c -- Irrlicht, horizontal blocked: wall slide / vertical-only (was lines 410-509).
 void PlayerCameraComponent::resolveIrrlichtBlockedPath(
-        MovementFrame& frame, bool useBspFiltered, float checkHeight,
+        MovementFrame& frame, float checkHeight,
         const irr::core::vector3df& rayStart,
         irr::core::vector3df& hitPoint, irr::core::triangle3df& hitTriangle) {
     float& newX = frame.newX;
@@ -562,8 +561,7 @@ void PlayerCameraComponent::resolveIrrlichtBlockedPath(
             irr::core::vector3df ceilingHit;
             irr::core::triangle3df ceilingTri;
 
-            if ((useBspFiltered ? checkCollisionBspFiltered(headStart, headEnd, ceilingHit, ceilingTri)
-                                 : checkCollisionIrrlicht(headStart, headEnd, ceilingHit, ceilingTri))) {
+            if (checkCollisionBspFiltered(headStart, headEnd, ceilingHit, ceilingTri)) {
                 float maxZ = ceilingHit.Y - headHeight - 0.1f;
                 if (newZ > maxZ) {
                     newZ = maxZ;
@@ -588,8 +586,7 @@ void PlayerCameraComponent::resolveIrrlichtBlockedPath(
     } else {
         // Try wall sliding - X only
         irr::core::vector3df rayEndX(newX, ctx_.playerZ + checkHeight, ctx_.playerY);
-        if (!(useBspFiltered ? checkCollisionBspFiltered(rayStart, rayEndX, hitPoint, hitTriangle)
-                             : checkCollisionIrrlicht(rayStart, rayEndX, hitPoint, hitTriangle))) {
+        if (!checkCollisionBspFiltered(rayStart, rayEndX, hitPoint, hitTriangle)) {
             GroundZ groundZ = findGroundZBspFiltered(newX, ctx_.playerY, ctx_.playerZ, modelYOffset);
             float currentFeetZ = ctx_.playerZ - modelYOffset;
             float stepHeight = groundZ.zOr(currentFeetZ) - currentFeetZ;
@@ -605,8 +602,7 @@ void PlayerCameraComponent::resolveIrrlichtBlockedPath(
         // Try wall sliding - Y only
         if (!positionChanged) {
             irr::core::vector3df rayEndY(ctx_.playerX, ctx_.playerZ + checkHeight, newY);
-            if (!(useBspFiltered ? checkCollisionBspFiltered(rayStart, rayEndY, hitPoint, hitTriangle)
-                                  : checkCollisionIrrlicht(rayStart, rayEndY, hitPoint, hitTriangle))) {
+            if (!checkCollisionBspFiltered(rayStart, rayEndY, hitPoint, hitTriangle)) {
                 GroundZ groundZ = findGroundZBspFiltered(ctx_.playerX, newY, ctx_.playerZ, modelYOffset);
                 float currentFeetZ = ctx_.playerZ - modelYOffset;
                 float stepHeight = groundZ.zOr(currentFeetZ) - currentFeetZ;

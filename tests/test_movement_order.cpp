@@ -287,8 +287,21 @@ std::vector<std::string> goldenOrder() {
 // selector can never be false inside resolveIrrlichtCollision(): that body is
 // entered only when ctx_.regionWorldTriangles is non-empty, and region
 // triangles exist only when the BSP tree was installed. The remaining
-// `useBspFiltered` ternaries (the checkCollisionIrrlicht ones) are untouched.
-constexpr size_t kGoldenSize = 463;
+// `useBspFiltered` ternaries (the checkCollisionIrrlicht ones) were left for
+// T442.
+//
+// T442: B451, the surviving twin. checkCollisionIrrlicht() was the same shape
+// -- a LOG_WARN plus `return false` -- behind the same never-false selector,
+// and the golden LEARNED its deletion in place: FIVE more ternaries
+//     `... useBspFiltered ? checkCollisionBspFiltered(<args>)`
+//     `                   : checkCollisionIrrlicht(<args>) ...`
+// each collapsed to the one statement `... checkCollisionBspFiltered(<args>) ...`
+// at the SAME position (six statements), and the now-dead selector
+// declaration `bool useBspFiltered = ...` was deleted (one statement) -- so
+// 463 -> 456, nothing inserted, nothing moved, no other line touched. The
+// selector is gone from the TU entirely, parameters included, and
+// tests/test_dead_renderer_members.cpp pins that.
+constexpr size_t kGoldenSize = 456;
 
 }  // namespace
 

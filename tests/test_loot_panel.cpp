@@ -8,7 +8,10 @@
 //   * The four loot game events reached IrrlichtBridge only to LOG_TRACE
 //     and DISCARDED their payloads (irrlicht_bridge.cpp:455-467, T283's
 //     audit) -- the renderer literally did not know what was on a corpse.
-//   * PopupType::Loot was a bare enumerator with no render function.
+//   * PopupType::Loot was a bare enumerator with no render function. It
+//     stayed bare after T290 gave the window one -- the loot popup tracks
+//     its own visibility on LootPanelState -- and T442 (board B450) deleted
+//     the enumerator along with four siblings in the same state.
 //   * LootItemIntent / LootAllIntent / CloseLootIntent sat on
 //     test_reachability_sweep's kBlockedIntents: consumer arms live (T268
 //     wired the /loot family onto them), no producer anywhere.

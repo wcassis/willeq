@@ -275,8 +275,8 @@ private:
 	void resolveMovementCollision(MovementFrame& frame);
 	// Phase 5's three collision systems -- this file's own `else if` seams.
 	void resolveIrrlichtCollision(MovementFrame& frame);
-	void resolveIrrlichtClearPath(MovementFrame& frame, bool useBspFiltered);
-	void resolveIrrlichtBlockedPath(MovementFrame& frame, bool useBspFiltered, float checkHeight,
+	void resolveIrrlichtClearPath(MovementFrame& frame);
+	void resolveIrrlichtBlockedPath(MovementFrame& frame, float checkHeight,
 	                                const irr::core::vector3df& rayStart,
 	                                irr::core::vector3df& hitPoint,
 	                                irr::core::triangle3df& hitTriangle);
@@ -291,9 +291,6 @@ private:
 	// these three TUs, so they need no public surface and are not §5 candidates.
 	bool checkMovementCollision(float fromX, float fromY, float fromZ,
 	                            float toX, float toY, float toZ);
-	// Legacy meta-selector path -- cold, HCMap fallback/debug only.
-	bool checkCollisionIrrlicht(const irr::core::vector3df& start, const irr::core::vector3df& end,
-	                            irr::core::vector3df& hitPoint, irr::core::triangle3df& hitTriangle);
 	// Find ground Z at position. currentZ is the node origin (server Z);
 	// modelYOffset is the origin-to-feet distance.
 	// T440 (B438) deleted the findGroundZIrrlicht() companion: it was a warn-and-

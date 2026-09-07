@@ -318,7 +318,7 @@ void ZoneLifecycleComponent::deleteMeshHardwareBuffers(irr::scene::IMeshSceneNod
 // glBindTexture, glUniform*). Distance sorting within each material group
 // preserves front-to-back order for early-Z rejection on tile-based GPUs.
 void ZoneLifecycleComponent::drawZoneGeometrySorted() {
-    if (ctx_.sortedZoneDrawList.empty() && !ctx_.fallbackMeshNode) return;
+    if (ctx_.sortedZoneDrawList.empty()) return;
 
     // Collect all visible mesh buffers into a flat draw list
     sortedDrawEntries_.clear();
@@ -595,11 +595,6 @@ void ZoneLifecycleComponent::drawZoneGeometrySorted() {
         }
     }
 
-    // Add fallback mesh buffers (always drawn last — use max distance)
-    if (ctx_.fallbackMeshNode) {
-        collectMeshBuffers(ctx_.fallbackMeshNode, 1e18f);
-    }
-
     // Sort by material key (primary), distance (secondary)
     std::sort(sortedDrawEntries_.begin(), sortedDrawEntries_.end(),
         [](const ZoneDrawEntry& a, const ZoneDrawEntry& b) {
@@ -714,17 +709,9 @@ void ZoneLifecycleComponent::drawZoneGeometrySorted() {
 // ======== drawRegionMesh ========
 // Draws a single region's mesh buffers with proper world transform.
 void ZoneLifecycleComponent::drawRegionMesh(size_t regionIdx) {
-    irr::scene::IMeshSceneNode* node = nullptr;
-
-    if (regionIdx == SIZE_MAX) {
-        node = ctx_.fallbackMeshNode;
-    } else {
-        auto it = ctx_.regionMeshNodes.find(regionIdx);
-        if (it == ctx_.regionMeshNodes.end() || !it->second) return;
-        node = it->second;
-    }
-
-    if (!node) return;
+    auto it = ctx_.regionMeshNodes.find(regionIdx);
+    if (it == ctx_.regionMeshNodes.end() || !it->second) return;
+    irr::scene::IMeshSceneNode* node = it->second;
 
     irr::scene::IMesh* mesh = node->getMesh();
     if (!mesh) return;
@@ -836,11 +823,6 @@ void ZoneLifecycleComponent::drawZoneGeometryWithPortals() {
     glDisable(GL_STENCIL_TEST);
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
     glDepthMask(GL_TRUE);
-
-    // Draw fallback mesh (geometry not in any BSP region)
-    if (ctx_.fallbackMeshNode) {
-        drawRegionMesh(SIZE_MAX);
-    }
 #else
     drawZoneGeometrySorted();
 #endif

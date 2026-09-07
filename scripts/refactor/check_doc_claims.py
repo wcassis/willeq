@@ -123,6 +123,33 @@ RETIRED = [
      "EQ::SpellVisualVocabulary by value over the bridge "
      "(noteSpellVocabulary), because the SpellDatabase LRU is game-thread "
      "owned and unlocked", "T381 (B160)"),
+
+    # --- T442 (boards B450/B451/B452) --------------------------------------
+    ("checkCollisionIrrlicht",
+     "deleted; checkCollisionBspFiltered() is the only movement collision "
+     "check, and its five ternaries went with it -- the `useBspFiltered` "
+     "selector could never be false inside resolveIrrlichtCollision()",
+     "T442 (B451)"),
+    ("fallbackMeshNode",
+     "deleted; nothing in the tree ever created one (both assignments "
+     "anywhere were `= nullptr`). The real single-zone-mesh fallback is "
+     "ZoneLifecycleComponent::createZoneMesh() writing zoneMeshNode_",
+     "T442 (B452)"),
+    ("PopupType::Spellbook",
+     "deleted; the spellbook popup tracks its own visibility on its own "
+     "panel state, and PopupType is now {None, Inventory, Vendor}",
+     "T442 (B450)"),
+    ("PopupType::Bank",
+     "deleted; BankPanelState::isOpen is the bank window's visibility",
+     "T442 (B450)"),
+    ("PopupType::Loot",
+     "deleted; LootPanelState is the loot popup's visibility", "T442 (B450)"),
+    ("PopupType::Trade",
+     "deleted; there was never a trade centre popup behind it",
+     "T442 (B450)"),
+    ("PopupType::Skills",
+     "deleted; SkillsPopupState is the skills window's visibility",
+     "T442 (B450)"),
 ]
 
 

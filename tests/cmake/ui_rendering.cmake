@@ -360,6 +360,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_options_merchant_residue)
 ENDIF()
 
+# T442 (boards B450/B451/B452): three dead renderer/UI members, deleted. Every
+# case is a source census read through WILLEQ_REPO_ROOT, so the same binary
+# measures the pre-fix and post-fix sources -- which is the pre-fix red for a
+# unit whose whole fix is a deletion. No device, no database, no server.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_dead_renderer_members
+        test_dead_renderer_members.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_dead_renderer_members PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_dead_renderer_members GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_dead_renderer_members)
+ENDIF()
+
 # T421 Leg B (board B365): the ONE text-entry widget, and the tradeskill
 # search box using it.
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)

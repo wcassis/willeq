@@ -211,7 +211,6 @@ void DiagnosticsComponent::dumpScene() const {
     if (ctx_.weatherEffects) ctx_.weatherEffects->collectSceneNodes(knownNodes);
     // Subtract zone collision node
     if (collisionInGraph) { otherNodes--; knownNodes.insert(ctx_.ZoneLifecycle().zoneCollisionNode()); }
-    if (ctx_.fallbackMeshNode && ctx_.fallbackMeshNode->getParent()) { otherNodes--; knownNodes.insert(ctx_.fallbackMeshNode); }
     if (ctx_.zonePlaceholderNode) { otherNodes--; knownNodes.insert(ctx_.zonePlaceholderNode); }
     if (ctx_.camera) { otherNodes--; knownNodes.insert(ctx_.camera); }
     if (sunLight_) { otherNodes--; knownNodes.insert(sunLight_); }

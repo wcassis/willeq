@@ -278,9 +278,6 @@ void DiagnosticsComponent::swapZoneMeshMaterials() {
         swapNode(node);
     }
 
-    // Swap fallback mesh node
-    swapNode(ctx_.fallbackMeshNode);
-
     // Swap object nodes (trees use wind material)
     for (auto* node : ctx_.objectNodes) {
         swapNode(node);
@@ -301,10 +298,10 @@ void DiagnosticsComponent::swapZoneMeshMaterials() {
         ctx_.doorManager->invalidateMeshCache("");
     }
 
-    LOG_INFO(MOD_GRAPHICS, "swapZoneMeshMaterials: swapped {}/{} mesh buffers (zone={} regions={} fallback={} objects={} doors={})",
+    LOG_INFO(MOD_GRAPHICS, "swapZoneMeshMaterials: swapped {}/{} mesh buffers (zone={} regions={} objects={} doors={})",
         swapChanged, swapTotal,
         ctx_.zoneMeshNode != nullptr, ctx_.regionMeshNodes.size(),
-        ctx_.fallbackMeshNode != nullptr, ctx_.objectNodes.size(), doorSwapped);
+        ctx_.objectNodes.size(), doorSwapped);
 
     // Rebuild sorted draw list if manual zone draw is active (material keys changed)
     if (ctx_.manualZoneDrawEnabled) {
@@ -356,7 +353,6 @@ void DiagnosticsComponent::swapToDebugShader(irr::s32 debugMat) {
 
     if (ctx_.zoneMeshNode) swapNodeToDebug(ctx_.zoneMeshNode);
     for (auto& [idx, node] : ctx_.regionMeshNodes) swapNodeToDebug(node);
-    if (ctx_.fallbackMeshNode) swapNodeToDebug(ctx_.fallbackMeshNode);
     for (auto* node : ctx_.objectNodes) swapNodeToDebug(node);
 }
 
@@ -455,9 +451,6 @@ void DiagnosticsComponent::toggleManualZoneDraw() {
         for (auto& [regionIdx, node] : ctx_.regionMeshNodes) {
             if (node && node->getParent()) { node->grab(); node->remove(); }
         }
-        if (ctx_.fallbackMeshNode && ctx_.fallbackMeshNode->getParent()) {
-            ctx_.fallbackMeshNode->grab(); ctx_.fallbackMeshNode->remove();
-        }
         // Remove object nodes from scene graph — drawn via sorted draw list
         for (size_t i = 0; i < ctx_.objectNodes.size(); ++i) {
             auto* node = ctx_.objectNodes[i];
@@ -473,10 +466,6 @@ void DiagnosticsComponent::toggleManualZoneDraw() {
                 ctx_.smgr->getRootSceneNode()->addChild(node);
                 node->drop();
             }
-        }
-        if (ctx_.fallbackMeshNode && !ctx_.fallbackMeshNode->getParent()) {
-            ctx_.smgr->getRootSceneNode()->addChild(ctx_.fallbackMeshNode);
-            ctx_.fallbackMeshNode->drop();
         }
         // Re-add visible object nodes to scene graph
         for (size_t i = 0; i < ctx_.objectNodes.size(); ++i) {

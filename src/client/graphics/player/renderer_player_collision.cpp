@@ -236,17 +236,11 @@ void PlayerCameraComponent::setupMinimalZoneCollision() {
     LOG_INFO(MOD_GRAPHICS, "Minimal collision setup complete, progressive loading activated");
 }
 
-bool PlayerCameraComponent::checkCollisionIrrlicht(const irr::core::vector3df& start,
-                                               const irr::core::vector3df& end,
-                                               irr::core::vector3df& hitPoint,
-                                               irr::core::triangle3df& hitTriangle) {
-    // DIAGNOSTIC: This should NOT be called on the hot path anymore.
-    // BSP-filtered collision should be used instead for movement.
-    LOG_WARN(MOD_GRAPHICS, "checkCollisionIrrlicht CALLED — old meta selector path! "
-             "ray ({},{},{}) -> ({},{},{})",
-             start.X, start.Y, start.Z, end.X, end.Y, end.Z);
-    return false;
-}
+// T442 (board B451): checkCollisionIrrlicht() is GONE, for T440's reason and
+// by T440's recipe. It was a LOG_WARN plus `return false` -- "nothing blocks
+// you" -- reached from five ternaries in renderer_player_physics.cpp whose
+// `useBspFiltered` condition can never be false there. Those five ternaries
+// are gone with it; the BSP-filtered check is the only check.
 
 // T440 (board B438): findGroundZIrrlicht() is GONE. It was a LOG_WARN plus
 // `return GroundZ::Floor(currentZ - modelYOffset)` -- "the floor is exactly

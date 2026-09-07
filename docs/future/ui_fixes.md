@@ -185,7 +185,7 @@ Compare: 85-3,000 draw calls today → **2-5 draw calls** with batched atlas ren
   - `renderHotbar(uiRenderer, textBatch, hotbarState)` — draws 10 slots with icons + cooldowns + key labels
   - `renderChat(uiRenderer, textBatch, chatState)` — draws message lines + input field
   - etc.
-- Center popup state machine: `enum PopupType { None, Inventory, Spellbook, Vendor, ... }`. Only one popup at a time (or left+right split for vendor+inventory). ESC or dedicated key closes popup.
+- Center popup state machine: `enum PopupType { None, Inventory, Vendor }`. Only one popup at a time (or left+right split for vendor+inventory). ESC or dedicated key closes popup. (As built, only these three enumerators exist: the other centre popups track their own visibility on their own panel state. T442, board B450.)
 - Input handling: fixed regions mean hit-testing is trivial (is mouse in hotbar rect? which slot index?). No overlap resolution needed.
 
 **Migration path**: Implement new UI panels one at a time alongside existing `WindowManager`. Toggle with a `/newui` command. Once all panels are ported, remove `WindowBase`/`WindowManager` and all 40+ window classes.
