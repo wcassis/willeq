@@ -209,11 +209,17 @@ const std::vector<NeverAlpha> kNeverAlpha = {
      "below pins the profile; do not 'fix' this file by converting it to 32-bit, "
      "which would add ~8x the pack bytes for a channel no shader reads."},
     {"detail_atlas.bmp",
-     "board B265: this is the one BMP no build reproduces (a 16-bit software "
-     "driver round trip plus code drift in the twelve footprint tiles). "
-     "Rewriting it in 32 bpp means regenerating its pixels, which moves a "
-     "texture every outdoor gate zone draws. It is RECIPE-exempt in "
-     "scripts/build_textures.sh for exactly that reason."},
+     "board B410, and NOT the reason B265 gave. B265 is CLOSED (T427): the "
+     "file reproduces byte-for-byte now, and regenerating it moved zero gate "
+     "pixels because gles2_zone_benchmark never instantiates DetailManager, "
+     "so no golden frame holds a detail-atlas texel. It stays 24-bit here on "
+     "the SCOPE rule, not a measured one: DetailChunk and FootprintManager "
+     "both draw it with EMT_TRANSPARENT_ALPHA_CHANNEL, which is the same "
+     "alpha-BLEND shape T406 converted 60 files for, so this file most likely "
+     "SHOULD be 32-bit -- but createAtlasImage() draws every tile on a "
+     "transparent ground, so converting it changes what the outdoor zones "
+     "draw and is a look change for Will, not a cascade. Boarded as B410 with "
+     "the two consumer sites named."},
     {"rain_streaks.bmp",
      "no consumer: RainOverlay loads rain_intensity_01..10 plus "
      "rain_layer_mid/far and never names this file."},

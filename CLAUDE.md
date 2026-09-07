@@ -273,8 +273,11 @@ makes a new generator declare which side it is on:
 boards **B286**/**B322**; T424 closed B322 by moving its cosine falloff out of
 the discarded alpha channel and into RGB, which is what an additive blend
 samples — before that it shipped as a solid white square), `detail_atlas.bmp`
-(board **B265**: still the one file no
-build reproduces), and `rain_streaks.bmp` + `snow_flakes.bmp` (no consumer
+(board **B410**: T427 closed **B265** by regenerating it, so **every one of
+the 65 shipped BMPs is now byte-reproducible from its generator and
+`NOT_REPRODUCIBLE` is empty**; it stays 24-bit on scope, not on a measured
+reason, because both its consumers alpha-BLEND it and converting it is a look
+change), and `rain_streaks.bmp` + `snow_flakes.bmp` (no consumer
 at all). T417's `spell_sprite_atlas.bmp` is 32-bit and takes the ordinary ETC1
 companion route — it needed no `--rgba8888-texture` override. `generate_textures --report` prints the census.
 

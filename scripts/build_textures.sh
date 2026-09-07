@@ -53,15 +53,22 @@ set -u
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # ── The exemption list for assertion 2 (RECIPE) ─────────────────────────────
-# detail_atlas.bmp: board B265. The shipped file is the generator's output
-# run through Irrlicht's SOFTWARE-driver texture round trip -- every one of
-# its 786,432 pixel bytes is a multiple of 8, i.e. it was quantised to
-# A1R5G5B5 (5 bits per channel) and expanded back. On top of that, its
-# twelve footprint tiles (rows 5-6) are near-black where
-# DetailTextureAtlas::drawFootprintLeft/Right now draw per-biome colours, so
-# the file also predates a code change. Regenerating it moves PIXELS in a
-# texture the visual gate's outdoor zones draw, so T403 left it alone.
-NOT_REPRODUCIBLE="detail_atlas.bmp"
+# EMPTY since T427 (board B265 closed). detail_atlas.bmp was the last and only
+# entry: the shipped bytes were the generator's output pushed through the
+# retired tool's Irrlicht SOFTWARE-driver texture round trip, which did two
+# things at once -- quantised every channel to A1R5G5B5 (all 786,432 pixel
+# bytes a multiple of 8; 18,913 pixels) and PREMULTIPLIED RGB by alpha, which
+# is invisible wherever alpha is 0 or 255 and therefore showed up in exactly
+# the twelve footprint tiles, the only tiles in the whole atlas whose painter
+# writes a fractional alpha (`SColor(alpha * 200, ...)` in
+# DetailTextureAtlas::drawFootprintLeft/Right; 10,596 pixels). T427 measured
+# that regenerating it moves ZERO golden pixels (gles2_zone_benchmark never
+# instantiates DetailManager, so no gate frame contains a detail-atlas texel)
+# and ZERO pack bytes (ETC1 is fixed-rate), and shipped the generator's output.
+# Every entry added here needs a board item and means "the shipped bytes are
+# NOT derived from the tree", which is the state B260 exists to end. It is not
+# a place to park a failing generator.
+NOT_REPRODUCIBLE=""
 
 CHECK_ONLY=0
 WRITE_PINS=0

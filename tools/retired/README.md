@@ -53,8 +53,10 @@ every one of those textures — compiled in **no CMake target at all**.
 T403 restored it as `tools/generate_textures.cpp` (target `generate_textures`,
 `EQT_GRAPHICS` only) and pinned it: `scripts/build_textures.sh --check`, run
 by the `TexturesReproducible` ctest test, regenerates all 64 into a temp
-directory and asserts they match `data/textures/`. 63 of 64 are byte-identical;
-`detail_atlas.bmp` is exempt and hash-pinned only (board B265).
+directory and asserts they match `data/textures/`. 63 of 64 were
+byte-identical at T403; `detail_atlas.bmp` was exempt and hash-pinned only
+(board B265). **T427 closed B265** by regenerating it — the exemption list is
+EMPTY now and the check reports `65 byte-identical, 0 drifted, 0 exempt`.
 
 **The lesson for this directory**: "no found consumer" is a claim about the
 CODE, and these tools produce DATA. Before retiring a tool that writes a file,

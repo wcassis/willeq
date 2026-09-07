@@ -44,6 +44,11 @@
 #                 no coin decals is a REGRESSION, not a degraded build
 #                 (Will's all-or-nothing rule for EQE1 assets), so a missing
 #                 file aborts instead of silently packing a coinless atlas.
+#   --textures-dir
+#                 The directory of input BMPs (default: data/textures). Point
+#                 it at a REGENERATED temp directory to build a candidate pack
+#                 for `visual_gate.sh --eqe1-path` without installing anything
+#                 (T427). Combine with --output; never with a bare install.
 #   --keep-temp   Leave the staging/temp directory in place for inspection.
 #
 # The install is ATOMIC: the pack is written to a temp file in the SAME
@@ -59,6 +64,7 @@ BIN_DIR=""
 OUTPUT="/mnt/projects/EverQuest_ETC1/willeq.eqe1"
 SHA_FILE=""
 UIFILES_PATH="/mnt/projects/EverQuestP1999/uifiles/default"
+TEXTURES_DIR_OVERRIDE=""
 KEEP_TEMP=0
 
 while [ $# -gt 0 ]; do
@@ -68,6 +74,7 @@ while [ $# -gt 0 ]; do
         --output)    OUTPUT="$2"; shift 2 ;;
         --sha-file)  SHA_FILE="$2"; shift 2 ;;
         --uifiles-path) UIFILES_PATH="$2"; shift 2 ;;
+        --textures-dir) TEXTURES_DIR_OVERRIDE="$2"; shift 2 ;;
         --keep-temp) KEEP_TEMP=1; shift ;;
         -h|--help)   sed -n '2,51p' "${BASH_SOURCE[0]}"; exit 0 ;;
         *) echo "build_willeq_pack.sh: unknown argument '$1'" >&2; exit 2 ;;
@@ -99,7 +106,7 @@ for t in eqe1_builder ui_atlas_builder; do
     fi
 done
 
-TEXTURES_DIR="$REPO_ROOT/data/textures"
+TEXTURES_DIR="${TEXTURES_DIR_OVERRIDE:-$REPO_ROOT/data/textures}"
 if [ ! -d "$TEXTURES_DIR" ]; then
     echo "ERROR: input directory $TEXTURES_DIR does not exist" >&2
     exit 3
