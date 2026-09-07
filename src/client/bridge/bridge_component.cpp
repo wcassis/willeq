@@ -654,8 +654,22 @@ void eqt::bridge::BridgeComponent::OnSpawnMovedGraphics(uint16_t spawn_id, float
 	// If this is our player entity, publish player position update
 	// so the camera follows the server-authoritative position
 	if (spawn_id == ctx_.self.MySpawnId()) {
-		// Convert heading from degrees (0-360) to EQ format (0-512)
-		float heading_512 = heading * 512.0f / 360.0f;
+		// T426 (board B399): the CAMERA takes OUR heading in the client's
+		// INTERNAL convention -- `90 - server_deg`, the player-only flip every
+		// inbound self-heading edge applies (ZoneProcessPlayerProfile,
+		// RelocateWithinZone, the self branch of ZoneProcessClientUpdate) and
+		// SendPositionUpdate inverts on the way out. `heading` here is the RAW
+		// server degrees the packet carried, which is correct for the ENTITY
+		// row below (other entities' models take a server heading verbatim --
+		// docs/CLAUDE.md, Heading/Rotation Conventions) and WRONG for the
+		// camera. ZoneProcessClientUpdate's self branch computes the internal
+		// value into ctx_.self a hundred lines before it calls this, then
+		// passed the raw one; so every server-forced relocation that arrives
+		// as a self OP_ClientUpdate (zone-in, a GM move with no zone-change
+		// packet, a server position correction) pointed the camera somewhere
+		// other than where the server aimed us, and it stayed there until the
+		// player turned. Read the store instead of trusting the argument.
+		float heading_512 = ctx_.self.HeadingDeg() * 512.0f / 360.0f;
 		eqt::state::PlayerMovedData pdata;
 		pdata.x = x; pdata.y = y; pdata.z = z;
 		pdata.heading = heading_512;

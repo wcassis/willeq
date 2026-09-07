@@ -155,6 +155,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_spell_effect_removal)
 
+# T426 Leg C (board B400): the caster's own landing must survive the SECOND
+# OP_Action eqemu sends it for its own cast. Real SpellVisualFX (EDT_NULL
+# device) -> real ParticleManager -> real SimulationWorker, so the removal
+# under test is the one production issues.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_caster_own_landing
+        test_caster_own_landing.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_caster_own_landing PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_caster_own_landing GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_caster_own_landing)
+ENDIF()
+
 # T389 Leg B (board B162): the spells.eff sprite name -> particle-atlas tile
 # mapping measured against the official client, and the routing of a resolved
 # Target stage into an impact effect's EmitterConfig::textureRegions[].

@@ -22,19 +22,36 @@
 #endif
 #include <algorithm>
 #include <fstream>
+#include <string>
+#include <vector>
 
 namespace EQ {
 // ============================================================================
 // Effect Removal
 // ============================================================================
 
+// The two SpellEffectDef::name values createCastGlow() can produce
+// (SpellPresets::CastGlow / CastSpray). T426 (board B400): removeCastGlow must
+// name them, because the removal it issues matches an effect whose CASTER OR
+// TARGET is this entity -- and a self-target cast puts the caster's own spawn
+// id in both fields, so an unfiltered removal took the impact burst and the
+// spell-complete burst down with the glow. The caster receives TWO OP_Action
+// packets for one cast (effect_flag 0 then 4, T395) and this arm runs on both,
+// so the SECOND one destroyed what the first had just created; an observing
+// client, which only ever receives effect_flag 0, kept its copy. That is
+// exactly the asymmetry T422 measured (B400): the same landing drew on the
+// observer and not on the caster.
+static const std::vector<std::string> kCastStageStyles = {"CastGlow", "CastSpray"};
+
 void SpellVisualFX::removeCastGlow(uint16_t caster_id)
 {
 #ifdef EQT_HAS_GLES2
     if (m_particle_manager) {
-        m_particle_manager->removeSpellEffectsForEntity(caster_id);
-        m_particle_manager->removeSpellEffectsForEntity(rightHandEntityId(caster_id));
-        m_particle_manager->removeSpellEffectsForEntity(leftHandEntityId(caster_id));
+        m_particle_manager->removeSpellEffectsForEntity(caster_id, kCastStageStyles);
+        m_particle_manager->removeSpellEffectsForEntity(rightHandEntityId(caster_id),
+                                                        kCastStageStyles);
+        m_particle_manager->removeSpellEffectsForEntity(leftHandEntityId(caster_id),
+                                                        kCastStageStyles);
         return;
     }
 #endif

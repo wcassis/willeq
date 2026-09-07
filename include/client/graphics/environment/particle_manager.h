@@ -215,6 +215,16 @@ public:
      */
     bool initUnifiedRenderer(int poolSize = 0);
 
+    // T426 test seam. initUnifiedRenderer() needs a live GL context, and
+    // createSpellEffect()/createSpellEffectAtPosition() refuse to enqueue
+    // without it -- so a headless test that drives the real SpellVisualFX ->
+    // ParticleManager -> SimulationWorker chain (tests/test_caster_own_landing.cpp)
+    // cannot get a single command out of the manager. Nothing in production
+    // calls this; the renderer always goes through initUnifiedRenderer().
+    void Test_SetUnifiedRendererInitializedForSeam(bool initialized) {
+        unifiedRendererInitialized_ = initialized;
+    }
+
     /**
      * Update unified particles — now a no-op (physics moved to SimulationWorker).
      * Kept for billboard emitter envState updates only.
@@ -346,6 +356,20 @@ public:
      * field SimulationWorker's RemoveSpellEffectsEntity arm matches on.
      */
     void removeSpellEffectsForEntity(uint16_t entityID);
+
+    /**
+     * Remove only the named STYLES attached to an entity (T426, board B400).
+     * `styles` are SpellEffectDef::name values -- "CastGlow", "CastSpray",
+     * "Impact", "SpellComplete", "BuffAura", ... An empty list means every
+     * style, i.e. the overload above.
+     *
+     * The reason this exists: RemoveSpellEffectsEntity matches an effect whose
+     * CASTER or TARGET is the entity, and a self-target cast puts the caster's
+     * spawn id in both, so an unfiltered "take the cast glow down" removed the
+     * caster's own impact burst as well.
+     */
+    void removeSpellEffectsForEntity(uint16_t entityID,
+                                     std::vector<std::string> styles);
 
     /**
      * Clear all active spell effects.

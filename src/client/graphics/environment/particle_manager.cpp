@@ -974,9 +974,15 @@ uint32_t ParticleManager::createSpellEffectAtPosition(const SpellEffectDef& def,
 // and SpellVisualFX::createCastGlow() makes three before every single cast --
 // behaved as clearAllSpellEffects() while removing nothing it was asked to.
 void ParticleManager::removeSpellEffectsForEntity(uint16_t entityID) {
+    removeSpellEffectsForEntity(entityID, {});
+}
+
+void ParticleManager::removeSpellEffectsForEntity(uint16_t entityID,
+                                                  std::vector<std::string> styles) {
     ParticleCommandData cmd;
     cmd.type = ParticleCommand::RemoveSpellEffectsEntity;
     cmd.entityID = entityID;
+    cmd.styleFilter = std::move(styles);
     pendingCommands_.push_back(std::move(cmd));
 }
 

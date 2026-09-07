@@ -235,7 +235,17 @@ void SimulationWorker::computeParticles(const SimulationInput& input, Simulation
             // git show 8382268d:src/client/graphics/sim_particles.cpp
             case ParticleCommand::RemoveSpellEffectsEntity: {
                 for (auto it = particleSpellEffects_.begin(); it != particleSpellEffects_.end(); ) {
-                    if (it->casterEntityID == cmd.entityID || it->targetEntityID == cmd.entityID) {
+                    // T426 (board B400): an empty styleFilter keeps the old
+                    // "every style on this entity" behaviour; a non-empty one
+                    // removes only the named styles, so removeCastGlow() can
+                    // take the glow down without taking the impact and the
+                    // spell-complete burst with it.
+                    const bool styleMatches =
+                        cmd.styleFilter.empty() ||
+                        std::find(cmd.styleFilter.begin(), cmd.styleFilter.end(),
+                                  it->def.name) != cmd.styleFilter.end();
+                    if (styleMatches &&
+                        (it->casterEntityID == cmd.entityID || it->targetEntityID == cmd.entityID)) {
                         for (auto& es : it->emitterStates) {
                             if (es.activeEmitterID != 0) {
                                 for (auto& p : particlePool_) {
