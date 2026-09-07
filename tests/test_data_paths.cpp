@@ -148,6 +148,14 @@ namespace SpellPresets = EQT::Graphics::Environment::SpellPresets;
 // 480 shipped / 0 built-in (setDefaults() still describes the pre-T422
 // one-shot) / 10 never-configured (EmitterConfig's own default, board B221's
 // "permanent 10/s emitter").
+//
+// T441 (board B397) made the SPELL ID matter: `spellOverrides` is no longer
+// empty, and 93 Burst of Flame now carries its own measured spawnRate of 530.
+// The discriminator here is about which FILE was read, not about any one
+// spell, so it asks for the STYLE -- spell id 0, which
+// SpellEffectsConfig::getStyleSettings() documents as "no per-spell lookup".
+// Asking for 93 would have made this test track a per-spell tuning number and
+// go red every time a future unit measured that spell again.
 constexpr float kShippedImpactSpawnRate = 480.0f;
 constexpr float kBuiltInImpactSpawnRate = 0.0f;
 
@@ -158,7 +166,7 @@ TEST_F(CwdElsewhere, TheProductionStringLoadsTheShippedConfigFromAnyDirectory) {
     ASSERT_TRUE(SpellEffectsConfig::instance().load("config/spell_effects.json"))
         << "load() reported failure for the string ParticleManager::init() uses";
 
-    const auto impact = SpellPresets::Impact(glm::vec4(1.0f), 93);
+    const auto impact = SpellPresets::Impact(glm::vec4(1.0f), 0);
     ASSERT_EQ(impact.emitters.size(), 1u);
     EXPECT_FLOAT_EQ(impact.emitters[0].config.spawnRate, kShippedImpactSpawnRate)
         << "the preset is not the shipped impact; " << kBuiltInImpactSpawnRate
@@ -173,7 +181,10 @@ TEST_F(CwdElsewhere, AMissingConfigFileIsReportedAsAFailure) {
         << "a missing shipped data file was reported as a successful load";
 
     // ...and the fallback is still SAFE: the built-in table, not empty state.
-    const auto impact = SpellPresets::Impact(glm::vec4(1.0f), 93);
+    // Style, not a spell id, for the same reason as above -- and setDefaults()
+    // clears spellOverrides_ anyway, so a failed load cannot leave the previous
+    // file's per-spell tuning standing.
+    const auto impact = SpellPresets::Impact(glm::vec4(1.0f), 0);
     ASSERT_EQ(impact.emitters.size(), 1u);
     EXPECT_FLOAT_EQ(impact.emitters[0].config.spawnRate, kBuiltInImpactSpawnRate)
         << "the built-in fallback table did not apply";

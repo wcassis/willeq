@@ -89,6 +89,19 @@ namespace SpellPresets {
     //
     // Applied to every emitter in the definition, because the Target stage
     // describes one impact and the Impact preset is one emitter.
+    //
+    // T441 (board B398): applying a stage ALSO drops the caller's colour
+    // modulation to white. The official client has no per-spell colour field
+    // at all -- the colour of a spell's particles IS the art in the
+    // `spel*.tga` this stage names, reached from spells_us.txt field 123
+    // (SPELLAFFECTINDEX) -> the spells.eff record -> the stage's three
+    // 32-byte sprite-name slots. `POINT_SPRITE_FS` computes
+    // `texColor * vColor`, so any non-white modulation is fable tinting the
+    // oracle's own art with something the oracle never applies. The resist /
+    // school colour survives only where NO stage resolved (the ~946 spells
+    // with no usable spells.eff record), which is the one case where fable
+    // has no art to take a colour from. Alphas are untouched -- they are the
+    // style's fade curve, not a colour.
     void applyStageSpriteNames(SpellEffectDef& def,
                                const std::vector<std::string>& spriteNames,
                                uint32_t spellId = 0);

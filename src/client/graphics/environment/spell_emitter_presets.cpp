@@ -166,6 +166,12 @@ void applyStageSpriteNames(SpellEffectDef& def,
         for (uint8_t i = 0; i < 4; ++i) {
             ed.config.textureRegions[i] = (i < count) ? regions[i] : regions[0];
         }
+        // T441 (board B398). The sprite art IS the colour -- see the header.
+        // Modulate with white so `texColor * vColor` in POINT_SPRITE_FS draws
+        // the official client's own texels. The alphas stay: they are the
+        // style's fade curve.
+        ed.config.colorStart = glm::vec4(1.0f, 1.0f, 1.0f, ed.config.colorStart.a);
+        ed.config.colorEnd = glm::vec4(1.0f, 1.0f, 1.0f, ed.config.colorEnd.a);
     }
 }
 

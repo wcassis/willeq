@@ -71,6 +71,11 @@ const MapNode kDataKeyedMaps[] = {
      "preset names, chosen by the user and passed to --constrained; "
      "ConstrainedRendererConfig::loadPresetsFromJson enumerates "
      "presets.getMemberNames() rather than asking for any by literal"},
+    {"spell_effects.json", "spellOverrides",
+     "T441 (board B397): SPELL IDS, and the style settings under each are "
+     "settings again; SpellEffectsConfig::loadSpellOverrides enumerates "
+     "root.getMemberNames() and std::stoul's each one, so no source names "
+     "93, 41 or 253 as a literal"},
 };
 
 // Whole files that are DATA TABLES, not settings: every key below the root is

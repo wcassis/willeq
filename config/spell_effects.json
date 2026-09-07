@@ -228,5 +228,32 @@
             "positionOffset": [0.0, 0.3, 0.0]
         }
     },
-    "spellOverrides": {}
+    "spellOverrides": {
+        "93": {
+            "impact":        { "spawnRate": 530.0 },
+            "spellComplete": { "spawnRate": 662.0 }
+        },
+        "41": {
+            "impact":        { "spawnRate": 416.0 },
+            "spellComplete": { "spawnRate": 519.0 }
+        },
+        "253": {
+            "impact": {
+                "spawnRate": 7.4,
+                "emitterLifetime": 3.6,
+                "sizeStartMin": 0.134,
+                "sizeStartMax": 0.209,
+                "sizeEndMin": 0.263,
+                "sizeEndMax": 0.393
+            },
+            "spellComplete": {
+                "spawnRate": 9.3,
+                "emitterLifetime": 3.6,
+                "sizeStartMin": 0.159,
+                "sizeStartMax": 0.263,
+                "sizeEndMin": 0.318,
+                "sizeEndMax": 0.468
+            }
+        }
+    }
 }

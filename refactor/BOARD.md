@@ -6482,7 +6482,7 @@ client uses every field.
   curve (a rate ramp plus an effect-scoped kill) in the config. **Class C: this
   is a "how faithful do we want to be" call, not a defect.** Prov: T422 Review 4.
 
-- **B397** (B) `config/spell_effects.json` `spellOverrides` -- **it is an empty
+- ~~**B397** (B) `config/spell_effects.json` `spellOverrides` -- **it is an empty
   object and always has been, so one `impact`/`spellComplete` setting has to
   serve spells whose oracle populations differ by a factor of 20.** MEASURED
   T422: the official client paints **715** sprites for Burst of Flame (93),
@@ -6494,9 +6494,26 @@ client uses every field.
   implemented and documented in `CLAUDE.md`; `SpellEffectsConfig::getStyleSettings`
   takes a `spellId` and applies overrides. Only the DATA is missing. Closes
   when the spells whose oracle numbers are measured carry their own overrides,
-  with the same before/after capture discipline. Prov: T422 Review 2, 4.
+  with the same before/after capture discipline. Prov: T422 Review 2, 4.~~
+  **STRUCK T441 (this commit).** `spellOverrides` now carries the three spells
+  T422 measured, and only those three: 93 at 530/662 (peak 715.2), 41 at
+  416/519 (peak 561.0), and 253 as a CONTINUOUS effect -- 7.4/9.3 per second
+  over a 3.6 s window at the style's 1.8 s mean lifetime, i.e. a steady 30.1
+  lasting 5.6 s, with every size scaled 1.673x (T422 measured 5.53 px median
+  against the oracle's 8.0-10.5 px band, midpoint 9.25). 54 Frost Bolt got NO
+  override: T422 could not separate its merged ribbon into components, so
+  there is no measured population to pin, and
+  `SpellStyleOverrides.AnUnmeasuredSpellStillResolvesToTheStyle` asserts it
+  still reads the plain style. The overrides are PARTIAL -- 93 and 41 name
+  only `spawnRate` -- so the measured sizes, lifetimes and expand speed still
+  come from the style, pinned by
+  `SpellStyleOverrides.AnOverrideOnlyMovesWhatItNames`. Nine tests in
+  `tests/test_spell_colour_and_overrides.cpp`; six of them were red before the
+  data existed. The emission SHAPE is still not matched and remains **B396**.
+  The live before/after capture is OWED to a lock unit (T438 held the eqemu
+  lock; this unit was offline).
 
-- **B398** (A) `config/spell_effects.json` `resistColors` / `getSpellColor` --
+- ~~**B398** (A) `config/spell_effects.json` `resistColors` / `getSpellColor` --
   **fable's Weaken (41) burst is RED-dominant on screen where the official
   client's is GREEN-dominant.** MEASURED T422 on the OBSERVING client, mean
   added RGB over the particle pixels, normalised: fable **0.377 / 0.294 /
@@ -6510,7 +6527,42 @@ client uses every field.
   (fable .299/.248/.453 against .258/.309/.214). Closes when the per-spell
   colour is taken from the same place the official client takes it (the
   `spells.eff` record, not the resist type) or measured overrides are added.
-  Prov: T422 Review 5.
+  Prov: T422 Review 5.~~
+  **STRUCK T441 (this commit) -- and the premise "a per-spell colour lookup"
+  is REFUTED: the official client has no per-spell colour to look up.**
+  The chain it actually walks is one of ART, end to end:
+  `spells_us.txt` field **123 SPELLAFFECTINDEX**
+  (`/mnt/projects/akk-stack/code/common/spdat.h:1653`) -> the record at that
+  INDEX in `/mnt/projects/EverQuestP1999/spells.eff` (the index IS the
+  position, T70) -> that record's three stage blocks, each opening with three
+  32-byte sprite-name slots -> `GEN<L><d>0_SPRITE` resolving 0-BASED to
+  `SpellEffects/spel<l><d+1>.tga` (T389, MEASURED) -> and the particle is that
+  file's own texels. Nothing in it is a colour. T73 had already REFUTED the
+  only colour-shaped candidate inside the 800 unknown bytes per stage block
+  (the `float[12]` at 0x370 reaches 32.0, over 12x its claimed [0,2] range),
+  and field 85 RESISTTYPE is a mechanic the client does not paint with.
+  **The defect was that fable drew the right art and then multiplied it by a
+  resist colour** -- `POINT_SPRITE_FS` computes `texColor * vColor` -- so
+  speln1.tga's green discs went through the magic row (200,100,255) and came
+  out red. `applyStageSpriteNames()` now drops the modulation to white
+  whenever it installs a real stage's sprites (alphas untouched: they are the
+  style's fade curve), and the three stages that were RESOLVED but whose names
+  were being thrown away now route them: Source -> cast glow / spellComplete,
+  Middle -> projectile trail. `resistColors` / `colorForVocabulary()` survive
+  only for the ~946 spells with no usable `spells.eff` record, which is the one
+  case where fable has no art to take a colour from
+  (`SpellColourFromSpriteArt.ASpellWithNoStageKeepsTheFallbackColour`).
+  Normalised alpha-weighted R/G/B over the Target stage's own cells of the
+  SHIPPED sprite sheet, before -> after against the oracle:
+  41 `0.578/0.422/0.000` R -> **`0.407/0.593/0.000` G** (oracle
+  `0.448/0.572/0.191` G); 93 `0.803/0.177/0.021` -> `0.625/0.292/0.083`, R
+  both sides; 54 `0.071/0.282/0.647` -> `0.148/0.325/0.527`, B both sides.
+  **253 Whirling Wind does NOT land and is boarded as B453**: spela2.tga has
+  no red in it at all, so no modulation of that art can reach the oracle's
+  measured `0.258/0.309/0.214`. Eight tests in
+  `tests/test_spell_colour_and_overrides.cpp`, four red before the fix; the
+  Weaken case asserts the negative too, so a reintroduced tint is a red test.
+  The live observer re-capture (T422's duel rig) is OWED to a lock unit.
 
 - ~~**B399** (A) `src/client/graphics/player/renderer_camera.cpp` /
   `movement` -- **a server `#goto x y z h` does not turn fable's camera; the
@@ -7510,3 +7562,49 @@ in `refactor/T433_doors_lifts_survey.md` Review; raw dumps in
   Closes by deleting the member and its dead handling, or by finding the
   creator that was lost and restoring it -- decide by reading
   `createZoneMesh()`. Found by T440 while confirming the non-BSP zone path.
+- **B453** (C) `data/textures/spell_sprite_atlas.bmp` / `spela2.tga` --
+  **Whirling Wind (253) draws blue where the oracle measured near-neutral,
+  and no colour rule fable can apply will fix it, because the art it is
+  required to draw has no red in it.** T441 closed B398 by taking the colour
+  from the sprite the official client names (spells.eff record 35, every slot
+  `GENA10_SPRITE` -> `spela2.tga`, T389's measured 0-based rule) instead of
+  from the resist type. That moved 253 from `0.299/0.248/0.453` (T422, live,
+  observing client) to `0.000/0.260/0.740` (the untinted art, normalised
+  alpha-weighted over all sixteen frames of the cells it actually samples) --
+  strictly closer to the oracle in blue, but still blue-dominant where T389
+  measured `0.258/0.309/0.214`. **`spela2.tga` is zero-red**, so R = 0.258
+  cannot be produced by ANY multiplication of it. Three explanations are open
+  and one measurement separates them: (a) T389's reading is noise -- 253 is
+  the faintest of the four effects, 0.64 % of frame area over 1,829 pixels,
+  and a background-median residual at that level carries the caster's own
+  animation; (b) the official client draws 253's persistent effect from
+  somewhere other than the Target stage -- field 193 `nimbus_effect` is 0 for
+  it, but the "continuous" stage T422 observed was never traced to a record;
+  (c) the 0-based rule picks the wrong file for `GENA10` specifically.
+  **Class C** because it needs a live re-measurement of one spell against the
+  oracle before any code moves, and inventing a colour to close the gap is
+  precisely the guess Will's ruling forbids. Pinned meanwhile by
+  `SpellColourFromSpriteArt.WhirlingWindDrawsItsOwnArtUntintedAndIsStillBlue`,
+  which fails if the residual ever closes. Found by T441.
+
+- **B454** (B) `src/client/graphics/spell_visual_fx.cpp`
+  `createCastGlow()` / `createSpellComplete()` / `createProjectile()` --
+  **three stages now draw the official client's sprite art, and none of the
+  three has been seen on screen.** Until T441 only the Target stage's names
+  reached an emitter (T389); the Source and Middle stages were resolved,
+  their PRESENCE was used to gate the effect, and their sprite names were
+  then discarded, so the cast glow, the spellComplete burst and the
+  projectile trail drew procedural tiles tinted by resist type. T441 routed
+  all three, which is the same rule B398 closed on -- but T422's live
+  measurement covered only the landing: it used `#castspell` on both sides
+  (no `OP_BeginCast`, so no cast glow at all) and self-casts (no travel
+  stage). So the pixels these three now produce are UNMEASURED against the
+  oracle, and `spellComplete` in particular changed from white sparkles to
+  whatever the Source stage names -- for 93 Burst of Flame,
+  `spelc2`/`spelc4`/`spelc2`. Closes with a live gem-cast A/B on a character
+  that can cast the measured spells, capturing the cast glow and the travel
+  trail alongside the landing. Note that `createSpellComplete()` deliberately
+  did NOT gain a Source-stage suppression gate the way `createCastGlow()`
+  has one: adding it would silently delete the burst for every spell whose
+  record has an empty Source block, which is a behaviour change no
+  measurement supports. Found by T441.
