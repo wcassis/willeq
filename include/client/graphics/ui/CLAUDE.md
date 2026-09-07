@@ -14,8 +14,12 @@ The old WindowManager/WindowBase draggable window system was completely removed 
   `UIRenderer::drawItemIcon(rect, iconId)`. The layout — 34 sheets of 6x6 40x40 cells, ids **500..1723**,
   **COLUMN-major within a sheet** because `EQUI_Animations.xml`'s `A_DragItem` carries
   `<Vertical>true</Vertical>` — lives in `include/client/graphics/ui/item_icon_atlas.h`, which the builder
-  and the loader both include. The sheets load LAZILY on the first icon drawn (they are 2 x 1024x1024 and
-  a session that never opens an item panel should not pay for them), and `drawItemIcon()` returns
+  and the loader both include. The sheets load EAGERLY, in `UIAtlas::load()` beside the UI atlas itself:
+  T430 wrote them lazily first and measured the consequence -- `ConstrainedTextureCache::getOrLoad()`
+  logs FATAL and `std::exit(1)`s on a pack miss, so loading on first use converts a startup failure
+  into a mid-SESSION exit the moment a player opens an inventory. The reason is written out in
+  `include/client/graphics/ui/item_icon_sheets.h`; an earlier revision of this bullet said LAZILY and
+  was wrong (T444). `drawItemIcon()` returns
   **false** when the pack entry or the id has no art — every caller keeps its pre-T430 text placeholder
   for that case, which is why a headless test or a pack-less client looks unchanged.
   Five draw sites use it: the 22 equipment slots and 8 general slots (`renderInventoryPopup`), the

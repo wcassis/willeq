@@ -26,8 +26,8 @@ current defect list; where the two disagree, the board wins.
 - WASD movement with collision detection and server sync
 - Chat (all channels), targeting (click, Tab cycle, F-keys), auto-attack
 - Spell memorization, casting, and gem management
-- Inventory with drag-and-drop, equipment slots, bags, item tooltips, `/equip`
-- Vendor buy/sell, banking, and player-to-player trading (command-driven)
+- Inventory window with equipment slots, bags, the official client's own item icons (T430) and tooltips; items are moved with `/equip` (the static UI latches no drag — board B442)
+- Vendor buy/sell and banking through the oracle's own merchant and bank windows (T436), or by slash command; player-to-player trading is command-driven
 - Group system with HP/mana bars, invite/accept/disband/decline
 - Raid commands (invite, accept, leave, remove, leader, loot type, looters, lock, group)
 - Inspect (both answering and asking) with a configurable inspect message
@@ -47,7 +47,7 @@ current defect list; where the two disagree, the board wins.
 - Boats/transport not implemented
 - Fall damage not implemented
 - First-person view draws the player's own model and weapon for the duration of an attack animation and at no other time (T307 measured the rule against the official client; T309 implemented it in `src/client/graphics/entity_first_person_draw.cpp`). The down-pitch clamp that earlier revisions of this file described as the hiding mechanism was refuted live and no longer exists. Eye placement is still open (`refactor/BOARD.md` B018)
-- UI is a fixed static-panel HUD; merchant, bank, loot, and trade are driven by slash commands rather than windows
+- UI is a fixed static-panel HUD. Merchant, bank, loot, tradeskill container, item display and Options all have real windows now (T290, T415, T421, T425, T434, T436); **trade is still slash-command only**, and the static UI latches no drag of any kind, so an item is moved with `/equip` rather than picked up (`refactor/BOARD.md` B442)
 
 **Architecture note:** This is a thin client that delegates game logic to the server. Combat damage, spell effects, skill checks, and item transactions are all server-calculated. The client handles rendering, input, and state tracking.
 
@@ -138,7 +138,7 @@ Legend: Done | Partial | Not Implemented
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Spell book | Done | Searchable |
-| Memorize spells | Done | /mem, /forget, drag-to-gem |
+| Memorize spells | Done | /mem, /forget, and clicking a spellbook row (it memorises into the first free gem; with all eight full it asks you to click the gem to replace). There is no drag — T444 corrected "drag-to-gem" here |
 | Cast spells | Done | Gem slots, casting bar, interrupts |
 | Spell effects | Partial | Cast glow, cast-complete and impact particles; projectile and aura are unreached code (B161) |
 | Buff bar | Done | Duration timers |
@@ -157,10 +157,10 @@ Legend: Done | Partial | Not Implemented
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Chat panel | Done | Scrollable, filterable |
-| Inventory popup | Done | Equipment slots, drag-and-drop, tooltips |
+| Inventory popup | Done | Equipment slots, item icons (T430), tooltips. **No drag** — see the pick-up row below (board B442) |
 | Player status | Done | HP/mana/stamina, stats |
 | Target info | Done | |
-| Spell book popup | Done | Searchable, drag-to-gem |
+| Spell book popup | Done | Searchable, click-to-memorise (no drag; T444) |
 | Spell gem bar | Done | 8 gems with casting bar |
 | Hotbar | Done | 10 slots, keys 1-0, content-typed |
 | Group panel | Done | HP/mana bars |
@@ -168,7 +168,14 @@ Legend: Done | Partial | Not Implemented
 | Buff bar | Done | Duration timers |
 | XP bar | Done | |
 | Skills popup | Done | Skill values by category, class skill table from `config/skill_caps.json` |
-| Merchant / bank / loot / trade | Partial | Command-driven (/vendorlist, /buy, /sell, /bank, /loot, /trade); no window |
+| Merchant window | Done | T436 (board B429), the oracle's `EQUI_MerchantWnd.xml`: stock list with icons, Buy/Sell, Done. `/vendorlist`, `/buy`, `/sell` still work |
+| Bank window | Done | T436 (board B429), the oracle's `EQUI_BankWnd.xml`: 8 slots + 4 money rows + Done. `/bank` still works. Change is drawn disabled (board B441) |
+| Cursor item | Done | T436, `EQUI_CursorAttachment.xml`: the held item's icon follows the mouse |
+| Loot window | Done | T290, center popup, scrollable |
+| Options window | Done | T434, the oracle's `EQUI_OptionsWindow.xml` at 400x452, seven tabs, Alt+O. Its geometry is the constexpr table in `include/client/graphics/ui/options_layout.h`, **114 control rows**; six of them are wired (three sliders — music volume, effects volume, clip plane — and their three value labels) and the other 108 are drawn greyed and are not hit-testable (boards B430, B431, B433) |
+| Trade | Partial | Command-driven (/trade); no window |
+| Item / spell display | Done | T421 + T425, one window for both (`EQUI_ItemDisplay.xml`); click an item slot, SHIFT+click a gem or spellbook row |
+| Pick up / put down an item | No | The static UI latches no drag and no click-to-pick-up; `SendMoveItem`/`MoveItemIntent` exist and `/equip` drives them (board B442) |
 | Tradeskill container | Partial | /recipesearch, /recipecombine; combines server-side |
 | Skill trainer | Partial | /train opens a trainer session |
 
@@ -177,7 +184,7 @@ Legend: Done | Partial | Not Implemented
 |---------|--------|-------|
 | Item display | Done | Icons and names |
 | Item stats | Done | Tooltip |
-| Move items | Done | Drag and drop, /equip by slot or name |
+| Move items | Partial | `/equip` by slot or name. The static UI has no drag and no click-to-pick-up (board B442); T444 corrected "Drag and drop" here |
 | Container bags | Done | |
 | Equipment slots | Done | With tint colors |
 | Loot items | Done | |
@@ -202,7 +209,7 @@ Legend: Done | Partial | Not Implemented
 ### NPC Interaction
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Doors | Done | Open/close sync, door sounds |
+| Doors | Partial | Open/close sync, door sounds, and since T435 real ray collision against the door mesh (board B425 closed). T435 also fixed the open/closed state, which was read from the wire backwards for every non-inverted door — roughly 19,200 of the 19,249 rows. **Lifts do not move**: opentype 59 animates like a door instead of translating by `door_param` (board B422), and opentypes 50/53/54 are skipped outright, which drops 1,310 era rows (board B427). Switches, levers, traps and teleport doors are unmeasured (board B426) |
 | Hail NPC | Done | H key, /hail |
 | Merchant buy/sell | Done | /vendor, /vendorlist, /buy, /sell |
 | Banker | Done | /bank |

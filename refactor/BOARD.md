@@ -7638,3 +7638,31 @@ in `refactor/T433_doors_lifts_survey.md` Review; raw dumps in
   has one: adding it would silently delete the burst for every spell whose
   record has an empty Source block, which is a behaviour change no
   measurement supports. Found by T441.
+
+- **B457** (P) `include/client/graphics/vision_ambient.h` lines 35, 177 and 195
+  -- **three comments in the vision header still name `0.08/0.08/0.15` as the
+  night ambient, and T428 moved it.** Line 148 of the SAME file defines
+  `kNightAmbient = {0.26244f, 0.31147f, 0.24003f}`, solved live against the
+  oracle's per-channel day/night ratio; the three sentences above and below it
+  describe the base a floor is imposed over, so anyone solving or sanity-checking
+  a vision floor against them solves against the pre-T428 base. That is exactly
+  the mistake T428 found in T405's floors (solved against the old base, off by
+  2-3x), and the header is the one place a future unit will read. Doc/comment
+  only -- `kNightAmbient` is what the code uses, so no behaviour is wrong today.
+  Not fixed in T444 because that unit's scope forbids code changes outside the
+  checker tables. **Also worth noting as the reason it survived: neither
+  `DocClaims` nor `DocCounts` nor T444's new coverage table scans C++ comments
+  -- every doc net in the tree stops at `*.md`.** Found by T444.
+
+- **B458** (P) `refactor/BOARD.md`, header block -- **the board's own "Tree
+  confirmed at" line still reads `3808ebe9` / 2026-09-03, K00's tip.** Roughly
+  sixty units have merged since, the item bodies below are confirmed against
+  much later tips (T441's B455/B456 cite work from 2026-09-07), and the header
+  says in its own words that "items are confirmed against the tree at the tip
+  above". A new agent is told to start here, and the first fact it reads is
+  four days and sixty units stale. The suite line already solves the general
+  case correctly -- it refuses to state a number and names the measuring
+  command instead -- and the same treatment fits here: either restamp the line
+  every time the board is edited, or replace the hash with
+  `git -C <slot> log --oneline -1`. `DocCounts`'s NAMED_COMMAND table is the
+  existing mechanism for "do not pin this, name the command". Found by T444.

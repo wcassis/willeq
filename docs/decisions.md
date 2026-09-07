@@ -860,7 +860,14 @@ Wood Elf, High Elf, Half Elf, Dwarf, **Troll, Ogre**, Halfling, Gnome, Iksar and
 Vah Shir are Infravision; Human, Barbarian, Erudite are Normal. Will's
 expectation (Troll = Ultravision) was refuted by the measurement, as he asked.
 Froglok measures a FOURTH level between Infravision and Ultravision that
-`VisionType` cannot express — left on Normal, needs Will's call (B060 residue).
+`VisionType` could not express. **T428 settled it and closed B060**: `VisionType`
+now has four enumerators and `FroglokVision` is APPENDED as 3, not slotted into
+brightness order, because the enumerator values are wire values
+(`BuffManager::computeVisionType()` returns a literal 2 for Ultravision and
+`SimulationInput::visionType` carries the enum as a raw `uint8_t`); brightness
+order is `visionRank()` instead, so an Ultravision buff on a Froglok is not a
+silent no-op. Measured x2.6803 / x1.9478 / x2.1753 per channel. The sentence
+this replaces said "left on Normal, needs Will's call" and was stale (T444).
 Ultravision on the official client is a ~1.55x whole-frame ambient raise at
 night, sky unchanged; Infravision ~1.25x and red. Fable now imposes a
 per-channel floor under the global ambient (`vision_ambient.cpp`), gains solved
@@ -880,6 +887,17 @@ channel** rather than as one scalar: Ultravision gain 0.1601 x tint
 and the zone-light Infravision shift dropped 0.3 -> 0.0508. All six channel
 residuals land inside 0.11%. That fit is a model extrapolation from T361's
 exponent, not a closed loop — the live re-measure is still owed (B171).
+**(c) T428 re-solved all of it live and those T383 numbers are SUPERSEDED — do
+not quote them** (T444 re-measured the tree). T405's floors had been solved
+against the old night base and against a half-sky crop, so T428 moved the base
+first (night ambient `(0.08, 0.08, 0.15)` -> `(0.26244, 0.31147, 0.24003)`, the
+whole day/night curve lifted into `include/client/graphics/vision_ambient.h`)
+and then re-solved the floors on top of it: the gains in the tree are
+`kUltravisionAmbientGain` **0.50650**, `kFroglokVisionAmbientGain` **0.49566**
+and `kInfravisionAmbientGain` **0.41469**, each with its own tint triple beside
+it, not T383's 0.1601/0.1248. T428's own Ultravision oracle ratios are
+x2.7995 / x1.9517 / x2.4946, where T405 had read x2.2531 / x1.4399 / x1.7687.
+Read the header's constants, never this paragraph's history.
 
 ## 2026-09-06 - Will's rulings on the open class-C items
 
