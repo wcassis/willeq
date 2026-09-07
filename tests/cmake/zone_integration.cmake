@@ -139,8 +139,16 @@ GTEST_DISCOVER_TESTS(test_session_replay)
 # gating, dispatcher robustness, observable post-handshake state). Same
 # replay-seam idiom as test_session_replay above -- no network, no graphics,
 # no live connection -- so safe to auto-discover.
+# T446: split by functional group (the handshake gating + dispatcher
+# robustness, the full-state snapshot, and the identity/region fields a zone-in
+# resolves). ONE target, three sources (T165's test_command_processor
+# precedent), so every case keeps its suite and its name and ctest sees exactly
+# the same 35 tests. Shared packet builders + the RecordingBridge fake:
+# tests/zone_connection_flow_test_fixture.h.
 ADD_EXECUTABLE(test_zone_connection_flow
-    test_zone_connection_flow.cpp
+    test_zone_connection_flow_handshake.cpp
+    test_zone_connection_flow_snapshot.cpp
+    test_zone_connection_flow_identity.cpp
 )
 TARGET_LINK_LIBRARIES(test_zone_connection_flow GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)

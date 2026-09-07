@@ -234,7 +234,7 @@ void eqt::zone::ZoneComponent::ZoneProcessNewZone(const EQ::Net::Packet &p)
 	// the last chance to send ReqClientSpawn. Idempotent: the check is
 	// guarded by m_req_client_spawn_sent and its other inputs only ever go
 	// false -> true, so calling it here with the counters still at zero is
-	// a no-op (T04 pinned the gap, tests/test_zone_connection_flow.cpp).
+	// a no-op (T04 pinned the gap, tests/test_zone_connection_flow_handshake.cpp).
 	CheckZoneRequestPhaseComplete();
 }
 

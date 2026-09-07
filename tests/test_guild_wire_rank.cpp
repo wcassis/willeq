@@ -20,7 +20,7 @@
 //
 // WHAT THESE TESTS CANNOT DO: EverQuest::QueuePacket() no-ops without a zone
 // connection and leaves nothing inspectable (the same limitation
-// test_combat_manager.cpp's T23 note records), so there is no way to read the
+// combat_manager_test_fixture.h's T23 note records), so there is no way to read the
 // bytes SendGuildInvite() actually queued. The wire content is therefore
 // pinned on the pure builders in client/guild_packet_bodies.h, which are the
 // ONLY thing those two senders now use to fill their structs, plus a

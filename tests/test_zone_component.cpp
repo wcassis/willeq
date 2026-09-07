@@ -9,7 +9,7 @@
 // and the transition getters the entities/movement/player/login_world
 // components now read through.
 //
-// test_zone_connection_flow.cpp, test_zone_out_handshake.cpp and
+// test_zone_connection_flow_*.cpp, test_zone_out_handshake.cpp and
 // test_zone_position_convention.cpp keep their own assertions untouched --
 // only their call sites were retargeted, and THEY remain the coverage of what
 // the moved bodies compute. Nothing here re-derives a wire format.

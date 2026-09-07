@@ -330,8 +330,16 @@ GTEST_DISCOVER_TESTS(test_combat)
 # extraction (refactor/T23_spell_combat_seam_scoping.md). Same replay-seam
 # idiom as test_zone_entities.cpp (T18); uses willeq_core for the same
 # reason.
+# T446: split by functional group (targeting/auto-attack/cycling, the tick +
+# state machine + config round-trips, and everything downstream of a death --
+# loot, consider-opcode, corpse naming). ONE target, three sources (T165's
+# test_command_processor precedent), so every case keeps its suite and its name
+# and ctest sees exactly the same 66 tests. Shared seam + the T17
+# private-access preamble: tests/combat_manager_test_fixture.h.
 ADD_EXECUTABLE(test_combat_manager
-    test_combat_manager.cpp
+    test_combat_manager_targeting.cpp
+    test_combat_manager_state.cpp
+    test_combat_manager_corpses.cpp
 )
 TARGET_LINK_LIBRARIES(test_combat_manager GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
@@ -342,7 +350,7 @@ GTEST_DISCOVER_TESTS(test_combat_manager)
 # T308 Leg 1: hunt-target filtering classifies on the server-sent body type,
 # not on CombatManager::IsHumanoid()'s hand-written race-id table (the FIFTH
 # live copy of the pre-JSON numbering; T267/T270/T271/T304 killed the other
-# four). Same seam as test_combat_manager.cpp -- bare EverQuest via MakeEq(),
+# four). Same seam as test_combat_manager_*.cpp -- bare EverQuest via MakeEq(),
 # live CombatManager, spawns replayed as real NewSpawn packets -- but every
 # assertion is on the target the client ENGAGES through /pathfinding on +
 # /combat on + /hunt on, never on the private predicate.
@@ -373,7 +381,7 @@ GTEST_DISCOVER_TESTS(test_command_output_routing)
 # T28: coverage for the four eq_commands.cpp readers repointed from the
 # never-populated state-layer CombatState target to the authoritative
 # CombatManager (refactor/T28_state_layer_readers.md Part 2). Same seam as
-# test_combat_manager.cpp (bare EverQuest via MakeEq(), live CombatManager
+# test_combat_manager_*.cpp (bare EverQuest via MakeEq(), live CombatManager
 # via GetCombatManager()) plus ProcessChatInput() -- the same public entry
 # point production chat input uses -- to reach the command-registry lambda
 # handlers in eq_commands.cpp, and the bridge's SystemMessage event (same
@@ -542,8 +550,15 @@ GTEST_DISCOVER_TESTS(test_eq_action_handler_movement_utility)
 # (SendMoveItem's outgoing packet, and whether a real server actually equips
 # a real item) is explicitly outstanding -- sibling T65 holds the eqemu lock
 # this round; see refactor/T66_camera_and_equip_reachability.md's Review.
+# T446: split by functional group (parsing/validation/happy-path/local-sync/
+# legality, the name+list forms and the swap pre-flights, and bag CONTENTS).
+# ONE target, three sources (T165's test_command_processor precedent), so every
+# case keeps its suite and its name and ctest sees exactly the same 57 tests.
+# Shared fixture + Seed*() helpers: tests/eq_commands_equip_test_fixture.h.
 ADD_EXECUTABLE(test_eq_commands_equip
-    test_eq_commands_equip.cpp
+    test_eq_commands_equip_moves.cpp
+    test_eq_commands_equip_swaps.cpp
+    test_eq_commands_equip_bags.cpp
 )
 TARGET_LINK_LIBRARIES(test_eq_commands_equip GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)

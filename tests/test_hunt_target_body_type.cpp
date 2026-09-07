@@ -18,7 +18,7 @@
 //
 // Clocks: CombatManager has no injectable clock and its Update()/hunt/scan
 // gates are wall-clock. Backdating the private timestamps is the technique
-// test_combat_manager.cpp established (T17/T23) precisely so no test sleeps.
+// test_combat_manager_*.cpp established (T17/T23) precisely so no test sleeps.
 
 #include <gtest/gtest.h>
 

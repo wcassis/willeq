@@ -194,7 +194,7 @@ TEST(LoginWorldCaptureReplay, RealSessionReplaysLoginAndWorldStreamsWithoutCrash
             }
         }
         // Zone-stream and C->S records are out of scope for this unit
-        // (zone is covered by test_session_replay.cpp / test_zone_connection_flow.cpp;
+        // (zone is covered by test_session_replay.cpp / test_zone_connection_flow_*.cpp;
         // C->S records were never recorded, see the note below).
         ++recordIndex;
     }

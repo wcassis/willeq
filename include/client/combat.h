@@ -190,7 +190,7 @@ public:
 	// target. Public so the selection is directly assertable: CombatManager's
 	// sends go through the generic EverQuest::QueuePacket overload, which
 	// no-ops with no observable side effect when there is no zone connection
-	// (see tests/test_combat_manager.cpp's T23 note), so the packet itself
+	// (see tests/combat_manager_test_fixture.h's T23 note), so the packet itself
 	// cannot be inspected from a test.
 	uint16_t GetConsiderOpcodeForTarget() const;
 	void CycleTargets(bool forward = true);

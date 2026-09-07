@@ -246,7 +246,7 @@ Re-measure; do not quote a number from this paragraph.
 | `EQT::Graphics::RdpComponent` (no `friend` line, and no `IrrlichtRenderer&` since L12) | `include/client/graphics/rdp/rdp_component.h` | `src/client/graphics/rdp/rdp_component.cpp` |
 | `EQT::Graphics::Eqe1ArchiveComponent` | `include/client/graphics/eqe1/eqe1_archive_component.h` | `src/client/graphics/eqe1/eqe1_archive_component.cpp` |
 | `EQT::Graphics::OverlaysComponent` | `include/client/graphics/overlays/overlays_component.h` | `src/client/graphics/overlays/overlays_component.cpp`, `src/client/graphics/overlays/overlays_hud_env.cpp` |
-| `EQT::Graphics::DiagnosticsComponent` | `include/client/graphics/diagnostics/diagnostics_component.h` | `src/client/graphics/diagnostics/diagnostics_component.cpp`, `src/client/graphics/diagnostics/diagnostics_debug.cpp` |
+| `EQT::Graphics::DiagnosticsComponent` | `include/client/graphics/diagnostics/diagnostics_component.h` | `src/client/graphics/diagnostics/diagnostics_component.cpp`, `src/client/graphics/diagnostics/diagnostics_debug.cpp`, `src/client/graphics/diagnostics/scene_node_census.cpp` |
 | `EQT::Graphics::PlayerCameraComponent` | `include/client/graphics/player/player_camera_component.h` | `src/client/graphics/player/renderer_player_physics.cpp`, `src/client/graphics/player/renderer_player_collision.cpp`, `src/client/graphics/player/renderer_camera.cpp` (plus the device-free `src/client/graphics/player/ground_query.cpp`, which holds no component method — see the TU table) |
 | `EQT::Graphics::SimBridgeComponent` | `include/client/graphics/sim/sim_bridge_component.h` | `src/client/graphics/sim/renderer_sim_bridge.cpp` |
 | `EQT::Graphics::ZoneStreamComponent` | `include/client/graphics/zone_stream/zone_stream_component.h` | `src/client/graphics/zone_stream/renderer_zone_stream.cpp`, `src/client/graphics/zone_stream/renderer_zone_merge.cpp` |
@@ -287,6 +287,7 @@ Re-measure; do not quote a number from this paragraph.
 | src/client/graphics/eqe1/eqe1_archive_component.cpp | 726 | EQT::Graphics::Eqe1ArchiveComponent -- EQE1 flat-pack archive open/resolve/index/report plus the fire-glow icosphere renderer (EQT_HAS_DRM), extracted from IrrlichtRenderer by L02 (Batch L). Header include/client/graphics/eqe1/eqe1_archive_component.h |
 | src/client/graphics/rdp/rdp_component.cpp | 233 | EQT::Graphics::RdpComponent -- RDP server integration (WITH_RDP guard), extracted from IrrlichtRenderer by L01 (Batch L). Header include/client/graphics/rdp/rdp_component.h |
 | src/client/graphics/zone_load/renderer_entity_load_gate.cpp | 78 | `EQT::Graphics::ZoneLoadComponent` — ensureEntityPrepWorkerStarted, deferEntityForLoadGate, the entity load distance gate (T109/T111). Folded into the component and moved into `zone_load/` by L12 (L10 deviation 1, closed) |
+| src/client/graphics/diagnostics/scene_node_census.cpp | 48 | `EQT::Graphics::DiagnosticsComponent` — `sceneNodeCensus()`, the recursive scene-graph walk the `/dumpscene` breakdown reports over. Split out of `diagnostics_component.cpp` by T443 (board B453), which made the census count the zone mesh. Same header |
 
 ## Zone shader — split by J09
 
