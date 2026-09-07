@@ -1,0 +1,16 @@
+# sha256 of data/willeq.db, the shipped SQLite database. Rebuilt by
+# scripts/build_willeq_db.sh from eleven inputs: the EQ client's spells_us.txt,
+# eqstr_us.txt, dbstr_us.txt, SoundAssets.txt, AnimationSounds.txt,
+# mp3index.txt and eqlsstr_us.txt, plus data/item_models.json,
+# data/equipment_models.json and config/race_models.json. 32,414 rows across
+# eleven tables, metadata.version = 7 (kWilleqDbExpectedVersion).
+#
+# T450 (board B467) made the file reproducible in the first place: the builder
+# used to stamp metadata.build_date = __DATE__ " " __TIME__, so recompiling it
+# changed these bytes with identical inputs and no pin was possible. That row
+# is now metadata.input_digest, a path-independent digest of the inputs.
+#
+# Pinned here so an input drift, or a hand-edit of the database, is a ctest
+# FAIL (DbReproducible). Update this line in the SAME commit that changes an
+# input -- exactly like data/willeq.eqe1.sha256 and data/textures.sha256.
+14f09de849939180d6fb580199ba0f957a21eb9d232cdabf1662c056a87717de  willeq.db

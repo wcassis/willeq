@@ -366,8 +366,11 @@ race/appearance to a mesh and owns the variant cache's negative entry;
 `tests/CMakeLists.txt` is now a driver that `include()`s **19** per-domain
 fragments from `tests/cmake/`: `action_handlers`, `archives`, `audio`,
 `commands`, `core_utils`, `data_formats`, `database`, `eqe1`, `graphics`,
-`hygiene` (T371/T373: `FileSizeCeiling`, `DocCitations`, `DocClaims`,
-`DocCounts`), `midi`, `network`, `packets_skills`, `renderer_guards`,
+`hygiene` (9 tests: `FileSizeCeiling`, `DocCitations`, `DocClaims` and
+`DocCounts` from T371/T373, plus `CommentClaims`, `TexturesReproducible`,
+`PackReproducible`, `WriteOnlyFields` and T450's `DbReproducible` -- the three
+`*Reproducible` tests are the pins on the three derived assets, see
+`CLAUDE.md`'s recipe table), `midi`, `network`, `packets_skills`, `renderer_guards`,
 `spells`, `state`, `ui_rendering`, `world_geometry`, `zone_integration`.
 Add a new test to the fragment for its domain, not to the driver.
 

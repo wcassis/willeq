@@ -200,6 +200,24 @@ def count_test_cmake_fragments(repo):
 
 
 
+def count_hygiene_tests(repo):
+    """The tests registered in tests/cmake/hygiene.cmake.
+
+    T450 added DbReproducible -- the third derived asset's pin -- and found
+    the module map still listing the four T371/T373 tests, three units after
+    TexturesReproducible, PackReproducible and WriteOnlyFields had joined
+    them. The hygiene fragment is the tree's own ratchet drawer; a doc that
+    under-states what is in it under-states what a red run is telling you.
+    """
+    rel = os.path.join("tests", "cmake", "hygiene.cmake")
+    text = read(repo, rel)
+    names = re.findall(r"ADD_TEST\s*\(\s*NAME\s+([A-Za-z_]\w*)",
+                       text, re.IGNORECASE)
+    if not names:
+        raise SourceError("no ADD_TEST(NAME ...) in %s" % rel)
+    return len(set(names))
+
+
 def count_constexpr_int(repo, rel, name):
     """The integer value of a `constexpr[ int] <name> = <digits>;` in a header.
 
@@ -456,6 +474,14 @@ ROWS = [
      "T406 wrote '60 of the 64'; T417 and T430 each added a 32-bit sheet",
      [("CLAUDE.md",
        r"\*\*(\d+) of the 67 shipped 32-bit with their")]),
+
+    ("hygiene ctest tests",
+     count_hygiene_tests,
+     "T450 added DbReproducible; the module map still named only the four "
+     "T371/T373 tests, three units after TexturesReproducible, "
+     "PackReproducible and WriteOnlyFields joined them",
+     [("docs/module_map.md",
+       r"`hygiene` \((\w+) tests:")]),
 
     ("tests/cmake per-domain fragments",
      count_test_cmake_fragments,

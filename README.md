@@ -786,7 +786,7 @@ Software-mixed spatial audio using header-only libraries (no external deps):
 - **DaybreakConnection** - UDP reliable protocol implementation
 - **HCMap** / **ZoneBsp** - Zone map collision/LOS raycasting and BSP regions
 - **PathfinderNavMesh** / **PathfinderWaypoint** - Optional pathfinding
-- **WillEQDatabase** (`data/willeq.db`) - SQLite built by `tools/willeq_db_builder` from client text files and `data/*.json` (spells, strings, race/item models, zone points)
+- **WillEQDatabase** (`data/willeq.db`) - SQLite built by `tools/willeq_db_builder` from client text files and `data/*.json` (spells, strings, race/item models, zone points). Rebuild it with `scripts/build_willeq_db.sh`, never by hand: since T450 the file is byte-reproducible from its inputs and pinned by `data/willeq.db.sha256`, which the `DbReproducible` ctest test checks. A row change means a rebuild plus a new pin line in the SAME commit.
 
 ## File Structure
 

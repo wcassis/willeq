@@ -14,9 +14,15 @@
 //   dbstrings       - DB strings from dbstr_us.txt (category + sub_id)
 //   item_models     - Item ID to model ID mapping
 //   race_models     - Race ID to model code + S3D file
-//   zone_points     - Zone line teleport destinations
-//   s3d_assets      - S3D archive asset index (if s3d_index.json present)
 //   sound_assets    - Sound file references from SoundAssets.txt
+//   animation_sounds, music_files, login_strings, equipment_models,
+//   equipment_textures, metadata
+//
+// T450: this list used to name a `zone_points` table as well. There is no
+// such loader and no such table -- zone lines ship as data/zone_lines/*.json,
+// built by tools/generate_zone_lines.py, and never went through the database.
+// `s3d_assets` is also NOT in the shipped file: it needs --s3d-index, which
+// nothing in the tree passes (board B468).
 //
 // T447 split this TU three ways; the loaders live beside it and the seam is
 // tools/willeq_db/db_builder.h:
@@ -100,10 +106,81 @@ bool execSQL(sqlite3* db, const char* sql) {
 }
 
 // ============================================================================
+// Input digest (T450, board B467)
+// ============================================================================
+//
+// The metadata table used to carry `build_date = __DATE__ " " __TIME__`, so
+// RECOMPILING the builder changed data/willeq.db even when every input byte
+// and every source line were identical. That is why T447's split proof had to
+// normalise one row instead of comparing sha256s, and why the shipped database
+// -- unlike the pack and the textures -- could not be pinned the way
+// scripts/build_willeq_pack.sh pins willeq.eqe1.
+//
+// It is replaced by a digest of the INPUTS. Nothing has ever read the stamp
+// (the client reads only `metadata.version`, willeq_database.cpp:101), so the
+// row is free to say something useful instead: which inputs this database was
+// built from. Two builds from the same inputs now produce the same bytes,
+// which is what `scripts/build_willeq_db.sh --check` and the `DbReproducible`
+// ctest test assert.
+//
+// The digest is deliberately PATH-INDEPENDENT: it mixes each input's LABEL
+// (its role, not its location) plus its size and contents, so three worktrees
+// and a staged install all agree. It is FNV-1a/64 rather than sha256 because
+// this tool links nothing but sqlite3 and the value is a build stamp, not a
+// security boundary; an input that changes changes the digest.
+
+struct DbInput {
+    const char* label;   // role, e.g. "spells" -- never the path
+    std::string path;
+};
+
+static uint64_t fnv1a(uint64_t h, const unsigned char* data, size_t n) {
+    for (size_t i = 0; i < n; ++i) {
+        h ^= static_cast<uint64_t>(data[i]);
+        h *= 1099511628211ull;
+    }
+    return h;
+}
+
+static uint64_t fnv1aStr(uint64_t h, const std::string& s) {
+    return fnv1a(h, reinterpret_cast<const unsigned char*>(s.data()), s.size());
+}
+
+static std::string computeInputDigest(const std::vector<DbInput>& inputs) {
+    uint64_t h = 14695981039346656037ull;
+    std::vector<char> buf(1 << 16);
+    for (const DbInput& in : inputs) {
+        h = fnv1aStr(h, std::string(in.label));
+        h = fnv1aStr(h, std::string("\0", 1));
+        std::ifstream f(in.path, std::ios::binary);
+        if (!f) {
+            // A missing input is not fatal (the loader warns and returns 0),
+            // but it MUST change the digest -- otherwise a database built
+            // without spells_us.txt would claim the same provenance as one
+            // built with it.
+            h = fnv1aStr(h, std::string("absent"));
+            continue;
+        }
+        h = fnv1aStr(h, std::string("present"));
+        for (;;) {
+            f.read(buf.data(), static_cast<std::streamsize>(buf.size()));
+            std::streamsize got = f.gcount();
+            if (got <= 0) break;
+            h = fnv1a(h, reinterpret_cast<const unsigned char*>(buf.data()),
+                      static_cast<size_t>(got));
+        }
+    }
+    char out[17];
+    snprintf(out, sizeof(out), "%016llx", static_cast<unsigned long long>(h));
+    return std::string(out);
+}
+
+// ============================================================================
 // Metadata table
 // ============================================================================
 
-static void writeMetadata(sqlite3* db, int totalEntries) {
+static void writeMetadata(sqlite3* db, int totalEntries,
+                          const std::string& inputDigest) {
     execSQL(db, R"(
         CREATE TABLE IF NOT EXISTS metadata (
             key TEXT PRIMARY KEY,
@@ -126,7 +203,8 @@ static void writeMetadata(sqlite3* db, int totalEntries) {
     // (kWilleqDbExpectedVersion) so builder and client cannot drift — bump
     // both together in the same commit when the schema changes.
     setMeta("version", std::to_string(EQT::kWilleqDbExpectedVersion));
-    setMeta("build_date", __DATE__ " " __TIME__);
+    // T450: NOT a wall-clock stamp -- see computeInputDigest() above.
+    setMeta("input_digest", inputDigest);
     setMeta("total_entries", std::to_string(totalEntries));
 }
 
@@ -165,6 +243,32 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    // T450: the input set is named ONCE, here, and both the loaders and the
+    // metadata digest read it -- so a new input cannot be loaded without also
+    // moving the digest. `label` is the input's ROLE; the digest never mixes a
+    // path, so the same inputs give the same database from any worktree.
+    std::vector<DbInput> inputs = {
+        {"spells",           eqPath + "/spells_us.txt"},
+        {"eqstrings",        eqPath + "/eqstr_us.txt"},
+        {"dbstrings",        eqPath + "/dbstr_us.txt"},
+        {"item_models",      dataPath + "/item_models.json"},
+        {"equipment_models", dataPath + "/equipment_models.json"},
+        {"race_models",      configPath + "/race_models.json"},
+        {"sound_assets",     eqPath + "/SoundAssets.txt"},
+        {"animation_sounds", eqPath + "/AnimationSounds.txt"},
+        {"music_index",      eqPath + "/mp3index.txt"},
+        {"login_strings",    eqPath + "/eqlsstr_us.txt"},
+    };
+    if (!s3dIndexPath.empty()) inputs.push_back({"s3d_index", s3dIndexPath});
+
+    auto inputPath = [&](const char* label) -> const std::string& {
+        for (const DbInput& in : inputs) {
+            if (strcmp(in.label, label) == 0) return in.path;
+        }
+        fprintf(stderr, "ERROR: no input labelled '%s'\n", label);
+        exit(1);
+    };
+
     printf("=== WillEQ Database Builder ===\n");
     printf("EQ path: %s\n", eqPath.c_str());
     printf("Output: %s\n\n", outputPath.c_str());
@@ -193,7 +297,7 @@ int main(int argc, char** argv) {
     // ── Spells ──
     {
         auto start = std::chrono::steady_clock::now();
-        int n = loadSpells(db, eqPath + "/spells_us.txt");
+        int n = loadSpells(db, inputPath("spells"));
         auto elapsed = std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - start).count();
         printf("  spells:       %6d entries (%.0f ms)\n", n, elapsed);
@@ -203,7 +307,7 @@ int main(int argc, char** argv) {
     // ── EQ Strings ──
     {
         auto start = std::chrono::steady_clock::now();
-        int n = loadEqStrings(db, eqPath + "/eqstr_us.txt");
+        int n = loadEqStrings(db, inputPath("eqstrings"));
         auto elapsed = std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - start).count();
         printf("  eqstrings:    %6d entries (%.0f ms)\n", n, elapsed);
@@ -213,7 +317,7 @@ int main(int argc, char** argv) {
     // ── DB Strings ──
     {
         auto start = std::chrono::steady_clock::now();
-        int n = loadDbStrings(db, eqPath + "/dbstr_us.txt");
+        int n = loadDbStrings(db, inputPath("dbstrings"));
         auto elapsed = std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - start).count();
         printf("  dbstrings:    %6d entries (%.0f ms)\n", n, elapsed);
@@ -223,7 +327,7 @@ int main(int argc, char** argv) {
     // ── Item Models ──
     {
         auto start = std::chrono::steady_clock::now();
-        int n = loadItemModels(db, dataPath + "/item_models.json");
+        int n = loadItemModels(db, inputPath("item_models"));
         auto elapsed = std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - start).count();
         printf("  item_models:  %6d entries (%.0f ms)\n", n, elapsed);
@@ -233,7 +337,7 @@ int main(int argc, char** argv) {
     // ── Equipment Models ──
     {
         auto start = std::chrono::steady_clock::now();
-        int n = loadEquipmentModels(db, dataPath + "/equipment_models.json");
+        int n = loadEquipmentModels(db, inputPath("equipment_models"));
         auto elapsed = std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - start).count();
         printf("  equip_models: %6d entries (%.0f ms)\n", n, elapsed);
@@ -243,7 +347,7 @@ int main(int argc, char** argv) {
     // ── Race Models ──
     {
         auto start = std::chrono::steady_clock::now();
-        int n = loadRaceModels(db, configPath + "/race_models.json");
+        int n = loadRaceModels(db, inputPath("race_models"));
         auto elapsed = std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - start).count();
         printf("  race_models:  %6d entries (%.0f ms)\n", n, elapsed);
@@ -253,7 +357,7 @@ int main(int argc, char** argv) {
     // ── Sound Assets ──
     {
         auto start = std::chrono::steady_clock::now();
-        int n = loadSoundAssets(db, eqPath + "/SoundAssets.txt");
+        int n = loadSoundAssets(db, inputPath("sound_assets"));
         auto elapsed = std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - start).count();
         printf("  sound_assets: %6d entries (%.0f ms)\n", n, elapsed);
@@ -263,7 +367,7 @@ int main(int argc, char** argv) {
     // ── Animation Sounds ──
     {
         auto start = std::chrono::steady_clock::now();
-        int n = loadAnimationSounds(db, eqPath + "/AnimationSounds.txt");
+        int n = loadAnimationSounds(db, inputPath("animation_sounds"));
         auto elapsed = std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - start).count();
         printf("  anim_sounds:  %6d entries (%.0f ms)\n", n, elapsed);
@@ -273,7 +377,7 @@ int main(int argc, char** argv) {
     // ── Music Index ──
     {
         auto start = std::chrono::steady_clock::now();
-        int n = loadMusicIndex(db, eqPath + "/mp3index.txt");
+        int n = loadMusicIndex(db, inputPath("music_index"));
         auto elapsed = std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - start).count();
         printf("  music_files:  %6d entries (%.0f ms)\n", n, elapsed);
@@ -283,7 +387,7 @@ int main(int argc, char** argv) {
     // ── Login Strings ──
     {
         auto start = std::chrono::steady_clock::now();
-        int n = loadLoginStrings(db, eqPath + "/eqlsstr_us.txt");
+        int n = loadLoginStrings(db, inputPath("login_strings"));
         auto elapsed = std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - start).count();
         printf("  login_strings:%6d entries (%.0f ms)\n", n, elapsed);
@@ -293,7 +397,7 @@ int main(int argc, char** argv) {
     // ── S3D Asset Index ──
     if (!s3dIndexPath.empty()) {
         auto start = std::chrono::steady_clock::now();
-        int n = loadS3dIndex(db, s3dIndexPath);
+        int n = loadS3dIndex(db, inputPath("s3d_index"));
         auto elapsed = std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - start).count();
         printf("  s3d_assets:   %6d entries (%.0f ms)\n", n, elapsed);
@@ -301,7 +405,7 @@ int main(int argc, char** argv) {
     }
 
     // ── Metadata ──
-    writeMetadata(db, totalEntries);
+    writeMetadata(db, totalEntries, computeInputDigest(inputs));
 
     // Final optimization
     execSQL(db, "ANALYZE");
