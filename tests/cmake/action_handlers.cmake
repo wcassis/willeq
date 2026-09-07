@@ -149,6 +149,28 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_door_click_zone_reset)
 
+# T435 Leg B (BOARD B428): the OP_MoveDoor action byte is only "open" or
+# "close" after invert_state is applied (eqemu zone/doors.cpp:37-40).
+ADD_EXECUTABLE(test_door_invert_state
+    test_door_invert_state.cpp
+)
+TARGET_LINK_LIBRARIES(test_door_invert_state GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_door_invert_state PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_door_invert_state)
+
+# T435 Leg A (BOARD B425): doors have collision, and the map that carries it
+# finally has a writer.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_door_collision
+        test_door_collision.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_door_collision PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_door_collision GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_door_collision)
+ENDIF()
+
 # T376 Leg A (BOARD B140): the door / world-object click senders go out
 # through eqt::PacketSender (null-guard, T268 seam, session recorder).
 ADD_EXECUTABLE(test_click_senders_packet_sender

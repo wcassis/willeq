@@ -117,10 +117,22 @@ static EQT::Audio::DoorType getDoorTypeFromName(const std::string& name) {
 
 void eqt::entities::EntitiesComponent::ZoneProcessMoveDoor(const EQ::Net::Packet &p)
 {
-	// MoveDoor indicates door animations (opening/closing)
-	// Packet format: opcode(2) + MoveDoor_Struct(2)
-	// action: 0x02 = close (go to closed visual state)
-	//         0x03 = open (go to open visual state)
+	// MoveDoor indicates door animations (opening/closing).
+	// Packet format: opcode(2) + MoveDoor_Struct(2).
+	//
+	// T435 (board B428): the action byte means "open" or "close" only once
+	// invert_state is applied. eqemu zone/doors.cpp:37-40 --
+	//     #define OPEN_DOOR      0x02
+	//     #define CLOSE_DOOR     0x03
+	//     #define OPEN_INVDOOR   0x03
+	//     #define CLOSE_INVDOOR  0x02
+	// and every emitter picks between the pairs with
+	// `m_invert_state == 0 ? OPEN_DOOR : OPEN_INVDOOR` (doors.cpp:274, 314,
+	// 376, 402, 434, 474, 631, 663, 734). The old reading here was
+	// `is_open = (action == 0x03)`, which is the INVERTED-door mapping applied
+	// to every door in the game: a normal door read backwards on every packet,
+	// and an invert_state=1 door (all three Kelethin FAYLEVATORs) read right by
+	// accident.
 
 	if (p.Length() < 4) {
 		LOG_WARN(MOD_ENTITY, "MoveDoor packet too small: {} bytes", p.Length());
@@ -133,7 +145,10 @@ void eqt::entities::EntitiesComponent::ZoneProcessMoveDoor(const EQ::Net::Packet
 	// Update door state in game state manager
 	const EQT::DoorState* door = ctx_.game_state.doors().getDoor(door_id);
 	if (door) {
-		bool is_open = (action == 0x03);
+		constexpr uint8_t kOpenDoor = 0x02;     // eqemu OPEN_DOOR  / CLOSE_INVDOOR
+		constexpr uint8_t kOpenInvDoor = 0x03;  // eqemu OPEN_INVDOOR / CLOSE_DOOR
+		bool is_open = door->invertState ? (action == kOpenInvDoor)
+		                                 : (action == kOpenDoor);
 
 		// T376 (BOARD B141): the pending-click set lives on the door state
 		// manager, which OWNS door state -- there is no longer a second copy

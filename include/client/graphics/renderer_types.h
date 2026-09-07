@@ -33,6 +33,7 @@
 #include "client/graphics/entity_renderer.h"
 #include "client/graphics/eq/equipment_model_loader.h"
 #include "client/graphics/eq/race_model_loader.h"
+#include "client/graphics/door_collision.h"
 #include "client/graphics/door_manager.h"
 #include "client/graphics/animated_texture_manager.h"
 #include "client/graphics/constrained_renderer_config.h"
@@ -408,15 +409,10 @@ struct FireGlowLight {
     float flickerSpeed;            // Random speed multiplier
 };
 
-// Pre-baked door collision: open + closed world-space triangles per door
-// During animation (opening/closing), door has no collision (walk-through,
-// matching original EQ behavior)
-struct DoorCollisionData {
-    std::vector<irr::core::triangle3df> closedTriangles;
-    std::vector<irr::core::triangle3df> openTriangles;
-    size_t bspRegion = SIZE_MAX;
-    bool hasCollision = true;  // false for invisible, teleporter, spinning, lifts, hazardous
-};
+// DoorCollisionData moved to client/graphics/door_collision.h (T435, board
+// B425): it now has a writer -- DoorManager::computeDoorCollision() -- and the
+// ray test that reads it is a free function there, so both are reachable
+// without an IrrlichtRenderer. Included above via door_manager.h.
 
 // Frame timing profiler for performance analysis
 struct FrameTimings {

@@ -646,6 +646,7 @@ bool DoorManager::createDoor(uint8_t doorId, const std::string& name,
 
     visual.meshBuilt = true;
     doors_[doorId] = visual;
+    markCollisionDirty(doorId);  // T435 (B425): the door now has geometry
 
     LOG_DEBUG(MOD_GRAPHICS, "Created door {} '{}' at ({:.1f}, {:.1f}, {:.1f}) heading={:.1f} opentype={}{} state={}",
               doorId, name, x, y, z, heading, opentype,
@@ -787,6 +788,10 @@ bool DoorManager::registerDoor(uint8_t doorId, const std::string& name,
     }
 
     doors_[doorId] = visual;
+    // T435 (B425): a registered door already carries a placeholder mesh, and a
+    // placeholder is what the player actually walks into until the real mesh
+    // arrives -- so it collides from here, not from buildDoorMesh().
+    markCollisionDirty(doorId);
     return true;
 }
 
@@ -905,6 +910,7 @@ bool DoorManager::buildDoorMesh(uint8_t doorId)
     LOG_DEBUG(MOD_GRAPHICS, "Built door mesh {} '{}' at ({:.1f}, {:.1f}, {:.1f})",
               doorId, visual.name_raw, x, y, z);
 
+    markCollisionDirty(doorId);  // T435 (B425): real mesh replaces the placeholder
     return true;
 }
 
@@ -1036,6 +1042,13 @@ void DoorManager::update(float deltaTime)
 
         // Update bounding box for interaction
         visual.boundingBox = visual.sceneNode->getTransformedBoundingBox();
+
+        // T435 (B425): the map holds the door's CURRENT geometry, so a door
+        // re-bakes on every frame it moves as well as when it settles. Today
+        // both poses are a pure function of the two headings, which do not
+        // change mid-animation; a door that TRANSLATES (board B422's lifts)
+        // moves its pivot, and this is the hook that keeps it honest.
+        markCollisionDirty(id);
 
         // Check if animation complete
         if (visual.animProgress == targetProgress) {
@@ -1173,6 +1186,12 @@ void DoorManager::clearDoors()
             visual.sceneNode->remove();
         }
     }
+    // T435 (B425): tell the renderer which ids to drop from its collision map
+    // BEFORE the door records go away.
+    collisionDirty_.clear();
+    for (const auto& [id, visual] : doors_) {
+        collisionRemoved_.insert(id);
+    }
     doors_.clear();
     invisibleDoors_.clear();
 
@@ -1197,6 +1216,7 @@ void DoorManager::recomputeAllBspRegions() {
         if (!visual.pivotNode) continue;
 
         visual.bspRegion = bspTree_->findRegionIndexForPoint(visual.x, visual.y, visual.z);
+        markCollisionDirty(id);  // T435 (B425): the region is part of the collision entry
         updated++;
 
         bool pvsVis = isRegionPvsVisible(visual.bspRegion);
@@ -1284,6 +1304,7 @@ bool DoorManager::rebuildSingleDoor(uint8_t doorId)
     }
 
     visual.usePlaceholder = false;
+    markCollisionDirty(doorId);  // T435 (B425): the mesh changed under the node
     LOG_DEBUG(MOD_GRAPHICS, "Rebuilt placeholder door {} '{}' with textured mesh",
               doorId, visual.modelName);
     return true;
@@ -1350,6 +1371,7 @@ void DoorManager::rebuildPlaceholderDoors()
         }
 
         visual.usePlaceholder = false;
+        markCollisionDirty(id);  // T435 (B425): the mesh changed under the node
         ++rebuilt;
 
         LOG_DEBUG(MOD_GRAPHICS, "Rebuilt placeholder door {} '{}' with textured mesh",
@@ -1389,6 +1411,11 @@ std::vector<irr::scene::IMeshSceneNode*> DoorManager::getDoorSceneNodes() const
     }
     return nodes;
 }
+
+// The collision writer (T435, board B425) lives in door_manager_collision.cpp:
+// markCollisionDirty / markAllCollisionDirty / drainCollisionUpdates /
+// computeDoorCollision. Split out rather than appended -- this TU was 1,394
+// lines against a 1,500 ceiling.
 
 } // namespace Graphics
 } // namespace EQT

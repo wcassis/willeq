@@ -6,6 +6,7 @@
 // guard in tests/test_first_person_camera_single_formula.cpp requires it.
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/player/player_camera_component.h"
+#include "client/graphics/door_collision.h"
 #include "client/graphics/world_line_batch.h"  // T335: the shared post-drawAll() 3D-line guard
 #include "client/bridge/game_state_bridge.h"
 #include "client/state/event_bus.h"
@@ -168,6 +169,9 @@ void PlayerCameraComponent::setupMinimalZoneCollision() {
     ctx_.regionWorldTriangles.clear();
     ctx_.objectWorldTriangles.clear();
     ctx_.doorCollisionData.clear();
+    // T435 (B425): a clear without this silently strands every already-created
+    // door outside collision for the rest of the zone.
+    if (ctx_.doorManager) ctx_.doorManager->markAllCollisionDirty();
     // Legacy meta selectors (only used by HCMap fallback path now)
     if (ctx_.ZoneLifecycle().zoneTriangleSelector()) {
         ctx_.ZoneLifecycle().zoneTriangleSelector()->drop();
@@ -278,42 +282,11 @@ bool PlayerCameraComponent::rayIntersectTriangles(const irr::core::vector3df& ra
                                               irr::core::vector3df& hitPoint,
                                               irr::core::triangle3df& hitTriangle,
                                               float& hitDistSq) {
-    // Möller–Trumbore ray-triangle intersection — no matrix math
-    constexpr float EPSILON = 0.000001f;
-    bool anyHit = false;
-    float closestT = rayLen + 1.0f;
-
-    for (const auto& tri : triangles) {
-        const irr::core::vector3df& v0 = tri.pointA;
-        const irr::core::vector3df edge1 = tri.pointB - v0;
-        const irr::core::vector3df edge2 = tri.pointC - v0;
-
-        const irr::core::vector3df h = rayDir.crossProduct(edge2);
-        float a = edge1.dotProduct(h);
-        if (a > -EPSILON && a < EPSILON) continue;  // Parallel
-
-        float f = 1.0f / a;
-        const irr::core::vector3df s = rayOrigin - v0;
-        float u = f * s.dotProduct(h);
-        if (u < 0.0f || u > 1.0f) continue;
-
-        const irr::core::vector3df q = s.crossProduct(edge1);
-        float v = f * rayDir.dotProduct(q);
-        if (v < 0.0f || u + v > 1.0f) continue;
-
-        float t = f * edge2.dotProduct(q);
-        if (t > EPSILON && t < closestT) {
-            closestT = t;
-            hitPoint = rayOrigin + rayDir * t;
-            hitTriangle = tri;
-            anyHit = true;
-        }
-    }
-
-    if (anyHit) {
-        hitDistSq = hitPoint.getDistanceFromSQ(rayOrigin);
-    }
-    return anyHit;
+    // T435: the Moller-Trumbore body moved to door_collision.cpp so the door
+    // query can run without a renderer. This static member is kept because
+    // renderer_zone_load_env.cpp calls it by that name.
+    return RayIntersectTriangles(rayOrigin, rayDir, rayLen, triangles,
+                                 hitPoint, hitTriangle, hitDistSq);
 }
 
 bool PlayerCameraComponent::rayTestDoorsAndObjects(const irr::core::vector3df& rayOrigin,
@@ -332,33 +305,55 @@ bool PlayerCameraComponent::rayTestDoorsAndObjects(const irr::core::vector3df& r
         }
     }
 
-    // Test doors in this BSP region (skip animating doors — walk-through during animation)
-    for (const auto& [doorId, doorData] : ctx_.doorCollisionData) {
-        if (!doorData.hasCollision) continue;
-        if (doorData.bspRegion != bspRegion) continue;
-
-        // Get current door state from door manager
-        const auto* door = ctx_.doorManager ? ctx_.doorManager->getDoor(doorId) : nullptr;
-        if (!door) continue;
-        if (door->isAnimating) continue;  // Walk-through during animation (original EQ behavior)
-
-        const auto& tris = door->isOpen ? doorData.openTriangles : doorData.closedTriangles;
-        if (tris.empty()) continue;
-
-        irr::core::vector3df hp;
-        irr::core::triangle3df ht;
-        float distSq;
-        if (rayIntersectTriangles(rayOrigin, rayDir, rayLen, tris, hp, ht, distSq)) {
-            if (!anyHit || distSq < hitDistSq) {
-                hitPoint = hp;
-                hitTriangle = ht;
-                hitDistSq = distSq;
-                anyHit = true;
+    // Test doors in this BSP region. T435 (board B425): until this unit
+    // ctx_.doorCollisionData had no writer anywhere in the tree, so this loop
+    // ran over an always-empty map and every door in the game was
+    // walk-through and non-standable. syncDoorCollision() is the writer.
+    DoorManager* doorManager = ctx_.doorManager.get();
+    anyHit = RayTestDoorCollision(
+        ctx_.doorCollisionData,
+        [doorManager](uint8_t doorId) {
+            DoorRuntimeState state;
+            const DoorVisual* door = doorManager ? doorManager->getDoor(doorId) : nullptr;
+            if (door) {
+                state.known = true;
+                state.isOpen = door->isOpen;
+                state.isAnimating = door->isAnimating;
             }
-        }
-    }
+            return state;
+        },
+        rayOrigin, rayDir, rayLen, bspRegion, hitPoint, hitTriangle, hitDistSq, anyHit);
 
     return anyHit;
+}
+
+// T435 (board B425). The writer ctx_.doorCollisionData never had. Called once
+// per frame right after DoorManager::update(), and again wherever the map is
+// cleared (each of those calls markAllCollisionDirty() so the next drain
+// re-offers every door).
+void PlayerCameraComponent::syncDoorCollision() {
+    if (!ctx_.doorManager) return;
+
+    std::vector<uint8_t> changed;
+    std::vector<uint8_t> removed;
+    ctx_.doorManager->drainCollisionUpdates(changed, removed);
+    if (changed.empty() && removed.empty()) return;
+
+    for (uint8_t doorId : removed) {
+        ctx_.doorCollisionData.erase(doorId);
+    }
+    for (uint8_t doorId : changed) {
+        DoorCollisionData data;
+        if (ctx_.doorManager->computeDoorCollision(doorId, data)) {
+            ctx_.doorCollisionData[doorId] = std::move(data);
+        } else {
+            // No geometry yet (registered, mesh not built). It will be offered
+            // again by buildDoorMesh().
+            ctx_.doorCollisionData.erase(doorId);
+        }
+    }
+    LOG_TRACE(MOD_GRAPHICS, "syncDoorCollision: +{} -{} (map now {})",
+              changed.size(), removed.size(), ctx_.doorCollisionData.size());
 }
 
 bool PlayerCameraComponent::checkCollisionBspFiltered(const irr::core::vector3df& start,

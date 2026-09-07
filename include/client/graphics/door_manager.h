@@ -2,6 +2,7 @@
 #define EQT_GRAPHICS_DOOR_MANAGER_H
 
 #include <irrlicht.h>
+#include "client/graphics/door_collision.h"
 #include <map>
 #include <set>
 #include <string>
@@ -186,8 +187,26 @@ public:
     // Set visibility of all door nodes (for profiling)
     void setAllDoorsVisible(bool visible);
 
-    // Get all door scene nodes for collision detection
+    // Every built door's mesh node. T433 found the old "for collision
+    // detection" claim on this accessor to be false -- collision does not go
+    // through scene nodes at all (see computeDoorCollision above), and the one
+    // production caller is diagnostics_debug.cpp's shader-material swap.
     std::vector<irr::scene::IMeshSceneNode*> getDoorSceneNodes() const;
+
+    // --- Collision (T435, board B425) ---------------------------------
+    // Before T435 nothing in the tree ever wrote ctx_.doorCollisionData, so
+    // every door in every zone was walk-through and non-standable. These three
+    // are that missing writer. computeDoorCollision() bakes the door's CURRENT
+    // world-space geometry in both settled poses; drainCollisionUpdates()
+    // reports the ids that changed (created, mesh built, moved) and the ids
+    // that went away since the last drain, so the renderer's map is kept in
+    // step without walking every door every frame.
+    bool computeDoorCollision(uint8_t doorId, DoorCollisionData& out) const;
+    void drainCollisionUpdates(std::vector<uint8_t>& changed,
+                               std::vector<uint8_t>& removed);
+    // Re-offer every door on the next drain. The renderer clears its own map at
+    // three lifecycle points; each of them calls this so the two cannot desync.
+    void markAllCollisionDirty();
 
     // T124: exposes doors_ directly for DoorTextureGuard registration
     // (renderer_zone_merge.h) -- mirrors EntityRenderer::getEntities()'s
@@ -211,7 +230,12 @@ private:
     bool isRegionPvsVisible(size_t regionIdx) const;
     bool isRegionPvsVisibleDebug(size_t regionIdx, uint8_t doorId) const;
 
+    // T435: mark a door's collision geometry as needing a re-bake.
+    void markCollisionDirty(uint8_t doorId);
+
     std::map<uint8_t, DoorVisual> doors_;
+    std::set<uint8_t> collisionDirty_;    // T435: ids to re-bake on the next drain
+    std::set<uint8_t> collisionRemoved_;  // T435: ids the renderer must erase
     std::set<uint8_t> invisibleDoors_;  // Track invisible doors to suppress state update warnings
     std::unordered_map<std::string, irr::scene::IMesh*> doorMeshCache_;  // Cached meshes by uppercase door name
     mutable std::vector<std::string> lastMissingTextures_;  // Textures pending async upload from last findDoorMesh
