@@ -6064,6 +6064,48 @@ client uses every field.
   strips are the target, not the whole-frame grey: a whole-frame ratio mixes the
   sky swap and the fog blend, and the two are separate terms. Prov: T418 Review
   section 3; B231.
+  **T426 (2026-09-07) TOOK THE TARGET TABLE AND NAMED TWO MECHANISMS; IT DID NOT
+  SOLVE THE FAMILY.** With B399's framing settled both clients could finally be
+  put in the same first-person pose, and the depth ramp is clean on the band
+  y=180..300 (wall only; T426's first band, y=300..460, mixed wall/ground/trees
+  and was not monotone). Full table: `review/T426/logs/T426_fog_table.txt`.
+  * **Day rain 5, geometry, near x=40 -> far x=490.** ORACLE R 1.436 -> **2.544**,
+    G 1.037 -> 1.401, B 1.001 -> 1.114 (reproduces T418's own 1.42 -> 2.73).
+    **fable: 1.000 +- 0.001 on every strip and every channel** -- fable's weather
+    fog reaches NO PIXEL, while the client is demonstrably in rain 5
+    (`setWeather ... newType=1 newIntensity=5`, `SimWorker: Activated weather`).
+    The blend in `updateTimeOfDay` is
+    `blendFactor = weatherEffects_->getCurrentDarkening()`, and T418 flattened
+    the darkening to the measured ambient curve (1.000 at every knot), so the
+    lerp multiplies by ~0 and `getWeatherFogColor()` / `getFogDensityModifier()` /
+    `getRainFogSettings()` change nothing. T418's comment at that line predicted
+    this hazard; the measurement says it fires.
+  * **Day rain 5, sky.** ORACLE (0.2141, 0.3585, 0.5117) blue ->
+    (0.3160, 0.3159, 0.3933) grey, i.e. **R x1.475, G x0.881, B x0.769**.
+    fable (0.2336, 0.1874, 0.1402) -> (0.0152, 0.0126, 0.0104), i.e.
+    **x0.065 / x0.067 / x0.074** -- a 15x DARKENING where the oracle brightens R
+    and greys the hue. Producer:
+    `skyBrightness = 0.5 * pow(0.5, (intensity-1)/4)` (0.25 at intensity 5) into
+    `SkyRenderer::setWeatherBrightness()`; the measured end-to-end factor 0.065
+    says the sky renderer compounds it further. Sign, magnitude and hue all wrong.
+  * **Night rain 5.** The oracle's night GEOMETRY term is below 8-bit
+    quantisation at this crop (nine of ten strips are byte-identical), so there
+    is no night geometry target -- consistent with T418's "the night signal is a
+    fifth of the day's". The night SKY does move and moves the same way:
+    normalised .001/.034/**.965** (deep blue) -> .369/.230/.401 (grey). fable's
+    night sky goes to **0**.
+  * **Why T426 committed no fog number.** The oracle's day term does not fit
+    `active = clear(1-f) + F*f` with one `F`: least squares over the ten strips
+    gives `F ~ (0.139, 0.119, 0.098)` linear with an inadmissible `f = 2.09` on
+    the near strip and residuals to 0.022 -- the near strip's increments are
+    (0.050, 0.004, 0.000) and the far strip's (0.056, 0.024, 0.007), whose
+    channel ratios cannot come from one `F`. An additive model fails identically.
+    **The oracle's weather is not a one-parameter fog lerp over this scene; the
+    solve needs a model, not a sweep.** Picking numbers to make one crop match
+    would recreate exactly what this item is about.
+  * Rig, ready to re-run: `review/T426/scripts/t426_fable_weather.sh` (T418's,
+    first person) and `t426_wall_strips.py` (THE measurement). The oracle side
+    needs no new capture -- T418's stills are at the same spot, heading and clock.
 
 - ~~**B361** (B) `src/client/graphics/sim_weather.cpp`
   `SimulationWorker::computeWeatherEffectsState` /
@@ -6313,22 +6355,48 @@ client uses every field.
   `spells.eff` record, not the resist type) or measured overrides are added.
   Prov: T422 Review 5.
 
-- **B399** (A) `src/client/graphics/player/renderer_camera.cpp` /
+- ~~**B399** (A) `src/client/graphics/player/renderer_camera.cpp` /
   `movement` -- **a server `#goto x y z h` does not turn fable's camera; the
-  client's own heading echoes straight back over it.** MEASURED T422: with
-  `character_data.heading` 160 and the oracle's exact aiming command
-  `#goto -74 428 3.751 160` sent from the fable client, the client logged
-  `[ZONE-IN] setPlayerPosition: ... heading=160.00` once and then
-  `heading=480.00` on the next update and every update after, and the camera
-  stayed pointed at a wall for the whole session. The oracle, given the same
-  command, faces open field. `/face <target>` DOES work (the observer's
-  `/face Testcaster` centred the caster). This is the same family as B001/T344
-  (a server-forced pose that cannot be applied without the client overwriting
-  it) and it cost T422 a whole capture session. Closes when a server-supplied
-  heading survives the next outbound position update, with a test.
-  Prov: T422 Review 3.
+  client's own heading echoes straight back over it.**~~ **STRUCK T426 (this
+  commit, base `8f5e586a`) -- the STATED MECHANISM IS REFUTED and a different,
+  real defect in the same handler is fixed.**
+  * **`480` was never an echo: it is `160` correctly converted.** A player's own
+    heading takes the `90 - server_deg` flip at every inbound edge and
+    `SendPositionUpdate` inverts it on the way out. Wire 160 -> 112.5 deg ->
+    337.5 deg -> **480** in the 512 format. T426 swept eight `#goto` headings
+    (`review/T426/logs/fable_sweep1.log`): 160->480, 288->352, 32->96, 416->224,
+    96->32, 224->416, 352->288, 0->128. Eight headings, eight distinct camera
+    poses, nothing overwritten.
+  * **And the camera turns to the RIGHT place.** `review/T426/probe/T426_fp_pairs.png`
+    puts the official client and fable side by side at the same spot, the same
+    `#goto`, both in FIRST PERSON, at wire headings 0/128/256/384/160/288: they
+    match row for row. The official client's own compass calibrates the wire
+    heading independently in the same frames -- h=0 -> N, 128 -> W, 256 -> S,
+    384 -> E, dead centre (`review/T426/probe/T426_oracle_compass_sheet.png`).
+    "The oracle faces open field and fable faces a wall" compared frames that
+    both contain a wall on the left half and open field on the right.
+  * **THE FRAMING TRAP that produced B399** (carry this forward): the oracle rig
+    leaves the official client in FIRST person and fable's default is
+    third-person follow, 20 units back. At the same heading that offset can put
+    a wall across fable's whole frame where the oracle sees past it. Compare
+    first person to first person (`/camera fp`) or a framing argument proves
+    nothing.
+  * **The real defect, fixed here.** `EntitiesComponent::ZoneProcessClientUpdate`'s
+    SELF branch computes `self_heading = 90 - server_h` into `ctx_.self` and then
+    handed `BridgeComponent::OnSpawnMovedGraphics` the RAW `h_player`, which that
+    function converts to the 512 format and publishes as `PlayerMoved` -- i.e.
+    straight into `setPlayerPosition` and the camera. One argument was serving two
+    conventions (flipped for our camera, verbatim for the entity row, which must
+    NOT be unified -- `docs/CLAUDE.md`). Live at zone-in the camera took 480, then
+    160, then 480. Every server-forced relocation arriving as a self
+    `OP_ClientUpdate` with no zone-change packet (a GM move, a server position
+    correction) aimed the camera 90 degrees plus a mirror away and left it there
+    until the player turned. Fixed by reading the store instead of the argument;
+    pinned by `tests/test_self_relocation_heading.cpp` (3 cases, including one
+    that fails if the fix leaks into the entity convention).
+  Prov: T426 Review 1; `review/T426/README.md` section 1.
 
-- **B400** (A) `src/client/graphics/sim_particles.cpp` /
+- ~~**B400** (A) `src/client/graphics/sim_particles.cpp` /
   `SpellVisualFX::createImpact` -- **a landing intermittently draws nothing on
   the CASTER's own client while drawing correctly on an observer.** MEASURED
   T422: in `review/T422/fable/T422_fable_after2_size_caster.mkv` the Weaken (41)
@@ -6470,3 +6538,31 @@ client uses every field.
   Greater Faydark's lifts to Kelethin. Baseline: the official client. → T433
   (survey + oracle capture), then the implementation units it names.
 
+
+  the CASTER's own client while drawing correctly on an observer.**~~ **STRUCK
+  T426 (this commit, base `8f5e586a`): reproduced deterministically and fixed.**
+  * **Mechanism.** eqemu sends TWO `OP_Action` packets for one cast (T395):
+    `effect_flag 0` to everyone in range, `effect_flag 4` to the target and the
+    caster only. `irrlicht_bridge.cpp`'s `SpellCastVisualComplete` arm therefore
+    runs TWICE on the caster and ONCE on an observer, and it calls
+    `SpellVisualFX::removeCastGlow(casterId)` unconditionally, BEFORE the
+    `isCastAnimation` gate that creates the burst. `removeCastGlow` issued
+    `ParticleManager::removeSpellEffectsForEntity()`, whose worker arm removes
+    every effect whose CASTER **or** TARGET is that entity -- and a self-target
+    cast (`#castspell`, any self-buff) puts the caster's own spawn id in both.
+    So the SECOND packet's teardown destroyed the impact burst and the
+    spell-complete burst the FIRST had just created; the observer, which never
+    receives the second packet, kept its copy. The T395 attach-position/frustum
+    suspicion B400 recorded is not it, and the intermittency is the emission
+    window racing the second packet.
+  * **Fix.** The removal command carries an optional style filter
+    (`SpellEffectDef::name`); empty keeps the old "everything on this entity"
+    behaviour (`removeAllForEntity`, a despawn), and `removeCastGlow` names
+    `{"CastGlow", "CastSpray"}`. Pinned by `tests/test_caster_own_landing.cpp`
+    (4 cases) on the real chain -- a real `SpellVisualFX` on an EDT_NULL device
+    driving a real `ParticleManager` whose drained commands go to a real
+    `SimulationWorker`, no hand-built commands. Two of the four fail pre-fix;
+    T397's `test_spell_effect_removal` (the unfiltered contract) stays green.
+  * A live caster/observer re-capture of the four spells is **owed** -- T426 spent
+    its live budget on Leg A's six-heading oracle A/B and Leg B's fog table.
+  Prov: T426 Review 2; T422 Review 4.

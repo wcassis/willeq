@@ -159,6 +159,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_zone_position_convention)
 
+# T426 Leg A (board B399): the self OP_ClientUpdate edge -- a server-forced
+# relocation of our own character -- must reach the camera in the client's
+# internal heading convention while the entity row keeps the raw server one.
+# Same replay seam as test_zone_position_convention above.
+ADD_EXECUTABLE(test_self_relocation_heading
+    test_self_relocation_heading.cpp
+)
+TARGET_LINK_LIBRARIES(test_self_relocation_heading GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_self_relocation_heading PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_self_relocation_heading)
+
 # T88: headless position-frame round-trip regression tests (inbound
 # server-frame decode -> outbound client-frame encode -> server-frame
 # re-encode is identity; Move()/MoveToWithPath() operates in client frame).

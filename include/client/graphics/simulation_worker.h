@@ -103,6 +103,22 @@ struct ParticleCommandData {
     // call wiped every spell effect in the zone.
     uint16_t entityID = 0;
 
+    // RemoveSpellEffectsEntity, style filter (T426, board B400). EMPTY means
+    // "every style attached to that entity", which is what removeAllForEntity
+    // and a despawn want. A NON-EMPTY list restricts the removal to effects
+    // whose SpellEffectDef::name is in it.
+    //
+    // Why it exists: eqemu sends the caster TWO OP_Action packets for one cast
+    // (effect_flag 0, then 4 -- T395), so the caster's bridge runs the
+    // SpellCastVisualComplete arm twice, and that arm calls removeCastGlow()
+    // both times. Unfiltered, the second call took the impact and the
+    // spell-complete burst the FIRST call had just created down with the glow,
+    // because RemoveSpellEffectsEntity matches caster OR target and a
+    // self-target cast puts the caster's id in both. An observing client
+    // receives only effect_flag 0, so it kept its copy -- which is exactly the
+    // caster-draws-nothing/observer-draws-it asymmetry B400 measured.
+    std::vector<std::string> styleFilter;
+
     // SetZoneEnter
     std::string zoneName;
     int zoneBiome = 0;
