@@ -40,7 +40,7 @@ using namespace zonetest;
 
 namespace {
 
-// T43's helper (test_zone_connection_flow.cpp), reproduced here (same copy
+// T43's helper (zone_connection_flow_test_fixture.h), reproduced here (same copy
 // test_eq_commands_vendor.cpp carried, T48): builds a minimal but
 // well-formed Titanium serialized-item string --
 // instanceFields|"quoted static fields". Extended with a non-zero price

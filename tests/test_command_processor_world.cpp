@@ -356,7 +356,7 @@ TEST_F(CommandProcessorTest, Sell_NotConnectedToZone_FailsCleanlyWithoutDispatch
 // (same idiom as warp() above): all three input-form parsing (slot-pair/
 // item-name/list) and all legality/execution now live in InventoryManager,
 // reached via EverQuest::RequestEquip() -- covered directly (real
-// EverQuest, real InventoryManager) in test_eq_commands_equip.cpp. What
+// EverQuest, real InventoryManager) in test_eq_commands_equip_*.cpp. What
 // belongs at THIS layer: registration/category and dispatch reaching the
 // right ActionDispatcher method with the args forwarded verbatim.
 

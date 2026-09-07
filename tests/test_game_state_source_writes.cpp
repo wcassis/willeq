@@ -15,7 +15,7 @@
 // trainer windows) to the source here, and left test_game_state_sync_bridge.cpp
 // covering only the forwarding hop -- this file is now THE state net.
 //
-// Same headless EverQuest idiom as test_combat_manager.cpp / test_spell_
+// Same headless EverQuest idiom as test_combat_manager_*.cpp / test_spell_
 // manager.cpp: no network, no graphics, no eqemu. Private access (T17
 // `#define private public`) is used for the SpellManager cooldown entry
 // (startGemCooldown is private) and for EverQuest's OnPet*() hooks, which are

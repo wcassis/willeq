@@ -3,7 +3,7 @@
 // Proves EverQuest::ReplayLoginPacket/ReplayWorldPacket (eq.h) reach
 // DispatchLoginPacket/DispatchWorldPacket (extracted from LoginOnPacketRecv/
 // WorldOnPacketRecv, eq_login_world.cpp) without a live connection, mirroring
-// the Batch R zone seam exercised in test_zone_connection_flow.cpp.
+// the Batch R zone seam exercised in test_zone_connection_flow_*.cpp.
 //
 // Deliberately narrow (see refactor/T05_login_world_seam.md "A4"): this is a
 // seam smoke test, not thorough login/world flow coverage, which is

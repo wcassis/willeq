@@ -213,7 +213,7 @@ TEST(GameTickHeadless, BeforeGameStateReady_GameTickDoesNotResolveMemorization) 
 
 // After: once EverQuest::OnGameStateComplete()'s no-graphics branch has run
 // (simulated directly via the same SetLoadingPhase(COMPLETE) call it makes --
-// test_zone_connection_flow.cpp's FullStateSnapshot tests drive this via a
+// test_zone_connection_flow_snapshot.cpp's FullStateSnapshot tests drive this via a
 // full synthetic zone-in and independently confirm it lands on
 // LoadingPhase::COMPLETE / IsGraphicsReady()==true), GameTick() must now
 // actually run in this no-graphics test binary. Before T45 it never did, in

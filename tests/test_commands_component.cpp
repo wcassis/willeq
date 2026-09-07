@@ -9,7 +9,7 @@
 // RegisterCommands() (called from EverQuest's ctor) actually populated the
 // registry, the moved m_vendor_items state, and IsStunned()'s idle state.
 // The Request*()/ZoneProcess*() bodies themselves keep their existing
-// per-feature coverage (test_eq_commands_equip.cpp,
+// per-feature coverage (test_eq_commands_equip_*.cpp,
 // test_eq_commands_bank_train.cpp, test_train_skill.cpp,
 // test_tradeskill_combine.cpp, test_scribe_scroll.cpp, test_read_book.cpp,
 // test_eq_action_handler_cast.cpp's stun cases, ...); only their call sites

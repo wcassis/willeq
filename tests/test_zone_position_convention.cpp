@@ -49,7 +49,7 @@
 
 namespace {
 
-// Same idiom as test_zone_connection_flow.cpp / test_session_replay.cpp:
+// Same idiom as test_zone_connection_flow_*.cpp / test_session_replay.cpp:
 // build the full packet at the offsets the real handler reads (offsets
 // include the 2-byte opcode prefix), then strip the prefix for the replay
 // seam (which re-adds it).
@@ -123,7 +123,7 @@ std::vector<uint8_t> BuildZoneServerInfoPacket() {
 // payload, populated ONLY at the fields ZoneProcessPlayerProfile's
 // position/heading block reads (eq_zone_entry.cpp since J02 -- server_x@13116,
 // server_y@13120, z@13124, heading@13128, all offsets +base(=2)). Same idiom
-// as test_zone_connection_flow.cpp's PlayerProfile builders.
+// as test_zone_connection_flow_*.cpp's PlayerProfile builders.
 std::vector<uint8_t> BuildPlayerProfilePayload(float server_x, float server_y, float z,
                                                 float wire_heading) {
     return BuildPayload(2 + 19588, [&](EQ::Net::DynamicPacket& p) {
@@ -137,7 +137,7 @@ std::vector<uint8_t> BuildPlayerProfilePayload(float server_x, float server_y, f
 // T58: records every event pushed to the bridge (does not apply them to a
 // renderer), so tests can assert exactly how many PlayerMoved events reach
 // the renderer-facing queue and in what format -- same idiom as
-// test_zone_connection_flow.cpp's RecordingBridge.
+// zone_connection_flow_test_fixture.h's RecordingBridge.
 class RecordingBridge : public eqt::bridge::GameStateBridge {
 public:
     void applyEvent(const eqt::state::GameEvent&) override {}
@@ -506,7 +506,7 @@ std::vector<uint8_t> BuildRequestClientZoneChange(uint16_t zone_id, uint16_t ins
 }
 
 // NewZone_Struct: zone_short_name@66, zone_id@686 (the field that sets
-// m_current_zone_id). Same shape test_zone_connection_flow.cpp uses.
+// m_current_zone_id). Same shape test_zone_connection_flow_*.cpp uses.
 void ReplayNewZone(EverQuest& eq, uint16_t zone_id) {
     auto payload = BuildPayload(2 + 700, [&](EQ::Net::DynamicPacket& p) {
         std::memset(p.Data(), 0, 2 + 700);

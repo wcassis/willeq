@@ -79,7 +79,7 @@ GTEST_DISCOVER_TESTS(test_skill_packet_bodies)
 # T159: the skill possession gate and the real per-class cap table behind it.
 # Loads the SHIPPED config/skill_caps.json by path (WILLEQ_REPO_ROOT) -- the
 # gate's data must be the file the client ships, not a fixture. Same headless
-# EverQuest seam as test_combat_manager.cpp (MakeEq() + live CombatManager /
+# EverQuest seam as test_combat_manager_*.cpp (MakeEq() + live CombatManager /
 # SkillManager + TestBridge); no network, no graphics device, no eqemu.
 # New file: test_command_processor.cpp is past the 3000-line FAIL ceiling.
 ADD_EXECUTABLE(test_skill_possession_gate

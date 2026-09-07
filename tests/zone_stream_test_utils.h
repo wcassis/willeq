@@ -2,7 +2,7 @@
 
 // T18: shared helpers for zone-stream tests (test_zone_entities.cpp,
 // test_zone_chat.cpp). Follows the established replay-seam idiom from
-// test_zone_connection_flow.cpp / test_login_world_flow.cpp: synthetic
+// test_zone_connection_flow_*.cpp / test_login_world_flow.cpp: synthetic
 // packets are built at the packet offsets the ZoneProcess* handlers read
 // (opcode-inclusive), real-capture records come from the P29 session log.
 
@@ -101,7 +101,7 @@ public:
 };
 
 // T23: spawn-injection helpers promoted from test_zone_entities.cpp (T18)
-// for reuse by test_combat_manager.cpp. Deliberately NOT deduplicated
+// for reuse by test_combat_manager_*.cpp. Deliberately NOT deduplicated
 // against test_zone_entities.cpp's own (anonymous-namespace, internal-
 // linkage) copies -- those are untouched per this unit's territory rules.
 // Same Spawn_Struct offsets/semantics as T18: base=2 for a single NewSpawn

@@ -1697,11 +1697,12 @@ line of a future live session. The LIVE proof of the corpse row itself (hear
   `668801ab`: **866 files, 0 fail, 0 warn — nothing in the tree is over 1,500.**
   `scripts/refactor/file_size_allowlist.txt` is now EMPTY (kept, comment-only,
   so `--all` still parses it) and an unlisted file over 1,500 is a **FAIL** in
-  the `FileSizeCeiling` ctest test. Largest survivors:
-  `tests/test_eq_commands_equip.cpp` 1,492 (8 lines of headroom — the next file
-  to trip the gate), `src/client/graphics/door_manager.cpp` 1,394,
-  `tests/test_zone_connection_flow.cpp` 1,367,
-  `src/client/spell/spell_manager.cpp` 1,360. See `docs/decisions.md`,
+  the `FileSizeCeiling` ctest test. Largest survivors at that measurement were
+  three test TUs riding the ceiling (1,492 / 1,367 / 1,316) plus
+  `src/client/graphics/door_manager.cpp` 1,394 and
+  `src/client/spell/spell_manager.cpp` 1,360; **T446 split the three test TUs**
+  (`refactor/T446_test_tu_splits.md`), so the largest test TU is now
+  `tests/test_eq_commands_equip_bags.cpp` at 654 lines. See `docs/decisions.md`,
   2026-09-04. **B024's closing sentence ("Both headers hold a no-grow allowlist
   entry that each K unit ratchets down") is superseded by this entry** — M00
   struck nothing per its contract; whoever closes B024 should drop it.

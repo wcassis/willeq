@@ -7,7 +7,7 @@
 // intent, or UpdateLootState() -- the T26 game-tick) and asserts the exact
 // packet sequence: OP_LootRequest to open, one OP_LootItem per taken item,
 // OP_EndLootRequest to close. Timers are backdated with the T17
-// #define-private-public technique test_combat_manager.cpp established, so
+// #define-private-public technique combat_manager_test_fixture.h established, so
 // nothing sleeps.
 //
 // Loot-window population uses the same production path the server does:

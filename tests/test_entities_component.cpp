@@ -10,7 +10,7 @@
 // plumbing (construction, ClientContext binding) and a couple of ported
 // cases that exercise the component's public surface directly; the deep
 // ZoneProcess* coverage (real captures, wire-offset pins) stays in
-// test_zone_entities.cpp / test_zone_connection_flow.cpp, whose call sites
+// test_zone_entities.cpp / test_zone_connection_flow_*.cpp, whose call sites
 // route through DispatchZonePacket -> m_entities_component-> unchanged.
 
 #include <gtest/gtest.h>
