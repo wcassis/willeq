@@ -148,7 +148,7 @@ TEST(MovementWaterStateGuard, SwimmingEventCarriesNoSurfaceHeight) {
     // The field list itself, read from the header rather than guessed from
     // sizeof() (which padding makes a lie): exactly three members, none of
     // them a height.
-    const std::string bus = ReadRepoFile("include/client/state/event_bus.h");
+    const std::string bus = ReadRepoFile("include/client/state/event_payloads_spell.h");
     const size_t at = bus.find("struct SwimmingStateChangedData {");
     ASSERT_NE(at, std::string::npos) << "payload struct renamed -- guard is vacuous";
     const size_t end = bus.find("};", at);

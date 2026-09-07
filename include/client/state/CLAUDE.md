@@ -30,6 +30,26 @@ Central owner of all state modules:
 
 Thread-safe publish/subscribe system for game state changes.
 
+**T451 split the header** (it was 1,269 lines, riding the ceiling) into the
+enum, five payload families and an umbrella. `event_bus.h` still holds the
+`EventData` variant, `GameEvent` and `class EventBus`, and includes all six of
+the others, so **every existing include of
+`include/client/state/event_bus.h` compiles unchanged and it is still the one
+include a consumer needs**:
+
+| header | holds |
+|---|---|
+| `event_types.h` | `enum class GameEventType` -- the one enumerator list, and what `DocCounts` and `ReachabilitySweep` read |
+| `event_payloads_entity.h` | player, entity, door, zone |
+| `event_payloads_social.h` | chat, combat, group, time of day, pet, windows |
+| `event_payloads_inventory.h` | inventory, audio volumes, loot, trade |
+| `event_payloads_spell.h` | spells, buffs, skills, weather, zone lifecycle |
+| `event_payloads_ui.h` | UI, hotbar, spell visuals, diagnostics |
+
+A new event adds its enumerator to `event_types.h`, its payload struct to the
+family header it belongs to, and its variant alternative to `event_bus.h` --
+three files, none of which is the 1,269-line one this replaced.
+
 **101 event types** (`GameEventType`, re-counted 2026-09-07 by T439, which added `VolumesChanged`; T421 added `ItemDisplayShown` and T419 `TradeskillRecipeListCleared` / `TradeskillRecipeReceived`) organized by domain; `IrrlichtBridge` has a case for all 101 in its switch, `ConsoleBridge` logs a subset headless. **This number is netted by `DocCounts`** (`scripts/refactor/check_doc_counts.py`), so a new enumerator that leaves it stale is a red test, not a silent drift:
 - **Player**: PositionChanged, StatsChanged, MovementModeChanged, LevelChanged
 - **Entity**: EntitySpawned, EntityDespawned, EntityMoved, EntityAppearanceChanged, EntityAnimation

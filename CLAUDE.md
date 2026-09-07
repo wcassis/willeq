@@ -51,10 +51,18 @@ Additional context is in subdirectory CLAUDE.md files:
   `docs/decisions.md` 2026-09-04; T385 added the last two directories, board
   B167 — `--all` had never scanned `tools/`, and six files there were over the
   ceiling while the checker reported a clean tree). **The tree is clean and
-  `FileSizeCeiling` is GREEN** (T447 re-measured: `check_file_sizes.sh --all`
-  reports 1,162 files, 0 warn, 0 fail; 1,129 at T444). T447 split the last
+  `FileSizeCeiling` is GREEN** (T451 re-measured: `check_file_sizes.sh --all`
+  reports 1,181 files, 0 warn, 0 fail; 1,162 at T447, 1,129 at T444). T447 split the last
   three tools riding the ceiling — `willeq_db_builder`, `wld_dump` and
-  `gles2_shader_perpixel_benchmark` — see `docs/module_map.md`'s tools table. T387 finished what T385 started and
+  `gles2_shader_perpixel_benchmark` — see `docs/module_map.md`'s tools table.
+  T451 split the next four riding it: `s3d_loader.cpp` (1,336) into five TUs,
+  `animated_mesh_scene_node.cpp` (1,287) into four plus a seam header,
+  `tools/zone_line_editor.cpp` (1,303) into four plus a seam header, and
+  `include/client/state/event_bus.h` (1,269) into the `GameEventType` enum
+  (`include/client/state/event_types.h`, which is what `DocCounts` and
+  `ReachabilitySweep` now read), five `event_payloads_*.h` family headers and
+  an umbrella `event_bus.h` that includes them all — so no include site
+  changed. All thirteen resulting TUs are under 550 lines. T387 finished what T385 started and
   board **B185** is struck: `tools/hwcaps/zone_bench_loader.cpp` is 977 lines
   and `tools/hwcaps/gles2_zone_benchmark.cpp` 992, not the 3,280 and 3,060
   earlier revisions of this paragraph reported. Put

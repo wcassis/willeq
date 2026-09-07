@@ -55,6 +55,10 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_light.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_bsp.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/s3d_loader.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/s3d_loader_textures.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/s3d_loader_objects.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/s3d_loader_characters.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/s3d_loader_skinning.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/zone_geometry.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/zone_geometry_atlased.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/dds_decoder.cpp

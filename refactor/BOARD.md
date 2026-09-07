@@ -1008,7 +1008,7 @@ it without taking that measurement first.
   occurrences tree-wide (its declaration, the local `waterSurfaceZ` that fed it,
   that local's one assignment in `UpdateWaterState()`'s OnSurface arm, and the
   store) and zero readers. `pushEvent` checked first, as the entry asked:
-  `SwimmingStateChangedData` (`include/client/state/event_bus.h:702`) carries
+  `SwimmingStateChangedData` (`include/client/state/event_payloads_spell.h:113`) carries
   `{isSwimming, swimSpeed, isLevitating}` and no height, so the value reached no
   consumer by that route either. Member, local and store deleted; the OnSurface
   arm keeps a comment saying add a reader before adding the estimate back.
@@ -7963,3 +7963,22 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   and are public. Closes when a lane exercises detail with a metric that
   would move: a detail column in the gate CSV plus a benchmark pose that
   builds chunks, or a separate detail benchmark. Found by T445.
+## Added 2026-09-07 by T451 (the loader/editor splits)
+
+- **B468** (B) `tools/zone_line_editor.cpp`, `tools/zone_line_editor/` -- **the
+  zone line editor's SAVE path cannot be exercised without a human at a
+  keyboard, so it has no regression net of any kind.** `saveZoneLineData()` is
+  reachable only from `handleInput()`'s Ctrl+S arm, and the editor takes input
+  through the patched Irrlicht device's **evdev** reader, not X11 events -- a
+  run under Xvfb prints `evdev: No keyboard found` and `xdotool` cannot reach
+  it. T451 proved the LOAD path byte-identical across its split by diffing the
+  tool's whole stdout on three real zones (befallen, qeynos2, gfaydark) before
+  and after, and had to fall back to the structural proof (a verbatim
+  contiguous move, shown by a line-multiset diff) for the save path alone. The
+  same gap covers every edit operation: nothing in ctest constructs a
+  `ZoneLineEditor`. Closes when the tool grows a non-interactive entry point --
+  a `--load-and-save <zone>` that runs `loadZoneLineData()` then
+  `saveZoneLineData()` and exits would make the round trip a one-line ctest
+  fixture, and would also answer whether the round trip is byte-stable at all
+  (it reads the file it is about to overwrite, so it may not be). Found by
+  T451.

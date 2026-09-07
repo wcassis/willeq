@@ -488,6 +488,10 @@ IF(EQT_GRAPHICS)
         src/client/bridge/irrlicht_bridge.cpp
         # EQ file loaders (pfs.cpp/wld_loader.cpp moved to CLIENT_CORE_SOURCES — P28, see there)
         src/client/graphics/eq/s3d_loader.cpp
+        src/client/graphics/eq/s3d_loader_textures.cpp
+        src/client/graphics/eq/s3d_loader_objects.cpp
+        src/client/graphics/eq/s3d_loader_characters.cpp
+        src/client/graphics/eq/s3d_loader_skinning.cpp
         src/client/graphics/eq/sky_loader.cpp
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/eq/zone_geometry.cpp
@@ -508,6 +512,9 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/variant_loading_preload.cpp
         src/client/graphics/eq/skeletal_animator.cpp
         src/client/graphics/eq/animated_mesh_scene_node.cpp
+        src/client/graphics/eq/animated_mesh.cpp
+        src/client/graphics/eq/animated_mesh_skinning.cpp
+        src/client/graphics/eq/animated_mesh_bones.cpp
         src/client/graphics/eq/animated_mesh_eye.cpp
         src/client/graphics/first_person_eye.cpp
         src/client/graphics/renderer/irrlicht_renderer.cpp
@@ -932,6 +939,10 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         src/client/graphics/eq/wld_fragments_bsp.cpp
         src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
+        src/client/graphics/eq/s3d_loader_textures.cpp
+        src/client/graphics/eq/s3d_loader_objects.cpp
+        src/client/graphics/eq/s3d_loader_characters.cpp
+        src/client/graphics/eq/s3d_loader_skinning.cpp
         src/client/graphics/eq/zone_geometry.cpp
         src/client/graphics/eq/zone_geometry_atlased.cpp
         src/client/graphics/eq/dds_decoder.cpp
@@ -958,6 +969,9 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         src/client/graphics/eq/variant_loading_preload.cpp
         src/client/graphics/eq/skeletal_animator.cpp
         src/client/graphics/eq/animated_mesh_scene_node.cpp
+        src/client/graphics/eq/animated_mesh.cpp
+        src/client/graphics/eq/animated_mesh_skinning.cpp
+        src/client/graphics/eq/animated_mesh_bones.cpp
         src/client/graphics/eq/animated_mesh_eye.cpp
         src/client/graphics/first_person_eye.cpp
         src/client/graphics/graphics_archive_index.cpp
@@ -1082,6 +1096,10 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/wld_fragments_bsp.cpp
         src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
+        src/client/graphics/eq/s3d_loader_textures.cpp
+        src/client/graphics/eq/s3d_loader_objects.cpp
+        src/client/graphics/eq/s3d_loader_characters.cpp
+        src/client/graphics/eq/s3d_loader_skinning.cpp
         src/client/graphics/eq/zone_geometry.cpp
         src/client/graphics/eq/zone_geometry_atlased.cpp
         src/client/graphics/eq/dds_decoder.cpp
@@ -1150,6 +1168,10 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/wld_fragments_bsp.cpp
         src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
+        src/client/graphics/eq/s3d_loader_textures.cpp
+        src/client/graphics/eq/s3d_loader_objects.cpp
+        src/client/graphics/eq/s3d_loader_characters.cpp
+        src/client/graphics/eq/s3d_loader_skinning.cpp
         src/client/graphics/eq/zone_geometry.cpp
         src/client/graphics/eq/zone_geometry_atlased.cpp
         src/client/graphics/eq/dds_decoder.cpp
@@ -1344,6 +1366,10 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/wld_fragments_bsp.cpp
         src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
+        src/client/graphics/eq/s3d_loader_textures.cpp
+        src/client/graphics/eq/s3d_loader_objects.cpp
+        src/client/graphics/eq/s3d_loader_characters.cpp
+        src/client/graphics/eq/s3d_loader_skinning.cpp
         src/client/graphics/eq/zone_geometry.cpp
         src/client/graphics/eq/zone_geometry_atlased.cpp
         src/client/graphics/eq/dds_decoder.cpp
@@ -1398,6 +1424,9 @@ IF(EQT_GRAPHICS)
     # Zone Line Editor tool (2D editor for marking zone line boundaries)
     ADD_EXECUTABLE(zone_line_editor
         tools/zone_line_editor.cpp
+        tools/zone_line_editor/zle_io.cpp
+        tools/zone_line_editor/zle_input.cpp
+        tools/zone_line_editor/zle_render.cpp
         src/client/graphics/eq/pfs.cpp
         src/client/graphics/eq/wld_loader.cpp
         src/client/graphics/eq/wld_fragments_material.cpp
@@ -1408,6 +1437,10 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/wld_fragments_bsp.cpp
         src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
+        src/client/graphics/eq/s3d_loader_textures.cpp
+        src/client/graphics/eq/s3d_loader_objects.cpp
+        src/client/graphics/eq/s3d_loader_characters.cpp
+        src/client/graphics/eq/s3d_loader_skinning.cpp
         src/client/graphics/eq/zone_geometry.cpp
         src/client/graphics/eq/zone_geometry_atlased.cpp
         src/client/graphics/eq/dds_decoder.cpp
@@ -1435,6 +1468,7 @@ IF(EQT_GRAPHICS)
     TARGET_INCLUDE_DIRECTORIES(zone_line_editor PRIVATE
         ${CMAKE_SOURCE_DIR}/include
         ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/tools
         ${ZLIB_INCLUDE_DIRS}
         ${IRRLICHT_INCLUDE_DIR}
         ${JSONCPP_INCLUDE_DIRS}
@@ -1939,6 +1973,10 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/wld_fragments_light.cpp
         src/client/graphics/eq/wld_fragments_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
+        src/client/graphics/eq/s3d_loader_textures.cpp
+        src/client/graphics/eq/s3d_loader_objects.cpp
+        src/client/graphics/eq/s3d_loader_characters.cpp
+        src/client/graphics/eq/s3d_loader_skinning.cpp
         src/client/graphics/eq/zone_geometry.cpp
         src/client/graphics/eq/zone_geometry_atlased.cpp
         src/client/graphics/eq/dds_decoder.cpp
@@ -1974,6 +2012,9 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/animation_mapping.cpp
         src/client/graphics/eq/animated_mesh_creation.cpp
         src/client/graphics/eq/animated_mesh_scene_node.cpp
+        src/client/graphics/eq/animated_mesh.cpp
+        src/client/graphics/eq/animated_mesh_skinning.cpp
+        src/client/graphics/eq/animated_mesh_bones.cpp
         src/client/graphics/eq/animated_mesh_eye.cpp
         src/client/graphics/first_person_eye.cpp
         src/client/graphics/eq/skeletal_animator.cpp
@@ -2075,6 +2116,10 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/wld_fragments_light.cpp
         src/client/graphics/eq/wld_fragments_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
+        src/client/graphics/eq/s3d_loader_textures.cpp
+        src/client/graphics/eq/s3d_loader_objects.cpp
+        src/client/graphics/eq/s3d_loader_characters.cpp
+        src/client/graphics/eq/s3d_loader_skinning.cpp
         src/client/graphics/eq/zone_geometry.cpp
         src/client/graphics/eq/zone_geometry_atlased.cpp
         src/client/graphics/eq/dds_decoder.cpp
@@ -2110,6 +2155,9 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/animation_mapping.cpp
         src/client/graphics/eq/animated_mesh_creation.cpp
         src/client/graphics/eq/animated_mesh_scene_node.cpp
+        src/client/graphics/eq/animated_mesh.cpp
+        src/client/graphics/eq/animated_mesh_skinning.cpp
+        src/client/graphics/eq/animated_mesh_bones.cpp
         src/client/graphics/eq/animated_mesh_eye.cpp
         src/client/graphics/first_person_eye.cpp
         src/client/graphics/eq/skeletal_animator.cpp
@@ -2173,6 +2221,10 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/wld_fragments_light.cpp
         src/client/graphics/eq/wld_fragments_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
+        src/client/graphics/eq/s3d_loader_textures.cpp
+        src/client/graphics/eq/s3d_loader_objects.cpp
+        src/client/graphics/eq/s3d_loader_characters.cpp
+        src/client/graphics/eq/s3d_loader_skinning.cpp
         src/client/graphics/eq/zone_geometry.cpp
         src/client/graphics/eq/zone_geometry_atlased.cpp
         src/client/graphics/eq/dds_decoder.cpp
@@ -2208,6 +2260,9 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/animation_mapping.cpp
         src/client/graphics/eq/animated_mesh_creation.cpp
         src/client/graphics/eq/animated_mesh_scene_node.cpp
+        src/client/graphics/eq/animated_mesh.cpp
+        src/client/graphics/eq/animated_mesh_skinning.cpp
+        src/client/graphics/eq/animated_mesh_bones.cpp
         src/client/graphics/eq/animated_mesh_eye.cpp
         src/client/graphics/first_person_eye.cpp
         src/client/graphics/eq/skeletal_animator.cpp

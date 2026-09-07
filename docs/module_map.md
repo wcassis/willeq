@@ -20,7 +20,7 @@ and `FileSizeCeiling` is GREEN**: T387 closed board **B185**, so
 `tools/hwcaps/zone_bench_loader.cpp` is 977 lines and
 `tools/hwcaps/gles2_zone_benchmark.cpp` 992, not the 3,280 and 3,060 earlier
 revisions of this paragraph reported, and `check_file_sizes.sh --all` reads
-1,162 files / 0 warn / 0 fail (re-measured T447; 1,129 at T444). Run
+1,181 files / 0 warn / 0 fail (re-measured T451; 1,162 at T447, 1,129 at T444). Run
 the checker, do not quote this paragraph. The pre-split cluster analysis this map replaced is preserved in git
 history (docs/module_map.md @ commit a0c02cd..93a3c2a era) and in each unit's
 review section under `refactor/F*.md` and `refactor/J*.md`.
@@ -349,6 +349,33 @@ retired by P30/P32 and no supported build parsed it.
 | wld_fragments_material.cpp | 159 | 0x03/0x04/0x05 texture, 0x30/0x31 material |
 | wld_internal.h | 18 | J05 private header shared by the seven TUs |
 
+## S3D loader — S3DLoader (`include/client/graphics/eq/s3d_loader.h`) — split by T451
+
+The `.s3d` archive front end: what a zone's archive set contains and how it
+becomes geometry, textures, characters and lights. One class, five TUs; the
+class header is unchanged, so no include site moved.
+
+| TU | Lines | Contents |
+|---|---|---|
+| s3d_loader.cpp | 228 | The static empties, both `loadZone` overloads, `loadZoneFromPreParsed`, `extractZoneName`, `loadLights` / `loadLightsFromArchive` |
+| s3d_loader_characters.cpp | 436 | `loadCharacters`, `flattenSkeleton`, `deriveChrArchivePath` (the `_chr` archive and its skeletons) |
+| s3d_loader_skinning.cpp | 407 | The file-local `Mat4`, `applySkinning`, `buildAnimatedSkeleton` |
+| s3d_loader_objects.cpp | 237 | `loadObjects` — the `_obj` archive's placeable geometry and instances |
+| s3d_loader_textures.cpp | 127 | `loadTextures`, `loadObjectTextures`, `loadCharacterTextures` |
+
+## Animated character mesh — EQAnimatedMesh / EQAnimatedMeshSceneNode — split by T451
+
+`include/client/graphics/eq/animated_mesh_scene_node.h` is unchanged; the one
+new header is the seam.
+
+| TU | Lines | Contents |
+|---|---|---|
+| animated_mesh_scene_node.cpp | 546 | `EQAnimatedMeshSceneNode`: construction, `createInstanceMesh`, `applyAnimation`, `OnRegisterSceneNode`, `render`, materials, `OnAnimate`, the frame/loop API, `setMesh`, the MD2/joint stubs |
+| animated_mesh_skinning.cpp | 375 | `applyBoneTransformsToMeshImpl` — the CPU skinning kernel — and the SIMD normal helper it uses (still file-local) |
+| animated_mesh.cpp | 232 | `EQAnimatedMesh`: the `IAnimatedMesh` holding the skeleton, base mesh, vertex pieces and mapping |
+| animated_mesh_bones.cpp | 209 | `getBoneWorldPosition` / `getBoneWorldDirection`, `getBoneIndexByName`, `findRightHandBoneIndex` / `findLeftHandBoneIndex` |
+| `include/client/graphics/eq/animated_mesh_skinning.h` | 26 | Seam: the kernel was a file-static and its two callers are now in different TUs |
+
 ## Race model / variant loader — RaceModelLoader (`include/client/graphics/eq/race_model_loader.h`)
 
 Character model loading from S3D archives. `variant_loading.cpp` resolves a
@@ -387,6 +414,7 @@ one file per tool.
 | `willeq_db_builder` (T447) | `tools/willeq_db/db_builder.h` | `willeq_db_builder.cpp` (helpers, metadata, main) + `tools/willeq_db/db_loaders_text.cpp` (the client's `*.txt`) + `tools/willeq_db/db_loaders_json.cpp` (the WillEQ/config `*.json`) |
 | `wld_dump` (T447) | `tools/wld_dump/wld_dump.h` | `wld_dump.cpp` (archive I/O + main) + `tools/wld_dump/wld_dump_core.cpp` (header, string table, fragment index) + `wld_dump_geometry.cpp` (0x10/0x36/lights) + `wld_dump_animation.cpp` (0x12–0x2D + hex fallback) |
 | `gles2_shader_perpixel_benchmark` (T447) | `tools/hwcaps/shader_perpixel/shader_perpixel.h` | benchmark (runner + main) + `shader_perpixel_egl.cpp` + `shader_perpixel_shaders.cpp` (13 GLSL ES sources) + `shader_perpixel_scene.cpp` |
+| `zone_line_editor` (T451) | `tools/zone_line_editor/zone_line_editor.h` | `zone_line_editor.cpp` (lifecycle + `main`) + `tools/zone_line_editor/zle_io.cpp` (zone geometry, portal data, zone-line JSON) + `zle_input.cpp` (the key/mouse edit operations and the view transforms) + `zle_render.cpp` (the 2D draw passes and the HUD) |
 
 Each of those targets carries `${CMAKE_SOURCE_DIR}/tools` on its include path,
 so the seam header is reached as `"<tool>/<header>.h"`.
