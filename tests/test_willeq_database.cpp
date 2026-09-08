@@ -641,14 +641,13 @@ TEST(WilleqDatabaseShippedContent, EveryTableTheClientQueriesExists) {
 // builder that grows a table no query names is a red test, and a query that
 // names a table the builder does not create is the test above.
 //
-// THE ONE EXEMPTION, and it is a board item, not a waiver of principle:
-// `equipment_models` (1,000 rows) is dead by the same measurement --
-// WilleqDatabase names it in no SQL, and EquipmentModelLoader builds its own
-// model index live from the 17 *equip*.s3d archives, exactly as it does the
-// textures. It is left in place because it was outside T454's contract, and
-// dropping a shipped table needs the "does it resolve by another route"
-// check B468 taught, done deliberately rather than as a side effect. Board
-// B476: drop it, or write the consumer.
+// T456 (board B476 CLOSED) EMPTIED THE EXEMPTION LIST. `equipment_models`
+// (1,000 rows) was the one entry, dead by the same measurement, and T456 made
+// the deliberate B468 check for it -- EquipmentModelLoader::buildEquipmentIndex()
+// fills equipmentModelIndex_ live from the 17 *equip*.s3d archives and
+// getModelRef() is what EntityPrepWorker::prepEquipmentModels() asks -- then
+// dropped the writer and rebuilt + re-pinned the database. kUnreadButShipped
+// is now empty, and an addition to it needs a board item and a written reason.
 // ---------------------------------------------------------------------------
 TEST(WilleqDatabaseShippedContent, EveryTableTheDatabaseShipsIsOneTheClientQueries) {
     const std::string dbPath = WILLEQ_DB_REAL_PATH;
@@ -664,7 +663,7 @@ TEST(WilleqDatabaseShippedContent, EveryTableTheDatabaseShipsIsOneTheClientQueri
     ASSERT_GE(named.size(), 8u) << "the census found almost nothing -- it is broken, not clean";
 
     // Known-dead, boarded. Adding a name here needs a board item and a reason.
-    const std::vector<std::string> kUnreadButShipped = {"equipment_models"};
+    const std::vector<std::string> kUnreadButShipped = {};
     // sqlite's own ANALYZE output; not a data table.
     const std::vector<std::string> kSqliteInternal = {"sqlite_stat1"};
 
@@ -708,7 +707,12 @@ TEST(WilleqDatabaseShippedContent, EveryTableTheDatabaseShipsIsOneTheClientQueri
                " it to kUnreadButShipped with a board item and a reason.";
     }
 
-    // The positive control: equipment_textures WAS here, and is gone.
+    // The positive controls: both equipment tables WERE here, and are gone.
     EXPECT_FALSE(contains(shipped, "equipment_textures"))
         << "T454 dropped equipment_textures; it is back in the shipped file";
+    EXPECT_FALSE(contains(shipped, "equipment_models"))
+        << "T456 dropped equipment_models; it is back in the shipped file";
+    // And the exemption list is empty: every shipped table has a reader.
+    EXPECT_TRUE(kUnreadButShipped.empty())
+        << "an exemption was re-added -- it needs a board item and a reason";
 }

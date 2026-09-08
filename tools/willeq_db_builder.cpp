@@ -15,7 +15,7 @@
 //   item_models     - Item ID to model ID mapping
 //   race_models     - Race ID to model code + S3D file
 //   sound_assets    - Sound file references from SoundAssets.txt
-//   animation_sounds, music_files, login_strings, equipment_models, metadata
+//   animation_sounds, music_files, login_strings, metadata
 //
 // T450: this list used to name a `zone_points` table as well. There is no
 // such loader and no such table -- zone lines ship as data/zone_lines/*.json,
@@ -28,7 +28,7 @@
 // (RaceModelLoader::getArmorTexture) had been querying a missing table since
 // 2026-03-21. The loader, the flag and tools/s3d_index_builder are gone; the
 // armor archive is derived from the texture name instead. This tool builds
-// ELEVEN tables plus metadata, and every one of them ships.
+// TEN tables (nine plus metadata), and every one of them ships.
 //
 // T447 split this TU three ways; the loaders live beside it and the seam is
 // tools/willeq_db/db_builder.h:
@@ -36,15 +36,20 @@
 //   tools/willeq_db/db_loaders_json.cpp  the WillEQ/config *.json inputs
 // What stayed here is the four shared helpers, the metadata table and main().
 //
-// T454 (board B474 CLOSED): and an ELEVENTH is gone -- `equipment_textures`,
-// 2,623 rows naming which of the 17 *equip*.s3d archives holds each held-item
-// texture, written by loadEquipmentModels() and read by NOTHING. Unlike
-// B468's s3d_assets this was not a broken route but a redundant one: the
-// equipment texture path resolves LIVE, through
-// EquipmentModelLoader::buildEquipmentIndex(), which indexes those same 17
-// archives into textureIndex_ at zone load, and getTextureRef() is what the
-// mesh build asks. Dropping the table takes total_entries from 32,414 to
-// 29,791 and the shipped file from twelve tables to eleven.
+// T454 (board B474 CLOSED) and T456 (board B476 CLOSED): the whole
+// equipment loader is gone, and with it BOTH tables it wrote.
+// `equipment_textures` (2,623 rows naming which of the 17 *equip*.s3d
+// archives holds each held-item texture) went in T454; `equipment_models`
+// (1,000 rows: model_id -> archive / wld / actor / textures) in T456. Neither
+// was ever read by anything. Unlike B468's s3d_assets neither was a BROKEN
+// route -- both were redundant ones, and the B468 check was made deliberately
+// for each: EquipmentModelLoader::buildEquipmentIndex() indexes those same 17
+// archives LIVE at zone load into equipmentModelIndex_ and textureIndex_, and
+// getModelRef() / getTextureRef() are what EntityPrepWorker and the mesh
+// build ask. Dropping both takes total_entries from 32,414 to 28,791 and the
+// shipped file from twelve tables to ten. data/equipment_models.json and
+// tools/equipment_index_builder still exist and now feed nothing -- boarded,
+// not swept along.
 
 #include <algorithm>
 #include <cstdint>
@@ -265,7 +270,6 @@ int main(int argc, char** argv) {
         {"eqstrings",        eqPath + "/eqstr_us.txt"},
         {"dbstrings",        eqPath + "/dbstr_us.txt"},
         {"item_models",      dataPath + "/item_models.json"},
-        {"equipment_models", dataPath + "/equipment_models.json"},
         {"race_models",      configPath + "/race_models.json"},
         {"sound_assets",     eqPath + "/SoundAssets.txt"},
         {"animation_sounds", eqPath + "/AnimationSounds.txt"},
@@ -343,16 +347,6 @@ int main(int argc, char** argv) {
         auto elapsed = std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - start).count();
         printf("  item_models:  %6d entries (%.0f ms)\n", n, elapsed);
-        totalEntries += n;
-    }
-
-    // ── Equipment Models ──
-    {
-        auto start = std::chrono::steady_clock::now();
-        int n = loadEquipmentModels(db, inputPath("equipment_models"));
-        auto elapsed = std::chrono::duration<double, std::milli>(
-            std::chrono::steady_clock::now() - start).count();
-        printf("  equip_models: %6d entries (%.0f ms)\n", n, elapsed);
         totalEntries += n;
     }
 

@@ -17,13 +17,16 @@
 #   from the EQ client tree  spells_us.txt, eqstr_us.txt, dbstr_us.txt,
 #                            SoundAssets.txt, AnimationSounds.txt,
 #                            mp3index.txt, eqlsstr_us.txt
-#   from data/               item_models.json, equipment_models.json
+#   from data/               item_models.json
 #   from config/             race_models.json
-# T452 (board B468): there is no longer an eleventh, optional --s3d-index
-# input to leave out. It built an `s3d_assets` table that never shipped, and
-# its only reachable consumer had been querying a table that did not exist
-# since 2026-03-21. The flag, the loader and tools/s3d_index_builder are gone,
-# so the ten inputs above are ALL of them.
+# T452 (board B468): there is no longer an optional --s3d-index input to leave
+# out. It built an `s3d_assets` table that never shipped, and its only
+# reachable consumer had been querying a table that did not exist since
+# 2026-03-21. The flag, the loader and tools/s3d_index_builder are gone.
+# T456 (board B476) removed a tenth, data/equipment_models.json: the table it
+# fed, `equipment_models`, had no reader either (the model index resolves live
+# through EquipmentModelLoader::buildEquipmentIndex()). So the NINE inputs
+# above are ALL of them, and metadata.input_digest moved when the tenth went.
 #
 # Usage:
 #   scripts/build_willeq_db.sh [--check] [--bin-dir DIR] [--eq-path DIR]
@@ -109,12 +112,12 @@ if [ ! -x "$BIN_DIR/willeq_db_builder" ]; then
     exit 3
 fi
 
-# The client's *.txt files are seven of the eleven inputs. A missing tree is
+# The client's *.txt files are seven of the nine inputs. A missing tree is
 # not a degraded build -- it is a database with seven empty tables, which
 # would silently replace a good one -- so refuse rather than build it.
 if [ ! -r "$EQ_PATH/spells_us.txt" ]; then
     echo "ERROR: $EQ_PATH/spells_us.txt is not readable." >&2
-    echo "       Seven of the eleven inputs come out of the EQ client tree;" >&2
+    echo "       Seven of the nine inputs come out of the EQ client tree;" >&2
     echo "       building without it would ship empty spells/strings/sound" >&2
     echo "       tables. Point --eq-path at the client directory." >&2
     exit 3
@@ -173,8 +176,8 @@ if [ "$CHECK_ONLY" -eq 1 ]; then
     elif [ "$BUILT_SHA" != "$PINNED_SHA" ]; then
         echo "FAIL: rebuild does not match the pinned sha256." >&2
         echo "      Either an input changed (the client *.txt files," >&2
-        echo "      data/item_models.json, data/equipment_models.json," >&2
-        echo "      config/race_models.json) or willeq_db_builder did." >&2
+        echo "      data/item_models.json, config/race_models.json) or" >&2
+        echo "      willeq_db_builder did." >&2
         echo "      If that was deliberate, rerun this script without --check" >&2
         echo "      to reinstall data/willeq.db and update $SHA_FILE in the" >&2
         echo "      SAME commit. If it was NOT, the builder has become" >&2

@@ -8313,7 +8313,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
 
 ### Added by T454 (2026-09-07)
 
-- **B476** (B, hygiene) `tools/willeq_db/db_loaders_json.cpp`
+- ~~**B476** (B, hygiene) `tools/willeq_db/db_loaders_json.cpp`
   `loadEquipmentModels()` -- **the `equipment_models` table is the SAME finding
   as B474 and is still shipping.** 1,000 rows (model_id -> archive / wld /
   actor / textures) in `data/willeq.db`, and `src/client/willeq_database.cpp`
@@ -8329,9 +8329,26 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   in `EveryTableTheDatabaseShipsIsOneTheClientQueries`'s `kUnreadButShipped`
   list, so it cannot be forgotten. Closes when the table is dropped and the
   database rebuilt + re-pinned under T450's recipe (the exemption comes out of
-  the test with it), or a consumer is written. Found by T454.
+  the test with it), or a consumer is written. Found by T454.~~ **CLOSED by T456 (2026-09-08).** The B468 check was made deliberately and the model route is HEALTHY, not broken:
+  `EquipmentModelLoader::buildEquipmentIndex()`
+  (`src/client/graphics/eq/equipment_model_loader.cpp:180`) fills
+  `equipmentModelIndex_` live from the 17 `*equip*.s3d` archives and
+  `getModelRef()` (:972) is what `EntityPrepWorker::prepEquipmentModels()`
+  (`src/client/graphics/entity_prep_worker.cpp:406`) asks -- redundant, not
+  load-bearing. The whole `loadEquipmentModels()` loader, its `CREATE TABLE`,
+  its prepared statement and its input entry are gone, and the database was
+  rebuilt + re-pinned under T450's recipe in ONE commit. Row diff is the table
+  and nothing else: 1,000 `equipment_models` rows + its schema + its
+  `sqlite_stat1` line out, `metadata.total_entries` 29,791 -> **28,791**,
+  eleven tables -> **ten**, `metadata.version` still 7 and NOT touched.
+  `metadata.input_digest` DID move (`c39f5cfbb75e5744` ->
+  `956f69a5686c98bb`) and correctly so -- unlike T454, which changed only the
+  loader, T456 removed `data/equipment_models.json` from the INPUT SET, taking
+  the builder from ten inputs to nine. `kUnreadButShipped` in
+  `EveryTableTheDatabaseShipsIsOneTheClientQueries` is now EMPTY and the test
+  asserts that it is.
 
-- **B477** (B) `tests/test_corpse_death_pose.cpp` -- **the ASYNC entity build
+- ~~**B477** (B) `tests/test_corpse_death_pose.cpp` -- **the ASYNC entity build
   path's copy of the corpse death-pose ladder is still unmeasured.**
   `src/client/graphics/entity_build_step.cpp:420-438` holds a second, textually
   duplicated copy of the d05/d02/d01 + `setToLastFrame()` block that
@@ -8342,9 +8359,26 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   async copy is asserted by nothing. Two copies of a pose rule, one tested.
   Closes when the async path is driven to `Built` in the same test and
   asserted, or the two copies are merged into one helper both call. Found by
-  T454.
+  T454.~~ **CLOSED by T456 (2026-09-08), BOTH ways.** The two copies are merged into one
+  function -- `ApplyCorpseDeathPose()`
+  (`include/client/graphics/corpse_death_pose.h`,
+  `src/client/graphics/corpse_death_pose.cpp`) -- which both
+  `entity_mesh_build.cpp` and `entity_build_step.cpp`'s MeshFinalize phase now
+  call; AND the async path is driven to `Built` and asserted in
+  `tests/test_corpse_death_pose.cpp`
+  (`CorpsePoseTest.TheAsyncBuildPathHoldsTheSameDeathPose`, plus
+  `BothBuildPathsLandOnTheSameFrame`). The reason T454 could not reach it: the
+  selection gates at the top of `processOneEntityBuildStep()` reject an entity
+  whose `cachedBspRegion` is unset and whose background prep never ran, and
+  neither is settable from outside. The lever that works is the player-entity
+  priority (`setPlayerSpawnId()`), which bypasses those gates for one step;
+  after that the entity is 'in progress' and needs no gate. The Placeholder
+  phase also returns immediately unless the race model is already cached, so
+  the test calls `preloadModelData()` -- the same call the prep worker makes.
+  These assertions are a PRESERVATION pin: the duplicate was already correct,
+  and it passed pre-merge as well as post-merge. Found by T454.
 
-- **B478** (B) corpse recognition is derived FIVE times from the same two
+- ~~**B478** (B) corpse recognition is derived FIVE times from the same two
   fields and the copies disagree. The canonical predicate is
   `IsCorpseByFields()` (`src/client/corpse_predicate.cpp:75`: flag OR npc_type
   2/3 OR one of three name forms WITH a trailing id), but
@@ -8359,7 +8393,26 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   `/mnt/projects/akk-stack/code/zone/corpse.cpp:1809`), so this is hygiene,
   not a live defect -- but the loose name check would classify a live NPC
   literally named "a corpse beetle" as a corpse and freeze it in a death pose.
-  Closes when the three inline copies call `IsCorpseByFields()`. Found by T454.
+  Closes when the three inline copies call `IsCorpseByFields()`. Found by T454.~~ **CLOSED by T456 (2026-09-08), and the census here UNDERCOUNTED.** There were
+  not five derivations but EIGHT -- the canonical `IsCorpseByFields()` plus
+  SEVEN copies. The four this entry names, and three it missed, all found by
+  the new source census:
+  * `src/client/combat_hunting.cpp:251` `IsTargetSuitableForHunt()` --
+    `name.find("'s corpse")`, and doubly wrong: that is only the PLAYER-corpse
+    spelling, so every npc corpse (`a rat`s_corpse17`) passed through as a live
+    hunt target while a live "a corpse beetle" would not have;
+  * `src/client/combat_hunting.cpp:482` `ListHuntTargets()` -- same substring,
+    same two ways of being wrong;
+  * `src/client/combat.cpp:724` -- three chained substring tests, the last a
+    bare `find("corpse")`.
+  All seven now call `IsCorpseByFields()` (or `IsCorpseEntity()`, its Entity
+  overload). The net that keeps the eighth from appearing is
+  `CorpseRecognition.NoProductionSiteDerivesCorpsenessFromANameSubstring`
+  (`tests/test_corpse_death_pose.cpp`), a comment-filtered census over `src/`
+  and `include/`; it named all five offending FILES pre-fix and is green
+  post-fix. It carries ONE exemption, boarded as B479.
+  `CorpseRecognition.TheStateLayerAgreesWithTheOnePredicate` is the behaviour
+  half and was RED pre-fix. Found by T454.
 
 ---
 
@@ -8867,3 +8920,39 @@ because the Pi had no keyboard or mouse attached (B510).
   1 MB `SO_RCVBUFFORCE` never happens. Recipe: copy the binary to a local
   filesystem, `setcap cap_net_raw,cap_net_admin+ep` it, and run it with
   `WILLEQ_DATA_ROOT` and the working directory set to the slot.
+### Added by T456 (2026-09-08)
+
+- **B479** (B) `src/client/graphics/entity_renderer.cpp:370`
+  `EntityRenderer::markEntityAsCorpse()` -- **the client synthesises a corpse
+  display name that does not match the one the server uses.** It appends
+  `"'s corpse"` to the visual's name, with NO entity id, guarded by a
+  substring test for the same suffix. eqemu's `Corpse::CalcCorpseName`
+  (`/mnt/projects/akk-stack/code/zone/corpse.cpp:629`) always appends the
+  entity id -- `"<base>'s corpse<id>"` for a player, ``"<base>`s_corpse<id>"``
+  for an npc -- which is exactly what `MakeCorpseName()`
+  (`include/client/corpse_predicate.h`, T185) reproduces, digit-stripping and
+  all. So a corpse whose death this client witnessed carries a name a player
+  cannot reach by typing it, and one that arrives already named carries the
+  server's. The substring guard is the one exemption in T456's census net
+  (`CorpseRecognition.NoProductionSiteDerivesCorpsenessFromANameSubstring`),
+  because it asks a different question -- "does this display name already
+  carry the suffix" -- rather than deciding corpse-ness. Closes when the name
+  comes from `MakeCorpseName()` (the visual is keyed by spawn id, so the id is
+  in hand) and the exemption comes out of the test. **Wants an oracle check
+  first**: what the official client puts on the nameplate of a corpse it
+  watched die is measurable and has not been measured. Found by T456.
+
+- **B480** (B, hygiene) `data/equipment_models.json` (1.1 MB, tracked) and
+  `tools/equipment_index_builder` -- **an input and its builder that now feed
+  nothing.** T454 dropped `equipment_textures` and T456 dropped
+  `equipment_models`, so `loadEquipmentModels()` is gone and this JSON is no
+  longer read by any tool, script, test or client path (grep over `src/
+  include/ tests/ tools/ benchmarks/ docker/ scripts/`: the only remaining
+  hits are `tools/equipment_index_builder.cpp` writing it and two comments).
+  It is not a broken route -- the equipment model and texture indexes both
+  resolve LIVE from the 17 `*equip*.s3d` archives at zone load
+  (`EquipmentModelLoader::buildEquipmentIndex()`), which is why both tables
+  were droppable. T456 left the file and its builder in the tree deliberately:
+  dropping a shipped INPUT is a different question from dropping a shipped
+  TABLE, and B468's lesson is that each gets its own check. Closes when both
+  are deleted, or a consumer is written. Found by T456.

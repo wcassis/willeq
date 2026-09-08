@@ -3,7 +3,6 @@
 // tools/willeq_db_builder.cpp).
 //
 //   data/item_models.json      -> item_models
-//   data/equipment_models.json -> equipment_models
 //   config/race_models.json    -> race_models
 //
 // T452 (board B468): a fourth loader, loadS3dIndex() (s3d_index.json ->
@@ -11,17 +10,26 @@
 // --s3d-index, so the table was never in the shipped database, and its only
 // reachable consumer had been querying a table that did not exist.
 //
-// T454 (board B474): loadEquipmentModels() also wrote a second table,
-// equipment_textures -- 2,623 rows naming which of the 17 *equip*.s3d
-// archives holds each held-item texture. NOTHING in the client ever read it.
-// The equipment texture path does resolve, and by a different route entirely:
-// EquipmentModelLoader::buildEquipmentIndex() (src/client/graphics/eq/
-// equipment_model_loader.cpp) indexes those same 17 archives LIVE at zone
-// load into textureIndex_, and getTextureRef() is what the mesh build asks.
-// So this was the opposite of B468's failure -- not a broken route, a
-// redundant one -- and the table is gone. The JSON's "textures" section is
-// left alone: data/equipment_models.json is produced by
-// tools/equipment_index_builder and is not this file's to trim.
+// T454 (board B474) and T456 (board B476): loadEquipmentModels() is GONE, and
+// with it both tables it wrote. equipment_textures (2,623 rows naming which of
+// the 17 *equip*.s3d archives holds each held-item texture) went in T454;
+// equipment_models (1,000 rows: model_id -> archive / wld / actor / textures)
+// goes here. Neither was ever read: WilleqDatabase is the only sqlite consumer
+// in the tree and names neither table in any SQL.
+//
+// The B468 check was made deliberately for BOTH, and both routes are HEALTHY
+// rather than broken -- this was redundancy, not a dead route:
+// EquipmentModelLoader::buildEquipmentIndex()
+// (src/client/graphics/eq/equipment_model_loader.cpp:180) indexes those same
+// 17 archives LIVE at zone load, filling equipmentModelIndex_ AND
+// textureIndex_, and getModelRef() (:972) is what
+// EntityPrepWorker::prepEquipmentModels()
+// (src/client/graphics/entity_prep_worker.cpp:406) asks, exactly as
+// getTextureRef() is what the mesh build asks for the textures.
+//
+// data/equipment_models.json and tools/equipment_index_builder are left in the
+// tree: dropping them is a separate question from dropping the table, and it
+// is boarded rather than swept along.
 //
 // The parsers here are hand-rolled string scans, not a JSON library: the
 // builder links only sqlite3 and must stay dependency-free.
@@ -109,152 +117,6 @@ int loadItemModels(sqlite3* db, const std::string& filepath) {
     sqlite3_finalize(stmt);
     execSQL(db, "COMMIT");
     return count;
-}
-
-// ============================================================================
-// Equipment models loader (data/equipment_models.json)
-//
-// Writes equipment_models only. The file's "textures" section is NOT loaded --
-// see the T454/B474 note at the top of this file.
-// ============================================================================
-
-int loadEquipmentModels(sqlite3* db, const std::string& filepath) {
-    std::ifstream file(filepath);
-    if (!file.is_open()) {
-        fprintf(stderr, "WARNING: cannot open %s\n", filepath.c_str());
-        return 0;
-    }
-
-    execSQL(db, R"(
-        CREATE TABLE IF NOT EXISTS equipment_models (
-            model_id INTEGER PRIMARY KEY,
-            archive TEXT NOT NULL,
-            wld TEXT NOT NULL,
-            actor TEXT NOT NULL,
-            textures TEXT
-        )
-    )");
-
-    execSQL(db, "BEGIN TRANSACTION");
-
-    sqlite3_stmt* modelStmt;
-    sqlite3_prepare_v2(db,
-        "INSERT OR REPLACE INTO equipment_models (model_id, archive, wld, actor, textures) VALUES (?,?,?,?,?)",
-        -1, &modelStmt, nullptr);
-
-    // Parse JSON — format: {"models": {"id": {...}, ...}, "textures": {...} }.
-    // Only the "models" section is read; "textures" is deliberately skipped.
-    std::string content((std::istreambuf_iterator<char>(file)),
-                         std::istreambuf_iterator<char>());
-
-    int modelCount = 0;
-
-    // Helper: find matching closing brace/bracket from opening position
-    auto findMatchingClose = [&](size_t openPos, char open, char close) -> size_t {
-        int depth = 1;
-        size_t p = openPos + 1;
-        bool inString = false;
-        while (p < content.size() && depth > 0) {
-            char c = content[p];
-            if (c == '"' && (p == 0 || content[p-1] != '\\')) inString = !inString;
-            if (!inString) {
-                if (c == open) depth++;
-                else if (c == close) depth--;
-            }
-            p++;
-        }
-        return p;  // one past matching close
-    };
-
-    // Helper: extract string value from a small JSON object string
-    auto extractStr = [](const std::string& obj, const std::string& key) -> std::string {
-        size_t kp = obj.find("\"" + key + "\"");
-        if (kp == std::string::npos) return "";
-        kp = obj.find('"', kp + key.size() + 2);
-        if (kp == std::string::npos) return "";
-        kp++;
-        size_t ep = obj.find('"', kp);
-        if (ep == std::string::npos) return "";
-        return obj.substr(kp, ep - kp);
-    };
-
-    // Find "models" section and its brace-delimited extent
-    size_t modelsKey = content.find("\"models\"");
-    if (modelsKey == std::string::npos) {
-        fprintf(stderr, "WARNING: no 'models' section in %s\n", filepath.c_str());
-        sqlite3_finalize(modelStmt);
-        execSQL(db, "COMMIT");
-        return 0;
-    }
-
-    size_t modelsOpen = content.find('{', modelsKey + 8);
-    size_t modelsClose = findMatchingClose(modelsOpen, '{', '}');
-
-    // Parse each model entry within the models section
-    size_t pos = modelsOpen + 1;
-    while (pos < modelsClose - 1) {
-        // Find next quoted key (model ID)
-        pos = content.find('"', pos);
-        if (pos == std::string::npos || pos >= modelsClose - 1) break;
-        pos++;
-        size_t keyEnd = content.find('"', pos);
-        if (keyEnd == std::string::npos) break;
-        std::string modelIdStr = content.substr(pos, keyEnd - pos);
-        pos = keyEnd + 1;
-
-        // Must be all digits
-        bool isModelId = !modelIdStr.empty();
-        for (char c : modelIdStr) {
-            if (!isdigit(c)) { isModelId = false; break; }
-        }
-        if (!isModelId) continue;
-        int modelId = std::atoi(modelIdStr.c_str());
-        if (modelId <= 0) continue;
-
-        // Find and extract the model's object
-        size_t braceStart = content.find('{', pos);
-        if (braceStart == std::string::npos || braceStart >= modelsClose) break;
-        size_t braceEnd = findMatchingClose(braceStart, '{', '}');
-        std::string obj = content.substr(braceStart, braceEnd - braceStart);
-
-        std::string archive = extractStr(obj, "archive");
-        std::string wld = extractStr(obj, "wld");
-        std::string actor = extractStr(obj, "actor");
-
-        // Extract textures array as comma-separated string
-        std::string texList;
-        size_t texArrStart = obj.find("[");
-        size_t texArrEnd = obj.find("]");
-        if (texArrStart != std::string::npos && texArrEnd != std::string::npos) {
-            std::string arr = obj.substr(texArrStart + 1, texArrEnd - texArrStart - 1);
-            size_t tp = 0;
-            while ((tp = arr.find('"', tp)) != std::string::npos) {
-                tp++;
-                size_t te = arr.find('"', tp);
-                if (te == std::string::npos) break;
-                if (!texList.empty()) texList += ",";
-                texList += arr.substr(tp, te - tp);
-                tp = te + 1;
-            }
-        }
-
-        if (!archive.empty() && !wld.empty() && !actor.empty()) {
-            sqlite3_reset(modelStmt);
-            sqlite3_bind_int(modelStmt, 1, modelId);
-            sqlite3_bind_text(modelStmt, 2, archive.c_str(), -1, SQLITE_TRANSIENT);
-            sqlite3_bind_text(modelStmt, 3, wld.c_str(), -1, SQLITE_TRANSIENT);
-            sqlite3_bind_text(modelStmt, 4, actor.c_str(), -1, SQLITE_TRANSIENT);
-            sqlite3_bind_text(modelStmt, 5, texList.c_str(), -1, SQLITE_TRANSIENT);
-            sqlite3_step(modelStmt);
-            modelCount++;
-        }
-
-        pos = braceEnd;
-    }
-
-    sqlite3_finalize(modelStmt);
-    execSQL(db, "COMMIT");
-    return modelCount;
 }
 
 // ============================================================================
