@@ -7,6 +7,8 @@
 #include <functional>
 #include <glm/glm.hpp>
 
+#include "client/corpse_predicate.h"  // T456 (B478): the ONE corpse predicate
+
 namespace eqt {
 namespace state {
 
@@ -71,7 +73,13 @@ struct Entity {
     bool isNPC() const { return npcType == 1; }
     bool isPlayerCorpse() const { return npcType == 2; }
     bool isNPCCorpse() const { return npcType == 3; }
-    bool isAnyCorpse() const { return npcType == 2 || npcType == 3 || isCorpse; }
+    // T456 (board B478): delegates to THE predicate rather than being a fifth
+    // copy of it. The form that was here had no name test at all, so an entity
+    // named only by OP_MobRename -- whose npc_type this client never saw --
+    // came back "not a corpse" here and "a corpse" from IsCorpseByFields()
+    // everywhere else. corpse_predicate.h's own note says do not write a
+    // second corpse test; there were five.
+    bool isAnyCorpse() const { return IsCorpseByFields(isCorpse, npcType, name); }
 
     glm::vec3 position() const { return glm::vec3(x, y, z); }
 };

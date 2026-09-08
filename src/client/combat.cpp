@@ -720,10 +720,12 @@ std::vector<CombatTarget> CombatManager::GetNearbyHostiles(float range) {
 				}
 			}
 
-			// Skip corpses (check for both apostrophe and backtick)
-			if (entity.name.find("'s corpse") != std::string::npos ||
-			    entity.name.find("`s corpse") != std::string::npos ||
-			    entity.name.find("corpse") != std::string::npos) {
+			// Skip corpses. T456 (board B478): this was three chained
+			// substring tests, the last of them a bare find("corpse") with
+			// no trailing-id guard, so a live "a corpse beetle" was skipped
+			// as a corpse. IsCorpseEntity() is the one predicate and it is
+			// declared in this file's own header.
+			if (IsCorpseEntity(entity)) {
 				continue;
 			}
 

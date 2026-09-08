@@ -21,6 +21,7 @@
 #endif
 #include "client/hc_map.h"
 #include "client/combat.h"
+#include "client/corpse_predicate.h"  // T456 (B478): the ONE corpse predicate
 #include "client/trade_manager.h"
 #include "client/world_object.h"
 #include "client/spell/spell_manager.h"
@@ -460,14 +461,16 @@ void eqt::bridge::BridgeComponent::OnSpawnAddedGraphics(const Entity& entity) {
 		return;
 	}
 
-	// npc_type: 0=player, 1=npc, 2=pc_corpse, 3=npc_corpse
-	bool isCorpse = (entity.npc_type == 2 || entity.npc_type == 3);
-
-	// Fallback: Also detect corpse by name (server adds "'s corpse" or "_corpse" suffix)
-	if (!isCorpse && entity.name.find("corpse") != std::string::npos) {
-		isCorpse = true;
-		LOG_TRACE(MOD_ENTITY, "Entity {} ({}) detected as corpse by name (npc_type={})", entity.spawn_id, entity.name, (int)entity.npc_type);
-	}
+	// T456 (board B478): THE corpse predicate, not a fourth copy of it.
+	// What was here recomputed npc_type 2/3 inline and then fell back to a
+	// bare name.find("corpse") with no trailing-id check -- which classifies a
+	// LIVE npc named "a corpse beetle" as a corpse and freezes it in the death
+	// pose. IsCorpseByFields() is the flag, then the authoritative
+	// Spawn_Struct.NPC byte (eqemu writes 2 for every corpse --
+	// /mnt/projects/akk-stack/code/zone/corpse.cpp:1809), then eqemu's three
+	// real corpse name forms WITH their mandatory id.
+	const bool isCorpse =
+	    IsCorpseByFields(entity.is_corpse, entity.npc_type, entity.name);
 
 	// Publish EntitySpawned event to bridge (D17b: bridge is sole path to renderer)
 	eqt::state::EntitySpawnedData data;

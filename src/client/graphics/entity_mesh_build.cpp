@@ -1,4 +1,5 @@
 #include "client/graphics/entity_renderer.h"
+#include "client/graphics/corpse_death_pose.h"  // T456 (B477): the ONE death-pose ladder
 #include "client/graphics/simulation_worker.h"
 #include "client/graphics/entity_prep_worker.h"
 #include "client/graphics/constrained_renderer_config.h"
@@ -361,39 +362,13 @@ bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
 	// Attach equipment models to bone attachment points
 	attachEquipment(visual);
 
-	// If this is a corpse, set the death animation and hold on last frame
+	// If this is a corpse, set the death animation and hold on last frame.
+	// T456 (board B477): the ladder itself lives in ONE place now --
+	// ApplyCorpseDeathPose() -- which the async build path
+	// (processOneEntityBuildStep's MeshFinalize phase) calls too. It used to
+	// be duplicated textually there, and only this copy was ever tested.
 	if (isCorpse) {
-		// Try death animations: d05 is the actual death/dying animation
-		// d01/d02 are damage animations, not death
-		bool hasD05 = animNode->hasAnimation("d05");
-		bool hasD01 = animNode->hasAnimation("d01");
-		bool hasD02 = animNode->hasAnimation("d02");
-
-		std::string deathAnim;
-		if (hasD05) {
-			deathAnim = "d05";
-		} else if (hasD02) {
-			deathAnim = "d02";  // Fallback to heavy damage
-		} else if (hasD01) {
-			deathAnim = "d01";  // Fallback to minor damage
-		}
-
-		if (!deathAnim.empty()) {
-			animNode->playAnimation(deathAnim, false, false);  // Don't loop, not playThrough
-
-			// Jump to the last frame to show the "lying down" pose
-			SkeletalAnimator& animator = animNode->getAnimator();
-			animator.setToLastFrame();
-
-			// Force immediate mesh update so corpse appears lying down
-			animNode->forceAnimationUpdate();
-
-			// Mark corpse position as adjusted (no Z offset needed)
-			visual.corpsePositionAdjusted = true;
-			visual.corpseYOffset = 0.0f;
-
-			visual.currentAnimation = deathAnim;
-		}
+		ApplyCorpseDeathPose(visual, animNode);
 	}
 
 	// Queued state (serverAnimation, position) will be applied by the next

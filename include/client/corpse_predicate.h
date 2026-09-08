@@ -18,6 +18,24 @@
 // what T160 was fixing, and the state layer is where a fresh copy would be
 // most tempting -- `npcType == 2` alone looks sufficient and silently misses
 // every corpse whose npc_type we never saw.
+//
+// T456 (board B478) enforced that note, which by then had been ignored four
+// times. Corpse-ness was derived FIVE times from the same three fields and the
+// copies disagreed:
+//   * src/client/bridge/bridge_component.cpp (OnSpawnAddedGraphics),
+//   * src/client/application_zone_loading.cpp, TWICE (the threaded and the
+//     sequential zone-load entity registration),
+//     -- all three of which recomputed `npc_type == 2 || npc_type == 3` inline
+//        and then fell back to a bare `name.find("corpse")` with NO trailing-id
+//        check, so a live npc named "a corpse beetle" was buried on sight and
+//        frozen in the d05 death pose;
+//   * include/client/state/entity_manager.h `Entity::isAnyCorpse()`, which had
+//     no name test at all and so disagreed the other way.
+// All four now call IsCorpseByFields(). The wire truth they were all
+// approximating is Spawn_Struct's NPC byte (offset 0083): eqemu's
+// Corpse::FillSpawnStruct writes `ns->spawn.NPC = 2` unconditionally, for a
+// player corpse and an npc corpse alike --
+// /mnt/projects/akk-stack/code/zone/corpse.cpp:1809.
 
 // True when `name` is one of eqemu's three corpse name forms. base_name and
 // corpse_id are written only on a match; either may be null.

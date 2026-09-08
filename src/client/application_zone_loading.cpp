@@ -9,6 +9,7 @@
 #include "client/help/renderer_command_catalog.h"
 #include "client/eq_action_handler.h"
 #include "client/combat.h"
+#include "client/corpse_predicate.h"  // T456 (B478): the ONE corpse predicate
 #include "client/inventory/inventory_manager.h"
 #include "client/mode/automated_mode.h"
 #include "client/mode/headless_mode.h"
@@ -236,9 +237,11 @@ void Application::loadZoneGraphicsOnThread(EQT::Graphics::LoadingStatus& status)
     for (const auto& entity : snap.entities) {
         bool isPlayer = (entity.name == snap.playerName);
         bool isNPC = (entity.npc_type == 1 || entity.npc_type == 3);
-        bool isCorpse = (entity.npc_type == 2 || entity.npc_type == 3);
-        if (!isCorpse && entity.name.find("corpse") != std::string::npos)
-            isCorpse = true;
+        // T456 (board B478): THE corpse predicate. The inline copy that was
+        // here fell back to a bare name.find("corpse") with no trailing-id
+        // check, which buries a live npc named "a corpse beetle" on sight.
+        const bool isCorpse =
+            IsCorpseByFields(entity.is_corpse, entity.npc_type, entity.name);
 
         EQT::Graphics::EntityAppearance appearance;
         appearance.face = entity.face;
@@ -346,9 +349,11 @@ void Application::loadZoneGraphics() {
     for (const auto& entity : snap.entities) {
         bool isPlayer = (entity.name == snap.playerName);
         bool isNPC = (entity.npc_type == 1 || entity.npc_type == 3);
-        bool isCorpse = (entity.npc_type == 2 || entity.npc_type == 3);
-        if (!isCorpse && entity.name.find("corpse") != std::string::npos)
-            isCorpse = true;
+        // T456 (board B478): THE corpse predicate. The inline copy that was
+        // here fell back to a bare name.find("corpse") with no trailing-id
+        // check, which buries a live npc named "a corpse beetle" on sight.
+        const bool isCorpse =
+            IsCorpseByFields(entity.is_corpse, entity.npc_type, entity.name);
 
         EQT::Graphics::EntityAppearance appearance;
         appearance.face = entity.face;

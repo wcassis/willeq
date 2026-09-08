@@ -248,8 +248,13 @@ void CombatManager::StopResting() {
 bool CombatManager::IsTargetSuitableForHunt(const Entity& entity) const {
 	LOG_TRACE(MOD_COMBAT, "IsTargetSuitableForHunt: Checking {}", entity.name);
 
-	// Skip if it doesn't look like a regular mob
-	if (entity.name.find("'s corpse") != std::string::npos) {
+	// Skip if it doesn't look like a regular mob. T456 (board B478): this
+	// was `name.find("'s corpse")`, a SIXTH copy the board's census missed --
+	// and doubly wrong, because that form is only the PLAYER-corpse spelling,
+	// so every npc corpse ("a rat`s_corpse17") passed straight through as a
+	// live hunt target, while a live npc named "a corpse beetle" would not
+	// have. IsCorpseEntity() is the one predicate, and it is in this file.
+	if (IsCorpseEntity(entity)) {
 		LOG_TRACE(MOD_COMBAT, "  {} is a corpse - NOT suitable", entity.name);
 		return false;
 	}
@@ -478,8 +483,10 @@ void CombatManager::ListHuntTargets() {
 	// Check each entity
 	for (const auto& [id, entity] : entities) {
 		if (!entity.name.empty() && id != m_eq->GetEntityID()) {
-			// Skip players, corpses, and special NPCs
-			if (entity.class_id > 16 || entity.name.find("'s corpse") != std::string::npos) {
+			// Skip players, corpses, and special NPCs. T456 (board B478):
+			// the SEVENTH copy -- same "'s corpse" substring, same two ways
+			// of being wrong. Ask the one predicate.
+			if (entity.class_id > 16 || IsCorpseEntity(entity)) {
 				continue;
 			}
 

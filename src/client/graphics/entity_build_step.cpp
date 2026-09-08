@@ -1,4 +1,5 @@
 #include "client/graphics/entity_renderer.h"
+#include "client/graphics/corpse_death_pose.h"  // T456 (B477): the ONE death-pose ladder
 #include "client/graphics/simulation_worker.h"
 #include "client/graphics/entity_prep_worker.h"
 #include "client/graphics/constrained_renderer_config.h"
@@ -416,26 +417,11 @@ bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion) {
                 raceModelLoader_->addMeshRef(vis.raceId, vis.gender);
             }
 
-            // Corpse death animation (animated only)
-            if (vis.isCorpse && vis.animatedNode) {
-                bool hasD05 = vis.animatedNode->hasAnimation("d05");
-                bool hasD01 = vis.animatedNode->hasAnimation("d01");
-                bool hasD02 = vis.animatedNode->hasAnimation("d02");
-
-                std::string deathAnim;
-                if (hasD05) deathAnim = "d05";
-                else if (hasD02) deathAnim = "d02";
-                else if (hasD01) deathAnim = "d01";
-
-                if (!deathAnim.empty()) {
-                    vis.animatedNode->playAnimation(deathAnim, false, false);
-                    SkeletalAnimator& animator = vis.animatedNode->getAnimator();
-                    animator.setToLastFrame();
-                    vis.animatedNode->forceAnimationUpdate();
-                    vis.corpsePositionAdjusted = true;
-                    vis.corpseYOffset = 0.0f;
-                    vis.currentAnimation = deathAnim;
-                }
+            // Corpse death animation (animated only). T456 (board B477): this
+            // was a textual duplicate of the synchronous path's ladder in
+            // entity_mesh_build.cpp and nothing asserted it. Same function now.
+            if (vis.isCorpse) {
+                ApplyCorpseDeathPose(vis, vis.animatedNode);
             }
 
             // Apply queued light level
