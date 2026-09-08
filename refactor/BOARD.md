@@ -3985,8 +3985,21 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   `tests/test_ui_preferences.cpp` (4 red pre-fix against a probe that reproduces
   this tip's behaviour). Chat timestamps, scrollback and UI colours stay
   unpersisted -- Will's ruling narrowed the scope to window states and the
-  camera. **The live proof (toggle, camp, log in) is OWED to a lock unit**:
-  T433 held the eqemu lock.
+  camera. ~~**The live proof (toggle, camp, log in) is OWED to a lock unit**:
+  T433 held the eqemu lock.~~ **LIVE-PROVEN T449 (this commit).** Testchar in
+  qeynos2: `k` opened the Skills window and `alt+p` closed the Group window
+  (default OPEN); the file appeared WHILE THE CLIENT WAS STILL RUNNING -- the
+  per-frame compare, not only the `/camp` path -- carrying
+  `[SkillsWindow] Show=1 [GroupWindow] Show=0`. After `/camp`, **Testmelee on
+  the same account and server** logged in with the Group window OPEN and no
+  Skills window (its own defaults, not Testchar's state) and wrote NO file
+  until it changed something; one `k` then created a SECOND file,
+  `UI_Testmelee_WillEQ.ini`, and Testchar's `diff`s identical. The read-back
+  half shows again downstream: the merchant capture has the Skills window still
+  open behind it, restored from the ini at zone-in. `review/T449/README.md` §2.
+  ⚠ **And the feature turned out to WIDEN a crash**: a saved
+  `[InventoryWindow] Show=1` reopens the paperdoll at login, and the next zone
+  change segfaults the client -- **B474**.
 - ~~**B280** (A)~~ **CLOSED by T428** (`refactor/T428_night_base.md`): the night
   ambient is now **(0.26244, 0.31147, 0.24003)**, solved live against the official
   client's own DAY/NIGHT ratio per channel on T408's geometry-only crop. fable's
@@ -5554,6 +5567,23 @@ client uses every field.
   launcher killed) but has not itself been run. Closes when: the three runs
   are recorded in `review/T410/` with their exit codes and a byte-identical
   before/after snapshot diff. Prov: T410 Review.
+  **ANNOTATED T449 (this commit) -- the three runs happened and the entry is
+  PARTLY answered; it stays open on `two_client_survive` alone.**
+  `zone_in` through `scripts/scenario.sh` exits **0**
+  (`zoned in to 'qeynos2' after 4.82 s`), and `restore_snapshot()` -- the half
+  of this entry nobody had exercised -- ran **four** times and reported
+  `snapshot restored byte-identically` every time, so B305(b) is settled.
+  B305(a) is settled the OTHER way from the way it was framed: `#memspell 46 0`
+  is accepted and the client logs `Server memorised 'Ultravision' (46) into gem
+  1`, so the syntax is fine -- but spell 46 has `spells_new.classes12 = 255`
+  and the config's Testcaster is a Wizard, so every cast fizzles and the lane
+  cannot pass as shipped (**B476**). With spell **288** it exits 0 on the first
+  gem cast. `two_client_survive` exits **1** and its peer is structurally
+  unable to hold (**B477**). Two further defects fell out of the same runs:
+  **B475** (`up.sh`'s non-launcher path duplicates the container's own world)
+  and **B478** (a re-run inside the buff duration can never pass). Evidence
+  `review/T449/README.md` §5 and `review/T449/scenario/`. This entry closes
+  when `two_client_survive` passes for the right reason.
 
 - **B306** (P) An unattributed process ran a live client against eqemu while
   T405 held the lock. During T410 a smoke test intended to prove the
@@ -6910,9 +6940,18 @@ client uses every field.
   B429's own quote of `MW_SelectedItem`'s `A_RecessedBox`/`A_DragItem` template
   called it a "slot grid"; it is ONE button. `EQUI_MerchantWnd.xml` has no slot
   grid at all -- its stock is a `<Listbox>` with seven `<Columns>`, the first of
-  which (24px, empty `<Heading>`) is the icon cell. LIVE PROOF IS OWED: T436
+  which (24px, empty `<Heading>`) is the icon cell. ~~LIVE PROOF IS OWED: T436
   held no eqemu lock (T428 had it), so no real vendor or banker has been in
-  front of these windows. Prov: T436 Review.
+  front of these windows.~~ **LIVE-PROVEN T449 (this commit)**: a real vendor
+  (`Mellisa_Purgor`, qeynos2) and a real banker (`#npctypespawn 772`) in front
+  of both windows. The merchant list draws its icon column from T430's sheets,
+  a row click fills `MW_SelectedItem` with the icon, the name and the price,
+  Buy returns `You purchased Spell: Smite for 5g 1s 6c` with the coins
+  deducted, the bank draws its eight slots, its four coin rows (10 pp after
+  `/bank deposit`), the DISABLED Change button and the Done button, and the
+  cursor attachment draws a summoned item's 40x40 icon under the pointer AND
+  still draws it after a full zone change (T439/B444's cursor half).
+  `review/T449/README.md` §3. Prov: T436 Review; T449 Review.
 
 ### Added by T427 (2026-09-07)
 
@@ -7140,8 +7179,15 @@ client uses every field.
   `ASlashCommandThenADragLeavesTheAudioManagerOnTheSlider`, the board's own
   scenario over the real functions. **`/volume` (MASTER volume) is deliberately
   NOT in the round trip**: the Options window has no master slider, so there is
-  nothing to keep in sync -- see the new **B449**. **LIVE PROOF IS OWED** (T428
-  held the eqemu lock; this unit was offline).
+  nothing to keep in sync -- see the new **B449**. ~~**LIVE PROOF IS OWED**~~
+  **LIVE-PROVEN T449 (this commit)**: `/musicvolume 25` typed into the chat bar
+  -- a slash command behind the window's back, the exact case B432 was about --
+  moves the Options slider to 25 %, and a click on the slider logs
+  `Options: music volume 90 %` then `Music volume: 90%` from the AudioManager.
+  The values persist as `[Options] Music=5 SoundVolume=20 ClipPlane=19` on the
+  oracle's 0..20 scale. NOT proven audibly: miniaudio selects its NULL device
+  on this host, so there is no ALSA stream to capture.
+  `review/T449/README.md` §4.
 
 - **B433** (B) **The Options window's Mouse, Keys, Filters, Colors and Mail
   pages are drawn and entirely inert.** Every control on all five is
@@ -7627,7 +7673,14 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   `B444Census.TheZoneInSnapshotCoversTheCursorAndTheBank` and two behaviour cases
   that drive the REAL appliers with every published slot and require each to be
   claimed by exactly one consumer family -- so a slot published with nowhere to
-  land is now a red too. **LIVE PROOF IS OWED** (no lock; T428 holds it).
+  land is now a red too. ~~**LIVE PROOF IS OWED** (no lock; T428 holds it).~~
+  **LIVE-PROVEN T449 (this commit) FOR THE CURSOR HALF ONLY**: an item on the
+  cursor is still drawn after a zone change
+  (`review/T449/fable/T449_t439_01_cursor_survives_zone_in_zoom.png`). **The
+  bank-slot half is still unproven and cannot be reached from the UI at all --
+  see B481**: nothing in fable's inventory UI picks an item up to the cursor,
+  so there is no click path that puts one into a bank slot. The bank COINS were
+  proven instead.
 ---
 
 ## Added 2026-09-07 by T428 (the night base, B280; the fourth vision level, B060)
@@ -8307,3 +8360,130 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   not a live defect -- but the loose name check would classify a live NPC
   literally named "a corpse beetle" as a corpse and freeze it in a death pose.
   Closes when the three inline copies call `IsCorpseByFields()`. Found by T454.
+
+---
+
+## Added 2026-09-07 by T449 (the owed live proofs)
+
+- **B482** (A) `src/client/graphics/ui/character_model_view.cpp` /
+  `src/client/graphics/overlays/` / the GLES2 driver's
+  `bindAlphaCompanionUnit()` -- **fable SEGFAULTS on a zone change whenever the
+  inventory popup is open.** The paperdoll's animated mesh node survives the
+  zone unload holding textures the unload destroyed, and the first frame in the
+  new zone dereferences one:
+  `CharacterModelView::renderToTexture()` -> `CSceneManager::drawAll()` ->
+  `EQAnimatedMeshSceneNode::render()` -> `COpenGLES2Driver::setMaterial()` ->
+  `applyMaterialState` -> `applyMaterialRenderState` ->
+  `bindAlphaCompanionUnit()` -> `COGLES2Texture::getOpenGLTextureName()`, on
+  the RENDER thread out of `FrameComponent::renderStaticUI()`. Reproduced twice
+  (qeynos2 -> qeynos and qeynos -> qeynos2), once under gdb for the backtrace,
+  and **A/B controlled**: the identical zone change with
+  `[InventoryWindow] Show=0` in `UI_<char>_<server>.ini` completes two zone
+  loads with no fault. `dmesg` carries `traps: willeq[2804830] general
+  protection fault` at the second the log stops. **T432's persistence makes it
+  reachable with no player action at all** -- a character who ever left the
+  inventory open is logged back in with the paperdoll already rendering, and
+  the next zone kills the client. Evidence: `review/T449/README.md` §0,
+  `review/T449/logs/t449_crash_gdb.log`,
+  `review/T449/logs/t449_control_inventory_closed.log`. NOT fixed here: the
+  unit's STOP allows only a one-line pinned fix, and a null guard inside
+  `bindAlphaCompanionUnit()` would paper over a dangling `ITexture*` rather
+  than stop the paperdoll holding it. Found by T449.
+
+- **B483** (P) `scripts/eqemu/up.sh`, `scripts/scenario.sh` -- **the
+  non-launcher bring-up starts a SECOND world and loginserver on top of the
+  ones the akk-stack container starts by itself.** Measured: 45 s after a bare
+  `docker compose up -d mariadb eqemu-server`, with no `up.sh` run at all, the
+  container is already running `/tmp/spire-launcher eqemu-server:launcher
+  start` and its world. `up.sh`'s default path then launches `./bin/world` and
+  `./bin/loginserver` anyway and its port checks pass instantly against the
+  container's own. Which world a client reaches is a race: this unit saw
+  `Got response from login server but could not find world server WillEQ` once
+  and two `cast_lands` runs stall forever at `[LOADING][Phase 4/15] Loading
+  characters` -- both indistinguishable from a client defect. `scenario.sh`
+  calls the non-launcher path, so **every B305 run is on this coin toss**. The
+  one-line candidate is `up.sh --launcher` in `scenario.sh`; it is not taken
+  here because it wants a pin and there is no shell-level test for the lane.
+  Found by T449.
+
+- **B484** (A) `scripts/scenario.sh` (`SPELL=46`),
+  `scripts/scenario_configs/cast_lands.json` -- **the `cast_lands` scenario's
+  default spell cannot be cast by its own default character, so the lane can
+  never pass as shipped.** `spells_new` row 46 (Ultravision) has
+  `classes12 = 255` and `cast_lands.json` runs **Testcaster, class 12, a
+  Wizard**; eqemu answers every attempt with `Your spell fizzles!`. This is
+  not level or skill: the run was repeated with the character at level 60 and
+  every one of its 100 `character_skills` rows at 200 and fizzled 3/3 again.
+  B305's suspicion about the `#memspell` SYNTAX is settled the other way --
+  `#memspell 46 0` is accepted and the client logs
+  `Server memorised 'Ultravision' (46) into gem 1`, so the memorise is fine and
+  the CAST is what fails. Proven with a substitute: spell **288** (Minor
+  Shielding, `classes12 = 1`) landed on the first gem cast and the scenario
+  exited **0**, `spell 288 landed on Testcaster 2.93 s after gem cast #1 (buff
+  slots 0 -> 1)`. Closes by picking a spell the config's class can cast (and
+  asserting that at run time rather than in a comment).
+  `review/T449/logs/cast_lands_direct*.log`. Found by T449.
+
+- **B485** (B) `scripts/scenario.sh`, `src/client/scenario/scenario_two_client_survive.cpp`
+  -- **`two_client_survive`'s peer terminates 0.15 s after it zones in, so the
+  observer's hold can only ever be satisfied by the server's LINKDEAD
+  retention.** The peer is launched as `--scenario zone_in`, which reaches its
+  verdict immediately and unwinds the client
+  (`Zone connection complete` 21:07:25.710, `Application shutdown complete`
+  21:07:25.746). The observer nevertheless saw a second player for 91.6 s and
+  then failed with `second player vanished 91.59 s into the hold`. **A shorter
+  `--hold` would have made this run PASS for a reason that is not the one the
+  scenario claims** -- which is the exact failure T410 built this scenario to
+  replace. The peer needs a scenario that HOLDS (a `zone_in` that honours
+  `--scenario-hold`, or the peer running `two_client_survive` itself).
+  `review/T449/scenario/two_client_survive_*.log`. Found by T449.
+
+- **B486** (B) `src/client/scenario/scenario_cast_lands.cpp` -- **a `cast_lands`
+  re-run inside the buff's own duration can never pass.** Re-casting the same
+  spell refreshes the slot it already occupies, so the baseline multiset does
+  not move and the scenario reports `spell 288 never landed after 3 gem casts
+  (buff list unchanged at 1 slot(s))` -- while the client's chat shows all
+  three casts SUCCEEDING. `ABuffThatWasALREADYThereIsNotALanding` is doing
+  exactly what it was written to do; the gap is that the prep clears
+  memorisation (`#unmemspells`) and nothing clears buffs. Measured with spell
+  288 (buffduration 270 ticks) twice inside its own duration.
+  `review/T449/logs/cast_lands_direct_spell288_lvl1.log`. Found by T449.
+
+- **B487** (B) `src/client/input/hotkey_manager.cpp`, `config/hotkeys.json` --
+  **the chat input stays open after a line is submitted, so the next hotkey
+  press lands as TEXT in the chat bar.** The client's own startup warnings name
+  the cause and print them every run: `ConfirmDialog and SubmitInput both bound
+  to Return in global mode`, `ConfirmDialog and OpenChat both bound to Return
+  (global conflicts with player)`, `SubmitInput and OpenChat both bound to
+  Return`. Measured live: after `/say #set time 11 0` the following `ctrl+b` /
+  `alt+p` / `ctrl+F5` presses appeared as the characters `/pl` on the chat
+  line and no window toggled. `Escape` does close the input -- and in the one
+  press that was observed it closed the topmost popup in the same press, which
+  is a second question this entry does not answer. Class B because a player
+  can always press Escape; it cost this unit three attempts at a two-key
+  sequence. Found by T449.
+
+- **B488** (A, unowned side) **a zone change into `airplane` (Plane of Sky)
+  leaves the client stuck at `[LOADING][Phase 5/15] Connecting to zone` for
+  ever, with the game thread already at the arrival position.** `#zone
+  airplane` is refused below level 46 (`zone.min_level = 46`, answered as
+  `Zone change DENIED (success=-7)`); at level 50 the server accepts it, sends
+  `zone=71 instance=0 pos=(10.0, 0.0, 5.0)`, `/loc` reads the arrival
+  `10.0, 0.0, 4.4` -- and the renderer never leaves the old zone and no further
+  loading phase is printed. The launcher fleet had twelve idle dynamic zone
+  processes at the time. Which side owns it (a zone process that never booted
+  vs. a client that never reconnected) is UNMEASURED and needs the zone
+  process's own log. **This is what blocks B453's `/dumpscene` proof**, since
+  T440 measured Plane of Sky as the one playable zone with no BSP tree.
+  `review/T449/logs/t449_control_inventory_closed.log`. Found by T449.
+
+- **B489** (B) `src/client/graphics/ui/static_ui_input.cpp` -- **nothing in
+  fable's inventory UI picks an item up to the cursor.** A left-click on an
+  inventory slot opens T421's item display window; the only producer of a
+  cursor item is the server's `InventorySlotChanged` for slot 30/33 (a
+  purchase, a loot, a `#summonitem`). So a player cannot move an item between
+  slots, into a bank slot, or onto a merchant to sell -- the sell arm exists
+  and reads `cursor.hasItem`, but only the server can put something there.
+  Found while trying to prove T439/B444's bank half of the zone-in snapshot,
+  which is why **the bank SLOT (as opposed to the bank COINS) is still
+  unproven live**. Found by T449.
