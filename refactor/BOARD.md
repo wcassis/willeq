@@ -8365,7 +8365,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
 
 ## Added 2026-09-07 by T449 (the owed live proofs)
 
-- **B482** (A) `src/client/graphics/ui/character_model_view.cpp` /
+- ~~**B482**~~ (A) `src/client/graphics/ui/character_model_view.cpp` /
   `src/client/graphics/overlays/` / the GLES2 driver's
   `bindAlphaCompanionUnit()` -- **fable SEGFAULTS on a zone change whenever the
   inventory popup is open.** The paperdoll's animated mesh node survives the
@@ -8388,9 +8388,9 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   `review/T449/logs/t449_control_inventory_closed.log`. NOT fixed here: the
   unit's STOP allows only a one-line pinned fix, and a null guard inside
   `bindAlphaCompanionUnit()` would paper over a dangling `ITexture*` rather
-  than stop the paperdoll holding it. Found by T449.
+  than stop the paperdoll holding it. Found by T449.~~ **FIXED T457 (8900efa3, merged 728749e6): the paperdoll lives in its OWN scene manager (`createNewSceneManager`), invisible to `ConstrainedTextureCache::clear()`'s reference scan; `ZoneLifecycleComponent::unloadZone()` now calls `Overlays().onZoneUnload()` BEFORE the mesh caches and the texture cache clear, releasing the model; pinned by `tests/test_paperdoll_zone_unload_order.cpp` (3 red→green). LIVE A/B OWED (T457 paused before it).**
 
-- **B483** (P) `scripts/eqemu/up.sh`, `scripts/scenario.sh` -- **the
+- ~~**B483**~~ (P) `scripts/eqemu/up.sh`, `scripts/scenario.sh` -- **the
   non-launcher bring-up starts a SECOND world and loginserver on top of the
   ones the akk-stack container starts by itself.** Measured: 45 s after a bare
   `docker compose up -d mariadb eqemu-server`, with no `up.sh` run at all, the
@@ -8404,7 +8404,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   calls the non-launcher path, so **every B305 run is on this coin toss**. The
   one-line candidate is `up.sh --launcher` in `scenario.sh`; it is not taken
   here because it wants a pin and there is no shell-level test for the lane.
-  Found by T449.
+  Found by T449.~~ **FIXED T457 (8900efa3): `up.sh` adopts a running fleet — cold run one world, second run adopts, still one world. Correction: the container's auto-launcher starts the ZONE fleet only (no world/login); T449's duplicate world was its own earlier fleet.**
 
 - **B484** (A) `scripts/scenario.sh` (`SPELL=46`),
   `scripts/scenario_configs/cast_lands.json` -- **the `cast_lands` scenario's
@@ -8703,3 +8703,13 @@ fine — the table fails on a stale entry, so it cannot rot.
   use (the free `Exists()` wrapper) that was itself dead — the whole
   `common/util/file` translation unit was dead behind a single live-looking
   reference. Found by T455.
+
+---
+
+### Added by T457 (2026-09-08), entered by the orchestrator at merge
+
+- **B504** (class A, process): `scripts/eqemu/up.sh` polls the zone log for
+  `Zone bootup type`, which this eqemu build never prints (it prints
+  `Bootup Booting [<zone>]`), so a cold `up.sh` times out after 60 s and exits 1
+  on a zone that booted correctly. `scripts/scenario.sh` turns that into
+  operator code 65. Evidence: `review/T457/logs/up_sh_cold_container.log`.
