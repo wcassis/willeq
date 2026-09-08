@@ -166,7 +166,7 @@ for `Zone bootup type`, and this eqemu build prints `Bootup Booting [qeynos2]`;
 the string has evidently never matched, so `up.sh` times out after 60 s and
 returns failure on success. `scripts/scenario.sh` maps an `up.sh` failure to
 operator code 65, so this can present as "the rig is broken" when the server is
-up. Boarded as **B490** (see below). Left unfixed because the pause order
+up. Boarded as **B504** (see below). Left unfixed because the pause order
 arrived; it is a one-line pattern change and should be done with a cold-container
 re-run to prove it.
 
@@ -214,11 +214,11 @@ next unit: SELECT it, do not assume).
 
 ### 6. New board items
 
-- **B490** (class A, process): `scripts/eqemu/up.sh` polls the zone log for
+- **B504** (class A, process): `scripts/eqemu/up.sh` polls the zone log for
   `Zone bootup type`, which this eqemu build never prints (it prints
   `Bootup Booting [<zone>]`), so a cold `up.sh` times out after 60 s and exits 1
   on a zone that booted correctly. `scripts/scenario.sh` turns that into
   operator code 65. Evidence: `review/T457/logs/up_sh_cold_container.log`.
 
-B490 is the only number this unit allocated; T455/T456 allocate from B476+ and
+B504 is the only number this unit allocated; T455/T456 allocate from B476+ and
 B479+, so there is no collision with them.
