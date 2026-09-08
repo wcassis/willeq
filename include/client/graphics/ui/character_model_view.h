@@ -91,6 +91,28 @@ public:
     // Check if initialized and ready
     bool isReady() const { return initialized_ && renderTarget_ != nullptr; }
 
+    // T457 (board B482): drop the model NODES -- character plus both weapons --
+    // and forget the appearance they were built from, keeping the view object,
+    // its scene manager and its render target alive.
+    //
+    // This is the zone-unload hop, and it exists because THIS CLASS OWNS A
+    // SECOND SCENE GRAPH. init() builds its own scene manager
+    // (smgr->createNewSceneManager(false)) and parents characterNode_ under
+    // that root, so ConstrainedTextureCache::clearTextureReferences() -- which
+    // scans from the MAIN scene manager's root before every
+    // driver_->removeTexture() -- cannot reach these materials. Without this
+    // call the doll survives a zone unload holding raw, non-owning ITexture*
+    // to textures the unload deleted, and the next renderToTexture() (which the
+    // o01 idle loop guarantees within one animationInterval_) dereferences
+    // them: the T449 SIGSEGV in COGLES2Texture::getOpenGLTextureName() under
+    // COpenGLES2Driver::bindAlphaCompanionUnit().
+    //
+    // The RTT is deliberately kept: it is a driver texture, not a cache entry,
+    // so the zone unload does not destroy it and there is nothing to rebuild.
+    // The caller (OverlaysComponent::onZoneUnload()) resets its own appearance
+    // latch so the first frame after zone-in calls setCharacter() again.
+    void releaseCharacterModel();
+
     // Get dimensions
     int getWidth() const { return width_; }
     int getHeight() const { return height_; }
@@ -119,6 +141,10 @@ private:
     void setupCamera();
     void setupLighting();
     void updateCharacterModel();
+    // The node teardown shared by updateCharacterModel() (which rebuilds
+    // immediately afterwards) and releaseCharacterModel() (which does not).
+    // Weapons first: they are children of characterNode_.
+    void removeModelNodes();
     void adjustCameraForModel();
     void attachWeapons();
     void updateWeaponTransforms();

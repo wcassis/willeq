@@ -67,3 +67,30 @@ server_exec_bg() {
     # long-running server processes (loginserver/world/zone).
     docker exec -w /home/eqemu/server -d "${EQEMU_CONTAINER}" bash -c "$1"
 }
+
+server_process_count() {
+    # server_process_count <basename> — how many processes in the eqemu-server
+    # container are running ./bin/<basename>.
+    #
+    # T457 (board B483). This exists because the container does NOT start
+    # empty: its entrypoint runs /tmp/spire-launcher, which brings up
+    # `eqemu-server:launcher start` and with it a `world` and the static-zone
+    # fleet, roughly 45 s after `docker compose up -d`. Anything that starts a
+    # second world without looking gets TWO, and which one a client reaches is
+    # a race — T449 lost two scenario runs to it ("could not find world server
+    # WillEQ" against a world that was demonstrably up).
+    #
+    # The match is anchored on "bin/<name>" and this function's own `grep` is
+    # excluded, because `ps` output includes the pipeline that reads it.
+    # `pgrep` is not assumed present in the image.
+    local name="$1"
+    docker exec "${EQEMU_CONTAINER}" bash -c \
+        "ps -eo args | grep -c '[b]in/${name}'" 2>/dev/null | tr -d '[:space:]'
+}
+
+server_process_running() {
+    # server_process_running <basename> — true when at least one is running.
+    local n
+    n="$(server_process_count "$1")"
+    [ -n "${n}" ] && [ "${n}" -gt 0 ] 2>/dev/null
+}

@@ -84,15 +84,50 @@ if [ "${USE_LAUNCHER}" = "1" ]; then
     exit 0
 fi
 
-echo "== up.sh: starting loginserver =="
-server_exec_bg "./bin/loginserver > logs/loginserver_h03.log 2>&1"
+# T457 (board B483): ADOPT the container's own fleet instead of duplicating it.
+#
+# The eqemu-server image auto-starts /tmp/spire-launcher on boot, so by the time
+# `compose up -d` has settled there is usually already a world (and the static
+# zone fleet) running -- with no `up.sh --launcher` anywhere in sight. Starting
+# a second `bin/world` was not merely wasteful: both bind the same ports, only
+# one wins, and the client's login handshake then reaches a world that is not
+# the one holding the zone list. T449 lost two `cast_lands` runs and one
+# `zone_in` run to exactly that, each reported as "could not find world server
+# WillEQ".
+#
+# So each of the three processes is started only if it is not already running.
+# The checks are independent because the launcher's coverage is uneven: on this
+# config it brings up world and the zones but NOT loginserver, which is why
+# --launcher above starts loginserver by hand too.
+if server_process_running loginserver; then
+    echo "== up.sh: loginserver already running ($(server_process_count loginserver)) -- adopting =="
+else
+    echo "== up.sh: starting loginserver =="
+    server_exec_bg "./bin/loginserver > logs/loginserver_h03.log 2>&1"
+fi
 wait_for "loginserver port ${LOGIN_PORT}" 30 bash -c \
     "exec 3<>/dev/tcp/127.0.0.1/${LOGIN_PORT}"
 
-echo "== up.sh: starting world =="
-server_exec_bg "./bin/world > logs/world_h03.log 2>&1"
+if server_process_running world; then
+    echo "== up.sh: world already running ($(server_process_count world)) -- adopting =="
+else
+    echo "== up.sh: starting world =="
+    server_exec_bg "./bin/world > logs/world_h03.log 2>&1"
+fi
 wait_for "world port ${WORLD_PORT}" 30 bash -c \
     "exec 3<>/dev/tcp/127.0.0.1/${WORLD_PORT}"
+
+# The zone check is deliberately for ANY zone process, not for this shortname.
+# When the launcher fleet is up it is already serving the static zones and the
+# client will be handed one of those; adding a sixteenth process for a zone the
+# fleet already covers is the same duplication one level down. A bare container
+# with no fleet has zero, and the branch below starts exactly the one zone CI
+# wants.
+if server_process_running zone; then
+    echo "== up.sh: zone fleet already running ($(server_process_count zone) processes) -- adopting, not starting ${ZONE_SHORTNAME} =="
+    echo "== up.sh: stack is up (adopted: loginserver:${LOGIN_PORT} world:${WORLD_PORT} + running zone fleet) =="
+    exit 0
+fi
 
 echo "== up.sh: starting zone ${ZONE_SHORTNAME} =="
 server_exec_bg "./bin/zone ${ZONE_SHORTNAME} > logs/zone_${ZONE_SHORTNAME}_h03.log 2>&1"

@@ -133,6 +133,23 @@ ADD_EXECUTABLE(test_frame_render_order
 TARGET_LINK_LIBRARIES(test_frame_render_order GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_frame_render_order DISCOVERY_TIMEOUT 120)
 
+# T457 (board B482): the LIFECYCLE-ORDER net for the inventory paperdoll across
+# a zone change. Same idiom as G05 above -- a pure text parse, of
+# src/client/graphics/zone_lifecycle/renderer_zone_lifecycle.cpp,
+# src/client/graphics/overlays/overlays_hud_env.cpp and
+# src/client/graphics/ui/character_model_view.cpp -- because unloadZone()
+# cannot be run in a unit test (live device, GL context, loaded zone,
+# simulation and entity-prep workers) and the order is the fix: the paperdoll's
+# model is released BEFORE RaceModelLoader's mesh caches and the constrained
+# texture cache destroy what its materials name. The doll lives in its own
+# scene manager, so ConstrainedTextureCache::clearTextureReferences()'s scan
+# from the MAIN root cannot reach it. No link deps, no graphics guard.
+ADD_EXECUTABLE(test_paperdoll_zone_unload_order
+    test_paperdoll_zone_unload_order.cpp
+)
+TARGET_LINK_LIBRARIES(test_paperdoll_zone_unload_order GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_paperdoll_zone_unload_order DISCOVERY_TIMEOUT 120)
+
 # G06: the same idiom for the player's per-frame movement order. A pure text
 # parse of src/client/graphics/player/renderer_player_physics.cpp against
 # tests/goldens/movement_order_g06.txt (extracted from the PRE-G06 body), plus
