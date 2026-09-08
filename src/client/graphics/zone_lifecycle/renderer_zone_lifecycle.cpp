@@ -276,6 +276,30 @@ void ZoneLifecycleComponent::unloadZone() {
     // Clear zone light data (no scene nodes to remove)
     ctx_.zoneLightData.clear();
     ctx_.zoneLightPositions.clear();
+    // T457 (board B482): release the inventory paperdoll's model BEFORE either
+    // of the two owners below destroys what its materials name -- the
+    // RaceModelLoader mesh caches on the next line, and the constrained texture
+    // cache further down.
+    //
+    // This call is why the T449 crash cannot happen, and its POSITION is the
+    // whole fix. The doll (eqt::ui::CharacterModelView) renders into its own
+    // scene manager, created with smgr->createNewSceneManager(false), so the
+    // safety net that protects every other surviving node --
+    // ConstrainedTextureCache::clearTextureReferences(), which walks the MAIN
+    // scene graph nulling material slots before each driver_->removeTexture()
+    // (T119) -- structurally cannot reach it. Left alone, the doll survives the
+    // unload holding raw ITexture* to deleted COGLES2Textures, and the next
+    // frame's renderToTexture() faults inside
+    // COpenGLES2Driver::bindAlphaCompanionUnit(). T432's persistence makes that
+    // reachable with no player action at all: a saved [InventoryWindow] Show=1
+    // reopens the doll at login.
+    //
+    // The rebuild is the other half and needs no call here --
+    // OverlaysComponent::onZoneUnload() resets its appearance latch, so
+    // updatePaperdollForFrame() rebuilds the model on the first frame after
+    // zone-in that has a player entity.
+    ctx_.Overlays().onZoneUnload();
+
     // Clear entity renderer
     if (ctx_.entityRenderer) {
         // Clear mesh caches first to force fresh mesh/texture rebuild on next zone-in.

@@ -555,6 +555,30 @@ void OverlaysComponent::markPaperdollDirty() {
     if (characterModelView_) characterModelView_->markDirty();
 }
 
+// T457 (board B482): see the header. Called from
+// ZoneLifecycleComponent::unloadZone() before either owner of the doll's
+// resources destroys them.
+void OverlaysComponent::onZoneUnload() {
+    if (characterModelView_) {
+        characterModelView_->releaseCharacterModel();
+    }
+
+    // Arm the rebuild. updatePaperdollForFrame() only calls setCharacter() when
+    // the player's appearance differs from the one it last used -- and a zone
+    // change does not change the player's appearance, so without this reset the
+    // doll would be released and never rebuilt, leaving an empty panel for the
+    // rest of the session. paperdollLastRaceId_/Gender_/Appearance_ are left as
+    // they are: paperdollHasAppearance_ is the gate the `changed` expression
+    // reads first, and it short-circuits the rest.
+    paperdollHasAppearance_ = false;
+
+    // NOTE: characterModelView_ itself is deliberately NOT destroyed, and
+    // paperdollInitAttempted_ is deliberately NOT reset. The view owns its
+    // render target and its scene manager, neither of which is a zone asset;
+    // rebuilding them every zone change would re-run addRenderTargetTexture()
+    // for no reason. Only the MODEL is zone-scoped.
+}
+
 void OverlaysComponent::ensurePaperdollInitialized() {
     if (characterModelView_ || paperdollInitAttempted_) {
         return;

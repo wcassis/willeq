@@ -103,6 +103,20 @@ public:
 	void drawFPSCounter();
 	void updatePaperdollForFrame();
 
+	// T457 (board B482): the paperdoll's zone-unload hop, called by
+	// ZoneLifecycleComponent::unloadZone() BEFORE RaceModelLoader's mesh caches
+	// are dropped and the constrained texture cache is cleared. The doll's
+	// model is built from both, but it lives in CharacterModelView's OWN scene
+	// manager, so ConstrainedTextureCache::clearTextureReferences() -- which
+	// walks the MAIN scene graph before every removeTexture() -- cannot reach
+	// its materials to null them. Releasing here is the lifecycle fix for the
+	// T449 crash; nothing is null-checked at the driver, because the dangling
+	// pointer is never created. The rebuild is not scheduled explicitly: this
+	// resets paperdollHasAppearance_, which is what makes
+	// updatePaperdollForFrame() call setCharacter() again on the first frame
+	// after zone-in that has a player entity.
+	void onZoneUnload();
+
 
 	// ------------------------------------------------------------------
 	// L13 (refactor/L13_pairwise_ownership.md): members that moved here from

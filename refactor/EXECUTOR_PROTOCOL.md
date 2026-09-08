@@ -160,6 +160,22 @@ if it exists and is not yours, do not run the command.
   `bash -c 'set -o noclobber; echo "T### $(date -I)" > /mnt/projects/fable/.eqemu-lock'`
   — exit 0 means you own it; non-zero means another session does: STOP and
   report, never overwrite. DELETE it after clean shutdown. This applies to every server use, no exceptions.
+⚠ **THE CONTAINER STARTS A WORLD BY ITSELF (T449, fixed T457, board B483).**
+The akk-stack `eqemu-server` image auto-runs `/tmp/spire-launcher` on boot, so
+~45 s after a bare `docker compose up -d mariadb eqemu-server` — with no
+`up.sh` at all — the launcher, a `world` and the static-zone fleet are already
+running. `up.sh`'s non-launcher path used to start a SECOND `bin/world` and
+`bin/loginserver` on top of them; both bind the same ports, only one wins, and
+the client's handshake can reach a world that is not the one holding the zone
+list. It reports as **"could not find world server WillEQ"** against a world
+that is demonstrably up, and it cost T449 two `cast_lands` runs and one
+`zone_in` run. Since T457 `up.sh` ADOPTS whatever is already running
+(`server_process_running` in `scripts/eqemu/env.sh`) and starts only what is
+missing, so the fix is to use `up.sh` — but if you are driving the container by
+hand, **count the processes before you start one**: `docker exec
+akk-stack-eqemu-server-1 bash -c 'ps -eo args | grep "[b]in/world"'` must
+print exactly one line. `docker restart` does NOT bring loginserver back
+(T438); only `up.sh` does.
 - Sanctioned start only: scripts/eqemu/up.sh / `spire spire:launcher
   start`; NEVER `eqemu-server:launcher` direct. Never modify server
   code. DB reads + documented character-position writes OK (restore

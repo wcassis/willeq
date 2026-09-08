@@ -120,11 +120,7 @@ void CharacterModelView::setCharacter(uint16_t raceId, uint8_t gender,
     updateCharacterModel();
 }
 
-void CharacterModelView::updateCharacterModel() {
-    if (!modelSmgr_ || !raceModelLoader_) {
-        return;
-    }
-
+void CharacterModelView::removeModelNodes() {
     // Remove existing weapon nodes first (they're children of character node)
     if (primaryWeaponNode_) {
         primaryWeaponNode_->remove();
@@ -142,6 +138,38 @@ void CharacterModelView::updateCharacterModel() {
         characterNode_->remove();
         characterNode_ = nullptr;
     }
+}
+
+// T457 (board B482). See the header for why this exists: the doll's nodes live
+// in a scene manager of their own, which ConstrainedTextureCache::
+// clearTextureReferences() cannot walk, so a zone unload leaves their
+// materials naming deleted textures unless the nodes go first.
+//
+// It does NOT share updateCharacterModel()'s entry point, and must not: that
+// method is the rebuild, and clearing hasAppearance_ inside it would make
+// setCharacter() drop straight through its own `if (!hasAppearance_) return;`
+// and build nothing. The shared part is removeModelNodes(), which is all the
+// two genuinely have in common.
+void CharacterModelView::releaseCharacterModel() {
+    removeModelNodes();
+
+    // Forget the appearance too. A released doll that still claimed one would
+    // report hasCharacterModel()==false with hasAppearance_==true, and any
+    // later updateCharacterModel() would rebuild from a stale snapshot rather
+    // than from the appearance the caller re-supplies after zone-in.
+    hasAppearance_ = false;
+
+    // The next renderToTexture() must repaint: what is on the RTT right now is
+    // the model that was just removed.
+    dirty_ = true;
+}
+
+void CharacterModelView::updateCharacterModel() {
+    if (!modelSmgr_ || !raceModelLoader_) {
+        return;
+    }
+
+    removeModelNodes();
 
     if (!hasAppearance_) {
         return;
