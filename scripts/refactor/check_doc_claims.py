@@ -49,6 +49,32 @@ EXEMPT_MARKER = "RETIRED-OK"
 # (retired phrase, what is true now, the unit that measured it).
 # Every row was confirmed absent from the live docs by T371 before landing.
 RETIRED = [
+    # T455 (2026-09-07, board B503): the zero-caller census's deletions.
+    # The whole of common/util/file went, and 26 eqemu-era helpers out of
+    # common/util/strings. A doc that names one of these is describing a
+    # utility layer this client no longer has.
+    ("common/util/file.h",
+     "deleted; the whole translation unit was dead behind one live-looking "
+     "reference (the free Exists() wrapper, itself uncalled)", "T455 (B503)"),
+    ("FileContentsResult",
+     "deleted with common/util/file", "T455 (B503)"),
+    ("StringFormat(",
+     "deleted; the tree formats with fmt::format", "T455 (B503)"),
+    ("Strings::TimeToSeconds",
+     "deleted, zero callers", "T455 (B503)"),
+    ("Strings::SecondsToTime",
+     "deleted, zero callers (its only caller was MillisecondsToTime, "
+     "itself dead -- the cascade B503 records)", "T455 (B503)"),
+    ("Strings::Implode",
+     "deleted, zero callers", "T455 (B503)"),
+    ("Strings::UcFirst",
+     "deleted, zero callers", "T455 (B503)"),
+    ("strn0cpy",
+     "deleted; the old C string helpers are gone", "T455 (B503)"),
+    ("CleanMobName",
+     "deleted; the old C string helpers are gone", "T455 (B503)"),
+    ("hextoi",
+     "deleted; the old C string helpers are gone", "T455 (B503)"),
     ("/newskills",
      "renamed to /skills, no alias (registry 3)", "T363 (B058)"),
     ("/newinv",

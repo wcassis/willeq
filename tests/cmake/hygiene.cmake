@@ -139,3 +139,23 @@ ADD_TEST(NAME WriteOnlyFields
     COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/refactor/check_write_only_fields.py
             --repo ${CMAKE_SOURCE_DIR} --check)
 SET_TESTS_PROPERTIES(WriteOnlyFields PROPERTIES LABELS "hygiene")
+
+# T455 (2026-09-07, boards B490-B502): the zero-caller census as a ratchet.
+# WriteOnlyFields made the FIELD half of this project's dominant defect class
+# enforceable (a field written and never read). This is the FUNCTION half.
+# T366, T414, T429, T442, T448 and T452 each found more implemented-but-
+# unreached code BY HAND, one identifier at a time, and every one of those
+# censuses died with the unit that took it. check_zero_callers.py collects
+# every free function and every public/protected member function declared
+# under include/ and src/, sweeps src/ include/ tests/ tools/ benchmarks/
+# docker/ for uses (board B166: a census that skips tools/ is not tree-wide),
+# and --check fails on two things: a zero-caller function NOT in the script's
+# EXEMPT table, and a table entry whose function has a caller again. The
+# second half is what keeps the table from rotting. Pure source scan, no
+# artefact/server/display, same "hygiene" label as its neighbours; it walks
+# ~1,200 files twice, so it gets a generous timeout rather than the "slow"
+# label.
+ADD_TEST(NAME ZeroCallers
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/refactor/check_zero_callers.py
+            --repo ${CMAKE_SOURCE_DIR} --check)
+SET_TESTS_PROPERTIES(ZeroCallers PROPERTIES LABELS "hygiene" TIMEOUT 600)
