@@ -8725,16 +8725,25 @@ fine — the table fails on a stale entry, so it cannot rot.
   the oldest) evicted it. `SingleTexturePointerGuard` nulled
   `softwareCursorTexture_`, and nothing reloaded it. Fixed by
   `AcquireSoftwareCursorTexture()` (`software_cursor_texture.h`), which
-  protects it; pinned by `tests/test_software_cursor_eviction.cpp`. Live proof
-  on the Pi owed to T459.
+  protects it; pinned by `tests/test_software_cursor_eviction.cpp`. **Live
+  proof (T459):**
+  - Before the fix, every Pi run logged the texture NULL on frame 2, the first
+    in-world frame, with zero LRU evictions. The cursor was therefore never
+    drawn in a session.
+  - On slot3 @2f0bd914, runs P6 and P7 logged no NULL transition all session.
+  - Stills are in `review/T459/pi/after_T460/`.
 - ~~**B521**~~ (A) CLOSED by T460. **`PlayerMovedData::heading` published in
   degrees where the renderer reads EQ 0..512**, at two of the eight bridge
   publishers: `MovementComponent::UpdateMovement` (`/moveto`, `/follow`,
   auto-attack chase, every tick) and `WarpToPosition` (`/warp`). The camera
   heading was deg*360/512 of the right one for every game-driven move. Fixed
   at both sites; `tests/test_player_moved_heading_units.cpp` pins the unit for
-  every publisher (source census, count 8) and the consumer. Whether this is
-  Will's "jerks between two perspectives" is T459's live measurement.
+  every publisher (source census, count 8) and the consumer. **Live proof
+  (T459):**
+  - Baseline P3: `/move` flipped the camera heading 437.17 → 76.39 in one
+    frame; x86 showed the same.
+  - Post-fix P6: 864 writes, all 371.6–372.8.
+  - This is not Will's jerk: keyboard runs never reach this publisher (B508).
 - **B522** (A, *unconfirmed*) **`StormCloudLayer::cloudFrames_` are nulled on
   eviction and never reloaded.** `StormCloudLayer::onTextureEvicted` nulls the
   `storm_cloud_blend_N` frames. `initialize()` is the only loader, run once
@@ -8765,8 +8774,96 @@ fine — the table fails on a stale entry, so it cannot rot.
     then `PlayerMoved`, then `setPlayerPosition`, which overwrites the camera
     heading and re-arms `playerPositionIsSeed_`. Count
     `POS S->C [SELF]` lines during a keyboard run at debug level 1.
+    **MEASURED by T459, and refuted:** P6 (Pi, slot3 @2f0bd914) had 0 self
+    updates and 0 bridge writes across two keyboard forward runs (643
+    frames). The session's only self update was the zone-in confirmation.
   - (b) keyboard input during an active `/follow` or auto-attack chase, where
     the game thread publishes `PlayerMoved` every tick while the render thread
     integrates input.
 
   Found by T460.
+
+---
+
+## Added 2026-09-13 by T459 (Orange Pi live diagnosis)
+
+Evidence for every entry is under `review/T459/` (README there). Pi runs used
+Will's recipe: `--drm --renderer gles2 --constrained orangepi -r 800 600`, no
+`--eqe1-path`, Testcaster in nro. Input was injected through `/dev/uinput`,
+because the Pi had no keyboard or mouse attached (B510).
+
+- **B505** (A) **The static chat panel re-formats and word-wraps its WHOLE
+  buffer every frame, so the static-UI cost grows with session length.**
+  `renderChatPanel()` (`static_panels.cpp`) calls
+  `formatMessageForDisplay()` on all `ChatMessageBuffer` messages (cap 1000)
+  every frame. For each wrapped line it binary-searches `getTextWidth()`, and
+  only then picks the visible lines. Measured on the Pi, standing still with
+  the inventory closed (P1, Will's binary): `Static UI` went from 11.9 ms to
+  22.0 ms over 5 minutes of guard-fight chat spam. Scene draw held at
+  4–7 ms, so static UI was 69% of the frame. Fix belongs in a follow-up unit:
+  wrap on insert or on width change, not per frame.
+- **B506** (A) **Opening the inventory costs +6–7 ms of static UI per frame on
+  the Pi, and vblank quantisation turns that into Will's "halving".** Standing
+  still, 15–20 s windows interleaved closed/open, wall-clock fps:
+  - P2 (Will's binary): 48.4 closed → 37.9 open, static UI 11.1 → 17.0 ms.
+  - P5 (slot binary): 38.2 → 30.0 fps, 10.7 → 17.7 ms.
+  Scene draw is unchanged and endScene reads ~0 ms. Every open window in P5
+  sits at exactly 30.2 fps (33.1 ms), and the first closed window in P2 at
+  59.3 fps. `CIrrDeviceFB::drmPageFlip()` waits for the previous flip, a
+  60 Hz vblank, so a frame over 16.7 ms is held to 33.3 ms. **Refuted:** the
+  paperdoll RT as the cost. T459's timer in `updatePaperdollForFrame()`
+  measures about 0.2 ms average; the RTT re-renders (~2.1 ms) about 1 frame
+  in 12, plus a one-time model build of up to 243 ms on first open. The
+  remaining ~6 ms is the popup draw submission and `UIRenderer::endFrame()`,
+  which issues one `draw2DImage` per quad. It compounds with B505.
+- **B507** (A) **Follow camera BSP "ceiling" clamp uses an AABB whose top is
+  far below the player, latching the camera at `eyeHeight*0.5`.**
+  `CameraController::setFollowPosition()` reads
+  `regionBoundsMap_[bspPlayerRegion_].MaxEdge.Y`. `bspPlayerRegion_` is fed
+  from the SimulationWorker's `currentPvsRegion`, a frame late and only on a
+  region change. In nro, P3 forward-run-1 logged `BSP camera ceiling:
+  limiting height to 3.0 (ceiling at -172.0)` at 12:13:52.098, with the player
+  at z −11 to +29. The camera height over the player dropped from 10.0 to 3.0
+  and stayed there for the rest of both runs (630 frames). **Reproduces off
+  the Pi:** the x86 `build-gles2` `/move` along the same path hit the same
+  `ceiling at -172.0` near (2617,−183) for 42 frames. It is a latched state,
+  not a frame-to-frame alternation. Camera territory (T461).
+- **B508** (A, *unconfirmed*) **Will's "Follow camera jerks rapidly between
+  two perspectives while running forward" is NOT reproduced by injected
+  keyboard forward runs.** Measured:
+  - P3: two 10 s runs, 800 frames, CAMERA:TRACE after every writer. Zero A-B-A
+    flips in yaw, distance or height; zero backward player steps; zero bridge
+    `setPlayerPosition` writes during either run (physics was the only camera
+    writer).
+  - P4: four 12 s legs on four headings, one camera state per leg.
+
+  Real camera defects found on the way: B507 (latched height) and B521 (the
+  `/move` heading flip, live-confirmed in P3: heading 437.17 → 76.39, yaw
+  127° → −126°, on the Pi and on x86). T460's B525 (a) is measured by T459's
+  post-fix run. Confirm with Will's own terrain and input, or a run where
+  B525 (b) applies.
+- **B509** (A, *unconfirmed*) **"Spell gem bar missing the whole session" is
+  not reproduced in the rendered buffer.** On the Pi, DRM matched
+  `800x600@60Hz` and GBM created an 800x600 surface. Dumped frames (P1, P4)
+  and the x86 `build-gles2` contrast both show the gem column at x 764–796:
+  A1 holds "Mino" (spell 288, Testcaster's only memorized gem) and A2–A8 are
+  empty. **Refuted on this display:** the DRM mode-fallback lead. Remaining
+  candidate: the physical display overscanning away the rightmost ~36 px,
+  since the column sits 4 px from the edge. Readback cannot see that. Confirm
+  by Will looking at the right edge of the physical screen.
+- **B510** (P) **Pi live input recipe: `/dev/uinput`.** The Pi normally has no
+  USB keyboard or mouse attached. `review/T459/scripts/uinput_inject.py`
+  (run with sudo) creates a keyboard (has `KEY_A`) and a mouse (has `REL_X`)
+  before the client starts. `CIrrDeviceFB::initEvdev()` picks both, and
+  presses follow the real evdev path. It triggers on `Graphics loading
+  complete. Game ready!`. The obvious `Zone ready - player entity created`
+  line never fires in these sessions, because `networkReady()` is false when
+  the player entity is created. Two traps: never edit a bash script while it
+  is running (P5 lost its copy step to that), and copy frame dumps with
+  `cp -a`, because `encode_capture.sh` derives fps from mtimes.
+- **B511** (P) **x86 live runs from an NFS worktree stall at "Finalizing
+  connection... (40%)".** The dev VM's `net.core.rmem_max` is 212,992 (the Pi's
+  is 1,048,576), and `setcap` fails on NFS ("Operation not supported"), so the
+  1 MB `SO_RCVBUFFORCE` never happens. Recipe: copy the binary to a local
+  filesystem, `setcap cap_net_raw,cap_net_admin+ep` it, and run it with
+  `WILLEQ_DATA_ROOT` and the working directory set to the slot.
