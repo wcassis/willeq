@@ -102,6 +102,9 @@ public:
 	void drawZoneLineBoxLabels();
 	void drawFPSCounter();
 	void updatePaperdollForFrame();
+	// T462: microseconds spent in updatePaperdollForFrame() since the last
+	// call, then reset -- the frame timing breakdown's "UI Paperdoll" line.
+	int64_t takePaperdollUpdateUs();
 
 	// T457 (board B482): the paperdoll's zone-unload hop, called by
 	// ZoneLifecycleComponent::unloadZone() BEFORE RaceModelLoader's mesh caches
@@ -273,6 +276,7 @@ private:
 	uint8_t paperdollLastGender_ = 0;
 	EQT::Graphics::EntityAppearance paperdollLastAppearance_{};
 	bool paperdollHasAppearance_ = false;
+	int64_t paperdollUpdateUs_ = 0;  // T462: see takePaperdollUpdateUs()
 
 	// L13: owned state, see the accessors above.
 	std::unique_ptr<eqt::ui::CharacterModelView> characterModelView_;

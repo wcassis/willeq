@@ -447,6 +447,14 @@ struct FrameTimings {
     int64_t castingBars = 0;
     int64_t guiDrawAll = 0;
     int64_t staticUI = 0;           // Static UI panels (player status, chat, hotbar, etc.)
+    // T462 (B505/B506): sub-sections of staticUI. staticUI itself still
+    // brackets the whole pass; these split it so a Pi run can say where it goes.
+    int64_t staticUIPaperdoll = 0;     // OverlaysComponent::updatePaperdollForFrame()
+    int64_t staticUICommandFlush = 0;  // UIRenderer::endFrame() quad/blit flush
+    int64_t staticUITextFlush = 0;     // UIRenderer::endFrame() TextBatch flush
+    int64_t staticUICommands = 0;      // draw commands submitted (count, not us)
+    int64_t staticUIDriverDraws = 0;   // driver draw calls issued for them (count)
+    int64_t staticUITextEntries = 0;   // text entries flushed (count)
     int64_t zoneLineOverlay = 0;
     int64_t glFinish = 0;            // glFinish() before endScene (GPU pipeline drain)
     int64_t endScene = 0;

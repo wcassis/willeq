@@ -7,6 +7,8 @@
 #include "client/graphics/ui/ui_atlas.h"
 #include "client/graphics/text_batch.h"
 
+#include <chrono>
+
 namespace EQT {
 namespace Graphics {
 
@@ -170,6 +172,12 @@ bool UIRenderer::drawItemIcon(const irr::core::rect<irr::s32>& rect,
 void UIRenderer::endFrame() {
     if (!driver_) return;
 
+    // T462: the Static UI sub-sections of the frame timing breakdown.
+    using Clock = std::chrono::steady_clock;
+    const auto flushStart = Clock::now();
+    flushStats_.commands = atlasQuads_.size();
+    flushStats_.driverDraws = 0;
+
     // Flush the queued draw commands IN SUBMISSION ORDER (T294).
     if (atlas_ && !atlasQuads_.empty()) {
         auto* atlasTex = atlas_->getTexture();
@@ -201,15 +209,23 @@ void UIRenderer::endFrame() {
                 if (!tex) continue;
                 driver_->draw2DImage(tex, q.destRect, q.srcRect, nullptr,
                     &q.color, true);
+                ++flushStats_.driverDraws;
             }
         }
         atlasQuads_.clear();
     }
+    const auto textStart = Clock::now();
 
     // Flush text batch
     if (textBatch_) {
+        flushStats_.textEntries = textBatch_->getQuadCount();
         textBatch_->flush(driver_);
     }
+    const auto flushEnd = Clock::now();
+    flushStats_.commandFlushUs =
+        std::chrono::duration_cast<std::chrono::microseconds>(textStart - flushStart).count();
+    flushStats_.textFlushUs =
+        std::chrono::duration_cast<std::chrono::microseconds>(flushEnd - textStart).count();
 }
 
 } // namespace Graphics

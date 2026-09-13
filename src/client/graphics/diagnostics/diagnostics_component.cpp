@@ -359,6 +359,16 @@ void DiagnosticsComponent::logFrameTimings() {
     LOG_INFO(MOD_GRAPHICS, "  Casting Bars:       {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().castingBars), pct(ctx_.Frame().timingsAccum().castingBars));
     LOG_INFO(MOD_GRAPHICS, "  GUI Draw All:       {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().guiDrawAll), pct(ctx_.Frame().timingsAccum().guiDrawAll));
     LOG_INFO(MOD_GRAPHICS, "  Static UI:          {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().staticUI), pct(ctx_.Frame().timingsAccum().staticUI));
+    // T462 (B505/B506): where the Static UI section goes. The remainder
+    // (Static UI minus these three) is input hit-testing plus the render
+    // functions' own submission work, chat wrapping included.
+    LOG_INFO(MOD_GRAPHICS, "    UI Paperdoll:     {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().staticUIPaperdoll), pct(ctx_.Frame().timingsAccum().staticUIPaperdoll));
+    LOG_INFO(MOD_GRAPHICS, "    UI Quad Flush:    {:>8.0f} us ({:>5.1f}%)  [{:.0f} commands, {:.0f} draws]",
+             avg(ctx_.Frame().timingsAccum().staticUICommandFlush), pct(ctx_.Frame().timingsAccum().staticUICommandFlush),
+             avg(ctx_.Frame().timingsAccum().staticUICommands), avg(ctx_.Frame().timingsAccum().staticUIDriverDraws));
+    LOG_INFO(MOD_GRAPHICS, "    UI Text Flush:    {:>8.0f} us ({:>5.1f}%)  [{:.0f} entries]",
+             avg(ctx_.Frame().timingsAccum().staticUITextFlush), pct(ctx_.Frame().timingsAccum().staticUITextFlush),
+             avg(ctx_.Frame().timingsAccum().staticUITextEntries));
     LOG_INFO(MOD_GRAPHICS, "  Zone Line Overlay:  {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().zoneLineOverlay), pct(ctx_.Frame().timingsAccum().zoneLineOverlay));
     LOG_INFO(MOD_GRAPHICS, "  Footprint Render:   {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().footprintRender), pct(ctx_.Frame().timingsAccum().footprintRender));
     LOG_INFO(MOD_GRAPHICS, "  Post Render:        {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().postRender), pct(ctx_.Frame().timingsAccum().postRender));

@@ -631,37 +631,30 @@ bool appearanceEquals(const EQT::Graphics::EntityAppearance& a, const EQT::Graph
     return true;
 }
 
-// T459 (Orange Pi live diagnosis): the paperdoll's own share of the static UI
-// section. renderStaticUI() is pinned statement-for-statement by the G05
-// frame-render golden, so the split is taken here, in the callee, instead.
-// Render thread only (this is reached from renderStaticUI() and nowhere
-// else). One INFO line per 60 calls, and calls only happen while the
-// inventory popup is open, so a closed-inventory run logs nothing.
-struct PaperdollSectionTimer {
-    const char* name;
+// T462: the paperdoll's own share of the Static UI section, as a permanent
+// frame-timing sub-section (T459 measured it with a temporary INFO timer).
+// renderStaticUI() is pinned statement-for-statement by the G05 frame-render
+// golden, so the time is taken here, in the callee, and handed over by
+// takePaperdollUpdateUs(). Render thread only.
+struct PaperdollUpdateTimer {
+    int64_t& sink;
     std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
-    explicit PaperdollSectionTimer(const char* n) : name(n) {}
-    ~PaperdollSectionTimer() {
-        struct Accum { int64_t totalUs = 0; int64_t maxUs = 0; int calls = 0; int over1ms = 0; };
-        static Accum whole, rtt;
-        Accum& a = (name[0] == 'u') ? whole : rtt;
-        const int64_t us = std::chrono::duration_cast<std::chrono::microseconds>(
+    explicit PaperdollUpdateTimer(int64_t& s) : sink(s) {}
+    ~PaperdollUpdateTimer() {
+        sink += std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now() - start).count();
-        a.totalUs += us;
-        a.maxUs = std::max(a.maxUs, us);
-        ++a.calls;
-        if (us > 1000) ++a.over1ms;
-        if (a.calls >= 60) {
-            LOG_INFO(MOD_UI, "T459 paperdoll {}: {} calls, avg {} us, max {} us, {} calls over 1 ms",
-                     name, a.calls, a.totalUs / a.calls, a.maxUs, a.over1ms);
-            a = Accum{};
-        }
     }
 };
 } // namespace
 
+int64_t OverlaysComponent::takePaperdollUpdateUs() {
+    const int64_t us = paperdollUpdateUs_;
+    paperdollUpdateUs_ = 0;
+    return us;
+}
+
 void OverlaysComponent::updatePaperdollForFrame() {
-    PaperdollSectionTimer t459WholeTimer("updatePaperdollForFrame");
+    PaperdollUpdateTimer updateTimer(paperdollUpdateUs_);
     ensurePaperdollInitialized();
     if (!characterModelView_ || !ctx_.entityRenderer) {
         return;

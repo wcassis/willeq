@@ -122,7 +122,36 @@ public:
     /** Get the text batch for adding text. */
     TextBatch* getTextBatch() { return textBatch_; }
 
+    /**
+     * T462 (boards B505/B506): what the last endFrame() cost, for the frame
+     * timing breakdown's Static UI sub-sections and the per-frame draw-count
+     * pins in tests/test_static_ui_frame_cost.cpp.
+     *
+     * `commands` is every drawRect/drawSprite/drawTexture/drawItemIcon call
+     * accumulated since beginFrame(); `driverDraws` is how many draw calls
+     * endFrame() issued to the driver for them (one per command until T462
+     * batched runs of same-texture commands); `textEntries` is how many text
+     * entries the TextBatch flushed. The two times are wall-clock microseconds
+     * spent inside the command flush and the text flush.
+     *
+     * TAKE-and-reset: a frame that does not call endFrame() (F11 hides the UI)
+     * reads zeros rather than the previous frame's numbers.
+     */
+    struct FlushStats {
+        size_t commands = 0;
+        size_t driverDraws = 0;
+        size_t textEntries = 0;
+        int64_t commandFlushUs = 0;
+        int64_t textFlushUs = 0;
+    };
+    FlushStats takeFlushStats() {
+        FlushStats s = flushStats_;
+        flushStats_ = FlushStats{};
+        return s;
+    }
+
 private:
+    FlushStats flushStats_;
     irr::video::IVideoDriver* driver_ = nullptr;
     UIAtlas* atlas_ = nullptr;
     TextBatch* textBatch_ = nullptr;

@@ -248,21 +248,20 @@ bool FrameComponent::processFrame(float deltaTime) {
     // Phase 3: Simulation
     processFrameSimulation(deltaTime);
 
-    // T459 (Orange Pi live diagnosis). Two diagnostic lines, placed after every
-    // camera writer of the frame has run (bridge PlayerMoved is forwarded before
-    // processFrame(); physics, zoom and lifts run in phases 1-3) and before the
-    // render that consumes the camera -- so the TRACE line is the camera this
-    // frame is DRAWN with. Off unless --log-module=CAMERA:TRACE.
+    // The camera this frame is DRAWN with, one TRACE line per frame. Placed
+    // after every camera writer of the frame has run (bridge PlayerMoved is
+    // forwarded before processFrame(); physics, zoom and lifts run in phases
+    // 1-3) and before the render that consumes it. Off unless
+    // --log-module=CAMERA:TRACE. T459 added it to diagnose B507/B508/B521 on the
+    // Pi; T462 kept it as a permanent trace under its own name
+    // (review/T459/scripts/analyze_camera.py matches the old "T459 cam" prefix).
     // T461 renumbered CameraMode (Follow=1 became Chase=3, FirstPerson 2 -> 1,
-    // Free=0 is gone), so the bare number means something different before
-    // and after that merge. The official name is printed beside it so a trace
-    // line is self-describing either way. The follow distances are the Chase
-    // camera's; in any other mode they are simply its last values.
+    // Free=0 is gone), so the official name is printed beside the number.
     if (ctx_.camera) {
         const irr::core::vector3df camPos = ctx_.camera->getPosition();
         const irr::core::vector3df camTgt = ctx_.camera->getTarget();
         LOG_TRACE(MOD_CAMERA,
-                  "T459 cam frame={} mode={} ({}) pos=({:.2f},{:.2f},{:.2f}) tgt=({:.2f},{:.2f},{:.2f}) "
+                  "CameraFrame frame={} mode={} ({}) pos=({:.2f},{:.2f},{:.2f}) tgt=({:.2f},{:.2f},{:.2f}) "
                   "player=({:.2f},{:.2f},{:.2f}) heading={:.2f} followDist actual={:.2f} preferred={:.2f}",
                   ctx_.frameNumber, static_cast<int>(ctx_.PlayerCamera().cameraMode()),
                   ctx_.PlayerCamera().getCameraModeString(),
@@ -271,24 +270,26 @@ bool FrameComponent::processFrame(float deltaTime) {
                   ctx_.cameraController ? ctx_.cameraController->getActualFollowDistance() : -1.0f,
                   ctx_.cameraController ? ctx_.cameraController->getFollowDistance() : -1.0f);
     }
-    // The software cursor draws only while this pointer is non-null
-    // (renderFrameTail); log each transition so a live run shows WHEN it goes.
-    {
-        static int t459CursorState = -1;
-        const int cursorState = owner_.softwareCursorTexture_ ? 1 : 0;
-        if (cursorState != t459CursorState) {
-            auto* cursorControl = ctx_.device ? ctx_.device->getCursorControl() : nullptr;
-            LOG_INFO(MOD_GRAPHICS, "T459 software cursor texture is now {} (frame {}, cursor control visible={})",
-                     cursorState ? "LIVE" : "NULL", ctx_.frameNumber,
-                     cursorControl ? cursorControl->isVisible() : false);
-            t459CursorState = cursorState;
-        }
-    }
 
     // Phase 4: Render
     if (!processFrameRender(deltaTime)) {
         // Loading screen was shown - skip rest of render
         return true;
+    }
+
+    // T462 (B505/B506): split the Static UI section. Taken here, after the
+    // render, rather than inside renderStaticUI() -- that body is pinned
+    // statement-for-statement by the G05 frame-render golden. Both sources
+    // are take-and-reset, so a frame that drew no static UI reads zeros.
+    {
+        const UIRenderer::FlushStats flush =
+            uiRenderer_ ? uiRenderer_->takeFlushStats() : UIRenderer::FlushStats{};
+        frameTimings_.staticUIPaperdoll = ctx_.Overlays().takePaperdollUpdateUs();
+        frameTimings_.staticUICommandFlush = flush.commandFlushUs;
+        frameTimings_.staticUITextFlush = flush.textFlushUs;
+        frameTimings_.staticUICommands = static_cast<int64_t>(flush.commands);
+        frameTimings_.staticUIDriverDraws = static_cast<int64_t>(flush.driverDraws);
+        frameTimings_.staticUITextEntries = static_cast<int64_t>(flush.textEntries);
     }
 
     // ===== FRAME TIMING: Total Frame (always-on) =====
@@ -548,6 +549,12 @@ bool FrameComponent::processFrame(float deltaTime) {
         frameTimingsAccum_.castingBars += frameTimings_.castingBars;
         frameTimingsAccum_.guiDrawAll += frameTimings_.guiDrawAll;
         frameTimingsAccum_.staticUI += frameTimings_.staticUI;
+        frameTimingsAccum_.staticUIPaperdoll += frameTimings_.staticUIPaperdoll;
+        frameTimingsAccum_.staticUICommandFlush += frameTimings_.staticUICommandFlush;
+        frameTimingsAccum_.staticUITextFlush += frameTimings_.staticUITextFlush;
+        frameTimingsAccum_.staticUICommands += frameTimings_.staticUICommands;
+        frameTimingsAccum_.staticUIDriverDraws += frameTimings_.staticUIDriverDraws;
+        frameTimingsAccum_.staticUITextEntries += frameTimings_.staticUITextEntries;
         frameTimingsAccum_.zoneLineOverlay += frameTimings_.zoneLineOverlay;
         frameTimingsAccum_.glFinish += frameTimings_.glFinish;
         frameTimingsAccum_.endScene += frameTimings_.endScene;

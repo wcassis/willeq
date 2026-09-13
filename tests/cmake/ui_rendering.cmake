@@ -471,6 +471,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_ui_atlas_pixels DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# T462 (boards B505/B506): the static UI's per-frame cost -- draw-count pins
+# for the batched UIRenderer flush and the chat wrap cache, plus a timing
+# account that runs only with WILLEQ_T462_ACCOUNT=1. Same headless GLES2 +
+# willeq.eqe1 harness as test_ui_atlas_pixels; self-skips without them.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_static_ui_frame_cost
+        test_static_ui_frame_cost.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_static_ui_frame_cost PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_static_ui_frame_cost GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_static_ui_frame_cost DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T313: the static UI's missing scroll INPUT -- chat scrollback, the skills
 # list and the loot list all honoured a scrollOffset nothing ever wrote.
 # Mostly device-free (it drives StaticUIInput and IrrlichtRenderer's slash
