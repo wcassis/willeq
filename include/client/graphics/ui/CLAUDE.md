@@ -191,6 +191,7 @@ group panel and the buff bar (board **B366**).
 | U | Interact (nearest door/object) |
 | H | Hail (say "Hail" or "Hail, <target>") |
 | L | Cycle object lights |
+| F10 / Shift+F10 / Shift+F11 | Music volume down / effects volume down / effects volume up. Until T464 (board B535) these, Alt+C and L were compiled-in defaults the shipped `config/hotkeys.json` did not carry, so production never reached them. **F11 is not music volume up**: the defaults also bind it, but F11's Global `ToggleAllUI` wins, so F11 has only ever toggled the UI; the official key is oracle-owed (board B561). |
 | ESC | Clear target. `/cleartarget` (no alias, category Combat) reaches the same `ActionDispatcher::clearTarget()` since T347 (board B012 CLOSED), so a `--script` run can clear a target |
 | +/- | Camera zoom in/out: the Chase follow distance, or the active orbit camera's distance (T461, `PlayerCameraComponent::zoomCamera()`, shared with the wheel). First person does not zoom. |
 | (unbound) | `CameraOrbitLeft` / `CameraOrbitRight` / `CameraPitchUp` / `CameraPitchDown` — orbit the ACTIVE user camera 5 degrees per press (T461). The official client has these actions (`LEFT_CAM`, `RIGHT_CAM`, `PITCHUP_CAM`, `PITCHDOWN_CAM`) but no file records their keys, so fable binds none by default (ORACLE-OWED, board B531); bind them in `config/hotkeys.json`. |

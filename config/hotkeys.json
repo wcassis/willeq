@@ -85,7 +85,12 @@
             "CameraZoomIn": ["Shift+Plus", "Plus"],
             "CameraZoomOut": ["Minus", "NumpadSubtract"],
             "ToggleCameraMode": "F9",
-            "ToggleZoneLights": "Ctrl+F4"
+            "ToggleZoneLights": "Ctrl+F4",
+            "ToggleCombatAbilities": "Alt+C",
+            "CycleObjectLights": "L",
+            "MusicVolumeDown": "F10",
+            "EffectsVolumeDown": "Shift+F10",
+            "EffectsVolumeUp": "Shift+F11"
         }
     }
 }

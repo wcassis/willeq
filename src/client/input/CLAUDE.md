@@ -25,6 +25,7 @@ Input flows through a four-layer pipeline: capture → hotkey resolution → act
 - `HotkeyBinding` struct: key code + `ModifierFlags` (Ctrl/Shift/Alt) + action
 - `HotkeyMode` enum: Global (always active) vs Player (gameplay only)
 - Loads/saves from `config/hotkeys.json`, supports runtime overrides from `willeq.json`
+- **A file that loads REPLACES the compiled-in defaults** (`loadFromFile()` clears every binding; the defaults are only the fallback for a file that cannot be read), so a default binding must be in `setupDefaults()` AND the shipped `config/hotkeys.json`. T464 (board B535) found five that production never reached (Alt+C, L, F10, Shift+F10, Shift+F11); `HotkeyShippedFileTest.T464_TheShippedFileCarriesEveryDefaultBinding` compares the two tables binding by binding. Its one exemption is `MusicVolumeUp` = F11, which the defaults also give to `ToggleAllUI`: a Global binding wins in `getAction()`, so F11 has only ever meant ToggleAllUI, and the official key is oracle-owed (board B561)
 - Fast hash lookup with separate movement key map for continuous (held) keys
 - Conflict detection between bindings
 - String parsing (e.g., "Ctrl+Shift+F1")

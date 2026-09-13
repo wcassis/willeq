@@ -333,6 +333,10 @@ public:
     // player_camera_component.h (T448).
     using CameraMode = EQT::Graphics::CameraMode;
     void setCameraMode(CameraMode mode) { playerCamera_->setCameraMode(mode); }
+    // T464 (B532): application_zone_loading.cpp (both loaders, step 7).
+    void placeCameraForZoneIn(float x, float y, float z, float heading512) {
+        playerCamera_->placeCameraForZoneIn(x, y, z, heading512);
+    }
     CameraMode getCameraMode() const { return PlayerCamera().cameraMode(); }
     std::string getCameraModeString() const { return playerCamera_->getCameraModeString(); }
 

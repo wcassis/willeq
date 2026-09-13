@@ -585,7 +585,8 @@ void ZoneStreamComponent::onPvsRegionChanged() {
     }
 #endif
     // textureRebuildQueue_ is repopulated each frame — no action needed
-    // Note: camera BSP collision (setBspPlayerRegion) is updated inline in applySimulationOutput
+    // Note: camera BSP collision needs no region update here -- since T464 the
+    // CameraController looks up the player's eye region itself
     // on every region change, not gated by the neighborhood.
 }
 

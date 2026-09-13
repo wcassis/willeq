@@ -1000,4 +1000,107 @@ TEST_F(HotkeyOracleWindowKeysTest, T461_TheShippedHotkeysJsonAgreesF9) {
         << "config/hotkeys.json still binds Ctrl+F5";
     mgr.resetToDefaults();
 }
+
+// =============================================================================
+// T464 (board B535): production reaches EVERY default binding.
+//
+// The contract, from the loader and its history: the compiled-in defaults are
+// the FALLBACK for a shipped file that cannot be read (loadFromFile() returns
+// before touching m_bindings on an open or parse failure, and T399 logs that
+// case as "the SHIPPED key bindings are not loaded; the built-in defaults are
+// in effect"), and a file that loads REPLACES them (loadFromFile() clears
+// m_bindings; saveToFile() writes the complete set back). So the shipped file
+// must carry every default, and this compares the two tables binding by
+// binding -- action, mode, key and modifiers -- through the exact sequence
+// Application::loadConfigFile() runs.
+//
+// MEASURED before T464: five defaults were absent from the file -- Alt+C
+// (ToggleCombatAbilities), L (CycleObjectLights), F10 (MusicVolumeDown),
+// Shift+F10 (EffectsVolumeDown) and Shift+F11 (EffectsVolumeUp) -- so those
+// keys did nothing in a real run while every resetToDefaults()-based test
+// passed.
+// =============================================================================
+
+namespace {
+
+// F11 is bound twice in the defaults: ToggleAllUI (Global) and MusicVolumeUp
+// (Player). getAction() prefers a Global binding, so F11 has only ever meant
+// ToggleAllUI, with or without the file, and the file carries only that one.
+// Which of the two the official keymap gives F11 is ORACLE-OWED (board B561);
+// T464 keeps today's production meaning and does not pick a winner.
+bool IsTheOracleOwedF11Conflict(const HotkeyBinding& b) {
+    return b.action == HotkeyAction::MusicVolumeUp && b.keyCode == irr::KEY_F11 &&
+           b.modifiers == ModifierFlags::None && b.mode == HotkeyMode::Player;
+}
+
+std::vector<HotkeyBinding> AllBindings(const HotkeyManager& mgr) {
+    std::vector<HotkeyBinding> out;
+    const auto count = static_cast<uint32_t>(HotkeyAction::Count);
+    for (uint32_t i = 0; i < count; ++i) {
+        for (const auto& b : mgr.getBindingsForAction(static_cast<HotkeyAction>(i))) {
+            out.push_back(b);
+        }
+    }
+    return out;
+}
+
+bool Contains(const std::vector<HotkeyBinding>& set, const HotkeyBinding& b) {
+    for (const auto& x : set) {
+        if (x.action == b.action && x.mode == b.mode && x.keyCode == b.keyCode &&
+            x.modifiers == b.modifiers) {
+            return true;
+        }
+    }
+    return false;
+}
+
+}  // namespace
+
+TEST(HotkeyShippedFileTest, T464_TheShippedFileCarriesEveryDefaultBinding) {
+    auto& mgr = HotkeyManager::instance();
+    mgr.resetToDefaults();
+    const std::vector<HotkeyBinding> defaults = AllBindings(mgr);
+    ASSERT_GT(defaults.size(), 50u);
+
+    // Application::loadConfigFile(), verbatim.
+    mgr.resetToDefaults();
+    ASSERT_TRUE(mgr.loadFromFile(std::string(WILLEQ_REPO_ROOT) + "/config/hotkeys.json"));
+    const std::vector<HotkeyBinding> production = AllBindings(mgr);
+
+    size_t exempted = 0;
+    for (const auto& d : defaults) {
+        if (IsTheOracleOwedF11Conflict(d)) {
+            ++exempted;
+            continue;
+        }
+        EXPECT_TRUE(Contains(production, d))
+            << "config/hotkeys.json drops the default "
+            << HotkeyManager::actionEnumToName(d.action) << " = "
+            << HotkeyManager::bindingToString(d)
+            << " -- production never reaches this key";
+    }
+    EXPECT_EQ(exempted, 1u) << "the F11 exemption no longer matches a default; "
+                               "if B561 was settled, delete the exemption";
+    mgr.resetToDefaults();
+}
+
+// Today's F11: ToggleAllUI, in the defaults AND in production. Pinned so a
+// change to it is a decision (board B561), not a side effect of a file edit.
+TEST(HotkeyShippedFileTest, T464_F11KeepsItsProductionMeaningPendingTheOracle) {
+    auto& mgr = HotkeyManager::instance();
+    mgr.resetToDefaults();
+    auto viaDefaults = mgr.getAction(irr::KEY_F11, false, false, false, HotkeyMode::Player);
+    ASSERT_TRUE(viaDefaults.has_value());
+    EXPECT_EQ(*viaDefaults, HotkeyAction::ToggleAllUI);
+    EXPECT_EQ(mgr.getBindingsForAction(HotkeyAction::MusicVolumeUp).size(), 1u)
+        << "the defaults still carry the conflicting MusicVolumeUp = F11";
+
+    ASSERT_TRUE(mgr.loadFromFile(std::string(WILLEQ_REPO_ROOT) + "/config/hotkeys.json"));
+    auto viaFile = mgr.getAction(irr::KEY_F11, false, false, false, HotkeyMode::Player);
+    ASSERT_TRUE(viaFile.has_value());
+    EXPECT_EQ(*viaFile, HotkeyAction::ToggleAllUI);
+    EXPECT_TRUE(mgr.getBindingsForAction(HotkeyAction::MusicVolumeUp).empty())
+        << "the shipped file yields ToggleAllUI for F11 and binds MusicVolumeUp nowhere";
+    mgr.resetToDefaults();
+}
 #endif

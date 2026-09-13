@@ -8899,7 +8899,20 @@ because the Pi had no keyboard or mouse attached (B510).
   in 12, plus a one-time model build of up to 243 ms on first open. The
   remaining ~6 ms is the popup draw submission and `UIRenderer::endFrame()`,
   which issues one `draw2DImage` per quad. It compounds with B505.
-- **B507** (A) **Follow camera BSP "ceiling" clamp uses an AABB whose top is
+- ~~**B507**~~ (A) **CLOSED by T464 (2026-09-13).** Root cause: a FRAME
+  mismatch, not a wrong or stale region. `regionBoundingBoxes` is in the EQ
+  Z-up frame (`ZoneLoadComponent::loadZoneStep2_BSP()` builds it from EQ
+  vertices; `SimBridgeComponent` and the zone debug draw read it that way), and
+  the clamp read `MaxEdge.Y` -- a horizontal extent -- as the ceiling. Measured
+  from nro's own BSP: region 1217 holds the player's feet, eye and camera at
+  T459's pose and its box max is (2761.75, **-171.47**, 10.81), i.e. the logged
+  "ceiling at -172.0" beside a player at y -181.57. The clamp now reads
+  `MaxEdge.Z` of the player's EYE region (looked up by the controller itself),
+  and a box top at or below the eye is no ceiling; at T459's pose the camera
+  sits at 10.0. Pinned by `tests/test_camera_bsp_ceiling.cpp` (constructed
+  cases red before the fix: 3.0 instead of 10.0; nro cases on the real zone).
+  Original entry:
+  **Follow camera BSP "ceiling" clamp uses an AABB whose top is
   far below the player, latching the camera at `eyeHeight*0.5`.**
   `CameraController::setFollowPosition()` reads
   `regionBoundsMap_[bspPlayerRegion_].MaxEdge.Y`. `bspPlayerRegion_` is fed
@@ -8911,9 +8924,17 @@ because the Pi had no keyboard or mouse attached (B510).
   the Pi:** the x86 `build-gles2` `/move` along the same path hit the same
   `ceiling at -172.0` near (2617,−183) for 42 frames. It is a latched state,
   not a frame-to-frame alternation. Camera territory (T461).
-- **B508** (A, *unconfirmed*) **Will's "Follow camera jerks rapidly between
+- **B508** (A, *unconfirmed*; **narrowed by T464**) **Will's "Follow camera jerks rapidly between
   two perspectives while running forward" is NOT reproduced by injected
-  keyboard forward runs.** Measured:
+  keyboard forward runs.** T464 found and removed a two-state mechanism in the
+  code: the ceiling clamp's region was the SimulationWorker's CAMERA region,
+  i.e. the region of the position the clamp itself sets, fed back a frame late.
+  Where a BSP split with a vertical component lies between the clamped (3) and
+  unclamped (10) camera heights and the two regions' boxes straddle the
+  threshold, the height alternated (a constructed BSP gave 3,10,3,10,3,10).
+  On T459's own nro path that precondition holds at 0 of 201 steps, so it is
+  not proven to be Will's jerk. The clamp is now a function of the player's pose
+  alone; a remaining flip needs the POSE to alternate (B525 (b)). Measured:
   - P3: two 10 s runs, 800 frames, CAMERA:TRACE after every writer. Zero A-B-A
     flips in yaw, distance or height; zero backward player steps; zero bridge
     `setPlayerPosition` writes during either run (physics was the only camera
@@ -9023,7 +9044,17 @@ because the Pi had no keyboard or mouse attached (B510).
   `OKP_KeyboardFilterCombobox` lists a Camera category), T377's method. Found
   by T461.
 
-- **B532** (A, *unconfirmed live*) **Every zone load forces the camera back to
+- ~~**B532**~~ (A) **CLOSED by T464 (2026-09-13)** -- confirmed from code with a
+  red test, not live. Both loaders now call
+  `PlayerCameraComponent::placeCameraForZoneIn()`, which RE-ENTERS the current
+  mode (so first person's name tag and projection are re-applied for the new
+  zone) instead of forcing Chase; the Chase default for a character with no
+  saved view moved to the identity load in `FrameComponent::syncUiPreferences()`.
+  `tests/test_camera_zone_in_preference.cpp`: User 1, First Person and an
+  in-session User 2 survive a second zone load with the ini unchanged (all three
+  red before the fix -- Chase, and `View=4` gone); a second character with no
+  file still gets Chase and writes nothing. Original entry:
+  **Every zone load forces the camera back to
   Chase, and the persistence then saves that over the player's choice.**
   `Application`'s two zone-graphics loaders (`application_zone_loading.cpp`,
   step "7. Camera") call `setCameraMode(Chase)` on every zone load, while
@@ -9062,7 +9093,19 @@ because the Pi had no keyboard or mouse attached (B510).
   old three. Nothing a player reaches goes through it. The same shape B043
   recorded for wireframe/HUD/name tags. Found by T461.
 
-- **B535** (A) **`config/hotkeys.json` drops six default bindings in
+- ~~**B535**~~ (A) **CLOSED by T464 (2026-09-13).** Contract established: a
+  file that loads REPLACES the defaults, which are only the fallback for an
+  unreadable file (`loadFromFile()` returns before clearing on an open/parse
+  failure; `saveToFile()` writes the full set). So the file now carries all of
+  them: Alt+C, L, F10, Shift+F10, Shift+F11 added.
+  `HotkeyShippedFileTest.T464_TheShippedFileCarriesEveryDefaultBinding` compares
+  the tables binding by binding through `Application::loadConfigFile()`'s exact
+  sequence (red before: those five). F11 is unchanged: `getAction()` prefers
+  the Global `ToggleAllUI`, so F11 toggles the UI with or without the file, and
+  the file binds `MusicVolumeUp` nowhere -- the one exemption, oracle-owed as
+  **B561**. Census correction: FIVE bindings were missing, not six (F11 was
+  never reachable as music-up). Original entry:
+  **`config/hotkeys.json` drops six default bindings in
   production.** `Application::loadConfigFile()` calls
   `HotkeyManager::resetToDefaults()` and then `loadFromFile("config/hotkeys.json")`,
   and `loadFromFile()` CLEARS every binding before reading the file. The file
@@ -9076,3 +9119,47 @@ because the Pi had no keyboard or mouse attached (B510).
   also `ToggleAllUI`, so restoring MusicVolumeUp needs a decision. T461 put F9
   in both places and pinned both (`test_hotkey_manager.cpp`
   `T461_TheShippedHotkeysJsonAgreesF9`). Found by T461.
+
+## Added 2026-09-13 by T464 (camera and key-binding live defects)
+
+- **B560** (A, *unconfirmed live*) **A second character in the same process
+  inherits the first one's window states and user-camera rigs.**
+  `FrameComponent::syncUiPreferences()` starts the load from `collect()` -- what
+  the client currently holds -- so a key the new character's file does not
+  state, or every key when it has no file, keeps the PREVIOUS character's value
+  rather than the panel struct's default. T432's comment calls that "keeps the
+  panel struct's own default", which is only true for the first identity of a
+  run. T464 fixed the camera MODE half (it is now reset to Chase before the
+  load); the seven `Show=` windows and `User1*`/`User2*` rigs still carry over.
+  Confirm by: `/camp` to character select, log in a second character with no
+  `UI_<char>_<server>.ini`, look at the windows and `/camera get`. Found by T464.
+
+- **B561** (C, ORACLE-OWED) **F11 is bound to two actions in the defaults.**
+  `HotkeyManager::setupDefaults()` binds F11 to `ToggleAllUI` (Global) and
+  `MusicVolumeUp` (Player); `getAction()` prefers Global, so F11 has only ever
+  toggled the UI, and `config/hotkeys.json` binds `MusicVolumeUp` nowhere. T464
+  kept that and exempted exactly this binding in
+  `T464_TheShippedFileCarriesEveryDefaultBinding` (the exemption fails once it
+  matches nothing). Settle with the official keymap: Options > Keys (T461
+  Leg B / T377's screenshot method) for "Toggle all UI" and "Music volume up".
+  Found by T461 (B535), boarded by T464.
+
+- **B562** (B) **The shipped `config/hotkeys.json` binds eight actions the
+  compiled-in defaults do not**: `CancelDialog`, `CancelInput`,
+  `ChatAutocomplete`, `ConfirmDialog`, `ResetUIDefaults`, `SaveUILayout`,
+  `ToggleUILock` (all Global) and `ToggleZoneLights` (Ctrl+F4). B535's converse:
+  when the file cannot be read (`loadFromFile()` logs an ERROR and the defaults
+  stay in effect) those keys vanish. Census by action name, T464
+  (`addBinding(HotkeyAction::X` in `setupDefaults()` vs the file's keys). Fix
+  shape: add them to `setupDefaults()` (some may be dead actions -- check each
+  has a consumer first) and extend the T464 test to compare both directions.
+  Found by T464.
+
+- **B563** (P) **The region box a camera or sim reads is built in one place
+  and re-derived in a test.** `tests/test_camera_bsp_ceiling.cpp` copies
+  `ZoneLoadComponent::loadZoneStep2_BSP()`'s box loop statement for statement
+  to measure nro's real boxes, because the loop is inline in the step body. A
+  free function (`ComputeRegionBoundingBoxes(const WldLoader&, const BspTree&)`)
+  would let the test call the production code and document the EQ Z-up frame
+  at its source -- the frame B507 got wrong. Not done by T464: `zone_load/` was
+  outside its territory. Found by T464.

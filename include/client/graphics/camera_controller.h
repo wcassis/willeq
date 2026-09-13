@@ -67,10 +67,15 @@ public:
     void adjustFollowDistance(float delta);
 
     // BSP-based collision detection for camera zoom (replaces triangle selectors)
-    // regionBoundsY: per-region AABB in Irrlicht Y-up coords, indexed by BSP region index
+    // regionBounds: per-region AABB in the EQ Z-UP frame (Z is vertical), indexed
+    // by BSP region index -- the renderer's regionBoundingBoxes, built by
+    // ZoneLoadComponent::loadZoneStep2_BSP().
+    // T464 (B507/B508): there is no setBspPlayerRegion() any more. The camera
+    // looks up the region of each ray's origin (the player's eye, a rig's
+    // look-at point) itself, from the pose it is handed; it used to be fed the
+    // SimulationWorker's CAMERA region, a frame late and only on a change.
     void setBspCollision(const BspTree* bspTree,
                          const std::map<size_t, irr::core::aabbox3df>* regionBounds);
-    void setBspPlayerRegion(size_t region);
 
     // Legacy triangle selector collision (fallback for zones without BSP)
     void setCollisionManager(irr::scene::ISceneCollisionManager* mgr,
@@ -108,16 +113,16 @@ private:
     // BSP-based camera collision
     const BspTree* bspTree_ = nullptr;
     const std::map<size_t, irr::core::aabbox3df>* regionBoundsMap_ = nullptr;
-    size_t bspPlayerRegion_ = SIZE_MAX;
 
     // Legacy collision (fallback)
     irr::scene::ISceneCollisionManager* collisionManager_ = nullptr;
     irr::scene::ITriangleSelector* collisionSelector_ = nullptr;
 
-    // BSP collision: check if a point is in a PVS-visible region from the player
-    bool isBspPointVisible(float eqX, float eqY, float eqZ) const;
+    // BSP collision: check if a point is in a region PVS-visible from originRegion
+    bool isBspPointVisible(size_t originRegion, float eqX, float eqY, float eqZ) const;
     // BSP collision: binary search along ray to find collision point
-    float bspFindCollisionDistance(float startEqX, float startEqY, float startEqZ,
+    float bspFindCollisionDistance(size_t originRegion,
+                                  float startEqX, float startEqY, float startEqZ,
                                   float endEqX, float endEqY, float endEqZ) const;
 
     static constexpr float CAMERA_COLLISION_OFFSET = 0.5f;   // Distance to stay away from walls

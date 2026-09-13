@@ -230,6 +230,15 @@ public:
 
     /**
      * Load hotkey configuration from a JSON file.
+     *
+     * A file that loads REPLACES every binding (the compiled-in defaults are
+     * the fallback for a file that cannot be opened or parsed, which returns
+     * false with the bindings untouched). So the shipped config/hotkeys.json
+     * must carry every default: T464 (board B535) found five it did not, and
+     * test_hotkey_manager.cpp T464_TheShippedFileCarriesEveryDefaultBinding
+     * now compares the two tables binding by binding. A new default binding
+     * goes in setupDefaults() AND the shipped file.
+     *
      * @param path Path to the config file (default: config/hotkeys.json)
      * @return true if loaded successfully
      */

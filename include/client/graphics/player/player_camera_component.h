@@ -201,6 +201,9 @@ public:
 	// FrameComponent::processCommonInput) and `/camera cycle`. The order is
 	// nextCameraMode()'s, eqstr_us.txt 9500..9505.
 	void cycleCameraMode();
+	// T464 (board B532): THE zone-in camera step -- both of Application's
+	// zone-graphics loaders call it (application_zone_loading.cpp, step 7).
+	void placeCameraForZoneIn(float x, float y, float z, float heading512);
 	// The official display name (camera_mode.h), e.g. "Chase Camera".
 	std::string getCameraModeString() const;
 

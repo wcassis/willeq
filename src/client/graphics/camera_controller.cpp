@@ -74,15 +74,34 @@ void CameraController::setFollowPosition(float eqX, float eqY, float eqZ, float 
         // Check for collision between player and camera
         float effectiveDistance = preferredFollowDistance_;
 
-        if (bspTree_ && bspPlayerRegion_ != SIZE_MAX) {
+        // T464 (boards B507, B508): the ceiling clamp and the wall test both
+        // start at the player's EYE, so both use the region the eye is in,
+        // looked up here from the pose this call was handed. It used to be the
+        // SimulationWorker's currentPvsRegion, which is the region of the
+        // CAMERA -- the position this function itself sets -- fed back a frame
+        // late and only on a region change. The clamp's input was then its own
+        // output: at a BSP split with a vertical component between the clamped
+        // and unclamped heights the height could alternate frame to frame.
+        const size_t eyeRegion =
+            bspTree_ ? bspTree_->findRegionIndexForPoint(eqX, eqY, eqZ + eyeHeight) : SIZE_MAX;
+
+        if (bspTree_ && eyeRegion != SIZE_MAX) {
             // BSP-based collision: use region lookups instead of triangle intersection
 
-            // Ceiling check: use player region's AABB max height
+            // Ceiling check: the eye region's box top.
             if (regionBoundsMap_) {
-                auto it = regionBoundsMap_->find(bspPlayerRegion_);
-                if (it != regionBoundsMap_->end()) {
-                    // AABB is in Irrlicht Y-up: MaxEdge.Y is the ceiling
-                    float ceilingHeight = it->second.MaxEdge.Y - CAMERA_COLLISION_OFFSET;
+                auto it = regionBoundsMap_->find(eyeRegion);
+                // The box is in the EQ Z-UP frame -- ZoneLoadComponent::
+                // loadZoneStep2_BSP() builds it from EQ vertices, and every
+                // other consumer (SimBridgeComponent, the zone debug draw)
+                // reads it that way. This read MaxEdge.Y, a HORIZONTAL extent,
+                // as the ceiling: in nro region 1217's Y top is -171.47 beside
+                // a player at y -181.57, z -9.27, so the camera latched at
+                // eyeHeight*0.5 (T459, B507). The vertical top is 10.81.
+                // A box top at or below the eye is not over the player's head
+                // (a hilltop, a sloped outdoor region), so it is no ceiling.
+                if (it != regionBoundsMap_->end() && it->second.MaxEdge.Z > eqZ + eyeHeight) {
+                    float ceilingHeight = it->second.MaxEdge.Z - CAMERA_COLLISION_OFFSET;
                     float maxHeightOffset = ceilingHeight - eqZ;
                     if (maxHeightOffset < effectiveHeightOffset) {
                         effectiveHeightOffset = std::max(eyeHeight * 0.5f, maxHeightOffset);
@@ -101,7 +120,7 @@ void CameraController::setFollowPosition(float eqX, float eqY, float eqZ, float 
             float camEqY = eqY - std::cos(headingRad) * preferredFollowDistance_;
             float camEqZ = eqZ + effectiveHeightOffset;
 
-            if (isBspPointVisible(camEqX, camEqY, camEqZ)) {
+            if (isBspPointVisible(eyeRegion, camEqX, camEqY, camEqZ)) {
                 // Camera position is in a visible region — no wall collision
                 if (actualFollowDistance_ < preferredFollowDistance_ && deltaTime > 0.0f) {
                     actualFollowDistance_ = std::min(
@@ -112,6 +131,7 @@ void CameraController::setFollowPosition(float eqX, float eqY, float eqZ, float 
             } else {
                 // Camera would be behind a wall — binary search for collision point
                 float collisionDist = bspFindCollisionDistance(
+                    eyeRegion,
                     eqX, eqY, eqZ + eyeHeight,  // start: player eye
                     camEqX, camEqY, camEqZ);     // end: ideal camera pos
                 collisionDist = std::max(MIN_COLLISION_DISTANCE,
@@ -223,9 +243,15 @@ float CameraController::placeRigCamera(const CameraRigPose& pose) {
     const irr::core::vector3df target(pose.targetX, pose.targetZ, pose.targetY);
     float scale = 1.0f;
 
-    if (idealDist > 0.0f && bspTree_ && bspPlayerRegion_ != SIZE_MAX) {
-        if (!isBspPointVisible(pose.camX, pose.camY, pose.camZ)) {
-            float hit = bspFindCollisionDistance(pose.targetX, pose.targetY, pose.targetZ,
+    // T464: the ray starts at the look-at point, so the PVS origin is ITS region.
+    const size_t originRegion =
+        bspTree_ ? bspTree_->findRegionIndexForPoint(pose.targetX, pose.targetY, pose.targetZ)
+                 : SIZE_MAX;
+
+    if (idealDist > 0.0f && bspTree_ && originRegion != SIZE_MAX) {
+        if (!isBspPointVisible(originRegion, pose.camX, pose.camY, pose.camZ)) {
+            float hit = bspFindCollisionDistance(originRegion,
+                                                 pose.targetX, pose.targetY, pose.targetZ,
                                                  pose.camX, pose.camY, pose.camZ);
             hit = std::max(MIN_COLLISION_DISTANCE, hit - CAMERA_COLLISION_OFFSET);
             scale = std::min(1.0f, hit / idealDist);
@@ -296,24 +322,20 @@ void CameraController::setBspCollision(const BspTree* bspTree,
               bspTree != nullptr, regionBounds != nullptr);
 }
 
-void CameraController::setBspPlayerRegion(size_t region) {
-    bspPlayerRegion_ = region;
-}
-
-bool CameraController::isBspPointVisible(float eqX, float eqY, float eqZ) const {
-    if (!bspTree_ || bspPlayerRegion_ == SIZE_MAX) return true;
+bool CameraController::isBspPointVisible(size_t originRegion, float eqX, float eqY, float eqZ) const {
+    if (!bspTree_ || originRegion == SIZE_MAX) return true;
 
     size_t pointRegion = bspTree_->findRegionIndexForPoint(eqX, eqY, eqZ);
 
     // Outside BSP entirely — not visible (behind a wall or above ceiling)
     if (pointRegion == SIZE_MAX) return false;
 
-    // Same region as player — always visible
-    if (pointRegion == bspPlayerRegion_) return true;
+    // Same region as the ray's origin — always visible
+    if (pointRegion == originRegion) return true;
 
-    // Check PVS: is pointRegion visible from playerRegion?
-    if (bspPlayerRegion_ < bspTree_->regions.size()) {
-        const auto& playerPvs = bspTree_->regions[bspPlayerRegion_]->visibleRegions;
+    // Check PVS: is pointRegion visible from the origin region?
+    if (originRegion < bspTree_->regions.size()) {
+        const auto& playerPvs = bspTree_->regions[originRegion]->visibleRegions;
         if (pointRegion < playerPvs.size()) {
             return playerPvs[pointRegion];
         }
@@ -323,7 +345,8 @@ bool CameraController::isBspPointVisible(float eqX, float eqY, float eqZ) const 
     return false;
 }
 
-float CameraController::bspFindCollisionDistance(float startEqX, float startEqY, float startEqZ,
+float CameraController::bspFindCollisionDistance(size_t originRegion,
+                                                  float startEqX, float startEqY, float startEqZ,
                                                   float endEqX, float endEqY, float endEqZ) const {
     // Binary search along the ray from start (player eye) to end (ideal camera pos)
     // Find the furthest point that is still in a PVS-visible region
@@ -336,7 +359,7 @@ float CameraController::bspFindCollisionDistance(float startEqX, float startEqY,
         float my = startEqY + (endEqY - startEqY) * mid;
         float mz = startEqZ + (endEqZ - startEqZ) * mid;
 
-        if (isBspPointVisible(mx, my, mz)) {
+        if (isBspPointVisible(originRegion, mx, my, mz)) {
             lo = mid;  // midpoint is visible, search further out
         } else {
             hi = mid;  // midpoint is blocked, search closer

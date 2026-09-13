@@ -69,6 +69,14 @@ void FrameComponent::syncUiPreferences() {
     };
 
     if (!uiPrefsLoaded_) {
+        // T464 (board B532): a zone load no longer resets the camera to Chase
+        // (PlayerCameraComponent::placeCameraForZoneIn()), so the default a
+        // character with no saved view gets is applied HERE, once per
+        // identity -- otherwise a second character in the same process would
+        // inherit the first one's camera. A file that states View= overrides
+        // it just below.
+        ctx_.PlayerCamera().setCameraMode(kDefaultCameraMode);
+
         // Start from what the client currently holds, so a key this file does
         // not state keeps the panel struct's own default -- the official
         // client's "a default is stated by omission" rule (T368).

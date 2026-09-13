@@ -445,7 +445,7 @@ void PlayerCameraComponent::setPlayerPosition(float x, float y, float z, float h
         }
     }
 
-    if (cameraMode_ == CameraMode::Chase && playerInBounds) {
+    if (cameraMode_ == CameraMode::Chase && playerInBounds && ctx_.cameraController) {
         LOG_DEBUG(MOD_GRAPHICS, "[ZONE-IN] Camera mode=Chase, calling setFollowPosition({:.2f},{:.2f},{:.2f},{:.2f})",
                  x, y, z, heading);
         ctx_.cameraController->enableZoneInLogging();  // Enable one-time detailed logging
@@ -526,6 +526,23 @@ void PlayerCameraComponent::setCameraMode(CameraMode mode) {
 void PlayerCameraComponent::cycleCameraMode() {
     setCameraMode(nextCameraMode(cameraMode_));
     LOG_INFO(MOD_GRAPHICS, "Camera mode: {}", getCameraModeString());
+}
+
+// T464 (board B532): the zone-in camera step. Both Application loaders used to
+// call setCameraMode(Chase) here, on EVERY zone load, while
+// FrameComponent::syncUiPreferences() reads the ini only once per
+// character/server identity -- so every zone after the first put the player
+// back in Chase, and the next save-on-difference wrote View=3 over the saved
+// choice. This RE-ENTERS the player's current camera instead: setCameraMode()'s
+// side effects are exactly what a new zone needs (the first-person name-tag
+// record on the player entity this zone just registered, the projection, the
+// immediate placement; T74/T300), and the mode stays the player's.
+// setPlayerPosition() then places the camera at the new pose in that mode.
+// What a character with NO saved view gets (Chase) is applied where the
+// identity is loaded, syncUiPreferences(), not on every zone.
+void PlayerCameraComponent::placeCameraForZoneIn(float x, float y, float z, float heading512) {
+    setCameraMode(cameraMode_);
+    setPlayerPosition(x, y, z, heading512);
 }
 
 std::string PlayerCameraComponent::getCameraModeString() const {

@@ -666,10 +666,9 @@ void SimBridgeComponent::applySimulationOutput(const SimulationOutput& resultsRe
         // Small region crossings within the neighborhood are suppressed to avoid
         // expensive re-prioritization cascades on every boundary crossing.
         if (ctx_.currentPvsRegion != prevPvsRegion && prevPvsRegion != SIZE_MAX) {
-            // Camera collision update is cheap and always needed
-            if (ctx_.cameraController) {
-                ctx_.cameraController->setBspPlayerRegion(ctx_.currentPvsRegion);
-            }
+            // T464 (B507/B508): the camera controller is no longer fed this
+            // region -- it is the CAMERA's region, and the camera's collision
+            // now looks up the player's eye region itself.
             // Full re-prioritization only when leaving neighborhood
             if (!ctx_.ZoneStream().isInPvsNeighborhood(ctx_.currentPvsRegion)) {
                 ctx_.ZoneStream().rebuildPvsNeighborhood(ctx_.currentPvsRegion);

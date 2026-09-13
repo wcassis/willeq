@@ -1117,8 +1117,9 @@ void ZoneLoadComponent::loadZoneStep12b_Simulation(ZoneLoadContext& ctx) {
         // Set up BSP-based camera collision now that PVS region is known
         if (ctx_.cameraController && ctx_.zoneBspTree) {
             ctx_.cameraController->setBspCollision(ctx_.zoneBspTree.get(), &ctx_.regionBoundingBoxes);
-            ctx_.cameraController->setBspPlayerRegion(ctx_.currentPvsRegion);
-            LOG_INFO(MOD_GRAPHICS, "Camera BSP collision initialized for region {}", ctx_.currentPvsRegion);
+            // T464: no region hand-off -- the camera looks up the player's
+            // eye region itself on every placement.
+            LOG_INFO(MOD_GRAPHICS, "Camera BSP collision initialized (camera region {})", ctx_.currentPvsRegion);
         }
     }
 }

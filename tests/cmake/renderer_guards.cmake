@@ -148,6 +148,24 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_camera_mode_wiring PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_camera_mode_wiring GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_camera_mode_wiring DISCOVERY_TIMEOUT 120)
+
+    # T464 (B532): a zone load keeps the player's saved camera -- through
+    # IrrlichtRenderer::placeCameraForZoneIn() and the real syncUiPreferences().
+    ADD_EXECUTABLE(test_camera_zone_in_preference
+        test_camera_zone_in_preference.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_camera_zone_in_preference PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_camera_zone_in_preference GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_camera_zone_in_preference DISCOVERY_TIMEOUT 120)
+
+    # T464 (B507/B508): the Chase camera's BSP ceiling clamp, on constructed
+    # BSP trees and on nro's real one (skips without the EQ client files).
+    ADD_EXECUTABLE(test_camera_bsp_ceiling
+        test_camera_bsp_ceiling.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_camera_bsp_ceiling PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_camera_bsp_ceiling GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_camera_bsp_ceiling DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # L01 (Batch L, refactor/L01_rdp_component.md): the RendererContext binding
