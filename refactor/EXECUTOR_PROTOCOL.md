@@ -25,6 +25,14 @@ T412). Run builds in the BACKGROUND with an exit file and poll with
 `scripts/wait_for.sh --exit-file`; never end a turn while one is running.
 `--target x` is not a shortcut: it relinks `willeq_core` first.
 
+⚠ RUN THE BUILDS STRICTLY IN SEQUENCE (T458, 2026-09-13).
+`scripts/build-gles2-x86.sh` rebuilds the slot's patched Irrlicht on every run,
+and that deletes the `third_party/irrlicht-gles2-x86` library a concurrently
+linking `cmake --build <slot>/build` needs. The main build then fails with
+exit 2 on a missing library and no compiler error. Wait for the main build's
+exit file before starting `build-gles2-x86.sh`, the visual gate or the ARM
+build.
+
 ⚠ BUILD TYPE: `main/build` is `CMAKE_BUILD_TYPE=RelWithDebInfo` (-O2). A slot
 whose `build/` has the build type UNSET compiles at -O0 and its green suite
 does not prove the tip's: T400's pixel-for-pixel atlas test passed at -O0
