@@ -868,7 +868,14 @@ has `Music=18`/`SoundVolume=10` and that client displays 90 %/50 %). Window POSI
 every rect from the resolution — and key bindings are global
 (`config/hotkeys.json`), so neither is per character. An ABSENT `Show=` key
 keeps the default, which is `defaults.ini`'s own rule (T368), so a fresh
-character writes no file until it changes something. **Chat timestamps, chat
+character writes no file until it changes something. **Since T467 (board B560)
+that holds for a second character in the same renderer too:** an identity
+change FROM a character resets every persisted field to its default before
+the new file is read, so nothing carries over. (Today no such second identity
+is reachable -- one process logs in one character and `/camp` ends it -- so
+this pins `FrameComponent`'s contract rather than a live path.) The FIRST
+identity of a run is not reset, so a volume the audio manager published
+before zone-in is kept. **Chat timestamps, chat
 scrollback and UI colours are still NOT persisted**; that was scope, not
 oversight.
 

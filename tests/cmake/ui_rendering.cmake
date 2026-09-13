@@ -268,6 +268,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_ui_preferences DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# T467 (board B560): an identity change resets the persisted UI state to its
+# defaults before the new character's file is read. Bare renderer + a private
+# WILLEQ_CACHE_DIR, as test_camera_zone_in_preference.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_ui_preferences_identity
+        test_ui_preferences_identity.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_ui_preferences_identity PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_ui_preferences_identity GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_ui_preferences_identity DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T434: the Options window -- geometry against EQUI_OptionsWindow.xml, the
 # T363 disabled-control rule, the three wired sliders, the Alt+O binding and
 # the persistence round trip. Device-free like its siblings.

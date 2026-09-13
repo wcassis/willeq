@@ -385,6 +385,10 @@ public:
 	std::string uiPrefsServer_;
 	UiPreferences uiPrefsLastSaved_;
 	bool uiPrefsLoaded_ = false;
+	// T467 (board B560): set by an identity change FROM a character, consumed
+	// by the next load -- every persisted field goes back to its default
+	// before the new character's file is read.
+	bool uiPrefsResetPending_ = false;
 	// T439 (board B432 CLOSED): optionsAppliedMusicStep_ /
 	// optionsAppliedSoundStep_ lived here -- the steps the audio manager was
 	// last TOLD, kept because the volume intents carried a DELTA and

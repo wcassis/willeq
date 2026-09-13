@@ -92,6 +92,21 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_environment_texture_eviction DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# T467 (board B550): a lazily-built environment manager is wired exactly like
+# the init-time one -- the renderer's own applyEnvironmentalDisplaySettings()
+# on an EDT_NULL device with the real cache -- plus the census that each of
+# the four has ONE construction site under src/.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_environment_manager_construction
+        test_environment_manager_construction.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_environment_manager_construction PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_environment_manager_construction GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_environment_manager_construction PRIVATE
+        WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    GTEST_DISCOVER_TESTS(test_environment_manager_construction DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T381 (board B160): the spell visual vocabulary -- resist type, casting
 # school and spell_affect_index -- reaches SpellVisualFX across the bridge by
 # value, so the six resist colours, the five school colours, the spray cast

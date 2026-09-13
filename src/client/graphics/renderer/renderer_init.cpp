@@ -597,14 +597,11 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         LOG_INFO(MOD_GRAPHICS, "Sky renderer initialized");
     }
 
-    // Create detail manager (detailObjectsEnabled controls whether it renders, not whether it exists)
-    LOG_TRACE(MOD_GRAPHICS, "Creating detail manager...");
-    detailManager_ = std::make_unique<Detail::DetailManager>(smgr_, driver_);
-    detailManager_->setSurfaceMapsPath("data/detail/zones");
-    if (constrainedTextureCache_) {
-        detailManager_->setConstrainedTextureCache(constrainedTextureCache_);
-    }
-    LOG_INFO(MOD_GRAPHICS, "Detail manager initialized");
+    // Create detail manager (detailObjectsEnabled controls whether it renders,
+    // not whether it exists). T467 (B550): the environment managers with a
+    // lazy site too are built through OverlaysComponent's ensure*() bodies
+    // (overlays_env_managers.cpp), so the two constructions cannot diverge.
+    Overlays().ensureDetailManager();
 
     // Create simulation worker (zone data configured later via setZoneData())
     simulationWorker_ = std::make_unique<SimulationWorker>();
@@ -660,48 +657,24 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     }
 
     // Create ambient creatures (boids) system (only if ambient creatures enabled)
+    // T467 (B550): boids, tumbleweeds and weather effects are built through
+    // the same ensure*() bodies applyEnvironmentalDisplaySettings() uses.
     if (!boidsManager_ && displaySettings.ambientCreatures) {
-        LOG_TRACE(MOD_GRAPHICS, "Creating boids manager (loading atlas)...");
-        boidsManager_ = std::make_unique<Environment::BoidsManager>(smgr_, driver_);
-        boidsManager_->setConstrainedTextureCache(constrainedTextureCache_);
-        if (!boidsManager_->init(config_.eqClientPath)) LOG_WARN(MOD_GRAPHICS, "Failed to initialize boids manager");
-        zoneStream_->ensureBoidsTextureGuard();
-        LOG_INFO(MOD_GRAPHICS, "Boids manager initialized (ambient creatures enabled in settings)");
+        Overlays().ensureBoidsManager();
     } else if (!boidsManager_) {
         LOG_INFO(MOD_GRAPHICS, "Boids manager skipped (ambient creatures disabled in settings)");
     }
 
     // Create tumbleweed manager (only if rolling objects enabled)
     if (!tumbleweedManager_ && displaySettings.rollingObjects) {
-        LOG_TRACE(MOD_GRAPHICS, "Creating tumbleweed manager (loading texture)...");
-        tumbleweedManager_ = std::make_unique<Environment::TumbleweedManager>(smgr_, driver_);
-        tumbleweedManager_->setConstrainedTextureCache(constrainedTextureCache_);
-        if (!tumbleweedManager_->init()) {
-            LOG_WARN(MOD_GRAPHICS, "Failed to initialize tumbleweed manager");
-        }
-        LOG_INFO(MOD_GRAPHICS, "Tumbleweed manager initialized (rolling objects enabled in settings)");
+        Overlays().ensureTumbleweedManager();
     } else if (!tumbleweedManager_) {
         LOG_INFO(MOD_GRAPHICS, "Tumbleweed manager skipped (rolling objects disabled in settings)");
     }
 
-    // Create weather effects controller (screen-space rain/snow overlays, storm clouds, lightning)
-    if (!weatherEffects_) {
-        LOG_TRACE(MOD_GRAPHICS, "Creating weather effects controller...");
-        weatherEffects_ = std::make_unique<WeatherEffectsController>(
-            smgr_, driver_, particleManager_.get(), skyRenderer_.get());
-        if (constrainedTextureCache_) {
-            weatherEffects_->setConstrainedTextureCache(constrainedTextureCache_);
-        }
-        LOG_TRACE(MOD_GRAPHICS, "Initializing weather effects (loading cloud/rain/snow textures)...");
-        if (!weatherEffects_->initialize(config_.eqClientPath)) {
-            LOG_WARN(MOD_GRAPHICS, "Failed to initialize weather effects controller");
-        }
-        // Connect weather system to weather effects
-        if (weatherSystem_) {
-            weatherSystem_->addListener(weatherEffects_.get());
-        }
-        LOG_INFO(MOD_GRAPHICS, "Weather effects initialized");
-    }
+    // Create weather effects controller (screen-space rain/snow overlays, storm
+    // clouds, lightning), connected to the weather system inside the body.
+    Overlays().ensureWeatherEffects();
 
     initialized_ = true;
     loadingScreenVisible_ = true;  // Show loading screen by default

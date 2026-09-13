@@ -523,6 +523,7 @@ IF(EQT_GRAPHICS)
         # renderer_hud_env.cpp.
         src/client/graphics/overlays/overlays_component.cpp
         src/client/graphics/overlays/overlays_hud_env.cpp
+        src/client/graphics/overlays/overlays_env_managers.cpp  # T467
         src/client/graphics/renderer/renderer_init.cpp  # J11
         # L06 (Batch L): the slash family -- the registry-3 renderer
         # command if-chain. The basename is unchanged; only the

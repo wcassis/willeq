@@ -248,22 +248,10 @@ void OverlaysComponent::applyEnvironmentalDisplaySettings() {
         ctx_.particleManager->setEnabled(settings.atmosphericParticles);
     }
 
-    // Lazily create weather effects if not yet created and particles are available
+    // Lazily create weather effects if not yet created and particles are
+    // available. T467: through the one construction body.
     if (!ctx_.weatherEffects && ctx_.particleManager) {
-        LOG_TRACE(MOD_GRAPHICS, "Lazy-creating weather effects controller...");
-        ctx_.weatherEffects = std::make_unique<WeatherEffectsController>(
-            ctx_.smgr, ctx_.driver, ctx_.particleManager.get(), ctx_.skyRenderer.get());
-        if (ctx_.constrainedTextureCache) {
-            ctx_.weatherEffects->setConstrainedTextureCache(ctx_.constrainedTextureCache);
-        }
-        LOG_TRACE(MOD_GRAPHICS, "Lazy-initializing weather effects (loading textures)...");
-        if (!ctx_.weatherEffects->initialize(ctx_.config.eqClientPath)) {
-            LOG_WARN(MOD_GRAPHICS, "Failed to initialize weather effects controller (lazy)");
-        }
-        if (ctx_.weatherSystem) {
-            ctx_.weatherSystem->addListener(ctx_.weatherEffects.get());
-        }
-        LOG_INFO(MOD_GRAPHICS, "Weather effects created (toggled on via settings)");
+        ensureWeatherEffects();
     }
 
     if (ctx_.particleManager) {
@@ -300,15 +288,9 @@ void OverlaysComponent::applyEnvironmentalDisplaySettings() {
     ctx_.fireEffectsEnabled = settings.fireEffects;
 
     // --- Boids Manager: lazy create if toggled on ---
-    if (settings.ambientCreatures && !ctx_.boidsManager && ctx_.smgr && ctx_.driver) {
-        ctx_.boidsManager = std::make_unique<Environment::BoidsManager>(ctx_.smgr, ctx_.driver);
-        if (ctx_.constrainedTextureCache) ctx_.boidsManager->setConstrainedTextureCache(ctx_.constrainedTextureCache);  // T124
-        if (!ctx_.boidsManager->init(ctx_.config.eqClientPath)) {
-            LOG_WARN(MOD_GRAPHICS, "Failed to initialize boids manager (lazy)");
-        } else {
-            LOG_INFO(MOD_GRAPHICS, "Boids manager created (toggled on via settings)");
-        }
-        ctx_.ZoneStream().ensureBoidsTextureGuard();
+    // T467 (B550): the construction (cache, init, eviction guard) is the one
+    // body renderer init uses too; only the zone entry is this site's own.
+    if (settings.ambientCreatures && !ctx_.boidsManager && ensureBoidsManager()) {
         if (zoneLoaded) {
             Environment::ZoneBiome biome = Environment::ZoneBiomeDetector::instance().getBiome(ctx_.currentZoneName);
             if (ctx_.zoneBoundsValid) {
@@ -332,14 +314,8 @@ void OverlaysComponent::applyEnvironmentalDisplaySettings() {
     }
 
     // --- Detail Manager: lazy create if toggled on ---
-    if (settings.detailObjectsEnabled && !ctx_.detailManager && ctx_.smgr && ctx_.driver) {
-        ctx_.detailManager = std::make_unique<Detail::DetailManager>(ctx_.smgr, ctx_.driver);
-        ctx_.detailManager->setSurfaceMapsPath("data/detail/zones");
-        if (ctx_.constrainedTextureCache) {
-            ctx_.detailManager->setConstrainedTextureCache(ctx_.constrainedTextureCache);
-        }
-        LOG_INFO(MOD_GRAPHICS, "Detail manager created (toggled on via settings)");
-
+    if (settings.detailObjectsEnabled && !ctx_.detailManager) {
+        ensureDetailManager();  // T467 (B550): the one construction body
     }
 
     if (ctx_.detailManager) {
@@ -363,13 +339,10 @@ void OverlaysComponent::applyEnvironmentalDisplaySettings() {
     }
 
     // --- Tumbleweed Manager: lazy create if toggled on ---
-    if (settings.rollingObjects && !ctx_.tumbleweedManager && ctx_.smgr && ctx_.driver) {
-        ctx_.tumbleweedManager = std::make_unique<Environment::TumbleweedManager>(ctx_.smgr, ctx_.driver);
-        if (!ctx_.tumbleweedManager->init()) {
-            LOG_WARN(MOD_GRAPHICS, "Failed to initialize tumbleweed manager (lazy)");
-        } else {
-            LOG_INFO(MOD_GRAPHICS, "Tumbleweed manager created (toggled on via settings)");
-        }
+    // T467 (B550): this copy never passed the texture cache, and
+    // TumbleweedManager::init() exits the process without one. It now goes
+    // through the one construction body renderer init uses.
+    if (settings.rollingObjects && !ctx_.tumbleweedManager && ensureTumbleweedManager()) {
         if (zoneLoaded) {
             Environment::ZoneBiome biome = Environment::ZoneBiomeDetector::instance().getBiome(ctx_.currentZoneName);
             ctx_.tumbleweedManager->onZoneEnter(ctx_.currentZoneName, biome);

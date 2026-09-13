@@ -48,6 +48,12 @@ UiPreferencesBinding FrameComponent::uiPreferencesBinding() {
 void FrameComponent::setUiPreferencesIdentity(const std::string& character,
                                               const std::string& server) {
     if (character == uiPrefsCharacter_ && server == uiPrefsServer_) return;
+    // T467 (board B560): a change FROM a character -- not the first identity
+    // of a run -- must not hand the new character the old one's state. The
+    // reset itself runs in syncUiPreferences(), on the first frame after the
+    // zone load, because its clip-plane half is a renderer call that is a
+    // no-op while a zone is loading.
+    uiPrefsResetPending_ = !uiPrefsCharacter_.empty();
     uiPrefsCharacter_ = character;
     uiPrefsServer_ = server;
     // A new identity re-arms the load: zoning does not change the character,
@@ -77,11 +83,27 @@ void FrameComponent::syncUiPreferences() {
         // it just below.
         ctx_.PlayerCamera().setCameraMode(kDefaultCameraMode);
 
-        // Start from what the client currently holds, so a key this file does
-        // not state keeps the panel struct's own default -- the official
-        // client's "a default is stated by omission" rule (T368).
+        // T467 (board B560): on a change of character every persisted field
+        // goes back to its DEFAULT before the new file is read, so a key that
+        // file does not state -- all of them, for a character with no file --
+        // keeps the default (T368's rule), not the previous character's value.
+        // The FIRST identity of a run is not reset: before it the client
+        // already holds real values (the audio manager's published volumes,
+        // applyVolumesChanged()), and those are what a fresh character keeps.
+        const bool reset = uiPrefsResetPending_;
+        uiPrefsResetPending_ = false;
+        if (reset) {
+            const UiPreferences defaults;
+            ApplyUiPreferences(defaults, uiPreferencesBinding());
+            ctx_.PlayerCamera().setUserCameraRigs(defaults.user1Camera, defaults.user2Camera);
+        }
+
+        // Start from what the client now holds, so a key this file does not
+        // state keeps the default -- the official client's "a default is
+        // stated by omission" rule (T368).
         UiPreferences p = collect();
-        if (LoadUiPreferences(uiPrefsCharacter_, uiPrefsServer_, p)) {
+        const bool loaded = LoadUiPreferences(uiPrefsCharacter_, uiPrefsServer_, p);
+        if (loaded) {
             ApplyUiPreferences(p, uiPreferencesBinding());
             // T461: the rigs before the mode, so entering a user camera
             // places it where the file says. p.cameraMode was range-checked
@@ -91,12 +113,15 @@ void FrameComponent::syncUiPreferences() {
             if (cameraModeFromIniValue(p.cameraMode, mode)) {
                 ctx_.PlayerCamera().setCameraMode(mode);
             }
+        }
+        if (loaded || reset) {
             // T434: the three Options sliders are the first persisted fields
             // that are not just a struct member -- each has a setting BEHIND
             // it that has to be told. Apply is device-free by design and
             // cannot push an intent, so the three go through the same one
-            // body a click does. A value that did not move is a no-op there,
-            // so a file matching the defaults sends nothing.
+            // body a click does. T467: a reset moved them too, so a second
+            // character with no file tells the audio manager and the clip
+            // plane about its defaults exactly as a file would.
             applyOptionsSetting(OptionsLayout::Setting::MusicVolume);
             applyOptionsSetting(OptionsLayout::Setting::SoundVolume);
             applyOptionsSetting(OptionsLayout::Setting::ClipPlane);

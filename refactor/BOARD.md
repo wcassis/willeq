@@ -8851,7 +8851,21 @@ fine — the table fails on a stale entry, so it cannot rot.
 
 ## Added 2026-09-13 by T463 (evicted environment textures)
 
-- **B550** (A, *lead*) **The lazy `TumbleweedManager` creation never gives it the
+- ~~**B550**~~ CLOSED by T467 (`refactor/T467_tumbleweed_lazy_init_and_session_identity.md`
+  Review). **Confirmed in code, refuted as a live path.** Red:
+  `tests/test_environment_manager_construction.cpp` drives the renderer's own
+  `applyEnvironmentalDisplaySettings()` on an EDT_NULL device with the real
+  cache, and the unfixed binary exited 1 at
+  `[FATAL] TumbleweedManager: Constrained texture cache not set`. Not reachable
+  in a shipped build: `IrrlichtRenderer::cachedDisplaySettings_` has ONE writer,
+  the once-only load in `initLoadingScreen()`, which builds the manager from
+  that same value, and the only `tumbleweedManager_.reset()` is in
+  `shutdown()`. Fix: the boids, tumbleweed, detail and weather-effects managers
+  are built only by `OverlaysComponent::ensure*()`
+  (`src/client/graphics/overlays/overlays_env_managers.cpp`), which both init and the lazy site
+  call; the census case fails on a second construction under `src/`. Original
+  entry, kept for the record:
+  **The lazy `TumbleweedManager` creation never gives it the
   texture cache, and `init()` exits the process without one.**
   `OverlaysComponent::applyEnvironmentalDisplaySettings()`
   (`overlays_hud_env.cpp`, "Tumbleweed Manager: lazy create if toggled on")
@@ -9188,7 +9202,24 @@ because the Pi had no keyboard or mouse attached (B510).
 
 ## Added 2026-09-13 by T464 (camera and key-binding live defects)
 
-- **B560** (A, *unconfirmed live*) **A second character in the same process
+- ~~**B560**~~ CLOSED by T467 (`refactor/T467_tumbleweed_lazy_init_and_session_identity.md`
+  Review). **Confirmed in `FrameComponent`, refuted as a live path.** Red:
+  `tests/test_ui_preferences_identity.cpp` -- after an identity change to a
+  character with no file, the unfixed renderer held the previous character's
+  skills / combat-ability / Options windows open, group / pet / buff closed,
+  sliders 3/4/17 and both user rigs. Carry-over fields: all seven toggleable
+  windows plus `[OptionsWindow]`, the three `[Options]` sliders and the eight
+  `User1*`/`User2*` rig values (the camera MODE was already reset by T464). Not
+  reachable today: one process logs in one character
+  (`ApplicationConfig::character`, passed once to the single `EverQuest` built
+  in `Application::initEverQuestClient()`), and `/camp` ends the process
+  (`PlayerComponent::ZoneProcessLogoutReply()` -> `RequestQuit()`), so the
+  "`/camp` to character select" confirm step does not exist. Fix: an identity
+  change FROM a character arms a reset (`uiPrefsResetPending_`) and the next
+  `syncUiPreferences()` applies `UiPreferences{}` and the default rigs before
+  reading the new file, then applies the three Options settings. The first
+  identity of a run is not reset. Original entry, kept for the record:
+  **A second character in the same process
   inherits the first one's window states and user-camera rigs.**
   `FrameComponent::syncUiPreferences()` starts the load from `collect()` -- what
   the client currently holds -- so a key the new character's file does not
@@ -9312,3 +9343,29 @@ Evidence for every entry is under `review/T462/` (README there).
   2026-09-13). The fix is the same one-liner per site T465 applied to
   `test_headless_shutdown.cpp` (`mkdtemp()`, or a `getpid()` suffix). Not done
   by T465: nine files outside its territory. Found by T465.
+
+---
+
+## Added 2026-09-13 by T467 (lazy environment managers, UI identity reset)
+
+- **B590** (B, *lead*, unconfirmed) **The door texture eviction guard is
+  registered only by a function nothing calls.**
+  `ZoneStreamComponent::ensureDoorTextureGuard()` (T124) has one production
+  caller, `IrrlichtRenderer::loadGlobalAssets()` (`renderer_init.cpp`), and
+  `loadGlobalAssets()` has no caller in `src/`, `include/`, `tests/`, `tools/`,
+  `benchmarks/` or `docker/` (only `test_zone_stream_component.cpp` calls the
+  guard directly). The door manager a real session uses is built by
+  `ZoneLifecycleComponent::setupInstantScene()` (reached from both of
+  `Application`'s zone-graphics loaders) with no cache and no guard;
+  `ZoneLoadComponent`'s Step 1 then gives that manager the cache, and
+  `loadZoneStep7_Doors()` builds one only when none exists. So a cache
+  eviction or `clear()` reaches door materials only through the generic scene
+  walk. Found by T467's census of lazy construction sites (T467 fixed the four
+  environment managers, not doors, which are outside its territory). Confirm
+  by: a door texture evicted under LRU pressure with a door node alive -- does
+  the material get the placeholder, and does anything reload it? Also stale:
+  `OverlaysComponent::applyEnvironmentalDisplaySettings()`'s comment says
+  ParticleManager is created "in loadGlobalAssets"; it is created in
+  `initLoadingScreen()`.
+
+B591–B599 unused.

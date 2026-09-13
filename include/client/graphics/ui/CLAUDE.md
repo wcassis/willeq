@@ -240,7 +240,11 @@ collides with the new numbering, so it is still READ — mapped explicitly, 0 an
 1 to Chase, 2 to First Person — and never written. It is read at zone-in and written whenever a
 toggle changes and at `/camp`. An ABSENT `Show=` key keeps the default, so
 `defaults.ini`'s "a default is stated by omission" rule (above) still governs a
-fresh character. Loot, tradeskill-container and item-display windows are NOT
+fresh character -- and, since T467 (board B560), a second character in the
+same renderer: `setUiPreferencesIdentity()` arms a reset of every persisted
+field to its default on a change FROM a character, and the next
+`syncUiPreferences()` applies it before reading the new file
+(`tests/test_ui_preferences_identity.cpp`). Loot, tradeskill-container and item-display windows are NOT
 persisted -- the server or a click opens them, the player does not. Neither is
 `F11`'s all-UI hide: a client that starts with no UI gives the player nothing
 to click. The format lives in `ui_preferences.h`/`.cpp`; the load/save tick is

@@ -86,6 +86,16 @@ public:
 	void setupHUD();
 	void updateHUD();
 	void applyEnvironmentalDisplaySettings();
+	// T467 (board B550): THE construction of each environment manager that is
+	// built both at renderer init and lazily by the settings apply above
+	// (overlays_env_managers.cpp). Idempotent; each returns whether the
+	// manager exists afterwards. Both IrrlichtRenderer::initLoadingScreen()
+	// and applyEnvironmentalDisplaySettings() call these and nothing else
+	// constructs the four.
+	bool ensureBoidsManager();
+	bool ensureTumbleweedManager();
+	bool ensureDetailManager();
+	bool ensureWeatherEffects();
 	void drawLoadingScreen(float progress, const std::wstring& stageText);
 	void handleMouseTargeting(int clickX, int clickY);
 	void toggleMapOverlay();

@@ -45,9 +45,9 @@ const Waiver kWaivers[] = {
     // actually opened (DetailManager::loadSurfaceMap,
     // DiagnosticsComponent::loadIndoorRegionMap), which is what lets an
     // absolute override still work.
-    {"src/client/graphics/overlays/overlays_hud_env.cpp", "data/detail/zones",
-     "directory knob; resolved at DetailManager's open"},
-    {"src/client/graphics/renderer/renderer_init.cpp", "data/detail/zones",
+    // T467: one site now -- the two copies (overlays_hud_env.cpp,
+    // renderer_init.cpp) became OverlaysComponent::ensureDetailManager().
+    {"src/client/graphics/overlays/overlays_env_managers.cpp", "data/detail/zones",
      "directory knob; resolved at DetailManager's open"},
     {"include/client/application.h", "data/region_maps",
      "directory default; resolved at DiagnosticsComponent's open"},
