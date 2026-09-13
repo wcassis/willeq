@@ -398,7 +398,7 @@
 398 LOG_TRACE(MOD_MOVEMENT, "Position updated: ({}, {}, {}) heading={}", ctx_.playerX, ctx_.playerY, ctx_.playerZ, ctx_.playerHeading);
 399 if (ctx_.entityRenderer) {
 400 ctx_.entityRenderer->updatePlayerEntityPosition(ctx_.playerX, ctx_.playerY, ctx_.playerZ, ctx_.playerHeading);
-401 if (cameraMode_ == CameraMode::Follow && ctx_.cameraController) {
+401 if (cameraMode_ == CameraMode::Chase && ctx_.cameraController) {
 402 ctx_.cameraController->setFollowPosition(ctx_.playerX, ctx_.playerY, ctx_.playerZ, ctx_.playerHeading, deltaTime);
 403 if (cameraMode_ == CameraMode::FirstPerson && (positionChanged || headingChanged || pitchChanged)) {
 404 repositionFirstPersonCamera();

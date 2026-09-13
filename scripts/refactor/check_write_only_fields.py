@@ -158,6 +158,13 @@ def collect_members(root):
 # is no longer write-only. `WriteOnlyFields` was RED at 6522c387 for exactly
 # that reason; nothing else about T413's merge was incomplete.
 EXEMPT = {
+    # T461 deleted CameraController::update(), the never-called free-fly body
+    # of the Free camera mode the official set does not have. update() was the
+    # only reader of mouseSensitivity_; its one writer is setMouseSensitivity()
+    # from IrrlichtRenderer's init in irrlicht_renderer.cpp, which was T460's
+    # territory in that wave, so the residue is boarded rather than deleted.
+    ("CameraController", "mouseSensitivity_"):
+        ("boarded", "B533: the fly-camera residue T461 left when it deleted CameraController::update() with the Free mode; its only writer is the init call in irrlicht_renderer.cpp"),
     ("TradeskillContainerClosedEvent", "wasWorldObject"):
         ("boarded", "B321: T415 Leg A drew the window and either close event hides it, so the world-vs-inventory provenance of the CLOSE is still unread (T445 fixed the board id here: this row cited B336, which is the detail view distance and has nothing to do with containers)"),
     # T421 closed B298's item half: the fourteen fields that HAVE an oracle

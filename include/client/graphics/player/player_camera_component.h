@@ -84,6 +84,7 @@
 
 #include "client/graphics/renderer_context.h"
 #include "client/graphics/player/ground_query.h"  // T437 (B435): the ground answer shape
+#include "client/graphics/player/camera_rig.h"    // T461: the orbit rig
 
 #include <cstdint>
 #include <string>
@@ -196,8 +197,45 @@ public:
 	void setPlayerPosition(float x, float y, float z, float heading);
 	void setSwimmingState(bool swimming, float swimSpeed = 20.0f, bool levitating = false);
 	void setCameraMode(CameraMode mode);
+	// T461: F9 (HotkeyAction::ToggleCameraMode, drained in
+	// FrameComponent::processCommonInput) and `/camera cycle`. The order is
+	// nextCameraMode()'s, eqstr_us.txt 9500..9505.
 	void cycleCameraMode();
+	// The official display name (camera_mode.h), e.g. "Chase Camera".
 	std::string getCameraModeString() const;
+
+	// --- T461: the official camera set's rig modes and `/camera` ---
+	// Bodies in src/client/graphics/player/renderer_camera_modes.cpp.
+	//
+	// Overhead, User Defined 1/2 and Tether are each a CameraRig
+	// (camera_rig.h) owned HERE, so nothing that moves the player can
+	// overwrite them: setPlayerPosition() and the movement integrator only
+	// move the player the rig is expressed around.
+	//
+	// Re-place the rig camera around the player's current pose. A no-op in
+	// first person and Chase (their own paths place those) and without a
+	// camera controller (a device-less renderer). FrameComponent calls it
+	// every frame, after movement and again after the lift carry.
+	void updateRigCamera();
+	// One zoom step (EQ units, + = farther): the Chase follow distance, or the
+	// active rig's distance. First person does not zoom.
+	void zoomCamera(float deltaUnits, float deltaTime);
+	// Keyboard orbit (HotkeyAction::CameraOrbitLeft/Right/PitchUp/Down):
+	// adds to the ACTIVE USER camera only; a no-op in any other mode.
+	void orbitCamera(float deltaAzimuthDeg, float deltaPitchDeg);
+	// `/camera [...]` -- parse (slash/camera_command.h) and execute; returns
+	// the chat reply lines.
+	std::vector<std::string> runCameraCommand(const std::string& args);
+	// `/camera get` -- mode, the four rig values, player pose, the ideal rig
+	// pose and the camera node's actual pose, as parseable [CAMERA-GET] lines.
+	std::vector<std::string> buildCameraGetLines() const;
+	// The rig behind a rig mode; nullptr for first person and Chase.
+	const CameraRig* cameraRigFor(CameraMode mode) const;
+	// Persistence (FrameComponent::syncUiPreferences): the two user cameras,
+	// the only rigs the official client persists (eqclient.ini Camera1-*/2-*).
+	void setUserCameraRigs(const CameraRig& user1, const CameraRig& user2);
+	// The player's feet: node origin minus the player's collisionZOffset.
+	float playerFeetZ() const;
 
 	// T334 (board B046) DELETED setSwimUp(), setSwimDown() and
 	// setLevitating(). L03 correction 17 called the first two "the sole
@@ -341,6 +379,9 @@ private:
 	void addCollisionDebugLine(const irr::core::vector3df& start, const irr::core::vector3df& end,
 	                           const irr::video::SColor& color, float duration = 0.5f);
 
+	// T461: the mutable form of cameraRigFor().
+	CameraRig* rigFor(CameraMode mode);
+
 	RendererContext& ctx_;
 	IrrlichtRenderer& owner_;
 
@@ -373,7 +414,13 @@ private:
 	std::vector<CollisionDebugLine> collisionDebugLines_;
 
 	// L13: owned state, see the accessors above.
-	CameraMode cameraMode_ = CameraMode::Follow;  // Default to third-person follow camera
+	CameraMode cameraMode_ = kDefaultCameraMode;  // T461: Chase, the camera once called Follow
+	// T461: one rig per rig mode. User 1/2 are persisted; Overhead and Tether
+	// are PLACEHOLDERS until Leg B solves them against the oracle (B530).
+	CameraRig overheadRig_ = kOverheadPlaceholderRig;
+	CameraRig user1Rig_ = kUser1DefaultRig;
+	CameraRig user2Rig_ = kUser2DefaultRig;
+	CameraRig tetherRig_ = kTetherPlaceholderRig;
 	PlayerModeConfig playerConfig_;
 	uint16_t playerSpawnId_ = 0;  // Spawn ID of the player entity
 };

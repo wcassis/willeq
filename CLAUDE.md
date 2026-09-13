@@ -858,7 +858,9 @@ section names and `Show=0/1` keys — and re-reads it at zone-in. What it holds
 is what Will ruled user-changeable (`docs/decisions.md` 2026-09-07): the seven
 toggleable windows (`[InventoryWindow]`, `[SpellBookWnd]`, `[SkillsWindow]`,
 `[GroupWindow]`, `[PetInfoWindow]`, `[BuffWindow]`, `[CombatAbilityWnd]`) and
-`[Camera] Mode=` — **plus, since T434, `[OptionsWindow] Show=` and an
+the camera — since T461 `[Camera] View=` (one of the official client's six
+cameras) plus the two user cameras' azimuth/pitch/distance/height, with T432's
+old `[Camera] Mode=` still read and mapped explicitly — **plus, since T434, `[OptionsWindow] Show=` and an
 `[Options]` section holding `Music`, `SoundVolume` and `ClipPlane`**, the
 three Options-window controls fable can wire, under the oracle's own key
 names and on the oracle's own 0..20 slider scale (measured: `eqclient.ini`

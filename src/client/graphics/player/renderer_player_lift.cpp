@@ -98,7 +98,7 @@ void PlayerCameraComponent::carryPlayerOnLifts(float deltaTime) {
         ctx_.entityRenderer->updatePlayerEntityPosition(ctx_.playerX, ctx_.playerY,
                                                         ctx_.playerZ, ctx_.playerHeading);
     }
-    if (cameraMode_ == CameraMode::Follow && ctx_.cameraController) {
+    if (cameraMode_ == CameraMode::Chase && ctx_.cameraController) {
         ctx_.cameraController->setFollowPosition(ctx_.playerX, ctx_.playerY, ctx_.playerZ,
                                                  ctx_.playerHeading, deltaTime);
     } else if (cameraMode_ == CameraMode::FirstPerson) {

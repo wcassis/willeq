@@ -867,8 +867,8 @@ void PlayerCameraComponent::publishPositionAndCamera(MovementFrame& frame) {
             ctx_.entityRenderer->updatePlayerEntityPosition(ctx_.playerX, ctx_.playerY, ctx_.playerZ, ctx_.playerHeading);
         }
 
-        if (cameraMode_ == CameraMode::Follow && ctx_.cameraController) {
-            // Follow mode: third-person camera behind player
+        if (cameraMode_ == CameraMode::Chase && ctx_.cameraController) {
+            // Chase mode (T461: was "Follow"): third-person camera behind player
             ctx_.cameraController->setFollowPosition(ctx_.playerX, ctx_.playerY, ctx_.playerZ, ctx_.playerHeading, deltaTime);
         }
     }

@@ -21,7 +21,7 @@
 //      alive (the T31 steady-state capture idiom from test_logging.cpp --
 //      redirect fd 1, poll for the line, restore).
 //
-// Red (pre-fix): case 2 fails -- no "[MAIN] Camera mode: Follow" reaches
+// Red (pre-fix): case 2 fails -- no "[MAIN] Camera mode: Chase Camera" reaches
 // stdout within the window while the bridge still receives the message.
 
 #include <gtest/gtest.h>
@@ -148,17 +148,17 @@ TEST_F(RendererCommandEchoTest, ReplyReachesChatPanelAndConsoleLog) {
     {
         StdoutCapture capture;
         renderer.processSlashCommand("/camera");
-        captured = capture.waitFor("Camera mode: Follow");
+        captured = capture.waitFor("Camera mode: Chase Camera");
     }
 
     // Half 1: chat panel path unchanged (exactly one SystemMessage).
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
-    EXPECT_EQ(msgs[0], "Camera mode: Follow");
+    EXPECT_EQ(msgs[0], "Camera mode: Chase Camera");
 
     // Half 2: the console echo, same module/shape as
     // EverQuest::AddChatSystemMessage()'s LOG_INFO(MOD_MAIN, "{}", text).
-    EXPECT_NE(captured.find("] [MAIN] Camera mode: Follow"), std::string::npos)
+    EXPECT_NE(captured.find("] [MAIN] Camera mode: Chase Camera"), std::string::npos)
         << "renderer command reply did not reach the console log. Captured "
            "stdout: [" << captured << "]";
 }
@@ -172,10 +172,10 @@ TEST_F(RendererCommandEchoTest, EchoDoesNotDependOnBridge) {
     {
         StdoutCapture capture;
         renderer.processSlashCommand("/camera");
-        captured = capture.waitFor("Camera mode: Follow");
+        captured = capture.waitFor("Camera mode: Chase Camera");
     }
 
-    EXPECT_NE(captured.find("] [MAIN] Camera mode: Follow"), std::string::npos)
+    EXPECT_NE(captured.find("] [MAIN] Camera mode: Chase Camera"), std::string::npos)
         << "captured stdout: [" << captured << "]";
 }
 
@@ -191,11 +191,11 @@ TEST_F(RendererCommandEchoTest, EchoIsGatedByLogLevel) {
     {
         StdoutCapture capture;
         renderer.processSlashCommand("/camera");
-        captured = capture.waitFor("Camera mode: Follow", std::chrono::milliseconds(300));
+        captured = capture.waitFor("Camera mode: Chase Camera", std::chrono::milliseconds(300));
     }
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
-    EXPECT_EQ(captured.find("Camera mode: Follow"), std::string::npos)
+    EXPECT_EQ(captured.find("Camera mode: Chase Camera"), std::string::npos)
         << "captured stdout: [" << captured << "]";
 }

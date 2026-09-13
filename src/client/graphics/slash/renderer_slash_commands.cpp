@@ -108,30 +108,9 @@ namespace eqt { namespace ui { class WindowManager { public: virtual ~WindowMana
 namespace EQT {
 namespace Graphics {
 
-namespace {
-// T66 -- /camera mode-name parsing. Case-insensitive, spaces/hyphens/
-// underscores ignored, so it accepts anything getCameraModeString() already
-// produces ("Free", "Follow", "First Person") as a set-then-read round trip,
-// plus compact spellings ("firstperson", "fp") for scripts that would
-// rather not quote a two-word argument.
-std::string NormalizeCameraModeToken(const std::string& s) {
-    std::string out;
-    out.reserve(s.size());
-    for (char c : s) {
-        if (c == ' ' || c == '-' || c == '_') continue;
-        out += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    }
-    return out;
-}
-
-bool ParseCameraModeName(const std::string& args, EQT::Graphics::IrrlichtRenderer::CameraMode& out) {
-    std::string norm = NormalizeCameraModeToken(args);
-    if (norm == "free") { out = EQT::Graphics::IrrlichtRenderer::CameraMode::Free; return true; }
-    if (norm == "follow") { out = EQT::Graphics::IrrlichtRenderer::CameraMode::Follow; return true; }
-    if (norm == "firstperson" || norm == "fp") { out = EQT::Graphics::IrrlichtRenderer::CameraMode::FirstPerson; return true; }
-    return false;
-}
-} // namespace
+// T461 moved /camera's mode-name parsing (T66's) into
+// client/graphics/player/camera_mode.h and the rest of its grammar into
+// client/graphics/slash/camera_command.h, both device-free and tested there.
 
 // D20d: Handle renderer-specific slash commands forwarded from game thread
 void SlashCommandsComponent::processSlashCommand(const std::string& command) {
@@ -194,23 +173,13 @@ void SlashCommandsComponent::processSlashCommand(const std::string& command) {
         // exposing cycleCameraMode(), which would force a script to cycle
         // blind and count (T51 documented exactly that trap for /attack).
         // Cycling is additionally exposed via "cycle" since it was free.
-        if (args.empty()) {
-            chat(fmt::format("Camera mode: {}", owner_.getCameraModeString()));
-        } else if (args == "cycle") {
-            ctx_.PlayerCamera().cycleCameraMode();
-            chat(fmt::format("Camera mode: {}", owner_.getCameraModeString()));
-        } else {
-            CameraMode mode;
-            if (ParseCameraModeName(args, mode)) {
-                owner_.setCameraMode(mode);
-                chat(fmt::format("Camera mode: {}", owner_.getCameraModeString()));
-            } else {
-                chat(fmt::format(
-                    "Unknown camera mode '{}'. Valid: Free, Follow, \"First Person\" "
-                    "(or firstperson/fp); no argument reports the current mode; "
-                    "'cycle' advances Free->Follow->First Person->Free.", args));
-            }
-        }
+        //
+        // T461: the official camera set, and EXACT placement for the oracle
+        // rig that solves fable's cameras against the official client's --
+        // `/camera set|nudge|get`. The grammar is slash/camera_command.h and
+        // the execution PlayerCameraComponent::runCameraCommand(); every reply
+        // line goes out through chat(), so a --script run can read it back.
+        for (const auto& line : ctx_.PlayerCamera().runCameraCommand(args)) chat(line);
     } else if (cmd == "/fpcam") {
         // T310 Leg A -- the first-person camera's numbers, settable at
         // runtime so solving the pose against the official client does not

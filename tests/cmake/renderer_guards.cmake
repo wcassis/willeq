@@ -123,6 +123,16 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_irrlicht_camera_command PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_irrlicht_camera_command GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_irrlicht_camera_command DISCOVERY_TIMEOUT 120)
+
+    # T461: the F9 arm (which had never existed), the keyboard-orbit arms, zoom
+    # and the rig surviving a player move -- through FrameComponent on the same
+    # bare, never-Init()'d IrrlichtRenderer.
+    ADD_EXECUTABLE(test_camera_mode_wiring
+        test_camera_mode_wiring.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_camera_mode_wiring PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_camera_mode_wiring GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_camera_mode_wiring DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # L01 (Batch L, refactor/L01_rdp_component.md): the RendererContext binding

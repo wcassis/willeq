@@ -127,7 +127,7 @@ TEST(UiPreferencesTest, FileNameCannotEscapeTheCacheDirectory) {
 TEST(UiPreferencesTest, SerializesTheOfficialSectionAndKeyNames) {
     UiPreferences p;
     p.groupWindow = false;
-    p.cameraMode = 2;
+    p.cameraMode = 2;   // T461: CameraMode::Overhead
     const std::string text = SerializeUiPreferences(p);
 
     EXPECT_NE(text.find("[GroupWindow]\nShow=0\n"), std::string::npos) << text;
@@ -137,7 +137,9 @@ TEST(UiPreferencesTest, SerializesTheOfficialSectionAndKeyNames) {
     EXPECT_NE(text.find("[SpellBookWnd]\nShow=0\n"), std::string::npos) << text;
     EXPECT_NE(text.find("[SkillsWindow]\nShow=0\n"), std::string::npos) << text;
     EXPECT_NE(text.find("[CombatAbilityWnd]\nShow=0\n"), std::string::npos) << text;
-    EXPECT_NE(text.find("[Camera]\nMode=2\n"), std::string::npos) << text;
+    // T461: `View=` replaced `Mode=`, whose numbering collides with it.
+    EXPECT_NE(text.find("[Camera]\nView=2\n"), std::string::npos) << text;
+    EXPECT_EQ(text.find("Mode="), std::string::npos) << text;
 }
 
 TEST(UiPreferencesTest, RoundTripsThroughItsOwnText) {
@@ -149,7 +151,9 @@ TEST(UiPreferencesTest, RoundTripsThroughItsOwnText) {
     p.petInfoWindow = false;
     p.buffWindow = false;
     p.combatAbilityWnd = true;
-    p.cameraMode = 0;
+    p.cameraMode = 5;   // T461: User Defined Camera 2
+    p.user1Camera = EQT::Graphics::CameraRig{12.5f, -20.0f, 44.0f, 7.25f};
+    p.user2Camera = EQT::Graphics::CameraRig{300.0f, 45.5f, 150.0f, -3.0f};
     EXPECT_EQ(ParseUiPreferences(SerializeUiPreferences(p)), p);
 }
 
@@ -162,7 +166,7 @@ TEST(UiPreferencesTest, AnAbsentShowKeyKeepsTheDefault) {
     EXPECT_TRUE(parsed.petInfoWindow);
     EXPECT_TRUE(parsed.buffWindow);
     EXPECT_FALSE(parsed.inventoryWindow);
-    EXPECT_EQ(parsed.cameraMode, 1);
+    EXPECT_EQ(parsed.cameraMode, 3);  // T461: Chase, kDefaultCameraMode
 }
 
 // An official file carries dozens of position/size/tint keys and CRLF line
@@ -191,12 +195,50 @@ TEST(UiPreferencesTest, ReadsAnOfficialFileShapeWithoutChoking) {
     EXPECT_TRUE(parsed.buffWindow);  // no section at all -> default
 }
 
-// A hand-edited Mode= must never become an out-of-range CameraMode cast.
-TEST(UiPreferencesTest, CameraModeIsClampedToTheKnownEnumerators) {
-    EXPECT_EQ(ParseUiPreferences("[Camera]\nMode=0\n").cameraMode, 0);
-    EXPECT_EQ(ParseUiPreferences("[Camera]\nMode=2\n").cameraMode, 2);
-    EXPECT_EQ(ParseUiPreferences("[Camera]\nMode=7\n").cameraMode, 1);
-    EXPECT_EQ(ParseUiPreferences("[Camera]\nMode=banana\n").cameraMode, 1);
+// T461: `View=` is the enumerator, 1..6, and anything else keeps the default
+// -- a hand-edited value must never become an out-of-range CameraMode cast.
+TEST(UiPreferencesTest, CameraViewAcceptsOnlyTheSixOfficialCameras) {
+    for (int v = 1; v <= 6; ++v) {
+        EXPECT_EQ(ParseUiPreferences("[Camera]\nView=" + std::to_string(v) + "\n").cameraMode, v);
+    }
+    EXPECT_EQ(ParseUiPreferences("[Camera]\nView=0\n").cameraMode, 3);
+    EXPECT_EQ(ParseUiPreferences("[Camera]\nView=7\n").cameraMode, 3);
+    EXPECT_EQ(ParseUiPreferences("[Camera]\nView=banana\n").cameraMode, 3);
+}
+
+// T461: the MIGRATION. A file T432's writer produced says `Mode=` with
+// 0 Free, 1 Follow, 2 FirstPerson. Those numbers mean different cameras in
+// the new numbering, so each is mapped explicitly -- never cast.
+TEST(UiPreferencesTest, ALegacyCameraModeIsMappedOntoTheOfficialSet) {
+    EXPECT_EQ(ParseUiPreferences("[Camera]\nMode=0\n").cameraMode, 3)   // Free -> Chase
+        << "Free has no official camera and no body";
+    EXPECT_EQ(ParseUiPreferences("[Camera]\nMode=1\n").cameraMode, 3);  // Follow -> Chase
+    EXPECT_EQ(ParseUiPreferences("[Camera]\nMode=2\n").cameraMode, 1);  // FirstPerson
+    EXPECT_EQ(ParseUiPreferences("[Camera]\nMode=7\n").cameraMode, 3);
+    EXPECT_EQ(ParseUiPreferences("[Camera]\nMode=banana\n").cameraMode, 3);
+}
+
+// If a file somehow carries both keys, the new one wins, in either order.
+TEST(UiPreferencesTest, ViewWinsOverALegacyModeWhereverEitherAppears) {
+    EXPECT_EQ(ParseUiPreferences("[Camera]\nView=5\nMode=2\n").cameraMode, 5);
+    EXPECT_EQ(ParseUiPreferences("[Camera]\nMode=2\nView=5\n").cameraMode, 5);
+}
+
+// T461: the two user cameras are persisted (the official client persists its
+// own: eqclient.ini Camera1-* / Camera2-*); unparseable or out-of-range values
+// cannot produce a NaN or out-of-range camera.
+TEST(UiPreferencesTest, UserCamerasParseAndAreRangeChecked) {
+    const UiPreferences p = ParseUiPreferences(
+        "[Camera]\n"
+        "User1Azimuth=90\nUser1Pitch=500\nUser1Distance=nan\nUser1Height=banana\n"
+        "User2Azimuth=-90\nUser2Distance=0.5\n");
+    EXPECT_FLOAT_EQ(p.user1Camera.azimuthDeg, 90.0f);
+    EXPECT_FLOAT_EQ(p.user1Camera.pitchDeg, EQT::Graphics::kCameraRigMaxPitchDeg);
+    EXPECT_FLOAT_EQ(p.user1Camera.distance, EQT::Graphics::kUser1DefaultRig.distance);
+    EXPECT_FLOAT_EQ(p.user1Camera.height, EQT::Graphics::kUser1DefaultRig.height);
+    EXPECT_FLOAT_EQ(p.user2Camera.azimuthDeg, 270.0f);
+    EXPECT_FLOAT_EQ(p.user2Camera.distance, EQT::Graphics::kCameraRigMinDistance);
+    EXPECT_FLOAT_EQ(p.user2Camera.height, EQT::Graphics::kUser2DefaultRig.height);
 }
 
 // ---------------------------------------------------------------------------
@@ -207,8 +249,12 @@ TEST(UiPreferencesTest, CameraModeIsClampedToTheKnownEnumerators) {
 // or a fresh character's first save would rewrite state it never touched.
 TEST(UiPreferencesTest, DefaultsMatchThePanelStructs) {
     FakeRendererPanels panels;
-    // 1 == CameraMode::Follow, PlayerCameraComponent's own default.
-    EXPECT_EQ(CollectUiPreferences(panels.binding(), 1), UiPreferences{});
+    // 3 == CameraMode::Chase, PlayerCameraComponent's own default (T461), and
+    // the user cameras default to PlayerCameraComponent's own rigs.
+    EXPECT_EQ(CollectUiPreferences(panels.binding(), 3), UiPreferences{});
+    EXPECT_EQ(UiPreferences{}.cameraMode, static_cast<int>(EQT::Graphics::kDefaultCameraMode));
+    EXPECT_EQ(UiPreferences{}.user1Camera, EQT::Graphics::kUser1DefaultRig);
+    EXPECT_EQ(UiPreferences{}.user2Camera, EQT::Graphics::kUser2DefaultRig);
 }
 
 TEST(UiPreferencesTest, CollectReadsEveryPersistedWindow) {
@@ -278,7 +324,7 @@ TEST(UiPreferencesTest, ANullBindingMemberIsSkipped) {
     UiPreferences p;
     p.groupWindow = false;
     EXPECT_NO_FATAL_FAILURE(ApplyUiPreferences(p, empty));
-    EXPECT_EQ(CollectUiPreferences(empty, 1), UiPreferences{});
+    EXPECT_EQ(CollectUiPreferences(empty, 3), UiPreferences{});
 }
 
 // ---------------------------------------------------------------------------
@@ -364,4 +410,32 @@ TEST_F(UiPreferencesDiskTest, ASecondSaveReplacesTheFile) {
     ASSERT_TRUE(LoadUiPreferences("Testchar", "willeq", read));
     EXPECT_TRUE(read.buffWindow);
     EXPECT_EQ(read, UiPreferences{});
+}
+
+// T461: a file written before T461 is still readable, means what it meant,
+// and is rewritten in the new shape on the next save.
+TEST_F(UiPreferencesDiskTest, APreT461FileMigratesOnLoadAndIsRewrittenOnSave) {
+    std::filesystem::create_directories(dir_ / "ui");
+    {
+        std::ofstream out(dir_ / "ui" / "UI_Oldchar_willeq.ini");
+        out << "[GroupWindow]\nShow=0\n[Camera]\nMode=2\n";   // T432's writer, first person
+    }
+    UiPreferences loaded;
+    ASSERT_TRUE(LoadUiPreferences("Oldchar", "willeq", loaded));
+    EXPECT_EQ(loaded.cameraMode, static_cast<int>(EQT::Graphics::CameraMode::FirstPerson));
+    EXPECT_FALSE(loaded.groupWindow);
+    EXPECT_EQ(loaded.user1Camera, EQT::Graphics::kUser1DefaultRig);
+
+    loaded.user1Camera.distance = 55.0f;
+    ASSERT_TRUE(SaveUiPreferences("Oldchar", "willeq", loaded));
+    std::ifstream in(dir_ / "ui" / "UI_Oldchar_willeq.ini");
+    std::ostringstream buf;
+    buf << in.rdbuf();
+    EXPECT_NE(buf.str().find("[Camera]\nView=1\n"), std::string::npos) << buf.str();
+    EXPECT_NE(buf.str().find("User1Distance=55.000000\n"), std::string::npos) << buf.str();
+    EXPECT_EQ(buf.str().find("Mode="), std::string::npos) << buf.str();
+
+    UiPreferences reread;
+    ASSERT_TRUE(LoadUiPreferences("Oldchar", "willeq", reread));
+    EXPECT_EQ(reread, loaded);
 }

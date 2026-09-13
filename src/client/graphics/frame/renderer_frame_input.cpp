@@ -84,20 +84,34 @@ void FrameComponent::processFrameInput(float deltaTime) {
 
         // T313: the mouse wheel, routed by cursor position to whichever
         // static-UI panel is under it. Read-and-reset, once per frame, one
-        // consumer -- and the ONLY consumer: nothing in the client read the
-        // wheel before this unit (camera zoom is the CameraZoomIn/Out
-        // hotkeys, not the wheel), so a UI-consumed notch cannot also zoom.
+        // consumer. T461: a notch the UI does NOT consume (the cursor is over
+        // no scrollable panel) zooms the camera -- the official client's
+        // Mouse Wheel Zoom option (eqclient.ini `MouseWheelZoom=1`,
+        // EQUI_OptionsWindow.xml `OMP_MouseWheelZoomCheckbox`). It is still
+        // one read, so a UI-consumed notch can never also zoom. Irrlicht's
+        // Wheel is +1 per notch away from the user: that zooms IN.
+        float wheel = 0.0f;
+        bool wheelConsumedByUI = false;
         if (newUIEnabled_ && staticUIInput_) {
-            staticUIInput_->processWheel(mx, my, ctx_.eventReceiver->getMouseWheelDelta(),
+            wheel = ctx_.eventReceiver->getMouseWheelDelta();
+            wheelConsumedByUI = staticUIInput_->processWheel(mx, my, wheel,
                 uiLayout_, chatPanelState_, skillsPopupState_, lootState_,
                 itemDisplayState_);
         } else {
-            ctx_.eventReceiver->getMouseWheelDelta();  // drain, never accumulate
+            wheel = ctx_.eventReceiver->getMouseWheelDelta();  // drain, never accumulate
+        }
+        if (wheel != 0.0f && !wheelConsumedByUI && !chatInputFocused_) {
+            ctx_.PlayerCamera().zoomCamera(-wheel * kCameraZoomStepUnits, deltaTime);
         }
     }
 
     // Update camera and player movement
     ctx_.PlayerCamera().updatePlayerMovement(deltaTime);
+    // T461: a rig camera (Overhead, User Defined 1/2, Tether) is re-placed
+    // every frame around wherever movement left the player -- the rig itself
+    // is never touched by a move. A no-op in first person and Chase, which the
+    // movement path places itself.
+    ctx_.PlayerCamera().updateRigCamera();
     frameTimings_.playerMovement = measureSection();
     // Update sky position to follow camera
     if (ctx_.skyRenderer && ctx_.skyRenderer->isInitialized() && ctx_.camera) {
@@ -153,6 +167,27 @@ void FrameComponent::processCommonInput(const std::vector<RendererEvent>& action
             case RA::ToggleAutorun:
                 ctx_.PlayerCamera().toggleAutorun();
                 LOG_INFO(MOD_GRAPHICS, "Autorun {}", ctx_.PlayerCamera().autorun() ? "ON" : "OFF");
+                break;
+            // T461 (F9): the camera-mode key. Until T461 its key (Ctrl+F5)
+            // queued this action and there was NO arm, so every press fell
+            // through the default below -- the T330 shape again. Pinned by
+            // tests/test_camera_mode_wiring.cpp.
+            case RA::ToggleCameraMode: ctx_.PlayerCamera().cycleCameraMode(); break;
+            // T461: keyboard orbit of the ACTIVE user camera. Unbound by
+            // default: the official keys are ORACLE-OWED (board B531).
+            // Pitch UP tilts the view up, i.e. lowers the camera (rig pitch
+            // is + above the look-at point).
+            case RA::CameraOrbitLeft:
+                ctx_.PlayerCamera().orbitCamera(-kCameraOrbitKeyStepDeg, 0.0f);
+                break;
+            case RA::CameraOrbitRight:
+                ctx_.PlayerCamera().orbitCamera(kCameraOrbitKeyStepDeg, 0.0f);
+                break;
+            case RA::CameraPitchUp:
+                ctx_.PlayerCamera().orbitCamera(0.0f, -kCameraOrbitKeyStepDeg);
+                break;
+            case RA::CameraPitchDown:
+                ctx_.PlayerCamera().orbitCamera(0.0f, kCameraOrbitKeyStepDeg);
                 break;
             // T434: was a bare `break;` with the comment "WindowManager
             // removed -- options window not available" -- the T368 dead-arm
@@ -431,18 +466,17 @@ void FrameComponent::processPlayerInput(const std::vector<RendererEvent>& action
 }
 
 void FrameComponent::processInputDeltas(float deltaTime) {
-    // Camera zoom with Follow camera
+    // Camera zoom (+/- keys). T461: what one step means is the camera's
+    // business -- the Chase follow distance or the active rig's distance --
+    // so PlayerCameraComponent::zoomCamera() owns it and the mouse wheel
+    // (processFrameInput) reaches the same body.
     if (!chatInputFocused_) {
         float zoomDelta = ctx_.eventReceiver->getCameraZoomDelta();
         if (zoomDelta != 0.0f) {
-            LOG_DEBUG(MOD_INPUT, "[INPUT-TRACE] processInputDeltas: zoomDelta={}, cameraController={}, cameraMode={}(Follow={})",
+            LOG_DEBUG(MOD_INPUT, "[INPUT-TRACE] processInputDeltas: zoomDelta={}, cameraController={}, cameraMode={}",
                 zoomDelta, (ctx_.cameraController != nullptr),
-                static_cast<int>(ctx_.PlayerCamera().cameraMode()), static_cast<int>(CameraMode::Follow));
-        }
-        if (zoomDelta != 0.0f && ctx_.cameraController && ctx_.PlayerCamera().cameraMode() == CameraMode::Follow) {
-            ctx_.cameraController->adjustFollowDistance(zoomDelta);
-            ctx_.cameraController->setFollowPosition(ctx_.playerX, ctx_.playerY, ctx_.playerZ, ctx_.playerHeading, deltaTime);
-            LOG_DEBUG(MOD_GRAPHICS, "Camera zoom distance: {:.1f}", ctx_.cameraController->getFollowDistance());
+                ctx_.PlayerCamera().getCameraModeString());
+            ctx_.PlayerCamera().zoomCamera(zoomDelta, deltaTime);
         }
     }
 
@@ -878,6 +912,9 @@ void FrameComponent::processFrameSimulation(float deltaTime) {
         // follow syncDoorCollision(), which is what puts the platform's
         // CURRENT triangles in the map the ride probe queries.
         ctx_.PlayerCamera().carryPlayerOnLifts(deltaTime);
+        // T461: and a rig camera rides with the player it is expressed around
+        // (Chase and first person are re-placed inside carryPlayerOnLifts()).
+        ctx_.PlayerCamera().updateRigCamera();
     }
     frameTimings_.doorUpdate = measureSection();
 

@@ -104,24 +104,24 @@ TEST(SlashCommandsComponentTest, HideUiCommandReachesTheSameDiagnosticsComponent
 TEST(SlashCommandsComponentTest, CameraCommandReachesTheSamePlayerCameraComponent) {
     IrrlichtRenderer renderer;
     renderer.processSlashCommand("/camera first person");
-    EXPECT_EQ(renderer.getCameraModeString(), "First Person");
+    EXPECT_EQ(renderer.getCameraModeString(), "First Person Camera");
 
-    // /camera cycle is the ONLY route to cycleCameraMode() -- it has no
-    // IrrlichtRenderer forwarder (L05) -- so this is also that method's live
-    // path, reached as owner_.PlayerCamera().cycleCameraMode().
+    // cycleCameraMode() has no IrrlichtRenderer forwarder (L05); /camera cycle
+    // reaches it as ctx_.PlayerCamera().cycleCameraMode() (and since T461 so
+    // does F9's arm in FrameComponent).
     renderer.processSlashCommand("/camera cycle");
-    EXPECT_EQ(renderer.getCameraModeString(), "Free");
+    EXPECT_EQ(renderer.getCameraModeString(), "Overhead Camera");
     renderer.processSlashCommand("/camera cycle");
-    EXPECT_EQ(renderer.getCameraModeString(), "Follow");
+    EXPECT_EQ(renderer.getCameraModeString(), "Chase Camera");
 
     // A write through the component's sibling is seen by the next dispatch.
     renderer.PlayerCamera().setCameraMode(CameraMode::FirstPerson);
     renderer.processSlashCommand("/camera cycle");
-    EXPECT_EQ(renderer.getCameraModeString(), "Free");
+    EXPECT_EQ(renderer.getCameraModeString(), "Overhead Camera");
 
     // An unparseable mode name must leave the mode alone.
     renderer.processSlashCommand("/camera sidescroll");
-    EXPECT_EQ(renderer.getCameraModeString(), "Free");
+    EXPECT_EQ(renderer.getCameraModeString(), "Overhead Camera");
 }
 
 // --- the dispatcher's fall-through -------------------------------------------

@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdio>
 #include <fstream>
 #include <sstream>
@@ -103,9 +104,31 @@ const OptionRow kOptions[] = {
 
 constexpr int kOptionMaxStep = 20;
 
+// T461 -- the two user cameras' `[Camera]` keys. Same anti-drift device: one
+// table, walked by the parse and the serialise. fable's own key names and
+// units (see the flagged deviation in ui_preferences.h).
+struct CameraRigRow {
+    const char* key;
+    CameraRig UiPreferences::*rig;
+    float CameraRig::*field;
+};
+
+const CameraRigRow kCameraRigKeys[] = {
+    {"User1Azimuth", &UiPreferences::user1Camera, &CameraRig::azimuthDeg},
+    {"User1Pitch", &UiPreferences::user1Camera, &CameraRig::pitchDeg},
+    {"User1Distance", &UiPreferences::user1Camera, &CameraRig::distance},
+    {"User1Height", &UiPreferences::user1Camera, &CameraRig::height},
+    {"User2Azimuth", &UiPreferences::user2Camera, &CameraRig::azimuthDeg},
+    {"User2Pitch", &UiPreferences::user2Camera, &CameraRig::pitchDeg},
+    {"User2Distance", &UiPreferences::user2Camera, &CameraRig::distance},
+    {"User2Height", &UiPreferences::user2Camera, &CameraRig::height},
+};
+
 }  // namespace
 
-UiPreferences CollectUiPreferences(const UiPreferencesBinding& b, int cameraMode) {
+UiPreferences CollectUiPreferences(const UiPreferencesBinding& b, int cameraMode,
+                                   const CameraRig& user1Camera,
+                                   const CameraRig& user2Camera) {
     UiPreferences p;
     if (b.inventory) {
         p.inventoryWindow = (b.inventory->activePopup == PopupType::Inventory);
@@ -123,6 +146,8 @@ UiPreferences CollectUiPreferences(const UiPreferencesBinding& b, int cameraMode
         p.clipPlane = b.options->clipPlane;
     }
     p.cameraMode = cameraMode;
+    p.user1Camera = user1Camera;
+    p.user2Camera = user2Camera;
     return p;
 }
 
@@ -177,6 +202,10 @@ UiPreferences ParseUiPreferences(const std::string& text,
     std::istringstream in(text);
     std::string line;
     std::string section;
+    // T461: `View=` wins over a legacy `Mode=` wherever either appears.
+    bool sawView = false;
+    bool sawLegacyMode = false;
+    int legacyMode = p.cameraMode;
     while (std::getline(in, line)) {
         // Strip a trailing CR: the official files are CRLF.
         if (!line.empty() && line.back() == '\r') line.pop_back();
@@ -192,16 +221,40 @@ UiPreferences ParseUiPreferences(const std::string& text,
         const std::string value = t.substr(eq + 1);
 
         if (section == "Camera") {
-            if (key == "Mode") {
+            // Every value is range-checked here, so a hand-edited file can
+            // never become an out-of-range CameraMode cast or a NaN camera;
+            // a value that is not a number keeps the default, exactly as an
+            // absent key would.
+            if (key == "View") {
                 try {
-                    const int m = std::stoi(Trim(value));
-                    // Clamp to the enumerators PlayerCameraComponent knows;
-                    // an out-of-range value in a hand-edited file must not
-                    // become an out-of-range CameraMode cast.
-                    if (m >= 0 && m <= 2) p.cameraMode = m;
+                    CameraMode m;
+                    const int v = std::stoi(Trim(value));
+                    if (cameraModeFromIniValue(v, m)) {
+                        p.cameraMode = v;
+                        sawView = true;
+                    }
                 } catch (...) {
-                    // Not a number -- keep the default, exactly as an absent
-                    // key would.
+                }
+            } else if (key == "Mode") {
+                // T432's key, 0 Free / 1 Follow / 2 FirstPerson -- mapped,
+                // never cast (the numberings collide at 1 and 2).
+                try {
+                    CameraMode m;
+                    if (cameraModeFromLegacyIniMode(std::stoi(Trim(value)), m)) {
+                        legacyMode = static_cast<int>(m);
+                        sawLegacyMode = true;
+                    }
+                } catch (...) {
+                }
+            } else {
+                for (const auto& row : kCameraRigKeys) {
+                    if (key != row.key) continue;
+                    try {
+                        const float v = std::stof(Trim(value));
+                        if (std::isfinite(v)) (p.*(row.rig)).*(row.field) = v;
+                    } catch (...) {
+                    }
+                    break;
                 }
             }
             continue;
@@ -227,6 +280,9 @@ UiPreferences ParseUiPreferences(const std::string& text,
             }
         }
     }
+    if (!sawView && sawLegacyMode) p.cameraMode = legacyMode;
+    clampCameraRig(p.user1Camera);
+    clampCameraRig(p.user2Camera);
     return p;
 }
 
@@ -234,7 +290,8 @@ std::string SerializeUiPreferences(const UiPreferences& p) {
     std::string out;
     out += "; WillEQ per-character UI state. Section and key names are the\n";
     out += "; official client's own (UI_<char>_<server>.ini); fable persists\n";
-    out += "; only the user-changeable open/closed state and camera mode.\n";
+    out += "; only the user-changeable open/closed state, the camera and the\n";
+    out += "; two user cameras (fable's own [Camera] keys and units).\n";
     for (const auto& row : kWindows) {
         out += "[";
         out += row.section;
@@ -247,7 +304,11 @@ std::string SerializeUiPreferences(const UiPreferences& p) {
         out += row.key;
         out += "=" + std::to_string(p.*(row.field)) + "\n";
     }
-    out += "[Camera]\nMode=" + std::to_string(p.cameraMode) + "\n";
+    out += "[Camera]\nView=" + std::to_string(p.cameraMode) + "\n";
+    for (const auto& row : kCameraRigKeys) {
+        out += row.key;
+        out += "=" + std::to_string((p.*(row.rig)).*(row.field)) + "\n";
+    }
     return out;
 }
 

@@ -8956,3 +8956,93 @@ because the Pi had no keyboard or mouse attached (B510).
   dropping a shipped INPUT is a different question from dropping a shipped
   TABLE, and B468's lesson is that each gets its own check. Closes when both
   are deleted, or a consumer is written. Found by T456.
+
+---
+
+### Added by T461 Leg A (2026-09-13, the official camera set)
+
+- **B530** (C -> ORACLE-OWED, T461 Leg B) **The official cameras' GEOMETRY and
+  the user cameras' UNITS are not in any client file.** The files settle the
+  set, the names and an order (`eqstr_us.txt` 9500-9505, `eqgame.exe`'s
+  `FIRST_PERSON_CAMERA` .. `TETHER_CAMERA`) and that the user cameras are
+  persisted (`eqclient.ini` `[Options]` `Camera1-*`/`Camera2-*`). They do NOT
+  settle: the Overhead, Chase and Tether cameras' distance/pitch/height (fable's
+  Chase is its old follow camera, unmeasured; Overhead and Tether are
+  `kOverheadPlaceholderRig` / `kTetherPlaceholderRig` in
+  `include/client/graphics/player/camera_rig.h`, marked ORACLE-OWED); whether a
+  user camera holds its offset relative to the player's heading (as fable does)
+  or to the world; the unit and zero of `Camera1-DirHeading` (192/277) and
+  `Camera1-Pitch`; whether `Camera1-Height` is the look-at height or the
+  camera's; what `Camera1-Zoom=90` and `Camera1-Change=1` mean; which camera a
+  character logs in with. Method: `/camera set` A/B search against oracle stills
+  per `match-the-oracle-dont-infer-it`. Found by T461.
+
+- **B531** (C -> ORACLE-OWED, T461 Leg B) **The official camera KEYS are not in
+  any client file.** `eqgame.exe` names the actions (`TOGGLECAM`, `ZOOMIN`,
+  `ZOOMOUT`, `CENTERVIEW`, `PITCHUP`, `PITCHDOWN`, `LEFT_CAM`, `RIGHT_CAM`,
+  `FORWARD_CAM`, `BACK_CAM`, `PITCHUP_CAM`, `PITCHDOWN_CAM`) and `eqstr_us.txt`
+  labels some (6536 Toggle camera view, 6537/6538 Zoom in/out, 6692-6698 Raise /
+  Lower / Tether-slide right / left / Pitch up / down / Center camera), but an
+  `eqclient.ini` `[KeyMaps]` line exists only for a key the user CHANGED (T382).
+  Owed: whether the official client's TOGGLECAM key is F9 (fable binds F9 on
+  Will's ruling) and the order it cycles in; the zoom step and the Mouse Wheel
+  Zoom step; the default keys of the four orbit/pitch actions fable added
+  UNBOUND (`HotkeyAction::CameraOrbitLeft/Right`, `CameraPitchUp/Down`) and of
+  raise/lower/tether-slide/center, which fable does not implement. Method:
+  screenshot Options > Keys > **Camera** (`EQUI_OptionsWindow.xml`
+  `OKP_KeyboardFilterCombobox` lists a Camera category), T377's method. Found
+  by T461.
+
+- **B532** (A, *unconfirmed live*) **Every zone load forces the camera back to
+  Chase, and the persistence then saves that over the player's choice.**
+  `Application`'s two zone-graphics loaders (`application_zone_loading.cpp`,
+  step "7. Camera") call `setCameraMode(Chase)` on every zone load, while
+  `FrameComponent::syncUiPreferences()` loads the ini only once per
+  character/server identity (`setUiPreferencesIdentity()` returns early on the
+  same identity). So after the first zone change a player in first person or a
+  user camera is put back in Chase, and the next save-on-difference writes
+  `View=3`. Pre-dates T461 (it did the same with `Follow`); read from the code,
+  not seen live. Confirm by: zone in, `/camera user1`, zone through a zone line,
+  `/camera` and read `UI_<char>_<server>.ini`. Found by T461.
+
+- **B533** (B, unreached) **What T461's deletion of the free-fly camera left
+  write-only.** T461 deleted `CameraController::update()` with the Free mode it
+  was the body of. That made two SETTERS pointless: `setMoveSpeed()` and
+  `setMouseSensitivity()` are still called once from `IrrlichtRenderer`'s init
+  (`irrlicht_renderer.cpp`), but `update()` was the only reader of
+  `moveSpeed_` and `mouseSensitivity_`. `WriteOnlyFields` flagged
+  `mouseSensitivity_` and it is exempted against this entry in
+  `scripts/refactor/check_write_only_fields.py`. The GETTER half of the same
+  residue -- `getMoveSpeed()`, `getRotateSpeed()`, `setRotateSpeed()`,
+  `getYaw()`, `getPitch()`, `setOrientation()`, `getHeadingEQ()`,
+  `setOrbitAngle()` / `getOrbitAngle()` / `adjustOrbitAngle()` -- was ALREADY
+  zero-caller before T461 and is **B494**'s CameraController group (exempted in
+  `check_zero_callers.py`); T461 did not add to it. Work the two together:
+  deleting the CameraController fly/orbit state is one change touching
+  `camera_controller.*` and the two init lines. Not done by T461 because those
+  lines were T460's territory in that wave. Found by T461.
+
+- **B534** (B, unreached) **The output-layer camera route is a second, stale
+  camera vocabulary.** `output::CameraMode` (`include/client/output/output_renderer.h`)
+  is still `Free, Follow, FirstPerson`; `GraphicalMode::processInput()` consumes
+  `InputAction::ToggleCameraMode` into `GraphicalMode::cycleCameraMode()`, which
+  calls `IOutputRenderer::cycleCameraMode()`'s empty default because
+  `IrrlichtRenderer` does not derive from that interface, and
+  `GraphicalRenderer::cycleCameraMode()` / `getCameraModeString()` rotate the
+  old three. Nothing a player reaches goes through it. The same shape B043
+  recorded for wireframe/HUD/name tags. Found by T461.
+
+- **B535** (A) **`config/hotkeys.json` drops six default bindings in
+  production.** `Application::loadConfigFile()` calls
+  `HotkeyManager::resetToDefaults()` and then `loadFromFile("config/hotkeys.json")`,
+  and `loadFromFile()` CLEARS every binding before reading the file. The file
+  has no entry for `ToggleCombatAbilities` (Alt+C, the oracle's measured key,
+  T415), `CycleObjectLights` (L), `MusicVolumeUp/Down` (F11/F10) or
+  `EffectsVolumeUp/Down` (Shift+F11/F10), all of which `resetToDefaults()`
+  binds -- so those keys do nothing in a real run while every
+  `resetToDefaults()`-based test passes. Census: the actions named in
+  `addBinding(HotkeyAction::X` calls minus the JSON's keys, so it is a LOWER
+  bound (a default bound by any other spelling is not counted). Note F11 is
+  also `ToggleAllUI`, so restoring MusicVolumeUp needs a decision. T461 put F9
+  in both places and pinned both (`test_hotkey_manager.cpp`
+  `T461_TheShippedHotkeysJsonAgreesF9`). Found by T461.

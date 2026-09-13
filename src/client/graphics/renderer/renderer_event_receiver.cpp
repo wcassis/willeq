@@ -278,6 +278,12 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                     // Camera Zoom
                     case HA::CameraZoomIn: cameraZoomDelta_ = -2.0f; break;
                     case HA::CameraZoomOut: cameraZoomDelta_ = 2.0f; break;
+                    // T461: keyboard orbit of the active user camera; the arms
+                    // are in FrameComponent::processCommonInput().
+                    case HA::CameraOrbitLeft: actionQueue_.push_back({RA::CameraOrbitLeft}); break;
+                    case HA::CameraOrbitRight: actionQueue_.push_back({RA::CameraOrbitRight}); break;
+                    case HA::CameraPitchUp: actionQueue_.push_back({RA::CameraPitchUp}); break;
+                    case HA::CameraPitchDown: actionQueue_.push_back({RA::CameraPitchDown}); break;
 
                     // Audio Volume
                     // T439 (board B432): 2 steps is the old 0.1f of a 0..1
@@ -326,10 +332,11 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
             case irr::EMIE_MOUSE_WHEEL:
                 // T313: this case did not exist. The switch fell through to
                 // `default: break` and the wheel was discarded by the whole
-                // client -- which is also why routing it to the UI cannot
-                // regress camera zoom: zoom is bound to keys
-                // (HA::CameraZoomIn/Out), never to the wheel. Accumulated,
-                // not latched, so several notches in one frame all count.
+                // client. T461: a notch the static UI does not consume now
+                // zooms the camera (the official MouseWheelZoom option); the
+                // one consumer, FrameComponent::processFrameInput(), decides
+                // which. Accumulated, not latched, so several notches in one
+                // frame all count.
                 mouseWheelDelta_ += event.MouseInput.Wheel;
                 break;
             case irr::EMIE_MOUSE_MOVED:

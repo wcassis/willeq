@@ -282,7 +282,7 @@ void Application::loadZoneGraphicsOnThread(EQT::Graphics::LoadingStatus& status)
     }
 
     // 7. Camera
-    m_renderer->setCameraMode(EQT::Graphics::IrrlichtRenderer::CameraMode::Follow);
+    m_renderer->setCameraMode(EQT::Graphics::IrrlichtRenderer::CameraMode::Chase);
     float heading512 = snap.playerHeading * 512.0f / 360.0f;
     m_renderer->setPlayerPosition(snap.playerX, snap.playerY, snap.playerZ, heading512);
 
@@ -394,7 +394,7 @@ void Application::loadZoneGraphics() {
     }
 
     // 7. Camera
-    m_renderer->setCameraMode(EQT::Graphics::IrrlichtRenderer::CameraMode::Follow);
+    m_renderer->setCameraMode(EQT::Graphics::IrrlichtRenderer::CameraMode::Chase);
     float heading512 = snap.playerHeading * 512.0f / 360.0f;
     m_renderer->setPlayerPosition(snap.playerX, snap.playerY, snap.playerZ, heading512);
 

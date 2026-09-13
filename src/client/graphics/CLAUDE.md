@@ -40,7 +40,7 @@
   where you find it. `initLoadingScreen`, `initDeferredGraphics`,
   `processFrame`, `shutdown` and `run` stay on `IrrlichtRenderer`:
   `Application` and `IrrlichtBridge` must not learn a component exists.
-- `CameraController` - FPS-style camera with free/follow/first-person modes
+- `CameraController` - places the third-person cameras with BSP (or triangle-selector) collision: `setFollowPosition()` for the Chase camera and, since T461, `placeRigCamera()` for the orbit-rig cameras (Overhead, User Defined 1/2, Tether). The mode set and the rig geometry are `include/client/graphics/player/camera_mode.h` / `camera_rig.h`; first person is `PlayerCameraComponent::repositionFirstPersonCamera()`. T461 deleted its never-called free-fly `update()` (there is no Free mode); the fly-camera setters left behind are board B533
 - `EntityRenderer` - Character/NPC 3D model rendering with GLSL shaders, split across `entity_renderer.cpp` + 12 `entity_*.cpp` TUs (J03)
 - `RaceModelLoader` - Loads character models from S3D archives by race ID
 - `DoorManager` - Door object rendering and state management

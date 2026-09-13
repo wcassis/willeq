@@ -54,7 +54,7 @@ enum class HotkeyAction : uint32_t {
     ToggleHUD,
     ToggleNameTags,
     ToggleZoneLights,
-    ToggleCameraMode,
+    ToggleCameraMode,   // T461: F9, cycles the official camera set (Ctrl+F5 retired, no alias)
     ToggleOldModels,
     ToggleAllUI,
     // T313: scroll the static-UI panel under the cursor (chat scrollback,
@@ -147,6 +147,15 @@ enum class HotkeyAction : uint32_t {
     // Camera zoom
     CameraZoomIn,
     CameraZoomOut,
+    // T461: orbit / pitch the ACTIVE user camera one kCameraOrbitKeyStepDeg per
+    // press. The official client has these actions (eqgame.exe KEYMAPPING_
+    // LEFT_CAM, RIGHT_CAM, PITCHUP_CAM, PITCHDOWN_CAM) but no file records
+    // their default keys, so fable binds NONE by default -- ORACLE-OWED
+    // (board B531). Bind them in config/hotkeys.json.
+    CameraOrbitLeft,
+    CameraOrbitRight,
+    CameraPitchUp,
+    CameraPitchDown,
 
     // Audio volume
     MusicVolumeUp,

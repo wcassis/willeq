@@ -113,8 +113,8 @@ Legend: Done | Partial | Not Implemented
 | Feature | Status | Notes |
 |---------|--------|-------|
 | First-person | Partial | Player model + weapon are drawn for the duration of an attack animation and at no other time (T307 measured this against the official client, T309 implemented it). The down-pitch clamp this row used to describe was REFUTED live and no longer exists. Eye placement was solved against the official client by T431 (B018 closed): the eye is derived per race from the head bone's own vertex cluster and sits 0.45 up the symmetrised skull, which puts a Human male's eye 6.02 units above its own feet — the value the oracle's own frames minimise at. A Dwarf male still solves 1.0 units lower than that global fraction gives it (B470) |
-| Third-person follow | Done | With collision, zoom +/- |
-| Free camera | Done | Debug/admin mode |
+| Official camera set | Partial | T461: the official client's six cameras, cycled by F9 -- First Person, Overhead, Chase, User Defined Camera 1, User Defined Camera 2, Tether (names and order from `eqstr_us.txt` 9500-9505). Chase is the old third-person follow camera, unchanged (collision, zoom with +/- or the mouse wheel). The two user cameras orbit the player, are adjustable and are persisted per character. Overhead and Tether geometry, and the user cameras' official units, are placeholders until measured against the official client (B530). The old "Free" camera is gone: it was never an official camera and never moved |
+| Exact camera placement | Done | T461: `/camera set` / `nudge` / `get` -- azimuth, pitch, distance and look-at height around the player, for matching the official client's cameras |
 | Mouse look | Done | LMB or RMB drag |
 
 ### Combat
@@ -525,8 +525,8 @@ Bindings are configurable in `config/hotkeys.json` (or a `hotkeys` object in the
 **Camera:**
 | Key | Action |
 |-----|--------|
-| Ctrl+F5 | Cycle camera mode |
-| +/- | Camera zoom in/out |
+| F9 | Cycle the camera (the official set; replaced Ctrl+F5) |
+| +/- or mouse wheel | Camera zoom in/out (the wheel zooms when the cursor is over no scrollable panel) |
 | LMB/RMB drag | Look around |
 | F12 | Screenshot |
 

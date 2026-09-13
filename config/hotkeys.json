@@ -84,7 +84,7 @@
             "HotbarSlot10": "0",
             "CameraZoomIn": ["Shift+Plus", "Plus"],
             "CameraZoomOut": ["Minus", "NumpadSubtract"],
-            "ToggleCameraMode": "Ctrl+F5",
+            "ToggleCameraMode": "F9",
             "ToggleZoneLights": "Ctrl+F4"
         }
     }

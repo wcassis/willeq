@@ -937,3 +937,67 @@ TEST_F(HotkeyOracleWindowKeysTest, BareF1StillTargetsSelf) {
     ASSERT_TRUE(action.has_value());
     EXPECT_EQ(*action, HotkeyAction::TargetSelf);
 }
+
+// =============================================================================
+// T461: F9 cycles the camera and REPLACES Ctrl+F5, with no alias (Will's
+// ruling). Pinned in BOTH places a binding lives, because the client loads
+// config/hotkeys.json over the defaults and that load CLEARS them
+// (HotkeyManager::loadFromFile) -- a key right in one and wrong in the other
+// is wrong in production.
+// =============================================================================
+
+TEST_F(HotkeyOracleWindowKeysTest, T461_F9CyclesTheCameraInTheDefaults) {
+    auto action = Bare(irr::KEY_F9);
+    ASSERT_TRUE(action.has_value());
+    EXPECT_EQ(*action, HotkeyAction::ToggleCameraMode);
+    EXPECT_EQ(HotkeyManager::instance().getBindingsForAction(HotkeyAction::ToggleCameraMode).size(), 1u)
+        << "F9 replaces Ctrl+F5 -- no alias";
+    auto ctrlF5 = HotkeyManager::instance().getAction(irr::KEY_F5, true, false, false,
+                                                     HotkeyMode::Player);
+    EXPECT_FALSE(ctrlF5.has_value()) << "Ctrl+F5 was retired, not kept as an alias";
+    // Bare F5 is still Target Group Member 4; the retirement must not touch it.
+    auto f5 = Bare(irr::KEY_F5);
+    ASSERT_TRUE(f5.has_value());
+    EXPECT_EQ(*f5, HotkeyAction::TargetGroupMember4);
+}
+
+TEST_F(HotkeyOracleWindowKeysTest, T461_F9IsBoundToNothingElse) {
+    size_t f9 = 0;
+    const auto count = static_cast<uint32_t>(HotkeyAction::Count);
+    for (uint32_t i = 0; i < count; ++i) {
+        for (const auto& b :
+             HotkeyManager::instance().getBindingsForAction(static_cast<HotkeyAction>(i))) {
+            if (b.keyCode == irr::KEY_F9) ++f9;
+        }
+    }
+    EXPECT_EQ(f9, 1u) << "F9 must reach the camera cycle and nothing else";
+}
+
+// The official client has LEFT_CAM / RIGHT_CAM / PITCHUP_CAM / PITCHDOWN_CAM
+// but no file records their keys: the actions exist, named, and are UNBOUND
+// until Leg B measures the oracle's (board B531). Inventing keys is the thing
+// T382 had to undo for the group and pet windows.
+TEST_F(HotkeyOracleWindowKeysTest, T461_TheCameraOrbitActionsAreNamedAndUnbound) {
+    const auto& mgr = HotkeyManager::instance();
+    for (const char* name : {"CameraOrbitLeft", "CameraOrbitRight", "CameraPitchUp",
+                             "CameraPitchDown"}) {
+        const HotkeyAction a = HotkeyManager::actionNameToEnum(name);
+        ASSERT_NE(a, HotkeyAction::Count) << name;
+        EXPECT_EQ(HotkeyManager::actionEnumToName(a), name);
+        EXPECT_TRUE(mgr.getBindingsForAction(a).empty()) << name;
+    }
+}
+
+#ifdef WILLEQ_REPO_ROOT
+TEST_F(HotkeyOracleWindowKeysTest, T461_TheShippedHotkeysJsonAgreesF9) {
+    auto& mgr = HotkeyManager::instance();
+    ASSERT_TRUE(mgr.loadFromFile(std::string(WILLEQ_REPO_ROOT) + "/config/hotkeys.json"));
+    auto action = Bare(irr::KEY_F9);
+    ASSERT_TRUE(action.has_value()) << "config/hotkeys.json does not bind F9";
+    EXPECT_EQ(*action, HotkeyAction::ToggleCameraMode);
+    EXPECT_EQ(mgr.getBindingsForAction(HotkeyAction::ToggleCameraMode).size(), 1u);
+    EXPECT_FALSE(mgr.getAction(irr::KEY_F5, true, false, false, HotkeyMode::Player).has_value())
+        << "config/hotkeys.json still binds Ctrl+F5";
+    mgr.resetToDefaults();
+}
+#endif

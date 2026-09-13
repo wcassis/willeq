@@ -213,6 +213,10 @@ static const ActionNameMapping s_actionNameMappings[] = {
     // Player - Camera
     {"CameraZoomIn", HotkeyAction::CameraZoomIn},
     {"CameraZoomOut", HotkeyAction::CameraZoomOut},
+    {"CameraOrbitLeft", HotkeyAction::CameraOrbitLeft},     // T461
+    {"CameraOrbitRight", HotkeyAction::CameraOrbitRight},   // T461
+    {"CameraPitchUp", HotkeyAction::CameraPitchUp},         // T461
+    {"CameraPitchDown", HotkeyAction::CameraPitchDown},     // T461
 
     // Player - Audio Volume
     {"MusicVolumeUp", HotkeyAction::MusicVolumeUp},
@@ -571,7 +575,12 @@ void HotkeyManager::setupDefaults() {
     // === Player Mode - Camera ===
     addBinding(HotkeyAction::CameraZoomIn, HotkeyMode::Player, irr::KEY_PLUS);
     addBinding(HotkeyAction::CameraZoomOut, HotkeyMode::Player, irr::KEY_MINUS);
-    addBinding(HotkeyAction::ToggleCameraMode, HotkeyMode::Player, irr::KEY_F5, ModifierFlags::Ctrl);
+    // T461: F9 is Will's ruling and REPLACES Ctrl+F5, with no alias. The
+    // official action is TOGGLECAM ("Toggle camera view", eqstr_us.txt 6536);
+    // no client file records its default key, so that the official client
+    // uses F9 too is ORACLE-OWED (board B531). The orbit/pitch actions above
+    // are deliberately left unbound for the same reason.
+    addBinding(HotkeyAction::ToggleCameraMode, HotkeyMode::Player, irr::KEY_F9);
 
     // === Player Mode - Lighting ===
     addBinding(HotkeyAction::CycleObjectLights, HotkeyMode::Player, irr::KEY_KEY_L);

@@ -188,10 +188,11 @@ public:
     // published, so a hotkey and a slider drag can no longer disagree.
     int getMusicVolumeStepDelta() { int d = musicVolumeStepDelta_; musicVolumeStepDelta_ = 0; return d; }
     int getEffectsVolumeStepDelta() { int d = effectsVolumeStepDelta_; effectsVolumeStepDelta_ = 0; return d; }
-    // T313: the mouse wheel. Before this unit EMIE_MOUSE_WHEEL had no case
-    // in OnEvent() at all -- nothing in the client consumed it, camera zoom
-    // included (that is hotkey-only, CameraZoomIn/Out above) -- so the
-    // static UI is its sole consumer and there is no zoom to double-fire.
+    // T313: the mouse wheel. Before T313 EMIE_MOUSE_WHEEL had no case in
+    // OnEvent() at all. It has ONE reader, FrameComponent::processFrameInput():
+    // the static UI panel under the cursor gets the notch first, and since
+    // T461 a notch the UI does not consume zooms the camera (the official
+    // client's MouseWheelZoom option) -- so no notch can do both.
     // Declared here rather than beside the other accumulators below so the
     // whole thing is one hunk (T312 is editing this header concurrently).
     float getMouseWheelDelta() { float d = mouseWheelDelta_; mouseWheelDelta_ = 0; return d; }

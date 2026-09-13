@@ -131,7 +131,7 @@ protected:
         eq.Net().Test_SetBypassSendGuardForSeam(true);
         eq.Test_SetMySpawnIdForSeam(460);
         eq.setBridge(&bridge);
-        renderer.PlayerCamera().setCameraMode(IrrlichtRenderer::CameraMode::Free);
+        renderer.PlayerCamera().setCameraMode(IrrlichtRenderer::CameraMode::Overhead);  // T461: was Free -- any mode that does not dereference the absent camera controller
     }
 
     EverQuest eq{"127.0.0.1", 0, "test", "test", "test", "Testchar"};
@@ -172,7 +172,7 @@ TEST_F(ZoneInZ, ThreeConsecutiveZoneInsDoNotAccumulate) {
         IntentBridge sessionBridge;
         session.setBridge(&sessionBridge);
         IrrlichtRenderer sessionRenderer;
-        sessionRenderer.PlayerCamera().setCameraMode(IrrlichtRenderer::CameraMode::Free);
+        sessionRenderer.PlayerCamera().setCameraMode(IrrlichtRenderer::CameraMode::Overhead);  // T461: was Free -- any mode that does not dereference the absent camera controller
 
         carried = ZoneInAndTransmit(session, sessionBridge, sessionRenderer, carried);
         EXPECT_NEAR(carried, kOfficialWireZ, 1e-3f)

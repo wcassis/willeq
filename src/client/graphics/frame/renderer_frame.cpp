@@ -253,13 +253,19 @@ bool FrameComponent::processFrame(float deltaTime) {
     // processFrame(); physics, zoom and lifts run in phases 1-3) and before the
     // render that consumes the camera -- so the TRACE line is the camera this
     // frame is DRAWN with. Off unless --log-module=CAMERA:TRACE.
+    // T461 renumbered CameraMode (Follow=1 became Chase=3, FirstPerson 2 -> 1,
+    // Free=0 is gone), so the bare number means something different before
+    // and after that merge. The official name is printed beside it so a trace
+    // line is self-describing either way. The follow distances are the Chase
+    // camera's; in any other mode they are simply its last values.
     if (ctx_.camera) {
         const irr::core::vector3df camPos = ctx_.camera->getPosition();
         const irr::core::vector3df camTgt = ctx_.camera->getTarget();
         LOG_TRACE(MOD_CAMERA,
-                  "T459 cam frame={} mode={} pos=({:.2f},{:.2f},{:.2f}) tgt=({:.2f},{:.2f},{:.2f}) "
+                  "T459 cam frame={} mode={} ({}) pos=({:.2f},{:.2f},{:.2f}) tgt=({:.2f},{:.2f},{:.2f}) "
                   "player=({:.2f},{:.2f},{:.2f}) heading={:.2f} followDist actual={:.2f} preferred={:.2f}",
                   ctx_.frameNumber, static_cast<int>(ctx_.PlayerCamera().cameraMode()),
+                  ctx_.PlayerCamera().getCameraModeString(),
                   camPos.X, camPos.Y, camPos.Z, camTgt.X, camTgt.Y, camTgt.Z,
                   ctx_.playerX, ctx_.playerY, ctx_.playerZ, ctx_.playerHeading,
                   ctx_.cameraController ? ctx_.cameraController->getActualFollowDistance() : -1.0f,

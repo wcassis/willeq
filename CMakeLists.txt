@@ -554,6 +554,12 @@ IF(EQT_GRAPHICS)
         # T437 (board B435): the ground query's answer shape and the two
         # decisions that read it, device-free so they can be tested.
         src/client/graphics/player/ground_query.cpp
+        # T461: the official camera set -- the mode table and the orbit-rig
+        # geometry (device-free), the rig modes and /camera on
+        # PlayerCameraComponent, and /camera's parser (device-free).
+        src/client/graphics/player/camera_rig.cpp
+        src/client/graphics/player/renderer_camera_modes.cpp
+        src/client/graphics/slash/camera_command.cpp
         src/client/graphics/zone_lifecycle/renderer_zone_draw.cpp
         src/client/graphics/zone_stream/renderer_zone_merge.cpp
         src/client/graphics/zone_stream/renderer_zone_stream.cpp

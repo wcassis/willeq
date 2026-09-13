@@ -42,37 +42,36 @@ TEST_F(PlayerCameraComponentTest, AccessorReachesAConstructedComponent) {
 // member. One round trip across the handle.
 
 TEST_F(PlayerCameraComponentTest, SetCameraModeWritesTheRenderersOwnMemberThroughTheOwnerHandle) {
-    ASSERT_EQ(renderer.getCameraMode(), IrrlichtRenderer::CameraMode::Follow);  // declared default
+    ASSERT_EQ(renderer.getCameraMode(), IrrlichtRenderer::CameraMode::Chase);  // declared default
 
     renderer.PlayerCamera().setCameraMode(IrrlichtRenderer::CameraMode::FirstPerson);
     EXPECT_EQ(renderer.getCameraMode(), IrrlichtRenderer::CameraMode::FirstPerson);
     EXPECT_TRUE(renderer.isFirstPersonMode());
 
-    renderer.PlayerCamera().setCameraMode(IrrlichtRenderer::CameraMode::Free);
-    EXPECT_EQ(renderer.getCameraMode(), IrrlichtRenderer::CameraMode::Free);
+    renderer.PlayerCamera().setCameraMode(IrrlichtRenderer::CameraMode::Overhead);
+    EXPECT_EQ(renderer.getCameraMode(), IrrlichtRenderer::CameraMode::Overhead);
     EXPECT_FALSE(renderer.isFirstPersonMode());
 }
 
-TEST_F(PlayerCameraComponentTest, CycleCameraModeAdvancesFreeFollowFirstPersonThroughTheOwnerHandle) {
+TEST_F(PlayerCameraComponentTest, CycleCameraModeWalksTheOfficialOrderThroughTheOwnerHandle) {
     // cycleCameraMode() has NO forwarder on IrrlichtRenderer -- L05 measured
-    // zero callers on that receiver. This is the only route to it now, and it
-    // is the route renderer_slash_commands.cpp takes.
-    ASSERT_EQ(renderer.getCameraMode(), IrrlichtRenderer::CameraMode::Follow);
+    // zero callers on that receiver. Its routes are FrameComponent's F9 arm
+    // (T461) and `/camera cycle`, both through PlayerCamera().
+    ASSERT_EQ(renderer.getCameraMode(), IrrlichtRenderer::CameraMode::Chase);
+    renderer.PlayerCamera().cycleCameraMode();
+    EXPECT_EQ(renderer.getCameraMode(), IrrlichtRenderer::CameraMode::User1);
+    renderer.PlayerCamera().setCameraMode(IrrlichtRenderer::CameraMode::Tether);
     renderer.PlayerCamera().cycleCameraMode();
     EXPECT_EQ(renderer.getCameraMode(), IrrlichtRenderer::CameraMode::FirstPerson);
-    renderer.PlayerCamera().cycleCameraMode();
-    EXPECT_EQ(renderer.getCameraMode(), IrrlichtRenderer::CameraMode::Free);
-    renderer.PlayerCamera().cycleCameraMode();
-    EXPECT_EQ(renderer.getCameraMode(), IrrlichtRenderer::CameraMode::Follow);
 }
 
 TEST_F(PlayerCameraComponentTest, CameraModeStringReadsTheOwnersMemberBackThroughTheForwarder) {
     // Renderer forwarder -> component -> its own cameraMode_ -> string (L13).
-    EXPECT_EQ(renderer.getCameraModeString(), "Follow");
+    EXPECT_EQ(renderer.getCameraModeString(), "Chase Camera");
     renderer.PlayerCamera().setCameraMode(IrrlichtRenderer::CameraMode::FirstPerson);
-    EXPECT_EQ(renderer.getCameraModeString(), "First Person");
-    renderer.PlayerCamera().setCameraMode(IrrlichtRenderer::CameraMode::Free);
-    EXPECT_EQ(renderer.getCameraModeString(), "Free");
+    EXPECT_EQ(renderer.getCameraModeString(), "First Person Camera");
+    renderer.PlayerCamera().setCameraMode(IrrlichtRenderer::CameraMode::Overhead);
+    EXPECT_EQ(renderer.getCameraModeString(), "Overhead Camera");
 }
 
 // --- The ctx_ (RendererContext) path -------------------------------------
@@ -83,14 +82,16 @@ TEST_F(PlayerCameraComponentTest, CameraModeStringReadsTheOwnersMemberBackThroug
 // -> renderer read, which is the binding L01 correction 6 asks for.
 
 TEST_F(PlayerCameraComponentTest, SetPlayerPositionWritesTheCoreMembersThroughTheContext) {
-    // Free mode on purpose. In the DEFAULT Follow mode the body's next act is
+    // Overhead on purpose (T461: this used Free, which is gone). In the DEFAULT
+    // Chase mode the body's next act is
     // ctx_.cameraController->enableZoneInLogging(), an UNGUARDED dereference of
     // a unique_ptr that only Init() fills -- the body is verbatim from before
-    // this unit and guards that path with isLoading() alone. Free takes the
-    // else-branch, which only logs, so the member writes above it are what this
-    // test observes. (K09 correction z read forward: an unguarded dereference
-    // in an otherwise-guarded body tells you which harness paths are reachable.)
-    renderer.PlayerCamera().setCameraMode(IrrlichtRenderer::CameraMode::Free);
+    // this unit and guards that path with isLoading() alone. A rig mode takes
+    // updateRigCamera(), which returns without a camera controller, so the
+    // member writes above it are what this test observes. (K09 correction z
+    // read forward: an unguarded dereference in an otherwise-guarded body tells
+    // you which harness paths are reachable.)
+    renderer.PlayerCamera().setCameraMode(IrrlichtRenderer::CameraMode::Overhead);
     renderer.setPlayerPosition(11.0f, 22.0f, 33.0f, 64.0f);
     EXPECT_FLOAT_EQ(renderer.getPlayerZ(), 33.0f);
     EXPECT_FLOAT_EQ(renderer.Context().playerX, 11.0f);

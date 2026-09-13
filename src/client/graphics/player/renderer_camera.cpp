@@ -445,8 +445,8 @@ void PlayerCameraComponent::setPlayerPosition(float x, float y, float z, float h
         }
     }
 
-    if (cameraMode_ == CameraMode::Follow && playerInBounds) {
-        LOG_DEBUG(MOD_GRAPHICS, "[ZONE-IN] Camera mode=Follow, calling setFollowPosition({:.2f},{:.2f},{:.2f},{:.2f})",
+    if (cameraMode_ == CameraMode::Chase && playerInBounds) {
+        LOG_DEBUG(MOD_GRAPHICS, "[ZONE-IN] Camera mode=Chase, calling setFollowPosition({:.2f},{:.2f},{:.2f},{:.2f})",
                  x, y, z, heading);
         ctx_.cameraController->enableZoneInLogging();  // Enable one-time detailed logging
         ctx_.cameraController->setFollowPosition(x, y, z, heading);
@@ -463,6 +463,10 @@ void PlayerCameraComponent::setPlayerPosition(float x, float y, float z, float h
         // time/hot-path risk, not correctness; de-duplicating it is exactly
         // what removes that risk.
         repositionFirstPersonCamera();
+    } else if (isRigCameraMode(cameraMode_) && playerInBounds) {
+        // T461: the rig is expressed around the player, so a relocation moves
+        // the camera with the player and leaves the rig itself untouched.
+        updateRigCamera();
     } else {
         LOG_INFO(MOD_GRAPHICS, "[ZONE-IN] Camera: mode={} playerInBounds={} camera={} (no camera update)",
                  static_cast<int>(cameraMode_), playerInBounds, ctx_.camera != nullptr);
@@ -508,42 +512,24 @@ void PlayerCameraComponent::setCameraMode(CameraMode mode) {
     // did this, so a stationary player toggling modes kept looking through
     // the stale third-person Follow transform (stage-1 diagnostic finding).
     repositionFirstPersonCamera();
+    // T461: entering a rig mode places the camera at once, for the same reason
+    // (a no-op in first person and Chase).
+    updateRigCamera();
 }
 
+// T461: the official cycle, eqstr_us.txt 9500..9505 (camera_mode.h). Before
+// T461 this rotated Free -> Follow -> FirstPerson and its key, Ctrl+F5, never
+// reached it: RendererEventReceiver queued RendererAction::ToggleCameraMode
+// and processCommonInput() had no arm for it. It now goes through
+// setCameraMode(), so the projection, the name-tag record and the placement
+// are the ones every other entry point gets.
 void PlayerCameraComponent::cycleCameraMode() {
-    switch (cameraMode_) {
-        case CameraMode::Free:
-            cameraMode_ = CameraMode::Follow;
-            break;
-        case CameraMode::Follow:
-            cameraMode_ = CameraMode::FirstPerson;
-            break;
-        case CameraMode::FirstPerson:
-            cameraMode_ = CameraMode::Free;
-            break;
-    }
-
-    // T300: see setCameraMode() -- mode record + name tag only.
-    if (ctx_.entityRenderer) {
-        ctx_.entityRenderer->setPlayerFirstPersonMode(cameraMode_ == CameraMode::FirstPerson);
-    }
-    applyCameraProjectionForMode();
-
-    // Log eye height when entering first-person mode
-    if (cameraMode_ == CameraMode::FirstPerson) {
-        LOG_INFO(MOD_GRAPHICS, "First Person mode - Eye height: {:.1f} (Y to raise, Shift+Y to lower)", playerConfig_.eyeHeight);
-        // T74: see setCameraMode()'s comment -- same stale-camera gap.
-        repositionFirstPersonCamera();
-    }
+    setCameraMode(nextCameraMode(cameraMode_));
+    LOG_INFO(MOD_GRAPHICS, "Camera mode: {}", getCameraModeString());
 }
 
 std::string PlayerCameraComponent::getCameraModeString() const {
-    switch (cameraMode_) {
-        case CameraMode::Free: return "Free";
-        case CameraMode::Follow: return "Follow";
-        case CameraMode::FirstPerson: return "First Person";
-        default: return "Unknown";
-    }
+    return cameraModeName(cameraMode_);
 }
 
 

@@ -44,6 +44,10 @@
 
 #include <string>
 
+// T461: device-free, so this header still needs no renderer_types.h.
+#include "client/graphics/player/camera_mode.h"
+#include "client/graphics/player/camera_rig.h"
+
 namespace EQT {
 namespace Graphics {
 
@@ -73,10 +77,26 @@ struct UiPreferences {
     // /mnt/projects/EverQuestP1999/UI_Obian_project1999.ini has
     // `[OptionsWindow] ... Show=0`.
     bool optionsWindow = false;      // [OptionsWindow]
-    // [Camera] Mode= -- the CameraMode enumerator (0 Free, 1 Follow,
-    // 2 FirstPerson). Held as an int so this header stays free of
-    // renderer_types.h; PlayerCameraComponent's default is Follow.
-    int cameraMode = 1;
+    // [Camera] View= -- the CameraMode enumerator, 1..6 (camera_mode.h: the
+    // official client's six cameras, in eqstr_us.txt order). T461 replaced
+    // T432's `Mode=` (0 Free, 1 Follow, 2 FirstPerson): the two numberings
+    // collide at 1 and 2, so the KEY changed rather than the meaning of a
+    // number. ParseUiPreferences() maps an old `Mode=` explicitly
+    // (cameraModeFromLegacyIniMode) when the file has no `View=`; the writer
+    // emits only `View=`. Held as an int, as before.
+    int cameraMode = static_cast<int>(kDefaultCameraMode);
+    // [Camera] User1Azimuth / User1Pitch / User1Distance / User1Height, and
+    // the same four for User2 (T461). Persisted BECAUSE THE OFFICIAL CLIENT
+    // PERSISTS ITS USER CAMERAS: eqclient.ini [Options] carries
+    // Camera1-Distance, -DirHeading, -Heading, -Pitch, -Height, -Zoom and
+    // -Change, and the same seven for Camera2.
+    // DEVIATION, FLAGGED: fable's own key names and units (camera_rig.h --
+    // degrees and EQ world units), because no file settles the oracle's
+    // DirHeading/Pitch units (board B530); and in this file rather than
+    // eqclient.ini, T432's one-writer rule again. The two fixed cameras
+    // (Overhead, Tether) are not user-adjustable and are not persisted.
+    CameraRig user1Camera = kUser1DefaultRig;
+    CameraRig user2Camera = kUser2DefaultRig;
 
     // T434 -- the three Options-window controls fable can actually wire,
     // under the oracle's OWN key names and on the oracle's OWN 0..20 scale.
@@ -116,7 +136,9 @@ struct UiPreferences {
             && musicVolume == o.musicVolume
             && soundVolume == o.soundVolume
             && clipPlane == o.clipPlane
-            && cameraMode == o.cameraMode;
+            && cameraMode == o.cameraMode
+            && user1Camera == o.user1Camera
+            && user2Camera == o.user2Camera;
     }
     bool operator!=(const UiPreferences& o) const { return !(*this == o); }
 };
@@ -138,13 +160,19 @@ struct UiPreferencesBinding {
     OptionsPanelState* options = nullptr;   // T434
 };
 
-/** Read the bound panel states (plus the caller's camera mode) into a value. */
-UiPreferences CollectUiPreferences(const UiPreferencesBinding& b, int cameraMode);
+/**
+ * Read the bound panel states, plus the caller's camera mode and (T461) its
+ * two user cameras, into a value.
+ */
+UiPreferences CollectUiPreferences(const UiPreferencesBinding& b, int cameraMode,
+                                   const CameraRig& user1Camera = kUser1DefaultRig,
+                                   const CameraRig& user2Camera = kUser2DefaultRig);
 
 /**
- * Write a value back into the bound panel states. The camera mode is NOT
- * applied here -- it lives on PlayerCameraComponent behind setCameraMode(),
- * so the caller reads `p.cameraMode` and calls that.
+ * Write a value back into the bound panel states. The camera mode and the
+ * user cameras are NOT applied here -- they live on PlayerCameraComponent
+ * behind setCameraMode() / setUserCameraRigs(), so the caller reads
+ * `p.cameraMode`, `p.user1Camera` and `p.user2Camera` and calls those.
  */
 void ApplyUiPreferences(const UiPreferences& p, const UiPreferencesBinding& b);
 

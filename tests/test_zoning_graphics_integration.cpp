@@ -725,8 +725,8 @@ TEST_F(ZoningGraphicsIntegrationTest, CameraCollisionSafeDuringZoneTransition) {
 
     std::cout << "Testing camera safety during zone transition to " << zoneLine.destinationZone << std::endl;
 
-    // Set camera mode to Follow (which uses collision detection)
-    renderer_->setCameraMode(EQT::Graphics::IrrlichtRenderer::CameraMode::Follow);
+    // Set camera mode to Chase (T461: was Follow; it uses collision detection)
+    renderer_->setCameraMode(EQT::Graphics::IrrlichtRenderer::CameraMode::Chase);
 
     // Move player position near the zone line
     eq_->SetPosition(zoneLine.x, zoneLine.y, zoneLine.z);

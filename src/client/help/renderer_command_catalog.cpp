@@ -26,7 +26,8 @@ const std::vector<RendererCommandInfo> kCatalog = {
     {"sort", {}, "Toggle front-to-back zone draw sorting"},
     {"mergedraws", {}, "Toggle merged zone draw calls"},
     {"screenshot", {}, "Save a screenshot"},
-    {"camera", {}, "Show or set the camera mode"},
+    // T461: the official camera set (F9 cycles it) and exact orbit placement.
+    {"camera", {}, "Camera mode (F9 cycles): report, cycle, <mode>; set / nudge / get az pitch dist height"},
     // T310 Leg A: the first-person camera's numbers, settable at runtime so
     // the pose can be SOLVED against the official client without a rebuild
     // per candidate value. No aliases -- every alias here must also exist as

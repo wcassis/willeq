@@ -1,6 +1,7 @@
 #include "client/graphics/camera_controller.h"
 #include "client/graphics/eq/wld_loader.h"
 #include "common/logging.h"
+#include <algorithm>
 #include <cmath>
 
 namespace EQT {
@@ -21,78 +22,6 @@ CameraController::CameraController(irr::scene::ICameraSceneNode* camera)
 void CameraController::setOrientation(float yaw, float pitch) {
     yaw_ = yaw;
     pitch_ = std::max(MIN_PITCH, std::min(MAX_PITCH, pitch));
-}
-
-void CameraController::update(float deltaTime, bool forward, bool backward, bool left, bool right,
-                              bool up, bool down, int mouseDeltaX, int mouseDeltaY, bool mouseEnabled) {
-    if (!camera_) {
-        return;
-    }
-
-    // Update rotation from mouse
-    if (mouseEnabled) {
-        yaw_ += mouseDeltaX * mouseSensitivity_;
-        pitch_ -= mouseDeltaY * mouseSensitivity_;
-
-        // Clamp pitch
-        pitch_ = std::max(MIN_PITCH, std::min(MAX_PITCH, pitch_));
-
-        // Wrap yaw
-        while (yaw_ > 180.0f) yaw_ -= 360.0f;
-        while (yaw_ < -180.0f) yaw_ += 360.0f;
-    }
-
-    // Calculate direction vectors
-    float yawRad = yaw_ * irr::core::DEGTORAD;
-    float pitchRad = pitch_ * irr::core::DEGTORAD;
-
-    // Forward direction (in XZ plane)
-    irr::core::vector3df forwardDir(
-        std::sin(yawRad) * std::cos(pitchRad),
-        std::sin(pitchRad),
-        std::cos(yawRad) * std::cos(pitchRad)
-    );
-
-    // Right direction (perpendicular to forward in XZ plane)
-    irr::core::vector3df rightDir(
-        std::cos(yawRad),
-        0,
-        -std::sin(yawRad)
-    );
-
-    // Up direction (world up)
-    irr::core::vector3df upDir(0, 1, 0);
-
-    // Calculate movement
-    irr::core::vector3df movement(0, 0, 0);
-    float speed = moveSpeed_ * deltaTime;
-
-    if (forward) {
-        movement += forwardDir * speed;
-    }
-    if (backward) {
-        movement -= forwardDir * speed;
-    }
-    if (right) {
-        movement += rightDir * speed;
-    }
-    if (left) {
-        movement -= rightDir * speed;
-    }
-    if (up) {
-        movement += upDir * speed;
-    }
-    if (down) {
-        movement -= upDir * speed;
-    }
-
-    // Update camera position
-    irr::core::vector3df pos = camera_->getPosition() + movement;
-    camera_->setPosition(pos);
-
-    // Update camera target
-    irr::core::vector3df target = pos + forwardDir * 100.0f;
-    camera_->setTarget(target);
 }
 
 void CameraController::setFollowPosition(float eqX, float eqY, float eqZ, float eqHeading, float deltaTime) {
@@ -281,6 +210,45 @@ void CameraController::setFollowPosition(float eqX, float eqY, float eqZ, float 
 
     // Update internal yaw based on EQ heading
     yaw_ = (eqHeading / 512.0f * 360.0f) - 180.0f;
+}
+
+float CameraController::placeRigCamera(const CameraRigPose& pose) {
+    const float dx = pose.camX - pose.targetX;
+    const float dy = pose.camY - pose.targetY;
+    const float dz = pose.camZ - pose.targetZ;
+    const float idealDist = std::sqrt(dx * dx + dy * dy + dz * dz);
+    if (!camera_) return idealDist;
+
+    // Irrlicht is Y-up: EQ (x, y, z) -> (x, z, y).
+    const irr::core::vector3df target(pose.targetX, pose.targetZ, pose.targetY);
+    float scale = 1.0f;
+
+    if (idealDist > 0.0f && bspTree_ && bspPlayerRegion_ != SIZE_MAX) {
+        if (!isBspPointVisible(pose.camX, pose.camY, pose.camZ)) {
+            float hit = bspFindCollisionDistance(pose.targetX, pose.targetY, pose.targetZ,
+                                                 pose.camX, pose.camY, pose.camZ);
+            hit = std::max(MIN_COLLISION_DISTANCE, hit - CAMERA_COLLISION_OFFSET);
+            scale = std::min(1.0f, hit / idealDist);
+        }
+    } else if (idealDist > 0.0f && collisionManager_ && collisionSelector_) {
+        const irr::core::vector3df ideal(pose.camX, pose.camZ, pose.camY);
+        irr::core::vector3df hitPoint;
+        irr::core::triangle3df hitTriangle;
+        irr::scene::ISceneNode* hitNode = nullptr;
+        irr::core::line3df ray(target, ideal);
+        if (collisionManager_->getCollisionPoint(ray, collisionSelector_,
+                                                 hitPoint, hitTriangle, hitNode)) {
+            const float hit = std::max(MIN_COLLISION_DISTANCE,
+                                       target.getDistanceFrom(hitPoint) - CAMERA_COLLISION_OFFSET);
+            scale = std::min(1.0f, hit / idealDist);
+        }
+    }
+
+    camera_->setPosition(irr::core::vector3df(pose.targetX + dx * scale,
+                                              pose.targetZ + dz * scale,
+                                              pose.targetY + dy * scale));
+    camera_->setTarget(target);
+    return idealDist * scale;
 }
 
 void CameraController::getPositionEQ(float& x, float& y, float& z) const {

@@ -99,6 +99,8 @@ namespace EQT { namespace Graphics { class TextBatch; class UIAtlas; class UIRen
 namespace EQT { namespace Graphics { class ConstrainedTextureCache; } }
 // T300: the first-person camera's constants and its pure placement math.
 #include "client/graphics/first_person_camera.h"
+// T461: the camera set (CameraMode) -- see the note where the enum used to be.
+#include "client/graphics/player/camera_mode.h"
 
 namespace EQT {
 namespace Graphics {
@@ -115,6 +117,8 @@ enum class RendererAction : uint8_t {
     CycleObjectLights, ToggleCameraMode, ToggleOldModels,
     Screenshot, ToggleAllUI,
     ScrollUIUp, ScrollUIDown,   // T313: static-UI scroll (PageUp/PageDown)
+    // T461: keyboard orbit of the active user camera (HotkeyAction::CameraOrbit*)
+    CameraOrbitLeft, CameraOrbitRight, CameraPitchUp, CameraPitchDown,
 
     // Player-mode actions
     ToggleAutorun, ToggleAutoAttack, Hail, Consider,
@@ -236,19 +240,14 @@ struct PendingZoneComputations {
 
 // Camera control modes.
 //
-// L05 (Batch L, refactor/L_renderer_component_extraction.md): this enum was a
-// nested type of class IrrlichtRenderer. PlayerCameraComponent's moved
-// setCameraMode(CameraMode) signature needs it, and a component header cannot
-// include irrlicht_renderer.h (that header includes the component's). So the
-// enum lives here, beside VisionType, and IrrlichtRenderer keeps
-// `using CameraMode = EQT::Graphics::CameraMode;` -- every existing spelling,
-// including EQT::Graphics::IrrlichtRenderer::CameraMode::Follow in
-// application_zone_loading.cpp and the tests, still resolves unchanged.
-enum class CameraMode {
-    Free,       // Free-fly camera
-    Follow,     // Follow player character
-    FirstPerson // First-person from player position
-};
+// L05 (Batch L, refactor/L_renderer_component_extraction.md) hoisted this enum
+// here out of class IrrlichtRenderer (a component header cannot include
+// irrlicht_renderer.h), and IrrlichtRenderer keeps
+// `using CameraMode = EQT::Graphics::CameraMode;`. T461 moved the definition
+// once more, into the device-free client/graphics/player/camera_mode.h
+// (included at the top of this file), and replaced Free/Follow/FirstPerson
+// with the official client's six cameras. Every spelling still resolves;
+// Follow is now CameraMode::Chase and Free is gone.
 
 // VisionType moved to client/graphics/vision_type.h (T360, BOARD B066) so
 // simulation_worker.h -- which this header INCLUDES, so the dependency cannot

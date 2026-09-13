@@ -147,7 +147,7 @@ group panel and the buff bar (board **B366**).
 | F11 | Toggle ALL UI (T301: also hides the static panels -- chat, hotbar, gems, popups, XP bar; before T301 it gated only the casting bars, the legacy `guienv_` draw and the FPS counter, so with the static UI on it hid nothing. Scriptable as `/hideui`.) |
 | F12 | Screenshot |
 | PageUp / PageDown | Scroll the static-UI panel under the cursor one page (chat scrollback, the skills list, the loot list). T313; scriptable as `/scroll`. PageDown used to be a second StrafeRight binding — that moved to Home, pairing with StrafeLeft's End, so paging a loot list does not also strafe. |
-| Mouse wheel | Scroll that same panel 3 lines per notch. T313: `EMIE_MOUSE_WHEEL` had no case in `RendererEventReceiver::OnEvent()` at all before this, so the wheel was discarded client-wide — camera zoom is the `CameraZoomIn/Out` hotkeys, never the wheel, and the static UI is the wheel's sole consumer. |
+| Mouse wheel | Scroll that same panel 3 lines per notch. T313: `EMIE_MOUSE_WHEEL` had no case in `RendererEventReceiver::OnEvent()` at all before this, so the wheel was discarded client-wide. **T461: a notch with the cursor over no scrollable panel zooms the camera** — the official client's Mouse Wheel Zoom option (`eqclient.ini` `MouseWheelZoom=1`, `EQUI_OptionsWindow.xml` `OMP_MouseWheelZoomCheckbox`). There is still one reader (`FrameComponent::processFrameInput()`), so no notch both scrolls and zooms. |
 | LMB+drag | Look around (camera) |
 | RMB+drag | Look around (camera) |
 | Ctrl+LMB+drag | Look around (single-button mouse) |
@@ -157,7 +157,7 @@ group panel and the buff bar (board **B366**).
 | Ctrl+F2 | Toggle HUD |
 | Ctrl+F3 | Toggle name tags |
 | Ctrl+F4 | Toggle zone lights |
-| Ctrl+F5 | Cycle camera mode |
+| F9 | Cycle the camera through the official set, in `eqstr_us.txt` 9500-9505 order: First Person, Overhead, Chase, User Defined Camera 1, User Defined Camera 2, Tether (T461, Will's ruling; F9 REPLACED Ctrl+F5 with no alias). Ctrl+F5 had never done anything: the receiver queued `RendererAction::ToggleCameraMode` and `processCommonInput()` had no arm for it. That F9 is also the official client's key, and its cycle order, are ORACLE-OWED (board B531). |
 | Ctrl+F6 | Toggle Classic/Luclin models |
 
 **Player Mode:**
@@ -192,7 +192,8 @@ group panel and the buff bar (board **B366**).
 | H | Hail (say "Hail" or "Hail, <target>") |
 | L | Cycle object lights |
 | ESC | Clear target. `/cleartarget` (no alias, category Combat) reaches the same `ActionDispatcher::clearTarget()` since T347 (board B012 CLOSED), so a `--script` run can clear a target |
-| +/- | Camera zoom in/out |
+| +/- | Camera zoom in/out: the Chase follow distance, or the active orbit camera's distance (T461, `PlayerCameraComponent::zoomCamera()`, shared with the wheel). First person does not zoom. |
+| (unbound) | `CameraOrbitLeft` / `CameraOrbitRight` / `CameraPitchUp` / `CameraPitchDown` — orbit the ACTIVE user camera 5 degrees per press (T461). The official client has these actions (`LEFT_CAM`, `RIGHT_CAM`, `PITCHUP_CAM`, `PITCHDOWN_CAM`) but no file records their keys, so fable binds none by default (ORACLE-OWED, board B531); bind them in `config/hotkeys.json`. |
 | PageUp / PageDown | Scroll the UI panel under the cursor (T313) |
 | Ctrl+Alt+C | Toggle collision |
 | Ctrl+Z | Toggle zone line visualization |
@@ -228,8 +229,14 @@ official ACTION names are `TOGGLE_PARTYWIN`, `TOGGLE_PETINFOWIN` and
 `<cache dir>/ui/UI_<Char>_<server>.ini` holds `[<Window>] Show=0/1` for the
 seven toggleable windows -- `[InventoryWindow]`, `[SpellBookWnd]`,
 `[SkillsWindow]`, `[GroupWindow]`, `[PetInfoWindow]`, `[BuffWindow]`,
-`[CombatAbilityWnd]` -- plus `[Camera] Mode=`, using the official client's own
-filename, section names and key. It is read at zone-in and written whenever a
+`[CombatAbilityWnd]` -- plus the camera, using the official client's own
+filename and section names. **T461 changed the camera keys:** `[Camera] View=`
+holds the official camera (1..6, `camera_mode.h`), and `User1Azimuth` /
+`User1Pitch` / `User1Distance` / `User1Height` (and `User2*`) hold the two user
+cameras, because the official client persists its own (`eqclient.ini`
+`Camera1-*` / `Camera2-*`). T432's `Mode=` (0 Free, 1 Follow, 2 FirstPerson)
+collides with the new numbering, so it is still READ — mapped explicitly, 0 and
+1 to Chase, 2 to First Person — and never written. It is read at zone-in and written whenever a
 toggle changes and at `/camp`. An ABSENT `Show=` key keeps the default, so
 `defaults.ini`'s "a default is stated by omission" rule (above) still governs a
 fresh character. Loot, tradeskill-container and item-display windows are NOT
@@ -283,7 +290,15 @@ migration); `Application::DispatchSlashCommand` tries them in order:
    `/dumpscene`, `/hideui` (aliases `/toggleui`, `/ui` — the scriptable half
    of F11, T301), `/scroll [chat|skills|loot] [up|down|top|bottom] [lines]`
    (the scriptable half of the wheel and PageUp/PageDown, T313 — a `--script`
-   run cannot generate either), `/skills`, `/inventory`, `/newbook`,
+   run cannot generate either), `/camera` (T66; T461 — no argument reports
+   the mode, `cycle` is F9, `<mode>` names one of the six official cameras,
+   `set az <deg> pitch <deg> dist <units> height <units>` places the active
+   user camera exactly (any subset; outside a user camera it switches to User
+   Defined Camera 1 and says so), `nudge` adds the same four, `get` prints
+   parseable `[CAMERA-GET]` lines — mode, the four values, the player pose,
+   the ideal rig pose and the camera node's actual pose — and `help` states
+   the units; the grammar is `include/client/graphics/slash/camera_command.h`),
+   `/skills`, `/inventory`, `/newbook`,
    `/weatherpreset`, …)
    — see `src/client/graphics/CLAUDE.md`. It IS queryable by `/help`: T223
    added registry 3's static catalog (`src/client/help/renderer_command_catalog.cpp`)

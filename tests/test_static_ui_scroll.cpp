@@ -691,8 +691,9 @@ TEST(ScrollBindings, StrafeRightMovedOffPageDownSoScrollingDoesNotAlsoMoveThePla
 TEST(ScrollSourceInvariants, OnEventAccumulatesTheMouseWheel) {
     // THE DEFECT. EMIE_MOUSE_WHEEL had no case in this switch at all; the
     // wheel fell through to `default: break` and the whole client discarded
-    // it. (Which is also why routing it to the UI cannot regress camera
-    // zoom: zoom is bound to HA::CameraZoomIn/Out, never to the wheel.)
+    // it. (T461: a notch the UI does not consume now zooms the camera -- the
+    // official Mouse Wheel Zoom option -- decided by the one reader in
+    // renderer_frame_input.cpp; see tests/test_camera_mode_wiring.cpp.)
     const std::string src = readFile(kRoot / "src/client/graphics/renderer/renderer_event_receiver.cpp");  // J11
     EXPECT_NE(src.find("case irr::EMIE_MOUSE_WHEEL:"), std::string::npos)
         << "the mouse wheel is dropped by OnEvent() again";
@@ -709,7 +710,8 @@ TEST(ScrollSourceInvariants, OnEventAccumulatesTheMouseWheel) {
 const fs::path kFrameInput = "src/client/graphics/frame/renderer_frame_input.cpp";
 
 TEST(ScrollSourceInvariants, NothingElseConsumesTheWheelAccumulator) {
-    // One consumer, so a UI-consumed notch can never also drive the camera.
+    // One reader, so a UI-consumed notch can never also drive the camera
+    // (T461 zooms only with a notch the UI did not consume).
     // The receiver spelling is irrelevant here (eventReceiver_-> became
     // ctx_.eventReceiver->), which is exactly why this one counts the method
     // name and not the expression around it.

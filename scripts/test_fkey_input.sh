@@ -153,8 +153,8 @@ for KEY in F1 F2 F3 F4 F5 F6 F7 F8; do
 done
 
 echo "" | tee -a "$LOG_FILE"
-echo "=== Sending Ctrl+F5 (camera mode toggle) ===" | tee -a "$LOG_FILE"
-xdotool key --window "$WINDOW_ID" ctrl+F5
+echo "=== Sending F9 (camera mode cycle; T461 replaced Ctrl+F5) ===" | tee -a "$LOG_FILE"
+xdotool key --window "$WINDOW_ID" F9
 sleep 0.5
 
 echo "" | tee -a "$LOG_FILE"

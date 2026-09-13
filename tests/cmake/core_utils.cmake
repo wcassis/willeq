@@ -164,6 +164,18 @@ ADD_EXECUTABLE(test_movement_order
 TARGET_LINK_LIBRARIES(test_movement_order GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_movement_order DISCOVERY_TIMEOUT 120)
 
+# T461: the official camera set, the orbit rig's geometry and /camera's
+# grammar -- device-free, so it compiles the two TUs directly and needs no
+# graphics guard and no willeq_core.
+ADD_EXECUTABLE(test_camera_modes
+    test_camera_modes.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/graphics/player/camera_rig.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/graphics/slash/camera_command.cpp
+)
+TARGET_INCLUDE_DIRECTORIES(test_camera_modes PRIVATE ${CMAKE_SOURCE_DIR}/include)
+TARGET_LINK_LIBRARIES(test_camera_modes GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_camera_modes DISCOVERY_TIMEOUT 120)
+
 # T397 Leg A (board B221): eqt::ResolveDataPath() plus the consumer that made
 # it necessary -- SpellEffectsConfig::load("config/spell_effects.json"), whose
 # CWD-relative literal silently produced a DIFFERENT spell effect from any

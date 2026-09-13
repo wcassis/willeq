@@ -59,16 +59,30 @@ void FrameComponent::setUiPreferencesIdentity(const std::string& character,
 void FrameComponent::syncUiPreferences() {
     if (uiPrefsCharacter_.empty()) return;
 
-    const int cameraMode = static_cast<int>(ctx_.PlayerCamera().cameraMode());
+    // T461: the camera half of the value -- the mode and the two user cameras.
+    auto collect = [this]() {
+        const PlayerCameraComponent& camera = ctx_.PlayerCamera();
+        return CollectUiPreferences(uiPreferencesBinding(),
+                                    static_cast<int>(camera.cameraMode()),
+                                    *camera.cameraRigFor(CameraMode::User1),
+                                    *camera.cameraRigFor(CameraMode::User2));
+    };
 
     if (!uiPrefsLoaded_) {
         // Start from what the client currently holds, so a key this file does
         // not state keeps the panel struct's own default -- the official
         // client's "a default is stated by omission" rule (T368).
-        UiPreferences p = CollectUiPreferences(uiPreferencesBinding(), cameraMode);
+        UiPreferences p = collect();
         if (LoadUiPreferences(uiPrefsCharacter_, uiPrefsServer_, p)) {
             ApplyUiPreferences(p, uiPreferencesBinding());
-            ctx_.PlayerCamera().setCameraMode(static_cast<CameraMode>(p.cameraMode));
+            // T461: the rigs before the mode, so entering a user camera
+            // places it where the file says. p.cameraMode was range-checked
+            // on parse; the mapping is explicit, never a cast.
+            ctx_.PlayerCamera().setUserCameraRigs(p.user1Camera, p.user2Camera);
+            CameraMode mode;
+            if (cameraModeFromIniValue(p.cameraMode, mode)) {
+                ctx_.PlayerCamera().setCameraMode(mode);
+            }
             // T434: the three Options sliders are the first persisted fields
             // that are not just a struct member -- each has a setting BEHIND
             // it that has to be told. Apply is device-free by design and
@@ -82,14 +96,12 @@ void FrameComponent::syncUiPreferences() {
         // Either way the client now agrees with the file (or with the
         // defaults a fresh character keeps), so record that as the baseline:
         // a fresh character must not write a file until it changes something.
-        uiPrefsLastSaved_ = CollectUiPreferences(
-            uiPreferencesBinding(), static_cast<int>(ctx_.PlayerCamera().cameraMode()));
+        uiPrefsLastSaved_ = collect();
         uiPrefsLoaded_ = true;
         return;
     }
 
-    const UiPreferences current =
-        CollectUiPreferences(uiPreferencesBinding(), cameraMode);
+    const UiPreferences current = collect();
     if (current == uiPrefsLastSaved_) return;
     // The baseline advances whether or not the write landed. A failure here
     // means no cache directory is writable at all -- not a transient -- and

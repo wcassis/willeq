@@ -2,6 +2,7 @@
 #define EQT_GRAPHICS_CAMERA_CONTROLLER_H
 
 #include <irrlicht.h>
+#include "client/graphics/player/camera_rig.h"  // T461: CameraRigPose
 #include <cstdint>
 #include <map>
 #include <vector>
@@ -17,28 +18,13 @@ public:
     CameraController(irr::scene::ICameraSceneNode* camera);
     ~CameraController() = default;
 
-    // Update camera based on input -- the free-fly camera.
-    //
-    // T319 -- KEPT DELIBERATELY. This has no caller, but it is the ONLY
-    // implementation of CameraMode::Free, and Free is reachable: it is one
-    // of the three modes cycleCameraMode() rotates through (the
-    // ToggleCameraMode hotkey) and `--camera free` selects it on the
-    // command line. Nothing updates the camera in that mode today, so Free
-    // is a mode in which the view simply freezes. Deleting this removes
-    // the feature's only body and leaves the two ways of entering it.
-    //
-    // WHAT WOULD WIRE IT: a `cameraMode_ == CameraMode::Free` branch in
-    // IrrlichtRenderer::updatePlayerMovement()
-    // (renderer_player_physics.cpp), next to the existing Follow and
-    // FirstPerson branches, passing the movement key states it already
-    // reads plus the mouse deltas it already consumes there. The mouse
-    // deltas are a destructive read-and-reset with exactly one owner
-    // (T312/T315) and updatePlayerMovement() IS that owner, so the branch
-    // belongs there and nowhere else. It also has to decide whether the
-    // player keeps moving while the camera flies free; that is a design
-    // question, which is why this unit did not answer it.
-    void update(float deltaTime, bool forward, bool backward, bool left, bool right,
-                bool up, bool down, int mouseDeltaX, int mouseDeltaY, bool mouseEnabled);
+    // T461 DELETED update(), the free-fly camera. T319 kept it because it was
+    // the only body of CameraMode::Free; T461 matched the camera set to the
+    // official client's (player/camera_mode.h) and Free is not one of its
+    // cameras, so the mode and its never-called body went together. (T319's
+    // note also said `--camera free` selected it on the command line; no such
+    // option exists in the tree.) The fly-camera settings and the yaw/pitch/
+    // orbit-angle accessors below are residue with no reader -- board B533.
 
     // Set movement and rotation speeds
     void setMoveSpeed(float speed) { moveSpeed_ = speed; }
@@ -58,6 +44,15 @@ public:
     // Uses EQ coordinates (Z-up), converts internally
     // deltaTime is used for smooth collision zoom recovery
     void setFollowPosition(float eqX, float eqY, float eqZ, float eqHeading, float deltaTime = 0.0f);
+
+    // T461: place a rig camera (Overhead, User Defined 1/2, Tether). `pose` is
+    // EQ client coordinates from computeCameraRigPose(). When the ideal
+    // position is behind a wall the camera is pulled in along the look-at ->
+    // camera ray, by the same two collision systems setFollowPosition() uses
+    // (BSP PVS, else the legacy triangle selector); unlike Chase there is no
+    // zoom-recovery easing, because a rig is placed exactly every frame.
+    // Returns the look-at -> camera distance actually used.
+    float placeRigCamera(const CameraRigPose& pose);
 
     // Get camera position in EQ coordinates
     void getPositionEQ(float& x, float& y, float& z) const;
