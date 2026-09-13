@@ -549,10 +549,11 @@ void ZoneStreamComponent::unregisterRemainingT124Guards() {
 }
 
 // T124: defined here (not irrlicht_renderer.cpp, which was at the
-// check_file_sizes.sh budget when this was written). Called once from
-// loadGlobalAssets() (renderer_init.cpp) right
-// after doorManager_'s own lazy construction. See DoorTextureGuard's doc
-// comment (header) for the gap closed.
+// check_file_sizes.sh budget when this was written). T468 (board B590): called
+// from ZoneLifecycleComponent::ensureDoorManager(), the one DoorManager
+// construction body. Its previous only caller was the uncalled
+// loadGlobalAssets(), so this guard was never registered before T468. See
+// DoorTextureGuard's doc comment (header) for the gap closed.
 void ZoneStreamComponent::ensureDoorTextureGuard() {
     if (doorTextureGuard_ || !ctx_.constrainedTextureCache || !ctx_.doorManager) return;
     doorTextureGuard_ = std::make_unique<DoorTextureGuard>(

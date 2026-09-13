@@ -615,17 +615,54 @@ void ZoneLifecycleComponent::destroyZonePlaceholder() {
     }
 }
 
+// T468 (board B590): the only place a DoorManager is constructed. Before this
+// there were three -- this function's (no cache, no guard), Step 7's (all but the
+// guard) and IrrlichtRenderer::loadGlobalAssets()'s (everything), and the last
+// had no caller, so ensureDoorTextureGuard() never ran in a session. Measured
+// consequence (tests/test_door_texture_eviction.cpp): a PVS-hidden door's pivot
+// is detached from the scene graph, clearTextureReferences()'s root-down walk
+// cannot reach it, and an LRU eviction left both its node material and its
+// cached mesh buffer naming a texture the driver had already freed.
+//
+// The zone-load steps still re-apply their per-zone values (Step 1 the zone,
+// cache and shaders; Step 2 the BSP, PVS region, frustum culler and
+// neighbours). What is wired here is only what the context holds right now, so
+// a manager built at the instant scene and one built at Step 7 start identical.
+void ZoneLifecycleComponent::ensureDoorManager() {
+    if (!ctx_.doorManager) {
+        if (!ctx_.smgr || !ctx_.driver) return;
+        ctx_.doorManager = std::make_unique<DoorManager>(ctx_.smgr, ctx_.driver);
+        DoorManager& doors = *ctx_.doorManager;
+        if (ctx_.constrainedTextureCache) doors.setConstrainedTextureCache(ctx_.constrainedTextureCache);
+        if (ctx_.currentZone) doors.setZone(ctx_.currentZone);
+        if (ctx_.zoneBspTree) doors.setBspTree(ctx_.zoneBspTree.get());
+        doors.setPvsRegion(ctx_.currentPvsRegion);
+        if (ctx_.frustumCuller) doors.setFrustumCuller(ctx_.frustumCuller.get());
+        doors.setRegionNeighbors(ctx_.regionNeighbors.empty() ? nullptr : &ctx_.regionNeighbors);
+        if (ctx_.zoneShader && ctx_.zoneShader->isAvailable()) {
+            doors.setShaderMaterialTypes(ctx_.zoneShader->getActiveSolid(),
+                                         ctx_.zoneShader->getActiveAlphaTest(),
+                                         ctx_.zoneShader->getActiveAlphaTestRGBA());
+        }
+        LOG_INFO(MOD_GRAPHICS, "Door manager created (zone={}, cache={}, bsp={}, frustum={}, neighbors={}, shader={})",
+                 (bool)ctx_.currentZone, ctx_.constrainedTextureCache != nullptr, (bool)ctx_.zoneBspTree,
+                 (bool)ctx_.frustumCuller, !ctx_.regionNeighbors.empty(),
+                 ctx_.zoneShader && ctx_.zoneShader->isAvailable());
+    }
+    // Idempotent; needs both the cache and the manager, and the cache exists
+    // from initLoadingScreen() on.
+    ctx_.ZoneStream().ensureDoorTextureGuard();
+}
+
 void ZoneLifecycleComponent::setupInstantScene(const std::string& zoneName, float playerX, float playerY, float playerZ) {
     ctx_.currentZoneName = zoneName;
     ctx_.Diagnostics().loadIndoorRegionMap(zoneName);
 
     // S05: entityRenderer_ already created in initLoadingScreen()
 
-    // Create door manager for placeholder cubes (no model loading yet)
-    if (!ctx_.doorManager && ctx_.smgr && ctx_.driver) {
-        ctx_.doorManager = std::make_unique<DoorManager>(ctx_.smgr, ctx_.driver);
-        LOG_INFO(MOD_GRAPHICS, "Door manager created for instant scene (placeholder cubes only)");
-    }
+    // Door manager for placeholder cubes (no model loading yet), with its
+    // texture guard -- T468: through the one construction body.
+    ensureDoorManager();
 
     // Notify entity renderer of zone (for zone-specific model search paths)
     if (ctx_.entityRenderer) {

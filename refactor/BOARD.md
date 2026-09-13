@@ -9348,27 +9348,74 @@ Evidence for every entry is under `review/T462/` (README there).
 
 ## Added 2026-09-13 by T467 (lazy environment managers, UI identity reset)
 
-- **B590** (B, *lead*, unconfirmed) **The door texture eviction guard is
-  registered only by a function nothing calls.**
-  `ZoneStreamComponent::ensureDoorTextureGuard()` (T124) has one production
-  caller, `IrrlichtRenderer::loadGlobalAssets()` (`renderer_init.cpp`), and
-  `loadGlobalAssets()` has no caller in `src/`, `include/`, `tests/`, `tools/`,
-  `benchmarks/` or `docker/` (only `test_zone_stream_component.cpp` calls the
-  guard directly). The door manager a real session uses is built by
-  `ZoneLifecycleComponent::setupInstantScene()` (reached from both of
-  `Application`'s zone-graphics loaders) with no cache and no guard;
-  `ZoneLoadComponent`'s Step 1 then gives that manager the cache, and
-  `loadZoneStep7_Doors()` builds one only when none exists. So a cache
-  eviction or `clear()` reaches door materials only through the generic scene
-  walk. Found by T467's census of lazy construction sites (T467 fixed the four
-  environment managers, not doors, which are outside its territory). Confirm
-  by: a door texture evicted under LRU pressure with a door node alive -- does
-  the material get the placeholder, and does anything reload it? Also stale:
-  `OverlaysComponent::applyEnvironmentalDisplaySettings()`'s comment says
-  ParticleManager is created "in loadGlobalAssets"; it is created in
-  `initLoadingScreen()`.
+- ~~**B590**~~ **CLOSED by T468** (door texture eviction guard never
+  registered). Confirmed for LRU eviction, refuted for zone unload.
+  - **Confirmed:** `tests/test_door_texture_eviction.cpp`,
+    `AHiddenDoorNeverHoldsAFreedTextureUnderBudgetPressure`, uses the door
+    manager `setupInstantScene()` really builds and a real textured door mesh.
+    With the door PVS-hidden (pivot detached), an LRU eviction left its node
+    material AND its cached mesh buffer naming a texture the driver no longer
+    listed. That is a use-after-free, drawn again when PVS shows the door.
+  - **Refuted for unload:** `unloadZone()` runs `clearDoors()` (every door node
+    and the door mesh cache dropped) before `ConstrainedTextureCache::clear()`,
+    so no door material survives into `clear()`. Pinned by
+    `DoorsDrawTheirRealTextureAfterAZoneUnloadAndTheNextZoneBuild`.
+  - **Fixed:** `ZoneLifecycleComponent::ensureDoorManager()` is now the ONE
+    `DoorManager` construction body and registers the guard;
+    `setupInstantScene()` and `loadZoneStep7_Doors()` both call it. The
+    uncalled `IrrlichtRenderer::loadGlobalAssets()` is deleted, and its
+    `check_zero_callers.py` row with it.
+  - **Pinned** by `DoorManagerConstructionSource.TheDoorManagerHasOneConstructionSite`
+    and a new marker on `TextureCacheHolderCensus`'s `zone_geometry.cpp` row.
+  - The stale ParticleManager comment is corrected.
 
 B591–B599 unused.
+
+---
+
+## Added 2026-09-13 by T468 (door texture guard)
+
+- **B620** (B, *unconfirmed live*) **A zone-geometry texture evicted by the LRU
+  stays the placeholder for the rest of the zone, and a door's cached mesh
+  hands that placeholder to later doors.**
+  - `RegionMeshTextureGuard` and (since T468, registered) `DoorTextureGuard`
+    swap an evicted texture to the placeholder. Nothing re-uploads it: the
+    `GPUUpload` door and region rebuild queues fire only for a texture that
+    ARRIVES, not one that was evicted. The guard's own WARN says "until the
+    texture is re-uploaded".
+  - For doors it is worse: `DoorManager::doorMeshCache_` keeps the swapped
+    mesh, so a door of the same model built later in the zone
+    (`getNearestDoor()`'s demand build, the door rebuild queue) reuses the
+    placeholder even though the texture is loadable.
+  - Not a use-after-free; T468's tests allow the placeholder on purpose.
+  - Confirm by: an eviction count on the Pi in a door-heavy zone. P13/P13b
+    measured zero evictions in four configurations, so this may be
+    unreachable at today's budget.
+  - Found by T468.
+
+- **B621** (B, hygiene, unconfirmed) **`DoorManager` leaks door meshes on two
+  paths.**
+  - `findDoorMesh()` does not cache a mesh built while a texture is still
+    pending, and none of its callers (`createDoor()`, `buildDoorMesh()`,
+    `rebuildSingleDoor()`) drops that mesh's creation reference. The scene node
+    takes its own `grab()`, so the mesh outlives the door.
+  - `invalidateMeshCache()` `erase()`s cache entries without `drop()`.
+  - Both are code reading only. Confirm by: `getReferenceCount()` on a mesh
+    across `clearDoors()` in an EDT_NULL test.
+  - Found by T468.
+
+- **B622** (B, unreached) **`Application::loadZoneGraphics()`, the synchronous
+  zone-graphics loader, has no caller.**
+  - `setupInstantScene()` is reached in production only through
+    `Application::loadZoneGraphicsOnThread()` (the loading thread,
+    `application_zone_loading.cpp`), which every session with graphics runs.
+  - Its twin `loadZoneGraphics()` is declared in `application.h` and called
+    nowhere in `src/`, `include/`, `tests/`, `tools/`, `benchmarks/` or
+    `docker/`.
+  - Found by T468 answering its plan's task 3; outside its territory, so
+    boarded, not deleted.
+
+B623–B629 unused.
 
 ---
 
@@ -9448,7 +9495,7 @@ B591–B599 unused.
 - **B606** (B, unreached) **Renderer, asset and data API with no production
   caller.** `IrrlichtRenderer::setNewUIEnabled`,
   `EntityRenderer::loadEquipmentModels/loadGlobalCharacters` (not called even
-  by the zero-caller `loadGlobalAssets`, B494),
+  by the zero-caller `loadGlobalAssets`, B494, which T468 deleted),
   `ZoneLifecycleComponent::applyStoredZoneEnvironment` (its header already
   calls it a superseded duplicate of `renderer_zone_load_env.cpp`'s apply path
   "boarded for a measured wire-or-delete decision" -- but no board entry

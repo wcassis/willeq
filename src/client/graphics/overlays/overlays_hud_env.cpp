@@ -242,7 +242,7 @@ void OverlaysComponent::applyEnvironmentalDisplaySettings() {
     bool zoneLoaded = !ctx_.currentZoneName.empty();
 
     // --- Particle Manager: toggle atmospheric billboard particles ---
-    // ParticleManager is always created (in loadGlobalAssets) for unified fire support.
+    // ParticleManager is created in IrrlichtRenderer::initLoadingScreen() for unified fire support.
     // This toggle controls only the atmospheric billboard emitters (dust, pollen, etc.)
     if (ctx_.particleManager) {
         ctx_.particleManager->setEnabled(settings.atmosphericParticles);

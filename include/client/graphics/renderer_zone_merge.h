@@ -429,10 +429,10 @@ public:
     // doors: DoorManager::doors_ -- renderer-owned (via doorManager_),
     // persists for the renderer's lifetime (clearDoors() empties the map,
     // never destroys/recreates DoorManager itself -- doorManager_ is
-    // constructed lazily exactly once, guarded by `if (!doorManager_)` in
-    // renderer_init.cpp / renderer_zone_load_objects.cpp), safe to hold a
-    // reference for the guard's own
-    // lifetime (also renderer-owned, constructed alongside doorManager_).
+    // constructed exactly once, by ZoneLifecycleComponent::ensureDoorManager()
+    // (T468), which then registers this guard), safe to hold a reference for
+    // the guard's own lifetime (also renderer-owned, constructed alongside
+    // doorManager_).
     //
     // placeholder: resolved ONCE by the caller before construction, same
     // load-bearing non-reentrancy constraint as the other guards above

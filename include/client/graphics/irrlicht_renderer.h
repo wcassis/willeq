@@ -131,12 +131,9 @@ public:
     ~IrrlichtRenderer();
 
     // Initialize the renderer (window, GPU, subsystems, background thread pool).
-    // Use this at startup for early progress display, then call loadGlobalAssets() later.
+    // Use this at startup for early progress display. (T468 deleted the
+    // uncalled loadGlobalAssets() that this comment used to name.)
     bool initLoadingScreen(const RendererConfig& config) override;
-
-    // Load global assets (character models, equipment) - call after initLoadingScreen()
-    // This is the heavy loading that was previously done in init()
-    bool loadGlobalAssets();
 
     // Loading thread owns GL context — main thread must not call GL-mutating methods.
     void setLoading(bool loading) { loading_.store(loading, std::memory_order_release); }
@@ -981,7 +978,6 @@ private:
     std::map<uint32_t, int> itemToModelMap_;
 
     bool initialized_ = false;
-    bool globalAssetsLoaded_ = false;  // S05: loadGlobalAssets() idempotency guard
     std::atomic<bool> loading_{false};   // True while loading thread owns GL context
     bool loadingScreenVisible_ = true;  // True when loading screen is showing (default: show at start)
     bool zoneReady_ = false;  // True when zone is fully loaded and ready for player input

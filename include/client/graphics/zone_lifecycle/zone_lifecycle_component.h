@@ -158,6 +158,15 @@ public:
 	// --- Instant scene + placeholder ---
 	// Build HCMap placeholder + collision for immediate gameplay (<5ms)
 	void setupInstantScene(const std::string& zoneName, float playerX = 0, float playerY = 0, float playerZ = 0);
+	// T468 (board B590): THE one DoorManager construction body. Idempotent: builds
+	// ctx_.doorManager if absent, wired with everything the context holds at that
+	// moment (cache, zone, BSP, PVS region, frustum culler, region neighbours,
+	// shader material types), and always ends by registering the T124 door
+	// texture guard. setupInstantScene() and ZoneLoadComponent::loadZoneStep7_Doors()
+	// both call it, so the two paths cannot diverge again -- before T468 the
+	// guard's only registration sat in the uncalled loadGlobalAssets(), and a
+	// PVS-hidden door kept a freed texture after an LRU eviction.
+	void ensureDoorManager();
 	// Create collision from HCMap data only (no S3D mesh needed)
 	void setupHCMapCollision();
 	void buildZonePlaceholder(float playerIrrX = 0, float playerIrrY = 0, float playerIrrZ = 0);

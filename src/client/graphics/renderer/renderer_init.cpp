@@ -684,50 +684,11 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     return true;
 }
 
-bool IrrlichtRenderer::loadGlobalAssets() {
-    if (!initialized_) {
-        LOG_ERROR(MOD_GRAPHICS, "Cannot load global assets - renderer not initialized");
-        return false;
-    }
-
-    // S05: entityRenderer_ already created in initLoadingScreen()
-    // loadGlobalAssets() is idempotent — use a flag to track
-    if (globalAssetsLoaded_) {
-        LOG_DEBUG(MOD_GRAPHICS, "Global assets already loaded, skipping");
-        return true;
-    }
-    globalAssetsLoaded_ = true;
-
-    // All S3D archive loading (global characters, numbered globals, equipment)
-    // is handled by the background thread via DataReady_ArchiveIndex and
-    // DataReady_Equipment phases, or lazily on first use. No eager file I/O here.
-
-    // Create door manager (if not already created)
-    if (!doorManager_) {
-        doorManager_ = std::make_unique<DoorManager>(smgr_, driver_);
-        if (constrainedTextureCache_) {
-            doorManager_->setConstrainedTextureCache(constrainedTextureCache_);
-        }
-        // If zone was already loaded before doorManager_ was created, set it now
-        if (currentZone_) {
-            doorManager_->setZone(currentZone_);
-        }
-        if (zoneBspTree_) doorManager_->setBspTree(zoneBspTree_.get());
-        doorManager_->setPvsRegion(currentPvsRegion_);
-        if (frustumCuller_) doorManager_->setFrustumCuller(frustumCuller_.get());
-        if (zoneShader_ && zoneShader_->isAvailable()) {
-            doorManager_->setShaderMaterialTypes(zoneShader_->getActiveSolid(),
-                                                 zoneShader_->getActiveAlphaTest(),
-                                                 zoneShader_->getActiveAlphaTestRGBA());
-        }
-        zoneStream_->ensureDoorTextureGuard();  // T124
-    }
-
-    // S05: skyRenderer_ and detailManager_ already created in initLoadingScreen()
-
-    LOG_INFO(MOD_GRAPHICS, "Global assets loaded successfully");
-    return true;
-}
+// T468 (board B590): IrrlichtRenderer::loadGlobalAssets() stood here. It had no
+// caller in src/, include/, tests/, tools/, benchmarks/ or docker/, and the only
+// thing it still did was build the door manager -- with the T124 door texture
+// guard, which therefore was never registered. Door construction now has one
+// body, ZoneLifecycleComponent::ensureDoorManager().
 
 // T448: setLoadingProgress() was an inline body in irrlicht_renderer.h. It
 // writes FrameComponent's two loading fields and redraws through

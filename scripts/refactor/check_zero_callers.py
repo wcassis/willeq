@@ -422,7 +422,7 @@ BOARD_REASONS.update({
     "B605":
         "input, command and console API with no production caller -- CommandProcessor's default-channel/echo setters and unregister, HotkeyManager's movement-key and mode-name helpers, HotkeyBinding::toString, ConsoleRenderer's status interval and focusTextEntry",
     "B606":
-        "renderer, asset and data API with no production caller -- setNewUIEnabled, EntityRenderer's two global loaders (not called even by the zero-caller loadGlobalAssets), the superseded applyStoredZoneEnvironment, RDPServer::setCertificate, BackgroundWorkQueue's pollAll/batch hooks, StringDatabase's legacy text loaders, and eight free helpers (race reload, lift travel, body-type restriction, SpellVisualSource toString, formatted-message text parse, three options-slider conversions)",
+        "renderer, asset and data API with no production caller -- setNewUIEnabled, EntityRenderer's two global loaders (not called even by the zero-caller loadGlobalAssets, which T468 deleted), the superseded applyStoredZoneEnvironment, RDPServer::setCertificate, BackgroundWorkQueue's pollAll/batch hooks, StringDatabase's legacy text loaders, and eight free helpers (race reload, lift travel, body-type restriction, SpellVisualSource toString, formatted-message text parse, three options-slider conversions)",
 })
 
 # (owner, name) -> the board entry that owns it.  Same contract as
@@ -616,7 +616,6 @@ EXEMPT_GROUPS = {
     ("FrameBudgetGovernor", "hasTimeBudget"): "B494",
     ("GLES2EGLHelper", "uploadETC1AsSharedTexture"): "B494",
     ("GraphicsArchiveIndex", "getCachedArchive"): "B494",
-    ("IrrlichtRenderer", "loadGlobalAssets"): "B494",
     ("PlayerCameraComponent", "getFirstPersonVerticalFov"): "B494",
     ("RDPServer", "isAudioReady"): "B494",
     ("RendererContext", "Slash"): "B494",

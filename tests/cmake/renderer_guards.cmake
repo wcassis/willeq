@@ -107,6 +107,21 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_environment_manager_construction DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# T468 (board B590): a door's texture across LRU eviction and zone unload,
+# through the door manager setupInstantScene() really builds, plus the census
+# that DoorManager has ONE construction site (the one that registers the T124
+# door texture guard).
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_door_texture_eviction
+        test_door_texture_eviction.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_door_texture_eviction PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_door_texture_eviction GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_door_texture_eviction PRIVATE
+        WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    GTEST_DISCOVER_TESTS(test_door_texture_eviction DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T381 (board B160): the spell visual vocabulary -- resist type, casting
 # school and spell_affect_index -- reaches SpellVisualFX across the bridge by
 # value, so the six resist colours, the five school colours, the spray cast

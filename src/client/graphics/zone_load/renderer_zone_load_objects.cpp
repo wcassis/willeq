@@ -467,23 +467,10 @@ void ZoneLoadComponent::loadZoneStep7_Doors(ZoneLoadContext& ctx) {
     {
         auto stepStart = std::chrono::steady_clock::now();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step7: doorManager_={}", (bool)ctx_.doorManager);
-        if (!ctx_.doorManager) {
-            ctx_.doorManager = std::make_unique<DoorManager>(ctx_.smgr, ctx_.driver);
-            if (ctx_.constrainedTextureCache)
-                ctx_.doorManager->setConstrainedTextureCache(ctx_.constrainedTextureCache);
-            if (ctx_.currentZone) ctx_.doorManager->setZone(ctx_.currentZone);
-            if (ctx_.zoneBspTree) ctx_.doorManager->setBspTree(ctx_.zoneBspTree.get());
-            ctx_.doorManager->setPvsRegion(ctx_.currentPvsRegion);
-            if (ctx_.frustumCuller) ctx_.doorManager->setFrustumCuller(ctx_.frustumCuller.get());
-            ctx_.doorManager->setRegionNeighbors(ctx_.regionNeighbors.empty() ? nullptr : &ctx_.regionNeighbors);
-            if (ctx_.zoneShader && ctx_.zoneShader->isAvailable())
-                ctx_.doorManager->setShaderMaterialTypes(ctx_.zoneShader->getActiveSolid(),
-                                                     ctx_.zoneShader->getActiveAlphaTest(),
-                                                     ctx_.zoneShader->getActiveAlphaTestRGBA());
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step7: created DoorManager (zone={}, bsp={}, frustum={}, neighbors={}, shader={})",
-                      (bool)ctx_.currentZone, (bool)ctx_.zoneBspTree, (bool)ctx_.frustumCuller,
-                      !ctx_.regionNeighbors.empty(), ctx_.zoneShader && ctx_.zoneShader->isAvailable());
-        }
+        // T468 (board B590): the one construction body, which also registers
+        // the door texture guard. A no-op construction when setupInstantScene()
+        // already built the manager, which is every session.
+        ctx_.ZoneLifecycle().ensureDoorManager();
 
         // Rebuild all doors at once
         if (ctx_.doorManager) {
@@ -529,7 +516,7 @@ void ZoneLoadComponent::loadZoneStep7_Doors(ZoneLoadContext& ctx) {
             LOG_INFO(MOD_GRAPHICS, "Sequential: rebuilt {} doors ({} failed, {} with missing textures)",
                      totalDoors, doorsFailed, doorsWithMissingTex);
         }
-        // Constrained cache was set at creation above — no separate runtime set needed.
+        // The cache was wired by ensureDoorManager() and again by Step 1 -- no separate runtime set needed.
         ctx_.ZoneStream().logAssetBuildTime("seq_doors", 0, stepStart);
     }
     FlushThreadLog();

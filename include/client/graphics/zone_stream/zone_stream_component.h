@@ -143,8 +143,9 @@ public:
 	// Idempotent guard-registration helpers, defined in
 	// zone_stream/renderer_zone_merge.cpp (not irrlicht_renderer.cpp, which
 	// was at the check_file_sizes.sh budget when they were written).
-	// ensureBoidsTextureGuard() is safe to call from either of boidsManager_'s
-	// two lazy-construction sites. See DoorTextureGuard's and
+	// ensureDoorTextureGuard() is called by ZoneLifecycleComponent::
+	// ensureDoorManager() (T468), ensureBoidsTextureGuard() by OverlaysComponent::
+	// ensureBoidsManager() (T467). See DoorTextureGuard's and
 	// BoidsManager::swapEvictedTexture()'s doc comments for the gaps these
 	// close.
 	void ensureDoorTextureGuard();

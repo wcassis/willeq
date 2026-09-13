@@ -193,8 +193,9 @@ TEST_F(ZoneStreamComponentTest, GuardRegistrationIsIdempotentAndNeedsTheTextureC
     // members. Each ensure*() helper needs BOTH the constrained texture cache
     // and its own subsystem before it constructs anything; a bare renderer has
     // neither, so both stay null and the unregister sweep has nothing to do.
-    // Calling each twice is the idempotence the two lazy-construction sites in
-    // renderer_init.cpp / overlays_hud_env.cpp rely on.
+    // Calling each twice is the idempotence their callers rely on:
+    // ZoneLifecycleComponent::ensureDoorManager() (T468) and
+    // OverlaysComponent::ensureBoidsManager() (T467).
     renderer.ZoneStream().ensureDoorTextureGuard();
     renderer.ZoneStream().ensureDoorTextureGuard();
     renderer.ZoneStream().ensureBoidsTextureGuard();
