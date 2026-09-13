@@ -54,7 +54,7 @@ cat > "${CONFIG_FILE}" <<EOF
 {
   "clients": [
     {
-      "host": "127.0.0.1",
+      "host": "$(eqemu_port_host)",
       "port": ${LOGIN_PORT},
       "user": "${EQ_TEST_ACCOUNT}",
       "pass": "${EQ_TEST_PASSWORD}",

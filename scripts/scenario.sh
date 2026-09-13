@@ -28,7 +28,8 @@ SCENARIO="${1:?usage: scenario.sh <scenario> [options]}"
 shift
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-LOCK=/mnt/projects/fable/.eqemu-lock
+# eqemu runs on its own VM; env.sh supplies eq_docker/mysql + the lock on that host.
+source "$REPO/scripts/eqemu/env.sh"
 UNIT="T410"
 TIMEOUT=300
 HOLD=300
@@ -64,8 +65,8 @@ BIN="$REPO/build/bin/willeq"
 say() { printf '[scenario.sh] %s\n' "$*" >&2; }
 
 # ---- 1. the lock, taken atomically -----------------------------------------
-if ! bash -c "set -o noclobber; echo '${UNIT} $(date -I) scenario.sh ${SCENARIO}' > '${LOCK}'" 2>/dev/null; then
-    say "eqemu lock is HELD by: $(cat "$LOCK" 2>/dev/null) -- refusing to run"
+if ! eqemu_lock_take "${UNIT} scenario.sh ${SCENARIO}"; then
+    say "eqemu lock is HELD by: $(eqemu_lock_show) -- refusing to run"
     exit 64
 fi
 say "lock taken"
@@ -82,7 +83,7 @@ cleanup() {
         restore_snapshot
         bash "$REPO/scripts/eqemu/down.sh" >>"$OUT/${SCENARIO}_server.log" 2>&1
     fi
-    rm -f "$LOCK"
+    eqemu_lock_release
     say "lock released"
 }
 trap cleanup EXIT INT TERM
@@ -90,9 +91,7 @@ trap cleanup EXIT INT TERM
 sql() {
     # One-shot SQL against the akk-stack peq db (T401's sql.sh, inlined so the
     # lane has no dependency outside the repo).
-    local pw
-    pw=$(grep -E '^MARIADB_ROOT_PASSWORD=' /mnt/projects/akk-stack/.env | tail -n1 | cut -d= -f2-)
-    docker exec akk-stack-mariadb-1 mysql -uroot -p"$pw" peq -B -N -e "$1"
+    eq_docker exec "${MARIADB_CONTAINER}" mysql -uroot -p"$(mariadb_root_password)" peq -B -N -e "$1"
 }
 
 snapshot() {
@@ -108,7 +107,7 @@ restore_snapshot() {
     # world/zone/loginserver (and the spire launcher that respawns them),
     # leaving only mariadb, then write.
     say "restoring server snapshot with the world DOWN"
-    docker exec akk-stack-eqemu-server-1 bash -c \
+    eq_docker exec "${EQEMU_CONTAINER}" bash -c \
         "pkill -f /tmp/spire-launcher; pkill -f 'bin/world'; pkill -f 'bin/zone'; pkill -f 'bin/loginserver'" \
         >/dev/null 2>&1
     sleep 6

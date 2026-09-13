@@ -59,11 +59,11 @@ echo "== up.sh: docker compose up -d mariadb eqemu-server =="
 compose up -d mariadb eqemu-server
 
 echo "== up.sh: waiting for mariadb =="
-wait_for "mariadb" 60 docker exec "${MARIADB_CONTAINER}" mysqladmin status \
+wait_for "mariadb" 60 eq_docker exec "${MARIADB_CONTAINER}" mysqladmin status \
     -uroot -p"$(mariadb_root_password)" -h localhost --silent
 
 echo "== up.sh: waiting for eqemu-server container =="
-wait_for "eqemu-server container" 30 docker exec "${EQEMU_CONTAINER}" true
+wait_for "eqemu-server container" 30 eq_docker exec "${EQEMU_CONTAINER}" true
 
 echo "== up.sh: populating shared memory (bin/shared_memory) =="
 server_exec "./bin/shared_memory 2>&1 | tail -5"
@@ -77,9 +77,9 @@ if [ "${USE_LAUNCHER}" = "1" ]; then
     server_exec_bg "./bin/loginserver > logs/loginserver_h03.log 2>&1"
     server_exec "./bin/spire spire:launcher start 2>&1 | head -3"
     wait_for "loginserver port ${LOGIN_PORT}" 30 bash -c \
-        "exec 3<>/dev/tcp/127.0.0.1/${LOGIN_PORT}"
+        "exec 3<>/dev/tcp/$(eqemu_port_host)/${LOGIN_PORT}"
     wait_for "world port ${WORLD_PORT}" 90 bash -c \
-        "exec 3<>/dev/tcp/127.0.0.1/${WORLD_PORT}"
+        "exec 3<>/dev/tcp/$(eqemu_port_host)/${WORLD_PORT}"
     echo "== up.sh: launcher mode up (fleet booting in background) =="
     exit 0
 fi
@@ -106,7 +106,7 @@ else
     server_exec_bg "./bin/loginserver > logs/loginserver_h03.log 2>&1"
 fi
 wait_for "loginserver port ${LOGIN_PORT}" 30 bash -c \
-    "exec 3<>/dev/tcp/127.0.0.1/${LOGIN_PORT}"
+    "exec 3<>/dev/tcp/$(eqemu_port_host)/${LOGIN_PORT}"
 
 if server_process_running world; then
     echo "== up.sh: world already running ($(server_process_count world)) -- adopting =="
@@ -115,7 +115,7 @@ else
     server_exec_bg "./bin/world > logs/world_h03.log 2>&1"
 fi
 wait_for "world port ${WORLD_PORT}" 30 bash -c \
-    "exec 3<>/dev/tcp/127.0.0.1/${WORLD_PORT}"
+    "exec 3<>/dev/tcp/$(eqemu_port_host)/${WORLD_PORT}"
 
 # The zone check is deliberately for ANY zone process, not for this shortname.
 # When the launcher fleet is up it is already serving the static zones and the

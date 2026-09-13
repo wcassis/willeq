@@ -152,12 +152,16 @@ bit-deterministic across build types (T403).
 ⚠ A "no server" negative test is NOT safe without checking the lock: T410's
 smoke test for the could-not-start exit found T405's server UP and logged a
 character in under another unit's lock (B306). Before ANY command that could
-open a connection to 127.0.0.1:5998, read `/mnt/projects/fable/.eqemu-lock`;
+open a connection to the eqemu server (172.16.200.99:5998 — its own VM since
+2026-09-12, `EQEMU_HOST` in `scripts/eqemu/env.sh`), read the lock with
+`source scripts/eqemu/env.sh; eqemu_lock_show`;
 if it exists and is not yours, do not run the command.
 - LOCK FIRST (cross-session protocol, refactor/TESTING_CHARTER.md):
-  take `/mnt/projects/fable/.eqemu-lock` ATOMICALLY — check-then-create is
+  take the lock (`/mnt/projects/.eqemu-lock` ON the eqemu VM, so NFS and non-NFS
+  dev machines share it) ATOMICALLY — check-then-create is
   a race (T224 clobbered T222's lock 90s after seeing it absent). Use:
-  `bash -c 'set -o noclobber; echo "T### $(date -I)" > /mnt/projects/fable/.eqemu-lock'`
+  `source scripts/eqemu/env.sh; eqemu_lock_take T###` (noclobber over ssh);
+  release with `eqemu_lock_release`
   — exit 0 means you own it; non-zero means another session does: STOP and
   report, never overwrite. DELETE it after clean shutdown. This applies to every server use, no exceptions.
 ⚠ **THE CONTAINER STARTS A WORLD BY ITSELF (T449, fixed T457, board B483).**

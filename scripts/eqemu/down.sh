@@ -12,10 +12,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/env.sh"
 
 echo "== down.sh: stopping loginserver/world/zone processes =="
-docker exec "${EQEMU_CONTAINER}" bash -c \
+eq_docker exec "${EQEMU_CONTAINER}" bash -c \
     "pkill -TERM -f '/bin/(loginserver|world|zone)( |\$)'" 2>/dev/null || true
 sleep 2
-docker exec "${EQEMU_CONTAINER}" bash -c \
+eq_docker exec "${EQEMU_CONTAINER}" bash -c \
     "pkill -KILL -f '/bin/(loginserver|world|zone)( |\$)'" 2>/dev/null || true
 
 echo "== down.sh: docker compose down (mariadb + eqemu-server + deps) =="

@@ -11,14 +11,14 @@ compose ps
 
 echo
 echo "== server processes (inside ${EQEMU_CONTAINER}) =="
-docker exec "${EQEMU_CONTAINER}" bash -c \
+eq_docker exec "${EQEMU_CONTAINER}" bash -c \
     "ps aux | grep -E '/bin/(loginserver|world|zone)' | grep -v grep" \
     || echo "(none running)"
 
 echo
 echo "== host ports =="
 for port in "${LOGIN_PORT}" "${WORLD_PORT}"; do
-    if bash -c "exec 3<>/dev/tcp/127.0.0.1/${port}" 2>/dev/null; then
+    if eqemu_port_open "${port}"; then
         echo "  ${port}: open"
     else
         echo "  ${port}: closed"

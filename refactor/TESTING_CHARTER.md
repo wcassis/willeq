@@ -53,7 +53,8 @@ real behavior are the deliverable, not coverage theater.
   pcap tests, recorded captures) — they exist precisely so protocol
   tests don't need a live server. If a unit genuinely needs live
   eqemu, take the lock first: create
-  `/mnt/projects/fable/.eqemu-lock` containing your session name +
+  `/mnt/projects/.eqemu-lock` on the eqemu VM (172.16.200.99; take it with
+  `eqemu_lock_take` from `scripts/eqemu/env.sh`) containing your session name +
   date; remove it at server shutdown. If the lock exists, wait. The
   perf session honors the same lock.
 
