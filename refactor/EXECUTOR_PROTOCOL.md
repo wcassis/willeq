@@ -313,9 +313,17 @@ only the targets you build; build the tools too.
 - Final report: pass/fail per verification step, headline findings,
   commit hashes, deviations; if blocked/STOPped, exactly where and why.
    Load artefacts inside `ctest -j6` (re-run standalone before believing them):
-   a `visual_gate` CPU-p95 ceiling miss, and `HeadlessShutdownTest` failing
-   with `failed to open data/willeq.db (sqlite rc=14)` (T360). And ctest
-   exits 8 even when only the waived ALSA test fails — read the summary line.
+   a `visual_gate` CPU-p95 ceiling miss. And ctest exits 8 on ANY red — read
+   the summary line.
+   ⚠ **`HeadlessShutdownTest` is NO LONGER a load artefact (T465, 2026-09-13,
+   board B570). A red there is a real red.** It used to run the client under a
+   fixed `timeout 5` and fail whenever the client was still starting at 5 s
+   (a cold binary over NFS, or a stall after the console banner), in every
+   loaded `-j6` run. It now waits on the client's own `CMD outcome=` line with
+   a 120 s hang bound, and T465 proved it against injected stalls (pre-fix
+   15/15 fail, post-fix 15/15 pass). The `sqlite rc=14` line T360 quoted was
+   never the cause: before T399 that relative db path could not exist in
+   ctest's working directory, so the line was in every run, green or red.
    ⚠ **A gtest DISCOVERY timeout naming a random binary was a THIRD load
    artefact, and T452 (2026-09-07) removed it.** GoogleTest's default
    `DISCOVERY_TIMEOUT` is 5 seconds; with three slots compiling at once that

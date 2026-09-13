@@ -9263,3 +9263,52 @@ Evidence for every entry is under `review/T462/` (README there).
   lost four of its twelve Pi invocations to these two. Also: `pkill -f
   <pattern>` over ssh matches its own remote command line and kills the ssh
   session (exit 255); use `pkill -x willeq` and a `[u]input` bracket pattern.
+
+---
+
+## Added 2026-09-13 by T465 (the HeadlessShutdownTest load flake)
+
+- ~~**B570** (P) **`HeadlessShutdownTest.NonLifecycleCommandIsHeldNotDroppedOrApplied`
+  fails in loaded `ctest -j6` runs and passes standalone.** Every verifier
+  re-ran it by hand; three merged tips on 2026-09-13 each had it as the only
+  red.~~ **CLOSED by T465** (`refactor/T465_headless_shutdown_load_flake.md`).
+  The test ran the client under `timeout 5` and failed when the client had not
+  printed its `CMD outcome=held` ack within 5 s of spawn. The three recorded
+  failures show two shapes: no output at all (T461's run, test 115 of 4762,
+  right after a build) and the console banner with no ack line after it (the
+  T456 and T463 chain runs). Neither is a client defect. The held command is
+  only ever peeked, never consumed, and a stuck client SIGTERMed by hand exited
+  in 0.16-1.7 s (three of three). Injecting the two stalls into the unmodified
+  test reproduces both shapes: 6 s before start, 5/5 fail; 6 s after the
+  banner, 10/10 fail. The rewritten test fork/execs the client, waits on the
+  ack line itself with a 120 s hang bound (one NFS `timeo=600` retransmit plus
+  margin), then asserts SIGTERM exits 0. Against the same injected stalls it
+  passed 5/5 and 10/10. Its config moved from the fixed
+  `/tmp/t30_headless_shutdown_test/` to a per-process `mkdtemp()` directory.
+  The `sqlite rc=14` shape in EXECUTOR_PROTOCOL (T360) was a misreading:
+  before T399 the client opened the bare relative `data/willeq.db`, which
+  cannot exist in ctest's working directory, so that line printed on every run.
+
+- **B571** (P, *latent*) **Seventeen fixed `/tmp` names are shared by every
+  worktree slot that runs the suite.** `/tmp` is the host's local disk, one
+  directory for slot1..3, t1, t2 and `main`, and each of these tests removes
+  and rewrites a name with no pid or test-name in it, so two slots running
+  the same test at once write the same file:
+  `t376_clicks_recorded.sleq` (`test_click_senders_packet_sender.cpp`),
+  `t375_op_report_shape.sleq` (`test_op_report_shape.cpp`),
+  `t360_spawn_appearance_recorded.sleq` and `t360_death_burst_recorded.sleq`
+  (`test_self_death_sequence.cpp`), `t379_login_recorded.sleq` and
+  `t379_world_recorded.sleq` (`test_login_world_senders_packet_sender.cpp`),
+  the five `t378_*_recorded.sleq` (`test_direct_senders_packet_sender.cpp`,
+  `WithRecordedSession`), `willeq_t171_roundtrip.json` /
+  `willeq_t171_coexist.json` / `willeq_t171_missing.json`
+  (`test_inspect_answer.cpp`), `t70_truncated_spells.eff`
+  (`test_spells_eff_reader.cpp`), and the output DIRECTORIES
+  `p47_entity_viewer_regression` (`test_entity_viewer_regression.cpp`) and
+  `t284_composite_open` (`test_eqe1_composite_open.cpp`). No red has been traced
+  to any of them; the window is a recorder file removed or reopened under a
+  reader in another slot. Every other `temp_directory_path()` user in `tests/`
+  already appends `getpid()` (census: `grep -n temp_directory_path tests/*.cpp`,
+  2026-09-13). The fix is the same one-liner per site T465 applied to
+  `test_headless_shutdown.cpp` (`mkdtemp()`, or a `getpid()` suffix). Not done
+  by T465: nine files outside its territory. Found by T465.
