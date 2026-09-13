@@ -15,6 +15,7 @@
 
 #include "client/hotbar/hotbar_slot_type.h"  // T156
 #include "client/graphics/ui/text_entry.h"  // T421: ChatPanelState derives from it
+#include "client/graphics/ui/chat_wrap_cache.h"  // T462: ChatPanelState::wrapCache
 
 namespace eqt { namespace ui { class ChatMessageBuffer; } }
 // T156: applyHotbarSlotAssigned() below takes this by const reference; the
@@ -92,6 +93,14 @@ struct ChatPanelState : TextEntryState {
     int scrollOffset = 0;      // Lines scrolled up from bottom (0 = at bottom)
     bool showTimestamps = false;
     bool mouseHover = false;   // Whether mouse is over chat panel
+
+    // T462 (board B505): the wrapped lines, kept across frames and brought up
+    // to date only when the buffer, the width or the timestamp setting
+    // changes (chat_wrap_cache.h). renderChatPanel() is its only writer.
+    ChatWrapCache wrapCache;
+    // Test seam: messages renderChatPanel() has formatted and word-wrapped,
+    // cumulative. One per NEW message, not one per message per frame.
+    uint64_t messagesWrapped = 0;
 };
 
 /** Render chat panel (message history + input field). */

@@ -9,6 +9,10 @@
 
 #include <chrono>
 
+#ifdef EQT_HAS_GLES2
+#include <GLES2/gl2.h>
+#endif
+
 namespace EQT {
 namespace Graphics {
 
@@ -202,14 +206,59 @@ void UIRenderer::endFrame() {
             // slot border submitted after it stays in front. Commands with
             // a null texture are atlas quads; if the atlas has no texture
             // they are skipped, exactly as before.
-            // Future optimization: batch runs of atlas quads into a single
-            // draw2DImageBatch call.
-            for (const auto& q : atlasQuads_) {
-                auto* tex = q.texture ? q.texture : atlasTex;
-                if (!tex) continue;
-                driver_->draw2DImage(tex, q.destRect, q.srcRect, nullptr,
-                    &q.color, true);
+            //
+            // T462 (board B506): consecutive commands that sample the same
+            // texture are a RUN, and a run is two driver draw calls, not one
+            // per command. On the Orange Pi the open inventory's ~100 commands
+            // were ~100 full 2D state setups + client-array draws, +6-7 ms of
+            // Static UI per frame (T459, T462's account). The run's first
+            // command still goes through draw2DImage(), which establishes the
+            // whole state; drawRunTail() draws the rest with that state.
+            // draw2DImageBatch() could not do this: it takes one colour for
+            // the batch and no destination size.
+#ifdef EQT_HAS_GLES2
+            const bool canBatch = batchingEnabled_ &&
+                driver_->getDriverType() == irr::video::EDT_OGLES2;
+#else
+            const bool canBatch = false;
+#endif
+            const size_t n = atlasQuads_.size();
+            auto resolve = [&](size_t k) -> irr::video::ITexture* {
+                return atlasQuads_[k].texture ? atlasQuads_[k].texture : atlasTex;
+            };
+            size_t i = 0;
+            while (i < n) {
+                irr::video::ITexture* tex = resolve(i);
+                if (!tex) { ++i; continue; }  // drew nothing before T462 either
+                ++flushStats_.textureRuns;
+                // The run: every following command on the same texture. A
+                // command that resolves to no texture draws nothing and is
+                // passed over without ending the run, as the old loop did.
+                size_t end = i + 1;
+                size_t tail = 0;
+                while (end < n) {
+                    irr::video::ITexture* t = resolve(end);
+                    if (t && t != tex) break;
+                    if (t) ++tail;
+                    ++end;
+                }
+                const auto& first = atlasQuads_[i];
+                driver_->draw2DImage(tex, first.destRect, first.srcRect, nullptr,
+                    &first.color, true);
                 ++flushStats_.driverDraws;
+                if (tail > 0 && canBatch) {
+                    drawRunTail(tex, atlasTex, i + 1, end);
+                    ++flushStats_.driverDraws;
+                } else if (tail > 0) {
+                    for (size_t k = i + 1; k < end; ++k) {
+                        const auto& q = atlasQuads_[k];
+                        if (!resolve(k)) continue;
+                        driver_->draw2DImage(tex, q.destRect, q.srcRect, nullptr,
+                            &q.color, true);
+                        ++flushStats_.driverDraws;
+                    }
+                }
+                i = end;
             }
         }
         atlasQuads_.clear();
@@ -226,6 +275,90 @@ void UIRenderer::endFrame() {
         std::chrono::duration_cast<std::chrono::microseconds>(textStart - flushStart).count();
     flushStats_.textFlushUs =
         std::chrono::duration_cast<std::chrono::microseconds>(flushEnd - textStart).count();
+}
+
+// T462 (board B506): the tail of a texture run as one draw call.
+//
+// Why this paints exactly what one draw2DImage() per command painted:
+// COpenGLES2Driver::draw2DImage() (docker/irrlicht-drm/COpenGLES2Driver.cpp)
+// leaves, after drawing the run's FIRST command, the UI2D program in use with
+// its world-view-projection and sampler uniforms set, `tex` on unit 0 and its
+// alpha companion on unit 1, the same blend state, scissor off, and vertex
+// attributes 0/2/3 (position, colour, texcoord0) enabled with 1 and 4
+// disabled -- and a later draw2DImage() for the same texture would set every
+// one of those to the same values again. The only per-draw inputs are the
+// four vertices, and they are computed below with the driver's own
+// arithmetic, in the driver's own 9-float layout (x, y, z, r, g, b, a, u, v)
+// and triangle order. One GL draw of the concatenated quads rasterises the
+// triangles in the same order as the separate draws did, so blending sees the
+// same sequence. TheBatchedFlushPaintsExactlyThePixelsOfThePerCommandFlush
+// pins that on the GLES2 device.
+void UIRenderer::drawRunTail(irr::video::ITexture* tex, irr::video::ITexture* atlasTex,
+                             size_t begin, size_t end) {
+#ifdef EQT_HAS_GLES2
+    // docker/irrlicht-drm/COGLES2Shaders.h: attribute slots are fixed with
+    // glBindAttribLocation before every program link.
+    constexpr GLuint kPosition = 0, kColor = 2, kTexCoord0 = 3;
+    constexpr size_t kMaxQuadsPerDraw = 65536 / 4;  // 16-bit indices
+
+    const irr::core::dimension2d<irr::u32>& texSize = tex->getOriginalSize();
+    const irr::f32 invW = 1.0f / (irr::f32)texSize.Width;
+    const irr::f32 invH = 1.0f / (irr::f32)texSize.Height;
+
+    auto flush = [&]() {
+        if (runIndices_.empty()) return;
+        const float* v = runVertices_.data();
+        glVertexAttribPointer(kPosition, 3, GL_FLOAT, GL_FALSE, 9 * sizeof(irr::f32), v);
+        glEnableVertexAttribArray(kPosition);
+        glVertexAttribPointer(kColor, 4, GL_FLOAT, GL_FALSE, 9 * sizeof(irr::f32), v + 3);
+        glEnableVertexAttribArray(kColor);
+        glVertexAttribPointer(kTexCoord0, 2, GL_FLOAT, GL_FALSE, 9 * sizeof(irr::f32), v + 7);
+        glEnableVertexAttribArray(kTexCoord0);
+        glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(runIndices_.size()),
+                       GL_UNSIGNED_SHORT, runIndices_.data());
+        runVertices_.clear();
+        runIndices_.clear();
+    };
+
+    runVertices_.clear();
+    runIndices_.clear();
+    for (size_t k = begin; k < end; ++k) {
+        const DrawCmd& q = atlasQuads_[k];
+        if ((q.texture ? q.texture : atlasTex) != tex) continue;  // resolves to nothing
+        if (runIndices_.size() / 6 == kMaxQuadsPerDraw) flush();
+
+        // COpenGLES2Driver::draw2DImage()'s own vertex arithmetic.
+        irr::f32 srcLeft = q.srcRect.UpperLeftCorner.X * invW;
+        irr::f32 srcTop = q.srcRect.UpperLeftCorner.Y * invH;
+        irr::f32 srcRight = q.srcRect.LowerRightCorner.X * invW;
+        irr::f32 srcBottom = q.srcRect.LowerRightCorner.Y * invH;
+
+        irr::f32 dstLeft = (irr::f32)q.destRect.UpperLeftCorner.X;
+        irr::f32 dstTop = (irr::f32)q.destRect.UpperLeftCorner.Y;
+        irr::f32 dstRight = (irr::f32)q.destRect.LowerRightCorner.X;
+        irr::f32 dstBottom = (irr::f32)q.destRect.LowerRightCorner.Y;
+
+        irr::f32 r = q.color.getRed() / 255.0f;
+        irr::f32 g = q.color.getGreen() / 255.0f;
+        irr::f32 b = q.color.getBlue() / 255.0f;
+        irr::f32 a = q.color.getAlpha() / 255.0f;
+
+        const irr::f32 quad[4 * 9] = {
+            dstLeft,  dstTop,    0.0f, r, g, b, a, srcLeft,  srcTop,
+            dstRight, dstTop,    0.0f, r, g, b, a, srcRight, srcTop,
+            dstRight, dstBottom, 0.0f, r, g, b, a, srcRight, srcBottom,
+            dstLeft,  dstBottom, 0.0f, r, g, b, a, srcLeft,  srcBottom
+        };
+        const uint16_t base = static_cast<uint16_t>(runVertices_.size() / 9);
+        runVertices_.insert(runVertices_.end(), quad, quad + 4 * 9);
+        const uint16_t idx[6] = {base, static_cast<uint16_t>(base + 1), static_cast<uint16_t>(base + 2),
+                                 base, static_cast<uint16_t>(base + 2), static_cast<uint16_t>(base + 3)};
+        runIndices_.insert(runIndices_.end(), idx, idx + 6);
+    }
+    flush();
+#else
+    (void)tex; (void)atlasTex; (void)begin; (void)end;
+#endif
 }
 
 } // namespace Graphics

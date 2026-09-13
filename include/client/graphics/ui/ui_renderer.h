@@ -140,6 +140,9 @@ public:
     struct FlushStats {
         size_t commands = 0;
         size_t driverDraws = 0;
+        // Maximal runs of consecutive drawable commands that sample the same
+        // texture -- the most a batched flush can merge.
+        size_t textureRuns = 0;
         size_t textEntries = 0;
         int64_t commandFlushUs = 0;
         int64_t textFlushUs = 0;
@@ -150,8 +153,25 @@ public:
         return s;
     }
 
+    /**
+     * T462 test seam: false replays the command list one driver draw per
+     * command, the pre-T462 flush, so a test can compare the two paths'
+     * pixels on the same device. Production never calls it.
+     */
+    void setBatchingEnabled(bool enabled) { batchingEnabled_ = enabled; }
+
 private:
     FlushStats flushStats_;
+    bool batchingEnabled_ = true;
+
+    // T462 (B506): draws commands [begin, end) that sample `tex` -- the tail
+    // of a run whose first command endFrame() has just drawn through
+    // draw2DImage() -- as ONE draw call. See the definition for why the
+    // pixels are the same.
+    void drawRunTail(irr::video::ITexture* tex, irr::video::ITexture* atlasTex,
+                     size_t begin, size_t end);
+    std::vector<float> runVertices_;     // reused across frames, 9 floats per vertex
+    std::vector<uint16_t> runIndices_;
     irr::video::IVideoDriver* driver_ = nullptr;
     UIAtlas* atlas_ = nullptr;
     TextBatch* textBatch_ = nullptr;

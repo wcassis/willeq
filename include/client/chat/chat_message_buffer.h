@@ -97,12 +97,24 @@ public:
     bool hasNewMessages() const { return hasNewMessages_; }
     void clearNewMessageFlag() { hasNewMessages_ = false; }
 
+    // T462 (board B505): the append sequence, for the chat panel's wrap cache
+    // (include/client/graphics/ui/chat_wrap_cache.h). Every message
+    // processPending() moves into the displayed list takes the next number,
+    // so getMessages()[i] is message number appendedCount() - size() + i and
+    // a reader can tell which messages are new and which were evicted from
+    // the front since it last looked. clear() bumps clearGeneration() so the
+    // reader starts over. UI thread only, like getMessages().
+    uint64_t appendedCount() const { return appendedCount_; }
+    uint64_t clearGeneration() const { return clearGeneration_; }
+
 private:
     std::deque<ChatMessage> messages_;
     std::deque<ChatMessage> pendingMessages_;
     mutable std::mutex mutex_;
     size_t maxMessages_;
     bool hasNewMessages_ = false;
+    uint64_t appendedCount_ = 0;
+    uint64_t clearGeneration_ = 0;
 };
 
 } // namespace ui

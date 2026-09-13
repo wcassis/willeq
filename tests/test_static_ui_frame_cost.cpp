@@ -10,9 +10,10 @@
 // item icon sheets out of willeq.eqe1, and reads UIRenderer::takeFlushStats().
 // Self-skips when the pack or the device is unavailable.
 //
-// The timing account (StaticUiFrameCostAccount.*) runs only with
-// WILLEQ_T462_ACCOUNT=1 in the environment: wall-clock numbers are evidence
-// for a Review, not something a ctest run under -j6 load can assert.
+// The timing account (AccountPerStageTimings) runs only with
+// WILLEQ_T462_ACCOUNT=1 in the environment (and WILLEQ_T462_RES=1280x720 to
+// change the resolution): wall-clock numbers are evidence for a Review, not
+// something a ctest run under -j6 load can assert.
 
 #include <gtest/gtest.h>
 
@@ -20,6 +21,7 @@
 #include "client/graphics/ui/ui_atlas.h"
 #include "client/graphics/ui/ui_layout.h"
 #include "client/graphics/ui/static_panels.h"
+#include "client/graphics/ui/chat_wrap_cache.h"
 #include "client/graphics/ui/tradeskill_panel.h"
 #include "client/graphics/ui/merchant_panel.h"
 #include "client/graphics/ui/combat_ability_panel.h"
@@ -39,6 +41,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -56,6 +59,16 @@ bool accountEnabled() {
     return v && v[0] == '1';
 }
 
+// 800x600 unless WILLEQ_T462_RES=<w>x<h> (the account only; every pin below
+// was taken at 800x600 and self-skips at any other size).
+void resolution(irr::u32& w, irr::u32& h) {
+    w = 800; h = 600;
+    if (const char* v = std::getenv("WILLEQ_T462_RES")) {
+        unsigned rw = 0, rh = 0;
+        if (std::sscanf(v, "%ux%u", &rw, &rh) == 2 && rw > 0 && rh > 0) { w = rw; h = rh; }
+    }
+}
+
 // Chat lines shaped like T459's P1 session (guard fights in nro): combat
 // spam, a few long system lines that wrap, some says.
 std::string chatLine(int i) {
@@ -71,6 +84,51 @@ std::string chatLine(int i) {
     }
 }
 
+// The pre-T462 renderChatPanel() wrap, copied here VERBATIM from
+// static_panels.cpp at f70b6c97 (the fable tip T462 started from) so the
+// cache is compared against the code it replaced, not against itself.
+std::vector<ChatWrappedLine> preT462WrapAll(const eqt::ui::ChatMessageBuffer& buffer,
+                                            irr::s32 areaW, bool showTimestamps,
+                                            const TextBatch& tbRef) {
+    const TextBatch* tb = &tbRef;
+    const auto& messages = buffer.getMessages();
+    struct WrappedLine {
+        std::string text;
+        irr::video::SColor color;
+    };
+    std::vector<WrappedLine> wrappedLines;
+
+    for (size_t i = 0; i < messages.size(); ++i) {
+        std::string display = eqt::ui::formatMessageForDisplay(messages[i], showTimestamps);
+        // Word-wrap using pixel width measurement
+        while (tb->getTextWidth(display) > areaW) {
+            // Binary search for the longest substring that fits
+            int lo = 1, hi = static_cast<int>(display.size());
+            while (lo < hi) {
+                int mid = (lo + hi + 1) / 2;
+                if (tb->getTextWidth(display.substr(0, mid)) <= areaW)
+                    lo = mid;
+                else
+                    hi = mid - 1;
+            }
+            // Find last space within the fitting range for word break
+            int breakAt = lo;
+            for (int j = lo; j > lo / 2; --j) {
+                if (display[j] == ' ') { breakAt = j; break; }
+            }
+            wrappedLines.push_back({display.substr(0, breakAt), messages[i].color});
+            display = display.substr(breakAt);
+            if (!display.empty() && display[0] == ' ') display = display.substr(1);
+        }
+        if (!display.empty()) {
+            wrappedLines.push_back({display, messages[i].color});
+        }
+    }
+    std::vector<ChatWrappedLine> out;
+    for (auto& l : wrappedLines) out.push_back({l.text, l.color});
+    return out;
+}
+
 }  // namespace
 
 class StaticUiFrameCostTest : public ::testing::Test {
@@ -83,6 +141,8 @@ protected:
     TextBatch textBatch_;
     UILayout layout_;
     UIRenderer ui_;
+    irr::u32 kW = 800;
+    irr::u32 kH = 600;
 
     // The state renderStaticUI() draws from, defaulted as a fresh session.
     PlayerStatsData stats_;
@@ -108,10 +168,8 @@ protected:
     XPBarState xp_;
     CursorAttachmentState cursor_;
 
-    static constexpr irr::u32 kW = 800;
-    static constexpr irr::u32 kH = 600;
-
     void SetUp() override {
+        resolution(kW, kH);
         std::ifstream probe(kWilleqEqe1);
         if (!probe.good()) GTEST_SKIP() << "willeq.eqe1 not present at " << kWilleqEqe1;
         if (!loader_.open(kWilleqEqe1)) GTEST_SKIP() << "Failed to open " << kWilleqEqe1;
@@ -175,8 +233,10 @@ protected:
         if (device_) { device_->drop(); device_ = nullptr; }
     }
 
-    void fillChat(int n) {
-        for (int i = 0; i < n; ++i) chatBuffer_.addSystemMessage(chatLine(i));
+    bool pinsApply() const { return kW == 800 && kH == 600; }
+
+    void fillChat(int n, int firstIndex = 0) {
+        for (int i = 0; i < n; ++i) chatBuffer_.addSystemMessage(chatLine(firstIndex + i));
         chatBuffer_.processPending();
     }
 
@@ -206,6 +266,42 @@ protected:
         renderCursorAttachment(ui_, layout_, cursor_);
     }
 
+    // One content frame of `submit`, after a prime frame and with a repeat --
+    // test_ui_atlas_pixels.cpp's documented surfaceless-EGL harness facts.
+    // Returns the framebuffer (caller drops) and the LAST frame's flush stats.
+    irr::video::IImage* renderFrames(const std::function<void()>& submit,
+                                     UIRenderer::FlushStats* stats) {
+        driver_->beginScene(true, true, irr::video::SColor(255, 0, 0, 0));
+        driver_->endScene();
+        for (int frame = 0; frame < 2; ++frame) {
+            driver_->beginScene(true, true, irr::video::SColor(255, 0, 0, 0));
+            ui_.beginFrame();
+            submit();
+            ui_.endFrame();
+            const UIRenderer::FlushStats s = ui_.takeFlushStats();
+            if (stats) *stats = s;
+            driver_->endScene();
+        }
+        return driver_->createScreenShot();
+    }
+
+    // Pixels that differ between two same-size framebuffers, and how many of
+    // the first are not the black clear colour (so a comparison of two empty
+    // frames cannot pass as "identical").
+    static void comparePixels(irr::video::IImage* a, irr::video::IImage* b,
+                              size_t* differing, size_t* painted) {
+        *differing = 0;
+        *painted = 0;
+        const auto d = a->getDimension();
+        for (irr::u32 y = 0; y < d.Height; ++y) {
+            for (irr::u32 x = 0; x < d.Width; ++x) {
+                const irr::u32 ca = a->getPixel(x, y).color;
+                if ((ca & 0x00FFFFFF) != 0) ++*painted;
+                if (ca != b->getPixel(x, y).color) ++*differing;
+            }
+        }
+    }
+
     struct FrameSample {
         int64_t submitUs = 0;
         int64_t chatUs = 0;
@@ -213,7 +309,7 @@ protected:
         int64_t finishUs = 0;
     };
 
-    FrameSample renderOneFrame() {
+    FrameSample renderOneTimedFrame() {
         using Clock = std::chrono::steady_clock;
         auto us = [](Clock::time_point a, Clock::time_point b) {
             return std::chrono::duration_cast<std::chrono::microseconds>(b - a).count();
@@ -245,9 +341,203 @@ protected:
     }
 };
 
-// ---------------------------------------------------------------------------
+// ===========================================================================
+// B505 -- the chat wrap runs on change, not on every frame
+// ===========================================================================
+
+// Before T462 every frame formatted and wrapped every buffered message: ten
+// frames over 200 messages was 2000 wraps. Now each message is wrapped once,
+// when it arrives; scrolling wraps nothing; a width or timestamp change
+// re-wraps what is buffered, once.
+TEST_F(StaticUiFrameCostTest, TheChatWrapRunsOncePerNewMessageNotOncePerFrame) {
+    auto frames = [&](int n) {
+        for (int i = 0; i < n; ++i) {
+            irr::video::IImage* img = renderFrames([&] { renderChatPanel(ui_, layout_, chat_); }, nullptr);
+            if (img) img->drop();
+        }
+    };
+
+    fillChat(200);
+    frames(5);  // renderFrames draws 2 content frames per call: 10 frames
+    EXPECT_EQ(chat_.messagesWrapped, 200u)
+        << "ten frames over 200 unchanged messages must wrap each message once, not once per "
+           "frame (the pre-T462 panel wrapped 2000)";
+
+    for (int i = 0; i < 3; ++i) chatBuffer_.addSystemMessage("new " + std::to_string(i));
+    frames(3);
+    EXPECT_EQ(chat_.messagesWrapped, 203u) << "three new messages are three wraps";
+
+    chat_.scrollOffset = 4;
+    frames(2);
+    EXPECT_EQ(chat_.messagesWrapped, 203u) << "scrolling re-wraps nothing";
+
+    // Past the 500-message cap: the 400 new ones are wrapped, the 103 evicted
+    // from the front are dropped, nothing that stays is wrapped again.
+    fillChat(400, 1000);
+    frames(2);
+    EXPECT_EQ(chat_.messagesWrapped, 603u);
+    EXPECT_EQ(chatBuffer_.size(), 500u);
+
+    chat_.showTimestamps = true;
+    frames(2);
+    EXPECT_EQ(chat_.messagesWrapped, 1103u) << "a timestamp toggle re-wraps the 500 buffered once";
+}
+
+// The lines the cache holds are exactly the lines the pre-T462 per-frame wrap
+// produced -- through incremental arrivals, front eviction, an unbreakable
+// word, a width change, a timestamp toggle and a clear().
+TEST_F(StaticUiFrameCostTest, TheCachedLinesAreThePreT462LinesThroughEvictionResizeAndClear) {
+    eqt::ui::ChatMessageBuffer small(50);
+    ChatWrapCache cache;
+    const ChatTextMeasure measure = [&](const std::string& s) { return textBatch_.getTextWidth(s); };
+    const irr::s32 areaW = layout_.chatMessages.getWidth() - 18;  // renderChatPanel()'s own width
+
+    auto check = [&](const std::string& what, irr::s32 w, bool ts) {
+        cache.sync(small, w, ts, measure);
+        const std::vector<ChatWrappedLine> ref = preT462WrapAll(small, w, ts, textBatch_);
+        ASSERT_EQ(cache.lineCount(), ref.size()) << what;
+        for (size_t i = 0; i < ref.size(); ++i) {
+            ASSERT_EQ(cache.line(i).text, ref[i].text) << what << " line " << i;
+            ASSERT_EQ(cache.line(i).color.color, ref[i].color.color) << what << " line " << i;
+        }
+    };
+
+    for (int i = 0; i < 130; ++i) {
+        small.addSystemMessage(chatLine(i));
+        if (i % 7 == 6) {
+            small.processPending();
+            check("arrival batch ending " + std::to_string(i), areaW, false);
+        }
+    }
+    small.processPending();
+    check("after 130 into a 50-message buffer", areaW, false);
+
+    small.addSystemMessage(std::string(200, 'W'));  // no space to break at
+    small.addSystemMessage(" leading space and then enough words to wrap across the chat box width");
+    eqt::ui::ChatMessage say;
+    say.sender = "Gnoll";
+    say.text = "a say with a sender and its own channel colour";
+    say.channel = eqt::ui::ChatChannel::Shout;
+    small.addMessage(say);
+    small.processPending();
+    check("edge messages", areaW, false);
+
+    check("narrow", 60, false);
+    check("back to the panel width", areaW, false);
+    check("timestamps on", areaW, true);
+
+    small.clear();
+    small.addSystemMessage("after clear");
+    small.processPending();
+    check("after clear", areaW, true);
+}
+
+// And the chat box draws the same pixels from a warm cache that has lived
+// through evictions as from a cold one built in a single pass.
+TEST_F(StaticUiFrameCostTest, AWarmChatCachePaintsTheSamePixelsAsAColdOne) {
+    if (!pinsApply()) GTEST_SKIP() << "pixel pins are taken at 800x600";
+    ChatPanelState warm;
+    warm.messageBuffer = &chatBuffer_;
+    warm.mouseHover = true;
+    for (int batch = 0; batch < 12; ++batch) {
+        fillChat(60, batch * 60);
+        irr::video::IImage* img = renderFrames([&] { renderChatPanel(ui_, layout_, warm); }, nullptr);
+        if (img) img->drop();
+    }
+    warm.scrollOffset = 7;
+    irr::video::IImage* warmShot = renderFrames([&] { renderChatPanel(ui_, layout_, warm); }, nullptr);
+
+    ChatPanelState cold;
+    cold.messageBuffer = &chatBuffer_;
+    cold.mouseHover = true;
+    cold.scrollOffset = 7;
+    irr::video::IImage* coldShot = renderFrames([&] { renderChatPanel(ui_, layout_, cold); }, nullptr);
+
+    ASSERT_NE(warmShot, nullptr);
+    ASSERT_NE(coldShot, nullptr);
+    size_t differing = 0, painted = 0;
+    comparePixels(coldShot, warmShot, &differing, &painted);
+    EXPECT_GT(painted, 1000u) << "the chat box drew nothing -- the comparison would be vacuous";
+    EXPECT_EQ(differing, 0u);
+    EXPECT_EQ(cold.messagesWrapped, 500u) << "the cold panel wraps the 500 buffered messages once";
+    warmShot->drop();
+    coldShot->drop();
+}
+
+// ===========================================================================
+// B506 -- the open inventory's commands are flushed in texture runs
+// ===========================================================================
+
+// The static UI with the inventory open submits 159 draw commands (98 of them
+// the popup's) and 49 text entries. Before T462 the flush issued one driver
+// draw call -- with its full 2D state setup -- per command; now it issues at
+// most two per maximal same-texture run (the run's first quad sets the state,
+// the rest go in one draw).
+TEST_F(StaticUiFrameCostTest, TheOpenInventoryFlushIssuesAtMostTwoDrawsPerTextureRun) {
+    if (!pinsApply()) GTEST_SKIP() << "count pins are taken at 800x600";
+    inv_.activePopup = PopupType::Inventory;
+    UIRenderer::FlushStats s;
+    irr::video::IImage* img = renderFrames([&] { submitStaticUI(); }, &s);
+    if (img) img->drop();
+
+    // The draw LIST is not T462's to change; pinned so batching cannot hide a
+    // lost command.
+    EXPECT_EQ(s.commands, 159u);
+    EXPECT_EQ(s.textEntries, 49u);
+    ASSERT_GT(s.textureRuns, 0u);
+    EXPECT_LT(s.textureRuns, s.commands / 4)
+        << "the fixture's icons break the atlas run " << s.textureRuns << " times";
+    EXPECT_LE(s.driverDraws, 2 * s.textureRuns)
+        << s.driverDraws << " driver draws for " << s.commands << " commands in "
+        << s.textureRuns << " texture runs -- the flush is still one draw per command";
+
+    inv_.activePopup = PopupType::None;
+    img = renderFrames([&] { submitStaticUI(); }, &s);
+    if (img) img->drop();
+    EXPECT_EQ(s.commands, 61u);
+    EXPECT_EQ(s.textEntries, 25u);
+    EXPECT_LE(s.driverDraws, 2 * s.textureRuns);
+}
+
+// The batched flush paints exactly the pixels of the per-command flush, over
+// the whole 800x600 frame: every panel, the open inventory with icons, a
+// hovered slot, the paperdoll blit (an external texture in the middle of the
+// atlas run) and a scrolled chat box.
+TEST_F(StaticUiFrameCostTest, TheBatchedFlushPaintsExactlyThePixelsOfThePerCommandFlush) {
+    if (!pinsApply()) GTEST_SKIP() << "pixel pins are taken at 800x600";
+    inv_.activePopup = PopupType::Inventory;
+    inv_.hoveredSlot = 3;
+    hotbar_.hoveredSlot = 2;
+    gems_.hoveredGem = 1;
+    irr::core::rect<irr::s32> unused;
+    inv_.paperdollTexture = atlas_->icons().lookup(700, unused);  // any non-atlas texture
+    ASSERT_NE(inv_.paperdollTexture, nullptr);
+    fillChat(120);
+    chat_.mouseHover = true;
+    chat_.scrollOffset = 3;
+
+    ui_.setBatchingEnabled(false);
+    UIRenderer::FlushStats perCommand;
+    irr::video::IImage* reference = renderFrames([&] { submitStaticUI(); }, &perCommand);
+    ui_.setBatchingEnabled(true);
+    UIRenderer::FlushStats batched;
+    irr::video::IImage* candidate = renderFrames([&] { submitStaticUI(); }, &batched);
+
+    ASSERT_NE(reference, nullptr);
+    ASSERT_NE(candidate, nullptr);
+    EXPECT_EQ(perCommand.commands, batched.commands);
+    EXPECT_EQ(perCommand.driverDraws, perCommand.commands) << "the seam must really disable batching";
+    size_t differing = 0, painted = 0;
+    comparePixels(reference, candidate, &differing, &painted);
+    EXPECT_GT(painted, 10000u) << "the static UI drew nothing -- the comparison would be vacuous";
+    EXPECT_EQ(differing, 0u) << "the batched flush moved " << differing << " pixels";
+    reference->drop();
+    candidate->drop();
+}
+
+// ===========================================================================
 // The account. Prints one row per scenario; asserts nothing about time.
-// ---------------------------------------------------------------------------
+// ===========================================================================
 TEST_F(StaticUiFrameCostTest, AccountPerStageTimings) {
     if (!accountEnabled()) GTEST_SKIP() << "set WILLEQ_T462_ACCOUNT=1 to run the timing account";
 
@@ -259,25 +549,26 @@ TEST_F(StaticUiFrameCostTest, AccountPerStageTimings) {
         {"closed chat=500", false, 500},
         {"open   chat=500", true,  500},
     };
-    std::printf("T462 ACCOUNT (x86 llvmpipe, %dx%d, %d frames, means)\n", kW, kH, kFrames);
-    std::printf("%-16s %9s %9s %9s %9s %9s %6s %6s %6s\n", "scenario", "submitUs", "chatUs",
-                "cmdFlush", "txtFlush", "glFinish", "cmds", "draws", "texts");
+    std::printf("T462 ACCOUNT (x86 llvmpipe, %ux%u, %d frames, means)\n", kW, kH, kFrames);
+    std::printf("%-16s %9s %9s %9s %9s %9s %6s %6s %6s %6s\n", "scenario", "submitUs", "chatUs",
+                "cmdFlush", "txtFlush", "glFinish", "cmds", "runs", "draws", "texts");
     for (const auto& sc : scenarios) {
         chatBuffer_.clear();
         fillChat(sc.chatMessages);
         chat_.scrollOffset = 0;
         inv_.activePopup = sc.inventoryOpen ? PopupType::Inventory : PopupType::None;
-        for (int i = 0; i < kWarm; ++i) renderOneFrame();
+        for (int i = 0; i < kWarm; ++i) renderOneTimedFrame();
         double submit = 0, chat = 0, cmd = 0, txt = 0, fin = 0;
-        size_t cmds = 0, draws = 0, texts = 0;
+        size_t cmds = 0, runs = 0, draws = 0, texts = 0;
         for (int i = 0; i < kFrames; ++i) {
-            const FrameSample s = renderOneFrame();
+            const FrameSample s = renderOneTimedFrame();
             submit += s.submitUs; chat += s.chatUs; fin += s.finishUs;
             cmd += s.flush.commandFlushUs; txt += s.flush.textFlushUs;
-            cmds = s.flush.commands; draws = s.flush.driverDraws; texts = s.flush.textEntries;
+            cmds = s.flush.commands; runs = s.flush.textureRuns;
+            draws = s.flush.driverDraws; texts = s.flush.textEntries;
         }
-        std::printf("%-16s %9.0f %9.0f %9.0f %9.0f %9.0f %6zu %6zu %6zu\n", sc.name,
+        std::printf("%-16s %9.0f %9.0f %9.0f %9.0f %9.0f %6zu %6zu %6zu %6zu\n", sc.name,
                     submit / kFrames, chat / kFrames, cmd / kFrames, txt / kFrames,
-                    fin / kFrames, cmds, draws, texts);
+                    fin / kFrames, cmds, runs, draws, texts);
     }
 }

@@ -160,6 +160,7 @@ void ChatMessageBuffer::processPending() {
         hasNewMessages_ = true;
         for (auto& msg : pendingMessages_) {
             messages_.push_back(std::move(msg));
+            ++appendedCount_;  // T462: see appendedCount()
             if (messages_.size() > maxMessages_) {
                 messages_.pop_front();
             }
@@ -182,6 +183,7 @@ void ChatMessageBuffer::clear() {
     messages_.clear();
     pendingMessages_.clear();
     hasNewMessages_ = false;
+    ++clearGeneration_;  // T462: a wrap cache over this buffer starts over
 }
 
 } // namespace ui

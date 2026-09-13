@@ -132,52 +132,26 @@ void renderChatPanel(UIRenderer& ui, const UILayout& layout,
 
     // Render messages with word wrapping
     if (state.messageBuffer && state.messageBuffer->size() > 0) {
-        const auto& messages = state.messageBuffer->getMessages();
-
         irr::s32 areaX = layout.chatMessages.UpperLeftCorner.X + 2;
         irr::s32 areaTop = layout.chatMessages.UpperLeftCorner.Y + 1;
         irr::s32 areaBottom = layout.chatMessages.LowerRightCorner.Y - 1;
         irr::s32 areaW = layout.chatMessages.getWidth() - 18;  // 14px scrollbar + 4px padding
         if (areaW <= 0) areaW = 100;
 
-        // Build wrapped lines from messages (newest at end)
-        struct WrappedLine {
-            std::string text;
-            irr::video::SColor color;
-        };
-        std::vector<WrappedLine> wrappedLines;
-
-        for (size_t i = 0; i < messages.size(); ++i) {
-            std::string display = eqt::ui::formatMessageForDisplay(messages[i], state.showTimestamps);
-            // Word-wrap using pixel width measurement
-            while (tb->getTextWidth(display) > areaW) {
-                // Binary search for the longest substring that fits
-                int lo = 1, hi = static_cast<int>(display.size());
-                while (lo < hi) {
-                    int mid = (lo + hi + 1) / 2;
-                    if (tb->getTextWidth(display.substr(0, mid)) <= areaW)
-                        lo = mid;
-                    else
-                        hi = mid - 1;
-                }
-                // Find last space within the fitting range for word break
-                int breakAt = lo;
-                for (int j = lo; j > lo / 2; --j) {
-                    if (display[j] == ' ') { breakAt = j; break; }
-                }
-                wrappedLines.push_back({display.substr(0, breakAt), messages[i].color});
-                display = display.substr(breakAt);
-                if (!display.empty() && display[0] == ' ') display = display.substr(1);
-            }
-            if (!display.empty()) {
-                wrappedLines.push_back({display, messages[i].color});
-            }
-        }
+        // T462 (board B505): the wrapped lines (newest at end) come from the
+        // panel's wrap cache, which formats and word-wraps only the messages
+        // that arrived since the last frame. This used to re-wrap the WHOLE
+        // buffer every frame -- the Static UI growth T459 measured on the Pi.
+        const uint64_t wrappedBefore = state.wrapCache.messagesWrapped();
+        state.wrapCache.sync(*state.messageBuffer, areaW, state.showTimestamps,
+                             [tb](const std::string& s) { return tb->getTextWidth(s); });
+        state.messagesWrapped += state.wrapCache.messagesWrapped() - wrappedBefore;
+        const ChatWrapCache& wrappedLines = state.wrapCache;
 
         // Calculate visible lines
         int visibleLines = (areaBottom - areaTop) / lineH;
         if (visibleLines <= 0) visibleLines = 1;
-        int totalLines = static_cast<int>(wrappedLines.size());
+        int totalLines = static_cast<int>(wrappedLines.lineCount());
 
         // Clamp scroll offset
         int maxScroll = totalLines - visibleLines;
@@ -193,7 +167,8 @@ void renderChatPanel(UIRenderer& ui, const UILayout& layout,
 
         irr::s32 y = areaTop;
         for (int i = startIdx; i < endIdx; ++i) {
-            tb->addText(wrappedLines[i].text, areaX, y, wrappedLines[i].color);
+            const ChatWrappedLine& line = wrappedLines.line(static_cast<size_t>(i));
+            tb->addText(line.text, areaX, y, line.color);
             y += lineH;
         }
 
