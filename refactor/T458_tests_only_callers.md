@@ -182,6 +182,35 @@ left the tests bucket through the rule fix and needed nothing. **Merge note:**
 T466/T467 can move rows between buckets; a `ZeroCallers` NEW/STALE line at
 their merge is the table doing its job, not a defect in this one.
 
+**Rebased mid-verification onto T467's merge (coordinator order).** T467
+merged (`50e7efb3`, then T468's plan `e4ca9374`) while this unit was verifying.
+The branch was committed (`b3a8ddf6`) and rebased onto `e4ca9374`; the one
+conflict was `refactor/BOARD.md`, append-vs-append (T467's B590 section against
+this unit's B600-B607) and both sides were kept, each under its own
+"Added 2026-09-13" header. **The census re-taken on the rebased tree is
+unchanged -- 415 / 291 / 36, `--check` exit 0** (T467's four new declarations
+land in no bucket), so no row T467 moved (`overlays_env_managers.cpp`, the
+environment-manager construction) needed reclassifying. Everything in *Proof*
+below marked "post-rebase" was re-run on the rebased tip.
+
+**Deferred to T468** (the coordinator's territory update: `loadGlobalAssets()`,
+`ensureDoorTextureGuard()`, `DoorManager`, the zone-load door step and
+`setupInstantScene()`, board B590). **No row in that area was deleted or
+edited by this unit** -- none was in the delete set. The census rows there are
+left exactly as they were for T468 to decide, whichever way it resolves B590:
+
+| row | bucket | where it is recorded |
+|---|---|---|
+| `IrrlichtRenderer::loadGlobalAssets` | zero | `EXEMPT_GROUPS`, B494 (T455's row, unchanged) |
+| `DoorManager::isDoorMeshBuilt` | zero | `EXEMPT_GROUPS`, B494 (unchanged) |
+| `DoorManager::rebuildPlaceholderDoors` | zero | `EXEMPT_GROUPS`, B494 (unchanged) |
+| `DoorManager::recomputeAllBspRegions` | zero | `EXEMPT_GROUPS`, B494 (unchanged) |
+| `DoorManager::hasDoor` | tests-only | `EXEMPT_TESTS_GROUPS`, `observer` |
+| `EntityRenderer::loadEquipmentModels`, `EntityRenderer::loadGlobalCharacters` | tests-only | `EXEMPT_TESTS_GROUPS`, B606 -- listed here because B606's text cites `loadGlobalAssets()`; if T468 makes `loadGlobalAssets()` the single construction path and it calls these, they leave the tests bucket and the table will say so (STALE) |
+
+`ensureDoorTextureGuard()` and `setupInstantScene()` are in no census bucket
+(both have production callers), so there is no row to defer for them.
+
 ### Proof
 
 | step | result |
@@ -191,13 +220,17 @@ their merge is the table doing its job, not a defect in this one.
 | **`ZeroCallers` tests-only half RED on the pre-fix tree** | **exit 1** -- `tests-only: 31 unlisted, 0 stale`, naming exactly the 31 delete-set rows; zero half green (415). Taken on the real undeleted tree after the tables were written, so no patch revert was needed |
 | round 1 / round 2 census | round 1: 5 new rows (the cascade), 0 stale; round 2: **`--check` exit 0** -- `zero-caller census clean: 415 ... tests-only census clean: 291 (boarded 110, observer 145, seam 36)` |
 | `DocClaims` | first run **FAIL** on B607's own tombstone of `Strings::IsNumber`; marked `RETIRED-OK`; **exit 0** (54 retired names, 11 exempted) |
-| `DocCounts` / `DocCitations` / `CommentClaims` | **exit 0** each |
-| `check_file_sizes.sh fable` | 14 files checked, 0 warn, 0 fail |
-| build after deletions | PENDING |
-| `ctest -j6` | PENDING |
-| `scripts/build-gles2-x86.sh` | PENDING |
-| visual gate standalone | PENDING |
-| `scripts/build-arm-noble.sh` | PENDING |
+| `DocCounts` / `DocCitations` / `CommentClaims` | **exit 0** each; re-run post-rebase, **exit 0** each (DocCitations 1,341 citations, 0 fail) |
+| `check_file_sizes.sh fable` | 14 files checked, 0 warn, 0 fail; re-run post-rebase, identical |
+| build after deletions, pre-rebase | first attempt **exit 2** -- deviation 4 (my concurrent `build-gles2-x86.sh` deleted the Irrlicht archive it was linking); re-run after the Irrlicht rebuild **exit 0**; `build/bin` ELF scan 354 files, 0 bad |
+| `ctest -j6`, pre-rebase | **4,730 / 4,730**, exit 0 (4,794 - 64, exactly). Per-binary: `test_strings` 2, `test_random` 12, `test_position` 13, `test_packet_structs` 40, `test_weather_audio` 20, `test_data_verification` 6 |
+| `scripts/build-arm-noble.sh`, pre-rebase | **exit 0** |
+| census post-rebase | unchanged, **`--check` exit 0** (415 / 291 / 36) |
+| **build post-rebase** (`26be22f6`) | **exit 0** |
+| **`ctest -j6` post-rebase** | **4,739 / 4,739**, exit 0 -- the +9 are T467's (`test_environment_manager_construction` 4, `test_ui_preferences_identity` 5), so (4,794 + 9) - 64. No `visual_gate` load miss |
+| **`scripts/build-arm-noble.sh` post-rebase** | **exit 0**, `build-arm-noble/bin/willeq` written 23:04 |
+| `scripts/build-gles2-x86.sh` post-rebase | **exit 0** (run after the main build finished, not beside it -- deviation 4) |
+| **visual gate standalone post-rebase** | **PASS**, all six verifications; CPU p95 4.955 / 6.533 / 5.978 ms against ceilings 10.108 / 10.672 / 10.948 (host load ~29 from other slots). **No golden moved**: `git status -- data tests` clean |
 | G05/G06 goldens | not run: no renderer TU was touched (`renderer_frame_render`, `renderer_player_physics`, `zone_dispatch`, `bridge_component_intents`, `command_processor_registration`, `application` are all outside the diff) |
 
 ### Deviations
