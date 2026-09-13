@@ -31,6 +31,13 @@ void StormCloudLayer::setConstrainedTextureCache(ConstrainedTextureCache* cache)
     }
 }
 
+// T463 (board B522): this listener only NULLS the frame -- it runs inside the
+// cache's mutex, so it must never call back into the cache. The frame is
+// re-acquired at its point of use, reacquireFrame() from
+// updateBlendedTexture(), on the render thread and outside the cache lock.
+// Before T463 nothing re-acquired it: the first zone unload's clear() nulled
+// all 32 frames, the scene walk left the dome on the placeholder, and every
+// storm after that showed a static placeholder dome.
 void StormCloudLayer::onTextureEvicted(const std::string& name, irr::video::ITexture* /*texture*/) {
     // Cloud blend frame textures: registered as "storm_cloud_blend_N"
     for (size_t i = 0; i < cloudFrames_.size(); ++i) {
@@ -291,28 +298,57 @@ void StormCloudLayer::generateCloudTextures() {
     int totalFrames = frameCount * blendSteps;
 
     for (int i = 0; i < totalFrames; ++i) {
-        std::string texPath = eqt::ResolveDataPath("data/textures/storm_cloud_blend_" + std::to_string(i) + ".bmp");
-        std::string cacheName = "storm_cloud_blend_" + std::to_string(i);
-
-        std::ifstream file(texPath, std::ios::binary | std::ios::ate);
-        if (!file) {
-            LOG_FATAL(MOD_GRAPHICS, "StormCloudLayer: Required texture {} not found — run generate_textures first", texPath);
-            std::exit(1);
-        }
-        std::streamsize fileSize = file.tellg();
-        file.seekg(0, std::ios::beg);
-        std::vector<char> data(fileSize);
-        file.read(data.data(), fileSize);
-
-        irr::video::ITexture* tex = constrainedCache_->getOrLoad(cacheName, data);
-        if (!tex) tex = constrainedCache_->uploadTexture(cacheName);
+        irr::video::ITexture* tex = loadFrame(i);
         if (!tex) {
-            LOG_FATAL(MOD_GRAPHICS, "StormCloudLayer: Failed to load required texture: {}", texPath);
+            LOG_FATAL(MOD_GRAPHICS, "StormCloudLayer: Failed to load required texture "
+                      "storm_cloud_blend_{} — run generate_textures first", i);
             std::exit(1);
         }
         cloudFrames_.push_back(tex);
     }
     LOG_INFO(MOD_GRAPHICS, "StormCloudLayer: Loaded {} pre-blended cloud textures", cloudFrames_.size());
+}
+
+irr::video::ITexture* StormCloudLayer::loadFrame(int index) {
+    if (!constrainedCache_) return nullptr;
+    const std::string cacheName = "storm_cloud_blend_" + std::to_string(index);
+    const std::string texPath = eqt::ResolveDataPath("data/textures/" + cacheName + ".bmp");
+
+    std::ifstream file(texPath, std::ios::binary | std::ios::ate);
+    if (!file) {
+        LOG_ERROR(MOD_GRAPHICS, "StormCloudLayer: texture {} not found", texPath);
+        return nullptr;
+    }
+    std::streamsize fileSize = file.tellg();
+    file.seekg(0, std::ios::beg);
+    std::vector<char> data(fileSize);
+    file.read(data.data(), fileSize);
+
+    irr::video::ITexture* tex = constrainedCache_->getOrLoad(cacheName, data);
+    if (!tex) tex = constrainedCache_->uploadTexture(cacheName);
+    if (!tex) {
+        LOG_ERROR(MOD_GRAPHICS, "StormCloudLayer: failed to load texture {}", texPath);
+    }
+    return tex;
+}
+
+// T463 (board B522): re-acquire a frame the cache evicted (zone-unload clear()
+// or LRU). Re-acquired here, where the frame is about to be shown, rather than
+// in onZoneEnter() as ParticleManager/DetailManager do: the 32 frames are ~11 MB
+// of accounted budget, and reloading them at every zone entry would spend that
+// on the orangepi's 64 MB in every zone whether or not it ever storms. Loading
+// on use costs nothing until a storm is visible and also covers mid-zone LRU
+// eviction, which a zone-entry reload would leave dark until the next zone.
+irr::video::ITexture* StormCloudLayer::reacquireFrame(int index) {
+    if (index < 0 || index >= static_cast<int>(cloudFrames_.size())) return nullptr;
+    irr::video::ITexture* tex = loadFrame(index);
+    // uploadTexture() may have evicted other frames (our listener nulled
+    // them); this one was not in the cache yet, so it cannot have been one.
+    cloudFrames_[index] = tex;
+    if (tex) {
+        LOG_DEBUG(MOD_GRAPHICS, "StormCloudLayer: re-acquired evicted frame {}", index);
+    }
+    return tex;
 }
 
 void StormCloudLayer::updateScrolling(float deltaTime, const glm::vec3& windDirection, float windStrength) {
@@ -376,6 +412,7 @@ void StormCloudLayer::updateBlendedTexture() {
     if (cloudFrames_.empty()) return;
 
     irr::video::ITexture* tex = cloudFrames_[currentFrame_];
+    if (!tex) tex = reacquireFrame(currentFrame_);  // T463 (B522): evicted
     if (!tex) return;
 
     if (constrainedCache_) {

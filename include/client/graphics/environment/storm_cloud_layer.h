@@ -190,6 +190,20 @@ private:
     void generateCloudTextures();
 
     /**
+     * T463 (board B522): load frame `index` ("storm_cloud_blend_<index>")
+     * through the constrained cache. Returns nullptr on failure; it is the
+     * caller that decides whether that is fatal (init) or not (re-acquire).
+     */
+    irr::video::ITexture* loadFrame(int index);
+
+    /**
+     * T463 (board B522): re-acquire a frame the cache evicted, at its point
+     * of use (updateBlendedTexture()). See the .cpp for why here and not in
+     * onZoneEnter(). Never call from onTextureEvicted() (cache mutex held).
+     */
+    irr::video::ITexture* reacquireFrame(int index);
+
+    /**
      * Update UV offset for scrolling animation.
      */
     void updateScrolling(float deltaTime, const glm::vec3& windDirection, float windStrength);

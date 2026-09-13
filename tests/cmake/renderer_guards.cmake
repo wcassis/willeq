@@ -77,6 +77,21 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_software_cursor_eviction DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# T463 (boards B522-B524): storm clouds, tumbleweeds and boids keep drawing a
+# live texture across zone-unload clear() and LRU pressure, plus the census
+# that makes every getOrLoad() site in the renderer declare a lifetime policy.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_environment_texture_eviction
+        test_environment_texture_eviction.cpp
+        test_texture_cache_holder_census.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_environment_texture_eviction PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_environment_texture_eviction GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_environment_texture_eviction PRIVATE
+        WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    GTEST_DISCOVER_TESTS(test_environment_texture_eviction DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T381 (board B160): the spell visual vocabulary -- resist type, casting
 # school and spell_affect_index -- reaches SpellVisualFX across the bridge by
 # value, so the six resist colours, the five school colours, the spray cast

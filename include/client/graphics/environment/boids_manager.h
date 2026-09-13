@@ -98,7 +98,16 @@ public:
     // so ConstrainedTextureCache::clearTextureReferences()'s scene walk can
     // never reach it; an eviction leaves a continuously-read dangling
     // pointer with no guard at all before this fix.
+    //
+    // T463 (board B524): the guard only ever made that a PLACEHOLDER atlas,
+    // for good, from the first zone unload on. loadCreatureAtlas() now
+    // protectTexture()s "creature_atlas", so clear() and the LRU no longer
+    // evict it and this swap does not fire for it; it stays as the net.
     void swapEvictedTexture(irr::video::ITexture* from, irr::video::ITexture* to);
+
+    // T463: the material render() binds every frame -- what a test must read
+    // to know what boids actually draw (tests/test_environment_texture_eviction.cpp).
+    const irr::video::SMaterial& getCreatureMaterial() const { return creatureMaterial_; }
 
 private:
     bool loadCreatureAtlas(const std::string& path);

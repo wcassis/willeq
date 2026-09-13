@@ -52,6 +52,17 @@ bool TumbleweedManager::init() {
         std::vector<char> data(fileSize);
         file.read(data.data(), fileSize);
 
+        // T463 (board B523): protected. The texture is baked ONCE into
+        // tumbleweedMesh_'s buffer material by createTumbleweedMesh(), and
+        // every node addMeshSceneNode() makes copies that material. Unprotected,
+        // clear() destroyed it at the first zone unload: when no tumbleweed was
+        // spawned at that moment no scene node held the mesh, so
+        // clearTextureReferences() could not reach the buffer material, and the
+        // next zone's first spawn drew freed memory (a use-after-free, proven
+        // by tests/test_environment_texture_eviction.cpp). There was no
+        // eviction listener and no reload. It is 64x64 (~22 KB of budget) and
+        // renderer-lifetime, so it is pinned rather than reloaded.
+        constrainedCache_->protectTexture("tumbleweed");
         tumbleweedTexture_ = constrainedCache_->getOrLoad("tumbleweed", data);
         if (!tumbleweedTexture_) tumbleweedTexture_ = constrainedCache_->uploadTexture("tumbleweed");
         if (!tumbleweedTexture_) {

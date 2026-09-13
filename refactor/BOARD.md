@@ -8797,27 +8797,38 @@ fine — the table fails on a stale entry, so it cannot rot.
     frame; x86 showed the same.
   - Post-fix P6: 864 writes, all 371.6–372.8.
   - This is not Will's jerk: keyboard runs never reach this publisher (B508).
-- **B522** (A, *unconfirmed*) **`StormCloudLayer::cloudFrames_` are nulled on
-  eviction and never reloaded.** `StormCloudLayer::onTextureEvicted` nulls the
-  `storm_cloud_blend_N` frames. `initialize()` is the only loader, run once
-  from the lazily-created `WeatherEffectsController`.
-  `updateBlendedTexture()` returns on a null frame. So storm clouds should stop
-  animating after the first zone unload. Confirm: T460's cursor test shape
-  (real cache, `clear()`, then assert `cloudFrames_` non-null), or a storm in
-  a second zone. Found by T460.
-- **B523** (A, *unconfirmed*) **`TumbleweedManager::tumbleweedTexture_` has no
-  eviction listener, no protection and no reload.** It is loaded once in
-  `init()` and baked into `tumbleweedMesh_`'s buffer material by
-  `createTumbleweedMesh()`. After `clear()` the member and that material may
-  hold a freed `ITexture*`. The scene-graph scrub in
-  `clearTextureReferences()` reaches the material only if a live node holds
-  the mesh at that moment. Confirm with an EDT_NULL test: `init()`, `clear()`,
-  then inspect the mesh buffer's texture. Found by T460.
-- **B524** (A, *unconfirmed*) **`BoidsManager`'s `creature_atlas` degrades to
-  the placeholder after the first zone unload.** The T124 boids guard swaps it
-  to the placeholder, `loadCreatureAtlas()` runs only from `init()`, and
-  `onZoneEnter()` does not reload it. Confirm by rendering boids in a second
-  zone. Found by T460.
+- ~~**B522**~~ (A) CLOSED by T463. **`StormCloudLayer::cloudFrames_` were nulled
+  on eviction and never reloaded, so every storm after the first zone unload
+  showed a static placeholder dome.** Confirmed pre-fix by
+  `tests/test_environment_texture_eviction.cpp`: after `clear()` (both unloads)
+  and under LRU pressure, every one of 32 storm steps drew the placeholder,
+  and one texture was seen where a cycle shows 32. Fixed by re-acquiring an
+  evicted frame at its point of use (`StormCloudLayer::reacquireFrame()` from
+  `updateBlendedTexture()`), not by protection (~11 MB) and not in
+  `onZoneEnter()` (it would spend that budget in every zone); see
+  `refactor/T463_evicted_texture_no_reload.md`.
+- ~~**B523**~~ (A) CLOSED by T463. **`TumbleweedManager`'s texture was a
+  USE-AFTER-FREE after the first zone unload**, not just a missing texture.
+  No listener, no protection, no reload; the texture is baked once into
+  `tumbleweedMesh_`'s buffer material. Confirmed pre-fix on EDT_NULL: with no
+  tumbleweed spawned when `clear()` ran, the mesh buffer AND the next zone's
+  first spawned node both held a pointer the driver no longer listed (freed),
+  and still did after a second unload. Under LRU pressure the live node went to
+  the placeholder. Fixed by `protectTexture("tumbleweed")` in `init()`: it is
+  64x64 and renderer-lifetime.
+- ~~**B524**~~ (A) CLOSED by T463. **`BoidsManager`'s `creature_atlas` degraded to
+  the placeholder after the first zone unload, for good.** Confirmed pre-fix:
+  `creatureMaterial_` (what `render()` binds) held the placeholder after each
+  of two `clear()`s and under LRU pressure. Fixed by
+  `protectTexture("creature_atlas")` in `loadCreatureAtlas()` (64x64,
+  renderer-lifetime); the T124 swap guard stays as the net.
+
+  **The class is closed by a census**, not by these three fixes alone:
+  `TextureCacheHolderCensus` (`tests/test_texture_cache_holder_census.cpp`)
+  makes every `getOrLoad()` call site under `src/client/graphics` and
+  `include/client/graphics` declare a lifetime policy (Protected /
+  ListenerReload / ZoneScoped / NotOnGles2) and checks the marker each policy
+  stands on. A new site, or a changed call count, fails until it declares one.
 - **B525** (A, *lead*, for T459) **Two camera-heading writers remain possible
   while moving.** T460 found no client-side per-tick echo:
   `OnGraphicsMovement` publishes no `PlayerMoved`, and `UpdateMovement`
@@ -8835,6 +8846,25 @@ fine — the table fails on a stale entry, so it cannot rot.
     integrates input.
 
   Found by T460.
+
+---
+
+## Added 2026-09-13 by T463 (evicted environment textures)
+
+- **B550** (A, *lead*) **The lazy `TumbleweedManager` creation never gives it the
+  texture cache, and `init()` exits the process without one.**
+  `OverlaysComponent::applyEnvironmentalDisplaySettings()`
+  (`overlays_hud_env.cpp`, "Tumbleweed Manager: lazy create if toggled on")
+  constructs the manager and calls `init()` with no
+  `setConstrainedTextureCache()`. Its two siblings in the same function (boids,
+  detail) do pass the cache. `TumbleweedManager::init()` then logs
+  `Constrained texture cache not set` at FATAL and `std::exit(1)`s. The
+  function runs from Step11 of every zone load. It reaches this branch only
+  when `rollingObjects` was false at renderer init and true at a later zone
+  load; renderer init creates the manager with the cache whenever the setting
+  is already on. Unmeasured: whether anything changes that setting between
+  zones in a shipped build. The fix is one statement, but it is outside T463's
+  territory (`overlays/`). Found by T463.
 
 ---
 

@@ -221,6 +221,15 @@ bool BoidsManager::loadCreatureAtlas(const std::string& path) {
     std::vector<char> data(fileSize);
     if (!file.read(data.data(), fileSize)) return false;
 
+    // T463 (board B524): protected, like the UI atlas and the DRM cursor.
+    // The atlas is loaded ONCE (this manager is a renderer-lifetime singleton)
+    // and drawn in every zone, but it used to be an ordinary cache entry, so
+    // the first zone unload's clear() -- or an LRU eviction -- destroyed it,
+    // the T124 guard swapped creatureMaterial_ to the placeholder, and nothing
+    // ever loaded it again. It is 64x64 (~22 KB of budget), so pinning it is
+    // cheaper than a reload path. The guard stays registered as the
+    // use-after-free net.
+    constrainedCache_->protectTexture("creature_atlas");
     atlasTexture_ = constrainedCache_->getOrLoad("creature_atlas", data);
     if (!atlasTexture_) atlasTexture_ = constrainedCache_->uploadTexture("creature_atlas");
     return atlasTexture_ != nullptr;
