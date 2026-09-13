@@ -8875,7 +8875,17 @@ Will's recipe: `--drm --renderer gles2 --constrained orangepi -r 800 600`, no
 `--eqe1-path`, Testcaster in nro. Input was injected through `/dev/uinput`,
 because the Pi had no keyboard or mouse attached (B510).
 
-- **B505** (A) **The static chat panel re-formats and word-wraps its WHOLE
+- ~~**B505**~~ (A) CLOSED by T462 (`592b2302`). `renderChatPanel()` now draws
+  from `ChatWrapCache` (`chat_wrap_cache.h`), which wraps only messages that
+  arrived since the last frame (keyed by `ChatMessageBuffer::appendedCount()`)
+  and rebuilds on a width, timestamp or clear() change. Pinned by
+  `TheChatWrapRunsOncePerNewMessageNotOncePerFrame` (was 2,000 wraps for ten
+  frames over 200 messages, now 200) and by a line-for-line comparison against
+  a verbatim copy of the old loop. Pi, 1280x720, 600 chat lines over five
+  minutes standing: Static UI 19.1-21.8 ms at 30.0 fps (before) -> 1.06-1.10 ms
+  at 60.0 fps (after), `review/T462/pi/raw/{B2r,A2}_*`. The live buffer is 500
+  messages, not 1,000. Original entry:
+  **The static chat panel re-formats and word-wraps its WHOLE
   buffer every frame, so the static-UI cost grows with session length.**
   `renderChatPanel()` (`static_panels.cpp`) calls
   `formatMessageForDisplay()` on all `ChatMessageBuffer` messages (cap 1000)
@@ -8885,7 +8895,20 @@ because the Pi had no keyboard or mouse attached (B510).
   22.0 ms over 5 minutes of guard-fight chat spam. Scene draw held at
   4–7 ms, so static UI was 69% of the frame. Fix belongs in a follow-up unit:
   wrap on insert or on width change, not per frame.
-- **B506** (A) **Opening the inventory costs +6–7 ms of static UI per frame on
+- ~~**B506**~~ (A) CLOSED by T462 (`592b2302`, `96590c78`). The account found
+  the Pi runs the FALLBACK UI path (no atlas, board B540): every rectangle an
+  immediate `draw2DRectangle()` and every text entry one `CGUIFont::draw()`;
+  instrumented pre-fix at 1280x720, Static UI 17.9 / 26.0 ms closed/open, of
+  which text flush 8.2 / 11.8 ms. Now both paths queue and flush runs of
+  same-state quads as at most two draws (`UiQuadBatch`), and the text flush
+  lays every plain entry's glyphs into the same runs. Pinned red-then-green by
+  `tests/test_static_ui_frame_cost.cpp`, including exact pixel identity with the
+  per-command, per-entry flush on the atlas and the fallback path. Pi, Will's
+  flags, 1280x720, 3 closed/open cycles: before 30.0 fps in both states with
+  Static UI 7.8 / 14.6 ms; after **60.0 fps in both states, Static UI 1.34 /
+  2.46 ms** (text 2 draws, quads 15 / 38 draws), `review/T462/pi/raw/{B1rr,X1,A1}_*`.
+  No render-target cache was needed. Original entry:
+  **Opening the inventory costs +6–7 ms of static UI per frame on
   the Pi, and vblank quantisation turns that into Will's "halving".** Standing
   still, 15–20 s windows interleaved closed/open, wall-clock fps:
   - P2 (Will's binary): 48.4 closed → 37.9 open, static UI 11.1 → 17.0 ms.
@@ -8924,6 +8947,11 @@ because the Pi had no keyboard or mouse attached (B510).
   the Pi:** the x86 `build-gles2` `/move` along the same path hit the same
   `ceiling at -172.0` near (2617,−183) for 42 frames. It is a latched state,
   not a frame-to-frame alternation. Camera territory (T461).
+  **T462 addendum (1280x720, Will's resolution):** reproduced on the Pi with
+  the fable-tip binary. `review/T462/pi/raw/C1_before_camera_trace_1280`,
+  both keyboard forward runs from Testcaster's nro pose: horizontal follow
+  distance constant at 20.0, height over the player 10.0 then 3.0 with
+  exactly one change per run (`camera_runs.txt`), the same latch.
 - **B508** (A, *unconfirmed*; **narrowed by T464**) **Will's "Follow camera jerks rapidly between
   two perspectives while running forward" is NOT reproduced by injected
   keyboard forward runs.** T464 found and removed a two-state mechanism in the
@@ -8946,6 +8974,25 @@ because the Pi had no keyboard or mouse attached (B510).
   127° → −126°, on the Pi and on x86). T460's B525 (a) is measured by T459's
   post-fix run. Confirm with Will's own terrain and input, or a run where
   B525 (b) applies.
+
+  **T462 addendum (1280x720, Will's resolution): still NOT reproduced.** The
+  coordinator named resolution, and the lower frame rate it brings, as the new
+  variable. Fable-tip binary (`review/T462/pi/bin_before/willeq`), Will's
+  flags at `-r 1280 720`, Testcaster in nro, keyboard only (uinput W, D),
+  Follow camera, `--log-module=CAMERA:TRACE`. Analysed by
+  `review/T462/scripts/analyze_camera_runs.py` (camera and player put in the
+  same axis frame first):
+  - C1 (no dumps): run 1, 445 frames, frame dt 27.0 ± 6.8 ms (max 51);
+    run 2, 562 frames, 21.4 ± 4.3 ms. Player step 1.31 / 1.04 per frame, zero
+    zero-steps and zero backward steps. Follow distance 20.0 ± 0.01 throughout,
+    zero yaw jumps over 8°, zero camera-offset A-B-A alternations. The only
+    discontinuity is B507's 10 → 3 height latch, once per run.
+  - C2 (frame dump every frame, 60 frames over a measured 56 s --
+    `review/T462/pi/T462_pi_C2_before_follow_forward_1280x720_capture.mp4`
+    and its `.txt`; capture fps is not performance): 19 and 21 traced frames
+    in the two runs, height constant 10.0, distance 20.0, zero jumps.
+  The live candidates are unchanged from T459: B507 on Will's terrain, and
+  B525 (b).
 - **B509** (A, *unconfirmed*) **"Spell gem bar missing the whole session" is
   not reproduced in the rendered buffer.** On the Pi, DRM matched
   `800x600@60Hz` and GBM created an 800x600 surface. Dumped frames (P1, P4)
@@ -8955,6 +9002,25 @@ because the Pi had no keyboard or mouse attached (B510).
   candidate: the physical display overscanning away the rightmost ~36 px,
   since the column sits 4 px from the edge. Readback cannot see that. Confirm
   by Will looking at the right edge of the physical screen.
+
+  **T462 addendum (1280x720, Will's resolution; Will reports no overscan):
+  the gem column is in the rendered buffer at 1280x720 too.** Fable-tip
+  binary, Will's flags at `-r 1280 720`: the log reads `DRM: Found matching
+  mode 1280x720@60Hz for requested 1280x720` and `GBM: Surface created
+  1280x720 XRGB8888`. `UILayout::computeLayout(1280, 720)` -- the inline
+  function `renderer_init.cpp` calls with the configured size -- puts
+  `spellGems` at (1244,388)-(1276,672), gem 1 at (1244,388)-(1276,420) and
+  gem 8 at (1244,640)-(1276,672)
+  (`review/T462/ui_layout_rects_800x600_1280x720.txt`, printed from the same
+  header). The in-world dump
+  `review/T462/pi/gems/in_world_fullframe_1280x720_before_C2_frame30.png` and
+  its 4x crop of x 1180-1280, y 370-690 show eight slot boxes in that column,
+  the first labelled "Mino"/A1 and the rest A2-A8 (a description of the file,
+  not a visual judgement). With no overscan and the buffer holding the column,
+  what remains is something between the buffer and the panel: a scan-out
+  crop/scaling of the 1280x720 mode by that display, or a session state that
+  neither T459 nor T462 reproduced. The next discriminating capture is a photo
+  of the physical screen next to a buffer dump of the same frame.
 - **B510** (P) **Pi live input recipe: `/dev/uinput`.** The Pi normally has no
   USB keyboard or mouse attached. `review/T459/scripts/uinput_inject.py`
   (run with sudo) creates a keyboard (has `KEY_A`) and a mouse (has `REL_X`)
@@ -9163,3 +9229,37 @@ because the Pi had no keyboard or mouse attached (B510).
   would let the test call the production code and document the EQ Z-up frame
   at its source -- the frame B507 got wrong. Not done by T464: `zone_load/` was
   outside its territory. Found by T464.
+
+---
+
+## Added 2026-09-13 by T462 (static UI per-frame cost)
+
+Evidence for every entry is under `review/T462/` (README there).
+
+- **B540** (C) **Will's Orange Pi recipe runs the whole static UI on
+  `UIRenderer`'s placeholder FALLBACK path: no UI atlas art and no item
+  icons.** `renderer_init.cpp` opens `willeq.eqe1` and loads `UIAtlas` (and
+  with it T430's item icon sheets) only when `--eqe1-path` is set, and the
+  recipe in `review/pi/README.md` (`--drm --renderer gles2 --constrained
+  orangepi -r ...`) sets none. Measured: neither T462 Pi log of the fable-tip
+  binary (`B1rr`, `X1`) contains `UIAtlas: loaded`, and the instrumented
+  pre-fix binary reports 0 commands reaching `UIRenderer::endFrame()` every
+  frame -- the fallback draws immediate `draw2DRectangle()`s instead. So the
+  UI Will judges on the Pi is dark placeholder boxes with text abbreviations,
+  not the oracle art the x86 captures and the visual gate show. Whether the Pi
+  recipe should pass `--eqe1-path` (and pay for the pack under the orangepi
+  budgets, `docs/decisions.md` EQE1 all-or-nothing) is Will's call. T462 made
+  both paths cheap; it did not change which one runs.
+- **B541** (P) **Two Pi-rig traps, each of which silently wastes a run.**
+  (1) A binary copied OUT of a checkout (e.g. `review/<UNIT>/pi/bin_before/`)
+  has no `config/`/`data/` tree within three parents, so `ResolveDataPath()`
+  finds nothing and the client exits at startup with `Required files missing:
+  config/constrained_presets.json, data/item_models.json` -- while the uinput
+  injector sits out its 240 s trigger deadline. Set `WILLEQ_DATA_ROOT` to the
+  checkout (`review/T462/scripts/run_pi.sh` does). (2) Without
+  `--log-level=INFO` the client logs nothing at INFO, so neither the injector's
+  trigger (`Graphics loading complete. Game ready!`) nor `FRAME TIMING
+  BREAKDOWN` ever appears: the run plays no input and yields no data. T462
+  lost four of its twelve Pi invocations to these two. Also: `pkill -f
+  <pattern>` over ssh matches its own remote command line and kills the ssh
+  session (exit 255); use `pkill -x willeq` and a `[u]input` bracket pattern.
