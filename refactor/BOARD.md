@@ -9107,6 +9107,18 @@ because the Pi had no keyboard or mouse attached (B510).
   camera's; what `Camera1-Zoom=90` and `Camera1-Change=1` mean; which camera a
   character logs in with. Method: `/camera set` A/B search against oracle stills
   per `match-the-oracle-dont-infer-it`. Found by T461.
+  **Narrowed by T466 (2026-09-13)** -- settled on the oracle: the login camera is
+  **First Person** (untouched login frame 0.232 vs First Person, >= 0.897 vs
+  the rest); User 1/2 and Tether are **world-anchored**, First Person / Overhead
+  / Chase heading-relative (B580); the official FOV is the **same in every
+  camera** (Chase vs First Person scale 1.00), which fable now uses;
+  **Overhead measured** (pitch 83, dist 45, height 3 -- `kOverheadRig`); the
+  Chase pose measured as a rig (az 0, pitch 6, dist 4.0, height 7.0, edge 0.738,
+  bracketed) but NOT applied, because fable's Chase is
+  `CameraController::setFollowPosition()` (eye 6 + 4, 20 behind, look-ahead),
+  not a rig; the ini keys are not read at launch (B585). **Still owed:** the
+  Tether and User 1/2 geometry (coarse sweeps did not converge, and the rig
+  cannot express a world azimuth -- B580), the Camera1-* units, the zoom steps.
 
 - **B531** (C -> ORACLE-OWED, T461 Leg B) **The official camera KEYS are not in
   any client file.** `eqgame.exe` names the actions (`TOGGLECAM`, `ZOOMIN`,
@@ -9123,6 +9135,23 @@ because the Pi had no keyboard or mouse attached (B510).
   screenshot Options > Keys > **Camera** (`EQUI_OptionsWindow.xml`
   `OKP_KeyboardFilterCombobox` lists a Camera category), T377's method. Found
   by T461.
+  **Narrowed by T466 (2026-09-13)** -- the oracle's Options > Keys > Camera page
+  (`review/T466/oracle/T466_oracle_options_keys_Camera_page1_root_1024x768.png`):
+  **Toggle camera view = F9** (fable's binding is correct), Zoom in NPAD7 /
+  INSERT, Zoom out NPAD1 / DELETE, Raise Alt NPAD8 / Alt UP, Lower Alt NPAD2 /
+  Alt DOWN, Tether-slide right Alt NPAD6 / Alt RIGHT, left Alt NPAD4 / Alt LEFT,
+  Pitch up Alt NPAD9 / Alt PGUP, down Alt NPAD3 / Alt PGDOWN, the six direct
+  cameras unbound; no Center-camera row on that page (Center view is NPAD5 /
+  HOME under Movement). **Cycle order measured** (each direct camera + F9 scored
+  against all six): First Person -> Overhead -> Chase -> User 1 -> User 2 ->
+  Tether -> First Person, fable's order. No F9 message is printed (chat and a 2 fps
+  OCR of the whole screen). **fable's orbit/pitch actions were NOT bound**:
+  under the rig only Pitch up changed User 1 (tether-slide, raise and zoom
+  scored at re-grab noise), and the official Pitch up tilts the view UP, the
+  opposite of fable's `CameraPitchUp` (+pitch raises the camera and looks down),
+  so binding Alt+PgUp to it would ship a mirrored key. Alt+Left/Right and
+  Alt+PgUp/PgDn collide with no fable binding (both lookups match modifiers
+  exactly). Still owed: the tether-slide / raise / zoom effect and step.
 
 - ~~**B532**~~ (A) **CLOSED by T464 (2026-09-13)** -- confirmed from code with a
   red test, not live. Both loaders now call
@@ -9240,6 +9269,10 @@ because the Pi had no keyboard or mouse attached (B510).
   matches nothing). Settle with the official keymap: Options > Keys (T461
   Leg B / T377's screenshot method) for "Toggle all UI" and "Music volume up".
   Found by T461 (B535), boarded by T464.
+  **Settled by T466 (2026-09-13), fix owed as B582:** the oracle's UI category
+  lists **F10 = Toggle UI Display** and **F11 = Toggle netstat**; no volume key
+  appears on the Camera, UI or Commands pages. So neither of fable's F11 meanings
+  is the official one. Re-classed to the decision in B582.
 
 - **B562** (B) **The shipped `config/hotkeys.json` binds eight actions the
   compiled-in defaults do not**: `CancelDialog`, `CancelInput`,
@@ -9570,3 +9603,74 @@ B623–B629 unused.
   measuring what the official client does with a post-BeginCast
   `keepcasting 0` (does it end the cast bar at once?) before changing the
   rule; the path needs a client/server recast desync to reach. Found by T469.
+
+---
+
+## Added 2026-09-13 by T466 (T461 Leg B: the official cameras, keys and held items on the oracle)
+
+Evidence for every entry below is in `review/T466/` (README names each file).
+
+- **B580** (A) **The official User Defined 1/2 and Tether cameras are anchored
+  to the WORLD, not to the player's heading; fable's rig is heading-relative.**
+  Measured: the oracle character `#goto`'d from heading 160 to 288 (+90 deg) and
+  each camera ENTERED after the turn. Edge score h160 vs h288: First Person
+  0.837, Overhead 0.689, Chase 0.680 (turned with the player); User 1 0.084,
+  User 2 0.120, Tether 0.193 (same as a re-grab, 0.03-0.11). fable's
+  `computeCameraRigPose()` adds the player heading to the azimuth, so a fable
+  user camera swings with the player where the official one holds its world
+  direction. A fitted fable azimuth is therefore valid only at the heading it
+  was fitted at (h160). Fix shape: a world-azimuth rig for User1/User2/Tether
+  (the rig struct, `computeCameraRigPose`, and `/camera` help). Found by T466.
+
+- **B581** (A) **`/camera chase` from a rig camera leaves the camera at the rig's
+  pose.** fable baseline session: after `/camera overhead` then `/camera chase`,
+  `/camera get` prints `mode="Chase Camera"` with `node camPos=(438.471,-99.279,
+  78.175)` -- the Overhead node pose, byte for byte
+  (`review/T466/fable/sessions/baseline_h160/camera_replies.txt`).
+  `PlayerCameraComponent::setCameraMode()` places first person and rig modes on
+  entry, but Chase only moves when `setFollowPosition()` next runs (a player
+  move). A stationary player switching to Chase sees the previous camera.
+  Found by T466.
+
+- **B582** (C) **fable's F10/F11 and L do not mean what the official keys mean.**
+  Measured on the oracle's Options > Keys (UI category): **F10 = Toggle UI
+  Display, F11 = Toggle netstat, L = Toggle Leadership Window, Alt+C = Toggle
+  Combat Ability Window** (fable's Alt+C matches). fable binds F11 =
+  `ToggleAllUI` (and `MusicVolumeUp`, B561), F10 = `MusicVolumeDown`,
+  Shift+F10/F11 = effects volume, L = `CycleObjectLights`. No volume action was
+  found on the Camera, UI or Commands pages (the Commands list ends at "Close
+  Inventory Bags"). Settles B561's question: the official toggle-UI key is F10,
+  and F11 is netstat. Rebinding non-camera keys was outside T466's territory.
+  Found by T466.
+
+- **B583** (P) **The eq-oracle Wine client pointed at the dead eqemu address.**
+  `~/eq-oracle/client/eqhost.txt` and `client2/eqhost.txt` still said
+  `10.0.30.23:5998` after the 2026-09-12 VM move; the login failed with "A
+  connection to the server could not be reached". T466 repointed both at
+  `172.16.200.99:5998` (backups in `review/T466/data/`). Any other copy made
+  from the old install needs the same edit. Found by T466.
+
+- **B584** (P) **A "training dummy" NPC stands exactly on the canonical camera
+  spot.** `#loc` on "a training dummy (189)" in qeynos2: XYZ `-74.00, 428.00,
+  3.10`, heading 160 -- the pose T310/T361/T377/T401/T405/T422/T426/T428/T431
+  and T466 measure at. It is not in `spawn2` (a runtime spawn, likely the "zone
+  controller" NPC beside it) and it covers the player in every third-person
+  frame. Same class as B467's corpse. Found by T466.
+
+- **B585** (P) **The official client does not read the `[Options]`
+  `Camera1-*`/`Camera2-*` keys at launch and does not persist camera changes.**
+  Measured twice: (1) User 1 moved by Pitch-up x10 and the other adjustment keys,
+  then a clean exit (Quit -> Logout -> Exit -> Yes): no Camera key changed in
+  `eqclient.ini`. (2) `Camera1-Heading` 0->90 and `Camera2-DirHeading` 277->0
+  written before a relaunch: the client rewrote both back to 0/277 during login
+  (mtime 22:15:07, before entering world) and the User 1/2 frames scored 0.094 /
+  0.136 against the default-ini frames (re-grab noise). So those keys cannot be
+  used to learn the units of DirHeading/Pitch/Height/Zoom; they are the client's
+  own write-out. Found by T466.
+
+- **B586** (A, *owed*) **The held-item attack animation was not captured on the
+  oracle.** Set A (Short Sword primary, Gloomingdeep Lantern secondary) was
+  captured idle from four cameras, but auto-attack at 8 units behind the
+  training dummy produced no swing in 40 stepped frames. Owed: an attack capture
+  (closer, or a target that is certainly in melee range and in front) for all
+  five items. Found by T466.

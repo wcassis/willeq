@@ -707,3 +707,31 @@ TEST(FirstPersonCameraFormula, FirstPersonClipsNoDifferentlyFromThirdPerson) {
     // world's plane like every other mode.
     EXPECT_FLOAT_EQ(EQT::Graphics::kWorldNearPlaneUnits, 1.0f);
 }
+
+TEST(FirstPersonCameraSingleFormula, EveryCameraModeUsesTheOneMeasuredFov) {
+    // T466: the official client's Chase frame matches its First Person frame at
+    // scale 1.00 on the far scene (review/T466/logs/
+    // oracle_chase_vs_firstperson_fov_scale.tsv), so the measured 62.8 degree
+    // horizontal FOV is the FOV of every camera. Before T466 third person used
+    // Irrlicht's default 72 degrees VERTICAL (kWorldVerticalFovRadians), which
+    // made every rig fit against the oracle wrong in a way no rig value could
+    // absorb. Pin the body: the projection helper sets the FOV from
+    // firstPersonVerticalFovRadians() with no mode conditional, and does not
+    // name the old constant.
+    const std::string src = readFile(kHelperTUPath);
+    const auto start = src.find("void PlayerCameraComponent::applyCameraProjectionForMode()");
+    ASSERT_NE(start, std::string::npos) << "applyCameraProjectionForMode() not found in " << kHelperTUPath;
+    const auto end = src.find("\n}\n", start);
+    ASSERT_NE(end, std::string::npos);
+    std::string code;
+    for (const auto& line : splitLines(src.substr(start, end - start))) code += stripLineComment(line) + "\n";
+
+    const auto setFov = code.find("setFOV(");
+    ASSERT_NE(setFov, std::string::npos) << "the projection helper no longer sets the FOV";
+    const auto close = code.find(';', setFov);
+    const std::string call = code.substr(setFov, close - setFov);
+    EXPECT_NE(call.find("firstPersonVerticalFovRadians("), std::string::npos) << call;
+    EXPECT_EQ(call.find('?'), std::string::npos) << "the FOV is mode-conditional again: " << call;
+    EXPECT_EQ(code.find("kWorldVerticalFovRadians"), std::string::npos)
+        << "third person is back on Irrlicht's default FOV";
+}

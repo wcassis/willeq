@@ -133,14 +133,19 @@ void PlayerCameraComponent::applyCameraProjectionForMode() {
     // point-blank range -- so first person must clip exactly as third person
     // does. The near-plane hiding that briefly lived here is refuted and gone.
     // T309: neither is the clamp the hiding mechanism -- the measured DRAW
-    // RULE is (EntityRenderer::updateFirstPersonBodyDrawRule()). Only the FOV
-    // is mode-specific here, so third person stays byte-for-byte what it was
-    // and the visual gate's goldens hold.
+    // RULE is (EntityRenderer::updateFirstPersonBodyDrawRule()).
     // T310 Leg A: the RUNTIME near plane, == kWorldNearPlaneUnits unless
     // /fpcam or --fpcam overrode it. Still applied in EVERY mode.
     ctx_.camera->setNearValue(fpTunable(FpTunable::NearPlaneUnits));
-    ctx_.camera->setFOV(firstPerson ? firstPersonVerticalFovRadians(ctx_.camera->getAspectRatio())
-                                : kWorldVerticalFovRadians);
+    // T466: THE FOV IS THE SAME IN EVERY MODE. The official client's Chase
+    // camera frame matches its own First Person frame at scale 1.00 on the
+    // far scene (review/T466/logs/oracle_chase_vs_firstperson_fov_scale.tsv:
+    // edge 0.804 at s=1.00, >= 0.91 at s=0.95 and 1.05), so third person uses
+    // the measured 62.8 degree horizontal FOV too. Before T466 third person
+    // used Irrlicht's default (kWorldVerticalFovRadians, 72 degrees VERTICAL).
+    // The visual gate renders through gles2_zone_benchmark's own camera, which
+    // never reaches this function.
+    ctx_.camera->setFOV(firstPersonVerticalFovRadians(ctx_.camera->getAspectRatio()));
     if (firstPerson) {
         applyFirstPersonPitchClamp();
     } else {

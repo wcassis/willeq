@@ -418,9 +418,9 @@ private:
 
 	// L13: owned state, see the accessors above.
 	CameraMode cameraMode_ = kDefaultCameraMode;  // T461: Chase, the camera once called Follow
-	// T461: one rig per rig mode. User 1/2 are persisted; Overhead and Tether
-	// are PLACEHOLDERS until Leg B solves them against the oracle (B530).
-	CameraRig overheadRig_ = kOverheadPlaceholderRig;
+	// T461: one rig per rig mode. User 1/2 are persisted. T466 measured Overhead
+	// against the official client; Tether is still a placeholder (B530, B580).
+	CameraRig overheadRig_ = kOverheadRig;
 	CameraRig user1Rig_ = kUser1DefaultRig;
 	CameraRig user2Rig_ = kUser2DefaultRig;
 	CameraRig tetherRig_ = kTetherPlaceholderRig;

@@ -99,7 +99,7 @@ TEST_F(CameraModeWiringTest, TheOrbitActionsDoNothingOutsideAUserCamera) {
     }
     EXPECT_EQ(Rig(CameraMode::User1), kUser1DefaultRig);
     EXPECT_EQ(Rig(CameraMode::User2), kUser2DefaultRig);
-    EXPECT_EQ(Rig(CameraMode::Overhead), kOverheadPlaceholderRig);
+    EXPECT_EQ(Rig(CameraMode::Overhead), kOverheadRig);
     EXPECT_EQ(Rig(CameraMode::Tether), kTetherPlaceholderRig);
 }
 
@@ -130,7 +130,7 @@ TEST_F(CameraModeWiringTest, APlayerMoveLeavesEveryRigAlone) {
         renderer.PlayerCamera().updateRigCamera();
     }
     EXPECT_EQ(Rig(CameraMode::User1), user1);
-    EXPECT_EQ(Rig(CameraMode::Overhead), kOverheadPlaceholderRig);
+    EXPECT_EQ(Rig(CameraMode::Overhead), kOverheadRig);
     EXPECT_EQ(Rig(CameraMode::Tether), kTetherPlaceholderRig);
 }
 

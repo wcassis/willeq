@@ -229,6 +229,19 @@ TEST(CameraRigDefaults, UserCamerasQuoteTheOfficialIni) {
     EXPECT_FLOAT_EQ(kUser2DefaultRig.pitchDeg, 0.0f);
 }
 
+TEST(CameraRigDefaults, OverheadIsTheOracleFit) {
+    // T466: fitted against the official client's Overhead frame at qeynos2
+    // (-74, 428, 3.751) h160 -- minimum edge 0.774 at pitch 83, dist 45,
+    // height 3, bracketed on every axis (review/T466/fable/sessions/fit4_*).
+    // The old placeholder was pitch 70, dist 80; a revert to it is a red test.
+    EXPECT_FLOAT_EQ(kOverheadRig.azimuthDeg, 0.0f);
+    EXPECT_FLOAT_EQ(kOverheadRig.pitchDeg, 83.0f);
+    EXPECT_FLOAT_EQ(kOverheadRig.distance, 45.0f);
+    EXPECT_FLOAT_EQ(kOverheadRig.height, 3.0f);
+    CameraRig copy = kOverheadRig;
+    EXPECT_FALSE(clampCameraRig(copy)) << "the measured rig must sit inside the clamps";
+}
+
 // ---------------------------------------------------------------------------
 // `/camera` grammar
 // ---------------------------------------------------------------------------
