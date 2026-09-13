@@ -42,14 +42,7 @@ namespace EQ {
 
 class Strings {
 public:
-	static bool Contains(std::vector<std::string> container, const std::string& element);
-	static bool Contains(const std::string& subject, const std::string& search);
-	static int ToInt(const std::string &s, int fallback = 0);
-	static float ToFloat(const std::string &s, float fallback = 0.0f);
-	static bool IsNumber(const std::string &s);
-	static bool IsFloat(const std::string &s);
 	static const std::string ToLower(std::string s);
-	static const std::string ToUpper(std::string s);
 	static std::string &LTrim(std::string &str, std::string_view chars = "\t\n\v\f\r ");
 	static std::string &RTrim(std::string &str, std::string_view chars = "\t\n\v\f\r ");
 	static std::string &Trim(std::string &str, const std::string &chars = "\t\n\v\f\r ");
@@ -60,21 +53,10 @@ public:
 	static std::string Commify(int16 number) { return Strings::Commify(std::to_string(number)); };
 	static std::string Commify(int32 number) { return Strings::Commify(std::to_string(number)); };
 	static std::string Commify(int64 number) { return Strings::Commify(std::to_string(number)); };
-	static std::string ConvertToDigit(int n, const std::string& suffix);
-	static std::string Escape(const std::string &s);
-	static std::string Join(const std::vector<std::string> &ar, const std::string &delim);
-	static std::string Join(const std::vector<uint32_t> &ar, const std::string &delim);
-	static std::string NumberToWords(unsigned long long int n);
-	static std::string Repeat(std::string s, int n);
-	static std::string Replace(std::string subject, const std::string &search, const std::string &replace);
 	static std::string::size_type SearchDelim(const std::string &haystack, const std::string &needle, const char deliminator = ',');
-	static std::vector<std::string> Split(const std::string &s, const char delim = ',');
-	static std::vector<std::string> Split(const std::string& s, const std::string& delimiter);
 	static void FindReplace(std::string &string_subject, const std::string &search_string, const std::string &replace_string);
 	static inline bool EqualFold(const std::string &string_one, const std::string &string_two) { return strcasecmp(string_one.c_str(), string_two.c_str()) == 0; }
 	static std::string Random(size_t length);
-	static bool BeginsWith(const std::string& subject, const std::string& search);
-	static bool EndsWith(const std::string& subject, const std::string& search);
 
 	template<typename T>
 	static std::string
@@ -129,19 +111,6 @@ public:
 	}
 };
 
-
-// For converstion of numerics into English
-const std::string NUM_TO_ENGLISH_X[] = {
-	"", "One ", "Two ", "Three ", "Four ",
-	"Five ", "Six ", "Seven ", "Eight ", "Nine ", "Ten ", "Eleven ",
-	"Twelve ", "Thirteen ", "Fourteen ", "Fifteen ",
-	"Sixteen ", "Seventeen ", "Eighteen ", "Nineteen "
-};
-
-const std::string NUM_TO_ENGLISH_Y[] = {
-	"", "", "Twenty ", "Thirty ", "Forty ",
-	"Fifty ", "Sixty ", "Seventy ", "Eighty ", "Ninety "
-};
 
 // old c string functions
 const char *MakeLowerString(const char *source);

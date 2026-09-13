@@ -9369,3 +9369,115 @@ Evidence for every entry is under `review/T462/` (README there).
   `initLoadingScreen()`.
 
 B591–B599 unused.
+
+---
+
+## Added 2026-09-13 by T458 (tests-only callers)
+
+- **B600** (B, unreached) **The audio sound-category layer is never
+  constructed.** `CombatMusicManager` (`combat_music.cpp` IS in the client's
+  `AUDIO_SOURCES`) is named by no file outside its own header and `.cpp`;
+  `CreatureSounds`, `UISounds`, `PlayerSounds` and `WeatherAudio` are worse --
+  `creature_sounds.cpp`, `ui_sounds.cpp`, `player_sounds.cpp` and
+  `weather_audio.cpp` are in NO client target (`CMakeLists.txt`
+  `AUDIO_SOURCES`), so only their test binaries link them, and the two
+  production mentions (`sound_assets.h`, `zone_lifecycle_component.h`) are
+  comments. Their 23 tests-only rows looked "live-owner" in the census only
+  through name collisions (`getVolume`, `getSoundId`). Also here:
+  `DoorSounds`' four unused static lookups (the class itself is live) and
+  `AudioManager::preloadSound`. 28 rows in `check_zero_callers.py`'s
+  `EXEMPT_TESTS_GROUPS`. Wire or delete per class; `WaterSounds`, the one
+  that was pure residue, T458 deleted. Found by T458.
+
+- **B601** (B, unreached) **GameState module mutators with no production
+  writer.** `CombatState::updateTargetHP/updateTargetLevel`,
+  `GroupState::findMemberBySpawnId/setMemberInZone/updateMemberSpawnId`,
+  `InventoryState::setBagInfo/setCursorQueueSize/setEquipmentStats`,
+  `PetState::updatePetHP/updatePetMana`,
+  `PlayerState::loadFromProfile/setCurHP/setPositionAndHeading`,
+  `SpellState::addScribedSpell/clearGem/setMemorizing/updateMemorizeProgress`,
+  `WorldState::setZoneId/setZoning`, `GameState::resetForZoneChange` -- 20
+  rows, each called only from `tests/test_state_modules*.cpp` (and
+  `test_self_death_sequence.cpp` for `setZoneId`). Not measured here: whether
+  the fields they write are written live by another path, and whether a zone
+  change leaves stale module state without `resetForZoneChange()`.
+  `WriteOnlyFields` covers the first half. Found by T458.
+
+- **B602** (B, unreached) **EntityManager's query and mutation API with no
+  production caller.** `findEntityByExactName`, `findPetByOwner`,
+  `forEachEntity`, `forEachEntityMutable`, `getAllPets`,
+  `getEntitiesInRange`, `getNearestCorpse`, `getPetOwnerId`, `markAsCorpse`,
+  `updateEntityEquipment`, `updateEntityHP` -- 11 rows, all reached only from
+  `tests/test_state_modules.cpp`. T362 (B070) already made
+  `findEntityByName` the one name resolver; these are the rest of the
+  surface. Found by T458.
+
+- **B603** (B, unreached) **Gameplay-manager control API with no production
+  caller.** `CombatManager::EnableAutoLoot/GetHighestPriorityTarget/
+  SetAggroRadius/SetFleeThreshold/ToggleAutoFire`,
+  `SpellManager::beginCastById/setOnCastComplete/setOnSpellFade/swapGems`
+  (the two callbacks are INVOKED in `spell_manager.cpp` and
+  `spell_packet_handlers.cpp` but nothing registers them),
+  `BuffManager::clearEntityBuffs/removeBuff`,
+  `ActiveBuff::getTimeString/isAboutToExpire`,
+  `GroupComponent::DeclineGroupInvite`, `PlayerComponent::SetMoveSpeed`,
+  `InventoryManager::pickupMoney/pickupPartialStack/placeOnMatchingStack/
+  returnCursorMoney`, `HotbarModel::assignSlot/clearSlot`,
+  `ZoneLines::checkMovement`, `WhoAllEntry::isLinkdead`, the free
+  `calcBankBagSlotId` -- 24 rows. Found by T458.
+
+- **B604** (A, *unconfirmed live*) **The server's cast interrupt never reaches
+  `SpellManager::handleInterrupt()`.** The handler
+  (`src/client/spell/spell_packet_handlers.cpp:208`) resets the cast state and
+  fires `m_on_cast_complete(Interrupted)`, and its only callers are
+  `tests/test_spell_manager_timing.cpp`. `src/client/zone/zone_dispatch.cpp`
+  routes `HC_OP_InterruptCast` to a log line reading "Cast interrupted - spell
+  manager handles this via other packets". Whether some other packet really
+  does clear a server-interrupted cast (the cast bar, the gem cooldown) is NOT
+  measured -- it needs a live interrupted cast against the oracle. Until then
+  the handler is either a dead duplicate or the missing route. Found by T458.
+
+- **B605** (B, unreached) **Input, command and console API with no production
+  caller.** `CommandProcessor::setDefaultChannel/setEchoEnabled/
+  unregisterCommand`, `HotkeyManager::isMovementKey/modeNameToEnum`,
+  `HotkeyBinding::toString`, `ConsoleRenderer::setStatusUpdateInterval` (the
+  one tests-only method on a class the census sees no live use of), and
+  `focusTextEntry` -- 8 rows. The hotkey rows sit beside T466's territory
+  (`hotkey_manager.cpp`) and were not touched. Found by T458.
+
+- **B606** (B, unreached) **Renderer, asset and data API with no production
+  caller.** `IrrlichtRenderer::setNewUIEnabled`,
+  `EntityRenderer::loadEquipmentModels/loadGlobalCharacters` (not called even
+  by the zero-caller `loadGlobalAssets`, B494),
+  `ZoneLifecycleComponent::applyStoredZoneEnvironment` (its header already
+  calls it a superseded duplicate of `renderer_zone_load_env.cpp`'s apply path
+  "boarded for a measured wire-or-delete decision" -- but no board entry
+  existed; this is it), `RDPServer::setCertificate`,
+  `BackgroundWorkQueue::pollAll/setBatchHooks`,
+  `StringDatabase::loadDbStrFile/loadEqStrFile` (the legacy text loaders),
+  `WilleqDatabase::getLoginString`, and eight free helpers:
+  `reloadRaceMappings`, `LiftTravelSeconds`, `TargetTypeRestrictsCreature`,
+  `toString(SpellVisualSource)`, `parseFormattedMessageText`,
+  `optionsClipPlaneStep`, `optionsVolumeFraction`, `optionsVolumeStep` -- 18
+  rows. Found by T458.
+
+- **B607** (P) **The zero-caller census INVENTED dead functions through a
+  stream operator, and one of them was a T455 exemption.**
+  `check_zero_callers.py` scored `outFile << SerializeUiPreferences(p);` as a
+  DEFINITION, because `<`, `>` and spaces are all "type characters" to its
+  lead test -- the one direction T455 said the census must never get wrong.
+  It reported the live `SerializeUiPreferences` as tests-only, and it had
+  reported `getCreatureTypeName` (called at `flock_controller.cpp:530`,
+  `ss << getCreatureTypeName(...)`) as zero-caller, which T455 boarded under
+  B490. T458 fixed the rule (a WHITESPACE-BOUNDED `<<`/`>>` in the lead, or a
+  lead with no identifier at all, is a use) and struck the stale row. A first
+  cut that matched a bare `>>` hid four genuinely dead functions whose return
+  types close a nested template (`InventoryManager::getBankItems` ...) and was
+  caught only by re-measuring every bucket after the change -- do that after
+  any classifier edit. The same unit added the tests-only half of the ratchet
+  (`EXEMPT_TESTS_GROUPS`: 36 `seam`, 145 `observer`, 110 boarded as
+  B600-B606) and saw B503's cascade again: deleting 31 rows exposed five more
+  (`Strings::ConvertToDigit`, `Random::Real`, `Strings::IsNumber`, <!-- RETIRED-OK: T458's own tombstone for the cascade it deleted -->
+  `Strings::IsFloat`, and `EQ::ValueWithin`, which had looked live only
+  through `position.cpp`'s same-named local template). `observer` is a
+  class-level argument, not a per-row proof. Found by T458.

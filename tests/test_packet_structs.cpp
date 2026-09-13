@@ -120,38 +120,6 @@ TEST_F(PacketStructsTest, TintStruct_Union) {
     EXPECT_EQ(tint.UseTint, 0xFF);
 }
 
-// Test position bitfield helpers
-TEST_F(PacketStructsTest, PositionHelpers_ExtractCoord) {
-    // Test positive coordinate extraction
-    // Value 1000.0f * 8 = 8000 = 0x1F40 in 19-bit field shifted by 10
-    uint32_t field = 0x1F40 << 10;
-    float coord = EQT::Position::ExtractCoord(field, 10);
-    EXPECT_NEAR(coord, 1000.0f, 0.5f);
-}
-
-TEST_F(PacketStructsTest, PositionHelpers_ExtractNegativeCoord) {
-    // Test negative coordinate: -500.0f * 8 = -4000
-    // -4000 in 19-bit signed = 0x7F060 (sign extended from 19 bits)
-    int32_t raw = -4000;
-    uint32_t field = (static_cast<uint32_t>(raw) & 0x7FFFF) << 10;
-    float coord = EQT::Position::ExtractCoord(field, 10);
-    EXPECT_NEAR(coord, -500.0f, 0.5f);
-}
-
-TEST_F(PacketStructsTest, PositionHelpers_ExtractHeading) {
-    // Test heading extraction: 180 degrees = 2048 in 12-bit field
-    uint32_t field = 2048 << 13;
-    float heading = EQT::Position::ExtractHeading(field, 13);
-    EXPECT_NEAR(heading, 180.0f, 0.1f);
-}
-
-TEST_F(PacketStructsTest, PositionHelpers_ExtractAnimation) {
-    // Test animation extraction
-    uint32_t field = 100 << 19;
-    uint16_t anim = EQT::Position::ExtractAnimation(field, 19);
-    EXPECT_EQ(anim, 100);
-}
-
 // Test NewSpawn_Struct wraps Spawn_Struct
 TEST_F(PacketStructsTest, NewSpawnStruct_Size) {
     EXPECT_EQ(sizeof(EQT::NewSpawn_Struct), sizeof(EQT::Spawn_Struct));

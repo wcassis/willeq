@@ -19,13 +19,14 @@ Zone Audio:
 - `ZoneAudioManager` - Manages all zone emitters, handles day/night transitions
 
 Sound Categories:
-- `PlayerSounds` - Race/gender-specific player sounds (death, hit, jump, drown)
-- `CreatureSounds` - NPC race-based sounds (attack, damage, death, idle)
-- `DoorSounds` - Door type sounds (metal, stone, wood, secret, mechanisms)
-- `WeatherAudio` - Rain/wind loops, thunder, intensity-based volume
-- `WaterSounds` - Water entry/exit, swimming, underwater ambient
-- `UISounds` - Level up, UI interactions, notifications
-- `CombatMusic` - Combat stinger XMI files (damage1.xmi, damage2.xmi)
+- `DoorSounds` - Door type sounds (metal, stone, wood, secret, mechanisms); reached from `entities_component_world.cpp`
+- `WaterSoundIds` (`water_sounds.h`) - the water sound ids; only `WaterIn` is played (from `movement_state.cpp`)
+
+**Not wired (board B600, T458):** `PlayerSounds`, `CreatureSounds`, `UISounds`
+and `WeatherAudio` have `.cpp` files that are in NO client target (only their
+tests link them), and `CombatMusicManager` (`combat_music.cpp`) is compiled
+into the client but constructed nowhere. Their tests pin tables the client
+never consults; do not read them as describing what the client plays.
 
 Sound files are loaded from `snd*.pfs` archives and the `sounds/` directory in the EQ client.
 

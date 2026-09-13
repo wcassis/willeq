@@ -152,50 +152,6 @@ TEST(WeatherStructTest, StructLayout) {
 }
 
 // =============================================================================
-// WaterSounds Unit Tests
-// =============================================================================
-
-TEST(WaterSoundsTest, EntrySoundFile) {
-    EXPECT_STREQ(WaterSounds::getEntrySound(), "waterin.wav");
-}
-
-TEST(WaterSoundsTest, TreadSoundFiles) {
-    EXPECT_STREQ(WaterSounds::getTreadSound(0), "wattrd_1.wav");
-    EXPECT_STREQ(WaterSounds::getTreadSound(1), "wattrd_2.wav");
-
-    // Test wrapping
-    EXPECT_STREQ(WaterSounds::getTreadSound(2), "wattrd_1.wav");
-    EXPECT_STREQ(WaterSounds::getTreadSound(3), "wattrd_2.wav");
-    EXPECT_STREQ(WaterSounds::getTreadSound(100), "wattrd_1.wav");
-    EXPECT_STREQ(WaterSounds::getTreadSound(101), "wattrd_2.wav");
-}
-
-TEST(WaterSoundsTest, UnderwaterLoopFile) {
-    EXPECT_STREQ(WaterSounds::getUnderwaterLoop(), "watundlp.wav");
-}
-
-TEST(WaterSoundsTest, EntrySoundId) {
-    EXPECT_EQ(WaterSounds::getEntrySoundId(), 100);
-}
-
-TEST(WaterSoundsTest, TreadSoundIds) {
-    EXPECT_EQ(WaterSounds::getTreadSoundId(0), 101);
-    EXPECT_EQ(WaterSounds::getTreadSoundId(1), 102);
-
-    // Test wrapping
-    EXPECT_EQ(WaterSounds::getTreadSoundId(2), 101);
-    EXPECT_EQ(WaterSounds::getTreadSoundId(3), 102);
-}
-
-TEST(WaterSoundsTest, UnderwaterLoopId) {
-    EXPECT_EQ(WaterSounds::getUnderwaterLoopId(), 161);
-}
-
-TEST(WaterSoundsTest, TreadSoundCount) {
-    EXPECT_EQ(WaterSounds::getTreadSoundCount(), 2);
-}
-
-// =============================================================================
 // WaterSoundIds Namespace Tests
 // =============================================================================
 

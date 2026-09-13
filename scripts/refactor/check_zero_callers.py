@@ -62,9 +62,17 @@ Exclusion rules (by rule, never by hand -- T455 plan step 1):
   * out-of-line definitions (`Owner::name`) are not re-collected as
     declarations, and neither definitions nor re-declarations count as uses.
 
+The ratchet (--check) has two halves since T458: the zero bucket against
+EXEMPT, and the tests bucket against EXEMPT_TESTS (seam / observer / a
+boarded B6xx row -- see the comment above TESTS_CATEGORY_REASONS).  A row
+that changes bucket fails BOTH ways: NEW in the table it now belongs to and
+STALE in the one it left.  Deleting dead code exposes more (board B503): after
+each deletion round re-run --bucket all until it stops producing rows.
+
 Usage:
     python3 scripts/refactor/check_zero_callers.py [--repo ROOT]
-                [--bucket zero|tests|tools|all] [--json OUT] [--check]
+                [--bucket zero|tests|tools|all] [--json OUT]
+                [--check [--tests-only]]
 """
 
 import argparse
@@ -164,11 +172,21 @@ def last_word(s):
 
 
 # TYPEISH already rejects `(`, `=`, `.`, `-`, `!`, `?`, `#`, `"`, `{`, `;`,
-# so a lead that survives it is already type-shaped.  These are the two
+# so a lead that survives it is already type-shaped.  These are the
 # expression forms it still lets through: a LONE colon (a ternary arm, a
-# constructor initialiser list, a label, a range-for) and `&&`.
+# constructor initialiser list, a label, a range-for), `&&`, and a stream
+# or shift operator.  T458: `outFile << SerializeUiPreferences(p);`
+# (src/client/graphics/ui/ui_preferences.cpp) scored as a DEFINITION, because
+# `<`, `>` and spaces are all type characters, and so the census reported a
+# live function as reached only from tests.  The operator must be
+# WHITESPACE-BOUNDED: a bare `>>` also closes a nested template
+# (`std::vector<std::pair<int16_t, const ItemInstance*>> getBankItems(`), and
+# the first cut of this rule scored four such DEFINITIONS as uses, hiding four
+# genuinely dead functions (InventoryManager::getBankItems/getSharedBankItems/
+# getSellableItems, SkyLoader::getCelestialBodiesForSkyType).
 LONE_COLON = re.compile(r"(?<!:):(?!:)")
 BAD_IN_LEAD = ("&&",)
+STREAM_OP = re.compile(r"(?:^|\s)(?:<<|>>)(?:\s|$)")
 
 
 def classify_occurrence(code, start, end):
@@ -206,6 +224,13 @@ def classify_occurrence(code, start, end):
         if bad in lead:
             return False
     if LONE_COLON.search(lead):
+        return False
+    if STREAM_OP.search(lead):
+        return False
+    if not re.search(r"[A-Za-z_]", lead):
+        # A definition's lead always names a type.  A lead of punctuation
+        # only -- `    , foo(x)` continuing an argument list, `    * f(y)`
+        # continuing an expression -- is a call (T458).
         return False
     return TYPEISH.match(lead) is not None
 
@@ -383,6 +408,22 @@ BOARD_REASONS = {
         "BuffManager's database accessor, the chat buffer's recent-message "
         "API, the movement helpers and PerformEmote",
 }
+BOARD_REASONS.update({
+    "B600":
+        "the audio sound-category layer that is never constructed -- CombatMusicManager (in the client target, referenced by nothing outside its own two files), and CreatureSounds, UISounds, PlayerSounds and WeatherAudio (whose .cpp files are in no client target at all; only their tests link them) -- plus DoorSounds' unused static lookups and AudioManager::preloadSound",
+    "B601":
+        "GameState module mutators with no production writer -- the target/pet HP updaters, the group member updaters, three InventoryState setters, PlayerState::loadFromProfile/setCurHP/setPositionAndHeading, the SpellState memorize/scribe mutators, WorldState::setZoneId/setZoning and GameState::resetForZoneChange",
+    "B602":
+        "EntityManager's query and mutation API with no production caller -- exact-name, pet-owner, range and nearest-corpse lookups, the two forEach iterators, and the HP/equipment/corpse updaters",
+    "B603":
+        "gameplay-manager control API with no production caller -- CombatManager's auto-loot/aggro/flee/auto-fire configuration, SpellManager's cast-by-id, gem swap and two callback setters, BuffManager's removals and ActiveBuff's formatting, the group-decline, move-speed, cursor-stack and hotbar-slot mutators, ZoneLines::checkMovement, WhoAllEntry::isLinkdead and calcBankBagSlotId",
+    "B604":
+        "SpellManager::handleInterrupt -- the handler for the server's HC_OP_InterruptCast, which zone_dispatch.cpp routes to a log line instead; a possible live defect, not confirmed against the oracle",
+    "B605":
+        "input, command and console API with no production caller -- CommandProcessor's default-channel/echo setters and unregister, HotkeyManager's movement-key and mode-name helpers, HotkeyBinding::toString, ConsoleRenderer's status interval and focusTextEntry",
+    "B606":
+        "renderer, asset and data API with no production caller -- setNewUIEnabled, EntityRenderer's two global loaders (not called even by the zero-caller loadGlobalAssets), the superseded applyStoredZoneEnvironment, RDPServer::setCertificate, BackgroundWorkQueue's pollAll/batch hooks, StringDatabase's legacy text loaders, and eight free helpers (race reload, lift travel, body-type restriction, SpellVisualSource toString, formatted-message text parse, three options-slider conversions)",
+})
 
 # (owner, name) -> the board entry that owns it.  Same contract as
 # check_write_only_fields.py's EXEMPT: a zero-caller function NOT listed
@@ -393,7 +434,6 @@ BOARD_REASONS = {
 # and boarded the rest rather than wiring a feature mid-unit (the T39/B024
 # rule).
 EXEMPT_GROUPS = {
-    ("(free)", "getCreatureTypeName"): "B490",
     ("(free)", "resistToParticleColor"): "B490",
     ("BoidsManager", "getCurrentBiome"): "B490",
     ("BoidsManager", "getQuality"): "B490",
@@ -811,11 +851,340 @@ EXEMPT_GROUPS = {
     ("SpellData", "isInstantCast"): "B502",
 }
 
+EXEMPT_TESTS_GROUPS = {
+    ("(free)", "ComputeHelpCoverage"): "seam",
+    ("(free)", "ConsiderEqStrIds"): "seam",
+    ("(free)", "ItemDisplayEqStrIds"): "seam",
+    ("(free)", "SpellDisplayEqStrIds"): "seam",
+    ("(free)", "Test_GetLastComputedPositionUpdate"): "seam",
+    ("(free)", "Test_SnapToMovementTargetForSeam"): "seam",
+    ("EquipmentModelLoader", "debugInjectCachedMeshForTest"): "seam",
+    ("FrameComponent", "frustumDebugBoxCount"): "seam",
+    ("FrameComponent", "frustumDebugDraw"): "seam",
+    ("FrameComponent", "renderDebugOverlaysForTest"): "seam",
+    ("FrameComponent", "seedFrustumDebugBoxForTest"): "seam",
+    ("GmComponent", "Test_GetLastGMHideMe"): "seam",
+    ("GmComponent", "Test_GetLastGMSummon"): "seam",
+    ("LoginWorldComponent", "ReplayLoginPacket"): "seam",
+    ("LoginWorldComponent", "ReplayWorldPacket"): "seam",
+    ("OverlaysComponent", "mapOverlayTriangleCount"): "seam",
+    ("OverlaysComponent", "navmeshOverlayTriangleCount"): "seam",
+    ("OverlaysComponent", "seedMapOverlayTriangleForTest"): "seam",
+    ("OverlaysComponent", "seedNavmeshOverlayTriangleForTest"): "seam",
+    ("PacketSender", "ReplaySuppressedSendCount"): "seam",
+    ("PacketSender", "Test_SetBypassSendGuardForSeam"): "seam",
+    ("ParticleManager", "Test_SetUnifiedRendererInitializedForSeam"): "seam",
+    ("PlayerCameraComponent", "collisionDebugLineCount"): "seam",
+    ("PlayerCameraComponent", "seedCollisionDebugLineForTest"): "seam",
+    ("PlayerComponent", "Test_GetLastFaceChange"): "seam",
+    ("PlayerComponent", "Test_GetLastInspectAnswer"): "seam",
+    ("RaceModelLoader", "getChrCacheAccountingForTest"): "seam",
+    ("RaceModelLoader", "variantLoadTrace"): "seam",
+    ("RenderBarrier", "inRender"): "seam",
+    ("ZoneComponent", "Test_BeginGracefulZoneOutForSeam"): "seam",
+    ("ZoneComponent", "Test_DisconnectFromZoneForSeam"): "seam",
+    ("ZoneComponent", "Test_GetLastZoneChangeRequest"): "seam",
+    ("ZoneComponent", "Test_IsZoneOutAcknowledged"): "seam",
+    ("ZoneComponent", "Test_IsZoneOutHandshakePending"): "seam",
+    ("ZoneComponent", "Test_IsZoneToZoneInProgress"): "seam",
+    ("ZoneComponent", "Test_SetZoneToZoneInProgressForSeam"): "seam",
+    ("ActionDispatcher", "isReady"): "observer",
+    ("AudioManager", "getLoadedSoundCount"): "observer",
+    ("AudioManager", "getSoundBufferByName"): "observer",
+    ("AudioManager", "isLoopbackMode"): "observer",
+    ("BackgroundThreadPool", "getThreadCount"): "observer",
+    ("BackgroundThreadPool", "isShutdown"): "observer",
+    ("BackgroundWorkQueue", "getCompletedCount"): "observer",
+    ("BoidsManager", "getCreatureMaterial"): "observer",
+    ("BuffManager", "getPetBuffs"): "observer",
+    ("BuffManager", "getPetBuffsOwnerId"): "observer",
+    ("BuffManager", "getPlayerBuffCount"): "observer",
+    ("BuffManager", "hasEntityBuff"): "observer",
+    ("BuffManager", "hasPlayerBuff"): "observer",
+    ("CharacterModelView", "isReady"): "observer",
+    ("CombatManager", "GetLootSubState"): "observer",
+    ("CombatManager", "IsAutoLootEnabled"): "observer",
+    ("CombatManager", "IsAutoMovementEnabled"): "observer",
+    ("CombatManager", "IsFleeing"): "observer",
+    ("CombatManager", "IsLooting"): "observer",
+    ("CombatState", "combatTarget"): "observer",
+    ("CombatState", "isAutoAttacking"): "observer",
+    ("CombatState", "targetHPPercent"): "observer",
+    ("CombatState", "targetLevel"): "observer",
+    ("CommandProcessor", "getAllCommandNames"): "observer",
+    ("CommandProcessor", "getDefaultChannel"): "observer",
+    ("CommandProcessor", "hasCommand"): "observer",
+    ("CommandProcessor", "isEchoEnabled"): "observer",
+    ("CommandRegistry", "getAllCommandNames"): "observer",
+    ("DetailManager", "getViewDistanceChunks"): "observer",
+    ("DoorManager", "hasDoor"): "observer",
+    ("DoorStateManager", "hasDoor"): "observer",
+    ("EQE1TextureIndex", "archiveCount"): "observer",
+    ("EffLoader", "getEmitSounds"): "observer",
+    ("EffLoader", "getLoopSounds"): "observer",
+    ("EffLoader", "getMusicEntryCount"): "observer",
+    ("EntityRenderer", "isPlayerBodyWithheldFromRenderList"): "observer",
+    ("EntityRenderer", "skipTextureUpload"): "observer",
+    ("EnvironmentState", "isSnowing"): "observer",
+    ("FrameComponent", "hasCommandCompletionProvider"): "observer",
+    ("GuildComponent", "HasPendingGuildInvite"): "observer",
+    ("InventoryManager", "getCursorQueueSize"): "observer",
+    ("InventoryManager", "getCursorSourceSlot"): "observer",
+    ("InventoryState", "bankItemCount"): "observer",
+    ("InventoryState", "cursorQueueSize"): "observer",
+    ("InventoryState", "equipmentAC"): "observer",
+    ("InventoryState", "equippedCount"): "observer",
+    ("InventoryState", "freeBagSlots"): "observer",
+    ("InventoryState", "freeGeneralSlots"): "observer",
+    ("InventoryState", "hasBankItem"): "observer",
+    ("InventoryState", "hasGeneralItem"): "observer",
+    ("IrrlichtRenderer", "getPlayerZ"): "observer",
+    ("IrrlichtRenderer", "getUIRenderer"): "observer",
+    ("IrrlichtRenderer", "getVisionType"): "observer",
+    ("IrrlichtRenderer", "isDeferredAssetLoading"): "observer",
+    ("IrrlichtRenderer", "isNetworkReady"): "observer",
+    ("IrrlichtRenderer", "isNewUIEnabled"): "observer",
+    ("LoginWorldComponent", "GetAccountId"): "observer",
+    ("LoginWorldComponent", "GetCharacterSelectIndex"): "observer",
+    ("LoginWorldComponent", "GetCharacterSelectList"): "observer",
+    ("LoginWorldComponent", "GetChatConnectionType"): "observer",
+    ("LoginWorldComponent", "GetChatServerHost"): "observer",
+    ("LoginWorldComponent", "GetChatServerPort"): "observer",
+    ("LoginWorldComponent", "GetMailKey"): "observer",
+    ("LoginWorldComponent", "GetSessionKey"): "observer",
+    ("LoginWorldComponent", "GetWorldServers"): "observer",
+    ("LoginWorldComponent", "GuildNames"): "observer",
+    ("LoginWorldComponent", "HasSentEnterWorld"): "observer",
+    ("LoginWorldComponent", "IsWorldReady"): "observer",
+    ("MidiPlayer", "getActiveSoundFont"): "observer",
+    ("MidiPlayer", "getConfiguredMaxVoices"): "observer",
+    ("MidiPlayer", "getPreallocatedChannelCount"): "observer",
+    ("MidiPlayer", "getVolume"): "observer",
+    ("MidiPlayer", "isAudioThreadRunning"): "observer",
+    ("MusicPlayer", "getVolume"): "observer",
+    ("MusicPlayer", "isPaused"): "observer",
+    ("PetState", "petHPPercent"): "observer",
+    ("PetState", "petLevel"): "observer",
+    ("PetState", "petManaPercent"): "observer",
+    ("PetState", "petName"): "observer",
+    ("PlayerCameraComponent", "getBaseVision"): "observer",
+    ("PlayerCameraComponent", "playerPositionIsSeed"): "observer",
+    ("PlayerComponent", "HasPendingRezz"): "observer",
+    ("PlayerComponent", "IsDraggingCorpse"): "observer",
+    ("PlayerComponent", "IsInDuel"): "observer",
+    ("PlayerState", "hasMovementTarget"): "observer",
+    ("PlayerState", "totalBankCopperValue"): "observer",
+    ("PlayerState", "totalCopperValue"): "observer",
+    ("RDPServer", "getCertPath"): "observer",
+    ("RDPServer", "getKeyPath"): "observer",
+    ("RaidRoster", "CountInGroup"): "observer",
+    ("RaidRoster", "Find"): "observer",
+    ("RaidRoster", "Size"): "observer",
+    ("RainOverlay", "getIntensity"): "observer",
+    ("S3DLoader", "getCharacterCount"): "observer",
+    ("ScenarioRunner", "started"): "observer",
+    ("SfxManager", "getCacheMaxBytes"): "observer",
+    ("SfxManager", "getCachedSoundCount"): "observer",
+    ("SkillCapTable", "classCanEverHaveSkill"): "observer",
+    ("SkillCapTable", "entryCount"): "observer",
+    ("SkillManager", "getSkill"): "observer",
+    ("SkillManager", "getSkillCooldownRemaining"): "observer",
+    ("SkillManager", "getSkillCount"): "observer",
+    ("SkillManager", "getSkillMax"): "observer",
+    ("SkillManager", "isSkillOnCooldown"): "observer",
+    ("SnowOverlay", "getIntensity"): "observer",
+    ("SoundAssets", "forEach"): "observer",
+    ("SoundAssets", "getAllSoundIds"): "observer",
+    ("SoundAssets", "getFilename"): "observer",
+    ("SoundAssets", "getVolume"): "observer",
+    ("SoundAssets", "hasSound"): "observer",
+    ("SoundBuffer", "getDuration"): "observer",
+    ("SpellData", "getEffect"): "observer",
+    ("SpellData", "getEffectCount"): "observer",
+    ("SpellDatabase", "getCacheCapacity"): "observer",
+    ("SpellDatabase", "getMaxSpellId"): "observer",
+    ("SpellManager", "getCastProgress"): "observer",
+    ("SpellManager", "getCastTimeRemaining"): "observer",
+    ("SpellManager", "getCurrentSpellId"): "observer",
+    ("SpellManager", "getGemCooldownProgress"): "observer",
+    ("SpellManager", "getScribedSpells"): "observer",
+    ("SpellState", "castProgress"): "observer",
+    ("SpellState", "castTimeTotal"): "observer",
+    ("SpellState", "castingSpellId"): "observer",
+    ("SpellState", "getGemCooldownProgress"): "observer",
+    ("SpellState", "getGemSpellId"): "observer",
+    ("SpellState", "hasSpellMemorized"): "observer",
+    ("SpellState", "isGemReady"): "observer",
+    ("SpellState", "memorizingGemSlot"): "observer",
+    ("SpellState", "scribedSpellCount"): "observer",
+    ("StringDatabase", "isDbStrLoaded"): "observer",
+    ("StringDatabase", "isEqStrLoaded"): "observer",
+    ("TradeState", "pendingPartnerId"): "observer",
+    ("TradeState", "pendingPartnerName"): "observer",
+    ("TradeskillPanelState", "maxRecipeScroll"): "observer",
+    ("WeatherEffectsController", "isSnowing"): "observer",
+    ("WldLoader", "getBoneOrientations"): "observer",
+    ("WldLoader", "getTotalRegionCount"): "observer",
+    ("WldLoader", "hasCharacterData"): "observer",
+    ("WldLoader", "hasGlobalAmbientLight"): "observer",
+    ("WorldState", "isZoneLoading"): "observer",
+    ("WorldState", "isZoning"): "observer",
+    ("ZoneAudioManager", "getCurrentZone"): "observer",
+    ("ZoneAudioManager", "isZoneLoaded"): "observer",
+    ("ZoneLines", "hasExtractedZoneLines"): "observer",
+    ("ZoneSoundEmitter", "getSequence"): "observer",
+    ("AudioManager", "preloadSound"): "B600",
+    ("CombatMusicManager", "getCombatDelay"): "B600",
+    ("CombatMusicManager", "getFadeOutTime"): "B600",
+    ("CombatMusicManager", "getStingerCount"): "B600",
+    ("CombatMusicManager", "getStingerFilename"): "B600",
+    ("CombatMusicManager", "getVolume"): "B600",
+    ("CombatMusicManager", "isInCombat"): "B600",
+    ("CombatMusicManager", "onCombatEnd"): "B600",
+    ("CombatMusicManager", "onCombatStart"): "B600",
+    ("CombatMusicManager", "setCombatDelay"): "B600",
+    ("CombatMusicManager", "setFadeOutTime"): "B600",
+    ("CreatureSounds", "getRacesWithSounds"): "B600",
+    ("CreatureSounds", "getSoundFileVariants"): "B600",
+    ("CreatureSounds", "hasSoundFile"): "B600",
+    ("DoorSounds", "getDoorSoundFilename"): "B600",
+    ("DoorSounds", "getObjectSound"): "B600",
+    ("DoorSounds", "getObjectSoundFilename"): "B600",
+    ("DoorSounds", "hasSeparateOpenCloseSound"): "B600",
+    ("PlayerSounds", "getSoundId"): "B600",
+    ("UISounds", "getSoundId"): "B600",
+    ("UISounds", "getTypeName"): "B600",
+    ("WeatherAudio", "getIntensity"): "B600",
+    ("WeatherAudio", "getVolume"): "B600",
+    ("WeatherAudio", "getWeatherType"): "B600",
+    ("WeatherAudio", "isPaused"): "B600",
+    ("WeatherAudio", "isSnowing"): "B600",
+    ("WeatherAudio", "isThunderEnabled"): "B600",
+    ("WeatherAudio", "setThunderEnabled"): "B600",
+    ("CombatState", "updateTargetHP"): "B601",
+    ("CombatState", "updateTargetLevel"): "B601",
+    ("GameState", "resetForZoneChange"): "B601",
+    ("GroupState", "findMemberBySpawnId"): "B601",
+    ("GroupState", "setMemberInZone"): "B601",
+    ("GroupState", "updateMemberSpawnId"): "B601",
+    ("InventoryState", "setBagInfo"): "B601",
+    ("InventoryState", "setCursorQueueSize"): "B601",
+    ("InventoryState", "setEquipmentStats"): "B601",
+    ("PetState", "updatePetHP"): "B601",
+    ("PetState", "updatePetMana"): "B601",
+    ("PlayerState", "loadFromProfile"): "B601",
+    ("PlayerState", "setCurHP"): "B601",
+    ("PlayerState", "setPositionAndHeading"): "B601",
+    ("SpellState", "addScribedSpell"): "B601",
+    ("SpellState", "clearGem"): "B601",
+    ("SpellState", "setMemorizing"): "B601",
+    ("SpellState", "updateMemorizeProgress"): "B601",
+    ("WorldState", "setZoneId"): "B601",
+    ("WorldState", "setZoning"): "B601",
+    ("EntityManager", "findEntityByExactName"): "B602",
+    ("EntityManager", "findPetByOwner"): "B602",
+    ("EntityManager", "forEachEntity"): "B602",
+    ("EntityManager", "forEachEntityMutable"): "B602",
+    ("EntityManager", "getAllPets"): "B602",
+    ("EntityManager", "getEntitiesInRange"): "B602",
+    ("EntityManager", "getNearestCorpse"): "B602",
+    ("EntityManager", "getPetOwnerId"): "B602",
+    ("EntityManager", "markAsCorpse"): "B602",
+    ("EntityManager", "updateEntityEquipment"): "B602",
+    ("EntityManager", "updateEntityHP"): "B602",
+    ("(free)", "calcBankBagSlotId"): "B603",
+    ("ActiveBuff", "getTimeString"): "B603",
+    ("ActiveBuff", "isAboutToExpire"): "B603",
+    ("BuffManager", "clearEntityBuffs"): "B603",
+    ("BuffManager", "removeBuff"): "B603",
+    ("CombatManager", "EnableAutoLoot"): "B603",
+    ("CombatManager", "GetHighestPriorityTarget"): "B603",
+    ("CombatManager", "SetAggroRadius"): "B603",
+    ("CombatManager", "SetFleeThreshold"): "B603",
+    ("CombatManager", "ToggleAutoFire"): "B603",
+    ("GroupComponent", "DeclineGroupInvite"): "B603",
+    ("HotbarModel", "assignSlot"): "B603",
+    ("HotbarModel", "clearSlot"): "B603",
+    ("InventoryManager", "pickupMoney"): "B603",
+    ("InventoryManager", "pickupPartialStack"): "B603",
+    ("InventoryManager", "placeOnMatchingStack"): "B603",
+    ("InventoryManager", "returnCursorMoney"): "B603",
+    ("PlayerComponent", "SetMoveSpeed"): "B603",
+    ("SpellManager", "beginCastById"): "B603",
+    ("SpellManager", "setOnCastComplete"): "B603",
+    ("SpellManager", "setOnSpellFade"): "B603",
+    ("SpellManager", "swapGems"): "B603",
+    ("WhoAllEntry", "isLinkdead"): "B603",
+    ("ZoneLines", "checkMovement"): "B603",
+    ("SpellManager", "handleInterrupt"): "B604",
+    ("(free)", "focusTextEntry"): "B605",
+    ("CommandProcessor", "setDefaultChannel"): "B605",
+    ("CommandProcessor", "setEchoEnabled"): "B605",
+    ("CommandProcessor", "unregisterCommand"): "B605",
+    ("ConsoleRenderer", "setStatusUpdateInterval"): "B605",
+    ("HotkeyBinding", "toString"): "B605",
+    ("HotkeyManager", "isMovementKey"): "B605",
+    ("HotkeyManager", "modeNameToEnum"): "B605",
+    ("(free)", "LiftTravelSeconds"): "B606",
+    ("(free)", "TargetTypeRestrictsCreature"): "B606",
+    ("(free)", "optionsClipPlaneStep"): "B606",
+    ("(free)", "optionsVolumeFraction"): "B606",
+    ("(free)", "optionsVolumeStep"): "B606",
+    ("(free)", "parseFormattedMessageText"): "B606",
+    ("(free)", "reloadRaceMappings"): "B606",
+    ("(free)", "toString"): "B606",
+    ("BackgroundWorkQueue", "pollAll"): "B606",
+    ("BackgroundWorkQueue", "setBatchHooks"): "B606",
+    ("EntityRenderer", "loadEquipmentModels"): "B606",
+    ("EntityRenderer", "loadGlobalCharacters"): "B606",
+    ("IrrlichtRenderer", "setNewUIEnabled"): "B606",
+    ("RDPServer", "setCertificate"): "B606",
+    ("StringDatabase", "loadDbStrFile"): "B606",
+    ("StringDatabase", "loadEqStrFile"): "B606",
+    ("WilleqDatabase", "getLoginString"): "B606",
+    ("ZoneLifecycleComponent", "applyStoredZoneEnvironment"): "B606",
+}
+
 EXEMPT = {k: ("boarded", BOARD_REASONS[v] + " " + v)
           for k, v in EXEMPT_GROUPS.items()}
 
+# T458: the tests-only half.  A function whose ONLY callers are under tests/
+# is one of four things, and the table says which:
+#   seam      a hook that exists on a production class purely so a test can
+#             drive or observe private state (`Test_*`, `*ForTest`,
+#             `*ForSeam`, the session-replay packet injectors, the debug-draw
+#             seed/count pairs).  It cannot move under tests/ -- it needs the
+#             state it exposes -- and it is neither dead nor unwired.
+#   observer  a const accessor on a class that HAS live production callers:
+#             the test's window onto state the reached path writes.  Deleting
+#             it guts a true net.  A class-level claim, not a per-row proof:
+#             the accessor may still read a field only a boarded (tests-only)
+#             mutator writes -- WriteOnlyFields is the net for that.
+#   B6xx      a never-wired feature or unreached API, owned by that board
+#             entry (the T39/B024 rule: board, do not wire mid-unit).
+# Dead production code whose only net was its own test is not listed here: it
+# is DELETED together with that test (T458 deleted 31 such rows).
+TESTS_CATEGORY_REASONS = {
+    "seam":
+        "a test seam on a production class -- exists so a test can drive or "
+        "observe private state; not dead, not unwired",
+    "observer":
+        "a const accessor on a class with live production callers -- the "
+        "test's observation window on the reached path",
+}
+
+EXEMPT_TESTS = {
+    k: ((v, TESTS_CATEGORY_REASONS[v]) if v in TESTS_CATEGORY_REASONS
+        else ("boarded", BOARD_REASONS[v] + " " + v))
+    for k, v in EXEMPT_TESTS_GROUPS.items()}
+
+
 def load_exempt():
     return EXEMPT
+
+
+def load_exempt_tests():
+    return EXEMPT_TESTS
 
 
 def main():
@@ -827,9 +1196,13 @@ def main():
     ap.add_argument("--json")
     ap.add_argument("--check", action="store_true",
                     help="ratchet mode: exit 1 if any zero-caller function is "
-                         "missing from EXEMPT, or if any EXEMPT entry is no "
-                         "longer zero-caller.  Used by the ZeroCallers ctest "
-                         "test.")
+                         "missing from EXEMPT or any tests-only function is "
+                         "missing from EXEMPT_TESTS, or if an entry in either "
+                         "table no longer belongs to its bucket.  Used by the "
+                         "ZeroCallers ctest test.")
+    ap.add_argument("--tests-only", action="store_true",
+                    help="with --check, check only the tests-only half "
+                         "(EXEMPT_TESTS, T458)")
     args = ap.parse_args()
     root = os.path.abspath(args.repo)
 
@@ -896,33 +1269,53 @@ def main():
             only_tools.append(d)
 
     if args.check:
-        found = {(d.owner, d.name) for d in zero}
-        exempt = load_exempt()
-        unlisted = sorted(found - set(exempt))
-        stale = sorted(set(exempt) - found)
-        for o, n in unlisted:
-            d = candidates[(o, n)]
-            print("NEW zero-caller function: %s::%s   %s:%d"
-                  % (o, n, d.rel, d.line))
-        for o, n in stale:
-            print("STALE exemption (no longer zero-caller): %s::%s -- %s"
-                  % (o, n, exempt[(o, n)][1]))
-        if unlisted or stale:
-            print("")
-            print("%d unlisted, %d stale." % (len(unlisted), len(stale)))
-            if unlisted:
-                print("A function declared and never called is this project's "
-                      "dominant defect class (T366/T414/T442/T448/T452).\n"
-                      "Wire it, delete it, or add it to EXEMPT in this script "
-                      "with a category and a reason.")
-            if stale:
-                print("An exemption whose function now has a caller must be "
-                      "removed from EXEMPT -- the table is not allowed to "
-                      "outlive its rows.")
-            return 1
-        print("zero-caller census clean: %d functions, all %d classified in "
-              "EXEMPT." % (len(found), len(exempt)))
-        return 0
+        failed = False
+        halves = []
+        if not args.tests_only:
+            halves.append(("zero-caller", zero, load_exempt(), "EXEMPT"))
+        halves.append(("tests-only", only_tests, load_exempt_tests(),
+                       "EXEMPT_TESTS"))
+        for label, rows, exempt, table in halves:
+            found = {(d.owner, d.name) for d in rows}
+            unlisted = sorted(found - set(exempt))
+            stale = sorted(set(exempt) - found)
+            for o, n in unlisted:
+                d = candidates[(o, n)]
+                print("NEW %s function: %s::%s   %s:%d"
+                      % (label, o, n, d.rel, d.line))
+            for o, n in stale:
+                print("STALE %s exemption (no longer %s): %s::%s -- %s"
+                      % (table, label, o, n, exempt[(o, n)][1]))
+            if unlisted or stale:
+                failed = True
+                print("")
+                print("%s: %d unlisted, %d stale."
+                      % (label, len(unlisted), len(stale)))
+                if unlisted and label == "zero-caller":
+                    print("A function declared and never called is this "
+                          "project's dominant defect class "
+                          "(T366/T414/T442/T448/T452).\nWire it, delete it, "
+                          "or add it to EXEMPT in this script with a category "
+                          "and a reason.")
+                if unlisted and label == "tests-only":
+                    print("A function whose only caller is a test is either "
+                          "dead production code with a false net (delete both), "
+                          "a test seam, the test's observation window on a "
+                          "live class, or a never-wired feature (board it).\n"
+                          "Classify it in EXEMPT_TESTS_GROUPS (T458).")
+                if stale:
+                    print("An exemption whose function has changed bucket "
+                          "must be removed from %s -- the table is not "
+                          "allowed to outlive its rows." % table)
+                print("")
+                continue
+            cats = defaultdict(int)
+            for k in found:
+                cats[exempt[k][0]] += 1
+            print("%s census clean: %d functions, all classified in %s (%s)."
+                  % (label, len(found), table,
+                     ", ".join("%s %d" % kv for kv in sorted(cats.items()))))
+        return 1 if failed else 0
 
     def dump(title, rows, extra=None):
         print("=" * 78)

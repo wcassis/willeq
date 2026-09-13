@@ -383,26 +383,6 @@ static_assert(sizeof(GMLastName_Struct) == 200, "GMLastName_Struct must be 200 b
 // Phase 4: Petition Structures
 // ============================================================================
 
-// Helper functions for position bitfield extraction
-namespace Position {
-    // Extract signed 19-bit value from bitfield
-    inline float ExtractCoord(uint32_t field, int shift) {
-        int32_t raw = (field >> shift) & 0x7FFFF;
-        if (raw & 0x40000) raw |= 0xFFF80000;  // Sign extend
-        return static_cast<float>(raw) / 8.0f;
-    }
-
-    // Extract 12-bit heading
-    inline float ExtractHeading(uint32_t field, int shift) {
-        return static_cast<float>((field >> shift) & 0xFFF) * 360.0f / 4096.0f;
-    }
-
-    // Extract 10-bit animation
-    inline uint16_t ExtractAnimation(uint32_t field, int shift) {
-        return static_cast<uint16_t>((field >> shift) & 0x3FF);
-    }
-}
-
 #pragma pack(pop)
 
 } // namespace EQT

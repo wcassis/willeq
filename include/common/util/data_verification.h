@@ -21,16 +21,4 @@ namespace EQ {
 	{
 		return std::min(value, upper);
 	}
-
-	template<typename T>
-	bool ValueWithin(const T &value, const T &lower, const T &upper)
-	{
-		return value >= lower && value <= upper;
-	}
-
-	template<typename T1, typename T2, typename T3>
-	bool ValueWithin(const T1 &value, const T2 &lower, const T3 &upper)
-	{
-		return value >= (T1) lower && value <= (T1) upper;
-	}
 }

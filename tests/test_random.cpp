@@ -46,68 +46,6 @@ TEST_F(RandomTest, Int_NegativeRange) {
     }
 }
 
-// Test Real for double range
-TEST_F(RandomTest, Real_InRange) {
-    EQ::Random random;
-    for (int i = 0; i < 1000; i++) {
-        double value = random.Real(0.0, 1.0);
-        EXPECT_GE(value, 0.0);
-        EXPECT_LT(value, 1.0);  // Real is [low, high)
-    }
-}
-
-TEST_F(RandomTest, Real_CustomRange) {
-    EQ::Random random;
-    for (int i = 0; i < 1000; i++) {
-        double value = random.Real(-100.0, 100.0);
-        EXPECT_GE(value, -100.0);
-        EXPECT_LT(value, 100.0);
-    }
-}
-
-// Test Roll probability (int version - percent chance)
-TEST_F(RandomTest, Roll_AlwaysPass) {
-    EQ::Random random;
-    for (int i = 0; i < 100; i++) {
-        EXPECT_TRUE(random.Roll(100));  // 100% chance
-    }
-}
-
-TEST_F(RandomTest, Roll_NeverPass) {
-    EQ::Random random;
-    for (int i = 0; i < 100; i++) {
-        EXPECT_FALSE(random.Roll(0));  // 0% chance
-    }
-}
-
-TEST_F(RandomTest, Roll_FiftyPercent) {
-    EQ::Random random;
-    int successes = 0;
-    for (int i = 0; i < 10000; i++) {
-        if (random.Roll(50)) {  // 50% chance
-            successes++;
-        }
-    }
-    // Should be roughly 50% (4000-6000 range for 10000 trials)
-    EXPECT_GT(successes, 4000);
-    EXPECT_LT(successes, 6000);
-}
-
-// Test Roll probability (double version - 0.0-1.0)
-TEST_F(RandomTest, Roll_Double_AlwaysPass) {
-    EQ::Random random;
-    for (int i = 0; i < 100; i++) {
-        EXPECT_TRUE(random.Roll(1.0));  // 100% chance
-    }
-}
-
-TEST_F(RandomTest, Roll_Double_NeverPass) {
-    EQ::Random random;
-    for (int i = 0; i < 100; i++) {
-        EXPECT_FALSE(random.Roll(0.0));  // 0% chance
-    }
-}
-
 // Test distribution (basic uniformity check)
 TEST_F(RandomTest, Distribution_Uniform) {
     EQ::Random random;
@@ -156,23 +94,6 @@ TEST_F(RandomTest, DifferentInstances) {
         }
     }
     EXPECT_TRUE(different);
-}
-
-// Test Roll0 (0 to max-1)
-TEST_F(RandomTest, Roll0_InRange) {
-    EQ::Random random;
-    for (int i = 0; i < 1000; i++) {
-        int value = random.Roll0(10);  // 0-9
-        EXPECT_GE(value, 0);
-        EXPECT_LT(value, 10);
-    }
-}
-
-TEST_F(RandomTest, Roll0_Zero) {
-    EQ::Random random;
-    // Roll0(0) or Roll0(1) should return 0
-    EXPECT_EQ(random.Roll0(0), 0);
-    EXPECT_EQ(random.Roll0(1), 0);
 }
 
 // Test d6, d20, d100 dice rolls

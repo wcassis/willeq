@@ -413,7 +413,10 @@ fragments from `tests/cmake/`: `action_handlers`, `archives`, `audio`,
 `*Reproducible` tests are the pins on the three derived assets, see
 `CLAUDE.md`'s recipe table; `WriteOnlyFields` and `ZeroCallers` are the two
 halves of the reachability ratchet, a field written and never read and a
-function declared and never called), `midi`, `network`, `packets_skills`, `renderer_guards`,
+function declared and never called -- and since T458 `ZeroCallers` also
+ratchets the functions reached ONLY from `tests/`, each classified in
+`EXEMPT_TESTS_GROUPS` as a `seam`, an `observer` or a boarded B600-B606 row;
+re-measure with `check_zero_callers.py --bucket all`, do not quote a count), `midi`, `network`, `packets_skills`, `renderer_guards`,
 `spells`, `state`, `ui_rendering`, `world_geometry`, `zone_integration`.
 Add a new test to the fragment for its domain, not to the driver.
 

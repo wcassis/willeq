@@ -23,36 +23,10 @@ namespace WaterSoundIds {
     constexpr uint32_t Underwater = 161;   // watundlp.wav - Underwater ambient loop
 }
 
-// Utility class for water sound file mappings
-// Provides static methods to get sound file names for water-related events
-class WaterSounds {
-public:
-    // Get the sound file for entering water
-    // Returns: "waterin.wav"
-    static const char* getEntrySound();
-
-    // Get a swimming/treading water sound variant
-    // variant: 0 or 1 (wraps around)
-    // Returns: "wattrd_1.wav" or "wattrd_2.wav"
-    static const char* getTreadSound(int variant);
-
-    // Get the underwater ambient loop sound
-    // Returns: "watundlp.wav"
-    static const char* getUnderwaterLoop();
-
-    // Get sound ID for water entry
-    static uint32_t getEntrySoundId() { return WaterSoundIds::WaterIn; }
-
-    // Get sound ID for treading water
-    // variant: 0 or 1 (wraps around)
-    static uint32_t getTreadSoundId(int variant);
-
-    // Get sound ID for underwater ambient
-    static uint32_t getUnderwaterLoopId() { return WaterSoundIds::Underwater; }
-
-    // Utility: Get tread sound count
-    static constexpr int getTreadSoundCount() { return 2; }
-};
+// T458: the `WaterSounds` filename/id helper class that lived here had no
+// production caller (the one water sound the client plays reaches
+// WaterSoundIds::WaterIn directly from movement_state.cpp) and its .cpp was in
+// no client target; it was deleted with the tests that only pinned it.
 
 } // namespace Audio
 } // namespace EQT

@@ -170,7 +170,6 @@ IF(WITH_AUDIO)
     ADD_EXECUTABLE(test_weather_audio
         test_weather_audio.cpp
         ${CMAKE_SOURCE_DIR}/src/client/audio/weather_audio.cpp
-        ${CMAKE_SOURCE_DIR}/src/client/audio/water_sounds.cpp
         ${AUDIO_COMMON_TEST_SOURCES}
         # T399 (board B235): every routed loader calls eqt::ResolveDataPath().
         ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp

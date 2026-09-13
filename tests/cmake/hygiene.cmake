@@ -155,6 +155,11 @@ SET_TESTS_PROPERTIES(WriteOnlyFields PROPERTIES LABELS "hygiene")
 # artefact/server/display, same "hygiene" label as its neighbours; it walks
 # ~1,200 files twice, so it gets a generous timeout rather than the "slow"
 # label.
+# T458 (boards B600-B607): the same --check also ratchets the functions whose
+# ONLY callers are under tests/ against EXEMPT_TESTS_GROUPS -- each one a
+# `seam` (a test hook on a production class), an `observer` (an accessor on a
+# class with live callers) or a boarded never-wired row. Dead production code
+# whose only net was its own test is deleted with that test, not listed.
 ADD_TEST(NAME ZeroCallers
     COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/refactor/check_zero_callers.py
             --repo ${CMAKE_SOURCE_DIR} --check)

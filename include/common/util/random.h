@@ -28,37 +28,6 @@ namespace EQ {
 			return uint_dist(m_gen);
 		}
 
-		// AKA old MakeRandomFloat
-		double Real(double low, double high)
-		{
-			if (low > high)
-				std::swap(low, high);
-			return real_dist(m_gen, real_param_t(low, high)); // [low, high)
-		}
-
-		// example Roll(50) would have a 50% success rate
-		// Roll(100) 100%, etc
-		// valid values 0-100 (well, higher works too but ...)
-		bool Roll(const int required)
-		{
-			return Int(0, 99) < required;
-		}
-
-		// valid values 0.0 - 1.0
-		bool Roll(const double required)
-		{
-			return Real(0.0, 1.0) <= required;
-		}
-
-		// same range as client's roll0
-		// This is their main high level RNG function
-		int Roll0(int max)
-		{
-			if (max - 1 > 0)
-				return Int(0, max - 1);
-			return 0;
-		}
-
 		// std::shuffle requires a RNG engine passed to it, so lets provide a wrapper to use our engine
 		template<typename RandomAccessIterator>
 		void Shuffle(RandomAccessIterator first, RandomAccessIterator last)
@@ -86,8 +55,6 @@ namespace EQ {
 		typedef std::uniform_int_distribution<int>::param_type int_param_t;
 		std::uniform_int_distribution<int> int_dist;
 		std::uniform_int_distribution<uint32_t> uint_dist{0u, std::numeric_limits<uint32_t>::max()};
-		typedef std::uniform_real_distribution<double>::param_type real_param_t;
-		std::uniform_real_distribution<double> real_dist;
 		std::mt19937 m_gen;
 	};
 }
