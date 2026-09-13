@@ -517,6 +517,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/animated_mesh_eye.cpp
         src/client/graphics/first_person_eye.cpp
         src/client/graphics/renderer/irrlicht_renderer.cpp
+        src/client/graphics/renderer/software_cursor_texture.cpp  # T460
         src/client/graphics/renderer/renderer_event_receiver.cpp  # J11
         # L03 (Batch L): the overlays family, was renderer_overlays.cpp +
         # renderer_hud_env.cpp.

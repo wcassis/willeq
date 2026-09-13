@@ -8713,3 +8713,60 @@ fine — the table fails on a stale entry, so it cannot rot.
   `Bootup Booting [<zone>]`), so a cold `up.sh` times out after 60 s and exits 1
   on a zone that booted correctly. `scripts/scenario.sh` turns that into
   operator code 65. Evidence: `review/T457/logs/up_sh_cold_container.log`.
+
+---
+
+## Added 2026-09-13 by T460 (cursor eviction, PlayerMoved heading unit)
+
+- ~~**B520**~~ (A) CLOSED by T460. **The DRM/KMS software cursor vanished at the
+  first zone unload, for good.** `IrrlichtRenderer::createSoftwareCursor()`
+  never `protectTexture()`'d it. `ConstrainedTextureCache::clear()` (zone
+  unload) and `evictUntilAvailable()` (LRU; the startup-loaded cursor is always
+  the oldest) evicted it. `SingleTexturePointerGuard` nulled
+  `softwareCursorTexture_`, and nothing reloaded it. Fixed by
+  `AcquireSoftwareCursorTexture()` (`software_cursor_texture.h`), which
+  protects it; pinned by `tests/test_software_cursor_eviction.cpp`. Live proof
+  on the Pi owed to T459.
+- ~~**B521**~~ (A) CLOSED by T460. **`PlayerMovedData::heading` published in
+  degrees where the renderer reads EQ 0..512**, at two of the eight bridge
+  publishers: `MovementComponent::UpdateMovement` (`/moveto`, `/follow`,
+  auto-attack chase, every tick) and `WarpToPosition` (`/warp`). The camera
+  heading was deg*360/512 of the right one for every game-driven move. Fixed
+  at both sites; `tests/test_player_moved_heading_units.cpp` pins the unit for
+  every publisher (source census, count 8) and the consumer. Whether this is
+  Will's "jerks between two perspectives" is T459's live measurement.
+- **B522** (A, *unconfirmed*) **`StormCloudLayer::cloudFrames_` are nulled on
+  eviction and never reloaded.** `StormCloudLayer::onTextureEvicted` nulls the
+  `storm_cloud_blend_N` frames. `initialize()` is the only loader, run once
+  from the lazily-created `WeatherEffectsController`.
+  `updateBlendedTexture()` returns on a null frame. So storm clouds should stop
+  animating after the first zone unload. Confirm: T460's cursor test shape
+  (real cache, `clear()`, then assert `cloudFrames_` non-null), or a storm in
+  a second zone. Found by T460.
+- **B523** (A, *unconfirmed*) **`TumbleweedManager::tumbleweedTexture_` has no
+  eviction listener, no protection and no reload.** It is loaded once in
+  `init()` and baked into `tumbleweedMesh_`'s buffer material by
+  `createTumbleweedMesh()`. After `clear()` the member and that material may
+  hold a freed `ITexture*`. The scene-graph scrub in
+  `clearTextureReferences()` reaches the material only if a live node holds
+  the mesh at that moment. Confirm with an EDT_NULL test: `init()`, `clear()`,
+  then inspect the mesh buffer's texture. Found by T460.
+- **B524** (A, *unconfirmed*) **`BoidsManager`'s `creature_atlas` degrades to
+  the placeholder after the first zone unload.** The T124 boids guard swaps it
+  to the placeholder, `loadCreatureAtlas()` runs only from `init()`, and
+  `onZoneEnter()` does not reload it. Confirm by rendering boids in a second
+  zone. Found by T460.
+- **B525** (A, *lead*, for T459) **Two camera-heading writers remain possible
+  while moving.** T460 found no client-side per-tick echo:
+  `OnGraphicsMovement` publishes no `PlayerMoved`, and `UpdateMovement`
+  returns without console movement. Unmeasured:
+  - (a) whether eqemu returns our own `OP_ClientUpdate` to us. That path runs
+    the `ZoneProcessClientUpdate` self branch, then `OnSpawnMovedGraphics`,
+    then `PlayerMoved`, then `setPlayerPosition`, which overwrites the camera
+    heading and re-arms `playerPositionIsSeed_`. Count
+    `POS S->C [SELF]` lines during a keyboard run at debug level 1.
+  - (b) keyboard input during an active `/follow` or auto-attack chase, where
+    the game thread publishes `PlayerMoved` every tick while the render thread
+    integrates input.
+
+  Found by T460.

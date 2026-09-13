@@ -230,7 +230,7 @@ void WarpToPosition(eqt::ClientContext& ctx, float x, float y, float z)
 	if (ctx.bridge) {
 		eqt::state::PlayerMovedData pdata;
 		pdata.x = x; pdata.y = y; pdata.z = z;
-		pdata.heading = ctx.self.HeadingDeg();
+		pdata.heading = ctx.self.HeadingDeg() * 512.0f / 360.0f;  // T460 (B521): 0..512, not degrees
 		pdata.dx = 0; pdata.dy = 0; pdata.dz = 0;
 		pdata.isMoving = false;
 		ctx.bridge->pushEvent(eqt::state::GameEvent(

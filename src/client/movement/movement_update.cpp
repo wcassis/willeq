@@ -496,7 +496,11 @@ void eqt::movement::MovementComponent::UpdateMovement()
 	if (ctx_.bridge) {
 		eqt::state::PlayerMovedData pdata;
 		pdata.x = ctx_.self.PosX(); pdata.y = ctx_.self.PosY(); pdata.z = ctx_.self.PosZ();
-		pdata.heading = ctx_.self.HeadingDeg();
+		// T460 (B521): the renderer bridge's PlayerMovedData::heading is the
+		// EQ 0..512 unit (IrrlichtRenderer::setPlayerPosition), not degrees.
+		// Publishing HeadingDeg() raw aimed the camera at deg*360/512 on every
+		// tick of a /moveto, /follow or auto-attack chase.
+		pdata.heading = ctx_.self.HeadingDeg() * 512.0f / 360.0f;
 		pdata.dx = dx; pdata.dy = dy; pdata.dz = dz;
 		pdata.isMoving = true;
 		ctx_.bridge->pushEvent(eqt::state::GameEvent(

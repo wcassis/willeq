@@ -9,7 +9,9 @@
   directory under `src/client/graphics/` and `include/client/graphics/`; what
   is left of the class itself is four TUs in `src/client/graphics/renderer/`
   (`irrlicht_renderer.cpp`, `renderer_init.cpp`, `renderer_entities.cpp`,
-  `renderer_event_receiver.cpp`), moved there by L12. Consult
+  `renderer_event_receiver.cpp`), moved there by L12, beside T460's
+  `software_cursor_texture.cpp` (the protected DRM cursor acquisition, a free
+  function). Consult
   `docs/module_map.md` for which TU holds which body — do not scan.
 
   | component | directory | what it owns |

@@ -11,6 +11,7 @@
 #include "client/graphics/frame/frame_component.h"  // T357: setCommandCompletionProvider forwarder
 #include "client/graphics/frame_budget_governor.h"
 #include "client/graphics/constrained_texture_cache.h"
+#include "client/graphics/software_cursor_texture.h"  // T460
 #include "client/graphics/light_source.h"
 #include "client/graphics/weather_effects_controller.h"
 #include "client/graphics/weather_config_loader.h"
@@ -254,8 +255,11 @@ void IrrlichtRenderer::createSoftwareCursor() {
     // which is LOG_FATAL + exit(1), on the DRM/KMS path, i.e. the Orange Pi,
     // where this is the only cursor there is. With the name matching, the
     // ordering is no longer load-bearing.
-    softwareCursorTexture_ = constrainedTextureCache_->getOrLoad("software_cursor", cursorData);
-    if (!softwareCursorTexture_) softwareCursorTexture_ = constrainedTextureCache_->uploadTexture("software_cursor");
+    //
+    // T460 (board B520): acquired through AcquireSoftwareCursorTexture(), which
+    // owns the name AND the lifetime rule -- see software_cursor_texture.h for
+    // why the cursor vanished at the first zone unload.
+    softwareCursorTexture_ = AcquireSoftwareCursorTexture(*constrainedTextureCache_, cursorData);
     if (!softwareCursorTexture_) {
         LOG_FATAL(MOD_GRAPHICS, "Failed to load required texture: {}", cursorPath);
         std::exit(1);

@@ -680,7 +680,8 @@ The client connects through three stages, each with its own connection manager:
 **IrrlichtRenderer class** (`include/client/graphics/irrlicht_renderer.h`, `src/client/graphics/renderer/` + eleven component directories, Batch L)
 - The renderer. Its own four TUs (`irrlicht_renderer.cpp`, `renderer_init.cpp`,
   `renderer_entities.cpp`, `renderer_event_receiver.cpp`) live in
-  `src/client/graphics/renderer/`; everything else was extracted into eleven
+  `src/client/graphics/renderer/`, beside T460's free-function
+  `software_cursor_texture.cpp`; everything else was extracted into eleven
   components, each `class EQT::Graphics::<Name>Component` with its own
   directory under `src/client/graphics/` and `include/client/graphics/`:
   **RdpComponent** (`rdp/`), **Eqe1ArchiveComponent** (`eqe1/`),

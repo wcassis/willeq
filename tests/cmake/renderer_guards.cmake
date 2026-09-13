@@ -64,6 +64,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_t124_texture_holder_guards DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# T460 (board B520): the DRM software cursor survives zone-unload clear() and
+# LRU pressure (it used to be evicted and never reloaded).
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_software_cursor_eviction
+        test_software_cursor_eviction.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_software_cursor_eviction PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_software_cursor_eviction GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_software_cursor_eviction PRIVATE
+        WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    GTEST_DISCOVER_TESTS(test_software_cursor_eviction DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T381 (board B160): the spell visual vocabulary -- resist type, casting
 # school and spell_affect_index -- reaches SpellVisualFX across the bridge by
 # value, so the six resist colours, the five school colours, the spray cast

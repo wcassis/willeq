@@ -191,6 +191,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_self_relocation_heading DISCOVERY_TIMEOUT 120)
 
+# T460 (board B521): PlayerMovedData::heading on the renderer bridge is the EQ
+# 0..512 unit for every publisher (UpdateMovement and /warp sent degrees).
+ADD_EXECUTABLE(test_player_moved_heading_units
+    test_player_moved_heading_units.cpp
+)
+TARGET_LINK_LIBRARIES(test_player_moved_heading_units GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_player_moved_heading_units PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+TARGET_COMPILE_DEFINITIONS(test_player_moved_heading_units PRIVATE
+    WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+GTEST_DISCOVER_TESTS(test_player_moved_heading_units DISCOVERY_TIMEOUT 120)
+
 # T88: headless position-frame round-trip regression tests (inbound
 # server-frame decode -> outbound client-frame encode -> server-frame
 # re-encode is identity; Move()/MoveToWithPath() operates in client frame).

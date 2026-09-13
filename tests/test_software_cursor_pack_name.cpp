@@ -54,9 +54,12 @@ namespace {
 
 const char* kWilleqEqe1 = "/mnt/projects/EverQuest_ETC1/willeq.eqe1";
 
+// T460: the acquisition moved out of createSoftwareCursor() into
+// AcquireSoftwareCursorTexture() (which also protects it -- board B520);
+// test_software_cursor_eviction.cpp pins that the renderer calls it.
 const std::string kRendererSrc =
     std::string(WILLEQ_SOURCE_DIR) +
-    "/src/client/graphics/renderer/irrlicht_renderer.cpp";
+    "/src/client/graphics/renderer/software_cursor_texture.cpp";
 
 std::string readFile(const std::string& path) {
     std::ifstream in(path);
@@ -71,7 +74,7 @@ std::string readFile(const std::string& path) {
 // by agreeing with itself.
 std::string cursorCacheNameFromSource() {
     const std::string src = readFile(kRendererSrc);
-    const size_t fn = src.find("void IrrlichtRenderer::createSoftwareCursor()");
+    const size_t fn = src.find("irr::video::ITexture* AcquireSoftwareCursorTexture(");
     if (fn == std::string::npos) return {};
     const size_t end = src.find("\n}\n", fn);
     const std::string body = src.substr(fn, (end == std::string::npos ? src.size() : end) - fn);

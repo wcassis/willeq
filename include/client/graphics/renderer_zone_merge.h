@@ -244,8 +244,14 @@ public:
     // softwareCursorTexture_ in renderer_frame.cpp) -- this guard only
     // prevents the pointer from going dangling, it does not draw a
     // placeholder in its place (unlike RegionMeshTextureGuard, there is no
-    // "placeholder cursor" concept; simply not drawing the cursor for the
-    // rest of this zone visit is the correct, safe fallback).
+    // "placeholder cursor" concept).
+    // T460 (board B520): what this comment used to call a safe fallback --
+    // "not drawing the cursor for the rest of this zone visit" -- was in fact
+    // FOREVER: nothing reloaded the cursor, and zone unload's clear() evicted
+    // it at the first zone change (Will: no cursor on the Pi). The cursor is
+    // now protectTexture()'d by AcquireSoftwareCursorTexture()
+    // (software_cursor_texture.h), so this guard should never fire for it;
+    // it stays registered as the use-after-free net if that ever regresses.
     explicit SingleTexturePointerGuard(irr::video::ITexture*& target) : target_(target) {}
 
     void onTextureEvicted(const std::string& /*name*/, irr::video::ITexture* texture) override {
