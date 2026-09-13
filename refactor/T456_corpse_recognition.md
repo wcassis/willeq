@@ -33,10 +33,10 @@ renumbered at merge; say which you used).
 
 STOP: an image golden moves.
 
-## Review (PAUSED)
+## Review
 
-Branch `task/T456-corpse-recognition`, base **`02054a2d`** (verified at
-checkout). Slot2, `build/` RelWithDebInfo, GLES2 Irrlicht from the slot's own
+Branch `task/T456-corpse-recognition`, cut from **`02054a2d`** (verified at
+checkout), **rebased onto fable `2f0bd914` on resume** (§6). Slot2, `build/` RelWithDebInfo, GLES2 Irrlicht from the slot's own
 `third_party/irrlicht-gles2-x86`. **No server** — T449 holds the eqemu lock and
 nothing here opened a connection; **live proof is OWED**.
 
@@ -200,29 +200,59 @@ on the two new untracked files (53 and 38 lines, ok).
   **B479** and **B480** added. Numbers allocated from **B479** (T449 allocates
   from B474+, T455 from B476+ — collisions are renumbered at merge).
 
-### 6. Not done (the pause)
+### 6. Resume (2026-09-13): rebase onto `2f0bd914` and the full verification bar
 
-The following steps of the verification bar were **not run**, and nothing here
-claims them:
+The session was paused mid-verification at `77bf1f1f`, then resumed in slot2.
 
-1. `ctest --test-dir build -j6` — the FULL suite. Only the two directly
-   affected binaries were run (`test_corpse_death_pose` 11/11,
-   `test_willeq_database` 20/20). The tree builds clean at `-j24` (exit 0, no
-   exit 143, so no truncation scan owed), so a green suite is expected, but it
-   is **unmeasured**.
-2. `bash scripts/build-gles2-x86.sh` — **not run.** ⚠ The database bytes moved,
-   and a stale `build-gles2` binary does NOT refuse this change (the version is
-   unchanged at 7), but the tree must still be rebuilt before the gate is read.
-3. Visual gate, standalone — **not run.** No golden file is in `git status`, so
-   nothing was self-blessed; the STOP condition never fired because the gate
-   never ran.
-4. `bash scripts/build-arm-noble.sh` — **not run.**
-5. Live proof — **OWED** (T449 holds the lock). Nothing in this unit opened a
-   connection.
+**Rebase.** `git rebase fable` (fable `2f0bd914`) replayed both commits and
+stopped once, on the second:
 
-**Next step on resume:** rebuild `build-gles2` and `build-arm-noble` (the db
-moved), then run `ctest -j6`, the standalone visual gate and the ARM build, in
-that order. No source change is expected to be needed.
+- **`refactor/BOARD.md`: one conflict hunk, and it was a pure APPEND, not
+  alternatives.** Both sides kept the base's last line of B478 ("Closes when
+  the three inline copies call `IsCorpseByFields()`"). Fable left it as it was
+  and appended its T449, T457, T458, T459 and T460 sections (B482..B525) after
+  it. T456 struck it and appended its own `### Added by T456` section.
+  Resolution: T456's struck B478 close-out, then fable's sections unchanged,
+  then T456's section at the end of the file. Checked both ways with `diff`:
+  against fable the only changes are the six B476/B477/B478 lines plus the
+  appended T456 section; against `77bf1f1f` the only additions are fable's own.
+- **`data/willeq.db` did NOT conflict and did not need rebuilding.** Nothing on
+  fable since `02054a2d` touched the db, its pin or any builder input
+  (`git diff 02054a2d fable` over `data/willeq.db*`, `data/item_models.json`,
+  `config/race_models.json`, `tools/willeq_db*` and
+  `scripts/build_willeq_db.sh` is empty). The rebased bytes equal
+  `77bf1f1f`'s, and `DbReproducible` is green on the rebased tree.
+- **No renumbering.** B479 and B480 are free on fable, whose board runs
+  B481..B525 (T457/T458 had already allocated around T456's B479+ range). T456
+  keeps both numbers.
+- New hashes: `d89ff1c7` (B478 + B477), `d1466a90` (B476 + db), then this
+  verification commit.
+
+**One real red, fixed in this commit: `DocCitations`.** B246's closed
+paragraph (`refactor/BOARD.md`, T402's close-out) cited
+`tools/willeq_db/db_loaders_json.cpp:300`. T456's drop of
+`loadEquipmentModels()` took that file to 265 lines. The same sentence's other
+citation, `tools/willeq_db_builder.cpp:246`, still passed the checker only
+because that file is long enough; the call it named had moved. Both are
+re-pointed at `loadRaceModels()` as it stands now: definition `:126`, call
+`:356` (`loadRaceModels(db, inputPath("race_models"))`). This is T456's own
+defect, not a rebase artefact: the file shrank in `77bf1f1f`. Standalone
+`DocCitations` after the fix: PASS.
+
+**Verification bar, on the rebased tree** (slot2, `build/`
+RelWithDebInfo, the slot's own GLES2 Irrlicht):
+
+| step | result |
+|---|---|
+| `cmake --build build -j24` | **PASS**: exit 0, no exit 143, so no truncation scan owed |
+| `ctest --test-dir build -j6 --output-on-failure` | **4707 / 4708**. The one red was `DocCitations` (above), a real red, not a load artefact. Fixed, then PASS standalone. |
+| golden/order tests for the touched TUs (CLAUDE.md merge rule) | **PASS** in the full run: `ApplicationInitOrderTest.*` (G04), `BridgeIntentTable.*`, `ZoneDispatchTable.*` (G01), `CommandRegistrationOrderTest.*` (G03), `FrameRenderOrder.*` (G05), `MovementOrder.*` (G06), `SelfDeathSequence.*` (G07/G08), `ZoneOpcodeLiterals.*`, `ReachabilitySweep.*` |
+| unit tests | `CorpseRecognition.*` 3/3, `CorpsePoseTest.*` 5/5, `CorpseSpawnWire.*` 3/3, `WilleqDatabaseShippedContent*` all green, `DbReproducible`, `DocCounts` and `FileSizeCeiling` PASS |
+| `bash scripts/build-gles2-x86.sh` | **PASS**: exit 0, rebuilt after ctest so ctest's own `visual_gate` could not read a half-written binary |
+| visual gate, standalone, on the rebuilt `build-gles2` | **PASS** (`=== VISUAL GATE: PASS ===`, exit 0). CPU p95 qeynos2 4.656 / gfaydark 7.887 / befallen 7.075 ms, all under ceiling. **No golden moved**: `git status` is clean under `tests/goldens/`. STOP condition not triggered. |
+| `bash scripts/build-arm-noble.sh` | **PASS**: exit 0, rebuilt on the rebased tree before the gate |
+| `scripts/refactor/check_file_sizes.sh fable` (from slot2) | **PASS**: 15 checked, 15 ok, 0 warn, 0 fail |
+| live proof | **OWED**. T459 holds the eqemu lock and the Pi. Nothing in this unit opened a connection. |
 
 ### 7. Deviations and surprises
 
