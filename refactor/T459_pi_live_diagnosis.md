@@ -292,6 +292,30 @@ That brings the total to **7 of 12** Pi invocations.
   measured absent, the live candidates left are B507 (terrain-dependent
   latched height) and B525 (b).
 
-### Pose and server
-Restored at the end: world down, then the db pose was set back to the arrival
-values. See the final lines of this Review.
+### Pose, server, Pi
+- **Pose:** Testcaster was at (-41.125, 2727.62, -22.25, h 267) before
+  restore. It was written back to the arrival values (zone 34, -41.8658,
+  2723.33, -24.8438, 331.25) and verified by SELECT, **before** `down.sh`,
+  because `down.sh` also removes mariadb. No client had been connected for
+  more than 10 minutes.
+- **Server:** `down.sh` exit 0; lock released and verified absent.
+- **Pi:** `/tmp` empty, governor `ondemand`, no willeq or injector processes,
+  no virtual input devices. 7 invocations used.
+
+### Verification bar (tip `2f0bd914` + T459 commits, slot3)
+1. `cmake --build build -j24`: exit 0. `willeq` is a valid ELF;
+   `libwilleq_core.a` is 3.5 GB with 373 members.
+2. `ctest -j6`: 4702/4703. The one failure, **ZeroCallers**, was mine: T459's
+   camera trace calls `CameraController::getActualFollowDistance()`, which
+   carried a B494 zero-caller exemption, now stale. The row was removed from
+   `scripts/refactor/check_zero_callers.py` and ZeroCallers re-run standalone
+   (result in the last commit).
+   - **Deviation:** that script is outside the plan's file territory. It is a
+     required consequence of the diagnostic call; if the trace line is ever
+     removed, the exemption must come back.
+   - `visual_gate` passed inside the suite.
+3. `scripts/build-gles2-x86.sh`: exit 0.
+4. Visual gate: PASS as ctest's `visual_gate`; no goldens touched.
+5. `scripts/build-arm-noble.sh`: exit 0 (the binary used for P6/P7).
+6. `check_file_sizes.sh fable`: 2 ok, 0 warn, 0 fail (579 / 709 lines).
+- Doc nets (`ctest -R 'Doc|Board|Comment'`): 11/11.

@@ -519,7 +519,6 @@ EXEMPT_GROUPS = {
     ("AnimatedTextureManager", "getAnimatedTextureCount"): "B494",
     ("AnimatedTextureManager", "getCurrentTexture"): "B494",
     ("CameraController", "adjustOrbitAngle"): "B494",
-    ("CameraController", "getActualFollowDistance"): "B494",
     ("CameraController", "getHeadingEQ"): "B494",
     ("CameraController", "getMoveSpeed"): "B494",
     ("CameraController", "getOrbitAngle"): "B494",
