@@ -455,6 +455,7 @@ struct FrameTimings {
     int64_t staticUICommands = 0;      // draw commands submitted (count, not us)
     int64_t staticUIDriverDraws = 0;   // driver draw calls issued for them (count)
     int64_t staticUITextEntries = 0;   // text entries flushed (count)
+    int64_t staticUITextDraws = 0;     // driver draw calls the text flush issued (count)
     int64_t zoneLineOverlay = 0;
     int64_t glFinish = 0;            // glFinish() before endScene (GPU pipeline drain)
     int64_t endScene = 0;

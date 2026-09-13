@@ -19,6 +19,8 @@
 #include <vector>
 #include <unordered_map>
 
+#include "client/graphics/ui/ui_quad_batch.h"  // T462: glyph runs
+
 namespace EQT {
 namespace Graphics {
 
@@ -83,7 +85,40 @@ public:
     /** Number of text entries accumulated since begin(). */
     size_t getQuadCount() const;
 
+    /**
+     * T462 (board B506): driver draw calls the last flush() issued. With
+     * batching, the glyphs of every plain entry share texture runs, so a
+     * frame's text is a couple of draws; without it, one font draw per entry.
+     */
+    size_t lastFlushDriverDraws() const { return lastFlushDriverDraws_; }
+
+    /**
+     * T462 test seam: false flushes one IGUIFont::draw() per entry, the
+     * pre-T462 flush, so a test can compare the two on the same device.
+     */
+    void setBatchingEnabled(bool enabled) { batchingEnabled_ = enabled; }
+
 private:
+    // T462: one glyph of the built-in bitmap font, laid out the way
+    // CGUIFont::draw() lays it out (see buildGlyphTable()).
+    struct Glyph {
+        bool batchable = false;   // false: an entry containing it goes to font_->draw()
+        bool drawn = false;       // false: advances the pen but draws nothing
+        irr::s32 underhang = 0;   // pen offset before the glyph is placed
+        irr::s32 advanceAfter = 0;// pen advance after it (width + overhang + kerning)
+        irr::core::rect<irr::s32> src;
+        irr::video::ITexture* texture = nullptr;
+    };
+    static constexpr size_t kGlyphTableSize = 128;
+    bool buildGlyphTable();
+    Glyph glyphs_[kGlyphTableSize];
+    bool glyphTableBuilt_ = false;
+    bool glyphTableUsable_ = false;
+    bool batchingEnabled_ = true;
+    size_t lastFlushDriverDraws_ = 0;
+    UiQuadBatch quadBatch_;
+    std::vector<UiQuad> glyphRun_;
+
     irr::gui::IGUIFont* font_ = nullptr;
     irr::s32 lineHeight_ = 14;
 

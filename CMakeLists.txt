@@ -639,6 +639,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/ui/ui_renderer.cpp
         src/client/graphics/ui/static_panels.cpp
         src/client/graphics/ui/chat_wrap_cache.cpp
+        src/client/graphics/ui/ui_quad_batch.cpp
         src/client/graphics/ui/loot_panel.cpp
         src/client/graphics/ui/tradeskill_panel.cpp
         src/client/graphics/ui/tradeskill_recipe_list.cpp

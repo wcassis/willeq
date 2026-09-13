@@ -290,6 +290,7 @@ bool FrameComponent::processFrame(float deltaTime) {
         frameTimings_.staticUICommands = static_cast<int64_t>(flush.commands);
         frameTimings_.staticUIDriverDraws = static_cast<int64_t>(flush.driverDraws);
         frameTimings_.staticUITextEntries = static_cast<int64_t>(flush.textEntries);
+        frameTimings_.staticUITextDraws = static_cast<int64_t>(flush.textDraws);
     }
 
     // ===== FRAME TIMING: Total Frame (always-on) =====
@@ -555,6 +556,7 @@ bool FrameComponent::processFrame(float deltaTime) {
         frameTimingsAccum_.staticUICommands += frameTimings_.staticUICommands;
         frameTimingsAccum_.staticUIDriverDraws += frameTimings_.staticUIDriverDraws;
         frameTimingsAccum_.staticUITextEntries += frameTimings_.staticUITextEntries;
+        frameTimingsAccum_.staticUITextDraws += frameTimings_.staticUITextDraws;
         frameTimingsAccum_.zoneLineOverlay += frameTimings_.zoneLineOverlay;
         frameTimingsAccum_.glFinish += frameTimings_.glFinish;
         frameTimingsAccum_.endScene += frameTimings_.endScene;

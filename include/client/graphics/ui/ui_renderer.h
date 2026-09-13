@@ -2,7 +2,10 @@
  * UIRenderer — batched quad drawing API for the static layout UI.
  *
  * U03b: Collects UI quads and flushes them efficiently.
- * Two paths: atlas-backed (draw2DImageBatch) and fallback (draw2DRectangle).
+ * Two paths: atlas-backed (textured quads) and fallback (solid rectangles,
+ * when no UI atlas is loaded -- the client runs this one whenever it is started
+ * without --eqe1-path). Since T462 BOTH paths queue every call and endFrame()
+ * flushes the queue in submission order, in runs (ui_quad_batch.h).
  */
 
 #pragma once
@@ -10,6 +13,8 @@
 #include <irrlicht.h>
 #include <cstdint>
 #include <vector>
+
+#include "client/graphics/ui/ui_quad_batch.h"
 
 namespace EQT {
 namespace Graphics {
@@ -130,9 +135,10 @@ public:
      * `commands` is every drawRect/drawSprite/drawTexture/drawItemIcon call
      * accumulated since beginFrame(); `driverDraws` is how many draw calls
      * endFrame() issued to the driver for them (one per command until T462
-     * batched runs of same-texture commands); `textEntries` is how many text
-     * entries the TextBatch flushed. The two times are wall-clock microseconds
-     * spent inside the command flush and the text flush.
+     * batched runs of commands that share their GL state); `textEntries` is
+     * how many text entries the TextBatch flushed and `textDraws` how many
+     * draw calls that took. The two times are wall-clock microseconds spent
+     * inside the command flush and the text flush.
      *
      * TAKE-and-reset: a frame that does not call endFrame() (F11 hides the UI)
      * reads zeros rather than the previous frame's numbers.
@@ -140,10 +146,14 @@ public:
     struct FlushStats {
         size_t commands = 0;
         size_t driverDraws = 0;
-        // Maximal runs of consecutive drawable commands that sample the same
-        // texture -- the most a batched flush can merge.
+        // Maximal runs of consecutive drawable commands that share their GL
+        // state (one texture, or solid with one blend enable) -- the most a
+        // batched flush can merge.
         size_t textureRuns = 0;
         size_t textEntries = 0;
+        // Driver draw calls the text flush issued (one per entry until T462
+        // batched the glyphs of every entry into texture runs).
+        size_t textDraws = 0;
         int64_t commandFlushUs = 0;
         int64_t textFlushUs = 0;
     };
@@ -155,39 +165,37 @@ public:
 
     /**
      * T462 test seam: false replays the command list one driver draw per
-     * command, the pre-T462 flush, so a test can compare the two paths'
-     * pixels on the same device. Production never calls it.
+     * command and the text one font draw per entry -- the pre-T462 flush --
+     * so a test can compare the two paths' pixels on the same device.
+     * Production never calls it.
      */
-    void setBatchingEnabled(bool enabled) { batchingEnabled_ = enabled; }
+    void setBatchingEnabled(bool enabled);
 
 private:
-    FlushStats flushStats_;
-    bool batchingEnabled_ = true;
-
-    // T462 (B506): draws commands [begin, end) that sample `tex` -- the tail
-    // of a run whose first command endFrame() has just drawn through
-    // draw2DImage() -- as ONE draw call. See the definition for why the
-    // pixels are the same.
-    void drawRunTail(irr::video::ITexture* tex, irr::video::ITexture* atlasTex,
-                     size_t begin, size_t end);
-    std::vector<float> runVertices_;     // reused across frames, 9 floats per vertex
-    std::vector<uint16_t> runIndices_;
     irr::video::IVideoDriver* driver_ = nullptr;
     UIAtlas* atlas_ = nullptr;
     TextBatch* textBatch_ = nullptr;
 
-    // For atlas path: accumulated draw commands, flushed in SUBMISSION
-    // ORDER by endFrame(). `texture == nullptr` means "the atlas texture"
-    // (the overwhelmingly common case — drawRect/drawSprite); a non-null
-    // texture is an external blit (drawTexture) that breaks the atlas run
-    // so that later quads land on top of it and earlier quads under it.
+    // Accumulated draw commands, flushed in SUBMISSION ORDER by endFrame().
+    // `solid` is a fallback-path rectangle (no atlas: draw2DRectangle's Color2D
+    // program). Otherwise `texture == nullptr` means "the atlas texture" (the
+    // overwhelmingly common case — drawRect/drawSprite on the atlas path) and a
+    // non-null texture is an external blit (drawTexture, drawItemIcon) that
+    // breaks the atlas run so later quads land on top of it and earlier quads
+    // under it.
     struct DrawCmd {
         irr::core::rect<irr::s32> destRect;
         irr::core::rect<irr::s32> srcRect;
         irr::video::SColor color;
         irr::video::ITexture* texture = nullptr;
+        bool solid = false;
     };
     std::vector<DrawCmd> atlasQuads_;
+
+    FlushStats flushStats_;
+    bool batchingEnabled_ = true;
+    UiQuadBatch quadBatch_;        // T462: the run draws
+    std::vector<UiQuad> run_;      // reused across frames
 };
 
 } // namespace Graphics

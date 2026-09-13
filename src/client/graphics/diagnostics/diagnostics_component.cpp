@@ -366,9 +366,9 @@ void DiagnosticsComponent::logFrameTimings() {
     LOG_INFO(MOD_GRAPHICS, "    UI Quad Flush:    {:>8.0f} us ({:>5.1f}%)  [{:.0f} commands, {:.0f} draws]",
              avg(ctx_.Frame().timingsAccum().staticUICommandFlush), pct(ctx_.Frame().timingsAccum().staticUICommandFlush),
              avg(ctx_.Frame().timingsAccum().staticUICommands), avg(ctx_.Frame().timingsAccum().staticUIDriverDraws));
-    LOG_INFO(MOD_GRAPHICS, "    UI Text Flush:    {:>8.0f} us ({:>5.1f}%)  [{:.0f} entries]",
+    LOG_INFO(MOD_GRAPHICS, "    UI Text Flush:    {:>8.0f} us ({:>5.1f}%)  [{:.0f} entries, {:.0f} draws]",
              avg(ctx_.Frame().timingsAccum().staticUITextFlush), pct(ctx_.Frame().timingsAccum().staticUITextFlush),
-             avg(ctx_.Frame().timingsAccum().staticUITextEntries));
+             avg(ctx_.Frame().timingsAccum().staticUITextEntries), avg(ctx_.Frame().timingsAccum().staticUITextDraws));
     LOG_INFO(MOD_GRAPHICS, "  Zone Line Overlay:  {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().zoneLineOverlay), pct(ctx_.Frame().timingsAccum().zoneLineOverlay));
     LOG_INFO(MOD_GRAPHICS, "  Footprint Render:   {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().footprintRender), pct(ctx_.Frame().timingsAccum().footprintRender));
     LOG_INFO(MOD_GRAPHICS, "  Post Render:        {:>8.0f} us ({:>5.1f}%)", avg(ctx_.Frame().timingsAccum().postRender), pct(ctx_.Frame().timingsAccum().postRender));

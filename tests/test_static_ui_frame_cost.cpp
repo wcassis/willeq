@@ -499,12 +499,62 @@ TEST_F(StaticUiFrameCostTest, TheOpenInventoryFlushIssuesAtMostTwoDrawsPerTextur
     EXPECT_LE(s.driverDraws, 2 * s.textureRuns);
 }
 
-// The batched flush paints exactly the pixels of the per-command flush, over
-// the whole 800x600 frame: every panel, the open inventory with icons, a
-// hovered slot, the paperdoll blit (an external texture in the middle of the
-// atlas run) and a scrolled chat box.
-TEST_F(StaticUiFrameCostTest, TheBatchedFlushPaintsExactlyThePixelsOfThePerCommandFlush) {
+// ---------------------------------------------------------------------------
+// THE FALLBACK PATH IS THE ONE WILL'S PI RUNS. renderer_init.cpp loads the UI
+// atlas only when --eqe1-path is given, and Will's recipe gives none, so on
+// his Orange Pi every drawRect/drawSprite was an immediate draw2DRectangle()
+// during submission (T462's Pi account, X1: 0 commands reached endFrame(),
+// Text Flush 8-12 ms of a 18-26 ms Static UI). These pins cover that path.
+// ---------------------------------------------------------------------------
+TEST_F(StaticUiFrameCostTest, TheFallbackPathQueuesItsDrawsAndFlushesThemInRuns) {
+    if (!pinsApply()) GTEST_SKIP() << "count pins are taken at 800x600";
+    ui_.init(driver_, nullptr, &textBatch_);
+    inv_.activePopup = PopupType::Inventory;
+    UIRenderer::FlushStats s;
+    irr::video::IImage* img = renderFrames([&] { submitStaticUI(); }, &s);
+    if (img) img->drop();
+
+    EXPECT_GT(s.commands, 100u)
+        << "the fallback path drew immediately during submission, so nothing reached the "
+           "flush and nothing could be batched";
+    ASSERT_GT(s.textureRuns, 0u);
+    EXPECT_LT(s.textureRuns, s.commands / 4);
+    EXPECT_LE(s.driverDraws, 2 * s.textureRuns)
+        << s.driverDraws << " driver draws for " << s.commands << " commands in "
+        << s.textureRuns << " runs";
+}
+
+// Every text entry was one font draw -- one draw2DImageBatch with its own
+// allocations and 2D state setup. The glyphs of every plain entry now go in
+// texture runs: a couple of draws for the whole frame's text, on both paths.
+TEST_F(StaticUiFrameCostTest, TheTextFlushIsBatchedOnBothPaths) {
+    if (!pinsApply()) GTEST_SKIP() << "count pins are taken at 800x600";
+    inv_.activePopup = PopupType::Inventory;
+    fillChat(120);
+    for (bool fallback : {false, true}) {
+        ui_.init(driver_, fallback ? nullptr : atlas_.get(), &textBatch_);
+        UIRenderer::FlushStats s;
+        irr::video::IImage* img = renderFrames([&] { submitStaticUI(); }, &s);
+        if (img) img->drop();
+        const char* path = fallback ? "fallback path" : "atlas path";
+        EXPECT_GT(s.textEntries, 40u) << path;
+        EXPECT_LE(s.textDraws, 2u) << path << ": " << s.textDraws << " text draws for "
+                                   << s.textEntries << " entries";
+    }
+}
+
+// The batched flush -- commands AND text -- paints exactly the pixels of the
+// pre-T462 per-command, per-entry flush, over the whole 800x600 frame: every
+// panel, the open inventory, a hovered slot, the paperdoll blit (an external
+// texture inside a run), a scrolled chat box, and two text entries the glyph
+// batch must hand back to the font untouched (a line break, a non-ASCII byte).
+class StaticUiBatchedPixelTest : public StaticUiFrameCostTest,
+                                 public ::testing::WithParamInterface<bool> {};
+
+TEST_P(StaticUiBatchedPixelTest, TheBatchedFlushPaintsExactlyThePixelsOfThePerCommandFlush) {
     if (!pinsApply()) GTEST_SKIP() << "pixel pins are taken at 800x600";
+    const bool fallback = GetParam();
+    ui_.init(driver_, fallback ? nullptr : atlas_.get(), &textBatch_);
     inv_.activePopup = PopupType::Inventory;
     inv_.hoveredSlot = 3;
     hotbar_.hoveredSlot = 2;
@@ -515,13 +565,18 @@ TEST_F(StaticUiFrameCostTest, TheBatchedFlushPaintsExactlyThePixelsOfThePerComma
     fillChat(120);
     chat_.mouseHover = true;
     chat_.scrollOffset = 3;
+    auto submit = [&] {
+        submitStaticUI();
+        textBatch_.addText("first line\nsecond line", 330, 300, irr::video::SColor(255, 255, 120, 0));
+        textBatch_.addText("caf\xc3\xa9 au lait", 330, 340, irr::video::SColor(255, 90, 255, 90));
+    };
 
     ui_.setBatchingEnabled(false);
     UIRenderer::FlushStats perCommand;
-    irr::video::IImage* reference = renderFrames([&] { submitStaticUI(); }, &perCommand);
+    irr::video::IImage* reference = renderFrames(submit, &perCommand);
     ui_.setBatchingEnabled(true);
     UIRenderer::FlushStats batched;
-    irr::video::IImage* candidate = renderFrames([&] { submitStaticUI(); }, &batched);
+    irr::video::IImage* candidate = renderFrames(submit, &batched);
 
     ASSERT_NE(reference, nullptr);
     ASSERT_NE(candidate, nullptr);
@@ -534,6 +589,11 @@ TEST_F(StaticUiFrameCostTest, TheBatchedFlushPaintsExactlyThePixelsOfThePerComma
     reference->drop();
     candidate->drop();
 }
+
+INSTANTIATE_TEST_SUITE_P(AtlasAndFallback, StaticUiBatchedPixelTest, ::testing::Values(false, true),
+                         [](const ::testing::TestParamInfo<bool>& i) {
+                             return std::string(i.param ? "FallbackPath" : "AtlasPath");
+                         });
 
 // ===========================================================================
 // The account. Prints one row per scenario; asserts nothing about time.
