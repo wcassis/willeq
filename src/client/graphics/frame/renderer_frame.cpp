@@ -248,6 +248,37 @@ bool FrameComponent::processFrame(float deltaTime) {
     // Phase 3: Simulation
     processFrameSimulation(deltaTime);
 
+    // T459 (Orange Pi live diagnosis). Two diagnostic lines, placed after every
+    // camera writer of the frame has run (bridge PlayerMoved is forwarded before
+    // processFrame(); physics, zoom and lifts run in phases 1-3) and before the
+    // render that consumes the camera -- so the TRACE line is the camera this
+    // frame is DRAWN with. Off unless --log-module=CAMERA:TRACE.
+    if (ctx_.camera) {
+        const irr::core::vector3df camPos = ctx_.camera->getPosition();
+        const irr::core::vector3df camTgt = ctx_.camera->getTarget();
+        LOG_TRACE(MOD_CAMERA,
+                  "T459 cam frame={} mode={} pos=({:.2f},{:.2f},{:.2f}) tgt=({:.2f},{:.2f},{:.2f}) "
+                  "player=({:.2f},{:.2f},{:.2f}) heading={:.2f} followDist actual={:.2f} preferred={:.2f}",
+                  ctx_.frameNumber, static_cast<int>(ctx_.PlayerCamera().cameraMode()),
+                  camPos.X, camPos.Y, camPos.Z, camTgt.X, camTgt.Y, camTgt.Z,
+                  ctx_.playerX, ctx_.playerY, ctx_.playerZ, ctx_.playerHeading,
+                  ctx_.cameraController ? ctx_.cameraController->getActualFollowDistance() : -1.0f,
+                  ctx_.cameraController ? ctx_.cameraController->getFollowDistance() : -1.0f);
+    }
+    // The software cursor draws only while this pointer is non-null
+    // (renderFrameTail); log each transition so a live run shows WHEN it goes.
+    {
+        static int t459CursorState = -1;
+        const int cursorState = owner_.softwareCursorTexture_ ? 1 : 0;
+        if (cursorState != t459CursorState) {
+            auto* cursorControl = ctx_.device ? ctx_.device->getCursorControl() : nullptr;
+            LOG_INFO(MOD_GRAPHICS, "T459 software cursor texture is now {} (frame {}, cursor control visible={})",
+                     cursorState ? "LIVE" : "NULL", ctx_.frameNumber,
+                     cursorControl ? cursorControl->isVisible() : false);
+            t459CursorState = cursorState;
+        }
+    }
+
     // Phase 4: Render
     if (!processFrameRender(deltaTime)) {
         // Loading screen was shown - skip rest of render
