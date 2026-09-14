@@ -148,13 +148,35 @@ captured:** any attack animation (oracle auto-attack produced no swing;
 fable's `/target` by name found nothing — B586), sets B (1H blunt + shield)
 and C (2H).
 
-### 4. Owed live proofs
+### 4. Owed live proofs (x86 `build-gles2` from the rebased tree, local capability-set copy, cmp-identical)
 
-(filled after the rebased `build-gles2`)
+| proof | result | evidence |
+|---|---|---|
+| T464 **B507** — T459's nro `/move` path, camera height steady at 10.0 | **PASS.** Testcaster in nro, Chase, both `/move` legs executed. `/camera get` node camPos z minus player z: **10.000** at the start (2723.25, −41.75), **10.000** at the old clamp spot (2613.68, −186.69, where T459 logged "ceiling at −172.0"), **10.000** after the return leg. **0** "BSP camera ceiling" lines at DEBUG. Deviation: `/camera get` at each leg instead of a per-frame CAMERA TRACE (the client's `--log-level` is global; no module filter) | `review/T466/fable/proofs/b507_nro_move/run.log` |
+| T464 **B532** — `/camera user1`, zone through a zone line, `/camera get` and the ini still User 1 | **Zone-line crossing NOT achieved; the zone load itself PASSES via `#zone`.** Two `/move` runs to the qeynos2→qeynos zone line (`data/zone_lines/qeynos2.json`, box x −35.96..−34.71): the first stopped 0.24 short, the second walked through the plane to server x −30.76 — one "Zone connection complete", no zone. Substitute: `/say #zone qeynos` → a second "Zone connection complete" and "Graphics loading complete"; `/camera get` in qeynos: `mode="User Defined Camera 1" view=4`, rig az 270 pitch 5 dist 12 height 4 unchanged; `UI_Testchar_WillEQ.ini` still `View=4`, mtime unchanged (no save of Chase). Owed: a real zone-line crossing (the rig's `/move` does not trigger the server zone point) | `fable/sessions/proof_b532_user1_zone_line`, `proof_b532_retry_through_plane`, `proof_b532_gm_zone_qeynos` |
+| **T462** on x86, 1280x720, `--eqe1-path`, inventory open | **Captured** for Will (not judged): Testchar in qeynos2, daylight, Chase, `/inventory` → "New UI inventory: OPEN", frame 30 dumped 6.4 s after the open | `review/T466/fable/T466_fable_x86_build_gles2_1280x720_eqe1_inventory_open_T462_frame30.png` |
 
-### 5. Verification
+### 5. Verification (on the rebased tree, `c9f15701` on `fable` `6905c80f`; builds run strictly in sequence)
 
-(filled after the bar)
+| step | result |
+|---|---|
+| red/green | `EveryCameraModeUsesTheOneMeasuredFov` **FAILED** with T466's `renderer_camera.cpp` diff reverse-applied (exported patch), passed restored; `OverheadIsTheOracleFit` **FAILED** with `kOverheadRig` at the old 70/80 placeholder, passed restored; `test_first_person_camera_single_formula` 16/16, `test_camera_modes` 24/24, `test_camera_mode_wiring` 8/8 (`review/T466/logs/redgreen_*.log`) |
+| 1 `cmake --build build -j24` | PASS, exit 0, 0 `error:` lines. No exit 143 anywhere in the unit |
+| 2 `ctest -j6` | PASS, **4741 / 4741**, 253 s, exit 0 — including `visual_gate` (22.15 s), `FileSizeCeiling`, `WriteOnlyFields`, `ZeroCallers`, `DocCounts`, and the camera/golden guards for the touched TUs (`test_first_person_camera_single_formula`, `test_camera_modes`, `test_camera_mode_wiring`, `test_player_camera_component`, `test_irrlicht_camera_command`, `test_movement_order`, `test_frame_render_order`) |
+| 3 `build-gles2-x86.sh` | PASS, exit 0 (after step 1, per the new protocol) |
+| 4 visual gate | PASS inside step 2; `git status tests/goldens` clean — **no image golden moved** |
+| 5 `build-arm-noble.sh` | PASS, exit 0, 0 `error:` lines |
+| 6 `check_file_sizes.sh fable` | PASS: 6 changed files ok, 0 warn, 0 fail (largest `test_first_person_camera_single_formula.cpp` 737) |
+| eqemu protocol | lock taken as T466; world DOWN (`down.sh` exit 0) before every restore; restored with mariadb only; `character_data`, the two characters' `inventory`, account status, corpses and qeynos2 weather all **IDENTICAL** to the pre-session snapshot (`review/T466/data/*_before.tsv` vs `*_after.tsv`); mariadb down; lock released; oracle client exited and its Xvfb stopped; oracle `eqclient.ini` restored byte for byte |
+
+### 5b. Server state the session changed and restored
+
+Testchar (pose and two DB inventory rows), Testcaster (pose, moved by the B507
+run), Oraclealpha (pose; a `#summonitem` Rusty Mace left on the cursor; two food
+items one charge each consumed while standing in world; row guids renumbered by
+the server's saves) — all restored and diffed identical. Runtime only, gone with
+the zone processes: `#set time`, `#set weather`. Not restored, deliberately: the
+oracle clients' `eqhost.txt` now point at the live eqemu VM (B583).
 
 ### 6. Board
 
