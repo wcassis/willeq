@@ -32,6 +32,7 @@
 #include "client/graphics/renderer_context.h"
 #include <irrlicht.h>
 
+#include <cctype>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -473,6 +474,85 @@ TEST_F(DoorTextureEvictionTest, DoorsSharingACachedMeshReleaseItExactlyOnceAtZon
 
     renderer_->unloadZone();
     EXPECT_EQ(shared.holders(), 0) << "the shared door mesh outlived the zone unload";
+}
+
+// ---------------------------------------------------------------------------
+// T473 (board B640) -- the door texture-ARRIVAL path, and why B640 is not live.
+//
+// The lead: a door whose real mesh was built while its texture was "pending"
+// is never re-textured, because rebuildSingleDoor() has no branch for
+// meshBuilt=1 && usePlaceholder=0. That gap is real in the code. But the only
+// thing that would ever ask rebuildSingleDoor() to re-texture such a door is
+// the arrival hop, and that hop has no producer:
+//
+//   Step 7 (loadZoneStep7_Doors) -> ZoneLifecycle().pendingTextureDoors()[tex]
+//   GPUUploadThread result, type Texture/CompressedTexture, callbackKey high
+//     byte == 3 (renderer_gpu_upload.cpp, processCompletedUploads and
+//     processOneGPUResult) -> invalidateMeshCache + doorTextureRebuildQueue
+//   renderer_frame.cpp Priority 8 / renderer_zone_stream.cpp P1.6
+//     -> DoorManager::rebuildSingleDoor()
+//
+// The high-byte-3 key was set by exactly one producer, ConstrainedTextureCache's
+// async upload queue (`req.callbackKey = uint64_t(3) << 56`, which also filled
+// pendingAsyncUploads_). Batch T's T04 (aaee58d1) wrapped it in #if 0 when it
+// made getOrLoad()+uploadTexture() synchronous, and T326 (77c842b4) deleted the
+// block. Since then no texture upload is ever submitted with that key, so the
+// arrival arm, the door rebuild queue and the region/object siblings never run
+// (board B670). A door texture that is missing at build time does not "arrive"
+// later: in a synchronous cache it is missing because it failed (budget,
+// decode, absent), was evicted, or its pixel data was released (board B671).
+//
+// This pins that refutation. If an async texture producer is ever reintroduced,
+// B640 becomes LIVE and rebuildSingleDoor() needs a re-texture branch for a
+// real-mesh door; this test is the tripwire that says so.
+TEST(DoorTextureArrivalSource, NoTextureUploadIsSubmittedWithTheArrivalKey) {
+    const fs::path root(WILLEQ_SOURCE_DIR);
+    std::vector<std::string> hits;
+    for (const char* dir : {"src", "include"}) {
+        const fs::path base = root / dir;
+        ASSERT_TRUE(fs::is_directory(base)) << base;
+        for (const auto& entry : fs::recursive_directory_iterator(base)) {
+            if (!entry.is_regular_file()) continue;
+            const auto ext = entry.path().extension();
+            if (ext != ".cpp" && ext != ".h") continue;
+            std::ifstream in(entry.path());
+            std::string line;
+            int lineNo = 0;
+            while (std::getline(in, line)) {
+                ++lineNo;
+                std::string squeezed;
+                for (char c : line) {
+                    if (c != ' ' && c != '\t') squeezed.push_back(c);
+                }
+                bool hit = false;
+                for (size_t at = squeezed.find("<<56"); at != std::string::npos;
+                     at = squeezed.find("<<56", at + 1)) {
+                    const size_t after = at + 4;
+                    if (after >= squeezed.size() || !std::isdigit(static_cast<unsigned char>(squeezed[after]))) {
+                        hit = true;
+                    }
+                }
+                if (squeezed.find("pendingAsyncUploads_.insert") != std::string::npos ||
+                    squeezed.find("pendingAsyncUploads_.emplace") != std::string::npos ||
+                    squeezed.find("pendingAsyncUploads_[") != std::string::npos) {
+                    hit = true;
+                }
+                if (hit) {
+                    hits.push_back(fs::relative(entry.path(), root).string() + ":" + std::to_string(lineNo) +
+                                   ": " + line);
+                }
+            }
+        }
+    }
+    std::ostringstream list;
+    for (const auto& h : hits) list << "\n  " << h;
+    EXPECT_TRUE(hits.empty())
+        << "an async texture-upload producer exists again (callbackKey high byte 3, or a "
+           "pendingAsyncUploads_ writer). The GPUUpload arrival arm is live again, so board B640 is LIVE: "
+           "DoorManager::rebuildSingleDoor() has no branch for a door whose REAL mesh was built "
+           "without its texture (meshBuilt && !usePlaceholder) and will return false for it. "
+           "Give it a re-texture branch under T470's ownership rule before shipping the producer:"
+        << list.str();
 }
 
 #endif  // EQT_HAS_GRAPHICS

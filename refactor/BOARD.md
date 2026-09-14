@@ -9502,8 +9502,25 @@ B623–B629 unused.
 
 ## Added 2026-09-14 by T470 (door mesh leaks)
 
-- **B640** (A, *unconfirmed live*) **A door whose real mesh was built while
-  its texture was pending is never re-textured.**
+- **B640** (**B, unreached** -- narrowed from A by T473) **A door whose real
+  mesh was built while its texture was pending is never re-textured.**
+  - **T473: the live half is REFUTED.** The gap in `rebuildSingleDoor()` is
+    real, but nothing can ask it to re-texture such a door. The arrival hop
+    (`renderer_gpu_upload.cpp`, a `Texture`/`CompressedTexture` result whose
+    `callbackKey` high byte is 3) has had no producer since Batch T's T04
+    (`aaee58d1`) wrapped the cache's async upload queue in `#if 0`, and T326
+    (`77c842b4`) deleted it. Nothing under `src/ include/ tools/ tests/
+    benchmarks/ docker/` now sets that key, and nothing writes
+    `pendingAsyncUploads_`. So `doorTextureRebuildQueue` is never pushed, and
+    Priority 8 / P1.6 never run. Details: B670.
+  - Pinned by `DoorTextureArrivalSource.NoTextureUploadIsSubmittedWithTheArrivalKey`
+    (`tests/test_door_texture_eviction.cpp`). It fails, and names this entry,
+    the moment an async texture producer returns; a re-texture branch is owed
+    then, not before.
+  - Closes with B670: deleting the dead arm closes this too. What a player can
+    actually see (a door built without its texture stays untextured) is
+    B671.
+  - (T470's original text follows.)
   - `ZoneLoadComponent::loadZoneStep7_Doors()` queues the door into
     `pendingTextureDoors()`. On arrival, `renderer_gpu_upload.cpp` calls
     `invalidateMeshCache()` and pushes the id to `doorTextureRebuildQueue`,
@@ -9520,6 +9537,79 @@ B623–B629 unused.
   - Found by T470.
 
 B641–B649 unused.
+
+---
+
+## Added 2026-09-14 by T473 (door texture arrival)
+
+- **B670** (B, unreached) **The whole GPU texture-ARRIVAL arm has had no producer
+  since March, and so has everything downstream of it.**
+  - **The arm.** In `ZoneLifecycleComponent::processCompletedUploads()` and its
+    copy `processOneGPUResult()` (`renderer_gpu_upload.cpp`), the `sourceType == 3`
+    branch of a `Texture`/`CompressedTexture` result:
+    - `registerTexture` + `clearPendingAsync`;
+    - `EntityRenderer`'s `registerUploadedTexture`;
+    - the region, door and object hand-offs.
+  - **The producer is gone.** `callbackKey = uint64_t(3) << 56` was set only by
+    `ConstrainedTextureCache`'s async upload queue, which also wrote
+    `pendingAsyncUploads_`.
+    - Batch T's T04 (`aaee58d1`, 2026-03-16) wrapped that queue in `#if 0` when
+      it made `getOrLoad()` + `uploadTexture()` synchronous.
+    - T326 (`77c842b4`) deleted the block.
+    - Today's only `GPUUploadThread::submit()` callers are the atlas pages
+      (`TextureAtlas`, key `atlasType << 32`, high byte 0) and region VBOs
+      (`VertexBuffer`, a type the arm does not take). Grepped `src/ include/
+      tools/ tests/ benchmarks/ docker/`.
+  - **Dead downstream, each written but never consumed (or the reverse):**
+    - `pendingTextureRegions_` -> `textureRebuildQueue_`: its consumer was
+      already removed by T67, so this one is dead at both ends;
+    - `pendingTextureDoors_` (written by Step 7) -> `doorTextureRebuildQueue`
+      -> `renderer_frame.cpp` Priority 8 and `renderer_zone_stream.cpp` P1.6;
+    - `pendingTextureObjects` (written by Step 6 and `buildDeferredObject`)
+      -> `objectTextureRebuildQueue` -> Priority 9 and P1.7;
+    - `ConstrainedTextureCache::setGPUUploadThread()` / `gpuUploadThread_`:
+      written, never read;
+    - `pendingAsyncUploads_`: read by `isPending()` / `hasPendingWork()`,
+      never written.
+  - **Harmless today, not free.** The three pending maps grow with every
+    missing texture until `unloadZone()`. `hasPendingWork()` and the two
+    rebuild-queue reads gate the end of progressive loading, on state that
+    can never become true.
+  - **Decision owed:** delete the arm and its queues (B640 closes with it), or
+    restore an async producer (B640 becomes live, and its re-texture branch is
+    owed). The tripwire is
+    `DoorTextureArrivalSource.NoTextureUploadIsSubmittedWithTheArrivalKey`.
+  - Found by T473.
+
+- **B671** (A, *unconfirmed live*) **A zone-geometry mesh built without its
+  texture draws that way for the rest of the zone, and some paths do not even
+  record it.** This is the reachable form of B640, and a sibling of B620.
+  - **How a texture comes out missing** in `ZoneMeshBuilder::buildTexturedMesh()`
+    with a synchronous cache (it "arrives" never):
+    - `uploadTexture()` fails because the budget is exhausted;
+    - the decode fails;
+    - the name is not in the zone's texture map;
+    - the pixel data was released and the texture is no longer cached (LRU
+      eviction). Object pixel data is released when progressive loading
+      completes (`renderer_zone_stream.cpp`), and all zone data at Step 13
+      when `releaseTextureDataAfterUpload` is set.
+  - **Holders that can end up that way:**
+    - **doors:** Step 7 (recorded in B670's dead map), and `createDoor()`,
+      IrrlichtBridge's live spawn, which records nothing;
+    - **objects:** Step 6 and `buildDeferredObject()` (recorded, dead map);
+    - **regions:** `rebuildRegionMesh()` (recorded, dead map).
+  - **What it looks like:** not measured. The material's texture slot is
+    null, so whatever the GLES2 driver binds for a null unit 0 is drawn,
+    not the model's art.
+  - **T470's "pending" test state models this, not async:** its door texture
+    has its data cleared and is not in the cache.
+  - **Confirm by:** a Pi session log grepped for "SEQ Step7: door .* missing
+    textures", "SEQ Step6: obj.* missing textures" and "rebuildRegionMesh: .*
+    missing textures". The visual gate runs `gles2_zone_benchmark`, not the
+    client's Step 6/7, so it cannot answer this.
+  - Found by T473.
+
+B672–B679 unused.
 
 ---
 
