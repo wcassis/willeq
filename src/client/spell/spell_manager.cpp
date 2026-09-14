@@ -90,45 +90,25 @@ void SpellManager::update(float delta_time)
         }
     }
 
-    // Check if cast has been ongoing too long without completing
-    // Some spells (like pet summons) may not send an Action packet
+    // Last resort for a confirmed cast whose end packets never arrived.
+    // T482 (board B631): every way eqemu ends a confirmed cast sends a packet
+    // -- the success tail (ManaChange keepcasting 0 + OP_MemorizeSpell
+    // memSpellSpellbar, spells.cpp:1817-1824, handled by handleManaChange /
+    // handleSpellBarRefresh), StopCasting's ManaChange, or InterruptSpell's
+    // OP_InterruptCast -- so reaching this means a packet was lost. It used to
+    // call completeCast(true) and paint a synthetic impact: a stopped cast was
+    // reported as a success with its recast started. It now claims nothing.
     if (m_is_casting && !m_waiting_for_server_confirm) {
         auto now = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             now - m_cast_start_time).count();
 
-        // Allow cast duration + 5 second buffer for server response
         uint32_t timeout = m_cast_duration_ms + 5000;
         if (elapsed > timeout) {
-            LOG_WARN(MOD_SPELL, "Cast of spell {} timed out after {}ms (expected {}ms)",
-                m_current_spell_id, elapsed, m_cast_duration_ms);
-
-            // Complete the cast (assume success for spells like pet summons)
-            completeCast(true);
-
-            // D20e1: Signal visual completion via bridge
-            if (m_bridge) {
-                eqt::state::SpellCastVisualCompleteData d;
-                d.casterId = m_eq->GetEntityID();
-                d.targetId = m_current_target_id;
-                d.spellId = m_current_spell_id;
-                d.isSuccess = true;
-                // T395 (board B204): no OP_Action ever arrived on this path --
-                // that is what "timed out" means -- so this synthetic
-                // completion is the only chance to paint the cast. Arm the FX
-                // here the animation packet would have.
-                d.isCastAnimation = true;
-                d.isPlayerCast = true;
-                d.isTargetCast = false;
-                // T381 (B160): the timeout path publishes the same completion
-                // event the server's success packet does, so it must carry the
-                // same vocabulary or the impact burst loses its colour.
-                if (const SpellData* timed_out = m_spell_db.getSpell(m_current_spell_id)) {
-                    d.spellVisual = timed_out->visualVocabulary();
-                }
-                m_bridge->pushEvent(eqt::state::GameEvent(
-                    eqt::state::GameEventType::SpellCastVisualComplete, std::move(d)));
-            }
+            LOG_WARN(MOD_SPELL, "Cast of spell {} got no end packet from the server after {}ms "
+                "(expected {}ms); ending it without a result", m_current_spell_id, elapsed,
+                m_cast_duration_ms);
+            endOwnCastByServer(CastResult::Interrupted);
         }
     }
 }
@@ -254,6 +234,10 @@ CastResult SpellManager::beginCastFromGem(uint8_t gem_slot, uint16_t target_id)
         return result;
     }
 
+    // T482: a previous cast whose outcome is still pending is not our next
+    // cast's; publish it before this one's state replaces it.
+    resolvePendingOutcome(CastResult::Interrupted);
+
     // Set up casting state
     m_is_casting = true;
     m_current_spell_id = spell_id;
@@ -323,6 +307,8 @@ CastResult SpellManager::beginCastById(uint32_t spell_id, uint16_t target_id)
     if (result != CastResult::Success) {
         return result;
     }
+
+    resolvePendingOutcome(CastResult::Interrupted);  // T482, see beginCastFromGem()
 
     // Set up casting state (no gem slot)
     m_is_casting = true;
@@ -459,11 +445,12 @@ void SpellManager::completeCast(bool success)
             spell ? spell->name : "Unknown");
     }
 
-    // T44: this is the choke point for our own cast's success path (called
-    // from handleAction() on the server's success packet, and from update()'s
-    // no-Action-packet timeout fallback for casts like pet summons). success
-    // is the only value passed by any current caller; the false branch is
-    // kept honest anyway rather than silently dropping the event.
+    // T44: this is the choke point for our own cast's success path. Since T482
+    // its production caller is handleSpellBarRefresh() for a bard song (the
+    // non-bard success resolves through resolvePendingOutcome()); handleAction()
+    // and update()'s timeout no longer call it. success is the only value
+    // passed by any current caller; the false branch is kept honest anyway
+    // rather than silently dropping the event.
     publishCastComplete(m_current_spell_id, success ? CastResult::Success : CastResult::Interrupted);
 
     m_current_spell_id = SPELL_UNKNOWN;

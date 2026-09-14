@@ -301,18 +301,22 @@ TEST(SpellManagerTiming, BUG_UpdateIgnoresDeltaTimeHugeDeltaDoesNotFastForwardCa
         << "update()'s delta_time parameter must be dead for this to hold";
 
     // Backdating real wall-clock time past duration+5000ms buffer DOES
-    // complete it (assume-success path), confirming the gate is
-    // steady_clock-based.
+    // end it, confirming the gate is steady_clock-based. T482 (board B631),
+    // updated in place: it ends WITHOUT a success -- the cast visuals are
+    // cancelled, nothing is painted.
     mgr->m_cast_start_time = std::chrono::steady_clock::now() - std::chrono::milliseconds(7000);
     mgr->update(0.0f);
     EXPECT_FALSE(mgr->isCasting());
 
     auto events = bridge.drainEvents();
-    bool sawComplete = false;
+    bool sawCancel = false;
+    bool sawPaint = false;
     for (auto& e : events) {
-        if (e.type == eqt::state::GameEventType::SpellCastVisualComplete) sawComplete = true;
+        if (e.type == eqt::state::GameEventType::SpellCastVisualInterrupted) sawCancel = true;
+        if (e.type == eqt::state::GameEventType::SpellCastVisualComplete) sawPaint = true;
     }
-    EXPECT_TRUE(sawComplete);
+    EXPECT_TRUE(sawCancel);
+    EXPECT_FALSE(sawPaint);
 }
 
 // ===================================================================
@@ -410,15 +414,20 @@ TEST(SpellManagerHandlers, HandleActionNonSpellTypeIsNoOp) {
     EXPECT_NO_THROW(mgr->handleAction(action));
 }
 
-TEST(SpellManagerHandlers, HandleActionSuccessPacketCompletesOwnCastAndFiresCallback) {
+// T482 (board B631), updated in place: this used to assert the action packet
+// completes our own cast as a Success. It must not -- eqemu sends the action
+// before it knows whether the spell lands, and a buff that does not take hold is
+// then stopped with no recast. The cast ends on CastedSpellFinished's tail
+// (tests/test_spell_cast_end_wire.cpp).
+TEST(SpellManagerHandlers, HandleActionSuccessPacketDoesNotEndOwnCast) {
     EverQuest eq = MakeEq();
     auto* mgr = eq.GetSpellManager();
     mgr->m_is_casting = true;
     mgr->m_current_spell_id = 99;
     mgr->m_current_gem_slot = 0xFF;  // no gem cooldown side effect (no DB spell object)
 
-    CastResult seenResult = CastResult::Interrupted;
-    mgr->setOnCastComplete([&](CastResult r, uint32_t) { seenResult = r; });
+    bool fired = false;
+    mgr->setOnCastComplete([&](CastResult, uint32_t) { fired = true; });
 
     EQT::SpellActionInfo action{};
     action.type = 231;
@@ -429,8 +438,8 @@ TEST(SpellManagerHandlers, HandleActionSuccessPacketCompletesOwnCastAndFiresCall
 
     mgr->handleAction(action);
 
-    EXPECT_FALSE(mgr->isCasting());
-    EXPECT_EQ(seenResult, CastResult::Success);
+    EXPECT_TRUE(mgr->isCasting());
+    EXPECT_FALSE(fired);
 }
 
 TEST(SpellManagerHandlers, HandleActionClearsTargetCastTracking) {

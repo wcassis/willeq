@@ -619,6 +619,15 @@ void eqt::zone::ZoneComponent::OnMemorizeSpell(const EQ::Net::Packet & p)
 				ctx_.spell_manager->applyServerGemUpdate(slot, spell_id, scribing);
 			}
 		}
+		// T482 (board B631): memSpellSpellbar, the last packet of eqemu's
+		// successful-cast tail (Mob::CastedSpellFinished, zone/spells.cpp:1803,
+		// :1824). Titanium maps the server casting slot for this case only
+		// (titanium.cpp:1266), so `slot` is a gem index, 10 for an item.
+		else if (scribing == 3) {
+			if (ctx_.spell_manager) {
+				ctx_.spell_manager->handleSpellBarRefresh(slot, spell_id);
+			}
+		}
 	}
 }
 
@@ -932,6 +941,13 @@ eqt::zone::ZoneComponent::IgnoredZoneOpcodes()
 void eqt::zone::ZoneComponent::DispatchZonePacket(const EQ::Net::Packet & p)
 {
 	auto opcode = p.GetUInt16(0);
+
+	// T482 (board B631): a confirmed cast released by keepcasting 0 is a
+	// success only if the success tail's OP_MemorizeSpell follows; any other
+	// packet first means StopCasting. SpellManager decides, before the arm.
+	if (ctx_.spell_manager) {
+		ctx_.spell_manager->noteZonePacket(opcode);
+	}
 
 	const auto& table = ZoneOpcodeTable();
 	auto it = table.find(opcode);

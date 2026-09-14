@@ -81,6 +81,20 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_spell_interrupt_wire DISCOVERY_TIMEOUT 120)
 
+# T482 (board B631): how a cast the server CONFIRMED ends -- the success tail
+# (ManaChange keepcasting 0 + MemorizeSpell memSpellSpellbar) against a
+# StopCasting() -- as real Titanium wire bytes through the zone dispatcher.
+ADD_EXECUTABLE(test_spell_cast_end_wire
+    test_spell_cast_end_wire.cpp
+)
+TARGET_COMPILE_DEFINITIONS(test_spell_cast_end_wire PRIVATE
+    WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+TARGET_LINK_LIBRARIES(test_spell_cast_end_wire GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_spell_cast_end_wire PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_spell_cast_end_wire DISCOVERY_TIMEOUT 120)
+
 # T24: BuffManager coverage. BuffManager is constructible standalone from a
 # SpellDatabase* (buff_manager.h:99) with no EverQuest at all -- the
 # cleanest isolation in this batch, so this target links only the spell

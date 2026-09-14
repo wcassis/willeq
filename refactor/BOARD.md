@@ -9860,6 +9860,40 @@ B712–B719 unused.
   through `position.cpp`'s same-named local template). `observer` is a
   class-level argument, not a per-row proof. Found by T458.
 
+## Added 2026-09-14 by T482 (how a confirmed cast ends)
+
+- **B760** (A, *unconfirmed live, rare*) **A cast's result code can say
+  Interrupted for a success, and can be late.** `SpellManager::noteZonePacket()`
+  settles a released cast as a stop on the first packet after the keepcasting 0
+  that is not `OP_MemorizeSpell` or `OP_LinkedReuse`. eqemu sends some packets
+  unreliably (`OP_SpawnAppearance`, `OP_ClientUpdate`, HP and group updates:
+  `/mnt/projects/akk-stack/code/zone/mob.cpp` `Mob::SendAppearancePacket`,
+  `/mnt/projects/akk-stack/code/zone/groups.cpp`), and the reliable stream may hold
+  the tail back behind them, so one can arrive inside the tail. The gem's recast
+  is still right, because `handleSpellBarRefresh()` starts it from the
+  MemorizeSpell alone. Only the `SpellCastComplete` result is wrong, and nothing
+  in production reads it (B603). In a quiet zone the result also waits for the
+  next packet. Confirm by recording, on the B630 live run, whether anything
+  arrives between the two tail packets.
+
+- **B761** (A, *unconfirmed live*) **A bard song with
+  `Character:EnableBardMelody` false has no end packet, so it ends on the
+  duration + 5 s timeout with no result.** A song's tail is `OP_MemorizeSpell`
+  alone, and only when that rule is on
+  (`/mnt/projects/akk-stack/code/zone/spells.cpp` `Mob::CastedSpellFinished`,
+  bard branch; the rule defaults to true in
+  `/mnt/projects/akk-stack/code/common/ruletypes.h`). Before T482
+  the song's own `OP_Action` completed it. No bard has been cast on fable, with
+  the rule on or off. Confirm with a bard on the live server.
+
+- **B762** (A, *unconfirmed*) **fable tracks 8 spell gems and Titanium has 9.**
+  `EQ::MAX_SPELL_GEMS` is 8 (`include/client/spell/spell_constants.h`), while
+  Titanium's `CastingSlot` has `Gem1`..`Gem9`
+  (`/mnt/projects/akk-stack/code/common/patches/titanium_limits.h`). Every
+  gem-indexed arm, including T482's `OnMemorizeSpell` scribing 3 arm, drops
+  slot 8. Found by T482 and not measured: check whether the ninth gem is shown
+  and castable on a character that has it.
+
 ## Added 2026-09-14 by T469 (the server's cast interrupt)
 
 - **B630** (A, *owed live proof*) **A real server-interrupted cast has not been
@@ -9877,9 +9911,31 @@ B712–B719 unused.
   force a fizzle (a low-skill caster) and check the same caster-side
   assertions. Record the packet order both clients receive; the test assumes
   InterruptCast precedes ManaChange (spells.cpp queues them in that order).
+  **T482 adds three caster-side legs** (no lock, wire tests only):
+  (1) a normal nuke on an NPC: the log shows ManaChange keepcasting 0 and then
+  `OP_MemorizeSpell` scribing 3 for the gem, and the gem goes into recast with
+  one impact burst; (2) a recast-timer stop after BeginCast (desync the gem, e.g.
+  `#memspell` the spell back into a refreshing gem and cast it at once): the
+  cast bar clears on the ManaChange, the gem is castable, chat shows
+  SPELL_RECAST, and no success is logged; (3) a buff that does not take hold
+  (cast a buff on a target that already has a stronger one): the same as (2)
+  apart from the message. Record whether any packet arrives between the
+  ManaChange and the MemorizeSpell.
 
-- **B631** (A, *unconfirmed live, rare*) **A cast the server stops AFTER BeginCast
-  with only a ManaChange is still reported as a success.**
+- ~~**B631** (A, *unconfirmed live, rare*) **A cast the server stops AFTER BeginCast
+  with only a ManaChange is still reported as a success.**~~ **CLOSED by T482**
+  (`refactor/T482_cast_ended_by_stopcasting_or_resist.md`), from the eqemu source
+  and wire-byte tests; the live leg is owed under B630. The packets DO separate
+  the two: eqemu's success tail is ManaChange keepcasting 0 followed by
+  `OP_MemorizeSpell` scribing 3 (`/mnt/projects/akk-stack/code/zone/spells.cpp`
+  `Mob::CastedSpellFinished`), and `StopCasting` never sends the second.
+  keepcasting 0 now releases the cast at once, the MemorizeSpell makes it a
+  Success with the recast, and any other packet first makes it Interrupted.
+  The "resisted spell" half was wrong as written: a fully resisted nuke is a
+  success in eqemu (mana and recast consumed), and before T482 fable already
+  completed it on the effect_flag 0 action. The real defect in that family was
+  a beneficial buff that does not take hold, which fable reported as a success
+  with a recast. Pinned by `tests/test_spell_cast_end_wire.cpp`. Original text:
   `Mob::CastedSpellFinished` calls `StopCasting()` -- `OP_ManaChange`
   `keepcasting 0`, no `OP_InterruptCast` -- when the spell or item recast timer
   has not expired (`/mnt/projects/akk-stack/code/zone/spells.cpp`, the two

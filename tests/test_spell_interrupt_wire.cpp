@@ -50,6 +50,7 @@
 #include "client/combat.h"
 #include "client/state/event_bus.h"
 #include "eqstr_test_db.h"
+#include "spell_wire_payloads.h"
 #include "zone_stream_test_utils.h"
 
 #include <chrono>
@@ -72,48 +73,10 @@ constexpr uint8_t kGem = 2;
 constexpr uint32_t kInterruptSpell = 439;         // Your spell is interrupted.
 constexpr uint32_t kInterruptSpellOther = 12478;  // %1's casting is interrupted!
 
-void PutLE(std::vector<uint8_t>& v, size_t at, uint32_t value, size_t width) {
-    for (size_t i = 0; i < width; ++i) {
-        v[at + i] = static_cast<uint8_t>((value >> (8 * i)) & 0xFF);
-    }
-}
-
-// titanium_structs.h:426 InterruptCast_Struct {uint32 spawnid; uint32
-// messageid; char message[0];}. The caster copy has no message; the bystander
-// copy carries the caster's clean name, NUL-terminated (spells.cpp:1339-1343).
-std::vector<uint8_t> InterruptCastPayload(uint32_t spawnid, uint32_t messageid,
-                                          const std::string* name = nullptr) {
-    std::vector<uint8_t> v(8 + (name ? name->size() + 1 : 0), 0);
-    PutLE(v, 0, spawnid, 4);
-    PutLE(v, 4, messageid, 4);
-    if (name) {
-        std::memcpy(v.data() + 8, name->c_str(), name->size() + 1);
-    }
-    return v;
-}
-
-// titanium_structs.h:441 ManaChange_Struct {uint32 new_mana; uint32 stamina;
-// uint32 spell_id; uint8 keepcasting; uint8 padding[3];} -- 16 bytes; the
-// Titanium ENCODE (titanium.cpp:1247) drops the server struct's trailing slot.
-std::vector<uint8_t> ManaChangePayload(uint32_t mana, uint32_t stamina,
-                                       uint32_t spell_id, uint8_t keepcasting) {
-    std::vector<uint8_t> v(16, 0);
-    PutLE(v, 0, mana, 4);
-    PutLE(v, 4, stamina, 4);
-    PutLE(v, 8, spell_id, 4);
-    v[12] = keepcasting;
-    return v;
-}
-
-// BeginCast_Struct {uint16 caster_id; uint16 spell_id; uint32 cast_time;}
-// (eq_packet_structs.h; what Mob::SendBeginCast fills, spells.cpp:497).
-std::vector<uint8_t> BeginCastWire(uint16_t caster, uint16_t spell, uint32_t ms) {
-    std::vector<uint8_t> v(8, 0);
-    PutLE(v, 0, caster, 2);
-    PutLE(v, 2, spell, 2);
-    PutLE(v, 4, ms, 4);
-    return v;
-}
+// The wire builders (InterruptCastPayload, ManaChangePayload, BeginCastWire,
+// PutLE) moved to tests/spell_wire_payloads.h at T482, shared with
+// tests/test_spell_cast_end_wire.cpp; the bytes are unchanged.
+using namespace spellwire;
 
 int CountEvents(const std::vector<eqt::state::GameEvent>& events,
                 eqt::state::GameEventType type) {
@@ -284,15 +247,19 @@ TEST_F(SpellInterruptWire, ManaTickWithKeepcastingOneNeverEndsACast) {
 }
 
 // A SUCCESSFUL cast also sends keepcasting 0 (CastedSpellFinished ->
-// SendSpellBarEnable, spells.cpp:1817), and a spell with no landing packet
-// (a pet summon) has nothing else. After BeginCast the packet is therefore
-// ambiguous and must not be read as an interrupt.
+// SendSpellBarEnable, spells.cpp:1817). After BeginCast the packet alone is
+// therefore not an interrupt. T482 (board B631) changed what it does do: it
+// releases the cast (the spell bar is usable again either way) and leaves the
+// outcome pending until the success tail's OP_MemorizeSpell or any other
+// packet -- tests/test_spell_cast_end_wire.cpp. Updated in place at T482.
 TEST_F(SpellInterruptWire, KeepcastingZeroAfterBeginCastIsNotAnInterrupt) {
     StageConfirmedGemCast();
     ReplayZone(eq, HC_OP_ManaChange, ManaChangePayload(100, 100, kSpellId, 0));
-    EXPECT_TRUE(mgr->isCasting());
-    EXPECT_EQ(CountEvents(bridge.drainEvents(),
-                          eqt::state::GameEventType::SpellCastVisualInterrupted), 0);
+    const auto events = bridge.drainEvents();
+    EXPECT_EQ(CountEvents(events, eqt::state::GameEventType::SpellCastVisualInterrupted), 0);
+    EXPECT_EQ(CountEvents(events, eqt::state::GameEventType::SpellCastComplete), 0)
+        << "the outcome is not known until the server's next packet";
+    EXPECT_TRUE(mgr->m_outcome_pending);
 }
 
 TEST_F(SpellInterruptWire, KeepcastingZeroForAnotherSpellDoesNotEndTheCast) {

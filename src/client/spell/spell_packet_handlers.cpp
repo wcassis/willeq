@@ -191,10 +191,13 @@ void SpellManager::handleAction(const EQT::SpellActionInfo& action)
         showSpellMessages(spell, caster_id, target_id, false);  // Not resisted
     }
 
-    // If this is our cast completing
-    if (isPlayerCast && m_is_casting) {
-        completeCast(true);
-    }
+    // T482 (board B631): this packet no longer ends our own cast. eqemu queues
+    // the effect_flag 0 action BEFORE it knows whether the spell lands
+    // (Mob::SpellOnTarget, zone/spells.cpp:3957-3962), and a beneficial buff
+    // that does not take hold is then STOPPED (SpellFinished false ->
+    // StopCasting, :2590-2593, :1749): no recast, no mana. The cast's outcome
+    // is the tail CastedSpellFinished sends afterwards -- see handleManaChange
+    // and handleSpellBarRefresh.
 
     // T357 (B061): the m_on_spell_land callback that used to fire here is
     // GONE. It had zero setters tree-wide, and this invocation sat OUTSIDE the
@@ -314,10 +317,128 @@ void SpellManager::handleManaChange(uint32_t new_mana, uint32_t stamina, uint32_
     // successful finish sends the same packet (SendSpellBarEnable,
     // spells.cpp:1817), so it is left to OP_Action / OP_InterruptCast.
     // Periodic mana ticks carry keepcasting 1 (Client::CheckManaEndUpdate).
-    if (keepcasting == 0 && m_is_casting && m_waiting_for_server_confirm &&
-        spell_id == m_current_spell_id) {
-        endOwnCastByServer(CastResult::Interrupted);
+    if (keepcasting != 0 || !m_is_casting || spell_id != m_current_spell_id) {
+        return;
     }
+    if (m_waiting_for_server_confirm) {
+        endOwnCastByServer(CastResult::Interrupted);
+        return;
+    }
+
+    // T482 (board B631): after BeginCast, keepcasting 0 is either the success
+    // tail's SendSpellBarEnable (spells.cpp:1817) or a StopCasting
+    // (spells.cpp:1369-1376; the recast-timer arms :1423, :1439 and a failed
+    // SpellFinished :1749). Both say the spell bar is usable again, so the
+    // cast is released now; the success tail's next packet,
+    // OP_MemorizeSpell memSpellSpellbar (:1824), is what tells them apart.
+    releaseConfirmedCast();
+}
+
+void SpellManager::publishOwnCastReleased()
+{
+    if (!m_bridge) {
+        return;
+    }
+    // Ends the cast bar and the cast glow without painting anything: the only
+    // paint for a cast is the server's own effect_flag 0 OP_Action.
+    eqt::state::SpellCastVisualCompleteData d;
+    d.casterId = m_eq->GetEntityID();
+    d.targetId = m_current_target_id;
+    d.spellId = m_current_spell_id;
+    d.isSuccess = false;
+    d.isCastAnimation = false;
+    d.isPlayerCast = true;
+    d.isTargetCast = false;
+    if (const SpellData* spell = m_spell_db.getSpell(m_current_spell_id)) {
+        d.spellVisual = spell->visualVocabulary();  // T381 (B160)
+    }
+    m_bridge->pushEvent(eqt::state::GameEvent(
+        eqt::state::GameEventType::SpellCastVisualComplete, std::move(d)));
+}
+
+void SpellManager::releaseConfirmedCast()
+{
+    publishOwnCastReleased();
+
+    m_outcome_pending = true;
+    m_pending_spell_id = m_current_spell_id;
+    m_pending_gem_slot = m_current_gem_slot;
+
+    m_is_casting = false;
+    m_waiting_for_server_confirm = false;
+    if (m_current_gem_slot < MAX_SPELL_GEMS) {
+        m_gem_states[m_current_gem_slot] = GemState::Ready;
+        publishGemChanged(m_current_gem_slot);
+    }
+    if (m_eq) {
+        m_eq->GetGameState().spells().clearCasting();
+    }
+
+    m_current_spell_id = SPELL_UNKNOWN;
+    m_current_target_id = 0;
+}
+
+void SpellManager::resolvePendingOutcome(CastResult result)
+{
+    if (!m_outcome_pending) {
+        return;
+    }
+    const uint32_t spell_id = m_pending_spell_id;
+    const uint8_t gem_slot = m_pending_gem_slot;
+    m_outcome_pending = false;
+    m_pending_spell_id = SPELL_UNKNOWN;
+    m_pending_gem_slot = 0xFF;
+
+    const SpellData* spell = m_spell_db.getSpell(spell_id);
+    if (result == CastResult::Success && gem_slot < MAX_SPELL_GEMS) {
+        startGemCooldown(gem_slot, spell ? spell->recast_time_ms : 0);
+    }
+    if (m_on_cast_complete) {
+        m_on_cast_complete(result, spell_id);
+    }
+    publishCastComplete(spell_id, result);
+
+    LOG_INFO(MOD_SPELL, "Cast of '{}' {}", spell ? spell->name : "Unknown",
+        result == CastResult::Success ? "completed successfully"
+                                      : "was stopped by the server (no spell bar refresh)");
+}
+
+void SpellManager::handleSpellBarRefresh(uint32_t slot, uint32_t spell_id)
+{
+    LOG_DEBUG(MOD_SPELL, "SpellBarRefresh: slot={}, spell={}", slot, spell_id);
+
+    if (m_outcome_pending && spell_id == m_pending_spell_id) {
+        resolvePendingOutcome(CastResult::Success);
+        return;
+    }
+
+    // A bard song's tail is this packet alone (spells.cpp:1803).
+    if (m_is_casting && !m_waiting_for_server_confirm && spell_id == m_current_spell_id) {
+        publishOwnCastReleased();
+        completeCast(true);
+        return;
+    }
+
+    // The outcome was already resolved (an unreliable packet reached us inside
+    // the tail): the recast is still the server's word for that gem.
+    if (slot < MAX_SPELL_GEMS && spell_id != SPELL_UNKNOWN && m_spell_gems[slot] == spell_id &&
+        !(m_is_casting && m_current_gem_slot == slot)) {
+        const SpellData* spell = m_spell_db.getSpell(spell_id);
+        startGemCooldown(static_cast<uint8_t>(slot), spell ? spell->recast_time_ms : 0);
+    }
+}
+
+void SpellManager::noteZonePacket(uint16_t opcode)
+{
+    if (!m_outcome_pending) {
+        return;
+    }
+    // The success tail: SendSpellBarEnable, [OP_LinkedReuse], OP_MemorizeSpell
+    // (spells.cpp:1817-1824), queued contiguously on the reliable stream.
+    if (opcode == HC_OP_MemorizeSpell || opcode == HC_OP_LinkedReuse) {
+        return;
+    }
+    resolvePendingOutcome(CastResult::Interrupted);
 }
 // ============================================================================
 // Spell Message Display

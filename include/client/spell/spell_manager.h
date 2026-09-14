@@ -207,10 +207,30 @@ public:
     // Mana change (HC_OP_ManaChange). T469: `keepcasting == 0` on a cast the
     // server has NOT yet confirmed with BeginCast is eqemu's StopCasting() --
     // a fizzle or a refused cast, which sends no OP_InterruptCast at all --
-    // and ends the cast. After BeginCast the same bytes also follow a
-    // successful cast (CastedSpellFinished -> SendSpellBarEnable), so there it
-    // is ambiguous and deliberately ignored.
+    // and ends the cast as Interrupted.
+    // T482 (board B631): after BeginCast the same bytes end the cast too --
+    // eqemu sends them on a success (SendSpellBarEnable) AND on a stop
+    // (StopCasting), and in both cases they mean "the spell bar is usable
+    // again" -- so the cast bar and the gem are released at once, and only the
+    // OUTCOME waits for the server's next word: handleSpellBarRefresh() for a
+    // success, noteZonePacket() for anything else.
     void handleManaChange(uint32_t new_mana, uint32_t stamina, uint32_t spell_id, uint8_t keepcasting);
+
+    // OP_MemorizeSpell with scribing 3 (memSpellSpellbar). T482: the last
+    // packet of eqemu's successful-cast tail (CastedSpellFinished,
+    // zone/spells.cpp:1803 for a bard song, :1824 otherwise) and the Titanium
+    // client's gem-refresh trigger. A stop never sends it. It completes our
+    // cast as a Success and starts the gem's recast; a refresh for a gem
+    // holding `spell_id` starts that gem's recast even when no cast is pending
+    // (an unreliable packet may have resolved the outcome first).
+    void handleSpellBarRefresh(uint32_t slot, uint32_t spell_id);
+
+    // T482: called by the zone dispatcher BEFORE each packet's arm. While a
+    // confirmed cast's outcome is pending (keepcasting 0 seen, MemorizeSpell
+    // not yet), any packet other than the tail's own (OP_MemorizeSpell,
+    // OP_LinkedReuse) means the server did not send the success tail: the
+    // outcome is published as Interrupted (StopCasting).
+    void noteZonePacket(uint16_t opcode);
 
     // ========================================================================
     // Callbacks
@@ -298,6 +318,15 @@ private:
     // ManaChange). Cancels the cast visuals, frees the gem (eqemu starts no
     // recast on an interrupt), publishes SpellCastComplete with `result`.
     void endOwnCastByServer(CastResult result);
+    // T482: keepcasting 0 after BeginCast. Releases the cast bar, cast glow
+    // and gem now, and leaves the outcome pending (m_outcome_pending).
+    void releaseConfirmedCast();
+    // T482: publish the pending outcome (callback + SpellCastComplete).
+    // Success also starts the gem's recast. No-op when nothing is pending.
+    void resolvePendingOutcome(CastResult result);
+    // T482: SpellCastVisualComplete for our own cast with isCastAnimation
+    // false -- ends the cast bar and glow, paints nothing.
+    void publishOwnCastReleased();
     void startGemCooldown(uint8_t gem_slot, uint32_t duration_ms);
     void publishGemChanged(uint8_t gem_slot);  // U06b: push to bridge
     // T44: push SpellCastStarted/SpellCastComplete to the bridge so
@@ -343,6 +372,12 @@ private:
     std::chrono::steady_clock::time_point m_cast_start_time;
     uint32_t m_cast_duration_ms = 0;
     bool m_waiting_for_server_confirm = false;
+
+    // T482: a confirmed cast the server has released (keepcasting 0) whose
+    // outcome -- success tail or StopCasting -- is not yet known.
+    bool m_outcome_pending = false;
+    uint32_t m_pending_spell_id = SPELL_UNKNOWN;
+    uint8_t m_pending_gem_slot = 0xFF;
 
     // ------------------------------------------------------------------------
     // Spell Gems (8 slots for Classic/Velious)
