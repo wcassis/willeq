@@ -117,8 +117,10 @@ enum class RendererAction : uint8_t {
     CycleObjectLights, ToggleCameraMode, ToggleOldModels,
     Screenshot, ToggleAllUI,
     ScrollUIUp, ScrollUIDown,   // T313: static-UI scroll (PageUp/PageDown)
-    // T461: keyboard orbit of the active user camera (HotkeyAction::CameraOrbit*)
+    // T461: the camera adjust keys (HotkeyAction::CameraOrbit*/Pitch*). T471:
+    // CameraOrbitLeft/Right are the official Tether-slide; Raise/Lower added.
     CameraOrbitLeft, CameraOrbitRight, CameraPitchUp, CameraPitchDown,
+    CameraRaise, CameraLower,
 
     // Player-mode actions
     ToggleAutorun, ToggleAutoAttack, Hail, Consider,

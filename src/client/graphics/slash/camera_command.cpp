@@ -119,7 +119,10 @@ std::vector<std::string> CameraCommandUsageLines() {
         "/camera set az <deg> pitch <deg> dist <units> height <units> -- any subset, any order; edits the active user camera, or switches to User Defined Camera 1",
         "/camera nudge az <deg> pitch <deg> dist <units> height <units> -- adds to the current values",
         "/camera get -- prints the mode, the four values and the resulting camera position and look-at point",
-        "Units: az = degrees around the player from its heading (0 = behind, 180 = in front); "
+        "Units: az = degrees. User Defined Camera 1/2 and Tether hold a WORLD azimuth "
+        "(0 = camera on the -Y side of the player looking +Y, 90 = on the -X side); "
+        "Overhead's is around the player's heading (0 = behind, 180 = in front); "
+        "/camera get prints which as az_frame=world or az_frame=player_heading; "
         "pitch = degrees, + = camera above the look-at point (clamped -89..89); "
         "dist = EQ world units from the look-at point (1..300); "
         "height = EQ world units of the look-at point above the player's feet (-100..100)",

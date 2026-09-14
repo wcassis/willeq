@@ -105,6 +105,16 @@ TEST_F(CameraZoneInPreferenceTest, ASavedUserCameraSurvivesASecondZoneLoad) {
     EXPECT_EQ(ini.find("View=3"), std::string::npos) << "Chase was saved over the choice:\n" << ini;
 }
 
+// T471: a saved view still wins over the First Person default.
+TEST_F(CameraZoneInPreferenceTest, ASavedChaseWinsOverTheFirstPersonDefault) {
+    WriteIni("Tester", "[Camera]\nView=3\n");
+    ZoneIn("Tester", 0.0f, 0.0f, 0.0f, 0.0f);
+    EXPECT_EQ(renderer_.getCameraMode(), CameraMode::Chase);
+    ZoneIn("Tester", 100.0f, -50.0f, 3.0f, 128.0f);
+    EXPECT_EQ(renderer_.getCameraMode(), CameraMode::Chase);
+    EXPECT_NE(ReadFile(IniFor("Tester")).find("View=3"), std::string::npos);
+}
+
 TEST_F(CameraZoneInPreferenceTest, FirstPersonSurvivesASecondZoneLoad) {
     WriteIni("Tester", "[Camera]\nView=1\n");
 
@@ -119,7 +129,7 @@ TEST_F(CameraZoneInPreferenceTest, FirstPersonSurvivesASecondZoneLoad) {
 // A choice made in-session (not from the file) must survive a zone too.
 TEST_F(CameraZoneInPreferenceTest, AChoiceMadeThisSessionSurvivesAZoneLoad) {
     ZoneIn("Tester", 0.0f, 0.0f, 0.0f, 0.0f);
-    ASSERT_EQ(renderer_.getCameraMode(), CameraMode::Chase);
+    ASSERT_EQ(renderer_.getCameraMode(), CameraMode::FirstPerson);
     renderer_.PlayerCamera().setCameraMode(CameraMode::User2);
     renderer_.Frame().syncUiPreferences();  // the save-on-difference
     ASSERT_NE(ReadFile(IniFor("Tester")).find("View=5"), std::string::npos);
@@ -129,16 +139,20 @@ TEST_F(CameraZoneInPreferenceTest, AChoiceMadeThisSessionSurvivesAZoneLoad) {
     EXPECT_NE(ReadFile(IniFor("Tester")).find("View=5"), std::string::npos);
 }
 
-// Unchanged by T464: a character with no saved view gets Chase (the login
-// camera is ORACLE-OWED, B530) and writes no file -- including when a
-// different character held another camera earlier in the same process.
-TEST_F(CameraZoneInPreferenceTest, ACharacterWithNoSavedViewGetsChase) {
+// T471: a character with no saved view logs in on FIRST PERSON, the official
+// client's login camera -- MEASURED by T466 (the untouched first frame after
+// entering world scored 0.232 against First Person and >= 0.897 against every
+// other camera, review/T466/logs/oracle_login_camera_scores.tsv). Before T471
+// this was Chase, fable's old follow camera, pending that measurement (B530).
+// It still writes no file -- including when a different character held
+// another camera earlier in the same process.
+TEST_F(CameraZoneInPreferenceTest, ACharacterWithNoSavedViewGetsTheOfficialLoginCamera) {
     WriteIni("First", "[Camera]\nView=4\n");
     ZoneIn("First", 0.0f, 0.0f, 0.0f, 0.0f);
     ASSERT_EQ(renderer_.getCameraMode(), CameraMode::User1);
 
     ZoneIn("Second", 0.0f, 0.0f, 0.0f, 0.0f);
-    EXPECT_EQ(renderer_.getCameraMode(), CameraMode::Chase);
+    EXPECT_EQ(renderer_.getCameraMode(), CameraMode::FirstPerson);
     renderer_.Frame().syncUiPreferences();
     EXPECT_FALSE(fs::exists(IniFor("Second"))) << "a fresh character wrote a file";
 }

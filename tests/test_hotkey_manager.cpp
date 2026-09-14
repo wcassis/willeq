@@ -973,18 +973,90 @@ TEST_F(HotkeyOracleWindowKeysTest, T461_F9IsBoundToNothingElse) {
     EXPECT_EQ(f9, 1u) << "F9 must reach the camera cycle and nothing else";
 }
 
-// The official client has LEFT_CAM / RIGHT_CAM / PITCHUP_CAM / PITCHDOWN_CAM
-// but no file records their keys: the actions exist, named, and are UNBOUND
-// until Leg B measures the oracle's (board B531). Inventing keys is the thing
-// T382 had to undo for the group and pet windows.
-TEST_F(HotkeyOracleWindowKeysTest, T461_TheCameraOrbitActionsAreNamedAndUnbound) {
+// =============================================================================
+// T471: the official CAMERA keys, MEASURED by T466 on the oracle's Options >
+// Keys > Camera page
+// (review/T466/oracle/T466_oracle_options_keys_Camera_page1_root_1024x768.png):
+//
+//     Zoom in                    NPAD7        INSERT
+//     Zoom out                   NPAD1        DELETE
+//     Raise camera               Alt NPAD8    Alt UP
+//     Lower camera               Alt NPAD2    Alt DOWN
+//     Tether-slide camera right  Alt NPAD6    Alt RIGHT
+//     Tether-slide camera left   Alt NPAD4    Alt LEFT
+//     Pitch camera up            Alt NPAD9    Alt PGUP
+//     Pitch camera down          Alt NPAD3    Alt PGDOWN
+//
+// fable's CameraOrbitLeft/Right are the official LEFT_CAM/RIGHT_CAM, whose
+// labels are Tether-slide left/right (T461's E5). Before T471 the four orbit
+// actions were unbound (ORACLE-OWED, B531) and Raise/Lower did not exist.
+// =============================================================================
+
+namespace {
+
+struct MeasuredCameraKey {
+    const char* action;
+    irr::EKEY_CODE key;
+    bool alt;
+};
+
+const MeasuredCameraKey kMeasuredCameraKeys[] = {
+    {"CameraZoomIn", irr::KEY_NUMPAD7, false},     {"CameraZoomIn", irr::KEY_INSERT, false},
+    {"CameraZoomOut", irr::KEY_NUMPAD1, false},    {"CameraZoomOut", irr::KEY_DELETE, false},
+    {"CameraRaise", irr::KEY_NUMPAD8, true},       {"CameraRaise", irr::KEY_UP, true},
+    {"CameraLower", irr::KEY_NUMPAD2, true},       {"CameraLower", irr::KEY_DOWN, true},
+    {"CameraOrbitRight", irr::KEY_NUMPAD6, true},  {"CameraOrbitRight", irr::KEY_RIGHT, true},
+    {"CameraOrbitLeft", irr::KEY_NUMPAD4, true},   {"CameraOrbitLeft", irr::KEY_LEFT, true},
+    {"CameraPitchUp", irr::KEY_NUMPAD9, true},     {"CameraPitchUp", irr::KEY_PRIOR, true},
+    {"CameraPitchDown", irr::KEY_NUMPAD3, true},   {"CameraPitchDown", irr::KEY_NEXT, true},
+};
+
+void ExpectTheMeasuredCameraKeys(const HotkeyManager& mgr, const char* where) {
+    for (const auto& row : kMeasuredCameraKeys) {
+        const HotkeyAction want = HotkeyManager::actionNameToEnum(row.action);
+        ASSERT_NE(want, HotkeyAction::Count) << row.action << " is not a HotkeyAction";
+        const auto got = mgr.getAction(row.key, false, false, row.alt, HotkeyMode::Player);
+        const std::string keyName =
+            std::string(row.alt ? "Alt+" : "") + HotkeyManager::keyCodeToName(row.key);
+        ASSERT_TRUE(got.has_value()) << where << ": " << keyName << " is unbound, want "
+                                     << row.action;
+        EXPECT_EQ(*got, want) << where << ": " << keyName << " -> "
+                              << HotkeyManager::actionEnumToName(*got) << ", want " << row.action;
+    }
+}
+
+}  // namespace
+
+TEST_F(HotkeyOracleWindowKeysTest, T471_TheMeasuredCameraKeysInTheDefaults) {
+    ExpectTheMeasuredCameraKeys(HotkeyManager::instance(), "defaults");
+}
+
+// The collision census, pinned. Every measured key+modifier pair reaches ONE
+// binding, and the bare keys under the Alt ones keep their meaning: the arrows
+// are movement and PageUp/PageDown scroll the UI. Both lookups -- getAction()
+// and the movement poll (PlayerCameraComponent::readMovementInput's
+// isActionHeld) -- compare the modifiers exactly, so Alt+Up is not Up.
+TEST_F(HotkeyOracleWindowKeysTest, T471_TheMeasuredCameraKeysCollideWithNothing) {
     const auto& mgr = HotkeyManager::instance();
-    for (const char* name : {"CameraOrbitLeft", "CameraOrbitRight", "CameraPitchUp",
-                             "CameraPitchDown"}) {
-        const HotkeyAction a = HotkeyManager::actionNameToEnum(name);
-        ASSERT_NE(a, HotkeyAction::Count) << name;
-        EXPECT_EQ(HotkeyManager::actionEnumToName(a), name);
-        EXPECT_TRUE(mgr.getBindingsForAction(a).empty()) << name;
+    for (const auto& row : kMeasuredCameraKeys) {
+        const ModifierFlags mods = row.alt ? ModifierFlags::Alt : ModifierFlags::None;
+        size_t n = 0;
+        const auto count = static_cast<uint32_t>(HotkeyAction::Count);
+        for (uint32_t i = 0; i < count; ++i) {
+            for (const auto& b : mgr.getBindingsForAction(static_cast<HotkeyAction>(i))) {
+                if (b.keyCode == row.key && b.modifiers == mods) ++n;
+            }
+        }
+        EXPECT_EQ(n, 1u) << (row.alt ? "Alt+" : "") << HotkeyManager::keyCodeToName(row.key);
+    }
+    const std::pair<irr::EKEY_CODE, HotkeyAction> bare[] = {
+        {irr::KEY_UP, HotkeyAction::MoveForward},    {irr::KEY_DOWN, HotkeyAction::MoveBackward},
+        {irr::KEY_LEFT, HotkeyAction::TurnLeft},     {irr::KEY_RIGHT, HotkeyAction::TurnRight},
+        {irr::KEY_PRIOR, HotkeyAction::ScrollUIUp},  {irr::KEY_NEXT, HotkeyAction::ScrollUIDown}};
+    for (const auto& [key, action] : bare) {
+        auto got = Bare(key);
+        ASSERT_TRUE(got.has_value()) << HotkeyManager::keyCodeToName(key);
+        EXPECT_EQ(*got, action) << HotkeyManager::keyCodeToName(key);
     }
 }
 
@@ -998,6 +1070,15 @@ TEST_F(HotkeyOracleWindowKeysTest, T461_TheShippedHotkeysJsonAgreesF9) {
     EXPECT_EQ(mgr.getBindingsForAction(HotkeyAction::ToggleCameraMode).size(), 1u);
     EXPECT_FALSE(mgr.getAction(irr::KEY_F5, true, false, false, HotkeyMode::Player).has_value())
         << "config/hotkeys.json still binds Ctrl+F5";
+    mgr.resetToDefaults();
+}
+
+// T471: the shipped file REPLACES the defaults when it loads, so the measured
+// camera keys must be in it too.
+TEST_F(HotkeyOracleWindowKeysTest, T471_TheShippedHotkeysJsonCarriesTheMeasuredCameraKeys) {
+    auto& mgr = HotkeyManager::instance();
+    ASSERT_TRUE(mgr.loadFromFile(std::string(WILLEQ_REPO_ROOT) + "/config/hotkeys.json"));
+    ExpectTheMeasuredCameraKeys(mgr, "config/hotkeys.json");
     mgr.resetToDefaults();
 }
 

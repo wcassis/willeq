@@ -278,12 +278,15 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                     // Camera Zoom
                     case HA::CameraZoomIn: cameraZoomDelta_ = -2.0f; break;
                     case HA::CameraZoomOut: cameraZoomDelta_ = 2.0f; break;
-                    // T461: keyboard orbit of the active user camera; the arms
-                    // are in FrameComponent::processCommonInput().
+                    // T461/T471: the camera adjust keys (Tether-slide, Pitch,
+                    // Raise/Lower); the arms are in
+                    // FrameComponent::processCommonInput().
                     case HA::CameraOrbitLeft: actionQueue_.push_back({RA::CameraOrbitLeft}); break;
                     case HA::CameraOrbitRight: actionQueue_.push_back({RA::CameraOrbitRight}); break;
                     case HA::CameraPitchUp: actionQueue_.push_back({RA::CameraPitchUp}); break;
                     case HA::CameraPitchDown: actionQueue_.push_back({RA::CameraPitchDown}); break;
+                    case HA::CameraRaise: actionQueue_.push_back({RA::CameraRaise}); break;
+                    case HA::CameraLower: actionQueue_.push_back({RA::CameraLower}); break;
 
                     // Audio Volume
                     // T439 (board B432): 2 steps is the old 0.1f of a 0..1

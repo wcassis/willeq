@@ -166,7 +166,7 @@ TEST(UiPreferencesTest, AnAbsentShowKeyKeepsTheDefault) {
     EXPECT_TRUE(parsed.petInfoWindow);
     EXPECT_TRUE(parsed.buffWindow);
     EXPECT_FALSE(parsed.inventoryWindow);
-    EXPECT_EQ(parsed.cameraMode, 3);  // T461: Chase, kDefaultCameraMode
+    EXPECT_EQ(parsed.cameraMode, 1);  // T471: First Person, kDefaultCameraMode (T466 login camera)
 }
 
 // An official file carries dozens of position/size/tint keys and CRLF line
@@ -201,9 +201,10 @@ TEST(UiPreferencesTest, CameraViewAcceptsOnlyTheSixOfficialCameras) {
     for (int v = 1; v <= 6; ++v) {
         EXPECT_EQ(ParseUiPreferences("[Camera]\nView=" + std::to_string(v) + "\n").cameraMode, v);
     }
-    EXPECT_EQ(ParseUiPreferences("[Camera]\nView=0\n").cameraMode, 3);
-    EXPECT_EQ(ParseUiPreferences("[Camera]\nView=7\n").cameraMode, 3);
-    EXPECT_EQ(ParseUiPreferences("[Camera]\nView=banana\n").cameraMode, 3);
+    // T471: the default is First Person (1), the official login camera (T466).
+    EXPECT_EQ(ParseUiPreferences("[Camera]\nView=0\n").cameraMode, 1);
+    EXPECT_EQ(ParseUiPreferences("[Camera]\nView=7\n").cameraMode, 1);
+    EXPECT_EQ(ParseUiPreferences("[Camera]\nView=banana\n").cameraMode, 1);
 }
 
 // T461: the MIGRATION. A file T432's writer produced says `Mode=` with
@@ -214,8 +215,10 @@ TEST(UiPreferencesTest, ALegacyCameraModeIsMappedOntoTheOfficialSet) {
         << "Free has no official camera and no body";
     EXPECT_EQ(ParseUiPreferences("[Camera]\nMode=1\n").cameraMode, 3);  // Follow -> Chase
     EXPECT_EQ(ParseUiPreferences("[Camera]\nMode=2\n").cameraMode, 1);  // FirstPerson
-    EXPECT_EQ(ParseUiPreferences("[Camera]\nMode=7\n").cameraMode, 3);
-    EXPECT_EQ(ParseUiPreferences("[Camera]\nMode=banana\n").cameraMode, 3);
+    // An unknown legacy value keeps the DEFAULT, which T471 made First Person;
+    // the two known legacy values above stay mapped to Chase explicitly.
+    EXPECT_EQ(ParseUiPreferences("[Camera]\nMode=7\n").cameraMode, 1);
+    EXPECT_EQ(ParseUiPreferences("[Camera]\nMode=banana\n").cameraMode, 1);
 }
 
 // If a file somehow carries both keys, the new one wins, in either order.
@@ -249,9 +252,10 @@ TEST(UiPreferencesTest, UserCamerasParseAndAreRangeChecked) {
 // or a fresh character's first save would rewrite state it never touched.
 TEST(UiPreferencesTest, DefaultsMatchThePanelStructs) {
     FakeRendererPanels panels;
-    // 3 == CameraMode::Chase, PlayerCameraComponent's own default (T461), and
-    // the user cameras default to PlayerCameraComponent's own rigs.
-    EXPECT_EQ(CollectUiPreferences(panels.binding(), 3), UiPreferences{});
+    // 1 == CameraMode::FirstPerson, PlayerCameraComponent's own default since
+    // T471 (the official login camera, T466), and the user cameras default to
+    // PlayerCameraComponent's own rigs.
+    EXPECT_EQ(CollectUiPreferences(panels.binding(), 1), UiPreferences{});
     EXPECT_EQ(UiPreferences{}.cameraMode, static_cast<int>(EQT::Graphics::kDefaultCameraMode));
     EXPECT_EQ(UiPreferences{}.user1Camera, EQT::Graphics::kUser1DefaultRig);
     EXPECT_EQ(UiPreferences{}.user2Camera, EQT::Graphics::kUser2DefaultRig);
@@ -324,7 +328,9 @@ TEST(UiPreferencesTest, ANullBindingMemberIsSkipped) {
     UiPreferences p;
     p.groupWindow = false;
     EXPECT_NO_FATAL_FAILURE(ApplyUiPreferences(p, empty));
-    EXPECT_EQ(CollectUiPreferences(empty, 3), UiPreferences{});
+    // The default camera, whatever it is (T471 made it First Person).
+    EXPECT_EQ(CollectUiPreferences(empty, static_cast<int>(EQT::Graphics::kDefaultCameraMode)),
+              UiPreferences{});
 }
 
 // ---------------------------------------------------------------------------

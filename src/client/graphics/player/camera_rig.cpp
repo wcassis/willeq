@@ -106,6 +106,22 @@ bool isUserCameraMode(CameraMode mode) {
     return mode == CameraMode::User1 || mode == CameraMode::User2;
 }
 
+// T471 (board B580): measured by T466 -- see camera_mode.h.
+CameraAzimuthFrame cameraAzimuthFrame(CameraMode mode) {
+    switch (mode) {
+        case CameraMode::User1:
+        case CameraMode::User2:
+        case CameraMode::Tether:
+            return CameraAzimuthFrame::World;
+        default:
+            return CameraAzimuthFrame::PlayerHeading;
+    }
+}
+
+const char* cameraAzimuthFrameName(CameraAzimuthFrame frame) {
+    return frame == CameraAzimuthFrame::World ? "world" : "player_heading";
+}
+
 bool clampCameraRig(CameraRig& rig) {
     bool clamped = false;
     const CameraRig fallback{};
@@ -125,10 +141,14 @@ bool clampCameraRig(CameraRig& rig) {
 }
 
 CameraRigPose computeCameraRigPose(const CameraRig& rig, float playerX, float playerY,
-                                   float feetZ, float headingEq512) {
+                                   float feetZ, float headingEq512,
+                                   CameraAzimuthFrame frame) {
     // The renderer's heading convention, the one CameraController::
     // setFollowPosition() uses: forward = (sin h, cos h), h = heading/512*2pi.
-    const float headingRad = headingEq512 / 512.0f * 2.0f * kPi;
+    // T471 (B580): a World azimuth is held against the world, so the heading
+    // does not enter -- the pose is the one a heading-0 player would get.
+    const float headingRad =
+        (frame == CameraAzimuthFrame::World) ? 0.0f : headingEq512 / 512.0f * 2.0f * kPi;
     const float angle = headingRad + rig.azimuthDeg * kPi / 180.0f;
     const float pitchRad = rig.pitchDeg * kPi / 180.0f;
 

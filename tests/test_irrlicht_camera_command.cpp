@@ -75,18 +75,19 @@ protected:
 
 // --- Default state ---
 
-TEST_F(CameraCommandTest, DefaultModeIsChase) {
-    // player_camera_component.h: cameraMode_ = kDefaultCameraMode. Chase is
-    // the camera fable called Follow; asserted first so the round trips below
-    // are not the first thing to notice a changed default.
-    EXPECT_EQ(renderer.getCameraMode(), CameraMode::Chase);
-    EXPECT_EQ(renderer.getCameraModeString(), "Chase Camera");
+TEST_F(CameraCommandTest, DefaultModeIsTheOfficialLoginCamera) {
+    // player_camera_component.h: cameraMode_ = kDefaultCameraMode. T471: First
+    // Person, the camera the official client logs in with (T466 measured it);
+    // asserted first so the round trips below are not the first thing to
+    // notice a changed default.
+    EXPECT_EQ(renderer.getCameraMode(), CameraMode::FirstPerson);
+    EXPECT_EQ(renderer.getCameraModeString(), "First Person Camera");
 }
 
 TEST_F(CameraCommandTest, NoArgReportsCurrentModeViaChat) {
     const auto msgs = Run("/camera");
     ASSERT_EQ(msgs.size(), 1u);
-    EXPECT_EQ(msgs[0], "Camera mode: Chase Camera");
+    EXPECT_EQ(msgs[0], "Camera mode: First Person Camera");
 }
 
 // --- Set-then-read round trip, every mode ---
@@ -160,10 +161,10 @@ INSTANTIATE_TEST_SUITE_P(
 // --- Cycling: the F9 order ---
 
 TEST_F(CameraCommandTest, CycleWalksTheOfficialOrderAndWraps) {
-    ASSERT_EQ(renderer.getCameraMode(), CameraMode::Chase);
-    const CameraMode expected[] = {CameraMode::User1, CameraMode::User2, CameraMode::Tether,
-                                   CameraMode::FirstPerson, CameraMode::Overhead,
-                                   CameraMode::Chase};
+    ASSERT_EQ(renderer.getCameraMode(), CameraMode::FirstPerson);
+    const CameraMode expected[] = {CameraMode::Overhead, CameraMode::Chase, CameraMode::User1,
+                                   CameraMode::User2, CameraMode::Tether,
+                                   CameraMode::FirstPerson};
     for (CameraMode m : expected) {
         Run("/camera cycle");
         EXPECT_EQ(renderer.getCameraMode(), m);
@@ -177,7 +178,7 @@ TEST_F(CameraCommandTest, FreeAndFollowAreGoneWithNoAlias) {
         const auto msgs = Run(std::string("/camera ") + retired);
         ASSERT_EQ(msgs.size(), 1u);
         EXPECT_TRUE(Contains(msgs[0], "Unknown camera mode")) << msgs[0];
-        EXPECT_EQ(renderer.getCameraMode(), CameraMode::Chase);
+        EXPECT_EQ(renderer.getCameraMode(), CameraMode::FirstPerson);
     }
 }
 
@@ -186,12 +187,13 @@ TEST_F(CameraCommandTest, UnknownModeName_PrintsErrorMessage_DoesNotChangeMode) 
     ASSERT_EQ(msgs.size(), 1u);
     EXPECT_TRUE(Contains(msgs[0], "Unknown camera mode"));
     EXPECT_TRUE(Contains(msgs[0], "sidescroll"));
-    EXPECT_EQ(renderer.getCameraMode(), CameraMode::Chase);
+    EXPECT_EQ(renderer.getCameraMode(), CameraMode::FirstPerson);
 }
 
 // --- /camera set / nudge / get ---
 
 TEST_F(CameraCommandTest, SetFromChaseSwitchesToUserCamera1AndSaysSo) {
+    Run("/camera chase");
     const auto msgs = Run("/camera set az 90 pitch 20 dist 40 height 6");
     ASSERT_EQ(msgs.size(), 2u);
     EXPECT_TRUE(Contains(msgs[0], "Switched to User Defined Camera 1")) << msgs[0];
@@ -247,15 +249,17 @@ TEST_F(CameraCommandTest, BadInputChangesNothing) {
 }
 
 TEST_F(CameraCommandTest, GetPrintsTheModeTheFourValuesAndThePose) {
-    // The user camera FIRST: in the default Chase mode setPlayerPosition()
-    // dereferences the camera controller, which a device-less renderer lacks.
+    // The user camera first, then the player pose (a device-less renderer has
+    // no camera controller and no camera node).
     Run("/camera set az 0 pitch 0 dist 10 height 5");
     renderer.setPlayerPosition(100.0f, 200.0f, 10.0f, 0.0f);
     const auto lines = Run("/camera get");
     ASSERT_GE(lines.size(), 5u);
     EXPECT_EQ(lines[0], "[CAMERA-GET] mode=\"User Defined Camera 1\" view=4");
+    // T471 (B580): the azimuth is reported in the frame it is STORED in, and
+    // the line says which -- a user camera holds a WORLD azimuth.
     EXPECT_EQ(lines[1], "[CAMERA-GET] az=0.000 pitch=0.000 dist=10.000 height=5.000 "
-                        "units=deg,deg,eq_units,eq_units");
+                        "units=deg,deg,eq_units,eq_units az_frame=world");
     // No entity renderer: collisionZOffset reads 0, so the feet are the node origin.
     EXPECT_EQ(lines[2], "[CAMERA-GET] player=(100.000,200.000,10.000) feetZ=10.000 "
                         "heading=0.000 frame=eq_client");
@@ -268,8 +272,17 @@ TEST_F(CameraCommandTest, GetPrintsTheModeTheFourValuesAndThePose) {
 TEST_F(CameraCommandTest, GetInANonOrbitModeSaysSo) {
     const auto lines = Run("/camera get");
     ASSERT_GE(lines.size(), 2u);
-    EXPECT_EQ(lines[0], "[CAMERA-GET] mode=\"Chase Camera\" view=3");
+    EXPECT_EQ(lines[0], "[CAMERA-GET] mode=\"First Person Camera\" view=1");
     EXPECT_TRUE(Contains(lines[1], "az=n/a")) << lines[1];
+}
+
+// T471: Overhead turns with the player (T466: h160 vs h288 edge 0.689), so its
+// azimuth is stored relative to the player's heading, and get says so.
+TEST_F(CameraCommandTest, GetReportsOverheadsAzimuthInThePlayerHeadingFrame) {
+    Run("/camera overhead");
+    const auto lines = Run("/camera get");
+    ASSERT_GE(lines.size(), 2u);
+    EXPECT_TRUE(Contains(lines[1], " az_frame=player_heading")) << lines[1];
 }
 
 TEST_F(CameraCommandTest, HelpStatesTheUnits) {
@@ -296,8 +309,11 @@ TEST_F(CameraCommandTest, APlayerMoveDoesNotOverwriteTheOrbit) {
     renderer.PlayerCamera().updateRigCamera();
     EXPECT_EQ(Rig(CameraMode::User1), set);
 
-    // And the pose follows the player, expressed around its new heading.
-    const CameraRigPose expected = computeCameraRigPose(set, 12.0f, 75.0f, 3.0f, 300.0f);
+    // And the pose follows the player's POSITION but not its heading: T471
+    // (B580) -- User Defined Camera 1 holds a WORLD azimuth, so the pose is
+    // the one a heading-0 player would get (world az == heading-relative az
+    // at heading 0), whatever the player now faces.
+    const CameraRigPose expected = computeCameraRigPose(set, 12.0f, 75.0f, 3.0f, 0.0f);
     const auto lines = Run("/camera get");
     ASSERT_GE(lines.size(), 4u);
     std::ostringstream want;

@@ -173,21 +173,30 @@ void FrameComponent::processCommonInput(const std::vector<RendererEvent>& action
             // through the default below -- the T330 shape again. Pinned by
             // tests/test_camera_mode_wiring.cpp.
             case RA::ToggleCameraMode: ctx_.PlayerCamera().cycleCameraMode(); break;
-            // T461: keyboard orbit of the ACTIVE user camera. Unbound by
-            // default: the official keys are ORACLE-OWED (board B531).
-            // Pitch UP tilts the view up, i.e. lowers the camera (rig pitch
-            // is + above the look-at point).
+            // T471: the official camera adjust keys, MEASURED by T466 (board
+            // B531). CameraOrbitLeft/Right are the official "Tether-slide
+            // camera left/right" and slide the TETHER camera. Pitch up/down
+            // pitch the active USER camera; Pitch UP tilts the view up, i.e.
+            // lowers the camera (rig pitch is + above the look-at point) --
+            // the oracle's User 1 swung up to the sky, and this sign already
+            // matched it. Raise/Lower move the Tether camera's look-at height.
             case RA::CameraOrbitLeft:
-                ctx_.PlayerCamera().orbitCamera(-kCameraOrbitKeyStepDeg, 0.0f);
+                ctx_.PlayerCamera().tetherSlideCamera(-kCameraOrbitKeyStepDeg);
                 break;
             case RA::CameraOrbitRight:
-                ctx_.PlayerCamera().orbitCamera(kCameraOrbitKeyStepDeg, 0.0f);
+                ctx_.PlayerCamera().tetherSlideCamera(kCameraOrbitKeyStepDeg);
                 break;
             case RA::CameraPitchUp:
                 ctx_.PlayerCamera().orbitCamera(0.0f, -kCameraOrbitKeyStepDeg);
                 break;
             case RA::CameraPitchDown:
                 ctx_.PlayerCamera().orbitCamera(0.0f, kCameraOrbitKeyStepDeg);
+                break;
+            case RA::CameraRaise:
+                ctx_.PlayerCamera().raiseCamera(kCameraRaiseKeyStepUnits);
+                break;
+            case RA::CameraLower:
+                ctx_.PlayerCamera().raiseCamera(-kCameraRaiseKeyStepUnits);
                 break;
             // T434: was a bare `break;` with the comment "WindowManager
             // removed -- options window not available" -- the T368 dead-arm

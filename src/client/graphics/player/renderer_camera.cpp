@@ -520,6 +520,15 @@ void PlayerCameraComponent::setCameraMode(CameraMode mode) {
     // T461: entering a rig mode places the camera at once, for the same reason
     // (a no-op in first person and Chase).
     updateRigCamera();
+    // T471 (board B581): and so does entering Chase. T466 measured the defect
+    // live -- after `/camera overhead` then `/camera chase`, `/camera get`
+    // printed the Overhead node pose byte for byte -- because Chase moved only
+    // when setFollowPosition() next ran, i.e. on a player move. Same call and
+    // arguments as the per-frame movement path's (G06 statement 402).
+    if (cameraMode_ == CameraMode::Chase && ctx_.cameraController) {
+        ctx_.cameraController->setFollowPosition(ctx_.playerX, ctx_.playerY, ctx_.playerZ,
+                                                 ctx_.playerHeading);
+    }
 }
 
 // T461: the official cycle, eqstr_us.txt 9500..9505 (camera_mode.h). Before

@@ -217,6 +217,8 @@ static const ActionNameMapping s_actionNameMappings[] = {
     {"CameraOrbitRight", HotkeyAction::CameraOrbitRight},   // T461
     {"CameraPitchUp", HotkeyAction::CameraPitchUp},         // T461
     {"CameraPitchDown", HotkeyAction::CameraPitchDown},     // T461
+    {"CameraRaise", HotkeyAction::CameraRaise},             // T471
+    {"CameraLower", HotkeyAction::CameraLower},             // T471
 
     // Player - Audio Volume
     {"MusicVolumeUp", HotkeyAction::MusicVolumeUp},
@@ -576,11 +578,32 @@ void HotkeyManager::setupDefaults() {
     addBinding(HotkeyAction::CameraZoomIn, HotkeyMode::Player, irr::KEY_PLUS);
     addBinding(HotkeyAction::CameraZoomOut, HotkeyMode::Player, irr::KEY_MINUS);
     // T461: F9 is Will's ruling and REPLACES Ctrl+F5, with no alias. The
-    // official action is TOGGLECAM ("Toggle camera view", eqstr_us.txt 6536);
-    // no client file records its default key, so that the official client
-    // uses F9 too is ORACLE-OWED (board B531). The orbit/pitch actions above
-    // are deliberately left unbound for the same reason.
+    // official action is TOGGLECAM ("Toggle camera view", eqstr_us.txt 6536),
+    // and T466 MEASURED F9 as its key on the official client.
     addBinding(HotkeyAction::ToggleCameraMode, HotkeyMode::Player, irr::KEY_F9);
+    // T471: the rest of the official Camera page, MEASURED by T466
+    // (review/T466/oracle/T466_oracle_options_keys_Camera_page1_root_1024x768.png),
+    // primary and alternate column each. Census before binding: no fable
+    // binding used Insert, Delete, any numpad digit, or Alt with an arrow,
+    // PageUp/PageDown or a numpad digit. The bare arrows stay movement and the
+    // bare PageUp/PageDown stay UI scroll -- getAction() and the movement poll
+    // both compare modifiers exactly.
+    addBinding(HotkeyAction::CameraZoomIn, HotkeyMode::Player, irr::KEY_NUMPAD7);
+    addBinding(HotkeyAction::CameraZoomIn, HotkeyMode::Player, irr::KEY_INSERT);
+    addBinding(HotkeyAction::CameraZoomOut, HotkeyMode::Player, irr::KEY_NUMPAD1);
+    addBinding(HotkeyAction::CameraZoomOut, HotkeyMode::Player, irr::KEY_DELETE);
+    addBinding(HotkeyAction::CameraRaise, HotkeyMode::Player, irr::KEY_NUMPAD8, ModifierFlags::Alt);
+    addBinding(HotkeyAction::CameraRaise, HotkeyMode::Player, irr::KEY_UP, ModifierFlags::Alt);
+    addBinding(HotkeyAction::CameraLower, HotkeyMode::Player, irr::KEY_NUMPAD2, ModifierFlags::Alt);
+    addBinding(HotkeyAction::CameraLower, HotkeyMode::Player, irr::KEY_DOWN, ModifierFlags::Alt);
+    addBinding(HotkeyAction::CameraOrbitRight, HotkeyMode::Player, irr::KEY_NUMPAD6, ModifierFlags::Alt);  // Tether-slide right
+    addBinding(HotkeyAction::CameraOrbitRight, HotkeyMode::Player, irr::KEY_RIGHT, ModifierFlags::Alt);
+    addBinding(HotkeyAction::CameraOrbitLeft, HotkeyMode::Player, irr::KEY_NUMPAD4, ModifierFlags::Alt);   // Tether-slide left
+    addBinding(HotkeyAction::CameraOrbitLeft, HotkeyMode::Player, irr::KEY_LEFT, ModifierFlags::Alt);
+    addBinding(HotkeyAction::CameraPitchUp, HotkeyMode::Player, irr::KEY_NUMPAD9, ModifierFlags::Alt);
+    addBinding(HotkeyAction::CameraPitchUp, HotkeyMode::Player, irr::KEY_PRIOR, ModifierFlags::Alt);
+    addBinding(HotkeyAction::CameraPitchDown, HotkeyMode::Player, irr::KEY_NUMPAD3, ModifierFlags::Alt);
+    addBinding(HotkeyAction::CameraPitchDown, HotkeyMode::Player, irr::KEY_NEXT, ModifierFlags::Alt);
 
     // === Player Mode - Lighting ===
     addBinding(HotkeyAction::CycleObjectLights, HotkeyMode::Player, irr::KEY_KEY_L);

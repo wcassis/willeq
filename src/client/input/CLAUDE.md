@@ -21,7 +21,7 @@ Input flows through a four-layer pipeline: capture → hotkey resolution → act
 - Handles movement keys, mouse input, text input, debug toggles
 
 **HotkeyManager** (`hotkey_manager.h`) — Configurable key binding system:
-- `HotkeyAction` enum (**99** actions plus a `Count` sentinel, re-counted T461 -- T415 read 95, T371 94; the key table grows with every UI panel, and T461 added the four unbound camera-orbit actions) covering movement, toggles, targeting, interaction
+- `HotkeyAction` enum (**101** actions plus a `Count` sentinel, re-counted T471 -- T461 read 99, T415 95, T371 94; the key table grows with every UI panel, T461 added the four camera-orbit actions and T471 `CameraRaise`/`CameraLower`, binding all six to the official Camera-page keys T466 measured) covering movement, toggles, targeting, interaction
 - `HotkeyBinding` struct: key code + `ModifierFlags` (Ctrl/Shift/Alt) + action
 - `HotkeyMode` enum: Global (always active) vs Player (gameplay only)
 - Loads/saves from `config/hotkeys.json`, supports runtime overrides from `willeq.json`

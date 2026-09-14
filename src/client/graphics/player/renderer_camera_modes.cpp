@@ -56,8 +56,11 @@ float PlayerCameraComponent::playerFeetZ() const {
 void PlayerCameraComponent::updateRigCamera() {
     const CameraRig* rig = cameraRigFor(cameraMode_);
     if (!rig || !ctx_.cameraController) return;
+    // T471 (B580): User Defined 1/2 and Tether hold a WORLD azimuth, so their
+    // pose follows the player's position and ignores its heading.
     const CameraRigPose pose = computeCameraRigPose(*rig, ctx_.playerX, ctx_.playerY,
-                                                    playerFeetZ(), ctx_.playerHeading);
+                                                    playerFeetZ(), ctx_.playerHeading,
+                                                    cameraAzimuthFrame(cameraMode_));
     ctx_.cameraController->placeRigCamera(pose);
 }
 
@@ -95,6 +98,33 @@ void PlayerCameraComponent::orbitCamera(float deltaAzimuthDeg, float deltaPitchD
     updateRigCamera();
 }
 
+void PlayerCameraComponent::tetherSlideCamera(float rightDeg) {
+    if (cameraMode_ != CameraMode::Tether) {
+        LOG_DEBUG(MOD_GRAPHICS, "Tether-slide ignored: {} is not the Tether camera",
+                  getCameraModeString());
+        return;
+    }
+    // "Right" is the VIEWER's right. At world azimuth 0 the camera sits on the
+    // -Y side of the player looking +Y, and the screen's right is +X: Irrlicht
+    // is left-handed and the renderer maps EQ (x, y, z) to (x, z, y). A GROWING
+    // azimuth moves the camera towards -X (az 90 is the -X side), i.e. to the
+    // viewer's LEFT -- so sliding right SUBTRACTS.
+    tetherRig_.azimuthDeg -= rightDeg;
+    clampCameraRig(tetherRig_);
+    updateRigCamera();
+}
+
+void PlayerCameraComponent::raiseCamera(float deltaUnits) {
+    if (cameraMode_ != CameraMode::Tether) {
+        LOG_DEBUG(MOD_GRAPHICS, "Raise/Lower ignored: {} is not the Tether camera",
+                  getCameraModeString());
+        return;
+    }
+    tetherRig_.height += deltaUnits;
+    clampCameraRig(tetherRig_);
+    updateRigCamera();
+}
+
 void PlayerCameraComponent::setUserCameraRigs(const CameraRig& user1, const CameraRig& user2) {
     user1Rig_ = user1;
     user2Rig_ = user2;
@@ -109,8 +139,10 @@ std::vector<std::string> PlayerCameraComponent::buildCameraGetLines() const {
                                 static_cast<int>(cameraMode_)));
     const CameraRig* rig = cameraRigFor(cameraMode_);
     if (rig) {
+        // T471 (B580): the azimuth in the frame it is STORED in, and which.
         lines.push_back("[CAMERA-GET] " + RigValues(*rig) +
-                        " units=deg,deg,eq_units,eq_units");
+                        " units=deg,deg,eq_units,eq_units az_frame=" +
+                        cameraAzimuthFrameName(cameraAzimuthFrame(cameraMode_)));
     } else {
         lines.push_back("[CAMERA-GET] az=n/a pitch=n/a dist=n/a height=n/a "
                         "(not an orbit camera; /camera set switches to User Defined Camera 1)");
@@ -121,7 +153,8 @@ std::vector<std::string> PlayerCameraComponent::buildCameraGetLines() const {
         ctx_.playerX, ctx_.playerY, ctx_.playerZ, feetZ, ctx_.playerHeading));
     if (rig) {
         const CameraRigPose p = computeCameraRigPose(*rig, ctx_.playerX, ctx_.playerY, feetZ,
-                                                     ctx_.playerHeading);
+                                                     ctx_.playerHeading,
+                                                     cameraAzimuthFrame(cameraMode_));
         lines.push_back(fmt::format(
             "[CAMERA-GET] ideal camPos=({:.3f},{:.3f},{:.3f}) target=({:.3f},{:.3f},{:.3f}) frame=eq_client",
             p.camX, p.camY, p.camZ, p.targetX, p.targetY, p.targetZ));

@@ -60,8 +60,13 @@ TEST(CameraModeSet, TheCycleWalksAllSixInOrderAndWraps) {
     }
 }
 
-TEST(CameraModeSet, TheDefaultIsChase) {
-    EXPECT_EQ(kDefaultCameraMode, CameraMode::Chase);
+// T471: the login camera is MEASURED, not fable's old Chase. T466 took the
+// official client's first frame after entering world, before any key, and
+// scored it against each direct camera: First Person 0.232, every other
+// camera >= 0.897 (review/T466/logs/oracle_login_camera_scores.tsv). A saved
+// `[Camera] View=` still wins (test_camera_zone_in_preference.cpp).
+TEST(CameraModeSet, TheDefaultIsTheOfficialLoginCameraFirstPerson) {
+    EXPECT_EQ(kDefaultCameraMode, CameraMode::FirstPerson);
 }
 
 TEST(CameraModeSet, RigAndUserModeClassification) {
@@ -176,6 +181,35 @@ TEST(CameraRigGeometry, AzimuthIsRelativeToTheHeadingInTheSameSense) {
     // 180 puts the camera in front of the player, looking back at it.
     ExpectPose(computeCameraRigPose(CameraRig{180.0f, 0.0f, 10.0f, 0.0f}, 0.0f, 0.0f, 0.0f, 0.0f),
                0.0f, 10.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+}
+
+// T471 (board B580): User Defined 1/2 and Tether hold a WORLD azimuth -- the
+// numbers a heading-0 player would read, whatever the heading.
+TEST(CameraRigGeometry, AWorldAzimuthIgnoresTheHeading) {
+    const CameraRig rig{90.0f, 10.0f, 20.0f, 4.0f};
+    const CameraRigPose atZero = computeCameraRigPose(rig, 5.0f, 6.0f, 1.0f, 0.0f);
+    for (float h = 0.0f; h < 512.0f; h += 41.0f) {
+        const CameraRigPose p =
+            computeCameraRigPose(rig, 5.0f, 6.0f, 1.0f, h, CameraAzimuthFrame::World);
+        ExpectPose(p, atZero.camX, atZero.camY, atZero.camZ, atZero.targetX, atZero.targetY,
+                   atZero.targetZ);
+    }
+    // World az 90: the camera on the -X side of the look-at point.
+    EXPECT_LT(atZero.camX, 5.0f);
+    EXPECT_NEAR(atZero.camY, 6.0f, 1e-3f);
+}
+
+TEST(CameraModeSet, TheAzimuthFrameIsTheMeasuredOne) {
+    // T466: h160 vs h288 edge -- User 1 0.084, User 2 0.120, Tether 0.193 (world);
+    // First Person 0.837, Overhead 0.689, Chase 0.680 (turn with the player).
+    EXPECT_EQ(cameraAzimuthFrame(CameraMode::User1), CameraAzimuthFrame::World);
+    EXPECT_EQ(cameraAzimuthFrame(CameraMode::User2), CameraAzimuthFrame::World);
+    EXPECT_EQ(cameraAzimuthFrame(CameraMode::Tether), CameraAzimuthFrame::World);
+    EXPECT_EQ(cameraAzimuthFrame(CameraMode::Overhead), CameraAzimuthFrame::PlayerHeading);
+    EXPECT_EQ(cameraAzimuthFrame(CameraMode::Chase), CameraAzimuthFrame::PlayerHeading);
+    EXPECT_EQ(cameraAzimuthFrame(CameraMode::FirstPerson), CameraAzimuthFrame::PlayerHeading);
+    EXPECT_STREQ(cameraAzimuthFrameName(CameraAzimuthFrame::World), "world");
+    EXPECT_STREQ(cameraAzimuthFrameName(CameraAzimuthFrame::PlayerHeading), "player_heading");
 }
 
 TEST(CameraRigGeometry, PitchRaisesTheCameraAndKeepsTheDistance) {
@@ -295,7 +329,8 @@ TEST(CameraCommandParse, TheUsageStatesEveryFormAndItsUnits) {
     std::string all;
     for (const auto& line : CameraCommandUsageLines()) all += line + "\n";
     for (const char* needle : {"/camera set", "/camera nudge", "/camera get", "/camera cycle",
-                               "F9", "degrees", "EQ world units", "feet"}) {
+                               "F9", "degrees", "EQ world units", "feet", "WORLD azimuth",
+                               "az_frame="}) {
         EXPECT_NE(all.find(needle), std::string::npos) << needle << "\n" << all;
     }
 }

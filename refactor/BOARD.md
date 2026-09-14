@@ -9119,6 +9119,12 @@ because the Pi had no keyboard or mouse attached (B510).
   not a rig; the ini keys are not read at launch (B585). **Still owed:** the
   Tether and User 1/2 geometry (coarse sweeps did not converge, and the rig
   cannot express a world azimuth -- B580), the Camera1-* units, the zoom steps.
+  **Narrowed again by T471 (2026-09-14)** -- APPLIED: fable's login camera is
+  First Person (`kDefaultCameraMode`; a saved `[Camera] View=` still wins), and
+  the rig holds a WORLD azimuth for User 1/2 and Tether (B580 closed). **Still
+  owed:** the Tether and User 1/2 numbers and which world direction they start
+  at (B651), the Camera1-* units, the zoom / pitch / slide / raise steps (B653),
+  and Chase: fable's follow camera does NOT reproduce the Chase fit (B650).
 
 - **B531** (C -> ORACLE-OWED, T461 Leg B) **The official camera KEYS are not in
   any client file.** `eqgame.exe` names the actions (`TOGGLECAM`, `ZOOMIN`,
@@ -9152,6 +9158,23 @@ because the Pi had no keyboard or mouse attached (B510).
   so binding Alt+PgUp to it would ship a mirrored key. Alt+Left/Right and
   Alt+PgUp/PgDn collide with no fable binding (both lookups match modifiers
   exactly). Still owed: the tether-slide / raise / zoom effect and step.
+  **Narrowed by T471 (2026-09-14)** -- every measured key is BOUND, in
+  `setupDefaults()` and `config/hotkeys.json`: Zoom in Numpad7/Insert, Zoom out
+  Numpad1/Delete (beside fable's +/-), Raise Alt+Numpad8/Alt+Up, Lower
+  Alt+Numpad2/Alt+Down (new `CameraRaise`/`CameraLower`), Tether-slide right
+  Alt+Numpad6/Alt+Right and left Alt+Numpad4/Alt+Left (`CameraOrbitRight/Left`,
+  which ARE `RIGHT_CAM`/`LEFT_CAM`), Pitch up Alt+Numpad9/Alt+PageUp, down
+  Alt+Numpad3/Alt+PageDown. Census before binding: no fable binding used any of
+  those key+modifier pairs; the bare arrows (movement) and PageUp/PageDown (UI
+  scroll) keep their meaning, because `getAction()` and the movement poll both
+  compare modifiers exactly (`T471_TheMeasuredCameraKeysCollideWithNothing`).
+  **The "mirrored Pitch up" above was WRONG:** fable's `CameraPitchUp` arm has
+  applied `orbitCamera(0, -step)` since T461 (commit `a91411bb`, never changed),
+  which LOWERS the camera and tilts the view up -- exactly the oracle's Alt+PgUp
+  (the scene moved down the screen). T466 read the action name, not the arm.
+  `PitchUpTiltsTheViewUpAsTheOfficialKeyDoes` passed before any T471 change and
+  pins it. F10, F11, L and Alt+C untouched (B582). Still owed: what Raise,
+  Lower and Tether-slide move on the official client and every step (B653).
 
 - ~~**B532**~~ (A) **CLOSED by T464 (2026-09-13)** -- confirmed from code with a
   red test, not live. Both loaders now call
@@ -9658,7 +9681,8 @@ B641–B649 unused.
 
 Evidence for every entry below is in `review/T466/` (README names each file).
 
-- **B580** (A) **The official User Defined 1/2 and Tether cameras are anchored
+- ~~**B580**~~ (A) **CLOSED by T471 (2026-09-14)** -- see the closing note at the
+  end of this entry. **The official User Defined 1/2 and Tether cameras are anchored
   to the WORLD, not to the player's heading; fable's rig is heading-relative.**
   Measured: the oracle character `#goto`'d from heading 160 to 288 (+90 deg) and
   each camera ENTERED after the turn. Edge score h160 vs h288: First Person
@@ -9669,8 +9693,22 @@ Evidence for every entry below is in `review/T466/` (README names each file).
   direction. A fitted fable azimuth is therefore valid only at the heading it
   was fitted at (h160). Fix shape: a world-azimuth rig for User1/User2/Tether
   (the rig struct, `computeCameraRigPose`, and `/camera` help). Found by T466.
+  **Closed by T471:** `cameraAzimuthFrame()` (`camera_mode.h`) names World for
+  User 1, User 2 and Tether and PlayerHeading for the rest, and
+  `computeCameraRigPose()` ignores the heading for a World azimuth. The azimuth
+  is NOT captured from the heading on entry, though the plan proposed that:
+  T466's marks (`review/T466/logs/oracle_marks_session.tsv`) show every camera
+  entered afresh through its own Ctrl+F binding after the `#goto ... 288`, and
+  those entries gave the same view as at 160 -- so a stored world azimuth, held
+  across entries, is what the oracle does. `/camera get` prints
+  `az_frame=world` or `az_frame=player_heading`. Red before, green after:
+  `UserAndTetherCamerasHoldAWorldDirectionWhenThePlayerTurns` (turn in place and
+  re-entry after the turn), `AWorldAzimuthIgnoresTheHeading`,
+  `GetPrintsTheModeTheFourValuesAndThePose`. The world direction the official
+  cameras START at is unmeasured: B651.
 
-- **B581** (A) **`/camera chase` from a rig camera leaves the camera at the rig's
+- ~~**B581**~~ (A) **CLOSED by T471 (2026-09-14)** -- see the closing note at the
+  end of this entry. **`/camera chase` from a rig camera leaves the camera at the rig's
   pose.** fable baseline session: after `/camera overhead` then `/camera chase`,
   `/camera get` prints `mode="Chase Camera"` with `node camPos=(438.471,-99.279,
   78.175)` -- the Overhead node pose, byte for byte
@@ -9679,6 +9717,14 @@ Evidence for every entry below is in `review/T466/` (README names each file).
   entry, but Chase only moves when `setFollowPosition()` next runs (a player
   move). A stationary player switching to Chase sees the previous camera.
   Found by T466.
+  **Closed by T471:** `setCameraMode()` now calls
+  `CameraController::setFollowPosition()` on entering Chase, with the movement
+  path's own arguments (G06 statement 402), beside T74's first-person and
+  T461's rig placement. Red before, green after:
+  `CameraChaseEntryTest.EnteringChaseFromAnyOtherCameraPlacesTheChaseCameraAtOnce`
+  (a real EDT_NULL camera node; from Overhead, First Person, User 1, User 2 and
+  Tether the node must land on the follow pose at T466's baseline pose). Not
+  live-proven: no lock was assigned.
 
 - **B582** (C) **fable's F10/F11 and L do not mean what the official keys mean.**
   Measured on the oracle's Options > Keys (UI category): **F10 = Toggle UI
@@ -9754,3 +9800,71 @@ Evidence for every entry below is in `review/T466/` (README names each file).
   the fist (about a half turn about the hand's horizontal axis, as far as the
   frames show), and no lantern in the left hand from either side. Attack-pose
   comparison owed (B586). Found by T466.
+
+---
+
+## Added 2026-09-14 by T471 (T466's camera measurements applied)
+
+- **B650** (A) **fable's Chase camera does not reproduce the official Chase
+  geometry.** T466 fitted the oracle's Chase frame as a rig: az 0, pitch 6, dist
+  4.0, height 7.0 above the feet (edge 0.738, bracketed; dist +/-0.5 -> 0.767 /
+  0.839). fable's Chase is `CameraController::setFollowPosition()`, not a rig.
+  Computed at its defaults with no collision, for T466's Testchar
+  (collisionZOffset 3.119, `baseline_h160/camera_replies.txt`: z 3.119, feetZ
+  0.000): camera **20.0** behind the player and **13.119** above the feet,
+  looking at a point 10.0 AHEAD at 9.119 above the feet, view pitch **7.595**
+  degrees down (its view ray crosses the player's axis at 10.452 above the feet,
+  so as a rig about that point: pitch 7.595, dist 20.177, height 10.452). The
+  fit: camera **3.978** behind and **7.418** above the feet, looking at the
+  player's axis at 7.0, pitch **6.0** down. The camera is 16.02 units farther
+  back (x5.03), 5.70 higher, and pitched 1.60 degrees more; the fit's own
+  sensitivity rejects a distance 0.5 off. Not applied by T471 (plan: record and
+  board). Fix shape: make Chase a heading-relative rig at the fit, keeping the
+  wall collision -- the visual gate does not read this camera, but B587's model
+  yaw and B588's held items are judged through it. Found by T471.
+
+- **B651** (C -> ORACLE-OWED) **Which world direction User 1, User 2 and Tether
+  start at.** T471 made the three hold a WORLD azimuth (B580) but kept the
+  placeholder numbers (User 1/2 azimuth 0, Tether az 0 pitch 10 dist 30 height
+  5): T466's sweeps did not converge, and a best-of-a-coarse-sweep value is not a
+  measurement. Also unmeasured: whether the official direction is a fixed
+  constant or is taken from the player's heading at some earlier moment (login,
+  the first entry) -- T466's two entries were both after login at the same
+  session start, so they cannot tell. A pre-T471 per-character ini's
+  `User1Azimuth`/`User2Azimuth` was heading-relative and is now read as a world
+  azimuth (the key did not change; the official client does not persist camera
+  changes at all, B585). Method: enter User 1 at two different LOGIN headings
+  and A/B the world view. Found by T471.
+
+- **B652** (C) **fable's own zoom keys collide with the official meanings of
+  those keys.** T471 bound the official Zoom in Numpad7/Insert and Zoom out
+  Numpad1/Delete and KEPT fable's `CameraZoomIn` = Plus (and Shift+Plus in the
+  shipped file) and `CameraZoomOut` = Minus (and NumpadSubtract in the file). On
+  the oracle's Camera page (T466) Shift+- / Shift+= are Clip plane in/out and
+  Numpad- is Take a screenshot; Toggle mouse look is F12, which fable binds to
+  Screenshot. None collides with another fable binding; they collide with what a
+  player of the official client expects. Same decision class as B582 (Will is
+  deciding the UI-page keymap). Found by T471.
+
+- **B653** (A, *owed*) **What Raise, Lower and Tether-slide do on the official
+  client, and every camera key step.** T466 pressed Tether-slide right x10,
+  Raise x10 and Zoom in x5 in User 1 and scored no change (0.047 / 0.022 /
+  0.013), while Pitch up x10 in the same session did move it -- so the keys
+  reached the client and these three do not act on User 1. T471 therefore bound
+  Tether-slide and Raise/Lower to the TETHER camera only (azimuth, and look-at
+  height), a choice by the key names, not a measurement; "right" is the viewer's
+  right. Steps are fable's: 5 degrees (`kCameraOrbitKeyStepDeg`), 1 unit
+  (`kCameraRaiseKeyStepUnits`), 2 units per zoom notch. Owed: each key in Tether
+  (and Chase, for Zoom and Raise) on the oracle, with the image shift per press.
+  Found by T471.
+
+- **B654** (A, *unconfirmed*) **The `--egl-x11` device drops every numpad digit
+  key.** `docker/irrlicht-drm-x86/CIrrDeviceFB_X11.cpp` looks a key up with
+  `XLookupKeysym(&xev.xkey, 0)` -- index 0, which for a keypad digit is its
+  NumLock-OFF keysym (`XK_KP_Home`, `XK_KP_Up`, ...) -- and
+  `x11KeysymToIrrlicht()` has cases only for `XK_KP_0`..`XK_KP_9`, so it returns
+  0 for all ten. The official camera keys T471 bound on Numpad1-9 (and Alt+ them)
+  are therefore unreachable in an X11-windowed run; the DRM/evdev device maps
+  `KEY_KP7` -> `KEY_NUMPAD7` regardless of NumLock and is unaffected, and the
+  Insert/Delete/Alt+arrow/Alt+PageUp alternates work on both. From code, not
+  run: T471 had no display. Outside T471's territory. Found by T471.

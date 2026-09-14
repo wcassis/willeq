@@ -157,7 +157,7 @@ group panel and the buff bar (board **B366**).
 | Ctrl+F2 | Toggle HUD |
 | Ctrl+F3 | Toggle name tags |
 | Ctrl+F4 | Toggle zone lights |
-| F9 | Cycle the camera through the official set, in `eqstr_us.txt` 9500-9505 order: First Person, Overhead, Chase, User Defined Camera 1, User Defined Camera 2, Tether (T461, Will's ruling; F9 REPLACED Ctrl+F5 with no alias). Ctrl+F5 had never done anything: the receiver queued `RendererAction::ToggleCameraMode` and `processCommonInput()` had no arm for it. That F9 is also the official client's key, and its cycle order, are ORACLE-OWED (board B531). |
+| F9 | Cycle the camera through the official set, in `eqstr_us.txt` 9500-9505 order: First Person, Overhead, Chase, User Defined Camera 1, User Defined Camera 2, Tether (T461, Will's ruling; F9 REPLACED Ctrl+F5 with no alias). Ctrl+F5 had never done anything: the receiver queued `RendererAction::ToggleCameraMode` and `processCommonInput()` had no arm for it. T466 MEASURED on the official client that F9 is its Toggle camera view key and that it cycles in exactly this order. A character with no saved `[Camera] View=` logs in on **First Person**, the official login camera (T466 measured, T471 applied). |
 | Ctrl+F6 | Toggle Classic/Luclin models |
 
 **Player Mode:**
@@ -193,8 +193,10 @@ group panel and the buff bar (board **B366**).
 | L | Cycle object lights |
 | F10 / Shift+F10 / Shift+F11 | Music volume down / effects volume down / effects volume up. Until T464 (board B535) these, Alt+C and L were compiled-in defaults the shipped `config/hotkeys.json` did not carry, so production never reached them. **F11 is not music volume up**: the defaults also bind it, but F11's Global `ToggleAllUI` wins, so F11 has only ever toggled the UI; the official key is oracle-owed (board B561). |
 | ESC | Clear target. `/cleartarget` (no alias, category Combat) reaches the same `ActionDispatcher::clearTarget()` since T347 (board B012 CLOSED), so a `--script` run can clear a target |
-| +/- | Camera zoom in/out: the Chase follow distance, or the active orbit camera's distance (T461, `PlayerCameraComponent::zoomCamera()`, shared with the wheel). First person does not zoom. |
-| (unbound) | `CameraOrbitLeft` / `CameraOrbitRight` / `CameraPitchUp` / `CameraPitchDown` — orbit the ACTIVE user camera 5 degrees per press (T461). The official client has these actions (`LEFT_CAM`, `RIGHT_CAM`, `PITCHUP_CAM`, `PITCHDOWN_CAM`) but no file records their keys, so fable binds none by default (ORACLE-OWED, board B531); bind them in `config/hotkeys.json`. |
+| Numpad7 / Insert, Numpad1 / Delete, +/- | Camera zoom in / out: the Chase follow distance, or the active orbit camera's distance (T461, `PlayerCameraComponent::zoomCamera()`, shared with the wheel). First person does not zoom. Numpad7/Insert and Numpad1/Delete are the official keys, MEASURED on the oracle's Options > Keys > Camera page (T466, bound by T471). fable's own +/- (and Shift+= / Numpad- in the shipped file) are kept; on the official client Shift+- / Shift+= are Clip plane and Numpad- is Screenshot (board B652). |
+| Alt+Numpad9 / Alt+PageUp, Alt+Numpad3 / Alt+PageDown | Pitch the ACTIVE user camera up / down 5 degrees per press (`CameraPitchUp` / `CameraPitchDown`; keys measured, T466/T471). Pitch up tilts the VIEW up (the camera goes lower), as the official key does. T466 boarded fable's sign as mirrored; T471 found it already matched. The bare PageUp/PageDown still scroll the UI. |
+| Alt+Numpad6 / Alt+Right, Alt+Numpad4 / Alt+Left | Tether-slide right / left (`CameraOrbitRight` / `CameraOrbitLeft`, the official `RIGHT_CAM` / `LEFT_CAM`): slides the Tether camera 5 degrees of world azimuth per press towards the viewer's right / left. It does nothing in other cameras (T466 pressed it in User 1 and nothing moved). The bare arrows stay movement: `getAction()` and the movement poll both compare modifiers exactly. |
+| Alt+Numpad8 / Alt+Up, Alt+Numpad2 / Alt+Down | Raise / Lower camera (`CameraRaise` / `CameraLower`, T471): the Tether camera's look-at height, 1 unit per press. The keys are measured; what the official key moves, and its step, are ORACLE-OWED (board B653). The DRM/evdev device always sends the numpad codes; the `--egl-x11` device looks keys up in their NumLock-off form and maps none of the numpad digits (board B654). |
 | PageUp / PageDown | Scroll the UI panel under the cursor (T313) |
 | Ctrl+Alt+C | Toggle collision |
 | Ctrl+Z | Toggle zone line visualization |
@@ -234,7 +236,7 @@ seven toggleable windows -- `[InventoryWindow]`, `[SpellBookWnd]`,
 filename and section names. **T461 changed the camera keys:** `[Camera] View=`
 holds the official camera (1..6, `camera_mode.h`), and `User1Azimuth` /
 `User1Pitch` / `User1Distance` / `User1Height` (and `User2*`) hold the two user
-cameras, because the official client persists its own (`eqclient.ini`
+cameras (since T471 the azimuth is a WORLD azimuth, board B580), because the official client persists its own (`eqclient.ini`
 `Camera1-*` / `Camera2-*`). T432's `Mode=` (0 Free, 1 Follow, 2 FirstPerson)
 collides with the new numbering, so it is still READ — mapped explicitly, 0 and
 1 to Chase, 2 to First Person — and never written. It is read at zone-in and written whenever a
@@ -300,7 +302,7 @@ migration); `Application::DispatchSlashCommand` tries them in order:
    `set az <deg> pitch <deg> dist <units> height <units>` places the active
    user camera exactly (any subset; outside a user camera it switches to User
    Defined Camera 1 and says so), `nudge` adds the same four, `get` prints
-   parseable `[CAMERA-GET]` lines — mode, the four values, the player pose,
+   parseable `[CAMERA-GET]` lines — mode, the four values (T471: with `az_frame=world` for User Defined 1/2 and Tether, `az_frame=player_heading` for Overhead), the player pose,
    the ideal rig pose and the camera node's actual pose — and `help` states
    the units; the grammar is `include/client/graphics/slash/camera_command.h`),
    `/skills`, `/inventory`, `/newbook`,

@@ -223,9 +223,21 @@ public:
 	// One zoom step (EQ units, + = farther): the Chase follow distance, or the
 	// active rig's distance. First person does not zoom.
 	void zoomCamera(float deltaUnits, float deltaTime);
-	// Keyboard orbit (HotkeyAction::CameraOrbitLeft/Right/PitchUp/Down):
-	// adds to the ACTIVE USER camera only; a no-op in any other mode.
+	// Adds to the ACTIVE USER camera only; a no-op in any other mode. The
+	// Pitch up / down keys (HotkeyAction::CameraPitchUp/Down) reach it with a
+	// pitch delta -- Pitch up is a NEGATIVE delta, which lowers the camera and
+	// tilts the view up, as the official key does (T466, checked by T471).
 	void orbitCamera(float deltaAzimuthDeg, float deltaPitchDeg);
+	// T471: the official "Tether-slide camera right/left" (LEFT_CAM/RIGHT_CAM,
+	// HotkeyAction::CameraOrbitRight/Left): slides the TETHER camera by
+	// `rightDeg` of world azimuth towards the viewer's right (negative = left).
+	// A no-op in any other mode -- T466 pressed it in User 1 and nothing moved.
+	void tetherSlideCamera(float rightDeg);
+	// T471: the official "Raise camera" / "Lower camera"
+	// (HotkeyAction::CameraRaise/Lower): the Tether camera's look-at height, EQ
+	// units. A no-op in any other mode (T466: Raise in User 1 moved nothing).
+	// What the official key moves, and by how much, is ORACLE-OWED (B653).
+	void raiseCamera(float deltaUnits);
 	// `/camera [...]` -- parse (slash/camera_command.h) and execute; returns
 	// the chat reply lines.
 	std::vector<std::string> runCameraCommand(const std::string& args);
@@ -417,9 +429,10 @@ private:
 	std::vector<CollisionDebugLine> collisionDebugLines_;
 
 	// L13: owned state, see the accessors above.
-	CameraMode cameraMode_ = kDefaultCameraMode;  // T461: Chase, the camera once called Follow
+	CameraMode cameraMode_ = kDefaultCameraMode;  // T471: First Person, the official login camera
 	// T461: one rig per rig mode. User 1/2 are persisted. T466 measured Overhead
-	// against the official client; Tether is still a placeholder (B530, B580).
+	// against the official client; Tether is still a placeholder (B530). User
+	// 1/2 and Tether hold a WORLD azimuth since T471 (B580).
 	CameraRig overheadRig_ = kOverheadRig;
 	CameraRig user1Rig_ = kUser1DefaultRig;
 	CameraRig user2Rig_ = kUser2DefaultRig;

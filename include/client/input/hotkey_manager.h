@@ -144,18 +144,30 @@ enum class HotkeyAction : uint32_t {
     HotbarSlot1, HotbarSlot2, HotbarSlot3, HotbarSlot4, HotbarSlot5,
     HotbarSlot6, HotbarSlot7, HotbarSlot8, HotbarSlot9, HotbarSlot10,
 
-    // Camera zoom
+    // Camera zoom. T471: bound to the official Zoom in NPAD7 / INSERT and Zoom
+    // out NPAD1 / DELETE (measured, T466) as well as fable's own +/-.
     CameraZoomIn,
     CameraZoomOut,
-    // T461: orbit / pitch the ACTIVE user camera one kCameraOrbitKeyStepDeg per
-    // press. The official client has these actions (eqgame.exe KEYMAPPING_
-    // LEFT_CAM, RIGHT_CAM, PITCHUP_CAM, PITCHDOWN_CAM) but no file records
-    // their default keys, so fable binds NONE by default -- ORACLE-OWED
-    // (board B531). Bind them in config/hotkeys.json.
+    // T461 named these four after eqgame.exe's KEYMAPPING_ LEFT_CAM, RIGHT_CAM,
+    // PITCHUP_CAM and PITCHDOWN_CAM and left them unbound; T471 binds them to
+    // the keys T466 MEASURED on the official Options > Keys > Camera page
+    // (board B531):
+    //   CameraOrbitLeft/Right -- "Tether-slide camera left/right", Alt NPAD4 /
+    //     Alt LEFT and Alt NPAD6 / Alt RIGHT: slides the TETHER camera.
+    //   CameraPitchUp/Down -- "Pitch camera up/down", Alt NPAD9 / Alt PGUP and
+    //     Alt NPAD3 / Alt PGDOWN: pitches the active USER camera; Pitch up
+    //     tilts the view up, as the official key does.
     CameraOrbitLeft,
     CameraOrbitRight,
     CameraPitchUp,
     CameraPitchDown,
+    // T471: "Raise camera" / "Lower camera", Alt NPAD8 / Alt UP and Alt NPAD2
+    // / Alt DOWN (measured, T466) -- FORWARD_CAM / BACK_CAM by the order the
+    // exe's action table and eqstr 6692-6697 share (an inference). fable moves
+    // the Tether camera's look-at height; the official effect and step are
+    // ORACLE-OWED (board B653).
+    CameraRaise,
+    CameraLower,
 
     // Audio volume
     MusicVolumeUp,

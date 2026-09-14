@@ -24,11 +24,12 @@
 // So the NAMES and the SET are the files' own, and the enumerator values run
 // from 1 in the eqstr id order (9500 -> 1 ... 9505 -> 6).
 //
-// ORACLE-OWED (board B530): that F9 is TOGGLECAM's default key and that it
-// cycles in exactly this order, which mode a character logs in with, and the
-// geometry of every fixed camera. No file records a default key (an
-// eqclient.ini [KeyMaps] line exists only for a binding the user CHANGED;
-// see T382's note in tests/test_hotkey_manager.cpp). F9 is Will's ruling.
+// MEASURED ON THE OFFICIAL CLIENT (T466, review/T466/README.md), no longer
+// oracle-owed: F9 is TOGGLECAM's key and it cycles in exactly this order
+// (review/T466/logs/oracle_F9_successor_matrix.tsv); a character logs in on
+// FIRST PERSON (kDefaultCameraMode below); and which cameras turn with the
+// player (cameraAzimuthFrame() below). The geometry of Tether and the user
+// cameras is still ORACLE-OWED (board B530).
 //
 // THERE IS NO "Free" MODE ANY MORE. It was never an official camera, and it
 // had no body: CameraController::update() had no caller, so Free froze the
@@ -49,10 +50,33 @@ enum class CameraMode : int {
     Tether = 6,       // eqstr 9505 "Tether Camera"         TETHER_CAMERA
 };
 
-// fable's default. Chase is the camera fable used to call "Follow", unchanged
-// in geometry, so the visual gate's goldens (a default-camera render) do not
-// move. Whether the official client logs in on Chase is ORACLE-OWED (B530).
-constexpr CameraMode kDefaultCameraMode = CameraMode::Chase;
+// The camera a character with no saved `[Camera] View=` logs in with -- the
+// OFFICIAL client's login camera. T471: MEASURED by T466, which scored the
+// official client's untouched first frame after entering world against each
+// direct camera: First Person 0.232, every other camera >= 0.897
+// (review/T466/logs/oracle_login_camera_scores.tsv). Before T471 this was
+// Chase, fable's old follow camera, pending that measurement (B530). A saved
+// View= still wins (FrameComponent::syncUiPreferences). The visual gate does
+// not read it: gles2_zone_benchmark renders through its own fixed camera.
+constexpr CameraMode kDefaultCameraMode = CameraMode::FirstPerson;
+
+// T471 (board B580): the frame a rig camera's azimuth is held in. MEASURED by
+// T466: the character at heading 160 and then at 288 (+90 degrees), each
+// camera entered afresh after the turn, h160 vs h288 edge score -- First
+// Person 0.837, Overhead 0.689, Chase 0.680 (turned with the player); User 1
+// 0.084, User 2 0.120, Tether 0.193 (a re-grab scores 0.03-0.11: the same
+// WORLD view). An entry after the turn gave the same view, so the world
+// direction is not captured from the heading at entry; it is held.
+enum class CameraAzimuthFrame {
+    PlayerHeading,  // the azimuth is added to the player's heading (Overhead)
+    World,          // the azimuth IS the world direction (User 1, User 2, Tether)
+};
+
+// World for User1, User2 and Tether; PlayerHeading for every other mode.
+CameraAzimuthFrame cameraAzimuthFrame(CameraMode mode);
+
+// "world" / "player_heading" -- the token `/camera get` prints as az_frame=.
+const char* cameraAzimuthFrameName(CameraAzimuthFrame frame);
 
 // The next mode in the F9 cycle: 1 -> 2 -> ... -> 6 -> 1 (eqstr id order).
 CameraMode nextCameraMode(CameraMode mode);
@@ -71,9 +95,11 @@ bool cameraModeFromIniValue(int value, CameraMode& out);
 // `[Camera] Mode=` as T432 wrote it before T461: 0 Free, 1 Follow,
 // 2 FirstPerson. Mapped EXPLICITLY, never by cast -- 1 and 2 mean different
 // modes in the two numberings. Free (0) has no official counterpart and no
-// body; it maps to the default Chase, which is what a Free session actually
-// saw in motion (nothing), rounded to the nearest live camera. False for any
-// other value.
+// body; it maps to Chase (the camera a pre-T461 file's default was), which is
+// what a Free session actually saw in motion (nothing), rounded to the nearest
+// live camera. T471 moved kDefaultCameraMode to First Person; these two legacy
+// values stay Chase, because that is what the file they come from meant.
+// False for any other value.
 bool cameraModeFromLegacyIniMode(int legacy, CameraMode& out);
 
 // The four modes whose placement is a CameraRig (camera_rig.h): Overhead,

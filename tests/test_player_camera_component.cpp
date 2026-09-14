@@ -42,7 +42,12 @@ TEST_F(PlayerCameraComponentTest, AccessorReachesAConstructedComponent) {
 // member. One round trip across the handle.
 
 TEST_F(PlayerCameraComponentTest, SetCameraModeWritesTheRenderersOwnMemberThroughTheOwnerHandle) {
-    ASSERT_EQ(renderer.getCameraMode(), IrrlichtRenderer::CameraMode::Chase);  // declared default
+    // Declared default: First Person since T471 (the official login camera, T466).
+    ASSERT_EQ(renderer.getCameraMode(), IrrlichtRenderer::CameraMode::FirstPerson);
+
+    renderer.PlayerCamera().setCameraMode(IrrlichtRenderer::CameraMode::Chase);
+    EXPECT_EQ(renderer.getCameraMode(), IrrlichtRenderer::CameraMode::Chase);
+    EXPECT_FALSE(renderer.isFirstPersonMode());
 
     renderer.PlayerCamera().setCameraMode(IrrlichtRenderer::CameraMode::FirstPerson);
     EXPECT_EQ(renderer.getCameraMode(), IrrlichtRenderer::CameraMode::FirstPerson);
@@ -57,7 +62,10 @@ TEST_F(PlayerCameraComponentTest, CycleCameraModeWalksTheOfficialOrderThroughThe
     // cycleCameraMode() has NO forwarder on IrrlichtRenderer -- L05 measured
     // zero callers on that receiver. Its routes are FrameComponent's F9 arm
     // (T461) and `/camera cycle`, both through PlayerCamera().
-    ASSERT_EQ(renderer.getCameraMode(), IrrlichtRenderer::CameraMode::Chase);
+    ASSERT_EQ(renderer.getCameraMode(), IrrlichtRenderer::CameraMode::FirstPerson);
+    renderer.PlayerCamera().cycleCameraMode();
+    EXPECT_EQ(renderer.getCameraMode(), IrrlichtRenderer::CameraMode::Overhead);
+    renderer.PlayerCamera().setCameraMode(IrrlichtRenderer::CameraMode::Chase);
     renderer.PlayerCamera().cycleCameraMode();
     EXPECT_EQ(renderer.getCameraMode(), IrrlichtRenderer::CameraMode::User1);
     renderer.PlayerCamera().setCameraMode(IrrlichtRenderer::CameraMode::Tether);
@@ -67,9 +75,9 @@ TEST_F(PlayerCameraComponentTest, CycleCameraModeWalksTheOfficialOrderThroughThe
 
 TEST_F(PlayerCameraComponentTest, CameraModeStringReadsTheOwnersMemberBackThroughTheForwarder) {
     // Renderer forwarder -> component -> its own cameraMode_ -> string (L13).
+    EXPECT_EQ(renderer.getCameraModeString(), "First Person Camera");  // T471 default
+    renderer.PlayerCamera().setCameraMode(IrrlichtRenderer::CameraMode::Chase);
     EXPECT_EQ(renderer.getCameraModeString(), "Chase Camera");
-    renderer.PlayerCamera().setCameraMode(IrrlichtRenderer::CameraMode::FirstPerson);
-    EXPECT_EQ(renderer.getCameraModeString(), "First Person Camera");
     renderer.PlayerCamera().setCameraMode(IrrlichtRenderer::CameraMode::Overhead);
     EXPECT_EQ(renderer.getCameraModeString(), "Overhead Camera");
 }
