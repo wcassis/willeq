@@ -108,8 +108,10 @@ bool DoorManager::rebuildSingleDoor(uint8_t doorId)
         return false;
     }
 
-    // Swap the mesh on the existing scene node
+    // Swap the mesh on the existing scene node. setMesh() grabs the new mesh
+    // and drops the placeholder; T470 (B621): release findDoorMesh()'s one.
     visual.sceneNode->setMesh(mesh);
+    mesh->drop();
 
     // Update materials for the new textured mesh
     for (irr::u32 i = 0; i < visual.sceneNode->getMaterialCount(); ++i) {
@@ -175,8 +177,10 @@ void DoorManager::rebuildPlaceholderDoors()
             continue;
         }
 
-        // Swap the mesh on the existing scene node
+        // Swap the mesh on the existing scene node. setMesh() grabs the new
+        // mesh; T470 (B621): release findDoorMesh()'s reference.
         visual.sceneNode->setMesh(mesh);
+        mesh->drop();
 
         // Update materials for the new textured mesh
         for (irr::u32 i = 0; i < visual.sceneNode->getMaterialCount(); ++i) {

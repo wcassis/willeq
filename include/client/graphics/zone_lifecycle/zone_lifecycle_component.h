@@ -58,10 +58,11 @@
 // initDeferredGraphics(), neither of which this unit touches):
 //
 //   unloadZone()             src/client/bridge/irrlicht_bridge.cpp:740,
-//                            src/client/application_zone_loading.cpp:191,
+//                            src/client/application_zone_loading.cpp:206,
 //                            src/client/mode/graphical_mode.cpp:213
-//   setupInstantScene()      src/client/application_zone_loading.cpp:206, 316
-//   storeZoneEnvironment()   src/client/application_zone_loading.cpp:210, 320
+//   setupInstantScene()      src/client/application_zone_loading.cpp:221
+//   storeZoneEnvironment()   src/client/application_zone_loading.cpp:225
+//   (each had a second caller in loadZoneGraphics() until T470 deleted it)
 //   setExpectedEntityCount() src/client/bridge/irrlicht_bridge.cpp:179
 //   setNetworkReady()        src/client/bridge/irrlicht_bridge.cpp:180
 //   setWeather()             src/client/bridge/irrlicht_bridge.cpp:623

@@ -111,8 +111,8 @@ TEST_F(ZoneLifecycleComponentTest, ExpectedEntityCountIsAcceptedThroughTheForwar
 // --- The zone-environment trio -------------------------------------------
 
 TEST_F(ZoneLifecycleComponentTest, StoredEnvironmentSurvivesTheForwarderAndIsApplied) {
-    // storeZoneEnvironment() is called twice by application_zone_loading.cpp
-    // through the forwarder; applyStoredZoneEnvironment() has zero callers and
+    // storeZoneEnvironment() is called by application_zone_loading.cpp
+    // through the forwarder (twice until T470 deleted the uncalled loader); applyStoredZoneEnvironment() has zero callers and
     // was KEPT (not deleted) because renderer_zone_load_env.cpp reads the same
     // storedZoneEnvironment_ directly. Both halves must stay callable so the
     // boarded wire-or-delete decision stays a one-line decision.
@@ -142,7 +142,7 @@ TEST_F(ZoneLifecycleComponentTest, UnloadZoneIsSafeOnABareRendererThroughBothRou
 }
 
 TEST_F(ZoneLifecycleComponentTest, InstantSceneAndHCMapCollisionAreNoOpsWithNoMap) {
-    // setupInstantScene() is called twice by application_zone_loading.cpp; it
+    // setupInstantScene() is called by application_zone_loading.cpp; it
     // needs ctx_.collisionMap, which is null here, and setupHCMapCollision()
     // needs ctx_.smgr. renderer_frame_input.cpp calls the placeholder rebuild
     // pair (buildZonePlaceholder + setupHCMapCollision) directly.

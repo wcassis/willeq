@@ -143,8 +143,10 @@ TEST_F(CameraZoneInPreferenceTest, ACharacterWithNoSavedViewGetsChase) {
     EXPECT_FALSE(fs::exists(IniFor("Second"))) << "a fresh character wrote a file";
 }
 
-// Both Application loaders go through the one entry point, and no zone-load
-// site names a camera mode.
+// The Application zone loader goes through the one entry point, and no
+// zone-load site names a camera mode. (There were two loaders until T470
+// deleted the uncalled synchronous loadZoneGraphics(), board B622; the test
+// name is kept so its history stays findable.)
 TEST(CameraZoneInSourceTest, BothZoneLoadersUseTheOneEntryPointAndNameNoMode) {
     const std::string src =
         ReadFile(fs::path(WILLEQ_REPO_ROOT) / "src/client/application_zone_loading.cpp");
@@ -154,7 +156,7 @@ TEST(CameraZoneInSourceTest, BothZoneLoadersUseTheOneEntryPointAndNameNoMode) {
          p = src.find("placeCameraForZoneIn(", p + 1)) {
         ++calls;
     }
-    EXPECT_EQ(calls, 2u) << "loadZoneGraphicsOnThread() and loadZoneGraphics()";
+    EXPECT_EQ(calls, 1u) << "loadZoneGraphicsOnThread()";
     EXPECT_EQ(src.find("setCameraMode("), std::string::npos)
         << "a zone load must not choose the player's camera";
 }

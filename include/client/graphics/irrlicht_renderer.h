@@ -225,7 +225,9 @@ public:
     // reporting all live on ZoneStreamComponent. The T111 predicate stays a
     // public static there, and tests/test_progressive_load_rearm.cpp calls it
     // as ZoneStreamComponent::isEntityBlockingProgressiveLoad(...).
-    bool isProgressiveLoadingActive() const { return progressiveLoadingActive_; }
+    // T470 (B622): isProgressiveLoadingActive() deleted -- its one production
+    // caller was the deleted Application::loadZoneGraphics(). Tests read
+    // Context().progressiveLoadingActive, the same member.
     // L10 (Batch L): the zone-load step sequence lives on ZoneLoadComponent;
     // these two forward for application_zone_loading.cpp:275,277 (K11 rule).
     void loadZoneSequential(const std::string& p, LoadingStatus& s) { zoneLoad_->loadZoneSequential(p, s); }

@@ -9426,29 +9426,77 @@ B591–B599 unused.
     unreachable at today's budget.
   - Found by T468.
 
-- **B621** (B, hygiene, unconfirmed) **`DoorManager` leaks door meshes on two
-  paths.**
-  - `findDoorMesh()` does not cache a mesh built while a texture is still
-    pending, and none of its callers (`createDoor()`, `buildDoorMesh()`,
-    `rebuildSingleDoor()`) drops that mesh's creation reference. The scene node
-    takes its own `grab()`, so the mesh outlives the door.
-  - `invalidateMeshCache()` `erase()`s cache entries without `drop()`.
-  - Both are code reading only. Confirm by: `getReferenceCount()` on a mesh
-    across `clearDoors()` in an EDT_NULL test.
-  - Found by T468.
+- ~~**B621**~~ **CLOSED by T470** (`DoorManager` leaks door meshes). Both
+  boarded paths CONFIRMED, plus a third, larger one T468 did not name.
+  - **Measured** with `getReferenceCount()` on the real `DoorManager` that
+    `setupInstantScene()` builds (EDT_NULL device, real cache), in
+    `tests/test_door_texture_eviction.cpp`. Holders other than the test's own
+    grab, before -> after the fix:
+    - `ARegisteredDoorsPlaceholderMeshDiesWithItsNode`: the `registerDoor()`
+      placeholder (every door of every zone load) 2 -> 1 while drawn, 1 -> 0
+      after Step 7's rebuild destroyed its node. **Not in B621's text.**
+    - `AMeshBuiltWhileItsTextureIsPendingDiesWithItsDoor`: 2 -> 1, then 1 -> 0
+      after `clearDoors()`.
+    - `InvalidatingTheDoorMeshCacheReleasesTheCachesReference` (by name,
+      lowercase name and `""`): 2 -> 1 after the invalidate, 1 -> 0 after
+      `clearDoors()`.
+    - `ACreatedDoorsPlaceholderDiesAtTheMeshSwap`: the `createDoor()`
+      placeholder 2 -> 1, and 1 -> 0 after Path 2's `setMesh()` swap.
+    - `DoorsSharingACachedMeshReleaseItExactlyOnceAtZoneChange`: green before
+      and after (3 nodes + cache = 4, then 0 at `unloadZone()`). It pins that
+      the fix does not over-drop.
+  - **Fixed** with one ownership rule, written on `doorMeshCache_`
+    (`door_manager.h`): `findDoorMesh()` / `createPlaceholderMesh()` return
+    ONE caller-owned reference, cached or not, and the caller drops it once
+    the node has grabbed its own. The cache takes its own `grab()` in
+    `cacheDoorMesh()` and releases it in `invalidateMeshCache()` and
+    `clearDoors()`. Before, the cache borrowed the creation reference and the
+    callers dropped only on failure branches.
 
-- **B622** (B, unreached) **`Application::loadZoneGraphics()`, the synchronous
-  zone-graphics loader, has no caller.**
-  - `setupInstantScene()` is reached in production only through
-    `Application::loadZoneGraphicsOnThread()` (the loading thread,
-    `application_zone_loading.cpp`), which every session with graphics runs.
-  - Its twin `loadZoneGraphics()` is declared in `application.h` and called
-    nowhere in `src/`, `include/`, `tests/`, `tools/`, `benchmarks/` or
-    `docker/`.
-  - Found by T468 answering its plan's task 3; outside its territory, so
-    boarded, not deleted.
+- ~~**B622**~~ **CLOSED by T470** (`Application::loadZoneGraphics()` had no
+  caller). Deleted, with its declaration.
+  - Zero callers in `src/ include/ tests/ tools/ benchmarks/ docker/`. The full
+    `build/` tree (tools included) links without it.
+  - Cascade census, two steps:
+    - Step 1: every call it made (`setZoneLineBoundingBoxes`,
+      `setupInstantScene`, `storeZoneEnvironment`, `registerEntity`,
+      `registerDoor`, `placeCameraForZoneIn`, `SetPlayerGraphicsEntityPending`,
+      `getZoneBspTree`, `CreateZoneLoadSnapshot`, `m_pendingBspTree*`,
+      `m_graphicsCompleteReady`) is also made by `loadZoneGraphicsOnThread()`,
+      `checkLoadingComplete()` or `application.cpp`.
+    - The one exception is `IrrlichtRenderer::isProgressiveLoadingActive()`.
+      It was left with test callers only, and `ZeroCallers` failed on it as a
+      NEW tests-only function, so it was deleted too. Its two tests
+      (`test_zone_load_component`, `test_zone_stream_component`) now read
+      `Context().progressiveLoadingActive`, the same member.
+    - Step 2: `progressiveLoadingActive_` has many live readers. Fixed point.
+  - T464's `placeCameraForZoneIn()` call in the live loader is kept, and
+    `CameraZoneInSourceTest` now counts 1.
 
 B623–B629 unused.
+
+---
+
+## Added 2026-09-14 by T470 (door mesh leaks)
+
+- **B640** (A, *unconfirmed live*) **A door whose real mesh was built while
+  its texture was pending is never re-textured.**
+  - `ZoneLoadComponent::loadZoneStep7_Doors()` queues the door into
+    `pendingTextureDoors()`. On arrival, `renderer_gpu_upload.cpp` calls
+    `invalidateMeshCache()` and pushes the id to `doorTextureRebuildQueue`,
+    which `renderer_frame.cpp` (Priority 8) and `renderer_zone_stream.cpp`
+    (P1.6) drain through `DoorManager::rebuildSingleDoor()`.
+  - `rebuildSingleDoor()` does nothing for that door: Path 1 needs
+    `!meshBuilt` and Path 2 needs `usePlaceholder`, and a door with a real
+    mesh has `meshBuilt=1, usePlaceholder=0`.
+  - Measured by a throwaway T470 probe on the B621 seam: `rebuilt=0`, the mesh
+    unchanged, and the node texture `nullptr` both before and after the
+    texture arrived.
+  - Unconfirmed live: nobody has measured whether a door texture is ever still
+    pending at Step 7 in a real session.
+  - Found by T470.
+
+B641–B649 unused.
 
 ---
 

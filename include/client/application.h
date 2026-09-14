@@ -490,7 +490,7 @@ private:
     void startLoadingThread();
     void joinLoadingThread();
     void loadZoneGraphicsOnThread(EQT::Graphics::LoadingStatus& status);
-    void loadZoneGraphics();  // Synchronous path
+    // T470 (B622): the synchronous loadZoneGraphics() had no caller; deleted.
 #ifdef EQT_HAS_GRAPHICS
     bool isLoadingThreadActive() const { return m_loadingThread != nullptr; }
 #else

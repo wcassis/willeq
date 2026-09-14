@@ -95,7 +95,8 @@ TEST(CorpseSpawnWire, LyingIsTheOraclesOwnAnimationValue) {
 // Corpse-ness was derived FIVE times from the same three fields, and the
 // copies disagreed. Three of them (bridge_component.cpp's
 // OnSpawnAddedGraphics, and application_zone_loading.cpp TWICE -- the
-// threaded and the sequential zone-load entity registration) recomputed
+// threaded and the sequential zone-load entity registration; T470 deleted the
+// uncalled sequential one) recomputed
 // `npc_type == 2 || npc_type == 3` inline and then fell back to a bare
 // `name.find("corpse")` with NO trailing-id check. The fourth,
 // eqt::state::Entity::isAnyCorpse(), had no name test at all and so

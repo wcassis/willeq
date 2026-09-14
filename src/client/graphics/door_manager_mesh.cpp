@@ -38,7 +38,11 @@ irr::scene::IMesh* DoorManager::findDoorMesh(const std::string& doorName) const
     auto cacheIt = doorMeshCache_.find(upperDoorName);
     if (cacheIt != doorMeshCache_.end()) {
         LOG_DEBUG(MOD_GRAPHICS, "Door mesh cache hit for '{}'", upperDoorName);
-        return cacheIt->second;  // Cache holds the reference, scene node will grab() on use
+        // T470 (B621): the caller owns what this returns (door_manager.h,
+        // doorMeshCache_), so a hit hands out a reference of its own and the
+        // cache keeps its grab.
+        cacheIt->second->grab();
+        return cacheIt->second;
     }
 
     irr::scene::IMesh* mesh = nullptr;
@@ -68,7 +72,7 @@ irr::scene::IMesh* DoorManager::findDoorMesh(const std::string& doorName) const
         if (!missing.empty()) {
             lastMissingTextures_.insert(lastMissingTextures_.end(), missing.begin(), missing.end());
         } else if (mesh) {
-            const_cast<DoorManager*>(this)->doorMeshCache_[upperDoorName] = mesh;
+            const_cast<DoorManager*>(this)->cacheDoorMesh(upperDoorName, mesh);
         }
         return mesh;
     }
@@ -95,7 +99,7 @@ irr::scene::IMesh* DoorManager::findDoorMesh(const std::string& doorName) const
             if (!missing.empty()) {
                 lastMissingTextures_.insert(lastMissingTextures_.end(), missing.begin(), missing.end());
             } else if (mesh) {
-                const_cast<DoorManager*>(this)->doorMeshCache_[upperDoorName] = mesh;
+                const_cast<DoorManager*>(this)->cacheDoorMesh(upperDoorName, mesh);
             }
             return mesh;
         }
@@ -129,7 +133,7 @@ irr::scene::IMesh* DoorManager::findDoorMesh(const std::string& doorName) const
             if (!missing.empty()) {
                 lastMissingTextures_.insert(lastMissingTextures_.end(), missing.begin(), missing.end());
             } else if (mesh) {
-                const_cast<DoorManager*>(this)->doorMeshCache_[upperDoorName] = mesh;
+                const_cast<DoorManager*>(this)->cacheDoorMesh(upperDoorName, mesh);
             }
             return mesh;
         }
@@ -139,13 +143,31 @@ irr::scene::IMesh* DoorManager::findDoorMesh(const std::string& doorName) const
 }
 
 void DoorManager::invalidateMeshCache(const std::string& doorName) {
+    // T470 (B621): each entry is the cache's own grab(); erasing without a
+    // drop() leaked it (both the "" form and the by-name form did).
     if (doorName.empty()) {
+        for (auto& [name, mesh] : doorMeshCache_) {
+            if (mesh) mesh->drop();
+        }
         doorMeshCache_.clear();
         return;
     }
     std::string upper = doorName;
     std::transform(upper.begin(), upper.end(), upper.begin(), ::toupper);
-    doorMeshCache_.erase(upper);
+    auto it = doorMeshCache_.find(upper);
+    if (it == doorMeshCache_.end()) return;
+    if (it->second) it->second->drop();
+    doorMeshCache_.erase(it);
+}
+
+void DoorManager::cacheDoorMesh(const std::string& key, irr::scene::IMesh* mesh) {
+    if (!mesh) return;
+    mesh->grab();  // the cache's own reference; the caller keeps the one it was handed
+    auto it = doorMeshCache_.find(key);
+    if (it != doorMeshCache_.end() && it->second) {
+        it->second->drop();
+    }
+    doorMeshCache_[key] = mesh;
 }
 
 // Generate a unique color from a door name using a simple hash

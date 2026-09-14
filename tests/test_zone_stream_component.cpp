@@ -138,16 +138,18 @@ TEST_F(ZoneStreamComponentTest, PvsRegionChangedIsANoOpWithNoWorkersOnTheContext
 // --- The ctx_ path, renderer -> component --------------------------------
 
 TEST_F(ZoneStreamComponentTest, ProgressiveLoadGateIsTheContextFlag) {
-    // processFrameProgressiveLoad()'s first line is the context flag, and it is
-    // the same bool the renderer's own isProgressiveLoadingActive() reports --
-    // one member, reached two ways. Writing it through Context() and running
-    // the whole body is the round trip.
-    ASSERT_FALSE(renderer.isProgressiveLoadingActive());
+    // processFrameProgressiveLoad()'s first line is the context flag, bound by
+    // reference to the renderer's own progressiveLoadingActive_ -- one member,
+    // reached two ways. Writing it through Context() and running the whole body
+    // is the round trip. (T470 deleted the renderer's reader,
+    // isProgressiveLoadingActive(), whose one production caller was the deleted
+    // Application::loadZoneGraphics(); the flag is read back through Context().)
+    ASSERT_FALSE(renderer.Context().progressiveLoadingActive);
     renderer.ZoneStream().processFrameProgressiveLoad();  // gated off, returns at once
-    EXPECT_FALSE(renderer.isProgressiveLoadingActive());
+    EXPECT_FALSE(renderer.Context().progressiveLoadingActive);
 
     renderer.Context().progressiveLoadingActive = true;
-    EXPECT_TRUE(renderer.isProgressiveLoadingActive());
+    EXPECT_TRUE(renderer.Context().progressiveLoadingActive);
 
     // Gated on, the whole body runs: every subsystem it steps (entity renderer,
     // prep worker, door manager, texture cache, governor) is null on a bare
@@ -155,11 +157,11 @@ TEST_F(ZoneStreamComponentTest, ProgressiveLoadGateIsTheContextFlag) {
     // which cannot complete because sequentialLoadComplete_ is false, so the
     // flag survives -- proving the body ran to the end without clearing it.
     renderer.ZoneStream().processFrameProgressiveLoad();
-    EXPECT_TRUE(renderer.isProgressiveLoadingActive());
+    EXPECT_TRUE(renderer.Context().progressiveLoadingActive);
 
     renderer.Context().progressiveLoadingActive = false;
     renderer.ZoneStream().processFrameProgressiveLoad();
-    EXPECT_FALSE(renderer.isProgressiveLoadingActive());
+    EXPECT_FALSE(renderer.Context().progressiveLoadingActive);
 }
 
 TEST_F(ZoneStreamComponentTest, CompletionCheckDoesNotCompleteBeforeTheSequentialLoadDoes) {
@@ -168,7 +170,7 @@ TEST_F(ZoneStreamComponentTest, CompletionCheckDoesNotCompleteBeforeTheSequentia
     // sequentialLoadComplete_ is false on a bare renderer, so the check must
     // bail before the "loading is done" branch that clears the flag. A
     // completion test that completed here would be the T109 shape again.
-    EXPECT_TRUE(renderer.isProgressiveLoadingActive());
+    EXPECT_TRUE(renderer.Context().progressiveLoadingActive);
 }
 
 TEST_F(ZoneStreamComponentTest, IndexObjectMeshesIsANoOpWithNoZoneOnTheContext) {

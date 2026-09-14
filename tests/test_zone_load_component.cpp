@@ -103,13 +103,15 @@ TEST_F(ZoneLoadComponentTest, TheComponentAndTheForwarderAreTheSameLoad) {
 
 TEST_F(ZoneLoadComponentTest, ProgressiveLoadingIsArmedOnTheContextBeforeTheFirstStep) {
     // loadZoneSequential() sets ctx_.progressiveLoadingActive = true before
-    // Step 0 and nothing in the failure path clears it. isProgressiveLoadingActive()
-    // is IrrlichtRenderer's own reader of the same context member -- so this is
+    // Step 0 and nothing in the failure path clears it. Context() binds that
+    // member to IrrlichtRenderer's own progressiveLoadingActive_ -- so this is
     // the executable statement that the component writes THROUGH the context
-    // and not into a copy of it.
-    EXPECT_FALSE(renderer.isProgressiveLoadingActive());
+    // and not into a copy of it. (T470 deleted the renderer's reader,
+    // isProgressiveLoadingActive(): its one production caller was the deleted
+    // Application::loadZoneGraphics().)
+    EXPECT_FALSE(renderer.Context().progressiveLoadingActive);
     renderer.loadZoneSequential("", status);
-    EXPECT_TRUE(renderer.isProgressiveLoadingActive());
+    EXPECT_TRUE(renderer.Context().progressiveLoadingActive);
 }
 
 TEST_F(ZoneLoadComponentTest, TheLoadGateMethodsThatStayedAreStillReachable) {

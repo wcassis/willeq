@@ -339,4 +339,140 @@ TEST(DoorManagerConstructionSource, TheDoorManagerHasOneConstructionSite) {
         << needle << " is constructed outside ZoneLifecycleComponent::ensureDoorManager():" << list.str();
 }
 
+// ---------------------------------------------------------------------------
+// T470 (board B621) -- door MESH references, on the same seam.
+//
+// Every ZoneMeshBuilder build and every placeholder (createCubeMesh,
+// createOctagonalPrism) is `new SMesh`: reference count 1, owned by whoever
+// asked. A scene node grab()s its own. So once a door's node is gone, the only
+// holder a door mesh may have left is DoorManager::doorMeshCache_, and once
+// clearDoors() has run, none. MeshWatch grabs the mesh for the length of a
+// test (so a mesh that is correctly freed is not read after free) and reports
+// how many OTHER references exist.
+namespace {
+
+class MeshWatch {
+public:
+    explicit MeshWatch(irr::scene::IMesh* m) : mesh_(m) { if (mesh_) mesh_->grab(); }
+    ~MeshWatch() { if (mesh_) mesh_->drop(); }
+    MeshWatch(const MeshWatch&) = delete;
+    MeshWatch& operator=(const MeshWatch&) = delete;
+    // References held by anyone but this watch.
+    int holders() const { return mesh_ ? mesh_->getReferenceCount() - 1 : -1; }
+    irr::scene::IMesh* get() const { return mesh_; }
+private:
+    irr::scene::IMesh* mesh_;
+};
+
+// The same zone, but the door texture's pixel data is not here yet and the
+// cache does not hold it -- the "async upload still pending" state in which
+// ZoneMeshBuilder reports a missing texture and findDoorMesh() does not cache.
+std::shared_ptr<S3DZone> makeZoneWithPendingTexture(const std::string& zoneName, const std::string& texName) {
+    auto zone = makeZone(zoneName, texName);
+    zone->objectTextures[texName]->data.clear();
+    return zone;
+}
+
+}  // namespace
+
+// Path: registerDoor()'s placeholder (every door of every zone load --
+// Application snapshot -> registerDoor, then Step 7's rebuildSingleDoor Path 1).
+TEST_F(DoorTextureEvictionTest, ARegisteredDoorsPlaceholderMeshDiesWithItsNode) {
+    renderer_->setupInstantScene("t470zone", 0.0f, 0.0f, 0.0f);
+    DoorManager* doors = ctx().doorManager.get();
+    ASSERT_NE(doors, nullptr);
+    doors->setZone(makeZone("t470zone", "t470_door_tex"));
+    doors->setConstrainedTextureCache(cache_.get());
+    ASSERT_TRUE(doors->registerDoor(kDoorId, "DOOR1", 10.0f, 20.0f, 0.0f, 0.0f, 0, 100, 0, false));
+    const DoorVisual* door = doors->getDoor(kDoorId);
+    ASSERT_NE(door, nullptr);
+    ASSERT_TRUE(door->usePlaceholder);
+    MeshWatch placeholder(door->sceneNode->getMesh());
+    EXPECT_EQ(placeholder.holders(), 1) << "a registered placeholder mesh is held by its node alone";
+
+    ASSERT_TRUE(doors->rebuildSingleDoor(kDoorId));
+    EXPECT_EQ(placeholder.holders(), 0) << "the placeholder mesh outlived the node that drew it";
+}
+
+// Path: a real mesh built while a texture is pending (not cached by
+// findDoorMesh()).
+TEST_F(DoorTextureEvictionTest, AMeshBuiltWhileItsTextureIsPendingDiesWithItsDoor) {
+    renderer_->setupInstantScene("t470zone", 0.0f, 0.0f, 0.0f);
+    const DoorVisual* door = buildDoorInZone(makeZoneWithPendingTexture("t470zone", "t470_door_tex"));
+    ASSERT_NE(door, nullptr);
+    ASSERT_FALSE(door->usePlaceholder) << "a pending texture still builds the real mesh";
+    ASSERT_FALSE(ctx().doorManager->getLastMissingTextures().empty()) << "the texture was not reported pending";
+    MeshWatch mesh(door->sceneNode->getMesh());
+    EXPECT_EQ(mesh.holders(), 1) << "an uncached door mesh is held by its node alone";
+
+    ctx().doorManager->clearDoors();
+    EXPECT_EQ(mesh.holders(), 0) << "the uncached door mesh outlived clearDoors()";
+}
+
+// Path: invalidateMeshCache() -- by model name (GPUUpload texture arrival,
+// renderer_gpu_upload.cpp) and with "" (the shader swap, diagnostics_debug.cpp).
+TEST_F(DoorTextureEvictionTest, InvalidatingTheDoorMeshCacheReleasesTheCachesReference) {
+    renderer_->setupInstantScene("t470zone", 0.0f, 0.0f, 0.0f);
+    for (const std::string key : {"DOOR1", "door1", ""}) {
+        SCOPED_TRACE("invalidateMeshCache(\"" + key + "\")");
+        const DoorVisual* door = buildDoorInZone(makeZone("t470zone", "t470_door_tex"));
+        ASSERT_NE(door, nullptr);
+        MeshWatch mesh(door->sceneNode->getMesh());
+        EXPECT_EQ(mesh.holders(), 2) << "a cached door mesh: its node and the cache";
+
+        ctx().doorManager->invalidateMeshCache(key);
+        EXPECT_EQ(mesh.holders(), 1) << "the cache entry was erased but its reference kept";
+
+        ctx().doorManager->clearDoors();
+        EXPECT_EQ(mesh.holders(), 0) << "the door mesh outlived clearDoors()";
+    }
+}
+
+// Path: createDoor()'s placeholder (IrrlichtBridge's live door spawn), then
+// rebuildSingleDoor Path 2's setMesh() swap to the real, cached mesh.
+TEST_F(DoorTextureEvictionTest, ACreatedDoorsPlaceholderDiesAtTheMeshSwap) {
+    renderer_->setupInstantScene("t470zone", 0.0f, 0.0f, 0.0f);
+    DoorManager* doors = ctx().doorManager.get();
+    ASSERT_NE(doors, nullptr);
+    doors->setZone(nullptr);  // no zone data yet: createDoor() must fall back
+    ASSERT_TRUE(doors->createDoor(kDoorId, "DOOR1", 10.0f, 20.0f, 0.0f, 0.0f, 0, 100, 0, false));
+    const DoorVisual* door = doors->getDoor(kDoorId);
+    ASSERT_NE(door, nullptr);
+    ASSERT_TRUE(door->usePlaceholder);
+    MeshWatch placeholder(door->sceneNode->getMesh());
+    EXPECT_EQ(placeholder.holders(), 1) << "a created placeholder mesh is held by its node alone";
+
+    doors->setZone(makeZone("t470zone", "t470_door_tex"));
+    doors->setConstrainedTextureCache(cache_.get());
+    ASSERT_TRUE(doors->rebuildSingleDoor(kDoorId));
+    EXPECT_EQ(placeholder.holders(), 0) << "the placeholder mesh outlived the swap that replaced it";
+    MeshWatch real(door->sceneNode->getMesh());
+    EXPECT_EQ(real.holders(), 2) << "the swapped-in mesh: its node and the cache";
+
+    doors->clearDoors();
+    EXPECT_EQ(real.holders(), 0) << "the swapped-in mesh outlived clearDoors()";
+}
+
+// The cache-hit path (25 DOOR1 instances share one mesh). Green before the fix
+// too: it pins that the shared mesh is not over-dropped by the new ownership
+// rule, and that the next zone starts from nothing.
+TEST_F(DoorTextureEvictionTest, DoorsSharingACachedMeshReleaseItExactlyOnceAtZoneChange) {
+    renderer_->setupInstantScene("t470a", 0.0f, 0.0f, 0.0f);
+    DoorManager* doors = ctx().doorManager.get();
+    ASSERT_NE(doors, nullptr);
+    doors->setZone(makeZone("t470a", "t470_door_tex"));
+    doors->setConstrainedTextureCache(cache_.get());
+    ASSERT_TRUE(doors->createDoor(1, "DOOR1", 0.0f, 0.0f, 0.0f, 0.0f, 0, 100, 0, false));
+    ASSERT_TRUE(doors->createDoor(2, "DOOR1", 10.0f, 0.0f, 0.0f, 0.0f, 0, 100, 0, false));
+    ASSERT_TRUE(doors->registerDoor(3, "DOOR1", 20.0f, 0.0f, 0.0f, 0.0f, 0, 100, 0, false));
+    ASSERT_TRUE(doors->rebuildSingleDoor(3));
+    ASSERT_EQ(doors->getDoor(1)->sceneNode->getMesh(), doors->getDoor(2)->sceneNode->getMesh());
+    ASSERT_EQ(doors->getDoor(1)->sceneNode->getMesh(), doors->getDoor(3)->sceneNode->getMesh());
+    MeshWatch shared(doors->getDoor(1)->sceneNode->getMesh());
+    EXPECT_EQ(shared.holders(), 4) << "three nodes and the cache";
+
+    renderer_->unloadZone();
+    EXPECT_EQ(shared.holders(), 0) << "the shared door mesh outlived the zone unload";
+}
+
 #endif  // EQT_HAS_GRAPHICS

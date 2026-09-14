@@ -232,8 +232,12 @@ public:
     const std::map<uint8_t, DoorVisual>& getDoors() const { return doors_; }
 
 private:
-    // Find matching mesh in zone objects by name
+    // Find matching mesh in zone objects by name. Returns a reference the
+    // CALLER owns (see doorMeshCache_), or nullptr.
     irr::scene::IMesh* findDoorMesh(const std::string& doorName) const;
+
+    // Store `mesh` under `key`, taking the cache's own grab() (T470).
+    void cacheDoorMesh(const std::string& key, irr::scene::IMesh* mesh);
 
     // Calculate open heading from closed heading + incline
     // Uses default 90-degree rotation for standard doors (opentype 0, 5, 56) when incline=0
@@ -255,7 +259,19 @@ private:
     std::set<uint8_t> collisionDirty_;    // T435: ids to re-bake on the next drain
     std::set<uint8_t> collisionRemoved_;  // T435: ids the renderer must erase
     std::set<uint8_t> invisibleDoors_;  // Track invisible doors to suppress state update warnings
-    std::unordered_map<std::string, irr::scene::IMesh*> doorMeshCache_;  // Cached meshes by uppercase door name
+    // Cached meshes by uppercase door name.
+    // T470 (board B621) OWNERSHIP RULE for every door mesh:
+    // - findDoorMesh() and createPlaceholderMesh() return ONE reference that
+    //   the caller owns, cached or not. The caller drop()s it once the scene
+    //   node has grab()bed its own (addMeshSceneNode / setMesh), or on a
+    //   failure branch.
+    // - This cache holds a grab() of its own, taken in cacheDoorMesh() and
+    //   released by invalidateMeshCache() and clearDoors().
+    // Before T470 the cache borrowed the creation reference and callers dropped
+    // only on failure branches, so every placeholder mesh and every mesh built
+    // while a texture was pending outlived its door, and invalidateMeshCache()
+    // erased entries without dropping them.
+    std::unordered_map<std::string, irr::scene::IMesh*> doorMeshCache_;
     mutable std::vector<std::string> lastMissingTextures_;  // Textures pending async upload from last findDoorMesh
     irr::scene::ISceneManager* smgr_ = nullptr;
     irr::video::IVideoDriver* driver_ = nullptr;

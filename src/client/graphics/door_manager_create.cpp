@@ -116,9 +116,7 @@ bool DoorManager::createDoor(uint8_t doorId, const std::string& name,
     // EQ Z-up to Irrlicht Y-up: (x, y, z) -> (x, z, y)
     visual.pivotNode = smgr_->addEmptySceneNode();
     if (!visual.pivotNode) {
-        if (usePlaceholder) {
-            mesh->drop();
-        }
+        mesh->drop();  // T470 (B621): ours, cached or not -- see doorMeshCache_
         LOG_WARN(MOD_GRAPHICS, "Failed to create pivot node for door {}", doorId);
         return false;
     }
@@ -129,12 +127,12 @@ bool DoorManager::createDoor(uint8_t doorId, const std::string& name,
     if (!visual.sceneNode) {
         visual.pivotNode->remove();
         visual.pivotNode = nullptr;
-        if (usePlaceholder) {
-            mesh->drop();
-        }
+        mesh->drop();
         LOG_WARN(MOD_GRAPHICS, "Failed to create scene node for door {}", doorId);
         return false;
     }
+    // T470 (B621): the node grab()bed its own reference; release ours.
+    mesh->drop();
 
     // Set scale on mesh node
     visual.sceneNode->setScale(irr::core::vector3df(scale, scale, scale));
@@ -283,6 +281,8 @@ bool DoorManager::registerDoor(uint8_t doorId, const std::string& name,
             // Create mesh scene node as child of pivot
             visual.sceneNode = smgr_->addMeshSceneNode(mesh, visual.pivotNode);
             if (visual.sceneNode) {
+                // T470 (B621): the node grab()bed its own reference; release ours.
+                mesh->drop();
                 visual.sceneNode->setScale(irr::core::vector3df(scale, scale, scale));
 
                 // Offset mesh so hinge edge is at pivot origin (X axis for placeholder)
@@ -410,7 +410,7 @@ bool DoorManager::buildDoorMesh(uint8_t doorId)
     // Create pivot node
     visual.pivotNode = smgr_->addEmptySceneNode();
     if (!visual.pivotNode) {
-        if (usePlaceholder) mesh->drop();
+        mesh->drop();  // T470 (B621): ours, cached or not -- see doorMeshCache_
         return false;
     }
     visual.pivotNode->setPosition(irr::core::vector3df(x, z + heightOffset, y));
@@ -420,9 +420,11 @@ bool DoorManager::buildDoorMesh(uint8_t doorId)
     if (!visual.sceneNode) {
         visual.pivotNode->remove();
         visual.pivotNode = nullptr;
-        if (usePlaceholder) mesh->drop();
+        mesh->drop();
         return false;
     }
+    // T470 (B621): the node grab()bed its own reference; release ours.
+    mesh->drop();
 
     visual.sceneNode->setScale(irr::core::vector3df(scale, scale, scale));
 
