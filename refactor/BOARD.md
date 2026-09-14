@@ -10318,3 +10318,109 @@ unused.
   caller) rather than delete game-state API outside its territory.
   `PlayerState::followDistance()` / `m_followDistance` are the rest of that
   unreached state. Found by T474.
+
+---
+
+## Added 2026-09-14 by T478 (fresh oracle grabs: Chase at two headings, held-item sets A-C, IT10)
+
+Media and every number: `review/T478/README.md`; the plan's Review.
+
+- **B584 NARROWED by T478** -- the cause is found. The "training dummies" are
+  runtime spawns persisted by eqemu's **`zone_state_spawns`** table (npc 77002,
+  `spawn2_id` 0): every `#npctypespawn` a unit leaves in qeynos2 is saved at zone
+  shutdown and restored at the next boot, which is how thirteen stacked up on the
+  canonical spot. T478 removed the 14 rows for its session and restored them at the
+  end, as the plan required, so **they are still in the database**. Removing them
+  for good is a DB decision for Will (B720).
+- **B586 NARROWED by T478** -- attack captures taken on both clients. fable's
+  `/target` failed for T466 because `a training dummy` (spaces) cannot substring-
+  match the spawn name `a_training_dummy000`; `/target a_training_dummy` works (all
+  four T478 sessions: "Targeting: a_training_dummy000", "Auto-attack enabled",
+  `ZoneProcessDamage` during the attack steps). The official client attacks with F8
+  plus Q, chat "You try to slash/crush/punch a training dummy". What is still open
+  is B722.
+- **B587 CLOSED by T478 (live).** fable default Chase, Testchar not moved since
+  zone-in: the back of the head, back and shoulders, as the official Chase frame
+  (`fable/sessions/chase_sweep_h160`, frame 163).
+- **B661 NARROWED by T478** -- the oracle frame is captured. No item that can be
+  held uses IT10 (every IT10 item is an arrow, ammo slot only), so both clients were
+  given the model with `#wc 7 10`. Official (Tether, idle): the arrow hangs DOWN along
+  the right leg, tip near the foot. fable: the arrow is horizontal, pointing forward
+  (az 90) or back (az 270) from the hand. See B725.
+- **B680 NARROWED by T478** -- the wheel does not zoom the official Chase. Video
+  `review/T478/oracle/T478_oracle_b680_chase_zoom_keys_and_wheel.mkv`: Insert x5,
+  Delete x10, wheel up x5, wheel down x10 in Chase all score 0.002-0.141 against the
+  pre-zoom still (idle floor), before vs after 0.079. Positive control in First
+  Person: wheel down x5 moves the view (0.787) and wheel up x10 returns it exactly
+  (0.000). Insert/Delete have NO positive control (no change in First Person
+  either), so whether those keys zoom anything is still unmeasured. fable's wheel
+  zooms Chase; the official one does not.
+- **B683 SUPERSEDED by B721.** T474's h288 "dist 3.5" is reproduced on T474's wall
+  crop as the pitch-6 slice of a diagonal pitch/height valley (h288 p6/h7: dist 3.5
+  0.791 < dist 4 0.817), whose minimum is off that plane. The clean-spot re-grab does
+  not settle the fit; see B721.
+
+- **B720** (C) **The qeynos2 `zone_state_spawns` rows keep the training dummies
+  (and any future GM spawn) alive across zone boots.** 14 rows of npc 77002 on or
+  near the canonical camera spot, restored by T478 per protocol. Decision: delete
+  them for good (and add "no lingering `#npctypespawn`" to the eqemu protocol, or
+  have units `#depop` their spawns), or keep them as a deliberate melee target.
+  Found by T478.
+- **B721** (A, **T478 STOP**) **The Chase fit depends on the scoring crop, and no
+  rig is the minimum at both headings on either crop.** Fresh official grabs on the
+  clean spot (three per heading, re-grab floor 0.02-0.08). T474's recovered crop
+  `400x600+0+100` (the wall; it leaves out the player): h160 minimum p6 / d4 / h6.75
+  (0.662), h288 minimum p7.5 / d4 / h7.5 (0.695). Distance agrees at 4.0, but pitch
+  and height are two and three grid steps apart along a diagonal valley. A
+  player-centred crop `424x668+300+100`: h160 p6 / d2.5 / h6.5 (0.766; d2 0.770, d3
+  0.790), h288 p4.5 / d2.0 / h6.5 (0.795; d1.5 0.887, d2.5 0.878 in that session).
+  The official figure's head is about 1.6x the width of fable's at the shipped Chase
+  (`review/T478/sheets/T478_chase_h{160,288}_oracle_vs_fable_default_vs_fable_minimum.png`).
+  Default Chase (p6 d4 h7): 0.763 / 0.817 on the wall crop, 0.800 / 0.946 on the
+  player crop. The same rig scores up to 0.033 differently between two sessions.
+  `kChaseRig` unchanged. Owed: a metric that uses the whole frame without being
+  dominated by the model's shading (e.g. a silhouette or keypoint measure of the
+  head), or a direct measure of the official camera's distance. Found by T478.
+- **B722** (A, *owed*) **No swing pose is visible in the official client's Tether
+  frames while its chat logs the swings.** Every distinct rendered frame of 16 s of
+  auto-attack (sets A, B, IT10: 111 / 93 / 100 frames): the arms keep the idle pose
+  while chat logs "You try to slash / crush / punch a training dummy, but miss!". Set
+  C (2H): the blade angle differs between frames. fable's dumped frames show swing
+  poses on every set. Not yet known whether the official client skips the swing on a
+  miss, or whether the Wine capture misses it. Found by T478.
+- **B723** (A, *unconfirmed*) **Set B: fable draws a kite shield on the left arm;
+  the official client shows no shield.** Shield of the Forlorn (1523, IT202) in the
+  secondary slot, idle, four official views (Chase, User 1, User 2, Tether): no
+  shield visible; fable az 90 / az 270: a kite shield on the left arm, face outward.
+  Found by T478.
+- **B724** (A, *unconfirmed*) **Set C: the 2H sword is held differently.** Spiny Two
+  Handed Sword (2894, IT10004). Official (Tether, User 2): roughly horizontal in
+  front of the waist, pointing at the dummy. fable (az 180, az 270): hanging
+  vertically from the right hand to near the ground. Found by T478.
+- **B725** (A, *unconfirmed*) **IT10 (arrow model) is held along a different axis**
+  -- the oracle evidence B661 asked for: official down along the leg, fable
+  horizontal (sheet `review/T478/sheets/T478_held_IT10_idle_oracle_top_fable_bottom.png`).
+  Also set A: the official blade runs diagonally down and forward from the fist,
+  fable's straight down along the leg. Found by T478.
+- **B726** (A, *unconfirmed*) **fable's qeynos2 sky and distant trees are drawn
+  wrongly at daylight.** In every T478 fable frame (x86 `build-gles2`,
+  `--eqe1-path`, `#set time 11 0`) the sky is a tan/orange mottled texture and the
+  distant trees are pale white silhouettes; the official client at the same spot and
+  time shows a blue sky with clouds and green trees. Not investigated (outside
+  territory). Found by T478.
+- **B727** (P) **`#equipitem` is not a command on this server** ("Command '#equipitem
+  14' not recognized"), so an official-client held set cannot be changed in world
+  with GM commands: `#summonitem` lands on the cursor and there is no equip. T478
+  changed sets by writing inventory rows with the character camped and the zone
+  bounced (`review/T478/scripts/t478_oracle_set_by_db.sh`). Found by T478.
+- **B728** (P) **The oracle driver's chat-command retry sends Escape, which clears
+  the target.** `t466_o.sh` / `t474_o.sh` `cmd` press Escape before a retry; T478's
+  first set A attack ran with no target ("You no longer have a target.", then "You
+  must first click on the being you wish to attack!"). Take and prove the target
+  AFTER any retried command (T478's `t478_oracle_held_set_capture.sh` v2). Found by
+  T478.
+- **B729** (P) **`eq_remote` drops stdin (`ssh -n`), so `eq_docker exec -i ... <
+  file` imports nothing and exits 0.** T478's first restore deleted rows and re-
+  imported nothing; the row-count diff caught it and the lock was kept. Pipe a dump
+  with a plain `ssh` (T478's `t478_restore_v2.sh`), and count the rows after.
+  Found by T478.
