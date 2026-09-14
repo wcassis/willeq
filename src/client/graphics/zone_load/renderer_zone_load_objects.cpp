@@ -179,12 +179,12 @@ void ZoneLoadComponent::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
                     LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: obj[{}] '{}' built colored mesh (no textures)", oi, objName);
                 }
 
-                // Track missing textures for rebuild when they arrive
+                // Missing textures are not re-textured later (T04 made the cache
+                // synchronous; T475 deleted the dead pendingTextureObjects queue).
+                // This line is B671's evidence.
                 const auto& missingObjTex = objBuilder.getMissingTextures();
                 if (!missingObjTex.empty()) {
-                    for (const auto& texName : missingObjTex)
-                        ctx_.pendingTextureObjects[texName].insert(oi);
-                    LOG_WARN(MOD_GRAPHICS, "SEQ Step6: obj[{}] '{}' has {} missing textures queued for later rebuild",
+                    LOG_WARN(MOD_GRAPHICS, "SEQ Step6: obj[{}] '{}' has {} missing textures (not re-textured later, board B671)",
                              oi, objName, missingObjTex.size());
                 }
 
@@ -497,11 +497,11 @@ void ZoneLoadComponent::loadZoneStep7_Doors(ZoneLoadContext& ctx) {
                     LOG_WARN(MOD_GRAPHICS, "SEQ Step7: door {} rebuildSingleDoor failed", doorId);
                     ++doorsFailed;
                 }
+                // Not re-textured later (T475 deleted the dead pendingTextureDoors
+                // queue; B640 closed with it). This line is B671's evidence.
                 const auto& missing = ctx_.doorManager->getLastMissingTextures();
                 if (!missing.empty()) {
-                    for (const auto& texName : missing)
-                        ctx_.ZoneLifecycle().pendingTextureDoors()[texName].insert(doorId);
-                    LOG_WARN(MOD_GRAPHICS, "SEQ Step7: door {} has {} missing textures queued for later rebuild",
+                    LOG_WARN(MOD_GRAPHICS, "SEQ Step7: door {} has {} missing textures (not re-textured later, board B671)",
                              doorId, missing.size());
                     ++doorsWithMissingTex;
                 }

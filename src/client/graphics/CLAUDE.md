@@ -63,7 +63,7 @@
   gone (B160), and T384 added `travelType` to that vocabulary.
 - `ParticleManager` - Unified point-sprite particle system for weather and spell effects (GLES2)
 - `SpellEffectsConfig` - JSON-configurable spell particle presets (`config/spell_effects.json`)
-- `GPUUploadThread` - Async texture/VBO uploads via shared EGL context (separate from render thread)
+- `GPUUploadThread` - Async region VBO uploads via shared EGL context (separate from render thread). Its texture request types were deleted by T475 (board B670): texture loading is synchronous (T04), and a texture missing at mesh build is not re-textured later (B671)
 - `BackgroundThreadPool` - Shared thread pool for deferred asset loading with unified `WorkPriorityKey` (PVS depth, asset type, distance)
 
 **GLES2 Driver** (`docker/irrlicht-drm/`)

@@ -162,9 +162,9 @@ struct RendererContext {
 	irr::scene::IMeshSceneNode*& zoneMeshNode;  // 58: diagnostics 33,zone_lifecycle 19,zone_load 6
 	std::map<size_t, std::vector<irr::core::triangle3df>>& regionWorldTriangles;  // 25: player 14,zone_load 9,zone_lifecycle 2
 	std::vector<DeferredObject>& deferredObjects;  // 24: zone_load 13,zone_stream 8,frame 3
-	std::vector<size_t>& objectTextureRebuildQueue;  // 21: zone_lifecycle 9,zone_stream 7,frame 5
+	// T475: objectTextureRebuildQueue, doorTextureRebuildQueue and
+	// pendingTextureObjects (below) were deleted with the dead texture-arrival arm.
 	irr::scene::IMeshSceneNode*& zonePlaceholderNode;  // 20: zone_lifecycle 17,diagnostics 2,frame 1
-	std::vector<uint8_t>& doorTextureRebuildQueue;  // 19: zone_lifecycle 9,frame 5,zone_stream 5
 	float& playerHeading;  // 18: player 10,frame 4,sim 2,zone_load 2
 	std::unordered_map<size_t, std::vector<size_t>>& regionNeighbors;  // 17: zone_load 10,zone_lifecycle 4,zone_stream 3
 	std::vector<size_t>& objectRegions;  // 15: zone_load 7,zone_stream 4,player 2,sim 2
@@ -177,7 +177,6 @@ struct RendererContext {
 	std::vector<irr::core::vector3df>& zoneLightPositions;  // 10: sim 6,zone_load 3,zone_lifecycle 1
 	bool& fireGlowLightingEnabled;  // 9: zone_load 5,overlays 2,diagnostics 1,frame 1
 	std::map<size_t, std::vector<irr::core::triangle3df>>& objectWorldTriangles;  // 9: player 4,zone_load 3,zone_lifecycle 2
-	std::unordered_map<std::string, std::unordered_set<size_t>>& pendingTextureObjects;  // 9: zone_lifecycle 7,zone_load 1,zone_stream 1
 	int& maxFireGlowLights;  // 7: zone_load 5,diagnostics 1,overlays 1
 	bool& mergeZoneDrawsEnabled;  // 7: diagnostics 5,zone_lifecycle 1,zone_load 1
 	std::vector<SortedRegionEntry>& sortedZoneDrawList;  // 7: sim 3,zone_lifecycle 3,frame 1

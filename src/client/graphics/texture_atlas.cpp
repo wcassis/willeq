@@ -1,8 +1,4 @@
 #include "client/graphics/texture_atlas.h"
-#ifdef EQT_HAS_GLES2
-#include "client/graphics/gpu_upload_thread.h"
-#include "client/graphics/work_priority.h"
-#endif
 #include "common/logging.h"
 
 #ifdef EQT_HAS_GLES2
@@ -269,65 +265,7 @@ bool TextureAtlas::uploadPreloadedPage(PreloadData& data, int pageIndex) {
 #endif
 }
 
-#ifdef EQT_HAS_GLES2
-bool TextureAtlas::uploadPreloadedPageAsync(PreloadData& data, int pageIndex,
-                                             GPUUploadThread* uploadThread, uint32_t atlasType) {
-    if (!data.valid || pageIndex < 0 || pageIndex >= static_cast<int>(data.pages.size())) {
-        return true;  // Nothing to do
-    }
-
-    // Ensure pageTextures_ vector is large enough
-    if (pageTextures_.size() < data.pages.size()) {
-        pageTextures_.resize(data.pages.size(), 0);
-    }
-
-    auto& page = data.pages[pageIndex];
-
-    if (!uploadThread || !uploadThread->isAvailable()) {
-        LOG_ERROR(MOD_GRAPHICS, "TextureAtlas: GPU upload thread unavailable, skipping page {}", pageIndex);
-        page.etc1Data.clear();
-        page.etc1Data.shrink_to_fit();
-        bool isLast = (pageIndex >= static_cast<int>(data.pages.size()) - 1);
-        return isLast;
-    }
-
-    // Build upload request
-    UploadRequest req;
-    req.type = UploadRequestType::CompressedTexture;
-    req.width = data.atlasWidth;
-    req.height = data.atlasHeight;
-    req.pixelData = std::move(page.etc1Data);
-    req.compressedSize = page.dataSize;
-    req.mipLevels = data.mipLevels;
-    req.textureName = fmt::format("atlas_{}_{}", atlasType, pageIndex);
-    // Encode atlas type + page index in callbackKey
-    req.callbackKey = (static_cast<uint64_t>(atlasType) << 32) | static_cast<uint64_t>(pageIndex);
-    req.priority = WorkPriorityKey::make(0, AssetType::ZoneTexture).value;
-
-    uploadThread->submit(std::move(req));
-
-    // Data moved out, clear source
-    page.etc1Data.clear();
-    page.etc1Data.shrink_to_fit();
-
-    LOG_INFO(MOD_GRAPHICS, "TextureAtlas: queued async upload for page {} (type={}, {}x{}, {} bytes)",
-             pageIndex, atlasType, data.atlasWidth, data.atlasHeight, page.dataSize);
-
-    bool isLast = (pageIndex >= static_cast<int>(data.pages.size()) - 1);
-    return isLast;
-}
-
-void TextureAtlas::setPageTexture(int pageIndex, uint32_t glTexId, size_t gpuBytes) {
-    if (pageIndex < 0 || pageIndex >= static_cast<int>(pageTextures_.size()))
-        return;
-
-    pageTextures_[pageIndex] = glTexId;
-    gpuMemoryUsage_ += gpuBytes;
-
-    LOG_DEBUG(MOD_GRAPHICS, "TextureAtlas: async page {} ready (texId={}, {} bytes)",
-              pageIndex, glTexId, gpuBytes);
-}
-#endif // EQT_HAS_GLES2
+// T475: uploadPreloadedPageAsync() and setPageTexture() were deleted (no callers; see the header).
 
 void TextureAtlas::finalizePreload(PreloadData& data) {
     if (!data.valid) return;

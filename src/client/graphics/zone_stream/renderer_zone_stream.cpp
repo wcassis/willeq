@@ -63,301 +63,12 @@ void ZoneStreamComponent::indexObjectMeshes() {
     LOG_DEBUG(MOD_GRAPHICS, "Indexed {} deferred objects", ctx_.deferredObjects.size());
 }
 
-void ZoneStreamComponent::buildDeferredObject(size_t idx) {
-    if (idx >= ctx_.deferredObjects.size() || !ctx_.currentZone || !ctx_.smgr) {
-        return;
-    }
-
-    DeferredObject& deferred = ctx_.deferredObjects[idx];
-    if (deferred.meshBuilt) {
-        return;
-    }
-
-    if (deferred.objectIndex >= ctx_.currentZone->objects.size()) {
-        return;
-    }
-
-    const auto& objInstance = ctx_.currentZone->objects[deferred.objectIndex];
-    if (!objInstance.geometry || !objInstance.placeable) {
-        deferred.meshBuilt = true;
-        return;
-    }
-
-    const std::string& objName = objInstance.placeable->getName();
-
-    ZoneMeshBuilder builder(ctx_.smgr, ctx_.driver, ctx_.device->getFileSystem());
-    if (ctx_.constrainedTextureCache) {
-        builder.setConstrainedTextureCache(ctx_.constrainedTextureCache);
-    }
-    if (ctx_.zoneShader && ctx_.zoneShader->isAvailable()) {
-        builder.setShaderMaterialTypes(ctx_.zoneShader->getActiveSolid(),
-                                       ctx_.zoneShader->getActiveAlphaTest(),
-                                       ctx_.zoneShader->getActiveAlphaTestRGBA());
-    }
-    if (ctx_.zoneShader && ctx_.zoneShader->isAtlasAvailable()) {
-        builder.setAtlasShaderMaterialTypes(ctx_.zoneShader->getActiveAtlasSolid(),
-                                             ctx_.zoneShader->getActiveAtlasAlpha());
-    }
-
-    irr::scene::IMesh* mesh = nullptr;
-    if (!ctx_.currentZone->objectTextures.empty() && !objInstance.geometry->textureNames().empty()) {
-        mesh = builder.buildTexturedMesh(*objInstance.geometry, ctx_.currentZone->objectTextures);
-    } else {
-        mesh = builder.buildColoredMesh(*objInstance.geometry);
-    }
-
-    // Track textures that were missing (async pending) for rebuild when they arrive
-    const auto& missingObjTex = builder.getMissingTextures();
-    if (!missingObjTex.empty()) {
-        for (const auto& texName : missingObjTex) {
-            ctx_.pendingTextureObjects[texName].insert(idx);
-        }
-    }
-
-    if (!mesh) {
-        deferred.meshBuilt = true;
-        return;
-    }
-
-    irr::scene::IMeshSceneNode* node = ctx_.smgr->addMeshSceneNode(mesh);
-    if (!node) {
-        mesh->drop();
-        deferred.meshBuilt = true;
-        return;
-    }
-
-    float scaleX = objInstance.placeable->getScaleX();
-    float scaleY = objInstance.placeable->getScaleY();
-    float scaleZ = objInstance.placeable->getScaleZ();
-    node->setScale(irr::core::vector3df(scaleX, scaleZ, scaleY));
-
-    float x = objInstance.placeable->getX();
-    float y = objInstance.placeable->getY();
-    float z = objInstance.placeable->getZ();
-    node->setPosition(irr::core::vector3df(x, z, y));
-
-    float rotX = objInstance.placeable->getRotateX();
-    float rotY = objInstance.placeable->getRotateY();
-    float rotZ = objInstance.placeable->getRotateZ();
-    node->setRotation(irr::core::vector3df(rotX, rotY, rotZ));
-
-    for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
-        node->getMaterial(i).Lighting = ctx_.lightingEnabled;
-        node->getMaterial(i).BackfaceCulling = false;
-        node->getMaterial(i).GouraudShading = true;
-        node->getMaterial(i).FogEnable = ctx_.fogEnabled;
-        node->getMaterial(i).Wireframe = ctx_.wireframeMode;
-        node->getMaterial(i).NormalizeNormals = true;
-        node->getMaterial(i).AmbientColor = irr::video::SColor(255, 255, 255, 255);
-        node->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
-    }
-
-    // Apply wind shader to tree meshes on GPU path (deferred build).
-    // H02d (Option A): do NOT blanket-assign the ETC1-companion wind variant
-    // to every tree material — masked RGBA/DDS-decoded foliage (e.g.
-    // gfaydark's nekpine.bmp) has no companion alpha texture, so an
-    // unconditional override lands it on a shader that samples an unbound
-    // unit 1, which the GLES2 driver's opaque-white 1x1 fallback never
-    // discards, producing solid opaque quads (P20b root cause). Classify
-    // per-material exactly like ZoneMeshBuilder::buildTexturedMesh does:
-    // masked+ETC1 -> companion-alpha wind variant (bind companion on unit
-    // 1); masked+RGBA -> wind variant reading uTexture.a; non-masked ->
-    // plain wind/solid variant (still gets wind vertex displacement, no
-    // alpha-test discard).
-    if (ctx_.zoneShader && ctx_.zoneShader->isWindAvailable()) {
-        std::string primaryTexture;
-        if (!objInstance.geometry->textureNames().empty()) {
-            primaryTexture = objInstance.geometry->textureNames()[0];
-        }
-        if (ctx_.ZoneLoad().treeIdentifier().isTreeMesh(objName, primaryTexture)) {
-            irr::core::aabbox3df meshBbox = mesh->getBoundingBox();
-            float meshMinY = meshBbox.MinEdge.Y;
-            float meshMaxY = meshBbox.MaxEdge.Y;
-            const auto& textureNames = objInstance.geometry->textureNames();
-            const auto& textureMasked = objInstance.geometry->textureMasked();
-            for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
-                auto& mat = node->getMaterial(i);
-                irr::video::ITexture* tex0 = mat.TextureLayer[0].Texture;
-                std::string texName = tex0 ? std::string(tex0->getName().getPath().c_str())
-                                            : primaryTexture;
-                bool isMaskedMaterial = false;
-                for (size_t ti = 0; ti < textureNames.size(); ++ti) {
-                    if (textureNames[ti] == texName) {
-                        isMaskedMaterial = (ti < textureMasked.size()) && textureMasked[ti];
-                        break;
-                    }
-                }
-                if (isMaskedMaterial) {
-                    bool isETC1 = ctx_.constrainedTextureCache && !texName.empty() &&
-                        ctx_.constrainedTextureCache->isETC1Texture(texName);
-                    if (isETC1) {
-                        mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(
-                            ctx_.zoneShader->getActiveWindAlphaTest());
-                        if (ctx_.constrainedTextureCache && !mat.TextureLayer[1].Texture) {
-                            irr::video::ITexture* alphaTex =
-                                ctx_.constrainedTextureCache->getAlphaTexture(texName);
-                            if (alphaTex) mat.setTexture(1, alphaTex);
-                        }
-                    } else {
-                        irr::s32 windRGBAType = ctx_.zoneShader->getActiveWindAlphaTestRGBA();
-                        mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(
-                            windRGBAType >= 0 ? windRGBAType : ctx_.zoneShader->getActiveWindAlphaTest());
-                    }
-                } else {
-                    irr::s32 windSolidType = ctx_.zoneShader->getActiveWindSolid();
-                    mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(
-                        windSolidType >= 0 ? windSolidType : ctx_.zoneShader->getActiveWindAlphaTest());
-                }
-                mat.MaterialTypeParam = meshMinY;
-                mat.MaterialTypeParam2 = meshMaxY;
-                mat.BackfaceCulling = false;
-            }
-        }
-    }
-
-    if (ctx_.animatedTextureManager && objInstance.geometry) {
-        ctx_.animatedTextureManager->addMesh(*objInstance.geometry, ctx_.currentZone->objectTextures, mesh);
-        ctx_.animatedTextureManager->addSceneNode(node);
-    }
-
-    node->setName(objName.c_str());
-    node->grab();
-    size_t newNodeIndex = ctx_.objectNodes.size();
-    ctx_.objectNodes.push_back(node);
-    ctx_.objectPositions.push_back(irr::core::vector3df(x, z, y));
-    if (ctx_.zoneBspTree) {
-        ctx_.objectRegions.push_back(ctx_.zoneBspTree->findRegionIndexForPoint(x, y, z));
-    } else {
-        ctx_.objectRegions.push_back(SIZE_MAX);
-    }
-    node->updateAbsolutePosition();
-    ctx_.objectBoundingBoxes.push_back(node->getTransformedBoundingBox());
-
-    // Track deferred→node mapping for texture rebuild
-    deferred.nodeIndex = newNodeIndex;
-
-    // PVS check at insertion — start hidden if not in visible region.
-    // When manualZoneDrawEnabled_, objects are always out of scene graph
-    // and rendered via drawZoneGeometrySorted() instead.
-    bool pvsVisible = owner_.isRegionPvsVisible(ctx_.objectRegions.back());
-    if (!pvsVisible || ctx_.manualZoneDrawEnabled) {
-        node->remove();  // Remove from scene graph (grab() keeps it alive)
-    }
-    ctx_.objectInSceneGraph.push_back(pvsVisible && !ctx_.manualZoneDrawEnabled);
-
-    // Create object light if this is a light source (torch, lantern, etc.)
-    // Create object light if this is a light source (torch, lantern, etc.)
-    std::string upperName = objName;
-    std::transform(upperName.begin(), upperName.end(), upperName.begin(), ::toupper);
-
-    bool hasFireTexture = false;
-    bool hasLanternTexture = false;
-    if (objInstance.geometry) {
-        for (const auto& texName : objInstance.geometry->textureNames()) {
-            std::string upperTex = texName;
-            std::transform(upperTex.begin(), upperTex.end(), upperTex.begin(), ::toupper);
-            if (upperTex.find("FIRE") != std::string::npos ||
-                upperTex.find("COAL") != std::string::npos ||
-                upperTex.find("TORCH") != std::string::npos) {
-                hasFireTexture = true;
-            }
-            if (upperTex.find("LANTERN") != std::string::npos ||
-                upperTex.find("LANT") != std::string::npos) {
-                hasLanternTexture = true;
-            }
-        }
-    }
-
-    bool isLightSource = false;
-    irr::video::SColorf lightColor(1.0f, 0.6f, 0.2f, 1.0f);
-    float lightRadius = 100.0f;
-
-    if (upperName.find("TORCH") != std::string::npos ||
-        upperName.find("FIRE") != std::string::npos ||
-        upperName.find("BRAZIER") != std::string::npos ||
-        upperName.find("FLAME") != std::string::npos ||
-        hasFireTexture) {
-        isLightSource = true;
-        lightColor = irr::video::SColorf(1.0f, 0.5f, 0.15f, 1.0f);
-        lightRadius = 120.0f;
-    } else if (upperName.find("LANTERN") != std::string::npos ||
-               upperName.find("LANT") != std::string::npos ||
-               upperName.find("LAMP") != std::string::npos ||
-               upperName.find("LIGHT") != std::string::npos ||
-               hasLanternTexture) {
-        isLightSource = true;
-        lightColor = irr::video::SColorf(0.25f, 0.21f, 0.15f, 1.0f);
-        lightRadius = 100.0f;
-    } else if (upperName.find("CANDLE") != std::string::npos) {
-        isLightSource = true;
-        lightColor = irr::video::SColorf(1.0f, 0.9f, 0.7f, 1.0f);
-        lightRadius = 50.0f;
-    }
-
-    if (isLightSource) {
-        irr::core::vector3df lightPos(x, z, y);
-
-        // Try to find a nearby zone light with the correct elevated position
-        if (ctx_.currentZone && !ctx_.currentZone->lights.empty()) {
-            float bestDist = 50.0f;
-            for (const auto& zoneLight : ctx_.currentZone->lights) {
-                float dx = zoneLight->x - x;
-                float dy = zoneLight->y - y;
-                float hDist = std::sqrt(dx * dx + dy * dy);
-                if (hDist < bestDist) {
-                    bestDist = hDist;
-                    lightPos = irr::core::vector3df(zoneLight->x, zoneLight->z, zoneLight->y);
-                }
-            }
-        }
-
-        irr::scene::ILightSceneNode* lightNode = ctx_.smgr->addLightSceneNode(
-            nullptr, lightPos, lightColor, lightRadius * 1.5f);
-
-        if (lightNode) {
-            irr::video::SLight& lightData = lightNode->getLightData();
-            lightData.Type = irr::video::ELT_POINT;
-            lightData.Attenuation = irr::core::vector3df(1.0f, 0.007f, 0.0002f);
-
-            // grab() + remove() pattern: keep node alive but out of scene graph
-            lightNode->grab();
-            lightNode->remove();
-
-            ObjectLight objLight;
-            objLight.node = lightNode;
-            objLight.position = lightPos;
-            objLight.objectName = objName;
-            objLight.originalColor = lightColor;
-            objLight.bspRegion = ctx_.objectRegions.back();  // Same BSP region as parent object
-
-            if (upperName.find("TORCH") != std::string::npos ||
-                upperName.find("FIRE") != std::string::npos ||
-                upperName.find("BRAZIER") != std::string::npos ||
-                upperName.find("FLAME") != std::string::npos ||
-                upperName.find("CANDLE") != std::string::npos ||
-                hasFireTexture) {
-                objLight.isFireSource = true;
-                objLight.flickerPhase = static_cast<float>(rand()) / RAND_MAX * 6.2832f;
-                objLight.flickerSpeed = 0.8f + static_cast<float>(rand()) / RAND_MAX * 0.4f;
-            }
-
-            // Initial PVS check — only add to scene if region is visible
-            bool pvsVis = owner_.isRegionPvsVisible(objLight.bspRegion);
-            if (pvsVis) {
-                ctx_.smgr->getRootSceneNode()->addChild(lightNode);
-            }
-            ctx_.objectLightInSceneGraph.push_back(pvsVis);
-
-            ctx_.objectLights.push_back(objLight);
-            LOG_DEBUG(MOD_GRAPHICS, "Deferred object light created: {} at ({:.1f},{:.1f},{:.1f}) region={}",
-                objName, lightPos.X, lightPos.Y, lightPos.Z, objLight.bspRegion);
-        }
-    }
-
-    mesh->drop();
-    deferred.meshBuilt = true;
-}
-
+// T475 (board B670): buildDeferredObject() is deleted. Its only callers were the
+// object texture-arrival drains, FrameComponent's Priority 9 and this file's
+// P1.7, whose queue had no producer since Batch T's T04 (T473). Step 6
+// (ZoneLoadComponent, renderer_zone_load_objects.cpp) builds every deferred
+// object eagerly. Recover the body with
+//   git show eaead058:src/client/graphics/zone_stream/renderer_zone_stream.cpp
 void ZoneStreamComponent::processFrameProgressiveLoad() {
     if (!ctx_.progressiveLoadingActive) return;
 
@@ -435,54 +146,16 @@ void ZoneStreamComponent::processFrameProgressiveLoad() {
         }
     }
 
-    // Priority 1.5 (region rebuild on texture arrival) removed T67 — this
-    // branch was gated on `constrainedMeshCache_ &&`, which was never true
-    // (the cache was never constructed), so it never ran in any shipped
-    // build. textureRebuildQueue_ is still populated live by the GPU
-    // upload thread (renderer_gpu_upload.cpp) — this was already the ONLY
-    // mesh-cache-gated consumer of it in this file/renderer_frame.cpp, so
-    // with it (and its siblings below) gone, the queue is drained only at
-    // zone unload (renderer_zone_lifecycle.cpp), exactly as before this
-    // change. Pre-existing, not introduced here — see deferred.md if this
-    // unbounded-growth-until-unload pattern is ever worth revisiting.
-    // See src/client/graphics/CLAUDE.md for the removed cache's reference
-    // pointer.
+    // Priority 1.5 (region rebuild on texture arrival) removed T67 -- gated on
+    // `constrainedMeshCache_ &&`, which was never true (the cache was never
+    // constructed). See src/client/graphics/CLAUDE.md for the removed cache's
+    // reference pointer.
 
-    // Priority 1.6: Rebuild one door whose async textures have arrived
-    if (!didWork && !ctx_.doorTextureRebuildQueue.empty() && ctx_.doorManager) {
-        uint8_t doorId = ctx_.doorTextureRebuildQueue.front();
-        ctx_.doorTextureRebuildQueue.erase(ctx_.doorTextureRebuildQueue.begin());
-        ctx_.doorManager->rebuildSingleDoor(doorId);
-        didWork = canMarkWork;
-        logAssetBuildTime("door_tex_rebuild", doorId, stepStart);
-        LOG_INFO(MOD_GRAPHICS, "Progressive P1.6: rebuilt door {} with textures (queue: {})",
-                 doorId, ctx_.doorTextureRebuildQueue.size());
-    }
-
-    // Priority 1.7: Rebuild one PVS object whose async textures have arrived
-    if (!didWork && !ctx_.objectTextureRebuildQueue.empty()) {
-        size_t objIdx = ctx_.objectTextureRebuildQueue.front();
-        ctx_.objectTextureRebuildQueue.erase(ctx_.objectTextureRebuildQueue.begin());
-        if (objIdx < ctx_.deferredObjects.size()) {
-            // Find and remove the existing scene node for this deferred object
-            size_t nodeIdx = ctx_.deferredObjects[objIdx].nodeIndex;
-            if (nodeIdx != SIZE_MAX && nodeIdx < ctx_.objectNodes.size() && ctx_.objectNodes[nodeIdx]) {
-                auto* oldNode = ctx_.objectNodes[nodeIdx];
-                if (ctx_.animatedTextureManager)
-                    ctx_.animatedTextureManager->removeSceneNode(oldNode);
-                if (oldNode->getParent()) oldNode->remove(); else oldNode->drop();
-                ctx_.objectNodes[nodeIdx] = nullptr;
-                if (nodeIdx < ctx_.objectInSceneGraph.size())
-                    ctx_.objectInSceneGraph[nodeIdx] = false;
-            }
-            ctx_.deferredObjects[objIdx].meshBuilt = false;
-            buildDeferredObject(objIdx);
-            didWork = canMarkWork;
-            logAssetBuildTime("obj_tex_rebuild", objIdx, stepStart);
-            LOG_INFO(MOD_GRAPHICS, "Progressive P1.7: rebuilt object {} with textures (queue: {})",
-                     objIdx, ctx_.objectTextureRebuildQueue.size());
-        }
-    }
+    // Priorities 1.6 and 1.7 (rebuild one door / PVS object whose texture
+    // "arrived") removed T475 (board B670): their queues were fed only by the
+    // GPU texture-arrival arm, which had no producer since Batch T's T04 made
+    // texture loading synchronous (T473). A texture missing at build time is
+    // not re-textured later -- board B671.
 
     // Priority 2 (build one PVS neighbor region from meshLoadQueue_) removed
     // T67 — gated on `constrainedMeshCache_`, never true; regions are
@@ -569,22 +242,20 @@ void ZoneStreamComponent::onPvsRegionChanged() {
     // Re-prioritize GPU upload queue
     if (ctx_.gpuUploadThread && ctx_.gpuUploadThread->isAvailable()) {
         ctx_.gpuUploadThread->reprioritize([this](const UploadRequest& req) -> uint32_t {
-            uint8_t sourceType = static_cast<uint8_t>(req.callbackKey >> 56);
-            if (sourceType == 0 || sourceType == 1) {
+            // T475: every request is a region VBO now (GPUUploadThread lost its
+            // texture types with the dead arrival path), so this routes on the
+            // request TYPE. It used to route on the key's high byte, which also
+            // carried the deleted constrained-cache texture branch (byte 3).
+            if (req.type == UploadRequestType::VertexBuffer) {
                 // VBO upload: low 48 bits = region index
                 size_t regionIdx = req.callbackKey & 0xFFFFFFFFFFFFULL;
                 uint8_t depth = getRegionPvsDepth(regionIdx);
                 return WorkPriorityKey::make(depth, AssetType::ZoneMesh).value;
-            } else if (sourceType == 3) {
-                // Constrained cache texture (unified: zone + entity textures)
-                return WorkPriorityKey::make(0, AssetType::ZoneTexture).value;
             }
-            // Icons and unknown: lowest priority
             return WorkPriorityKey::makeNonSpatial(AssetType::Icon).value;
         });
     }
 #endif
-    // textureRebuildQueue_ is repopulated each frame — no action needed
     // Note: camera BSP collision needs no region update here -- since T464 the
     // CameraController looks up the player's eye region itself
     // on every region change, not gated by the neighborhood.
@@ -749,17 +420,16 @@ void ZoneStreamComponent::checkProgressiveLoadingComplete() {
         pendingVBOs = owner_.pendingVBOUploads_.size();
 #endif
         LOG_INFO(MOD_GRAPHICS, "Progressive status: entities={} "
-                 "queuedRegions={} pendingVBOs={} pendingTextures={} texRebuild={} objRebuild={} "
+                 "queuedRegions={} pendingVBOs={} pendingTextures={} "
                  "| governor={} | progressive={}",
                  unbuiltEntities, unbuiltRegions,
                  pendingVBOs, pendingTextures,
-                 ctx_.ZoneLifecycle().textureRebuildQueue().size(), ctx_.objectTextureRebuildQueue.size(),
                  ctx_.governor ? ctx_.governor->getStateName() : "N/A",
                  ctx_.progressiveLoadingActive);
     }
 
     if (unbuiltEntities == 0) {
-        // Also wait for async GPU work (texture decodes/uploads, VBOs, rebuild queues)
+        // Also wait for async GPU work (decoded-not-uploaded textures, VBOs)
         // before declaring progressive loading complete. Without this, the loading
         // screen hides while textures are still in flight → garbled first frame.
         bool gpuWorkPending = false;
@@ -769,8 +439,8 @@ void ZoneStreamComponent::checkProgressiveLoadingComplete() {
 #endif
         if (ctx_.constrainedTextureCache && ctx_.constrainedTextureCache->hasPendingWork())
             gpuWorkPending = true;
-        if (!ctx_.objectTextureRebuildQueue.empty() || !ctx_.ZoneLifecycle().textureRebuildQueue().empty())
-            gpuWorkPending = true;
+        // T475: the object/region texture rebuild queues this also waited on
+        // were never filled (board B670) and are deleted.
         if (gpuWorkPending) return;
 
         ctx_.progressiveLoadingActive = false;

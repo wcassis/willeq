@@ -216,24 +216,18 @@ public:
 
 
 	// ------------------------------------------------------------------
-	// L13: two IrrlichtRenderer-nested types travelled with the members they
-	// type (batch correction 10). They are PUBLIC here because
-	// renderer_gpu_upload.cpp names TextureRebuildEntry in a sort comparator.
+	// L13: an IrrlichtRenderer-nested type travelled with the member it types
+	// (batch correction 10).
 	//
-	// Why this component owns them (the pairwise rule):
-	//   textureRebuildQueue_  13 reaches -- this component is the only WRITER
-	//     (3 writes, 8 reads); ZoneStreamComponent's 2 reads come through
-	//     ctx_.ZoneLifecycle().textureRebuildQueue().
+	// Why this component owns it (the pairwise rule):
 	//   storedZoneEnvironment_  37 reaches, the second-largest two-component
 	//     member in the tree. Both families write it, so the tie-break is use
 	//     count: this component 20 (10W/10R) against zone_load's 17 (2W/15R).
 	//     zone_load reaches it as ctx_.ZoneLifecycle().storedZoneEnvironment().
+	// T475 (board B670): TextureRebuildEntry and textureRebuildQueue_, which
+	// L13 moved here beside it, are deleted with the dead texture-arrival arm
+	// (renderer_gpu_upload.cpp). T67 had already removed the queue's consumer.
 	// ------------------------------------------------------------------
-	// Regions queued for texture-ready rebuild (sorted: player region first, then by distance)
-	struct TextureRebuildEntry {
-		size_t regionIdx;
-		float distanceSq;
-	};
 	// Stored zone environment from NewZone packet (applied after global assets load)
 	struct StoredZoneEnvironment {
 		uint8_t skyType = 0;
@@ -243,8 +237,6 @@ public:
 		bool pending = false;
 	};
 
-	std::vector<TextureRebuildEntry>& textureRebuildQueue() { return textureRebuildQueue_; }
-	std::vector<TextureRebuildEntry> const& textureRebuildQueue() const { return textureRebuildQueue_; }
 	StoredZoneEnvironment& storedZoneEnvironment() { return storedZoneEnvironment_; }
 	StoredZoneEnvironment const& storedZoneEnvironment() const { return storedZoneEnvironment_; }
 
@@ -269,8 +261,6 @@ public:
 	bool const& mergeZoneDrawsDisabledForZone() const { return mergeZoneDrawsDisabledForZone_; }
 	bool& networkReady() { return networkReady_; }
 	bool const& networkReady() const { return networkReady_; }
-	std::unordered_map<std::string, std::unordered_set<uint8_t>>& pendingTextureDoors() { return pendingTextureDoors_; }
-	std::unordered_map<std::string, std::unordered_set<uint8_t>> const& pendingTextureDoors() const { return pendingTextureDoors_; }
 	std::vector<ZoneDrawEntry>& sortedDrawEntries() { return sortedDrawEntries_; }
 	std::vector<ZoneDrawEntry> const& sortedDrawEntries() const { return sortedDrawEntries_; }
 	irr::scene::ITriangleSelector*& terrainOnlySelector() { return terrainOnlySelector_; }
@@ -308,14 +298,10 @@ private:
 #endif
 	// Cached terrain triangles for placeholder rebuild
 	std::vector<HCMap::Triangle> cachedPlaceholderTriangles_;
-	// Regions waiting for async fallback textures to complete GPU upload.
-	// Maps texture name -> set of region indices built without that texture.
-	std::unordered_map<std::string, std::unordered_set<size_t>> pendingTextureRegions_;
 	bool entitiesLoaded_ = false;    // True when all entities have been loaded with models/textures
 	size_t expectedEntityCount_ = 0; // Expected number of entities from ZoneSpawns
 
 	// L13: owned state, see the accessors above.
-	std::vector<TextureRebuildEntry> textureRebuildQueue_;
 	StoredZoneEnvironment storedZoneEnvironment_;
 
 	// L13: owned state, see the accessors above.
@@ -324,7 +310,6 @@ private:
 	size_t mergeZoneDrawsBuildEvictionCount_ = 0;
 	bool mergeZoneDrawsDisabledForZone_ = false;
 	bool networkReady_ = false;  // True when network packet exchange is complete
-	std::unordered_map<std::string, std::unordered_set<uint8_t>> pendingTextureDoors_;
 	std::vector<ZoneDrawEntry> sortedDrawEntries_;  // Material-sorted mesh buffer draw list
 	irr::scene::ITriangleSelector* terrainOnlySelector_ = nullptr;
 	float userRenderDistance_ = 300.0f;  // User's desired render distance (slider value)

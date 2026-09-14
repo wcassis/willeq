@@ -1,6 +1,17 @@
 // gpu_upload_thread.h — Dedicated GPU upload thread with shared EGL context
-// Processes texture and VBO uploads asynchronously to avoid render thread stalls.
+// Processes region VBO uploads asynchronously to avoid render thread stalls.
 // Uses EGL_KHR_fence_sync for GPU synchronization between contexts.
+//
+// T475 (board B670): the Texture and CompressedTexture request types are gone,
+// with their two worker bodies and the texture fields of UploadRequest and
+// UploadResult. Texture loading has been synchronous since Batch T's T04
+// (aaee58d1: ConstrainedTextureCache::getOrLoad() + uploadTexture()); T326
+// deleted the cache's async queue, the last texture submitter the client
+// reached, and TextureAtlas::uploadPreloadedPageAsync() had no caller. The
+// render-thread arm that consumed a texture result (renderer_gpu_upload.cpp)
+// and the pending-texture door/object/region queues it fed went with them
+// (T473 proved them unreached). tests/test_door_texture_eviction.cpp's
+// TextureArrivalPathCensus fails if either half comes back alone.
 
 #ifndef EQT_GRAPHICS_GPU_UPLOAD_THREAD_H
 #define EQT_GRAPHICS_GPU_UPLOAD_THREAD_H
@@ -26,22 +37,12 @@ namespace EQT {
 namespace Graphics {
 
 enum class UploadRequestType : uint8_t {
-    Texture,            // RGBA8 uncompressed texture
-    CompressedTexture,  // ETC1 compressed texture
     VertexBuffer        // VBO + EBO pair
 };
 
 struct UploadRequest {
     UploadRequestType type;
     uint32_t requestId;
-
-    // Texture fields (Texture / CompressedTexture)
-    uint32_t width = 0;
-    uint32_t height = 0;
-    std::vector<uint8_t> pixelData;     // RGBA8 or ETC1 compressed bytes
-    uint32_t compressedSize = 0;        // For ETC1: total compressed data size (all mip levels)
-    uint8_t mipLevels = 1;             // Number of mip levels (1 = no mipmaps)
-    std::string textureName;            // For Irrlicht texture registration
 
     // VBO fields (VertexBuffer)
     std::vector<uint8_t> vertexData;
@@ -60,12 +61,6 @@ struct UploadRequest {
 struct UploadResult {
     UploadRequestType type;
     uint32_t requestId;
-
-    // Texture result
-    GLuint glTextureName = 0;
-    uint32_t width = 0;
-    uint32_t height = 0;
-    std::string textureName;
 
     // VBO result
     GLuint vbo = 0;
@@ -126,8 +121,6 @@ public:
 private:
     void workerLoop();
     void processRequest(const UploadRequest& req);
-    void processTextureUpload(const UploadRequest& req);
-    void processCompressedTextureUpload(const UploadRequest& req);
     void processVertexBufferUpload(const UploadRequest& req);
 
     // EGL state

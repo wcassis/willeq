@@ -175,9 +175,8 @@ TEST_F(ZoneStreamComponentTest, CompletionCheckDoesNotCompleteBeforeTheSequentia
 
 TEST_F(ZoneStreamComponentTest, IndexObjectMeshesIsANoOpWithNoZoneOnTheContext) {
     // ctx_.currentZone is null on a bare renderer; the body's first line
-    // guards it. buildDeferredObject() then has nothing to build.
+    // guards it.
     renderer.ZoneStream().indexObjectMeshes();
-    renderer.ZoneStream().buildDeferredObject(0);
     SUCCEED();
 }
 

@@ -228,12 +228,8 @@ void ZoneLifecycleComponent::unloadZone() {
     owner_.currentFrameSimResults_ = nullptr;
     ctx_.ZoneStream().pvsNeighborhood().clear();
     ctx_.ZoneStream().pvsNeighborhoodAnchor() = SIZE_MAX;
-    pendingTextureRegions_.clear();
-    textureRebuildQueue_.clear();
-    pendingTextureDoors_.clear();
-    ctx_.doorTextureRebuildQueue.clear();
-    ctx_.pendingTextureObjects.clear();
-    ctx_.objectTextureRebuildQueue.clear();
+    // T475: the six pending-texture maps and rebuild queues cleared here were
+    // deleted with the dead texture-arrival arm (renderer_gpu_upload.cpp).
 #ifdef EQT_HAS_GLES2
     owner_.pendingGPUResults_.clear();
 #endif

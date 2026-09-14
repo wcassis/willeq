@@ -119,8 +119,7 @@
 //   owner_.PlayerCamera()  updatePlayerMovement, applyFirstPersonPitchClamp,
 //                          drawCollisionDebugLines
 //   owner_.SimBridge()     applySimulationResults, postSimulationInput
-//   owner_.ZoneStream()    processFrameProgressiveLoad, buildDeferredObject,
-//                          queueEntityPrepRequests
+//   owner_.ZoneStream()    processFrameProgressiveLoad, queueEntityPrepRequests
 //   owner_.ZoneLifecycle() processCompletedUploads, drainGPUResults,
 //                          processOneGPUResult, buildZonePlaceholder,
 //                          setupHCMapCollision

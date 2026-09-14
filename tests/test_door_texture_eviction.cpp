@@ -37,8 +37,10 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <regex>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #ifndef WILLEQ_SOURCE_DIR
@@ -410,8 +412,9 @@ TEST_F(DoorTextureEvictionTest, AMeshBuiltWhileItsTextureIsPendingDiesWithItsDoo
     EXPECT_EQ(mesh.holders(), 0) << "the uncached door mesh outlived clearDoors()";
 }
 
-// Path: invalidateMeshCache() -- by model name (GPUUpload texture arrival,
-// renderer_gpu_upload.cpp) and with "" (the shader swap, diagnostics_debug.cpp).
+// Path: invalidateMeshCache() -- by model name and with "" (the shader swap,
+// diagnostics_debug.cpp, its one production caller since T475 deleted the
+// texture-arrival arm that called it by name).
 TEST_F(DoorTextureEvictionTest, InvalidatingTheDoorMeshCacheReleasesTheCachesReference) {
     renderer_->setupInstantScene("t470zone", 0.0f, 0.0f, 0.0f);
     for (const std::string key : {"DOOR1", "door1", ""}) {
@@ -477,82 +480,176 @@ TEST_F(DoorTextureEvictionTest, DoorsSharingACachedMeshReleaseItExactlyOnceAtZon
 }
 
 // ---------------------------------------------------------------------------
-// T473 (board B640) -- the door texture-ARRIVAL path, and why B640 is not live.
+// T475 (boards B670, B640) -- the deleted texture-ARRIVAL path stays deleted.
 //
-// The lead: a door whose real mesh was built while its texture was "pending"
-// is never re-textured, because rebuildSingleDoor() has no branch for
-// meshBuilt=1 && usePlaceholder=0. That gap is real in the code. But the only
-// thing that would ever ask rebuildSingleDoor() to re-texture such a door is
-// the arrival hop, and that hop has no producer:
+// Until T475 the renderer carried a whole path for a texture that "arrives"
+// after the mesh that needs it was built:
+//   * Step 6 / Step 7 / rebuildRegionMesh() filed the object, door or region
+//     under each missing texture name (pendingTextureObjects,
+//     pendingTextureDoors_, pendingTextureRegions_);
+//   * renderer_gpu_upload.cpp's Texture/CompressedTexture arm took a GPU upload
+//     result keyed `uint64_t(3) << 56`, registered it, and pushed the waiting
+//     ids to doorTextureRebuildQueue / objectTextureRebuildQueue /
+//     textureRebuildQueue_;
+//   * FrameComponent Priority 8/9 and ZoneStreamComponent P1.6/P1.7 drained
+//     those into rebuildSingleDoor() and buildDeferredObject().
+// The producer was ConstrainedTextureCache's async upload queue (it also wrote
+// pendingAsyncUploads_). Batch T's T04 (aaee58d1) made texture loading
+// synchronous and T326 (77c842b4) deleted the queue, so from March the path
+// had no producer at all; T473 proved it and T475 deleted it, together with
+// the GPUUploadThread texture request types and TextureAtlas's uncalled async
+// page upload. B640 (rebuildSingleDoor() has no re-texture branch for a real
+// door mesh) closed with it: nothing can ask for that branch.
 //
-//   Step 7 (loadZoneStep7_Doors) -> ZoneLifecycle().pendingTextureDoors()[tex]
-//   GPUUploadThread result, type Texture/CompressedTexture, callbackKey high
-//     byte == 3 (renderer_gpu_upload.cpp, processCompletedUploads and
-//     processOneGPUResult) -> invalidateMeshCache + doorTextureRebuildQueue
-//   renderer_frame.cpp Priority 8 / renderer_zone_stream.cpp P1.6
-//     -> DoorManager::rebuildSingleDoor()
-//
-// The high-byte-3 key was set by exactly one producer, ConstrainedTextureCache's
-// async upload queue (`req.callbackKey = uint64_t(3) << 56`, which also filled
-// pendingAsyncUploads_). Batch T's T04 (aaee58d1) wrapped it in #if 0 when it
-// made getOrLoad()+uploadTexture() synchronous, and T326 (77c842b4) deleted the
-// block. Since then no texture upload is ever submitted with that key, so the
-// arrival arm, the door rebuild queue and the region/object siblings never run
-// (board B670). A door texture that is missing at build time does not "arrive"
-// later: in a synchronous cache it is missing because it failed (budget,
-// decode, absent), was evicted, or its pixel data was released (board B671).
-//
-// This pins that refutation. If an async texture producer is ever reintroduced,
-// B640 becomes LIVE and rebuildSingleDoor() needs a re-texture branch for a
-// real-mesh door; this test is the tripwire that says so.
-TEST(DoorTextureArrivalSource, NoTextureUploadIsSubmittedWithTheArrivalKey) {
-    const fs::path root(WILLEQ_SOURCE_DIR);
+// A deleted path's net is a census, not a behaviour test: this fails if any
+// half of the path reappears in code, because a half alone is exactly the
+// shape B670 was -- a queue written and never drained, or an arm with no
+// producer. Comments are stripped before matching, so tombstone prose that
+// names the old symbols is fine. Bringing an async texture producer back is a
+// decision, not a cleanup: it needs a consumer for every queue it fills, and
+// a rebuildSingleDoor() re-texture branch under T470's ownership rule (B640).
+namespace {
+
+std::string stripCppComments(const std::string& text) {
+    std::string out;
+    out.reserve(text.size());
+    bool inBlock = false, inLine = false, inString = false, inChar = false;
+    for (size_t i = 0; i < text.size(); ++i) {
+        const char c = text[i];
+        const char n = (i + 1 < text.size()) ? text[i + 1] : '\0';
+        if (inBlock) {
+            if (c == '*' && n == '/') { inBlock = false; ++i; }
+            else if (c == '\n') out.push_back('\n');
+            continue;
+        }
+        if (inLine) {
+            if (c == '\n') { inLine = false; out.push_back('\n'); }
+            continue;
+        }
+        if (inString || inChar) {
+            out.push_back(c);
+            if (c == '\\' && i + 1 < text.size()) { out.push_back(n); ++i; continue; }
+            if ((inString && c == '"') || (inChar && c == '\'')) { inString = inChar = false; }
+            continue;
+        }
+        if (c == '/' && n == '/') { inLine = true; ++i; continue; }
+        if (c == '/' && n == '*') { inBlock = true; ++i; continue; }
+        if (c == '"') inString = true;
+        else if (c == '\'') inChar = true;
+        out.push_back(c);
+    }
+    return out;
+}
+
+// One forbidden signature: a regular expression over comment-stripped code,
+// and what its return would mean.
+struct ArrivalSignature {
+    const char* pattern;
+    const char* meaning;
+};
+
+const ArrivalSignature kArrivalSignatures[] = {
+    {R"(<<\s*56\b)",
+     "a GPU upload keyed on its high byte -- the arrival key was uint64_t(3) << 56"},
+    {R"(>>\s*56\b)",
+     "a GPU upload result routed on its high byte -- the arrival arm's sourceType"},
+    {R"(UploadRequestType\s*::\s*(Texture|CompressedTexture)\b)",
+     "a texture request type on GPUUploadThread -- T475 left it VBO-only"},
+    {R"(\bpendingAsyncUploads_\b)",
+     "the texture cache's pending-async set, written by no one since T04"},
+    {R"(\bpendingTexture(Doors|Objects|Regions)_?\b)",
+     "a pending-texture door/object/region map with no arrival to drain it"},
+    {R"(\b(door|object)?[Tt]extureRebuildQueue_?\b)",
+     "a texture rebuild queue with no producer"},
+    {R"(\b(processTextureUpload|processCompressedTextureUpload|uploadPreloadedPageAsync|setPageTexture|setGPUUploadThread|clearPendingAsync|buildDeferredObject)\b)",
+     "a function T475 deleted with the arrival path"},
+};
+
+// Every code file in the production trees and the tools. tests/ is not
+// scanned: this file quotes the signatures.
+std::vector<std::string> arrivalPathHits(const fs::path& root) {
+    std::vector<std::regex> compiled;
+    for (const auto& sig : kArrivalSignatures) compiled.emplace_back(sig.pattern);
     std::vector<std::string> hits;
-    for (const char* dir : {"src", "include"}) {
+    for (const char* dir : {"src", "include", "tools", "benchmarks"}) {
         const fs::path base = root / dir;
-        ASSERT_TRUE(fs::is_directory(base)) << base;
+        if (!fs::is_directory(base)) continue;
         for (const auto& entry : fs::recursive_directory_iterator(base)) {
             if (!entry.is_regular_file()) continue;
             const auto ext = entry.path().extension();
-            if (ext != ".cpp" && ext != ".h") continue;
+            if (ext != ".cpp" && ext != ".h" && ext != ".hpp" && ext != ".cc" && ext != ".inl") continue;
             std::ifstream in(entry.path());
+            std::stringstream buf;
+            buf << in.rdbuf();
+            std::istringstream code(stripCppComments(buf.str()));
             std::string line;
             int lineNo = 0;
-            while (std::getline(in, line)) {
+            while (std::getline(code, line)) {
                 ++lineNo;
-                std::string squeezed;
-                for (char c : line) {
-                    if (c != ' ' && c != '\t') squeezed.push_back(c);
-                }
-                bool hit = false;
-                for (size_t at = squeezed.find("<<56"); at != std::string::npos;
-                     at = squeezed.find("<<56", at + 1)) {
-                    const size_t after = at + 4;
-                    if (after >= squeezed.size() || !std::isdigit(static_cast<unsigned char>(squeezed[after]))) {
-                        hit = true;
+                for (size_t k = 0; k < compiled.size(); ++k) {
+                    if (std::regex_search(line, compiled[k])) {
+                        hits.push_back(fs::relative(entry.path(), root).string() + ":" +
+                                       std::to_string(lineNo) + ": " + kArrivalSignatures[k].meaning +
+                                       "\n      " + line);
                     }
-                }
-                if (squeezed.find("pendingAsyncUploads_.insert") != std::string::npos ||
-                    squeezed.find("pendingAsyncUploads_.emplace") != std::string::npos ||
-                    squeezed.find("pendingAsyncUploads_[") != std::string::npos) {
-                    hit = true;
-                }
-                if (hit) {
-                    hits.push_back(fs::relative(entry.path(), root).string() + ":" + std::to_string(lineNo) +
-                                   ": " + line);
                 }
             }
         }
     }
+    return hits;
+}
+
+}  // namespace
+
+TEST(TextureArrivalPathCensus, NoHalfOfTheDeletedArrivalPathIsBackInCode) {
+    const fs::path root(WILLEQ_SOURCE_DIR);
+    ASSERT_TRUE(fs::is_directory(root / "src")) << root;
+    const auto hits = arrivalPathHits(root);
     std::ostringstream list;
     for (const auto& h : hits) list << "\n  " << h;
     EXPECT_TRUE(hits.empty())
-        << "an async texture-upload producer exists again (callbackKey high byte 3, or a "
-           "pendingAsyncUploads_ writer). The GPUUpload arrival arm is live again, so board B640 is LIVE: "
-           "DoorManager::rebuildSingleDoor() has no branch for a door whose REAL mesh was built "
-           "without its texture (meshBuilt && !usePlaceholder) and will return false for it. "
-           "Give it a re-texture branch under T470's ownership rule before shipping the producer:"
+        << "part of the texture-ARRIVAL path T475 deleted (board B670) is back in code. On its own "
+           "it is dead again: a pending-texture queue nothing drains, or an arrival arm nothing "
+           "feeds. If an async texture producer is being restored deliberately, it needs a consumer "
+           "for every queue it fills, and DoorManager::rebuildSingleDoor() needs a re-texture "
+           "branch for a door whose REAL mesh was built without its texture (board B640, under "
+           "T470's ownership rule) -- then replace this census with a behaviour test of that path:"
         << list.str();
+}
+
+// The census must be able to see what it forbids: the stripper keeps code and
+// drops comments, and each signature matches the line that used to exist.
+TEST(TextureArrivalPathCensus, TheSignaturesMatchTheDeletedCodeAndIgnoreTombstones) {
+    EXPECT_EQ(stripCppComments("a; // pendingTextureDoors_\nb; /* doorTextureRebuildQueue */ c;"),
+              "a; \nb;  c;");
+    const std::vector<std::pair<const char*, size_t>> deleted = {
+        {"    req.callbackKey = uint64_t(3) << 56;", 0},
+        {"uint8_t sourceType = static_cast<uint8_t>(result.callbackKey >> 56);", 1},
+        {"case UploadRequestType::CompressedTexture: {", 2},
+        {"pendingAsyncUploads_.insert(name);", 3},
+        {"ctx_.ZoneLifecycle().pendingTextureDoors()[texName].insert(doorId);", 4},
+        {"ctx_.pendingTextureObjects[texName].insert(oi);", 4},
+        {"pendingTextureRegions_[texName].insert(regionIdx);", 4},
+        {"ctx_.doorTextureRebuildQueue.push_back(doorId);", 5},
+        {"if (!ctx_.objectTextureRebuildQueue.empty()) {", 5},
+        {"textureRebuildQueue_.push_back({regionIdx, distSq});", 5},
+        {"ctx_.ZoneStream().buildDeferredObject(objIdx);", 6},
+    };
+    for (const auto& [line, index] : deleted) {
+        EXPECT_TRUE(std::regex_search(stripCppComments(line), std::regex(kArrivalSignatures[index].pattern)))
+            << "signature " << index << " no longer matches the deleted line: " << line;
+    }
+    // Live neighbours that must NOT match: the VBO key (high 16 bits) and the
+    // region-mesh texture guard, and T473's missing-texture accessors (B671).
+    for (const char* live : {"req.callbackKey = (static_cast<uint64_t>(i) << 48) |",
+                             "const auto& missing = ctx_.doorManager->getLastMissingTextures();",
+                             "case UploadRequestType::VertexBuffer: {",
+                             "builder.getMissingTextures()"}) {
+        for (const auto& sig : kArrivalSignatures) {
+            EXPECT_FALSE(std::regex_search(live, std::regex(sig.pattern)))
+                << "signature '" << sig.pattern << "' matches a live line: " << live;
+        }
+    }
 }
 
 #endif  // EQT_HAS_GRAPHICS

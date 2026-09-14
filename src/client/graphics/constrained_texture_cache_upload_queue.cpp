@@ -64,14 +64,16 @@ irr::video::ITexture* ConstrainedTextureCache::getPlaceholderTexture() {
 // it read a member that no longer exists. Recover with:
 //   git show bcbf2ddc:src/client/graphics/constrained_texture_cache_upload_queue.cpp
 
+// T475 (board B670): both predicates also read pendingAsyncUploads_, a set
+// nothing had written since T04; the member is deleted.
 bool ConstrainedTextureCache::isPending(const std::string& name) const {
     std::lock_guard<std::mutex> lock(mutex_);
-    return decodedEntries_.count(name) > 0 || pendingAsyncUploads_.count(name) > 0;
+    return decodedEntries_.count(name) > 0;
 }
 
 bool ConstrainedTextureCache::hasPendingWork() const {
     std::lock_guard<std::mutex> lock(mutex_);
-    return !decodedEntries_.empty() || !pendingAsyncUploads_.empty();
+    return !decodedEntries_.empty();
 }
 
 } // namespace Graphics

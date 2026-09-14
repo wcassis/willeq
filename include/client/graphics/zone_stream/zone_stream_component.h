@@ -96,8 +96,9 @@ public:
 	// --- Deferred/progressive asset loading ---
 	// Index objects without building meshes (deferred mode)
 	void indexObjectMeshes();
-	// Build a single deferred object mesh by index
-	void buildDeferredObject(size_t idx);
+	// T475: buildDeferredObject() is deleted. Its only callers were the two
+	// object texture-arrival drains (Priority 9 / P1.7), which never ran; Step 6
+	// (renderer_zone_load_objects.cpp) builds every deferred object eagerly.
 	// Progressive per-frame asset building (priority-ordered, GREEN-only single-step)
 	void processFrameProgressiveLoad();
 	// Check if all deferred assets are built

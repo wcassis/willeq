@@ -228,13 +228,9 @@ void GPUUploadThread::workerLoop() {
 void GPUUploadThread::processRequest(const UploadRequest& req) {
     auto start = std::chrono::steady_clock::now();
 
+    // T475: the Texture / CompressedTexture cases and their two worker bodies
+    // were deleted with the texture-arrival arm (see gpu_upload_thread.h).
     switch (req.type) {
-        case UploadRequestType::Texture:
-            processTextureUpload(req);
-            break;
-        case UploadRequestType::CompressedTexture:
-            processCompressedTextureUpload(req);
-            break;
         case UploadRequestType::VertexBuffer:
             processVertexBufferUpload(req);
             break;
@@ -244,117 +240,6 @@ void GPUUploadThread::processRequest(const UploadRequest& req) {
         std::chrono::steady_clock::now() - start).count();
     totalUploadTimeUs_.fetch_add(static_cast<uint64_t>(elapsed), std::memory_order_relaxed);
     totalCompleted_.fetch_add(1, std::memory_order_relaxed);
-}
-
-void GPUUploadThread::processTextureUpload(const UploadRequest& req) {
-    GLuint texId = 0;
-    glGenTextures(1, &texId);
-    glBindTexture(GL_TEXTURE_2D, texId);
-
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
-                 req.width, req.height, 0,
-                 GL_RGBA, GL_UNSIGNED_BYTE,
-                 req.pixelData.data());
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-    GLenum err = glGetError();
-    if (err != GL_NO_ERROR) {
-        LOG_ERROR(MOD_GRAPHICS, "GPUUploadThread: texture upload GL error 0x{:04X} for '{}'",
-                  err, req.textureName);
-    }
-
-    // Flush and create fence
-    glFlush();
-    EGLSyncKHR fence = eglCreateSyncKHR_(display_, EGL_SYNC_FENCE_KHR, nullptr);
-
-    UploadResult result;
-    result.type = UploadRequestType::Texture;
-    result.requestId = req.requestId;
-    result.glTextureName = texId;
-    result.width = req.width;
-    result.height = req.height;
-    result.textureName = req.textureName;
-    result.fence = fence;
-    result.gpuBytes = static_cast<size_t>(req.width) * req.height * 4;
-    result.callbackKey = req.callbackKey;
-
-    {
-        std::lock_guard<std::mutex> lock(resultMutex_);
-        resultQueue_.push_back(std::move(result));
-    }
-}
-
-void GPUUploadThread::processCompressedTextureUpload(const UploadRequest& req) {
-    GLuint texId = 0;
-    glGenTextures(1, &texId);
-    glBindTexture(GL_TEXTURE_2D, texId);
-
-    // Upload all mip levels from contiguous ETC1 data
-    {
-        uint32_t offset = 0;
-        int w = static_cast<int>(req.width);
-        int h = static_cast<int>(req.height);
-        int levels = std::max(static_cast<int>(req.mipLevels), 1);
-        for (int level = 0; level < levels; ++level) {
-            uint32_t blocksW = static_cast<uint32_t>(std::max(1, (w + 3) / 4));
-            uint32_t blocksH = static_cast<uint32_t>(std::max(1, (h + 3) / 4));
-            uint32_t levelSize = blocksW * blocksH * 8;
-
-            if (offset + levelSize > req.compressedSize) {
-                LOG_ERROR(MOD_GRAPHICS, "GPUUploadThread: mip level {} overflows data (offset={}, levelSize={}, total={})",
-                          level, offset, levelSize, req.compressedSize);
-                break;
-            }
-
-            glCompressedTexImage2D(GL_TEXTURE_2D, level,
-                                   0x8D64,  // GL_ETC1_RGB8_OES
-                                   w, h, 0,
-                                   static_cast<GLsizei>(levelSize),
-                                   req.pixelData.data() + offset);
-
-            offset += levelSize;
-            w = std::max(1, w / 2);
-            h = std::max(1, h / 2);
-        }
-    }
-
-    if (req.mipLevels > 1) {
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    } else {
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    }
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-    GLenum err = glGetError();
-    if (err != GL_NO_ERROR) {
-        LOG_ERROR(MOD_GRAPHICS, "GPUUploadThread: compressed texture upload GL error 0x{:04X} ({}x{}, {} bytes, {} levels)",
-                  err, req.width, req.height, req.compressedSize, req.mipLevels);
-    }
-
-    glFlush();
-    EGLSyncKHR fence = eglCreateSyncKHR_(display_, EGL_SYNC_FENCE_KHR, nullptr);
-
-    UploadResult result;
-    result.type = UploadRequestType::CompressedTexture;
-    result.requestId = req.requestId;
-    result.glTextureName = texId;
-    result.width = req.width;
-    result.height = req.height;
-    result.textureName = req.textureName;
-    result.fence = fence;
-    result.gpuBytes = req.compressedSize;
-    result.callbackKey = req.callbackKey;
-
-    {
-        std::lock_guard<std::mutex> lock(resultMutex_);
-        resultQueue_.push_back(std::move(result));
-    }
 }
 
 void GPUUploadThread::processVertexBufferUpload(const UploadRequest& req) {

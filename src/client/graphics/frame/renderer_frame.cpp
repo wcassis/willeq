@@ -186,44 +186,13 @@ bool FrameComponent::processFrame(float deltaTime) {
 
             // Priority 7 (texture rebuild for regions without a buffer map)
             // removed T67 — gated on `constrainedMeshCache_ &&`, never true.
-            // textureRebuildQueue_ is still populated live by the GPU
-            // upload thread (renderer_gpu_upload.cpp); with every
-            // mesh-cache-gated consumer of it gone, it is now drained only
-            // at zone unload, exactly as before this change (this consumer
-            // never ran in any shipped build either).
 
-            // Priority 8: Door texture arrival
-            if (!didWork && !ctx_.doorTextureRebuildQueue.empty() && ctx_.doorManager) {
-                uint8_t doorId = ctx_.doorTextureRebuildQueue.front();
-                ctx_.doorTextureRebuildQueue.erase(ctx_.doorTextureRebuildQueue.begin());
-                ctx_.doorManager->rebuildSingleDoor(doorId);
-                didWork = true;
-                LOG_INFO(MOD_GRAPHICS, "Post-progressive: rebuilt door {} with textures (queue: {})",
-                         doorId, ctx_.doorTextureRebuildQueue.size());
-            }
-
-            // Priority 9: Object texture arrival
-            if (!didWork && !ctx_.objectTextureRebuildQueue.empty()) {
-                size_t objIdx = ctx_.objectTextureRebuildQueue.front();
-                ctx_.objectTextureRebuildQueue.erase(ctx_.objectTextureRebuildQueue.begin());
-                if (objIdx < ctx_.deferredObjects.size()) {
-                    size_t nodeIdx = ctx_.deferredObjects[objIdx].nodeIndex;
-                    if (nodeIdx != SIZE_MAX && nodeIdx < ctx_.objectNodes.size() && ctx_.objectNodes[nodeIdx]) {
-                        auto* oldNode = ctx_.objectNodes[nodeIdx];
-                        if (ctx_.animatedTextureManager)
-                            ctx_.animatedTextureManager->removeSceneNode(oldNode);
-                        if (oldNode->getParent()) oldNode->remove(); else oldNode->drop();
-                        ctx_.objectNodes[nodeIdx] = nullptr;
-                        if (nodeIdx < ctx_.objectInSceneGraph.size())
-                            ctx_.objectInSceneGraph[nodeIdx] = false;
-                    }
-                    ctx_.deferredObjects[objIdx].meshBuilt = false;
-                    ctx_.ZoneStream().buildDeferredObject(objIdx);
-                    didWork = true;
-                    LOG_INFO(MOD_GRAPHICS, "Post-progressive: rebuilt object {} with textures (queue: {})",
-                             objIdx, ctx_.objectTextureRebuildQueue.size());
-                }
-            }
+            // Priorities 8 and 9 (rebuild a door / PVS object whose texture
+            // "arrived") removed T475 (board B670). Their queues were fed only
+            // by the GPU texture-arrival arm, which has had no producer since
+            // Batch T's T04 made texture loading synchronous (T473 proved it);
+            // the arm, both queues and ZoneStreamComponent::buildDeferredObject()
+            // went together.
 
             // Priority 10 (submit new background mesh build) removed T67 —
             // see the Priority 3/4 removal note above.

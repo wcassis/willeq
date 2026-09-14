@@ -1003,15 +1003,13 @@ bool ZoneLifecycleComponent::rebuildRegionMesh(size_t regionIdx) {
     LOG_INFO(MOD_GRAPHICS, "rebuildRegionMesh: region {} mesh built via {} in {:.1f}ms — "
              "buffers={}", regionIdx, buildPath, meshBuildMs, mesh->getMeshBufferCount());
 
-    // Track textures that were null during build (async GPU upload still pending).
-    // When these textures complete upload, this region will be queued for rebuild.
+    // Textures that were null during build. The cache is synchronous (T04), so
+    // nothing re-textures this region later: this line is B671's evidence, and
+    // T475 deleted the pendingTextureRegions_ map it used to feed.
     const auto& missing = builder.getMissingTextures();
     if (!missing.empty()) {
-        for (const auto& texName : missing) {
-            pendingTextureRegions_[texName].insert(regionIdx);
-        }
-        LOG_INFO(MOD_GRAPHICS, "rebuildRegionMesh: region {} has {} missing textures (async pending), "
-                 "will rebuild when uploads complete", regionIdx, missing.size());
+        LOG_INFO(MOD_GRAPHICS, "rebuildRegionMesh: region {} has {} missing textures "
+                 "(not re-textured later, board B671)", regionIdx, missing.size());
     }
 
     auto* node = ctx_.smgr->addMeshSceneNode(mesh);

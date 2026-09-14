@@ -190,7 +190,8 @@ public:
     // Get door info (for debugging)
     const DoorVisual* getDoor(uint8_t doorId) const;
 
-    // Get textures that were missing (async pending) during the last findDoorMesh() call
+    // Get textures that were missing during the last findDoorMesh() call. Nothing
+    // re-textures the door later (T475 deleted the dead arrival path; board B671).
     const std::vector<std::string>& getLastMissingTextures() const { return lastMissingTextures_; }
 
     // Invalidate cached mesh for a door model (forces rebuild on next findDoorMesh)
@@ -272,7 +273,7 @@ private:
     // while a texture was pending outlived its door, and invalidateMeshCache()
     // erased entries without dropping them.
     std::unordered_map<std::string, irr::scene::IMesh*> doorMeshCache_;
-    mutable std::vector<std::string> lastMissingTextures_;  // Textures pending async upload from last findDoorMesh
+    mutable std::vector<std::string> lastMissingTextures_;  // Textures missing from the last findDoorMesh
     irr::scene::ISceneManager* smgr_ = nullptr;
     irr::video::IVideoDriver* driver_ = nullptr;
     irr::s32 shaderMaterialSolid_ = -1;

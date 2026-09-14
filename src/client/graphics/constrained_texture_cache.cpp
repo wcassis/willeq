@@ -786,16 +786,6 @@ bool ConstrainedTextureCache::isFrozen() const {
     return frozen_;
 }
 
-void ConstrainedTextureCache::setGPUUploadThread(GPUUploadThread* thread) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    gpuUploadThread_ = thread;
-}
-
-void ConstrainedTextureCache::clearPendingAsync(const std::string& name) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    pendingAsyncUploads_.erase(name);
-}
-
 void ConstrainedTextureCache::setSceneManager(irr::scene::ISceneManager* smgr) {
     std::lock_guard<std::mutex> lock(mutex_);
     smgr_ = smgr;

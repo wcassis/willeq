@@ -16,16 +16,12 @@
 // Defined in COpenGLES2Driver.cpp (compiled into Irrlicht library), declared here
 // to avoid including the full COpenGLES2Driver.h (which depends on Irrlicht-internal headers).
 #ifdef EQT_HAS_GLES2
-extern void* gles2WrapTexture(void* driver, const char* name, unsigned int glTexName,
-                               unsigned int width, unsigned int height,
-                               unsigned int gpuBytes = 0);
 extern void gles2RegisterExternalHWBuffer(void* driver, const void* meshBuffer,
                                            unsigned int vbo, unsigned int ebo,
                                            unsigned int vertexCount, unsigned int indexCount,
                                            int vertexType);
 #endif
 
-#include <algorithm>
 #include <utility>
 
 namespace EQT {
@@ -71,9 +67,6 @@ void ZoneLifecycleComponent::initGPUUploadThread() {
     ctx_.gpuUploadThread = std::make_unique<GPUUploadThread>();
     if (ctx_.gpuUploadThread->init(eglDisplay, eglContext, eglConfig)) {
         ctx_.gpuUploadThread->start();
-        // Wire to subsystems already created
-        if (ctx_.constrainedTextureCache)
-            ctx_.constrainedTextureCache->setGPUUploadThread(ctx_.gpuUploadThread.get());
     } else {
         LOG_WARN(MOD_GRAPHICS, "GPU upload thread: init failed, falling back to render-thread uploads");
         ctx_.gpuUploadThread.reset();
@@ -111,109 +104,17 @@ void ZoneLifecycleComponent::processCompletedUploads() {
             eglDestroySyncKHR(display, result.fence);
         }
 
+        // T475 (board B670): the Texture / CompressedTexture arm that stood
+        // here is deleted. It registered an uploaded texture and handed it to
+        // the regions, doors and PVS objects queued as waiting for it; its
+        // only producer (the cache's async upload queue, callbackKey high
+        // byte 3) was made synchronous by Batch T's T04 (aaee58d1) and deleted
+        // by T326 (77c842b4), so it never ran (T473). With it went the
+        // pending-texture maps, doorTextureRebuildQueue_ and
+        // objectTextureRebuildQueue_ with their Priority 8/9 and P1.6/P1.7
+        // drains, textureRebuildQueue_, and B640's missing rebuildSingleDoor()
+        // branch. A texture missing at mesh build does not arrive later: B671.
         switch (result.type) {
-            case UploadRequestType::Texture:
-            case UploadRequestType::CompressedTexture: {
-                // Wrap the externally-uploaded GL texture as an Irrlicht ITexture
-                irr::video::ITexture* wrappedTex = nullptr;
-                if (result.glTextureName != 0 && !result.textureName.empty()) {
-                    wrappedTex = static_cast<irr::video::ITexture*>(
-                        gles2WrapTexture(ctx_.driver, result.textureName.c_str(),
-                                         result.glTextureName,
-                                         result.width, result.height,
-                                         result.gpuBytes));
-                    LOG_DEBUG(MOD_GRAPHICS, "GPUUpload: texture '{}' ready ({}x{}, {} bytes)",
-                              result.textureName, result.width, result.height, result.gpuBytes);
-                }
-
-                // Route based on high byte of callbackKey
-                uint8_t sourceType = static_cast<uint8_t>(result.callbackKey >> 56);
-
-                if (sourceType == 3) {
-                    // Unified constrained cache texture (zone + entity textures)
-                    // Register in LRU cache and mesh builder for entity scene node creation
-                    if (wrappedTex && ctx_.constrainedTextureCache) {
-                        size_t texSize = static_cast<size_t>(result.width) * result.height * 4;
-                        ctx_.constrainedTextureCache->registerTexture(result.textureName, wrappedTex, texSize, false);
-                        ctx_.constrainedTextureCache->clearPendingAsync(result.textureName);
-
-                        // Also register in mesh builder so entity SceneNodeCreation finds it
-                        if (ctx_.entityRenderer) {
-                            auto* meshBuilder = ctx_.entityRenderer->getMeshBuilder();
-                            if (meshBuilder) {
-                                meshBuilder->registerUploadedTexture(result.textureName, wrappedTex, false);
-                            }
-                        }
-
-                        // Check if any regions were waiting for this texture
-                        auto pendIt = pendingTextureRegions_.find(result.textureName);
-                        if (pendIt != pendingTextureRegions_.end()) {
-                            for (size_t regionIdx : pendIt->second) {
-                                // Deduplicate: only add if not already queued
-                                bool alreadyQueued = false;
-                                for (const auto& entry : textureRebuildQueue_) {
-                                    if (entry.regionIdx == regionIdx) {
-                                        alreadyQueued = true;
-                                        break;
-                                    }
-                                }
-                                if (!alreadyQueued) {
-                                    float distSq = 0.0f;
-                                    auto bbIt = ctx_.regionBoundingBoxes.find(regionIdx);
-                                    if (bbIt != ctx_.regionBoundingBoxes.end()) {
-                                        auto center = bbIt->second.getCenter();
-                                        float dx = center.X - ctx_.playerX;
-                                        float dy = center.Y - ctx_.playerY;
-                                        distSq = dx * dx + dy * dy;
-                                    }
-                                    // Player's region gets priority (distSq = -1)
-                                    if (regionIdx == ctx_.currentPvsRegion) distSq = -1.0f;
-                                    textureRebuildQueue_.push_back({regionIdx, distSq});
-                                }
-                            }
-                            LOG_INFO(MOD_GRAPHICS, "GPUUpload: texture '{}' arrived, queued {} regions for rebuild",
-                                     result.textureName, pendIt->second.size());
-                            pendingTextureRegions_.erase(pendIt);
-                        }
-
-                        // Doors waiting for this texture
-                        auto doorPendIt = pendingTextureDoors_.find(result.textureName);
-                        if (doorPendIt != pendingTextureDoors_.end()) {
-                            for (uint8_t doorId : doorPendIt->second) {
-                                if (ctx_.doorManager) {
-                                    const auto* dv = ctx_.doorManager->getDoor(doorId);
-                                    if (dv) ctx_.doorManager->invalidateMeshCache(dv->modelName);
-                                }
-                                if (std::find(ctx_.doorTextureRebuildQueue.begin(),
-                                              ctx_.doorTextureRebuildQueue.end(), doorId) == ctx_.doorTextureRebuildQueue.end()) {
-                                    ctx_.doorTextureRebuildQueue.push_back(doorId);
-                                }
-                            }
-                            LOG_INFO(MOD_GRAPHICS, "GPUUpload: texture '{}' arrived, queued {} doors for rebuild",
-                                     result.textureName, doorPendIt->second.size());
-                            pendingTextureDoors_.erase(doorPendIt);
-                        }
-
-                        // PVS objects waiting for this texture
-                        auto objPendIt = ctx_.pendingTextureObjects.find(result.textureName);
-                        if (objPendIt != ctx_.pendingTextureObjects.end()) {
-                            for (size_t objIdx : objPendIt->second) {
-                                if (std::find(ctx_.objectTextureRebuildQueue.begin(),
-                                              ctx_.objectTextureRebuildQueue.end(), objIdx) == ctx_.objectTextureRebuildQueue.end()) {
-                                    ctx_.objectTextureRebuildQueue.push_back(objIdx);
-                                }
-                            }
-                            LOG_INFO(MOD_GRAPHICS, "GPUUpload: texture '{}' arrived, queued {} objects for rebuild",
-                                     result.textureName, objPendIt->second.size());
-                            ctx_.pendingTextureObjects.erase(objPendIt);
-                        }
-                    }
-                } else if (sourceType == 4) {
-                    // Icon texture — icon loading removed (WindowManager deleted)
-                }
-                break;
-            }
-
             case UploadRequestType::VertexBuffer: {
                 // Decode callbackKey: high 16 bits = buffer index, low 48 bits = region index
                 uint32_t bufferIdx = static_cast<uint32_t>(result.callbackKey >> 48);
@@ -238,14 +139,6 @@ void ZoneLifecycleComponent::processCompletedUploads() {
                 break;
             }
         }
-    }
-
-    // Sort texture rebuild queue: player's region first (distSq=-1), then nearest
-    if (!textureRebuildQueue_.empty()) {
-        std::sort(textureRebuildQueue_.begin(), textureRebuildQueue_.end(),
-                  [](const TextureRebuildEntry& a, const TextureRebuildEntry& b) {
-                      return a.distanceSq < b.distanceSq;
-                  });
     }
 }
 
@@ -283,115 +176,8 @@ bool ZoneLifecycleComponent::processOneGPUResult() {
         eglDestroySyncKHR(display, result.fence);
     }
 
+    // T475: the texture arm is gone here too -- see processCompletedUploads().
     switch (result.type) {
-        case UploadRequestType::Texture:
-        case UploadRequestType::CompressedTexture: {
-            // Wrap the externally-uploaded GL texture as an Irrlicht ITexture
-            irr::video::ITexture* wrappedTex = nullptr;
-            if (result.glTextureName != 0 && !result.textureName.empty()) {
-                wrappedTex = static_cast<irr::video::ITexture*>(
-                    gles2WrapTexture(ctx_.driver, result.textureName.c_str(),
-                                     result.glTextureName,
-                                     result.width, result.height,
-                                     result.gpuBytes));
-                LOG_DEBUG(MOD_GRAPHICS, "GPUUpload processOne: texture '{}' ready ({}x{}, {} bytes)",
-                          result.textureName, result.width, result.height, result.gpuBytes);
-            }
-
-            // Route based on high byte of callbackKey
-            uint8_t sourceType = static_cast<uint8_t>(result.callbackKey >> 56);
-
-            if (sourceType == 3) {
-                // Unified constrained cache texture (zone + entity textures)
-                if (wrappedTex && ctx_.constrainedTextureCache) {
-                    size_t texSize = static_cast<size_t>(result.width) * result.height * 4;
-                    ctx_.constrainedTextureCache->registerTexture(result.textureName, wrappedTex, texSize, false);
-                    ctx_.constrainedTextureCache->clearPendingAsync(result.textureName);
-
-                    // Also register in mesh builder so entity SceneNodeCreation finds it
-                    if (ctx_.entityRenderer) {
-                        auto* meshBuilder = ctx_.entityRenderer->getMeshBuilder();
-                        if (meshBuilder) {
-                            meshBuilder->registerUploadedTexture(result.textureName, wrappedTex, false);
-                        }
-                    }
-
-                    // Check if any regions were waiting for this texture → queue for rebuild.
-                    // T67: this used to also check pendingTextureBuffers_ for a
-                    // material-swap shortcut (materialSwapQueue_), but that map's
-                    // only writer was ConstrainedMeshCache's background-build path
-                    // (finalizeOneMeshResult(), removed with the cache — it was
-                    // never constructed in any shipped build), so pendingTextureBuffers_
-                    // was always empty and this always fell through to the full-rebuild
-                    // branch below. Behavior unchanged; the always-empty lookup is
-                    // just gone now. See src/client/graphics/CLAUDE.md for the
-                    // reference pointer.
-                    auto pendIt = pendingTextureRegions_.find(result.textureName);
-                    if (pendIt != pendingTextureRegions_.end()) {
-                        for (size_t regionIdx : pendIt->second) {
-                            bool alreadyQueued = false;
-                            for (const auto& entry : textureRebuildQueue_) {
-                                if (entry.regionIdx == regionIdx) {
-                                    alreadyQueued = true;
-                                    break;
-                                }
-                            }
-                            if (!alreadyQueued) {
-                                float distSq = 0.0f;
-                                auto bbIt = ctx_.regionBoundingBoxes.find(regionIdx);
-                                if (bbIt != ctx_.regionBoundingBoxes.end()) {
-                                    auto center = bbIt->second.getCenter();
-                                    float dx = center.X - ctx_.playerX;
-                                    float dy = center.Y - ctx_.playerY;
-                                    distSq = dx * dx + dy * dy;
-                                }
-                                if (regionIdx == ctx_.currentPvsRegion) distSq = -1.0f;
-                                textureRebuildQueue_.push_back({regionIdx, distSq});
-                            }
-                        }
-                        LOG_INFO(MOD_GRAPHICS, "GPUUpload processOne: texture '{}' arrived, queued {} regions for rebuild",
-                                 result.textureName, pendIt->second.size());
-                        pendingTextureRegions_.erase(pendIt);
-                    }
-
-                    // Doors waiting for this texture
-                    auto doorPendIt = pendingTextureDoors_.find(result.textureName);
-                    if (doorPendIt != pendingTextureDoors_.end()) {
-                        for (uint8_t doorId : doorPendIt->second) {
-                            if (ctx_.doorManager) {
-                                const auto* dv = ctx_.doorManager->getDoor(doorId);
-                                if (dv) ctx_.doorManager->invalidateMeshCache(dv->modelName);
-                            }
-                            if (std::find(ctx_.doorTextureRebuildQueue.begin(),
-                                          ctx_.doorTextureRebuildQueue.end(), doorId) == ctx_.doorTextureRebuildQueue.end()) {
-                                ctx_.doorTextureRebuildQueue.push_back(doorId);
-                            }
-                        }
-                        LOG_INFO(MOD_GRAPHICS, "GPUUpload processOne: texture '{}' arrived, queued {} doors for rebuild",
-                                 result.textureName, doorPendIt->second.size());
-                        pendingTextureDoors_.erase(doorPendIt);
-                    }
-
-                    // PVS objects waiting for this texture
-                    auto objPendIt = ctx_.pendingTextureObjects.find(result.textureName);
-                    if (objPendIt != ctx_.pendingTextureObjects.end()) {
-                        for (size_t objIdx : objPendIt->second) {
-                            if (std::find(ctx_.objectTextureRebuildQueue.begin(),
-                                          ctx_.objectTextureRebuildQueue.end(), objIdx) == ctx_.objectTextureRebuildQueue.end()) {
-                                ctx_.objectTextureRebuildQueue.push_back(objIdx);
-                            }
-                        }
-                        LOG_INFO(MOD_GRAPHICS, "GPUUpload processOne: texture '{}' arrived, queued {} objects for rebuild",
-                                 result.textureName, objPendIt->second.size());
-                        ctx_.pendingTextureObjects.erase(objPendIt);
-                    }
-                }
-            } else if (sourceType == 4) {
-                // Icon texture — icon loading removed (WindowManager deleted)
-            }
-            break;
-        }
-
         case UploadRequestType::VertexBuffer: {
             uint32_t bufferIdx = static_cast<uint32_t>(result.callbackKey >> 48);
             size_t regionIdx = static_cast<size_t>(result.callbackKey & 0xFFFFFFFFFFFFULL);
@@ -416,14 +202,6 @@ bool ZoneLifecycleComponent::processOneGPUResult() {
         }
     }
 
-    // Sort texture rebuild queue: player's region first (distSq=-1), then nearest
-    if (!textureRebuildQueue_.empty()) {
-        std::sort(textureRebuildQueue_.begin(), textureRebuildQueue_.end(),
-                  [](const TextureRebuildEntry& a, const TextureRebuildEntry& b) {
-                      return a.distanceSq < b.distanceSq;
-                  });
-    }
-
     return true;
 }
 #endif // EQT_HAS_GLES2
@@ -433,11 +211,9 @@ void ZoneLifecycleComponent::toggleGPUUploadThread() {
 #ifdef EQT_HAS_GLES2
     gpuUploadEnabled_ = !gpuUploadEnabled_;
     LOG_INFO(MOD_GRAPHICS, "GPU upload thread: {}", gpuUploadEnabled_ ? "ENABLED" : "DISABLED");
-
-    // Propagate to subsystems: set or clear their gpuUploadThread_ pointers
-    GPUUploadThread* ptr = gpuUploadEnabled_ ? ctx_.gpuUploadThread.get() : nullptr;
-    if (ctx_.constrainedTextureCache)
-        ctx_.constrainedTextureCache->setGPUUploadThread(ptr);
+    // T475: gpuUploadEnabled_ gates createZoneMesh()'s VBO submit
+    // (renderer_zone_draw.cpp). The texture cache's copy of the thread pointer
+    // that this used to propagate was never read, and is deleted.
 #else
     LOG_INFO(MOD_GRAPHICS, "GPU upload thread: not available (non-GLES2 build)");
 #endif

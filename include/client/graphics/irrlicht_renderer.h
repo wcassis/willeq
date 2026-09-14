@@ -883,17 +883,9 @@ private:
     // src/client/graphics/CLAUDE.md's "Constrained Memory Management"
     // section for the removed cache's reference pointer.
 
-    // L09 (Batch L): pendingTextureRegions_ is on ZoneLifecycleComponent.
-
-
-    // Doors waiting for async textures to complete GPU upload.
-    // Maps texture name → set of door IDs that were built without that texture.
-    std::vector<uint8_t> doorTextureRebuildQueue_;
-
-    // PVS objects waiting for async textures to complete GPU upload.
-    // Maps texture name → set of deferred object indices.
-    std::unordered_map<std::string, std::unordered_set<size_t>> pendingTextureObjects_;
-    std::vector<size_t> objectTextureRebuildQueue_;
+    // T475 (board B670): doorTextureRebuildQueue_, pendingTextureObjects_ and
+    // objectTextureRebuildQueue_ are deleted with the texture-arrival arm that
+    // alone fed them (renderer_gpu_upload.cpp; no producer since Batch T's T04).
 
     // Deferred/progressive asset loading state (DeferredObject defined above PendingZoneComputations)
     std::vector<DeferredObject> deferredObjects_;

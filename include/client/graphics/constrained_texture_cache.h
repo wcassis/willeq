@@ -18,7 +18,6 @@
 namespace EQT {
 namespace Graphics {
 
-class GPUUploadThread;
 class BackgroundThreadPool;
 class ZoneMeshBuilder;
 class EQE1Loader;
@@ -207,11 +206,10 @@ public:
     // Get config for debug display
     const ConstrainedRendererConfig& getConfig() const { return config_; }
 
-    // Set GPU upload thread for async texture uploads (GLES2 only)
-    void setGPUUploadThread(GPUUploadThread* thread);
-
-    // Remove a texture name from the pending async set (called when upload completes)
-    void clearPendingAsync(const std::string& name);
+    // T475 (board B670): setGPUUploadThread() and clearPendingAsync() are
+    // deleted. The pointer was never read, and the pending-async set was never
+    // written after T04 made uploads synchronous; its one clearer was the dead
+    // texture-arrival arm in renderer_gpu_upload.cpp.
 
     // Set scene manager for safe eviction (scans meshes to remove texture references)
     void setSceneManager(irr::scene::ISceneManager* smgr);
@@ -234,10 +232,10 @@ public:
     // T04: queueDecoded, queueDecodedARGB, processUploadQueue, drainDecodedQueue,
     // processOneUpload, getStagedUploadCount removed. Use getOrLoad() + uploadTexture() instead.
 
-    // Check if a texture name is pending decode or upload (not yet in cache)
+    // Check if a texture name is decoded but not yet uploaded (not yet in cache)
     bool isPending(const std::string& name) const;
 
-    // Check if any textures are pending decode or async upload
+    // Check if any decoded textures are waiting for their upload
     bool hasPendingWork() const;
 
     // Set background thread pool for async texture decode (non-owning)
@@ -502,11 +500,6 @@ private:
 
     // Frozen flag - when true, no evictions occur
     bool frozen_ = false;
-
-    // GPU upload thread for async texture uploads (non-owning)
-    GPUUploadThread* gpuUploadThread_ = nullptr;
-    // Texture names currently being uploaded asynchronously (prevents duplicate submissions)
-    std::unordered_set<std::string> pendingAsyncUploads_;
 
     // Background thread pool for async texture decode (non-owning)
     BackgroundThreadPool* bgThreadPool_ = nullptr;

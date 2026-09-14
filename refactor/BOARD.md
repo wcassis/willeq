@@ -9502,8 +9502,15 @@ B623–B629 unused.
 
 ## Added 2026-09-14 by T470 (door mesh leaks)
 
-- **B640** (**B, unreached** -- narrowed from A by T473) **A door whose real
-  mesh was built while its texture was pending is never re-textured.**
+- ~~**B640**~~ **CLOSED by T475 (2026-09-14)**, with B670: the arrival path
+  that alone could ask `rebuildSingleDoor()` to re-texture a real door mesh is
+  deleted, so the missing branch has nothing to serve. The gap would come back
+  only with an async texture producer, and
+  `TextureArrivalPathCensus.NoHalfOfTheDeletedArrivalPathIsBackInCode`
+  (`tests/test_door_texture_eviction.cpp`) fails on that and says the branch is
+  owed. What a player can see is still B671. (Original text below.)
+  ~~(B, unreached -- narrowed from A by T473) A door whose real
+  mesh was built while its texture was pending is never re-textured.~~
   - **T473: the live half is REFUTED.** The gap in `rebuildSingleDoor()` is
     real, but nothing can ask it to re-texture such a door. The arrival hop
     (`renderer_gpu_upload.cpp`, a `Texture`/`CompressedTexture` result whose
@@ -9542,8 +9549,30 @@ B641–B649 unused.
 
 ## Added 2026-09-14 by T473 (door texture arrival)
 
-- **B670** (B, unreached) **The whole GPU texture-ARRIVAL arm has had no producer
-  since March, and so has everything downstream of it.**
+- ~~**B670**~~ **CLOSED by T475 (2026-09-14): deleted, not restored**
+  (orchestrator's decision; Will's standing decision #1 makes load time
+  secondary, so there is no case for an async texture producer). Deleted, each
+  with zero producers and readers proved first:
+  - the `Texture`/`CompressedTexture` arm of `processCompletedUploads()` /
+    `processOneGPUResult()` and its sort, the two texture request types, both
+    worker bodies and every texture field of `UploadRequest`/`UploadResult`;
+  - `pendingTextureRegions_`, `textureRebuildQueue_` + `TextureRebuildEntry`,
+    `pendingTextureDoors_`, `doorTextureRebuildQueue`, `pendingTextureObjects`,
+    `objectTextureRebuildQueue` (the context references, renderer members,
+    unload clears, the progressive-status log fields and completion gate);
+  - FrameComponent Priority 8/9, ZoneStreamComponent P1.6/P1.7 and the byte-3
+    reprioritise branch;
+  - `ConstrainedTextureCache::setGPUUploadThread()`, `clearPendingAsync()`,
+    `gpuUploadThread_`, `pendingAsyncUploads_`;
+  - the cascade: `ZoneStreamComponent::buildDeferredObject()` (its only
+    callers were the drains), then `ZoneLoadComponent::treeIdentifier()` (its
+    only caller was that body), and `TextureAtlas::uploadPreloadedPageAsync()` /
+    `setPageTexture()` (zero callers, B494 rows; the last texture submitter).
+  - Net: `TextureArrivalPathCensus` (two cases). Details in
+    `refactor/T475_delete_dead_texture_arrival_path.md`'s Review. (Original
+    text below.)
+  ~~(B, unreached) The whole GPU texture-ARRIVAL arm has had no producer
+  since March, and so has everything downstream of it.~~
   - **The arm.** In `ZoneLifecycleComponent::processCompletedUploads()` and its
     copy `processOneGPUResult()` (`renderer_gpu_upload.cpp`), the `sourceType == 3`
     branch of a `Texture`/`CompressedTexture` result:
@@ -9594,10 +9623,14 @@ B641–B649 unused.
       completes (`renderer_zone_stream.cpp`), and all zone data at Step 13
       when `releaseTextureDataAfterUpload` is set.
   - **Holders that can end up that way:**
-    - **doors:** Step 7 (recorded in B670's dead map), and `createDoor()`,
-      IrrlichtBridge's live spawn, which records nothing;
-    - **objects:** Step 6 and `buildDeferredObject()` (recorded, dead map);
-    - **regions:** `rebuildRegionMesh()` (recorded, dead map).
+    - **doors:** Step 7 (logged), and `createDoor()`, IrrlichtBridge's live
+      spawn, which records nothing;
+    - **objects:** Step 6 (logged). `buildDeferredObject()` was deleted by T475:
+      it was reachable only from the dead arrival drains;
+    - **regions:** `rebuildRegionMesh()` (logged).
+    - T475 deleted the dead maps these used to feed (B670); the three log lines
+      stayed, reworded to "missing textures (not re-textured later, board
+      B671)", so the grep below still matches.
   - **What it looks like:** not measured. The material's texture slot is
     null, so whatever the GLES2 driver binds for a null unit 0 is drawn,
     not the model's art.
@@ -9610,6 +9643,31 @@ B641–B649 unused.
   - Found by T473.
 
 B672–B679 unused.
+
+---
+
+## Added 2026-09-14 by T475 (texture-arrival path deleted)
+
+- **B690** (B, hygiene) **Leftovers of the deleted texture-upload path that no
+  net can see.** T475 deleted every function and field of the async
+  texture-arrival path (B670); three non-function, non-field remnants are left:
+  - `AssetType::ZoneTexture` (`include/client/graphics/work_priority.h`) has no
+    production user: its two users were the deleted
+    `TextureAtlas::uploadPreloadedPageAsync()` and the deleted byte-3 branch of
+    `ZoneStreamComponent::onPvsRegionChanged()`. Only
+    `tests/test_work_priority.cpp` names it.
+  - The four `constrained_texture_cache*.cpp` TUs include
+    `include/client/graphics/gpu_upload_thread.h` and
+    `include/client/graphics/work_priority.h` and use nothing from either (pre-existing; the last use in the cache went
+    with T326).
+  - `src/client/graphics/texture_atlas.cpp` includes the fmt format header for
+    the deleted async page upload alone.
+  - Enumerators and includes are not in `ZeroCallers` or `WriteOnlyFields`.
+    Fix: delete, or decide the enumerator is kept for `WorkPriorityKey`'s
+    ordering contract (its test pins the order).
+  - Found by T475.
+
+B691–B699 unused.
 
 ---
 

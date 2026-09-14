@@ -166,7 +166,8 @@ public:
 	// where nothing outside this component writes, a mutable reference where
 	// something does.
 	// ------------------------------------------------------------------
-	TreeIdentifier const& treeIdentifier() const { return treeIdentifier_; }
+	// T475: treeIdentifier() deleted -- its one caller was the deleted
+	// ZoneStreamComponent::buildDeferredObject(); Step 6 reads treeIdentifier_ directly.
 	std::vector<size_t> const& zoneLightRegions() const { return zoneLightRegions_; }
 
 private:
