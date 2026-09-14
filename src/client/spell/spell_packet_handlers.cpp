@@ -205,71 +205,119 @@ void SpellManager::handleAction(const EQT::SpellActionInfo& action)
     // wrong-shaped hook here.
 }
 
-void SpellManager::handleInterrupt(uint16_t caster_id, uint16_t spell_id, uint8_t message_type)
-{
-    LOG_DEBUG(MOD_SPELL, "Interrupt: caster={}, spell={}, type={}",
-        caster_id, spell_id, message_type);
+// eqemu zone/string_ids.h: the two message ids that mean the cast failed
+// rather than was interrupted.
+static constexpr uint32_t kEqStrSpellFizzle = 173;  // SPELL_FIZZLE
+static constexpr uint32_t kEqStrMissNote = 180;     // MISS_NOTE
 
-    // Check if this was our target's cast
-    bool isTargetCast = (caster_id == m_target_caster_id && spell_id == m_target_spell_id);
-    if (isTargetCast) {
+void SpellManager::handleInterrupt(uint16_t caster_id, uint32_t message_id, const std::string& caster_name)
+{
+    // T469 (board B604). Mob::InterruptSpell (eqemu zone/spells.cpp:1242)
+    // sends the caster an 8-byte InterruptCast (no name) followed by a
+    // ManaChange, and everyone else in range an InterruptCast carrying the
+    // caster's name. No spell id either way -- resolve it from what we track.
+    bool isPlayerCast = (caster_id == m_eq->GetEntityID());
+    bool isTargetCast = (!isPlayerCast && caster_id != 0 && caster_id == m_target_caster_id);
+
+    uint32_t spell_id = SPELL_UNKNOWN;
+    if (isPlayerCast) {
+        spell_id = m_current_spell_id;
+    } else if (isTargetCast) {
+        spell_id = m_target_spell_id;
         m_target_caster_id = 0;
         m_target_spell_id = SPELL_UNKNOWN;
     }
 
-    bool isPlayerCast = (caster_id == m_eq->GetEntityID());
+    LOG_DEBUG(MOD_SPELL, "Interrupt: caster={} ('{}'), spell={}, message={}",
+        caster_id, caster_name, spell_id, message_id);
 
-    // D20e1: Signal cast visual interrupt via bridge
+    // The packet is itself the chat line ("it works the same as a formatted
+    // message", spells.cpp:1338): %1 is the caster's name on the bystander copy.
+    std::string text = caster_name.empty()
+        ? m_eq->Strings().GetStringMessage(message_id)
+        : m_eq->Strings().GetFormattedStringMessage(message_id, {caster_name});
+    if (!text.empty() && text[0] != '[') {
+        m_eq->AddChatSystemMessage(text);
+    }
+
+    if (isPlayerCast) {
+        if (m_is_casting) {
+            bool failed = (message_id == kEqStrSpellFizzle || message_id == kEqStrMissNote);
+            endOwnCastByServer(failed ? CastResult::Fizzle : CastResult::Interrupted);
+        }
+        return;
+    }
+
+    // Someone else's cast: cancel their cast bar and glow.
     if (m_bridge) {
         eqt::state::SpellCastVisualInterruptedData d;
         d.casterId = caster_id;
         d.spellId = spell_id;
-        d.isPlayerCast = isPlayerCast;
+        d.isPlayerCast = false;
         d.isTargetCast = isTargetCast;
         m_bridge->pushEvent(eqt::state::GameEvent(
             eqt::state::GameEventType::SpellCastVisualInterrupted, std::move(d)));
     }
-
-    // If this is our cast being interrupted
-    if (isPlayerCast && m_is_casting) {
-        m_is_casting = false;
-        m_waiting_for_server_confirm = false;
-
-        // Reset gem state
-        if (m_current_gem_slot < MAX_SPELL_GEMS) {
-            m_gem_states[m_current_gem_slot] = GemState::Ready;
-            publishGemChanged(m_current_gem_slot);
-        }
-
-        // Determine interrupt type
-        CastResult result = CastResult::Interrupted;
-        if (message_type == 2) {
-            result = CastResult::Fizzle;
-        }
-
-        // Notify callback
-        if (m_on_cast_complete) {
-            m_on_cast_complete(result, spell_id);
-        }
-
-        publishCastComplete(spell_id, result);
-
-        const SpellData* spell = m_spell_db.getSpell(spell_id);
-        LOG_INFO(MOD_SPELL, "Cast of '{}' {} ",
-            spell ? spell->name : "Unknown",
-            result == CastResult::Fizzle ? "fizzled" : "was interrupted");
-
-        m_current_spell_id = SPELL_UNKNOWN;
-        m_current_target_id = 0;
-    }
 }
 
-void SpellManager::handleManaChange(uint32_t new_mana, uint32_t stamina, uint32_t spell_id)
+void SpellManager::endOwnCastByServer(CastResult result)
 {
-    LOG_DEBUG(MOD_SPELL, "ManaChange: mana={}, stamina={}, spell={}",
-        new_mana, stamina, spell_id);
+    uint32_t spell_id = m_current_spell_id;
 
-    // Mana is updated in EverQuest class, we just log it here
+    // D20e1: cancel the cast bar and cast glow.
+    if (m_bridge) {
+        eqt::state::SpellCastVisualInterruptedData d;
+        d.casterId = m_eq->GetEntityID();
+        d.spellId = spell_id;
+        d.isPlayerCast = true;
+        d.isTargetCast = false;
+        m_bridge->pushEvent(eqt::state::GameEvent(
+            eqt::state::GameEventType::SpellCastVisualInterrupted, std::move(d)));
+    }
+
+    m_is_casting = false;
+    m_waiting_for_server_confirm = false;
+
+    // eqemu starts no recast on an interrupt: InterruptSpell/StopCasting only
+    // zero the casting vars and re-enable the spell bar.
+    if (m_current_gem_slot < MAX_SPELL_GEMS) {
+        m_gem_states[m_current_gem_slot] = GemState::Ready;
+        publishGemChanged(m_current_gem_slot);
+    }
+
+    if (m_on_cast_complete) {
+        m_on_cast_complete(result, spell_id);
+    }
+
+    publishCastComplete(spell_id, result);
+
+    const SpellData* spell = m_spell_db.getSpell(spell_id);
+    LOG_INFO(MOD_SPELL, "Cast of '{}' {}",
+        spell ? spell->name : "Unknown",
+        result == CastResult::Fizzle ? "fizzled" : "was interrupted");
+
+    m_current_spell_id = SPELL_UNKNOWN;
+    m_current_target_id = 0;
+}
+
+void SpellManager::handleManaChange(uint32_t new_mana, uint32_t stamina, uint32_t spell_id, uint8_t keepcasting)
+{
+    LOG_DEBUG(MOD_SPELL, "ManaChange: mana={}, stamina={}, spell={}, keepcasting={}",
+        new_mana, stamina, spell_id, keepcasting);
+
+    // Mana itself is updated by PlayerComponent::ZoneProcessManaChange.
+    //
+    // T469: Mob::StopCasting (eqemu zone/spells.cpp:1351) -- a fizzle
+    // (DoCastSpell, spells.cpp:321-331), a refused cast -- sends ONLY this
+    // packet with keepcasting 0, and before SendBeginCast. That is the one
+    // case the bytes are unambiguous: once BeginCast has confirmed the cast, a
+    // successful finish sends the same packet (SendSpellBarEnable,
+    // spells.cpp:1817), so it is left to OP_Action / OP_InterruptCast.
+    // Periodic mana ticks carry keepcasting 1 (Client::CheckManaEndUpdate).
+    if (keepcasting == 0 && m_is_casting && m_waiting_for_server_confirm &&
+        spell_id == m_current_spell_id) {
+        endOwnCastByServer(CastResult::Interrupted);
+    }
 }
 // ============================================================================
 // Spell Message Display

@@ -20,6 +20,8 @@
 #include "common/name_utils.h"
 #include "common/performance_metrics.h"
 
+#include <cstring>
+
 // P28: inventory/chat/hotbar/command-registry are plain data-model headers
 // with no renderer dependency (used unconditionally below: m_inventory_manager,
 // m_hotbar_model, m_command_registry are complete-type-required here). Only
@@ -508,6 +510,30 @@ void eqt::zone::ZoneComponent::OnStun(const EQ::Net::Packet & p)
 	}
 }
 
+void eqt::zone::ZoneComponent::OnInterruptCast(const EQ::Net::Packet & p)
+{
+	// T469 (board B604). eqemu InterruptCast_Struct (common/patches/
+	// titanium_structs.h:426; Titanium has no ENCODE for it, so this is the
+	// wire form): uint32 spawnid, uint32 messageid, then -- on the copy
+	// Mob::InterruptSpell sends to BYSTANDERS only (zone/spells.cpp:1339) --
+	// the caster's name as a C string. The caster's own copy is 8 bytes
+	// (spells.cpp:1306). Neither carries a spell id.
+	if (p.Length() < 10) {
+		LOG_WARN(MOD_SPELL, "InterruptCast packet too small: {} bytes", p.Length());
+		return;
+	}
+	uint32_t spawn_id = p.GetUInt32(2);
+	uint32_t message_id = p.GetUInt32(6);
+	std::string caster_name;
+	if (p.Length() > 10) {
+		const char* text = static_cast<const char*>(p.Data()) + 10;
+		caster_name.assign(text, strnlen(text, p.Length() - 10));
+	}
+	if (ctx_.spell_manager) {
+		ctx_.spell_manager->handleInterrupt(static_cast<uint16_t>(spawn_id), message_id, caster_name);
+	}
+}
+
 void eqt::zone::ZoneComponent::OnMemorizeSpell(const EQ::Net::Packet & p)
 {
 	{
@@ -844,6 +870,7 @@ eqt::zone::ZoneComponent::ZoneOpcodeTable()
 		{HC_OP_GMSummon, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Gm().ZoneProcessGMSummon(p); }},
 		{HC_OP_MobRename, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnMobRename(p); }},
 		{HC_OP_Stun, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnStun(p); }},
+		{HC_OP_InterruptCast, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.OnInterruptCast(p); }},
 
 		// Group packet handlers
 		{HC_OP_GroupInvite, [](ZoneComponent& z, const EQ::Net::Packet& p) { z.ctx_.Group().ZoneProcessGroupInvite(p); }},
@@ -895,7 +922,9 @@ eqt::zone::ZoneComponent::IgnoredZoneOpcodes()
 	static const std::unordered_map<uint16_t, const char*> kIgnoredOpcodes = {
 		{HC_OP_SetGroupTarget, "Group target indicator - ignore for now"},
 		{HC_OP_LinkedReuse, "Linked spell reuse timer - ignore for now"},
-		{HC_OP_InterruptCast, "Cast interrupted - spell manager handles this via other packets"},
+		// T469 (board B604): HC_OP_InterruptCast used to sit here as "spell
+		// manager handles this via other packets". No other packet did -- see
+		// OnInterruptCast.
 	};
 	return kIgnoredOpcodes;
 }

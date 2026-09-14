@@ -146,7 +146,12 @@ TEST(ZoneDispatchTable, HandledAndIgnoredAreDisjointAndPartitionTheGolden) {
 // an opcode that was dropped rather than a decision that was recorded.
 TEST(ZoneDispatchTable, EveryIgnoredOpcodeCarriesItsReason) {
     const auto& ignored = ZoneComponent::IgnoredZoneOpcodes();
-    EXPECT_EQ(ignored.size(), 3u) << "the pre-G01 switch had exactly three comment-only arms";
+    // The pre-G01 switch had exactly three comment-only arms. T469 (board B604)
+    // moved one of them, HC_OP_InterruptCast ("spell manager handles this via
+    // other packets" -- no other packet did), into ZoneOpcodeTable(): a
+    // reviewed edit, learned in place (G-correction 32). The golden list of
+    // opcodes is unchanged; only the handled/ignored split moved.
+    EXPECT_EQ(ignored.size(), 2u) << "SetGroupTarget and LinkedReuse are the two comment-only arms left";
     for (const auto& [opcode, reason] : ignored) {
         EXPECT_NE(reason, nullptr) << Hex(opcode);
         EXPECT_GT(std::string(reason == nullptr ? "" : reason).size(), 10u)

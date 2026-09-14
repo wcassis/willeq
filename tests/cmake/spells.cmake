@@ -67,6 +67,20 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_spell_manager_timing DISCOVERY_TIMEOUT 120)
 
+# T469 (board B604): the server's cast interrupt as real Titanium wire bytes
+# (InterruptCast_Struct, ManaChange_Struct) through the zone dispatcher into a
+# headless EverQuest mid-cast.
+ADD_EXECUTABLE(test_spell_interrupt_wire
+    test_spell_interrupt_wire.cpp
+)
+TARGET_COMPILE_DEFINITIONS(test_spell_interrupt_wire PRIVATE
+    WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+TARGET_LINK_LIBRARIES(test_spell_interrupt_wire GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_spell_interrupt_wire PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_spell_interrupt_wire DISCOVERY_TIMEOUT 120)
+
 # T24: BuffManager coverage. BuffManager is constructible standalone from a
 # SpellDatabase* (buff_manager.h:99) with no EverQuest at all -- the
 # cleanest isolation in this batch, so this target links only the spell

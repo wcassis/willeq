@@ -451,7 +451,10 @@ TEST(SpellManagerHandlers, HandleActionClearsTargetCastTracking) {
     EXPECT_EQ(mgr->m_target_spell_id, SPELL_UNKNOWN);
 }
 
-TEST(SpellManagerHandlers, HandleInterruptOwnCastMessageType2IsFizzle) {
+// T469: handleInterrupt takes the wire's eqstr message id (the packet has no
+// spell id). SPELL_FIZZLE 173 reports a fizzle, INTERRUPT_SPELL 439 an
+// interrupt; the wire-level coverage is tests/test_spell_interrupt_wire.cpp.
+TEST(SpellManagerHandlers, HandleInterruptOwnCastFizzleMessageIsFizzle) {
     EverQuest eq = MakeEq();
     auto* mgr = eq.GetSpellManager();
     mgr->m_is_casting = true;
@@ -459,15 +462,17 @@ TEST(SpellManagerHandlers, HandleInterruptOwnCastMessageType2IsFizzle) {
     mgr->m_current_gem_slot = 0xFF;
 
     CastResult seen = CastResult::Success;
-    mgr->setOnCastComplete([&](CastResult r, uint32_t) { seen = r; });
+    uint32_t seenId = 0;
+    mgr->setOnCastComplete([&](CastResult r, uint32_t id) { seen = r; seenId = id; });
 
-    mgr->handleInterrupt(eq.GetEntityID(), 33, /*message_type=*/2);
+    mgr->handleInterrupt(eq.GetEntityID(), /*SPELL_FIZZLE*/ 173, "");
 
     EXPECT_FALSE(mgr->isCasting());
     EXPECT_EQ(seen, CastResult::Fizzle);
+    EXPECT_EQ(seenId, 33u) << "the spell id comes from our own cast, not the packet";
 }
 
-TEST(SpellManagerHandlers, HandleInterruptOwnCastOtherMessageTypeIsInterrupted) {
+TEST(SpellManagerHandlers, HandleInterruptOwnCastInterruptMessageIsInterrupted) {
     EverQuest eq = MakeEq();
     auto* mgr = eq.GetSpellManager();
     mgr->m_is_casting = true;
@@ -477,7 +482,7 @@ TEST(SpellManagerHandlers, HandleInterruptOwnCastOtherMessageTypeIsInterrupted) 
     CastResult seen = CastResult::Success;
     mgr->setOnCastComplete([&](CastResult r, uint32_t) { seen = r; });
 
-    mgr->handleInterrupt(eq.GetEntityID(), 33, /*message_type=*/1);
+    mgr->handleInterrupt(eq.GetEntityID(), /*INTERRUPT_SPELL*/ 439, "");
 
     EXPECT_EQ(seen, CastResult::Interrupted);
 }
@@ -491,18 +496,23 @@ TEST(SpellManagerHandlers, HandleInterruptOtherCasterOnlyClearsTargetTracking) {
     bool called = false;
     mgr->setOnCastComplete([&](CastResult, uint32_t) { called = true; });
 
-    mgr->handleInterrupt(/*caster_id=*/200, /*spell_id=*/88, /*message_type=*/1);
+    mgr->handleInterrupt(/*caster_id=*/200, /*INTERRUPT_SPELL_OTHER*/ 12478, "an enemy caster");
 
     EXPECT_EQ(mgr->m_target_caster_id, 0u);
     EXPECT_FALSE(called);
 }
 
-TEST(SpellManagerHandlers, HandleManaChangeDoesNotCrash) {
-    // Log-only per the implementation comment (spell_manager.cpp:1108-1114)
-    // -- mana itself is updated elsewhere in EverQuest. Smoke test only.
+TEST(SpellManagerHandlers, HandleManaChangeKeepcastingOneDoesNotEndACast) {
+    // Mana itself is updated by PlayerComponent::ZoneProcessManaChange; the
+    // spell manager only reads keepcasting (T469).
     EverQuest eq = MakeEq();
     auto* mgr = eq.GetSpellManager();
-    EXPECT_NO_THROW(mgr->handleManaChange(100, 50, 42));
+    mgr->m_is_casting = true;
+    mgr->m_waiting_for_server_confirm = true;
+    mgr->m_current_spell_id = 42;
+    mgr->m_current_gem_slot = 0xFF;
+    EXPECT_NO_THROW(mgr->handleManaChange(100, 50, 42, /*keepcasting=*/1));
+    EXPECT_TRUE(mgr->isCasting());
 }
 
 // ===================================================================
@@ -665,7 +675,7 @@ TEST(SpellManagerCastComplete, HandleInterruptFizzlePublishesSpellCastCompleteWi
     mgr->m_current_spell_id = 33;
     mgr->m_current_gem_slot = 0xFF;
 
-    mgr->handleInterrupt(eq.GetEntityID(), 33, /*message_type=*/2);
+    mgr->handleInterrupt(eq.GetEntityID(), /*SPELL_FIZZLE*/ 173, "");
 
     auto events = bridge.drainEvents();
     bool saw = false;
@@ -723,7 +733,7 @@ TEST(SpellManagerCastComplete, HandleInterruptOtherCasterDoesNotPublish) {
     mgr->m_target_spell_id = 88;
     // Not our own cast -- publishCastComplete() must not fire.
 
-    mgr->handleInterrupt(/*caster_id=*/200, /*spell_id=*/88, /*message_type=*/1);
+    mgr->handleInterrupt(/*caster_id=*/200, /*INTERRUPT_SPELL_OTHER*/ 12478, "an enemy caster");
 
     auto events = bridge.drainEvents();
     for (auto& e : events) {

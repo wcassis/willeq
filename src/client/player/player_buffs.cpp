@@ -179,7 +179,7 @@ void eqt::player::PlayerComponent::ZoneProcessManaChange(const EQ::Net::Packet &
 
 	// Notify spell manager if available
 	if (ctx_.spell_manager) {
-		ctx_.spell_manager->handleManaChange(new_mana, stamina, spell_id);
+		ctx_.spell_manager->handleManaChange(new_mana, stamina, spell_id, keepcasting);
 	}
 
 	// Also update endurance tracking (T286: PlayerState is the only store)

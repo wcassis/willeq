@@ -417,8 +417,6 @@ BOARD_REASONS.update({
         "EntityManager's query and mutation API with no production caller -- exact-name, pet-owner, range and nearest-corpse lookups, the two forEach iterators, and the HP/equipment/corpse updaters",
     "B603":
         "gameplay-manager control API with no production caller -- CombatManager's auto-loot/aggro/flee/auto-fire configuration, SpellManager's cast-by-id, gem swap and two callback setters, BuffManager's removals and ActiveBuff's formatting, the group-decline, move-speed, cursor-stack and hotbar-slot mutators, ZoneLines::checkMovement, WhoAllEntry::isLinkdead and calcBankBagSlotId",
-    "B604":
-        "SpellManager::handleInterrupt -- the handler for the server's HC_OP_InterruptCast, which zone_dispatch.cpp routes to a log line instead; a possible live defect, not confirmed against the oracle",
     "B605":
         "input, command and console API with no production caller -- CommandProcessor's default-channel/echo setters and unregister, HotkeyManager's movement-key and mode-name helpers, HotkeyBinding::toString, ConsoleRenderer's status interval and focusTextEntry",
     "B606":
@@ -1115,7 +1113,6 @@ EXEMPT_TESTS_GROUPS = {
     ("SpellManager", "swapGems"): "B603",
     ("WhoAllEntry", "isLinkdead"): "B603",
     ("ZoneLines", "checkMovement"): "B603",
-    ("SpellManager", "handleInterrupt"): "B604",
     ("(free)", "focusTextEntry"): "B605",
     ("CommandProcessor", "setDefaultChannel"): "B605",
     ("CommandProcessor", "setEchoEnabled"): "B605",

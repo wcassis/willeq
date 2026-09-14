@@ -9473,16 +9473,22 @@ B623–B629 unused.
   `ZoneLines::checkMovement`, `WhoAllEntry::isLinkdead`, the free
   `calcBankBagSlotId` -- 24 rows. Found by T458.
 
-- **B604** (A, *unconfirmed live*) **The server's cast interrupt never reaches
-  `SpellManager::handleInterrupt()`.** The handler
-  (`src/client/spell/spell_packet_handlers.cpp:208`) resets the cast state and
-  fires `m_on_cast_complete(Interrupted)`, and its only callers are
-  `tests/test_spell_manager_timing.cpp`. `src/client/zone/zone_dispatch.cpp`
-  routes `HC_OP_InterruptCast` to a log line reading "Cast interrupted - spell
-  manager handles this via other packets". Whether some other packet really
-  does clear a server-interrupted cast (the cast bar, the gem cooldown) is NOT
-  measured -- it needs a live interrupted cast against the oracle. Until then
-  the handler is either a dead duplicate or the missing route. Found by T458.
+- ~~**B604** (A, *unconfirmed live*) **The server's cast interrupt never reaches
+  `SpellManager::handleInterrupt()`.** `src/client/zone/zone_dispatch.cpp`
+  routed `HC_OP_InterruptCast` to a log line reading "Cast interrupted - spell
+  manager handles this via other packets". Found by T458.~~ **CLOSED by T469
+  (2026-09-14)** (`refactor/T469_cast_interrupt_unhandled.md`): CONFIRMED from
+  the eqemu source and a wire-byte test, not live. No other packet cleared the
+  cast: `Mob::InterruptSpell` sends the caster an 8-byte `OP_InterruptCast`
+  (no spell id) plus an `OP_ManaChange` whose `keepcasting` fable only logged,
+  so the cast stayed on, the gem stayed locked, the next cast was refused
+  client-side as `AlreadyCasting`, and `SpellManager::update()`'s duration+5 s
+  fallback finally reported it as a SUCCESS (recast started, impact burst).
+  `ZoneComponent::OnInterruptCast` now routes it to `handleInterrupt()`, and
+  `handleManaChange()` ends a not-yet-confirmed cast on `keepcasting 0` (the
+  fizzle path, which sends no InterruptCast). Pinned by
+  `tests/test_spell_interrupt_wire.cpp` (6 of 10 red before the fix). The live
+  proof is **B630**; a residual path is **B631**.
 
 - **B605** (B, unreached) **Input, command and console API with no production
   caller.** `CommandProcessor::setDefaultChannel/setEchoEnabled/
@@ -9528,3 +9534,39 @@ B623–B629 unused.
   `Strings::IsFloat`, and `EQ::ValueWithin`, which had looked live only
   through `position.cpp`'s same-named local template). `observer` is a
   class-level argument, not a per-row proof. Found by T458.
+
+## Added 2026-09-14 by T469 (the server's cast interrupt)
+
+- **B630** (A, *owed live proof*) **A real server-interrupted cast has not been
+  watched on fable.** T469 wired `HC_OP_InterruptCast` and
+  `ManaChange keepcasting 0` from the eqemu source
+  (`/mnt/projects/akk-stack/code/zone/spells.cpp` `Mob::InterruptSpell`,
+  `Mob::StopCasting`) and proved it with wire bytes
+  through `ZoneComponent::DispatchZonePacket`, with no server (T466 held the
+  lock). Owed to the next lock holder, two-client: caster starts a 3 s+ cast
+  and moves (or a GM `#interrupt`s it); assert on the CASTER that the cast bar
+  clears, the gem is castable at once (no `AlreadyCasting`, no recast), the
+  chat shows "Your spell is interrupted.", and no impact burst appears 5 s
+  later; assert on the OBSERVER, targeting the caster, that its target cast bar
+  and cast glow clear and it reads "<name>'s casting is interrupted!". Also
+  force a fizzle (a low-skill caster) and check the same caster-side
+  assertions. Record the packet order both clients receive; the test assumes
+  InterruptCast precedes ManaChange (spells.cpp queues them in that order).
+
+- **B631** (A, *unconfirmed live, rare*) **A cast the server stops AFTER BeginCast
+  with only a ManaChange is still reported as a success.**
+  `Mob::CastedSpellFinished` calls `StopCasting()` -- `OP_ManaChange`
+  `keepcasting 0`, no `OP_InterruptCast` -- when the spell or item recast timer
+  has not expired (`/mnt/projects/akk-stack/code/zone/spells.cpp`, the two
+  `SPELL_RECAST` arms). By then
+  BeginCast has confirmed the cast, and a SUCCESSFUL finish sends the same
+  bytes (`SendSpellBarEnable`), so `SpellManager::handleManaChange()`
+  deliberately ignores it (pinned by
+  `SpellInterruptWire.KeepcastingZeroAfterBeginCastIsNotAnInterrupt`). The cast
+  therefore ends only through `SpellManager::update()`'s duration+5 s
+  fallback, which calls `completeCast(true)`: gem recast started, impact burst
+  painted. The same fallback also reports as success any confirmed cast that
+  ends with no `OP_Action effect_flag 4` (a resisted spell). Confirm by
+  measuring what the official client does with a post-BeginCast
+  `keepcasting 0` (does it end the cast bar at once?) before changing the
+  rule; the path needs a client/server recast desync to reach. Found by T469.

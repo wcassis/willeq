@@ -192,11 +192,25 @@ public:
     // Spell effect/action (HC_OP_Action) - spell landing
     void handleAction(const EQT::SpellActionInfo& action);
 
-    // Cast interrupted (HC_OP_InterruptCast or damage during cast)
-    void handleInterrupt(uint16_t caster_id, uint16_t spell_id, uint8_t message_type);
+    // Cast interrupted (HC_OP_InterruptCast). T469 (board B604): the wire
+    // struct is eqemu's InterruptCast_Struct {uint32 spawnid; uint32
+    // messageid; char message[];} -- it carries NO spell id, so the spell is
+    // resolved here from our own cast (caster == us) or from the target-cast
+    // tracking (caster == the target whose BeginCast we saw). `message_id` is
+    // an eqstr id (INTERRUPT_SPELL 439 to the caster, INTERRUPT_SPELL_OTHER
+    // 12478 to bystanders, the song variants for bards); `caster_name` is the
+    // NUL-terminated name only the bystander copy carries (empty otherwise).
+    // Before T469 zone_dispatch.cpp listed the opcode as ignored and this had
+    // only test callers.
+    void handleInterrupt(uint16_t caster_id, uint32_t message_id, const std::string& caster_name);
 
-    // Mana change (HC_OP_ManaChange)
-    void handleManaChange(uint32_t new_mana, uint32_t stamina, uint32_t spell_id);
+    // Mana change (HC_OP_ManaChange). T469: `keepcasting == 0` on a cast the
+    // server has NOT yet confirmed with BeginCast is eqemu's StopCasting() --
+    // a fizzle or a refused cast, which sends no OP_InterruptCast at all --
+    // and ends the cast. After BeginCast the same bytes also follow a
+    // successful cast (CastedSpellFinished -> SendSpellBarEnable), so there it
+    // is ambiguous and deliberately ignored.
+    void handleManaChange(uint32_t new_mana, uint32_t stamina, uint32_t spell_id, uint8_t keepcasting);
 
     // ========================================================================
     // Callbacks
@@ -280,6 +294,10 @@ private:
     // ========================================================================
 
     void completeCast(bool success);
+    // T469: the server ended our own cast (OP_InterruptCast, or StopCasting's
+    // ManaChange). Cancels the cast visuals, frees the gem (eqemu starts no
+    // recast on an interrupt), publishes SpellCastComplete with `result`.
+    void endOwnCastByServer(CastResult result);
     void startGemCooldown(uint8_t gem_slot, uint32_t duration_ms);
     void publishGemChanged(uint8_t gem_slot);  // U06b: push to bridge
     // T44: push SpellCastStarted/SpellCastComplete to the bridge so

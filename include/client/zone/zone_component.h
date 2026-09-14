@@ -319,6 +319,7 @@ private:
 	void OnPreLogoutReply(const EQ::Net::Packet &p);
 	void OnMobRename(const EQ::Net::Packet &p);
 	void OnStun(const EQ::Net::Packet &p);
+	void OnInterruptCast(const EQ::Net::Packet &p);  // T469 (B604)
 	void OnMemorizeSpell(const EQ::Net::Packet &p);
 	void OnSpecialMesg(const EQ::Net::Packet &p);
 	void OnBegging(const EQ::Net::Packet &p);
