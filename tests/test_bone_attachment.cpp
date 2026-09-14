@@ -11,14 +11,13 @@
  */
 
 #include <gtest/gtest.h>
+#include <cmath>
 #include "client/graphics/eq/bone_attachment.h"
 #include "client/graphics/eq/s3d_loader.h"
 
 using EQT::Graphics::findBoneIndex;
-using EQT::Graphics::extractBoneRotation;
-using EQT::Graphics::computeWeaponGripOffset;
-using EQT::Graphics::computeShieldGripOffset;
-using EQT::Graphics::computeSecondaryItemBaseRotation;
+using EQT::Graphics::computeHeldItemTransform;
+using EQT::Graphics::BoneMat4;
 
 namespace {
 
@@ -137,152 +136,64 @@ TEST(BoneAttachmentTest, MatchesTheSameFallbackChainRealRaceCodesUse) {
     ASSERT_EQ(idx, 0);
 }
 
-// --- extractBoneRotation ---
-
-TEST(BoneAttachmentTest, ExtractBoneRotationOfIdentityIsZero) {
-    EQT::Graphics::BoneMat4 identity{};
-    // Column-major identity: diagonal 1s, rest 0.
-    identity.m[0] = 1.0f; identity.m[5] = 1.0f; identity.m[10] = 1.0f; identity.m[15] = 1.0f;
-    irr::core::vector3df rot = extractBoneRotation(identity);
-    EXPECT_NEAR(rot.X, 0.0f, 0.01f);
-    EXPECT_NEAR(rot.Y, 0.0f, 0.01f);
-    EXPECT_NEAR(rot.Z, 0.0f, 0.01f);
-}
-
-TEST(BoneAttachmentTest, ExtractBoneRotationIgnoresTranslation) {
-    // Two matrices differing only in translation (columns 12-14) must
-    // extract to the same rotation — extractBoneRotation() intentionally
-    // discards translation (see the header's comment).
-    EQT::Graphics::BoneMat4 a{};
-    a.m[0] = 1.0f; a.m[5] = 1.0f; a.m[10] = 1.0f; a.m[15] = 1.0f;
-    EQT::Graphics::BoneMat4 b = a;
-    b.m[12] = 100.0f; b.m[13] = -50.0f; b.m[14] = 25.0f;
-
-    irr::core::vector3df rotA = extractBoneRotation(a);
-    irr::core::vector3df rotB = extractBoneRotation(b);
-    EXPECT_NEAR(rotA.X, rotB.X, 0.01f);
-    EXPECT_NEAR(rotA.Y, rotB.Y, 0.01f);
-    EXPECT_NEAR(rotA.Z, rotB.Z, 0.01f);
-}
-
-// --- Weapon/shield grip offset ---
-
-TEST(BoneAttachmentTest, TwoHandedWeaponGripsAtQuarterLength) {
-    // Length along X > 3 units => two-handed formula: length * 0.25.
-    irr::core::aabbox3df bbox(irr::core::vector3df(-2.0f, 0, 0), irr::core::vector3df(3.0f, 0, 0));
-    float length = bbox.MaxEdge.X - bbox.MinEdge.X;  // 5.0
-    ASSERT_GT(length, 3.0f);
-    float offset = computeWeaponGripOffset(bbox);
-    EXPECT_NEAR(offset, length * 0.25f, 0.001f);
-}
-
-TEST(BoneAttachmentTest, OneHandedWeaponGripsNearHilt) {
-    // Length along X <= 3 units => one-handed formula: -MinEdge.X * 0.8.
-    irr::core::aabbox3df bbox(irr::core::vector3df(-1.0f, 0, 0), irr::core::vector3df(1.0f, 0, 0));
-    float length = bbox.MaxEdge.X - bbox.MinEdge.X;  // 2.0
-    ASSERT_LE(length, 3.0f);
-    float offset = computeWeaponGripOffset(bbox);
-    EXPECT_NEAR(offset, -bbox.MinEdge.X * 0.8f, 0.001f);
-}
-
-TEST(BoneAttachmentTest, TwoHandedThresholdIsExclusiveAtExactlyThreeUnits) {
-    // Exactly 3.0 units is NOT > 3.0, so it takes the one-handed branch —
-    // pins the boundary the production code uses (weaponLength > 3.0f).
-    irr::core::aabbox3df bbox(irr::core::vector3df(0.0f, 0, 0), irr::core::vector3df(3.0f, 0, 0));
-    float offset = computeWeaponGripOffset(bbox);
-    EXPECT_NEAR(offset, -bbox.MinEdge.X * 0.8f, 0.001f);
-}
-
-TEST(BoneAttachmentTest, ShieldGripOffsetIsFlatConstantIndependentOfBoundingBox) {
-    // T60 finding: production (entity_equipment.cpp) uses a flat 0.3
-    // constant for the shield grip offset, NOT a bounding-box-derived
-    // fraction (the deleted CharacterModelView and model_viewer.cpp's
-    // pre-convergence initial placement both used bbox width * 0.175 —
-    // see bone_attachment.h's comment on computeShieldGripOffset()). The
-    // shared function must match production exactly since in-world
-    // placement must not change.
-    EXPECT_FLOAT_EQ(computeShieldGripOffset(), 0.3f);
-}
-
-// --- T62: pinned against real, measured EQ equipment mesh dimensions ---
+// --- computeHeldItemTransform: T472, the one held-item transform ---
 //
-// Measured via ui_inventory_capture's "BBOX:" diagnostic lines
-// (tools/hwcaps/ui_inventory_capture.cpp) against real gequip.s3d data
-// (/mnt/projects/EverQuestP1999). These establish that EQ weapon meshes
-// use "world units" of the same scale as the character skeleton (a human
-// is roughly 7-8 units tall), and that the existing 3.0f two-handed
-// threshold correctly separates a real one-handed sword from a real
-// two-handed staff -- see refactor/T62_held_item_alignment.md's Review
-// for the full investigation (the original "huge untextured mass" report
-// turned out to be a wrong test item -- a sack model, not a weapon -- and
-// a missing texture-cache wire-up in the capture tool itself, not a grip-
-// math defect).
+// In EQ space it is B * diag(-1, 1, -1); in Irrlicht (x, z, y) it is
+// S * B * C * S. The derivation from the S3D data is on the function; these
+// pin the algebra, and tests/test_held_item_attachment.cpp pins the result
+// against real skeletons and real items.
 
-TEST(BoneAttachmentTest, RealOneHandedSwordIT1GripsNearHilt) {
-    // IT1 (gequip.s3d, "sword"): min=(-1.374,-0.091,-0.052) max=(1.373,0.478,0.096).
-    // Length 2.746 < 3.0 -- one-handed branch, matching a real sword.
-    irr::core::aabbox3df bbox(irr::core::vector3df(-1.374f, -0.091f, -0.052f),
-                               irr::core::vector3df(1.373f, 0.478f, 0.096f));
-    float length = bbox.MaxEdge.X - bbox.MinEdge.X;
-    ASSERT_LT(length, 3.0f);
-    float offset = computeWeaponGripOffset(bbox);
-    EXPECT_NEAR(offset, 1.0992f, 0.001f);  // -MinEdge.X * 0.8 = 1.374 * 0.8
+namespace {
+// EQ-space reference: S * (B * C * S*p) for an Irrlicht item-mesh point p.
+irr::core::vector3df referenceHeld(const BoneMat4& b, const irr::core::vector3df& irrPoint) {
+    const float ex = -irrPoint.X, ey = irrPoint.Z, ez = -irrPoint.Y;  // C * (S * p)
+    const float wx = b.m[0] * ex + b.m[4] * ey + b.m[8] * ez + b.m[12];
+    const float wy = b.m[1] * ex + b.m[5] * ey + b.m[9] * ez + b.m[13];
+    const float wz = b.m[2] * ex + b.m[6] * ey + b.m[10] * ez + b.m[14];
+    return irr::core::vector3df(wx, wz, wy);  // back to Irrlicht
+}
+}  // namespace
+
+TEST(BoneAttachmentTest, HeldItemAtAnIdentityBoneIsAHalfTurnAboutTheItemsY) {
+    const irr::core::matrix4 m = computeHeldItemTransform(BoneMat4::identity());
+    irr::core::vector3df eqX(1, 0, 0), eqY(0, 0, 1), eqZ(0, 1, 0);  // EQ axes, in Irrlicht coordinates
+    m.transformVect(eqX);
+    m.transformVect(eqY);
+    m.transformVect(eqZ);
+    EXPECT_NEAR(eqX.X, -1.0f, 1e-6f) << "the item's long axis must be reversed";
+    EXPECT_NEAR(eqY.Z, 1.0f, 1e-6f) << "the item's Y (a shield's painted face) must be kept";
+    EXPECT_NEAR(eqZ.Y, -1.0f, 1e-6f);
 }
 
-TEST(BoneAttachmentTest, RealTwoHandedStaffIT45GripsAtQuarterLength) {
-    // IT45 (gequip.s3d, "wizard staff"): min=(-5.823,-0.154,-0.220) max=(0.063,0.156,0.092).
-    // Length 5.887 > 3.0 -- two-handed branch, matching a real staff/polearm.
-    irr::core::aabbox3df bbox(irr::core::vector3df(-5.823f, -0.154f, -0.220f),
-                               irr::core::vector3df(0.063f, 0.156f, 0.092f));
-    float length = bbox.MaxEdge.X - bbox.MinEdge.X;
-    ASSERT_GT(length, 3.0f);
-    float offset = computeWeaponGripOffset(bbox);
-    EXPECT_NEAR(offset, 1.4715f, 0.001f);  // length * 0.25 = 5.886 * 0.25
+TEST(BoneAttachmentTest, HeldItemOriginIsTheBoneOrigin) {
+    const irr::core::matrix4 m = computeHeldItemTransform(BoneMat4::translate(1.0f, 2.0f, 3.0f));
+    const irr::core::vector3df t = m.getTranslation();
+    EXPECT_FLOAT_EQ(t.X, 1.0f);
+    EXPECT_FLOAT_EQ(t.Y, 3.0f);  // EQ z is Irrlicht Y
+    EXPECT_FLOAT_EQ(t.Z, 2.0f);
 }
 
-TEST(BoneAttachmentTest, RealShieldIT202BoundingBoxDoesNotAffectFlatOffset) {
-    // IT202 (gequip.s3d, "kiteshield-m"): min=(-1.504,-1.132,-0.241) max=(1.166,1.132,0.015).
-    // computeShieldGripOffset() ignores the bbox entirely (see the
-    // ShieldGripOffsetIsFlatConstantIndependentOfBoundingBox test above) --
-    // this test exists purely to record the real shield's measured extent
-    // (2.671 x 2.264 x 0.256) alongside that decision, so a future reader
-    // has the real numbers the A/B comparison in the plan's Review used
-    // (flat 0.3 vs bbox.X-width*0.175=0.467 -- visually near-identical for
-    // this shield, per the Review; production's flat 0.3 was kept).
-    irr::core::aabbox3df bbox(irr::core::vector3df(-1.504f, -1.132f, -0.241f),
-                               irr::core::vector3df(1.166f, 1.132f, 0.015f));
-    (void)bbox;
-    EXPECT_FLOAT_EQ(computeShieldGripOffset(), 0.3f);
-}
-
-// --- computeSecondaryItemBaseRotation: T65, the invisible-secondary-weapon fix ---
-
-TEST(BoneAttachmentTest, SecondaryItemBaseRotationIsOneEightyXAndZ) {
-    // T65: before this function existed, entity_equipment.cpp (mirrored in
-    // the paperdoll and tools/model_viewer.cpp) applied (180,0,0) for a
-    // plain secondary weapon but (180,0,180) for a shield in the same
-    // slot, believing the extra Z rotation was shield-specific. A
-    // controlled A/B (see refactor/T65_secondary_weapon_invisible.md's
-    // Review) proved that split was the root cause of a plain secondary
-    // weapon (IT5 dagger, Dark Elf female skeleton -- T63's exact live
-    // repro) rendering completely invisibly: the (180,0,0) rotation
-    // pointed the grip-offset axis into/behind the torso. Both item kinds
-    // in this slot now get the same base rotation.
-    irr::core::vector3df rot = computeSecondaryItemBaseRotation();
-    EXPECT_FLOAT_EQ(rot.X, 180.0f);
-    EXPECT_FLOAT_EQ(rot.Y, 0.0f);
-    EXPECT_FLOAT_EQ(rot.Z, 180.0f);
-}
-
-TEST(BoneAttachmentTest, SecondaryItemBaseRotationDoesNotDependOnShieldFlag) {
-    // The function takes no isShield parameter by design -- shields and
-    // plain weapons in the secondary slot are not a legitimate rotation
-    // divergence (see the comment on computeSecondaryItemBaseRotation()
-    // in bone_attachment.h). This test exists so a future edit that tries
-    // to reintroduce a conditional here has to consciously break it.
-    irr::core::vector3df rotCallOne = computeSecondaryItemBaseRotation();
-    irr::core::vector3df rotCallTwo = computeSecondaryItemBaseRotation();
-    EXPECT_FLOAT_EQ(rotCallOne.X, rotCallTwo.X);
-    EXPECT_FLOAT_EQ(rotCallOne.Y, rotCallTwo.Y);
-    EXPECT_FLOAT_EQ(rotCallOne.Z, rotCallTwo.Z);
+TEST(BoneAttachmentTest, HeldItemTransformMatchesTheEqSpaceCompositionForARotatedBone) {
+    const float n = std::sqrt(0.2f * 0.2f + 0.5f * 0.5f + 0.1f * 0.1f + 0.83f * 0.83f);
+    const BoneMat4 b = BoneMat4::translate(0.54f, -0.84f, 1.25f) *
+                       BoneMat4::fromQuaternion(0.2f / n, 0.5f / n, 0.1f / n, 0.83f / n);
+    const irr::core::matrix4 m = computeHeldItemTransform(b);
+    for (const irr::core::vector3df& p : {irr::core::vector3df(2.24f, 0.0f, 0.0f), irr::core::vector3df(0.0f, 0.3f, -0.2f),
+                                          irr::core::vector3df(-0.51f, 0.1f, 0.4f)}) {
+        irr::core::vector3df got = p;
+        m.transformVect(got);
+        const irr::core::vector3df want = referenceHeld(b, p);
+        EXPECT_NEAR(got.X, want.X, 1e-5f);
+        EXPECT_NEAR(got.Y, want.Y, 1e-5f);
+        EXPECT_NEAR(got.Z, want.Z, 1e-5f);
+    }
+    // A proper rotation (no mirror), so Irrlicht's Euler round trip holds.
+    irr::core::matrix4 r = m;
+    r.setTranslation(irr::core::vector3df(0, 0, 0));
+    const float det = r[0] * (r[5] * r[10] - r[9] * r[6]) - r[4] * (r[1] * r[10] - r[9] * r[2]) +
+                      r[8] * (r[1] * r[6] - r[5] * r[2]);
+    EXPECT_NEAR(det, 1.0f, 1e-5f);
+    irr::core::matrix4 roundTrip;
+    roundTrip.setRotationDegrees(r.getRotationDegrees());
+    for (int i = 0; i < 16; ++i) EXPECT_NEAR(roundTrip[i], r[i], 1e-3f) << "element " << i;
 }

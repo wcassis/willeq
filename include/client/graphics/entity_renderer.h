@@ -536,6 +536,12 @@ public:
 
     // Update the player entity's position (used in player mode for third-person view)
     void updatePlayerEntityPosition(float x, float y, float z, float heading);
+    // T472 (B587): make the player's node wear the RENDERER's heading (0..512,
+    // the one the camera orbits). The zone-in build and the self echo carry
+    // the self row's raw server heading; see the definition for why that
+    // turned a stationary player round. Called once per frame by
+    // FrameComponent::processFrameSimulation().
+    void syncLocalPlayerHeading(float heading512);
 
     // Set the player entity's animation (used in player mode)
     // movementSpeed is used to scale walk/run animation speed to match actual movement

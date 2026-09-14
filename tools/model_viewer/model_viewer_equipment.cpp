@@ -14,15 +14,11 @@
 // fine here — the STOP condition on unchanged behaviour applies only to
 // the in-world/production path (entity_equipment.cpp), not this tool.
 using EQT::Graphics::findBoneIndex;
-using EQT::Graphics::extractBoneRotation;
-using EQT::Graphics::computeWeaponGripOffset;
-using EQT::Graphics::computeShieldGripOffset;
+using EQT::Graphics::computeHeldItemTransform;
 
 // Stored bone indices for equipment attachment (cached after first lookup)
 int primaryBoneIndex = -1;
 int secondaryBoneIndex = -1;
-float primaryWeaponOffset = 0.0f;  // Offset to position handle at hand
-float secondaryWeaponOffset = 0.0f;  // Offset for shield/secondary weapon
 
 void updateEquipmentPositions() {
     if (!animatedNode || !useAnimatedMesh) return;
@@ -33,52 +29,18 @@ void updateEquipmentPositions() {
     const auto& boneStates = animatedNode->getAnimator().getBoneStates();
     if (boneStates.empty()) return;
 
-    // Update primary weapon position and rotation
-    if (primaryEquipNode && primaryBoneIndex >= 0 && primaryBoneIndex < static_cast<int>(boneStates.size())) {
-        const BoneMat4& worldXform = boneStates[primaryBoneIndex].worldTransform;
-        float px = worldXform.m[12];
-        float py = worldXform.m[13];
-        float pz = worldXform.m[14];
-
-        // Extract and apply bone rotation, then add weapon's base rotation
-        core::vector3df boneRot = extractBoneRotation(worldXform);
-        core::vector3df weaponRot = boneRot + core::vector3df(180, 0, 0);
-        primaryEquipNode->setRotation(weaponRot);
-
-        // Apply offset along the weapon's local X axis (blade direction)
-        // Transform offset by the weapon's rotation to get world-space offset
-        core::matrix4 rotMat;
-        rotMat.setRotationDegrees(weaponRot);
-        core::vector3df localOffset(primaryWeaponOffset, 0, 0);  // Offset along blade
-        rotMat.rotateVect(localOffset);
-
-        // Convert EQ(x,y,z) to Irrlicht(x,z,y) and apply rotated offset
-        primaryEquipNode->setPosition(core::vector3df(px + localOffset.X, pz + localOffset.Y, py + localOffset.Z));
-    }
-
-    // Update secondary weapon/shield position and rotation
-    if (secondaryEquipNode && secondaryBoneIndex >= 0 && secondaryBoneIndex < static_cast<int>(boneStates.size())) {
-        const BoneMat4& worldXform = boneStates[secondaryBoneIndex].worldTransform;
-        float px = worldXform.m[12];
-        float py = worldXform.m[13];
-        float pz = worldXform.m[14];
-
-        // Extract and apply bone rotation, then add the secondary-slot base
-        // rotation (T65: shields and plain weapons use the same one -- see
-        // bone_attachment.h's computeSecondaryItemBaseRotation()).
-        core::vector3df boneRot = extractBoneRotation(worldXform);
-        core::vector3df shieldRot = boneRot + computeSecondaryItemBaseRotation();
-        secondaryEquipNode->setRotation(shieldRot);
-
-        // Apply offset along local X axis
-        core::matrix4 rotMat;
-        rotMat.setRotationDegrees(shieldRot);
-        core::vector3df localOffset(secondaryWeaponOffset, 0, 0);
-        rotMat.rotateVect(localOffset);
-
-        // Convert EQ(x,y,z) to Irrlicht(x,z,y) and apply rotated offset
-        secondaryEquipNode->setPosition(core::vector3df(px + localOffset.X, pz + localOffset.Y, py + localOffset.Z));
-    }
+    // T472 (B588): the one held-item transform (bone_attachment.h), the same
+    // one the in-world path and the paperdoll use, for both hands.
+    auto place = [&](scene::IMeshSceneNode* node, int boneIndex) {
+        if (!node || boneIndex < 0 || boneIndex >= static_cast<int>(boneStates.size())) return;
+        core::matrix4 held = computeHeldItemTransform(boneStates[boneIndex].worldTransform);
+        const core::vector3df position = held.getTranslation();
+        held.setTranslation(core::vector3df(0.0f, 0.0f, 0.0f));
+        node->setRotation(held.getRotationDegrees());
+        node->setPosition(position);
+    };
+    place(primaryEquipNode, primaryBoneIndex);
+    place(secondaryEquipNode, secondaryBoneIndex);
 }
 
 // Attach equipment models (weapons/shields) to the current entity
@@ -91,14 +53,12 @@ void attachEquipmentModels(uint32_t primaryItemId, uint32_t secondaryItemId) {
         primaryEquipNode = nullptr;
     }
     primaryBoneIndex = -1;
-    primaryWeaponOffset = 0.0f;
 
     if (secondaryEquipNode) {
         secondaryEquipNode->remove();
         secondaryEquipNode = nullptr;
     }
     secondaryBoneIndex = -1;
-    secondaryWeaponOffset = 0.0f;
 
     std::cout << "  Checking equipmentModelLoader..." << std::flush;
     if (!equipmentModelLoader || !equipmentModelLoader->isLoaded()) {
@@ -192,8 +152,8 @@ void attachEquipmentModels(uint32_t primaryItemId, uint32_t secondaryItemId) {
             if (primaryEquipNode) {
                 // Default position/rotation - offset to right side of character
                 core::vector3df pos(2.0f, 1.5f, 0.0f);  // Local offset in character space
-                // Rotate 180° around X to point outward and face edge inward
-                core::vector3df rot(180, 0, 0);
+                // T472: oriented per frame by updateEquipmentPositions().
+                core::vector3df rot(0, 0, 0);
 
                 // Try to find right hand bone (various naming conventions)
                 if (skeleton && boneStates && !boneStates->empty()) {
@@ -226,20 +186,6 @@ void attachEquipmentModels(uint32_t primaryItemId, uint32_t secondaryItemId) {
                     }
                 }
 
-                // Offset along blade (local X axis) so handle grip is at hand.
-                // T60: converged onto the same grip-offset formula
-                // entity_equipment.cpp uses per-frame in production (was a
-                // flat weaponLength*0.35 here before convergence — a
-                // debug-tool-only change, not the in-world path).
-                core::aabbox3df bbox = equipMesh->getBoundingBox();
-                primaryWeaponOffset = computeWeaponGripOffset(bbox);
-
-                // Apply rotated offset to initial position
-                core::matrix4 rotMat;
-                rotMat.setRotationDegrees(rot);
-                core::vector3df localOffset(primaryWeaponOffset, 0, 0);
-                rotMat.rotateVect(localOffset);
-                pos += localOffset;
 
                 primaryEquipNode->setPosition(pos);
                 primaryEquipNode->setScale(core::vector3df(equipScale, equipScale, equipScale));
@@ -296,10 +242,8 @@ void attachEquipmentModels(uint32_t primaryItemId, uint32_t secondaryItemId) {
             if (secondaryEquipNode) {
                 // Default position/rotation - offset to left side of character
                 core::vector3df pos(-2.0f, 1.5f, 0.0f);  // Local offset in character space
-                // T65: shields and plain weapons in this slot use the same
-                // base rotation -- see bone_attachment.h's
-                // computeSecondaryItemBaseRotation().
-                core::vector3df rot = computeSecondaryItemBaseRotation();
+                // T472: oriented per frame by updateEquipmentPositions().
+                core::vector3df rot(0, 0, 0);
 
                 // Try to find left hand bone (various naming conventions)
                 // Bone names: qcmshield_point (lowercase, no underscore between race and "shield")
@@ -318,19 +262,6 @@ void attachEquipmentModels(uint32_t primaryItemId, uint32_t secondaryItemId) {
                     }
                 }
 
-                // Offset shield down (along local X axis after rotation).
-                // T60: converged onto entity_equipment.cpp's production
-                // flat-constant shield offset (was shieldHeight*0.175 here
-                // before convergence — debug-tool-only change).
-                if (isShield) {
-                    secondaryWeaponOffset = computeShieldGripOffset();
-
-                    core::matrix4 rotMat;
-                    rotMat.setRotationDegrees(rot);
-                    core::vector3df localOffset(secondaryWeaponOffset, 0, 0);
-                    rotMat.rotateVect(localOffset);
-                    pos += localOffset;
-                }
 
                 secondaryEquipNode->setPosition(pos);
                 secondaryEquipNode->setScale(core::vector3df(equipScale, equipScale, equipScale));

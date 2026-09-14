@@ -1,5 +1,5 @@
 /*
- * Shared skeleton-bone lookup + weapon/shield attachment math.
+ * Shared skeleton-bone lookup + held-item attachment math.
  *
  * T60: before this file, three copies of this logic existed —
  * `entity_equipment.cpp` (production, in-world 3rd-person rendering),
@@ -10,17 +10,16 @@
  * viewer did not reliably predict production behaviour (see
  * refactor/T60_paperdoll_restore.md).
  *
- * This header is the ONE shared implementation, extracted verbatim from
- * `entity_equipment.cpp` (the production/in-world copy) to guarantee
- * `EntityRenderer::updateEquipmentTransforms()` — the code path that
- * determines in-world weapon placement — is behaviour-identical before
- * and after convergence. `entity_equipment.cpp`, `tools/model_viewer.cpp`,
- * and the restored `CharacterModelView` all consume this header; none of
- * them may keep a local copy of `findBoneIndex`/`extractBoneRotation`/the
- * grip-offset formula.
+ * This header is the ONE shared implementation. `entity_equipment.cpp`,
+ * `tools/model_viewer/model_viewer_equipment.cpp` and `CharacterModelView`
+ * all consume it; none of them may keep a local copy of `findBoneIndex` or of
+ * the held-item transform.
  *
- * Fixing the held-item misalignment itself is explicitly out of scope for
- * T60 — this header preserves the existing (known-imperfect) heuristic.
+ * T472 (board B588) replaced T60's "known-imperfect heuristic" -- a
+ * per-slot Euler offset added to an Euler angle extracted from the bone, plus
+ * a bounding-box grip offset -- with computeHeldItemTransform(), derived from
+ * the S3D data. extractBoneRotation(), computeWeaponGripOffset(),
+ * computeShieldGripOffset() and computeSecondaryItemBaseRotation() are gone.
  */
 #pragma once
 
@@ -35,20 +34,6 @@
 
 namespace EQT {
 namespace Graphics {
-
-// Extract a Euler rotation (degrees) from a bone's world transform, for
-// orienting attached equipment. Swaps Y/Z axes for EQ->Irrlicht coordinate
-// conversion; translation is intentionally discarded (callers compute
-// position separately). Verbatim from entity_equipment.cpp.
-inline irr::core::vector3df extractBoneRotation(const BoneMat4& m) {
-    irr::core::matrix4 irrMat;
-    irrMat[0] = m.m[0];   irrMat[1] = m.m[2];   irrMat[2] = m.m[1];   irrMat[3] = 0;
-    irrMat[4] = m.m[8];   irrMat[5] = m.m[10];  irrMat[6] = m.m[9];   irrMat[7] = 0;
-    irrMat[8] = m.m[4];   irrMat[9] = m.m[6];   irrMat[10] = m.m[5];  irrMat[11] = 0;
-    irrMat[12] = 0;       irrMat[13] = 0;       irrMat[14] = 0;       irrMat[15] = 1;
-
-    return irrMat.getRotationDegrees();
-}
 
 // Search a skeleton for a bone matching raceCode + one of `suffixes`, over a
 // fallback chain of naming-convention variants (case, `_DAG` suffix).
@@ -96,57 +81,58 @@ inline int findBoneIndex(const std::shared_ptr<CharacterSkeleton>& skeleton,
     return -1;
 }
 
-// Grip/attachment offset along a weapon or shield mesh's local X axis
-// (blade/handle direction), derived from its bounding box. Two-handed
-// weapons (length > 3 units) grip at ~1/4 from center; one-handed weapons
-// grip near the hilt (80% toward the MinEdge end). Verbatim formula from
-// entity_equipment.cpp's primary/secondary weapon branches.
-inline float computeWeaponGripOffset(const irr::core::aabbox3df& bbox) {
-    float length = bbox.MaxEdge.X - bbox.MinEdge.X;
-    bool isTwoHanded = (length > 3.0f);
-    return isTwoHanded ? length * 0.25f : -bbox.MinEdge.X * 0.8f;
-}
-
-// Shield grip offset. entity_equipment.cpp (production) uses a flat
-// constant here, NOT a bbox-derived fraction — this is a documented
-// divergence found while converging the three historical copies (T60):
-// the deleted CharacterModelView and tools/model_viewer.cpp's *initial*
-// placement both used `bbox width * 0.175`, but entity_equipment.cpp's
-// per-frame update (the code path that actually determines in-world
-// placement, since it runs every frame after the initial placement) uses
-// a flat 0.3. The flat constant is kept here — behaviour-preservation for
-// in-world entities is mandatory, so production's actual formula wins.
-inline float computeShieldGripOffset() {
-    return 0.3f;
-}
-
-// Base rotation offset (Euler degrees, applied on top of the bone's own
-// world rotation via extractBoneRotation()) for an item attached at the
-// secondary/off-hand slot (L_POINT or SHIELD_POINT).
+// T472 (board B588) -- THE ONE TRANSFORM FOR AN ITEM HELD AT A POINT BONE
+// (R_POINT, L_POINT, SHIELD_POINT), for every item and every slot.
 //
-// T65: before this function existed, `entity_equipment.cpp` (mirrored in
-// the paperdoll and `tools/model_viewer.cpp`) applied (180, 0, 180) for
-// shields but only (180, 0, 0) for a plain secondary weapon -- the extra
-// Z rotation was believed shield-specific. That split was the root cause
-// of a defect where an equipped, mesh-built, texture-loaded, bone-resolved
-// plain secondary weapon rendered nothing: the missing Z rotation pointed
-// the grip-offset axis (computeWeaponGripOffset()'s return value, applied
-// along local +X) into/behind the torso instead of outward, hiding it
-// behind body geometry rather than actually placing it off-model.
+// Returns the matrix that takes a vertex of an equipment mesh -- Irrlicht
+// coordinates, as EquipmentModelLoader::buildMeshFromGeometry() writes them,
+// with the item's mesh centre already added (equipment_actor_geometry.cpp) --
+// into the entity's MODEL frame (Irrlicht, before the scene node's own
+// transform). Rotation and translation; no scale.
 //
-// Confirmed via a controlled A/B, not assumed: forcing the shield's
-// (180, 0, 180) rotation onto a plain secondary weapon (IT5 dagger, Dark
-// Elf female skeleton -- the exact item/race T63's live session used and
-// found invisible) made the weapon visible, gripped correctly, in the
-// same run where the original (180, 0, 0) rotation produced nothing. See
-// refactor/T65_secondary_weapon_invisible.md's Review for the before/after
-// capture pair. The (isShield ? 180 : 0) split is removed: both item
-// kinds in this slot need the same base rotation, they were never a
-// legitimate divergence. Primary weapons (R_POINT, `(180, 0, 0)`) are a
-// separate bone/slot and are NOT changed by this function -- they were
-// already rendering correctly and this fix must not move them.
-inline irr::core::vector3df computeSecondaryItemBaseRotation() {
-    return irr::core::vector3df(180.0f, 0.0f, 180.0f);
+// In EQ coordinates it is  B * C,  where B is the bone's world transform and
+//   C = diag(-1, 1, -1)   -- a half turn about the ITEM's Y axis.
+// The item's origin lands exactly on the bone: once the centre is added, an
+// item's origin IS its grip (IT1, a sword: pommel at x -0.51, crossguard at
+// +0.29), so there is no grip offset to guess.
+//
+// WHY C, measured from the data (T472 Review, tests/test_held_item_attachment.cpp):
+//   - Human male idle ("o01"): R_POINT's X axis is (0.28, 0.03, 0.96) in EQ
+//     space -- UP the forearm -- and its Y axis (0.07, 1.00, 0.01) points to
+//     the character's left; L_POINT's are the same to within 0.15; and
+//     SHIELD_POINT's Y axis points AWAY from the chest.
+//   - An item's long axis is its +X (IT1's blade runs pommel -0.51 -> tip
+//     2.24; IT48's lantern body, after its own rest DAG, the same way). With C
+//     = identity -- which is what the pre-T472 (180, 0, 0) amounted to, since a
+//     half turn about X leaves X alone -- the blade stands UP out of the fist,
+//     exactly T466's frame. X must be negated.
+//   - Every shield's painted face (IT200-IT203: qguard-front, kiteshield-m,
+//     shield round-metal, shield round-wood; their backs are the *back.bmp
+//     textures) faces the item's +Y, by winding AND by vertex normals. For the
+//     painted face to point away from the body, Y must be KEPT.
+//   A proper rotation negating X and keeping Y is exactly C.
+//
+// Converting to Irrlicht (x, z, y) on both sides gives S * B * C * S, laid out
+// below column by column (Irrlicht matrix4 is column-major like BoneMat4:
+// transformVect's X = M[0]*x + M[4]*y + M[8]*z + M[12]).
+inline irr::core::matrix4 computeHeldItemTransform(const BoneMat4& bone) {
+    // Columns of B * C in EQ space: C negates B's X and Z columns.
+    const float cx[3] = {-bone.m[0], -bone.m[1], -bone.m[2]};
+    const float cy[3] = {bone.m[4], bone.m[5], bone.m[6]};
+    const float cz[3] = {-bone.m[8], -bone.m[9], -bone.m[10]};
+
+    irr::core::matrix4 m;
+    // Irrlicht input x = EQ x -> EQ column X, rows swapped y<->z.
+    m[0] = cx[0];  m[1] = cx[2];  m[2] = cx[1];  m[3] = 0.0f;
+    // Irrlicht input y = EQ z -> EQ column Z.
+    m[4] = cz[0];  m[5] = cz[2];  m[6] = cz[1];  m[7] = 0.0f;
+    // Irrlicht input z = EQ y -> EQ column Y.
+    m[8] = cy[0];  m[9] = cy[2];  m[10] = cy[1]; m[11] = 0.0f;
+    m[12] = bone.m[12];
+    m[13] = bone.m[14];
+    m[14] = bone.m[13];
+    m[15] = 1.0f;
+    return m;
 }
 
 // T301 Leg C -- THE PLAYER'S OWN NODE DRAWS ITS BODY IN A DIFFERENT FRAME

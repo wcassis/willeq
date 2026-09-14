@@ -144,6 +144,7 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/variant_loading_preload.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/geometry_combiner.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/equipment_model_loader.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/equipment_actor_geometry.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/equipment_textures.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/animation_mapping.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/skeletal_animator.cpp

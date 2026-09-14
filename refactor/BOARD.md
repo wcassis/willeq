@@ -9864,6 +9864,8 @@ Evidence for every entry below is in `review/T466/` (README names each file).
   list at zone-in showed **thirteen** `a_training_dummy000..013` spawns at
   (428, -74, 3.0) in the client frame (ids 185-200), stacked on one point.
   Found by T466.
+  T472 Leg A (2026-09-14) changed nothing here: offline only; the attack
+  captures are T472 Leg B's.
 
 - **B587** (A, *unconfirmed*) **At the camera that reproduces the official Chase
   view, fable draws the player model facing the camera.** fable session
@@ -9879,6 +9881,24 @@ Evidence for every entry below is in `review/T466/` (README names each file).
   asymmetry is load-bearing (players and NPCs have different default rotations):
   do not "fix" this from one frame -- confirm with a two-client capture where
   the official client observes fable's character. Found by T466.
+  **NARROWED by T472 Leg A (2026-09-14): the cause is found, fixed and pinned
+  offline; the live proof is owed (T472 Leg B).** It was neither the camera nor
+  the load-bearing 90-degree offset. The player's node had TWO heading writers:
+  `EntityRenderer::updatePlayerEntityPosition()` passes the renderer's heading
+  (`90 - server`, the flip in `ZoneProcessPlayerProfile`), but only when the
+  player moves or turns; the zone-in build and the self echo in
+  `ZoneProcessClientUpdate` carry the self row's RAW server heading. T466's
+  Testchar never moved, so he wore the player bake (+90) over an unflipped
+  heading -- 135 degrees wrong at server heading 160, which reproduces all three
+  of T466's frames (az 0 face, az 90 back, az 270 chest). Measured offline: the
+  player path at `90 - s` and the NPC path at `s` draw identical hands, and the
+  azimuth-0 rig then sees the BACK. Fix: `EntityRenderer::syncLocalPlayerHeading()`,
+  called by `FrameComponent::processFrameSimulation()` after the update flush and
+  before equipment placement; no conversion site and no camera code changed.
+  Pinned by `HeldItemTest.StationaryPlayerIsDrawnAtTheRendererHeading` and
+  `HeldItemFrameOrder.PlayerHeadingIsSyncedAfterUpdatesAndBeforeEquipment`.
+  Owed: the oracle Chase capture of a stationary fable character (and the
+  two-client observation the heading note asks for).
 
 - **B588** (A, *unconfirmed*) **Held items in the hand: the sword's blade points
   the opposite way and the lantern is not drawn.** Idle, set A, same sheet as
@@ -9958,3 +9978,59 @@ Evidence for every entry below is in `review/T466/` (README names each file).
   `KEY_KP7` -> `KEY_NUMPAD7` regardless of NumLock and is unaffected, and the
   Insert/Delete/Alt+arrow/Alt+PageUp alternates work on both. From code, not
   run: T471 had no display. Outside T471's territory. Found by T471.
+
+---
+
+  **NARROWED by T472 Leg A (2026-09-14): both halves fixed and pinned offline
+  against the S3D data; the oracle comparison is owed (T472 Leg B).**
+  (1) LANTERN: IT48's actor is hierarchical (`IT48_ACTORDEF` -> 0x11 ->
+  `IT48_HS_DEF` -> `LANTERN01_DAG` -> `LANTERN01_DMSPRITEDEF`) and
+  `EquipmentModelLoader` indexed a mesh only by the name `IT48_*`, so the model
+  was never indexed and every attach path skipped it (the T466 run logs
+  `Skipping equipment model ref: ... equipment 48 (secondary)`). The census over
+  the seventeen `*equip*.s3d` archives found 19 such actors (IT2, IT46-IT48, IT62,
+  IT97, IT140-IT142, IT146, IT148-IT151, IT154, IT160, IT410, IT411, IT10402).
+  Fix: `resolveEquipmentActorGeometry()` (new `equipment_actor_geometry.cpp`) walks
+  the reference chain, adds each mesh's centre and bakes rest DAG transforms; the
+  name rule stays as the fallback. (2) BLADE: at idle R_POINT's X axis points UP
+  the forearm and an item's long axis is its +X, so the pre-T472 `(180,0,0)` --
+  a half turn about X, which leaves X alone -- stood the blade up. Shields'
+  painted faces (IT200-IT203) are item +Y and SHIELD_POINT's +Y points away from
+  the body, so Y must be kept: the correction is a half turn about the item's Y
+  (`computeHeldItemTransform()`), with the item origin (its grip, once the centre
+  is added) on the bone -- the bounding-box grip offset and T65's `(180,0,180)`
+  are gone. Pinned by `tests/test_held_item_attachment.cpp` and
+  `FirstPersonWeaponAttachmentTest.ThirdPersonIdleBladeHangsBelowTheGrip`.
+  Offline blade proof used IT1 (a one-handed sword); the Short Sword's own IT
+  number was not available offline. Owed: set A/B/C oracle-vs-fable captures.
+
+## Added 2026-09-14 by T472 (held items and model facing, Leg A)
+
+- **B660** (A, *unconfirmed*) **A hierarchical item whose skeleton does not name
+  its meshes per bone still falls back to the name rule, WITHOUT its rest DAG
+  transforms.** `resolveEquipmentActorGeometry()` walks 0x14 -> 0x2D and 0x14 ->
+  0x11 -> 0x10 bone `modelRef`s. T472's census: 1,149 IT actors, 1,041 matched by
+  name, 773 resolved by the chain, 19 by the chain only (now indexed), 89 by
+  neither. So up to ~287 actors are drawn from the name rule alone, pieces
+  un-posed relative to each other -- e.g. `IT61_HS_DEF` (flags 0x202, 7 bones),
+  whose 0x10 carries the 0x200 mesh list `WldLoader` does not keep per bone.
+  Confirm by rendering IT61 and one other multi-bone item. Found by T472.
+
+- **B661** (A, *unconfirmed*) **Not every item's long axis is its +X.** IT10
+  spans z -3.35..0.25 about its origin (centre z -1.64) and only x -0.04..0.07,
+  so under the one held-item transform it lies along R_POINT's Z (horizontal at
+  idle), where IT1's blade hangs down. Whether the official client holds IT10
+  that way is unmeasured; before T472 every item was forced along X by the grip
+  heuristic, which was wrong in a different way. Confirm with an oracle capture
+  of an IT10 item (T472 Leg B, set B/C). Found by T472.
+
+- **B662** (P) **There is no scripted offline capture of an IN-WORLD entity with
+  held items.** `tools/model_viewer` is interactive only (F12 writes
+  `model_viewer.png` in the working directory) and has its own attach copy;
+  `tools/hwcaps/ui_inventory_capture` renders the paperdoll (`CharacterModelView`),
+  which shares `computeHeldItemTransform()` with `EntityRenderer` but not its
+  player bake or the scene the camera sees. T472's before/after pair is the
+  paperdoll. Found by T472.
+
+B663–B669 unused.
+

@@ -578,6 +578,9 @@ public:
     const std::map<std::string, WldObjectDef>& getObjectDefs() const { return objectDefs_; }
     const std::map<uint32_t, WldModelRef>& getModelRefs() const { return modelRefs_; }
     const std::map<uint32_t, std::shared_ptr<SkeletonTrack>>& getSkeletonTracks() const { return skeletonTracks_; }
+    // Fragment 0x11 (skeleton track REFERENCE) index -> the 0x10 track it names.
+    // An actor (0x14) whose model is hierarchical names the 0x11, not the 0x10.
+    const std::map<uint32_t, uint32_t>& getSkeletonRefs() const { return skeletonRefs_; }
     const std::map<uint32_t, std::shared_ptr<BoneOrientation>>& getBoneOrientations() const { return boneOrientations_; }
     bool hasCharacterData() const { return !skeletonTracks_.empty(); }
     const std::vector<std::shared_ptr<ZoneLight>>& getLights() const { return lights_; }

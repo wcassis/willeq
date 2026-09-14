@@ -257,6 +257,45 @@ TEST_F(FirstPersonWeaponAttachmentTest, HeldWeaponIsHeadingInvariantInTheCameraF
     EXPECT_LT(std::fabs(ref.right), 2.5f) << "the weapon is out beside the player, not in his hand";
 }
 
+// T472 (board B588): the same player, the same attachment, third person and
+// IDLE. The official client hangs a one-handed blade DOWN from the fist (T466's
+// set A); fable stood it up. The attack-frame canary above keeps the
+// first-person draw rule honest; this keeps the idle orientation honest, and
+// both run over the one production placement (updateMainThreadEntityState).
+TEST_F(FirstPersonWeaponAttachmentTest, ThirdPersonIdleBladeHangsBelowTheGrip) {
+    constexpr uint16_t kSpawn = 1;
+    for (float headingDeg : {0.0f, 135.0f, 270.0f}) {
+        EQT::Graphics::EntityAppearance appearance;
+        appearance.equipment[7] = 1;  // IT1, a one-handed sword
+        entities_->clearEntities();
+        ASSERT_TRUE(entities_->createEntity(kSpawn, /*race=*/1, "Testchar", 100.0f, 200.0f, 3.0f, headingDeg,
+                                            /*isPlayer=*/true, /*gender=*/0, appearance, /*isNPC=*/false));
+        entities_->setPlayerSpawnId(kSpawn);
+        entities_->setPlayerEntityAnimation("o01", true);
+        auto* node = findPlayerNode();
+        ASSERT_NE(node, nullptr);
+        node->OnAnimate(200);
+        entities_->updateMainThreadEntityState(0.016f);
+        auto* equip = dynamic_cast<irr::scene::IMeshSceneNode*>(findEquipChild(node));
+        ASSERT_NE(equip, nullptr) << "IT1 did not attach";
+        node->updateAbsolutePosition();
+        equip->updateAbsolutePosition();
+        const irr::core::matrix4& abs = equip->getAbsoluteTransformation();
+        const irr::core::vector3df grip = abs.getTranslation();
+        // The tip is the mesh vertex farthest from the item's origin (its grip).
+        irr::core::vector3df tipLocal;
+        irr::scene::IMesh* mesh = equip->getMesh();
+        for (irr::u32 b = 0; mesh && b < mesh->getMeshBufferCount(); ++b) {
+            irr::scene::IMeshBuffer* buf = mesh->getMeshBuffer(b);
+            for (irr::u32 i = 0; i < buf->getVertexCount(); ++i)
+                if (buf->getPosition(i).getLengthSQ() > tipLocal.getLengthSQ()) tipLocal = buf->getPosition(i);
+        }
+        irr::core::vector3df tip = tipLocal;
+        abs.transformVect(tip);
+        EXPECT_LT(tip.Y, grip.Y - 1.5f) << "heading " << headingDeg << ": the blade stands up out of the fist";
+    }
+}
+
 }  // namespace
 #endif  // EQT_HAS_GRAPHICS
 

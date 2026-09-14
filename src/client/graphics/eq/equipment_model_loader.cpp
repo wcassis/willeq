@@ -1,4 +1,5 @@
 #include "client/graphics/eq/equipment_model_loader.h"
+#include "client/graphics/eq/equipment_actor_geometry.h"
 #include "client/willeq_database.h"
 #include "client/graphics/eq/pfs.h"
 #include "client/graphics/eq/wld_loader.h"
@@ -286,39 +287,17 @@ bool EquipmentModelLoader::loadEquipmentArchive(const std::string& archivePath) 
                 continue;
             }
 
-            // Discover texture names used by this model's geometries
-            std::string prefix = "IT" + std::to_string(modelId);
-            std::vector<std::string> modelTexNames;
-            bool hasGeometry = false;
-
-            for (const auto& geom : geometries) {
-                if (geom && !geom->name.empty()) {
-                    std::string geomName = geom->name;
-                    std::transform(geomName.begin(), geomName.end(), geomName.begin(),
-                                  [](unsigned char c) { return std::toupper(c); });
-                    if (geomName.find(prefix + "_") == 0 || geomName.find(prefix + "_") != std::string::npos) {
-                        hasGeometry = true;
-                        for (const auto& texName : geom->textureNames()) {
-                            bool found = false;
-                            for (const auto& existing : modelTexNames) {
-                                if (existing == texName) { found = true; break; }
-                            }
-                            if (!found) {
-                                modelTexNames.push_back(texName);
-                            }
-                        }
-                    }
-                }
-            }
-
-            if (!hasGeometry) {
+            // T472 (B588): what the actor DRAWS, through its reference chain --
+            // a hierarchical item such as IT48 has no mesh named IT48_*.
+            auto resolved = resolveEquipmentActorGeometry(wldLoader, actorName);
+            if (!resolved) {
                 continue;
             }
 
             LOG_DEBUG(MOD_GRAPHICS, "EquipmentModelLoader: Indexing model IT{} from actor {}",
                     modelId, actorName);
 
-            equipmentModelIndex_[modelId] = {archivePath, wldName, actorName, modelTexNames};
+            equipmentModelIndex_[modelId] = {archivePath, wldName, actorName, resolved->textureNames()};
             modelCount++;
         }
     }
@@ -357,29 +336,14 @@ bool EquipmentModelLoader::loadEquipmentModelOnDemand(int modelId) {
         return false;
     }
 
-    const auto& geometries = wldLoader.getGeometries();
-
-    // Find geometries for this model
-    std::string prefix = "IT" + std::to_string(modelId);
-    std::vector<std::shared_ptr<ZoneGeometry>> actorGeometries;
-
-    for (const auto& geom : geometries) {
-        if (geom && !geom->name.empty()) {
-            std::string geomName = geom->name;
-            std::transform(geomName.begin(), geomName.end(), geomName.begin(),
-                          [](unsigned char c) { return std::toupper(c); });
-            if (geomName.find(prefix + "_") == 0 || geomName.find(prefix + "_") != std::string::npos) {
-                actorGeometries.push_back(geom);
-            }
-        }
-    }
-
-    if (actorGeometries.empty()) {
+    // T472 (B588): the actor's own reference chain, with each mesh's centre
+    // and any rest DAG transform baked in (equipment_actor_geometry.cpp).
+    std::shared_ptr<ZoneGeometry> combinedGeom = resolveEquipmentActorGeometry(wldLoader, ref.actorName);
+    if (!combinedGeom) {
         LOG_WARN(MOD_GRAPHICS, "EquipmentModelLoader: No geometry found for model IT{}", modelId);
         return false;
     }
 
-    // Build equipment model data (same as old loadEquipmentArchive logic, for one model)
     auto equipModel = std::make_shared<EquipmentModelData>();
     equipModel->modelName = "IT" + std::to_string(modelId);
     equipModel->modelId = modelId;
@@ -389,40 +353,9 @@ bool EquipmentModelLoader::loadEquipmentModelOnDemand(int modelId) {
         ? ref.archivePath.substr(lastSlash + 1) : ref.archivePath;
     equipModel->sourceWld = ref.wldName;
 
-    auto combinedGeom = std::make_shared<ZoneGeometry>();
     combinedGeom->name = equipModel->modelName;
-
-    for (const auto& geom : actorGeometries) {
-        size_t vertexOffset = combinedGeom->vertices.size();
-
-        if (!geom->name.empty()) {
-            equipModel->geometryName += (equipModel->geometryName.empty() ? "" : ", ") + geom->name;
-        }
-
-        for (const auto& v : geom->vertices) {
-            combinedGeom->vertices.push_back(v);
-        }
-
-        for (const auto& tri : geom->triangles) {
-            Triangle newTri = tri;
-            newTri.v1 += static_cast<uint32_t>(vertexOffset);
-            newTri.v2 += static_cast<uint32_t>(vertexOffset);
-            newTri.v3 += static_cast<uint32_t>(vertexOffset);
-            combinedGeom->triangles.push_back(newTri);
-        }
-
-        for (const auto& texName : geom->textureNames()) {
-            bool found = false;
-            for (const auto& existing : combinedGeom->mutableMaterialData().textureNames) {
-                if (existing == texName) { found = true; break; }
-            }
-            if (!found) {
-                combinedGeom->mutableMaterialData().textureNames.push_back(texName);
-                equipModel->textureNames.push_back(texName);
-            }
-        }
-    }
-
+    equipModel->geometryName = ref.actorName;
+    equipModel->textureNames = combinedGeom->textureNames();
     equipModel->geometry = combinedGeom;
 
     // Load textures on demand
@@ -866,40 +799,18 @@ bool EquipmentModelLoader::indexEquipmentArchive(
         }
 
         const auto& objectDefs = wldLoader.getObjectDefs();
-        const auto& geometries = wldLoader.getGeometries();
 
         for (const auto& [actorName, objDef] : objectDefs) {
+            (void)objDef;
             int modelId = parseModelIdFromActorName(actorName);
             if (modelId < 0) continue;
             if (outModelIndex.find(modelId) != outModelIndex.end()) continue;
 
-            std::string prefix = "IT" + std::to_string(modelId);
-            std::vector<std::string> modelTexNames;
-            bool hasGeometry = false;
+            // T472 (B588): resolved through the actor's reference chain.
+            auto resolved = resolveEquipmentActorGeometry(wldLoader, actorName);
+            if (!resolved) continue;
 
-            for (const auto& geom : geometries) {
-                if (geom && !geom->name.empty()) {
-                    std::string geomName = geom->name;
-                    std::transform(geomName.begin(), geomName.end(), geomName.begin(),
-                                  [](unsigned char c) { return std::toupper(c); });
-                    if (geomName.find(prefix + "_") == 0 || geomName.find(prefix + "_") != std::string::npos) {
-                        hasGeometry = true;
-                        for (const auto& texName : geom->textureNames()) {
-                            bool found = false;
-                            for (const auto& existing : modelTexNames) {
-                                if (existing == texName) { found = true; break; }
-                            }
-                            if (!found) {
-                                modelTexNames.push_back(texName);
-                            }
-                        }
-                    }
-                }
-            }
-
-            if (!hasGeometry) continue;
-
-            outModelIndex[modelId] = {archivePath, wldName, actorName, modelTexNames};
+            outModelIndex[modelId] = {archivePath, wldName, actorName, resolved->textureNames()};
             modelCount++;
         }
     }
@@ -1004,29 +915,14 @@ std::shared_ptr<EquipmentModelData> EquipmentModelLoader::extractEquipmentModelO
         return nullptr;
     }
 
-    const auto& geometries = wldLoader.getGeometries();
-
-    // Find geometries for this model
-    std::string prefix = "IT" + std::to_string(modelId);
-    std::vector<std::shared_ptr<ZoneGeometry>> actorGeometries;
-
-    for (const auto& geom : geometries) {
-        if (geom && !geom->name.empty()) {
-            std::string geomName = geom->name;
-            std::transform(geomName.begin(), geomName.end(), geomName.begin(),
-                          [](unsigned char c) { return std::toupper(c); });
-            if (geomName.find(prefix + "_") == 0 || geomName.find(prefix + "_") != std::string::npos) {
-                actorGeometries.push_back(geom);
-            }
-        }
-    }
-
-    if (actorGeometries.empty()) {
+    // T472 (B588): the actor's own reference chain, with each mesh's centre
+    // and any rest DAG transform baked in (equipment_actor_geometry.cpp).
+    std::shared_ptr<ZoneGeometry> combinedGeom = resolveEquipmentActorGeometry(wldLoader, ref.actorName);
+    if (!combinedGeom) {
         LOG_WARN(MOD_GRAPHICS, "extractEquipmentModelOffThread: No geometry for IT{}", modelId);
         return nullptr;
     }
 
-    // Build equipment model data
     auto equipModel = std::make_shared<EquipmentModelData>();
     equipModel->modelName = "IT" + std::to_string(modelId);
     equipModel->modelId = modelId;
@@ -1036,40 +932,9 @@ std::shared_ptr<EquipmentModelData> EquipmentModelLoader::extractEquipmentModelO
         ? ref.archivePath.substr(lastSlash + 1) : ref.archivePath;
     equipModel->sourceWld = ref.wldName;
 
-    auto combinedGeom = std::make_shared<ZoneGeometry>();
     combinedGeom->name = equipModel->modelName;
-
-    for (const auto& geom : actorGeometries) {
-        size_t vertexOffset = combinedGeom->vertices.size();
-
-        if (!geom->name.empty()) {
-            equipModel->geometryName += (equipModel->geometryName.empty() ? "" : ", ") + geom->name;
-        }
-
-        for (const auto& v : geom->vertices) {
-            combinedGeom->vertices.push_back(v);
-        }
-
-        for (const auto& tri : geom->triangles) {
-            Triangle newTri = tri;
-            newTri.v1 += static_cast<uint32_t>(vertexOffset);
-            newTri.v2 += static_cast<uint32_t>(vertexOffset);
-            newTri.v3 += static_cast<uint32_t>(vertexOffset);
-            combinedGeom->triangles.push_back(newTri);
-        }
-
-        for (const auto& texName : geom->textureNames()) {
-            bool found = false;
-            for (const auto& existing : combinedGeom->mutableMaterialData().textureNames) {
-                if (existing == texName) { found = true; break; }
-            }
-            if (!found) {
-                combinedGeom->mutableMaterialData().textureNames.push_back(texName);
-                equipModel->textureNames.push_back(texName);
-            }
-        }
-    }
-
+    equipModel->geometryName = ref.actorName;
+    equipModel->textureNames = combinedGeom->textureNames();
     equipModel->geometry = combinedGeom;
 
     // Extract raw textures from archive (thread-safe — own archive handle)

@@ -180,8 +180,6 @@ private:
     // Cached bone indices and weapon offsets (for efficient updates)
     int primaryBoneIndex_ = -1;
     int secondaryBoneIndex_ = -1;
-    float primaryWeaponOffset_ = 0.0f;
-    float secondaryWeaponOffset_ = 0.0f;
     bool secondaryIsShield_ = false;
 
     // Current character state

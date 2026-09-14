@@ -79,6 +79,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_first_person_weapon_attachment DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# T472: held items (the lantern's index, the one attach transform) and the
+# stationary player's facing -- geometric pins against the real S3D data.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_held_item_attachment test_held_item_attachment.cpp)
+    TARGET_INCLUDE_DIRECTORIES(test_held_item_attachment PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_held_item_attachment GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_held_item_attachment PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db"
+        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+    GTEST_DISCOVER_TESTS(test_held_item_attachment DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T301 Leg D: the UI-hide toggle, from the paths a user or a capture script
 # reaches (/hideui and the F11 hotkey), plus source pins on the two single-site
 # steps that need a GL device to execute.

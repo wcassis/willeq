@@ -499,6 +499,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/animation_mapping.cpp
         src/client/graphics/eq/equipment_textures.cpp
         src/client/graphics/eq/equipment_model_loader.cpp
+        src/client/graphics/eq/equipment_actor_geometry.cpp
         src/client/graphics/eq/geometry_combiner.cpp
         src/client/graphics/eq/race_model_loader.cpp
         src/client/graphics/eq/model_loading.cpp
@@ -972,6 +973,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         src/client/graphics/eq/animation_mapping.cpp
         src/client/graphics/eq/equipment_textures.cpp
         src/client/graphics/eq/equipment_model_loader.cpp
+        src/client/graphics/eq/equipment_actor_geometry.cpp
         src/client/graphics/eq/geometry_combiner.cpp
         src/client/graphics/eq/race_model_loader.cpp
         src/client/graphics/eq/model_loading.cpp

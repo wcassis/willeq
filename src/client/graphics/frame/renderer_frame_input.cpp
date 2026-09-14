@@ -883,6 +883,10 @@ void FrameComponent::processFrameSimulation(float deltaTime) {
         // (position/velocity math was already drained for the worker in postSimulationInput)
         ctx_.entityRenderer->flushPendingUpdatesForAnimations();
 
+        // T472 (B587): the player's node wears the renderer's heading, not the
+        // self row's raw server heading that a flushed echo may just have set.
+        ctx_.entityRenderer->syncLocalPlayerHeading(ctx_.playerHeading);
+
         // Main-thread entity state: corpse fading, equipment transforms, animation timing
         ctx_.entityRenderer->updateMainThreadEntityState(deltaTime);
 

@@ -368,7 +368,7 @@ bool runPaperdollCaptures(const std::string& outputDir, const std::string& eqPat
             // T62: print the raw mesh bounding boxes for the test weapon
             // and shield BEFORE any scale/attachment logic touches them --
             // these are the ground-truth EQ-mesh-space dimensions
-            // bone_attachment.h's computeWeaponGripOffset()'s "length > 3.0f"
+            // the (T472-deleted) bone_attachment.h grip heuristic's "length > 3.0f"
             // two-handed threshold is implicitly assumed to compare
             // against.
             auto printBBox = [](const char* label, irr::scene::IMesh* mesh) {
@@ -455,12 +455,27 @@ bool runPaperdollCaptures(const std::string& outputDir, const std::string& eqPat
 
             // T62: a two-handed weapon (bbox length > the 3.0f threshold
             // in bone_attachment.h), primary slot only -- exercises
-            // computeWeaponGripOffset()'s two-handed branch specifically,
+            // the (T472-deleted) grip heuristic's two-handed branch specifically,
             // which none of the other captures reach.
             EntityAppearance twoHandedAppearance{};
             twoHandedAppearance.equipment[7] = kTestTwoHandedItemId;  // Primary slot
             doll.setCharacter(kRaceHuman, kGenderMale, twoHandedAppearance);
             ok &= captureDoll(outputDir + "/inventory_paperdoll_two_handed.png", /*timeIt=*/false);
+
+            // T472 (boards B587/B588): T466's set A -- a one-handed sword in
+            // the primary hand and the Gloomingdeep Lantern (IT48, a
+            // hierarchical actor) in the secondary -- plus the kite shield
+            // alone, captured identically before and after T472's fix.
+            constexpr uint32_t kT472LanternModelId = 48;  // IT48: Gloomingdeep Lantern
+            EntityAppearance t472SwordLantern{};
+            t472SwordLantern.equipment[7] = kTestPrimaryItemId;
+            t472SwordLantern.equipment[8] = kT472LanternModelId;
+            doll.setCharacter(kRaceHuman, kGenderMale, t472SwordLantern);
+            ok &= captureDoll(outputDir + "/inventory_paperdoll_t472_sword_it1_lantern_it48.png", /*timeIt=*/false);
+            EntityAppearance t472Lantern{};
+            t472Lantern.equipment[8] = kT472LanternModelId;
+            doll.setCharacter(kRaceHuman, kGenderMale, t472Lantern);
+            ok &= captureDoll(outputDir + "/inventory_paperdoll_t472_lantern_it48_only.png", /*timeIt=*/false);
 
             // Fully equipped: both weapon and shield attached (bone-
             // attachment path exercised — this is the instrument the plan

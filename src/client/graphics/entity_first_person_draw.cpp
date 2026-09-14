@@ -254,6 +254,28 @@ void EntityRenderer::setPlayerEntityAnimation(const std::string& animCode, bool 
     }
 }
 
+// T472 (board B587): the player's node had TWO heading writers, and they did
+// not agree. updatePlayerEntityPosition() (above) passes the renderer's own
+// heading -- 90 - server, ZoneProcessPlayerProfile's load-bearing flip -- but
+// only when the player moves, turns or rides a lift. The node is BUILT from the
+// self spawn row at zone-in, and ZoneProcessClientUpdate's self echo re-sends
+// that row, and both carry the RAW server heading (by design: the self row is
+// not flipped, see refactor/BOARD.md T404's note). So a player who had not
+// moved since zone-in wore the player bake (+90) over an unflipped heading --
+// 135 degrees wrong at T466's pose (server 160) -- and the camera behind him
+// showed his face. No conversion site changes here: the renderer's heading is
+// simply made the only one the player's node wears.
+void EntityRenderer::syncLocalPlayerHeading(float heading512) {
+    if (playerSpawnId_ == 0) return;
+    auto it = entities_.find(playerSpawnId_);
+    if (it == entities_.end() || !it->second.sceneNode) return;
+    const float headingDegrees = heading512 * 360.0f / 512.0f;
+    const float nodeYaw = -headingDegrees;  // processUpdate()'s own EQ -> Irrlicht step
+    if (std::abs(it->second.sceneNode->getRotation().Y - nodeYaw) < 0.001f) return;
+    it->second.sceneNode->setRotation(irr::core::vector3df(0.0f, nodeYaw, 0.0f));
+    it->second.lastHeading = headingDegrees;
+}
+
 void EntityRenderer::setPlayerSpawnId(uint16_t spawnId) {
     // Store the player spawn ID for filtering
     playerSpawnId_ = spawnId;

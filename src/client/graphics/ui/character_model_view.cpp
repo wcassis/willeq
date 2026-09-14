@@ -456,11 +456,7 @@ void CharacterModelView::update(float deltaTimeMs) {
 // converge (T60) on the shared implementation in bone_attachment.h — see
 // that header's comment. The deleted original of this file carried its own
 // copy (explicitly the third of three — see the plan); it is not restored.
-using EQT::Graphics::extractBoneRotation;
 using EQT::Graphics::findBoneIndex;
-using EQT::Graphics::computeWeaponGripOffset;
-using EQT::Graphics::computeShieldGripOffset;
-using EQT::Graphics::computeSecondaryItemBaseRotation;
 
 void CharacterModelView::attachWeapons() {
     if (!characterNode_ || !equipmentModelLoader_) {
@@ -492,7 +488,6 @@ void CharacterModelView::attachWeapons() {
             primaryWeaponNode_ = nullptr;
         }
         primaryBoneIndex_ = -1;
-        primaryWeaponOffset_ = 0.0f;
 
         irr::scene::IMesh* primaryMesh = equipmentModelLoader_->getEquipmentMesh(primaryId);
         if (primaryMesh) {
@@ -514,19 +509,15 @@ void CharacterModelView::attachWeapons() {
                     primaryWeaponNode_->setPosition(irr::core::vector3df(2.0f, 5.0f, 0.0f));
                 }
 
-                // Grip offset — same formula entity_equipment.cpp uses per frame
-                primaryWeaponOffset_ = computeWeaponGripOffset(primaryMesh->getBoundingBox());
-
-                // Set initial position and rotation
-                irr::core::vector3df rot(180, 0, 0);
-                primaryWeaponNode_->setRotation(rot);
+                // T472: placed by updateWeaponTransforms() through
+                // computeHeldItemTransform() -- no grip offset, no Euler base.
 
                 for (irr::u32 i = 0; i < primaryWeaponNode_->getMaterialCount(); ++i) {
                     primaryWeaponNode_->getMaterial(i).Lighting = false;
                     primaryWeaponNode_->getMaterial(i).BackfaceCulling = false;
                 }
-                LOG_DEBUG(MOD_UI, "CharacterModelView: Attached primary weapon {} (bone={} offset={:.2f})",
-                          primaryId, primaryBoneIndex_, primaryWeaponOffset_);
+                LOG_DEBUG(MOD_UI, "CharacterModelView: Attached primary weapon {} (bone={})",
+                          primaryId, primaryBoneIndex_);
             }
         }
     }
@@ -539,14 +530,17 @@ void CharacterModelView::attachWeapons() {
             secondaryWeaponNode_ = nullptr;
         }
         secondaryBoneIndex_ = -1;
-        secondaryWeaponOffset_ = 0.0f;
 
         irr::scene::IMesh* secondaryMesh = equipmentModelLoader_->getEquipmentMesh(secondaryId);
         if (secondaryMesh) {
             secondaryWeaponNode_ = modelSmgr_->addMeshSceneNode(secondaryMesh, characterNode_);
             if (secondaryWeaponNode_) {
                 currentSecondaryId_ = secondaryId;
-                secondaryIsShield_ = EQT::Graphics::EquipmentModelLoader::isShield(static_cast<int>(secondaryId));
+                // A player's appearance carries a database item id; ask the
+                // shield question of the MODEL id (entity_equipment.cpp does too).
+                int secondaryModel = equipmentModelLoader_->getModelIdForItem(secondaryId);
+                if (secondaryModel < 0) secondaryModel = static_cast<int>(secondaryId);
+                secondaryIsShield_ = EQT::Graphics::EquipmentModelLoader::isShield(secondaryModel);
                 secondaryWeaponNode_->setScale(irr::core::vector3df(1.0f, 1.0f, 1.0f));
 
                 // Find left hand or shield bone (same fallback chain entity_equipment.cpp uses)
@@ -566,27 +560,17 @@ void CharacterModelView::attachWeapons() {
                     secondaryWeaponNode_->setPosition(irr::core::vector3df(-2.0f, 5.0f, 0.0f));
                 }
 
-                // Grip offset — same formulas entity_equipment.cpp uses per frame
-                secondaryWeaponOffset_ = secondaryIsShield_
-                    ? computeShieldGripOffset()
-                    : computeWeaponGripOffset(secondaryMesh->getBoundingBox());
-
-                // Set initial position and rotation
-                // T65: same base rotation for shields AND plain weapons in
-                // this slot -- see computeSecondaryItemBaseRotation()'s
-                // comment for why the previous isShield-conditional split
-                // was the root cause of the invisible-secondary-weapon
-                // defect.
-                irr::core::vector3df rot = computeSecondaryItemBaseRotation();
-                secondaryWeaponNode_->setRotation(rot);
+                // T472: placed by updateWeaponTransforms() through
+                // computeHeldItemTransform() -- one transform for shields and
+                // plain items alike (T65's split is gone with the Euler base).
 
                 for (irr::u32 i = 0; i < secondaryWeaponNode_->getMaterialCount(); ++i) {
                     secondaryWeaponNode_->getMaterial(i).Lighting = false;
                     secondaryWeaponNode_->getMaterial(i).BackfaceCulling = false;
                 }
-                LOG_DEBUG(MOD_UI, "CharacterModelView: Attached secondary {} {} (bone={} offset={:.2f})",
+                LOG_DEBUG(MOD_UI, "CharacterModelView: Attached secondary {} {} (bone={})",
                           secondaryIsShield_ ? "shield" : "weapon", secondaryId,
-                          secondaryBoneIndex_, secondaryWeaponOffset_);
+                          secondaryBoneIndex_);
             }
         }
     }
@@ -604,58 +588,19 @@ void CharacterModelView::updateWeaponTransforms() {
     const auto& boneStates = animator.getBoneStates();
     if (boneStates.empty()) return;
 
-    // Update primary weapon (right hand - R_POINT)
-    if (primaryWeaponNode_ && primaryBoneIndex_ >= 0 &&
-        primaryBoneIndex_ < static_cast<int>(boneStates.size())) {
-        const EQT::Graphics::BoneMat4& worldTransform = boneStates[primaryBoneIndex_].worldTransform;
-
-        // Extract position from matrix (column 3)
-        float px = worldTransform.m[12];
-        float py = worldTransform.m[13];
-        float pz = worldTransform.m[14];
-
-        // Extract rotation from matrix and add weapon's base rotation
-        irr::core::vector3df boneRot = extractBoneRotation(worldTransform);
-        irr::core::vector3df weaponRot = boneRot + irr::core::vector3df(180, 0, 0);
-        primaryWeaponNode_->setRotation(weaponRot);
-
-        // Apply offset along weapon's local X axis (blade direction)
-        irr::core::matrix4 rotMat;
-        rotMat.setRotationDegrees(weaponRot);
-        irr::core::vector3df localOffset(primaryWeaponOffset_, 0, 0);
-        rotMat.rotateVect(localOffset);
-
-        // Convert EQ(x,y,z) to Irrlicht(x,z,y) and apply rotated offset
-        primaryWeaponNode_->setPosition(irr::core::vector3df(
-            px + localOffset.X, pz + localOffset.Y, py + localOffset.Z));
-    }
-
-    // Update secondary weapon/shield (left hand - L_POINT or SHIELD_POINT)
-    if (secondaryWeaponNode_ && secondaryBoneIndex_ >= 0 &&
-        secondaryBoneIndex_ < static_cast<int>(boneStates.size())) {
-        const EQT::Graphics::BoneMat4& worldTransform = boneStates[secondaryBoneIndex_].worldTransform;
-
-        float px = worldTransform.m[12];
-        float py = worldTransform.m[13];
-        float pz = worldTransform.m[14];
-
-        // Extract rotation from matrix and add item's base rotation. T65:
-        // same base rotation for shields and plain weapons -- see
-        // computeSecondaryItemBaseRotation().
-        irr::core::vector3df boneRot = extractBoneRotation(worldTransform);
-        irr::core::vector3df itemRot = boneRot + computeSecondaryItemBaseRotation();
-        secondaryWeaponNode_->setRotation(itemRot);
-
-        // Apply offset along local X axis
-        irr::core::matrix4 rotMat;
-        rotMat.setRotationDegrees(itemRot);
-        irr::core::vector3df localOffset(secondaryWeaponOffset_, 0, 0);
-        rotMat.rotateVect(localOffset);
-
-        // Convert EQ(x,y,z) to Irrlicht(x,z,y) and apply rotated offset
-        secondaryWeaponNode_->setPosition(irr::core::vector3df(
-            px + localOffset.X, pz + localOffset.Y, py + localOffset.Z));
-    }
+    // T472 (B588): the one held-item transform (bone_attachment.h) for both
+    // hands. The doll's node is not a player node (no heading bake), so the
+    // result is set directly, as for any NPC's equipment.
+    auto place = [&](irr::scene::IMeshSceneNode* node, int boneIndex) {
+        if (!node || boneIndex < 0 || boneIndex >= static_cast<int>(boneStates.size())) return;
+        irr::core::matrix4 held = EQT::Graphics::computeHeldItemTransform(boneStates[boneIndex].worldTransform);
+        const irr::core::vector3df position = held.getTranslation();
+        held.setTranslation(irr::core::vector3df(0.0f, 0.0f, 0.0f));
+        node->setRotation(held.getRotationDegrees());
+        node->setPosition(position);
+    };
+    place(primaryWeaponNode_, primaryBoneIndex_);
+    place(secondaryWeaponNode_, secondaryBoneIndex_);
 }
 
 void CharacterModelView::renderToTexture() {
