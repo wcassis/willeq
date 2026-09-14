@@ -12,7 +12,6 @@
 #include <algorithm>
 #include <cstring>
 #include <fstream>
-#include <fmt/format.h>
 
 namespace EQT {
 namespace Graphics {

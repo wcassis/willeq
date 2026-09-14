@@ -1,5 +1,6 @@
 #include "client/graphics/eqe1_loader.h"
 #include "client/graphics/eqe1_format.h"
+#include "scoped_temp_dir.h"
 
 #include <cassert>
 #include <cstdio>
@@ -163,9 +164,13 @@ void testInvalidFile() {
     // Nonexistent
     ASSERT_TRUE(!loader.open("/nonexistent/path.eqe1"), "should fail on nonexistent");
 
+    // T477 (B571): this process's own directory, not a fixed /tmp name.
+    const willeq_test::ScopedTempDir tmp("test_eqe1_loader_invalid");
+
     // Wrong magic — create a temp file with bad header
     {
-        const char* tmpPath = "/tmp/test_bad_magic.eqe1";
+        const std::string tmpPathStr = (tmp / "test_bad_magic.eqe1").string();
+        const char* tmpPath = tmpPathStr.c_str();
         std::ofstream out(tmpPath, std::ios::binary);
         uint32_t badMagic = 0xDEADBEEF;
         out.write(reinterpret_cast<const char*>(&badMagic), 4);
@@ -177,7 +182,8 @@ void testInvalidFile() {
 
     // Truncated — just 4 bytes
     {
-        const char* tmpPath = "/tmp/test_truncated.eqe1";
+        const std::string tmpPathStr = (tmp / "test_truncated.eqe1").string();
+        const char* tmpPath = tmpPathStr.c_str();
         std::ofstream out(tmpPath, std::ios::binary);
         out.write("EQE1", 4);
         out.close();
@@ -228,13 +234,16 @@ void testGetTextureNames() {
     PASS();
 }
 
-// P03: v2 pack round-trip -- build a minimal synthetic v2 file in /tmp with
+// P03: v2 pack round-trip -- build a minimal synthetic v2 file (T477: in a
+// ScopedTempDir of this process's own) with
 // one RGB565 entry, one RGBA4444 entry (hasAlpha=1, NO companion), and one
 // v1-style ETC1 entry, then verify the loader dispatches payloadFormat
 // correctly and accepts the version-2 header.
 void testV2PayloadFormats() {
     TEST(V2PayloadFormats);
-    const char* tmpPath = "/tmp/test_v2_pack.eqe1";
+    const willeq_test::ScopedTempDir tmp("test_eqe1_loader_v2");
+    const std::string tmpPathStr = (tmp / "test_v2_pack.eqe1").string();
+    const char* tmpPath = tmpPathStr.c_str();
 
     auto makeEntry = [](const char* name, uint16_t w, uint16_t h,
                         uint8_t mips, uint8_t hasAlpha, uint8_t entryType,

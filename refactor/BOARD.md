@@ -9376,7 +9376,21 @@ Evidence for every entry is under `review/T462/` (README there).
   before T399 the client opened the bare relative `data/willeq.db`, which
   cannot exist in ctest's working directory, so that line printed on every run.
 
-- **B571** (P, *latent*) **Seventeen fixed `/tmp` names are shared by every
+- ~~**B571**~~ **CLOSED by T477.** All seventeen names below, plus twenty
+  more sites spelled as bare `"/tmp/..."` literals that this entry's
+  `temp_directory_path` census could not see (three in `test_eqe1_loader.cpp`,
+  fourteen in `test_constrained_renderer.cpp`, one in `test_pcap_step_through.cpp`,
+  and the pack fixtures of `test_eqe1_alpha_companion_mip.cpp` /
+  `test_alpha_blend_companion.cpp`), now live in a per-process directory:
+  `willeq_test::ScopedTempDir` (`tests/scoped_temp_dir.h`, `mkdtemp()`,
+  removed with its scope). The pcap step-through log keeps a `getpid()`
+  suffix instead, because reading it afterwards is that case's purpose.
+  `TmpPathCensus` (`tests/test_tmp_path_census.cpp`) re-takes the census on
+  every ctest run over every C++ source in `tests/` and fails on a temp path
+  whose statement carries no `getpid`, `mkdtemp`/`XXXXXX` or `ScopedTempDir`;
+  five waivers, each with a reason, cover paths that never touch the
+  filesystem. Original entry:
+  **Seventeen fixed `/tmp` names are shared by every
   worktree slot that runs the suite.** `/tmp` is the host's local disk, one
   directory for slot1..3, t1, t2 and `main`, and each of these tests removes
   and rewrites a name with no pid or test-name in it, so two slots running
@@ -9648,7 +9662,17 @@ B672–B679 unused.
 
 ## Added 2026-09-14 by T475 (texture-arrival path deleted)
 
-- **B690** (B, hygiene) **Leftovers of the deleted texture-upload path that no
+- ~~**B690**~~ **CLOSED by T477.** All three remnants are deleted:
+  `AssetType::ZoneTexture` (value 1 is now a documented gap; the other values
+  are explicit, so no key moved), the `gpu_upload_thread.h` /
+  `work_priority.h` include block in all four `constrained_texture_cache*.cpp`
+  TUs, and the fmt format header in `texture_atlas.cpp`. The enumerator was not
+  positionally significant: `WorkPriorityKey` is compared in-process only,
+  never persisted, serialised, table-indexed or decoded (the one `>> 20` in
+  `src/` is `door_manager_mesh.cpp`'s colour hash). The cascade stopped at
+  once: nothing became dead with them. Two neighbours were NOT made dead by
+  T475 and are boarded instead: **B710** and **B711**. Original entry:
+  **Leftovers of the deleted texture-upload path that no
   net can see.** T475 deleted every function and field of the async
   texture-arrival path (B670); three non-function, non-field remnants are left:
   - `AssetType::ZoneTexture` (`include/client/graphics/work_priority.h`) has no
@@ -9668,6 +9692,38 @@ B672–B679 unused.
   - Found by T475.
 
 B691–B699 unused.
+
+---
+
+## Added 2026-09-14 by T477 (upload leftovers, shared /tmp names)
+
+- **B710** (B, hygiene) **Four renderer headers include `work_priority.h` and
+  do not use it; three of them include `gpu_upload_thread.h` and do not use it
+  either.** `include/client/graphics/renderer_types.h`,
+  `renderer_draw_types.h` and `renderer_event_receiver.h` include both and name
+  no symbol from either; `irrlicht_renderer.h` includes `work_priority.h` and
+  names nothing from it (its `gpu_upload_thread.h` include is live:
+  `gpuUploadThread_`, `pendingGPUResults_`). Not a one-line delete:
+  `renderer_zone_draw.cpp` and `renderer_zone_stream.cpp` use `WorkPriorityKey`
+  and `AssetType` only through these transitive includes (only
+  `entity_prep_worker.cpp` includes `work_priority.h` directly), so each needs
+  a direct include first, and with four headers carrying the same include a
+  compile proves nothing until all four are gone. Left out of T477 on scope:
+  B690 named only the cache TUs, and these are hot shared headers. Found by
+  T477 (census: grep for each header name and each symbol over `src/`,
+  `include/`, `tests/`, `tools/`, `benchmarks/`).
+- **B711** (B, unreached) **Three more `AssetType` enumerators have no
+  production user.** `Door`, `EntityTexture` and `LightEffect`
+  (`include/client/graphics/work_priority.h`) are named only by
+  `tests/test_work_priority.cpp`. The live ones are `ZoneMesh`
+  (`renderer_zone_draw.cpp`, `renderer_zone_stream.cpp`), `EntityMesh`
+  (`entity_prep_worker.cpp`) and `Icon` (`renderer_zone_stream.cpp`). None of
+  the three was ever a T475 producer, so they are not part of B690's cascade;
+  deleting them means rewriting `WorkPriorityKey.BitLayout`, which is written
+  around `Door` = 2. Grepped over `src/ include/ tools/ benchmarks/ docker/
+  scripts/ docs/`. Found by T477.
+
+B712–B719 unused.
 
 ---
 

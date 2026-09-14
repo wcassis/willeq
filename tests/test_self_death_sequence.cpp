@@ -57,6 +57,7 @@
 #include "client/packet_sender.h"
 #include "common/net/daybreak_connection.h"
 #include "fake_udp_transport.h"
+#include "scoped_temp_dir.h"
 #include "zone_stream_test_utils.h"
 
 #include <algorithm>
@@ -657,8 +658,8 @@ TEST(SelfDeathSequence, T311Capture_OutboundSequenceMatchesTheOracle) {
 // appearance the client ever sent, which also degrades the Batch R replay
 // oracle (it replays what the recorder saw).
 TEST(SelfDeathSequence, RecordedSession_ContainsTheSpawnAppearance) {
-    const fs::path log = fs::temp_directory_path() /
-                         "t360_spawn_appearance_recorded.sleq";
+    const willeq_test::ScopedTempDir tmp("t360_spawn_appearance");  // T477 (B571)
+    const fs::path log = tmp / "t360_spawn_appearance_recorded.sleq";
     fs::remove(log);
 
     {
@@ -706,7 +707,8 @@ TEST(SelfDeathSequence, RecordedSession_MatchesTheOracleSequence) {
     auto expected = ReadGolden();
     ASSERT_EQ(expected.size(), 3u);
 
-    const fs::path log = fs::temp_directory_path() / "t360_death_burst_recorded.sleq";
+    const willeq_test::ScopedTempDir tmp("t360_death_burst");  // T477 (B571)
+    const fs::path log = tmp / "t360_death_burst_recorded.sleq";
     fs::remove(log);
 
     {

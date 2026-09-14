@@ -29,8 +29,11 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <vector>
+
+#include "scoped_temp_dir.h"
 
 namespace fs = std::filesystem;
 
@@ -144,6 +147,7 @@ protected:
     std::string binPath_;
     std::string eqPath_;
     std::string outDir_;
+    std::unique_ptr<willeq_test::ScopedTempDir> outTmp_;  // T477 (B571)
 
     void SetUp() override {
 #ifndef GLES2_ZONE_BENCHMARK_BIN
@@ -163,8 +167,8 @@ protected:
                          << "' (set EQ_CLIENT_PATH or symlink data/eq_client)";
             return;
         }
-        outDir_ = (fs::temp_directory_path() / "p47_entity_viewer_regression").string();
-        fs::create_directories(outDir_, ec);
+        outTmp_ = std::make_unique<willeq_test::ScopedTempDir>("p47_entity_viewer_regression");
+        outDir_ = outTmp_->path().string();
 #endif
     }
 };

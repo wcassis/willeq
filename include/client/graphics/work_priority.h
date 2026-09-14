@@ -11,10 +11,13 @@ namespace EQT {
 namespace Graphics {
 
 // Asset type enum — determines priority within the same PVS depth.
-// Lower numeric value = higher priority.
+// Lower numeric value = higher priority. The values are explicit and the key
+// is compared only in-process (never persisted, serialised or decoded), so a
+// removed enumerator leaves a gap rather than renumbering its successors.
+// T477 (board B690): value 1 was ZoneTexture, whose only producers were the
+// async texture-arrival path T475 deleted.
 enum class AssetType : uint8_t {
     ZoneMesh      = 0,  // Highest priority within depth
-    ZoneTexture   = 1,
     Door          = 2,
     EntityMesh    = 3,
     EntityTexture = 4,

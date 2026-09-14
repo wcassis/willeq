@@ -34,6 +34,7 @@
 #include <gtest/gtest.h>
 
 #include "client/graphics/eqe1_texture_index.h"
+#include "scoped_temp_dir.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -151,8 +152,8 @@ TEST(Eqe1CompositeOpen, SingleRaceCompositeRunOpensOnePack) {
         GTEST_SKIP() << "EQ client files not found at '" << eqPath
                      << "' (set EQ_CLIENT_PATH or symlink data/eq_client)";
 
-    const std::string outDir = (fs::temp_directory_path() / "t284_composite_open").string();
-    fs::create_directories(outDir, ec);
+    const willeq_test::ScopedTempDir outTmp("t284_composite_open");  // T477 (B571)
+    const std::string outDir = outTmp.path().string();
 
     std::string cmd = "\"" + bin + "\" --zone befallen --eq-path \"" + eqPath +
         "\" --entity-viewer --entity-viewer-race 1 --entity-viewer-race-label HUM"

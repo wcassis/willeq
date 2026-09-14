@@ -41,6 +41,7 @@
 #include "common/net/session_log.h"
 #include "common/net/session_recorder.h"
 #include "fake_udp_transport.h"
+#include "scoped_temp_dir.h"
 #include "zone_stream_test_utils.h"
 
 #include <cstdint>
@@ -245,7 +246,8 @@ TEST(ClickSendersPacketSender, OrderedCaptureSeam_SeesTheDoorAndObjectClicks) {
 // Pre-fix this is ZERO: a .sleq was a false negative for every door and
 // world-object click, exactly as it was for appearances before T360.
 TEST(ClickSendersPacketSender, RecordedSession_ContainsTheDoorAndObjectClicks) {
-    const fs::path log = fs::temp_directory_path() / "t376_clicks_recorded.sleq";
+    const willeq_test::ScopedTempDir tmp("t376_clicks");  // T477: per-process (B571)
+    const fs::path log = tmp / "t376_clicks_recorded.sleq";
     fs::remove(log);
 
     {

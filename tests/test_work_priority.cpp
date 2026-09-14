@@ -27,15 +27,13 @@ TEST(WorkPriorityKey, DepthDominatesAssetType) {
 
 TEST(WorkPriorityKey, SameDepthAssetTypeOrdering) {
     auto zoneMesh = WorkPriorityKey::make(0, AssetType::ZoneMesh);
-    auto zoneTex  = WorkPriorityKey::make(0, AssetType::ZoneTexture);
     auto door     = WorkPriorityKey::make(0, AssetType::Door);
     auto entMesh  = WorkPriorityKey::make(0, AssetType::EntityMesh);
     auto entTex   = WorkPriorityKey::make(0, AssetType::EntityTexture);
     auto light    = WorkPriorityKey::make(0, AssetType::LightEffect);
     auto icon     = WorkPriorityKey::make(0, AssetType::Icon);
 
-    EXPECT_LT(zoneMesh.value, zoneTex.value);
-    EXPECT_LT(zoneTex.value, door.value);
+    EXPECT_LT(zoneMesh.value, door.value);
     EXPECT_LT(door.value, entMesh.value);
     EXPECT_LT(entMesh.value, entTex.value);
     EXPECT_LT(entTex.value, light.value);

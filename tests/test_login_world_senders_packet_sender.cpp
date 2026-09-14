@@ -43,6 +43,7 @@
 #include "common/net/session_log.h"
 #include "common/net/session_recorder.h"
 #include "fake_udp_transport.h"
+#include "scoped_temp_dir.h"
 #include "zone_stream_test_utils.h"
 
 #include <cstdint>
@@ -261,7 +262,8 @@ TEST(LoginWorldSendersPacketSender, OrderedCaptureSeam_SeesTheLoginAndWorldHands
 // ---------------------------------------------------------------------
 
 TEST(LoginWorldSendersPacketSender, RecordedSession_ContainsTheClientLoginHandshake) {
-    const fs::path log = fs::temp_directory_path() / "t379_login_recorded.sleq";
+    const willeq_test::ScopedTempDir tmp("t379_login");  // T477 (B571)
+    const fs::path log = tmp / "t379_login_recorded.sleq";
     fs::remove(log);
 
     {
@@ -299,7 +301,8 @@ TEST(LoginWorldSendersPacketSender, RecordedSession_ContainsTheClientLoginHandsh
 }
 
 TEST(LoginWorldSendersPacketSender, RecordedSession_ContainsTheClientWorldHandshake) {
-    const fs::path log = fs::temp_directory_path() / "t379_world_recorded.sleq";
+    const willeq_test::ScopedTempDir tmp("t379_world");  // T477 (B571)
+    const fs::path log = tmp / "t379_world_recorded.sleq";
     fs::remove(log);
 
     {

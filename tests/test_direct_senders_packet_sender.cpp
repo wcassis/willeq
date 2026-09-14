@@ -49,6 +49,7 @@
 #include "common/net/session_log.h"
 #include "common/net/session_recorder.h"
 #include "fake_udp_transport.h"
+#include "scoped_temp_dir.h"
 #include "zone_stream_test_utils.h"
 
 #include <cstdint>
@@ -178,7 +179,8 @@ public:
 void WithRecordedSession(const char* name,
                          const std::function<void(SenderHarness&)>& body,
                          const std::function<void(const std::vector<RecordedPacket>&)>& check) {
-    const fs::path log = fs::temp_directory_path() / name;
+    const willeq_test::ScopedTempDir tmp("t378_recorded");  // T477 (B571)
+    const fs::path log = tmp / name;
     fs::remove(log);
     {
         SenderHarness h(/*withConnection=*/true);

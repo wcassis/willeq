@@ -46,6 +46,7 @@
 #include "client/graphics/eqe1_loader.h"
 #include "client/graphics/eqe1_format.h"
 #include "client/graphics/environment/unified_particle_renderer.h"
+#include "scoped_temp_dir.h"
 
 #include <irrlicht.h>
 
@@ -155,6 +156,7 @@ protected:
     std::unique_ptr<ConstrainedTextureCache> cache_;
     EQE1Loader loader_;
     std::string packPath_;
+    willeq_test::ScopedTempDir tmp_{"t411_alpha_blend"};  // T477 (B571)
 
     static constexpr irr::u32 kW = 256;
     static constexpr irr::u32 kH = 256;
@@ -187,7 +189,7 @@ protected:
     // back the ITexture*. nullptr on any failure, with the reason in `err`.
     irr::video::ITexture* upload(const char* tag, bool withCompanion, std::string& err) {
         const std::string name = std::string("t411_") + tag;
-        packPath_ = std::string("/tmp/") + name + ".eqe1";
+        packPath_ = (tmp_ / (name + ".eqe1")).string();
         if (!writePack(packPath_, name, kDim, withCompanion)) {
             err = "failed to write " + packPath_;
             return nullptr;

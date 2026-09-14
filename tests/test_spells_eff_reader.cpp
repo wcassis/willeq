@@ -26,6 +26,7 @@
 #include "client/spell/spells_eff_reader.h"
 #include "client/spell/spell_database.h"
 #include "client/willeq_database.h"
+#include "scoped_temp_dir.h"
 
 using namespace EQ;
 
@@ -160,7 +161,8 @@ TEST_F(SpellsEffReaderFileTest, LoadFailsLoudlyOnWrongSize) {
     // Build a truncated copy so the size-mismatch STOP path is actually
     // exercised, not just asserted never to trigger.
     std::string src = getSpellsEffPath();
-    std::string tmp_path = (std::filesystem::temp_directory_path() / "t70_truncated_spells.eff").string();
+    const willeq_test::ScopedTempDir tmp("t70_spells_eff");  // T477 (B571)
+    std::string tmp_path = (tmp / "t70_truncated_spells.eff").string();
     {
         std::ifstream in(src, std::ios::binary);
         std::ofstream out(tmp_path, std::ios::binary);

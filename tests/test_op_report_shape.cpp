@@ -44,6 +44,7 @@
 #include "common/net/daybreak_connection.h"
 #include "common/net/session_recorder.h"
 #include "fake_udp_transport.h"
+#include "scoped_temp_dir.h"
 #include "zone_stream_test_utils.h"
 
 #include <cstdint>
@@ -300,8 +301,8 @@ TEST(OpReportShape, RecordedSession_SlashBugEmitsExactlyOneOpReport) {
     ReportHarness h;
     eqt::EqActionHandler handler(h.eq);
 
-    const fs::path log = fs::temp_directory_path() /
-                         "t375_op_report_shape.sleq";
+    const willeq_test::ScopedTempDir tmp("t375_op_report");  // T477: per-process (B571)
+    const fs::path log = tmp / "t375_op_report_shape.sleq";
     fs::remove(log);
     h.startRecording(log);
 

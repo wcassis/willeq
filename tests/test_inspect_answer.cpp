@@ -22,6 +22,7 @@
 #include "client/eq.h"
 #include "client/eq_action_handler.h"
 #include "client/inspect_answer.h"
+#include "scoped_temp_dir.h"
 
 #include <cstring>
 #include <optional>
@@ -153,8 +154,8 @@ TEST(InspectMessageStore, StartsEmpty) {
 }
 
 TEST(InspectMessageStore, SurvivesAConfigRoundTrip) {
-    const std::string path =
-        std::filesystem::temp_directory_path() / "willeq_t171_roundtrip.json";
+    const willeq_test::ScopedTempDir tmp("willeq_t171");  // T477 (B571)
+    const std::string path = (tmp / "willeq_t171_roundtrip.json").string();
     std::filesystem::remove(path);
 
     const std::string msg = "Bard for hire, tips appreciated";
@@ -178,8 +179,8 @@ TEST(InspectMessageStore, SurvivesAConfigRoundTrip) {
 // resolution helpers (T171 extracted them so they cannot drift). Writing one
 // must not destroy the other.
 TEST(InspectMessageStore, SavingDoesNotDiscardOtherKeysInTheConfig) {
-    const std::string path =
-        std::filesystem::temp_directory_path() / "willeq_t171_coexist.json";
+    const willeq_test::ScopedTempDir tmp("willeq_t171");  // T477 (B571)
+    const std::string path = (tmp / "willeq_t171_coexist.json").string();
     std::filesystem::remove(path);
     {
         std::ofstream f(path);
@@ -203,8 +204,8 @@ TEST(InspectMessageStore, SavingDoesNotDiscardOtherKeysInTheConfig) {
 }
 
 TEST(InspectMessageStore, LoadingFromAConfigWithoutTheKeyLeavesItEmpty) {
-    const std::string path =
-        std::filesystem::temp_directory_path() / "willeq_t171_missing.json";
+    const willeq_test::ScopedTempDir tmp("willeq_t171");  // T477 (B571)
+    const std::string path = (tmp / "willeq_t171_missing.json").string();
     std::filesystem::remove(path);
     {
         std::ofstream f(path);

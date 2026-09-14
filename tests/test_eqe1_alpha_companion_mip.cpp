@@ -30,6 +30,7 @@
 #include "client/graphics/constrained_renderer_config.h"
 #include "client/graphics/eqe1_loader.h"
 #include "client/graphics/eqe1_format.h"
+#include "scoped_temp_dir.h"
 
 #include <irrlicht.h>
 
@@ -135,6 +136,7 @@ protected:
     std::unique_ptr<ConstrainedTextureCache> cache_;
     EQE1Loader loader_;
     std::string packPath_;
+    willeq_test::ScopedTempDir tmp_{"t279_alpha_mip"};  // T477 (B571)
 
     static constexpr irr::u32 kW = 256;
     static constexpr irr::u32 kH = 256;
@@ -169,7 +171,7 @@ protected:
                                                          uint16_t minDim,
                                                          irr::video::SColor& out) {
         const std::string name = std::string("t279_") + tag;
-        packPath_ = std::string("/tmp/") + name + ".eqe1";
+        packPath_ = (tmp_ / (name + ".eqe1")).string();
         if (!writePack(packPath_, name, 256, levels, minDim))
             return ::testing::AssertionFailure() << "failed to write " << packPath_;
         if (!loader_.open(packPath_))

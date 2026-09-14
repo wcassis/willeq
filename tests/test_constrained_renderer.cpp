@@ -6,12 +6,19 @@
 #include <fstream>
 #include <cstring>
 
+#include "scoped_temp_dir.h"
+
 using namespace EQT::Graphics;
 
 class ConstrainedRendererConfigTest : public ::testing::Test {
 protected:
     void SetUp() override {}
     void TearDown() override {}
+
+    // T477 (board B571): every JSON fixture goes in this process's own
+    // directory, removed with the fixture, never a fixed name under /tmp.
+    willeq_test::ScopedTempDir tmp_{"test_constrained_presets"};
+    std::string tmpPath(const std::string& leaf) const { return (tmp_ / leaf).string(); }
 };
 
 // =============================================================================
@@ -475,7 +482,7 @@ TEST_F(ConstrainedRendererConfigTest, MaxResolution_10MB_OrangePi) {
 
 TEST_F(ConstrainedRendererConfigTest, JsonOverride_AppliesValues) {
     // Create a temporary JSON file
-    const std::string testJsonPath = "/tmp/test_constrained_presets.json";
+    const std::string testJsonPath = tmpPath("test_constrained_presets.json");
     {
         std::ofstream f(testJsonPath);
         f << R"({
@@ -507,7 +514,7 @@ TEST_F(ConstrainedRendererConfigTest, JsonOverride_AppliesValues) {
 }
 
 TEST_F(ConstrainedRendererConfigTest, JsonOverride_CaseInsensitive) {
-    const std::string testJsonPath = "/tmp/test_constrained_presets_ci.json";
+    const std::string testJsonPath = tmpPath("test_constrained_presets_ci.json");
     {
         std::ofstream f(testJsonPath);
         f << R"({
@@ -533,13 +540,13 @@ TEST_F(ConstrainedRendererConfigTest, JsonOverride_MissingFile) {
     ConstrainedRendererConfig config;
     config.maxTextureDimension = 128;
 
-    bool applied = config.loadJsonOverrides("orangepi", "/tmp/nonexistent.json");
+    bool applied = config.loadJsonOverrides("orangepi", tmpPath("nonexistent.json"));
     EXPECT_FALSE(applied);
     EXPECT_EQ(config.maxTextureDimension, 128);  // Unchanged
 }
 
 TEST_F(ConstrainedRendererConfigTest, JsonOverride_MissingPreset) {
-    const std::string testJsonPath = "/tmp/test_constrained_presets_mp.json";
+    const std::string testJsonPath = tmpPath("test_constrained_presets_mp.json");
     {
         std::ofstream f(testJsonPath);
         f << R"({ "presets": { "other": { "maxTextureDimension": 1024 } } })";
@@ -557,7 +564,7 @@ TEST_F(ConstrainedRendererConfigTest, JsonOverride_MissingPreset) {
 
 TEST_F(ConstrainedRendererConfigTest, JsonOverride_PartialOverride) {
     // Only override some fields, leave others at preset defaults
-    const std::string testJsonPath = "/tmp/test_constrained_presets_po.json";
+    const std::string testJsonPath = tmpPath("test_constrained_presets_po.json");
     {
         std::ofstream f(testJsonPath);
         f << R"({
@@ -585,7 +592,7 @@ TEST_F(ConstrainedRendererConfigTest, JsonOverride_PartialOverride) {
 // This test now covers that ignoring behavior, plus that other overrides
 // in the same preset still apply normally.
 TEST_F(ConstrainedRendererConfigTest, JsonOverride_RenderingBackendKeyIgnored) {
-    const std::string testJsonPath = "/tmp/test_constrained_presets_rb.json";
+    const std::string testJsonPath = tmpPath("test_constrained_presets_rb.json");
     {
         std::ofstream f(testJsonPath);
         f << R"({
@@ -619,7 +626,7 @@ TEST_F(ConstrainedRendererConfigTest, JsonOverride_OcclusionMaxOccluderRegions) 
     // P39: JSON preset load previously had no parse for this key at all —
     // it was silently un-tunable from a config file, regardless of the
     // C++ preset default. Verify the key now round-trips.
-    const std::string testJsonPath = "/tmp/test_constrained_presets_occ.json";
+    const std::string testJsonPath = tmpPath("test_constrained_presets_occ.json");
     {
         std::ofstream f(testJsonPath);
         f << R"({
@@ -646,7 +653,7 @@ TEST_F(ConstrainedRendererConfigTest, JsonOverride_OcclusionMaxOccluderRegions_A
     // leaves whatever fromPreset()/the caller already set untouched (the
     // documented last-writer-wins precedence, not a forced reset to the
     // struct default).
-    const std::string testJsonPath = "/tmp/test_constrained_presets_occ_absent.json";
+    const std::string testJsonPath = tmpPath("test_constrained_presets_occ_absent.json");
     {
         std::ofstream f(testJsonPath);
         f << R"({ "presets": { "custom": { "maxTextureDimension": 128 } } })";
@@ -684,7 +691,7 @@ TEST_F(ConstrainedRendererConfigTest, ShippedOrangePiPreset_ActivelyCarries256) 
 // occlusionBufferHeight.
 
 TEST_F(ConstrainedRendererConfigTest, JsonOverride_TotalMemoryBudgetBytes) {
-    const std::string testJsonPath = "/tmp/test_constrained_presets_membudget.json";
+    const std::string testJsonPath = tmpPath("test_constrained_presets_membudget.json");
     {
         std::ofstream f(testJsonPath);
         f << R"({
@@ -707,7 +714,7 @@ TEST_F(ConstrainedRendererConfigTest, JsonOverride_TotalMemoryBudgetBytes) {
 }
 
 TEST_F(ConstrainedRendererConfigTest, JsonOverride_OcclusionBufferWidthHeight) {
-    const std::string testJsonPath = "/tmp/test_constrained_presets_occbuf.json";
+    const std::string testJsonPath = tmpPath("test_constrained_presets_occbuf.json");
     {
         std::ofstream f(testJsonPath);
         f << R"({
@@ -736,7 +743,7 @@ TEST_F(ConstrainedRendererConfigTest, JsonOverride_MemoryAndOcclusionBufferKeys_
     // Same optionality guarantee as occlusionMaxOccluderRegions: a preset
     // block that omits these keys leaves whatever fromPreset()/the caller
     // already set untouched.
-    const std::string testJsonPath = "/tmp/test_constrained_presets_membuf_absent.json";
+    const std::string testJsonPath = tmpPath("test_constrained_presets_membuf_absent.json");
     {
         std::ofstream f(testJsonPath);
         f << R"({ "presets": { "custom": { "maxTextureDimension": 128 } } })";
@@ -850,7 +857,7 @@ TEST_F(ConstrainedRendererConfigTest, Validate_EntityLoadRadiusZeroOrNegative_Fa
 }
 
 TEST_F(ConstrainedRendererConfigTest, JsonOverride_EntityLoadRadius) {
-    const std::string testJsonPath = "/tmp/test_constrained_presets_loadradius.json";
+    const std::string testJsonPath = tmpPath("test_constrained_presets_loadradius.json");
     {
         std::ofstream f(testJsonPath);
         f << R"({
@@ -873,7 +880,7 @@ TEST_F(ConstrainedRendererConfigTest, JsonOverride_EntityLoadRadius) {
 }
 
 TEST_F(ConstrainedRendererConfigTest, JsonOverride_EntityLoadRadius_AbsentLeavesBaseline) {
-    const std::string testJsonPath = "/tmp/test_constrained_presets_loadradius_absent.json";
+    const std::string testJsonPath = tmpPath("test_constrained_presets_loadradius_absent.json");
     {
         std::ofstream f(testJsonPath);
         f << R"({ "presets": { "custom": { "maxTextureDimension": 128 } } })";
@@ -916,7 +923,7 @@ TEST_F(ConstrainedRendererConfigTest, ShippedOrangePiPreset_EntityLoadRadiusEnab
 }
 
 TEST_F(ConstrainedRendererConfigTest, JsonOverride_UseGLES2KeyIgnored) {
-    const std::string testJsonPath = "/tmp/test_constrained_presets_bc.json";
+    const std::string testJsonPath = tmpPath("test_constrained_presets_bc.json");
     {
         std::ofstream f(testJsonPath);
         f << R"({

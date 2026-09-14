@@ -9,10 +9,6 @@
 #include "client/graphics/eq/zone_geometry.h"
 #include "client/graphics/background_thread_pool.h"
 #include "common/logging.h"
-#ifdef EQT_HAS_GLES2
-#include "client/graphics/gpu_upload_thread.h"
-#include "client/graphics/work_priority.h"
-#endif
 #include <algorithm>
 #include <cstring>
 #include <functional>

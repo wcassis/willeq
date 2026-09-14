@@ -13,6 +13,9 @@
 #include <iomanip>
 #include <sstream>
 #include <fstream>
+#include <string>
+
+#include <unistd.h>
 
 using namespace EQ::Test;
 
@@ -572,7 +575,12 @@ TEST_F(PcapStepThroughTest, WriteDetailedLogToFile) {
         GTEST_SKIP() << "no capture at " << TEST_PCAP_FILE;
     }
 
-    std::ofstream logfile("/tmp/pcap_step_through.log");
+    // T477 (B571): a per-process name. The log is kept after the run on
+    // purpose -- reading it is the point of this case -- so this is a getpid()
+    // suffix rather than a ScopedTempDir that would delete it.
+    const std::string logPath =
+        "/tmp/pcap_step_through_" + std::to_string(::getpid()) + ".log";
+    std::ofstream logfile(logPath);
     if (!logfile) {
         GTEST_SKIP() << "Could not create log file";
     }
@@ -594,7 +602,7 @@ TEST_F(PcapStepThroughTest, WriteDetailedLogToFile) {
     }
 
     logfile.close();
-    std::cout << "Detailed log written to /tmp/pcap_step_through.log" << std::endl;
+    std::cout << "Detailed log written to " << logPath << std::endl;
     std::cout << "Processed " << count << " packets" << std::endl;
 
     EXPECT_GT(count, 0);
