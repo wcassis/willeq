@@ -84,4 +84,97 @@ an image golden moves.
 
 ## Review
 
-(executor fills)
+Slot1, `task/T466-oracle-cameras-held-items`, base `e60f8f7e`, rebased onto
+`6905c80f` (T458/T462/T465/T467 merged meanwhile; one append-vs-append conflict
+in `refactor/BOARD.md`, both sides kept). Media and every number:
+`review/T466/README.md`.
+
+**STOP conditions:** not hit. The rig could drive the Options window, F9 and
+the direct-camera bindings. No image golden moved (see Verification).
+
+### 1. Keys (B531, B561) — measured
+
+Oracle Options > Keys, Camera category: **Toggle camera view = F9**; Zoom in
+NPAD7 / INSERT; Zoom out NPAD1 / DELETE; Raise Alt NPAD8 / Alt UP; Lower Alt
+NPAD2 / Alt DOWN; Tether-slide right Alt NPAD6 / Alt RIGHT, left Alt NPAD4 /
+Alt LEFT; Pitch up Alt NPAD9 / Alt PGUP, down Alt NPAD3 / Alt PGDOWN; the six
+direct cameras unbound. UI category: **F10 = Toggle UI Display, F11 = Toggle
+netstat, L = Toggle Leadership Window, Alt C = Toggle Combat Ability Window**.
+No volume key on the Camera, UI or Commands pages.
+
+**Cycle order** (each direct camera bound to Ctrl+F2..F7, then F9, scored against
+all six; diagonal 0.026–0.114, off-diagonal ≥ 0.66): First Person → Overhead →
+Chase → User 1 → User 2 → Tether → First Person — fable's order. The client
+prints no camera name (chat, and a 2 fps OCR of the whole cycle video).
+**Login camera: First Person** (untouched login frame 0.232 vs First Person,
+≥ 0.897 vs the rest).
+
+**fable's orbit/pitch actions were NOT bound (deviation from the task's intent,
+flagged).** Alt+Left/Right and Alt+PgUp/PgDn collide with nothing (both lookups
+match modifiers exactly), but under the rig only Pitch up moved User 1, and it
+tilts the view UP where fable's `CameraPitchUp` (+pitch) tilts it down;
+Tether-slide, Raise and Zoom scored at re-grab noise, so their effect is not
+measured. Binding them would ship one mirrored key and three guesses.
+
+### 2. Geometry (B530) — partly measured
+
+| camera | result | fit ± sensitivity | applied |
+|---|---|---|---|
+| FOV | Chase vs First Person far scene at scale 1.00 (0.804; ≥ 0.91 at ±5 %) | one FOV, 62.8° horizontal | **yes**: `applyCameraProjectionForMode()` (was 72° vertical in third person) |
+| Overhead | heading-relative (h160 vs h288 0.689) | pitch 83 ± 3, dist 45 ± 5, height 3 ± 3; min 0.774, neighbours 0.788–0.803 | **yes**: `kOverheadRig` |
+| Chase | heading-relative (0.680) | as a rig: az 0, pitch 6, dist 4.0 ± 0.3, height 7.0 ± 0.3; min 0.738 (reproduced to 4 d.p. in two sessions), dist ±0.5 → 0.767/0.839, height −0.5 → 0.779 | **no**: fable's Chase is `CameraController::setFollowPosition()` (eye 6 + 4 up, 20 behind, look-ahead), not a rig and not in territory — B530 |
+| User 1 | **world-anchored** (0.084) | coarse az sweep flat: best 0.836 at az 90 p20, six steps within 0.03 (crop floor 0.031) | no — ORACLE-OWED |
+| User 2 | **world-anchored** (0.120) | best 0.794 at az 120 p20, on the pitch edge | no — ORACLE-OWED |
+| Tether | **world-anchored** (0.193), follows a walking player | best 0.749 at az 300 p5 d20, on two edges | no — placeholder kept |
+
+**User-camera frame:** heading-relative for First Person, Overhead, Chase;
+world-relative for User 1, User 2 and Tether (B580; fable's rig is
+heading-relative, so a fitted user azimuth would only hold at one heading).
+**Ini semantics:** the official client does not read `[Options]` `Camera1-*`/
+`Camera2-*` at launch — a variant (`Camera1-Heading` 90, `Camera2-DirHeading`
+0) was rewritten to 0/277 during login and changed no frame (0.094 / 0.136) —
+and does not write key-driven camera changes on exit (B585). DirHeading/Pitch/
+Height/Zoom units are therefore not learnable from the ini.
+
+### 3. Held items — partly captured
+
+Oracle set A (Short Sword primary, Gloomingdeep Lantern secondary), idle from
+Chase, User 1, User 2, Tether; fable set A idle from Chase, the Chase-fit rig,
+Overhead and az 90/180/270. Descriptive (B588): oracle blade hangs DOWN from the
+right fist, lantern in the left hand at the hip; fable blade stands UP, no
+lantern drawn. B587: at the rig that reproduces the oracle's Chase view, fable
+shows the character's face where the oracle shows the back of the head. **Not
+captured:** any attack animation (oracle auto-attack produced no swing;
+fable's `/target` by name found nothing — B586), sets B (1H blunt + shield)
+and C (2H).
+
+### 4. Owed live proofs
+
+(filled after the rebased `build-gles2`)
+
+### 5. Verification
+
+(filled after the bar)
+
+### 6. Board
+
+Narrowed: B530, B531, B561. New: B580 world-anchored user/tether cameras,
+B581 stale Chase entry pose, B582 official F10/F11/L meanings, B583 oracle
+`eqhost.txt`, B584 dummies stacked on the canonical spot, B585 ini keys not
+read, B586 attack capture owed, B587 player model yaw at the Chase view, B588
+held-item orientation.
+
+### 7. Deviations (flagged)
+
+1. **`src/client/graphics/player/renderer_camera.cpp` and
+   `tests/test_first_person_camera_single_formula.cpp` are outside the named
+   territory.** The FOV is a measured camera value and every rig fit depended on
+   it; the visual gate renders through `gles2_zone_benchmark`'s own camera, which
+   never reaches that function. `kWorldVerticalFovRadians` now has no user.
+2. **Chase defaults not replaced** (see §2): the measured pose is on the board.
+3. **Orbit/pitch keys not bound** (see §1).
+4. **Held items were equipped on Testchar with a DB inventory write** (two rows,
+   character 65 had none; removed at the end), not with `#summonitem`: typing into
+   the oracle while its UI was hidden did nothing, and the in-game swap would
+   have cost a click-verified inventory drag per item.
+5. **Oracle rig repaired:** `eqhost.txt` repointed at the eqemu VM (B583).

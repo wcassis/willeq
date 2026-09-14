@@ -9673,4 +9673,36 @@ Evidence for every entry below is in `review/T466/` (README names each file).
   captured idle from four cameras, but auto-attack at 8 units behind the
   training dummy produced no swing in 40 stepped frames. Owed: an attack capture
   (closer, or a target that is certainly in melee range and in front) for all
-  five items. Found by T466.
+  five items. fable's side is owed too: `/target a training dummy` in a
+  `--script` run replied `No target found matching 'a training dummy'`, so no
+  fable attack was driven either. Sets B (1H blunt + shield) and C (2H) were not
+  captured on either client. The spot is worse than B584 says: fable's own NPC
+  list at zone-in showed **thirteen** `a_training_dummy000..013` spawns at
+  (428, -74, 3.0) in the client frame (ids 185-200), stacked on one point.
+  Found by T466.
+
+- **B587** (A, *unconfirmed*) **At the camera that reproduces the official Chase
+  view, fable draws the player model facing the camera.** fable session
+  `heldA_sword_lantern_spotA_h160` (Testchar at qeynos2 (-81.39, 431.06, 3.751)
+  h160): the rig az 0, pitch 6, dist 4, height 7 -- whose world view matches the
+  oracle's Chase frame (wall on the left, edge 0.738 at the canonical spot) --
+  shows Testchar's FACE and chest; the official Chase camera at the same
+  character pose shows the BACK of the head. fable's side views agree (az 90
+  shows the back, az 270 the chest). Frames:
+  `review/T466/sheets/T466_heldA_sword_lantern_oracle_top_fable_bottom.png`.
+  First person and the camera azimuth are both oracle-matched at this heading
+  (T431, this unit), so the difference is in the player MODEL's yaw. Heading
+  asymmetry is load-bearing (players and NPCs have different default rotations):
+  do not "fix" this from one frame -- confirm with a two-client capture where
+  the official client observes fable's character. Found by T466.
+
+- **B588** (A, *unconfirmed*) **Held items in the hand: the sword's blade points
+  the opposite way and the lantern is not drawn.** Idle, set A, same sheet as
+  B587 (oracle User 1 and Tether crops on top, fable az 90 / az 270 below).
+  Descriptive, not judged: the official client shows the Short Sword in the
+  right hand with the blade hanging DOWN and outward from the fist, and the
+  Gloomingdeep Lantern (item 9979, IT48) hanging in the LEFT hand at the hip.
+  fable shows the Short Sword in the right hand with the blade standing UP above
+  the fist (about a half turn about the hand's horizontal axis, as far as the
+  frames show), and no lantern in the left hand from either side. Attack-pose
+  comparison owed (B586). Found by T466.
