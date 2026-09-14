@@ -10107,3 +10107,78 @@ B663–B669 unused.
 T476 (2026-09-14) closed B660, narrowed B661 and added no entries; B700–B709
 unused.
 
+
+---
+
+
+---
+
+## Added 2026-09-14 by T474 (Chase camera geometry to the oracle fit)
+
+- **B650 NARROWED by T474** -- APPLIED: Chase is a heading-relative rig at T466's
+  fit (`kChaseRig` az 0, pitch 6, dist 4.0, height 7.0; `camera_rig.h`), placed
+  through `CameraController::placeChaseCamera()` (rig wall pull-in + T464's
+  eye-region ceiling clamp); `setFollowPosition()` and the follow-distance API
+  are deleted. LIVE on x86 at T466's pose (qeynos2 -74 428 3.751 h160, the
+  fitted Human male): the node sits at the fit to 3 d.p., and on T466's own
+  crop and oracle still the shipped default Chase scores **0.7383** (T466's fit
+  minimum 0.7379; the pre-T474 binary scores **0.9951**). The 3x3x3 re-fit at
+  that view reproduces T466's bracket to <= 0.001. Correction to T471's B650
+  arithmetic: the pre-T474 camera at that spot sat 11.500 above the ground, not
+  13.119 -- the eye-region ceiling clamped it. **Still open:** B683 (the h288
+  view disagrees), B681 (races), B680 (does the official Chase zoom).
+
+- **B680** (C -> ORACLE-OWED) **Whether the official Chase camera zooms.** The T474
+  plan requires fable's zoom keys and wheel to act on the Chase distance, and
+  they do (T474). T466 pressed Insert x5 then Delete x10 in the official Chase
+  camera and saw no visible change (`review/T466/oracle/T466_oracle_keys_chase_*`;
+  B653 owes the step sizes). If the official Chase does not zoom, fable's does
+  something the oracle does not. Method: the same key presses in Chase, scored
+  frame against frame. Found by T474.
+
+- **B681** (C -> ORACLE-OWED) **How the Chase fit scales with race and posture.**
+  T466 fitted ONE character (Human male). T474 scales the rig UNIFORMLY about
+  the feet by eyeAboveFeet / 6.023 (T431's oracle-solved Human male eye), using
+  the head-bone eye fable derives per race (`scaleChaseRigForEye()`,
+  `PlayerCameraComponent::chaseEyeAboveFeet()`), refreshed only while the player
+  is STANDING (a sit does not rescale). None of that is measured: every race but
+  a Human male, and every posture, is unmeasured. Known wrinkle: T431 left
+  fable's Dwarf male eye at 4.53 against the oracle's 3.58, so a fable Dwarf's
+  Chase scale is 0.752 where the oracle's eye ratio would give 0.594. Leg B did
+  not reach the second race (it STOPPED on B683). Method: `#race 8` on
+  Oraclealpha and Testchar at spot 1, oracle Chase still, fable `/camera set`
+  sweep in Chase (the four values are the fitted character's, `/camera get`
+  prints the scale). Found by T474.
+
+- **B682** (B) **Two Chase behaviours changed shape when the follow camera became a
+  rig.** (1) The follow camera eased back out after a wall pull-in at 30 units/s
+  (`ZOOM_RECOVERY_SPEED`); a rig is placed exactly every frame, so the Chase
+  camera now snaps back when the wall clears. (2) The ceiling clamp's floor was
+  a fixed half eye height (3.0) above the node origin; `placeChaseCamera()`
+  floors it at the player's eye. Neither was measured on the oracle; both are
+  written down in `camera_controller.h`. Found by T474.
+
+- **B683** (A, **T474 STOP**) **The Chase re-fit at a second view disagrees with
+  T466's fit on distance.** Same spot and pose, heading 288, scored against
+  T466's own h288 oracle Chase still on the crop that reproduces T466's h160
+  numbers (`400x600+0+100`, recovered by reproduction:
+  `review/T474/scripts/t474_recover_t466_chase_crop.py`): pitch 6 height 7 ->
+  dist 2.0 0.8966, 2.5 0.8883, 3.0 0.8585, **3.5 0.7847**, 4.0 0.8038; pitch 6
+  dist 3.5 height 6.5 0.7879, 7.5 0.9231; pitch 4.5 / 7.5 at dist 3.5 -> 0.9401 /
+  0.8790. The h288 minimum is dist 3.5 (height 6.5-7.0), T466's fit is dist 4.0,
+  and T466's stated sensitivity is +/- 0.3 -- so per the plan both are reported
+  and neither is picked; `kChaseRig` stays at T466's fit, which the h160 re-fit
+  reproduces exactly. The h288 bowl is shallow (dist 3.0 at height 6.5 = 0.8039,
+  equal to dist 4.0) and the crop was recovered for the h160 view, where the
+  near wall is at the left; at h288 the wall fills the frame. Owed (not run,
+  Leg B stopped): a fresh oracle h288 grab, a crop chosen for that view, a
+  genuinely second spot, and B681's second race. Found by T474.
+
+- **B684** (B) **`PlayerState::setFollowDistance()` has no caller, and a name
+  collision hid it.** The zero-caller census matches by name; its one "use" was
+  `CameraController::adjustFollowDistance()` calling the controller's own
+  `setFollowDistance()`, which T474 deleted with the follow camera. T474 added it
+  to `check_zero_callers.py`'s EXEMPT under B496 (GameState setters with no
+  caller) rather than delete game-state API outside its territory.
+  `PlayerState::followDistance()` / `m_followDistance` are the rest of that
+  unreached state. Found by T474.

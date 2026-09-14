@@ -450,12 +450,9 @@ void PlayerCameraComponent::setPlayerPosition(float x, float y, float z, float h
         }
     }
 
-    if (cameraMode_ == CameraMode::Chase && playerInBounds && ctx_.cameraController) {
-        LOG_DEBUG(MOD_GRAPHICS, "[ZONE-IN] Camera mode=Chase, calling setFollowPosition({:.2f},{:.2f},{:.2f},{:.2f})",
-                 x, y, z, heading);
-        ctx_.cameraController->enableZoneInLogging();  // Enable one-time detailed logging
-        ctx_.cameraController->setFollowPosition(x, y, z, heading);
-    } else if (cameraMode_ == CameraMode::FirstPerson && ctx_.camera && playerInBounds) {
+    // T474 (board B650): Chase is a rig and takes the rig branch below; its
+    // follow-camera branch (and the one-time zone-in logging it enabled) is gone.
+    if (cameraMode_ == CameraMode::FirstPerson && ctx_.camera && playerInBounds) {
         // T75: this used to be a third independent copy of the first-person
         // camera placement formula (setCameraMode()/cycleCameraMode() and
         // setPlayerSpawnId() already call the shared repositionFirstPersonCamera()
@@ -518,17 +515,12 @@ void PlayerCameraComponent::setCameraMode(CameraMode mode) {
     // the stale third-person Follow transform (stage-1 diagnostic finding).
     repositionFirstPersonCamera();
     // T461: entering a rig mode places the camera at once, for the same reason
-    // (a no-op in first person and Chase).
+    // (a no-op in first person). T471 (board B581) found Chase was the one
+    // camera that did not: after `/camera overhead` then `/camera chase`,
+    // `/camera get` printed the Overhead node pose byte for byte, and added a
+    // setFollowPosition() call here. T474 (board B650) made Chase a rig, so this
+    // one call places it too.
     updateRigCamera();
-    // T471 (board B581): and so does entering Chase. T466 measured the defect
-    // live -- after `/camera overhead` then `/camera chase`, `/camera get`
-    // printed the Overhead node pose byte for byte -- because Chase moved only
-    // when setFollowPosition() next ran, i.e. on a player move. Same call and
-    // arguments as the per-frame movement path's (G06 statement 402).
-    if (cameraMode_ == CameraMode::Chase && ctx_.cameraController) {
-        ctx_.cameraController->setFollowPosition(ctx_.playerX, ctx_.playerY, ctx_.playerZ,
-                                                 ctx_.playerHeading);
-    }
 }
 
 // T461: the official cycle, eqstr_us.txt 9500..9505 (camera_mode.h). Before

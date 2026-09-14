@@ -4,9 +4,9 @@
 // the player, and the ONE function that turns it into a camera pose.
 //
 // Device-free (no Irrlicht). PlayerCameraComponent owns one rig per rig mode
-// (camera_mode.h: Overhead, User1, User2, Tether), CameraController applies
-// the BSP collision, and tests/test_camera_modes.cpp pins the geometry with no
-// client at all.
+// (camera_mode.h: Overhead, Chase since T474, User1, User2, Tether),
+// CameraController applies the BSP collision, and tests/test_camera_modes.cpp
+// pins the geometry with no client at all.
 //
 // UNITS AND CONVENTIONS -- the `/camera` help text states the same four:
 //   azimuthDeg  degrees around the look-at point, in the mode's AZIMUTH FRAME
@@ -27,9 +27,9 @@
 //               feet first_person_tunables.cpp's [FPCAM-DUMP] reports).
 //
 // "Behind" is the renderer's own: the forward vector is (sin h, cos h) in EQ
-// client (x, y) with h = heading / 512 * 2pi, exactly the vector
-// CameraController::setFollowPosition() puts the Chase camera behind. So an
-// azimuth-0 rig and the Chase camera look the same way.
+// client (x, y) with h = heading / 512 * 2pi, the vector the pre-T474 follow
+// camera (CameraController::setFollowPosition(), deleted by T474) put the
+// Chase camera behind. Since T474 the Chase camera IS an azimuth-0 rig.
 //
 // MEASURED ON THE OFFICIAL CLIENT (T466, review/T466/README.md):
 //   - First Person, Overhead and Chase turn with the player; User Defined 1/2
@@ -69,7 +69,7 @@ struct CameraRigPose {
 };
 
 constexpr float kCameraRigMinDistance = 1.0f;
-constexpr float kCameraRigMaxDistance = 300.0f;   // CameraController's MAX_FOLLOW_DISTANCE
+constexpr float kCameraRigMaxDistance = 300.0f;   // the pre-T474 follow camera's MAX_FOLLOW_DISTANCE
 constexpr float kCameraRigMinPitchDeg = -89.0f;
 constexpr float kCameraRigMaxPitchDeg = 89.0f;
 constexpr float kCameraRigMinHeight = -100.0f;
@@ -112,6 +112,37 @@ constexpr CameraRig kUser2DefaultRig{0.0f, 0.0f, 82.0f, 18.0f};
 // The bowl is shallow (+0.01..0.03 per step), so read it as pitch 83 +/- 3,
 // dist 45 +/- 5, height 3 +/- 3. Azimuth 0: Overhead turns with the player.
 constexpr CameraRig kOverheadRig{0.0f, 83.0f, 45.0f, 3.0f};
+// Chase Camera: MEASURED (T466), APPLIED by T474 (board B650). Same sweep, same
+// pose and metric as Overhead above, scored on the official client's own Chase
+// frame (fable/sessions/fit2_* and fit4_*, scores_vs_oracle_chase_wallcrop.tsv).
+// Minimum edge 0.7379 at az 0, pitch 6, dist 4.0, height 7.0, reproduced to four
+// decimals in two sessions; bracketed on every axis:
+//   dist 3.5 -> 0.767, dist 4.5 -> 0.839     (pitch 6, height 7)
+//   height 6.5 -> 0.779, height 7.5 -> 0.922 (pitch 6, dist 4)
+//   pitch 3 -> 0.937, pitch 9 -> 0.880       (dist 4, height 7)
+// Read it as dist 4.0 +/- 0.3, height 7.0 +/- 0.3, pitch 6 +/- 1.5. Azimuth 0:
+// Chase turns with the player (h160 vs h288 edge 0.680). Before T474 Chase was
+// CameraController::setFollowPosition(): 20 behind, 10 above the node origin,
+// looking 10 AHEAD of the player -- 16.02 farther back than this, 5.70 higher,
+// 1.60 degrees more pitch (T471's computation). The camera and its look-at are
+// the rig's; the scale below is applied first.
+constexpr CameraRig kChaseRig{0.0f, 6.0f, 4.0f, 7.0f};
+// The character the Chase fit was taken on: T466's Human male Warrior, whose eye
+// the official client puts 6.023 +/- 0.08 above its own feet (T431, solved on the
+// same oracle at the same qeynos2 spot; fable's head-bone eye for that model
+// reproduces it, review/T431/README.md section 0).
+constexpr float kChaseFitEyeAboveFeet = 6.023f;
+
+// T474: THE CHASE FIT'S RACE SCALING. T466 fitted ONE character, so the only
+// per-race input fable has is the per-race eye it already derives from each
+// model's head bone (first_person_eye.h, T301/T431). The rig is scaled
+// UNIFORMLY about the feet by eyeAboveFeet / kChaseFitEyeAboveFeet -- distance
+// and look-at height both, azimuth and pitch untouched -- so a character is
+// framed the same way whatever its size, and the fitted character is placed
+// exactly at the fit. That the official client scales Chase this way (or at
+// all) is NOT measured; every race but a Human male is unmeasured (board B681).
+// A non-finite or non-positive eye leaves the rig unscaled.
+CameraRig scaleChaseRigForEye(const CameraRig& rig, float eyeAboveFeet);
 // Tether Camera: STILL A PLACEHOLDER (ORACLE-OWED, B530). T466's coarse sweep
 // did not converge: best 0.749 at az 300, pitch 5, dist 20 on the horizon crop,
 // on the edge of both the pitch and the distance ranges. The official Tether is

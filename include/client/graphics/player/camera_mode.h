@@ -102,9 +102,11 @@ bool cameraModeFromIniValue(int value, CameraMode& out);
 // False for any other value.
 bool cameraModeFromLegacyIniMode(int legacy, CameraMode& out);
 
-// The four modes whose placement is a CameraRig (camera_rig.h): Overhead,
-// User1, User2, Tether. First person has its own measured formula
-// (repositionFirstPersonCamera) and Chase keeps CameraController's follow path.
+// The five modes whose placement is a CameraRig (camera_rig.h): Overhead,
+// Chase, User1, User2, Tether. First person has its own measured formula
+// (repositionFirstPersonCamera). Chase joined in T474 (board B650), when its
+// geometry became T466's oracle fit and CameraController's follow path was
+// deleted.
 bool isRigCameraMode(CameraMode mode);
 
 // User Defined Camera 1 / 2 -- the two the official client lets the player

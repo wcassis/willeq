@@ -98,8 +98,19 @@ bool cameraModeFromLegacyIniMode(int legacy, CameraMode& out) {
 }
 
 bool isRigCameraMode(CameraMode mode) {
-    return mode == CameraMode::Overhead || mode == CameraMode::User1 ||
-           mode == CameraMode::User2 || mode == CameraMode::Tether;
+    // T474 (board B650): Chase is a rig -- T466's fit, kChaseRig.
+    return mode == CameraMode::Overhead || mode == CameraMode::Chase ||
+           mode == CameraMode::User1 || mode == CameraMode::User2 ||
+           mode == CameraMode::Tether;
+}
+
+CameraRig scaleChaseRigForEye(const CameraRig& rig, float eyeAboveFeet) {
+    if (!std::isfinite(eyeAboveFeet) || eyeAboveFeet <= 0.0f) return rig;
+    const float scale = eyeAboveFeet / kChaseFitEyeAboveFeet;
+    CameraRig out = rig;
+    out.distance = rig.distance * scale;
+    out.height = rig.height * scale;
+    return out;
 }
 
 bool isUserCameraMode(CameraMode mode) {

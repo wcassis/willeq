@@ -210,18 +210,22 @@ public:
 	// --- T461: the official camera set's rig modes and `/camera` ---
 	// Bodies in src/client/graphics/player/renderer_camera_modes.cpp.
 	//
-	// Overhead, User Defined 1/2 and Tether are each a CameraRig
-	// (camera_rig.h) owned HERE, so nothing that moves the player can
+	// Overhead, Chase (since T474), User Defined 1/2 and Tether are each a
+	// CameraRig (camera_rig.h) owned HERE, so nothing that moves the player can
 	// overwrite them: setPlayerPosition() and the movement integrator only
 	// move the player the rig is expressed around.
 	//
 	// Re-place the rig camera around the player's current pose. A no-op in
-	// first person and Chase (their own paths place those) and without a
-	// camera controller (a device-less renderer). FrameComponent calls it
-	// every frame, after movement and again after the lift carry.
+	// first person (its own formula places it) and without a camera controller
+	// (a device-less renderer). FrameComponent calls it every frame, after
+	// movement and again after the lift carry. T474 (board B650): Chase is
+	// T466's oracle fit, scaled by the player's eye height
+	// (scaleChaseRigForEye()) and placed through
+	// CameraController::placeChaseCamera(), which keeps T464's eye-region
+	// ceiling clamp on top of the rig wall pull-in.
 	void updateRigCamera();
-	// One zoom step (EQ units, + = farther): the Chase follow distance, or the
-	// active rig's distance. First person does not zoom.
+	// One zoom step (EQ units, + = farther): the active rig's distance --
+	// Chase's included since T474. First person does not zoom.
 	void zoomCamera(float deltaUnits, float deltaTime);
 	// Adds to the ACTIVE USER camera only; a no-op in any other mode. The
 	// Pitch up / down keys (HotkeyAction::CameraPitchUp/Down) reach it with a
@@ -244,7 +248,9 @@ public:
 	// `/camera get` -- mode, the four rig values, player pose, the ideal rig
 	// pose and the camera node's actual pose, as parseable [CAMERA-GET] lines.
 	std::vector<std::string> buildCameraGetLines() const;
-	// The rig behind a rig mode; nullptr for first person and Chase.
+	// The rig behind a rig mode; nullptr for first person. For Chase it is the
+	// UNSCALED fit (the fitted character's numbers); updateRigCamera() applies
+	// the eye-height scale.
 	const CameraRig* cameraRigFor(CameraMode mode) const;
 	// Persistence (FrameComponent::syncUiPreferences): the two user cameras,
 	// the only rigs the official client persists (eqclient.ini Camera1-*/2-*).
@@ -396,6 +402,13 @@ private:
 
 	// T461: the mutable form of cameraRigFor().
 	CameraRig* rigFor(CameraMode mode);
+	// T474: the player's eye above its own feet, the Chase race scale's input
+	// (camera_rig.h scaleChaseRigForEye()). Taken from the head-bone eye
+	// EntityRenderer derives per race (T301/T431) -- only while the player is
+	// STANDING, so a sit does not rescale the camera (an unmeasured posture
+	// case, board B681) -- and cached in chaseEyeAboveFeet_. Without a player
+	// model it is the fitted character's, so the fit is placed exactly.
+	float chaseEyeAboveFeet();
 
 	RendererContext& ctx_;
 	IrrlichtRenderer& owner_;
@@ -434,6 +447,10 @@ private:
 	// against the official client; Tether is still a placeholder (B530). User
 	// 1/2 and Tether hold a WORLD azimuth since T471 (B580).
 	CameraRig overheadRig_ = kOverheadRig;
+	// T474 (board B650): T466 measured Chase too; applied as a rig. Not
+	// persisted -- the official client persists only the two user cameras.
+	CameraRig chaseRig_ = kChaseRig;
+	float chaseEyeAboveFeet_ = kChaseFitEyeAboveFeet;  // see chaseEyeAboveFeet()
 	CameraRig user1Rig_ = kUser1DefaultRig;
 	CameraRig user2Rig_ = kUser2DefaultRig;
 	CameraRig tetherRig_ = kTetherPlaceholderRig;

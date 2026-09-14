@@ -193,7 +193,7 @@ group panel and the buff bar (board **B366**).
 | L | Cycle object lights |
 | F10 / Shift+F10 / Shift+F11 | Music volume down / effects volume down / effects volume up. Until T464 (board B535) these, Alt+C and L were compiled-in defaults the shipped `config/hotkeys.json` did not carry, so production never reached them. **F11 is not music volume up**: the defaults also bind it, but F11's Global `ToggleAllUI` wins, so F11 has only ever toggled the UI; the official key is oracle-owed (board B561). |
 | ESC | Clear target. `/cleartarget` (no alias, category Combat) reaches the same `ActionDispatcher::clearTarget()` since T347 (board B012 CLOSED), so a `--script` run can clear a target |
-| Numpad7 / Insert, Numpad1 / Delete, +/- | Camera zoom in / out: the Chase follow distance, or the active orbit camera's distance (T461, `PlayerCameraComponent::zoomCamera()`, shared with the wheel). First person does not zoom. Numpad7/Insert and Numpad1/Delete are the official keys, MEASURED on the oracle's Options > Keys > Camera page (T466, bound by T471). fable's own +/- (and Shift+= / Numpad- in the shipped file) are kept; on the official client Shift+- / Shift+= are Clip plane and Numpad- is Screenshot (board B652). |
+| Numpad7 / Insert, Numpad1 / Delete, +/- | Camera zoom in / out: the active orbit camera's distance -- Chase's too since T474, which made Chase a rig at T466's oracle fit (T461, `PlayerCameraComponent::zoomCamera()`, shared with the wheel). T466 saw no visible change on the official client after Insert/Delete in Chase; whether the official Chase zooms is board B680. First person does not zoom. Numpad7/Insert and Numpad1/Delete are the official keys, MEASURED on the oracle's Options > Keys > Camera page (T466, bound by T471). fable's own +/- (and Shift+= / Numpad- in the shipped file) are kept; on the official client Shift+- / Shift+= are Clip plane and Numpad- is Screenshot (board B652). |
 | Alt+Numpad9 / Alt+PageUp, Alt+Numpad3 / Alt+PageDown | Pitch the ACTIVE user camera up / down 5 degrees per press (`CameraPitchUp` / `CameraPitchDown`; keys measured, T466/T471). Pitch up tilts the VIEW up (the camera goes lower), as the official key does. T466 boarded fable's sign as mirrored; T471 found it already matched. The bare PageUp/PageDown still scroll the UI. |
 | Alt+Numpad6 / Alt+Right, Alt+Numpad4 / Alt+Left | Tether-slide right / left (`CameraOrbitRight` / `CameraOrbitLeft`, the official `RIGHT_CAM` / `LEFT_CAM`): slides the Tether camera 5 degrees of world azimuth per press towards the viewer's right / left. It does nothing in other cameras (T466 pressed it in User 1 and nothing moved). The bare arrows stay movement: `getAction()` and the movement poll both compare modifiers exactly. |
 | Alt+Numpad8 / Alt+Up, Alt+Numpad2 / Alt+Down | Raise / Lower camera (`CameraRaise` / `CameraLower`, T471): the Tether camera's look-at height, 1 unit per press. The keys are measured; what the official key moves, and its step, are ORACLE-OWED (board B653). The DRM/evdev device always sends the numpad codes; the `--egl-x11` device looks keys up in their NumLock-off form and maps none of the numpad digits (board B654). |
@@ -300,10 +300,12 @@ migration); `Application::DispatchSlashCommand` tries them in order:
    run cannot generate either), `/camera` (T66; T461 — no argument reports
    the mode, `cycle` is F9, `<mode>` names one of the six official cameras,
    `set az <deg> pitch <deg> dist <units> height <units>` places the active
-   user camera exactly (any subset; outside a user camera it switches to User
+   user camera exactly (any subset; T474: in Chase it edits the Chase rig, whose
+   distance and height are the fitted character's and scale with the player's
+   eye; outside a user camera or Chase it switches to User
    Defined Camera 1 and says so), `nudge` adds the same four, `get` prints
-   parseable `[CAMERA-GET]` lines — mode, the four values (T471: with `az_frame=world` for User Defined 1/2 and Tether, `az_frame=player_heading` for Overhead), the player pose,
-   the ideal rig pose and the camera node's actual pose — and `help` states
+   parseable `[CAMERA-GET]` lines — mode, the four values (T471: with `az_frame=world` for User Defined 1/2 and Tether, `az_frame=player_heading` for Overhead and Chase), the player pose,
+   the ideal rig pose and the camera node's actual pose, plus in Chase a `chase eye_above_feet= fit_eye_above_feet= scale=` line — and `help` states
    the units; the grammar is `include/client/graphics/slash/camera_command.h`),
    `/skills`, `/inventory`, `/newbook`,
    `/weatherpreset`, …)

@@ -25,6 +25,14 @@ public:
     // note also said `--camera free` selected it on the command line; no such
     // option exists in the tree.) The fly-camera settings and the yaw/pitch/
     // orbit-angle accessors below are residue with no reader -- board B533.
+    //
+    // T474 (board B650) DELETED setFollowPosition() and the follow-distance
+    // API (setFollowDistance / adjustFollowDistance / getFollowDistance /
+    // getActualFollowDistance) with enableZoneInLogging(). They were the Chase
+    // camera: 20 behind, eye 6 + 4 above the node origin, looking ahead of the
+    // player -- not the official geometry. Chase is now a rig at T466's fit
+    // (camera_rig.h kChaseRig), placed by placeChaseCamera() below; zoom edits
+    // the rig's distance (PlayerCameraComponent::zoomCamera).
 
     // Set movement and rotation speeds
     void setMoveSpeed(float speed) { moveSpeed_ = speed; }
@@ -40,31 +48,37 @@ public:
     float getPitch() const { return pitch_; }
     void setOrientation(float yaw, float pitch);
 
-    // Set camera to follow an entity position
-    // Uses EQ coordinates (Z-up), converts internally
-    // deltaTime is used for smooth collision zoom recovery
-    void setFollowPosition(float eqX, float eqY, float eqZ, float eqHeading, float deltaTime = 0.0f);
-
     // T461: place a rig camera (Overhead, User Defined 1/2, Tether). `pose` is
     // EQ client coordinates from computeCameraRigPose(). When the ideal
     // position is behind a wall the camera is pulled in along the look-at ->
-    // camera ray, by the same two collision systems setFollowPosition() uses
-    // (BSP PVS, else the legacy triangle selector); unlike Chase there is no
-    // zoom-recovery easing, because a rig is placed exactly every frame.
+    // camera ray, by BSP PVS or else the legacy triangle selector. There is no
+    // zoom-recovery easing: a rig is placed exactly every frame.
     // Returns the look-at -> camera distance actually used.
     float placeRigCamera(const CameraRigPose& pose);
+
+    // T474 (board B650): place the CHASE camera -- a rig pose (T466's fit,
+    // race-scaled by PlayerCameraComponent) plus the one thing Chase had that
+    // the other rigs do not: T464's EYE-REGION CEILING CLAMP. `eyeZ` is the
+    // player's eye (EQ client z); the eye point is (pose.targetX, pose.targetY,
+    // eyeZ), because the Chase look-at is on the player's axis. When the BSP
+    // region holding the eye has a box top ABOVE the eye (T464: a top at or
+    // below the eye is a hilltop, not a ceiling), neither the camera nor the
+    // look-at may rise past that top minus CAMERA_COLLISION_OFFSET, and neither
+    // is pushed below the eye by it. Without BSP the legacy triangle selector
+    // answers the same question with a vertical ray from the eye. The wall
+    // pull-in is placeRigCamera()'s, applied to the clamped pose.
+    // Returns the look-at -> camera distance actually used.
+    float placeChaseCamera(const CameraRigPose& pose, float eyeZ);
+
+    // T474: the look-at -> camera distance the last placeRigCamera() /
+    // placeChaseCamera() used (the CameraFrame trace prints it).
+    float getLastPlacedDistance() const { return lastPlacedDistance_; }
 
     // Get camera position in EQ coordinates
     void getPositionEQ(float& x, float& y, float& z) const;
 
     // Get camera heading in EQ format (0-512)
     float getHeadingEQ() const;
-
-    // Follow mode zoom control (sets preferred distance)
-    void setFollowDistance(float distance);
-    float getFollowDistance() const { return preferredFollowDistance_; }
-    float getActualFollowDistance() const { return actualFollowDistance_; }
-    void adjustFollowDistance(float delta);
 
     // BSP-based collision detection for camera zoom (replaces triangle selectors)
     // regionBounds: per-region AABB in the EQ Z-UP frame (Z is vertical), indexed
@@ -88,9 +102,6 @@ public:
     float getOrbitAngle() const { return orbitAngle_; }
     void adjustOrbitAngle(float delta);  // delta in EQ heading units (0-512)
 
-    // Enable one-time zone-in logging (for debugging)
-    void enableZoneInLogging() { logZoneIn_ = true; }
-
 private:
     irr::scene::ICameraSceneNode* camera_;
 
@@ -104,11 +115,8 @@ private:
     static constexpr float MIN_PITCH = -89.0f;
     static constexpr float MAX_PITCH = 89.0f;
 
-    // Follow mode distance (zoom) - 0 = first person, >0 = third person
-    float preferredFollowDistance_ = 20.0f;  // User's desired distance
-    float actualFollowDistance_ = 20.0f;     // Current distance (may be reduced due to collision)
-    static constexpr float MIN_FOLLOW_DISTANCE = 0.0f;
-    static constexpr float MAX_FOLLOW_DISTANCE = 300.0f;
+    // T474: see getLastPlacedDistance().
+    float lastPlacedDistance_ = 0.0f;
 
     // BSP-based camera collision
     const BspTree* bspTree_ = nullptr;
@@ -127,15 +135,11 @@ private:
 
     static constexpr float CAMERA_COLLISION_OFFSET = 0.5f;   // Distance to stay away from walls
     static constexpr float MIN_COLLISION_DISTANCE = 1.0f;    // Minimum zoom when colliding
-    static constexpr float ZOOM_RECOVERY_SPEED = 30.0f;      // Units per second to zoom back out
 
     // Camera orbit angle in EQ heading units (0-512)
     // This is independent of player heading - player can rotate without camera following
     float orbitAngle_ = 0.0f;
-    bool orbitAngleInitialized_ = false;  // Set to true after first setFollowPosition
-
-    // One-time zone-in logging flag
-    bool logZoneIn_ = false;
+    bool orbitAngleInitialized_ = false;  // Set by setOrbitAngle()
 };
 
 } // namespace Graphics

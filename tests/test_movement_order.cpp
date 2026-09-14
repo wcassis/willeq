@@ -301,7 +301,18 @@ std::vector<std::string> goldenOrder() {
 // 463 -> 456, nothing inserted, nothing moved, no other line touched. The
 // selector is gone from the TU entirely, parameters included, and
 // tests/test_dead_renderer_members.cpp pins that.
-constexpr size_t kGoldenSize = 456;
+//
+// T474: B650, Chase became a rig. The golden LEARNED this edit in place: TWO
+// statements DELETED from publishPositionAndCamera(), nothing inserted, nothing
+// moved, no other line touched (456 -> 454):
+//   401 `if (cameraMode_ == CameraMode::Chase && ctx_.cameraController) {`
+//   402 `ctx_.cameraController->setFollowPosition(ctx_.playerX, ctx_.playerY, ctx_.playerZ, ctx_.playerHeading, deltaTime);`
+// CameraController::setFollowPosition() -- the pre-T474 Chase camera, 20 behind
+// and looking ahead of the player -- is deleted. Chase is T466's oracle fit as
+// a rig (camera_rig.h kChaseRig), and FrameComponent::processFrameInput() calls
+// PlayerCameraComponent::updateRigCamera() immediately after
+// updatePlayerMovement() every frame, which is where Chase is now placed.
+constexpr size_t kGoldenSize = 454;
 
 }  // namespace
 

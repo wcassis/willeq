@@ -4,8 +4,9 @@
 // THE CONTRACT. IrrlichtBridge::applyEvent(PlayerMoved) hands d.heading
 // straight to IrrlichtRenderer::setPlayerPosition() ->
 // PlayerCameraComponent::setPlayerPosition(), which stores it as the
-// renderer's playerHeading and feeds CameraController::setFollowPosition()
-// with it -- in "EQ heading 0-512" (its own log line says so). The renderer's
+// renderer's playerHeading and feeds the camera placement with it (then
+// CameraController::setFollowPosition(); since T474 the Chase rig) -- in
+// "EQ heading 0-512" (its own log line says so). The renderer's
 // own PlayerPositionChanged intent carries the same unit back, and
 // BridgeComponent::OnGraphicsMovement() divides by 512/360 on receipt.
 //

@@ -35,6 +35,7 @@ std::string RigValues(const CameraRig& r) {
 const CameraRig* PlayerCameraComponent::cameraRigFor(CameraMode mode) const {
     switch (mode) {
         case CameraMode::Overhead: return &overheadRig_;
+        case CameraMode::Chase: return &chaseRig_;  // T474 (B650)
         case CameraMode::User1: return &user1Rig_;
         case CameraMode::User2: return &user2Rig_;
         case CameraMode::Tether: return &tetherRig_;
@@ -53,30 +54,50 @@ float PlayerCameraComponent::playerFeetZ() const {
     return ctx_.playerZ - offset;
 }
 
+float PlayerCameraComponent::chaseEyeAboveFeet() {
+    if (ctx_.entityRenderer &&
+        ctx_.entityRenderer->getEntityPoseState(playerSpawnId_) == EntityVisual::PoseState::Standing) {
+        const EntityRenderer::FirstPersonEyeOffset eye =
+            ctx_.entityRenderer->getPlayerFirstPersonEyeOffset();
+        // Only a head-bone eye: the no-model default (3.65 above the node
+        // origin) and the bbox-crown fallback are not an eye to scale by.
+        if (eye.derivedFromHead && eye.irrY > 0.0f) {
+            chaseEyeAboveFeet_ = eye.irrY + ctx_.entityRenderer->getPlayerCollisionZOffset();
+        }
+    }
+    return chaseEyeAboveFeet_;
+}
+
 void PlayerCameraComponent::updateRigCamera() {
     const CameraRig* rig = cameraRigFor(cameraMode_);
     if (!rig || !ctx_.cameraController) return;
+    const float feetZ = playerFeetZ();
+    if (cameraMode_ == CameraMode::Chase) {
+        // T474 (board B650): T466's fit, scaled by this player's eye height,
+        // heading-relative, with T464's eye-region ceiling clamp.
+        const float eye = chaseEyeAboveFeet();
+        const CameraRigPose pose = computeCameraRigPose(scaleChaseRigForEye(*rig, eye),
+                                                        ctx_.playerX, ctx_.playerY, feetZ,
+                                                        ctx_.playerHeading,
+                                                        cameraAzimuthFrame(cameraMode_));
+        ctx_.cameraController->placeChaseCamera(pose, feetZ + eye);
+        return;
+    }
     // T471 (B580): User Defined 1/2 and Tether hold a WORLD azimuth, so their
     // pose follows the player's position and ignores its heading.
     const CameraRigPose pose = computeCameraRigPose(*rig, ctx_.playerX, ctx_.playerY,
-                                                    playerFeetZ(), ctx_.playerHeading,
+                                                    feetZ, ctx_.playerHeading,
                                                     cameraAzimuthFrame(cameraMode_));
     ctx_.cameraController->placeRigCamera(pose);
 }
 
 void PlayerCameraComponent::zoomCamera(float deltaUnits, float deltaTime) {
+    // T474: the follow camera's zoom-recovery easing used the frame time; a rig
+    // is placed exactly every frame and has none (board B682).
+    (void)deltaTime;
     if (deltaUnits == 0.0f) return;
-    if (cameraMode_ == CameraMode::Chase) {
-        // The pre-T461 body of FrameComponent::processInputDeltas(), moved
-        // here unchanged so the keys and the wheel share it.
-        if (!ctx_.cameraController) return;
-        ctx_.cameraController->adjustFollowDistance(deltaUnits);
-        ctx_.cameraController->setFollowPosition(ctx_.playerX, ctx_.playerY, ctx_.playerZ,
-                                                 ctx_.playerHeading, deltaTime);
-        LOG_DEBUG(MOD_GRAPHICS, "Camera zoom distance: {:.1f}",
-                  ctx_.cameraController->getFollowDistance());
-        return;
-    }
+    // T474 (board B650): Chase is a rig, so the keys and the wheel edit its
+    // distance like every other rig's.
     CameraRig* rig = rigFor(cameraMode_);
     if (!rig) return;  // first person does not zoom (it did not before T461 either)
     rig->distance += deltaUnits;
@@ -152,7 +173,11 @@ std::vector<std::string> PlayerCameraComponent::buildCameraGetLines() const {
         "[CAMERA-GET] player=({:.3f},{:.3f},{:.3f}) feetZ={:.3f} heading={:.3f} frame=eq_client",
         ctx_.playerX, ctx_.playerY, ctx_.playerZ, feetZ, ctx_.playerHeading));
     if (rig) {
-        const CameraRigPose p = computeCameraRigPose(*rig, ctx_.playerX, ctx_.playerY, feetZ,
+        // T474: the Chase pose is the race-scaled rig (the last eye measured).
+        const CameraRig placed = (cameraMode_ == CameraMode::Chase)
+                                     ? scaleChaseRigForEye(*rig, chaseEyeAboveFeet_)
+                                     : *rig;
+        const CameraRigPose p = computeCameraRigPose(placed, ctx_.playerX, ctx_.playerY, feetZ,
                                                      ctx_.playerHeading,
                                                      cameraAzimuthFrame(cameraMode_));
         lines.push_back(fmt::format(
@@ -168,6 +193,13 @@ std::vector<std::string> PlayerCameraComponent::buildCameraGetLines() const {
             pos.X, pos.Z, pos.Y, tgt.X, tgt.Z, tgt.Y));
     } else {
         lines.push_back("[CAMERA-GET] node=absent (no camera scene node)");
+    }
+    if (cameraMode_ == CameraMode::Chase) {
+        // T474: the four values above are the FITTED character's; this is the
+        // scale that turned them into the ideal pose.
+        lines.push_back(fmt::format(
+            "[CAMERA-GET] chase eye_above_feet={:.3f} fit_eye_above_feet={:.3f} scale={:.4f}",
+            chaseEyeAboveFeet_, kChaseFitEyeAboveFeet, chaseEyeAboveFeet_ / kChaseFitEyeAboveFeet));
     }
     return lines;
 }
@@ -201,7 +233,9 @@ std::vector<std::string> PlayerCameraComponent::runCameraCommand(const std::stri
         case CameraCommand::Kind::Set:
         case CameraCommand::Kind::Nudge: {
             const bool nudge = (cmd.kind == CameraCommand::Kind::Nudge);
-            if (!isUserCameraMode(cameraMode_)) {
+            // T474: Chase is edited in place too -- the lever Leg B A/Bs the
+            // official Chase geometry with. Any other camera switches to User 1.
+            if (!isUserCameraMode(cameraMode_) && cameraMode_ != CameraMode::Chase) {
                 setCameraMode(CameraMode::User1);
                 if (cameraMode_ != CameraMode::User1) {
                     out.push_back("Camera: cannot change the camera while a zone is loading");

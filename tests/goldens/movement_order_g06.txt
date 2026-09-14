@@ -398,59 +398,57 @@
 398 LOG_TRACE(MOD_MOVEMENT, "Position updated: ({}, {}, {}) heading={}", ctx_.playerX, ctx_.playerY, ctx_.playerZ, ctx_.playerHeading);
 399 if (ctx_.entityRenderer) {
 400 ctx_.entityRenderer->updatePlayerEntityPosition(ctx_.playerX, ctx_.playerY, ctx_.playerZ, ctx_.playerHeading);
-401 if (cameraMode_ == CameraMode::Chase && ctx_.cameraController) {
-402 ctx_.cameraController->setFollowPosition(ctx_.playerX, ctx_.playerY, ctx_.playerZ, ctx_.playerHeading, deltaTime);
-403 if (cameraMode_ == CameraMode::FirstPerson && (positionChanged || headingChanged || pitchChanged)) {
-404 repositionFirstPersonCamera();
-405 hasMovementInput = playerMovement_.moveForward || playerMovement_.moveBackward ||
-406 playerMovement_.strafeLeft || playerMovement_.strafeRight;
-407 static bool hadMovementInput = false;
-408 bool stoppedMoving = hadMovementInput && !hasMovementInput;
-409 hadMovementInput = hasMovementInput;
-410 static float prevX = ctx_.playerX, prevY = ctx_.playerY, prevZ = ctx_.playerZ;
-411 static auto lastCallbackTime = std::chrono::steady_clock::now();
-412 auto now = std::chrono::steady_clock::now();
-413 auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastCallbackTime);
-414 bool shouldCallback = ctx_.bridge &&
-415 (positionChanged || headingChanged || stoppedMoving) &&
-416 (stoppedMoving || elapsed.count() >= 250);
-417 if (shouldCallback) {
-418 eqt::events::PlayerPositionChanged intent;
-419 intent.x = ctx_.playerX;
-420 intent.y = ctx_.playerY;
-421 intent.z = ctx_.playerZ;
-422 intent.heading = heading;  // EQ format (0-512)
-423 intent.seededPosition = playerPositionIsSeed_;
-424 if (stoppedMoving) {
-425 intent.dx = 0.0f;
-426 intent.dy = 0.0f;
-427 intent.dz = 0.0f;
-428 } else {
-429 intent.dx = ctx_.playerX - prevX;
-430 intent.dy = ctx_.playerY - prevY;
-431 intent.dz = ctx_.playerZ - prevZ;
-432 ctx_.bridge->pushIntent(std::move(intent));
-433 lastCallbackTime = now;
-434 prevX = ctx_.playerX;
-435 prevY = ctx_.playerY;
-436 prevZ = ctx_.playerZ;
-437 if (ctx_.entityRenderer) {
-438 if (playerMovement_.isJumping && playerMovement_.verticalVelocity > 0 && !playerMovement_.isSwimming) {
-439 if (hasMovementInput) {
-440 ctx_.entityRenderer->setPlayerEntityAnimation("l03", false, 0.0f, true);  // Running jump
-441 } else {
-442 ctx_.entityRenderer->setPlayerEntityAnimation("l04", false, 0.0f, true);  // Standing jump
-443 } else if (playerMovement_.isSwimming) {
-444 bool hasSwimMovement = hasMovementInput || playerMovement_.swimUp || playerMovement_.swimDown;
-445 if (hasSwimMovement) {
-446 ctx_.entityRenderer->setPlayerEntityAnimation("l09", true, playerMovement_.swimSpeed);  // Swim treading/moving
-447 } else {
-448 ctx_.entityRenderer->setPlayerEntityAnimation("p06", true);  // Swim idle
-449 } else if (hasMovementInput) {
-450 float speed = playerMovement_.isRunning ? playerMovement_.runSpeed : playerMovement_.walkSpeed;
-451 if (playerMovement_.moveForward && playerMovement_.isRunning) {
-452 ctx_.entityRenderer->setPlayerEntityAnimation("l02", true, speed);  // Run
+401 if (cameraMode_ == CameraMode::FirstPerson && (positionChanged || headingChanged || pitchChanged)) {
+402 repositionFirstPersonCamera();
+403 hasMovementInput = playerMovement_.moveForward || playerMovement_.moveBackward ||
+404 playerMovement_.strafeLeft || playerMovement_.strafeRight;
+405 static bool hadMovementInput = false;
+406 bool stoppedMoving = hadMovementInput && !hasMovementInput;
+407 hadMovementInput = hasMovementInput;
+408 static float prevX = ctx_.playerX, prevY = ctx_.playerY, prevZ = ctx_.playerZ;
+409 static auto lastCallbackTime = std::chrono::steady_clock::now();
+410 auto now = std::chrono::steady_clock::now();
+411 auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastCallbackTime);
+412 bool shouldCallback = ctx_.bridge &&
+413 (positionChanged || headingChanged || stoppedMoving) &&
+414 (stoppedMoving || elapsed.count() >= 250);
+415 if (shouldCallback) {
+416 eqt::events::PlayerPositionChanged intent;
+417 intent.x = ctx_.playerX;
+418 intent.y = ctx_.playerY;
+419 intent.z = ctx_.playerZ;
+420 intent.heading = heading;  // EQ format (0-512)
+421 intent.seededPosition = playerPositionIsSeed_;
+422 if (stoppedMoving) {
+423 intent.dx = 0.0f;
+424 intent.dy = 0.0f;
+425 intent.dz = 0.0f;
+426 } else {
+427 intent.dx = ctx_.playerX - prevX;
+428 intent.dy = ctx_.playerY - prevY;
+429 intent.dz = ctx_.playerZ - prevZ;
+430 ctx_.bridge->pushIntent(std::move(intent));
+431 lastCallbackTime = now;
+432 prevX = ctx_.playerX;
+433 prevY = ctx_.playerY;
+434 prevZ = ctx_.playerZ;
+435 if (ctx_.entityRenderer) {
+436 if (playerMovement_.isJumping && playerMovement_.verticalVelocity > 0 && !playerMovement_.isSwimming) {
+437 if (hasMovementInput) {
+438 ctx_.entityRenderer->setPlayerEntityAnimation("l03", false, 0.0f, true);  // Running jump
+439 } else {
+440 ctx_.entityRenderer->setPlayerEntityAnimation("l04", false, 0.0f, true);  // Standing jump
+441 } else if (playerMovement_.isSwimming) {
+442 bool hasSwimMovement = hasMovementInput || playerMovement_.swimUp || playerMovement_.swimDown;
+443 if (hasSwimMovement) {
+444 ctx_.entityRenderer->setPlayerEntityAnimation("l09", true, playerMovement_.swimSpeed);  // Swim treading/moving
+445 } else {
+446 ctx_.entityRenderer->setPlayerEntityAnimation("p06", true);  // Swim idle
+447 } else if (hasMovementInput) {
+448 float speed = playerMovement_.isRunning ? playerMovement_.runSpeed : playerMovement_.walkSpeed;
+449 if (playerMovement_.moveForward && playerMovement_.isRunning) {
+450 ctx_.entityRenderer->setPlayerEntityAnimation("l02", true, speed);  // Run
+451 } else {
+452 ctx_.entityRenderer->setPlayerEntityAnimation("l01", true, speed);  // Walk
 453 } else {
-454 ctx_.entityRenderer->setPlayerEntityAnimation("l01", true, speed);  // Walk
-455 } else {
-456 ctx_.entityRenderer->setPlayerEntityAnimation("p01", true);  // Idle
+454 ctx_.entityRenderer->setPlayerEntityAnimation("p01", true);  // Idle

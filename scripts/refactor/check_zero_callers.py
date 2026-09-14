@@ -587,7 +587,6 @@ EXEMPT_GROUPS = {
     ("EntityRenderer", "getDebugTargetId"): "B494",
     ("EntityRenderer", "getEntityAnimation"): "B494",
     ("EntityRenderer", "getEntityAnimationList"): "B494",
-    ("EntityRenderer", "getEntityPoseState"): "B494",
     ("EntityRenderer", "getGlobalAnimationSpeed"): "B494",
     ("EntityRenderer", "getOffsetX"): "B494",
     ("EntityRenderer", "getOffsetY"): "B494",
@@ -730,6 +729,10 @@ EXEMPT_GROUPS = {
     ("PlayerState", "setCHA"): "B496",
     ("PlayerState", "setCharacterId"): "B496",
     ("PlayerState", "setDEX"): "B496",
+    # T474: unmasked, not new. The census matches by name, and the one "use" of
+    # this name was CameraController::adjustFollowDistance()'s call to its own
+    # setFollowDistance() -- deleted with the follow camera (board B650).
+    ("PlayerState", "setFollowDistance"): "B496",
     ("PlayerState", "setINT"): "B496",
     ("PlayerState", "setMovementSequence"): "B496",
     ("PlayerState", "setSTA"): "B496",

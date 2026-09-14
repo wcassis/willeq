@@ -196,6 +196,16 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_camera_bsp_ceiling PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_camera_bsp_ceiling GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_camera_bsp_ceiling DISCOVERY_TIMEOUT 120)
+
+    # T474 (B650): the Chase camera at T466's oracle fit -- pose, heading,
+    # zoom, wall pull-in, the eye-region ceiling and `/camera set` in Chase --
+    # on a bare renderer with a real EDT_NULL camera node.
+    ADD_EXECUTABLE(test_chase_camera_fit
+        test_chase_camera_fit.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_chase_camera_fit PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_chase_camera_fit GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_chase_camera_fit DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # L01 (Batch L, refactor/L01_rdp_component.md): the RendererContext binding

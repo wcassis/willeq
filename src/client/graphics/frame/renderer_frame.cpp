@@ -231,13 +231,15 @@ bool FrameComponent::processFrame(float deltaTime) {
         const irr::core::vector3df camTgt = ctx_.camera->getTarget();
         LOG_TRACE(MOD_CAMERA,
                   "CameraFrame frame={} mode={} ({}) pos=({:.2f},{:.2f},{:.2f}) tgt=({:.2f},{:.2f},{:.2f}) "
-                  "player=({:.2f},{:.2f},{:.2f}) heading={:.2f} followDist actual={:.2f} preferred={:.2f}",
+                  "player=({:.2f},{:.2f},{:.2f}) heading={:.2f} rigDist placed={:.2f}",
                   ctx_.frameNumber, static_cast<int>(ctx_.PlayerCamera().cameraMode()),
                   ctx_.PlayerCamera().getCameraModeString(),
                   camPos.X, camPos.Y, camPos.Z, camTgt.X, camTgt.Y, camTgt.Z,
                   ctx_.playerX, ctx_.playerY, ctx_.playerZ, ctx_.playerHeading,
-                  ctx_.cameraController ? ctx_.cameraController->getActualFollowDistance() : -1.0f,
-                  ctx_.cameraController ? ctx_.cameraController->getFollowDistance() : -1.0f);
+                  // T474: the follow distance is gone with the follow camera;
+                  // this is the last rig/Chase placement's look-at -> camera
+                  // distance (after any wall pull-in).
+                  ctx_.cameraController ? ctx_.cameraController->getLastPlacedDistance() : -1.0f);
     }
 
     // Phase 4: Render

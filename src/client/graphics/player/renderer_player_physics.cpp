@@ -867,10 +867,9 @@ void PlayerCameraComponent::publishPositionAndCamera(MovementFrame& frame) {
             ctx_.entityRenderer->updatePlayerEntityPosition(ctx_.playerX, ctx_.playerY, ctx_.playerZ, ctx_.playerHeading);
         }
 
-        if (cameraMode_ == CameraMode::Chase && ctx_.cameraController) {
-            // Chase mode (T461: was "Follow"): third-person camera behind player
-            ctx_.cameraController->setFollowPosition(ctx_.playerX, ctx_.playerY, ctx_.playerZ, ctx_.playerHeading, deltaTime);
-        }
+        // T474 (board B650): no Chase placement here any more. Chase is a rig
+        // (T466's fit), and FrameComponent re-places every rig camera with
+        // PlayerCameraComponent::updateRigCamera() right after this body returns.
     }
 
     // T295: ONE first-person camera formula, and this is NOT it -- this

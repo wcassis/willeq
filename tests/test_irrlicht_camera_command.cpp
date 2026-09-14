@@ -192,8 +192,10 @@ TEST_F(CameraCommandTest, UnknownModeName_PrintsErrorMessage_DoesNotChangeMode) 
 
 // --- /camera set / nudge / get ---
 
-TEST_F(CameraCommandTest, SetFromChaseSwitchesToUserCamera1AndSaysSo) {
-    Run("/camera chase");
+// T474: from Overhead, not Chase -- Chase is a rig since T474 and `/camera set`
+// edits it in place (tests/test_chase_camera_fit.cpp).
+TEST_F(CameraCommandTest, SetFromOverheadSwitchesToUserCamera1AndSaysSo) {
+    Run("/camera overhead");
     const auto msgs = Run("/camera set az 90 pitch 20 dist 40 height 6");
     ASSERT_EQ(msgs.size(), 2u);
     EXPECT_TRUE(Contains(msgs[0], "Switched to User Defined Camera 1")) << msgs[0];

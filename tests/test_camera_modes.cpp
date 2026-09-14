@@ -71,7 +71,7 @@ TEST(CameraModeSet, TheDefaultIsTheOfficialLoginCameraFirstPerson) {
 
 TEST(CameraModeSet, RigAndUserModeClassification) {
     EXPECT_FALSE(isRigCameraMode(CameraMode::FirstPerson));
-    EXPECT_FALSE(isRigCameraMode(CameraMode::Chase));
+    EXPECT_TRUE(isRigCameraMode(CameraMode::Chase));  // T474 (B650): the fit is a rig
     EXPECT_TRUE(isRigCameraMode(CameraMode::Overhead));
     EXPECT_TRUE(isRigCameraMode(CameraMode::User1));
     EXPECT_TRUE(isRigCameraMode(CameraMode::User2));
@@ -274,6 +274,61 @@ TEST(CameraRigDefaults, OverheadIsTheOracleFit) {
     EXPECT_FLOAT_EQ(kOverheadRig.height, 3.0f);
     CameraRig copy = kOverheadRig;
     EXPECT_FALSE(clampCameraRig(copy)) << "the measured rig must sit inside the clamps";
+}
+
+TEST(CameraRigDefaults, ChaseIsTheOracleFit) {
+    // T466: fitted against the official client's Chase frame at the same pose
+    // -- minimum edge 0.7379 at pitch 6, dist 4.0, height 7.0 in fit 2 AND fit
+    // 4, bracketed: dist 3.5/4.5 -> 0.767/0.839, height 6.5/7.5 -> 0.779/0.922,
+    // pitch 3/9 -> 0.937/0.880 (review/T466/fable/sessions/fit4_*). Applied by
+    // T474 (board B650); the pre-T474 follow camera sat 20 behind.
+    EXPECT_FLOAT_EQ(kChaseRig.azimuthDeg, 0.0f);
+    EXPECT_FLOAT_EQ(kChaseRig.pitchDeg, 6.0f);
+    EXPECT_FLOAT_EQ(kChaseRig.distance, 4.0f);
+    EXPECT_FLOAT_EQ(kChaseRig.height, 7.0f);
+    CameraRig copy = kChaseRig;
+    EXPECT_FALSE(clampCameraRig(copy)) << "the measured rig must sit inside the clamps";
+    // T431: the fitted character's (Human male) oracle-solved eye above its feet.
+    EXPECT_FLOAT_EQ(kChaseFitEyeAboveFeet, 6.023f);
+}
+
+TEST(CameraRigGeometry, TheChaseFitPutsTheCameraWhereT471ComputedIt) {
+    // T471: "camera 3.978 behind and 7.418 above the feet, looking at the
+    // player's axis at 7.0, pitch 6.0 down".
+    const CameraRigPose p = computeCameraRigPose(kChaseRig, 0.0f, 0.0f, 0.0f, 0.0f);
+    ExpectPose(p, 0.0f, -3.97809f, 7.41811f, 0.0f, 0.0f, 7.0f);
+}
+
+// T474: the race scaling (camera_rig.h scaleChaseRigForEye()). Written with the
+// API it names, so it has no red-before run of its own.
+TEST(ChaseRaceScale, TheFittedCharactersEyeLeavesTheFitExact) {
+    EXPECT_EQ(scaleChaseRigForEye(kChaseRig, kChaseFitEyeAboveFeet), kChaseRig);
+}
+
+TEST(ChaseRaceScale, AnotherEyeScalesDistanceAndHeightUniformlyAboutTheFeet) {
+    // T431's oracle-solved Dwarf male eye, 3.58 above its feet -- used here only
+    // as a second size; the Dwarf's Chase geometry itself is unmeasured (B681).
+    const float eye = 3.58f;
+    const float s = eye / kChaseFitEyeAboveFeet;
+    const CameraRig r = scaleChaseRigForEye(kChaseRig, eye);
+    EXPECT_FLOAT_EQ(r.azimuthDeg, kChaseRig.azimuthDeg);
+    EXPECT_FLOAT_EQ(r.pitchDeg, kChaseRig.pitchDeg) << "a uniform scale keeps the view angle";
+    EXPECT_NEAR(r.distance, kChaseRig.distance * s, 1e-5f);
+    EXPECT_NEAR(r.height, kChaseRig.height * s, 1e-5f);
+    // So every pose coordinate above the feet scales by s.
+    const CameraRigPose big = computeCameraRigPose(kChaseRig, 0.0f, 0.0f, 0.0f, 100.0f);
+    const CameraRigPose small = computeCameraRigPose(r, 0.0f, 0.0f, 0.0f, 100.0f);
+    EXPECT_NEAR(small.camX, big.camX * s, 1e-4f);
+    EXPECT_NEAR(small.camY, big.camY * s, 1e-4f);
+    EXPECT_NEAR(small.camZ, big.camZ * s, 1e-4f);
+    EXPECT_NEAR(small.targetZ, big.targetZ * s, 1e-4f);
+}
+
+TEST(ChaseRaceScale, ANonPositiveOrNonFiniteEyeLeavesTheRigUnscaled) {
+    for (float eye : {0.0f, -2.0f, std::numeric_limits<float>::quiet_NaN(),
+                      std::numeric_limits<float>::infinity()}) {
+        EXPECT_EQ(scaleChaseRigForEye(kChaseRig, eye), kChaseRig) << eye;
+    }
 }
 
 // ---------------------------------------------------------------------------

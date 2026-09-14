@@ -107,9 +107,9 @@ void FrameComponent::processFrameInput(float deltaTime) {
 
     // Update camera and player movement
     ctx_.PlayerCamera().updatePlayerMovement(deltaTime);
-    // T461: a rig camera (Overhead, User Defined 1/2, Tether) is re-placed
-    // every frame around wherever movement left the player -- the rig itself
-    // is never touched by a move. A no-op in first person and Chase, which the
+    // T461: a rig camera (Overhead, Chase since T474, User Defined 1/2, Tether)
+    // is re-placed every frame around wherever movement left the player -- the
+    // rig itself is never touched by a move. A no-op in first person, which the
     // movement path places itself.
     ctx_.PlayerCamera().updateRigCamera();
     frameTimings_.playerMovement = measureSection();
@@ -926,7 +926,8 @@ void FrameComponent::processFrameSimulation(float deltaTime) {
         // CURRENT triangles in the map the ride probe queries.
         ctx_.PlayerCamera().carryPlayerOnLifts(deltaTime);
         // T461: and a rig camera rides with the player it is expressed around
-        // (Chase and first person are re-placed inside carryPlayerOnLifts()).
+        // (Chase included since T474; first person is re-placed inside
+        // carryPlayerOnLifts()).
         ctx_.PlayerCamera().updateRigCamera();
     }
     frameTimings_.doorUpdate = measureSection();

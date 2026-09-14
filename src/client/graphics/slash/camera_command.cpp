@@ -116,12 +116,13 @@ std::vector<std::string> CameraCommandUsageLines() {
         "/camera -- report the camera mode",
         "/camera cycle -- next mode, the same as F9 (First Person, Overhead, Chase, User Defined 1, User Defined 2, Tether)",
         "/camera <mode> -- firstperson (fp), overhead, chase, user1, user2, tether, or the full official name",
-        "/camera set az <deg> pitch <deg> dist <units> height <units> -- any subset, any order; edits the active user camera, or switches to User Defined Camera 1",
+        "/camera set az <deg> pitch <deg> dist <units> height <units> -- any subset, any order; edits the active user camera or the Chase camera, or switches to User Defined Camera 1",
         "/camera nudge az <deg> pitch <deg> dist <units> height <units> -- adds to the current values",
         "/camera get -- prints the mode, the four values and the resulting camera position and look-at point",
         "Units: az = degrees. User Defined Camera 1/2 and Tether hold a WORLD azimuth "
         "(0 = camera on the -Y side of the player looking +Y, 90 = on the -X side); "
-        "Overhead's is around the player's heading (0 = behind, 180 = in front); "
+        "Overhead's and Chase's are around the player's heading (0 = behind, 180 = in front); "
+        "Chase's distance and height are for the fitted character and scale with the player's eye height; "
         "/camera get prints which as az_frame=world or az_frame=player_heading; "
         "pitch = degrees, + = camera above the look-at point (clamped -89..89); "
         "dist = EQ world units from the look-at point (1..300); "

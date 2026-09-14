@@ -21,7 +21,9 @@
  *     direction when the player turns, including on re-entry after the turn --
  *     the oracle's own protocol; Overhead turns with the player.
  *   - Behavioural (T471, board B581): entering Chase from any other camera
- *     places the Chase camera at once, on a real (EDT_NULL) camera node.
+ *     places the Chase camera at once, on a real (EDT_NULL) camera node --
+ *     since T474 at T466's oracle fit (tests/test_chase_camera_fit.cpp pins
+ *     the fit itself).
  *   - Behavioural: zoom edits the active rig's distance; a player move leaves
  *     every rig alone.
  *   - Source-pinned: the receiver queues the camera actions on actionQueue_,
@@ -182,6 +184,7 @@ TEST_F(CameraModeWiringTest, EachAdjustKeyMovesOnlyItsOwnCamera) {
     EXPECT_EQ(Rig(CameraMode::User2), kUser2DefaultRig);
     EXPECT_EQ(Rig(CameraMode::Overhead), kOverheadRig);
     EXPECT_EQ(Rig(CameraMode::Tether), kTetherPlaceholderRig);
+    EXPECT_EQ(Rig(CameraMode::Chase), kChaseRig) << "T474: Chase is a rig; no adjust key moves it";
 }
 
 // T471: Raise / Lower camera move the Tether camera's look-at height and nothing
@@ -276,6 +279,7 @@ TEST_F(CameraModeWiringTest, APlayerMoveLeavesEveryRigAlone) {
     EXPECT_EQ(Rig(CameraMode::User1), user1);
     EXPECT_EQ(Rig(CameraMode::Overhead), kOverheadRig);
     EXPECT_EQ(Rig(CameraMode::Tether), kTetherPlaceholderRig);
+    EXPECT_EQ(Rig(CameraMode::Chase), kChaseRig);
 }
 
 TEST_F(CameraModeWiringTest, PersistedUserCamerasAreRangeCheckedOnTheWayIn) {
@@ -313,11 +317,12 @@ TEST(CameraChaseEntryTest, EnteringChaseFromAnyOtherCameraPlacesTheChaseCameraAt
         renderer.PlayerCamera().setCameraMode(CameraMode::Overhead);
         renderer.setPlayerPosition(x, y, z, heading);
 
-        // CameraController::setFollowPosition() with no collision system: 20
-        // behind along (sin h, cos h), 10 above the node origin (eye 6 + 4).
-        const float h = heading / 512.0f * 2.0f * kPi;
-        const irr::core::vector3df chase(x - std::sin(h) * 20.0f, z + 10.0f,
-                                         y - std::cos(h) * 20.0f);
+        // T474 (board B650): the Chase camera is T466's fit as a rig, around
+        // the feet (no entity renderer here, so the feet are the node origin and
+        // the eye scale is the fitted character's). Before T474 this was
+        // setFollowPosition(): 20 behind, 10 above the node origin.
+        const CameraRigPose fit = computeCameraRigPose(kChaseRig, x, y, z, heading);
+        const irr::core::vector3df chase(fit.camX, fit.camZ, fit.camY);
 
         for (CameraMode from : {CameraMode::Overhead, CameraMode::FirstPerson, CameraMode::User1,
                                 CameraMode::User2, CameraMode::Tether}) {

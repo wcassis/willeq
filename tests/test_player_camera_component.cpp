@@ -90,11 +90,10 @@ TEST_F(PlayerCameraComponentTest, CameraModeStringReadsTheOwnersMemberBackThroug
 // -> renderer read, which is the binding L01 correction 6 asks for.
 
 TEST_F(PlayerCameraComponentTest, SetPlayerPositionWritesTheCoreMembersThroughTheContext) {
-    // Overhead on purpose (T461: this used Free, which is gone). In the DEFAULT
-    // Chase mode the body's next act is
-    // ctx_.cameraController->enableZoneInLogging(), an UNGUARDED dereference of
-    // a unique_ptr that only Init() fills -- the body is verbatim from before
-    // this unit and guards that path with isLoading() alone. A rig mode takes
+    // Overhead on purpose (T461: this used Free, which is gone). Until T474 the
+    // Chase branch's next act was ctx_.cameraController->enableZoneInLogging(),
+    // an UNGUARDED dereference of a unique_ptr that only Init() fills; T474
+    // (B650) deleted that branch, and every rig mode -- Chase included -- takes
     // updateRigCamera(), which returns without a camera controller, so the
     // member writes above it are what this test observes. (K09 correction z
     // read forward: an unguarded dereference in an otherwise-guarded body tells

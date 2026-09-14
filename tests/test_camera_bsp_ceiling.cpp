@@ -23,6 +23,16 @@
  * of 10.0; heights 3,10,3,10,3,10 over six frames through the camera-region
  * feedback). The controller now reads MaxEdge.Z of the player's EYE region,
  * which it looks up itself, and no longer has a region setter.
+ *
+ * T474 (board B650): setFollowPosition() is DELETED -- Chase is a rig at
+ * T466's oracle fit (camera_rig.h kChaseRig) -- and the clamp moved with the
+ * same two rules into CameraController::placeChaseCamera(). Every case below
+ * is the T464 case re-expressed on the fit: the camera sits kChaseRig.height +
+ * dist * sin(pitch) = 7.418 above the feet (the controller is driven directly,
+ * so the feet are the node origin), the eye is the fitted character's
+ * (kChaseFitEyeAboveFeet, 6.023), and the constructed boxes are moved to
+ * straddle THOSE heights. The nro measurements of the pre-T474 geometry are
+ * kept as they were taken, and say so.
  */
 #include <gtest/gtest.h>
 
@@ -53,8 +63,10 @@ constexpr float kPlayerY = -181.57f;
 constexpr float kPlayerZ = -9.27f;
 constexpr float kHeading = 37.01f;
 constexpr float kMeasuredMaxEdgeY = -171.47f;  // nro region 1217, measured below
-constexpr float kEyeHeight = 6.0f;              // setFollowPosition()'s
+constexpr float kOldEyeHeight = 6.0f;           // the pre-T474 follow camera's eye, T459's logs
 constexpr float kCollisionOffset = 0.5f;        // CAMERA_COLLISION_OFFSET
+const float kUnclampedHeight =
+    kChaseRig.height + kChaseRig.distance * std::sin(kChaseRig.pitchDeg * 3.14159265f / 180.0f);
 
 class CameraBspCeilingTest : public ::testing::Test {
 protected:
@@ -71,6 +83,13 @@ protected:
     }
 
     float CameraHeightAbovePlayer() const { return camera_->getPosition().Y - kPlayerZ; }
+
+    // The Chase camera at T459's pose: the unscaled fit, the fitted eye.
+    static float PlaceChase(CameraController& cc) {
+        const CameraRigPose pose =
+            computeCameraRigPose(kChaseRig, kPlayerX, kPlayerY, kPlayerZ, kHeading);
+        return cc.placeChaseCamera(pose, kPlayerZ + kChaseFitEyeAboveFeet);
+    }
 
     irr::IrrlichtDevice* device_ = nullptr;
     irr::scene::ICameraSceneNode* camera_ = nullptr;
@@ -121,37 +140,38 @@ TEST_F(CameraBspCeilingTest, AHorizontalExtentIsNotACeiling) {
 
     CameraController cc(camera_);
     cc.setBspCollision(&bsp, &bounds);
-    cc.setFollowPosition(kPlayerX, kPlayerY, kPlayerZ, kHeading);
+    PlaceChase(cc);
 
-    EXPECT_NEAR(CameraHeightAbovePlayer(), 10.0f, 1e-3f)
+    EXPECT_NEAR(CameraHeightAbovePlayer(), kUnclampedHeight, 1e-3f)
         << "the clamp read the region's horizontal extent as a ceiling";
 }
 
 // The clamp still does its job, on the vertical axis.
 TEST_F(CameraBspCeilingTest, TheVerticalTopOverTheEyeIsTheCeiling) {
     BspTree bsp = OneRegion();
-    const float top = kPlayerZ + 8.0f;  // above the eye (+6), below the camera (+10)
+    const float top = kPlayerZ + 7.2f;  // above the eye (+6.023), below the camera (+7.418)
     std::map<size_t, irr::core::aabbox3df> bounds{{0, EqBox(500.0f, top)}};
 
     CameraController cc(camera_);
     cc.setBspCollision(&bsp, &bounds);
-    cc.setFollowPosition(kPlayerX, kPlayerY, kPlayerZ, kHeading);
+    PlaceChase(cc);
 
-    EXPECT_NEAR(CameraHeightAbovePlayer(), 8.0f - kCollisionOffset, 1e-3f);
+    EXPECT_NEAR(CameraHeightAbovePlayer(), 7.2f - kCollisionOffset, 1e-3f);
+    EXPECT_LE(camera_->getTarget().Y - kPlayerZ, 7.2f - kCollisionOffset + 1e-3f);
 }
 
 // A box top at or below the eye is not over the player's head (a hilltop, a
 // sloped outdoor region): with the axis fixed and no such guard, a player
-// standing on a region's highest vertex would latch at 3.0 again.
+// standing on a region's highest vertex would latch again.
 TEST_F(CameraBspCeilingTest, ABoxTopBelowTheEyeIsNoCeiling) {
     BspTree bsp = OneRegion();
     std::map<size_t, irr::core::aabbox3df> bounds{{0, EqBox(500.0f, kPlayerZ + 0.2f)}};
 
     CameraController cc(camera_);
     cc.setBspCollision(&bsp, &bounds);
-    cc.setFollowPosition(kPlayerX, kPlayerY, kPlayerZ, kHeading);
+    PlaceChase(cc);
 
-    EXPECT_NEAR(CameraHeightAbovePlayer(), 10.0f, 1e-3f);
+    EXPECT_NEAR(CameraHeightAbovePlayer(), kUnclampedHeight, 1e-3f);
 }
 
 // B508's mechanism removed: the region above the eye (where the unclamped
@@ -160,6 +180,7 @@ TEST_F(CameraBspCeilingTest, ABoxTopBelowTheEyeIsNoCeiling) {
 // identically. Before the fix, feeding the camera's own region back (what
 // SimBridgeComponent did) alternated 3,10,3,10,3,10.
 TEST_F(CameraBspCeilingTest, TheClampReadsTheEyeRegionNotTheCameraRegion) {
+    // The split lies between the eye (+6.023) and the look-at (+7.0).
     BspTree bsp = SplitAtZ(kPlayerZ + 6.5f, {true, true}, {true, true});
     std::map<size_t, irr::core::aabbox3df> bounds{
         {0, EqBox(500.0f, 120.0f)},
@@ -170,10 +191,10 @@ TEST_F(CameraBspCeilingTest, TheClampReadsTheEyeRegionNotTheCameraRegion) {
     cc.setBspCollision(&bsp, &bounds);
     std::vector<float> heights;
     for (int frame = 0; frame < 6; ++frame) {
-        cc.setFollowPosition(kPlayerX, kPlayerY, kPlayerZ, kHeading);
+        PlaceChase(cc);
         heights.push_back(CameraHeightAbovePlayer());
     }
-    EXPECT_NEAR(heights[0], 10.0f, 1e-3f) << "the camera region's box was read";
+    EXPECT_NEAR(heights[0], kUnclampedHeight, 1e-3f) << "the camera region's box was read";
     for (size_t i = 1; i < heights.size(); ++i) {
         EXPECT_NEAR(heights[i], heights[0], 1e-3f) << "frame " << i << " flipped";
     }
@@ -200,6 +221,7 @@ TEST_F(CameraBspCeilingTest, TheRigWallTestUsesTheLookAtRegion) {
     const float used = cc.placeRigCamera(pose);
     EXPECT_LT(used, 6.0f) << "the camera was not pulled in front of the split";
     EXPECT_GE(used, 1.0f);
+    EXPECT_FLOAT_EQ(cc.getLastPlacedDistance(), used);
 }
 
 // ---------------------------------------------------------------------------
@@ -256,10 +278,11 @@ protected:
 
 }  // namespace
 
-// The numbers T459 logged, from the zone file itself.
+// The numbers T459 logged, from the zone file itself (the pre-T474 geometry:
+// eye 6 above the node origin).
 TEST_F(CameraBspCeilingNroTest, Region1217IsWhereT459LatchedAndItsYTopIsTheLoggedCeiling) {
     const size_t feet = bsp_->findRegionIndexForPoint(kPlayerX, kPlayerY, kPlayerZ);
-    const size_t eye = bsp_->findRegionIndexForPoint(kPlayerX, kPlayerY, kPlayerZ + kEyeHeight);
+    const size_t eye = bsp_->findRegionIndexForPoint(kPlayerX, kPlayerY, kPlayerZ + kOldEyeHeight);
     // Frame 3538's camera, Irrlicht (2608.60, 0.74, -200.20) = EQ (x, z, y); the
     // log's "SimWorker apply: PVS=1217".
     const size_t cam = bsp_->findRegionIndexForPoint(2608.60f, -200.20f, 0.74f);
@@ -274,17 +297,22 @@ TEST_F(CameraBspCeilingNroTest, Region1217IsWhereT459LatchedAndItsYTopIsTheLogge
         << "the vertical top is above the unclamped camera: no ceiling applies";
 }
 
+// T474: the Chase fit at T459's pose, on nro's real BSP -- not latched, and
+// not pulled in (the fitted camera spot is in a region the look-at can see).
 TEST_F(CameraBspCeilingNroTest, TheCameraIsNotLatchedAtT459sPose) {
     CameraController cc(camera_);
     cc.setBspCollision(bsp_.get(), &boxes_);
-    cc.setFollowPosition(kPlayerX, kPlayerY, kPlayerZ, kHeading);
-    EXPECT_NEAR(CameraHeightAbovePlayer(), 10.0f, 1e-3f);
+    const float used = PlaceChase(cc);
+    EXPECT_NEAR(CameraHeightAbovePlayer(), kUnclampedHeight, 1e-3f);
+    EXPECT_NEAR(used, kChaseRig.distance, 1e-3f);
 }
 
 // B508's precondition on T459's own path (x86_camera.script's /move from
 // (2611.1,-190.1,-11.2) to (2723.25,-41.75,-24.75)): no step has the camera
 // in a different region at height 10 than at height 3, so the pre-fix
-// two-state flip could not happen there. Recorded as a measurement.
+// two-state flip could not happen there. Recorded as a measurement OF THE
+// PRE-T474 GEOMETRY (20 behind, heights 10 and 3 above the node origin) --
+// the geometry T459 ran with -- and kept as it was taken.
 TEST_F(CameraBspCeilingNroTest, T459sPathHasNoHeightDependentCameraRegion) {
     int heightDependent = 0;
     const float h = kHeading / 512.0f * 2.0f * 3.14159265f;
